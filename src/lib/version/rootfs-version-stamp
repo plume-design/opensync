@@ -1,0 +1,29 @@
+#!/bin/bash
+
+APP=`basename $0`
+CURDIR=`dirname $0`
+
+if [ $# -lt 1 ];
+then
+    echo "Usage: $APP <rootfs-path> [<build-descr>]"
+    exit 1
+fi
+
+ROOTFS="$1"
+
+# Source script that provides version data for image creation
+source ${CURDIR}/version-lib.sh
+
+rm -f ${ROOTFS}/.version
+echo "${APP_VERSION} (${USERNAME}@${HOSTNAME}) [${VER_DATE}]" > ${ROOTFS}/.version
+
+${CURDIR}/version-gen matrix > ${ROOTFS}/.versions
+
+#
+# stamp ssh banner
+#
+echo "Version : ${APP_VERSION}" >> ${ROOTFS}/etc/banner
+echo "Built On: ${VER_DATE}" >> ${ROOTFS}/etc/banner
+echo "Built By: ${USERNAME}@${HOSTNAME}" >> ${ROOTFS}/etc/banner
+echo "********************************************************************" >> ${ROOTFS}/etc/banner
+echo "" >> ${ROOTFS}/etc/banner

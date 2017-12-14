@@ -1,0 +1,134 @@
+#!/bin/bash
+CURDIR=`dirname $0`
+
+LANGUAGE="$1"
+if [ -z "${LANGUAGE}" ];
+then
+    LANGUAGE="make"
+fi
+
+# Source script that provides version data for image creation
+. ${CURDIR}/version-lib.sh
+
+function generate_h_version()
+{
+    if [ -z "${BUILD_NUMBER}" ]; then
+        BUILD_NUMBER="0"
+    fi
+    cat << _EOF_
+#ifndef VERSION_DEFS_H
+#define VERSION_DEFS_H
+#define APP_BUILD_TIME         "${VER_DATE}"
+#define APP_BUILD_VERSION_LONG "${APP_VERSION}"
+#define APP_BUILD_AUTHOR       "${USERNAME}@${HOSTNAME}"
+#define APP_BUILD_VERSION      "${VERSION}"
+#define APP_BUILD_NUMBER       "${BUILD_NUMBER}"
+#define APP_BUILD_COMMIT       "${SHA1}${DIRTY_STRING}"
+#define APP_BUILD_PROFILE      "${IMAGE_DEPLOYMENT_PROFILE}"
+#endif
+_EOF_
+}
+
+function repo_version()
+{
+    local L="$1"
+    local N="$1"
+    local VF="$L/.version"
+    local VV=""
+    local TPREFIX=""
+    if [ ! -e "$L/.git" ]; then
+        return
+    fi
+    if [ "$L" == ".." ]; then
+        N="device"
+    fi
+    if [ "$L" == "." ]; then
+        N="core"
+    fi
+    N=$(echo $N | sed 's/^\.\.\///')
+    if [ "$L" == "$VENDOR_DIR" ]; then
+        if [ -f "$L/.version.$VERSION_TARGET" ]; then
+            VF="$L/.version.$VERSION_TARGET"
+            TPREFIX="${VERSION_TARGET}_"
+        elif [ -f "$L/.version.$TARGET" ]; then
+            VF="$L/.version.$TARGET"
+            TPREFIX="${TARGET}_"
+        fi
+    fi
+    if [ -f "$VF" ]; then
+        VV=`cat $VF`
+    fi
+    if [ -z "$VV" ]; then
+        VV="0.0"
+    fi
+    local GLEN=""
+    if [ "$VV" != "0.0" ]; then
+        local TAGNAME="V_$TPREFIX$VV"
+        local TAG=$(cd $L; git tag -l "$TAGNAME")
+        if [ "$TAG" == "$TAGNAME" ]; then
+            GLEN="+"$(cd $L; git log "$TAGNAME..HEAD" --oneline | wc -l)
+        fi
+    fi
+    if [ -z "$GLEN" ]; then
+        GLEN="="$(cd $L; git log --oneline | wc -l)
+    fi
+    local GSHA=$(cd $L; git rev-parse --short HEAD)
+    local GMOD=$(cd $L; git status --porcelain | grep -v -e '^??' | wc -l)
+    local GMODS=""
+    if [ "$GMOD" != "0" ]; then GMODS="+mods"; fi
+    echo "$N:$VV/$GLEN/g$GSHA$GMODS"
+}
+
+function matrix()
+{
+    echo "PML:$PML_VERSION"
+    echo "FIRMWARE:$APP_VERSION"
+    echo "FW_VERSION:$VERSION"
+    echo "FW_BUILD:$BUILD_NUMBER"
+    echo "FW_COMMIT:${SHA1}${DIRTY_STRING}"
+    if [ -n "${IMAGE_DEPLOYMENT_PROFILE}" -a "${IMAGE_DEPLOYMENT_PROFILE}" != "none" ]; then
+        echo "FW_PROFILE:${IMAGE_DEPLOYMENT_PROFILE}"
+    fi
+    echo "DATE:${VER_DATE}"
+    echo "HOST:${USERNAME}@${HOSTNAME}"
+    for LAYER in .. $LAYER_LIST $SDK_DIR $SDK_BASE; do
+        repo_version $LAYER
+    done
+}
+
+function json_matrix()
+{
+    local NN
+    local VV
+    local FIRST=1
+    echo -n "["
+    matrix | while IFS=: read NN VV; do
+        if [ $FIRST == 0 ]; then echo ","; fi
+        echo -n "[\"$NN\",\"$VV\"]"
+        FIRST=0
+    done
+    echo "]"
+}
+
+case "${LANGUAGE}" in
+    h)
+        generate_h_version
+        ;;
+    make)
+        echo "${APP_VERSION}"
+        ;;
+    version)
+        # version only
+        echo "$VERSION"
+        ;;
+    matrix)
+        matrix
+        ;;
+    json_matrix)
+        json_matrix
+        ;;
+    *)
+        echo "unsupported language: ${LANGUAGE}"
+        exit 1
+        ;;
+esac
