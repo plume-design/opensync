@@ -22,13 +22,13 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-OVSDB_DB_DIR            = etc/openvswitch
-OVSDB_DB_NAME           = conf.db.bck
-OVSDB_DB_FILENAME       = $(OVSDB_DB_DIR)/$(OVSDB_DB_NAME)
-OVSDB_SCHEMA_DIR        = usr/share/openvswitch
+OVSDB_DB_DIR            ?= etc/openvswitch
+OVSDB_DB_NAME           ?= conf.db.bck
+OVSDB_SCHEMA_DIR        ?= usr/share/openvswitch
 
 ROOTFS_OVSDB_DIR        = $(BUILD_ROOTFS_DIR)/$(OVSDB_DB_DIR)
-ROOTFS_OVSDB_FILENAME   = $(BUILD_ROOTFS_DIR)/$(OVSDB_DB_FILENAME)
+ROOTFS_OVSDB_FILENAME   = $(BUILD_ROOTFS_DIR)/$(OVSDB_DB_DIR)/$(OVSDB_DB_NAME)
+ROOTFS_OVSDB_SCHEMA_DIR = $(BUILD_ROOTFS_DIR)/$(OVSDB_SCHEMA_DIR)
 
 OVSDB_HOOKS_DIRS ?= ovsdb $(VENDOR_OVSDB_HOOKS)
 
@@ -44,8 +44,8 @@ OVSDB_HOOK_ENV += $(VERSION_ENV)
 
 define ovsdb_clean
 	$(NQ) " $(call color_install,clean) ovsdb in $(ROOTFS_OVSDB_DIR)"
-	$(Q)$(RM) -rf "$(ROOTFS_OVSDB_DIR)"
-	$(Q)mkdir -p "$(ROOTFS_OVSDB_DIR)"
+	$(Q)$(RM) -f "$(ROOTFS_OVSDB_FILENAME)"
+	$(call ovsdb_rm_lock)
 endef
 
 define ovsdb_init_db
@@ -55,8 +55,8 @@ define ovsdb_init_db
 endef
 
 define ovsdb_copy_schema
-	$(Q)mkdir -p "$(BUILD_ROOTFS_DIR)/$(OVSDB_SCHEMA_DIR)"
-	$(Q)cp "$(SCHEMA)" "$(BUILD_ROOTFS_DIR)/$(OVSDB_SCHEMA_DIR)"
+	$(Q)mkdir -p "$(ROOTFS_OVSDB_SCHEMA_DIR)"
+	$(Q)cp "$(SCHEMA)" "$(ROOTFS_OVSDB_SCHEMA_DIR)"
 endef
 
 define ovsdb_run_hooks_in_dir

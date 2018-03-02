@@ -102,9 +102,45 @@ typedef enum {
 #define SCHEMA_CONSTS_MAC_TYPE_BLACKLIST     "blacklist"
 #define SCHEMA_CONSTS_MAC_TYPE_WHITELIST     "whitelist"
 
-
 #define SCHEMA_CONSTS_DM_CMD_REBOOT          "reboot"
 #define SCHEMA_CONSTS_DM_CMD_RESTART         "restart"
 #define SCHEMA_CONSTS_DM_CMD_EXECUTE         "execute"
+
+/* VIF security */
+#define SCHEMA_CONSTS_SECURITY_KEY              "key"
+#define SCHEMA_CONSTS_SECURITY_MODE             "mode"
+#define SCHEMA_CONSTS_SECURITY_RADIUS_IP        "radius_server_ip"
+#define SCHEMA_CONSTS_SECURITY_RADIUS_PORT      "radius_server_port"
+#define SCHEMA_CONSTS_SECURITY_RADIUS_SECRET    "radius_server_secret"
+
+#define SCHEMA_CONSTS_SECURITY_ENCRYPT          "encryption"
+#define SCHEMA_CONSTS_SECURITY_ENCRYPT_OPEN     "OPEN"
+
+#define SCHEMA_CONSTS_SECURITY_ENCRYPT_WEP      "WEP"
+#define SCHEMA_CONSTS_SECURITY_ENCRYPT_WEP_64   "64"
+#define SCHEMA_CONSTS_SECURITY_ENCRYPT_WEP_128  "126"
+
+#define SCHEMA_CONSTS_SECURITY_ENCRYPT_WPA      "WPA-PSK"
+#define SCHEMA_CONSTS_SECURITY_ENCRYPT_WPA_EAP  "WPA-EAP"
+#define SCHEMA_CONSTS_SECURITY_ENCRYPT_WPA_1    "1"
+#define SCHEMA_CONSTS_SECURITY_ENCRYPT_WPA_2    "2"
+#define SCHEMA_CONSTS_SECURITY_ENCRYPT_WPA_MIX  "mixed"
+
+#define SCHEMA_CONSTS_INET_ENABLED          "enabled"
+#define SCHEMA_CONSTS_INET_DNS              "dns"
+#define SCHEMA_CONSTS_INET_DNS_PRIMARY      "primary"
+#define SCHEMA_CONSTS_INET_DNS_SECONDARY    "secondary"
+
+#define SCHEMA_CONSTS_INET_IP_SCHEME_DHCP   "dhcp"
+#define SCHEMA_CONSTS_INET_IP_SCHEME_STATIC "static"
+
+#define SCHEMA_CONSTS_INET_DHCPD            "dhcpd"
+
+#define SCHEMA_CONSTS_INET_DHCP_OPTION      "dhcp_option"
+#define SCHEMA_CONSTS_INET_DHCP_IP_START    "start"
+#define SCHEMA_CONSTS_INET_DHCP_IP_STOP     "stop"
+#define SCHEMA_CONSTS_INET_DHCP_LEASE_TIME  "lease_time"
+#define SCHEMA_CONSTS_INET_DHCP_FORCE       "force"
+
 
 #endif /* __HAVE_SCHEMA_CONST_H__ */

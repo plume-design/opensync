@@ -885,9 +885,9 @@ static const ProtobufCFieldDescriptor sts__neighbor__field_descriptors[5] =
   {
     "report_type",
     5,
-    PROTOBUF_C_LABEL_REQUIRED,
+    PROTOBUF_C_LABEL_OPTIONAL,
     PROTOBUF_C_TYPE_ENUM,
-    0,   /* quantifier_offset */
+    offsetof(Sts__Neighbor, has_report_type),
     offsetof(Sts__Neighbor, report_type),
     &sts__report_type__descriptor,
     NULL,
@@ -1876,7 +1876,7 @@ const ProtobufCMessageDescriptor sts__client_report__descriptor =
   (ProtobufCMessageInit) sts__client_report__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
-static const ProtobufCFieldDescriptor sts__survey__survey_sample__field_descriptors[8] =
+static const ProtobufCFieldDescriptor sts__survey__survey_sample__field_descriptors[10] =
 {
   {
     "channel",
@@ -1903,8 +1903,32 @@ static const ProtobufCFieldDescriptor sts__survey__survey_sample__field_descript
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
-    "busy",
+    "total_count",
     3,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_UINT32,
+    offsetof(Sts__Survey__SurveySample, has_total_count),
+    offsetof(Sts__Survey__SurveySample, total_count),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "sample_count",
+    4,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_UINT32,
+    offsetof(Sts__Survey__SurveySample, has_sample_count),
+    offsetof(Sts__Survey__SurveySample, sample_count),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "busy",
+    5,
     PROTOBUF_C_LABEL_OPTIONAL,
     PROTOBUF_C_TYPE_UINT32,
     offsetof(Sts__Survey__SurveySample, has_busy),
@@ -1916,7 +1940,7 @@ static const ProtobufCFieldDescriptor sts__survey__survey_sample__field_descript
   },
   {
     "busy_tx",
-    4,
+    6,
     PROTOBUF_C_LABEL_OPTIONAL,
     PROTOBUF_C_TYPE_UINT32,
     offsetof(Sts__Survey__SurveySample, has_busy_tx),
@@ -1928,7 +1952,7 @@ static const ProtobufCFieldDescriptor sts__survey__survey_sample__field_descript
   },
   {
     "busy_rx",
-    5,
+    7,
     PROTOBUF_C_LABEL_OPTIONAL,
     PROTOBUF_C_TYPE_UINT32,
     offsetof(Sts__Survey__SurveySample, has_busy_rx),
@@ -1940,7 +1964,7 @@ static const ProtobufCFieldDescriptor sts__survey__survey_sample__field_descript
   },
   {
     "busy_self",
-    6,
+    8,
     PROTOBUF_C_LABEL_OPTIONAL,
     PROTOBUF_C_TYPE_UINT32,
     offsetof(Sts__Survey__SurveySample, has_busy_self),
@@ -1952,7 +1976,7 @@ static const ProtobufCFieldDescriptor sts__survey__survey_sample__field_descript
   },
   {
     "offset_ms",
-    7,
+    9,
     PROTOBUF_C_LABEL_OPTIONAL,
     PROTOBUF_C_TYPE_UINT32,
     offsetof(Sts__Survey__SurveySample, has_offset_ms),
@@ -1964,7 +1988,7 @@ static const ProtobufCFieldDescriptor sts__survey__survey_sample__field_descript
   },
   {
     "busy_ext",
-    8,
+    10,
     PROTOBUF_C_LABEL_OPTIONAL,
     PROTOBUF_C_TYPE_UINT32,
     offsetof(Sts__Survey__SurveySample, has_busy_ext),
@@ -1976,19 +2000,21 @@ static const ProtobufCFieldDescriptor sts__survey__survey_sample__field_descript
   },
 };
 static const unsigned sts__survey__survey_sample__field_indices_by_name[] = {
-  2,   /* field[2] = busy */
-  7,   /* field[7] = busy_ext */
-  4,   /* field[4] = busy_rx */
-  5,   /* field[5] = busy_self */
-  3,   /* field[3] = busy_tx */
+  4,   /* field[4] = busy */
+  9,   /* field[9] = busy_ext */
+  6,   /* field[6] = busy_rx */
+  7,   /* field[7] = busy_self */
+  5,   /* field[5] = busy_tx */
   0,   /* field[0] = channel */
   1,   /* field[1] = duration_ms */
-  6,   /* field[6] = offset_ms */
+  8,   /* field[8] = offset_ms */
+  3,   /* field[3] = sample_count */
+  2,   /* field[2] = total_count */
 };
 static const ProtobufCIntRange sts__survey__survey_sample__number_ranges[1 + 1] =
 {
   { 1, 0 },
-  { 0, 8 }
+  { 0, 10 }
 };
 const ProtobufCMessageDescriptor sts__survey__survey_sample__descriptor =
 {
@@ -1998,7 +2024,7 @@ const ProtobufCMessageDescriptor sts__survey__survey_sample__descriptor =
   "Sts__Survey__SurveySample",
   "sts",
   sizeof(Sts__Survey__SurveySample),
-  8,
+  10,
   sts__survey__survey_sample__field_descriptors,
   sts__survey__survey_sample__field_indices_by_name,
   1,  sts__survey__survey_sample__number_ranges,
@@ -2173,9 +2199,9 @@ static const ProtobufCFieldDescriptor sts__survey__field_descriptors[6] =
   {
     "report_type",
     6,
-    PROTOBUF_C_LABEL_REQUIRED,
+    PROTOBUF_C_LABEL_OPTIONAL,
     PROTOBUF_C_TYPE_ENUM,
-    0,   /* quantifier_offset */
+    offsetof(Sts__Survey, has_report_type),
     offsetof(Sts__Survey, report_type),
     &sts__report_type__descriptor,
     NULL,
@@ -2622,7 +2648,7 @@ const ProtobufCMessageDescriptor sts__device__descriptor =
   (ProtobufCMessageInit) sts__device__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
-static const ProtobufCFieldDescriptor sts__bsclient__bsevent__field_descriptors[10] =
+static const ProtobufCFieldDescriptor sts__bsclient__bsevent__field_descriptors[11] =
 {
   {
     "type",
@@ -2744,6 +2770,18 @@ static const ProtobufCFieldDescriptor sts__bsclient__bsevent__field_descriptors[
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
+  {
+    "rejected",
+    11,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_BOOL,
+    offsetof(Sts__BSClient__BSEvent, has_rejected),
+    offsetof(Sts__BSClient__BSEvent, rejected),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
 };
 static const unsigned sts__bsclient__bsevent__field_indices_by_name[] = {
   9,   /* field[9] = active */
@@ -2754,13 +2792,14 @@ static const unsigned sts__bsclient__bsevent__field_indices_by_name[] = {
   1,   /* field[1] = offset_ms */
   3,   /* field[3] = probe_bcast */
   4,   /* field[4] = probe_blocked */
+  10,   /* field[10] = rejected */
   2,   /* field[2] = rssi */
   0,   /* field[0] = type */
 };
 static const ProtobufCIntRange sts__bsclient__bsevent__number_ranges[1 + 1] =
 {
   { 1, 0 },
-  { 0, 10 }
+  { 0, 11 }
 };
 const ProtobufCMessageDescriptor sts__bsclient__bsevent__descriptor =
 {
@@ -2770,7 +2809,7 @@ const ProtobufCMessageDescriptor sts__bsclient__bsevent__descriptor =
   "Sts__BSClient__BSEvent",
   "sts",
   sizeof(Sts__BSClient__BSEvent),
-  10,
+  11,
   sts__bsclient__bsevent__field_descriptors,
   sts__bsclient__bsevent__field_indices_by_name,
   1,  sts__bsclient__bsevent__number_ranges,
@@ -3653,7 +3692,7 @@ const ProtobufCEnumDescriptor sts__wmm_ac__descriptor =
   sts__wmm_ac__value_ranges,
   NULL,NULL,NULL,NULL   /* reserved[1234] */
 };
-static const ProtobufCEnumValue sts__bsevent_type__enum_values_by_number[8] =
+static const ProtobufCEnumValue sts__bsevent_type__enum_values_by_number[14] =
 {
   { "PROBE", "STS__BSEVENT_TYPE__PROBE", 0 },
   { "CONNECT", "STS__BSEVENT_TYPE__CONNECT", 1 },
@@ -3663,16 +3702,28 @@ static const ProtobufCEnumValue sts__bsevent_type__enum_values_by_number[8] =
   { "OVERRUN", "STS__BSEVENT_TYPE__OVERRUN", 5 },
   { "BAND_STEERING_ATTEMPT", "STS__BSEVENT_TYPE__BAND_STEERING_ATTEMPT", 6 },
   { "CLIENT_STEERING_ATTEMPT", "STS__BSEVENT_TYPE__CLIENT_STEERING_ATTEMPT", 7 },
+  { "CLIENT_STEERING_STARTED", "STS__BSEVENT_TYPE__CLIENT_STEERING_STARTED", 8 },
+  { "CLIENT_STEERING_DISABLED", "STS__BSEVENT_TYPE__CLIENT_STEERING_DISABLED", 9 },
+  { "CLIENT_STEERING_EXPIRED", "STS__BSEVENT_TYPE__CLIENT_STEERING_EXPIRED", 10 },
+  { "CLIENT_STEERING_FAILED", "STS__BSEVENT_TYPE__CLIENT_STEERING_FAILED", 11 },
+  { "AUTH_BLOCK", "STS__BSEVENT_TYPE__AUTH_BLOCK", 12 },
+  { "CLIENT_KICKED", "STS__BSEVENT_TYPE__CLIENT_KICKED", 13 },
 };
 static const ProtobufCIntRange sts__bsevent_type__value_ranges[] = {
-{0, 0},{0, 8}
+{0, 0},{0, 14}
 };
-static const ProtobufCEnumValueIndex sts__bsevent_type__enum_values_by_name[8] =
+static const ProtobufCEnumValueIndex sts__bsevent_type__enum_values_by_name[14] =
 {
   { "ACTIVITY", 4 },
+  { "AUTH_BLOCK", 12 },
   { "BACKOFF", 3 },
   { "BAND_STEERING_ATTEMPT", 6 },
+  { "CLIENT_KICKED", 13 },
   { "CLIENT_STEERING_ATTEMPT", 7 },
+  { "CLIENT_STEERING_DISABLED", 9 },
+  { "CLIENT_STEERING_EXPIRED", 10 },
+  { "CLIENT_STEERING_FAILED", 11 },
+  { "CLIENT_STEERING_STARTED", 8 },
   { "CONNECT", 1 },
   { "DISCONNECT", 2 },
   { "OVERRUN", 5 },
@@ -3685,9 +3736,9 @@ const ProtobufCEnumDescriptor sts__bsevent_type__descriptor =
   "BSEventType",
   "Sts__BSEventType",
   "sts",
-  8,
+  14,
   sts__bsevent_type__enum_values_by_number,
-  8,
+  14,
   sts__bsevent_type__enum_values_by_name,
   1,
   sts__bsevent_type__value_ranges,

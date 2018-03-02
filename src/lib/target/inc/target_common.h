@@ -94,6 +94,11 @@ bool target_vif_inet_config_set(char *ifname,
 bool target_vif_inet_state_get(char *ifname,
         struct schema_Wifi_Inet_State *istate);
 
+bool target_bridge_inet_config_set(char *ifname,
+        struct schema_Wifi_Inet_Config *iconf);
+bool target_bridge_inet_state_get(char *ifname,
+        struct schema_Wifi_Inet_State *istate);
+
 bool target_gre_inet_config_set(char *ifname, char *remote_ip,
         struct schema_Wifi_Inet_Config *iconf);
 bool target_gre_inet_state_get(char *ifname,  char *remote_ip,

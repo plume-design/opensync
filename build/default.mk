@@ -26,6 +26,7 @@
 TOP_SDK                     := ../sdk
 DEFAULT_IMAGE_TYPE          := squashfs
 DEFAULT_TARGET              := native
+INSTALL_PREFIX              ?= /usr/plume
 
 # Build features
 CFG_DEFINES :=

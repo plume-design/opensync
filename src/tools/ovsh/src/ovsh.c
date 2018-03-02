@@ -678,7 +678,7 @@ json_t *json_value(char *str)
      * Try to convert it to an integer 
      */
     char *pend;
-    json_int_t lval = strtoul(str, &pend, 0);
+    json_int_t lval = strtoll(str, &pend, 0);
 
     /* All character were consumed during conversion -- it's an int */
     if (*pend == '\0')

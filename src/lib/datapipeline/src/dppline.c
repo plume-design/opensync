@@ -699,6 +699,7 @@ static void dppline_add_stat_survey(Sts__Report *r, dppline_stats_t *s)
     sts__survey__init(sr);
     sr->band = dppline_to_proto_radio(survey->radio_type);
     sr->report_type = dppline_to_proto_report_type(survey->report_type);
+    sr->has_report_type = true;
     sr->survey_type = dppline_to_proto_survey_type(survey->survey_type);
     sr->timestamp_ms = survey->timestamp_ms;
     sr->has_timestamp_ms = true;
@@ -840,6 +841,7 @@ static void dppline_add_stat_neighbor(Sts__Report *r, dppline_stats_t *s)
     sr->band = dppline_to_proto_radio(neighbor->radio_type);
     sr->scan_type = dppline_to_proto_neighbor_scan_type(neighbor->scan_type);
     sr->report_type = dppline_to_proto_report_type(neighbor->report_type);
+    sr->has_report_type = true;
     sr->timestamp_ms = neighbor->timestamp_ms;
     sr->has_timestamp_ms = true;
     sr->bss_list = malloc(neighbor->qty * sizeof(*sr->bss_list));
@@ -1480,6 +1482,9 @@ static void dppline_add_stat_bs_client(Sts__Report * r, dppline_stats_t * s)
 
                 er->active = e_rec->active;
                 er->has_active = true;
+
+                er->rejected = e_rec->rejected;
+                er->has_rejected = true;
             }
         }
     }

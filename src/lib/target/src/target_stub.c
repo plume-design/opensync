@@ -428,6 +428,20 @@ bool target_gre_inet_state_get( char *ifname, char *remote_ip, struct schema_Wif
 }
 #endif
 
+#ifndef IMPL_target_bridge_inet_config_set
+bool target_bridge_inet_config_set( char *ifname, struct schema_Wifi_Inet_Config *iconf)
+{
+    return true;
+}
+#endif
+
+#ifndef IMPL_target_bridge_inet_state_get
+bool target_bridge_inet_state_get( char *ifname, struct schema_Wifi_Inet_State *istate)
+{
+    return true;
+}
+#endif
+
 #ifndef IMPL_target_vlan_inet_config_set
 bool target_vlan_inet_config_set(char *ifname, struct schema_Wifi_Inet_Config *iconf)
 {
@@ -574,6 +588,55 @@ const char *target_persistent_storage_dir(void)
 {
     assert(!"persistent_storage_dir not defined for current platform.");
     return NULL;
+}
+#endif
+
+/******************************************************************************
+ * UPGRADE
+ *****************************************************************************/
+
+#ifndef IMPL_target_upg_download_required
+bool target_upg_download_required(char *url)
+{
+    (void)url;
+    return true;
+}
+#endif
+
+#ifndef IMPL_target_upg_command
+char *target_upg_command()
+{
+    return NULL;
+}
+#endif
+
+#ifndef IMPL_target_upg_command_full
+char *target_upg_command_full()
+{
+    return NULL;
+}
+#endif
+
+#ifndef IMPL_target_upg_command_args
+char **target_upg_command_args(char *password)
+{
+    (void)password;
+    static char *upg_command_args[] = { NULL };
+    return upg_command_args;
+}
+#endif
+
+#ifndef IMPL_target_upg_free_space_err
+double target_upg_free_space_err()
+{
+    return 10000.0; /* MB */
+}
+#endif
+
+#ifndef IMPL_target_upg_free_space_warn
+double target_upg_free_space_warn()
+{
+    return 10000.0; /* MB */
 }
 #endif
 

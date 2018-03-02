@@ -46,6 +46,12 @@ typedef enum
     OVERRUN,
     BAND_STEERING_ATTEMPT,
     CLIENT_STEERING_ATTEMPT,
+    CLIENT_STEERING_STARTED,
+    CLIENT_STEERING_DISABLED,
+    CLIENT_STEERING_EXPIRED,
+    CLIENT_STEERING_FAILED,
+    AUTH_BLOCK,
+    CLIENT_KICKED,
     MAX_EVENTS
 } dpp_bs_client_event_type_t;
 
@@ -78,6 +84,7 @@ typedef struct
     uint32_t                        disconnect_reason;
     bool                            backoff_enabled;
     bool                            active;
+    bool                            rejected;
 } dpp_bs_client_event_record_t;
 
 typedef struct

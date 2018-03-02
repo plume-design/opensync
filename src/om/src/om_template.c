@@ -88,7 +88,8 @@ om_template_rule_len(om_tflow_t *tflow, om_tdata_t *tdata)
         len += strlen(tdata->tv[i].value);
     }
 
-    return len;
+    // Add room for NULL termination
+    return len + 1;
 }
 
 static char *

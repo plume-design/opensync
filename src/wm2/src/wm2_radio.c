@@ -720,6 +720,13 @@ wm2_vif_equal(
             vconf_set->enabled_exists = true;
         }
     }
+    if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_VIF_Config, ap_bridge))) {
+        VIF_EQUAL(SCHEMA_FIELD_CMP_INT(vconf, &vstate, ap_bridge));
+        if (!is_equal) {
+            vconf_set->ap_bridge = vconf->ap_bridge;
+            vconf_set->ap_bridge_exists = true;
+        }
+    }
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_VIF_Config, mac_list))){
         if (vconf->mac_list_len == vstate.mac_list_len) {
             for (index = 0; index < vconf->mac_list_len; index++) {

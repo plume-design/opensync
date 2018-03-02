@@ -24,7 +24,6 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 SCHEMA_FILE=interfaces/plume.ovsschema
-
 usage()
 {
     echo "schema.sh [check|update]"
@@ -46,7 +45,7 @@ json_get_value()
 {
     local name="$1"
 
-    awk -v name="$name" '
+    gawk -v name="$name" '
         BEGIN {
             retval=1
         }
@@ -70,7 +69,7 @@ json_set_value()
     local name="$1"
     local val="$2"
 
-    awk -v name="$name" -v val="$val" '
+    gawk -v name="$name" -v val="$val" '
         BEGIN {
             retval=1
         }

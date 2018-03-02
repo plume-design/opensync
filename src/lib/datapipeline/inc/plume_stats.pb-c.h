@@ -123,7 +123,13 @@ typedef enum _Sts__BSEventType {
   STS__BSEVENT_TYPE__ACTIVITY = 4,
   STS__BSEVENT_TYPE__OVERRUN = 5,
   STS__BSEVENT_TYPE__BAND_STEERING_ATTEMPT = 6,
-  STS__BSEVENT_TYPE__CLIENT_STEERING_ATTEMPT = 7
+  STS__BSEVENT_TYPE__CLIENT_STEERING_ATTEMPT = 7,
+  STS__BSEVENT_TYPE__CLIENT_STEERING_STARTED = 8,
+  STS__BSEVENT_TYPE__CLIENT_STEERING_DISABLED = 9,
+  STS__BSEVENT_TYPE__CLIENT_STEERING_EXPIRED = 10,
+  STS__BSEVENT_TYPE__CLIENT_STEERING_FAILED = 11,
+  STS__BSEVENT_TYPE__AUTH_BLOCK = 12,
+  STS__BSEVENT_TYPE__CLIENT_KICKED = 13
     PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(STS__BSEVENT_TYPE)
 } Sts__BSEventType;
 typedef enum _Sts__DisconnectSrc {
@@ -206,11 +212,12 @@ struct  _Sts__Neighbor
   uint64_t timestamp_ms;
   size_t n_bss_list;
   Sts__Neighbor__NeighborBss **bss_list;
+  protobuf_c_boolean has_report_type;
   Sts__ReportType report_type;
 };
 #define STS__NEIGHBOR__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&sts__neighbor__descriptor) \
-    , 0, 0, 0,0, 0,NULL, 0 }
+    , 0, 0, 0,0, 0,NULL, 0,0 }
 
 
 struct  _Sts__Client__Stats
@@ -417,6 +424,10 @@ struct  _Sts__Survey__SurveySample
   uint32_t channel;
   protobuf_c_boolean has_duration_ms;
   uint32_t duration_ms;
+  protobuf_c_boolean has_total_count;
+  uint32_t total_count;
+  protobuf_c_boolean has_sample_count;
+  uint32_t sample_count;
   /*
    * Busy = Rx + Tx + Interference 
    */
@@ -447,7 +458,7 @@ struct  _Sts__Survey__SurveySample
 };
 #define STS__SURVEY__SURVEY_SAMPLE__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&sts__survey__survey_sample__descriptor) \
-    , 0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0 }
+    , 0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0 }
 
 
 struct  _Sts__Survey__SurveyAvg
@@ -499,11 +510,12 @@ struct  _Sts__Survey
   Sts__Survey__SurveySample **survey_list;
   size_t n_survey_avg;
   Sts__Survey__SurveyAvg **survey_avg;
+  protobuf_c_boolean has_report_type;
   Sts__ReportType report_type;
 };
 #define STS__SURVEY__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&sts__survey__descriptor) \
-    , 0, 0, 0,0, 0,NULL, 0,NULL, 0 }
+    , 0, 0, 0,0, 0,NULL, 0,NULL, 0,0 }
 
 
 struct  _Sts__Capacity__QueueSample
@@ -642,10 +654,12 @@ struct  _Sts__BSClient__BSEvent
   protobuf_c_boolean backoff_enabled;
   protobuf_c_boolean has_active;
   protobuf_c_boolean active;
+  protobuf_c_boolean has_rejected;
+  protobuf_c_boolean rejected;
 };
 #define STS__BSCLIENT__BSEVENT__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&sts__bsclient__bsevent__descriptor) \
-    , 0, 0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0 }
+    , 0, 0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0 }
 
 
 struct  _Sts__BSClient__BSBandReport

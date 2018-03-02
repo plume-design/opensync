@@ -226,6 +226,7 @@ bm_kick_task_kick(void *arg)
     uint32_t            bsal_kick_type;
     uint8_t             kick_reason;
     int                 ret;
+    bsal_event_t        event;
 
     if (kick != ds_list_head(&bm_kick_queue)) {
         LOGW("bm_kick_task_kick() called with entry not head of queue!");
@@ -304,6 +305,10 @@ bm_kick_task_kick(void *arg)
             }
         }
     } while(0);
+
+    memset( &event, 0, sizeof( event ) );
+    event.band = kick->band;
+    bm_stats_add_event_to_report( client, &event, CLIENT_KICKED, false );
 
     bm_kick_free(kick);
 

@@ -519,7 +519,8 @@ bm_client_remove(bm_client_t *client)
 static void
 bm_client_cs_task( void *arg )
 {
-    bm_client_t *client = arg;
+    bm_client_t     *client = arg;
+    bsal_event_t    event;
 
     LOGN( "Client steering enforce period completed for client '%s'", client->mac_addr );
 
@@ -527,13 +528,26 @@ bm_client_cs_task( void *arg )
 
     bm_client_disable_client_steering( client );
 
+    memset( &event, 0, sizeof( event ) );
+    if( client->cs_mode == BM_CLIENT_CS_MODE_AWAY ) {
+        event.band = BSAL_BAND_24G;
+        bm_stats_add_event_to_report( client, &event, CLIENT_STEERING_EXPIRED, false );
+
+        event.band = BSAL_BAND_5G;
+        bm_stats_add_event_to_report( client, &event, CLIENT_STEERING_EXPIRED, false );
+    } else if( client->cs_mode == BM_CLIENT_CS_MODE_HOME ) {
+        event.band = client->cs_band;
+        bm_stats_add_event_to_report( client, &event, CLIENT_STEERING_EXPIRED, false );
+    }
+
     return;
 }
 
 static void
 bm_client_trigger_client_steering( bm_client_t *client )
 {
-    char *modestr = c_get_str_by_key( map_cs_modes, client->cs_mode );
+    char            *modestr = c_get_str_by_key( map_cs_modes, client->cs_mode );
+    bsal_event_t    event;
 
     if( client->cs_mode == BM_CLIENT_CS_MODE_AWAY ||
         ( client->cs_mode == BM_CLIENT_CS_MODE_HOME &&
@@ -541,6 +555,20 @@ bm_client_trigger_client_steering( bm_client_t *client )
         // Set client steering state
         client->steering_state = BM_CLIENT_CLIENT_STEERING;
         LOGN( "Setting state to CLIENT STEERING for '%s'", client->mac_addr );
+
+        if( client->cs_state != BM_CLIENT_CS_STATE_STEERING ) {
+            memset( &event, 0, sizeof( event ) );
+            if( client->cs_mode == BM_CLIENT_CS_MODE_AWAY ) {
+                event.band = BSAL_BAND_24G;
+                bm_stats_add_event_to_report( client, &event, CLIENT_STEERING_STARTED, false );
+
+                event.band = BSAL_BAND_5G;
+                bm_stats_add_event_to_report( client, &event, CLIENT_STEERING_STARTED, false );
+            } else if( client->cs_mode == BM_CLIENT_CS_MODE_HOME ) {
+                event.band = client->cs_band;
+                bm_stats_add_event_to_report( client, &event, CLIENT_STEERING_STARTED, false );
+            }
+        }
 
         // Change cs state to STEERING
         client->cs_state = BM_CLIENT_CS_STATE_STEERING;
@@ -802,6 +830,7 @@ bm_client_ovsdb_update_cb(ovsdb_update_monitor_t *self)
     pjs_errmsg_t                            perr;
     bm_client_t                             *client;
     int                                     prev_lwm;
+    bsal_event_t                            event;
 
     switch(self->mon_type) {
 
@@ -898,6 +927,20 @@ bm_client_ovsdb_update_cb(ovsdb_update_monitor_t *self)
         } else {
             if( client->steering_state == BM_CLIENT_CLIENT_STEERING ) {
                 client->steering_state = BM_CLIENT_STEERING_NONE;
+
+                client->cs_state = BM_CLIENT_CS_STATE_EXPIRED;
+                bm_client_update_cs_state( client );
+
+                // NB: If the controller turns of client steering before cs_enforcement_period,
+                //     the device does not if the cs_mode was set to home or away. Hence, send
+                //     CLIENT_STEERING_DISABLED event on both bands
+                memset( &event, 0, sizeof( event ) );
+
+                event.band = BSAL_BAND_24G;
+                bm_stats_add_event_to_report( client, &event, CLIENT_STEERING_DISABLED, false );
+
+                event.band = BSAL_BAND_5G;
+                bm_stats_add_event_to_report( client, &event, CLIENT_STEERING_DISABLED, false );
             }
 
             evsched_task_cancel_by_find( bm_client_cs_task, client,
@@ -1006,8 +1049,35 @@ bm_client_task_backoff(void *arg)
 }
 
 static void
+bm_client_state_task( void *arg )
+{
+    bm_client_t         *client = arg;
+
+    evsched_task_cancel_by_find( bm_client_state_task, client,
+                               ( EVSCHED_FIND_BY_FUNC | EVSCHED_FIND_BY_FUNC ) );
+
+    if( client->state == BM_CLIENT_STATE_CONNECTED ) {
+        LOGT( "Client '%s' connected, client state machine in proper state",
+                                                        client->mac_addr );
+        return;
+    }
+
+    // Reset the client's state machine to DISCONNECTED state
+    client->connected = false;
+    bm_client_set_state( client, BM_CLIENT_STATE_DISCONNECTED );
+
+    return;
+}
+
+
+static void
 bm_client_state_change(bm_client_t *client, bm_client_state_t state, bool force)
 {
+    // The stats report interval is used to reset the client's state machine
+    // from STEERING_5G to DISCONNECTED so that the client is not stuck in
+    // in STEERING_5G for long periods of time.
+    uint16_t    interval = bm_stats_get_stats_report_interval();
+
     if (!force && client->state == BM_CLIENT_STATE_BACKOFF) {
         if (state != BM_CLIENT_STATE_CONNECTED || client->band != BSAL_BAND_5G) {
             // Ignore state changes not forced while in backoff, unless
@@ -1031,19 +1101,32 @@ bm_client_state_change(bm_client_t *client, bm_client_state_t state, bool force)
         client->state = state;
         client->times.last_state_change = time(NULL);
 
-        switch(client->state) {
+        switch(client->state)
+        {
+            case BM_CLIENT_STATE_CONNECTED:
+            {
+                bm_client_backoff(client, false);
+                client->active = true;
+                break;
+            }
 
-        case BM_CLIENT_STATE_CONNECTED:
-            bm_client_backoff(client, false);
-            client->active = true;
-            break;
+            case BM_CLIENT_STATE_STEERING_5G:
+            {
+                bm_stats_add_event_to_report( client, NULL, BAND_STEERING_ATTEMPT, false );
+                evsched_task_cancel_by_find( bm_client_state_task, client,
+                                           ( EVSCHED_FIND_BY_ARG | EVSCHED_FIND_BY_FUNC ) );
 
-        case BM_CLIENT_STATE_STEERING_5G:
-            bm_stats_add_event_to_report( client, NULL, BAND_STEERING_ATTEMPT, false );
+                client->state_task = evsched_task( bm_client_state_task,
+                                                   client,
+                                                   EVSCHED_SEC( interval ) );
+                break;
+            }
 
-        default:
-            client->active = false;
-            break;
+            default:
+            {
+                client->active = false;
+                break;
+            }
 
         }
     }
@@ -1054,7 +1137,8 @@ bm_client_state_change(bm_client_t *client, bm_client_state_t state, bool force)
 static void
 bm_client_cs_task_rssi_xing( void *arg )
 {
-    bm_client_t *client = arg;
+    bm_client_t     *client = arg;
+    bsal_event_t    event;
 
     if( !client ) {
         LOGT( "Client arg is NULL" );
@@ -1064,9 +1148,22 @@ bm_client_cs_task_rssi_xing( void *arg )
     client->cs_state = BM_CLIENT_CS_STATE_XING_DISABLED;
 
     if( client->cs_auto_disable ) {
-        LOGT( "Client '%s': Disabling client steering because of rssi xing",
-                                                client->mac_addr );
+        LOGT( "Client '%s': Disabling client steering"
+              " because of rssi xing", client->mac_addr );
+
         bm_client_disable_client_steering( client );
+
+        memset( &event, 0, sizeof( event ) );
+        if( client->cs_mode == BM_CLIENT_CS_MODE_AWAY ) {
+            event.band = BSAL_BAND_24G;
+            bm_stats_add_event_to_report( client, &event, CLIENT_STEERING_DISABLED, false );
+
+            event.band = BSAL_BAND_5G;
+            bm_stats_add_event_to_report( client, &event, CLIENT_STEERING_DISABLED, false );
+        } else if( client->cs_mode == BM_CLIENT_CS_MODE_HOME ) {
+            event.band = client->cs_band;
+            bm_stats_add_event_to_report( client, &event, CLIENT_STEERING_DISABLED, false );
+        }
     } else {
         LOGT( "Client '%s': Updating the cs_state to XING_DISABLED",
                                                 client->mac_addr );
@@ -1171,6 +1268,8 @@ bm_client_rejected(bm_client_t *client, bsal_event_t *event)
     int                     max_rejects_period  = client->max_rejects_period;
     time_t                  now                 = time(NULL);
 
+    bsal_event_t            stats_event;
+
     if( client->cs_state == BM_CLIENT_CS_STATE_STEERING ) {
         max_rejects         = client->cs_max_rejects;
         max_rejects_period  = client->cs_max_rejects_period;
@@ -1199,6 +1298,12 @@ bm_client_rejected(bm_client_t *client, bsal_event_t *event)
     times->reject.last = now;
     if (client->num_rejects == 1) {
         times->reject.first = now;
+
+        // If client is under CS_STATE_STEERING, this is the first probe request
+        // that is blocked. Inform the cloud of the CS ATTEMPT
+        if( client->cs_state == BM_CLIENT_CS_STATE_STEERING ) {
+            bm_stats_add_event_to_report( client, event, CLIENT_STEERING_ATTEMPT, false );
+        }
     }
 
     if (client->num_rejects == max_rejects) {
@@ -1213,6 +1318,18 @@ bm_client_rejected(bm_client_t *client, bsal_event_t *event)
             // Update the cs_state to OVSDB
             client->cs_state = BM_CLIENT_CS_STATE_FAILED;
             bm_client_disable_client_steering( client );
+
+            memset( &stats_event, 0, sizeof( stats_event ) );
+            if( client->cs_mode == BM_CLIENT_CS_MODE_AWAY ) {
+                stats_event.band = BSAL_BAND_24G;
+                bm_stats_add_event_to_report( client, &stats_event, CLIENT_STEERING_FAILED, false );
+
+                stats_event.band = BSAL_BAND_5G;
+                bm_stats_add_event_to_report( client, &stats_event, CLIENT_STEERING_FAILED, false );
+            } else if( client->cs_mode == BM_CLIENT_CS_MODE_HOME ) {
+                stats_event.band = client->cs_band;
+                bm_stats_add_event_to_report( client, &stats_event, CLIENT_STEERING_FAILED, false );
+            }
         } else {
             LOGW("'%s' failed to steer (total: %u times), %s...",
                     client->mac_addr,
@@ -1250,17 +1367,29 @@ bm_client_success(bm_client_t *client, bsal_band_t band)
 void
 bm_client_cs_connect( bm_client_t *client, bsal_band_t band )
 {
-    char *bandstr = c_get_str_by_key(map_bsal_bands, band);
+    char            *bandstr = c_get_str_by_key(map_bsal_bands, band);
+    bsal_event_t    event;
+
+    memset( &event, 0, sizeof( event ) );
 
     if( client->cs_mode == BM_CLIENT_CS_MODE_HOME ) {
         LOGN( "Client steering successful for '%s' and %s band", client->mac_addr, bandstr );
 
         // Should this be success state?
         client->cs_state = BM_CLIENT_CS_STATE_EXPIRED;
+
+        // NB: No need to send a CLIENT_STEERING_EXPIRED event here. When a client connects
+        //     to the pod in the HOME mode, client steering is not stopped immediately and
+        //     is stopped at the end of the enforecement period(when the CLIENT_STEERING_
+        //     _EXPIRED event is sent automatically)
+            
     } else if( client->cs_mode == BM_CLIENT_CS_MODE_AWAY ) {
         LOGN( "Client '%s' connected on %s band in AWAY mode", client->mac_addr, bandstr );
 
         client->cs_state = BM_CLIENT_CS_STATE_FAILED;
+
+        event.band = client->cs_band;
+        bm_stats_add_event_to_report( client, &event, CLIENT_STEERING_FAILED, false );
     }
 
     return;

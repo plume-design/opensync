@@ -185,11 +185,11 @@ $(UNIT_BUILD)/.target: $(BINDIR)/$(UNIT_BIN)
 # $(BINDIR)/$(UNIT_BIN) is never created. This is to call a makefile on every build
 $(BINDIR)/$(UNIT_BIN): $(UNIT_DEPS) $(UNIT_PRE) $(UNIT_OBJ) $(call UNIT_MARK_FILES,$(UNIT_DEPS)) $(UNIT_OBJ)
 	$$(NQ) " $(call color_callmakefile,compMak) [$(call COLOR_BOLD,$(UNIT_NAME))] $$@"
-	$$(Q)make -C $(UNIT_PATH) -f unit.Makefile $(UNIT_MAKEFILE_FLAGS) all
+	$$(Q)make $$(if $(V),,-s) -C $(UNIT_PATH) -f unit.Makefile $(UNIT_MAKEFILE_FLAGS) all
 
 $(UNIT_PATH)/install: $(UNIT_BUILD)/.target
 	$$(NQ) " $(call color_install,install) [$(call COLOR_BOLD,$(UNIT_NAME))] $$@"
-	$$(Q)make -C $(UNIT_PATH) -f unit.Makefile $(UNIT_MAKEFILE_FLAGS) install
+	$$(Q)make $$(if $(V),,-s) -C $(UNIT_PATH) -f unit.Makefile $(UNIT_MAKEFILE_FLAGS) install
 
 $(call UNIT_MAKE_DIRS)
 $(call UNIT_MAKE_INFO)
@@ -347,6 +347,7 @@ endef
 # Include override.mk to override upper layer unit rules, unless disabled
 define INCLUDE_OVERRIDE
 OVERRIDE_DIR := $(1)/$(2)
+LAYER_DIR := $(1)
 ifneq ($$(UNIT_DISABLE_LAYER_$(1)),y)
 ifneq ($$(UNIT_DISABLE_$$(OVERRIDE_DIR)),y)
 -include $$(OVERRIDE_DIR)/override.mk
@@ -390,7 +391,10 @@ UNIT_BUILD      := $(OBJDIR)/$$(call FLATTEN_PATH,$$(UNIT_PATH))
 include $(UNIT_MK)
 
 # Include per-unit override.mk in all sub-layers, if it exists
-$$(eval $$(foreach SUBLAYER,$$(SUB_LAYERS),$$(call INCLUDE_OVERRIDE,$$(SUBLAYER),$$(UNIT_PATH))))
+# UNIT_BASE_PATH is UNIT_PATH without LAYER
+UNIT_BASE_PATH  := $$(patsubst $$(LAYER)%,%,$$(UNIT_PATH))
+$$(eval $$(foreach SUBLAYER,$$(SUB_LAYERS),$$(call INCLUDE_OVERRIDE,$$(SUBLAYER),$$(UNIT_BASE_PATH))))
+LAYER_DIR       := $(LAYER)
 
 # Override UNIT_DISABLE with UNIT_DISABLE_LAYER_$(LAYER) if defined
 ifneq ($$(UNIT_DISABLE_LAYER_$$(LAYER)),)
@@ -408,6 +412,8 @@ UNIT_DISABLE    := $$(if $$(filter !% $$(TARGET) y yes 1 true True TRUE, $$(UNIT
 ifeq ($$(UNIT_BIN),)
 UNIT_BIN := $$(UNIT_NAME)
 endif
+
+$$(eval UNIT_NAME_$$(UNIT_PATH) = $$(UNIT_NAME))
 
 # Expand all variables
 UNIT_SOURCES    := $$(foreach SRC,$$(UNIT_SRC),$$(call CANNED_PATH,$$(UNIT_PATH)/$$(SRC)))
@@ -487,7 +493,7 @@ $(eval $(call PROCESS_LAYERS,'unit-last.mk'))
 unit-list:
 	$(NQ) Currently active units:
 	$(NQ)
-	@for unit in $(foreach UNIT,$(UNIT_ALL),"$(UNIT)"); do echo "    $$unit"; done
+	@$(foreach UNIT,$(UNIT_ALL),printf "    [%-16s] %s\n" "$(UNIT_NAME_$(UNIT))" "$(UNIT)";)
 	$(NQ)
 
 .PHONY: unit-list-deps

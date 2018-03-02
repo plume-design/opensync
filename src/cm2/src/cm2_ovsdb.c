@@ -176,6 +176,13 @@ int cm2_ovsdb_init_tables()
     struct schema_SSL ssl;
     struct schema_AWLAN_Node awlan;
     bool success = false;
+    char *ovs_filter[] = {
+        "-",
+        SCHEMA_COLUMN(Open_vSwitch, bridges),
+        SCHEMA_COLUMN(Open_vSwitch, manager_options),
+        SCHEMA_COLUMN(Open_vSwitch, other_config),
+        NULL
+    };
     int retval = 0;
 
     /* Update redirector address from target storage! */
@@ -187,7 +194,8 @@ int cm2_ovsdb_init_tables()
     LOGD("Initializing CM tables "
             "(Init Open_vSwitch table)");
     memset(&ovs, 0, sizeof(ovs));
-    success = ovsdb_table_upsert(&table_Open_vSwitch, &ovs, false);
+    success = ovsdb_table_upsert_f(&table_Open_vSwitch, &ovs,
+                                                        false, ovs_filter);
     if (!success) {
         LOGE("Initializing CM tables "
              "(Failed to setup OvS table)");

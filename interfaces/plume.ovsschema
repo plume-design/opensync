@@ -1,7 +1,7 @@
 {
   "name": "Open_vSwitch",
-  "version": "7.11.78",
-  "cksum": "2168261053 106466",
+  "version": "7.11.84",
+  "cksum": "3819696068 110613",
   "tables": {
     "AWLAN_Node": {
       "columns": {
@@ -1575,15 +1575,6 @@
             "max": 1
           }
         },
-        "bcn_rate": {
-          "type": {
-            "key": {
-              "type": "integer"
-            },
-            "min": 0,
-            "max": 1
-          }
-        },
         "min_hw_mode": {
           "type": {
             "key": {
@@ -1625,6 +1616,24 @@
           "type": {
             "key": {
               "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "ft_psk": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "ft_mobility_domain": {
+          "type": {
+            "key": {
+              "type": "integer"
             },
             "min": 0,
             "max": 1
@@ -1831,15 +1840,6 @@
             "max": 1
           }
         },
-        "bcn_rate": {
-          "type": {
-            "key": {
-              "type": "integer"
-            },
-            "min": 0,
-            "max": 1
-          }
-        },
         "min_hw_mode": {
           "type": {
             "key": {
@@ -1881,6 +1881,24 @@
           "type": {
             "key": {
               "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "ft_psk": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "ft_mobility_domain": {
+          "type": {
+            "key": {
+              "type": "integer"
             },
             "min": 0,
             "max": 1
@@ -4538,7 +4556,7 @@
             }
         },
         "isRoot": true,
-        "maxRows": 1
+        "maxRows": 16
     },
     "Band_Steering_Clients": {
         "columns": {
@@ -4934,6 +4952,156 @@
                     },
                     "min": 0,
                     "max": 1
+                }
+            }
+        },
+        "isRoot": true
+    },
+    "Node_Config": {
+        "columns": {
+            "persist": {
+                "type": {
+                    "key": {
+                        "type": "boolean"
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
+            "module": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 32
+                    }
+                }
+            },
+            "key": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64
+                    }
+                }
+            },
+            "value": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 1024
+                    }
+                }
+            }
+        },
+        "isRoot": true
+    },
+    "Node_State": {
+        "columns": {
+            "persist": {
+                "type": {
+                    "key": {
+                        "type": "boolean"
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
+            "module": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 32
+                    }
+                }
+            },
+            "key": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64
+                    }
+                }
+            },
+            "value": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 1024
+                    }
+                }
+            }
+        },
+        "isRoot": true
+    },
+    "Packet_Forwarding_Config": {
+        "columns": {
+            "token": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "minLength": 8,
+                        "maxLength": 64
+                    }
+                }
+            },
+            "topic": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "minLength": 8,
+                        "maxLength": 64
+                    }
+                }
+            },
+            "iface": {
+		"type": {
+                    "key": {
+			"type": "string",
+			"minLength": 1,
+			"maxLength": 32
+                    }
+		}
+            },
+            "pkt_count": {
+		"type": {
+                    "key": {
+			"type": "integer",
+			"minInteger": 1,
+			"maxInteger": 100
+                    }
+		}
+            },
+            "timeout": {
+		"type": {
+                    "key": {
+			"type": "integer",
+			"minInteger": 1,
+			"maxInteger": 3600
+                    }
+		}
+            },
+            "pkt_size_min": {
+                "type": "integer"
+            },
+            "pkt_idx_l": {
+                "type": "integer"
+            },
+            "pkt_idx_h": {
+                "type": "integer"
+            },
+            "pkt_capt_filter": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 512
+                    }
                 }
             }
         },

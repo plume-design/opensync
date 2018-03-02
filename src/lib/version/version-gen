@@ -36,9 +36,6 @@ function repo_version()
     local VF="$L/.version"
     local VV=""
     local TPREFIX=""
-    if [ ! -e "$L/.git" ]; then
-        return
-    fi
     if [ "$L" == ".." ]; then
         N="device"
     fi
@@ -55,28 +52,39 @@ function repo_version()
             TPREFIX="${TARGET}_"
         fi
     fi
+    if [ ! -e "$L/.git" -a ! -f "$VF" ]; then
+        return
+    fi
     if [ -f "$VF" ]; then
         VV=`cat $VF`
     fi
     if [ -z "$VV" ]; then
         VV="0.0"
     fi
-    local GLEN=""
-    if [ "$VV" != "0.0" ]; then
-        local TAGNAME="V_$TPREFIX$VV"
-        local TAG=$(cd $L; git tag -l "$TAGNAME")
-        if [ "$TAG" == "$TAGNAME" ]; then
-            GLEN="+"$(cd $L; git log "$TAGNAME..HEAD" --oneline | wc -l)
+    local GLEN
+    local GITSTR
+    if [ ! -e "$L/.git" ]; then
+        GLEN="0"
+        GITSTR="notgit"
+    else
+        GLEN=""
+        if [ "$VV" != "0.0" ]; then
+            local TAGNAME="V_$TPREFIX$VV"
+            local TAG=$(cd $L; git tag -l "$TAGNAME")
+            if [ "$TAG" == "$TAGNAME" ]; then
+                GLEN="+"$(cd $L; git log "$TAGNAME..HEAD" --oneline | wc -l)
+            fi
         fi
+        if [ -z "$GLEN" ]; then
+            GLEN="="$(cd $L; git log --oneline | wc -l)
+        fi
+        local GSHA=$(cd $L; git rev-parse --short HEAD)
+        local GMOD=$(cd $L; git status --porcelain | grep -v -e '^??' | wc -l)
+        local GMODS=""
+        if [ "$GMOD" != "0" ]; then GMODS="+mods"; fi
+        GITSTR="g$GSHA$GMODS"
     fi
-    if [ -z "$GLEN" ]; then
-        GLEN="="$(cd $L; git log --oneline | wc -l)
-    fi
-    local GSHA=$(cd $L; git rev-parse --short HEAD)
-    local GMOD=$(cd $L; git status --porcelain | grep -v -e '^??' | wc -l)
-    local GMODS=""
-    if [ "$GMOD" != "0" ]; then GMODS="+mods"; fi
-    echo "$N:$VV/$GLEN/g$GSHA$GMODS"
+    echo "$N:$VV/$GLEN/$GITSTR"
 }
 
 function matrix()
@@ -101,10 +109,13 @@ function json_matrix()
     local NN
     local VV
     local FIRST=1
+    local VTRIM
     echo -n "["
     matrix | while IFS=: read NN VV; do
         if [ $FIRST == 0 ]; then echo ","; fi
-        echo -n "[\"$NN\",\"$VV\"]"
+        # trim at 63 chars to fit in constrain
+        VTRIM=$(echo $VV | cut -c-63)
+        echo -n "[\"$NN\",\"$VTRIM\"]"
         FIRST=0
     done
     echo "]"
@@ -120,6 +131,10 @@ case "${LANGUAGE}" in
     version)
         # version only
         echo "$VERSION"
+        ;;
+    build_number)
+        # build number only
+        echo "$BUILD_NUMBER"
         ;;
     matrix)
         matrix

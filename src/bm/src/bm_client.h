@@ -189,6 +189,7 @@ typedef struct {
     evsched_task_t              backoff_task;
     evsched_task_t              cs_task;
     evsched_task_t              rssi_xing_task;
+    evsched_task_t              state_task;
 
     char                        uuid[OVSDB_UUID_LEN];
 

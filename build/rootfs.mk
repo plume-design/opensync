@@ -25,12 +25,18 @@
 ROOTFS_SOURCE_DIRS ?= rootfs $(VENDOR_DIR)/rootfs
 ROOTFS_COMPONENTS  ?= common target/$(TARGET) $(ROOTFS_PROFILE_COMPONENTS)
 
+ifeq ($(V),1)
+TARV=-v
+else
+TARV=
+endif
+
 # $(1) = source rootfs base dir
 # $(2) = component (profile or target dir)
 define rootfs_prepare_dir
 	$(Q)if [ -d $(1)/$(2) ]; then \
 		echo "$(call color_install,prepare) rootfs $(call color_profile,$(1)/$(2)) -> $(BUILD_ROOTFS_DIR)"; \
-		(cd $(1)/$(2) && tar chf - . --exclude=.keep) | (cd $(BUILD_ROOTFS_DIR) && tar xf -); \
+		(cd $(1)/$(2) && tar cf - . --exclude=.keep) | (cd $(BUILD_ROOTFS_DIR) && tar xf - $(TARV)); \
 	fi
 
 endef

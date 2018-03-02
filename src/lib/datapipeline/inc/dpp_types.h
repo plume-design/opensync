@@ -352,20 +352,14 @@ static inline int radio_get_index_from_type(
     return -1;
 }
 
-static inline void radio_get_chan_from_mhz(
-        uint32_t                    freq,
-        radio_type_t                type,
-        uint32_t                   *chan)
+static inline uint32_t radio_get_chan_from_mhz(
+        uint32_t                    freq)
 {
-    if (RADIO_TYPE_2G == type) {
-        *chan = (freq - 2407) / 5;
-    }
-    else if (    (RADIO_TYPE_5G == type)
-              || (RADIO_TYPE_5GL == type)
-              || (RADIO_TYPE_5GU == type)
-            ) {
-        *chan = (freq - 5000) / 5;
-    }
+    if (freq == 2484)
+        return 14;
+    else if (freq < 2484)
+        return (freq - 2407) / 5;
+    return (freq - 5000) / 5;
 }
 
 static inline char * radio_get_queue_name_from_type(

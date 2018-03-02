@@ -48,6 +48,18 @@ const char *app_build_author_get()
 {
     return app_build_author;
 }
+const char *app_build_commit_get()
+{
+    return app_build_commit;
+}
+const char *app_build_num_only_get()
+{
+    return app_build_num_only;
+}
+const char *app_build_ver_only_get()
+{
+    return app_build_ver_only;
+}
 const char *app_build_number_get()
 {
     return app_build_number;
@@ -59,7 +71,7 @@ const char *app_build_profile_get()
 
 void app_build_version_show(const char *service_name)
 {
-    char ver[80];
+    char ver[256];
     snprintf(ver, sizeof(ver),
              "v%s (%s) [%s]",
              app_build_ver_get(),

@@ -118,6 +118,17 @@ char *target_unmap_ifname(char *ifname);
 bool target_unmap_ifname_exists(const char *ifname);
 
 /******************************************************************************
+ *  UPGRADE definitions
+ *****************************************************************************/
+
+bool   target_upg_download_required(char *url);
+char  *target_upg_command();
+char  *target_upg_command_full();
+char **target_upg_command_args(char *password);
+double target_upg_free_space_err();
+double target_upg_free_space_warn();
+
+/******************************************************************************
  *  BLE definitions
  *****************************************************************************/
 

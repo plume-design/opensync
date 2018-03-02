@@ -70,6 +70,12 @@ enum BSEventType {
     OVERRUN                                 = 5;
     BAND_STEERING_ATTEMPT                   = 6;
     CLIENT_STEERING_ATTEMPT                 = 7;
+    CLIENT_STEERING_STARTED                 = 8;
+    CLIENT_STEERING_DISABLED                = 9;
+    CLIENT_STEERING_EXPIRED                 = 10;
+    CLIENT_STEERING_FAILED                  = 11;
+    AUTH_BLOCK                              = 12;
+    CLIENT_KICKED                           = 13;
 }
 
 enum DisconnectSrc {
@@ -81,6 +87,8 @@ enum DisconnectType {
     DISASSOC                                = 0;
     DEAUTH                                  = 1;
 }
+
+// If optional ReportType is not present assume RAW
 
 enum ReportType {
     RAW                                     = 0;
@@ -126,7 +134,7 @@ message Neighbor {
     required NeighborType   scan_type       = 2;
     optional uint64         timestamp_ms    = 3;
     repeated NeighborBss    bss_list        = 4;
-    required ReportType     report_type     = 5;
+    optional ReportType     report_type     = 5;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -227,12 +235,14 @@ message Survey {
     message SurveySample {
         required uint32     channel         = 1;
         optional uint32     duration_ms     = 2;
-        optional uint32     busy            = 3;    /* Busy = Rx + Tx + Interference */
-        optional uint32     busy_tx         = 4;    /* Tx */
-        optional uint32     busy_rx         = 5;    /* Rx = Rx_obss + Rx_errr (self and obss errors) */
-        optional uint32     busy_self       = 6;    /* Rx_self (derived from succesful Rx frames)*/
-        optional uint32     offset_ms       = 7;
-        optional uint32     busy_ext        = 8;   /* 40MHz extention channel busy */
+        optional uint32     total_count     = 3;
+        optional uint32     sample_count    = 4;
+        optional uint32     busy            = 5;    /* Busy = Rx + Tx + Interference */
+        optional uint32     busy_tx         = 6;    /* Tx */
+        optional uint32     busy_rx         = 7;    /* Rx = Rx_obss + Rx_errr (self and obss errors) */
+        optional uint32     busy_self       = 8;    /* Rx_self (derived from succesful Rx frames)*/
+        optional uint32     offset_ms       = 9;
+        optional uint32     busy_ext        = 10;   /* 40MHz extention channel busy */
     }
     message SurveyAvg {
         required uint32     channel         = 1;
@@ -247,7 +257,7 @@ message Survey {
     optional uint64         timestamp_ms    = 3;
     repeated SurveySample   survey_list     = 4;
     repeated SurveyAvg      survey_avg      = 5;
-    required ReportType     report_type     = 6;
+    optional ReportType     report_type     = 6;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -313,6 +323,7 @@ message BSClient {
         optional uint32         disconnect_reason       = 8;
         optional bool           backoff_enabled         = 9;
         optional bool           active                  = 10;
+        optional bool           rejected                = 11;
     }
     message BSBandReport {
         required RadioBandType  band                    = 1;

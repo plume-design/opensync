@@ -25,10 +25,6 @@
 # default target
 TARGET ?= $(DEFAULT_TARGET)
 
-# Include platform and vendor specific target-arch rules
--include platform/*/build/target-arch.mk
--include vendor/*/build/target-arch.mk
-
 # append list of all supported targets
 OS_TARGETS += native
 
@@ -41,7 +37,7 @@ BUILD_LOG_HOSTNAME                     := n
 # Disable unneeded units
 UNIT_DISABLE_src/bm                    := y
 UNIT_DISABLE_src/blem                  := y
-UNIT_DISABLE_src/cm2                   := y
+UNIT_DISABLE_src/cm2                   := n
 UNIT_DISABLE_src/dm                    := y
 UNIT_DISABLE_src/lm                    := y
 UNIT_DISABLE_src/nm2                   := y

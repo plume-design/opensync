@@ -126,6 +126,30 @@ bm_stats_get_event_to_str( dpp_bs_client_event_type_t event )
             str = "CLIENT_STEERING_ATTEMPT";
             break;
 
+        case CLIENT_STEERING_STARTED:
+            str = "CLIENT_STEERING_STARTED";
+            break;
+
+        case CLIENT_STEERING_DISABLED:
+            str = "CLIENT_STEERING_DISABLED";
+            break;
+
+        case CLIENT_STEERING_EXPIRED:
+            str = "CLIENT_STEERING_EXPIRED";
+            break;
+
+        case CLIENT_STEERING_FAILED:
+            str = "CLIENT_STEERING_FAILED";
+            break;
+
+        case CLIENT_KICKED:
+            str = "CLIENT_KICKED";
+            break;
+
+        case AUTH_BLOCK:
+            str = "AUTH_BLOCK";
+            break;
+
         default:
             str = "NONE";
             break;
@@ -251,15 +275,15 @@ bm_stats_steering_remove_all_clients()
 static void
 bm_stats_steering_print_all_records()
 {
-    dpp_bs_client_list_t        *bs_client_list     = &g_bm_stats_steering_report.list;
-    dpp_bs_client_record_list_t *bs_client          = NULL;
-    dpp_bs_client_record_t      *bs_client_entry    = NULL;
-    ds_dlist_iter_t             bs_client_iter;
+    dpp_bs_client_list_t            *bs_client_list   = &g_bm_stats_steering_report.list;
+    dpp_bs_client_record_list_t     *bs_client        = NULL;
+    dpp_bs_client_record_t          *bs_client_entry  = NULL;
+    ds_dlist_iter_t                 bs_client_iter;
 
-    dpp_bs_client_band_record_t  *band_rec          = NULL;
-    dpp_bs_client_event_record_t *event_rec         = NULL;
+    dpp_bs_client_band_record_t     *band_rec         = NULL;
+    dpp_bs_client_event_record_t    *event_rec        = NULL;
 
-    int                         i,j;
+    int                             i,j;
 
     LOGT( "===== Printing all BS client records ======" );
 
@@ -328,6 +352,7 @@ bm_stats_steering_print_all_records()
                 LOGT( "disconnect type      = %s", bm_stats_get_disconnect_type_to_str( event_rec->disconnect_type ) );
                 LOGT( "backoff enabled      = %s", event_rec->backoff_enabled ? "Yes" : "No" );
                 LOGT( "active               = %s", event_rec->active ? "Yes" : "No" );
+                LOGT( "auth rejected        = %s", event_rec->rejected ? "Yes" : "No" );
                 LOGT( " // ------------------------ // " );
             }
 
@@ -369,13 +394,13 @@ bm_stats_steering_get_bs_client_record( bm_client_t *client )
 static void
 bm_stats_steering_process_stats( void )
 {
-    bm_client_t       *client;
-    bm_client_stats_t *stats;
+    bm_client_t                 *client;
+    bm_client_stats_t           *stats;
 
     dpp_bs_client_record_t      *bs_client_entry    = NULL;
     dpp_bs_client_band_record_t *band_rec           = NULL;
 
-    int i;
+    int                         i;
 
     ds_tree_t *bm_clients = bm_client_get_tree();
 
@@ -393,7 +418,13 @@ bm_stats_steering_process_stats( void )
             stats                           = &client->stats[i];
 
             band_rec->type                  = bm_stats_get_band_type( i );
-            band_rec->connected             = client->connected;
+
+            // Check if the client is connected on this band
+            if( (int)client->band == i ) {
+                band_rec->connected         = client->connected;
+            } else {
+                band_rec->connected         = 0;
+            }
 
             band_rec->rejects               = stats->rejects;
             band_rec->connects              = stats->connects;
@@ -613,7 +644,7 @@ bm_stats_steering_parse_event(
     event_rec = &band_rec->event_record[band_rec->num_event_records];
 
     if( band_rec->num_event_records >= DPP_MAX_BS_EVENT_RECORDS ) {
-        LOGE( "Max events limit reached for client"MAC_ADDRESS_FORMAT"",
+        LOGE( "Max events limit reached for client "MAC_ADDRESS_FORMAT"",
                MAC_ADDRESS_PRINT( bs_client_entry->mac ) );
         return;
     };
@@ -682,6 +713,43 @@ bm_stats_steering_parse_event(
             LOGT( "Adding Band_Steering_Attempt event" );
             event_rec->type = BAND_STEERING_ATTEMPT;
             break;
+
+        case CLIENT_STEERING_ATTEMPT:
+            LOGT( "Adding Client_Steering_Attempt event" );
+            event_rec->type = CLIENT_STEERING_ATTEMPT;
+            break;
+
+        case CLIENT_STEERING_STARTED:
+            LOGT( "Adding Client_Steering_Started event" );
+            event_rec->type = CLIENT_STEERING_STARTED;
+            break;
+
+        case CLIENT_STEERING_DISABLED:
+            LOGT( "Adding Client Steering Disabled event" );
+            event_rec->type = CLIENT_STEERING_DISABLED;
+            break;
+
+        case CLIENT_STEERING_EXPIRED:
+            LOGT( "Adding Client_Steering_Expired event" );
+            event_rec->type = CLIENT_STEERING_EXPIRED;
+            break;
+
+        case CLIENT_STEERING_FAILED:
+            LOGT( "Adding Client_Steering_Failed event" );
+            event_rec->type = CLIENT_STEERING_FAILED;
+            break;
+
+        case CLIENT_KICKED:
+            LOGT( "Adding Client_Kicked event" );
+            event_rec->type = CLIENT_KICKED;
+            break;
+
+        case AUTH_BLOCK:
+            LOGT( "Adding Auth_Block event" );
+            event_rec->type     = AUTH_BLOCK;
+            event_rec->rejected = event->data.auth_fail.bs_rejected ? 1 : 0;
+            break;
+
 
         default:
             break;
@@ -1131,4 +1199,10 @@ bm_stats_remove_client_from_report( bm_client_t *client )
     }
 
     return;
+}
+
+int
+bm_stats_get_stats_report_interval( void )
+{
+    return g_bm_stats_default_request.reporting_interval;
 }

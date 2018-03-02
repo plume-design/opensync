@@ -22,7 +22,9 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-# Include vendor specific vendor-arch rules
+# Include platform and vendor specific target-arch rules
+-include platform/*/build/target-arch.mk
+-include vendor/*/build/target-arch.mk
 -include vendor/*/build/vendor-arch.mk
 
 ifneq ($(findstring $(VENDOR),$(ALL_VENDORS)),)

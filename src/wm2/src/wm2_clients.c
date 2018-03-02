@@ -78,6 +78,7 @@ wm2_clients_update(struct schema_Wifi_Associated_Clients  *schema, char* ifname,
         // Insert client
         row = json_object();
         json_object_set_new(row, "mac", json_string(schema->mac));
+        json_object_set_new(row, "key_id", json_string(schema->key_id));
         json_object_set_new(row, "state", json_string(schema->state));
 
         where = ovsdb_where_simple("mac", schema->mac);

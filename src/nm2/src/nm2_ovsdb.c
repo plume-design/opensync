@@ -167,7 +167,7 @@ void nm2_update_Wifi_Inet_State(
              wm2_inet_ovsdb_type_to_str(mon_type));
 
         ret =
-            target_vif_inet_state_get(
+            target_bridge_inet_state_get(
                 iconf->if_name,
                 &istate);
         if (true != ret) {
@@ -297,7 +297,7 @@ void callback_Wifi_Inet_Config(
              wm2_inet_ovsdb_type_to_str(mon->mon_type));
 
         ret =
-            target_vif_inet_config_set(
+            target_bridge_inet_config_set(
                     iconf->if_name,
                     iconf);
         if (true != ret) {

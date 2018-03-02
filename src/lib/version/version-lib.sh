@@ -52,7 +52,7 @@
 #  BUILD_NUMBER (consecutive build number)
 #  PML_VERSION  (core/.version)
 #
-# Format: VERSION-BUILD_NUMBER-gSHA1+DIRTY_STRING-IMAGE_DEPLOYMENT_PROFILE
+# Format: VERSION-BUILD_NUMBER-gSHA1-DIRTY_STRING-IMAGE_DEPLOYMENT_PROFILE
 
 if [ -z "$CURDIR" ]; then
     CURDIR=`dirname $0`
@@ -60,8 +60,8 @@ fi
 
 cd ${CURDIR}/../../../
 
-if [ -e .git ]; then
-    SHA1='g'`[ -e ../.git ] && cd ..; git log --pretty=oneline --abbrev-commit -1 | awk '{ print $1 }'`
+if [ -e .git -o -e ../.git ]; then
+    SHA1='g'`[ -e ../.git ] && cd ..; git log --pretty=oneline --abbrev-commit -1 | awk '{ print $1 }' | cut -b1-7`
     DIRTY=`[ -e ../.git ] && cd ..; git status --porcelain | grep -v -e '^??' | wc -l`
 else
     echo "WARNING: version not in git" 1>&2
@@ -92,7 +92,7 @@ PML_VERSION=`cat .version`
 DIRTY_STRING=""
 if [ ${DIRTY} -ne 0 ];
 then
-    DIRTY_STRING="+mods"
+    DIRTY_STRING="-mods"
 fi
 
 USERNAME=`id -n -u`
@@ -113,18 +113,33 @@ if [ -z "${BUILD_NUMBER}" ]; then
     BUILD_NUMBER="0"
 fi
 
-# format version
-APP_VERSION="${VERSION}-${BUILD_NUMBER}-${SHA1}${DIRTY_STRING}"
+APP_VERSION="${VERSION}"
+
+if [ "${VERSION_NO_BUILDNUM}" != "1" ]; then
+    # Append build number
+    APP_VERSION="${APP_VERSION}-${BUILD_NUMBER}"
+fi
+
+if [ "${VERSION_NO_SHA1}" != "1" ]; then
+    # Append SHA1
+    APP_VERSION="${APP_VERSION}-${SHA1}"
+fi
+
+if [ "${VERSION_NO_MODS}" != "1" ]; then
+    # Append dirty string
+    APP_VERSION="${APP_VERSION}${DIRTY_STRING}"
+fi
 
 # append profile
+if [ "${VERSION_NO_PROFILE}" != "1" ]; then
 if [ -z "${IMAGE_DEPLOYMENT_PROFILE}" ]
 then
     IMAGE_DEPLOYMENT_PROFILE="development"
 fi
-
 if [ -n "${IMAGE_DEPLOYMENT_PROFILE}" -a "${IMAGE_DEPLOYMENT_PROFILE}" != "none" ]
 then
     APP_VERSION="${APP_VERSION}-${IMAGE_DEPLOYMENT_PROFILE}"
+fi
 fi
 
 cd - >/dev/null

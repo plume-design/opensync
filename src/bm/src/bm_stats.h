@@ -110,17 +110,17 @@ static inline char *bm_timestamp_ms_to_date (uint64_t   timestamp_ms)
  * GLOBAL BM STATS
  *****************************************************************************/
 
-bool  bm_stats_init( struct ev_loop *loop );
-bool  bm_stats_cleanup( void );
+bool    bm_stats_init( struct ev_loop *loop );
+bool    bm_stats_cleanup( void );
 
-void  bm_stats_add_event_to_report(
-        bm_client_t *client,
-        bsal_event_t *event,
-        dpp_bs_client_event_type_t bs_event,
-        bool backoff_enabled );
+void    bm_stats_add_event_to_report(
+            bm_client_t *client,
+            bsal_event_t *event,
+            dpp_bs_client_event_type_t bs_event,
+            bool backoff_enabled );
 
-void bm_stats_remove_client_from_report(
-        bm_client_t *client );
+void    bm_stats_remove_client_from_report( bm_client_t *client );
+int     bm_stats_get_stats_report_interval( void );
 
 /*****************************************************************************
  * RSSI BM STATS

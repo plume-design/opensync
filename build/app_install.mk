@@ -41,10 +41,6 @@ define app_install_rootfs
 	$(Q)$(call app_strip,$(call app_install_rootfs_path,$(1),$(2)))
 endef
 
-ifeq ($(INSTALL_PREFIX),)
-INSTALL_PREFIX="/usr/plume"
-endif
-
 ifndef unit_test_install
 define unit_test_install
 	$(NQ) "  $(call color_install,unit test install skipped)"

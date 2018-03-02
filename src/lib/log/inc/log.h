@@ -39,6 +39,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "ds_dlist.h"
 
+#ifdef LOG_TARGET_H
+#include LOG_TARGET_H
+#endif
+
+
 #define LOG_COLOR_NONE           NULL
 #define LOG_COLOR_NORMAL         "\x1b[m"
 #define LOG_COLOR_GREEN          "\x1b[32;1m"
@@ -99,39 +104,46 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *  DS          - Data structures library
  *  LOG         - Logging facilities
  */
-#define LOG_MODULE_TABLE(ENTRY)     \
-    ENTRY(MISC)                     \
-    ENTRY(COMMON)                   \
-    ENTRY(CMD)                      \
-    ENTRY(OVSDB)                    \
-    ENTRY(CEV)                      \
-    ENTRY(OSA)                      \
-    ENTRY(MQTT)                     \
-    ENTRY(DPP)                      \
-    ENTRY(MAIN)                     \
-    ENTRY(CLI)                      \
-    ENTRY(EVENT)                    \
-    ENTRY(MEMPOOL)                  \
-    ENTRY(NOTIFY)                   \
-    ENTRY(RADIO)                    \
-    ENTRY(HAL)                      \
-    ENTRY(VIF)                      \
-    ENTRY(IOCTL)                    \
-    ENTRY(LINK)                     \
-    ENTRY(BLE)                      \
-    ENTRY(UPG)                      \
-    ENTRY(OVS)                      \
-    ENTRY(DHCPS)                    \
-    ENTRY(SCHED)                    \
-    ENTRY(XMO)                      \
-    ENTRY(PASYNC)                   \
-    ENTRY(TARGET)                   \
-    ENTRY(BSAL)                     \
-    ENTRY(CLIENT)                   \
-    ENTRY(KICK)                     \
-    ENTRY(STATS)                    \
-    ENTRY(WL)                       \
-    ENTRY(PLUMED)                   \
+#define LOG_MODULE_TABLE_COMMON(ENTRY)      \
+    ENTRY(MISC)                             \
+    ENTRY(COMMON)                           \
+    ENTRY(CMD)                              \
+    ENTRY(OVSDB)                            \
+    ENTRY(CEV)                              \
+    ENTRY(OSA)                              \
+    ENTRY(MQTT)                             \
+    ENTRY(DPP)                              \
+    ENTRY(MAIN)                             \
+    ENTRY(CLI)                              \
+    ENTRY(EVENT)                            \
+    ENTRY(MEMPOOL)                          \
+    ENTRY(NOTIFY)                           \
+    ENTRY(RADIO)                            \
+    ENTRY(HAL)                              \
+    ENTRY(VIF)                              \
+    ENTRY(IOCTL)                            \
+    ENTRY(LINK)                             \
+    ENTRY(BLE)                              \
+    ENTRY(UPG)                              \
+    ENTRY(OVS)                              \
+    ENTRY(DHCPS)                            \
+    ENTRY(SCHED)                            \
+    ENTRY(PASYNC)                           \
+    ENTRY(TARGET)                           \
+    ENTRY(BSAL)                             \
+    ENTRY(CLIENT)                           \
+    ENTRY(KICK)                             \
+    ENTRY(STATS)                            \
+    ENTRY(WL)
+
+#ifndef LOG_MODULE_TABLE_TARGET
+#define LOG_MODULE_TABLE(ENTRY) \
+        LOG_MODULE_TABLE_COMMON(ENTRY)
+#else
+#define LOG_MODULE_TABLE(ENTRY) \
+        LOG_MODULE_TABLE_COMMON(ENTRY) \
+        LOG_MODULE_TABLE_TARGET(ENTRY)
+#endif
 
 // ERROR -> ERR alias
 #define LOG_SEVERITY_ERROR LOG_SEVERITY_ERR
