@@ -461,6 +461,8 @@ callback_Wifi_Radio_Config(
             // disable on delete and follow through
             rconf->enabled = false;
 
+            /* Falls through. */
+
         case OVSDB_UPDATE_NEW:
         case OVSDB_UPDATE_MODIFY:
 
@@ -843,6 +845,8 @@ callback_Wifi_VIF_Config(
                disable the interfaces status */
             vconf->enabled = false;
             vconf->mac_list_len = 0;
+
+            /* Falls through. */
 
         case OVSDB_UPDATE_NEW:
         case OVSDB_UPDATE_MODIFY:
