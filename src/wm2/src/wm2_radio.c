@@ -166,7 +166,7 @@ wm2_radio_state_update_cb(
         struct schema_Wifi_Radio_State *rstate, schema_filter_t *filter)
 {
     bool  ret;
-    char  msg[64] = {0};
+    char  msg[256];
 
     snprintf(msg, sizeof(msg), "Updating radio state %s", rstate->if_name);
     LOGD("%s", msg);
@@ -198,7 +198,7 @@ void wm2_radio_config_update_cb(
 {
     char        *s_filter[OVSDB_RADIO_FILTER_LEN];
     char        **fcolumns;
-    char        msg[64];
+    char        msg[256];
     bool        ret;
     int         i;
 
@@ -589,7 +589,7 @@ void wm2_vif_config_update_cb(
 {
     char        *s_filter[SCHEMA_FILTER_LEN];
     char        **fcolumns;
-    char        msg[64];
+    char        msg[256];
     bool        ret;
     int         i;
 
@@ -663,8 +663,7 @@ wm2_radio_vif_state_update_cb(
          struct schema_Wifi_VIF_State  *vstate, schema_filter_t *filter)
 {
     bool ret;
-    char msg[64] = {0};
-
+    char msg[256];
 
     snprintf(msg, sizeof(msg), "Updating VIF state %s", vstate->if_name);
     LOGD("%s", msg);
