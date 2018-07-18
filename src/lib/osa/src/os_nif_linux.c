@@ -702,7 +702,7 @@ bool os_nif_dhcpc_start(char* ifname, bool apply)
     char serial_opt[256];
     char serial_num[256];
     char sku_num[256];
-    char hostname[256];
+    char hostname[256 + 256 + 32];  /* sizeof(serial_num) + sizeof(sku_num) + "hostname:" + "_Pod_" */
     char udhcpc_s_option[256];
     pid_t pid;
     int status;

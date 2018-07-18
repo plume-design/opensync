@@ -80,10 +80,11 @@ bool task_name_get(char *name, size_t sz)
  */
 bool task_name_set(char *name)
 {
-    if (strlen(name) >= OS_TASK_NAME_SZ)
-    {
-        return false;
-    }
+    /**
+     * According to prctl(2) - PR_SET_NAME:
+     * "If the length of the string, including the terminating null byte,
+     * exceeds 16 bytes, the string is silently truncated."
+     */
 
     prctl(PR_SET_NAME, name);
 
