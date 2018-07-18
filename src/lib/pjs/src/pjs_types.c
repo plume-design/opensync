@@ -225,7 +225,7 @@ bool pjs_sub_t_from_json(void *data, int idx, json_t *jsdata)
         return true;
     }
 
-    return args->cb_out((char *)args->data + (idx * args->sz), jsdata, NULL);
+    return args->cb_out((char *)args->data + (idx * args->sz), jsdata, false, NULL);
 }
 
 /**
