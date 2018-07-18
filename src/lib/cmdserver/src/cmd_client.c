@@ -62,7 +62,7 @@ bool cmdclient_argv_check(int argc, char *argv[])
 bool cmdclient(int port, int argc, char *argv[])
 {
     char b64_buffer[32768];
-    char arg_list[32768];
+    char arg_list[32768 + 20];
     char *arg_list_p;
     size_t arg_list_sz;
     int ii;
