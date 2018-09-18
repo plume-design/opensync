@@ -40,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <ev.h>
 #include <syslog.h>
 
+#include "schema.h"
 #include "target.h"
 #include "om.h"
 
@@ -333,16 +334,16 @@ om_tflow_to_schema(om_tflow_t *tflow, char *erule,
     sflow->priority = tflow->priority;
 
     // Token
-    strncpy(sflow->token, tflow->token, sizeof(sflow->token)-1);
+    STRSCPY(sflow->token, tflow->token);
 
     // Bridge
-    strncpy(sflow->bridge, tflow->bridge, sizeof(sflow->bridge)-1);
+    STRSCPY(sflow->bridge, tflow->bridge);
 
     // Action
-    strncpy(sflow->action, tflow->action, sizeof(sflow->action)-1);
+    STRSCPY(sflow->action, tflow->action);
 
     // Rule (from Expanded rule passed in)
-    strncpy(sflow->rule, erule, sizeof(sflow->rule)-1);
+    STRSCPY(sflow->rule, erule);
     sflow->rule_exists = true;
 
     return true;

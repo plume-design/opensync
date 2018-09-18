@@ -43,6 +43,8 @@ typedef _Bool schema_from_json_t(void *out, json_t *js, _Bool update, pjs_errmsg
 
 typedef json_t* schema_to_json_t(void *in, pjs_errmsg_t err);
 
+typedef void schema_mark_changed_t(void *old, void *rec);
+
 typedef struct ovsdb_cache_row
 {
     ds_tree_node_t  node; // tree node uuid key
@@ -52,10 +54,11 @@ typedef struct ovsdb_cache_row
     char            record[]; // actual values placeholder
 } ovsdb_cache_row_t;
 
-typedef void ovsdb_table_callback_t(ovsdb_update_monitor_t *self, void *record);
+typedef void ovsdb_table_callback_t(ovsdb_update_monitor_t *self,
+        void *old_rec, void *record);
 
-typedef void ovsdb_cache_callback_t(ovsdb_update_monitor_t *self, void *record,
-        ovsdb_cache_row_t *row);
+typedef void ovsdb_cache_callback_t(ovsdb_update_monitor_t *self,
+        void *old_rec, void *record, ovsdb_cache_row_t *row);
 
 #define OVSDB_TABLE_KEY_SIZE 64
 
@@ -63,6 +66,7 @@ typedef struct ovsdb_table
 {
     char                    *table_name;
     int                     schema_size;
+    int                     upd_type_offset;
     int                     uuid_offset;
     int                     version_offset;
     int                     key_offset; // primary key, example: if_name
@@ -71,6 +75,7 @@ typedef struct ovsdb_table
     char                    key2_name[OVSDB_TABLE_KEY_SIZE];
     schema_from_json_t      *from_json;
     schema_to_json_t        *to_json;
+    schema_mark_changed_t   *mark_changed;
     ovsdb_update_monitor_t  monitor;
     char                    **columns; // all schema columns, null term
     bool                    partial_update;
@@ -89,10 +94,12 @@ int ovsdb_table_init(
     char                *table_name,
     ovsdb_table_t       *table,
     int                 schema_size,
+    int                 upd_type_offset,
     int                 uuid_offset,
     int                 version_offset,
     schema_from_json_t  *from_json,
     schema_to_json_t    *to_json,
+    schema_mark_changed_t *mark_changed,
     char                **columns);
 
 #define OVSDB_TABLE_INIT_NO_KEY(TABLE) \
@@ -100,24 +107,26 @@ int ovsdb_table_init(
         SCHEMA_TABLE(TABLE), \
         &table_ ## TABLE, \
         sizeof(struct schema_ ## TABLE), \
+        OFFSET_OF(struct schema_ ## TABLE, _update_type), \
         OFFSET_OF(struct schema_ ## TABLE, _uuid), \
         OFFSET_OF(struct schema_ ## TABLE, _version), \
         (schema_from_json_t*)schema_ ## TABLE ## _from_json, \
         (schema_to_json_t*)schema_ ## TABLE ## _to_json, \
+        (schema_mark_changed_t*)schema_ ## TABLE ## _mark_changed, \
         SCHEMA_COLUMNS_ARRAY(TABLE))
 
 // set primary key
 #define OVSDB_TABLE_KEY(TABLE, FIELD) \
     do { \
         table_ ## TABLE . key_offset = OFFSET_OF(struct schema_ ## TABLE, FIELD); \
-        strlcpy(table_ ## TABLE . key_name, #FIELD, OVSDB_TABLE_KEY_SIZE); \
+        strscpy(table_ ## TABLE . key_name, #FIELD, OVSDB_TABLE_KEY_SIZE); \
     } while (0)
 
 // set secondary key
 #define OVSDB_TABLE_KEY2(TABLE, FIELD) \
     do { \
         table_ ## TABLE . key2_offset = OFFSET_OF(struct schema_ ## TABLE, FIELD); \
-        strlcpy(table_ ## TABLE . key2_name, #FIELD, OVSDB_TABLE_KEY_SIZE); \
+        strscpy(table_ ## TABLE . key2_name, #FIELD, OVSDB_TABLE_KEY_SIZE); \
     } while (0)
 
 // init with key
@@ -127,11 +136,21 @@ int ovsdb_table_init(
         OVSDB_TABLE_KEY(TABLE, FIELD); \
     } while (0)
 
+#define DECL_TABLE_CALLBACK_CAST(TABLE)                         \
+    static inline ovsdb_table_callback_t* table_cb_cast_##TABLE(\
+            void (*cb)(ovsdb_update_monitor_t *self,            \
+                struct schema_##TABLE *old,                     \
+                struct schema_##TABLE *record)) {               \
+        return (ovsdb_table_callback_t*)(void*)cb;              \
+    }
+
+SCHEMA_LISTX(DECL_TABLE_CALLBACK_CAST)
+
 #define OVSDB_TABLE_MONITOR(TABLE, IGN_VER) \
-    ovsdb_table_monitor(&table_ ## TABLE, callback_ ## TABLE, IGN_VER)
+    ovsdb_table_monitor(&table_ ## TABLE, table_cb_cast_##TABLE(callback_ ## TABLE), IGN_VER)
 
 #define OVSDB_TABLE_MONITOR_F(TABLE, FILTER) \
-    ovsdb_table_monitor_filter(&table_ ## TABLE, callback_ ## TABLE, FILTER)
+    ovsdb_table_monitor_filter(&table_ ## TABLE, table_cb_cast_##TABLE(callback_ ## TABLE), FILTER)
 
 json_t* ovsdb_table_filter_row(json_t *row, char *columns[]);
 bool    ovsdb_table_from_json(ovsdb_table_t *table, json_t *jrow, void *record);
@@ -139,11 +158,12 @@ json_t* ovsdb_table_to_json(ovsdb_table_t *table, void *record);
 json_t* ovsdb_table_to_json_f(ovsdb_table_t *table, void *record, char *filter[]);
 void*   ovsdb_table_select_where(ovsdb_table_t *table, json_t *where, int *count);
 void*   ovsdb_table_select(ovsdb_table_t *table, char *column, char *value, int *count);
+void*   ovsdb_table_select_typed(ovsdb_table_t *table, char *column, ovsdb_col_t col_type, void *value, int *count);
 bool    ovsdb_table_select_one_where(ovsdb_table_t *table, json_t *where, void *record);
 bool    ovsdb_table_select_one(ovsdb_table_t *table, const char *column, const char *value, void *record);
 bool    ovsdb_table_insert(ovsdb_table_t *table, void *record);
 int     ovsdb_table_delete_where(ovsdb_table_t *table, json_t *where);
-int     ovsdb_table_delete_simple(ovsdb_table_t *table, char *column, char *value);
+int     ovsdb_table_delete_simple(ovsdb_table_t *table, const char *column, const char *value);
 int     ovsdb_table_delete(ovsdb_table_t *table, void *record);
 int     ovsdb_table_update_where_f(ovsdb_table_t *table, json_t *where, void *record, char *filter[]);
 int     ovsdb_table_update_where(ovsdb_table_t *table, json_t *where, void *record);

@@ -32,6 +32,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "dpp_types.h"
 
+#define DPP_DEVICE_TX_CHAINMASK_MAX 3
+
 typedef enum
 {
     DPP_DEVICE_LOAD_AVG_ONE = 0,
@@ -52,6 +54,21 @@ typedef struct
     int32_t                         value;
     ds_dlist_node_t                 node;
 } dpp_device_temp_t;
+
+typedef struct 
+{
+    radio_type_t                    type;
+    uint32_t                        value;
+} dpp_device_txchainmask_t;
+
+typedef struct
+{
+    dpp_device_txchainmask_t        radio_txchainmasks[DPP_DEVICE_TX_CHAINMASK_MAX];
+    uint32_t                        txchainmask_qty;
+    int32_t                         fan_rpm;
+    uint64_t                        timestamp_ms;
+    ds_dlist_node_t                 node;
+} dpp_device_thermal_record_t;
 
 static inline dpp_device_temp_t * dpp_device_temp_record_alloc()
 {
@@ -74,10 +91,32 @@ static inline void dpp_device_temp_record_free(dpp_device_temp_t *record)
     }
 }
 
+static inline dpp_device_thermal_record_t * dpp_device_thermal_record_alloc()
+{
+    dpp_device_thermal_record_t *record = NULL;
+
+    record = malloc(sizeof(dpp_device_thermal_record_t));
+    if (record)
+    {
+        memset(record, 0, sizeof(dpp_device_thermal_record_t));
+    }
+
+    return record;
+}
+
+static inline void dpp_device_thermal_record_free(dpp_device_thermal_record_t *record)
+{
+    if (NULL != record)
+    {
+        free(record);
+    }
+}
+
 typedef struct
 {
     ds_dlist_t                      temp;
     dpp_device_record_t             record;
+    ds_dlist_t                      thermal_records;
     uint64_t                        timestamp_ms;
 } dpp_device_report_data_t;
 

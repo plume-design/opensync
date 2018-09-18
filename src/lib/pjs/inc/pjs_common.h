@@ -50,7 +50,7 @@ typedef struct
 
 typedef char pjs_errmsg_t[128];
 
-typedef bool pjs_sub_from_json_cb_t(void *data, json_t *jsval, pjs_errmsg_t err);
+typedef bool pjs_sub_from_json_cb_t(void *data, json_t *jsval, bool update, pjs_errmsg_t err);
 typedef json_t *pjs_sub_to_json_cb_t(void *data, pjs_errmsg_t err);
 
 /*
@@ -413,13 +413,17 @@ extern bool pjs_sub_array_q_to_json(
 extern bool pjs_ovs_int_q_from_json(
         int *out,
         bool *exists,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
         pjs_errmsg_t err);
 
 extern bool pjs_ovs_int_from_json(
-        int *out, json_t *js,
+        int *out,
+        bool *exists,
+        bool *present,
+        json_t *js,
         const char *name,
         bool update,
         pjs_errmsg_t err);
@@ -440,6 +444,7 @@ extern bool pjs_ovs_int_to_json(
 extern bool pjs_ovs_bool_q_from_json(
         bool *out,
         bool *exists,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -447,6 +452,8 @@ extern bool pjs_ovs_bool_q_from_json(
 
 extern bool pjs_ovs_bool_from_json(
         bool *out,
+        bool *exists,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -468,6 +475,7 @@ extern bool pjs_ovs_bool_to_json(
 extern bool pjs_ovs_real_q_from_json(
         double *out,
         bool *exists,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -475,6 +483,8 @@ extern bool pjs_ovs_real_q_from_json(
 
 extern bool pjs_ovs_real_from_json(
         double *out,
+        bool *exists,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -497,6 +507,7 @@ extern bool pjs_ovs_string_q_from_json(
         char *out,
         size_t outsz,
         bool *exists,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -505,6 +516,8 @@ extern bool pjs_ovs_string_q_from_json(
 extern bool pjs_ovs_string_from_json(
         char *out,
         size_t outsz,
+        bool *exists,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -528,6 +541,7 @@ extern bool pjs_ovs_string_to_json(
 extern bool pjs_ovs_uuid_q_from_json(
         ovs_uuid_t *out,
         bool *exists,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -535,6 +549,8 @@ extern bool pjs_ovs_uuid_q_from_json(
 
 extern bool pjs_ovs_uuid_from_json(
         ovs_uuid_t *out,
+        bool *exists,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -563,6 +579,7 @@ extern bool pjs_ovs_set_int_from_json(
         int *out_data,
         int out_max,
         int *out_len,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -584,6 +601,7 @@ extern bool pjs_ovs_set_bool_from_json(
         bool *out_data,
         int out_max,
         int *out_len,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -605,6 +623,7 @@ extern bool pjs_ovs_set_real_from_json(
         double *out_data,
         int out_max,
         int *out_len,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -627,6 +646,7 @@ extern bool pjs_ovs_set_string_from_json(
         size_t out_sz,
         int out_max,
         int *out_len,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -649,6 +669,7 @@ extern bool pjs_ovs_set_uuid_from_json(
         ovs_uuid_t *out_data,
         int out_max,
         int *out_len,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -672,6 +693,7 @@ extern bool pjs_ovs_smap_int_from_json(
         int *out_data,
         int out_max,
         int *out_len,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -697,6 +719,7 @@ extern bool pjs_ovs_smap_bool_from_json(
         bool *out_data,
         int out_max,
         int *out_len,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -722,6 +745,7 @@ extern bool pjs_ovs_smap_real_from_json(
         double *out_data,
         int out_max,
         int *out_len,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -748,6 +772,7 @@ extern bool pjs_ovs_smap_string_from_json(
         int out_sz,
         int out_max,
         int *out_len,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -774,6 +799,7 @@ extern bool pjs_ovs_smap_uuid_from_json(
         ovs_uuid_t *out_data,
         int out_max,
         int *out_len,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -798,6 +824,7 @@ extern bool pjs_ovs_dmap_int_from_json(
         int *out_data,
         int out_max,
         int *out_len,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -820,6 +847,7 @@ extern bool pjs_ovs_dmap_bool_from_json(
         bool *out_data,
         int out_max,
         int *out_len,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -843,6 +871,7 @@ extern bool pjs_ovs_dmap_real_from_json(
         double *out_data,
         int out_max,
         int *out_len,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -867,6 +896,7 @@ extern bool pjs_ovs_dmap_string_from_json(
         int out_sz,
         int out_max,
         int *out_len,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -891,6 +921,7 @@ extern bool pjs_ovs_dmap_uuid_from_json(
         ovs_uuid_t *out_data,
         int out_max,
         int *out_len,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,

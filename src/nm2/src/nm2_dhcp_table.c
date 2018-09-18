@@ -41,7 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "evsched.h"
 #include "schema.h"
 #include "log.h"
-#include "wm2.h"
+#include "nm2.h"
 #include "ovsdb.h"
 #include "ovsdb_sync.h"
 
@@ -59,7 +59,7 @@ static bool                         g_dhcp_table_init = false;
  *  PROTECTED definitions
  *****************************************************************************/
 static bool
-wm2_dhcp_table_update(struct schema_DHCP_leased_IP       *dlip)
+nm2_dhcp_table_update(struct schema_DHCP_leased_IP       *dlip)
 {
     pjs_errmsg_t        perr;
     json_t             *where, *row;
@@ -109,12 +109,12 @@ wm2_dhcp_table_update(struct schema_DHCP_leased_IP       *dlip)
  *  PUBLIC definitions
  *****************************************************************************/
 bool
-wm2_dhcp_table_init(void)
+nm2_dhcp_table_init(void)
 {
     bool         ret;
 
     /* Register to DHCP lease changed ... */
-    ret = target_dhcp_leased_ip_register(wm2_dhcp_table_update);
+    ret = target_dhcp_leased_ip_register(nm2_dhcp_table_update);
     if (false == ret) {
         return false;
     }

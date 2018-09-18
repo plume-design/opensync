@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // ovsdb sync api
 
 json_t* ovsdb_where_simple(const char *column, const char *value);
+json_t* ovsdb_where_simple_typed(const char *column, const void *value, ovsdb_col_t col_type);
 json_t* ovsdb_where_uuid(const char *column, const char *uuid);
 json_t* ovsdb_mutation(char *column, json_t *mutation, json_t *value);
 int     ovsdb_get_update_result_count(json_t *result, char *table, char *oper);

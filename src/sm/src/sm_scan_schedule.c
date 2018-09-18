@@ -333,7 +333,7 @@ bool sm_scan_schedule_stop (
         radio_entry_t              *radio_cfg,
         radio_scan_type_t           scan_type)
 {
-    /* Stop scanning on target and flush pending scans t diff */
+    /* Stop scanning on target and flush pending scans to diff */
     target_stats_scan_stop(radio_cfg, scan_type);
 
     scan_schedule_timeout_timer_set(&g_scan_schedule_timer, false);

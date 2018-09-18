@@ -37,6 +37,7 @@ UNIT_SRC += src/util.c
 UNIT_SRC += src/monitor.c
 UNIT_SRC += src/os.c
 UNIT_SRC += src/os_util.c
+UNIT_SRC += src/os_exec.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -fasynchronous-unwind-tables

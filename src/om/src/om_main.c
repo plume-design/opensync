@@ -53,6 +53,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /*****************************************************************************/
 static log_severity_t om_log_severity = LOG_SEVERITY_DEBUG;
+static struct tag_mgr tag_mgr;
 
 /******************************************************************************
  * PROTECTED FUNCTIONS
@@ -98,6 +99,10 @@ int main( int argc, char **argv )
         LOGEM( "Failed to initialize and connect to OVSDB" );
         return(1);
     }
+
+    memset(&tag_mgr, 0, sizeof(tag_mgr));
+    tag_mgr.service_tag_update = om_template_tag_update;
+    om_tag_init(&tag_mgr);
 
     if( !om_monitor_init() ) {
         LOGEM( "Failed to initialize Openflow OVSDB monitoring" );

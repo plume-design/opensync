@@ -44,6 +44,7 @@ bool pjs_ovs_map_from_json(
         void *out_data,
         int out_max,
         int *out_len,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -63,9 +64,15 @@ bool pjs_ovs_map_from_json(
          * If object doesn't exists, and we're NOT in update mode, return an error (false).
          * If we're in update mode, just return true, but do not touch any of the output values.
          */
+        if (update) {
+            return true;
+        }
         PJS_ERR(err, "OVS_MAP: Object '%s' does not exist.", name);
-        return update;
+        return false;
     }
+
+    // mark presence
+    *present = true;
 
     if (!json_is_array(jsmap))
     {
@@ -252,6 +259,7 @@ bool pjs_ovs_smap_int_from_json(
         int *out_data,
         int out_max,
         int *out_len,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -269,6 +277,7 @@ bool pjs_ovs_smap_int_from_json(
             out_data,
             out_max,
             out_len,
+            present,
             js,
             name,
             update,
@@ -318,6 +327,7 @@ bool pjs_ovs_smap_bool_from_json(
         bool *out_data,
         int out_max,
         int *out_len,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -335,6 +345,7 @@ bool pjs_ovs_smap_bool_from_json(
             out_data,
             out_max,
             out_len,
+            present,
             js,
             name,
             update,
@@ -384,6 +395,7 @@ bool pjs_ovs_smap_real_from_json(
         double *out_data,
         int out_max,
         int *out_len,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -401,6 +413,7 @@ bool pjs_ovs_smap_real_from_json(
             out_data,
             out_max,
             out_len,
+            present,
             js,
             name,
             update,
@@ -451,6 +464,7 @@ bool pjs_ovs_smap_string_from_json(
         int out_sz,
         int out_max,
         int *out_len,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -471,6 +485,7 @@ bool pjs_ovs_smap_string_from_json(
             &sargs,
             out_max,
             out_len,
+            present,
             js,
             name,
             update,
@@ -526,6 +541,7 @@ bool pjs_ovs_smap_uuid_from_json(
         ovs_uuid_t *out_data,
         int out_max,
         int *out_len,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -543,6 +559,7 @@ bool pjs_ovs_smap_uuid_from_json(
             out_data,
             out_max,
             out_len,
+            present,
             js,
             name,
             update,
@@ -591,6 +608,7 @@ bool pjs_ovs_dmap_int_from_json(
         int *out_data,
         int out_max,
         int *out_len,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -603,6 +621,7 @@ bool pjs_ovs_dmap_int_from_json(
             out_data,
             out_max,
             out_len,
+            present,
             js,
             name,
             update,
@@ -646,6 +665,7 @@ bool pjs_ovs_dmap_bool_from_json(
         bool *out_data,
         int out_max,
         int *out_len,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -658,6 +678,7 @@ bool pjs_ovs_dmap_bool_from_json(
             out_data,
             out_max,
             out_len,
+            present,
             js,
             name,
             update,
@@ -700,6 +721,7 @@ bool pjs_ovs_dmap_real_from_json(
         double *out_data,
         int out_max,
         int *out_len,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -712,6 +734,7 @@ bool pjs_ovs_dmap_real_from_json(
             out_data,
             out_max,
             out_len,
+            present,
             js,
             name,
             update,
@@ -755,6 +778,7 @@ bool pjs_ovs_dmap_string_from_json(
         int out_sz,
         int out_max,
         int *out_len,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -772,6 +796,7 @@ bool pjs_ovs_dmap_string_from_json(
             &sargs,
             out_max,
             out_len,
+            present,
             js,
             name,
             update,
@@ -820,6 +845,7 @@ bool pjs_ovs_dmap_uuid_from_json(
         ovs_uuid_t *out_data,
         int out_max,
         int *out_len,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -832,6 +858,7 @@ bool pjs_ovs_dmap_uuid_from_json(
             out_data,
             out_max,
             out_len,
+            present,
             js,
             name,
             update,

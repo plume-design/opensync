@@ -63,7 +63,9 @@ $(BINDIR)/$(UNIT_BIN): $(call UNIT_MARK_FILES,$(UNIT_DEPS)) $(UNIT_OBJ)
 	$$(Q)$$(CC) -L$(LIBDIR) -Wl,--start-group $$(UNIT_BIN_LDFLAGS) $$(foreach DEP,$$(sort $$(DEPS_$(UNIT_PATH))),$$(LDFLAGS_$$(DEP))) $(UNIT_OBJ) -Wl,--end-group $$(LDFLAGS) $(UNIT_LDFLAGS) -o $$@
 
 $(UNIT_PATH)/install: $(UNIT_BUILD)/.target
+ifneq ($$(UNIT_INSTALL),n)
 	$$(call app_install,$(BINDIR)/$(UNIT_BIN),$(UNIT_DIR))
+endif
 
 $(UNIT_PATH)/uninstall:
 	$$(call app_uninstall,$(BINDIR)/$(UNIT_BIN),$(UNIT_DIR))
@@ -138,7 +140,7 @@ $(UNIT_BUILD)/lib$(UNIT_NAME).a: $(UNIT_DEPS) $(UNIT_OBJ)
 	$$(Q)$$(AR) rcs $$@ $(UNIT_OBJ)
 	@# error on duplicate symbols to prevent clashing with stubs
 	@# ignore symbols with $ . in name or starting with __
-	$$(Q)DUP=`nm --defined-only $$@ | $(GREP) ' [A-Z] ' | egrep -v '\\$$$$|\\.| __' | cut -d' ' -f3 | sort | uniq -d`; \
+	$$(Q)DUP=`nm --defined-only $$@ | $(GREP) ' [[:upper:]] ' | egrep -v '\\$$$$|\\.| __' | cut -d' ' -f3 | sort | uniq -d`; \
 		if [ -n "$$$$DUP" ]; then \
 		echo ERROR: Duplicate symbols in $$@: ; \
 		nm $$@ | $(GREP) -e : -e "$$$$DUP"; \
@@ -315,7 +317,10 @@ $(UNIT_PATH)/info:
 	$(NQ) "UNIT_PATH:           " $(UNIT_PATH)
 	$(NQ) "UNIT_DISABLE:        " $(UNIT_DISABLE)
 	$(NQ) "UNIT_TYPE:           " $(UNIT_TYPE)
-	$(NQ) "UNIT_DEPS:           " $$(sort $$(DEPS_$(UNIT_PATH)))
+	$(NQ) "UNIT_DEPS:           " $(UNIT_DEPS)
+	$(NQ) "EXPAND DEPS:         " '$$(sort $$(DEPS_$(UNIT_PATH)))'
+	$(NQ) "UNIT_DEPS_CFLAGS:    " $(UNIT_DEPS_CFLAGS)
+	$(NQ) "EXPAND DEPS_CFLAGS:  " '$$(sort $$(DEPS_CFLAGS_$(UNIT_PATH)))'
 	$(NQ) "UNIT_SRC:            " $(UNIT_SRC)
 	$(NQ) "UNIT_SRC_TOP:        " $(UNIT_SRC_TOP)
 	$(NQ) "SOURCES:             " $(UNIT_SOURCES)
@@ -348,10 +353,12 @@ endef
 define INCLUDE_OVERRIDE
 OVERRIDE_DIR := $(1)/$(2)
 LAYER_DIR := $(1)
-ifneq ($$(UNIT_DISABLE_LAYER_$(1)),y)
-ifneq ($$(UNIT_DISABLE_$$(OVERRIDE_DIR)),y)
--include $$(OVERRIDE_DIR)/override.mk
+_OVERRIDE_DISABLE  := $$(UNIT_DISABLE_$$(OVERRIDE_DIR))
+ifeq ($$(_OVERRIDE_DISABLE),)
+_OVERRIDE_DISABLE  := $$(UNIT_DISABLE_LAYER_$(1))
 endif
+ifneq ($$(_OVERRIDE_DISABLE),y)
+-include $$(OVERRIDE_DIR)/override.mk
 endif
 
 endef
@@ -381,6 +388,7 @@ UNIT_DISABLE:=
 UNIT_PRE:=
 UNIT_DIR:=
 UNIT_POST_MACRO:=
+UNIT_INSTALL:=
 
 UNIT_MK         := $(1)
 UNIT_PATH       := $(call CANNED_PATH,$(dir $(UNIT_MK)))
@@ -448,7 +456,11 @@ endif
 $$(eval UNIT_DEPS_$$(UNIT_PATH) = $$(UNIT_DEPS))
 $$(eval UNIT_DEPS_CFLAGS_$$(UNIT_PATH) = $$(UNIT_DEPS_CFLAGS))
 $$(eval DEPS_$$(UNIT_PATH) = $$(UNIT_DEPS) $$(foreach DEP,$$(UNIT_DEPS),$$$$(DEPS_$$(DEP))))
-$$(eval DEPS_CFLAGS_$$(UNIT_PATH) = $$(UNIT_DEPS_CFLAGS) $$(foreach DEP,$$(UNIT_DEPS),$$$$(DEPS_CFLAGS_$$(DEP))))
+
+# moved handling of DEPS_CFLAGS to after all layers are processed
+# $$(eval DEPS_CFLAGS_$$(UNIT_PATH) += $$(UNIT_DEPS_CFLAGS))
+# $$(eval DEPS_CFLAGS_$$(UNIT_PATH) += $$(foreach DEP,$$(UNIT_DEPS),$$$$(DEPS_CFLAGS_$$(DEP))))
+# $$(eval DEPS_CFLAGS_$$(UNIT_PATH) += $$(foreach DEP,$$(UNIT_DEPS_CFLAGS),$$$$(DEPS_$$(DEP))))
 
 # Handle exported CFLAGS and LDFLAGS
 CFLAGS_$$(UNIT_PATH) := $$(UNIT_EXPORT_CFLAGS)
@@ -489,6 +501,19 @@ UNIT_ALL_NOT_LAST := $(UNIT_ALL)
 # Process unit-last.mk last
 $(eval $(call PROCESS_LAYERS,'unit-last.mk'))
 
+
+# Process DEPS_CFLAGS_* after all layers to resolve circular deps
+# $1: list of units to expand (result)
+# $2: list of already expanded deps to filter out to prevent cyclic dependancy
+define EXPAND_DEPS
+$1 $(if $1,$(call EXPAND_DEPS,$(sort $(filter-out $2 $1,$(foreach UNIT,$1,$(DEPS_$(UNIT)) $(foreach DEP,$(DEPS_$(UNIT)),$(UNIT_DEPS_CFLAGS_$(UNIT)))))),$2 $1),)
+endef
+# note: sort also removes duplicate words
+$(foreach UNIT_PATH, $(UNIT_ALL),\
+$(eval DEPS_CFLAGS_$(UNIT_PATH):=$(filter-out $(UNIT_PATH) $(DEPS_$(UNIT_PATH)),\
+$(call sort,$(call EXPAND_DEPS,$(UNIT_PATH) $(UNIT_DEPS_CFLAGS_$(UNIT_PATH)),))))\
+)
+
 .PHONY: unit-list unit-all unit-clean
 unit-list:
 	$(NQ) Currently active units:
@@ -511,12 +536,7 @@ unit-list-deps-dot:
 
 $(TESTBINDIR)/clean:
 	$(NQ) " $(call color_clean,clean)   [$(call COLOR_BOLD,$(notdir $(TESTBINDIR)))] $(TESTBINDIR)"
-ifeq ($(TESTBINDIR),$(shell if [ -d $(TESTBINDIR) ]; then echo $(TESTBINDIR); fi))
-	@TESTBINDIR_CONTENTS=$(shell ls -AU $(TESTBINDIR) 2>/dev/null)
-ifeq ($(TESTBINDIR_CONTENTS),)
-	$(Q) rmdir $(TESTBINDIR)
-endif
-endif
+	$(Q)$(RM) -r $(TESTBINDIR)
 
 unit-all: workdirs $(UNIT_ALL)
 unit-install: $(UNIT_ALL_INSTALL)

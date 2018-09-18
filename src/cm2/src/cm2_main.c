@@ -63,9 +63,23 @@ static log_severity_t   cm2_log_severity = LOG_SEVERITY_INFO;
  *  PROTECTED definitions
  *****************************************************************************/
 
+void cm2_init_capabilities()
+{
+    g_state.target_type = target_device_capabilities_get();
+    LOGI("Device caps: 0x%x %s%s", g_state.target_type,
+            g_state.target_type & TARGET_GW_TYPE ? "[GW]" : "",
+            g_state.target_type & TARGET_EXTENDER_TYPE ? "[EXT]" : "");
+}
+
 /******************************************************************************
  *  PUBLIC API definitions
  *****************************************************************************/
+
+bool cm2_is_extender()
+{
+    return g_state.target_type & TARGET_EXTENDER_TYPE ? true : false;
+}
+
 
 int main(int argc, char ** argv)
 {
@@ -104,6 +118,8 @@ int main(int argc, char ** argv)
         return -1;
     }
 
+    cm2_init_capabilities();
+
     cm2_event_init(loop);
 
     if (cm2_ovsdb_init()) {
@@ -112,7 +128,17 @@ int main(int argc, char ** argv)
         return -1;
     }
 
+    if (cm2_is_extender()) {
+        cm2_wdt_init(loop);
+        cm2_stability_init(loop);
+    }
+
     ev_run(loop, 0);
+
+    if (cm2_is_extender()) {
+        cm2_wdt_close(loop);
+        cm2_stability_close(loop);
+    }
 
     cm2_event_close(loop);
 

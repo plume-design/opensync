@@ -137,7 +137,7 @@ void mon_start(int argc, char *argv[])
             /* Set child's task name */
             if (*old_name != '\0')
             {
-                snprintf(new_name, sizeof(new_name), "%s.slave", old_name);
+                snprintf(new_name, sizeof(new_name), "%.8s.slave", old_name);
                 task_name_set(new_name);
             }
 
@@ -152,7 +152,7 @@ void mon_start(int argc, char *argv[])
 
         if (*old_name != '\0')
         {
-            snprintf(new_name, sizeof(new_name), "%s.master", old_name);
+            snprintf(new_name, sizeof(new_name), "%.8s.master", old_name);
             task_name_set(new_name);
         }
 

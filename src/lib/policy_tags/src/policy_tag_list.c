@@ -41,7 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <syslog.h>
 
 #include "target.h"
-#include "om.h"
+#include "policy_tags.h"
 
 /*****************************************************************************/
 

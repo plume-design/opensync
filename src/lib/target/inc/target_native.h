@@ -40,4 +40,6 @@ typedef void target_survey_record_t;
 
 typedef void target_capacity_data_t;
 
+#include "target_common.h"
+
 #endif  /* TARGET_NATIVE_H_INCLUDED */

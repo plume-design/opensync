@@ -85,7 +85,7 @@ int os_reg_list_match(
 void os_reg_match_cpy(
         char*       dest,
         size_t      destsz,
-        char*       src,
+        const char* src,
         regmatch_t  srm)
 {
     size_t len = 0;

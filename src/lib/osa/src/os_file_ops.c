@@ -64,7 +64,7 @@ FILE *os_file_open(char *location, char *prefix)
     memset(time_stamp, 0x00, sizeof(time_stamp));
     os_time_stamp(time_stamp, sizeof(time_stamp));
 
-    snprintf(file + strlen(file) - 1,
+    snprintf(file + strlen(file),
              sizeof(file) - strlen(file), "_%s.%d", time_stamp, pid);
 
     fp = fopen(file, "w+");

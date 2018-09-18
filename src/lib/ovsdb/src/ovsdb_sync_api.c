@@ -47,6 +47,15 @@ json_t* ovsdb_where_simple(const char *column, const char *value)
     return ovsdb_tran_cond(OCLM_STR, (char*)column, OFUNC_EQ, (char*)value);
 }
 
+json_t* ovsdb_where_simple_typed(const char *column, const void *value, ovsdb_col_t col_type)
+{
+    if (!column || !*column) {
+        LOG(WARNING, "%s: invalid selection column:%s",
+                __FUNCTION__, column);
+    }
+    return ovsdb_tran_cond(col_type, (char*)column, OFUNC_EQ, (void*)value);
+}
+
 json_t* ovsdb_where_uuid(const char *column, const char *uuid)
 {
     return ovsdb_tran_cond(OCLM_UUID, (char*)column, OFUNC_EQ, (char*)uuid);
@@ -76,27 +85,38 @@ int ovsdb_get_update_result_count_off(json_t *result, char *table, char *oper, i
     json_t *jstatus = NULL;
     json_t *jerr = NULL;
     json_t *jcount = NULL;
-    json_t *jfirst;
+    json_t *jfirst = NULL;
 
     if (result == NULL)
     {
         LOG(ERR, "Table %s %s result: NULL", table, oper);
-        goto out;
+        return -1;
     }
 
     /* Check if the first element is an empty array, skip it in that case */
     jfirst = json_array_get(result, 0);
+    if (jfirst == NULL)
+    {
+        LOG(ERR, "Table %s %s result invalid", table, oper);
+        goto out;
+    }
     if (json_is_object(jfirst) && json_object_size(jfirst) == 0)
     {
         offt = 1;
     }
 
     LOG(DEBUG, "Table %s %s result: %s off: %d", table, oper, json_dumps_static(result, 0), offset);
+    if (json_array_size(result) < (size_t)(offset + offt)) {
+        LOG(ERR, "Table %s %s result size is smaller then requested offset %d", table, oper, offset + offt);
+        goto out;
+    }
+
     jstatus = json_array_get(result, offset + offt);
     if (!jstatus) {
         LOG(ERR, "Table %s %s: no status", table, oper);
         goto out;
     }
+
     jerr = json_object_get(jstatus, "error");
     if (jerr) {
         char errstr[256] = "";
@@ -105,6 +125,7 @@ int ovsdb_get_update_result_count_off(json_t *result, char *table, char *oper, i
                 json_dumps_static(jstatus, JSON_ENCODE_ANY));
         goto out;
     }
+
     jcount = json_object_get(jstatus, "count");
     if (!jcount) {
         LOG(ERR, "Table %s %s error: no count", table, oper);
@@ -121,7 +142,9 @@ out:
 int ovsdb_get_update_result_count(json_t *result, char *table, char *oper)
 {
     int count = ovsdb_get_update_result_count_off(result, table, oper, 0);
-    json_decref(result);
+    if (result) {
+        json_decref(result);
+    }
     return count;
 }
 
@@ -139,8 +162,10 @@ bool ovsdb_get_insert_result_uuid(json_t *result, char *table, char *oper, ovs_u
     if (result == NULL)
     {
         LOG(ERR, "Table %s %s result: NULL", table, oper);
-        goto out;
+        return false;
     }
+
+    LOG(TRACE, "Table %s %s result: %s", table, oper, json_dumps_static(result, 0));
 
     if (!json_is_array(result))
     {
@@ -181,7 +206,7 @@ bool ovsdb_get_insert_result_uuid(json_t *result, char *table, char *oper, ovs_u
     LOG(DEBUG, "Table %s %s uuid: %s", table, oper, str_uuid);
     if (uuid)
     {
-        strlcpy(uuid->uuid, str_uuid, sizeof(uuid->uuid));
+        STRSCPY(uuid->uuid, str_uuid);
         LOG(DEBUG, "%s %s: stored uuid: %s", table, oper, uuid->uuid);
     }
     success = true;
@@ -208,6 +233,7 @@ json_t* ovsdb_sync_select_where(char *table, json_t *where)
     }
     LOG(DEBUG, "query result: %s", json_dumps_static(result, 0));
     jrows = json_object_get(json_array_get(result, 0), "rows");
+    json_incref(jrows);
     json_decref(result);
     if (!jrows || json_array_size(jrows) < 1)
     {
@@ -265,7 +291,7 @@ int ovsdb_sync_get_uuid_and_count(char *table, json_t *where, ovs_uuid_t *uuid)
     LOG(TRACE, "get uuid %s where '%s' count: %d uuid: %s",
             table, json_dumps_static(where, 0), count, str_uuid);
 out:
-    strlcpy(uuid->uuid, str_uuid ? str_uuid : "", sizeof(uuid->uuid));
+    STRSCPY(uuid->uuid, str_uuid ? str_uuid : "");
     json_decref(jrows);
     return count;
 }
@@ -312,7 +338,7 @@ int ovsdb_sync_delete_where(char *table, json_t *where)
     if (rc == 0)
     {
         // warn if no match - nothing deleted
-        LOG(WARNING, "OVSDB: Delete from table '%s' no match", table);
+        LOG(DEBUG, "OVSDB: Delete from table '%s' no match", table);
     }
 
     return rc;
@@ -450,7 +476,8 @@ bool ovsdb_sync_insert_with_parent(char *table, json_t *row, ovs_uuid_t *uuid,
     json_t *tran;
     json_t *result;
     bool success;
-    bool count;
+    int count;
+
     LOG(DEBUG, "Table %s insert with parent: %s %s row: %s", table,
             parent_table, parent_column, json_dumps_static(row, 0));
     tran = ovsdb_tran_insert_with_parent(table, row,
@@ -460,7 +487,9 @@ bool ovsdb_sync_insert_with_parent(char *table, json_t *row, ovs_uuid_t *uuid,
     // [{}, {"uuid": ["uuid", "88755b78-d56d-414f-92d8-01bd47937da4"]}, {}, {"count": 1}]
     count = ovsdb_get_update_result_count_off(result, table, "insert_w_parent", 2);
     success = ovsdb_get_insert_result_uuid(result, table, "insert_w_parent", uuid);
-    json_decref(result);
+    if (result){
+        json_decref(result);
+    }
     if (!success || count != 1)
     {
         LOG(ERR, "%s: invalid result: insert: %s count: %d", __FUNCTION__,

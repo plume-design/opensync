@@ -182,4 +182,11 @@ void *os_malloc(size_t size);
 void  os_free(void *mem);
 void *os_realloc(void *ptr, size_t size);
 
+#define OS_CMD_FLAG_ANY_EXIT_CODE   1 // do not assume exit_code=0 for success
+#define OS_CMD_FLAG_NO_LOG_OUTPUT   2 // do not log each line of command output
+#define OS_CMD_FLAG_LOG_ERROR_DEBUG 4 // use debug log level on error
+bool os_cmd_exec_xv(char **buffer, int *len, int *exit_code, int flags, char *fmt, va_list args);
+bool os_cmd_exec_x(char **buffer, int *len, int *exit_code, int flags, char *fmt, ...);
+bool os_cmd_exec(char **buffer, char *fmt, ...);
+
 #endif /* __OS__H__ */

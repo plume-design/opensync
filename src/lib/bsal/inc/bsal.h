@@ -39,6 +39,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define BSAL_IFNAME_LEN         17
 #define BSAL_MAC_ADDR_LEN       6
 
+#include "target.h"
+
 /*****************************************************************************/
 
 typedef enum {
@@ -50,35 +52,35 @@ typedef enum {
 /*****************************************************************************/
 
 typedef struct {
-    char                ifname[BSAL_IFNAME_LEN];
+    char                    ifname[BSAL_IFNAME_LEN];
 
-    uint8_t             chan_util_check_sec;
-    uint8_t             chan_util_avg_count;
+    uint8_t                 chan_util_check_sec;
+    uint8_t                 chan_util_avg_count;
 
-    uint8_t             inact_check_sec;
-    uint8_t             inact_tmout_sec_normal;
-    uint8_t             inact_tmout_sec_overload;
+    uint8_t                 inact_check_sec;
+    uint8_t                 inact_tmout_sec_normal;
+    uint8_t                 inact_tmout_sec_overload;
 
-    uint8_t             def_rssi_inact_xing;
-    uint8_t             def_rssi_low_xing;
-    uint8_t             def_rssi_xing;
+    uint8_t                 def_rssi_inact_xing;
+    uint8_t                 def_rssi_low_xing;
+    uint8_t                 def_rssi_xing;
 
     struct {
-        bool            raw_chan_util;
-        bool            raw_rssi;
+        bool                raw_chan_util;
+        bool                raw_rssi;
     } debug;
 } bsal_ifconfig_t;
 
 typedef struct {
-    bool                blacklist;
-    uint8_t             rssi_probe_hwm;
-    uint8_t             rssi_probe_lwm;
-    uint8_t             rssi_auth_hwm;
-    uint8_t             rssi_auth_lwm;
-    uint8_t             rssi_inact_xing;
-    uint8_t             rssi_high_xing;
-    uint8_t             rssi_low_xing;
-    uint8_t             auth_reject_reason;
+    bool                    blacklist;
+    uint8_t                 rssi_probe_hwm;
+    uint8_t                 rssi_probe_lwm;
+    uint8_t                 rssi_auth_hwm;
+    uint8_t                 rssi_auth_lwm;
+    uint8_t                 rssi_inact_xing;
+    uint8_t                 rssi_high_xing;
+    uint8_t                 rssi_low_xing;
+    uint8_t                 auth_reject_reason;
 } bsal_client_config_t;
 
 /*****************************************************************************/
@@ -117,14 +119,40 @@ typedef enum {
 } bsal_rssi_change_t;
 
 typedef struct {
-    uint8_t             client_addr[BSAL_MAC_ADDR_LEN];
-    uint8_t             rssi;
-    bool                ssid_null;
-    bool                blocked;
+    uint8_t                 max_chwidth;
+    uint8_t                 max_streams;
+    uint8_t                 phy_mode;
+    uint8_t                 max_MCS;
+    uint8_t                 max_txpower;
+    uint8_t                 is_static_smps;
+    uint8_t                 is_mu_mimo_supported;
+} bsal_datarate_info_t;
+
+typedef struct {
+    bool                    link_meas;
+    bool                    neigh_rpt;
+    bool                    bcn_rpt_passive;
+    bool                    bcn_rpt_active;
+    bool                    bcn_rpt_table;
+    bool                    lci_meas;
+    bool                    ftm_range_rpt;
+} bsal_rrm_caps_t;
+
+typedef struct {
+    uint8_t                 client_addr[BSAL_MAC_ADDR_LEN];
+    uint8_t                 rssi;
+    bool                    ssid_null;
+    bool                    blocked;
 } bsal_ev_probe_req_t;
 
 typedef struct {
-    uint8_t             client_addr[BSAL_MAC_ADDR_LEN];
+    uint8_t                 client_addr[BSAL_MAC_ADDR_LEN];
+    uint8_t                 is_BTM_supported;
+    uint8_t                 is_RRM_supported;
+    bool                    band_cap_2G;
+    bool                    band_cap_5G;
+    bsal_datarate_info_t    datarate_info;
+    bsal_rrm_caps_t         rrm_caps;
 } bsal_ev_connect_t;
 
 typedef struct {
@@ -210,5 +238,8 @@ extern int      bsal_client_remove(bsal_t bsal, bsal_band_t band, uint8_t *mac_a
 extern int      bsal_client_measure(bsal_t bsal, bsal_band_t band, uint8_t *mac_addr, int num_samples);
 extern int      bsal_client_disconnect(bsal_t bsal, bsal_band_t band, uint8_t *mac_addr, bsal_disc_type_t type, uint8_t reason);
 extern int      bsal_client_is_connected(bsal_t bsal, bsal_band_t band, uint8_t *mac_addr);
+
+extern int      bsal_bss_tm_request(bsal_t bsal, bsal_band_t band, uint8_t *mac_addr, target_bsal_btm_params_t *btm_params);
+extern int      bsal_rrm_beacon_report_request(bsal_t bsal, bsal_band_t band, uint8_t *mac_addr, target_bsal_rrm_params_t *rrm_params);
 
 #endif /* __BSAL_H__ */

@@ -40,8 +40,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <ev.h>
 #include <syslog.h>
 
-#include "target.h"
-#include "om.h"
+// #include "target.h"
+#include "ovsdb.h"
+#include "ovsdb_update.h"
+#include "schema.h"
+#include "policy_tags.h"
 
 /*****************************************************************************/
 
@@ -54,6 +57,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 static ds_tree_t            om_tags = DS_TREE_INIT((ds_key_cmp_t *)strcmp,
                                                                    om_tag_t, dst_node);
 
+
+static struct tag_mgr my_mgr_s = { 0 };
+static struct tag_mgr *my_mgr = &my_mgr_s;
 
 /******************************************************************************
  * Local Functions
@@ -217,9 +223,11 @@ om_tag_add(om_tag_t *tag)
 
     om_tag_list_to_buf(&tag->values, 0, dbuf, sizeof(dbuf)-1);
     LOGN("[%s] %sTag added, values:%s",
-                                tag->name, tag->group ? "Group " : "", dbuf);
+         tag->name, tag->group ? "Group " : "", dbuf);
 
-    om_template_tag_update(tag, NULL, &tag->values, NULL);
+    if (my_mgr->service_tag_update != NULL) {
+        my_mgr->service_tag_update(tag, NULL, &tag->values, NULL);
+    }
 
     if (!tag->group) {
         om_tag_group_update_by_tag(tag->name);
@@ -239,7 +247,9 @@ om_tag_remove(om_tag_t *tag)
     LOGN("[%s] %sTag removed, values:%s",
                                 tag->name, tag->group ? "Group " : "", dbuf);
 
-    om_template_tag_update(tag, &tag->values, NULL, NULL);
+    if (my_mgr->service_tag_update != NULL) {
+        my_mgr->service_tag_update(tag, &tag->values, NULL, NULL);
+    }
 
     if (!tag->group) {
         om_tag_group_update_by_tag(tag->name);
@@ -273,7 +283,9 @@ om_tag_update(om_tag_t *tag, ds_tree_t *new_values)
                                 tag->name, tag->group ? "Group " : "",
                                 rbuf, abuf, ubuf);
 
-    om_template_tag_update(tag, &diff.removed, &diff.added, &diff.updated);
+    if (my_mgr->service_tag_update != NULL) {
+        my_mgr->service_tag_update(tag, &diff.removed, &diff.added, &diff.updated);
+    }
 
     // Apply the diff to our tag's list
     if (!om_tag_list_apply_diff(&tag->values, &diff)) {
@@ -346,4 +358,9 @@ om_tag_update_from_schema(struct schema_Openflow_Tag *stag)
     om_tag_list_free(&new_values);
 
     return ret;
+}
+
+void
+om_tag_init(struct tag_mgr *mgr) {
+    memcpy(&my_mgr_s, mgr, sizeof(my_mgr_s));
 }

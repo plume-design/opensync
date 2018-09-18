@@ -34,6 +34,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 SCHEMA_LISTX(_SCHEMA_COL_IMPL)
 
+SCHEMA_LISTX(_SCHEMA_IMPL_MARK_CHANGED)
+
+SCHEMA_LISTX(_SCHEMA_IMPL_MARK_ALL_PRESENT)
+
+
 void schema_filter_add(schema_filter_t *f, char *column)
 {
     int idx = 0;
@@ -55,6 +60,50 @@ void schema_filter_add(schema_filter_t *f, char *column)
     f->columns[f->num] = column;
     f->num++;
     f->columns[f->num] = NULL;
+}
+
+int schema_filter_get(schema_filter_t *f, char *column)
+{
+    int i;
+
+    for (i = 0; i < f->num; i++)
+        if (f->columns[i] && !strcmp(f->columns[i], column))
+            return i;
+
+    return -1;
+}
+
+void schema_filter_del(schema_filter_t *f, char *column)
+{
+    int i;
+    int j;
+
+    i = schema_filter_get(f, column);
+    if (i < 0)
+        return;
+
+    /* The list is always terminated by NULL (see
+     * schema_filter_add) at columns[f->num]. This loop
+     * copies that over the last entry to maintain the
+     * termination.
+     */
+    for (j = i; j < f->num; j++)
+        f->columns[j] = f->columns[j+1];
+}
+
+void schema_filter_blacklist(schema_filter_t *f, char *column)
+{
+    if (!f)
+        return;
+
+    if (!f->columns[0])
+        return;
+
+    if (!strcmp("-", f->columns[0]) && schema_filter_get(f, column) < 0)
+        schema_filter_add(f, column);
+
+    if (!strcmp("+", f->columns[0]))
+        schema_filter_del(f, column);
 }
 
 void schema_filter_init(schema_filter_t *f, char *op)

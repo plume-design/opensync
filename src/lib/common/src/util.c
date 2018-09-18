@@ -69,12 +69,15 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 int csnprintf(char **str, size_t *size, const char *fmt, ...)
 {
     va_list va;
+    int ret;
     int len;
 
     va_start(va, fmt);
 
-    len = vsnprintf(*str, *size, fmt, va);
-    if (len + 1 >= (int)*size)
+    ret = vsnprintf(*str, *size, fmt, va);
+    len = ret;
+    if (ret < 0) len = 0;
+    if (len >= (int)*size)
     {
         len = *size - 1;
     }
@@ -85,7 +88,25 @@ int csnprintf(char **str, size_t *size, const char *fmt, ...)
 
     va_end(va);
 
-    return len;
+    return ret;
+}
+
+
+/**
+ * tsnprintf = truncate snprintf
+ * Same as snprintf() but don't warn about truncation (caused by -Wformat-truncation)
+ * This can be used when the truncation of str to size is explicitly desired
+ * Either when str size can't be increased or it is known to be large enough
+ * Examples: dns hostname: 64, mac address: 18, ...
+ */
+int tsnprintf(char *str, size_t size, const char *fmt, ...)
+{
+    va_list va;
+    int ret;
+    va_start(va, fmt);
+    ret = vsnprintf(str, size, fmt, va);
+    va_end(va);
+    return ret;
 }
 
 
@@ -374,16 +395,21 @@ ssize_t base64_decode(void *out, ssize_t out_sz, char *input)
 /**
  * Remove all characters in @p delim from thee end of the string
  */
-void strchomp(char *str, char *delim)
+char *strchomp(char *str, char *delim)
 {
-    int len = strlen(str);
+    int len;
 
+    if (!str)
+        return NULL;
+
+    len = strlen(str);
     while (len > 0 &&
             (strchr(delim, str[len - 1]) != NULL))
     {
         str[len - 1] = '\0';
         len--;
     }
+    return str;
 }
 
 
@@ -495,7 +521,7 @@ void delimiter_append(char *dest, int size, char *src, int i, char d)
         size--;
         if (size <= 1) return;
     }
-    strlcpy(dest, src, size);
+    strscpy(dest, src, size);
 }
 
 
@@ -520,47 +546,15 @@ void remove_character(char *str, const char character)
 
 // fsa: fixed size array[len][size] helper functions
 
-// return index
-int fsa_find_str(char *array, int size, int len, char *str)
+int fsa_find_str(const void *array, int size, int len, const char *str)
 {
-    int ii;
-    for (ii = 0; ii < len; ii++)
-    {
-        if (strcmp(array + ii * size, str) == 0) return ii;
-    }
+    for (len--; len >= 0; len--)
+        if (strcmp(array + len * size, str) == 0)
+            return len;
     return -1;
 }
 
-// return def if not fond
-char* fsa_find_key_val_def(char *keys, int ksize, char *vals, int vsize, int len, char *key, char *def)
-{
-    int i = fsa_find_str(keys, ksize, len, key);
-    if (i < 0) return def;
-    return vals + i * vsize;
-}
-
-// return NULL if not found
-char* fsa_find_key_val_null(char *keys, int ksize, char *vals, int vsize, int len, char *key)
-{
-    return fsa_find_key_val_def(keys, ksize, vals, vsize, len, key, NULL);
-}
-
-// return empty string ("") if not found
-char* fsa_find_key_val(char *keys, int ksize, char *vals, int vsize, int len, char *key)
-{
-    return fsa_find_key_val_def(keys, ksize, vals, vsize, len, key, "");
-}
-
-char* fsa_item(char *array, int size, int len, int num)
-{
-    if (num >= len) {
-        LOG(CRIT, "FSA out of bounds %d >= %d", num, len);
-        return NULL;
-    }
-    return array + num * size;
-}
-
-void fsa_copy(char *array, int size, int len, int num, char *dest, int dsize, int dlen, int *dnum)
+void fsa_copy(const void *array, int size, int len, int num, void *dest, int dsize, int dlen, int *dnum)
 {
     int i;
     for (i=0; i<num; i++)
@@ -569,9 +563,9 @@ void fsa_copy(char *array, int size, int len, int num, char *dest, int dsize, in
             LOG(CRIT, "FSA copy out of bounds %d >= %d", num, dlen);
             break;
         }
-        char *s = fsa_item(array, size, len, i);
+        const char *s = fsa_item(array, size, len, i);
         char *d = fsa_item(dest, dsize, dlen, i);
-        strlcpy(d, s, dsize);
+        strscpy(d, s, dsize);
     }
     *dnum = i;
 }
@@ -624,7 +618,7 @@ bool parse_uri(char *uri, char *proto, char *host, int *port)
         LOGE("URI empty");
         return false;
     }
-    strlcpy(tmp, uri, sizeof(tmp));
+    STRSCPY(tmp, uri);
 
     // Split the address up into it's pieces
     tproto = strtok_r(tmp, ":", &sptr);
@@ -692,3 +686,184 @@ char *strsrchr(const char *s, int c, size_t n)
     return memrchr(s, c, len);
 }
 
+__attribute__ ((format(printf, 1, 2)))
+char *strfmt(const char *fmt, ...)
+{
+    va_list ap;
+    char c, *p;
+    int n;
+
+    va_start(ap, fmt);
+    n = vsnprintf(&c, 1, fmt, ap);
+    va_end(ap);
+    if (n >= 0 && (p = malloc(++n))) {
+        va_start(ap, fmt);
+        vsnprintf(p, n, fmt, ap);
+        va_end(ap);
+        return p;
+    }
+
+    return NULL;
+}
+
+char *argvstr(const char *const*argv)
+{
+    char *q;
+    int i, n;
+    if (!argv)
+        return NULL;
+    for (n=1, i=0; argv[i]; i++)
+        n += strlen(argv[i]) + sizeof(',');
+    if (!(q = calloc(1, n)))
+        return NULL;
+    for (i=0; argv[i]; i++)
+        if (strscat(q, argv[i], n) >= 0 && argv[i+1])
+            strscat(q, ",", n);
+    return q;
+}
+
+char *strexread(const char *prog, const char *const*argv)
+{
+    const char *ctx = strfmta("%s(%s, [%s]", __func__, prog ?: "", argvstra(argv) ?: "");
+    char **args, *p, *q, c;
+    int fd[2], pid, status, i, j, n;
+    if (!prog || !argv) {
+        LOGW("%s: invalid arguments (prog=%p, argv=%p)", ctx, prog, argv);
+        return NULL;
+    }
+    if (pipe(fd) < 0) {
+        LOGW("%s: failed to pipe(): %d (%s)", ctx, errno, strerror(errno));
+        return NULL;
+    }
+    switch ((pid = fork())) {
+        case -1:
+            LOGW("%s: failed to fork(): %d (%s)", ctx, errno, strerror(errno));
+            close(fd[0]);
+            close(fd[1]);
+            return NULL;
+        case 0:
+            close(0);
+            close(1);
+            close(2);
+            dup2(fd[1], 1);
+            close(fd[0]);
+            close(fd[1]);
+            for (n=0; argv[n]; n++);
+            args = calloc(++n, sizeof(args[0]));
+            for (n=0; argv[n]; n++) args[n] = strdup(argv[n]);
+            args[n] = 0;
+            execvp(prog, args);
+            LOGW("%s: failed to execvp(): %d (%s)", ctx, errno, strerror(errno));
+            exit(1);
+        default:
+            close(fd[1]);
+            for (n=0,i=0,p=0;;) {
+                if (i+1 >= n) {
+                    if ((q = realloc(p, (n+=4096))))
+                        p = q;
+                    else
+                        break;
+                }
+                if ((j = read(fd[0], p+i, n-i-1)) <= 0)
+                    break;
+                i += j;
+            }
+            p[i] = 0;
+            while (read(fd[0], &c, 1) == 1);
+            close(fd[0]);
+            waitpid(pid, &status, 0);
+            LOGT("%s: output='%s' status=%d", ctx, p, status);
+            if ((errno = (WIFEXITED(status) ? WEXITSTATUS(status) : -1)) == 0)
+                return p;
+            free(p);
+            return NULL;
+    }
+    LOGW("%s: unreachable", ctx);
+    return NULL;
+}
+
+char *strdel(char *heystack, const char *needle)
+{
+    char *p = strdupa(heystack ?: "");
+    char *q = strdupa("");
+    char *i;
+    while ((i = strsep(&p, " ")))
+        if (strcmp(i, needle))
+            q = strfmta("%s %s", i, q);
+    return strcpy(heystack, strchomp(q, " "));
+}
+
+int str_count_lines(char *s)
+{
+    int count = 0;
+    if (!s) return 0;
+    while (*s) {
+        count++;
+        s = strchr(s, '\n');
+        if (!s) break;
+        s++;
+    }
+    return count;
+}
+
+// zero terminate each line in a block of text,
+// store ptr to each line in lines array
+// count is actual number of lines stored
+// return false if size too small
+bool str_split_lines_to(char *s, char **lines, int size, int *count)
+{
+    int i = 0;
+    while (*s) {
+        if (i >= size) return false;
+        lines[i] = s;
+        i++;
+        *count = i;
+        s = strchr(s, '\n');
+        if (!s) break;
+        *s = 0; // zero term
+        s++;
+    }
+    return true;
+}
+
+// zero terminate each line in a block of text,
+// allocate and store ptr to each line in lines array
+// return lines array or NULL if empty or error allocating
+char** str_split_lines(char *s, int *count)
+{
+    *count = 0;
+    int num = str_count_lines(s);
+    if (!num) return NULL;
+    char **lines = calloc(num, sizeof(char*));
+    if (!lines) return NULL;
+    str_split_lines_to(s, lines, num, count);
+    return lines;
+}
+
+// join a list of strings using delimiter
+// return false if size too small
+bool str_join(char *str, int size, char **list, int num, char *delim)
+{
+    char *p = str;
+    size_t s = size;
+    int i, r;
+    for (i=0; i<num; i++) {
+        r = csnprintf(&p, &s, "%s%s", list[i], i < num - 1 ? delim : "");
+        if (r < 0 || r > (int)s) return false;
+    }
+    return true;
+}
+
+// join a list of ints using delimiter
+// return false if size too small
+bool str_join_int(char *str, int size, int *list, int num, char *delim)
+{
+    char *p = str;
+    size_t s = size;
+    int i, r;
+    for (i=0; i<num; i++) {
+        r = csnprintf(&p, &s, "%d%s", list[i], i < num - 1 ? delim : "");
+        if (r < 0 || r > (int)s) return false;
+    }
+    return true;
+}

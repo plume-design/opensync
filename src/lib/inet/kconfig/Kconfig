@@ -1,0 +1,326 @@
+comment "INET configuration"
+
+config INET_ETH_LINUX
+    bool "Linux Ethernet interfaces"
+    default y
+    help
+        Select to include generic Linux ethernet interface support.
+
+        Applicable to most Linux platforms. If not selected, the
+        platform/device specific code should provide its own implementation.
+
+        This option implements the inet_eth_t class.
+
+config INET_VIF_LINUX
+    bool "Linux VIF interfaces"
+    depends on INET_ETH_LINUX
+    default y
+    help
+        Select to include generic Linux VIF interface support.
+
+        Applicable to most Linux platforms. If not selected, the
+        platform/device specific code should provide its own implementation.
+
+        This option implements the inet_vif_t class.
+
+config INET_GRE_LINUX
+    bool "Linux GRE interfaces"
+    depends on INET_ETH_LINUX
+    default y
+    help
+        Select to include generic Linux GRE interface support.
+
+        Applicable to most Linux platforms. If not selected, the
+        platform/device specific code should provide its own implementation.
+
+        This option implements the inet_gre_t class.
+
+menuconfig INET_FW_ENABLED
+    bool "Firewall"
+    default y
+    help
+        Use Firewall implementation provided by INET. Available modules are: Null, Iptables
+
+        This option implements the inet_fw_t class.
+
+    if INET_FW_ENABLED
+        comment "INET firewall configuration"
+        choice
+            prompt "Firewall implementation"
+            default INET_FW_NULL
+
+            config INET_FW_NULL
+                bool "Null"
+                help
+                    Use the dummy firewall implementation. Use this on platforms
+                    that do not have firewall functionality or firewall is not
+                    under Plume control.
+
+            config INET_FW_IPTABLES
+                bool "iptables"
+                help
+                    Use the generic Linux iptables firewall implementation.
+        endchoice
+
+        if INET_FW_IPTABLES
+            comment "INET iptables configuration"
+            config INET_FW_IPTABLES_PATH
+                string '"iptables" binary path'
+                default "/usr/sbin/iptables"
+                help
+                    Full path to the iptables binary
+
+            config INET_FW_IP6TABLES_PATH
+                string '"ip6tables" binary path'
+                default "/usr/sbin/ip6tables"
+                help
+                    Full path to the ip6tables binary
+        endif
+    endif
+
+menuconfig INET_DHCPS_ENABLED
+    bool "DCHP server"
+    default y
+    help
+        Use DHCP server implementation provided by INET.
+
+        This option implements the inet_dhcps_t class.
+
+    if INET_DHCPS_ENABLED
+        comment "INET DHCP server configuration"
+        choice
+            prompt "DHCP server implementation"
+            default INET_DHCPS_NULL
+
+            config INET_DHCPS_NULL
+                bool "Null"
+                help
+                    Use the dummy DHCP server implementation. Use this
+                    on platforms that do not have a DHCP server
+
+            config INET_DHCPS_DNSMASQ
+                bool "Dnsmasq"
+                help
+                    Use the generic Linux dnsmasq implementation
+        endchoice
+
+        if INET_DHCPS_DNSMASQ
+            comment "INET DNSMASQ configuration"
+
+            config INET_DNSMASQ_PATH
+                string "Path to the dnsmasq binary"
+                default "/usr/sbin/dnsmasq"
+                help
+                    Full path to the dnsmasq binary
+
+            config INET_DNSMASQ_ETC_PATH
+                string "dnsmasq configuration file path"
+                default "/var/etc/dnsmasq.conf"
+                help
+                    This is the path where the dnsmasq configuration file
+                    will be generated.
+
+            config INET_DNSMASQ_LEASE_PATH
+                string "Location of the DHCP lease file"
+                default "/tmp/dhcp.leases"
+                help
+                    Location of the "leases" file. This is the dnsmasq
+                    DHCP lease database.
+
+            config INET_DNSMASQ_PID_PATH
+                string "Location of the dnsmasq PID file"
+                default "/var/run/dnsmasq/dnsmasq.pid"
+                help
+                    Location of the dnsmasq PID file.
+
+            config INET_DNSMASQ_KEEP_RUNNING
+                bool 'Daemon should be always running'
+                help
+                    The default behavior is to kill dnsmasq as soon as there are
+                    0 DHCP server configurations active. This option forces dnsmasq
+                    to be active regardless of the DHCP server configuration.
+
+                    This is useful on systems where dnsmasq is used as a DNS cache.
+         endif
+    endif
+
+
+menuconfig INET_DHCPC_ENABLED
+    bool "DHCP client"
+    default y
+    help
+        Use DHCP client implementation provided by INET.
+
+        This option implements the inet_dhcpc_t class.
+
+    if INET_DHCPC_ENABLED
+        comment "INET DHCP client configuration"
+        choice
+            prompt "DHCP client implementation"
+            default INET_DHCPC_NULL
+            config INET_DHCPC_NULL
+                bool "Null"
+                help
+                    Dummy DHCP client implementation. Use this on platforms
+                    that do not support DHCP clients
+
+            config INET_DHCPC_UDHCPC
+                bool "Busybox's DHCP client (udhcpc)"
+                help
+                    Use the generic Linux udhcpc implementation. Compatible
+                    with Busybox's udhcpc client.
+        endchoice
+
+        if INET_DHCPC_UDHCPC
+            comment "INET UDHCPC configuration"
+            config INET_UDHCPC_PATH
+                string "Path to the udhcpc binary"
+                default "/sbin/udhcpc"
+                help
+                    Full path to the udhcpc binary.
+        endif
+    endif
+
+menuconfig INET_UPNP_ENABLED
+    bool "UPnP"
+    default y
+    help
+        Use UPnP server implementation provided by INET.
+
+    if INET_UPNP_ENABLED
+        comment "INET UPnP configuration"
+        choice
+            prompt "UPnP implementation"
+            default INET_UPNP_NULL
+
+            config INET_UPNP_NULL
+                bool "Null"
+                help
+                    Dummy UPnP driver. Use this on platforms that do not
+                    support UPnP
+
+            config INET_UPNP_MINIUPNPD
+                bool "miniupnpd"
+                help
+                    UPnP implementation using miniupnpd
+        endchoice
+
+        if INET_UPNP_MINIUPNPD
+            comment "MiniUPnPD configuration"
+
+            config INET_MINIUPNPD_PATH
+                string "Path to the miniupnpd binary"
+                default "/usr/sbin/miniupnpd"
+                help
+                    Full path to the miniupnpd binary
+
+            config INET_MINIUPNPD_ETC
+                string "miniupnpd configuration folder"
+                default "/tmp/miniupnpd"
+                help
+                    This is the location where the miniupnpd.conf and upnpd.lease
+                    files will be created.
+        endif
+
+    endif
+
+menuconfig INET_DNS_ENABLED
+    bool "DNS resolver"
+    default y
+    help
+        Use DNS resolver implementation provided by INET.
+
+        This option implements the inet_dns_t class.
+
+    if INET_DNS_ENABLED
+        comment "INET DNS resolver configuration"
+        choice
+            prompt "DNS resolver implementation"
+            default INET_DNS_NULL
+
+            config INET_DNS_NULL
+                bool "Null"
+                help
+                    Dummy DNS resolver implementation. Use this on platforms that do not
+                    support configuration of the DNS resolver or it is not managed by Plume
+
+            config INET_DNS_RESOLVCONF
+                bool "resolv.conf"
+                help
+                    Use "resolv.conf" for DNS resolver configuration. Supported by most Linux
+                    platforms.
+        endchoice
+
+        if INET_DNS_RESOLVCONF
+            comment "INET resolv.conf configuration"
+            config INET_RESOLVCONF_PATH
+                string 'Path to the "resolv.conf" file'
+                default "/tmp/resolv.conf"
+                help
+                    Path to the "resolv.conf" file. On embedded systems this is typically
+                    somewhere on /tmp
+
+            config INET_RESOLVCONF_TMP
+                string "Path to the temporary DNS folders"
+                default "/tmp/dns"
+                help
+                    This path is used to store intermediate DNS files. Each interface
+                    creates one such file (in resolv.conf format). The final "resolv.conf"
+                    file is aggregated from all intermediate files.
+        endif
+    endif
+
+menuconfig INET_DHSNIFF_ENABLED
+    bool "DHCP sniffing"
+    default y
+    help
+        Use DHCP sniffing implementation as provided by LIBINET
+
+        This option implements the inet_dhsniff_t class.
+
+    if INET_DHSNIFF_ENABLED
+        comment "INET DHCP sniffing configuration"
+        choice
+            prompt "DHCP sniffing implementation"
+            default INET_DHSNIFF_NULL
+
+            config INET_DHSNIFF_NULL
+                bool "Null"
+                help
+                    Dummy DHCP sniffing implementation. Use this on platforms that do not
+                    support DHCP sniffing.
+
+            config INET_DHSNIFF_PCAP
+                bool "Packet capture (libpcap)"
+                help
+                    Use a libpcap based DHCP sniffing implementation. Applicable to most
+                    Linux platformns.
+        endchoice
+
+        if INET_DHSNIFF_PCAP
+            config DHSNIFF_PCAP_IMMEDIATE
+                bool "Use immediate mode"
+                default y
+                help
+                    This option enables PCAP "immediate" mode. Apparently this instructs
+                    PCAP to deliver packets as fast as possible instead of buffering.
+
+
+            config DHSNIFF_PCAP_PROMISC
+                bool "Use promiscuous mode"
+                help
+                    This option enables the calling of pcap_set_promisc() to enable
+                    promiscuous mode.
+
+                    If unsure, select 'n'.
+
+            config DHSNIFF_PCAP_SNAPLEN
+                int "Set snapshot len"
+                default 0
+                help
+                    Set a custom snapshot length.
+
+                    If unsure use 0 (use defaults).
+        endif
+    endif
+

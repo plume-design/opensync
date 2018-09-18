@@ -56,6 +56,7 @@ extern bool pjs_ovs_set_from_json(
         void *t_data,
         int out_max,
         int *out_len,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -75,6 +76,7 @@ bool pjs_ovs_basic_q_from_json(
         pjs_type_from_json_t *t_from_json,
         void *t_data,
         bool *exists,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -96,6 +98,7 @@ bool pjs_ovs_basic_q_from_json(
             t_data,
             1,
             &len,
+            present,
             js,
             name,
             update,
@@ -123,23 +126,18 @@ bool pjs_ovs_basic_q_from_json(
 bool pjs_ovs_basic_from_json(
         pjs_type_from_json_t *t_from_json,
         void *t_data,
+        bool *exists,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
         pjs_errmsg_t err)
 {
-    bool exists = false;
-
-    /* Ignore non-existent objects in update mode */
-    if (update && json_object_get(js, name) == NULL)
-    {
-        return true;
-    }
-
     if (!pjs_ovs_basic_q_from_json(
             t_from_json,
             t_data,
-            &exists,
+            exists,
+            present,
             js,
             name,
             update,
@@ -148,7 +146,8 @@ bool pjs_ovs_basic_from_json(
         return false;
     }
 
-    if (!exists)
+    /* Ignore non-existent objects in update mode */
+    if (!*exists && !update)
     {
         PJS_ERR(err, "Required OVS element '%s' does not exist.", name);
         return false;
@@ -208,6 +207,7 @@ bool pjs_ovs_basic_to_json(
 bool pjs_ovs_int_q_from_json(
         int *out,
         bool *exists,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -217,6 +217,7 @@ bool pjs_ovs_int_q_from_json(
             pjs_int_t_from_json,
             out,
             exists,
+            present,
             js,
             name,
             update,
@@ -226,11 +227,20 @@ bool pjs_ovs_int_q_from_json(
 /**
  * Parse a non-optional JSON integer object into an int
  */
-bool pjs_ovs_int_from_json(int *out, json_t *js, const char *name, bool update, pjs_errmsg_t err)
+bool pjs_ovs_int_from_json(
+        int *out,
+        bool *exists,
+        bool *present,
+        json_t *js,
+        const char *name,
+        bool update,
+        pjs_errmsg_t err)
 {
     return pjs_ovs_basic_from_json(
             pjs_int_t_from_json,
             out,
+            exists,
+            present,
             js,
             name,
             update,
@@ -272,12 +282,20 @@ bool pjs_ovs_int_to_json(int in, json_t *js, const char *name, pjs_errmsg_t err)
 /**
  * Parse a JSON boolean object into a C bool
  */
-bool pjs_ovs_bool_q_from_json(bool *out, bool *exists, json_t *js, const char *name, bool update, pjs_errmsg_t err)
+bool pjs_ovs_bool_q_from_json(
+        bool *out,
+        bool *exists,
+        bool *present,
+        json_t *js,
+        const char *name,
+        bool update,
+        pjs_errmsg_t err)
 {
     return pjs_ovs_basic_q_from_json(
             pjs_bool_t_from_json,
             out,
             exists,
+            present,
             js,
             name,
             update,
@@ -287,11 +305,20 @@ bool pjs_ovs_bool_q_from_json(bool *out, bool *exists, json_t *js, const char *n
 /**
  * Parse a non-optional JSON boolean object into bool
  */
-bool pjs_ovs_bool_from_json(bool *out, json_t *js, const char *name, bool update, pjs_errmsg_t err)
+bool pjs_ovs_bool_from_json(
+        bool *out,
+        bool *exists,
+        bool *present,
+        json_t *js,
+        const char *name,
+        bool update,
+        pjs_errmsg_t err)
 {
     return pjs_ovs_basic_from_json(
             pjs_bool_t_from_json,
             out,
+            exists,
+            present,
             js,
             name,
             update,
@@ -334,12 +361,20 @@ bool pjs_ovs_bool_to_json(bool in, json_t *js, const char *name, pjs_errmsg_t er
 /**
  * Parse a JSON real object into a C double
  */
-bool pjs_ovs_real_q_from_json(double *out, bool *exists, json_t *js, const char *name, bool update, pjs_errmsg_t err)
+bool pjs_ovs_real_q_from_json(
+        double *out,
+        bool *exists,
+        bool *present,
+        json_t *js,
+        const char *name,
+        bool update,
+        pjs_errmsg_t err)
 {
     return pjs_ovs_basic_q_from_json(
             pjs_real_t_from_json,
             out,
             exists,
+            present,
             js,
             name,
             update,
@@ -349,11 +384,20 @@ bool pjs_ovs_real_q_from_json(double *out, bool *exists, json_t *js, const char 
 /**
  * Parse a non-optional JSON real object into a double
  */
-bool pjs_ovs_real_from_json(double *out, json_t *js, const char *name, bool update, pjs_errmsg_t err)
+bool pjs_ovs_real_from_json(
+        double *out,
+        bool *exists,
+        bool *present,
+        json_t *js,
+        const char *name,
+        bool update,
+        pjs_errmsg_t err)
 {
     return pjs_ovs_basic_from_json(
             pjs_real_t_from_json,
             out,
+            exists,
+            present,
             js,
             name,
             update,
@@ -401,6 +445,7 @@ bool pjs_ovs_string_q_from_json(
         char *out,
         size_t outsz,
         bool *exists,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -415,6 +460,7 @@ bool pjs_ovs_string_q_from_json(
             pjs_string_t_from_json,
             &args,
             exists,
+            present,
             js,
             name,
             update,
@@ -427,6 +473,8 @@ bool pjs_ovs_string_q_from_json(
 bool pjs_ovs_string_from_json(
         char *out,
         size_t outsz,
+        bool *exists,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -440,6 +488,8 @@ bool pjs_ovs_string_from_json(
     return pjs_ovs_basic_from_json(
             pjs_string_t_from_json,
             &args,
+            exists,
+            present,
             js,
             name,
             update,
@@ -496,6 +546,7 @@ bool pjs_ovs_string_to_json(char *in, size_t insz, json_t *js, const char *name,
 bool pjs_ovs_uuid_q_from_json(
         ovs_uuid_t *out,
         bool *exists,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -505,6 +556,7 @@ bool pjs_ovs_uuid_q_from_json(
             pjs_ovs_uuid_t_from_json,
             out,
             exists,
+            present,
             js,
             name,
             update,
@@ -516,6 +568,8 @@ bool pjs_ovs_uuid_q_from_json(
  */
 bool pjs_ovs_uuid_from_json(
         ovs_uuid_t *out,
+        bool *exists,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -524,6 +578,8 @@ bool pjs_ovs_uuid_from_json(
     return pjs_ovs_basic_from_json(
             pjs_ovs_uuid_t_from_json,
             out,
+            exists,
+            present,
             js,
             name,
             update,

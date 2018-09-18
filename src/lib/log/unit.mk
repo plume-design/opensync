@@ -35,6 +35,8 @@ UNIT_TYPE := LIB
 UNIT_SRC  := src/log.c
 UNIT_SRC  += src/log_syslog.c
 UNIT_SRC  += src/log_stdout.c
+UNIT_SRC  += src/log_remote.c
+UNIT_SRC  += src/log_traceback.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -Isrc/lib/osa/inc
@@ -46,3 +48,4 @@ UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 
 UNIT_DEPS := src/lib/target
 UNIT_DEPS += src/lib/ds
+UNIT_DEPS += src/qm/qm_conn

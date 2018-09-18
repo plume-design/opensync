@@ -37,6 +37,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define QM_MAX_QUEUE_DEPTH (200)
 #define QM_MAX_QUEUE_SIZE_BYTES (2*1024*1024)
 
+#define QM_LOG_QUEUE_SIZE (100*1024) // 100k
+
 // queue item
 
 typedef struct qm_item
@@ -57,17 +59,24 @@ typedef struct qm_queue
 } qm_queue_t;
 
 extern qm_queue_t g_qm_queue;
+extern char *g_qm_log_buf;
+extern int   g_qm_log_buf_size;
+extern int   g_qm_log_drop_count;
+extern bool  qm_log_enabled;
 
 int qm_ovsdb_init(void);
 
 bool qm_mqtt_init(void);
 void qm_mqtt_stop(void);
 void qm_mqtt_set(const char *broker, const char *port, const char *topic, const char *qos, int compress);
+void qm_mqtt_set_log_interval(int log_interval);
 bool qm_mqtt_is_connected();
 bool qm_mqtt_config_valid();
+bool qm_mqtt_send_message(qm_item_t *qi, qm_response_t *res);
 void qm_mqtt_send_queue();
 void qm_mqtt_reconnect();
 
+void qm_queue_item_free_buf(qm_item_t *qi);
 void qm_queue_item_free(qm_item_t *qi);
 void qm_queue_init();
 int qm_queue_length();

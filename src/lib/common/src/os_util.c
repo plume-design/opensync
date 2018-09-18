@@ -31,6 +31,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_common.h"
 #include "os.h"
 #include "os_util.h"
+#include "util.h"
 
 /**
  * Convert string @P str to a long type and store the result to the location
@@ -101,31 +102,8 @@ bool os_atof(char *str, double *out)
             Returns char pointer to be inline with strncpy Call */
 char *os_util_strncpy(char *dest, const char *src, int32_t n)
 {
-    char *ptr = dest;
-
-    if (dest == NULL)
-    {
-        return ptr;
-    }
-
-    if (src == NULL)
-    {
-        if (n > 0)
-        {
-          /* null src ptr, but n > 0:  pad dest to ensure termination */
-          memset(dest, 0x00, n);
-        }
-        return ptr;
-    }
-
-    /* Ensuring safer functionality */
-    ptr = strncpy(dest, src, n);
-    if (n > 0)
-    {
-        *(dest+n-1) = '\0';
-    }   
-
-    return ptr;
+    strscpy(dest, src, n);
+    return dest;
 }
 
 static bool os_util_is_hex_char(char c)

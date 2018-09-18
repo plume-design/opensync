@@ -22,9 +22,9 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-OVSDB_DB_DIR            ?= etc/openvswitch
 OVSDB_DB_NAME           ?= conf.db.bck
-OVSDB_SCHEMA_DIR        ?= usr/share/openvswitch
+OVSDB_DB_DIR            ?= $(INSTALL_PREFIX)/etc
+OVSDB_SCHEMA_DIR        ?= $(INSTALL_PREFIX)/etc
 
 ROOTFS_OVSDB_DIR        = $(BUILD_ROOTFS_DIR)/$(OVSDB_DB_DIR)
 ROOTFS_OVSDB_FILENAME   = $(BUILD_ROOTFS_DIR)/$(OVSDB_DB_DIR)/$(OVSDB_DB_NAME)
@@ -67,9 +67,13 @@ define ovsdb_run_hooks_in_dir
     done
 	$(Q)for SH in $$(find $1 -maxdepth 1 -name '*.json.sh' $(Q_STDERR)); do \
 		echo "  ovsdb transact: $$SH"; \
-		$(OVSDB_HOOK_ENV) sh $$SH \
-			| xargs -0 ovsdb-tool transact "$(ROOTFS_OVSDB_FILENAME)" $(Q_STDOUT) ; \
-    done
+		OUT=$$( $(OVSDB_HOOK_ENV) sh $$SH \
+			| xargs -0 ovsdb-tool transact "$(ROOTFS_OVSDB_FILENAME)" 2>&1); \
+		RET=$$?; \
+		echo "  $$RET '$$OUT'" $(Q_STDOUT); \
+		if [ $$RET != 0 ]; then exit 1; fi; \
+		if echo "$$OUT" | grep -q error; then exit 1; fi; \
+	done
 
 endef
 

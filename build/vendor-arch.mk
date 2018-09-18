@@ -35,3 +35,13 @@ endif
 ifneq ($(findstring $(PLATFORM),$(ALL_PLATFORMS)),)
 PLATFORM_DIR ?= platform/$(PLATFORM)
 endif
+
+ifeq ($(TARGET),)
+$(error TARGET undefined)
+endif
+
+ifneq ($(SHOW_TARGET),0)
+$(info TARGET=$(TARGET) PLATFORM=$(PLATFORM) VENDOR=$(VENDOR))
+export SHOW_TARGET = 0
+endif
+

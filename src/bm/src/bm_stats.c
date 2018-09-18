@@ -74,6 +74,9 @@ static struct ev_timer              g_bm_stats_qm_send_timer;
 
 static bm_stats_request_t           g_bm_stats_default_request;
 
+static radio_type_t                 g_bm_stats_2g_radio_type = RADIO_TYPE_2G;
+static radio_type_t                 g_bm_stats_5g_radio_type = RADIO_TYPE_5G;
+
 static ds_tree_t bm_stats_table =
 DS_TREE_INIT(
         (ds_key_cmp_t *)strcmp,
@@ -150,6 +153,58 @@ bm_stats_get_event_to_str( dpp_bs_client_event_type_t event )
             str = "AUTH_BLOCK";
             break;
 
+        case CLIENT_BS_BTM:
+            str = "CLIENT_BS_BTM";
+            break;
+
+        case CLIENT_STICKY_BTM:
+            str = "CLIENT_STICKY_BTM";
+            break;
+
+        case CLIENT_BTM:
+            str = "CLIENT_BTM";
+            break;
+
+        case CLIENT_CAPABILITIES:
+            str = "CLIENT_CAPABILITIES";
+            break;
+        
+        case CLIENT_BS_BTM_RETRY:
+            str = "CLIENT_BS_BTM_RETRY";
+            break;
+
+        case CLIENT_STICKY_BTM_RETRY:
+            str = "CLIENT_STICKY_BTM_RETRY";
+            break;
+
+        case CLIENT_BTM_RETRY:
+            str = "CLIENT_BTM_RETRY";
+            break;
+
+        case CLIENT_RRM_BCN_RPT:
+            str = "CLIENT_RRM_BCN_RPT";
+            break;
+
+        case CLIENT_BS_KICK:
+            str = "CLIENT_BS_KICK";
+            break;
+
+        case CLIENT_STICKY_KICK:
+            str = "CLIENT_STICKY_KICK";
+            break;
+
+        case CLIENT_SPECULATIVE_KICK:
+            str = "CLIENT_SPECULATIVE_KICK";
+            break;
+
+        case CLIENT_DIRECTED_KICK:
+            str = "CLIENT_DIRECTED_KICK";
+            break;
+
+        case CLIENT_GHOST_DEVICE_KICK:
+            str = "CLIENT_GHOST_DEVICE_KICK";
+            break;
+
         default:
             str = "NONE";
             break;
@@ -212,11 +267,11 @@ bm_stats_get_band_type( bsal_band_t band )
     switch( band )
     {
         case BSAL_BAND_24G:
-            type = RADIO_TYPE_2G;
+            type = g_bm_stats_2g_radio_type;
             break;
 
         case BSAL_BAND_5G:
-            type = RADIO_TYPE_5G;
+            type = g_bm_stats_5g_radio_type;
             break;
 
         default:
@@ -353,6 +408,24 @@ bm_stats_steering_print_all_records()
                 LOGT( "backoff enabled      = %s", event_rec->backoff_enabled ? "Yes" : "No" );
                 LOGT( "active               = %s", event_rec->active ? "Yes" : "No" );
                 LOGT( "auth rejected        = %s", event_rec->rejected ? "Yes" : "No" );
+                LOGT( "is_BTM_supported     = %s", event_rec->is_BTM_supported ? "Yes" : "No" );
+                LOGT( "is_RRM_supported     = %s", event_rec->is_RRM_supported ? "Yes" : "No" );
+                LOGT( "2G capable           = %s", event_rec->band_cap_2G ? "Yes" : "No" );
+                LOGT( "5G capable           = %s", event_rec->band_cap_5G ? "Yes" : "No" );
+                LOGT( "Max Channel Width    = %d", event_rec->max_chwidth );
+                LOGT( "Max Streams          = %d", event_rec->max_streams );
+                LOGT( "PHY Mode             = %d", event_rec->phy_mode );
+                LOGT( "Max MCS              = %d", event_rec->max_MCS );
+                LOGT( "Max TX Power         = %d", event_rec->max_txpower );
+                LOGT( "Is Static SMPS       = %s", event_rec->is_static_smps ? "Yes" : "No" );
+                LOGT( "Supports MU-MIMO     = %s", event_rec->is_mu_mimo_supported ? "Yes" : "No" );
+                LOGT( "RRM Link Measurement = %s", event_rec->rrm_caps_link_meas ? "Yes" : "No" );
+                LOGT( "RRM Neighbor Report  = %s", event_rec->rrm_caps_neigh_rpt ? "Yes" : "No" );
+                LOGT( "RRM Bcn Rpt Passive  = %s", event_rec->rrm_caps_bcn_rpt_passive ? "Yes" : "No" );
+                LOGT( "RRM Bcn Rpt Active   = %s", event_rec->rrm_caps_bcn_rpt_active ? "Yes" : "No" );
+                LOGT( "RRM Bcn Rpt Table    = %s", event_rec->rrm_caps_bcn_rpt_table ? "Yes" : "No" );
+                LOGT( "RRM LCI measurement  = %s", event_rec->rrm_caps_lci_meas ? "Yes" : "No" );
+                LOGT( "RRM FTM Range Rpt    = %s", event_rec->rrm_caps_ftm_range_rpt ? "Yes" : "No" );
                 LOGT( " // ------------------------ // " );
             }
 
@@ -587,7 +660,7 @@ bm_stats_steering_add_client_to_report( bm_client_t *client )
         bs_client_entry->band_record[i].num_event_records = 0;
     }
 
-    LOGD( "Adding a new record for client: %s", client->mac_addr );
+    LOGT( "Adding a new record for client: %s", client->mac_addr );
     ds_dlist_insert_tail( bs_client_list, bs_client );
 
     return bs_client_entry;
@@ -644,8 +717,10 @@ bm_stats_steering_parse_event(
     event_rec = &band_rec->event_record[band_rec->num_event_records];
 
     if( band_rec->num_event_records >= DPP_MAX_BS_EVENT_RECORDS ) {
-        LOGE( "Max events limit reached for client "MAC_ADDRESS_FORMAT"",
-               MAC_ADDRESS_PRINT( bs_client_entry->mac ) );
+        band_rec->num_event_records++;
+        LOGT( "Max events limit reached for client "MAC_ADDRESS_FORMAT""
+              ", num_event_records = %d",
+               MAC_ADDRESS_PRINT( bs_client_entry->mac ), band_rec->num_event_records );
         return;
     };
 
@@ -750,6 +825,99 @@ bm_stats_steering_parse_event(
             event_rec->rejected = event->data.auth_fail.bs_rejected ? 1 : 0;
             break;
 
+        case CLIENT_BS_BTM:
+            LOGT( "Adding Client_BS_BTM event" );
+            event_rec->type = CLIENT_BS_BTM;
+            break;
+
+        case CLIENT_STICKY_BTM:
+            LOGT( "Adding Client_STICKY_BTM event" );
+            event_rec->type = CLIENT_STICKY_BTM;
+            break;
+
+        case CLIENT_BTM:
+            LOGT( "Adding Client_BTM event" );
+            event_rec->type = CLIENT_BTM;
+            break;
+
+        case CLIENT_CAPABILITIES:
+            LOGT( "Adding Client_Capabilities event" );
+            event_rec->type = CLIENT_CAPABILITIES;
+
+            event_rec->is_BTM_supported = event->data.connect.is_BTM_supported ? 1 : 0;
+            event_rec->is_RRM_supported = event->data.connect.is_RRM_supported ? 1 : 0;
+
+            event_rec->band_cap_2G = event->data.connect.band_cap_2G ? 1 : 0;
+            event_rec->band_cap_5G = event->data.connect.band_cap_5G ? 1 : 0;
+
+            event_rec->max_chwidth = event->data.connect.datarate_info.max_chwidth;
+            event_rec->max_streams = event->data.connect.datarate_info.max_streams;
+            event_rec->phy_mode = event->data.connect.datarate_info.phy_mode;
+            event_rec->max_MCS = event->data.connect.datarate_info.max_MCS;
+            event_rec->max_txpower = event->data.connect.datarate_info.max_txpower;
+
+            event_rec->is_static_smps = 
+                            event->data.connect.datarate_info.is_static_smps? 1 : 0;
+            event_rec->is_mu_mimo_supported = 
+                            event->data.connect.datarate_info.is_mu_mimo_supported? 1 : 0;
+
+            event_rec->rrm_caps_link_meas = event->data.connect.rrm_caps.link_meas? 1 : 0;
+            event_rec->rrm_caps_neigh_rpt = event->data.connect.rrm_caps.neigh_rpt? 1 : 0;
+            event_rec->rrm_caps_bcn_rpt_passive =
+                                    event->data.connect.rrm_caps.bcn_rpt_passive ? 1 : 0;
+            event_rec->rrm_caps_bcn_rpt_active = 
+                                    event->data.connect.rrm_caps.bcn_rpt_active ? 1 : 0;
+            event_rec->rrm_caps_bcn_rpt_table = 
+                                    event->data.connect.rrm_caps.bcn_rpt_table ? 1 : 0;
+            event_rec->rrm_caps_lci_meas = event->data.connect.rrm_caps.lci_meas ? 1 : 0;
+            event_rec->rrm_caps_ftm_range_rpt =
+                                    event->data.connect.rrm_caps.ftm_range_rpt ? 1 : 0;
+            break;
+
+        case CLIENT_BS_BTM_RETRY:
+            LOGT( "Adding Client_BS_BTM_RETRY event" );
+            event_rec->type = CLIENT_BS_BTM_RETRY;
+            break;
+
+        case CLIENT_STICKY_BTM_RETRY:
+            LOGT( "Adding Client_STICKY_BTM_RETRY event" );
+            event_rec->type = CLIENT_STICKY_BTM_RETRY;
+            break;
+
+        case CLIENT_BTM_RETRY:
+            LOGT( "Adding Client_BTM_RETRY event" );
+            event_rec->type = CLIENT_BTM_RETRY;
+            break;
+
+        case CLIENT_RRM_BCN_RPT:
+            LOGT( "Adding Client_RRM_BCN_RPT event" );
+            event_rec->type = CLIENT_RRM_BCN_RPT;
+            break;
+
+        case CLIENT_BS_KICK:
+            LOGT( "Adding Client_BS_KICK event" );
+            event_rec->type = CLIENT_BS_KICK;
+            break;
+
+        case CLIENT_STICKY_KICK:
+            LOGT( "Adding Client_STICKY_KICK event" );
+            event_rec->type = CLIENT_STICKY_KICK;
+            break;
+
+        case CLIENT_SPECULATIVE_KICK:
+            LOGT( "Adding Client_SPECULATIVE_KICK event" );
+            event_rec->type = CLIENT_SPECULATIVE_KICK;
+            break;
+
+        case CLIENT_DIRECTED_KICK:
+            LOGT( "Adding Client_DIRECTED_KICK event" );
+            event_rec->type = CLIENT_DIRECTED_KICK;
+            break;
+
+        case CLIENT_GHOST_DEVICE_KICK:
+            LOGT( "Adding Client_GHOST_DEVICE_KICK event" );
+            event_rec->type = CLIENT_GHOST_DEVICE_KICK;
+            break;
 
         default:
             break;
@@ -760,6 +928,9 @@ bm_stats_steering_parse_event(
     if( band_rec->num_event_records == DPP_MAX_BS_EVENT_RECORDS ) {
         event_rec->type = OVERRUN;
         band_rec->num_event_records++;
+
+        LOGW( "Max events limit reached for client "MAC_ADDRESS_FORMAT""
+              ", adding OVERRUN event", MAC_ADDRESS_PRINT( bs_client_entry->mac ) );
     }
 }
 
@@ -829,7 +1000,7 @@ bm_stats_steering_send_mqtt( void )
     }
 
     // Publish statistics report to MQTT
-    LOGD("Total %d elements queued for transmission.\n",
+    LOGT("Total %d elements queued for transmission.\n",
          dpp_get_queue_elements());
 
     // Do not report any stats if QM is not running
@@ -914,7 +1085,9 @@ bm_stats_enumerate(
         strcpy(request->radio_cfg.phy_name, SCHEMA_CONSTS_RADIO_PHY_NAME_5GU);
     }
     else {
-        request->radio_type = RADIO_TYPE_NONE;
+        LOGE("Steering stats update (unknown radio type %s)",
+              schema->radio_type);
+        return false;
     }
     request->radio_cfg.type = request->radio_type;
 
@@ -992,7 +1165,7 @@ bm_stats_ovsdb_update_cb(ovsdb_update_monitor_t *self)
         }
 
         /* Sometimes on the startup, UUID gets lost, therefore we copy it */
-        strncpy(request->uuid, (char *)self->mon_uuid, sizeof(request->uuid)-1);
+        STRSCPY(request->uuid, (char *)self->mon_uuid);
         ds_tree_insert(&bm_stats_table, request, request->uuid);
 
         bm_stats_set_report(request);
@@ -1022,7 +1195,7 @@ bm_stats_ovsdb_update_cb(ovsdb_update_monitor_t *self)
         ret = bm_stats_enumerate(&schema, request);
         if (!ret)
         {
-            LOGE("OVSDB Steering stats config modify594 (Failed to parse)");
+            LOGE("OVSDB Steering stats config modify (Failed to parse)");
             return;
         }
 
@@ -1062,7 +1235,7 @@ bm_stats_ovsdb_update_cb(ovsdb_update_monitor_t *self)
 bool
 bm_stats_init(struct ev_loop *loop)
 {
-    LOGD("BM stats Initializing");
+    LOGI("BM stats Initializing");
 
     g_bm_stats_evloop = loop;
 
@@ -1118,7 +1291,7 @@ bm_stats_cleanup( void )
     bm_stats_request_t      *request;
     ds_tree_iter_t           iter;
 
-    LOGD("BM stats cleanup");
+    LOGI("BM stats cleanup");
 
     bm_stats_steering_remove_all_clients();
 
@@ -1205,4 +1378,51 @@ int
 bm_stats_get_stats_report_interval( void )
 {
     return g_bm_stats_default_request.reporting_interval;
+}
+
+void
+bm_stats_map_radio_type(bsal_band_t band, const char *ifname)
+{
+    const char      *mapped_bandstr = target_map_ifname_to_bandstr(ifname);
+    radio_type_t    mapped_radio_type;
+
+    if (!mapped_bandstr) {
+        // No mapping found
+        return;
+    }
+
+    if (band == BSAL_BAND_24G && !strcmp(mapped_bandstr, "2G")) {
+        mapped_radio_type = RADIO_TYPE_2G;
+    }
+    else if (band == BSAL_BAND_5G && !strcmp(mapped_bandstr, "5G")) {
+        mapped_radio_type = RADIO_TYPE_5G;
+    }
+    else if (band == BSAL_BAND_5G && !strcmp(mapped_bandstr, "5GL")) {
+        mapped_radio_type = RADIO_TYPE_5GL;
+    }
+    else if (band == BSAL_BAND_5G && !strcmp(mapped_bandstr, "5GU")) {
+        mapped_radio_type = RADIO_TYPE_5GU;
+    }
+    else {
+        LOGW("%s: Ignoring unknown mapped band string \"%s\" for band %d",
+                                                    ifname, mapped_bandstr, band);
+        return;
+    }
+
+    switch(band) {
+
+    case BSAL_BAND_24G:
+        g_bm_stats_2g_radio_type = mapped_radio_type;
+        break;
+
+    case BSAL_BAND_5G:
+        g_bm_stats_5g_radio_type = mapped_radio_type;
+        break;
+
+    default:
+        break;
+
+    }
+
+    return;
 }

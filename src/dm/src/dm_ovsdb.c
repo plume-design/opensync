@@ -99,7 +99,7 @@ void select_awlan_cb(int id, bool is_error, json_t *msg, void * data)
     }
     else
     {
-        LOG(ERR, "ERROR response array size::size=%d", json_array_size(msg));
+        LOG(ERR, "ERROR response array size::size=%d", (int)json_array_size(msg));
         STATE_TRANSIT(STATE_ERROR);
         return;
     }

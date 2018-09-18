@@ -34,5 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 void nm2_ovsdb_init(void);
 bool nm2_mac_learning_init(void);
 bool nm2_client_nickname_init(void);
+bool nm2_dhcp_table_init(void);
+bool nm2_dhcp_rip_init(void);
 
 #endif

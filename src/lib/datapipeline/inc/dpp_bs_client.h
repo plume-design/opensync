@@ -52,6 +52,19 @@ typedef enum
     CLIENT_STEERING_FAILED,
     AUTH_BLOCK,
     CLIENT_KICKED,
+    CLIENT_BS_BTM,
+    CLIENT_STICKY_BTM,
+    CLIENT_BTM,
+    CLIENT_CAPABILITIES,
+    CLIENT_BS_BTM_RETRY,
+    CLIENT_STICKY_BTM_RETRY,
+    CLIENT_BTM_RETRY,
+    CLIENT_RRM_BCN_RPT,
+    CLIENT_BS_KICK,
+    CLIENT_STICKY_KICK,
+    CLIENT_SPECULATIVE_KICK,
+    CLIENT_DIRECTED_KICK,
+    CLIENT_GHOST_DEVICE_KICK,
     MAX_EVENTS
 } dpp_bs_client_event_type_t;
 
@@ -85,6 +98,24 @@ typedef struct
     bool                            backoff_enabled;
     bool                            active;
     bool                            rejected;
+    bool                            is_BTM_supported;
+    bool                            is_RRM_supported;
+    bool                            band_cap_2G;
+    bool                            band_cap_5G;
+    uint32_t                        max_chwidth;
+    uint32_t                        max_streams;
+    uint32_t                        phy_mode;
+    uint32_t                        max_MCS;
+    uint32_t                        max_txpower;
+    bool                            is_static_smps;
+    bool                            is_mu_mimo_supported;
+    bool                            rrm_caps_link_meas;
+    bool                            rrm_caps_neigh_rpt;
+    bool                            rrm_caps_bcn_rpt_passive;
+    bool                            rrm_caps_bcn_rpt_active;
+    bool                            rrm_caps_bcn_rpt_table;
+    bool                            rrm_caps_lci_meas;
+    bool                            rrm_caps_ftm_range_rpt;
 } dpp_bs_client_event_record_t;
 
 typedef struct

@@ -35,6 +35,8 @@ UNIT_TYPE := BIN
 UNIT_SRC    := src/nm2_main.c
 UNIT_SRC    += src/nm2_ovsdb.c
 UNIT_SRC    += src/nm2_mac_learning.c
+UNIT_SRC    += src/nm2_dhcp_table.c
+UNIT_SRC    += src/nm2_dhcp_rip.c
 
 UNIT_CFLAGS += -Isrc/lib/common/inc/
 

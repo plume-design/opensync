@@ -40,7 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <syslog.h>
 
 #include "target.h"
-#include "om.h"
+#include "policy_tags.h"
 
 /*****************************************************************************/
 #define MODULE_ID LOG_MODULE_ID_MAIN
@@ -165,8 +165,9 @@ om_tag_group_append_members(om_tag_group_t *group, ds_tree_t *dest)
     ds_tree_foreach(&group->tags, tle) {
         if ((tag = om_tag_find_by_name(tle->value, false))) {
             if (!om_tag_list_append_list(dest, &tag->values, tle->flags)) {
-                LOGE("[%s] Tag group failed to allocate memory building value list",
-                                                                         group->name);
+                LOGE("[%s] Tag group failed to allocate memory "
+                     "building value list",
+                     group->name);
                 return false;
             }
         }
@@ -294,25 +295,28 @@ om_tag_group_update_from_schema(struct schema_Openflow_Tag_Group *sgroup)
     // Build new tag list.  Then diff / report / apply for debug purposes
     if (!om_tag_group_create_list_from_schema(&new_values, sgroup)) {
         LOGE("[%s] Failed to allocate memory to handle group update!",
-                                                            group->name);
+             group->name);
         return false;
     }
 
     ret = om_tag_list_diff(&group->tags, &new_values, &diff);
     om_tag_list_free(&new_values);
     if (!ret) {
-        LOGE("[%s] Failed to allocate memory for diff to handle group update!", group->name);
+        LOGE("[%s] Failed to allocate memory for diff to handle group update!",
+             group->name);
         return false;
     }
 
     om_tag_list_to_buf(&diff.removed, 0, rbuf, sizeof(rbuf)-1);
     om_tag_list_to_buf(&diff.added,   0, abuf, sizeof(abuf)-1);
-    LOGN("[%s] Tag group updated, removed:%s, added:%s", group->name, rbuf, abuf);
+    LOGN("[%s] Tag group updated, removed:%s, added:%s",
+         group->name, rbuf, abuf);
 
     ret = om_tag_list_apply_diff(&group->tags, &diff);
     om_tag_list_diff_free(&diff);
     if (ret == false) {
-        LOGE("[%s] Failed to allocate memory to apply diff for group update", group->name);
+        LOGE("[%s] Failed to allocate memory to apply diff for group update",
+             group->name);
         return false;
     }
 
@@ -327,7 +331,8 @@ om_tag_group_update_by_tag(char *tag_name)
 
     ds_tree_foreach(&om_tag_groups, group) {
         if (om_tag_list_entry_find_by_value(&group->tags, tag_name)) {
-            LOGN("[%s] Tag group updating due to tag '%s' changing", group->name, tag_name);
+            LOGN("[%s] Tag group updating due to tag '%s' changing",
+                 group->name, tag_name);
             om_tag_group_update(group);
         }
     }

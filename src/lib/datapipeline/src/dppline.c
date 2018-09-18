@@ -121,7 +121,9 @@ typedef struct dpp_device_stats
 {
     dpp_device_record_t             record;
     dpp_device_temp_t              *list;
+    dpp_device_thermal_record_t    *thermal_list;
     uint32_t                        qty;
+    uint32_t                        thermal_qty;
     uint64_t                        timestamp_ms;
 } dppline_device_stats_t;
 
@@ -202,6 +204,7 @@ static void dppline_free_stat(dppline_stats_t * s)
                 break;
             case DPP_T_DEVICE:
                 free(s->u.device.list);
+                free(s->u.device.thermal_list);
                 break;
             case DPP_T_CAPACITY:
                 free(s->u.capacity.list);
@@ -462,9 +465,11 @@ static bool dppline_copysts(dppline_stats_t * dst, void * sts)
 
         case DPP_T_DEVICE:
             {
-                dpp_device_report_data_t   *report_data = sts;
-                dpp_device_temp_t          *result_entry = NULL;
-                ds_dlist_iter_t             result_iter;
+                dpp_device_report_data_t        *report_data = sts;
+                dpp_device_temp_t               *result_entry = NULL;
+                dpp_device_thermal_record_t     *thermal_record = NULL;
+                ds_dlist_iter_t                  result_iter;
+                int                              thermal_size = 0;
 
                 memcpy(&dst->u.device.record, &report_data->record, sizeof(dpp_device_record_t));
                 dst->u.device.timestamp_ms = report_data->timestamp_ms;
@@ -492,8 +497,28 @@ static bool dppline_copysts(dppline_stats_t * dst, void * sts)
                             sizeof(dpp_device_temp_t));
                 }
 
-                size += sizeof(dpp_device_record_t);
-
+                dst->u.device.thermal_qty = 0;
+                for (   thermal_record = ds_dlist_ifirst(&result_iter, &report_data->thermal_records);
+                        thermal_record != NULL;
+                        thermal_record = ds_dlist_inext(&result_iter))
+                {
+                    thermal_size += (dst->u.device.thermal_qty + 1) * sizeof(dpp_device_thermal_record_t);
+                    if (!dst->u.device.thermal_qty)
+                    {
+                        dst->u.device.thermal_list = calloc(1, thermal_size);
+                    }
+                    else
+                    {
+                        dst->u.device.thermal_list = realloc(dst->u.device.thermal_list, thermal_size);
+                        memset(&dst->u.device.thermal_list[dst->u.device.thermal_qty],
+                               0,
+                               sizeof(dpp_device_thermal_record_t));
+                    }
+                    memcpy(&dst->u.device.thermal_list[dst->u.device.thermal_qty++],
+                            thermal_record,
+                            sizeof(dpp_device_thermal_record_t)); 
+                }
+                size += thermal_size;
             }
             break;
 
@@ -1249,6 +1274,48 @@ static void dppline_add_stat_device(Sts__Report *r, dppline_stats_t *s)
         sr->radio_temp[i]->value = device->list[i].value;
         sr->radio_temp[i]->has_value = true;
     }
+
+    sr->thermal_stats = malloc(device->thermal_qty * sizeof(*sr->thermal_stats));
+    assert(sr->thermal_stats);
+    sr->n_thermal_stats = device->thermal_qty;
+    for (i = 0; i < device->thermal_qty; i++)
+    {
+        Sts__Device__Thermal *dts; 
+        dts = sr->thermal_stats[i] = malloc(sizeof(**sr->thermal_stats));
+        size += sizeof(**sr->thermal_stats);
+        assert(sr->thermal_stats[i]);
+        sts__device__thermal__init(sr->thermal_stats[i]);
+
+        if(device->thermal_list[i].fan_rpm >= 0)
+        {
+            sr->thermal_stats[i]->fan_rpm = device->thermal_list[i].fan_rpm;
+            sr->thermal_stats[i]->has_fan_rpm = true;
+        }
+
+        sr->thermal_stats[i]->timestamp_ms = device->thermal_list[i].timestamp_ms;
+        sr->thermal_stats[i]->has_timestamp_ms = true;
+
+        sr->thermal_stats[i]->txchainmask = malloc(DPP_DEVICE_TX_CHAINMASK_MAX * sizeof(*dts->txchainmask));
+        sr->thermal_stats[i]->n_txchainmask = 0; 
+
+        uint32_t j;
+        for(j = 0; j < DPP_DEVICE_TX_CHAINMASK_MAX; j++)
+        {
+            Sts__Device__Thermal__RadioTxChainMask  *txchainmask;
+            if (device->thermal_list[i].radio_txchainmasks[j].type != RADIO_TYPE_NONE)
+            {
+                txchainmask = sr->thermal_stats[i]->txchainmask[j] = malloc(sizeof(**sr->thermal_stats[i]->txchainmask));
+                sts__device__thermal__radio_tx_chain_mask__init(txchainmask);
+                size += sizeof(**sr->thermal_stats[i]->txchainmask);
+                txchainmask->band =  dppline_to_proto_radio(device->thermal_list[i].radio_txchainmasks[j].type);
+                txchainmask->has_band = true;
+                txchainmask->value = device->thermal_list[i].radio_txchainmasks[j].value;
+                txchainmask->has_value = true;
+
+                sr->thermal_stats[i]->n_txchainmask++; 
+            }
+        }
+    }
 }
 
 static void dppline_add_stat_capacity(Sts__Report *r, dppline_stats_t *s)
@@ -1350,14 +1417,21 @@ static void dppline_add_stat_bs_client(Sts__Report * r, dppline_stats_t * s)
         return;
     }
 
-    if (r->bs_report) {
-        // We could aggregate multiple reports or change type from optional to repeated
-        // for now, drop old reports
-        sts__bsreport__free_unpacked(r->bs_report, NULL);
-        r->bs_report = NULL;
-    }
-    // Allocate first BS report
-    sr = r->bs_report = malloc(sizeof(Sts__BSReport));
+    // increase the number of bs reports
+    r->n_bs_report++;
+
+    // allocate or extend the size of bs_report array
+    r->bs_report = realloc(r->bs_report,
+            r->n_bs_report * sizeof(Sts__BSReport*));
+    assert(r->bs_report);
+
+    // allocate new buffer Sts__BSReport
+    sr = malloc(sizeof(Sts__BSReport));
+    assert(sr);
+
+    // append report
+    r->bs_report[r->n_bs_report - 1] = sr;
+
     // Initialize and copy timestamp
     sts__bsreport__init(sr);
     sr->timestamp_ms = bs_client->timestamp_ms;
@@ -1485,6 +1559,60 @@ static void dppline_add_stat_bs_client(Sts__Report * r, dppline_stats_t * s)
 
                 er->rejected = e_rec->rejected;
                 er->has_rejected = true;
+
+                er->is_btm_supported = e_rec->is_BTM_supported;
+                er->has_is_btm_supported = true;
+
+                er->is_rrm_supported = e_rec->is_RRM_supported;
+                er->has_is_rrm_supported = true;
+
+                er->band_cap_2g = e_rec->band_cap_2G;
+                er->has_band_cap_2g = true;
+
+                er->band_cap_5g = e_rec->band_cap_5G;
+                er->has_band_cap_5g = true;
+
+                er->max_chwidth = e_rec->max_chwidth;
+                er->has_max_chwidth = true;
+
+                er->max_streams = e_rec->max_streams;
+                er->has_max_streams = true;
+
+                er->phy_mode = e_rec->phy_mode;
+                er->has_phy_mode = true;
+
+                er->max_mcs = e_rec->max_MCS;
+                er->has_max_mcs = true;
+
+                er->max_txpower = e_rec->max_txpower;
+                er->has_max_txpower = true;
+
+                er->is_static_smps = e_rec->is_static_smps;
+                er->has_is_static_smps = true;
+
+                er->is_mu_mimo_supported = e_rec->is_mu_mimo_supported;
+                er->has_is_mu_mimo_supported = true;
+
+                er->rrm_caps_link_meas = e_rec->rrm_caps_link_meas;
+                er->has_rrm_caps_link_meas = true;
+
+                er->rrm_caps_neigh_rpt = e_rec->rrm_caps_neigh_rpt;
+                er->has_rrm_caps_neigh_rpt = true;
+
+                er->rrm_caps_bcn_rpt_passive = e_rec->rrm_caps_bcn_rpt_passive;
+                er->has_rrm_caps_bcn_rpt_passive = true;
+
+                er->rrm_caps_bcn_rpt_active = e_rec->rrm_caps_bcn_rpt_active;
+                er->has_rrm_caps_bcn_rpt_active = true;
+
+                er->rrm_caps_bcn_rpt_table = e_rec->rrm_caps_bcn_rpt_table;
+                er->has_rrm_caps_bcn_rpt_table = true;
+
+                er->rrm_caps_lci_meas = e_rec->rrm_caps_lci_meas;
+                er->has_rrm_caps_lci_meas = true;
+
+                er->rrm_caps_ftm_range_rpt = e_rec->rrm_caps_ftm_range_rpt;
+                er->has_rrm_caps_ftm_range_rpt = true;
             }
         }
     }
@@ -1679,8 +1807,7 @@ bool dppline_remove_head()
 
 void dppline_log_queue()
 {
-    LOG(DEBUG,
-        "Q len: %d size: %d\n", queue_depth, queue_size);
+    LOGT( "Q len: %d size: %d\n", queue_depth, queue_size );
 }
 
 /*
@@ -1841,7 +1968,7 @@ bool dpp_get_report(uint8_t * buff, size_t sz, uint32_t * packed_sz)
         /* check the size, if size too small break the process */
         if (sz < tmp_packed_size)
         {
-            LOG(WARNING, "Packed size: %5d, buffer size: %5d ",
+            LOG(WARNING, "Packed size: %5zd, buffer size: %5zd ",
                 tmp_packed_size,
                 sz);
 
@@ -2006,3 +2133,26 @@ int dpp_get_queue_elements()
 
     return queue;
 }
+
+// alloc and init a dpp_client_record_t
+dpp_client_record_t* dpp_client_record_alloc()
+{
+    dpp_client_record_t *record = NULL;
+
+    record = malloc(sizeof(dpp_client_record_t));
+    if (record) {
+        memset(record, 0, sizeof(dpp_client_record_t));
+    }
+
+    // init stats_rx dlist
+    ds_dlist_init(&record->stats_rx, dpp_client_stats_rx_t, node);
+
+    // init stats_tx dlist
+    ds_dlist_init(&record->stats_tx, dpp_client_stats_tx_t, node);
+
+    // init tid_record_list dlist
+    ds_dlist_init(&record->tid_record_list, dpp_client_tid_record_list_t, node);
+
+    return record;
+}
+

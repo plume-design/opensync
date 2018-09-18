@@ -35,6 +35,9 @@ UNIT_TYPE := BIN
 UNIT_SRC    := src/cm2_main.c
 UNIT_SRC    += src/cm2_ovsdb.c
 UNIT_SRC    += src/cm2_event.c
+UNIT_SRC    += src/cm2_resolve.c
+UNIT_SRC    += src/cm2_stability.c
+UNIT_SRC    += src/cm2_net.c
 
 UNIT_CFLAGS += -I$(TOP_DIR)/src/lib/common/inc/
 

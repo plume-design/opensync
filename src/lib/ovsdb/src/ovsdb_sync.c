@@ -105,7 +105,7 @@ json_t *ovsdb_write_s(json_t *jsdata)
 
     while (buflen < sizeof(ovsdb_write_buf) - 1)
     {
-        nr = read(ovs_fd, &ovsdb_write_buf[buflen], sizeof(ovsdb_write_buf) - buflen);
+        nr = read(ovs_fd, &ovsdb_write_buf[buflen], sizeof(ovsdb_write_buf) - 1 - buflen);
         if (nr <= 0)
         {
             /* Treat errors and short reads the same -- error while reading response. */
@@ -126,6 +126,9 @@ json_t *ovsdb_write_s(json_t *jsdata)
 
         if (res != NULL)
         {
+            if (strlen(res))
+                LOGW("Sync: trailing garbage found: '%s'", res);
+            *res = 0;
             /* Success */
             break;
         }
@@ -179,6 +182,7 @@ json_t *ovsdb_method_send_s(
 
         default:
             LOG(ERR, "unknown method");
+            json_decref(jparams);
             return false;
     }
 
@@ -192,6 +196,7 @@ json_t *ovsdb_method_send_s(
     if (0 < json_object_set_new(js, "params", jparams))
     {
         LOGE("Error adding params array.");
+        json_decref(jparams);
     }
 
     rpc_id = ovsdb_jsonrpc_id_new();

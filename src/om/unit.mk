@@ -35,9 +35,6 @@ UNIT_TYPE           := BIN
 UNIT_SRC            := src/om_main.c
 UNIT_SRC            += src/om_monitor.c
 UNIT_SRC            += src/om_tflows.c
-UNIT_SRC            += src/om_tags.c
-UNIT_SRC            += src/om_tag_list.c
-UNIT_SRC            += src/om_tag_groups.c
 UNIT_SRC            += src/om_template.c
 
 UNIT_CFLAGS         += -I$(TOP_DIR)/src/lib/common/inc/
@@ -57,3 +54,4 @@ UNIT_DEPS += src/lib/pjs
 UNIT_DEPS += src/lib/schema
 UNIT_DEPS += src/lib/version
 UNIT_DEPS += src/lib/evsched
+UNIT_DEPS += src/lib/policy_tags

@@ -26,7 +26,7 @@
 
 if [ -z "$CONTROLLER_ADDR" ]; then
     # do nothing if not set
-    echo '[]'
+    echo '["Open_vSwitch"]'
     exit
 fi
 

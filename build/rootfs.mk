@@ -22,8 +22,24 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-ROOTFS_SOURCE_DIRS ?= rootfs $(VENDOR_DIR)/rootfs
-ROOTFS_COMPONENTS  ?= common target/$(TARGET) $(ROOTFS_PROFILE_COMPONENTS)
+
+ifeq ($(ROOTFS_SOURCE_DIRS),)
+# default rootfs layers: core/rootfs platform/roots vendor/rootfs
+ifneq ($(wildcard rootfs),)
+ROOTFS_SOURCE_DIRS += rootfs
+endif
+ifneq ($(wildcard $(PLATFORM_DIR)/rootfs),)
+ROOTFS_SOURCE_DIRS += $(PLATFORM_DIR)/rootfs
+endif
+ifneq ($(INCLUDE_LAYERS),)
+ROOTFS_SOURCE_DIRS += $(foreach _LAYER,$(INCLUDE_LAYERS),$(_LAYER)/rootfs )
+endif
+ifneq ($(wildcard $(VENDOR_DIR)/rootfs),)
+ROOTFS_SOURCE_DIRS += $(VENDOR_DIR)/rootfs
+endif
+endif
+
+# default ROOTFS_COMPONENTS defined in default.mk
 
 ifeq ($(V),1)
 TARV=-v
@@ -114,11 +130,30 @@ rootfs-prepare-prepend: workdirs
 
 rootfs-prepare-main: rootfs-prepare-prepend
 	$(call rootfs_prepare)
+	$(Q)$(call rootfs-version-stamp,$(BUILD_ROOTFS_DIR))
 	$(call rootfs_run_hooks_prepare)
 
 rootfs-prepare-append: rootfs-prepare-main
 
 rootfs-prepare: rootfs-prepare-prepend rootfs-prepare-main rootfs-prepare-append
+
+# plume-rootfs-pack = plume-only part of rootfs (work/target/rootfs)
+plume-rootfs-pack: rootfs plume-rootfs-pack-only
+
+ifeq ($(PLUME_ROOTFS_PACK_VERSION),)
+PLUME_ROOTFS_PACK_VERSION := $(shell $(call version-gen,make,$(PLUME_ROOTFS_PACK_VER_OPT)))
+endif
+PLUME_ROOTFS_PACK_FILENAME ?= plume-rootfs-$(TARGET)-$(PLUME_ROOTFS_PACK_VERSION).tgz
+PLUME_ROOTFS_PACK_PATHNAME ?= $(IMAGEDIR)/$(PLUME_ROOTFS_PACK_FILENAME)
+
+plume-rootfs-pack-only: workdirs
+	$(NQ) "$(call color_install,pack) plume-rootfs $(call color_profile,$(BUILD_ROOTFS_DIR) => $(PLUME_ROOTFS_PACK_PATHNAME))"
+	$(Q)tar czf $(PLUME_ROOTFS_PACK_PATHNAME) -C $(BUILD_ROOTFS_DIR) .
+
+# optional include plume-rootfs-pack in rootfs:
+ifeq ($(BUILD_PLUME_ROOTFS_PACK),y)
+rootfs: plume-rootfs-pack-only
+endif
 
 # rootfs-install:
 #   - copy work-area rootfs to INSTALL_ROOTFS_DIR (can be SDK_ROOTFS)
@@ -129,6 +164,12 @@ rootfs-install-dir:
 	$(Q)mkdir -p $(INSTALL_ROOTFS_DIR)
 
 rootfs-install-prepend: rootfs-install-dir
+
+rootfs-copy-only:
+	$(call rootfs_install_to_target)
+
+rootfs-post-install-hooks-only:
+	$(call rootfs_run_hooks_install)
 
 rootfs-install-main: rootfs-install-prepend
 	$(call rootfs_install_to_target)

@@ -53,17 +53,20 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ovsdb_table_t table_AWLAN_Node;
 
-void callback_AWLAN_Node(ovsdb_update_monitor_t *mon, void *record)
+void callback_AWLAN_Node(ovsdb_update_monitor_t *mon,
+        struct schema_AWLAN_Node *old_rec,
+        struct schema_AWLAN_Node *awlan)
 {
-    struct schema_AWLAN_Node *awlan = record;
     int          ii;
     const char  *mqtt_broker = NULL;
     const char  *mqtt_topic = NULL;
     const char  *mqtt_qos = NULL;
     const char  *mqtt_port = NULL;
     int         mqtt_compress = 0;
+    int         log_interval = 0;
 
-    LOG(DEBUG, "%s", __FUNCTION__);
+    LOG(DEBUG, "%s %d %d", __FUNCTION__, mon->mon_type,
+            awlan ? awlan->mqtt_settings_len : 0);
 
     // Apply MQTT settings
     if (mon->mon_type != OVSDB_UPDATE_DEL) {
@@ -72,6 +75,7 @@ void callback_AWLAN_Node(ovsdb_update_monitor_t *mon, void *record)
         {
             const char *key = awlan->mqtt_settings_keys[ii];
             const char *val = awlan->mqtt_settings[ii];
+            LOGT("mqtt_settings[%s]='%s'", key, val);
 
             if (strcmp(key, "broker") == 0)
             {
@@ -93,6 +97,11 @@ void callback_AWLAN_Node(ovsdb_update_monitor_t *mon, void *record)
             {
                 if (strcmp(val, "zlib") == 0) mqtt_compress = 1;
             }
+            else if (strcmp(key, "remote_log") == 0)
+            {
+                log_interval = atoi(val);
+                if (log_interval < 0) log_interval = 0;
+            }
             else
             {
                 LOG(ERR, "Unkown MQTT option: %s", key);
@@ -101,6 +110,7 @@ void callback_AWLAN_Node(ovsdb_update_monitor_t *mon, void *record)
     }
 
     qm_mqtt_set(mqtt_broker, mqtt_port, mqtt_topic, mqtt_qos, mqtt_compress);
+    qm_mqtt_set_log_interval(log_interval);
 }
 
 

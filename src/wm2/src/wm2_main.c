@@ -107,7 +107,6 @@ main(int argc, char ** argv)
     }
 
     wm2_radio_init();
-    wm2_dhcp_table_init();
 
     ev_run(loop, 0);
 

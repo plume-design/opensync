@@ -43,11 +43,18 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb.h"
 #include "json_util.h"
 
+/*****************************************************************************/
+
 #define MODULE_ID LOG_MODULE_ID_OVSDB
 
 #define MAX_BUFFER_SIZE     (256*1024)
 #define CHUNK_SIZE          (8*1024)
 // typically ovs messages are below 4k, occasionally they are 6k, rarely more than 8k
+
+#define OVSDB_SLEEP_TIME             1
+#define OVSDB_WAIT_TIME              30   /* in s (0 = infinity) */
+
+/*****************************************************************************/
 
 /*global to avoid any potential issues with stack */
 struct ev_io wovsdb;
@@ -69,6 +76,10 @@ ds_tree_t json_rpc_handler_list = DS_TREE_INIT(rpc_response_handler_cmp, struct 
 static ds_key_cmp_t rpc_update_handler_cmp;
 ds_tree_t json_rpc_update_handler_list = DS_TREE_INIT(rpc_update_handler_cmp, struct rpc_response_handler, rrh_node);
 
+/******************************************************************************
+ *  PROTECTED declarations
+ *****************************************************************************/
+
 static bool ovsdb_process_recv(json_t *js);
 static bool ovsdb_process_event(json_t *js);
 static bool ovsdb_process_result(json_t *id, json_t *js);
@@ -78,6 +89,10 @@ static bool ovsdb_rpc_callback(int id, bool is_error, json_t *jsmsg);
 
 static void cb_ovsdb_read(struct ev_loop *loop, struct ev_io *watcher, int revents);
 static bool cb_ovsdb_read_json(char *buffer);
+
+/******************************************************************************
+ *  PROTECTED definitions
+ *****************************************************************************/
 
 /* on-connection callback */
 static void cb_ovsdb_read(struct ev_loop *loop, struct ev_io *watcher, int revents)
@@ -472,12 +487,16 @@ static int rpc_update_handler_cmp(void *a, void *b)
     return 0;
 }
 
-bool ovsdb_init(const char *comment)
+/******************************************************************************
+ *  PUBLIC definitions
+ *****************************************************************************/
+
+bool ovsdb_init(const char *name)
 {
-    return ovsdb_init_loop(NULL, comment);
+    return ovsdb_init_loop(NULL, name);
 }
 
-bool ovsdb_init_loop(struct ev_loop *loop, const char *comment)
+bool ovsdb_init_loop(struct ev_loop *loop, const char *name)
 {
     bool success = false;
 
@@ -501,12 +520,34 @@ bool ovsdb_init_loop(struct ev_loop *loop, const char *comment)
         LOG(ERR, "Error starting OVSDB client.::reason=%d", json_rpc_fd);
     }
 
-    if (comment != NULL)
+    if (name != NULL)
     {
-        ovsdb_comment = comment;
+        ovsdb_comment = name;
     }
 
     return success;
+}
+
+bool ovsdb_ready(const char *name)
+{
+    /* Wait for the OVSDB to initialize */
+    int wait = OVSDB_WAIT_TIME;
+    while (wait >= 0)
+    {
+        if (ovsdb_init(name)) {
+            return true;
+        }
+        LOG(INFO, "OVSDB not ready. Need to Zzzz ...");
+
+sleep:
+        if (OVSDB_WAIT_TIME) {
+            wait -= OVSDB_SLEEP_TIME;
+        }
+
+        sleep (OVSDB_SLEEP_TIME);
+    };
+
+    return false;
 }
 
 bool ovsdb_stop(void)

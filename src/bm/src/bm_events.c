@@ -134,6 +134,10 @@ static c_item_t map_steering_type[] = {
 static void     bm_events_handle_event( bsal_t bsal, bsal_event_t *event );
 static void     bm_events_handle_rssi_xing( bm_client_t *client, bsal_event_t *event );
 
+static bool     bm_events_client_cap_changed( bm_client_t *client,
+                                                bsal_event_t *event );
+static void     bm_events_record_client_cap( bm_client_t *client,
+                                             bsal_event_t *event );
 /*****************************************************************************/
 static char *
 macstr(uint8_t *macaddr) {
@@ -198,17 +202,24 @@ exit:
 static void
 bm_events_async_cb( EV_P_ ev_async *w, int revents )
 {
-    ds_dlist_iter_t     qiter;
     bm_cb_entry_t       *cb_entry;
     bsal_event_t        *event;
     bsal_t              bsal;
 
-    pthread_mutex_lock( &bm_cb_lock );
+    while( true )
+    {
+        pthread_mutex_lock( &bm_cb_lock );
+        cb_entry = ds_dlist_is_empty( &bm_cb_queue ) ? NULL : ds_dlist_remove_head( &bm_cb_queue );
+        if ( cb_entry )
+        {
+            bm_cb_queue_len--;
+        }
+        pthread_mutex_unlock( &bm_cb_lock );
 
-    cb_entry = ds_dlist_ifirst( &qiter, &bm_cb_queue );
-    while( cb_entry ) {
-        ds_dlist_iremove( &qiter );
-        bm_cb_queue_len--;
+        if ( !cb_entry )
+        {
+            break;
+        }
 
         event = &cb_entry->event;
         bsal  = cb_entry->bsal;
@@ -216,10 +227,8 @@ bm_events_async_cb( EV_P_ ev_async *w, int revents )
         bm_events_handle_event( bsal, event );
 
         free( cb_entry );
-        cb_entry = ds_dlist_inext( &qiter );
     }
 
-    pthread_mutex_unlock( &bm_cb_lock );
     return;
 }
 
@@ -329,6 +338,12 @@ bm_events_handle_event(bsal_t bsal, bsal_event_t *event)
         stats = &client->stats[event->band];
         times = &client->times;
 
+        if( bm_events_client_cap_changed( client, event ) ) {
+            bm_stats_add_event_to_report( client, event, CLIENT_CAPABILITIES, false );
+        }
+
+        bm_events_record_client_cap( client, event );
+
         LOGN("[%s] %s: BSAL_EVENT_CLIENT_CONNECT %s",
                                              bandstr, ifname, macstr(event->data.connect.client_addr));
 
@@ -353,12 +368,14 @@ bm_events_handle_event(bsal_t bsal, bsal_event_t *event)
 
         // last_connect and connect stats incremented in bm_client_connected()
         bm_client_connected(client, bsal, event->band, event);
+
         break;
 
     case BSAL_EVENT_CLIENT_DISCONNECT:
         if (!(client = bm_client_find_by_macaddr(*(os_macaddr_t *)&event->data.disconnect.client_addr))) {
             break;
         }
+
         stats = &client->stats[event->band];
         times = &client->times;
 
@@ -373,12 +390,21 @@ bm_events_handle_event(bsal_t bsal, bsal_event_t *event)
             break;
         }
 
+        if (client->band != event->band) {
+            LOGW("Client '%s': Client connected band is different, ignoring"\
+                 " DISCONNECT event", client->mac_addr);
+            break;
+        }
+
         bm_client_disconnected(client);
         times->last_disconnect = now;
         stats->disconnects++;
         stats->last_disconnect.source = event->data.disconnect.source;
         stats->last_disconnect.type   = event->data.disconnect.type;
         stats->last_disconnect.reason = event->data.disconnect.reason;
+
+        // Cancel any pending BSS TM Request retry task
+        bm_kick_cancel_btm_retry_task( client );
 
         bm_stats_add_event_to_report( client, event, DISCONNECT, false );
         break;
@@ -404,6 +430,14 @@ bm_events_handle_event(bsal_t bsal, bsal_event_t *event)
 
         times->last_activity_change = now;
         stats->activity_changes++;
+
+        if( !client->active && client->kick_info.kick_pending ) {
+            LOGN( "Client '%s': Issuing pending steering request", client->mac_addr );
+            bm_kick(client, client->kick_info.kick_type, client->kick_info.rssi);
+
+            client->kick_info.rssi         = 0;
+            client->kick_info.kick_pending = false;
+        }
 
         bm_stats_add_event_to_report( client, event, ACTIVITY, false );
         break;
@@ -457,7 +491,7 @@ bm_events_handle_event(bsal_t bsal, bsal_event_t *event)
         break;
 
     case BSAL_EVENT_DEBUG_CHAN_UTIL:
-        LOGD("[%s] %s: BSAL_EVENT_DEBUG_CHAN_UTIL is now %2u%%",
+        LOGT("[%s] %s: BSAL_EVENT_DEBUG_CHAN_UTIL is now %2u%%",
                                                       bandstr, ifname, event->data.chan_util.utilization);
         break;
 
@@ -466,13 +500,13 @@ bm_events_handle_event(bsal_t bsal, bsal_event_t *event)
             break;
         }
 
-        LOGD("[%s] %s: BSAL_EVENT_DEBUG_RSSI %s, RSSI=%2u",
+        LOGT("[%s] %s: BSAL_EVENT_DEBUG_RSSI %s, RSSI=%2u",
                            bandstr, ifname, macstr(event->data.rssi.client_addr), event->data.rssi.rssi);
         break;
 
     case BSAL_EVENT_STEER_CLIENT:
         {
-            LOGD("[%s] %s: BSAL_EVENT_STEER_CLIENT %s",
+            LOGN("[%s] %s: BSAL_EVENT_STEER_CLIENT %s",
                     bandstr, ifname, macstr(event->data.steer.client_addr));
             // add client to internal list for stat collection
             bm_client_find_or_add_by_macaddr((os_macaddr_t*)&event->data.steer.client_addr);
@@ -481,7 +515,7 @@ bm_events_handle_event(bsal_t bsal, bsal_event_t *event)
 
     case BSAL_EVENT_STEER_SUCCESS:
         {
-            LOGD("[%s] %s: BSAL_EVENT_STEER_SUCCESS %s from: %d to: %d",
+            LOGN("[%s] %s: BSAL_EVENT_STEER_SUCCESS %s from: %d to: %d",
                     bandstr, ifname, macstr(event->data.steer.client_addr),
                     event->data.steer.from_ch, event->data.steer.to_ch);
             client = bm_client_find_or_add_by_macaddr((os_macaddr_t*)&event->data.steer.client_addr);
@@ -493,7 +527,7 @@ bm_events_handle_event(bsal_t bsal, bsal_event_t *event)
 
     case BSAL_EVENT_STEER_FAILURE:
         {
-            LOGD("[%s] %s: BSAL_EVENT_STEER_FAILURE %s from: %d to: %d",
+            LOGN("[%s] %s: BSAL_EVENT_STEER_FAILURE %s from: %d to: %d",
                     bandstr, ifname, macstr(event->data.steer.client_addr),
                     event->data.steer.from_ch, event->data.steer.to_ch);
             client = bm_client_find_or_add_by_macaddr((os_macaddr_t*)&event->data.steer.client_addr);
@@ -533,24 +567,83 @@ bm_events_handle_event(bsal_t bsal, bsal_event_t *event)
     return;
 }
 
+static bool
+bm_events_kick_client_upon_idle( bm_client_t *client )
+{
+    bm_client_kick_t kick_type = client->kick_type;
+
+    if( !client->kick_upon_idle ) {
+        return false;
+    }
+
+    if( !client->active ) {
+        return false;
+    }
+
+    if( kick_type == BM_CLIENT_KICK_BSS_TM_REQ ) {
+        return false;
+    }
+
+    if ((kick_type == BM_CLIENT_KICK_BTM_DISASSOC || kick_type == BM_CLIENT_KICK_BTM_DEAUTH) &&
+         client->is_BTM_supported ) {
+        return false;
+    }
+
+    return true;
+}
+
 static void
 bm_events_handle_rssi_xing( bm_client_t *client, bsal_event_t *event )
 {
-    bm_client_stats_t *stats = &client->stats[event->band];
+    bm_client_stats_t   *stats = &client->stats[event->band];
 
     if( client->steering_state != BM_CLIENT_CLIENT_STEERING ) {
+
         if (event->data.rssi_change.high_xing == BSAL_RSSI_HIGHER) {
             stats->rssi.higher++;
-            if (event->band == BSAL_BAND_24G && client->hwm > 0 && event->data.rssi_change.rssi >= client->hwm) {
-                bm_kick(client, BM_STEERING_KICK, event->data.rssi_change.rssi);
+            if (event->band == BSAL_BAND_24G && client->hwm > 0 &&
+                event->data.rssi_change.rssi >= client->hwm) {
+
+                if( bm_events_kick_client_upon_idle( client ) ) {
+                    client->kick_info.kick_pending = true;
+                    client->kick_info.kick_type    = BM_STEERING_KICK;
+                    client->kick_info.rssi         = event->data.rssi_change.rssi;
+
+                    LOGN( "Client '%s' is ACTIVE, handling HIGH_RSSI_XING upon idle",
+                                                                client->mac_addr );
+                } else {
+                    bm_kick(client, BM_STEERING_KICK, event->data.rssi_change.rssi);
+                }
             }
         }
         else if (event->data.rssi_change.low_xing == BSAL_RSSI_LOWER) {
             stats->rssi.lower++;
             if (client->lwm > 0 && event->data.rssi_change.rssi <= client->lwm) {
-                bm_kick(client, BM_STICKY_KICK, event->data.rssi_change.rssi);
+
+                if( bm_events_kick_client_upon_idle( client ) ) {
+                    client->kick_info.kick_pending = true;
+                    client->kick_info.kick_type    = BM_STICKY_KICK;
+                    client->kick_info.rssi         = event->data.rssi_change.rssi;
+
+                    LOGN( "Client '%s' is ACTIVE, handling LOW_RSSI_XING upon idle",
+                                                                client->mac_addr );
+                } else {
+                    bm_kick(client, BM_STICKY_KICK, event->data.rssi_change.rssi);
+                }
             }
         }
+        else {
+            if( event->data.rssi_change.low_xing == BSAL_RSSI_HIGHER ||
+                event->data.rssi_change.high_xing == BSAL_RSSI_LOWER ) {
+                if( client->kick_info.kick_pending ) {
+                    LOGN( "Clearing pending steering request for Client '%s'",
+                                                                client->mac_addr );
+                    client->kick_info.kick_pending = false;
+                    client->kick_info.rssi         = 0;
+                }
+            }
+        }
+
     } else {
         if( event->data.rssi_change.high_xing == BSAL_RSSI_HIGHER ) {
             stats->rssi.higher++;
@@ -592,6 +685,84 @@ bm_events_handle_rssi_xing( bm_client_t *client, bsal_event_t *event )
             }
         }
     }
+
+    return;
+}
+
+static bool
+bm_events_client_cap_changed( bm_client_t *client, bsal_event_t *event )
+{
+    bsal_datarate_info_t        *new_rate = &event->data.connect.datarate_info;
+    bm_client_datarate_info_t   *cur_rate = &client->datarate_info;
+
+    bsal_rrm_caps_t             *new_rrm  = &event->data.connect.rrm_caps;
+    bm_client_rrm_caps_t        *cur_rrm  = &client->rrm_caps;
+
+    // Check if BSS TM capability changed
+    if( event->data.connect.is_BTM_supported != client->is_BTM_supported ) {
+        LOGT( "Client '%s': BSS TM capability changed, notifying", client->mac_addr );
+        return true;
+    }
+
+    // Check if RRM capability changed
+    if( event->data.connect.is_RRM_supported != client->is_RRM_supported ) {
+        LOGT( "Client '%s': RRM capability changed, notifying", client->mac_addr );
+        return true;
+    }
+        
+    // Check if datarate information changed
+    if( ( new_rate->max_chwidth          != cur_rate->max_chwidth    ) ||
+        ( new_rate->max_streams          != cur_rate->max_streams    ) ||
+        ( new_rate->phy_mode             != cur_rate->phy_mode       ) ||
+        ( new_rate->max_MCS              != cur_rate->max_MCS        ) ||
+        ( new_rate->max_txpower          != cur_rate->max_txpower    ) ||
+        ( new_rate->is_static_smps       != cur_rate->is_static_smps ) ||
+        ( new_rate->is_mu_mimo_supported != cur_rate->is_mu_mimo_supported ) ) {
+        LOGT( "Client '%s': Datarate information changed, notifying", client->mac_addr );
+        return true;
+    }
+
+    // Check if RRM capabilites changed
+    if( ( new_rrm->link_meas       != cur_rrm->link_meas       ) ||
+        ( new_rrm->neigh_rpt       != cur_rrm->neigh_rpt       ) ||
+        ( new_rrm->bcn_rpt_passive != cur_rrm->bcn_rpt_passive ) ||
+        ( new_rrm->bcn_rpt_active  != cur_rrm->bcn_rpt_active  ) ||
+        ( new_rrm->bcn_rpt_table   != cur_rrm->bcn_rpt_table   ) ||
+        ( new_rrm->lci_meas        != cur_rrm->lci_meas        ) ||
+        ( new_rrm->ftm_range_rpt   != cur_rrm->ftm_range_rpt   ) ) {
+        LOGT( "Client '%s': RRM Capabilities changed, notifying", client->mac_addr );
+        return true;
+    }
+
+    return false;
+}
+
+static void
+bm_events_record_client_cap( bm_client_t *client, bsal_event_t *event )
+{
+    client->is_BTM_supported          = event->data.connect.is_BTM_supported;
+    client->is_RRM_supported          = event->data.connect.is_RRM_supported;
+    client->band_cap_2G               = event->data.connect.band_cap_2G;
+    client->band_cap_5G               = event->data.connect.band_cap_5G;
+
+    client->datarate_info.max_chwidth = event->data.connect.datarate_info.max_chwidth;
+    client->datarate_info.max_streams = event->data.connect.datarate_info.max_streams;
+    client->datarate_info.phy_mode    = event->data.connect.datarate_info.phy_mode;
+    client->datarate_info.max_MCS     = event->data.connect.datarate_info.max_MCS;
+    client->datarate_info.max_txpower = event->data.connect.datarate_info.max_txpower;
+
+    client->datarate_info.is_static_smps       =
+        event->data.connect.datarate_info.is_static_smps;
+    client->datarate_info.is_mu_mimo_supported =
+        event->data.connect.datarate_info.is_mu_mimo_supported;
+
+    client->rrm_caps.link_meas       = event->data.connect.rrm_caps.link_meas;
+    client->rrm_caps.neigh_rpt       = event->data.connect.rrm_caps.neigh_rpt;
+    client->rrm_caps.bcn_rpt_passive = event->data.connect.rrm_caps.bcn_rpt_passive;
+    client->rrm_caps.bcn_rpt_active  = event->data.connect.rrm_caps.bcn_rpt_active;
+    client->rrm_caps.bcn_rpt_table   = event->data.connect.rrm_caps.bcn_rpt_table;
+    client->rrm_caps.lci_meas        = event->data.connect.rrm_caps.lci_meas;
+    client->rrm_caps.ftm_range_rpt   = event->data.connect.rrm_caps.ftm_range_rpt;
 
     return;
 }

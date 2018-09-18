@@ -35,6 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_util.h"
 #include "log.h"
 #include "osa_assert.h"
+#include "util.h"
 
 #define MODULE_ID LOG_MODULE_ID_OSA
 
@@ -123,7 +124,7 @@ task_create (task_id_t          *id,
         return false;
     }
 
-    strlcpy(targs->name, name, sizeof(targs->name));
+    STRSCPY(targs->name, name);
     targs->ep   = ep;
     targs->arg  = arg;
 

@@ -1,7 +1,7 @@
 {
   "name": "Open_vSwitch",
-  "version": "7.11.84",
-  "cksum": "3819696068 110613",
+  "version": "7.11.122",
+  "cksum": "1420494698 125610",
   "tables": {
     "AWLAN_Node": {
       "columns": {
@@ -71,6 +71,22 @@
           }
         },
         "mqtt_settings": {
+          "type": {
+            "key": "string",
+            "value": "string",
+            "min": 0,
+            "max": "unlimited"
+          }
+        },
+        "mqtt_topics": {
+          "type": {
+            "key": "string",
+            "value": "string",
+            "min": 0,
+            "max": "unlimited"
+          }
+        },
+        "mqtt_headers": {
           "type": {
             "key": "string",
             "value": "string",
@@ -181,6 +197,39 @@
       "isRoot": true,
       "maxRows": 1
     },
+    "Alarms": {
+      "columns": {
+        "code": {
+          "type": {
+            "key": {
+              "type": "string"
+            }
+          }
+        },
+        "timestamp": {
+          "type": {
+            "key": {
+              "type": "integer"
+            }
+          }
+        },
+        "source": {
+          "type": {
+            "key": {
+              "type": "string"
+            }
+          }
+        },
+        "add_info": {
+          "type": {
+            "key": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "isRoot": true
+    },
     "Wifi_Master_State": {
       "columns": {
         "if_type": {
@@ -195,7 +244,8 @@
                   "vif",
                   "gre",
                   "pppoe",
-                  "softwds"
+                  "softwds",
+                  "tap"
                 ]
               ]
             }
@@ -256,6 +306,15 @@
             "max": 1
           }
         },
+        "netmask": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
         "dhcpc": {
           "type": {
             "key": "string",
@@ -268,6 +327,15 @@
           "type": {
             "key": {
               "type": "string"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "uplink_priority": {
+          "type": {
+            "key": {
+              "type": "integer"
             },
             "min": 0,
             "max": 1
@@ -309,6 +377,127 @@
       "isRoot": true,
       "maxRows": 1
     },
+   "Connection_Manager_Uplink": {
+      "columns": {
+        "if_type": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "bridge",
+                  "eth",
+                  "vif",
+                  "gre",
+                  "pppoe",
+                  "softwds",
+                  "tap"
+                ]
+              ]
+            }
+          }
+        },
+        "if_name": {
+          "type": {
+            "key": {
+              "type": "string"
+            }
+          }
+        },
+        "priority": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "loop": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "has_L2": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "has_L3": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "is_used": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "ntp_state": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "unreachable_link_counter": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "unreachable_router_counter": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "unreachable_internet_counter": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "unreachable_cloud_counter": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        }
+      },
+      "isRoot": true
+    },
     "Wifi_Inet_Config": {
       "columns": {
         "if_name": {
@@ -331,7 +520,8 @@
                   "gre",
                   "vlan",
                   "pppoe",
-                  "softwds"
+                  "softwds",
+                  "tap"
                 ]
               ]
             }
@@ -447,6 +637,15 @@
             "max": 1
           }
         },
+        "gre_remote_mac_addr": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
         "mtu": {
           "type": {
             "key": {
@@ -553,11 +752,45 @@
           "type": {
             "key": {
               "type": "boolean"
-            }
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "igmp": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "igmp_age": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 15,
+              "maxInteger": 3600
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "igmp_tsize": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 10,
+              "maxInteger": 1000000
+            },
+            "min": 0,
+            "max": 1
           }
         }
       },
-      "isRoot": true
+      "isRoot": true,
+      "maxRows": 256
     },
     "Wifi_Inet_State": {
       "columns": {
@@ -592,7 +825,8 @@
                   "gre",
                   "vlan",
                   "pppoe",
-                  "softwds"
+                  "softwds",
+                  "tap"
                 ]
               ]
             }
@@ -810,7 +1044,8 @@
           }
         }
       },
-      "isRoot": true
+      "isRoot": true,
+      "maxRows": 256
     },
     "Wifi_Route_State": {
       "columns": {
@@ -870,7 +1105,8 @@
           }
         }
       },
-      "isRoot": true
+      "isRoot": true,
+      "maxRows": 256
     },
     "Wifi_Radio_Config": {
       "columns": {
@@ -1025,7 +1261,7 @@
         "thermal_downgrade_temp": {
           "type": {
             "key": {
-              "type": "integer" 
+              "type": "integer"
             },
             "min":0,
             "max":1
@@ -1034,7 +1270,7 @@
         "thermal_upgrade_temp": {
           "type": {
             "key": {
-              "type": "integer" 
+              "type": "integer"
             },
             "min":0,
             "max":1
@@ -1043,7 +1279,7 @@
         "thermal_integration":{
           "type": {
             "key": {
-              "type": "integer" 
+              "type": "integer"
             },
             "min":0,
             "max":1
@@ -1092,14 +1328,39 @@
        "tx_chainmask": {
           "type": {
             "key": {
-              "type": "integer" 
+              "type": "integer"
           },
           "min":0,
           "max":1
           }
+        },
+       "thermal_tx_chainmask": {
+          "type": {
+            "key": {
+              "type": "integer"
+          },
+          "min":0,
+          "max":1
+          }
+        },
+        "fallback_parents": {
+          "type": {
+            "key": {
+                "type": "string",
+                "maxLength": 17
+            },
+            "value": {
+                 "type": "integer",
+                 "minInteger": 1,
+                 "maxInteger": 165
+            },
+            "min": 0,
+            "max": 8
+          }
         }
       },
-      "isRoot": true
+      "isRoot": true,
+      "maxRows": 256
     },
     "Wifi_Radio_State": {
       "columns": {
@@ -1195,7 +1456,7 @@
             "key": {
               "type": "integer",
               "minInteger": 1,
-              "maxInteger": 165
+              "maxInteger": 169
             },
             "min": 0,
             "max": 1
@@ -1279,7 +1540,7 @@
         "thermal_downgrade_temp": {
           "type": {
             "key": {
-              "type": "integer" 
+              "type": "integer"
             },
             "min":0,
             "max":1
@@ -1288,7 +1549,7 @@
         "thermal_upgrade_temp": {
           "type": {
             "key": {
-              "type": "integer" 
+              "type": "integer"
             },
             "min":0,
             "max":1
@@ -1297,7 +1558,7 @@
         "thermal_integration":{
           "type": {
             "key": {
-              "type": "integer" 
+              "type": "integer"
             },
             "min":0,
             "max":1
@@ -1306,7 +1567,7 @@
         "thermal_downgraded":{
           "type": {
             "key": {
-              "type": "boolean" 
+              "type": "boolean"
             },
             "min":0,
             "max":1
@@ -1355,7 +1616,7 @@
         "tx_chainmask": {
           "type": {
             "key": {
-              "type": "integer" 
+              "type": "integer"
             },
             "min":0,
             "max":1
@@ -1366,14 +1627,38 @@
             "key": {
               "type": "integer",
               "minInteger": 1,
-              "maxInteger": 165
+              "maxInteger": 169
             },
             "min": 0,
             "max": 36
           }
+        },
+        "channels": {
+          "type": {
+            "key": "string",
+            "value": "string",
+            "min": 0,
+            "max": "unlimited"
+          }
+        },
+        "fallback_parents": {
+          "type": {
+            "key": {
+                "type": "string",
+                "maxLength": 17
+            },
+            "value": {
+                 "type": "integer",
+                 "minInteger": 1,
+                 "maxInteger": 165
+            },
+            "min": 0,
+            "max": 8
+          }
         }
       },
-      "isRoot": true
+      "isRoot": true,
+      "maxRows": 256
     },
     "Wifi_Credential_Config": {
       "columns": {
@@ -1638,9 +1923,28 @@
             "min": 0,
             "max": 1
           }
+        },
+        "rrm": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "btm": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
         }
       },
-      "isRoot": true
+      "isRoot": true,
+      "maxRows": 256
     },
     "Wifi_VIF_State": {
       "columns": {
@@ -1903,9 +2207,28 @@
             "min": 0,
             "max": 1
           }
+        },
+        "rrm": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "btm": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
         }
       },
-      "isRoot": true
+      "isRoot": true,
+      "maxRows": 256
     },
     "Wifi_Associated_Clients": {
       "columns": {
@@ -2007,6 +2330,13 @@
           }
         },
         "fingerprint": {
+          "type": {
+            "key": {
+              "type": "string"
+            }
+          }
+        },
+        "vendor_class": {
           "type": {
             "key": {
               "type": "string"
@@ -2152,7 +2482,8 @@
           }
        }
      },
-     "isRoot": true
+     "isRoot": true,
+     "maxRows": 256
     },
     "AW_Bluetooth_Config": {
      "columns": {
@@ -3797,7 +4128,8 @@
         [
           "target"
         ]
-      ]
+      ],
+      "maxRows": 1
     },
     "SSL": {
       "columns": {
@@ -4048,91 +4380,8 @@
           }
         }
       },
-      "isRoot": true
-    },
-    "Wifi_Stats_State": {
-      "columns": {
-        "stats_config": {
-          "type": {
-            "key": {
-              "type": "uuid",
-              "refTable": "Wifi_Stats_Config",
-              "refType": "weak"
-            },
-            "min": 0,
-            "max": 1
-          }
-        },
-        "stats_type": {
-          "type": {
-            "key": {
-              "type": "string",
-              "enum": [
-                "set",
-                [
-                  "neighbor",
-                  "survey",
-                  "client",
-                  "capacity",
-                  "radio",
-                  "essid",
-                  "quality"
-                ]
-              ]
-            }
-          }
-        },
-        "radio_type": {
-          "type": {
-            "key": {
-              "type": "string",
-              "enum": [
-                "set",
-                [
-                  "2.4G",
-                  "5G",
-                  "5GL",
-                  "5GU"
-                ]
-              ]
-            }
-          }
-        },
-        "survey_type": {
-          "type": {
-            "key": {
-              "type": "string",
-              "enum": [
-                "set",
-                [
-                  "on-chan",
-                  "off-chan",
-                  "full"
-                ]
-              ]
-            },
-            "min": 0,
-            "max": 1
-          }
-        },
-        "state": {
-          "type": {
-            "key": {
-              "type": "string",
-              "enum": [
-                "set",
-                [
-                  "disabled",
-                  "enabled",
-                  "completed",
-                  "error"
-                ]
-              ]
-            }
-          }
-        }
-      },
-      "isRoot": true
+      "isRoot": true,
+      "maxRows": 256
     },
     "DHCP_reserved_IP": {
         "columns":
@@ -4553,6 +4802,15 @@
             },
             "debug_level": {
                 "type": "integer"
+            },
+            "gw_only": {
+                "type": {
+                    "key": {
+                        "type": "boolean"
+                    },
+                    "min": 0,
+                    "max": 1
+                }
             }
         },
         "isRoot": true,
@@ -4583,7 +4841,11 @@
                             "set", [
                                 "none",
                                 "deauth",
-                                "disassoc"
+                                "disassoc",
+                                "bss_tm_req",
+                                "rrm_br_req",
+                                "btm_deauth",
+                                "btm_disassoc"
                             ]
                         ]
                     },
@@ -4660,7 +4922,13 @@
                             "set", [
                                 "none",
                                 "deauth",
-                                "disassoc"
+                                "disassoc",
+                                "bss_tm_req",
+                                "rrm_br_req",
+                                "btm_deauth",
+                                "btm_disassoc",
+                                "rrm_deauth",
+                                "rrm_disassoc"
                             ]
                         ]
                     },
@@ -4672,6 +4940,9 @@
                 "type": "integer"
             },
             "sc_kick_debounce_period": {
+                "type": "integer"
+            },
+            "sticky_kick_debounce_period": {
                 "type": "integer"
             },
             "cs_mode": {
@@ -4717,6 +4988,136 @@
                                 "xing_low",
                                 "xing_high",
                                 "xing_disabled"
+                            ]
+                        ]
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
+            "sticky_kick_type": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "enum": [
+                            "set", [
+                                "none",
+                                "deauth",
+                                "disassoc",
+                                "bss_tm_req",
+                                "rrm_br_req",
+                                "btm_deauth",
+                                "btm_disassoc"
+                            ]
+                        ]
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
+            "sticky_kick_reason": {
+                "type": "integer"
+            },
+            "steering_btm_params": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "maxLength": 32
+                    },
+                    "value": {
+                        "type": "string",
+                        "maxLength": 32
+                    },
+                    "min": 0,
+                    "max": 32
+                }
+            },
+            "sc_btm_params": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "maxLength": 32
+                    },
+                    "value": {
+                        "type": "string",
+                        "maxLength": 32
+                    },
+                    "min": 0,
+                    "max": 32
+                }
+            },
+            "sticky_btm_params": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "maxLength": 32
+                    },
+                    "value": {
+                        "type": "string",
+                        "maxLength": 32
+                    },
+                    "min": 0,
+                    "max": 32
+                }
+            },
+            "pref_5g": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "enum": [
+                            "set", [
+                                "hwm",
+                                "never",
+                                "always"
+                            ]
+                        ]
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
+            "kick_upon_idle": {
+                "type": {
+                    "key": {
+                        "type": "boolean"
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
+            "pre_assoc_auth_block": {
+                "type": {
+                    "key": {
+                        "type": "boolean"
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
+            "rrm_bcn_rpt_params": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "maxLength": 32
+                    },
+                    "value": {
+                        "type": "string",
+                        "maxLength": 32
+                    },
+                    "min": 0,
+                    "max": 32
+                }
+			},
+            "force_kick": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "enum": [
+                            "set", [
+                                "none",
+                                "speculative",
+                                "directed",
+                                "ghost_device"
                             ]
                         ]
                     },
@@ -5039,69 +5440,288 @@
         },
         "isRoot": true
     },
-    "Packet_Forwarding_Config": {
+    "Flow_Service_Manager_Config": {
         "columns": {
-            "token": {
+            "handler": {
                 "type": {
                     "key": {
                         "type": "string",
-                        "minLength": 8,
+                        "minLength": 2,
                         "maxLength": 64
                     }
                 }
             },
-            "topic": {
+            "if_name": {
                 "type": {
                     "key": {
                         "type": "string",
-                        "minLength": 8,
-                        "maxLength": 64
+                        "minLength": 1,
+                        "maxLength": 32
                     }
                 }
-            },
-            "iface": {
-		"type": {
-                    "key": {
-			"type": "string",
-			"minLength": 1,
-			"maxLength": 32
-                    }
-		}
-            },
-            "pkt_count": {
-		"type": {
-                    "key": {
-			"type": "integer",
-			"minInteger": 1,
-			"maxInteger": 100
-                    }
-		}
-            },
-            "timeout": {
-		"type": {
-                    "key": {
-			"type": "integer",
-			"minInteger": 1,
-			"maxInteger": 3600
-                    }
-		}
-            },
-            "pkt_size_min": {
-                "type": "integer"
-            },
-            "pkt_idx_l": {
-                "type": "integer"
-            },
-            "pkt_idx_h": {
-                "type": "integer"
             },
             "pkt_capt_filter": {
                 "type": {
                     "key": {
                         "type": "string",
-                        "minLength": 1,
+                        "minLength": 0,
                         "maxLength": 512
                     }
+                }
+            },
+            "plugin": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "minLength": 0,
+                        "maxLength": 32
+                    }
+                }
+            },
+            "other_config": {
+                "type": {
+                    "key": "string",
+                    "value": "string",
+                    "min": 0,
+                    "max": "unlimited"
+                }
+            }
+        },
+        "isRoot": true
+    },
+    "FSM_Policy": {
+      "columns": {
+        "name": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            }
+          }
+        },
+        "idx": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 0,
+              "maxInteger": 255
+            },
+            "min": 1,
+            "max": 1
+          }
+        },
+        "mac_op": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "in",
+                  "out"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "macs": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "min": 0,
+            "max": "unlimited"
+          }
+        },
+        "fqdn_op": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "in",
+                  "out",
+                  "sfr_in",
+                  "sfr_out",
+                  "sfl_in",
+                  "sfl_out"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "fqdns": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "min": 0,
+            "max": "unlimited"
+          }
+        },
+        "fqdncat_op": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "in",
+                  "out"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "fqdncats": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 0,
+              "maxInteger": 100
+            },
+            "min": 0,
+            "max": 101
+          }
+        },
+        "log": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "none",
+                  "all",
+                  "blocked"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "action": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "allow",
+                  "drop"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "next": {
+          "type": {
+            "key": "string",
+            "value": "string",
+            "min": 0,
+            "max": 2
+          }
+        },
+        "policy": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "redirect": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "min": 0,
+            "max": 2
+          }
+        }
+      },
+      "isRoot": true
+    },
+    "Wifi_VIF_Neighbors": {
+        "columns": {
+            "bssid": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 32
+                    }
+                }
+            },
+            "if_name": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 32
+                    }
+                }
+            },
+            "channel": {
+                "type": {
+                    "key": {
+                        "type": "integer",
+                        "minInteger": 1,
+                        "maxInteger": 165
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
+            "ht_mode": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "enum": [
+                            "set",
+                        [
+                            "HT20",
+                        "HT2040",
+                        "HT40",
+                        "HT40+",
+                        "HT40-",
+                        "HT80",
+                        "HT160",
+                        "HT80+80"
+                        ]
+                        ]
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
+            "priority": {
+                "type": {
+                    "key": {
+                        "type": "integer"
+                    },
+                    "min": 0,
+                    "max": 1
                 }
             }
         },

@@ -45,7 +45,16 @@ bool name ## _from_json(struct name *out, json_t *js, bool update, pjs_errmsg_t 
                                                                                         \
 error:                                                                                  \
     return false;                                                                       \
+}                                                                                       \
+static inline                                                                           \
+bool name ## _from_json_cb(void *out, json_t *js, bool update, pjs_errmsg_t err)        \
+{                                                                                       \
+    return name ## _from_json((struct name *)out, js, update, err);                     \
 }
+// _from_json_cb is a wrapper for the above _from_json but with 'void *out' to match
+// pjs_sub_from_json_cb_t, the wrapper is used for callback pointer type safety
+// this way just one parameter is cast instead of the entire function
+
 
 /*
  * =============================================================
@@ -69,7 +78,7 @@ error:                                                                          
 #define PJS_SUB(name, sub)                                                              \
 {                                                                                       \
     if (!pjs_sub_from_json(                                                             \
-            (pjs_sub_from_json_cb_t *)sub ## _from_json,                                \
+            sub ## _from_json_cb,                                                       \
             (void *)&out->name,                                                         \
             sizeof(out->name),                                                          \
             js,                                                                         \
@@ -107,7 +116,7 @@ error:                                                                          
 #define PJS_SUB_Q(name, sub)                                                            \
 {                                                                                       \
     if (!pjs_sub_q_from_json(                                                           \
-            (pjs_sub_from_json_cb_t *)sub ## _from_json,                                \
+            sub ## _from_json_cb,                                                       \
             (void *)&out->name,                                                         \
             sizeof(out->name),                                                          \
             &out->name ## _exists,                                                      \
@@ -144,7 +153,7 @@ error:                                                                          
         goto error;
 
 #define PJS_SUB_A(name, sub, sz)  \
-    if (!pjs_sub_array_from_json((pjs_sub_from_json_cb_t *)sub ## _from_json,           \
+    if (!pjs_sub_array_from_json(sub ## _from_json_cb,                                  \
             (void *)out->name, sizeof(out->name[0]), sz, &out->name ## _len,            \
             js, #name, update, err))                                                    \
         goto error;
@@ -175,7 +184,7 @@ error:                                                                          
         goto error;
 
 #define PJS_SUB_QA(name, sub, sz)                                                       \
-    if (!pjs_sub_array_q_from_json((pjs_sub_from_json_cb_t *)sub ## _from_json,         \
+    if (!pjs_sub_array_q_from_json(sub ## _from_json_cb,                                \
             (void *)out->name, sizeof(out->name[0]), &out->name ## _len, js,            \
             #name, update, err))                                                        \
         goto error;
@@ -188,6 +197,8 @@ error:                                                                          
 #define PJS_OVS_INT(name)                                                               \
     if (!pjs_ovs_int_from_json(                                                         \
             &out->name,                                                                 \
+            &out->name ## _exists,                                                      \
+            &out->name ## _present,                                                     \
             js,                                                                         \
             #name,                                                                      \
             update,                                                                     \
@@ -197,6 +208,8 @@ error:                                                                          
 #define PJS_OVS_BOOL(name)                                                              \
     if (!pjs_ovs_bool_from_json(                                                        \
             &out->name,                                                                 \
+            &out->name ## _exists,                                                      \
+            &out->name ## _present,                                                     \
             js,                                                                         \
             #name,                                                                      \
             update,                                                                     \
@@ -206,6 +219,8 @@ error:                                                                          
 #define PJS_OVS_REAL(name)                                                              \
     if (!pjs_ovs_real_from_json(                                                        \
             &out->name,                                                                 \
+            &out->name ## _exists,                                                      \
+            &out->name ## _present,                                                     \
             js,                                                                         \
             #name,                                                                      \
             update,                                                                     \
@@ -216,6 +231,8 @@ error:                                                                          
     if (!pjs_ovs_string_from_json(                                                      \
             out->name,                                                                  \
             sizeof(out->name),                                                          \
+            &out->name ## _exists,                                                      \
+            &out->name ## _present,                                                     \
             js,                                                                         \
             #name,                                                                      \
             update,                                                                     \
@@ -225,6 +242,8 @@ error:                                                                          
 #define PJS_OVS_UUID(name)                                                              \
     if (!pjs_ovs_uuid_from_json(                                                        \
             &out->name,                                                                 \
+            &out->name ## _exists,                                                      \
+            &out->name ## _present,                                                     \
             js,                                                                         \
             #name,                                                                      \
             update,                                                                     \
@@ -240,6 +259,7 @@ error:                                                                          
     if (!pjs_ovs_int_q_from_json(                                                       \
             &out->name,                                                                 \
             &out->name ## _exists,                                                      \
+            &out->name ## _present,                                                     \
             js,                                                                         \
             #name,                                                                      \
             update,                                                                     \
@@ -250,6 +270,7 @@ error:                                                                          
     if (!pjs_ovs_bool_q_from_json(                                                      \
             &out->name,                                                                 \
             &out->name ## _exists,                                                      \
+            &out->name ## _present,                                                     \
             js,                                                                         \
             #name,                                                                      \
             update,                                                                     \
@@ -260,6 +281,7 @@ error:                                                                          
     if (!pjs_ovs_real_q_from_json(                                                      \
             &out->name,                                                                 \
             &out->name ## _exists,                                                      \
+            &out->name ## _present,                                                     \
             js,                                                                         \
             #name,                                                                      \
             update,                                                                     \
@@ -271,6 +293,7 @@ error:                                                                          
             out->name,                                                                  \
             sizeof(out->name),                                                          \
             &out->name ## _exists,                                                      \
+            &out->name ## _present,                                                     \
             js,                                                                         \
             #name,                                                                      \
             update,                                                                     \
@@ -281,6 +304,7 @@ error:                                                                          
     if (!pjs_ovs_uuid_q_from_json(                                                      \
             &out->name,                                                                 \
             &out->name ## _exists,                                                      \
+            &out->name ## _present,                                                     \
             js,                                                                         \
             #name,                                                                      \
             update,                                                                     \
@@ -297,6 +321,7 @@ error:                                                                          
             out->name,                                                                  \
             sz,                                                                         \
             &out->name ## _len,                                                         \
+            &out->name ## _present,                                                     \
             js,                                                                         \
             #name,                                                                      \
             update,                                                                     \
@@ -308,6 +333,7 @@ error:                                                                          
             out->name,                                                                  \
             sz,                                                                         \
             &out->name ## _len,                                                         \
+            &out->name ## _present,                                                     \
             js,                                                                         \
             #name,                                                                      \
             update,                                                                     \
@@ -319,6 +345,7 @@ error:                                                                          
             out->name,                                                                  \
             sz,                                                                         \
             &out->name ## _len,                                                         \
+            &out->name ## _present,                                                     \
             js,                                                                         \
             #name,                                                                      \
             update,                                                                     \
@@ -331,6 +358,7 @@ error:                                                                          
             namesz,                                                                     \
             sz,                                                                         \
             &out->name ## _len,                                                         \
+            &out->name ## _present,                                                     \
             js,                                                                         \
             #name,                                                                      \
             update,                                                                     \
@@ -342,6 +370,7 @@ error:                                                                          
             out->name,                                                                  \
             sz,                                                                         \
             &out->name ## _len,                                                         \
+            &out->name ## _present,                                                     \
             js,                                                                         \
             #name,                                                                      \
             update,                                                                     \
@@ -360,6 +389,7 @@ error:                                                                          
             out->name,                                                                  \
             sz,                                                                         \
             &out->name ## _len,                                                         \
+            &out->name ## _present,                                                     \
             js,                                                                         \
             #name,                                                                      \
             update,                                                                     \
@@ -373,6 +403,7 @@ error:                                                                          
             out->name,                                                                  \
             sz,                                                                         \
             &out->name ## _len,                                                         \
+            &out->name ## _present,                                                     \
             js,                                                                         \
             #name,                                                                      \
             update,                                                                     \
@@ -386,6 +417,7 @@ error:                                                                          
             out->name,                                                                  \
             sz,                                                                         \
             &out->name ## _len,                                                         \
+            &out->name ## _present,                                                     \
             js,                                                                         \
             #name,                                                                      \
             update,                                                                     \
@@ -400,6 +432,7 @@ error:                                                                          
             len,                                                                        \
             sz,                                                                         \
             &out->name ## _len,                                                         \
+            &out->name ## _present,                                                     \
             js,                                                                         \
             #name,                                                                      \
             update,                                                                     \
@@ -413,6 +446,7 @@ error:                                                                          
             out->name,                                                                  \
             sz,                                                                         \
             &out->name ## _len,                                                         \
+            &out->name ## _present,                                                     \
             js,                                                                         \
             #name,                                                                      \
             update,                                                                     \
@@ -430,6 +464,7 @@ error:                                                                          
             out->name,                                                                  \
             sz,                                                                         \
             &out->name ## _len,                                                         \
+            &out->name ## _present,                                                     \
             js,                                                                         \
             #name,                                                                      \
             update,                                                                     \
@@ -442,6 +477,7 @@ error:                                                                          
             out->name,                                                                  \
             sz,                                                                         \
             &out->name ## _len,                                                         \
+            &out->name ## _present,                                                     \
             js,                                                                         \
             #name,                                                                      \
             update,                                                                     \
@@ -454,6 +490,7 @@ error:                                                                          
             out->name,                                                                  \
             sz,                                                                         \
             &out->name ## _len,                                                         \
+            &out->name ## _present,                                                     \
             js,                                                                         \
             #name,                                                                      \
             update,                                                                     \
@@ -467,6 +504,7 @@ error:                                                                          
             len,                                                                        \
             sz,                                                                         \
             &out->name ## _len,                                                         \
+            &out->name ## _present,                                                     \
             js,                                                                         \
             #name,                                                                      \
             update,                                                                     \
@@ -479,6 +517,7 @@ error:                                                                          
             out->name,                                                                  \
             sz,                                                                         \
             &out->name ## _len,                                                         \
+            &out->name ## _present,                                                     \
             js,                                                                         \
             #name,                                                                      \
             update,                                                                     \

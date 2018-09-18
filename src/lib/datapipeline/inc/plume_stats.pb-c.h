@@ -60,6 +60,8 @@ typedef struct _Sts__Capacity__QueueSample Sts__Capacity__QueueSample;
 typedef struct _Sts__Device Sts__Device;
 typedef struct _Sts__Device__LoadAvg Sts__Device__LoadAvg;
 typedef struct _Sts__Device__RadioTemp Sts__Device__RadioTemp;
+typedef struct _Sts__Device__Thermal Sts__Device__Thermal;
+typedef struct _Sts__Device__Thermal__RadioTxChainMask Sts__Device__Thermal__RadioTxChainMask;
 typedef struct _Sts__BSClient Sts__BSClient;
 typedef struct _Sts__BSClient__BSEvent Sts__BSClient__BSEvent;
 typedef struct _Sts__BSClient__BSBandReport Sts__BSClient__BSBandReport;
@@ -129,7 +131,20 @@ typedef enum _Sts__BSEventType {
   STS__BSEVENT_TYPE__CLIENT_STEERING_EXPIRED = 10,
   STS__BSEVENT_TYPE__CLIENT_STEERING_FAILED = 11,
   STS__BSEVENT_TYPE__AUTH_BLOCK = 12,
-  STS__BSEVENT_TYPE__CLIENT_KICKED = 13
+  STS__BSEVENT_TYPE__CLIENT_KICKED = 13,
+  STS__BSEVENT_TYPE__CLIENT_BS_BTM = 14,
+  STS__BSEVENT_TYPE__CLIENT_STICKY_BTM = 15,
+  STS__BSEVENT_TYPE__CLIENT_BTM = 16,
+  STS__BSEVENT_TYPE__CLIENT_CAPABILITIES = 17,
+  STS__BSEVENT_TYPE__CLIENT_BS_BTM_RETRY = 18,
+  STS__BSEVENT_TYPE__CLIENT_STICKY_BTM_RETRY = 19,
+  STS__BSEVENT_TYPE__CLIENT_BTM_RETRY = 20,
+  STS__BSEVENT_TYPE__CLIENT_RRM_BCN_RPT = 21,
+  STS__BSEVENT_TYPE__CLIENT_BS_KICK = 22,
+  STS__BSEVENT_TYPE__CLIENT_STICKY_KICK = 23,
+  STS__BSEVENT_TYPE__CLIENT_SPECULATIVE_KICK = 24,
+  STS__BSEVENT_TYPE__CLIENT_DIRECTED_KICK = 25,
+  STS__BSEVENT_TYPE__CLIENT_GHOST_DEVICE_KICK = 26
     PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(STS__BSEVENT_TYPE)
 } Sts__BSEventType;
 typedef enum _Sts__DisconnectSrc {
@@ -612,6 +627,34 @@ struct  _Sts__Device__RadioTemp
     , 0,0, 0,0 }
 
 
+struct  _Sts__Device__Thermal__RadioTxChainMask
+{
+  ProtobufCMessage base;
+  protobuf_c_boolean has_band;
+  Sts__RadioBandType band;
+  protobuf_c_boolean has_value;
+  uint32_t value;
+};
+#define STS__DEVICE__THERMAL__RADIO_TX_CHAIN_MASK__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&sts__device__thermal__radio_tx_chain_mask__descriptor) \
+    , 0,0, 0,0 }
+
+
+struct  _Sts__Device__Thermal
+{
+  ProtobufCMessage base;
+  size_t n_txchainmask;
+  Sts__Device__Thermal__RadioTxChainMask **txchainmask;
+  protobuf_c_boolean has_fan_rpm;
+  uint32_t fan_rpm;
+  protobuf_c_boolean has_timestamp_ms;
+  uint64_t timestamp_ms;
+};
+#define STS__DEVICE__THERMAL__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&sts__device__thermal__descriptor) \
+    , 0,NULL, 0,0, 0,0 }
+
+
 /*
  * //////////////////////////////////////////////////////////////////////////////
  * Device status report
@@ -627,10 +670,12 @@ struct  _Sts__Device
   uint64_t timestamp_ms;
   protobuf_c_boolean has_uptime;
   uint32_t uptime;
+  size_t n_thermal_stats;
+  Sts__Device__Thermal **thermal_stats;
 };
 #define STS__DEVICE__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&sts__device__descriptor) \
-    , NULL, 0,NULL, 0,0, 0,0 }
+    , NULL, 0,NULL, 0,0, 0,0, 0,NULL }
 
 
 struct  _Sts__BSClient__BSEvent
@@ -656,10 +701,46 @@ struct  _Sts__BSClient__BSEvent
   protobuf_c_boolean active;
   protobuf_c_boolean has_rejected;
   protobuf_c_boolean rejected;
+  protobuf_c_boolean has_is_btm_supported;
+  protobuf_c_boolean is_btm_supported;
+  protobuf_c_boolean has_is_rrm_supported;
+  protobuf_c_boolean is_rrm_supported;
+  protobuf_c_boolean has_max_chwidth;
+  uint32_t max_chwidth;
+  protobuf_c_boolean has_max_streams;
+  uint32_t max_streams;
+  protobuf_c_boolean has_phy_mode;
+  uint32_t phy_mode;
+  protobuf_c_boolean has_max_mcs;
+  uint32_t max_mcs;
+  protobuf_c_boolean has_max_txpower;
+  uint32_t max_txpower;
+  protobuf_c_boolean has_is_static_smps;
+  protobuf_c_boolean is_static_smps;
+  protobuf_c_boolean has_is_mu_mimo_supported;
+  protobuf_c_boolean is_mu_mimo_supported;
+  protobuf_c_boolean has_band_cap_2g;
+  protobuf_c_boolean band_cap_2g;
+  protobuf_c_boolean has_band_cap_5g;
+  protobuf_c_boolean band_cap_5g;
+  protobuf_c_boolean has_rrm_caps_link_meas;
+  protobuf_c_boolean rrm_caps_link_meas;
+  protobuf_c_boolean has_rrm_caps_neigh_rpt;
+  protobuf_c_boolean rrm_caps_neigh_rpt;
+  protobuf_c_boolean has_rrm_caps_bcn_rpt_passive;
+  protobuf_c_boolean rrm_caps_bcn_rpt_passive;
+  protobuf_c_boolean has_rrm_caps_bcn_rpt_active;
+  protobuf_c_boolean rrm_caps_bcn_rpt_active;
+  protobuf_c_boolean has_rrm_caps_bcn_rpt_table;
+  protobuf_c_boolean rrm_caps_bcn_rpt_table;
+  protobuf_c_boolean has_rrm_caps_lci_meas;
+  protobuf_c_boolean rrm_caps_lci_meas;
+  protobuf_c_boolean has_rrm_caps_ftm_range_rpt;
+  protobuf_c_boolean rrm_caps_ftm_range_rpt;
 };
 #define STS__BSCLIENT__BSEVENT__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&sts__bsclient__bsevent__descriptor) \
-    , 0, 0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0 }
+    , 0, 0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0 }
 
 
 struct  _Sts__BSClient__BSBandReport
@@ -803,13 +884,14 @@ struct  _Sts__Report
   Sts__ClientReport **clients;
   size_t n_device;
   Sts__Device **device;
-  Sts__BSReport *bs_report;
+  size_t n_bs_report;
+  Sts__BSReport **bs_report;
   size_t n_rssi_report;
   Sts__RssiReport **rssi_report;
 };
 #define STS__REPORT__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&sts__report__descriptor) \
-    , NULL, 0,NULL, 0,NULL, 0,NULL, 0,NULL, 0,NULL, NULL, 0,NULL }
+    , NULL, 0,NULL, 0,NULL, 0,NULL, 0,NULL, 0,NULL, 0,NULL, 0,NULL }
 
 
 /* Sts__AvgType methods */
@@ -962,6 +1044,12 @@ void   sts__device__load_avg__init
 /* Sts__Device__RadioTemp methods */
 void   sts__device__radio_temp__init
                      (Sts__Device__RadioTemp         *message);
+/* Sts__Device__Thermal__RadioTxChainMask methods */
+void   sts__device__thermal__radio_tx_chain_mask__init
+                     (Sts__Device__Thermal__RadioTxChainMask         *message);
+/* Sts__Device__Thermal methods */
+void   sts__device__thermal__init
+                     (Sts__Device__Thermal         *message);
 /* Sts__Device methods */
 void   sts__device__init
                      (Sts__Device         *message);
@@ -1141,6 +1229,12 @@ typedef void (*Sts__Device__LoadAvg_Closure)
 typedef void (*Sts__Device__RadioTemp_Closure)
                  (const Sts__Device__RadioTemp *message,
                   void *closure_data);
+typedef void (*Sts__Device__Thermal__RadioTxChainMask_Closure)
+                 (const Sts__Device__Thermal__RadioTxChainMask *message,
+                  void *closure_data);
+typedef void (*Sts__Device__Thermal_Closure)
+                 (const Sts__Device__Thermal *message,
+                  void *closure_data);
 typedef void (*Sts__Device_Closure)
                  (const Sts__Device *message,
                   void *closure_data);
@@ -1203,6 +1297,8 @@ extern const ProtobufCMessageDescriptor sts__capacity__queue_sample__descriptor;
 extern const ProtobufCMessageDescriptor sts__device__descriptor;
 extern const ProtobufCMessageDescriptor sts__device__load_avg__descriptor;
 extern const ProtobufCMessageDescriptor sts__device__radio_temp__descriptor;
+extern const ProtobufCMessageDescriptor sts__device__thermal__descriptor;
+extern const ProtobufCMessageDescriptor sts__device__thermal__radio_tx_chain_mask__descriptor;
 extern const ProtobufCMessageDescriptor sts__bsclient__descriptor;
 extern const ProtobufCMessageDescriptor sts__bsclient__bsevent__descriptor;
 extern const ProtobufCMessageDescriptor sts__bsclient__bsband_report__descriptor;

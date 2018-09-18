@@ -31,6 +31,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sys/ioctl.h>
 #include <arpa/inet.h>
 #include <net/if.h>
+#include <net/if_arp.h>
 #include <stdbool.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -273,7 +274,7 @@ bool os_nif_mtu_set(char* ifname, int mtu)
     rc = os_nif_ifreq(SIOCSIFMTU, ifname, &req);
     if (rc != 0)
     {
-        LOG(DEBUG, "os_nif_ipaddr: SIOCGIFMTU failed::ifname=%s", ifname);
+        LOG(DEBUG, "os_nif_ipaddr: SIOCSIFMTU failed::ifname=%s", ifname);
         return false;
     }
 
@@ -299,7 +300,34 @@ bool os_nif_macaddr(char* ifname, os_macaddr_t* mac)
     /* Copy the address */
     memcpy(mac, req.ifr_addr.sa_data, sizeof(*mac));
 
-    LOG(DEBUG, "os_nif_macaddr set::ifname=%s|mac=" PRI(os_macaddr_t), ifname, FMT(os_macaddr_t, *mac));
+    LOG(DEBUG, "os_nif_macaddr get::ifname=%s|mac=" PRI(os_macaddr_t), ifname, FMT(os_macaddr_t, *mac));
+
+    return true;
+}
+
+bool os_nif_macaddr_get(char* ifname, os_macaddr_t* mac)
+{
+    return os_nif_macaddr(ifname, mac);
+}
+
+bool os_nif_macaddr_set(char *ifname, os_macaddr_t mac)
+{
+    int             rc;
+    struct ifreq    req;
+
+    req.ifr_hwaddr.sa_family = ARPHRD_ETHER;
+
+    memcpy(req.ifr_hwaddr.sa_data, &mac, sizeof(mac));
+
+    /* Set the MAC(hardware) address */
+    rc = os_nif_ifreq(SIOCSIFHWADDR, ifname, &req);
+    if (rc != 0)
+    {
+        LOG(DEBUG, "%s: SIOCSIFHWADDR failed::ifname=%s", __func__, ifname);
+        return false;
+    }
+
+    LOG(DEBUG, "%s set::ifname=%s|mac=" PRI(os_macaddr_t), __func__, ifname, FMT(os_macaddr_t, mac));
 
     return true;
 }
@@ -339,7 +367,7 @@ bool os_nif_macaddr_from_str(os_macaddr_t* mac, const char* str)
     long    cnum = 0;
     int     cmak = 0;
 
-    strlcpy(pstr, str, sizeof(pstr));
+    STRSCPY(pstr, str);
 
     mstr = pstr;
     while ((mtok = strsep(&mstr, ":-")) != NULL)
@@ -614,7 +642,7 @@ void os_nif_list_free(ds_list_t* list)
  */
 int os_nif_ifreq(int cmd, char *ifname, struct ifreq *req)
 {
-    strlcpy(req->ifr_name, ifname, sizeof(req->ifr_name));
+    STRSCPY(req->ifr_name, ifname);
 
     return os_nif_ioctl(cmd, req);
 }
@@ -693,17 +721,20 @@ static int os_nif_dhcpc_pid(char *ifname)
     return pid;
 }
 
-bool os_nif_dhcpc_start(char* ifname, bool apply)
+bool os_nif_dhcpc_start(char* ifname, bool apply, int dhcp_time)
 {
     char dhcp_vendor_class[TARGET_BUFF_SZ];
     char pidfile[256];
     char swver[256];
     char profile[256];
     char serial_opt[256];
-    char serial_num[256];
-    char sku_num[256];
+    char serial_num[100];
+    char sku_num[100];
     char hostname[256];
     char udhcpc_s_option[256];
+    char *pidname;
+    char name[256];
+    char paramT[256];
     pid_t pid;
     int status;
     int valuelen;
@@ -712,7 +743,16 @@ bool os_nif_dhcpc_start(char* ifname, bool apply)
     const char * bprofile = app_build_profile_get();
     const char * bnum = app_build_number_get();
 
-    pid = os_nif_dhcpc_pid(ifname);
+    if (!apply) {
+        snprintf(name, sizeof(name), "dryrun-%s", ifname);
+        pidname = name;
+    } else {
+        pidname = ifname;
+    }
+
+    snprintf(paramT, sizeof(paramT), "%d", dhcp_time);
+
+    pid = os_nif_dhcpc_pid(pidname);
     if (pid > 0)
     {
         LOG(ERR, "DHCP client already running::ifname=%s", ifname);
@@ -732,7 +772,7 @@ bool os_nif_dhcpc_start(char* ifname, bool apply)
         snprintf(hostname, sizeof(hostname), "hostname:%s_Pod_%s", serial_num, sku_num);
     }
 
-    snprintf(pidfile, sizeof(pidfile), "/var/run/udhcpc-%s.pid", ifname);
+    snprintf(pidfile, sizeof(pidfile), "/var/run/udhcpc-%s.pid", pidname);
     snprintf(swver, sizeof(swver), "0xe1:");
     snprintf(profile, sizeof(profile), "0xe2:");
     snprintf(serial_opt, sizeof(serial_opt), "0xe3:");
@@ -781,7 +821,7 @@ bool os_nif_dhcpc_start(char* ifname, bool apply)
 	"-s", udhcpc_s_option,
 	"-b",
 	"-t", "60",
-	"-T", "1",
+	"-T", paramT,
 	"-o",
 	"-O", "1",
 	"-O", "3",
@@ -800,12 +840,13 @@ bool os_nif_dhcpc_start(char* ifname, bool apply)
 	NULL
     };
 
+/* -T,--timeout SEC - Pause between packets (default 3) */
     char *argv_dry_run[] = {
 	"/sbin/udhcpc",
  	"-p", pidfile,
 	"-n",
 	"-t", "5",
-	"-T", "1",
+	"-T", paramT,
 	"-A", "2",
 	"-f",
 	"-i", ifname,
@@ -837,9 +878,19 @@ bool os_nif_dhcpc_start(char* ifname, bool apply)
     return true;
 }
 
-bool os_nif_dhcpc_stop(char* ifname)
+bool os_nif_dhcpc_stop(char* ifname, bool dryrun)
 {
-    int pid = os_nif_dhcpc_pid(ifname);
+    char *pidname;
+    char buf[256];
+
+    if (dryrun) {
+        snprintf(buf, sizeof(buf), "dryrun-%s", ifname);
+        pidname = buf;
+    }
+    else
+        pidname = ifname;
+
+    int pid = os_nif_dhcpc_pid(pidname);
     if (pid <= 0)
     {
         LOG(DEBUG, "DHCP client not running::ifname=%s", ifname);

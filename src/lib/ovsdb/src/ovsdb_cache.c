@@ -190,6 +190,9 @@ void ovsdb_cache_update_cb(ovsdb_update_monitor_t *self)
     }
 
     char record[table->schema_size];
+    char old_record[table->schema_size];
+    memset(old_record, 0, sizeof(old_record));
+    self->mon_old_rec = old_record;
 
     mon_type = self->mon_type;
     if (row && (mon_type == OVSDB_UPDATE_NEW))
@@ -244,6 +247,9 @@ void ovsdb_cache_update_cb(ovsdb_update_monitor_t *self)
                     table->table_name, typestr, mon_uuid, perr);
                 return;
             }
+            // set _update_type
+            int *_update_type = (int*)(record + table->upd_type_offset);
+            *_update_type = mon_type;
             // uuid integrity check
             row_uuid = record + table->uuid_offset;
             if (strcmp(row_uuid, mon_uuid))
@@ -261,6 +267,13 @@ void ovsdb_cache_update_cb(ovsdb_update_monitor_t *self)
                 memcpy(row->record + table->version_offset,
                         record + table->version_offset,
                         sizeof(ovs_uuid_t));
+                // ignore _update_type
+                memcpy(row->record + table->upd_type_offset,
+                        record + table->upd_type_offset,
+                        sizeof(int));
+                // clear previous _changed flags
+                table->mark_changed(old_record, row->record);
+                // compare
                 if (memcmp(record, row->record, sizeof(record)) == 0)
                 {
                     LOG(INFO, "=== upd: %s table: %s row: %s %s%s, EQUAL record - skip callback",
@@ -269,6 +282,16 @@ void ovsdb_cache_update_cb(ovsdb_update_monitor_t *self)
                         new_ver?record + table->version_offset:"");
                     return;
                 }
+                // convert old
+                ret = table->from_json(old_record, self->mon_json_old, true, perr);
+                if (!ret)
+                {
+                    LOG(ERR, "Table %s %s parsing OLD %s error: %s",
+                            table->table_name, typestr, mon_uuid, perr);
+                    return;
+                }
+                // mark _changed
+                table->mark_changed(old_record, record);
             }
             memcpy(row->record, record, sizeof(record));
             break;
@@ -280,7 +303,7 @@ void ovsdb_cache_update_cb(ovsdb_update_monitor_t *self)
                     table->table_name, typestr, mon_uuid);
                 return;
             }
-            if (table->cache_callback) table->cache_callback(self, row->record, row);
+            if (table->cache_callback) table->cache_callback(self, old_record, row->record, row);
             ds_tree_remove(&table->rows, row);
             if (table->key_offset >= 0)
             {
@@ -297,7 +320,7 @@ void ovsdb_cache_update_cb(ovsdb_update_monitor_t *self)
             return;
     }
 
-    if (table->cache_callback) table->cache_callback(self, row->record, row);
+    if (table->cache_callback) table->cache_callback(self, old_record, row->record, row);
 
     LOG(INFO, "<<< DONE: MON upd: %s table: %s row: %s ver: %s",
         typestr, table->table_name, mon_uuid, row->record + table->version_offset);

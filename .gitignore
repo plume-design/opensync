@@ -14,3 +14,4 @@ files.idx
 .cproject
 .vscode
 .buildnum
+/doc

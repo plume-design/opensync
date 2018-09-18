@@ -1,0 +1,46 @@
+mainmenu "Plume Configuration"
+
+config USE_KCONFIG
+    bool "Enable KConfig configuration"
+
+if USE_KCONFIG
+    config TARGET_NAME
+        string "Device Descriptive Name"
+
+    config TARGET_MODEL
+        string "Device Model Name"
+
+    menu "PML Configuration"
+        menuconfig PML_TARGET
+            bool "Use generic TARGET (kconfig based target configuration)"
+
+            if PML_TARGET
+                orsource ../src/lib/target/kconfig/Kconfig
+            endif
+
+        menuconfig PML_INET
+            bool "Use LIBINET (kconfig based networking support)"
+            help
+                INET provides generic Linux networkign services to TARGET.
+                On supported platforms, most of the NM2 functionality can be realized by
+                enabling INET.
+
+            if PML_INET
+                orsource "../src/lib/inet/kconfig/Kconfig"
+            endif
+    endmenu
+
+    menu "Platform Configuration"
+        orsource "Kconfig.platform"
+        osource "../platform/*/kconfig/Kconfig.platform"
+    endmenu
+
+    menu "Vendor Configuration"
+        choice VENDOR
+            prompt "Vendor Selection"
+            orsource "Kconfig.vendor"
+            orsource "../vendor/*/kconfig/Kconfig.vendor"
+        endchoice
+        orsource "../vendor/*/kconfig/Kconfig"
+    endmenu
+endif

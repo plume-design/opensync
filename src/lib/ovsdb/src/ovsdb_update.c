@@ -461,3 +461,19 @@ bool ovsdb_update_changed(ovsdb_update_monitor_t *self, char *field)
     }
     return changed;
 }
+
+char* ovsdb_update_type_to_str(ovsdb_update_type_t update_type)
+{
+    switch (update_type) {
+        case OVSDB_UPDATE_DEL:
+            return "remove";
+        case OVSDB_UPDATE_NEW:
+            return "insert";
+        case OVSDB_UPDATE_MODIFY:
+            return "modify";
+        default:
+            LOGE("Invalid ovsdb type enum %d", update_type);
+            break;
+    }
+    return NULL;
+}

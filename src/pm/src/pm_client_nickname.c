@@ -110,11 +110,12 @@ pm_client_nickname_update(struct schema_Client_Nickname_Config *cncfg, bool stat
 
 void
 callback_Client_Nickname_Config(
-        ovsdb_update_monitor_t *mon, void *record,
+        ovsdb_update_monitor_t *mon,
+        struct schema_Client_Nickname_Config *old_rec,
+        struct schema_Client_Nickname_Config *cncfg,
         ovsdb_cache_row_t *row)
 {
-    struct schema_Client_Nickname_Config *cncfg = record;
-
+    (void)old_rec;
     (void)row;
     (void)mon;
 
@@ -122,7 +123,11 @@ callback_Client_Nickname_Config(
     {
         LOGE("Can't update OVSDB client nickname");
     }
-    else if (mon->mon_type == OVSDB_UPDATE_MODIFY){
+    else if (mon->mon_type == OVSDB_UPDATE_DEL) {
+        MEMZERO(cncfg->nickname);
+        target_client_nickname_set(cncfg);
+    }
+    else {
         target_client_nickname_set(cncfg);
     }
 

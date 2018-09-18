@@ -35,9 +35,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "pjs_common.h"
 #include "pjs_undef.h"
 
+// _update_type is the ovsdb monitor update type: ovsdb_update_type_t (NEW,MODIFY,DELETE)
+// using int to minimize dependanciess
+
 #define PJS(name, ...)                                                              \
 struct name                                                                         \
 {                                                                                   \
+    int  _update_type;                                                              \
+    bool _partial_update;                                                           \
     __VA_ARGS__                                                                     \
 };                                                                                  \
                                                                                     \
@@ -97,25 +102,33 @@ extern json_t *name ## _to_json(                                                
 
 /*
  * =============================================================
+ *  OVS Common flags
+ * =============================================================
+ */
+#define PJS_OVS_COMMON(name)                bool name ## _present; bool name ## _changed;
+#define PJS_OVS_COMMON_EXISTS(name)         PJS_OVS_COMMON(name) bool name ## _exists;
+
+/*
+ * =============================================================
  *  OVS Basic Types
  * =============================================================
  */
-#define PJS_OVS_INT(name)                   int name;
-#define PJS_OVS_BOOL(name)                  bool name;
-#define PJS_OVS_REAL(name)                  double name;
-#define PJS_OVS_STRING(name, len)           char name[len];
-#define PJS_OVS_UUID(name)                  ovs_uuid_t name;
+#define PJS_OVS_INT(name)                   int name;               PJS_OVS_COMMON_EXISTS(name)
+#define PJS_OVS_BOOL(name)                  bool name;              PJS_OVS_COMMON_EXISTS(name)
+#define PJS_OVS_REAL(name)                  double name;            PJS_OVS_COMMON_EXISTS(name)
+#define PJS_OVS_STRING(name, len)           char name[len];         PJS_OVS_COMMON_EXISTS(name)
+#define PJS_OVS_UUID(name)                  ovs_uuid_t name;        PJS_OVS_COMMON_EXISTS(name)
 
 /*
  * =============================================================
  *  OVS Basic Optional Types
  * =============================================================
  */
-#define PJS_OVS_INT_Q(name)                 int name;               bool name ## _exists;
-#define PJS_OVS_BOOL_Q(name)                bool name;              bool name ## _exists;
-#define PJS_OVS_STRING_Q(name, sz)          char name[sz];          bool name ## _exists;
-#define PJS_OVS_REAL_Q(name)                double name;            bool name ## _exists;
-#define PJS_OVS_UUID_Q(name)                ovs_uuid_t name;        bool name ## _exists;
+#define PJS_OVS_INT_Q(name)                 int name;               PJS_OVS_COMMON_EXISTS(name)
+#define PJS_OVS_BOOL_Q(name)                bool name;              PJS_OVS_COMMON_EXISTS(name)
+#define PJS_OVS_STRING_Q(name, sz)          char name[sz];          PJS_OVS_COMMON_EXISTS(name)
+#define PJS_OVS_REAL_Q(name)                double name;            PJS_OVS_COMMON_EXISTS(name)
+#define PJS_OVS_UUID_Q(name)                ovs_uuid_t name;        PJS_OVS_COMMON_EXISTS(name)
 
 /*
  * =============================================================
@@ -123,7 +136,8 @@ extern json_t *name ## _to_json(                                                
  * =============================================================
  */
 #define PJS_STRUCT_OVS_SET(name, sz, type)      type;                                          \
-                                                int name ## _len;
+                                                int name ## _len;                              \
+                                                PJS_OVS_COMMON(name)
 
 #define PJS_OVS_SET_INT(name, sz)               PJS_STRUCT_OVS_SET(name, sz, int name[sz])
 #define PJS_OVS_SET_BOOL(name, sz)              PJS_STRUCT_OVS_SET(name, sz, bool name[sz])
@@ -139,7 +153,8 @@ extern json_t *name ## _to_json(                                                
  */
 #define PJS_STRUCT_OVS_SMAP(name, sz, type)     type;                                           \
                                                 char name ## _keys[sz][PJS_OVS_MAP_KEYSZ];      \
-                                                int name ## _len;
+                                                int name ## _len;                               \
+                                                PJS_OVS_COMMON(name)
 
 #define PJS_OVS_SMAP_INT(name, sz)              PJS_STRUCT_OVS_SMAP(name, sz, int name[sz])
 #define PJS_OVS_SMAP_BOOL(name, sz)             PJS_STRUCT_OVS_SMAP(name, sz, bool name[sz])
@@ -152,9 +167,10 @@ extern json_t *name ## _to_json(                                                
  * OVSDB Map(dictionary), where the key is an int
  * =============================================================
  */
-#define PJS_STRUCT_OVS_DMAP(name, sz, type)     type;                                            \
+#define PJS_STRUCT_OVS_DMAP(name, sz, type)     type;                                           \
                                                 int name ## _keys[sz];                          \
-                                                int name ## _len;
+                                                int name ## _len;                               \
+                                                PJS_OVS_COMMON(name)
 
 #define PJS_OVS_DMAP_INT(name, sz)              PJS_STRUCT_OVS_DMAP(name, sz, int name[sz])
 #define PJS_OVS_DMAP_BOOL(name, sz)             PJS_STRUCT_OVS_DMAP(name, sz, bool name[sz])

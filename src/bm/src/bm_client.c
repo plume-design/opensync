@@ -51,7 +51,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /*****************************************************************************/
 #define MODULE_ID LOG_MODULE_ID_CLIENT
 
-
 /*****************************************************************************/
 static ovsdb_update_monitor_t   bm_client_ovsdb_mon;
 static ds_tree_t                bm_clients = DS_TREE_INIT((ds_key_cmp_t *)strcmp,
@@ -82,7 +81,13 @@ static c_item_t map_ovsdb_reject_detection[] = {
 static c_item_t map_ovsdb_kick_type[] = {
     C_ITEM_STR(BM_CLIENT_KICK_NONE,             "none"),
     C_ITEM_STR(BM_CLIENT_KICK_DISASSOC,         "disassoc"),
-    C_ITEM_STR(BM_CLIENT_KICK_DEAUTH,           "deauth")
+    C_ITEM_STR(BM_CLIENT_KICK_DEAUTH,           "deauth"),
+    C_ITEM_STR(BM_CLIENT_KICK_BSS_TM_REQ,       "bss_tm_req"),
+    C_ITEM_STR(BM_CLIENT_KICK_RRM_BR_REQ,       "rrm_br_req"),
+    C_ITEM_STR(BM_CLIENT_KICK_BTM_DISASSOC,     "btm_disassoc"),
+    C_ITEM_STR(BM_CLIENT_KICK_BTM_DEAUTH,       "btm_deauth"),
+    C_ITEM_STR(BM_CLIENT_KICK_RRM_DISASSOC,     "rrm_disassoc"),
+    C_ITEM_STR(BM_CLIENT_KICK_RRM_DEAUTH,       "rrm_deauth")
 };
 
 static c_item_t map_cs_modes[] = {
@@ -101,6 +106,18 @@ static c_item_t map_cs_states[] = {
     C_ITEM_STR(BM_CLIENT_CS_STATE_XING_DISABLED,    "xing_disabled")
 };
 
+static c_item_t map_ovsdb_pref_5g[] = {
+    C_ITEM_STR(BM_CLIENT_5G_NEVER,              "never" ),
+    C_ITEM_STR(BM_CLIENT_5G_HWM,                "hwm"   ),
+    C_ITEM_STR(BM_CLIENT_5G_ALWAYS,             "always")
+};
+
+static c_item_t map_ovsdb_force_kick[] = {
+    C_ITEM_STR(BM_CLIENT_FORCE_KICK_NONE,       "none"),
+    C_ITEM_STR(BM_CLIENT_SPECULATIVE_KICK,      "speculative"),
+    C_ITEM_STR(BM_CLIENT_DIRECTED_KICK,         "directed"),
+    C_ITEM_STR(BM_CLIENT_GHOST_DEVICE_KICK,     "ghost_device")
+};
 
 /*****************************************************************************/
 static bool     bm_client_to_bsal_conf(bm_client_t *client,
@@ -123,24 +140,6 @@ static void     bm_client_state_change(bm_client_t *client,
 
 
 /*****************************************************************************/
-static const char *
-bm_client_get_cs_params( struct schema_Band_Steering_Clients *bscli, char *key )
-{
-    int i;
-
-    for( i = 0; i < bscli->cs_params_len; i++ )
-    {
-        const char *cs_params_key = bscli->cs_params_keys[i];
-        const char *cs_params_val = bscli->cs_params[i];
-
-        if( !strcmp( key, cs_params_key ) )
-        {
-            return cs_params_val;
-        }
-    }
-
-    return NULL;
-}
 
 static bool
 bm_client_to_cs_bsal_conf( bm_client_t *client, bsal_client_config_t *dest, bool block )
@@ -205,12 +204,30 @@ bm_client_to_bsal_conf(bm_client_t *client, bsal_band_t band, bsal_client_config
     if (band == BSAL_BAND_24G && client->state != BM_CLIENT_STATE_BACKOFF) {
         /* Block client based on HWM */
         dest->blacklist             = false;
-        dest->rssi_probe_hwm        = client->hwm;
+
+        if( client->pref_5g == BM_CLIENT_5G_ALWAYS ) {
+            dest->rssi_probe_hwm    = BM_CLIENT_MIN_HWM;
+        } else if( client->pref_5g == BM_CLIENT_5G_HWM ) {
+            dest->rssi_probe_hwm    = client->hwm;
+        } else {
+            dest->rssi_probe_hwm    = 0;
+        }
+        LOGT( "Client '%s': Setting hwm to '%hhu'",
+                                client->mac_addr, dest->rssi_probe_hwm );
+
         dest->rssi_probe_lwm        = client->lwm;
         dest->rssi_high_xing        = client->hwm;
         dest->rssi_inact_xing       = 0;
 
-        dest->rssi_auth_hwm         = 0;
+        if( client->pre_assoc_auth_block ) {
+            LOGT( "Client '%s': Blocking auth requests for"
+                  " pre-assocation band steering", client->mac_addr );
+            // This value should always mirror dest->rssi_probe_hwm
+            dest->rssi_auth_hwm     = dest->rssi_probe_hwm;
+        } else {
+            dest->rssi_auth_hwm     = 0;
+        }
+
         dest->rssi_auth_lwm         = 0;
         dest->auth_reject_reason    = 0;
     }
@@ -595,87 +612,106 @@ bm_client_trigger_client_steering( bm_client_t *client )
     return;
 }
 
+/*****************************************************************************/
+
+static const char *
+bm_client_get_rrm_bcn_rpt_param( struct schema_Band_Steering_Clients *bscli, char *key )
+{
+    int i;
+
+    for( i = 0; i < bscli->rrm_bcn_rpt_params_len; i++ ) {
+        const char *params_key = bscli->rrm_bcn_rpt_params_keys[i];
+        const char *params_val = bscli->rrm_bcn_rpt_params[i];
+
+        if( !strcmp( key, params_key ) ) {
+            return params_val;
+        }
+    }
+
+    return NULL;
+}
+
 static bool
-bm_client_from_ovsdb(struct schema_Band_Steering_Clients *bscli, bm_client_t *client)
+bm_client_get_rrm_bcn_rpt_params( struct schema_Band_Steering_Clients *bscli,
+                                  bm_client_t *client )
+{
+    const char      *val;
+
+    if( !( val = bm_client_get_rrm_bcn_rpt_param( bscli, "enable_scan" ))) {
+        client->enable_ch_scan = false;
+    } else {
+        if( !strcmp( val, "true" ) ) {
+            client->enable_ch_scan = true;
+        } else {
+            client->enable_ch_scan = false;
+        }
+    }
+
+    if( !( val = bm_client_get_rrm_bcn_rpt_param( bscli, "scan_interval" ))) {
+        client->ch_scan_interval = RRM_BCN_RPT_DEFAULT_SCAN_INTERVAL;
+    } else {
+        client->ch_scan_interval = atoi( val );
+    }
+
+    return true;
+}
+
+static const char *
+bm_client_get_cs_param( struct schema_Band_Steering_Clients *bscli, char *key )
+{
+    int i;
+
+    for( i = 0; i < bscli->cs_params_len; i++ )
+    {
+        const char *cs_params_key = bscli->cs_params_keys[i];
+        const char *cs_params_val = bscli->cs_params[i];
+
+        if( !strcmp( key, cs_params_key ) )
+        {
+            return cs_params_val;
+        }
+    }
+
+    return NULL;
+}
+
+static bool 
+bm_client_get_cs_params( struct schema_Band_Steering_Clients *bscli, bm_client_t *client )
 {
     c_item_t                *item;
     const char              *val;
 
-    strncpy(client->mac_addr, bscli->mac, sizeof(client->mac_addr)-1);
-
-    item = c_get_item_by_str(map_ovsdb_reject_detection, bscli->reject_detection);
-    if (!item) {
-        LOGE("Client %s - unknown reject detection '%s'",
-                                            client->mac_addr, bscli->reject_detection);
-        return false;
-    }
-    client->reject_detection = (bm_client_reject_t)item->key;
-
-    item = c_get_item_by_str(map_ovsdb_kick_type, bscli->kick_type);
-    if (!item) {
-        LOGE("Client %s - unknown kick type '%s'", client->mac_addr, bscli->kick_type);
-        return false;
-    }
-    client->kick_type               = (bm_client_kick_t)item->key;
-
-    item = c_get_item_by_str(map_ovsdb_kick_type, bscli->sc_kick_type);
-    if (!item) {
-        LOGE("Client %s - unknown sticky client kick type '%s'", client->mac_addr, bscli->sc_kick_type);
-        return false;
-    }
-    client->sc_kick_type            = (bm_client_kick_t)item->key;
-
-    client->kick_reason             = bscli->kick_reason;
-    client->sc_kick_reason          = bscli->sc_kick_reason;
-    client->hwm                     = bscli->hwm;
-    client->lwm                     = bscli->lwm;
-    client->max_rejects             = bscli->max_rejects;
-    client->max_rejects_period      = bscli->rejects_tmout_secs;
-    client->backoff_period          = bscli->backoff_secs;
-
-    // If the kick_debounce_period or sc_kick_debounce_period was
-    // changed, reset the last_kick time
-    if( ( client->kick_debounce_period != bscli->kick_debounce_period ) ||
-        ( client->sc_kick_debounce_period != bscli->kick_debounce_period ) )
-    {
-        client->times.last_kick = 0;
-    }
-
-    client->kick_debounce_period    = bscli->kick_debounce_period;
-    client->sc_kick_debounce_period = bscli->sc_kick_debounce_period;
-
-    // Get all Client Steering related parameters
-    if( !(val = bm_client_get_cs_params( bscli, "hwm" ))) {
+    if( !(val = bm_client_get_cs_param( bscli, "hwm" ))) {
         client->cs_hwm = 0;
     } else {
         client->cs_hwm = atoi( val );
     }
 
-    if( !(val = bm_client_get_cs_params( bscli, "lwm" ))) {
+    if( !(val = bm_client_get_cs_param( bscli, "lwm" ))) {
         client->cs_lwm = 0;
     } else {
         client->cs_lwm = atoi( val );
     }
 
-    if( !(val = bm_client_get_cs_params( bscli, "cs_max_rejects" ))) {
+    if( !(val = bm_client_get_cs_param( bscli, "cs_max_rejects" ))) {
         client->cs_max_rejects = 0;
     } else {
         client->cs_max_rejects = atoi( val );
     }
 
-    if( !(val = bm_client_get_cs_params( bscli, "cs_max_rejects_period" ))) {
+    if( !(val = bm_client_get_cs_param( bscli, "cs_max_rejects_period" ))) {
         client->cs_max_rejects_period = 0;
     } else {
         client->cs_max_rejects_period = atoi( val );
     }
 
-    if( !(val = bm_client_get_cs_params( bscli, "cs_enforce_period" ))) {
+    if( !(val = bm_client_get_cs_param( bscli, "cs_enforce_period" ))) {
         client->cs_enforce_period = 0;
     } else {
         client->cs_enforce_period = atoi( val );
     }
 
-    if( !(val = bm_client_get_cs_params( bscli, "cs_reject_detection" ))) {
+    if( !(val = bm_client_get_cs_param( bscli, "cs_reject_detection" ))) {
         client->cs_reject_detection = BM_CLIENT_REJECT_NONE;
     } else {
         item = c_get_item_by_str(map_ovsdb_reject_detection, val);
@@ -687,7 +723,7 @@ bm_client_from_ovsdb(struct schema_Band_Steering_Clients *bscli, bm_client_t *cl
         client->cs_reject_detection = (bm_client_reject_t)item->key;
     }
 
-    if( !(val = bm_client_get_cs_params( bscli, "band" ))) {
+    if( !(val = bm_client_get_cs_param( bscli, "band" ))) {
         // ABS: Check if this is correct
         client->cs_band = BSAL_BAND_COUNT;
     } else {
@@ -721,7 +757,7 @@ bm_client_from_ovsdb(struct schema_Band_Steering_Clients *bscli, bm_client_t *cl
         client->cs_state = (bm_client_cs_state_t)item->key;
     }
 
-    if( !(val = bm_client_get_cs_params( bscli, "cs_probe_block" ))) {
+    if( !(val = bm_client_get_cs_param( bscli, "cs_probe_block" ))) {
         client->cs_probe_block = false;
     } else {
         if( !strcmp( val, "true" ) ) {
@@ -731,7 +767,7 @@ bm_client_from_ovsdb(struct schema_Band_Steering_Clients *bscli, bm_client_t *cl
         }
     }
 
-    if( !(val = bm_client_get_cs_params( bscli, "cs_auth_block" ))) {
+    if( !(val = bm_client_get_cs_param( bscli, "cs_auth_block" ))) {
         client->cs_auth_block = false;
     } else {
         if( !strcmp( val, "true" ) ) {
@@ -741,7 +777,7 @@ bm_client_from_ovsdb(struct schema_Band_Steering_Clients *bscli, bm_client_t *cl
         }
     }
 
-    if( !(val = bm_client_get_cs_params( bscli, "cs_auth_reject_reason" ))) {
+    if( !(val = bm_client_get_cs_param( bscli, "cs_auth_reject_reason" ))) {
         // Value 0 is used for blocking authentication requests.
         // Hence, use -1 as default
         client->cs_auth_reject_reason = -1;
@@ -750,7 +786,7 @@ bm_client_from_ovsdb(struct schema_Band_Steering_Clients *bscli, bm_client_t *cl
     }
 
     // This value is true by default
-    if( !(val = bm_client_get_cs_params( bscli, "cs_auto_disable" ))) {
+    if( !(val = bm_client_get_cs_param( bscli, "cs_auto_disable" ))) {
         client->cs_auto_disable = true;
     } else {
         if( !strcmp( val, "false" ) ) {
@@ -760,13 +796,295 @@ bm_client_from_ovsdb(struct schema_Band_Steering_Clients *bscli, bm_client_t *cl
         }
     }
 
+
+    return true;
+}
+
+static target_bsal_btm_params_t *
+bm_client_get_btm_params_by_type( bm_client_t *client, bm_client_btm_params_type_t type )
+{
+    switch( type )
+    {
+        case BM_CLIENT_BTM_PARAMS_STEERING:
+            return &client->steering_btm_params;
+
+        case BM_CLIENT_BTM_PARAMS_STICKY:
+            return &client->sticky_btm_params;
+
+        case BM_CLIENT_BTM_PARAMS_SC:
+            return &client->sc_btm_params;
+
+        default:
+            return NULL;
+    }
+
+    return NULL;
+}
+
+#define _bm_client_get_btm_param(bscli, type, key, val) \
+    do { \
+        int     i; \
+        val = NULL; \
+        for(i = 0;i < bscli->type##_btm_params_len;i++) { \
+            if (!strcmp(key, bscli->type##_btm_params_keys[i])) { \
+                val = bscli->type##_btm_params[i]; \
+            } \
+        } \
+    } while(0)
+
+static const char *
+bm_client_get_btm_param( struct schema_Band_Steering_Clients *bscli, 
+                        bm_client_btm_params_type_t type, char *key )
+{
+    char    *val = NULL;
+
+    switch( type )
+    {
+        case BM_CLIENT_BTM_PARAMS_STEERING:
+            _bm_client_get_btm_param( bscli, steering, key, val );
+            break;
+
+        case BM_CLIENT_BTM_PARAMS_STICKY:
+            _bm_client_get_btm_param( bscli, sticky, key, val );
+            break;
+
+        case BM_CLIENT_BTM_PARAMS_SC:
+            _bm_client_get_btm_param( bscli, sc, key, val );
+            break;
+
+        default:
+            LOGW( "Unknown btm_params_type '%d'", type );
+            break;
+    }
+
+    return val;
+}
+
+static bool
+bm_client_get_btm_params( struct schema_Band_Steering_Clients *bscli,
+                         bm_client_t *client, bm_client_btm_params_type_t type )
+{
+    target_bsal_btm_params_t    *btm_params  = NULL;
+    target_bsal_neigh_info_t    *neigh       = NULL;
+    os_macaddr_t                bssid;
+    const char                  *val;
+    char                        mac_str[18] = { 0 };
+
+    btm_params = bm_client_get_btm_params_by_type( client, type );
+    if( !btm_params ) {
+        LOGE( "Client %s - error getting BTM params type '%d'", client->mac_addr, type );
+        return false;
+    }
+    memset(btm_params, 0, sizeof(*btm_params));
+
+    // Process base BTM parameters
+    if ((val = bm_client_get_btm_param( bscli, type, "valid_int" ))) {
+        btm_params->valid_int = atoi( val );
+    }
+    else {
+        btm_params->valid_int = BTM_DEFAULT_VALID_INT;
+    }
+
+    if ((val = bm_client_get_btm_param( bscli, type, "abridged" ))) {
+        btm_params->abridged = atoi(val);
+    }
+    else {
+        btm_params->abridged = BTM_DEFAULT_ABRIDGED;
+    }
+
+    if ((val = bm_client_get_btm_param( bscli, type, "pref" ))) {
+        btm_params->pref = atoi( val );
+    }
+    else {
+        btm_params->pref = BTM_DEFAULT_PREF;
+    }
+
+    if ((val = bm_client_get_btm_param( bscli, type, "disassoc_imminent" ))) {
+        btm_params->disassoc_imminent = atoi( val );
+    }
+    else {
+        btm_params->disassoc_imminent = BTM_DEFAULT_DISASSOC_IMMINENT;
+    }
+
+    if ((val = bm_client_get_btm_param( bscli, type, "bss_term" ))) {
+        btm_params->bss_term = atoi( val );
+    }
+    else {
+        btm_params->bss_term = BTM_DEFAULT_BSS_TERM;
+    }
+
+    if ((val = bm_client_get_btm_param( bscli, type, "btm_max_retries" ))) {
+        btm_params->max_retries = atoi( val );
+    } else {
+        btm_params->max_retries = BTM_DEFAULT_MAX_RETRIES;
+    }
+
+    if ((val = bm_client_get_btm_param( bscli, type, "btm_retry_interval" ))) {
+        btm_params->retry_interval = atoi( val );
+    } else {
+        btm_params->retry_interval = BTM_DEFAULT_RETRY_INTERVAL;
+    }
+
+    if( !( val = bm_client_get_btm_param( bscli, type, "inc_neigh" ))) {
+        btm_params->inc_neigh = false;
+    } else {
+        if( !strcmp( val, "true" ) ) {
+            btm_params->inc_neigh = true;
+        } else {
+            btm_params->inc_neigh = false;
+        }
+    }
+
+    // Check for static neighbor parameters
+    if ((val = bm_client_get_btm_param( bscli, type, "bssid" ))) {
+        neigh = &btm_params->neigh[0];
+        STRSCPY(mac_str, val);
+        if(strlen(mac_str) > 0) {
+            if(!os_nif_macaddr_from_str( &bssid, mac_str)) {
+                LOGE("bm_client_get_btm_params: Failed to parse bssid '%s'", mac_str);
+                return false;
+            }
+            memcpy(&neigh->bssid, &bssid, sizeof(bssid));
+            btm_params->num_neigh = 1;
+        }
+
+        if ((val = bm_client_get_btm_param( bscli, type, "bssid_info" ))) {
+            neigh->bssid_info = atoi( val );
+        }
+        else {
+            neigh->bssid_info = BTM_DEFAULT_NEIGH_BSS_INFO;
+        }
+
+        if ((val = bm_client_get_btm_param( bscli, type, "phy_type" ))) {
+            neigh->phy_type = atoi( val );
+        }
+
+        if ((val = bm_client_get_btm_param( bscli, type, "channel" ))) {
+            neigh->channel = atoi( val );
+
+            if ((val = bm_client_get_btm_param( bscli, type, "op_class" ))) {
+                neigh->op_class = atoi( val );
+            }
+        }
+    }
+
+    return true;
+}
+
+static bool
+bm_client_from_ovsdb(struct schema_Band_Steering_Clients *bscli, bm_client_t *client)
+{
+    c_item_t                *item;
+
+    STRSCPY(client->mac_addr, bscli->mac);
+
+    item = c_get_item_by_str(map_ovsdb_reject_detection, bscli->reject_detection);
+    if (!item) {
+        LOGE("Client %s - unknown reject detection '%s'",
+                                            client->mac_addr, bscli->reject_detection);
+        return false;
+    }
+    client->reject_detection = (bm_client_reject_t)item->key;
+
+    item = c_get_item_by_str(map_ovsdb_kick_type, bscli->kick_type);
+    if (!item) {
+        LOGE("Client %s - unknown kick type '%s'", client->mac_addr, bscli->kick_type);
+        return false;
+    }
+    client->kick_type                   = (bm_client_kick_t)item->key;
+
+    item = c_get_item_by_str(map_ovsdb_kick_type, bscli->sc_kick_type);
+    if (!item) {
+        LOGE("Client %s - unknown sticky client kick type '%s'", client->mac_addr, bscli->sc_kick_type);
+        return false;
+    }
+    client->sc_kick_type                = (bm_client_kick_t)item->key;
+
+    item = c_get_item_by_str(map_ovsdb_kick_type, bscli->sticky_kick_type);
+    if (!item) {
+        LOGE("Client %s - unknown sticky client kick type '%s'", client->mac_addr, bscli->sc_kick_type);
+        return false;
+    }
+    client->sticky_kick_type            = (bm_client_kick_t)item->key;
+
+    item = c_get_item_by_str(map_ovsdb_pref_5g, bscli->pref_5g);
+    if (!item) {
+        LOGE("Client %s - unknown pref_5g value '%s'", client->mac_addr, bscli->pref_5g);
+        return false;
+    }
+    client->pref_5g                     = (bm_client_pref_5g)item->key;
+
+    item = c_get_item_by_str(map_ovsdb_force_kick, bscli->force_kick);
+    if (!item) {
+        LOGE("Client %s - unknown force_kick value '%s'", client->mac_addr, bscli->force_kick);
+        return false;
+    }
+    client->force_kick_type             = (bm_client_force_kick_t)item->key;
+
+    client->kick_reason                 = bscli->kick_reason;
+    client->sc_kick_reason              = bscli->sc_kick_reason;
+    client->sticky_kick_reason          = bscli->sticky_kick_reason;
+
+    client->hwm                         = bscli->hwm;
+    client->lwm                         = bscli->lwm;
+
+    client->max_rejects                 = bscli->max_rejects;
+    client->max_rejects_period          = bscli->rejects_tmout_secs;
+    client->backoff_period              = bscli->backoff_secs;
+
+    // If the kick_debounce_period or sc_kick_debounce_period was
+    // changed, reset the last_kick time
+    if( ( client->kick_debounce_period != bscli->kick_debounce_period ) ||
+        ( client->sc_kick_debounce_period != bscli->kick_debounce_period ) )
+    {
+        client->times.last_kick = 0;
+    }
+
+    client->kick_debounce_period        = bscli->kick_debounce_period;
+    client->sc_kick_debounce_period     = bscli->sc_kick_debounce_period;
+    client->sticky_kick_debounce_period = bscli->sticky_kick_debounce_period;
+
+    client->kick_upon_idle              = bscli->kick_upon_idle;
+    client->pre_assoc_auth_block        = bscli->pre_assoc_auth_block;
+
+    // Fetch all Client Steering parameters
+    if( !bm_client_get_cs_params( bscli, client ) ) {
+        LOGE( "Client %s - error getting client steering parameters",
+                                                        client->mac_addr );
+        return false;
+    }
+
+    // Fetch post-association transition management parameters
+    if( !bm_client_get_btm_params( bscli, client, BM_CLIENT_BTM_PARAMS_STEERING )) {
+        LOGE( "Client %s - error getting steering tm parameters", client->mac_addr );
+        return false;
+    }
+
+    // Fetch sticky client transition management parameters
+    if( !bm_client_get_btm_params( bscli, client, BM_CLIENT_BTM_PARAMS_STICKY ) ) {
+        LOGE( "Client %s - error getting sticky tm parameters", client->mac_addr );
+        return false;
+    }
+
+    // Fetch cloud-assisted(force kick) transition management parameters
+    if( !bm_client_get_btm_params( bscli, client, BM_CLIENT_BTM_PARAMS_SC ) ) {
+        LOGE( "Client %s - error getting sc tm parameters", client->mac_addr );
+        return false;
+    }
+
+    // Fetch RRM Beacon Rpt Request parameters
+    if( !bm_client_get_rrm_bcn_rpt_params( bscli, client ) ) {
+        LOGE( "Client %s - error getting rrm_bcn_rpt params", client->mac_addr );
+        return false;
+    }
+
     return true;
 }
 
 #define ADD_STAT_BY_BAND(bandstr, bscli, key, val) \
         do { \
             int idx = bscli->stats_##bandstr##_len; \
-            strncpy(bscli->stats_##bandstr##_keys[idx], key, sizeof(bscli->stats_##bandstr##_keys[idx])-1); \
+            STRSCPY(bscli->stats_##bandstr##_keys[idx], key); \
             bscli->stats_##bandstr[idx] = val; \
             bscli->stats_##bandstr##_len++; \
         } while (0)
@@ -823,14 +1141,53 @@ bm_client_ovsdb_update_from_me(ovsdb_update_monitor_t *self,
     return true;
 }
 
+static bool
+bm_client_lwm_toggled( uint8_t prev_lwm, bm_client_t *client, bool enable )
+{
+    if( enable ) {
+        if( prev_lwm != BM_KICK_MAGIC_NUMBER &&
+            client->lwm == BM_KICK_MAGIC_NUMBER ) {
+            return true;
+        }
+    } else {
+        if( prev_lwm == BM_KICK_MAGIC_NUMBER &&
+            client->lwm != BM_KICK_MAGIC_NUMBER ) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool
+bm_client_force_kick_type_toggled( bm_client_force_kick_t prev_kick,
+                                   bm_client_t *client, bool enable )
+{
+    if( enable ) {
+        if( prev_kick == BM_CLIENT_FORCE_KICK_NONE &&
+            client->force_kick_type != BM_CLIENT_FORCE_KICK_NONE ) {
+            return true;
+        }
+    } else {
+        if( prev_kick != BM_CLIENT_FORCE_KICK_NONE &&
+            client->force_kick_type == BM_CLIENT_FORCE_KICK_NONE ) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 static void
 bm_client_ovsdb_update_cb(ovsdb_update_monitor_t *self)
 {
     struct schema_Band_Steering_Clients     bscli;
     pjs_errmsg_t                            perr;
     bm_client_t                             *client;
-    int                                     prev_lwm;
     bsal_event_t                            event;
+
+    uint8_t                                 prev_lwm;
+    bm_client_force_kick_t                  prev_force_kick;
 
     switch(self->mon_type) {
 
@@ -848,7 +1205,7 @@ bm_client_ovsdb_update_cb(ovsdb_update_monitor_t *self)
         }
 
         client = calloc(1, sizeof(*client));
-        strncpy(client->uuid, bscli._uuid.uuid, sizeof(client->uuid)-1);
+        STRSCPY(client->uuid, bscli._uuid.uuid);
 
         if (!bm_client_from_ovsdb(&bscli, client)) {
             LOGE("Failed to convert row to client (uuid=%s)", client->uuid);
@@ -895,29 +1252,45 @@ bm_client_ovsdb_update_cb(ovsdb_update_monitor_t *self)
         }
 
         /* Check to see if this is our own update of cs_state */
-        if (bm_client_ovsdb_update_from_me(self, &bscli) &&
-            bscli.lwm != BM_KICK_MAGIC_NUMBER) {
+        /* NOTE: So this the sequence of events that the controller does when it sets client steering:
+           ( each step is a separate ovsdb transaction )
+            1. clear out cs_mode and other cs_params
+            2. enable client steering, by setting cs_params, and cs_mode
+            3. set lwm:=1 or set force_kick value
+            4. set lwm:=0 or unset force_kick value
+
+            The need for the below code comes because, after step 2, BM modifies
+            the cs_state variable to tell the controller that it has set the cs_state to steering for
+            this client. This write results in another ovsdb transaction. Since, this is a single variable
+            change, it generally occurs at the same time as the kick value. OVSDB has been observed
+            to combine the two into a single transaction, thereby resulting in the force being ignored.
+        */
+        if ( bm_client_ovsdb_update_from_me(self, &bscli) &&
+           ( ( strlen( bscli.force_kick ) == 0 && bscli.lwm != BM_KICK_MAGIC_NUMBER ) ||
+             ( !strcmp( bscli.force_kick, "none" )))) {
             LOGT("Ignoring my own client update");
             return;
         }
 
-        // Get the current value of LWM for this client
-        prev_lwm = client->lwm;
+        // Get the existing values of force_kick and lwm for this client
+        prev_lwm        = client->lwm;
+        prev_force_kick = client->force_kick_type;
 
         if (!bm_client_from_ovsdb(&bscli, client)) {
             LOGE("Failed to convert row to client for modify (uuid=%s)", client->uuid);
             return;
         }
 
-        if( prev_lwm != BM_KICK_MAGIC_NUMBER && client->lwm == BM_KICK_MAGIC_NUMBER )
+        if( bm_client_lwm_toggled( prev_lwm, client, true ) ||
+            bm_client_force_kick_type_toggled( prev_force_kick, client, true ) )
         {
             // Force kick the client
             LOGN( "Client '%s': Force kicking due to cloud request", client->mac_addr );
             bm_kick(client, BM_FORCE_KICK, 0);
             return;
-        } else if( prev_lwm == BM_KICK_MAGIC_NUMBER &&
-                   client->lwm != BM_KICK_MAGIC_NUMBER ) {
-            LOGN( "Client '%s': LWM value toggled back, ignoring all" \
+        } else if( bm_client_lwm_toggled( prev_lwm, client, false ) ||
+                   bm_client_force_kick_type_toggled( prev_force_kick, client, false ) ) {
+            LOGN( "Client '%s': Kicking mechanism toggled back, ignoring all" \
                   " pairs update", client->mac_addr );
             return;
         }
@@ -1173,6 +1546,38 @@ bm_client_cs_task_rssi_xing( void *arg )
     return;
 }
 
+static void
+bm_client_print_client_caps( bm_client_t *client )
+{
+    LOGT( " ~~~ Client '%s' ~~~", client->mac_addr );
+    LOGT( " isBTMSupported        : %s", client->is_BTM_supported ? "Yes":"No" );
+    LOGT( " isRRMSupported        : %s", client->is_RRM_supported ? "Yes":"No" );
+    LOGT( " Supports 2G           : %s", client->band_cap_2G ? "Yes":"No" );
+    LOGT( " Supports 5G           : %s", client->band_cap_5G ? "Yes":"No" );
+ 
+    LOGT( "   ~~~Datarate Information~~~    " );
+    LOGT( " Max Channel Width     : %hhu", client->datarate_info.max_chwidth );
+    LOGT( " Max Streams           : %hhu", client->datarate_info.max_streams );
+    LOGT( " PHY Mode              : %hhu", client->datarate_info.phy_mode );
+    LOGT( " Max MCS               : %hhu", client->datarate_info.max_MCS );
+    LOGT( " Max TX power          : %hhu", client->datarate_info.max_txpower );
+    LOGT( " Is Static SMPS?       : %s", client->datarate_info.is_static_smps ? "Yes":"No" );
+    LOGT( " Suports MU-MIMO       : %s", client->datarate_info.is_mu_mimo_supported? "Yes":"No" );
+
+    LOGT( "   ~~~RRM Capabilites~~~     " );
+    LOGT( " Link measurement      : %s", client->rrm_caps.link_meas ? "Yes":"No" );
+    LOGT( " Neighbor report       : %s", client->rrm_caps.neigh_rpt ? "Yes":"No" );
+    LOGT( " Beacon Report Passive : %s", client->rrm_caps.bcn_rpt_passive ? "Yes":"No" );
+    LOGT( " Beacon Report Active  : %s", client->rrm_caps.bcn_rpt_active ? "Yes":"No" );
+    LOGT( " Beacon Report Table   : %s", client->rrm_caps.bcn_rpt_table ? "Yes":"No" );
+    LOGT( " LCI measurement       : %s", client->rrm_caps.lci_meas ? "Yes":"No");
+    LOGT( " FTM Range report      : %s", client->rrm_caps.ftm_range_rpt ? "Yes":"No" );
+
+    LOGT( " ~~~~~~~~~~~~~~~~~~~~ " );
+
+    return;
+}
+
 /*****************************************************************************/
 bool
 bm_client_init(void)
@@ -1239,12 +1644,15 @@ bm_client_connected(bm_client_t *client, bsal_t bsal, bsal_band_t band, bsal_eve
     times->last_connect = now;
 
     if (client->state != BM_CLIENT_STATE_CONNECTED &&
-                                    client->state != BM_CLIENT_STATE_BACKOFF) {
+        client->state != BM_CLIENT_STATE_BACKOFF) {
         bm_client_set_state(client, BM_CLIENT_STATE_CONNECTED);
         if (event) {
             bm_stats_add_event_to_report( client, event, CONNECT, false );
         }
     }
+
+    bm_client_print_client_caps( client );
+
     return;
 }
 
@@ -1413,7 +1821,7 @@ bm_client_update_cs_state( bm_client_t *client )
         return false;
     }
 
-    strncpy( bscli.cs_state, (char *)item->data, sizeof( bscli.cs_state ) - 1 );
+    STRSCPY(bscli.cs_state, (char *)item->data);
     bscli.cs_state_exists = true;
 
     js = schema_Band_Steering_Clients_to_json( &bscli, NULL );
@@ -1445,17 +1853,16 @@ bm_client_cs_check_rssi_xing( bm_client_t *client, bsal_event_t *event )
     // This function should be called only when BSAL_EVENT_PROBE_REQ
     // is received.
     if( event->type != BSAL_EVENT_PROBE_REQ ) {
-        LOGD( "Event type is not PROBE_REQ" );
         return;
     }
 
     if( client->steering_state != BM_CLIENT_CLIENT_STEERING ) {
-        LOGD( "Client '%s' not in 'client steering' mode", client->mac_addr );
+        LOGT( "Client '%s' not in 'client steering' mode", client->mac_addr );
         return;
     }
 
     if( client->cs_mode != BM_CLIENT_CS_MODE_AWAY ) {
-        LOGD( "Client '%s' not in client steering 'AWAY' mode", client->mac_addr );
+        LOGT( "Client '%s' not in client steering 'AWAY' mode", client->mac_addr );
         return;
     }
 
@@ -1580,7 +1987,7 @@ bm_client_find_or_add_by_macaddr(os_macaddr_t *mac_addr)
     char mac_str[MAC_STR_LEN];
     sprintf(mac_str, PRI(os_macaddr_lower_t), FMT(os_macaddr_t, *mac_addr));
     client = calloc(1, sizeof(*client));
-    STRLCPY(client->mac_addr, mac_str);
+    STRSCPY(client->mac_addr, mac_str);
     ds_tree_insert(&bm_clients, client, client->mac_addr);
     LOGN("Added client %s", client->mac_addr);
     return client;

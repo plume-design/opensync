@@ -41,22 +41,27 @@ enum qm_req_cmd
     QM_CMD_SEND   = 2,
 };
 
+// flag: skip sending response
+#define QM_REQ_FLAG_NO_RESPONSE (1<<0)
 
-enum qm_req_compress
+// flag: send directly to mqtt broker, bypassing the queue and interval
+#define QM_REQ_FLAG_SEND_DIRECT (1<<1)
+
+typedef enum qm_req_compress
 {
     QM_REQ_COMPRESS_IF_CFG  = 0, // enabled by ovsdb mqtt conf
     QM_REQ_COMPRESS_DISABLE = 1, // disable
     QM_REQ_COMPRESS_FORCE   = 2, // always compress
-};
+} qm_compress_t;
 
-// informational only
-enum qm_req_data_type
+// message data type
+typedef enum qm_req_data_type
 {
     QM_DATA_RAW = 0,
     QM_DATA_TEXT,
     QM_DATA_STATS,
-    QM_DATA_BS,    // band steering
-};
+    QM_DATA_LOG,
+} qm_data_type_t;
 
 typedef struct qm_request
 {
@@ -88,14 +93,18 @@ enum qm_response_type
     QM_RESPONSE_ERROR    = 0, // error response
     QM_RESPONSE_STATUS   = 1, // status response
     QM_RESPONSE_RECEIVED = 2, // message received confirmation
+    QM_RESPONSE_IGNORED  = 3, // response ignored
 };
 
 // error type
 enum qm_res_error
 {
+    QM_ERROR_NONE        = 0,   // no error
     QM_ERROR_GENERAL     = 100, // general error
     QM_ERROR_CONNECT     = 101, // error connecting to QM
     QM_ERROR_INVALID     = 102, // invalid response
+    QM_ERROR_QUEUE       = 103, // error enqueuing message
+    QM_ERROR_SEND        = 104, // error sending to mqtt (for immediate flag)
 };
 
 // status of connection from QM to the mqtt server
@@ -115,12 +124,18 @@ typedef struct qm_response
     uint32_t error;
     uint32_t flags;
     uint32_t conn_status;
-    uint32_t qdrop; // num queued messages dropped due to queue full
+    // stats
     uint32_t qlen;  // queue length - number of messages
     uint32_t qsize; // queue size - bytes
+    uint32_t qdrop; // num queued messages dropped due to queue full
+    uint32_t log_size; // log buffer size
+    uint32_t log_drop; // log dropped lines
 } qm_response_t;
 
-
+char *qm_data_type_str(enum qm_req_data_type type);
+char *qm_response_str(enum qm_response_type x);
+char *qm_error_str(enum qm_res_error x);
+char *qm_conn_status_str(enum qm_res_conn_status x);
 
 bool qm_conn_accept(int listen_fd, int *accept_fd);
 bool qm_conn_server(int *pfd);
@@ -136,11 +151,39 @@ void qm_res_init(qm_response_t *res, qm_request_t *req);
 bool qm_res_valid(qm_response_t *res);
 bool qm_conn_write_res(int fd, qm_response_t *res);
 bool qm_conn_read_res(int fd, qm_response_t *res);
+bool qm_conn_open_fd(int *fd, qm_response_t *res);
+bool qm_conn_send_fd(int fd, qm_request_t *req, char *topic, void *data, int data_size, qm_response_t *res);
+
+// simple api
 
 bool qm_conn_get_status(qm_response_t *res);
 bool qm_conn_send_req(qm_request_t *req, char *topic, void *data, int data_size, qm_response_t *res);
-bool qm_conn_send_raw(void *data, int data_size, char *topic, qm_response_t *res);
+bool qm_conn_send_custom(
+        qm_data_type_t data_type,
+        qm_compress_t compress,
+        uint32_t flags,
+        char *topic,
+        void *data,
+        int data_size,
+        qm_response_t *res);
+bool qm_conn_send_raw(char *topic, void *data, int data_size, qm_response_t *res);
+bool qm_conn_send_direct(qm_compress_t compress, char *topic, void *data, int data_size, qm_response_t *res);
 bool qm_conn_send_stats(void *data, int data_size, qm_response_t *res);
-bool qm_conn_send_bs(void *data, int data_size, int interval, qm_response_t *res);
+
+// streaming api
+
+typedef struct
+{
+    bool init;
+    int  fd;
+    qm_response_t res;
+} qm_conn_t;
+
+bool qm_conn_open(qm_conn_t *qc);
+bool qm_conn_close(qm_conn_t *qc);
+bool qm_conn_send_stream(qm_conn_t *qc, qm_request_t *req, char *topic,
+        void *data, int data_size, qm_response_t *res);
+bool qm_conn_send_log(char *msg, qm_response_t *res);
+void qm_conn_log_close();
 
 #endif

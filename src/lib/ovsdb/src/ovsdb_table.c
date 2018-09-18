@@ -46,21 +46,25 @@ int ovsdb_table_init(
     char                *table_name,
     ovsdb_table_t       *table,
     int                 schema_size,
+    int                 upd_type_offset,
     int                 uuid_offset,
     int                 version_offset,
     schema_from_json_t  *from_json,
     schema_to_json_t    *to_json,
+    schema_mark_changed_t *mark_changed,
     char                **columns)
 {
     memset(table, 0, sizeof(*table));
     table->table_name = strdup(table_name);
     table->schema_size = schema_size;
+    table->upd_type_offset = upd_type_offset;
     table->uuid_offset = uuid_offset;
     table->key_offset = -1;
     table->key2_offset = -1;
     table->version_offset = version_offset;
     table->from_json = from_json;
     table->to_json = to_json;
+    table->mark_changed = mark_changed;
     table->columns = columns;
     table->monitor_callback = ovsdb_table_update_cb;
     // cache
@@ -186,9 +190,12 @@ void* ovsdb_table_select_where(ovsdb_table_t *table, json_t *where, int *count)
         record = records_array + table->schema_size * i;
         if (!ovsdb_table_from_json(table, jrow, record)) goto out;
     }
+    retval = records_array;
     *count = cnt;
 
 out:
+    if (!retval && records_array)
+        free(records_array);
     json_decref(jrows);
     return retval;
 }
@@ -196,6 +203,11 @@ out:
 void* ovsdb_table_select(ovsdb_table_t *table, char *column, char *value, int *count)
 {
     return ovsdb_table_select_where(table, ovsdb_where_simple(column, value), count);
+}
+
+void* ovsdb_table_select_typed(ovsdb_table_t *table, char *column, ovsdb_col_t col_type, void *value, int *count)
+{
+    return ovsdb_table_select_where(table, ovsdb_where_simple_typed(column, value, col_type), count);
 }
 
 // where has to match a single record otherwise error is returned
@@ -237,7 +249,6 @@ bool ovsdb_table_insert(ovsdb_table_t *table, void *record)
     jrow = ovsdb_table_to_json(table, record);
     if (!jrow) return false;
     ret = ovsdb_sync_insert(table->table_name, jrow, record + table->uuid_offset);
-    json_decref(jrow);
     return ret;
 }
 
@@ -250,7 +261,7 @@ int ovsdb_table_delete_where(ovsdb_table_t *table, json_t *where)
     return ovsdb_sync_delete_where(table->table_name, where);
 }
 
-int ovsdb_table_delete_simple(ovsdb_table_t *table, char *column, char *value)
+int ovsdb_table_delete_simple(ovsdb_table_t *table, const char *column, const char *value)
 {
     json_t *where = ovsdb_where_simple(column, value);
     return ovsdb_sync_delete_where(table->table_name, where);
@@ -275,7 +286,6 @@ int ovsdb_table_update_where_f(ovsdb_table_t *table, json_t *where, void *record
     jrow = ovsdb_table_to_json_f(table, record, filter);
     if (!jrow) return 0;
     ret = ovsdb_sync_update_where(table->table_name, where, jrow);
-    json_decref(jrow);
     return ret;
 }
 
@@ -326,7 +336,6 @@ bool ovsdb_table_upsert_where_f(ovsdb_table_t *table,
     jrow = ovsdb_table_to_json_f(table, record, filter);
     if (!jrow) return false;
     ret = ovsdb_sync_upsert_where(table->table_name, where, jrow, uuid);
-    json_decref(jrow);
     LOG(DEBUG, "%s: %s %s", __FUNCTION__, table->table_name, ret?"success":"error");
     return ret;
 }
@@ -387,7 +396,6 @@ bool ovsdb_table_upsert_with_parent_where(ovsdb_table_t *table,
     if (!jrow) return false;
     ret = ovsdb_sync_upsert_with_parent(table->table_name, where, jrow, uuid,
         parent_table, parent_where, parent_column);
-    json_decref(jrow);
     LOG(DEBUG, "%s: %s %s", __FUNCTION__, table->table_name, ret?"success":"error");
     return ret;
 }
@@ -560,28 +568,63 @@ void ovsdb_table_update_cb(ovsdb_update_monitor_t *self)
     }
 
     char record[table->schema_size];
+    char old_record[table->schema_size];
     bool partial = table->partial_update;
+    json_t *j_rec = NULL;
 
-    if (mon_type == OVSDB_UPDATE_MODIFY) partial = true;
-
+    memset(old_record, 0, sizeof(old_record));
     memset(record, 0, sizeof(record));
-    ret = table->from_json(record, self->mon_json_new, partial, perr);
+    self->mon_old_rec = old_record;
+
+    // ovsdb monitor update json_old/json_new record behaviour:
+    //   on NEW:    old = empty,                        new = full record
+    //   on MODIFY: old = old values of changed fields, new = full record
+    //   on DELETE: old = full old record,              new = empty
+    // this maps to converted old_record/record for callback:
+    //   on NEW:    old = empty,                        rec = full record
+    //   on MODIFY: old = old values of changed fields, rec = full record
+    //   on DELETE: old = full old record,              rec = full old record
+
+    // convert old
+    if (mon_type != OVSDB_UPDATE_NEW) {
+        ret = table->from_json(old_record, self->mon_json_old, true, perr);
+        if (!ret)
+        {
+            LOG(ERR, "Table %s %s parsing OLD %s error: %s",
+                    table->table_name, typestr, mon_uuid, perr);
+            return;
+        }
+    }
+    // convert current
+    if (mon_type == OVSDB_UPDATE_DEL) {
+        j_rec = self->mon_json_old;
+    } else {
+        j_rec = self->mon_json_new;
+    }
+    ret = table->from_json(record, j_rec, partial, perr);
     if (!ret)
     {
         LOG(ERR, "Table %s %s parsing %s error: %s",
                 table->table_name, typestr, mon_uuid, perr);
         return;
     }
+    // set _update_type
+    int *_update_type = (int*)(record + table->upd_type_offset);
+    *_update_type = mon_type;
+    // mark _changed
+    if (mon_type == OVSDB_UPDATE_MODIFY) {
+        table->mark_changed(old_record, record);
+    }
     // uuid integrity check
     row_uuid = record + table->uuid_offset;
-    // unless update is delete then row_uuid = ""
-    if (mon_type != OVSDB_UPDATE_DEL && strcmp(row_uuid, mon_uuid))
+    if (strcmp(row_uuid, mon_uuid))
     {
         LOG(ERR, "Table %s %s uuid mismatch '%s' '%s'",
                 table->table_name, typestr, mon_uuid, row_uuid);
     }
 
-    if (table->table_callback) table->table_callback(self, record);
+    // callback
+    if (table->table_callback) table->table_callback(self, old_record, record);
 
     LOG(DEBUG, "<<< DONE: MON upd: %s table: %s row: %s ver: %s",
         typestr, table->table_name, mon_uuid, record + table->version_offset);

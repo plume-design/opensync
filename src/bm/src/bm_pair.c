@@ -86,12 +86,8 @@ bm_pair_from_ovsdb(struct schema_Band_Steering_Config *bsconf, bm_pair_t *bp)
         LOGE("Failed to map 5G ifname %s)", bsconf->if_name_5g);
         return false;
     }
-    strncpy(bp->ifcfg[BSAL_BAND_24G].ifname,
-            target_name_2g,
-            sizeof(bp->ifcfg[BSAL_BAND_24G].ifname)-1);
-    strncpy(bp->ifcfg[BSAL_BAND_5G].ifname,
-            target_name_5g,
-            sizeof(bp->ifcfg[BSAL_BAND_5G].ifname)-1);
+    STRSCPY(bp->ifcfg[BSAL_BAND_24G].ifname, target_name_2g);
+    STRSCPY(bp->ifcfg[BSAL_BAND_5G].ifname, target_name_5g);
 
 #define SET_2G(x,y)     bp->ifcfg[BSAL_BAND_24G].x = bsconf->y
 #define SET_5G(x,y)     bp->ifcfg[BSAL_BAND_5G].x  = bsconf->y
@@ -176,6 +172,8 @@ bm_pair_from_ovsdb(struct schema_Band_Steering_Config *bsconf, bm_pair_t *bp)
         }
     }
 
+    bp->gw_only = bsconf->gw_only;
+
     return true;
 }
 
@@ -196,13 +194,21 @@ bm_pair_ovsdb_update_cb(ovsdb_update_monitor_t *self)
         }
 
         bp = calloc(1, sizeof(*bp));
-        strncpy(bp->uuid, bsconf._uuid.uuid, sizeof(bp->uuid)-1);
+        STRSCPY(bp->uuid, bsconf._uuid.uuid);
 
         if (!bm_pair_from_ovsdb(&bsconf, bp)) {
             LOGE("Failed to convert row to if-config (uuid=%s)", bp->uuid);
             free(bp);
             return;
         }
+
+        /*
+         * XXX: maps radio type (2G, 5G, 5GL, 5GU) through target API using interface
+         * names from last pair added.  This is to be replaced in the future when BM
+         * has proper support for tri-radio platforms.
+         */
+        bm_stats_map_radio_type(BSAL_BAND_24G, bp->ifcfg[BSAL_BAND_24G].ifname);
+        bm_stats_map_radio_type(BSAL_BAND_5G,  bp->ifcfg[BSAL_BAND_5G].ifname);
 
         bp->bsal = bsal_ifpair_add(&bp->ifcfg[BSAL_BAND_24G], &bp->ifcfg[BSAL_BAND_5G]);
         if (!bp->bsal) {

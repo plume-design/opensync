@@ -35,6 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "ds.h"
 #include "ds_tree.h"
+#include "util.h"
 
 #define MODULE_ID LOG_MODULE_ID_TARGET
 
@@ -105,8 +106,8 @@ bool target_map_insert(char *if_name, char *map_name)
         return false;
     }
 
-    strlcpy(map->if_name, if_name, sizeof(map->if_name));
-    strlcpy(map->map_name, map_name, sizeof(map->map_name));
+    STRSCPY(map->if_name, if_name);
+    STRSCPY(map->map_name, map_name);
 
     ds_tree_insert(&g_target_map_table.root_if, map, map->if_name);
     ds_tree_insert(&g_target_map_table.root_map, map, map->map_name);

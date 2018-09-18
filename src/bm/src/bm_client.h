@@ -31,27 +31,48 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define __BM_CLIENT_H__
 
 #ifndef OVSDB_UUID_LEN
-#define OVSDB_UUID_LEN              37
+#define OVSDB_UUID_LEN                      37
 #endif /* OVSDB_UUID_LEN */
 
 #ifndef MAC_STR_LEN
-#define MAC_STR_LEN                 18
+#define MAC_STR_LEN                         18
 #endif /* MAC_STR_LEN */
 
-#define BM_CLIENT_MIN_HWM           1
-#define BM_CLIENT_MAX_HWM           128
+#define BM_CLIENT_MIN_HWM                   1
+#define BM_CLIENT_MAX_HWM                   128
 
-#define BM_CLIENT_MIN_LWM           1
-#define BM_CLIENT_MAX_LWM           128
+#define BM_CLIENT_MIN_LWM                   1
+#define BM_CLIENT_MAX_LWM                   128
 
-#define BM_CLIENT_ROGUE_SNR_LEVEL   5
-#define BM_CLIENT_RSSI_HYSTERESIS   2
+#define BM_CLIENT_ROGUE_SNR_LEVEL           5
+#define BM_CLIENT_RSSI_HYSTERESIS           2
+
+#define BTM_DEFAULT_VALID_INT               255 // TBTT count
+#define BTM_DEFAULT_ABRIDGED                1   // Yes
+#define BTM_DEFAULT_PREF                    1   // Yes
+#define BTM_DEFAULT_DISASSOC_IMMINENT       1   // Yes
+#define BTM_DEFAULT_BSS_TERM                0   // Disabled
+#define BTM_DEFAULT_NEIGH_BSS_INFO          19  // AP Available + Security
+
+#define BM_CLIENT_MAX_TM_NEIGHBORS          3
+
+#define BTM_DEFAULT_MAX_RETRIES             3
+#define BTM_DEFAULT_RETRY_INTERVAL          10  // In seconds
+
+#define RRM_BCN_RPT_DEFAULT_SCAN_INTERVAL   1   // In seconds
 
 /*****************************************************************************/
+
 typedef enum {
     BM_CLIENT_KICK_NONE             = 0,
     BM_CLIENT_KICK_DISASSOC,
-    BM_CLIENT_KICK_DEAUTH
+    BM_CLIENT_KICK_DEAUTH,
+    BM_CLIENT_KICK_BSS_TM_REQ,
+    BM_CLIENT_KICK_RRM_BR_REQ,
+    BM_CLIENT_KICK_BTM_DISASSOC,
+    BM_CLIENT_KICK_BTM_DEAUTH,
+    BM_CLIENT_KICK_RRM_DISASSOC,
+    BM_CLIENT_KICK_RRM_DEAUTH
 } bm_client_kick_t;
 
 typedef enum {
@@ -91,6 +112,56 @@ typedef enum {
     BM_CLIENT_BAND_STEERING,
     BM_CLIENT_CLIENT_STEERING
 } bm_client_steering_state_t;
+
+typedef enum {
+    BM_CLIENT_BTM_PARAMS_STEERING   = 0,
+    BM_CLIENT_BTM_PARAMS_STICKY,
+    BM_CLIENT_BTM_PARAMS_SC
+} bm_client_btm_params_type_t;
+
+typedef enum {
+    BM_CLIENT_5G_NEVER              = 0,
+    BM_CLIENT_5G_HWM,
+    BM_CLIENT_5G_ALWAYS
+} bm_client_pref_5g;
+
+typedef enum {
+    BM_CLIENT_FORCE_KICK_NONE       = 0,
+    BM_CLIENT_SPECULATIVE_KICK,
+    BM_CLIENT_DIRECTED_KICK,
+    BM_CLIENT_GHOST_DEVICE_KICK
+} bm_client_force_kick_t;
+
+/*
+ * Used to store kick information:
+ *   - To kick client upon idle
+ *   - To retry BSS TM requests multiple times
+*/
+typedef struct {
+    bool                        kick_pending;
+    uint8_t                     kick_type;
+    uint8_t                     rssi;
+} bm_client_kick_info_t;
+
+typedef struct {
+    uint8_t                     max_chwidth;
+    uint8_t                     max_streams;
+    uint8_t                     phy_mode;
+    uint8_t                     max_MCS;
+    uint8_t                     max_txpower;
+    uint8_t                     is_static_smps;
+    uint8_t                     is_mu_mimo_supported;
+} bm_client_datarate_info_t;
+
+typedef struct {
+    bool                         link_meas;
+    bool                         neigh_rpt;
+    bool                         bcn_rpt_passive;
+    bool                         bcn_rpt_active;
+    bool                         bcn_rpt_table;
+    bool                         lci_meas;
+    bool                         ftm_range_rpt;
+} bm_client_rrm_caps_t;
 
 typedef struct {
     uint32_t                    rejects;
@@ -148,17 +219,33 @@ typedef struct {
     char                        mac_addr[MAC_STR_LEN];
 
     bm_client_reject_t          reject_detection;
+
     bm_client_kick_t            kick_type;
     bm_client_kick_t            sc_kick_type;
+    bm_client_kick_t            sticky_kick_type;
+
+    bm_client_force_kick_t      force_kick_type;
+
     uint8_t                     kick_reason;
     uint8_t                     sc_kick_reason;
+    uint8_t                     sticky_kick_reason;
+
     uint8_t                     hwm;
     uint8_t                     lwm;
+
     int                         max_rejects;
     int                         max_rejects_period;
+
     int                         backoff_period;
     uint16_t                    kick_debounce_period;
     uint16_t                    sc_kick_debounce_period;
+    uint16_t                    sticky_kick_debounce_period;
+
+    bool                        pre_assoc_auth_block;
+    bm_client_pref_5g           pref_5g;
+
+    bool                        kick_upon_idle;
+    bm_client_kick_info_t       kick_info;
 
     // Client steering specific variables
     bm_client_reject_t          cs_reject_detection;
@@ -186,10 +273,28 @@ typedef struct {
     bm_client_times_t           times;
     bm_client_steering_state_t  steering_state;
 
+    // BSS Transition Management variables
+    target_bsal_btm_params_t    steering_btm_params;
+    target_bsal_btm_params_t    sticky_btm_params;
+    target_bsal_btm_params_t    sc_btm_params;
+
+    // Client BTM and RRM capabilities
+    uint8_t                     is_BTM_supported;
+    uint8_t                     is_RRM_supported;
+
+    bool                        band_cap_2G;
+    bool                        band_cap_5G;
+    bm_client_datarate_info_t   datarate_info;
+    bm_client_rrm_caps_t        rrm_caps;
+
+    bool                        enable_ch_scan;
+    uint8_t                     ch_scan_interval;
+
     evsched_task_t              backoff_task;
     evsched_task_t              cs_task;
     evsched_task_t              rssi_xing_task;
     evsched_task_t              state_task;
+    evsched_task_t              btm_retry_task;
 
     char                        uuid[OVSDB_UUID_LEN];
 

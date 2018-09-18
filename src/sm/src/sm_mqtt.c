@@ -119,7 +119,7 @@ void sm_mqtt_set(const char *broker, const char *port, const char *topic, const 
 
     if (broker != NULL)
     {
-        strlcpy(sm_mqtt_broker, broker, sizeof(sm_mqtt_broker));
+        STRSCPY(sm_mqtt_broker, broker);
     }
     else
     {
@@ -146,7 +146,7 @@ void sm_mqtt_set(const char *broker, const char *port, const char *topic, const 
 
     if (topic != NULL)
     {
-        strlcpy(sm_mqtt_topic, topic, sizeof(sm_mqtt_topic));
+        STRSCPY(sm_mqtt_topic, topic);
     }
     else
     {

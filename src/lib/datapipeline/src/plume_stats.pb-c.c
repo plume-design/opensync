@@ -363,6 +363,18 @@ void   sts__device__radio_temp__init
   static Sts__Device__RadioTemp init_value = STS__DEVICE__RADIO_TEMP__INIT;
   *message = init_value;
 }
+void   sts__device__thermal__radio_tx_chain_mask__init
+                     (Sts__Device__Thermal__RadioTxChainMask         *message)
+{
+  static Sts__Device__Thermal__RadioTxChainMask init_value = STS__DEVICE__THERMAL__RADIO_TX_CHAIN_MASK__INIT;
+  *message = init_value;
+}
+void   sts__device__thermal__init
+                     (Sts__Device__Thermal         *message)
+{
+  static Sts__Device__Thermal init_value = STS__DEVICE__THERMAL__INIT;
+  *message = init_value;
+}
 void   sts__device__init
                      (Sts__Device         *message)
 {
@@ -2571,7 +2583,122 @@ const ProtobufCMessageDescriptor sts__device__radio_temp__descriptor =
   (ProtobufCMessageInit) sts__device__radio_temp__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
-static const ProtobufCFieldDescriptor sts__device__field_descriptors[4] =
+static const ProtobufCFieldDescriptor sts__device__thermal__radio_tx_chain_mask__field_descriptors[2] =
+{
+  {
+    "band",
+    1,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_ENUM,
+    offsetof(Sts__Device__Thermal__RadioTxChainMask, has_band),
+    offsetof(Sts__Device__Thermal__RadioTxChainMask, band),
+    &sts__radio_band_type__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "value",
+    2,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_UINT32,
+    offsetof(Sts__Device__Thermal__RadioTxChainMask, has_value),
+    offsetof(Sts__Device__Thermal__RadioTxChainMask, value),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned sts__device__thermal__radio_tx_chain_mask__field_indices_by_name[] = {
+  0,   /* field[0] = band */
+  1,   /* field[1] = value */
+};
+static const ProtobufCIntRange sts__device__thermal__radio_tx_chain_mask__number_ranges[1 + 1] =
+{
+  { 1, 0 },
+  { 0, 2 }
+};
+const ProtobufCMessageDescriptor sts__device__thermal__radio_tx_chain_mask__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "sts.Device.Thermal.RadioTxChainMask",
+  "RadioTxChainMask",
+  "Sts__Device__Thermal__RadioTxChainMask",
+  "sts",
+  sizeof(Sts__Device__Thermal__RadioTxChainMask),
+  2,
+  sts__device__thermal__radio_tx_chain_mask__field_descriptors,
+  sts__device__thermal__radio_tx_chain_mask__field_indices_by_name,
+  1,  sts__device__thermal__radio_tx_chain_mask__number_ranges,
+  (ProtobufCMessageInit) sts__device__thermal__radio_tx_chain_mask__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCFieldDescriptor sts__device__thermal__field_descriptors[3] =
+{
+  {
+    "txchainmask",
+    1,
+    PROTOBUF_C_LABEL_REPEATED,
+    PROTOBUF_C_TYPE_MESSAGE,
+    offsetof(Sts__Device__Thermal, n_txchainmask),
+    offsetof(Sts__Device__Thermal, txchainmask),
+    &sts__device__thermal__radio_tx_chain_mask__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "fan_rpm",
+    2,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_UINT32,
+    offsetof(Sts__Device__Thermal, has_fan_rpm),
+    offsetof(Sts__Device__Thermal, fan_rpm),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "timestamp_ms",
+    3,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_UINT64,
+    offsetof(Sts__Device__Thermal, has_timestamp_ms),
+    offsetof(Sts__Device__Thermal, timestamp_ms),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned sts__device__thermal__field_indices_by_name[] = {
+  1,   /* field[1] = fan_rpm */
+  2,   /* field[2] = timestamp_ms */
+  0,   /* field[0] = txchainmask */
+};
+static const ProtobufCIntRange sts__device__thermal__number_ranges[1 + 1] =
+{
+  { 1, 0 },
+  { 0, 3 }
+};
+const ProtobufCMessageDescriptor sts__device__thermal__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "sts.Device.Thermal",
+  "Thermal",
+  "Sts__Device__Thermal",
+  "sts",
+  sizeof(Sts__Device__Thermal),
+  3,
+  sts__device__thermal__field_descriptors,
+  sts__device__thermal__field_indices_by_name,
+  1,  sts__device__thermal__number_ranges,
+  (ProtobufCMessageInit) sts__device__thermal__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCFieldDescriptor sts__device__field_descriptors[5] =
 {
   {
     "load",
@@ -2621,17 +2748,30 @@ static const ProtobufCFieldDescriptor sts__device__field_descriptors[4] =
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
+  {
+    "thermal_stats",
+    5,
+    PROTOBUF_C_LABEL_REPEATED,
+    PROTOBUF_C_TYPE_MESSAGE,
+    offsetof(Sts__Device, n_thermal_stats),
+    offsetof(Sts__Device, thermal_stats),
+    &sts__device__thermal__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
 };
 static const unsigned sts__device__field_indices_by_name[] = {
   0,   /* field[0] = load */
   1,   /* field[1] = radio_temp */
+  4,   /* field[4] = thermal_stats */
   2,   /* field[2] = timestamp_ms */
   3,   /* field[3] = uptime */
 };
 static const ProtobufCIntRange sts__device__number_ranges[1 + 1] =
 {
   { 1, 0 },
-  { 0, 4 }
+  { 0, 5 }
 };
 const ProtobufCMessageDescriptor sts__device__descriptor =
 {
@@ -2641,14 +2781,14 @@ const ProtobufCMessageDescriptor sts__device__descriptor =
   "Sts__Device",
   "sts",
   sizeof(Sts__Device),
-  4,
+  5,
   sts__device__field_descriptors,
   sts__device__field_indices_by_name,
   1,  sts__device__number_ranges,
   (ProtobufCMessageInit) sts__device__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
-static const ProtobufCFieldDescriptor sts__bsclient__bsevent__field_descriptors[11] =
+static const ProtobufCFieldDescriptor sts__bsclient__bsevent__field_descriptors[29] =
 {
   {
     "type",
@@ -2782,24 +2922,258 @@ static const ProtobufCFieldDescriptor sts__bsclient__bsevent__field_descriptors[
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
+  {
+    "is_BTM_supported",
+    12,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_BOOL,
+    offsetof(Sts__BSClient__BSEvent, has_is_btm_supported),
+    offsetof(Sts__BSClient__BSEvent, is_btm_supported),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "is_RRM_supported",
+    13,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_BOOL,
+    offsetof(Sts__BSClient__BSEvent, has_is_rrm_supported),
+    offsetof(Sts__BSClient__BSEvent, is_rrm_supported),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "max_chwidth",
+    14,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_UINT32,
+    offsetof(Sts__BSClient__BSEvent, has_max_chwidth),
+    offsetof(Sts__BSClient__BSEvent, max_chwidth),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "max_streams",
+    15,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_UINT32,
+    offsetof(Sts__BSClient__BSEvent, has_max_streams),
+    offsetof(Sts__BSClient__BSEvent, max_streams),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "phy_mode",
+    16,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_UINT32,
+    offsetof(Sts__BSClient__BSEvent, has_phy_mode),
+    offsetof(Sts__BSClient__BSEvent, phy_mode),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "max_mcs",
+    17,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_UINT32,
+    offsetof(Sts__BSClient__BSEvent, has_max_mcs),
+    offsetof(Sts__BSClient__BSEvent, max_mcs),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "max_txpower",
+    18,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_UINT32,
+    offsetof(Sts__BSClient__BSEvent, has_max_txpower),
+    offsetof(Sts__BSClient__BSEvent, max_txpower),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "is_static_smps",
+    19,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_BOOL,
+    offsetof(Sts__BSClient__BSEvent, has_is_static_smps),
+    offsetof(Sts__BSClient__BSEvent, is_static_smps),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "is_mu_mimo_supported",
+    20,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_BOOL,
+    offsetof(Sts__BSClient__BSEvent, has_is_mu_mimo_supported),
+    offsetof(Sts__BSClient__BSEvent, is_mu_mimo_supported),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "band_cap_2G",
+    21,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_BOOL,
+    offsetof(Sts__BSClient__BSEvent, has_band_cap_2g),
+    offsetof(Sts__BSClient__BSEvent, band_cap_2g),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "band_cap_5G",
+    22,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_BOOL,
+    offsetof(Sts__BSClient__BSEvent, has_band_cap_5g),
+    offsetof(Sts__BSClient__BSEvent, band_cap_5g),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "rrm_caps_link_meas",
+    23,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_BOOL,
+    offsetof(Sts__BSClient__BSEvent, has_rrm_caps_link_meas),
+    offsetof(Sts__BSClient__BSEvent, rrm_caps_link_meas),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "rrm_caps_neigh_rpt",
+    24,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_BOOL,
+    offsetof(Sts__BSClient__BSEvent, has_rrm_caps_neigh_rpt),
+    offsetof(Sts__BSClient__BSEvent, rrm_caps_neigh_rpt),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "rrm_caps_bcn_rpt_passive",
+    25,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_BOOL,
+    offsetof(Sts__BSClient__BSEvent, has_rrm_caps_bcn_rpt_passive),
+    offsetof(Sts__BSClient__BSEvent, rrm_caps_bcn_rpt_passive),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "rrm_caps_bcn_rpt_active",
+    26,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_BOOL,
+    offsetof(Sts__BSClient__BSEvent, has_rrm_caps_bcn_rpt_active),
+    offsetof(Sts__BSClient__BSEvent, rrm_caps_bcn_rpt_active),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "rrm_caps_bcn_rpt_table",
+    27,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_BOOL,
+    offsetof(Sts__BSClient__BSEvent, has_rrm_caps_bcn_rpt_table),
+    offsetof(Sts__BSClient__BSEvent, rrm_caps_bcn_rpt_table),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "rrm_caps_lci_meas",
+    28,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_BOOL,
+    offsetof(Sts__BSClient__BSEvent, has_rrm_caps_lci_meas),
+    offsetof(Sts__BSClient__BSEvent, rrm_caps_lci_meas),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "rrm_caps_ftm_range_rpt",
+    29,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_BOOL,
+    offsetof(Sts__BSClient__BSEvent, has_rrm_caps_ftm_range_rpt),
+    offsetof(Sts__BSClient__BSEvent, rrm_caps_ftm_range_rpt),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
 };
 static const unsigned sts__bsclient__bsevent__field_indices_by_name[] = {
   9,   /* field[9] = active */
   8,   /* field[8] = backoff_enabled */
+  20,   /* field[20] = band_cap_2G */
+  21,   /* field[21] = band_cap_5G */
   7,   /* field[7] = disconnect_reason */
   5,   /* field[5] = disconnect_src */
   6,   /* field[6] = disconnect_type */
+  11,   /* field[11] = is_BTM_supported */
+  12,   /* field[12] = is_RRM_supported */
+  19,   /* field[19] = is_mu_mimo_supported */
+  18,   /* field[18] = is_static_smps */
+  13,   /* field[13] = max_chwidth */
+  16,   /* field[16] = max_mcs */
+  14,   /* field[14] = max_streams */
+  17,   /* field[17] = max_txpower */
   1,   /* field[1] = offset_ms */
+  15,   /* field[15] = phy_mode */
   3,   /* field[3] = probe_bcast */
   4,   /* field[4] = probe_blocked */
   10,   /* field[10] = rejected */
+  25,   /* field[25] = rrm_caps_bcn_rpt_active */
+  24,   /* field[24] = rrm_caps_bcn_rpt_passive */
+  26,   /* field[26] = rrm_caps_bcn_rpt_table */
+  28,   /* field[28] = rrm_caps_ftm_range_rpt */
+  27,   /* field[27] = rrm_caps_lci_meas */
+  22,   /* field[22] = rrm_caps_link_meas */
+  23,   /* field[23] = rrm_caps_neigh_rpt */
   2,   /* field[2] = rssi */
   0,   /* field[0] = type */
 };
 static const ProtobufCIntRange sts__bsclient__bsevent__number_ranges[1 + 1] =
 {
   { 1, 0 },
-  { 0, 11 }
+  { 0, 29 }
 };
 const ProtobufCMessageDescriptor sts__bsclient__bsevent__descriptor =
 {
@@ -2809,7 +3183,7 @@ const ProtobufCMessageDescriptor sts__bsclient__bsevent__descriptor =
   "Sts__BSClient__BSEvent",
   "sts",
   sizeof(Sts__BSClient__BSEvent),
-  11,
+  29,
   sts__bsclient__bsevent__field_descriptors,
   sts__bsclient__bsevent__field_indices_by_name,
   1,  sts__bsclient__bsevent__number_ranges,
@@ -3476,9 +3850,9 @@ static const ProtobufCFieldDescriptor sts__report__field_descriptors[8] =
   {
     "bs_report",
     7,
-    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_LABEL_REPEATED,
     PROTOBUF_C_TYPE_MESSAGE,
-    0,   /* quantifier_offset */
+    offsetof(Sts__Report, n_bs_report),
     offsetof(Sts__Report, bs_report),
     &sts__bsreport__descriptor,
     NULL,
@@ -3692,7 +4066,7 @@ const ProtobufCEnumDescriptor sts__wmm_ac__descriptor =
   sts__wmm_ac__value_ranges,
   NULL,NULL,NULL,NULL   /* reserved[1234] */
 };
-static const ProtobufCEnumValue sts__bsevent_type__enum_values_by_number[14] =
+static const ProtobufCEnumValue sts__bsevent_type__enum_values_by_number[27] =
 {
   { "PROBE", "STS__BSEVENT_TYPE__PROBE", 0 },
   { "CONNECT", "STS__BSEVENT_TYPE__CONNECT", 1 },
@@ -3708,22 +4082,48 @@ static const ProtobufCEnumValue sts__bsevent_type__enum_values_by_number[14] =
   { "CLIENT_STEERING_FAILED", "STS__BSEVENT_TYPE__CLIENT_STEERING_FAILED", 11 },
   { "AUTH_BLOCK", "STS__BSEVENT_TYPE__AUTH_BLOCK", 12 },
   { "CLIENT_KICKED", "STS__BSEVENT_TYPE__CLIENT_KICKED", 13 },
+  { "CLIENT_BS_BTM", "STS__BSEVENT_TYPE__CLIENT_BS_BTM", 14 },
+  { "CLIENT_STICKY_BTM", "STS__BSEVENT_TYPE__CLIENT_STICKY_BTM", 15 },
+  { "CLIENT_BTM", "STS__BSEVENT_TYPE__CLIENT_BTM", 16 },
+  { "CLIENT_CAPABILITIES", "STS__BSEVENT_TYPE__CLIENT_CAPABILITIES", 17 },
+  { "CLIENT_BS_BTM_RETRY", "STS__BSEVENT_TYPE__CLIENT_BS_BTM_RETRY", 18 },
+  { "CLIENT_STICKY_BTM_RETRY", "STS__BSEVENT_TYPE__CLIENT_STICKY_BTM_RETRY", 19 },
+  { "CLIENT_BTM_RETRY", "STS__BSEVENT_TYPE__CLIENT_BTM_RETRY", 20 },
+  { "CLIENT_RRM_BCN_RPT", "STS__BSEVENT_TYPE__CLIENT_RRM_BCN_RPT", 21 },
+  { "CLIENT_BS_KICK", "STS__BSEVENT_TYPE__CLIENT_BS_KICK", 22 },
+  { "CLIENT_STICKY_KICK", "STS__BSEVENT_TYPE__CLIENT_STICKY_KICK", 23 },
+  { "CLIENT_SPECULATIVE_KICK", "STS__BSEVENT_TYPE__CLIENT_SPECULATIVE_KICK", 24 },
+  { "CLIENT_DIRECTED_KICK", "STS__BSEVENT_TYPE__CLIENT_DIRECTED_KICK", 25 },
+  { "CLIENT_GHOST_DEVICE_KICK", "STS__BSEVENT_TYPE__CLIENT_GHOST_DEVICE_KICK", 26 },
 };
 static const ProtobufCIntRange sts__bsevent_type__value_ranges[] = {
-{0, 0},{0, 14}
+{0, 0},{0, 27}
 };
-static const ProtobufCEnumValueIndex sts__bsevent_type__enum_values_by_name[14] =
+static const ProtobufCEnumValueIndex sts__bsevent_type__enum_values_by_name[27] =
 {
   { "ACTIVITY", 4 },
   { "AUTH_BLOCK", 12 },
   { "BACKOFF", 3 },
   { "BAND_STEERING_ATTEMPT", 6 },
+  { "CLIENT_BS_BTM", 14 },
+  { "CLIENT_BS_BTM_RETRY", 18 },
+  { "CLIENT_BS_KICK", 22 },
+  { "CLIENT_BTM", 16 },
+  { "CLIENT_BTM_RETRY", 20 },
+  { "CLIENT_CAPABILITIES", 17 },
+  { "CLIENT_DIRECTED_KICK", 25 },
+  { "CLIENT_GHOST_DEVICE_KICK", 26 },
   { "CLIENT_KICKED", 13 },
+  { "CLIENT_RRM_BCN_RPT", 21 },
+  { "CLIENT_SPECULATIVE_KICK", 24 },
   { "CLIENT_STEERING_ATTEMPT", 7 },
   { "CLIENT_STEERING_DISABLED", 9 },
   { "CLIENT_STEERING_EXPIRED", 10 },
   { "CLIENT_STEERING_FAILED", 11 },
   { "CLIENT_STEERING_STARTED", 8 },
+  { "CLIENT_STICKY_BTM", 15 },
+  { "CLIENT_STICKY_BTM_RETRY", 19 },
+  { "CLIENT_STICKY_KICK", 23 },
   { "CONNECT", 1 },
   { "DISCONNECT", 2 },
   { "OVERRUN", 5 },
@@ -3736,9 +4136,9 @@ const ProtobufCEnumDescriptor sts__bsevent_type__descriptor =
   "BSEventType",
   "Sts__BSEventType",
   "sts",
-  14,
+  27,
   sts__bsevent_type__enum_values_by_number,
-  14,
+  27,
   sts__bsevent_type__enum_values_by_name,
   1,
   sts__bsevent_type__value_ranges,

@@ -45,6 +45,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
         PJS_ERR(err, "'%s': Unable to allocate root object.", #name);                   \
         goto error;                                                                     \
     }                                                                                   \
+    if (in->_partial_update) {                                                          \
+        LOG(TRACE, "%s to json: partial update", #name);                                \
+    }                                                                                   \
                                                                                         \
     __VA_ARGS__                                                                         \
                                                                                         \
@@ -201,23 +204,29 @@ error:                                                                          
  *  OVS Basic Types
  * ===========================================================================
  */
+
+#define PJS_OVS_IF_PARTIAL_UPDATE(name) \
+    if (!in->_partial_update || in->name ## _present)
+
 #define PJS_OVS_INT(name)                                                               \
+    PJS_OVS_IF_PARTIAL_UPDATE(name)                                                     \
     if (!pjs_ovs_int_to_json(in->name, js, #name, err)) goto error;
 
 #define PJS_OVS_BOOL(name)                                                              \
+    PJS_OVS_IF_PARTIAL_UPDATE(name)                                                     \
     if (!pjs_ovs_bool_to_json(in->name, js, #name, err)) goto error;
 
 #define PJS_OVS_REAL(name)                                                              \
+    PJS_OVS_IF_PARTIAL_UPDATE(name)                                                     \
     if (!pjs_ovs_real_to_json(in->name, js, #name, err)) goto error;
 
 #define PJS_OVS_STRING(name, sz)                                                        \
+    PJS_OVS_IF_PARTIAL_UPDATE(name)                                                     \
     if (!pjs_ovs_string_to_json(in->name, sizeof(in->name), js, #name, err)) goto error;
 
 #define PJS_OVS_UUID(name)                                                              \
-{                                                                                       \
-    if (!pjs_ovs_uuid_to_json(&in->name, js, #name, err))                               \
-        goto error;                                                                     \
-}
+    PJS_OVS_IF_PARTIAL_UPDATE(name)                                                     \
+    if (!pjs_ovs_uuid_to_json(&in->name, js, #name, err)) goto error;
 
 /*
  * ===========================================================================
@@ -225,15 +234,17 @@ error:                                                                          
  * ===========================================================================
  */
 #define PJS_OVS_INT_Q(name)                                                             \
+    PJS_OVS_IF_PARTIAL_UPDATE(name)                                                     \
     if (!pjs_ovs_int_q_to_json(                                                         \
             in->name,                                                                   \
             in->name ## _exists,                                                        \
             js,                                                                         \
             #name,                                                                      \
             err))                                                                       \
-    goto error;
+        goto error;
 
 #define PJS_OVS_BOOL_Q(name)                                                            \
+    PJS_OVS_IF_PARTIAL_UPDATE(name)                                                     \
     if (!pjs_ovs_bool_q_to_json(                                                        \
             in->name,                                                                   \
             in->name ## _exists,                                                        \
@@ -243,15 +254,17 @@ error:                                                                          
         goto error;
 
 #define PJS_OVS_REAL_Q(name)                                                            \
+    PJS_OVS_IF_PARTIAL_UPDATE(name)                                                     \
     if (!pjs_ovs_real_q_to_json(                                                        \
             in->name,                                                                   \
             in->name ## _exists,                                                        \
             js,                                                                         \
             #name,                                                                      \
             err))                                                                       \
-    goto error;
+        goto error;
 
 #define PJS_OVS_STRING_Q(name, sz)                                                      \
+    PJS_OVS_IF_PARTIAL_UPDATE(name)                                                     \
     if (!pjs_ovs_string_q_to_json(                                                      \
             in->name,                                                                   \
             sizeof(in->name),                                                           \
@@ -259,10 +272,10 @@ error:                                                                          
             js,                                                                         \
             #name,                                                                      \
             err))                                                                       \
-    goto error;
+        goto error;
 
 #define PJS_OVS_UUID_Q(name)                                                            \
-{                                                                                       \
+    PJS_OVS_IF_PARTIAL_UPDATE(name)                                                     \
     if (!pjs_ovs_uuid_q_to_json(                                                        \
             &in->name,                                                                  \
             in->name ## _exists,                                                        \
@@ -270,7 +283,6 @@ error:                                                                          
             #name,                                                                      \
             err))                                                                       \
         goto error;                                                                     \
-}
 
 
 /*
@@ -279,6 +291,7 @@ error:                                                                          
  * =============================================================
  */
 #define PJS_OVS_SET_INT(name, sz)                                                       \
+    PJS_OVS_IF_PARTIAL_UPDATE(name)                                                     \
     if (!pjs_ovs_set_int_to_json(                                                       \
             in->name,                                                                   \
             in->name ## _len,                                                           \
@@ -288,6 +301,7 @@ error:                                                                          
         goto error;
 
 #define PJS_OVS_SET_BOOL(name, sz)                                                      \
+    PJS_OVS_IF_PARTIAL_UPDATE(name)                                                     \
     if (!pjs_ovs_set_bool_to_json(                                                      \
             in->name,                                                                   \
             in->name ## _len,                                                           \
@@ -297,6 +311,7 @@ error:                                                                          
         goto error;
 
 #define PJS_OVS_SET_REAL(name, sz)                                                      \
+    PJS_OVS_IF_PARTIAL_UPDATE(name)                                                     \
     if (!pjs_ovs_set_real_to_json(                                                      \
             in->name,                                                                   \
             in->name ## _len,                                                           \
@@ -306,6 +321,7 @@ error:                                                                          
         goto error;
 
 #define PJS_OVS_SET_STRING(name, len, sz)                                               \
+    PJS_OVS_IF_PARTIAL_UPDATE(name)                                                     \
     if (!pjs_ovs_set_string_to_json(                                                    \
             (char *)in->name,                                                           \
             len,                                                                        \
@@ -316,6 +332,7 @@ error:                                                                          
         goto error;
 
 #define PJS_OVS_SET_UUID(name, sz)                                                      \
+    PJS_OVS_IF_PARTIAL_UPDATE(name)                                                     \
     if (!pjs_ovs_set_uuid_to_json(                                                      \
             in->name,                                                                   \
             in->name ## _len,                                                           \
@@ -330,6 +347,7 @@ error:                                                                          
  * =============================================================
  */
 #define PJS_OVS_SMAP_INT(name, sz)                                                      \
+    PJS_OVS_IF_PARTIAL_UPDATE(name)                                                     \
     if (!pjs_ovs_smap_int_to_json(                                                      \
             (char *)in->name ## _keys,                                                  \
             sizeof(in->name ## _keys[0]),                                               \
@@ -341,6 +359,7 @@ error:                                                                          
         goto error;
 
 #define PJS_OVS_SMAP_BOOL(name, sz)                                                     \
+    PJS_OVS_IF_PARTIAL_UPDATE(name)                                                     \
     if (!pjs_ovs_smap_bool_to_json(                                                     \
             (char *)in->name ## _keys,                                                  \
             sizeof(in->name ## _keys[0]),                                               \
@@ -352,6 +371,7 @@ error:                                                                          
         goto error;
 
 #define PJS_OVS_SMAP_REAL(name, sz)                                                     \
+    PJS_OVS_IF_PARTIAL_UPDATE(name)                                                     \
     if (!pjs_ovs_smap_real_to_json(                                                     \
             (char *)in->name ## _keys,                                                  \
             sizeof(in->name ## _keys[0]),                                               \
@@ -363,6 +383,7 @@ error:                                                                          
         goto error;
 
 #define PJS_OVS_SMAP_STRING(name, len, sz)                                              \
+    PJS_OVS_IF_PARTIAL_UPDATE(name)                                                     \
     if (!pjs_ovs_smap_string_to_json(                                                   \
             (char *)in->name ## _keys,                                                  \
             sizeof(in->name ## _keys[0]),                                               \
@@ -375,6 +396,7 @@ error:                                                                          
         goto error;
 
 #define PJS_OVS_SMAP_UUID(name, sz)                                                     \
+    PJS_OVS_IF_PARTIAL_UPDATE(name)                                                     \
     if (!pjs_ovs_smap_uuid_to_json(                                                     \
             (char *)in->name ## _keys,                                                  \
             sizeof(in->name ## _keys[0]),                                               \
@@ -391,6 +413,7 @@ error:                                                                          
  * =================================================================
  */
 #define PJS_OVS_DMAP_INT(name, sz)                                                      \
+    PJS_OVS_IF_PARTIAL_UPDATE(name)                                                     \
     if (!pjs_ovs_dmap_int_to_json(                                                      \
             in->name ## _keys,                                                          \
             in->name,                                                                   \
@@ -401,6 +424,7 @@ error:                                                                          
         goto error;
 
 #define PJS_OVS_DMAP_BOOL(name, sz)                                                     \
+    PJS_OVS_IF_PARTIAL_UPDATE(name)                                                     \
     if (!pjs_ovs_dmap_bool_to_json(                                                     \
             in->name ## _keys,                                                          \
             in->name,                                                                   \
@@ -411,6 +435,7 @@ error:                                                                          
         goto error;
 
 #define PJS_OVS_DMAP_REAL(name, sz)                                                     \
+    PJS_OVS_IF_PARTIAL_UPDATE(name)                                                     \
     if (!pjs_ovs_dmap_real_to_json(                                                     \
             in->name ## _keys,                                                          \
             in->name,                                                                   \
@@ -421,6 +446,7 @@ error:                                                                          
         goto error;
 
 #define PJS_OVS_DMAP_STRING(name, len, sz)                                              \
+    PJS_OVS_IF_PARTIAL_UPDATE(name)                                                     \
     if (!pjs_ovs_dmap_string_to_json(in->name ## _keys,                                 \
             (char *)in->name,                                                           \
             sizeof(in->name[0]),                                                        \
@@ -431,6 +457,7 @@ error:                                                                          
         goto error;
 
 #define PJS_OVS_DMAP_UUID(name, sz)                                                     \
+    PJS_OVS_IF_PARTIAL_UPDATE(name)                                                     \
     if (!pjs_ovs_dmap_uuid_to_json(                                                     \
             in->name ## _keys,                                                          \
             in->name,                                                                   \

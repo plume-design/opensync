@@ -49,6 +49,7 @@ typedef struct {
     uint8_t                 chan_util_hwm;
     uint8_t                 chan_util_lwm;
     uint8_t                 debug_level;
+    bool                    gw_only;
 
     char                    uuid[OVSDB_UUID_LEN];
     ds_tree_node_t          dst_node;

@@ -37,18 +37,11 @@ BUILD_LOG_HOSTNAME                     := n
 # Disable unneeded units
 UNIT_DISABLE_src/bm                    := y
 UNIT_DISABLE_src/blem                  := y
-UNIT_DISABLE_src/cm2                   := n
-UNIT_DISABLE_src/dm                    := y
-UNIT_DISABLE_src/lm                    := y
-UNIT_DISABLE_src/nm2                   := y
-UNIT_DISABLE_src/om                    := y
+UNIT_DISABLE_src/nm2                   := n
 UNIT_DISABLE_src/sm                    := y
-UNIT_DISABLE_src/wm2                   := y
+UNIT_DISABLE_src/wm2                   := n
 UNIT_DISABLE_src/lib/bsal              := y
 UNIT_DISABLE_src/lib/cev               := y
-UNIT_DISABLE_src/lib/json_util/test    := y
-UNIT_DISABLE_src/lib/mosqev/test       := y
-UNIT_DISABLE_src/lib/ovsdb/test        := y
-UNIT_DISABLE_src/lib/target/test       := y
+KCONFIG_TARGET                         := kconfig/targets/config_$(TARGET)
 endif
 

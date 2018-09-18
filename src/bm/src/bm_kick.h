@@ -34,6 +34,26 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define BM_KICK_MAGIC_NUMBER            1
 #define BM_KICK_MAGIC_DEBOUNCE_PERIOD   1
 
+#define BTM_24_OP_CLASS                 81
+#define BTM_5GL_OP_CLASS                115
+#define BTM_L_DFS_OP_CLASS              118
+#define BTM_U_DFS_OP_CLASS              121
+#define BTM_5GU_OP_CLASS                125
+
+#define BTM_24_PHY_TYPE                 7
+#define BTM_5_PHY_TYPE                  9
+
+#define RRM_DEFAULT_OP_CLASS            BTM_24_OP_CLASS
+#define RRM_DEFAULT_CHANNEL             0                   // All channels
+#define RRM_DEFAULT_RAND_IVL            0
+#define RRM_DEFAULT_MEAS_DUR            100
+#define RRM_DEFAULT_MEAS_MODE           1
+#define RRM_DEFAULT_REQ_SSID            2                   // 1 for ssid, 2 for wildcard ssid
+#define RRM_DEFAULT_REP_COND            0
+#define RRM_DEFAULT_RPT_DETAIL          0
+#define RRM_DEFAULT_REQ_IE              0
+#define RRM_DEFAULT_CHANRPT_MODE        0
+
 /*****************************************************************************/
 typedef enum {
     BM_STEERING_KICK = 0,
@@ -49,5 +69,6 @@ extern bool             bm_kick_cleanup_by_bsal(bsal_t bsal);
 extern bool             bm_kick_cleanup_by_client(bm_client_t *client);
 extern bool             bm_kick(bm_client_t *client, bm_kick_type_t type, uint8_t rssi);
 extern void             bm_kick_measurement(os_macaddr_t macaddr, uint8_t rssi);
+extern void             bm_kick_cancel_btm_retry_task( bm_client_t *client );
 
 #endif /* __BM_KICK_H__ */

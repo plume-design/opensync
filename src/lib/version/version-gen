@@ -42,7 +42,12 @@ function repo_version()
     if [ "$L" == "." ]; then
         N="core"
     fi
-    N=$(echo $N | sed 's/^\.\.\///')
+    # convert absoute to relative
+    if [ "${N:0:1}" == "/" ]; then
+        N=`realpath $N`
+        N=${N##`dirname $PWD`/}
+    fi
+    N=${N##../}
     if [ "$L" == "$VENDOR_DIR" ]; then
         if [ -f "$L/.version.$VERSION_TARGET" ]; then
             VF="$L/.version.$VERSION_TARGET"

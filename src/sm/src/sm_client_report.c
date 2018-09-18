@@ -110,7 +110,9 @@ typedef struct
 } sm_client_ctx_t;
 
 /* The stats entry has per band (type) and phy_name context */
-static ds_dlist_t                   g_client_ctx_list;
+static ds_dlist_t                   g_client_ctx_list =
+                                        DS_DLIST_INIT(sm_client_ctx_t,
+                                                      node);
 
 static inline sm_client_ctx_t * sm_client_ctx_alloc()
 {
@@ -139,16 +141,6 @@ sm_client_ctx_t *sm_client_ctx_get (
     ds_dlist_iter_t                 ctx_iter;
 
     radio_entry_t                  *radio_entry = NULL;
-    static bool                     init = false;
-
-    if (!init) {
-        /* Initialize report client list */
-        ds_dlist_init(
-                &g_client_ctx_list,
-                sm_client_ctx_t,
-                node);
-        init = true;
-    }
 
     /* Find per radio client ctx  */
     for (   client_ctx = ds_dlist_ifirst(&ctx_iter,&g_client_ctx_list);
@@ -161,7 +153,7 @@ sm_client_ctx_t *sm_client_ctx_get (
         if (radio_cfg->type == radio_entry->type)
         {
             LOG(TRACE,
-                "Fetced %s client reporting context",
+                "Fetched %s client reporting context",
                 radio_get_name_from_cfg(radio_entry));
             return client_ctx;
         }
@@ -611,7 +603,7 @@ bool sm_client_report_tid_stats_calculate_average(
         }
 
         /* Copy tid records */
-        memcpy(&report->entry, &record->entry, sizeof(dpp_client_tid_record_list_t));
+        memcpy(&report->entry, &record->entry, sizeof(record->entry));
 
         /* Adjust timestamp */
         report->timestamp_ms =
@@ -657,21 +649,6 @@ void sm_client_report_calculate_average (
     radio_entry_t                  *radio_cfg_ctx =
         client_ctx->radio_cfg;
 
-    ds_dlist_init(
-            &report_entry->stats_rx,
-            dpp_client_stats_rx_t,
-            node);
-
-    ds_dlist_init(
-            &report_entry->stats_tx,
-            dpp_client_stats_tx_t,
-            node);
-
-    ds_dlist_init(
-            &report_entry->tid_record_list,
-            dpp_client_tid_record_list_t,
-            node);
-
     for (   record_entry = ds_dlist_ifirst(&record_iter, &record->result_list);
             record_entry != NULL;
             record_entry = ds_dlist_inext(&record_iter))
@@ -706,7 +683,7 @@ void sm_client_report_calculate_average (
 
     LOG(DEBUG,
         "Sending %s client "MAC_ADDRESS_FORMAT
-        " stats {rssi=%d bytes=(rx=%llu tx=%llu)"
+        " stats {rssi=%d bytes=(rx=%"PRIu64" tx=%"PRIu64")"
         " rate (rx=%0.3f tx=%0.3f)}",
         radio_get_name_from_cfg(radio_cfg_ctx),
         MAC_ADDRESS_PRINT(report_entry->info.mac),
@@ -769,9 +746,8 @@ bool sm_client_report_send(
             return false;
         }
 
-        /* Copy info and connectivity stats (we need to separate data stats ) */
-        memcpy(report_entry, record_entry, sizeof(dpp_client_record_t));
-
+        /* Copy client info */
+        memcpy(&report_entry->info, &record_entry->info, sizeof(record_entry->info));
 
         /* Perform data manipulation from the samples collected
            - for now only aggregation is supported
@@ -780,6 +756,13 @@ bool sm_client_report_send(
                 client_ctx,
                 record,
                 report_entry);
+
+        /* Copy connectivity stats */
+        report_entry->is_connected  = record_entry->is_connected;
+        report_entry->connected     = record_entry->connected;
+        report_entry->disconnected  = record_entry->disconnected;
+        report_entry->connect_ts    = record_entry->connect_ts;
+        report_entry->disconnect_ts = record_entry->disconnect_ts;
 
         /* Calculate client connected duration before sending report */
         sm_client_report_calculate_duration(
@@ -797,7 +780,7 @@ bool sm_client_report_send(
         sm_timestamp_ms_to_date(report_ctx->timestamp_ms));
 
     /* Send records to MQTT FIFO (Skip empty reports) */
-    if(!ds_dlist_is_empty(record_list)) {
+    if(!ds_dlist_is_empty(report_list)) {
         dpp_put_client(report_ctx);
     }
 
@@ -829,7 +812,7 @@ void sm_client_records_mark_disconnected (
     radio_entry_t                  *radio_cfg_ctx =
         client_ctx->radio_cfg;
 
-    sm_client_record_t        *record = NULL;
+    sm_client_record_t             *record = NULL;
     ds_dlist_iter_t                 record_iter;
     dpp_client_record_t            *record_entry = NULL;
 
@@ -905,7 +888,7 @@ void sm_client_records_mark_disconnected (
 
                 LOG(DEBUG,
                     "Marked %s client "MAC_ADDRESS_FORMAT
-                    " disconnected (cc=%d dc=%d dur=%llums)",
+                    " disconnected (cc=%d dc=%d dur=%"PRIu64"ms)",
                     radio_get_name_from_cfg(radio_cfg_ctx),
                     MAC_ADDRESS_PRINT(record_entry->info.mac),
                     record_entry->connected,
@@ -979,9 +962,84 @@ bool sm_client_records_reset (
 }
 
 static
+bool sm_client_records_update_stats(
+        sm_client_ctx_t            *client_ctx,
+        sm_client_record_t         *record,
+        target_client_record_t     *client_entry)
+{
+    bool                            status;
+    radio_entry_t                  *radio_cfg_ctx =
+        client_ctx->radio_cfg;
+
+    dpp_client_record_t            *record_entry = NULL;
+    dpp_client_record_t            *result_entry = NULL;
+
+    if (NULL == record) {
+        return false;
+    }
+
+    record_entry = &record->entry;
+
+    /* Allocate new sample and convert new and old stats into result delta */
+    result_entry =
+        dpp_client_record_alloc ();
+    if (NULL == result_entry) {
+        LOG(ERR,
+            "Updating %s interface client stats "
+            "(Failed to allocate result memory)",
+            radio_get_name_from_cfg(radio_cfg_ctx));
+        return false;
+    }
+
+    /* Start collecting rx stats for new client entry */
+    status =
+        target_stats_clients_convert (
+                client_ctx->radio_cfg,
+                client_entry,
+                &record->cache,
+                result_entry);
+    if (true != status) {
+        LOG(ERR,
+            "Updating %s interface client stats "
+            "(Failed to convert target data)",
+            radio_get_name_from_cfg(radio_cfg_ctx));
+        return false;
+    }
+
+    /* Update RSSI reporting every sampling interval if enabled */
+    if(sm_rssi_is_reporting_enabled(radio_cfg_ctx)) {
+        status =
+            sm_rssi_stats_results_update (
+                    radio_cfg_ctx,
+                    record_entry->info.mac,
+                    result_entry->stats.rssi,
+                    result_entry->stats.frames_rx,
+                    result_entry->stats.frames_tx,
+                    RSSI_SOURCE_CLIENT);
+        if (true != status) {
+            LOG(ERR,
+                "Updating %s interface client stats "
+                "(Failed to update RSSI data)",
+                radio_get_name_from_cfg(radio_cfg_ctx));
+            return false;
+        }
+    }
+
+    ds_dlist_insert_tail(&record->result_list, result_entry);
+
+    /* Update cache entry for average calculation */
+    memcpy (&record->cache,
+            client_entry,
+            sizeof(record->cache));
+
+    return true;
+}
+
+static
 bool sm_client_records_update(
         sm_client_ctx_t            *client_ctx,
-        ds_dlist_t                 *client_list)
+        ds_dlist_t                 *client_list,
+        bool                        init)
 {
     bool                            status;
 
@@ -992,13 +1050,11 @@ bool sm_client_records_update(
     radio_entry_t                  *radio_cfg_ctx =
         client_ctx->radio_cfg;
 
-    sm_client_record_t        *record = NULL;
+    sm_client_record_t             *record = NULL;
     dpp_client_record_t            *record_entry = NULL;
 
     target_client_record_t         *client_entry = NULL;
     ds_dlist_iter_t                 client_iter;
-
-    dpp_client_record_t            *result_entry = NULL;
 
     /* Checked if clients were connected/disconnected
        and notify cloud before cache update
@@ -1030,7 +1086,7 @@ bool sm_client_records_update(
 
                 LOG(DEBUG,
                     "Marked %s client "MAC_ADDRESS_FORMAT
-                    " reconnected (cc=%d dc=%d dur=%llums)",
+                    " reconnected (cc=%d dc=%d dur=%"PRIu64"ms)",
                     radio_get_name_from_cfg(radio_cfg_ctx),
                     MAC_ADDRESS_PRINT(record_entry->info.mac),
                     record_entry->connected,
@@ -1043,70 +1099,6 @@ bool sm_client_records_update(
                 "Updating %s client "MAC_ADDRESS_FORMAT " entry",
                 radio_get_name_from_cfg(radio_cfg_ctx),
                 MAC_ADDRESS_PRINT(record_entry->info.mac));
-
-            /* Allocate new sample and convert new and old stats into result delta */
-            result_entry =
-                dpp_client_record_alloc ();
-            if (NULL == result_entry) {
-                LOG(ERR,
-                    "Updating %s interface client stats "
-                    "(Failed to allocate result memory)",
-                    radio_get_name_from_cfg(radio_cfg_ctx));
-                return false;
-            }
-
-            /* Start collecting rx stats for new client entry */
-            ds_dlist_init(
-                    &result_entry->stats_rx,
-                    dpp_client_stats_rx_t,
-                    node);
-
-            /* Start collecting tx stats for new client entry */
-            ds_dlist_init(
-                    &result_entry->stats_tx,
-                    dpp_client_stats_tx_t,
-                    node);
-
-            /* Start collecting tid's for new client entry */
-            ds_dlist_init(
-                    &result_entry->tid_record_list,
-                    dpp_client_tid_record_list_t,
-                    node);
-
-            status =
-                target_stats_clients_convert (
-                        client_ctx->radio_cfg,
-                        client_entry,
-                        &record->cache,
-                        result_entry);
-            if (true != status) {
-                LOG(ERR,
-                    "Updating %s interface client stats "
-                    "(Failed to convert target data)",
-                    radio_get_name_from_cfg(radio_cfg_ctx));
-                return false;
-            }
-
-            /* Update RSSI reporting every sampling interval if enabled */
-            if(sm_rssi_is_reporting_enabled(radio_cfg_ctx)) {
-                status =
-                    sm_rssi_stats_results_update (
-                            radio_cfg_ctx,
-                            record_entry->info.mac,
-                            result_entry->stats.rssi,
-                            result_entry->stats.frames_rx,
-                            result_entry->stats.frames_tx,
-                            RSSI_SOURCE_CLIENT);
-                if (true != status) {
-                    LOG(ERR,
-                            "Updating %s interface client stats "
-                            "(Failed to update RSSI data)",
-                            radio_get_name_from_cfg(radio_cfg_ctx));
-                    return false;
-                }
-            }
-
-            ds_dlist_insert_tail(&record->result_list, result_entry);
         }
         else /* Entry not found therefore append new one the end */
         {
@@ -1142,7 +1134,7 @@ bool sm_client_records_update(
 
             LOG(DEBUG,
                 "Marked %s client "MAC_ADDRESS_FORMAT
-                " connected (cc=%d dc=%d dur=%llums)",
+                " connected (cc=%d dc=%d dur=%"PRIu64"ms)",
                 radio_get_name_from_cfg(radio_cfg_ctx),
                 MAC_ADDRESS_PRINT(record_entry->info.mac),
                 record_entry->connected,
@@ -1154,10 +1146,25 @@ bool sm_client_records_update(
         }
 
 update_cache:
-        /* Update cache entry for average calculation */
-        memcpy (&record->cache,
-                client_entry,
-                sizeof(record->cache));
+        /* Update old data with current because timer restarted (report/sampling) => delta = 0 */
+        if (init) {
+            memcpy (&record->cache,
+                    client_entry,
+                    sizeof(record->cache));
+        }
+
+        status =
+            sm_client_records_update_stats(
+                    client_ctx,
+                    record,
+                    client_entry);
+        if (true != status) {
+            LOG(ERR,
+                "Updating %s interface client stats "
+                "(Failed to allocate record memory)",
+                radio_get_name_from_cfg(radio_cfg_ctx));
+            return false;
+        }
     }
 
     client_ctx->record_qty++;
@@ -1191,7 +1198,8 @@ bool sm_client_update_list_cb(
     status =
         sm_client_records_update(
                 client_ctx,
-                client_list);
+                client_list,
+                false);
     if (true != status) {
         LOG(ERR,
             "Processing %s client report "
@@ -1368,7 +1376,8 @@ bool sm_client_update_init_cb (
     status =
         sm_client_records_update(
                 client_ctx,
-                client_list);
+                client_list,
+                true);
     if (true != status) {
         LOG(ERR,
             "Processing %s client report "
@@ -1606,7 +1615,7 @@ bool sm_client_report_request(
     REQUEST_PARAM_UPDATE("client", reporting_count, "%d");
     REQUEST_PARAM_UPDATE("client", reporting_interval, "%d");
     REQUEST_PARAM_UPDATE("client", sampling_interval, "%d");
-    REQUEST_PARAM_UPDATE("client", reporting_timestamp, "%lld");
+    REQUEST_PARAM_UPDATE("client", reporting_timestamp, "%"PRIu64"");
 
     status =
         sm_client_stats_process (

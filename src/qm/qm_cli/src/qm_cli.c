@@ -41,8 +41,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os.h"
 #include "os_backtrace.h"
 #include "qm_conn.h"
+#include "os_time.h"
+#include "util.h"
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
+
+#undef BUILD_QM_CLI_BENCH
 
 static int qm_log_level = LOG_SEVERITY_INFO;
 
@@ -50,16 +54,18 @@ struct
 {
     int cmd;
     char topic[256];
+    bool bench;
+    bool now;
 } g_opt;
 
 void qm_get_opt(int argc, char ** argv)
 {
     int d;
 
-    g_opt.cmd = QM_CMD_SEND;
+    g_opt.cmd = -1;
 
     int ch;
-    while ((ch = getopt(argc, argv, "sit:d:")) != -1)
+    while ((ch = getopt(argc, argv, "sit:d:bn")) != -1)
     {
         switch(ch)
         {
@@ -83,8 +89,19 @@ void qm_get_opt(int argc, char ** argv)
                 break;
 
             case 't':
-                STRLCPY(g_opt.topic, optarg);
+                STRSCPY(g_opt.topic, optarg);
                 printf("topic: %s\n", g_opt.topic);
+                break;
+
+            case 'n':
+                g_opt.now = true;
+                printf("flag: now\n");
+                break;
+
+            case 'b':
+                g_opt.bench = true;
+                STRSCPY(g_opt.topic, "test");
+                printf("mode: bench\n");
                 break;
 
             default:
@@ -92,20 +109,35 @@ void qm_get_opt(int argc, char ** argv)
         }
     }
 
+    if (g_opt.cmd == -1) {
+        printf("qm_cli [OPTIONS]\n");
+        printf(" -d X      debug level\n");
+        printf(" -s        send (from stdin)\n");
+        printf(" -i        info (qm status)\n");
+        printf(" -t TOPIC  specify topic\n");
+#ifdef BUILD_QM_CLI_BENCH
+        printf(" -b        bench\n");
+#endif
+        exit(1);
+    }
+
 }
 
 void cli_print_res(qm_response_t *res)
 {
 #define PR(X) printf("%-11s: %d\n", #X, res->X)
+#define PR2(X,Y) printf("%-11s: %d  %s\n", #X, res->X, Y)
     printf("Response: [%.4s] %d\n", res->tag, res->ver);
     PR(seq);
-    PR(response);
-    PR(error);
+    PR2(response, qm_response_str(res->response));
+    PR2(error, qm_error_str(res->error));
+    PR2(conn_status, qm_conn_status_str(res->conn_status));
     PR(flags);
-    PR(conn_status);
-    PR(qdrop);
     PR(qlen);
     PR(qsize);
+    PR(qdrop);
+    PR(log_size);
+    PR(log_drop);
 #undef PR
 }
 
@@ -131,6 +163,7 @@ void cli_send()
     int free = sizeof(buf);
     int size = 0;
     int ret;
+    bool result;
 
     printf("%s\n", __FUNCTION__);
     do {
@@ -147,14 +180,83 @@ void cli_send()
         printf("empty data, not sending\n");
         exit(1);
     }
-    if (!qm_conn_send_raw(buf, size, g_opt.topic, &res)) {
+    if (g_opt.now) {
+        result = qm_conn_send_direct(QM_REQ_COMPRESS_DISABLE, g_opt.topic, buf, size, &res);
+    } else {
+        result = qm_conn_send_raw(g_opt.topic, buf, size, &res);
+    }
+    if (!result) {
         printf("Error sending\n");
     }
     cli_print_res(&res);
 }
 
+#ifdef BUILD_QM_CLI_BENCH
+#define BENCH_REOPEN 0
+#define BENCH_STREAM 1
+
+void cli_bench_mode(int mode)
+{
+    int i, j, num;
+    char buf[256];
+    double t1, t2, d, dd[3];
+    bool result;
+    qm_response_t res;
+
+    // reconnect mode, with reply
+    num = 0;
+    for (j=0; j<3; j++) {
+        t1 = clock_mono_double();
+        for (i=0; i<1000; i++) {
+            snprintf(buf, sizeof(buf), "%d-%d", j, i);
+            if (mode == BENCH_REOPEN) {
+                qm_request_t req;
+                qm_req_init(&req);
+                req.cmd = QM_CMD_SEND;
+                req.data_type = QM_DATA_LOG;
+                req.compress = QM_REQ_COMPRESS_DISABLE;
+                result = qm_conn_send_req(&req, NULL, buf, strlen(buf), &res);
+            } else {
+                result = qm_conn_send_log(buf, &res);
+            }
+            if (!result) {
+                printf("Error sending\n");
+                cli_print_res(&res);
+                break;
+            }
+            num++;
+        }
+        t2 = clock_mono_double();
+        dd[j] = t2 - t1;
+    }
+    d = 0;
+    for (j=0; j<3; j++) {
+        printf("t%d %f ms\n", j, dd[j]*1000);
+        d += dd[j];
+    }
+    printf("total %d / %f ms\n", num, d*1000.0);
+    printf("total %f m/s\n", (double)num/d);
+}
+
+void cli_bench()
+{
+    // reconnect mode, with reply
+    cli_bench_mode(BENCH_REOPEN);
+    // stream mode, no reply
+    cli_bench_mode(BENCH_STREAM);
+}
+#else
+void cli_bench()
+{
+}
+#endif
+
 void cli_action()
 {
+    if (g_opt.bench) {
+        cli_bench();
+        return;
+    }
     switch (g_opt.cmd) {
         case QM_CMD_STATUS:
             cli_info();

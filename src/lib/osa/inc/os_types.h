@@ -28,6 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define OS_TYPES_H_INCLUDED
 
 #include <inttypes.h>
+#include "const.h"
 
 #define PRI_os_macaddr_t        "%02X:%02X:%02X:%02X:%02X:%02X"
 #define PRI_os_macaddr_lower_t  "%02x:%02x:%02x:%02x:%02x:%02x"
@@ -46,21 +47,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /* Non plain MAC string takes exactly 18 chars.
  */
 #define OS_MACSTR_SZ            (18)
-/**
- * PRI(type) produces a constant string that is suitable for printf(), for example:
- *
- * Example:
- *      printf("MAC address is: " PRI(os_macaddr_t), FMT(os_macaddr_t, my_mac));
- */
-#define PRI(type)               PRI_ ## type
-/**
- * FMT(type, value) formats the value in such a way that is suitable for input
- * to printf with a PRI(type) format string
- *
- * Example:
- *      printf("IP address is: " PRI(os_ipaddr_t), FMT(os_ipaddr_t, my_ip));
- */
-#define FMT(type, x)            FMT_ ## type (x)
 
 /**
  * Avoid using fixed-length arrays in typedefs; this leads to all sorts of problems.

@@ -29,6 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os.h"
 #include "log.h"
 #include "mosqev.h"
+#include "util.h"
 
 #include <resolv.h>
 /*
@@ -167,10 +168,10 @@ bool mosqev_init(mosqev_t *self, const char *cid, struct ev_loop *ev, void *data
     memset(self, 0, sizeof(*self));
 
     self->me_ev = ev;
-    strlcpy(self->me_cid, cid, sizeof(self->me_cid));
+    STRSCPY(self->me_cid, cid);
     self->me_data = data;
 
-    strlcpy(self->me_host, "unkown", sizeof(self->me_host));
+    STRSCPY(self->me_host, "unkown");
     self->me_port = -1;
 
     /*
@@ -293,7 +294,7 @@ bool mosqev_connect(mosqev_t *self, char *host, int port)
 {
     int rc;
 
-    strlcpy(self->me_host, host, sizeof(self->me_host));
+    STRSCPY(self->me_host, host);
     self->me_port = port;
 
     LOG(INFO, "Connecting to: %s:%d:%s", host, port, self->me_cid);

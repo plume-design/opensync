@@ -153,6 +153,12 @@ main(int argc, char **argv)
         return(1);
     }
 
+    // Initialize neighbors
+    if( bm_neighbor_init() == false ) {
+        LOGEM( "Failed to initialize BM Neighbors" );
+        return(1);
+    }
+
     /* Register to dynamic severity updates */
     log_register_dynamic_severity(_ev_loop);
 
@@ -167,6 +173,7 @@ main(int argc, char **argv)
     bm_pair_cleanup();
     bm_events_cleanup();
     bm_kick_cleanup();
+    bm_neighbor_cleanup();
     ovsdb_stop_loop(_ev_loop);
     target_close(TARGET_INIT_MGR_BM, _ev_loop);
     evsched_cleanup();

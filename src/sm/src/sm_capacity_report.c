@@ -122,7 +122,7 @@ sm_capacity_ctx_t *sm_capacity_ctx_get (
         if (radio_cfg->type == radio_entry->type)
         {
             LOG(TRACE,
-                "Fetced %s capacity reporting context",
+                "Fetched %s capacity reporting context",
                 radio_get_name_from_cfg(radio_entry));
             return capacity_ctx;
         }

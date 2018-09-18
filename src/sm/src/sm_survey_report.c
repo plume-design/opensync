@@ -44,6 +44,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "sm.h"
 
+/******************************************************************************/
+
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
 typedef struct
@@ -79,7 +81,7 @@ typedef struct
        (multiple channel storage ... ) */
     target_survey_record_t          records[RADIO_MAX_CHANNELS];
 
-    // threshold counters
+    /* Threshold counters */
     time_t                          threshold_ts; // timestamp
     int                             threshold_count; // count chan_num
     target_survey_record_t          threshold_record;  // replace with capacity!
@@ -96,9 +98,14 @@ typedef struct
 
 #define SURVEY_MIN_SCAN_INTERVAL    10 /* ms */
 #define SURVEY_INIT_TIME            20 /* s */
+#define SURVEY_WARN_PROCENT_LIMIT   5  /* % */
 
 /* The stats entry has per band (type) phy_name and scan_type context */
-static ds_dlist_t                   g_survey_ctx_list;
+static ds_dlist_t                   g_survey_ctx_list =
+                                        DS_DLIST_INIT(sm_survey_ctx_t,
+                                                      node);
+
+/******************************************************************************/
 
 static inline sm_survey_ctx_t * sm_survey_ctx_alloc()
 {
@@ -128,16 +135,6 @@ sm_survey_ctx_t *sm_survey_ctx_get (
     ds_dlist_iter_t                 ctx_iter;
 
     radio_entry_t                  *radio_entry = NULL;
-    static bool                     init = false;
-
-    if (!init) {
-        /* Initialize report survey list */
-        ds_dlist_init(
-                &g_survey_ctx_list,
-                sm_survey_ctx_t,
-                node);
-        init = true;
-    }
 
     /* Find per radio survey ctx  */
     for (   survey_ctx = ds_dlist_ifirst(&ctx_iter,&g_survey_ctx_list);
@@ -149,8 +146,8 @@ sm_survey_ctx_t *sm_survey_ctx_get (
         /* The stats entry has per band (type) and phy_name context */
         if (    (radio_cfg->type == radio_entry->type)
              && (scan_type == survey_ctx->scan_type)
-		   ) {
-            LOGT("Fetced %s %s survey reporting context",
+           ) {
+            LOGT("Fetched %s %s survey reporting context",
                  radio_get_name_from_cfg(radio_entry),
                  radio_get_scan_name_from_type(scan_type));
             return survey_ctx;
@@ -234,31 +231,24 @@ bool sm_survey_records_clear(
         sm_survey_ctx_t            *survey_ctx,
         ds_dlist_t                 *record_list)
 {
-    sm_stats_request_t             *request_ctx =
-        &survey_ctx->request;
-
     ds_dlist_iter_t                 survey_iter;
 
-    if (REPORT_TYPE_RAW == request_ctx->report_type) {
-        dpp_survey_record_t            *survey = NULL;
-        for (   survey = ds_dlist_ifirst(&survey_iter, record_list);
-                survey != NULL;
-                survey = ds_dlist_inext(&survey_iter))
-        {
-            ds_dlist_iremove(&survey_iter);
-            dpp_survey_record_free(survey);
-            survey = NULL;
-        }
-    } else {
-        dpp_survey_record_avg_t        *survey = NULL;
-        for (   survey = ds_dlist_ifirst(&survey_iter, record_list);
-                survey != NULL;
-                survey = ds_dlist_inext(&survey_iter))
-        {
-            ds_dlist_iremove(&survey_iter);
-            free(survey);
-            survey = NULL;
-        }
+    if (!survey_ctx || !record_list) {
+        return false;
+    }
+
+    if (ds_dlist_is_empty(record_list)) {
+        return true;
+    }
+
+    dpp_survey_record_t            *survey = NULL;
+    for (   survey = ds_dlist_ifirst(&survey_iter, record_list);
+            survey != NULL;
+            survey = ds_dlist_inext(&survey_iter))
+    {
+        ds_dlist_iremove(&survey_iter);
+        dpp_survey_record_free(survey);
+        survey = NULL;
     }
 
     return true;
@@ -272,6 +262,14 @@ bool sm_survey_target_clear(
     target_survey_record_t         *survey = NULL;
     ds_dlist_iter_t                 survey_iter;
 
+    if (!survey_ctx || !survey_list) {
+        return false;
+    }
+
+    if (ds_dlist_is_empty(survey_list)) {
+        return true;
+    }
+
     for (   survey = ds_dlist_ifirst(&survey_iter, survey_list);
             survey != NULL;
             survey = ds_dlist_inext(&survey_iter))
@@ -282,6 +280,87 @@ bool sm_survey_target_clear(
     }
 
     return true;
+}
+
+static
+bool sm_survey_report_clear(
+        sm_survey_ctx_t            *survey_ctx,
+        ds_dlist_t                 *report_list)
+{
+    ds_dlist_iter_t                 survey_iter;
+    sm_stats_request_t             *request_ctx =
+        &survey_ctx->request;
+
+    if (!survey_ctx || !report_list) {
+        return false;
+    }
+
+    if (ds_dlist_is_empty(report_list)) {
+        return true;
+    }
+
+    if (REPORT_TYPE_RAW == request_ctx->report_type) {
+        dpp_survey_record_t            *survey = NULL;
+        for (   survey = ds_dlist_ifirst(&survey_iter, report_list);
+                survey != NULL;
+                survey = ds_dlist_inext(&survey_iter))
+        {
+            ds_dlist_iremove(&survey_iter);
+            dpp_survey_record_free(survey);
+            survey = NULL;
+        }
+    }
+    else if (REPORT_TYPE_AVERAGE == request_ctx->report_type) {
+        dpp_survey_record_avg_t        *survey = NULL;
+        for (   survey = ds_dlist_ifirst(&survey_iter, report_list);
+                survey != NULL;
+                survey = ds_dlist_inext(&survey_iter))
+        {
+            ds_dlist_iremove(&survey_iter);
+            free(survey);
+            survey = NULL;
+        }
+    }
+    else {
+        return false;
+    }
+
+    return true;
+}
+
+static
+void sm_survery_target_validate (
+        radio_entry_t              *radio_cfg,
+        radio_scan_type_t           scan_type,
+        dpp_survey_record_t        *survey_record)
+{
+    uint32_t chan_sum = survey_record->chan_rx + survey_record->chan_tx;
+    if (chan_sum > survey_record->chan_busy){
+        if ((chan_sum - survey_record->chan_busy) > SURVEY_WARN_PROCENT_LIMIT) {
+            LOGW("Processed %s %s %u survey percent "
+                 "{busy=%u is less then rx=%u + tx=%u)",
+                 radio_get_name_from_cfg(radio_cfg),
+                 radio_get_scan_name_from_type(scan_type),
+                 survey_record->info.chan,
+                 survey_record->chan_busy,
+                 survey_record->chan_rx,
+                 survey_record->chan_tx);
+        }
+        survey_record->chan_rx = survey_record->chan_busy - survey_record->chan_tx;
+    }
+
+    if (survey_record->chan_self > survey_record->chan_rx){
+        if ((survey_record->chan_self - survey_record->chan_rx) > SURVEY_WARN_PROCENT_LIMIT) {
+            LOGW("Processed %s %s %u survey percent "
+                 "{self=%u is bigger then rx=%u)",
+                 radio_get_name_from_cfg(radio_cfg),
+                 radio_get_scan_name_from_type(scan_type),
+                 survey_record->info.chan,
+                 survey_record->chan_self,
+                 survey_record->chan_rx);
+        }
+        survey_record->chan_self = survey_record->chan_rx;
+    }
 }
 
 static
@@ -517,15 +596,15 @@ bool sm_survey_report_send(
         dpp_put_survey(report_ctx);
     }
 
-exit:
     status =
-        sm_survey_records_clear(
+            sm_survey_report_clear(
                 survey_ctx,
                 report_list);
     if (true != status) {
-        return false;
+        goto exit;
     }
 
+exit:
     status =
         sm_survey_records_clear(
                 survey_ctx,
@@ -568,6 +647,12 @@ bool sm_survey_update_list_cb (
 
     uint32_t                        chan_index;
 
+    if (NULL == survey_ctx) {
+        LOGE("Processing survey record "
+             "(empty context)");
+        return false;
+    }
+
     if(true != survey_status) {
         LOGE("Processing %s %s survey record %u "
              "(failed to get stats)",
@@ -594,7 +679,7 @@ bool sm_survey_update_list_cb (
             dpp_survey_record_alloc();
         if (NULL == result_entry) {
             LOGE("Processing %s %s survey report "
-                 "(Failed to allocate memmory)",
+                 "(Failed to allocate memory)",
                  radio_get_name_from_cfg(radio_cfg_ctx),
                  radio_get_scan_name_from_type(scan_type));
             goto clear;
@@ -622,6 +707,11 @@ bool sm_survey_update_list_cb (
                  survey_ctx->record_qty);
             goto clear;
         }
+
+        sm_survery_target_validate (
+                radio_cfg_ctx,
+                scan_type,
+                result_entry);
 
         LOGD("Processed %s %s %u survey percent "
              "{busy=%u tx=%u self=%u rx=%u ext=%u duration=%u}",
@@ -657,7 +747,7 @@ bool sm_survey_update_list_cb (
         case RADIO_SCAN_TYPE_OFFCHAN: /* Move to the next channel */
             channel_ctx->chan_index++;
 
-            /* Start from beggining when max is reached */
+            /* Start from begining when max is reached */
             if (channel_ctx->chan_index >= channel_ctx->chan_num) {
                 channel_ctx->chan_index = 0;
             }
@@ -686,6 +776,7 @@ clear:
     return true;
 }
 
+static
 void sm_survey_scan_cb(
         void                       *scan_ctx,
         int                         scan_status)
@@ -765,8 +856,9 @@ void sm_survey_scan_cb(
              radio_get_scan_name_from_type(scan_type),
              *survey_chan,
              survey_ctx->record_qty);
-        return;
     }
+
+    return;
 }
 
 static
@@ -850,6 +942,12 @@ bool sm_survey_threshold_util_cb (
              radio_cfg_ctx->chan);
         goto clear;
     }
+
+    sm_survery_target_validate (
+            radio_cfg_ctx,
+            scan_type,
+            &result_entry);
+
     /* update cache with current values */
     survey_ctx->threshold_record = *survey_entry;
 
@@ -965,11 +1063,12 @@ bool sm_survey_stats_update (
             return false;
     }
 
-    // threshold
-    // when the threshold limit is exceeded, start a time window
-    // of threshold_max_delay, within this time each channel has to
-    // be scanned at least once, otherwise ignore threshold when
-    // this time limit runs out and pass through all remaining requests.
+     /* Threshold
+      * when the threshold limit is exceeded, start a time window
+      * of threshold_max_delay, within this time each channel has to
+      * be scanned at least once, otherwise ignore threshold when
+      * this time limit runs out and pass through all remaining requests.
+      */
     if (request_ctx->threshold_util) {
         // threshold configured
         time_t t_now = time_monotonic();
@@ -1135,6 +1234,14 @@ bool sm_survey_stats_chanlist_update (
     if (scan_type == RADIO_SCAN_TYPE_ONCHAN) {
         channel_ctx->chan_list[channel_ctx->chan_num++] =
             radio_cfg_ctx->chan;
+        if (radio_cfg_ctx->chan == 0){
+            LOG(ERROR,
+                "Updated %s %s survey chan %u (Invalid channel)",
+                radio_get_name_from_cfg(radio_cfg_ctx),
+                radio_get_scan_name_from_type(scan_type),
+                channel_ctx->chan_list[channel_ctx->chan_num - 1]);
+            return false;
+        }
         LOG(DEBUG,
             "Updated %s %s survey chan %u",
             radio_get_name_from_cfg(radio_cfg_ctx),
@@ -1253,15 +1360,19 @@ bool sm_survey_init_cb (
     if (request_ctx->sampling_interval) {
         update_timer->repeat = request_ctx->sampling_interval + survey_ctx->sync_delay;
 
-        /* The 2.4 and 5G need to be appart for min 10s so we
-           do not degradate performance on middle nodes!
+        /* The 2.4 and 5G need to be apart for min 10s so we
+           do not degrade performance on middle nodes!
 
            Since min interval is 20 we can use half of sampling.
            The same logic need to be considered with max delay
 
            NOTE: Only the first sample is delayed!
          */
-        if (RADIO_TYPE_5G == radio_cfg_ctx->type && survey_ctx->sync_delay) {
+        if ( (    (RADIO_TYPE_5G == radio_cfg_ctx->type)
+               || (RADIO_TYPE_5GL == radio_cfg_ctx->type)
+               || (RADIO_TYPE_5GU == radio_cfg_ctx->type)
+             )
+             && survey_ctx->sync_delay) {
             update_timer->repeat += request_ctx->sampling_interval / 2 ;
         }
         sm_survey_timer_set(update_timer, true);
@@ -1284,8 +1395,9 @@ clear:
         sm_survey_target_clear(
                 survey_ctx,
                 survey_list);
+
     if (true != rc) {
-        LOGE("Intializing %s %s survey report "
+        LOGE("Initializing %s %s survey report "
              "(failed to clear survey list)",
              radio_get_name_from_cfg(radio_cfg_ctx),
              radio_get_scan_name_from_type(scan_type));
@@ -1423,17 +1535,12 @@ bool sm_survey_stats_init (
         &survey_ctx->chan_list;
     radio_entry_t                  *radio_cfg_ctx =
         survey_ctx->radio_cfg;
-    dpp_survey_report_data_t       *report_ctx =
-        &survey_ctx->report;
-    ds_dlist_t                     *report_list =
-        &report_ctx->list;
     ds_dlist_t                     *record_list =
         &survey_ctx->record_list;
     ds_dlist_t                     *survey_list =
         &survey_ctx->survey_list;
     radio_scan_type_t               scan_type =
         survey_ctx->scan_type;
-
     ev_timer                       *init_timer =
         &survey_ctx->init_timer;
 
@@ -1470,14 +1577,6 @@ bool sm_survey_stats_init (
     }
 
     status =
-        sm_survey_records_clear(
-                survey_ctx,
-                report_list);
-    if (true != status) {
-        return false;
-    }
-
-    status =
         sm_survey_target_clear(
                 survey_ctx,
                 survey_list);
@@ -1502,7 +1601,7 @@ bool sm_survey_stats_init (
 
     /* Threshold logic prevent scanning during traffic */
     if (request_ctx->threshold_util) {
-        /* Set buffer and calback function to be called after records are ready */
+        /* Set buffer and callback function to be called after records are ready */
         rc =
             target_stats_survey_get (
                     radio_cfg_ctx,
@@ -1564,11 +1663,8 @@ bool sm_survey_stats_process (
     ev_timer                       *update_timer =
         &survey_ctx->update_timer;
 
-    /* Stop when reconfiguration is detected */
-    sm_survey_timer_set(report_timer, false);
-
     /* Skip %s survey report start if radio is not configured */
-    if (!radio_cfg_ctx) {
+    if (!radio_cfg_ctx || (radio_cfg_ctx->chan == 0)) {
         LOGT("Skip starting %s %s survey reporting "
              "(Radio not configured)",
              radio_get_name_from_cfg(radio_cfg_ctx),
@@ -1665,17 +1761,17 @@ bool sm_survey_stats_process (
                  request_ctx->threshold_max_delay);
 
             /* NTP is not available on all devices therefore sync to Cloud time
-               (NOTE this drifts a little bit because of connfiguration sending path)
+               (NOTE this drifts a little bit because of configuration sending path)
 
                Synchronization delay is added to all nodes only once to allow
-               devices in multihop cluster to approximately snyc to same
+               devices in multihop cluster to approximately sync to same
                sampling interval - this is needed only for off-channel survey!
              */
             survey_ctx->sync_delay =
                 request_ctx->sampling_interval -
                 (uint32_t)((request_ctx->reporting_timestamp / 1000) % request_ctx->sampling_interval);
 
-            LOGI("Updated %s %s survey synchronization_delay %d - %d -> %llds) ",
+            LOGI("Updated %s %s survey synchronization_delay %d - %d -> %"PRIu64"s) ",
                  radio_get_name_from_cfg(radio_cfg_ctx),
                  radio_get_scan_name_from_type(scan_type),
                  request_ctx->sampling_interval,
@@ -1695,7 +1791,11 @@ bool sm_survey_stats_process (
              radio_get_name_from_cfg(radio_cfg_ctx),
              radio_get_scan_name_from_type(scan_type));
 
-        memset(request_ctx, 0, sizeof(sm_stats_request_t));
+        memset(request_ctx, 0, sizeof(*request_ctx));
+
+        sm_survey_timer_set(update_timer, false);
+        sm_survey_timer_set(report_timer, false);
+        sm_survey_timer_set(&survey_ctx->init_timer, false);
     }
 
     return true;
@@ -1712,7 +1812,6 @@ bool sm_survey_report_request(
 
     sm_survey_ctx_t                *survey_ctx = NULL;
     sm_stats_request_t             *request_ctx = NULL;
-    dpp_survey_report_data_t       *report_ctx = NULL;
     ev_timer                       *report_timer = NULL;
     ev_timer                       *update_timer = NULL;
     ev_timer                       *init_timer = NULL;
@@ -1727,9 +1826,14 @@ bool sm_survey_report_request(
     }
     scan_type = request->scan_type;
 
-    survey_ctx      = sm_survey_ctx_get(radio_cfg, scan_type);
+    survey_ctx = sm_survey_ctx_get(radio_cfg, scan_type);
+    if (NULL == survey_ctx) {
+        LOGE("Initializing survey reporting "
+             "(Invalid survey context)");
+        return false;
+    }
+
     request_ctx     = &survey_ctx->request;
-    report_ctx      = &survey_ctx->report;
     update_timer    = &survey_ctx->update_timer;
     report_timer    = &survey_ctx->report_timer;
     record_list     = &survey_ctx->record_list;
@@ -1739,7 +1843,6 @@ bool sm_survey_report_request(
     /* Initialize global storage and timer config only once */
     if (!survey_ctx->initialized) {
         memset(request_ctx, 0, sizeof(*request_ctx));
-        memset(report_ctx, 0, sizeof(*report_ctx));
 
         LOGI("Initializing %s %s survey reporting",
              radio_get_name_from_cfg(radio_cfg),
@@ -1750,6 +1853,7 @@ bool sm_survey_report_request(
                 record_list,
                 dpp_survey_record_t,
                 node);
+
         ds_dlist_init(
                 survey_list,
                 target_survey_record_t,
@@ -1759,10 +1863,9 @@ bool sm_survey_report_request(
         ev_init (init_timer, sm_survey_init_timer_cb);
         init_timer->data = survey_ctx;
 
-        if (RADIO_SCAN_TYPE_FULL != scan_type) {
-            ev_init (update_timer, sm_survey_update_timer_cb);
-            update_timer->data = survey_ctx;
-        }
+        /* Used only on/off channel survey */
+        ev_init (update_timer, sm_survey_update_timer_cb);
+        update_timer->data = survey_ctx;
 
         /* Initialize event lib timers and pass the global internal cache */
         ev_init (report_timer, sm_survey_report_timer_cb);
@@ -1788,7 +1891,7 @@ bool sm_survey_report_request(
     REQUEST_PARAM_UPDATE(param_str, threshold_max_delay, "%d");
     REQUEST_PARAM_UPDATE(param_str, threshold_pod_qty, "%d");
     REQUEST_PARAM_UPDATE(param_str, threshold_pod_num, "%d");
-    REQUEST_PARAM_UPDATE(param_str, reporting_timestamp, "%lld");
+    REQUEST_PARAM_UPDATE(param_str, reporting_timestamp, "%"PRIu64"");
 
     /* Update channel list */
     memcpy(&request_ctx->radio_chan_list,
@@ -1800,6 +1903,7 @@ bool sm_survey_report_request(
                 radio_cfg,
                 scan_type,
                 survey_ctx);
+
     if (true != status) {
         return false;
     }
@@ -1815,6 +1919,13 @@ bool sm_survey_report_radio_change(
     radio_scan_type_t               scan_type;
     int                             scan_index;
 
+    if (NULL == radio_cfg) {
+        LOG(ERR,
+            "Changing survey reporting "
+            "(Invalid radio config)");
+        return false;
+    }
+
     /* Update radio on all scan contexts. If initialized, reports will start */
     for (   scan_index = 0;
             scan_index < RADIO_SCAN_MAX_TYPE_QTY;
@@ -1822,12 +1933,18 @@ bool sm_survey_report_radio_change(
         ) {
         scan_type   = radio_get_scan_type_from_index(scan_index);
         survey_ctx  = sm_survey_ctx_get(radio_cfg, scan_type);
+        if (NULL == survey_ctx) {
+            LOGE("Changing survey reporting "
+                 "(Invalid survey context)");
+            return false;
+        }
 
         status =
             sm_survey_stats_process (
                     radio_cfg,
                     scan_type,
                     survey_ctx);
+
         if (true != status) {
             return false;
         }

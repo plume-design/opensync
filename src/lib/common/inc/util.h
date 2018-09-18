@@ -32,11 +32,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdio.h>
 
 int csnprintf(char **str, size_t *size, const char *fmt, ...);
+#define append_snprintf csnprintf
+int tsnprintf(char *str, size_t size, const char *fmt, ...) __attribute__((format(printf, 3, 4)));
 char* strargv(char **cmd, bool with_quotes);
 int strcmp_len(char *a, size_t alen, char *b, size_t blen);
 ssize_t base64_encode(char *out, ssize_t out_sz, void *input, ssize_t input_sz);
 ssize_t base64_decode(void *out, ssize_t out_sz, char *input);
-void strchomp(char *str, char *delim);
+char *strchomp(char *str, char *delim);
 
 int count_nt_array(char **array);
 char* strfmt_nt_array(char *str, size_t size, char **array);
@@ -50,12 +52,24 @@ void delimiter_append(char *dest, int size, char *src, int i, char d);
 void comma_append(char *dest, int size, char *src, int i);
 void remove_character(char *str, const char character);
 
-int fsa_find_str(char *array, int size, int len, char *str);
-char* fsa_find_key_val_def(char *keys, int ksize, char *vals, int vsize, int len, char *key, char *def);
-char* fsa_find_key_val_null(char *keys, int ksize, char *vals, int vsize, int len, char *key);
-char* fsa_find_key_val(char *keys, int ksize, char *vals, int vsize, int len, char *key);
-char *fsa_item(char *array, int size, int len, int num);
-void fsa_copy(char *array, int size, int len, int num, char *dest, int dsize, int dlen, int *dnum);
+int fsa_find_str(const void *array, int size, int len, const char *str);
+void fsa_copy(const void *array, int size, int len, int num, void *dest, int dsize, int dlen, int *dnum);
+
+#define fsa_find_key_val_def(keys, ksize, vals, vsize, len, key, def) \
+    (fsa_find_str(keys, ksize, len, key) < 0 \
+     ? (def) \
+     : (vals) + fsa_find_str(keys, ksize, len, key) * (vsize))
+
+#define fsa_find_key_val_null(keys, ksize, vals, vsize, len, key) \
+    fsa_find_key_val_def(keys, ksize, vals, vsize, len, key, NULL)
+
+#define fsa_find_key_val(keys, ksize, vals, vsize, len, key) \
+    fsa_find_key_val_def(keys, ksize, vals, vsize, len, key, "")
+
+#define fsa_item(arr, size, len, i) \
+    ((i) >= (len) \
+     ? (LOG(CRIT, "FSA out of bounds %d >= %d", i, len), NULL) \
+     : (arr) + (i) * (size))
 
 char *str_tolower(char *str);
 char *str_toupper(char *str);
@@ -63,10 +77,28 @@ bool str_is_mac_address(const char *mac);
 bool parse_uri(char *uri, char *proto, char *host, int *port);
 
 #define STRSCPY(dest, src)  strscpy((dest), (src), sizeof(dest))
+#define STRSCPY_WARN(dest, src) WARN_ON(STRSCPY((dest), (src)) < 0)
 ssize_t strscpy(char *dest, const char *src, size_t size);
 #define STRSCAT(dest, src)  strscat((dest), (src), sizeof(dest))
 ssize_t strscat(char *dest, const char *src, size_t size);
 char *strschr(const char *s, int c, size_t n);
 char *strsrchr(const char *s, int c, size_t n);
+#define strdupafree(s) ({ char *__p = s, *__q = __p ? strdupa(__p) : NULL; free(__p); __q; })
+char *strfmt(const char *fmt, ...) __attribute__ ((format(printf, 1, 2)));
+#define strfmta(fmt, ...) strdupafree(strfmt(fmt, ##__VA_ARGS__))
+char *argvstr(const char *const*argv);
+#define argvstra(argv) strdupafree(argvstr(argv))
+char *strexread(const char *prog, const char *const*argv);
+#define strexreada(prog, argv) strdupafree(strexread(prog, argv))
+#define __strexa_arg1(x, ...) x
+#define strexa(...) strdupafree(strchomp(strexread(__strexa_arg1(__VA_ARGS__), (const char *[]){ __VA_ARGS__, NULL }), " \t\r\n"))
+#define strexpect(str, prog, ...) ({ char *__p = strexa(prog, ##__VA_ARGS__); __p && !strcmp(__p, str); })
+char *strdel(char *heystack, const char *needle);
+
+int    str_count_lines(char *s);
+bool   str_split_lines_to(char *s, char **lines, int size, int *count);
+char** str_split_lines(char *s, int *count);
+bool   str_join(char *str, int size, char **list, int num, char *delim);
+bool   str_join_int(char *str, int size, int *list, int num, char *delim);
 
 #endif /* __UTIL__H__  */

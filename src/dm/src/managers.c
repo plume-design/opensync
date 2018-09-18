@@ -51,6 +51,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * this number in closefrom() surrogate implementation */
 #define DM_MAX_FD       (1024)
 
+#define IGNORE_SIGMASK ((1 << SIGTERM) | (1 << SIGKILL) | (1 << SIGUSR1) | \
+                        (1 << SIGUSR2) | (1 << SIGINT))
+
 #define TM_OUT_FAST     (5)
 #define TM_OUT_SLOW     (60)
 
@@ -106,6 +109,56 @@ void cb_timeout(EV_P_ ev_timer * w, int events)
     child_start(wc, ci);
 }
 
+/**
+ * Helper used to check if a signal should be ignored
+ */
+static bool ignore_signal(EV_P_ ev_child *w)
+{
+    target_managers_config_t *ci = (target_managers_config_t *)w->data;
+    uint32_t termsig;
+
+    /* Bail if the child process was not terminated by a signal */
+    if (!WIFSIGNALED(w->rstatus))
+    {
+        return true;
+    }
+
+    /* Check if the child process needs to be restarted no matter what */
+    if (ci->always_restart != 0)
+    {
+        return false;
+    }
+
+    /* Check if the signal reflects a user action */
+    if (WTERMSIG(w->rstatus) <= 31)
+    {
+        termsig = 1 << WTERMSIG(w->rstatus);
+        return ((termsig & IGNORE_SIGMASK) != 0);
+    }
+
+    return false;
+}
+
+/**
+ * Helper used to compute the restart delay for a process
+ */
+static int get_start_delay(target_managers_config_t *ci)
+{
+    /* For backwards compatibility reasons,
+       a restart_delay value of 0 maps to TM_OUT_FAST
+       and restart_delay value of -1 maps to 0 */
+    if (ci->restart_delay == 0)
+    {
+        return TM_OUT_FAST;
+    }
+
+    if (ci->restart_delay == -1)
+    {
+        return 0;
+    }
+
+    return ci->restart_delay;
+}
 
 /**
  * Child signals callback (one callback for all children
@@ -115,6 +168,7 @@ static void cb_child (EV_P_ ev_child *w, int revents)
     (void)revents;
 
     target_managers_config_t * ci = NULL;
+    int start_delay = TM_OUT_FAST;
 
     LOG(INFO, "CB child pid=%d invoked, rstatus=%d", w->rpid, w->rstatus);
     LOG(DEBUG, "Term signal %d", WTERMSIG(w->rstatus));
@@ -125,6 +179,7 @@ static void cb_child (EV_P_ ev_child *w, int revents)
 
     /* extract target_managers_config from ev_child  */
     ci = (target_managers_config_t *)w->data;
+    start_delay = get_start_delay(ci);
 
 #ifdef WIFCONTINUED
     if (WIFCONTINUED(w->rstatus))
@@ -140,12 +195,13 @@ static void cb_child (EV_P_ ev_child *w, int revents)
         /* restart only processes that exited, not those that failed to start*/
         if (!WEXITSTATUS(w->rstatus))
         {
-            LOG(NOTICE, "process exited: restarting in 5 seconds  names=%s|pid=%d",
+            LOG(NOTICE, "process exited: restarting in %d seconds  names=%s|pid=%d",
+                start_delay,
                 ci->name,
                 w->rpid);
 
             /* on exit try to restart it relatively fast */
-            child_restart(EV_A_ w, ci, TM_OUT_FAST);
+            child_restart(EV_A_ w, ci, start_delay);
             return;
         }
     }
@@ -166,20 +222,16 @@ static void cb_child (EV_P_ ev_child *w, int revents)
 
     /* check if the on of the manager processes had crashed     */
     /* ignore managers stop due to user actions                 */
-    if (! (   (SIGTERM == WTERMSIG(w->rstatus))
-           || (SIGKILL == WTERMSIG(w->rstatus))
-           || (SIGUSR1 == WTERMSIG(w->rstatus))
-           || (SIGUSR2 == WTERMSIG(w->rstatus))
-           || (SIGINT == WTERMSIG(w->rstatus)))
-       )
+    if (ignore_signal(EV_A_ w) == false)
     {
         LOG(NOTICE,
-            "process crashed, signal: %d, restarting in 5 seconds  name=%s|pid=%d",
+            "process terminated, signal: %d, restarting in %d seconds  name=%s|pid=%d",
             WTERMSIG(w->rstatus),
+            start_delay,
             ci->name,
             w->rpid);
 
-        child_restart(EV_A_ w, ci, TM_OUT_FAST);
+        child_restart(EV_A_ w, ci, start_delay);
     }
     else
     {

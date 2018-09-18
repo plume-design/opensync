@@ -42,14 +42,21 @@ UNIT_SRC += src/os_file.c
 UNIT_SRC += src/os_random.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
+ifeq ($(BUILD_WITH_LIBGCC_BACKTRACE),y)
 UNIT_CFLAGS += -fasynchronous-unwind-tables
-UNIT_LDFLAGS := -ldl
-UNIT_LDFLAGS += -lpthread
+endif
+
+UNIT_LDFLAGS := -lpthread
+ifeq ($(BUILD_WITH_LIBGCC_BACKTRACE),y)
+UNIT_LDFLAGS += -lgcc_s
+endif
 
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
 UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 
-UNIT_CFLAGS += -Isrc/wm/lm # don't include this in EXPORT_CFLAGS
+# don't include this in EXPORT_CFLAGS
+UNIT_CFLAGS += -Isrc/wm/lm
+UNIT_CFLAGS += -DWITH_LIBGCC_BACKTRACE
 
 UNIT_DEPS := src/lib/common
 UNIT_DEPS += src/lib/ds

@@ -37,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os.h"
 #include "os_proc.h"
 #include "os_util.h"
+#include "util.h"
 
 /* Return the process name for pid input */
 int32_t os_pid_to_name(pid_t pid, char *proc_name, int32_t len)
@@ -56,8 +57,13 @@ int32_t os_pid_to_name(pid_t pid, char *proc_name, int32_t len)
     if (fgets(buf, sizeof(buf), fp) == 0)
         goto func_exit;
 
-    memset(proc_name, 0x00, len);
-    strncpy(proc_name, buf, ((int32_t)strlen(buf) < len ? (int32_t)strlen(buf) : len - 1));
+    // remove newline if present
+    int l = strlen(buf);
+    if (l > 0 && buf[l-1] == '\n') {
+        buf[l-1] = 0;
+    }
+
+    strscpy(proc_name, buf, len);
     rc = 0;
 
 func_exit:

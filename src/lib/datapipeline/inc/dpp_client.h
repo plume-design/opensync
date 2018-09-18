@@ -208,6 +208,13 @@ typedef struct
     radio_essid_t                   essid;
 } dpp_client_info_t;
 
+#define DPP_TARGET_CLIENT_RECORD_COMMON_STRUCT \
+    struct { \
+        ds_dlist_node_t node; \
+        dpp_client_info_t info; \
+        uint64_t stats_cookie; \
+    }
+
 typedef struct
 {
     /* General client data (All targets must provide same) */
@@ -231,17 +238,7 @@ typedef struct
     ds_dlist_node_t                 node;
 } dpp_client_record_t;
 
-static inline dpp_client_record_t * dpp_client_record_alloc()
-{
-    dpp_client_record_t *record = NULL;
-
-    record = malloc(sizeof(dpp_client_record_t));
-    if (record) {
-        memset(record, 0, sizeof(dpp_client_record_t));
-    }
-
-    return record;
-}
+dpp_client_record_t * dpp_client_record_alloc();
 
 static inline void dpp_client_record_free(dpp_client_record_t *record)
 {

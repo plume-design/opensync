@@ -66,10 +66,18 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define LOG_TRIGGER_DIR_MAX                 128
 
 #define LOG_DEFAULT_ENTRY "DEFAULT"
+#define LOG_DEFAULT_REMOTE "REMOTE"
+
+typedef enum log_sink_e
+{
+    LOG_SINK_LOCAL = 0,
+    LOG_SINK_REMOTE = 1,
+} log_sink_t;
 
 /**
  * Defines all available logging severities
  *
+ *  DISABLED    - Disabled
  *  DEFAULT     - Default system severity
  *  EMERG       - System is unusable
  *  ALERT       - Action must be taken immediately
@@ -81,7 +89,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *  DEBUG       - Debug-level message
  */
 #define LOG_SEVERITY_TABLE(ENTRY)   \
-    ENTRY(DEFAULT,  GREEN)          \
+    ENTRY(DISABLED, RED)            \
     ENTRY(EMERG,    PURPLE)         \
     ENTRY(ALERT,    PURPLE)         \
     ENTRY(CRIT,     RED)            \
@@ -95,6 +103,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define LOG_SEVERITY_WARN   LOG_SEVERITY_WARNING
 /* This always maps to a legal severity level */
 #define LOG_SEVERITY_STDOUT LOG_SEVERITY_NOTICE
+// ERROR -> ERR alias
+#define LOG_SEVERITY_ERROR LOG_SEVERITY_ERR
+// default
+#define LOG_SEVERITY_DEFAULT    LOG_SEVERITY_INFO
+
 
 /**
  * Definition of all available modules
@@ -105,8 +118,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *  LOG         - Logging facilities
  */
 #define LOG_MODULE_TABLE_COMMON(ENTRY)      \
+    ENTRY(TRACEBACK)                        \
     ENTRY(MISC)                             \
     ENTRY(COMMON)                           \
+    ENTRY(EXEC)                             \
     ENTRY(CMD)                              \
     ENTRY(OVSDB)                            \
     ENTRY(CEV)                              \
@@ -134,7 +149,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     ENTRY(CLIENT)                           \
     ENTRY(KICK)                             \
     ENTRY(STATS)                            \
-    ENTRY(WL)
+    ENTRY(WL)                               \
+    ENTRY(NEIGHBORS)
 
 #ifndef LOG_MODULE_TABLE_TARGET
 #define LOG_MODULE_TABLE(ENTRY) \
@@ -144,9 +160,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
         LOG_MODULE_TABLE_COMMON(ENTRY) \
         LOG_MODULE_TABLE_TARGET(ENTRY)
 #endif
-
-// ERROR -> ERR alias
-#define LOG_SEVERITY_ERROR LOG_SEVERITY_ERR
 
 #define LOG(level, ...) \
     mlog(LOG_SEVERITY_##level, MODULE_ID, __VA_ARGS__)
@@ -168,7 +181,17 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define LOGD(fmt, ...)        LOG(DEBUG,   fmt, ## __VA_ARGS__)
 #define LOGT(fmt, ...)        LOG(TRACE,   fmt, ## __VA_ARGS__)
 
+#define TRACEF(FMT, ...)      LOGT("%s:%d " FMT, __FUNCTION__, __LINE__, ## __VA_ARGS__)
+#define TRACE(...)            TRACEF(""__VA_ARGS__)
+
 #define LOG_SEVERITY_ENABLED(LEVEL) (LEVEL <= log_module_severity_get(MODULE_ID))
+
+#define WARN_ON(cond) \
+({ \
+    typeof(cond) __c = (cond); \
+    if (__c) LOGW("%sL%d@%s: [%s] failed", __FILE__, __LINE__, __func__, #cond); \
+    __c; \
+})
 
 
 /** Generate the log_severity_t table */
@@ -221,8 +244,6 @@ static inline void __unused_MODULE_ID(void)
 }
 #endif
 
-#define LOG_SEVERITY_DEFAULT    LOG_SEVERITY_INFO
-
 /**
  * Flags for log_open()
  */
@@ -230,6 +251,7 @@ static inline void __unused_MODULE_ID(void)
 #define LOG_OPEN_SYSLOG         (1 << 1)        /* Log to syslog */
 #define LOG_OPEN_STDOUT         (1 << 2)        /* Log to stdout */
 #define LOG_OPEN_STDOUT_QUIET   (1 << 3)        /* Log to stdout is quiet, shows only STDOUT severity messages */
+#define LOG_OPEN_REMOTE         (1 << 4)        /* Log to mqtt */
 
 /*
  * ===========================================================================
@@ -240,10 +262,12 @@ typedef struct logger logger_t;
 typedef struct logger_msg logger_msg_t;
 
 typedef void logger_fn_t(logger_t *self, logger_msg_t *);
+typedef bool logger_match_fn_t(log_severity_t sev, log_module_t module);
 
 struct logger
 {
     logger_fn_t        *logger_fn;                  /* Logger callback */
+    logger_match_fn_t  *match_fn;                   /* severity match callback */
     ds_dlist_node_t     logger_node;                /* List structure */
 
     union
@@ -309,7 +333,9 @@ bool                  log_severity_dynamic_set();
  *  Loggers (backends)
  * ===========================================================================
  */
-extern bool          logger_syslog_new(logger_t *self);
-extern bool          logger_stdout_new(logger_t *self, bool quiet_mode);
+bool logger_syslog_new(logger_t *self);
+bool logger_stdout_new(logger_t *self, bool quiet_mode);
+bool logger_remote_new(logger_t *self);
+bool logger_traceback_new(logger_t *);
 #endif /* __LOG__H__ */
 

@@ -40,6 +40,7 @@ CXX            = g++
 AR             = ar
 STRIP          = strip -g
 
+
 # Includes
 CFLAGS += -I/usr/include/protobuf-c
 # Flags
@@ -50,6 +51,7 @@ CFLAGS += -fno-strict-aliasing
 CFLAGS += -fasynchronous-unwind-tables
 CFLAGS += -Wno-error=unused-but-set-variable
 CFLAGS += -Wno-error=cpp
+
 # Defines
 CFLAGS += -D_U_="__attribute__((unused))"
 CFLAGS += -DARCH_X86

@@ -105,7 +105,7 @@ void json_memdbg_report(bool diff_only)
     if (diff_only && json_memdbg_total == json_memdbg_reported)
         return;
 
-    LOG(WARNING, "MEMDBG: Jansson memory used %zu bytes in %zu allocations.",
+    LOG(INFO, "MEMDBG: Jansson memory used %zu bytes in %zu allocations.",
                                                 json_memdbg_total, json_memdbg_count);
     json_memdbg_reported = json_memdbg_total;
 }
@@ -136,7 +136,7 @@ void json_memdbg_init(struct ev_loop *loop)
         ev_timer_start(loop, &report_timer);
     }
 
-    LOG(WARNING, "MEMDBG: Jansson memory debugger initialized.");
+    LOG(INFO, "MEMDBG: Jansson memory debugger initialized.");
 }
 
 #else

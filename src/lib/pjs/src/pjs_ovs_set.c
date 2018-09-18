@@ -45,6 +45,7 @@ bool pjs_ovs_set_from_json(
         void *t_data,
         int out_max,
         int *out_len,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -87,6 +88,9 @@ bool pjs_ovs_set_from_json(
         PJS_ERR(err, "Object '%s' doesn't exist in OVS SET.", name);
         return false;
     }
+
+    // mark presence of field
+    *present = true;
 
     /*
      * Check if we're dealing with a JSON that resembles a SET format: [ "set", [ ... ]]
@@ -251,6 +255,7 @@ bool pjs_ovs_set_int_from_json(
         int *out,
         int out_max,
         int *out_num,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -261,6 +266,7 @@ bool pjs_ovs_set_int_from_json(
             out,
             out_max,
             out_num,
+            present,
             js,
             name,
             update,
@@ -299,6 +305,7 @@ bool pjs_ovs_set_bool_from_json(
         bool *out,
         int out_max,
         int *out_num,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -309,6 +316,7 @@ bool pjs_ovs_set_bool_from_json(
             out,
             out_max,
             out_num,
+            present,
             js,
             name,
             update,
@@ -348,6 +356,7 @@ bool pjs_ovs_set_real_from_json(
         double *out,
         int out_max,
         int *out_num,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -358,6 +367,7 @@ bool pjs_ovs_set_real_from_json(
             out,
             out_max,
             out_num,
+            present,
             js,
             name,
             update,
@@ -398,6 +408,7 @@ bool pjs_ovs_set_string_from_json(
         size_t out_sz,
         int out_max,
         int *out_num,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -413,6 +424,7 @@ bool pjs_ovs_set_string_from_json(
             &args,
             out_max,
             out_num,
+            present,
             js,
             name,
             update,
@@ -458,6 +470,7 @@ bool pjs_ovs_set_uuid_from_json(
         ovs_uuid_t *out,
         int out_max,
         int *out_num,
+        bool *present,
         json_t *js,
         const char *name,
         bool update,
@@ -468,6 +481,7 @@ bool pjs_ovs_set_uuid_from_json(
             out,
             out_max,
             out_num,
+            present,
             js,
             name,
             update,

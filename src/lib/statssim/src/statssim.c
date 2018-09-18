@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_nif.h"
 #include "os_time.h"
 #include "dppline.h"
+#include "util.h"
 
 #define FIX_SIZE
 
@@ -89,6 +90,7 @@ void getNeighborReport(dpp_neighbor_report_data_t *r, radio_type_t radio_type)
     dpp_neighbor_record_list_t       *res = NULL;
     dpp_neighbor_record_t            *rec;
 
+    r->report_type = REPORT_TYPE_RAW;
     r->scan_type = RADIO_SCAN_TYPE_FULL;
     r->radio_type = radio_type;
 
@@ -108,7 +110,7 @@ void getNeighborReport(dpp_neighbor_report_data_t *r, radio_type_t radio_type)
 
         mkNeighborRec(rec, radio_type);
         if (sim_ap_conf)
-            strlcpy(rec->bssid, sim_ap_conf->r[rindex].neigh[i], sizeof(rec->bssid));
+            STRSCPY(rec->bssid, sim_ap_conf->r[rindex].neigh[i]);
         else
             mkRandMacStr(rec->bssid, sizeof(rec->bssid));
         snprintf(rec->ssid, sizeof(rec->ssid), "TestSsid_%s_%d",
@@ -138,8 +140,7 @@ void getClientReport(dpp_client_report_data_t *r, radio_type_t radio_type)
 
     for (i = 0; i < qty; i++)
     {
-        res=
-            dpp_client_record_alloc();
+        res= dpp_client_record_alloc();
         if (NULL == res) {
             return;
         }
@@ -188,11 +189,11 @@ void getClientReport(dpp_client_report_data_t *r, radio_type_t radio_type)
             mcs = rand() % 10;
             nss = rand() % 4;
             bw = rand() % 3;
+            found = false;
             for (   rx = ds_dlist_ifirst(&rx_iter, &res->stats_rx);
                     rx != NULL;
                     rx = ds_dlist_inext(&rx_iter))
             {
-                found = false;
                 if (    (rx->mcs = mcs)
                      && (rx->nss = nss)
                      && (rx->bw = bw)
@@ -204,12 +205,10 @@ void getClientReport(dpp_client_report_data_t *r, radio_type_t radio_type)
             }
 
             if (!found) {
-                rx =
-                    dpp_client_stats_rx_record_alloc();
+                rx = dpp_client_stats_rx_record_alloc();
                 if (NULL == rx) {
                     return;
                 }
-
                 rx->mcs  = mcs;
                 rx->nss  = nss;
                 rx->bw   = bw;
@@ -232,11 +231,11 @@ void getClientReport(dpp_client_report_data_t *r, radio_type_t radio_type)
             mcs = rand() % 10;
             nss = rand() % 4;
             bw = rand() % 3;
+            found = false;
             for (   tx = ds_dlist_ifirst(&tx_iter, &res->stats_tx);
                     tx != NULL;
                     tx = ds_dlist_inext(&tx_iter))
             {
-                found = false;
                 if (    (tx->mcs = mcs)
                      && (tx->nss = nss)
                      && (tx->bw = bw)
@@ -248,12 +247,10 @@ void getClientReport(dpp_client_report_data_t *r, radio_type_t radio_type)
             }
 
             if (!found) {
-                tx =
-                    dpp_client_stats_tx_record_alloc();
+                tx = dpp_client_stats_tx_record_alloc();
                 if (NULL == tx) {
                     return;
                 }
-
                 tx->mcs  = mcs;
                 tx->nss  = nss;
                 tx->bw   = bw;

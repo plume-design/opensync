@@ -35,6 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "pjs_gen_h.h"
 #include "util.h"
 
+
 #define SCHEMA_TABLE(table)                 SCHEMA__ ## table
 #define SCHEMA_COLUMN(table, column)        SCHEMA__ ## table ## __ ## column
 #define SCHEMA_COLUMN_LISTX(table, COL)     SCHEMA_COLUMN__ ## table(COL)
@@ -50,12 +51,87 @@ SCHEMA_LISTX(_SCHEMA_COL_DECL)
 
 #define SCHEMA_KEY_VAL_APPEND(FIELD, KEY, VALUE) \
         do { \
-            STRLCPY(FIELD##_keys[FIELD##_len], KEY); \
-            STRLCPY(FIELD[FIELD##_len], VALUE); \
+            STRSCPY(FIELD##_keys[FIELD##_len], (KEY)); \
+            STRSCPY(FIELD[FIELD##_len], (VALUE)); \
+            FIELD##_present = true; \
+            FIELD##_len++; \
+        } while(0)
+
+#define SCHEMA_VAL_APPEND(FIELD, VALUE) \
+        do { \
+            STRSCPY(FIELD[FIELD##_len], (VALUE)); \
+            FIELD##_present = true; \
+            FIELD##_len++; \
+        } while(0)
+
+#define SCHEMA_VAL_APPEND_INT(FIELD, VALUE) \
+        do { \
+            FIELD[FIELD##_len] = (VALUE); \
+            FIELD##_present = true; \
+            FIELD##_len++; \
+        } while(0)
+
+#define SCHEMA_SET_INT(FIELD, VALUE) \
+        do { \
+            FIELD = (VALUE); \
+            FIELD##_exists  = true; \
+            FIELD##_present = true; \
+        } while (0)
+
+#define SCHEMA_SET_STR(FIELD, VALUE) \
+        do { \
+            STRSCPY(FIELD, (VALUE)); \
+            FIELD##_exists  = true; \
+            FIELD##_present = true; \
+        } while (0)
+
+#define SCHEMA_KEY_VAL_APPEND_INT(FIELD, KEY, VALUE) \
+        do { \
+            STRSCPY(FIELD##_keys[FIELD##_len], KEY); \
+            FIELD[FIELD##_len] = VALUE; \
+            FIELD##_present = true; \
             FIELD##_len++; \
         } while(0)
 
 #define SCHEMA_FILTER_LEN                   (SCHEMA_MAX_COLUMNS + 2)
+
+
+// void schema_TABLE_mark_changed(schema old*, schema *rec);
+// This will sets all rec->*_changed flag for each old->*_present flag
+// (ovsdb monitor update sends old values only for changed fields)
+#define _SCHEMA_DECL_MARK_CHANGED(TABLE) \
+void schema_ ## TABLE ## _mark_changed(struct schema_##TABLE *old, struct schema_##TABLE *rec);
+
+#define _SCHEMA_MARK_CHANGED_FIELD(COLUMN) \
+        rec->COLUMN ## _changed = old->COLUMN ## _present;
+
+#define _SCHEMA_IMPL_MARK_CHANGED(TABLE)                 \
+void schema_ ## TABLE ## _mark_changed(                  \
+        struct schema_##TABLE *old,                      \
+        struct schema_##TABLE *rec)                      \
+{                                                        \
+    SCHEMA_COLUMN__ ## TABLE(_SCHEMA_MARK_CHANGED_FIELD) \
+    _SCHEMA_MARK_CHANGED_FIELD(_version) \
+}
+
+SCHEMA_LISTX(_SCHEMA_DECL_MARK_CHANGED)
+
+// void schema_TABLE_mark_all_present(schema *rec);
+#define _SCHEMA_DECL_MARK_ALL_PRESENT(TABLE) \
+void schema_ ## TABLE ## _mark_all_present(struct schema_##TABLE *rec);
+
+#define _SCHEMA_MARK_PRESENT_FIELD(COLUMN) \
+        rec->COLUMN ## _present = true;
+
+#define _SCHEMA_IMPL_MARK_ALL_PRESENT(TABLE)             \
+void schema_ ## TABLE ## _mark_all_present(              \
+        struct schema_##TABLE *rec)                      \
+{                                                        \
+    SCHEMA_COLUMN__ ## TABLE(_SCHEMA_MARK_PRESENT_FIELD) \
+}
+
+SCHEMA_LISTX(_SCHEMA_DECL_MARK_ALL_PRESENT)
+
 
 typedef struct schema_filter
 {
@@ -65,6 +141,9 @@ typedef struct schema_filter
 
 void schema_filter_init(schema_filter_t *f, char *op);
 void schema_filter_add(schema_filter_t *f, char *column);
+int schema_filter_get(schema_filter_t *f, char *column);
+void schema_filter_del(schema_filter_t *f, char *column);
+void schema_filter_blacklist(schema_filter_t *f, char *column);
 
 // field and filter set
 
@@ -95,13 +174,13 @@ void schema_filter_add(schema_filter_t *f, char *column);
 
 #define SCHEMA_FF_SET_STR(FILTER, SP, FIELD, VAL) \
     do { \
-        STRLCPY((SP)->FIELD, VAL); \
+        STRSCPY((SP)->FIELD, VAL); \
         SCHEMA_FF_MARK(FILTER, SP, FIELD); \
     } while(0)
 
 #define SCHEMA_FF_SET_STR_REQ(FILTER, SP, FIELD, VAL) \
     do { \
-        STRLCPY((SP)->FIELD, VAL); \
+        STRSCPY((SP)->FIELD, VAL); \
         SCHEMA_FF_MARK_REQ(FILTER, SP, FIELD); \
     } while(0)
 
@@ -142,5 +221,64 @@ void schema_filter_add(schema_filter_t *f, char *column);
         fsa_copy(*(src)->field, sizeof((src)->field[0]), ARRAY_LEN((src)->field), (src)->field##_len, \
                 *(dest)->field, sizeof((dest)->field[0]), ARRAY_LEN((dest)->field), &(dest)->field##_len); \
     } while(0)
+
+static inline bool
+schema_changed_map(const void *a_key,
+                   const void *a_val,
+                   const void *b_key,
+                   const void *b_val,
+                   const int a_len,
+                   const int b_len,
+                   const int key_size,
+                   const int val_size,
+                   int key_int)
+{
+    int i;
+    int j;
+    if (a_len != b_len)
+        return true;
+    for (i=0; i<a_len; i++) {
+        for (j=0; j<a_len; j++)
+            if (key_int && !memcmp(a_key + (i * key_size),
+                                   b_key + (j * key_size),
+                                   key_size))
+                break;
+            else if (!key_int && !strncmp(a_key + (i * key_size),
+                                          b_key + (j * key_size),
+                                          key_size))
+                break;
+        if (j == a_len)
+            return true;
+        if (strncmp(a_val + (i * val_size),
+                    b_val + (j * val_size),
+                    val_size))
+            return true;
+    }
+    return false;
+}
+
+static inline bool
+schema_changed_set(const void *a,
+                   const void *b,
+                   const int a_len,
+                   const int b_len,
+                   const int size,
+                   int (*cmp)(const char *s1, const char *s2, size_t n))
+{
+    int i;
+    int j;
+    if (a_len != b_len)
+        return true;
+    for (i=0; i<a_len; i++) {
+        for (j=0; j<a_len; j++)
+            if (!cmp(a + (i * size),
+                     b + (j * size),
+                     size))
+                break;
+        if (j == a_len)
+            return true;
+    }
+    return false;
+}
 
 #endif

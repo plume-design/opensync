@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sys/un.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <assert.h>
 #include <ev.h>
 
 #include "log.h"
@@ -37,7 +38,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "qm_conn.h"
 #include "os.h"
 
-#define QM_ASYNC_MODE
 
 static int g_qm_sock = -1;
 static ev_io g_qm_sock_ev;
@@ -52,8 +52,8 @@ typedef struct qm_async_ctx
     bool used;
 } qm_async_ctx_t;
 
-#define QM_MAX_CTX 10
-#define QM_BUF_CHUNK (128*1024)
+#define QM_MAX_CTX 20
+#define QM_BUF_CHUNK (64*1024)
 
 qm_async_ctx_t g_qm_async[QM_MAX_CTX];
 
@@ -71,6 +71,8 @@ void qm_res_status(qm_response_t *res)
     else {
         res->conn_status = QM_CONN_STATUS_CONNECTED;
     }
+    res->log_size = g_qm_log_buf_size;
+    res->log_drop = g_qm_log_drop_count;
 }
 
 void qm_enqueue_and_reply(int fd, qm_item_t *qi)
@@ -82,74 +84,110 @@ void qm_enqueue_and_reply(int fd, qm_item_t *qi)
     // enqueue
     qm_res_init(&res, req);
     if (req->cmd == QM_CMD_SEND && req->data_size) {
-        qm_queue_put(&qi, &res); // sets qi to NULL if successful
+        if (req->flags & QM_REQ_FLAG_SEND_DIRECT) {
+            qm_mqtt_send_message(qi, &res);
+        } else {
+            qm_queue_put(&qi, &res); // sets qi to NULL if successful
+        }
     }
-    // reply
-    qm_res_status(&res);
-    qm_conn_write_res(fd, &res);
-    // free queue item
+    // free queue item if not enqueued
     if (qi) qm_queue_item_free(qi);
-}
-
-void qm_handle_req(int fd)
-{
-    qm_item_t *qi = NULL;
-
-    LOG(TRACE, "%s", __FUNCTION__);
-
-    qi = calloc(sizeof(*qi), 1);
-    if (!qi) return;
-
-    if (qm_conn_read_req(fd, &qi->req, &qi->topic, &qi->buf)) {
-        qm_enqueue_and_reply(fd, qi);
-    } else {
-        qm_queue_item_free(qi);
+    // reply
+    if (!(req->flags & QM_REQ_FLAG_NO_RESPONSE)) {
+        // send response if not disabled by flag
+        qm_res_status(&res);
+        qm_conn_write_res(fd, &res);
     }
 }
 
-// return false on error
-// complete is set to true when ctx has all the required data
-bool qm_async_handle_req(qm_async_ctx_t *ctx, bool *complete)
+qm_async_ctx_t* qm_ctx_new()
 {
-    qm_item_t *qi = NULL;
-    bool ret = false;
-
-    LOG(TRACE, "%s", __FUNCTION__);
-
-    *complete = false;
-    qi = calloc(sizeof(*qi), 1);
-    if (!qi) return false;
-
-    ret = qm_conn_parse_req(ctx->buf, ctx->size, &qi->req, &qi->topic, &qi->buf, complete);
-    if (ret && *complete) {
-        qm_enqueue_and_reply(ctx->fd, qi);
-    } else {
-        qm_queue_item_free(qi);
+    int i;
+    qm_async_ctx_t *ctx;
+    for (i=0; i<QM_MAX_CTX; i++)
+    {
+        ctx = &g_qm_async[i];
+        if (!ctx->used) {
+            // found
+            return ctx;
+        }
     }
-    return ret;
+    return NULL;
+}
+
+int qm_ctx_idx(qm_async_ctx_t *ctx)
+{
+    return ((void*)ctx - (void*)&g_qm_async) / sizeof(*ctx);
+}
+
+void qm_ctx_freebuf(qm_async_ctx_t *ctx)
+{
+    if (ctx->buf) free(ctx->buf);
+    ctx->buf = NULL;
+    ctx->allocated = 0;
+    ctx->size = 0;
+}
+
+void qm_ctx_shift_buf(qm_async_ctx_t *ctx, int size)
+{
+    assert(size <= ctx->size);
+    ctx->size -= size;
+    if (ctx->size == 0) {
+        qm_ctx_freebuf(ctx);
+    } else {
+        memmove(ctx->buf, ctx->buf + size, ctx->size);
+    }
 }
 
 void qm_ctx_release(qm_async_ctx_t *ctx)
 {
+    qm_ctx_freebuf(ctx);
     ev_io_stop(EV_DEFAULT, &ctx->io);
-    ctx->used = false;
-    free(ctx->buf);
-    ctx->buf = NULL;
     close(ctx->fd);
     ctx->fd = -1;
+    ctx->used = false;
+}
+
+// return false on error
+bool qm_async_handle_req(qm_async_ctx_t *ctx)
+{
+    qm_item_t *qi = NULL;
+    bool ret = false;
+    bool complete;
+    int size;
+
+    LOG(TRACE, "%s", __FUNCTION__);
+
+    for (;;) {
+        complete = false;
+        qi = calloc(sizeof(*qi), 1);
+        if (!qi) return false;
+
+        ret = qm_conn_parse_req(ctx->buf, ctx->size, &qi->req, &qi->topic, &qi->buf, &complete);
+        if (ret && complete) {
+            // shift consumed data in ctx buf
+            size = sizeof(qi->req) + qi->req.topic_len + qi->req.data_size;
+            qm_ctx_shift_buf(ctx, size);
+            // enqueue
+            qi->size = qi->req.data_size;
+            qm_enqueue_and_reply(ctx->fd, qi);
+        } else {
+            qm_queue_item_free(qi);
+            break;
+        }
+    }
+    return ret;
 }
 
 void qm_async_callback(struct ev_loop *ev, struct ev_io *io, int event)
 {
     qm_async_ctx_t *ctx = io->data;
-    int i = ((void*)ctx - (void*)&g_qm_async) / sizeof(*ctx);
+    int i = qm_ctx_idx(ctx);
     int free = ctx->allocated - ctx->size;
     int ret;
     int new_size;
     void *new_buf;
     bool result;
-
-    bool complete = false;
 
     if (!(event & EV_READ)) return;
 
@@ -172,37 +210,35 @@ void qm_async_callback(struct ev_loop *ev, struct ev_io *io, int event)
     }
     ctx->size += ret;
     LOG(TRACE, "%s ctx:%d fd:%d t:%d r:%d", __FUNCTION__, i, ctx->fd, ctx->size, ret);
+    if (ret == 0) {
+        // EOF
+        goto release;
+    }
 
-    result = qm_async_handle_req(ctx, &complete);
-    if (!result || complete) goto release;
-    if (ret == 0) goto release; // handle eof
-    // incomplete but no error - just return
-    return;
+    result = qm_async_handle_req(ctx);
+    if (result) {
+        // no error
+        return;
+    }
+    // error: release ctx
 
 release:
     qm_ctx_release(ctx);
-    if (complete) {
-        //qm_mqtt_send_queue();
-    }
 }
 
 bool qm_async_new(int fd)
 {
-    int i;
     qm_async_ctx_t *ctx;
-    for (i=0; i<QM_MAX_CTX; i++)
-    {
-        ctx = &g_qm_async[i];
-        if (!ctx->used) goto found;
+    ctx = qm_ctx_new();
+    if (!ctx) {
+        return false;
     }
-    return false;
-found:
     MEMZERO(*ctx);
     ctx->fd = fd;
     ev_io_init(&ctx->io, qm_async_callback, fd, EV_READ);
     ctx->io.data = ctx;
     ev_io_start(EV_DEFAULT, &ctx->io);
-    LOG(TRACE, "%s ctx:%d fd:%d", __FUNCTION__, i, fd);
+    LOG(TRACE, "%s ctx:%d fd:%d", __FUNCTION__, qm_ctx_idx(ctx), fd);
     ctx->used = true;
     return true;
 }
@@ -214,13 +250,7 @@ void qm_sock_callback(struct ev_loop *ev, struct ev_io *io, int event)
     if (event & EV_READ)
     {
         if (!qm_conn_accept(g_qm_sock, &fd)) return;
-#ifdef QM_ASYNC_MODE
         qm_async_new(fd);
-#else
-        qm_handle_req(fd);
-        close(fd);
-        //qm_mqtt_send_queue();
-#endif
     }
 }
 

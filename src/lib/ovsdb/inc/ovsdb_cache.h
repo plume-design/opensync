@@ -40,8 +40,19 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // ovsdb cache api
 
+#define DECL_CACHE_CALLBACK_CAST(TABLE)                         \
+    static inline ovsdb_cache_callback_t* cache_cb_cast_##TABLE(\
+            void (*cb)(ovsdb_update_monitor_t *self,            \
+                struct schema_##TABLE *old,                     \
+                struct schema_##TABLE *record,                  \
+                ovsdb_cache_row_t *row)) {                      \
+        return (ovsdb_cache_callback_t*)(void*)cb;              \
+    }
+
+SCHEMA_LISTX(DECL_CACHE_CALLBACK_CAST)
+
 #define OVSDB_CACHE_MONITOR(TABLE, IGN_VER) \
-    ovsdb_cache_monitor(&table_ ## TABLE, callback_ ## TABLE, IGN_VER)
+    ovsdb_cache_monitor(&table_ ## TABLE, cache_cb_cast_##TABLE(callback_ ## TABLE), IGN_VER)
 
 #define OVSDB_CACHE_MONITOR_F(TABLE, FILTER) \
     ovsdb_cache_monitor_filter(&table_ ## TABLE, callback_ ## TABLE, FILTER)

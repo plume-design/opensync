@@ -39,6 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <ev.h>
 #include <syslog.h>
 
+#include "policy_tags.h"
 #include "target.h"
 #include "om.h"
 
@@ -243,8 +244,9 @@ om_template_apply_tag(om_action_t type, om_tflow_t *tflow,
     bool                ret = true;
 
     if (tdn == 0) {
-        LOGI("[%s] %s system flows from template flow",
-                                tflow->token, (type == ADD) ? "Adding" : "Removing");
+        LOGI("[%s] %s system flows from template flow %s",
+             tflow->token, (type == ADD) ? "Adding" : "Removing",
+             ttle->value);
     }
 
     if (tdata->tag_override_name && !strcmp(ttle->value, tdata->tag_override_name)) {
@@ -362,7 +364,7 @@ om_template_tflow_update(om_action_t type, om_tflow_t *tflow)
 // Update system flows based on tag update
 bool
 om_template_tag_update(om_tag_t *tag, ds_tree_t *removed,
-                                               ds_tree_t *added, ds_tree_t *updated)
+                       ds_tree_t *added, ds_tree_t *updated)
 {
     om_tag_list_entry_t *tle;
     ds_tree_iter_t      iter;

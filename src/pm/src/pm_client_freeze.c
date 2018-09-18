@@ -109,11 +109,12 @@ pm_client_freeze_update(struct schema_Client_Freeze_Config *cfcfg, bool status)
 
 void
 callback_Client_Freeze_Config(
-        ovsdb_update_monitor_t *mon, void *record,
+        ovsdb_update_monitor_t *mon,
+        struct schema_Client_Freeze_Config *old_rec,
+        struct schema_Client_Freeze_Config *cfcfg,
         ovsdb_cache_row_t *row)
 {
-    struct schema_Client_Freeze_Config *cfcfg = record;
-
+    (void)old_rec;
     (void)row;
     (void)mon;
 

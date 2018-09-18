@@ -112,7 +112,8 @@ double clock_mono_double()
 
 double clock_sleep(double tts)
 {
-#if _XOPEN_SOURCE >= 600 || _POSIX_C_SOURCE >= 200112L
+#if (_XOPEN_SOURCE >= 600 || _POSIX_C_SOURCE >= 200112L) \
+    && ( (!__UCLIBC__) || (__UCLIBC_HAS_THREADS_NATIVE__ && __UCLIBC_HAS_ADVANCED_REALTIME__))
 
     int rc;
     struct timespec to;

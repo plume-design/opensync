@@ -101,6 +101,9 @@ int main(int argc, char ** argv)
 
     nm2_ovsdb_init();
     nm2_mac_learning_init();
+    nm2_dhcp_table_init();
+    nm2_dhcp_rip_init();
+
 
     ev_run(loop, 0);
 

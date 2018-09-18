@@ -241,7 +241,7 @@ static inline char * radio_get_name_from_type(
 static inline char *radio_get_name_from_cfg(
         radio_entry_t              *radio_cfg)
 {
-    static char name[RADIO_IFNAME_LEN + RADIO_NAME_LEN];
+    static char name[RADIO_IFNAME_LEN + 1 + RADIO_NAME_LEN]; // For space between the names
 
     if (NULL == radio_cfg) {
         return NULL;

@@ -90,6 +90,9 @@ int main (int argc, char ** argv)
     }
     json_memdbg_init(loop);
 
+    /* start monitoring DM */
+    mon_start(argc, argv);
+
     while(!target_ready(loop)) {
         LOGW("Target not ready yet -- waiting...");
         sleep(TARGET_READY_POLL);
@@ -101,11 +104,14 @@ int main (int argc, char ** argv)
     }
 
     /* connect to ovsdb-server - start monitoring */
-    if (!ovsdb_init("DM"))
+    if (!ovsdb_ready("DM"))
     {
         LOGEM("Initializing DM "
              "(Failed to initialize OVSDB)");
-        /* Exit with MON_EXIT_RESTART, so we retry in a few */
+
+        /* Let's restart the whole thing */
+        target_managers_restart();
+
         return MON_EXIT_RESTART;
     }
 

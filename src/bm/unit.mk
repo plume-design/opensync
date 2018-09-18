@@ -39,6 +39,7 @@ UNIT_SRC += src/bm_client.c
 UNIT_SRC += src/bm_kick.c
 UNIT_SRC += src/bm_stats.c
 UNIT_SRC += src/bm_stats_rssi.c
+UNIT_SRC += src/bm_neighbor.c
 
 UNIT_DEPS += src/lib/ds
 UNIT_DEPS += src/lib/common
@@ -47,6 +48,7 @@ UNIT_DEPS += src/lib/pjs
 UNIT_DEPS += src/lib/schema
 UNIT_DEPS += src/lib/bsal
 UNIT_DEPS += src/lib/datapipeline
+UNIT_DEPS += src/lib/target
 UNIT_DEPS += src/qm/qm_conn
 
 UNIT_LDFLAGS := -lev -ljansson

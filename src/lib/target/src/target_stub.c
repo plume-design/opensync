@@ -71,7 +71,7 @@ bool target_close(target_init_opt_t opt, struct ev_loop *loop)
 #ifndef IMPL_target_serial_get
 bool target_serial_get(void *buff, size_t buffsz)
 {
-    strlcpy(((char*)buff), "STUB_SERIAL", buffsz);
+    strscpy(((char*)buff), "STUB_SERIAL", buffsz);
     return true;
 }
 #endif
@@ -191,6 +191,14 @@ const char *target_led_device_dir(void)
 }
 #endif
 
+#ifndef IMPL_target_led_names
+int target_led_names(const char **leds[])
+{
+    /* Return number of different LEDs and their names for current target */
+    return 0;
+}
+#endif
+
 /******************************************************************************
  * BLE
  *****************************************************************************/
@@ -245,16 +253,53 @@ bool target_om_del_flow( char *token, struct schema_Openflow_Config *ofconf )
  * RADIO
  *****************************************************************************/
 
+#ifndef IMPL_target_radio_init
+bool target_radio_init(const struct target_radio_ops *ops)
+{
+    return false;
+}
+#endif
+
 #ifndef IMPL_target_radio_config_init
 bool target_radio_config_init(ds_dlist_t *init_cfg)
 {
     memset(init_cfg, 0, sizeof(*init_cfg));
     return false;
 }
+#else
+#if __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6)
+#pragma message("target_radio_config_init is deprecated")
+#endif
+#endif
+
+#ifndef IMPL_target_radio_config_init2
+bool target_radio_config_init2(void)
+{
+    return false;
+}
+#endif
+
+#ifndef IMPL_target_radio_config_need_reset
+bool target_radio_config_need_reset(void)
+{
+    return false;
+}
 #endif
 
 #ifndef IMPL_target_radio_config_set
 bool target_radio_config_set(char *ifname, struct schema_Wifi_Radio_Config *rconf)
+{
+  return true;
+}
+#else
+#if __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6)
+#pragma message("target_radio_config_set is deprecated")
+#endif
+#endif
+
+#ifndef IMPL_target_radio_config_set2
+bool target_radio_config_set2(const struct schema_Wifi_Radio_Config *rconf,
+                              const struct schema_Wifi_Radio_Config_flags *changed)
 {
   return true;
 }
@@ -265,6 +310,10 @@ bool target_radio_config_get(char *ifname, struct schema_Wifi_Radio_Config *rcon
 {
   return true;
 }
+#else
+#if __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6)
+#pragma message("target_radio_config_get is deprecated")
+#endif
 #endif
 
 #ifndef IMPL_target_radio_state_get
@@ -272,6 +321,10 @@ bool target_radio_state_get(char *ifname, struct schema_Wifi_Radio_State *rstate
 {
   return true;
 }
+#else
+#if __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6)
+#pragma message("target_radio_state_get is deprecated")
+#endif
 #endif
 
 #ifndef IMPL_target_radio_state_register
@@ -279,13 +332,21 @@ bool target_radio_state_register(char  *ifname, target_radio_state_cb_t *rstate_
 {
   return true;
 }
+#else
+#if __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6)
+#pragma message("target_radio_state_register is deprecated")
+#endif
 #endif
 
 #ifndef IMPL_target_radio_config_register
-bool target_radio_config_register(char  *ifname, void *rconf_cb)
+bool target_radio_config_register(char  *ifname, target_radio_config_cb_t *rconf_cb)
 {
   return true;
 }
+#else
+#if __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6)
+#pragma message("target_radio_config_register is deprecated")
+#endif
 #endif
 
 /******************************************************************************
@@ -309,6 +370,21 @@ bool target_vif_config_set (char *ifname, struct schema_Wifi_VIF_Config *vconf)
 {
     return true;
 }
+#else
+#if __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6)
+#pragma message("target_vif_config_set is deprecated")
+#endif
+#endif
+
+#ifndef IMPL_target_vif_config_set2
+bool target_vif_config_set2(const struct schema_Wifi_VIF_Config *vconf,
+                            const struct schema_Wifi_Radio_Config *rconf,
+                            const struct schema_Wifi_Credential_Config *cconfs,
+                            const struct schema_Wifi_VIF_Config_flags *changed,
+                            int num_cconfs)
+{
+    return true;
+}
 #endif
 
 #ifndef IMPL_target_vif_config_get
@@ -316,6 +392,10 @@ bool target_vif_config_get(char *ifname, struct schema_Wifi_VIF_Config *vconf)
 {
     return true;
 }
+#else
+#if __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6)
+#pragma message("target_vif_config_get is deprecated")
+#endif
 #endif
 
 #ifndef IMPL_target_vif_state_get
@@ -323,6 +403,10 @@ bool target_vif_state_get(char  *ifname, struct schema_Wifi_VIF_State *vstate)
 {
     return true;
 }
+#else
+#if __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6)
+#pragma message("target_vif_state_get is deprecated")
+#endif
 #endif
 
 #ifndef IMPL_target_vif_state_register
@@ -330,13 +414,21 @@ bool target_vif_state_register(char *ifname, target_vif_state_cb_t *vstate_cb)
 {
     return true;
 }
+#else
+#if __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6)
+#pragma message("target_vif_state_register is deprecated")
+#endif
 #endif
 
 #ifndef IMPL_target_vif_config_register
-bool target_vif_config_register(char  *ifname, void *rconf_cb)
+bool target_vif_config_register(char  *ifname, target_vif_config_cb_t *rconf_cb)
 {
     return true;
 }
+#else
+#if __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6)
+#pragma message("target_vif_config_register is deprecated")
+#endif
 #endif
 
 /******************************************************************************
@@ -344,10 +436,14 @@ bool target_vif_config_register(char  *ifname, void *rconf_cb)
  *****************************************************************************/
 
 #ifndef IMPL_target_clients_register
-bool target_clients_register(char *ifname, void *clients_update_cb)
+bool target_clients_register(char *ifname, target_clients_cb_t *clients_update_cb)
 {
     return true;
 }
+#else
+#if __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6)
+#pragma message("target_clients_register is deprecated")
+#endif
 #endif
 
 /******************************************************************************
@@ -355,11 +451,26 @@ bool target_clients_register(char *ifname, void *clients_update_cb)
  *****************************************************************************/
 
 #ifndef IMPL_target_dhcp_leased_ip_register
-bool target_dhcp_leased_ip_register(void * dlip_cb)
+bool target_dhcp_leased_ip_register(target_dhcp_leased_ip_cb_t *dlip_cb)
 {
     return true;
 }
 #endif
+
+#ifndef IMPL_target_dhcp_rip_set
+bool target_dhcp_rip_set(const char *ifname, struct schema_DHCP_reserved_IP *schema_rip)
+{
+    return true;
+}
+#endif
+
+#ifndef IMPL_target_dhcp_rip_del
+bool target_dhcp_rip_del(const char *ifname, struct schema_DHCP_reserved_IP *schema_rip)
+{
+    return true;
+}
+#endif
+
 
 /******************************************************************************
  * Ethernet clients
@@ -400,6 +511,36 @@ bool target_inet_state_init(ds_dlist_t *inets)
 }
 #endif
 
+#ifndef IMPL_target_master_state_init
+bool target_master_state_init(ds_dlist_t *inets)
+{
+    ds_dlist_init(inets, target_master_state_init_t, dsl_node);
+    return true;
+}
+#endif
+
+#ifndef IMPL_target_eth_inet_config_set
+bool target_eth_inet_config_set(const char *ifname, struct schema_Wifi_Inet_Config *iconf)
+{
+    return false;
+}
+#endif
+
+#ifndef IMPL_target_eth_inet_state_get
+bool target_eth_inet_state_get(const char *ifname, struct schema_Wifi_Inet_State *istate)
+{
+    return true;
+}
+#endif
+
+#ifndef IMPL_target_eth_master_state_get
+bool target_eth_master_state_get(const char *ifname, struct schema_Wifi_Master_State *mstate)
+{
+    return true;
+}
+#endif
+
+
 #ifndef IMPL_target_vif_inet_config_set
 bool target_vif_inet_config_set( char *ifname, struct schema_Wifi_Inet_Config *iconf)
 {
@@ -409,6 +550,13 @@ bool target_vif_inet_config_set( char *ifname, struct schema_Wifi_Inet_Config *i
 
 #ifndef IMPL_target_vif_inet_state_get
 bool target_vif_inet_state_get( char *ifname, struct schema_Wifi_Inet_State *istate)
+{
+    return true;
+}
+#endif
+
+#ifndef IMPL_target_vif_master_state_get
+bool target_vif_master_state_get(const char *ifname, struct schema_Wifi_Master_State *mstate)
 {
     return true;
 }
@@ -428,6 +576,13 @@ bool target_gre_inet_state_get( char *ifname, char *remote_ip, struct schema_Wif
 }
 #endif
 
+#ifndef IMPL_target_gre_master_state_get
+bool target_gre_master_state_get(const char *ifname, const char *remote_ip, struct schema_Wifi_Master_State *mstate)
+{
+    return true;
+}
+#endif
+
 #ifndef IMPL_target_bridge_inet_config_set
 bool target_bridge_inet_config_set( char *ifname, struct schema_Wifi_Inet_Config *iconf)
 {
@@ -437,6 +592,13 @@ bool target_bridge_inet_config_set( char *ifname, struct schema_Wifi_Inet_Config
 
 #ifndef IMPL_target_bridge_inet_state_get
 bool target_bridge_inet_state_get( char *ifname, struct schema_Wifi_Inet_State *istate)
+{
+    return true;
+}
+#endif
+
+#ifndef IMPL_target_bridge_master_state_get
+bool target_bridge_master_state_get(const char *ifname, struct schema_Wifi_Master_State *mstate)
 {
     return true;
 }
@@ -456,8 +618,43 @@ bool target_vlan_inet_state_get(char *ifname, struct schema_Wifi_Inet_State *ist
 }
 #endif
 
+#ifndef IMPL_target_vlan_master_state_get
+bool target_vlan_master_state_get(const char *ifname, struct schema_Wifi_Master_State *mstate)
+{
+    return false;
+}
+#endif
+
+#ifndef IMPL_target_tap_inet_config_set
+bool target_tap_inet_config_set(char *ifname, struct schema_Wifi_Inet_Config *iconf)
+{
+    return false;
+}
+#endif
+
+#ifndef IMPL_target_tap_inet_state_get
+bool target_tap_inet_state_get(char *ifname, struct schema_Wifi_Inet_State *istate)
+{
+    return false;
+}
+#endif
+
+#ifndef IMPL_target_tap_master_state_get
+bool target_tap_master_state_get(const char *ifname, struct schema_Wifi_Master_State *mstate)
+{
+    return false;
+}
+#endif
+
 #ifndef IMPL_target_inet_state_register
 bool target_inet_state_register( char *ifname, void *istate_cb)
+{
+    return true;
+}
+#endif
+
+#ifndef IMPL_target_master_state_register
+bool target_master_state_register(const char *ifname, target_master_state_cb_t *mstate_cb)
 {
     return true;
 }
@@ -483,6 +680,33 @@ bool target_device_config_set(struct schema_AWLAN_Node *awlan)
 
 #ifndef IMPL_target_device_execute
 bool target_device_execute(const char *cmd)
+{
+    return true;
+}
+#endif
+#ifndef IMPL_target_device_capabilities_get
+int target_device_capabilities_get()
+{
+    return 0;
+}
+#endif
+#ifndef IMPL_target_device_connectivity_check
+bool target_device_connectivity_check(const char *ifname,
+                                      target_connectivity_check_t *cstate)
+{
+    return true;
+}
+#endif
+
+#ifndef IMPL_target_device_restart_managers
+bool target_device_restart_managers()
+{
+    return true;
+}
+#endif
+
+#ifndef IMPL_target_device_wdt_ping
+bool target_device_wdt_ping()
 {
     return true;
 }
@@ -672,9 +896,72 @@ bool target_stats_device_temp_get(
 }
 #endif
 
+#ifndef IMPL_target_stats_device_txchainmask_get
+bool target_stats_device_txchainmask_get(
+        radio_entry_t              *radio_cfg,
+        dpp_device_txchainmask_t   *txchainmask_entry)
+{
+    static bool printed = false;
+    if (!printed) {
+        // print warning only once
+        LOG(WARNING, "Sending device report: txchainmask not supported");
+        printed = true;
+    }
+    return false;
+}
+#endif
+
+#ifndef IMPL_target_stats_device_fanrpm_get
+bool target_stats_device_fanrpm_get(uint32_t        *fan_rpm)
+{
+    static bool printed = false;
+    if (!printed) {
+        // print warning only once
+        LOG(WARNING, "Sending device report: FAN rpm not supported");
+        printed = true;
+    }
+    return false;
+}
+#endif
+
 #ifndef IMPL_target_get_btrace_type
 btrace_type target_get_btrace_type()
 {
     return BTRACE_FILE_LOG;
+}
+#endif
+
+/******************************************************************************
+ * MAP
+ *****************************************************************************/
+#ifndef IMPL_target_map_ifname_to_bandstr
+const char *
+target_map_ifname_to_bandstr(const char *ifname)
+{
+    (void)ifname;
+    return NULL;
+}
+#endif
+
+/******************************************************************************
+ * BSAL
+ *****************************************************************************/
+#ifndef IMPL_target_bsal_bss_tm_request
+bool target_bsal_bss_tm_request( char *client_mac , char *interface,
+                                 target_bsal_btm_params_t *btm_params ) {
+    (void)client_mac;
+    (void)interface;
+    (void)btm_params;
+    return false;
+}
+#endif
+
+#ifndef IMPL_target_bsal_rrm_bcn_rpt_request
+bool target_bsal_rrm_bcn_rpt_request( char *client_mac , char *interface,
+                                      target_bsal_rrm_params_t *rrm_params ) {
+    (void)client_mac;
+    (void)interface;
+    (void)rrm_params;
+    return false;
 }
 #endif

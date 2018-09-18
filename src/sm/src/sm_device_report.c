@@ -43,6 +43,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
+#define DEVICE_THERMAL_TIMER_SEC                60
+
 /* new part */
 typedef struct
 {
@@ -50,6 +52,7 @@ typedef struct
 
     /* Internal structure used to lower layer radio selection */
     ev_timer                        report_timer;
+    ev_timer                        thermal_report_timer;
 
     /* Structure containing cloud request timer params */
     sm_stats_request_t              request;
@@ -81,6 +84,7 @@ bool dpp_device_report_timer_set(
     return true;
 }
 
+
 static
 bool dpp_device_report_timer_restart(
         ev_timer                   *timer)
@@ -100,6 +104,7 @@ bool dpp_device_report_timer_restart(
         /* If reporting_count becomes zero, then stop reporting */
         if (0 == request_ctx->reporting_count) {
             dpp_device_report_timer_set(timer, false);
+            dpp_device_report_timer_set(&device_ctx->thermal_report_timer, false);
 
             LOG(DEBUG,
                 "Stopped device reporting (count expired)");
@@ -123,6 +128,25 @@ bool sm_device_temp_list_clear (
     {
         ds_dlist_iremove(&record_iter);
         dpp_device_temp_record_free(record);
+        record = NULL;
+    }
+
+    return true;
+}
+
+static
+bool sm_device_thermal_list_clear (
+        ds_dlist_t                 *thermal_list)
+{
+    dpp_device_thermal_record_t    *record = NULL;
+    ds_dlist_iter_t                 record_iter;
+
+    for (   record = ds_dlist_ifirst(&record_iter, thermal_list);
+            record != NULL;
+            record = ds_dlist_inext(&record_iter))
+    {
+        ds_dlist_iremove(&record_iter);
+        dpp_device_thermal_record_free(record);
         record = NULL;
     }
 
@@ -169,7 +193,7 @@ void sm_device_report (EV_P_ ev_timer *w, int revents)
         temp =
             dpp_device_temp_record_alloc();
         if (NULL == temp) {
-            return;
+            goto clean;
         }
 
         rc =
@@ -201,9 +225,84 @@ void sm_device_report (EV_P_ ev_timer *w, int revents)
 
     dpp_put_device(report_ctx);
 
+clean:
     /* Clear temperature list */
     sm_device_temp_list_clear(&report_ctx->temp);
+    sm_device_thermal_list_clear(&report_ctx->thermal_records);
 }
+
+
+static
+void sm_device_thermal_report (EV_P_ ev_timer *w, int revents)
+{
+    bool                            rc;
+    bool                            thermal_valid = false;
+
+    sm_device_ctx_t                *device_ctx =
+        (sm_device_ctx_t *) w->data;
+
+    dpp_device_report_data_t       *report_ctx =
+        &device_ctx->report;
+    sm_stats_request_t             *request_ctx =
+        &device_ctx->request;
+
+
+    /* Get radio txchainmask stats */
+    ds_tree_t                      *radios = sm_radios_get();
+    sm_radio_state_t               *radio;
+
+    dpp_device_thermal_record_t    *thermal_record;
+    dpp_device_txchainmask_t        tx_chainmask;
+    uint32_t                        fan_rpm;
+    int                             radio_idx = 0;
+
+    thermal_record = dpp_device_thermal_record_alloc();
+    ds_tree_foreach(radios, radio)
+    {
+        if(radio_idx >= DPP_DEVICE_TX_CHAINMASK_MAX)
+        {
+            LOG(ERROR, "Not enough space to hold all txchainmask stats"); 
+            break;
+        }
+
+        rc = target_stats_device_txchainmask_get(&radio->config,
+                                                 &tx_chainmask);
+        if (true != rc) {
+            thermal_record->radio_txchainmasks[radio_idx].type = RADIO_TYPE_NONE;
+            thermal_record->radio_txchainmasks[radio_idx].value = 0;
+            continue;
+        }
+
+        thermal_record->radio_txchainmasks[radio_idx].type = tx_chainmask.type;
+        thermal_record->radio_txchainmasks[radio_idx].value = tx_chainmask.value;
+        thermal_record->txchainmask_qty = radio_idx;
+        radio_idx++;
+        thermal_valid = true;
+    }
+
+    rc = target_stats_device_fanrpm_get(&fan_rpm);
+    if(true == rc)
+    {
+        thermal_record->fan_rpm = fan_rpm;
+        thermal_valid = true;
+    }
+    else
+    {
+        thermal_record->fan_rpm = -1;
+    }
+
+    /* Insert thermal data only if data is valid, some devices like PIRANHAV1 doesn't
+     * support thermal management */
+    if (thermal_valid == true)
+    {
+        thermal_record->timestamp_ms = request_ctx->reporting_timestamp - device_ctx->report_ts + get_timestamp();
+        ds_dlist_insert_tail(&report_ctx->thermal_records, thermal_record); 
+    }
+    else {
+        dpp_device_thermal_record_free(thermal_record);
+    }
+}
+
 
 /******************************************************************************
  *  PUBLIC API definitions
@@ -219,6 +318,9 @@ bool sm_device_report_request(
         &device_ctx->report;
     ev_timer                       *report_timer =
         &device_ctx->report_timer;
+    ev_timer                       *thermal_report_timer= 
+        &device_ctx->thermal_report_timer;
+
 
     if (NULL == request) {
         LOG(ERR,
@@ -241,45 +343,53 @@ bool sm_device_report_request(
                 dpp_device_temp_t,
                 node);
 
+        ds_dlist_init(
+                &report_ctx->thermal_records,
+                dpp_device_thermal_record_t,
+                node);
+
         /* Initialize event lib timers and pass the global
            internal cache
          */
         ev_init (report_timer, sm_device_report);
         report_timer->data = device_ctx;
-
+        
+        ev_init (thermal_report_timer, sm_device_thermal_report);
+        thermal_report_timer->data = device_ctx;
         device_ctx->initialized = true;
-    }
-
-#define REQUEST_DEVICE_UPDATE(TYPE, VAR, FMT) \
-    if (request_ctx->VAR != request->VAR) \
-    { \
-        LOG(DEBUG, \
-            "Updated %s "#VAR" "FMT" -> "FMT"", \
-            TYPE, \
-            request_ctx->VAR, \
-            request->VAR); \
-        request_ctx->VAR = request->VAR; \
     }
 
     /* Store and compare every request parameter ...
        memcpy would be easier but we want some debug info
      */
-    REQUEST_DEVICE_UPDATE("device", reporting_count, "%d");
-    REQUEST_DEVICE_UPDATE("device", reporting_interval, "%d");
-    REQUEST_DEVICE_UPDATE("device", reporting_timestamp, "%lld");
+    REQUEST_VAL_UPDATE("device", reporting_count, "%d");
+    REQUEST_VAL_UPDATE("device", reporting_interval, "%d");
+    REQUEST_VAL_UPDATE("device", reporting_timestamp, "%"PRIu64"");
 
     /* Restart timers with new parameters */
     dpp_device_report_timer_set(report_timer, false);
+    dpp_device_report_timer_set(thermal_report_timer, false);
+
     if (request_ctx->reporting_interval) {
         device_ctx->report_ts = get_timestamp();
         report_timer->repeat = request_ctx->reporting_interval;
         dpp_device_report_timer_set(report_timer, true);
+        if(request_ctx->sampling_interval == 0)
+        {
+            thermal_report_timer->repeat = DEVICE_THERMAL_TIMER_SEC;
+        }
+        else
+        {
+            thermal_report_timer->repeat = request_ctx->sampling_interval;
+        }
+        dpp_device_report_timer_set(thermal_report_timer, true);
 
         LOG(INFO, "Started device reporting");
     }
     else {
         LOG(INFO, "Stopped device reporting");
-
+        sm_device_temp_list_clear(&report_ctx->temp);
+        sm_device_thermal_list_clear(&report_ctx->thermal_records);
         memset(request_ctx, 0, sizeof(*request_ctx));
     }
 

@@ -59,6 +59,12 @@ static log_module_entry_t log_module_table[LOG_MODULE_ID_LAST] =
     LOG_MODULE_TABLE(LOG_ENTRY)
 };
 
+log_module_entry_t log_module_remote[LOG_MODULE_ID_LAST] =
+{
+    /** Expand the LOG_MODULE_TABLE by using the ENTRY macro above */
+    LOG_MODULE_TABLE(LOG_ENTRY)
+};
+
 /**
  * Elements must be in the same order as the log_severity_t enum
  */
@@ -72,6 +78,9 @@ static log_severity_entry_t log_severity_table[LOG_SEVERITY_LAST] =
 
 /* static global configuration */
 static bool log_enabled              = false;
+static bool traceback_enabled        = false;
+bool log_remote_enabled = false;
+
 
 typedef struct
 {
@@ -79,6 +88,7 @@ typedef struct
     ev_stat     stat;
     const char *state_file_path;
     char        severity_string[LOG_SEVERITY_STR_MAX];
+    char        severity_remote[LOG_SEVERITY_STR_MAX];
     const char *trigger_directory;
     int         trigger_value;
     void        (*trigger_callback)(FILE *fp);
@@ -96,18 +106,15 @@ const char* log_get_name()
     return log_name;
 }
 
+static void _log_sink_severity_set_default(log_sink_t sink);
+
 /**
  * Severity per-module
  */
 static void log_init(char *name)
 {
-    log_module_t mod;
-
-    /* put all modules on default logging level */
-    for (mod = 0; mod < (int)(sizeof(log_module_table) / sizeof (log_module_entry_t)); mod++)
-    {
-        log_module_table[mod].severity = LOG_SEVERITY_DEFAULT;
-    }
+    _log_sink_severity_set_default(LOG_SINK_LOCAL);
+    _log_sink_severity_set_default(LOG_SINK_REMOTE);
 
     /* enable it */
     log_enabled  = true;
@@ -130,11 +137,14 @@ bool log_open(char *name, int flags)
     /* Install default loggers */
     static logger_t logger_syslog;
     static logger_t logger_stdout;
+    static logger_t logger_remote;
+    static logger_t logger_traceback;
 
     if ((flags == 0) || (flags & LOG_OPEN_DEFAULT))
     {
         flags |= LOG_OPEN_SYSLOG;
         if (isatty(0)) flags |= LOG_OPEN_STDOUT;
+        flags |= LOG_OPEN_REMOTE;
     }
 
     if (flags & LOG_OPEN_SYSLOG)
@@ -148,6 +158,20 @@ bool log_open(char *name, int flags)
         logger_stdout_new(&logger_stdout, flags & LOG_OPEN_STDOUT_QUIET);
         log_register_logger(&logger_stdout);
     }
+
+#ifdef BUILD_REMOTE_LOG
+    if (flags & LOG_OPEN_REMOTE)
+    {
+        // disable remote for QM
+        if (strcmp(name, "QM") != 0) {
+            logger_remote_new(&logger_remote);
+            log_register_logger(&logger_remote);
+        }
+    }
+#endif
+
+    traceback_enabled = logger_traceback_new(&logger_traceback);
+    log_register_logger(&logger_traceback);
 
     return true;
 }
@@ -189,37 +213,95 @@ log_severity_entry_t *log_severity_get_by_id(log_severity_t id)
     return &log_severity_table[id];
 }
 
-void log_severity_set(log_severity_t s)
-{
-    log_module_t mod;
 
-    LOG(DEBUG, "Log severity: %s", log_severity_str(s));
+log_module_entry_t* _log_sink_get(log_sink_t sink, char **name)
+{
+    if (name) *name = "";
+    switch (sink)
+    {
+        case LOG_SINK_LOCAL:
+            return log_module_table;
+        case LOG_SINK_REMOTE:
+            if (name) *name = "remote ";
+            return log_module_remote;
+    }
+    LOG(WARNING, "Unknown log sink: %d", sink);
+    return NULL;
+}
+
+
+static void _log_sink_severity_set(log_sink_t sink, log_severity_t s)
+{
+    char *sink_name;
+    log_module_t mod;
+    log_module_entry_t *module_table = _log_sink_get(sink, &sink_name);
+    if (!module_table) return;
 
     /* The default log severity cannot be set to DEFAULT; demote it to INFO */
     if (s == LOG_SEVERITY_DEFAULT) s = LOG_SEVERITY_INFO;
 
-    for (mod = 0; mod < (int)(sizeof(log_module_table) / sizeof (log_module_entry_t)); mod++)
+    for (mod = 0; mod < LOG_MODULE_ID_LAST; mod++)
     {
         /* set severity for all modules         */
-        log_module_table[mod].severity = s;
+        module_table[mod].severity = s;
+    }
+    if (sink == LOG_SINK_REMOTE && s > LOG_SEVERITY_DISABLED)
+    {
+        log_remote_enabled = true;
     }
 }
+
+static void _log_sink_severity_set_default(log_sink_t sink)
+{
+    log_severity_t severity = LOG_SEVERITY_DISABLED;
+    switch (sink) {
+        case LOG_SINK_LOCAL:
+            severity = LOG_SEVERITY_DEFAULT;
+            break;
+        case LOG_SINK_REMOTE:
+            severity = LOG_SEVERITY_DISABLED;
+            log_remote_enabled = false;
+            break;
+    }
+    _log_sink_severity_set(sink, severity);
+}
+
+void log_severity_set(log_severity_t s)
+{
+    LOGD("Log severity: %s", log_severity_str(s));
+    _log_sink_severity_set(LOG_SINK_LOCAL, s);
+}
+
 
 log_severity_t log_severity_get(void)
 {
     return LOG_SEVERITY_DEFAULT;
 }
 
-void log_module_severity_set(log_module_t mod, log_severity_t sev)
+static void _log_sink_module_severity_set(log_sink_t sink, log_module_t mod, log_severity_t sev)
 {
+    char *sink_name;
+    log_module_entry_t *module_table = _log_sink_get(sink, &sink_name);
+    if (!module_table) return;
+
     if (mod >= LOG_MODULE_ID_LAST)
     {
         return;
     }
 
-    LOG(NOTICE, "Log severity %s: %s", log_module_str(mod), log_severity_str(sev));
+    module_table[mod].severity = sev;
 
-    log_module_table[mod].severity = sev;
+    if (sink == LOG_SINK_REMOTE && sev > LOG_SEVERITY_DISABLED)
+    {
+        log_remote_enabled = true;
+    }
+}
+
+void log_module_severity_set(log_module_t mod, log_severity_t sev)
+{
+    LOGD("Log severity %s=%s", log_module_str(mod), log_severity_str(sev));
+
+    _log_sink_module_severity_set(LOG_SINK_LOCAL, mod, sev);
 }
 
 log_severity_t log_module_severity_get(log_module_t mod)
@@ -241,11 +323,16 @@ log_severity_t log_module_severity_get(log_module_t mod)
  *
  * If MODULE is not specified, the default severity is modified.
  */
-bool log_severity_parse(char *sevstr)
+bool log_severity_parse_sink(log_sink_t sink, char *sevstr)
 {
     char    psevstr[LOG_SEVERITY_STR_MAX];
     char   *tsevstr;
     char   *token;
+    char   *sink_name;
+
+    // start with default then apply parsed settings
+    _log_sink_severity_set_default(sink);
+    _log_sink_get(sink, &sink_name);
 
     if (sevstr == NULL) return false;
 
@@ -255,7 +342,7 @@ bool log_severity_parse(char *sevstr)
         return false;
     }
 
-    strncpy(psevstr, sevstr, sizeof(psevstr));
+    STRSCPY(psevstr, sevstr);
 
     token = strtok_r(psevstr, ", ", &tsevstr);
 
@@ -278,13 +365,12 @@ bool log_severity_parse(char *sevstr)
 
             if (sev != LOG_SEVERITY_LAST)
             {
-                LOG(NOTICE, "Default severity set.::severity=%s", log_severity_str(sev));
-                log_severity_set(sev);
-                return true;
+                LOG(NOTICE, "%sDefault severity set: %s", sink_name, log_severity_str(sev));
+                _log_sink_severity_set(sink, sev);
             }
             else
             {
-                LOG(ERR, "Invalid default severity.::severity=%s", arg1);
+                LOG(ERR, "Invalid default severity: %s", arg1);
                 return false;
             }
         }
@@ -299,13 +385,14 @@ bool log_severity_parse(char *sevstr)
 
             if (sev != LOG_SEVERITY_LAST && mod != LOG_MODULE_ID_LAST)
             {
-                LOG(NOTICE, "Module log severity changed.::module=%s|severity=%s", log_module_str(mod), log_severity_str(sev));
+                LOG(NOTICE, "%sModule log severity changed. module=%s|severity=%s",
+                        sink_name, log_module_str(mod), log_severity_str(sev));
 
-                log_module_severity_set(mod, sev);
+                _log_sink_module_severity_set(sink, mod, sev);
             }
             else
             {
-                LOG(ERR, "Invalid module severity.::module=%s|severity=%s", arg1, arg2);
+                LOG(ERR, "Invalid module severity. module=%s|severity=%s", arg1, arg2);
                 return false;
             }
         }
@@ -316,10 +403,32 @@ bool log_severity_parse(char *sevstr)
     return true;
 }
 
+bool log_severity_parse(char *sevstr)
+{
+    return log_severity_parse_sink(LOG_SINK_LOCAL, sevstr);
+}
+
 void log_close()
 {
     LOG_MODULE_MESSAGE(NOTICE, LOG_MODULE_ID_COMMON, "log functionality closed");
     log_enabled = false;
+}
+
+static bool log_any_sink_match(log_severity_t sev, log_module_t module)
+{
+    bool match = false;
+    // local
+    if (sev <= log_module_table[module].severity) {
+        match = true;
+    }
+    // remote
+    if (sev <= log_module_remote[module].severity) {
+        match = true;
+    }
+    if (traceback_enabled) {
+        match = true;
+    }
+    return match;
 }
 
 void mlog(log_severity_t sev,
@@ -334,7 +443,6 @@ void mlog(log_severity_t sev,
     char           *strip;
     log_severity_entry_t *se;
     char           *tag;
-    log_severity_t    lsev;
 
     // Save errno, so that log does not overwrite it
     int save_errno = errno;
@@ -343,11 +451,13 @@ void mlog(log_severity_t sev,
         return;
     }
 
+    if (sev == LOG_SEVERITY_DISABLED) {
+        return;
+    }
+
     if (module > LOG_MODULE_ID_LAST) module = LOG_MODULE_ID_MISC;
 
-    lsev = log_module_table[module].severity;
-
-    if (sev > lsev){
+    if (!log_any_sink_match(sev, module)) {
         return;
     }
 
@@ -394,6 +504,11 @@ void mlog(log_severity_t sev,
     logger_t *plog;
     ds_dlist_foreach(&log_logger_list, plog)
     {
+        if (plog->match_fn) {
+            if (!plog->match_fn(sev, module)) continue;
+        } else {
+            if (sev > log_module_table[module].severity) continue;
+        }
         plog->logger_fn(plog, &msg);
     }
 
@@ -456,27 +571,17 @@ bool log_isenabled()
  * Dynamic logging state handling
  */
 
-static bool log_dynamic_state_read(int *new_trigger, char *new_severity, int new_severity_len)
+static bool log_dynamic_state_parse_severity(json_t *loggers_json,
+        const char *name, const char *default_name,
+        int *new_trigger, char *new_severity, int new_severity_len)
 {
-    *new_trigger = 0;
-    *new_severity = '\0';
-
-    LOGT("Re-reading logging state file %s.", log_dynamic.state_file_path);
-
-    json_t *loggers_json = json_load_file(log_dynamic.state_file_path, 0, NULL);
-    if (!loggers_json) {
-        LOGD("Unable to read dynamic log state!");
-        return false;
-    }
-
     // Get settings for our logger if there is any.
-    json_t *logger = json_object_get(loggers_json, log_name);
+    json_t *logger = json_object_get(loggers_json, name);
     if (!logger) {
         // If process settings don't exist, use "DEFAULT" entry
-        logger = json_object_get(loggers_json, LOG_DEFAULT_ENTRY);
+        logger = json_object_get(loggers_json, default_name);
         if (!logger) {
             // No setting found
-            json_decref(loggers_json);
             return false;
         }
     }
@@ -485,7 +590,7 @@ static bool log_dynamic_state_read(int *new_trigger, char *new_severity, int new
     json_t *severity = json_object_get(logger, "log_severity");
     if (severity && json_is_string(severity))
     {
-        strlcpy(new_severity,
+        strscpy(new_severity,
                 json_string_value(severity),
                 new_severity_len);
     }
@@ -494,13 +599,87 @@ static bool log_dynamic_state_read(int *new_trigger, char *new_severity, int new
     json_t *trigger = json_object_get(logger, "log_trigger");
     if (trigger && json_is_integer(trigger))
     {
-        *new_trigger = json_integer_value(trigger);
+        if (new_trigger) {
+            *new_trigger = json_integer_value(trigger);
+        }
     }
-
-    json_decref(loggers_json);
 
     return true;
 }
+
+
+static void log_set_severity_if_changed(log_sink_t sink, char *new_severity)
+{
+    char *severity_str = NULL;
+    int severity_size;
+    char *sink_name;
+    _log_sink_get(sink, &sink_name);
+    switch (sink) {
+        case LOG_SINK_LOCAL:
+            severity_str = log_dynamic.severity_string;
+            severity_size = sizeof(log_dynamic.severity_string);
+            break;
+        case LOG_SINK_REMOTE:
+            severity_str = log_dynamic.severity_remote;
+            severity_size = sizeof(log_dynamic.severity_remote);
+            break;
+    }
+    if (!severity_str) {
+        LOGW("Unknown sink %d", sink);
+        return;
+    }
+    // set severity if changed
+    if (strcmp(new_severity, severity_str))
+    {
+        LOGN("%sLog severity changed from \"%s\" to \"%s\".",
+                sink_name, severity_str, new_severity);
+        if (!log_severity_parse_sink(sink, new_severity))
+        {
+            LOGW("%sFailed to parse log severity '%s'", sink_name, new_severity);
+        }
+        strscpy(severity_str, new_severity, severity_size);
+    }
+}
+
+static bool log_dynamic_update(int *new_trigger)
+{
+    *new_trigger = 0;
+    char new_severity[LOG_SEVERITY_STR_MAX] = "";
+    char remote_severity[LOG_SEVERITY_STR_MAX] = "";
+
+    if (!log_dynamic.state_file_path) {
+        return false;
+    }
+    LOGT("Re-reading logging state file %s.", log_dynamic.state_file_path);
+
+    json_t *loggers_json = json_load_file(log_dynamic.state_file_path, 0, NULL);
+    if (!loggers_json) {
+        LOGD("Unable to read dynamic log state!");
+        goto out;
+    }
+
+    // local
+    log_dynamic_state_parse_severity(loggers_json, log_name, LOG_DEFAULT_ENTRY,
+            new_trigger, new_severity, sizeof(new_severity));
+
+    // remote
+    char remote_name[64];
+    snprintf(remote_name, sizeof(remote_name), "%s_%s", LOG_DEFAULT_REMOTE, log_name);
+    log_dynamic_state_parse_severity(loggers_json, remote_name, LOG_DEFAULT_REMOTE,
+            NULL, remote_severity, sizeof(remote_severity));
+
+    json_decref(loggers_json);
+
+out:
+    // if reading is not successfull because file or record was deleted
+    // default values need to be applied
+
+    log_set_severity_if_changed(LOG_SINK_LOCAL, new_severity);
+    log_set_severity_if_changed(LOG_SINK_REMOTE, remote_severity);
+
+    return true;
+}
+
 
 static void log_dynamic_full_path_get(char *buf, int len)
 {
@@ -520,31 +699,15 @@ static void log_dynamic_full_path_get(char *buf, int len)
              timestamp);
 }
 
+
 static void log_dynamic_state_handler(struct ev_loop *loop,
                                       ev_stat *watcher,
                                       int revents)
 {
     int     new_trigger;
-    char    new_severity[LOG_SEVERITY_STR_MAX];
-    if (!log_dynamic_state_read(&new_trigger, new_severity, sizeof(new_severity)))
-    {
+
+    if (!log_dynamic_update(&new_trigger)) {
         return;
-    }
-
-    // Update severity in case it was changed
-    if (new_severity[0] && strcmp(new_severity, log_dynamic.severity_string))
-    {
-        LOGN("Module log severity changed from \"%s\" to \"%s\".",
-             log_dynamic.severity_string, new_severity);
-
-        if (!log_severity_parse(new_severity))
-        {
-            LOGE("Failed to update log severity!");
-        }
-
-        strlcpy(log_dynamic.severity_string,
-                new_severity,
-                sizeof(log_dynamic.severity_string));
     }
 
     // Trigger logging callback in case it was requested. Logging
@@ -571,46 +734,34 @@ static void log_dynamic_state_handler(struct ev_loop *loop,
     }
 
     // Update global values
-    strlcpy(log_dynamic.severity_string,
-            new_severity,
-            sizeof(log_dynamic.severity_string));
-
     log_dynamic.trigger_value = new_trigger;
 
+}
+
+static bool log_dynamic_init()
+{
+    log_dynamic.state_file_path = target_log_state_file();
+    if (!log_dynamic.state_file_path)
+    {
+        // On this target we don't enable dynamic log handler
+        return false;
+    }
+    return true;
 }
 
 static void log_dynamic_handler_init(struct ev_loop *loop)
 {
     if (!log_dynamic.enabled)
     {
-        log_dynamic.state_file_path = target_log_state_file();
-        if (!log_dynamic.state_file_path)
-        {
-            // On this target we don't enable dynamic log handler
-            return;
-        }
+        if (!log_dynamic_init()) return;
 
         // Init local state
         int   new_trigger;
-        char  new_severity[LOG_SEVERITY_STR_MAX];
-        log_dynamic_state_read(&new_trigger, new_severity, sizeof(new_severity));
+        log_dynamic_update(&new_trigger);
 
         log_dynamic.enabled           = true;
         log_dynamic.trigger_value     = new_trigger;
         log_dynamic.trigger_directory = target_log_trigger_dir();
-
-        strlcpy(log_dynamic.severity_string,
-                new_severity,
-                sizeof(log_dynamic.severity_string));
-
-        // Init severity
-        if (new_severity[0])
-        {
-            if (!log_severity_parse(new_severity))
-            {
-                LOGE("Failed to set initial dynamic log severity!");
-            }
-        }
 
         // Init timer
         ev_stat_init(&log_dynamic.stat,
@@ -647,24 +798,7 @@ bool log_register_dynamic_trigger(struct ev_loop *loop, void (*callback)(FILE *f
  */
 bool log_severity_dynamic_set()
 {
-    log_dynamic.state_file_path = target_log_state_file();
-    if (!log_dynamic.state_file_path)
-    {
-        // On this target we don't enable dynamic log handler
-        return false;
-    }
-
     int  new_trigger; // Not used
-    char new_severity[LOG_SEVERITY_STR_MAX];
-    if (!log_dynamic_state_read(&new_trigger, new_severity, sizeof(new_severity)))
-    {
-        return false;
-    }
-
-    if (!log_severity_parse(new_severity))
-    {
-        LOGW("Failed to parse dynamic log severity!");
-    }
-
-    return true;
+    if (!log_dynamic_init()) return false;
+    return log_dynamic_update(&new_trigger);
 }

@@ -27,6 +27,7 @@ VERSION_TARGET ?= $(TARGET)
 VER_GEN := src/lib/version/version-gen
 VER_STAMP := src/lib/version/rootfs-version-stamp
 VER_DATE := $(shell date)
+VERSION_STAMP_DIR ?= $(INSTALL_PREFIX)
 
 VERSION_ENV += VER_DATE="$(VER_DATE)"
 VERSION_ENV += TARGET=$(TARGET)
@@ -41,17 +42,18 @@ VERSION_ENV += VERSION_NO_BUILDNUM=$(VERSION_NO_BUILDNUM)
 VERSION_ENV += VERSION_NO_SHA1=$(VERSION_NO_SHA1)
 VERSION_ENV += VERSION_NO_MODS=$(VERSION_NO_MODS)
 VERSION_ENV += VERSION_NO_PROFILE=$(VERSION_NO_PROFILE)
+VERSION_ENV += VERSION_STAMP_DIR=$(VERSION_STAMP_DIR)
 
 ifeq ($(BUILD_NUMBER),)
 BUILD_NUMBER := $(shell $(VERSION_ENV) $(VER_GEN) build_number)
 endif
 
 define version-gen
-	$(VERSION_ENV) $(VER_GEN) $(1) $(2)
+	$(VERSION_ENV) $(2) $(VER_GEN) $(1)
 endef
 
 define rootfs-version-stamp
-	$(VERSION_ENV) $(VER_STAMP) $(1) $(2)
+	$(VERSION_ENV) $(2) $(VER_STAMP) $(1)
 endef
 
 # $(info VERSION ENV: $(call ver-env))

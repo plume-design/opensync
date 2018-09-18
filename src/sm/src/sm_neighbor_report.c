@@ -76,7 +76,9 @@ typedef struct
 } sm_neighbor_ctx_t;
 
 /* The stats entry has per band (type) phy_name and scan_type context */
-static ds_dlist_t                   g_neighbor_ctx_list;
+static ds_dlist_t                   g_neighbor_ctx_list=
+                                            DS_DLIST_INIT(sm_neighbor_ctx_t,
+                                                          node);
 
 static inline sm_neighbor_ctx_t * sm_neighbor_ctx_alloc()
 {
@@ -106,16 +108,6 @@ sm_neighbor_ctx_t *sm_neighbor_ctx_get (
     ds_dlist_iter_t                 ctx_iter;
 
     radio_entry_t                  *radio_entry = NULL;
-    static bool                     init = false;
-
-    if (!init) {
-        /* Initialize report neighbor list */
-        ds_dlist_init(
-                &g_neighbor_ctx_list,
-                sm_neighbor_ctx_t,
-                node);
-        init = true;
-    }
 
     /* Find per radio neighbor ctx */
     for (   neighbor_ctx = ds_dlist_ifirst(&ctx_iter,&g_neighbor_ctx_list);
@@ -130,7 +122,7 @@ sm_neighbor_ctx_t *sm_neighbor_ctx_get (
 		   )
         {
             LOG(TRACE,
-                "Fetced %s %s neighbor reporting context",
+                "Fetched %s %s neighbor reporting context",
                 radio_get_name_from_cfg(radio_entry),
                 radio_get_scan_name_from_type(scan_type));
             return neighbor_ctx;
@@ -265,7 +257,7 @@ bool sm_neighbor_report_send_diff(
     uint32_t                        found = 0;
 
     /* Create new report for diff data (only add/remove 
-       compared to previous reprot)
+       compared to previous report)
      */
     dpp_neighbor_report_data_t      report_diff;
     memset(&report_diff, 0, sizeof(report_diff));
@@ -544,7 +536,7 @@ bool sm_neighbor_report_send(
     /* Restart timer */
     sm_neighbor_report_timer_restart(report_timer);
 
-    /* Send only changes (This perserves neighbor cache) */
+    /* Send only changes (This preserves neighbor cache) */
     if (REPORT_TYPE_DIFF == request_ctx->report_type) {
         status = sm_neighbor_report_send_diff(neighbor_ctx);
     } else {
@@ -554,6 +546,7 @@ bool sm_neighbor_report_send(
     return status;
 }
 
+static
 void sm_neighbor_stats_results(
         void                       *scan_ctx,
         int                         scan_status)
@@ -648,13 +641,26 @@ void sm_neighbor_stats_results(
         found = false;
 
         /* Filter entries from non scanned channel (some targets return
-           cached entres also for non scanned channels). Only valid for 
+           cached entries also for non scanned channels). Only valid for
            on and off channel scans.
          */
         if (scan_type != RADIO_SCAN_TYPE_FULL) {
             if (scan_entry->chan != *scan_chan) {
                 continue;
             }
+        }
+
+        /* Filter neighbor with 0 SNR */
+        if (scan_entry->sig == 0) {
+            LOG(TRACE,
+                "Remove %s %s neighbor due to signal {bssid='%s' ssid='%s' rssi=%d chan=%d}\n",
+                radio_get_name_from_cfg(radio_cfg_ctx),
+                radio_get_scan_name_from_type(scan_type),
+                scan_entry->bssid,
+                scan_entry->ssid,
+                scan_entry->sig,
+                scan_entry->chan);
+            continue;
         }
 
         os_nif_macaddr_from_str(
@@ -1160,7 +1166,7 @@ bool sm_neighbor_report_request(
     REQUEST_PARAM_UPDATE(param_str, scan_interval, "%d");
     REQUEST_PARAM_UPDATE(param_str, reporting_interval, "%d");
     REQUEST_PARAM_UPDATE(param_str, sampling_interval, "%d");
-    REQUEST_PARAM_UPDATE(param_str, reporting_timestamp, "%lld");
+    REQUEST_PARAM_UPDATE(param_str, reporting_timestamp, "%"PRIu64"");
 
     memcpy(&request_ctx->radio_chan_list,
             &request->radio_chan_list,
@@ -1188,7 +1194,7 @@ bool sm_neighbor_report_radio_change(
 
     if (NULL == radio_cfg) {
         LOG(ERR,
-            "Initializing neighbor reporting "
+            "Changing neighbor reporting "
             "(Invalid radio config)");
         return false;
     }
@@ -1204,6 +1210,11 @@ bool sm_neighbor_report_radio_change(
         ) {
         scan_type       = radio_get_scan_type_from_index(scan_index);
         neighbor_ctx    = sm_neighbor_ctx_get(radio_cfg, scan_type);
+        if (NULL == neighbor_ctx) {
+            LOGE("Changing neighbor reporting "
+                 "(Invalid neighbor context)");
+            return false;
+        }
 
         status =
             sm_neighbor_stats_process (

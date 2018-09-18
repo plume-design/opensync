@@ -72,20 +72,24 @@ static bool     ovsh_opt_uuid_abbrev = true;
 static long     ovsh_opt_timeout = 60*1000;
 static bool     ovsh_opt_quiet = false;
 static bool     ovsh_opt_wait_equals = true;
+static int      ovsh_where_num = 0;
+static char   **ovsh_where_expr = NULL;
 
 static void     ovsh_usage(const char *fmt, ...);
 static bool     ovsh_select(char *table, json_t *where, int coln, char *colv[]);
 static bool     ovsh_insert(char *table, json_t *where, int coln, char *colv[]);
 static bool     ovsh_update(char *table, json_t *where, int coln, char *colv[]);
+static bool     ovsh_upsert(char *table, json_t *where, int coln, char *colv[]);
 static bool     ovsh_wait(char *table, json_t *where, bool equals, int coln, char *colv[]);
 static bool     ovsh_delete(char *table, json_t *where, int coln, char *colv[]);
 static json_t  *json_value(char *str);
 static bool     ovsh_parse_where(json_t *where, char *str);
 static bool     ovsh_parse_columns(json_t *columns, int argc, char *argv[]);
+bool            ovsh_parse_mutations(json_t *mutations, int *colc, char *colv[]);
 static json_t  *ovsdb_json_exec(char *method, json_t *params);
 static bool     ovsdb_json_error(json_t *jres);
 static bool     ovsdb_json_show_count(json_t *jres);
-static bool     ovsdb_json_show_uuid(json_t *jres);
+static bool     ovsdb_json_show_uuid(json_t *jres, json_t **a_juuid);
 static bool     ovsdb_json_show_result(json_t *jobj, json_t *columns);
 static bool     ovsdb_json_show_result_json(json_t *jres);
 static bool     ovsdb_json_show_result_raw(json_t *jobj, json_t *columns);
@@ -94,6 +98,7 @@ static bool     ovsdb_json_show_result_column(json_t *jrows, json_t *columns);
 static bool     ovsdb_json_show_result_multi(json_t *jrows, json_t *columns, bool multi_line);
 static bool     ovsdb_json_show_result_output(json_t *jrows, json_t *columns);
 static int      systemvp(const char *file, char *argv[]);
+bool ovsdb_json_get_result_rows(json_t *jobj, json_t **jrows);
 
 /*
  * ===========================================================================
@@ -157,7 +162,7 @@ int main(int argc, char *argv[])
                 if (strlen(optarg) + 1 > sizeof(ovsh_opt_db))
                 {
                     ovsh_usage("Database string must not exceed %d bytes.",
-			       sizeof(ovsh_opt_db));
+                            sizeof(ovsh_opt_db));
                 }
 
                 DEBUG("Setting database to %s\n", optarg);
@@ -287,6 +292,13 @@ int main(int argc, char *argv[])
             return 1;
         }
     }
+    else if (strcmp("upsert", cmd) == 0 || strcmp("U", cmd) == 0)
+    {
+        if (!ovsh_upsert(table, where, colc, colv))
+        {
+            return 1;
+        }
+    }
     else if (strcmp("wait", cmd) == 0 || strcmp("w", cmd) == 0)
     {
         if (!ovsh_wait(table, where, ovsh_opt_wait_equals, colc, colv))
@@ -321,6 +333,7 @@ void ovsh_usage(const char *fmt, ...)
     fprintf(stderr, "   - s/select: Read one or multiple rows\n");
     fprintf(stderr, "   - i/insert: Insert a new row\n");
     fprintf(stderr, "   - u/update: Update one or multiple rows\n");
+    fprintf(stderr, "   - U/upsert: Update or insert one row\n");
     fprintf(stderr, "   - d/delete: Delete one or multiple rows\n");
     fprintf(stderr, "   - w/wait:   Perform a WAIT operation on one or multiple rows\n");
     fprintf(stderr, "\n");
@@ -345,9 +358,27 @@ void ovsh_usage(const char *fmt, ...)
     fprintf(stderr, "                   - The timeout in milliseconds for a wait command\n");
     fprintf(stderr, "   -n|--notequal   - Use the \"!=\" (not-equal) operator instead of \"==\" (wait)\n");
     fprintf(stderr, "   -v|--verbose    - Increase debugging level\n");
-    fprintf(stderr, "   -q|--quiet      - Report only errors");
-    fprintf(stderr, "\n\n");
+    fprintf(stderr, "   -q|--quiet      - Report only errors\n");
+    fprintf(stderr, "\n");
     fprintf(stderr, "Note: print modes: json, raw and custom do not compact and abbreviate uuid\n");
+    fprintf(stderr, "\n");
+    fprintf(stderr, "Operators:\n");
+    fprintf(stderr, "   ==  compare equal\n");
+    fprintf(stderr, "   !=  compare not equal\n");
+    fprintf(stderr, "   :=  assign value: bool, int or string\n");
+    fprintf(stderr, "   ~=  assign value: string\n");
+    fprintf(stderr, "   ::  assign value: json object\n");
+    fprintf(stderr, "   :ins:  mutate map or set: insert json object (update,upsert,insert)\n");
+    fprintf(stderr, "   :del:  mutate map or set: delete json object (update,upsert,insert)\n");
+    fprintf(stderr, "   The := operator autodetects the value type (bool,int,string)\n");
+    fprintf(stderr, "   To force the value type to a string either use :='\"5\"' or ~=5\n");
+    fprintf(stderr, "\n");
+    fprintf(stderr, "Examples:\n");
+    fprintf(stderr, "  Upsert:\n");
+    fprintf(stderr, "    ovsh U AW_Debug -w name==SM log_severity:=INFO\n");
+    fprintf(stderr, "  Mutate:\n");
+    fprintf(stderr, "    ovsh u AWLAN_Node mqtt_settings:ins:'[\"map\",[[\"remote_log\",\"1\"]]]'\n");
+    fprintf(stderr, "    ovsh u AWLAN_Node mqtt_settings:del:'[\"set\",[\"remote_log\"]]'\n");
     fprintf(stderr, "\n\n");
 
     if (*fmt != '\0')
@@ -367,10 +398,13 @@ void ovsh_usage(const char *fmt, ...)
 /*
  * OVSDB Select method
  */
-bool ovsh_select(char *table, json_t *where, int coln, char *colv[])
+bool ovsdb_select(char *table, json_t *where, int coln, char *colv[],
+        json_t **jresult, json_t **acolumns)
 {
+    *jresult = NULL;
     json_t *columns = json_array();
     assert(columns != NULL);
+    *acolumns = columns;
 
     json_t *jparam = json_pack("[ s, { s:s, s:s, s:o } ]",
             ovsh_opt_db,
@@ -404,8 +438,59 @@ bool ovsh_select(char *table, json_t *where, int coln, char *colv[])
     {
         return false;
     }
+    *jresult = jres;
+    return true;
+}
+
+bool ovsh_select(char *table, json_t *where, int coln, char *colv[])
+{
+    json_t *jres;
+    json_t *columns;
+    if (!ovsdb_select(table, where, coln, colv, &jres, &columns))
+    {
+        return false;
+    }
 
     return ovsdb_json_show_result(jres, columns);
+}
+
+/*
+ * OVSDB Mutate method
+ */
+bool ovsh_mutate(char *table, json_t *where, json_t *mutations)
+{
+    if (json_array_size(mutations) == 0)
+    {
+        // nothing to do
+        return true;
+    }
+
+    json_t *jparam = json_pack("[ s, { s:s, s:s, s:o, s:o } ]",
+            ovsh_opt_db,
+            "op", "mutate",
+            "table", table,
+            "where", where,
+            "mutations", mutations);
+
+    if (jparam == NULL)
+    {
+        DEBUG("Error creating JSON-RPC parameters (MUTATE).");
+        return false;
+    }
+
+    json_t *jres = ovsdb_json_exec("transact", jparam);
+    if (!ovsdb_json_error(jres))
+    {
+        return false;
+    }
+
+    printf("Mutated: ");
+    if (!ovsdb_json_show_count(jres))
+    {
+        return false;
+    }
+
+    return true;
 }
 
 /*
@@ -422,7 +507,14 @@ bool ovsh_insert(char *table, json_t *where, int coln, char *colv[])
     }
 
     json_t *columns = json_object();
+    json_t *mutations = json_array();
     assert(columns != NULL);
+
+    // parse mutations
+    if (!ovsh_parse_mutations(mutations, &coln, colv))
+    {
+        ovsh_usage("Error parsing columns.");
+    }
 
     /* Parse columns */
     if (!ovsh_parse_columns(columns, coln, colv))
@@ -448,11 +540,23 @@ bool ovsh_insert(char *table, json_t *where, int coln, char *colv[])
         return false;
     }
 
-    if (!ovsdb_json_show_uuid(jres))
+    json_t *juuid = NULL;
+    if (!ovsdb_json_show_uuid(jres, &juuid))
     {
         return false;
     }
-
+    // also apply mutations if any
+    // this is so that mutations can be used with upsert
+    if (json_array_size(mutations) > 0)
+    {
+        json_t *where_uuid = json_array();
+        json_t *w = json_array();
+        json_array_append_new(w, json_string("_uuid"));
+        json_array_append_new(w, json_string("=="));
+        json_array_append_new(w, juuid);
+        json_array_append_new(where_uuid, w);
+        return ovsh_mutate(table, where_uuid, mutations);
+    }
     return true;
 }
 
@@ -468,7 +572,14 @@ bool ovsh_update(char *table, json_t *where, int coln, char *colv[])
     }
 
     json_t *columns = json_object();
+    json_t *mutations = json_array();
     assert(columns != NULL);
+
+    // parse mutations
+    if (!ovsh_parse_mutations(mutations, &coln, colv))
+    {
+        ovsh_usage("Error parsing columns.");
+    }
 
     /* Parse columns */
     if (!ovsh_parse_columns(columns, coln, colv))
@@ -500,7 +611,75 @@ bool ovsh_update(char *table, json_t *where, int coln, char *colv[])
         return false;
     }
 
-    return true;
+    return ovsh_mutate(table, where, mutations);
+}
+
+/*
+ * OVSDB upsert method
+ */
+bool ovsh_upsert(char *table, json_t *where, int coln, char *colv[])
+{
+    if (coln <= 0)
+    {
+        ovsh_usage("Update requires at least 1 column.");
+        return false;
+    }
+
+    // assert that where condition only contains == and no !=
+    int i;
+    for (i=0; i < ovsh_where_num; i++) {
+        if (!strstr(ovsh_where_expr[i], "==")) {
+            fprintf(stderr, "ERROR: Upsert: only == condition accepted (%s)\n", ovsh_where_expr[i]);
+        }
+    }
+
+    // select:
+    //  if 0 rows matched -> insert
+    //  if 1 row matched -> update
+    //  else error
+
+    json_t *sel_jres = NULL;
+    json_t *sel_columns = NULL;
+    json_t *sel_jrows = NULL;
+    if (!ovsdb_select(table, where, 0, NULL, &sel_jres, &sel_columns))
+    {
+        return false;
+    }
+    if (!ovsdb_json_get_result_rows(sel_jres, &sel_jrows))
+    {
+        return false;
+    }
+    int sel_count = json_array_size(sel_jrows);
+    if (sel_count == 0)
+    {
+        // perform insert
+        printf("Upsert: insert\n");
+        // convert where == condition to := assignment and append colv
+        int new_coln = ovsh_where_num + coln;
+        char *new_colv[new_coln];
+        int new_i = 0;
+        char *s;
+        for (i=0; i < ovsh_where_num; i++) {
+            new_colv[new_i] = strdup(ovsh_where_expr[i]);
+            s = strstr(new_colv[new_i], "==");
+            if (!s) return false;
+            memcpy(s, ":=", 2);
+            new_i++;
+        }
+        for (i=0; i < coln; i++) {
+            new_colv[new_i] = colv[i];
+            new_i++;
+        }
+        return ovsh_insert(table, where, new_coln, new_colv);
+    }
+    if (sel_count == 1)
+    {
+        // perform update
+        printf("Upsert: update\n");
+        return ovsh_update(table, where, coln, colv);
+    }
+    fprintf(stderr, "ERROR: Upsert: more than one row matched (%d)\n", sel_count);
+    return false;
 }
 
 /*
@@ -650,6 +829,9 @@ bool str_parse_expr(char *expr, char *delim[], char **lval, char **op, char **rv
  *      "true" -> bool, value set to true
  *      "false" -> bool, value set to false
  *      "XXXX" -> where X are digits only -> integer
+ *      ["map", -> object
+ *      ["set", -> object
+ *      ["uuid", -> object
  *
  *      Everything else is assumed to be a string.
  */
@@ -685,6 +867,22 @@ json_t *json_value(char *str)
     {
         return json_integer(lval);
     }
+    // check if object
+    char *str_map = "[\"map\",";
+    char *str_set = "[\"set\",";
+    char *str_uuid = "[\"uuid\",";
+    if (!strncmp(str, str_map, strlen(str_map))
+            || !strncmp(str, str_set, strlen(str_set))
+            || !strncmp(str, str_uuid, strlen(str_uuid)))
+    {
+        // Try to parse rval as a json object
+        json_t *jobj = json_loads(str, 0, NULL);
+        if (jobj) {
+            return jobj;
+        }
+        fprintf(stderr, "Error decoding as object value: %s\n", str);
+        // fallthrough, treat as string for backward compatibility, eventually treat as error
+    }
 
     /* Everything else is a string */
     return json_string(str);
@@ -715,13 +913,13 @@ void abbrev_uuid(char *dest, int size, const char *uuid)
 {
     if (size <= 0) return;
     if (!ovsh_opt_uuid_abbrev) {
-        strlcpy(dest, uuid, size);
+        strscpy(dest, uuid, size);
     } else {
         int pos = strlen(uuid) - 4;
         if (pos < 0) pos = 0;
         char tmp[16]; // in case dest==uuid
         snprintf(tmp, sizeof(tmp), "%.4s~%.4s", uuid, uuid+pos);
-        strlcpy(dest, tmp, size);
+        strscpy(dest, tmp, size);
     }
 }
 
@@ -907,6 +1105,12 @@ bool ovsh_parse_where(json_t *where, char *_str)
 
     retval = true;
 
+    // append to global where expr table
+    ovsh_where_num++;
+    ovsh_where_expr = (char**)realloc(ovsh_where_expr, sizeof(char**) * ovsh_where_num);
+    assert(ovsh_where_expr);
+    ovsh_where_expr[ovsh_where_num-1] = strdup(_str);
+
 error:
     if (jop != NULL) json_decref(jop);
 
@@ -1010,6 +1214,102 @@ static bool ovsh_parse_columns(json_t *columns, int colc, char *colv[])
     return true;
 
 error:
+    if (jrval != NULL) json_decref(jrval);
+    return false;
+}
+
+bool ovsh_parse_mutations(json_t *mutations, int *colc, char *colv[])
+{
+    int ii, j;
+    json_t *jrval = NULL;
+
+    static char *delim[] =
+    {
+        ":ins:",
+        ":del:",
+        NULL
+    };
+
+    static char *mutator_op[] =
+    {
+        "insert",
+        "delete",
+        NULL
+    };
+
+    if (!json_is_array(mutations))
+    {
+        DEBUG("Parameter is not an array.");
+        goto error;
+    }
+    int new_colc = 0;
+
+    for (ii = 0; ii < *colc; ii++)
+    {
+        char col[OVSH_COL_STR];
+        char *lval, *op, *rval;
+        char *mop = NULL;
+
+        if (strlen(colv[ii]) + 1 > sizeof(col))
+        {
+            DEBUG("Column too big: %s\n", colv[ii]);
+            return false;
+        }
+
+        strcpy(col, colv[ii]);
+
+        if (!str_parse_expr(col, delim, &lval, &op, &rval))
+        {
+            // add to new colv
+            colv[new_colc] = colv[ii];
+            new_colc++;
+            continue;
+        }
+        for (j = 0; delim[j]; j++) {
+            if (!strcmp(op, delim[j])) {
+                mop = mutator_op[j];
+                break;
+            }
+        }
+        if (!mop) goto error;
+        DEBUG("Mutation: [%d] %s %s %s\n", ii, lval, mop, rval);
+        // treat rval as json object
+        jrval = json_loads(rval, 0, NULL);
+        if (jrval == NULL)
+        {
+            DEBUG("Error decoding column right value: %s\n", rval);
+            return false;
+        }
+        json_t *m = json_array();
+
+        // append lval
+        if (json_array_append_new(m, json_string(lval)) != 0)
+        {
+            goto error;
+        }
+        // append op
+        if (json_array_append_new(m, json_string(mop)) != 0)
+        {
+            goto error;
+        }
+        // append jrval
+        if (json_array_append_new(m, jrval) != 0)
+        {
+            goto error;
+        }
+        jrval = NULL;
+        // append mutation m to list of mutations
+        if (json_array_append_new(mutations, m) != 0)
+        {
+            goto error;
+        }
+    }
+    *colc = new_colc;
+
+    return true;
+
+error:
+    fprintf(stderr, "ERROR: %s\n", __FUNCTION__);
     if (jrval != NULL) json_decref(jrval);
     return false;
 }
@@ -1202,15 +1502,18 @@ bool ovsdb_json_show_count(json_t *jobj)
     return true;
 }
 
+
 /*
  * Display the UUID, which is a result of an insert operation
  */
-bool ovsdb_json_show_uuid(json_t *jobj)
+bool ovsdb_json_show_uuid(json_t *jobj, json_t **a_juuid)
 {
     if (ovsh_opt_quiet)
     {
         return true;
     }
+
+    if (a_juuid) *a_juuid = NULL;
 
     json_t *jres = json_object_get(jobj, "result");
     if (jres == NULL)
@@ -1255,6 +1558,8 @@ bool ovsdb_json_show_uuid(json_t *jobj)
         fprintf(stderr, "Result objact contains an invalid UUID.\n");
         return false;
     }
+
+    if (a_juuid) *a_juuid = juuid;
 
     if (ovsh_opt_format == OVSH_FORMAT_JSON)
     {
@@ -1302,17 +1607,16 @@ json_t * ovsdb_json_sort_array_str(json_t *jarr)
     return sorted;
 }
 
-bool ovsdb_json_show_result(json_t *jobj, json_t *columns)
-{
-    bool retval = false;
 
-    json_t *pcolumns = NULL;
+bool ovsdb_json_get_result_rows(json_t *jobj, json_t **jrows)
+{
+    *jrows = NULL;
 
     json_t *jres = json_object_get(jobj, "result");
     if (jres == NULL)
     {
         fprintf(stderr, "Error: No \"result\" object is present.");
-        goto error;
+        return false;
     }
 
     /* Use the first object in the array */
@@ -1320,13 +1624,27 @@ bool ovsdb_json_show_result(json_t *jobj, json_t *columns)
     if (jres == NULL)
     {
         fprintf(stderr, "Unexpected JSON result: Got empty array.");
-        goto error;
+        return false;
     }
 
-    json_t *jrows = json_object_get(jres, "rows");
-    if (jrows == NULL)
+    *jrows = json_object_get(jres, "rows");
+    if (*jrows == NULL)
     {
         fprintf(stderr, "Error: Expected \"rows\" object in response.");
+        return false;
+    }
+    return true;
+}
+
+
+bool ovsdb_json_show_result(json_t *jobj, json_t *columns)
+{
+    bool retval = false;
+    json_t *pcolumns = NULL;
+    json_t *jrows;
+
+    if (!ovsdb_json_get_result_rows(jobj, &jrows))
+    {
         goto error;
     }
 
@@ -1727,7 +2045,7 @@ all:
         goto all;
     }
     // split to first part and remain
-    strlcpy(remain, s + 1, size);
+    strscpy(remain, s + 1, size);
     str[s - str + 1] = 0;
     return;
 }

@@ -48,6 +48,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "target.h"
 #include "om.h"
+#include "util.h"
 
 
 /*****************************************************************************/
@@ -88,8 +89,8 @@ om_monitor_update_openflow_state( struct schema_Openflow_Config *ofconf,
     // memset ofstate to avoid conversion to schema failures
     memset( &ofstate, 0, sizeof( ofstate ) );
 
-    strncpy( ofstate.bridge, ofconf->bridge, sizeof( ofstate.bridge ) - 1 );
-    strncpy( ofstate.token , ofconf->token , sizeof( ofstate.token  ) - 1 );
+    STRSCPY(ofstate.bridge, ofconf->bridge);
+    STRSCPY(ofstate.token, ofconf->token);
 
     // Reflect the result of ovs-ofctl command
     ofstate.success = ret;

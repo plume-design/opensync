@@ -83,6 +83,18 @@ static inline char *sm_timestamp_ms_to_date (uint64_t   timestamp_ms)
         request_ctx->VAR = request->VAR; \
     }
 
+#define REQUEST_VAL_UPDATE(TYPE, VAR, FMT) \
+    if (request_ctx->VAR != request->VAR) \
+    { \
+        LOG(DEBUG, \
+            "Updated %s "#VAR" "FMT" -> "FMT"", \
+            TYPE, \
+            request_ctx->VAR, \
+            request->VAR); \
+        request_ctx->VAR = request->VAR; \
+    }
+
+
 typedef struct
 {
     uint32_t                        chan_list[RADIO_MAX_CHANNELS];

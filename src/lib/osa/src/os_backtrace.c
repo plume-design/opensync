@@ -51,6 +51,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_file_ops.h"
 #include "target.h"
 
+#ifdef WITH_LIBGCC_BACKTRACE
 
 #define MODULE_ID  LOG_MODULE_ID_COMMON
 
@@ -58,13 +59,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * Stack-trace functions, mostly inspired from libubacktrace
  */
 static void                     backtrace_sig_crash(int signum);
-static bool                     backtrace_resolve(void);
 static _Unwind_Reason_Code      backtrace_handle(struct _Unwind_Context *uc, void *ctx);
 static backtrace_func_t         backtrace_dump_cbk;
-
-static _Unwind_Reason_Code    (*unwind_backtrace)(_Unwind_Trace_Fn, void *) = NULL;
-static _Unwind_Ptr            (*unwind_getip)(struct _Unwind_Context *)     = NULL;
-static void                    *unwind_dlh = NULL;
 
 static FILE                     *fp = NULL;
 
@@ -133,7 +129,7 @@ static void crash_print(char *fmt, ...)
         fprintf(fp, "%s\n", buf);
     }
 
-    LOG(ERR, "%s\n", buf);
+    LOG(ERR, "%s", buf);
     va_end(args);
 }
 
@@ -146,17 +142,17 @@ static void backtrace_dump_generic(btrace_type btrace)
         fp = os_file_open(BTRACE_DUMP_PATH, "crashed");
     }
 
-    crash_print("====================== STACK TRACE =================================\n");
-    crash_print("FRAME %16s: %24s %-16s\n", "ADDR", "FUNCTION", "OBJECT");
+    crash_print("====================== STACK TRACE =================================");
+    crash_print("FRAME %16s: %24s %-16s", "ADDR", "FUNCTION", "OBJECT");
     crash_print("--------------------------------------------------------------------");
 
     di.frame_no = 0;
     di.addr_info[0] = '\0';
     backtrace(backtrace_dump_cbk, &di);
 
-    crash_print("\n====================================================================");
-    crash_print("Note: Use the following command line to get a full trace: ");
-    crash_print("addr2line -e DEBUG_BINARY -ifp %s ", di.addr_info);
+    crash_print("====================================================================");
+    crash_print("Note: Use the following command line to get a full trace:");
+    crash_print("addr2line -e DEBUG_BINARY -ifp %s", di.addr_info);
 
     if (btrace != BTRACE_LOG_ONLY) {
         os_file_close(fp);
@@ -174,7 +170,7 @@ bool backtrace_dump_cbk(void *ctx, void *addr, const char *func, const char *obj
     struct backtrace_dump_info *di = ctx;
     char addr_str[64];
 
-    crash_print("%3d > %16p: %24s %-16s\n", di->frame_no++, addr, func, obj);
+    crash_print("%3d > %16p: %24s %-16s", di->frame_no++, addr, func, obj);
 
     snprintf(addr_str, sizeof(addr_str), "%p ", addr);
     strlcat(di->addr_info, addr_str, sizeof(di->addr_info));
@@ -196,15 +192,10 @@ bool backtrace(backtrace_func_t *func, void *ctx)
 {
     struct backtrace_func_args args;
 
-    if (!backtrace_resolve())
-    {
-        return false;
-    }
-
     args.handler = func;
     args.ctx     = ctx;
 
-    unwind_backtrace(backtrace_handle, &args);
+    _Unwind_Backtrace(backtrace_handle, &args);
 
     return true;
 }
@@ -227,7 +218,7 @@ _Unwind_Reason_Code backtrace_handle(struct _Unwind_Context *uc, void *ctx)
     if (args->handler == NULL) return _URC_END_OF_STACK;
 
     /* Extract the frame address */
-    addr = (void *)unwind_getip(uc);
+    addr = (void*) _Unwind_GetIP(uc);
     if (addr == NULL)
     {
         /* End of stack, return */
@@ -251,48 +242,21 @@ _Unwind_Reason_Code backtrace_handle(struct _Unwind_Context *uc, void *ctx)
     return _URC_NO_REASON;
 }
 
-/**
- * Resolve unwind symbols from libgcc_s
- */
-bool backtrace_resolve(void)
+#else
+
+void backtrace_init(void)
 {
-    if (unwind_dlh != NULL)
-    {
-        return true;
-    }
+    return;
+}
 
-    unwind_dlh = dlopen("libgcc_s.so.1", RTLD_LAZY);
-    if (unwind_dlh == NULL)
-    {
-        LOG(ERR, "Error opening libgcc_s.so.1\n");
-        goto error;
-    }
+void backtrace_dump(void)
+{
+    return;
+}
 
-    unwind_backtrace = dlsym(unwind_dlh, "_Unwind_Backtrace");
-    if (unwind_backtrace == NULL)
-    {
-        LOG(ERR, "Error resolving unwind_backtrace.\n");
-        goto error;
-    }
-
-    unwind_getip = dlsym(unwind_dlh, "_Unwind_GetIP");
-    if (unwind_getip == NULL)
-    {
-        LOG(ERR, "Error resolving unwind_getip.\n");
-        goto error;
-    }
-
-    return true;
-
-error:
-    if (unwind_dlh != NULL)
-    {
-        unwind_backtrace = NULL;
-        unwind_getip     = NULL;
-
-        dlclose(unwind_dlh);
-    }
-
+bool backtrace(backtrace_func_t *, void *)
+{
     return false;
 }
 
+#endif /* WITH_LIBGCC_BACKTRACE */

@@ -439,8 +439,6 @@ bool sm_is_radio_config_changed (
         radio_entry_t              *old_cfg,
         radio_entry_t              *new_cfg)
 {
-    int32_t                         is_changed = 0;
-
     if (old_cfg->chan != new_cfg->chan)
     {
         LOG(DEBUG,
@@ -448,7 +446,7 @@ bool sm_is_radio_config_changed (
                 radio_get_name_from_cfg(new_cfg),
                 old_cfg->chan,
                 new_cfg->chan);
-        is_changed = 1;
+        return true;
     }
 
     if (strcmp(old_cfg->phy_name, new_cfg->phy_name))
@@ -458,7 +456,7 @@ bool sm_is_radio_config_changed (
                 radio_get_name_from_cfg(new_cfg),
                 old_cfg->phy_name,
                 new_cfg->phy_name);
-        is_changed = 1;
+        return true;
     }
 
     if (strcmp(old_cfg->if_name, new_cfg->if_name))
@@ -468,10 +466,10 @@ bool sm_is_radio_config_changed (
                 radio_get_name_from_cfg(new_cfg),
                 old_cfg->if_name,
                 new_cfg->if_name);
-        is_changed = 1;
+        return true;
     }
 
-    return is_changed;
+    return false;
 }
 
 static
@@ -519,14 +517,10 @@ void sm_radio_cfg_update(void)
         radio_cfg.chan = radio->schema.channel;
 
         /* Radio physical name */
-        strlcpy(radio_cfg.phy_name,
-                radio->schema.if_name,
-                sizeof(radio_cfg.phy_name));
+        STRSCPY(radio_cfg.phy_name, radio->schema.if_name);
 
         /* Country code */
-        strlcpy(radio_cfg.cntry_code,
-                radio->schema.country,
-                sizeof(radio_cfg.cntry_code));
+        STRSCPY(radio_cfg.cntry_code, radio->schema.country);
 
         /* Channel width and HT mode */
         if (strcmp(radio->schema.ht_mode, "HT20") == 0) {
@@ -634,9 +628,7 @@ void sm_radio_cfg_update(void)
                 }
 
                 /* Radio VIF/VAP interface name */
-                strlcpy(radio_cfg.if_name,
-                        vif->schema.if_name,
-                        sizeof(radio_cfg.if_name));
+                STRSCPY(radio_cfg.if_name, vif->schema.if_name);
 
                 /* Enable fast scanning on all ap interfaces */
                 sm_radio_config_enable_fast_scan(&radio_cfg);
@@ -663,9 +655,9 @@ void sm_radio_cfg_update(void)
          */
         if(    is_changed
             && radio->config.type
-            && radio->config.chan
-            && strlen(radio->config.if_name)
-            && strlen(radio->config.phy_name)) {
+            && (radio->config.chan != 0)
+            && (radio->config.if_name[0] != '\0')
+            && (radio->config.phy_name[0] != '\0')) {
             sm_neighbor_report_radio_change(&radio->config);
             sm_survey_report_radio_change(&radio->config);
             sm_client_report_radio_change(&radio->config);

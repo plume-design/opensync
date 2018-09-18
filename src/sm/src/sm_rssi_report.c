@@ -118,7 +118,7 @@ sm_rssi_ctx_t *sm_rssi_ctx_get (
         /* The stats entry has per band (type) and phy_name context */
         if (radio_cfg->type == radio_entry->type)
         {
-            LOGT("Fetced %s rssi reporting context",
+            LOGT("Fetched %s rssi reporting context",
                  radio_get_name_from_cfg(radio_entry));
             return rssi_ctx;
         }
@@ -505,7 +505,7 @@ bool sm_rssi_report_send(
             report_entry->rx_ppdus = record_entry->rx_ppdus;
             report_entry->tx_ppdus = record_entry->tx_ppdus;
 
-            LOGT("Sending %s ppdus (rx %llu tx %llu)for "MAC_ADDRESS_FORMAT,
+            LOGT("Sending %s ppdus (rx %"PRIu64" tx %"PRIu64")for "MAC_ADDRESS_FORMAT,
                  radio_get_name_from_cfg(radio_cfg_ctx),
                  report_entry->rx_ppdus,
                  report_entry->tx_ppdus,
@@ -719,7 +719,7 @@ bool sm_rssi_report_request(
     REQUEST_PARAM_UPDATE("rssi", reporting_interval, "%d");
     REQUEST_PARAM_UPDATE("rssi", sampling_interval, "%d");
     REQUEST_PARAM_UPDATE("rssi", mac_filter, "%d");
-    REQUEST_PARAM_UPDATE("rssi", reporting_timestamp, "%lld");
+    REQUEST_PARAM_UPDATE("rssi", reporting_timestamp, "%"PRIu64"");
 
     status =
         sm_rssi_stats_process (
@@ -831,7 +831,7 @@ bool sm_rssi_stats_results_update(
     record_entry->rx_ppdus += rx_ppdus;
     record_entry->tx_ppdus += tx_ppdus;
 
-    LOGT("Updating %s rssi %d ppdus (rx %llu tx %llu)for "MAC_ADDRESS_FORMAT,
+    LOGT("Updating %s rssi %d ppdus (rx %"PRIu64" tx %"PRIu64")for "MAC_ADDRESS_FORMAT,
          radio_get_name_from_cfg(radio_cfg),
          rssi_entry->rssi,
          rx_ppdus,

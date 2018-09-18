@@ -696,6 +696,14 @@ json_t * ovsdb_tran_cond(ovsdb_col_t col_type,
             jval = ovsdb_tran_uuid_json((char *)value);
             break;
 
+        case OCLM_BOOL:
+            jval = json_boolean((bool *)value);
+            break;
+
+        case OCLM_INT:
+            jval = json_integer(*(json_int_t *) value);
+            break;
+
         default:
             assert(!"Invalid col_type passed to ovsdb_tran_cond()");
 
@@ -743,7 +751,7 @@ bool ovsdb_tran_comment(json_t *js_array, ovsdb_tro_t oper, json_t *where)
 
     if (ovsdb_comment == NULL) return true;
 
-    strlcpy(comment, ovsdb_comment, sizeof(comment));
+    STRSCPY(comment, ovsdb_comment);
 
     switch (oper)
     {
@@ -767,8 +775,8 @@ bool ovsdb_tran_comment(json_t *js_array, ovsdb_tro_t oper, json_t *where)
             return true;
     }
 
-    strlcat(comment, " - ", sizeof(comment));
-    strlcat(comment, op, sizeof(comment));
+    strscat(comment, " - ", sizeof(comment));
+    strscat(comment, op, sizeof(comment));
 
     /* Collapse the where 2-dimensional array to a string */
     if (json_is_array(where))
@@ -780,11 +788,11 @@ bool ovsdb_tran_comment(json_t *js_array, ovsdb_tro_t oper, json_t *where)
             json_t *js = json_array_get(where, ii);
             size_t ij;
 
-            strlcat(comment, ", ", sizeof(comment));
+            strscat(comment, ", ", sizeof(comment));
 
             if (!json_is_array(js))
             {
-                strlcat(comment, "{uknown}", sizeof(comment));
+                strscat(comment, "{uknown}", sizeof(comment));
                 continue;
             }
 
@@ -794,11 +802,11 @@ bool ovsdb_tran_comment(json_t *js_array, ovsdb_tro_t oper, json_t *where)
 
                 if (str == NULL)
                 {
-                    strlcat(comment, "<null>", sizeof(comment));
+                    strscat(comment, "<null>", sizeof(comment));
                 }
                 else
                 {
-                    strlcat(comment, str, sizeof(comment));
+                    strscat(comment, str, sizeof(comment));
                 }
             }
         }

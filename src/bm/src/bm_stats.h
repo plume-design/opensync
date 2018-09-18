@@ -122,6 +122,8 @@ void    bm_stats_add_event_to_report(
 void    bm_stats_remove_client_from_report( bm_client_t *client );
 int     bm_stats_get_stats_report_interval( void );
 
+void    bm_stats_map_radio_type(bsal_band_t band, const char *ifname);
+
 /*****************************************************************************
  * RSSI BM STATS
  *****************************************************************************/

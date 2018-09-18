@@ -38,6 +38,12 @@ typedef struct
     uint64_t                        timestamp_ms;
 } dpp_survey_info_t;
 
+#define DPP_TARGET_SURVEY_RECORD_COMMON_STRUCT \
+    struct { \
+        ds_dlist_node_t node; \
+        dpp_survey_info_t info; \
+    }
+
 typedef struct
 {
     dpp_survey_info_t               info;

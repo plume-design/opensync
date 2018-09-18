@@ -27,6 +27,7 @@ TOP_SDK                     := ../sdk
 DEFAULT_IMAGE_TYPE          := squashfs
 DEFAULT_TARGET              := native
 INSTALL_PREFIX              ?= /usr/plume
+ROOTFS_COMPONENTS           ?= common target/$(TARGET) $(ROOTFS_PROFILE_COMPONENTS)
 
 # Build features
 CFG_DEFINES :=
@@ -51,3 +52,30 @@ BUILD_CAPACITY_QUEUE_STATS  ?= n
 BUILD_CLIENT_NICKNAME       ?= n
 # specifies whether client freeze support is built or not
 BUILD_CLIENT_FREEZE         ?= n
+# remote mqtt logging
+BUILD_REMOTE_LOG            ?= y
+# backtrace based on libgcc_s
+BUILD_WITH_LIBGCC_BACKTRACE ?= y
+
+
+# Default shell commands and flags
+
+MAKEFLAGS := --no-print-directory
+
+CP       = cp
+MKDIR    = mkdir -p
+DIRNAME  = dirname
+CAT      = cat
+SED      = sed
+MV       = mv -f
+RM       = rm -f
+CHMOD    = chmod
+INSTALL  = install -D
+TAR      = tar
+GREP     = grep
+
+SRCEXT   = cpp
+SRCEXT.c = c
+DEPEXT   = d
+OBJEXT   = o
+

@@ -98,15 +98,15 @@ void lm_trigger_modules()
     lm_update_logging_state_file();
 }
 
-void callback_AW_LM_Config(ovsdb_update_monitor_t *mon, void *record)
+void callback_AW_LM_Config(ovsdb_update_monitor_t *mon,
+        struct schema_AW_LM_Config *old_rec,
+        struct schema_AW_LM_Config *config)
 {
-    struct schema_AW_LM_Config *config = record;
-
     if (mon->mon_type == OVSDB_UPDATE_MODIFY)
     {
         // Update new upload location and token
-        STRLCPY(g_state.config.upload_token,    config->upload_token);
-        STRLCPY(g_state.config.upload_location, config->upload_location);
+        STRSCPY(g_state.config.upload_token,    config->upload_token);
+        STRSCPY(g_state.config.upload_location, config->upload_location);
 
         // Notify other modules to dump their data
         lm_trigger_modules();
@@ -166,17 +166,25 @@ void lm_update_logging_state_file()
     }
 
     // Dump created JSON to file
-    if (json_dump_file(loggers_json, g_state.log_state_file, JSON_INDENT(1)))
+    // first output to a tmp file then move over
+    // this prevents double file change events with first event being an empty file
+    char tmp_filename[256];
+    snprintf(tmp_filename, sizeof(tmp_filename), "%s.tmp", g_state.log_state_file);
+    if (json_dump_file(loggers_json, tmp_filename, JSON_INDENT(1)))
     {
-        LOGE("Failed to dump loggers state to file %s",
-             g_state.log_state_file);
+        LOGE("Failed to dump loggers state to file %s", tmp_filename);
+    }
+    if (rename(tmp_filename, g_state.log_state_file)) {
+        LOGE("Failed rename %s -> %s", tmp_filename, g_state.log_state_file);
     }
 
     json_decref(loggers_json);
 }
 
-void callback_AW_Debug(ovsdb_update_monitor_t *mon, void *record,
-                       ovsdb_cache_row_t *row)
+void callback_AW_Debug(ovsdb_update_monitor_t *mon,
+        struct schema_AW_Debug *old_rec,
+        struct schema_AW_Debug *record,
+        ovsdb_cache_row_t *row)
 {
     if (mon->mon_type == OVSDB_UPDATE_MODIFY ||
         mon->mon_type == OVSDB_UPDATE_NEW ||
@@ -191,8 +199,8 @@ bool lm_ovsdb_set_severity(const char *logger_name, const char *severity)
     struct schema_AW_Debug aw_debug;
 
     MEMZERO(aw_debug);
-    STRLCPY(aw_debug.name, logger_name);
-    STRLCPY(aw_debug.log_severity, severity);
+    STRSCPY(aw_debug.name, logger_name);
+    STRSCPY(aw_debug.log_severity, severity);
 
     if (!ovsdb_table_upsert_simple(&table_AW_Debug,
                 SCHEMA_COLUMN(AW_Debug, name),
@@ -250,10 +258,10 @@ int lm_ovsdb_init_AW_LM_Config_table()
          "(Init OvS.AW_LM_Config table)");
 
     MEMZERO(aw_lm_config);
-    STRLCPY(aw_lm_config.name,            LM_CONFIG_DUMMY_NAME);
-    STRLCPY(aw_lm_config.periodicity,     LM_CONFIG_DUMMY_PERIODICITY);
-    STRLCPY(aw_lm_config.upload_token,    LM_CONFIG_DUMMY_UPLOAD_TOKEN);
-    STRLCPY(aw_lm_config.upload_location, LM_CONFIG_DUMMY_UPLOAD_LOCATION);
+    STRSCPY(aw_lm_config.name,            LM_CONFIG_DUMMY_NAME);
+    STRSCPY(aw_lm_config.periodicity,     LM_CONFIG_DUMMY_PERIODICITY);
+    STRSCPY(aw_lm_config.upload_token,    LM_CONFIG_DUMMY_UPLOAD_TOKEN);
+    STRSCPY(aw_lm_config.upload_location, LM_CONFIG_DUMMY_UPLOAD_LOCATION);
     aw_lm_config.periodicity_exists       = true;
     aw_lm_config.upload_token_exists      = true;
     aw_lm_config.upload_location_exists   = true;

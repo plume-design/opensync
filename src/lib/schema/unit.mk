@@ -69,7 +69,7 @@ SCHEMA_CFLAGS := -Isrc/lib/pjs/inc $(UNIT_CFLAGS) -I $(UNIT_BUILD)
 SCHEMA_PRE_INC := -imacros stddef.h -imacros stdbool.h -imacros string.h -imacros jansson.h
 $(UNIT_BUILD)/schema_pre.h: $(UNIT_BUILD)/schema_gen.h
 	$(NQ) " $(call color_generate,generate)[$(call COLOR_BOLD,schema)] $@"
-	$(Q) $(CC) -E -P $(SDK_INCLUDES) $(SCHEMA_CFLAGS) $(SCHEMA_PRE_INC) $(SCHEMA_H) -o $@
+	$(Q) $(CC) -E -P $(INCLUDES) $(SDK_INCLUDES) $(SCHEMA_CFLAGS) $(SCHEMA_PRE_INC) $(SCHEMA_H) -o $@
 	$(Q) sed -i '/^ *$$/d;s/;/;\n/g;s/{/\n{\n/g' $@
 #	$(Q) if which clang-format >/dev/null 2>&1; then clang-format -style=WebKit -i $@; fi
 

@@ -118,6 +118,7 @@ struct ovsdb_update_monitor_s
     const char             *mon_uuid;           /* UUID of the modified ROW */
     json_t                 *mon_json_new;       /* JSON message containing the update */
     json_t                 *mon_json_old;       /* JSON message containing old data */
+    void                   *mon_old_rec;
 };
 
 /*
@@ -141,5 +142,7 @@ extern bool ovsdb_update_monitor(
         int mon_flags);
 
 bool ovsdb_update_changed(ovsdb_update_monitor_t *self, char *field);
+
+char* ovsdb_update_type_to_str(ovsdb_update_type_t update_type);
 
 #endif /* OVSDB_UPDATE_H_INCLUDED */

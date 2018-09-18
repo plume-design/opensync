@@ -76,6 +76,19 @@ enum BSEventType {
     CLIENT_STEERING_FAILED                  = 11;
     AUTH_BLOCK                              = 12;
     CLIENT_KICKED                           = 13;
+    CLIENT_BS_BTM                           = 14;
+    CLIENT_STICKY_BTM                       = 15;
+    CLIENT_BTM                              = 16;
+    CLIENT_CAPABILITIES                     = 17;
+    CLIENT_BS_BTM_RETRY                     = 18;
+    CLIENT_STICKY_BTM_RETRY                 = 19;
+    CLIENT_BTM_RETRY                        = 20;
+    CLIENT_RRM_BCN_RPT                      = 21;
+    CLIENT_BS_KICK                          = 22;
+    CLIENT_STICKY_KICK                      = 23;
+    CLIENT_SPECULATIVE_KICK                 = 24;
+    CLIENT_DIRECTED_KICK                    = 25;
+    CLIENT_GHOST_DEVICE_KICK                = 26;
 }
 
 enum DisconnectSrc {
@@ -290,18 +303,29 @@ message Capacity {
 ////////////////////////////////////////////////////////////////////////////////
 message Device {
     message LoadAvg {
-        optional double     one             = 1; 
-        optional double     five            = 2; 
-        optional double     fifteen         = 3; 
+        optional double     one                    = 1; 
+        optional double     five                   = 2; 
+        optional double     fifteen                = 3; 
     }
     message RadioTemp {
-        optional RadioBandType  band        = 1;
-        optional int32          value       = 2;
+        optional RadioBandType  band               = 1;
+        optional int32          value              = 2;
     }
-    optional LoadAvg        load            = 1;
-    repeated RadioTemp      radio_temp      = 2;
-    optional uint64         timestamp_ms    = 3;
-    optional uint32         uptime          = 4;
+    optional LoadAvg        load                   = 1;
+    repeated RadioTemp      radio_temp             = 2;
+    optional uint64         timestamp_ms           = 3;
+    optional uint32         uptime                 = 4;
+    message Thermal {
+        message RadioTxChainMask{
+            optional RadioBandType band            = 1;
+            optional uint32 value                  = 2;
+        }
+        repeated RadioTxChainMask txchainmask      = 1;
+        optional uint32           fan_rpm          = 2;
+        optional uint64           timestamp_ms     = 3;
+    }
+    repeated Thermal       thermal_stats           = 5;
+
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -313,42 +337,60 @@ message Device {
 ////////////////////////////////////////////////////////////////////////////////
 message BSClient {
     message BSEvent {
-        required BSEventType    type                    = 1;
-        required uint32         offset_ms               = 2;
-        optional uint32         rssi                    = 3;
-        optional bool           probe_bcast             = 4;
-        optional bool           probe_blocked           = 5;
-        optional DisconnectSrc  disconnect_src          = 6;
-        optional DisconnectType disconnect_type         = 7;
-        optional uint32         disconnect_reason       = 8;
-        optional bool           backoff_enabled         = 9;
-        optional bool           active                  = 10;
-        optional bool           rejected                = 11;
+        required BSEventType    type                        = 1;
+        required uint32         offset_ms                   = 2;
+        optional uint32         rssi                        = 3;
+        optional bool           probe_bcast                 = 4;
+        optional bool           probe_blocked               = 5;
+        optional DisconnectSrc  disconnect_src              = 6;
+        optional DisconnectType disconnect_type             = 7;
+        optional uint32         disconnect_reason           = 8;
+        optional bool           backoff_enabled             = 9;
+        optional bool           active                      = 10;
+        optional bool           rejected                    = 11;
+        optional bool           is_BTM_supported            = 12;
+        optional bool           is_RRM_supported            = 13;
+        optional uint32         max_chwidth                 = 14;
+        optional uint32         max_streams                 = 15;
+        optional uint32         phy_mode                    = 16;
+        optional uint32         max_mcs                     = 17;
+        optional uint32         max_txpower                 = 18;
+        optional bool           is_static_smps              = 19;
+        optional bool           is_mu_mimo_supported        = 20;
+        optional bool           band_cap_2G                 = 21;
+        optional bool           band_cap_5G                 = 22;
+        optional bool           rrm_caps_link_meas          = 23;
+        optional bool           rrm_caps_neigh_rpt          = 24;
+        optional bool           rrm_caps_bcn_rpt_passive    = 25;
+        optional bool           rrm_caps_bcn_rpt_active     = 26;
+        optional bool           rrm_caps_bcn_rpt_table      = 27;
+        optional bool           rrm_caps_lci_meas           = 28;
+        optional bool           rrm_caps_ftm_range_rpt      = 29;
     }
     message BSBandReport {
-        required RadioBandType  band                    = 1;
-        optional bool           connected               = 2;
-        optional uint32         rejects                 = 3;
-        optional uint32         connects                = 4;
-        optional uint32         disconnects             = 5;
-        optional uint32         activity_changes        = 6;
-        optional uint32         steering_success_cnt    = 7;
-        optional uint32         steering_fail_cnt       = 8;
-        optional uint32         steering_kick_cnt       = 9;
-        optional uint32         sticky_kick_cnt         = 10;
-        optional uint32         probe_bcast_cnt         = 11;
-        optional uint32         probe_bcast_blocked     = 12;
-        optional uint32         probe_direct_cnt        = 13;
-        optional uint32         probe_direct_blocked    = 14;
-        repeated BSEvent        event_list              = 15;
+        required RadioBandType  band                        = 1;
+        optional bool           connected                   = 2;
+        optional uint32         rejects                     = 3;
+        optional uint32         connects                    = 4;
+        optional uint32         disconnects                 = 5;
+        optional uint32         activity_changes            = 6;
+        optional uint32         steering_success_cnt        = 7;
+        optional uint32         steering_fail_cnt           = 8;
+        optional uint32         steering_kick_cnt           = 9;
+        optional uint32         sticky_kick_cnt             = 10;
+        optional uint32         probe_bcast_cnt             = 11;
+        optional uint32         probe_bcast_blocked         = 12;
+        optional uint32         probe_direct_cnt            = 13;
+        optional uint32         probe_direct_blocked        = 14;
+        repeated BSEvent        event_list                  = 15;
     }
-    required string             mac_address             = 1;
-    repeated BSBandReport       bs_band_report          = 2;
+    required string             mac_address                 = 1;
+    repeated BSBandReport       bs_band_report              = 2;
 }
 
 message BSReport {
-    required uint64             timestamp_ms            = 1;
-    repeated BSClient           clients                 = 2;
+    required uint64             timestamp_ms                = 1;
+    repeated BSClient           clients                     = 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -395,7 +437,7 @@ message Report {
     repeated Neighbor       neighbors       = 4;
     repeated ClientReport   clients         = 5;
     repeated Device         device          = 6;
-    optional BSReport       bs_report       = 7;
+    repeated BSReport       bs_report       = 7;
     repeated RssiReport     rssi_report     = 8;
 }
 

@@ -119,7 +119,7 @@ bm_stats_rssi_ctx_t *bm_stats_rssi_ctx_get (
         /* The stats entry has per band (type) and phy_name context */
         if (radio_cfg->type == radio_entry->type)
         {
-            LOGT("Fetced %s rssi reporting context",
+            LOGT("Fetched %s rssi reporting context",
                  radio_get_name_from_cfg(radio_entry));
             return rssi_ctx;
         }
@@ -336,7 +336,7 @@ bool bm_stats_rssi_report_calculate_raw(
             request_ctx->reporting_timestamp - rssi_ctx->report_ts +
             rssi_entry->timestamp_ms;
 
-        LOGD("Sending %s raw rssi %d for "MAC_ADDRESS_FORMAT,
+        LOGT("Sending %s raw rssi %d for "MAC_ADDRESS_FORMAT,
              radio_get_name_from_cfg(radio_cfg_ctx),
              rssi->rssi,
              MAC_ADDRESS_PRINT(record_entry->mac));
@@ -384,7 +384,7 @@ bool bm_stats_rssi_report_calculate_average (
     /* Calculate average from sum */
     rssi->avg = rssi->avg / rssi->num;
 
-    LOGD("Sending %s average rssi %d (min %d, max %d, num %d) for "MAC_ADDRESS_FORMAT,
+    LOGT("Sending %s average rssi %d (min %d, max %d, num %d) for "MAC_ADDRESS_FORMAT,
          radio_get_name_from_cfg(radio_cfg_ctx),
          rssi->avg,
          rssi->min,
@@ -683,6 +683,7 @@ bool bm_stats_rssi_report_request(
     REQUEST_PARAM_UPDATE("rssi", reporting_interval, "%d");
     REQUEST_PARAM_UPDATE("rssi", sampling_interval, "%d");
     REQUEST_PARAM_UPDATE("rssi", reporting_timestamp, "%lld");
+    strcpy(request_ctx->radio_cfg.phy_name, request->radio_cfg.phy_name);
 
     status =
         bm_stats_rssi_stats_process (

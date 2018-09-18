@@ -71,36 +71,41 @@ nm2_mac_learning_update(struct schema_OVS_MAC_Learning *omac, bool oper_status)
         return true;
     }
 
-    LOGI("Updating MAC learning '%s'", omac->hwaddr);
+    LOGT("Updating MAC learning '%s'", omac->hwaddr);
 
-    if (oper_status == false)  {
+    if (oper_status == false)
+    {
         where = ovsdb_tran_cond(OCLM_STR, "hwaddr", OFUNC_EQ, str_tolower(omac->hwaddr));
         ret = ovsdb_sync_delete_where(OVSDB_MAC_TABLE, where);
-        if (!ret) {
+        if (!ret)
+        {
             LOGE("Updating MAC learning %s (Failed to remove entry)",
-                omac->hwaddr);
+                        omac->hwaddr);
             return false;
         }
-        LOGN("Removed MAC learning '%s' with '%s' '%s'",
-             omac->hwaddr, omac->brname, omac->ifname);
+        LOGD("Removed MAC learning '%s' with '%s' '%s'",
+                        omac->hwaddr, omac->brname, omac->ifname);
 
     }
-    else {
+    else
+    {
         where = ovsdb_tran_cond(OCLM_STR, "hwaddr", OFUNC_EQ, str_tolower(omac->hwaddr));
         row   = schema_OVS_MAC_Learning_to_json(omac, perr);
         ret = ovsdb_sync_upsert_where(OVSDB_MAC_TABLE, where, row, NULL);
-        if (!ret) {
+        if (!ret)
+        {
             LOGE("Updating MAC learning %s (Failed to insert entry)",
-                omac->hwaddr);
+                        omac->hwaddr);
             return false;
         }
-        LOGN("Updated MAC learning '%s' with '%s' '%s'",
-             omac->hwaddr, omac->brname, omac->ifname);
+        LOGD("Updated MAC learning '%s' with '%s' '%s'",
+                        omac->hwaddr, omac->brname, omac->ifname);
 
     }
 
     return true;
 }
+
 
 /******************************************************************************
  *  PUBLIC definitions
@@ -112,7 +117,8 @@ nm2_mac_learning_init(void)
 
     /* Register to MAC learning changed ... */
     ret = target_mac_learning_register(nm2_mac_learning_update);
-    if (false == ret) {
+    if (false == ret)
+    {
         return false;
     }
 

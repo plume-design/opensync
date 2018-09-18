@@ -202,9 +202,9 @@ ovsdb_col_t;
 /* API */
 bool ovsdb_init_loop(struct ev_loop *loop, const char *name);
 bool ovsdb_init(const char *name);
+bool ovsdb_ready(const char *name);
 bool ovsdb_stop_loop(struct ev_loop *loop);
 bool ovsdb_stop(void);
-
 
 /*
  * This function allows user to send 'raw' json request
