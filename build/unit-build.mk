@@ -213,7 +213,7 @@ $(UNIT_BUILD)/.target: $(LIBDIR)/lib$(UNIT_NAME).so
 
 $(LIBDIR)/lib$(UNIT_NAME).so: $(UNIT_DEPS) $(UNIT_PRE) $(UNIT_OBJ) $(call UNIT_MARK_FILES,$(UNIT_DEPS)) $(UNIT_OBJ)
 	$$(NQ) " $(call color_link,link)    [$(call COLOR_BOLD,$(UNIT_NAME))] $$@"
-	$$(Q)$$(CC) $(UNIT_OBJ) -L$(LIBDIR) -shared $$(LDFLAGS) $$(foreach DEP,$$(sort $$(DEPS_$(UNIT_PATH))),$$(LDFLAGS_$$(DEP))) $(UNIT_LDFLAGS) -o $$@
+	$$(Q)$$(CC) $(UNIT_OBJ) -L$(LIBDIR) -shared -Wl,-soname=lib$(UNIT_NAME).so $$(LDFLAGS) $$(foreach DEP,$$(sort $$(DEPS_$(UNIT_PATH))),$$(LDFLAGS_$$(DEP))) $(UNIT_LDFLAGS) -o $$@
 
 $(UNIT_PATH)/install: $(UNIT_BUILD)/.target
 	$$(call app_install,$(LIBDIR)/lib$(UNIT_NAME).so,$(UNIT_DIR))
