@@ -50,7 +50,9 @@ typedef struct
 
 typedef char pjs_errmsg_t[128];
 
-typedef bool pjs_sub_from_json_cb_t(void *data, json_t *jsval, pjs_errmsg_t err);
+/* This type must match the functions created by the PJS macro in pjs_from_json.h */
+typedef bool pjs_sub_from_json_cb_t(void *data, json_t *jsval, bool update, pjs_errmsg_t err);
+
 typedef json_t *pjs_sub_to_json_cb_t(void *data, pjs_errmsg_t err);
 
 /*

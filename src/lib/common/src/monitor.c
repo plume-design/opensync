@@ -106,7 +106,7 @@ void mon_start(int argc, char *argv[])
     pid_t   child;
 
     char    old_name[OS_TASK_NAME_SZ];
-    char    new_name[OS_TASK_NAME_SZ];
+    char    new_name[OS_TASK_NAME_SZ + 10]; /* extra chars to hold ".master" or ".slave" suffix */
 
     int     exit_status  = MON_EXIT_RESTART;
     bool    exit_restart = true;
@@ -137,6 +137,7 @@ void mon_start(int argc, char *argv[])
             /* Set child's task name */
             if (*old_name != '\0')
             {
+                /* If (strlen(new_name) >= 15) (ie 16 chars including the null) it will be truncated by task_name_set() */
                 snprintf(new_name, sizeof(new_name), "%s.slave", old_name);
                 task_name_set(new_name);
             }
@@ -152,6 +153,7 @@ void mon_start(int argc, char *argv[])
 
         if (*old_name != '\0')
         {
+            /* If (strlen(new_name) >= 15) (ie 16 chars including the null) it will be truncated by task_name_set() */
             snprintf(new_name, sizeof(new_name), "%s.master", old_name);
             task_name_set(new_name);
         }
