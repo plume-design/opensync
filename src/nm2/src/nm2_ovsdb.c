@@ -81,7 +81,8 @@ void nm2_inet_state_update_cb(
         struct schema_Wifi_Inet_State *istate, schema_filter_t *filter)
 {
     bool  ret;
-    char msg[64];
+    char msg[256];
+
     snprintf(msg, sizeof(msg), "Updating ovsdb inet state %s", istate->if_name);
 
     LOGI("%s", msg);
@@ -103,7 +104,8 @@ void nm2_inet_config_update_cb(
         struct schema_Wifi_Inet_Config *iconf, schema_filter_t *filter)
 {
     bool  ret;
-    char msg[64];
+    char msg[256];
+
     snprintf(msg, sizeof(msg), "Updating ovsdb inet config %s", iconf->if_name);
 
     LOGI("%s", msg);
