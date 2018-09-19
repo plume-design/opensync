@@ -250,7 +250,10 @@ bool ovsmac_scan_br(char *brif)
     }
 
     /* Skip the first line */
-    fgets(buf, sizeof(buf), ovs_appctl);
+    if (fgets(buf, sizeof(buf), ovs_appctl) == NULL)
+    {
+        LOG(ERR, "Error skipping first line of ovs-appctl output");
+    }
 
     while (fgets(buf, sizeof(buf), ovs_appctl) != NULL)
     {
