@@ -213,7 +213,7 @@ $(call UNIT_MAKE_RULES)
 
 $(UNIT_BUILD)/.target: $(LIBDIR)/lib$(UNIT_NAME).so
 
-$(LIBDIR)/lib$(UNIT_NAME).so: $(UNIT_DEPS) $(UNIT_PRE) $(UNIT_OBJ) $(call UNIT_MARK_FILES,$(UNIT_DEPS)) $(UNIT_OBJ)
+$(LIBDIR)/lib$(UNIT_NAME).so: $(UNIT_DEPS) $(UNIT_PRE) $(call UNIT_MARK_FILES,$(UNIT_DEPS)) $(UNIT_OBJ)
 	$$(NQ) " $(call color_link,link)    [$(call COLOR_BOLD,$(UNIT_NAME))] $$@"
 	$$(Q)$$(CC) $(UNIT_OBJ) -L$(LIBDIR) -shared $$(LDFLAGS) $$(foreach DEP,$$(sort $$(DEPS_$(UNIT_PATH))),$$(LDFLAGS_$$(DEP))) $(UNIT_LDFLAGS) -o $$@
 
