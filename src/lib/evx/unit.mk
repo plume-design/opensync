@@ -33,5 +33,24 @@ UNIT_NAME := evx
 # Template type:
 UNIT_TYPE := LIB
 
+ifdef CONFIG_USE_KCONFIG
+ifdef CONFIG_LIBEVX_USE_CARES
+BUILD_HAVE_LIBCARES=y
+endif
+endif
+
+UNIT_CFLAGS += -Isrc/lib/log/inc
+
+UNIT_SRC += src/evx_debounce_call.c
+UNIT_DEPS += src/lib/ds
+UNIT_DEPS += src/lib/const
+
 UNIT_EXPORT_CFLAGS := -I$(UNIT_PATH)/inc
-UNIT_CFLAGS := $(UNIT_EXPORT_CFLAGS)
+
+ifeq ($(BUILD_HAVE_LIBCARES),y)
+UNIT_SRC += src/evx_ares.c
+UNIT_EXPORT_CFLAGS += -DBUILD_HAVE_LIBCARES
+UNIT_EXPORT_LDFLAGS += -lcares
+endif
+
+UNIT_CFLAGS += $(UNIT_EXPORT_CFLAGS)

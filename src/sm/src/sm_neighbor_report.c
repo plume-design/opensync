@@ -270,7 +270,7 @@ bool sm_neighbor_report_send_diff(
     report_diff.scan_type   = scan_type;
     report_diff.report_type = request_ctx->report_type;
 
-    /* Report_timestamp is cloud_timestamp + relative start time offset */
+    /* Report_timestamp is base-timestamp + relative start time offset */
     report_diff.timestamp_ms =
         request_ctx->reporting_timestamp - neighbor_ctx->report_ts +
         get_timestamp();
@@ -453,6 +453,9 @@ clear:
 
     neighbor_ctx->neighbor_qty = 0;
 
+    SM_SANITY_CHECK_TIME(report_ctx->timestamp_ms,
+                         &request_ctx->reporting_timestamp,
+                         &neighbor_ctx->report_ts);
     return true;
 }
 
@@ -476,7 +479,7 @@ bool sm_neighbor_report_send_raw(
     report_ctx->scan_type = scan_type;
     report_ctx->report_type = request_ctx->report_type;
 
-    /* Report_timestamp is cloud_timestamp + relative start time offset */
+    /* Report_timestamp is base-timestamp + relative start time offset */
     report_ctx->timestamp_ms =
         request_ctx->reporting_timestamp - neighbor_ctx->report_ts +
         get_timestamp();
@@ -520,6 +523,10 @@ bool sm_neighbor_report_send_raw(
 
     neighbor_ctx->neighbor_qty = 0;
 
+
+    SM_SANITY_CHECK_TIME(report_ctx->timestamp_ms,
+                         &request_ctx->reporting_timestamp,
+                         &neighbor_ctx->report_ts);
     return true;
 }
 

@@ -214,10 +214,17 @@ void sm_device_report (EV_P_ ev_timer *w, int revents)
         ds_dlist_insert_tail(&report_ctx->temp, temp);
     }
 
-    /* Report_timestamp is cloud_timestamp + relative start time offset */
+    /* Report_timestamp is base-timestamp + relative start time offset */
     report_ctx->timestamp_ms =
         request_ctx->reporting_timestamp - device_ctx->report_ts +
         get_timestamp();
+
+    LOG(INFO,
+        "uptime=%u, mem=%u/%u, cpu=%u",
+        report_ctx->record.uptime,
+        report_ctx->record.mem_util.mem_used,
+        report_ctx->record.mem_util.mem_total,
+        report_ctx->record.cpu_util.cpu_util);
 
     LOG(INFO,
         "Sending device report at '%s'",
@@ -229,6 +236,10 @@ clean:
     /* Clear temperature list */
     sm_device_temp_list_clear(&report_ctx->temp);
     sm_device_thermal_list_clear(&report_ctx->thermal_records);
+
+    SM_SANITY_CHECK_TIME(report_ctx->timestamp_ms,
+                         &request_ctx->reporting_timestamp,
+                         &device_ctx->report_ts);
 }
 
 

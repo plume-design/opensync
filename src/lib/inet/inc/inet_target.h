@@ -56,6 +56,9 @@ extern bool inet_target_mac_learning_register(void *omac_cb);
 extern bool inet_target_dhcp_leased_ip_register(target_dhcp_leased_ip_cb_t *dlip_cb);
 extern bool inet_target_dhcp_rip_set(const char *ifname, struct schema_DHCP_reserved_IP *schema_rip);
 extern bool inet_target_dhcp_rip_del(const char *ifname, struct schema_DHCP_reserved_IP *schema_rip);
+extern bool inet_target_portforward_set(const char *ifname, struct schema_IP_Port_Forward *schema_pf);
+extern bool inet_target_portforward_del(const char *ifname, struct schema_IP_Port_Forward *schema_pf);
+extern bool inet_target_route_state_register(target_route_state_cb_t *rts_cb);
 
 #endif /* INET_TARGET_H_INCLUDED */
 

@@ -598,3 +598,11 @@ int ds_int_cmp(void *a, void *b)
 {
     return (int)((intptr_t)b - (intptr_t)a);
 }
+
+/**
+ * String comparator
+ */
+int ds_str_cmp(void *a, void *b)
+{
+    return strcmp((const char *)a, (const char *)b);
+}

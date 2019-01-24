@@ -27,7 +27,9 @@ KCONFIG_DEFAULT:=kconfig/targets/config_default
 
 # For locally installed kconfiglib using PIP
 export PATH:=${PATH}:${HOME}/.local/bin
-export MENUCONFIG_STYLE:=
+
+ifeq ($(shell tput colors),256)
+export MENUCONFIG_STYLE?=
 MENUCONFIG_STYLE+=list=fg:\#3b396f,bg:\#efefef
 MENUCONFIG_STYLE+=body=fg:\#3b396f,bg:\#ffffff
 MENUCONFIG_STYLE+=selection=fg:\#ffffff,bg:\#b4ad99
@@ -40,7 +42,21 @@ MENUCONFIG_STYLE+=help=path
 MENUCONFIG_STYLE+=separator=frame
 MENUCONFIG_STYLE+=edit=path
 MENUCONFIG_STYLE+=jump-edit=path
-
+else
+export MENUCONFIG_STYLE?=
+MENUCONFIG_STYLE+=list=fg:black,bg:white,bold
+MENUCONFIG_STYLE+=body=fg:magenta,bg:white,bold
+MENUCONFIG_STYLE+=selection=fg:white,bg:black,bold
+MENUCONFIG_STYLE+=path=fg:black,bg:white,bold
+MENUCONFIG_STYLE+=edit=fg:white,bg:magenta,bold
+MENUCONFIG_STYLE+=frame=fg:white,bg:magenta,bold
+MENUCONFIG_STYLE+=inv-list=fg:cyan,bg:white
+MENUCONFIG_STYLE+=inv-selection=fg:cyan,bg:black,bold
+MENUCONFIG_STYLE+=text=list
+MENUCONFIG_STYLE+=help=path
+MENUCONFIG_STYLE+=separator=frame
+MENUCONFIG_STYLE+=jump-edit=path
+endif
 
 ifeq ($(wildcard $(KCONFIG_TARGET)),)
 $(warning $(call COLOR_YELLOW,No kconfig for target $(TARGET).) Using default: $(KCONFIG_DEFAULT))

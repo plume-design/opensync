@@ -37,6 +37,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /***************************************************************************************/
 
+typedef void* bsal_t;
+
 typedef struct {
     bool                    enabled;
     bsal_t                  bsal;
@@ -64,5 +66,6 @@ extern ds_tree_t *      bm_pair_get_tree(void);
 extern bm_pair_t *      bm_pair_find_by_uuid(char *uuid);
 extern bm_pair_t *      bm_pair_find_by_bsal(bsal_t bsal);
 extern bm_pair_t *      bm_pair_find_by_ifname(const char *ifname);
+extern bsal_band_t      bsal_band_find_by_ifname(const char *ifname);
 
 #endif /* __BM_PAIR_H__ */

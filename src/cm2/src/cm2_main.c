@@ -119,7 +119,6 @@ int main(int argc, char ** argv)
     }
 
     cm2_init_capabilities();
-
     cm2_event_init(loop);
 
     if (cm2_ovsdb_init()) {
@@ -132,7 +131,9 @@ int main(int argc, char ** argv)
         cm2_wdt_init(loop);
         cm2_stability_init(loop);
     }
-
+#ifdef BUILD_HAVE_LIBCARES
+    evx_init_ares(g_state.loop, &g_state.eares);
+#endif
     ev_run(loop, 0);
 
     if (cm2_is_extender()) {
@@ -148,7 +149,9 @@ int main(int argc, char ** argv)
         LOGE("Stopping CM "
              "(Failed to stop OVSDB");
     }
-
+#ifdef BUILD_HAVE_LIBCARES
+    evx_stop_ares(&g_state.eares);
+#endif
     ev_default_destroy();
 
     LOGN("Exiting CM");

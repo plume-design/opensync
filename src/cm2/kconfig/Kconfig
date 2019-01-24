@@ -1,0 +1,5 @@
+config PLUME_CM2_DISABLE_DRYRUN_ON_GRE
+    bool "Disable udhcpc dryrun on gre interfaces"
+    default n
+    help
+        Skip running dryrun on gre interfaces.

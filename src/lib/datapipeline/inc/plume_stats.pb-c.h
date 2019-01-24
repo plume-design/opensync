@@ -62,6 +62,10 @@ typedef struct _Sts__Device__LoadAvg Sts__Device__LoadAvg;
 typedef struct _Sts__Device__RadioTemp Sts__Device__RadioTemp;
 typedef struct _Sts__Device__Thermal Sts__Device__Thermal;
 typedef struct _Sts__Device__Thermal__RadioTxChainMask Sts__Device__Thermal__RadioTxChainMask;
+typedef struct _Sts__Device__MemUtil Sts__Device__MemUtil;
+typedef struct _Sts__Device__FsUtil Sts__Device__FsUtil;
+typedef struct _Sts__Device__CpuUtil Sts__Device__CpuUtil;
+typedef struct _Sts__Device__PerProcessUtil Sts__Device__PerProcessUtil;
 typedef struct _Sts__BSClient Sts__BSClient;
 typedef struct _Sts__BSClient__BSEvent Sts__BSClient__BSEvent;
 typedef struct _Sts__BSClient__BSBandReport Sts__BSClient__BSBandReport;
@@ -165,6 +169,11 @@ typedef enum _Sts__ReportType {
   STS__REPORT_TYPE__DIFF = 4
     PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(STS__REPORT_TYPE)
 } Sts__ReportType;
+typedef enum _Sts__FsType {
+  STS__FS_TYPE__FS_TYPE_ROOTFS = 0,
+  STS__FS_TYPE__FS_TYPE_TMPFS = 1
+    PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(STS__FS_TYPE)
+} Sts__FsType;
 typedef enum _Sts__DiffType {
   STS__DIFF_TYPE__ADDED = 0,
   STS__DIFF_TYPE__REMOVED = 1
@@ -656,6 +665,71 @@ struct  _Sts__Device__Thermal
 
 
 /*
+ * Memory utilization: [kB]
+ */
+struct  _Sts__Device__MemUtil
+{
+  ProtobufCMessage base;
+  uint32_t mem_total;
+  uint32_t mem_used;
+  protobuf_c_boolean has_swap_total;
+  uint32_t swap_total;
+  protobuf_c_boolean has_swap_used;
+  uint32_t swap_used;
+};
+#define STS__DEVICE__MEM_UTIL__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&sts__device__mem_util__descriptor) \
+    , 0, 0, 0,0, 0,0 }
+
+
+/*
+ * Filesystem utilization per FS-type: [kB]
+ */
+struct  _Sts__Device__FsUtil
+{
+  ProtobufCMessage base;
+  Sts__FsType fs_type;
+  uint32_t fs_total;
+  uint32_t fs_used;
+};
+#define STS__DEVICE__FS_UTIL__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&sts__device__fs_util__descriptor) \
+    , 0, 0, 0 }
+
+
+/*
+ * CPU utilization: [percent]:
+ */
+struct  _Sts__Device__CpuUtil
+{
+  ProtobufCMessage base;
+  protobuf_c_boolean has_cpu_util;
+  uint32_t cpu_util;
+};
+#define STS__DEVICE__CPU_UTIL__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&sts__device__cpu_util__descriptor) \
+    , 0,0 }
+
+
+/*
+ * Per-process CPU/MEM utilization:
+ */
+struct  _Sts__Device__PerProcessUtil
+{
+  ProtobufCMessage base;
+  uint32_t pid;
+  char *cmd;
+  /*
+   * for cpu: [%CPU] [0..100]; for mem: [kB]  
+   */
+  uint32_t util;
+};
+#define STS__DEVICE__PER_PROCESS_UTIL__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&sts__device__per_process_util__descriptor) \
+    , 0, NULL, 0 }
+
+
+/*
  * //////////////////////////////////////////////////////////////////////////////
  * Device status report
  * //////////////////////////////////////////////////////////////////////////////
@@ -672,10 +746,21 @@ struct  _Sts__Device
   uint32_t uptime;
   size_t n_thermal_stats;
   Sts__Device__Thermal **thermal_stats;
+  Sts__Device__MemUtil *mem_util;
+  size_t n_fs_util;
+  Sts__Device__FsUtil **fs_util;
+  Sts__Device__CpuUtil *cpuutil;
+  /*
+   * top / most CPU/MEM consuming processes:
+   */
+  size_t n_ps_cpu_util;
+  Sts__Device__PerProcessUtil **ps_cpu_util;
+  size_t n_ps_mem_util;
+  Sts__Device__PerProcessUtil **ps_mem_util;
 };
 #define STS__DEVICE__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&sts__device__descriptor) \
-    , NULL, 0,NULL, 0,0, 0,0, 0,NULL }
+    , NULL, 0,NULL, 0,0, 0,0, 0,NULL, NULL, 0,NULL, NULL, 0,NULL, 0,NULL }
 
 
 struct  _Sts__BSClient__BSEvent
@@ -1050,6 +1135,18 @@ void   sts__device__thermal__radio_tx_chain_mask__init
 /* Sts__Device__Thermal methods */
 void   sts__device__thermal__init
                      (Sts__Device__Thermal         *message);
+/* Sts__Device__MemUtil methods */
+void   sts__device__mem_util__init
+                     (Sts__Device__MemUtil         *message);
+/* Sts__Device__FsUtil methods */
+void   sts__device__fs_util__init
+                     (Sts__Device__FsUtil         *message);
+/* Sts__Device__CpuUtil methods */
+void   sts__device__cpu_util__init
+                     (Sts__Device__CpuUtil         *message);
+/* Sts__Device__PerProcessUtil methods */
+void   sts__device__per_process_util__init
+                     (Sts__Device__PerProcessUtil         *message);
 /* Sts__Device methods */
 void   sts__device__init
                      (Sts__Device         *message);
@@ -1235,6 +1332,18 @@ typedef void (*Sts__Device__Thermal__RadioTxChainMask_Closure)
 typedef void (*Sts__Device__Thermal_Closure)
                  (const Sts__Device__Thermal *message,
                   void *closure_data);
+typedef void (*Sts__Device__MemUtil_Closure)
+                 (const Sts__Device__MemUtil *message,
+                  void *closure_data);
+typedef void (*Sts__Device__FsUtil_Closure)
+                 (const Sts__Device__FsUtil *message,
+                  void *closure_data);
+typedef void (*Sts__Device__CpuUtil_Closure)
+                 (const Sts__Device__CpuUtil *message,
+                  void *closure_data);
+typedef void (*Sts__Device__PerProcessUtil_Closure)
+                 (const Sts__Device__PerProcessUtil *message,
+                  void *closure_data);
 typedef void (*Sts__Device_Closure)
                  (const Sts__Device *message,
                   void *closure_data);
@@ -1277,6 +1386,7 @@ extern const ProtobufCEnumDescriptor    sts__bsevent_type__descriptor;
 extern const ProtobufCEnumDescriptor    sts__disconnect_src__descriptor;
 extern const ProtobufCEnumDescriptor    sts__disconnect_type__descriptor;
 extern const ProtobufCEnumDescriptor    sts__report_type__descriptor;
+extern const ProtobufCEnumDescriptor    sts__fs_type__descriptor;
 extern const ProtobufCEnumDescriptor    sts__diff_type__descriptor;
 extern const ProtobufCMessageDescriptor sts__avg_type__descriptor;
 extern const ProtobufCMessageDescriptor sts__neighbor__descriptor;
@@ -1299,6 +1409,10 @@ extern const ProtobufCMessageDescriptor sts__device__load_avg__descriptor;
 extern const ProtobufCMessageDescriptor sts__device__radio_temp__descriptor;
 extern const ProtobufCMessageDescriptor sts__device__thermal__descriptor;
 extern const ProtobufCMessageDescriptor sts__device__thermal__radio_tx_chain_mask__descriptor;
+extern const ProtobufCMessageDescriptor sts__device__mem_util__descriptor;
+extern const ProtobufCMessageDescriptor sts__device__fs_util__descriptor;
+extern const ProtobufCMessageDescriptor sts__device__cpu_util__descriptor;
+extern const ProtobufCMessageDescriptor sts__device__per_process_util__descriptor;
 extern const ProtobufCMessageDescriptor sts__bsclient__descriptor;
 extern const ProtobufCMessageDescriptor sts__bsclient__bsevent__descriptor;
 extern const ProtobufCMessageDescriptor sts__bsclient__bsband_report__descriptor;

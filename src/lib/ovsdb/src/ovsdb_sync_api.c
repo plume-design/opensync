@@ -36,6 +36,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define MODULE_ID LOG_MODULE_ID_OVSDB
 
+#define WHERE_STR_SIZE (128) // length of temp string for debug log
+
 // HELPERS
 
 json_t* ovsdb_where_simple(const char *column, const char *value)
@@ -233,13 +235,14 @@ json_t* ovsdb_sync_select_where(char *table, json_t *where)
     }
     LOG(DEBUG, "query result: %s", json_dumps_static(result, 0));
     jrows = json_object_get(json_array_get(result, 0), "rows");
-    json_incref(jrows);
-    json_decref(result);
     if (!jrows || json_array_size(jrows) < 1)
     {
-        LOG(DEBUG, "%s: no result", __FUNCTION__);
+        LOG(DEBUG, "%s: result no rows", __FUNCTION__);
+        json_decref(result);
         return NULL;
     }
+    json_incref(jrows);
+    json_decref(result);
     LOG(DEBUG, "%s return: %s", __FUNCTION__, json_dumps_static(jrows, 0));
 
     return jrows;
@@ -260,7 +263,9 @@ int ovsdb_sync_get_uuid_and_count(char *table, json_t *where, ovs_uuid_t *uuid)
     json_t *juuid = NULL;
     const char *str_uuid = NULL;
     ovs_uuid_t uuid1;
+    char where_str[WHERE_STR_SIZE];
 
+    json_get_str(where, where_str, sizeof(where_str));
     if (!uuid) uuid = &uuid1;
     // select
     jrows = ovsdb_sync_select_where(table, where);
@@ -269,13 +274,13 @@ int ovsdb_sync_get_uuid_and_count(char *table, json_t *where, ovs_uuid_t *uuid)
     if (count == 0)
     {
         LOG(TRACE, "get uuid %s where '%s': no records found",
-                table, json_dumps_static(where, 0));
+                table, where_str);
         goto out;
     }
     if (count > 1)
     {
         LOG(ERR, "get uuid %s where '%s' unexpected count: %d",
-                table, json_dumps_static(where, 0), count);
+                table, where_str, count);
         goto out;
     }
     // extract uuid
@@ -284,12 +289,12 @@ int ovsdb_sync_get_uuid_and_count(char *table, json_t *where, ovs_uuid_t *uuid)
     if (!juuid || !str_uuid || !*str_uuid)
     {
         LOG(ERR, "get uuid %s where '%s' count: %d no uuid",
-                table, json_dumps_static(where, 0), count);
+                table, where_str, count);
         count = -1; // mark failure
         goto out;
     }
     LOG(TRACE, "get uuid %s where '%s' count: %d uuid: %s",
-            table, json_dumps_static(where, 0), count, str_uuid);
+            table, where_str, count, str_uuid);
 out:
     STRSCPY(uuid->uuid, str_uuid ? str_uuid : "");
     json_decref(jrows);
@@ -352,10 +357,11 @@ int ovsdb_sync_delete_where(char *table, json_t *where)
 int ovsdb_sync_update_where(char *table, json_t *where, json_t *row)
 {
     int rc;
-
     json_t *result = NULL;
+    char where_str[WHERE_STR_SIZE];
 
-    LOG(DEBUG, "Table %s update: %s", table, json_dumps_static(row, 0));
+    json_get_str(where, where_str, sizeof(where_str));
+    LOG(DEBUG, "Table %s where: '%s' update: %s", table, where_str, json_dumps_static(row, 0));
     result = ovsdb_tran_call_s(table, OTR_UPDATE, where, row);
     // successfull result: [{}, {"count": 1}]
     // errors handled by:
@@ -363,8 +369,7 @@ int ovsdb_sync_update_where(char *table, json_t *where, json_t *row)
     if (rc == 0)
     {
         // warn if no match - nothing updated
-        LOG(DEBUG, "OVSDB: Update table '%s' where '%s': no match",
-                table, json_dumps_static(where, 0));
+        LOG(DEBUG, "OVSDB: Update table '%s' where '%s': no match", table, where_str);
     }
 
     return rc;
@@ -383,7 +388,9 @@ int ovsdb_sync_update(char *table, char *column, char *value, json_t *row)
 int ovsdb_sync_update_one_get_uuid(char *table, json_t *where, json_t *row, ovs_uuid_t *uuid)
 {
     int count;
+    char where_str[WHERE_STR_SIZE];
 
+    json_get_str(where, where_str, sizeof(where_str));
     json_incref(where);
     count = ovsdb_sync_get_uuid_and_count(table, where, uuid);
     if (count != 1) {
@@ -396,7 +403,7 @@ int ovsdb_sync_update_one_get_uuid(char *table, json_t *where, json_t *row, ovs_
     {
         // previous select returned 1, count should still be 1
         LOG(ERR, "Table %s update one where '%s' unexpected count: %d",
-            table, json_dumps_static(where, 0), count);
+            table, where_str, count);
     }
     return count;
 }
@@ -407,7 +414,9 @@ int ovsdb_sync_update_one_get_uuid(char *table, json_t *where, json_t *row, ovs_
 bool ovsdb_sync_upsert_where(char *table, json_t *where, json_t *row, ovs_uuid_t *uuid)
 {
     int count;
+    char where_str[WHERE_STR_SIZE];
 
+    json_get_str(where, where_str, sizeof(where_str));
     json_incref(row);
     count = ovsdb_sync_update_one_get_uuid(table, where, row, uuid);
     if (count == 1)
@@ -418,7 +427,7 @@ bool ovsdb_sync_upsert_where(char *table, json_t *where, json_t *row, ovs_uuid_t
     else if (count == 0)
     {
         LOG(TRACE, "upsert %s: update where '%s': no match - performing insert",
-                table, json_dumps_static(where, 0));
+                table, where_str);
         return ovsdb_sync_insert(table, row, uuid);
     }
     else
@@ -529,6 +538,7 @@ bool ovsdb_sync_upsert_with_parent(char *table,
     {
         LOG(ERR, "%s: unexpected count: %d != 0", __FUNCTION__, count);
         json_decref(row);
+        json_decref(parent_where);
         return false;
     }
     // if count == 0 do insert
@@ -543,7 +553,7 @@ int ovsdb_sync_delete_with_parent(char *table, json_t *where,
 {
     json_t *result = NULL;
 
-    LOG(DEBUG, "Table %s delete where %s", table, json_dumps_static(where, 0));
+    LOG(DEBUG, "Table %s delete w/parent where %s", table, json_dumps_static(where, 0));
     result = ovsdb_delete_with_parent_res_s(table, where,
            parent_table, parent_where, parent_column);
     return ovsdb_get_update_result_count(result, table, "delete_w_parent");

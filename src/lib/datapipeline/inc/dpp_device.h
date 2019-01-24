@@ -32,7 +32,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "dpp_types.h"
 
-#define DPP_DEVICE_TX_CHAINMASK_MAX 3
+#define DPP_DEVICE_TX_CHAINMASK_MAX      3
+#define DPP_DEVICE_TOP_MAX               10
+
 
 typedef enum
 {
@@ -42,10 +44,65 @@ typedef enum
     DPP_DEVICE_LOAD_AVG_QTY
 } dpp_device_load_avg_t;
 
+
+/* Memory utilization: [kB]  */
+typedef struct
+{
+    uint32_t mem_total;
+    uint32_t mem_used;
+    uint32_t swap_total;
+    uint32_t swap_used;
+} dpp_device_memutil_t;
+
+
+typedef enum
+{
+    DPP_DEVICE_FS_TYPE_ROOTFS = 0,
+    DPP_DEVICE_FS_TYPE_TMPFS = 1,
+    DPP_DEVICE_FS_TYPE_QTY
+} dpp_device_fs_type_t;
+
+
+/* Filesystem utilization per FS-type: [kB]  */
+typedef struct
+{
+    dpp_device_fs_type_t  fs_type;
+    uint32_t              fs_total;
+    uint32_t              fs_used;
+} dpp_device_fsutil_t;
+
+
+/* CPU utilization: [percent]:  */
+typedef struct
+{
+    uint32_t cpu_util;
+} dpp_device_cpuutil_t;
+
+
+/* Per-process CPU/MEM utilization:  */
+typedef struct
+{
+    uint32_t  pid;
+    char      cmd[64];
+    uint32_t  util;    /* for cpu: [%CPU] [0..100]; for mem: [kB]  */
+} dpp_device_ps_util_t;
+
+
+
 typedef struct
 {
     double                          load[DPP_DEVICE_LOAD_AVG_QTY];
     uint32_t                        uptime;
+
+    dpp_device_memutil_t            mem_util;
+    dpp_device_cpuutil_t            cpu_util;
+    dpp_device_fsutil_t             fs_util[DPP_DEVICE_FS_TYPE_QTY];
+
+
+    dpp_device_ps_util_t            top_cpu[DPP_DEVICE_TOP_MAX];
+    uint32_t                        n_top_cpu;
+    dpp_device_ps_util_t            top_mem[DPP_DEVICE_TOP_MAX];
+    uint32_t                        n_top_mem;
 } dpp_device_record_t;
 
 typedef struct

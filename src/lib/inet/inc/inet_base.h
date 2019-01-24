@@ -32,14 +32,17 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "inet_dhcpc.h"
 #include "inet_dhcps.h"
 #include "inet_fw.h"
+#include "inet_igmp.h"
 #include "inet_upnp.h"
 #include "inet_dns.h"
 #include "inet_dhsnif.h"
+#include "inet_route.h"
 
 #define INET_BASE_SERVICE_LIST(M)   \
     M(INET_BASE_INTERFACE)          \
     M(INET_BASE_FIREWALL)           \
     M(INET_BASE_UPNP)               \
+    M(INET_BASE_IGMP)               \
     M(INET_BASE_NETWORK)            \
     M(INET_BASE_MTU)                \
     M(INET_BASE_SCHEME_NONE)        \
@@ -90,6 +93,9 @@ struct __inet_base
     /* Firewall class */
     inet_fw_t              *in_fw;
 
+    /* IGMP snooping class */
+    inet_igmp_t            *in_igmp;
+
     /* UPnP class */
     inet_upnp_t            *in_upnp;
 
@@ -98,6 +104,9 @@ struct __inet_base
 
     /* DHCP sniffing class */
     inet_dhsnif_t          *in_dhsnif;
+
+    /* Routing table */
+    inet_route_t           *in_route;
 
     int                     in_mtu;
 
@@ -115,6 +124,10 @@ struct __inet_base
     bool                    in_network_enabled;
 
     bool                    in_nat_enabled;
+    bool                    in_igmp_enabled;
+    int                     in_igmp_age;
+    int                     in_igmp_tsize;
+
     enum inet_upnp_mode     in_upnp_mode;
 
     bool                    in_dhcps_enabled;
@@ -177,7 +190,17 @@ extern bool inet_base_gateway_set(inet_t *super, inet_ip4addr_t gwaddr);
  * ===========================================================================
  */
 extern bool inet_base_nat_enable(inet_t *super, bool enable);
+extern bool inet_base_igmp_enable(inet_t *super, bool enable, int iage, int itsize);
 extern bool inet_base_upnp_mode_set(inet_t *super, enum inet_upnp_mode mode);
+
+
+/*
+ * ===========================================================================
+ *  Port forwarding
+ * ===========================================================================
+ */
+extern bool inet_base_portforward_set(inet_t *super, const struct inet_portforward *port_forward);
+extern bool inet_base_portforward_del(inet_t *super, const struct inet_portforward *port_forward);
 
 /*
  * ===========================================================================
@@ -196,7 +219,7 @@ extern bool inet_base_dhcps_enable(inet_t *super, bool enable);
 extern bool inet_base_dhcps_lease_set(inet_t *super, int lease_time_s);
 extern bool inet_base_dhcps_range_set(inet_t *super, inet_ip4addr_t start, inet_ip4addr_t stop);
 extern bool inet_base_dhcps_option_set(inet_t *super, enum inet_dhcp_option opt, const char *value);
-extern bool inet_base_dhcps_lease_register(inet_t *super, inet_dhcp_lease_fn_t *fn);
+extern bool inet_base_dhcps_lease_notify(inet_t *super, inet_dhcp_lease_fn_t *fn);
 extern bool inet_base_dhcps_rip_set(inet_t *super, inet_macaddr_t macaddr,
                                     inet_ip4addr_t ip4addr, const char *hostname);
 extern bool inet_base_dhcps_rip_del(inet_t *super, inet_macaddr_t macaddr);
@@ -213,7 +236,14 @@ extern bool inet_base_dns_set(inet_t *super, inet_ip4addr_t primary, inet_ip4add
  *  DHCP Sniffig functions
  * ===========================================================================
  */
-extern bool inet_base_dhsnif_lease_register(inet_t *super, inet_dhcp_lease_fn_t *func);
+extern bool inet_base_dhsnif_lease_notify(inet_t *super, inet_dhcp_lease_fn_t *func);
+
+/*
+ * ===========================================================================
+ *  Route functions
+ * ===========================================================================
+ */
+extern bool inet_base_route_notify(inet_t *super, inet_route_notify_fn_t *func);
 
 /*
  * ===========================================================================

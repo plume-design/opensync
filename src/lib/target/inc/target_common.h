@@ -68,48 +68,68 @@ typedef struct {
     ds_dlist_node_t                 dsl_node;
 } target_master_state_init_t;
 
+typedef struct {
+    struct schema_Wifi_Route_State  rstate;
+    ds_dlist_node_t                 dsl_node;
+} target_route_state_init_t;
 
 /* Target capabilities types */
 #define TARGET_GW_TYPE       (1 << 0)
 #define TARGET_EXTENDER_TYPE (1 << 1)
 
 typedef struct {
-    bool link_state;
-    bool router_state;
-    bool internet_state;
-    bool ntp_state;
+    bool link_state;     //!< If link has an IP the link_state should be set
+                         //!< to 'true' if it can be pinged. Otherwise, custom
+                         //!< (vendor-specific) way of checking link state
+                         //!< must be provided.
+    bool router_state;   //!< True if the IP of default gateway can be pinged.
+    bool internet_state; //!< True if external IP address can be pinged.
+    bool ntp_state;      //!< True if current datetime is set correctly.
 } target_connectivity_check_t;
 
+typedef enum {
+    LINK_CHECK     = 1 << 0,
+    ROUTER_CHECK   = 1 << 1,
+    INTERNET_CHECK = 1 << 2,
+    NTP_CHECK      = 1 << 3,
+} target_connectivity_check_option_t;
+
 /**
- * @op_vconf target calls this whenever middelware (if exists) wants to
- *	update vif configuration
- * @op_rconf target calls this whenever middleware (if exists) wants to
- *	update radio configuration
- * @op_vstate target calls this whenever system vif state has changed,
- *	e.g. channel changed, target_vif_config_set2() was called
- * @op_rstate target calls this whenever system vif state has changed,
- *	e.g. channel changed, target_radio_config_set2() was called
- * @op_client target calls this whenever a client connects or
- *	disconnects
- * @op_clients target calls this whenever it wants to re-sync all clients due
- *	to, e.g. internal event buffer overrun.
- * @op_flush_clients target calls this whenever it wants to clear out
- *	all clients on a given vif; intended to use when target wants to
- *	fully re-sync connects clients (i.e. the call will be followed
- *	by op_client() calls) or when a vif is deconfigured abruptly
+ * @brief List of callbacks for radio/vif changes
  */
 struct target_radio_ops {
+    /** target calls this whenever middelware (if exists) wants to
+     *  update vif configuration */
     void (*op_vconf)(const struct schema_Wifi_VIF_Config *vconf,
                      const char *phy);
+
+    /** target calls this whenever middleware (if exists) wants to
+     *  update radio configuration */
     void (*op_rconf)(const struct schema_Wifi_Radio_Config *rconf);
+
+    /** target calls this whenever system vif state has changed,
+     *  e.g. channel changed, target_vif_config_set2() was called */
     void (*op_vstate)(const struct schema_Wifi_VIF_State *vstate);
+
+    /** target calls this whenever system radio state has changed,
+     *  e.g. channel changed, target_radio_config_set2() was called */
     void (*op_rstate)(const struct schema_Wifi_Radio_State *rstate);
+
+    /** target calls this whenever a client connects or disconnects */
     void (*op_client)(const struct schema_Wifi_Associated_Clients *client,
                       const char *vif,
                       bool associated);
+
+    /** target calls this whenever it wants to re-sync all clients due
+     *  to, e.g. internal event buffer overrun. */
     void (*op_clients)(const struct schema_Wifi_Associated_Clients *clients,
                        int num,
                        const char *vif);
+
+    /** target calls this whenever it wants to clear out
+     *  all clients on a given vif; intended to use when target wants to
+     *  fully re-sync connects clients (i.e. the call will be followed
+     *  by op_client() calls) or when a vif is deconfigured abruptly */
     void (*op_flush_clients)(const char *vif);
 };
 
@@ -221,6 +241,9 @@ bool target_radio_config_set2(const struct schema_Wifi_Radio_Config *rconf,
  */
 bool target_radio_state_get(char *ifname, struct schema_Wifi_Radio_State *rstate);
 
+/** @brief Radio state change callback type */
+typedef void target_radio_state_cb_t(struct schema_Wifi_Radio_State *rstate, schema_filter_t *filter);
+
 /**
  * @brief Subscribe to radio interface state change events.
  *
@@ -231,8 +254,10 @@ bool target_radio_state_get(char *ifname, struct schema_Wifi_Radio_State *rstate
  * @param radio_state_cb a callback function
  * @return true on success
  */
-typedef void target_radio_state_cb_t(struct schema_Wifi_Radio_State *rstate, schema_filter_t *filter);
 bool target_radio_state_register(char *ifname, target_radio_state_cb_t *radio_state_cb);
+
+/** @brief Radio config change callback type */
+typedef void target_radio_config_cb_t(struct schema_Wifi_Radio_Config *rconf, schema_filter_t *filter);
 
 /**
  * @brief Subscribe to radio interface config change events.
@@ -244,7 +269,6 @@ bool target_radio_state_register(char *ifname, target_radio_state_cb_t *radio_st
  * @param radio_config_cb a callback function
  * @return true on success
  */
-typedef void target_radio_config_cb_t(struct schema_Wifi_Radio_Config *rconf, schema_filter_t *filter);
 bool target_radio_config_register(char *ifname, target_radio_config_cb_t *radio_config_cb);
 
 /******************************************************************************
@@ -294,6 +318,9 @@ bool target_vif_config_set2(const struct schema_Wifi_VIF_Config *vconf,
  */
 bool target_vif_state_get(char *ifname, struct schema_Wifi_VIF_State *vstate);
 
+/** @brief VIF state change callback type */
+typedef void target_vif_state_cb_t(struct schema_Wifi_VIF_State *rstate, schema_filter_t *filter);
+
 /**
  * @brief Subscribe to vif interface state change events.
  *
@@ -304,8 +331,10 @@ bool target_vif_state_get(char *ifname, struct schema_Wifi_VIF_State *vstate);
  * @param vstate_cb a callback function
  * @return true on success
  */
-typedef void target_vif_state_cb_t(struct schema_Wifi_VIF_State *rstate, schema_filter_t *filter);
 bool target_vif_state_register(char *ifname, target_vif_state_cb_t *vstate_cb);
+
+/** @brief VIF config change callback type */
+typedef void target_vif_config_cb_t(struct schema_Wifi_VIF_Config *vconf, schema_filter_t *filter);
 
 /**
  * @brief Subscribe to vif interface config change events.
@@ -317,8 +346,15 @@ bool target_vif_state_register(char *ifname, target_vif_state_cb_t *vstate_cb);
  * @param vconfig_cb a callback function
  * @return true on success
  */
-typedef void target_vif_config_cb_t(struct schema_Wifi_VIF_Config *vconf, schema_filter_t *filter);
 bool target_vif_config_register(char *ifname, target_vif_config_cb_t *vconfig_cb);
+
+/**
+ * @brief Get vif station interface name
+ *
+ * @param phy phy name
+ * @return station ifname
+ */
+const char * target_vif_get_sta_ifname(const char *phy);
 
 /******************************************************************************
  *  DHCP definitions
@@ -329,9 +365,20 @@ bool target_dhcp_leased_ip_register(target_dhcp_leased_ip_cb_t *dlip_cb);
 bool target_dhcp_rip_set(const char *ifname, struct schema_DHCP_reserved_IP *schema_rip);
 bool target_dhcp_rip_del(const char *ifname, struct schema_DHCP_reserved_IP *schema_rip);
 
+
+/******************************************************************************
+ *  Port forwarding
+ *****************************************************************************/
+bool target_portforward_set(const char *ifname,  struct schema_IP_Port_Forward *schema_pf);
+bool target_portforward_del(const char *ifname,  struct schema_IP_Port_Forward *schema_pf);
+
+
 /******************************************************************************
  *  CLIENTS definitions
  *****************************************************************************/
+
+/** @brief Client change callback type */
+typedef bool target_clients_cb_t(struct schema_Wifi_Associated_Clients *schema, char *ifname, bool status);
 
 /**
  * @brief Subscribe to client change events.
@@ -340,7 +387,6 @@ bool target_dhcp_rip_del(const char *ifname, struct schema_DHCP_reserved_IP *sch
  * @param vconfig_cb a callback function
  * @return true on success
  */
-typedef bool target_clients_cb_t(struct schema_Wifi_Associated_Clients *schema, char *ifname, bool status);
 bool target_clients_register(char *ifname, target_clients_cb_t *clients_cb);
 
 /******************************************************************************
@@ -383,6 +429,25 @@ bool target_inet_state_init(ds_dlist_t *inets_ovs);
  * @return true on success
  */
 bool target_master_state_init(ds_dlist_t *inets_ovs);
+
+/**
+ * @brief Initialize route state
+ *
+ * Initialize the target library router state layer and return a list of
+ * currently configured network routes. @p rts is a double linked list of
+ * target_route_state_init_t structures. This list is used to pre-populate the
+ * Wifi_Route_State table.
+ *
+ * @note
+ * Only routes that are significant for system operation must be returned
+ * by this function. For example, the default route.
+ * @note
+ * the inet_ovs linked list is dynamically allocated, it must be freed by the caller.
+ *
+ * @param inets_ovs linked list of inet interfaces state (target_inet_state_init_t)
+ * @return true on success
+ */
+bool target_route_state_init(ds_dlist_t *rts);
 
 /**
  * @brief Initialize network interfaces config
@@ -751,6 +816,9 @@ bool target_ppp_master_state_get(const char *ifname,
  */
 bool target_inet_state_register(char *ifname, void *istate_cb);
 
+/** @brief Master state change callback type */
+typedef void target_master_state_cb_t(struct schema_Wifi_Master_State *mstate);
+
 /**
  * @brief Subscribe to network master state change events.
  *
@@ -764,8 +832,22 @@ bool target_inet_state_register(char *ifname, void *istate_cb);
  *   void callback(struct schema_Wifi_Master_State *mstate);
  * @return true on success
  */
-typedef void target_master_state_cb_t(struct schema_Wifi_Master_State *mstate);
 bool target_master_state_register(const char *ifname, target_master_state_cb_t *mstate_cb);
+
+/** @brief Route state change callback type */
+typedef void target_route_state_cb_t(struct schema_Wifi_Route_State *mstate);
+
+/**
+ * @brief Subscribe to network route/arp state change events.
+ *
+ * This function is used to subscribe to network route/arp state
+ * change events.
+ *
+ * @param istate_cb a callback function of type
+ *   void callback(struct schema_Wifi_Master_State *mstate);
+ * @return true on success
+ */
+bool target_route_state_register(target_route_state_cb_t *rts_cb);
 
 /******************************************************************************
  *  STATS definitions
@@ -1041,6 +1123,12 @@ bool target_stats_capacity_convert(
  *
  * This is for changes of device config that originate from external management
  * protocols not ovsdb. The changes will then be applied to ovsdb by the callback.
+ * The device config is a data described inside AWLAN_Node table. The example
+ * implementation may want to set custom cloud redirector address here and call
+ * the awlan_cb() whenever the redirector address is updated.
+ * If the redirector address is static and the target is not going to
+ * update any other field of AWLAN_Node table it is safe to make this function
+ * a no-op.
  *
  * callback type: void (*update)(struct schema_AWLAN_Node *awlan,
  *   schema_filter_t *filter);
@@ -1054,14 +1142,23 @@ bool target_device_config_register(void *awlan_cb);
  * @brief Apply device config
  *
  * This applies device config from ovsdb to external management protocols (if available).
+ * The device config is a data described inside AWLAN_Node table. Example field of that
+ * table that may need to be synchronized with target-specific implementation is
+ * a 'device_mode'.
+ * If target doesn't need to perform any action when the content of this table is updated
+ * then it is safe to make this function a no-op.
  *
- * @param awlan_cb callback function
+ * @param awlan ovsdb schema for AWLAN_node table.
  * @return true on success
  */
 bool target_device_config_set(struct schema_AWLAN_Node *awlan);
 
 /**
  * @brief Execute external tools
+ *
+ * The implementation of this function should provide ability to run
+ * a shell command.
+ *
  * @param cmd command string
  * @return true on success
  */
@@ -1069,18 +1166,27 @@ bool target_device_execute(const char* cmd);
 
 /**
  * @brief Get device capabilities
+ *
+ * All targets are at least TARGET_GW_TYPE, so example implementation can
+ * return just TARGET_GW_TYPE. If the target is also capable of being an extender,
+ * the TARGET_EXTENDER_TYPE should be set in a bitmask additionally.
+ *
  * @return device capabilities as a bitmask based on target capabilities types
  */
 int target_device_capabilities_get();
 
 /**
  * @brief Get device connectivity status
+ *
+ * For example implementation, see target_kconfig.c
+ *
  * @param ifname - interface name
  * @param cstate - connectivity state
- * @return true when link is health
-*/
+ * @return true if all links are in correct state, false otherwise.
+ */
 bool target_device_connectivity_check(const char *ifname,
-                                      target_connectivity_check_t *cstate);
+                                      target_connectivity_check_t *cstate,
+                                      target_connectivity_check_option_t opts);
 
 /**
  *  @brief Restart plume managers
@@ -1090,6 +1196,13 @@ bool target_device_restart_managers();
 
 /**
  *  @brief Ping watchdog system
+ *
+ *  If the target provides a watchdog that checks if OpenSync managers
+ *  are alive, the implementation of this function should feed that
+ *  watchdog.
+ *  If target doesn't use such functionality it's safe to just return
+ *  true.
+ *
  *  @return true on success
  */
 bool target_device_wdt_ping();

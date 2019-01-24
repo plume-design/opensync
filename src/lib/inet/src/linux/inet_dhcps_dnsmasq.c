@@ -161,6 +161,7 @@ static struct dhcps_rip *dhcps_rip_node_dup(const struct dhcps_rip *rip);
 static void dhcps_rip_node_free(struct dhcps_rip *rip);
 static int dhcps_rip_cmp(void *a, void *b);
 
+
 /*
  * Globals
  */
@@ -350,7 +351,7 @@ void inet_dhcps_error_fn(inet_dhcps_t *self, inet_dhcps_error_fn_t *fn)
     self->ds_error_fn = fn;
 }
 
-void inet_dhcps_lease_notify(inet_dhcps_t *self, inet_dhcp_lease_fn_t *fn, inet_t *inet)
+void inet_dhcps_lease_notify_set(inet_dhcps_t *self, inet_dhcp_lease_fn_t *fn, inet_t *inet)
 {
     self->ds_lease_notify_fn = fn;
     self->ds_lease_notify_inet = inet;
@@ -626,7 +627,6 @@ void dhcps_config_copy(
         }
    }
 
-
     ds_tree_init(&dest->ds_rip_list, dhcps_rip_cmp,
                  struct dhcps_rip, ds_dnode);
 
@@ -643,12 +643,30 @@ void dhcps_config_copy(
  *  DHCP lease handling
  * ===========================================================================
  */
+
+/*
+ * Return an integer less than, equal to, or greater than zero if a is less than,
+ * equal to, or greater than b.
+ *
+ * The fields used for comparison are the MAC and IP addresses. These two should
+ * identify an unique lease entry.
+ */
 int dhcps_lease_cmp(void *_a, void *_b)
 {
-    inet_macaddr_t *a = _a;
-    inet_macaddr_t *b = _b;
+    int rc;
 
-    return memcmp(a, b, sizeof(*a));
+    struct inet_dhcp_lease_info *a = _a;
+    struct inet_dhcp_lease_info *b = _b;
+
+    /* Compare MAC addresses */
+    rc = memcmp(&a->dl_hwaddr, &b->dl_hwaddr, sizeof(a->dl_hwaddr));
+    if (rc != 0) return rc;
+
+    /* Compare IP addresses */
+    rc = memcmp(&a->dl_ipaddr, &b->dl_ipaddr, sizeof(a->dl_ipaddr));
+    if (rc != 0) return rc;
+
+    return 0;
 }
 
 /*
@@ -702,14 +720,14 @@ bool dhcps_lease_update(struct dhcps_lease *dl)
     bool dl_update = false;
     struct dhcps_lease *ndl = NULL;
 
-    ndl = ds_tree_find(&dhcps_lease_list, &dl->sl_lease.dl_hwaddr);
+    ndl = ds_tree_find(&dhcps_lease_list, &dl->sl_lease);
     if (ndl == NULL)
     {
         /* New lease */
         ndl = calloc(1, sizeof(*ndl));
         memcpy(ndl, dl, sizeof(*ndl));
 
-        ds_tree_insert(&dhcps_lease_list, ndl, &ndl->sl_lease.dl_hwaddr);
+        ds_tree_insert(&dhcps_lease_list, ndl, &ndl->sl_lease);
 
         dl_update = true;
     }
@@ -977,6 +995,7 @@ static int dhcps_rip_cmp(void *a, void *b)
     return memcmp(mac_a, mac_b, sizeof(*mac_a));
 }
 
+
 bool inet_dhcps_rip(inet_dhcps_t *self, inet_macaddr_t macaddr,
                     inet_ip4addr_t ip4addr, const char *hostname)
 
@@ -987,6 +1006,14 @@ bool inet_dhcps_rip(inet_dhcps_t *self, inet_macaddr_t macaddr,
 
     if (rip)
     {
+        if (rip->ds_ip4addr.raw == ip4addr.raw)
+        {
+            if (rip->ds_hostname && hostname && !strcmp(rip->ds_hostname, hostname))
+                return true;
+            if (rip->ds_hostname == NULL && hostname == NULL)
+                return true;
+        }
+
         /* Modify existing IP reservation:  */
         rip->ds_macaddr = macaddr;
         rip->ds_ip4addr = ip4addr;
@@ -1013,6 +1040,7 @@ bool inet_dhcps_rip(inet_dhcps_t *self, inet_macaddr_t macaddr,
 
         ds_tree_insert(&self->ds_config_inactive.ds_rip_list, rip, &rip->ds_macaddr);
     }
+
     return true;
 }
 
@@ -1020,11 +1048,39 @@ bool inet_dhcps_rip_remove(inet_dhcps_t *self, inet_macaddr_t macaddr)
 {
     struct dhcps_rip *rip = 0;
 
+
     rip = ds_tree_find(&self->ds_config_inactive.ds_rip_list, (void *)&macaddr);
     if (rip)
     {
         ds_tree_remove(&self->ds_config_inactive.ds_rip_list, rip);
         dhcps_rip_node_free(rip);
+    }
+
+    return true;
+}
+
+bool inet_dhcps_rip_get(inet_dhcps_t *self, inet_macaddr_t macaddr,
+                        inet_ip4addr_t *ip4addr, char **hostname)
+{
+    struct dhcps_rip *rip = 0;
+
+    if (!ip4addr || !hostname)
+        return false;
+
+
+    rip = ds_tree_find(&self->ds_config_inactive.ds_rip_list, (void *)&macaddr);
+    if (rip)
+    {
+        *ip4addr = rip->ds_ip4addr;
+        if (rip->ds_hostname)
+            *hostname = strdup(rip->ds_hostname);
+        else
+            *hostname = NULL;
+    }
+    else
+    {
+        *ip4addr = INET_IP4ADDR_ANY;
+        *hostname = NULL;
     }
 
     return true;

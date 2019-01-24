@@ -146,7 +146,11 @@ static json_t * ovsdb_mon_tbl_val(int mon_flags, int argc, char *argv[])
 
     if (json_array_size(jcarray) > 0)
     {
-        json_object_set(jo, "columns", jcarray);
+        json_object_set_new(jo, "columns", jcarray);
+    }
+    else
+    {
+        json_decref(jcarray);
     }
 
     /* By default, OVS sends updates for ALL operations */
@@ -155,25 +159,25 @@ static json_t * ovsdb_mon_tbl_val(int mon_flags, int argc, char *argv[])
         jsel = json_object();
         if (mon_flags & OMT_INITIAL)
         {
-            json_object_set(jsel, "initial", json_true());
+            json_object_set_new(jsel, "initial", json_true());
         }
 
         if (mon_flags & OMT_INSERT)
         {
-            json_object_set(jsel, "insert", json_true());
+            json_object_set_new(jsel, "insert", json_true());
         }
 
         if (mon_flags & OMT_DELETE)
         {
-            json_object_set(jsel, "delete", json_true());
+            json_object_set_new(jsel, "delete", json_true());
         }
 
         if (mon_flags & OMT_MODIFY)
         {
-            json_object_set(jsel, "modify", json_true());
+            json_object_set_new(jsel, "modify", json_true());
         }
 
-        json_object_set(jo, "select", jsel);
+        json_object_set_new(jo, "select", jsel);
     }
 
     return jo;

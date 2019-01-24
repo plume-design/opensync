@@ -62,7 +62,7 @@ static bool
 nm2_dhcp_table_update(struct schema_DHCP_leased_IP       *dlip)
 {
     pjs_errmsg_t        perr;
-    json_t             *where, *row;
+    json_t             *where, *row, *cond;
     bool                ret;
 
     LOGT("Updating DHCP lease '%s'",
@@ -74,9 +74,17 @@ nm2_dhcp_table_update(struct schema_DHCP_leased_IP       *dlip)
         return true;
     }
 
+    /* OVSDB transaction where multi condition */
+    where = json_array();
+
+    cond = ovsdb_tran_cond_single("hwaddr", OFUNC_EQ, str_tolower(dlip->hwaddr));
+    json_array_append_new(where, cond);
+
+    cond = ovsdb_tran_cond_single("inet_addr", OFUNC_EQ, dlip->inet_addr);
+    json_array_append_new(where, cond);
+
     if (dlip->lease_time == 0)  {
         // Released or expired lease... remove from OVSDB
-        where = ovsdb_tran_cond(OCLM_STR, "hwaddr", OFUNC_EQ, str_tolower(dlip->hwaddr));
         ret = ovsdb_sync_delete_where(OVSDB_DHCP_TABLE, where);
         if (!ret) {
             LOGE("Updating DHCP lease %s (Failed to remove entry)",
@@ -89,7 +97,6 @@ nm2_dhcp_table_update(struct schema_DHCP_leased_IP       *dlip)
     }
     else {
         // New/active lease, upsert it into OVSDB
-        where = ovsdb_tran_cond(OCLM_STR, "hwaddr", OFUNC_EQ, str_tolower(dlip->hwaddr));
         row   = schema_DHCP_leased_IP_to_json(dlip, perr);
         ret = ovsdb_sync_upsert_where(OVSDB_DHCP_TABLE, where, row, NULL);
         if (!ret) {

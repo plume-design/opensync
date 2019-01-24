@@ -274,9 +274,9 @@ typedef struct {
     bm_client_steering_state_t  steering_state;
 
     // BSS Transition Management variables
-    target_bsal_btm_params_t    steering_btm_params;
-    target_bsal_btm_params_t    sticky_btm_params;
-    target_bsal_btm_params_t    sc_btm_params;
+    bsal_btm_params_t           steering_btm_params;
+    bsal_btm_params_t           sticky_btm_params;
+    bsal_btm_params_t           sc_btm_params;
 
     // Client BTM and RRM capabilities
     uint8_t                     is_BTM_supported;

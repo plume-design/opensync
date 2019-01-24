@@ -560,7 +560,7 @@ bool sm_survey_report_send(
     report_ctx->report_type = request_ctx->report_type;
     report_ctx->scan_type   = scan_type;
 
-    /* Report_timestamp is cloud_timestamp + relative start time offset */
+    /* Report_timestamp is base-timestamp + relative start time offset */
     report_ctx->timestamp_ms =
         request_ctx->reporting_timestamp - survey_ctx->report_ts +
         get_timestamp();
@@ -614,6 +614,10 @@ exit:
     }
 
     survey_ctx->record_qty = 0;
+
+    SM_SANITY_CHECK_TIME(report_ctx->timestamp_ms,
+                         &request_ctx->reporting_timestamp,
+                         &survey_ctx->report_ts);
 
     return true;
 }
@@ -682,6 +686,7 @@ bool sm_survey_update_list_cb (
                  "(Failed to allocate memory)",
                  radio_get_name_from_cfg(radio_cfg_ctx),
                  radio_get_scan_name_from_type(scan_type));
+
             goto clear;
         }
 
@@ -705,7 +710,8 @@ bool sm_survey_update_list_cb (
                  radio_get_scan_name_from_type(scan_type),
                  result_entry->info.chan,
                  survey_ctx->record_qty);
-            goto clear;
+            dpp_survey_record_free(result_entry);
+            continue;
         }
 
         sm_survery_target_validate (
@@ -747,7 +753,7 @@ bool sm_survey_update_list_cb (
         case RADIO_SCAN_TYPE_OFFCHAN: /* Move to the next channel */
             channel_ctx->chan_index++;
 
-            /* Start from begining when max is reached */
+            /* Start from beginning when max is reached */
             if (channel_ctx->chan_index >= channel_ctx->chan_num) {
                 channel_ctx->chan_index = 0;
             }
@@ -756,6 +762,12 @@ bool sm_survey_update_list_cb (
             sm_survey_report_send(survey_ctx);
             break;
         default:
+            LOGE("Processed %s %s survey records (unsupported type)",
+                 radio_get_name_from_cfg(radio_cfg_ctx),
+                 radio_get_scan_name_from_type(scan_type));
+            sm_survey_records_clear(
+                    survey_ctx,
+                    record_list);
             goto clear;
     }
 

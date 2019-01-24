@@ -59,12 +59,17 @@ ifdef CONFIG_USE_KCONFIG
 #
 # Kconfig based configuration
 #
+UNIT_DISABLE := $(if $(CONFIG_PML_INET),n,y)
+
 $(eval $(if $(CONFIG_INET_ETH_LINUX),       UNIT_SRC += src/linux/inet_eth.c))
 $(eval $(if $(CONFIG_INET_VIF_LINUX),       UNIT_SRC += src/linux/inet_vif.c))
-$(eval $(if $(CONFIG_INET_GRE_LINUX),       UNIT_SRC += src/linux/inet_gre.c))
+$(eval $(if $(CONFIG_INET_GRETAP),          UNIT_SRC += src/linux/inet_gretap.c))
 
 $(eval $(if $(CONFIG_INET_FW_NULL),         UNIT_SRC += src/null/inet_fw_null.c))
 $(eval $(if $(CONFIG_INET_FW_IPTABLES),     UNIT_SRC += src/linux/inet_fw_iptables.c))
+
+$(eval $(if $(CONFIG_INET_IGMP_NULL),       UNIT_SRC += src/null/inet_igmp_null.c))
+$(eval $(if $(CONFIG_INET_IGMP_SNOOPING),   UNIT_SRC += src/linux/inet_igmp_snooping.c))
 
 $(eval $(if $(CONFIG_INET_DHCPS_NULL),      UNIT_SRC += src/null/inet_dhcps_null.c))
 $(eval $(if $(CONFIG_INET_DHCPS_DNSMASQ),   UNIT_SRC += src/linux/inet_dhcps_dnsmasq.c))
@@ -80,22 +85,35 @@ $(eval $(if $(CONFIG_INET_DNS_RESOLVCONF),  UNIT_SRC += src/linux/inet_dns_resol
 
 $(eval $(if $(CONFIG_INET_DHSNIFF_NULL),    UNIT_SRC += src/null/inet_dhsnif_null.c))
 $(eval $(if $(CONFIG_INET_DHSNIFF_PCAP),    UNIT_SRC += src/linux/inet_dhsnif_pcap.c))
+
+$(eval $(if $(CONFIG_INET_ROUTE_NULL),      UNIT_SRC += src/null/inet_route_null.c))
+$(eval $(if $(CONFIG_INET_ROUTE_LINUX),     UNIT_SRC += src/linux/inet_route_linux.c))
+
+$(eval $(if $(CONFIG_INET_DHSNIFF_PCAP),    UNIT_LDFLAGS += -lpcap))
 else
 #
 # Legacy "configuration"
 #
+
+# Use GRETAP as default GRE provider
+#UNIT_CFLAGS += -DCONFIG_INET_GRE_USE_GRETAP
+
 UNIT_SRC += src/linux/inet_eth.c
 UNIT_SRC += src/linux/inet_vif.c
-UNIT_SRC += src/linux/inet_gre.c
+UNIT_SRC += src/linux/inet_gretap.c
 
 UNIT_SRC += src/linux/inet_fw_iptables.c
+UNIT_SRC += src/linux/inet_igmp_snooping.c
 UNIT_SRC += src/linux/inet_dhcps_dnsmasq.c
 UNIT_SRC += src/linux/inet_dhcpc_udhcpc.c
 UNIT_SRC += src/linux/inet_upnp_miniupnpd.c
 UNIT_SRC += src/linux/inet_dns_resolv.c
+UNIT_SRC += src/linux/inet_route_linux.c
 
 # Let it soak on kconfig-enabled platforms before we enable this for "default" platforms
-#UNIT_SRC += src/linux/inet_dhsnif_pcap.c
-UNIT_SRC += src/null/inet_dhsnif_null.c
+UNIT_SRC += src/linux/inet_dhsnif_pcap.c
+#UNIT_SRC += src/null/inet_dhsnif_null.c
+UNIT_LDFLAGS += -lpcap
 endif
 
+UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)

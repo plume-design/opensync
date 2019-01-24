@@ -103,7 +103,8 @@ int main(int argc, char ** argv)
     nm2_mac_learning_init();
     nm2_dhcp_table_init();
     nm2_dhcp_rip_init();
-
+    nm2_fw_init();
+    nm2_route_state_init();
 
     ev_run(loop, 0);
 

@@ -78,11 +78,25 @@ SCHEMA_LISTX(_SCHEMA_COL_DECL)
             FIELD##_present = true; \
         } while (0)
 
+#define SCHEMA_CPY_INT(DST, SRC) \
+        do { \
+            DST = SRC; \
+            DST##_exists  = SRC##_exists; \
+            DST##_present = true; \
+        } while (0)
+
 #define SCHEMA_SET_STR(FIELD, VALUE) \
         do { \
             STRSCPY(FIELD, (VALUE)); \
             FIELD##_exists  = true; \
             FIELD##_present = true; \
+        } while (0)
+
+#define SCHEMA_CPY_STR(DST, SRC) \
+        do { \
+            STRSCPY(DST, SRC); \
+            DST##_exists  = SRC##_exists; \
+            DST##_present = true; \
         } while (0)
 
 #define SCHEMA_KEY_VAL_APPEND_INT(FIELD, KEY, VALUE) \

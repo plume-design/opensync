@@ -152,6 +152,9 @@ bool inet_eth_interface_start(inet_eth_t *self, bool enable)
  */
 bool inet_eth_network_start(inet_eth_t *self, bool enable)
 {
+    /* Silence compiler errors */
+    (void)ifreq_status_get;
+
     if (!ifreq_status_set(self->inet.in_ifname, enable))
     {
         LOG(ERR, "inet_eth: %s: Error %s network.",
@@ -375,6 +378,8 @@ bool inet_eth_service_commit(inet_base_t *super, enum inet_base_services srv, bo
  */
 bool inet_eth_state_get(inet_t *super, inet_state_t *out)
 {
+    bool exists;
+
     inet_eth_t *self = (inet_eth_t *)super;
 
     if (!inet_base_state_get(&self->inet, out))
@@ -382,11 +387,10 @@ bool inet_eth_state_get(inet_t *super, inet_state_t *out)
         return false;
     }
 
-    (void)ifreq_exists(self->inet.in_ifname, &out->in_interface_enabled);
-    if (out->in_interface_enabled)
+    (void)ifreq_exists(self->inet.in_ifname, &exists);
+    if (exists)
     {
         (void)ifreq_mtu_get(self->inet.in_ifname, &out->in_mtu);
-        (void)ifreq_status_get(self->inet.in_ifname, &out->in_network_enabled);
         (void)ifreq_ipaddr_get(self->inet.in_ifname, &out->in_ipaddr);
         (void)ifreq_netmask_get(self->inet.in_ifname, &out->in_netmask);
         (void)ifreq_bcaddr_get(self->inet.in_ifname, &out->in_bcaddr);

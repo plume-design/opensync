@@ -65,7 +65,7 @@ endef
 
 define rootfs_install_to_target
 	$(Q)echo "$(call color_install,install) rootfs $(call color_profile,$(BUILD_ROOTFS_DIR) => $(INSTALL_ROOTFS_DIR))"
-	$(Q)cp -a $(BUILD_ROOTFS_DIR)/. $(INSTALL_ROOTFS_DIR)/.
+	$(Q)cp --remove-destination --archive $(BUILD_ROOTFS_DIR)/. $(INSTALL_ROOTFS_DIR)/.
 
 endef
 

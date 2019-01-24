@@ -131,7 +131,7 @@ static c_item_t map_steering_type[] = {
 };
 
 /*****************************************************************************/
-static void     bm_events_handle_event( bsal_t bsal, bsal_event_t *event );
+static void     bm_events_handle_event(bsal_event_t *event );
 static void     bm_events_handle_rssi_xing( bm_client_t *client, bsal_event_t *event );
 
 static bool     bm_events_client_cap_changed( bm_client_t *client,
@@ -149,6 +149,7 @@ macstr(uint8_t *macaddr) {
     return buf;
 }
 
+#if 0
 static char *
 bm_events_get_ifname(bsal_t bsal, bsal_band_t band)
 {
@@ -160,10 +161,11 @@ bm_events_get_ifname(bsal_t bsal, bsal_band_t band)
 
     return "unknown";
 }
+#endif
 
 // Callback function for BSAL upon receiving steering events from the driver
 static void
-bm_events_bsal_event_cb( bsal_t bsal, bsal_event_t *event )
+bm_events_bsal_event_cb(bsal_event_t *event)
 {
     bm_cb_entry_t       *cb_entry;
     int                 ret = 0;
@@ -180,7 +182,7 @@ bm_events_bsal_event_cb( bsal_t bsal, bsal_event_t *event )
         goto exit;
     }
 
-    cb_entry->bsal  = bsal;
+    cb_entry->bsal  = NULL;
     memcpy( &cb_entry->event, event, sizeof( cb_entry->event ) );
 
     ds_dlist_insert_tail( &bm_cb_queue, cb_entry );
@@ -204,7 +206,6 @@ bm_events_async_cb( EV_P_ ev_async *w, int revents )
 {
     bm_cb_entry_t       *cb_entry;
     bsal_event_t        *event;
-    bsal_t              bsal;
 
     while( true )
     {
@@ -222,9 +223,8 @@ bm_events_async_cb( EV_P_ ev_async *w, int revents )
         }
 
         event = &cb_entry->event;
-        bsal  = cb_entry->bsal;
 
-        bm_events_handle_event( bsal, event );
+        bm_events_handle_event(event);
 
         free( cb_entry );
     }
@@ -233,19 +233,27 @@ bm_events_async_cb( EV_P_ ev_async *w, int revents )
 }
 
 static void
-bm_events_handle_event(bsal_t bsal, bsal_event_t *event)
+bm_events_handle_event(bsal_event_t *event)
 {
     bm_client_stats_t           *stats;
     bm_client_times_t           *times;
     bm_client_t                 *client;
     bsal_band_t                 sband;
-    bm_pair_t                   *pair = bm_pair_find_by_bsal(bsal);
+    bm_pair_t                   *pair = bm_pair_find_by_ifname(event->ifname);
+    bsal_t                      bsal = pair;
     uint32_t                    sstate;
     time_t                      now = time(NULL);
     bool                        reject = false;
-    char                        *bandstr = c_get_str_by_key(map_bsal_bands, event->band);
-    char                        *ifname = bm_events_get_ifname(bsal, event->band);
+    char                        *bandstr;
+    char                        *ifname = event->ifname;
     bm_client_reject_t          reject_detection;
+
+    event->band = bsal_band_find_by_ifname(event->ifname);
+    bandstr = c_get_str_by_key(map_bsal_bands, event->band);
+
+    if (event->band == BSAL_BAND_COUNT) {
+        LOGW("unknown band");
+    }
 
     switch (event->type) {
 
@@ -343,6 +351,12 @@ bm_events_handle_event(bsal_t bsal, bsal_event_t *event)
         }
 
         bm_events_record_client_cap( client, event );
+
+        // If BTM retries are under-way, and the client connected, then:
+        // - Either the client transitioned to the required band (2.4-->5, or 5-->2,4)
+        // - Or, the client disconnected and re-connected back on the same band.
+        // In both situations, retries should be stopped immediately.
+        bm_kick_cancel_btm_retry_task( client );
 
         LOGN("[%s] %s: BSAL_EVENT_CLIENT_CONNECT %s",
                                              bandstr, ifname, macstr(event->data.connect.client_addr));
@@ -793,8 +807,8 @@ bm_events_init(struct ev_loop *loop)
     ev_async_start( _evloop, &bm_cb_async );
 
     // Initialization of BSAL should be done last to avoid potential
-    // race conditions since bsal_init() now spawns off a thread.
-    if ((rc = bsal_init(bm_events_bsal_event_cb)) < 0) {
+    // race conditions since target_bsal_init() now spawns off a thread.
+    if ((rc = target_bsal_init(bm_events_bsal_event_cb, loop)) < 0) {
         LOGE("Failed to initialize BSAL");
         return false;
     }
@@ -811,7 +825,7 @@ bm_events_cleanup(void)
     ev_async_stop( _evloop, &bm_cb_async );
     pthread_mutex_destroy( &bm_cb_lock );
 
-    bsal_event_cleanup();
+    target_bsal_cleanup();
     _bsal_initialized   = false;
     _evloop            = NULL;
 

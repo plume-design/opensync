@@ -218,37 +218,6 @@ cm2_util_vif_is_sta(const char *ifname)
  */
 
 bool
-cm2_ovsdb_set_dhcp(char *ifname, bool state)
-{
-    struct schema_Wifi_Inet_Config icfg;
-    int                            ret;
-
-    memset(&icfg, 0, sizeof(icfg));
-
-    if (strlen(ifname) == 0)
-        return 0;
-
-    LOGN("Set dhcp for %s state = %d", ifname, state);
-
-    icfg.ip_assign_scheme_exists = true;
-    if (state)
-        STRSCPY(icfg.ip_assign_scheme, "dhcp");
-    else
-        STRSCPY(icfg.ip_assign_scheme, "none");
-
-
-    char *filter[] = { "+",
-                       SCHEMA_COLUMN(Wifi_Inet_Config, ip_assign_scheme),
-                       NULL };
-
-    ret = ovsdb_table_update_where_f(&table_Wifi_Inet_Config,
-                 ovsdb_where_simple(SCHEMA_COLUMN(Wifi_Inet_Config, if_name), ifname),
-                 &icfg, filter);
-
-    return ret == 1;
-}
-
-bool
 cm2_ovsdb_set_Wifi_Inet_Config_interface_enabled(bool state, char *ifname)
 {
     struct schema_Wifi_Inet_Config icfg;
@@ -259,7 +228,7 @@ cm2_ovsdb_set_Wifi_Inet_Config_interface_enabled(bool state, char *ifname)
     if (strlen(ifname) == 0)
         return 0;
 
-    LOGN("%s change interface (%s) state: %d", __func__, ifname, state);
+    LOGI("%s change interface state: %d", ifname, state);
 
     icfg.enabled = state;
     char *filter[] = { "+",
@@ -271,6 +240,93 @@ cm2_ovsdb_set_Wifi_Inet_Config_interface_enabled(bool state, char *ifname)
                  &icfg, filter);
 
     return ret == 1;
+}
+
+
+static bool
+cm2_util_set_dhcp(struct schema_Wifi_Master_State *master, bool refresh)
+{
+    struct schema_Wifi_Inet_Config iconf_update;
+    struct schema_Wifi_Inet_Config iconf;
+    bool                           dhcp_active;
+    bool                           empty_addr;
+    int                            ret;
+
+    if (!strcmp(master->port_state, "inactive"))
+        return false;
+
+    MEMZERO(iconf);
+    MEMZERO(iconf_update);
+
+    ret = ovsdb_table_select_one(&table_Wifi_Inet_Config,
+                SCHEMA_COLUMN(Wifi_Inet_Config, if_name), master->if_name, &iconf);
+    if (!ret)
+        LOGI("%s: %s: Failed to get interface config", __func__, master->if_name);
+
+    LOGI("%s Set dhcp: inet_addr = %s assign_scheme = %s refresh = %d", master->if_name, master->inet_addr, iconf.ip_assign_scheme, refresh);
+
+    dhcp_active = !strcmp(iconf.ip_assign_scheme, "dhcp");
+    empty_addr = !((strlen(master->inet_addr) > 0) && strcmp(master->inet_addr, "0.0.0.0") != 0);
+
+    if (refresh && dhcp_active) {
+        if (!empty_addr) {
+            STRSCPY(iconf_update.ip_assign_scheme, "none");
+        }
+        else {
+            if (iconf.enabled) {
+                ret = cm2_ovsdb_set_Wifi_Inet_Config_interface_enabled(false, master->if_name);
+                if (!ret)
+                    LOGW("%s: %s: Failed to clear interface enabled", __func__, master->if_name);
+
+                ret = cm2_ovsdb_set_Wifi_Inet_Config_interface_enabled(true, master->if_name);
+                if (!ret)
+                    LOGW("%s: %s: Failed to set interface enabled", __func__, master->if_name);
+            }
+            return false;
+        }
+    }
+
+    if (!refresh && !empty_addr)
+        return true;
+
+    if (empty_addr) {
+        if (!dhcp_active)
+            STRSCPY(iconf_update.ip_assign_scheme, "dhcp");
+        else
+            return false;
+    }
+
+    iconf_update.ip_assign_scheme_exists = true;
+
+    char *filter[] = { "+",
+                       SCHEMA_COLUMN(Wifi_Inet_Config, ip_assign_scheme),
+                       NULL };
+
+    ret = ovsdb_table_update_where_f(&table_Wifi_Inet_Config,
+                 ovsdb_where_simple(SCHEMA_COLUMN(Wifi_Inet_Config, if_name), master->if_name),
+                 &iconf_update, filter);
+
+    return false;
+}
+
+bool
+cm2_ovsdb_refresh_dhcp(char *if_name)
+{
+    struct schema_Wifi_Master_State  mstate;
+    int                              ret;
+
+    LOGI("%s: Trigger refresh dhcp", if_name);
+
+    MEMZERO(mstate);
+
+    ret = ovsdb_table_select_one(&table_Wifi_Master_State,
+                SCHEMA_COLUMN(Wifi_Master_State, if_name), if_name, &mstate);
+    if (!ret) {
+        LOGW("%s: %s: Failed to get master row", __func__, mstate.if_name);
+    } else
+        ret = cm2_util_set_dhcp(&mstate, true);
+
+    return ret;
 }
 
 static char*
@@ -290,11 +346,12 @@ cm2_util_get_gateway_ip(char *ip_addr, char *netmask)
 
 /* Function triggers creating GRE interfaces
  * In the second phase of implementation need to be moved to WM2 */
-
-static void
+static int
 cm2_ovsdb_insert_Wifi_Inet_Config(struct schema_Wifi_Master_State *master)
 {
     struct schema_Wifi_Inet_Config icfg;
+    int                            ret;
+
     memset(&icfg, 0, sizeof(icfg));
 
     icfg.enabled = false;
@@ -323,23 +380,24 @@ cm2_ovsdb_insert_Wifi_Inet_Config(struct schema_Wifi_Master_State *master)
     icfg.ip_assign_scheme_exists = true;
     STRSCPY(icfg.ip_assign_scheme, "none");
 
-    LOGN("%s: Create gre if_name = %s", __func__, icfg.if_name);
+    LOGN("%s: Create new gre iface: %s", master->if_name, icfg.if_name);
 
-    if (!ovsdb_table_upsert_simple(&table_Wifi_Inet_Config,
-                                   SCHEMA_COLUMN(Wifi_Inet_Config, if_name),
-                                   icfg.if_name,
-                                   &icfg,
-                                   NULL)) {
-        LOGE("%s update creating GRE failed %s", __func__, master->if_name);
-    }
-    return;
+    ret = ovsdb_table_upsert_simple(&table_Wifi_Inet_Config,
+                                    SCHEMA_COLUMN(Wifi_Inet_Config, if_name),
+                                    icfg.if_name,
+                                    &icfg,
+                                    NULL);
+    if (!ret)
+        LOGD("%s update creating GRE failed %s", __func__, master->if_name);
+
+    return ret;
 }
 
 /* Function removing GRE interface */
-static bool
+static void
 cm2_ovsdb_remove_Wifi_Inet_Config(char *if_name, bool gre) {
     char gre_ifname[IFNAME_SIZE];
-    int ret;
+    int  ret;
 
     if (!gre) {
         STRSCPY(gre_ifname, "g-");
@@ -348,21 +406,20 @@ cm2_ovsdb_remove_Wifi_Inet_Config(char *if_name, bool gre) {
         STRSCPY(gre_ifname, if_name);
     }
 
-    LOGI("%s: Remove gre if_name = %s", __func__, gre_ifname);
+    LOGN("%s: Remove gre if_name = %s", if_name, gre_ifname);
     ret = ovsdb_table_delete_simple(&table_Wifi_Inet_Config,
                                    SCHEMA_COLUMN(Wifi_Inet_Config, if_name),
                                    gre_ifname);
     if (!ret)
         LOGI("%s Remove row failed %s", __func__, gre_ifname);
-
-    return ret == 1;
 }
 
 /* Function required as a workaround for CAES-599 */
 void cm2_ovsdb_remove_unused_gre_interfaces() {
     struct schema_Connection_Manager_Uplink *uplink;
-    void *uplink_p;
-    int count, i;
+    void   *uplink_p;
+    int    count;
+    int    i;
 
     uplink_p = ovsdb_table_select(&table_Connection_Manager_Uplink,
                                   SCHEMA_COLUMN(Connection_Manager_Uplink, if_type),
@@ -389,52 +446,6 @@ void cm2_ovsdb_remove_unused_gre_interfaces() {
     }
 }
 
-static bool
-cm2_util_refresh_ip(struct schema_Wifi_Master_State *master)
-{
-    bool empty_addr;
-
-    if (strlen(master->inet_addr) <= 0)
-        return false;
-
-    empty_addr = strcmp(master->inet_addr, "0.0.0.0") == 0 ? true : false;
-
-    if (!empty_addr)
-        return true;
-
-    if (!strcmp(master->port_state, "inactive"))
-        return true;
-
-    if (!cm2_ovsdb_set_dhcp(master->if_name, true))
-        LOGW("%s: %s: Failed to set DHCP", __func__, master->if_name);
-
-    return false;
-}
-
-static void
-cm2_ovsdb_Wifi_Master_State_change_ip(struct schema_Wifi_Master_State *master)
-{
-   LOGN("%s Detected ip change = %s", master->if_name, master->inet_addr);
-
-   if (!strcmp(master->if_name, BR_WAN_NAME))
-       cm2_util_refresh_ip(master);
-
-   if (!strcmp(master->if_type, VIF_TYPE_NAME) && cm2_util_vif_is_sta(master->if_name)) {
-       if (!cm2_util_refresh_ip(master))
-           return;
-
-       /* Skip creating more gre during onboarding, workaround for CAES-599 */
-       if (g_state.link.is_used) {
-           LOGI("Skip creating new gre for %s CAES-599",
-                master->if_name);
-           return;
-       }
-       LOGN("%s Trigger creating gre", master->if_name);
-       cm2_ovsdb_remove_Wifi_Inet_Config(master->if_name, false);
-       cm2_ovsdb_insert_Wifi_Inet_Config(master);
-   }
-}
-
 bool
 cm2_ovsdb_set_Wifi_Inet_Config_network_state(bool state, char *ifname)
 {
@@ -446,7 +457,7 @@ cm2_ovsdb_set_Wifi_Inet_Config_network_state(bool state, char *ifname)
     if (strlen(ifname) == 0)
         return 0;
 
-    LOGN("%s change network (%s) state: %d", __func__, ifname, state);
+    LOGI("%s: Set new network state: %d", ifname, state);
 
     icfg.network = state;
     char *filter[] = { "+",
@@ -461,7 +472,72 @@ cm2_ovsdb_set_Wifi_Inet_Config_network_state(bool state, char *ifname)
 }
 
 static void
-cm2_ovsdb_Connection_Manager_Uplink_translate_port_state(struct schema_Wifi_Master_State *master)
+cm2_ovsdb_util_translate_master_ip(struct schema_Wifi_Master_State *master)
+{
+   bool is_sta;
+   int  ret;
+
+   LOGI("%s: Detected ip change = %s", master->if_name, master->inet_addr);
+
+   is_sta = !strcmp(master->if_type, VIF_TYPE_NAME) && cm2_util_vif_is_sta(master->if_name);
+
+   if (strcmp(master->if_name, BR_WAN_NAME) && !is_sta)
+       return;
+
+   if (!(cm2_util_set_dhcp(master, false)))
+       return;
+
+   if (is_sta) {
+       /* Skip creating more gre during onboarding, workaround for CAES-599 */
+       if (g_state.link.is_used) {
+           LOGI("Skip creating new gre for %s CAES-599",
+                master->if_name);
+           return;
+       }
+
+       LOGN("%s Trigger creating gre", master->if_name);
+
+       cm2_ovsdb_remove_Wifi_Inet_Config(master->if_name, false);
+       ret = cm2_ovsdb_insert_Wifi_Inet_Config(master);
+       if (!ret)
+           LOGW("%s: %s Failed to insert GRE", __func__, master->if_name);
+   }
+}
+
+static void
+cm2_ovsdb_util_handle_master_sta_port_state(struct schema_Wifi_Master_State *master,
+                                            bool port_state,
+                                            char *gre_ifname)
+{
+    int ret;
+
+    if (port_state) {
+        cm2_util_set_dhcp(master, true);
+
+        ret = cm2_ovsdb_set_Wifi_Inet_Config_interface_enabled(true, master->if_name);
+        if (!ret)
+            LOGW("%s: %s: Failed to set interface enabled", __func__, master->if_name);
+    } else {
+        ret = cm2_ovsdb_set_Wifi_Inet_Config_interface_enabled(false, master->if_name);
+        if (!ret)
+            LOGW("%s: %s: Failed to set interface enabled", __func__, master->if_name);
+
+        if (!strcmp(gre_ifname, g_state.link.if_name) && g_state.link.is_used) {
+            ret = cm2_ovs_insert_port_into_bridge(BR_WAN_NAME, g_state.link.if_name, false);
+            if (!ret)
+                LOGW("%s: Failed to remove port %s from %s", __func__, master->if_name, BR_WAN_NAME);
+        }
+
+        cm2_ovsdb_remove_Wifi_Inet_Config(gre_ifname, true);
+    }
+
+    ret = cm2_ovsdb_set_Wifi_Inet_Config_network_state(port_state, master->if_name);
+    if (!ret)
+        LOGW("%s: %s: Failed to set network state %d", __func__, master->if_name, port_state);
+}
+
+static void
+cm2_ovsdb_util_translate_master_port_state(struct schema_Wifi_Master_State *master)
 {
     struct schema_Connection_Manager_Uplink con;
     char                                    gre_ifname[IFNAME_SIZE];
@@ -470,54 +546,35 @@ cm2_ovsdb_Connection_Manager_Uplink_translate_port_state(struct schema_Wifi_Mast
 
     memset(&con, 0, sizeof(con));
 
+    if (strlen(master->port_state) <= 0)
+        return;
+
     port_state = strcmp(master->port_state, "active") == 0 ? true : false;
 
-    LOGN("%s port_state = %d ifname = %s",  __func__, port_state, master->if_name);
+    LOGN("%s: Detected new port_state = %s", master->if_name, master->port_state);
 
     if (!strcmp(master->if_type, VIF_TYPE_NAME) && cm2_util_vif_is_sta(master->if_name)) {
         tsnprintf(gre_ifname, sizeof(gre_ifname), "g-%s", master->if_name);
-
-        if (port_state) {
-            if (cm2_util_refresh_ip(master)) {
-                ret = cm2_ovsdb_set_dhcp(master->if_name, false);
-                if(!ret)
-                    LOGW("%s: %s: Failed to disable DHCP", __func__, master->if_name);
-            }
-            cm2_ovsdb_set_Wifi_Inet_Config_interface_enabled(true, master->if_name);
-            cm2_ovsdb_set_Wifi_Inet_Config_network_state(true, master->if_name);
-        } else {
-            if (!strcmp(gre_ifname, g_state.link.if_name) && g_state.link.is_used)
-                cm2_ovs_insert_port_into_bridge(BR_WAN_NAME, g_state.link.if_name, false);
-
-            cm2_ovsdb_remove_Wifi_Inet_Config(gre_ifname, true);
-        }
-
-        if (cm2_ovsdb_connection_get_connection_by_ifname(gre_ifname, &con)) {
-            if (!strcmp(master->port_state, "active")) {
-                cm2_ovsdb_set_Wifi_Inet_Config_interface_enabled(true, master->if_name);
-            }
-        }
-
+        cm2_ovsdb_util_handle_master_sta_port_state(master, port_state, gre_ifname);
         return;
     }
 
     if ((strcmp(master->if_type, GRE_TYPE_NAME) != 0 ||
          strstr(master->if_name, "g-") == NULL) &&
          strcmp(master->if_type, ETH_TYPE_NAME) != 0) {
-        LOGN("%s Skip setting interface as ready ifname = %s iftype = %s",
+        LOGD("%s Skip setting interface as ready ifname = %s iftype = %s",
              __func__, master->if_name, master->if_type);
         return;
     }
 
     memset(&con, 0, sizeof(con));
 
-    LOGN("%s Add new ifname = %s port_state = %s into Connection Manager Uplink table",
-         __func__, master->if_name, master->port_state);
+    LOGI("%s: Add new uplink into Connection Manager Uplink table", master->if_name);
 
     STRSCPY(con.if_name, master->if_name);
     STRSCPY(con.if_type, master->if_type);
     con.has_L2_exists = true;
-    con.has_L2 = strcmp(master->port_state, "active") == 0 ? true : false;
+    con.has_L2 = port_state;
     con.priority_exists = true;
     /* NM2 does not handle priority Set default values by CM2 */
     //con.priority = master->uplink_priority;
@@ -535,10 +592,16 @@ cm2_ovsdb_Connection_Manager_Uplink_translate_port_state(struct schema_Wifi_Mast
         LOGE("%s Insert new row failed for %s", __func__, con.if_name);
 }
 
-static bool
-cm2_ovsdb_Connection_Manager_Uplink_translate_priority(struct schema_Wifi_Master_State *master) {
+static void
+cm2_ovsdb_util_translate_master_priority(struct schema_Wifi_Master_State *master) {
     struct schema_Connection_Manager_Uplink con;
     char *filter[] = { "+", SCHEMA_COLUMN(Connection_Manager_Uplink, priority), NULL };
+
+    LOGI("%s: Detected new priority = %d", master->if_name, master->uplink_priority);
+
+    if (!strstr(master->if_name, "g-") &&
+        strcmp(master->if_type, ETH_TYPE_NAME))
+        return;
 
     memset(&con, 0, sizeof(con));
     con.priority_exists = true;
@@ -553,7 +616,9 @@ cm2_ovsdb_Connection_Manager_Uplink_translate_priority(struct schema_Wifi_Master
                                          ovsdb_where_simple(SCHEMA_COLUMN(Connection_Manager_Uplink, if_name),
                                          master->if_name),
                                          &con, filter);
-    return ret;
+
+    if (!ret)
+        LOGE("%s: %s Update priority %d failed", __func__, master->if_name, con.priority);
 }
 /**** End helper functions*/
 
@@ -593,6 +658,46 @@ cm2_ovsdb_connection_update_used_state(char *if_name, bool state)
 
 bool cm2_ovsdb_connection_get_connection_by_ifname(const char *if_name, struct schema_Connection_Manager_Uplink *uplink) {
     return ovsdb_table_select_one(&table_Connection_Manager_Uplink, SCHEMA_COLUMN(Connection_Manager_Uplink, if_name), if_name, uplink);
+}
+
+void cm2_ovsdb_connection_update_ble_phy_link() {
+    struct schema_Connection_Manager_Uplink *uplink;
+    void                                    *uplink_p;
+    bool                                    state;
+    int                                     wifi_cnt;
+    int                                     eth_cnt;
+    int                                     count;
+    int                                     i;
+
+    uplink_p = ovsdb_table_select_typed(&table_Connection_Manager_Uplink,
+                                        SCHEMA_COLUMN(Connection_Manager_Uplink, has_L2),
+                                        OCLM_BOOL,
+                                        (void *) &state,
+                                        &count);
+
+    LOGI("BLE active phy links: %d",  count);
+
+    wifi_cnt = 0;
+    eth_cnt  = 0;
+
+    if (uplink_p) {
+        for (i = 0; i < count; i++) {
+            uplink = (struct schema_Connection_Manager_Uplink *) (uplink_p + table_Connection_Manager_Uplink.schema_size * i);
+            LOGI("Link %d: ifname = %s iftype = %s active state= %d", i, uplink->if_name, uplink->if_type, uplink->has_L2);
+
+            if (!strcmp(uplink->if_type, ETH_TYPE_NAME))
+                eth_cnt++;
+            else if (!strcmp(uplink->if_type, GRE_TYPE_NAME))
+                wifi_cnt++;
+        }
+        free(uplink_p);
+    }
+
+    state = eth_cnt > 0 ? true : false;
+    cm2_ble_onboarding_set_status(state, BLE_ONBOARDING_STATUS_ETHERNET_LINK);
+    state = wifi_cnt > 0 ? true : false;
+    cm2_ble_onboarding_set_status(state, BLE_ONBOARDING_STATUS_WIFI_LINK);
+    cm2_ble_onboarding_apply_config();
 }
 
 bool cm2_ovsdb_connection_update_ntp_state(const char *if_name, bool state) {
@@ -677,6 +782,7 @@ bool cm2_ovsdb_connection_update_unreachable_cloud_counter(const char *if_name, 
 
 bool cm2_ovsdb_connection_remove_uplink(char *if_name) {
     int ret;
+
     ret = ovsdb_table_delete_simple(&table_Connection_Manager_Uplink,
                                    SCHEMA_COLUMN(Connection_Manager_Uplink, if_name),
                                    if_name);
@@ -690,7 +796,21 @@ void cm2_connection_set_L3(struct schema_Connection_Manager_Uplink *uplink) {
     if (!uplink->has_L2)
         return;
 
-    cm2_dhcpc_dryrun(uplink->if_name, false);
+    if (cm2_ovs_insert_port_into_bridge(BR_HOME_NAME, uplink->if_name, false))
+        LOGW("%s: Failed to remove port %s from %s", __func__, BR_HOME_NAME, uplink->if_name);
+
+#ifdef CONFIG_PLUME_CM2_DISABLE_DRYRUN_ON_GRE
+    if (!strcmp(uplink->if_type, GRE_TYPE_NAME)) {
+        int ret;
+
+        LOGN("%s: GRE uplink is marked as active link", uplink->if_name);
+        ret = cm2_ovsdb_connection_update_L3_state(uplink->if_name, true);
+        if (!ret)
+            LOGW("%s: %s: Update L3 state failed ret = %d",
+                 __func__, uplink->if_name, ret);
+    } else
+#endif
+        cm2_dhcpc_start_dryrun(uplink->if_name, false);
 }
 
 bool cm2_connection_get_used_link(struct schema_Connection_Manager_Uplink *uplink) {
@@ -699,10 +819,16 @@ bool cm2_connection_get_used_link(struct schema_Connection_Manager_Uplink *uplin
 
 static void cm2_connection_clear_used()
 {
+    int ret;
+
     if (g_state.link.is_used) {
-        LOGN("%s Remove old used link %s", __func__, g_state.link.if_name);
+        LOGN("%s: Remove old used link.", g_state.link.if_name);
         cm2_ovs_insert_port_into_bridge(BR_WAN_NAME, g_state.link.if_name, false);
-        cm2_ovsdb_connection_update_used_state(g_state.link.if_name, false);
+
+        ret = cm2_ovsdb_connection_update_used_state(g_state.link.if_name, false);
+        if (!ret)
+            LOGI("%s: %s: Failed to clear used state", __func__, g_state.link.if_name);
+
         g_state.link.is_used = false;
         g_state.link.priority = -1;
     }
@@ -710,7 +836,9 @@ static void cm2_connection_clear_used()
 
 void cm2_connection_set_is_used(struct schema_Connection_Manager_Uplink *uplink)
 {
-    if (!uplink->has_L3)
+    int ret;
+
+    if (!uplink->has_L2 || !uplink->has_L3)
         return;
 
     if (strcmp(uplink->if_type, GRE_TYPE_NAME) && (strcmp(uplink->if_type, ETH_TYPE_NAME)))
@@ -729,22 +857,29 @@ void cm2_connection_set_is_used(struct schema_Connection_Manager_Uplink *uplink)
     g_state.link.is_used = true;
     g_state.link.priority = uplink->priority;
 
-    LOGN("%s Set new used link %s", __func__, uplink->if_name);
-    cm2_ovs_insert_port_into_bridge(BR_WAN_NAME, uplink->if_name, true);
-    cm2_ovsdb_connection_update_used_state(uplink->if_name, true);
+    LOGN("%s: Set new used link", uplink->if_name);
+    ret = cm2_ovs_insert_port_into_bridge(BR_WAN_NAME, uplink->if_name, true);
+    if (!ret)
+        LOGW("%s: Failed to add port %s into %s", __func__, uplink->if_name, BR_WAN_NAME);
+
+    ret = cm2_ovsdb_connection_update_used_state(uplink->if_name, true);
+    if (!ret)
+        LOGW("%s: %s: Failed to set used state", __func__, uplink->if_name);
 }
 
 void cm2_check_master_state_links() {
     struct schema_Wifi_Master_State *link;
-    void *link_p;
-    int count, i;
+    void   *link_p;
+    int    count;
+    int    ret;
+    int    i;
 
     link_p = ovsdb_table_select(&table_Wifi_Master_State,
                                   SCHEMA_COLUMN(Wifi_Master_State, port_state),
                                   "active",
                                   &count);
 
-    LOGN("%s Available active links in Wifi_Master_State = %d", __func__, count);
+    LOGI("%s: Available active links in Wifi_Master_State = %d", __func__, count);
 
     if (!link_p)
         return;
@@ -752,9 +887,12 @@ void cm2_check_master_state_links() {
     for (i = 0; i < count; i++) {
         link = (struct schema_Wifi_Master_State *) (link_p + table_Wifi_Master_State.schema_size * i);
         if (cm2_util_vif_is_sta(link->if_name)) {
-            LOGN("%s Trigger creating gre", link->if_name);
+            LOGN("%s: Trigger creating gre", link->if_name);
+
             cm2_ovsdb_remove_Wifi_Inet_Config(link->if_name, false);
-            cm2_ovsdb_insert_Wifi_Inet_Config(link);
+            ret = cm2_ovsdb_insert_Wifi_Inet_Config(link);
+            if (!ret)
+               LOGW("%s: %s Failed to insert GRE", __func__, link->if_name);
         }
     }
     free(link_p);
@@ -775,12 +913,12 @@ void cm2_connection_recalculate_used_link() {
                                         (void *) &state,
                                         &count);
 
-    LOGN("%s Available links count = %d", __func__, count);
+    LOGN("%s: Recalculating link. Available links %d", __func__, count);
 
     if (uplink_p) {
         for (i = 0; i < count; i++) {
             uplink = (struct schema_Connection_Manager_Uplink *) (uplink_p + table_Connection_Manager_Uplink.schema_size * i);
-            LOGN("%s %d %s: priority = %d active = %d", __func__, i, uplink->if_name, uplink->priority, uplink->has_L3);
+            LOGI("Link %d: ifname = %s priority = %d active state= %d", i, uplink->if_name, uplink->priority, uplink->has_L3);
             if (uplink->loop)
                 continue;
             if (uplink->priority > priority) {
@@ -794,8 +932,10 @@ void cm2_connection_recalculate_used_link() {
         check_master = false;
     }
 
+#ifndef CONFIG_PLUME_CM2_DISABLE_DRYRUN_ON_GRE
     if (check_master)
         cm2_check_master_state_links();
+#endif
 }
 
 int cm2_ovsdb_ble_config_update(uint8_t ble_status)
@@ -833,9 +973,12 @@ int cm2_ovsdb_ble_config_update(uint8_t ble_status)
 
 void cm2_set_ble_onboarding_link_state(bool state, char *if_type, char *if_name)
 {
+    if (g_state.connected)
+        return;
+
     if (strcmp(if_type, ETH_TYPE_NAME) == 0) {
         cm2_ble_onboarding_set_status(state, BLE_ONBOARDING_STATUS_ETHERNET_LINK);
-    } else if (!strcmp(if_type, VIF_TYPE_NAME) && cm2_util_vif_is_sta(if_name)) {
+    } else if (!strcmp(if_type, GRE_TYPE_NAME)) {
         cm2_ble_onboarding_set_status(state, BLE_ONBOARDING_STATUS_WIFI_LINK);
     }
     cm2_ble_onboarding_apply_config();
@@ -845,78 +988,67 @@ void callback_Wifi_Master_State(ovsdb_update_monitor_t *mon,
                                 struct schema_Wifi_Master_State *old_rec,
                                 struct schema_Wifi_Master_State *master)
 {
+    int ret;
+
     LOGD("%s calling %s", __func__, master->if_name);
 
     if (mon->mon_type == OVSDB_UPDATE_DEL) {
         char gre_ifname[IFNAME_SIZE];
 
-        LOGN("%s DELETE if_name = %s", __func__, master->if_name);
+        LOGI("%s: Remove row detected in Master State", master->if_name);
 
         if (cm2_util_vif_is_sta(master->if_name) && !strcmp(master->if_type, VIF_TYPE_NAME)) {
             tsnprintf(gre_ifname, sizeof(gre_ifname), "g-%s", master->if_name);
-            cm2_ovsdb_connection_remove_uplink(gre_ifname);
+            ret = cm2_ovsdb_connection_remove_uplink(gre_ifname);
+            if (!ret)
+                LOGW("%s Remove uplink %s failed", __func__, gre_ifname);
         }
 
         if (strstr(master->if_name, "g-") == master->if_name &&
             cm2_util_vif_is_sta(master->if_name + strlen("g-"))) {
-            cm2_ovsdb_connection_remove_uplink(master->if_name);
+            ret = cm2_ovsdb_connection_remove_uplink(master->if_name);
+            if (!ret)
+                LOGW("%s Remove uplink %s failed", __func__, master->if_name);
         }
 
         return;
     }
 
-    if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_Master_State, port_state))) {
-        LOGN("%s port_state in master table = %s", master->if_name, master->port_state);
-            cm2_ovsdb_Connection_Manager_Uplink_translate_port_state(master);
-    }
+    if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_Master_State, port_state)))
+            cm2_ovsdb_util_translate_master_port_state(master);
 
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_Master_State, network_state)))
     {
-        bool net_state = strcmp(master->network_state,"down") == 0 ? false : true;
-
-        LOGN("%s network_state in master table = %s", master->if_name, master->network_state);
+        LOGI("%s: Detected network_state change = %s", master->if_name, master->network_state);
 
         if (!strncmp(master->if_name, BR_WAN_NAME, strlen(master->if_name))) {
-            cm2_ovsdb_set_Wifi_Inet_Config_network_state(true, master->if_name);
+            ret = cm2_ovsdb_set_Wifi_Inet_Config_network_state(true, master->if_name);
+            if (!ret)
+                LOGW("%s: %s: Failed to set network enabled", __func__, master->if_name);
         }
-        cm2_set_ble_onboarding_link_state(net_state, master->if_type, master->if_name);
     }
 
     /* Creating GRE interfaces */
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_Master_State, inet_addr)))
-    {
-        cm2_ovsdb_Wifi_Master_State_change_ip(master);
-    }
+        cm2_ovsdb_util_translate_master_ip(master);
 
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_Master_State, uplink_priority)))
-    {
-        cm2_ovsdb_Connection_Manager_Uplink_translate_priority(master);
-    }
+        cm2_ovsdb_util_translate_master_priority(master);
 
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_Master_State, if_name)))
-    {
         LOGD("%s if_name = %s changed not handled ", __func__, master->if_name);
-    }
 
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_Master_State, if_type)))
-    {
         LOGD("%s if_type = %s changed not handled", __func__, master->if_type);
-    }
 
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_Master_State, if_uuid)))
-    {
         LOGD("%s if_uuid changed", __func__);
-    }
 
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_Master_State, netmask)))
-    {
         LOGD("%s netmask = %s changed not handled", __func__, master->netmask);
-    }
 
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_Master_State, dhcpc)))
-    {
         LOGD("%s dhcpc changed not handled", __func__);
-    }
 }
 
 static void
@@ -935,14 +1067,16 @@ cm2_Connection_Manager_Uplink_handle_update(
     bool clean_up_counters = false;
     bool reconfigure       = false;
     char *filter[8];
-    int idx = 0;
+    int  idx = 0;
+    int  ret;
 
     filter[idx++] = "+";
 
     /* Configuration part. Setting by NM, WM, Cloud */
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Connection_Manager_Uplink, priority))) {
-        LOGN("%s priority changed for %s g_state.link.priority = %d con prio = %d con is used = %d",
-             __func__, uplink->if_name, g_state.link.priority , uplink->priority , uplink->is_used);
+        LOGN("%s: Uplink table: detected priority change = %d", uplink->if_name, uplink->priority);
+        LOGI("%s: Main link priority: %d new priority = %d uplink is used = %d",
+             uplink->if_name, g_state.link.priority , uplink->priority , uplink->is_used);
         if ((g_state.link.is_used && g_state.link.priority < uplink->priority) ||
             cm2_util_get_link_is_used(uplink)) {
            reconfigure = true;
@@ -950,36 +1084,48 @@ cm2_Connection_Manager_Uplink_handle_update(
     }
 
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Connection_Manager_Uplink, loop))) {
-        LOGN("%s loop changed for %s loop state: %d",  __func__, uplink->if_name, uplink->loop);
+        LOGN("%s: Uplink table: detected loop change = %d", uplink->if_name, uplink->loop);
         if (cm2_util_get_link_is_used(uplink)) {
            reconfigure = true;
         }
     }
 
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Connection_Manager_Uplink, has_L2))) {
-        LOGN("%s hasL2 changed for %s = %d", __func__, uplink->if_name, uplink->has_L2);
+        LOGN("%s: Uplink table: detected hasL2 change = %d", uplink->if_name, uplink->has_L2);
         if (!uplink->has_L2) {
-            if(cm2_util_get_link_is_used(uplink)) {
+            cm2_dhcpc_stop_dryrun(uplink->if_name);
+
+            if (!strcmp(uplink->if_type, ETH_TYPE_NAME)) {
+                ret = cm2_ovs_insert_port_into_bridge(BR_HOME_NAME, uplink->if_name, false);
+                if (!ret)
+                    LOGI("%s: Failed to remove port %s from %s", __func__, BR_HOME_NAME, uplink->if_name);
+            }
+
+            if (cm2_util_get_link_is_used(uplink)) {
                 reconfigure = true;
             } else {
                 clean_up_counters = true;
             }
             filter[idx++] = SCHEMA_COLUMN(Connection_Manager_Uplink, has_L3);
             uplink->has_L3 = false;
-        } else
+        } else {
+            cm2_set_ble_onboarding_link_state(true, uplink->if_type, uplink->if_name);
             cm2_connection_set_L3(uplink);
+        }
     }
 
-   /* End of configuration part */
+    /* End of configuration part */
 
     /* Setting state part */
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Connection_Manager_Uplink, has_L3))) {
-         cm2_connection_set_is_used(uplink);
+        LOGN("%s: Uplink table: detected hasL2 change = %d", uplink->if_name, uplink->has_L2);
+        cm2_connection_set_is_used(uplink);
     }
 
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Connection_Manager_Uplink, is_used))) {
-        LOGN("%s is_used changed for %s state %d",
-             __func__, uplink->if_name, uplink->is_used);
+        LOGN("%s: Uplink table: detected link_usage change = %d",
+             uplink->if_name, uplink->is_used);
+
         if (!uplink->is_used && !cm2_util_get_link_is_used(uplink))
             clean_up_counters = true;
 
@@ -987,26 +1133,27 @@ cm2_Connection_Manager_Uplink_handle_update(
             cm2_update_state(CM2_REASON_LINK_USED);
     }
 
-    if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Connection_Manager_Uplink, unreachable_router_counter))) {
-        cm2_ble_onboarding_set_status(uplink->unreachable_router_counter == 0, BLE_ONBOARDING_STATUS_ROUTER_OK);
-        cm2_ble_onboarding_apply_config();
-    }
+    if (uplink->is_used) {
+      if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Connection_Manager_Uplink, unreachable_router_counter))) {
+          cm2_ble_onboarding_set_status(uplink->unreachable_router_counter == 0, BLE_ONBOARDING_STATUS_ROUTER_OK);
+          cm2_ble_onboarding_apply_config();
+      }
 
-    if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Connection_Manager_Uplink, unreachable_cloud_counter))) {
-        cm2_ble_onboarding_set_status(uplink->unreachable_cloud_counter == 0, BLE_ONBOARDING_STATUS_CLOUD_OK);
-        cm2_ble_onboarding_apply_config();
-    }
+      if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Connection_Manager_Uplink, unreachable_cloud_counter))) {
+          cm2_ble_onboarding_set_status(uplink->unreachable_cloud_counter == 0, BLE_ONBOARDING_STATUS_CLOUD_OK);
+          cm2_ble_onboarding_apply_config();
+      }
 
-    if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Connection_Manager_Uplink, unreachable_internet_counter))) {
-        cm2_ble_onboarding_set_status(uplink->unreachable_internet_counter == 0, BLE_ONBOARDING_STATUS_INTERNET_OK);
-        cm2_ble_onboarding_apply_config();
+      if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Connection_Manager_Uplink, unreachable_internet_counter))) {
+          cm2_ble_onboarding_set_status(uplink->unreachable_internet_counter == 0, BLE_ONBOARDING_STATUS_INTERNET_OK);
+          cm2_ble_onboarding_apply_config();
+      }
     }
     /* End of State part */
 
 
     if (clean_up_counters || reconfigure) {
-        LOGN("%s clean up counters on %s. Reason: clean_up_counters = %d reconfigure = %d",
-             __func__, uplink->if_name, clean_up_counters, reconfigure);
+        LOGN("%s: Clean up counters", uplink->if_name);
 
         filter[idx++] = SCHEMA_COLUMN(Connection_Manager_Uplink, ntp_state);
         uplink->ntp_state = false;
@@ -1036,7 +1183,7 @@ cm2_Connection_Manager_Uplink_handle_update(
     }
 
     if (reconfigure) {
-        LOGN("%s Reconfigure main link for %s", __func__, uplink->if_name);
+        LOGN("%s Reconfigure main link", uplink->if_name);
         cm2_connection_clear_used();
         cm2_update_state(CM2_REASON_LINK_NOT_USED);
         cm2_connection_recalculate_used_link();
@@ -1047,6 +1194,8 @@ void callback_Connection_Manager_Uplink(ovsdb_update_monitor_t *mon,
                                         struct schema_Connection_Manager_Uplink *old_row,
                                         struct schema_Connection_Manager_Uplink *uplink)
 {
+    int ret;
+
     LOGD("%s mon_type = %d", __func__, mon->mon_type);
 
     switch (mon->mon_type) {
@@ -1058,6 +1207,13 @@ void callback_Connection_Manager_Uplink(ovsdb_update_monitor_t *mon,
         case OVSDB_UPDATE_DEL:
             if (cm2_util_get_link_is_used(uplink)) {
                 cm2_util_set_not_used_link();
+            }
+            cm2_dhcpc_stop_dryrun(uplink->if_name);
+
+            if (!strcmp(uplink->if_type, ETH_TYPE_NAME)) {
+                ret = cm2_ovs_insert_port_into_bridge(BR_HOME_NAME, uplink->if_name, false);
+                if (!ret)
+                    LOGI("%s: Failed to remove port %s from %s", __func__, BR_HOME_NAME, uplink->if_name);
             }
             break;
         case OVSDB_UPDATE_NEW:
@@ -1101,7 +1257,8 @@ bool cm2_ovsdb_set_Manager_target(char *target)
     struct schema_Manager manager;
     memset(&manager, 0, sizeof(manager));
     STRSCPY(manager.target, target);
-    char *filter[] = { "+", SCHEMA_COLUMN(Manager, target), NULL };
+    manager.is_connected = false;
+    char *filter[] = { "+", SCHEMA_COLUMN(Manager, target), SCHEMA_COLUMN(Manager, is_connected), NULL };
     int ret = ovsdb_table_update_where_f(&table_Manager, NULL, &manager, filter);
     return ret == 1;
 }
@@ -1123,7 +1280,7 @@ cm2_awlan_state_update_cb(
 {
     bool ret;
 
-    if(!filter || filter->num <= 0) {
+    if (!filter || filter->num <= 0) {
        LOGE("Updating awlan_node (no filter fields)");
        return;
     }

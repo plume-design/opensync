@@ -35,7 +35,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "const.h"
 
-
 c_item_t *
 _c_get_item_by_key(c_item_t *list, int list_sz, int key)
 {
@@ -52,13 +51,13 @@ _c_get_item_by_key(c_item_t *list, int list_sz, int key)
 }
 
 c_item_t *
-_c_get_item_by_strkey(c_item_t *list, int list_sz, const char *key, int key_len)
+_c_get_item_by_strkey(c_item_t *list, int list_sz, const char *key)
 {
     c_item_t    *item;
     int         i;
 
     for (item = list,i = 0;i < list_sz; item++, i++) {
-        if (strncmp((char *)(item->key), key, key_len) == 0) {
+        if (strcmp((char *)(item->key), key) == 0) {
             return item;
         }
     }
@@ -67,13 +66,13 @@ _c_get_item_by_strkey(c_item_t *list, int list_sz, const char *key, int key_len)
 }
 
 c_item_t *
-_c_get_item_by_str(c_item_t *list, int list_sz, const char *str, int str_len)
+_c_get_item_by_str(c_item_t *list, int list_sz, const char *str)
 {
     c_item_t    *item;
     int         i;
 
     for (item = list,i = 0;i < list_sz; item++, i++) {
-        if (strncmp((char *)(item->data), str, str_len) == 0) {
+        if (strcmp((char *)(item->data), str) == 0) {
             return item;
         }
     }
@@ -106,9 +105,9 @@ _c_get_str_by_key(c_item_t *list, int list_sz, int key)
 }
 
 char *
-_c_get_str_by_strkey(c_item_t *list, int list_sz, const char *key, int key_len)
+_c_get_str_by_strkey(c_item_t *list, int list_sz, const char *key)
 {
-    c_item_t    *item = _c_get_item_by_strkey(list, list_sz, key, key_len);
+    c_item_t    *item = _c_get_item_by_strkey(list, list_sz, key);
 
     if (!item) {
         return "";
@@ -118,9 +117,9 @@ _c_get_str_by_strkey(c_item_t *list, int list_sz, const char *key, int key_len)
 }
 
 char *
-_c_get_strkey_by_str(c_item_t *list, int list_sz, const char *str, int str_len)
+_c_get_strkey_by_str(c_item_t *list, int list_sz, const char *str)
 {
-    c_item_t    *item = _c_get_item_by_str(list, list_sz, str, str_len);
+    c_item_t    *item = _c_get_item_by_str(list, list_sz, str);
 
     if (!item) {
         return "";

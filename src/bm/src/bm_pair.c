@@ -210,12 +210,21 @@ bm_pair_ovsdb_update_cb(ovsdb_update_monitor_t *self)
         bm_stats_map_radio_type(BSAL_BAND_24G, bp->ifcfg[BSAL_BAND_24G].ifname);
         bm_stats_map_radio_type(BSAL_BAND_5G,  bp->ifcfg[BSAL_BAND_5G].ifname);
 
-        bp->bsal = bsal_ifpair_add(&bp->ifcfg[BSAL_BAND_24G], &bp->ifcfg[BSAL_BAND_5G]);
-        if (!bp->bsal) {
-            LOGE("Failed to add if-pair to BSAL (uuid=%s)", bp->uuid);
+        if (target_bsal_iface_add(&bp->ifcfg[BSAL_BAND_24G])) {
+            LOGE("Failed to add iface 24G to BSAL (uuid=%s)", bp->uuid);
             free(bp);
             return;
-        }
+	}
+
+        if (target_bsal_iface_add(&bp->ifcfg[BSAL_BAND_5G])) {
+            target_bsal_iface_remove(&bp->ifcfg[BSAL_BAND_24G]);
+            LOGE("Failed to add iface 5G t BSAL (uuid=%s)", bp->uuid);
+            free(bp);
+            return;
+	}
+
+        /* Temporary set this to make BM happy */
+        bp->bsal = bp;
         bp->enabled = true;
 
         ds_tree_insert(&bm_pairs, bp, bp->uuid);
@@ -248,11 +257,11 @@ bm_pair_ovsdb_update_cb(ovsdb_update_monitor_t *self)
             return;
         }
 
-        if (bsal_ifpair_update(bp->bsal, BSAL_BAND_24G, &bp->ifcfg[BSAL_BAND_24G]) != 0) {
+        if (target_bsal_iface_update(&bp->ifcfg[BSAL_BAND_24G]) != 0) {
             LOGE("Failed to update BSAL 2.4G config (uuid=%s)", bp->uuid);
             return;
         }
-        if (bsal_ifpair_update(bp->bsal, BSAL_BAND_5G, &bp->ifcfg[BSAL_BAND_5G]) != 0) {
+        if (target_bsal_iface_update(&bp->ifcfg[BSAL_BAND_5G]) != 0) {
             LOGE("Failed to update BSAL 5G config (uuid=%s)", bp->uuid);
             return;
         }
@@ -275,9 +284,12 @@ bm_pair_ovsdb_update_cb(ovsdb_update_monitor_t *self)
         }
 
         bm_kick_cleanup_by_bsal(bp->bsal);
-        if (bsal_ifpair_remove(bp->bsal) != 0) {
-            LOGE("Failed to remove if-pair (uuid=%s)", bp->uuid);
-            return;
+        if (target_bsal_iface_remove(&bp->ifcfg[BSAL_BAND_24G]) != 0) {
+            LOGE("Failed to remove 2G (uuid=%s)", bp->uuid);
+        }
+
+        if (target_bsal_iface_remove(&bp->ifcfg[BSAL_BAND_5G]) != 0) {
+            LOGE("Failed to remove 5G (uuid=%s)", bp->uuid);
         }
 
         LOGN("Removed if-pair %s/%s (uuid=%s)", bp->ifcfg[BSAL_BAND_24G].ifname,
@@ -325,7 +337,10 @@ bm_pair_cleanup(void)
         ds_tree_iremove(&iter);
 
         if (bp->enabled && bp->bsal) {
-            if (bsal_ifpair_remove(bp->bsal) != 0) {
+            if (target_bsal_iface_remove(&bp->ifcfg[BSAL_BAND_24G]) != 0) {
+                LOGW("Failed to remove ifpair from BSAL");
+            }
+            if (target_bsal_iface_remove(&bp->ifcfg[BSAL_BAND_5G]) != 0) {
                 LOGW("Failed to remove ifpair from BSAL");
             }
         }
@@ -378,4 +393,21 @@ bm_pair_find_by_ifname(const char *ifname)
     }
 
     return NULL;
+}
+
+bsal_band_t
+bsal_band_find_by_ifname(const char *ifname)
+{
+    bm_pair_t       *bp;
+    int             i;
+
+    ds_tree_foreach(&bm_pairs, bp) {
+        for(i = 0;i < BSAL_BAND_COUNT;i++) {
+            if (!strcmp(bp->ifcfg[i].ifname, ifname)) {
+                return i;
+            }
+        }
+    }
+
+    return BSAL_BAND_COUNT;
 }

@@ -93,7 +93,7 @@ char *strexread(const char *prog, const char *const*argv);
 #define __strexa_arg1(x, ...) x
 #define strexa(...) strdupafree(strchomp(strexread(__strexa_arg1(__VA_ARGS__), (const char *[]){ __VA_ARGS__, NULL }), " \t\r\n"))
 #define strexpect(str, prog, ...) ({ char *__p = strexa(prog, ##__VA_ARGS__); __p && !strcmp(__p, str); })
-char *strdel(char *heystack, const char *needle);
+char *strdel(char *heystack, const char *needle, int (*strcmp_fun) (const char*, const char*));
 
 int    str_count_lines(char *s);
 bool   str_split_lines_to(char *s, char **lines, int size, int *count);

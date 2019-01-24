@@ -71,6 +71,7 @@ typedef int ds_key_cmp_t(void *a, void *b);
 /**
  * Integer comparator
  */
-extern int ds_int_cmp(void *a, void *b);
+extern ds_key_cmp_t ds_int_cmp;
+extern ds_key_cmp_t ds_str_cmp;
 
 #endif /* DS_DS_H_INCLUDED */

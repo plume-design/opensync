@@ -71,14 +71,14 @@ static ev_timer *  wtimers = NULL;
 
 /* prototypes  */
 static bool child_start(ev_child * w, target_managers_config_t * ci);
-static bool child_restart(EV_P_ ev_child *w, target_managers_config_t *ci, int after);
+static bool child_restart(struct ev_loop *loop, ev_child *w, target_managers_config_t *ci, int after);
 static bool store_manager_pid(int i, int pid);
 
 
 /**
  * Timer callback used to start crashed process with some delay after the crash
  **/
-void cb_timeout(EV_P_ ev_timer * w, int events)
+void cb_timeout(struct ev_loop *loop, ev_timer * w, int events)
 {
     (void)events;
 
@@ -87,7 +87,7 @@ void cb_timeout(EV_P_ ev_timer * w, int events)
     target_managers_config_t  * ci = NULL;
 
     /* stop timer watcher */
-    ev_timer_stop(EV_A_ w);
+    ev_timer_stop(loop, w);
 
     /* child watcher is pointed by ->data member*/
     wc = (ev_child *)w->data;
@@ -112,7 +112,7 @@ void cb_timeout(EV_P_ ev_timer * w, int events)
 /**
  * Helper used to check if a signal should be ignored
  */
-static bool ignore_signal(EV_P_ ev_child *w)
+static bool ignore_signal(struct ev_loop *loop, ev_child *w)
 {
     target_managers_config_t *ci = (target_managers_config_t *)w->data;
     uint32_t termsig;
@@ -163,7 +163,7 @@ static int get_start_delay(target_managers_config_t *ci)
 /**
  * Child signals callback (one callback for all children
  **/
-static void cb_child (EV_P_ ev_child *w, int revents)
+static void cb_child (struct ev_loop *loop, ev_child *w, int revents)
 {
     (void)revents;
 
@@ -175,7 +175,7 @@ static void cb_child (EV_P_ ev_child *w, int revents)
 
     /* needed as on new process restart pid is changed */
     /* also it will be restarted when needed */
-    ev_child_stop(EV_A_ w);
+    ev_child_stop(loop, w);
 
     /* extract target_managers_config from ev_child  */
     ci = (target_managers_config_t *)w->data;
@@ -201,7 +201,7 @@ static void cb_child (EV_P_ ev_child *w, int revents)
                 w->rpid);
 
             /* on exit try to restart it relatively fast */
-            child_restart(EV_A_ w, ci, start_delay);
+            child_restart(loop, w, ci, start_delay);
             return;
         }
     }
@@ -216,13 +216,13 @@ static void cb_child (EV_P_ ev_child *w, int revents)
             w->rpid);
 
         ci->started = false;
-        child_restart(EV_A_ w, ci, TM_OUT_SLOW);
+        child_restart(loop, w, ci, TM_OUT_SLOW);
         return;
     }
 
     /* check if the on of the manager processes had crashed     */
     /* ignore managers stop due to user actions                 */
-    if (ignore_signal(EV_A_ w) == false)
+    if (ignore_signal(loop, w) == false)
     {
         LOG(NOTICE,
             "process terminated, signal: %d, restarting in %d seconds  name=%s|pid=%d",
@@ -231,7 +231,7 @@ static void cb_child (EV_P_ ev_child *w, int revents)
             ci->name,
             w->rpid);
 
-        child_restart(EV_A_ w, ci, start_delay);
+        child_restart(loop, w, ci, start_delay);
     }
     else
     {
@@ -316,7 +316,7 @@ bool child_start(ev_child * w, target_managers_config_t * ci)
         /* start monitoring this process */
         ev_child_init(w, cb_child, cpid, 0);
         w->data = ci;
-        ev_child_start(EV_DEFAULT_ w);
+        ev_child_start(EV_DEFAULT, w);
 
     }
     else
@@ -330,11 +330,11 @@ bool child_start(ev_child * w, target_managers_config_t * ci)
 /*
  * Restart the child process after "timeout" seconds
  */
-bool child_restart(EV_P_ ev_child *w, target_managers_config_t *ci, int timeout)
+bool child_restart(struct ev_loop *loop, ev_child *w, target_managers_config_t *ci, int timeout)
 {
     ev_timer_init(&wtimers[ci->ordinal], cb_timeout, timeout, 0);
     wtimers[ci->ordinal].data = w;
-    ev_timer_start(EV_A_ &wtimers[ci->ordinal]);
+    ev_timer_start(loop, &wtimers[ci->ordinal]);
 
     return true;
 }

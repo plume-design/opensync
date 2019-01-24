@@ -59,7 +59,6 @@ UNIT_DEPS += src/lib/ds
 UNIT_DEPS += src/lib/version
 UNIT_DEPS += src/lib/const
 UNIT_DEPS += src/lib/schema
-UNIT_DEPS += src/lib/inet
 UNIT_DEPS += src/lib/ovs_mac_learn
 
 UNIT_DEPS_CFLAGS += src/lib/datapipeline
@@ -70,6 +69,9 @@ UNIT_DEPS_CFLAGS += src/lib/datapipeline
 ifdef CONFIG_USE_KCONFIG
 $(eval $(if $(CONFIG_PML_TARGET),TARGET_COMMON_SRC += src/target_kconfig.c))
 $(eval $(if $(CONFIG_PML_TARGET),UNIT_DEPS += src/lib/kconfig))
+$(eval $(if $(CONFIG_PML_INET),UNIT_DEPS += src/lib/inet))
+else
+UNIT_DEPS += src/lib/inet
 endif
 
 

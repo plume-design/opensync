@@ -853,6 +853,7 @@ bool os_nif_dhcpc_start(char* ifname, bool apply, int dhcp_time)
 	"-s", udhcpc_s_option,
 	"-S",
 	"-q",
+	"-Q",
 	NULL
     };
 
@@ -911,6 +912,22 @@ bool os_nif_dhcpc_stop(char* ifname, bool dryrun)
     }
 
     return true;
+}
+
+bool os_nif_dhcpc_refresh_lease(char* ifname)
+{
+    int  pid;
+    int  ret;
+
+    pid = os_nif_dhcpc_pid(ifname);
+    if (pid <= 0)
+    {
+        LOG(DEBUG, "DHCP client not running::ifname=%s", ifname);
+        return true;
+    }
+
+    ret = kill(pid, SIGUSR1);
+    return (ret == 0) ? true : false;
 }
 
 void closefrom(int fd)

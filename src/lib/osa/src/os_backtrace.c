@@ -242,6 +242,74 @@ _Unwind_Reason_Code backtrace_handle(struct _Unwind_Context *uc, void *ctx)
     return _URC_NO_REASON;
 }
 
+// backtrace copy
+
+typedef struct
+{
+    void **addr;
+    int size;
+    int count;
+    int all;
+    bool count_all;
+} bt_copy_ctx_t;
+
+static _Unwind_Reason_Code bt_copy_cb(struct _Unwind_Context *uc, void *ctx)
+{
+    bt_copy_ctx_t *cc = ctx;
+    void *addr;
+
+    // Extract the frame address
+    addr = (void*) _Unwind_GetIP(uc);
+    if (addr == NULL) {
+        // End of stack, return
+        return _URC_END_OF_STACK;
+    }
+
+    cc->all++;
+
+    if (cc->addr && cc->count < cc->size) {
+        cc->addr[cc->count] = addr;
+        cc->count++;
+    } else if (!cc->count_all) {
+        return _URC_END_OF_STACK;
+    }
+
+    return _URC_NO_REASON;
+}
+
+// copy backtrace to addr array
+// size : addr size
+// count : actual copied (can be null if not needed)
+// all : full backtrace length (can be null if not needed)
+bool backtrace_copy(void **addr, int size, int *count, int *all)
+{
+    bt_copy_ctx_t cc;
+    cc.addr = addr;
+    cc.size = size;
+    cc.count = 0;
+    cc.all = 0;
+    cc.count_all = (all != NULL);
+    _Unwind_Backtrace(bt_copy_cb, &cc);
+    if (count) *count = cc.count;
+    if (all) *all = cc.all;
+    return true;
+}
+
+bool backtrace_resolve(void *addr, const char **func, const char **fname)
+{
+    Dl_info dli;
+    // Use dladdr to convert the address to meaningful strings
+    if (dladdr(addr, &dli) != 0)
+    {
+        *func  = dli.dli_sname;
+        *fname = dli.dli_fname;
+        return true;
+    }
+    *func  = NULL;
+    *fname = NULL;
+    return false;
+}
+
 #else
 
 void backtrace_init(void)

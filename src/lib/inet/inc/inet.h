@@ -89,6 +89,12 @@ enum inet_dhcp_option
     DHCP_OPTION_MAX
 };
 
+enum inet_proto
+{
+    INET_PROTO_UDP,
+    INET_PROTO_TCP
+};
+
 /*
  * ===========================================================================
  *  Inet class definition
@@ -119,6 +125,7 @@ typedef struct __inet inet_t;
 #define INET_DL_FINGERPRINT_MAX     256
 #define INET_DL_VENDORCLASS_MAX     256
 
+/* Structured passed to the lease notify callback, see below */
 struct inet_dhcp_lease_info
 {
     inet_macaddr_t      dl_hwaddr;                                  /* Client hardware address */
@@ -129,10 +136,35 @@ struct inet_dhcp_lease_info
     double              dl_leasetime;                               /* Lease time in seconds */
 };
 
+/* Lease notify callback */
 typedef bool inet_dhcp_lease_fn_t(
         inet_t *self,
         bool released,
         struct inet_dhcp_lease_info *dl);
+
+/* Structure passed to the route state notify callback, see below */
+struct inet_route_state
+{
+    inet_ip4addr_t  rts_dst_ipaddr;      /* Destination */
+    inet_ip4addr_t  rts_dst_mask;        /* Netmask */
+    inet_ip4addr_t  rts_gw_ipaddr;       /* Gateway, of INET_IP4ADDR_ANY if none */
+    inet_macaddr_t  rts_gw_hwaddr;       /* Gateway MAC address */
+};
+
+/* If registered, this callback is executed each time the route table for this interface changes */
+typedef bool inet_route_notify_fn_t(
+        inet_t *self,
+        struct inet_route_state *rts,
+        bool remove);
+
+/* Port forwarding argument structure */
+struct inet_portforward
+{
+    inet_ip4addr_t   pf_dst_ipaddr;
+    uint16_t         pf_dst_port;
+    uint16_t         pf_src_port;
+    enum inet_proto  pf_proto;
+};
 
 struct __inet
 {
@@ -172,7 +204,15 @@ struct __inet
 
     /* Enable NAT */
     bool        (*in_nat_enable_fn)(inet_t *self, bool enable);
+
+    /* Enable IGMP */
+    bool        (*in_igmp_enable_fn)(inet_t *self, bool enable, int iage, int itsize);
+
     bool        (*in_upnp_mode_set_fn)(inet_t *self, enum inet_upnp_mode mode);
+
+    /* Port forwarding */
+    bool        (*in_portforward_set_fn)(inet_t *self, const struct inet_portforward *pf);
+    bool        (*in_portforward_del_fn)(inet_t *self, const struct inet_portforward *pf);
 
     /* Set primary/secondary DNS servers */
     bool        (*in_dns_set_fn)(inet_t *self, inet_ip4addr_t primary, inet_ip4addr_t secondary);
@@ -188,20 +228,26 @@ struct __inet
     bool        (*in_dhcps_lease_set_fn)(inet_t *self, int lease_time_s);
     bool        (*in_dhcps_range_set_fn)(inet_t *self, inet_ip4addr_t start, inet_ip4addr_t stop);
     bool        (*in_dhcps_option_set_fn)(inet_t *self, enum inet_dhcp_option opt, const char *value);
-    bool        (*in_dhcps_lease_register_fn)(inet_t *self, inet_dhcp_lease_fn_t *fn);
-    bool        (*in_dhcps_rip_set_fn)(inet_t *super, inet_macaddr_t macaddr,
-                                       inet_ip4addr_t ip4addr, const char *hostname);
+    bool        (*in_dhcps_lease_notify_fn)(inet_t *self, inet_dhcp_lease_fn_t *fn);
+    bool        (*in_dhcps_rip_set_fn)(inet_t *super,
+                        inet_macaddr_t macaddr,
+                        inet_ip4addr_t ip4addr,
+                        const char *hostname);
     bool        (*in_dhcps_rip_del_fn)(inet_t *super, inet_macaddr_t macaddr);
 
 
     /* IPv4 tunnels (GRE, softwds) */
-    bool        (*in_ip4tunnel_set_fn)(inet_t *self, const char *parent, inet_ip4addr_t local, inet_ip4addr_t remote);
-
-    /* DHCP sniffing */
-    bool        (*in_dhsnif_enable)(inet_t *self, bool enable);
+    bool        (*in_ip4tunnel_set_fn)(inet_t *self,
+                        const char *parent,
+                        inet_ip4addr_t local,
+                        inet_ip4addr_t remote,
+                        inet_macaddr_t macaddr);
 
     /* DHCP sniffing - register callback for DHCP sniffing - if set to NULL sniffing is disabled */
-    bool        (*in_dhsnif_lease_register_fn)(inet_t *self, inet_dhcp_lease_fn_t *func);
+    bool        (*in_dhsnif_lease_notify_fn)(inet_t *self, inet_dhcp_lease_fn_t *func);
+
+    /* Routing table methods  -- if set to NULL route state reporting is disabled */
+    bool        (*in_route_notify_fn)(inet_t *self, inet_route_notify_fn_t *func);
 
     /* Commit all pending changes */
     bool        (*in_commit_fn)(inet_t *self);
@@ -298,11 +344,33 @@ static inline bool inet_nat_enable(inet_t *self, bool enable)
     return self->in_nat_enable_fn(self, enable);
 }
 
+static inline bool inet_igmp_enable(inet_t *self, int iigmp, int iage, int itsize)
+{
+    if (self->in_igmp_enable_fn == NULL) return false;
+
+    return self->in_igmp_enable_fn(self, iigmp, iage, itsize);
+}
+
 static inline bool inet_upnp_mode_set(inet_t *self, enum inet_upnp_mode mode)
 {
     if (self->in_upnp_mode_set_fn == NULL) return false;
 
     return self->in_upnp_mode_set_fn(self, mode);
+}
+
+
+static inline bool inet_portforward_set(inet_t *self, const struct inet_portforward *pf)
+{
+    if (self->in_portforward_set_fn == NULL) return false;
+
+    return self->in_portforward_set_fn(self, pf);
+}
+
+static inline bool inet_portforward_del(inet_t *self, const struct inet_portforward *pf)
+{
+    if (self->in_portforward_del_fn == NULL) return false;
+
+    return self->in_portforward_del_fn(self, pf);
 }
 
 static inline bool inet_dns_set(inet_t *self, inet_ip4addr_t primary, inet_ip4addr_t secondary)
@@ -354,11 +422,11 @@ static inline bool inet_dhcps_option_set(inet_t *self, enum inet_dhcp_option opt
     return self->in_dhcps_option_set_fn(self, opt, value);
 }
 
-static inline bool inet_dhcps_lease_register(inet_t *self, inet_dhcp_lease_fn_t *fn)
+static inline bool inet_dhcps_lease_notify(inet_t *self, inet_dhcp_lease_fn_t *fn)
 {
-    if (self->in_dhcps_lease_register_fn == NULL) return false;
+    if (self->in_dhcps_lease_notify_fn == NULL) return false;
 
-    return self->in_dhcps_lease_register_fn(self, fn);
+    return self->in_dhcps_lease_notify_fn(self, fn);
 }
 
 static inline bool inet_dhcps_rip_set(inet_t *self, inet_macaddr_t macaddr,
@@ -383,16 +451,18 @@ static inline bool inet_dhcps_rip_del(inet_t *self, inet_macaddr_t macaddr)
  * parent   - parent interface
  * laddr    - local IP address
  * raddr    - remote IP address
+ * rmac     - remote MAC address, this field is ignored for some protocols such as GRETAP
  */
 static inline bool inet_ip4tunnel_set(
         inet_t *self,
         const char *parent,
         inet_ip4addr_t laddr,
-        inet_ip4addr_t raddr)
+        inet_ip4addr_t raddr,
+        inet_macaddr_t rmac)
 {
     if (self->in_ip4tunnel_set_fn == NULL) return false;
 
-    return self->in_ip4tunnel_set_fn(self, parent, laddr, raddr);
+    return self->in_ip4tunnel_set_fn(self, parent, laddr, raddr, rmac);
 }
 
 /*
@@ -402,11 +472,21 @@ static inline bool inet_ip4tunnel_set(
  *
  * If func is NULL, DHCP sniffing is disabled on the interface.
  */
-static inline bool inet_dhsniff_lease_register(inet_t *self, inet_dhcp_lease_fn_t *func)
+static inline bool inet_dhsnif_lease_notify(inet_t *self, inet_dhcp_lease_fn_t *func)
 {
-    if (self->in_dhsnif_lease_register_fn == NULL) return false;
+    if (self->in_dhsnif_lease_notify_fn == NULL) return false;
 
-    return self->in_dhsnif_lease_register_fn(self, func);
+    return self->in_dhsnif_lease_notify_fn(self, func);
+}
+
+/*
+ * Subscribe to route table state changes.
+ */
+static inline bool inet_route_notify(inet_t *self, inet_route_notify_fn_t *func)
+{
+    if (self->in_route_notify_fn == NULL) return false;
+
+    return self->in_route_notify_fn(self, func);
 }
 
 /**

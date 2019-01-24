@@ -45,7 +45,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "dppline.h"
 
 #include "target.h"
-#include "bsal.h"
 
 #include "bm_config.h"
 #include "bm_events.h"

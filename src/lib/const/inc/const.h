@@ -112,23 +112,23 @@ typedef struct {
 #define C_ITEM_STR_LIST(str, list)  {ARRAY_SIZE(str), ARRAY_SIZE(list), (intptr_t)str, (intptr_t)list}
 
 extern c_item_t *       _c_get_item_by_key(c_item_t *list, int list_sz, int key);
-extern c_item_t *       _c_get_item_by_strkey(c_item_t *list, int list_sz, const char *key, int key_len);
-extern c_item_t *       _c_get_item_by_str(c_item_t *list, int list_sz, const char *str, int str_len);
+extern c_item_t *       _c_get_item_by_strkey(c_item_t *list, int list_sz, const char *key);
+extern c_item_t *       _c_get_item_by_str(c_item_t *list, int list_sz, const char *str);
 extern intptr_t         _c_get_data_by_key(c_item_t *list, int list_sz, int key);
 extern char *           _c_get_str_by_key(c_item_t *list, int list_sz, int key);
-extern char *           _c_get_str_by_strkey(c_item_t *list, int list_sz, const char *key, int key_len);
-extern char *           _c_get_strkey_by_str(c_item_t *list, int list_sz, const char *str, int str_len);
+extern char *           _c_get_str_by_strkey(c_item_t *list, int list_sz, const char *key);
+extern char *           _c_get_strkey_by_str(c_item_t *list, int list_sz, const char *str);
 extern bool             _c_get_value_by_key(c_item_t *list, int list_sz, int key, uint32_t *dest);
 extern bool             _c_get_param_by_key(c_item_t *list, int list_sz, int key, uint32_t *dest);
 
 #define c_get_item_by_key(list, key)        _c_get_item_by_key(ARRAY_AND_SIZE(list), key)
-#define c_get_item_by_strkey(list, key)     _c_get_item_by_strkey(ARRAY_AND_SIZE(list), key, strlen(key))
-#define c_get_item_by_str(list, str)        _c_get_item_by_str(ARRAY_AND_SIZE(list), str, strlen(str))
+#define c_get_item_by_strkey(list, key)     _c_get_item_by_strkey(ARRAY_AND_SIZE(list), key)
+#define c_get_item_by_str(list, str)        _c_get_item_by_str(ARRAY_AND_SIZE(list), str)
 #define c_get_data_by_key(list, key)        _c_get_data_by_key(ARRAY_AND_SIZE(list), key)
 #define c_get_cb_by_key(list, key)          _c_get_data_by_key(ARRAY_AND_SIZE(list), key)
 #define c_get_str_by_key(list, key)         _c_get_str_by_key(ARRAY_AND_SIZE(list), key)
-#define c_get_str_by_strkey(list, key)      _c_get_str_by_strkey(ARRAY_AND_SIZE(list), key, strlen(key))
-#define c_get_strkey_by_str(list, str)      _c_get_strkey_by_str(ARRAY_AND_SIZE(list), str, strlen(str))
+#define c_get_str_by_strkey(list, key)      _c_get_str_by_strkey(ARRAY_AND_SIZE(list), key)
+#define c_get_strkey_by_str(list, str)      _c_get_strkey_by_str(ARRAY_AND_SIZE(list), str)
 #define c_get_value_by_key(list, key, dst)  _c_get_value_by_key(ARRAY_AND_SIZE(list), key, dst)
 #define c_get_param_by_key(list, key, dst)  _c_get_param_by_key(ARRAY_AND_SIZE(list), key, dst)
 

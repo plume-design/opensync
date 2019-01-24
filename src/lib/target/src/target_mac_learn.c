@@ -33,6 +33,5 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 bool target_mac_learning_register(void *omac_cb)
 {
-    LOG(INFO, "XXX: REGISTERED FOR MAC LEARNING:wq");
     return ovs_mac_learning_register(omac_cb);
 }

@@ -41,6 +41,7 @@ UNIT_SRC     += src/sm_survey_report.c
 UNIT_SRC     += src/sm_radio_config.c
 UNIT_SRC     += src/sm_scan_schedule.c
 UNIT_SRC     += src/sm_rssi_report.c
+UNIT_SRC     += src/sm_common.c
 
 ifeq ($(BUILD_CAPACITY_QUEUE_STATS),y)
 UNIT_SRC     += src/sm_capacity_report.c
@@ -59,6 +60,7 @@ UNIT_DEPS    += src/lib/schema
 UNIT_DEPS    += src/lib/datapipeline
 UNIT_DEPS    += src/lib/version
 UNIT_DEPS    += src/lib/target
+UNIT_DEPS    += src/lib/evsched
 
 ifeq ($(BUILD_QM),y)
 UNIT_SRC     += src/sm_qm.c

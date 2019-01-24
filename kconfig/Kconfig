@@ -28,6 +28,16 @@ if USE_KCONFIG
             if PML_INET
                 orsource "../src/lib/inet/kconfig/Kconfig"
             endif
+
+        if TARGET_MANAGER_CM
+            menu "CM2 Configuration"
+                orsource "../src/cm2/kconfig/Kconfig"
+            endmenu
+        endif
+
+        menu "libevx Configuration"
+            orsource "../src/lib/evx/kconfig/Kconfig"
+        endmenu
     endmenu
 
     menu "Platform Configuration"

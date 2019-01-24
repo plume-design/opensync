@@ -419,7 +419,7 @@ bool sm_rssi_report_send(
     report_ctx->radio_type  = radio_cfg_ctx->type;
     report_ctx->report_type = request_ctx->report_type;
 
-    /* Report_timestamp is cloud_timestamp + relative start time offset */
+    /* Report_timestamp is base-timestamp + relative start time offset */
     report_ctx->timestamp_ms =
         request_ctx->reporting_timestamp - rssi_ctx->report_ts +
         get_timestamp();
@@ -499,7 +499,8 @@ bool sm_rssi_report_send(
                          " (Invalid report type)",
                          radio_get_name_from_cfg(radio_cfg_ctx),
                          MAC_ADDRESS_PRINT(record_entry->mac));
-                    goto exit;
+                    dpp_rssi_record_free(report_entry);
+                    continue;
             }
 
             report_entry->rx_ppdus = record_entry->rx_ppdus;
@@ -532,6 +533,10 @@ exit:
     if (true != status) {
         return false;
     }
+
+    SM_SANITY_CHECK_TIME(report_ctx->timestamp_ms,
+                         &request_ctx->reporting_timestamp,
+                         &rssi_ctx->report_ts);
 
     return true;
 }

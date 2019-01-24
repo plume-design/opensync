@@ -37,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /* CONNECTIVITY CHECK CONFIGURATION */
 #define CM2_STABILITY_INTERVAL          10
 #define CM2_STABILITY_THRESHOLD         5
+#define CM2_STABILITY_INTERNET_THRESH   6
 
 cm2_main_link_type cm2_util_get_link_type()
 {
@@ -62,7 +63,9 @@ cm2_main_link_type cm2_util_get_link_type()
 void cm2_connection_stability_check()
 {
     struct schema_Connection_Manager_Uplink con;
+    target_connectivity_check_option_t      opts;
     target_connectivity_check_t             cstate;
+    cm2_main_link_type                      link_type;
     bool                                    ret;
     int                                     counter;
 
@@ -74,7 +77,9 @@ void cm2_connection_stability_check()
     const char *if_name = g_state.link.if_name;
 
     if (!g_state.link.is_used) {
-        LOGN("%s Waiting for new active link", __func__);
+        LOGN("Waiting for new active link");
+        g_state.ble_status = 0;
+        cm2_ovsdb_connection_update_ble_phy_link();
         return;
     }
 
@@ -84,47 +89,71 @@ void cm2_connection_stability_check()
         return;
     }
 
-    ret = target_device_connectivity_check(if_name, &cstate);
-    LOGN("%s status %d", __func__, ret);
+    opts = LINK_CHECK | ROUTER_CHECK | NTP_CHECK;
+    if (!g_state.connected)
+        opts |= INTERNET_CHECK;
 
-    counter = 0;
-    if (!cstate.link_state) {
-        LOGW("%s link is broken", __func__);
-        counter = con.unreachable_link_counter + 1;
+    ret = target_device_connectivity_check(if_name, &cstate, opts);
+    LOGN("Connection status %d, main link: %s opts: = %x", ret, if_name, opts);
+
+    if (opts & LINK_CHECK) {
+        counter = 0;
+        if (!cstate.link_state) {
+            counter = con.unreachable_link_counter + 1;
+            LOGW("Detected broken link. Counter = %d", counter);
+        }
+        ret = cm2_ovsdb_connection_update_unreachable_link_counter(if_name, counter);
+        if (!ret)
+            LOGW("%s Failed update link counter in ovsdb table", __func__);
     }
-    ret = cm2_ovsdb_connection_update_unreachable_link_counter(if_name, counter);
-    if (!ret)
-        LOGW("%s Failed update link counter in ovsdb table", __func__);
+    if (opts & ROUTER_CHECK) {
+        counter = 0;
+        if (!cstate.router_state) {
+            counter =  con.unreachable_router_counter + 1;
+            LOGW("Detected broken Router. Counter = %d", counter);
+        }
+        ret = cm2_ovsdb_connection_update_unreachable_router_counter(if_name, counter);
+        if (!ret)
+            LOGW("%s Failed update router counter in ovsdb table", __func__);
 
-    counter = 0;
-    if (!cstate.router_state) {
-        LOGW("%s router is broken", __func__);
-        counter =  con.unreachable_router_counter + 1;
+        link_type = cm2_util_get_link_type();
+
+        if (link_type == CM2_LINK_ETH_ROUTER) {
+            if (!g_state.link.is_limp_state)
+                LOGI("Device operates in Router mode");
+            g_state.link.is_limp_state = true;
+        } else if (link_type == CM2_LINK_ETH_BRIDGE) {
+            if (g_state.link.is_limp_state)
+                LOGI("Device operates in Bridge mode");
+            g_state.link.is_limp_state = false;
+        }
+
+        if (!g_state.link.is_limp_state &&
+            con.unreachable_router_counter + 1 > CM2_STABILITY_THRESHOLD) {
+            LOGW("Restart managers due to exceeding the threshold router failures");
+            target_device_restart_managers();
+        }
     }
-    ret = cm2_ovsdb_connection_update_unreachable_router_counter(if_name, counter);
-    if (!ret)
-        LOGW("%s Failed update router counter in ovsdb table", __func__);
-
-    if (cm2_util_get_link_type() != CM2_LINK_ETH_ROUTER &&
-        con.unreachable_router_counter + 1 > CM2_STABILITY_THRESHOLD) {
-        LOGW("%s Restart managers due to exceeding the threshold router failures", __func__);
-        target_device_restart_managers();
+    if (opts & INTERNET_CHECK) {
+        counter = 0;
+        if (!cstate.internet_state) {
+            counter = con.unreachable_internet_counter + 1;
+            LOGW("Detected broken Internet. Counter = %d", counter);
+            if (counter % CM2_STABILITY_INTERNET_THRESH == 0) {
+                LOGN("Refresh br-wan interface due to Internet issue");
+                cm2_ovsdb_refresh_dhcp(BR_WAN_NAME);
+            }
+        }
+        ret = cm2_ovsdb_connection_update_unreachable_internet_counter(if_name, counter);
+        if (!ret)
+            LOGW("%s Failed update internet counter in ovsdb table", __func__);
     }
-
-    counter = 0;
-    if (!cstate.internet_state) {
-        LOGW("%s internet connection is broken", __func__);
-        counter = con.unreachable_internet_counter + 1;
+    if (opts & NTP_CHECK) {
+        ret = cm2_ovsdb_connection_update_ntp_state(if_name,
+                                                    cstate.ntp_state);
+        if (!ret)
+            LOGW("%s Failed update ntp state in ovsdb table", __func__);
     }
-    ret = cm2_ovsdb_connection_update_unreachable_internet_counter(if_name, counter);
-    if (!ret)
-        LOGW("%s Failed update internet counter in ovsdb table", __func__);
-
-    ret = cm2_ovsdb_connection_update_ntp_state(if_name,
-                                                cstate.ntp_state);
-    if (!ret)
-        LOGW("%s Failed update ntp state in ovsdb table", __func__);
-
     return;
 }
 
@@ -148,7 +177,7 @@ void cm2_stability_init(struct ev_loop *loop)
 
 void cm2_stability_close(struct ev_loop *loop)
 {
-    LOGI("Stopping stability check");
+    LOGD("Stopping stability check");
     ev_timer_stop (loop, &g_state.stability_timer);
 }
 
@@ -171,6 +200,6 @@ void cm2_wdt_init(struct ev_loop *loop)
 
 void cm2_wdt_close(struct ev_loop *loop)
 {
-    LOGI("Stopping WDT");
+    LOGD("Stopping WDT");
     (void)loop;
 }

@@ -44,17 +44,28 @@ extern void json_get_alloc_funcs(json_malloc_t *malloc_fn, json_free_t *free_fn)
 /*
  * Declarations
  */
+
 extern char *JSON_SPLIT_ERROR;
 
 extern char        *json_split(char *str);
 
 extern const char  *json_dumps_static(const json_t *json, int flags);
 extern bool         json_gets(const json_t *json, char *output, size_t output_sz, int flags);
+extern bool         json_get_str(const json_t *json, char *output, size_t output_sz);
 
 extern void         json_memdbg_init(struct ev_loop *loop);
 extern void         json_memdbg_free(void *p);
 extern void         json_memdbg_get_stats(size_t *total, size_t *count);
 extern void         json_memdbg_report(bool diff_only);
+
+// JSON_MEMDBG_TRACE: use for debugging of json mem leaks
+#undef JSON_MEMDBG_TRACE
+#ifdef JSON_MEMDBG_TRACE
+#warning JSON_MEMDBG_TRACE enabled use this only for debug builds!
+#define JSON_LOG_REFCOUNT(X) TRACE("JSON REFC %s: %d %p", #X, X ? X->refcount : 0, X)
+#else
+#define JSON_LOG_REFCOUNT(X)
+#endif
 
 /*
  * ===========================================================================

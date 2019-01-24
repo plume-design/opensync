@@ -45,6 +45,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "inet_base.h"
 
 static bool inet_base_firewall_commit(inet_base_t *self, bool start);
+static bool inet_base_igmp_commit(inet_base_t *self, bool start);
 static bool inet_base_upnp_commit(inet_base_t *self, bool start);
 static bool inet_base_dhcp_client_commit(inet_base_t *self, bool start);
 static bool inet_base_dhcp_server_commit(inet_base_t *self, bool start);
@@ -81,21 +82,25 @@ bool inet_base_init(inet_base_t *self, const char *ifname)
     self->inet.in_network_enable_fn         = inet_base_network_enable;
     self->inet.in_mtu_set_fn                = inet_base_mtu_set;
     self->inet.in_nat_enable_fn             = inet_base_nat_enable;
+    self->inet.in_igmp_enable_fn            = inet_base_igmp_enable;
     self->inet.in_upnp_mode_set_fn          = inet_base_upnp_mode_set;
     self->inet.in_assign_scheme_set_fn      = inet_base_assign_scheme_set;
     self->inet.in_ipaddr_static_set_fn      = inet_base_ipaddr_static_set;
     self->inet.in_gateway_set_fn            = inet_base_gateway_set;
+    self->inet.in_portforward_set_fn        = inet_base_portforward_set;
+    self->inet.in_portforward_del_fn        = inet_base_portforward_del;
     self->inet.in_dhcpc_option_request_fn   = inet_base_dhcpc_option_request;
     self->inet.in_dhcpc_option_set_fn       = inet_base_dhcpc_option_set;
     self->inet.in_dhcps_enable_fn           = inet_base_dhcps_enable;
     self->inet.in_dhcps_lease_set_fn        = inet_base_dhcps_lease_set;
     self->inet.in_dhcps_range_set_fn        = inet_base_dhcps_range_set;
     self->inet.in_dhcps_option_set_fn       = inet_base_dhcps_option_set;
-    self->inet.in_dhcps_lease_register_fn   = inet_base_dhcps_lease_register;
+    self->inet.in_dhcps_lease_notify_fn     = inet_base_dhcps_lease_notify;
     self->inet.in_dhcps_rip_set_fn          = inet_base_dhcps_rip_set;
     self->inet.in_dhcps_rip_del_fn          = inet_base_dhcps_rip_del;
     self->inet.in_dns_set_fn                = inet_base_dns_set;
-    self->inet.in_dhsnif_lease_register_fn  = inet_base_dhsnif_lease_register;
+    self->inet.in_dhsnif_lease_notify_fn    = inet_base_dhsnif_lease_notify;
+    self->inet.in_route_notify_fn           = inet_base_route_notify;
     self->inet.in_commit_fn                 = inet_base_commit;
     self->inet.in_state_get_fn              = inet_base_state_get;
 
@@ -116,6 +121,12 @@ bool inet_base_init(inet_base_t *self, const char *ifname)
     {
         LOG(ERR, "inet_base: %s: Error creating FW instance.", self->inet.in_ifname);
         goto error;
+    }
+
+    self->in_igmp = inet_igmp_new(self->inet.in_ifname);
+    if (self->in_igmp == NULL)
+    {
+        LOG(ERR, "inet_base: %s: Ignoring creating IGMP snooping instance. ", self->inet.in_ifname);
     }
 
     self->in_upnp = inet_upnp_new(self->inet.in_ifname);
@@ -146,6 +157,13 @@ bool inet_base_init(inet_base_t *self, const char *ifname)
         goto error;
     }
 
+    self->in_route = inet_route_new(self->inet.in_ifname);
+    if (self->in_route == NULL)
+    {
+        LOG(ERR, "inet_base: %s: Errro creating ROUTE instance.", self->inet.in_ifname);
+        goto error;
+    }
+
     /*
      * Define the unit dependency tree structure
      */
@@ -163,6 +181,7 @@ bool inet_base_init(inet_base_t *self, const char *ifname)
                                     NULL),
                             inet_unit(INET_BASE_SCHEME_DHCP, NULL),
                             inet_unit(INET_BASE_DHCPSNIFF, NULL),
+                            inet_unit(INET_BASE_IGMP, NULL),
                             NULL),
                     NULL);
     if (self->in_units == NULL)
@@ -209,13 +228,37 @@ bool inet_base_dtor(inet_t *super)
 
     if (self->in_fw != NULL && !inet_fw_del(self->in_fw))
     {
-        LOG(WARN, "inet_base: %s: Error freeing Firewall/UPnP client objects.", self->inet.in_ifname);
+        LOG(WARN, "inet_base: %s: Error freeing Firewall objects.", self->inet.in_ifname);
+        retval = false;
+    }
+
+    if (self->in_igmp != NULL && !inet_igmp_del(self->in_igmp))
+    {
+        LOG(WARN, "inet_base: %s: Error freeing igmp snooping objects.", self->inet.in_ifname);
+        retval = false;
+    }
+
+    if (self->in_upnp != NULL && !inet_upnp_del(self->in_upnp))
+    {
+        LOG(WARN, "inet_base: %s: Error freeing PnP objects.", self->inet.in_ifname);
         retval = false;
     }
 
     if (self->in_dhsnif != NULL && !inet_dhsnif_del(self->in_dhsnif))
     {
         LOG(WARN, "inet_base: %s: Error freeing DHCP sniffing object.", self->inet.in_ifname);
+        retval = false;
+    }
+
+    if (self->in_dns != NULL && !inet_dns_del(self->in_dns))
+    {
+        LOG(WARN, "inet_base: %s: Error freeing DNS sniffing object.", self->inet.in_ifname);
+        retval = false;
+    }
+
+    if (self->in_route != NULL && !inet_route_del(self->in_route))
+    {
+        LOG(WARN, "inet_base: %s: Error freeing ROUTE object.", self->inet.in_ifname);
         retval = false;
     }
 
@@ -301,6 +344,56 @@ bool inet_base_nat_enable(inet_t *super, bool enabled)
 
     /* NAT settings also affect UPnP, so handle it here */
     inet_base_upnp_start_stop(self);
+
+    return true;
+}
+
+/**
+ * Enable IGMP snooping on interface
+ */
+bool inet_base_igmp_enable(inet_t *super, bool enable, int iage, int itsize)
+{
+    inet_base_t *self = (inet_base_t *)super;
+
+    if (self->in_igmp_enabled == enable &&
+            iage == self->in_igmp_age &&
+            itsize == self->in_igmp_tsize &&
+            inet_unit_is_enabled(self->in_units, INET_BASE_IGMP))
+    {
+        /* Nothing to do -- configuration unchanged */
+        return true;
+    }
+
+    /* Push new configuration to the driver */
+    if (!inet_igmp_set(self->in_igmp, enable, iage, itsize))
+    {
+        LOG(ERR, "inet_base: %s: Error setting IGMP snooping on interface (%d -> %d)",
+                self->inet.in_ifname,
+                self->in_igmp_enabled,
+                enable);
+        return false;
+    }
+
+    /* Cache current values -- we don't want to restart IGMP if the configuration stays the same */
+    self->in_igmp_enabled = enable;
+    self->in_igmp_age = iage;
+    self->in_igmp_tsize = itsize;
+
+    if(enable)
+    {
+        /* The IGMP unit needs to be started or restarted (due to configuration change) */
+        if (!inet_unit_restart(self->in_units, INET_BASE_IGMP, true))
+        {
+            LOG(ERR, "inet_base: %s: Error restarting INET_BASE_IGMP (NAT)",
+                    self->inet.in_ifname);
+            return false;
+        }
+    }
+    else
+    {
+        /* The unit needs to be disabled */
+        inet_unit_stop(self->in_units, INET_BASE_IGMP);
+    }
 
     return true;
 }
@@ -510,6 +603,43 @@ bool inet_base_gateway_set(inet_t *super, inet_ip4addr_t gwaddr)
     return inet_unit_restart(self->in_units, INET_BASE_SCHEME_STATIC, false);
 }
 
+bool inet_base_portforward_set(inet_t *super, const struct inet_portforward *pf)
+{
+    inet_base_t *self = (inet_base_t *)super;
+
+    LOG(INFO, "GET");
+    if (inet_fw_portforward_get(self->in_fw, pf))
+    {
+        LOG(INFO, "GET OK");
+        /* If the portforwarding entry already exists, return success */
+        return true;
+    }
+
+    LOG(INFO, "SET");
+    /* Add the portforwarding entry and restart services */
+    if (!inet_fw_portforward_set(self->in_fw, pf))
+    {
+        LOG(ERR, "inet_base: %s: Error setting port forwarding.", self->inet.in_ifname);
+        return false;
+    }
+
+    return inet_unit_restart(self->in_units, INET_BASE_FIREWALL, false);
+}
+
+bool inet_base_portforward_del(inet_t *super, const struct inet_portforward *pf)
+{
+    inet_base_t *self = (inet_base_t *)super;
+
+    if (!inet_fw_portforward_del(self->in_fw, pf))
+    {
+        LOG(ERR, "inet_base: %s: Error deleting port forwarding.", self->inet.in_ifname);
+        return false;
+    }
+
+    return inet_unit_restart(self->in_units, INET_BASE_FIREWALL, false);
+}
+
+
 /*
  * ===========================================================================
  *  DHCP Client methods
@@ -703,13 +833,68 @@ bool inet_base_dhcps_option_set(inet_t *super, enum inet_dhcp_option opt, const 
     return true;
 }
 
-bool inet_base_dhcps_lease_register(inet_t *super, inet_dhcp_lease_fn_t *fn)
+bool inet_base_dhcps_lease_notify(inet_t *super, inet_dhcp_lease_fn_t *fn)
 {
     inet_base_t *self = (inet_base_t *)super;
 
-    inet_dhcps_lease_notify(self->in_dhcps, fn, super);
+    inet_dhcps_lease_notify_set(self->in_dhcps, fn, super);
 
     return true;
+}
+
+
+static bool inet_base_dhcps_rip_exists(inet_t *super, inet_macaddr_t macaddr,
+                                       inet_ip4addr_t ip4addr,
+                                       const char *hostname)
+{
+    inet_base_t *self = (inet_base_t *)super;
+
+    inet_ip4addr_t rip_ip4addr = INET_IP4ADDR_ANY;
+    char *rip_hostname = 0;
+    bool exists = false;
+
+
+    if (!inet_dhcps_rip_get(self->in_dhcps, macaddr, &rip_ip4addr, &rip_hostname))
+        return false;
+    if (rip_ip4addr.raw == 0)
+        return false;
+
+
+    if (rip_ip4addr.raw == ip4addr.raw)
+    {
+        if (rip_hostname && hostname && !strcmp(rip_hostname, hostname))
+            exists = true;
+        if (rip_hostname == NULL && hostname == NULL)
+            exists = true;
+    }
+
+
+    if (rip_hostname)
+        free(rip_hostname);
+
+    return exists;
+}
+
+static bool inet_dhcps_rip_exists_mac(inet_t *super, inet_macaddr_t macaddr)
+{
+    inet_base_t *self = (inet_base_t *)super;
+
+    inet_ip4addr_t rip_ip4addr = INET_IP4ADDR_ANY;
+    char *rip_hostname = 0;
+    bool exists = false;
+
+    if (!inet_dhcps_rip_get(self->in_dhcps, macaddr, &rip_ip4addr, &rip_hostname))
+        return false;
+
+    if (rip_ip4addr.raw == 0)
+        exists = false;
+    else
+        exists = true;
+
+    if (rip_hostname)
+        free(rip_hostname);
+
+    return exists;
 }
 
 
@@ -719,6 +904,10 @@ bool inet_base_dhcps_rip_set(inet_t *super, inet_macaddr_t macaddr,
     inet_base_t *self = (inet_base_t *)super;
 
 
+    /* Do nothing if such a reservation already exists:  */
+    if (inet_base_dhcps_rip_exists(super, macaddr, ip4addr, hostname))
+        return true;
+
     if (!inet_dhcps_rip(self->in_dhcps, macaddr, ip4addr, hostname))
     {
         LOG(ERR, "inet_base: %s: Error setting IP reservation.", self->inet.in_ifname);
@@ -726,18 +915,23 @@ bool inet_base_dhcps_rip_set(inet_t *super, inet_macaddr_t macaddr,
     }
 
     /* Flag the DHCP server for restart */
-    if (!inet_unit_restart(self->in_units, INET_BASE_DHCP_SERVER, true))
+    if (!inet_unit_restart(self->in_units, INET_BASE_DHCP_SERVER, false))
     {
         LOG(ERR, "inet_base: %s: Error restarting INET_BASE_DHCP_SERVER", self->inet.in_ifname);
         return false;
     }
 
-    return true;
+   return true;
 }
 
 bool inet_base_dhcps_rip_del(inet_t *super, inet_macaddr_t macaddr)
 {
     inet_base_t *self = (inet_base_t *)super;
+
+
+    /* Do nothing if there's no IP reservation for this macaddr:  */
+    if (!inet_dhcps_rip_exists_mac(super, macaddr))
+        return true;
 
 
     if (!inet_dhcps_rip_remove(self->in_dhcps, macaddr))
@@ -747,7 +941,7 @@ bool inet_base_dhcps_rip_del(inet_t *super, inet_macaddr_t macaddr)
     }
 
     /* Flag the DHCP server for restart */
-    if (!inet_unit_restart(self->in_units, INET_BASE_DHCP_SERVER, true))
+    if (!inet_unit_restart(self->in_units, INET_BASE_DHCP_SERVER, false))
     {
         LOG(ERR, "inet_base: %s: Error restarting INET_BASE_DHCP_SERVER", self->inet.in_ifname);
         return false;
@@ -793,7 +987,7 @@ bool inet_base_dns_set(inet_t *super, inet_ip4addr_t primary, inet_ip4addr_t sec
  *  DHCP sniffing
  * ===========================================================================
  */
-bool inet_base_dhsnif_lease_register(inet_t *super, inet_dhcp_lease_fn_t *func)
+bool inet_base_dhsnif_lease_notify(inet_t *super, inet_dhcp_lease_fn_t *func)
 {
     inet_base_t *self = (inet_base_t *)super;
 
@@ -827,6 +1021,18 @@ bool inet_base_dhsnif_lease_register(inet_t *super, inet_dhcp_lease_fn_t *func)
 
 /*
  * ===========================================================================
+ *  Route functions
+ * ===========================================================================
+ */
+bool inet_base_route_notify(inet_t *super, inet_route_notify_fn_t *func)
+{
+    inet_base_t *self = (inet_base_t *)super;
+
+    return inet_route_notify_set(self->in_route, func, self);
+}
+
+/*
+ * ===========================================================================
  *  Status reporting
  * ===========================================================================
  */
@@ -837,9 +1043,8 @@ bool inet_base_state_get(inet_t *super, inet_state_t *out)
     memset(out, 0, sizeof(*out));
 
     out->in_mtu = self->in_mtu;
-
-    out->in_interface_enabled = self->in_interface_enabled;
-    out->in_network_enabled = self->in_network_enabled;
+    out->in_interface_enabled = inet_unit_status(self->in_units, INET_BASE_INTERFACE);
+    out->in_network_enabled = inet_unit_status(self->in_units, INET_BASE_NETWORK);
 
     out->in_assign_scheme = self->in_assign_scheme;
 
@@ -847,7 +1052,6 @@ bool inet_base_state_get(inet_t *super, inet_state_t *out)
 
     out->in_nat_enabled = false;
     out->in_upnp_mode = UPNP_MODE_NONE;
-
 
     if (!inet_fw_state_get(self->in_fw, &out->in_nat_enabled))
     {
@@ -930,6 +1134,9 @@ bool inet_base_service_commit(
         case INET_BASE_FIREWALL:
             return inet_base_firewall_commit(self, start);
 
+        case INET_BASE_IGMP:
+            return inet_base_igmp_commit(self, start);
+
         case INET_BASE_UPNP:
             return inet_base_upnp_commit(self, start);
 
@@ -978,6 +1185,23 @@ bool inet_base_firewall_commit(inet_base_t *self, bool start)
     return true;
 }
 
+bool inet_base_igmp_commit(inet_base_t *self, bool start)
+{
+    /* Start service */
+    if (start && !inet_igmp_start(self->in_igmp))
+    {
+        LOG(ERR, "inet_base: %s: Error starting the IGMP snooping service.", self->inet.in_ifname);
+        return false;
+    }
+    /* Stop service */
+    if (!start && !inet_igmp_stop(self->in_igmp))
+    {
+        LOG(ERR, "inet_base: %s: Error stopping the IGMP snooping service.", self->inet.in_ifname);
+        return false;
+    }
+    return true;
+}
+
 bool inet_base_upnp_commit(inet_base_t *self, bool start)
 {
     /* Start service */
@@ -996,6 +1220,7 @@ bool inet_base_upnp_commit(inet_base_t *self, bool start)
 
     return true;
 }
+
 /**
  * Start or stop the DHCP client service
  */

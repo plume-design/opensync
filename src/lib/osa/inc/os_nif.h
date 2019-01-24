@@ -62,6 +62,7 @@ extern bool    os_nif_up(char* ifname, bool ifup);
 extern bool    os_nif_is_running(char* ifname, bool *running);
 extern bool    os_nif_dhcpc_start(char* ifname, bool apply, int dhcp_time);
 extern bool    os_nif_dhcpc_stop(char* ifname, bool dryrun);
+extern bool    os_nif_dhcpc_refresh_lease(char* ifname);
 extern bool    os_nif_softwds_create(
                                 char* ifname,
                                 char* parent,

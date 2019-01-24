@@ -24,22 +24,15 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-/*
- * bsal.h
- *
- * Band Steering Abstraction Layer API -- Header File
- *
- */
-
-#ifndef __BSAL_H__
-#define __BSAL_H__
+#ifndef __TARGET_BSAL_H__
+#define __TAREGT_BSAL_H__
 
 /*****************************************************************************/
 
 #define BSAL_IFNAME_LEN         17
 #define BSAL_MAC_ADDR_LEN       6
 
-#include "target.h"
+#define BSAL_MAX_TM_NEIGHBORS   3
 
 /*****************************************************************************/
 
@@ -82,6 +75,43 @@ typedef struct {
     uint8_t                 rssi_low_xing;
     uint8_t                 auth_reject_reason;
 } bsal_client_config_t;
+
+typedef struct {
+    uint8_t                 bssid[BSAL_MAC_ADDR_LEN];
+
+    uint32_t                bssid_info;
+    uint8_t                 op_class;
+    uint8_t                 channel;
+    uint8_t                 phy_type;
+} bsal_neigh_info_t;
+
+typedef struct {
+    bsal_neigh_info_t       neigh[BSAL_MAX_TM_NEIGHBORS];
+
+    int                     num_neigh;
+    uint8_t                 valid_int;
+    uint8_t                 abridged;
+    uint8_t                 pref;
+    uint8_t                 disassoc_imminent;
+    uint16_t                bss_term;
+    int                     num_retries;
+    int                     max_retries;
+    int                     retry_interval;
+    bool                    inc_neigh;
+} bsal_btm_params_t;
+
+typedef struct {
+    uint8_t                 op_class;
+    uint8_t                 channel;
+    uint8_t                 rand_ivl;
+    uint8_t                 meas_dur;
+    uint8_t                 meas_mode;
+    uint8_t                 req_ssid;
+    uint8_t                 rep_cond;
+    uint8_t                 rpt_detail;
+    uint8_t                 req_ie;
+    uint8_t                 chanrpt_mode;
+} bsal_rrm_params_t;
 
 /*****************************************************************************/
 
@@ -202,6 +232,7 @@ typedef struct {
 
 typedef struct {
     bsal_ev_type_t      type;
+    char                ifname[BSAL_IFNAME_LEN];
     bsal_band_t         band;
     uint64_t            timestamp_ms;
     union {
@@ -219,27 +250,28 @@ typedef struct {
 
 /*****************************************************************************/
 
-typedef void* bsal_t;
-typedef void (*bsal_event_cb_t)(bsal_t bsal, bsal_event_t *event);
+typedef void (*bsal_event_cb_t)(bsal_event_t *event);
 
 /*****************************************************************************/
 
-extern int      bsal_init(bsal_event_cb_t event_cb );
-extern int      bsal_event_cleanup(void);
-extern void     bsal_event_process(void);
+int     target_bsal_init(bsal_event_cb_t event_cb, struct ev_loop* loop);
+int     target_bsal_cleanup(void);
 
-extern bsal_t   bsal_ifpair_add(bsal_ifconfig_t *ifcfg_24, bsal_ifconfig_t *ifcfg_5);
-extern int      bsal_ifpair_update(bsal_t bsal, bsal_band_t band, bsal_ifconfig_t *ifcfg);
-extern int      bsal_ifpair_remove(bsal_t bsal);
+int	target_bsal_iface_add(const bsal_ifconfig_t *ifcfg);
+int	target_bsal_iface_update(const bsal_ifconfig_t *ifcfg);
+int	target_bsal_iface_remove(const bsal_ifconfig_t *ifcfg);
 
-extern int      bsal_client_add(bsal_t bsal, bsal_band_t band, uint8_t *mac_addr, bsal_client_config_t *conf);
-extern int      bsal_client_update(bsal_t bsal, bsal_band_t band, uint8_t *mac_addr, bsal_client_config_t *conf);
-extern int      bsal_client_remove(bsal_t bsal, bsal_band_t band, uint8_t *mac_addr);
-extern int      bsal_client_measure(bsal_t bsal, bsal_band_t band, uint8_t *mac_addr, int num_samples);
-extern int      bsal_client_disconnect(bsal_t bsal, bsal_band_t band, uint8_t *mac_addr, bsal_disc_type_t type, uint8_t reason);
-extern int      bsal_client_is_connected(bsal_t bsal, bsal_band_t band, uint8_t *mac_addr);
+int     target_bsal_client_add(const char *ifname, const uint8_t *mac_addr, const bsal_client_config_t *conf);
+int     target_bsal_client_update(const char *ifname, const uint8_t *mac_addr, const bsal_client_config_t *conf);
+int     target_bsal_client_remove(const char *ifname, const uint8_t *mac_addr);
 
-extern int      bsal_bss_tm_request(bsal_t bsal, bsal_band_t band, uint8_t *mac_addr, target_bsal_btm_params_t *btm_params);
-extern int      bsal_rrm_beacon_report_request(bsal_t bsal, bsal_band_t band, uint8_t *mac_addr, target_bsal_rrm_params_t *rrm_params);
+int     target_bsal_client_measure(const char *ifname, const uint8_t *mac_addr, int num_samples);
+int     target_bsal_client_disconnect(const char *ifname, const uint8_t *mac_addr, bsal_disc_type_t type, uint8_t reason);
+int     target_bsal_client_is_connected(const char *ifname, const uint8_t *mac_addr);
 
-#endif /* __BSAL_H__ */
+int     target_bsal_bss_tm_request(const char *ifname, const uint8_t *mac_addr, const bsal_btm_params_t *btm_params);
+int     target_bsal_rrm_beacon_report_request(const char *ifname, const uint8_t *mac_addr, const bsal_rrm_params_t *rrm_params);
+
+bool    target_client_disconnect(const char *ifname, const char *disc_type, const char *mac_str, uint8_t reason );
+
+#endif /* __TARGET_BSAL_H__ */

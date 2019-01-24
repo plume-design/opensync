@@ -387,6 +387,13 @@ bool target_vif_config_set2(const struct schema_Wifi_VIF_Config *vconf,
 }
 #endif
 
+#ifndef IMPL_target_vif_get_sta_ifname
+const char * target_vif_get_sta_ifname(const char *phy)
+{
+    return NULL;
+}
+#endif
+
 #ifndef IMPL_target_vif_config_get
 bool target_vif_config_get(char *ifname, struct schema_Wifi_VIF_Config *vconf)
 {
@@ -471,6 +478,21 @@ bool target_dhcp_rip_del(const char *ifname, struct schema_DHCP_reserved_IP *sch
 }
 #endif
 
+#ifndef IMPL_target_portforward_set
+bool target_portforward_set(const char *ifname,  struct schema_IP_Port_Forward *schema_pf)
+{
+    return true;
+}
+#endif
+
+#ifndef IMPL_target_portforward_del
+bool target_portforward_del(const char *ifname,  struct schema_IP_Port_Forward *schema_pf)
+{
+    return true;
+}
+#endif
+
+
 
 /******************************************************************************
  * Ethernet clients
@@ -515,6 +537,14 @@ bool target_inet_state_init(ds_dlist_t *inets)
 bool target_master_state_init(ds_dlist_t *inets)
 {
     ds_dlist_init(inets, target_master_state_init_t, dsl_node);
+    return true;
+}
+#endif
+
+#ifndef IMPL_target_route_state_init
+bool target_route_state_init(ds_dlist_t *inets)
+{
+    ds_dlist_init(inets, target_route_state_init_t, dsl_node);
     return true;
 }
 #endif
@@ -660,6 +690,13 @@ bool target_master_state_register(const char *ifname, target_master_state_cb_t *
 }
 #endif
 
+#ifndef IMPL_target_route_state_register
+bool target_route_state_register(target_route_state_cb_t *rts_cb)
+{
+    return true;
+}
+#endif
+
 /******************************************************************************
  * SERVICE
  *****************************************************************************/
@@ -692,7 +729,8 @@ int target_device_capabilities_get()
 #endif
 #ifndef IMPL_target_device_connectivity_check
 bool target_device_connectivity_check(const char *ifname,
-                                      target_connectivity_check_t *cstate)
+                                      target_connectivity_check_t *cstate,
+                                      target_connectivity_check_option_t opts)
 {
     return true;
 }
@@ -873,8 +911,7 @@ bool target_stats_device_get(
 {
     static bool printed = false;
     if (!printed) {
-        // print warning only once
-        LOG(WARNING, "Sending device report: stats not supported");
+        LOG(DEBUG, "Sending device report: stats not supported");
         printed = true;
     }
     return false;
@@ -888,8 +925,7 @@ bool target_stats_device_temp_get(
 {
     static bool printed = false;
     if (!printed) {
-        // print warning only once
-        LOG(WARNING, "Sending device report: temperature not supported");
+        LOG(DEBUG, "Sending device report: temperature not supported");
         printed = true;
     }
     return false;
@@ -903,8 +939,7 @@ bool target_stats_device_txchainmask_get(
 {
     static bool printed = false;
     if (!printed) {
-        // print warning only once
-        LOG(WARNING, "Sending device report: txchainmask not supported");
+        LOG(DEBUG, "Sending device report: txchainmask not supported");
         printed = true;
     }
     return false;
@@ -916,8 +951,7 @@ bool target_stats_device_fanrpm_get(uint32_t        *fan_rpm)
 {
     static bool printed = false;
     if (!printed) {
-        // print warning only once
-        LOG(WARNING, "Sending device report: FAN rpm not supported");
+        LOG(DEBUG, "Sending device report: FAN rpm not supported");
         printed = true;
     }
     return false;
@@ -944,24 +978,141 @@ target_map_ifname_to_bandstr(const char *ifname)
 #endif
 
 /******************************************************************************
- * BSAL
+ * BM and BSAL
  *****************************************************************************/
-#ifndef IMPL_target_bsal_bss_tm_request
-bool target_bsal_bss_tm_request( char *client_mac , char *interface,
-                                 target_bsal_btm_params_t *btm_params ) {
-    (void)client_mac;
-    (void)interface;
-    (void)btm_params;
-    return false;
+#ifndef IMPL_target_bsal_init
+int target_bsal_init(bsal_event_cb_t event_cb, struct ev_loop* loop)
+{
+    (void)event_cb;
+    (void)loop;
+    return -1;
 }
 #endif
 
-#ifndef IMPL_target_bsal_rrm_bcn_rpt_request
-bool target_bsal_rrm_bcn_rpt_request( char *client_mac , char *interface,
-                                      target_bsal_rrm_params_t *rrm_params ) {
-    (void)client_mac;
-    (void)interface;
+#ifndef IMPL_target_bsal_cleanup
+int target_bsal_cleanup( void )
+{
+    return -1;
+}
+#endif
+
+#ifndef IMPL_target_bsal_iface_add
+int target_bsal_iface_add(const bsal_ifconfig_t *ifcfg)
+{
+    (void)ifcfg;
+    return -1;
+}
+#endif
+
+#ifndef IMPL_target_bsal_iface_update
+int target_bsal_iface_update(const bsal_ifconfig_t *ifcfg)
+{
+    (void)ifcfg;
+    return -1;
+}
+#endif
+
+#ifndef IMPL_target_bsal_iface_remove
+int target_bsal_iface_remove(const bsal_ifconfig_t *ifcfg)
+{
+    (void)ifcfg;
+    return -1;
+}
+#endif
+
+#ifndef IMPL_target_bsal_client_add
+int target_bsal_client_add(const char *ifname, const uint8_t *mac_addr,
+                           const bsal_client_config_t *conf)
+{
+    (void)ifname;
+    (void)mac_addr;
+    (void)conf;
+    return -1;
+}
+#endif
+
+#ifndef IMPL_target_bsal_client_update
+int target_bsal_client_update(const char *ifname, const uint8_t *mac_addr,
+                              const bsal_client_config_t *conf)
+{
+    (void)ifname;
+    (void)mac_addr;
+    (void)conf;
+    return -1;
+}
+#endif
+
+#ifndef IMPL_target_bsal_client_remove
+int target_bsal_client_remove(const char *ifname, const uint8_t *mac_addr)
+{
+    (void)ifname;
+    (void)mac_addr;
+    return -1;
+}
+#endif
+
+#ifndef IMPL_target_bsal_client_measure
+int target_bsal_client_measure(const char *ifname, const uint8_t *mac_addr,
+                               int num_samples)
+{
+    (void)ifname;
+    (void)mac_addr;
+    (void)num_samples;
+    return -1;
+}
+#endif
+
+#ifndef IMPL_target_bsal_client_disconnect
+int target_bsal_client_disconnect(const char *ifname, const uint8_t *mac_addr,
+                                  bsal_disc_type_t type, uint8_t reason)
+{
+    (void)ifname;
+    (void)mac_addr;
+    (void)type;
+    (void)reason;
+    return -1;
+}
+#endif
+
+#ifndef IMPL_target_bsal_client_is_connected
+int target_bsal_client_is_connected(const char *ifname, const uint8_t *mac_addr)
+{
+    (void)ifname;
+    (void)mac_addr;
+    return -1;
+}
+#endif
+
+#ifndef IMPL_target_bsal_bss_tm_request
+int target_bsal_bss_tm_request(const char *ifname, const uint8_t *mac_addr,
+                               const bsal_btm_params_t *btm_params)
+{
+    (void)ifname;
+    (void)mac_addr;
+    (void)btm_params;
+    return -1;
+}
+#endif
+
+#ifndef IMPL_target_bsal_rrm_beacon_report_request
+int target_bsal_rrm_beacon_report_request(const char *ifname,
+                        const uint8_t *mac_addr, const bsal_rrm_params_t *rrm_params)
+{
+    (void)ifname;
+    (void)mac_addr;
     (void)rrm_params;
+    return -1;
+}
+#endif
+
+#ifndef IMPL_target_client_disconnect
+bool target_client_disconnect( const char *interface, const char *disc_type,
+                               const char *mac_str, uint8_t reason )
+{
+    (void)interface;
+    (void)disc_type;
+    (void)mac_str;
+    (void)reason;
     return false;
 }
 #endif

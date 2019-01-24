@@ -46,9 +46,9 @@ UNIT_DIR := lib
 # dependent lib units from all bin units
 
 # get all bin deps
-BIN_DEPS := $(foreach BIN,$(UNIT_ALL_BIN_UNITS) $(UNIT_ALL_TEST_BIN_UNITS),$(DEPS_$(BIN)))
-# compact list with uniq
-BIN_DEPS := $(shell echo $(BIN_DEPS) | tr ' ' '\n' | sort | uniq)
+BIN_DEPS := $(foreach BIN,$(UNIT_ALL_BIN_UNITS) $(UNIT_ALL_TEST_BIN_UNITS),$(sort $(DEPS_$(BIN))))
+# $(sort) also removes duplicates
+BIN_DEPS := $(sort $(BIN_DEPS))
 # only interested in deps of lib type
 UNIT_DEPS := $(foreach DEP,$(BIN_DEPS),$(if $(filter LIB,$(UNIT_TYPE_$(DEP))),$(DEP)))
 

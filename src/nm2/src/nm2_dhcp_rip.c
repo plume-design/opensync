@@ -24,7 +24,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-/* DHCP reserved IP handling.  */
+/* DHCP reserved IP handling. */
 
 #include "ds_tree.h"
 #include "log.h"
@@ -53,14 +53,14 @@ bool nm2_dhcp_rip_init(void)
             OMT_ALL);
     if (!rc)
     {
-        LOG(ERR, "Error initialzing DHCP_reserved_IP monitor.");
+        LOG(ERR, "Error initializing DHCP_reserved_IP monitor");
         return false;
     }
     return true;
 }
 
 
-/* Update Monitor callback for the DHCP_reserved_IP table.  */
+/* Update Monitor callback for the DHCP_reserved_IP table. */
 void nm2_dhcp_rip_update_fn(ovsdb_update_monitor_t *self)
 {
     struct schema_DHCP_reserved_IP schema_rip;
@@ -71,7 +71,7 @@ void nm2_dhcp_rip_update_fn(ovsdb_update_monitor_t *self)
     switch (self->mon_type)
     {
         case OVSDB_UPDATE_NEW:
-            LOG(DEBUG, "DHCP_reserved_IP NEW: %s", json_dumps_static(self->mon_json_new, 0));
+            LOG(INFO, "DHCP_reserved_IP NEW: %s", json_dumps_static(self->mon_json_new, 0));
 
             if (!schema_DHCP_reserved_IP_from_json(&schema_rip, self->mon_json_new, false, perr))
             {
@@ -83,7 +83,7 @@ void nm2_dhcp_rip_update_fn(ovsdb_update_monitor_t *self)
             break;
 
         case OVSDB_UPDATE_MODIFY:
-            LOG(DEBUG, "DHCP_reserved_IP MODIFY: %s", json_dumps_static(self->mon_json_new, 0));
+            LOG(INFO, "DHCP_reserved_IP MODIFY: %s", json_dumps_static(self->mon_json_new, 0));
 
             if (!schema_DHCP_reserved_IP_from_json(&schema_rip, self->mon_json_new, true, perr))
             {
@@ -95,7 +95,7 @@ void nm2_dhcp_rip_update_fn(ovsdb_update_monitor_t *self)
             break;
 
         case OVSDB_UPDATE_DEL:
-            LOG(DEBUG, "DHCP_reserved_IP DELETE: %s", json_dumps_static(self->mon_json_new, 0));
+            LOG(INFO, "DHCP_reserved_IP DELETE: %s", json_dumps_static(self->mon_json_new, 0));
 
             if (!schema_DHCP_reserved_IP_from_json(&schema_rip, self->mon_json_old, false, perr))
             {
@@ -107,8 +107,8 @@ void nm2_dhcp_rip_update_fn(ovsdb_update_monitor_t *self)
             break;
 
         default:
-            LOG(ERR, "ERROOR: DHCP_reserved_IP: Unhandled update notification "
-                     "type %d for UUID %s.", self->mon_type, self->mon_uuid);
+            LOG(ERR, "ERROR: DHCP_reserved_IP: Unhandled update notification type %d for UUID %s",
+                     self->mon_type, self->mon_uuid);
             return;
     }
 

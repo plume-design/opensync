@@ -548,7 +548,7 @@ void __daemon_log_output(struct ev_loop *loop, ev_io *w, int revent)
     if (nrd == -1 && errno == EAGAIN) return;
 
     /* nrd <= 0 and errno is not EAGAIN */
-    ev_io_stop(EV_DEFAULT, w);
+    ev_io_stop(loop, w);
 
     if (w->fd == self->dn_stdout_fd)
     {

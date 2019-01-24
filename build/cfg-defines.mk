@@ -58,3 +58,6 @@ ifeq ($(BUILD_REMOTE_LOG),y)
 CFG_DEFINES += -DBUILD_REMOTE_LOG
 endif
 
+ifdef CONFIG_USE_KCONFIG
+UNIT_DISABLE_src/fsm := $(if $(CONFIG_TARGET_MANAGER_FSM),n,y)
+endif

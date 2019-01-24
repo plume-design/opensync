@@ -23,17 +23,71 @@ config INET_VIF_LINUX
 
         This option implements the inet_vif_t class.
 
-config INET_GRE_LINUX
-    bool "Linux GRE interfaces"
+config INET_GRETAP
+    bool "Linux GRETAP interfaces"
     depends on INET_ETH_LINUX
     default y
     help
-        Select to include generic Linux GRE interface support.
+        Select to include generic Linux GRETAP interface support.
 
         Applicable to most Linux platforms. If not selected, the
         platform/device specific code should provide its own implementation.
 
-        This option implements the inet_gre_t class.
+        This option implements the inet_gretap_t class.
+
+config INET_GRE_USE_GRETAP
+    bool "Use GRETAP as default GRE protocol implementation"
+    depends on INET_GRETAP
+    default y
+    help
+        Use the inet_gretap_t class as the default GRE implementation.
+        This option defines a inet_gre_new() function which instantiates
+        a class of type inet_gretap_t. If not selected, the platform/device
+        specific code should define inet_gre_new() function which returns a
+        suitable interface object that implements a tunneling protocol.
+
+menu "Interface Status Reporting"
+
+    choice
+        prompt "Interface Status Detection"
+        default INET_STATUS_POLL
+
+            config INET_STATUS_POLL
+                bool "Polling"
+                help
+                    Detect interface status changes by periodic polling.
+
+                    This is the slowest, but most portable method.
+
+            config INET_STATUS_NETLINK_POLL
+                bool "Netlink Polling"
+                help
+                    Detect interface status changes by listening to NETLINK events.
+
+                    This still polls the interface, except the poll trigger is a NETLINK event
+                    instead of a timer.
+
+                    This is somewhat faster than polling, but not as portable.
+    endchoice
+
+    if INET_STATUS_POLL
+        config INET_STATUS_POLL_INTERVAL_MS
+            int "Polling interval in miliseconds"
+            default 200
+            help
+                The polling interval in miliseconds.
+    endif
+    if INET_STATUS_NETLINK_POLL
+        config INET_STATUS_NETLINK_DEBOUNCE_MS
+            int "Netlink event debounce interval"
+            default 100
+            help
+                Since netlink events may occur in bursts and we're polling all interface
+                variables in any case, we can debounce the netlink events for a slight
+                performance boost at the cost of a slight delay in status updates.
+    endif
+endmenu
+
 
 menuconfig INET_FW_ENABLED
     bool "Firewall"
@@ -324,3 +378,57 @@ menuconfig INET_DHSNIFF_ENABLED
         endif
     endif
 
+menuconfig INET_ROUTE_ENABLED
+    bool "Routing table"
+    default y
+    help
+        Use ROUTE table manipulation implementation as provided by LIBINET.
+
+        This option implements the inet_route_t class.
+
+    if INET_ROUTE_ENABLED
+        comment "INET routing configuration"
+        choice
+            prompt "Routing table implementation"
+            default INET_ROUTE_NULL
+
+            config INET_ROUTE_NULL
+                bool "Null"
+                help
+                    Dummy routing implementation. Use this on platforms that do not
+                    support routing status reporting.
+
+            config INET_ROUTE_LINUX
+                bool "Linux routing table"
+                help
+                    Use /proc/net/route to parse routing information and netlink sockets for
+                    routing status reporting.
+        endchoice
+    endif
+
+menuconfig INET_IGMP_SNOOPING_ENABLED
+    bool "IGMP snooping"
+    default y
+    help
+        Use IGMP snooping enabling/disabling implementation as provided by LIBINET.
+
+        This option implements the inet_igmp_t class.
+
+    if INET_IGMP_SNOOPING_ENABLED
+        comment "INET IGMP snooping configuration"
+        choice
+            prompt "IGMP snooping implementation"
+            default INET_IGMP_NULL
+
+            config INET_IGMP_NULL
+                bool "Null"
+                help
+                    Dummy igmp snooping implementation. Use this on platforms that do not
+                    support igmp snooping.
+
+            config INET_IGMP_SNOOPING
+                bool "Linux igmp snooping implementation"
+                help
+                    Use Wifi_Inet_Config table to enable or disable igmp snooping on device.
+        endchoice
+    endif

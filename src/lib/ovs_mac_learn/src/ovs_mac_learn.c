@@ -234,8 +234,9 @@ bool ovsmac_scan_br(char *brif)
 {
     char buf[256];
     FILE *ovs_appctl;
-
     char cmd[256];
+    int ret = false;
+
     if (snprintf(cmd, sizeof(cmd), "ovs-appctl fdb/show %s", brif) >= (int)sizeof(cmd))
     {
         LOG(ERR, "OVSMAC: Command buffer too small.");
@@ -252,7 +253,8 @@ bool ovsmac_scan_br(char *brif)
     /* Skip the first line */
     if (fgets(buf, sizeof(buf), ovs_appctl) == NULL)
     {
-        LOG(ERR, "Error skipping first line of ovs-appctl output");
+        LOG(ERR, "OVSMAC: Premature end of ovs-appctl command. Did it fail?");
+        goto err_close;
     }
 
     while (fgets(buf, sizeof(buf), ovs_appctl) != NULL)
@@ -322,9 +324,10 @@ bool ovsmac_scan_br(char *brif)
         }
     }
 
+    ret = true;
+err_close:
     pclose(ovs_appctl);
-
-    return true;
+    return ret;
 }
 
 /**

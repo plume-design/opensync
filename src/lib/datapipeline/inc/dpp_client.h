@@ -65,7 +65,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
    ----------------------------------------------
 NOTE: The size of this table on 4x4 can be big - we could send only non zero elements!
 */
-typedef struct
+struct __dpp_client_stats_rxtx /* per-RX or per-TX rate-stats base-struct */
 {
     uint32_t                        mcs;
     uint32_t                        nss;
@@ -76,9 +76,13 @@ typedef struct
     uint64_t                        ppdu;
     uint64_t                        retries;
     uint64_t                        errors;
-    int32_t                         rssi;
+    int32_t                         rssi;     /* Used for RX only.  */
     ds_dlist_node_t                 node;
-} dpp_client_stats_rx_t;
+};
+
+typedef struct __dpp_client_stats_rxtx   dpp_client_stats_rx_t;
+typedef struct __dpp_client_stats_rxtx   dpp_client_stats_tx_t;
+
 
 static inline dpp_client_stats_rx_t * dpp_client_stats_rx_record_alloc()
 {
@@ -99,19 +103,6 @@ static inline void dpp_client_stats_rx_record_free(dpp_client_stats_rx_t *record
     }
 }
 
-typedef struct
-{
-    uint32_t                        mcs;
-    uint32_t                        nss;
-    client_mcs_width_t              bw;
-    uint64_t                        bytes;
-    uint64_t                        msdu;
-    uint64_t                        mpdu;
-    uint64_t                        ppdu;
-    uint64_t                        retries;
-    uint64_t                        errors;
-    ds_dlist_node_t                 node;
-} dpp_client_stats_tx_t;
 
 static inline dpp_client_stats_tx_t * dpp_client_stats_tx_record_alloc()
 {

@@ -725,7 +725,7 @@ bool sm_client_report_send(
     report_ctx->radio_type = radio_cfg_ctx->type;
     report_ctx->channel = radio_cfg_ctx->chan;
 
-    /* Report_timestamp is cloud_timestamp + relative start time offset */
+    /* Report_timestamp is base-timestamp + relative start time offset */
     report_ctx->timestamp_ms =
         request_ctx->reporting_timestamp - client_ctx->report_ts +
         get_timestamp();
@@ -797,6 +797,9 @@ bool sm_client_report_send(
         return false;
     }
 
+    SM_SANITY_CHECK_TIME(report_ctx->timestamp_ms,
+                         &request_ctx->reporting_timestamp,
+                         &client_ctx->report_ts);
     return true;
 }
 

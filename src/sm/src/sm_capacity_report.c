@@ -255,7 +255,7 @@ bool sm_capacity_report_send(
 
     report_ctx->radio_type = radio_cfg_ctx->type;
 
-    /* Report_timestamp is cloud_timestamp + relative start time offset */
+    /* Report_timestamp is base-timestamp + relative start time offset */
     report_ctx->timestamp_ms =
         request_ctx->reporting_timestamp - capacity_ctx->report_ts +
         get_timestamp();
@@ -306,6 +306,11 @@ bool sm_capacity_report_send(
     {
         return false;
     }
+
+
+    SM_SANITY_CHECK_TIME(report_ctx->timestamp_ms,
+                         &request_ctx->reporting_timestamp,
+                         &capacity_ctx->report_ts);
 
     return true;
 }

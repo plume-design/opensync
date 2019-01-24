@@ -185,7 +185,7 @@ $(call UNIT_MAKE_RULES)
 $(UNIT_BUILD)/.target: $(BINDIR)/$(UNIT_BIN)
 
 # $(BINDIR)/$(UNIT_BIN) is never created. This is to call a makefile on every build
-$(BINDIR)/$(UNIT_BIN): $(UNIT_DEPS) $(UNIT_PRE) $(UNIT_OBJ) $(call UNIT_MARK_FILES,$(UNIT_DEPS)) $(UNIT_OBJ)
+$(BINDIR)/$(UNIT_BIN): $(UNIT_DEPS) $(UNIT_PRE) $(call UNIT_MARK_FILES,$(UNIT_DEPS)) $(UNIT_OBJ)
 	$$(NQ) " $(call color_callmakefile,compMak) [$(call COLOR_BOLD,$(UNIT_NAME))] $$@"
 	$$(Q)make $$(if $(V),,-s) -C $(UNIT_PATH) -f unit.Makefile $(UNIT_MAKEFILE_FLAGS) all
 

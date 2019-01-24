@@ -40,6 +40,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "osa_assert.h"
 #include "target.h"
 #include "version.h"
+#include "evx.h"
+#include "ovsdb_update.h"
 
 #include "inet.h"
 #include "inet_base.h"
@@ -48,7 +50,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "inet_gre.h"
 #include "inet_target.h"
 
-#define IF_POLL_INTERVAL            0.5     /* Interface status poll interval, in seconds */
+/* For platforms not using KConfig yet, default to polling */
+
+#if !defined(CONFIG_USE_KCONFIG)
+#define CONFIG_INET_STATUS_POLL                 1
+#define CONFIG_INET_STATUS_POLL_INTERVAL_MS     200
+#endif
+
+#define IF_DELAY_COMMIT             0.3     /* Amount of time for delaying commits */
 
 typedef void state_callback_t(struct schema_Wifi_Inet_State *istate, schema_filter_t *filter);
 typedef void master_callback_t(struct schema_Wifi_Master_State *mstate, schema_filter_t *filter);
@@ -62,6 +71,9 @@ typedef void master_callback_t(struct schema_Wifi_Master_State *mstate, schema_f
     M(IF_TYPE_GRE)      \
     M(IF_TYPE_TAP)      \
     M(IF_TYPE_MAX)
+
+
+#define IS_PORT_VALID(port)  ((port) > 0 && (port) <= 65535)
 
 enum if_type
 {
@@ -84,6 +96,7 @@ struct if_entry
 {
     char                if_name[C_IFNAME_LEN];      /* Interface name */
     enum if_type        if_type;                    /* Interface type */
+    bool                if_commit;                  /* Commit pending */
     inet_t              *if_inet;                   /* Inet structure */
     ds_tree_node_t      if_tnode;                   /* ds_tree node -- for device lookup by name */
     ds_dlist_node_t     if_poll_dnode;              /* ds_poll_dnode -- for status polling */
@@ -136,9 +149,10 @@ static bool if_config_set(
         enum if_type type,
         const struct schema_Wifi_Inet_Config *pconfig);
 
-static void __if_poll_status(EV_P_ ev_timer *W, int revent);
+static void if_status_poll(void);
 
 static inet_dhcp_lease_fn_t if_dhcp_lease_notify;
+static inet_route_notify_fn_t if_route_state_notify;
 
 /**
  * Global variables
@@ -146,10 +160,9 @@ static inet_dhcp_lease_fn_t if_dhcp_lease_notify;
 
 ds_tree_t   if_list = DS_TREE_INIT(if_cmp, struct if_entry, if_tnode);
 ds_dlist_t  if_poll_list = DS_DLIST_INIT(struct if_entry, if_poll_dnode);
-ev_timer    if_poll_timer;
 
 target_dhcp_leased_ip_cb_t *if_dhcp_lease_callback = NULL;
-target_dhcp_leased_ip_cb_t *if_dhcp_sniff_callback = NULL;
+target_route_state_cb_t    *if_route_state_callback = NULL;
 
 /**
  * ===========================================================================
@@ -192,9 +205,166 @@ bool inet_target_master_state_init(ds_dlist_t *inet_ovs)
  *  Status reporting
  * ===========================================================================
  */
+
+#if defined(CONFIG_INET_STATUS_POLL)
+/*
+ * Timer-based interface status polling
+ */
+void __if_status_poll_fn(EV_P_ ev_timer *w, int revent)
+{
+    if_status_poll();
+}
+
+void if_status_poll_init(void)
+{
+    /*
+     * Interface polling using a timer
+     */
+    static bool poll_init = false;
+    static ev_timer if_poll_timer;
+
+    if (poll_init) return;
+
+    MEMZERO(if_poll_timer);
+
+    /* Create a repeating timer */
+    ev_timer_init(
+            &if_poll_timer,
+            __if_status_poll_fn,
+            0.0,
+            CONFIG_INET_STATUS_POLL_INTERVAL_MS / 1000.0);
+
+    ev_timer_start(EV_DEFAULT, &if_poll_timer);
+
+    poll_init = true;
+}
+
+#elif defined(CONFIG_INET_STATUS_NETLINK_POLL)
+/*
+ * Netlink based interface status polling
+ *
+ * Note: Netlink sockets are rather poorly documented. Instead of trying to implement the
+ * whole protocol, it is much simpler to just use a NETLINK event as a trigger for the actual
+ * interface polling code. This is not optimal, but still much faster than timer-based polling.
+ */
+
+/* Include netlink specific headers */
+#include <linux/netlink.h>
+#include <linux/rtnetlink.h>
+
+#define RTNLGRP(x)  ((RTNLGRP_ ## x) > 0 ? 1 << ((RTNLGRP_ ## x) - 1) : 0)
+
+static int __nlsock = -1;
+static ev_debounce __nlsock_debounce_ev;
+
+/*
+ * nlsock I/O event callback
+ */
+void __if_status_nlsock_fn(EV_P_ ev_io *w, int revent)
+{
+    uint8_t buf[getpagesize()];
+
+    if (revent & EV_ERROR)
+    {
+        LOG(EMERG, "target_inet: Error on netlink socket.");
+        ev_io_stop(loop, w);
+        return;
+    }
+
+    if (!(revent & EV_READ)) return;
+
+    /* Read and discard the data from the socket */
+    if (recv(__nlsock, buf, sizeof(buf), 0) < 0)
+    {
+        LOG(EMERG, "target_inet: Received EOF from netlink socket?");
+        ev_io_stop(loop, w);
+        return;
+    }
+
+    /*
+     * Interface status changes may occur in bursts, since we're polling all status variables
+     * at once, we can debounce the netlink events for a slight performance boost at the cost
+     * of a small delay in status updates.
+     *
+     * This will trigger __if_status_debounce_fn() below when the debounce timer expires.
+     */
+    ev_debounce_start(EV_DEFAULT, &__nlsock_debounce_ev);
+}
+
+/*
+ * nlsock debounce timer callback
+ */
+void __if_status_debounce_fn(EV_P_ ev_debounce *w, int revent)
+{
+    /* Poll interfaces */
+    if_status_poll();
+}
+
+void if_status_poll_init(void)
+{
+     struct sockaddr_nl nladdr;
+
+     /*
+      * __nlsock serves a double purpose of holding the socket file descriptor and as a
+      * global initialization flag
+      */
+     if (__nlsock >= 0) return;
+
+     /* Create the netlink socket in the NETLINK_ROUTE domain */
+     __nlsock = socket(AF_NETLINK, SOCK_DGRAM, NETLINK_ROUTE);
+     if (__nlsock < 0)
+     {
+         LOGE("target_init: Error creating NETLINK socket.");
+         goto error;
+     }
+
+     /*
+      * Bind the netlink socket to events related to interface status change
+      */
+     memset(&nladdr, 0, sizeof(nladdr));
+     nladdr.nl_family = AF_NETLINK;
+     nladdr.nl_pid = 0;
+     nladdr.nl_groups =
+             RTNLGRP(LINK) |            /* Link/interface status */
+             RTNLGRP(IPV4_IFADDR) |     /* IPv4 address status */
+             RTNLGRP(IPV6_IFADDR) |     /* IPv6 address status */
+             RTNLGRP(IPV4_NETCONF) |    /* No idea */
+             RTNLGRP(IPV6_NETCONF);     /* -=- */
+     if (bind(__nlsock, (struct sockaddr *)&nladdr, sizeof(nladdr)) != 0)
+     {
+         LOGE("target_inet: Error binding NETLINK socket");
+         goto error;
+     }
+
+     /* Initialize the debouncer */
+     ev_debounce_init(
+             &__nlsock_debounce_ev,
+             __if_status_debounce_fn,
+             CONFIG_INET_STATUS_NETLINK_DEBOUNCE_MS / 1000.0);
+
+     /*
+      * Initialize an start an I/O watcher
+      */
+     static ev_io nl_ev;
+
+     ev_io_init(&nl_ev, __if_status_nlsock_fn, __nlsock, EV_READ);
+     ev_io_start(EV_DEFAULT, &nl_ev);
+
+     return;
+
+ error:
+     if (__nlsock >= 0) close(__nlsock);
+     __nlsock = -1;
+}
+
+#else
+#error Interface status reporting backend not supported.
+#endif
+
 bool __inet_poll_register(const char *ifname, void *state_cb, bool master)
 {
     struct if_entry *pif = if_entry_get(ifname, IF_TYPE_NONE);
+
     if (pif == NULL)
     {
         LOG(ERR, "target_inet: %s: Error requesting state register.", ifname);
@@ -219,14 +389,7 @@ bool __inet_poll_register(const char *ifname, void *state_cb, bool master)
         pif->if_istate_cb = state_cb;
     }
 
-    /**
-     * Start the poll timer
-     */
-    if (!ev_is_active(&if_poll_timer))
-    {
-        ev_timer_init(&if_poll_timer, __if_poll_status, IF_POLL_INTERVAL, IF_POLL_INTERVAL);
-        ev_timer_start(EV_DEFAULT, &if_poll_timer);
-    }
+    if_status_poll_init();
 
     return true;
 }
@@ -383,7 +546,7 @@ bool inet_target_mac_learning_register(void *omac_cb)
  */
 
 /**
- * Comprator for if_entry structures
+ * Comparator for if_entry structures
  */
 static int if_cmp(void *_a, void  *_b)
 {
@@ -485,6 +648,9 @@ inet_t *if_inet_new(const char *ifname, enum if_type type)
     inet_dhcpc_option_set(nif, DHCP_OPTION_PLUME_PROFILE, app_build_profile_get());
     inet_dhcpc_option_set(nif, DHCP_OPTION_PLUME_SERIAL_OPT, serial_num);
 
+    /* Register the route state function */
+    inet_route_notify(nif, if_route_state_notify);
+
     return nif;
 }
 struct if_entry *if_entry_find_by_client_ip(inet_ip4addr_t client_ip4addr)
@@ -498,9 +664,12 @@ struct if_entry *if_entry_find_by_client_ip(inet_ip4addr_t client_ip4addr)
     {
         subnet.raw = pif->if_state.in_ipaddr.raw & pif->if_state.in_netmask.raw;
 
-        if ((client_ip4addr.raw & pif->if_state.in_netmask.raw) == subnet.raw)
+        if (subnet.raw)
         {
-            return pif;
+            if ((client_ip4addr.raw & pif->if_state.in_netmask.raw) == subnet.raw)
+            {
+                return pif;
+            }
         }
     }
 
@@ -555,6 +724,42 @@ struct if_entry *if_entry_get(const char *_ifname, enum if_type type)
 
     return pif;
 }
+
+/* Issue a delayed commit on the interface */
+void __if_delayed_commit(EV_P_ ev_debounce *w, int revent)
+{
+    struct if_entry *pif;
+
+    ds_tree_foreach(&if_list, pif)
+    {
+        if (!pif->if_commit) continue;
+        pif->if_commit = false;
+
+        if (!inet_commit(pif->if_inet))
+        {
+            LOG(ERR, "target_inet: %s (%s): Error committing new configuration.",
+                    pif->if_name,
+                    if_type_str(pif->if_type));
+        }
+    }
+}
+
+void if_delayed_commit(struct if_entry *pif)
+{
+    static bool if_commit_init = false;
+    static ev_debounce if_commit_timer;
+
+    pif->if_commit = true;
+
+    if (!if_commit_init)
+    {
+        ev_debounce_init(&if_commit_timer, __if_delayed_commit, IF_DELAY_COMMIT);
+        if_commit_init = true;
+    }
+
+    ev_debounce_start(EV_DEFAULT, &if_commit_timer);
+}
+
 
 /**
  * Lookup a value by key in a schema map structure.
@@ -614,6 +819,27 @@ bool __if_config_ip_assign_scheme_set(struct if_entry *pif, const struct schema_
     return true;
 }
 
+bool __if_config_igmp_set(struct if_entry *pif, const struct schema_Wifi_Inet_Config *pconfig)
+{
+    if (pif->if_type == IF_TYPE_BRIDGE && pconfig->igmp_exists && pconfig->igmp_present)
+    {
+        int iigmp = pconfig->igmp;
+        int iage = pconfig->igmp_age_exists ? pconfig->igmp_age : 300;
+        int itsize = pconfig->igmp_tsize_present ? pconfig->igmp_tsize: 1024;
+
+        if (!inet_igmp_enable(pif->if_inet, iigmp, iage, itsize))
+        {
+            LOG(WARN, "target_inet: %s (%s): Error enabling IGMP (%d).",
+                    pif->if_name,
+                    if_type_str(pif->if_type),
+                    pconfig->igmp_exists && pconfig->igmp);
+
+            return false;
+        }
+    }
+
+    return true;
+}
 bool __if_config_upnp_set(struct if_entry *pif, const struct schema_Wifi_Inet_Config *pconfig)
 {
     enum inet_upnp_mode upnp = UPNP_MODE_NONE;
@@ -944,7 +1170,7 @@ bool __if_config_dhcps_set(struct if_entry *pif, const struct schema_Wifi_Inet_C
     bool enable = slease_start != NULL && slease_stop != NULL;
 
     /* Enable DHCP lease notifications */
-    if (!inet_dhcps_lease_register(pif->if_inet, if_dhcp_lease_notify))
+    if (!inet_dhcps_lease_notify(pif->if_inet, if_dhcp_lease_notify))
     {
         LOG(ERR, "target_inet: %s (%s): Error registering DHCP lease event handler.",
                 pif->if_name,
@@ -1016,6 +1242,7 @@ bool __if_config_ip4tunnel_set(struct if_entry *pif, const struct schema_Wifi_In
     const char *ifparent = NULL;
     inet_ip4addr_t local_addr = INET_IP4ADDR_ANY;
     inet_ip4addr_t remote_addr = INET_IP4ADDR_ANY;
+    inet_macaddr_t remote_mac = INET_MACADDR_ANY;
 
     if (pif->if_type != IF_TYPE_GRE) return retval;
 
@@ -1058,14 +1285,28 @@ bool __if_config_ip4tunnel_set(struct if_entry *pif, const struct schema_Wifi_In
         }
     }
 
-    if (!inet_ip4tunnel_set(pif->if_inet, ifparent, local_addr, remote_addr))
+    if (pconfig->gre_remote_mac_addr_exists)
     {
-        LOG(ERR, "target_inet: %s (%s): Error setting IPv4 tunnel settings: parent=%s local="PRI(inet_ip4addr_t)" remote="PRI(inet_ip4addr_t),
+        if (!inet_macaddr_fromstr(&remote_mac, pconfig->gre_remote_mac_addr))
+        {
+            LOG(WARN, "target_inet: %s (%s): Remote MAC address is invalid: %s",
+                    pif->if_name,
+                    if_type_str(pif->if_type),
+                    pconfig->gre_remote_mac_addr);
+
+            retval = false;
+        }
+    }
+
+    if (!inet_ip4tunnel_set(pif->if_inet, ifparent, local_addr, remote_addr, remote_mac))
+    {
+        LOG(ERR, "target_inet: %s (%s): Error setting IPv4 tunnel settings: parent=%s local="PRI(inet_ip4addr_t)" remote="PRI(inet_ip4addr_t)" remote_mac="PRI(inet_macaddr_t),
                 pif->if_name,
                 if_type_str(pif->if_type),
                 ifparent,
                 FMT(inet_ip4addr_t, local_addr),
-                FMT(inet_ip4addr_t, remote_addr));
+                FMT(inet_ip4addr_t, remote_addr),
+                FMT(inet_macaddr_t, remote_mac));
 
         retval = false;
     }
@@ -1073,15 +1314,15 @@ bool __if_config_ip4tunnel_set(struct if_entry *pif, const struct schema_Wifi_In
     return retval;
 }
 
-bool __if_config_dhsniff_set(struct if_entry *pif, const struct schema_Wifi_Inet_Config *pconfig)
+bool __if_config_dhsnif_set(struct if_entry *pif, const struct schema_Wifi_Inet_Config *pconfig)
 {
     if (pconfig->dhcp_sniff_exists && pconfig->dhcp_sniff)
     {
-        return inet_dhsniff_lease_register(pif->if_inet, if_dhcp_lease_notify);
+        return inet_dhsnif_lease_notify(pif->if_inet, if_dhcp_lease_notify);
     }
     else
     {
-        return inet_dhsniff_lease_register(pif->if_inet, NULL);
+        return inet_dhsnif_lease_notify(pif->if_inet, NULL);
     }
 
     return false;
@@ -1139,22 +1380,16 @@ bool if_config_set(const char *ifname, enum if_type type, const struct schema_Wi
         retval = false;
     }
 
+    retval &= __if_config_igmp_set(pif, pconfig);
     retval &= __if_config_ip_assign_scheme_set(pif, pconfig);
     retval &= __if_config_upnp_set(pif, pconfig);
     retval &= __if_config_static_set(pif, pconfig);
     retval &= __if_config_dns_set(pif, pconfig);
     retval &= __if_config_dhcps_set(pif, pconfig);
     retval &= __if_config_ip4tunnel_set(pif, pconfig);
-    retval &= __if_config_dhsniff_set(pif, pconfig);
+    retval &= __if_config_dhsnif_set(pif, pconfig);
 
-    if (!inet_commit(pif->if_inet))
-    {
-        LOG(ERR, "target_inet: %s (%s): Error commiting new configuration.",
-                ifname,
-                if_type_str(type));
-
-        retval = false;
-    }
+    if_delayed_commit(pif);
 
     /* Copy fields that should be simply copied to Wifi_Inet_State */
     INET_CONFIG_COPY(pif->if_cache.if_type, pconfig->if_type);
@@ -1440,7 +1675,7 @@ bool if_master_get(const char *ifname, enum if_type type, struct schema_Wifi_Mas
 /**
  * Status poll
  */
-void __if_poll_status(EV_P_ ev_timer *w, int revent)
+void if_status_poll(void)
 {
     ds_dlist_iter_t iter;
     struct if_entry *pif;
@@ -1495,9 +1730,10 @@ bool inet_target_dhcp_leased_ip_register(target_dhcp_leased_ip_cb_t *dlip_cb)
     return true;
 }
 
-bool __inet_target_dhcp_rip_set(const char *ifname,
-                                struct schema_DHCP_reserved_IP *schema_rip,
-                                bool remove)
+bool __inet_target_dhcp_rip_set(
+        const char *ifname,
+        struct schema_DHCP_reserved_IP *schema_rip,
+        bool remove)
 {
     struct if_entry *pif = NULL;
     inet_ip4addr_t client_ip4addr;
@@ -1508,12 +1744,18 @@ bool __inet_target_dhcp_rip_set(const char *ifname,
     {
         pif = if_entry_get(ifname, IF_TYPE_NONE);
         if (!pif)
+        {
+            LOG(ERR, "inet_target: dhcp_rip: No interface '%s' found. Unable to process DHCP reservation: ip=%s mac=%s",
+                    ifname,
+                    schema_rip->ip_addr,
+                    schema_rip->hw_addr);
             return false;
+        }
     }
     else
     {
         /* If ifname not explicitly set (most often the case), we must do a
-         * IP/subnet lookup to find the matching interface for client IP.  */
+         * IP/subnet lookup to find the matching interface for client IP. */
         if (!inet_ip4addr_fromstr(&client_ip4addr, schema_rip->ip_addr))
         {
             LOG(ERR, "inet_target: dhcp_rip: Invalid IP address: %s", schema_rip->ip_addr);
@@ -1522,25 +1764,123 @@ bool __inet_target_dhcp_rip_set(const char *ifname,
 
         pif = if_entry_find_by_client_ip(client_ip4addr);
         if (!pif)
+        {
+            LOG(ERR, "inet_target: dhcp_rip: Unable to find interface configuration with subnet: ip=%s mac=%s",
+                    schema_rip->ip_addr,
+                    schema_rip->hw_addr);
             return false;
+        }
     }
 
-    return __if_config_dhcps_rip_set(pif, schema_rip, remove);
+    /* Push new configuration */
+    if (!__if_config_dhcps_rip_set(pif, schema_rip, remove))
+    {
+        LOG(ERR, "inet_target: dhcp_rip: Error processing DHCP reservation: ip=%s mac=%s",
+                schema_rip->ip_addr,
+                schema_rip->hw_addr);
+        return false;
+    }
+
+    /* Commit configuration */
+    if_delayed_commit(pif);
+
+    return true;
 }
 
 
-bool inet_target_dhcp_rip_set(const char *ifname,
-                              struct schema_DHCP_reserved_IP *schema_rip)
+bool inet_target_dhcp_rip_set(
+        const char *ifname,
+        struct schema_DHCP_reserved_IP *schema_rip)
 {
     return __inet_target_dhcp_rip_set(ifname, schema_rip, false);
 }
 
-bool inet_target_dhcp_rip_del(const char *ifname,
-                              struct schema_DHCP_reserved_IP *schema_rip)
+bool inet_target_dhcp_rip_del(
+        const char *ifname,
+        struct schema_DHCP_reserved_IP *schema_rip)
 {
     return __inet_target_dhcp_rip_set(ifname, schema_rip, true);
 }
 
+bool __inet_target_portforward(
+        const char *ifname,
+        struct schema_IP_Port_Forward *schema_pf,
+        bool remove)
+{
+    struct if_entry *pif = NULL;
+    struct inet_portforward portfw;
+    bool rc = 0;
+
+    memset(&portfw, 0, sizeof(portfw));
+
+    if (!ifname)
+        ifname = schema_pf->src_ifname;
+
+    pif = if_entry_get(ifname, IF_TYPE_NONE);
+    if (!pif)
+        return false;
+
+
+    LOG(DEBUG, "inet_target: %s (%s): %s port forwarding entry: "
+               "dst_ip=%s, dst_port=%d, src_port=%d, proto=%s",
+               pif->if_name, if_type_str(pif->if_type),
+               remove ? "deleting" : "adding",
+               schema_pf->dst_ipaddr, schema_pf->dst_port, schema_pf->src_port,
+               schema_pf->protocol);
+
+
+    if (!inet_ip4addr_fromstr(&portfw.pf_dst_ipaddr, schema_pf->dst_ipaddr))
+        return false;
+    if (!IS_PORT_VALID(schema_pf->dst_port) || !IS_PORT_VALID(schema_pf->src_port))
+        return false;
+    portfw.pf_dst_port = (uint16_t)schema_pf->dst_port;
+    portfw.pf_src_port = (uint16_t)schema_pf->src_port;
+    if (!strcmp("udp", schema_pf->protocol))
+        portfw.pf_proto = INET_PROTO_UDP;
+    else if (!strcmp("tcp", schema_pf->protocol))
+        portfw.pf_proto = INET_PROTO_TCP;
+    else
+        return false;
+
+    if (remove)
+    {
+        rc = inet_portforward_del(pif->if_inet, &portfw);
+    }
+    else
+    {
+        rc = inet_portforward_set(pif->if_inet, &portfw);
+    }
+
+    if (!rc)
+    {
+        LOG(ERR, "inet_target: %s (%s): Error %s port forwarding entry: "
+                 "dst_ip=%s, dst_port=%d, src_port=%d, proto=%s",
+                  pif->if_name, if_type_str(pif->if_type),
+                  remove ? "deleting" : "adding",
+                  schema_pf->dst_ipaddr, schema_pf->dst_port, schema_pf->src_port,
+                  schema_pf->protocol);
+        return false;
+    }
+
+    if_delayed_commit(pif);
+
+    return true;
+}
+
+
+bool inet_target_portforward_set(
+        const char *ifname,
+        struct schema_IP_Port_Forward *schema_pf)
+{
+    return __inet_target_portforward(ifname, schema_pf, false);
+}
+
+bool inet_target_portforward_del(
+        const char *ifname,
+        struct schema_IP_Port_Forward *schema_pf)
+{
+    return __inet_target_portforward(ifname, schema_pf, true);
+}
 
 bool if_dhcp_lease_notify(
         inet_t *self,
@@ -1549,12 +1889,17 @@ bool if_dhcp_lease_notify(
 {
     if (if_dhcp_lease_callback == NULL) return false;
 
-    LOG(INFO, "target_inet: %s DHCP lease: MAC:"PRI(inet_macaddr_t)" IP:"PRI(inet_ip4addr_t)" Hostname:%s Time:%d",
+    bool ip_is_any = INET_IP4ADDR_IS_ANY(dl->dl_ipaddr);
+
+    LOG(INFO, "target_inet: %s DHCP lease: MAC:"PRI(inet_macaddr_t)" IP:"PRI(inet_ip4addr_t)" Hostname:%s Time:%d%s",
             released ? "Released" : "Acquired",
             FMT(inet_macaddr_t, dl->dl_hwaddr),
             FMT(inet_ip4addr_t, dl->dl_ipaddr),
             dl->dl_hostname,
-            (int)dl->dl_leasetime);
+            (int)dl->dl_leasetime,
+            ip_is_any ? ", skipping" : "");
+
+    if (ip_is_any) return true;
 
     /* Fill in the schema structure */
     struct schema_DHCP_leased_IP sdl;
@@ -1600,3 +1945,51 @@ bool if_dhcp_lease_notify(
     return true;
 }
 
+/*
+ * ===========================================================================
+ *  Routing table status reporting
+ * ===========================================================================
+ */
+bool if_route_state_notify(inet_t *self, struct inet_route_state *rts, bool remove)
+{
+    struct schema_Wifi_Route_State schema_rts;
+
+    LOG(TRACE, "target_init: %s: Route state notify, remove = %d", self->in_ifname, remove);
+
+    if (if_route_state_callback == NULL) return false;
+
+    memset(&schema_rts, 0, sizeof(schema_rts));
+
+    if (strscpy(schema_rts.if_name, self->in_ifname, sizeof(schema_rts.if_name)) < 0)
+    {
+        LOG(WARN, "target_inet: %s: Route state interface name too long.", self->in_ifname);
+        return false;
+    }
+
+    snprintf(schema_rts.dest_addr, sizeof(schema_rts.dest_addr), PRI(inet_ip4addr_t),
+            FMT(inet_ip4addr_t, rts->rts_dst_ipaddr));
+
+    snprintf(schema_rts.dest_mask, sizeof(schema_rts.dest_mask), PRI(inet_ip4addr_t),
+            FMT(inet_ip4addr_t, rts->rts_dst_mask));
+
+    snprintf(schema_rts.gateway, sizeof(schema_rts.gateway), PRI(inet_ip4addr_t),
+            FMT(inet_ip4addr_t, rts->rts_gw_ipaddr));
+
+    snprintf(schema_rts.gateway_hwaddr, sizeof(schema_rts.gateway_hwaddr), PRI(inet_macaddr_t),
+            FMT(inet_macaddr_t, rts->rts_gw_hwaddr));
+
+    schema_rts.gateway_hwaddr_exists = inet_macaddr_cmp(&rts->rts_gw_hwaddr, &INET_MACADDR_ANY) != 0;
+
+    schema_rts._update_type = remove ? OVSDB_UPDATE_DEL : OVSDB_UPDATE_MODIFY;
+
+    if_route_state_callback(&schema_rts);
+
+    return true;
+}
+
+bool inet_target_route_state_register(target_route_state_cb_t *rts_cb)
+{
+    if_route_state_callback = rts_cb;
+
+    return true;
+}

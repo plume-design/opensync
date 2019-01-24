@@ -1223,6 +1223,7 @@ static void dppline_add_stat_device(Sts__Report *r, dppline_stats_t *s)
 {
     Sts__Device *sr = NULL;
     int size = 0;
+    uint32_t i;
     dppline_device_stats_t *device = &s->u.device;
 
     // increase the number of devices
@@ -1257,10 +1258,92 @@ static void dppline_add_stat_device(Sts__Report *r, dppline_stats_t *s)
     sr->uptime = device->record.uptime;
     sr->has_uptime = true;
 
-    uint32_t i;
-    sr->radio_temp = malloc(device->qty * sizeof(*sr->radio_temp));
-    size += device->qty * sizeof(*sr->radio_temp);
-    assert(sr->radio_temp);
+    sr->mem_util = malloc(sizeof(*sr->mem_util));
+    size += sizeof(*sr->mem_util);
+    assert(sr->mem_util);
+    sts__device__mem_util__init(sr->mem_util);
+    sr->mem_util->mem_total = device->record.mem_util.mem_total;
+    sr->mem_util->mem_used = device->record.mem_util.mem_used;
+    sr->mem_util->swap_total = device->record.mem_util.swap_total;
+    sr->mem_util->has_swap_total = true;
+    sr->mem_util->swap_used = device->record.mem_util.swap_used;
+    sr->mem_util->has_swap_used = true;
+
+    sr->fs_util = malloc(DPP_DEVICE_FS_TYPE_QTY * sizeof(*sr->fs_util));
+    size += DPP_DEVICE_FS_TYPE_QTY * sizeof(*sr->fs_util);
+    assert(sr->fs_util);
+    sr->n_fs_util = DPP_DEVICE_FS_TYPE_QTY;
+    for (i = 0; i < sr->n_fs_util; i++)
+    {
+        sr->fs_util[i] = malloc(sizeof(**sr->fs_util));
+        size += sizeof(**sr->fs_util);
+        assert(sr->fs_util[i]);
+        sts__device__fs_util__init(sr->fs_util[i]);
+
+        sr->fs_util[i]->fs_total = device->record.fs_util[i].fs_total;
+        sr->fs_util[i]->fs_used = device->record.fs_util[i].fs_used;
+        sr->fs_util[i]->fs_type = device->record.fs_util[i].fs_type;
+    }
+
+    sr->cpuutil = malloc(sizeof(*sr->cpuutil));
+    size += sizeof(*sr->cpuutil);
+    assert(sr->cpuutil);
+    sts__device__cpu_util__init(sr->cpuutil);
+    sr->cpuutil->cpu_util = device->record.cpu_util.cpu_util;
+    sr->cpuutil->has_cpu_util = true;
+
+    sr->n_ps_cpu_util = 0;
+    sr->n_ps_cpu_util = device->record.n_top_cpu;
+    if (sr->n_ps_cpu_util > 0)
+    {
+        sr->ps_cpu_util = malloc(sr->n_ps_cpu_util * sizeof(*sr->ps_cpu_util));
+        assert(sr->ps_cpu_util);
+        size += sizeof(*sr->ps_cpu_util);
+        for (i = 0; i < sr->n_ps_cpu_util; i++)
+        {
+            sr->ps_cpu_util[i] = malloc(sizeof(**sr->ps_cpu_util));
+            assert(sr->ps_cpu_util[i]);
+            size += sizeof(**sr->ps_cpu_util);
+            sts__device__per_process_util__init(sr->ps_cpu_util[i]);
+
+            sr->ps_cpu_util[i]->pid = device->record.top_cpu[i].pid;
+
+            device->record.top_cpu[i].cmd[sizeof(device->record.top_cpu[i].cmd)-1] = '\0';
+            sr->ps_cpu_util[i]->cmd = malloc(sizeof(device->record.top_cpu[i].cmd));
+            strcpy(sr->ps_cpu_util[i]->cmd, device->record.top_cpu[i].cmd);
+            sr->ps_cpu_util[i]->util = device->record.top_cpu[i].util;
+        }
+    }
+
+    sr->n_ps_mem_util = 0;
+    sr->n_ps_mem_util = device->record.n_top_mem;
+    if (sr->n_ps_mem_util > 0)
+    {
+        sr->ps_mem_util = malloc(sr->n_ps_mem_util * sizeof(*sr->ps_mem_util));
+        assert(sr->ps_mem_util);
+        size += sizeof(*sr->ps_mem_util);
+        for (i = 0; i < sr->n_ps_mem_util; i++)
+        {
+            sr->ps_mem_util[i] = malloc(sizeof(**sr->ps_mem_util));
+            assert(sr->ps_mem_util[i]);
+            size += sizeof(**sr->ps_mem_util);
+            sts__device__per_process_util__init(sr->ps_mem_util[i]);
+
+            sr->ps_mem_util[i]->pid = device->record.top_mem[i].pid;
+
+            device->record.top_mem[i].cmd[sizeof(device->record.top_mem[i].cmd)-1] = '\0';
+            sr->ps_mem_util[i]->cmd = malloc(sizeof(device->record.top_mem[i].cmd));
+            strcpy(sr->ps_mem_util[i]->cmd, device->record.top_mem[i].cmd);
+            sr->ps_mem_util[i]->util = device->record.top_mem[i].util;
+        }
+    }
+
+    if (device->qty > 0)
+    {
+        sr->radio_temp = malloc(device->qty * sizeof(*sr->radio_temp));
+        size += device->qty * sizeof(*sr->radio_temp);
+        assert(sr->radio_temp);
+    }
     sr->n_radio_temp = device->qty;
     for (i = 0; i < device->qty; i++)
     {
@@ -1275,8 +1358,12 @@ static void dppline_add_stat_device(Sts__Report *r, dppline_stats_t *s)
         sr->radio_temp[i]->has_value = true;
     }
 
-    sr->thermal_stats = malloc(device->thermal_qty * sizeof(*sr->thermal_stats));
-    assert(sr->thermal_stats);
+    if (device->thermal_qty > 0)
+    {
+        sr->thermal_stats = malloc(device->thermal_qty * sizeof(*sr->thermal_stats));
+        size += device->thermal_qty * sizeof(*sr->thermal_stats);
+        assert(sr->thermal_stats);
+    }
     sr->n_thermal_stats = device->thermal_qty;
     for (i = 0; i < device->thermal_qty; i++)
     {
@@ -1296,6 +1383,7 @@ static void dppline_add_stat_device(Sts__Report *r, dppline_stats_t *s)
         sr->thermal_stats[i]->has_timestamp_ms = true;
 
         sr->thermal_stats[i]->txchainmask = malloc(DPP_DEVICE_TX_CHAINMASK_MAX * sizeof(*dts->txchainmask));
+        size += DPP_DEVICE_TX_CHAINMASK_MAX * sizeof(*dts->txchainmask);
         sr->thermal_stats[i]->n_txchainmask = 0; 
 
         uint32_t j;

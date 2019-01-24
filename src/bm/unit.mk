@@ -46,7 +46,6 @@ UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/ovsdb
 UNIT_DEPS += src/lib/pjs
 UNIT_DEPS += src/lib/schema
-UNIT_DEPS += src/lib/bsal
 UNIT_DEPS += src/lib/datapipeline
 UNIT_DEPS += src/lib/target
 UNIT_DEPS += src/qm/qm_conn

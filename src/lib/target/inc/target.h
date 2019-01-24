@@ -38,6 +38,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "schema.h"
 #include "os_backtrace.h"
 
+#include "target_bsal.h"
+
 /**
  * @file target.h
  * @brief Base target api header
@@ -49,8 +51,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 #define TARGET_BUFF_SZ              256
-#define TARGET_MAX_TM_NEIGHBORS     3
-#define TARGET_MAC_ADDR_LEN         6
 
 /* Target init options */
 typedef enum {
@@ -70,44 +70,8 @@ typedef enum {
     TARGET_INIT_MGR_PM              = 13,
     TARGET_INIT_MGR_FSM             = 14,
     TARGET_INIT_MGR_TM              = 15,
+    TARGET_INIT_MGR_HELLO_WORLD     = 16,
 } target_init_opt_t;
-
-typedef struct {
-    uint8_t                     bssid[TARGET_MAC_ADDR_LEN];
-
-    uint32_t                    bssid_info;
-    uint8_t                     op_class;
-    uint8_t                     channel;
-    uint8_t                     phy_type;
-} target_bsal_neigh_info_t;
-
-typedef struct {
-    target_bsal_neigh_info_t    neigh[TARGET_MAX_TM_NEIGHBORS];
-
-    int                         num_neigh;
-    uint8_t                     valid_int;
-    uint8_t                     abridged;
-    uint8_t                     pref;
-    uint8_t                     disassoc_imminent;
-    uint16_t                    bss_term;
-    int                         num_retries;
-    int                         max_retries;
-    int                         retry_interval;
-    bool                        inc_neigh;
-} target_bsal_btm_params_t;
-
-typedef struct {
-    uint8_t                     op_class;
-    uint8_t                     channel;
-    uint8_t                     rand_ivl;
-    uint8_t                     meas_dur;
-    uint8_t                     meas_mode;
-    uint8_t                     req_ssid;
-    uint8_t                     rep_cond;
-    uint8_t                     rpt_detail;
-    uint8_t                     req_ie;
-    uint8_t                     chanrpt_mode;
-} target_bsal_rrm_params_t;
 
 /**
  * @brief Wait for platform readyness
@@ -115,6 +79,16 @@ typedef struct {
  * The purpose of target_ready API is to allow the subsystem to fully initialize
  * and is ready for processing. The API needs to be blocking. Successful return
  * starts managers and spawns monitoring.
+ *
+ * Example actions that target may want to perform:
+ * - Check if all default network interfaces are setup.
+ * - Check if date and time are set correctly.
+ * - Cache platform data (model, id, version, etc.) for further use.
+ *
+ * If the target readyness is assured before starting OpenSync
+ * (for example by systemd dependencies) the implementation of this function
+ * may just return true.
+ *
  * @param loop main loop handle
  * @return true on success
  */
@@ -125,7 +99,11 @@ bool target_ready(struct ev_loop *loop);
  *
  * The purpose of target_init is to allow initialization of vendor specific parameters:
  * IOCTL or netlink sockets, linked lists, etc. This API is called from every manager
- * prior to executing the functional APIs
+ * prior to executing the functional APIs. If given vendor specific initialization is
+ * not needed for one of the managers (for instance there is no need to have Wifi HAL
+ * initialized for DM) it can be a no-op for that manager. Note, each manager is
+ * a separate linux process.
+ *
  * @param opt specifies from which manager this api is called
  * @param loop main loop handle
  * @return true on success
@@ -136,6 +114,11 @@ bool target_init(target_init_opt_t opt, struct ev_loop *loop);
  * @brief Perform platform specific cleanups on exit
  *
  * Once the manager exits its processing loop, the target_close API gets called.
+ * Example implementation can call cleanup actions of HAL library that was
+ * initialized inside target_init(). Note, this function is called from
+ * every manager, so cleanup action must correspond to init action for specific
+ * manager.
+ *
  * @param opt specifies from which manager this api is called
  * @param loop main loop handle
  * @return true on success
@@ -217,7 +200,11 @@ const char **target_ethclient_brlist_get();
 /**
  * @brief Return device identification
  *
- * This function provides a null terminated byte string containing the device identification.
+ * This function provides a null terminated byte string containing the device
+ * identification. The device identification is a part of AWLAN_Node table.
+ * In the simplest implementation, this function may be the same as
+ * target_serial_get().
+ *
  * @param buff   pointer to a string buffer
  * @param buffsz size of string buffer
  * @return true on success
@@ -228,6 +215,10 @@ bool target_id_get(void *buff, size_t buffsz);
  * @brief Return device serial number
  *
  * This function provides a null terminated byte string containing the serial number.
+ * The serial number is a part of AWLAN_Node table.
+ * For example, the serial number may be derived from the MAC address.
+ * Please see implementation inside target_native.c file for the reference.
+ *
  * @param buff   pointer to a string buffer
  * @param buffsz size of string buffer
  * @return true on success
@@ -239,6 +230,11 @@ bool target_serial_get(void *buff, size_t buffsz);
  *
  * This function provides a null terminated byte string containing the stock keeping
  * unit number. It is usually used by stores to track inventory.
+ * The SKU is a part of AWLAN_Node table.
+ * If cloud doesn't support SKU for this target, this function should
+ * return false. The fixed SKU can be provided by setting CONFIG_TARGET_FIXED_SKU
+ * and CONFIG_TARGET_SKU_STRING.
+ *
  * @param buff   pointer to a string buffer
  * @param buffsz size of string buffer
  * @return true on success
@@ -249,6 +245,12 @@ bool target_sku_get(void *buff, size_t buffsz);
  * @brief Return device model
  *
  * This function provides a null terminated byte string containing the device model.
+ * The device model is a part of AWLAN_Node table.
+ * For example, this function may return just the serial number (see target_serial_get()).
+ * The fixed model name can be provided by setting CONFIG_TARGET_MODEL_GET and
+ * CONFIG_TARGET_MODEL. It is safe to return false here. The TARGET_NAME will be used
+ * as a model name in that case.
+ *
  * @param buff   pointer to a string buffer
  * @param buffsz size of string buffer
  * @return true on success
@@ -268,7 +270,12 @@ bool target_sw_version_get(void *buff, size_t buffsz);
 /**
  * @brief Return hardware version number
  *
- * This function provides a null terminated byte string containing the hardware version number.
+ * This function provides a null terminated byte string containing the hardware
+ * version number. The hardware version is a part of AWLAN_Node table.
+ * If not needed this function should return false.
+ * Fixed HWREV can be provided by setting CONFIG_TARGET_FIXED_HWREV and
+ * CONFIG_TARGET_FIXED_HWREV_STRING.
+ *
  * @param buff   pointer to a string buffer
  * @param buffsz size of string buffer
  * @return true on success
@@ -278,7 +285,10 @@ bool target_hw_revision_get(void *buff, size_t buffsz);
 /**
  * @brief Return platform version number
  *
- * This function provides a null terminated byte string containing the platform version number.
+ * This function provides a null terminated byte string containing the platform
+ * version number. The platform version number is a part of AWLAN_Node table.
+ * If not needed this function should return false.
+ *
  * @param buff   pointer to a string buffer
  * @param buffsz size of string buffer
  * @return true on success
@@ -359,19 +369,6 @@ bool target_om_add_flow( char *token, struct schema_Openflow_Config *ofconf );
  */
 bool target_om_del_flow( char *token, struct schema_Openflow_Config *ofconf );
 
-
-/******************************************************************************
- *  BM and BSAL definitions
- *****************************************************************************/
-
-bool target_bsal_client_disconnect( char *interface, char *disc_type,
-                                    char *mac_str,   uint8_t reason );
-
-bool target_bsal_bss_tm_request( char *client_mac , char *interface,
-                                 target_bsal_btm_params_t *btm_params );
-bool target_bsal_rrm_bcn_rpt_request( char *client_mac , char *interface,
-                                 target_bsal_rrm_params_t *rrm_params );
-
 /******************************************************************************
  *  TLS definitions
  *****************************************************************************/
@@ -447,6 +444,12 @@ const char* target_scripts_dir(void);
 
 /**
  * @brief Get the directory for tools
+ *
+ * The needed tools inside tools_dir are defined by the cloud controller.
+ * For example, the speed test binary is a tool that can be used by the cloud
+ * controller.
+ * The default implementation can be used by defining CONFIG_TARGET_PATH_TOOLS.
+ *
  * @return tools directory
  */
 const char* target_tools_dir(void);

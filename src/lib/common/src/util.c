@@ -38,7 +38,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdbool.h>
 #include <errno.h>
 
-
 #ifdef STDC_HEADERS
 #include <stdlib.h>
 #include <string.h>
@@ -782,13 +781,13 @@ char *strexread(const char *prog, const char *const*argv)
     return NULL;
 }
 
-char *strdel(char *heystack, const char *needle)
+char *strdel(char *heystack, const char *needle, int (*strcmp_fun) (const char*, const char*))
 {
     char *p = strdupa(heystack ?: "");
     char *q = strdupa("");
     char *i;
     while ((i = strsep(&p, " ")))
-        if (strcmp(i, needle))
+        if (strcmp_fun(i, needle))
             q = strfmta("%s %s", i, q);
     return strcpy(heystack, strchomp(q, " "));
 }

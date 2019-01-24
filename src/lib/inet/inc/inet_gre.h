@@ -28,37 +28,18 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define INET_GRE_H_INCLUDED
 
 #include "inet.h"
-#include "inet_base.h"
-#include "inet_eth.h"
 
-typedef struct __inet_gre inet_gre_t;
-
-struct __inet_gre
-{
-    /* Subclass from inet_eth_t, include base and inet for convenience */
-    union
-    {
-        inet_t      inet;
-        inet_base_t base;
-        inet_eth_t  eth;
-    };
-
-    char            in_ifparent[C_IFNAME_LEN];      /* Parent interface */
-    inet_ip4addr_t  in_local_addr;                  /* Local IPv4 address */
-    inet_ip4addr_t  in_remote_addr;                 /* Remote IPv4 address */
-
-};
-
+/*
+ * The inet_gre_new() function returns a GRE inet_t implementation. The default
+ * GRE implementation should override this function and return a suitable inet_t
+ * object that implements GRE tunneling.
+ *
+ * Note that this function can be more than a simple wrapper around the object
+ * constructor. Some platforms may use GRE acceleration and this can be probed
+ * run-time. If acceleration is available, it may return an object that knows
+ * how to deal with accelerated GRE tunnels or fallback to the default "inet_gretap_t"
+ * implementation otherwise.
+ */
 extern inet_t *inet_gre_new(const char *ifname);
-extern bool inet_gre_init(inet_gre_t *self, const char *ifname);
-
-extern bool inet_gre_ip4tunnel_set(
-        inet_t *super,
-        const char *parent,
-        inet_ip4addr_t laddr,
-        inet_ip4addr_t raddr);
-
-extern bool inet_gre_service_commit(inet_base_t *super, enum inet_base_services srv, bool enable);
-
 
 #endif /* INET_GRE_H_INCLUDED */

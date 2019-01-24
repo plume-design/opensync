@@ -299,6 +299,7 @@ bm_kick_task_kick(void *arg)
     }
     ds_list_remove_head(&bm_kick_queue);
 
+
     do {
         client = bm_client_find_by_macaddr(kick->macaddr);
         if (!client || !client->connected ||
@@ -347,10 +348,10 @@ bm_kick_task_kick(void *arg)
             break;
         }
 
-        ret = bsal_client_disconnect(kick->bsal, kick->band,
-                                     (uint8_t *)&kick->macaddr,
-                                     bsal_kick_type,
-                                     kick_reason);
+        ret = target_bsal_client_disconnect(client->pair->ifcfg[kick->band].ifname,
+                                           (uint8_t *)&kick->macaddr,
+                                            bsal_kick_type,
+                                            kick_reason);
         if (ret < 0) {
             LOGE("Client '%s' BSAL kick failed, ret = %d", client->mac_addr, ret);
         }
@@ -421,7 +422,7 @@ bm_kick_task_queue_run(void *arg)
         LOGD("Starting measurement for '%s'", client->mac_addr);
 
         // Kick off an instant measurement for this entry
-        ret = bsal_client_measure(kick->bsal, kick->band,
+        ret = target_bsal_client_measure(client->pair->ifcfg[kick->band].ifname,
                                     (uint8_t *)&kick->macaddr, INST_RSSI_SAMPLE_CNT);
         if (ret == -ENOSYS) {
             // BSAL library doesn't support instant measurement, just use last RSSI
@@ -455,7 +456,7 @@ bm_kick_queue_start(void)
 
 /*****************************************************************************/
 
-static target_bsal_btm_params_t *
+static bsal_btm_params_t *
 bm_kick_get_btm_params_by_kick_type( bm_client_t *client, bm_kick_type_t type )
 {
     switch( type )
@@ -527,7 +528,7 @@ bm_kick_get_dpp_event_by_btm_type( bm_kick_type_t type,
 }
 
 static bool
-bm_kick_get_self_btm_values( target_bsal_btm_params_t *btm_params,
+bm_kick_get_self_btm_values( bsal_btm_params_t *btm_params,
                              bm_pair_t *pair, bsal_band_t band )
 {
     struct  schema_Wifi_VIF_State   vif;
@@ -547,8 +548,8 @@ bm_kick_get_self_btm_values( target_bsal_btm_params_t *btm_params,
     json_t  *where = ovsdb_where_simple( SCHEMA_COLUMN( Wifi_VIF_State, if_name),
                                          ifname );
 
-    target_bsal_neigh_info_t        *neigh = &btm_params->neigh[0];
-    os_macaddr_t                    macaddr;
+    bsal_neigh_info_t       *neigh = &btm_params->neigh[0];
+    os_macaddr_t            macaddr;
 
     jrow = ovsdb_sync_select_where( SCHEMA_TABLE( Wifi_VIF_State ), where );
 
@@ -559,6 +560,7 @@ bm_kick_get_self_btm_values( target_bsal_btm_params_t *btm_params,
                 perr ) )
     {
         LOGE( "Unable to parse Wifi_VIF_State column: %s", perr );
+        json_decref(jrow);
         return false;
     }
 
@@ -566,6 +568,7 @@ bm_kick_get_self_btm_values( target_bsal_btm_params_t *btm_params,
 
     if( !os_nif_macaddr_from_str( &macaddr, vif.mac ) ) {
         LOGE( "Unable to parse mac address '%s'", vif.mac );
+        json_decref(jrow);
         return false;
     }
 
@@ -579,17 +582,17 @@ bm_kick_get_self_btm_values( target_bsal_btm_params_t *btm_params,
     // client from one bssid to another on this AP
     btm_params->num_neigh = 1;
 
+    json_decref(jrow);
     return true;
 }
 
 static bool
-bm_kick_build_neighbor_list( bm_client_t *client,
-                             target_bsal_btm_params_t *btm_params )
+bm_kick_build_neighbor_list( bm_client_t *client, bsal_btm_params_t *btm_params )
 {
     ds_tree_t                   *bm_neighbors   = NULL;
     bm_neighbor_t               *bm_neigh       = NULL;
 
-    target_bsal_neigh_info_t    *bsal_neigh     = NULL;
+    bsal_neigh_info_t           *bsal_neigh     = NULL;
     os_macaddr_t                macaddr;
 
     bm_neighbors = bm_neighbor_get_tree();
@@ -602,7 +605,7 @@ bm_kick_build_neighbor_list( bm_client_t *client,
 
     ds_tree_foreach( bm_neighbors, bm_neigh ) {
 
-        if( btm_params->num_neigh >= TARGET_MAX_TM_NEIGHBORS ) {
+        if( btm_params->num_neigh >= BSAL_MAX_TM_NEIGHBORS ) {
             LOGT( "Built maximum allowed neighbors" );
             break;
         }
@@ -675,7 +678,7 @@ bm_kick_get_phy_type( uint8_t channel )
 }
 
 static bool
-bm_kick_get_rrm_op_class( target_bsal_rrm_params_t *rrm_params, uint8_t channel )
+bm_kick_get_rrm_op_class( bsal_rrm_params_t *rrm_params, uint8_t channel )
 {
     uint8_t op_class;
 
@@ -697,7 +700,7 @@ bm_kick_get_rrm_op_class( target_bsal_rrm_params_t *rrm_params, uint8_t channel 
 }
 
 static bool
-bm_kick_get_rrm_params( target_bsal_rrm_params_t *rrm_params )
+bm_kick_get_rrm_params( bsal_rrm_params_t *rrm_params )
 {
     rrm_params->rand_ivl        = RRM_DEFAULT_RAND_IVL;
     rrm_params->meas_dur        = RRM_DEFAULT_MEAS_DUR;
@@ -715,8 +718,8 @@ static bool
 bm_kick_issue_bss_tm_req(bm_client_t *client, bm_kick_type_t type)
 {
     dpp_bs_client_event_type_t  dpp_event;
-    target_bsal_btm_params_t    *btm_params = NULL;
-    target_bsal_neigh_info_t    *neigh      = NULL; 
+    bsal_btm_params_t           *btm_params = NULL;
+    bsal_neigh_info_t           *neigh      = NULL; 
     os_macaddr_t                macaddr;
     bsal_event_t                event;
 
@@ -826,7 +829,7 @@ bm_kick_issue_bss_tm_req(bm_client_t *client, bm_kick_type_t type)
         }
     }
 
-    if (bsal_bss_tm_request(client->pair->bsal, client->band,
+    if (target_bsal_bss_tm_request(client->pair->ifcfg[client->band].ifname,
                            (uint8_t *)&macaddr, btm_params ) < 0) {
         LOGE("BSS Transition Request failed for client %s", client->mac_addr);
         return false;
@@ -839,7 +842,7 @@ static void
 bm_kick_btm_retry_task( void *arg )
 {
     bm_client_kick_info_t       *kick_info  = NULL;
-    target_bsal_btm_params_t    *btm_params = NULL;
+    bsal_btm_params_t           *btm_params = NULL;
     bm_client_t                 *client     = arg;
 
     kick_info = &client->kick_info;
@@ -881,7 +884,7 @@ void
 bm_kick_cancel_btm_retry_task( bm_client_t *client )
 {
     bm_client_kick_info_t       *kick_info  = NULL;
-    target_bsal_btm_params_t    *btm_params = NULL;
+    bsal_btm_params_t           *btm_params = NULL;
 
     kick_info = &client->kick_info;
 
@@ -890,6 +893,14 @@ bm_kick_cancel_btm_retry_task( bm_client_t *client )
         LOGE( "Client %s: BTM params are NULL for kick_type %d", 
                                         client->mac_addr, kick_info->kick_type );
         return;
+    }
+
+    if( btm_params->num_retries > 0 ) {
+        if( client->connected ) {
+            LOGD( "Client '%s' connected back, stopping BTM retries", client->mac_addr );
+        } else {
+            LOGD( "Client '%s' disconnected, stopping BTM retries", client->mac_addr );
+        }
     }
 
     // Cancel any pending BSS TM Request retry task
@@ -904,7 +915,7 @@ bm_kick_cancel_btm_retry_task( bm_client_t *client )
 static bool
 bm_kick_handle_bss_tm_req( bm_client_t *client, bm_kick_type_t kick )
 {
-    target_bsal_btm_params_t    *btm_params = NULL;
+    bsal_btm_params_t    *btm_params = NULL;
 
     btm_params = bm_kick_get_btm_params_by_kick_type( client, kick );
     if( !btm_params ) {
@@ -936,7 +947,7 @@ bm_kick_handle_bss_tm_req( bm_client_t *client, bm_kick_type_t kick )
 
 static bool
 bm_kick_11k_channel_scan_scheduler( bm_client_t *client, os_macaddr_t macaddr,
-                                    target_bsal_rrm_params_t *rrm_params )
+                                    bsal_rrm_params_t *rrm_params )
 {
     ds_tree_t       *bm_neighbors = NULL;
     bm_neighbor_t   *neigh        = NULL;
@@ -961,7 +972,7 @@ bm_kick_11k_channel_scan_scheduler( bm_client_t *client, os_macaddr_t macaddr,
         LOGD( "Client %s: Initiating 11k RRM Beacon Report for channel '%hhu'",
                                                         client->mac_addr, channel );
 
-        if( bsal_rrm_beacon_report_request( client->pair->bsal, client->band,
+        if( target_bsal_rrm_beacon_report_request( client->pair->ifcfg[client->band].ifname,
                                            (uint8_t *)&macaddr, rrm_params ) < 0) {
             LOGE( "RRM Beacon Report request failed for client %s", client->mac_addr );
             return false;
@@ -974,9 +985,9 @@ bm_kick_11k_channel_scan_scheduler( bm_client_t *client, os_macaddr_t macaddr,
 static bool
 bm_kick_handle_rrm_br_req(bm_client_t *client, bm_kick_type_t type)
 {
-    target_bsal_rrm_params_t        rrm_params;
-    os_macaddr_t                    macaddr;
-    bsal_event_t                    event;
+    bsal_rrm_params_t       rrm_params;
+    os_macaddr_t            macaddr;
+    bsal_event_t            event;
 
     if (!client || !client->pair) {
         LOGE("bm_kick_handle_rrm_br_req: client or client->pair is NULL");
@@ -1016,7 +1027,7 @@ bm_kick_handle_rrm_br_req(bm_client_t *client, bm_kick_type_t type)
             return false;
         }
 
-        if (bsal_rrm_beacon_report_request( client->pair->bsal, client->band,
+        if (target_bsal_rrm_beacon_report_request( client->pair->ifcfg[client->band].ifname,
                     (uint8_t *)&macaddr, &rrm_params ) < 0) {
             LOGE("RRM Beacon Report request failed for client %s", client->mac_addr);
             return false;

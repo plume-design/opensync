@@ -40,18 +40,37 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "inet.h"
 #include "inet_base.h"
-#include "inet_gre.h"
+#include "inet_gretap.h"
 
 #include "execsh.h"
+
+#if defined(CONFIG_INET_GRE_USE_GRETAP)
+/*
+ * inet_gretap_t was selected as the default tunnelling
+ * implementation -- return an instance with inet_gretap_new()
+ */
+inet_t *inet_gre_new(const char *ifname)
+{
+    static bool once = true;
+
+    if (once)
+    {
+        LOG(NOTICE, "inet_gretap: Using Linux GRETAP implementation.");
+        once = false;
+    }
+
+    return inet_gretap_new(ifname);
+}
+#endif
 
 /*
  * ===========================================================================
  *  Initialization
  * ===========================================================================
  */
-inet_t *inet_gre_new(const char *ifname)
+inet_t *inet_gretap_new(const char *ifname)
 {
-    inet_gre_t *self = NULL;
+    inet_gretap_t *self = NULL;
 
     self = malloc(sizeof(*self));
     if (self == NULL)
@@ -59,7 +78,7 @@ inet_t *inet_gre_new(const char *ifname)
         goto error;
     }
 
-    if (!inet_gre_init(self, ifname))
+    if (!inet_gretap_init(self, ifname))
     {
         LOG(ERR, "inet_vif: %s: Failed to initialize interface instance.", ifname);
         goto error;
@@ -72,16 +91,16 @@ inet_t *inet_gre_new(const char *ifname)
     return NULL;
 }
 
-bool inet_gre_init(inet_gre_t *self, const char *ifname)
+bool inet_gretap_init(inet_gretap_t *self, const char *ifname)
 {
     if (!inet_eth_init(&self->eth, ifname))
     {
-        LOG(ERR, "inet_gre: %s: Failed to instantiate class, inet_eth_init() failed.", ifname);
+        LOG(ERR, "inet_gretap: %s: Failed to instantiate class, inet_eth_init() failed.", ifname);
         return false;
     }
 
-    self->inet.in_ip4tunnel_set_fn = inet_gre_ip4tunnel_set;
-    self->base.in_service_commit_fn = inet_gre_service_commit;
+    self->inet.in_ip4tunnel_set_fn = inet_gretap_ip4tunnel_set;
+    self->base.in_service_commit_fn = inet_gretap_service_commit;
 
     return true;
 }
@@ -91,9 +110,16 @@ bool inet_gre_init(inet_gre_t *self, const char *ifname)
  *  IPv4 Tunnel functions
  * ===========================================================================
  */
-bool inet_gre_ip4tunnel_set(inet_t *super, const char *parent, inet_ip4addr_t laddr, inet_ip4addr_t raddr)
+bool inet_gretap_ip4tunnel_set(
+        inet_t *super,
+        const char *parent,
+        inet_ip4addr_t laddr,
+        inet_ip4addr_t raddr,
+        inet_macaddr_t rmac)
 {
-    inet_gre_t *self = (inet_gre_t *)super;
+    (void)rmac; /* Unused */
+
+    inet_gretap_t *self = (inet_gretap_t *)super;
 
     if (parent == NULL) parent = "";
 
@@ -106,7 +132,7 @@ bool inet_gre_ip4tunnel_set(inet_t *super, const char *parent, inet_ip4addr_t la
 
     if (strscpy(self->in_ifparent, parent, sizeof(self->in_ifparent)) < 0)
     {
-        LOG(ERR, "inet_gre: %s: Parent interface name too long: %s.",
+        LOG(ERR, "inet_gretap: %s: Parent interface name too long: %s.",
                 self->inet.in_ifname,
                 parent);
         return false;
@@ -133,11 +159,14 @@ bool inet_gre_ip4tunnel_set(inet_t *super, const char *parent, inet_ip4addr_t la
  */
 static char gre_create_gretap[] =
 _S(
-    [ -e "/sys/class/net/$1" ] && ip link del "$1";
+    if [ -e "/sys/class/net/$1" ];
+    then
+        ip link del "$1";
+    fi;
     ip link add "$1" type gretap local "$3" remote "$4" dev "$2" tos 1;
 #ifdef WAR_GRE_MAC
-    /* Set the same MAC address for GRE as WiFI STA interface */
-    [ -z "$(echo $1 | grep g-)" ] || ifconfig "$1" hw ether "$(cat /sys/class/net/$2/address)";
+    /* Set the same MAC address for GRE as WiFI STA and enable locally administered bit */
+    [ -z "$(echo $1 | grep g-)" ] || ( addr="$(cat /sys/class/net/$2/address)" && a="$(echo $addr | cut -d : -f1)" && b="$(echo $addr | cut -d : -f2-)" && c=$(( 0x$a & 2 )) && [ $c -eq 0 ] && c=$(( 0x$a | 2 )) && d=$(printf "%x" $c) && ifconfig "$1" hw ether "$d:$b";)
 #endif
 );
 
@@ -146,14 +175,15 @@ _S(
  */
 static char gre_delete_gretap[] =
 _S(
-    [ -e "/sys/class/net/$1" ] && ip link del "$1"
+    [ ! -e "/sys/class/net/$1" ] && exit 0;
+    ip link del "$1"
 );
 
 
 /**
  * Create/destroy the GRETAP interface
  */
-bool inet_gre_interface_start(inet_gre_t *self, bool enable)
+bool inet_gretap_interface_start(inet_gretap_t *self, bool enable)
 {
     int status;
     char slocal_addr[C_IP4ADDR_LEN];
@@ -163,19 +193,19 @@ bool inet_gre_interface_start(inet_gre_t *self, bool enable)
     {
         if (self->in_ifparent[0] == '\0') 
         {
-            LOG(INFO, "inet_gre: %s: No parent interface was specified.", self->inet.in_ifname);
+            LOG(INFO, "inet_gretap: %s: No parent interface was specified.", self->inet.in_ifname);
             return false;
         }
 
         if (INET_IP4ADDR_IS_ANY(self->in_local_addr))
         {
-            LOG(INFO, "inet_gre: %s: No local address was specified.", self->inet.in_ifname);
+            LOG(INFO, "inet_gretap: %s: No local address was specified.", self->inet.in_ifname);
             return false;
         }
 
         if (INET_IP4ADDR_IS_ANY(self->in_remote_addr))
         {
-            LOG(INFO, "inet_gre: %s: No remote address was specified.", self->inet.in_ifname);
+            LOG(INFO, "inet_gretap: %s: No remote address was specified.", self->inet.in_ifname);
             return false;
         }
 
@@ -190,31 +220,31 @@ bool inet_gre_interface_start(inet_gre_t *self, bool enable)
 
         if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
         {
-            LOG(ERR, "inet_gre: %s: Error creating GRETAP interface.", self->inet.in_ifname);
+            LOG(ERR, "inet_gretap: %s: Error creating GRETAP interface.", self->inet.in_ifname);
             return false;
         }
 
-        LOG(INFO, "inet_gre: %s: GRETAP interface was successfully created.", self->inet.in_ifname);
+        LOG(INFO, "inet_gretap: %s: GRETAP interface was successfully created.", self->inet.in_ifname);
     }
     else
     {
         status = execsh_log(LOG_SEVERITY_INFO, gre_delete_gretap, self->inet.in_ifname);
         if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
         {
-            LOG(ERR, "inet_gre: %s: Error deleting GRETAP interface.", self->inet.in_ifname);
+            LOG(ERR, "inet_gretap: %s: Error deleting GRETAP interface.", self->inet.in_ifname);
         }
 
-        LOG(INFO, "inet_gre: %s: GRETAP interface was successfully deleted.", self->inet.in_ifname);
+        LOG(INFO, "inet_gretap: %s: GRETAP interface was successfully deleted.", self->inet.in_ifname);
     }
 
     return true;
 }
 
-bool inet_gre_service_commit(inet_base_t *super, enum inet_base_services srv, bool enable)
+bool inet_gretap_service_commit(inet_base_t *super, enum inet_base_services srv, bool enable)
 {
-    inet_gre_t *self = (inet_gre_t *)super;
+    inet_gretap_t *self = (inet_gretap_t *)super;
 
-    LOG(DEBUG, "inet_gre: %s: Service %s -> %s.",
+    LOG(DEBUG, "inet_gretap: %s: Service %s -> %s.",
             self->inet.in_ifname,
             inet_base_service_str(srv),
             enable ? "start" : "stop");
@@ -222,7 +252,7 @@ bool inet_gre_service_commit(inet_base_t *super, enum inet_base_services srv, bo
     switch (srv)
     {
         case INET_BASE_INTERFACE:
-            return inet_gre_interface_start(self, enable);
+            return inet_gretap_interface_start(self, enable);
 
         default:
             LOG(DEBUG, "inet_eth: %s: Delegating service %s %s to inet_eth.",

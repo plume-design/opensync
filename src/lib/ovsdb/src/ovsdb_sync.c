@@ -315,12 +315,14 @@ json_t* ovsdb_delete_with_parent_res_s(char * table,
 
     result = ovsdb_tran_call_s(table, OTR_SELECT, where, NULL);
     if (!result) {
+        json_decref(parent_where);
         return false;
     }
 
     rows = json_object_get(json_array_get(result, 0), "rows");
     if (!rows || json_array_size(rows) < 1) {
         json_decref(result);
+        json_decref(parent_where);
         return false;
     }
 

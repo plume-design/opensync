@@ -36,5 +36,7 @@ bool nm2_mac_learning_init(void);
 bool nm2_client_nickname_init(void);
 bool nm2_dhcp_table_init(void);
 bool nm2_dhcp_rip_init(void);
+bool nm2_fw_init(void);
+bool nm2_route_state_init(void);
 
 #endif

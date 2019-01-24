@@ -94,6 +94,13 @@ static inline char *sm_timestamp_ms_to_date (uint64_t   timestamp_ms)
         request_ctx->VAR = request->VAR; \
     }
 
+#define SM_SANITY_CHECK_TIME(timestamp_ms, reporting_timestamp, report_ts) \
+    sm_sanity_check_report_timestamp( \
+            __FUNCTION__, \
+            timestamp_ms, \
+            reporting_timestamp, \
+            report_ts)
+
 
 typedef struct
 {
@@ -290,6 +297,13 @@ typedef struct
 
 ds_tree_t *sm_radios_get();
 
+
 void sm_vif_whitelist_get(char **mac_list, uint16_t *mac_size, uint16_t *mac_qty);
+
+void sm_sanity_check_report_timestamp(
+        const char *log_prefix,
+        uint64_t    timestamp_ms,
+        uint64_t   *reporting_timestamp,
+        uint64_t   *report_ts);
 
 #endif /* __STATS_PRIV_H__ */

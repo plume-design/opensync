@@ -356,7 +356,7 @@ bool target_log_pull(const char *upload_location, const char *upload_token)
         " syslog_copy"
         " tmp"
         " crash"
-        " /var/etc/openvswitch/conf.db"
+        " /tmp/etc/openvswitch/conf.db"
         " /tmp/ovsdb.log",
         upload_location,
         upload_token);
@@ -456,6 +456,39 @@ int target_led_names(const char **leds[])
 }
 #endif /* CONFIG_TARGET_LED_SUPPORT */
 
+
+#if defined(CONFIG_TARGET_LED_LP5562_SUPPORT)
+const char *target_led_device_dir(void)
+{
+    return NULL;
+}
+
+int target_led_names(const char **leds[])
+{
+    static const char *led_names[] =
+    {
+#if defined(CONFIG_TARGET_LED0)
+        CONFIG_TARGET_LED0_NAME,
+#endif
+#if defined(CONFIG_TARGET_LED1)
+        CONFIG_TARGET_LED1_NAME,
+#endif
+#if defined(CONFIG_TARGET_LED2)
+        CONFIG_TARGET_LED2_NAME,
+#endif
+#if defined(CONFIG_TARGET_LED3)
+        CONFIG_TARGET_LED3_NAME,
+#endif
+        NULL
+    };
+    printf("defining leds....\n");
+    *leds = led_names;
+    return (sizeof(led_names) / (sizeof(led_names[0]))) - 1;
+}
+#endif /* CONFIG_TARGET_LED_LP5562_SUPPORT */
+
+
+
 #if defined(CONFIG_TARGET_CM_LINUX_SUPPORT_PACKAGE)
 
 #include <arpa/inet.h>
@@ -473,7 +506,6 @@ int target_led_names(const char **leds[])
 
 /* CONNECTIVITY CHECK CONFIGURATION */
 #define PROC_NET_ROUTE                  "/proc/net/route"
-#define DEFAULT_PING_PACKET_SIZE        4
 #define DEFAULT_PING_PACKET_CNT         2
 #define DEFAULT_PING_TIMEOUT            4
 
@@ -489,9 +521,21 @@ static char *util_connectivity_check_inet_addrs[] = {
     "192.58.128.30",
     "193.0.14.129",
     "199.7.83.42",
-    "202.12.27.33"
+    "202.12.27.33",
+    NULL
 };
-#define TARGET_CONNECTIVITY_CHECK_INET_ADDRS_CNT (sizeof(util_connectivity_check_inet_addrs) / sizeof(*util_connectivity_check_inet_addrs))
+
+static int util_connectivity_get_inet_addr_cnt(void)
+{
+    char **p = util_connectivity_check_inet_addrs;
+    int n = 0;
+
+    while (*p) {
+        p++;
+        n++;
+    }
+    return n;
+}
 
 /******************************************************************************
  * Utility: connectivity, ntp check
@@ -558,13 +602,11 @@ util_ping_cmd(const char *ipstr)
     char cmd[128];
     int rc;
 
-    snprintf(cmd, sizeof(cmd), "ping %s -s %d -c %d -w %d >/dev/null 2>&1",
-             ipstr, DEFAULT_PING_PACKET_SIZE, DEFAULT_PING_PACKET_CNT,
-             DEFAULT_PING_TIMEOUT);
+    snprintf(cmd, sizeof(cmd), "ping %s -c %d -w %d >/dev/null 2>&1",
+             ipstr, DEFAULT_PING_PACKET_CNT, DEFAULT_PING_TIMEOUT);
 
     rc = target_device_execute(cmd);
-    if (rc)
-        LOGD("Ping %s result %d (cmd=%s)", ipstr, rc, cmd);
+    LOGD("Ping %s result %d (cmd=%s)", ipstr, rc, cmd);
 
     return rc;
 }
@@ -697,11 +739,12 @@ util_connectivity_router_check()
 static bool
 util_connectivity_internet_check() {
     int r;
+    int cnt_addr = util_connectivity_get_inet_addr_cnt();
 
-    r = os_rand() % TARGET_CONNECTIVITY_CHECK_INET_ADDRS_CNT;
+    r = os_rand() % cnt_addr;
     if (util_ping_cmd(util_connectivity_check_inet_addrs[r]) == false) {
         // Try again.. Some of these DNS root servers are a little flakey
-        r = os_rand() % TARGET_CONNECTIVITY_CHECK_INET_ADDRS_CNT;
+        r = os_rand() % cnt_addr;
         if (util_ping_cmd(util_connectivity_check_inet_addrs[r]) == false) {
             return false;
         }
@@ -714,26 +757,34 @@ util_connectivity_internet_check() {
  *****************************************************************************/
 
 bool target_device_connectivity_check(const char *ifname,
-                                      target_connectivity_check_t *cstate)
+                                      target_connectivity_check_t *cstate,
+                                      target_connectivity_check_option_t opts)
 {
     memset(cstate, 0 , sizeof(target_connectivity_check_t));
 
-    cstate->link_state = util_connectivity_link_check(ifname);
+    if (opts & LINK_CHECK) {
+        cstate->link_state = util_connectivity_link_check(ifname);
+        if (!cstate->link_state)
+            return false;
+    }
 
-    if (!cstate->link_state)
-        return false;
+    if (opts & ROUTER_CHECK) {
+        cstate->router_state = util_connectivity_router_check();
+        if (!cstate->router_state)
+            return false;
+    }
 
-    cstate->router_state = util_connectivity_router_check();
-    if (!cstate->router_state)
-        return false;
+    if (opts & INTERNET_CHECK) {
+        cstate->internet_state = util_connectivity_internet_check();
+        if (!cstate->internet_state)
+            return false;
+    }
 
-    cstate->internet_state = util_connectivity_internet_check();
-    if (!cstate->internet_state)
-        return false;
-
-    cstate->ntp_state = util_ntp_check();
-    if (!cstate->ntp_state)
-        return false;
+    if (opts & NTP_CHECK) {
+        cstate->ntp_state = util_ntp_check();
+        if (!cstate->ntp_state)
+            return false;
+    }
 
     return true;
 }

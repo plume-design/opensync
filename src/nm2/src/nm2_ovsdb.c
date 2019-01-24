@@ -388,13 +388,11 @@ void nm2_update_Wifi_Master_State(
 void callback_Wifi_Inet_Config(
         ovsdb_update_monitor_t *mon,
         struct schema_Wifi_Inet_Config *old_rec,
-        struct schema_Wifi_Inet_Config *iconf,
-        ovsdb_cache_row_t *row)
+        struct schema_Wifi_Inet_Config *iconf)
 {
     bool                            ret;
 
     (void)old_rec;
-    (void)row;
     (void)mon;
 
     /* The schema contains value before delete, therefore
@@ -631,7 +629,7 @@ void nm2_ovsdb_init(void)
     nm2_master_state_init(&table_Wifi_Master_State);
 
     // Initialize OVSDB monitor callbacks
-    OVSDB_CACHE_MONITOR(Wifi_Inet_Config, false);
+    OVSDB_TABLE_MONITOR(Wifi_Inet_Config, false);
 
     return;
 }

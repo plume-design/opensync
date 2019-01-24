@@ -49,11 +49,13 @@ bool inet_dhcps_range(inet_dhcps_t *self, inet_ip4addr_t start, inet_ip4addr_t s
 bool inet_dhcps_lease(inet_dhcps_t *self, int lease_time_s);
 bool inet_dhcps_option(inet_dhcps_t *self, enum inet_dhcp_option opt, const char *value);
 void inet_dhcps_error_fn(inet_dhcps_t *self, inet_dhcps_error_fn_t *fn);
-void inet_dhcps_lease_notify(inet_dhcps_t *self, inet_dhcp_lease_fn_t *fn, inet_t *ient);
+void inet_dhcps_lease_notify_set(inet_dhcps_t *self, inet_dhcp_lease_fn_t *fn, inet_t *ient);
 
 bool inet_dhcps_rip(inet_dhcps_t *self, inet_macaddr_t macaddr,
                     inet_ip4addr_t ip4addr, const char *hostname);
 bool inet_dhcps_rip_remove(inet_dhcps_t *self, inet_macaddr_t macaddr);
+bool inet_dhcps_rip_get(inet_dhcps_t *self, inet_macaddr_t macaddr,
+                        inet_ip4addr_t *ip4addr, char **hostname);
 
 /**
  * Return the current value of option @p opt

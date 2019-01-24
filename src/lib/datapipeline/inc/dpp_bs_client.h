@@ -32,7 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "dpp_types.h"
 
 
-#define DPP_MAX_BS_EVENT_RECORDS    200
+#define DPP_MAX_BS_EVENT_RECORDS    60
 #define DPP_MAX_BS_BANDS            2
 
 // proto: BSEventType

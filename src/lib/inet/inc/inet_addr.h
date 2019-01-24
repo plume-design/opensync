@@ -39,7 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 typedef union { uint8_t  addr[4];   uint32_t raw; }       inet_ip4addr_t;
 typedef union { uint16_t addr[16];  uint16_t raw[8]; }    inet_ip6addr_t;
-typedef union { uint8_t  addr[6];   uint16_t raw; }       inet_macaddr_t;
+typedef union { uint8_t  addr[6];   uint16_t raw[3]; }    inet_macaddr_t;
 
 #define PRI_inet_ip4addr_t              "%u.%u.%u.%u"
 #define FMT_inet_ip4addr_t(x)           (x).addr[0], (x).addr[1], (x).addr[2], (x).addr[3]
@@ -64,11 +64,17 @@ typedef union { uint8_t  addr[6];   uint16_t raw; }       inet_macaddr_t;
 
 #define INET_MACADDR(a, b, c, d, e, f)  ((inet_macaddr_t){ .addr = {(a), (b), (c), (d), (e), (f) } })
 
+#define INET_MACADDR_ANY                INET_MACADDR(0x00, 0x00, 0x00, 0x00, 0x00, 0x00)
 #define INET_MACADDR_BCAST              INET_MACADDR(0xff, 0xff, 0xff, 0xff, 0xff, 0xff)
 
 static inline int inet_ip4addr_cmp(inet_ip4addr_t *a, inet_ip4addr_t *b)
 {
     return ntohl(a->raw) - ntohl(b->raw);
+}
+
+static inline int inet_macaddr_cmp(const inet_macaddr_t *a, const inet_macaddr_t *b)
+{
+    return memcmp(a, b, sizeof(*a));
 }
 
 static inline bool inet_ip4addr_fromstr(inet_ip4addr_t *addr, const char *str)
@@ -79,6 +85,21 @@ static inline bool inet_ip4addr_fromstr(inet_ip4addr_t *addr, const char *str)
     *addr = INET_IP4ADDR_ANY;
 
     return false;
+}
+
+/* A hex string is a string int he 0xAABBCCDD format, where the initial 0x may be omitted  */
+static inline bool inet_ip4addr_from_hexstr(inet_ip4addr_t *addr, const char *xstr)
+{
+    char *e;
+
+    /* xstr is in base16, e should always be \0 */
+    errno = 0;
+    addr->raw = strtoul(xstr, &e, 16);
+
+    /* Error convering  */
+    if ((errno != 0) || (*e != '\0')) return false;
+
+    return true;
 }
 
 static inline bool inet_macaddr_fromstr(inet_macaddr_t* mac, const char* str)

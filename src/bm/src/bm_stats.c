@@ -717,7 +717,6 @@ bm_stats_steering_parse_event(
     event_rec = &band_rec->event_record[band_rec->num_event_records];
 
     if( band_rec->num_event_records >= DPP_MAX_BS_EVENT_RECORDS ) {
-        band_rec->num_event_records++;
         LOGT( "Max events limit reached for client "MAC_ADDRESS_FORMAT""
               ", num_event_records = %d",
                MAC_ADDRESS_PRINT( bs_client_entry->mac ), band_rec->num_event_records );
@@ -739,6 +738,7 @@ bm_stats_steering_parse_event(
 
             // We do this satisfy common api
             radio_entry_t radio_cfg;
+            memset(&radio_cfg, 0, sizeof(radio_cfg));
             radio_cfg.type = bm_stats_get_band_type(band);
             if(bm_stats_rssi_is_reporting_enabled(&radio_cfg)) {
                 mac_address_t mac;

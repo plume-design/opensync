@@ -671,7 +671,7 @@ static bool log_dynamic_update(int *new_trigger)
     json_decref(loggers_json);
 
 out:
-    // if reading is not successfull because file or record was deleted
+    // if reading is not successful because file or record was deleted
     // default values need to be applied
 
     log_set_severity_if_changed(LOG_SINK_LOCAL, new_severity);

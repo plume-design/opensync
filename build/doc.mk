@@ -25,8 +25,14 @@
 .PHONY: doc
 doc:
 	$(NQ) " $(call color_generate,doc) $(call color_target,[HTML])"
-	$(Q)cd doc; doxygen doxygen.conf > doxygen.log 2>&1
+	$(Q)SHORTVER=`cat .version | cut -d. -f-2`; \
+		PROJECT_NAME="OpenSync target library $$SHORTVER"; \
+		echo PROJECT_NAME="$$PROJECT_NAME"; \
+		cd doc; \
+		(cat doxygen.conf; \
+		echo "PROJECT_NAME=\"$$PROJECT_NAME\"") \
+		| doxygen - > doxygen.log 2>&1
 	$(Q)echo -n "  "; ls -l doc/html/index.html
 	$(NQ) " $(call color_generate,doc) $(call color_target,[PDF])"
-	$(Q)-cd doc/latex; make > make.log 2>&1
+	$(Q)-cd doc/latex; make > ../latex.log 2>&1
 	$(Q)echo -n "  "; ls -l doc/latex/*.pdf

@@ -375,6 +375,30 @@ void   sts__device__thermal__init
   static Sts__Device__Thermal init_value = STS__DEVICE__THERMAL__INIT;
   *message = init_value;
 }
+void   sts__device__mem_util__init
+                     (Sts__Device__MemUtil         *message)
+{
+  static Sts__Device__MemUtil init_value = STS__DEVICE__MEM_UTIL__INIT;
+  *message = init_value;
+}
+void   sts__device__fs_util__init
+                     (Sts__Device__FsUtil         *message)
+{
+  static Sts__Device__FsUtil init_value = STS__DEVICE__FS_UTIL__INIT;
+  *message = init_value;
+}
+void   sts__device__cpu_util__init
+                     (Sts__Device__CpuUtil         *message)
+{
+  static Sts__Device__CpuUtil init_value = STS__DEVICE__CPU_UTIL__INIT;
+  *message = init_value;
+}
+void   sts__device__per_process_util__init
+                     (Sts__Device__PerProcessUtil         *message)
+{
+  static Sts__Device__PerProcessUtil init_value = STS__DEVICE__PER_PROCESS_UTIL__INIT;
+  *message = init_value;
+}
 void   sts__device__init
                      (Sts__Device         *message)
 {
@@ -2698,7 +2722,250 @@ const ProtobufCMessageDescriptor sts__device__thermal__descriptor =
   (ProtobufCMessageInit) sts__device__thermal__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
-static const ProtobufCFieldDescriptor sts__device__field_descriptors[5] =
+static const ProtobufCFieldDescriptor sts__device__mem_util__field_descriptors[4] =
+{
+  {
+    "mem_total",
+    1,
+    PROTOBUF_C_LABEL_REQUIRED,
+    PROTOBUF_C_TYPE_UINT32,
+    0,   /* quantifier_offset */
+    offsetof(Sts__Device__MemUtil, mem_total),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "mem_used",
+    2,
+    PROTOBUF_C_LABEL_REQUIRED,
+    PROTOBUF_C_TYPE_UINT32,
+    0,   /* quantifier_offset */
+    offsetof(Sts__Device__MemUtil, mem_used),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "swap_total",
+    3,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_UINT32,
+    offsetof(Sts__Device__MemUtil, has_swap_total),
+    offsetof(Sts__Device__MemUtil, swap_total),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "swap_used",
+    4,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_UINT32,
+    offsetof(Sts__Device__MemUtil, has_swap_used),
+    offsetof(Sts__Device__MemUtil, swap_used),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned sts__device__mem_util__field_indices_by_name[] = {
+  0,   /* field[0] = mem_total */
+  1,   /* field[1] = mem_used */
+  2,   /* field[2] = swap_total */
+  3,   /* field[3] = swap_used */
+};
+static const ProtobufCIntRange sts__device__mem_util__number_ranges[1 + 1] =
+{
+  { 1, 0 },
+  { 0, 4 }
+};
+const ProtobufCMessageDescriptor sts__device__mem_util__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "sts.Device.MemUtil",
+  "MemUtil",
+  "Sts__Device__MemUtil",
+  "sts",
+  sizeof(Sts__Device__MemUtil),
+  4,
+  sts__device__mem_util__field_descriptors,
+  sts__device__mem_util__field_indices_by_name,
+  1,  sts__device__mem_util__number_ranges,
+  (ProtobufCMessageInit) sts__device__mem_util__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCFieldDescriptor sts__device__fs_util__field_descriptors[3] =
+{
+  {
+    "fs_type",
+    1,
+    PROTOBUF_C_LABEL_REQUIRED,
+    PROTOBUF_C_TYPE_ENUM,
+    0,   /* quantifier_offset */
+    offsetof(Sts__Device__FsUtil, fs_type),
+    &sts__fs_type__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "fs_total",
+    2,
+    PROTOBUF_C_LABEL_REQUIRED,
+    PROTOBUF_C_TYPE_UINT32,
+    0,   /* quantifier_offset */
+    offsetof(Sts__Device__FsUtil, fs_total),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "fs_used",
+    3,
+    PROTOBUF_C_LABEL_REQUIRED,
+    PROTOBUF_C_TYPE_UINT32,
+    0,   /* quantifier_offset */
+    offsetof(Sts__Device__FsUtil, fs_used),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned sts__device__fs_util__field_indices_by_name[] = {
+  1,   /* field[1] = fs_total */
+  0,   /* field[0] = fs_type */
+  2,   /* field[2] = fs_used */
+};
+static const ProtobufCIntRange sts__device__fs_util__number_ranges[1 + 1] =
+{
+  { 1, 0 },
+  { 0, 3 }
+};
+const ProtobufCMessageDescriptor sts__device__fs_util__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "sts.Device.FsUtil",
+  "FsUtil",
+  "Sts__Device__FsUtil",
+  "sts",
+  sizeof(Sts__Device__FsUtil),
+  3,
+  sts__device__fs_util__field_descriptors,
+  sts__device__fs_util__field_indices_by_name,
+  1,  sts__device__fs_util__number_ranges,
+  (ProtobufCMessageInit) sts__device__fs_util__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCFieldDescriptor sts__device__cpu_util__field_descriptors[1] =
+{
+  {
+    "cpu_util",
+    1,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_UINT32,
+    offsetof(Sts__Device__CpuUtil, has_cpu_util),
+    offsetof(Sts__Device__CpuUtil, cpu_util),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned sts__device__cpu_util__field_indices_by_name[] = {
+  0,   /* field[0] = cpu_util */
+};
+static const ProtobufCIntRange sts__device__cpu_util__number_ranges[1 + 1] =
+{
+  { 1, 0 },
+  { 0, 1 }
+};
+const ProtobufCMessageDescriptor sts__device__cpu_util__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "sts.Device.CpuUtil",
+  "CpuUtil",
+  "Sts__Device__CpuUtil",
+  "sts",
+  sizeof(Sts__Device__CpuUtil),
+  1,
+  sts__device__cpu_util__field_descriptors,
+  sts__device__cpu_util__field_indices_by_name,
+  1,  sts__device__cpu_util__number_ranges,
+  (ProtobufCMessageInit) sts__device__cpu_util__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCFieldDescriptor sts__device__per_process_util__field_descriptors[3] =
+{
+  {
+    "pid",
+    1,
+    PROTOBUF_C_LABEL_REQUIRED,
+    PROTOBUF_C_TYPE_UINT32,
+    0,   /* quantifier_offset */
+    offsetof(Sts__Device__PerProcessUtil, pid),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "cmd",
+    2,
+    PROTOBUF_C_LABEL_REQUIRED,
+    PROTOBUF_C_TYPE_STRING,
+    0,   /* quantifier_offset */
+    offsetof(Sts__Device__PerProcessUtil, cmd),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "util",
+    3,
+    PROTOBUF_C_LABEL_REQUIRED,
+    PROTOBUF_C_TYPE_UINT32,
+    0,   /* quantifier_offset */
+    offsetof(Sts__Device__PerProcessUtil, util),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned sts__device__per_process_util__field_indices_by_name[] = {
+  1,   /* field[1] = cmd */
+  0,   /* field[0] = pid */
+  2,   /* field[2] = util */
+};
+static const ProtobufCIntRange sts__device__per_process_util__number_ranges[1 + 1] =
+{
+  { 1, 0 },
+  { 0, 3 }
+};
+const ProtobufCMessageDescriptor sts__device__per_process_util__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "sts.Device.PerProcessUtil",
+  "PerProcessUtil",
+  "Sts__Device__PerProcessUtil",
+  "sts",
+  sizeof(Sts__Device__PerProcessUtil),
+  3,
+  sts__device__per_process_util__field_descriptors,
+  sts__device__per_process_util__field_indices_by_name,
+  1,  sts__device__per_process_util__number_ranges,
+  (ProtobufCMessageInit) sts__device__per_process_util__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCFieldDescriptor sts__device__field_descriptors[10] =
 {
   {
     "load",
@@ -2760,9 +3027,74 @@ static const ProtobufCFieldDescriptor sts__device__field_descriptors[5] =
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
+  {
+    "mem_util",
+    6,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_MESSAGE,
+    0,   /* quantifier_offset */
+    offsetof(Sts__Device, mem_util),
+    &sts__device__mem_util__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "fs_util",
+    7,
+    PROTOBUF_C_LABEL_REPEATED,
+    PROTOBUF_C_TYPE_MESSAGE,
+    offsetof(Sts__Device, n_fs_util),
+    offsetof(Sts__Device, fs_util),
+    &sts__device__fs_util__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "cpuUtil",
+    8,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_MESSAGE,
+    0,   /* quantifier_offset */
+    offsetof(Sts__Device, cpuutil),
+    &sts__device__cpu_util__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "ps_cpu_util",
+    9,
+    PROTOBUF_C_LABEL_REPEATED,
+    PROTOBUF_C_TYPE_MESSAGE,
+    offsetof(Sts__Device, n_ps_cpu_util),
+    offsetof(Sts__Device, ps_cpu_util),
+    &sts__device__per_process_util__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "ps_mem_util",
+    10,
+    PROTOBUF_C_LABEL_REPEATED,
+    PROTOBUF_C_TYPE_MESSAGE,
+    offsetof(Sts__Device, n_ps_mem_util),
+    offsetof(Sts__Device, ps_mem_util),
+    &sts__device__per_process_util__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
 };
 static const unsigned sts__device__field_indices_by_name[] = {
+  7,   /* field[7] = cpuUtil */
+  6,   /* field[6] = fs_util */
   0,   /* field[0] = load */
+  5,   /* field[5] = mem_util */
+  8,   /* field[8] = ps_cpu_util */
+  9,   /* field[9] = ps_mem_util */
   1,   /* field[1] = radio_temp */
   4,   /* field[4] = thermal_stats */
   2,   /* field[2] = timestamp_ms */
@@ -2771,7 +3103,7 @@ static const unsigned sts__device__field_indices_by_name[] = {
 static const ProtobufCIntRange sts__device__number_ranges[1 + 1] =
 {
   { 1, 0 },
-  { 0, 5 }
+  { 0, 10 }
 };
 const ProtobufCMessageDescriptor sts__device__descriptor =
 {
@@ -2781,7 +3113,7 @@ const ProtobufCMessageDescriptor sts__device__descriptor =
   "Sts__Device",
   "sts",
   sizeof(Sts__Device),
-  5,
+  10,
   sts__device__field_descriptors,
   sts__device__field_indices_by_name,
   1,  sts__device__number_ranges,
@@ -4232,6 +4564,34 @@ const ProtobufCEnumDescriptor sts__report_type__descriptor =
   sts__report_type__enum_values_by_name,
   1,
   sts__report_type__value_ranges,
+  NULL,NULL,NULL,NULL   /* reserved[1234] */
+};
+static const ProtobufCEnumValue sts__fs_type__enum_values_by_number[2] =
+{
+  { "FS_TYPE_ROOTFS", "STS__FS_TYPE__FS_TYPE_ROOTFS", 0 },
+  { "FS_TYPE_TMPFS", "STS__FS_TYPE__FS_TYPE_TMPFS", 1 },
+};
+static const ProtobufCIntRange sts__fs_type__value_ranges[] = {
+{0, 0},{0, 2}
+};
+static const ProtobufCEnumValueIndex sts__fs_type__enum_values_by_name[2] =
+{
+  { "FS_TYPE_ROOTFS", 0 },
+  { "FS_TYPE_TMPFS", 1 },
+};
+const ProtobufCEnumDescriptor sts__fs_type__descriptor =
+{
+  PROTOBUF_C__ENUM_DESCRIPTOR_MAGIC,
+  "sts.FsType",
+  "FsType",
+  "Sts__FsType",
+  "sts",
+  2,
+  sts__fs_type__enum_values_by_number,
+  2,
+  sts__fs_type__enum_values_by_name,
+  1,
+  sts__fs_type__value_ranges,
   NULL,NULL,NULL,NULL   /* reserved[1234] */
 };
 static const ProtobufCEnumValue sts__diff_type__enum_values_by_number[2] =

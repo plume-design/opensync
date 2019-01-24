@@ -28,6 +28,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define EVX_H_INCLUDED
 
 #include <ev.h>
+#ifdef BUILD_HAVE_LIBCARES
+#include <ares.h>
+#endif
 
 /*
  * ===========================================================================
@@ -54,28 +57,45 @@ struct ev_debounce
 
 static inline void ev_debounce_init(
         ev_debounce *ev,
-        void (ev_debounce_fn)(EV_P_ ev_debounce *w, int revent),
+        void (ev_debounce_fn)(struct ev_loop *loop, ev_debounce *w, int revent),
         double timeout)
 {
     ev->timeout = timeout;
     ev_timer_init(&ev->timer, (void *)ev_debounce_fn, timeout, 0.0);
 }
 
-static inline void ev_debounce_start(EV_P_ ev_debounce *w)
+static inline void ev_debounce_start(struct ev_loop *loop, ev_debounce *w)
 {
     if (ev_is_active(&w->timer))
     {
-        ev_timer_stop(EV_A_ &w->timer);
+        ev_timer_stop(loop, &w->timer);
     }
 
     /* Re-arm the timer */
     ev_timer_set(&w->timer, w->timeout, 0.0);
-    ev_timer_start(EV_A_ &w->timer);
+    ev_timer_start(loop, &w->timer);
 }
 
-static inline void ev_debounce_stop(EV_P_ ev_debounce *w)
+static inline void ev_debounce_stop(struct ev_loop *loop, ev_debounce *w)
 {
-    ev_timer_stop(EV_A_ &w->timer);
+    ev_timer_stop(loop, &w->timer);
 }
+
+#ifdef BUILD_HAVE_LIBCARES
+typedef struct {
+    ev_io    io;
+    ev_timer tw;
+    struct ev_loop * loop;
+    struct {
+        ares_channel channel;
+        struct ares_options options;
+    } ares;
+    int chan_initialized;
+} evx_ares;
+
+int evx_init_ares(struct ev_loop * loop, evx_ares *eares_p);
+int evx_init_default_chan_options(evx_ares *eares_p);
+void evx_stop_ares(evx_ares *eares_p);
+#endif /* BUILD_HAVE_LIBCARES */
 
 #endif /* EVX_H_INCLUDED */

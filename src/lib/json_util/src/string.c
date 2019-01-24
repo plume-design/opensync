@@ -233,3 +233,18 @@ const char *json_dumps_static(const json_t *json, int flags)
 
     return dumps_static_buf;
 }
+
+
+// a simpler json_gets
+bool json_get_str(const json_t *json, char *output, size_t output_sz)
+{
+    *output = 0;
+    if (!json) return true;
+    if (!json_gets(json, output, output_sz, JSON_ENCODE_ANY))
+    {
+        *output = 0;
+        return false;
+    }
+    return true;
+}
+

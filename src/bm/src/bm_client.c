@@ -268,7 +268,7 @@ bm_client_add_to_pair(bm_client_t *client, bm_pair_t *pair)
         return false;
     }
 
-    if (bsal_client_add(pair->bsal, BSAL_BAND_24G, (uint8_t *)&macaddr, &cli_conf) < 0) {
+    if (target_bsal_client_add(pair->ifcfg[BSAL_BAND_24G].ifname, (uint8_t *)&macaddr, &cli_conf) < 0) {
         LOGE("Failed to add client '%s' to BSAL:%s",
                                   client->mac_addr, pair->ifcfg[BSAL_BAND_24G].ifname);
         return false;
@@ -283,7 +283,7 @@ bm_client_add_to_pair(bm_client_t *client, bm_pair_t *pair)
         return false;
     }
 
-    if (bsal_client_add(pair->bsal, BSAL_BAND_5G, (uint8_t *)&macaddr, &cli_conf) < 0) {
+    if (target_bsal_client_add(pair->ifcfg[BSAL_BAND_5G].ifname, (uint8_t *)&macaddr, &cli_conf) < 0) {
         LOGE("Failed to add client '%s' to BSAL:%s",
                                   client->mac_addr, pair->ifcfg[BSAL_BAND_5G].ifname);
         return false;
@@ -293,12 +293,12 @@ bm_client_add_to_pair(bm_client_t *client, bm_pair_t *pair)
                                   client->mac_addr, pair->ifcfg[BSAL_BAND_5G].ifname);
 
     // Now check to see if client is already connected
-    if (bsal_client_is_connected(pair->bsal, BSAL_BAND_24G, (uint8_t *)&macaddr) == 1) {
+    if (target_bsal_client_is_connected(pair->ifcfg[BSAL_BAND_24G].ifname, (uint8_t *)&macaddr) == 1) {
         LOGD("Client %s already connected to BSAL:%s",
                                   client->mac_addr, pair->ifcfg[BSAL_BAND_24G].ifname);
         bm_client_connected(client, pair->bsal, BSAL_BAND_24G, NULL);
     }
-    else if (bsal_client_is_connected(pair->bsal, BSAL_BAND_5G, (uint8_t *)&macaddr) == 1) {
+    else if (target_bsal_client_is_connected(pair->ifcfg[BSAL_BAND_5G].ifname, (uint8_t *)&macaddr) == 1) {
         LOGD("Client %s already connected to BSAL:%s",
                                   client->mac_addr, pair->ifcfg[BSAL_BAND_5G].ifname);
         bm_client_connected(client, pair->bsal, BSAL_BAND_5G, NULL);
@@ -332,7 +332,7 @@ bm_client_update_pair(bm_client_t *client, bm_pair_t *pair)
             return false;
         }
 
-        if (bsal_client_update(pair->bsal, BSAL_BAND_24G, (uint8_t *)&macaddr, &cli_conf) < 0) {
+        if (target_bsal_client_update(pair->ifcfg[BSAL_BAND_24G].ifname, (uint8_t *)&macaddr, &cli_conf) < 0) {
             LOGE("Failed to update client '%s' for BSAL:%s",
                     client->mac_addr, pair->ifcfg[BSAL_BAND_24G].ifname);
             return false;
@@ -347,7 +347,7 @@ bm_client_update_pair(bm_client_t *client, bm_pair_t *pair)
             return false;
         }
 
-        if (bsal_client_update(pair->bsal, BSAL_BAND_5G, (uint8_t *)&macaddr, &cli_conf) < 0) {
+        if (target_bsal_client_update(pair->ifcfg[BSAL_BAND_5G].ifname, (uint8_t *)&macaddr, &cli_conf) < 0) {
             LOGE("Failed to update client '%s' for BSAL:%s",
                     client->mac_addr, pair->ifcfg[BSAL_BAND_5G].ifname);
             return false;
@@ -376,7 +376,7 @@ bm_client_update_pair(bm_client_t *client, bm_pair_t *pair)
             }
 
             // Blocked band
-            if( !bsal_client_update( pair->bsal, blocked_band, (uint8_t *)&macaddr, &cli_conf ) < 0 ) {
+            if( target_bsal_client_update(pair->ifcfg[blocked_band].ifname, (uint8_t *)&macaddr, &cli_conf ) < 0 ) {
                 LOGE( "Failed to update client '%s' for BSAL:%s",
                         client->mac_addr, pair->ifcfg[blocked_band].ifname );
                 return false;
@@ -388,9 +388,9 @@ bm_client_update_pair(bm_client_t *client, bm_pair_t *pair)
             }
 
             // Steering band
-            if (bsal_client_update(pair->bsal, steering_band, (uint8_t *)&macaddr, &cli_conf) < 0) {
+            if (target_bsal_client_update(pair->ifcfg[steering_band].ifname, (uint8_t *)&macaddr, &cli_conf) < 0) {
                 LOGE("Failed to update client '%s' for BSAL:%s",
-                        client->mac_addr, pair->ifcfg[blocked_band].ifname);
+                        client->mac_addr, pair->ifcfg[steering_band].ifname);
                 return false;
             }
         } else if( client->cs_mode == BM_CLIENT_CS_MODE_AWAY ) {
@@ -402,13 +402,13 @@ bm_client_update_pair(bm_client_t *client, bm_pair_t *pair)
                 return false;
             }
 
-            if( !bsal_client_update( pair->bsal, BSAL_BAND_24G, (uint8_t *)&macaddr, &cli_conf ) < 0 ) {
+            if( target_bsal_client_update(pair->ifcfg[BSAL_BAND_24G].ifname, (uint8_t *)&macaddr, &cli_conf ) < 0 ) {
                 LOGE( "Failed to update client '%s' for BSAL:%s",
                         client->mac_addr, pair->ifcfg[BSAL_BAND_24G].ifname );
                 return false;
             }
 
-            if( !bsal_client_update( pair->bsal, BSAL_BAND_5G, (uint8_t *)&macaddr, &cli_conf ) < 0 ) {
+            if( target_bsal_client_update(pair->ifcfg[BSAL_BAND_5G].ifname, (uint8_t *)&macaddr, &cli_conf ) < 0 ) {
                 LOGE( "Failed to update client '%s' for BSAL:%s",
                         client->mac_addr, pair->ifcfg[BSAL_BAND_5G].ifname );
                 return false;
@@ -434,7 +434,7 @@ bm_client_remove_from_pair(bm_client_t *client, bm_pair_t *pair)
     }
 
     // 2.4G
-    if (bsal_client_remove(pair->bsal, BSAL_BAND_24G, (uint8_t *)&macaddr) < 0) {
+    if (target_bsal_client_remove(pair->ifcfg[BSAL_BAND_24G].ifname, (uint8_t *)&macaddr) < 0) {
         LOGE("Failed to remove client '%s' from BSAL:%s",
                                    client->mac_addr, pair->ifcfg[BSAL_BAND_24G].ifname);
         return false;
@@ -444,7 +444,7 @@ bm_client_remove_from_pair(bm_client_t *client, bm_pair_t *pair)
                                    client->mac_addr, pair->ifcfg[BSAL_BAND_24G].ifname);
 
     // 5G
-    if (bsal_client_remove(pair->bsal, BSAL_BAND_5G, (uint8_t *)&macaddr) < 0) {
+    if (target_bsal_client_remove(pair->ifcfg[BSAL_BAND_5G].ifname, (uint8_t *)&macaddr) < 0) {
         LOGE("Failed to remove client '%s' from BSAL:%s",
                                    client->mac_addr, pair->ifcfg[BSAL_BAND_5G].ifname);
         return false;
@@ -800,7 +800,7 @@ bm_client_get_cs_params( struct schema_Band_Steering_Clients *bscli, bm_client_t
     return true;
 }
 
-static target_bsal_btm_params_t *
+static bsal_btm_params_t *
 bm_client_get_btm_params_by_type( bm_client_t *client, bm_client_btm_params_type_t type )
 {
     switch( type )
@@ -864,11 +864,11 @@ static bool
 bm_client_get_btm_params( struct schema_Band_Steering_Clients *bscli,
                          bm_client_t *client, bm_client_btm_params_type_t type )
 {
-    target_bsal_btm_params_t    *btm_params  = NULL;
-    target_bsal_neigh_info_t    *neigh       = NULL;
+    bsal_btm_params_t           *btm_params  = NULL;
+    bsal_neigh_info_t           *neigh       = NULL;
     os_macaddr_t                bssid;
     const char                  *val;
-    char                        mac_str[18] = { 0 };
+    char                        mac_str[18]  = { 0 };
 
     btm_params = bm_client_get_btm_params_by_type( client, type );
     if( !btm_params ) {
@@ -1409,13 +1409,18 @@ bm_client_task_backoff(void *arg)
 {
     bm_client_t         *client = arg;
 
-    if (client->state != BM_CLIENT_STATE_BACKOFF) {
-        // Shouldn't get here, but just in case...
-        return;
+    LOGN("'%s' backoff period has expired, re-enabling steering", client->mac_addr);
+
+    // If the client has connected during backoff period:
+    // - 0N 5G  : bm_client_state_change() disables backoff immediately and
+    //            re-enables steering. As a result, the code never arrives here.
+    // - ON 2.4G: state is changed to steering, but backoff timer is finish
+    //            gracefully. State change to DISCONNECTED should not be done,
+    //            and steering should be re-enabled
+    if( client->state != BM_CLIENT_STATE_CONNECTED ) {
+        bm_client_state_change(client, BM_CLIENT_STATE_DISCONNECTED, true);
     }
 
-    LOGN("'%s' backoff period has expired, re-enabling steering", client->mac_addr);
-    bm_client_state_change(client, BM_CLIENT_STATE_DISCONNECTED, true);
     bm_client_backoff(client, false);
     bm_stats_add_event_to_report( client, NULL, BACKOFF, false );
     return;
@@ -1452,9 +1457,8 @@ bm_client_state_change(bm_client_t *client, bm_client_state_t state, bool force)
     uint16_t    interval = bm_stats_get_stats_report_interval();
 
     if (!force && client->state == BM_CLIENT_STATE_BACKOFF) {
-        if (state != BM_CLIENT_STATE_CONNECTED || client->band != BSAL_BAND_5G) {
-            // Ignore state changes not forced while in backoff, unless
-            // connected on 5G
+        if (state != BM_CLIENT_STATE_CONNECTED) {
+            // Ignore state changes not forced while in backoff
             return;
         }
     }
@@ -1478,7 +1482,11 @@ bm_client_state_change(bm_client_t *client, bm_client_state_t state, bool force)
         {
             case BM_CLIENT_STATE_CONNECTED:
             {
-                bm_client_backoff(client, false);
+                // If the client has connected during backoff, only disable band
+                // steering immediately if the client connects on 5GHz.
+                if( client->band == BSAL_BAND_5G ) {
+                    bm_client_backoff(client, false);
+                }
                 client->active = true;
                 break;
             }
@@ -1634,6 +1642,7 @@ bm_client_connected(bm_client_t *client, bsal_t bsal, bsal_band_t band, bsal_eve
         LOGE("Unable to find BM pair for connected client '%s'", client->mac_addr);
         return;
     }
+
     client->band = band;
     client->connected = true;
 
@@ -1643,8 +1652,7 @@ bm_client_connected(bm_client_t *client, bsal_t bsal, bsal_band_t band, bsal_eve
     times = &client->times;
     times->last_connect = now;
 
-    if (client->state != BM_CLIENT_STATE_CONNECTED &&
-        client->state != BM_CLIENT_STATE_BACKOFF) {
+    if( client->state != BM_CLIENT_STATE_CONNECTED ) {
         bm_client_set_state(client, BM_CLIENT_STATE_CONNECTED);
         if (event) {
             bm_stats_add_event_to_report( client, event, CONNECT, false );

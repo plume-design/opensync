@@ -188,3 +188,27 @@ bool target_tap_inet_config_set( char *ifname, struct schema_Wifi_Inet_Config *i
     return inet_target_tap_inet_config_set(ifname, iconf);
 }
 
+/*
+ * ===========================================================================
+ *  Port forwarding
+ * ===========================================================================
+ */
+bool target_portforward_set(const char *ifname,  struct schema_IP_Port_Forward *schema_pf)
+{
+    return inet_target_portforward_set(ifname, schema_pf);
+}
+
+bool target_portforward_del(const char *ifname,  struct schema_IP_Port_Forward *schema_pf)
+{
+    return inet_target_portforward_del(ifname, schema_pf);
+}
+
+/*
+ * ===========================================================================
+ *  Routing Table reporting
+ * ===========================================================================
+ */
+bool target_route_state_register(target_route_state_cb_t *rts_cb)
+{
+    return inet_target_route_state_register(rts_cb);
+}

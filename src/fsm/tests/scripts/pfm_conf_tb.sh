@@ -1,3 +1,5 @@
+#!/bin/sh
+
 # Copyright (c) 2015, Plume Design Inc. All rights reserved.
 # 
 # Redistribution and use in source and binary forms, with or without
@@ -22,21 +24,44 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-###############################################################################
-#
-# Band Steering Abstraction Library
-#
-###############################################################################
-# This unit is a stub!
-# Implementation has to be provided by a platform or vendor layer
 
-UNIT_NAME := bsal
+default_bridge='br-home'
+bridge=${1:-${default_bridge}}
+tap_intf=${bridge}.tap
 
-UNIT_TYPE := LIB
+gen_pcap_rules() {
+    cat <<EOF
+["Open_vSwitch",
+   {
+      "op": "insert",
+      "table": "Packet_Forwarding_Config",
+      "row": {
+         "token": "udp dns tapping",
+	 "topic": "topic_dns",
+	 "iface": "${tap_intf}",
+	 "pkt_count": 1,
+	 "pkt_idx_l": 1,
+	 "pkt_idx_h": 2,
+	 "timeout": 60,
+	 "pkt_capt_filter": "udp port 53"
+      }
+   },
+   {
+      "op": "insert",
+      "table": "Packet_Forwarding_Config",
+      "row": {
+         "token": "http user agent",
+	 "topic": "http_topic",
+	 "iface": "${tap_intf}",
+	 "pkt_count": 1,
+	 "pkt_idx_l": 1,
+	 "pkt_idx_h": 2,
+	 "timeout": 60,
+	 "pkt_capt_filter": "tcp dst port 80"
+      }
+   }
+]
+EOF
+}
 
-UNIT_SRC :=
-
-UNIT_CFLAGS += -I$(UNIT_PATH)/inc
-
-UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
-
+gen_pcap_rules | xargs -0 ovsdb-client transact

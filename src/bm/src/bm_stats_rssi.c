@@ -725,16 +725,21 @@ bool bm_stats_rssi_is_reporting_enabled (
         radio_entry_t              *radio_cfg)
 {
     bm_stats_rssi_ctx_t            *rssi_ctx = NULL;
-    bm_stats_request_t             *request_ctx = NULL;
+    ds_dlist_iter_t                 ctx_iter;
 
-    rssi_ctx = bm_stats_rssi_ctx_get(radio_cfg),
-    request_ctx  = &rssi_ctx->request;
-
-    if (!request_ctx->reporting_interval) {
-        return false;
+    /* Find per radio rssi ctx  */
+    for (   rssi_ctx = ds_dlist_ifirst(&ctx_iter,&g_rssi_ctx_list);
+            rssi_ctx != NULL;
+            rssi_ctx = ds_dlist_inext(&ctx_iter))
+    {
+        if (radio_cfg->type == rssi_ctx->radio_cfg->type)
+        {
+            return !!rssi_ctx->request.reporting_interval;
+        }
     }
 
-    return true;
+    /* False if not found */
+    return false;
 }
 
 bool bm_stats_rssi_stats_results_update(
@@ -756,7 +761,7 @@ bool bm_stats_rssi_stats_results_update(
     if(!bm_stats_rssi_is_reporting_enabled(radio_cfg)) {
         LOGT("Skip updating %s rssi %d "MAC_ADDRESS_FORMAT
              "(reporting not configured)",
-             radio_get_name_from_cfg(radio_cfg),
+             radio_get_name_from_type(radio_cfg->type),
              rssi,
              MAC_ADDRESS_PRINT(mac));
         return true;
@@ -771,7 +776,7 @@ bool bm_stats_rssi_stats_results_update(
                 source);
     if (NULL == record_entry) {
         LOGE("Updating %s rssi %d for "MAC_ADDRESS_FORMAT,
-             radio_get_name_from_cfg(radio_cfg),
+             radio_get_name_from_cfg(rssi_ctx->radio_cfg),
              rssi,
              MAC_ADDRESS_PRINT(mac));
         return false;
@@ -781,7 +786,7 @@ bool bm_stats_rssi_stats_results_update(
     if (!(rssi_entry = calloc(1, sizeof(*rssi_entry)))) {
         LOGEM("Updating %s rssi %d for "MAC_ADDRESS_FORMAT
               " (Failed to allocate memory for new rssi data)",
-             radio_get_name_from_cfg(radio_cfg),
+             radio_get_name_from_cfg(rssi_ctx->radio_cfg),
              rssi,
              MAC_ADDRESS_PRINT(mac));
         return false;
@@ -791,7 +796,7 @@ bool bm_stats_rssi_stats_results_update(
     rssi_entry->timestamp_ms = get_timestamp();
 
     LOGT("Updating %s rssi %d for "MAC_ADDRESS_FORMAT,
-         radio_get_name_from_cfg(radio_cfg),
+         radio_get_name_from_cfg(rssi_ctx->radio_cfg),
          rssi_entry->rssi,
          MAC_ADDRESS_PRINT(record_entry->mac));
 

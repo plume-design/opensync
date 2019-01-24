@@ -42,10 +42,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /* ev_child must be the first element of the structure */
 typedef struct {
-   ev_child cw;
-   char     if_name[128];
+    ev_child cw;
+    char     if_name[128];
 } dhcp_dryrun_t;
-
 
 int cm2_ovs_insert_port_into_bridge(char *bridge, char *port, int flag_add)
 {
@@ -56,7 +55,6 @@ int cm2_ovs_insert_port_into_bridge(char *bridge, char *port, int flag_add)
     char command[128];
     char *op_log;
     char *op;
-    int  rc;
 
     if (flag_add) {
         op = op_add;
@@ -66,54 +64,56 @@ int cm2_ovs_insert_port_into_bridge(char *bridge, char *port, int flag_add)
         op_log = op_and;
     }
 
-    LOGN("%s %s state = %s", __func__, port, op);
+    LOGI("OVS bridge: %s port = %s bridge = %s", op, port, bridge);
 
     /* add/delete it to/from OVS bridge */
-    sprintf(command, "ovs-vsctl port-to-br %s | grep %s %s ovs-vsctl %s %s %s",
-            port, bridge, op_log, op, bridge, port);
-    rc = target_device_execute(command);
+    sprintf(command, "ovs-vsctl list-ifaces %s | grep %s %s ovs-vsctl %s %s %s",
+            bridge, port, op_log, op, bridge, port);
 
-    return rc;
+    LOGD("%s: Command: %s", __func__, command);
+
+    return target_device_execute(command);
 }
 
 /**
  * Return the PID of the udhcpc client serving on interface @p ifname
  */
-static int os_nif_dhcpc_pid(char *ifname)
+static int cm2_util_get_dhcpc_pid(char *ifname)
 {
     char pid_file[256];
+    int  pid;
     FILE *f;
-    int pid;
-    int rc;
+    int  rc;
 
     tsnprintf(pid_file, sizeof(pid_file), "/var/run/udhcpc-%s.pid", ifname);
 
     f = fopen(pid_file, "r");
-    if (f == NULL) return 0;
+    if (f == NULL)
+        return 0;
 
     rc = fscanf(f, "%d", &pid);
     fclose(f);
 
     /* We should read exactly 1 element */
     if (rc != 1)
-    {
         return 0;
-    }
 
     if (kill(pid, 0) != 0)
-    {
         return 0;
-    }
 
     return pid;
 }
 
-static void cm2_dhcpc_dryrun_cb(EV_P_ ev_child *w, int revents)
+static void cm2_dhcpc_dryrun_cb(struct ev_loop *loop, ev_child *w, int revents)
 {
-    dhcp_dryrun_t *dhcp_dryrun = (dhcp_dryrun_t *) w;
-    bool status;
+    struct schema_Connection_Manager_Uplink con;
+    dhcp_dryrun_t                           *dhcp_dryrun;
+    bool                                    status;
+    int                                     ret;
 
-    ev_child_stop (EV_A_ w);
+    dhcp_dryrun = (dhcp_dryrun_t *) w;
+
+    ev_child_stop (loop, w);
     if (WIFEXITED(w->rstatus) && WEXITSTATUS(w->rstatus) == 0)
         status = true;
     else
@@ -123,25 +123,27 @@ static void cm2_dhcpc_dryrun_cb(EV_P_ ev_child *w, int revents)
         LOGD("%s: %s: rstatus = %d", __func__,
              dhcp_dryrun->if_name, WEXITSTATUS(w->rstatus));
 
-    LOGN("dryrun %s %d", dhcp_dryrun->if_name, w->rstatus);
+    LOGI("%s: dryrun state: %d", dhcp_dryrun->if_name, w->rstatus);
 
-    cm2_ovsdb_connection_update_L3_state(dhcp_dryrun->if_name, status);
-
-    if (!status) {
-        struct schema_Connection_Manager_Uplink con;
-        int ret;
-
-        ret = cm2_ovsdb_connection_get_connection_by_ifname(dhcp_dryrun->if_name, &con);
-        if (!ret)
-            LOGI("%s interface does not exist", __func__);
-        else if (con.has_L2)
-            cm2_dhcpc_dryrun(dhcp_dryrun->if_name, true);
+    ret = cm2_ovsdb_connection_get_connection_by_ifname(dhcp_dryrun->if_name, &con);
+    if (!ret) {
+        LOGD("%s: interface %s does not exist", __func__, dhcp_dryrun->if_name);
+        free(dhcp_dryrun);
+        return;
     }
+
+    ret = cm2_ovsdb_connection_update_L3_state(dhcp_dryrun->if_name, status);
+    if (!ret)
+        LOGW("%s: %s: Update L3 state failed status = %d ret = %d",
+             __func__, dhcp_dryrun->if_name, status, ret);
+
+    if (!status && con.has_L2)
+            cm2_dhcpc_start_dryrun(dhcp_dryrun->if_name, true);
 
     free(dhcp_dryrun);
 }
 
-void cm2_dhcpc_dryrun(char* ifname, bool background)
+void cm2_dhcpc_start_dryrun(char* ifname, bool background)
 {
     char pidfile[256];
     char udhcpc_s_option[256];
@@ -149,15 +151,15 @@ void cm2_dhcpc_dryrun(char* ifname, bool background)
     char pidname[512];
     char n_param[3];
 
-    LOGN("Trigger dryrun %s background = %d", ifname, background);
+    LOGN("%s: Trigger dryrun, background = %d", ifname, background);
 
     STRSCPY(pidname, "cmdryrun-");
     STRLCAT(pidname, ifname);
 
-    pid = os_nif_dhcpc_pid(pidname);
+    pid = cm2_util_get_dhcpc_pid(pidname);
     if (pid > 0)
     {
-        LOGI("DHCP client already running::ifname=%s", ifname);
+        LOGI("%s: DHCP client already running", ifname);
         return;
     }
 
@@ -181,6 +183,7 @@ void cm2_dhcpc_dryrun(char* ifname, bool background)
         "-i", ifname,
         "-s", udhcpc_s_option,
         "-S",
+        "-Q",
         "-q",
         NULL
     };
@@ -198,6 +201,28 @@ void cm2_dhcpc_dryrun(char* ifname, bool background)
         STRSCPY(dhcp_dryrun->if_name, ifname);
 
         ev_child_init (&dhcp_dryrun->cw, cm2_dhcpc_dryrun_cb, pid, 0);
-        ev_child_start (EV_DEFAULT_ &dhcp_dryrun->cw);
+        ev_child_start (EV_DEFAULT, &dhcp_dryrun->cw);
+    }
+}
+
+void cm2_dhcpc_stop_dryrun(char *ifname)
+{
+    pid_t pid;
+    char  pidname[512];
+
+    STRSCPY(pidname, "cmdryrun-");
+    STRLCAT(pidname, ifname);
+
+    pid = cm2_util_get_dhcpc_pid(pidname);
+    if (!pid) {
+        LOGI("%s: DHCP client not running", ifname);
+        return;
+    }
+
+    LOGI("%s: pid: %d pid_name: %s", ifname, pid, pidname);
+
+    if (kill(pid, SIGKILL) < 0) {
+        LOGW("%s: %s: failed to send kill signal: %d (%s)",
+             __func__, ifname, errno, strerror(errno));
     }
 }

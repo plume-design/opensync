@@ -67,3 +67,27 @@ bool inet_fw_state_get(inet_fw_t *self, bool *nat_enabled)
     *nat_enabled = false;
     return true;
 }
+
+bool inet_fw_portforward_get(inet_fw_t *self, const struct inet_portforward *pf)
+{
+    (void)self;
+    (void)pf;
+
+    return true;
+}
+
+bool inet_fw_portforward_set(inet_fw_t *self, const struct inet_portforward *pf)
+{
+    (void)self;
+    (void)pf;
+
+    return true;
+}
+
+bool inet_fw_portforward_del(inet_fw_t *self, const struct inet_portforward *pf)
+{
+    (void)self;
+    (void)pf;
+
+    return true;
+}

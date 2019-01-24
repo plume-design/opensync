@@ -55,6 +55,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ds_tree_foreach(tree, p)       \
     for (p = ds_tree_head(tree); p != NULL; p = ds_tree_next(tree, p))
 
+#define ds_tree_foreach_iter(tree, p, iter) \
+    for (p = ds_tree_ifirst(iter, tree); p != NULL; p = ds_tree_inext(iter))
+
 typedef struct ds_tree_node ds_tree_node_t;
 typedef struct ds_tree ds_tree_t;
 typedef struct ds_tree_iter ds_tree_iter_t;

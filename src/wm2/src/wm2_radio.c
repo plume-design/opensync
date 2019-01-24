@@ -68,6 +68,7 @@ ovsdb_table_t table_Wifi_VIF_Config;
 ovsdb_table_t table_Wifi_VIF_State;
 ovsdb_table_t table_Wifi_Credential_Config;
 ovsdb_table_t table_Wifi_Associated_Clients;
+ovsdb_table_t table_Wifi_Master_State;
 
 static ds_dlist_t delayed_recalc_list = DS_DLIST_INIT(struct wm2_delayed_recalc, list);
 static bool wm2_api2;
@@ -130,10 +131,59 @@ wm2_delayed_recalc(void (*fn)(const char *ifname, bool force),
     LOGI("%s: scheduling recalc", ifname);
 }
 
+static bool
+wm2_sta_has_connected(const struct schema_Wifi_VIF_State *oldstate,
+                      const struct schema_Wifi_VIF_State *newstate)
+{
+    return !strcmp(oldstate->mode, "sta") &&
+           strcmp(newstate->parent, oldstate->parent) &&
+           !strlen(oldstate->parent) &&
+           strlen(newstate->parent);
+}
+
+static bool
+wm2_sta_has_reconnected(const struct schema_Wifi_VIF_State *oldstate,
+                        const struct schema_Wifi_VIF_State *newstate)
+{
+    return !strcmp(oldstate->mode, "sta") &&
+           strcmp(newstate->parent, oldstate->parent) &&
+           strlen(oldstate->parent) &&
+           strlen(newstate->parent);
+}
+
+static bool
+wm2_sta_has_disconnected(const struct schema_Wifi_VIF_State *oldstate,
+                         const struct schema_Wifi_VIF_State *newstate)
+{
+    return !strcmp(oldstate->mode, "sta") &&
+           strcmp(newstate->parent, oldstate->parent) &&
+           strlen(oldstate->parent) &&
+           !strlen(newstate->parent);
+}
+
+static void
+wm2_sta_print_status(const struct schema_Wifi_VIF_State *oldstate,
+                     const struct schema_Wifi_VIF_State *newstate)
+{
+    static const struct schema_Wifi_VIF_State empty;
+
+    if (!newstate)
+        newstate = &empty;
+
+    if (wm2_sta_has_connected(oldstate, newstate))
+        LOGN("%s: sta: connected to %s on channel %d",
+             newstate->if_name, newstate->parent, newstate->channel);
+
+    if (wm2_sta_has_reconnected(oldstate, newstate))
+        LOGN("%s: sta: re-connected from %s to %s on channel %d",
+             oldstate->if_name, oldstate->parent, newstate->parent, newstate->channel);
+
+    if (wm2_sta_has_disconnected(oldstate, newstate))
+        LOGN("%s: sta: disconnected from %s", oldstate->if_name, oldstate->parent);
+}
+
 void wm2_radio_update_port_state(const char *cloud_vif_ifname)
 {
-    ovsdb_table_t table_Wifi_Master_State;
-    ovsdb_table_t table_Wifi_VIF_State;
     struct schema_Wifi_Master_State mstate;
     struct schema_Wifi_VIF_State vstate;
     struct schema_Wifi_VIF_Config vconf;
@@ -143,9 +193,6 @@ void wm2_radio_update_port_state(const char *cloud_vif_ifname)
                        NULL };
     bool active;
     int num;
-
-    OVSDB_TABLE_INIT(Wifi_Master_State, if_name);
-    OVSDB_TABLE_INIT(Wifi_VIF_State, if_name);
 
     memset(&mstate, 0, sizeof(mstate));
     memset(&vstate, 0, sizeof(vstate));
@@ -219,6 +266,23 @@ void wm2_radio_update_port_state(const char *cloud_vif_ifname)
 
     LOGD("%s: updated (%d) master state to '%s'",
          cloud_vif_ifname, num, mstate.port_state);
+}
+
+static void
+wm2_radio_update_port_state_set_inactive(const char *ifname)
+{
+    struct schema_Wifi_Master_State mstate;
+    json_t *w;
+    int n;
+
+    memset(&mstate, 0, sizeof(mstate));
+    mstate._partial_update = true;
+    SCHEMA_SET_STR(mstate.port_state, "inactive");
+    if (WARN_ON(!(w = ovsdb_where_simple(SCHEMA_COLUMN(Wifi_Master_State, if_name), ifname))))
+        return;
+
+    n = ovsdb_table_update_where(&table_Wifi_Master_State, w, &mstate);
+    LOGD("%s: port state set to inactive: n=%d", ifname, n);
 }
 
 #define CHANGED_SMAP(conf, state, name, force) \
@@ -333,6 +397,7 @@ wm2_rconf_changed(const struct schema_Wifi_Radio_Config *conf,
     CMP(CHANGED_INT, tx_chainmask);
     CMP(CHANGED_INT, tx_power);
     CMP(CHANGED_INT, bcn_int);
+    CMP(CHANGED_INT, dfs_demo);
     CMP(CHANGED_STR, channel_mode);
     CMP(CHANGED_STR, country);
     CMP(CHANGED_STR, freq_band);
@@ -390,6 +455,13 @@ wm2_vconf_init_del(struct schema_Wifi_VIF_Config *vconf, const char *ifname)
     vconf->enabled_present = true;
     vconf->enabled_changed = true;
     vconf->enabled_exists = true;
+}
+
+static void
+wm2_vstate_init(struct schema_Wifi_VIF_State *vstate, const char *ifname)
+{
+    memset(vstate, 0, sizeof(*vstate));
+    STRSCPY(vstate->if_name, ifname);
 }
 
 static bool
@@ -510,6 +582,7 @@ wm2_vconf_recalc(const char *ifname, bool force)
     struct schema_Wifi_VIF_State vstate;
     struct schema_Wifi_Credential_Config cconfs[8];
     struct schema_Wifi_VIF_Config_flags vchanged;
+    json_t *where;
     int num_cconfs;
     bool want;
     bool has;
@@ -528,7 +601,7 @@ wm2_vconf_recalc(const char *ifname, bool force)
                                        SCHEMA_COLUMN(Wifi_VIF_State, if_name),
                                        ifname,
                                        &vstate)))
-        memset(&vstate, 0, sizeof(vstate));
+        wm2_vstate_init(&vstate, ifname);
 
     if (want && vconf.mode_exists && !strcmp(vconf.mode, "sta")) {
         if (!vconf.enabled_exists || !vconf.enabled) {
@@ -598,6 +671,21 @@ wm2_vconf_recalc(const char *ifname, bool force)
     if (vchanged.parent)
         LOGN("%s: topology change: parent '%s' -> '%s'", ifname, vstate.parent, vconf.parent);
 
+    if (want && !has) {
+        if (WARN_ON(!(where = ovsdb_where_uuid(SCHEMA_COLUMN(Wifi_Radio_State, radio_config),
+                                               rconf._uuid.uuid))))
+            return;
+        if (WARN_ON(ovsdb_table_upsert_with_parent(&table_Wifi_VIF_State,
+                                                   &vstate,
+                                                   false, // uuid not needed
+                                                   NULL,
+                                                   // parent:
+                                                   SCHEMA_TABLE(Wifi_Radio_State),
+                                                   where,
+                                                   SCHEMA_COLUMN(Wifi_Radio_State, vif_states)) != 1))
+            return;
+    }
+
     if (!target_vif_config_set2(&vconf, &rconf, cconfs, &vchanged, num_cconfs)) {
         LOGW("%s: failed to configure, will retry later", ifname);
         wm2_delayed_recalc(wm2_vconf_recalc, ifname);
@@ -608,6 +696,7 @@ wm2_vconf_recalc(const char *ifname, bool force)
         ovsdb_table_delete_simple(&table_Wifi_VIF_State,
                                   SCHEMA_COLUMN(Wifi_VIF_State, if_name),
                                   ifname);
+        wm2_sta_print_status(&vstate, NULL);
         wm2_radio_update_port_state(vconf.if_name);
     }
 
@@ -761,6 +850,18 @@ wm2_rconf_recalc_fixup_nop_channel(struct schema_Wifi_Radio_Config *rconf,
 }
 
 static void
+wm2_rconf_recalc_fixup_tx_chainmask(struct schema_Wifi_Radio_Config *rconf)
+{
+    if (!rconf->tx_chainmask_exists && !rconf->thermal_tx_chainmask_exists)
+        return;
+    if (!rconf->thermal_tx_chainmask_exists)
+        return;
+
+    rconf->tx_chainmask = rconf->thermal_tx_chainmask;
+    rconf->tx_chainmask_exists = true;
+}
+
+static void
 wm2_rconf_recalc(const char *ifname, bool force)
 {
     struct schema_Wifi_Radio_Config rconf;
@@ -810,8 +911,10 @@ wm2_rconf_recalc(const char *ifname, bool force)
             rconf.channel = rstate.channel;
         }
 
-    if (want)
+    if (want) {
         wm2_rconf_recalc_fixup_nop_channel(&rconf, &rstate);
+        wm2_rconf_recalc_fixup_tx_chainmask(&rconf);
+    }
 
     if (!wm2_rconf_changed(&rconf, &rstate, &changed) && !force)
         goto recalc;
@@ -925,13 +1028,6 @@ wm2_op_vstate(const struct schema_Wifi_VIF_State *vstate)
     state.vif_config_present = true;
     memcpy(&state.vif_config, &vconf._uuid, sizeof(vconf._uuid));
 
-    if (!strcmp(state.mode, "sta") && strcmp(state.parent, oldstate.parent)) {
-        if (strlen(state.parent))
-            LOGN("%s: connected to %s on channel %d", state.if_name, state.parent, state.channel);
-        else
-            LOGN("%s: disconnected from %s", state.if_name, oldstate.parent);
-    }
-
     if (!(where = ovsdb_where_uuid(SCHEMA_COLUMN(Wifi_Radio_State, radio_config),
                                    rconf._uuid.uuid)))
         return;
@@ -945,6 +1041,10 @@ wm2_op_vstate(const struct schema_Wifi_VIF_State *vstate)
                                                           SCHEMA_COLUMN(Wifi_Radio_State, vif_states)));
     LOGI("%s: updated vif state", state.if_name);
 recalc:
+    /* Reconnect workaround is for CAES-771 */
+    if (wm2_sta_has_reconnected(&oldstate, &state))
+        wm2_radio_update_port_state_set_inactive(state.if_name);
+    wm2_sta_print_status(&oldstate, &state);
     wm2_radio_update_port_state(state.if_name);
     wm2_delayed_recalc(wm2_vconf_recalc, state.if_name);
 }
@@ -1194,6 +1294,7 @@ wm2_radio_init(void)
     OVSDB_TABLE_INIT(Wifi_VIF_State, if_name);
     OVSDB_TABLE_INIT(Wifi_Credential_Config, _uuid);
     OVSDB_TABLE_INIT(Wifi_Associated_Clients, _uuid);
+    OVSDB_TABLE_INIT(Wifi_Master_State, if_name);
 
     if ((wm2_api2 = target_radio_init(&rops))) {
         LOGI("Using new API v2");

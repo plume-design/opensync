@@ -51,6 +51,8 @@ typedef bool        backtrace_func_t(void *ctx, void *addr, const char *func, co
 extern void         backtrace_init(void);
 extern void         backtrace_dump(void);
 extern bool         backtrace(backtrace_func_t *handler, void *ctx);
+bool backtrace_copy(void **addr, int size, int *count, int *all);
+bool backtrace_resolve(void *addr, const char **func, const char **fname);
 
 // Path where crashdump is generated
 #define BTRACE_DUMP_PATH "/var/log/lm/crash"

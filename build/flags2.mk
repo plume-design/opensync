@@ -34,7 +34,9 @@ CFLAGS += -D$(TARGET_DEF) -DTARGET_NAME="\"$(TARGET)\""
 
 # gcc version specific flags
 ifndef GCCVERFLAGS
+ifneq ($(CC),)
 GCCVER := $(shell $(CC) -dumpversion 2>/dev/null | cut -f1 -d.)
+endif
 ifneq ($(GCCVER),)
 ifeq ($(shell [ $(GCCVER) -ge 7 ] && echo y),y)
 #GCCVERFLAGS += -Wno-format-truncation
