@@ -731,17 +731,17 @@ bool os_nif_dhcpc_start(char* ifname, bool apply, int dhcp_time)
     char serial_num[100];
     char sku_num[100];
     char hostname[256];
-    char udhcpc_s_option[256];
+    char *udhcpc_s_option;
     char *pidname;
-    char name[256];
+    char name[128];
     char paramT[256];
     pid_t pid;
     int status;
     int valuelen;
     int i;
     int len;
-    const char * bprofile = app_build_profile_get();
-    const char * bnum = app_build_number_get();
+    const char *bnum;
+    const char *bprofile;
 
     if (!apply) {
         snprintf(name, sizeof(name), "dryrun-%s", ifname);
@@ -777,17 +777,16 @@ bool os_nif_dhcpc_start(char* ifname, bool apply, int dhcp_time)
     snprintf(profile, sizeof(profile), "0xe2:");
     snprintf(serial_opt, sizeof(serial_opt), "0xe3:");
     if (apply == true) {
-	snprintf(udhcpc_s_option, sizeof(udhcpc_s_option),
-		 "/usr/plume/bin/udhcpc.sh");
+	udhcpc_s_option = "/usr/plume/bin/udhcpc.sh";
     } else {
-	snprintf(udhcpc_s_option, sizeof(udhcpc_s_option),
-		 "/usr/plume/bin/udhcpc-dryrun.sh");
+	udhcpc_s_option = "/usr/plume/bin/udhcpc-dryrun.sh";
     }
 
     /* it looks that udhcpc doesn't support sending string  */
     /* we have to convert it to hexdump */
     /* option 225 - build number    */
-    valuelen = strlen(app_build_number_get());
+    bnum = app_build_number_get();
+    valuelen = strlen(bnum);
     for (i = 0; i < valuelen; i++)
     {
         len = strlen(swver);
@@ -795,7 +794,8 @@ bool os_nif_dhcpc_start(char* ifname, bool apply, int dhcp_time)
     }
 
     /* option 225 - profile name */
-    valuelen = strlen(app_build_profile_get());
+    bprofile = app_build_profile_get();
+    valuelen = strlen(bprofile);
     for (i = 0; i < valuelen; i++)
     {
         len = strlen(profile);
@@ -882,11 +882,11 @@ bool os_nif_dhcpc_start(char* ifname, bool apply, int dhcp_time)
 bool os_nif_dhcpc_stop(char* ifname, bool dryrun)
 {
     char *pidname;
-    char buf[256];
+    char name[128];
 
     if (dryrun) {
-        snprintf(buf, sizeof(buf), "dryrun-%s", ifname);
-        pidname = buf;
+        snprintf(name, sizeof(name), "dryrun-%s", ifname);
+        pidname = name;
     }
     else
         pidname = ifname;
@@ -964,7 +964,6 @@ pid_t os_nif_pppoe_pidof(const char *ifname)
     char pid_path[128];
 
     snprintf(pid_path, sizeof(pid_path), "/var/run/ppp-%s.pid", ifname);
-
 
     pid = os_pid_from_file(pid_path);
     if (pid <= 0) return 0;
