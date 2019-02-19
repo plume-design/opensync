@@ -506,7 +506,7 @@ bm_client_remove_from_all_pairs(bm_client_t *client)
     bool            success = true;
 
     if (!(pairs = bm_pair_get_tree())) {
-        LOGE("bm_client_update_all_pairs() failed to get pair tree");
+        LOGE("bm_client_remove_from_all_pairs() failed to get pair tree");
         return false;
     }
 
