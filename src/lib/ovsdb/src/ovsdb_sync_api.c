@@ -63,6 +63,37 @@ json_t* ovsdb_where_uuid(const char *column, const char *uuid)
     return ovsdb_tran_cond(OCLM_UUID, (char*)column, OFUNC_EQ, (char*)uuid);
 }
 
+/* ovsdb_where_multi() combines multiple ovsdb_where_*() conditions
+ * Example:
+ *   where = ovsdb_where_multi(
+ *     ovsdb_where_simple("colA", "valA"),
+ *     ovsdb_where_simple_typed("colB", valB, typeB),
+ *     ovsdb_where_uuid("colC", "uuidC"),
+ *     NULL),
+ */
+json_t* ovsdb_where_multi(json_t *where, ...)
+{
+    va_list va;
+    json_t *w = where;
+    json_t *item;
+    size_t index;
+
+    va_start(va, where);
+    while (w)
+    {
+        w = va_arg(va, json_t*);
+        if (!w) break;
+        json_array_foreach(w, index, item)
+        {
+            json_array_append(where, item);
+        }
+        json_decref(w);
+    }
+    va_end(va);
+
+    return where;
+}
+
 json_t* ovsdb_mutation(char *column, json_t *mutation, json_t *value)
 {
     json_t * js;

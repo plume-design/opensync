@@ -682,7 +682,7 @@ bool bm_stats_rssi_report_request(
     REQUEST_PARAM_UPDATE("rssi", reporting_count, "%d");
     REQUEST_PARAM_UPDATE("rssi", reporting_interval, "%d");
     REQUEST_PARAM_UPDATE("rssi", sampling_interval, "%d");
-    REQUEST_PARAM_UPDATE("rssi", reporting_timestamp, "%lld");
+    REQUEST_PARAM_UPDATE("rssi", reporting_timestamp, "%"PRIu64"");
     strcpy(request_ctx->radio_cfg.phy_name, request->radio_cfg.phy_name);
 
     status =

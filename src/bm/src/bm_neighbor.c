@@ -82,12 +82,16 @@ bm_neighbor_from_ovsdb( struct schema_Wifi_VIF_Neighbors *nconf, bm_neighbor_t *
     neigh->channel  = nconf->channel;
     neigh->priority = nconf->priority;
 
-    item = c_get_item_by_str( map_ovsdb_chanwidth, nconf->ht_mode );
-    if( !item ) {
-        LOGE( "Neighbor %s - unknown ht_mode '%s'", neigh->bssid, nconf->ht_mode );
-        return false;
+    if (!nconf->ht_mode_exists) {
+        neigh->ht_mode = RADIO_CHAN_WIDTH_20MHZ;
+    } else {
+        item = c_get_item_by_str( map_ovsdb_chanwidth, nconf->ht_mode );
+        if( !item ) {
+            LOGE( "Neighbor %s - unknown ht_mode '%s'", neigh->bssid, nconf->ht_mode );
+            return false;
+        }
+        neigh->ht_mode  = (radio_chanwidth_t)item->key;
     }
-    neigh->ht_mode  = (radio_chanwidth_t)item->key;
 
     return true;
 }

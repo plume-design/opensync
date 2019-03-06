@@ -471,12 +471,40 @@ bool os_nif_up(char* ifname, bool ifup)
 }
 
 /**
+ * Returns @p true whether the device is UP
+ */
+bool os_nif_is_up(char* ifname, bool *up)
+{
+    struct ifreq    req;
+    int             rc;
+
+    *up = false;
+
+    /* Get current flags */
+    rc = os_nif_ifreq(SIOCGIFFLAGS, ifname, &req);
+    if (rc != 0)
+    {
+        LOG(DEBUG, "os_nif_up: SIOCGIFFLAGS failed::ifname=%s", ifname);
+        return false;
+    }
+
+    if (req.ifr_flags & IFF_UP)
+    {
+        *up = true;
+    }
+
+    return true;
+}
+
+/**
  * Returns @p true whether the device is UP and is operational (in case of Ethernet, if the cable is connected)
  */
 bool os_nif_is_running(char* ifname, bool *running)
 {
     struct ifreq    req;
     int             rc;
+
+    *running = false;
 
     /* Get current flags */
     rc = os_nif_ifreq(SIOCGIFFLAGS, ifname, &req);
@@ -489,10 +517,6 @@ bool os_nif_is_running(char* ifname, bool *running)
     if (req.ifr_flags & IFF_RUNNING)
     {
         *running = true;
-    }
-    else
-    {
-        *running = false;
     }
 
     return true;

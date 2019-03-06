@@ -59,6 +59,7 @@ extern bool    os_nif_macaddr(char* ifname, os_macaddr_t *mac);
 extern bool    os_nif_macaddr_get(char* ifname, os_macaddr_t *mac);
 extern bool    os_nif_macaddr_set(char* ifname, os_macaddr_t mac);
 extern bool    os_nif_up(char* ifname, bool ifup);
+extern bool    os_nif_is_up(char* ifname, bool *up);
 extern bool    os_nif_is_running(char* ifname, bool *running);
 extern bool    os_nif_dhcpc_start(char* ifname, bool apply, int dhcp_time);
 extern bool    os_nif_dhcpc_stop(char* ifname, bool dryrun);

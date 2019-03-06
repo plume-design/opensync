@@ -24,10 +24,15 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef EVX_DEBOUNCE_CALL_H_INCLUDED
-#define EVX_DEBOUNCE_CALL_H_INCLUDED
+#ifndef XM_H_INCLUDED
+#define XM_H_INCLUDED
 
-void evx_debounce_call(void (*func)(const char *arg), const char *arg);
+#include "schema.h"
+#include "ovsdb_table.h"
 
-void evx_debounce_rn_call(void (*func)(const char *arg), const char *arg);
-#endif /* EVX_DEOUNCE_CALL_H_INCLUDED */
+/*****************************************************************************/
+
+bool xm_ovsdb_init(struct ev_loop *loop);
+bool xm_ovsdb_close(struct ev_loop *loop);
+
+#endif /* XM_H_INCLUDED */

@@ -75,7 +75,7 @@ static c_item_t map_ovsdb_reject_detection[] = {
     C_ITEM_STR(BM_CLIENT_REJECT_PROBE_ALL,      "probe_all"),
     C_ITEM_STR(BM_CLIENT_REJECT_PROBE_NULL,     "probe_null"),
     C_ITEM_STR(BM_CLIENT_REJECT_PROBE_DIRECT,   "probe_direct"),
-    C_ITEM_STR(BM_CLIENT_REJECT_AUTH_BLOCKED,   "auth_blocked")
+    C_ITEM_STR(BM_CLIENT_REJECT_AUTH_BLOCKED,   "auth_block")
 };
 
 static c_item_t map_ovsdb_kick_type[] = {
@@ -464,7 +464,7 @@ bm_client_add_to_all_pairs(bm_client_t *client)
     bool            success = true;
 
     if (!(pairs = bm_pair_get_tree())) {
-        LOGE("bm_client_update_all_pairs() failed to get pair tree");
+        LOGE("bm_client_add_to_all_pairs() failed to get pair tree");
         return false;
     }
 
@@ -735,7 +735,7 @@ bm_client_get_cs_params( struct schema_Band_Steering_Clients *bscli, bm_client_t
         client->cs_band = ( bsal_band_t )item->key;
     }
 
-    if( !bscli->cs_mode ) {
+    if( !bscli->cs_mode_exists ) {
         client->cs_mode = BM_CLIENT_CS_MODE_OFF;
     } else {
         item = c_get_item_by_str(map_cs_modes, bscli->cs_mode);
@@ -746,7 +746,7 @@ bm_client_get_cs_params( struct schema_Band_Steering_Clients *bscli, bm_client_t
         client->cs_mode = (bm_client_cs_mode_t)item->key;
     }
 
-    if( !bscli->cs_state ) {
+    if( !bscli->cs_state_exists ) {
         client->cs_state = BM_CLIENT_CS_STATE_NONE;
     } else {
         item = c_get_item_by_str(map_cs_states, bscli->cs_state);
@@ -978,48 +978,72 @@ bm_client_from_ovsdb(struct schema_Band_Steering_Clients *bscli, bm_client_t *cl
 
     STRSCPY(client->mac_addr, bscli->mac);
 
-    item = c_get_item_by_str(map_ovsdb_reject_detection, bscli->reject_detection);
-    if (!item) {
-        LOGE("Client %s - unknown reject detection '%s'",
-                                            client->mac_addr, bscli->reject_detection);
-        return false;
+    if (!bscli->reject_detection_exists) {
+        client->reject_detection = BM_CLIENT_REJECT_NONE;
+    } else {
+        item = c_get_item_by_str(map_ovsdb_reject_detection, bscli->reject_detection);
+        if (!item) {
+            LOGE("Client %s - unknown reject detection '%s'",
+                                                client->mac_addr, bscli->reject_detection);
+            return false;
+        }
+        client->reject_detection = (bm_client_reject_t)item->key;
     }
-    client->reject_detection = (bm_client_reject_t)item->key;
 
-    item = c_get_item_by_str(map_ovsdb_kick_type, bscli->kick_type);
-    if (!item) {
-        LOGE("Client %s - unknown kick type '%s'", client->mac_addr, bscli->kick_type);
-        return false;
+    if (!bscli->kick_type_exists) {
+        client->kick_type = BM_CLIENT_KICK_NONE;
+    } else {
+        item = c_get_item_by_str(map_ovsdb_kick_type, bscli->kick_type);
+        if (!item) {
+            LOGE("Client %s - unknown kick type '%s'", client->mac_addr, bscli->kick_type);
+            return false;
+        }
+        client->kick_type                   = (bm_client_kick_t)item->key;
     }
-    client->kick_type                   = (bm_client_kick_t)item->key;
 
-    item = c_get_item_by_str(map_ovsdb_kick_type, bscli->sc_kick_type);
-    if (!item) {
-        LOGE("Client %s - unknown sticky client kick type '%s'", client->mac_addr, bscli->sc_kick_type);
-        return false;
+    if (!bscli->sc_kick_type_exists) {
+        client->sc_kick_type = BM_CLIENT_KICK_NONE;
+    } else {
+        item = c_get_item_by_str(map_ovsdb_kick_type, bscli->sc_kick_type);
+        if (!item) {
+            LOGE("Client %s - unknown sc client kick type '%s'", client->mac_addr, bscli->sc_kick_type);
+            return false;
+        }
+        client->sc_kick_type                = (bm_client_kick_t)item->key;
     }
-    client->sc_kick_type                = (bm_client_kick_t)item->key;
 
-    item = c_get_item_by_str(map_ovsdb_kick_type, bscli->sticky_kick_type);
-    if (!item) {
-        LOGE("Client %s - unknown sticky client kick type '%s'", client->mac_addr, bscli->sc_kick_type);
-        return false;
+    if (!bscli->sticky_kick_type_exists) {
+        client->sticky_kick_type = BM_CLIENT_KICK_NONE;
+    } else {
+        item = c_get_item_by_str(map_ovsdb_kick_type, bscli->sticky_kick_type);
+        if (!item) {
+            LOGE("Client %s - unknown sticky client kick type '%s'", client->mac_addr, bscli->sc_kick_type);
+            return false;
+        }
+        client->sticky_kick_type            = (bm_client_kick_t)item->key;
     }
-    client->sticky_kick_type            = (bm_client_kick_t)item->key;
 
-    item = c_get_item_by_str(map_ovsdb_pref_5g, bscli->pref_5g);
-    if (!item) {
-        LOGE("Client %s - unknown pref_5g value '%s'", client->mac_addr, bscli->pref_5g);
-        return false;
+    if (!bscli->pref_5g) {
+        client->pref_5g = BM_CLIENT_5G_NEVER;
+    } else {
+        item = c_get_item_by_str(map_ovsdb_pref_5g, bscli->pref_5g);
+        if (!item) {
+            LOGE("Client %s - unknown pref_5g value '%s'", client->mac_addr, bscli->pref_5g);
+            return false;
+        }
+        client->pref_5g                     = (bm_client_pref_5g)item->key;
     }
-    client->pref_5g                     = (bm_client_pref_5g)item->key;
 
-    item = c_get_item_by_str(map_ovsdb_force_kick, bscli->force_kick);
-    if (!item) {
-        LOGE("Client %s - unknown force_kick value '%s'", client->mac_addr, bscli->force_kick);
-        return false;
+    if (!bscli->force_kick_exists) {
+        client->force_kick_type = BM_CLIENT_FORCE_KICK_NONE;
+    } else {
+        item = c_get_item_by_str(map_ovsdb_force_kick, bscli->force_kick);
+        if (!item) {
+            LOGE("Client %s - unknown force_kick value '%s'", client->mac_addr, bscli->force_kick);
+            return false;
+        }
+        client->force_kick_type             = (bm_client_force_kick_t)item->key;
     }
-    client->force_kick_type             = (bm_client_force_kick_t)item->key;
 
     client->kick_reason                 = bscli->kick_reason;
     client->sc_kick_reason              = bscli->sc_kick_reason;
@@ -1126,7 +1150,9 @@ bm_client_ovsdb_update_from_me(ovsdb_update_monitor_t *self,
     }
 
     // Decode new state value
-    if (!(item = c_get_item_by_str(map_cs_states, bscli->cs_state))) {
+    if (!bscli->cs_state_exists) {
+        return false;
+    } else if (!(item = c_get_item_by_str(map_cs_states, bscli->cs_state))) {
         // Could not decode state value, assume it's from cloud
         return false;
     }

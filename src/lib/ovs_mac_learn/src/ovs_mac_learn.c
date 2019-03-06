@@ -406,23 +406,17 @@ void ovsmac_node_update(char *brname, char *ifname, int vlan, os_macaddr_t macad
 {
     struct ovsmac_node *on;
 
-    struct schema_OVS_MAC_Learning *key;
+    struct schema_OVS_MAC_Learning key;
     (void)vlan;
 
-    key = malloc(sizeof(struct schema_OVS_MAC_Learning));
-    if (!key)
-    {
-        LOGN("Allocation of struct schema_OVS_MAC_Learning  failed ! \n");
-        return;
-    }
-
     /* Fill in the necessary fields to do a sucessfull compare */
-    memset(key, 0, sizeof(*key));
-    STRSCPY(key->brname, brname);
-    STRSCPY(key->ifname, ifname);
-    snprintf(key->hwaddr, sizeof(key->hwaddr), PRI(os_macaddr_t), FMT(os_macaddr_t, macaddr));
+    MEMZERO(key);
+    STRSCPY(key.brname, brname);
+    STRSCPY(key.ifname, ifname);
+    snprintf(key.hwaddr, sizeof(key.hwaddr), PRI(os_macaddr_t), FMT(os_macaddr_t, macaddr));
+    str_tolower(key.hwaddr);
 
-    on = ds_tree_find(&ovsmac_list, key);
+    on = ds_tree_find(&ovsmac_list, &key);
 
     /* This is a new entry */
     if (on == NULL)
@@ -435,14 +429,14 @@ void ovsmac_node_update(char *brname, char *ifname, int vlan, os_macaddr_t macad
         }
 
         /* Populate the new entry */
-        STRSCPY(on->mac.brname, brname);
-        STRSCPY(on->mac.ifname, ifname);
-        on->mac.vlan = vlan;
-        snprintf(on->mac.hwaddr, sizeof(on->mac.hwaddr), PRI(os_macaddr_t), FMT(os_macaddr_t, macaddr));
+        key.vlan = vlan;
+        memcpy(&on->mac, &key, sizeof(key));
 
         /* Insert into OVSDB */
-        g_mac_learning_cb_t(&(on->mac), true);
-        ds_tree_insert(&ovsmac_list, on, key);
+        g_mac_learning_cb_t(&key, true);
+        // note, callback modifies hwaddr (str_tolower), so 'key' is used
+        // for callback while unmodified 'on' is stored to cache
+        ds_tree_insert(&ovsmac_list, on, &on->mac);
     }
 
     on->mac_flags = OVSMAC_FLAG_ACTIVE;
@@ -462,15 +456,9 @@ void ovsmac_node_flush(void)
         if (!(on->mac_flags & OVSMAC_FLAG_ACTIVE))
         {
             ds_tree_iremove(&iter);
-
             /* Remove FROM OVSDB */
-            ovsdb_where_uuid("_uuid", on->mac._uuid.uuid);
             g_mac_learning_cb_t(&(on->mac), false);
-            if (on)
-            {
-                free(on->mac_node.otn_key);
-                free(on);
-            }
+            free(on);
         }
     }
 }

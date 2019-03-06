@@ -71,11 +71,13 @@ nm2_mac_learning_update(struct schema_OVS_MAC_Learning *omac, bool oper_status)
         return true;
     }
 
-    LOGT("Updating MAC learning '%s'", omac->hwaddr);
+    // force lower case mac
+    str_tolower(omac->hwaddr);
+    LOGT("Updating MAC learning '%s' %d", omac->hwaddr, oper_status);
 
     if (oper_status == false)
     {
-        where = ovsdb_tran_cond(OCLM_STR, "hwaddr", OFUNC_EQ, str_tolower(omac->hwaddr));
+        where = ovsdb_tran_cond(OCLM_STR, "hwaddr", OFUNC_EQ, omac->hwaddr);
         ret = ovsdb_sync_delete_where(OVSDB_MAC_TABLE, where);
         if (!ret)
         {
@@ -89,7 +91,7 @@ nm2_mac_learning_update(struct schema_OVS_MAC_Learning *omac, bool oper_status)
     }
     else
     {
-        where = ovsdb_tran_cond(OCLM_STR, "hwaddr", OFUNC_EQ, str_tolower(omac->hwaddr));
+        where = ovsdb_tran_cond(OCLM_STR, "hwaddr", OFUNC_EQ, omac->hwaddr);
         row   = schema_OVS_MAC_Learning_to_json(omac, perr);
         ret = ovsdb_sync_upsert_where(OVSDB_MAC_TABLE, where, row, NULL);
         if (!ret)

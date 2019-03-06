@@ -25,12 +25,16 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include <string.h>
+#include <time.h>
 #include <evx.h>
 #include <evx_debounce_call.h>
 #include <ds_dlist.h>
 #include <const.h>
 
 #define EVX_DEBOUNCE_SEC 1.0
+
+#define EVX_DEBOUNCE_MIN_MSEC 1000
+#define EVX_DEBOUNCE_MAX_MSEC 3000
 
 struct evx_debounce_call {
 	struct ds_dlist_node list;
@@ -89,3 +93,24 @@ evx_debounce_call(void (*func)(const char *arg), const char *arg)
 	}
 	ev_debounce_start(EV_DEFAULT_ &i->ev);
 }
+
+void
+evx_debounce_rn_call(void (*func)(const char *arg), const char *arg)
+{
+	static unsigned int seed = 1;
+	struct evx_debounce_call *i;
+	if (!(i = evx_debounce_call_lookup(func, arg))) {
+		if (!(i = calloc(1, sizeof(*i))))
+			return;
+		i->func = func;
+		if (arg)
+			i->arg = strdup(arg);
+		ds_dlist_insert_tail(&g_evx_debounce_call_list, i);
+
+		srand(++seed ^ time(NULL));
+		double delay = (double)((rand() % (EVX_DEBOUNCE_MAX_MSEC-EVX_DEBOUNCE_MIN_MSEC))+ EVX_DEBOUNCE_MAX_MSEC);
+		ev_debounce_init(&i->ev, evx_debounce_fn, delay/1000);
+	}
+	ev_debounce_start(EV_DEFAULT_ &i->ev);
+}
+

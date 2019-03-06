@@ -99,6 +99,13 @@ SCHEMA_LISTX(_SCHEMA_COL_DECL)
             DST##_present = true; \
         } while (0)
 
+#define SCHEMA_SET_UUID(FIELD, VALUE) \
+        do { \
+            STRSCPY(FIELD.uuid, (VALUE)); \
+            FIELD##_exists  = true; \
+            FIELD##_present = true; \
+        } while (0)
+
 #define SCHEMA_KEY_VAL_APPEND_INT(FIELD, KEY, VALUE) \
         do { \
             STRSCPY(FIELD##_keys[FIELD##_len], KEY); \

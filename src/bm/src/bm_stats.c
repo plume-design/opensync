@@ -44,6 +44,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <getopt.h>
 #include <stdarg.h>
 #include <linux/types.h>
+#include <inttypes.h>
 
 #include "os_time.h"
 #include "bm.h"
@@ -399,7 +400,7 @@ bm_stats_steering_print_all_records()
                 LOGT( "// ------------------------ // " );
                 LOGT( "Event record number  = %d", j);
                 LOGT( "Type                 = %s", bm_stats_get_event_to_str( event_rec->type ) );
-                LOGT( "timestamp_ms         = %lld", event_rec->timestamp_ms );
+                LOGT( "timestamp_ms         = %"PRIu64"", event_rec->timestamp_ms );
                 LOGT( "rssi                 = %d", event_rec->rssi );
                 LOGT( "probe bcast          = %d", event_rec->probe_bcast );
                 LOGT( "probe blocked        = %d", event_rec->probe_blocked );
@@ -521,7 +522,7 @@ bm_stats_steering_process_stats( void )
 
     // Set the report timestamp_ms -- time when the report is being sent
     g_bm_stats_steering_report.timestamp_ms = clock_real_ms();
-    LOGT( "Report timestamp = %lld", g_bm_stats_steering_report.timestamp_ms );
+    LOGT( "Report timestamp = %"PRIu64"", g_bm_stats_steering_report.timestamp_ms );
 
     // Insert the report into DPP queue
     dpp_put_bs_client( &g_bm_stats_steering_report );
