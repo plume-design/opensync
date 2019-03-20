@@ -2119,6 +2119,7 @@ bool dpp_get_report2(uint8_t **pbuff, size_t suggest_sz, uint32_t *packed_sz)
     if (0 == dpp_get_queue_elements())
     {
         LOG(DEBUG, "get_report: queue depth zero");
+        free(buff);
         return false;
     }
 
