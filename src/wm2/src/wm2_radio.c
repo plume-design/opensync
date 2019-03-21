@@ -1127,7 +1127,7 @@ wm2_op_clients(const struct schema_Wifi_Associated_Clients *clients,
                             num, vstate.associated_clients_len,
                             sizeof(*clients),
                             strncasecmp))
-        return;
+        goto free;
 
     LOGI("%s: syncing clients", vif);
 
