@@ -588,9 +588,11 @@ inet_t *if_inet_new(const char *ifname, enum if_type type)
             nif = inet_vif_new(ifname);
             break;
 
+#if defined(CONFIG_INET_GRE_USE_GRETAP)
         case IF_TYPE_GRE:
             nif = inet_gre_new(ifname);
             break;
+#endif
 
         default:
             /* Unsupported types */
