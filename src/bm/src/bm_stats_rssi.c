@@ -452,6 +452,7 @@ bool bm_stats_rssi_report_send(
             {
                 case REPORT_TYPE_NONE:
                     report_ctx->report_type = REPORT_TYPE_RAW;
+                    FALLTHROUGH;
                 case REPORT_TYPE_RAW:
                     bm_stats_rssi_report_calculate_raw(
                             rssi_ctx,

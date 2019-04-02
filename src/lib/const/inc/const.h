@@ -278,7 +278,7 @@ extern bool             _c_get_param_by_key(c_item_t *list, int list_sz, int key
 
 // Handle error: this statement may fall through [-Werror=implicit-fallthrough=]
 #if (defined(__GNUC__) && __GNUC_PREREQ(7,0))
-#define FALLTHROUGH __attribute__((fallthrough));
+#define FALLTHROUGH __attribute__((fallthrough))
 #else
 #define FALLTHROUGH
 #endif
