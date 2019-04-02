@@ -376,7 +376,7 @@ bm_client_update_pair(bm_client_t *client, bm_pair_t *pair)
             }
 
             // Blocked band
-            if( !bsal_client_update( pair->bsal, blocked_band, (uint8_t *)&macaddr, &cli_conf ) < 0 ) {
+            if( bsal_client_update( pair->bsal, blocked_band, (uint8_t *)&macaddr, &cli_conf ) < 0 ) {
                 LOGE( "Failed to update client '%s' for BSAL:%s",
                         client->mac_addr, pair->ifcfg[blocked_band].ifname );
                 return false;
@@ -402,13 +402,13 @@ bm_client_update_pair(bm_client_t *client, bm_pair_t *pair)
                 return false;
             }
 
-            if( !bsal_client_update( pair->bsal, BSAL_BAND_24G, (uint8_t *)&macaddr, &cli_conf ) < 0 ) {
+            if (bsal_client_update( pair->bsal, BSAL_BAND_24G, (uint8_t *)&macaddr, &cli_conf ) < 0 ) {
                 LOGE( "Failed to update client '%s' for BSAL:%s",
                         client->mac_addr, pair->ifcfg[BSAL_BAND_24G].ifname );
                 return false;
             }
 
-            if( !bsal_client_update( pair->bsal, BSAL_BAND_5G, (uint8_t *)&macaddr, &cli_conf ) < 0 ) {
+            if (bsal_client_update( pair->bsal, BSAL_BAND_5G, (uint8_t *)&macaddr, &cli_conf ) < 0 ) {
                 LOGE( "Failed to update client '%s' for BSAL:%s",
                         client->mac_addr, pair->ifcfg[BSAL_BAND_5G].ifname );
                 return false;
