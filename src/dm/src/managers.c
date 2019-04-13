@@ -381,7 +381,6 @@ bool pid_file(int i, char * buff, size_t bs)
         {
             strcat(buff, basename(path));
             free(path);
-            success = true;
         }
 
         strcat(buff, ".pid");
