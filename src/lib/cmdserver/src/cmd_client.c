@@ -168,17 +168,9 @@ void cmdclient_recv(struct ev_loop *loop, struct ev_io *w, int revents)
 
 char *cmdclient_get_stdin(void)
 {
-    bool have_stdin = false;
     static char buf[65536];
     ssize_t nread;
     ssize_t total_read;
-
-    if (have_stdin)
-    {
-        return buf;
-    }
-
-    have_stdin = true;
 
     total_read = 0;
     while (total_read < (ssize_t)sizeof(buf) - 1)
