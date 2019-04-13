@@ -183,7 +183,6 @@ bool inet_dhcpc_start(inet_dhcpc_t *self)
 
             snprintf(optstr, sizeof(optstr), "%d", ii);
             daemon_arg_add(&self->dc_proc, "-O", optstr);
-            have_options = true;
         }
     }
 
