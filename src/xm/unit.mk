@@ -28,8 +28,8 @@
 #
 ###############################################################################
 UNIT_NAME    := xm
-
 UNIT_TYPE    := BIN
+UNIT_DISABLE := $(if $(CONFIG_TARGET_MANAGER_XM),n,y)
 
 UNIT_SRC     := src/xm_main.c
 UNIT_SRC     += src/xm_ovsdb.c

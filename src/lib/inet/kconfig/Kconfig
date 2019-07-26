@@ -72,10 +72,10 @@ menu "Interface Status Reporting"
 
     if INET_STATUS_POLL
         config INET_STATUS_POLL_INTERVAL_MS
-            int "Polling interval in miliseconds"
+            int "Polling interval in milliseconds"
             default 200
             help
-                The polling interval in miliseconds.
+                The polling interval in milliseconds.
     endif
     if INET_STATUS_NETLINK_POLL
         config INET_STATUS_NETLINK_DEBOUNCE_MS
@@ -359,7 +359,6 @@ menuconfig INET_DHSNIFF_ENABLED
                     This option enables PCAP "immediate" mode. Apparently this instructs
                     PCAP to deliver packets as fast as possible instead of buffering.
 
-
             config DHSNIFF_PCAP_PROMISC
                 bool "Use promiscuous mode"
                 help
@@ -368,13 +367,23 @@ menuconfig INET_DHSNIFF_ENABLED
 
                     If unsure, select 'n'.
 
+            config DHSNIFF_PCAP_BUFFER_SIZE
+                int "Set libpcap buffer size"
+                default 0
+                help
+                    By default libpcap uses a buffer size of 2MB or more. On systems
+                    with low memory you may want to set this to something reasonably small.
+                    The buffer size must be greater than the current snapshot length (plus some overhead).
+
+                    If unsure, use 0 (use libpcap default).
+
             config DHSNIFF_PCAP_SNAPLEN
                 int "Set snapshot len"
                 default 0
                 help
                     Set a custom snapshot length.
 
-                    If unsure use 0 (use defaults).
+                    If unsure, use 0 (use libpcap default - 65535).
         endif
     endif
 

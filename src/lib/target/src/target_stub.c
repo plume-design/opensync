@@ -812,7 +812,7 @@ void target_managers_restart(void)
  * NM
  *****************************************************************************/
 #ifndef IMPL_target_mac_learning_register
-bool target_mac_learning_register(void *omac_cb)
+bool target_mac_learning_register(target_mac_learning_cb_t *omac_cb)
 {
     return false;
 }

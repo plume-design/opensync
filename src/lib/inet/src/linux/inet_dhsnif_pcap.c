@@ -308,17 +308,29 @@ bool __inet_dhsnif_start(inet_dhsnif_t *self)
     }
 #endif
 
-#if CONFIG_DHSNIFF_PCAP_SNAPLEN > 0
+#if defined(CONFIG_DHSNIFF_PCAP_SNAPLEN) && (CONFIG_DHSNIFF_PCAP_SNAPLEN > 0)
     /*
      * Set the snapshot length to something sensible.
-     *
      */
     rc = pcap_set_snaplen(self->ds_pcap, CONFIG_DHSNIFF_PCAP_SNAPLEN);
     if (rc != 0)
     {
-        LOG(wARN, "inet_dhsnif: %s: Unable to set snapshot length: %d",
+        LOG(WARN, "inet_dhsnif: %s: Unable to set snapshot length: %d",
                 self->ds_ifname,
                 CONFIG_DHSNIFF_PCAP_SNAPLEN);
+    }
+#endif
+
+#if defined(CONFIG_DHSNIFF_PCAP_BUFFER_SIZE) && (CONFIG_DHSNIFF_PCAP_BUFFER_SIZE > 0)
+    /*
+     * Set the buffer size.
+     */
+    rc = pcap_set_buffer_size(self->ds_pcap, CONFIG_DHSNIFF_PCAP_BUFFER_SIZE);
+    if (rc != 0)
+    {
+        LOG(WARN, "inet_dhsnif: %s: Unable to set buffer size: %d",
+                self->ds_ifname,
+                CONFIG_DHSNIFF_PCAP_BUFFER_SIZE);
     }
 #endif
 

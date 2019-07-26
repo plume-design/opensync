@@ -24,90 +24,100 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include <ev.h>          /* libev routines */
-#include <getopt.h>      /* command line arguments */
+#include <ev.h>          // libev routines
+#include <getopt.h>      // command line arguments
 
-#include "evsched.h"     /* ev helpers */
-#include "log.h"         /* Logging routines */
-#include "json_util.h"   /* json routines */
-#include "os.h"          /* OS helpers */
-#include "ovsdb.h"       /* ovsdb helpers */
-#include "target.h"      /* target API */
-#include "hello_world.h" /* our api */
+#include "log.h"         // logging routines
+#include "json_util.h"   // json routines
+#include "os.h"          // OS helpers
+#include "ovsdb.h"       // OVSDB helpers
+#include "target.h"      // target API
+#include "hello_world.h" // module header
 
-/* Default log severlty */
-static log_severity_t  hello_world_log_severity = LOG_SEVERITY_INFO;
+/* Default log severity */
+static log_severity_t  log_severity = LOG_SEVERITY_INFO;
 
-/* Log entries from this file to contain MAIN */
+/* Log entries from this file will contain "MAIN" */
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
 /**
- * Main program.
- * The command line arguments allow bumping up the log severity
+ * Main
+ *
+ * Note: Command line arguments allow overriding the log severity
  */
 int main(int argc, char ** argv)
 {
     struct ev_loop *loop = EV_DEFAULT;
 
-    /* Parse command-line arguments */
-    if (os_get_opt(argc, argv, &hello_world_log_severity)) {
+    // Parse command-line arguments
+    if (os_get_opt(argc, argv, &log_severity))
+    {
         return -1;
     }
 
-    /* enable logging */
-    target_log_open("HELLO_WORLD", 0); /* 0: log in syslog */
+    // Initialize logging library
+    target_log_open("HELLO_WORLD", 0);  // 0 = syslog and TTY (if present)
     LOGN("HELLO_WORLD");
-    log_severity_set(hello_world_log_severity);
+    log_severity_set(log_severity);
 
-    /* Register to dynamic log severity updates */
+    // Enable runtime severity updates
     log_register_dynamic_severity(loop);
 
-    /* Install crash handlers that dump the current stack in the log file */
+    // Install crash handlers that dump the stack to the log file
     backtrace_init();
 
-    /* Allow recurrent json memory usage reports in the log file */
+    // Allow recurrent json memory usage reports in the log file
     json_memdbg_init(loop);
-    LOGI("%s: a new log entry", __func__);
-    /* Initialize EV context */
-    if (evsched_init(loop) == false) {
+
+    // Initialize target structure
+    if (!target_init(TARGET_INIT_MGR_HELLO_WORLD, loop))
+    {
         LOGE("Initializing HELLO_WORLD "
-             "(Failed to initialize EVSCHED)");
+             "(Failed to initialize target library)");
         return -1;
     }
 
-    /* Initialize target structure */
-    if (!target_init(TARGET_INIT_MGR_HELLO_WORLD, loop)) {
-        return -1;
-    }
-
-    /* Initialize connection to ovsdb */
-    if (!ovsdb_init_loop(loop, "HELLO_WORLD")) {
+    // Connect to OVSDB
+    if (!ovsdb_init_loop(loop, "HELLO_WORLD"))
+    {
         LOGE("Initializing HELLO_WORLD "
              "(Failed to initialize OVSDB)");
         return -1;
     }
 
-    /* Register to relevant ovsdb tables events */
-    if (hello_world_ovsdb_init()) {
+    // Register to relevant OVSDB tables events
+    if (hello_world_ovsdb_init())
+    {
         LOGE("Initializing HELLO_WORLD "
              "(Failed to initialize HELLO_WORLD tables)");
         return -1;
     }
 
-    /* Initialize data pipeline */
-    if (dpp_init() == false) {
-        LOGE("Error initializing dpp lib\n");
+    // Initialize Hello World demo
+    if (!hello_world_demo_init(loop))
+    {
+        LOGE("Initializing HELLO_WORLD "
+             "(Failed to initialize HELLO_WORLD demo)");
         return -1;
     }
 
-    /* Start the event loop */
+    // Initialize data pipeline
+    if (dpp_init() == false)
+    {
+        LOGE("Initializing HELLO_WORLD "
+             "(Failed to initialize DPP library)");
+        return -1;
+    }
+
+    // Start the event loop
     ev_run(loop, 0);
 
     target_close(TARGET_INIT_MGR_HELLO_WORLD, loop);
 
-    if (!ovsdb_stop_loop(loop)) {
+    if (!ovsdb_stop_loop(loop))
+    {
         LOGE("Stopping HELLO_WORLD "
-             "(Failed to stop OVSDB");
+             "(Failed to stop OVSDB)");
     }
 
     ev_loop_destroy(loop);

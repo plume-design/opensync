@@ -36,9 +36,7 @@ UNIT_TYPE := BIN
 # The platform manager should be built only for platforms using
 # client nickname and freeze features
 #
-ifeq ($(filter y,$(BUILD_CLIENT_NICKNAME) $(BUILD_CLIENT_FREEZE)),)
-    UNIT_DISABLE := y
-endif
+UNIT_DISABLE := $(if $(CONFIG_TARGET_MANAGER_PM),n,y)
 
 UNIT_SRC    := src/pm_main.c
 ifeq ($(BUILD_CLIENT_NICKNAME),y)

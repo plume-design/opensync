@@ -107,6 +107,7 @@ static ds_tree_t iface_flt_list = DS_TREE_INIT(
         struct iface_flt_node,
         iface_node);
 
+target_mac_learning_cb_t *g_mac_learning_cb_t;
 
 /*
  * ===========================================================================
@@ -765,7 +766,7 @@ static bool ovsmac_check_bridge_flt(char *bridge)
  *  MAC learning
  * ===========================================================================
  */
-bool ovs_mac_learning_register(void *omac_cb)
+bool ovs_mac_learning_register(target_mac_learning_cb_t *omac_cb)
 {
     static bool mac_learning_init = false;
 

@@ -24,24 +24,11 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#ifndef BRCTL_MAC_LEARN_H_INCLUDED
+#define BRCTL_MAC_LEARN_H_INCLUDED
 
-#include "inet_route.h"
+#include "target.h"
 
-struct inet_route
-{
-};
+bool brctl_mac_learning_register(target_mac_learning_cb_t *omac_cb);
 
-inet_route_t *inet_route_new(const char *ifname)
-{
-    return (void *)0xdeadc0de;
-}
-
-bool inet_route_notify_set(inet_route_t *self, inet_route_notify_fn_t *func, void *data)
-{
-    return true;
-}
-
-bool inet_route_del(inet_route_t *self)
-{
-    return true;
-}
+#endif

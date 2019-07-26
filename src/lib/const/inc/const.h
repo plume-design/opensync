@@ -64,6 +64,21 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /*
  * ===========================================================================
+ *  Musl does not define __GNUC_PREREQ
+ * ===========================================================================
+ */
+
+#ifndef __GNUC_PREREQ
+#if defined(__GNUC__) && defined(__GNUC_MINOR__)
+#define	__GNUC_PREREQ(__maj, __min)	\
+	(__GNUC__ > (__maj) || __GNUC__ == (__maj) && __GNUC_MINOR__ >= (__min))
+#else
+#define	__GNUC_PREREQ(__maj, __min) 0
+#endif
+#endif
+
+/*
+ * ===========================================================================
  *  Various system constants
  * ===========================================================================
  */
@@ -274,13 +289,6 @@ extern bool             _c_get_param_by_key(c_item_t *list, int list_sz, int key
 
 #define C_STATIC_ASSERT(COND,MSG) typedef char __LINE1(___STATIC_ASSERT,__LINE__)[(COND)?1:-1]
 
-#endif
-
-// Handle error: this statement may fall through [-Werror=implicit-fallthrough=]
-#if (defined(__GNUC__) && __GNUC_PREREQ(7,0))
-#define FALLTHROUGH __attribute__((fallthrough));
-#else
-#define FALLTHROUGH
 #endif
 
 #endif /* CONST_H_INCLUDED */

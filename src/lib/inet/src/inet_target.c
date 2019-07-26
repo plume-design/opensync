@@ -1116,11 +1116,12 @@ bool __if_config_dhcps_set(struct if_entry *pif, const struct schema_Wifi_Inet_C
                 case 'h':
                 case 'H':
                     lease_time *= 60;
-                    FALLTHROUGH;
+                    /* fall through */
 
                 case 'm':
                 case 'M':
                     lease_time *= 60;
+                    /* fall through */
 
                 case 's':
                 case 'S':

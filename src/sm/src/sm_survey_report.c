@@ -346,6 +346,10 @@ void sm_survery_target_validate (
                  survey_record->chan_rx,
                  survey_record->chan_tx);
         }
+
+        if (survey_record->chan_tx > survey_record->chan_busy)
+            survey_record->chan_tx = survey_record->chan_busy;
+
         survey_record->chan_rx = survey_record->chan_busy - survey_record->chan_tx;
     }
 

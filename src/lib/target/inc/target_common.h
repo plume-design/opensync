@@ -1215,7 +1215,19 @@ char *target_map_ifname(char *ifname);
 /******************************************************************************
  *  MAC LEARNING definitions
  *****************************************************************************/
-bool target_mac_learning_register(void * omac_cb);
+
+/** @brief Ethernet client change callback type */
+typedef bool target_mac_learning_cb_t(
+            struct schema_OVS_MAC_Learning *omac,
+            bool oper_status);
+
+/**
+ * @brief Subscribe to ethernet client change events.
+ *
+ * @param omac_cb a callback function
+ * @return true on success
+ */
+bool target_mac_learning_register(target_mac_learning_cb_t *omac_cb);
 
 /******************************************************************************
  *  PLATFORM SPECIFIC definitions

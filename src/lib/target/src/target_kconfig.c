@@ -141,6 +141,20 @@ target_managers_config_t target_managers_config[] =
         .always_restart = 1,
         .restart_delay = -1,
         .needs_plan_b = false,
+    },
+#endif
+
+#if defined(CONFIG_TARGET_MANAGER_XM)
+    {
+        .name =  TARGET_MANAGER_PATH("xm"),
+        .needs_plan_b = false,
+    },
+#endif
+
+#if defined(CONFIG_TARGET_MANAGER_HELLO_WORLD)
+    {
+        .name =  TARGET_MANAGER_PATH("hello_world"),
+        .needs_plan_b = false,
     }
 #endif
 };
@@ -155,14 +169,22 @@ int target_device_capabilities_get()
     int cap = 0;
 
 #if defined(CONFIG_TARGET_CAP_GATEWAY)
-    cap |= 1 << TARGET_GW_TYPE;
+    cap |= TARGET_GW_TYPE;
 #endif
 
 #if defined(CONFIG_TARGET_CAP_EXTENDER)
-    cap |= 1 << TARGET_EXTENDER_TYPE;
+    cap |= TARGET_EXTENDER_TYPE;
 #endif
 
     return cap;
+}
+#endif
+
+#if defined(CONFIG_TARGET_LAN_BRIDGE_NAME)
+const char **target_ethclient_brlist_get()
+{
+    static const char *brlist[] = { CONFIG_TARGET_LAN_BRIDGE_NAME, NULL };
+    return brlist;
 }
 #endif
 

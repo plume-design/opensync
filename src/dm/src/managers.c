@@ -377,11 +377,10 @@ bool pid_file(int i, char * buff, size_t bs)
         /* extract filename */
         path = strdup(target_managers_config[i].name);
 
-        if (NULL != path)
-        {
-            strcat(buff, basename(path));
-            free(path);
-        }
+        if (path == NULL) return false;
+
+        strcat(buff, basename(path));
+        free(path);
 
         strcat(buff, ".pid");
 

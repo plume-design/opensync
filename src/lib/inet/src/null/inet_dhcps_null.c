@@ -71,7 +71,7 @@ void inet_dhcps_error_fn(inet_dhcps_t *self, inet_dhcps_error_fn_t *fn)
     (void)fn;
 }
 
-void inet_dhcps_lease_notify(inet_dhcps_t *self, inet_dhcp_lease_fn_t *fn, inet_t *inet)
+void inet_dhcps_lease_notify_set(inet_dhcps_t *self, inet_dhcp_lease_fn_t *fn, inet_t *inet)
 {
     (void)self;
     (void)fn;
@@ -136,6 +136,17 @@ bool inet_dhcps_rip_remove(inet_dhcps_t *self, inet_macaddr_t macaddr)
 {
     (void)self;
     (void)macaddr;
+
+    return true;
+}
+
+bool inet_dhcps_rip_get(inet_dhcps_t *self, inet_macaddr_t macaddr,
+                        inet_ip4addr_t *ip4addr, char **hostname)
+{
+    (void)self;
+    (void)macaddr;
+    (void)ip4addr;
+    (void)hostname;
 
     return true;
 }

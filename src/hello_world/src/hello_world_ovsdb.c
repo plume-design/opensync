@@ -29,40 +29,92 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb_table.h"
 #include "schema.h"
 
+#include "hello_world.h"
+
 /* Log entries from this file will contain "OVSDB" */
 #define MODULE_ID LOG_MODULE_ID_OVSDB
 
 ovsdb_table_t table_Node_Config;
+ovsdb_table_t table_Node_State;
 
-void callback_Node_Config(ovsdb_update_monitor_t *mon,
-                         struct schema_Node_Config *old_rec,
-                         struct schema_Node_Config *conf) {
 
-    if (mon->mon_type == OVSDB_UPDATE_NEW) {
-        LOGD("%s: new node config entry: module %s, key: %s, value: %s",
+void callback_Node_Config(
+        ovsdb_update_monitor_t *mon,
+        struct schema_Node_Config *old_rec,
+        struct schema_Node_Config *conf)
+{
+    if (mon->mon_type == OVSDB_UPDATE_NEW)
+    {
+        LOGI("%s: new node config entry: module %s, key: %s, value: %s",
              __func__, conf->module, conf->key, conf->value);
     }
 
-    if (mon->mon_type == OVSDB_UPDATE_DEL) {
-        LOGD("%s: node config entry deleted: module %s, key: %s, value: %s",
+    if (mon->mon_type == OVSDB_UPDATE_DEL)
+    {
+        LOGI("%s: node config entry deleted: module %s, key: %s, value: %s",
              __func__, old_rec->module, old_rec->key, old_rec->value);
     }
 
-    if (mon->mon_type == OVSDB_UPDATE_MODIFY) {
-        LOGD("%s: node config entry updated: \n"
+    if (mon->mon_type == OVSDB_UPDATE_MODIFY)
+    {
+        LOGI("%s: node config entry updated: \n"
              "old module: %s, old key: %s, old value: %s \n"
              "new module: %s, new key: %s, new value: %s",
              __func__, old_rec->module, old_rec->key, old_rec->value,
              conf->module, conf->key, conf->value);
     }
+
+    // Special handling for demo
+    hello_world_demo_config(
+            mon->mon_type == OVSDB_UPDATE_DEL,
+            mon->mon_type == OVSDB_UPDATE_DEL ? old_rec->module : conf->module,
+            mon->mon_type == OVSDB_UPDATE_DEL ? old_rec->key    : conf->key,
+            mon->mon_type == OVSDB_UPDATE_DEL ? old_rec->value  : conf->value);
 }
 
-int hello_world_ovsdb_init(void) {
-    LOGI("Initializing Hello world tables");
+void hello_world_ovsdb_state(
+        bool remove,
+        const char *module,
+        const char *key,
+        const char *value)
+{
+    json_t *where;
+    json_t *cond;
+    struct schema_Node_State node_state;
+
+    where = json_array();
+
+    cond = ovsdb_tran_cond_single("module", OFUNC_EQ, (char *)module);
+    json_array_append_new(where, cond);
+
+    // Remove entry
+    if (remove)
+    {
+        ovsdb_table_delete_where(&table_Node_State, where);
+        return;
+    }
+
+    // Update or insert entry
+    MEMZERO(node_state);
+    SCHEMA_SET_STR(node_state.module, module);
+    SCHEMA_SET_STR(node_state.key, key);
+    SCHEMA_SET_STR(node_state.value, value);
+    SCHEMA_SET_INT(node_state.persist, true);
+    ovsdb_table_upsert_where(&table_Node_State, where, &node_state, false);
+
+    return;
+}
+
+int hello_world_ovsdb_init(void)
+{
+    LOGI("Initializing Hello World tables");
+
     // Initialize OVSDB tables
     OVSDB_TABLE_INIT_NO_KEY(Node_Config);
+    OVSDB_TABLE_INIT_NO_KEY(Node_State);
 
     // Initialize OVSDB monitor callbacks
     OVSDB_TABLE_MONITOR(Node_Config, false);
+
     return 0;
 }

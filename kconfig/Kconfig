@@ -15,13 +15,13 @@ if USE_KCONFIG
             bool "Use generic TARGET (kconfig based target configuration)"
 
             if PML_TARGET
-                orsource ../src/lib/target/kconfig/Kconfig
+                orsource "../src/lib/target/kconfig/Kconfig"
             endif
 
         menuconfig PML_INET
             bool "Use LIBINET (kconfig based networking support)"
             help
-                INET provides generic Linux networkign services to TARGET.
+                INET provides generic Linux networking services to TARGET.
                 On supported platforms, most of the NM2 functionality can be realized by
                 enabling INET.
 

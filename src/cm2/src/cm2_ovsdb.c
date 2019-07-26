@@ -905,7 +905,9 @@ void cm2_connection_recalculate_used_link() {
     int priority = -1;
     int index = 0;
     bool state = true;
+#ifndef CONFIG_PLUME_CM2_DISABLE_DRYRUN_ON_GRE
     bool check_master = true;
+#endif
 
     uplink_p = ovsdb_table_select_typed(&table_Connection_Manager_Uplink,
                                         SCHEMA_COLUMN(Connection_Manager_Uplink, has_L3),
@@ -929,7 +931,9 @@ void cm2_connection_recalculate_used_link() {
         uplink = (struct schema_Connection_Manager_Uplink *) (uplink_p + table_Connection_Manager_Uplink.schema_size * index);
         cm2_connection_set_is_used(uplink);
         free(uplink_p);
+#ifndef CONFIG_PLUME_CM2_DISABLE_DRYRUN_ON_GRE
         check_master = false;
+#endif
     }
 
 #ifndef CONFIG_PLUME_CM2_DISABLE_DRYRUN_ON_GRE

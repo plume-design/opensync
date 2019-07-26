@@ -2025,17 +2025,19 @@ bool dpp_get_report(uint8_t * buff, size_t sz, uint32_t * packed_sz)
     ds_dlist_iter_t iter;
     dppline_stats_t *s;
     bool ret = false;
-    size_t tmp_packed_size; /* packet size of current report */
+    size_t tmp_packed_size; /* packed size of current report */
+
+    /* prevent sending empty reports */
+    if (dpp_get_queue_elements() == 0)
+    {
+        LOG(DEBUG, "get_report: queue depth is zero");
+        return false;
+    }
 
     /* stop any further actions in case improper buffer submitted */
     if (NULL == buff || sz == 0)
     {
-        return false;
-    }
-
-    /* prevent sending empty reports */
-    if (0 == dpp_get_queue_elements())
-    {
+        LOG(DEBUG, "get_report: invalid buffer or size");
         return false;
     }
 
@@ -2105,21 +2107,27 @@ bool dpp_get_report2(uint8_t **pbuff, size_t suggest_sz, uint32_t *packed_sz)
     ds_dlist_iter_t iter;
     dppline_stats_t *s;
     bool ret = false;
-    size_t packed_size; // packet size of current report
+    size_t packed_size; // packed size of current report
     size_t unpacked_size = 0; // unpacked size of current report
     uint8_t *buff;
 
-    buff = malloc(suggest_sz);
-    if (NULL == buff || suggest_sz == 0)
+    // prevent sending empty reports
+    if (dpp_get_queue_elements() == 0)
     {
+        LOG(DEBUG, "get_report: queue depth is zero");
         return false;
     }
 
-    // prevent sending empty reports
-    if (0 == dpp_get_queue_elements())
+    // verify suggested size
+    if (suggest_sz == 0)
     {
-        LOG(DEBUG, "get_report: queue depth zero");
-        free(buff);
+        LOG(DEBUG, "get_report: suggest_sz is zero");
+        return false;
+    }
+
+    buff = malloc(suggest_sz);
+    if (NULL == buff)
+    {
         return false;
     }
 

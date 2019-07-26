@@ -31,7 +31,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *  MAC Learning
  * ===========================================================================
  */
-bool target_mac_learning_register(void *omac_cb)
+bool target_mac_learning_register(target_mac_learning_cb_t *omac_cb)
 {
     return ovs_mac_learning_register(omac_cb);
 }

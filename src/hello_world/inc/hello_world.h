@@ -24,9 +24,19 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __PLUME_HELLO_WORLD__
-#define __PLUME_HELLO_WORLD__
+#ifndef HELLO_WORLD_H_INCLUDED
+#define HELLO_WORLD_H_INCLUDED
 
 int hello_world_ovsdb_init(void);
+void hello_world_ovsdb_state(bool remove,
+                             const char *module,
+                             const char *key,
+                             const char *value);
 
-#endif // __PLUME_HELLO_WORLD__ */
+bool hello_world_demo_init(struct ev_loop *loop);
+void hello_world_demo_config(bool remove,
+                             const char *module,
+                             const char *key,
+                             const char *value);
+
+#endif /* HELLO_WORLD_H_INCLUDED */

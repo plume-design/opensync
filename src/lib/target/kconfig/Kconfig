@@ -69,6 +69,19 @@ menuconfig TARGET_MANAGER
         config TARGET_MANAGER_FSM
             bool "Flow Service Manager (FSM)"
             default n
+
+        config TARGET_MANAGER_XM
+            bool "Exchange Manager (XM)"
+            default n
+
+        config TARGET_MANAGER_HELLO_WORLD
+            bool "Hello World Manager (hello_world)"
+            default n
+
+        config TARGET_MANAGER_PM
+            bool "Platform Manager (PM)"
+            default n
+
     endif
 
 menu "Capabilities"
@@ -167,6 +180,12 @@ if TARGET_ETH_LIST
         string "Ifname[3]"
         depends on TARGET_ETH3_LIST
 endif
+
+config TARGET_LAN_BRIDGE_NAME
+    string "LAN bridge name"
+    default "br-home"
+    help
+        LAN bridge name that will be used
 
 menu "LED Config"
 

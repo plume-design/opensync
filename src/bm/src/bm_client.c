@@ -1023,7 +1023,7 @@ bm_client_from_ovsdb(struct schema_Band_Steering_Clients *bscli, bm_client_t *cl
         client->sticky_kick_type            = (bm_client_kick_t)item->key;
     }
 
-    if (!bscli->pref_5g) {
+    if (!bscli->pref_5g_exists) {
         client->pref_5g = BM_CLIENT_5G_NEVER;
     } else {
         item = c_get_item_by_str(map_ovsdb_pref_5g, bscli->pref_5g);
@@ -1669,6 +1669,17 @@ bm_client_connected(bm_client_t *client, bsal_t bsal, bsal_band_t band, bsal_eve
         return;
     }
 
+    if (client->state == BM_CLIENT_STATE_CONNECTED) {
+        if (event && client->band != band) {
+            bm_stats_add_event_to_report( client, event, CONNECT, false );
+        }
+    } else {
+        bm_client_set_state(client, BM_CLIENT_STATE_CONNECTED);
+        if (event) {
+            bm_stats_add_event_to_report( client, event, CONNECT, false );
+        }
+    }
+
     client->band = band;
     client->connected = true;
 
@@ -1677,13 +1688,6 @@ bm_client_connected(bm_client_t *client, bsal_t bsal, bsal_band_t band, bsal_eve
 
     times = &client->times;
     times->last_connect = now;
-
-    if( client->state != BM_CLIENT_STATE_CONNECTED ) {
-        bm_client_set_state(client, BM_CLIENT_STATE_CONNECTED);
-        if (event) {
-            bm_stats_add_event_to_report( client, event, CONNECT, false );
-        }
-    }
 
     bm_client_print_client_caps( client );
 

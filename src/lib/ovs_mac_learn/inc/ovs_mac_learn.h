@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "const.h"
 #include "schema.h"
 #include "ovsdb_update.h"
+#include "target.h"
 
 /*
  * Per-interface MAC addresses cache. The key for this structure is the combination of
@@ -86,9 +87,6 @@ struct iface_flt_node
     ds_tree_node_t              iface_node;
 };
 
-typedef bool mac_learning_cb_t(struct schema_OVS_MAC_Learning *, bool);
-mac_learning_cb_t *          g_mac_learning_cb_t;
-
-extern bool ovs_mac_learning_register(void *omac_cb);
+bool ovs_mac_learning_register(target_mac_learning_cb_t *omac_cb);
 
 #endif

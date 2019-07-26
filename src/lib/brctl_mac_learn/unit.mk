@@ -22,35 +22,32 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-##############################################################################
+###############################################################################
 #
-# Hello World service
+# MAC Learning library - BRCTL implementaion
 #
-##############################################################################
-UNIT_NAME := hello_world
-
-UNIT_DISABLE := $(if $(CONFIG_TARGET_MANAGER_HELLO_WORLD),n,y)
+###############################################################################
+UNIT_NAME := brctl_mac_learn
 
 # Template type:
-UNIT_TYPE := BIN
+UNIT_TYPE := LIB
 
-UNIT_SRC := src/hello_world_main.c
-UNIT_SRC += src/hello_world_ovsdb.c
-UNIT_SRC += src/hello_world_demo.c
+UNIT_SRC := src/brctl_mac_learn.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
-UNIT_CFLAGS += -I$(TOP_DIR)/src/lib/common/inc/
+UNIT_CFLAGS += -I$(UNIT_BUILD)
 
-UNIT_LDFLAGS := -lev
+UNIT_LDFLAGS := -ldl -lpthread
 
+UNIT_EXPORT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
 UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 
-UNIT_DEPS += src/lib/common
-UNIT_DEPS += src/lib/ovsdb
-UNIT_DEPS += src/lib/pjs
-UNIT_DEPS += src/lib/schema
+UNIT_DEPS := src/lib/common
+UNIT_DEPS += src/lib/ds
 UNIT_DEPS += src/lib/version
-UNIT_DEPS += src/lib/datapipeline
-UNIT_DEPS += src/lib/json_util
+UNIT_DEPS += src/lib/const
 UNIT_DEPS += src/lib/schema
+
+UNIT_DEPS_CFLAGS += src/lib/ovsdb
+UNIT_DEPS_CFLAGS += src/lib/target
