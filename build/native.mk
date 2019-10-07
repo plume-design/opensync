@@ -35,26 +35,43 @@ endif
 
 SDK_ROOTFS     = $(OBJDIR)/rootfs
 
-CC             = gcc
-CXX            = g++
-AR             = ar
-STRIP          = strip -g
+CC             ?= gcc
+CXX            ?= g++
+AR             ?= ar
+STRIP          ?= strip -g
 
 
 # Includes
 CFLAGS += -I/usr/include/protobuf-c
 # Flags
-CFLAGS += -O3 -pipe
-CFLAGS += -rdynamic
-CFLAGS += -fno-caller-saves
 CFLAGS += -fno-strict-aliasing
 CFLAGS += -fasynchronous-unwind-tables
-CFLAGS += -Wno-error=unused-but-set-variable
+CFLAGS += -Wno-error=deprecated-declarations
 CFLAGS += -Wno-error=cpp
+CFLAGS += -fPIC
+
+# GCC specific flags
+ifneq (,$(findstring gcc,$(CC)))
+	CFLAGS += -O3 -pipe
+	CFLAGS += -Wno-error=unused-but-set-variable
+	CFLAGS += -fno-caller-saves
+endif
+
+# clang specific flags. Enable address sanitizer.
+ifneq (,$(findstring clang,$(CC)))
+	CFLAGS += -O0 -pipe
+	CFLAGS += -fno-omit-frame-pointer
+	CFLAGS += -fno-optimize-sibling-calls
+	CFLAGS += -fsanitize=address
+endif
 
 # Defines
 CFLAGS += -D_U_="__attribute__((unused))"
 CFLAGS += -DARCH_X86
+
+ifneq (,$(findstring clang,$(CC)))
+	LDFLAGS += -fsanitize=address
+endif
 
 LDFLAGS += -lssl -lcrypto
 

@@ -47,9 +47,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #define C_HOSTNAME_LEN  64                                  /**< Maximum hostname name (without FQDN) */
 #define C_FQDN_LEN      256                                 /**< Fully qualified hostname maximum length */
-#define C_IFNAME_LEN    32                                  /**< Interface name size, including trailing \0 */
+#define C_IFNAME_LEN    65                                  /**< Interface name size, including trailing \0 */
 #define C_MACADDR_LEN   sizeof("11:22:33:44:55:66")         /**< Maximum length of a MAC address represented as string */
-#define C_IP4ADDR_LEN   sizeof("255.255.255.255")          /**< Maximum length of an IP address represented as string */
+#define C_IP4ADDR_LEN   sizeof("255.255.255.255")           /**< Maximum length of an IP address represented as string */
+#define C_IPV6ADDR_LEN \
+        sizeof("1111:2222:3333:4444:5555:6666:7777:8888/XX")/**< Maximum lenfg of an IPv6 address */
 #define C_MAXPATH_LEN   256                                 /**< Shorter than MAXPATH, but sufficient to access any path on the device */
 #define C_WPA_PSK_LEN   64                                  /**< WPA* PSK maximum length */
 #define C_INT8_LEN      sizeof("-255")                      /**< Space needed to represent a  8-bit integer */

@@ -3120,7 +3120,7 @@ const ProtobufCMessageDescriptor sts__device__descriptor =
   (ProtobufCMessageInit) sts__device__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
-static const ProtobufCFieldDescriptor sts__bsclient__bsevent__field_descriptors[29] =
+static const ProtobufCFieldDescriptor sts__bsclient__bsevent__field_descriptors[30] =
 {
   {
     "type",
@@ -3470,10 +3470,23 @@ static const ProtobufCFieldDescriptor sts__bsclient__bsevent__field_descriptors[
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
+  {
+    "backoff_period",
+    30,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_UINT32,
+    offsetof(Sts__BSClient__BSEvent, has_backoff_period),
+    offsetof(Sts__BSClient__BSEvent, backoff_period),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
 };
 static const unsigned sts__bsclient__bsevent__field_indices_by_name[] = {
   9,   /* field[9] = active */
   8,   /* field[8] = backoff_enabled */
+  29,   /* field[29] = backoff_period */
   20,   /* field[20] = band_cap_2G */
   21,   /* field[21] = band_cap_5G */
   7,   /* field[7] = disconnect_reason */
@@ -3505,7 +3518,7 @@ static const unsigned sts__bsclient__bsevent__field_indices_by_name[] = {
 static const ProtobufCIntRange sts__bsclient__bsevent__number_ranges[1 + 1] =
 {
   { 1, 0 },
-  { 0, 29 }
+  { 0, 30 }
 };
 const ProtobufCMessageDescriptor sts__bsclient__bsevent__descriptor =
 {
@@ -3515,7 +3528,7 @@ const ProtobufCMessageDescriptor sts__bsclient__bsevent__descriptor =
   "Sts__BSClient__BSEvent",
   "sts",
   sizeof(Sts__BSClient__BSEvent),
-  29,
+  30,
   sts__bsclient__bsevent__field_descriptors,
   sts__bsclient__bsevent__field_indices_by_name,
   1,  sts__bsclient__bsevent__number_ranges,

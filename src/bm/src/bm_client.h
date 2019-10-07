@@ -52,7 +52,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define BTM_DEFAULT_PREF                    1   // Yes
 #define BTM_DEFAULT_DISASSOC_IMMINENT       1   // Yes
 #define BTM_DEFAULT_BSS_TERM                0   // Disabled
-#define BTM_DEFAULT_NEIGH_BSS_INFO          19  // AP Available + Security
+#define BTM_DEFAULT_NEIGH_BSS_INFO          0x8f  // Reachable, secure, key scope
 
 #define BM_CLIENT_MAX_TM_NEIGHBORS          3
 
@@ -60,6 +60,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define BTM_DEFAULT_RETRY_INTERVAL          10  // In seconds
 
 #define RRM_BCN_RPT_DEFAULT_SCAN_INTERVAL   1   // In seconds
+
+#define BM_CLIENT_DEFAULT_BACKOFF_EXP_BASE 2  // In seconds
+
+#define BM_CLIENT_DEFAULT_STEER_DURING_BACKOFF false
 
 /*****************************************************************************/
 
@@ -233,10 +237,19 @@ typedef struct {
     uint8_t                     hwm;
     uint8_t                     lwm;
 
+    uint8_t                     xing_snr;
+
     int                         max_rejects;
     int                         max_rejects_period;
 
     int                         backoff_period;
+    int                         backoff_exp_base;
+    bool                        steer_during_backoff;
+    int                         backoff_period_used;
+    int                         backoff_connect_counter;
+    bool                        backoff_connect_calculated;
+    bool                        backoff;
+
     uint16_t                    kick_debounce_period;
     uint16_t                    sc_kick_debounce_period;
     uint16_t                    sticky_kick_debounce_period;
@@ -295,6 +308,7 @@ typedef struct {
     evsched_task_t              rssi_xing_task;
     evsched_task_t              state_task;
     evsched_task_t              btm_retry_task;
+    bool                        cancel_btm;
 
     char                        uuid[OVSDB_UUID_LEN];
 

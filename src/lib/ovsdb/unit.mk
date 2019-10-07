@@ -39,6 +39,7 @@ UNIT_SRC += src/ovsdb_sync.c
 UNIT_SRC += src/ovsdb_sync_api.c
 UNIT_SRC += src/ovsdb_table.c
 UNIT_SRC += src/ovsdb_cache.c
+UNIT_SRC += src/ovsdb_utils.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)

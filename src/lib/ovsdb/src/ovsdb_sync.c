@@ -261,7 +261,7 @@ error:
  *  and message is contained within the JSON message.
  */
 json_t *ovsdb_tran_call_s(
-        char * table,
+        const char * table,
         ovsdb_tro_t oper,
         json_t * where,
         json_t * row)
@@ -298,11 +298,11 @@ bool ovsdb_insert_with_parent_s(char * table,
  * then uses ovsdb_method_send_s() to send a * transaction
  * created with ovsdb_tran_delete_with_parent()
  */
-json_t* ovsdb_delete_with_parent_res_s(char * table,
+json_t* ovsdb_delete_with_parent_res_s(const char * table,
                                 json_t *where,
-                                char * parent_table,
+                                const char * parent_table,
                                 json_t * parent_where,
-                                char * parent_column)
+                                const char * parent_column)
 {
     json_t *result;
     json_t *uuids;

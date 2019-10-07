@@ -44,8 +44,8 @@ struct __inet_gretap
     };
 
     char            in_ifparent[C_IFNAME_LEN];      /* Parent interface */
-    inet_ip4addr_t  in_local_addr;                  /* Local IPv4 address */
-    inet_ip4addr_t  in_remote_addr;                 /* Remote IPv4 address */
+    osn_ip_addr_t   in_local_addr;                  /* Local IPv4 address */
+    osn_ip_addr_t   in_remote_addr;                 /* Remote IPv4 address */
 
 };
 
@@ -55,9 +55,9 @@ extern bool inet_gretap_init(inet_gretap_t *self, const char *ifname);
 extern bool inet_gretap_ip4tunnel_set(
         inet_t *super,
         const char *parent,
-        inet_ip4addr_t laddr,
-        inet_ip4addr_t raddr,
-        inet_macaddr_t rmac);
+        osn_ip_addr_t laddr,
+        osn_ip_addr_t raddr,
+        osn_mac_addr_t rmac);
 
 extern bool inet_gretap_service_commit(inet_base_t *super, enum inet_base_services srv, bool enable);
 

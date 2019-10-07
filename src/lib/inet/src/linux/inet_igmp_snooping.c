@@ -176,7 +176,12 @@ inet_igmp_t *inet_igmp_new(const char *ifname)
  */
 bool inet_igmp_del(inet_igmp_t *self)
 {
-    bool retval = inet_igmp_stop(self);
+    bool retval = true;
+
+    if (self->igmp)
+    {
+        retval = inet_igmp_stop(self);
+    }
 
     free(self);
 

@@ -29,6 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <stddef.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 #include "ds.h"
 
@@ -45,7 +46,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #define DS_LIST_INIT(type, elem)        \
 {                                       \
-    .ol_cof     = OFFSET_OF(type, elem),\
+    .ol_cof     = offsetof(type, elem), \
     .ol_root    = { .oln_next = NULL }, \
     .ol_tail    = NULL,                 \
     .ol_ndel    = 0,                    \
@@ -54,7 +55,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /*
  * Dynamic initializer, used to initialize a list run-time.
  */
-#define ds_list_init(list, type, elem)  __ds_list_init(list, OFFSET_OF(type, elem))
+#define ds_list_init(list, type, elem)  __ds_list_init(list, offsetof(type, elem))
 
 /*
  * The ever popular foreach statement

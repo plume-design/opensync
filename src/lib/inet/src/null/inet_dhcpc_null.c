@@ -111,3 +111,11 @@ bool inet_dhcpc_state_get(inet_dhcpc_t *self, bool *enabled)
     return true;
 }
 
+bool inet_dhcpc_opt_notify_set(inet_dhcpc_t *self, inet_dhcpc_option_notify_fn_t *fn, void *ctx)
+{
+    (void)self;
+    (void)fn;
+    (void)ctx;
+
+    return true;
+}

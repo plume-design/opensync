@@ -24,7 +24,7 @@
 
 ###############################################################################
 #
-# Cloud manager
+# Connection manager
 #
 ###############################################################################
 UNIT_NAME := cm
@@ -51,6 +51,13 @@ UNIT_LDFLAGS += -ljansson
 UNIT_LDFLAGS += -ldl
 UNIT_LDFLAGS += -lev
 UNIT_LDFLAGS += -lrt
+
+ifneq ($(CONFIG_USE_KCONFIG),y)
+# Disable dryrun on GRE by default for all platforms without KConfig
+UNIT_CFLAGS += -DCONFIG_PLUME_CM2_DISABLE_DRYRUN_ON_GRE
+# Set default mtu on gre interface
+UNIT_CFLAGS += -DCONFIG_OPENSYNC_CM2_MTU_ON_GRE=1500
+endif
 
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
 UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)

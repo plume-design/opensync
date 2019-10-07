@@ -22,17 +22,33 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+DOC_SHORTVER    := $(shell cat .version | cut -d. -f-2)
+PROJECT_NAME    := "OpenSync $(DOC_SHORTVER) Southbound API"
+DOC_OUTPUT_NAME := "OpenSync_$(DOC_SHORTVER)_Southbound_API.pdf"
+
 .PHONY: doc
 doc:
+	$(NQ) "PROJECT_NAME=\"$(PROJECT_NAME)\""
 	$(NQ) " $(call color_generate,doc) $(call color_target,[HTML])"
-	$(Q)SHORTVER=`cat .version | cut -d. -f-2`; \
-		PROJECT_NAME="OpenSync target library $$SHORTVER"; \
-		echo PROJECT_NAME="$$PROJECT_NAME"; \
-		cd doc; \
+	$(Q)cd doc; \
 		(cat doxygen.conf; \
-		echo "PROJECT_NAME=\"$$PROJECT_NAME\"") \
+		echo "PROJECT_NAME=\"$(PROJECT_NAME)\"") \
 		| doxygen - > doxygen.log 2>&1
 	$(Q)echo -n "  "; ls -l doc/html/index.html
 	$(NQ) " $(call color_generate,doc) $(call color_target,[PDF])"
 	$(Q)-cd doc/latex; make > ../latex.log 2>&1
-	$(Q)echo -n "  "; ls -l doc/latex/*.pdf
+	$(Q)echo -n "  "; ls -l doc/latex/*.pdf \
+		|| ( set -x; cat doc/latex.log; cat doc/latex/*.log | grep '^!' )
+	$(NQ) " $(call color_generate,doc) $(call color_target,[copy]) $(DOC_OUTPUT_NAME)"
+	$(Q)cp -v doc/latex/refman.pdf doc/$(DOC_OUTPUT_NAME)
+
+.PHONY: doc-clean
+doc-clean:
+	$(NQ) " $(call color_clean,doc-clean) $(call color_target,[doc]) doc/html"
+	$(Q)rm -rf doc/html
+	$(NQ) " $(call color_clean,doc-clean) $(call color_target,[doc]) doc/doxygen.log"
+	$(Q)rm -f doc/doxygen.log
+	$(NQ) " $(call color_clean,doc-clean) $(call color_target,[doc]) doc/latex"
+	$(Q)rm -rf doc/latex
+	$(NQ) " $(call color_clean,doc-clean) $(call color_target,[doc]) doc/latex.log"
+	$(Q)rm -f doc/latex.log

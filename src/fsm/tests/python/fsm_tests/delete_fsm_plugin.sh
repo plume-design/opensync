@@ -24,7 +24,7 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-/usr/plume/tools/ovsh d Flow_Service_Manager_Config -w handler==dev_foo
-/usr/plume/tools/ovsh d Openflow_Tag -w name==dev_tag_foo
-/usr/plume/tools/ovsh d Openflow_Config -w token==dev_flow_foo
-/usr/bin/ovs-vsctl del-port br-home br-home.foo
+/usr/plume/tools/ovsh d Flow_Service_Manager_Config -w handler==dev_demo
+/usr/plume/tools/ovsh d Openflow_Tag -w name==dev_tag_demo
+/usr/plume/tools/ovsh d Openflow_Config -w token==dev_flow_demo
+/usr/bin/ovs-vsctl del-port br-home br-home.demo

@@ -50,6 +50,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "json_util.h"
 #include "target.h"
 #include "fsm.h"
+#include "nf_utils.h"
 
 /******************************************************************************/
 
@@ -64,32 +65,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 static log_severity_t  fsm_log_severity = LOG_SEVERITY_INFO;
 
-static struct fsm_mgr fsm_mgr;
-
-static int fsm_sessions_cmp(void *a, void *b) {
-    return strcmp(a, b);
-}
-
-static void fsm_init_mgr(struct ev_loop *loop) {
-    struct fsm_mgr *mgr = fsm_get_mgr();
-    memset(mgr, 0, sizeof(*mgr));
-    mgr->loop = loop;
-    snprintf(mgr->pid, sizeof(mgr->pid), "%d", (int)getpid());
-    ds_tree_init(&mgr->fsm_sessions, fsm_sessions_cmp,
-                 struct fsm_session, fsm_node);
-}
 
 /******************************************************************************
  *  PUBLIC API definitions
  *****************************************************************************/
 
-struct fsm_mgr *fsm_get_mgr(void) {
-        return &fsm_mgr;
-}
-
-ds_tree_t *fsm_get_sessions(void) {
-        return &fsm_mgr.fsm_sessions;
-}
 
 int main(int argc, char ** argv)
 {
@@ -142,7 +122,12 @@ int main(int argc, char ** argv)
         LOGE("Error initializing dpp lib\n");
         return -1;
     }
-
+    
+    if (nf_ct_init(loop) < 0)
+    {
+        LOGE("Eror initializing conntrack\n");
+        return -1;
+    }
     ev_run(loop, 0);
 
     target_close(TARGET_INIT_MGR_FSM, loop);

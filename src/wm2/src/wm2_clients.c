@@ -36,10 +36,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <signal.h>
 #include <inttypes.h>
 #include <jansson.h>
+#include <ctype.h>
 
 #include "json_util.h"
 #include "ds_list.h"
-#include "evsched.h"
 #include "schema.h"
 #include "log.h"
 #include "wm2.h"
@@ -130,12 +130,15 @@ wm2_clients_oftag_set(const char *mac,
                          json_string(mac));
     if (!row) {
         LOGW("%s: failed to allocate ovsdb mutation, oom?", mac);
+        json_decref(where);
         return -1;
     }
 
     rows = json_array();
     if (!rows) {
         LOGW("%s: failed to allocate ovsdb mutation list, oom?", mac);
+        json_decref(where);
+        json_decref(row);
         return -1;
     }
 
@@ -158,22 +161,21 @@ wm2_clients_oftag_set(const char *mac,
 }
 
 static int
-wm2_clients_oftag_unset(const char *mac)
+wm2_clients_oftag_unset(const char *mac,
+                        const char *oftag)
 {
     json_t *result;
     json_t *where;
     json_t *rows;
     json_t *row;
-    char col[32];
-    char val[32];
     int cnt;
 
     LOGD("%s: removing oftag", mac);
 
-    snprintf(col, sizeof(col), "device_value");
-    tsnprintf(val, sizeof(val), "%s", mac);
-
-    where = ovsdb_tran_cond(OCLM_STR, col, OFUNC_INC, val);
+    where = ovsdb_tran_cond(OCLM_STR,
+                            SCHEMA_COLUMN(Openflow_Tag, name),
+                            OFUNC_EQ,
+                            oftag);
     if (!where) {
         LOGW("%s: failed to allocate ovsdb condition, oom?", mac);
         return -1;
@@ -184,12 +186,15 @@ wm2_clients_oftag_unset(const char *mac)
                          json_string(mac));
     if (!row) {
         LOGW("%s: failed to allocate ovsdb mutation, oom?", mac);
+        json_decref(where);
         return -1;
     }
 
     rows = json_array();
     if (!rows) {
         LOGW("%s: failed to allocate ovsdb mutation list, oom?", mac);
+        json_decref(where);
+        json_decref(row);
         return -1;
     }
 
@@ -211,15 +216,124 @@ wm2_clients_oftag_unset(const char *mac)
     return cnt;
 }
 
+static void
+wm2_clients_isolate(const char *ifname, const char *sta, bool connected)
+{
+    struct schema_Wifi_VIF_Config vconf;
+    const char *p;
+    char sta_ifname[16];
+    char path[256];
+    char cmd[1024];
+    int err;
+    bool ok;
+
+    snprintf(path, sizeof(path), "/.devmode.softwds.%s", ifname);
+    if (access(path, R_OK))
+        return;
+
+    snprintf(path, sizeof(path), "/sys/module/softwds");
+    if (access(path, R_OK)) {
+        LOGW("%s: %s: isolate: softwds is missing", ifname, sta);
+        return;
+    }
+
+    memset(sta_ifname, 0, sizeof(sta_ifname));
+    strcpy(sta_ifname, "sta");
+    for (p = sta; *p && strlen(sta_ifname) < sizeof(sta_ifname); p++)
+        if (*p != ':')
+            sta_ifname[strlen(sta_ifname)] = tolower(*p);
+
+    if (strlen(sta_ifname) != (3 + 12)) {
+        LOGW("%s: %s: isolate: failed to derive interface name: '%s'",
+             ifname, sta, sta_ifname);
+        return;
+    }
+
+    if (connected) {
+        ok = ovsdb_table_select_one(&table_Wifi_VIF_Config,
+                                    SCHEMA_COLUMN(Wifi_VIF_Config, if_name),
+                                    ifname,
+                                    &vconf);
+        if (!ok) {
+            LOGW("%s: %s: isolate: failed to get vconf", ifname, sta);
+            return;
+        }
+
+        if (!vconf.bridge_exists || !strlen(vconf.bridge)) {
+            LOGW("%s: %s: isolate: no bridge", ifname, sta);
+            return;
+        }
+
+        snprintf(cmd, sizeof(cmd), "ovs-vsctl del-port %s ;"
+                                   "ip link add link %s name %s type softwds &&"
+                                   "echo %s > /sys/class/net/%s/softwds/addr &&"
+                                   "echo N > /sys/class/net/%s/softwds/wrap &&"
+                                   "ovs-vsctl add-port %s %s &&"
+                                   "ip link set %s up",
+                                   ifname,
+                                   ifname, sta_ifname,
+                                   sta, sta_ifname,
+                                   sta_ifname,
+                                   vconf.bridge, sta_ifname,
+                                   sta_ifname);
+        err = system(cmd);
+        LOGI("%s: %s: isolating into '%s': %d (errno: %d)", ifname, sta, sta_ifname, err, errno);
+    } else {
+        snprintf(cmd, sizeof(cmd), "ovs-vsctl del-port %s ;"
+                                   "ip link del %s",
+                                   sta_ifname,
+                                   sta_ifname);
+        err = system(cmd);
+        LOGI("%s: %s: cleaning up isolation of '%s': %d (errno: %d)", ifname, sta, sta_ifname, err, errno);
+    }
+}
+
+static int
+wm2_clients_get_refcount(const char *uuid)
+{
+    const char *column;
+    json_t *where;
+    int count;
+
+    column = SCHEMA_COLUMN(Wifi_VIF_State, associated_clients),
+    where = ovsdb_tran_cond(OCLM_UUID, column, OFUNC_INC, uuid);
+    free(ovsdb_table_select_where(&table_Wifi_VIF_State, where, &count));
+
+    return count;
+}
+
+static void
+wm2_clients_war_esw_2684_noc_163_plat_878(const char *addr, const char *key_id)
+{
+    const char *table = SCHEMA_TABLE(Wifi_Associated_Clients);
+    const char *state = SCHEMA_COLUMN(Wifi_Associated_Clients, state);
+    const char *mac = SCHEMA_COLUMN(Wifi_Associated_Clients, mac);
+    json_t *row;
+
+    LOGI("%s: applying workaround %s", addr, __func__);
+
+    row = json_object();
+    json_object_set_new(row, state, json_string("idle"));
+    WARN_ON(ovsdb_sync_update(table, mac, addr, row) != 1);
+
+    row = json_object();
+    json_object_set_new(row, state, json_string("active"));
+    WARN_ON(ovsdb_sync_update(table, mac, addr, row) != 1);
+}
+
 bool
 wm2_clients_update(struct schema_Wifi_Associated_Clients *schema, char *ifname, bool status)
 {
-    json_t                                 *where;
-    json_t                                 *pwhere;
-    json_t                                 *row;
-    bool                                    ret;
-    char                                    oftag[32];
-    int                                     err;
+    struct schema_Wifi_Associated_Clients client;
+    const char *column;
+    const char *table;
+    ovs_uuid_t uuid;
+    json_t *where;
+    json_t *row;
+    char oftag[32];
+    bool ok;
+    int err;
+    int n;
 
     oftag[0] = 0;
 
@@ -236,53 +350,106 @@ wm2_clients_update(struct schema_Wifi_Associated_Clients *schema, char *ifname, 
              schema->mac, schema->key_id, oftag);
     }
 
-    LOGN("Client '%s' %s %s (keyid '%s')",
-          schema->mac,
-          status ? "connected on" : "disconnected",
-          ifname,
-          schema->key_id);
+    LOGD("%s: update called with keyid='%s' oftag='%s' status=%d",
+         schema->mac, schema->key_id, oftag, status);
 
-    pwhere = ovsdb_tran_cond(OCLM_STR, "if_name", OFUNC_EQ,
-            ifname);
+    memset(&client, 0, sizeof(client));
+    ovsdb_table_select_one(&table_Wifi_Associated_Clients,
+                           SCHEMA_COLUMN(Wifi_Associated_Clients, mac),
+                           schema->mac,
+                           &client);
+
     if (status) {
-        // Insert client
+        table = SCHEMA_TABLE(Wifi_Associated_Clients);
+        column = SCHEMA_COLUMN(Wifi_Associated_Clients, mac);
+        where = ovsdb_where_simple(column, schema->mac);
         row = json_object();
         json_object_set_new(row, "mac", json_string(schema->mac));
         json_object_set_new(row, "key_id", json_string(schema->key_id));
         json_object_set_new(row, "state", json_string(schema->state));
+        if (strlen(oftag) > 0)
+            json_object_set_new(row, "oftag", json_string(oftag));
 
-        where = ovsdb_where_simple("mac", schema->mac);
+        json_incref(row);
+        n = ovsdb_sync_update_one_get_uuid(table, where, row, &uuid);
+        if (WARN_ON(n < 0)) {
+            json_decref(row);
+            return false;
+        }
+        else if (n == 0) {
+            LOGN("Client '%s' connected on '%s' with key '%s'",
+                 schema->mac, ifname, schema->key_id);
 
-        ret = ovsdb_sync_upsert_with_parent(OVSDB_CLIENTS_TABLE,
-                where,
-                row,
-                NULL,
-                OVSDB_CLIENTS_PARENT,
-                pwhere,
-                OVSDB_CLIENTS_PARENT_COL);
-        if (!ret) {
-            LOGE("Updating client %s (Failed to insert entry)",
-                schema->mac);
+            ok = ovsdb_sync_insert(table, row, &uuid);
+            if (WARN_ON(!ok))
+                return false;
+        }
+        else {
+            json_decref(row);
         }
 
-        wm2_clients_oftag_set(schema->mac, oftag);
-    }
-    else  {
-        // Remove client
-        ret = ovsdb_delete_with_parent_s(OVSDB_CLIENTS_TABLE,
-                ovsdb_tran_cond(OCLM_STR,
-                    "mac",
-                    OFUNC_EQ,
-                    (char *)schema->mac),
-                OVSDB_CLIENTS_PARENT,
-                pwhere,
-                OVSDB_CLIENTS_PARENT_COL);
-        if (!ret) {
-            LOGE("Updating client %s (Failed to remove entry)",
-                schema->mac);
+        table = SCHEMA_TABLE(Wifi_VIF_State);
+        column = SCHEMA_COLUMN(Wifi_VIF_State, if_name);
+        where = ovsdb_where_simple(column, ifname);
+        column = SCHEMA_COLUMN(Wifi_VIF_State, associated_clients);
+        json_incref(where);
+
+        ovsdb_sync_mutate_uuid_set(table, where, column, OTR_DELETE, uuid.uuid);
+        ovsdb_sync_mutate_uuid_set(table, where, column, OTR_INSERT, uuid.uuid);
+        n = wm2_clients_get_refcount(uuid.uuid);
+
+        WARN_ON(n > 1 && !client.mac_exists);
+
+        if (n == 1 &&
+            client.mac_exists &&
+            strcmp(client.key_id, schema->key_id)) {
+            LOGN("Client '%s' re-connected on '%s' with key '%s'",
+                 schema->mac, ifname, schema->key_id);
         }
 
-        wm2_clients_oftag_unset(schema->mac);
+        if (n > 1) {
+            LOGN("Client '%s' roamed to '%s' with key '%s'",
+                 schema->mac, ifname, schema->key_id);
+        }
+
+        if (strlen(client.oftag) > 0)
+            wm2_clients_oftag_unset(schema->mac, client.oftag);
+        if (strlen(oftag) > 0)
+            wm2_clients_oftag_set(schema->mac, oftag);
+        wm2_clients_isolate(ifname, schema->mac, true);
+        wm2_clients_war_esw_2684_noc_163_plat_878(schema->mac, schema->key_id);
+    } else {
+        if (!client.mac_exists) {
+            LOGD("Client '%s' cannot be removed from '%s' because it does not exist",
+                 schema->mac, ifname);
+            return true;
+        }
+
+        table = SCHEMA_TABLE(Wifi_VIF_State);
+        column = SCHEMA_COLUMN(Wifi_VIF_State, if_name);
+        where = ovsdb_where_simple(column, ifname);
+        column = SCHEMA_COLUMN(Wifi_VIF_State, associated_clients);
+        ovsdb_sync_mutate_uuid_set(table, where, column, OTR_DELETE, client._uuid.uuid);
+
+        n = wm2_clients_get_refcount(client._uuid.uuid);
+        if (n == 0) {
+            LOGN("Client '%s' disconnected from '%s' with key '%s'",
+                 schema->mac, ifname, schema->key_id);
+
+            table = SCHEMA_TABLE(Wifi_Associated_Clients);
+            column = SCHEMA_COLUMN(Wifi_Associated_Clients, mac);
+            where = ovsdb_where_simple(column, schema->mac);
+            n = ovsdb_sync_delete_where(table, where);
+            WARN_ON(n != 1);
+
+            if (strlen(client.oftag) > 0)
+                wm2_clients_oftag_unset(schema->mac, client.oftag);
+        } else {
+            LOGN("Client '%s' removed from '%s' with key '%s'",
+                 schema->mac, ifname, schema->key_id);
+        }
+
+        wm2_clients_isolate(ifname, schema->mac, false);
     }
 
     return true;

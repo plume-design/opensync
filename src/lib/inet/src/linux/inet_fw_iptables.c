@@ -62,6 +62,11 @@ struct fw_portfw_entry
     ds_tree_node_t              pf_node;            /* Tree node */
 };
 
+#define FW_PORTFW_ENTRY_INIT (struct fw_portfw_entry)   \
+{                                                       \
+    .pf_data = INET_PORTFORWARD_INIT,                   \
+}
+
 /**
  * fw_rule_*() macros -- pass a dummy argv[0] value ("false") -- it will
  * be overwritten with the real path to iptables in the __fw_rule*() function.
@@ -214,10 +219,10 @@ bool inet_fw_portforward_set(inet_fw_t *self, const struct inet_portforward *pf)
 {
     struct fw_portfw_entry *pe;
 
-    LOG(INFO, "fw: %s: PORT FORWARD SET: %d -> "PRI(inet_ip4addr_t)":%d",
+    LOG(INFO, "fw: %s: PORT FORWARD SET: %d -> "PRI_osn_ip_addr":%d",
             self->fw_ifname,
             pf->pf_src_port,
-            FMT(inet_ip4addr_t, pf->pf_dst_ipaddr),
+            FMT_osn_ip_addr(pf->pf_dst_ipaddr),
             pf->pf_dst_port);
 
     pe = ds_tree_find(&self->fw_portfw_list, (void *)pf);
@@ -248,19 +253,19 @@ bool inet_fw_portforward_del(inet_fw_t *self, const struct inet_portforward *pf)
 {
     struct fw_portfw_entry *pe = NULL;
 
-    LOG(INFO, "fw: %s: PORT FORWARD DEL: %d -> "PRI(inet_ip4addr_t)":%d",
+    LOG(INFO, "fw: %s: PORT FORWARD DEL: %d -> "PRI_osn_ip_addr":%d",
             self->fw_ifname,
             pf->pf_src_port,
-            FMT(inet_ip4addr_t, pf->pf_dst_ipaddr),
+            FMT_osn_ip_addr(pf->pf_dst_ipaddr),
             pf->pf_dst_port);
 
     pe = ds_tree_find(&self->fw_portfw_list, (void *)pf);
     if (pe == NULL)
     {
-        LOG(ERR, "fw: %s: Error removing port forwarding entry: %d -> "PRI(inet_ip4addr_t)":%d",
+        LOG(ERR, "fw: %s: Error removing port forwarding entry: %d -> "PRI_osn_ip_addr":%d",
                 self->fw_ifname,
                 pf->pf_src_port,
-                FMT(inet_ip4addr_t, pf->pf_dst_ipaddr),
+                FMT_osn_ip_addr(pf->pf_dst_ipaddr),
                 pf->pf_dst_port);
         return false;
     }
@@ -304,6 +309,10 @@ bool fw_nat_start(inet_fw_t *self)
         retval &= fw_rule_add(self,
                 FW_RULE_ALL, "filter", "NM_INPUT",
                 "-i", self->fw_ifname, "-j", "ACCEPT");
+
+        retval &= fw_rule_add(self,
+                FW_RULE_IPV6, "filter", "NM_FORWARD",
+                "-i", self->fw_ifname, "-j", "ACCEPT");
     }
 
     return true;
@@ -328,6 +337,9 @@ bool fw_nat_stop(inet_fw_t *self)
     /* Flush out LAN rules */
     retval &= fw_rule_del(self, FW_RULE_ALL,
             "filter", "NM_INPUT", "-i", self->fw_ifname, "-j", "ACCEPT");
+
+    retval &= fw_rule_del(self, FW_RULE_IPV6,
+            "filter", "NM_FORWARD", "-i", self->fw_ifname, "-j", "ACCEPT");
 
     return retval;
 }
@@ -359,8 +371,8 @@ bool fw_portforward_rule(inet_fw_t *self, const struct inet_portforward *pf, boo
                   >= (int)sizeof(src_port))
         return false;
 
-    if (snprintf(to_dest, sizeof(to_dest), PRI_inet_ip4addr_t":%u",
-                 FMT_inet_ip4addr_t(pf->pf_dst_ipaddr), pf->pf_dst_port)
+    if (snprintf(to_dest, sizeof(to_dest), PRI_osn_ip_addr":%u",
+                 FMT_osn_ip_addr(pf->pf_dst_ipaddr), pf->pf_dst_port)
                       >= (int)sizeof(to_dest))
     {
             return false;
@@ -402,10 +414,10 @@ bool fw_portforward_start(inet_fw_t *self)
 
         if (!fw_portforward_rule(self, &pe->pf_data, false))
         {
-            LOG(ERR, "fw: %s: Error adding port forwarding rule: %d -> "PRI(inet_ip4addr_t)":%d",
+            LOG(ERR, "fw: %s: Error adding port forwarding rule: %d -> "PRI_osn_ip_addr":%d",
                     self->fw_ifname,
                     pe->pf_data.pf_src_port,
-                    FMT(inet_ip4addr_t, pe->pf_data.pf_dst_ipaddr),
+                    FMT_osn_ip_addr(pe->pf_data.pf_dst_ipaddr),
                     pe->pf_data.pf_dst_port);
             retval = false;
         }
@@ -425,10 +437,10 @@ bool fw_portforward_stop(inet_fw_t *self)
     {
         if (!fw_portforward_rule(self, &pe->pf_data, true))
         {
-            LOG(ERR, "fw: %s: Error deleting port forwarding rule: %d -> "PRI(inet_ip4addr_t)":%d",
+            LOG(ERR, "fw: %s: Error deleting port forwarding rule: %d -> "PRI_osn_ip_addr":%d",
                     self->fw_ifname,
                     pe->pf_data.pf_src_port,
-                    FMT(inet_ip4addr_t, pe->pf_data.pf_dst_ipaddr),
+                    FMT_osn_ip_addr(pe->pf_data.pf_dst_ipaddr),
                     pe->pf_data.pf_dst_port);
             retval = false;
         }
@@ -553,7 +565,7 @@ int fw_portforward_cmp(void *_a, void *_b)
     struct inet_portforward *a = _a;
     struct inet_portforward *b = _b;
 
-    rc = inet_ip4addr_cmp(&a->pf_dst_ipaddr, &b->pf_dst_ipaddr);
+    rc = osn_ip_addr_cmp(&a->pf_dst_ipaddr, &b->pf_dst_ipaddr);
     if (rc != 0) return rc;
 
     if (a->pf_proto > b->pf_proto) return 1;

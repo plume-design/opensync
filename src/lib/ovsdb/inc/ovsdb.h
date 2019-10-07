@@ -184,7 +184,6 @@ typedef enum
     OCLM_UUID,
     OCLM_MAP,
     OCLM_SET,
-    OCLM_JSON,
 }
 ovsdb_col_t;
 
@@ -302,7 +301,7 @@ bool ovsdb_tran_call(json_rpc_response_t *cb,
  */
 json_t * ovsdb_tran_multi(json_t * jarray,
                           json_t * js_obj,
-                          char * table,
+                          const char * table,
                           ovsdb_tro_t oper,
                           json_t * where,
                           json_t * row);
@@ -312,32 +311,32 @@ json_t * ovsdb_tran_multi(json_t * jarray,
  * inserts a new row, and inserts it's UUID into a parent
  * table's column using mutate
  */
-json_t * ovsdb_tran_insert_with_parent(char * table,
+json_t * ovsdb_tran_insert_with_parent(const char * table,
                                        json_t * row,
-                                       char * parent_table,
+                                       const char * parent_table,
                                        json_t * parent_where,
-                                       char * parent_column);
+                                       const char * parent_column);
 
 /*
  * This function creates a combined OVSDB transaction which
  * deletes a rows by uuid in one table, and then removes
  * them from a parent table's column using mutate
  */
-json_t * ovsdb_tran_delete_with_parent(char * table,
+json_t * ovsdb_tran_delete_with_parent(const char * table,
                                        json_t * uuids,
-                                       char * parent_table,
+                                       const char * parent_table,
                                        json_t * parent_where,
-                                       char * parent_column);
+                                       const char * parent_column);
 
 /*
  * OVSDB special value
  */
-json_t *ovsdb_tran_special_value(char *type, char *value);
+json_t *ovsdb_tran_special_value(const char *type, const char *value);
 
 /*
  * OVSDB UUID value
  */
-json_t *ovsdb_tran_uuid_json(char *uuid);
+json_t *ovsdb_tran_uuid_json(const char *uuid);
 
 /*
  * Convert JSON array to OVSDB set.
@@ -351,9 +350,9 @@ json_t * ovsdb_tran_array_to_set(json_t *js_array, bool raw);
  * used in transaction calls
  */
 json_t * ovsdb_tran_cond(ovsdb_col_t,
-                         char * column,
+                         const char * column,
                          ovsdb_func_t func,
-                         void * value);
+                         const void * value);
 
 /**
  * The following function creates "where" part of json request
@@ -364,7 +363,7 @@ json_t * ovsdb_tran_cond_single(char * column,
                                 ovsdb_func_t func,
                                 char * value);
 
-json_t * ovsdb_tran_cond_single_json(char * column,
+json_t * ovsdb_tran_cond_single_json(const char * column,
                                 ovsdb_func_t func,
                                 json_t * value);
 
@@ -380,7 +379,7 @@ json_t *ovsdb_method_send_s(
  * Synchronous version of ovsdb_tran_call()
  */
 json_t *ovsdb_tran_call_s(
-        char * table,
+        const char * table,
         ovsdb_tro_t oper,
         json_t * where,
         json_t * row);
@@ -400,26 +399,17 @@ bool ovsdb_insert_with_parent_s(char * table,
  * then uses ovsdb_method_send_s() to send a * transaction
  * created with ovsdb_tran_delete_with_parent()
  */
-json_t* ovsdb_delete_with_parent_res_s(char * table,
+json_t* ovsdb_delete_with_parent_res_s(const char * table,
                                 json_t *where,
-                                char * parent_table,
+                                const char * parent_table,
                                 json_t * parent_where,
-                                char * parent_column);
+                                const char * parent_column);
 
 bool ovsdb_delete_with_parent_s(char * table,
                                 json_t *where,
                                 char * parent_table,
                                 json_t * parent_where,
                                 char * parent_column);
-
-/**
- * Synchronous version of ovsdb_tran_call()
- */
-json_t *ovsdb_tran_call_s(
-        char * table,
-        ovsdb_tro_t oper,
-        json_t * where,
-        json_t * row);
 
 /**
  * The following set of functions filters all json key-value pairs

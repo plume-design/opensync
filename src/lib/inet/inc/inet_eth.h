@@ -27,6 +27,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef INET_ETH_H_INCLUDED
 #define INET_ETH_H_INCLUDED
 
+#include "osn_inet.h"
+
 #include "inet.h"
 #include "inet_base.h"
 
@@ -37,9 +39,11 @@ struct __inet_eth
     /* Subclass inet_base; expose the inet_t class so we can have convenient access to in_ifname */
     union
     {
-        inet_t      inet;
-        inet_base_t base;
+        inet_t          inet;
+        inet_base_t     base;
     };
+
+    osn_ip_t           *in_ip;      /* IPv4 Configuration */
 };
 
 extern inet_t *inet_eth_new(const char *ifname);

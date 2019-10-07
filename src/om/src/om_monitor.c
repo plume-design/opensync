@@ -46,9 +46,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdarg.h>
 #include <linux/types.h>
 
-#include "target.h"
 #include "om.h"
 #include "util.h"
+#include "ovsdb_sync.h"
 
 
 /*****************************************************************************/
@@ -60,21 +60,6 @@ static ovsdb_update_monitor_t   om_monitor_tags;
 static ovsdb_update_monitor_t   om_monitor_tag_groups;
 
 /******************************************************************************
- * Callback function for ovs-method-send for error reporting
- *****************************************************************************/
-static void
-om_monitor_ovsdb_do_update_cb(int id, bool is_error, json_t *js, void *data)
-{
-    if (is_error) {
-        LOGE("Openstate Flow OVSDB update (id=%d) failed", id);
-    }
-
-    (void)js;
-    (void)data;
-    return;
-}
-
-/******************************************************************************
  * Updates Openflow_State table to reflect the exit code of ovs-ofctl command
  *****************************************************************************/
 static void
@@ -82,6 +67,7 @@ om_monitor_update_openflow_state( struct schema_Openflow_Config *ofconf,
                                   om_action_t type, bool ret )
 {
     struct  schema_Openflow_State    ofstate;
+    json_t                           *jrc;
     json_t                           *js_trans = NULL;
     json_t                           *js_where = NULL;
     json_t                           *js_row   = NULL;
@@ -113,13 +99,14 @@ om_monitor_update_openflow_state( struct schema_Openflow_Config *ofconf,
             goto err_exit;
         }
 
-        if( !ovsdb_method_send( om_monitor_ovsdb_do_update_cb,
-                NULL,
-                MT_TRANS,
-                js_trans )) {
+        jrc = ovsdb_method_send_s(MT_TRANS, js_trans);
+        if (jrc == NULL)
+        {
             LOGE( "Openflow_State insert failed to send" );
             goto err_exit;
         }
+        json_decref(jrc);
+
     } else if( type == DELETE ) {
         if( ret ) {
             // A flow was deleted successfully. Delete the corresponding
@@ -139,12 +126,12 @@ om_monitor_update_openflow_state( struct schema_Openflow_Config *ofconf,
                 goto err_exit;
             }
 
-            if( !ovsdb_method_send( om_monitor_ovsdb_do_update_cb,
-                        NULL,
-                        MT_TRANS,
-                        js_trans )) {
+            jrc = ovsdb_method_send_s(MT_TRANS, js_trans );
+            if (jrc == NULL)
+            {
                 LOGE( "Openstate delete failed to send" );
             }
+            json_decref(jrc);
 
             return;
         } else {
@@ -194,7 +181,14 @@ om_monitor_update_flows(om_action_t type, json_t *js)
                 ret = om_tflow_add_from_schema(&ofconf);
             }
             else {
-                ret = target_om_add_flow( ofconf.token, &ofconf );
+
+                ret = om_add_flow( ofconf.token, &ofconf );
+                LOGN("[%s] Static flow insertion %s (%s, %u, %u, \"%s\", \"%s\")",
+                     ofconf.token,
+                     (ret == true) ? "succeeded" : "failed",
+                     ofconf.bridge, ofconf.table,
+                     ofconf.priority, ofconf.rule,
+                     ofconf.action);
             }
             break;
 
@@ -207,7 +201,13 @@ om_monitor_update_flows(om_action_t type, json_t *js)
                 ret = om_tflow_remove_from_schema(&ofconf);
             }
             else {
-                ret = target_om_del_flow( ofconf.token, &ofconf );
+                ret = om_del_flow( ofconf.token, &ofconf );
+                LOGN("[%s] Static flow deletion %s (%s, %u, %u, \"%s\", \"%s\")",
+                     ofconf.token,
+                     (ret == true) ? "succeeded" : "failed",
+                     ofconf.bridge, ofconf.table,
+                     ofconf.priority, ofconf.rule,
+                     ofconf.action);
             }
             break;
     }

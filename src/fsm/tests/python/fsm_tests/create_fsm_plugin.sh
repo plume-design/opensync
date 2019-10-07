@@ -24,8 +24,8 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-/usr/bin/ovs-vsctl add-port br-home br-home.foo  -- set interface br-home.foo  type=internal -- set interface br-home.foo  ofport_request=1001
-/usr/sbin/ip link set br-home.foo up
-/usr/plume/tools/ovsh i Openflow_Config token:="dev_flow_foo" bridge:="br-home" table:="0" priority:="200" rule:="dl_src=\${dev_tag_foo},udp,tp_dst=12345" action:="normal,output:1001"
-/usr/plume/tools/ovsh i Openflow_Tag name:="dev_tag_foo" cloud_value:="[\"set\",[\"aa:bb:cc:dd:ee:ff\",\"11:22:33:44:55:66\"]]"
-/usr/plume/tools/ovsh i Flow_Service_Manager_Config handler:="dev_foo" if_name:="br-home.foo" pkt_capt_filter:="udp port 12345" plugin:="/tmp/libfsm_foo.so" other_config:="[\"map\",[[\"mqtt_v\",\"foo_mqtt_v\"],[\"dso_init\",\"fsm_foo_init\"]]]"
+/usr/bin/ovs-vsctl add-port br-home br-home.demo  -- set interface br-home.demo  type=internal -- set interface br-home.demo  ofport_request=1001
+/usr/sbin/ip link set br-home.demo up
+/usr/plume/tools/ovsh i Openflow_Config token:="dev_flow_demo" bridge:="br-home" table:="0" priority:="200" rule:="dl_src=\${dev_tag_demo},udp,tp_dst=12345" action:="normal,output:1001"
+/usr/plume/tools/ovsh i Openflow_Tag name:="dev_tag_demo" cloud_value:="[\"set\",[\"78:4f:43:9c:f7:fc\",\"5c:f9:38:94:78:4a\"]]"
+/usr/plume/tools/ovsh i Flow_Service_Manager_Config handler:="dev_demo" if_name:="br-home.demo" pkt_capt_filter:="udp port 12345" plugin:="/tmp/libfsm_demo.so" other_config:="[\"map\",[[\"mqtt_v\",\"foo_mqtt_v\"],[\"dso_init\",\"fsm_plugin_demo_init\"]]]"

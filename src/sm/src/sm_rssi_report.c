@@ -768,7 +768,7 @@ bool sm_rssi_is_reporting_enabled (
     sm_rssi_ctx_t                  *rssi_ctx = NULL;
     sm_stats_request_t             *request_ctx = NULL;
 
-    rssi_ctx = sm_rssi_ctx_get(radio_cfg),
+    rssi_ctx = sm_rssi_ctx_get(radio_cfg);
     request_ctx  = &rssi_ctx->request;
 
     if (!request_ctx->reporting_interval) {

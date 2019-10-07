@@ -10,6 +10,12 @@ if USE_KCONFIG
     config TARGET_MODEL
         string "Device Model Name"
 
+    menu "OpenSync"
+        menu "Networking"
+            orsource "../src/lib/osn/kconfig/Kconfig"
+        endmenu
+    endmenu
+
     menu "PML Configuration"
         menuconfig PML_TARGET
             bool "Use generic TARGET (kconfig based target configuration)"
@@ -18,16 +24,9 @@ if USE_KCONFIG
                 orsource "../src/lib/target/kconfig/Kconfig"
             endif
 
-        menuconfig PML_INET
-            bool "Use LIBINET (kconfig based networking support)"
-            help
-                INET provides generic Linux networking services to TARGET.
-                On supported platforms, most of the NM2 functionality can be realized by
-                enabling INET.
-
-            if PML_INET
-                orsource "../src/lib/inet/kconfig/Kconfig"
-            endif
+        menu "INET Configuration"
+            orsource "../src/lib/inet/kconfig/Kconfig"
+        endmenu
 
         if TARGET_MANAGER_CM
             menu "CM2 Configuration"

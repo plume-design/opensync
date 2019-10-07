@@ -116,6 +116,7 @@ typedef struct
     bool                            rrm_caps_bcn_rpt_table;
     bool                            rrm_caps_lci_meas;
     bool                            rrm_caps_ftm_range_rpt;
+    uint32_t                        backoff_period;
 } dpp_bs_client_event_record_t;
 
 typedef struct

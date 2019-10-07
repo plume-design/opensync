@@ -46,10 +46,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "target.h"
 
-#include "bm_config.h"
-#include "bm_events.h"
 #include "bm_pair.h"
 #include "bm_client.h"
+#include "bm_config.h"
+#include "bm_events.h"
 #include "bm_kick.h"
 #include "bm_stats.h"
 #include "bm_neighbor.h"

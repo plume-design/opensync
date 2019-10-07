@@ -314,7 +314,7 @@ bool                  log_severity_parse(char *sevstr);
 bool                  log_isenabled();
 
 void                  log_register_logger(logger_t *logger);
-void                  log_deregister_logger(logger_t *logger);
+void                  log_unregister_logger(logger_t *logger);
 
 char                 *log_module_str(log_module_t mod);
 char                 *log_severity_str(log_severity_t dev);

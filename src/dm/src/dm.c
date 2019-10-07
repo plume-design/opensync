@@ -51,6 +51,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define OVSDB_DEF_TABLE                 "Open_vSwitch"
 #define TARGET_READY_POLL               10
 
+
+#define GW_CFG_DIR             "/mnt/data/config"
+#define GW_CFG_FILE            GW_CFG_DIR"/gw.cfg"
+#define GW_CFG_FILE_MD5        GW_CFG_DIR"/gw.cfg.md5"
+
 /*****************************************************************************/
 
 extern struct ev_io     wovsdb;
@@ -60,6 +65,24 @@ static log_severity_t   dm_log_severity = LOG_SEVERITY_INFO;
 /******************************************************************************
  *  PROTECTED definitions
  *****************************************************************************/
+
+
+static bool dm_apply_cfg(void)
+{
+    const char *cfg_file =     GW_CFG_FILE;
+    const char *cfg_file_md5 = GW_CFG_FILE_MD5;
+    char command[1024];
+
+
+    snprintf(command, sizeof(command),
+            "set -e; ! test -e %s || ( cd %s && md5sum -c %s 2>&1 && sh -x %s 2>&1 )",
+            cfg_file, GW_CFG_DIR, cfg_file_md5, cfg_file);
+
+    cmd_log(command);
+
+    return true;
+}
+
 
 /*
  * Main
@@ -122,6 +145,8 @@ int main (int argc, char ** argv)
     log_register_dynamic_severity(loop);
 
     dm_hook_init(loop);
+
+    dm_apply_cfg();
 
     /* start main loop and wait for event to come */
     ev_run(loop, 0);

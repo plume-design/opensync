@@ -44,7 +44,7 @@ cm2_addr_t* cm2_get_addr(cm2_dest_e dest)
     }
 }
 
-cm2_addr_t* cm2_curr_addr()
+cm2_addr_t* cm2_curr_addr(void)
 {
     return cm2_get_addr(g_state.dest);
 }
@@ -98,7 +98,7 @@ bool cm2_set_addr(cm2_dest_e dest, char *resource)
     return ret;
 }
 
-void cm2_clear_manager_addr()
+void cm2_clear_manager_addr(void)
 {
     cm2_ovsdb_set_AWLAN_Node_manager_addr("");
     cm2_set_addr(CM2_DEST_MANAGER, "");

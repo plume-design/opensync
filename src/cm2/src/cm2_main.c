@@ -63,7 +63,7 @@ static log_severity_t   cm2_log_severity = LOG_SEVERITY_INFO;
  *  PROTECTED definitions
  *****************************************************************************/
 
-void cm2_init_capabilities()
+void cm2_init_capabilities(void)
 {
     g_state.target_type = target_device_capabilities_get();
     LOGI("Device caps: 0x%x %s%s", g_state.target_type,
@@ -75,7 +75,7 @@ void cm2_init_capabilities()
  *  PUBLIC API definitions
  *****************************************************************************/
 
-bool cm2_is_extender()
+bool cm2_is_extender(void)
 {
     return g_state.target_type & TARGET_EXTENDER_TYPE ? true : false;
 }
@@ -132,7 +132,10 @@ int main(int argc, char ** argv)
         cm2_stability_init(loop);
     }
 #ifdef BUILD_HAVE_LIBCARES
-    evx_init_ares(g_state.loop, &g_state.eares);
+    if (evx_init_ares(g_state.loop, &g_state.eares) < 0) {
+        LOGW("Ares init failed");
+        return -1;
+    }
 #endif
     ev_run(loop, 0);
 

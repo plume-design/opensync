@@ -38,10 +38,35 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_types.h"
 #include "dppline.h"
 
-static void fsm_pcap_recv_fn(EV_P_ ev_io *ev, int revents)
+
+static void
+fsm_pcap_handler(uint8_t * args, const struct pcap_pkthdr *header,
+                 const uint8_t *bytes)
+{
+    struct net_header_parser net_parser;
+    struct fsm_parser_ops *parser_ops;
+    struct fsm_session *session;
+    size_t len;
+
+    session = (struct fsm_session *)args;
+
+    memset(&net_parser, 0, sizeof(net_parser));
+    net_parser.packet_len = header->caplen;
+    net_parser.caplen = header->caplen;
+    net_parser.data = (uint8_t *)bytes;
+    net_parser.pcap_datalink = session->pcaps->pcap_datalink;
+    len = net_header_parse(&net_parser);
+    if (len == 0) return;
+
+    parser_ops = &session->p_ops->parser_ops;
+    parser_ops->handler(session, &net_parser);
+}
+
+
+static void
+fsm_pcap_recv_fn(EV_P_ ev_io *ev, int revents)
 {
     (void)loop;
-    (void) ev;
     (void)revents;
 
     struct fsm_session *session = ev->data;
@@ -49,9 +74,9 @@ static void fsm_pcap_recv_fn(EV_P_ ev_io *ev, int revents)
     pcap_t *pcap = pcaps->pcap;
 
     /* Ready to receive packets */
-    pcap_dispatch(pcap, 1,
-                  session->handler, session->handler_ctxt);
+    pcap_dispatch(pcap, 1, fsm_pcap_handler, (void *)session);
 }
+
 
 bool fsm_pcap_open(struct fsm_session *session) {
     struct fsm_mgr *mgr = fsm_get_mgr();
@@ -61,9 +86,11 @@ bool fsm_pcap_open(struct fsm_session *session) {
     struct bpf_program *bpf = pcaps->bpf;
     char *pkt_filter = session->conf->pkt_capt_filter;
     char pcap_err[PCAP_ERRBUF_SIZE];
-    /* Divy: TODO: get the mtu from the interface */
+    /* TODO: get the mtu from the interface */
     int set_snaplen = 65536;
     int rc;
+
+    if (iface == NULL) return true;
 
     pcaps->pcap = pcap_create(iface, pcap_err);
     if (pcaps->pcap == NULL) {
@@ -71,6 +98,7 @@ bool fsm_pcap_open(struct fsm_session *session) {
              iface);
         goto error;
     }
+
     pcap = pcaps->pcap;
     rc = pcap_set_immediate_mode(pcap, 1);
     if (rc != 0) {
@@ -96,6 +124,15 @@ bool fsm_pcap_open(struct fsm_session *session) {
              iface, pcap_geterr(pcap));
         goto error;
     }
+
+    if ((pcap_datalink(pcap) != DLT_EN10MB) &&
+        (pcap_datalink(pcap) != DLT_LINUX_SLL))
+    {
+        LOGE("%s: unsupported data link layer: %d\n",
+            __func__, pcap_datalink(pcap));
+            goto error;
+    }
+    pcaps->pcap_datalink = pcap_datalink(pcap);
 
     rc = pcap_compile(pcap, bpf, pkt_filter, 0, PCAP_NETMASK_UNKNOWN);
     if (rc != 0) {

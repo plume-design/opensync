@@ -60,4 +60,5 @@ endif
 
 ifdef CONFIG_USE_KCONFIG
 UNIT_DISABLE_src/fsm := $(if $(CONFIG_TARGET_MANAGER_FSM),n,y)
+UNIT_DISABLE_src/fcm := $(if $(CONFIG_TARGET_MANAGER_FCM),n,y)
 endif

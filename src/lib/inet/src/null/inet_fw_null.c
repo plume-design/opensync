@@ -24,6 +24,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include "log.h"
 #include "inet_fw.h"
 
 struct __inet_fw
@@ -58,6 +59,8 @@ bool inet_fw_stop(inet_fw_t *self)
 bool inet_fw_nat_set(inet_fw_t *self, bool enable)
 {
     (void)self;
+    (void)enable;
+
     return true;
 }
 

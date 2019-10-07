@@ -41,6 +41,7 @@ endif
 
 UNIT_CFLAGS += -Isrc/lib/log/inc
 
+UNIT_SRC += src/evx_debounce.c
 UNIT_SRC += src/evx_debounce_call.c
 UNIT_DEPS += src/lib/ds
 UNIT_DEPS += src/lib/const

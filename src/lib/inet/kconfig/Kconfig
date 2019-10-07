@@ -1,5 +1,3 @@
-comment "INET configuration"
-
 config INET_ETH_LINUX
     bool "Linux Ethernet interfaces"
     default y
@@ -45,6 +43,18 @@ config INET_GRE_USE_GRETAP
         a class of type inet_gretap_t. If not selected, the platform/device
         specific code should define inet_gre_new() function which returns a
         suitable interface object that implements a tunneling protocol.
+
+config INET_VLAN_LINUX
+    bool "Linux VLAN interfaces"
+    depends on INET_ETH_LINUX
+    default y
+    help
+        Select to include generic Linux VLAN interface support.
+
+        Applicable to most Linux platforms. If not selected, the
+        platform/device specific code should provide its own implementation.
+
+        This option implements the inet_vlan_t class.
 
 menu "Interface Status Reporting"
 
@@ -130,152 +140,6 @@ menuconfig INET_FW_ENABLED
                 help
                     Full path to the ip6tables binary
         endif
-    endif
-
-menuconfig INET_DHCPS_ENABLED
-    bool "DCHP server"
-    default y
-    help
-        Use DHCP server implementation provided by INET.
-
-        This option implements the inet_dhcps_t class.
-
-    if INET_DHCPS_ENABLED
-        comment "INET DHCP server configuration"
-        choice
-            prompt "DHCP server implementation"
-            default INET_DHCPS_NULL
-
-            config INET_DHCPS_NULL
-                bool "Null"
-                help
-                    Use the dummy DHCP server implementation. Use this
-                    on platforms that do not have a DHCP server
-
-            config INET_DHCPS_DNSMASQ
-                bool "Dnsmasq"
-                help
-                    Use the generic Linux dnsmasq implementation
-        endchoice
-
-        if INET_DHCPS_DNSMASQ
-            comment "INET DNSMASQ configuration"
-
-            config INET_DNSMASQ_PATH
-                string "Path to the dnsmasq binary"
-                default "/usr/sbin/dnsmasq"
-                help
-                    Full path to the dnsmasq binary
-
-            config INET_DNSMASQ_ETC_PATH
-                string "dnsmasq configuration file path"
-                default "/var/etc/dnsmasq.conf"
-                help
-                    This is the path where the dnsmasq configuration file
-                    will be generated.
-
-            config INET_DNSMASQ_LEASE_PATH
-                string "Location of the DHCP lease file"
-                default "/tmp/dhcp.leases"
-                help
-                    Location of the "leases" file. This is the dnsmasq
-                    DHCP lease database.
-
-            config INET_DNSMASQ_PID_PATH
-                string "Location of the dnsmasq PID file"
-                default "/var/run/dnsmasq/dnsmasq.pid"
-                help
-                    Location of the dnsmasq PID file.
-
-            config INET_DNSMASQ_KEEP_RUNNING
-                bool 'Daemon should be always running'
-                help
-                    The default behavior is to kill dnsmasq as soon as there are
-                    0 DHCP server configurations active. This option forces dnsmasq
-                    to be active regardless of the DHCP server configuration.
-
-                    This is useful on systems where dnsmasq is used as a DNS cache.
-         endif
-    endif
-
-
-menuconfig INET_DHCPC_ENABLED
-    bool "DHCP client"
-    default y
-    help
-        Use DHCP client implementation provided by INET.
-
-        This option implements the inet_dhcpc_t class.
-
-    if INET_DHCPC_ENABLED
-        comment "INET DHCP client configuration"
-        choice
-            prompt "DHCP client implementation"
-            default INET_DHCPC_NULL
-            config INET_DHCPC_NULL
-                bool "Null"
-                help
-                    Dummy DHCP client implementation. Use this on platforms
-                    that do not support DHCP clients
-
-            config INET_DHCPC_UDHCPC
-                bool "Busybox's DHCP client (udhcpc)"
-                help
-                    Use the generic Linux udhcpc implementation. Compatible
-                    with Busybox's udhcpc client.
-        endchoice
-
-        if INET_DHCPC_UDHCPC
-            comment "INET UDHCPC configuration"
-            config INET_UDHCPC_PATH
-                string "Path to the udhcpc binary"
-                default "/sbin/udhcpc"
-                help
-                    Full path to the udhcpc binary.
-        endif
-    endif
-
-menuconfig INET_UPNP_ENABLED
-    bool "UPnP"
-    default y
-    help
-        Use UPnP server implementation provided by INET.
-
-    if INET_UPNP_ENABLED
-        comment "INET UPnP configuration"
-        choice
-            prompt "UPnP implementation"
-            default INET_UPNP_NULL
-
-            config INET_UPNP_NULL
-                bool "Null"
-                help
-                    Dummy UPnP driver. Use this on platforms that do not
-                    support UPnP
-
-            config INET_UPNP_MINIUPNPD
-                bool "miniupnpd"
-                help
-                    UPnP implementation using miniupnpd
-        endchoice
-
-        if INET_UPNP_MINIUPNPD
-            comment "MiniUPnPD configuration"
-
-            config INET_MINIUPNPD_PATH
-                string "Path to the miniupnpd binary"
-                default "/usr/sbin/miniupnpd"
-                help
-                    Full path to the miniupnpd binary
-
-            config INET_MINIUPNPD_ETC
-                string "miniupnpd configuration folder"
-                default "/tmp/miniupnpd"
-                help
-                    This is the location where the miniupnpd.conf and upnpd.lease
-                    files will be created.
-        endif
-
     endif
 
 menuconfig INET_DNS_ENABLED
@@ -385,34 +249,6 @@ menuconfig INET_DHSNIFF_ENABLED
 
                     If unsure, use 0 (use libpcap default - 65535).
         endif
-    endif
-
-menuconfig INET_ROUTE_ENABLED
-    bool "Routing table"
-    default y
-    help
-        Use ROUTE table manipulation implementation as provided by LIBINET.
-
-        This option implements the inet_route_t class.
-
-    if INET_ROUTE_ENABLED
-        comment "INET routing configuration"
-        choice
-            prompt "Routing table implementation"
-            default INET_ROUTE_NULL
-
-            config INET_ROUTE_NULL
-                bool "Null"
-                help
-                    Dummy routing implementation. Use this on platforms that do not
-                    support routing status reporting.
-
-            config INET_ROUTE_LINUX
-                bool "Linux routing table"
-                help
-                    Use /proc/net/route to parse routing information and netlink sockets for
-                    routing status reporting.
-        endchoice
     endif
 
 menuconfig INET_IGMP_SNOOPING_ENABLED

@@ -34,13 +34,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /**
  * @file target_common.h
- * @brief Additional target api header
+ * @brief Additional target API header
  *
- * The declarations in this header depend on the platform specific declaration from header TARGET_H,
- * that is why it is separated from base target.h
- * \addtogroup libtarget
- * @{
+ * The declarations in this header depend on the platform specific declaration
+ * from header TARGET_H, which is why it is separated from @ref target.h
  */
+
+/// @addtogroup LIB_TARGET
+/// @{
 
 typedef struct {
     struct schema_Wifi_Radio_Config rconf;
@@ -73,32 +74,19 @@ typedef struct {
     ds_dlist_node_t                 dsl_node;
 } target_route_state_init_t;
 
-/* Target capabilities types */
-#define TARGET_GW_TYPE       (1 << 0)
-#define TARGET_EXTENDER_TYPE (1 << 1)
+/// @defgroup LIB_TARGET_RADIO Radio API
+/// Definitions and API related to control of radios.
+/// @{
 
-typedef struct {
-    bool link_state;     //!< If link has an IP the link_state should be set
-                         //!< to 'true' if it can be pinged. Otherwise, custom
-                         //!< (vendor-specific) way of checking link state
-                         //!< must be provided.
-    bool router_state;   //!< True if the IP of default gateway can be pinged.
-    bool internet_state; //!< True if external IP address can be pinged.
-    bool ntp_state;      //!< True if current datetime is set correctly.
-} target_connectivity_check_t;
-
-typedef enum {
-    LINK_CHECK     = 1 << 0,
-    ROUTER_CHECK   = 1 << 1,
-    INTERNET_CHECK = 1 << 2,
-    NTP_CHECK      = 1 << 3,
-} target_connectivity_check_option_t;
+/******************************************************************************
+ *  RADIO definitions
+ *****************************************************************************/
 
 /**
  * @brief List of callbacks for radio/vif changes
  */
 struct target_radio_ops {
-    /** target calls this whenever middelware (if exists) wants to
+    /** target calls this whenever middleware (if exists) wants to
      *  update vif configuration */
     void (*op_vconf)(const struct schema_Wifi_VIF_Config *vconf,
                      const char *phy);
@@ -132,10 +120,6 @@ struct target_radio_ops {
      *  by op_client() calls) or when a vif is deconfigured abruptly */
     void (*op_flush_clients)(const char *vif);
 };
-
-/******************************************************************************
- *  RADIO definitions
- *****************************************************************************/
 
 /**
  * @brief Hands over WM callbacks so target can notify about vif/radio statuses
@@ -271,6 +255,12 @@ typedef void target_radio_config_cb_t(struct schema_Wifi_Radio_Config *rconf, sc
  */
 bool target_radio_config_register(char *ifname, target_radio_config_cb_t *radio_config_cb);
 
+/// @} LIB_TARGET_RADIO
+
+/// @defgroup LIB_TARGET_VIF VIF API
+/// Definitions and API related to control of VIFs.
+/// @{
+
 /******************************************************************************
  *  VIF definitions
  *****************************************************************************/
@@ -356,22 +346,25 @@ bool target_vif_config_register(char *ifname, target_vif_config_cb_t *vconfig_cb
  */
 const char * target_vif_get_sta_ifname(const char *phy);
 
+/// @} LIB_TARGET_VIF
+
+/// @defgroup LIB_TARGET_DHCP DHCP API
+/// Definitions and API related to control of DHCP.
+/// @{
+
 /******************************************************************************
  *  DHCP definitions
  *****************************************************************************/
 typedef bool target_dhcp_leased_ip_cb_t(struct schema_DHCP_leased_IP *dlip);
 bool target_dhcp_leased_ip_get(struct schema_DHCP_leased_IP *dlip);
 bool target_dhcp_leased_ip_register(target_dhcp_leased_ip_cb_t *dlip_cb);
-bool target_dhcp_rip_set(const char *ifname, struct schema_DHCP_reserved_IP *schema_rip);
-bool target_dhcp_rip_del(const char *ifname, struct schema_DHCP_reserved_IP *schema_rip);
 
 
-/******************************************************************************
- *  Port forwarding
- *****************************************************************************/
-bool target_portforward_set(const char *ifname,  struct schema_IP_Port_Forward *schema_pf);
-bool target_portforward_del(const char *ifname,  struct schema_IP_Port_Forward *schema_pf);
+/// @} LIB_TARGET_DHCP
 
+/// @defgroup LIB_TARGET_CLIENTS Clients API
+/// Definitions and API related to control of clients.
+/// @{
 
 /******************************************************************************
  *  CLIENTS definitions
@@ -389,46 +382,11 @@ typedef bool target_clients_cb_t(struct schema_Wifi_Associated_Clients *schema, 
  */
 bool target_clients_register(char *ifname, target_clients_cb_t *clients_cb);
 
-/******************************************************************************
- *  INET definitions
- *****************************************************************************/
-/**
- * @brief Initialize network interfaces state
- *
- * Initialize the target library network interface state layer and return a list of
- * currently configured network interfaces. inet_ovs is a double linked list of
- * target_inet_state_init_t structures. This list is used to pre-populate the
- * Wifi_Inet_State table.
- *
- * @note
- * Only interfaces that are significant for system operation must be returned
- * by this function. Interfaces such as "lo" can be safely ignored.
- * @note
- * the inet_ovs linked list is dynamically allocated, it must be freed by the caller.
- *
- * @param inets_ovs linked list of inet interfaces state (target_inet_state_init_t)
- * @return true on success
- */
-bool target_inet_state_init(ds_dlist_t *inets_ovs);
+/// @} LIB_TARGET_CLIENTS
 
-/**
- * @brief Initialize master state
- *
- * Initialize the target library master state layer and return a list of
- * currently configured network interfaces. inet_ovs is a double linked list of
- * target_master_state_init_t structures. This list is used to pre-populate the
- * Wifi_Master_State table.
- *
- * @note
- * Only interfaces that are significant for system operation must be returned
- * by this function. Interfaces such as "lo" can be safely ignored.
- * @note
- * the inet_ovs linked list is dynamically allocated, it must be freed by the caller.
- *
- * @param inets_ovs linked list of inet interfaces state (target_inet_state_init_t)
- * @return true on success
- */
-bool target_master_state_init(ds_dlist_t *inets_ovs);
+/// @defgroup LIB_TARGET_ROUTE Routes API
+/// Definitions and API related to control of routes.
+/// @{
 
 /**
  * @brief Initialize route state
@@ -449,391 +407,6 @@ bool target_master_state_init(ds_dlist_t *inets_ovs);
  */
 bool target_route_state_init(ds_dlist_t *rts);
 
-/**
- * @brief Initialize network interfaces config
- *
- * Initialize the target library network configuration layer and return a list
- * of currently configured network interfaces. inet_ovs is a double linked list
- * of target_inet_config_init_t structures. This list is used to pre-populate
- * the Wifi_Inet_Config table.
- *
- * @note
- * Only interfaces that are significant for system operation must be returned
- * by this function. Interfaces such as "lo" can be safely ignored.
- * @note
- * The inet_ovs linked list is dynamically allocated; it must be freed by the caller.
- *
- * @param inets_ovs linked list of inet interfaces config (target_inet_config_init_t)
- * @return true on success
- */
-bool target_inet_config_init(ds_dlist_t *inets_ovs);
-
-
-/**
- * @brief Apply the network configuration for interface
- *
- * Apply the network configuration for interfaces of type "eth" and "vif". The
- * interface ifname must already exist on the system.
- *
- * @param ifname interface name
- * @param iconf interface config
- * @return true on success
- */
-bool target_vif_inet_config_set(char *ifname,
-        struct schema_Wifi_Inet_Config *iconf);
-
-
-/**
- * @brief Get state of vif network interface
- *
- * This function is used to retrieve the current state of network interface of
- * type "vif".
- *
- * @note
- * Depending on the implementation, some of the returned values in istate may
- * be a copy  of last applied configuration and not a reflection of the actual
- * interface state
- *
- * @param ifname interface name
- * @param istate output; interface state
- * @return true on success
- */
-bool target_vif_inet_state_get(char *ifname,
-        struct schema_Wifi_Inet_State *istate);
-
-/**
- * @brief Get state of vif network interface
- *
- * This function is used to retrieve the current master state of network interface
- * of type "vif".
- *
- * @note
- * Depending on the implementation, some of the returned values in mstate may
- * be a copy  of last applied configuration and not a reflection of the actual
- * interface state
- *
- * @param ifname interface name
- * @param istate output; interface mater state
- * @return true on success
- */
-bool target_vif_master_state_get(const char *ifname,
-        struct schema_Wifi_Master_State *mstate);
-
-/**
- * @brief Apply the network configuration for bridge interface
- *
- * Apply the network configuration for interface of type "bridge". Interface
- * is created if it does not exists.
- *
- * @param ifname interface name
- * @param iconf interface config
- * @return true on success
- */
-bool target_bridge_inet_config_set(char *ifname,
-        struct schema_Wifi_Inet_Config *iconf);
-
-/**
- * @brief Get state of bridge network interface
- *
- * This function is used to retrieve the current state of network interface of
- * type "bridge".
- *
- * @note
- * Depending on the implementation, some of the returned values in istate may
- * be a copy  of last applied configuration and not a reflection of the actual
- * interface state
- *
- * @param ifname interface name
- * @param istate output; interface state
- * @return true on success
- */
-bool target_bridge_inet_state_get(char *ifname,
-        struct schema_Wifi_Inet_State *istate);
-
-/**
- * @brief Get master state of bridge network interface
- *
- * This function is used to retrieve the current master state of network
- * interface of type "bridge".
- *
- * @note
- * Depending on the implementation, some of the returned values in mstate may
- * be a copy  of last applied configuration and not a reflection of the actual
- * interface state
- *
- * @param ifname interface name
- * @param istate output; interface state
- * @return true on success
- */
-bool target_bridge_master_state_get(const char *ifname,
-        struct schema_Wifi_Master_State *mstate);
-
-/**
- * @brief Apply the network configuration for gre interface
- *
- * Apply the network configuration for interface of type "gre". Interface
- * is created if it does not exists. The gre_remote_inet_addr,
- * gre_local_inet_addr and gre_ifname are required fields.
- *
- * @param ifname interface name
- * @param remote_ip the remote IP of the tunnel
- * @param iconf interface config
- * @return true on success
- */
-bool target_gre_inet_config_set(char *ifname, char *remote_ip,
-        struct schema_Wifi_Inet_Config *iconf);
-
-/**
- * @brief Get state of GRE network interface
- *
- * This function is used to retrieve the current state of network interface of
- * type "GRE".
- * @note
- * Depending on the implementation, some of the returned values in istate may
- * be a copy  of last applied configuration and not a reflection of the actual
- * interface state
- *
- * @param ifname interface name
- * @param remote_ip the remote IP of the tunnel
- * @param istate output; interface state
- * @return true on success
- */
-bool target_gre_inet_state_get(char *ifname,  char *remote_ip,
-        struct schema_Wifi_Inet_State *istate);
-
-/**
- * @brief Get mater state of GRE network interface
- *
- * This function is used to retrieve the current master state of network interface
- * of type "GRE".
- * @note
- * Depending on the implementation, some of the returned values in istate may
- * be a copy  of last applied configuration and not a reflection of the actual
- * interface state
- *
- * @param ifname interface name
- * @param remote_ip the remote IP of the tunnel
- * @param istate output; interface state
- * @return true on success
- */
-bool target_gre_master_state_get(const char *ifname, const char *remote_ip,
-        struct schema_Wifi_Master_State *mstate);
-
-/**
- * @brief Apply the network configuration for vlan interface
- *
- * Apply the network configuration for interface of type "vlan". Interface
- * is created if it does not exists. The parent_ifname and vlan_id  are
- * required fields.
- *
- * @param ifname interface name
- * @param iconf interface config
- * @return true on success
- */
-bool target_vlan_inet_config_set(char *ifname,
-        struct schema_Wifi_Inet_Config *iconf);
-
-/**
- * @brief Get state of vlan network interface
- *
- * This function is used to retrieve the current state of network interface of
- * type "vlan".
- *
- * @note
- * Depending on the implementation, some of the returned values in istate may
- * be a copy  of last applied configuration and not a reflection of the actual
- * interface state
- *
- * @param ifname interface name
- * @param istate output; interface state
- * @return true on success
- */
-bool target_vlan_inet_state_get(char *ifname,
-        struct schema_Wifi_Inet_State *istate);
-
-/**
- * @brief Get master state of vlan network interface
- *
- * This function is used to retrieve the current state of network interface of
- * type "vlan".
- *
- * @note
- * Depending on the implementation, some of the returned values in mstate may
- * be a copy  of last applied configuration and not a reflection of the actual
- * interface state
- *
- * @param ifname interface name
- * @param istate output; interface state
- * @return true on success
- */
-bool target_vlan_master_state_get(const char *ifname,
-        struct schema_Wifi_Master_State *mstate);
-
-/**
- * @brief Apply the network configuration for tap interface
- *
- * Apply the network configuration for interface of type "tap".
- *
- * @param ifname interface name
- * @param iconf interface config
- * @return true on success
- */
-bool target_tap_inet_config_set(char *ifname,
-        struct schema_Wifi_Inet_Config *iconf);
-
-/**
- * @brief Get state of vlan network interface
- *
- * This function is used to retrieve the current state of network interface of
- * type "tap".
- *
- * @note
- * Depending on the implementation, some of the returned values in istate may
- * be a copy  of last applied configuration and not a reflection of the actual
- * interface state
- *
- * @param ifname interface name
- * @param istate output; interface state
- * @return true on success
- */
-bool target_tap_inet_state_get(char *ifname,
-        struct schema_Wifi_Inet_State *istate);
-
-/**
- * @brief Get master state of vlan network interface
- *
- * This function is used to retrieve the current state of network interface of
- * type "tap".
- *
- * @note
- * Depending on the implementation, some of the returned values in mstate may
- * be a copy  of last applied configuration and not a reflection of the actual
- * interface state
- *
- * @param ifname interface name
- * @param istate output; interface state
- * @return true on success
- */
-bool target_tap_master_state_get(const char *ifname,
-        struct schema_Wifi_Master_State *mstate);
-
-/**
- * @brief Apply the network configuration for ethernet interface
- *
- * Apply the network configuration for interface of type "eth"
- *
- * @param ifname interface name
- * @param iconf interface config
- * @return true on success
- */
-bool target_eth_inet_config_set(const char *ifname,
-        struct schema_Wifi_Inet_Config *iconf);
-
-/**
- * @brief Get state of eth network interface
- *
- * This function is used to retrieve the current state of network interface of
- * type "eth".
- *
- * @note
- * Depending on the implementation, some of the returned values in istate may
- * be a copy  of last applied configuration and not a reflection of the actual
- * interface state
- *
- * @param ifname interface name
- * @param istate output; interface state
- * @return true on success
- */
-bool target_eth_inet_state_get(const char *ifname,
-        struct schema_Wifi_Inet_State *istate);
-
-/**
- * @brief Get master state of eth network interface
- *
- * This function is used to retrieve the current state of network interface of
- * type "eth".
- *
- * @note
- * Depending on the implementation, some of the returned values in istate may
- * be a copy  of last applied configuration and not a reflection of the actual
- * interface state
- *
- * @param ifname interface name
- * @param istate output; interface state
- * @return true on success
- */
-bool target_eth_master_state_get(const char *ifname,
-        struct schema_Wifi_Master_State *mstate);
-
-/**
- * @brief Get state of ppp network interface
- *
- * This function is used to retrieve the current state of network interface of
- * type "ppp".
- *
- * @note
- * Depending on the implementation, some of the returned values in istate may
- * be a copy  of last applied configuration and not a reflection of the actual
- * interface state
- *
- * @param ifname interface name
- * @param istate output; interface state
- * @return true on success
- */
-bool target_ppp_inet_state_get(char *ifname,
-        struct schema_Wifi_Inet_State *istate);
-
-/**
- * @brief Get the master state of ppp network interface
- *
- * This function is used to retrieve the current state of network interface of
- * type "ppp".
- *
- * @note
- * Depending on the implementation, some of the returned values in mstate may
- * be a copy  of last applied configuration and not a reflection of the actual
- * interface state
- *
- * @param ifname interface name
- * @param istate output; interface state
- * @return true on success
- */
-bool target_ppp_master_state_get(const char *ifname,
-        struct schema_Wifi_Master_State *mstate);
-
-/**
- * @brief Subscribe to network state change events.
- *
- * This function is used to subscribe to network state change events.
- *
- * @note
- * The interface state is typically polled
- *
- * @param ifname interface name
- * @param istate_cb a callback function of type void callback(struct
- * schema_Wifi_Inet_State *istate, schema_filter_t *filter);
- * @return true on success
- */
-bool target_inet_state_register(char *ifname, void *istate_cb);
-
-/** @brief Master state change callback type */
-typedef void target_master_state_cb_t(struct schema_Wifi_Master_State *mstate);
-
-/**
- * @brief Subscribe to network master state change events.
- *
- * This function is used to subscribe to network state change events.
- *
- * @note
- * The interface state is typically polled
- *
- * @param ifname interface name
- * @param istate_cb a callback function of type
- *   void callback(struct schema_Wifi_Master_State *mstate);
- * @return true on success
- */
-bool target_master_state_register(const char *ifname, target_master_state_cb_t *mstate_cb);
-
 /** @brief Route state change callback type */
 typedef void target_route_state_cb_t(struct schema_Wifi_Route_State *mstate);
 
@@ -848,6 +421,12 @@ typedef void target_route_state_cb_t(struct schema_Wifi_Route_State *mstate);
  * @return true on success
  */
 bool target_route_state_register(target_route_state_cb_t *rts_cb);
+
+/// @} LIB_TARGET_ROUTE
+
+/// @defgroup LIB_TARGET_STATS Statistics Related APIs
+/// Definitions and API related to statistics.
+/// @{
 
 /******************************************************************************
  *  STATS definitions
@@ -922,6 +501,12 @@ bool target_stats_clients_convert (
         target_client_record_t     *client_list_old,
         dpp_client_record_t        *client_record);
 
+/// @} LIB_TARGET_STATS
+
+/// @defgroup LIB_TARGET_SURVEY Survey API
+/// Definitions and API related to surveys.
+/// @{
+
 /******************************************************************************
  *  SURVEY definitions
  *****************************************************************************/
@@ -943,7 +528,7 @@ typedef bool target_stats_survey_cb_t (
  * @param chan_list list of channels
  * @param chan_num  number of channels in list
  * @param scan_type scan type
- * @param survey_cb callbnack function
+ * @param survey_cb callback function
  * @param survey_list output; survey stats
  * @param survey_ctx optional context for callback
  * @return true on success
@@ -976,6 +561,12 @@ bool target_stats_survey_convert (
         target_survey_record_t     *data_new,
         target_survey_record_t     *data_old,
         dpp_survey_record_t        *survey_record);
+
+/// @} LIB_TARGET_SURVEY
+
+/// @defgroup LIB_TARGET_NEIGHBOR Neighbor Scanning Related API
+/// Definitions and API related to neighbor scanning.
+/// @{
 
 /******************************************************************************
  *  NEIGHBOR definitions
@@ -1037,6 +628,12 @@ bool target_stats_scan_get(
         radio_scan_type_t           scan_type,
         dpp_neighbor_report_data_t *scan_results);
 
+/// @} LIB_TARGET_NEIGHBOR
+
+/// @defgroup LIB_TARGET_DEVICE_STATS Device Info API
+/// Definitions and API related to device information.
+/// @{
+
 /******************************************************************************
  *  DEVICE definitions
  *****************************************************************************/
@@ -1067,23 +664,27 @@ bool target_stats_device_temp_get(
  * @brief Get device txchainmask
  *
  * @param radio_cfg radio interface handle
- * @param txchainmask_entry; txchainmask of device
+ * @param txchainmask_entry txchainmask of device
  * @return true on success
  */
-
 bool target_stats_device_txchainmask_get(
         radio_entry_t              *radio_cfg,
         dpp_device_txchainmask_t   *txchainmask_entry);
 
 /**
- * @brief Get device fan RPM  
+ * @brief Get device fan RPM
  *
- * @param fan_rpm; RPM of the internal fan
+ * @param fan_rpm RPM of the internal fan
  * @return true on success
  */
-
 bool target_stats_device_fanrpm_get(uint32_t *fan_rpm);
 
+/// @} LIB_TARGET_DEVICE_STATS
+
+/// @cond INTERNAL
+/// @defgroup LIB_TARGET_CAPACITY Capacity Stats API (obsolete)
+/// Obsolete API
+/// @{
 
 /******************************************************************************
  *  CAPACITY definitions
@@ -1114,8 +715,15 @@ bool target_stats_capacity_convert(
         target_capacity_data_t     *capacity_old,
         dpp_capacity_record_t      *capacity_entry);
 
+/// @} LIB_TARGET_CAPACITY
+/// @endcond INTERNAL
+
+/// @defgroup LIB_TARGET_DEVICE Device Control API
+/// Definitions and API related to device control.
+/// @{
+
 /******************************************************************************
- *  SERVICE definitions
+ *  DEVICE definitions
  *****************************************************************************/
 
 /**
@@ -1164,6 +772,10 @@ bool target_device_config_set(struct schema_AWLAN_Node *awlan);
  */
 bool target_device_execute(const char* cmd);
 
+/* Capabilities returned by @ref target_device_capabilities_get() */
+#define TARGET_GW_TYPE       (1 << 0)  /**< returned by @ref target_device_capabilities_get() */
+#define TARGET_EXTENDER_TYPE (1 << 1)  /**< returned by @ref target_device_capabilities_get() */
+
 /**
  * @brief Get device capabilities
  *
@@ -1175,13 +787,33 @@ bool target_device_execute(const char* cmd);
  */
 int target_device_capabilities_get();
 
+/** States returned by @ref target_device_connectivity_check() */
+typedef struct {
+    bool link_state;     //!< @brief  If link has an IP, the link_state should
+                         //!< be set to 'true' if it can be pinged.
+                         //!< Otherwise a custom (vendor-specific) way of
+                         //!< checking link state must be provided.
+    bool router_state;   //!< True if the IP of default gateway can be pinged.
+    bool internet_state; //!< True if external IP address can be pinged.
+    bool ntp_state;      //!< True if current datetime is set correctly.
+} target_connectivity_check_t;
+
+/** Option flags for @ref target_device_connectivity_check() */
+typedef enum {
+    LINK_CHECK     = 1 << 0,
+    ROUTER_CHECK   = 1 << 1,
+    INTERNET_CHECK = 1 << 2,
+    NTP_CHECK      = 1 << 3,
+} target_connectivity_check_option_t;
+
 /**
  * @brief Get device connectivity status
  *
  * For example implementation, see target_kconfig.c
  *
- * @param ifname - interface name
- * @param cstate - connectivity state
+ * @param ifname  interface name
+ * @param cstate  connectivity state
+ * @param opts    which checks to perform
  * @return true if all links are in correct state, false otherwise.
  */
 bool target_device_connectivity_check(const char *ifname,
@@ -1207,10 +839,11 @@ bool target_device_restart_managers();
  */
 bool target_device_wdt_ping();
 
-/******************************************************************************
- *  INTERFACE NAME MAP definitions
- *****************************************************************************/
-char *target_map_ifname(char *ifname);
+/// @} LIB_TARGET_DEVICE
+
+/// @defgroup LIB_TARGET_MAC_LEARNING MAC Learning API
+/// Definitions and API related to MAC learning.
+/// @{
 
 /******************************************************************************
  *  MAC LEARNING definitions
@@ -1229,9 +862,15 @@ typedef bool target_mac_learning_cb_t(
  */
 bool target_mac_learning_register(target_mac_learning_cb_t *omac_cb);
 
+/// @} LIB_TARGET_MAC_LEARNING
+
 /******************************************************************************
  *  PLATFORM SPECIFIC definitions
  *****************************************************************************/
+
+/// @defgroup LIB_TARGET_CLIENT_FREEZE Client Freeze API
+/// Definitions and API related to Client Freeze functionality.
+/// @{
 
 /******************************************************************************
  *  CLIENT NICKNAME definitions
@@ -1253,6 +892,8 @@ typedef bool target_client_freeze_cb_t (
 bool target_client_freeze_register(target_client_freeze_cb_t *freze_cb);
 bool target_client_freeze_set(struct schema_Client_Freeze_Config *cfcfg);
 
-/**@}*/
+/// @} LIB_TARGET_CLIENT_FREEZE
+
+/// @} LIB_TARGET
 
 #endif /* TARGET_COMMON_H_INCLUDED */

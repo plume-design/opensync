@@ -46,21 +46,6 @@ struct task_args
     void*                  arg;
 };
 
-void *os_malloc(size_t size)
-{
-   return calloc(1, size);
-}
-
-void os_free(void *ptr)
-{
-   free(ptr);
-}
-
-void *os_realloc(void *ptr, size_t size)
-{
-    return realloc(ptr, size);
-}
-
 /**
  * Get current task name
  */
@@ -103,7 +88,7 @@ void* task_create_fn(void *ctx)
     }
 
     /* This was allocated by task_create(), free it here */
-    os_free(targs);
+    free(targs);
 
     return NULL;
 }
@@ -118,7 +103,7 @@ task_create (task_id_t          *id,
 
     //ASSERT_ARG(id);
 
-    struct task_args *targs = os_malloc(sizeof(struct task_args));
+    struct task_args *targs = malloc(sizeof(struct task_args));
     if (targs == NULL)
     {
         return false;

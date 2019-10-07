@@ -24,6 +24,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#define _GNU_SOURCE
 #include <stdarg.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -52,14 +53,16 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
 #define WM2_RECALC_DELAY_SECONDS            30
+#define WM2_DFS_FALLBACK_GRACE_PERIOD_SECONDS 10
 #define REQUIRE(ctx, cond) if (!(cond)) { LOGW("%s: %s: failed check: %s", ctx, __func__, #cond); return; }
 #define OVERRIDE(ctx, lv, rv) if (lv != rv) { lv = rv; LOGW("%s: overriding '%s' - this is target impl bug", ctx, #lv); }
 
-struct wm2_delayed_recalc {
+struct wm2_delayed {
     ev_timer timer;
     struct ds_dlist_node list;
     char ifname[32];
     void (*fn)(const char *ifname, bool force);
+    char workname[256];
 };
 
 ovsdb_table_t table_Wifi_Radio_Config;
@@ -69,67 +72,83 @@ ovsdb_table_t table_Wifi_VIF_State;
 ovsdb_table_t table_Wifi_Credential_Config;
 ovsdb_table_t table_Wifi_Associated_Clients;
 ovsdb_table_t table_Wifi_Master_State;
+ovsdb_table_t table_Openflow_Tag;
 
-static ds_dlist_t delayed_recalc_list = DS_DLIST_INIT(struct wm2_delayed_recalc, list);
+static ds_dlist_t delayed_list = DS_DLIST_INIT(struct wm2_delayed, list);
 static bool wm2_api2;
 
+static bool
+wm2_lookup_rstate_by_vstate(struct schema_Wifi_Radio_State *rstate,
+                            const struct schema_Wifi_VIF_State *vstate);
+
+static bool
+wm2_lookup_rstate_by_freq_band(struct schema_Wifi_Radio_State *rstate,
+                               const char *freqband);
 /******************************************************************************
  *  PROTECTED definitions
  *****************************************************************************/
-static struct wm2_delayed_recalc *
-wm2_delayed_recalc_lookup(void (*fn)(const char *ifname, bool force),
-                          const char *ifname)
+static struct wm2_delayed *
+wm2_delayed_lookup(void (*fn)(const char *ifname, bool force),
+                   const char *ifname)
 {
-    struct wm2_delayed_recalc *i;
-    ds_dlist_foreach(&delayed_recalc_list, i)
+    struct wm2_delayed *i;
+    ds_dlist_foreach(&delayed_list, i)
         if (i->fn == fn && !strcmp(i->ifname, ifname))
             return i;
     return NULL;
 }
 
 static void
-wm2_delayed_recalc_cancel(void (*fn)(const char *ifname, bool force),
-                          const char *ifname)
+wm2_delayed_cancel(void (*fn)(const char *ifname, bool force),
+                   const char *ifname)
 {
-    struct wm2_delayed_recalc *i;
-    if (!(i = wm2_delayed_recalc_lookup(fn, ifname)))
+    struct wm2_delayed *i;
+    if (!(i = wm2_delayed_lookup(fn, ifname)))
         return;
-    LOGD("%s: cancelling scheduled recalc", ifname);
-    ds_dlist_remove(&delayed_recalc_list, i);
+    LOGD("%s: cancelling scheduled work %s", ifname, i->workname);
+    ds_dlist_remove(&delayed_list, i);
     ev_timer_stop(EV_DEFAULT, &i->timer);
     free(i);
 }
 
 static void
-wm2_delayed_recalc_cb(struct ev_loop *loop, ev_timer *timer, int revents)
+wm2_delayed_cb(struct ev_loop *loop, ev_timer *timer, int revents)
 {
-    struct wm2_delayed_recalc *i;
-    struct wm2_delayed_recalc j;
+    struct wm2_delayed *i;
+    struct wm2_delayed j;
     i = (void *)timer;
     j = *i;
-    LOGD("%s: running scheduled recalc", i->ifname);
-    ds_dlist_remove(&delayed_recalc_list, i);
+    LOGD("%s: running scheduled work %s", i->ifname, i->workname);
+    ds_dlist_remove(&delayed_list, i);
     ev_timer_stop(EV_DEFAULT, &i->timer);
     free(i);
     j.fn(j.ifname, false);
 }
 
 static void
-wm2_delayed_recalc(void (*fn)(const char *ifname, bool force),
-                   const char *ifname)
+wm2_delayed(void (*fn)(const char *ifname, bool force),
+            const char *ifname, unsigned int seconds,
+            const char *workname)
 {
-    struct wm2_delayed_recalc *i;
-    if ((i = wm2_delayed_recalc_lookup(fn, ifname)))
+    struct wm2_delayed *i;
+    if ((i = wm2_delayed_lookup(fn, ifname)))
         return;
     if (!(i = malloc(sizeof(*i))))
         return;
     STRSCPY(i->ifname, ifname);
+    STRSCPY(i->workname, workname);
     i->fn = fn;
-    ev_timer_init(&i->timer, wm2_delayed_recalc_cb, WM2_RECALC_DELAY_SECONDS, 0);
+    ev_timer_init(&i->timer, wm2_delayed_cb, seconds, 0);
     ev_timer_start(EV_DEFAULT, &i->timer);
-    ds_dlist_insert_tail(&delayed_recalc_list, i);
-    LOGI("%s: scheduling recalc", ifname);
+    ds_dlist_insert_tail(&delayed_list, i);
+    LOGI("%s: scheduling delayed (%us) work %s", ifname, seconds, workname);
 }
+
+#define wm2_delayed_recalc(fn, ifname) (wm2_delayed((fn), (ifname), WM2_RECALC_DELAY_SECONDS, #fn))
+#define wm2_delayed_recalc_cancel wm2_delayed_cancel
+
+#define wm2_timer(fn, ifname, timeout) (wm2_delayed((fn), (ifname), (timeout), #fn))
+#define wm2_timer_cancel wm2_delayed_cancel
 
 static bool
 wm2_sta_has_connected(const struct schema_Wifi_VIF_State *oldstate,
@@ -159,6 +178,147 @@ wm2_sta_has_disconnected(const struct schema_Wifi_VIF_State *oldstate,
            strcmp(newstate->parent, oldstate->parent) &&
            strlen(oldstate->parent) &&
            !strlen(newstate->parent);
+}
+
+struct wm2_fallback_parent {
+    int channel;
+    char bssid[64];
+    char radio_name[128];
+    char freq_band[128];
+};
+
+static unsigned int
+wm2_get_fallback_parents(struct wm2_fallback_parent *parents,
+                         unsigned int parent_max)
+{
+    const struct schema_Wifi_Radio_State *rs;
+    struct wm2_fallback_parent *parent;
+    unsigned int parent_num;
+    void *buf;
+    int n;
+    int i;
+
+    parent_num = 0;
+
+    buf = ovsdb_table_select_where(&table_Wifi_Radio_State, NULL, &n);
+    if (!buf)
+        return parent_num;
+
+    for (n--; n >= 0; n--) {
+        rs = buf + (n * table_Wifi_Radio_State.schema_size);
+
+        for (i = 0; i < rs->fallback_parents_len; i++) {
+            if (parent_num >= parent_max) {
+                LOGW("%s: %s we exceed parent max", rs->if_name, __func__);
+                break;
+            }
+
+            parent = &parents[parent_num];
+            parent->channel = rs->fallback_parents[i];
+            STRSCPY_WARN(parent->bssid, rs->fallback_parents_keys[i]);
+            STRSCPY_WARN(parent->radio_name, rs->if_name);
+            STRSCPY_WARN(parent->freq_band, rs->freq_band);
+            parent_num++;
+
+            LOGD("%s: %s add fallback parent %s %d", parent->freq_band, parent->radio_name,
+                 parent->bssid, parent->channel);
+        }
+    }
+
+    free(buf);
+
+    return parent_num;
+}
+
+static void
+wm2_parent_change(void)
+{
+    const char *parentchange = strfmta("%s/parentchange.sh", target_bin_dir());
+    struct schema_Wifi_Radio_State rstate;
+    struct wm2_fallback_parent parents[8];
+    const struct wm2_fallback_parent *parent;
+    unsigned int parents_num;
+    unsigned int i;
+
+    parents_num = wm2_get_fallback_parents(parents, ARRAY_SIZE(parents));
+    if (!parents_num) {
+        LOGI("%s seems no fallback parents found, restart managers", __func__);
+        target_device_restart_managers();
+        return;
+    }
+
+    parent = &parents[0];
+
+    /* Simply choose 2.4 parent with our channel if possible */
+    if (wm2_lookup_rstate_by_freq_band(&rstate, "2.4G")) {
+        for (i = 0; i < parents_num; i++ ) {
+            if (rstate.channel == parents[i].channel) {
+                parent = &parents[i];
+                break;
+            }
+        }
+    }
+
+    LOGN("%s run parentchange.sh %s %s %d", parent->freq_band, parent->radio_name,
+         parent->bssid, parent->channel);
+    WARN_ON(!strexa(parentchange, parent->radio_name, parents->bssid, strfmta("%d", parents->channel)));
+    return;
+}
+
+static void
+wm2_dfs_disconnect_check(const char *ifname, bool force)
+{
+    LOGN("%s %s called", ifname, __func__);
+    wm2_parent_change();
+}
+
+static bool
+wm2_sta_has_dfs_channel(const struct schema_Wifi_VIF_State *vstate)
+{
+    struct schema_Wifi_Radio_State rstate;
+    bool status = false;
+    int i;
+
+    if (WARN_ON(!wm2_lookup_rstate_by_vstate(&rstate, vstate)))
+        return status;
+
+    if (WARN_ON(!rstate.channel_exists))
+         return status;
+
+    /* TODO check all channels base on number/width */
+    for (i = 0; i < rstate.channels_len; i++) {
+        if (rstate.channel != atoi(rstate.channels_keys[i]))
+            continue;
+
+        LOGI("%s: check channel %d (%d) %s", vstate->if_name, rstate.channel, vstate->channel, rstate.channels[i]);
+        if (!strstr(rstate.channels[i], "allowed"))
+            status = true;
+
+        break;
+    }
+
+    return status;
+}
+
+static void
+wm2_sta_handle_dfs_link_change(const struct schema_Wifi_VIF_State *oldstate,
+                               const struct schema_Wifi_VIF_State *newstate)
+{
+    static const struct schema_Wifi_VIF_State empty;
+
+    if (!newstate)
+        newstate = &empty;
+
+    if (wm2_sta_has_connected(oldstate, newstate) ||
+        wm2_sta_has_reconnected(oldstate, newstate))
+        wm2_timer_cancel(wm2_dfs_disconnect_check, oldstate->if_name);
+
+
+    if (wm2_sta_has_disconnected(oldstate, newstate) &&
+        wm2_sta_has_dfs_channel(oldstate)) {
+            LOGN("%s: sta: dfs: disconnected from %s - arm fallback parents timer", oldstate->if_name, oldstate->parent);
+            wm2_timer(wm2_dfs_disconnect_check, oldstate->if_name, WM2_DFS_FALLBACK_GRACE_PERIOD_SECONDS);
+    }
 }
 
 static void
@@ -285,7 +445,7 @@ wm2_radio_update_port_state_set_inactive(const char *ifname)
     LOGD("%s: port state set to inactive: n=%d", ifname, n);
 }
 
-#define CHANGED_SMAP(conf, state, name, force) \
+#define CHANGED_MAP_STRSTR(conf, state, name, force) \
     (force || schema_changed_map(conf->name##_keys, \
                                  conf->name, \
                                  state->name##_keys, \
@@ -294,9 +454,10 @@ wm2_radio_update_port_state_set_inactive(const char *ifname)
                                  state->name##_len, \
                                  sizeof(*conf->name##_keys), \
                                  sizeof(*conf->name), \
-                                 0))
+                                 (smap_cmp_fn_t)strncmp, \
+                                 (smap_cmp_fn_t)strncmp))
 
-#define CHANGED_DMAP(conf, state, name, force) \
+#define CHANGED_MAP_INTSTR(conf, state, name, force) \
     (force || schema_changed_map(conf->name##_keys, \
                                  conf->name, \
                                  state->name##_keys, \
@@ -305,7 +466,20 @@ wm2_radio_update_port_state_set_inactive(const char *ifname)
                                  state->name##_len, \
                                  sizeof(*conf->name##_keys), \
                                  sizeof(*conf->name),\
-                                 1))
+                                 (smap_cmp_fn_t)memcmp, \
+                                 (smap_cmp_fn_t)strncmp ))
+
+#define CHANGED_MAP_STRINT(conf, state, name, force) \
+    (force || schema_changed_map(conf->name##_keys, \
+                                 conf->name, \
+                                 state->name##_keys, \
+                                 state->name, \
+                                 conf->name##_len, \
+                                 state->name##_len, \
+                                 sizeof(*conf->name##_keys), \
+                                 sizeof(*conf->name),\
+                                 (smap_cmp_fn_t)strncmp, \
+                                 (smap_cmp_fn_t)memcmp ))
 
 #define CHANGED_SET(conf, state, name, force) \
     (force || schema_changed_set(conf->name, \
@@ -362,6 +536,7 @@ wm2_vconf_changed(const struct schema_Wifi_VIF_Config *conf,
     CMP(CHANGED_INT, wds);
     CMP(CHANGED_INT, rrm);
     CMP(CHANGED_INT, btm);
+    CMP(CHANGED_INT, dynamic_beacon);
     CMP(CHANGED_STR, bridge);
     CMP(CHANGED_STR, mac_list_type);
     CMP(CHANGED_STR, mode);
@@ -370,7 +545,7 @@ wm2_vconf_changed(const struct schema_Wifi_VIF_Config *conf,
     CMP(CHANGED_STR, ssid_broadcast);
     CMP(CHANGED_STR, min_hw_mode);
     CMP(CHANGED_SET_CASE, mac_list);
-    CMP(CHANGED_SMAP, security);
+    CMP(CHANGED_MAP_STRSTR, security);
 
     if (changed)
         LOGD("%s: changed (forced=%d)", conf->if_name, changedf->_uuid);
@@ -403,9 +578,9 @@ wm2_rconf_changed(const struct schema_Wifi_Radio_Config *conf,
     CMP(CHANGED_STR, freq_band);
     CMP(CHANGED_STR, ht_mode);
     CMP(CHANGED_STR, hw_mode);
-    CMP(CHANGED_SMAP, hw_config);
-    CMP(CHANGED_DMAP, temperature_control);
-    CMP(CHANGED_SMAP, fallback_parents);
+    CMP(CHANGED_MAP_STRSTR, hw_config);
+    CMP(CHANGED_MAP_INTSTR, temperature_control);
+    CMP(CHANGED_MAP_STRINT, fallback_parents);
 
     if (changed)
         LOGD("%s: changed (forced=%d)", conf->if_name, changedf->_uuid);
@@ -430,7 +605,7 @@ wm2_client_changed(const struct schema_Wifi_Associated_Clients *conf,
     CMP(CHANGED_STR, key_id);
     CMP(CHANGED_STR, state);
     CMP(CHANGED_SET, capabilities);
-    CMP(CHANGED_SMAP, kick);
+    CMP(CHANGED_MAP_STRSTR, kick);
 
     if (changed)
         LOGD("%s: changed", conf->mac);
@@ -441,8 +616,9 @@ wm2_client_changed(const struct schema_Wifi_Associated_Clients *conf,
 #undef CHANGED_STR
 #undef CHANGED_INT
 #undef CHANGED_SET
-#undef CHANGED_DMAP
-#undef CHANGED_SMAP
+#undef CHANGED_MAP_STRSTR
+#undef CHANGED_MAP_STRINT
+#undef CHANGED_MAP_INTSTR
 #undef CMP
 
 static void
@@ -541,6 +717,47 @@ wm2_lookup_vconf_by_ifname(struct schema_Wifi_VIF_Config *vconf,
     if (!where)
         return false;
     return ovsdb_table_select_one_where(&table_Wifi_VIF_Config, where, vconf);
+}
+
+static bool
+wm2_lookup_rstate_by_freq_band(struct schema_Wifi_Radio_State *rstate,
+                               const char *freqband)
+{
+    json_t *where = ovsdb_where_simple(SCHEMA_COLUMN(Wifi_Radio_State, freq_band), freqband);
+    if (!where)
+        return false;
+    return ovsdb_table_select_one_where(&table_Wifi_Radio_State, where, rstate);
+}
+
+static bool
+wm2_lookup_rstate_by_vstate(struct schema_Wifi_Radio_State *rstate,
+                            const struct schema_Wifi_VIF_State *vstate)
+{
+    const struct schema_Wifi_Radio_State *rs;
+    void *buf;
+    int n;
+    int i;
+
+    memset(rstate, 0, sizeof(*rstate));
+
+    buf = ovsdb_table_select_where(&table_Wifi_Radio_State, NULL, &n);
+    if (!buf)
+        return false;
+
+    for (n--; n >= 0; n--) {
+        rs = buf + (n * table_Wifi_Radio_State.schema_size);
+        for (i = 0; i < rs->vif_states_len; i++) {
+            if (!strcmp(rs->vif_states[i].uuid, vstate->_uuid.uuid)) {
+                memcpy(rstate, rs, sizeof(*rs));
+                free(buf);
+                LOGD("%s: found radio state %s via vif state", vstate->if_name, rs->if_name);
+                return true;
+            }
+        }
+    }
+
+    free(buf);
+    return false;
 }
 
 static int
@@ -663,6 +880,13 @@ wm2_vconf_recalc(const char *ifname, bool force)
 
     if (!wm2_vconf_changed(&vconf, &vstate, &vchanged) && !force)
         return;
+
+    if (vconf.dynamic_beacon_exists && vconf.dynamic_beacon &&
+        vconf.ssid_broadcast_exists &&
+        !strcmp("enabled", vconf.ssid_broadcast)) {
+            LOGW("%s: failed to configure, dynamic beacon can be set only for hidden networks",
+                 vconf.if_name);
+    }
 
     wm2_radio_update_port_state(vconf.if_name);
 
@@ -1045,6 +1269,7 @@ recalc:
     if (wm2_sta_has_reconnected(&oldstate, &state))
         wm2_radio_update_port_state_set_inactive(state.if_name);
     wm2_sta_print_status(&oldstate, &state);
+    wm2_sta_handle_dfs_link_change(&oldstate, &state);
     wm2_radio_update_port_state(state.if_name);
     wm2_delayed_recalc(wm2_vconf_recalc, state.if_name);
 }
@@ -1142,10 +1367,10 @@ wm2_op_clients(const struct schema_Wifi_Associated_Clients *clients,
     }
 
     for (i = 0; i < num; i++) {
-        for (j = 0; j < num; j++)
+        for (j = 0; j < vstate.associated_clients_len; j++)
             if (!strcasecmp(clients[i].mac, ovs_clients[j].mac))
                 break;
-        if (j == num || wm2_client_changed(clients + i, ovs_clients + j, &changed)) {
+        if (j == vstate.associated_clients_len || wm2_client_changed(clients + i, ovs_clients + j, &changed)) {
             LOGI("%s: adding/updating client %s", vif, clients[i].mac);
             wm2_op_client(clients + i, vif, true);
         }
@@ -1295,6 +1520,7 @@ wm2_radio_init(void)
     OVSDB_TABLE_INIT(Wifi_Credential_Config, _uuid);
     OVSDB_TABLE_INIT(Wifi_Associated_Clients, _uuid);
     OVSDB_TABLE_INIT(Wifi_Master_State, if_name);
+    OVSDB_TABLE_INIT(Openflow_Tag, name);
 
     if ((wm2_api2 = target_radio_init(&rops))) {
         LOGI("Using new API v2");

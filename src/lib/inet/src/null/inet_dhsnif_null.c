@@ -24,11 +24,13 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include "log.h"
+
 #include "inet.h"
 #include "inet_dhsnif.h"
 
 /*
- * Return a new instance of the DHCP sniffig class
+ * Return a new instance of the DHCP sniffing class
  */
 inet_dhsnif_t *inet_dhsnif_new(const char *ifname)
 {

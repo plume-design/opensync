@@ -672,7 +672,7 @@ int os_nif_ifreq(int cmd, char *ifname, struct ifreq *req)
 }
 
 /**
- * Declare this as PRIV, as it is shared with the WIF code, but it's
+ * Declare this as private, as it is shared with the WIF code, but it's
  * not really for public use.
  */
 int os_nif_ioctl(int cmd, void *buf)
@@ -860,7 +860,9 @@ bool os_nif_dhcpc_start(char* ifname, bool apply, int dhcp_time)
 	"-x", swver,
 	"-x", profile,
 	"-x", serial_opt,
+#ifndef CONFIG_UDHCPC_OPTIONS_USE_CLIENTID
 	"-C",
+#endif
 	NULL
     };
 
@@ -875,9 +877,11 @@ bool os_nif_dhcpc_start(char* ifname, bool apply, int dhcp_time)
 	"-f",
 	"-i", ifname,
 	"-s", udhcpc_s_option,
+#ifndef CONFIG_UDHCPC_OPTIONS_USE_CLIENTID
+	"-C",
+#endif
 	"-S",
 	"-q",
-	"-Q",
 	NULL
     };
 

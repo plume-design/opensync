@@ -29,7 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <stdbool.h>
 
-#include "inet_addr.h"
+#include "osn_types.h"
 
 /*
  * ===========================================================================
@@ -47,7 +47,7 @@ bool inet_dns_stop(inet_dns_t *self);
 
 bool inet_dns_server_set(
         inet_dns_t *self,
-        inet_ip4addr_t primary,
-        inet_ip4addr_t secondary);
+        osn_ip_addr_t primary,
+        osn_ip_addr_t secondary);
 
 #endif /* INET_DNS_H_INCLUDED */

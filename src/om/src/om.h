@@ -75,6 +75,11 @@ extern bool     om_template_tag_update(om_tag_t *tag, ds_tree_t *removed,
                                         ds_tree_t *added, ds_tree_t *updated);
 
 
+/******************************************************************************
+ * Openflow rules add/delete Definitions
+ *****************************************************************************/
+extern bool     om_add_flow(const char *token, const struct schema_Openflow_Config *ofconf);
+extern bool     om_del_flow(const char *token, const struct schema_Openflow_Config *ofconf);
 
 /******************************************************************************
  * Misc External Function Definitions

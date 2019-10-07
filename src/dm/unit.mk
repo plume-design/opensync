@@ -55,7 +55,6 @@ UNIT_DEPS += src/lib/osa
 UNIT_DEPS += src/lib/ds
 UNIT_DEPS += src/lib/version
 UNIT_DEPS += src/lib/ovsdb
-UNIT_DEPS += src/lib/cmdserver
 UNIT_DEPS += src/lib/schema
 UNIT_DEPS += src/lib/mosqev
 UNIT_DEPS += src/lib/tailf

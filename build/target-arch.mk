@@ -42,6 +42,15 @@ UNIT_DISABLE_src/sm                    := y
 UNIT_DISABLE_src/wm2                   := n
 UNIT_DISABLE_src/lib/bsal              := y
 UNIT_DISABLE_src/lib/cev               := y
+UNIT_DISABLE_src/lib/network_metadata  := n
+UNIT_DISABLE_src/lib/network_telemetry := n
+UNIT_DISABLE_src/lib/ustack            := n
+UNIT_DISABLE_src/lib/fsm_demo_plugin   := n
+UNIT_DISABLE_src/fcm                   := n
+UNIT_DISABLE_src/lib/ip_map            := n
+UNIT_DISABLE_src/lib/fcm_filter        := n
+UNIT_DISABLE_src/lib/nf_utils          := n
+UNIT_DISABLE_src/fsm                   := n
 KCONFIG_TARGET                         := kconfig/targets/config_$(TARGET)
 endif
 

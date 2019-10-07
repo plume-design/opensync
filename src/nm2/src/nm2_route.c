@@ -31,22 +31,34 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb.h"
 #include "ovsdb_sync.h"
 #include "ovsdb_table.h"
-
+#include "inet.h"
 #include "target.h"
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
 static ovsdb_table_t table_Wifi_Route_State;
 
-static target_route_state_cb_t nm2_route_state_update;
-static void nm2_route_state_clear(ds_dlist_t *rts_list);
+static void nm2_route_update(struct schema_Wifi_Route_State *rts);
 
-void nm2_route_state_update(struct schema_Wifi_Route_State *rts)
+/*
+ * ===========================================================================
+ *  Routing table status reporting
+ * ===========================================================================
+ */
+bool nm2_route_init(void)
+{
+    /* Initialize OVSDB tables */
+    OVSDB_TABLE_INIT_NO_KEY(Wifi_Route_State);
+
+    return true;
+}
+
+void nm2_route_update(struct schema_Wifi_Route_State *rts)
 {
     json_t *where;
     json_t *cond;
 
-    LOG(INFO, "nm2: Updating Wifi_Route_State: if_name=%s dest_addr=%s dest_mask=%s gateway=%s gateway_hwaddr=%s",
+    LOG(INFO, "route: Updating Wifi_Route_State: if_name=%s dest_addr=%s dest_mask=%s gateway=%s gateway_hwaddr=%s",
             rts->if_name,
             rts->dest_addr,
             rts->dest_mask,
@@ -85,55 +97,40 @@ void nm2_route_state_update(struct schema_Wifi_Route_State *rts)
     }
 }
 
-void nm2_route_state_clear(ds_dlist_t *rts_list)
+bool nm2_route_notify(void *data, struct osn_route_status *rts, bool remove)
 {
-    ds_dlist_iter_t iter;
-    target_route_state_init_t *rts;
+    inet_t *self = data;
 
-    for (rts = ds_dlist_ifirst(&iter, rts_list);
-         rts != NULL;
-         rts = ds_dlist_inext(&iter))
+    struct schema_Wifi_Route_State schema_rts;
+
+    LOG(TRACE, "route: %s: Route state notify, remove = %d", self->in_ifname, remove);
+
+    memset(&schema_rts, 0, sizeof(schema_rts));
+
+    if (strscpy(schema_rts.if_name, self->in_ifname, sizeof(schema_rts.if_name)) < 0)
     {
-        ds_dlist_iremove(&iter);
-        free(rts);
-    }
-}
-
-bool nm2_route_state_init(void)
-{
-    bool ret;
-    ds_dlist_t rts_list;
-    target_route_state_init_t *rts;
-
-    static bool rtstate_init = false;
-
-    if (rtstate_init) return true;
-
-    /* Initialize OVSDB tables */
-    OVSDB_TABLE_INIT_NO_KEY(Wifi_Route_State);
-
-    if (!target_route_state_init(&rts_list))
-    {
-        LOGW("nm2: Initializing route state (not found)");
+        LOG(WARN, "route: %s: Route state interface name too long.", self->in_ifname);
         return false;
     }
 
-    ds_dlist_foreach(&rts_list, rts)
-    {
-        ovsdb_table_upsert(&table_Wifi_Route_State, &rts->rstate, false);
-    }
+    snprintf(schema_rts.dest_addr, sizeof(schema_rts.dest_addr), PRI_osn_ip_addr,
+            FMT_osn_ip_addr(rts->rts_dst_ipaddr));
 
-    nm2_route_state_clear(&rts_list);
+    snprintf(schema_rts.dest_mask, sizeof(schema_rts.dest_mask), PRI_osn_ip_addr,
+            FMT_osn_ip_addr(rts->rts_dst_mask));
 
-    /* Register to DHCP lease changed ... */
-    ret = target_route_state_register(nm2_route_state_update);
-    if (!ret)
-    {
-        LOG(ERR, "nm2: Error initializing route state.");
-        return false;
-    }
+    snprintf(schema_rts.gateway, sizeof(schema_rts.gateway), PRI_osn_ip_addr,
+            FMT_osn_ip_addr(rts->rts_gw_ipaddr));
 
-    rtstate_init = true;
+    snprintf(schema_rts.gateway_hwaddr, sizeof(schema_rts.gateway_hwaddr), PRI_osn_mac_addr,
+            FMT_osn_mac_addr(rts->rts_gw_hwaddr));
+
+    schema_rts.gateway_hwaddr_exists = osn_mac_addr_cmp(&rts->rts_gw_hwaddr, &OSN_MAC_ADDR_INIT) != 0;
+
+    schema_rts._update_type = remove ? OVSDB_UPDATE_DEL : OVSDB_UPDATE_MODIFY;
+
+    nm2_route_update(&schema_rts);
 
     return true;
 }
+

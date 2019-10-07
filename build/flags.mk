@@ -27,12 +27,12 @@ CFLAGS   := -Wall -Wextra -Werror
 CFLAGS   += -Wno-unused-parameter
 CFLAGS   += -Wno-unused-label
 CFLAGS   += -Wno-strict-aliasing
-CFLAGS   += -fasynchronous-unwind-tables -rdynamic
+CFLAGS   += -fasynchronous-unwind-tables
 
 DEBUGFLAGS := -g
 OPTIMIZE :=
 
 # LD FLAGS
-LDFLAGS  := -rdynamic
+LDFLAGS  := -Wl,--export-dynamic
 LIBS     += -lpthread
 

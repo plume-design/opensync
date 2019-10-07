@@ -25,11 +25,13 @@
 
 ###############################################################################
 #
-# version-lib - provides version data for the image creation
-# meant to be sourced
+# version-lib.sh - provides version data for image creation
+# (meant to be sourced)
 #
 #
-# interface of version.lib.sh:
+# Interface of version.lib.sh
+# ---------------------------
+#
 # input:
 #  CURDIR   current directory
 #  VERSION_TARGET
@@ -42,17 +44,18 @@
 #  VER_DATE
 #
 # output:
-#  SHA1         (sha1 of git repository used to build)
-#  DIRTY_STRING (local modifications string)
-#  VERSION      (marketing version)
-#  USERNAME     (user used to build the image)
-#  HOSTNAME     (hostname used to build the image)
-#  VER_DATE     (date of image build)
-#  APP_VERSION  (application version string)
-#  BUILD_NUMBER (consecutive build number)
-#  PML_VERSION  (core/.version)
+#  SHA1           (sha1 of git repository used to build)
+#  DIRTY_STRING   (local modifications string)
+#  VERSION        (marketing version)
+#  USERNAME       (user used to build the image)
+#  HOSTNAME       (hostname used to build the image)
+#  VER_DATE       (date of image build)
+#  APP_VERSION    (application version string)
+#  BUILD_NUMBER   (consecutive build number)
+#  OSYNC_VERSION  (OpenSync version - core/.version)
 #
 # Format: VERSION-BUILD_NUMBER-gSHA1-DIRTY_STRING-IMAGE_DEPLOYMENT_PROFILE
+#
 
 if [ -z "$CURDIR" ]; then
     CURDIR=`dirname $0`
@@ -85,13 +88,12 @@ fi
 
 VERSION=`cat $VERSION_FILE`
 
-PML_VERSION=`cat .version`
+OSYNC_VERSION=`cat .version`
 
 # echo "VERSION_FILE=$VERSION_FILE : $VERSION" >&2
 
 DIRTY_STRING=""
-if [ ${DIRTY} -ne 0 ];
-then
+if [ ${DIRTY} -ne 0 ]; then
     DIRTY_STRING="-mods"
 fi
 
@@ -99,11 +101,11 @@ USERNAME=`id -n -u`
 HOSTNAME=`hostname`
 
 if [ -z "$VER_DATE" ]; then
-VER_DATE=`date`
+    VER_DATE=`date`
 fi
 
 # First see if BUILD_NUMBER is defined in environment by Jenkins,
-# then try to find it in file and if not found use 0
+# then try to find it in file, and if not found use 0
 if [ -z "${BUILD_NUMBER}" ]; then
     if [ -f "${CURDIR}/../../../.buildnum" ]; then
         BUILD_NUMBER=`cat ${CURDIR}/../../../.buildnum`
@@ -116,31 +118,28 @@ fi
 APP_VERSION="${VERSION}"
 
 if [ "${VERSION_NO_BUILDNUM}" != "1" ]; then
-    # Append build number
+    # append build number
     APP_VERSION="${APP_VERSION}-${BUILD_NUMBER}"
 fi
 
 if [ "${VERSION_NO_SHA1}" != "1" ]; then
-    # Append SHA1
+    # append SHA1
     APP_VERSION="${APP_VERSION}-${SHA1}"
 fi
 
 if [ "${VERSION_NO_MODS}" != "1" ]; then
-    # Append dirty string
+    # append dirty string
     APP_VERSION="${APP_VERSION}${DIRTY_STRING}"
 fi
 
 # append profile
 if [ "${VERSION_NO_PROFILE}" != "1" ]; then
-if [ -z "${IMAGE_DEPLOYMENT_PROFILE}" ]
-then
-    IMAGE_DEPLOYMENT_PROFILE="development"
-fi
-if [ -n "${IMAGE_DEPLOYMENT_PROFILE}" -a "${IMAGE_DEPLOYMENT_PROFILE}" != "none" ]
-then
-    APP_VERSION="${APP_VERSION}-${IMAGE_DEPLOYMENT_PROFILE}"
-fi
+    if [ -z "${IMAGE_DEPLOYMENT_PROFILE}" ]; then
+        IMAGE_DEPLOYMENT_PROFILE="development"
+    fi
+    if [ -n "${IMAGE_DEPLOYMENT_PROFILE}" -a "${IMAGE_DEPLOYMENT_PROFILE}" != "none" ]; then
+        APP_VERSION="${APP_VERSION}-${IMAGE_DEPLOYMENT_PROFILE}"
+    fi
 fi
 
 cd - >/dev/null
-

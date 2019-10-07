@@ -623,7 +623,7 @@ json_t *OVSDB_VA_DECL(ovsdb_row_filtout, json_t *row)
 /*
  * OVSDB special value
  */
-json_t *ovsdb_tran_special_value(char *type, char *value)
+json_t *ovsdb_tran_special_value(const char *type, const char *value)
 {
     json_t *js;
 
@@ -637,7 +637,7 @@ json_t *ovsdb_tran_special_value(char *type, char *value)
 /*
  * OVSDB UUID value
  */
-json_t *ovsdb_tran_uuid_json(char *uuid)
+json_t *ovsdb_tran_uuid_json(const char *uuid)
 {
     return ovsdb_tran_special_value("uuid", uuid);
 }
@@ -646,7 +646,7 @@ json_t *ovsdb_tran_uuid_json(char *uuid)
  * Create a OVS "where" selector
  */
 json_t * ovsdb_tran_cond_single_json(
-        char * column,
+        const char * column,
         ovsdb_func_t func,
         json_t * value)
 {
@@ -673,10 +673,11 @@ json_t * ovsdb_tran_cond_single(
  * This functions generates conditional array in <where:<> filed
  */
 json_t * ovsdb_tran_cond(ovsdb_col_t col_type,
-                         char * column,
+                         const char * column,
                          ovsdb_func_t func,
-                         void * value)
+                         const void * value)
 {
+    const json_int_t *jint = value;
     json_t * jval = NULL;
     json_t * jtop;
 
@@ -685,27 +686,22 @@ json_t * ovsdb_tran_cond(ovsdb_col_t col_type,
 
     switch(col_type) {
 
-        // Value already in JSON format
-        case OCLM_JSON:
-            jval = (json_t *)value;
-            break;
-
         // Value is a string
         case OCLM_STR:
-            jval = json_string((char *)value);
+            jval = json_string(value);
             break;
 
         // Value is a UUID
         case OCLM_UUID:
-            jval = ovsdb_tran_uuid_json((char *)value);
+            jval = ovsdb_tran_uuid_json(value);
             break;
 
         case OCLM_BOOL:
-            jval = json_boolean((bool *)value);
+            jval = json_boolean(value);
             break;
 
         case OCLM_INT:
-            jval = json_integer(*(json_int_t *) value);
+            jval = json_integer(*jint);
             break;
 
         default:
@@ -856,7 +852,7 @@ error:
  */
 json_t * ovsdb_tran_multi(json_t * jarray,
                           json_t * js_obj,
-                          char * table,
+                          const char * table,
                           ovsdb_tro_t oper,
                           json_t * where,
                           json_t * row)
@@ -909,11 +905,11 @@ json_t * ovsdb_tran_multi(json_t * jarray,
  * inserts a new row, and inserts it's UUID into a parent
  * table's column using mutate
  */
-json_t * ovsdb_tran_insert_with_parent(char * table,
+json_t * ovsdb_tran_insert_with_parent(const char * table,
                                        json_t * row,
-                                       char * parent_table,
+                                       const char * parent_table,
                                        json_t * parent_where,
-                                       char * parent_column)
+                                       const char * parent_column)
 {
     json_t * js;
     json_t * jarray;
@@ -959,23 +955,24 @@ json_t * ovsdb_tran_insert_with_parent(char * table,
  * deletes a rows by uuid in one table, and then removes
  * them from a parent table's column using mutate
  */
-json_t * ovsdb_tran_delete_with_parent(char * table,
+json_t * ovsdb_tran_delete_with_parent(const char * table,
                                        json_t * uuids,
-                                       char * parent_table,
+                                       const char * parent_table,
                                        json_t * parent_where,
-                                       char * parent_column)
+                                       const char * parent_column)
 {
     json_t * js;
     json_t * jarray = NULL;
     json_t * jwhere;
     json_t * js_uuid;
     json_t * js_mutations;
+    const char *uuid;
     size_t index;
 
     /* Create a sub-transaction per UUID to be deleted */
     json_array_foreach(uuids, index, js_uuid) {
-        json_incref(js_uuid);
-        jwhere = ovsdb_tran_cond(OCLM_JSON, "_uuid", OFUNC_EQ, js_uuid);
+        uuid = json_string_value(json_array_get(js_uuid, 1));
+        jwhere = ovsdb_tran_cond(OCLM_UUID, "_uuid", OFUNC_EQ, uuid);
         jarray = ovsdb_tran_multi(jarray,       // Append transaction
                                   NULL,         // New trans obj
                                   table,        // Table for insert

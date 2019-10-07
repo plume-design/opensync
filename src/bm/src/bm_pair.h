@@ -44,6 +44,7 @@ typedef struct {
     bsal_t                  bsal;
 
     bsal_ifconfig_t         ifcfg[BSAL_BAND_COUNT];
+    bsal_neigh_info_t       self_neigh[BSAL_BAND_COUNT];
     uint16_t                kick_debounce_thresh;
     uint16_t                kick_debounce_period;
     uint16_t                success_threshold;

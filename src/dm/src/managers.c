@@ -563,7 +563,7 @@ bool act_init_managers (void)
 
     if (true == retval)
     {
-#if defined(USE_SPEED_TEST)
+#if defined(USE_SPEED_TEST) || defined(CONFIG_PLUME_SPEEDTEST)
         /* start monitoring speedtest config table */
         dm_st_monitor();
 #endif

@@ -822,10 +822,12 @@ struct  _Sts__BSClient__BSEvent
   protobuf_c_boolean rrm_caps_lci_meas;
   protobuf_c_boolean has_rrm_caps_ftm_range_rpt;
   protobuf_c_boolean rrm_caps_ftm_range_rpt;
+  protobuf_c_boolean has_backoff_period;
+  uint32_t backoff_period;
 };
 #define STS__BSCLIENT__BSEVENT__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&sts__bsclient__bsevent__descriptor) \
-    , 0, 0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0 }
+    , 0, 0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0 }
 
 
 struct  _Sts__BSClient__BSBandReport

@@ -30,6 +30,6 @@
 UNIT_NAME := kconfig
 UNIT_TYPE := LIB
 
-UNIT_PRE := $(KCONFIG).h
+UNIT_PRE := $(KCONFIG_WORK).h
 
-UNIT_EXPORT_CFLAGS := -include "$(KCONFIG).h" -I$(UNIT_PATH)/inc
+UNIT_EXPORT_CFLAGS := -include "$(KCONFIG_WORK).h" -I$(UNIT_PATH)/inc

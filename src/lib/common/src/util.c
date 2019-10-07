@@ -392,7 +392,36 @@ ssize_t base64_decode(void *out, ssize_t out_sz, char *input)
 }
 
 /**
- * Remove all characters in @p delim from thee end of the string
+ * Unescape \xXX sequences in @p str.
+ */
+void str_unescape_hex(char *str)
+{
+    char *s;
+    char *d;
+    int n;
+
+    for (s=str, d=str; *s; d++) {
+        if (*s == '\\') {
+            s++;
+            switch (*s++) {
+                case '\\': *d = '\\';   break;
+                case '"':  *d = '"';    break;
+                case 'e':  *d = '\033'; break;
+                case 't':  *d = '\t';   break;
+                case 'n':  *d = '\n';   break;
+                case 'r':  *d = '\r';   break;
+                case 'x':  n = 0; sscanf(s, "%02hhx%n", d, &n); s += n; break;
+                default:   *d = 0; return;
+            }
+        } else {
+            *d = *s++;
+        }
+    }
+    *d = 0;
+}
+
+/**
+ * Remove all characters in @p delim from the end of the string
  */
 char *strchomp(char *str, char *delim)
 {
@@ -771,7 +800,7 @@ char *strexread(const char *prog, const char *const*argv)
             while (read(fd[0], &c, 1) == 1);
             close(fd[0]);
             waitpid(pid, &status, 0);
-            LOGT("%s: output='%s' status=%d", ctx, p, status);
+            LOGT("%s: status=%d output='%s'", ctx, status, p);
             if ((errno = (WIFEXITED(status) ? WEXITSTATUS(status) : -1)) == 0)
                 return p;
             free(p);

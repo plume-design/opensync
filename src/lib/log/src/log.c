@@ -113,6 +113,11 @@ static void _log_sink_severity_set_default(log_sink_t sink);
  */
 static void log_init(char *name)
 {
+    // set default TZ environment variable, because otherwise localtime() would
+    // stat("/etc/localtime") on every call thus impacting cpu usage.
+    // Note: using overwrite=0, so if TZ is already set externally it's not overwritten
+    setenv("TZ", ":/etc/localtime", 0);
+
     _log_sink_severity_set_default(LOG_SINK_LOCAL);
     _log_sink_severity_set_default(LOG_SINK_REMOTE);
 
@@ -431,6 +436,62 @@ static bool log_any_sink_match(log_severity_t sev, log_module_t module)
     return match;
 }
 
+#ifdef BUILD_LOG_MEMINFO
+#if __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6)
+#pragma message("LOG MEMINFO ENABLED")
+#endif
+/* format a short mem info string, store in "str" at offset "pos"
+ * {VmSize VmData delta-VmSize delta-VmData}
+ */
+void log_meminfo(char *str, int size, int pos, const char *str_prefix, const char *str_append)
+{
+    static int last_size, last_data, last_rss;
+
+    int fd;
+    int sz;
+    char buf[1024];
+    char *s;
+    int vmsize = 0, vmdata = 0, vmrss = 0;
+    int d_size = 0, d_data = 0, d_rss = 0;
+
+    if (pos >= size) return;
+    str += pos;
+    size -= pos;
+
+    *str = 0;
+    fd = open("/proc/self/status", O_RDONLY);
+    if (!fd) return;
+
+    sz = read(fd, buf, sizeof(buf) - 1);
+    if (sz > 0) {
+        buf[sz] = 0;
+        s = strstr(buf, "VmSize:");
+        if (s) s = strchr(s, ':') + 1;
+        vmsize = atoi(s);
+        s = strstr(buf, "VmData:");
+        if (s) s = strchr(s, ':') + 1;
+        vmdata = atoi(s);
+        s = strstr(buf, "VmRSS:");
+        if (s) s = strchr(s, ':') + 1;
+        vmrss = atoi(s);
+        d_size = vmsize - last_size;
+        d_data = vmdata - last_data;
+        d_rss = vmrss - last_rss;
+        last_size = vmsize;
+        last_data = vmdata;
+        last_rss = vmrss;
+    }
+    close(fd);
+
+    // %+d = print a + sign for positive numbers
+    snprintf(str, size, "%s{%d %d %d %+d %+d %+d}%s",
+            str_prefix ? str_prefix : "",
+            vmsize, vmdata, vmrss,
+            d_size, d_data, d_rss,
+            str_append ? str_append : "");
+}
+#endif
+
 void mlog(log_severity_t sev,
           log_module_t module,
           const char  *fmt, ...)
@@ -479,7 +540,7 @@ void mlog(log_severity_t sev,
         *strip = NUL;
 
     // pretty print
-    char se_tag[32];
+    char se_tag[64];
     char *spaces = "          ";
     size_t se_len = 16;
     int scnt = 1;
@@ -489,6 +550,11 @@ void mlog(log_severity_t sev,
     }
 
     snprintf(se_tag, sizeof(se_tag), "<%s>%.*s%s", se->name, scnt, spaces, tag);
+
+#ifdef BUILD_LOG_MEMINFO
+    // append debug mem info
+    log_meminfo(se_tag, sizeof(se_tag), strlen(se_tag), " ", "");
+#endif
 
     /* Craft the message */
     logger_msg_t msg;

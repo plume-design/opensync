@@ -88,10 +88,6 @@ int main(int argc, char ** argv)
         return -1;
     }
 
-    if (!target_init(TARGET_INIT_MGR_NM, loop)) {
-        return -1;
-    }
-
     // Connect to ovsdb
     if (!ovsdb_init_loop(loop, "NM")) {
         LOGEM("Initializing NM "
@@ -99,16 +95,29 @@ int main(int argc, char ** argv)
         return -1;
     }
 
-    nm2_ovsdb_init();
+    if (!nm2_iface_init())
+    {
+        LOGEM("Initializing NM "
+              "(Failed to initialize network API)");
+        return -1;
+    }
+
+    nm2_inet_config_init();
+    nm2_inet_state_init();
     nm2_mac_learning_init();
-    nm2_dhcp_table_init();
     nm2_dhcp_rip_init();
-    nm2_fw_init();
-    nm2_route_state_init();
+    nm2_portfw_init();
+    nm2_route_init();
+    nm2_mac_tags_ovsdb_init();
+    nm2_ip_interface_init();
+    nm2_ipv6_address_init();
+    nm2_ipv6_prefix_init();
+    nm2_dhcpv6_client_init();
+    nm2_dhcpv6_server_init();
+    nm2_dhcp_option_init();
+    nm2_ipv6_routeadv_init();
 
     ev_run(loop, 0);
-
-    target_close(TARGET_INIT_MGR_NM, loop);
 
     if (!ovsdb_stop_loop(loop)) {
         LOGE("Stopping NM "

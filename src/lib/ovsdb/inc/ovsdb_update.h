@@ -105,7 +105,7 @@ typedef void ovsdb_update_cbk_t(ovsdb_update_monitor_t *self);
 
 struct ovsdb_update_monitor_s
 {
-    ovsdb_update_cbk_t     *PRIV(mon_cbk);     /* Update callback */
+    ovsdb_update_cbk_t     *mon_cb;            /* Update callback */
     void                   *mon_data;          /* User-supplied data, not touched by ovsdb_update_* */
 
     /*

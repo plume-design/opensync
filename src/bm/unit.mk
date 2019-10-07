@@ -50,4 +50,4 @@ UNIT_DEPS += src/lib/datapipeline
 UNIT_DEPS += src/lib/target
 UNIT_DEPS += src/qm/qm_conn
 
-UNIT_LDFLAGS := -lev -ljansson
+UNIT_LDFLAGS := -lev -ljansson -lm

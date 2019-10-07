@@ -144,6 +144,14 @@ target_managers_config_t target_managers_config[] =
     },
 #endif
 
+#if defined(CONFIG_TARGET_MANAGER_FCM)
+    {
+        .name =  TARGET_MANAGER_PATH("fcm"),
+        .always_restart = 1,
+        .restart_delay = -1,
+    },
+#endif
+
 #if defined(CONFIG_TARGET_MANAGER_XM)
     {
         .name =  TARGET_MANAGER_PATH("xm"),
@@ -157,6 +165,14 @@ target_managers_config_t target_managers_config[] =
         .needs_plan_b = false,
     }
 #endif
+
+#if defined(CONFIG_TARGET_MANAGER_NFM)
+    {
+        .name = TARGET_MANAGER_PATH("nfm"),
+        .needs_plan_b = false,
+    },
+#endif
+
 };
 int target_managers_num =
     (sizeof(target_managers_config) / sizeof(target_managers_config[0]));
@@ -477,38 +493,6 @@ int target_led_names(const char **leds[])
     return (sizeof(led_names) / (sizeof(led_names[0]))) - 1;
 }
 #endif /* CONFIG_TARGET_LED_SUPPORT */
-
-
-#if defined(CONFIG_TARGET_LED_LP5562_SUPPORT)
-const char *target_led_device_dir(void)
-{
-    return NULL;
-}
-
-int target_led_names(const char **leds[])
-{
-    static const char *led_names[] =
-    {
-#if defined(CONFIG_TARGET_LED0)
-        CONFIG_TARGET_LED0_NAME,
-#endif
-#if defined(CONFIG_TARGET_LED1)
-        CONFIG_TARGET_LED1_NAME,
-#endif
-#if defined(CONFIG_TARGET_LED2)
-        CONFIG_TARGET_LED2_NAME,
-#endif
-#if defined(CONFIG_TARGET_LED3)
-        CONFIG_TARGET_LED3_NAME,
-#endif
-        NULL
-    };
-    printf("defining leds....\n");
-    *leds = led_names;
-    return (sizeof(led_names) / (sizeof(led_names[0]))) - 1;
-}
-#endif /* CONFIG_TARGET_LED_LP5562_SUPPORT */
-
 
 
 #if defined(CONFIG_TARGET_CM_LINUX_SUPPORT_PACKAGE)

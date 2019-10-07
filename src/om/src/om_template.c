@@ -40,7 +40,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <syslog.h>
 
 #include "policy_tags.h"
-#include "target.h"
 #include "om.h"
 
 /*****************************************************************************/
@@ -210,13 +209,13 @@ om_template_apply(om_action_t type, om_tflow_t *tflow, om_tdata_t *tdata)
 
     case ADD:
         if (om_tflow_to_schema(tflow, erule, &sflow)) {
-            ret = target_om_add_flow(sflow.token, &sflow);
+            ret = om_add_flow(sflow.token, &sflow);
         }
         break;
 
     case DELETE:
         if (om_tflow_to_schema(tflow, erule, &sflow)) {
-            ret = target_om_del_flow(sflow.token, &sflow);
+            ret = om_del_flow(sflow.token, &sflow);
         }
         break;
 

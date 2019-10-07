@@ -49,11 +49,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define DAEMON_DEFAULT_RESTART_DELAY      1.0   /* Default delay between daemon restarts in secods */
 #define DAEMON_DEFAULT_RESTART_MAX        5     /* Number of retries before giving up */
-#define DAEMON_DEFAULT_KILL_TIMEOUT       3.0   /* Seconds to wait for child termination */
+#define DAEMON_DEFAULT_KILL_TIMEOUT       6.0   /* Seconds to wait for child termination */
 
 /* Forward declaration of private functions */
 static void __daemon_arg_reset(daemon_t *self);
 static bool __daemon_pidfile_read(daemon_t *self, pid_t *pid);
+static bool __daemon_pidfile_create(daemon_t *self);
 static bool __daemon_start(daemon_t *self);
 static void __daemon_teardown(daemon_t *self, int wstatus);
 static void __daemon_log_output(struct ev_loop *loop, ev_io *w, int revent);
@@ -361,6 +362,12 @@ bool __daemon_start(daemon_t *self)
         close(fd_stdout);
         close(fd_stderr);
 
+        /* Write out the PID file */
+        if (self->dn_pidfile_create && !__daemon_pidfile_create(self))
+        {
+            LOG(WARN, "Error creating PID file for daemon: %s.", self->dn_exec);
+        }
+
         /* Register the child handler */
         ev_child_init(&self->dn_child, __daemon_child_ev, self->dn_pid, 0);
         ev_child_start(EV_DEFAULT, &self->dn_child);
@@ -440,18 +447,17 @@ void __daemon_teardown(daemon_t *self, int wstatus)
                 WEXITSTATUS(wstatus));
     }
 
-    (void)__daemon_flush_pipe(self, &self->dn_stdout_ru, self->dn_stdout_fd);
-    (void)__daemon_flush_pipe(self, &self->dn_stderr_ru, self->dn_stderr_fd);
-
     /* Close pipes */
     if (self->dn_stdout_fd >= 0)
     {
+        (void)__daemon_flush_pipe(self, &self->dn_stdout_ru, self->dn_stdout_fd);
         close(self->dn_stdout_fd);
         self->dn_stdout_fd = -1;
     }
 
     if (self->dn_stderr_fd >= 0)
     {
+        (void)__daemon_flush_pipe(self, &self->dn_stderr_ru, self->dn_stderr_fd);
         close(self->dn_stderr_fd);
         self->dn_stderr_fd = -1;
     }
@@ -582,7 +588,7 @@ void __daemon_waitpid_fn(struct ev_loop *loop, ev_timer *w, int revent)
 
 /*
  * kill a pid (ask politely first) with timeout, if the process is a child,
- * reap the status and return it
+ * reap the status after exit or timeout and return it
  *
  * wstatus will be set to -1 if we didn't successfully reap the status, make sure
  * to check for that value before using any W*() macros
@@ -626,7 +632,7 @@ bool daemon_waitpid(
     while (ev_run(loop, EVRUN_ONCE) && ev_is_active(&to))
     {
         /* Check if we can reap the status */
-        if (waitpid(pid, wstatus, WNOHANG) == 0)
+        if (waitpid(pid, wstatus, WNOHANG) == pid)
         {
             /* Sucess, return the status */
             retval = true;
@@ -703,6 +709,7 @@ exit:
  */
 bool daemon_stop(daemon_t *self)
 {
+    if (!self->dn_enabled) return true;
     self->dn_enabled = false;
 
     /* Stop any impeding restart timers */
@@ -931,6 +938,37 @@ error:
     if (f != NULL) fclose(f);
 
     return retval;
+}
+
+bool __daemon_pidfile_create(daemon_t *self)
+{
+    FILE *pf;
+
+    if (self->dn_pid <= 0)
+    {
+        LOG(ERR, "daemon: pid invalid, cannot create PID file.");
+        return false;
+    }
+
+    if (!self->dn_pidfile_create) return true;
+
+    pf = fopen(self->dn_pidfile_path, "w");
+    if (pf == NULL)
+    {
+        LOG(ERR, "daemon: Error writing pid file (%d) for daemon: %s",
+                self->dn_pid,
+                self->dn_exec);
+        return false;
+    }
+
+    if (fprintf(pf, "%d\n", self->dn_pid) <= 0)
+    {
+        LOG(ERR, "daemon: Error writing pid file I/O error, daemon: %s", self->dn_exec);
+    }
+
+    fclose(pf);
+
+    return true;
 }
 
 static bool __daemon_set_nonblock(int fd, bool enable)

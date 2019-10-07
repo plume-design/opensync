@@ -39,6 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define VIF_TYPE_NAME    "vif"
 #define ETH_TYPE_NAME    "eth"
+#define VLAN_TYPE_NAME   "vlan"
 #define GRE_TYPE_NAME    "gre"
 #define BRIDGE_TYPE_NAME "bridge"
 #define BR_WAN_NAME      "br-wan"
@@ -47,6 +48,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define CM2_DEFAULT_OVS_MAX_BACKOFF   60
 #define CM2_DEFAULT_OVS_MIN_BACKOFF   30
 #define CM2_DEFAULT_OVS_FAST_BACKOFF  8
+
+#define CM2_ETH_SYNC_TIMEOUT          5
+#define CM2_ETH_BOOT_TIMEOUT          120
 
 typedef enum
 {
@@ -59,8 +63,9 @@ typedef enum
 typedef enum
 {
     CM2_STATE_INIT,
-    CM2_STATE_LINK_SEL,    // EXTENDER only
-    CM2_STATE_WAN_IP,      // EXTENDER only
+    CM2_STATE_LINK_SEL,       // EXTENDER only
+    CM2_STATE_WAN_IP,         // EXTENDER only
+    CM2_STATE_NTP_CHECK,      // EXTENDER only
     CM2_STATE_OVS_INIT,
     CM2_STATE_TRY_RESOLVE,
     CM2_STATE_RE_CONNECT,
@@ -83,7 +88,9 @@ typedef enum
     CM2_REASON_CHANGE,
     CM2_REASON_LINK_USED,
     CM2_REASON_LINK_NOT_USED,
-    CM2_REASON_RESOLVE_FAILED,
+    CM2_REASON_SET_NEW_VTAG,
+    CM2_REASON_BLOCK_VTAG,
+    CM2_REASON_OVS_INIT,
     CM2_REASON_NUM,
 } cm2_reason_e;
 
@@ -124,16 +131,31 @@ typedef struct
 #endif
 } cm2_addr_t;
 
+typedef enum {
+    CM2_VTAG_NOT_USED = 0,
+    CM2_VTAG_PENDING,
+    CM2_VTAG_USED,
+    CM2_VTAG_BLOCKED,
+} cm2_vtag_state_t;
+
+typedef struct {
+    cm2_vtag_state_t state;
+    int              failure;
+    int              tag;
+    int              blocked_tag;
+} cm2_vtag_t;
+
 typedef struct
 {
-    char if_name[IFNAME_SIZE];
-    char if_type[IFTYPE_SIZE];
-    bool has_L3;
-    bool is_used;
-    int  priority;
-    bool is_ip;
-    bool is_limp_state;
-    bool gretap_softwds;
+    char        if_name[IFNAME_SIZE];
+    char        if_type[IFTYPE_SIZE];
+    bool        has_L3;
+    bool        is_used;
+    int         priority;
+    bool        is_ip;
+    bool        is_limp_state;
+    bool        gretap_softwds;
+    cm2_vtag_t  vtag;
 } cm2_main_link_t;
 
 typedef struct
@@ -143,6 +165,7 @@ typedef struct
     cm2_dest_e        dest;
     bool              state_changed;
     bool              connected;
+    bool              is_con_stable;
     time_t            timestamp;
     int               disconnects;
     cm2_addr_t        addr_redirector;
@@ -154,17 +177,17 @@ typedef struct
     cm2_main_link_t   link;
     uint8_t           ble_status;
     bool              ntp_check;
-
-    struct ev_loop *loop;
+    struct ev_loop    *loop;
 #ifdef BUILD_HAVE_LIBCARES
-    evx_ares eares;
+    evx_ares          eares;
 #endif
-    bool have_manager;
-    bool have_awlan;
-    int min_backoff;
-    int max_backoff;
-    bool fast_backoff;
-    int target_type;
+    bool              have_manager;
+    bool              have_awlan;
+    int               min_backoff;
+    int               max_backoff;
+    bool              fast_backoff;
+    int               target_type;
+    bool              fast_reconnect;
 } cm2_state_t;
 
 extern cm2_state_t g_state;
@@ -181,7 +204,7 @@ typedef enum {
 } cm2_ble_onboarding_status_t;
 
 // misc
-bool cm2_is_extender();
+bool cm2_is_extender(void);
 
 // event
 void cm2_event_init(struct ev_loop *loop);
@@ -189,9 +212,9 @@ void cm2_event_close(struct ev_loop *loop);
 void cm2_update_state(cm2_reason_e reason);
 void cm2_trigger_update(cm2_reason_e reason);
 void cm2_ble_onboarding_set_status(bool state, cm2_ble_onboarding_status_t status);
-void cm2_ble_onboarding_apply_config();
+void cm2_ble_onboarding_apply_config(void);
 char* cm2_dest_name(cm2_dest_e dest);
-char* cm2_curr_dest_name();
+char* cm2_curr_dest_name(void);
 
 // ovsdb
 int cm2_ovsdb_init(void);
@@ -210,12 +233,14 @@ bool cm2_ovsdb_connection_update_unreachable_cloud_counter(const char *if_name, 
 bool cm2_ovsdb_connection_update_unreachable_internet_counter(const char *if_name, int counter);
 int  cm2_ovsdb_ble_config_update(uint8_t ble_status);
 bool cm2_ovsdb_is_port_name(char *port_name);
-void cm2_ovsdb_remove_unused_gre_interfaces();
+void cm2_ovsdb_remove_unused_gre_interfaces(void);
 void cm2_ovsdb_connection_update_ble_phy_link(void);
+bool cm2_ovsdb_update_Port_tag(const char *ifname, int tag, bool set);
+bool cm2_ovsdb_connection_update_loop_state(const char *if_name, bool state);
 
 // addr resolve
 cm2_addr_t* cm2_get_addr(cm2_dest_e dest);
-cm2_addr_t* cm2_curr_addr();
+cm2_addr_t* cm2_curr_addr(void);
 void cm2_free_addrinfo(cm2_addr_t *addr);
 void cm2_clear_addr(cm2_addr_t *addr);
 bool cm2_parse_resource(cm2_addr_t *addr, cm2_dest_e dest);
@@ -224,14 +249,16 @@ bool cm2_set_addr(cm2_dest_e dest, char *resource);
 int  cm2_getaddrinfo(char *hostname, struct addrinfo **res, char *msg);
 struct addrinfo* cm2_get_next_addrinfo(cm2_addr_t *addr);
 #endif
-void cm2_resolve(cm2_dest_e dest);
-bool cm2_write_current_target_addr();
-bool cm2_write_next_target_addr();
-void cm2_clear_manager_addr();
+bool cm2_resolve(cm2_dest_e dest);
+bool cm2_resolve_handle_process(void);
+bool cm2_write_current_target_addr(void);
+bool cm2_write_next_target_addr(void);
+void cm2_clear_manager_addr(void);
 void cm2_free_addr_list(cm2_addr_t *addr);
 
 // stability and watchdog
-void cm2_connection_stability_check();
+bool cm2_vtag_stability_check(void);
+void cm2_connection_stability_check(void);
 void cm2_stability_init(struct ev_loop *loop);
 void cm2_stability_close(struct ev_loop *loop);
 void cm2_wdt_init(struct ev_loop *loop);
@@ -239,6 +266,9 @@ void cm2_wdt_close(struct ev_loop *loop);
 
 // net
 int  cm2_ovs_insert_port_into_bridge(char *bridge, char *port, int flag_add);
-void cm2_dhcpc_start_dryrun(char* ifname, bool background);
+void cm2_dhcpc_start_dryrun(char* ifname, char *iftype, bool background);
 void cm2_dhcpc_stop_dryrun(char* ifname);
+bool cm2_is_eth_type(char *if_type);
+void cm2_delayed_eth_update(char *if_name, int timeout);
+bool cm2_is_iface_in_bridge(const char *bridge, const char *port);
 #endif

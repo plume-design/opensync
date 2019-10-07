@@ -42,7 +42,7 @@ struct __inet_unit
     inet_unit_t                 *un_parent;     /* Parent unit */
     size_t                      un_ndeps;       /* Number of elements in un_deps */
     inet_unit_t                 **un_deps;      /* Dependency/child units */
-    bool                        un_status:1;    /* true if current unit has been sucessfully started */
+    bool                        un_status:1;    /* true if current unit has been successfully started */
     bool                        un_enabled:1;   /* true if service is enabled */
     bool                        un_pending:1;   /* true if pending stop or restart */
     bool                        un_error:1;     /* true if in error state */

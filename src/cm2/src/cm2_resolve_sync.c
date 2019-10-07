@@ -60,7 +60,7 @@ int cm2_getaddrinfo(char *hostname, struct addrinfo **res, char *msg)
     return ret;
 }
 
-void cm2_resolve(cm2_dest_e dest)
+bool cm2_resolve(cm2_dest_e dest)
 {
     cm2_addr_t *addr = cm2_get_addr(dest);
     char *dstr = cm2_dest_name(dest);
@@ -71,7 +71,7 @@ void cm2_resolve(cm2_dest_e dest)
 
     if (!addr->valid)
     {
-        return;
+        return false;
     }
 
     LOGI("sync resolving %s '%s'", dstr, addr->resource);
@@ -85,7 +85,7 @@ void cm2_resolve(cm2_dest_e dest)
     if (ret != 0)
     {
         addr->ai_list = NULL;
-        return;
+        return false;
     }
 
     char buf[2048] = "", *bp = buf;
@@ -122,14 +122,18 @@ void cm2_resolve(cm2_dest_e dest)
     if (!found)
     {
         LOGE("DNS did not return any usable addresses");
-        return;
+        return false;
     }
     LOGI("resolved %s '%s': %s", dstr, addr->hostname, buf);
     addr->resolved = true;
     addr->ai_curr = NULL;
-    return;
+    return true;
 }
 
+bool cm2_resolve_handle_process(void)
+{
+    return true;
+}
 
 struct addrinfo* cm2_get_next_addrinfo(cm2_addr_t *addr)
 {
@@ -199,7 +203,7 @@ bool cm2_write_target_addr(cm2_addr_t *addr, struct addrinfo *ai)
     return ret;
 }
 
-bool cm2_write_current_target_addr()
+bool cm2_write_current_target_addr(void)
 {
     cm2_addr_t *addr = cm2_curr_addr();
     struct addrinfo *ai = addr->ai_curr;
@@ -210,7 +214,7 @@ bool cm2_write_current_target_addr()
     return cm2_write_target_addr(addr, ai);
 }
 
-bool cm2_write_next_target_addr()
+bool cm2_write_next_target_addr(void)
 {
     cm2_addr_t *addr = cm2_curr_addr();
     struct addrinfo *ai = cm2_get_next_addrinfo(addr);

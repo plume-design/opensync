@@ -407,6 +407,7 @@ bm_stats_steering_print_all_records()
                 LOGT( "disconnect src       = %s", bm_stats_get_disconnect_src_to_str( event_rec->disconnect_src ) );
                 LOGT( "disconnect type      = %s", bm_stats_get_disconnect_type_to_str( event_rec->disconnect_type ) );
                 LOGT( "backoff enabled      = %s", event_rec->backoff_enabled ? "Yes" : "No" );
+                LOGT( "backoff period       = %d", event_rec->backoff_period);
                 LOGT( "active               = %s", event_rec->active ? "Yes" : "No" );
                 LOGT( "auth rejected        = %s", event_rec->rejected ? "Yes" : "No" );
                 LOGT( "is_BTM_supported     = %s", event_rec->is_BTM_supported ? "Yes" : "No" );
@@ -516,7 +517,7 @@ bm_stats_steering_process_stats( void )
     }
 
     if( log_module_severity_get( LOG_MODULE_ID_STATS ) >=
-            ( LOG_SEVERITY_DEBUG + STATS_VERBOSE_DEBUG_LEVEL ) ) {
+            ( LOG_SEVERITY_TRACE ) ) {
         bm_stats_steering_print_all_records();
     }
 
@@ -783,6 +784,7 @@ bm_stats_steering_parse_event(
             LOGT("Adding BACKOFF event" );
             event_rec->type = BACKOFF;
             event_rec->backoff_enabled = backoff_enabled;
+            event_rec->backoff_period = client->backoff_period_used;
             break;
 
         case BAND_STEERING_ATTEMPT:
@@ -1328,6 +1330,10 @@ bm_stats_add_event_to_report(
         band = BSAL_BAND_24G;
     } else {
         band = event->band;
+    }
+
+    if (band == BSAL_BAND_COUNT) {
+        LOGW("%s: client %s event %d wrong band", __func__, client ? client->mac_addr : NULL, bs_event);
     }
 
     /* Steering report */

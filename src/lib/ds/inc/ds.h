@@ -30,13 +30,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 #define DS_ITER_ERROR ((void *)0x1)
-
-/**
- * Return the offset of the member @p member inside the structure/union @p type
- */
-#define OFFSET_OF(type, member) ((uintptr_t)&((type *)NULL)->member)
 
 /**
  * Similar to the container_of() macro used in the Linux kernel.
@@ -55,7 +51,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * If a function is passed the pointer to variable @p x, it can return the pointer
  * to the containing @p foo structure by using CONTAINER_OF(x_ptr, struct foo, x);
  */
-#define CONTAINER_OF(ptr, type, member) ( (type *)((uintptr_t)ptr - OFFSET_OF(type,member)) )
+#define TYPE_CHECK(a, type, member) \
+    (true ? a : &((type *)NULL)->member)
+
+#define CONTAINER_OF(ptr, type, member) \
+    ((type *)((uintptr_t)TYPE_CHECK(ptr, type, member) - offsetof(type, member)))
 
 /** Calculate container address from node */
 #define NODE_TO_CONT(node, offset)    ( (node) == NULL ? NULL : (void *)((char *)(node) - (offset)) )
@@ -68,10 +68,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 typedef int ds_key_cmp_t(void *a, void *b);
 
-/**
- * Integer comparator
- */
+/** Integer comparator */
 extern ds_key_cmp_t ds_int_cmp;
+/** String comparator */
 extern ds_key_cmp_t ds_str_cmp;
+/** Pointer comparison (the key value is stored directly) */
+extern ds_key_cmp_t ds_void_cmp;
 
 #endif /* DS_DS_H_INCLUDED */

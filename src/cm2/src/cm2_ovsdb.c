@@ -64,8 +64,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define CM2_BLE_MSG_DIAGNOSTIC          "diagnostic"
 #define CM2_BLE_MSG_LOCATE              "locate"
 
+#define CM2_BASE64_ARGV_MAX             64
+
+#ifndef CONFIG_OPENSYNC_CM2_MTU_ON_GRE
+#define CONFIG_OPENSYNC_CM2_MTU_ON_GRE           1500
+#endif
+
 static void
-cm2_util_set_not_used_link();
+cm2_util_set_not_used_link(void);
 
 ovsdb_table_t table_Open_vSwitch;
 ovsdb_table_t table_Manager;
@@ -79,6 +85,7 @@ ovsdb_table_t table_Wifi_Inet_State;
 ovsdb_table_t table_Wifi_VIF_Config;
 ovsdb_table_t table_Wifi_VIF_State;
 ovsdb_table_t table_Port;
+ovsdb_table_t table_Bridge;
 
 void callback_AWLAN_Node(ovsdb_update_monitor_t *mon,
         struct schema_AWLAN_Node *old_rec,
@@ -211,6 +218,19 @@ cm2_util_vif_is_sta(const char *ifname)
 
     LOGI("%s: %s: either not a sta, or unable to infer", __func__, ifname);
     return false;
+}
+
+static int cm2_util_set_defined_priority(char *if_type) {
+    int priority;
+
+    if (!strcmp(if_type, VLAN_TYPE_NAME))
+        priority = 3;
+    else if (!strcmp(if_type, ETH_TYPE_NAME))
+        priority = 2;
+    else
+        priority = 1;
+
+    return priority;
 }
 
 /*
@@ -367,7 +387,7 @@ cm2_ovsdb_insert_Wifi_Inet_Config(struct schema_Wifi_Master_State *master)
     icfg.network = true;
 
     icfg.mtu_exists = true;
-    icfg.mtu = 1500;
+    icfg.mtu = CONFIG_OPENSYNC_CM2_MTU_ON_GRE;
 
     icfg.gre_remote_inet_addr_exists = true;
     STRSCPY(icfg.gre_remote_inet_addr, cm2_util_get_gateway_ip(master->inet_addr, master->netmask));
@@ -415,7 +435,7 @@ cm2_ovsdb_remove_Wifi_Inet_Config(char *if_name, bool gre) {
 }
 
 /* Function required as a workaround for CAES-599 */
-void cm2_ovsdb_remove_unused_gre_interfaces() {
+void cm2_ovsdb_remove_unused_gre_interfaces(void) {
     struct schema_Connection_Manager_Uplink *uplink;
     void   *uplink_p;
     int    count;
@@ -426,7 +446,7 @@ void cm2_ovsdb_remove_unused_gre_interfaces() {
                                   "gre",
                                   &count);
 
-    LOGI("%s Available gre links count = %d", __func__, count);
+    LOGD("%s Available gre links count = %d", __func__, count);
 
     if (uplink_p) {
         for (i = 0; i < count; i++) {
@@ -488,6 +508,12 @@ cm2_ovsdb_util_translate_master_ip(struct schema_Wifi_Master_State *master)
        return;
 
    if (is_sta) {
+       if (strcmp(master->port_state, "inactive") == 0) {
+           LOGI("%s: Skip creating GRE for inactive station",
+                master->if_name);
+           return;
+       }
+
        /* Skip creating more gre during onboarding, workaround for CAES-599 */
        if (g_state.link.is_used) {
            LOGI("Skip creating new gre for %s CAES-599",
@@ -497,7 +523,6 @@ cm2_ovsdb_util_translate_master_ip(struct schema_Wifi_Master_State *master)
 
        LOGN("%s Trigger creating gre", master->if_name);
 
-       cm2_ovsdb_remove_Wifi_Inet_Config(master->if_name, false);
        ret = cm2_ovsdb_insert_Wifi_Inet_Config(master);
        if (!ret)
            LOGW("%s: %s Failed to insert GRE", __func__, master->if_name);
@@ -561,7 +586,7 @@ cm2_ovsdb_util_translate_master_port_state(struct schema_Wifi_Master_State *mast
 
     if ((strcmp(master->if_type, GRE_TYPE_NAME) != 0 ||
          strstr(master->if_name, "g-") == NULL) &&
-         strcmp(master->if_type, ETH_TYPE_NAME) != 0) {
+         !cm2_is_eth_type(master->if_type)) {
         LOGD("%s Skip setting interface as ready ifname = %s iftype = %s",
              __func__, master->if_name, master->if_type);
         return;
@@ -578,10 +603,7 @@ cm2_ovsdb_util_translate_master_port_state(struct schema_Wifi_Master_State *mast
     con.priority_exists = true;
     /* NM2 does not handle priority Set default values by CM2 */
     //con.priority = master->uplink_priority;
-    if (!strcmp(master->if_type, ETH_TYPE_NAME))
-        con.priority = 2;
-    else
-        con.priority = 1;
+    con.priority = cm2_util_set_defined_priority(master->if_type);
 
     ret = ovsdb_table_upsert_simple(&table_Connection_Manager_Uplink,
                                    SCHEMA_COLUMN(Connection_Manager_Uplink, if_name),
@@ -600,17 +622,14 @@ cm2_ovsdb_util_translate_master_priority(struct schema_Wifi_Master_State *master
     LOGI("%s: Detected new priority = %d", master->if_name, master->uplink_priority);
 
     if (!strstr(master->if_name, "g-") &&
-        strcmp(master->if_type, ETH_TYPE_NAME))
+        !cm2_is_eth_type(master->if_type))
         return;
 
     memset(&con, 0, sizeof(con));
     con.priority_exists = true;
     //con.priority = master->uplink_priority;
     /* NM2 does not handle priority Set default values by CM2 */
-    if (!strcmp(master->if_type, ETH_TYPE_NAME))
-        con.priority = 2;
-    else
-        con.priority = 1;
+    con.priority = cm2_util_set_defined_priority(master->if_type);
 
     int ret = ovsdb_table_update_where_f(&table_Connection_Manager_Uplink,
                                          ovsdb_where_simple(SCHEMA_COLUMN(Connection_Manager_Uplink, if_name),
@@ -622,6 +641,17 @@ cm2_ovsdb_util_translate_master_priority(struct schema_Wifi_Master_State *master
 }
 /**** End helper functions*/
 
+bool cm2_ovsdb_is_port_in_bridge(struct schema_Port *port, char *port_uuid)
+{
+    json_t *where;
+
+    where = ovsdb_where_uuid("_uuid", port_uuid);
+    if (!where) {
+        LOGW("%s: where is NULL", __func__);
+        return -1;
+    }
+    return ovsdb_table_select_one_where(&table_Port, where, port);
+}
 
 bool
 cm2_ovsdb_connection_update_L3_state(const char *if_name, bool state)
@@ -656,11 +686,28 @@ cm2_ovsdb_connection_update_used_state(char *if_name, bool state)
     return ret;
 }
 
+bool
+cm2_ovsdb_connection_update_loop_state(const char *if_name, bool state)
+{
+    struct schema_Connection_Manager_Uplink con;
+    char *filter[] = { "+", SCHEMA_COLUMN(Connection_Manager_Uplink, loop), NULL };
+    int ret;
+
+    memset(&con, 0, sizeof(con));
+    con.loop_exists = true;
+    con.loop = state;
+
+    ret = ovsdb_table_update_where_f(&table_Connection_Manager_Uplink,
+                                     ovsdb_where_simple(SCHEMA_COLUMN(Connection_Manager_Uplink, if_name), if_name),
+                                     &con, filter);
+    return ret;
+}
+
 bool cm2_ovsdb_connection_get_connection_by_ifname(const char *if_name, struct schema_Connection_Manager_Uplink *uplink) {
     return ovsdb_table_select_one(&table_Connection_Manager_Uplink, SCHEMA_COLUMN(Connection_Manager_Uplink, if_name), if_name, uplink);
 }
 
-void cm2_ovsdb_connection_update_ble_phy_link() {
+void cm2_ovsdb_connection_update_ble_phy_link(void) {
     struct schema_Connection_Manager_Uplink *uplink;
     void                                    *uplink_p;
     bool                                    state;
@@ -685,7 +732,7 @@ void cm2_ovsdb_connection_update_ble_phy_link() {
             uplink = (struct schema_Connection_Manager_Uplink *) (uplink_p + table_Connection_Manager_Uplink.schema_size * i);
             LOGI("Link %d: ifname = %s iftype = %s active state= %d", i, uplink->if_name, uplink->if_type, uplink->has_L2);
 
-            if (!strcmp(uplink->if_type, ETH_TYPE_NAME))
+            if (cm2_is_eth_type(uplink->if_type))
                 eth_cnt++;
             else if (!strcmp(uplink->if_type, GRE_TYPE_NAME))
                 wifi_cnt++;
@@ -810,14 +857,14 @@ void cm2_connection_set_L3(struct schema_Connection_Manager_Uplink *uplink) {
                  __func__, uplink->if_name, ret);
     } else
 #endif
-        cm2_dhcpc_start_dryrun(uplink->if_name, false);
+    cm2_dhcpc_start_dryrun(uplink->if_name, uplink->if_type, false);
 }
 
 bool cm2_connection_get_used_link(struct schema_Connection_Manager_Uplink *uplink) {
     return ovsdb_table_select_one(&table_Connection_Manager_Uplink, SCHEMA_COLUMN(Connection_Manager_Uplink, is_used), "true", uplink);
 }
 
-static void cm2_connection_clear_used()
+static void cm2_connection_clear_used(void)
 {
     int ret;
 
@@ -834,22 +881,35 @@ static void cm2_connection_clear_used()
     }
 }
 
-void cm2_connection_set_is_used(struct schema_Connection_Manager_Uplink *uplink)
+static void cm2_util_switch_role(struct schema_Connection_Manager_Uplink *uplink)
+{
+    if (!g_state.connected) {
+        LOGI("Device is not connected to the Cloud");
+        return;
+    }
+
+    if (!strcmp(g_state.link.if_type, GRE_TYPE_NAME) &&
+        cm2_is_eth_type(uplink->if_type)) {
+        LOGI("Device switch from Leaf to GW, trigger restart managers");
+        target_device_restart_managers();
+    }
+}
+
+static void cm2_connection_set_is_used(struct schema_Connection_Manager_Uplink *uplink)
 {
     int ret;
 
     if (!uplink->has_L2 || !uplink->has_L3)
         return;
 
-    if (strcmp(uplink->if_type, GRE_TYPE_NAME) && (strcmp(uplink->if_type, ETH_TYPE_NAME)))
+    if (!cm2_is_eth_type(uplink->if_type) &&
+        strcmp(uplink->if_type, GRE_TYPE_NAME))
         return;
 
     if (g_state.link.is_used && uplink->priority <= g_state.link.priority)
         return;
 
-    if (uplink->loop)
-        return;
-
+    cm2_util_switch_role(uplink);
     cm2_connection_clear_used();
 
     STRSCPY(g_state.link.if_name, uplink->if_name);
@@ -867,7 +927,7 @@ void cm2_connection_set_is_used(struct schema_Connection_Manager_Uplink *uplink)
         LOGW("%s: %s: Failed to set used state", __func__, uplink->if_name);
 }
 
-void cm2_check_master_state_links() {
+void cm2_check_master_state_links(void) {
     struct schema_Wifi_Master_State *link;
     void   *link_p;
     int    count;
@@ -889,7 +949,6 @@ void cm2_check_master_state_links() {
         if (cm2_util_vif_is_sta(link->if_name)) {
             LOGN("%s: Trigger creating gre", link->if_name);
 
-            cm2_ovsdb_remove_Wifi_Inet_Config(link->if_name, false);
             ret = cm2_ovsdb_insert_Wifi_Inet_Config(link);
             if (!ret)
                LOGW("%s: %s Failed to insert GRE", __func__, link->if_name);
@@ -898,16 +957,14 @@ void cm2_check_master_state_links() {
     free(link_p);
 }
 
-void cm2_connection_recalculate_used_link() {
+void cm2_connection_recalculate_used_link(void) {
     struct schema_Connection_Manager_Uplink *uplink;
     void *uplink_p;
     int count, i;
     int priority = -1;
     int index = 0;
     bool state = true;
-#ifndef CONFIG_PLUME_CM2_DISABLE_DRYRUN_ON_GRE
     bool check_master = true;
-#endif
 
     uplink_p = ovsdb_table_select_typed(&table_Connection_Manager_Uplink,
                                         SCHEMA_COLUMN(Connection_Manager_Uplink, has_L3),
@@ -921,8 +978,6 @@ void cm2_connection_recalculate_used_link() {
         for (i = 0; i < count; i++) {
             uplink = (struct schema_Connection_Manager_Uplink *) (uplink_p + table_Connection_Manager_Uplink.schema_size * i);
             LOGI("Link %d: ifname = %s priority = %d active state= %d", i, uplink->if_name, uplink->priority, uplink->has_L3);
-            if (uplink->loop)
-                continue;
             if (uplink->priority > priority) {
                 index = i;
                 priority = uplink->priority;
@@ -931,15 +986,11 @@ void cm2_connection_recalculate_used_link() {
         uplink = (struct schema_Connection_Manager_Uplink *) (uplink_p + table_Connection_Manager_Uplink.schema_size * index);
         cm2_connection_set_is_used(uplink);
         free(uplink_p);
-#ifndef CONFIG_PLUME_CM2_DISABLE_DRYRUN_ON_GRE
         check_master = false;
-#endif
     }
 
-#ifndef CONFIG_PLUME_CM2_DISABLE_DRYRUN_ON_GRE
     if (check_master)
         cm2_check_master_state_links();
-#endif
 }
 
 int cm2_ovsdb_ble_config_update(uint8_t ble_status)
@@ -980,7 +1031,7 @@ void cm2_set_ble_onboarding_link_state(bool state, char *if_type, char *if_name)
     if (g_state.connected)
         return;
 
-    if (strcmp(if_type, ETH_TYPE_NAME) == 0) {
+    if (cm2_is_eth_type(if_type)) {
         cm2_ble_onboarding_set_status(state, BLE_ONBOARDING_STATUS_ETHERNET_LINK);
     } else if (!strcmp(if_type, GRE_TYPE_NAME)) {
         cm2_ble_onboarding_set_status(state, BLE_ONBOARDING_STATUS_WIFI_LINK);
@@ -1056,7 +1107,7 @@ void callback_Wifi_Master_State(ovsdb_update_monitor_t *mon,
 }
 
 static void
-cm2_util_set_not_used_link()
+cm2_util_set_not_used_link(void)
 {
     cm2_connection_clear_used();
     cm2_update_state(CM2_REASON_LINK_NOT_USED);
@@ -1081,17 +1132,15 @@ cm2_Connection_Manager_Uplink_handle_update(
         LOGN("%s: Uplink table: detected priority change = %d", uplink->if_name, uplink->priority);
         LOGI("%s: Main link priority: %d new priority = %d uplink is used = %d",
              uplink->if_name, g_state.link.priority , uplink->priority , uplink->is_used);
-        if ((g_state.link.is_used && g_state.link.priority < uplink->priority) ||
+        if ((g_state.link.is_used && uplink->has_L3 && g_state.link.priority < uplink->priority) ||
             cm2_util_get_link_is_used(uplink)) {
+           cm2_util_switch_role(uplink);
            reconfigure = true;
         }
     }
 
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Connection_Manager_Uplink, loop))) {
         LOGN("%s: Uplink table: detected loop change = %d", uplink->if_name, uplink->loop);
-        if (cm2_util_get_link_is_used(uplink)) {
-           reconfigure = true;
-        }
     }
 
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Connection_Manager_Uplink, has_L2))) {
@@ -1112,6 +1161,7 @@ cm2_Connection_Manager_Uplink_handle_update(
             }
             filter[idx++] = SCHEMA_COLUMN(Connection_Manager_Uplink, has_L3);
             uplink->has_L3 = false;
+            g_state.link.vtag.state = CM2_VTAG_NOT_USED;
         } else {
             cm2_set_ble_onboarding_link_state(true, uplink->if_type, uplink->if_name);
             cm2_connection_set_L3(uplink);
@@ -1122,7 +1172,7 @@ cm2_Connection_Manager_Uplink_handle_update(
 
     /* Setting state part */
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Connection_Manager_Uplink, has_L3))) {
-        LOGN("%s: Uplink table: detected hasL2 change = %d", uplink->if_name, uplink->has_L2);
+        LOGN("%s: Uplink table: detected hasL3 change = %d", uplink->if_name, uplink->has_L3);
         cm2_connection_set_is_used(uplink);
     }
 
@@ -1183,7 +1233,7 @@ cm2_Connection_Manager_Uplink_handle_update(
 
         int ret = ovsdb_table_update_f(&table_Connection_Manager_Uplink, uplink, filter);
         if (!ret)
-            LOGE("%s Update row failed for %s", __func__, uplink->if_name);
+            LOGI("%s Update row failed for %s", __func__, uplink->if_name);
     }
 
     if (reconfigure) {
@@ -1227,6 +1277,89 @@ void callback_Connection_Manager_Uplink(ovsdb_update_monitor_t *mon,
     }
 }
 
+static void cm2_Wifi_Inet_State_handle_dhcpc(struct schema_Wifi_Inet_State *inet_state)
+{
+    const char   *tag = NULL;
+    size_t       bufsz;
+    char         buf[8192];
+    char         *pbuf;
+    int          vsc;
+    int          i;
+
+    LOGD("%s; Update dhcpc column", inet_state->if_name);
+
+    if (strcmp(inet_state->if_name, BR_WAN_NAME)) {
+        LOGD("%s: Skip update, only %s support", inet_state->if_name, BR_WAN_NAME);
+        return;
+    }
+
+    memset(&buf, 0, sizeof(buf));
+
+    for (i = 0; i < inet_state->dhcpc_len; i++) {
+        LOGD("dhcpc: [%s]: %s", inet_state->dhcpc_keys[i], inet_state->dhcpc[i]);
+
+        if (strcmp(inet_state->dhcpc_keys[i], "vendorspec"))
+            continue;
+
+        bufsz = base64_decode(buf, sizeof(buf), inet_state->dhcpc[i]);
+        if ((int) bufsz < 0) {
+            LOGW("vtag: base64: Error decoding buffer");
+            return;
+        }
+
+        if (bufsz > sizeof(buf)) {
+            LOGW("vtag: base64: Buf overflowed: bufsz = %zu buf size = %zu", bufsz, sizeof(buf));
+            return;
+        }
+
+        if (strlen(buf) > bufsz) {
+            if (bufsz + 1 > sizeof(buf)) {
+                LOGW("vtag: base64: Buf is not null terminated and too long: bufsz = %zu buf size = %zu",
+                     bufsz, sizeof(buf));
+                return;
+            }
+            buf[bufsz] = '\0';
+        }
+        vsc = 0;
+        pbuf = buf;
+        while (pbuf <= buf + bufsz) {
+            if (pbuf + strlen(pbuf) > buf + bufsz) {
+                LOGW("vtag: base64: Format error");
+                return;
+            }
+
+            if (vsc >= CM2_BASE64_ARGV_MAX) {
+                LOGW("vtag: base64: Too many arguments in buffer");
+                return;
+            }
+
+            tag = strstr(pbuf, "tag=");
+            if (tag) {
+                LOGI("vtag: tag detected: %s", tag);
+                tag += 4;
+                break;
+            }
+            vsc++;
+            pbuf += strlen(pbuf) + 1;
+        }
+
+        if (tag == NULL) {
+            LOGD("vtag: tag not detected");
+            return;
+        }
+
+        if (g_state.link.vtag.state == CM2_VTAG_PENDING) {
+            LOGI("vtag: state error: already running");
+            return;
+        }
+
+        g_state.link.vtag.tag = atoi(tag);
+        LOGI("vtag: set new tag: %d", g_state.link.vtag.tag);
+
+        cm2_update_state(CM2_REASON_SET_NEW_VTAG);
+    }
+}
+
 void callback_Wifi_Inet_State(ovsdb_update_monitor_t *mon,
                               struct schema_Wifi_Inet_State *old_row,
                               struct schema_Wifi_Inet_State *inet_state)
@@ -1240,7 +1373,6 @@ void callback_Wifi_Inet_State(ovsdb_update_monitor_t *mon,
             return;
 
         case OVSDB_UPDATE_DEL:
-            //TODO
             break;
         case OVSDB_UPDATE_NEW:
         case OVSDB_UPDATE_MODIFY:
@@ -1250,6 +1382,103 @@ void callback_Wifi_Inet_State(ovsdb_update_monitor_t *mon,
                         g_state.link.is_ip = false;
                     else
                         g_state.link.is_ip = strcmp(inet_state->inet_addr, "0.0.0.0") == 0 ? false : true;
+                }
+            }
+
+            if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_Inet_State, dhcpc)))
+                cm2_Wifi_Inet_State_handle_dhcpc(inet_state);
+
+            break;
+    }
+}
+
+static void cm2_reconfigure_ethernet_states(void)
+{
+    struct schema_Connection_Manager_Uplink *uplink;
+    void                                    *uplink_p;
+    int                                     count;
+    int                                     i;
+
+    uplink_p = ovsdb_table_select(&table_Connection_Manager_Uplink,
+                                  SCHEMA_COLUMN(Connection_Manager_Uplink, if_type),
+                                  ETH_TYPE_NAME,
+                                  &count);
+    if (!uplink_p) {
+        LOGD("%s: Ethernet uplinks to avaialble", __func__);
+        return;
+    }
+
+    LOGI("Reconfigure ethernet phy links: %d",  count);
+
+    for (i = 0; i < count; i++) {
+        uplink = (struct schema_Connection_Manager_Uplink *) (uplink_p + table_Connection_Manager_Uplink.schema_size * i);
+        LOGI("Link %d: ifname = %s iftype = %s has_L2 = %d has_L3 = %d", i, uplink->if_name, uplink->if_type, uplink->has_L2, uplink->has_L3);
+        if (!uplink->has_L2 || !uplink->has_L3_exists)
+            continue;
+
+        if (cm2_is_iface_in_bridge(BR_HOME_NAME, uplink->if_name)) {
+            LOGI("%s: Skip reconfigure iface in %s", uplink->if_name, BR_HOME_NAME);
+            continue;
+        }
+
+        if (!uplink->has_L3) {
+            LOGI("%s: Ethernet link must be examinated once again", uplink->if_name);
+            cm2_delayed_eth_update(uplink->if_name, CM2_ETH_BOOT_TIMEOUT);
+        }
+    }
+    free(uplink_p);
+}
+
+void callback_Bridge(ovsdb_update_monitor_t *mon,
+                     struct schema_Bridge *old_row,
+                     struct schema_Bridge *bridge)
+{
+    struct schema_Port port;
+    bool               skip_uuid;
+    int                i,j;
+
+    LOGD("%s mon_type = %d", __func__, mon->mon_type);
+
+    switch (mon->mon_type) {
+        default:
+        case OVSDB_UPDATE_ERROR:
+            LOGW("%s: mon upd error: %d", __func__, mon->mon_type);
+            return;
+
+        case OVSDB_UPDATE_DEL:
+            LOGI("%s: Bridge remove detected", bridge->name);
+            break;
+        case OVSDB_UPDATE_NEW:
+        case OVSDB_UPDATE_MODIFY:
+            if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Bridge, ports))) {
+               if (!strcmp(bridge->name, BR_WAN_NAME) &&
+                   !strcmp(g_state.link.if_type, GRE_TYPE_NAME)) {
+                   cm2_reconfigure_ethernet_states();
+                   break;
+               }
+
+               if (strcmp(bridge->name, BR_HOME_NAME))
+                   break;
+
+               for (i = 0; i < bridge->ports_len; i++ ) {
+                   LOGD("%s: uuid: %s", bridge->name, bridge->ports[i].uuid);
+                   skip_uuid = false;
+                   for (j = 0; j < old_row->ports_len; j++) {
+                       if (!strcmp(bridge->ports[i].uuid, old_row->ports[j].uuid)) {
+                           skip_uuid = true;
+                           break;
+                       }
+                   }
+                   if (!skip_uuid &&
+                       cm2_ovsdb_is_port_in_bridge(&port, bridge->ports[i].uuid)) {
+                       if (strstr(port.name, "patch-h2w")){
+                           LOGI("Bridge mode detected");
+                           g_state.link.is_limp_state = false;
+                       }
+
+                       if (strstr(port.name, ETH_TYPE_NAME))
+                           cm2_dhcpc_stop_dryrun(port.name);
+                    }
                 }
             }
             break;
@@ -1303,8 +1532,35 @@ bool cm2_ovsdb_is_port_name(char *port_name)
     return ovsdb_table_select_one(&table_Port, SCHEMA_COLUMN(Port, name), port_name, &port);
 }
 
+bool cm2_ovsdb_update_Port_tag(const char *if_name, int tag, bool set)
+{
+    struct schema_Port port;
+    int                ret;
+
+    memset(&port, 0, sizeof(port));
+
+    if (strlen(if_name) == 0)
+        return 0;
+
+    LOGI("%s: update vtag: %d set = %d", if_name, tag, set);
+    port._partial_update = true;
+
+    if (set) {
+        SCHEMA_SET_INT(port.tag, tag);
+    } else {
+        port.tag_present = true;
+        port.tag_exists = false;
+    }
+
+    ret = ovsdb_table_update_where(&table_Port,
+                 ovsdb_where_simple(SCHEMA_COLUMN(Port, name), if_name),
+                 &port);
+
+    return ret == 1;
+}
+
 // Initialize Open_vSwitch, SSL and Manager tables
-int cm2_ovsdb_init_tables()
+int cm2_ovsdb_init_tables(void)
 {
     // SSL and Manager tables have to be referenced by Open_vSwitch
     // so we use _with_parent() to atomically update (mutate) these references
@@ -1425,6 +1681,7 @@ int cm2_ovsdb_init(void)
     OVSDB_TABLE_INIT(Connection_Manager_Uplink, if_name);
     OVSDB_TABLE_INIT_NO_KEY(AW_Bluetooth_Config);
     OVSDB_TABLE_INIT_NO_KEY(Port);
+    OVSDB_TABLE_INIT_NO_KEY(Bridge);
 
     // Initialize OVSDB monitor callbacks
     OVSDB_TABLE_MONITOR(AWLAN_Node, false);
@@ -1434,6 +1691,7 @@ int cm2_ovsdb_init(void)
         OVSDB_TABLE_MONITOR(Wifi_Master_State, false);
         OVSDB_TABLE_MONITOR(Connection_Manager_Uplink, false);
         OVSDB_TABLE_MONITOR(Wifi_Inet_State, false);
+        OVSDB_TABLE_MONITOR(Bridge, false);
     }
 
     char *filter[] = {"-", "_version", SCHEMA_COLUMN(Manager, status), NULL};

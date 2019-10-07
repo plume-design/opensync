@@ -73,7 +73,7 @@ struct __inet_dhsnif
 };
 
 /*
- * Return a new instance of the DHCP sniffig class
+ * Return a new instance of the DHCP sniffing class
  */
 inet_dhsnif_t *inet_dhsnif_new(const char *ifname)
 {
@@ -161,8 +161,8 @@ bool inet_dhsnif_notify(inet_dhsnif_t *self, inet_dhcp_lease_fn_t *func, inet_t 
 #define ETH_TYPE_IP         0x800
 struct eth_hdr
 {
-    inet_macaddr_t          eth_dst;            /* Hardware destination address */
-    inet_macaddr_t          eth_src;            /* Hardware source address */
+    uint8_t                 eth_dst[6];         /* Hardware destination address */
+    uint8_t                 eth_src[6];         /* Hardware source address */
     uint16_t                eth_type;           /* Packet type */
 };
 
@@ -187,8 +187,8 @@ struct ip_hdr
     uint8_t                 ip_ttl;             /* Time-to-Live field */
     uint8_t                 ip_proto;           /* IP protocol */
     uint16_t                ip_cs;              /* Checksum */
-    inet_ip4addr_t          ip_src;             /* Source IP address */
-    inet_ip4addr_t          ip_dst;             /* Destination IP address */
+    struct in_addr          ip_src;             /* Source IP address */
+    struct in_addr          ip_dst;             /* Destination IP address */
     uint8_t                 ip_opts[0];         /* IP Options array */
 };
 
@@ -217,13 +217,13 @@ struct dhcp_hdr
     uint32_t                dhcp_xid;           /* Transaction ID */
     uint16_t                dhcp_secs;          /* Time */
     uint16_t                dhcp_flags;         /* Flags */
-    inet_ip4addr_t          dhcp_ciaddr;        /* Client IP address */
-    inet_ip4addr_t          dhcp_yiaddr;        /* Your IP address */
-    inet_ip4addr_t          dhcp_siaddr;        /* Server IP address */
-    inet_ip4addr_t          dhcp_giaddr;        /* Gateway IP address */
+    struct in_addr          dhcp_ciaddr;        /* Client IP address */
+    struct in_addr          dhcp_yiaddr;        /* Your IP address */
+    struct in_addr          dhcp_siaddr;        /* Server IP address */
+    struct in_addr          dhcp_giaddr;        /* Gateway IP address */
     union
     {
-        inet_macaddr_t      dhcp_chaddr;        /* Client hardware address */
+        uint8_t             dhcp_chaddr[6];     /* Client hardware address */
         uint8_t             dhcp_padaddr[16];
     };
     uint8_t                 dhcp_server[64];    /* Server name */
@@ -250,7 +250,7 @@ struct dhcp_hdr
 struct inet_dhsnif_lease
 {
     int                             le_msg_type;    /* Last DHCP message type seen */
-    struct inet_dhcp_lease_info     le_info;        /* Lease info -- this will be passed down the API callback */
+    struct osn_dhcp_server_lease    le_info;        /* Lease info -- this will be passed down the API callback */
     ds_tree_node_t                  le_node;        /* Tree node structure */
 };
 
@@ -279,6 +279,7 @@ bool inet_dhsnif_init(inet_dhsnif_t *self, const char *ifname)
  */
 bool inet_dhsnif_fini(inet_dhsnif_t *self)
 {
+    (void)self;
     /* Nothing to do, yet */
     return true;
 }
@@ -341,7 +342,7 @@ bool __inet_dhsnif_start(inet_dhsnif_t *self)
     rc = pcap_set_promisc(self->ds_pcap, 1);
     if (rc != 0)
     {
-        LOG(ERR, "inet_dhsnif: %s: Unable to set promisciuous mode.", self->ds_ifname);
+        LOG(ERR, "inet_dhsnif: %s: Unable to set promiscuous mode.", self->ds_ifname);
         goto error;
     }
 #endif
@@ -515,11 +516,13 @@ void __inet_dhsnif_process(
     /* We're interested in IP only */
     if (ntohs(eth->eth_type) !=  ETH_TYPE_IP) return;
 
+#if 0
     LOG(DEBUG, "inet_dhsnif: %s: Ethernet: dst:"PRI(inet_macaddr_t)" src:"PRI(inet_macaddr_t)" type:%d",
             self->ds_ifname,
             FMT(inet_macaddr_t, eth->eth_dst),
             FMT(inet_macaddr_t, eth->eth_src),
             ntohs(eth->eth_type));
+#endif
 
     /* Forward the packet to L3 processing */
     __inet_dhsnif_process_L3(self, pkt, packet, l2_offset + sizeof(struct eth_hdr));
@@ -545,6 +548,7 @@ void __inet_dhsnif_process_L3(
         return;
     }
 
+#if 0
     LOG(DEBUG, "inet_dhsnif: %s: IP ver %d, hlen %d, proto %d received:  "PRI(inet_ip4addr_t)" -> "PRI(inet_ip4addr_t),
             self->ds_ifname,
             IP_VER(ip),
@@ -552,6 +556,7 @@ void __inet_dhsnif_process_L3(
             ip->ip_proto,
             FMT(inet_ip4addr_t, ip->ip_src),
             FMT(inet_ip4addr_t, ip->ip_dst));
+#endif
 
     /* Filter only the IPv4 protocol */
     if (IP_VER(ip) != 4)
@@ -621,6 +626,7 @@ void __inet_dhsnif_process_dhcp(
         return;
     }
 
+#if 0
     LOG(DEBUG, "inet_dhsnif: %s: DHCP packet htype:%d hlen:%d xid:%08x ClientAddr:"PRI(inet_macaddr_t)" ClientIP:"PRI(inet_ip4addr_t)" Magic:%08x",
             self->ds_ifname,
             dhcp->dhcp_htype,
@@ -629,6 +635,7 @@ void __inet_dhsnif_process_dhcp(
             FMT(inet_macaddr_t, dhcp->dhcp_chaddr),
             FMT(inet_ip4addr_t, dhcp->dhcp_yiaddr),
             ntohl(dhcp->dhcp_magic));
+#endif
 
     /*
      * CHADDR should be in every DHCP packet and should always contain the client MC address.
@@ -640,7 +647,9 @@ void __inet_dhsnif_process_dhcp(
     {
         /* Allocate new lease */
         lease = calloc(1, sizeof(struct inet_dhsnif_lease));
-        lease->le_info.dl_hwaddr = dhcp->dhcp_chaddr;
+        lease->le_info.dl_hwaddr = OSN_MAC_ADDR_INIT;
+        lease->le_info.dl_ipaddr = OSN_IP_ADDR_INIT;
+        memcpy(lease->le_info.dl_hwaddr.ma_addr, dhcp->dhcp_chaddr, sizeof(lease->le_info.dl_hwaddr.ma_addr));
         ds_tree_insert(&self->ds_lease_list, lease, &lease->le_info.dl_hwaddr);
     }
 
@@ -648,7 +657,7 @@ void __inet_dhsnif_process_dhcp(
      * Parse DHCP options, update the current lease
      */
     uint8_t *popt = dhcp->dhcp_options;
-    uint8_t fin[INET_DL_FINGERPRINT_MAX];
+    uint8_t fin[OSN_DHCP_FINGERPRINT_MAX];
     uint8_t msg_type = 0;
 
     fin[0] = 0;
@@ -688,26 +697,32 @@ void __inet_dhsnif_process_dhcp(
         {
             case DHCP_OPTION_ADDRESS_REQUEST:
                 /* This is not actually the given IP address */
-                LOG(DEBUG, "inet_dhsnif: %s: "PRI(inet_macaddr_t)": IPv4 Addres = "PRI(inet_ip4addr_t),
+#if 0
+                LOG(DEBUG, "inet_dhsnif: %s: "PRI(inet_macaddr_t)": IPv4 Address = "PRI(inet_ip4addr_t),
                         self->ds_ifname,
                         FMT(inet_macaddr_t, lease->le_info.dl_hwaddr),
                         FMT(inet_ip4addr_t, *(inet_ip4addr_t *)popt));
+#endif
                 break;
 
             case DHCP_OPTION_LEASE_TIME:
                 lease->le_info.dl_leasetime = ntohl(*(uint32_t *)popt);
+#if 0
                 LOG(DEBUG, "inet_dhsnif: %s: "PRI(inet_macaddr_t)": Lease time =  %ds",
                         self->ds_ifname,
                         FMT(inet_macaddr_t, lease->le_info.dl_hwaddr),
                         (int)lease->le_info.dl_leasetime);
+#endif
                 break;
 
             case DHCP_OPTION_MSG_TYPE:
                 /* Message type */
+#if 0
                 LOG(DEBUG, "inet_dhsnif: %s: "PRI(inet_macaddr_t)": Message type = %d",
                         self->ds_ifname,
                         FMT(inet_macaddr_t, lease->le_info.dl_hwaddr),
                         *(uint8_t *)popt);
+#endif
                 msg_type = *popt;
                 lease->le_msg_type = msg_type;
                 break;
@@ -739,17 +754,21 @@ void __inet_dhsnif_process_dhcp(
                 if (optlen == 0)
                 {
                     /* In theory this should never happen */
+#if 0
                     LOG(WARN, "inet_dhsnif: %s: "PRI(inet_macaddr_t)": Client requested empty hostname.",
                         self->ds_ifname,
                         FMT(inet_macaddr_t, lease->le_info.dl_hwaddr));
+#endif
                     break;
                 }
 
                 if (optlen >= sizeof(lease->le_info.dl_hostname) - 1)
                 {
+#if 0
                     LOG(WARN, "inet_dhsnif: %s: "PRI(inet_macaddr_t)": Hostname option too long. Discarding packet.",
                             self->ds_ifname,
                             FMT(inet_macaddr_t, lease->le_info.dl_hwaddr));
+#endif
                     return;
                 }
 
@@ -761,18 +780,22 @@ void __inet_dhsnif_process_dhcp(
             case DHCP_OPTION_VENDOR_CLASS:
                 if (optlen == 0)
                 {
+#if 0
                     LOG(WARN, "inet_dhsnif: %s: "PRI(inet_macaddr_t)": Client supplied empty vendor class.",
                         self->ds_ifname,
                         FMT(inet_macaddr_t, lease->le_info.dl_hwaddr));
+#endif
                     break;
                 }
 
                 /* Update the lease vendor-class */
                 if (optlen >= sizeof(lease->le_info.dl_vendorclass) - 1)
                 {
+#if 0
                     LOG(WARN, "inet_dhsnif: %s: "PRI(inet_macaddr_t)": Vendor class option too long. Discarding packet.",
                             self->ds_ifname,
                             FMT(inet_macaddr_t, lease->le_info.dl_hwaddr));
+#endif
                     break;
                 }
 
@@ -781,11 +804,14 @@ void __inet_dhsnif_process_dhcp(
                 break;
 
             default:
+#if 0
                 LOG(DEBUG, "inet_dhsnif: %s: "PRI(inet_macaddr_t)": Received DHCP Option: %d(%d)\n",
                         self->ds_ifname,
                         FMT(inet_macaddr_t, lease->le_info.dl_hwaddr),
                         optid,
                         optlen);
+#endif
+                break;
         }
 
         popt += optlen;
@@ -801,9 +827,11 @@ void __inet_dhsnif_process_dhcp(
                     lease->le_info.dl_fingerprint,
                     sizeof(lease->le_info.dl_fingerprint)))
             {
+#if 0
                 LOG(ERR, "inet_dhsnif: %s: "PRI(inet_macaddr_t)": Unable to convert fingerprint to string.",
                         self->ds_ifname,
                         FMT(inet_macaddr_t, lease->le_info.dl_hwaddr));
+#endif
 
                 lease->le_info.dl_fingerprint[0] = '\0';
             }
@@ -825,9 +853,11 @@ void __inet_dhsnif_process_dhcp(
                         lease->le_info.dl_fingerprint,
                         sizeof(lease->le_info.dl_fingerprint)))
                 {
+#if 0
                     LOG(ERR, "inet_dhsnif: %s: "PRI(inet_macaddr_t)": Unable to convert fingerprint to string.",
                         self->ds_ifname,
                         FMT(inet_macaddr_t, lease->le_info.dl_hwaddr));
+#endif
 
                     lease->le_info.dl_fingerprint[0] = '\0';
                 }
@@ -836,13 +866,19 @@ void __inet_dhsnif_process_dhcp(
 
         case DHCP_MSG_OFFER:
             /* Save the IP address */
-            lease->le_info.dl_ipaddr = dhcp->dhcp_yiaddr;
+            lease->le_info.dl_ipaddr = OSN_IP_ADDR_INIT;
+            lease->le_info.dl_ipaddr.ia_addr = dhcp->dhcp_yiaddr;
             break;
 
         case DHCP_MSG_ACK:
             /* Update the IP address */
-            lease->le_info.dl_ipaddr = dhcp->dhcp_yiaddr;
+            lease->le_info.dl_ipaddr = OSN_IP_ADDR_INIT;
+            lease->le_info.dl_ipaddr.ia_addr = dhcp->dhcp_yiaddr;
 
+            LOG(NOTICE, "inet_dhsnif: ACK IP:"PRI_osn_ip_addr" MAC:"PRI_osn_mac_addr" Hostname:%s",
+                    FMT_osn_ip_addr(lease->le_info.dl_ipaddr),
+                    FMT_osn_mac_addr(lease->le_info.dl_hwaddr),
+                    lease->le_info.dl_hostname);
             /* Call callback */
             if (self->ds_lease_fn != NULL)
             {
@@ -854,6 +890,10 @@ void __inet_dhsnif_process_dhcp(
         case DHCP_MSG_NACK:
         case DHCP_MSG_RELEASE:
             /* Callback */
+            LOG(NOTICE, "inet_dhsnif: RELEASE IP:"PRI_osn_ip_addr" MAC:"PRI_osn_mac_addr" Hostname:%s",
+                    FMT_osn_ip_addr(lease->le_info.dl_ipaddr),
+                    FMT_osn_mac_addr(lease->le_info.dl_hwaddr),
+                    lease->le_info.dl_hostname);
             if (self->ds_lease_fn != NULL)
             {
                 self->ds_lease_fn(self->ds_lease_inet, false, &lease->le_info);
@@ -869,7 +909,7 @@ void __inet_dhsnif_process_dhcp(
 
 
 /**
- * Convert a binary representation of the fingerpint to a comma delimited string
+ * Convert a binary representation of the fingerprint to a comma delimited string
  */
 bool inet_dhsnif_fingerprint_to_str(uint8_t *finger, char *s, size_t sz)
 {
@@ -910,7 +950,7 @@ bool inet_dhsnif_fingerprint_to_str(uint8_t *finger, char *s, size_t sz)
 }
 
 /**
- * Function for comapring keys for a dhcps_lease structure
+ * Function for comparing keys for a dhcps_lease structure
  */
 int inet_dhsnif_lease_cmp(void *a, void *b)
 {

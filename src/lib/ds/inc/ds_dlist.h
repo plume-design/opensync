@@ -27,6 +27,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef DS_DLIST_H_INCLUDED
 #define DS_DLIST_H_INCLUDED
 
+#include <stddef.h>
 #include "ds.h"
 
 /*
@@ -38,17 +39,19 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /** Static initialization */
 #define DS_DLIST_INIT(type, elem)       \
 {                                       \
-    .od_cof  = OFFSET_OF(type, elem),   \
+    .od_cof  = offsetof(type, elem),    \
     .od_head = NULL,                    \
     .od_tail = NULL,                    \
     .od_ndel = 0,                       \
 }
 
 /** Run-time initialization */
-#define ds_dlist_init(list, type, elem) __ds_dlist_init(list, OFFSET_OF(type, elem))
+#define ds_dlist_init(list, type, elem) __ds_dlist_init(list, offsetof(type, elem))
 
 #define ds_dlist_foreach(list, p)       \
     for (p = ds_dlist_head(list); p != NULL; p = ds_dlist_next(list, p))
+
+#define ds_dlist_foreach_iter ds_dlist_iforeach
 
 #define ds_dlist_iforeach(list, p, iter) \
     for (p = ds_dlist_ifirst(&iter, list); p != NULL; p = ds_dlist_inext(&iter))

@@ -28,6 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define DS_TREE_H_INCLUDED
 
 #include <stdio.h>
+#include <stddef.h>
 
 #include "ds.h"
 
@@ -39,7 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define DS_TREE_INIT_EX(C, S, type, elem)   \
 {                                           \
-    .ot_cof    = OFFSET_OF(type, elem),     \
+    .ot_cof    = offsetof(type, elem),      \
     .ot_root   = NULL,                      \
     .ot_cmp_fn = (C),                       \
     .ot_str_fn = (S),                       \
@@ -48,7 +49,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define DS_TREE_INIT(C, type, elem)             DS_TREE_INIT_EX((C), NULL, type, elem)
 
-#define ds_tree_init(root, cmp, type, elem)     __ds_tree_init(root, cmp, OFFSET_OF(type, elem))
+#define ds_tree_init(root, cmp, type, elem)     __ds_tree_init(root, cmp, offsetof(type, elem))
 
 #define DS_TREE_NODE_STR_SZ                     64  /**< Maximum size of node string */
 

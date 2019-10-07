@@ -44,6 +44,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <getopt.h>
 #include <stdarg.h>
 #include <linux/types.h>
+#include <math.h>
 
 #include "bm.h"
 
@@ -189,6 +190,11 @@ bm_client_to_cs_bsal_conf( bm_client_t *client, bsal_client_config_t *dest, bool
         }
     }
 
+    LOGD("cs %s block %d (probe %d-%d, auth %d-%d, xing %d-%d", client->mac_addr, block,
+         dest->rssi_probe_lwm, dest->rssi_probe_hwm,
+	 dest->rssi_auth_lwm, dest->rssi_auth_hwm,
+	 dest->rssi_low_xing, dest->rssi_high_xing);
+
     return true;
 }
 
@@ -242,9 +248,64 @@ bm_client_to_bsal_conf(bm_client_t *client, bsal_band_t band, bsal_client_config
         dest->rssi_auth_hwm         = 0;
         dest->rssi_auth_lwm         = 0;
         dest->auth_reject_reason    = 0;
+
+        if (client->state == BM_CLIENT_STATE_BACKOFF &&  client->steer_during_backoff) {
+           LOGD("bs %s steer during backoff", client->mac_addr);
+           dest->rssi_high_xing = client->hwm;
+        }
     }
 
+    LOGD("bs %s band %d (probe %d-%d, auth %d-%d, xing %d-%d", client->mac_addr, band,
+         dest->rssi_probe_lwm, dest->rssi_probe_hwm,
+	 dest->rssi_auth_lwm, dest->rssi_auth_hwm,
+	 dest->rssi_low_xing, dest->rssi_high_xing);
+
     return true;
+}
+
+static void bm_client_check_connected(bm_client_t *client, bm_pair_t *pair, bsal_band_t band, const os_macaddr_t macaddr)
+{
+    bsal_client_info_t          info;
+    bsal_event_t                event;
+    const char                  *ifname;
+
+    ifname = pair->ifcfg[band].ifname;
+
+    if (target_bsal_client_info(ifname, macaddr.addr, &info)) {
+        LOGD("%s: Client %s no client info.", ifname, client->mac_addr);
+        return;
+    }
+
+    if (!info.connected) {
+        LOGD("%s: Client %s not connected.", ifname, client->mac_addr);
+        return;
+    }
+
+    LOGI("%s: Client %s already connected.", ifname, client->mac_addr);
+
+    /* create an event with correct CAPS */
+    memset(&event, 0, sizeof(event));
+
+    strncpy(event.ifname, ifname, BSAL_IFNAME_LEN);
+    event.type = BSAL_EVENT_CLIENT_CONNECT;
+    event.band = band;
+    memcpy(&event.data.connect.client_addr,
+           &macaddr,
+           sizeof(event.data.connect.client_addr));
+
+    event.data.connect.is_BTM_supported = info.is_BTM_supported;
+    event.data.connect.is_RRM_supported = info.is_RRM_supported;
+    event.data.connect.band_cap_2G = info.band_cap_2G | client->band_cap_2G;
+    event.data.connect.band_cap_5G = info.band_cap_5G | client->band_cap_5G;
+    memcpy(&event.data.connect.datarate_info, &info.datarate_info, sizeof(event.data.connect.datarate_info));
+    memcpy(&event.data.connect.rrm_caps, &info.rrm_caps, sizeof(event.data.connect.rrm_caps));
+
+    if (bm_events_client_cap_changed(client, &event)) {
+        bm_stats_add_event_to_report(client, &event, CLIENT_CAPABILITIES, false);
+    }
+
+    bm_events_record_client_cap(client, &event);
+    bm_client_connected(client, pair->bsal, band, &event);
 }
 
 static bool
@@ -293,16 +354,9 @@ bm_client_add_to_pair(bm_client_t *client, bm_pair_t *pair)
                                   client->mac_addr, pair->ifcfg[BSAL_BAND_5G].ifname);
 
     // Now check to see if client is already connected
-    if (target_bsal_client_is_connected(pair->ifcfg[BSAL_BAND_24G].ifname, (uint8_t *)&macaddr) == 1) {
-        LOGD("Client %s already connected to BSAL:%s",
-                                  client->mac_addr, pair->ifcfg[BSAL_BAND_24G].ifname);
-        bm_client_connected(client, pair->bsal, BSAL_BAND_24G, NULL);
-    }
-    else if (target_bsal_client_is_connected(pair->ifcfg[BSAL_BAND_5G].ifname, (uint8_t *)&macaddr) == 1) {
-        LOGD("Client %s already connected to BSAL:%s",
-                                  client->mac_addr, pair->ifcfg[BSAL_BAND_5G].ifname);
-        bm_client_connected(client, pair->bsal, BSAL_BAND_5G, NULL);
-    }
+    bm_client_check_connected(client, pair, BSAL_BAND_24G, macaddr);
+    bm_client_check_connected(client, pair, BSAL_BAND_5G, macaddr);
+
     return true;
 }
 
@@ -437,7 +491,6 @@ bm_client_remove_from_pair(bm_client_t *client, bm_pair_t *pair)
     if (target_bsal_client_remove(pair->ifcfg[BSAL_BAND_24G].ifname, (uint8_t *)&macaddr) < 0) {
         LOGE("Failed to remove client '%s' from BSAL:%s",
                                    client->mac_addr, pair->ifcfg[BSAL_BAND_24G].ifname);
-        return false;
     }
 
     LOGD("Client '%s' removed from BSAL:%s",
@@ -447,11 +500,12 @@ bm_client_remove_from_pair(bm_client_t *client, bm_pair_t *pair)
     if (target_bsal_client_remove(pair->ifcfg[BSAL_BAND_5G].ifname, (uint8_t *)&macaddr) < 0) {
         LOGE("Failed to remove client '%s' from BSAL:%s",
                                    client->mac_addr, pair->ifcfg[BSAL_BAND_5G].ifname);
-        return false;
     }
 
     LOGD("Client '%s' removed from BSAL:%s",
                                    client->mac_addr, pair->ifcfg[BSAL_BAND_5G].ifname);
+
+    client->pair = NULL;
 
     return true;
 }
@@ -526,7 +580,9 @@ bm_client_remove(bm_client_t *client)
         LOGW("Client '%s' failed to remove from one or more pairs", client->mac_addr);
     }
 
-    evsched_task_cancel_by_find(NULL, client, EVSCHED_FIND_BY_ARG);
+    while (evsched_task_cancel_by_find(NULL, client, EVSCHED_FIND_BY_ARG))
+        ;
+
     bm_kick_cleanup_by_client(client);
     free(client);
 
@@ -543,6 +599,7 @@ bm_client_cs_task( void *arg )
 
     client->cs_state = BM_CLIENT_CS_STATE_EXPIRED;
 
+    bm_kick_cancel_btm_retry_task(client);
     bm_client_disable_client_steering( client );
 
     memset( &event, 0, sizeof( event ) );
@@ -725,6 +782,7 @@ bm_client_get_cs_params( struct schema_Band_Steering_Clients *bscli, bm_client_t
 
     if( !(val = bm_client_get_cs_param( bscli, "band" ))) {
         // ABS: Check if this is correct
+        LOGD("%s - unknown band", client->mac_addr);
         client->cs_band = BSAL_BAND_COUNT;
     } else {
         item = c_get_item_by_str(map_bsal_bands, val);
@@ -914,9 +972,9 @@ bm_client_get_btm_params( struct schema_Band_Steering_Clients *bscli,
     }
 
     if ((val = bm_client_get_btm_param( bscli, type, "btm_max_retries" ))) {
-        btm_params->max_retries = atoi( val );
+        btm_params->max_tries = atoi( val ) + 1;
     } else {
-        btm_params->max_retries = BTM_DEFAULT_MAX_RETRIES;
+        btm_params->max_tries = BTM_DEFAULT_MAX_RETRIES + 1;
     }
 
     if ((val = bm_client_get_btm_param( bscli, type, "btm_retry_interval" ))) {
@@ -932,6 +990,20 @@ bm_client_get_btm_params( struct schema_Band_Steering_Clients *bscli,
             btm_params->inc_neigh = true;
         } else {
             btm_params->inc_neigh = false;
+        }
+    }
+
+    if( !( val = bm_client_get_btm_param( bscli, type, "inc_self" ))) {
+        /* Base on disassoc imminent here */
+        if (btm_params->disassoc_imminent)
+            btm_params->inc_self = false;
+        else
+            btm_params->inc_self = true;
+    } else {
+        if( !strcmp( val, "true" ) ) {
+            btm_params->inc_self = true;
+        } else {
+            btm_params->inc_self = false;
         }
     }
 
@@ -1055,6 +1127,18 @@ bm_client_from_ovsdb(struct schema_Band_Steering_Clients *bscli, bm_client_t *cl
     client->max_rejects                 = bscli->max_rejects;
     client->max_rejects_period          = bscli->rejects_tmout_secs;
     client->backoff_period              = bscli->backoff_secs;
+
+    if (!bscli->backoff_exp_base_exists) {
+        client->backoff_exp_base = BM_CLIENT_DEFAULT_BACKOFF_EXP_BASE;
+    } else {
+        client->backoff_exp_base = bscli->backoff_exp_base;
+    }
+
+    if (!bscli->steer_during_backoff_exists) {
+        client->steer_during_backoff = BM_CLIENT_DEFAULT_STEER_DURING_BACKOFF;
+    } else {
+        client->steer_during_backoff = bscli->steer_during_backoff;
+    }
 
     // If the kick_debounce_period or sc_kick_debounce_period was
     // changed, reset the last_kick time
@@ -1381,6 +1465,11 @@ bm_client_ovsdb_update_cb(ovsdb_update_monitor_t *self)
 static void
 bm_client_backoff(bm_client_t *client, bool enable)
 {
+    int connect_counter;
+    int exp;
+
+    client->backoff = enable;
+
     if (client->state == BM_CLIENT_STATE_BACKOFF) {
         // State cannot be backoff for enable or disable
         return;
@@ -1390,14 +1479,29 @@ bm_client_backoff(bm_client_t *client, bool enable)
         bm_client_set_state(client, BM_CLIENT_STATE_BACKOFF);
         bm_client_update_all_pairs(client);
 
+
+        connect_counter = client->backoff_connect_counter;
+        if (connect_counter > 10)
+            connect_counter = 10;
+
+        exp = pow(client->backoff_exp_base, connect_counter);
+        client->backoff_period_used = client->backoff_period * exp;
+
+        LOGI("%s using backoff period %dsec * %d (%d)", client->mac_addr,
+             client->backoff_period, exp, client->backoff_connect_counter);
+
         client->backoff_task = evsched_task(bm_client_task_backoff,
                                             client,
-                                            EVSCHED_SEC(client->backoff_period));
+                                            EVSCHED_SEC(client->backoff_period_used));
     }
     else if (client->num_rejects != 0) {
+        LOGI("%s disable backoff", client->mac_addr);
         client->num_rejects = 0;
+        client->backoff_connect_calculated = false;
         evsched_task_cancel(client->backoff_task);
         bm_client_update_all_pairs(client);
+    } else {
+        LOGI("%s backoff(%d) num_rejects %d", client->mac_addr, enable, client->num_rejects);
     }
 
     return;
@@ -1583,31 +1687,31 @@ bm_client_cs_task_rssi_xing( void *arg )
 static void
 bm_client_print_client_caps( bm_client_t *client )
 {
-    LOGT( " ~~~ Client '%s' ~~~", client->mac_addr );
-    LOGT( " isBTMSupported        : %s", client->is_BTM_supported ? "Yes":"No" );
-    LOGT( " isRRMSupported        : %s", client->is_RRM_supported ? "Yes":"No" );
-    LOGT( " Supports 2G           : %s", client->band_cap_2G ? "Yes":"No" );
-    LOGT( " Supports 5G           : %s", client->band_cap_5G ? "Yes":"No" );
+    LOGD( " ~~~ Client '%s' ~~~", client->mac_addr );
+    LOGD( " isBTMSupported        : %s", client->is_BTM_supported ? "Yes":"No" );
+    LOGD( " isRRMSupported        : %s", client->is_RRM_supported ? "Yes":"No" );
+    LOGD( " Supports 2G           : %s", client->band_cap_2G ? "Yes":"No" );
+    LOGD( " Supports 5G           : %s", client->band_cap_5G ? "Yes":"No" );
  
-    LOGT( "   ~~~Datarate Information~~~    " );
-    LOGT( " Max Channel Width     : %hhu", client->datarate_info.max_chwidth );
-    LOGT( " Max Streams           : %hhu", client->datarate_info.max_streams );
-    LOGT( " PHY Mode              : %hhu", client->datarate_info.phy_mode );
-    LOGT( " Max MCS               : %hhu", client->datarate_info.max_MCS );
-    LOGT( " Max TX power          : %hhu", client->datarate_info.max_txpower );
-    LOGT( " Is Static SMPS?       : %s", client->datarate_info.is_static_smps ? "Yes":"No" );
-    LOGT( " Suports MU-MIMO       : %s", client->datarate_info.is_mu_mimo_supported? "Yes":"No" );
+    LOGD( "   ~~~Datarate Information~~~    " );
+    LOGD( " Max Channel Width     : %hhu", client->datarate_info.max_chwidth );
+    LOGD( " Max Streams           : %hhu", client->datarate_info.max_streams );
+    LOGD( " PHY Mode              : %hhu", client->datarate_info.phy_mode );
+    LOGD( " Max MCS               : %hhu", client->datarate_info.max_MCS );
+    LOGD( " Max TX power          : %hhu", client->datarate_info.max_txpower );
+    LOGD( " Is Static SMPS?       : %s", client->datarate_info.is_static_smps ? "Yes":"No" );
+    LOGD( " Suports MU-MIMO       : %s", client->datarate_info.is_mu_mimo_supported? "Yes":"No" );
 
-    LOGT( "   ~~~RRM Capabilites~~~     " );
-    LOGT( " Link measurement      : %s", client->rrm_caps.link_meas ? "Yes":"No" );
-    LOGT( " Neighbor report       : %s", client->rrm_caps.neigh_rpt ? "Yes":"No" );
-    LOGT( " Beacon Report Passive : %s", client->rrm_caps.bcn_rpt_passive ? "Yes":"No" );
-    LOGT( " Beacon Report Active  : %s", client->rrm_caps.bcn_rpt_active ? "Yes":"No" );
-    LOGT( " Beacon Report Table   : %s", client->rrm_caps.bcn_rpt_table ? "Yes":"No" );
-    LOGT( " LCI measurement       : %s", client->rrm_caps.lci_meas ? "Yes":"No");
-    LOGT( " FTM Range report      : %s", client->rrm_caps.ftm_range_rpt ? "Yes":"No" );
+    LOGD( "   ~~~RRM Capabilites~~~     " );
+    LOGD( " Link measurement      : %s", client->rrm_caps.link_meas ? "Yes":"No" );
+    LOGD( " Neighbor report       : %s", client->rrm_caps.neigh_rpt ? "Yes":"No" );
+    LOGD( " Beacon Report Passive : %s", client->rrm_caps.bcn_rpt_passive ? "Yes":"No" );
+    LOGD( " Beacon Report Active  : %s", client->rrm_caps.bcn_rpt_active ? "Yes":"No" );
+    LOGD( " Beacon Report Table   : %s", client->rrm_caps.bcn_rpt_table ? "Yes":"No" );
+    LOGD( " LCI measurement       : %s", client->rrm_caps.lci_meas ? "Yes":"No");
+    LOGD( " FTM Range report      : %s", client->rrm_caps.ftm_range_rpt ? "Yes":"No" );
 
-    LOGT( " ~~~~~~~~~~~~~~~~~~~~ " );
+    LOGD( " ~~~~~~~~~~~~~~~~~~~~ " );
 
     return;
 }
@@ -1674,6 +1778,7 @@ bm_client_connected(bm_client_t *client, bsal_t bsal, bsal_band_t band, bsal_eve
             bm_stats_add_event_to_report( client, event, CONNECT, false );
         }
     } else {
+	client->band = band;
         bm_client_set_state(client, BM_CLIENT_STATE_CONNECTED);
         if (event) {
             bm_stats_add_event_to_report( client, event, CONNECT, false );
@@ -1682,6 +1787,7 @@ bm_client_connected(bm_client_t *client, bsal_t bsal, bsal_band_t band, bsal_eve
 
     client->band = band;
     client->connected = true;
+    client->xing_snr = 0;
 
     stats = &client->stats[band];
     stats->connects++;
@@ -1698,6 +1804,7 @@ void
 bm_client_disconnected(bm_client_t *client)
 {
     client->connected = false;
+    client->xing_snr = 0;
 
     if (client->state == BM_CLIENT_STATE_CONNECTED) {
         bm_client_set_state(client, BM_CLIENT_STATE_DISCONNECTED);
@@ -1777,7 +1884,7 @@ bm_client_rejected(bm_client_t *client, bsal_event_t *event)
                 bm_stats_add_event_to_report( client, &stats_event, CLIENT_STEERING_FAILED, false );
             }
         } else {
-            LOGW("'%s' failed to steer (total: %u times), %s...",
+            LOGN("'%s' (total: %u times), %s...",
                     client->mac_addr,
                     stats->steering_fail_cnt,
                     client->backoff_period ?

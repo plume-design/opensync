@@ -50,7 +50,7 @@ static void evx_ares_sock_state_cb(void *data, int s, int read, int write) {
     LOGI("%s: read: %d write: %d s: %d fd: %d", __func__, read, write, s, eares->io.fd);
 
     if (ev_is_active(&eares->io) && eares->io.fd != s) {
-        LOGW("%s: Different socket id", __func__);
+        LOGI("%s: Different socket id", __func__);
         return;
     }
 
@@ -112,4 +112,31 @@ void evx_stop_ares(evx_ares *eares_p)
     ares_destroy(eares_p->ares.channel);
     eares_p->chan_initialized = 0;
     ares_library_cleanup();
+}
+
+void
+evx_ares_trigger_ares_process(evx_ares *eares_p)
+{
+    struct timeval   tv, *tvp;
+    fd_set           readers, writers;
+    int              nfds, count;
+
+    LOGI("evx: trigger ares process");
+
+    FD_ZERO(&readers);
+    FD_ZERO(&writers);
+    nfds = ares_fds(eares_p->ares.channel, &readers, &writers);
+    if (nfds == 0) {
+        LOGI("evx: ares no nfds");
+        evx_stop_ares(eares_p);
+        return;
+    }
+
+    tvp = ares_timeout(eares_p->ares.channel, NULL, &tv);
+    count = select(nfds, &readers, &writers, NULL, tvp);
+
+    LOGI("evx: ares timeout: count = %d, tv: %ld.%06ld tvp: %ld.%06ld",
+         count, tv.tv_sec, tv.tv_usec, tvp->tv_sec, tvp->tv_usec);
+
+    ares_process(eares_p->ares.channel, &readers, &writers);
 }

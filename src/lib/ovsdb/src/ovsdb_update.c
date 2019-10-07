@@ -191,7 +191,7 @@ bool ovsdb_update_monitor_ex(
 {
     /* Initialize the ovsdb_update_t structure */
     memset(self, 0, sizeof(*self));
-    self->PRIV(mon_cbk) = callback;
+    self->mon_cb = callback;
 
     /* Regiter update handler */
     int monid = ovsdb_register_update_cb(
@@ -388,7 +388,7 @@ void ovsdb_update_monitor_process(ovsdb_update_monitor_t *self, json_t *js)
                 }
             }
 
-            self->PRIV(mon_cbk)(self);
+            self->mon_cb(self);
         }
         while (false);
 
@@ -405,7 +405,7 @@ void ovsdb_update_monitor_error(ovsdb_update_monitor_t *self)
     self->mon_json_new = NULL;
     self->mon_json_old = NULL;
 
-    self->PRIV(mon_cbk)(self);
+    self->mon_cb(self);
 }
 
 // return true if a field has changed in an update

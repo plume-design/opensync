@@ -52,5 +52,4 @@ UNIT_DEPS    := src/lib/ovsdb
 UNIT_DEPS    += src/lib/pjs
 UNIT_DEPS    += src/lib/schema
 UNIT_DEPS    += src/lib/version
-UNIT_DEPS    += src/lib/evsched
 UNIT_DEPS    += src/lib/target

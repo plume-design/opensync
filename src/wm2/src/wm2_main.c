@@ -38,7 +38,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <getopt.h>
 
 #include "ds_tree.h"
-#include "evsched.h"
 #include "log.h"
 #include "os.h"
 #include "os_socket.h"
@@ -88,12 +87,6 @@ main(int argc, char ** argv)
     backtrace_init();
 
     json_memdbg_init(loop);
-
-    if (evsched_init(loop) == false) {
-        LOGE("Initializing WM "
-             "(Failed to initialize EVSCHED)");
-        return -1;
-    }
 
     if (!target_init(TARGET_INIT_MGR_WM, loop)) {
         return -1;

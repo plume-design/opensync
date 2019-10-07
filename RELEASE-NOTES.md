@@ -2,6 +2,40 @@ OpenSync™ Release Notes
 -----------------------
 
 
+### Release 1.4.0.0
+
+* New Features
+    - IPv6 support:
+        - schema changes for IPv6 (old tables are still used for IPv4)
+        - added a new layer (`src/lib/osn`) which replaces the `inet_target` API
+        - NM2 refactored
+    - Infrastructure for inspection of data flows (deep packet inspection):
+        - added support for _flow tags_ (FSM and plugins)
+        - schema updated to add support for IP threat detection
+    - Infrastructure for collecting and reporting health statistics:
+        - IP and DNS monitoring counters: `interfaces/ip_dns_telemetry.proto`
+        - library: `src/lib/network_telemetry`
+    - Infrastructure for collecting and reporting data flow statistics:
+        - added a new manager (FCM, or *Flow Collection Manager*)
+        - protobuf interface: `interfaces/network_metadata.proto`
+        - library: `src/lib/network_metadata`
+    - Sample code for the new features:
+        - a sample DPI plugin for FSM: `src/lib/fsm_demo_dpi_plugin`
+        - sample code for generating and sending protobuf reports through MQTT
+          added to `src/lib/fsm_demo_plugin`
+* Notable Enhancements
+    - Build system uses `Kconfiglib` to generate the necessary files for
+      easier use of Kconfig
+    - FSM no longer uses `pcap` as the plugin API
+    - Additional FSM plugin libraries (for advanced device typing):
+        - DHCP (`src/lib/dhcp_parse`)
+        - DNS (`src/lib/dns_parse`)
+        - HTTP (`src/lib/http_parse`)
+        - UPNP (`src/lib/upnp_parse`)
+    - Improved 802.11v and 802.11k steering mechanisms
+    - DFS enhancements to improve its use in Multi-AP networks
+
+
 ### Release 1.2.4.0
 
 * Notable Enhancements

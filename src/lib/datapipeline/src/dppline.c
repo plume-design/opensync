@@ -27,7 +27,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include <protobuf-c.h>
+#include <protobuf-c/protobuf-c.h>
 #include <unistd.h>
 
 #include "target.h"
@@ -894,7 +894,7 @@ static void dppline_add_stat_neighbor(Sts__Report *r, dppline_stats_t *s)
             dr->tsf = rec->tsf;
             dr->has_tsf = true;
         }
-        dr->chan_width = rec->chanwidth;
+        dr->chan_width = (Sts__ChanWidth)rec->chanwidth;
         dr->has_chan_width = true;
         dr->channel = rec->chan;
 
@@ -1282,7 +1282,7 @@ static void dppline_add_stat_device(Sts__Report *r, dppline_stats_t *s)
 
         sr->fs_util[i]->fs_total = device->record.fs_util[i].fs_total;
         sr->fs_util[i]->fs_used = device->record.fs_util[i].fs_used;
-        sr->fs_util[i]->fs_type = device->record.fs_util[i].fs_type;
+        sr->fs_util[i]->fs_type = (Sts__FsType)device->record.fs_util[i].fs_type;
     }
 
     sr->cpuutil = malloc(sizeof(*sr->cpuutil));
@@ -1564,6 +1564,11 @@ static void dppline_add_stat_bs_client(Sts__Report * r, dppline_stats_t * s)
         {
             dpp_bs_client_band_record_t *b_rec = &c_rec->band_record[band];
 
+            if (b_rec->type == RADIO_TYPE_NONE) {
+                LOGW("%s: RADIO_TYPE_NONE", __func__);
+                continue;
+            }
+
             // Allocate memory for the band report
             br = cr->bs_band_report[band] = malloc(sizeof(Sts__BSClient__BSBandReport));
             assert(br);
@@ -1617,7 +1622,7 @@ static void dppline_add_stat_bs_client(Sts__Report * r, dppline_stats_t * s)
                 assert(er);
                 sts__bsclient__bsevent__init(er);
 
-                er->type = e_rec->type;
+                er->type = (Sts__BSEventType)e_rec->type;
 
                 er->offset_ms = bs_client->timestamp_ms - e_rec->timestamp_ms;
 
@@ -1630,10 +1635,10 @@ static void dppline_add_stat_bs_client(Sts__Report * r, dppline_stats_t * s)
                 er->probe_blocked = e_rec->probe_blocked;
                 er->has_probe_blocked = true;
 
-                er->disconnect_src = e_rec->disconnect_src;
+                er->disconnect_src = (Sts__DisconnectSrc)e_rec->disconnect_src;
                 er->has_disconnect_src = true;
 
-                er->disconnect_type = e_rec->disconnect_type;
+                er->disconnect_type = (Sts__DisconnectType)e_rec->disconnect_type;
                 er->has_disconnect_type = true;
 
                 er->disconnect_reason = e_rec->disconnect_reason;
@@ -1642,6 +1647,8 @@ static void dppline_add_stat_bs_client(Sts__Report * r, dppline_stats_t * s)
                 er->backoff_enabled = e_rec->backoff_enabled;
                 er->has_backoff_enabled = true;
 
+                er->backoff_period = e_rec->backoff_period;
+                er->has_backoff_period = true;
                 er->active = e_rec->active;
                 er->has_active = true;
 

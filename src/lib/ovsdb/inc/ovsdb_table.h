@@ -107,9 +107,9 @@ int ovsdb_table_init(
         SCHEMA_TABLE(TABLE), \
         &table_ ## TABLE, \
         sizeof(struct schema_ ## TABLE), \
-        OFFSET_OF(struct schema_ ## TABLE, _update_type), \
-        OFFSET_OF(struct schema_ ## TABLE, _uuid), \
-        OFFSET_OF(struct schema_ ## TABLE, _version), \
+        offsetof(struct schema_ ## TABLE, _update_type), \
+        offsetof(struct schema_ ## TABLE, _uuid), \
+        offsetof(struct schema_ ## TABLE, _version), \
         (schema_from_json_t*)schema_ ## TABLE ## _from_json, \
         (schema_to_json_t*)schema_ ## TABLE ## _to_json, \
         (schema_mark_changed_t*)schema_ ## TABLE ## _mark_changed, \
@@ -118,14 +118,14 @@ int ovsdb_table_init(
 // set primary key
 #define OVSDB_TABLE_KEY(TABLE, FIELD) \
     do { \
-        table_ ## TABLE . key_offset = OFFSET_OF(struct schema_ ## TABLE, FIELD); \
+        table_ ## TABLE . key_offset = offsetof(struct schema_ ## TABLE, FIELD); \
         strscpy(table_ ## TABLE . key_name, #FIELD, OVSDB_TABLE_KEY_SIZE); \
     } while (0)
 
 // set secondary key
 #define OVSDB_TABLE_KEY2(TABLE, FIELD) \
     do { \
-        table_ ## TABLE . key2_offset = OFFSET_OF(struct schema_ ## TABLE, FIELD); \
+        table_ ## TABLE . key2_offset = offsetof(struct schema_ ## TABLE, FIELD); \
         strscpy(table_ ## TABLE . key2_name, #FIELD, OVSDB_TABLE_KEY_SIZE); \
     } while (0)
 

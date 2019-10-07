@@ -78,157 +78,473 @@ ovsdb_table_t table_Openflow_Tag_Group;
  * identifier aforementioned (dns, http, ...)
  */
 
-static bool fsm_set_param(char *param_name, char *param,
-                          size_t param_len, char *key, char *val) {
-    size_t len = 0;
 
-    if (strcmp(key, param_name) != 0) {
-        return false;
+/**
+ * @brief fsm manager.
+ *
+ * Container of fsm sessions
+ */
+static struct fsm_mgr fsm_mgr;
+
+/**
+ * @brief fsm manager accessor
+ */
+struct fsm_mgr *
+fsm_get_mgr(void)
+{
+    return &fsm_mgr;
+}
+
+/**
+ * @brief fsm sessions tree accessor
+ */
+ds_tree_t *
+fsm_get_sessions(void)
+{
+    struct fsm_mgr *mgr;
+
+    mgr = fsm_get_mgr();
+    return &mgr->fsm_sessions;
+}
+
+static int
+fsm_sessions_cmp(void *a, void *b)
+{
+    return strcmp(a, b);
+}
+
+
+/**
+ * @brief fsm manager init routine
+ */
+void
+fsm_init_mgr(struct ev_loop *loop)
+{
+    struct fsm_mgr *mgr;
+
+    mgr = fsm_get_mgr();
+    memset(mgr, 0, sizeof(*mgr));
+    mgr->loop = loop;
+    snprintf(mgr->pid, sizeof(mgr->pid), "%d", (int)getpid());
+    ds_tree_init(&mgr->fsm_sessions, fsm_sessions_cmp,
+                 struct fsm_session, fsm_node);
+}
+
+
+/**
+ * @brief fsm manager reset routine
+ */
+void
+fsm_reset_mgr(void)
+{
+    struct fsm_session *session;
+    struct fsm_session *remove;
+    struct fsm_session *next;
+    ds_tree_t *sessions;
+    struct fsm_mgr *mgr;
+
+    mgr = fsm_get_mgr();
+    sessions = fsm_get_sessions();
+    session = ds_tree_head(sessions);
+    while (session != NULL)
+    {
+        next = ds_tree_next(sessions, session);
+        remove = session;
+        ds_tree_remove(sessions, remove);
+        fsm_free_session(remove);
+        session = next;
     }
-    len = strlen(val) + 1;
+    free_str_tree(mgr->mqtt_headers);
+}
 
-    if (len > param_len) {
-        LOGE("%s: %s too long (max %zu)",
-             __func__, val, sizeof(param_len));
-        return false;
+
+/**
+ * @brief walks the tree of sessions
+ *
+ * Debug function, logs each tree entry
+ */
+static void
+fsm_walk_sessions_tree(void)
+{
+    ds_tree_t *sessions = fsm_get_sessions();
+    struct fsm_session *session = ds_tree_head(sessions);
+
+    LOGT("Walking sessions tree");
+    while (session != NULL) {
+        LOGT(", handler: %s, topic: %s",
+             session->name ? session->name : "None",
+             session->topic ? session->topic : "None");
+        session = ds_tree_next(sessions, session);
     }
+}
 
-    memset(param, 0, param_len);
-    strncpy(param, val, param_len);
+
+/**
+ * @brief validate an ovsdb to private object conversion
+ *
+ * Expects a non NULL converted object if the number of elements
+ * was not null, a null object otherwise.
+ * @param converted converted object
+ * @param len number of elements of the ovsdb object
+ */
+bool
+fsm_check_conversion(void *converted, int len)
+{
+    if (len == 0) return true;
+    if (converted == NULL) return false;
+
     return true;
 }
 
+
 /**
- * fsm_parse_topic: parse the session's other config map to find the
- * mqtt topic values
- * @session: the session to parse
- * @conf: the ovsdb content
+ * @brief retrieves the value from the provided key in the
+ * other_config value
+ *
+ * @param session the fsm session owning the other_config
+ * @param conf_key other_config key to look up
  */
-static bool fsm_parse_topic(struct fsm_session *session,
-                            struct schema_Flow_Service_Manager_Config *conf) {
-    bool ret = false;
-    int i;
+char *
+fsm_get_other_config_val(struct fsm_session *session, char *key)
+{
+    struct fsm_session_conf *fconf;
+    struct str_pair *pair;
+    ds_tree_t *tree;
 
-    if (conf->other_config_present == false) {
-        return false;
-    }
+    if (session == NULL) return NULL;
 
-    LOGT("%s: setting mqtt topic parameter", __func__);
-    for (i = 0; i < conf->other_config_len; i++) {
-        char *key = conf->other_config_keys[i];
-        char *val = conf->other_config[i];
-        bool found = false;
+    fconf = session->conf;
+    if (fconf == NULL) return NULL;
 
-        found = fsm_set_param("mqtt_v", session->mqtt_val,
-                              sizeof(session->mqtt_val),
-                              key, val);
-        if (found == true) {
-            break;
-        }
-    }
-    LOGT("%s: session %s set mqtt_val to %s", __func__,
-         conf->handler,
-         strlen(session->mqtt_val) != 0 ? session->mqtt_val : "None");
+    tree = fconf->other_config;
+    if (tree == NULL) return NULL;
 
-    ret = (strlen(session->mqtt_val) != 0);
-    if (ret == true) {
-        session->topic = session->mqtt_val;
-    }
+    pair = ds_tree_find(tree, key);
+    if (pair == NULL) return NULL;
 
-    return ret;
+    return pair->value;
 }
 
-/**
- * fsm_parse_dl_init: parse the session's other config map to find the
- * dl_init entry point
- * @session: the session to parse
- * @conf: the ovsdb content
- */
-static bool fsm_parse_dl_init(struct fsm_session *session,
-                              struct schema_Flow_Service_Manager_Config *conf) {
-    bool ret = false;
-    int i;
 
-    if (conf->other_config_present == false) {
-        return false;
+static int
+get_home_bridge(char *if_name, char *bridge, size_t len)
+{
+    char shell_cmd[1024];
+    char buf[1024];
+
+    FILE *fcmd = NULL;
+    int rc =  -1;
+
+    if (if_name == NULL) return 0;
+    if (bridge == NULL) return -1;
+
+    snprintf(shell_cmd, sizeof(shell_cmd),
+             "ovs-vsctl port-to-br %s",
+             if_name);
+
+    fcmd = popen(shell_cmd, "r");
+    if (fcmd ==  NULL) {
+        LOG(DEBUG, "Error executing command.::shell_cmd=%s", shell_cmd);
+        goto exit;
     }
 
-    LOGT("%s: setting dl init parameter", __func__);
-    for (i = 0; i < conf->other_config_len; i++) {
-        char *key = conf->other_config_keys[i];
-        char *val = conf->other_config[i];
-        bool found = false;
+    LOGT("Executing command.::shell_cmd=%s ", shell_cmd);
 
-        found = fsm_set_param("dso_init", session->dso_init,
-                              sizeof(session->dso_init),
-                              key, val);
-        if (found == true) {
-            break;
-        }
+    while (fgets(buf, sizeof(buf), fcmd) != NULL) {
+        LOGI("%s: home bridge: %s", __func__, buf);
     }
-    LOGT("%s: session %s set dso_init to %s", __func__,
-         conf->handler,
-         strlen(session->dso_init) != 0 ? session->dso_init : "None");
 
-    ret = (strlen(session->dso_init) != 0);
+    if (ferror(fcmd)) {
+        LOGE("%s: fgets() failed", __func__);
+        goto exit;
+    }
 
-    return ret;
+    rc = pclose(fcmd);
+    fcmd = NULL;
+
+    strchomp(buf, " \t\r\n");
+    strscpy(bridge, buf, len);
+
+exit:
+    if (fcmd != NULL) {
+        pclose(fcmd);
+    }
+
+    return rc;
 }
 
+static bool
+fsm_trigger_flood_mod(struct fsm_session *session)
+{
+    char shell_cmd[1024] = { 0 };
+
+    if (session->type == FSM_WEB_CAT) return true;
+
+    LOGT("%s: session %s set tap_flood to %s", __func__,
+         session->name, session->flood_tap ? "true" : "false");
+
+    snprintf(shell_cmd, sizeof(shell_cmd),
+             "%s mod-port %s %s %s",
+             "ovs-ofctl",
+             session->bridge, session->conf->if_name,
+             session->flood_tap ? "flood" : "no-flood");
+    LOGT("%s: command %s", __func__, shell_cmd);
+    return !cmd_log(shell_cmd);
+}
+
+
 /**
- * fsm_parse_dso: parse the session's other config map to find the
+ * @brief set the tx interface a plugin might use
+ *
+ * @param session the fsm session
+ */
+static void
+fsm_set_tx_intf(struct fsm_session *session)
+{
+    const char *name;
+    size_t ret;
+
+    name = fsm_get_other_config_val(session, "tx_intf");
+    if (name != NULL)
+    {
+        STRSCPY(session->tx_intf, name);
+        return;
+    }
+
+#if defined(CONFIG_TARGET_LAN_BRIDGE_NAME)
+    name = CONFIG_TARGET_LAN_BRIDGE_NAME;
+#else
+    name = session->bridge;
+    if ((name == NULL) || (name[0] == 0)) return;
+#endif
+
+    ret = snprintf(session->tx_intf, sizeof(session->tx_intf), "%s.tx", name);
+
+    if (ret >= sizeof(session->tx_intf))
+    {
+        LOGW("%s: failed to assemble tx mirror from %s (%s), too long",
+             __func__, name, session->tx_intf);
+        session->tx_intf[0] = 0;
+    }
+}
+
+
+/**
+ * @brief update the ovsdb configuration of the session
+ *
+ * Copy ovsdb fields in their fsm_session recipient
+ * @param session the fsm session to update
+ * @param conf a pointer to the ovsdb provided configuration
+ */
+bool
+fsm_session_update(struct fsm_session *session,
+                   struct schema_Flow_Service_Manager_Config *conf)
+{
+    struct fsm_session_conf *fconf;
+    ds_tree_t *other_config;
+    struct fsm_mgr *mgr;
+    char *flood;
+    bool check;
+    bool ret;
+
+    mgr = fsm_get_mgr();
+
+    fconf = session->conf;
+
+    /* Free old conf. Could be more efficient */
+    fsm_free_session_conf(fconf);
+    session->conf = NULL;
+
+    fconf = calloc(1, sizeof(*fconf));
+    if (fconf == NULL) return false;
+    session->conf = fconf;
+
+    if (strlen(conf->handler) == 0) goto err_free_fconf;
+
+    fconf->handler = strdup(conf->handler);
+    if (fconf->handler == NULL) goto err_free_fconf;
+
+    if (strlen(conf->if_name) != 0)
+    {
+        fconf->if_name = strdup(conf->if_name);
+        if (fconf->if_name == NULL) goto err_free_fconf;
+    }
+
+    if (strlen(conf->pkt_capt_filter) != 0)
+    {
+        fconf->pkt_capt_filter = strdup(conf->pkt_capt_filter);
+        if (fconf->pkt_capt_filter == NULL) goto err_free_fconf;
+    }
+
+    if (strlen(conf->plugin) != 0)
+    {
+        fconf->plugin = strdup(conf->plugin);
+        if (fconf->plugin == NULL) goto err_free_fconf;
+    }
+
+    /* Get new conf */
+    other_config = schema2tree(sizeof(conf->other_config_keys[0]),
+                               sizeof(conf->other_config[0]),
+                               conf->other_config_len,
+                               conf->other_config_keys,
+                               conf->other_config);
+    check = fsm_check_conversion(session->conf, conf->other_config_len);
+    if (!check) goto err_free_fconf;
+
+    fconf->other_config = other_config;
+    session->topic = fsm_get_other_config_val(session, "mqtt_v");
+
+    if (session->type != FSM_WEB_CAT)
+    {
+        ret = mgr->get_br(session->conf->if_name,
+                          session->bridge,
+                          sizeof(session->bridge));
+        if (ret)
+        {
+            LOGE("%s: home bridge name not found for %s",
+                 __func__, session->conf->if_name);
+            goto err_free_fconf;
+        }
+    }
+
+    flood = fsm_get_other_config_val(session, "flood");
+    if (flood != NULL)
+    {
+        int cmp_yes, cmp_no;
+
+        cmp_yes = strcmp(flood, "yes");
+        cmp_no = strcmp(flood, "no");
+        if (cmp_yes == 0) session->flood_tap = true;
+        else if (cmp_no == 0) session->flood_tap = false;
+        else
+        {
+            LOGD("%s: session %s: value %s invalid for key flood",
+                 __func__, conf->handler, flood);
+            session->flood_tap = false;
+        }
+    }
+
+    ret = mgr->flood_mod(session);
+    if (!ret)
+    {
+        LOGE("%s: flood settings for %s failed",
+             __func__, session->name);
+        goto err_free_fconf;
+    }
+
+    ret = fsm_get_web_cat_service(session);
+    if (!ret)
+    {
+        LOGE("%s: web cataegorization settings for %s failed",
+             __func__, session->name);
+        goto err_free_fconf;
+    }
+
+    fsm_set_tx_intf(session);
+
+    return true;
+
+err_free_fconf:
+    fsm_free_session_conf(fconf);
+    session->conf =  NULL;
+    session->topic = NULL;
+
+    return false;
+}
+
+
+/**
+ * @brief free the ovsdb configuration of the session
+ *
+ * Frees the fsm_session ovsdb conf settings
+ * @param session the fsm session to update
+ */
+void
+fsm_free_session_conf(struct fsm_session_conf *conf)
+{
+    if (conf == NULL) return;
+
+    free(conf->handler);
+    free(conf->if_name);
+    free(conf->pkt_capt_filter);
+    free(conf->plugin);
+    free_str_tree(conf->other_config);
+    free(conf);
+}
+
+
+/**
+ * @brief parse the session's other config map to find the
  * plugin dso
- * @session: the session to parse
- * @conf: the ovsdb content
+ *
+ * @param session the session to parse
  */
-static bool fsm_parse_dso(struct fsm_session *session,
-                          struct schema_Flow_Service_Manager_Config *conf) {
-    if (strlen(conf->plugin) != 0) {
-        LOGI("%s: plugin: %s", __func__, conf->plugin);
-        strncpy(session->dso, conf->plugin, sizeof(session->dso));
-    } else {
-        char *dir = "/usr/plume/lib";
+bool
+fsm_parse_dso(struct fsm_session *session)
+{
+    char *plugin;
 
-        snprintf(session->dso, sizeof(session->dso),
-                 "%s/libfsm_%s.so", dir, session->name);
+    plugin = session->conf->plugin;
+    if (plugin != NULL)
+    {
+        LOGI("%s: plugin: %s", __func__, plugin);
+        session->dso = strdup(plugin);
     }
-    LOGT("%s: session %s set dso path to %s", __func__,
-         session->name,
-         strlen(session->dso) != 0 ? session->dso : "None");
+    else
+    {
+        char *dir = "/usr/plume/lib";
+        char dso[256];
 
-    return true;
+        memset(dso, 0, sizeof(dso));
+        snprintf(dso, sizeof(dso), "%s/libfsm_%s.so", dir, session->name);
+        session->dso = strdup(dso);
+    }
+
+    LOGT("%s: session %s set dso path to %s", __func__,
+         session->name, session->dso != NULL ? session->dso : "None");
+
+    return (session->dso != NULL ? true : false);
 }
 
+
 /**
- * fsm_init_plugin: initialize a plugin
- * @session: the session to initialize
- * @conf: the ovsdb content
+ * @brief initialize a plugin
+ *
+ * @param the session to initialize
  */
-static bool fsm_init_plugin(struct fsm_session *session,
-                            struct schema_Flow_Service_Manager_Config *conf) {
+bool
+fsm_init_plugin(struct fsm_session *session)
+{
     void (*init)(struct fsm_session *session);
+    char *dso_init;
+    char init_fn[256];
     char *error;
-    bool ret = false;
 
     dlerror();
     session->handle = dlopen(session->dso, RTLD_NOW);
-    if (session->handle == NULL) {
+    if (session->handle == NULL)
+    {
         LOGE("%s: dlopen %s failed: %s", __func__, session->dso, dlerror());
         return false;
     }
     dlerror();
 
-    ret = fsm_parse_dl_init(session, conf);
-    if (ret == false) {
-        snprintf(session->dso_init, sizeof(session->dso_init),
-                 "%s_plugin_init", session->name);
+    LOGI("%s: session name: %s, dso %s", __func__, session->name, session->dso);
+    dso_init = fsm_get_other_config_val(session, "dso_init");
+    if (dso_init == NULL)
+    {
+        memset(init_fn, 0, sizeof(init_fn));
+        snprintf(init_fn, sizeof(init_fn), "%s_plugin_init", session->name);
+        dso_init = init_fn;
     }
 
-    *(void **)(&init) = dlsym(session->handle, session->dso_init);
+    if (dso_init == NULL) return false;
+
+    *(void **)(&init) = dlsym(session->handle, dso_init);
     error = dlerror();
     if (error != NULL) {
         LOGE("%s: could not get init symbol %s: %s",
-             session->dso_init, __func__, error);
+             __func__, dso_init, error);
         dlclose(session->handle);
         return false;
     }
@@ -236,314 +552,454 @@ static bool fsm_init_plugin(struct fsm_session *session,
     return true;
 }
 
-static void fsm_send_report(struct fsm_session *session, char *report) {
+
+/**
+ * @brief send a json report over mqtt
+ *
+ * Emits and frees a json report
+ * @param session the fsm session emitting the report
+ * @param report the report to emit
+ */
+void
+fsm_send_report(struct fsm_session *session, char *report)
+{
     qm_response_t res;
     bool ret = false;
 
     LOGT("%s: msg len: %zu, msg: %s\n, topic: %s",
          __func__, report ? strlen(report) : 0,
-         report ? report : "None", session->topic);
-    if (report == NULL) {
-        LOGT("No message content to send");
-        return;
-    }
+         report ? report : "None", session->topic ? session->topic : "None");
+
+    if (report == NULL) return;
+    if (session->topic == NULL) goto free_report;
+
     ret = qm_conn_send_direct(QM_REQ_COMPRESS_DISABLE, session->topic,
-                                       report, strlen(report), &res);
+                              report, strlen(report), &res);
     if (ret == false) {
-        LOGE("error sending mqtt with topic %s",
-             session->topic);
+        LOGE("%s: error sending mqtt with topic %s", __func__, session->topic);
     }
     session->report_count++;
+
+free_report:
     json_free(report);
     return;
 }
 
+
 /**
- * fsm_alloc_session: allocates FSM session (DNS, HTTP ...)
- * @conf: pointer to a FSM record to store
+ * @brief send a protobuf report over mqtt
+ *
+ * Emits a protobuf report. Does not free the protobuf.
+ * @param session the fsm session emitting the report
+ * @param report the report to emit
  */
-static struct fsm_session *
-fsm_alloc_session(struct schema_Flow_Service_Manager_Config *conf) {
-    struct fsm_session *session = NULL;
-    struct bpf_program *bpf = NULL;
-    struct fsm_pcaps *pcaps = NULL;
-    struct fsm_mgr *mgr = fsm_get_mgr();
-    bool dso_present = false;
-    int i;
+void
+fsm_send_pb_report(struct fsm_session *session, char *topic,
+                   void *pb_report, size_t pb_len)
+{
+    qm_response_t res;
+    bool ret = false;
 
-    session = calloc(sizeof(struct fsm_session), 1);
-    if (session == NULL) {
-        goto err;
-    }
+    LOGT("%s: msg len: %zu, topic: %s",
+         __func__, pb_len, topic ? topic: "None");
 
-    pcaps = calloc(sizeof(struct fsm_pcaps), 1);
-    if (pcaps == NULL) {
-        goto free_session;
-    }
+    if (pb_report == NULL) return;
+    if (topic == NULL) return;
 
-    bpf = calloc(sizeof(struct bpf_program), 1);
-    if (bpf == NULL) {
-        goto free_pcaps;
+    ret = qm_conn_send_direct(QM_REQ_COMPRESS_IF_CFG, topic,
+                              pb_report, pb_len, &res);
+    if (ret == false) {
+        LOGE("%s: error sending mqtt with topic %s", __func__, topic);
     }
-    pcaps->bpf = bpf;
-    session->pcaps = pcaps;
-    for (i = 0; i < FSM_NUM_HEADER_IDS; i++) {
-        session->session_mqtt_headers[i] = mgr->mqtt_headers[i];
-    }
-    session->has_awlan_headers = true;
+    session->report_count++;
+
+    return;
+}
+
+
+/**
+ * @brief allocates a FSM session
+ *
+ * @param conf pointer to a ovsdb record
+ */
+struct fsm_session *
+fsm_alloc_session(struct schema_Flow_Service_Manager_Config *conf)
+{
+    struct fsm_session *session;
+    union fsm_plugin_ops *plugin_ops;
+    struct bpf_program *bpf;
+    struct fsm_pcaps *pcaps;
+    struct fsm_mgr *mgr;
+    bool ret;
+
+    mgr = fsm_get_mgr();
+
+    session = calloc(1, sizeof(struct fsm_session));
+    if (session == NULL) return NULL;
+
+    session->name = strdup(conf->handler);
+    if (session->name == NULL) goto err_free_session;
+
+    session->type = fsm_service_type(conf);
+    if (session->type == FSM_UNKNOWN_SERVICE) goto err_free_name;
+
+    plugin_ops = calloc(1, sizeof(*plugin_ops));
+    if (plugin_ops == NULL) goto err_free_name;
+
+    session->p_ops = plugin_ops;
+    session->mqtt_headers = mgr->mqtt_headers;
+    session->location_id = mgr->location_id;
+    session->node_id = mgr->node_id;
     session->loop = mgr->loop;
-    session->conf = calloc(sizeof(struct schema_Flow_Service_Manager_Config), 1);
-    if (session->conf == NULL) {
-        goto free_bpf;
+    session->flood_tap = false;
+
+    session->ops.send_report = fsm_send_report;
+    session->ops.send_pb_report = fsm_send_pb_report;
+    session->ops.get_config = fsm_get_other_config_val;
+
+    ret = fsm_session_update(session, conf);
+    if (!ret) goto err_free_plugin_ops;
+
+    ret = fsm_parse_dso(session);
+    if (!ret) goto err_free_conf;
+
+    if (session->type != FSM_WEB_CAT)
+    {
+        pcaps = calloc(1, sizeof(struct fsm_pcaps));
+        if (pcaps == NULL) goto err_free_dso;
+
+        bpf = calloc(1, sizeof(struct bpf_program));
+        if (bpf == NULL) goto err_free_pcaps;
+
+        pcaps->bpf = bpf;
+        session->pcaps = pcaps;
+        session->p_ops->parser_ops.get_service = fsm_get_web_cat_service;
     }
 
-    strncpy(session->name, conf->handler, sizeof(session->name));
-    session->has_topic = fsm_parse_topic(session, conf);
-    dso_present = fsm_parse_dso(session, conf);
-    if (dso_present == false) {
-        LOGE("%s: No DSO provided for handler %s",
-             __func__, conf->handler);
-        goto free_bpf;
-    }
-    memcpy(session->conf, conf, sizeof(*conf));
-    session->send_report = fsm_send_report;
     return session;
 
-  free_bpf:
-    free(bpf);
-
-  free_pcaps:
+err_free_pcaps:
     free(pcaps);
 
-  free_session:
+err_free_dso:
+    free(session->dso);
+
+err_free_conf:
+    fsm_free_session_conf(session->conf);
+
+err_free_plugin_ops:
+    free(plugin_ops);
+
+err_free_name:
+    free(session->name);
+
+err_free_session:
     free(session);
 
-  err:
     return NULL;
 }
 
+
 /**
- * fsm_free_session: frees a FSM session
- * @session: pointer to a FSM session to free
+ * @brief frees a FSM session
  *
+ * @param session a pointer to a FSM session to free
  */
-static void fsm_free_session(struct fsm_session *session) {
-    struct fsm_pcaps *pcaps = NULL;
-    if (session == NULL) {
-        return;
-    }
+void
+fsm_free_session(struct fsm_session *session)
+{
+    struct fsm_pcaps *pcaps;
+
+    if (session == NULL) return;
+
+    /* Free pcap resources */
     pcaps = session->pcaps;
-    if (pcaps != NULL) {
+    if (pcaps != NULL)
+    {
         fsm_pcap_close(session);
         free(pcaps);
     }
 
-    if (session->exit) {
-        session->exit(session);
-    }
+    /* Call the session exit routine */
+    if (session->ops.exit != NULL) session->ops.exit(session);
 
-    if (session->handle != NULL) {
-        dlclose(session->handle);
-    }
+    /* Close the dynamic library handler */
+    if (session->handle != NULL) dlclose(session->handle);
 
-    if (session->conf != NULL) {
-        free(session->conf);
-    }
+    /* Free the config settings */
+    fsm_free_session_conf(session->conf);
+
+    /* Free the dso path string */
+    free(session->dso);
+
+    /* Free the plugin ops */
+    free(session->p_ops);
+
+    /* Free the session name */
+    free(session->name);
+
+    /* Finally free the session */
     free(session);
 }
 
+
 /**
- * fsm_walk_sessions_tree: walks the tree of sessions
+ * @brief add a fsm session
  *
- * Debug function, logs each tree entry
+ * @param conf the ovsdb Flow_Service_Manager_Config entry
  */
-static void fsm_walk_sessions_tree(void) {
-    ds_tree_t *sessions = fsm_get_sessions();
-    struct fsm_session *session = ds_tree_head(sessions);
-    struct schema_Flow_Service_Manager_Config *conf = NULL;
-
-    LOGT("Walking sessions tree");
-    while (session != NULL) {
-        conf = session->conf;
-        LOGT("uuid: %s, key: %s, handler: %s, topic: %s",
-             conf ? conf->_uuid.uuid : "None",
-             session->fsm_node.otn_key ?
-             (char *)session->fsm_node.otn_key : "None",
-             conf ? conf->handler : "None",
-             session->topic ? session->topic : "None");
-        session = ds_tree_next(sessions, session);
-    }
-}
-
-static void update_other_config(struct fsm_session *session,
-                                struct schema_Flow_Service_Manager_Config *p) {
-    struct schema_Flow_Service_Manager_Config *conf = session->conf;
-    int i;
-
-    for (i = p->other_config_len; i < conf->other_config_len; i++) {
-        conf->other_config_keys[i][0] = '\0';
-        conf->other_config[i][0] = '\0';
-    }
-
-    for (i = 0; i < p->other_config_len; i++) {
-        char *key = p->other_config_keys[i];
-        char *val = p->other_config[i];
-
-        strncpy(conf->other_config_keys[i], key,
-                sizeof(conf->other_config_keys[i]));
-        strncpy(conf->other_config[i], val,
-                sizeof(conf->other_config[i]));
-    }
-    conf->other_config_len = p->other_config_len;
-}
-
-void callback_Flow_Service_Manager_Config(ovsdb_update_monitor_t *mon,
-        struct schema_Flow_Service_Manager_Config *old_rec,
-        struct schema_Flow_Service_Manager_Config *conf)
+void
+fsm_add_session(struct schema_Flow_Service_Manager_Config *conf)
 {
-    ds_tree_t *sessions = fsm_get_sessions();
-    struct fsm_session *session = ds_tree_find(sessions, conf->handler);
+    struct fsm_session *session;
+    struct fsm_mgr *mgr;
+    ds_tree_t *sessions;
+    bool ret;
 
-    if (mon->mon_type == OVSDB_UPDATE_DEL) {
-        if (session == NULL) {
-            LOGE("Could not find session for handler %s",
-                 conf->handler);
-            return;
-        }
-        ds_tree_remove(sessions, session);
-        fsm_free_session(session);
-        fsm_walk_sessions_tree();
+    mgr = fsm_get_mgr();
+    sessions = fsm_get_sessions();
+    session = ds_tree_find(sessions, conf->handler);
+
+    if (session != NULL) return;
+
+    /* Allocate a new session, insert it to the sessions tree */
+    session = fsm_alloc_session(conf);
+    if (session == NULL)
+    {
+        LOGE("Could not allocate session for handler %s",
+             conf->handler);
+        return;
     }
+    ds_tree_insert(sessions, session, session->name);
 
-    if (mon->mon_type == OVSDB_UPDATE_NEW) {
-        bool ret = false;
-
-        if (session != NULL) {
-            LOGE("%s: session for handler %s already exists",
-                 __func__, session->conf->handler);
-            return;
-        }
-
-        if (session == NULL) {
-            /* Allocate a new session, insert it to the sessions tree */
-            session = fsm_alloc_session(conf);
-            if (session == NULL) {
-                LOGE("Could not allocate session for handler %s",
-                     conf->handler);
-                return;
-            }
-            ds_tree_insert(sessions, session, session->conf->handler);
-        }
+    if (session->type != FSM_WEB_CAT)
+    {
         ret = fsm_pcap_open(session);
-        if (ret == false) {
+        if (!ret)
+        {
             LOGE("pcap open failed for handler %s",
-                 session->conf->handler);
+                 session->name);
             ds_tree_remove(sessions, session);
             fsm_free_session(session);
             return;
         }
-        ret = fsm_init_plugin(session, conf);
-        if (ret == false) {
-            LOGE("%s: plugin handler %s initialization failed",
-                 __func__, session->conf->handler);
-            ds_tree_remove(sessions, session);
-            fsm_free_session(session);
-            return;
-        }
-        fsm_walk_sessions_tree();
     }
 
-    if (mon->mon_type == OVSDB_UPDATE_MODIFY) {
-        if (session == NULL) {
-            LOGE("Could not find session for handler %s",
-                 conf->handler);
-            return;
-        }
-        update_other_config(session, conf);
-        if (session->update != NULL) {
-            session->update(session);
-        }
+    ret = mgr->init_plugin(session);
+    if (!ret)
+    {
+        LOGE("%s: plugin handler %s initialization failed",
+             __func__, session->name);
+        goto err_free_session;
+
     }
+
+    if (session->type == FSM_WEB_CAT)
+    {
+        fsm_web_cat_service_update(session, FSM_SERVICE_ADD);
+    }
+
+    fsm_walk_sessions_tree();
+    return;
+
+err_free_session:
+    ds_tree_remove(sessions, session);
+    fsm_free_session(session);
+
+    return;
 }
 
-/**
- * fsm_get_awlan_header_id: maps key to header_id
- * @key: key
- */
-static fsm_header_ids fsm_get_awlan_header_id(const char *key) {
-    int val = strcmp(key, "locationId");
-
-    if (val == 0) {
-        return FSM_HEADER_LOCATION_ID;
-    }
-
-    val = strcmp(key, "nodeId");
-    if (val == 0) {
-        return FSM_HEADER_NODE_ID;
-    }
-
-    return FSM_NO_HEADER;
-}
 
 /**
- * fsm_get_awlan_headers: gather mqtt records from AWLAN_Node's
- * mqtt headers table
- * @awlan: AWLAN_Node record
+ * @brief delete a fsm session
  *
- * Parses the given record, looks up a matching fsm session, updates it if found
- * or allocates and inserts in sessions's tree if not.
+ * @param conf the ovsdb Flow_Service_Manager_Config entry
  */
-static void fsm_get_awlan_headers(struct schema_AWLAN_Node *awlan) {
-    ds_tree_t *sessions = fsm_get_sessions();
-    struct fsm_session *session = ds_tree_head(sessions);
-    struct fsm_mgr *mgr = fsm_get_mgr();
-    int i = 0;
+void
+fsm_delete_session(struct schema_Flow_Service_Manager_Config *conf)
+{
+    struct fsm_session *session;
+    ds_tree_t *sessions;
 
-    LOGT("%s %d", __FUNCTION__,
-         awlan ? awlan->mqtt_headers_len : 0);
+    sessions = fsm_get_sessions();
+    session = ds_tree_find(sessions, conf->handler);
 
-    for (i = 0; i < awlan->mqtt_headers_len; i++) {
-        char *key = awlan->mqtt_headers_keys[i];
-        char *val = awlan->mqtt_headers[i];
-        fsm_header_ids id = FSM_NO_HEADER;
+    if (session == NULL) return;
 
-        LOGT("mqtt_headers[%s]='%s'", key, val);
-
-        id = fsm_get_awlan_header_id(key);
-        if (id == FSM_NO_HEADER) {
-            LOG(ERR, "%s: invalid mqtt_headers key", key);
-            continue;
-        }
-        mgr->mqtt_headers[id] = calloc(sizeof(awlan->mqtt_headers[0]), 1);
-        if (mgr->mqtt_headers[id] == NULL) {
-            LOGE("Could not allocate memory for mqtt header %s:%s",
-                 key, val);
-            i = 0; i = i / i; /* crash */
-        }
-        memcpy(mgr->mqtt_headers[id], val, sizeof(awlan->mqtt_headers[0]));
+    /* Notify parser plugins of the web categorization plugin removal */
+    if (session->type == FSM_WEB_CAT)
+    {
+        fsm_web_cat_service_update(session, FSM_SERVICE_DELETE);
     }
+
+    ds_tree_remove(sessions, session);
+    fsm_free_session(session);
+    fsm_walk_sessions_tree();
+}
+
+
+/**
+ * @brief modify a fsm session
+ *
+ * @param conf the ovsdb Flow_Service_Manager_Config entry
+ */
+void
+fsm_modify_session(struct schema_Flow_Service_Manager_Config *conf)
+{
+    struct fsm_session *session;
+    ds_tree_t *sessions;
+
+    sessions = fsm_get_sessions();
+    session = ds_tree_find(sessions, conf->handler);
+
+    if (session == NULL) return;
+
+    fsm_session_update(session, conf);
+    if (session->ops.update != NULL) session->ops.update(session);
+}
+
+
+/**
+ * @brief registered callback for OVSDB Flow_Service_Manager_Config events
+ */
+void
+callback_Flow_Service_Manager_Config(ovsdb_update_monitor_t *mon,
+                                     struct schema_Flow_Service_Manager_Config *old_rec,
+                                     struct schema_Flow_Service_Manager_Config *conf)
+{
+    if (mon->mon_type == OVSDB_UPDATE_NEW) fsm_add_session(conf);
+    if (mon->mon_type == OVSDB_UPDATE_DEL) fsm_delete_session(old_rec);
+    if (mon->mon_type == OVSDB_UPDATE_MODIFY) fsm_modify_session(conf);
+}
+
+
+/**
+ * @brief gather mqtt records from AWLAN_Node's mqtt headers table
+ *
+ * Records the mqtt_headers (locationId, nodeId) in the fsm manager
+ * Update existing fsm sessions to point to the manager's records.
+ * @param awlan AWLAN_Node record
+ */
+void
+fsm_get_awlan_headers(struct schema_AWLAN_Node *awlan)
+{
+    char *location = "locationId";
+    struct fsm_session *session;
+    struct str_pair *pair;
+    char *node = "nodeId";
+    struct fsm_mgr *mgr;
+    ds_tree_t *sessions;
+    size_t key_size;
+    size_t val_size;
+    size_t nelems;
+
+    /* Get the manager */
+    mgr = fsm_get_mgr();
+
+    /* Free previous headers if any */
+    free_str_tree(mgr->mqtt_headers);
+
+    /* Get AWLAN_Node's mqtt_headers element size */
+    key_size = sizeof(awlan->mqtt_headers_keys[0]);
+    val_size = sizeof(awlan->mqtt_headers[0]);
+
+    /* Get AWLAN_Node's number of elements */
+    nelems = awlan->mqtt_headers_len;
+
+    mgr->mqtt_headers = schema2tree(key_size, val_size, nelems,
+                                    awlan->mqtt_headers_keys,
+                                    awlan->mqtt_headers);
+    if (mgr->mqtt_headers == NULL)
+    {
+        mgr->location_id = NULL;
+        mgr->node_id = NULL;
+        goto update_sessions;
+    }
+
+    /* Check the presence of locationId in the mqtt headers */
+    pair = ds_tree_find(mgr->mqtt_headers, location);
+    if (pair != NULL) mgr->location_id = pair->value;
+    else
+    {
+        free_str_tree(mgr->mqtt_headers);
+        mgr->mqtt_headers = NULL;
+        mgr->location_id = NULL;
+        mgr->node_id = NULL;
+        goto update_sessions;
+    }
+
+    /* Check the presence of nodeId in the mqtt headers */
+    pair = ds_tree_find(mgr->mqtt_headers, node);
+    if (pair != NULL) mgr->node_id = pair->value;
+    else
+    {
+        free_str_tree(mgr->mqtt_headers);
+        mgr->mqtt_headers = NULL;
+        mgr->location_id = NULL;
+        mgr->node_id = NULL;
+    }
+
+update_sessions:
     /* Lookup sessions, update their header info */
+    sessions = fsm_get_sessions();
+    session = ds_tree_head(sessions);
     while (session != NULL) {
-        for (i = 0; i < FSM_NUM_HEADER_IDS; i++) {
-            session->session_mqtt_headers[i] = mgr->mqtt_headers[i];
-        }
-        session->has_awlan_headers = true;
+        session->mqtt_headers = mgr->mqtt_headers;
+        session->location_id  = mgr->location_id;
+        session->node_id  = mgr->node_id;
         session = ds_tree_next(sessions, session);
     }
 }
 
-void callback_AWLAN_Node(ovsdb_update_monitor_t *mon,
-                         struct schema_AWLAN_Node *old_rec,
-                         struct schema_AWLAN_Node *awlan)
+
+/**
+ * @brief delete recorded mqtt headers
+ */
+void
+fsm_rm_awlan_headers(void)
 {
-    if (mon->mon_type != OVSDB_UPDATE_DEL) {
-        fsm_get_awlan_headers(awlan);
+    struct fsm_session *session;
+    struct fsm_mgr *mgr;
+    ds_tree_t *sessions;
+
+    /* Get the manager */
+    mgr = fsm_get_mgr();
+
+    /* Free previous headers if any */
+    free_str_tree(mgr->mqtt_headers);
+    mgr->mqtt_headers = NULL;
+
+    /* Lookup sessions, update their header info */
+    sessions = fsm_get_sessions();
+    session = ds_tree_head(sessions);
+    while (session != NULL) {
+        session->mqtt_headers = NULL;
+        session = ds_tree_next(sessions, session);
     }
 }
 
-void callback_Openflow_Tag(ovsdb_update_monitor_t *mon,
-                           struct schema_Openflow_Tag *old_rec,
-                           struct schema_Openflow_Tag *tag)
+
+/**
+ * @brief registered callback for AWLAN_Node events
+ */
+void
+callback_AWLAN_Node(ovsdb_update_monitor_t *mon,
+                    struct schema_AWLAN_Node *old_rec,
+                    struct schema_AWLAN_Node *awlan)
+{
+    if (mon->mon_type == OVSDB_UPDATE_NEW) fsm_get_awlan_headers(awlan);
+    if (mon->mon_type == OVSDB_UPDATE_DEL) fsm_rm_awlan_headers();
+    if (mon->mon_type == OVSDB_UPDATE_MODIFY) fsm_get_awlan_headers(awlan);
+}
+
+
+/**
+ * @brief registered callback for Openflow_Tag events
+ */
+void
+callback_Openflow_Tag(ovsdb_update_monitor_t *mon,
+                      struct schema_Openflow_Tag *old_rec,
+                      struct schema_Openflow_Tag *tag)
 {
     if (mon->mon_type == OVSDB_UPDATE_NEW) {
         om_tag_add_from_schema(tag);
@@ -558,9 +1014,14 @@ void callback_Openflow_Tag(ovsdb_update_monitor_t *mon,
     }
 }
 
-void callback_Openflow_Tag_Group(ovsdb_update_monitor_t *mon,
-                                 struct schema_Openflow_Tag_Group *old_rec,
-                                 struct schema_Openflow_Tag_Group *tag)
+
+/**
+ * @brief registered callback for Openflow_Tag_Group events
+ */
+void
+callback_Openflow_Tag_Group(ovsdb_update_monitor_t *mon,
+                            struct schema_Openflow_Tag_Group *old_rec,
+                            struct schema_Openflow_Tag_Group *tag)
 {
     if (mon->mon_type == OVSDB_UPDATE_NEW) {
         om_tag_group_add_from_schema(tag);
@@ -575,7 +1036,15 @@ void callback_Openflow_Tag_Group(ovsdb_update_monitor_t *mon,
     }
 }
 
-int fsm_ovsdb_init(void) {
+
+/**
+ * @brief register ovsdb callback events
+ */
+int
+fsm_ovsdb_init(void)
+{
+    struct fsm_mgr *mgr;
+
     LOGI("Initializing FSM tables");
     // Initialize OVSDB tables
     OVSDB_TABLE_INIT_NO_KEY(AWLAN_Node);
@@ -588,5 +1057,12 @@ int fsm_ovsdb_init(void) {
     OVSDB_TABLE_MONITOR(Flow_Service_Manager_Config, false);
     OVSDB_TABLE_MONITOR(Openflow_Tag, false);
     OVSDB_TABLE_MONITOR(Openflow_Tag_Group, false);
+
+    // Initialize the plugin loader routine
+    mgr = fsm_get_mgr();
+    mgr->init_plugin = fsm_init_plugin;
+    mgr->flood_mod = fsm_trigger_flood_mod;
+    mgr->get_br = get_home_bridge;
+
     return 0;
 }

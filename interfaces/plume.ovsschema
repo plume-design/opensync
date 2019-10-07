@@ -1,7 +1,7 @@
 {
   "name": "Open_vSwitch",
-  "version": "7.11.128",
-  "cksum": "3240302415 126494",
+  "version": "7.11.170",
+  "cksum": "454686634 169601",
   "tables": {
     "AWLAN_Node": {
       "columns": {
@@ -157,7 +157,8 @@
                 [
                   "cloud",
                   "monitor",
-                  "battery"
+                  "battery",
+                  "custom"
                 ]
               ]
             },
@@ -246,6 +247,7 @@
                   "eth",
                   "vif",
                   "gre",
+                  "vlan",
                   "pppoe",
                   "softwds",
                   "tap"
@@ -395,7 +397,8 @@
                   "gre",
                   "pppoe",
                   "softwds",
-                  "tap"
+                  "tap",
+                  "vlan"
                 ]
               ]
             }
@@ -420,7 +423,7 @@
         "loop": {
           "type": {
             "key": {
-              "type": "integer"
+              "type": "boolean"
             },
             "min": 0,
             "max": 1
@@ -1971,6 +1974,15 @@
             "min": 0,
             "max": 1
           }
+        },
+        "dynamic_beacon": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
         }
       },
       "isRoot": true,
@@ -2255,6 +2267,15 @@
             "min": 0,
             "max": 1
           }
+        },
+        "dynamic_beacon": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
         }
       },
       "isRoot": true,
@@ -2311,6 +2332,17 @@
               "key": {
                   "type": "string",
                   "maxLength": 31
+              },
+              "min": 0,
+              "max": 1
+            }
+        },
+        "oftag": {
+            "type": {
+              "key": {
+                  "type": "string",
+                  "maxLength": 1,
+                  "maxLength": 64
               },
               "min": 0,
               "max": 1
@@ -4913,6 +4945,26 @@
             "backoff_secs": {
                 "type": "integer"
             },
+            "backoff_exp_base": {
+                "type": {
+                    "key": {
+                        "type": "integer",
+                        "minInteger": 1,
+                        "maxInteger": 10
+                     },
+                     "min": 0,
+                     "max": 1
+                }
+            },
+            "steer_during_backoff": {
+                "type": {
+                    "key": {
+                        "type": "boolean"
+                     },
+                     "min": 0,
+                     "max": 1
+                }
+            },
             "steering_success_cnt": {
                 "type": "integer"
             },
@@ -5266,7 +5318,7 @@
                     "key": {
                         "type": "string",
                         "minLength": 1,
-                        "maxLength": 20
+                        "maxLength": 64
                     },
                     "min": 0,
                     "max": 255
@@ -5277,7 +5329,7 @@
                     "key": {
                         "type": "string",
                         "minLength": 1,
-                        "maxLength": 20
+                        "maxLength": 64
                     },
                     "min": 0,
                     "max": 255
@@ -5481,11 +5533,28 @@
                     }
                 }
             },
+            "type": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "enum": [
+                            "set",
+                            [
+                                "parser",
+                                "web_cat_provider",
+                                "dpi"
+                            ]
+                        ]
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
             "if_name": {
                 "type": {
                     "key": {
                         "type": "string",
-                        "minLength": 1,
+                        "minLength": 0,
                         "maxLength": 32
                     }
                 }
@@ -5623,10 +5692,68 @@
             "key": {
               "type": "integer",
               "minInteger": 0,
-              "maxInteger": 100
+              "maxInteger": 511
             },
             "min": 0,
-            "max": 101
+            "max": 512
+          }
+        },
+        "ipaddr_op": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "in",
+                  "out"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "ipaddrs": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 48
+            },
+            "min": 0,
+            "max": 64
+          }
+        },
+        "risk_level": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 1,
+              "maxInteger": 10
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "risk_op": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "eq",
+                  "neq",
+                  "gt",
+                  "lt",
+                  "gte",
+                  "lte"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
           }
         },
         "log": {
@@ -5665,7 +5792,7 @@
         "next": {
           "type": {
             "key": "string",
-            "value": "string",
+            "value": "integer",
             "min": 0,
             "max": 2
           }
@@ -5767,6 +5894,1761 @@
             }
         },
         "isRoot": true
+    },
+    "FCM_Collector_Config": {
+        "columns": {
+            "name": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 32
+                    },
+                    "min": 1,
+                    "max": 1
+                }
+            },
+            "interval": {
+                "type": {
+                    "key": {
+                        "type": "integer",
+                        "minInteger": 0,
+                        "maxInteger": 3600
+                    },
+                    "min": 1,
+                    "max": 1
+                }
+            },
+            "filter_name": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 32
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
+            "report_name": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 32
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
+            "other_config": {
+                "type": {
+                    "key": "string",
+                    "value": "string",
+                    "min": 0,
+                    "max": 64
+                }
+            }
+        },
+        "isRoot": true
+    },
+    "FCM_Filter": {
+        "columns": {
+            "name": {
+                "type": {
+                    "key": {
+                        "type": "string"
+                    },
+                    "min": 1,
+                    "max": 1
+                }
+            },
+            "index": {
+                "type": {
+                    "key": {
+                      "type": "integer",
+                      "minInteger": 0,
+                      "maxInteger": 255
+                    },
+                    "min": 1,
+                    "max": 1
+                }
+            },
+            "smac": {
+                "type": {
+                    "key": {
+                       "type": "string",
+                       "minLength": 1,
+                       "maxLength": 64
+                    },
+                    "min": 0,
+                    "max": 64
+                 }
+            },
+            "dmac": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64
+                    },
+                    "min": 0,
+                    "max": 64
+                }
+            },
+            "vlanid": {
+                "type": {
+                    "key": {
+                        "type": "integer",
+                        "minInteger": 1,
+                        "maxInteger": 4096
+                    },
+                    "min": 0,
+                    "max": 64
+                }
+            },
+            "src_ip": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64
+                    },
+                    "min": 0,
+                    "max": 64
+                }
+            },
+            "dst_ip": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64
+                    },
+                    "min": 0,
+                    "max": 64
+                }
+            },
+            "src_port": {
+                "type": {
+                    "key": {
+                        "type": "string"
+                    },
+                    "min": 0,
+                    "max": 64
+                }
+            },
+            "dst_port": {
+                "type": {
+                    "key": {
+                        "type": "string"
+                    },
+                    "min": 0,
+                    "max": 64
+                }
+            },
+            "proto": {
+                "type": {
+                    "key": {
+                        "type": "integer"
+                    },
+                    "min": 0,
+                    "max": 64
+                }
+            },
+            "smac_op": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "enum": [
+                            "set",
+                            [
+                                "in",
+                                "out",
+                                "none"
+                            ]
+                        ]
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
+            "dmac_op": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "enum": [
+                            "set",
+                            [
+                                "in",
+                                "out",
+                                "none"
+                            ]
+                        ]
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
+            "vlanid_op": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "enum": [
+                            "set",
+                            [
+                                "in",
+                                "out",
+                                "none"
+                            ]
+                        ]
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
+            "src_ip_op": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "enum": [
+                            "set",
+                            [
+                                "in",
+                                "out",
+                                "none"
+                            ]
+                        ]
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
+            "dst_ip_op": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "enum": [
+                            "set",
+                            [
+                                "in",
+                                "out",
+                                "none"
+                            ]
+                        ]
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
+            "src_port_op": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "enum": [
+                            "set",
+                            [
+                                "in",
+                                "out",
+                                "none"
+                            ]
+                        ]
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
+            "dst_port_op": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "enum": [
+                            "set",
+                            [
+                                "in",
+                                "out",
+                                "none"
+                            ]
+                        ]
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
+            "proto_op": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "enum": [
+                            "set",
+                            [
+                                "in",
+                                "out",
+                                "none"
+                            ]
+                        ]
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
+            "pktcnt": {
+                "type": {
+                    "key": {
+                        "type": "integer",
+                        "minInteger": 1,
+                        "maxInteger": 4096
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
+            "pktcnt_op": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "enum": [
+                            "set",
+                            [
+                                "lt",
+                                "leq",
+                                "gt",
+                                "geq",
+                                "eq",
+                                "neq"
+                            ]
+                        ]
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
+            "action": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "enum": [
+                            "set",
+                            [
+                                "include",
+                                "exclude"
+                            ]
+                        ]
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
+            "other_config": {
+                "type": {
+                    "key": "string",
+                    "value": "string",
+                    "min": 0,
+                    "max": 64
+                }
+            }
+        },
+        "isRoot": true
+    },
+    "FCM_Report_Config": {
+        "columns": {
+            "name": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 32
+                    },
+                    "min": 1,
+                    "max": 1
+                }
+            },
+            "interval": {
+                "type": {
+                    "key": {
+                        "type": "integer",
+                        "minInteger": 0,
+                        "maxInteger": 3600
+                    },
+                    "min": 1,
+                    "max": 1
+                }
+            },
+            "format": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "enum": [
+                            "set",
+                            [
+                                "cumulative",
+                                "delta",
+                                "raw"
+                            ]
+                        ]
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
+            "hist_interval": {
+                "type": {
+                    "key": {
+                        "type": "integer",
+                        "minInteger": 0,
+                        "maxInteger": 3600
+                    }
+                }
+            },
+            "hist_filter": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 32
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
+            "report_filter": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 32
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
+            "mqtt_topic": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 256
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
+            "other_config": {
+                "type": {
+                    "key": "string",
+                    "value": "string",
+                    "min": 0,
+                    "max": 64
+                }
+            }
+        },
+        "isRoot": true
+    },
+    "IP_Interface": {
+      "columns": {
+        "name": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            }
+          },
+          "mutable": false
+        },
+        "enable": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "status": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "up",
+                  "down",
+                  "unknown",
+                  "dormant",
+                  "notpresent",
+                  "lowerlayerdown",
+                  "error"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "interfaces": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "Interface"
+            },
+            "min": 0,
+            "max": 4
+          }
+        },
+        "if_name": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "ipv4_addr": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "IPv4_Address"
+            },
+            "min": 0,
+            "max": 64
+          }
+        },
+        "ipv6_addr": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "IPv6_Address"
+            },
+            "min": 0,
+            "max": 64
+          }
+        },
+        "ipv6_prefix": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "IPv6_Prefix"
+            },
+            "min": 0,
+            "max": 64
+          }
+        }
+      },
+      "isRoot": true,
+      "indexes": [
+        [
+          "name"
+        ]
+      ]
+    },
+    "IPv4_Address": {
+      "columns": {
+        "enable": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "status": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "disabled",
+                  "enabled",
+                  "error"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "address": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15
+            }
+          }
+        },
+        "subnet_mask": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15
+            }
+          }
+        },
+        "type": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "dhcp",
+                  "ikev2",
+                  "auto_ip",
+                  "ipcp",
+                  "static"
+                ]
+              ]
+            }
+          }
+        }
+      }
+    },
+    "IPv6_Address": {
+      "columns": {
+        "enable": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "status": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "disabled",
+                  "enabled",
+                  "error"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "address_status": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "preferred",
+                  "deprecated",
+                  "invalid",
+                  "inaccessible",
+                  "unknown",
+                  "tentative",
+                  "duplicate",
+                  "optimistic"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "address": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 49
+            }
+          }
+        },
+        "origin": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "auto_configured",
+                  "dhcp",
+                  "ikev2",
+                  "map",
+                  "well_known",
+                  "static"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "prefix": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 49
+            }
+          }
+        },
+        "preferred_lifetime": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "valid_lifetime": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "min": 0,
+            "max": 1
+          }
+        }
+      }
+    },
+    "IPv6_Prefix": {
+      "columns": {
+        "enable": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "status": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "disabled",
+                  "enabled",
+                  "error"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "prefix_status": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "preferred",
+                  "deprecated",
+                  "invalid",
+                  "inaccessible",
+                  "unknown"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "address": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 49
+            }
+          }
+        },
+        "origin": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "auto_configured",
+                  "prefix_delegation",
+                  "ra",
+                  "well_known",
+                  "static",
+                  "child"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "static_type": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "static",
+                  "inapplicable",
+                  "prefix_delegation",
+                  "child"
+                ]
+              ]
+            }
+          }
+        },
+        "parent_prefix": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "IPv6_Prefix"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "child_prefix_bits": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 49
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "on_link": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "autonomous": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "preferred_lifetime": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "valid_lifetime": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "min": 0,
+            "max": 1
+          }
+        }
+      }
+    },
+    "DHCPv4_Client": {
+      "columns": {
+        "enable": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "ip_interface": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "IP_Interface"
+            }
+          }
+        },
+        "request_options": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 32
+          }
+        },
+        "received_options": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "DHCP_Option"
+            },
+            "min": 0,
+            "max": 32
+          }
+        },
+        "send_options": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "DHCP_Option"
+            },
+            "min": 0,
+            "max": 32
+          }
+        }
+      },
+      "isRoot": true
+    },
+    "DHCPv6_Client": {
+      "columns": {
+        "enable": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "ip_interface": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "IP_Interface"
+            }
+          }
+        },
+        "request_address": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "request_prefixes": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "rapid_commit": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "renew": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "request_options": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 32
+          }
+        },
+        "received_options": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "DHCP_Option"
+            },
+            "min": 0,
+            "max": 32
+          }
+        },
+        "send_options": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "DHCP_Option"
+            },
+            "min": 0,
+            "max": 32
+          }
+        }
+      },
+      "isRoot": true
+    },
+    "DHCP_Option": {
+      "columns": {
+        "enable": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "version": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "v4",
+                  "v6"
+                ]
+              ]
+            }
+          }
+        },
+        "type": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "rx",
+                  "tx"
+                ]
+              ]
+            }
+          }
+        },
+        "tag": {
+          "type": {
+            "key": {
+              "type": "integer"
+            }
+          }
+        },
+        "value": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 340
+            }
+          }
+        }
+      }
+    },
+    "Netfilter": {
+      "columns": {
+        "name": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            }
+          },
+          "mutable": false
+        },
+        "enable": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "status": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "disabled",
+                  "enabled",
+                  "error"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "protocol": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "ipv4",
+                  "ipv6"
+                ]
+              ]
+            }
+          }
+        },
+        "table": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "filter",
+                  "nat",
+                  "mangle",
+                  "raw",
+                  "security"
+                ]
+              ]
+            }
+          }
+        },
+        "chain": {
+          "type": {
+            "key": {
+              "minLength": 1,
+              "maxLength": 64,
+              "type": "string"
+            }
+          }
+        },
+        "priority": {
+          "type": {
+            "key": {
+              "type": "integer"
+            }
+          }
+        },
+        "rule": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 512
+            }
+          }
+        },
+        "target": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            }
+          }
+        }
+      },
+      "isRoot": true,
+      "indexes": [
+        [
+          "name"
+        ]
+      ]
+    },
+    "Routing": {
+      "columns": {
+        "enable": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "status": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "disabled",
+                  "enabled",
+                  "error"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "protocol": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "ipv4",
+                  "ipv6"
+                ]
+              ]
+            }
+          }
+        },
+        "type": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "dhcp",
+                  "ospf",
+                  "ra",
+                  "ipcp",
+                  "rip",
+                  "static"
+                ]
+              ]
+            }
+          }
+        },
+        "ip_interface": {
+          "type": {
+            "key": {
+              "type": "uuid"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "dest": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 49
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "gateway": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 49
+            },
+            "min": 0,
+            "max": 1
+          }
+        }
+      },
+      "isRoot": true
+    },
+    "DHCPv4_Server": {
+      "columns": {
+        "interface": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "IP_Interface"
+            }
+          }
+        },
+        "status": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                 "set",
+                 [
+                   "disabled",
+                   "enabled",
+                   "error"
+                 ]
+              ]
+            }
+          }
+        },
+        "min_address": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15
+            }
+          }
+        },
+        "max_address": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15
+            }
+          }
+        },
+        "lease_time": {
+          "type": {
+            "key": {
+              "type": "integer"
+            }
+          }
+        },
+        "options": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "DHCP_Option"
+            },
+            "min": 0,
+            "max": 256
+          }
+        },
+        "static_address": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "DHCPv4_Lease"
+            },
+            "min": 0,
+            "max": 64
+          }
+        },
+        "leased_address": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "DHCPv4_Lease"
+            },
+            "min": 0,
+            "max": 256
+          }
+        }
+      },
+      "isRoot": true
+    },
+    "DHCPv4_Lease": {
+      "columns": {
+        "status": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "leased",
+                  "static",
+                  "error"
+                ]
+              ]
+            }
+          }
+        },
+        "address": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15
+            }
+          }
+        },
+        "hwaddr": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 17
+            }
+          }
+        },
+        "hostname": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "leased_time": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "leased_fingerprint": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "min": 0,
+            "max": 1
+          }
+        }
+      }
+    },
+    "DHCPv6_Server": {
+      "columns": {
+        "interface": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "IP_Interface"
+            }
+          }
+        },
+        "status": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "disabled",
+                  "enabled",
+                  "error"
+                ]
+              ]
+            }
+          }
+        },
+        "prefixes": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "IPv6_Prefix"
+            },
+            "min": 0,
+            "max": 64
+          }
+        },
+        "prefix_delegation": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "options": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "DHCP_Option"
+            },
+            "min": 0,
+            "max": 256
+          }
+        },
+        "lease_prefix": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "DHCPv6_Lease"
+            },
+            "min": 0,
+            "max": 256
+          }
+        },
+        "static_prefix": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "DHCPv6_Lease"
+            },
+            "min": 0,
+            "max": 64
+          }
+        }
+      },
+      "isRoot": true
+    },
+    "DHCPv6_Lease": {
+      "columns": {
+        "status": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "leased",
+                  "static",
+                  "error"
+                ]
+              ]
+            }
+          }
+        },
+        "prefix": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 49
+            }
+          }
+        },
+        "duid": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 260
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "hwaddr": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 17
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "hostname": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "leased_time": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        }
+      }
+    },
+    "IPv6_RouteAdv": {
+      "columns": {
+        "interface": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "IP_Interface"
+            }
+          }
+        },
+        "status": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "disabled",
+                  "enabled",
+                  "error"
+                ]
+              ]
+            }
+          }
+        },
+        "prefixes": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "IPv6_Prefix"
+            },
+            "min": 0,
+            "max": 64
+          }
+        },
+        "managed": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "other_config": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "home_agent": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "max_adv_interval": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 4,
+              "maxInteger": 1800
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "min_adv_interval": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 3,
+              "maxInteger": 1350
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "default_lifetime": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 0,
+              "maxInteger": 65535
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "preferred_router": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              ]
+            }
+          }
+        },
+        "mtu": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 1280
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "reachable_time": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 0,
+              "maxInteger": 3600000
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "retrans_timer": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "current_hop_limit": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "rdnss": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "IPv6_Address"
+            },
+            "min": 0,
+            "max": 16
+          }
+        },
+        "dnssl": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 253
+            },
+            "min": 0,
+            "max": 16
+          }
+        }
+      },
+      "isRoot": true
+    },
+    "IPv6_Neighbors": {
+      "columns": {
+        "address": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 49
+            }
+          }
+        },
+        "hwaddr": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 12,
+              "maxLength": 17
+            }
+          }
+        },
+        "if_name": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 31
+            }
+          }
+        }
+      },
+      "isRoot": true
     }
   }
 }

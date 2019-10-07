@@ -235,15 +235,8 @@ bool target_ble_broadcast_stop(void)
  * OM
  *****************************************************************************/
 
-#ifndef IMPL_target_om_add_flow
-bool target_om_add_flow( char *token, struct schema_Openflow_Config *ofconf )
-{
-    return true;
-}
-#endif
-
-#ifndef IMPL_target_om_del_flow
-bool target_om_del_flow( char *token, struct schema_Openflow_Config *ofconf )
+#ifndef IMPL_target_om_hook
+bool target_om_hook( target_om_hook_t hook, const char *openflow_rule )
 {
     return true;
 }
@@ -464,35 +457,16 @@ bool target_dhcp_leased_ip_register(target_dhcp_leased_ip_cb_t *dlip_cb)
 }
 #endif
 
-#ifndef IMPL_target_dhcp_rip_set
-bool target_dhcp_rip_set(const char *ifname, struct schema_DHCP_reserved_IP *schema_rip)
+/******************************************************************************
+ * INET definitions
+ *****************************************************************************/
+#ifndef IMPL_target_route_state_init
+bool target_route_state_init(ds_dlist_t *inets)
 {
-    return true;
+        ds_dlist_init(inets, target_route_state_init_t, dsl_node);
+            return true;
 }
 #endif
-
-#ifndef IMPL_target_dhcp_rip_del
-bool target_dhcp_rip_del(const char *ifname, struct schema_DHCP_reserved_IP *schema_rip)
-{
-    return true;
-}
-#endif
-
-#ifndef IMPL_target_portforward_set
-bool target_portforward_set(const char *ifname,  struct schema_IP_Port_Forward *schema_pf)
-{
-    return true;
-}
-#endif
-
-#ifndef IMPL_target_portforward_del
-bool target_portforward_del(const char *ifname,  struct schema_IP_Port_Forward *schema_pf)
-{
-    return true;
-}
-#endif
-
-
 
 /******************************************************************************
  * Ethernet clients
@@ -511,182 +485,6 @@ const char **target_ethclient_iflist_get()
 {
     static const char *iflist[] = { "eth0", NULL };
     return iflist;
-}
-#endif
-
-/******************************************************************************
- *  INET definitions
- *****************************************************************************/
-#ifndef IMPL_target_inet_config_init
-bool target_inet_config_init(ds_dlist_t *inets)
-{
-    ds_dlist_init(inets, target_inet_config_init_t, dsl_node);
-    return true;
-}
-#endif
-
-#ifndef IMPL_target_inet_state_init
-bool target_inet_state_init(ds_dlist_t *inets)
-{
-    ds_dlist_init(inets, target_inet_state_init_t, dsl_node);
-    return true;
-}
-#endif
-
-#ifndef IMPL_target_master_state_init
-bool target_master_state_init(ds_dlist_t *inets)
-{
-    ds_dlist_init(inets, target_master_state_init_t, dsl_node);
-    return true;
-}
-#endif
-
-#ifndef IMPL_target_route_state_init
-bool target_route_state_init(ds_dlist_t *inets)
-{
-    ds_dlist_init(inets, target_route_state_init_t, dsl_node);
-    return true;
-}
-#endif
-
-#ifndef IMPL_target_eth_inet_config_set
-bool target_eth_inet_config_set(const char *ifname, struct schema_Wifi_Inet_Config *iconf)
-{
-    return false;
-}
-#endif
-
-#ifndef IMPL_target_eth_inet_state_get
-bool target_eth_inet_state_get(const char *ifname, struct schema_Wifi_Inet_State *istate)
-{
-    return true;
-}
-#endif
-
-#ifndef IMPL_target_eth_master_state_get
-bool target_eth_master_state_get(const char *ifname, struct schema_Wifi_Master_State *mstate)
-{
-    return true;
-}
-#endif
-
-
-#ifndef IMPL_target_vif_inet_config_set
-bool target_vif_inet_config_set( char *ifname, struct schema_Wifi_Inet_Config *iconf)
-{
-    return true;
-}
-#endif
-
-#ifndef IMPL_target_vif_inet_state_get
-bool target_vif_inet_state_get( char *ifname, struct schema_Wifi_Inet_State *istate)
-{
-    return true;
-}
-#endif
-
-#ifndef IMPL_target_vif_master_state_get
-bool target_vif_master_state_get(const char *ifname, struct schema_Wifi_Master_State *mstate)
-{
-    return true;
-}
-#endif
-
-#ifndef IMPL_target_gre_inet_config_set
-bool target_gre_inet_config_set( char *ifname, char *remote_ip, struct schema_Wifi_Inet_Config *iconf)
-{
-    return true;
-}
-#endif
-
-#ifndef IMPL_target_gre_inet_state_get
-bool target_gre_inet_state_get( char *ifname, char *remote_ip, struct schema_Wifi_Inet_State *istate)
-{
-    return true;
-}
-#endif
-
-#ifndef IMPL_target_gre_master_state_get
-bool target_gre_master_state_get(const char *ifname, const char *remote_ip, struct schema_Wifi_Master_State *mstate)
-{
-    return true;
-}
-#endif
-
-#ifndef IMPL_target_bridge_inet_config_set
-bool target_bridge_inet_config_set( char *ifname, struct schema_Wifi_Inet_Config *iconf)
-{
-    return true;
-}
-#endif
-
-#ifndef IMPL_target_bridge_inet_state_get
-bool target_bridge_inet_state_get( char *ifname, struct schema_Wifi_Inet_State *istate)
-{
-    return true;
-}
-#endif
-
-#ifndef IMPL_target_bridge_master_state_get
-bool target_bridge_master_state_get(const char *ifname, struct schema_Wifi_Master_State *mstate)
-{
-    return true;
-}
-#endif
-
-#ifndef IMPL_target_vlan_inet_config_set
-bool target_vlan_inet_config_set(char *ifname, struct schema_Wifi_Inet_Config *iconf)
-{
-    return false;
-}
-#endif
-
-#ifndef IMPL_target_vlan_inet_state_get
-bool target_vlan_inet_state_get(char *ifname, struct schema_Wifi_Inet_State *istate)
-{
-    return false;
-}
-#endif
-
-#ifndef IMPL_target_vlan_master_state_get
-bool target_vlan_master_state_get(const char *ifname, struct schema_Wifi_Master_State *mstate)
-{
-    return false;
-}
-#endif
-
-#ifndef IMPL_target_tap_inet_config_set
-bool target_tap_inet_config_set(char *ifname, struct schema_Wifi_Inet_Config *iconf)
-{
-    return false;
-}
-#endif
-
-#ifndef IMPL_target_tap_inet_state_get
-bool target_tap_inet_state_get(char *ifname, struct schema_Wifi_Inet_State *istate)
-{
-    return false;
-}
-#endif
-
-#ifndef IMPL_target_tap_master_state_get
-bool target_tap_master_state_get(const char *ifname, struct schema_Wifi_Master_State *mstate)
-{
-    return false;
-}
-#endif
-
-#ifndef IMPL_target_inet_state_register
-bool target_inet_state_register( char *ifname, void *istate_cb)
-{
-    return true;
-}
-#endif
-
-#ifndef IMPL_target_master_state_register
-bool target_master_state_register(const char *ifname, target_master_state_cb_t *mstate_cb)
-{
-    return true;
 }
 #endif
 
@@ -1074,11 +872,12 @@ int target_bsal_client_disconnect(const char *ifname, const uint8_t *mac_addr,
 }
 #endif
 
-#ifndef IMPL_target_bsal_client_is_connected
-int target_bsal_client_is_connected(const char *ifname, const uint8_t *mac_addr)
+#ifndef IMPL_target_bsal_client_info
+int target_bsal_client_info(const char *ifname, const uint8_t *mac_addr, bsal_client_info_t *info)
 {
     (void)ifname;
     (void)mac_addr;
+    (void)info;
     return -1;
 }
 #endif
@@ -1105,14 +904,20 @@ int target_bsal_rrm_beacon_report_request(const char *ifname,
 }
 #endif
 
-#ifndef IMPL_target_client_disconnect
-bool target_client_disconnect( const char *interface, const char *disc_type,
-                               const char *mac_str, uint8_t reason )
+#ifndef IMPL_target_bsal_rrm_set_neighbor
+int target_bsal_rrm_set_neighbor(const char *ifname, const bsal_neigh_info_t *nr)
 {
-    (void)interface;
-    (void)disc_type;
-    (void)mac_str;
-    (void)reason;
-    return false;
+    (void)ifname;
+    (void)nr;
+    return -1;
+}
+#endif
+
+#ifndef IMPL_target_bsal_rrm_remove_neighbor
+int target_bsal_rrm_remove_neighbor(const char *ifname, const bsal_neigh_info_t *nr)
+{
+    (void)ifname;
+    (void)nr;
+    return -1;
 }
 #endif

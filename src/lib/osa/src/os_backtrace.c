@@ -55,6 +55,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define MODULE_ID  LOG_MODULE_ID_COMMON
 
+#define BACKTRACE_MAX_ITERATIONS 20
+
 /**
  * Stack-trace functions, mostly inspired from libubacktrace
  */
@@ -186,6 +188,7 @@ struct backtrace_func_args
 {
     void                   *ctx;
     backtrace_func_t  *handler;
+    int                 iterations_left;
 };
 
 bool backtrace(backtrace_func_t *func, void *ctx)
@@ -194,6 +197,7 @@ bool backtrace(backtrace_func_t *func, void *ctx)
 
     args.handler = func;
     args.ctx     = ctx;
+    args.iterations_left = BACKTRACE_MAX_ITERATIONS;
 
     _Unwind_Backtrace(backtrace_handle, &args);
 
@@ -216,6 +220,8 @@ _Unwind_Reason_Code backtrace_handle(struct _Unwind_Context *uc, void *ctx)
 
     /* No handler, return immediately */
     if (args->handler == NULL) return _URC_END_OF_STACK;
+    if (args->iterations_left <= 0) return _URC_END_OF_STACK;
+    args->iterations_left--;
 
     /* Extract the frame address */
     addr = (void*) _Unwind_GetIP(uc);

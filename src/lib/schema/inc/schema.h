@@ -243,6 +243,8 @@ void schema_filter_blacklist(schema_filter_t *f, char *column);
                 *(dest)->field, sizeof((dest)->field[0]), ARRAY_LEN((dest)->field), &(dest)->field##_len); \
     } while(0)
 
+typedef int (*smap_cmp_fn_t)(const void *, const void *, size_t n);
+
 static inline bool
 schema_changed_map(const void *a_key,
                    const void *a_val,
@@ -252,7 +254,8 @@ schema_changed_map(const void *a_key,
                    const int b_len,
                    const int key_size,
                    const int val_size,
-                   int key_int)
+                   smap_cmp_fn_t keycmp,
+                   smap_cmp_fn_t valcmp)
 {
     int i;
     int j;
@@ -260,19 +263,15 @@ schema_changed_map(const void *a_key,
         return true;
     for (i=0; i<a_len; i++) {
         for (j=0; j<a_len; j++)
-            if (key_int && !memcmp(a_key + (i * key_size),
-                                   b_key + (j * key_size),
-                                   key_size))
-                break;
-            else if (!key_int && !strncmp(a_key + (i * key_size),
-                                          b_key + (j * key_size),
-                                          key_size))
+            if (!keycmp(a_key + (i * key_size),
+                        b_key + (j * key_size),
+                        key_size))
                 break;
         if (j == a_len)
             return true;
-        if (strncmp(a_val + (i * val_size),
-                    b_val + (j * val_size),
-                    val_size))
+        if (valcmp(a_val + (i * val_size),
+                   b_val + (j * val_size),
+                   val_size))
             return true;
     }
     return false;

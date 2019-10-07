@@ -77,15 +77,18 @@ static char   **ovsh_where_expr = NULL;
 
 static void     ovsh_usage(const char *fmt, ...);
 static bool     ovsh_select(char *table, json_t *where, int coln, char *colv[]);
-static bool     ovsh_insert(char *table, json_t *where, int coln, char *colv[]);
+static bool     ovsh_insert(char *table, json_t *where, int coln, char *colv[], json_t *parents);
 static bool     ovsh_update(char *table, json_t *where, int coln, char *colv[]);
-static bool     ovsh_upsert(char *table, json_t *where, int coln, char *colv[]);
+static bool     ovsh_upsert(char *table, json_t *where, int coln, char *colv[], json_t *parents);
 static bool     ovsh_wait(char *table, json_t *where, bool equals, int coln, char *colv[]);
 static bool     ovsh_delete(char *table, json_t *where, int coln, char *colv[]);
 static json_t  *json_value(char *str);
-static bool     ovsh_parse_where(json_t *where, char *str);
+static bool     ovsh_parse_where_statement(json_t *where, char *_str, bool is_parent_where);
+static bool     ovsh_parse_where(json_t *where, char *str, bool is_parent_where);
 static bool     ovsh_parse_columns(json_t *columns, int argc, char *argv[]);
 bool            ovsh_parse_mutations(json_t *mutations, int *colc, char *colv[]);
+static bool     ovsh_parse_parent(json_t *parent_where,json_t *parent_table,
+                                  json_t *parent_col, const char *_str);
 static json_t  *ovsdb_json_exec(char *method, json_t *params);
 static bool     ovsdb_json_error(json_t *jres);
 static bool     ovsdb_json_show_count(json_t *jres);
@@ -111,6 +114,7 @@ int main(int argc, char *argv[])
     char   *pend;
 
     json_t *where = json_array();
+    json_t *parents = json_array(); // relations to parent(s), if any
 
     assert(where != NULL);
 
@@ -138,20 +142,22 @@ int main(int argc, char *argv[])
             { .name = "timeout",        .has_arg = 1, .val = 't', },
             { .name = "quiet",          .has_arg = 0, .val = 'q', },
             { .name = "notequal",       .has_arg = 0, .val = 'n', },
+            { .name = "parent",         .has_arg = 1, .val = 'p', },
             { NULL, 0, 0, 0 },
         };
 
         /*
          * Parse options
          */
-        opt = getopt_long(argc, argv, "w:vd:t:jrcmMTuUo:qnaA", ovsh_long_opts, NULL);
+        opt = getopt_long(argc, argv, "w:vd:t:jrcmMTuUo:qnaA:p", ovsh_long_opts, NULL);
         switch (opt)
         {
             case 'w':
-                if (!ovsh_parse_where(where, optarg))
+                if (!ovsh_parse_where(where, optarg, false))
                 {
                     ovsh_usage("Error parsing WHERE statement: %s", optarg);
                 }
+
                 break;
 
             case 'v':
@@ -234,6 +240,28 @@ int main(int argc, char *argv[])
                 ovsh_opt_wait_equals = false;
                 break;
 
+            case 'p':
+                {
+                    json_t *parent_where = json_array();
+                    json_t *parent_table = json_string("");
+                    json_t *parent_col = json_string("");
+
+                    if (!ovsh_parse_parent(parent_where, parent_table, parent_col, optarg))
+                    {
+                        ovsh_usage("Error parsing --parent statement: %s", optarg);
+                        break;
+                    }
+
+                    json_t *a_parent = json_object();
+                    json_object_set_new(a_parent, "parent_table", parent_table);
+                    json_object_set_new(a_parent, "parent_col", parent_col);
+                    json_object_set_new(a_parent, "parent_where", parent_where);
+
+                    json_array_append_new(parents, a_parent);
+                }
+
+                break;
+
             case -1:
                 break;
 
@@ -280,7 +308,7 @@ int main(int argc, char *argv[])
     }
     else if (strcmp("insert", cmd) == 0 || strcmp("i", cmd) == 0)
     {
-        if (!ovsh_insert(table, where, colc, colv))
+        if (!ovsh_insert(table, where, colc, colv, parents))
         {
             return 1;
         }
@@ -294,7 +322,7 @@ int main(int argc, char *argv[])
     }
     else if (strcmp("upsert", cmd) == 0 || strcmp("U", cmd) == 0)
     {
-        if (!ovsh_upsert(table, where, colc, colv))
+        if (!ovsh_upsert(table, where, colc, colv, parents))
         {
             return 1;
         }
@@ -496,7 +524,7 @@ bool ovsh_mutate(char *table, json_t *where, json_t *mutations)
 /*
  * OVSDB Insert method
  */
-bool ovsh_insert(char *table, json_t *where, int coln, char *colv[])
+bool ovsh_insert(char *table, json_t *where, int coln, char *colv[], json_t *parents)
 {
     (void)where; /* Not supported on inserts */
 
@@ -522,16 +550,64 @@ bool ovsh_insert(char *table, json_t *where, int coln, char *colv[])
         ovsh_usage("Error parsing columns.");
     }
 
-    json_t *jparam = json_pack("[ s, { s:s, s:s, s:o } ]",
-            ovsh_opt_db,
-            "op", "insert",
-            "table", table,
-            "row", columns);
-
-    if (jparam == NULL)
+    json_t *jparam = NULL;
+    if (json_array_size(parents) > 0) // insert with parent(s)
     {
-        DEBUG("Error creating JSON-RPC parameters (INSERT).");
-        return false;
+        jparam = json_array();
+        json_array_append_new(jparam, json_string(ovsh_opt_db));
+
+        json_t *jtable = json_pack("{ s:s, s:s, s:s, s:o }",
+                "op", "insert",
+                "table", table,
+                "uuid-name", "new_table_uuid",
+                "row", columns);
+
+        json_array_append_new(jparam, jtable);
+
+        unsigned i;
+        for (i=0; i < json_array_size(parents); i++)
+        {
+            json_t *a_parent = json_array_get(parents, i);
+
+            json_t *j_parent_table = json_object_get(a_parent, "parent_table"); // json string
+            json_t *j_parent_col = json_object_get(a_parent, "parent_col");     // json string
+            json_t *j_parent_where = json_object_get(a_parent, "parent_where"); // json array
+
+            DEBUG("  [%d] You specified PARENT: parent_table=%s, "
+                  "parent_col=%s, parent_where=%s\n", i,
+                   json_string_value(j_parent_table),
+                   json_string_value(j_parent_col),
+                   json_dumps(j_parent_where, 0));
+
+            json_t *mutations = json_pack("[ [ s, s, [ s, [ [ s : s ] ] ] ] ]",
+                    json_string_value(j_parent_col),
+                    "insert",
+                    "set",
+                    "named-uuid",
+                    "new_table_uuid");
+
+            json_t *jmutator = json_pack("{ s:s, s:s, s:o, s:o}",
+                    "op", "mutate",
+                    "table", json_string_value(j_parent_table),
+                    "where", j_parent_where,
+                    "mutations", mutations);
+
+            json_array_append_new(jparam, jmutator);
+        }
+    }
+    else // regular insert
+    {
+        jparam = json_pack("[ s, { s:s, s:s, s:o } ]",
+                ovsh_opt_db,
+                "op", "insert",
+                "table", table,
+                "row", columns);
+
+        if (jparam == NULL)
+        {
+            DEBUG("Error creating JSON-RPC parameters (INSERT).");
+            return false;
+        }
     }
 
     json_t *jres = ovsdb_json_exec("transact", jparam);
@@ -617,7 +693,7 @@ bool ovsh_update(char *table, json_t *where, int coln, char *colv[])
 /*
  * OVSDB upsert method
  */
-bool ovsh_upsert(char *table, json_t *where, int coln, char *colv[])
+bool ovsh_upsert(char *table, json_t *where, int coln, char *colv[], json_t *parents)
 {
     if (coln <= 0)
     {
@@ -670,7 +746,7 @@ bool ovsh_upsert(char *table, json_t *where, int coln, char *colv[])
             new_colv[new_i] = colv[i];
             new_i++;
         }
-        return ovsh_insert(table, where, new_coln, new_colv);
+        return ovsh_insert(table, where, new_coln, new_colv, parents);
     }
     if (sel_count == 1)
     {
@@ -1039,9 +1115,63 @@ bool json_stringify(json_t *jval, char *dst, size_t dst_sz)
 }
 
 /*
+ * Parse a --parent argument that specifies a relation to a parent table.
+ *
+ * Syntax: --parent <parent_table>:<parent_col>:<parent_where>
+ *
+ * E.g.:   --parent Port:interfaces:name==eth0,mac==xx:xx:xx:xx:xx:xx
+ */
+static bool ovsh_parse_parent(json_t *parent_where,  // json array
+                              json_t *parent_table,  // json string
+                              json_t *parent_col,    // json string
+                              const char *_str)
+{
+    char str[OVSH_COL_STR];
+    char *lval, *op, *rval;
+
+    static char *delims[] =
+    {
+        ":",
+        NULL,
+    };
+
+
+    if (strlen(_str) + 1 > sizeof(str))
+    {
+        return false;
+    }
+    strcpy(str, _str);
+
+    if (!str_parse_expr(str, delims, &lval, &op, &rval))
+    {
+        DEBUG("Error parsing expression: %s (%s)\n", str, _str);
+        return false;
+    }
+    json_string_set(parent_table, lval);
+
+    strcpy(str, rval);
+    if (!str_parse_expr(str, delims, &lval, &op, &rval))
+    {
+        DEBUG("Error parsing expression: %s (%s)\n", str, _str);
+        return false;
+    }
+    json_string_set(parent_col, lval);
+
+    strcpy(str, rval);
+    if (!ovsh_parse_where(parent_where, str, true))
+    {
+        DEBUG("Error parsing WHERE statement: %s\n", str);
+        return false;
+    }
+
+    return true;
+}
+
+
+/*
  * Parse a "WHERE" statement and build up a JSON object that is suitable for OVSDB
  */
-bool ovsh_parse_where(json_t *where, char *_str)
+static bool ovsh_parse_where_statement(json_t *where, char *_str, bool is_parent_where)
 {
     char str[OVSH_COL_STR];
 
@@ -1105,17 +1235,48 @@ bool ovsh_parse_where(json_t *where, char *_str)
 
     retval = true;
 
-    // append to global where expr table
-    ovsh_where_num++;
-    ovsh_where_expr = (char**)realloc(ovsh_where_expr, sizeof(char**) * ovsh_where_num);
-    assert(ovsh_where_expr);
-    ovsh_where_expr[ovsh_where_num-1] = strdup(_str);
+    /* Append to global where expr table, but only if this is a regular where
+     * statement (not part of a --parent argument)  */
+    if (!is_parent_where)
+    {
+        ovsh_where_num++;
+        ovsh_where_expr = (char**)realloc(ovsh_where_expr, sizeof(char**) * ovsh_where_num);
+        assert(ovsh_where_expr);
+        ovsh_where_expr[ovsh_where_num-1] = strdup(_str);
+    }
 
 error:
     if (jop != NULL) json_decref(jop);
 
     return retval;
 }
+
+/*
+ * Parse a "WHERE" argument (which may chain multiple WHERE statements separated
+ * by a comma) and build up a JSON object that is suitable for OVSDB.
+ */
+static bool ovsh_parse_where(json_t *where, char *_str, bool is_parent_where)
+{
+    char str[OVSH_COL_STR];
+    char *tok;
+
+
+    strcpy(str, _str);
+    tok = strtok(str, ",");
+    while (tok != NULL)
+    {
+        if (!ovsh_parse_where_statement(where, tok, is_parent_where))
+        {
+            DEBUG("Error parsing WHERE statement: %s in WHERE argument: %s\n",
+                   tok, _str);
+            return false;
+        }
+        tok = strtok(NULL, ",");
+    }
+
+    return true;
+}
+
 
 /*
  * Parse a list of columns, generate an array object out of it
@@ -1827,7 +1988,9 @@ bool ovsdb_json_show_result_raw(json_t *jrows, json_t *columns)
                 DEBUG("Error converting JSON to string.");
             }
 
-            printf("%s ", col_str);
+            if (nc > 0)
+                printf(" ");
+            printf("%s", col_str);
         }
         printf("\n");
     }

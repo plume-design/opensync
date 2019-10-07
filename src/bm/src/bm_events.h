@@ -31,9 +31,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef __BM_EVENTS_H__
 #define __BM_EVENTS_H__
 
-#define                 BM_CB_QUEUE_MAX     20
+#define                 BM_CB_QUEUE_MAX     256
 
 extern bool             bm_events_init(struct ev_loop *loop);
 extern bool             bm_events_cleanup(void);
+
+extern bool             bm_events_client_cap_changed(bm_client_t *client, bsal_event_t *event);
+extern void             bm_events_record_client_cap(bm_client_t *client, bsal_event_t *event);
 
 #endif /* __BM_EVENTS_H__ */

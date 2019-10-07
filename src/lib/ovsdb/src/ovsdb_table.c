@@ -284,7 +284,10 @@ int ovsdb_table_update_where_f(ovsdb_table_t *table, json_t *where, void *record
     int ret;
 
     jrow = ovsdb_table_to_json_f(table, record, filter);
-    if (!jrow) return 0;
+    if (!jrow) {
+        json_decref(where);
+        return 0;
+    }
     ret = ovsdb_sync_update_where(table->table_name, where, jrow);
     return ret;
 }

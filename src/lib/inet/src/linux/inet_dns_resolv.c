@@ -54,8 +54,8 @@ struct __inet_dns
 {
     char                dns_ifname[C_IFNAME_LEN];       /* Interface name */
     bool                dns_enabled;                    /* True if service has been started */
-    inet_ip4addr_t      dns_primary;                    /* Primary DNS addrss */
-    inet_ip4addr_t      dns_secondary;                  /* Secondary DNS addrss */
+    osn_ip_addr_t       dns_primary;                    /* Primary DNS addrss */
+    osn_ip_addr_t       dns_secondary;                  /* Secondary DNS addrss */
 };
 
 static bool inet_dns_init(inet_dns_t *self, const char *ifname);
@@ -116,6 +116,8 @@ bool inet_dns_init(inet_dns_t *self, const char *ifname)
     }
 
     memset(self, 0, sizeof(*self));
+    self->dns_primary = OSN_IP_ADDR_INIT;
+    self->dns_secondary = OSN_IP_ADDR_INIT;
 
     if (strscpy(self->dns_ifname, ifname, sizeof(self->dns_ifname)) < 0)
     {
@@ -178,9 +180,9 @@ bool inet_dns_start(inet_dns_t *self)
     }
 
     fprintf(fresolv, "# Interface: %s\n", self->dns_ifname);
-    if (!INET_IP4ADDR_IS_ANY(self->dns_primary))
+    if (osn_ip_addr_cmp(&self->dns_primary, &OSN_IP_ADDR_INIT) != 0)
     {
-        psz = fprintf(fresolv, "nameserver "PRI(inet_ip4addr_t)"\n", FMT(inet_ip4addr_t, self->dns_primary));
+        psz = fprintf(fresolv, "nameserver "PRI_osn_ip_addr"\n", FMT_osn_ip_addr(self->dns_primary));
         if (psz >= INET_DNS_LINE_LEN)
         {
             LOG(ERR, "inet_eth: %s: primary nameserver string too long.", self->dns_ifname);
@@ -188,9 +190,9 @@ bool inet_dns_start(inet_dns_t *self)
         }
     }
 
-    if (!INET_IP4ADDR_IS_ANY(self->dns_secondary))
+    if (osn_ip_addr_cmp(&self->dns_secondary, &OSN_IP_ADDR_INIT) != 0)
     {
-        psz = fprintf(fresolv, "nameserver "PRI(inet_ip4addr_t)"\n", FMT(inet_ip4addr_t, self->dns_secondary));
+        psz = fprintf(fresolv, "nameserver "PRI_osn_ip_addr"\n", FMT_osn_ip_addr(self->dns_secondary));
         if (psz >= INET_DNS_LINE_LEN)
         {
             LOG(ERR, "inet_eth: %s: secondary nameserver string too long.", self->dns_ifname);
@@ -251,8 +253,8 @@ bool inet_dns_stop(inet_dns_t *self)
 
 bool inet_dns_server_set(
         inet_dns_t *self,
-        inet_ip4addr_t primary,
-        inet_ip4addr_t secondary)
+        osn_ip_addr_t primary,
+        osn_ip_addr_t secondary)
 {
     self->dns_primary = primary;
     self->dns_secondary = secondary;
@@ -291,6 +293,8 @@ bool inet_dns_path(inet_dns_t *self, char *dest, ssize_t destsz)
  */
 bool inet_dns_update(inet_dns_t *self)
 {
+    (void)self;
+
     /* Re-arm the debounce timer */
     ev_debounce_start(EV_DEFAULT, &inet_dns_update_timer);
 
@@ -299,6 +303,10 @@ bool inet_dns_update(inet_dns_t *self)
 
 void __inet_dns_update(EV_P_ ev_debounce *w, int revent)
 {
+    (void)loop;
+    (void)w;
+    (void)revent;
+
     size_t psz;
     size_t ii;
     glob_t gl;

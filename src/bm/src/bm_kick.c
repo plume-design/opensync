@@ -302,7 +302,7 @@ bm_kick_task_kick(void *arg)
 
     do {
         client = bm_client_find_by_macaddr(kick->macaddr);
-        if (!client || !client->connected ||
+        if (!client || !client->connected || !client->pair ||
                            client->pair->bsal != kick->bsal || client->band != kick->band) {
             // No longer in same state, don't kick
             break;
@@ -406,7 +406,7 @@ bm_kick_task_queue_run(void *arg)
     do {
         // Make sure client is still in same state
         client = bm_client_find_by_macaddr(kick->macaddr);
-        if (!client || !client->connected ||
+        if (!client || !client->connected || !client->pair ||
                         client->pair->bsal != kick->bsal || client->band != kick->band) {
             // No longer in same state, don't kick
             remove = true;
@@ -531,58 +531,14 @@ static bool
 bm_kick_get_self_btm_values( bsal_btm_params_t *btm_params,
                              bm_pair_t *pair, bsal_band_t band )
 {
-    struct  schema_Wifi_VIF_State   vif;
-    json_t                          *jrow;
-    pjs_errmsg_t                    perr;
-    char                            *ifname;
-
-    // On platforms other than pods, the home-ap-* interfaces are mapped to
-    // other platform-dependent names such as ath0, etc. On the pod, the
-    // mapping is the same.
-    ifname = target_unmap_ifname( pair->ifcfg[band].ifname );
-    if( strlen( ifname ) == 0 ) {
-        LOGE( "Unable to target_unmap_ifname '%s'", pair->ifcfg[band].ifname );
+    if (!bm_neighbor_get_self_neighbor(pair, band, &btm_params->neigh[0])) {
+        LOGW("%s failed for %s", __func__, pair->ifcfg[band].ifname);
         return false;
     }
-
-    json_t  *where = ovsdb_where_simple( SCHEMA_COLUMN( Wifi_VIF_State, if_name),
-                                         ifname );
-
-    bsal_neigh_info_t       *neigh = &btm_params->neigh[0];
-    os_macaddr_t            macaddr;
-
-    jrow = ovsdb_sync_select_where( SCHEMA_TABLE( Wifi_VIF_State ), where );
-
-    if( !schema_Wifi_VIF_State_from_json(
-                &vif,
-                json_array_get( jrow, 0 ),
-                false,
-                perr ) )
-    {
-        LOGE( "Unable to parse Wifi_VIF_State column: %s", perr );
-        json_decref(jrow);
-        return false;
-    }
-
-    neigh->channel = ( uint8_t )vif.channel;
-
-    if( !os_nif_macaddr_from_str( &macaddr, vif.mac ) ) {
-        LOGE( "Unable to parse mac address '%s'", vif.mac );
-        json_decref(jrow);
-        return false;
-    }
-
-    LOGT( "Got self channel: %d and self bssid: %s", vif.channel, vif.mac );
-    memcpy( neigh->bssid, (uint8_t *)&macaddr, sizeof( neigh->bssid ) );
-
-    // Assume the default BSSID_INFO
-    neigh->bssid_info = BTM_DEFAULT_NEIGH_BSS_INFO;
 
     // Set number of neighbors to 1 since the BTM request is to move the
     // client from one bssid to another on this AP
     btm_params->num_neigh = 1;
-
-    json_decref(jrow);
     return true;
 }
 
@@ -637,46 +593,6 @@ bm_kick_build_neighbor_list( bm_client_t *client, bsal_btm_params_t *btm_params 
     return true;
 }
 
-static uint8_t 
-bm_kick_get_op_class( uint8_t channel )
-{
-    if( channel >= 1 && channel <= 13 ) {
-        return BTM_24_OP_CLASS;
-    }
-
-    if( channel >= 36 && channel <= 48 ) {
-        return BTM_5GL_OP_CLASS;
-    }
-
-    if( channel >= 52 && channel <= 64 ) {
-        return BTM_L_DFS_OP_CLASS;
-    }
-
-    if( channel >= 100 && channel <= 140 ) {
-        return BTM_U_DFS_OP_CLASS;
-    }
-
-    if( channel >= 149 && channel <= 169 ) {
-        return BTM_5GU_OP_CLASS;
-    }
-
-    return 0;
-}
-
-static uint8_t
-bm_kick_get_phy_type( uint8_t channel )
-{
-    if( channel >= 1 && channel <= 13 ) {
-        return BTM_24_PHY_TYPE;
-    }
-
-    if( channel >= 36 && channel <= 169 ) {
-        return BTM_5_PHY_TYPE;
-    }
-
-    return 0;
-}
-
 static bool
 bm_kick_get_rrm_op_class( bsal_rrm_params_t *rrm_params, uint8_t channel )
 {
@@ -687,7 +603,7 @@ bm_kick_get_rrm_op_class( bsal_rrm_params_t *rrm_params, uint8_t channel )
     if( channel == RRM_DEFAULT_CHANNEL ) {
         rrm_params->op_class = RRM_DEFAULT_OP_CLASS;
     } else {
-        op_class = bm_kick_get_op_class( channel );
+        op_class = bm_neighbor_get_op_class( channel );
         if( op_class == 0 ) {
             LOGE( "get_rrm_params: Unable to get op_class for channel '%hhu'", channel );
             return false;
@@ -731,8 +647,7 @@ bm_kick_issue_bss_tm_req(bm_client_t *client, bm_kick_type_t type)
     }
 
     if (!client->is_BTM_supported) {
-        LOGD("Client '%s' does not support 11v, ignoring kick", client->mac_addr);
-        return false;
+        LOGW("Client '%s' CAPS indicate no 11v (BTM) support", client->mac_addr);
     }
 
     if( type == BM_STICKY_KICK && client->band == BSAL_BAND_24G &&
@@ -754,7 +669,7 @@ bm_kick_issue_bss_tm_req(bm_client_t *client, bm_kick_type_t type)
         return false;
     }
 
-    if( btm_params->num_retries == 0 ) {
+    if( btm_params->tries == 0 ) {
         if( !bm_kick_get_dpp_event_by_btm_type( type, &dpp_event, false ) ) {
             LOGE( "Client '%s': Unable to get BTM DPP event", client->mac_addr );
             return false;
@@ -766,6 +681,7 @@ bm_kick_issue_bss_tm_req(bm_client_t *client, bm_kick_type_t type)
         }
     }
 
+    memset(&event, 0, sizeof(event));
     event.band = client->band;
     bm_stats_add_event_to_report( client, &event, dpp_event, false );
 
@@ -800,6 +716,21 @@ bm_kick_issue_bss_tm_req(bm_client_t *client, bm_kick_type_t type)
                             client->mac_addr );
                     return false;
                 }
+
+                if (btm_params->inc_self) {
+                    if (!bm_neighbor_get_self_neighbor(client->pair, BSAL_BAND_5G, &btm_params->neigh[btm_params->num_neigh])) {
+                        LOGW("get self for sticky 11v neighbor list failed for %s", client->pair->ifcfg[BSAL_BAND_5G].ifname);
+                        return false;
+                    }
+
+                    btm_params->num_neigh++;
+                }
+
+                // We get XING_LOW here and no neighbor candidate - only local ifaces
+                if (btm_params->num_neigh == 0) {
+                    LOGI("Client '%s': empty sticky 11v neighbor list", client->mac_addr);
+                    btm_params->pref = 0;
+                }
             } else {
                 LOGT(" Client '%s': NOT building sticky neighbor list", client->mac_addr );
                 // Set back default values for 5 --> 2.4 GHz Sticky BSS TM
@@ -813,14 +744,14 @@ bm_kick_issue_bss_tm_req(bm_client_t *client, bm_kick_type_t type)
         for( i = 0 ; i < btm_params->num_neigh ; i++ ) {
             neigh = &btm_params->neigh[i];
 
-            neigh->op_class = bm_kick_get_op_class( neigh->channel );
+            neigh->op_class = bm_neighbor_get_op_class( neigh->channel );
             if( neigh->op_class == 0 ) {
                 LOGE( "Client '%s': Unable to get op_class for channel '%hhu'",
                                                             client->mac_addr, neigh->channel );
                 return false;
             }
 
-            neigh->phy_type = bm_kick_get_phy_type( neigh->channel );
+            neigh->phy_type = bm_neighbor_get_phy_type( neigh->channel );
             if( neigh->phy_type == 0 ) {
                 LOGE( "Client '%s': Unable to get phy_type for channel '%hhu'",
                                                             client->mac_addr, neigh->channel );
@@ -859,16 +790,22 @@ bm_kick_btm_retry_task( void *arg )
         return;
     }
 
-    btm_params->num_retries++;
-    LOGD( "Re-issuing BSS TM Request to client '%s', total retries:'%d'",
-                                            client->mac_addr, btm_params->num_retries );
+    if (client->cancel_btm) {
+        LOGD("client %s cancel BTM task", client->mac_addr);
+        bm_kick_cancel_btm_retry_task( client );
+        return;
+    }
+
+    btm_params->tries++;
+    LOGD( "Re-issuing BSS TM Request to client '%s', total tries:'%d'",
+                                            client->mac_addr, btm_params->tries );
 
     if( !bm_kick_issue_bss_tm_req( client, kick_info->kick_type ) ) {
         LOGE( "BSS Transition Request for client '%s' failed", client->mac_addr );
         return;
     }
 
-    if( btm_params->num_retries >= btm_params->max_retries ) {
+    if( btm_params->tries >= btm_params->max_tries) {
         LOGD( "Maximum number of BSS TM Requests issued to client '%s'", client->mac_addr );
         bm_kick_cancel_btm_retry_task( client );
 
@@ -888,6 +825,11 @@ bm_kick_cancel_btm_retry_task( bm_client_t *client )
 
     kick_info = &client->kick_info;
 
+    /* Cancel also legacy kick */
+    kick_info->kick_pending = false;
+    kick_info->rssi = 0;
+
+    client->cancel_btm = false;
     btm_params = bm_kick_get_btm_params_by_kick_type( client, kick_info->kick_type );
     if( !btm_params ) {
         LOGE( "Client %s: BTM params are NULL for kick_type %d", 
@@ -895,7 +837,7 @@ bm_kick_cancel_btm_retry_task( bm_client_t *client )
         return;
     }
 
-    if( btm_params->num_retries > 0 ) {
+    if( btm_params->tries > 1 ) {
         if( client->connected ) {
             LOGD( "Client '%s' connected back, stopping BTM retries", client->mac_addr );
         } else {
@@ -907,7 +849,7 @@ bm_kick_cancel_btm_retry_task( bm_client_t *client )
     evsched_task_cancel_by_find( bm_kick_btm_retry_task, client,
             ( EVSCHED_FIND_BY_FUNC | EVSCHED_FIND_BY_ARG ) );
 
-    btm_params->num_retries = 0;
+    btm_params->tries = 0;
 
     return;
 }
@@ -923,19 +865,26 @@ bm_kick_handle_bss_tm_req( bm_client_t *client, bm_kick_type_t kick )
         return false;
     }
 
+    // If a RSSI_XING event is received while BSS TM Request's are being retried
+    // for this client, ignore the request
+    if( btm_params->tries > 0) {
+        if (client->kick_info.kick_type == kick) {
+            LOGN( "BSS TM Request being retried for Client '%s', ignoring", client->mac_addr );
+            return true;
+        } else {
+            LOGN("BSS TM Request '%s' switch kick type %d -> %d", client->mac_addr,
+                 client->kick_info.kick_type, kick);
+            bm_kick_cancel_btm_retry_task(client);
+        }
+    }
+
     if( !bm_kick_issue_bss_tm_req( client, kick ) ) {
-        LOGE( "BSS Transition Request for client '%s' failed", client->mac_addr );
+        LOGI( "BSS Transition Request for client '%s' failed", client->mac_addr );
         return false;
     }
 
-    // If a RSSI_XING event is received while BSS TM Request's are being retried
-    // for this client, ignore the request
-    if( btm_params->num_retries > 0 ) {
-        LOGN( "BSS TM Request being retried for Client '%s', ignoring", client->mac_addr );
-        return true;
-    }
-
-    btm_params->num_retries     = 0;
+    /* Set to 1 while we already send first one */
+    btm_params->tries     = 1;
     client->kick_info.kick_type = kick;
 
     client->btm_retry_task      = evsched_task( bm_kick_btm_retry_task,
@@ -995,8 +944,7 @@ bm_kick_handle_rrm_br_req(bm_client_t *client, bm_kick_type_t type)
     }
 
     if (!client->rrm_caps.bcn_rpt_active) {
-        LOGD("Client '%s' does not support 11k, ignoring kick", client->mac_addr );
-        return false;
+        LOGD("Client '%s' CAPS report no 11k (beacon report active) support", client->mac_addr);
     }
 
     memset( &rrm_params, 0, sizeof( rrm_params ) );
@@ -1034,6 +982,7 @@ bm_kick_handle_rrm_br_req(bm_client_t *client, bm_kick_type_t type)
         }
     }
 
+    memset(&event, 0, sizeof(event));
     event.band = client->band;
     bm_stats_add_event_to_report(client, &event, CLIENT_RRM_BCN_RPT, false);
 
@@ -1139,6 +1088,28 @@ bm_kick(bm_client_t *client, bm_kick_type_t type, uint8_t rssi)
         return false;
     }
 
+    if (!client->pair) {
+        LOGW("bm_kick: '%s' client->pair is NULL", client->mac_addr);
+        return false;
+    }
+
+    if (client->kick_info.kick_type != type) {
+       LOGI("bm_kick: '%s' switch kick type %d -> %d", client->mac_addr,
+            client->kick_info.kick_type, type);
+       bm_kick_cancel_btm_retry_task(client);
+    }
+
+    if (type == BM_STICKY_KICK && client->pref_5g == BM_CLIENT_5G_ALWAYS) {
+        if (!bm_neighbor_number(client, BSAL_BAND_5G)) {
+            /*
+             * Empty neighbor table and we always prefer 5G, this mean one
+             * POD left and only one interface. Skip kick.
+             */
+            LOGN("bm_kick: '%s' skip sticky kick empty neighbor list", client->mac_addr);
+            return false;
+        }
+    }
+
     kick_type = bm_kick_get_kick_type( client, type );
     switch(kick_type) {
 
@@ -1182,11 +1153,13 @@ bm_kick(bm_client_t *client, bm_kick_type_t type, uint8_t rssi)
 
     times = &client->times;
     kick_debounce_period = bm_kick_get_debounce_period( client, type );
-    if( (( time(NULL) - times->last_connect ) <= kick_debounce_period ) ||
-         ( kick_debounce_period == BM_KICK_MAGIC_DEBOUNCE_PERIOD ) ) {
-        LOGW("Ignoring kick of '%s' -- reconnected within debounce period",
-                client->mac_addr);
-        return false;
+    if (!(type == BM_FORCE_KICK && client->force_kick_type == BM_CLIENT_GHOST_DEVICE_KICK)) {
+        if (((time(NULL) - times->last_connect ) <= kick_debounce_period) ||
+            (kick_debounce_period == BM_KICK_MAGIC_DEBOUNCE_PERIOD)) {
+            LOGW("Ignoring kick of '%s' -- reconnected within debounce period",
+                 client->mac_addr);
+            return false;
+        }
     }
 
     if (type == BM_STEERING_KICK) {

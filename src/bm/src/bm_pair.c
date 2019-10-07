@@ -238,6 +238,14 @@ bm_pair_ovsdb_update_cb(ovsdb_update_monitor_t *self)
                                                 bp->ifcfg[BSAL_BAND_24G].ifname,
                                                 bp->ifcfg[BSAL_BAND_5G].ifname);
         }
+
+        if (!bm_neighbor_get_self_neighbor(bp, BSAL_BAND_24G, &bp->self_neigh[BSAL_BAND_24G]))
+            LOGW("Failed to get self neighbor %s", bp->ifcfg[BSAL_BAND_24G].ifname);
+
+        if (!bm_neighbor_get_self_neighbor(bp, BSAL_BAND_5G, &bp->self_neigh[BSAL_BAND_5G]))
+            LOGW("Failed to get self neighbor %s", bp->ifcfg[BSAL_BAND_5G].ifname);
+
+        bm_neighbor_set_all_to_pair(bp);
         break;
 
     case OVSDB_UPDATE_MODIFY:
@@ -266,6 +274,15 @@ bm_pair_ovsdb_update_cb(ovsdb_update_monitor_t *self)
             return;
         }
 
+        if (!bm_neighbor_get_self_neighbor(bp, BSAL_BAND_24G, &bp->self_neigh[BSAL_BAND_24G]))
+            LOGW("Failed to get self neighbor %s", bp->ifcfg[BSAL_BAND_24G].ifname);
+
+        if (!bm_neighbor_get_self_neighbor(bp, BSAL_BAND_5G, &bp->self_neigh[BSAL_BAND_5G]))
+            LOGW("Failed to get self neighbor %s", bp->ifcfg[BSAL_BAND_5G].ifname);
+
+	if (bsconf.if_name_2g_changed || bsconf.if_name_5g_changed)
+            bm_neighbor_set_all_to_pair(bp);
+
         LOGN("Updated if-pair %s/%s (uuid=%s)", bp->ifcfg[BSAL_BAND_24G].ifname,
                                                 bp->ifcfg[BSAL_BAND_5G].ifname,
                                                 bp->uuid);
@@ -283,6 +300,7 @@ bm_pair_ovsdb_update_cb(ovsdb_update_monitor_t *self)
                                                 bp->ifcfg[BSAL_BAND_5G].ifname);
         }
 
+        bm_neighbor_remove_all_from_pair(bp);
         bm_kick_cleanup_by_bsal(bp->bsal);
         if (target_bsal_iface_remove(&bp->ifcfg[BSAL_BAND_24G]) != 0) {
             LOGE("Failed to remove 2G (uuid=%s)", bp->uuid);

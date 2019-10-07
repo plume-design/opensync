@@ -42,15 +42,21 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /**
  * @file target.h
- * @brief Base target api header
+ * @brief Base target API header
  *
  * At the end of this header the platform specific header TARGET_H is also included,
- * which can declare addtional apis and will usually include also the target_common.h
- * \defgroup libtarget target library
- * @{
+ * which can declare additional APIs and will usually include also the target_common.h
  */
 
+/// @defgroup LIB_TARGET OpenSync Target Library
+/// Target API.
+/// @{
+
 #define TARGET_BUFF_SZ              256
+
+/// @defgroup LIB_TARGET_INIT Initialization and Cleanup
+/// Target library initialization and cleanup.
+/// @{
 
 /* Target init options */
 typedef enum {
@@ -71,10 +77,13 @@ typedef enum {
     TARGET_INIT_MGR_FSM             = 14,
     TARGET_INIT_MGR_TM              = 15,
     TARGET_INIT_MGR_HELLO_WORLD     = 16,
+    TARGET_INIT_MGR_FCM             = 17,
+    TARGET_INIT_MGR_PPM             = 18,
+    TARGET_INIT_MGR_NFM             = 19
 } target_init_opt_t;
 
 /**
- * @brief Wait for platform readyness
+ * @brief Wait for platform readiness
  *
  * The purpose of target_ready API is to allow the subsystem to fully initialize
  * and is ready for processing. The API needs to be blocking. Successful return
@@ -85,7 +94,7 @@ typedef enum {
  * - Check if date and time are set correctly.
  * - Cache platform data (model, id, version, etc.) for further use.
  *
- * If the target readyness is assured before starting OpenSync
+ * If the target readiness is assured before starting OpenSync
  * (for example by systemd dependencies) the implementation of this function
  * may just return true.
  *
@@ -101,10 +110,10 @@ bool target_ready(struct ev_loop *loop);
  * IOCTL or netlink sockets, linked lists, etc. This API is called from every manager
  * prior to executing the functional APIs. If given vendor specific initialization is
  * not needed for one of the managers (for instance there is no need to have Wifi HAL
- * initialized for DM) it can be a no-op for that manager. Note, each manager is
- * a separate linux process.
+ * initialized for DM) it can be a no-op for that manager. Note: each manager is
+ * a separate Linux process.
  *
- * @param opt specifies from which manager this api is called
+ * @param opt specifies from which manager this API is called
  * @param loop main loop handle
  * @return true on success
  */
@@ -115,15 +124,21 @@ bool target_init(target_init_opt_t opt, struct ev_loop *loop);
  *
  * Once the manager exits its processing loop, the target_close API gets called.
  * Example implementation can call cleanup actions of HAL library that was
- * initialized inside target_init(). Note, this function is called from
+ * initialized inside target_init(). Note: this function is called from
  * every manager, so cleanup action must correspond to init action for specific
  * manager.
  *
- * @param opt specifies from which manager this api is called
+ * @param opt specifies from which manager this API is called
  * @param loop main loop handle
  * @return true on success
  */
 bool target_close(target_init_opt_t opt, struct ev_loop *loop);
+
+/// @} LIB_TARGET_INIT
+
+/// @defgroup LIB_TARGET_MANAGERS Control of Managers
+/// Definitions and API related to control of managers.
+/// @{
 
 /******************************************************************************
  *  MANAGERS definitions
@@ -164,6 +179,12 @@ typedef struct
 extern target_managers_config_t     target_managers_config[];
 extern int                          target_managers_num;
 
+/// @} LIB_TARGET_MANAGERS
+
+/// @defgroup LIB_TARGET_INTERFACES Interface API
+/// Definitions and API related to control of interfaces.
+/// @{
+
 /******************************************************************************
  *  INTERFACE definitions
  *****************************************************************************/
@@ -187,12 +208,24 @@ bool target_is_interface_ready(char *if_name);
  */
 const char *target_wan_interface_name();
 
+/// @} LIB_TARGET_INTERFACES
+
+/// @defgroup LIB_TARGET_ETHCLIENT Ethernet Clients API
+/// Definitions and API related to control of ethernet clients.
+/// @{
+
 /******************************************************************************
  *  Ethernet clients definitions
  *****************************************************************************/
 
 const char **target_ethclient_iflist_get();
 const char **target_ethclient_brlist_get();
+
+/// @} LIB_TARGET_ETHCLIENT
+
+/// @defgroup LIB_TARGET_ENTITY Entity API
+/// API for retrieval of basic information about the device.
+/// @{
 
 /******************************************************************************
  *  ENTITY definitions
@@ -298,7 +331,7 @@ bool target_platform_version_get(void *buff, size_t buffsz);
 /**
  * @brief Get full version string
  *
- * Long version of the PML build.
+ * Long version of the OpenSync build.
  *
  * Expected format: VERSION-BUILD_NUMBER-gGIT_SHA-PROFILE
  *
@@ -313,6 +346,16 @@ const char *app_build_ver_get();
  * @return build profile string
  */
 const char *app_build_profile_get();
+
+/// @} LIB_TARGET_ENTITY
+
+/// @defgroup LIB_TARGET_MAP Interface Mapping API
+/// API for mapping of interface names that the cloud uses to actual interface
+/// names.
+///
+/// This API is deprecated. The actual interface names are defined in a device
+/// profile, configured on the cloud.
+/// @{
 
 /******************************************************************************
  *  MAP definitions
@@ -329,9 +372,12 @@ bool target_unmap_ifname_exists(const char *ifname);
 
 const char *target_map_ifname_to_bandstr(const char *ifname);
 
+/// @} LIB_TARGET_MAP
+
 /******************************************************************************
  *  UPGRADE definitions
  *****************************************************************************/
+/// @cond INTERNAL
 
 bool   target_upg_download_required(char *url);
 char  *target_upg_command();
@@ -339,35 +385,37 @@ char  *target_upg_command_full();
 char **target_upg_command_args(char *password);
 double target_upg_free_space_err();
 double target_upg_free_space_warn();
+/// @endcond INTERNAL
 
 /******************************************************************************
  *  BLE definitions
  *****************************************************************************/
+/// @cond INTERNAL
 
 bool target_ble_preinit(struct ev_loop *loop);
 bool target_ble_prerun(struct ev_loop *loop);
 bool target_ble_broadcast_start(struct schema_AW_Bluetooth_Config *config);
 bool target_ble_broadcast_stop(void);
+/// @endcond INTERNAL
 
 /******************************************************************************
  *  OM definitions
  *****************************************************************************/
+/// @cond INTERNAL
 
-/**
- * @brief Applies packet flow rules to the system
- * @param token openflow rule name
- * @param ofconf openflow config
- * @return true on success
- */
-bool target_om_add_flow( char *token, struct schema_Openflow_Config *ofconf );
+typedef enum {
+    TARGET_OM_PRE_ADD       = 0,
+    TARGET_OM_POST_ADD,
+    TARGET_OM_PRE_DEL,
+    TARGET_OM_POST_DEL
+} target_om_hook_t;
 
-/**
- * @brief Deletes packet flow rules from the system
- * @param token openflow rule name
- * @param ofconf openflow config
- * @return true on success
- */
-bool target_om_del_flow( char *token, struct schema_Openflow_Config *ofconf );
+bool target_om_hook(target_om_hook_t hook, const char *openflow_rule);
+/// @endcond INTERNAL
+
+/// @defgroup LIB_TARGET_TLS Certificate Management
+/// Definitions and API related to control of certificates.
+/// @{
 
 /******************************************************************************
  *  TLS definitions
@@ -391,6 +439,11 @@ const char *target_tls_mycert_filename(void);
  */
 const char *target_tls_privkey_filename(void);
 
+/// @} LIB_TARGET_TLS
+
+/// @defgroup LIB_TARGET_OTHER Miscellaneous Overrides
+/// API used for various overrides.
+/// @{
 
 /******************************************************************************
  *  Common definitions
@@ -399,7 +452,7 @@ const char *target_tls_privkey_filename(void);
 /**
  * @brief Enable logging
  *
- * By default calls log_open. Can be overriden with platform specific functionality.
+ * By default calls log_open. Can be overridden with platform specific functionality.
  *
  * @param name name of the binary (manager name)
  * @param flags see flags for log_open()
@@ -433,8 +486,10 @@ bool target_log_pull(const char *upload_location, const char *upload_token);
 const char *target_log_state_file(void);
 const char *target_log_trigger_dir(void);
 
+/// @cond INTERNAL
 const char *target_led_device_dir(void);
 int target_led_names(const char **leds[]);
+/// @endcond INTERNAL
 
 /**
  * @brief Get the directory for scripts
@@ -466,7 +521,9 @@ const char* target_bin_dir(void);
  */
 const char *target_persistent_storage_dir(void);
 
+/// @cond INTERNAL
 btrace_type target_get_btrace_type(void);
+/// @endcond INTERNAL
 
 /**
  * @brief Restart all managers
@@ -480,11 +537,12 @@ btrace_type target_get_btrace_type(void);
  * of ovsdb-server and contents of all tables, removing wireless interfaces,
  * stopping wpa_supplicant, etc.
  *
- * @param buff   pointer to a string buffer
- * @param buffsz size of string buffer
  * @return true on success
  */
 void target_managers_restart(void);
+
+/// @} LIB_TARGET_OTHER
+
 
 #if !defined(TARGET_H)
 #warning Undefined TARGET_H
@@ -501,6 +559,6 @@ void target_managers_restart(void);
 #define TARGET_ID_SZ                OS_MACSTR_PLAIN_SZ
 #endif
 
-/**@}*/
+/// @} LIB_TARGET
 
 #endif /* TARGET_H_INCLUDED */

@@ -40,11 +40,22 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "target.h"
 #include "cm2.h"
 
-/* ev_child must be the first element of the structure */
+#define CM2_VAR_RUN_PATH               "/var/run"
+#define CM2_UDHCPC_DRYRUN_PREFIX_FILE  "udhcpc-cmdryrun"
+
+/* ev_child must be the first element of the structure
+ * based on that fact we can store additional data, in that case
+ * interface name and interface type */
 typedef struct {
     ev_child cw;
     char     if_name[128];
+    char     if_type[128];
 } dhcp_dryrun_t;
+
+typedef struct {
+    ev_timer timer;
+    char     if_name[128];
+} cm2_delayed_eth_update_t;
 
 int cm2_ovs_insert_port_into_bridge(char *bridge, char *port, int flag_add)
 {
@@ -78,16 +89,13 @@ int cm2_ovs_insert_port_into_bridge(char *bridge, char *port, int flag_add)
 /**
  * Return the PID of the udhcpc client serving on interface @p ifname
  */
-static int cm2_util_get_dhcpc_pid(char *ifname)
+static int cm2_util_get_udhcp_pid(char *pidfile)
 {
-    char pid_file[256];
     int  pid;
     FILE *f;
     int  rc;
 
-    tsnprintf(pid_file, sizeof(pid_file), "/var/run/udhcpc-%s.pid", ifname);
-
-    f = fopen(pid_file, "r");
+    f = fopen(pidfile, "r");
     if (f == NULL)
         return 0;
 
@@ -104,12 +112,64 @@ static int cm2_util_get_dhcpc_pid(char *ifname)
     return pid;
 }
 
+bool cm2_is_iface_in_bridge(const char *bridge, const char *port)
+{
+    char command[128];
+
+    LOGD("OVS bridge: port = %s bridge = %s", port, bridge);
+    sprintf(command, "ovs-vsctl list-ifaces %s | grep %s",
+            bridge, port);
+
+    LOGD("%s: Command: %s", __func__, command);
+    return target_device_execute(command);
+}
+
+static void
+cm2_delayed_eth_update_cb(struct ev_loop *loop, ev_timer *timer, int revents)
+{
+    cm2_delayed_eth_update_t *p;
+
+    p = (void *)timer;
+    LOGI("%s: delayed eth update cb", p->if_name);
+    ev_timer_stop(EV_DEFAULT, &p->timer);
+    cm2_ovsdb_connection_update_loop_state(p->if_name, false);
+    free(p);
+}
+
+void cm2_delayed_eth_update(char *if_name, int timeout)
+{
+    struct schema_Connection_Manager_Uplink con;
+    cm2_delayed_eth_update_t                *p;
+
+    if (!cm2_ovsdb_connection_get_connection_by_ifname(if_name, &con)) {
+        LOGW("%s: eth_update: interface does not exist", if_name);
+        return;
+    }
+
+    if (con.loop) {
+        LOGI("%s: eth_update: skip due to existed loop ", if_name);
+        return;
+    }
+
+    if (!(p = malloc(sizeof(*p)))) {
+        LOGW("%s: eth_update: memory allocation failed", if_name);
+        return;
+    }
+
+    cm2_ovsdb_connection_update_loop_state(if_name, true);
+    STRSCPY(p->if_name, if_name);
+    ev_timer_init(&p->timer, cm2_delayed_eth_update_cb, timeout, 0);
+    ev_timer_start(EV_DEFAULT, &p->timer);
+    LOGI("%s: scheduling delayed eth update", if_name);
+}
+
 static void cm2_dhcpc_dryrun_cb(struct ev_loop *loop, ev_child *w, int revents)
 {
     struct schema_Connection_Manager_Uplink con;
     dhcp_dryrun_t                           *dhcp_dryrun;
     bool                                    status;
     int                                     ret;
+    int                                     eth_timeout;
 
     dhcp_dryrun = (dhcp_dryrun_t *) w;
 
@@ -128,44 +188,64 @@ static void cm2_dhcpc_dryrun_cb(struct ev_loop *loop, ev_child *w, int revents)
     ret = cm2_ovsdb_connection_get_connection_by_ifname(dhcp_dryrun->if_name, &con);
     if (!ret) {
         LOGD("%s: interface %s does not exist", __func__, dhcp_dryrun->if_name);
-        free(dhcp_dryrun);
-        return;
+        goto release;
+    }
+
+    if (cm2_is_iface_in_bridge(BR_HOME_NAME, dhcp_dryrun->if_name)) {
+        LOGI("%s: Skip run dryrun in background, iface in %s",
+            dhcp_dryrun->if_name, BR_HOME_NAME);
+        goto release;
+    }
+
+    if (!status && con.has_L2 && !strcmp(dhcp_dryrun->if_type, ETH_TYPE_NAME)) {
+        cm2_dhcpc_start_dryrun(dhcp_dryrun->if_name, dhcp_dryrun->if_type, true);
+
+        if (g_state.link.is_used &&
+            !strcmp(g_state.link.if_type, GRE_TYPE_NAME)) {
+            LOGI("Detected Leaf with pluged ethernet, connected = %d",
+                 g_state.connected);
+            eth_timeout = g_state.connected ? CM2_ETH_SYNC_TIMEOUT : CM2_ETH_BOOT_TIMEOUT;
+            cm2_delayed_eth_update(dhcp_dryrun->if_name, eth_timeout);
+        }
     }
 
     ret = cm2_ovsdb_connection_update_L3_state(dhcp_dryrun->if_name, status);
     if (!ret)
         LOGW("%s: %s: Update L3 state failed status = %d ret = %d",
              __func__, dhcp_dryrun->if_name, status, ret);
-
-    if (!status && con.has_L2)
-            cm2_dhcpc_start_dryrun(dhcp_dryrun->if_name, true);
-
+release:
     free(dhcp_dryrun);
 }
 
-void cm2_dhcpc_start_dryrun(char* ifname, bool background)
+void cm2_dhcpc_start_dryrun(char* ifname, char *iftype, bool background)
 {
     char pidfile[256];
     char udhcpc_s_option[256];
     pid_t pid;
-    char pidname[512];
     char n_param[3];
 
     LOGN("%s: Trigger dryrun, background = %d", ifname, background);
 
-    STRSCPY(pidname, "cmdryrun-");
-    STRLCAT(pidname, ifname);
+    tsnprintf(pidfile, sizeof(pidfile), "%s/%s-%s.pid",
+              CM2_VAR_RUN_PATH , CM2_UDHCPC_DRYRUN_PREFIX_FILE, ifname);
 
-    pid = cm2_util_get_dhcpc_pid(pidname);
+    pid = cm2_util_get_udhcp_pid(pidfile);
     if (pid > 0)
     {
         LOGI("%s: DHCP client already running", ifname);
         return;
     }
 
-    tsnprintf(pidfile, sizeof(pidfile), "/var/run/udhcpc-%s.pid", pidname);
-    snprintf(udhcpc_s_option, sizeof(udhcpc_s_option),
-             "/usr/plume/bin/udhcpc-dryrun.sh");
+    tsnprintf(udhcpc_s_option, sizeof(udhcpc_s_option),
+              "/usr/plume/bin/udhcpc-dryrun.sh");
+#ifndef CONFIG_UDHCPC_OPTIONS_DISABLE_VENDOR_CLASSID
+    char vendor_classid[256];
+    if(target_model_get(vendor_classid, sizeof(vendor_classid)) == false)
+    {
+        tsnprintf(vendor_classid, sizeof(vendor_classid),
+                  TARGET_NAME);
+    }
+#endif
 
     if (background)
         STRSCPY(n_param, "");
@@ -182,8 +262,16 @@ void cm2_dhcpc_start_dryrun(char* ifname, bool background)
         "-f",
         "-i", ifname,
         "-s", udhcpc_s_option,
+#ifndef CONFIG_UDHCPC_OPTIONS_USE_CLIENTID
+        "-C",
+#endif
         "-S",
+#ifndef CONFIG_PLUME_CM2_USE_NOT_CUSTOM_UDHCPC
         "-Q",
+#endif
+#ifndef CONFIG_UDHCPC_OPTIONS_DISABLE_VENDOR_CLASSID
+        "-V", vendor_classid,
+#endif
         "-q",
         NULL
     };
@@ -199,6 +287,7 @@ void cm2_dhcpc_start_dryrun(char* ifname, bool background)
 
         memset(dhcp_dryrun, 0, sizeof(dhcp_dryrun_t));
         STRSCPY(dhcp_dryrun->if_name, ifname);
+        STRSCPY(dhcp_dryrun->if_type, iftype);
 
         ev_child_init (&dhcp_dryrun->cw, cm2_dhcpc_dryrun_cb, pid, 0);
         ev_child_start (EV_DEFAULT, &dhcp_dryrun->cw);
@@ -208,21 +297,26 @@ void cm2_dhcpc_start_dryrun(char* ifname, bool background)
 void cm2_dhcpc_stop_dryrun(char *ifname)
 {
     pid_t pid;
-    char  pidname[512];
+    char  pidfile[256];
 
-    STRSCPY(pidname, "cmdryrun-");
-    STRLCAT(pidname, ifname);
+    tsnprintf(pidfile, sizeof(pidfile), "%s/%s-%s.pid",
+              CM2_VAR_RUN_PATH , CM2_UDHCPC_DRYRUN_PREFIX_FILE, ifname);
 
-    pid = cm2_util_get_dhcpc_pid(pidname);
+    pid = cm2_util_get_udhcp_pid(pidfile);
     if (!pid) {
-        LOGI("%s: DHCP client not running", ifname);
+        LOGI("%s: DHCP client is not running", ifname);
         return;
     }
 
-    LOGI("%s: pid: %d pid_name: %s", ifname, pid, pidname);
+    LOGI("%s: pid: %d pid file: %s", ifname, pid, pidfile);
 
     if (kill(pid, SIGKILL) < 0) {
         LOGW("%s: %s: failed to send kill signal: %d (%s)",
              __func__, ifname, errno, strerror(errno));
     }
+}
+
+bool cm2_is_eth_type(char *if_type) {
+    return !strcmp(if_type, ETH_TYPE_NAME) ||
+           !strcmp(if_type, VLAN_TYPE_NAME);
 }

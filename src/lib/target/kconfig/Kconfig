@@ -70,6 +70,10 @@ menuconfig TARGET_MANAGER
             bool "Flow Service Manager (FSM)"
             default n
 
+        config TARGET_MANAGER_FCM
+            bool "Flow Collection Manager (FCM)"
+            default n
+
         config TARGET_MANAGER_XM
             bool "Exchange Manager (XM)"
             default n
@@ -80,6 +84,10 @@ menuconfig TARGET_MANAGER
 
         config TARGET_MANAGER_PM
             bool "Platform Manager (PM)"
+            default n
+
+        config TARGET_MANAGER_NFM
+            bool "Netfilter Manager (NFM)"
             default n
 
     endif
@@ -187,9 +195,7 @@ config TARGET_LAN_BRIDGE_NAME
     help
         LAN bridge name that will be used
 
-menu "LED Config"
-
-config TARGET_LED_SUPPORT
+menuconfig TARGET_LED_SUPPORT
     bool "Enable LED support"
     default n
     select TARGET_MANAGER_LEDM
@@ -233,43 +239,6 @@ config TARGET_LED_SUPPORT
             string "Name[3]"
             depends on TARGET_LED3
     endif
-
-config TARGET_LED_LP5562_SUPPORT
-    bool "Enable LED LP5562 support"
-    default n
-    select TARGET_MANAGER_LEDM
-    help
-        Enable LED support (requires LEDM). This option implements custom
-        ledmanager for LP5562 hardware led driver.
-
-    if TARGET_LED_LP5562_SUPPORT
-        config TARGET_LED_LP5562_PATH
-            string "LP5562 led path"
-            default "/sys/class/leds/%s"
-            help
-                The pattern used to access a LED device.
-                The %s will be replaced with the LED name (see below).
-
-        config TARGET_LED_LP5562_BUS_PATH
-            string "Path to bus interface"
-            default "/sys/devices/platform/i2c-gpio.0/i2c-0/0-0030/%s"
-            help
-                Firmware data interface
-
-        config TARGET_LED_LP5562_FW_PATH
-            string "Path to pattern generation firmware interface"
-            default "/sys/class/firmware/lp5562/%s"
-            help
-                Firmware data interface
-
-        config TARGET_LED0
-            bool "LED[0]"
-
-        config TARGET_LED0_NAME
-            string "Name[0]"
-            depends on TARGET_LED0
-    endif
-endmenu
 
 menu "Model/Serial Number/SKU ..."
 

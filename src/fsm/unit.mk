@@ -27,22 +27,20 @@
 # Flow Service Manager
 #
 ##############################################################################
-UNIT_NAME := fsm
-
 UNIT_DISABLE := $(if $(CONFIG_TARGET_MANAGER_FSM),n,y)
 
-# Template type:
-UNIT_TYPE := BIN
+UNIT_NAME := fsm
 
+UNIT_TYPE := BIN
 UNIT_SRC := src/fsm_main.c
 UNIT_SRC += src/fsm_ovsdb.c
 UNIT_SRC += src/fsm_pcap.c
 UNIT_SRC += src/fsm_event.c
+UNIT_SRC += src/fsm_service.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
-UNIT_CFLAGS += -I$(TOP_DIR)/src/lib/common/inc/
 
-UNIT_LDFLAGS := -lev -ljansson -lpcap
+UNIT_LDFLAGS := -lev -ljansson -lpcap -lmnl
 
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
 UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
@@ -57,4 +55,11 @@ UNIT_DEPS += src/lib/evsched
 UNIT_DEPS += src/lib/datapipeline
 UNIT_DEPS += src/lib/json_util
 UNIT_DEPS += src/lib/policy_tags
+UNIT_DEPS += src/lib/nf_utils
+UNIT_DEPS += src/lib/fsm_utils
+UNIT_DEPS += src/lib/fsm_policy
+UNIT_DEPS += src/lib/ustack
 UNIT_DEPS += src/qm/qm_conn
+UNIT_DEPS += src/lib/json_mqtt
+UNIT_DEPS += src/lib/network_telemetry
+UNIT_DEPS += src/lib/network_metadata

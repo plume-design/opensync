@@ -44,6 +44,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "execsh.h"
 
+#if !defined(CONFIG_USE_KCONFIG) && !defined(CONFIG_INET_GRE_USE_SOFTWDS)
+/* Default to gretap */
+#define CONFIG_INET_GRE_USE_GRETAP
+#endif
+
 #if defined(CONFIG_INET_GRE_USE_GRETAP)
 /*
  * inet_gretap_t was selected as the default tunnelling
@@ -99,6 +104,9 @@ bool inet_gretap_init(inet_gretap_t *self, const char *ifname)
         return false;
     }
 
+    self->in_local_addr = OSN_IP_ADDR_INIT;
+    self->in_remote_addr = OSN_IP_ADDR_INIT;
+
     self->inet.in_ip4tunnel_set_fn = inet_gretap_ip4tunnel_set;
     self->base.in_service_commit_fn = inet_gretap_service_commit;
 
@@ -113,9 +121,9 @@ bool inet_gretap_init(inet_gretap_t *self, const char *ifname)
 bool inet_gretap_ip4tunnel_set(
         inet_t *super,
         const char *parent,
-        inet_ip4addr_t laddr,
-        inet_ip4addr_t raddr,
-        inet_macaddr_t rmac)
+        osn_ip_addr_t laddr,
+        osn_ip_addr_t raddr,
+        osn_mac_addr_t rmac)
 {
     (void)rmac; /* Unused */
 
@@ -124,8 +132,8 @@ bool inet_gretap_ip4tunnel_set(
     if (parent == NULL) parent = "";
 
     if (strcmp(parent, self->in_ifparent) == 0 &&
-            inet_ip4addr_cmp(&self->in_local_addr, &laddr) == 0 &&
-            inet_ip4addr_cmp(&self->in_remote_addr, &raddr) == 0)
+            osn_ip_addr_cmp(&self->in_local_addr, &laddr) == 0 &&
+            osn_ip_addr_cmp(&self->in_remote_addr, &raddr) == 0)
     {
         return true;
     }
@@ -191,26 +199,26 @@ bool inet_gretap_interface_start(inet_gretap_t *self, bool enable)
 
     if (enable)
     {
-        if (self->in_ifparent[0] == '\0') 
+        if (self->in_ifparent[0] == '\0')
         {
             LOG(INFO, "inet_gretap: %s: No parent interface was specified.", self->inet.in_ifname);
             return false;
         }
 
-        if (INET_IP4ADDR_IS_ANY(self->in_local_addr))
+        if (osn_ip_addr_cmp(&self->in_local_addr, &OSN_IP_ADDR_INIT) == 0)
         {
             LOG(INFO, "inet_gretap: %s: No local address was specified.", self->inet.in_ifname);
             return false;
         }
 
-        if (INET_IP4ADDR_IS_ANY(self->in_remote_addr))
+        if (osn_ip_addr_cmp(&self->in_remote_addr, &OSN_IP_ADDR_INIT) == 0)
         {
             LOG(INFO, "inet_gretap: %s: No remote address was specified.", self->inet.in_ifname);
             return false;
         }
 
-        snprintf(slocal_addr, sizeof(slocal_addr), PRI(inet_ip4addr_t), FMT(inet_ip4addr_t, self->in_local_addr));
-        snprintf(sremote_addr, sizeof(sremote_addr), PRI(inet_ip4addr_t), FMT(inet_ip4addr_t, self->in_remote_addr));
+        snprintf(slocal_addr, sizeof(slocal_addr), PRI_osn_ip_addr, FMT_osn_ip_addr(self->in_local_addr));
+        snprintf(sremote_addr, sizeof(sremote_addr), PRI_osn_ip_addr, FMT_osn_ip_addr(self->in_remote_addr));
 
         status = execsh_log(LOG_SEVERITY_INFO, gre_create_gretap,
                 self->inet.in_ifname,

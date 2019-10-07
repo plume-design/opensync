@@ -46,7 +46,7 @@ json_t* ovsdb_where_simple(const char *column, const char *value)
         LOG(WARNING, "%s: invalid selection column:%s value:%s",
                 __FUNCTION__, column, value);
     }
-    return ovsdb_tran_cond(OCLM_STR, (char*)column, OFUNC_EQ, (char*)value);
+    return ovsdb_tran_cond(OCLM_STR, column, OFUNC_EQ, value);
 }
 
 json_t* ovsdb_where_simple_typed(const char *column, const void *value, ovsdb_col_t col_type)
@@ -55,12 +55,12 @@ json_t* ovsdb_where_simple_typed(const char *column, const void *value, ovsdb_co
         LOG(WARNING, "%s: invalid selection column:%s",
                 __FUNCTION__, column);
     }
-    return ovsdb_tran_cond(col_type, (char*)column, OFUNC_EQ, (void*)value);
+    return ovsdb_tran_cond(col_type, column, OFUNC_EQ, value);
 }
 
 json_t* ovsdb_where_uuid(const char *column, const char *uuid)
 {
-    return ovsdb_tran_cond(OCLM_UUID, (char*)column, OFUNC_EQ, (char*)uuid);
+    return ovsdb_tran_cond(OCLM_UUID, column, OFUNC_EQ, uuid);
 }
 
 /* ovsdb_where_multi() combines multiple ovsdb_where_*() conditions
@@ -94,7 +94,7 @@ json_t* ovsdb_where_multi(json_t *where, ...)
     return where;
 }
 
-json_t* ovsdb_mutation(char *column, json_t *mutation, json_t *value)
+json_t* ovsdb_mutation(const char *column, json_t *mutation, json_t *value)
 {
     json_t * js;
 
@@ -109,7 +109,7 @@ json_t* ovsdb_mutation(char *column, json_t *mutation, json_t *value)
 // parse update result, return count or -1 on error
 // offset can be used with multiple operations to select a specific result
 // result ref is not decreased automatically with this function
-int ovsdb_get_update_result_count_off(json_t *result, char *table, char *oper, int offset)
+int ovsdb_get_update_result_count_off(json_t *result, const char *table, const char *oper, int offset)
 {
     // success: result: [{}, {"count": 1}]
     // error: result: [{}, {"error": ...}]
@@ -172,7 +172,7 @@ out:
 }
 
 // return count and decrease ref of result
-int ovsdb_get_update_result_count(json_t *result, char *table, char *oper)
+int ovsdb_get_update_result_count(json_t *result, const char *table, const char *oper)
 {
     int count = ovsdb_get_update_result_count_off(result, table, oper, 0);
     if (result) {
@@ -182,7 +182,7 @@ int ovsdb_get_update_result_count(json_t *result, char *table, char *oper)
 }
 
 // parse insert result, return true on success and store new uuid if not NULL
-bool ovsdb_get_insert_result_uuid(json_t *result, char *table, char *oper, ovs_uuid_t *uuid)
+bool ovsdb_get_insert_result_uuid(json_t *result, const char *table, const char *oper, ovs_uuid_t *uuid)
 {
     const char *str_uuid;
     size_t idx;
@@ -253,7 +253,7 @@ out:
 // SELECT
 // if where is NULL, select ALL rows in table
 
-json_t* ovsdb_sync_select_where(char *table, json_t *where)
+json_t* ovsdb_sync_select_where(const char *table, json_t *where)
 {
     json_t *jrows = NULL;
     json_t *result = NULL;
@@ -279,7 +279,7 @@ json_t* ovsdb_sync_select_where(char *table, json_t *where)
     return jrows;
 }
 
-json_t* ovsdb_sync_select(char *table, char *column, char *value)
+json_t* ovsdb_sync_select(const char *table, const char *column, const char *value)
 {
     json_t *where = ovsdb_where_simple(column, value);
     return ovsdb_sync_select_where(table, where);
@@ -287,7 +287,7 @@ json_t* ovsdb_sync_select(char *table, char *column, char *value)
 
 // 'where' should match a single row.
 // return count matched, -1 on error
-int ovsdb_sync_get_uuid_and_count(char *table, json_t *where, ovs_uuid_t *uuid)
+int ovsdb_sync_get_uuid_and_count(const char *table, json_t *where, ovs_uuid_t *uuid)
 {
     int count = -1;
     json_t *jrows = NULL;
@@ -333,13 +333,13 @@ out:
 }
 
 // 'where' should match a single row.
-bool ovsdb_sync_get_uuid_where(char *table, json_t *where, ovs_uuid_t *uuid)
+bool ovsdb_sync_get_uuid_where(const char *table, json_t *where, ovs_uuid_t *uuid)
 {
     return 1 == ovsdb_sync_get_uuid_and_count(table, where, uuid);
 }
 
 // 'where' should match a single row.
-bool ovsdb_sync_get_uuid(char *table, char *column, char *value, ovs_uuid_t *uuid)
+bool ovsdb_sync_get_uuid(const char *table, const char *column, const char *value, ovs_uuid_t *uuid)
 {
     json_t *where = ovsdb_where_simple(column, value);
     return ovsdb_sync_get_uuid_where(table, where, uuid);
@@ -347,7 +347,7 @@ bool ovsdb_sync_get_uuid(char *table, char *column, char *value, ovs_uuid_t *uui
 
 // INSERT
 
-bool ovsdb_sync_insert(char *table, json_t *row, ovs_uuid_t *uuid)
+bool ovsdb_sync_insert(const char *table, json_t *row, ovs_uuid_t *uuid)
 {
     json_t *result = NULL;
 
@@ -361,7 +361,7 @@ bool ovsdb_sync_insert(char *table, json_t *row, ovs_uuid_t *uuid)
 // DELETE
 
 // return count or -1 on error
-int ovsdb_sync_delete_where(char *table, json_t *where)
+int ovsdb_sync_delete_where(const char *table, json_t *where)
 {
     int rc;
 
@@ -385,7 +385,7 @@ int ovsdb_sync_delete_where(char *table, json_t *where)
 
 // return count or -1 on error
 // if where is NULL, update ALL rows in table
-int ovsdb_sync_update_where(char *table, json_t *where, json_t *row)
+int ovsdb_sync_update_where(const char *table, json_t *where, json_t *row)
 {
     int rc;
     json_t *result = NULL;
@@ -408,7 +408,7 @@ int ovsdb_sync_update_where(char *table, json_t *where, json_t *row)
 
 
 // return count
-int ovsdb_sync_update(char *table, char *column, char *value, json_t *row)
+int ovsdb_sync_update(const char *table, const char *column, const char *value, json_t *row)
 {
     json_t *where = ovsdb_where_simple(column, value);
     return ovsdb_sync_update_where(table, where, row);
@@ -416,7 +416,7 @@ int ovsdb_sync_update(char *table, char *column, char *value, json_t *row)
 
 // 'where' should match a single row.
 // return count matched or -1 on error
-int ovsdb_sync_update_one_get_uuid(char *table, json_t *where, json_t *row, ovs_uuid_t *uuid)
+int ovsdb_sync_update_one_get_uuid(const char *table, json_t *where, json_t *row, ovs_uuid_t *uuid)
 {
     int count;
     char where_str[WHERE_STR_SIZE];
@@ -442,7 +442,7 @@ int ovsdb_sync_update_one_get_uuid(char *table, json_t *where, json_t *row, ovs_
 // UPSERT
 
 // uuid is optional, 'where' should match a single row
-bool ovsdb_sync_upsert_where(char *table, json_t *where, json_t *row, ovs_uuid_t *uuid)
+bool ovsdb_sync_upsert_where(const char *table, json_t *where, json_t *row, ovs_uuid_t *uuid)
 {
     int count;
     char where_str[WHERE_STR_SIZE];
@@ -470,7 +470,7 @@ bool ovsdb_sync_upsert_where(char *table, json_t *where, json_t *row, ovs_uuid_t
 }
 
 
-bool ovsdb_sync_upsert(char *table, char *column, char *value, json_t *row, ovs_uuid_t *uuid)
+bool ovsdb_sync_upsert(const char *table, const char *column, const char *value, json_t *row, ovs_uuid_t *uuid)
 {
     if (!row) return false;
     json_t *where = ovsdb_where_simple(column, value);
@@ -481,8 +481,8 @@ bool ovsdb_sync_upsert(char *table, char *column, char *value, json_t *row, ovs_
 // MUTATE
 
 // return count or -1 on error
-int ovsdb_sync_mutate_uuid_set(char *table,
-        json_t *where, char *column, ovsdb_tro_t op, char *uuid)
+int ovsdb_sync_mutate_uuid_set(const char *table,
+        json_t *where, const char *column, ovsdb_tro_t op, const char *uuid)
 {
     json_t * js_uuid = ovsdb_tran_uuid_json(uuid);
     json_t * js;
@@ -510,8 +510,8 @@ int ovsdb_sync_mutate_uuid_set(char *table,
 // WITH PARENT
 
 
-bool ovsdb_sync_insert_with_parent(char *table, json_t *row, ovs_uuid_t *uuid,
-        char *parent_table, json_t *parent_where, char *parent_column)
+bool ovsdb_sync_insert_with_parent(const char *table, json_t *row, ovs_uuid_t *uuid,
+        const char *parent_table, json_t *parent_where, const char *parent_column)
 {
     json_t *tran;
     json_t *result;
@@ -540,9 +540,9 @@ bool ovsdb_sync_insert_with_parent(char *table, json_t *row, ovs_uuid_t *uuid,
 }
 
 
-bool ovsdb_sync_upsert_with_parent(char *table,
+bool ovsdb_sync_upsert_with_parent(const char *table,
         json_t *where, json_t *row, ovs_uuid_t *uuid,
-        char *parent_table, json_t *parent_where, char *parent_column)
+        const char *parent_table, json_t *parent_where, const char *parent_column)
 {
     int count;
     ovs_uuid_t my_uuid;
@@ -579,8 +579,8 @@ bool ovsdb_sync_upsert_with_parent(char *table,
 
 
 // return count or -1 on error
-int ovsdb_sync_delete_with_parent(char *table, json_t *where,
-        char *parent_table, json_t *parent_where, char *parent_column)
+int ovsdb_sync_delete_with_parent(const char *table, json_t *where,
+        const char *parent_table, json_t *parent_where, const char *parent_column)
 {
     json_t *result = NULL;
 

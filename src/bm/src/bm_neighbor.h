@@ -46,6 +46,8 @@ typedef struct {
     radio_chanwidth_t   ht_mode;
     uint8_t             priority;
 
+    bsal_neigh_info_t   neigh_report;
+
     char                uuid[OVSDB_UUID_LEN];
     ds_tree_node_t      dst_node;
 } bm_neighbor_t;
@@ -58,5 +60,14 @@ extern bool     bm_neighbor_cleanup( void );
 ds_tree_t       *bm_neighbor_get_tree( void );
 bm_neighbor_t   *bm_neighbor_find_by_uuid( const char *uuid );
 bm_neighbor_t   *bm_neighbor_find_by_macstr( char *mac_str );
+unsigned int    bm_neighbor_number(bm_client_t *client, bsal_band_t band);
+
+uint8_t         bm_neighbor_get_op_class(uint8_t channel);
+uint8_t         bm_neighbor_get_phy_type(uint8_t channel);
+
+void bm_neighbor_set_all_to_pair(const bm_pair_t *pair);
+void bm_neighbor_remove_all_from_pair(const bm_pair_t *pair);
+
+bool bm_neighbor_get_self_neighbor(const bm_pair_t *pair, bsal_band_t band, bsal_neigh_info_t *neigh);
 
 #endif /* __BM_NEIGHBORS_H__ */

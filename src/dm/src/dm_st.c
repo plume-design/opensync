@@ -40,8 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb.h"
 #include "schema.h"
 #include "jansson.h"
-#include "cmd_server.h"
-#include "cmd_client.h"
+
 #include "monitor.h"
 #include "json_util.h"
 #include "ovsdb_update.h"

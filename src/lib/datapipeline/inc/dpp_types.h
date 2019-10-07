@@ -49,7 +49,7 @@ typedef mac_address_str_t   radio_bssid_t;
 #define RADIO_IFNAME_LEN 16
 typedef char ifname_t[RADIO_IFNAME_LEN];
 
-#define RADIO_ESSID_LEN 64
+#define RADIO_ESSID_LEN 128
 typedef char radio_essid_t[RADIO_ESSID_LEN + 1];
 
 #define RADIO_MAX_BIT_RATES             15

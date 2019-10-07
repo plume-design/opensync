@@ -38,6 +38,7 @@ char* strargv(char **cmd, bool with_quotes);
 int strcmp_len(char *a, size_t alen, char *b, size_t blen);
 ssize_t base64_encode(char *out, ssize_t out_sz, void *input, ssize_t input_sz);
 ssize_t base64_decode(void *out, ssize_t out_sz, char *input);
+void str_unescape_hex(char *str);
 char *strchomp(char *str, char *delim);
 
 int count_nt_array(char **array);

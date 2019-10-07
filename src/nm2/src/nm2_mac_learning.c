@@ -88,6 +88,10 @@ nm2_mac_learning_update(struct schema_OVS_MAC_Learning *omac, bool oper_status)
         LOGD("Removed MAC learning '%s' with '%s' '%s'",
                         omac->hwaddr, omac->brname, omac->ifname);
 
+        // Update the eth_devices tag in OpenFlow_Tag
+        if (lan_clients_oftag_remove_mac(omac->hwaddr) == -1)
+            LOGE("Updating OpenFlow_Tag %s (Failed to remove entry)",
+                   omac->hwaddr);
     }
     else
     {
@@ -103,6 +107,10 @@ nm2_mac_learning_update(struct schema_OVS_MAC_Learning *omac, bool oper_status)
         LOGD("Updated MAC learning '%s' with '%s' '%s'",
                         omac->hwaddr, omac->brname, omac->ifname);
 
+        // Update the eth_devices tag in OpenFlow_Tag
+        if (lan_clients_oftag_add_mac(omac->hwaddr) == -1)
+            LOGE("Updating OpenFlow_Tag %s (Failed to insert entry)",
+                   omac->hwaddr);
     }
 
     return true;

@@ -30,73 +30,105 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 #include <stdint.h>
 #include <inttypes.h>
+#include <time.h>
 
 #include "fsm.h"
 #include "log.h"
 
 // Intervals and timeouts in seconds
-#define FSM_TIMER_INTERVAL 120
-
-static void fsm_event_cb(struct ev_loop *loop, ev_timer *watcher, int revents) {
+#define FSM_TIMER_INTERVAL 5
+#define FSM_MGR_INTERVAL 120
+/**
+ * @brief periodic routine. Calls fsm sessions' reiodic call backs
+ */
+static void
+fsm_event_cb(struct ev_loop *loop, ev_timer *watcher, int revents)
+{
     struct fsm_mgr *mgr = fsm_get_mgr();
     ds_tree_t *sessions = fsm_get_sessions();
     struct fsm_session *session = ds_tree_head(sessions);
     struct mem_usage mem = { 0 };
+    time_t now = time(NULL);
 
     (void)loop;
     (void)watcher;
     (void)revents;
 
-    while (session != NULL) {
-        if ((session->topic != NULL) && (session->report_count != 0)) {
-            LOGI("Session %s: sent a total of %" PRId64 " reports",
-                 session->topic, session->report_count);
-        }
-        if (session->periodic != NULL) {
-            session->periodic(session);
-        }
+    while (session != NULL)
+    {
+        if (session->ops.periodic != NULL) session->ops.periodic(session);
         session = ds_tree_next(sessions, session);
     }
 
+    now = time(NULL);
+    if ((now - mgr->periodic_ts) < FSM_MGR_INTERVAL) return;
+
+    mgr->periodic_ts = now;
     fsm_get_memory(&mem);
     LOGI("pid %s: mem usage: real mem: %u, virt mem %u",
          mgr->pid, mem.curr_real_mem, mem.curr_virt_mem);
 
 }
 
-void fsm_event_init(void) {
+/**
+ * @brief periodic timer initialization
+ */
+void
+fsm_event_init(void)
+{
     struct fsm_mgr *mgr = fsm_get_mgr();
     LOGI("Initializing FSM event");
     ev_timer_init(&mgr->timer, fsm_event_cb,
                   FSM_TIMER_INTERVAL, FSM_TIMER_INTERVAL);
     mgr->timer.data = NULL;
+    mgr->periodic_ts = time(NULL);
     ev_timer_start(mgr->loop, &mgr->timer);
 }
 
+
+/**
+ * @brief place holder
+ */
+
 void fsm_event_close(void) {};
 
-void fsm_get_memory(struct mem_usage *mem) {
+
+/**
+ * @brief gather process memory usage
+ *
+ * @param mem memory usage counters container
+ */
+void
+fsm_get_memory(struct mem_usage *mem)
+{
     struct fsm_mgr *mgr = fsm_get_mgr();
     char buffer[1024] = "";
     char fname[128];
 
     snprintf(fname, sizeof(fname), "/proc/%s/status", mgr->pid);
     FILE* file = fopen(fname, "r");
+
+    if (file == NULL) return;
+
     memset(mem, 0, sizeof(*mem));
 
     // read the entire file
-    while (fscanf(file, " %1023s", buffer) == 1) {
-
-        if (strcmp(buffer, "VmRSS:") == 0) {
-            fscanf(file, " %d", &mem->curr_real_mem);
+    while (fscanf(file, " %1023s", buffer) == 1)
+    {
+        if (strcmp(buffer, "VmRSS:") == 0)
+        {
+           fscanf(file, " %d", &mem->curr_real_mem);
         }
-        if (strcmp(buffer, "VmHWM:") == 0) {
+        if (strcmp(buffer, "VmHWM:") == 0)
+        {
             fscanf(file, " %d", &mem->peak_real_mem);
         }
-        if (strcmp(buffer, "VmSize:") == 0) {
+        if (strcmp(buffer, "VmSize:") == 0)
+        {
             fscanf(file, " %d", &mem->curr_virt_mem);
         }
-        if (strcmp(buffer, "VmPeak:") == 0) {
+        if (strcmp(buffer, "VmPeak:") == 0)
+        {
             fscanf(file, " %d", &mem->peak_virt_mem);
         }
     }

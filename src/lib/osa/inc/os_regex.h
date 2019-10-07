@@ -36,7 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 {                                       \
     .re_id = (id),                      \
     .re_str = (str),                    \
-    .PRIV(re_flags) = 0x0               \
+    .__re_flags = 0x0                   \
 }
 
 #define OS_REG_LIST_END(id)   OS_REG_LIST_ENTRY(id, NULL)
@@ -62,8 +62,8 @@ typedef struct
     const char*     re_str;
     int32_t         re_id;
 
-    regex_t         PRIV(re_ex);
-    uint32_t        PRIV(re_flags);
+    regex_t         __re_ex;
+    uint32_t        __re_flags;
 } os_reg_list_t;
 
 extern int os_reg_list_match(

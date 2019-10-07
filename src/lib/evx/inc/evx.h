@@ -40,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * ===========================================================================
  */
 typedef struct ev_debounce ev_debounce;
+typedef void ev_debounce_fn_t(struct ev_loop *loop, ev_debounce *w, int revent);
 
 struct ev_debounce
 {
@@ -52,34 +53,38 @@ struct ev_debounce
         };
         ev_timer timer;
     };
-    ev_tstamp timeout;
+    ev_debounce_fn_t   *fn;                 /* Actual callback */
+    ev_tstamp           timeout;            /* Debounce timeout */
+    ev_tstamp           timeout_max;        /* Debounce timeout hard limit */
+    ev_tstamp           ts_start;           /* Timestamp of first debounce request */
 };
 
-static inline void ev_debounce_init(
-        ev_debounce *ev,
-        void (ev_debounce_fn)(struct ev_loop *loop, ev_debounce *w, int revent),
-        double timeout)
-{
-    ev->timeout = timeout;
-    ev_timer_init(&ev->timer, (void *)ev_debounce_fn, timeout, 0.0);
-}
+/**
+ * Initialize the ev_debounce object
+ *
+ * param[in]    ev - ev_debounce object
+ * param[in]    fn - the callback
+ * param[in]    timeout - timeout after which the callback will be executed
+ * param[in]    timeout_max - maximum amount of time, that a callback can be
+ *              postponed. If set to 0.0, the callback can be postponed
+ *              indefinitely.
+ */
+void ev_debounce_init2(ev_debounce *ev, ev_debounce_fn_t *fn, double timeout, double timeout_max);
 
-static inline void ev_debounce_start(struct ev_loop *loop, ev_debounce *w)
-{
-    if (ev_is_active(&w->timer))
-    {
-        ev_timer_stop(loop, &w->timer);
-    }
+/**
+ * Simple wrapper for ev_debounce_init() -- mostly for backwards compatibility.
+ */
+void ev_debounce_init(ev_debounce *ev, ev_debounce_fn_t *fn, double timeout);
 
-    /* Re-arm the timer */
-    ev_timer_set(&w->timer, w->timeout, 0.0);
-    ev_timer_start(loop, &w->timer);
-}
+/**
+ * Start or re-arm the debounce timer
+ */
+void ev_debounce_start(struct ev_loop *loop, ev_debounce *w);
 
-static inline void ev_debounce_stop(struct ev_loop *loop, ev_debounce *w)
-{
-    ev_timer_stop(loop, &w->timer);
-}
+/**
+ * Stop the debounce timer
+ */
+void ev_debounce_stop(struct ev_loop *loop, ev_debounce *w);
 
 #ifdef BUILD_HAVE_LIBCARES
 typedef struct {
@@ -96,6 +101,7 @@ typedef struct {
 int evx_init_ares(struct ev_loop * loop, evx_ares *eares_p);
 int evx_init_default_chan_options(evx_ares *eares_p);
 void evx_stop_ares(evx_ares *eares_p);
+void evx_ares_trigger_ares_process(evx_ares *eares_p);
 #endif /* BUILD_HAVE_LIBCARES */
 
 #endif /* EVX_H_INCLUDED */

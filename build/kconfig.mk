@@ -22,8 +22,28 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#
+# Each target platform must define the location of the Kconfig configuration
+# file by setting the KCONFIG_TARGET variable. If the variable is empty, a
+# default config file will be used (see KCONFIG_DEFAULT below).
+#
+# The most prominent variables used throughout this makefile:
+#
+# KCONFIG_TARGET - Path to the current Kconfig configuration file. This is a
+#                  distilled version of the file (diff), meaning that it
+#                  doesn't contain options that are not different from the
+#                  defaults
+# KCONFIG_DEFAULT- Path to the defualt kconfig file, if none is set
+#
+# KCONFIG        - This either points to KCONFIG_TARGET or KCONFIG_DEFAULT
+#
+# KCONFIG_WORK   - Full Kconfig file generate from KCONFIG; this is what is
+#                  currently being used as the "real" kconfig file
+#
+# KWORKDIR       - Working directory, this is where KCONFIG_WORK will be stored
+
+KWORKDIR := work/$(TARGET)/kconfig
 KCONFIG_DEFAULT:=kconfig/targets/config_default
-#KCONFIG_TARGET?=kconfig/targets/config_$(TARGET)
 
 # For locally installed kconfiglib using PIP
 export PATH:=${PATH}:${HOME}/.local/bin
@@ -62,62 +82,37 @@ ifeq ($(wildcard $(KCONFIG_TARGET)),)
 $(warning $(call COLOR_YELLOW,No kconfig for target $(TARGET).) Using default: $(KCONFIG_DEFAULT))
 KCONFIG:=$(KCONFIG_DEFAULT)
 else
+$(info Using configuration file: $(KCONFIG_TARGET))
 KCONFIG:=$(KCONFIG_TARGET)
 endif
 
-include $(KCONFIG)
+# KCONFIG_WORK is the full (it includes defualt options) configuration file that will be generated from KCONFIG.
+KCONFIG_WORK:=$(KWORKDIR)/$(notdir $(KCONFIG))
+
+include $(KCONFIG_WORK)
+
+$(KCONFIG_WORK): $(KCONFIG)
+	@echo "$(call COLOR_GREEN,Generating kconfig file and headers: $(KCONFIG_WORK))"
+	$(Q)mkdir -p "$(KWORKDIR)"
+	$(Q)kconfig/diffconfig --unminimize  --config "$(KCONFIG)" --out "$(KCONFIG_WORK)" kconfig/Kconfig
+	$(Q)KCONFIG_CONFIG="$(KCONFIG_WORK)" genconfig kconfig/Kconfig --header-path "$(KCONFIG_WORK).h"
 
 .PHONY: _kconfig_target_check
 _kconfig_target_check:
-	$(Q)[ -n "$(KCONFIG_TARGET)" ] || { echo "$(call COLOR_RED,ERROR:) KCONFIG_TARGET not set. Please define KCONFIG_TARGET for your target before calling menuconfig or oldconfig."; exit 1; }
+	$(Q)[ -n "$(KCONFIG_TARGET)" ] || { echo "$(call COLOR_RED,ERROR:) KCONFIG_TARGET not set. Please define KCONFIG_TARGET for your target before calling menuconfig."; exit 1; }
 
-.PHONY: _kconfig_update _kconfig_update_cleanup _kconfig_update_min _kconfig_update_h
-_kconfig_update_cleanup:
-	@echo "$(call COLOR_GREEN,Generating kconfig configuration: $(KCONFIG))"
-	$(Q)sed -i -re '/# CONFIG_PLATFORM_IS_|# CONFIG_VENDOR_IS_/d' "$(KCONFIG)"
-
-_kconfig_update_min:
+.PHONY: _kconfig_update
+_kconfig_update:
 # Write out minimized config
-	@echo "$(call COLOR_GREEN,Generating minimized configuration: $(KCONFIG).diff)"
-	$(Q)kconfig/diffconfig --config "$(KCONFIG)" --out "$(KCONFIG).diff" kconfig/Kconfig
+	@echo "$(call COLOR_GREEN,Generating minimized configuration: $(KCONFIG))"
+	$(Q)kconfig/diffconfig --config "$(KCONFIG_WORK)" --out "$(KCONFIG)" kconfig/Kconfig
 
-_kconfig_update_h:
-	@echo "$(call COLOR_GREEN,Generating kconfig header file: $(KCONFIG).h)"
-	$(Q)KCONFIG_CONFIG="$(KCONFIG)" genconfig kconfig/Kconfig --header-path "$(KCONFIG).h"
+.PHONY: _menuconfig
+_menuconfig: $(KCONFIG_WORK)
+	$(Q)KCONFIG_CONFIG="$(KCONFIG_WORK)" menuconfig kconfig/Kconfig
 
-_kconfig_update: _kconfig_update_cleanup _kconfig_update_min _kconfig_update_h
-
-.PHONY: menuconfig _menuconfig
-_menuconfig:
-	echo $$MENUCONFIG_STYLE
-	$(Q)KCONFIG_CONFIG="$(KCONFIG)" menuconfig kconfig/Kconfig
-
-menuconfig: KCONFIG:=$(KCONFIG_TARGET)
+.PHONY: menuconfig
 menuconfig: _kconfig_target_check _menuconfig _kconfig_update
 
-.PHONY: oldconfig _oldconfig
-_oldconfig:
-	$(Q)KCONFIG_CONFIG="$(KCONFIG)" oldconfig kconfig/Kconfig
-
-oldconfig: KCONFIG:=$(KCONFIG_TARGET)
-oldconfig: _kconfig_target_check _oldconfig _kconfig_update
-
-.PHONY: refreshconfig _refreshconfig
-_refreshconfig:
-	$(Q)[ -e "$(KCONFIG).diff" ] || { echo "$(call COLOR_RED,ERROR:) Diffconfig \"$(KCONFIG).diff\" doesn't exist. Cannot refresh config."; exit 1; }
-	@echo "$(call COLOR_YELLOW,Refreshing config file: $(KCONFIG))"
-	$(Q)kconfig/diffconfig --unminimize --config "$(KCONFIG).diff" --out "$(KCONFIG)" kconfig/Kconfig
-
-refreshconfig: KCONFIG:=$(KCONFIG_TARGET)
-refreshconfig: _kconfig_target_check _refreshconfig _kconfig_update_cleanup _kconfig_update_h
-
-.PHONY: update_default_config _update_defaul_config
-_update_default_config:
-	@echo "$(call COLOR_GREEN,Updating default kconfig: $(KCONFIG))"
-	$(Q)KCONFIG_CONFIG="$(KCONFIG)" alldefconfig kconfig/Kconfig
-
-update_default_config: KCONFIG:=$(KCONFIG_DEFAULT)
-update_default_config: _update_default_config _kconfig_update
-
-kconfiglib_install:
-	pip3 install --user kconfiglib==10.7.0
+kconfig_install:
+	pip3 install --user kconfiglib==10.40.0

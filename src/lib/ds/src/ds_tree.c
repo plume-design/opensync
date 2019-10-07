@@ -594,10 +594,21 @@ void ds_tree_graphviz(ds_tree_t *root, FILE *fdot)
 /**
  * Integer comparator
  */
-int ds_int_cmp(void *a, void *b)
+int ds_int_cmp(void *_a, void *_b)
 {
-    return (int)((intptr_t)b - (intptr_t)a);
+    int *a = _a;
+    int *b = _b;
+    return *a - *b;
 }
+
+/**
+ * Pointer comparison (the key value is stored directly)
+ */
+int ds_void_cmp(void *a, void *b)
+{
+    return (int)((intptr_t)a - (intptr_t)b);
+}
+
 
 /**
  * String comparator

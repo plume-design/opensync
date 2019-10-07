@@ -29,6 +29,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *  NULL implementation of the DNS resolver
  * ===========================================================================
  */
+
+#include "log.h"
 #include "inet_dns.h"
 
 inet_dns_t *inet_dns_new(const char *ifname)
@@ -67,8 +69,8 @@ bool inet_dns_stop(inet_dns_t *self)
 
 bool inet_dns_server_set(
         inet_dns_t *self,
-        inet_ip4addr_t primary,
-        inet_ip4addr_t secondary)
+        osn_ip_addr_t primary,
+        osn_ip_addr_t secondary)
 {
     (void)self;
     (void)primary;

@@ -42,6 +42,20 @@ TESTBINDIR = $(BINDIR)/utest
 WORKDIRS += $(TESTBINDIR)
 
 ##########################################################
+# Overriding CFLAGS from the command line doesn't really
+# work at the moment (make CFLAGS=...). As a workaround,
+# implement LOCAL_CFLAGS, which can be used to add 
+# developer C flags to the target's CFLAGS.
+#
+# This is useful for specifying options like
+# "-fmax-errors=5" to limit the number of errors displayed
+# during edit-compile-error-repeat cycles.
+##########################################################
+ifneq ($(LOCAL_CFLAGS),)
+CFLAGS += $(LOCAL_CFLAGS)
+endif
+
+##########################################################
 # Definition of a "BIN" type unit
 ##########################################################
 define UNIT_BUILD_BIN

@@ -46,25 +46,25 @@ int os_reg_list_match(
     for (re = relist; re->re_str != NULL; re++)
     {
         /* Compile the regular expression */
-        if (!(re->PRIV(re_flags) & OS_REG_FLAG_INIT))
+        if (!(re->__re_flags & OS_REG_FLAG_INIT))
         {
-            re->PRIV(re_flags) |= OS_REG_FLAG_INIT;
+            re->__re_flags |= OS_REG_FLAG_INIT;
 
-            if (regcomp(&re->PRIV(re_ex), re->re_str, REG_EXTENDED) != 0)
+            if (regcomp(&re->__re_ex, re->re_str, REG_EXTENDED) != 0)
             {
-                re->PRIV(re_flags) |= OS_REG_FLAG_INVALID;
+                re->__re_flags |= OS_REG_FLAG_INVALID;
                 LOG(ERR, "Error compiling regular expression::regex=%s", re->re_str);
                 continue;
             }
         }
 
         /* Skip invalid entries */
-        if (re->PRIV(re_flags) & OS_REG_FLAG_INVALID)
+        if (re->__re_flags & OS_REG_FLAG_INVALID)
         {
             continue;
         }
 
-        if (regexec(&re->PRIV(re_ex), str, nmatch, pmatch, 0) == 0)
+        if (regexec(&re->__re_ex, str, nmatch, pmatch, 0) == 0)
         {
             break;
         }

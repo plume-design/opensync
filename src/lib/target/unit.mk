@@ -35,10 +35,7 @@ UNIT_TYPE := LIB
 TARGET_COMMON_SRC := src/target_stub.c
 TARGET_COMMON_SRC += src/target_map.c
 TARGET_COMMON_SRC += src/target_linux.c
-TARGET_COMMON_SRC += src/target_ovs.c
-TARGET_COMMON_SRC += src/target_inet.c
 TARGET_COMMON_SRC += src/target_mac_learn.c
-TARGET_COMMON_SRC += src/target_dhcp.c
 
 UNIT_SRC += $(TARGET_COMMON_SRC)
 ifeq ($(filter-out native,$(TARGET)),)
@@ -69,9 +66,6 @@ UNIT_DEPS_CFLAGS += src/lib/datapipeline
 ifdef CONFIG_USE_KCONFIG
 $(eval $(if $(CONFIG_PML_TARGET),TARGET_COMMON_SRC += src/target_kconfig.c))
 $(eval $(if $(CONFIG_PML_TARGET),UNIT_DEPS += src/lib/kconfig))
-$(eval $(if $(CONFIG_PML_INET),UNIT_DEPS += src/lib/inet))
-else
-UNIT_DEPS += src/lib/inet
 endif
 
 
