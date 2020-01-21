@@ -39,6 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <libgen.h>
 #include <limits.h>
 
+#include "util.h"
 #include "sm.h"
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
@@ -357,9 +358,6 @@ bool sm_rssi_report_calculate_average (
     dpp_rssi_raw_t                 *rssi_entry;
     ds_dlist_iter_t                 rssi_iter;
     dpp_avg_t                      *rssi = &report_entry->rssi.avg;
-
-#define MIN(x, y) ((x) < (y) ? (x) : (y))
-#define MAX(x, y) ((x) > (y) ? (x) : (y))
 
     /* Loop through each cached record and prepare RAW report */
     rssi_entry = ds_dlist_ifirst(&rssi_iter, &record_entry->rssi.raw);

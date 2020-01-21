@@ -54,9 +54,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /*****************************************************************************/
 static ovsdb_update_monitor_t   bm_neighbor_ovsdb_update;
+static ovsdb_update_monitor_t   bm_vif_state_ovsdb_update;
 static ds_tree_t                bm_neighbors = DS_TREE_INIT( (ds_key_cmp_t *)strcmp,
                                                              bm_neighbor_t,
                                                              dst_node );
+
+static void
+bm_neighbor_add_to_pair_by_band(const bm_pair_t *pair, bsal_band_t band, bool skip_2g_neighbors);
 
 static c_item_t map_ovsdb_chanwidth[] = {
     C_ITEM_STR( RADIO_CHAN_WIDTH_20MHZ,         "HT20" ),
@@ -248,6 +252,52 @@ bm_neighbor_from_ovsdb( struct schema_Wifi_VIF_Neighbors *nconf, bm_neighbor_t *
 }
 
 static void
+bm_vif_state_ovsdb_update_cb(ovsdb_update_monitor_t *self)
+{
+    struct schema_Wifi_VIF_State vstate;
+    unsigned int i;
+    ds_tree_t *pairs;
+    bm_pair_t *pair;
+    pjs_errmsg_t perr;
+
+    switch(self->mon_type)
+    {
+        case OVSDB_UPDATE_NEW:
+        case OVSDB_UPDATE_MODIFY:
+            if (!schema_Wifi_VIF_State_from_json(&vstate, self->mon_json_new, false, perr)) {
+                LOGE("Failed to prase new Wifi_VIF_State row: %s", perr);
+                break;
+            }
+
+            if (!vstate.channel_exists)
+                break;
+
+            if (!(pairs = bm_pair_get_tree())) {
+                LOGE("%s failed to get pair tree", __func__);
+                break;;
+            }
+
+            ds_tree_foreach(pairs, pair) {
+                for (i = 0; i < ARRAY_SIZE(pair->ifcfg); i++) {
+                    if (strcmp(pair->ifcfg[i].ifname, vstate.if_name))
+                        continue;
+                    if (pair->self_neigh[i].channel == vstate.channel)
+                        continue;
+                    LOGI("%s self %d new %d", vstate.if_name, pair->self_neigh[i].channel, vstate.channel);
+                    pair->self_neigh[i].channel = vstate.channel;
+                    pair->self_neigh[i].op_class = bm_neighbor_get_op_class(vstate.channel);
+                    bm_neighbor_add_to_pair_by_band(pair, i, i == BSAL_BAND_5G ? true : false);
+                }
+            }
+
+            break;
+        case OVSDB_UPDATE_DEL:
+        default:
+            break;
+    }
+}
+
+static void
 bm_neighbor_ovsdb_update_cb( ovsdb_update_monitor_t *self )
 {
     struct schema_Wifi_VIF_Neighbors    nconf;
@@ -377,6 +427,14 @@ bm_neighbor_init( void )
                                SCHEMA_TABLE( Wifi_VIF_Neighbors ),
                                OMT_ALL ) ) {
         LOGE( "Failed to monitor OVSDB table '%s'", SCHEMA_TABLE( Wifi_VIF_Neighbors ) );
+        return false;
+    }
+
+    if (!ovsdb_update_monitor(&bm_vif_state_ovsdb_update,
+                              bm_vif_state_ovsdb_update_cb,
+                              SCHEMA_TABLE(Wifi_VIF_State),
+                              OMT_ALL)) {
+        LOGE("Failed to monitor OVSDB table %s", SCHEMA_TABLE(Wifi_VIF_State));
         return false;
     }
 

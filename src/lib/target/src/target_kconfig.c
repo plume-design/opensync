@@ -369,8 +369,11 @@ int target_led_names(const char **leds[])
 
 /* CONNECTIVITY CHECK CONFIGURATION */
 #define PROC_NET_ROUTE                  "/proc/net/route"
+#define DEFAULT_PING_PACKET_SIZE        4
 #define DEFAULT_PING_PACKET_CNT         2
 #define DEFAULT_PING_TIMEOUT            4
+
+#define DEFAULT_BACKHAUL_PREFIX         "169.254."
 
 // Internet IP Addresses
 static char *util_connectivity_check_inet_addrs[] = {
@@ -408,7 +411,7 @@ static int
 util_timespec_cmp_lt(struct timespec *cur, struct timespec *ref)
 {
      if (cur == NULL || ref == NULL)
-         return 0;
+         return -1;
 
      if (cur->tv_sec < ref->tv_sec)
          return 1;
@@ -452,9 +455,7 @@ util_ntp_check(void)
         LOGE("Failed to get wall clock, errno=%d", errno);
         return false;
     }
-
-    if (util_timespec_cmp_lt(&cur, &target))
-        ret = false;
+    ret = (util_timespec_cmp_lt(&cur, &target) == 0) ? true : false;
 
     return ret;
 }
@@ -462,16 +463,40 @@ util_ntp_check(void)
 static bool
 util_ping_cmd(const char *ipstr)
 {
-    char cmd[128];
-    int rc;
+    char cmd[256];
+    bool rc;
 
-    snprintf(cmd, sizeof(cmd), "ping %s -c %d -w %d >/dev/null 2>&1",
-             ipstr, DEFAULT_PING_PACKET_CNT, DEFAULT_PING_TIMEOUT);
+    snprintf(cmd, sizeof(cmd), "ping %s -s %d -c %d -w %d >/dev/null 2>&1",
+             ipstr, DEFAULT_PING_PACKET_SIZE, DEFAULT_PING_PACKET_CNT,
+             DEFAULT_PING_TIMEOUT);
 
     rc = target_device_execute(cmd);
     LOGD("Ping %s result %d (cmd=%s)", ipstr, rc, cmd);
+    if (!rc)
+        LOGI("Ping %s failed (cmd=%s)", ipstr, cmd);
 
     return rc;
+}
+
+static bool
+util_arping_cmd(const char *ipstr)
+{
+    char cmd[256];
+    bool ret;
+
+    snprintf(ARRAY_AND_SIZE(cmd),
+             "arping -I \"$(ip ro get %s"
+             " | cut -d' ' -f3"
+             " | sed 1q)\" -c %d -w %d %s",
+             ipstr,
+             DEFAULT_PING_PACKET_CNT,
+             DEFAULT_PING_TIMEOUT,
+             ipstr);
+
+    ret = target_device_execute(cmd);
+
+    LOGI("Arping %s result %d (cmd=%s)", ipstr, ret, cmd);
+    return ret;
 }
 
 static bool
@@ -524,20 +549,37 @@ util_get_router_ip(struct in_addr *dest)
 }
 
 static bool
+util_is_gretap_softwds_link(const char *ifname)
+{
+    char path[256];
+
+    snprintf(path, sizeof(path), "/sys/class/net/g-%s/softwds/addr", ifname);
+    return (access(path, F_OK) == 0);
+}
+
+static bool
 util_get_link_ip(const char *ifname, struct in_addr *dest)
 {
     char  line[128];
+    char  cmd[128];
     bool  retval;
     FILE  *f1;
 
     f1 = NULL;
     retval = false;
 
-    f1 = popen("ip -d link | egrep gretap | "
-               " egrep bhaul-sta | ( read a b c d; echo $c )", "r");
+    if (util_is_gretap_softwds_link(ifname)) {
+        snprintf(cmd, sizeof(cmd),
+                 "cat /sys/class/net/g-%s/softwds/ip4gre_remote_ip",
+                 ifname);
+    } else {
+        snprintf(cmd, sizeof(cmd), "ip -d link | egrep gretap | "
+                 "egrep %s | ( read a b c d; echo $c )", ifname);
+    }
 
+    f1 = popen(cmd, "r");
     if (!f1) {
-        LOGE("Failed to retreive Wifi Link remote IP address");
+        LOGE("Failed to retrieve Wifi Link remote IP address");
         goto error;
     }
 
@@ -550,6 +592,7 @@ util_get_link_ip(const char *ifname, struct in_addr *dest)
         line[strlen(line)-1] = '\0';
     }
 
+    LOGD("local IP addr = %s dest addr = %s", line, inet_ntoa(*dest));
     if (inet_pton(AF_INET, line, dest) != 1) {
         LOGW("Failed to parse Wifi Link remote IP address (%s)", line);
         goto error;
@@ -557,7 +600,7 @@ util_get_link_ip(const char *ifname, struct in_addr *dest)
 
     retval = true;
 
-  error:
+error:
     if (f1 != NULL)
         pclose(f1);
 
@@ -568,16 +611,32 @@ static bool
 util_connectivity_link_check(const char *ifname)
 {
     struct in_addr link_ip;
+    int            iflen;
 
-    /* GRE uses IPs on backhaul to form tunnels that are put into bridges.
-     * SoftWDS doesn't rely on IPs so there's nothing to ping.
-     */
-    if (!strstr(ifname, "bhaul-sta"))
+    if (!strstr(ifname, "g-"))
         return true;
 
-    if (util_get_link_ip(ifname, &link_ip)) {
+    iflen = strlen(ifname);
+    if (iflen - 2 <= 0) {
+        LOGW("Interface name corrupted [len = %d]", iflen);
+        return false;
+    }
+
+    if (util_get_link_ip(ifname + 2, &link_ip))
+    {
         if (util_ping_cmd(inet_ntoa(link_ip)) == false)
-            return false;
+        {
+            /* ARP traffic tends to be treated differently, i.e.
+             * it lands on different TID in Wi-Fi driver.
+             * There's a chance its choking up on default TID0
+             * but works fine on TID7 which handles ARP/DHCP.
+             * It's nice to detect that as it helps debugging.
+             */
+            if (strstr(inet_ntoa(link_ip), DEFAULT_BACKHAUL_PREFIX)) {
+                util_arping_cmd(inet_ntoa(link_ip));
+                return false;
+            }
+        }
     }
     return true;
 }
@@ -586,17 +645,19 @@ static bool
 util_connectivity_router_check()
 {
     struct in_addr r_addr;
+    bool           ret;
 
     if (util_get_router_ip(&r_addr) == false) {
         // If we don't have a router, that's considered a failure
         return false;
     }
 
-    if (util_ping_cmd(inet_ntoa(r_addr)) == false) {
-        return false;
+    ret = util_ping_cmd(inet_ntoa(r_addr));
+    if (!ret) {
+        LOGI("Router check: ping failed, arping checking");
+        ret = util_arping_cmd(inet_ntoa(r_addr));
     }
-
-    return true;
+    return ret;
 }
 
 static bool

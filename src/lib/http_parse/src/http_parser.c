@@ -25,12 +25,10 @@
 #include <string.h>
 #include <limits.h>
 
+#include "util.h"
+
 #ifndef ULLONG_MAX
 # define ULLONG_MAX ((uint64_t) -1) /* 2^64-1 */
-#endif
-
-#ifndef MIN
-# define MIN(a,b) ((a) < (b) ? (a) : (b))
 #endif
 
 #ifndef ARRAY_SIZE
@@ -1577,7 +1575,7 @@ http_parser_execute(http_parser *parser,
                     const char* p_lf;
                     size_t limit = data + len - p;
 
-                    limit = MIN(limit, HTTP_MAX_HEADER_SIZE);
+                    limit = MIN(limit, (size_t)HTTP_MAX_HEADER_SIZE);
 
                     p_cr = (const char*) memchr(p, CR, limit);
                     p_lf = (const char*) memchr(p, LF, limit);

@@ -226,9 +226,6 @@ err_free_conf:
 err_free_ops:
     free(plugin_ops);
 
-err_free_plugin_ops:
-    free(plugin_ops);
-
 err_free_name:
     free(service->name);
 

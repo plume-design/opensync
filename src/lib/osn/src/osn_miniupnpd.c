@@ -56,7 +56,7 @@ static char upnp_miniupnpd_conf_header[] =
     "enable_upnp=yes\n"
     "secure_mode=yes\n"
     "system_uptime=yes\n"
-    "allow 1024-65535 0.0.0.0/0 1024-65535\n"
+    "allow 1-65535 0.0.0.0/0 1-65535\n"
     "deny 0-65535 0.0.0.0/0 0-65535\n"
     "\n"
     "# ---\n"

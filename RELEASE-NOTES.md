@@ -2,6 +2,21 @@ OpenSync™ Release Notes
 -----------------------
 
 
+### Release 1.4.1.0
+
+* Notable Enhancements
+    - Use `arping` to test upstream router connectivity when the router
+      does not reply to pings
+* Notable Fixes
+    - Reworked `c-ares` handling (fix for occasional CM crashes)
+    - Fixed a problem with not including own channel in 802.11k neighbor reports
+    - Fixed/enhanced logic in CM (improved stability)
+    - Fixed a corner case that could cause topology changes to fail
+    - Relaxed default UPnP port forwarding rules to allow ports below 1024
+    - Fix for not removing an old port forwarding rule when a rule is modified
+    - Fix for a FSM crash (potential 'double free' when misconfigured)
+
+
 ### Release 1.4.0.1
 
 * Notable Enhancements

@@ -48,6 +48,19 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 static ovsdb_update_monitor_t nm2_portfw_monitor;
 static ovsdb_update_cbk_t nm2_portfw_monitor_fn;
 
+/*
+ * Port forwarding cached entry
+ */
+struct portfw_entry
+{
+    ovs_uuid_t                  pfw_uuid;           /* UUID of OVS Row */
+    struct inet_portforward     pfw_data;           /* Port forwarding structure */
+    ds_tree_node_t              pfw_tnode;          /* RB-Tree node */
+};
+
+/* Port forwarding cache list */
+static ds_tree_t portfw_list = DS_TREE_INIT(ds_str_cmp, struct portfw_entry, pfw_tnode);
+
 static bool nm2_portfw_add(struct schema_IP_Port_Forward *pschema);
 static bool nm2_portfw_del(struct schema_IP_Port_Forward *pschema);
 
@@ -132,73 +145,98 @@ void nm2_portfw_monitor_fn(ovsdb_update_monitor_t *self)
  *
  * The interface *MUST* exists before populating the port forwarding schema as
  * we're unable to infer the interface type from the port forwarding table.
+ *
+ * If an entry with the same UUID already exists in the cache, the old entry
+ * is removed before the new entry is added.
  */
 bool nm2_portfw_add(struct schema_IP_Port_Forward *pschema)
 {
-    struct inet_portforward portfw;
+    struct portfw_entry *pfw;
     struct nm2_iface *piface;
 
-    if (!nm2_inet_portforward_from_schema(&portfw, pschema))
+    piface = nm2_iface_get_by_name(pschema->src_ifname);
+    if (piface == NULL)
+    {
+        LOG(ERR, "portfw: Unable to add port forwarding entry. Interface %s doesn't exist.",
+                pschema->src_ifname);
+        return false;
+    }
+
+    pfw = ds_tree_find(&portfw_list, pschema->_uuid.uuid);
+    if (pfw == NULL)
+    {
+        /* Allocate new entry and insert it into the cache */
+        pfw = calloc(1, sizeof(struct portfw_entry));
+        STRSCPY(pfw->pfw_uuid.uuid, pschema->_uuid.uuid);
+        ds_tree_insert(&portfw_list, pfw, pfw->pfw_uuid.uuid);
+    }
+    else
+    {
+        /* Entry already exists, remove configuration from interface */
+        if (!inet_portforward_del(piface->if_inet, &pfw->pfw_data))
+        {
+            LOG(ERR, "portfw: Unable to update port forwarding entry "PRI(inet_portforward),
+                    FMT(inet_portforward, pfw->pfw_data));
+            return false;
+        }
+    }
+
+    if (!nm2_inet_portforward_from_schema(&pfw->pfw_data, pschema))
     {
         LOG(ERR, "portfw: Unable to parse schema (add).");
         return false;
     }
 
-    piface = nm2_iface_get_by_name(pschema->src_ifname);
-    if (piface == NULL)
-    {
-        LOG(ERR, "portfw: Unable to add port forwarding entry "PRI(inet_portforward)". Interface %s doesn't exist.",
-                FMT(inet_portforward, portfw),
-                pschema->src_ifname);
-        return false;
-    }
-
     /* Push configuration to the interface */
-    if (!inet_portforward_set(piface->if_inet, &portfw))
+    if (!inet_portforward_set(piface->if_inet, &pfw->pfw_data))
     {
         LOG(ERR, "portfw: Unable add port forwarding entry "PRI(inet_portforward),
-                FMT(inet_portforward, portfw));
+                FMT(inet_portforward, pfw->pfw_data));
         return false;
     }
 
-    /* Schedule a confiugration apply */
+    /* Schedule a configuration apply */
     nm2_iface_apply(piface);
 
     return true;
 }
 
 /*
- * Delete port forwarding entry, this is the counterpart to n2m_portfw_set().
+ * Delete port forwarding entry, this is the counterpart to nm2_portfw_set().
  */
 bool nm2_portfw_del(struct schema_IP_Port_Forward *pschema)
 {
-    struct inet_portforward portfw;
+    struct portfw_entry *pfw;
     struct nm2_iface *piface;
-
-    if (!nm2_inet_portforward_from_schema(&portfw, pschema))
-    {
-        LOG(ERR, "portfw: Unable to parse schema (del).");
-        return false;
-    }
 
     piface = nm2_iface_get_by_name(pschema->src_ifname);
     if (piface == NULL)
     {
-        LOG(ERR, "portfw: Unable to delete port forwarding entry "PRI(inet_portforward)". Interface %s doesn't exist.",
-                FMT(inet_portforward, portfw),
+        LOG(ERR, "portfw: Unable to delete port forwarding entry. Interface %s doesn't exist.",
                 pschema->src_ifname);
         return false;
     }
 
-    /* Push configuration to the interface */
-    if (!inet_portforward_del(piface->if_inet, &portfw))
+    pfw = ds_tree_find(&portfw_list, pschema->_uuid.uuid);
+    if (pfw == NULL)
     {
-        LOG(ERR, "portfw: Unable delete port forwarding entry "PRI(inet_portforward),
-                FMT(inet_portforward, portfw));
+        LOG(ERR, "portfw: Trying to delete non-existent port forwarding entry with UUID %s.", pschema->_uuid.uuid);
         return false;
     }
 
-    /* Schedule a confiugration apply */
+    /* Push configuration to the interface */
+    if (!inet_portforward_del(piface->if_inet, &pfw->pfw_data))
+    {
+        LOG(ERR, "portfw: Unable delete port forwarding entry "PRI(inet_portforward),
+                FMT(inet_portforward, pfw->pfw_data));
+        return false;
+    }
+
+    /* Remove from cache */
+    ds_tree_remove(&portfw_list, pfw);
+    free(pfw);
+
+    /* Schedule a configuration apply */
     nm2_iface_apply(piface);
 
     return true;

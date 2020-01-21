@@ -643,7 +643,8 @@ cm2_ovsdb_util_translate_master_priority(struct schema_Wifi_Master_State *master
 }
 /**** End helper functions*/
 
-bool cm2_ovsdb_is_port_in_bridge(struct schema_Port *port, char *port_uuid)
+static bool
+cm2_ovsdb_get_port_by_uuid(struct schema_Port *port, char *port_uuid)
 {
     json_t *where;
 
@@ -653,6 +654,35 @@ bool cm2_ovsdb_is_port_in_bridge(struct schema_Port *port, char *port_uuid)
         return -1;
     }
     return ovsdb_table_select_one_where(&table_Port, where, port);
+}
+
+static bool
+cm2_ovsdb_get_port_by_name(struct schema_Port *port, char *name)
+{
+    return ovsdb_table_select_one(&table_Port, SCHEMA_COLUMN(Port, name), name, port);
+}
+
+static bool
+cm2_ovsdb_get_bridge_by_name(struct schema_Bridge *bridge, char *name)
+{
+    return ovsdb_table_select_one(&table_Bridge, SCHEMA_COLUMN(Bridge, name), name, bridge);
+}
+
+static bool
+cm2_ovsdb_is_port_in_bridge(struct schema_Bridge *bridge, struct schema_Port *port)
+{
+    bool found = false;
+    int  i;
+
+    for (i = 0; i < bridge->ports_len; i++ ) {
+        LOGD("%s: port uuid: %s", bridge->name, bridge->ports[i].uuid);
+        if (!strcmp(bridge->ports[i].uuid, port->_uuid.uuid)) {
+            LOGD("Port found in bridge");
+            found = true;
+            break;
+        }
+    }
+    return found;
 }
 
 bool
@@ -1202,6 +1232,13 @@ cm2_Connection_Manager_Uplink_handle_update(
             filter[idx++] = SCHEMA_COLUMN(Connection_Manager_Uplink, has_L3);
             uplink->has_L3 = false;
             g_state.link.vtag.state = CM2_VTAG_NOT_USED;
+            if (!strcmp(uplink->if_name, uplink->if_name) && g_state.link.restart_pending) {
+                g_state.link.restart_pending = false;
+                LOGI("Restart link due to restart pending");
+                ret = cm2_ovsdb_set_Wifi_Inet_Config_network_state(true, g_state.link.if_name);
+                if (!ret)
+                    LOGW("Force enable main uplink interface failed");
+            }
         } else {
             cm2_set_ble_onboarding_link_state(true, uplink->if_type, uplink->if_name);
             cm2_connection_set_L3(uplink);
@@ -1474,13 +1511,72 @@ static void cm2_reconfigure_ethernet_states(void)
     free(uplink_p);
 }
 
-void callback_Bridge(ovsdb_update_monitor_t *mon,
-                     struct schema_Bridge *old_row,
-                     struct schema_Bridge *bridge)
+bool cm2_ovsdb_validate_bridge_port_conf(char *bname, char *pname)
+{
+    struct schema_Bridge  bridge;
+    struct schema_Port    port;
+
+    if (!cm2_ovsdb_get_port_by_name(&port, pname)) {
+        LOGD("Port %s does not exists", pname);
+        return false;
+    }
+    if (!cm2_ovsdb_get_bridge_by_name(&bridge, bname)) {
+        LOGD("Bridge %s does not exists", bname);
+        return false;
+    }
+    if (!cm2_ovsdb_is_port_in_bridge(&bridge, &port)) {
+        LOGD("Port [%s] not included in bridge [%s]", pname, bname);
+        return false;
+    }
+
+    return true;
+}
+
+static void cm2_check_bridge_mismatch(struct schema_Bridge *base_bridge,
+                                      struct schema_Bridge *bridge,
+                                      bool added)
 {
     struct schema_Port port;
-    bool               skip_uuid;
-    int                i,j;
+    bool               mismatch;
+    int                i, j;
+
+    for (i = 0; i < base_bridge->ports_len; i++ ) {
+        LOGD("Base: %s: uuid: %s", base_bridge->name, base_bridge->ports[i].uuid);
+        mismatch = true;
+
+        for (j = 0; j < bridge->ports_len; j++) {
+            LOGD("New: %s: uuid: %s", bridge->name, bridge->ports[j].uuid);
+            if (!strcmp(base_bridge->ports[i].uuid, bridge->ports[j].uuid)) {
+                mismatch = false;
+                break;
+            }
+        }
+
+        if (mismatch) {
+            if (!cm2_ovsdb_get_port_by_uuid(&port, base_bridge->ports[i].uuid)) {
+                LOGD("Port does not exist, uuid: %s", base_bridge->ports[i].uuid);
+                continue;
+            }
+
+            if (strstr(port.name, "patch-h2w")){
+                LOGI("Patch port detected, added [%d]", added);
+                g_state.link.is_limp_state = added ? false : true;
+            }
+
+            if (strstr(port.name, ETH_TYPE_NAME)) {
+                if (added)
+                    cm2_dhcpc_stop_dryrun(port.name);
+                //else ?? TODO
+            }
+        }
+    }
+}
+
+void callback_Bridge(ovsdb_update_monitor_t *mon,
+                     struct schema_Bridge *old_bridge,
+                     struct schema_Bridge *bridge)
+{
+    bool r;
 
     LOGD("%s mon_type = %d", __func__, mon->mon_type);
 
@@ -1496,35 +1592,31 @@ void callback_Bridge(ovsdb_update_monitor_t *mon,
         case OVSDB_UPDATE_NEW:
         case OVSDB_UPDATE_MODIFY:
             if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Bridge, ports))) {
-               if (!strcmp(bridge->name, BR_WAN_NAME) &&
-                   !strcmp(g_state.link.if_type, GRE_TYPE_NAME)) {
-                   cm2_reconfigure_ethernet_states();
-                   break;
-               }
 
-               if (strcmp(bridge->name, BR_HOME_NAME))
+               if (strcmp(bridge->name, BR_HOME_NAME) &&
+                   strcmp(bridge->name, BR_WAN_NAME))
                    break;
 
-               for (i = 0; i < bridge->ports_len; i++ ) {
-                   LOGD("%s: uuid: %s", bridge->name, bridge->ports[i].uuid);
-                   skip_uuid = false;
-                   for (j = 0; j < old_row->ports_len; j++) {
-                       if (!strcmp(bridge->ports[i].uuid, old_row->ports[j].uuid)) {
-                           skip_uuid = true;
-                           break;
+               if (!strcmp(bridge->name, BR_WAN_NAME)) {
+                   if (g_state.link.is_used) {
+                       r = cm2_ovsdb_validate_bridge_port_conf(BR_WAN_NAME,
+                                                               g_state.link.if_name);
+                       if (!r) {
+                           LOGI("Main uplink was removed from bridge %s, but still is in active state",
+                                BR_WAN_NAME);
                        }
+                       break;
                    }
-                   if (!skip_uuid &&
-                       cm2_ovsdb_is_port_in_bridge(&port, bridge->ports[i].uuid)) {
-                       if (strstr(port.name, "patch-h2w")){
-                           LOGI("Bridge mode detected");
-                           g_state.link.is_limp_state = false;
-                       }
 
-                       if (strstr(port.name, ETH_TYPE_NAME))
-                           cm2_dhcpc_stop_dryrun(port.name);
-                    }
-                }
+                   if (!strcmp(g_state.link.if_type, GRE_TYPE_NAME)) {
+                       cm2_reconfigure_ethernet_states();
+                       break;
+                   }
+               }
+               /* Added new port into bridge */
+               cm2_check_bridge_mismatch(bridge, old_bridge, true);
+               /* Removed port from bridge */
+               cm2_check_bridge_mismatch(old_bridge, bridge, false);
             }
             break;
     }

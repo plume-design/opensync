@@ -194,6 +194,12 @@ test_init_plugin(struct fsm_session *session)
     return true;
 }
 
+static bool
+test_init_plugin_fail(struct fsm_session *session)
+{
+    return false;
+}
+
 
 static bool
 test_flood_mod(struct fsm_session *session)
@@ -384,6 +390,28 @@ test_duplicate_session(void)
 
 
 /**
+ * @brief validate session duplication failure
+ */
+void
+test_duplicate_session_fail(void)
+{
+    struct schema_Flow_Service_Manager_Config *conf;
+    struct fsm_session *session;
+    ds_tree_t *sessions;
+
+    /* Force init_plugin() failure */
+    g_mgr->init_plugin = test_init_plugin_fail;
+
+    /* Add a session with an explicit provider */
+    conf = &g_confs[1];
+    fsm_add_session(conf);
+    sessions = fsm_get_sessions();
+    session = ds_tree_find(sessions, conf->handler);
+    TEST_ASSERT_NULL(session);
+}
+
+
+/**
  * @brief validate session tx interface when provided by the controller
  */
 void
@@ -455,6 +483,7 @@ main(int argc, char *argv[])
     RUN_TEST(test_add_session_after_awlan);
     RUN_TEST(test_plugin_types);
     RUN_TEST(test_duplicate_session);
+    RUN_TEST(test_duplicate_session_fail);
     RUN_TEST(test_tx_intf_controller);
     RUN_TEST(test_tx_intf_kconfig);
 

@@ -130,9 +130,8 @@ bool cm2_resolve(cm2_dest_e dest)
     return true;
 }
 
-bool cm2_resolve_handle_process(void)
+void cm2_resolve_timeout(void)
 {
-    return true;
 }
 
 struct addrinfo* cm2_get_next_addrinfo(cm2_addr_t *addr)

@@ -27,44 +27,146 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <evx.h>
 #include <ares.h>
 #include "log.h"
+#include "const.h"
 
-static void io_cb (EV_P_ ev_io *w, int revents) {
-    evx_ares * eares = (evx_ares *) w;
-    ares_socket_t rfd = ARES_SOCKET_BAD, wfd = ARES_SOCKET_BAD;
+#define ARES_PROCESS_TIMEOUT 10
 
-    LOGI("%s: fd: %d revents: %d", __func__, w->fd, revents);
+static void timeout_cb(EV_P_ ev_timer *t, int revents)
+{
+    struct evx_ares   *eares_p;
+    struct timeval    tv, *tvp;
+    fd_set            readers, writers;
+    int               nfds, count;
+
+    eares_p = container_of(t, struct evx_ares, tw);
+    FD_ZERO(&readers);
+    FD_ZERO(&writers);
+
+    nfds = ares_fds(eares_p->ares.channel, &readers, &writers);
+    if (nfds == 0) {
+        LOGI("evx: ares: no nfds available");
+        evx_stop_ares(eares_p);
+        return;
+    }
+
+    tvp = ares_timeout(eares_p->ares.channel, NULL, &tv);
+    count = select(nfds, &readers, &writers, NULL, tvp);
+
+    LOGI("evx: ares timeout: count = %d, tv: %ld.%06ld tvp: %ld.%06ld",
+         count, tv.tv_sec, tv.tv_usec, tvp->tv_sec, tvp->tv_usec);
+
+    ares_process(eares_p->ares.channel, &readers, &writers);
+}
+
+static void io_cb (EV_P_ ev_io *w, int revents)
+{
+    struct ares_ctx *ctx;
+    ares_socket_t    rfd;
+    ares_socket_t    wfd;
+
+    ctx = (struct ares_ctx *) w;
+    rfd = ARES_SOCKET_BAD;
+    wfd = ARES_SOCKET_BAD;
+
+    LOGI("evx: ares %s: fd: %d revents: %d", __func__, w->fd, revents);
 
     if (revents & EV_READ)
         rfd = w->fd;
+
     if (revents & EV_WRITE)
         wfd = w->fd;
 
-    ares_process_fd(eares->ares.channel, rfd, wfd);
+    ares_process_fd(ctx->eares->ares.channel, rfd, wfd);
+    ev_timer_again(ctx->eares->loop, &ctx->eares->tw);
 }
 
-static void evx_ares_sock_state_cb(void *data, int s, int read, int write) {
-    evx_ares        *eares;
+static struct ares_ctx* lookup(struct evx_ares *eares, int fd)
+{
+    int i;
 
-    eares = (evx_ares *) data;
+    for (i = 0; i < (int) ARRAY_SIZE(eares->ctx); i++)
+        if (eares->ctx[i].io.fd == fd)
+            return eares->ctx + i;
 
-    LOGI("%s: read: %d write: %d s: %d fd: %d", __func__, read, write, s, eares->io.fd);
+    return NULL;
+}
 
-    if (ev_is_active(&eares->io) && eares->io.fd != s) {
-        LOGI("%s: Different socket id", __func__);
+int evx_ares_get_count_busy_fds(struct evx_ares *eares)
+{
+    int count;
+    int i;
+
+    count = 0;
+
+    for (i = 0; i < (int) ARRAY_SIZE(eares->ctx); i++)
+        if (eares->ctx[i].io.fd != 0 &&
+            eares->ctx[i].io.fd != ARES_SOCKET_BAD)
+            count++;
+
+    return count;
+}
+
+static struct ares_ctx* allocctx(struct evx_ares *eares, int fd)
+{
+    struct ares_ctx *ctx;
+    int             i;
+
+    for (i = 0; i <(int) ARRAY_SIZE(eares->ctx); i++) {
+        if (eares->ctx[i].io.fd == ARES_SOCKET_BAD)
+            break;
+
+        if (eares->ctx[i].io.fd == 0)
+            break;
+    }
+
+    if (i == ARRAY_SIZE(eares->ctx)) {
+        LOGW("evx: ares: ctx out of memory");
+        return NULL;
+    }
+
+    ctx = eares->ctx + i;
+    ctx->eares = eares;
+    ev_io_init(&ctx->io, io_cb, fd, EV_READ);
+    return ctx;
+}
+
+static void evx_ares_sock_state_cb(void *data, int s, int read, int write)
+{
+    struct ares_ctx  *ctx;
+    struct evx_ares  *eares;
+    ev_io            *io_p;
+
+    eares = (struct evx_ares *) data;
+    ctx = lookup(eares, s);
+
+    if (!ctx)
+       ctx = allocctx(eares, s);
+
+    if (!ctx)
+       return;
+
+    io_p = &ctx->io;
+
+    LOGI("evx: ares: read: %d write: %d s: %d fd: %d", read, write, s, io_p->fd);
+
+    if (ev_is_active(io_p) && io_p->fd != s) {
+        LOGE("evx: ares: %s: different socket id", __func__);
         return;
     }
 
     if (read || write) {
-        ev_io_set(&eares->io, s, (read ? EV_READ : 0) | (write ? EV_WRITE : 0) );
-        ev_io_start(eares->loop, &eares->io );
+        ev_io_set(io_p, s, (read ? EV_READ : 0) | (write ? EV_WRITE : 0) );
+        ev_io_start(eares->loop, io_p);
+        ev_timer_again(eares->loop, &eares->tw);
     }
     else {
-        ev_io_stop(eares->loop, &eares->io);
-        ev_io_set(&eares->io, -1, 0);
+        ev_io_stop(eares->loop, io_p);
+        ev_io_set(io_p, ARES_SOCKET_BAD, 0);
     }
 }
 
-int evx_init_ares(struct ev_loop * loop, evx_ares *eares_p) {
+int evx_init_ares(struct ev_loop * loop, struct evx_ares *eares_p)
+{
     int optmask;
     int status;
 
@@ -85,13 +187,17 @@ int evx_init_ares(struct ev_loop * loop, evx_ares *eares_p) {
     eares_p->ares.options.sock_state_cb = evx_ares_sock_state_cb;
     eares_p->ares.options.flags =  optmask;
 
-    ev_init(&eares_p->io, io_cb);
+    ev_timer_init(&eares_p->tw, timeout_cb, 0, ARES_PROCESS_TIMEOUT);
     eares_p->chan_initialized = 0;
+
+    LOGI("evx: ares version: %s, max sockets = %d",
+         ares_version(NULL), ARES_GETSOCK_MAXNUM);
 
     return 0;
 }
 
-int evx_init_default_chan_options(evx_ares *eares_p) {
+int evx_start_ares(struct evx_ares *eares_p)
+{
     int status;
 
     if (!eares_p->chan_initialized) {
@@ -107,36 +213,20 @@ int evx_init_default_chan_options(evx_ares *eares_p) {
     return 0;
 }
 
-void evx_stop_ares(evx_ares *eares_p)
+void evx_stop_ares(struct evx_ares *eares_p)
 {
-    ares_destroy(eares_p->ares.channel);
+    LOGI("evx: ares: stop ares, channel state: %d",
+         eares_p->chan_initialized);
+
+    if (eares_p->chan_initialized)
+        ares_destroy(eares_p->ares.channel);
+
     eares_p->chan_initialized = 0;
-    ares_library_cleanup();
+    ev_timer_stop(eares_p->loop, &eares_p->tw);
 }
 
-void
-evx_ares_trigger_ares_process(evx_ares *eares_p)
+void evx_close_ares(struct evx_ares *eares_p)
 {
-    struct timeval   tv, *tvp;
-    fd_set           readers, writers;
-    int              nfds, count;
-
-    LOGI("evx: trigger ares process");
-
-    FD_ZERO(&readers);
-    FD_ZERO(&writers);
-    nfds = ares_fds(eares_p->ares.channel, &readers, &writers);
-    if (nfds == 0) {
-        LOGI("evx: ares no nfds");
-        evx_stop_ares(eares_p);
-        return;
-    }
-
-    tvp = ares_timeout(eares_p->ares.channel, NULL, &tv);
-    count = select(nfds, &readers, &writers, NULL, tvp);
-
-    LOGI("evx: ares timeout: count = %d, tv: %ld.%06ld tvp: %ld.%06ld",
-         count, tv.tv_sec, tv.tv_usec, tvp->tv_sec, tvp->tv_usec);
-
-    ares_process(eares_p->ares.channel, &readers, &writers);
+    evx_stop_ares(eares_p);
+    ares_library_cleanup();
 }

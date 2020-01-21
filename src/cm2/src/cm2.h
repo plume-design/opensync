@@ -152,6 +152,7 @@ typedef struct
     char        if_type[IFTYPE_SIZE];
     bool        has_L3;
     bool        is_used;
+    bool        restart_pending;
     int         priority;
     bool        is_ip;
     bool        is_limp_state;
@@ -180,7 +181,7 @@ typedef struct
     bool              ntp_check;
     struct ev_loop    *loop;
 #ifdef BUILD_HAVE_LIBCARES
-    evx_ares          eares;
+    struct evx_ares   eares;
 #endif
     bool              have_manager;
     bool              have_awlan;
@@ -189,6 +190,8 @@ typedef struct
     bool              fast_backoff;
     int               target_type;
     bool              fast_reconnect;
+    bool              resolve_retry;
+    int               resolve_retry_cnt;
 } cm2_state_t;
 
 extern cm2_state_t g_state;
@@ -239,6 +242,7 @@ void cm2_ovsdb_connection_update_ble_phy_link(void);
 bool cm2_ovsdb_update_Port_tag(const char *ifname, int tag, bool set);
 bool cm2_ovsdb_connection_update_loop_state(const char *if_name, bool state);
 void cm2_ovsdb_connection_clean_link_counters(char *if_name);
+bool cm2_ovsdb_validate_bridge_port_conf(char *bname, char *pname);
 
 // addr resolve
 cm2_addr_t* cm2_get_addr(cm2_dest_e dest);
@@ -252,7 +256,7 @@ int  cm2_getaddrinfo(char *hostname, struct addrinfo **res, char *msg);
 struct addrinfo* cm2_get_next_addrinfo(cm2_addr_t *addr);
 #endif
 bool cm2_resolve(cm2_dest_e dest);
-bool cm2_resolve_handle_process(void);
+void cm2_resolve_timeout(void);
 bool cm2_write_current_target_addr(void);
 bool cm2_write_next_target_addr(void);
 void cm2_clear_manager_addr(void);

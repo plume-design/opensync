@@ -41,6 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "os.h"
 #include "os_time.h"
+#include "util.h"
 
 #include "sm.h"
 
@@ -382,8 +383,6 @@ bool sm_survey_report_calculate_average (
     radio_scan_type_t               scan_type =
         survey_ctx->scan_type;
 
-#define MIN(x, y) ((x) < (y) ? (x) : (y))
-#define MAX(x, y) ((x) > (y) ? (x) : (y))
 #define CALC(_name) do { \
         avg_record[chan_index]._name.avg += record_entry->_name;  \
         if(avg_record[chan_index]._name.num) { \

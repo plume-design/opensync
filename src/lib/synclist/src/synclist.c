@@ -114,7 +114,6 @@ void *synclist_add(synclist_t *list, void *pnew)
             {
                 ds_tree_insert(&list->sl_tree, pcur, pcur);
             }
-            return pcur;
         }
     }
     else if (pcur == NULL && pold != NULL)

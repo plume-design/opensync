@@ -35,12 +35,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /* CONNECTIVITY CHECK CONFIGURATION */
 #define CM2_STABILITY_INTERVAL          10
-#define CM2_STABILITY_THRESHOLD         8
+#define CM2_STABILITY_THRESH_FATAL      8
 #define CM2_STABILITY_RESTORE_CON       4
 #define CM2_STABILITY_INTERNET_THRESH   6
 #define CM2_STABILITY_VTAG_THRESH       10
 #define CM2_STABILITY_CPU_THRESH        0.70
-
+#define CM2_STABILITY_THRESH_LINK       3
 
 cm2_main_link_type cm2_util_get_link_type(void)
 {
@@ -92,7 +92,7 @@ static bool cm2_cpu_is_low_loadavg(void) {
 
     f1 = popen("cat /proc/loadavg", "r");
     if (!f1) {
-        LOGE("Failed to retreive loadavg command");
+        LOGE("Failed to retrieve loadavg command");
         return retval;
     }
 
@@ -127,7 +127,7 @@ static bool cm2_restore_connection(int cnt)
 
     LOGI("Trying restore connection");
     if (cm2_is_eth_type(g_state.link.if_type)) {
-        sprintf(command, "sh /usr/plume/scripts/kick-ethernet.sh %d 0 1 ", cnt);
+        sprintf(command, "sh /usr/plume/scripts/kick-ethernet.sh %d 0 2 ", cnt);
         LOGD("%s: Command: %s", __func__, command);
         ret = target_device_execute(command);
         if (!ret)
@@ -135,6 +135,17 @@ static bool cm2_restore_connection(int cnt)
         cm2_ovsdb_refresh_dhcp(BR_WAN_NAME);
     }
     return ret;
+}
+
+static void cm2_stability_handle_fatal_state(int counter)
+{
+    if (counter > 0 &&
+        cm2_vtag_stability_check() &&
+        !g_state.link.is_limp_state &&
+            counter + 1 > CM2_STABILITY_THRESH_FATAL) {
+            LOGW("Restart managers due to exceeding the threshold for fatal failures");
+            target_device_restart_managers();
+        }
 }
 
 void cm2_connection_req_stability_check(target_connectivity_check_option_t opts)
@@ -162,6 +173,30 @@ void cm2_connection_req_stability_check(target_connectivity_check_option_t opts)
     ret = cm2_ovsdb_connection_get_connection_by_ifname(if_name, &con);
     if (!ret) {
         LOGW("%s interface does not exist", __func__);
+        return;
+    }
+
+    if (!cm2_ovsdb_validate_bridge_port_conf(BR_WAN_NAME, g_state.link.if_name)) {
+        LOGW("Detected abnormal situation, main link %s", g_state.link.if_name);
+        counter = con.unreachable_link_counter < 0 ? 1 : con.unreachable_link_counter + 1;
+        LOGI("Detected broken link. Counter = %d", counter);
+
+        if (counter == CM2_STABILITY_THRESH_LINK) {
+            ret = cm2_ovsdb_set_Wifi_Inet_Config_network_state(false, g_state.link.if_name);
+            if (!ret)
+                LOGW("Force disable main uplink interface failed");
+            else
+                g_state.link.restart_pending = true;
+
+            if (counter + 1 > CM2_STABILITY_THRESH_FATAL) {
+                cm2_stability_handle_fatal_state(counter);
+                counter = 0;
+            }
+        }
+
+        ret = cm2_ovsdb_connection_update_unreachable_link_counter(if_name, counter);
+        if (!ret)
+            LOGW("%s Failed update link counter in ovsdb table", __func__);
         return;
     }
 
@@ -203,14 +238,7 @@ void cm2_connection_req_stability_check(target_connectivity_check_option_t opts)
                 LOGI("Device operates in Bridge mode");
             g_state.link.is_limp_state = false;
         }
-
-        if (con.unreachable_router_counter > 0 &&
-            cm2_vtag_stability_check() &&
-            !g_state.link.is_limp_state &&
-            con.unreachable_router_counter + 1 > CM2_STABILITY_THRESHOLD) {
-            LOGW("Restart managers due to exceeding the threshold router failures");
-            target_device_restart_managers();
-        }
+        cm2_stability_handle_fatal_state(con.unreachable_router_counter);
     }
     if (opts & INTERNET_CHECK) {
         counter = 0;
@@ -281,7 +309,7 @@ void cm2_wdt_cb(struct ev_loop *loop, ev_timer *watcher, int revents)
     (void)watcher;
     (void)revents;
 
-    target_device_wdt_ping();
+    WARN_ON(!target_device_wdt_ping());
 }
 
 void cm2_wdt_init(struct ev_loop *loop)

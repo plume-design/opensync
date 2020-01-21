@@ -820,14 +820,6 @@ wm2_vconf_recalc(const char *ifname, bool force)
                                        &vstate)))
         wm2_vstate_init(&vstate, ifname);
 
-    if (want && vconf.mode_exists && !strcmp(vconf.mode, "sta")) {
-        if (!vconf.enabled_exists || !vconf.enabled) {
-            LOGW("%s: overriding 'enabled'; conf.db.bck may need fixing, or it's cloud bug PIR-11055", ifname);
-            vconf.enabled_exists = true;
-            vconf.enabled = true;
-        }
-    }
-
     if (!want && !has)
         return;
 
@@ -1107,14 +1099,6 @@ wm2_rconf_recalc(const char *ifname, bool force)
                                        ifname,
                                        &rstate)))
         memset(&rstate, 0, sizeof(rstate));
-
-    if (want) {
-        if (!rconf.enabled_exists || !rconf.enabled) {
-            LOGW("%s: overriding 'enabled'; conf.db.bck needs fixing, or it's cloud bug PIR-12794", ifname);
-            rconf.enabled_exists = true;
-            rconf.enabled = true;
-        }
-    }
 
     if (rconf.channel_sync_exists) {
         if (rconf.channel_sync) {

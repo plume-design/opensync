@@ -114,10 +114,11 @@ Note-1: the wait for re-connect back to same manager addr because
 #define CM2_FAST_RECONNECT_TIMEOUT      12
 #define CM2_ONBOARD_LINK_SEL_TIMEOUT    120
 #define CM2_ONBOARD_WAN_IP_TIMEOUT      20
-#define CM2_RESOLVE_TIMEOUT             60
+#define CM2_RESOLVE_TIMEOUT             180
 
 #define CM2_MAX_DISCONNECTS             4
 #define CM2_STABLE_PERIOD               300 // 5 min
+#define CM2_RESOLVE_RETRY_THRESHOLD     10
 // state info
 #define CM2_STATE_DIR  "/tmp/plume/"
 #define CM2_STATE_FILE CM2_STATE_DIR"cm.state"
@@ -497,6 +498,8 @@ start:
         && g_state.addr_redirector.updated
         && g_state.addr_redirector.valid)
     {
+        LOGI("Received new redirector address");
+
         cm2_set_state(true, CM2_STATE_OVS_INIT);
         g_state.addr_redirector.updated = false;
     }
@@ -521,6 +524,7 @@ start:
                 cm2_set_state(true, CM2_STATE_OVS_INIT);
             } else {
                 cm2_extender_init_state();
+                g_state.resolve_retry = false;
                 cm2_set_state(true, CM2_STATE_LINK_SEL);
             }
             break;
@@ -597,6 +601,7 @@ start:
             if (cm2_is_extender() && !g_state.link.is_used) {
                 LOGN("Main link is not used, move to link selection");
                 cm2_set_state(false, CM2_STATE_LINK_SEL);
+                return;
             }
 
              /* Workaround for CAES-599 */
@@ -617,27 +622,42 @@ start:
             break;
 
         case CM2_STATE_TRY_RESOLVE:
-            if (cm2_state_changed()) // first iteration
+            if (cm2_state_changed() || g_state.resolve_retry)
             {
+                if (g_state.resolve_retry) {
+                    LOGI("Trigger retry resolving, cnt: %d/%d",
+                         g_state.resolve_retry_cnt, CM2_RESOLVE_RETRY_THRESHOLD);
+                    g_state.resolve_retry = false;
+                }
+
                 LOGI("Trying to resolve %s: %s", cm2_curr_dest_name(),
-                        cm2_curr_addr()->hostname);
-                if (!cm2_resolve(g_state.dest))
+                     cm2_curr_addr()->hostname);
+
+                if (!cm2_resolve(g_state.dest)) {
                     cm2_restart_ovs_connection(false);
+                    return;
+                }
             }
 
             if (cm2_curr_addr()->resolved)
             {
                 LOGN("Address %s resolved", cm2_curr_addr()->hostname);
-                // succesfully resolved
+                // successfully resolved
+                g_state.resolve_retry_cnt = 0;
                 cm2_set_state(true, CM2_STATE_RE_CONNECT);
-            } else
+            }
+            else
             {
-                if (!cm2_resolve_handle_process())
-                    cm2_restart_ovs_connection(false);
-
-                if (cm2_timeout()) {
+                if (g_state.resolve_retry_cnt > CM2_RESOLVE_RETRY_THRESHOLD) {
+                    LOGI("Restart channel due to exceeded resolve threshold");
+                    g_state.resolve_retry_cnt = 0;
+                }
+                if (cm2_timeout() ||
+                    g_state.resolve_retry_cnt > CM2_RESOLVE_RETRY_THRESHOLD) {
+                    cm2_resolve_timeout();
                     cm2_ovsdb_refresh_dhcp(BR_WAN_NAME);
                     cm2_restart_ovs_connection(false);
+                    return;
                 }
             }
             break;
@@ -659,6 +679,7 @@ start:
             {
                 // stuck? back to init
                 cm2_restart_ovs_connection(false);
+                return;
             }
             break;
 
@@ -680,6 +701,7 @@ start:
                 if (!cm2_write_current_target_addr())
                 {
                     cm2_restart_ovs_connection(false);
+                    return;
                 }
             }
             if (g_state.connected)
@@ -698,6 +720,7 @@ start:
                 {
                     // no more addresses
                     cm2_restart_ovs_connection(false);
+                    return;
                 }
             }
             break;
@@ -788,6 +811,7 @@ start:
                             g_state.disconnects, CM2_MAX_DISCONNECTS);
                     g_state.fast_backoff = false;
                     cm2_restart_ovs_connection(false);
+                    return;
                 } else {
                     // Try again connecting to the current controller
                     cm2_set_state(true, CM2_STATE_FAST_RECONNECT);

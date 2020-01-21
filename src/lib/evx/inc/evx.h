@@ -87,21 +87,24 @@ void ev_debounce_start(struct ev_loop *loop, ev_debounce *w);
 void ev_debounce_stop(struct ev_loop *loop, ev_debounce *w);
 
 #ifdef BUILD_HAVE_LIBCARES
-typedef struct {
-    ev_io    io;
-    ev_timer tw;
-    struct ev_loop * loop;
+struct evx_ares {
+    struct ares_ctx {
+        ev_io           io;
+        struct evx_ares *eares;
+    } ctx[ARES_GETSOCK_MAXNUM];
+    ev_timer        tw;
+    struct ev_loop  *loop;
     struct {
-        ares_channel channel;
+        ares_channel        channel;
         struct ares_options options;
     } ares;
     int chan_initialized;
-} evx_ares;
-
-int evx_init_ares(struct ev_loop * loop, evx_ares *eares_p);
-int evx_init_default_chan_options(evx_ares *eares_p);
-void evx_stop_ares(evx_ares *eares_p);
-void evx_ares_trigger_ares_process(evx_ares *eares_p);
+};
+int evx_ares_get_count_busy_fds(struct evx_ares *eares);
+int evx_init_ares(struct ev_loop * loop, struct evx_ares *eares_p);
+int evx_start_ares(struct evx_ares *eares_p);
+void evx_stop_ares(struct evx_ares *eares_p);
+void evx_close_ares(struct evx_ares *eares_p);
 #endif /* BUILD_HAVE_LIBCARES */
 
 #endif /* EVX_H_INCLUDED */

@@ -46,8 +46,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define _SCHEMA_COL_IMPL(X) char *SCHEMA_COLUMNS_ARRAY(X)[] = { SCHEMA_COLUMNS_LIST(X) NULL };
 SCHEMA_LISTX(_SCHEMA_COL_DECL)
 
+// if not found returns empty string ""
 #define SCHEMA_KEY_VAL(A, KEY) \
         fsa_find_key_val(*A##_keys, sizeof(*A##_keys), *A, sizeof(*A), A##_len, KEY)
+
+// if not found returns NULL
+#define SCHEMA_KEY_VAL_NULL(A, KEY) \
+        fsa_find_key_val_null(*A##_keys, sizeof(*A##_keys), *A, sizeof(*A), A##_len, KEY)
+
 
 #define SCHEMA_KEY_VAL_APPEND(FIELD, KEY, VALUE) \
         do { \
@@ -56,6 +62,16 @@ SCHEMA_LISTX(_SCHEMA_COL_DECL)
             FIELD##_present = true; \
             FIELD##_len++; \
         } while(0)
+
+#define SCHEMA_KEY_VAL_SET(A, KEY, VALUE)           \
+    do {                                            \
+        char *_str = SCHEMA_KEY_VAL_NULL(A, KEY);   \
+        if (_str) { /* overwrite */                 \
+            strscpy(_str, VALUE, sizeof(A[0]));     \
+        } else {    /* append */                    \
+            SCHEMA_KEY_VAL_APPEND(A, KEY, VALUE);   \
+        }                                           \
+    }while(0);
 
 #define SCHEMA_VAL_APPEND(FIELD, VALUE) \
         do { \
@@ -113,6 +129,28 @@ SCHEMA_LISTX(_SCHEMA_COL_DECL)
             FIELD##_present = true; \
             FIELD##_len++; \
         } while(0)
+
+#define SCHEMA_CPY_LIST(DST, SRC)                           \
+        do {                                                \
+            int _i;                                         \
+            for (_i=0; _i<SRC##_len; _i++) {                \
+                STRSCPY(DST[_i], SRC[_i]);                  \
+            }                                               \
+            DST##_len = SRC##_len;                          \
+            DST##_present = SRC##_present;                  \
+        } while (0)
+
+#define SCHEMA_CPY_MAP(DST, SRC)                            \
+        do {                                                \
+            int _i;                                         \
+            for (_i=0; _i<SRC##_len; _i++) {                \
+                STRSCPY(DST[_i], SRC[_i]);                  \
+                STRSCPY(DST##_keys[_i], SRC##_keys[_i]);    \
+            }                                               \
+            DST##_len = SRC##_len;                          \
+            DST##_present = SRC##_present;                  \
+        } while (0)
+
 
 #define SCHEMA_FILTER_LEN                   (SCHEMA_MAX_COLUMNS + 2)
 

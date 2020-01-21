@@ -31,25 +31,19 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "cm2.h"
 
-static int resolve_pending;
+static int cm2_start_ares_resolve(struct evx_ares *eares_p)
+{
+    int cnt;
 
-static int cm2_restart_ares_resolve(evx_ares *eares_p) {
-    LOGI("ares: resolve_pending = %d chan_initialized = %d",
-         resolve_pending, eares_p->chan_initialized);
-    if (resolve_pending) {
-        if (eares_p->chan_initialized) {
-            LOGI("ares: channel is destroying...");
-            ares_destroy(eares_p->ares.channel);
-            eares_p->chan_initialized = 0;
-        }
-        resolve_pending = 0;
+    LOGI("ares: channel state = %d", eares_p->chan_initialized);
+
+    cnt = evx_ares_get_count_busy_fds(eares_p);
+    if (cnt > 0) {
+        LOGW("ares: fds are still busy [left = %d], skip creating new channel", cnt);
         return -1;
-    } else if (!eares_p->chan_initialized) {
-        if (evx_init_default_chan_options(eares_p) != 0) {
-            LOGW("%s: init channel options failed", __func__);
-            return -1;
-        }
     }
+    evx_start_ares(eares_p);
+
     return 0;
 }
 
@@ -79,11 +73,11 @@ cm2_ares_host_cb(void *arg, int status, int timeouts, struct hostent *hostent)
 
     addr = (cm2_addr_t *) arg;
 
-    LOGI("Ares cb: status[%d]: %s  Timeouts: %d\n", status, ares_strerror(status), timeouts);
+    LOGI("ares: cb: status[%d]: %s  Timeouts: %d\n", status, ares_strerror(status), timeouts);
 
     switch(status) {
         case ARES_SUCCESS:
-            LOGN("Got address of host %s, timeouts: %d\n", hostent->h_name, timeouts);
+            LOGN("ares: got address of host %s, timeouts: %d\n", hostent->h_name, timeouts);
 
             for (i = 0; hostent->h_addr_list[i]; ++i) {
                 inet_ntop(hostent->h_addrtype, hostent->h_addr_list[i], buf, INET6_ADDRSTRLEN);
@@ -102,21 +96,19 @@ cm2_ares_host_cb(void *arg, int status, int timeouts, struct hostent *hostent)
             addr->h_addrtype = hostent->h_addrtype;;
             addr->h_cur_idx = 0;
             break;
-        case ARES_ETIMEOUT:
         case ARES_EDESTRUCTION:
-        case ARES_ECANCELLED:
-            cm2_update_state(CM2_REASON_OVS_INIT);
+            LOGI("ares: channel was destroyed");
             break;
         case ARES_ECONNREFUSED:
+        case ARES_ETIMEOUT:
+        case ARES_ECANCELLED:
+            g_state.resolve_retry = true;
+            g_state.resolve_retry_cnt++;
+            break;
         default:
-            /* Keep resolve_pending set, in next interation
-             * channel will be destroyed.
-             */
-            LOGI("Didn't got address reason: status = %d, %d timeouts\n", status, timeouts);
+            LOGI("ares: didn't get address: status = %d, %d timeouts\n", status, timeouts);
             return;
     }
-    resolve_pending = 0;
-
     return;
 }
 
@@ -130,28 +122,28 @@ bool cm2_resolve(cm2_dest_e dest)
     if (!addr->valid)
         return false;
 
-    LOGI("ares resolving:'%s'", addr->resource);
+    LOGI("ares: resolving:'%s'", addr->resource);
 
-    if (cm2_restart_ares_resolve(&g_state.eares) < 0)
+    if (cm2_start_ares_resolve(&g_state.eares) < 0)
         return false;
 
     cm2_free_addr_list(addr);
     //ipv4
-    resolve_pending = 1;
-    LOGI("ares trigger get hostname");
+    if (!g_state.eares.chan_initialized) {
+        LOGI("ares: channel not initialized yet");
+        return false;
+    }
+    LOGI("ares: trigger get hostname");
     ares_gethostbyname(g_state.eares.ares.channel, addr->hostname, AF_INET, cm2_ares_host_cb, (void *) addr);
     //ipv6
     //ares_gethostbyname(g_state.eares.ares.channel, addr->hostname, AF_INET6, cm2_ares_host_cb, (void *) addr);
     return true;
 }
 
-bool cm2_resolve_handle_process(void)
+void cm2_resolve_timeout(void)
 {
-    if (!g_state.eares.chan_initialized)
-        return false;
-
-    evx_ares_trigger_ares_process(&g_state.eares);
-    return true;
+    LOGI("ares: timeout calling");
+    evx_stop_ares(&g_state.eares);
 }
 
 static bool cm2_write_target_addr(cm2_addr_t *addr)
@@ -194,7 +186,7 @@ static bool cm2_write_target_addr(cm2_addr_t *addr)
 
     bool ret = cm2_ovsdb_set_Manager_target(target);
     if (ret)
-        LOGI("Trying to connect to: %s : %s", cm2_curr_dest_name(), target);
+        LOGI("ares: trying to connect to: %s : %s", cm2_curr_dest_name(), target);
 
     return ret;
 }

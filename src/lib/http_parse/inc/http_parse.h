@@ -42,8 +42,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define MAX_ELEMENT_SIZE 2048
 #define MAX_CHUNKS 16
 
-#define MIN(a,b) ((a) < (b) ? (a) : (b))
-
 struct message
 {
     const char *name;
