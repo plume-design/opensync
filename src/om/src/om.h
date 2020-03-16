@@ -28,15 +28,15 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * openflow Manager - Main Include file
  */
 
-#ifndef __OM_H__
-#define __OM_H__
+#ifndef OM_H_INCLUDED
+#define OM_H_INCLUDED
 
 #include "os.h"
-#include "evsched.h"
 #include "ovsdb.h"
 #include "ovsdb_update.h"
 #include "log.h"
 #include "ds_tree.h"
+#include "ds_list.h"
 #include "policy_tags.h"
 
 
@@ -65,7 +65,37 @@ extern bool     om_tflow_remove_from_schema(struct schema_Openflow_Config *sflow
 extern bool     om_tflow_to_schema(om_tflow_t *tflow, char *erule,
                                             struct schema_Openflow_Config *sflow);
 
+/***********************************************************************
+ * Declarations and definitions for Range Rule tracking
+ * ********************************************************************/
 
+typedef enum {
+    NONE,
+    IPV4_RANGE_SRC,
+    IPV4_RANGE_DST,
+    IPV6_RANGE_SRC,
+    IPV6_RANGE_DST,
+    PORT_RANGE_SRC,
+    PORT_RANGE_DST,
+} RANGE;
+
+#define TEMPLATE_RANGE              "$<"
+#define TEMPLATE_IPV4_RANGE_SRC     "nw_src=$<"
+#define TEMPLATE_IPV4_RANGE_DST     "nw_dst=$<"
+#define TEMPLATE_IPV6_RANGE_SRC     "ipv6_src=$<"
+#define TEMPLATE_IPV6_RANGE_DST     "ipv6_dst=$<"
+#define TEMPLATE_PORT_RANGE_SRC     "tp_src=$<"
+#define TEMPLATE_PORT_RANGE_DST     "tp_dst=$<"
+
+struct om_rule_node {
+    struct schema_Openflow_Config   rule;
+    ds_list_node_t                  lnode;          /* Single list node data */
+};
+
+extern bool         om_range_add_range_rule(struct schema_Openflow_Config *rule);
+extern bool         om_range_clear_range_rules(void);
+extern ds_list_t    *om_range_get_range_rules(void);
+extern bool         om_range_generate_range_rules(struct schema_Openflow_Config *ofconf);
 
 /******************************************************************************
  * Template Action Definitions
@@ -86,4 +116,4 @@ extern bool     om_del_flow(const char *token, const struct schema_Openflow_Conf
  *****************************************************************************/
 extern bool     om_monitor_init(void);
 
-#endif /* __OM_H__ */
+#endif /* OM_H_INCLUDED */

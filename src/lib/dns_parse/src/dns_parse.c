@@ -1,29 +1,3 @@
-/*
-Copyright (c) 2015, Plume Design Inc. All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
-   1. Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-   2. Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-   3. Neither the name of the Plume Design Inc. nor the
-      names of its contributors may be used to endorse or promote products
-      derived from this software without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
-ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-DISCLAIMED. IN NO EVENT SHALL Plume Design Inc. BE LIABLE FOR ANY
-DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
 #include <ctype.h>
 #include <errno.h>
 #include <getopt.h>
@@ -33,6 +7,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdlib.h>
 #include <string.h>
 #include <stddef.h>
+#include <unistd.h>
 #include <linux/if_ether.h>
 #include <linux/if_packet.h>
 #include <netinet/in.h>
@@ -44,6 +19,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "network.h"
 #include "rtypes.h"
 #include "strutils.h"
+#include "policy_tags.h"
 
 #include "fsm.h"
 #include "fsm_policy.h"
@@ -51,6 +27,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ds_tree.h"
 #include "json_mqtt.h"
 #include "ovsdb_utils.h"
+#include "ovsdb_sync.h"
 #include "wc_telemetry.h"
 
 
@@ -427,25 +404,87 @@ dns_set_provider(struct fsm_session *session)
 
 
 int
+dns_set_forward_context(struct fsm_session *session)
+{
+    struct dns_session *dns_session;
+    struct ifreq ifreq_c;
+    struct ifreq ifr_i;
+
+    dns_session = dns_get_session(session);
+
+    /* Open raw socket to re-inject DNS responses */
+    dns_session->sock_fd = socket(AF_PACKET, SOCK_RAW, 0);
+    if (dns_session->sock_fd < 0)
+    {
+        LOGE("%s: socket() failed (%s)",
+             __func__, strerror(errno));
+        return -1;
+    }
+
+    memset(&ifr_i, 0, sizeof(ifr_i));
+    STRSCPY(ifr_i.ifr_name, session->tx_intf);
+
+    if ((ioctl(dns_session->sock_fd, SIOCGIFINDEX, &ifr_i)) < 0)
+    {
+        LOGE("%s: error in index ioctl reading (%s)",
+             __func__, strerror(errno));
+        return -1;
+    }
+
+    dns_session->raw_dst.sll_family = PF_PACKET;
+    dns_session->raw_dst.sll_ifindex = ifr_i.ifr_ifindex;
+    dns_session->raw_dst.sll_halen = ETH_ALEN;
+
+    memset(&ifreq_c, 0, sizeof(ifreq_c));
+    STRSCPY(ifreq_c.ifr_name, session->tx_intf);
+
+    if ((ioctl(dns_session->sock_fd, SIOCGIFHWADDR, &ifreq_c)) < 0)
+    {
+        LOGE("%s: error in SIOCGIFHWADDR ioctl reading (%s)",
+             __func__, strerror(errno));
+        return -1;
+    }
+
+    memcpy(dns_session->src_eth_addr.addr, ifreq_c.ifr_hwaddr.sa_data, 6);
+
+    return 0;
+}
+
+
+void
+dns_mgr_init(void)
+{
+    struct dns_cache *mgr;
+
+    mgr = dns_get_mgr();
+    if (mgr->initialized) return;
+
+    ds_tree_init(&mgr->fsm_sessions, dns_session_cmp,
+                 struct dns_session, session_node);
+    mgr->set_forward_context = dns_set_forward_context;
+    mgr->forward = dns_forward;
+    mgr->policy_init = fsm_policy_init;
+    mgr->policy_check = fqdn_policy_check;
+    mgr->req_cache_ttl = REQ_CACHE_TTL;
+    mgr->initialized = true;
+}
+
+
+int
 dns_plugin_init(struct fsm_session *session)
 {
     struct dns_cache *mgr;
     struct dns_session *dns_session;
-    struct ifreq ifr_i;
-    struct ifreq ifreq_c;
     struct fsm_policy_client *client;
     struct fsm_parser_ops *parser_ops;
     struct fsm_session *service;
     time_t now;
+    int rc;
 
     mgr = dns_get_mgr();
+
     /* Initialize the manager on first call */
-    if (!mgr->initialized)
-    {
-        ds_tree_init(&mgr->fsm_sessions, dns_session_cmp,
-                     struct dns_session, session_node);
-        mgr->initialized = true;
-    }
+    dns_mgr_init();
 
     /* Look up the dns session */
     dns_session = dns_get_session(session);
@@ -474,57 +513,25 @@ dns_plugin_init(struct fsm_session *session)
     dns_session->ip_config.ip_fragment_head = NULL;
     dns_session->fsm_context = session;
 
-    ds_tree_init(&dns_session->device_sessions, dns_dev_id_cmp,
-                 struct dns_device, device_node);
+    rc = mgr->set_forward_context(session);
+    if (rc != 0) goto error;
 
-    /* Open raw socket to re-inject DNS responses */
-    dns_session->sock_fd = socket(AF_PACKET, SOCK_RAW, 0);
-    if (dns_session->sock_fd < 0)
-    {
-        LOGE("%s: socket() failed (%s)",
-             __func__, strerror(errno));
-        goto error;
-    }
-
-    memset(&ifr_i, 0, sizeof(ifr_i));
-    STRSCPY(ifr_i.ifr_name, session->tx_intf);
-
-    if ((ioctl(dns_session->sock_fd, SIOCGIFINDEX, &ifr_i)) < 0)
-    {
-        LOGE("%s: error in index ioctl reading (%s)",
-             __func__, strerror(errno));
-        goto error;
-    }
-
-    dns_session->raw_dst.sll_family = PF_PACKET;
-    dns_session->raw_dst.sll_ifindex = ifr_i.ifr_ifindex;
-    dns_session->raw_dst.sll_halen = ETH_ALEN;
-
-    memset(&ifreq_c, 0, sizeof(ifreq_c));
-    STRSCPY(ifreq_c.ifr_name, session->tx_intf);
-
-    if ((ioctl(dns_session->sock_fd, SIOCGIFHWADDR, &ifreq_c)) < 0)
-    {
-        LOGE("%s: error in SIOCGIFHWADDR ioctl reading (%s)",
-             __func__, strerror(errno));
-        goto error;
-    }
-
-    memcpy(dns_session->src_eth_addr.addr, ifreq_c.ifr_hwaddr.sa_data, 6);
     now = time(NULL);
     dns_session->stat_report_ts = now;
     dns_session->stat_log_ts = now;
     dns_session->debug = false;
     dns_set_provider(session);
     dns_parse_update(session);
-    fsm_policy_init();
+    mgr->policy_init();
 
     client = &dns_session->policy_client;
     client->session = session;
     client->update_client = dns_update_client;
     fsm_policy_register_client(&dns_session->policy_client);
-    ds_tree_init(&dns_session->session_devices,dns_dev_id_cmp,
+
+    ds_tree_init(&dns_session->session_devices, dns_dev_id_cmp,
                  struct dns_device, device_node);
+
     service = session->service;
     if (session->service)
     {
@@ -617,6 +624,7 @@ process_response_ips(dns_info *dns, uint8_t *packet,
     int i = 0;
 
     if (dns == NULL) return;
+    if (req->num_replies > 1) return;
 
     if (dns->queries == NULL) LOGT("%s: no queries", __func__);
 
@@ -793,12 +801,15 @@ dns_handle_reply(struct dns_session *dns_session, dns_info *dns,
     struct dns_device *ds = NULL;
     struct fqdn_pending_req *req = NULL;
     struct fsm_session *session;
+    struct dns_cache *mgr;
+
+    mgr = dns_get_mgr();
 
     LOGD("dns reply: looking up device " PRI(os_macaddr_lower_t),
          FMT(os_macaddr_t, eth->dstmac));
 
     session = dns_session->fsm_context;
-    ds = ds_tree_find(&dns_session->device_sessions, &eth->dstmac);
+    ds = ds_tree_find(&dns_session->session_devices, &eth->dstmac);
     if (ds == NULL)
     {
         LOGD("dns reply: could not find device " PRI(os_macaddr_lower_t),
@@ -816,6 +827,8 @@ dns_handle_reply(struct dns_session *dns_session, dns_info *dns,
         goto free_out;
     }
 
+    req->num_replies++;
+    dns_session->req = req;
     process_response_ips(dns, packet, req);
 
     /* forward the DNS response if the session has no categorization provider */
@@ -823,7 +836,7 @@ dns_handle_reply(struct dns_session *dns_session, dns_info *dns,
     {
         LOGT("%s: %s session : no provider available", __func__,
              session->name);
-        dns_forward(dns_session, dns, packet, header->caplen);
+        mgr->forward(dns_session, dns, packet, header->caplen);
         dns_remove_req(dns_session, &eth->dstmac, req->req_id);
         goto free_out;
     }
@@ -838,7 +851,7 @@ dns_handle_reply(struct dns_session *dns_session, dns_info *dns,
 
     if (req->action == FSM_FORWARD)
     {
-        dns_forward(dns_session, dns, packet, header->caplen);
+        mgr->forward(dns_session, dns, packet, header->caplen);
         dns_remove_req(dns_session, &eth->dstmac, req->req_id);
     }
     else if (dns->ancount == 0)
@@ -847,9 +860,36 @@ dns_handle_reply(struct dns_session *dns_session, dns_info *dns,
          * If the DNS server did not provide a meaningful answer,
          * forward the reply
          */
+        mgr->forward(dns_session, dns, packet, header->caplen);
+        dns_remove_req(dns_session, &eth->dstmac, req->req_id);
+    }
+    else if (req->action == FSM_UPDATE_TAG)
+    {
+         /*
+          * Update Openflow_Tag if we are interested
+          * in the IPs returned.
+          */
+        struct schema_Openflow_Tag updated;
+        bool result;
+
+        result = dns_generate_update_tag(req, &updated);
+        if (result)
+        {
+            result = dns_upsert_tag(&updated, ovsdb_sync_upsert);
+            if (!result)
+            {
+                LOGT("%s: Openflow_Tag not updated for request.", __func__);
+            }
+        }
+        else
+        {
+            LOGT("%s: No update tag generated for OVSDB transaction.", __func__);
+        }
+
         dns_forward(dns_session, dns, packet, header->caplen);
         dns_remove_req(dns_session, &eth->dstmac, req->req_id);
     }
+
     else if (req->action == FSM_BLOCK)
     {
         char reason[128] = { 0 };
@@ -883,24 +923,24 @@ dns_handle_reply(struct dns_session *dns_session, dns_info *dns,
              reason, risk);
         if (update_a_rrs(dns, packet, req) == true)
         {
-            dns_forward(dns_session, dns, packet, header->caplen);
+            mgr->forward(dns_session, dns, packet, header->caplen);
         }
         dns_remove_req(dns_session, &eth->dstmac, req->req_id);
     }
     else if (req->redirect == true)
     {
         update_a_rrs(dns, packet, req);
-        dns_forward(dns_session, dns, packet, header->caplen);
+        mgr->forward(dns_session, dns, packet, header->caplen);
         dns_remove_req(dns_session, &eth->dstmac, req->req_id);
     }
     else if (req->fsm_checked == true)
     {
-        dns_forward(dns_session, dns, packet, header->caplen);
+        mgr->forward(dns_session, dns, packet, header->caplen);
         dns_remove_req(dns_session, &eth->dstmac, req->req_id);
     }
     else
     {
-        LOGD("stashing dns reply %u", req->req_id);
+        LOGD("%s: stashing dns reply %u", __func__, req->req_id);
         req->response = calloc(1, header->caplen);
         if (req->response == NULL)
         {
@@ -1047,7 +1087,7 @@ dns_handler(struct fsm_session *session, struct net_header_parser *net_header)
 
     LOGD("%s: looking up device " PRI_os_macaddr_lower_t,
          __func__, FMT_os_macaddr_pt(mac));
-    ds = ds_tree_find(&dns_session->device_sessions, mac);
+    ds = ds_tree_find(&dns_session->session_devices, mac);
 
     /* Look for the device in the device tree */
     if (ds == NULL)
@@ -1057,7 +1097,7 @@ dns_handler(struct fsm_session *session, struct net_header_parser *net_header)
                sizeof(ds->device_mac.addr));
         ds_tree_init(&ds->fqdn_pending_reqs, dns_req_id_cmp,
                      struct fqdn_pending_req, req_node);
-        ds_tree_insert(&dns_session->device_sessions, ds,
+        ds_tree_insert(&dns_session->session_devices, ds,
                        &ds->device_mac);
     }
 
@@ -1101,6 +1141,7 @@ dns_handler(struct fsm_session *session, struct net_header_parser *net_header)
         if ((qnext->type == 0x1) || (qnext->type == 0x1c))
         {
             STRSCPY(req_info->url, qnext->name);
+            LOGT("%s: url: %s", __func__, req_info->url);
             memcpy(&req_info->dev_id, &eth->srcmac,
                    sizeof(req_info->dev_id));
             req_info->req_id = req->req_id;
@@ -1109,6 +1150,8 @@ dns_handler(struct fsm_session *session, struct net_header_parser *net_header)
         }
         qnext = qnext->next;
     }
+
+    dns_session->req = req;
     req->numq = cnt;
     dns_policy_check(ds, req);
     free_rrs(&dns_session->ip, &dns_session->udp, &dns, &header);
@@ -1393,7 +1436,7 @@ dns_parse(uint32_t pos, struct pcap_pkthdr *header,
     dns->nscount = (packet[pos+8] << 8) + packet[pos+9];
     dns->arcount = (packet[pos+10] << 8) + packet[pos+11];
 
-    if (((int16_t)(dns->qdcount) > 1) || ((int16_t)(dns->ancount) > 40))
+    if ((dns->qdcount > 1) || (dns->ancount > 40))
     {
         LOGD("%s: ignoring request with qdcount %u ancount %u",
              __func__, dns->qdcount, dns->ancount);
@@ -1451,6 +1494,7 @@ dns_send_report(struct fqdn_pending_req *req)
     struct dns_session *context = session->handler_ctxt;
 
     if (req->to_report != true) return;
+    if (req->num_replies > 1) return;
 
     if (req->action == FSM_BLOCK &&
         context->blocker_topic != NULL)
@@ -1482,8 +1526,9 @@ dns_free_req(struct fqdn_pending_req *req)
     for (i = 0; i < req->numq; i++)
     {
         free(req_info->reply);
-        free(req_info);
+        req_info++;
     }
+    free(req->req_info);
     free(req);
 }
 
@@ -1495,7 +1540,7 @@ dns_remove_req(struct dns_session *dns_session, os_macaddr_t *mac,
     struct dns_device *ds = NULL;
     struct fqdn_pending_req *req = NULL;
 
-    ds = ds_tree_find(&dns_session->device_sessions, mac);
+    ds = ds_tree_find(&dns_session->session_devices, mac);
     if (ds == NULL)
     {
         LOGE("%s: could not find device " PRI_os_macaddr_lower_t,
@@ -1510,6 +1555,8 @@ dns_remove_req(struct dns_session *dns_session, os_macaddr_t *mac,
              __func__, req_id);
         return;
     }
+
+    if (req->num_replies == 1) dns_send_report(req);
 
     if (--req->dedup != 0)
     {
@@ -1526,12 +1573,121 @@ dns_remove_req(struct dns_session *dns_session, os_macaddr_t *mac,
 
     LOGD("Removing req id %u for device " PRI_os_macaddr_lower_t,
          req_id, FMT_os_macaddr_pt(mac));
-    dns_send_report(req);
 
     ds_tree_remove(&ds->fqdn_pending_reqs, req);
     dns_free_req(req);
 }
 
+
+bool
+is_in_device_set(struct schema_Openflow_Tag *row, char *checking)
+{
+    int ret;
+    int i;
+
+    for(i = 0; i < row->device_value_len; i++)
+    {
+        ret = strcmp(row->device_value[i], checking);
+        if (!ret) return true;
+    }
+    return false;
+}
+
+
+bool
+dns_generate_update_tag(struct fqdn_pending_req *req,
+                        struct schema_Openflow_Tag *output)
+{
+    bool added_information;
+    int device_value_len;
+    om_tag_t *tag;
+    char *adding;
+    bool rc;
+    int i;
+
+    if (req->action != FSM_UPDATE_TAG) return false;
+
+    added_information = false;
+    device_value_len = output->device_value_len;
+
+    STRSCPY(output->name, req->update_tag);
+    output->name_exists = true;
+    output->name_present = true;
+
+    /* Load in current in memory tag state */
+    tag = om_tag_find_by_name(req->update_tag, false);
+    if (tag != NULL)
+    {
+        om_tag_list_entry_t *iter;
+
+        ds_tree_foreach(&tag->values, iter)
+        {
+            adding = iter->value;
+            rc = is_in_device_set(output, adding);
+            if (!rc)
+            {
+                STRSCPY(output->device_value[output->device_value_len], adding);
+                output->device_value_len++;
+            }
+        }
+    }
+
+    /* Add new IPv4 and IPv6 responses to tag */
+    for (i = 0; i < req->ipv4_cnt; i++)
+    {
+        adding = req->ipv4_addrs[i];
+        rc = is_in_device_set(output, adding);
+        if (!rc)
+        {
+            STRSCPY(output->device_value[output->device_value_len], adding);
+            output->device_value_len++;
+        }
+    }
+
+    for (i = 0; i < req->ipv6_cnt; i++)
+    {
+        adding = req->ipv6_addrs[i];
+        rc = is_in_device_set(output, adding);
+        if (!rc)
+        {
+            STRSCPY(output->device_value[output->device_value_len], adding);
+            output->device_value_len++;
+        }
+    }
+    added_information = (output->device_value_len != device_value_len);
+    output->device_value_present = added_information;
+
+    return added_information;
+}
+
+
+bool dns_upsert_tag(struct schema_Openflow_Tag *row, dns_ovsdb_updater updater)
+{
+    pjs_errmsg_t err;
+    json_t *jrow;
+    bool ret;
+
+    jrow = schema_Openflow_Tag_to_json(row, err);
+    if (jrow == NULL)
+    {
+        LOGD("%s: failed to generate JSON for upsert: %s", __func__, err);
+
+        return false;
+    }
+
+    ret = updater(SCHEMA_TABLE(Openflow_Tag), SCHEMA_COLUMN(Openflow_Tag, name),
+                  row->name, jrow, NULL);
+    json_decref(jrow);
+    if (ret)
+    {
+        LOGD("%s: Updated Openflow_Tag: %s with new IP set.", __func__,
+             row->name);
+        return true;
+    }
+    LOGD("%s: Return value from OVSDB update was: %d", __func__, ret);
+
+    return false;
+}
 
 /* Local log interval */
 #define DNS_LOG_PERIODIC 120
@@ -1676,25 +1832,22 @@ dns_report_health_stats(struct dns_session *dns_session,
 
 }
 
-
 void
-dns_periodic(struct fsm_session *session)
+dns_retire_reqs(struct fsm_session *session)
 {
     struct dns_session *dns_session;
-    struct dns_device *ds = NULL;
-    struct fsm_url_stats stats;
-    time_t now = time(NULL);
-    double cmp_report;
-    double cmp_log;
+    struct dns_device *ds;
+    struct dns_cache *mgr;
     double cmp;
-    bool get_stats;
-    bool report;
+    time_t now;
 
+    mgr = dns_get_mgr();
+
+    now = time(NULL);
     dns_session = dns_lookup_session(session);
     if (dns_session == NULL) return;
 
-    /* Retire unresolved old requests */
-    ds = ds_tree_head(&dns_session->device_sessions);
+    ds = ds_tree_head(&dns_session->session_devices);
     while (ds != NULL)
     {
         struct fqdn_pending_req *req = ds_tree_head(&ds->fqdn_pending_reqs);
@@ -1710,7 +1863,7 @@ dns_periodic(struct fsm_session *session)
                  ": dns req id %d  on for %f seconds",
                  __func__, FMT_os_macaddr_t(req->dev_id), req->req_id, cmp);
 
-            if (cmp < REQ_CACHE_TTL)
+            if (cmp < mgr->req_cache_ttl)
             {
                 req = next;
                 continue;
@@ -1721,12 +1874,31 @@ dns_periodic(struct fsm_session *session)
             remove = req;
             req = next;
             ds_tree_remove(&ds->fqdn_pending_reqs, remove);
-            dns_send_report(remove);
+            if (remove->num_replies == 0) dns_send_report(remove);
 
             dns_free_req(remove);
         }
-        ds = ds_tree_next(&dns_session->device_sessions, ds);
+        ds = ds_tree_next(&dns_session->session_devices, ds);
     }
+}
+
+
+void
+dns_periodic(struct fsm_session *session)
+{
+    struct dns_session *dns_session;
+    struct fsm_url_stats stats;
+    time_t now = time(NULL);
+    double cmp_report;
+    double cmp_log;
+    bool get_stats;
+    bool report;
+
+    dns_session = dns_lookup_session(session);
+    if (dns_session == NULL) return;
+
+    /* Retire unresolved old requests */
+    dns_retire_reqs(session);
 
     /* Check if web categorization stats are available */
     if (session->service == NULL) return;
@@ -1786,6 +1958,7 @@ fqdn_policy_check(struct dns_device *ds,
     req->fsm_checked = false;
     fsm_apply_policies(session, &preq);
     req->action = preq.reply.action;
+    req->update_tag = preq.reply.update_tag;
     req->policy = preq.reply.policy;
     req->policy_idx = preq.reply.policy_idx;
     req->rule_name = preq.reply.rule_name;
@@ -1828,7 +2001,10 @@ void
 dns_policy_check(struct dns_device *ds,
                  struct fqdn_pending_req *req)
 {
-    fqdn_policy_check(ds, req);
+    struct dns_cache *mgr;
+
+    mgr = dns_get_mgr();
+    mgr->policy_check(ds, req);
 
     /* Process the DNS reply if it was pending policy checking */
     if (req->response != NULL)
@@ -1836,7 +2012,7 @@ dns_policy_check(struct dns_device *ds,
         struct dns_session *dns_session = req->fsm_context->handler_ctxt;
         if (req->action != FSM_BLOCK)
         {
-            dns_forward(dns_session, NULL, req->response, req->response_len);
+            mgr->forward(dns_session, NULL, req->response, req->response_len);
         }
         free(req->response);
     }

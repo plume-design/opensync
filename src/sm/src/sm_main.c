@@ -46,7 +46,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "dppline.h"
 #include "os_backtrace.h"
 #include "json_util.h"
-#include "evsched.h"
 
 #include "sm.h"
 
@@ -90,12 +89,6 @@ int main (int argc, char **argv)
     log_register_dynamic_severity(loop);
 
     json_memdbg_init(loop);
-
-    if (evsched_init(loop) == false) {
-        LOGE("Initializing SM "
-             "(Failed to initialize EVSCHED)");
-        return -1;
-    }
 
     /* Initialize target library */
     rc = target_init(TARGET_INIT_MGR_SM, loop);

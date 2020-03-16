@@ -374,7 +374,7 @@ wm2_radio_equal(
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_Radio_Config, channel_mode))) {
         RADIO_EQUAL(SCHEMA_FIELD_CMP_STR(rconf, &rstate, channel_mode));
         if (!is_equal) {
-            strcpy(rconf_set->channel_mode, rconf->channel_mode);
+            STRSCPY(rconf_set->channel_mode, rconf->channel_mode);
             rconf_set->channel_mode_exists = true;
         }
     }
@@ -388,7 +388,7 @@ wm2_radio_equal(
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_Radio_Config, country))) {
         RADIO_EQUAL(SCHEMA_FIELD_CMP_STR(rconf, &rstate, country));
         if (!is_equal) {
-            strcpy(rconf_set->country, rconf->country);
+            STRSCPY(rconf_set->country, rconf->country);
             rconf_set->country_exists = true;
         }
     }
@@ -402,13 +402,13 @@ wm2_radio_equal(
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_Radio_Config, freq_band))){
         if (strcmp(rconf->freq_band, rstate.freq_band)) {
             is_equal = false;
-            strcpy(rconf_set->freq_band, rconf->freq_band);
+            STRSCPY(rconf_set->freq_band, rconf->freq_band);
         }
     }
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_Radio_Config, ht_mode))) {
         RADIO_EQUAL(SCHEMA_FIELD_CMP_STR(rconf, &rstate, ht_mode));
         if (!is_equal) {
-            strcpy(rconf_set->ht_mode, rconf->ht_mode);
+            STRSCPY(rconf_set->ht_mode, rconf->ht_mode);
             rconf_set->ht_mode_exists = true;
         }
     }
@@ -422,8 +422,8 @@ wm2_radio_equal(
         }
         if (!is_equal) {
             for (index = 0; index < rconf->hw_config_len; index++) {
-                strcpy(rconf_set->hw_config[index], rconf->hw_config[index]);
-                strcpy(rconf_set->hw_config_keys[index], rconf->hw_config_keys[index]);
+                STRSCPY(rconf_set->hw_config[index], rconf->hw_config[index]);
+                STRSCPY(rconf_set->hw_config_keys[index], rconf->hw_config_keys[index]);
             }
             rconf_set->hw_config_len = rconf->hw_config_len;
         }
@@ -431,7 +431,7 @@ wm2_radio_equal(
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_Radio_Config, hw_mode))) {
         RADIO_EQUAL(SCHEMA_FIELD_CMP_STR(rconf, &rstate, hw_mode));
         if (!is_equal) {
-            strcpy(rconf_set->hw_mode, rconf->hw_mode);
+            STRSCPY(rconf_set->hw_mode, rconf->hw_mode);
             rconf_set->hw_mode_exists = true;
         }
     }
@@ -480,7 +480,7 @@ wm2_radio_equal(
         }
         if (!is_equal) {
             for (index = 0; index < rconf->hw_config_len; index++) {
-                strcpy(rconf_set->temperature_control[index], rconf->temperature_control[index]);
+                STRSCPY(rconf_set->temperature_control[index], rconf->temperature_control[index]);
                 rconf_set->temperature_control_keys[index] = rconf->temperature_control_keys[index];
             }
             rconf_set->temperature_control_len = rconf->temperature_control_len;
@@ -584,7 +584,7 @@ void callback_Wifi_Radio_Config_v1(
                     return;
                 }
 
-                strcpy(rstate.radio_config.uuid, rconf->_uuid.uuid);
+                STRSCPY(rstate.radio_config.uuid, rconf->_uuid.uuid);
                 rstate.radio_config_exists = true;
 
                 char *filter[] = { "-", SCHEMA_COLUMN(Wifi_Radio_State, vif_states), NULL };
@@ -800,7 +800,7 @@ wm2_vif_equal(
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_VIF_Config, bridge))) {
         VIF_EQUAL(SCHEMA_FIELD_CMP_STR(vconf, &vstate, bridge));
         if (!is_equal) {
-            strcpy(vconf_set->bridge, vconf->bridge);
+            STRSCPY(vconf_set->bridge, vconf->bridge);
             vconf_set->bridge_exists = true;
         }
     }
@@ -828,7 +828,7 @@ wm2_vif_equal(
         }
         if (!is_equal) {
             for (index = 0; index < vconf->mac_list_len; index++) {
-                strcpy(vconf_set->mac_list[index], vconf->mac_list[index]);
+                STRSCPY(vconf_set->mac_list[index], vconf->mac_list[index]);
             }
             vconf_set->mac_list_len = vconf->mac_list_len;
         }
@@ -836,21 +836,21 @@ wm2_vif_equal(
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_VIF_Config, mac_list_type))) {
         VIF_EQUAL(SCHEMA_FIELD_CMP_STR(vconf, &vstate, mac_list_type));
         if (!is_equal) {
-            strcpy(vconf_set->mac_list_type, vconf->mac_list_type);
+            STRSCPY(vconf_set->mac_list_type, vconf->mac_list_type);
             vconf_set->mac_list_type_exists = true;
         }
     }
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_VIF_Config, mode))) {
         VIF_EQUAL(SCHEMA_FIELD_CMP_STR(vconf, &vstate, mode));
         if (!is_equal) {
-            strcpy(vconf_set->mode, vconf->mode);
+            STRSCPY(vconf_set->mode, vconf->mode);
             vconf_set->mode_exists = true;
         }
     }
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_VIF_Config, parent))) {
         VIF_EQUAL(SCHEMA_FIELD_CMP_STR(vconf, &vstate, parent));
         if (!is_equal) {
-            strcpy(vconf_set->parent, vconf->parent);
+            STRSCPY(vconf_set->parent, vconf->parent);
             vconf_set->parent_exists = true;
         }
     }
@@ -864,8 +864,8 @@ wm2_vif_equal(
         }
         if (!is_equal) {
             for (index = 0; index < vconf->security_len; index++) {
-                strcpy(vconf_set->security[index], vconf->security[index]);
-                strcpy(vconf_set->security_keys[index], vconf->security_keys[index]);
+                STRSCPY(vconf_set->security[index], vconf->security[index]);
+                STRSCPY(vconf_set->security_keys[index], vconf->security_keys[index]);
             }
             vconf_set->security_len = vconf->security_len;
         }
@@ -873,14 +873,14 @@ wm2_vif_equal(
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_VIF_Config, ssid))) {
         VIF_EQUAL(SCHEMA_FIELD_CMP_STR(vconf, &vstate, ssid));
         if (!is_equal) {
-            strcpy(vconf_set->ssid, vconf->ssid);
+            STRSCPY(vconf_set->ssid, vconf->ssid);
             vconf_set->ssid_exists = true;
         }
     }
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_VIF_Config, ssid_broadcast))) {
         VIF_EQUAL(SCHEMA_FIELD_CMP_STR(vconf, &vstate, ssid_broadcast));
         if (!is_equal) {
-            strcpy(vconf_set->ssid_broadcast, vconf->ssid_broadcast);
+            STRSCPY(vconf_set->ssid_broadcast, vconf->ssid_broadcast);
             vconf_set->ssid_broadcast_exists = true;
         }
     }
@@ -993,7 +993,7 @@ void callback_Wifi_VIF_Config_v1(
         case OVSDB_UPDATE_MODIFY:
 
             memset(&vconf_set, 0, sizeof(vconf_set));
-            strcpy(vconf_set.if_name, vconf->if_name);
+            STRSCPY(vconf_set.if_name, vconf->if_name);
             if (!wm2_vif_equal(mon, vconf, &vconf_set)){
                 LOGD("Configuring VIF %s through %s", vconf->if_name,
                         ovsdb_update_type_to_str(mon->mon_type));
@@ -1055,7 +1055,7 @@ void callback_Wifi_VIF_Config_v1(
 
                 struct schema_Wifi_Radio_Config *radio_conf = (void*)radio_conf_row->record;
                 // upsert to ovsdb and insert reference into Radio_State.vif_states
-                strcpy(vstate.vif_config.uuid, vconf->_uuid.uuid);
+                STRSCPY(vstate.vif_config.uuid, vconf->_uuid.uuid);
                 vstate.vif_config_exists = true;
                 char *filter[] = { "-", SCHEMA_COLUMN(Wifi_VIF_State, associated_clients), NULL };
                 json_t *parent_where = ovsdb_where_uuid(

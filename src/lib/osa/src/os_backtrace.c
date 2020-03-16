@@ -328,7 +328,7 @@ void backtrace_dump(void)
     return;
 }
 
-bool backtrace(backtrace_func_t *, void *)
+bool backtrace(backtrace_func_t *func, void *ctx)
 {
     return false;
 }

@@ -215,9 +215,16 @@ reflink_t *nm2_ipv6_routeadv_getref(const ovs_uuid_t *uuid);
 /* Port forwarding */
 bool nm2_portfw_init(void);
 
+/* Port table */
+bool nm2_port_init(void);
+
+/* mcast tuning params tables */
+void nm2_mcast_init(void);
+
 /*Interface config and state */
 void nm2_inet_config_init(void);
 void nm2_inet_state_init(void);
+inet_state_fn_t nm2_inet_state_fn;
 bool nm2_inet_state_update(struct nm2_iface *piface);
 bool nm2_inet_state_del(const char *ifname);
 
@@ -228,7 +235,7 @@ bool nm2_dhcp_lease_notify(void *self, bool released, struct osn_dhcp_server_lea
 
 /* Route handling */
 bool nm2_route_init(void);
-bool nm2_route_notify(void *data, struct osn_route_status *rts, bool remove);
+inet_route_status_fn_t nm2_route_notify;
 
 /*
  * ===========================================================================
@@ -250,4 +257,4 @@ int lan_clients_oftag_remove_mac(char *mac);
 void nm2_ip6_addr_status_fn(inet_t *inet, struct inet_ip6_addr_status *as, bool remove);
 void nm2_ip6_neigh_status_fn(inet_t *inet, struct inet_ip6_neigh_status *ns, bool remove);
 
-#endif
+#endif /* NM2_H_INCLUDED */

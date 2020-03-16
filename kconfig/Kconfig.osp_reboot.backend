@@ -1,0 +1,10 @@
+#
+# include core modules
+#
+source "src/lib/osp/kconfig/Kconfig.osp_reboot.backend"
+
+#
+# include platform/vendor modules
+#
+osource "platform/*/kconfig/Kconfig.osp_reboot.backend"
+osource "vendor/*/kconfig/Kconfig.osp_reboot.backend"

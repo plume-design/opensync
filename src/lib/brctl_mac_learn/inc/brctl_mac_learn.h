@@ -31,4 +31,4 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 bool brctl_mac_learning_register(target_mac_learning_cb_t *omac_cb);
 
-#endif
+#endif /* BRCTL_MAC_LEARN_H_INCLUDED */

@@ -27,7 +27,7 @@
 
 CFLAGS += $(OPTIMIZE) $(DEBUGFLAGS) $(DEFINES) $(INCLUDES)
 CFLAGS += $(CFG_DEFINES)
-CFLAGS += $(PML_TARGET_CFLAGS)
+CFLAGS += $(VENDOR_CFLAGS)
 
 TARGET_DEF := TARGET_$(shell echo -n "$(TARGET)" | tr -sc '[A-Za-z0-9]' _ | tr '[a-z]' '[A-Z]')
 CFLAGS += -D$(TARGET_DEF) -DTARGET_NAME="\"$(TARGET)\""

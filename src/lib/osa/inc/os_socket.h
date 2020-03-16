@@ -24,8 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __OS_SOCKET__H__
-#define __OS_SOCKET__H__
+#ifndef OS_SOCKET_H_INCLUDED
+#define OS_SOCKET_H_INCLUDED
 
 #include <stdbool.h>
 
@@ -72,4 +72,4 @@ int32_t tcp_server_listen(int32_t sock_fd);
 int ovsdb_conn();
 bool ovsdb_disconn(int sock_fd);
 
-#endif  /* #define __OS_SOCKET__H__ */
+#endif  /* OS_SOCKET_H_INCLUDED */

@@ -24,7 +24,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include "plume_stats.pb-c.h"
+#include "opensync_stats.pb-c.h"
 #include "ds.h"
 #include "ds_dlist.h"
 #include "os_time.h"
@@ -140,7 +140,7 @@ bool qm_queue_append_item(qm_item_t **qitem, qm_response_t *res)
 
 bool qm_queue_append_log(qm_item_t **qitem, qm_response_t *res)
 {
-#ifdef BUILD_REMOTE_LOG
+#ifdef CONFIG_LOG_REMOTE
     if (!qm_log_enabled) {
         g_qm_log_drop_count++;
         return true;

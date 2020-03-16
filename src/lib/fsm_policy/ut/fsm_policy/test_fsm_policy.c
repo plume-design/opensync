@@ -37,8 +37,78 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "target.h"
 #include "unity.h"
 #include "schema.h"
+#include "policy_tags.h"
 
 const char *test_name = "fsm_policy_tests";
+
+struct schema_Openflow_Tag g_tags[] =
+{
+    {
+        .name_exists = true,
+        .name = "tag_1",
+        .device_value_len = 2,
+        .device_value =
+        {
+            "11:11:11:11:11:11",
+            "12:12:12:12:12:12",
+        },
+        .cloud_value_len = 3,
+        .cloud_value =
+        {
+            "13:13:13:13:13:13",
+            "14:14:14:14:14:14",
+            "15:15:15:15:15:15",
+        },
+    },
+    {
+        .name_exists = true,
+        .name = "tag_2",
+        .device_value_len = 2,
+        .device_value =
+        {
+            "21:21:21:21:21:21",
+            "22:22:22:22:22:22",
+        },
+        .cloud_value_len = 3,
+        .cloud_value =
+        {
+            "23:23:23:23:23:23",
+            "24:24:24:24:24:24",
+            "25:25:25:25:25:25",
+        },
+    },
+    {
+        .name_exists = true,
+        .name = "tag_3",
+        .device_value_len = 2,
+        .device_value =
+        {
+            "31:31:31:31:31:31",
+            "32:32:32:32:32:32",
+        },
+        .cloud_value_len = 3,
+        .cloud_value =
+        {
+            "33:33:33:33:33:33",
+            "34:34:34:34:34:34",
+            "35:35:35:35:35:35",
+        },
+    },
+};
+
+
+struct schema_Openflow_Tag_Group g_tag_group =
+{
+    .name_exists = true,
+    .name = "group_tag",
+    .tags_len = 2,
+    .tags =
+    {
+        "#tag_1",
+        "tag_3",
+    }
+};
+
 
 struct schema_FSM_Policy spolicies[] =
 {
@@ -146,23 +216,113 @@ struct schema_FSM_Policy spolicies[] =
             "1.2.3.4",
             "::1",
         },
-    }
+    },
+    { /* entry 5. Always matching, no action */
+        .policy_exists = true,
+        .policy = "test_policy",
+        .name = "test_policy_observe",
+        .idx = 0,
+        .mac_op_exists = false,
+        .fqdn_op_exists = false,
+        .fqdncat_op_exists = false,
+        .action_exists = false, /* pass through */
+        .log_exists = true,
+        .log = "all",
+    },
+    { /* entry 6. Mac match testing, block */
+        .policy_exists = true,
+        .policy = "mac_policy",
+        .name = "mac_observe",
+        .idx = 0,
+        .mac_op_exists = true,
+        .mac_op = "in",
+        .macs_len = 3,
+        .macs =
+        {
+            "${@tag_1}",            /* Device values */
+            "$[group_tag]",
+            "11:22:33:44:55:66",
+        },
+        .fqdn_op_exists = false,
+        .fqdncat_op_exists = false,
+        .action_exists = true,
+        .action = "drop",
+        .log_exists = true,
+        .log = "all",
+    },
+    { /* entry 7 */
+        .policy_exists = true,
+        .policy = "dev_webroot",
+        .name = "dev_wild_tag_update",
+        .mac_op_exists = true,
+        .mac_op = "in",
+        .macs_len = 3,
+        .macs =
+        {
+            "00:00:00:00:00:00",
+            "11:22:33:44:55:66",
+            "22:33:44:55:66:77"
+        },
+        .idx = 10,
+        .fqdn_op_exists = true,
+        .fqdn_op = "wild_in",
+        .fqdns_len = 1,
+        .fqdns = { "www.bo*.google.com", },
+        .fqdncat_op_exists = false,
+        .risk_op_exists = false,
+        .ipaddr_op_exists = false,
+        .ipaddrs_len = 0,
+        .action_exists = true,
+        .action = "update_tag",
+        .other_config_len = 1,
+        .other_config_keys = { "tag_name", },
+        .other_config = { "my_tag" },
+    },
 };
 
 
 void setUp(void)
 {
-    struct fsm_policy_session *mgr = get_mgr();
+    struct fsm_policy_session *mgr;
+    size_t len;
+    size_t i;
+    bool ret;
 
+    len = sizeof(g_tags) / sizeof(*g_tags);
+    for (i = 0; i < len; i++)
+    {
+        ret = om_tag_add_from_schema(&g_tags[i]);
+        TEST_ASSERT_TRUE(ret);
+    }
+
+    ret = om_tag_group_add_from_schema(&g_tag_group);
+    TEST_ASSERT_TRUE(ret);
+
+    mgr = fsm_policy_get_mgr();
     if (!mgr->initialized) fsm_init_manager();
 }
 
+
 void tearDown(void)
 {
-    struct fsm_policy_session *mgr = get_mgr();
     struct policy_table *table, *t_to_remove;
     struct fsm_policy *fpolicy, *p_to_remove;
     ds_tree_t *tables_tree, *policies_tree;
+    struct fsm_policy_session *mgr;
+    size_t len;
+    size_t i;
+    bool ret;
+
+    len = sizeof(g_tags) / sizeof(*g_tags);
+    for (i = 0; i < len; i++)
+    {
+        ret = om_tag_remove_from_schema(&g_tags[i]);
+        TEST_ASSERT_TRUE(ret);
+    }
+    ret = om_tag_group_remove_from_schema(&g_tag_group);
+    TEST_ASSERT_TRUE(ret);
+
+    mgr = fsm_policy_get_mgr();
 
     tables_tree = &mgr->policy_tables;
     table = ds_tree_head(tables_tree);
@@ -339,7 +499,7 @@ void test_check_next_spolicy2(void)
     TEST_ASSERT_EQUAL_INT(spolicy->next[0], fpolicy->next_table_index);
 
     /* Check that the next table was created */
-    mgr = get_mgr();
+    mgr = fsm_policy_get_mgr();
     table = ds_tree_find(&mgr->policy_tables, fpolicy->next_table);
     TEST_ASSERT_NOT_NULL(table);
 }
@@ -426,7 +586,7 @@ void test_apply_policies(void)
     fsm_add_policy(spolicy);
     fpolicy = fsm_policy_lookup(spolicy);
 
-    mgr = get_mgr();
+    mgr = fsm_policy_get_mgr();
     table = ds_tree_find(&mgr->policy_tables, spolicy->policy);
     TEST_ASSERT_NOT_NULL(table);
 
@@ -450,7 +610,7 @@ void test_apply_policies(void)
     req.fqdn_req = &fqdn_req;
 
     /* Build the request elements */
-    strncpy(req_info.url, "www.playboy.com", sizeof(req_info.url));
+    STRSCPY(req_info.url, "www.playboy.com");
     fqdn_req.req_info = &req_info;
     fqdn_req.numq = 1;
     fqdn_req.policy_table = table;
@@ -461,6 +621,184 @@ void test_apply_policies(void)
     reply = &req.reply;
     TEST_ASSERT_EQUAL_INT(FSM_BLOCK, reply->action);
     TEST_ASSERT_EQUAL_INT(FSM_REPORT_BLOCKED, reply->log);
+
+    free(reply->rule_name);
+    free(reply->policy);
+    free(req_info.reply);
+}
+void test_wildcard_ovsdb_conversions(void)
+{
+
+    struct schema_FSM_Policy *spolicy = &spolicies[5];
+    pjs_errmsg_t err;
+    json_t *jsonrow = schema_FSM_Policy_to_json(spolicy, err);
+    TEST_ASSERT_NOT_NULL(jsonrow);
+    struct schema_FSM_Policy check;
+    memset(&check, 0, sizeof(check));
+
+    bool ret = schema_FSM_Policy_from_json(&check, jsonrow, false, err);
+    TEST_ASSERT_TRUE(ret);
+
+    json_decref(jsonrow);
+
+}
+
+void test_apply_wildcard_policy_match_in(void)
+{
+    struct schema_FSM_Policy *spolicy;
+    struct fsm_policy *fpolicy;
+    struct fsm_policy_rules *rules;
+    struct fqdn_pending_req fqdn_req;
+    struct fsm_url_request req_info;
+    struct fsm_policy_req req;
+    os_macaddr_t dev_mac;
+    struct fsm_policy_reply *reply;
+    struct fsm_policy_session *mgr;
+    struct policy_table *table;
+    struct fsm_session session = { 0 };
+    struct str_set *macs_set;
+    struct str_set *fqdns_set;
+    size_t i;
+
+    /* Initialize local structures */
+    memset(&fqdn_req, 0, sizeof(fqdn_req));
+    memset(&req_info, 0, sizeof(req_info));
+    memset(&req, 0, sizeof(req));
+    memset(&dev_mac, 0, sizeof(dev_mac));
+
+    /* Insert wildcard policy */
+    spolicy = &spolicies[7];
+
+    /* Validate access to the fsm policy */
+    fsm_add_policy(spolicy);
+    fpolicy = fsm_policy_lookup(spolicy);
+    TEST_ASSERT_NOT_NULL(fpolicy);
+
+    /* Validate rule name */
+    TEST_ASSERT_EQUAL_STRING(spolicy->name, fpolicy->rule_name);
+
+    /* Validate mac content */
+    rules = &fpolicy->rules;
+    macs_set = rules->macs;
+    TEST_ASSERT_NOT_NULL(macs_set);
+    TEST_ASSERT_EQUAL_INT(spolicy->macs_len, macs_set->nelems);
+    for (i = 0; i < macs_set->nelems; i++)
+    {
+        TEST_ASSERT_EQUAL_STRING(spolicy->macs[i], macs_set->array[i]);
+    }
+
+    /* Validate FQDNs content */
+    fqdns_set = rules->fqdns;
+    TEST_ASSERT_NOT_NULL(fqdns_set);
+
+    mgr = fsm_policy_get_mgr();
+    table = ds_tree_find(&mgr->policy_tables, spolicy->policy);
+    TEST_ASSERT_NOT_NULL(table);
+
+    /* Validate access to the fsm policy */
+    TEST_ASSERT_NOT_NULL(fpolicy);
+
+    /* Validate fqdncats and risk level settings */
+    // rules = &fpolicy->rules;
+
+    req.device_id = &dev_mac;
+
+    /* Build the request elements */
+    STRSCPY(req_info.url, "www.books.google.com");
+    req.url = "www.books.google.com";
+    fqdn_req.req_info = &req_info;
+    fqdn_req.numq = 1;
+    fqdn_req.policy_table = table;
+    fqdn_req.categories_check = test_cat_check;
+    req.fqdn_req = &fqdn_req;
+    fsm_apply_policies(&session, &req);
+    reply = &req.reply;
+
+    /* Verify reply struct has been properly built */
+    TEST_ASSERT_EQUAL_STRING("my_tag", reply->update_tag);
+    TEST_ASSERT_EQUAL_INT(FSM_UPDATE_TAG, reply->action);
+
+    free(reply->rule_name);
+    free(reply->policy);
+    free(req_info.reply);
+}
+
+
+void test_apply_wildcard_policy_no_match(void)
+{
+    struct schema_FSM_Policy *spolicy;
+    struct fsm_policy *fpolicy;
+    struct fsm_policy_rules *rules;
+    struct fqdn_pending_req fqdn_req;
+    struct fsm_url_request req_info;
+    struct fsm_policy_req req;
+    os_macaddr_t dev_mac;
+    struct fsm_policy_reply *reply;
+    struct fsm_policy_session *mgr;
+    struct policy_table *table;
+    struct fsm_session session = { 0 };
+    struct str_set *macs_set;
+    struct str_set *fqdns_set;
+    size_t i;
+
+    /* Initialize local structures */
+    memset(&fqdn_req, 0, sizeof(fqdn_req));
+    memset(&req_info, 0, sizeof(req_info));
+    memset(&req, 0, sizeof(req));
+    memset(&dev_mac, 0, sizeof(dev_mac));
+
+    /* Insert wildcard policy */
+    spolicy = &spolicies[7];
+
+    /* Validate access to the fsm policy */
+    fsm_add_policy(spolicy);
+    fpolicy = fsm_policy_lookup(spolicy);
+    TEST_ASSERT_NOT_NULL(fpolicy);
+
+    /* Validate rule name */
+    TEST_ASSERT_EQUAL_STRING(spolicy->name, fpolicy->rule_name);
+
+    /* Validate mac content */
+    rules = &fpolicy->rules;
+    macs_set = rules->macs;
+    TEST_ASSERT_NOT_NULL(macs_set);
+    TEST_ASSERT_EQUAL_INT(spolicy->macs_len, macs_set->nelems);
+    for (i = 0; i < macs_set->nelems; i++)
+    {
+        TEST_ASSERT_EQUAL_STRING(spolicy->macs[i], macs_set->array[i]);
+    }
+
+    /* Validate FQDNs content */
+    fqdns_set = rules->fqdns;
+    TEST_ASSERT_NOT_NULL(fqdns_set);
+
+    mgr = fsm_policy_get_mgr();
+    table = ds_tree_find(&mgr->policy_tables, spolicy->policy);
+    TEST_ASSERT_NOT_NULL(table);
+
+    /* Validate access to the fsm policy */
+    TEST_ASSERT_NOT_NULL(fpolicy);
+
+    /* Validate fqdncats and risk level settings */
+    // rules = &fpolicy->rules;
+
+    req.device_id = &dev_mac;
+
+    /* Build the request elements */
+    STRSCPY(req_info.url, "www.maps.google.com");
+    req.url = "www.maps.google.com";
+    fqdn_req.req_info = &req_info;
+    fqdn_req.numq = 1;
+    fqdn_req.policy_table = table;
+    fqdn_req.categories_check = test_cat_check;
+    req.fqdn_req = &fqdn_req;
+    fsm_apply_policies(&session, &req);
+    reply = &req.reply;
+
+    /* Verify reply struct has been properly built */
+    TEST_ASSERT_EQUAL_INT(FSM_NO_MATCH, reply->action);
+    free(reply->rule_name);
+    free(reply->policy);
     free(req_info.reply);
 }
 
@@ -500,7 +838,7 @@ void test_fsm_policy_client(void)
     fsm_policy_register_client(client);
     TEST_ASSERT_NOT_NULL(client->table);
 
-    mgr = get_mgr();
+    mgr = fsm_policy_get_mgr();
     table = ds_tree_find(&mgr->policy_tables, default_name);
     TEST_ASSERT_NOT_NULL(table);
     TEST_ASSERT_TRUE(table == client->table);
@@ -527,6 +865,73 @@ void test_fsm_policy_client(void)
 
     free(client->name);
     free(client);
+    free(session);
+}
+
+
+void test_fsm_policy_clients_same_session(void)
+{
+    struct fsm_session *session;
+    struct schema_FSM_Policy *spolicy;
+    struct fsm_policy_client *default_policy_client;
+    struct fsm_policy_client *dev_webpulse_client;
+    char *default_name = "default";
+    char *other_name = "dev_webpulse";
+    struct policy_table *table;
+    struct fsm_policy_session *mgr;
+
+    /* Insert default policy */
+    spolicy = &spolicies[0];
+    fsm_add_policy(spolicy);
+
+    /* Insert dev_webpulse policy */
+    spolicy = &spolicies[3];
+    fsm_add_policy(spolicy);
+
+    session = calloc(1, sizeof(*session));
+    TEST_ASSERT_NOT_NULL(session);
+
+    default_policy_client = calloc(1, sizeof(*default_policy_client));
+    TEST_ASSERT_NOT_NULL(default_policy_client);
+    session->handler_ctxt = default_policy_client;
+    default_policy_client->session = session;
+    default_policy_client->update_client = test_update_client;
+
+    /* Register the client. Its table pointer should be set */
+    fsm_policy_register_client(default_policy_client);
+    TEST_ASSERT_NOT_NULL(default_policy_client->table);
+
+    dev_webpulse_client = calloc(1, sizeof(*dev_webpulse_client));
+    TEST_ASSERT_NOT_NULL(dev_webpulse_client);
+    dev_webpulse_client->name = strdup(other_name);
+    TEST_ASSERT_NOT_NULL(dev_webpulse_client->name);
+    session->handler_ctxt = default_policy_client;
+    dev_webpulse_client->session = session;
+    dev_webpulse_client->update_client = test_update_client;
+
+    /* Register the client. Its table pointer should be set */
+    fsm_policy_register_client(dev_webpulse_client);
+    TEST_ASSERT_NOT_NULL(dev_webpulse_client->table);
+
+    mgr = fsm_policy_get_mgr();
+    table = ds_tree_find(&mgr->policy_tables, default_name);
+    TEST_ASSERT_NOT_NULL(table);
+    TEST_ASSERT_TRUE(table == default_policy_client->table);
+
+    table = ds_tree_find(&mgr->policy_tables, other_name);
+    TEST_ASSERT_NOT_NULL(table);
+    TEST_ASSERT_TRUE(table == dev_webpulse_client->table);
+
+    fsm_policy_deregister_client(default_policy_client);
+    TEST_ASSERT_NULL(default_policy_client->table);
+    free(default_policy_client->name);
+    free(default_policy_client);
+
+    fsm_policy_deregister_client(dev_webpulse_client);
+    TEST_ASSERT_NULL(dev_webpulse_client->table);
+    free(dev_webpulse_client->name);
+    free(dev_webpulse_client);
+
     free(session);
 }
 
@@ -566,6 +971,176 @@ void test_ip_threat_settings(void)
 }
 
 
+void test_apply_mac_policies(void)
+{
+    struct schema_FSM_Policy *spolicy;
+    struct fqdn_pending_req fqdn_req;
+    struct fsm_url_request req_info;
+    struct fsm_policy_session *mgr;
+    struct fsm_policy_rules *rules;
+    struct fsm_policy_reply *reply;
+    struct str_set *rules_macs;
+    struct fsm_session session;
+    struct policy_table *table;
+    struct fsm_policy *fpolicy;
+    struct fsm_policy_req req;
+    int expected_action;
+    size_t len;
+    size_t i;
+
+    struct macs_expected
+    {
+        os_macaddr_t mac;
+        int expected_action;
+    } macs[] =
+      {
+          {
+              .mac =
+              {
+                  .addr = /* In tag_1's device values */
+                  {
+                      0x11, 0x11, 0x11, 0x11, 0x11, 0x11,
+                  },
+              },
+              .expected_action = FSM_BLOCK,
+          },
+          {
+              .mac =
+              {
+                  .addr = /* In tag_2's cloud values */
+                  {
+                      0x23, 0x23, 0x23, 0x23, 0x23, 0x23,
+                  },
+              },
+              .expected_action = FSM_NO_MATCH,
+          },
+          {
+              .mac =
+              {
+                  .addr = /* In tag_3's cloud values */
+                  {
+                      0x33, 0x33, 0x33, 0x33, 0x33, 0x33,
+                  },
+              },
+              .expected_action = FSM_BLOCK,
+          },
+          {
+              .mac =
+              {
+                  .addr =
+                  {
+                      0x11, 0x22, 0x33, 0x44, 0x55, 0x66,
+                  },
+              },
+              .expected_action = FSM_BLOCK,
+          },
+      };
+
+    /* Insert the mac match policy */
+    spolicy = &spolicies[6];
+    fsm_add_policy(spolicy);
+    fpolicy = fsm_policy_lookup(spolicy);
+
+    mgr = fsm_policy_get_mgr();
+    table = ds_tree_find(&mgr->policy_tables, spolicy->policy);
+    TEST_ASSERT_NOT_NULL(table);
+
+    /* Validate access to the fsm policy */
+    TEST_ASSERT_NOT_NULL(fpolicy);
+
+    /* Validate mac settings */
+    rules = &fpolicy->rules;
+    rules_macs = rules->macs;
+    TEST_ASSERT_NOT_NULL(rules_macs);
+
+        len = sizeof(macs) / sizeof(macs[0]);
+
+    for (i = 0; i < len; i++)
+    {
+        /* Initialize local structures */
+        memset(&fqdn_req, 0, sizeof(fqdn_req));
+        memset(&req_info, 0, sizeof(req_info));
+        memset(&req, 0, sizeof(req));
+        memset(&session, 0, sizeof(session));
+
+        req.fqdn_req = &fqdn_req;
+
+        /* Build the request elements */
+        STRSCPY(req_info.url, "www.playboy.com");
+        fqdn_req.req_info = &req_info;
+        fqdn_req.numq = 1;
+        fqdn_req.policy_table = table;
+        fqdn_req.categories_check = test_cat_check;
+        fqdn_req.risk_level_check = test_risk_level;
+        req.fqdn_req = &fqdn_req;
+
+        req.device_id = &macs[i].mac;
+        expected_action = macs[i].expected_action;
+
+        fsm_apply_policies(&session, &req);
+
+        reply = &req.reply;
+        TEST_ASSERT_EQUAL_INT(expected_action, reply->action);
+
+        free(reply->rule_name);
+        free(reply->policy);
+        free(req_info.reply);
+    }
+}
+
+
+void test_apply_no_action_policy(void)
+{
+    struct schema_FSM_Policy *spolicy;
+    struct fsm_policy *fpolicy;
+    struct fqdn_pending_req fqdn_req;
+    struct fsm_url_request req_info;
+    struct fsm_policy_req req;
+    os_macaddr_t dev_mac;
+    struct fsm_policy_reply *reply;
+    struct fsm_policy_session *mgr;
+    struct policy_table *table;
+    struct fsm_session session = { 0 };
+
+    /* Initialize local structures */
+    memset(&fqdn_req, 0, sizeof(fqdn_req));
+    memset(&req_info, 0, sizeof(req_info));
+    memset(&req, 0, sizeof(req));
+    memset(&dev_mac, 0, sizeof(dev_mac));
+
+    /* Insert dev_webpulse policy */
+    spolicy = &spolicies[5];
+    fsm_add_policy(spolicy);
+    fpolicy = fsm_policy_lookup(spolicy);
+
+    mgr = fsm_policy_get_mgr();
+    table = ds_tree_find(&mgr->policy_tables, spolicy->policy);
+    TEST_ASSERT_NOT_NULL(table);
+
+    /* Validate access to the fsm policy */
+    TEST_ASSERT_NOT_NULL(fpolicy);
+
+    req.device_id = &dev_mac;
+    req.fqdn_req = &fqdn_req;
+
+    /* Build the request elements */
+    STRSCPY(req_info.url, "www.playboy.com");
+    fqdn_req.req_info = &req_info;
+    fqdn_req.numq = 1;
+    fqdn_req.policy_table = table;
+    fqdn_req.categories_check = test_cat_check;
+    fqdn_req.risk_level_check = test_risk_level;
+    req.fqdn_req = &fqdn_req;
+    fsm_apply_policies(&session, &req);
+    reply = &req.reply;
+    TEST_ASSERT_EQUAL_INT(FSM_OBSERVED, reply->action);
+    TEST_ASSERT_EQUAL_INT(FSM_REPORT_ALL, reply->log);
+
+    free(reply->rule_name);
+    free(reply->policy);
+    free(req_info.reply);
+}
+
 int main(int argc, char *argv[])
 {
     (void)argc;
@@ -581,9 +1156,14 @@ int main(int argc, char *argv[])
     RUN_TEST(test_add_spolicy2);
     RUN_TEST(test_check_next_spolicy2);
     RUN_TEST(test_apply_policies);
+    RUN_TEST(test_wildcard_ovsdb_conversions);
     RUN_TEST(test_fsm_policy_client);
     RUN_TEST(test_ip_threat_settings);
+    RUN_TEST(test_fsm_policy_clients_same_session);
+    RUN_TEST(test_apply_no_action_policy);
+    RUN_TEST(test_apply_mac_policies);
+    RUN_TEST(test_apply_wildcard_policy_match_in);
+    RUN_TEST(test_apply_wildcard_policy_no_match);
 
     return UNITY_END();
 }
-

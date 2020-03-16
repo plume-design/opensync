@@ -33,13 +33,18 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "inet_dns.h"
 
+struct __inet_dns{
+};
+
+static inet_dns_t g_inet_dhs;
+
 inet_dns_t *inet_dns_new(const char *ifname)
 {
     (void)ifname;
 
-    LOG(WARN, "inet_dns: %s: DNS resolver not available on platform.", ifname);
+    LOG(NOTICE, "inet_dns: %s: not using OpenSync DNS resolver on this platform.", ifname);
 
-    return (void *)0xdeadc0de;
+    return &g_inet_dhs;
 }
 
 /**

@@ -38,15 +38,15 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 typedef struct
 {                       /* order is important!          */
     ev_io iowatch;      /* fd watcher                   */
-    int id;             /* request id                   */
     bool isinit;        /* if watcher is initialized    */
     FILE * stream;      /* FILE object created by popen */
     int fd;             /* file descriptor              */
     pasync_cb * cb;     /* callback to be invoked       */
+    pasync_cbx * cbx;   /* callback with context        */
     char * buff;        /* message buffer               */
     int buff_sz;        /* buffer size                  */
     int msg_sz;         /* number of bytes in message   */
-
+    pasync_ctx_t ctx;   /* user context                 */
 } req_pasync_t;
 
 #define PASYNC_BUFF     1024    /* default buffer size */
@@ -85,9 +85,6 @@ void pasync_deinit_req(req_pasync_t * req)
         if (req->buff)
             free(req->buff);
 
-        if (req->stream != NULL)
-            pclose(req->stream);
-
         free(req);
     }
 }
@@ -117,7 +114,7 @@ void pasync_watcher_cb(EV_P_ ev_io *w, int revents)
     {
         req->msg_sz += rbytes;
 
-        if (rbytes == req->buff_sz)
+        if (req->msg_sz == req->buff_sz)
         {
             /* increase buffer size for one buffer quantum */
             tmpbuff = realloc(req->buff, req->buff_sz + PASYNC_BUFF);
@@ -141,45 +138,40 @@ void pasync_watcher_cb(EV_P_ ev_io *w, int revents)
     {
         ev_io_stop(loop, &req->iowatch);
 
+        if (req->stream != NULL)
+        {
+            // Close the stream:
+            int wstatus = pclose(req->stream);
+
+            if (WIFEXITED(wstatus))
+                req->ctx.rc = WEXITSTATUS(wstatus);
+            else
+                req->ctx.rc = -1;
+
+            req->stream = NULL;
+        }
+
         /* call callback */
-        req->cb(req->id, req->buff, req->msg_sz);
+        if (req->cbx != NULL)
+            req->cbx(&req->ctx, req->buff, req->msg_sz);
+        else if (req->cb != NULL)
+            req->cb(req->ctx.id, req->buff, req->msg_sz);
 
         pasync_deinit_req(req);
     }
 
 }
 
-
-/*
- * Open the process, and get its output in callback
- */
-bool pasync_ropen(struct ev_loop *loop,
-                  int id,
-                  const char * cmd,
-                  pasync_cb * cb)
-
+static bool ropen_stream_async(struct ev_loop *loop,
+                               req_pasync_t *req,
+                               const char *cmd)
 {
-
-    req_pasync_t * req = NULL;
-
-    if ((NULL == loop) || (cb == NULL) || (cmd == NULL))
-    {
-        goto ropen_end;
-    }
-
-    req = pasync_init_req();
-    if (NULL == req)
-        goto ropen_end;
-
-    /* copy input parameters to request object */
-    req->cb = cb;
-    req->id = id;
-
     req->stream = popen(cmd, "r");
-
-    if (NULL == req->stream)
+    if (req->stream == NULL)
     {
-        goto ropen_end;
+        LOG(ERR, "ERR ropen (cmd=%s)", cmd);
+        pasync_deinit_req(req);
+        return false;
     }
 
     /* according to man pages, no reason for error checking here */
@@ -191,24 +183,61 @@ bool pasync_ropen(struct ev_loop *loop,
 
     /* start watching */
     ev_io_start(loop, &req->iowatch);
-
     return true;
-
-ropen_end:
-    LOG(ERR, "ERR ropen");
-    if (req != NULL)
-    {
-        if (req->buff != NULL)
-            free(req->buff);
-
-        if (req->stream != NULL)
-            pclose(req->stream);
-
-        free(req);
-    }
-    return false;
 }
 
+/*
+ * Open the process, and get its output in callback
+ */
+bool pasync_ropen(struct ev_loop *loop,
+                  int id,
+                  const char * cmd,
+                  pasync_cb * cb)
+{
+    req_pasync_t * req = NULL;
+
+    if ((loop == NULL) || (cb == NULL) || (cmd == NULL))
+        return false;
+
+    req = pasync_init_req();
+    if (req == NULL)
+        return false;
+
+    /* copy input parameters to request object */
+    req->cb = cb;
+    req->ctx.id = id;
+
+    return ropen_stream_async(loop, req, cmd);
+}
+
+/*
+ * Open the process, and get its output in callback.
+ *
+ * The callback will additionaly pass user context data
+ * and cmd exit code.
+ */
+bool pasync_ropenx(struct ev_loop *loop,
+                   int id,
+                   void *ctx_data,
+                   const char * cmd,
+                   pasync_cbx * cb)
+{
+    req_pasync_t * req = NULL;
+
+    if ((loop == NULL) || (cb == NULL) || (cmd == NULL))
+        return false;
+
+    req = pasync_init_req();
+    if (req == NULL)
+        return false;
+
+    /* copy input parameters to request object */
+    req->cbx = cb;
+    req->ctx.id = id;
+    req->ctx.data = ctx_data;
+
+    return ropen_stream_async(loop, req, cmd);
+}
 
 /*
  * Not yet implemented, always returns false

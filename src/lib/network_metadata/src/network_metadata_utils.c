@@ -51,15 +51,24 @@ int net_md_eth_cmp(void *a, void *b)
     struct net_md_flow_key *key_b = b;
     int cmp;
 
+    if ((key_a->smac == NULL) ^ (key_b->smac == NULL)) return -1;
+    if ((key_a->dmac == NULL) ^ (key_b->dmac == NULL)) return 1;
+
     /* Compare source mac addresses */
-    cmp = memcmp(key_a->smac->addr, key_b->smac->addr,
-                 sizeof(key_a->smac->addr));
-    if (cmp != 0) return cmp;
+    if (key_a->smac != NULL)
+    {
+        cmp = memcmp(key_a->smac->addr, key_b->smac->addr,
+                     sizeof(key_a->smac->addr));
+        if (cmp != 0) return cmp;
+    }
 
     /* Compare destination mac addresses */
-    cmp = memcmp(key_a->dmac->addr, key_b->dmac->addr,
-                 sizeof(key_a->dmac->addr));
-    if (cmp != 0) return cmp;
+    if (key_a->dmac != NULL)
+    {
+        cmp = memcmp(key_a->dmac->addr, key_b->dmac->addr,
+                     sizeof(key_a->dmac->addr));
+        if (cmp != 0) return cmp;
+    }
 
     /* Compare vlan id */
    cmp = (int)(key_a->vlan_id) - (int)(key_b->vlan_id);
@@ -135,6 +144,7 @@ int net_md_5tuple_cmp(void *a, void *b)
     cmp = (int)(key_a->sport) - (int)(key_b->sport);
     return cmp;
 }
+
 
 /**
  * @brief helper function: string to os_macaddr_t
@@ -290,6 +300,7 @@ void
 free_flow_key_tags(struct flow_key *key)
 {
     size_t i;
+
     for (i = 0; i < key->num_tags; i++)
     {
         free_flow_key_tag(key->tags[i]);
@@ -300,10 +311,42 @@ free_flow_key_tags(struct flow_key *key)
 }
 
 void
-free_flow_key(struct flow_key *key)
+free_flow_key_vendor_data(struct flow_vendor_data *vd)
+{
+    struct vendor_data_kv_pair *kv;
+    size_t i;
+
+    for (i = 0; i < vd->nelems; i++)
+    {
+        kv = vd->kv_pairs[i];
+        free(kv->key);
+        free(kv->str_value);
+        free(kv);
+        vd->kv_pairs[i] = NULL;
+    }
+
+    free(vd->vendor);
+    free(vd->kv_pairs);
+    free(vd);
+}
+
+void
+free_flow_key_vdr_data(struct flow_key *key)
 {
     size_t i;
 
+    for (i = 0; i < key->num_vendor_data; i++)
+    {
+        free_flow_key_vendor_data(key->vdr_data[i]);
+        key->vdr_data[i] = NULL;
+    }
+
+    free(key->vdr_data);
+}
+
+void
+free_flow_key(struct flow_key *key)
+{
     if (key == NULL) return;
 
     free(key->smac);
@@ -311,13 +354,8 @@ free_flow_key(struct flow_key *key)
     free(key->src_ip);
     free(key->dst_ip);
 
-    for (i = 0; i < key->num_tags; i++)
-    {
-        free_flow_key_tag(key->tags[i]);
-        key->tags[i] = NULL;
-    }
-
-    free(key->tags);
+    free_flow_key_tags(key);
+    free_flow_key_vdr_data(key);
     free(key);
 }
 
@@ -418,6 +456,8 @@ struct net_md_flow_key * set_net_md_flow_key(struct net_md_flow_key *lkey)
     key->ipprotocol = lkey->ipprotocol;
     key->sport = lkey->sport;
     key->dport = lkey->dport;
+    key->fstart = lkey->fstart;
+    key->fend = lkey->fend;
 
     return key;
 
@@ -472,6 +512,8 @@ struct flow_key * net_md_set_flow_key(struct net_md_flow_key *key)
     family = ((key->ip_version == 4) ? AF_INET : AF_INET6);
     ip_size = ((family == AF_INET) ? INET_ADDRSTRLEN : INET6_ADDRSTRLEN);
 
+    fkey->ip_version = key->ip_version;
+
     fkey->src_ip = calloc(1, ip_size);
     if (fkey->src_ip == NULL) goto err_free_dmac;
 
@@ -487,6 +529,9 @@ struct flow_key * net_md_set_flow_key(struct net_md_flow_key *key)
     fkey->protocol = key->ipprotocol;
     fkey->sport = ntohs(key->sport);
     fkey->dport = ntohs(key->dport);
+
+    /* New flow is observed */
+    fkey->state.first_obs = time(NULL);
 
     return fkey;
 
@@ -515,6 +560,7 @@ void net_md_free_acc(struct net_md_stats_accumulator *acc)
 
     free_net_md_flow_key(acc->key);
     free_flow_key(acc->fkey);
+    if (acc->free_plugins != NULL) acc->free_plugins(acc);
     free(acc);
 }
 
@@ -618,7 +664,9 @@ bool is_eth_only(struct net_md_flow_key *key)
 
 
 struct net_md_stats_accumulator *
-net_md_tree_lookup_acc(ds_tree_t *tree, struct net_md_flow_key *key)
+net_md_tree_lookup_acc(struct net_md_aggregator *aggr,
+                       ds_tree_t *tree,
+                       struct net_md_flow_key *key)
 {
     struct net_md_flow *flow;
     struct net_md_stats_accumulator *acc;
@@ -634,8 +682,10 @@ net_md_tree_lookup_acc(ds_tree_t *tree, struct net_md_flow_key *key)
     acc = net_md_set_acc(key);
     if (acc == NULL) goto err_free_flow;
 
+    acc->aggr = aggr;
     flow->tuple_stats = acc;
     ds_tree_insert(tree, flow, acc->key);
+    aggr->total_flows++;
 
     return acc;
 
@@ -647,7 +697,8 @@ err_free_flow:
 
 
 struct net_md_stats_accumulator *
-net_md_lookup_acc_from_pair(struct net_md_eth_pair *pair,
+net_md_lookup_acc_from_pair(struct net_md_aggregator *aggr,
+                            struct net_md_eth_pair *pair,
                             struct net_md_flow_key *key)
 {
     ds_tree_t *tree;
@@ -655,13 +706,18 @@ net_md_lookup_acc_from_pair(struct net_md_eth_pair *pair,
     /* Check if the key refers to a L2 flow */
     tree = is_eth_only(key) ? &pair->ethertype_flows : &pair->five_tuple_flows;
 
-    return net_md_tree_lookup_acc(tree, key);
+    return net_md_tree_lookup_acc(aggr, tree, key);
 }
 
 
 bool has_eth_info(struct net_md_flow_key *key)
 {
-    return (key->smac != NULL);
+    bool ret;
+
+    ret = (key->smac != NULL);
+    ret |= (key->dmac != NULL);
+
+    return ret;
 }
 
 
@@ -700,7 +756,8 @@ net_md_lookup_eth_acc(struct net_md_aggregator *aggr,
     eth_pair = net_md_lookup_eth_pair(aggr, key);
     if (eth_pair == NULL) return NULL;
 
-    acc = net_md_lookup_acc_from_pair(eth_pair, key);
+    acc = net_md_lookup_acc_from_pair(aggr, eth_pair, key);
+    if (acc != NULL) acc->aggr = aggr;
 
     return acc;
 }
@@ -716,7 +773,8 @@ net_md_lookup_acc(struct net_md_aggregator *aggr,
 
     if (has_eth_info(key)) return net_md_lookup_eth_acc(aggr, key);
 
-    acc = net_md_tree_lookup_acc(&aggr->five_tuple_flows, key);
+    acc = net_md_tree_lookup_acc(aggr, &aggr->five_tuple_flows, key);
+    if (acc != NULL) acc->aggr = aggr;
 
     return acc;
 }
@@ -731,6 +789,7 @@ void net_md_set_counters(struct net_md_aggregator *aggr,
     acc->counters = *counters;
     acc->state = ACC_STATE_WINDOW_ACTIVE;
     acc->last_updated = time(NULL);
+    acc->fkey->state.last_obs = acc->last_updated;
 }
 
 
@@ -765,8 +824,23 @@ void net_md_close_counters(struct net_md_aggregator *aggr,
     /* Relative report */
     if (aggr->report_type == NET_MD_REPORT_RELATIVE)
     {
-        acc->report_counters.bytes_count -= acc->first_counters.bytes_count;
-        acc->report_counters.packets_count -= acc->first_counters.packets_count;
+        if (acc->report_counters.bytes_count > acc->first_counters.bytes_count)
+        {
+            acc->report_counters.bytes_count -= acc->first_counters.bytes_count;
+        }
+        else
+        {
+            acc->report_counters.bytes_count = 0;
+        }
+
+        if (acc->report_counters.packets_count > acc->first_counters.packets_count)
+        {
+            acc->report_counters.packets_count -= acc->first_counters.packets_count;
+        }
+        else
+        {
+            acc->report_counters.packets_count = 0;
+        }
     }
 
     acc->first_counters = acc->counters;
@@ -822,10 +896,12 @@ void net_md_report_5tuples_accs(struct net_md_aggregator *aggr,
         double cmp;
         bool active_flow;
         bool retire_flow;
+        bool refd_flow;
         bool keep_flow;
 
         acc = flow->tuple_stats;
         active_flow = (acc->state == ACC_STATE_WINDOW_ACTIVE);
+        active_flow |= acc->report;
         if (active_flow)
         {
             net_md_close_counters(aggr, acc);
@@ -833,11 +909,20 @@ void net_md_report_5tuples_accs(struct net_md_aggregator *aggr,
             acc->state = ACC_STATE_WINDOW_RESET;
         }
 
+        /* Clear the reporting request */
+        acc->report = false;
+
         next = ds_tree_next(tree, flow);
         /* Check if the accumulator is old enough to be removed */
         now = time(NULL);
         cmp = difftime(now, acc->last_updated);
         retire_flow = (cmp >= aggr->acc_ttl);
+        refd_flow = (acc->refcnt != 0);
+
+        /* Account for inactive yet referenced flows */
+        if (retire_flow && refd_flow) aggr->held_flows++;
+
+        retire_flow &= (!refd_flow);
 
         /* keep the flow if it's active and not yet retired */
         keep_flow = (active_flow || !retire_flow);
@@ -846,6 +931,7 @@ void net_md_report_5tuples_accs(struct net_md_aggregator *aggr,
             remove = flow;
             ds_tree_remove(tree, remove);
             net_md_free_flow(remove);
+            aggr->total_flows--;
         }
 
         flow = next;
@@ -890,10 +976,12 @@ void net_md_report_eth_acc(struct net_md_aggregator *aggr,
         double cmp;
         bool active_flow;
         bool retire_flow;
+        bool refd_flow;
         bool keep_flow;
 
         acc = flow->tuple_stats;
         active_flow = (acc->state == ACC_STATE_WINDOW_ACTIVE);
+        active_flow |= acc->report;
         if (active_flow)
         {
             eth_acc->state = ACC_STATE_WINDOW_ACTIVE;
@@ -909,6 +997,17 @@ void net_md_report_eth_acc(struct net_md_aggregator *aggr,
         now = time(NULL);
         cmp = difftime(now, acc->last_updated);
         retire_flow = (cmp >= aggr->acc_ttl);
+        refd_flow = (acc->refcnt != 0);
+
+        /* Account for inactive yet referenced flows */
+        if (retire_flow && refd_flow) aggr->held_flows++;
+
+        refd_flow = (acc->refcnt != 0);
+
+        /* Account for inactive yet referenced flows */
+        if (retire_flow && refd_flow) aggr->held_flows++;
+
+        retire_flow &= (!refd_flow);
 
         /* keep the flow if it's active and not yet retired */
         keep_flow = (active_flow || !retire_flow);
@@ -917,6 +1016,7 @@ void net_md_report_eth_acc(struct net_md_aggregator *aggr,
             remove = flow;
             ds_tree_remove(tree, remove);
             net_md_free_flow(remove);
+            aggr->total_flows--;
         }
 
         flow = next;
@@ -1025,9 +1125,555 @@ void net_md_reset_aggregator(struct net_md_aggregator *aggr)
     aggr->total_report_flows = 0;
 }
 
+
 size_t net_md_get_total_flows(struct net_md_aggregator *aggr)
 {
     if (aggr == NULL) return 0;
 
     return aggr->total_report_flows;
+}
+
+
+/**
+ * @brief popludates a sockaddr_storage structure from ip parameters
+ *
+ * @param af the the inet family
+ * @param ip a pointer to the ip address buffer
+ * @param dst the sockaddr_storage structure to fill
+ * @return MNL_CB_OK when successful, -1 otherwise
+ */
+static void
+net_md_populate_sockaddr(int af, void *ip, struct sockaddr_storage *dst)
+{
+    if (af == AF_INET)
+    {
+        struct sockaddr_in *in4 = (struct sockaddr_in *)dst;
+
+        memset(in4, 0, sizeof(struct sockaddr_in));
+        in4->sin_family = af;
+        memcpy(&in4->sin_addr, ip, sizeof(in4->sin_addr));
+    }
+    else if (af == AF_INET6)
+    {
+        struct sockaddr_in6 *in6 = (struct sockaddr_in6 *)dst;
+
+        memset(in6, 0, sizeof(struct sockaddr_in6));
+        in6->sin6_family = af;
+        memcpy(&in6->sin6_addr, ip, sizeof(in6->sin6_addr));
+    }
+    return;
+}
+
+
+bool
+net_md_ip2mac(struct net_md_aggregator *aggr, int af,
+              void *ip, os_macaddr_t *mac)
+{
+    struct sockaddr_storage ss;
+    bool ret;
+
+    if (mac == NULL) return false;
+    if (ip == NULL) return false;
+
+    memset(&ss, 0, sizeof(ss));
+    net_md_populate_sockaddr(af, ip, &ss);
+    ret = aggr->neigh_lookup(&ss, mac);
+
+    return ret;
+}
+
+
+void
+pbkeymacs2net_md_macs(struct net_md_aggregator *aggr, struct net_md_flow_key *key)
+{
+    bool ret;
+    int af;
+
+    if (aggr->neigh_lookup == NULL) return;
+
+    af = (key->ip_version == 4 ? AF_INET : AF_INET6);
+    ret = net_md_ip2mac(aggr, af, key->src_ip, key->smac);
+    if (!ret)
+    {
+        free(key->smac);
+        key->smac = NULL;
+    }
+
+    ret = net_md_ip2mac(aggr, af, key->dst_ip, key->dmac);
+    if (!ret)
+    {
+        free(key->dmac);
+        key->dmac = NULL;
+    }
+
+}
+
+
+/**
+ * @brief: translates protobuf key structure in a net_md_flow_key
+ *
+ * @param aggr the aggregator the ky will check against
+ * @param in_key the reader friendly key2net
+ * @return a pointer to a net_md_flow_key
+ */
+struct net_md_flow_key *
+pbkey2net_md_key(struct net_md_aggregator *aggr, Traffic__FlowKey *pb_key)
+{
+    struct net_md_flow_key *key;
+    int domain;
+    bool err;
+    int ret;
+
+    key = calloc(1, sizeof(*key));
+    if (key == NULL) return NULL;
+
+    /*
+     * Set key's macs as provided by the protobuf.
+     * They might be adjusted once the IP info is processed.
+     */
+    key->smac = str2os_mac(pb_key->srcmac);
+    err = ((pb_key->srcmac != NULL) && (key->smac == NULL));
+    if (err) goto err_free_key;
+
+    key->dmac = str2os_mac(pb_key->dstmac);
+    err = ((pb_key->dstmac != NULL) && (key->dmac == NULL));
+    if (err) goto err_free_smac;
+
+    key->vlan_id = pb_key->vlanid;
+    key->ethertype = (uint16_t)(pb_key->ethertype);
+
+    key->vlan_id = pb_key->vlanid;
+    key->ethertype = (uint16_t)(pb_key->ethertype);
+
+    key->src_ip = calloc(1, sizeof(struct in6_addr));
+    if (key->src_ip == NULL) goto err_free_dmac;
+
+    if (pb_key->srcip == NULL) return key;
+    if (pb_key->dstip == NULL) return key;
+
+    ret = inet_pton(AF_INET, pb_key->srcip, key->src_ip);
+    if (ret == 1)
+    {
+        key->ip_version = 4;
+    }
+    else
+    {
+        ret = inet_pton(AF_INET6, pb_key->srcip, key->src_ip);
+        if (ret == 0)
+        {
+            free(key->src_ip);
+            return key;
+        }
+        key->ip_version = 6;
+    }
+
+    domain = ((key->ip_version == 4) ? AF_INET : AF_INET6);
+
+    key->dst_ip = calloc(1, sizeof(struct in6_addr));
+    if (key->dst_ip == NULL) goto err_free_src_ip;
+
+    ret = inet_pton(domain, pb_key->dstip, key->dst_ip);
+    if (ret != 1) goto err_free_dst_ip;
+
+    /* Update the macs based on the IPs */
+    pbkeymacs2net_md_macs(aggr, key);
+
+    key->ipprotocol = (uint8_t)(pb_key->ipprotocol);
+    key->sport = htons((uint16_t)(pb_key->tptsrcport));
+    key->dport = htons((uint16_t)(pb_key->tptdstport));
+
+    return key;
+
+err_free_dst_ip:
+    free(key->dst_ip);
+
+err_free_src_ip:
+    free(key->src_ip);
+
+err_free_dmac:
+    free(key->dmac);
+
+err_free_smac:
+    free(key->smac);
+
+err_free_key:
+    free(key);
+
+    return NULL;
+}
+
+
+static int
+net_md_set_tags(struct flow_tags *tag,
+               Traffic__FlowTags *pb_tag)
+{
+    char *pb_tagval;
+    char **pb_tags;
+    char *tagval;
+    size_t ntags;
+    char **tags;
+    size_t i;
+
+    tag->vendor = strdup(pb_tag->vendor);
+    if (tag->vendor == NULL) return -1;
+
+    if (pb_tag->appname != NULL)
+    {
+        tag->app_name = strdup(pb_tag->appname);
+        if (tag->app_name == NULL) return -1;
+    }
+
+
+    ntags = pb_tag->n_apptags;
+    tags = calloc(ntags, sizeof(*tags));
+    if (tags == NULL) return -1;
+
+    tag->tags = tags;
+    pb_tags = pb_tag->apptags;
+
+    for (i = 0; i < ntags; i++)
+    {
+        pb_tagval = *pb_tags;
+        tagval = strdup(pb_tagval);
+        if (tagval == NULL) return -1;
+
+        *tags = tagval;
+        tag->nelems++;
+        pb_tags++;
+        tags++;
+    }
+
+    return 0;
+}
+
+
+static void
+net_md_update_flow_tags(struct flow_key *fkey, Traffic__FlowKey *flowkey_pb)
+{
+    struct flow_tags **old_tags;
+    struct flow_tags **new_tags;
+    Traffic__FlowTags **pb_tags;
+    Traffic__FlowTags *pb_tag;
+    struct flow_tags **tags;
+    struct flow_tags *tag;
+    size_t num_tags;
+    size_t i;
+    int rc;
+
+    if (!flowkey_pb->n_flowtags) return;
+
+    num_tags = fkey->num_tags + flowkey_pb->n_flowtags;
+    new_tags = calloc(num_tags, sizeof(*fkey->tags));
+    if (new_tags == NULL) return;
+
+    old_tags = fkey->tags;
+    tags = new_tags;
+    for (i = 0; i < fkey->num_tags; i++)
+    {
+        *tags = *old_tags;
+        old_tags++;
+        tags++;
+    }
+
+    pb_tags = flowkey_pb->flowtags;
+    for (i = fkey->num_tags; i < num_tags; i++)
+    {
+        tag = calloc(1, sizeof(*tag));
+        if (tag == NULL) goto err_free_new_tags;
+
+        *tags = tag;
+        pb_tag = *pb_tags;
+
+        rc = net_md_set_tags(tag, pb_tag);
+        if (rc != 0) goto err_free_new_tags;
+
+        pb_tags++;
+        tags++;
+    }
+
+    free(fkey->tags);
+    fkey->num_tags = num_tags;
+    fkey->tags = new_tags;
+
+    return;
+
+err_free_new_tags:
+    tags = new_tags;
+    tag = *tags;
+    while (tag != NULL)
+    {
+        free_flow_key_tag(tag);
+        tags++;
+        tag = *tags;
+    }
+    free(new_tags);
+
+    return;
+}
+
+
+static int
+net_md_set_kvp(struct vendor_data_kv_pair *kvp,
+               Traffic__VendorDataKVPair *pb_kvp)
+{
+    kvp->key = strdup(pb_kvp->key);
+    if (kvp->key == NULL) return -1;
+
+    if (pb_kvp->val_str != NULL)
+    {
+        kvp->str_value = strdup(pb_kvp->val_str);
+        if (kvp->str_value == NULL) goto err;
+
+        kvp->value_type = NET_VENDOR_STR;
+    }
+    else if (pb_kvp->has_val_u32)
+    {
+        kvp->value_type = NET_VENDOR_U32;
+        kvp->u32_value = pb_kvp->val_u32;
+    }
+    else if (pb_kvp->has_val_u64)
+    {
+        kvp->value_type = NET_VENDOR_U64;
+        kvp->u64_value = pb_kvp->val_u64;
+    }
+    else goto err;
+
+    return 0;
+
+err:
+    free(kvp->key);
+    return -1;
+}
+
+
+static int
+net_md_set_vendor_data(struct flow_vendor_data *vd, Traffic__VendorData *pb_vd)
+{
+    Traffic__VendorDataKVPair **pb_kvps;
+    Traffic__VendorDataKVPair *pb_kvp;
+    struct vendor_data_kv_pair **kvps;
+    struct vendor_data_kv_pair *kvp;
+    size_t nkvps;
+    size_t i;
+    int rc;
+
+    vd->vendor = strdup(pb_vd->vendor);
+    if (vd->vendor == NULL) return -1;
+
+    nkvps = pb_vd->n_vendorkvpair;
+    kvps = calloc(nkvps, sizeof(*kvps));
+    if (kvps == NULL) return -1;
+
+    vd->kv_pairs = kvps;
+    pb_kvps = pb_vd->vendorkvpair;
+    for (i = 0; i < nkvps; i++)
+    {
+        kvp = calloc(1, sizeof(struct vendor_data_kv_pair));
+        if (kvp == NULL) return -1;
+
+        *kvps = kvp;
+        pb_kvp = *pb_kvps;
+        rc = net_md_set_kvp(kvp, pb_kvp);
+        if (rc != 0) return -1;
+
+        vd->nelems++;
+        pb_kvps++;
+        kvps++;
+    }
+
+    return 0;
+}
+
+
+static void
+net_md_update_vendor_data(struct flow_key *fkey, Traffic__FlowKey *flowkey_pb)
+{
+    struct flow_vendor_data **old_vds;
+    struct flow_vendor_data **new_vds;
+    struct flow_vendor_data **vds;
+    Traffic__VendorData **pb_vds;
+    struct flow_vendor_data *vd;
+    Traffic__VendorData *pb_vd;
+    size_t num_vds;
+    size_t i;
+    int rc;
+
+    if (!flowkey_pb->n_vendordata) return;
+
+    num_vds = fkey->num_vendor_data + flowkey_pb->n_vendordata;
+    new_vds = calloc(num_vds, sizeof(*new_vds));
+    if (new_vds == NULL) return;
+
+    old_vds = fkey->vdr_data;
+    vds = new_vds;
+    for (i = 0; i < fkey->num_vendor_data; i++)
+    {
+        *vds = *old_vds;
+        old_vds++;
+        vds++;
+    }
+
+    pb_vds = flowkey_pb->vendordata;
+    for (i = fkey->num_vendor_data; i < num_vds; i++)
+    {
+        vd = calloc(1, sizeof(*vd));
+        if (vd == NULL) goto err_free_new_vds;
+
+        *vds = vd;
+        pb_vd = *pb_vds;
+
+        rc = net_md_set_vendor_data(vd, pb_vd);
+        if (rc != 0) goto err_free_new_vds;
+
+        pb_vds++;
+        vds++;
+    }
+
+    free(fkey->vdr_data);
+    fkey->num_vendor_data = num_vds;
+    fkey->vdr_data = new_vds;
+
+    return;
+
+err_free_new_vds:
+    vds = new_vds;
+    vd = *vds;
+    while (vd != NULL)
+    {
+        free_flow_key_vendor_data(vd);
+        vds++;
+        vd = *vds;
+    }
+    free(new_vds);
+
+    return;
+}
+
+
+/**
+ * @brief Updates the content of flow windows from flow report protobuf
+ *
+ * @param aggr the aggregator to update
+ * @param report_pb flow report protobuf
+ */
+static void
+net_md_update_flow_key(struct net_md_aggregator *aggr,
+                       Traffic__FlowKey *flowkey_pb)
+{
+    struct net_md_stats_accumulator *acc;
+    struct net_md_flow_key *key;
+    struct flow_key *fkey;
+
+    if ((!flowkey_pb->n_flowtags) && (!flowkey_pb->n_vendordata)) return;
+
+    key = pbkey2net_md_key(aggr, flowkey_pb);
+
+    if (key == NULL) return;
+    acc = net_md_lookup_acc(aggr, key);
+
+    /* Free the lookup key */
+    free_net_md_flow_key(key);
+
+    if (acc == NULL) return;
+    fkey = acc->fkey;
+
+    /* Update flow tags */
+    net_md_update_flow_tags(fkey, flowkey_pb);
+
+    /* Update vendor data */
+    net_md_update_vendor_data(fkey, flowkey_pb);
+
+    /* Mark the accumulator for reoprt */
+    acc->report = true;
+    if (acc->state != ACC_STATE_WINDOW_ACTIVE) aggr->active_accs++;
+}
+
+
+/**
+ * @brief Updates the content of flow windows from flow report protobuf
+ *
+ * @param aggr the aggregator to update
+ * @param report_pb flow report protobuf
+ */
+static void
+net_md_update_flow_stats(struct net_md_aggregator *aggr,
+                         Traffic__FlowStats *flow_pb)
+{
+    Traffic__FlowKey *flowkey_pb;
+
+    flowkey_pb = flow_pb->flowkey;
+
+    net_md_update_flow_key(aggr, flowkey_pb);
+}
+
+
+/**
+ * @brief Updates the content of flow windows from flow report protobuf
+ *
+ * @param aggr the aggregator to update
+ * @param report_pb flow report protobuf
+ */
+static void
+net_md_update_observation_window(struct net_md_aggregator *aggr,
+                                 Traffic__ObservationWindow *window_pb)
+{
+    Traffic__FlowStats **flowstats_pb;
+    size_t i;
+
+    flowstats_pb = window_pb->flowstats;
+
+    for (i = 0; i < window_pb->n_flowstats; i++)
+    {
+        /* Update the observation window protobuf content */
+        net_md_update_flow_stats(aggr, *flowstats_pb);
+        flowstats_pb++;
+    }
+}
+
+
+/**
+ * @brief Updates the content of flow windows from flow report protobuf
+ *
+ * @param aggr the aggregator to update
+ * @param report_pb flow report protobuf
+ */
+static void
+net_md_update_flow_windows(struct net_md_aggregator *aggr,
+                           Traffic__FlowReport *report_pb)
+{
+    Traffic__ObservationWindow **windows_pb;
+    size_t i;
+
+    windows_pb = report_pb->observationwindow;
+
+    for (i = 0; i < report_pb->n_observationwindow; i++)
+    {
+        /* Update the observation window protobuf content */
+        net_md_update_observation_window(aggr, *windows_pb);
+        windows_pb++;
+    }
+}
+
+
+/**
+ * @brief Updates an aggregator with the contents of a flow report protobuf
+ *
+ * Updates the aggregator with the contents of the flow report protobuf.
+ * @param aggr the aggregator to update
+ * @param pb the packed buffer containing the flow report protobuf
+ */
+void
+net_md_update_aggr(struct net_md_aggregator *aggr, struct packed_buffer *pb)
+{
+    Traffic__FlowReport *pb_report;
+
+    pb_report = traffic__flow_report__unpack(NULL, pb->len, pb->buf);
+    if (pb_report == NULL) return;
+
+    net_md_update_flow_windows(aggr, pb_report);
+
+    /* Free the deserialized content */
+    traffic__flow_report__free_unpacked(pb_report, NULL);
+
+    return;
 }

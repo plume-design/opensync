@@ -24,9 +24,14 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#ifndef OS_FILE_OPS_H_INCLUDED
+#define OS_FILE_OPS_H_INCLUDED
+
 #include "os_common.h"
 
 /* Open the text file "<prefix>_process_name_<time_stamp>.pid>" at specified location. */
 FILE *os_file_open(char *location, char *prefix);
 
 void os_file_close(FILE *fp);
+
+#endif /* OS_FILE_OPS_H_INCLUDED */

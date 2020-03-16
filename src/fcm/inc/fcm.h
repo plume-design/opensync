@@ -27,6 +27,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef FCM_H_INCLUDED
 #define FCM_H_INCLUDED
 
+#include <ev.h>
 typedef enum
 {
     FCM_RPT_NO_FMT     = -1,
@@ -56,6 +57,10 @@ typedef struct fcm_collect_plugin_
     void (*collect_periodic)(struct fcm_collect_plugin_ *);
     void (*send_report)(struct fcm_collect_plugin_ *);
     void (*close_plugin)(struct fcm_collect_plugin_ *);
+    char * (*get_mqtt_hdr_node_id)(void);
+    char * (*get_mqtt_hdr_loc_id)(void);
+    char * (*get_other_config)(struct fcm_collect_plugin_ *, char *);
+    struct ev_loop *loop;
 } fcm_collect_plugin_t;
 
 char* fcm_get_mqtt_hdr_node_id(void);

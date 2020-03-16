@@ -69,7 +69,7 @@ bool lan_clients_add_oftag(char *oftag)
     LOGD("%s: adding oftag", oftag);
 
     memset(&eth_tag, 0, sizeof(eth_tag));
-    strncpy(eth_tag.name, OFTAG_LOCAL_ETH_DEVICES, (sizeof(eth_tag.name) - 1));
+    STRSCPY(eth_tag.name, OFTAG_LOCAL_ETH_DEVICES);
 
     if (false == ovsdb_sync_insert(OVSDB_OPENFLOW_TAG_TABLE,
                                    schema_Openflow_Tag_to_json(&eth_tag, err),

@@ -1,0 +1,5 @@
+config OSP_PS_PSFS
+    bool "Filesystem (PSFS)"
+    select PSFS_ENABLED
+    help
+        Use the file system backend provided by the psfs library

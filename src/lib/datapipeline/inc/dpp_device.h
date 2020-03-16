@@ -24,8 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __HAVE_DPP_DEVICE_H__
-#define __HAVE_DPP_DEVICE_H__
+#ifndef DPP_DEVICE_H_INCLUDED
+#define DPP_DEVICE_H_INCLUDED
 
 #include "ds.h"
 #include "ds_dlist.h"
@@ -112,7 +112,7 @@ typedef struct
     ds_dlist_node_t                 node;
 } dpp_device_temp_t;
 
-typedef struct 
+typedef struct
 {
     radio_type_t                    type;
     uint32_t                        value;
@@ -177,4 +177,4 @@ typedef struct
     uint64_t                        timestamp_ms;
 } dpp_device_report_data_t;
 
-#endif /* __HAVE_DPP_DEVICE_H__ */
+#endif /* DPP_DEVICE_H_INCLUDED */

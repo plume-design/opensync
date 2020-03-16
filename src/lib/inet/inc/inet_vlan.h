@@ -31,11 +31,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "inet_base.h"
 #include "inet_eth.h"
 
-/* Non-kconfig platforms should have VLAN support enabled by default */
-#if !defined(CONFIG_USE_KCONFIG)
-#define CONFIG_INET_VLAN_LINUX
-#endif
-
 typedef struct __inet_vlan inet_vlan_t;
 
 /* Subclass inet_eth */

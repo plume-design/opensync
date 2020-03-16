@@ -24,8 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __DHCP_PARSE_H__
-#define __DHCP_PARSE_H__
+#ifndef DHCP_PARSE_H_INCLUDED
+#define DHCP_PARSE_H_INCLUDED
 
 #include <stdint.h>
 #include <time.h>
@@ -156,4 +156,4 @@ bool        dp_fingerprint_to_str(uint8_t *fingerprint, char *s, size_t sz);
 bool        dhcp_lease_update_table(struct dhcp_session *d_session,
                                     struct schema_DHCP_leased_IP *dlip);
 
-#endif      /* __DHCP_PARSE_H__ */
+#endif /* DHCP_PARSE_H_INCLUDED */

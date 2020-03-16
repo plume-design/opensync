@@ -48,8 +48,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "json_util.h"
 #include "nm2.h"
 #include "nm2_iface.h"
+#include "target.h"
 
 #include "inet.h"
+
 
 #define MODULE_ID LOG_MODULE_ID_OVSDB
 
@@ -77,6 +79,14 @@ static bool nm2_inet_interface_set(
         const struct schema_Wifi_Inet_Config *pconfig);
 
 static bool nm2_inet_igmp_set(
+        struct nm2_iface *piface,
+        const struct schema_Wifi_Inet_Config *pconfig);
+
+static bool nm2_inet_igmp_proxy_set(
+        struct nm2_iface *piface,
+        const struct schema_Wifi_Inet_Config *pconfig);
+
+static bool nm2_inet_mld_proxy_set(
         struct nm2_iface *piface,
         const struct schema_Wifi_Inet_Config *pconfig);
 
@@ -154,6 +164,52 @@ void nm2_inet_config_init(void)
     return;
 }
 
+/* Util function to get snooping enabled interfaces */
+bool nm2_inet_util_get_snooping_intfs(target_mcproxy_params_t *proxy_params)
+{
+    struct schema_Wifi_Inet_Config    inet_conf;
+    json_t                           *jrows;
+    json_t                           *where;
+    int                               cnt = 0;
+    int                               i = 0;
+    pjs_errmsg_t                      perr;
+
+    where = ovsdb_tran_cond(OCLM_BOOL, "igmp", OFUNC_EQ, "true");
+    if (!where)
+        return false;
+
+    jrows = ovsdb_sync_select_where(SCHEMA_TABLE(Wifi_Inet_Config), where);
+    if(!jrows)
+    {
+        json_decref(where);
+        return false;
+    }
+    cnt = json_array_size(jrows);
+    if(!cnt)
+    {
+        json_decref(jrows);
+        return false;
+    }
+
+   proxy_params->dwnstrm_ifs = (ifname *)calloc(1, cnt * sizeof(ifname *));
+
+    for (i = 0; i < cnt; i++)
+    {
+        if(!schema_Wifi_Inet_Config_from_json(&inet_conf, json_array_get(jrows, i),
+                                    false, perr))
+        {
+            LOGE("Unable to parse Wifi_Inet_Config column: %s", perr);
+            json_decref(jrows);
+            return false;
+        }
+        strscpy(proxy_params->dwnstrm_ifs[i], inet_conf.if_name, sizeof(ifname));
+        memset(&inet_conf, 0, sizeof(inet_conf));
+    }
+    json_decref(jrows);
+    proxy_params->num_dwnstrifs = cnt;
+    return true;
+}
+
 
 /*
  * ===========================================================================
@@ -168,6 +224,8 @@ bool nm2_inet_config_set(struct nm2_iface *piface, struct schema_Wifi_Inet_Confi
 {
     bool retval = true;
 
+    nm2_inet_copy(piface, iconf);
+
     retval &= nm2_inet_interface_set(piface, iconf);
     retval &= nm2_inet_igmp_set(piface, iconf);
     retval &= nm2_inet_ip_assign_scheme_set(piface, iconf);
@@ -178,17 +236,10 @@ bool nm2_inet_config_set(struct nm2_iface *piface, struct schema_Wifi_Inet_Confi
     retval &= nm2_inet_ip4tunnel_set(piface, iconf);
     retval &= nm2_inet_dhsnif_set(piface, iconf);
     retval &= nm2_inet_vlan_set(piface, iconf);
-
-    nm2_inet_copy(piface, iconf);
-
-    /*
-     * Send notification about a configuration change regardless of the status in retval -- it might
-     * have been a partially applied so a status change is warranted
-     */
-    piface->if_state_notify = true;
+    retval &= nm2_inet_igmp_proxy_set(piface, iconf);
+    retval &= nm2_inet_mld_proxy_set(piface, iconf);
 
     return retval;
-
 }
 
 /* Apply general interface settings from schema */
@@ -268,6 +319,111 @@ bool nm2_inet_igmp_set(
 
     return true;
 }
+
+/* Apply IGMP Proxy configuration from schema */
+static bool nm2_inet_igmp_proxy_set(
+        struct nm2_iface *piface,
+        const struct schema_Wifi_Inet_Config *pconfig)
+{
+    target_mcproxy_params_t    proxy_params;
+    bool                       rc = false;
+
+    if (pconfig->igmp_proxy_exists != true)
+        return true;
+
+    if (pconfig->igmp_proxy_changed != true)
+        return true;
+    /*
+     * Getting list of snooping enabled interfaces which will be
+     * the downstream interfaces.
+     */
+     memset(&proxy_params, 0, sizeof(target_mcproxy_params_t));
+    if(strcmp(pconfig->igmp_proxy, "disabled") &&
+        !nm2_inet_util_get_snooping_intfs(&proxy_params))
+    {
+        LOGN("inet_config: igmp_proxy :Error getting snooping interfaces.");
+        goto err;
+    }
+
+    // Upstream interface.
+    strscpy(proxy_params.upstrm_if, piface->if_name, sizeof(ifname));
+
+    // Configured protocol version.
+    if (!strcmp(pconfig->igmp_proxy, "disabled"))
+    {
+        proxy_params.protocol = DISABLE_IGMP;
+    }
+    else if (!strcmp(pconfig->igmp_proxy, "IGMPv1"))
+    {
+        proxy_params.protocol = IGMPv1;
+    }
+    else if (!strcmp(pconfig->igmp_proxy, "IGMPv2"))
+    {
+        proxy_params.protocol = IGMPv2;
+    }
+    else if (!strcmp(pconfig->igmp_proxy, "IGMPv3"))
+    {
+        proxy_params.protocol = IGMPv3;
+    }
+
+    if(WARN_ON(target_set_igmp_mcproxy_params(&proxy_params) == rc))
+        goto err;
+    rc = true;
+err:
+    if (proxy_params.num_dwnstrifs) free(proxy_params.dwnstrm_ifs);
+    return rc;
+}
+
+static bool nm2_inet_mld_proxy_set(
+        struct nm2_iface *piface,
+        const struct schema_Wifi_Inet_Config *pconfig)
+{
+    target_mcproxy_params_t    proxy_params;
+    bool                       rc = false;
+
+    if (pconfig->mld_proxy_exists != true)
+        return true;
+
+    if (pconfig->mld_proxy_changed != true)
+        return true;
+    /*
+     * Getting list of snooping enabled interfaces which will be
+     * the downstream interfaces for mcproxy.
+     */
+    memset(&proxy_params, 0, sizeof(target_mcproxy_params_t));
+    if(strcmp(pconfig->mld_proxy, "disabled") &&
+        !nm2_inet_util_get_snooping_intfs(&proxy_params))
+    {
+        LOGN("inet_config: mld_proxy :Error getting snooping interfaces.");
+        goto err;
+    }
+
+    // Upstream interface.
+    strscpy(proxy_params.upstrm_if, piface->if_name, sizeof(ifname));
+
+    // Configured protocol version.
+    if (!strcmp(pconfig->mld_proxy, "disabled"))
+    {
+        proxy_params.protocol = DISABLE_MLD;
+    }
+    else if (!strcmp(pconfig->mld_proxy, "MLDv1"))
+    {
+        proxy_params.protocol = MLDv1;
+    }
+    else if (!strcmp(pconfig->mld_proxy, "MLDv2"))
+    {
+        proxy_params.protocol = MLDv2;
+    }
+
+    if(WARN_ON(target_set_mld_mcproxy_params(&proxy_params) == rc))
+        goto err;
+    rc = true;
+err:
+    if (proxy_params.num_dwnstrifs) free(proxy_params.dwnstrm_ifs);
+    return rc;
+}
+
+
 
 /* Apply IP assignment scheme from OVSDB schema */
 bool nm2_inet_ip_assign_scheme_set(
@@ -793,7 +949,6 @@ void nm2_inet_copy(
         const struct schema_Wifi_Inet_Config *iconf)
 {
     /* Copy fields that should be simply copied to Wifi_Inet_State */
-    NM2_IFACE_INET_CONFIG_COPY(piface->if_cache.if_type, iconf->if_type);
     NM2_IFACE_INET_CONFIG_COPY(piface->if_cache._uuid, iconf->_uuid);
     NM2_IFACE_INET_CONFIG_COPY(piface->if_cache.if_uuid, iconf->if_uuid);
     NM2_IFACE_INET_CONFIG_COPY(piface->if_cache.dns, iconf->dns);
@@ -818,11 +973,9 @@ struct nm2_iface *nm2_add_inet_conf(struct schema_Wifi_Inet_Config *iconf)
     enum nm2_iftype iftype;
     struct nm2_iface *piface = NULL;
 
-
     LOG(INFO, "nm2_add_inet_conf: INSERT interface %s (type %s).",
             iconf->if_name,
             iconf->if_type);
-
 
     if (!nm2_iftype_fromstr(&iftype, iconf->if_type))
     {

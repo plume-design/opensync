@@ -22,7 +22,7 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-UNIT_DISABLE := $(if $(CONFIG_TARGET_MANAGER_FSM),n,y)
+UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM),n,y)
 
 UNIT_NAME := test_fsm_core
 
@@ -33,8 +33,11 @@ UNIT_SRC += ../src/fsm_ovsdb.c
 UNIT_SRC += ../src/fsm_pcap.c
 UNIT_SRC += ../src/fsm_event.c
 UNIT_SRC += ../src/fsm_service.c
+UNIT_SRC += ../src/fsm_dpi.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/../inc
+UNIT_CFLAGS += -Isrc/lib/imc/inc
+
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
 
 UNIT_LDFLAGS := -lev -ljansson -lpcap -lmnl
@@ -44,5 +47,6 @@ UNIT_DEPS := src/lib/log
 UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/osa
 UNIT_DEPS += src/lib/unity
+UNIT_DEPS += src/lib/fsm_utils
 UNIT_DEPS += src/lib/fsm_policy
-
+UNIT_DEPS += src/lib/network_metadata

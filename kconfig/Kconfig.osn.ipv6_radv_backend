@@ -1,0 +1,10 @@
+#
+# OpenSync core DHCPv6 server backend
+#
+source "src/lib/osn/kconfig/Kconfig.osn.ipv6_radv_backend"
+
+#
+# Platform/vendor DHCPv6 server backends
+#
+osource "platform/*/kconfig/Kconfig.osn.ipv6_radv_backend"
+osource "vendor/*/kconfig/Kconfig.osn.ipv6_radv_backend"

@@ -89,4 +89,4 @@ struct iface_flt_node
 
 bool ovs_mac_learning_register(target_mac_learning_cb_t *omac_cb);
 
-#endif
+#endif /* OVS_MAC_LEARN_H_INCLUDED */

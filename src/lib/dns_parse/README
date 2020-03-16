@@ -1,0 +1,5 @@
+The dns parser includes source code from https://github.com/pflarr/dns_parse.
+The original code has been substantially modified for use in OpenSync.
+
+The LICENSE file in this directory is a copy from the original code's license as found in
+https://github.com/pflarr/dns_parse/blob/master/LICENSE.

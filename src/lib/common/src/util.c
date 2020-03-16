@@ -394,7 +394,7 @@ ssize_t base64_decode(void *out, ssize_t out_sz, char *input)
 /**
  * Unescape \xXX sequences in @p str.
  */
-void str_unescape_hex(char *str)
+char *str_unescape_hex(char *str)
 {
     char *s;
     char *d;
@@ -411,13 +411,14 @@ void str_unescape_hex(char *str)
                 case 'n':  *d = '\n';   break;
                 case 'r':  *d = '\r';   break;
                 case 'x':  n = 0; sscanf(s, "%02hhx%n", d, &n); s += n; break;
-                default:   *d = 0; return;
+                default:   *d = 0; return str;
             }
         } else {
             *d = *s++;
         }
     }
     *d = 0;
+    return str;
 }
 
 /**
@@ -480,7 +481,7 @@ int count_nt_array(char **array)
 char* strfmt_nt_array(char *str, size_t size, char **array)
 {
     *str = 0;
-    strcpy(str, "[");
+    strscpy(str, "[", size);
     while (array && *array)
     {
         if (str[1]) strlcat(str, ",", size);
@@ -634,7 +635,7 @@ bool str_is_mac_address(const char *mac)
  * [in] uri
  * [out] proto, host, port
  */
-bool parse_uri(char *uri, char *proto, char *host, int *port)
+bool parse_uri(char *uri, char *proto, size_t proto_size, char *host, size_t host_size, int *port)
 {
     // split
     char *sptr, *tproto, *thost, *pstr;
@@ -671,15 +672,23 @@ bool parse_uri(char *uri, char *proto, char *host, int *port)
     }
     else
     {
-        strcpy(proto, tproto);
-        strcpy(host, thost);
+        strscpy(proto, tproto, proto_size);
+        strscpy(host, thost, host_size);
         *port = tport;
     }
 
     return true;
 }
 
-// strscpy using strnlen + memcpy
+/**
+ * strscpy: safe string copy (using strnlen + memcpy)
+ * Safe alternative to strncpy() as it always zero terminates the string.
+ * Also safer than strlcpy in case of unterminated source string.
+ *
+ * Returns the length of copied string or a -E2BIG error if src len is
+ * too big in which case the string is copied up to size-1 length
+ * and is zero terminated.
+ */
 ssize_t strscpy(char *dest, const char *src, size_t size)
 {
     size_t len;
@@ -688,6 +697,47 @@ ssize_t strscpy(char *dest, const char *src, size_t size)
     memcpy(dest, src, len);
     dest[len] = 0;
     if (src[len]) return -E2BIG;
+    return len;
+}
+
+/**
+ * strscpy_len copies a slice of src with length up to src_len
+ * but never more than what fits in dest size.
+ * If src_len is negative then it is an offset from the end of the src string.
+ *
+ * Returns the length of copied string or a -E2BIG error if src len is
+ * too big in which case the string is copied up to size-1 length
+ * and is zero terminated. In case the src_len is a negative offset
+ * that is larger than the actual src length, it returns -EINVAL and
+ * sets the dest buffer to empty string.
+ */
+ssize_t strscpy_len(char *dest, const char *src, size_t size, ssize_t src_len)
+{
+    size_t len;
+    if (size == 0) return -E2BIG;
+    // get actual src_len
+    if (src_len < 0) {
+        // using (size - str_len) to limit to size
+        src_len = strnlen(src, size - src_len) + src_len;
+        // check if offset is larger than actual src len
+        if (src_len < 0) {
+            *dest = 0;
+            return -EINVAL;
+        }
+    } else {
+        // limit to src_len
+        src_len = strnlen(src, src_len);
+    }
+    len = src_len;
+    // trim if too big
+    if (len > size - 1) len = size - 1;
+    // copy the substring
+    memcpy(dest, src, len);
+    // zero terminate
+    dest[len] = 0;
+    // return error if src len was too big
+    if ((size_t)src_len > len) return -E2BIG;
+    // return len on success
     return len;
 }
 
@@ -773,6 +823,7 @@ char *strexread(const char *prog, const char *const*argv)
             close(0);
             close(1);
             close(2);
+            open("/dev/null", O_RDONLY);
             dup2(fd[1], 1);
             close(fd[0]);
             close(fd[1]);
@@ -812,13 +863,15 @@ char *strexread(const char *prog, const char *const*argv)
 
 char *strdel(char *heystack, const char *needle, int (*strcmp_fun) (const char*, const char*))
 {
+    const size_t heystack_size = strlen(heystack) + 1;
     char *p = strdupa(heystack ?: "");
     char *q = strdupa("");
     char *i;
     while ((i = strsep(&p, " ")))
         if (strcmp_fun(i, needle))
             q = strfmta("%s %s", i, q);
-    return strcpy(heystack, strchomp(q, " "));
+    strscpy(heystack, strchomp(q, " "), heystack_size);
+    return heystack;
 }
 
 int str_count_lines(char *s)
@@ -894,4 +947,150 @@ bool str_join_int(char *str, int size, int *list, int num, char *delim)
         if (r < 0 || r > (int)s) return false;
     }
     return true;
+}
+
+/**
+ * Returns true if string 'str' starts with string 'start'
+ */
+bool str_startswith(const char *str, const char *start)
+{
+    return strncmp(str, start, strlen(start)) == 0;
+}
+
+/**
+ * Returns true if string 'str' ends with string 'end'
+ */
+bool str_endswith(const char *str, const char *end)
+{
+    int i = strlen(str) - strlen(end);
+    if (i < 0) return false;
+    return strcmp(str + i, end) == 0;
+}
+
+char *ini_get(const char *buf, const char *key)
+{
+    char *lines = strdupa(buf);
+    char *line;
+    const char *k;
+    const char *v;
+    while ((line = strsep(&lines, "\t\r\n")))
+        if ((k = strsep(&line, "=")) &&
+            (v = strsep(&line, "")) &&
+            (!strcmp(k, key)))
+            return strdup(v);
+    return NULL;
+}
+
+int file_put(const char *path, const char *buf)
+{
+    ssize_t len = strlen(buf);
+    ssize_t n;
+    int fd;
+    if ((fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644)) < 0)
+        return -1;
+    if ((n = write(fd, buf, len)) != len)
+        goto err_close;
+    close(fd);
+    LOGT("%s: wrote %-100s", path, buf);
+    return 0;
+err_close:
+    close(fd);
+    LOGT("%s: failed to write %-100s: %d (%s)", path, buf, errno, strerror(errno));
+    return -1;
+}
+
+char *file_get(const char *path)
+{
+    ssize_t n;
+    ssize_t size = 0;
+    ssize_t len = 0;
+    char *buf = NULL;
+    char *nbuf = NULL;
+    char *hunk[4096];
+    int fd;
+    if ((fd = open(path, O_RDONLY)) < 0)
+        goto err;
+    while ((n = read(fd, hunk, sizeof(hunk))) > 0) {
+        if (!(nbuf = realloc(buf, (size += n) + 1)))
+            goto err_free;
+        buf = nbuf;
+        memcpy(buf + len, hunk, n);
+        len += n;
+        buf[len] = 0;
+    }
+    if (n < 0)
+        goto err_free;
+    close(fd);
+    LOGT("%s: read %-100s", path, (const char *)buf);
+    return buf;
+err_free:
+    free(buf);
+err_close:
+    close(fd);
+err:
+    LOGT("%s: failed to read: %d (%s)", path, errno, strerror(errno));
+    return NULL;
+}
+
+const int *unii_5g_chan2list(int chan, int width)
+{
+    static const int lists[] = {
+        /* <width>, <chan1>, <chan2>..., 0, */
+        20, 36, 0,
+        20, 40, 0,
+        20, 44, 0,
+        20, 48, 0,
+        20, 52, 0,
+        20, 56, 0,
+        20, 60, 0,
+        20, 64, 0,
+        20, 100, 0,
+        20, 104, 0,
+        20, 108, 0,
+        20, 112, 0,
+        20, 116, 0,
+        20, 120, 0,
+        20, 124, 0,
+        20, 128, 0,
+        20, 132, 0,
+        20, 136, 0,
+        20, 140, 0,
+        20, 144, 0,
+        20, 149, 0,
+        20, 153, 0,
+        20, 157, 0,
+        20, 161, 0,
+        20, 165, 0,
+        40, 36, 40, 0,
+        40, 44, 48, 0,
+        40, 52, 56, 0,
+        40, 60, 64, 0,
+        40, 100, 104, 0,
+        40, 108, 112, 0,
+        40, 116, 120, 0,
+        40, 124, 128, 0,
+        40, 132, 136, 0,
+        40, 140, 144, 0,
+        40, 149, 153, 0,
+        40, 157, 161, 0,
+        80, 36, 40, 44, 48, 0,
+        80, 52, 56, 60, 64, 0,
+        80, 100, 104, 108, 112, 0,
+        80, 116, 120, 124, 128, 0,
+        80, 132, 136, 140, 144, 0,
+        80, 149, 153, 157, 161, 0,
+        160, 36, 40, 44, 48, 52, 56, 60, 64, 0,
+        160, 100, 104, 108, 112, 116, 120, 124, 128, 0,
+        -1, /* keep last */
+    };
+    const int *start;
+    const int *p;
+
+    for (p = lists; *p != -1; p++)
+        if (*p == width)
+            for (start = ++p; *p; p++)
+                if (*p == chan)
+                    return start;
+
+    return NULL;
 }

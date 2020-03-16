@@ -29,8 +29,8 @@
 * POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef NFM_INCLUDE_RULE
-#define NFM_INCLUDE_RULE
+#ifndef NFM_RULE_H_INCLUDED
+#define NFM_RULE_H_INCLUDED
 
 #include "ds_tree.h"
 #include "schema.h"
@@ -54,5 +54,4 @@ bool nfm_rule_new(const struct schema_Netfilter *conf);
 bool nfm_rule_del(const struct schema_Netfilter *conf);
 bool nfm_rule_modify(const struct schema_Netfilter *conf);
 
-#endif
-
+#endif /* NFM_RULE_H_INCLUDED */

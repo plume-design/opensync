@@ -63,7 +63,10 @@ bool cm2_parse_resource(cm2_addr_t *addr, cm2_dest_e dest)
 {
     char *dstr = cm2_dest_name(dest);
 
-    if (!parse_uri(addr->resource, addr->proto, addr->hostname, &(addr->port)))
+    if (!parse_uri(addr->resource,
+                addr->proto, sizeof(addr->proto),
+                addr->hostname, sizeof(addr->hostname),
+                &(addr->port)))
     {
         LOGE("Fail to parse %s resource (%s)", dstr, addr->resource);
         cm2_clear_addr(addr);

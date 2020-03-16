@@ -35,7 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "target.h"
 #include "log.h"
 #include "ds_dlist.h"
-#include "plume_stats.pb-c.h"
+#include "opensync_stats.pb-c.h"
 
 #include "qm.h"
 
@@ -473,7 +473,7 @@ void qm_mqtt_timer_handler_log(struct ev_loop *loop, ev_timer *timer, int revent
 
 void qm_mqtt_set_log_interval(int log_interval)
 {
-#ifdef BUILD_REMOTE_LOG
+#ifdef CONFIG_LOG_REMOTE
     if (log_interval == qm_log_interval) return;
     LOGD("QM log publish interval: %d", qm_log_interval);
     if (qm_log_enabled) {

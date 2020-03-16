@@ -29,8 +29,8 @@
 * POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef NFM_INCLUDE_TRULE
-#define NFM_INCLUDE_TRULE
+#ifndef NFM_TRULE_H_INCLUDED
+#define NFM_TRULE_H_INCLUDED
 
 #include "ds_tree.h"
 #include "schema.h"
@@ -79,5 +79,4 @@ bool nfm_trule_del(const struct schema_Netfilter *conf);
 bool nfm_trule_modify(const struct schema_Netfilter *conf);
 bool nfm_trule_is_template(const struct schema_Netfilter *conf);
 
-#endif
-
+#endif /* NFM_TRULE_H_INCLUDED */

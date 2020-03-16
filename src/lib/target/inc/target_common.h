@@ -97,7 +97,8 @@ struct target_radio_ops {
 
     /** target calls this whenever system vif state has changed,
      *  e.g. channel changed, target_vif_config_set2() was called */
-    void (*op_vstate)(const struct schema_Wifi_VIF_State *vstate);
+    void (*op_vstate)(const struct schema_Wifi_VIF_State *vstate,
+                      const char *phy);
 
     /** target calls this whenever system radio state has changed,
      *  e.g. channel changed, target_radio_config_set2() was called */
@@ -863,11 +864,95 @@ typedef bool target_mac_learning_cb_t(
 bool target_mac_learning_register(target_mac_learning_cb_t *omac_cb);
 
 /// @} LIB_TARGET_MAC_LEARNING
+/******************************************************************************
+ *  IGMP/MLD Proxy definitions
+ *****************************************************************************/
+
+/**  Multicast proxy value */
+typedef enum {
+    DISABLE_IGMP = 1,
+    DISABLE_MLD,
+    IGMPv1,
+    IGMPv2,
+    IGMPv3,
+    MLDv1,
+    MLDv2
+} target_prtcl_t;
+
+typedef char ifname[64];
+
+/** Multicast Proxy Params required by target_mcproxy_start() */
+typedef struct mcproxyd_params {
+  target_prtcl_t     protocol;
+  char               upstrm_if[64];
+  int                num_dwnstrifs;
+  ifname            *dwnstrm_ifs;
+} target_mcproxy_params_t;
+
+/**
+ * @brief Applies config to mcproxy
+ * and reloads the corresponding daemon.
+ * @param target_mcproxyd_params_t contains protocol,upstream and downstream ifs info.
+ * @return true on success
+ */
+bool target_set_igmp_mcproxy_params(target_mcproxy_params_t *mcparams);
+
+/**
+ * @brief Get config from the mcproxy.
+ * @param target_mcproxyd_params_t contains protocol,upstream and downstream ifs info.
+ * @return true on success
+ */
+bool target_get_igmp_mcproxy_params(target_mcproxy_params_t *mcparams);
+
+/**
+ * @brief Applies config to mcproxy
+ * and reloads the corresponding daemon.
+ * @param target_mcproxyd_params_t contains protocol,upstream and downstream ifs info.
+ * @return true on success
+ */
+bool target_set_mld_mcproxy_params(target_mcproxy_params_t *mcparams);
+/**
+ * @brief Get config from the mcproxy.
+ * @param target_mcproxyd_params_t contains protocol,upstream and downstream ifs info.
+ * @return true on success
+ */
+bool target_get_mld_mcproxy_params(target_mcproxy_params_t *mcparams);
+
+/**
+ * @brief Applies mcproxy system parameters and reloads the corresponding
+ * proxy daemon.
+ * @param schema_IGMP_Config contains all the IGMP params required.
+ * @return true on sucess.
+ */
+bool target_set_igmp_mcproxy_sys_params(struct schema_IGMP_Config *iccfg);
+/**
+ * @brief Get mcproxy system parameters.
+ * @param schema_IGMP_Config contains all the IGMP params required.
+ * @return true on sucess.
+ */
+bool target_get_igmp_mcproxy_sys_params(struct schema_IGMP_Config *iccfg);
+
+/**
+ * @brief Applies mcproxy system parameters and reloads the corresponding
+ * proxy daemon.
+ * @param schema_MLD_Config contains all the IGMP params required.
+ * @return true on sucess.
+ */
+bool target_set_mld_mcproxy_sys_params(struct schema_MLD_Config *mlcfg);
+
+/**
+ * @brief Get mcproxy system parameters.
+ * @param schema_IGMP_Config contains all the IGMP params required.
+ * @param schema_MLD_Config contains all the IGMP params required.
+ * @return true on sucess.
+ */
+bool target_get_mld_mcproxy_sys_params(struct schema_MLD_Config *iccfg);
+
+
 
 /******************************************************************************
  *  PLATFORM SPECIFIC definitions
  *****************************************************************************/
-
 /// @defgroup LIB_TARGET_CLIENT_FREEZE Client Freeze API
 /// Definitions and API related to Client Freeze functionality.
 /// @{

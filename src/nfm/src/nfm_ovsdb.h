@@ -29,8 +29,8 @@
 * POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef NFM_INCLUDE_OVSDB
-#define NFM_INCLUDE_OVSDB
+#ifndef NFM_OVSDB_H_INCLUDED
+#define NFM_OVSDB_H_INCLUDED
 
 #include "ovsdb_table.h"
 #include <stdbool.h>
@@ -41,5 +41,4 @@ extern struct ovsdb_table table_Openflow_Tag_Group;
 
 bool nfm_ovsdb_init(void);
 
-#endif
-
+#endif /* NFM_OVSDB_H_INCLUDED */

@@ -28,8 +28,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * Band Steering Manager - Main Include File
  */
 
-#ifndef __BM_H__
-#define __BM_H__
+#ifndef BM_H_INCLUDED
+#define BM_H_INCLUDED
 
 #include "log.h"
 #include "ds_tree.h"
@@ -46,7 +46,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "target.h"
 
-#include "bm_pair.h"
+#include "bm_group.h"
 #include "bm_client.h"
 #include "bm_config.h"
 #include "bm_events.h"
@@ -55,5 +55,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "bm_neighbor.h"
 
 int get_log_severity();
+void bm_main_set_timer(int sec);
 
-#endif /* __BM_H__ */
+#endif /* BM_H_INCLUDED */

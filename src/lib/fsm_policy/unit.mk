@@ -28,7 +28,7 @@
 #
 ###############################################################################
 UNIT_NAME := fsm_policy
-UNIT_DISABLE := $(if $(CONFIG_TARGET_MANAGER_FSM),n,y)
+UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM),n,y)
 UNIT_TYPE := LIB
 
 UNIT_SRC := src/fsm_policy.c
@@ -49,5 +49,6 @@ UNIT_DEPS += src/lib/ovsdb
 UNIT_DEPS += src/lib/json_util
 UNIT_DEPS += src/lib/policy_tags
 UNIT_DEPS += src/lib/ustack
+UNIT_DEPS += src/lib/target
 
 

@@ -1,0 +1,12 @@
+menuconfig OSPS_ENABLED
+    bool "osps"
+    default y
+    help
+        Tool for accessing persistent storage from the shell.
+
+config OSPS_PSFS
+    bool "Enable PSFS specific functionality"
+    default y
+    depends on PSFS_ENABLED && OSPS_ENABLED
+    help
+        Provides additional commands for PSFS like pruning and listing keys.

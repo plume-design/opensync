@@ -1,0 +1,63 @@
+menuconfig OVSDB_BOOTSTRAP
+    bool "OVSDB extender bootstrap"
+    default n
+    help
+        Select if you want to have a bootstrappable extender
+        device. Extenders need to onboard themselves every
+        time they boot - this includes finding a suitable
+        internet-reachable uplink, connecting to cloud
+        controller and eventually getting configured.
+
+        Make sure to set up all the other OVSDB_BOOTSTRAP_
+        knobs.
+
+    if OVSDB_BOOTSTRAP
+        config OVSDB_BOOTSTRAP_WIFI_PHY_LIST
+            string "List of radio interfaces"
+            default ""
+            help
+                The list must be space delimited and each item
+                must take the format of
+
+                  phy:chainmask:htmode:hwmode:freqband:hwtype:arg1=val1,arg2=val2
+
+                Values can be encapsulated with "" to express
+                strings. These may not contain spaces, : or =
+
+                The extra arg=value at the end are used to
+                populate hw_config column.
+
+                Example:
+
+                  wifi0:3:HT40:11n:2.4G:qca9563:dfs_usenol="1",dfs_enable="1" wifi1:15:HT80:11ac:5G:qca9882
+
+        config OVSDB_BOOTSTRAP_WIFI_STA_LIST
+            string "List of wireless sta interfaces"
+            default ""
+            help
+                The list must be space delimited and each item
+                must take the format of
+
+                  phy:vif
+
+                When extender boots up it will have its ovsdb
+                pre-populated with some values so that it can
+                bootstrap itself and reach external controller.
+
+                Example:
+
+                  wifi0:bhaul-sta-24 wifi1:bhaul-sta-50
+
+        config OVSDB_BOOTSTRAP_WIFI_STA_MTU
+            int "MTU size to use for the wireless station netdevs"
+            default 1600
+            help
+                Wireless onboarding involves GRE. While this may
+                change in the future current systems must
+                account for extra 42 bytes at least: 38 for
+                gretap and 4 for 802.1q.
+
+                The default value of 1600 is generous and hopes
+                to avoid off-by-one or other system quirks where
+                mtu calculation is broken.
+    endif

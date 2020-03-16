@@ -1,0 +1,10 @@
+#
+# OpenSync core platform l2switch backend
+#
+source "src/lib/osp/kconfig/Kconfig.osp_l2switch.backend"
+
+#
+# Platform/vendor L2 switch backens
+#
+osource "platform/*/kconfig/Kconfig.osp_l2switch.backend"
+osource "vendor/*/kconfig/Kconfig.osp_l2switch.backend"

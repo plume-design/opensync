@@ -1,0 +1,10 @@
+#
+# OpenSync core IPv4 networking backend
+#
+source "src/lib/osn/kconfig/Kconfig.osn.ipv6_backend"
+
+#
+# Platform/vendor IPv4 networking backends
+#
+osource "platform/*/kconfig/Kconfig.osn.ipv6_backend"
+osource "vendor/*/kconfig/Kconfig.osn.ipv6_backend"

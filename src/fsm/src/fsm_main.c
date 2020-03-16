@@ -40,7 +40,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <unistd.h>
 
 #include "ds_tree.h"
-#include "evsched.h"
 #include "log.h"
 #include "os.h"
 #include "os_socket.h"
@@ -94,12 +93,6 @@ int main(int argc, char ** argv)
 
     fsm_init_mgr(loop);
 
-    if (evsched_init(loop) == false) {
-        LOGE("Initializing FSM "
-             "(Failed to initialize EVSCHED)");
-        return -1;
-    }
-
     if (!target_init(TARGET_INIT_MGR_FSM, loop)) {
         return -1;
     }
@@ -122,7 +115,13 @@ int main(int argc, char ** argv)
         LOGE("Error initializing dpp lib\n");
         return -1;
     }
-    
+
+    if (neigh_table_init())
+    {
+        LOGE("Initializing Neighbour Table failed " );
+        return -1;
+    }
+
     if (nf_ct_init(loop) < 0)
     {
         LOGE("Eror initializing conntrack\n");

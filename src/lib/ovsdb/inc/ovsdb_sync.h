@@ -59,5 +59,4 @@ bool    ovsdb_sync_upsert_with_parent(const char *table, json_t *where, json_t *
 int     ovsdb_sync_delete_with_parent(const char *table, json_t *where,
         const char *parent_table, json_t *parent_where, const char *parent_column);
 
-#endif
-
+#endif /* OVSDB_SYNC_H_INCLUDED */

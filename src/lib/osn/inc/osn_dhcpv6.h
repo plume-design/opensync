@@ -85,8 +85,6 @@ typedef struct osn_dhcpv6_client osn_dhcpv6_client_t;
  */
 struct osn_dhcpv6_client_status
 {
-    /** Private data */
-    void            *d6c_data;
     /** True whether client has connected */
     bool            d6c_connected;
     /** Received options, base64 encoded string or NULL for none */
@@ -133,7 +131,7 @@ osn_dhcpv6_client_t *osn_dhcpv6_client_new(const char *ifname);
  * The input parameter should be considered invalid after this function
  * returns, regardless of the error code.
  */
-bool osn_dhcpv6_client_del(osn_dhcpv6_client_t *client);
+bool osn_dhcpv6_client_del(osn_dhcpv6_client_t *self);
 
 /**
  * Set DHCPv6 client options.
@@ -142,7 +140,7 @@ bool osn_dhcpv6_client_del(osn_dhcpv6_client_t *client);
  * @param[in]   request_address  Request a DHCPv6 address
  * @param[in]   request_prefixes  Request DHCPv6 prefixes
  * @param[in]   rapid_commit  use fast rapid commit
- * @param[in[   renew  renew the IPv6 address
+ * @param[in]   renew  renew the IPv6 address
  *
  * @return
  * This function returns true on success or false on error.
@@ -170,7 +168,7 @@ bool osn_dhcpv6_client_set(
  * @note
  * There's currently no API to unset a requested option.
  */
-bool osn_dhcpv6_client_option_request(osn_dhcpv6_client_t *client, int tag);
+bool osn_dhcpv6_client_option_request(osn_dhcpv6_client_t *self, int tag);
 
 /*
  * Set various DHCPv6 options that will be sent to the DHCPv6 server during
@@ -201,12 +199,10 @@ bool osn_dhcpv6_client_option_send(osn_dhcpv6_client_t *self, int tag, const cha
  *
  * @param[in]   self  A valid pointer to an osn_ip6_t object
  * @param[in]   fn    A pointer to the function implementation
- * @param[in]   data  Private data
  */
 void osn_dhcpv6_client_status_notify(
         osn_dhcpv6_client_t *self,
-        osn_dhcpv6_client_status_fn_t *fn,
-        void *data);
+        osn_dhcpv6_client_status_fn_t *fn);
 
 /**
  * Ensure that all configuration pertaining the @p self object is applied to
@@ -222,6 +218,20 @@ void osn_dhcpv6_client_status_notify(
  */
 bool osn_dhcpv6_client_apply(osn_dhcpv6_client_t *self);
 
+/**
+ * Set user data associated with object @p self
+ *
+ * @param[in]   self  A valid pointer to an osn_dhcp_server_t object
+ * @param[in]   data  User data
+ */
+void osn_dhcpv6_client_data_set(osn_dhcpv6_client_t *self, void *data);
+
+/**
+ * Get user data associated with object @p self
+ *
+ * @param[in]   self  A valid pointer to an osn_dhcp_server_t object
+ */
+void* osn_dhcpv6_client_data_get(osn_dhcpv6_client_t *self);
 
 /** @} OSN_DHCPV6_CLIENT */
 
@@ -307,7 +317,7 @@ typedef void osn_dhcpv6_server_status_fn_t(
 /**
  * Create a new instance of a DHCPv6 server object.
  *
- * @param[in]   ifname  Interface name to which the DHCPv6 server instance will
+ * @param[in]   iface  Interface name to which the DHCPv6 server instance will
  *                      be bound
  *
  * @return

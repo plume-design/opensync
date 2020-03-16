@@ -24,8 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __DPPLINE__H__
-#define __DPPLINE__H__
+#ifndef DPPLINE_H_INCLUDED
+#define DPPLINE_H_INCLUDED
 
 #ifdef TARGET_NATIVE
 #define DPP_FAST_PACK
@@ -46,7 +46,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "dpp_bs_client.h"
 #include "dpp_rssi.h"
 
-#ifdef USE_QM
+#ifdef CONFIG_MANAGER_QM
 // QM does queue-ing of reports when offline on it's own, so dpp needs
 // a smaller queue size - only to merge multiple stats to single report
 // 30 is requierd for mqttsim --rpm 2 to work properly
@@ -118,4 +118,4 @@ char* dpp_mac_str_tmp(uint8_t *mac);
  * Get the number of stats internally queued
  */
 int dpp_get_queue_elements();
-#endif /* __DPPLINE__H__    */
+#endif /* DPPLINE_H_INCLUDED */

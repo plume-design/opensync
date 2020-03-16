@@ -29,18 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "schema.h"
 #include "cm2.h"
-
-/* WATCHDOG CONFIGURATION */
-#define CM2_WDT_INTERVAL                10
-
-/* CONNECTIVITY CHECK CONFIGURATION */
-#define CM2_STABILITY_INTERVAL          10
-#define CM2_STABILITY_THRESH_FATAL      8
-#define CM2_STABILITY_RESTORE_CON       4
-#define CM2_STABILITY_INTERNET_THRESH   6
-#define CM2_STABILITY_VTAG_THRESH       10
-#define CM2_STABILITY_CPU_THRESH        0.70
-#define CM2_STABILITY_THRESH_LINK       3
+#include "kconfig.h"
 
 cm2_main_link_type cm2_util_get_link_type(void)
 {
@@ -63,15 +52,15 @@ cm2_main_link_type cm2_util_get_link_type(void)
     return type;
 }
 
-bool cm2_vtag_stability_check() {
+bool cm2_vtag_stability_check(void) {
     cm2_vtag_t *vtag = &g_state.link.vtag;
 
     if (vtag->state == CM2_VTAG_PENDING) {
         vtag->failure++;
         LOGI("vtag: %d connectivity failed: %d out of %d retries",
-             vtag->tag, vtag->failure, CM2_STABILITY_VTAG_THRESH);
+             vtag->tag, vtag->failure, CONFIG_CM2_STABILITY_THRESH_VTAG);
 
-        if (vtag->failure > CM2_STABILITY_VTAG_THRESH) {
+        if (vtag->failure > CONFIG_CM2_STABILITY_THRESH_VTAG) {
             LOGN("vtag: %d trigger rollback", vtag->tag);
             cm2_update_state(CM2_REASON_BLOCK_VTAG);
         }
@@ -107,7 +96,7 @@ static bool cm2_cpu_is_low_loadavg(void) {
         s_val=strtok(line," ");
         val = atof(s_val);
 
-        if (val > CM2_STABILITY_CPU_THRESH) {
+        if (val > atof(CONFIG_CM2_STABILITY_THRESH_CPU)) {
             LOGI("Skip stability check due to high CPU usage, load avg: %f", val);
             break;
         }
@@ -127,12 +116,12 @@ static bool cm2_restore_connection(int cnt)
 
     LOGI("Trying restore connection");
     if (cm2_is_eth_type(g_state.link.if_type)) {
-        sprintf(command, "sh /usr/plume/scripts/kick-ethernet.sh %d 0 2 ", cnt);
+        sprintf(command, "sh "CONFIG_INSTALL_PREFIX"/scripts/kick-ethernet.sh %d 0 2 ", cnt);
         LOGD("%s: Command: %s", __func__, command);
         ret = target_device_execute(command);
         if (!ret)
             LOGW("Trigger ethernet kick script failed");
-        cm2_ovsdb_refresh_dhcp(BR_WAN_NAME);
+        cm2_ovsdb_refresh_dhcp(CONFIG_TARGET_WAN_BRIDGE_NAME);
     }
     return ret;
 }
@@ -142,8 +131,10 @@ static void cm2_stability_handle_fatal_state(int counter)
     if (counter > 0 &&
         cm2_vtag_stability_check() &&
         !g_state.link.is_limp_state &&
-            counter + 1 > CM2_STABILITY_THRESH_FATAL) {
+            counter + 1 > CONFIG_CM2_STABILITY_THRESH_FATAL) {
             LOGW("Restart managers due to exceeding the threshold for fatal failures");
+            cm2_ovsdb_dump_debug_data();
+            cm2_tcpdump_stop(g_state.link.if_name);
             target_device_restart_managers();
         }
 }
@@ -176,19 +167,19 @@ void cm2_connection_req_stability_check(target_connectivity_check_option_t opts)
         return;
     }
 
-    if (!cm2_ovsdb_validate_bridge_port_conf(BR_WAN_NAME, g_state.link.if_name)) {
+    if (!cm2_ovsdb_validate_bridge_port_conf(SCHEMA_CONSTS_BR_NAME_WAN, g_state.link.if_name)) {
         LOGW("Detected abnormal situation, main link %s", g_state.link.if_name);
         counter = con.unreachable_link_counter < 0 ? 1 : con.unreachable_link_counter + 1;
         LOGI("Detected broken link. Counter = %d", counter);
 
-        if (counter == CM2_STABILITY_THRESH_LINK) {
+        if (counter == CONFIG_CM2_STABILITY_THRESH_LINK) {
             ret = cm2_ovsdb_set_Wifi_Inet_Config_network_state(false, g_state.link.if_name);
             if (!ret)
                 LOGW("Force disable main uplink interface failed");
             else
                 g_state.link.restart_pending = true;
 
-            if (counter + 1 > CM2_STABILITY_THRESH_FATAL) {
+            if (counter + 1 > CONFIG_CM2_STABILITY_THRESH_FATAL) {
                 cm2_stability_handle_fatal_state(counter);
                 counter = 0;
             }
@@ -219,14 +210,28 @@ void cm2_connection_req_stability_check(target_connectivity_check_option_t opts)
             counter =  con.unreachable_router_counter < 0 ? 1 : con.unreachable_router_counter + 1;
             LOGW("Detected broken Router. Counter = %d", counter);
         }
+        else if (kconfig_enabled(CONFIG_CM2_USE_TCPDUMP) &&
+                 con.unreachable_router_counter >= CONFIG_CM2_STABILITY_THRESH_TCPDUMP) {
+                    cm2_tcpdump_stop(g_state.link.if_name);
+        }
+
         ret = cm2_ovsdb_connection_update_unreachable_router_counter(if_name, counter);
         if (!ret)
             LOGW("%s Failed update router counter in ovsdb table", __func__);
 
-        if (counter > 0 && counter % CM2_STABILITY_RESTORE_CON == 0) {
+        if (counter > 0 && counter % CONFIG_CM2_STABILITY_THRESH_REST_CON == 0) {
             if (cm2_restore_connection(counter))
                 LOGW("Restore connection trigger failed");
         }
+
+        if (kconfig_enabled(CONFIG_CM2_USE_TCPDUMP) &&
+            counter == CONFIG_CM2_STABILITY_THRESH_TCPDUMP &&
+            cm2_is_eth_type(g_state.link.if_type)) {
+                cm2_tcpdump_start(g_state.link.if_name);
+        }
+
+        if (con.unreachable_router_counter + 1 == CONFIG_CM2_STABILITY_THRESH_FATAL)
+            cm2_tcpdump_stop(g_state.link.if_name);
 
         link_type = cm2_util_get_link_type();
         if (link_type == CM2_LINK_ETH_ROUTER) {
@@ -245,9 +250,9 @@ void cm2_connection_req_stability_check(target_connectivity_check_option_t opts)
         if (!cstate.internet_state) {
             counter = con.unreachable_internet_counter < 0 ? 1 : con.unreachable_internet_counter + 1;
             LOGW("Detected broken Internet. Counter = %d", counter);
-            if (counter % CM2_STABILITY_INTERNET_THRESH == 0) {
+            if (counter % CONFIG_CM2_STABILITY_THRESH_INTERNET == 0) {
                 LOGN("Refresh br-wan interface due to Internet issue");
-                cm2_ovsdb_refresh_dhcp(BR_WAN_NAME);
+                cm2_ovsdb_refresh_dhcp(CONFIG_TARGET_WAN_BRIDGE_NAME);
             }
         }
         ret = cm2_ovsdb_connection_update_unreachable_internet_counter(if_name, counter);
@@ -292,7 +297,10 @@ void cm2_stability_cb(struct ev_loop *loop, ev_timer *watcher, int revents)
 void cm2_stability_init(struct ev_loop *loop)
 {
     LOGD("Initializing stability connection check");
-    ev_timer_init(&g_state.stability_timer, cm2_stability_cb, CM2_STABILITY_INTERVAL, CM2_STABILITY_INTERVAL);
+    ev_timer_init(&g_state.stability_timer,
+                  cm2_stability_cb,
+                  CONFIG_CM2_STABILITY_INTERVAL,
+                  CONFIG_CM2_STABILITY_INTERVAL);
     g_state.stability_timer.data = NULL;
     ev_timer_start(g_state.loop, &g_state.stability_timer);
 }
@@ -303,6 +311,7 @@ void cm2_stability_close(struct ev_loop *loop)
     ev_timer_stop (loop, &g_state.stability_timer);
 }
 
+#ifdef CONFIG_CM2_USE_WDT
 void cm2_wdt_cb(struct ev_loop *loop, ev_timer *watcher, int revents)
 {
     (void)loop;
@@ -315,7 +324,10 @@ void cm2_wdt_cb(struct ev_loop *loop, ev_timer *watcher, int revents)
 void cm2_wdt_init(struct ev_loop *loop)
 {
     LOGD("Initializing WDT connection");
-    ev_timer_init(&g_state.wdt_timer, cm2_wdt_cb, CM2_WDT_INTERVAL, CM2_WDT_INTERVAL);
+
+    ev_timer_init(&g_state.wdt_timer, cm2_wdt_cb,
+                  CONFIG_CM2_WDT_INTERVAL,
+                  CONFIG_CM2_WDT_INTERVAL);
     g_state.wdt_timer.data = NULL;
     ev_timer_start(g_state.loop, &g_state.wdt_timer);
 }
@@ -325,3 +337,4 @@ void cm2_wdt_close(struct ev_loop *loop)
     LOGD("Stopping WDT");
     (void)loop;
 }
+#endif /* CONFIG_CM2_USE_WDT */

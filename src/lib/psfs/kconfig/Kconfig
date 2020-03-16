@@ -1,0 +1,57 @@
+if OSP_PS_PSFS
+
+menuconfig PSFS_ENABLED
+    bool "PSFS Backend"
+    default n
+    help
+        PSFS is short for Persistent Storage File System and is a library
+        that implements persistent storage using the file system.
+
+    comment "PSFS Options"
+        depends on PSFS_ENABLED
+
+    config PSFS_DIR
+        depends on PSFS_ENABLED
+        string "Primary folder"
+        default "$(INSTALL_PREFIX)/data"
+        help
+            The primary storage folder for PSFS. This is a folder location
+            that is not preserved across system upgrades.
+
+    config PSFS_PRESERVE_DIR
+        depends on PSFS_ENABLED
+        string "Preserved folder"
+        default "$(INSTALL_PREFIX)/pdata"
+        help
+            The PSFS storage folder location that is preserved across system
+            upgrades.
+
+    config PSFS_SYNC_MIN
+        depends on PSFS_ENABLED
+        int "Minimum store file size before pruning is attempted (kB)"
+        default 8
+        help
+            Pruning is an operation where the whole content of the database
+            is copied and stale entries are pruned. Files smaller than this
+            size are never pruned -- unless forced.
+
+
+    config PSFS_SYNC_WASTED_MAX
+        depends on PSFS_ENABLED
+        int "Maximum wasted space after which pruning is enforced (kB)"
+        default 32
+        help
+            Pruning is an operation where the whole content of the database
+            is copied and stale entries are pruned. Stores that have at least
+            this amount of wasted bytes (used by inactive or deleted records)
+            are force pruned.
+
+    config PSFS_SYNC_WASTED_RATIO_MAX
+        depends on PSFS_ENABLED
+        int "When wasted bytes account for more than this percent, always sync in prune mode"
+        default 50
+        help
+            If wasted bytes vs good bytes is more than this percent, force
+            prune mode on close or sync.
+
+endif

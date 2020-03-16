@@ -1,0 +1,12 @@
+menuconfig MANAGER_XM
+    bool "Exchange Manager (XM)"
+    default n
+    help
+        Enable Exchange Manager (XM)
+
+    config MANAGER_XM_CFG
+        depends on MANAGER_XM
+        string "XM Startup configuration"
+        default "xm;true"
+        help
+            Exchange Manager startup configuration

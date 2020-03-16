@@ -24,7 +24,7 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ###############################################################################
-# update protobuf c files based on new plume stats protobuf description
+# update protobuf c files based on new opensync stats protobuf description
 ###############################################################################
 
 RELDIR=$(basename $(dirname $PWD))/$(basename $PWD)
@@ -35,7 +35,7 @@ then
     exit 1
 fi
 
-FNAME=plume_stats
+FNAME=opensync_stats
 protoc-c --c_out=. --proto_path=../../../interfaces ../../../interfaces/${FNAME}.proto
 mv "${FNAME}.pb-c.c" src/
 mv "${FNAME}.pb-c.h" inc/

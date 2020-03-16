@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 typedef struct __daemon daemon_t;
 typedef bool daemon_atexit_fn_t(daemon_t *self);
+typedef bool daemon_atrestart_fn_t(daemon_t *self, int wstatus);
 
 #define DAEMON_LOG_STDOUT   (1 << 0)    /* Log stdout of the daemoness */
 #define DAEMON_LOG_STDERR   (1 << 1)    /* Log stderr of the daemoness */
@@ -49,31 +50,32 @@ typedef bool daemon_atexit_fn_t(daemon_t *self);
  */
 struct __daemon
 {
-    char                *dn_exec;           /* Path to executable */
-    int                 dn_flags;           /* Flags */
-    pid_t               dn_pid;             /* PID of the currently running daemoness */
-    int                 dn_argc;            /* Number of arguments in list, excluding the terminating NULL */
-    char                **dn_argv;          /* Argument list */
-    daemon_atexit_fn_t  *dn_atexit_fn;
-    ev_timer            dn_restart_timer;   /* Restart timer */
-    double              dn_restart_delay;   /* Time between restarts */
-    int                 dn_restart_max;     /* Maximum tries before giving up */
-    int                 dn_restart_num;     /* Current number of restarts */
-    ev_child            dn_child;           /* Child daemoness watcher */
-    ev_io               dn_stdout;          /* Daemon stdout watcher */
-    int                 dn_stdout_fd;       /* Stdout file descriptor or -1 if not applicable */
-    char                dn_stdout_buf[DAEMON_PIPE_BUF];
-    read_until_t        dn_stdout_ru;       /* _read_until() structure */
-    ev_io               dn_stderr;          /* Daemon stderr watcher */
-    int                 dn_stderr_fd;       /* Stderr file descriptor or -1 if not applicable */
-    char                dn_stderr_buf[DAEMON_PIPE_BUF];
-    read_until_t        dn_stderr_ru;       /* _read_until() structure */
-    int                 dn_sig_term;        /* Signal to send instead of SIGTERM (ask to terminate nicely) */
-    int                 dn_sig_kill;        /* Signal to send instead of SIGKILL (force kill) */
-    bool                dn_enabled;         /* The daemoness is enabled */
-    bool                dn_auto_restart;    /* Enable daemoness auto restart on error */
-    char                *dn_pidfile_path;   /* PID file */
-    bool                dn_pidfile_create;  /* true whether we should create the PID file */
+    char                    *dn_exec;           /* Path to executable */
+    int                     dn_flags;           /* Flags */
+    pid_t                   dn_pid;             /* PID of the currently running daemoness */
+    int                     dn_argc;            /* Number of arguments in list, excluding the terminating NULL */
+    char                    **dn_argv;          /* Argument list */
+    daemon_atexit_fn_t      *dn_atexit_fn;      /* Cleanup at exit daemon */
+    daemon_atrestart_fn_t   *dn_atrestart_fn;   /* Handle error code before restarting daemon */
+    ev_timer                dn_restart_timer;   /* Restart timer */
+    double                  dn_restart_delay;   /* Time between restarts */
+    int                     dn_restart_max;     /* Maximum tries before giving up */
+    int                     dn_restart_num;     /* Current number of restarts */
+    ev_child                dn_child;           /* Child daemoness watcher */
+    ev_io                   dn_stdout;          /* Daemon stdout watcher */
+    int                     dn_stdout_fd;       /* Stdout file descriptor or -1 if not applicable */
+    char                    dn_stdout_buf[DAEMON_PIPE_BUF];
+    read_until_t            dn_stdout_ru;       /* _read_until() structure */
+    ev_io                   dn_stderr;          /* Daemon stderr watcher */
+    int                     dn_stderr_fd;       /* Stderr file descriptor or -1 if not applicable */
+    char                    dn_stderr_buf[DAEMON_PIPE_BUF];
+    read_until_t            dn_stderr_ru;       /* _read_until() structure */
+    int                     dn_sig_term;        /* Signal to send instead of SIGTERM (ask to terminate nicely) */
+    int                     dn_sig_kill;        /* Signal to send instead of SIGKILL (force kill) */
+    bool                    dn_enabled;         /* The daemoness is enabled */
+    bool                    dn_auto_restart;    /* Enable daemoness auto restart on error */
+    char                    *dn_pidfile_path;   /* PID file */
+    bool                    dn_pidfile_create;  /* true whether we should create the PID file */
 };
 
 extern bool daemon_init(daemon_t *self, const char *exe_path, int flags);
@@ -86,6 +88,7 @@ extern bool daemon_arg_add_a(daemon_t *self, char *argv[]);
 extern bool daemon_signal_set(daemon_t *self, int sig_term, int sig_kill);
 extern bool daemon_restart_set(daemon_t *self, bool auto_restart, double delay, int retries);
 extern bool daemon_atexit(daemon_t *self, daemon_atexit_fn_t *fn);
+extern bool daemon_atrestart(daemon_t *self, daemon_atrestart_fn_t *fn);
 extern bool daemon_pidfile_set(daemon_t *self, const char *path, bool create);
 extern bool daemon_is_started(daemon_t *self, bool *started);
 

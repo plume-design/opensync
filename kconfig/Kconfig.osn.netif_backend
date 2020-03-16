@@ -1,0 +1,10 @@
+#
+# OpenSync core network interface backend
+#
+source "src/lib/osn/kconfig/Kconfig.osn.netif_backend"
+
+#
+# Platform/vendor network interface backends
+#
+osource "platform/*/kconfig/Kconfig.osn.netif_backend"
+osource "vendor/*/kconfig/Kconfig.osn.netif_backend"

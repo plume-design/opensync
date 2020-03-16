@@ -1,0 +1,12 @@
+menuconfig MANAGER_FSM
+    bool "Flow Service Manager (FSM)"
+    default n
+    help
+        Enable Flow Service Manager (FSM)
+
+    config MANAGER_FSM_CFG
+        depends on MANAGER_FSM
+        string "FSM Startup configuration"
+        default "fsm;true;always_restart=true;restart_delay=-1"
+        help
+            Flow Service Manager startup configuration

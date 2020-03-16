@@ -24,9 +24,11 @@
 
 ###############################################################################
 #
-# Daemon Manager
+# Diagnostics Manager
 #
 ###############################################################################
+UNIT_DISABLE := $(if $(CONFIG_MANAGER_DM),n,y)
+
 UNIT_NAME := dm
 
 # Template type:
@@ -34,10 +36,12 @@ UNIT_TYPE := BIN
 
 # List of source files
 UNIT_SRC := src/dm.c
+UNIT_SRC += src/dm_cli.c
 UNIT_SRC += src/dm_ovsdb.c
 UNIT_SRC += src/dm_hook.c
-UNIT_SRC += src/managers.c
+UNIT_SRC += src/dm_manager.c
 UNIT_SRC += src/statem.c
+UNIT_SRC += src/dm_reboot.c
 ifeq ($(BUILD_SPEED_TEST),y)
 UNIT_SRC += src/dm_st.c
 endif
@@ -53,13 +57,15 @@ UNIT_DEPS := src/lib/common
 UNIT_DEPS += src/lib/ds
 UNIT_DEPS += src/lib/osa
 UNIT_DEPS += src/lib/ds
-UNIT_DEPS += src/lib/version
 UNIT_DEPS += src/lib/ovsdb
 UNIT_DEPS += src/lib/schema
 UNIT_DEPS += src/lib/mosqev
 UNIT_DEPS += src/lib/tailf
 UNIT_DEPS += src/lib/target
 UNIT_DEPS += src/lib/const
+UNIT_DEPS += src/lib/module
+UNIT_DEPS += src/lib/evx
 ifeq ($(BUILD_SPEED_TEST),y)
 UNIT_DEPS += src/lib/pasync
 endif
+UNIT_DEPS_CFLAGS += src/lib/version

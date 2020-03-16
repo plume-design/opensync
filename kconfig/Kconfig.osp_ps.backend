@@ -1,0 +1,11 @@
+#
+# Core PS modules
+#
+source "src/lib/osp/kconfig/Kconfig.osp_ps.backend"
+
+#
+# Vendor/Platform PS modules
+#
+osource "platform/*/kconfig/Kconfig.osp_ps.backend"
+osource "vendor/*/kconfig/Kconfig.osp_ps.backend"
+

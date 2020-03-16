@@ -29,7 +29,7 @@
 ###############################################################################
 UNIT_NAME := ustack
 
-UNIT_DISABLE := $(if $(CONFIG_TARGET_MANAGER_FSM),n,y)
+UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM),n,y)
 
 # Template type:
 UNIT_TYPE := LIB
@@ -41,3 +41,5 @@ UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
 
 UNIT_DEPS := src/lib/log
+UNIT_DEPS += src/lib/network_metadata
+

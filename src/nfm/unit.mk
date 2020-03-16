@@ -28,7 +28,7 @@
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 #
-UNIT_DISABLE := $(if $(CONFIG_TARGET_MANAGER_NFM),n,y)
+UNIT_DISABLE := $(if $(CONFIG_MANAGER_NFM),n,y)
 UNIT_NAME := nfm
 UNIT_TYPE := BIN
 
@@ -56,7 +56,5 @@ UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 UNIT_DEPS := src/lib/ovsdb
 UNIT_DEPS += src/lib/pjs
 UNIT_DEPS += src/lib/schema
-UNIT_DEPS += src/lib/version
-UNIT_DEPS += src/lib/evsched
 UNIT_DEPS += src/lib/policy_tags
 

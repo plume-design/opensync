@@ -48,11 +48,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_util.h"
 #include "os_regex.h"
 #include "target.h"
+#include "build_version.h"
 
 #define MODULE_ID LOG_MODULE_ID_OSA
-
-extern const char *app_build_number_get();
-extern const char *app_build_profile_get();
 
 os_ipaddr_t os_ipaddr_any =
 {
@@ -801,9 +799,9 @@ bool os_nif_dhcpc_start(char* ifname, bool apply, int dhcp_time)
     snprintf(profile, sizeof(profile), "0xe2:");
     snprintf(serial_opt, sizeof(serial_opt), "0xe3:");
     if (apply == true) {
-	udhcpc_s_option = "/usr/plume/bin/udhcpc.sh";
+        udhcpc_s_option = CONFIG_INSTALL_PREFIX"/bin/udhcpc.sh";
     } else {
-	udhcpc_s_option = "/usr/plume/bin/udhcpc-dryrun.sh";
+        udhcpc_s_option = CONFIG_INSTALL_PREFIX"/bin/udhcpc-dryrun.sh";
     }
 
     /* it looks that udhcpc doesn't support sending string  */
@@ -836,7 +834,7 @@ bool os_nif_dhcpc_start(char* ifname, bool apply, int dhcp_time)
 
     if (false == target_model_get(dhcp_vendor_class, sizeof(dhcp_vendor_class)))
     {
-        strcpy(dhcp_vendor_class, TARGET_NAME);
+        STRSCPY(dhcp_vendor_class, TARGET_NAME);
     }
 
     char *argv_apply[] = {
@@ -1037,8 +1035,8 @@ bool os_nif_pppoe_start(
         "maxfail", "0",         /* Connect retries -- unlimited */
         "user", username,
         "password", password,
-        "ip-up-script", "/usr/plume/bin/ppp-up.sh",
-        "ip-down-script", "/usr/plume/bin/ppp-down.sh",
+        "ip-up-script", CONFIG_INSTALL_PREFIX"/bin/ppp-up.sh",
+        "ip-down-script", CONFIG_INSTALL_PREFIX"/bin/ppp-down.sh",
 #if 0
         "mtu", "1492",
         "mru", "1492",

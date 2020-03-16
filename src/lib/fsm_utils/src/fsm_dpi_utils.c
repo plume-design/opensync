@@ -28,8 +28,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <netinet/ip_icmp.h>
 #include <netinet/icmp6.h>
 #include "log.h"
+#include "ds_tree.h"
 #include "nf_utils.h"
 #include "net_header_parse.h"
+#include "network_metadata_report.h"
 #include "fsm_dpi_utils.h"
 
 #define DEFAULT_ZONE (0)
@@ -315,7 +317,6 @@ int fsm_set_icmp_dpi_state_timeout(
 
 // APIs using net_header_parser
 int fsm_set_dpi_state(
-        void *ctx,
         struct net_header_parser *net_hdr,
         enum fsm_dpi_state state)
 {
@@ -360,3 +361,23 @@ int fsm_set_dpi_state_timeout(
     /* -ve or 0 - failed in both zones or +ve atleast one zone passed */
     return (ret0 + ret1);
 }
+
+void fsm_dpi_set_acc_state(
+        struct fsm_session *session,
+        struct net_header_parser *net_parser,
+        enum fsm_dpi_state state)
+{
+    struct net_md_stats_accumulator *acc;
+    struct fsm_dpi_flow_info *info;
+
+    acc = net_parser->acc;
+    if (acc == NULL) return;
+
+    if (acc->dpi_plugins == NULL) return;
+
+    info = ds_tree_find(acc->dpi_plugins, session);
+    if (info == NULL) return;
+
+    info->decision = state;
+}
+

@@ -28,7 +28,7 @@
 #
 ###############################################################################
 UNIT_NAME := fcm_filter
-UNIT_DISABLE := $(if $(CONFIG_TARGET_MANAGER_FCM),n,y)
+UNIT_DISABLE := $(if $(CONFIG_MANAGER_FCM),n,y)
 UNIT_TYPE := LIB
 UNIT_DIR := lib
 UNIT_SRC := src/fcm_filter.c
@@ -37,7 +37,7 @@ UNIT_SRC += src/fcm_report_filter.c
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -Isrc/fcm/inc
 UNIT_CFLAGS += -I$(TOP_DIR)/src/lib/common/inc
- 
+
 UNIT_LDFLAGS :=
 
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
@@ -51,8 +51,6 @@ UNIT_DEPS += src/lib/ds
 UNIT_DEPS += src/lib/ovsdb
 UNIT_DEPS += src/lib/pjs
 UNIT_DEPS += src/lib/schema
-UNIT_DEPS += src/lib/version
-UNIT_DEPS += src/lib/evsched
 UNIT_DEPS += src/lib/datapipeline
 UNIT_DEPS += src/lib/json_util
 UNIT_DEPS += src/lib/network_metadata

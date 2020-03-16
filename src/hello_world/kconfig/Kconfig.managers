@@ -1,0 +1,17 @@
+menuconfig MANAGER_HELLOWORLD
+    bool "Hello World"
+    default n
+    help
+        Enable Hello World -- example manager
+
+        The Hello World is an example manager so it is disabled by default. You
+        can start it by using the following command:
+
+        ovsh u Node_Services --where service==hello_world enable:=true
+
+    config MANAGER_HELLOWORLD_CFG
+        string "Hello World Startup configuration"
+        depends on MANAGER_HELLOWORLD
+        default "hello_world;false"
+        help
+            Hello World startup configuration

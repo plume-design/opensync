@@ -1,0 +1,10 @@
+#
+# OpenSync core IPv4 route reporting backend
+#
+source "src/lib/osn/kconfig/Kconfig.osn.routev4_backend"
+
+#
+# Platform/vendor IPv4 route reporting backend
+#
+osource "platform/*/kconfig/Kconfig.osn.routev4_backend"
+osource "vendor/*/kconfig/Kconfig.osn.routev4_backend"

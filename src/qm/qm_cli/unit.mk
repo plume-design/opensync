@@ -27,6 +27,8 @@
 # Connection Manager CLI tool
 #
 ###############################################################################
+UNIT_DISABLE := $(if $(CONFIG_MANAGER_QM),n,y)
+
 UNIT_NAME := qm_cli
 
 UNIT_TYPE := BIN

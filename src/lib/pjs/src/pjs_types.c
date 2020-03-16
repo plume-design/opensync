@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <jansson.h>
 
 #include "pjs_types.h"
+#include "util.h"
 
 /*
  * ===========================================================================
@@ -186,7 +187,7 @@ bool pjs_string_t_from_json(void *data, int idx, json_t *jsdata)
         return false;
     }
 
-    strcpy(&args->data[args->sz * idx], str);
+    strscpy(&args->data[args->sz * idx], str, args->sz);
 
     return true;
 }
@@ -263,7 +264,7 @@ bool pjs_ovs_uuid_t_from_json(void *__data, int idx, json_t *jsdata)
 
     if (jsdata == NULL)
     {
-        strcpy(uuid->uuid, "00000000-0000-0000-0000-000000000000");
+        STRSCPY(uuid->uuid, "00000000-0000-0000-0000-000000000000");
         return true;
     }
 
@@ -306,7 +307,7 @@ bool pjs_ovs_uuid_t_from_json(void *__data, int idx, json_t *jsdata)
         return false;
     }
 
-    strcpy(uuid[idx].uuid, str);
+    STRSCPY(uuid[idx].uuid, str);
 
     return true;
 }
@@ -349,5 +350,5 @@ json_t *pjs_ovs_uuid_t_to_json(void *__data, int idx)
 error:
     if (jsval != NULL) json_decref(jsval);
 
-    return false;
+    return NULL;
 }

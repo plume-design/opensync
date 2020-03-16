@@ -429,7 +429,7 @@ void nm2_dhcpv6_client_set(struct nm2_dhcpv6_client *dc6, bool enable)
     piface = nm2_ip_interface_iface_get(&dc6->dc6_ip_interface_uuid);
     if (piface == NULL)
     {
-        LOG(TRACE, "dhcpv6_client: Parent interface with uuid %s not rady.",
+        LOG(TRACE, "dhcpv6_client: Parent interface with uuid %s not ready.",
                 dc6->dc6_ip_interface_uuid.uuid);
         return;
     }
@@ -471,15 +471,17 @@ void nm2_dhcpv6_client_set(struct nm2_dhcpv6_client *dc6, bool enable)
                 ii < dc6->dc6_request_opts_len);
     }
 
-    inet_dhcp6_client_notify(piface->if_inet, nm2_dhcpv6_client_notify, dc6);
+    piface->if_dhcpv6_client = dc6;
+    inet_dhcp6_client_notify(piface->if_inet, nm2_dhcpv6_client_notify);
 
     /* Commit configuration */
     inet_commit(piface->if_inet);
 }
 
-void nm2_dhcpv6_client_notify(void *ctx, struct osn_dhcpv6_client_status *status)
+void nm2_dhcpv6_client_notify(inet_t *inet, struct osn_dhcpv6_client_status *status)
 {
-    struct nm2_dhcpv6_client *dc6 = ctx;
+    struct nm2_iface *piface = inet->in_data;
+    struct nm2_dhcpv6_client *dc6 = piface->if_dhcpv6_client;
 
     int ii;
 

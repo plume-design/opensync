@@ -1,0 +1,13 @@
+config OSN_BACKEND_IPV6_NULL
+    bool "Null"
+
+    help
+        Use dummy implementation of IPv6 networking.
+
+config OSN_BACKEND_IPV6_LINUX
+    bool "Linux"
+    select OSN_LINUX_ENABLED
+    select OSN_LINUX_IPV6
+    help
+        Use the Linux IPv6 backend provided by OpenSync
+

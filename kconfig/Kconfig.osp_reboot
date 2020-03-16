@@ -1,0 +1,12 @@
+#
+# Include core modules
+#
+source "src/lib/osp/kconfig/Kconfig.osp_reboot"
+source "src/tools/preboot/kconfig/Kconfig.osp_reboot"
+
+
+#
+# Platform/vendor modules
+#
+osource "platform/*/kconfig/Kconfig.osp_reboot"
+osource "vendor/*/kconfig/Kconfig.osp_reboot"

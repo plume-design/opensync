@@ -111,7 +111,7 @@ Note-1: the wait for re-connect back to same manager addr because
 #define CM2_EVENT_INTERVAL              1
 #define CM2_NO_TIMEOUT                  -1
 #define CM2_DEFAULT_TIMEOUT             60  // 1 min
-#define CM2_FAST_RECONNECT_TIMEOUT      12
+#define CM2_FAST_RECONNECT_TIMEOUT      20
 #define CM2_ONBOARD_LINK_SEL_TIMEOUT    120
 #define CM2_ONBOARD_WAN_IP_TIMEOUT      20
 #define CM2_RESOLVE_TIMEOUT             180
@@ -223,14 +223,19 @@ int cm2_get_timeout(void)
     return cm2_curr_state_info()->timeout;
 }
 
-bool cm2_timeout(void)
+static bool cm2_timeout(bool expected)
 {
     int seconds = cm2_get_timeout();
     int delta = cm2_get_time();
+
     if (seconds != CM2_NO_TIMEOUT && delta >= seconds)
     {
-        LOG(WARNING, "State %s timeout: %d >= %d",
-                cm2_curr_state_name(), delta, seconds);
+        if (!expected)
+        {
+            LOG(WARNING, "State %s timeout: %d >= %d",
+                    cm2_curr_state_name(), delta, seconds);
+        }
+
         return true;
     }
     return false;
@@ -318,7 +323,7 @@ static void cm2_compute_backoff(void)
     unsigned int backoff = g_state.max_backoff;
 
     if (g_state.fast_backoff) {
-        backoff = CM2_DEFAULT_OVS_FAST_BACKOFF;
+        backoff = CONFIG_CM2_OVS_SHORT_BACKOFF;
         goto set_backoff;
     }
 
@@ -379,8 +384,6 @@ static void cm2_link_sel_update_ble_state(void) {
 }
 
 static void cm2_trigger_restart_managers(void) {
-    int ret;
-
     if (!cm2_vtag_stability_check()) {
         LOGI("Skip restart system due to vtag pending");
         cm2_reset_time();
@@ -393,8 +396,9 @@ static void cm2_trigger_restart_managers(void) {
         return;
     }
 
-    ret = target_device_restart_managers();
-    LOGN("Restart managers done, state = %d", ret);
+    LOGW("Trigger restart managers");
+    cm2_ovsdb_dump_debug_data();
+    WARN_ON(target_device_restart_managers());
 }
 
 static void cm2_restart_ovs_connection(bool state) {
@@ -412,9 +416,19 @@ static bool cm2_set_new_vtag(void) {
         return false;
     }
 
-    if (!cm2_ovsdb_update_Port_tag(BR_WAN_NAME, g_state.link.vtag.tag, true)) {
+    if (cm2_is_eth_type(g_state.link.if_type))
+    {
+        if (!cm2_ovsdb_update_Port_trunks(g_state.link.if_name, &g_state.link.vtag.tag, 1))
+        {
+            LOGW("vtag: Failed to set new trunk = %d on %s",
+                g_state.link.vtag.tag, g_state.link.if_name);
+            return false;
+        }
+    }
+
+    if (!cm2_ovsdb_update_Port_tag(CONFIG_TARGET_WAN_BRIDGE_NAME, g_state.link.vtag.tag, true)) {
         LOGW("vtag: Failed to set new vtag = %d on %s",
-             g_state.link.vtag.tag, BR_WAN_NAME);
+             g_state.link.vtag.tag, CONFIG_TARGET_WAN_BRIDGE_NAME);
         return false;
     }
     g_state.link.vtag.state = CM2_VTAG_PENDING;
@@ -426,9 +440,9 @@ static bool cm2_block_vtag(void) {
     g_state.link.vtag.state = CM2_VTAG_BLOCKED;
     g_state.link.vtag.failure = 0;
     g_state.link.vtag.blocked_tag = g_state.link.vtag.tag;
-    if (!cm2_ovsdb_update_Port_tag(BR_WAN_NAME, g_state.link.vtag.tag, false)) {
+    if (!cm2_ovsdb_update_Port_tag(CONFIG_TARGET_WAN_BRIDGE_NAME, g_state.link.vtag.tag, false)) {
         LOGW("vtag: Failed to remove vtag = %d on %s",
-             g_state.link.vtag.tag, BR_WAN_NAME);
+             g_state.link.vtag.tag, CONFIG_TARGET_WAN_BRIDGE_NAME);
         return false;
     }
     return true;
@@ -449,16 +463,17 @@ start:
                     g_state.state == CM2_STATE_LINK_SEL ||
                     g_state.state == CM2_STATE_WAN_IP ||
                     g_state.state == CM2_STATE_NTP_CHECK;
+
     switch(reason)
     {
         case CM2_REASON_LINK_NOT_USED:
             cm2_set_state(true, CM2_STATE_LINK_SEL);
             break;
         case CM2_REASON_LINK_USED:
-            if (g_state.link.is_ip) {
+            if (cm2_ovsdb_WiFi_Inet_State_is_ip(CONFIG_TARGET_WAN_BRIDGE_NAME)) {
                 LOGN("Refresh br-wan state");
                 g_state.link.is_ip = false;
-                cm2_ovsdb_refresh_dhcp(BR_WAN_NAME);
+                cm2_ovsdb_refresh_dhcp(CONFIG_TARGET_WAN_BRIDGE_NAME);
             }
             cm2_link_sel_update_ble_state();
             cm2_ovsdb_connection_clean_link_counters(g_state.link.if_name);
@@ -469,7 +484,7 @@ start:
             LOGI("vtag: %d: creating", g_state.link.vtag.tag);
             if (cm2_set_new_vtag()) {
                 g_state.link.is_ip = false;
-                cm2_ovsdb_refresh_dhcp(BR_WAN_NAME);
+                cm2_ovsdb_refresh_dhcp(CONFIG_TARGET_WAN_BRIDGE_NAME);
                 cm2_set_state(true, CM2_STATE_WAN_IP);
             }
             break;
@@ -477,13 +492,14 @@ start:
             LOGI("vtag: %d: blocking", g_state.link.vtag.tag);
             if (cm2_block_vtag()) {
                 g_state.link.is_ip = false;
-                cm2_ovsdb_refresh_dhcp(BR_WAN_NAME);
+                cm2_ovsdb_refresh_dhcp(CONFIG_TARGET_WAN_BRIDGE_NAME);
                 cm2_set_state(true, CM2_STATE_WAN_IP);
             }
             break;
         case CM2_REASON_OVS_INIT:
             LOGI("set async OVS INIT state");
-            cm2_ovsdb_refresh_dhcp(BR_WAN_NAME);
+            if (cm2_is_extender())
+                cm2_ovsdb_refresh_dhcp(CONFIG_TARGET_WAN_BRIDGE_NAME);
             cm2_set_state(true, CM2_STATE_OVS_INIT);
             break;
         default:
@@ -533,6 +549,7 @@ start:
             if (cm2_state_changed()) // first iteration
             {
                 LOGI("Waiting for finish link selection");
+                g_state.run_stability = false;
                 g_state.fast_reconnect = g_state.connected ? true : false;
                 if (g_state.fast_reconnect)
                     g_state.fast_backoff = true;
@@ -549,7 +566,7 @@ start:
                 cm2_set_state(true, CM2_STATE_WAN_IP);
                 cm2_link_sel_update_ble_state();
             }
-            else if (cm2_timeout())
+            else if (cm2_timeout(false))
             {
                 cm2_trigger_restart_managers();
             }
@@ -565,9 +582,11 @@ start:
                 cm2_connection_req_stability_check(ROUTER_CHECK);
                 cm2_set_state(true, CM2_STATE_NTP_CHECK);
             }
-            else if (cm2_timeout())
+            else if (cm2_timeout(false))
             {
                 cm2_trigger_restart_managers();
+            } else {
+                cm2_ovsdb_set_Manager_target("");
             }
             break;
 
@@ -579,15 +598,15 @@ start:
             }
             if (g_state.ntp_check)
             {
+                cm2_connection_req_stability_check(INTERNET_CHECK);
+
                 if (g_state.fast_reconnect)
                      cm2_set_state(true, CM2_STATE_FAST_RECONNECT);
 
                 else
                      cm2_set_state(true, CM2_STATE_OVS_INIT);
-
-                cm2_connection_req_stability_check(INTERNET_CHECK);
             }
-            else if (cm2_timeout())
+            else if (cm2_timeout(false))
             {
                 cm2_trigger_restart_managers();
             }
@@ -601,7 +620,7 @@ start:
             if (cm2_is_extender() && !g_state.link.is_used) {
                 LOGN("Main link is not used, move to link selection");
                 cm2_set_state(false, CM2_STATE_LINK_SEL);
-                return;
+                break;
             }
 
              /* Workaround for CAES-599 */
@@ -652,10 +671,10 @@ start:
                     LOGI("Restart channel due to exceeded resolve threshold");
                     g_state.resolve_retry_cnt = 0;
                 }
-                if (cm2_timeout() ||
+                if (cm2_timeout(false) ||
                     g_state.resolve_retry_cnt > CM2_RESOLVE_RETRY_THRESHOLD) {
                     cm2_resolve_timeout();
-                    cm2_ovsdb_refresh_dhcp(BR_WAN_NAME);
+                    cm2_ovsdb_refresh_dhcp(CONFIG_TARGET_WAN_BRIDGE_NAME);
                     cm2_restart_ovs_connection(false);
                     return;
                 }
@@ -675,7 +694,7 @@ start:
                 // disconnected, go to try_connect
                 cm2_set_state(true, CM2_STATE_TRY_CONNECT);
             }
-            else if (cm2_timeout())
+            else if (cm2_timeout(false))
             {
                 // stuck? back to init
                 cm2_restart_ovs_connection(false);
@@ -709,7 +728,7 @@ start:
                 // connected
                 cm2_set_state(true, CM2_STATE_CONNECTED);
             }
-            else if (cm2_timeout())
+            else if (cm2_timeout(false))
             {
                 // timeout - write next address
                 if (cm2_write_next_target_addr())
@@ -736,7 +755,7 @@ start:
             if (g_state.connected)
                 cm2_set_state(true, CM2_STATE_CONNECTED);
 
-            if (cm2_timeout())
+            if (cm2_timeout(false))
                 cm2_set_state(true, CM2_STATE_QUIESCE_OVS);
 
            break;
@@ -797,7 +816,7 @@ start:
                 cm2_set_state(true, CM2_STATE_CONNECTED);
             }
 
-            if (cm2_timeout())
+            if (cm2_timeout(true))
             {
                 g_state.disconnects += 1;
                 if (cm2_is_extender())
@@ -820,12 +839,13 @@ start:
             break;
     }
 
-    if (cm2_timeout())
+    if (cm2_timeout(false))
     {
         // unexpected, just in case
         LOG(ERROR, "Unhandled timeout");
+        cm2_ovsdb_dump_debug_data();
         if (cm2_is_extender())
-            target_device_restart_managers();
+            cm2_trigger_restart_managers();
         cm2_set_state(false, CM2_STATE_INIT);
     }
 

@@ -40,6 +40,14 @@ static const struct fsm_type types_map[] =
         .ovsdb_type = "dpi",
         .fsm_type = FSM_DPI,
     },
+    {
+        .ovsdb_type = "dpi_dispatcher",
+        .fsm_type = FSM_DPI_DISPATCH,
+    },
+    {
+        .ovsdb_type = "dpi_plugin",
+        .fsm_type = FSM_DPI_PLUGIN,
+    }
 };
 
 /**
@@ -250,7 +258,7 @@ fsm_get_web_cat_service(struct fsm_session *session)
     ds_tree_t *sessions;
     char *service_name;
 
-    if (session->type == FSM_WEB_CAT) return true;
+    if (session->type != FSM_PARSER) return true;
 
     sessions = fsm_get_sessions();
 

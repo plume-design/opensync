@@ -286,7 +286,8 @@ void nm2_ip6_addr_status_fn(
     if (remove)
     {
         struct uuidset_node *us;
-        struct nm2_ipv6_address *addr;
+
+        struct nm2_ipv6_address *addr = NULL;
 
         /* Traverse the uuidset of the parent interface and try to find the IPv6 address */
         synclist_foreach(&parent->ipi_ipv6_addr.us_list, us)

@@ -1,0 +1,12 @@
+menuconfig MANAGER_OM
+    bool "Openflow Manager (OM)"
+    default n
+    help
+        Enable Openflow Manager (OM)
+
+    config MANAGER_OM_CFG
+        depends on MANAGER_OM
+        string "OM Startup configuration"
+        default "om;true;needs_plan_b=true"
+        help
+            Openflow Manager startup configuration

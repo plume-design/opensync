@@ -31,11 +31,13 @@ struct __inet_fw
 {
 };
 
+static inet_fw_t g_inet_fw;
+
 inet_fw_t *inet_fw_new(const char *ifname)
 {
-    LOG(WARN, "inet_fw: %s: Firewall not supported on this platform.", ifname);
+    LOG(NOTICE, "inet_fw: %s: not using OpenSync Firewall on this platform.", ifname);
 
-    return (void *)0xdeadc0de;
+    return &g_inet_fw;
 }
 
 bool inet_fw_del(inet_fw_t *self)

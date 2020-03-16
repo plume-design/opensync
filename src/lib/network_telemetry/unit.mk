@@ -29,7 +29,7 @@
 ###############################################################################
 UNIT_NAME := wc_telemetry
 
-UNIT_DISABLE := $(if $(CONFIG_TARGET_MANAGER_FSM),n,y)
+UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM),n,y)
 
 # Template type:
 UNIT_TYPE := LIB

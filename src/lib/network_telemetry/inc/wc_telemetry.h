@@ -24,8 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __WC_TELEMETRY_H__
-#define __WC_TELEMETRY_H__
+#ifndef WC_TELEMETRY_H_INCLUDED
+#define WC_TELEMETRY_H_INCLUDED
 
 #include <stdint.h>
 
@@ -215,4 +215,4 @@ wc_serialize_health_stats(struct wc_health_stats *hs);
 struct wc_packed_buffer *
 wc_serialize_wc_stats_report(struct wc_stats_report *report);
 
-#endif /* __WC_TELEMETRY_H__ */
+#endif /* WC_TELEMETRY_H_INCLUDED */

@@ -531,7 +531,8 @@ static int proc_parse_pid_stat(uint32_t pid, pid_util_t *pid_util)
     if (!(end = strchr(tok, ')')))
         goto parse_error;
 
-    strncpy(pid_util->cmd, tok, end-tok);
+    // copy the name between ()
+    STRSCPY_LEN(pid_util->cmd, tok, end - tok);
 
     tok = end+2;
 
@@ -580,20 +581,17 @@ static int proc_parse_pid_smaps(uint32_t pid, pid_util_t *pid_util)
     uint32_t pss_total;
 
 
-    snprintf(filename, sizeof(filename), "/proc/%u/smaps", pid);  /* 2.6.14 + */
+    snprintf(filename, sizeof(filename), "/proc/%u/smaps", pid);  /* 2.6.14+ & PROC_PAGE_MONITOR */
     proc_file = fopen(filename, "r");
     if (proc_file == NULL)
     {
-        LOG(DEBUG, "Error opening %s: %s", filename, strerror(errno));
-
-        /* Try opening the stat file instead */
+        /* Try opening the stat file instead to check if process hasn't already exited. */
         snprintf(filename, sizeof(filename), "/proc/%u/stat", pid);
         proc_file = fopen(filename, "r");
         if (proc_file != NULL)
         {
-            LOG(DEBUG, "/proc/[pid]/smaps not supported on this kernel.");
             fclose(proc_file);
-            return -ENOENT;
+            return -ENOENT; /* /proc/[pid]/smaps not supported on this kernel. */
         }
 
         /* Process probably already exited */
@@ -773,9 +771,7 @@ static bool linux_device_top(dpp_device_record_t *device_record)
         device_record->top_mem[i].pid = sysutil.pid_util[i].pid;
         device_record->top_mem[i].util = sysutil.pid_util[i].mem_util;
 
-        sysutil.pid_util[i].cmd[sizeof(sysutil.pid_util[i].cmd) - 1] = '\0';
-        strncpy(device_record->top_mem[i].cmd, sysutil.pid_util[i].cmd,
-                sizeof(device_record->top_mem[i].cmd));
+        STRSCPY(device_record->top_mem[i].cmd, sysutil.pid_util[i].cmd);
     }
     device_record->n_top_mem = i;
 
@@ -831,9 +827,7 @@ static bool linux_device_top(dpp_device_record_t *device_record)
         device_record->top_cpu[i].pid = sysutil.pid_util[i].pid;
         device_record->top_cpu[i].util = sysutil.pid_util[i].cpu_util;
 
-        sysutil.pid_util[i].cmd[sizeof(sysutil.pid_util[i].cmd) - 1] = '\0';
-        strncpy(device_record->top_cpu[i].cmd, sysutil.pid_util[i].cmd,
-                sizeof(device_record->top_cpu[i].cmd));
+        STRSCPY(device_record->top_cpu[i].cmd, sysutil.pid_util[i].cmd);
     }
     device_record->n_top_cpu = i;
 

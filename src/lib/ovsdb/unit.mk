@@ -45,7 +45,6 @@ UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
 
 UNIT_DEPS := src/lib/common
-UNIT_DEPS += src/lib/crt
 UNIT_DEPS += src/lib/ds
 UNIT_DEPS += src/lib/osa
 UNIT_DEPS += src/lib/pjs

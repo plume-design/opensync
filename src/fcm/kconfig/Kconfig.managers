@@ -1,0 +1,12 @@
+menuconfig MANAGER_FCM
+    bool "Flow Collection Manager (FCM)"
+    default n
+    help
+        Enable Flow Collection Manager (FCM)
+
+    config MANAGER_FCM_CFG
+        depends on MANAGER_FCM
+        string "FCM Startup configuration"
+        default "fcm;true;always_restart=true;restart_delay=-1"
+        help
+            Flow Collection Manager startup configuration

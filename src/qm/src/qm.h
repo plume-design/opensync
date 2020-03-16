@@ -91,4 +91,4 @@ bool qm_queue_get(qm_item_t **qitem);
 
 bool qm_event_init();
 
-#endif
+#endif /* QM_H_INCLUDED */

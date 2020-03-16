@@ -1,0 +1,6 @@
+config OSP_REBOOT_PSTORE
+    bool "PSTORE backend"
+    help
+        Use PSTORE for recording reboot count/reasons
+        Also, use the PSTORE system to figure out exceptional reboot events
+        such as kernel crashes and watchdog timeouts.

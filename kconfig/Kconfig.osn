@@ -1,0 +1,8 @@
+#
+# Core OSN module
+#
+source "src/lib/osn/kconfig/Kconfig.osn"
+
+# Include vendor/platform OSN modules
+osource "platform/*/kconfig/Kconfig.osn"
+osource "vendor/*/kconfig/Kconfig.osn"

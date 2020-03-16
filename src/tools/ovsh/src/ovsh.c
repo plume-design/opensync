@@ -173,7 +173,7 @@ int main(int argc, char *argv[])
 
                 DEBUG("Setting database to %s\n", optarg);
 
-                strcpy(ovsh_opt_db, optarg);
+                STRSCPY(ovsh_opt_db, optarg);
                 break;
 
             case 'j':
@@ -1047,7 +1047,7 @@ bool json_compact_uuid(json_t *jval, char *dst, size_t dst_sz)
         if (count < 1 || count != n) return false;
         bool first = true;
         int len;
-        strcpy(dst, "[");
+        strscpy(dst, "[", dst_sz);
         json_array_foreach(jset, i, item) {
             uuid = json_string_value(json_array_get(item, 1));
             if (!uuid) return false;
@@ -1140,7 +1140,7 @@ static bool ovsh_parse_parent(json_t *parent_where,  // json array
     {
         return false;
     }
-    strcpy(str, _str);
+    STRSCPY(str, _str);
 
     if (!str_parse_expr(str, delims, &lval, &op, &rval))
     {
@@ -1149,7 +1149,7 @@ static bool ovsh_parse_parent(json_t *parent_where,  // json array
     }
     json_string_set(parent_table, lval);
 
-    strcpy(str, rval);
+    STRSCPY(str, rval);
     if (!str_parse_expr(str, delims, &lval, &op, &rval))
     {
         DEBUG("Error parsing expression: %s (%s)\n", str, _str);
@@ -1157,7 +1157,7 @@ static bool ovsh_parse_parent(json_t *parent_where,  // json array
     }
     json_string_set(parent_col, lval);
 
-    strcpy(str, rval);
+    STRSCPY(str, rval);
     if (!ovsh_parse_where(parent_where, str, true))
     {
         DEBUG("Error parsing WHERE statement: %s\n", str);
@@ -1183,7 +1183,7 @@ static bool ovsh_parse_where_statement(json_t *where, char *_str, bool is_parent
         return false;
     }
 
-    strcpy(str, _str);
+    STRSCPY(str, _str);
 
     static char *where_delims[] =
     {
@@ -1261,7 +1261,7 @@ static bool ovsh_parse_where(json_t *where, char *_str, bool is_parent_where)
     char *tok;
 
 
-    strcpy(str, _str);
+    STRSCPY(str, _str);
     tok = strtok(str, ",");
     while (tok != NULL)
     {
@@ -1310,7 +1310,7 @@ static bool ovsh_parse_columns(json_t *columns, int colc, char *colv[])
             return false;
         }
 
-        strcpy(col, colv[ii]);
+        STRSCPY(col, colv[ii]);
 
         if (!str_parse_expr(col, delim, &lval, &op, &rval))
         {
@@ -1417,7 +1417,7 @@ bool ovsh_parse_mutations(json_t *mutations, int *colc, char *colv[])
             return false;
         }
 
-        strcpy(col, colv[ii]);
+        STRSCPY(col, colv[ii]);
 
         if (!str_parse_expr(col, delim, &lval, &op, &rval))
         {
@@ -1507,7 +1507,7 @@ int ovsdb_connect(void)
         DEBUG("Connect path too long!\n");
         goto error;
     }
-    strcpy(addr.sun_path, sock_path);
+    STRSCPY(addr.sun_path, sock_path);
 
     if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0)
     {
@@ -2272,7 +2272,7 @@ bool ovsdb_json_show_result_multi(json_t *jrows, json_t *columns, bool multi_lin
                     break_line(str, desired, remain[0], sizeof(remain[0]));
                     l = strlen(str);
                     if (l > len) len = l;
-                    strcpy(str, remain[0]);
+                    STRSCPY(str, remain[0]);
                 } while (*remain[0]);
             }
             else
@@ -2313,7 +2313,7 @@ bool ovsdb_json_show_result_multi(json_t *jrows, json_t *columns, bool multi_lin
             printf("%-*s :", key_width, "");
             for (nr = 0; nr < json_array_size(jrows); nr++)
             {
-                strcpy(str, remain[nr]);
+                STRSCPY(str, remain[nr]);
                 break_line(str, col_width[nr], remain[nr], sizeof(remain[0]));
                 if (*remain[nr]) have_remain = true;
                 printf(" %-*s :", col_width[nr], str);

@@ -24,18 +24,18 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __NETWORK_METADATA_REPORT_H__
-#define __NETWORK_METADATA_REPORT_H__
+#ifndef NETWORK_METADATA_REPORT_H_INCLUDED
+#define NETWORK_METADATA_REPORT_H_INCLUDED
 
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <sys/socket.h>
 #include <time.h>
 
+#include "ds_list.h"
 #include "ds_tree.h"
 #include "os_types.h"
-#include "net_header_parse.h"
-
 
 #include "network_metadata.h"
 #include "network_metadata_utils.h"
@@ -54,8 +54,12 @@ struct net_md_flow_key
     uint8_t *src_ip;      /* Network byte order */
     uint8_t *dst_ip;      /* Network byte order */
     uint8_t ipprotocol;   /* IP protocol */
+    uint16_t ip_id;       /* IP id */
+    int fragment;         /* fragment indicator */
     uint16_t sport;       /* Network byte order */
     uint16_t dport;       /* Network byte order */
+    bool     fstart;      /* Flow start */
+    bool     fend;        /* Flow end */
 };
 
 
@@ -64,6 +68,7 @@ struct net_md_flow_key
  */
 struct net_md_stats_accumulator
 {
+    struct net_md_aggregator *aggr;
     struct net_md_flow_key *key;
     struct flow_key *fkey;
     struct flow_counters first_counters;   /* first reported counters */
@@ -71,6 +76,11 @@ struct net_md_stats_accumulator
     struct flow_counters report_counters;  /* reported stats */
     int state;                             /* State in the current window */
     time_t last_updated;
+    void (*free_plugins)(struct net_md_stats_accumulator *);
+    ds_tree_t *dpi_plugins;
+    int dpi_done;                          /* All dpi engines are done */
+    int refcnt;                            /* # of entities accessing the acc */
+    bool report;                           /* send a report */
 };
 
 
@@ -103,27 +113,48 @@ struct net_md_aggregator
     int acc_ttl;                  /* flow accumulator time to live */
     int report_type;              /* absolute or relative to previous values */
     size_t total_report_flows;    /* total flows to be reported */
+    size_t total_flows;           /* # of flows tracked by the aggregator */
+    size_t held_flows;            /* # of inactive flows with a ref count > 0 */
     bool (*report_filter)(struct net_md_stats_accumulator *);
+    bool (*send_report)(struct net_md_aggregator *, char *);
+    bool (*neigh_lookup)(struct sockaddr_storage *, os_macaddr_t *);
+};
+
+
+/**
+ * @brief aggregator init structure
+ *
+ * The net_md_aggregator_set structure contains all the information needed to
+ * initialize an aggregator
+ */
+struct net_md_aggregator_set
+{
+    struct node_info *info; /* pointer to the node info */
+    size_t num_windows;     /* the max # of windows the report will contain */
+    int acc_ttl;            /* how long an incative accumulator is kept around */
+    int report_type;        /* absolute or relative */
+
+    /* a report filter routine */
+    bool (*report_filter)(struct net_md_stats_accumulator *);
+
+    /* a report emitter routine */
+    bool (*send_report)(struct net_md_aggregator *, char *);
+
+    /* a report IP to mac mapping routine */
+    bool (*neigh_lookup)(struct sockaddr_storage *, os_macaddr_t *);
 };
 
 
 /**
  * @brief allocates a stats aggregator
  *
- * @param info pointer to the node info
- * @param num_windows the maxium number of windows the report will contain
- * @param acc_ttl how long an incative accumulator should be kept around
- * @param report_type absolute or relative
- * @param report_filter a a report filter callback
+ * @param aggr_set a pointer to the structure containing all init params
  * @return a pointer to an aggregator if the allocation succeeded,
  *         NULL otherwise.
  *         The caller is responsible to free the returned pointer.
  */
 struct net_md_aggregator *
-net_md_allocate_aggregator(struct node_info *info,
-                           size_t num_windows,
-                           int acc_ttl, int report_type,
-                           bool (*report_filter)(struct net_md_stats_accumulator *));
+net_md_allocate_aggregator(struct net_md_aggregator_set *aggr_set);
 
 
 /**
@@ -186,4 +217,4 @@ bool net_md_send_report(struct net_md_aggregator *aggr, char *mqtt_topic);
  */
 size_t net_md_get_total_flows(struct net_md_aggregator *aggr);
 
-#endif // __NETWORK_METADATA_REPORT_H__
+#endif /* NETWORK_METADATA_REPORT_H_INCLUDED */

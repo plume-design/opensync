@@ -36,34 +36,21 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "util.h"
 
+#include "osn_netif.h"
+
 #include "inet.h"
 #include "inet_base.h"
 #include "inet_eth.h"
-
-#include "execsh.h"
 
 /*
  * ===========================================================================
  *  Inet Ethernet implementation for Linux
  * ===========================================================================
  */
-static int ifreq_socket(void);
-static bool ifreq_exists(const char *ifname, bool *exists);
-static bool ifreq_mtu_set(const char *ifname, int mtu);
-static bool ifreq_mtu_get(const char *ifname, int *mtu);
-static bool ifreq_status_set(const char *ifname, bool up);
-static bool ifreq_status_get(const char *ifname, bool *up);
-static bool ifreq_running_get(const char *ifname, bool *up);
-//static bool ifreq_ipaddr_set(const char *ifname, osn_ip_addr_t ipaddr);
-static bool ifreq_ipaddr_get(const char *ifname, osn_ip_addr_t *ipaddr);
-//static bool ifreq_netmask_set(const char *ifname, osn_ip_addr_t netmask);
-static bool ifreq_netmask_get(const char *ifname, osn_ip_addr_t *netmask);
-//static bool ifreq_bcaddr_set(const char *ifname, osn_ip_addr_t bcaddr);
-static bool ifreq_bcaddr_get(const char *ifname, osn_ip_addr_t *bcaddr);
-static bool ifreq_hwaddr_get(const char *ifname, osn_mac_addr_t *macaddr);
-
-//static char eth_ip_route_add_default[] = _S(ip route add default via "$2" dev "$1" metric 100);
-//static char eth_ip_route_del_default[] = _S(ip route del default dev "$1" 2> /dev/null || true);
+static bool inet_eth_dtor(inet_t *super);
+static osn_netif_status_fn_t inet_eth_netif_status_fn;
+static osn_ip_status_fn_t inet_eth_ip4_status_fn;
+static void inet_eth_netif_async_fn(struct ev_loop *loop, ev_async *w, int revents);
 
 /*
  * ===========================================================================
@@ -99,26 +86,70 @@ inet_t *inet_eth_new(const char *ifname)
 
 bool inet_eth_init(inet_eth_t *self, const char *ifname)
 {
+    memset(self, 0, sizeof(inet_eth_t));
+
     if (!inet_base_init(&self->base, ifname))
     {
         LOG(ERR, "inet_eth: %s: Failed to instantiate class, inet_base_init() failed.", ifname);
         return false;
     }
 
-    self->in_ip = NULL;
+    /* Interface existence will be detected, assume it doesn't exist for now */
+    inet_unit_stop(self->base.in_units, INET_BASE_IF_EXISTS);
 
-    /* Override methods */
-    self->inet.in_state_get_fn = inet_eth_state_get;
+    /* Override inet_t class methods */
+    self->inet.in_dtor_fn = inet_eth_dtor;
     self->base.in_service_commit_fn = inet_eth_service_commit;
 
-    /* Verify that we can create the IFREQ socket */
-    if (ifreq_socket() < 0)
-    {
-        LOG(ERR, "inet_eth: %s: Failed to create IFREQ socket.", ifname);
-        return false;
-    }
+    ev_async_init(&self->in_netif_async, inet_eth_netif_async_fn);
+    ev_async_start(EV_DEFAULT, &self->in_netif_async);
+
+    /*
+     * Initialize osn_netif_t -- L2 interface for ethernet-like interfaces
+     */
+    self->in_netif = osn_netif_new(ifname);
+    osn_netif_data_set(self->in_netif, self);
+    osn_netif_status_notify(self->in_netif, inet_eth_netif_status_fn);
+
+
+    /*
+     * Initialize osn_ip_t -- IPv4 interface configuration
+     */
+    self->in_ip = osn_ip_new(ifname);
+    osn_ip_data_set(self->in_ip, self);
+    osn_ip_status_notify(self->in_ip, inet_eth_ip4_status_fn);
 
     return true;
+}
+
+bool inet_eth_dtor(inet_t *super)
+{
+    bool retval;
+
+    inet_eth_t *self = (void *)super;
+
+    /* Stop async status updater */
+    ev_async_stop(EV_DEFAULT, &self->in_netif_async);
+
+    retval = inet_base_dtor(super);
+
+    /* Dispose of the osn_netif_t class */
+    if (self->in_netif != NULL && !osn_netif_del(self->in_netif))
+    {
+        LOG(WARN, "inet_eth: %s: Error detected during deletion of osn_netif_t instance.",
+                super->in_ifname);
+        retval = false;
+    }
+
+    if (self->in_ip != NULL && !osn_ip_del(self->in_ip))
+    {
+        LOG(WARN, "inet_eth: %s: Error detected during deletion of osn_ip_t instance.",
+                super->in_ifname);
+        retval = false;
+    }
+
+    /* Call parent destructor */
+    return retval;
 }
 
 /*
@@ -128,17 +159,14 @@ bool inet_eth_init(inet_eth_t *self, const char *ifname)
  */
 bool inet_eth_interface_start(inet_eth_t *self, bool enable)
 {
-    (void)enable;
-
-    bool exists;
-    bool retval;
+    /* If the interface has not been started yet, return */
+    if (!enable) return true;
 
     /*
      * Just check if the interface exists -- report an error otherwise so no
      * other services will be started.
      */
-    retval = ifreq_exists(self->inet.in_ifname, &exists);
-    if (!retval || !exists)
+    if (!self->base.in_state.in_interface_exists)
     {
         LOG(NOTICE, "inet_eth: %s: Interface does not exists. Stopping.",
                 self->inet.in_ifname);
@@ -155,19 +183,12 @@ bool inet_eth_interface_start(inet_eth_t *self, bool enable)
  */
 bool inet_eth_network_start(inet_eth_t *self, bool enable)
 {
-    bool exists;
+    osn_netif_state_set(self->in_netif, enable);
 
-    /* Silence compiler errors */
-    (void)ifreq_status_get;
-
-    ifreq_exists(self->inet.in_ifname, &exists);
-
-    if (exists && !ifreq_status_set(self->inet.in_ifname, enable))
+    if (!osn_netif_apply(self->in_netif))
     {
-        LOG(ERR, "inet_eth: %s: Error %s network.",
-                self->inet.in_ifname,
-                enable ? "enabling" : "disabling");
-        return false;
+        LOG(DEBUG, "inet_eth: %s: Error applying interface state.",
+                self->inet.in_ifname);
     }
 
     LOG(INFO, "inet_eth: %s: Network %s.",
@@ -183,6 +204,9 @@ bool inet_eth_network_start(inet_eth_t *self, bool enable)
  */
 bool inet_eth_scheme_none_start(inet_eth_t *self, bool enable)
 {
+    /* On stop, do nothing */
+    if (!enable) return true;
+
     /*
      * Remove previous IP configuration, if any
      */
@@ -191,8 +215,6 @@ bool inet_eth_scheme_none_start(inet_eth_t *self, bool enable)
         osn_ip_del(self->in_ip);
         self->in_ip = NULL;
     }
-
-    if (!enable) return true;
 
     /*
      * Just apply an empty configuration
@@ -203,6 +225,10 @@ bool inet_eth_scheme_none_start(inet_eth_t *self, bool enable)
         LOG(ERR, "inet_eth: %s: Error creating IP configuration object.", self->inet.in_ifname);
         return false;
     }
+
+    /* Register for status reporting */
+    osn_ip_data_set(self->in_ip, self);
+    osn_ip_status_notify(self->in_ip, inet_eth_ip4_status_fn);
 
     if (!osn_ip_apply(self->in_ip))
     {
@@ -224,14 +250,18 @@ bool inet_eth_scheme_static_start(inet_eth_t *self, bool enable)
         self->in_ip = NULL;
     }
 
-    if (!enable) return true;
-
     self->in_ip = osn_ip_new(self->inet.in_ifname);
     if (self->in_ip == NULL)
     {
         LOG(ERR, "inet_eth: %s: Error creating IP configuration object.", self->inet.in_ifname);
         return false;
     }
+
+    /* Register for status reporting */
+    osn_ip_data_set(self->in_ip, self);
+    osn_ip_status_notify(self->in_ip, inet_eth_ip4_status_fn);
+
+    if (!enable) return true;
 
     /*
      * Check if all the necessary configuration is present (ipaddr, netmask and bcast)
@@ -345,12 +375,12 @@ bool inet_eth_mtu_start(inet_eth_t *self, bool enable)
             self->inet.in_ifname,
             self->base.in_mtu);
 
-    if (!ifreq_mtu_set(self->inet.in_ifname, self->base.in_mtu))
+    osn_netif_mtu_set(self->in_netif, self->base.in_mtu);
+    if (!osn_netif_apply(self->in_netif))
     {
         LOG(ERR, "inet_eth: %s: Error setting MTU to %d.",
                 self->inet.in_ifname,
                 self->base.in_mtu);
-
         return false;
     }
 
@@ -371,7 +401,7 @@ bool inet_eth_service_commit(inet_base_t *super, enum inet_base_services srv, bo
 
     switch (srv)
     {
-        case INET_BASE_INTERFACE:
+        case INET_BASE_IF_CREATE:
             return inet_eth_interface_start(self, enable);
 
         case INET_BASE_NETWORK:
@@ -404,378 +434,96 @@ bool inet_eth_service_commit(inet_base_t *super, enum inet_base_services srv, bo
  *  Status reporting
  * ===========================================================================
  */
-bool inet_eth_state_get(inet_t *super, inet_state_t *out)
+void inet_eth_netif_status_fn(osn_netif_t *netif, struct osn_netif_status *status)
 {
-    bool exists;
+    bool enabled;
 
-    inet_eth_t *self = (inet_eth_t *)super;
+    inet_eth_t *self = osn_netif_data_get(netif);
 
-    if (!inet_base_state_get(&self->inet, out))
+    self->base.in_state.in_interface_exists = status->ns_exists;
+    if (status->ns_exists)
     {
-        return false;
+        self->base.in_state.in_port_status = status->ns_carrier;
+        self->base.in_state.in_mtu = status->ns_mtu;
+        self->base.in_state.in_macaddr = status->ns_hwaddr;
+    }
+    else
+    {
+        self->base.in_state.in_port_status = false;
+        self->base.in_state.in_mtu = 0;
+        self->base.in_state.in_macaddr = OSN_MAC_ADDR_INIT;
     }
 
-    if (ifreq_exists(self->inet.in_ifname, &exists) && exists)
+    inet_base_state_update(&self->base);
+
+    enabled = inet_unit_is_enabled(self->base.in_units, INET_BASE_IF_EXISTS);
+    if (enabled != self->base.in_state.in_interface_exists)
     {
-        (void)ifreq_mtu_get(self->inet.in_ifname, &out->in_mtu);
-        (void)ifreq_ipaddr_get(self->inet.in_ifname, &out->in_ipaddr);
-        (void)ifreq_netmask_get(self->inet.in_ifname, &out->in_netmask);
-        (void)ifreq_bcaddr_get(self->inet.in_ifname, &out->in_bcaddr);
-        (void)ifreq_hwaddr_get(self->inet.in_ifname, &out->in_macaddr);
-        (void)ifreq_running_get(self->inet.in_ifname, &out->in_port_status);
+        if (self->base.in_state.in_interface_exists)
+        {
+            LOG(NOTICE, "inet_eth: %s: Interface now exists, restarting.",
+                    self->inet.in_ifname);
+        }
+        else
+        {
+            LOG(NOTICE, "inet_eth: %s: Interface ceased to exist, stopping.",
+                    self->inet.in_ifname);
+        }
+
+        /*
+         * Stop or start the interface unit according to the interface existence
+         * bit
+         */
+        inet_unit_enable(
+                self->base.in_units,
+                INET_BASE_IF_EXISTS,
+                self->base.in_state.in_interface_exists);
+
+        /*
+         * Since this function is called soon after a osn_netif_notify() call, it
+         * can happen that this function is called within a inet_commit() code path.
+         *
+         * If we want to stop an non-existing interface, schedule an async event
+         * to do a delayed inet_commit().
+         */
+        ev_async_send(EV_DEFAULT, &self->in_netif_async);
+    }
+}
+
+void inet_eth_ip4_status_fn(osn_ip_t *ip, struct osn_ip_status *status)
+{
+    inet_eth_t *self = osn_ip_data_get(ip);
+
+    if (status->is_addr_len > 0)
+    {
+        self->base.in_state.in_ipaddr = status->is_addr[0];
+        /* Remove the prefix */
+        self->base.in_state.in_ipaddr.ia_prefix = -1;
+
+        self->base.in_state.in_netmask = osn_ip_addr_from_prefix(status->is_addr[0].ia_prefix);
+        self->base.in_state.in_bcaddr = osn_ip_addr_to_bcast(&status->is_addr[0]);
+    }
+    else
+    {
+        self->base.in_state.in_ipaddr = OSN_IP_ADDR_INIT;
+        self->base.in_state.in_netmask = OSN_IP_ADDR_INIT;
+        self->base.in_state.in_bcaddr = OSN_IP_ADDR_INIT;
     }
 
-    return true;
+    inet_base_state_update(&self->base);
 }
 
 /*
- * ===========================================================================
- *  IFREQ -- interface ioctl() and ifreq requests
- * ===========================================================================
+ * Asynchronously process some netif events.
+ *
+ * Specifically, handle the interface exists flag here. Since the original netif
+ * status handler can be called from inside a inet_commit(), defer processing
+ * of some events to the main event loop.
  */
-
-int ifreq_socket(void)
+void inet_eth_netif_async_fn(struct ev_loop *loop, ev_async *w, int revents)
 {
-    static int ifreq_socket = -1;
+    inet_eth_t *self = CONTAINER_OF(w, inet_eth_t, in_netif_async);
 
-    if (ifreq_socket >= 0) return ifreq_socket;
-
-    ifreq_socket = socket(AF_INET, SOCK_DGRAM, 0);
-
-    return ifreq_socket;
+    inet_commit(&self->inet);
 }
 
-/**
- * ioctl() wrapper around ifreq
- */
-bool ifreq_ioctl(const char *ifname, int cmd, struct ifreq *req)
-{
-    int s;
-
-    if (strscpy(req->ifr_name, ifname, sizeof(req->ifr_name)) < 0)
-    {
-        LOG(ERR, "inet_eth: %s: ioctl() failed, interface name too long.", ifname);
-        return false;
-    }
-
-    s = ifreq_socket();
-    if (s < 0)
-    {
-        LOG(ERR, "inet_eth: %s: Unable to acquire the IFREQ socket: %s",
-                ifname,
-                strerror(errno));
-        return false;
-    }
-
-    if (ioctl(s, cmd, (void *)req) < 0)
-    {
-        return false;
-    }
-
-    return true;
-}
-
-/**
- * Check if the interface exists
- */
-bool ifreq_exists(const char *ifname, bool *exists)
-{
-    struct ifreq ifr;
-
-    /* First get the current flags */
-    if (!ifreq_ioctl(ifname, SIOCGIFINDEX, &ifr))
-    {
-        *exists = false;
-    }
-    else
-    {
-        *exists = true;
-    }
-
-
-    return true;
-}
-
-/**
- * Equivalent of ifconfig up/down
- */
-bool ifreq_status_set(const char *ifname, bool up)
-{
-    struct ifreq ifr;
-
-    /* First get the current flags */
-    if (!ifreq_ioctl(ifname, SIOCGIFFLAGS, &ifr))
-    {
-        LOG(ERR, "inet_eth: %s: SIOCGIFFLAGS failed. Error retrieving the interface status: %s",
-                ifname,
-                strerror(errno));
-
-        return false;
-    }
-
-    /* Set or clear IFF_UP depending on the action defined by @p up */
-    if (up)
-    {
-        ifr.ifr_flags |= IFF_UP;
-    }
-    else
-    {
-        ifr.ifr_flags &= ~IFF_UP;
-    }
-
-    if (!ifreq_ioctl(ifname, SIOCSIFFLAGS, &ifr))
-    {
-        LOG(ERR, "inet_eth: %s: SIOCSIFFLAGS failed. Error setting the interface status: %s",
-                ifname,
-                strerror(errno));
-
-        return false;
-    }
-
-    return true;
-}
-
-/**
- * Get interface status
- */
-bool ifreq_status_get(const char *ifname, bool *up)
-{
-    struct ifreq ifr;
-
-    /* First get the current flags */
-    if (!ifreq_ioctl(ifname, SIOCGIFFLAGS, &ifr))
-    {
-        LOG(ERR, "inet_eth: %s: SIOCGIFFLAGS failed. Error retrieving the interface status: %s",
-                ifname,
-                strerror(errno));
-
-        return false;
-    }
-
-    *up = ifr.ifr_flags & IFF_UP;
-
-    return true;
-}
-
-/**
- * Get interface status
- */
-bool ifreq_running_get(const char *ifname, bool *up)
-{
-    struct ifreq ifr;
-
-    /* First get the current flags */
-    if (!ifreq_ioctl(ifname, SIOCGIFFLAGS, &ifr))
-    {
-        LOG(ERR, "inet_eth: %s: SIOCGIFFLAGS failed. Error retrieving the interface running state: %s",
-                ifname,
-                strerror(errno));
-        return false;
-    }
-
-    *up = ifr.ifr_flags & IFF_RUNNING;
-
-    return true;
-}
-
-/**
- * Set the IP of an interface
- */
-bool ifreq_ipaddr_set(const char *ifname, osn_ip_addr_t ipaddr)
-{
-    struct ifreq ifr;
-
-    ifr.ifr_addr.sa_family = AF_INET;
-    memcpy(&((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr.s_addr, &ipaddr, sizeof(ipaddr));
-    if (!ifreq_ioctl(ifname, SIOCSIFADDR, &ifr))
-    {
-        LOG(ERR, "inet_eth: %s: SIOCSIFADDR failed. Error setting the IP address: %s",
-                ifname,
-                strerror(errno));
-
-        return false;
-    }
-
-    return true;
-}
-
-/**
- * Get the IP of an interface
- */
-bool ifreq_ipaddr_get(const char *ifname, osn_ip_addr_t *ipaddr)
-{
-    struct ifreq ifr;
-
-    *ipaddr = OSN_IP_ADDR_INIT;
-
-    ifr.ifr_addr.sa_family = AF_INET;
-
-    *ipaddr = OSN_IP_ADDR_INIT;
-    if (!ifreq_ioctl(ifname, SIOCGIFADDR, &ifr))
-    {
-        return false;
-    }
-
-    ipaddr->ia_addr = ((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr;
-
-    return true;
-}
-
-
-/**
- * Set the Netmask of an interface
- */
-bool ifreq_netmask_set(const char *ifname, osn_ip_addr_t netmask)
-{
-    struct ifreq ifr;
-
-    ifr.ifr_addr.sa_family = AF_INET;
-    ((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr = netmask.ia_addr;
-    if (!ifreq_ioctl(ifname, SIOCSIFNETMASK, &ifr))
-    {
-        LOG(ERR, "inet_eth: %s: SIOCSIFNETMASK failed. Error setting the netmask address: %s",
-                ifname,
-                strerror(errno));
-
-        return false;
-    }
-
-    return true;
-}
-
-/**
- * Get the Netmask of an interface
- */
-bool ifreq_netmask_get(const char *ifname, osn_ip_addr_t *netmask)
-{
-    struct ifreq ifr;
-
-    ifr.ifr_addr.sa_family = AF_INET;
-
-    *netmask = OSN_IP_ADDR_INIT;
-    if (!ifreq_ioctl(ifname, SIOCGIFNETMASK, &ifr))
-    {
-        return false;
-    }
-
-    memcpy(
-            &netmask->ia_addr,
-            &((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr.s_addr,
-            sizeof(netmask->ia_addr));
-
-    return true;
-}
-
-
-/**
- * Set the broadcast address of an interface
- */
-bool ifreq_bcaddr_set(const char *ifname, osn_ip_addr_t bcaddr)
-{
-    struct ifreq ifr;
-
-    ifr.ifr_addr.sa_family = AF_INET;
-    ((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr = bcaddr.ia_addr;
-    if (!ifreq_ioctl(ifname, SIOCSIFBRDADDR, &ifr))
-    {
-        LOG(ERR, "inet_eth: %s: SIOCSIFBRDADDR failed. Error setting the broadcast address: %s",
-                ifname,
-                strerror(errno));
-
-        return false;
-    }
-
-    return true;
-}
-
-/**
- * Get the broadcast address of an interface
- */
-bool ifreq_bcaddr_get(const char *ifname, osn_ip_addr_t *bcaddr)
-{
-    struct ifreq ifr;
-
-    *bcaddr = OSN_IP_ADDR_INIT;
-
-    ifr.ifr_addr.sa_family = AF_INET;
-
-    if (!ifreq_ioctl(ifname, SIOCGIFBRDADDR, &ifr))
-    {
-        return false;
-    }
-
-    memcpy(
-            &bcaddr->ia_addr,
-            &((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr.s_addr,
-            sizeof(bcaddr->ia_addr));
-
-    return true;
-}
-
-/**
- * Set the MTU
- */
-bool ifreq_mtu_set(const char *ifname, int mtu)
-{
-    struct ifreq ifr;
-
-    ifr.ifr_mtu = mtu;
-
-    if (!ifreq_ioctl(ifname, SIOCSIFMTU, &ifr))
-    {
-        LOG(ERR, "inet_eth: %s: SIOCSIFMTU failed. Error setting the MTU: %s",
-                ifname,
-                strerror(errno));
-
-        return false;
-    }
-
-    return true;
-}
-
-/**
- * Get the MTU
- */
-bool ifreq_mtu_get(const char *ifname, int *mtu)
-{
-    struct ifreq ifr;
-
-    if (!ifreq_ioctl(ifname, SIOCGIFMTU, &ifr))
-    {
-        LOG(ERR, "inet_eth: %s: SIOCGIFMTU failed. Error retrieving the MTU: %s",
-                ifname,
-                strerror(errno));
-
-        return false;
-    }
-
-    *mtu = ifr.ifr_mtu;
-
-    return true;
-}
-
-
-/**
- * Get the MAC address, as string
- */
-bool ifreq_hwaddr_get(const char *ifname, osn_mac_addr_t *macaddr)
-{
-    struct ifreq ifr;
-
-    /* Get the MAC(hardware) address */
-    if (!ifreq_ioctl(ifname, SIOCGIFHWADDR, &ifr))
-    {
-        LOG(ERR, "inet_eth: %s: SIOCGIFHWADDR failed. Error retrieving the MAC address: %s",
-                ifname,
-                strerror(errno));
-
-        return false;
-    }
-
-    *macaddr = OSN_MAC_ADDR_INIT;
-    /* Copy the address */
-    memcpy(macaddr->ma_addr, ifr.ifr_addr.sa_data, sizeof(macaddr->ma_addr));
-
-    return true;
-
-}

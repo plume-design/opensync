@@ -24,7 +24,12 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#ifndef OS_PROC_H_INCLUDED
+#define OS_PROC_H_INCLUDED
+
 #include "os_common.h"
 
 int32_t os_pid_to_name(pid_t pid, char *proc_name, int32_t len);
 pid_t os_name_to_pid(const char *proc_name);
+
+#endif /* OS_PROC_H_INCLUDED */

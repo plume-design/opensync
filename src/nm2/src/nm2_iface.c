@@ -26,7 +26,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "osa_assert.h"
 #include "log.h"
-#include "version.h"
+#include "build_version.h"
 #include "inet.h"
 #include "evx.h"
 #include "schema.h"
@@ -37,17 +37,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /*
  * ===========================================================================
- *  KConfig backward compatibility
- * ===========================================================================
- */
-/* For platforms not using KConfig yet, default to polling */
-#if !defined(CONFIG_USE_KCONFIG)
-#define CONFIG_INET_STATUS_NETLINK_POLL         1
-#define CONFIG_INET_STATUS_NETLINK_DEBOUNCE_MS  200
-#endif
-
-/*
- * ===========================================================================
  *  Globals and forward declarations
  * ===========================================================================
  */
@@ -55,9 +44,8 @@ static ds_key_cmp_t nm2_iface_cmp;
 
 ds_tree_t nm2_iface_list = DS_TREE_INIT(nm2_iface_cmp, struct nm2_iface, if_tnode);
 
-static bool nm2_iface_dhcpc_notify(void *ctx, enum osn_notify hint, const char *name, const char *value);
-static inet_t *nm2_iface_new_inet(const char *ifname, enum nm2_iftype type, void *ctx);
-static void nm2_iface_status_init(void);
+static void nm2_iface_dhcpc_notify(inet_t *self, enum osn_notify hint, const char *name, const char *value);
+static inet_t *nm2_iface_new_inet(const char *ifname, enum nm2_iftype type);
 
 /*
  * ===========================================================================
@@ -123,9 +111,6 @@ bool nm2_iftype_fromstr(enum nm2_iftype *type, const char *str)
  */
 bool nm2_iface_init(void)
 {
-    /* Initialize interface status polling */
-    nm2_iface_status_init();
-
     return true;
 }
 
@@ -179,7 +164,7 @@ struct nm2_iface *nm2_iface_new(const char *_ifname, enum nm2_iftype if_type)
             struct nm2_iface_dhcp_option,
             do_tnode);
 
-    piface->if_inet = nm2_iface_new_inet(ifname, if_type, piface);
+    piface->if_inet = nm2_iface_new_inet(ifname, if_type);
     if (piface->if_inet == NULL)
     {
         LOG(ERR, "nm2_iface_new: %s (%s): Error creating interface, constructor failed.",
@@ -190,9 +175,12 @@ struct nm2_iface *nm2_iface_new(const char *_ifname, enum nm2_iftype if_type)
         return NULL;
     }
 
-    nm2_iface_status_sync(piface);
+    /* Setup private data pointer */
+    piface->if_inet->in_data = piface;
 
     ds_tree_insert(&nm2_iface_list, piface, piface->if_name);
+
+    nm2_iface_status_register(piface);
 
     LOG(INFO, "nm2_iface_new: %s: Created new interface (type %s).", ifname, nm2_iftype_tostr(if_type));
 
@@ -251,13 +239,13 @@ struct nm2_iface *nm2_iface_find_by_ipv4(osn_ip_addr_t addr)
     {
         int prefix;
 
-        if_addr = piface->if_state.in_ipaddr;
+        if_addr = piface->if_inet_state.in_ipaddr;
 
         /*
          * Derive the prefix from the "netmask" address in the if_state structure  and assign it
          * to both if_addr and addr
          */
-        prefix = osn_ip_addr_to_prefix(&piface->if_state.in_netmask);
+        prefix = osn_ip_addr_to_prefix(&piface->if_inet_state.in_netmask);
         if (prefix == 0) continue;
 
         if_addr.ia_prefix = prefix;
@@ -311,9 +299,6 @@ void __nm2_iface_apply(EV_P_ ev_debounce *w, int revent)
                     nm2_iftype_tostr(piface->if_type));
         }
     }
-
-    /* Poll new status */
-    nm2_iface_status_poll();
 }
 
 /* Schedule __nm2_iface_apply() via debouncing */
@@ -345,12 +330,12 @@ bool nm2_iface_apply(struct nm2_iface *piface)
  * Create a new interface of type @p type. This is primarily used as a dispatcher
  * for various inet_new_*() constructors.
  *
- * Additionally, it initailizes some of the DHCP client options -- this is
+ * Additionally, it initializes some of the DHCP client options -- this is
  * true also for interfaces that do not actually use DHCP.
  *
  * TODO: Get rid of the target dependency (target_sku_get(), target_model_get() etc).
  */
-inet_t *nm2_iface_new_inet(const char *ifname, enum nm2_iftype type, void *ctx)
+inet_t *nm2_iface_new_inet(const char *ifname, enum nm2_iftype type)
 {
     TRACE();
 
@@ -433,20 +418,9 @@ inet_t *nm2_iface_new_inet(const char *ifname, enum nm2_iftype type, void *ctx)
     /* Set DHCP options */
     inet_dhcpc_option_set(nif, DHCP_OPTION_VENDOR_CLASS, vendor_class);
     inet_dhcpc_option_set(nif, DHCP_OPTION_HOSTNAME, hostname);
-    inet_dhcpc_option_set(nif, DHCP_OPTION_PLUME_SWVER, app_build_number_get());
-    inet_dhcpc_option_set(nif, DHCP_OPTION_PLUME_PROFILE, app_build_profile_get());
-    inet_dhcpc_option_set(nif, DHCP_OPTION_PLUME_SERIAL_OPT, serial_num);
-
-    /*
-     * Register callbacks
-     */
-    nif->in_data = ctx;
-
-    /* Register DHCP client option registrations */
-    inet_dhcpc_option_notify(nif, nm2_iface_dhcpc_notify, ctx);
-
-    /* Register the route state function */
-    inet_route_notify(nif, nm2_route_notify);
+    inet_dhcpc_option_set(nif, DHCP_OPTION_OSYNC_SWVER, app_build_number_get());
+    inet_dhcpc_option_set(nif, DHCP_OPTION_OSYNC_PROFILE, app_build_profile_get());
+    inet_dhcpc_option_set(nif, DHCP_OPTION_OSYNC_SERIAL_OPT, serial_num);
 
     return nif;
 }
@@ -454,13 +428,22 @@ inet_t *nm2_iface_new_inet(const char *ifname, enum nm2_iftype type, void *ctx)
 /**
  * Re-registering to callbacks will cause the status to be synchronized.
  */
-void nm2_iface_status_sync(struct nm2_iface *piface)
+void nm2_iface_status_register(struct nm2_iface *piface)
 {
+    /* Register to inet_state */
+    inet_state_notify(piface->if_inet, nm2_inet_state_fn);
+
     /* Register to IPv6 address updates registrations */
     inet_ip6_addr_status_notify(piface->if_inet, nm2_ip6_addr_status_fn);
 
     /* Register to IPv6 status updates registrations */
     inet_ip6_neigh_status_notify(piface->if_inet, nm2_ip6_neigh_status_fn);
+
+    /* Register DHCP client option registrations */
+    inet_dhcpc_option_notify(piface->if_inet, nm2_iface_dhcpc_notify);
+
+    /* Register the route state function */
+    inet_route_notify(piface->if_inet, nm2_route_notify);
 }
 
 /*
@@ -468,12 +451,12 @@ void nm2_iface_status_sync(struct nm2_iface *piface)
  * DHCP client options notifications
  * ===========================================================================
  */
-bool nm2_iface_dhcpc_notify(void *ctx, enum osn_notify hint, const char *name, const char *value)
+void nm2_iface_dhcpc_notify(inet_t *inet, enum osn_notify hint, const char *name, const char *value)
 {
     struct nm2_iface_dhcp_option *pdo;
     ds_tree_iter_t ido;
 
-    struct nm2_iface *piface = ctx;
+    struct nm2_iface *piface = inet->in_data;
     bool update_status = false;
 
     switch (hint)
@@ -535,7 +518,7 @@ bool nm2_iface_dhcpc_notify(void *ctx, enum osn_notify hint, const char *name, c
                 LOG(ERR, "nm2_iface: %s: Unable to delete option -- Interface has no DHCP client option named: %s",
                         piface->if_name,
                         name);
-                return true;
+                return;
             }
 
             /* Free the entry */
@@ -550,11 +533,8 @@ bool nm2_iface_dhcpc_notify(void *ctx, enum osn_notify hint, const char *name, c
     if (update_status)
     {
         /* Force a status update */
-        piface->if_state_notify = true;
-        nm2_iface_status_poll();
+        nm2_inet_state_update(piface);
     }
-
-    return true;
 }
 
 /*
@@ -567,204 +547,3 @@ int nm2_iface_cmp(void *_a, void  *_b)
 
     return strcmp(a->if_name, b->if_name);
 }
-
-/*
- * ===========================================================================
- *  Interface status polling
- *
- *  TODO This contains Linux specific code and should be moved to the new
- *  Osync API.
- * ===========================================================================
- */
-/*
- * ===========================================================================
- *  Status reporting
- * ===========================================================================
- */
-
-#if defined(CONFIG_INET_STATUS_POLL)
-/*
- * Timer-based interface status polling
- */
-void __if_status_poll_fn(EV_P_ ev_timer *w, int revent)
-{
-    nm2_iface_status_poll();
-}
-
-void nm2_iface_status_init(void)
-{
-    /*
-     * Interface polling using a timer
-     */
-    static ev_timer if_poll_timer;
-
-    MEMZERO(if_poll_timer);
-
-    /* Create a repeating timer */
-    ev_timer_init(
-            &if_poll_timer,
-            __if_status_poll_fn,
-            0.0,
-            CONFIG_INET_STATUS_POLL_INTERVAL_MS / 1000.0);
-
-    ev_timer_start(EV_DEFAULT, &if_poll_timer);
-}
-
-#elif defined(CONFIG_INET_STATUS_NETLINK_POLL)
-/*
- * Netlink based interface status polling
- *
- * Note: Netlink sockets are rather poorly documented. Instead of trying to implement the
- * whole protocol, it is much simpler to just use a NETLINK event as a trigger for the actual
- * interface polling code. This is not optimal, but still much faster than timer-based polling.
- */
-
-/* Include netlink specific headers */
-#include <linux/netlink.h>
-#include <linux/rtnetlink.h>
-
-#define RTNLGRP(x)  ((RTNLGRP_ ## x) > 0 ? 1 << ((RTNLGRP_ ## x) - 1) : 0)
-
-static int __nlsock = -1;
-static ev_debounce __nlsock_debounce_ev;
-
-/*
- * nlsock I/O event callback
- */
-void __if_status_nlsock_fn(EV_P_ ev_io *w, int revent)
-{
-    uint8_t buf[getpagesize()];
-
-    if (revent & EV_ERROR)
-    {
-        LOG(EMERG, "iface: Error on netlink socket.");
-        ev_io_stop(loop, w);
-        return;
-    }
-
-    if (!(revent & EV_READ)) return;
-
-    /* Read and discard the data from the socket */
-    if (recv(__nlsock, buf, sizeof(buf), 0) < 0)
-    {
-        LOG(EMERG, "iface: Received EOF from netlink socket?");
-        ev_io_stop(loop, w);
-        return;
-    }
-
-    /*
-     * Interface status changes may occur in bursts, since we're polling all status variables
-     * at once, we can debounce the netlink events for a slight performance boost at the cost
-     * of a small delay in status updates.
-     *
-     * This will trigger __if_status_debounce_fn() below when the debounce timer expires.
-     */
-    ev_debounce_start(EV_DEFAULT, &__nlsock_debounce_ev);
-}
-
-/*
- * nlsock debounce timer callback
- */
-void __if_status_debounce_fn(EV_P_ ev_debounce *w, int revent)
-{
-    (void)loop;
-    (void)w;
-    (void)revent;
-
-    /* Poll interfaces */
-    nm2_iface_status_poll();
-}
-
-void nm2_iface_status_init(void)
-{
-     struct sockaddr_nl nladdr;
-
-     /* Create the netlink socket in the NETLINK_ROUTE domain */
-     __nlsock = socket(AF_NETLINK, SOCK_DGRAM, NETLINK_ROUTE);
-     if (__nlsock < 0)
-     {
-         LOGE("target_init: Error creating NETLINK socket.");
-         goto error;
-     }
-
-     /*
-      * Bind the netlink socket to events related to interface status change
-      */
-     memset(&nladdr, 0, sizeof(nladdr));
-     nladdr.nl_family = AF_NETLINK;
-     nladdr.nl_pid = 0;
-     nladdr.nl_groups =
-             RTNLGRP(LINK) |            /* Link/interface status */
-             RTNLGRP(IPV4_IFADDR) |     /* IPv4 address status */
-             RTNLGRP(IPV6_IFADDR) |     /* IPv6 address status */
-             RTNLGRP(IPV4_NETCONF) |    /* No idea */
-             RTNLGRP(IPV6_NETCONF);     /* -=- */
-     if (bind(__nlsock, (struct sockaddr *)&nladdr, sizeof(nladdr)) != 0)
-     {
-         LOGE("iface: Error binding NETLINK socket");
-         goto error;
-     }
-
-     /* Initialize the debouncer */
-     ev_debounce_init(
-             &__nlsock_debounce_ev,
-             __if_status_debounce_fn,
-             CONFIG_INET_STATUS_NETLINK_DEBOUNCE_MS / 1000.0);
-
-     /*
-      * Initialize an start an I/O watcher
-      */
-     static ev_io nl_ev;
-
-     ev_io_init(&nl_ev, __if_status_nlsock_fn, __nlsock, EV_READ);
-     ev_io_start(EV_DEFAULT, &nl_ev);
-
-     return;
-
- error:
-     if (__nlsock >= 0) close(__nlsock);
-     __nlsock = -1;
-}
-
-#else
-#error Interface status reporting backend not supported.
-#endif
-
-void nm2_iface_status_poll(void)
-{
-    ds_tree_iter_t iter;
-    struct nm2_iface *piface;
-    inet_state_t tstate;
-
-    /**
-     * Traverse the list of interface registered for status polling
-     */
-    for (piface = ds_tree_ifirst(&iter, &nm2_iface_list);
-            piface != NULL;
-            piface = ds_tree_inext(&iter))
-    {
-        if (!inet_state_get(piface->if_inet, &tstate))
-        {
-            LOG(ERR, "iface: %s (%s): Unable to retrieve interface state.",
-                    piface->if_name,
-                    nm2_iftype_tostr(piface->if_type));
-            continue;
-        }
-
-        /* Binary compare old and new states */
-        if (memcmp(&piface->if_state, &tstate, sizeof(piface->if_state)) != 0)
-        {
-            memcpy(&piface->if_state, &tstate, sizeof(piface->if_state));
-            piface->if_state_notify = true;
-        }
-
-        if (!piface->if_state_notify) continue;
-        piface->if_state_notify = false;
-
-        if (!nm2_inet_state_update(piface))
-        {
-            LOG(ERR, "iface: Error updating interface state: %s", piface->if_name);
-        }
-    }
-}
-

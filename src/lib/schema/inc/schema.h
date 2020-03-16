@@ -339,4 +339,4 @@ schema_changed_set(const void *a,
     return false;
 }
 
-#endif
+#endif /* SCHEMA_H_INCLUDED */

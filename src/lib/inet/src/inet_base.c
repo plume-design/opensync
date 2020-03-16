@@ -39,8 +39,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "log.h"
 #include "util.h"
-#include "target.h"
-#include "version.h"
 #include "ds.h"
 
 #include "inet.h"
@@ -53,6 +51,7 @@ static bool inet_base_init_ip6(inet_base_t *self);
 static bool inet_base_firewall_commit(inet_base_t *self, bool start);
 static bool inet_base_igmp_commit(inet_base_t *self, bool start);
 static bool inet_base_upnp_commit(inet_base_t *self, bool start);
+static bool inet_base_scheme_static_commit(inet_base_t *self, bool start);
 static void inet_base_dhcp_server_status(osn_dhcp_server_t *ds, struct osn_dhcp_server_status *st);
 static void *inet_base_dhcp_server_lease_sync(synclist_t *list, void *_old, void *_new);
 static bool inet_base_dhcp_client_commit(inet_base_t *self, bool start);
@@ -64,9 +63,14 @@ static bool inet_base_dhcp6_client_commit(inet_base_t *self, bool start);
 static bool inet_base_radv_commit(inet_base_t *self, bool start);
 static bool inet_base_dhcp6_server_commit(inet_base_t *self, bool start);
 static void inet_base_upnp_start_stop(inet_base_t *self);
+static osn_route_status_fn_t inet_base_route_status;
+static osn_dhcp_client_opt_notify_fn_t inet_base_dhcp_client_option_fn;
+
 static osn_dhcpv6_client_status_fn_t inet_base_dhcp6_client_notify_fn;
 static osn_dhcpv6_server_status_fn_t inet_base_dhcp6_server_notify_fn;
 static ds_key_cmp_t osn_dhcpv6_server_lease_cmp;
+
+static void inet_base_state_update_fn(struct ev_loop *ev, ev_debounce *w, int revent);
 
 /* DHCPv4 reservation list cache */
 struct dhcp_reservation_node
@@ -194,6 +198,8 @@ bool inet_base_init(inet_base_t *self, const char *ifname)
     self->in_dhcps_lease_stop = OSN_IP_ADDR_INIT;
     self->in_dns_primary = OSN_IP_ADDR_INIT;
     self->in_dns_secondary = OSN_IP_ADDR_INIT;
+    self->in_state = INET_STATE_INIT;
+    self->in_state_prev = INET_STATE_INIT;
 
     if (STRSCPY(self->inet.in_ifname, ifname) < 0)
     {
@@ -230,7 +236,7 @@ bool inet_base_init(inet_base_t *self, const char *ifname)
     self->inet.in_dhsnif_lease_notify_fn        = inet_base_dhsnif_lease_notify;
     self->inet.in_route_notify_fn               = inet_base_route_notify;
     self->inet.in_commit_fn                     = inet_base_commit;
-    self->inet.in_state_get_fn                  = inet_base_state_get;
+    self->inet.in_state_notify_fn               = inet_base_state_notify;
 
     /*
      * IPv6 support
@@ -353,6 +359,9 @@ bool inet_base_init(inet_base_t *self, const char *ifname)
         goto error;
     }
 
+    osn_dhcp_client_data_set(self->in_dhcpc, self);
+    osn_dhcp_client_opt_notify_set(self->in_dhcpc, inet_base_dhcp_client_option_fn);
+
     self->in_dhsnif = inet_dhsnif_new(self->inet.in_ifname);
     if (self->in_dhsnif == NULL)
     {
@@ -374,31 +383,51 @@ bool inet_base_init(inet_base_t *self, const char *ifname)
         goto error;
     }
 
+    osn_route_data_set(self->in_route, self);
+    if (!osn_route_status_notify(self->in_route, inet_base_route_status))
+    {
+        LOG(ERR, "inet_base: %s: Error registering ROUTE status callback", self->inet.in_ifname);
+        goto error;
+    }
+
+    /*
+     * Initialize state update debounce timer.
+     */
+    ev_debounce_init2(
+            &self->in_state_timer,
+            inet_base_state_update_fn,
+            0.3,        /* Deboucne time */
+            1.5);       /* Maximum timeout time */
+
+    self->in_state_timer.data = self;
+
     /*
      * Define the unit dependency tree structure
      */
     self->in_units =
-            inet_unit_s(INET_BASE_INTERFACE,
-                    inet_unit(INET_BASE_FIREWALL,
-                        inet_unit(INET_BASE_UPNP, NULL),
-                        NULL),
-                    inet_unit(INET_BASE_MTU, NULL),
-                    inet_unit_s(INET_BASE_NETWORK,
-                            inet_unit_s(INET_BASE_SCHEME_NONE, NULL),
-                            inet_unit(INET_BASE_SCHEME_STATIC,
-                                    inet_unit(INET_BASE_DHCP_SERVER, NULL),
-                                    inet_unit(INET_BASE_DNS, NULL),
+            inet_unit_s(INET_BASE_IF_CREATE,
+                        inet_unit(INET_BASE_FIREWALL, NULL),
+                        inet_unit_s(INET_BASE_IF_EXISTS,
+                                    inet_unit(INET_BASE_MTU, NULL),
+                                    inet_unit_s(INET_BASE_NETWORK,
+                                                inet_unit_s(INET_BASE_SCHEME_NONE, NULL),
+                                                inet_unit(INET_BASE_SCHEME_STATIC,
+                                                          inet_unit(INET_BASE_DHCP_SERVER, NULL),
+                                                          inet_unit(INET_BASE_DNS, NULL),
+                                                          NULL),
+                                                inet_unit(INET_BASE_SCHEME_DHCP, NULL),
+                                                inet_unit(INET_BASE_DHCPSNIFF, NULL),
+                                                inet_unit(INET_BASE_IGMP, NULL),
+                                                NULL),
+                                    inet_unit(INET_BASE_INET6,
+                                              inet_unit(INET_BASE_RADV, NULL),
+                                              inet_unit(INET_BASE_DHCP6_SERVER, NULL),
+                                              NULL),
+                                    inet_unit(INET_BASE_DHCP6_CLIENT, NULL),
+                                    inet_unit(INET_BASE_UPNP, NULL),
                                     NULL),
-                            inet_unit(INET_BASE_SCHEME_DHCP, NULL),
-                            inet_unit(INET_BASE_DHCPSNIFF, NULL),
-                            inet_unit(INET_BASE_IGMP, NULL),
-                            NULL),
-                    inet_unit(INET_BASE_INET6,
-                        inet_unit(INET_BASE_RADV, NULL),
-                        inet_unit(INET_BASE_DHCP6_SERVER, NULL),
-                        NULL),
-                    inet_unit(INET_BASE_DHCP6_CLIENT, NULL),
-                    NULL);
+                        NULL);
+
     if (self->in_units == NULL)
     {
         LOG(ERR, "inet_base: %s: Error initializing units structure.", self->inet.in_ifname);
@@ -447,14 +476,17 @@ bool inet_base_dtor(inet_t *super)
 
     if (self->in_units != NULL)
     {
-        /* Stop the top service (INET_BASE_INTERFACE) -- this will effectively shutdown ALL services */
-        inet_unit_stop(self->in_units, INET_BASE_INTERFACE);
+        /* Stop the top service (INET_BASE_IF_CREATE) -- this will effectively shut down ALL services */
+        inet_unit_stop(self->in_units, INET_BASE_IF_CREATE);
         if (!inet_commit(&self->inet))
         {
             LOG(WARN, "inet_base: %s: Error shutting down services.", self->inet.in_ifname);
             retval = false;
         }
     }
+
+    /* Stop debounce timer, if it is running */
+    ev_debounce_stop(EV_DEFAULT, &self->in_state_timer);
 
     /*
      * Cleanup DHCPv4 server structures
@@ -678,7 +710,7 @@ bool inet_base_interface_enable(inet_t *super, bool enabled)
 
     LOG(INFO, "inet_base: %s: %s interface.", self->inet.in_ifname, enabled ? "Starting" : "Stopping");
 
-    return inet_unit_enable(self->in_units, INET_BASE_INTERFACE, enabled);
+    return inet_unit_enable(self->in_units, INET_BASE_IF_CREATE, enabled);
 }
 
 /*
@@ -910,6 +942,9 @@ bool inet_base_assign_scheme_set(inet_t *super, enum inet_assign_scheme scheme)
             return false;
     }
 
+    self->in_state.in_assign_scheme = scheme;
+    inet_base_state_update(self);
+
     if (!inet_unit_enable(self->in_units, INET_BASE_SCHEME_NONE, none_enable))
     {
         LOG(ERR, "inet_base: %s: Error setting enable status for SCHEME_NONE to %d.",
@@ -983,11 +1018,11 @@ bool inet_base_portforward_set(inet_t *super, const struct inet_portforward *pf)
 
     if (inet_fw_portforward_get(self->in_fw, pf))
     {
-        /* If the portforwarding entry already exists, return success */
+        /* If the port forwarding entry already exists, return success */
         return true;
     }
 
-    /* Add the portforwarding entry and restart services */
+    /* Add the port forwarding entry and restart services */
     if (!inet_fw_portforward_set(self->in_fw, pf))
     {
         LOG(ERR, "inet_base: %s: Error setting port forwarding.", self->inet.in_ifname);
@@ -1079,11 +1114,28 @@ bool inet_base_dhcpc_option_set(inet_t *super, enum osn_dhcp_option opt, const c
     return inet_unit_restart(self->in_units, INET_BASE_SCHEME_DHCP, false);
 }
 
-bool inet_base_dhcpc_option_notify(inet_t *super, osn_dhcp_client_opt_notify_fn_t *fn, void *ctx)
+bool inet_base_dhcp_client_option_fn(
+        osn_dhcp_client_t *dhcpc,
+        enum osn_notify hint,
+        const char *name,
+        const char *value)
+{
+    inet_base_t *self = osn_dhcp_client_data_get(dhcpc);
+
+    if (self->in_dhcpc_option_fn != NULL)
+        self->in_dhcpc_option_fn(&self->inet, hint, name, value);
+
+    return true;
+}
+
+bool inet_base_dhcpc_option_notify(inet_t *super, inet_dhcpc_option_notify_fn_t *fn)
 {
     inet_base_t *self = (void *)super;
 
-    return osn_dhcp_client_opt_notify_set(self->in_dhcpc, fn, ctx);
+    self->in_dhcpc_option_fn = fn;
+
+    /* Re-register handler to get an update */
+    return osn_dhcp_client_opt_notify_set(self->in_dhcpc, inet_base_dhcp_client_option_fn);
 }
 
 /*
@@ -1105,6 +1157,10 @@ bool inet_base_dhcps_enable(inet_t *super, bool enabled)
         LOG(ERR, "inet_base: %s: Error enabling/disabling INET_BASE_DHCP_SERVER", self->inet.in_ifname);
         return false;
     }
+
+    /* Update state */
+    self->in_state.in_dhcps_enabled = self->in_dhcps_enabled;
+    inet_base_state_update(self);
 
     return true;
 }
@@ -1379,62 +1435,23 @@ bool inet_base_dhsnif_lease_notify(inet_t *super, inet_dhcp_lease_fn_t *func)
  *  Route functions
  * ===========================================================================
  */
-bool inet_base_route_notify(inet_t *super, osn_route_status_fn_t *func)
+bool inet_base_route_status(osn_route_t *rt, struct osn_route_status *status, bool remove)
 {
-    inet_base_t *self = (inet_base_t *)super;
+    inet_base_t *self = osn_route_data_get(rt);
 
-    return osn_route_status_notify(self->in_route, func, self);
-}
-
-/*
- * ===========================================================================
- *  Status reporting
- * ===========================================================================
- */
-bool inet_base_state_get(inet_t *super, inet_state_t *out)
-{
-    inet_base_t *self = (inet_base_t *)super;
-
-    *out = INET_STATE_INIT;
-
-    out->in_mtu = self->in_mtu;
-    out->in_interface_enabled = inet_unit_status(self->in_units, INET_BASE_INTERFACE);
-    out->in_network_enabled = inet_unit_status(self->in_units, INET_BASE_NETWORK);
-
-    out->in_assign_scheme = self->in_assign_scheme;
-
-    out->in_dhcps_enabled = self->in_dhcps_enabled;
-
-    out->in_nat_enabled = false;
-    out->in_upnp_mode = UPNP_MODE_NONE;
-
-    if (!inet_fw_state_get(self->in_fw, &out->in_nat_enabled))
-    {
-        LOG(DEBUG, "inet_base: %s: Error retrieving firewall module state.",
-                self->inet.in_ifname);
-    }
-
-    if (!osn_dhcp_client_state_get(self->in_dhcpc, &out->in_dhcpc_enabled))
-    {
-        LOG(DEBUG, "inet_base: %s: Error retrieving DHCP client state.",
-                self->inet.in_ifname);
-    }
-
-    if (!osn_upnp_get(self->in_upnp, &out->in_upnp_mode))
-    {
-        LOG(DEBUG, "inet_base: %s: Erro retrieving UPnP mode.", self->inet.in_ifname);
-    }
-
-    /*
-     * inet_base() has the currently inactive information below, the subclass
-     * can fill with live data
-     */
-    out->in_ipaddr = self->in_static_addr;
-    out->in_netmask = self->in_static_netmask;
-    out->in_bcaddr = self->in_static_bcast;
-    out->in_gateway = self->in_static_gwaddr;
+    if (self->in_route_status_fn != NULL)
+        self->in_route_status_fn(&self->inet, status, remove);
 
     return true;
+}
+
+bool inet_base_route_notify(inet_t *super, inet_route_status_fn_t *func)
+{
+    inet_base_t *self = (inet_base_t *)super;
+
+    self->in_route_status_fn = func;
+    /* Re-register handler to trigger an immediate update */
+    return osn_route_status_notify(self->in_route, inet_base_route_status);
 }
 
 /*
@@ -1454,12 +1471,44 @@ bool __inet_base_commit(void *ctx, intptr_t unitid, bool enable)
 
 bool inet_base_commit(inet_t *super)
 {
+    bool retval;
+
     inet_base_t *self = (inet_base_t *)super;
 
     LOG(INFO, "inet_base: %s: Commiting new configuration.", self->inet.in_ifname);
 
     /* Commit all pending units */
-    return inet_unit_commit(self->in_units, __inet_base_commit, self);
+    retval = inet_unit_commit(self->in_units, __inet_base_commit, self);
+
+    /*
+     * Update various statuses when we finish committing the new configuration
+     */
+    self->in_state.in_interface_enabled = inet_unit_status(self->in_units,
+                                                           INET_BASE_IF_CREATE);
+    self->in_state.in_network_enabled = inet_unit_status(self->in_units, INET_BASE_NETWORK);
+    self->in_state.in_nat_enabled = false;
+    self->in_state.in_upnp_mode = UPNP_MODE_NONE;
+
+    if (!inet_fw_state_get(self->in_fw, &self->in_state.in_nat_enabled))
+    {
+        LOG(DEBUG, "inet_base: %s: Error retrieving firewall module state.",
+                self->inet.in_ifname);
+    }
+
+    if (!osn_dhcp_client_state_get(self->in_dhcpc, &self->in_state.in_dhcpc_enabled))
+    {
+        LOG(DEBUG, "inet_base: %s: Error retrieving DHCP client state.",
+                self->inet.in_ifname);
+    }
+
+    if (!osn_upnp_get(self->in_upnp, &self->in_state.in_upnp_mode))
+    {
+        LOG(DEBUG, "inet_base: %s: Error retrieving UPnP mode.", self->inet.in_ifname);
+    }
+
+    inet_base_state_update(self);
+
+    return retval;
 }
 
 /**
@@ -1486,6 +1535,9 @@ bool inet_base_service_commit(
 
     switch (srv)
     {
+        case INET_BASE_IF_EXISTS:
+            return true;
+
         case INET_BASE_FIREWALL:
             return inet_base_firewall_commit(self, start);
 
@@ -1494,6 +1546,9 @@ bool inet_base_service_commit(
 
         case INET_BASE_UPNP:
             return inet_base_upnp_commit(self, start);
+
+        case INET_BASE_SCHEME_STATIC:
+            return inet_base_scheme_static_commit(self, start);
 
         case INET_BASE_SCHEME_DHCP:
             return inet_base_dhcp_client_commit(self, start);
@@ -1584,6 +1639,23 @@ bool inet_base_upnp_commit(inet_base_t *self, bool start)
         LOG(ERR, "inet_base: %s: Error stopping the UPnP service.", self->inet.in_ifname);
          return false;
     }
+
+    return true;
+}
+
+bool inet_base_scheme_static_commit(inet_base_t *self, bool start)
+{
+    (void)start;
+
+    /*
+     * Nothing to do here, just update statistics -- these will probably
+     * be overridden by the derived class.
+     */
+    self->in_state.in_ipaddr = self->in_static_addr;
+    self->in_state.in_netmask = self->in_static_netmask;
+    self->in_state.in_bcaddr = self->in_static_bcast;
+    self->in_state.in_gateway = self->in_static_gwaddr;
+    inet_base_state_update(self);
 
     return true;
 }
@@ -1711,7 +1783,6 @@ bool inet_base_dhcp_server_commit(inet_base_t *self, bool start)
 
     /* Set private data -- a pointer to self */
     osn_dhcp_server_data_set(self->in_dhcps, self);
-
     osn_dhcp_server_status_notify(self->in_dhcps, inet_base_dhcp_server_status);
 
     /*
@@ -1720,6 +1791,8 @@ bool inet_base_dhcp_server_commit(inet_base_t *self, bool start)
 
     struct osn_dhcp_server_cfg cfg;
     cfg.ds_lease_time = self->in_dhcps_lease_time_s;
+    cfg.ds_netmask = self->in_static_netmask;
+    cfg.ds_ipaddr = self->in_static_addr;
     if (!osn_dhcp_server_cfg_set(self->in_dhcps, &cfg))
     {
         LOG(ERR, "inet_base: %s: DHCPv4 object was unable to set configuration.", self->inet.in_ifname);
@@ -1804,6 +1877,77 @@ bool inet_base_dhsnif_commit(inet_base_t *self, bool start)
     {
         LOG(ERR, "inet_base: %s: Error stopping the DHCP sniffing service.", self->inet.in_ifname);
         return false;
+    }
+
+    return true;
+}
+
+/*
+ * ===========================================================================
+ *  INET status reporting
+ * ===========================================================================
+ */
+
+/*
+ * Compare the current state (self->in_state) with the previously reported state
+ * (self->in_state_prev). If the states are different, schedule a debounced
+ * timer to trigger the state callback (self->in_state_fn).
+ *
+ * This method should be called whenever in_state is changed to properly
+ * propagate state changes.
+ */
+void inet_base_state_update(inet_base_t *self)
+{
+    /* Compare the previous state */
+    if (memcmp(
+                &self->in_state_prev,
+                &self->in_state,
+                sizeof(self->in_state_prev)) == 0)
+    {
+        /* No changes */
+        return;
+    }
+
+    memcpy(&self->in_state_prev, &self->in_state, sizeof(self->in_state_prev));
+
+    /* Schedule a debounce */
+    ev_debounce_start(EV_DEFAULT, &self->in_state_timer);
+}
+
+/*
+ * Debounced state update
+ */
+void inet_base_state_update_fn(struct ev_loop *ev, ev_debounce *w, int revent)
+{
+    (void)ev;
+    (void)w;
+    (void)revent;
+
+    inet_base_t *self = (inet_base_t *)w->data;
+
+    if (self->in_state_fn != NULL)
+    {
+        self->in_state_fn(&self->inet, &self->in_state);
+    }
+}
+
+/*
+ * Register state update notification handler.
+ *
+ * This implements inet_state_notify() method (self->in_State_notify_fn).
+ *
+ * This function schedules a status update immediately.
+ */
+bool inet_base_state_notify(inet_t *super, inet_state_fn_t *fn)
+{
+    inet_base_t *self = (inet_base_t *)super;
+
+    self->in_state_fn = fn;
+
+    /* Force an immediate state update */
+    if (self->in_state_fn != NULL)
+    {
+        self->in_state_fn(super, &self->in_state);
     }
 
     return true;
@@ -1917,7 +2061,7 @@ void inet_base_osn_ip6_status_fn(
 
     (void)ip6;
 
-    inet_base_t *self = status->is6_data;
+    inet_base_t *self = osn_ip6_data_get(ip6);
 
     LOG(DEBUG, "inet_base: %s: IPv6 status notification: ipv6_addresses=%zu, ipv6_neighbors:%zu",
             self->inet.in_ifname,
@@ -2152,7 +2296,8 @@ bool inet_base_init_ip6(inet_base_t *self)
     }
 
     /* Register to status updates */
-    osn_ip6_status_notify(self->in_ip6, inet_base_osn_ip6_status_fn, self);
+    osn_ip6_data_set(self->in_ip6, self);
+    osn_ip6_status_notify(self->in_ip6, inet_base_osn_ip6_status_fn);
 
     return true;
 }
@@ -2254,12 +2399,11 @@ bool inet_base_dhcp6_client_option_send(inet_t *super, int tag, char *value)
     return true;
 }
 
-bool inet_base_dhcp6_client_notify(inet_t *super, inet_dhcp6_client_notify_fn_t *fn, void *ctx)
+bool inet_base_dhcp6_client_notify(inet_t *super, inet_dhcp6_client_notify_fn_t *fn)
 {
     inet_base_t *self = (void *)super;
 
     self->in_dhcp6_client_notify_fn = fn;
-    self->in_dhcp6_client_notifyt_data = ctx;
 
     return true;
 }
@@ -2267,11 +2411,11 @@ bool inet_base_dhcp6_client_notify(inet_t *super, inet_dhcp6_client_notify_fn_t 
 void inet_base_dhcp6_client_notify_fn(osn_dhcpv6_client_t *d6c, struct osn_dhcpv6_client_status *status)
 {
     (void)d6c;
-    inet_base_t *self = status->d6c_data;
+    inet_base_t *self = osn_dhcpv6_client_data_get(d6c);
 
     if (self->in_dhcp6_client_notify_fn == NULL) return;
 
-    self->in_dhcp6_client_notify_fn(self->in_dhcp6_client_notifyt_data, status);
+    self->in_dhcp6_client_notify_fn((inet_t *)self, status);
 }
 
 bool inet_base_dhcp6_client_commit(inet_base_t *self, bool start)
@@ -2303,11 +2447,11 @@ bool inet_base_dhcp6_client_commit(inet_base_t *self, bool start)
         return false;
     }
 
+    osn_dhcpv6_client_data_set(self->in_dhcp6_client, self);
     /* Register status update handler */
     osn_dhcpv6_client_status_notify(
             self->in_dhcp6_client,
-            inet_base_dhcp6_client_notify_fn,
-            self);
+            inet_base_dhcp6_client_notify_fn);
 
     /*
      * Apply cached configuration
@@ -2699,12 +2843,11 @@ bool inet_base_dhcp6_server_lease(inet_t *super, bool add, struct osn_dhcpv6_ser
     return true;
 }
 
-bool inet_base_dhcp6_server_notify(inet_t *super, inet_dhcp6_server_notify_fn_t *fn, void *ctx)
+bool inet_base_dhcp6_server_notify(inet_t *super, inet_dhcp6_server_notify_fn_t *fn)
 {
     inet_base_t *self = (void *)super;
 
     self->in_dhcp6_server_notify_fn = fn;
-    self->in_dhcp6_server_notify_data = ctx;
 
     return true;
 }
@@ -2717,7 +2860,7 @@ void inet_base_dhcp6_server_notify_fn(
 
     if (self->in_dhcp6_server_notify_fn == NULL) return;
 
-    self->in_dhcp6_server_notify_fn(self->in_dhcp6_server_notify_data, status);
+    self->in_dhcp6_server_notify_fn((inet_t *)self, status);
 }
 
 
@@ -2813,7 +2956,7 @@ bool inet_base_dhcp6_server_commit(inet_base_t *self, bool start)
  */
 const char *inet_base_service_str(enum inet_base_services srv)
 {
-    #define _V(x) case x: return #x;
+    #define _V(e, n) case e: return n;
 
     switch (srv)
     {
@@ -2844,4 +2987,3 @@ int osn_dhcpv6_server_lease_cmp(void *_a, void *_b)
 
     return 0;
 }
-

@@ -24,12 +24,14 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __DM_H__
-#define __DM_H__
+#ifndef DM_H_INCLUDED
+#define DM_H_INCLUDED
 
 #include <stdint.h>
 #include <stdbool.h>
 #include <ev.h>
+
+#include "log.h"
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
@@ -43,4 +45,25 @@ bool dm_hook_init();
 bool dm_hook_close();
 bool dm_st_monitor();
 
-#endif /* __DM_H__ */
+/**
+ * Register a new manager
+ *
+ * @param[in]   path            Path to manager (can be a full path)
+ * @param[in]   plan_b          True whether manager requires plan B
+ * @param[in]   restart         True if manager should be always restarted, even
+ *                              when killed by signals that usually do not 
+ *                              trigger a restart
+ * @param[in]   restart_timer   Restart timer in seconds or 0 to use default
+ */
+bool dm_manager_register(const char *path, bool plan_b, bool always_restart, int restart_timer);
+
+/*
+ * DM cli
+ */
+
+#define DM_CLI_DONE     true
+#define DM_CLI_CONTINUE false
+
+bool dm_cli(int argc, char *argv[], log_severity_t *log_severity);
+
+#endif /* DM_H_INCLUDED */

@@ -97,20 +97,18 @@ void nm2_route_update(struct schema_Wifi_Route_State *rts)
     }
 }
 
-bool nm2_route_notify(void *data, struct osn_route_status *rts, bool remove)
+void nm2_route_notify(inet_t *inet, struct osn_route_status *rts, bool remove)
 {
-    inet_t *self = data;
-
     struct schema_Wifi_Route_State schema_rts;
 
-    LOG(TRACE, "route: %s: Route state notify, remove = %d", self->in_ifname, remove);
+    LOG(TRACE, "route: %s: Route state notify, remove = %d", inet->in_ifname, remove);
 
     memset(&schema_rts, 0, sizeof(schema_rts));
 
-    if (strscpy(schema_rts.if_name, self->in_ifname, sizeof(schema_rts.if_name)) < 0)
+    if (strscpy(schema_rts.if_name, inet->in_ifname, sizeof(schema_rts.if_name)) < 0)
     {
-        LOG(WARN, "route: %s: Route state interface name too long.", self->in_ifname);
-        return false;
+        LOG(WARN, "route: %s: Route state interface name too long.", inet->in_ifname);
+        return;
     }
 
     snprintf(schema_rts.dest_addr, sizeof(schema_rts.dest_addr), PRI_osn_ip_addr,
@@ -130,7 +128,5 @@ bool nm2_route_notify(void *data, struct osn_route_status *rts, bool remove)
     schema_rts._update_type = remove ? OVSDB_UPDATE_DEL : OVSDB_UPDATE_MODIFY;
 
     nm2_route_update(&schema_rts);
-
-    return true;
 }
 

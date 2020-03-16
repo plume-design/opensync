@@ -72,11 +72,10 @@ typedef struct osn_ip osn_ip_t;
 struct osn_ip_status
 {
     const char         *is_ifname;    /**<Interface name */
-    void               *is_data;      /**< User data */
     size_t              is_addr_len;  /**< Length of is_addr array */
-    osn_ip_addr_t       is_addr;      /**< List of IPv4 addresses on interface */
+    osn_ip_addr_t      *is_addr;      /**< List of IPv4 addresses on interface */
     size_t              is_dns_len;   /**< Length of is_dns array */
-    osn_ip_addr_t       is_dns;       /**< List of DNS servers */
+    osn_ip_addr_t      *is_dns;       /**< List of DNS servers */
 };
 
 /**
@@ -89,7 +88,7 @@ struct osn_ip_status
  * Some implementation may choose to call this function periodically even if
  * there has been no status change detected.
  *
- * @param[in]   self    A valid pointer to an osn_ip_t object
+ * @param[in]   ip      A valid pointer to an osn_ip_t object
  * @param[in]   status  A pointer to a @ref osn_ip_status
  */
 typedef void osn_ip_status_fn_t(osn_ip_t *ip, struct osn_ip_status *status);
@@ -109,7 +108,7 @@ osn_ip_t *osn_ip_new(const char *ifname);
 /**
  * Destroy a valid osn_ip_t object.
  *
- * @param[in]   self  A valid pointer to an osn_ip_t object
+ * @param[in]   ip  A valid pointer to an osn_ip_t object
  *
  * @return
  * This function returns true on success. On error, false is returned.
@@ -131,7 +130,7 @@ bool osn_ip_del(osn_ip_t *ip);
 /**
  * Add an IPv4 address to the IPv4 object.
  *
- * @param[in]   self  A valid pointer to an osn_ip_t object
+ * @param[in]   ip    A valid pointer to an osn_ip_t object
  * @param[in]   addr  A pointer to a valid IPv4 address (@ref osn_ip_addr_t)
  *
  * @note
@@ -146,7 +145,7 @@ bool osn_ip_addr_add(osn_ip_t *ip, const osn_ip_addr_t *addr);
 /**
  * Remove an IPv4 address from the IPv4 object.
  *
- * @param[in]   self  A valid pointer to an osn_ip_t object
+ * @param[in]   ip    A valid pointer to an osn_ip_t object
  * @param[in]   addr  A pointer to a valid IPv4 address (@ref osn_ip_addr_t)
  *
  * @note
@@ -157,8 +156,8 @@ bool osn_ip_addr_del(osn_ip_t *ip, const osn_ip_addr_t *addr);
 /**
  * Add an DNSv4 server IP to the IPv4 object.
  *
- * @param[in]   self  A valid pointer to an osn_ip_t object
- * @param[in]   addr  A pointer to a valid DNSv4 address (@ref osn_ip_addr_t)
+ * @param[in]   ip    A valid pointer to an osn_ip_t object
+ * @param[in]   dns   A pointer to a valid DNSv4 address (@ref osn_ip_addr_t)
  *
  * @note
  * The new configuration may not take effect until osn_ip_apply() is called.
@@ -168,8 +167,8 @@ bool osn_ip_dns_add(osn_ip_t *ip, const osn_ip_addr_t *dns);
 /**
  * Remove an DNSv4 server IP from the IPv4 object.
  *
- * @param[in]   self  A valid pointer to an osn_ip_t object
- * @param[in]   addr  A pointer to a valid DNSv4 address (@ref osn_ip_addr_t)
+ * @param[in]   ip    A valid pointer to an osn_ip_t object
+ * @param[in]   dns   A pointer to a valid DNSv4 address (@ref osn_ip_addr_t)
  *
  * @note
  * The new configuration may not take effect until osn_ip_apply() is called.
@@ -179,7 +178,7 @@ bool osn_ip_dns_del(osn_ip_t *ip, const osn_ip_addr_t *dns);
 /**
  * Add gateway route to IPv4 object.
  *
- * @param[in]   self  A valid pointer to an osn_ip_t object
+ * @param[in]   ip    A valid pointer to an osn_ip_t object
  * @param[in]   src   Source IPv4 subnet
  * @param[in]   gw    Gateway IPv4 address
  *
@@ -192,7 +191,7 @@ bool osn_ip_route_gw_add(osn_ip_t *ip, const osn_ip_addr_t *src, const osn_ip_ad
 /**
  * Remove gateway route from IPv4 object.
  *
- * @param[in]   self  A valid pointer to an osn_ip_t object
+ * @param[in]   ip    A valid pointer to an osn_ip_t object
  * @param[in]   src   Source IPv4 subnet
  * @param[in]   gw    Gateway IPv4 address
  *
@@ -203,6 +202,25 @@ bool osn_ip_route_gw_add(osn_ip_t *ip, const osn_ip_addr_t *src, const osn_ip_ad
 bool osn_ip_route_gw_del(osn_ip_t *ip, const osn_ip_addr_t *src, const osn_ip_addr_t *gw);
 
 /**
+ * Set the IPv4 user data.
+ *
+ * @param[in]   ip    A valid pointer to an osn_ip_t object
+ * @param[in]   data  Private data
+ */
+void osn_ip_data_set(osn_ip_t *ip, void *data);
+
+/**
+ * Get the IPv4 user data.
+ *
+ * @param[in]   ip    A valid pointer to an osn_ip_t object
+ *
+ * @return
+ * This function returns the data that was previously set using
+ * @ref osn_ip_data_set().
+ */
+void *osn_ip_data_get(osn_ip_t *ip);
+
+/**
  * Set the IPv4 status callback.
  *
  * Depending on the implementation, the status callback may be invoked
@@ -210,10 +228,10 @@ bool osn_ip_route_gw_del(osn_ip_t *ip, const osn_ip_addr_t *src, const osn_ip_ad
  * For maximum portability, the callback implementation should assume it can
  * be called using either modes of operation.
  *
- * @param[in]   self  A valid pointer to an osn_ip_t object
+ * @param[in]   ip    A valid pointer to an osn_ip_t object
  * @param[in]   fn    A pointer to the function implementation
  */
-void osn_ip_status_notify(osn_ip_t *ip, osn_ip_status_fn_t *fn, void *data);
+void osn_ip_status_notify(osn_ip_t *ip, osn_ip_status_fn_t *fn);
 
 /**
  * Ensure that all configuration pertaining the @p self object is applied to
@@ -297,13 +315,12 @@ struct osn_route_status
  * Some implementation may choose to call this function periodically even if
  * there has been no status change detected.
  *
- * @param[in]   self  A valid pointer to an osn_ip_t object
  * @param[in]   data  Private data
  * @param[in]   rts   A pointer to a @ref osn_route_status
  * @param[in]   remove  true if the route in @p rts was removed
  */
 typedef bool osn_route_status_fn_t(
-        void *data,
+        osn_route_t *self,
         struct osn_route_status *rts,
         bool remove);
 
@@ -346,9 +363,23 @@ bool osn_route_del(osn_route_t *self);
  *
  * @param[in]   self  A valid pointer to an osn_route_t object
  * @param[in]   fn    A pointer to the function implementation
+ */
+bool osn_route_status_notify(osn_route_t *self, osn_route_status_fn_t *fn);
+
+/**
+ * Set user data
+ *
+ * @param[in]   self  A valid pointer to an osn_route_t object
  * @param[in]   data  Private data, will be passed to the callback
  */
-bool osn_route_status_notify(osn_route_t *self, osn_route_status_fn_t *fn, void *data);
+void osn_route_data_set(osn_route_t *self, void *data);
+
+/**
+ * Get user data
+ *
+ * @param[in]   self  A valid pointer to an osn_route_t object
+ */
+void* osn_route_data_get(osn_route_t *self);
 
 /** @} OSN_ROUTEV4 */
 /** @} OSN_IPV4 */

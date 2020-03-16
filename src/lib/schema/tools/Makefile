@@ -33,5 +33,5 @@ schema.svg: schema.dot
 schema.png: schema.dot
 	dot -Tpng -Gsize=38,15 -Gdpi=100 $< > $@
 
-schema.dot: ../../../../interfaces/plume.ovsschema
+schema.dot: ../../../../interfaces/opensync.ovsschema
 	python3 schema2dot.py $< > $@

@@ -24,8 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __HAVE_DPP_RSSI_H__
-#define __HAVE_DPP_RSSI_H__
+#ifndef DPP_RSSI_H_INCLUDED
+#define DPP_RSSI_H_INCLUDED
 
 #include "ds.h"
 #include "ds_dlist.h"
@@ -79,4 +79,4 @@ typedef struct
     ds_dlist_t                      list;   /* dpp_rssi_record_t */
 } dpp_rssi_report_data_t;
 
-#endif /* __HAVE_DPP_RSSI_H__ */
+#endif /* DPP_RSSI_H_INCLUDED */

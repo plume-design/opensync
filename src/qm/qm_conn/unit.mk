@@ -27,6 +27,8 @@
 # Queue Manager connection
 #
 ###############################################################################
+UNIT_DISABLE := $(if $(CONFIG_MANAGER_QM),n,y)
+
 UNIT_NAME := qm_conn
 
 # Template type:
@@ -40,5 +42,4 @@ UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
 UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 
 UNIT_DEPS += src/lib/common
-UNIT_DEPS += src/lib/version
 

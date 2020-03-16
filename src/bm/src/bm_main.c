@@ -61,12 +61,38 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 static struct ev_loop * _ev_loop;
 static ev_signal        _ev_sigint;
 static ev_signal        _ev_sigterm;
+static ev_signal        _ev_sigusr1;
 
 static log_severity_t   bm_log_severity = LOG_SEVERITY_INFO;
+
+static ev_timer _sta_info_watcher;
 
 /******************************************************************************
  *  PROTECTED definitions
  *****************************************************************************/
+
+static void sta_info_update_callback(
+        struct ev_loop *loop,
+        ev_timer *watcher,
+        int revents)
+{
+    bm_client_sta_info_update_callback();
+}
+
+void bm_main_set_timer(int sec)
+{
+    ev_timer_stop(_ev_loop, &_sta_info_watcher);
+    ev_timer_set(&_sta_info_watcher, 0, sec);
+    ev_timer_start(_ev_loop, &_sta_info_watcher);
+}
+
+static void
+handle_usr1_signal(struct ev_loop *loop, ev_signal *w, int revents)
+{
+    LOGI("Received USR1 signal - dump stats");
+    bm_client_dump_dbg_events();
+    return;
+}
 
 static void
 handle_signal(struct ev_loop *loop, ev_signal *w, int revents)
@@ -103,6 +129,8 @@ main(int argc, char **argv)
     ev_signal_start(_ev_loop, &_ev_sigint);
     ev_signal_init(&_ev_sigterm, handle_signal, SIGTERM);
     ev_signal_start(_ev_loop, &_ev_sigterm);
+    ev_signal_init(&_ev_sigusr1, handle_usr1_signal, SIGUSR1);
+    ev_signal_start(_ev_loop, &_ev_sigusr1);
 
     // Initialize JSON memory debugging
     json_memdbg_init(_ev_loop);
@@ -136,9 +164,9 @@ main(int argc, char **argv)
         return(1);
     }
 
-    // Initialize interface pairs
-    if (bm_pair_init() == false) {
-        LOGEM("Failed to initialize interface pairs");
+    // Initialize interface group
+    if (bm_group_init() == false) {
+        LOGEM("Failed to initialize interface group");
         return(1);
     }
 
@@ -159,6 +187,9 @@ main(int argc, char **argv)
         return(1);
     }
 
+    ev_timer_init(&_sta_info_watcher, sta_info_update_callback, 25.0, 25.0);
+    ev_timer_start(_ev_loop, &_sta_info_watcher);
+
     /* Register to dynamic severity updates */
     log_register_dynamic_severity(_ev_loop);
 
@@ -170,7 +201,7 @@ main(int argc, char **argv)
 
     bm_client_cleanup();
     bm_stats_cleanup();
-    bm_pair_cleanup();
+    bm_group_cleanup();
     bm_events_cleanup();
     bm_kick_cleanup();
     bm_neighbor_cleanup();

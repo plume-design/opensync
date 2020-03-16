@@ -24,8 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __STATSIM__H__
-#define __STATSIM__H__
+#ifndef STATSSIM_H_INCLUDED
+#define STATSSIM_H_INCLUDED
 
 #include "dppline.h"
 
@@ -62,4 +62,4 @@ void getCapacityReport(dpp_capacity_report_data_t *r, radio_type_t radio_type);
 void getBSClientReport(dpp_bs_client_report_data_t *r);
 void getRssiReport(dpp_rssi_report_data_t *r, radio_type_t radio_type);
 
-#endif /* __STATSIM__H__ */
+#endif /* STATSSIM_H_INCLUDED */

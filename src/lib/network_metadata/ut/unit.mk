@@ -22,7 +22,7 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-UNIT_DISABLE := $(if $(CONFIG_TARGET_MANAGER_FCM),n,y)
+UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM),n,y)
 UNIT_NAME := test_network_metadata
 
 UNIT_TYPE := TEST_BIN
@@ -31,6 +31,8 @@ UNIT_SRC := test_network_metadata.c
 UNIT_SRC += test_network_metadata_report.c
 
 # UNIT_CFLAGS += -I(UNIT_PATH)/.
+
+#UNIT_CFLAGS := -DUNITY_SUPPORT_64=1
 
 UNIT_DEPS := src/lib/network_metadata
 UNIT_DEPS += src/lib/log

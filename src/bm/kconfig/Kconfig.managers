@@ -1,0 +1,12 @@
+menuconfig MANAGER_BM
+    bool "Band-steering Manager (BM)"
+    default n
+    help
+        Enable Band-steering Manager (BM)
+
+    config MANAGER_BM_CFG
+        depends on MANAGER_BM
+        string "BM Startup configuration"
+        default "bm;true"
+        help
+            Band-steering Manager startup configuration

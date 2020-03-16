@@ -178,6 +178,20 @@ int osn_ip_addr_cmp(void *a, void *b);
 osn_ip_addr_t osn_ip_addr_subnet(osn_ip_addr_t *addr);
 
 /**
+ * Calculate a broadcast address from the given address in @p addr
+ *
+ * @code
+ * 192.168.40.1/24 -> 192.168.40.255
+ * @endcode
+ *
+ * @param[in]   addr  Address to convert
+ *
+ * @return
+ * This function returns a valid broadcast address with the prefix part removed
+ */
+osn_ip_addr_t osn_ip_addr_to_bcast(osn_ip_addr_t *addr);
+
+/**
  * Converts a subnet IP representation to a prefix integer.
  * For example:
  *
@@ -188,10 +202,24 @@ osn_ip_addr_t osn_ip_addr_subnet(osn_ip_addr_t *addr);
  * @param[in]   addr  Input address
  *
  * @return
- *
  * Returns the number of consecutive bits set in @p addr
  */
 int osn_ip_addr_to_prefix(osn_ip_addr_t *addr);
+
+/**
+ * Convert a prefix integer to an IP representation.
+ * For example:
+ *
+ * @code
+ * 24 -> 255.255.255.0
+ * @encode
+ *
+ * @param[in]   prefix  Prefix to convert
+ *
+ * @return
+ * This function returns an osn_ip_addr_t structure representing the prefix
+ */
+osn_ip_addr_t osn_ip_addr_from_prefix(int prefix);
 
 /** @} OSN_COMMON_osn_ip_addr_t */
 
@@ -311,8 +339,8 @@ int osn_ip6_addr_cmp(void *a, void *b);
  * Comparator for @ref osn_ip6_addr_t structures. This version ignores the
  * IPv6 address lifetimes.
  *
- * @param[in]   a  First osn_ip6_addr_t to compare
- * @param[in]   b  Second osn_ip6_addr_t to compare
+ * @param[in]   _a  First osn_ip6_addr_t to compare
+ * @param[in]   _b  Second osn_ip6_addr_t to compare
  *
  * @return
  * This function returns an integer less than, equal to, or greater than zero
@@ -403,8 +431,8 @@ bool osn_mac_addr_from_str(osn_mac_addr_t *out, const char *str);
 /**
  * Comparator for @ref osn_mac_addr_t structures.
  *
- * @param[in]   a  First osn_mac_addr_t to compare
- * @param[in]   b  Second osn_mac_addr_t to compare
+ * @param[in]   _a First osn_mac_addr_t to compare
+ * @param[in]   _b Second osn_mac_addr_t to compare
  *
  * @return
  * This function returns an integer less than, equal to, or greater than zero

@@ -24,8 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __NETWORK_METADATA_UTILS_H__
-#define __NETWORK_METADATA_UTILS_H__
+#ifndef NETWORK_METADATA_UTILS_H_INCLUDED
+#define NETWORK_METADATA_UTILS_H_INCLUDED
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -85,6 +85,7 @@ void free_window_stats(struct flow_stats *stats);
 void free_flow_counters(struct flow_counters *counters);
 void free_flow_counters(struct flow_counters *counters);
 void free_flow_key(struct flow_key *key);
+void free_flow_key_vdr_data(struct flow_key *key);
 void free_node_info(struct node_info *node);
 struct net_md_stats_accumulator * net_md_treelookup_acc(struct net_md_eth_pair *pair,
                                                         struct net_md_flow_key *key);
@@ -108,7 +109,8 @@ struct net_md_eth_pair * net_md_lookup_eth_pair(struct net_md_aggregator *aggr,
 bool is_eth_only(struct net_md_flow_key *key);
 bool has_eth_info(struct net_md_flow_key *key);
 struct net_md_stats_accumulator *
-net_md_lookup_acc_from_pair(struct net_md_eth_pair *pair,
+net_md_lookup_acc_from_pair(struct net_md_aggregator *aggr,
+                            struct net_md_eth_pair *pair,
                             struct net_md_flow_key *key);
 struct net_md_stats_accumulator *
 net_md_lookup_eth_acc(struct net_md_aggregator *aggr,
@@ -123,4 +125,25 @@ void net_md_set_counters(struct net_md_aggregator *aggr,
 void net_md_report_accs(struct net_md_aggregator *aggr);
 void net_md_free_flow_report(struct flow_report *report);
 void net_md_reset_aggregator(struct net_md_aggregator *aggr);
-#endif // __NETWORK_METADATA_UTILS_H__
+
+/**
+ * @brief: translates protobuf key structure in a net_md_flow_key
+ *
+ * @param aggr the aggregator the ky will check against
+ * @param in_key the reader friendly key2net
+ * @return a pointer to a net_md_flow_key
+ */
+struct net_md_flow_key *
+pbkey2net_md_key(struct net_md_aggregator *aggr, Traffic__FlowKey *pb_key);
+
+/**
+ * @brief Updates an aggregator with the contents of a flow report protobuf
+ *
+ * Updates the aggregator with the contents of the flow report protobuf.
+ * @param aggr the aggregator to update
+ * @param pb the packed buffer containing the flow report protobuf
+ */
+void
+net_md_update_aggr(struct net_md_aggregator *aggr, struct packed_buffer *pb);
+
+#endif /* NETWORK_METADATA_UTILS_H_INCLUDED */

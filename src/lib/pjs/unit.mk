@@ -38,6 +38,7 @@ UNIT_SRC += src/pjs_ovs_set.c
 UNIT_SRC += src/pjs_ovs_map.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
+UNIT_DEPS += src/lib/common
 
 # Flags for building this unit
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)

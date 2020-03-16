@@ -24,8 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __LOG_MANAGER_H__
-#define __LOG_MANAGER_H__
+#ifndef LM_H_INCLUDED
+#define LM_H_INCLUDED
 
 #include <stdint.h>
 
@@ -57,4 +57,4 @@ bool lm_hook_init(struct ev_loop *loop);
 bool lm_hook_close();
 bool lm_ovsdb_set_severity(const char *logger_name, const char *severity);
 
-#endif  /* __LOG_MANAGER_H__ */
+#endif  /* LM_H_INCLUDED */

@@ -27,6 +27,8 @@
 # Wireless manager
 #
 ###############################################################################
+UNIT_DISABLE := $(if $(CONFIG_MANAGER_WM),n,y)
+
 UNIT_NAME    := wm
 
 # Template type:
@@ -51,5 +53,4 @@ UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 UNIT_DEPS    := src/lib/ovsdb
 UNIT_DEPS    += src/lib/pjs
 UNIT_DEPS    += src/lib/schema
-UNIT_DEPS    += src/lib/version
 UNIT_DEPS    += src/lib/target

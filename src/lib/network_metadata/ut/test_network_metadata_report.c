@@ -25,6 +25,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include <arpa/inet.h>
+#include <errno.h>
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -115,7 +116,29 @@ struct in_key in_keys[] =
         .vlan_id = 100,
         .ethertype = 0,
         .ip_version = 0
-    }
+    },
+    {
+        .smac = "11:22:33:44:55:66",
+        .vlan_id = 0,
+        .ethertype = 0,
+        .ip_version = 4,
+        .src_ip = "192.168.40.1",
+        .dst_ip = "32.33.34.35",
+        .ipprotocol = 17,
+        .sport = 12345,
+        .dport = 53,
+    },
+    {
+        .dmac = "dd:ee:ff:cc:bb:aa",
+        .vlan_id = 0,
+        .ethertype = 0,
+        .ip_version = 4,
+        .src_ip = "192.168.40.1",
+        .dst_ip = "32.33.34.35",
+        .ipprotocol = 17,
+        .sport = 12345,
+        .dport = 53,
+    },
 };
 
 
@@ -195,13 +218,16 @@ err_free_key:
  */
 void test_net_md_report_setup(void)
 {
-    size_t nelems, i, allocated;
+    struct net_md_aggregator_set *aggr_set;
+    struct net_md_flow_key *iter_key;
+    struct net_md_flow_key **key;
+    struct in_key *in_key;
+    size_t allocated;
+    size_t nelems;
+    size_t i;
 
     g_nd_test.initialized = false;
     g_nd_test.nelems = 0;
-    struct net_md_flow_key **key;
-    struct net_md_flow_key *iter_key;
-    struct in_key *in_key;
 
     nelems = sizeof(in_keys) / sizeof(struct in_key);
     g_nd_test.net_md_keys = calloc(nelems, sizeof(*key));
@@ -219,15 +245,22 @@ void test_net_md_report_setup(void)
         in_key++;
     }
 
-    snprintf(g_nd_test.node_id, sizeof(g_nd_test.node_id), "4C71000027");
+    snprintf(g_nd_test.node_id, sizeof(g_nd_test.node_id), "4C718002B3");
     snprintf(g_nd_test.location_id, sizeof(g_nd_test.location_id),
              "59efd33d2c93832025330a3e");
     snprintf(g_nd_test.mqtt_topic, sizeof(g_nd_test.mqtt_topic),
-             "network_metadata_test/4C71000027");
+             "dev-test/network_metadata/%s", g_nd_test.node_id);
     g_nd_test.node_info.node_id = g_nd_test.node_id;
     g_nd_test.node_info.location_id = g_nd_test.location_id;
     g_nd_test.initialized = true;
     g_nd_test.nelems = nelems;
+    aggr_set = &g_nd_test.aggr_set;
+    aggr_set->info = &g_nd_test.node_info;
+    aggr_set->num_windows = 1;
+    aggr_set->acc_ttl = INT32_MAX;
+    aggr_set->report_type = NET_MD_REPORT_ABSOLUTE;
+    aggr_set->report_filter = NULL;
+    aggr_set->send_report = net_md_send_report;
 
     return;
 
@@ -365,8 +398,7 @@ void test_net_md_allocate_aggregator(void)
     struct net_md_aggregator *aggr;
     struct flow_report *report;
 
-    aggr = net_md_allocate_aggregator(&g_nd_test.node_info, 1, 1,
-                                      NET_MD_REPORT_ABSOLUTE, NULL);
+    aggr = net_md_allocate_aggregator(&g_nd_test.aggr_set);
     TEST_ASSERT_NOT_NULL(aggr);
     TEST_ASSERT_NOT_NULL(aggr->report);
 
@@ -537,18 +569,16 @@ static void validate_add_samples_one_key(struct net_md_aggregator *aggr,
  */
 void activate_add_samples_close_send_report(int report_type)
 {
+    struct net_md_aggregator_set *aggr_set;
     struct net_md_aggregator *aggr;
-    int num_windows, acc_ttl;
     size_t key_idx;
 
     TEST_ASSERT_TRUE(g_nd_test.initialized);
 
     /* Allocate aggregator */
-    num_windows = 1;
-    acc_ttl = INT32_MAX;
-    aggr = net_md_allocate_aggregator(&g_nd_test.node_info,
-                                      num_windows, acc_ttl,
-                                      report_type, NULL);
+    aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_type = report_type;
+    aggr = net_md_allocate_aggregator(aggr_set);
     TEST_ASSERT_NOT_NULL(aggr);
 
     /*
@@ -583,12 +613,12 @@ void test_activate_add_samples_close_send_report(void)
  */
 void test_add_2_samples_all_keys(void)
 {
+    struct net_md_aggregator_set *aggr_set;
     struct net_md_aggregator *aggr;
     struct flow_counters counters[2];
     struct flow_counters *init_counters, *update_counters, *counter;
     struct flow_counters report_counters;
     struct net_md_flow_key *key;
-    int num_windows, acc_ttl, report_type;
     size_t key_idx;
     bool ret;
 
@@ -604,11 +634,9 @@ void test_add_2_samples_all_keys(void)
     update_counters->packets_count = 30;
 
     /* Allocate aggregator */
-    num_windows = 1;
-    report_type = NET_MD_REPORT_RELATIVE;
-    acc_ttl = INT32_MAX;
-    aggr = net_md_allocate_aggregator(&g_nd_test.node_info, num_windows,
-                                      acc_ttl, report_type, NULL);
+    aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_type = NET_MD_REPORT_RELATIVE;
+    aggr = net_md_allocate_aggregator(aggr_set);
     TEST_ASSERT_NOT_NULL(aggr);
 
     /* Activate aggregator window */
@@ -711,9 +739,9 @@ void validate_aggregate_one_key(struct net_md_aggregator *aggr, size_t key_idx,
 void test_ethernet_aggregate_one_key(void)
 {
     struct net_md_aggregator *absolute_aggr, *relative_aggr;
+    struct net_md_aggregator_set *aggr_set;
     struct flow_counters counters[3];
-    size_t key_idx, num_windows;
-    int acc_ttl, report_type;
+    size_t key_idx;
 
     TEST_ASSERT_TRUE(g_nd_test.initialized);
     counters[0].bytes_count = 10000; /* First report counters */
@@ -726,16 +754,12 @@ void test_ethernet_aggregate_one_key(void)
     counters[2].packets_count = 200;
 
     /* Allocate aggregator */
-    num_windows = 1;
-    acc_ttl = INT32_MAX;
-    report_type = NET_MD_REPORT_RELATIVE;
-    relative_aggr = net_md_allocate_aggregator(&g_nd_test.node_info,
-                                               num_windows, acc_ttl,
-                                               report_type, NULL);
-    report_type = NET_MD_REPORT_ABSOLUTE;
-    absolute_aggr = net_md_allocate_aggregator(&g_nd_test.node_info,
-                                               num_windows, acc_ttl,
-                                               report_type, NULL);
+    aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_type = NET_MD_REPORT_RELATIVE;
+    relative_aggr = net_md_allocate_aggregator(aggr_set);
+
+    aggr_set->report_type = NET_MD_REPORT_ABSOLUTE;
+    absolute_aggr = net_md_allocate_aggregator(aggr_set);
     key_idx = 0;
     LOGD("%s: validating absolute aggregation", __func__);
     validate_aggregate_one_key(absolute_aggr, key_idx, counters, &counters[1]);
@@ -851,9 +875,8 @@ void validate_aggregate_two_keys(struct net_md_aggregator *aggr,
 void test_ethernet_aggregate_two_keys(void)
 {
     struct net_md_aggregator *absolute_aggr, *relative_aggr;
+    struct net_md_aggregator_set *aggr_set;
     struct flow_counters counters[7];
-    size_t num_windows;
-    int acc_ttl, report_type;
 
     TEST_ASSERT_TRUE(g_nd_test.initialized);
     counters[0].bytes_count = 10000; /* Key 0, First report counters */
@@ -893,16 +916,11 @@ void test_ethernet_aggregate_two_keys(void)
     counters[6].packets_count = 400;
 
     /* Allocate aggregator */
-    num_windows = 1;
-    acc_ttl = INT32_MAX;
-    report_type = NET_MD_REPORT_RELATIVE;
-    relative_aggr = net_md_allocate_aggregator(&g_nd_test.node_info,
-                                               num_windows, acc_ttl,
-                                               report_type, NULL);
-    report_type = NET_MD_REPORT_ABSOLUTE;
-    absolute_aggr = net_md_allocate_aggregator(&g_nd_test.node_info,
-                                               num_windows, acc_ttl,
-                                               report_type, NULL);
+    aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_type = NET_MD_REPORT_RELATIVE;
+    relative_aggr = net_md_allocate_aggregator(aggr_set);
+    aggr_set->report_type = NET_MD_REPORT_ABSOLUTE;
+    absolute_aggr = net_md_allocate_aggregator(aggr_set);
 
     LOGD("%s: validating absolute aggregation", __func__);
     validate_aggregate_two_keys(absolute_aggr, counters, &counters[3]);
@@ -919,11 +937,11 @@ void test_ethernet_aggregate_two_keys(void)
  */
 void test_large_loop(void)
 {
-    struct net_md_aggregator *aggr;
+    struct net_md_aggregator_set *aggr_set;
     struct flow_counters counters[20];
-    size_t key_idx, i, n, ncnt, ntimes, num_windows;
-    int acc_ttl, report_type;
+    struct net_md_aggregator *aggr;
     struct net_md_flow_key *key;
+    size_t key_idx, i, n, ncnt, ntimes;
     bool ret;
 
     TEST_ASSERT_TRUE(g_nd_test.initialized);
@@ -937,12 +955,9 @@ void test_large_loop(void)
     }
 
     /* Allocate aggregator */
-    num_windows = 1;
-    acc_ttl = INT32_MAX;
-    report_type = NET_MD_REPORT_RELATIVE;
-    aggr = net_md_allocate_aggregator(&g_nd_test.node_info,
-                                      num_windows, acc_ttl,
-                                      report_type, NULL);
+    aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_type = NET_MD_REPORT_RELATIVE;
+    aggr = net_md_allocate_aggregator(aggr_set);
     TEST_ASSERT_NOT_NULL(aggr);
 
     ntimes = 60;
@@ -981,11 +996,11 @@ void test_large_loop(void)
  */
 void test_add_remove_flows(void)
 {
-    struct net_md_aggregator *aggr;
+    struct net_md_aggregator_set *aggr_set;
     struct flow_counters counters[20];
-    size_t key_idx, i, n, ntimes, ncnt, num_windows;
-    int acc_ttl, report_type;
+    struct net_md_aggregator *aggr;
     struct net_md_flow_key *key;
+    size_t key_idx, i, n, ntimes, ncnt;
     bool ret;
 
     TEST_ASSERT_TRUE(g_nd_test.initialized);
@@ -998,16 +1013,11 @@ void test_add_remove_flows(void)
         counters[i].bytes_count = 10000 + i * 2000;
     }
 
-    /* Allocate aggregator */
-    num_windows = 1;
-
-    /* Set accumulator time-to-live to 1 second */
-    acc_ttl = 1;
-
-    report_type = NET_MD_REPORT_RELATIVE;
-    aggr = net_md_allocate_aggregator(&g_nd_test.node_info,
-                                      num_windows, acc_ttl,
-                                      report_type, NULL);
+    /* Allocate aggregator with a time-to-live set to 1 second */
+    aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_type = NET_MD_REPORT_RELATIVE;
+    aggr_set->acc_ttl = 1;
+    aggr = net_md_allocate_aggregator(aggr_set);
     TEST_ASSERT_NOT_NULL(aggr);
 
     /* Activate aggregator window */
@@ -1066,11 +1076,11 @@ void test_add_remove_flows(void)
  */
 void test_multiple_windows(void)
 {
-    struct net_md_aggregator *aggr;
+    struct net_md_aggregator_set *aggr_set;
     struct flow_counters counters[20];
-    size_t key_idx, i, n, ncnt, num_windows;
-    int acc_ttl, report_type;
+    struct net_md_aggregator *aggr;
     struct net_md_flow_key *key;
+    size_t key_idx, i, n, ncnt;
     bool ret;
 
     TEST_ASSERT_TRUE(g_nd_test.initialized);
@@ -1084,12 +1094,10 @@ void test_multiple_windows(void)
     }
 
     /* Allocate aggregator */
-    num_windows = g_nd_test.nelems;
-    acc_ttl = INT32_MAX;
-    report_type = NET_MD_REPORT_RELATIVE;
-    aggr = net_md_allocate_aggregator(&g_nd_test.node_info,
-                                      num_windows, acc_ttl,
-                                      report_type, NULL);
+    aggr_set = &g_nd_test.aggr_set;
+    aggr_set->num_windows = g_nd_test.nelems;
+    aggr_set->report_type = NET_MD_REPORT_RELATIVE;
+    aggr = net_md_allocate_aggregator(aggr_set);
     TEST_ASSERT_NOT_NULL(aggr);
 
     n = 0;
@@ -1147,15 +1155,16 @@ bool report_filter(struct net_md_stats_accumulator *acc)
 
 void test_report_filter(void)
 {
-    struct net_md_aggregator *aggr;
+    struct net_md_aggregator_set *aggr_set;
     struct flow_counters counters[20];
-    size_t key_idx, i, ncnt, num_windows;
-    int acc_ttl, report_type, cmp;
+    struct net_md_aggregator *aggr;
     struct net_md_flow_key *key;
     struct flow_window *window;
     struct flow_stats *stats;
+    size_t key_idx, i, ncnt;
     char *smac;
     bool ret;
+    int cmp;
 
     TEST_ASSERT_TRUE(g_nd_test.initialized);
 
@@ -1167,13 +1176,11 @@ void test_report_filter(void)
         counters[i].bytes_count = 10000 + i * 2000;
     }
 
-    /* Allocate aggregator */
-    num_windows = 1;
-    acc_ttl = INT32_MAX;
-    report_type = NET_MD_REPORT_RELATIVE;
-    aggr = net_md_allocate_aggregator(&g_nd_test.node_info,
-                                      num_windows, acc_ttl,
-                                      report_type, report_filter);
+    /* Allocate aggregator, set a report_filter routine */
+    aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_type = NET_MD_REPORT_RELATIVE;
+    aggr_set->report_filter = report_filter;
+    aggr = net_md_allocate_aggregator(aggr_set);
     TEST_ASSERT_NOT_NULL(aggr);
 
     /* Activate aggregator window */
@@ -1216,21 +1223,16 @@ void test_report_filter(void)
 
 void test_activate_and_free_aggr(void)
 {
+    struct net_md_aggregator_set *aggr_set;
     struct net_md_aggregator *aggr;
-    size_t num_windows;
-    int report_type;
-    int acc_ttl;
     bool ret;
 
     TEST_ASSERT_TRUE(g_nd_test.initialized);
 
     /* Allocate aggregator */
-    num_windows = 1;
-    acc_ttl = INT32_MAX;
-    report_type = NET_MD_REPORT_RELATIVE;
-    aggr = net_md_allocate_aggregator(&g_nd_test.node_info,
-                                      num_windows, acc_ttl,
-                                      report_type, report_filter);
+    aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_type = NET_MD_REPORT_RELATIVE;
+    aggr = net_md_allocate_aggregator(aggr_set);
     TEST_ASSERT_NOT_NULL(aggr);
 
     /* Activate aggregator window */
@@ -1249,26 +1251,20 @@ void test_activate_and_free_aggr(void)
  */
 void test_bogus_ttl(void)
 {
+    struct net_md_aggregator_set *aggr_set;
     struct net_md_aggregator *aggr;
     struct flow_counters counter;
-    struct flow_window *window;
-    size_t num_windows;
-    int acc_ttl, report_type;
     struct net_md_flow_key *key;
+    struct flow_window *window;
     bool ret;
 
     TEST_ASSERT_TRUE(g_nd_test.initialized);
 
-    /* Allocate aggregator */
-    num_windows = 1;
-
-    /* Set accumulator time-to-live to 1 second */
-    acc_ttl = 1;
-
-    report_type = NET_MD_REPORT_RELATIVE;
-    aggr = net_md_allocate_aggregator(&g_nd_test.node_info,
-                                      num_windows, acc_ttl,
-                                      report_type, NULL);
+    /* Allocate aggregator with a time-to-live set to 1 second */
+    aggr_set = &g_nd_test.aggr_set;
+    aggr_set->acc_ttl = 1;
+    aggr_set->report_type = NET_MD_REPORT_RELATIVE;
+    aggr = net_md_allocate_aggregator(aggr_set);
     TEST_ASSERT_NOT_NULL(aggr);
 
     /* Activate aggregator window */
@@ -1307,6 +1303,7 @@ void test_bogus_ttl(void)
 void
 test_flow_tags_one_key(void)
 {
+    struct net_md_aggregator_set *aggr_set;
     struct net_md_stats_accumulator *acc;
     struct flow_counters counters[1];
     struct net_md_aggregator *aggr;
@@ -1314,10 +1311,6 @@ test_flow_tags_one_key(void)
     struct flow_tags **tags;
     struct flow_tags *tag;
     struct flow_key *fkey;
-    size_t num_windows;
-    int report_type;
-    int acc_ttl;
-
     bool ret;
 
     TEST_ASSERT_TRUE(g_nd_test.initialized);
@@ -1325,12 +1318,9 @@ test_flow_tags_one_key(void)
     counters[0].packets_count = 100;
 
     /* Allocate aggregator */
-    num_windows = 1;
-    acc_ttl = INT32_MAX;
-    report_type = NET_MD_REPORT_RELATIVE;
-    aggr = net_md_allocate_aggregator(&g_nd_test.node_info,
-                                      num_windows, acc_ttl,
-                                      report_type, NULL);
+    aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_type = NET_MD_REPORT_RELATIVE;
+    aggr = net_md_allocate_aggregator(aggr_set);
     TEST_ASSERT_NOT_NULL(aggr);
 
     /* Activate aggregator window */
@@ -1383,4 +1373,580 @@ test_flow_tags_one_key(void)
 
     /* Free aggregator */
     net_md_free_aggregator(aggr);
+}
+
+
+void
+test_vendor_data_one_key(void)
+{
+    struct net_md_aggregator_set *aggr_set;
+    struct net_md_stats_accumulator *acc;
+    struct flow_counters counters[1];
+    struct net_md_aggregator *aggr;
+    struct flow_vendor_data *vd1;
+    struct flow_vendor_data *vd2;
+    struct net_md_flow_key *key;
+    struct flow_key *fkey;
+    bool ret;
+
+    struct vendor_data_kv_pair vd1_kps[] =
+    {
+        {
+            .key = "vd1_key1",
+            .value_type = NET_VENDOR_STR,
+            .str_value = "vd1_key1_val1",
+        },
+        {
+            .key = "vd1_key2",
+            .value_type = NET_VENDOR_U32,
+            .u32_value = 12345,
+        },
+        {
+            .key = "vd1_key3",
+            .value_type = NET_VENDOR_U64,
+            .u64_value = 12345678,
+        },
+    };
+
+    struct vendor_data_kv_pair vd2_kps[] =
+    {
+        {
+            .key = "vd2_key1",
+            .value_type = NET_VENDOR_STR,
+            .str_value = "vd2_key1_val1",
+        },
+        {
+            .key = "vd2_key2",
+            .value_type = NET_VENDOR_U32,
+            .u32_value = 54321,
+        },
+        {
+            .key = "vd2_key3",
+            .value_type = NET_VENDOR_U64,
+            .u64_value = 87654321,
+        },
+    };
+
+    struct vendor_data_kv_pair **kvps1;
+    struct vendor_data_kv_pair **kvps2;
+    struct vendor_data_kv_pair *kvp;
+    size_t nelems;
+    size_t i;
+
+    TEST_ASSERT_TRUE(g_nd_test.initialized);
+    counters[0].bytes_count = 10000;
+    counters[0].packets_count = 100;
+
+    /* Allocate aggregator */
+    aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_type = NET_MD_REPORT_RELATIVE;
+    aggr = net_md_allocate_aggregator(aggr_set);
+    TEST_ASSERT_NOT_NULL(aggr);
+
+    /* Activate aggregator window */
+    ret = net_md_activate_window(aggr);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Add one sample */
+    key = g_nd_test.net_md_keys[5];
+    ret = net_md_add_sample(aggr, key, counters);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Validate the state of the accumulator bound to the key */
+    acc = net_md_lookup_acc(aggr, key);
+    TEST_ASSERT_NOT_NULL(acc);
+    fkey = acc->fkey;
+    TEST_ASSERT_NOT_NULL(fkey);
+
+    /* Add vendor data to the key */
+    fkey->num_vendor_data = 2;
+    fkey->vdr_data = calloc(fkey->num_vendor_data,
+                            sizeof(*fkey->vdr_data));
+    TEST_ASSERT_NOT_NULL(fkey->vdr_data);
+
+    nelems = 3;
+
+    kvps1 = calloc(nelems, sizeof(struct vendor_data_kv_pair *));
+    TEST_ASSERT_NOT_NULL(kvps1);
+    for (i = 0; i < nelems; i++)
+    {
+        kvps1[i] = calloc(1, sizeof(struct vendor_data_kv_pair));
+        kvp = kvps1[i];
+        TEST_ASSERT_NOT_NULL(kvp);
+        kvp->key = strdup(vd1_kps[i].key);
+        if (vd1_kps[i].value_type == NET_VENDOR_STR)
+        {
+            kvp->value_type = NET_VENDOR_STR;
+            kvp->str_value = strdup(vd1_kps[i].str_value);
+            TEST_ASSERT_NOT_NULL(kvp->str_value);
+        }
+        else if (vd1_kps[i].value_type == NET_VENDOR_U32)
+        {
+            kvp->value_type = NET_VENDOR_U32;
+            kvp->u32_value = vd1_kps[i].u32_value;
+        }
+        else
+        {
+            kvp->value_type = NET_VENDOR_U64;
+            kvp->u64_value = vd1_kps[i].u64_value;
+        }
+        kvp++;
+    }
+    vd1 = calloc(1, sizeof(struct flow_vendor_data));
+    vd1->vendor = strdup("vendor1");
+    TEST_ASSERT_NOT_NULL(vd1->vendor);
+    vd1->nelems = 3;
+    vd1->kv_pairs = kvps1;
+
+    kvps2 = calloc(nelems, sizeof(struct vendor_data_kv_pair *));
+    TEST_ASSERT_NOT_NULL(kvps2);
+    for (i = 0; i < nelems; i++)
+    {
+        kvps2[i] = calloc(1, sizeof(struct vendor_data_kv_pair));
+        kvp = kvps2[i];
+        TEST_ASSERT_NOT_NULL(kvp);
+        kvp->key = strdup(vd2_kps[i].key);
+        if (vd2_kps[i].value_type == NET_VENDOR_STR)
+        {
+            kvp->str_value = strdup(vd2_kps[i].str_value);
+            TEST_ASSERT_NOT_NULL(kvp->str_value);
+        }
+        else if (vd2_kps[i].value_type == NET_VENDOR_U32)
+        {
+            kvp->value_type = NET_VENDOR_U32;
+            kvp->u32_value = vd2_kps[i].u32_value;
+        }
+        else
+        {
+            kvp->value_type = NET_VENDOR_U64;
+            kvp->u64_value = vd2_kps[i].u64_value;
+        }
+        kvp++;
+    }
+    vd2 = calloc(1, sizeof(struct flow_vendor_data));
+    vd2->vendor = strdup("vendor2");
+    TEST_ASSERT_NOT_NULL(vd2->vendor);
+    vd2->nelems = 3;
+    vd2->kv_pairs = kvps2;
+
+    fkey->vdr_data[0] = vd1;
+    fkey->vdr_data[1] = vd2;
+    fkey->num_vendor_data = 2;
+
+    /* Close the active window */
+    ret = net_md_close_active_window(aggr);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Emit the report */
+    test_emit_report(aggr);
+
+    /* Free aggregator */
+    net_md_free_aggregator(aggr);
+}
+
+void
+test_flow_key_to_net_md_key(void)
+{
+    Traffic__FlowKey pb_keys[] =
+        {
+            {    /* 0 */
+                .srcmac = "11:22:33:44:55:66",
+                .dstmac = "dd:ee:ff:cc:bb:aa",
+                .vlanid = 0,
+                .ethertype = 0,
+            },
+            {    /* 1 */
+                .srcmac = "11:22:33:44:55:66",
+                .dstmac = "dd:ee:ff:cc:bb:aa",
+                .vlanid = 0,
+                .ethertype = 1,
+            },
+            {    /* 2 */
+                .srcmac = "11:22:33:44:55:66",
+                .dstmac = "dd:ee:ff:cc:bb:aa",
+                .vlanid = 1,
+                .ethertype = 0x8000,
+            },
+            {   /* 3 */
+                .srcip = "192.168.40.1",
+                .dstip = "32.33.34.35",
+                .ipprotocol = 2,
+            },
+            {    /* 4 */
+                .srcip = "192.168.40.1",
+                .dstip = "32.33.34.35",
+                .ipprotocol = 17,
+                .tptsrcport = 36000,
+                .tptdstport = 1234,
+            },
+            {   /* 5 */
+                .srcmac = "11:22:33:44:55:66",
+                .dstmac = "dd:ee:ff:cc:bb:aa",
+                .vlanid = 0,
+                .ethertype = 0,
+                .srcip = "::1",
+                .dstip = "fe80::42:dbff:fe68:586",
+                .ipprotocol = 17,
+                .tptsrcport = 12346,
+                .tptdstport = 53,
+            },
+        };
+
+    struct net_md_aggregator aggr;
+    struct net_md_flow_key *key;
+    Traffic__FlowKey *pb_key;
+    const char *rcs;
+    char str[256];
+    int domain;
+    int rc;
+
+    memset(&aggr, 0, sizeof(aggr));
+    /* Validate key 0 translation */
+    pb_key = &pb_keys[0];
+    key = pbkey2net_md_key(&aggr, pb_key);
+    TEST_ASSERT_NOT_NULL(key);
+
+    /* Validate source mac */
+    snprintf(str, sizeof(str), PRI_os_macaddr_lower_t,
+             FMT_os_macaddr_pt(key->smac));
+    rc = strcmp(str, pb_key->srcmac);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    /* Validate destination mac */
+    snprintf(str, sizeof(str), PRI_os_macaddr_lower_t,
+             FMT_os_macaddr_pt(key->dmac));
+    rc = strcmp(str, pb_key->dstmac);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    free_net_md_flow_key(key);
+
+    /* Validate key 1 translation */
+    pb_key = &pb_keys[1];
+    key = pbkey2net_md_key(&aggr, pb_key);
+    TEST_ASSERT_NOT_NULL(key);
+
+    /* validate vlan id */
+    TEST_ASSERT_EQUAL_INT(pb_key->vlanid, key->vlan_id);
+
+    /* validate ethertype */
+    TEST_ASSERT_EQUAL_UINT(pb_key->ethertype, key->ethertype);
+
+    free_net_md_flow_key(key);
+
+    /* Validate key 2 translation */
+    pb_key = &pb_keys[2];
+    key = pbkey2net_md_key(&aggr, pb_key);
+    TEST_ASSERT_NOT_NULL(key);
+
+    /* validate vlan id */
+    TEST_ASSERT_EQUAL_INT(pb_key->vlanid, key->vlan_id);
+
+    /* validate ethertype */
+    TEST_ASSERT_EQUAL_UINT(pb_key->ethertype, key->ethertype);
+
+    free_net_md_flow_key(key);
+
+    /* Validate key 3 translation */
+    pb_key = &pb_keys[3];
+    key = pbkey2net_md_key(&aggr, pb_key);
+    TEST_ASSERT_NOT_NULL(key);
+
+    /* Validate source mac */
+    TEST_ASSERT_NULL(key->smac);
+
+    /* Validate destination mac */
+    TEST_ASSERT_NULL(key->dmac);
+
+    /* Validate ip version */
+    TEST_ASSERT_EQUAL_INT(4, key->ip_version);
+
+    /* Validate source ip */
+    domain = (key->ip_version == 4 ? AF_INET : AF_INET6);
+    rcs = inet_ntop(domain, key->src_ip, str, sizeof(str));
+    if (rcs == NULL) LOGI("%s: errno: %s", __func__, strerror(errno));
+    TEST_ASSERT_NOT_NULL(rcs);
+
+    rc = strcmp(str, pb_key->srcip);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    /* Validate destination ip */
+    rcs = inet_ntop(domain, key->dst_ip, str, sizeof(str));
+    if (rcs == NULL) LOGI("%s: errno: %s", __func__, strerror(errno));
+    TEST_ASSERT_NOT_NULL(rcs);
+    rc = strcmp(str, pb_key->dstip);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    /* Validate ip protocol */
+    TEST_ASSERT_EQUAL_INT(pb_key->ipprotocol, key->ipprotocol);
+
+    free_net_md_flow_key(key);
+
+    /* Validate key 4 translation */
+    pb_key = &pb_keys[4];
+    key = pbkey2net_md_key(&aggr, pb_key);
+    TEST_ASSERT_NOT_NULL(key);
+
+    /* Validate ip version */
+    TEST_ASSERT_EQUAL_INT(4, key->ip_version);
+
+    /* Validate ip protocol */
+    TEST_ASSERT_EQUAL_INT(pb_key->ipprotocol, key->ipprotocol);
+
+    /* Validate source port */
+    TEST_ASSERT_EQUAL_UINT(pb_key->tptsrcport, ntohs(key->sport));
+
+    /* Validate destination port */
+    TEST_ASSERT_EQUAL_UINT(pb_key->tptdstport, ntohs(key->dport));
+
+    free_net_md_flow_key(key);
+
+    /* Validate key 5 translation */
+    pb_key = &pb_keys[5];
+    key = pbkey2net_md_key(&aggr, pb_key);
+    TEST_ASSERT_NOT_NULL(key);
+
+    /* Validate ip version */
+    TEST_ASSERT_EQUAL_INT(6, key->ip_version);
+
+    /* Validate source ip */
+    domain = (key->ip_version == 4 ? AF_INET : AF_INET6);
+    rcs = inet_ntop(domain, key->src_ip, str, sizeof(str));
+    if (rcs == NULL) LOGI("%s: errno: %s", __func__, strerror(errno));
+    TEST_ASSERT_NOT_NULL(rcs);
+    rc = strcmp(str, pb_key->srcip);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    /* Validate destination ip */
+    domain = (key->ip_version == 4 ? AF_INET : AF_INET6);
+    rcs = inet_ntop(domain, key->dst_ip, str, sizeof(str));
+    if (rcs == NULL) LOGI("%s: errno: %s", __func__, strerror(errno));
+    TEST_ASSERT_NOT_NULL(rcs);
+    rc = strcmp(str, pb_key->dstip);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    /* Validate ip protocol */
+    TEST_ASSERT_EQUAL_INT(pb_key->ipprotocol, key->ipprotocol);
+
+    free_net_md_flow_key(key);
+}
+
+
+void
+test_vendor_data_serialize_deserialize(void)
+{
+    struct net_md_aggregator_set *aggr_set;
+    struct net_md_stats_accumulator *acc;
+    struct flow_counters counters[1];
+    struct net_md_aggregator *aggr_out;
+    struct net_md_aggregator *aggr_in;
+    struct flow_vendor_data *vd1;
+    struct flow_vendor_data *vd2;
+    struct net_md_flow_key *key;
+    struct flow_key *fkey;
+    bool ret;
+
+    struct vendor_data_kv_pair vd1_kps[] =
+    {
+        {
+            .key = "vd1_key1",
+            .value_type = NET_VENDOR_STR,
+            .str_value = "vd1_key1_val1",
+        },
+        {
+            .key = "vd1_key2",
+            .value_type = NET_VENDOR_U32,
+            .u32_value = 12345,
+        },
+        {
+            .key = "vd1_key3",
+            .value_type = NET_VENDOR_U64,
+            .u64_value = 12345678,
+        },
+    };
+
+    struct vendor_data_kv_pair vd2_kps[] =
+    {
+        {
+            .key = "vd2_key1",
+            .value_type = NET_VENDOR_STR,
+            .str_value = "vd2_key1_val1",
+        },
+        {
+            .key = "vd2_key2",
+            .value_type = NET_VENDOR_U32,
+            .u32_value = 54321,
+        },
+        {
+            .key = "vd2_key3",
+            .value_type = NET_VENDOR_U64,
+            .u64_value = 87654321,
+        },
+    };
+    struct vendor_data_kv_pair **kvps1;
+    struct vendor_data_kv_pair **kvps2;
+    struct vendor_data_kv_pair *kvp;
+    struct packed_buffer recv_pb;
+    struct packed_buffer *pb;
+    struct flow_tags **tags;
+    struct flow_tags *tag;
+    size_t nelems;
+    size_t i;
+
+    TEST_ASSERT_TRUE(g_nd_test.initialized);
+    counters[0].bytes_count = 10000;
+    counters[0].packets_count = 100;
+
+    /* Allocate aggregator */
+    aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_type = NET_MD_REPORT_RELATIVE;
+    aggr_in = net_md_allocate_aggregator(aggr_set);
+    TEST_ASSERT_NOT_NULL(aggr_in);
+
+    /* Activate aggregator window */
+    ret = net_md_activate_window(aggr_in);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Add one sample */
+    key = g_nd_test.net_md_keys[5];
+    ret = net_md_add_sample(aggr_in, key, counters);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Validate the state of the accumulator bound to the key */
+    acc = net_md_lookup_acc(aggr_in, key);
+    TEST_ASSERT_NOT_NULL(acc);
+    fkey = acc->fkey;
+    TEST_ASSERT_NOT_NULL(fkey);
+
+    /* Add vendor data to the key */
+    fkey->num_vendor_data = 2;
+    fkey->vdr_data = calloc(fkey->num_vendor_data,
+                            sizeof(*fkey->vdr_data));
+    TEST_ASSERT_NOT_NULL(fkey->vdr_data);
+
+    nelems = 3;
+
+    kvps1 = calloc(nelems, sizeof(struct vendor_data_kv_pair *));
+    TEST_ASSERT_NOT_NULL(kvps1);
+    for (i = 0; i < nelems; i++)
+    {
+        kvps1[i] = calloc(1, sizeof(struct vendor_data_kv_pair));
+        kvp = kvps1[i];
+        TEST_ASSERT_NOT_NULL(kvp);
+        kvp->key = strdup(vd1_kps[i].key);
+        if (vd1_kps[i].value_type == NET_VENDOR_STR)
+        {
+            kvp->value_type = NET_VENDOR_STR;
+            kvp->str_value = strdup(vd1_kps[i].str_value);
+            TEST_ASSERT_NOT_NULL(kvp->str_value);
+        }
+        else if (vd1_kps[i].value_type == NET_VENDOR_U32)
+        {
+            kvp->value_type = NET_VENDOR_U32;
+            kvp->u32_value = vd1_kps[i].u32_value;
+        }
+        else
+        {
+            kvp->value_type = NET_VENDOR_U64;
+            kvp->u64_value = vd1_kps[i].u64_value;
+        }
+        kvp++;
+    }
+    vd1 = calloc(1, sizeof(struct flow_vendor_data));
+    vd1->vendor = strdup("vendor1");
+    TEST_ASSERT_NOT_NULL(vd1->vendor);
+    vd1->nelems = 3;
+    vd1->kv_pairs = kvps1;
+
+    kvps2 = calloc(nelems, sizeof(struct vendor_data_kv_pair *));
+    TEST_ASSERT_NOT_NULL(kvps2);
+    for (i = 0; i < nelems; i++)
+    {
+        kvps2[i] = calloc(1, sizeof(struct vendor_data_kv_pair));
+        kvp = kvps2[i];
+        TEST_ASSERT_NOT_NULL(kvp);
+        kvp->key = strdup(vd2_kps[i].key);
+        if (vd2_kps[i].value_type == NET_VENDOR_STR)
+        {
+            kvp->str_value = strdup(vd2_kps[i].str_value);
+            TEST_ASSERT_NOT_NULL(kvp->str_value);
+        }
+        else if (vd2_kps[i].value_type == NET_VENDOR_U32)
+        {
+            kvp->value_type = NET_VENDOR_U32;
+            kvp->u32_value = vd2_kps[i].u32_value;
+        }
+        else
+        {
+            kvp->value_type = NET_VENDOR_U64;
+            kvp->u64_value = vd2_kps[i].u64_value;
+        }
+        kvp++;
+    }
+    vd2 = calloc(1, sizeof(struct flow_vendor_data));
+    vd2->vendor = strdup("vendor2");
+    TEST_ASSERT_NOT_NULL(vd2->vendor);
+    vd2->nelems = 3;
+    vd2->kv_pairs = kvps2;
+
+    fkey->vdr_data[0] = vd1;
+    fkey->vdr_data[1] = vd2;
+    fkey->num_vendor_data = 2;
+
+    /* Add a flow tag to the key */
+    fkey->num_tags = 1;
+    fkey->tags = calloc(fkey->num_tags, sizeof(*fkey->tags));
+    TEST_ASSERT_NOT_NULL(fkey->tags);
+
+    tag = calloc(1, sizeof(*tag));
+    TEST_ASSERT_NOT_NULL(tag);
+
+    tag->vendor = strdup("Plume");
+    TEST_ASSERT_NOT_NULL(tag->vendor)
+
+    tag->app_name = strdup("Plume App");
+    TEST_ASSERT_NOT_NULL(tag->app_name);
+
+    tag->nelems = 2;
+    tag->tags = calloc(tag->nelems, sizeof(tags));
+    TEST_ASSERT_NOT_NULL(tag->tags);
+
+    tag->tags[0] = strdup("Plume Tag0");
+    TEST_ASSERT_NOT_NULL(tag->tags[0]);
+
+    tag->tags[1] = strdup("Plume Tag1");
+    TEST_ASSERT_NOT_NULL(tag->tags[1]);
+
+    *(fkey->tags) = tag;
+
+    /* Close the active window */
+    ret = net_md_close_active_window(aggr_in);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Prepare the transfer to the receiving aggregator */
+    pb = serialize_flow_report(aggr_in->report);
+
+    recv_pb.len = pb->len;
+    recv_pb.buf = pb->buf;
+
+    test_emit_report(aggr_in);
+
+    /* Allocate the receiving aggregator */
+    aggr_out = net_md_allocate_aggregator(aggr_set);
+    TEST_ASSERT_NOT_NULL(aggr_out);
+
+    /* Activate the receiving aggregator window */
+    ret = net_md_activate_window(aggr_out);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Transfer tags and vendor data */
+    net_md_update_aggr(aggr_out, &recv_pb);
+
+    /* Free the serialized container */
+    free_packed_buffer(pb);
+    ret = net_md_close_active_window(aggr_out);
+
+    test_emit_report(aggr_out);
+    /* Free aggregators */
+    net_md_free_aggregator(aggr_in);
+    net_md_free_aggregator(aggr_out);
 }

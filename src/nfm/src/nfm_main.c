@@ -39,7 +39,6 @@
 #include "target.h"
 #include "os_backtrace.h"
 #include "json_util.h"
-#include "evsched.h"
 #include "ovsdb.h"
 #include <ev.h>
 
@@ -77,10 +76,6 @@ int main(int argc, char **argv)
 
 	backtrace_init();
 	json_memdbg_init(loop);
-	if (evsched_init(loop) == false) {
-		LOGE("Initializing Netfilter manager: failed to initialize event loop");
-		return -1;
-	}
 
 	if (!target_init(TARGET_INIT_MGR_NFM, loop)) {
 		LOGE("Initializing Netfilter manager: failed to initialize target");

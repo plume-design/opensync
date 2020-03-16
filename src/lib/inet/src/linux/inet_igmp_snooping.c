@@ -57,7 +57,7 @@ bool inet_config_igmp_snooping(inet_igmp_t *self)
 
     LOG(INFO, "Enabling IGMP snooping on interface: %s", self->igmp_ifname);
 
-    status = execsh_log(LOG_SEVERITY_INFO, set_igmp_snooping,
+    status = execsh_log(LOG_SEVERITY_DEBUG, set_igmp_snooping,
                         self->igmp_ifname, self->igmp ? "true" : "false");
     if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
     {
@@ -85,7 +85,7 @@ bool inet_config_igmp_snooping(inet_igmp_t *self)
     if (self->igmp)
     {
         snprintf(cmdbuf, sizeof(cmdbuf), "%d", self->igmp_tsize);
-        status = execsh_log(LOG_SEVERITY_INFO, set_igmp_tsize,
+        status = execsh_log(LOG_SEVERITY_DEBUG, set_igmp_tsize,
                             self->igmp_ifname, cmdbuf);
         if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
         {

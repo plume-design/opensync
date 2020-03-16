@@ -29,8 +29,8 @@
 * POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef NFM_INCLUDE_OSFW
-#define NFM_INCLUDE_OSFW
+#ifndef NFM_OSFW_H_INCLUDED
+#define NFM_OSFW_H_INCLUDED
 
 #include "schema.h"
 #include <ev.h>
@@ -51,5 +51,4 @@ bool nfm_osfw_del_chain(int family, const char *table, const char *chain);
 bool nfm_osfw_add_rule(const struct schema_Netfilter *conf);
 bool nfm_osfw_del_rule(const struct schema_Netfilter *conf);
 
-#endif
-
+#endif /* NFM_OSFW_H_INCLUDED */

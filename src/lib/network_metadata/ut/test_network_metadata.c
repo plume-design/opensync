@@ -45,6 +45,45 @@ struct test_network_data g_test;
 
 extern struct test_network_data_report g_nd_test;
 
+struct vendor_data_kv_pair g_vd1_kps[] =
+{
+    {
+        .key = "vd1_key1",
+        .value_type = NET_VENDOR_STR,
+        .str_value = "vd1_key1_val1",
+    },
+    {
+        .key = "vd1_key2",
+        .value_type = NET_VENDOR_U32,
+        .u32_value = 12345,
+    },
+    {
+        .key = "vd1_key3",
+        .value_type = NET_VENDOR_U64,
+        .u64_value = 12345678,
+    },
+};
+
+struct vendor_data_kv_pair g_vd2_kps[] =
+{
+    {
+        .key = "vd2_key1",
+        .value_type = NET_VENDOR_STR,
+        .str_value = "vd2_key1_val1",
+    },
+    {
+        .key = "vd2_key2",
+        .value_type = NET_VENDOR_U32,
+        .u32_value = 54321,
+    },
+    {
+        .key = "vd2_key3",
+        .value_type = NET_VENDOR_U64,
+        .u64_value = 87654321,
+    },
+};
+
+
 /**
  * @brief sets a node info.
  *
@@ -447,6 +486,18 @@ static void validate_node_info(struct node_info *node,
  */
 static void validate_flow_tags(struct flow_tags *flow_tags,
                                 Traffic__FlowTags *flow_tags_pb)
+{
+    return;
+}
+
+/**
+ * @brief validates the contents of a vendor data protobuf
+ *
+ * @param vd expected vendor_data info
+ * @param pb_vd vendor data protobuf to validate
+ */
+static void validate_vendor_data(struct flow_vendor_data *vd,
+                                 Traffic__VendorData *pb_vd)
 {
     return;
 }
@@ -1103,6 +1154,289 @@ test_serialize_flow_tags(void)
 
 
 /**
+ * @brief test flow tags serialization
+ */
+void
+test_serialize_vendor_data(void)
+{
+    struct flow_vendor_data vd =
+    {
+        .vendor = "vd1",
+    };
+
+    struct packed_buffer *pb;
+    struct packed_buffer pb_r = { 0 };
+    uint8_t rbuf[4096];
+    size_t nread = 0;
+    Traffic__VendorData *pb_vd;
+
+    struct vendor_data_kv_pair **kvps;
+    struct vendor_data_kv_pair **kvp;
+    size_t nelems;
+    size_t i;
+
+    nelems = 3;
+
+    kvps = calloc(nelems, sizeof(struct vendor_data_kv_pair *));
+    TEST_ASSERT_NOT_NULL(kvps);
+    kvp = kvps;
+    for (i = 0; i < nelems; i++)
+    {
+        *kvp = &g_vd1_kps[i];
+        kvp++;
+    }
+    vd.kv_pairs = kvps;
+
+    pb = serialize_vendor_data(&vd);
+    /* Basic validation */
+    TEST_ASSERT_NOT_NULL(pb);
+    TEST_ASSERT_NOT_NULL(pb->buf);
+
+    /* Save the serialized protobuf to file */
+    pb2file(pb, g_test.f_name);
+
+    /* Free the serialized container */
+    free_packed_buffer(pb);
+
+    /* Read back the serialized protobuf */
+    pb_r.buf = rbuf;
+    pb_r.len = sizeof(rbuf);
+    nread = file2pb(g_test.f_name, &pb_r);
+    pb_vd = traffic__vendor_data__unpack(NULL, nread, rbuf);
+    TEST_ASSERT_NOT_NULL(pb_vd);
+
+    /* Validate the deserialized content */
+    validate_vendor_data(&vd, pb_vd);
+
+    /* Free the deserialized content */
+    traffic__vendor_data__free_unpacked(pb_vd, NULL);
+    free(kvps);
+}
+
+/**
+ * @brief tests serialize_flow_key() with vendor data
+ */
+void test_serialize_flow_key_with_vendor_data(void)
+{
+    struct flow_vendor_data vd1 =
+    {
+        .vendor = "vd1",
+        .nelems = 3,
+    };
+
+    struct flow_vendor_data vd2 =
+    {
+        .vendor = "vd2",
+        .nelems = 3,
+    };
+
+    struct flow_vendor_data **vds;
+    struct vendor_data_kv_pair **kvps1;
+    struct vendor_data_kv_pair **kvps2;
+    struct vendor_data_kv_pair **kvp;
+    size_t nelems;
+    size_t i;
+
+    struct flow_key test_key = {
+        .smac = "test_smac",
+        .dmac = "test_dmac",
+        .vlan_id = 0,
+        .ethertype = 0x8000,
+        .src_ip = NULL,
+        .dst_ip = NULL,
+        .protocol = 0,
+        .sport = 0,
+        .dport = 0,
+        .num_vendor_data = 2,
+    };
+
+    struct flow_key *key = &test_key;
+    struct packed_buffer *pb;
+    struct packed_buffer pb_r = { 0 };
+    uint8_t rbuf[4096];
+    size_t nread = 0;
+    Traffic__FlowKey *key_pb;
+
+    nelems = 3;
+
+    kvps1 = calloc(nelems, sizeof(struct vendor_data_kv_pair *));
+    TEST_ASSERT_NOT_NULL(kvps1);
+    kvp = kvps1;
+    for (i = 0; i < nelems; i++)
+    {
+        *kvp = &g_vd1_kps[i];
+        kvp++;
+    }
+    vd1.kv_pairs = kvps1;
+
+    kvps2 = calloc(nelems, sizeof(struct vendor_data_kv_pair *));
+    TEST_ASSERT_NOT_NULL(kvps2);
+    kvp = kvps2;
+    for (i = 0; i < nelems; i++)
+    {
+        *kvp = &g_vd2_kps[i];
+        kvp++;
+    }
+    vd2.kv_pairs = kvps2;
+
+    vds = calloc(2, sizeof(struct flow_vendor_data *));
+    TEST_ASSERT_NOT_NULL(vds);
+
+    vds[0] = &vd1;
+    vds[1] = &vd2;
+
+    key->vdr_data = vds;
+
+    /* Serialize the flow_counter data */
+    pb = serialize_flow_key(key);
+
+    /* Basic validation */
+    TEST_ASSERT_NOT_NULL(pb);
+    TEST_ASSERT_NOT_NULL(pb->buf);
+
+    /* Save the serialized protobuf to file */
+    pb2file(pb, g_test.f_name);
+
+    /* Free the serialized container */
+    free_packed_buffer(pb);
+
+    /* Read back the serialized protobuf */
+    pb_r.buf = rbuf;
+    pb_r.len = sizeof(rbuf);
+    nread = file2pb(g_test.f_name, &pb_r);
+    key_pb = traffic__flow_key__unpack(NULL, nread, rbuf);
+
+    /* Validate the deserialized content */
+    TEST_ASSERT_NOT_NULL(key_pb);
+    validate_flow_key(key, key_pb);
+
+    /* Free the deserialized content */
+    traffic__flow_key__free_unpacked(key_pb, NULL);
+
+    free(kvps1);
+    free(kvps2);
+    free(vds);
+}
+
+/**
+ * @brief test flow state serialization
+ */
+
+void  test_serialize_flow_state(void)
+{
+    struct flow_state fs =
+    {
+        .first_obs = 12345678,
+        .last_obs = 87654321,
+        .fstart = true,
+        .fend   = true,
+    };
+
+    struct packed_buffer *pb;
+    struct packed_buffer pb_r = { 0 };
+    uint8_t rbuf[4096];
+    size_t nread = 0;
+    Traffic__FlowState *pb_fs;
+
+
+    pb = serialize_flow_state(&fs);
+    /* Basic validation */
+    TEST_ASSERT_NOT_NULL(pb);
+    TEST_ASSERT_NOT_NULL(pb->buf);
+
+    /* Save the serialized protobuf to file */
+    pb2file(pb, g_test.f_name);
+
+    /* Free the serialized container */
+    free_packed_buffer(pb);
+
+    /* Read back the serialized protobuf */
+    pb_r.buf = rbuf;
+    pb_r.len = sizeof(rbuf);
+    nread = file2pb(g_test.f_name, &pb_r);
+    pb_fs = traffic__flow_state__unpack(NULL, nread, rbuf);
+    TEST_ASSERT_NOT_NULL(pb_fs);
+
+    /* Validate the deserialized content */
+    TEST_ASSERT_EQUAL_UINT32(fs.first_obs, pb_fs->firstobservedat);
+    TEST_ASSERT_EQUAL_UINT32(fs.last_obs, pb_fs->lastobservedat);
+    TEST_ASSERT_EQUAL_UINT8(true, pb_fs->flowstart);
+    TEST_ASSERT_EQUAL_UINT8(true, pb_fs->flowend);
+
+    /* Free the deserialized content */
+    traffic__flow_state__free_unpacked(pb_fs, NULL);
+}
+
+/**
+ * @brief tests serialize_flow_key() with flow state
+ */
+void test_serialize_flow_key_with_flow_state(void)
+{
+    struct flow_state test_fstate = {
+        .first_obs = 1,
+        .last_obs = 2,
+        .fstart = true,
+        .fend = true,
+    };
+
+    struct flow_key test_key = {
+        .smac = "test_smac",
+        .dmac = "test_dmac",
+        .vlan_id = 0,
+        .ethertype = 0x8000,
+        .src_ip = NULL,
+        .dst_ip = NULL,
+        .protocol = 0,
+        .sport = 0,
+        .dport = 0,
+        .num_vendor_data = 0,
+        .state = test_fstate,
+    };
+
+    struct flow_key *key = &test_key;
+    struct packed_buffer *pb;
+    struct packed_buffer pb_r = { 0 };
+    uint8_t rbuf[4096];
+    size_t nread = 0;
+    Traffic__FlowKey *key_pb;
+
+    /* Serialize the flow_counter data */
+    pb = serialize_flow_key(key);
+
+    /* Basic validation */
+    TEST_ASSERT_NOT_NULL(pb);
+    TEST_ASSERT_NOT_NULL(pb->buf);
+
+    /* Save the serialized protobuf to file */
+    pb2file(pb, g_test.f_name);
+
+    /* Free the serialized container */
+    free_packed_buffer(pb);
+
+    /* Read back the serialized protobuf */
+    pb_r.buf = rbuf;
+    pb_r.len = sizeof(rbuf);
+    nread = file2pb(g_test.f_name, &pb_r);
+    key_pb = traffic__flow_key__unpack(NULL, nread, rbuf);
+
+    /* Validate the deserialized content */
+    TEST_ASSERT_NOT_NULL(key_pb);
+    validate_flow_key(key, key_pb);
+
+    /* Validate the flow state */
+    TEST_ASSERT_EQUAL_UINT32(key->state.first_obs,
+                             key_pb->flowstate->firstobservedat);
+    TEST_ASSERT_EQUAL_UINT32(key->state.last_obs,
+                             key_pb->flowstate->lastobservedat);
+    TEST_ASSERT_EQUAL_UINT8(key->state.fstart, key_pb->flowstate->flowstart);
+    TEST_ASSERT_EQUAL_UINT8(key->state.fend, key_pb->flowstate->flowend);
+
+    /* Free the deserialized content */
+    traffic__flow_key__free_unpacked(key_pb, NULL);
+}
+
+
+/**
  * test_serialize_flow_report: tests
  * serialize_flow_report() behavior when provided a valid node info
  */
@@ -1163,7 +1497,6 @@ int main(int argc, char *argv[])
     log_severity_set(LOG_SEVERITY_INFO);
 
     UnityBegin("network_metadata");
-
     /* Protobuf serialization testing */
     RUN_TEST(test_serialize_node_info_null_ptr);
     RUN_TEST(test_serialize_node_info_no_field_set);
@@ -1178,6 +1511,10 @@ int main(int argc, char *argv[])
     RUN_TEST(test_serialize_flow_report);
     RUN_TEST(test_serialize_flow_tags);
     RUN_TEST(test_serialize_flow_key_with_tags);
+    RUN_TEST(test_serialize_vendor_data);
+    RUN_TEST(test_serialize_flow_key_with_vendor_data);
+    RUN_TEST(test_serialize_flow_state);
+    RUN_TEST(test_serialize_flow_key_with_flow_state);
 
     /* Sampling and reporting testing */
     RUN_TEST(test_str2mac);
@@ -1193,6 +1530,9 @@ int main(int argc, char *argv[])
     RUN_TEST(test_activate_and_free_aggr);
     RUN_TEST(test_bogus_ttl);
     RUN_TEST(test_flow_tags_one_key);
+    RUN_TEST(test_vendor_data_one_key);
+    RUN_TEST(test_flow_key_to_net_md_key);
+    RUN_TEST(test_vendor_data_serialize_deserialize);
 
     return UNITY_END();
 }

@@ -55,7 +55,7 @@ int ovsdb_table_init(
     char                **columns)
 {
     memset(table, 0, sizeof(*table));
-    table->table_name = strdup(table_name);
+    STRSCPY(table->table_name, table_name);
     table->schema_size = schema_size;
     table->upd_type_offset = upd_type_offset;
     table->uuid_offset = uuid_offset;

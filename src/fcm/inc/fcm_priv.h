@@ -33,7 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define FCM_DSO_PATH             "dso_path"
 #define FCM_DSO_INIT             "dso_init"
-#define FCM_DSO_DFLT_PATH        "/usr/plume/lib"
+#define FCM_DSO_DFLT_PATH        CONFIG_INSTALL_PREFIX"/lib"
 #define FCM_DSO_PREFIX           "/libfcm_"
 #define FCM_DSO_TYPE             ".so"
 #define FCM_DSO_PATH_LEN         (255)

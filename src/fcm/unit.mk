@@ -29,21 +29,11 @@
 ##############################################################################
 UNIT_NAME := fcm
 
-UNIT_DISABLE := $(if $(CONFIG_TARGET_MANAGER_FCM),n,y)
+UNIT_DISABLE := $(if $(CONFIG_MANAGER_FCM),n,y)
+UNIT_TYPE := BIN
 
-# For unit testing in native builds, if compiled with clang:
-# - compile the manager as a library
-# - omit fcm_main.c (the UT code provides its own main file)
-# Otherwise, compile the manager as a binary.
-ifeq (,$(findstring clang,$(CC)))
-	UNIT_TYPE := BIN
-	UNIT_SRC := src/fcm_main.c
-	UNIT_SRC += src/fcm_ovsdb.c
-else
-	UNIT_TYPE := LIB
-	UNIT_SRC := src/fcm_ovsdb.c
-endif
-
+UNIT_SRC := src/fcm_main.c
+UNIT_SRC += src/fcm_ovsdb.c
 UNIT_SRC += src/fcm_mgr.c
 
 
@@ -59,11 +49,10 @@ UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/ovsdb
 UNIT_DEPS += src/lib/pjs
 UNIT_DEPS += src/lib/schema
-UNIT_DEPS += src/lib/version
-UNIT_DEPS += src/lib/evsched
 UNIT_DEPS += src/lib/datapipeline
 UNIT_DEPS += src/lib/json_util
 UNIT_DEPS += src/lib/network_metadata
 UNIT_DEPS += src/lib/policy_tags
 UNIT_DEPS += src/lib/fcm_filter
-UNIT_DEPS += src/lib/ip_map
+UNIT_DEPS += src/lib/nf_utils
+UNIT_DEPS += src/lib/neigh_table

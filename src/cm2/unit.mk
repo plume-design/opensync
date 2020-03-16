@@ -27,6 +27,8 @@
 # Connection manager
 #
 ###############################################################################
+UNIT_DISABLE := $(if $(CONFIG_MANAGER_CM),n,y)
+
 UNIT_NAME := cm
 
 # Template type:
@@ -41,7 +43,6 @@ else
 UNIT_SRC    += src/cm2_resolve_sync.c
 endif
 UNIT_SRC    += src/cm2_resolve.c
-UNIT_SRC    += src/cm2_stability.c
 UNIT_SRC    += src/cm2_net.c
 
 UNIT_CFLAGS += -I$(TOP_DIR)/src/lib/common/inc/
@@ -52,11 +53,18 @@ UNIT_LDFLAGS += -ldl
 UNIT_LDFLAGS += -lev
 UNIT_LDFLAGS += -lrt
 
-ifneq ($(CONFIG_USE_KCONFIG),y)
-# Disable dryrun on GRE by default for all platforms without KConfig
-UNIT_CFLAGS += -DCONFIG_PLUME_CM2_DISABLE_DRYRUN_ON_GRE
-# Set default mtu on gre interface
-UNIT_CFLAGS += -DCONFIG_OPENSYNC_CM2_MTU_ON_GRE=1500
+
+ifneq ($(CONFIG_MANAGER_CM),y)
+UNIT_CFLAGS += -DCONFIG_CM2_MTU_ON_GRE=1500
+UNIT_CFLAGS += -DCONFIG_CM2_OVS_MIN_BACKOFF=30
+UNIT_CFLAGS += -DCONFIG_CM2_OVS_MAX_BACKOFF=60
+UNIT_CFLAGS += -DCONFIG_CM2_OVS_SHORT_BACKOFF=8
+UNIT_CFLAGS += -DCONFIG_CM2_ETHERNET_SHORT_DELAY=5
+UNIT_CFLAGS += -DCONFIG_CM2_ETHERNET_LONG_DELAY=128
+endif
+
+ifeq ($(CONFIG_CM2_USE_STABILITY_CHECK),y)
+UNIT_SRC    += src/cm2_stability.c
 endif
 
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
@@ -65,8 +73,6 @@ UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 UNIT_DEPS := src/lib/ovsdb
 UNIT_DEPS += src/lib/pjs
 UNIT_DEPS += src/lib/schema
-UNIT_DEPS += src/lib/version
-UNIT_DEPS += src/lib/evsched
 ifeq ($(BUILD_HAVE_LIBCARES),y)
 UNIT_DEPS += src/lib/evx
 endif

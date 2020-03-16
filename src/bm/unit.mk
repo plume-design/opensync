@@ -27,6 +27,8 @@
 # Band Steering Manager
 #
 ###############################################################################
+UNIT_DISABLE := $(if $(CONFIG_MANAGER_BM),n,y)
+
 UNIT_NAME := bm
 
 # Template type:
@@ -34,12 +36,13 @@ UNIT_TYPE := BIN
 
 UNIT_SRC := src/bm_main.c
 UNIT_SRC += src/bm_events.c
-UNIT_SRC += src/bm_pair.c
+UNIT_SRC += src/bm_group.c
 UNIT_SRC += src/bm_client.c
 UNIT_SRC += src/bm_kick.c
 UNIT_SRC += src/bm_stats.c
 UNIT_SRC += src/bm_stats_rssi.c
 UNIT_SRC += src/bm_neighbor.c
+UNIT_SRC += src/bm_ieee80211.c
 
 UNIT_DEPS += src/lib/ds
 UNIT_DEPS += src/lib/common
@@ -47,6 +50,7 @@ UNIT_DEPS += src/lib/ovsdb
 UNIT_DEPS += src/lib/pjs
 UNIT_DEPS += src/lib/schema
 UNIT_DEPS += src/lib/datapipeline
+UNIT_DEPS += src/lib/evsched
 UNIT_DEPS += src/lib/target
 UNIT_DEPS += src/qm/qm_conn
 

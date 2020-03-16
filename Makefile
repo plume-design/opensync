@@ -42,11 +42,11 @@ include build/vendor-arch.mk
 # KConfig configuration
 include build/kconfig.mk
 
-# Create CFG_DEFINES based on configuration options
-include build/cfg-defines.mk
-
 # Vendor defines
 include build/vendor-defines.mk
+
+# service provider specifics
+include build/service-provider.mk
 
 ifneq ($(_OVERRIDE_MAIN_MAKEFILE),1)
 
@@ -77,7 +77,7 @@ include build/doc.mk
 
 build_all: workdirs schema-check unit-install
 
-clean: unit-clean
+clean:
 	$(NQ) " $(call color_clean,clean)   [$(call COLOR_BOLD,workdir)] $(WORKDIR)"
 	$(Q)$(RM) -r $(WORKDIR)
 

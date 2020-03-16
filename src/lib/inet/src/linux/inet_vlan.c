@@ -130,7 +130,7 @@ bool inet_vlan_set_impl(
     self->vlan_id = vlanid;
 
     /* Interface must be recreated, therefore restart the top service */
-    return inet_unit_restart(self->base.in_units, INET_BASE_INTERFACE, false);
+    return inet_unit_restart(self->base.in_units, INET_BASE_IF_CREATE, false);
 }
 
 bool inet_vlan_service_commit_impl(
@@ -147,7 +147,7 @@ bool inet_vlan_service_commit_impl(
 
     switch (srv)
     {
-        case INET_BASE_INTERFACE:
+        case INET_BASE_IF_CREATE:
             return inet_vlan_interface_start(self, enable);
 
         default:

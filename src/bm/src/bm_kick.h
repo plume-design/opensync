@@ -28,8 +28,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * Band Steering Manager - Kicking Logic
  */
 
-#ifndef __BM_KICK_H__
-#define __BM_KICK_H__
+#ifndef BM_KICK_H_INCLUDED
+#define BM_KICK_H_INCLUDED
 
 #define BM_KICK_MAGIC_NUMBER            1
 #define BM_KICK_MAGIC_DEBOUNCE_PERIOD   1
@@ -65,10 +65,12 @@ typedef enum {
 /*****************************************************************************/
 extern bool             bm_kick_init(void);
 extern bool             bm_kick_cleanup(void);
-extern bool             bm_kick_cleanup_by_bsal(bsal_t bsal);
+extern bool             bm_kick_cleanup_by_group(bm_group_t *group);
 extern bool             bm_kick_cleanup_by_client(bm_client_t *client);
 extern bool             bm_kick(bm_client_t *client, bm_kick_type_t type, uint8_t rssi);
 extern void             bm_kick_measurement(os_macaddr_t macaddr, uint8_t rssi);
 extern void             bm_kick_cancel_btm_retry_task( bm_client_t *client );
+extern bool             bm_kick_get_rrm_params(bsal_rrm_params_t *rrm_params);
+extern bool             bm_kick_get_rrm_op_class(bsal_rrm_params_t *rrm_params, uint8_t channel);
 
-#endif /* __BM_KICK_H__ */
+#endif /* BM_KICK_H_INCLUDED */

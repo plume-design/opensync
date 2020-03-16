@@ -36,9 +36,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 struct __inet_igmp
 {
-
 };
 
+static inet_igmp_t g_igmp;
 
 /*
  * Start/stop the IGMP snooping service
@@ -76,9 +76,10 @@ inet_igmp_t *inet_igmp_new(const char *ifname)
 {
     (void)ifname;
 
-    LOG(WARN, "inet_igmp: %s: IGMP snooping not available on platform.", ifname);
+    LOG(NOTICE, "inet_igmp: %s: not using OpenSync IGMP snooping on this platform.", ifname);
 
-    return (void *)0xdeadc0de;
+    return &g_igmp;
+;
 }
 
 bool inet_igmp_del(inet_igmp_t *self)

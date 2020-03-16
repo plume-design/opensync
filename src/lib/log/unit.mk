@@ -35,8 +35,8 @@ UNIT_TYPE := LIB
 UNIT_SRC  := src/log.c
 UNIT_SRC  += src/log_syslog.c
 UNIT_SRC  += src/log_stdout.c
-UNIT_SRC  += src/log_remote.c
 UNIT_SRC  += src/log_traceback.c
+UNIT_SRC  += $(if $(CONFIG_LOG_REMOTE),src/log_remote.c,)
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -Isrc/lib/osa/inc
@@ -46,6 +46,17 @@ UNIT_LDFLAGS += -lev
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
 UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 
-UNIT_DEPS := src/lib/target
+UNIT_DEPS := src/lib/common
+UNIT_DEPS := src/lib/const
 UNIT_DEPS += src/lib/ds
+UNIT_DEPS += src/lib/kconfig
+
+ifdef CONFIG_MANAGER_QM
 UNIT_DEPS += src/qm/qm_conn
+endif
+
+ifeq ($(BUILD_LOG_PREFIX_PLUME),y)
+ifneq ($(CONFIG_LOG_USE_PREFIX),y)
+$(error BUILD_LOG_PREFIX_PLUME is obsolete, use CONFIG_LOG_USE_PREFIX)
+endif
+endif

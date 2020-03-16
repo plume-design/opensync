@@ -77,5 +77,6 @@ extern void os_reg_match_cpy(
         size_t destsz,
         const char* src,
         regmatch_t srm);
-#endif
+
+#endif /* OS_REGEX_H_INCLUDED */
 

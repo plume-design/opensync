@@ -28,11 +28,6 @@
 
 BUILD_SHARED_LIB = n
 
-DIST_NAME = $(shell if [ -e /etc/os-release ]; then . /etc/os-release; echo $$ID$$VERSION_ID; fi)
-ifneq ($(DIST_NAME),)
-WORKDIR  = work/$(TARGET)-$(DIST_NAME)-$(CPU_TYPE)
-endif
-
 SDK_ROOTFS     = $(OBJDIR)/rootfs
 
 CC             ?= gcc

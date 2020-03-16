@@ -28,8 +28,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * evsched.h
  */
 
-#ifndef __EVSCHED_H__
-#define __EVSCHED_H__
+#ifndef EVSCHED_H_INCLUDED
+#define EVSCHED_H_INCLUDED
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -42,7 +42,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define EVSCHED_MIN(x)          (EVSCHED_SEC(60) * x)
 
 #define EVSCHED_FIND_BY_FUNC    (1 << 0)
-#define EVSCHED_FIND_BY_ARG     (1 << 1)    
+#define EVSCHED_FIND_BY_ARG     (1 << 1)
 
 
 /*****************************************************************************/
@@ -66,4 +66,4 @@ extern bool             evsched_task_reschedule(void);
 extern bool             evsched_init(struct ev_loop *loop);
 extern bool             evsched_cleanup(void);
 
-#endif /* __EVSCHED_H__ */
+#endif /* EVSCHED_H_INCLUDED */

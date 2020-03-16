@@ -42,7 +42,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 static void execsh_closefrom(int fd);
 static bool execsh_set_nonblock(int fd, bool enable);
-static pid_t execsh_pspawn(const char *path, char *argv[], int *pstdin, int *pstdout, int *pstderr);
+static pid_t execsh_pspawn(const char *path, char *argv[], int fdin, int fdout, int fderr);
+static bool __execsh_log(void *ctx, int type, const char *msg);
 
 static void __execsh_fn_std_write(struct ev_loop *loop, ev_io *w, int revent);
 static void __execsh_fn_std_read(struct ev_loop *loop, ev_io *w, int revent);
@@ -118,6 +119,7 @@ exit:
 int execsh_fn_a(execsh_fn_t *fn, void *ctx, const char *script, char *__argv[])
 {
     struct __execsh es;
+    int wstat;
 
     pid_t cpid = -1;
     int retval = -1;
@@ -189,8 +191,18 @@ int execsh_fn_a(execsh_fn_t *fn, void *ctx, const char *script, char *__argv[])
     /* Terminate it with NULL */
     argv[argc] = NULL;
 
-    /* Finally, after all this prep work, run the child */
-    cpid = execsh_pspawn(EXECSH_SHELL_PATH, argv, pin, pout, perr);
+    /* Run the child */
+    cpid = execsh_pspawn(EXECSH_SHELL_PATH, argv, pin[P_RD],  pout[P_WR], perr[P_WR]);
+    if (cpid < 0)
+    {
+        LOG(ERR, "execsh: Error executing: %s", script);
+        goto exit;
+    }
+
+    /* Close child ends of the pipe */
+    close(pin[P_RD]); pin[P_RD] = -1;
+    close(pout[P_WR]); pout[P_WR] = -1;
+    close(perr[P_WR]); perr[P_WR] = -1;
 
     /* Callback context */
     char outbuf[EXECSH_PIPE_BUF];
@@ -216,7 +228,7 @@ int execsh_fn_a(execsh_fn_t *fn, void *ctx, const char *script, char *__argv[])
     loop = ev_loop_new(EVFLAG_AUTO);
     if (loop == NULL)
     {
-        LOG(ERR, "execsh: Error creating loop, execsh() fialed.");
+        LOG(ERR, "execsh: Error creating loop, execsh() failed.");
         goto exit;
     }
 
@@ -238,21 +250,38 @@ int execsh_fn_a(execsh_fn_t *fn, void *ctx, const char *script, char *__argv[])
     /* Loop until all watchers are active */
     while (ev_run(loop, EVRUN_ONCE))
     {
-        bool loop = false;
+        bool do_loop = false;
 
-        loop |= ev_is_active(&win);
-        loop |= ev_is_active(&wout);
-        loop |= ev_is_active(&werr);
+        do_loop |= ev_is_active(&win);
+        do_loop |= ev_is_active(&wout);
+        do_loop |= ev_is_active(&werr);
 
-        if (!loop) break;
+        if (!do_loop) break;
     }
 
     /* Wait for the process to terminate */
-    if (waitpid(cpid, &retval, 0) <= 0)
+    if (waitpid(cpid, &wstat, 0) <= 0)
     {
         LOG(ERR, "execsh: Error waiting on child.");
-        retval = -1;
+        goto exit;
     }
+
+    if (WIFSIGNALED(wstat))
+    {
+        LOG(ERR, "execsh: Process terminated by signal %d.", WTERMSIG(wstat));
+        goto exit;
+    }
+
+    if (!WIFEXITED(wstat))
+    {
+        /*
+         * Process was not terminated by signal and did not exit
+         */
+        LOG(ERR, "execsh: Unable to retrieve process status.");
+        goto exit;
+    }
+
+    retval = WEXITSTATUS(retval);
 
 exit:
     if (loop != NULL) ev_loop_destroy(loop);
@@ -262,12 +291,12 @@ exit:
     int ii;
     for (ii = 0; ii < 2; ii++)
     {
-        close(pin[ii]);
-        close(pout[ii]);
-        close(perr[ii]);
+        if (pin[ii] >= 0) close(pin[ii]);
+        if (pout[ii] >= 0) close(pout[ii]);
+        if (perr[ii] >= 0) close(perr[ii]);
     }
 
-    return retval;
+    return WEXITSTATUS(retval);
 }
 
 void __execsh_fn_std_write(struct ev_loop *loop, ev_io *w, int revent)
@@ -282,7 +311,7 @@ void __execsh_fn_std_write(struct ev_loop *loop, ev_io *w, int revent)
     {
         pes->pscript += nwr;
 
-        /* DId we reach the end of the string? */
+        /* Did we reach the end of the string? */
         if (pes->pscript[0] == '\0')
         {
             break;
@@ -339,102 +368,111 @@ void execsh_closefrom(int fd)
 
     int maxfd = sysconf(_SC_OPEN_MAX);
 
-    for (ii = 3; ii < maxfd; ii++) close(ii);
+    for (ii = fd; ii < maxfd; ii++) close(ii);
 }
 
 /**
  * Spawn a process:
  *
  *  - path: Full path to executable
- *  - pstdin, pstdout, pstderr: piar of file descriptors
+ *  - fstdin, fstdout, fstderr: file descriptors that will be used for I/O
+ *    redirection or -1 if /dev/null shall be used instead
  *  - argv: null-terminated variable list of char *
  */
 pid_t execsh_pspawn(
         const char *path,
         char *argv[],
-        int *pstdin,
-        int *pstdout,
-        int *pstderr)
+        int fdin,
+        int fdout,
+        int fderr)
 {
-    int fdevnull = -1;
+    int fdevnull;
+    pid_t child;
+    int flog;
+    int fdi;
+    int rc;
 
-    pid_t child = fork();
+    /* Remap fdin, fdout and fderr arguments to an array for convenience */
+    int fdio[3] = { fdin, fdout, fderr };
 
-    if (child == -1) return -1;
-
+    child = fork();
     if (child > 0)
     {
-        /* Parent keeps write end of STDIN */
-        if (pstdin != NULL)
-        {
-            close(pstdin[P_RD]);
-            pstdin[P_RD] = -1;
-        }
-
-        /* Parent keeps read-end of STDOUT */
-        if (pstdout != NULL)
-        {
-            close(pstdout[P_WR]);
-            pstdout[P_WR] = -1;
-        }
-
-        /* Parent keeps read-end of STDERR */
-        if (pstderr != NULL)
-        {
-            close(pstderr[P_WR]);
-            pstderr[P_WR] = -1;
-        }
-
         return child;
     }
-
-    /* Point of no return */
-
-    close(0);
-    close(1);
-    close(2);
-
-    /* Child keeps read end of STDIN and write-ends of STDOUT and STDERR */
-    if (pstdin != NULL) close(pstdin[P_WR]);
-    if (pstdout != NULL) close(pstdout[P_RD]);
-    if (pstderr != NULL) close(pstderr[P_RD]);
-
-    fdevnull = open("/dev/null", O_RDWR);
-
-    if (pstdin != NULL && pstdin[P_RD] >= 0)
+    else if (child < 0)
     {
-        dup2(pstdin[P_RD], 0);
-    }
-    else
-    {
-        dup2(fdevnull, 0);
+        LOG(DEBUG, "execsh: Fork failed.");
+        return -1;
     }
 
-    if (pstdout != NULL && pstdout[P_WR] >= 0)
+    // Point of no return -- below this point print messages to stderr
+    flog = (fderr >= 0) ? fderr : 2;
+
+    /*
+     * In case there's a gap between file descriptors 0..2, fill it with
+     * references to /dev/null
+     */
+    while ((fdevnull = open("/dev/null", O_RDWR)) < 3)
     {
-        dup2(pstdout[P_WR], 1);
-    }
-    else
-    {
-        dup2(fdevnull, 1);
+        if (fdevnull < 0)
+        {
+            dprintf(flog, "execsh (post-fork): Error opening /dev/null: %s",
+                          strerror(errno));
+            fdevnull = -1;
+            break;
+        }
     }
 
-    if (pstderr != NULL && pstderr[P_WR] >= 0)
+    /*
+     * Relocate file descriptors -- now that we're sure there's no holes between
+     * 0..2, we can just dup() the file descriptors to acquire a descriptor >2
+     *
+     * This step is necessary to ensure that the descriptor assignment phase
+     * (below) doesn't accidentally overwrite a file descriptor using dup2().
+     */
+    for (fdi = 0; fdi < ARRAY_LEN(fdio); fdi++)
     {
-        dup2(pstderr[P_WR], 2);
-    }
-    else
-    {
-        dup2(fdevnull, 2);
+        if (fdio[fdi] < 0 || fdio[fdi] > 2) continue;
+
+        fdio[fdi] = dup(fdio[fdi]);
+        if (fdio[fdi] < 0)
+        {
+            dprintf(flog, "execsh (post-fork): Error cloning fd %d.\n", fdi);
+        }
     }
 
-    /* Close all other file descriptors */
+    /*
+     * Assign file descriptors; if a file descriptor is invalid <0, replace it
+     * with a reference to /dev/null
+     */
+    for (fdi = 0; fdi < ARRAY_LEN(fdio); fdi++)
+    {
+        if (fdio[fdi] < 0)
+        {
+            rc = dup2(fdevnull, fdi);
+        }
+        else
+        {
+            rc = dup2(fdio[fdi], fdi);
+        }
+
+        if (rc < 0)
+        {
+            dprintf(flog, "execsh (post-fork): Error assigning file descriptor to %d: %s\n",
+                         fdi, strerror(errno));
+        }
+    }
+
+    // Close all other file descriptors
     execsh_closefrom(3);
 
     execv(path, argv);
 
+    dprintf(flog, "execsh (post-fork): execv(\"%s\", ...) failed. Error: %s\n",
+                  path, strerror(errno));
+
     _exit(255);
-    return -1;
 }
 
 /**

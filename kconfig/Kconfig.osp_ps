@@ -1,0 +1,10 @@
+#
+# Include core OSP PS modules
+#
+source "src/lib/osp/kconfig/Kconfig.osp_ps"
+
+#
+# Include platform/vendor OSP PS modules
+#
+osource "platform/*/kconfig/Kconfig.osp_ps"
+osource "vendor/*/kconfig/Kconfig.osp_ps"

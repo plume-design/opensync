@@ -1,0 +1,13 @@
+config OSN_BACKEND_ROUTEV4_NULL
+    bool "Null"
+
+    help
+        Use dummy implementation of IPv4 route reporting
+
+config OSN_BACKEND_ROUTEV4_LINUX
+    bool "Linux"
+    select OSN_LINUX_ENABLED
+    select OSN_LINUX_ROUTE
+    help
+        Use the Linux IPv4 route reporting backend provided by OpenSync
+

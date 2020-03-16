@@ -53,21 +53,21 @@ UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 
 UNIT_DEPS := src/lib/common
 UNIT_DEPS += src/lib/ds
-UNIT_DEPS += src/lib/version
 UNIT_DEPS += src/lib/const
 UNIT_DEPS += src/lib/schema
+UNIT_DEPS += src/lib/log
 UNIT_DEPS += src/lib/ovs_mac_learn
+UNIT_DEPS += src/lib/osp
+UNIT_DEPS += src/lib/version
 
 UNIT_DEPS_CFLAGS += src/lib/datapipeline
 
 #
 # Kconfig based configuration
 #
-ifdef CONFIG_USE_KCONFIG
-$(eval $(if $(CONFIG_PML_TARGET),TARGET_COMMON_SRC += src/target_kconfig.c))
-$(eval $(if $(CONFIG_PML_TARGET),TARGET_COMMON_SRC += src/target_kconfig_managers.c))
-$(eval $(if $(CONFIG_PML_TARGET),UNIT_DEPS += src/lib/kconfig))
-endif
+TARGET_COMMON_SRC += src/target_kconfig.c
+TARGET_COMMON_SRC += src/target_kconfig_managers.c
+UNIT_DEPS += src/lib/kconfig
 
 
 #

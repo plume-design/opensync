@@ -24,8 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __HAVE_DPP_CAPACITY_H__
-#define __HAVE_DPP_CAPACITY_H__
+#ifndef DPP_CAPACITY_H_INCLUDED
+#define DPP_CAPACITY_H_INCLUDED
 
 #include "ds.h"
 #include "ds_dlist.h"
@@ -77,4 +77,4 @@ typedef struct
     dpp_capacity_list_t             list;
 } dpp_capacity_report_data_t;
 
-#endif /* __HAVE_DPP_CAPACITY_H__ */
+#endif /* DPP_CAPACITY_H_INCLUDED */

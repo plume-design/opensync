@@ -75,5 +75,4 @@ int ovsdb_cache_upsert(ovsdb_table_t *table, void *record);
 int ovsdb_cache_upsert_get_uuid(ovsdb_table_t *table, void *record, ovs_uuid_t *uuid);
 int ovsdb_cache_pre_fetch(ovsdb_table_t *table, char *key);
 
-#endif
-
+#endif /* OVSDB_CACHE_H_INCLUDED */

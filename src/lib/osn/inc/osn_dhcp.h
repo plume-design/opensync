@@ -102,9 +102,9 @@ enum osn_dhcp_option
     DHCP_OPTION_PARAM_LIST = 55,
     DHCP_OPTION_VENDOR_CLASS = 60,
     DHCP_OPTION_DOMAIN_SEARCH= 119,
-    DHCP_OPTION_PLUME_SWVER = 225,
-    DHCP_OPTION_PLUME_PROFILE = 226,
-    DHCP_OPTION_PLUME_SERIAL_OPT = 227,
+    DHCP_OPTION_OSYNC_SWVER = 225,
+    DHCP_OPTION_OSYNC_PROFILE = 226,
+    DHCP_OPTION_OSYNC_SERIAL_OPT = 227,
     DHCP_OPTION_MAX = 256
 };
 
@@ -133,19 +133,18 @@ enum osn_dhcp_option
  * @{
  */
 
+typedef struct osn_dhcp_client osn_dhcp_client_t;
+typedef void osn_dhcp_client_error_fn_t(osn_dhcp_client_t *self);
+
 /**
  * DHCP client options reporting callback -- this callback will be triggered
  * when new DHCP options are received by the DHCP client.
  */
 typedef bool osn_dhcp_client_opt_notify_fn_t(
-        void *ctx,
+        osn_dhcp_client_t *self,
         enum osn_notify hint,
         const char *key,
         const char *value);
-
-
-typedef struct osn_dhcp_client osn_dhcp_client_t;
-typedef void osn_dhcp_client_error_fn_t(osn_dhcp_client_t *self);
 
 osn_dhcp_client_t *osn_dhcp_client_new(const char *ifname);
 bool osn_dhcp_client_del(osn_dhcp_client_t *self);
@@ -159,13 +158,16 @@ bool osn_dhcp_client_opt_set(osn_dhcp_client_t *self, enum osn_dhcp_option opt, 
 /* Retrieve DHCP option request status and set value (if any) */
 bool osn_dhcp_client_opt_get(osn_dhcp_client_t *self, enum osn_dhcp_option opt, bool *request, const char **value);
 /* Set the option reporting callback */
-bool osn_dhcp_client_opt_notify_set(osn_dhcp_client_t *self, osn_dhcp_client_opt_notify_fn_t *fn, void *ctx);
+bool osn_dhcp_client_opt_notify_set(osn_dhcp_client_t *self, osn_dhcp_client_opt_notify_fn_t *fn);
 /* Error callback, called whenever an error occurs on the dhcp client (sudden termination or otherwise) */
 bool osn_dhcp_client_error_fn_set(osn_dhcp_client_t *self, osn_dhcp_client_error_fn_t *fn);
 /* Set the vendor class */
 bool osn_dhcp_client_vendorclass_set(osn_dhcp_client_t *self, const char *vendorspec);
 /* Get the current active state of the DHCP client */
 bool osn_dhcp_client_state_get(osn_dhcp_client_t *self, bool *enabled);
+/* User data get/set */
+void osn_dhcp_client_data_set(osn_dhcp_client_t *self, void *data);
+void* osn_dhcp_client_data_get(osn_dhcp_client_t *self);
 
 /** @} */
 
@@ -203,7 +205,9 @@ typedef struct osn_dhcp_server osn_dhcp_server_t;
  */
 struct osn_dhcp_server_cfg
 {
-    int ds_lease_time;      /**< Default lease time in seconds */
+    int                 ds_lease_time;      /**< Default lease time in seconds */
+    osn_ip_addr_t       ds_netmask;         /**< Interface netmask */
+    osn_ip_addr_t       ds_ipaddr;          /**< Interface IPv4 address */
 };
 
 /**
@@ -212,6 +216,8 @@ struct osn_dhcp_server_cfg
 #define OSN_DHCP_SERVER_CFG_INIT (struct osn_dhcp_server_cfg)   \
 {                                                               \
     .ds_lease_time = -1,                                        \
+    .ds_netmask = OSN_IP_ADDR_INIT,                             \
+    .ds_ipaddr = OSN_IP_ADDR_INIT,                              \
 }
 
 /**

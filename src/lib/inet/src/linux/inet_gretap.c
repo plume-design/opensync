@@ -44,7 +44,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "execsh.h"
 
-#if !defined(CONFIG_USE_KCONFIG) && !defined(CONFIG_INET_GRE_USE_SOFTWDS)
+#if !defined(CONFIG_INET_GRE_USE_SOFTWDS) && !defined(CONFIG_INET_GRE_USE_GRETAP)
 /* Default to gretap */
 #define CONFIG_INET_GRE_USE_GRETAP
 #endif
@@ -150,7 +150,7 @@ bool inet_gretap_ip4tunnel_set(
     self->in_remote_addr = raddr;
 
     /* Interface must be recreated, therefore restart the top service */
-    return inet_unit_restart(self->base.in_units, INET_BASE_INTERFACE, false);
+    return inet_unit_restart(self->base.in_units, INET_BASE_IF_CREATE, false);
 }
 
 /*
@@ -259,7 +259,7 @@ bool inet_gretap_service_commit(inet_base_t *super, enum inet_base_services srv,
 
     switch (srv)
     {
-        case INET_BASE_INTERFACE:
+        case INET_BASE_IF_CREATE:
             return inet_gretap_interface_start(self, enable);
 
         default:
@@ -274,4 +274,3 @@ bool inet_gretap_service_commit(inet_base_t *super, enum inet_base_services srv,
 
     return true;
 }
-

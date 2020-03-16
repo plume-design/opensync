@@ -24,12 +24,13 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __UTIL__H__
-#define __UTIL__H__
+#ifndef UTIL_H_INCLUDED
+#define UTIL_H_INCLUDED
 
 #include <stdlib.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <assert.h>
 
 #ifndef MIN
 #define MIN(a,b) \
@@ -52,7 +53,7 @@ char* strargv(char **cmd, bool with_quotes);
 int strcmp_len(char *a, size_t alen, char *b, size_t blen);
 ssize_t base64_encode(char *out, ssize_t out_sz, void *input, ssize_t input_sz);
 ssize_t base64_decode(void *out, ssize_t out_sz, char *input);
-void str_unescape_hex(char *str);
+char *str_unescape_hex(char *str);
 char *strchomp(char *str, char *delim);
 
 int count_nt_array(char **array);
@@ -89,11 +90,27 @@ void fsa_copy(const void *array, int size, int len, int num, void *dest, int dsi
 char *str_tolower(char *str);
 char *str_toupper(char *str);
 bool str_is_mac_address(const char *mac);
-bool parse_uri(char *uri, char *proto, char *host, int *port);
+bool parse_uri(char *uri, char *proto, size_t proto_size, char *host, size_t host_size, int *port);
 
-#define STRSCPY(dest, src)  strscpy((dest), (src), sizeof(dest))
+
+#ifdef static_assert
+#define ASSERT_ARRAY(A) \
+    ({ \
+        static_assert( /* is array */ \
+            !__builtin_types_compatible_p(typeof(A), typeof(&(A)[0])), \
+            "NOT AN ARRAY: " #A \
+        ); \
+        A; \
+    })
+#else
+#define ASSERT_ARRAY(A) A
+#endif
+
+#define STRSCPY(dest, src)  strscpy(ASSERT_ARRAY(dest), (src), sizeof(dest))
 #define STRSCPY_WARN(dest, src) WARN_ON(STRSCPY((dest), (src)) < 0)
 ssize_t strscpy(char *dest, const char *src, size_t size);
+#define STRSCPY_LEN(dest, src, len)  strscpy_len(ASSERT_ARRAY(dest), (src), sizeof(dest), len)
+ssize_t strscpy_len(char *dest, const char *src, size_t size, ssize_t src_len);
 #define STRSCAT(dest, src)  strscat((dest), (src), sizeof(dest))
 ssize_t strscat(char *dest, const char *src, size_t size);
 char *strschr(const char *s, int c, size_t n);
@@ -115,5 +132,14 @@ bool   str_split_lines_to(char *s, char **lines, int size, int *count);
 char** str_split_lines(char *s, int *count);
 bool   str_join(char *str, int size, char **list, int num, char *delim);
 bool   str_join_int(char *str, int size, int *list, int num, char *delim);
+bool   str_startswith(const char *str, const char *start);
+bool   str_endswith(const char *str, const char *end);
 
-#endif /* __UTIL__H__  */
+char  *ini_get(const char *buf, const char *key);
+#define ini_geta(buf, key) strdupafree(ini_get(buf, key))
+int    file_put(const char *path, const char *buf);
+char  *file_get(const char *path);
+#define file_geta(path) strdupafree(file_get(path))
+const int *unii_5g_chan2list(int chan, int width);
+
+#endif /* UTIL_H_INCLUDED */

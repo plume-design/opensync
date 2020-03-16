@@ -24,8 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef JSUTIL_H_INCLUDED
-#define JSUTIL_H_INCLUDED
+#ifndef JSON_UTIL_H_INCLUDED
+#define JSON_UTIL_H_INCLUDED
 
 #include <ev.h>
 #include <jansson.h>
@@ -86,4 +86,4 @@ static inline void json_free(void *p)
     if (free_func != NULL) free_func(p);
 }
 
-#endif /* JSUTIL_H_INCLUDED */
+#endif /* JSON_UTIL_H_INCLUDED */

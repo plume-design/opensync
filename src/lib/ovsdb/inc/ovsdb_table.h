@@ -61,10 +61,11 @@ typedef void ovsdb_cache_callback_t(ovsdb_update_monitor_t *self,
         void *old_rec, void *record, ovsdb_cache_row_t *row);
 
 #define OVSDB_TABLE_KEY_SIZE 64
+#define OVSDB_TABLE_NAME_SIZE 64
 
 typedef struct ovsdb_table
 {
-    char                    *table_name;
+    char                    table_name[OVSDB_TABLE_NAME_SIZE];
     int                     schema_size;
     int                     upd_type_offset;
     int                     uuid_offset;
@@ -191,5 +192,4 @@ bool ovsdb_table_monitor(ovsdb_table_t *table, ovsdb_table_callback_t *callback,
 bool ovsdb_table_monitor_columns(ovsdb_table_t *table, ovsdb_table_callback_t *callback, char **columns);
 bool ovsdb_table_monitor_filter(ovsdb_table_t *table, ovsdb_table_callback_t *callback, char **filter);
 
-#endif
-
+#endif /* OVSDB_TABLE_H_INCLUDED */

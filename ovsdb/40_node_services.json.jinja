@@ -1,0 +1,27 @@
+[
+    "Open_vSwitch",
+    {%- for kconfig, kval in KCONFIG_ALL.items()
+            if kconfig.startswith('CONFIG_MANAGER_') and kconfig.endswith('_CFG')
+                and kval.split(';') | length > 1 %}
+    {%- set mlist = kval.split(';') %}
+    {
+        "op":"insert",
+        "table":"Node_Services",
+        "row": {
+            "service": "{{mlist[0]}}",
+            "enable": {{mlist[1]}},
+            "status": "enabled",
+            "other_config":
+            [
+                "map",
+                [
+                    {%- for m in mlist[2:] -%}
+                    {% set v = m.split('=') %}
+                    [ "{{v[0]}}", "{{v[1] if v | length > 1 else "true"}}" ]{{"," if not loop.last}}
+                    {%- endfor %}
+                ]
+            ]
+        }
+    }{{"," if not loop.last }}
+    {%- endfor %}
+]

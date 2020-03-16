@@ -32,6 +32,7 @@
 #include "log.h"
 #include "osn_fw_pri.h"
 #include "os.h"
+#include "util.h"
 #include <string.h>
 #include <stdio.h>
 #include <errno.h>
@@ -205,8 +206,7 @@ static bool osfw_nfchain_set(struct osfw_nfchain *self, struct ds_dlist *parent,
 	memset(self, 0, sizeof(*self));
 	self->parent = parent;
 	ds_dlist_insert_tail(self->parent, self);
-	strncpy(self->chain, chain, sizeof(self->chain) - 1);
-	self->chain[sizeof(self->chain) - 1] = '\0';
+	STRSCPY(self->chain, chain);
 	return true;
 }
 
@@ -292,12 +292,9 @@ static bool osfw_nfrule_set(struct osfw_nfrule *self, struct ds_dlist *parent, c
 		ds_dlist_insert_tail(self->parent, self);
 	}
 
-	strncpy(self->chain, chain, sizeof(self->chain) - 1);
-	self->chain[sizeof(self->chain) - 1] = '\0';
-	strncpy(self->match, match, sizeof(self->match) - 1);
-	self->match[sizeof(self->match) - 1] = '\0';
-	strncpy(self->target, target, sizeof(self->target) - 1);
-	self->target[sizeof(self->target) - 1] = '\0';
+	STRSCPY(self->chain, chain);
+	STRSCPY(self->match, match);
+	STRSCPY(self->target, target);
 	return true;
 }
 

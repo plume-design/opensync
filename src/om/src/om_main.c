@@ -84,12 +84,6 @@ int main( int argc, char **argv )
     // Initialize JSON memory debugging
     json_memdbg_init( ev_loop );
 
-    // Initialize EV scheduler
-    if (evsched_init( ev_loop ) == false) {
-        LOGEM( "Failed to initialize EVSCHED" );
-        return(1);
-    }
-
     if (!target_init( TARGET_INIT_MGR_OM, ev_loop )) {
         return(1);
     }
@@ -124,7 +118,6 @@ int main( int argc, char **argv )
         LOGEM( "Failed to stop OVSDB" );
     }
 
-    evsched_cleanup();
     ev_default_destroy();
 
     return(0);

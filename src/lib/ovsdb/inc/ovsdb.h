@@ -24,8 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __OVSDB__H__
-#define __OVSDB__H__
+#ifndef OVSDB_H_INCLUDED
+#define OVSDB_H_INCLUDED
 
 #include <stdbool.h>
 #include <stdio.h>
@@ -453,4 +453,4 @@ struct rpc_update_handler
     ds_tree_node_t          rrh_node;                   /**< Node structure */
 };
 
-#endif /* __OVSDB__H__ */
+#endif /* OVSDB_H_INCLUDED */

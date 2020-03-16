@@ -1,0 +1,391 @@
+/*
+Copyright (c) 2015, Plume Design Inc. All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+   1. Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+   2. Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+   3. Neither the name of the Plume Design Inc. nor the
+      names of its contributors may be used to endorse or promote products
+      derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL Plume Design Inc. BE LIABLE FOR ANY
+DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+#include <string.h>
+#include <ev.h>
+
+#include "os_types.h"
+#include "os.h"
+#include "log.h"
+#include "ds.h"
+#include "ds_dlist.h"
+#include "ds_tree.h"
+#include "network_metadata_report.h"
+#include "network_metadata.h"
+#include "fcm.h"
+#include "fcm_filter.h"
+#include "lan_stats.h"
+#include "util.h"
+
+static char *dflt_fltr_name = "none";
+static char *collect_cmd = OVS_DPCTL_DUMP_FLOWS;
+
+static unsigned int get_eth_type(char *eth)
+{
+    unsigned int eth_val = 0;
+    strtok(eth, "/");
+    eth_val = strtol(eth, NULL, 16);
+    return eth_val;
+}
+/*
+ * For speedy parsing did the hand-coded parser with the assumption the
+ * output format of ovs-dpctl dump-flows  is consistent
+ */
+static void parse_lan_stats(char *buf[], dp_ctl_stats_t *stats)
+{
+    int i = 0;
+    char *pos = NULL;
+    int ret = 0;
+
+    while (buf[i] != NULL)
+    {
+        if (strncmp(buf[i], OVS_DUMP_ETH_SRC_PREFIX, \
+                    OVS_DUMP_ETH_SRC_PREFIX_LEN) == 0)
+        {
+            // Get src mac
+            pos = buf[i] + OVS_DUMP_ETH_SRC_PREFIX_LEN;
+            STRSCPY(stats->smac_addr, pos);
+            ret = hwaddr_aton(stats->smac_addr, stats->smac_key.addr);
+            if (ret == -1)
+            {
+                LOGE("address conversion failure\n");
+            }
+            // Obvioulsy the next index is dst mac
+            // Get dst mac
+            pos = buf[i+1] + OVS_DUMP_ETH_DST_PREFIX_LEN;
+            STRSCPY(stats->dmac_addr, pos);
+            ret = hwaddr_aton(stats->dmac_addr, stats->dmac_key.addr);
+            if (ret == -1)
+            {
+                LOGE("address conversion failure\n");
+            }
+            i++;
+        }
+        else if (strncmp(buf[i], OVS_DUMP_ETH_DST_PREFIX, \
+                   OVS_DUMP_ETH_DST_PREFIX_LEN) == 0)
+        {
+            // Get dst mac
+            // pos = buf[i] + OVS_DUMP_ETH_DST_PREFIX_LEN;
+            // STRSCPY(stats->dmac, pos);
+        } else if (strncmp(buf[i], OVS_DUMP_ETH_TYPE_PREFIX, \
+                   OVS_DUMP_ETH_TYPE_PREFIX_LEN) == 0)
+        {
+            // Get eth type
+            pos = buf[i] + OVS_DUMP_ETH_TYPE_PREFIX_LEN;
+            STRSCPY(stats->eth_type, pos);
+            stats->eth_type[strlen(stats->eth_type) - 1] = '\0';
+            stats->eth_val = get_eth_type(stats->eth_type);
+        }
+        else if (strncmp(buf[i], OVS_DUMP_VLAN_ID_PREFIX, \
+                 OVS_DUMP_VLAN_ID_PREFIX_LEN) == 0)
+        {
+            // Get the vlan id
+            pos = buf[i] + OVS_DUMP_VLAN_ID_PREFIX_LEN;
+            stats->vlan_id = atoi(strsep(&pos, ")") ?: "0");
+        }
+        else if (strncmp(buf[i], OVS_DUMP_VLAN_ETH_TYPE_PREFIX, \
+                 OVS_DUMP_VLAN_ETH_TYPE_PREFIX_LEN) == 0)
+        {
+            // Get vlan eth type
+            pos = buf[i] + OVS_DUMP_VLAN_ETH_TYPE_PREFIX_LEN;
+            STRSCPY(stats->vlan_eth_type, pos);
+            stats->vlan_eth_type[strlen(stats->vlan_eth_type) - 1] = '\0';
+            stats->vlan_eth_val = get_eth_type(stats->vlan_eth_type);
+        }
+        else if (strncmp(buf[i], OVS_DUMP_PKTS_PREFIX, \
+                   OVS_DUMP_PKTS_PREFIX_LEN) == 0)
+        {
+            // Get pkts count
+            pos = buf[i] + OVS_DUMP_PKTS_PREFIX_LEN;
+            stats->pkts = atol(pos);
+        }
+        else if (strncmp(buf[i], OVS_DUMP_BYTES_PREFIX, \
+                   OVS_DUMP_BYTES_PREFIX_LEN) == 0)
+        {
+            // Get bytes count
+            pos = buf[i] + OVS_DUMP_BYTES_PREFIX_LEN;
+            stats->bytes = atol(pos);
+        }
+        i++;
+    }
+    stats->stime = time(NULL); // sample time
+}
+
+static void parse_flows(char *buf, dp_ctl_stats_t *stats)
+{
+    char *sep = ",";
+    char *tok = NULL;
+    char *tokens[MAX_TOKENS] = {0};
+    int i = 0;
+
+    tok = strtok(buf, sep);
+    while (tok)
+    {
+        tokens[i++] = tok;
+        tok = strtok(NULL, sep);
+        if (i >= (MAX_TOKENS - 1))
+            break;
+    }
+    tokens[i] = NULL;
+    parse_lan_stats(tokens, stats);
+}
+
+static void alloc_aggr(fcm_collect_plugin_t *collector)
+{
+    struct net_md_aggregator_set aggr_set;
+    struct net_md_aggregator *aggr;
+    struct node_info node_info;
+    int report_type = 0;
+
+    memset(&aggr_set, 0, sizeof(aggr_set));
+    node_info.node_id = fcm_get_mqtt_hdr_node_id();
+    node_info.location_id = fcm_get_mqtt_hdr_loc_id();
+    aggr_set.info = &node_info;
+    if (collector->fmt == FCM_RPT_FMT_CUMUL)
+        report_type = NET_MD_REPORT_ABSOLUTE;
+    else if (collector->fmt == FCM_RPT_FMT_DELTA)
+        report_type = NET_MD_REPORT_RELATIVE;
+    aggr_set.report_type = report_type;
+    aggr_set.num_windows = MAX_HISTOGRAMS;
+    aggr_set.acc_ttl = (2 * collector->report_interval);
+    aggr_set.send_report = net_md_send_report;
+    aggr = net_md_allocate_aggregator(&aggr_set);
+    if (aggr == NULL)
+    {
+        LOGD("Aggregator allocation failed\n");
+        return;
+    }
+   collector->plugin_ctx = aggr;
+}
+
+static void activate_window(fcm_collect_plugin_t *collector)
+{
+    struct net_md_aggregator *aggr = NULL;
+    bool ret = false;
+    aggr = collector->plugin_ctx;
+    if (aggr == NULL)
+    {
+        LOGD("Aggergator is empty\n");
+        return;
+    }
+    ret = net_md_activate_window(aggr);
+    if (ret == false)
+    {
+        LOGD("Aggregator window activation failed\n");
+        return;
+    }
+}
+
+static void close_window(fcm_collect_plugin_t *collector)
+{
+    struct net_md_aggregator *aggr = NULL;
+    bool ret = false;
+    aggr = collector->plugin_ctx;
+    if (aggr == NULL)
+    {
+        LOGD("Aggergator is empty\n");
+        return;
+    }
+    ret = net_md_close_active_window(aggr);
+    if (ret == false)
+    {
+        LOGD("Aggregator close window failed\n");
+        return;
+    }
+}
+
+static void send_aggr_report(fcm_collect_plugin_t *collector)
+{
+    struct net_md_aggregator *aggr = NULL;
+    bool ret = false;
+    aggr = collector->plugin_ctx;
+    if (aggr == NULL)
+    {
+        LOGD("Aggergator is empty\n");
+        return;
+    }
+    if (net_md_get_total_flows(aggr) <= 0)
+    {
+        net_md_reset_aggregator(aggr);
+        return;
+    }
+
+    ret = net_md_send_report(aggr, collector->mqtt_topic);
+    if (ret == false)
+    {
+        LOGD("Aggregator send report failed\n");
+        return;
+    }
+}
+
+static void set_filter_info(fcm_filter_l2_info_t *l2_filter_info,
+                            fcm_filter_stats_t *l2_filter_pkts,
+                            dp_ctl_stats_t *stats)
+{
+    STRSCPY(l2_filter_info->src_mac, stats->smac_addr);
+    STRSCPY(l2_filter_info->dst_mac, stats->dmac_addr);
+    l2_filter_info->vlan_id = stats->vlan_id;
+    l2_filter_info->eth_type = stats->eth_val;
+
+    l2_filter_pkts->pkt_cnt = stats->pkts;
+    l2_filter_pkts->bytes = stats->bytes;
+}
+
+static void aggr_add_sample(fcm_collect_plugin_t *collector, dp_ctl_stats_t *stats)
+{
+    struct net_md_aggregator *aggr = NULL;
+    struct net_md_flow_key key;
+    struct flow_counters pkts_ct;
+    bool ret = false;
+
+    aggr = collector->plugin_ctx;
+    if (aggr == NULL)
+    {
+        LOGE("Aggr is NULL\n");
+        return;
+    }
+
+    memset(&key, 0, sizeof(struct net_md_flow_key));
+    memset(&pkts_ct, 0, sizeof(struct flow_counters));
+    key.smac = &stats->smac_key;
+    key.dmac = &stats->dmac_key;
+    key.ethertype = stats->eth_val;
+    if (stats->vlan_id > 0)
+    {
+        key.vlan_id = stats->vlan_id;
+        // use vlan eth type if vlan is present
+        key.ethertype = stats->vlan_eth_val;
+    }
+    pkts_ct.packets_count = stats->pkts;
+    pkts_ct.bytes_count = stats->bytes;
+
+    ret = net_md_add_sample(aggr, &key, &pkts_ct);
+    if (!ret)
+        LOGD("Add sample to aggregator failed\n");
+}
+
+static void lan_stats_send_report_cb(fcm_collect_plugin_t *collector)
+{
+    //struct packed_buffer *mqtt_report = NULL;
+
+    //collector->plugin_fcm_ctx = mqtt_report;
+   close_window(collector);
+   send_aggr_report(collector);
+   activate_window(collector);
+}
+
+static void lan_stats_collect_cb(fcm_collect_plugin_t *collector)
+{
+    FILE *fp = NULL;
+    char line_buf[LINE_BUFF_LEN] = {0,};
+    dp_ctl_stats_t stats;
+    fcm_filter_l2_info_t l2_filter_info;
+    fcm_filter_stats_t   l2_filter_pkts;
+    bool allow = false;
+
+    collect_cmd  = collector->fcm_plugin_ctx;
+    if (collect_cmd == NULL)
+        collect_cmd = OVS_DPCTL_DUMP_FLOWS;
+    if ((fp = popen(collect_cmd, "r")) == NULL)
+    {
+        LOGE("popen error");
+        return;
+    }
+
+    while (fgets(line_buf, LINE_BUFF_LEN, fp) != NULL)
+    {
+        LOGD("ovs-dpctl dump line %s", line_buf);
+        memset(&stats, 0, sizeof(stats));
+        parse_flows(line_buf, &stats);
+        set_filter_info(&l2_filter_info, &l2_filter_pkts, &stats);
+        if (collector->filters.collect != NULL)
+        {
+            fcm_filter_layer2_apply(collector->filters.collect,
+                                  &l2_filter_info, &l2_filter_pkts, &allow);
+            if (allow)
+            {
+                LOGD("Flow collect allowed: filter_name: %s, smac: %s, " \
+                     "dmac: %s, vlan_id: %d, eth_type: %d, pks: %ld, " \
+                     "bytes: %ld\n",\
+                      collector->filters.collect ?
+                      collector->filters.collect : dflt_fltr_name,
+                      stats.smac_addr,
+                      stats.dmac_addr, stats.vlan_id, stats.eth_val,
+                      stats.pkts, stats.bytes);
+                aggr_add_sample(collector, &stats);
+            }
+            else
+                LOGD("Flow collect dropped: filter_name: %s, smac: %s, "\
+                     "dmac: %s, vlan_id: %d, eth_type: %d, pks: %ld, "\
+                     "bytes: %ld\n",\
+                      collector->filters.collect ?
+                      collector->filters.collect : dflt_fltr_name,
+                      stats.smac_addr, stats.dmac_addr,
+                      stats.vlan_id, stats.eth_val, stats.pkts, stats.bytes);
+        }
+        else
+        {
+            LOGD("Aggr add sample\n");
+            aggr_add_sample(collector, &stats);
+        }
+        memset(line_buf, 0, sizeof(line_buf));
+    }
+    pclose(fp);
+    fp = NULL;
+}
+
+
+void lan_stats_plugin_close_cb(fcm_collect_plugin_t *collector)
+{
+    struct net_md_aggregator *aggr = NULL;
+
+    aggr = collector->plugin_ctx;
+    if (aggr == NULL)
+    {
+        LOGD("Aggergator is empty\n");
+        return;
+    }
+    close_window(collector);
+    net_md_free_aggregator(aggr);
+}
+
+
+/* Entry function for plugin */
+int lan_stats_plugin_init(fcm_collect_plugin_t *collector)
+{
+    collector->collect_periodic = lan_stats_collect_cb;
+    collector->send_report = lan_stats_send_report_cb;
+    collector->close_plugin = lan_stats_plugin_close_cb;
+    collect_cmd  = collector->fcm_plugin_ctx;
+    if (collect_cmd == NULL)
+        collect_cmd = OVS_DPCTL_DUMP_FLOWS;
+    alloc_aggr(collector);
+    activate_window(collector);
+    return 0;
+}

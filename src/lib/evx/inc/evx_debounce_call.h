@@ -30,4 +30,4 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 void evx_debounce_call(void (*func)(const char *arg), const char *arg);
 
 void evx_debounce_rn_call(void (*func)(const char *arg), const char *arg);
-#endif /* EVX_DEOUNCE_CALL_H_INCLUDED */
+#endif /* EVX_DEBOUNCE_CALL_H_INCLUDED */

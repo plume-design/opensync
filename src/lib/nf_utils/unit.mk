@@ -29,7 +29,7 @@
 ###############################################################################
 UNIT_NAME := nf_utils
 
-UNIT_DISABLE := $(if $(CONFIG_TARGET_MANAGER_FSM),n,y)
+UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM),n,y)
 
 # Template type:
 UNIT_TYPE := LIB
@@ -37,9 +37,11 @@ UNIT_TYPE := LIB
 UNIT_DIR := lib
 
 UNIT_SRC := src/nf_conn_mark.c
+UNIT_SRC += src/nf_util_neigh.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -I$(TOP_DIR)/src/lib/common/inc/
+UNIT_CFLAGS += -Isrc/lib/neigh_table/inc
 
 UNIT_LDFLAGS += -lmnl
 
@@ -48,5 +50,5 @@ UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 
 UNIT_DEPS := src/lib/log
 UNIT_DEPS += src/lib/common
-UNIT_DEPS += src/lib/evsched
 UNIT_DEPS += src/lib/ustack
+UNIT_DEPS += src/lib/neigh_table

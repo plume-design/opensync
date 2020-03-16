@@ -1,55 +1,150 @@
-mainmenu "Plume Configuration"
+mainmenu "OpenSync Configuration"
 
-config USE_KCONFIG
-    bool "Enable KConfig configuration"
+menu "Common"
+    menu "Managers"
+        source "kconfig/Kconfig.managers"
+    endmenu
 
-if USE_KCONFIG
+    menu "OpenSync API"
+        menu "Networking (OSN)"
+            choice
+                prompt "Interface L2 control"
+                default OSN_BACKEND_NETIF_LINUX
+                source "kconfig/Kconfig.osn.netif_backend"
+            endchoice
+
+            choice
+                prompt "IPv4 networking"
+                default OSN_BACKEND_IPV4_LINUX
+                source "kconfig/Kconfig.osn.ipv4_backend"
+            endchoice
+
+            choice
+                prompt "IPv4 routing (status reporting)"
+                default OSN_BACKEND_ROUTEV4_LINUX
+                source "kconfig/Kconfig.osn.routev4_backend"
+            endchoice
+
+            choice
+                prompt "DHCPv4 client"
+                default OSN_BACKEND_DHCPV4_CLIENT_UDHCP
+                source "kconfig/Kconfig.osn.dhcpv4_client_backend"
+            endchoice
+
+            choice
+                prompt "DHCPv4 server"
+                default OSN_BACKEND_DHCPV4_SERVER_DNSMASQ
+                source "kconfig/Kconfig.osn.dhcpv4_server_backend"
+            endchoice
+
+            choice
+                prompt "UPnP"
+                default OSN_BACKEND_UPNP_MINIUPNPD
+                source "kconfig/Kconfig.osn.upnp_backend"
+            endchoice
+
+            choice
+                prompt "IPv6 networking"
+                default OSN_BACKEND_IPV6_LINUX
+                source "kconfig/Kconfig.osn.ipv6_backend"
+            endchoice
+
+            choice
+                prompt "DHCPv6 client"
+                default OSN_BACKEND_DHCPV6_CLIENT_ODHCP6
+                source "kconfig/Kconfig.osn.dhcpv6_client_backend"
+            endchoice
+
+            choice
+                prompt "DHCPv6 server"
+                default OSN_BACKEND_DHCPV6_SERVER_DNSMASQ6
+                source "kconfig/Kconfig.osn.dhcpv6_server_backend"
+            endchoice
+
+            choice
+                prompt "IPv6 Router Advertisement"
+                default OSN_BACKEND_IPV6_RADV_DNSMASQ6
+                source "kconfig/Kconfig.osn.ipv6_radv_backend"
+            endchoice
+
+            source "kconfig/Kconfig.osn"
+        endmenu
+
+        menu "Platform (OSP)"
+            comment "Persistent Storage (OSP_PS)"
+            choice
+                prompt "Persistent Storage Backend"
+                source "kconfig/Kconfig.osp_ps.backend"
+            endchoice
+            source "kconfig/Kconfig.osp_ps"
+
+            comment "Reboot and Related Features (OSP_REBOOT)"
+            choice
+                prompt "Reboot Backend"
+                source "kconfig/Kconfig.osp_reboot.backend"
+            endchoice
+            source "kconfig/Kconfig.osp_reboot"
+
+            comment "OSP LED"
+            source "src/lib/osp/kconfig/Kconfig.osp_led"
+
+            comment "L2Switch control"
+            choice
+                prompt "L2Switch backend"
+                source "kconfig/Kconfig.osp_l2switch.backend"
+            endchoice
+
+        endmenu
+    endmenu
+
+    menu "OVSDB"
+        orsource "../ovsdb/Kconfig"
+    endmenu
+
+    menu "Libs"
+        rsource "Kconfig.libs"
+    endmenu
+
+    menu "Tools"
+        rsource "Kconfig.tools"
+    endmenu
+
+    menu "Misc"
+        orsource "../src/lib/hostap/kconfig/Kconfig"
+
+        config REMAP_LEGACY
+            bool "Remap legacy install prefix path"
+            help
+                Move all files from legacy location to new install prefix path
+                Also replace all paths in installed scripts
+    endmenu
+
+    menu "Target"
+        orsource "../src/lib/target/kconfig/Kconfig"
+    endmenu
+
+    config INSTALL_PREFIX
+        string "Install prefix path"
+        default "$(INSTALL_PREFIX)"
+
     config TARGET_NAME
         string "Device Descriptive Name"
 
     config TARGET_MODEL
         string "Device Model Name"
 
-    menu "OpenSync"
-        menu "Networking"
-            orsource "../src/lib/osn/kconfig/Kconfig"
-        endmenu
-    endmenu
+endmenu
 
-    menu "PML Configuration"
-        menuconfig PML_TARGET
-            bool "Use generic TARGET (kconfig based target configuration)"
+menu "Platform Configuration"
+    orsource "Kconfig.platform"
+    orsource "../platform/*/kconfig/Kconfig.platform"
+endmenu
 
-            if PML_TARGET
-                orsource "../src/lib/target/kconfig/Kconfig"
-            endif
-
-        menu "INET Configuration"
-            orsource "../src/lib/inet/kconfig/Kconfig"
-        endmenu
-
-        if TARGET_MANAGER_CM
-            menu "CM2 Configuration"
-                orsource "../src/cm2/kconfig/Kconfig"
-            endmenu
-        endif
-
-        menu "libevx Configuration"
-            orsource "../src/lib/evx/kconfig/Kconfig"
-        endmenu
-    endmenu
-
-    menu "Platform Configuration"
-        orsource "Kconfig.platform"
-        orsource "../platform/*/kconfig/Kconfig.platform"
-    endmenu
-
-    menu "Vendor Configuration"
-        choice VENDOR
-            prompt "Vendor Selection"
-            orsource "Kconfig.vendor"
-            orsource "../vendor/*/kconfig/Kconfig.vendor"
-        endchoice
-        orsource "../vendor/*/kconfig/Kconfig"
-    endmenu
-endif
+menu "Vendor Configuration"
+    choice VENDOR
+        prompt "Vendor Selection"
+        orsource "Kconfig.vendor"
+        orsource "../vendor/*/kconfig/Kconfig.vendor"
+    endchoice
+    orsource "../vendor/*/kconfig/Kconfig"
+endmenu

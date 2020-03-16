@@ -616,12 +616,35 @@ bool sm_client_report_tid_stats_calculate_average(
     return true;
 }
 
+static inline double
+weight_avg(double cnt, double dcnt,
+           double val, double dval)
+{
+    if (cnt + dcnt == 0)
+        return dval;
+    else
+        return ((cnt * val) + (dcnt * dval)) / (cnt + dcnt);
+}
+
 static
 void sm_client_report_stats_calculate_average (
         sm_client_ctx_t            *client_ctx,
         dpp_client_stats_t         *record,
         dpp_client_stats_t         *report)
 {
+    report->rate_rx = weight_avg(report->frames_tx,
+                                 record->frames_tx,
+                                 report->rate_rx,
+                                 record->rate_rx);
+    report->rate_tx = weight_avg(report->frames_tx,
+                                 record->frames_tx,
+                                 report->rate_tx,
+                                 record->rate_tx);
+    report->rssi = weight_avg(report->frames_tx,
+                              record->frames_tx,
+                              report->rssi,
+                              record->rssi);
+
     report->bytes_tx    += record->bytes_tx;
     report->bytes_rx    += record->bytes_rx;
     report->frames_tx   += record->frames_tx;
@@ -630,11 +653,6 @@ void sm_client_report_stats_calculate_average (
     report->retries_tx  += record->retries_tx;
     report->errors_rx   += record->errors_rx;
     report->errors_tx   += record->errors_tx;
-
-    /* Average an average? */
-    report->rate_rx     = record->rate_rx;
-    report->rate_tx     = record->rate_tx;
-    report->rssi        = record->rssi;
 }
 
 static

@@ -24,16 +24,10 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef FSM_UTILS_H_INCLUDED
-#define FSM_UTILS_H_INCLUDED
+#ifndef FSM_DPI_UTILS_H_INCLUDED
+#define FSM_DPI_UTILS_H_INCLUDED
 
-enum fsm_dpi_state
-{
-    FSM_DPI_CLEAR    = 0,
-    FSM_DPI_INSPECT  = 1,
-    FSM_DPI_PASSTHRU = 2,
-    FSM_DPI_DROP     = 3,
-};
+#include "fsm.h"
 
 /**
  * @brief FSM DPI APIs using 5 tuples
@@ -88,7 +82,6 @@ int fsm_set_icmp_dpi_state_timeout(
  * @brief FSM DPI APIs using pcap data
  */
 int fsm_set_dpi_state(
-        void *ctx,
         struct net_header_parser *net_hdr,
         enum fsm_dpi_state state
 );
@@ -100,4 +93,9 @@ int fsm_set_dpi_state_timeout(
         uint32_t timeout
 );
 
-#endif
+void fsm_dpi_set_acc_state(
+        struct fsm_session *session,
+        struct net_header_parser *net_parser,
+        enum fsm_dpi_state state);
+
+#endif /* FSM_DPI_UTILS_H_INCLUDED */

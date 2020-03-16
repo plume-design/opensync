@@ -1,0 +1,13 @@
+config OSN_BACKEND_UPNP_NULL
+    bool "Null"
+
+    help
+        Use dummy implementation of UPnP.
+
+config OSN_BACKEND_UPNP_MINIUPNPD
+    bool "miniupnpd"
+    select OSN_LINUX_ENABLED
+    select OSN_MINIUPNPD
+    help
+        Use the Linux UPnP backend provided by OpenSync
+

@@ -1,0 +1,22 @@
+#
+# "reboot" command overrides and options
+#
+config OSP_REBOOT_CLI_OVERRIDE
+    bool "Install a \"reboot\" command wrapper"
+    default y
+    help
+        This option will override the system "reboot" command with a OSync
+        wrapper tool. The tool will record the reboot reason before executing the
+        real reboot command.  On systems running busybox, the original "reboot"
+        behavior can be achieved by using the "busybox reboot" command.
+
+config OSP_REBOOT_COMMAND
+    string "Command to execute for system reboot"
+    depends on OSP_REBOOT_CLI_OVERRIDE
+    default "/bin/busybox reboot"
+    help
+        Specify the command that shall be used to issue a system reboot.
+
+        Note that if OSP_REBOOT_CLI_OVERRIDE is active, this option must specify
+        the real command that is used to reboot the system as "/sbin/reboot" will
+        be just a wrapper around it.

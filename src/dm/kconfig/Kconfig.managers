@@ -1,0 +1,19 @@
+menuconfig MANAGER_DM
+    bool "Device Manager (DM)"
+    default y
+
+if MANAGER_DM
+    config DM_MANAGER_PATH
+        string "Managers search path"
+        default "$(INSTALL_PREFIX)/bin"
+        help
+            Search path that will be used to locate managers. Multiple paths
+            can be specified by using ; as seperator.
+
+    config DM_PID_PATH
+        string "Path to the PID folder"
+        default "/tmp/dmpid"
+        help
+            This is the folder where PID files of the started processes will
+            be stored. The files will be named [MANAGER_NAME].pid
+endif

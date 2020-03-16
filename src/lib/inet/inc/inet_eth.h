@@ -27,6 +27,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef INET_ETH_H_INCLUDED
 #define INET_ETH_H_INCLUDED
 
+#include "osn_netif.h"
 #include "osn_inet.h"
 
 #include "inet.h"
@@ -39,11 +40,13 @@ struct __inet_eth
     /* Subclass inet_base; expose the inet_t class so we can have convenient access to in_ifname */
     union
     {
-        inet_t          inet;
-        inet_base_t     base;
+        inet_t                  inet;
+        inet_base_t             base;
     };
 
-    osn_ip_t           *in_ip;      /* IPv4 Configuration */
+    osn_ip_t                   *in_ip;              /* IPv4 Configuration */
+    osn_netif_t                *in_netif;           /* L2 Configuration */
+    ev_async                    in_netif_async;     /* Some netif events needs to be dealt with from the main loop */
 };
 
 extern inet_t *inet_eth_new(const char *ifname);
@@ -51,6 +54,5 @@ extern bool inet_eth_init(inet_eth_t *self, const char *ifname);
 
 extern bool inet_eth_mtu_set(inet_t *super, int mtu);
 extern bool inet_eth_service_commit(inet_base_t *super, enum inet_base_services srv, bool enable);
-extern bool inet_eth_state_get(inet_t *super, inet_state_t *out);
 
 #endif /* INET_ETH_H_INCLUDED */

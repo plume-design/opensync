@@ -47,6 +47,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <math.h>
 
 #include "bm.h"
+#include "util.h"
 
 
 /*****************************************************************************/
@@ -59,15 +60,17 @@ static ds_tree_t                bm_clients = DS_TREE_INIT((ds_key_cmp_t *)strcmp
                                                           dst_node);
 
 static c_item_t map_bsal_bands[] = {
-    C_ITEM_STR(BSAL_BAND_24G,                       "2.4G"),
-    C_ITEM_STR(BSAL_BAND_5G,                        "5G")
+    C_ITEM_STR(RADIO_TYPE_NONE,                      "none"),
+    C_ITEM_STR(RADIO_TYPE_2G,                        "2.4G"),
+    C_ITEM_STR(RADIO_TYPE_5G,                        "5G"),
+    C_ITEM_STR(RADIO_TYPE_5GL,                       "5GL"),
+    C_ITEM_STR(RADIO_TYPE_5GU,                       "5GU")
 };
 
 static c_item_t map_state_names[] = {
     C_ITEM_STR(BM_CLIENT_STATE_DISCONNECTED,    "DISCONNECTED"),
     C_ITEM_STR(BM_CLIENT_STATE_CONNECTED,       "CONNECTED"),
-    C_ITEM_STR(BM_CLIENT_STATE_STEERING_5G,     "STEERING_5G"),
-    C_ITEM_STR(BM_CLIENT_STATE_STEERING_2G,     "STEERING_2G"),
+    C_ITEM_STR(BM_CLIENT_STATE_STEERING,        "STEERING"),
     C_ITEM_STR(BM_CLIENT_STATE_BACKOFF,         "BACKOFF")
 };
 
@@ -107,10 +110,11 @@ static c_item_t map_cs_states[] = {
     C_ITEM_STR(BM_CLIENT_CS_STATE_XING_DISABLED,    "xing_disabled")
 };
 
-static c_item_t map_ovsdb_pref_5g[] = {
-    C_ITEM_STR(BM_CLIENT_5G_NEVER,              "never" ),
-    C_ITEM_STR(BM_CLIENT_5G_HWM,                "hwm"   ),
-    C_ITEM_STR(BM_CLIENT_5G_ALWAYS,             "always")
+static c_item_t map_ovsdb_pref_allowed[] = {
+    C_ITEM_STR(BM_CLIENT_PREF_ALLOWED_NEVER,              "never" ),
+    C_ITEM_STR(BM_CLIENT_PREF_ALLOWED_HWM,                "hwm"   ),
+    C_ITEM_STR(BM_CLIENT_PREF_ALLOWED_ALWAYS,             "always"),
+    C_ITEM_STR(BM_CLIENT_PREF_ALLOWED_NON_DFS,            "nonDFS")
 };
 
 static c_item_t map_ovsdb_force_kick[] = {
@@ -121,14 +125,16 @@ static c_item_t map_ovsdb_force_kick[] = {
 };
 
 /*****************************************************************************/
-static bool     bm_client_to_bsal_conf(bm_client_t *client,
-                                        bsal_band_t band, bsal_client_config_t *dest);
-static bool     bm_client_add_to_pair(bm_client_t *client, bm_pair_t *pair);
-static bool     bm_client_update_pair(bm_client_t *client, bm_pair_t *pair);
-static bool     bm_client_remove_from_pair(bm_client_t *client, bm_pair_t *pair);
-static bool     bm_client_add_to_all_pairs(bm_client_t *client);
-static bool     bm_client_update_all_pairs(bm_client_t *client);
-static bool     bm_client_remove_from_all_pairs(bm_client_t *client);
+static bool     bm_client_to_bsal_conf_bs(bm_client_t *client,
+                                          bm_group_t *group,
+                                          radio_type_t band,
+                                          bsal_client_config_t *dest);
+static bool     bm_client_add_to_group(bm_client_t *client, bm_group_t *group);
+static bool     bm_client_update_group(bm_client_t *client, bm_group_t *group);
+static bool     bm_client_remove_from_group(bm_client_t *client, bm_group_t *group);
+static bool     bm_client_add_to_all_groups(bm_client_t *client);
+static bool     bm_client_update_all_groups(bm_client_t *client);
+static bool     bm_client_remove_from_all_groups(bm_client_t *client);
 static bool     bm_client_from_ovsdb(struct schema_Band_Steering_Clients *bscli,
                                                                  bm_client_t *client);
 static void     bm_client_remove(bm_client_t *client);
@@ -138,6 +144,7 @@ static void     bm_client_disable_steering(bm_client_t *client);
 static void     bm_client_task_backoff(void *arg);
 static void     bm_client_state_change(bm_client_t *client,
                                                  bm_client_state_t state, bool force);
+static void     bm_client_activity_action(bm_client_t *client, bool is_active);
 
 
 /*****************************************************************************/
@@ -199,7 +206,7 @@ bm_client_to_cs_bsal_conf( bm_client_t *client, bsal_client_config_t *dest, bool
 }
 
 static bool
-bm_client_to_bsal_conf(bm_client_t *client, bsal_band_t band, bsal_client_config_t *dest)
+bm_client_to_bsal_conf_bs(bm_client_t *client, bm_group_t *group, radio_type_t radio_type, bsal_client_config_t *dest)
 {
     if( client->lwm == BM_KICK_MAGIC_NUMBER ) {
         dest->rssi_low_xing = 0;
@@ -207,14 +214,20 @@ bm_client_to_bsal_conf(bm_client_t *client, bsal_band_t band, bsal_client_config
         dest->rssi_low_xing = client->lwm;
     }
 
-    if (band == BSAL_BAND_24G && client->state != BM_CLIENT_STATE_BACKOFF) {
+    if (!bm_group_radio_type_allowed(group, radio_type) && client->state != BM_CLIENT_STATE_BACKOFF) {
         /* Block client based on HWM */
         dest->blacklist             = false;
 
-        if( client->pref_5g == BM_CLIENT_5G_ALWAYS ) {
+        if( client->pref_allowed == BM_CLIENT_PREF_ALLOWED_ALWAYS ) {
             dest->rssi_probe_hwm    = BM_CLIENT_MIN_HWM;
-        } else if( client->pref_5g == BM_CLIENT_5G_HWM ) {
+        } else if( client->pref_allowed == BM_CLIENT_PREF_ALLOWED_HWM ) {
             dest->rssi_probe_hwm    = client->hwm;
+        } else if (client->pref_allowed == BM_CLIENT_PREF_ALLOWED_NON_DFS) {
+            if (bm_group_only_dfs_channels(group)) {
+                dest->rssi_probe_hwm = 0;
+            } else {
+                dest->rssi_probe_hwm = BM_CLIENT_MIN_HWM;
+            }
         } else {
             dest->rssi_probe_hwm    = 0;
         }
@@ -224,6 +237,15 @@ bm_client_to_bsal_conf(bm_client_t *client, bsal_band_t band, bsal_client_config
         dest->rssi_probe_lwm        = client->lwm;
         dest->rssi_high_xing        = client->hwm;
         dest->rssi_inact_xing       = 0;
+
+        if (client->pref_allowed == BM_CLIENT_PREF_ALLOWED_NON_DFS &&
+            bm_group_only_dfs_channels(group)) {
+            dest->rssi_probe_lwm = 0;
+            dest->rssi_high_xing = 0;
+        }
+
+        if (client->pref_allowed == BM_CLIENT_PREF_ALLOWED_HWM)
+            dest->rssi_probe_lwm = 0;
 
         if( client->pre_assoc_auth_block ) {
             LOGT( "Client '%s': Blocking auth requests for"
@@ -250,12 +272,12 @@ bm_client_to_bsal_conf(bm_client_t *client, bsal_band_t band, bsal_client_config
         dest->auth_reject_reason    = 0;
 
         if (client->state == BM_CLIENT_STATE_BACKOFF &&  client->steer_during_backoff) {
-           LOGD("bs %s steer during backoff", client->mac_addr);
+           LOGD("bs %s radio_type %d steer during backoff", client->mac_addr, radio_type);
            dest->rssi_high_xing = client->hwm;
         }
     }
 
-    LOGD("bs %s band %d (probe %d-%d, auth %d-%d, xing %d-%d", client->mac_addr, band,
+    LOGD("bs %s radio_type %d (probe %d-%d, auth %d-%d, xing %d-%d", client->mac_addr, radio_type,
          dest->rssi_probe_lwm, dest->rssi_probe_hwm,
 	 dest->rssi_auth_lwm, dest->rssi_auth_hwm,
 	 dest->rssi_low_xing, dest->rssi_high_xing);
@@ -263,15 +285,339 @@ bm_client_to_bsal_conf(bm_client_t *client, bsal_band_t band, bsal_client_config
     return true;
 }
 
-static void bm_client_check_connected(bm_client_t *client, bm_pair_t *pair, bsal_band_t band, const os_macaddr_t macaddr)
+static bool
+bm_client_to_bsal_conf_cs(bm_client_t *client, radio_type_t radio_type, bsal_client_config_t *dest)
+{
+    bool block = false;
+
+    switch (client->cs_mode) {
+        case BM_CLIENT_CS_MODE_HOME:
+            if (client->cs_radio_type != radio_type)
+                block = true;
+            break;
+        case BM_CLIENT_CS_MODE_AWAY:
+            block = true;
+            break;
+        default:
+            LOGW("%s unknown cs_mode: %d", __func__, client->cs_mode);
+            break;
+    }
+
+    LOGD("CS Client '%s': cs_radio_type %s radio_type %s - %s", client->mac_addr,
+         c_get_str_by_key(map_bsal_bands, client->cs_radio_type),
+         c_get_str_by_key(map_bsal_bands, radio_type),
+         block ? "block" : "pass");
+
+    if (!bm_client_to_cs_bsal_conf(client, dest, block)) {
+        LOGE("Failed to convert client '%s' to blocked BSAL config", client->mac_addr);
+        return false;
+    }
+
+    return true;
+}
+
+static bool
+bm_client_to_bsal_conf(bm_client_t *client, bm_group_t *group, radio_type_t radio_type, bsal_client_config_t *dest)
+{
+    bool status = false;
+
+    switch (client->steering_state) {
+        case BM_CLIENT_CLIENT_STEERING:
+            LOGT("Client '%s' radio_type %s: Applying Client Steering BSAL configuration",
+                 client->mac_addr, c_get_str_by_key(map_bsal_bands, radio_type));
+            status = bm_client_to_bsal_conf_cs(client, radio_type, dest);
+            break;
+        case BM_CLIENT_STEERING_NONE:
+        case BM_CLIENT_BAND_STEERING:
+            LOGT("Client '%s' radio_type %s: Applying Band Steering BSAL configuration",
+                 client->mac_addr, c_get_str_by_key(map_bsal_bands, radio_type));
+            status = bm_client_to_bsal_conf_bs(client, group, radio_type, dest);
+            break;
+        default:
+            LOGW("%s unknown steering_state %d", __func__, client->steering_state);
+            break;
+    }
+
+    return status;
+}
+
+bm_rrm_req_t *
+bm_client_get_rrm_req(bm_client_t *client, uint8_t channel)
+{
+    bm_rrm_req_t *req;
+    unsigned int i;
+
+    req = NULL;
+
+    for (i = 0; i < ARRAY_SIZE(client->rrm_req); i++) {
+        if (client->rrm_req[i].rrm_params.channel == channel) {
+            req = &client->rrm_req[i];
+            req->client = client;
+            break;
+        }
+    }
+
+    if (req) {
+        LOGD("%s found queued rrm task %i for channel %u, cancel it", client->mac_addr, i, channel);
+        evsched_task_cancel(req->rrm_task);
+        return req;
+    }
+
+    for (i = 0; i < ARRAY_SIZE(client->rrm_req); i++) {
+        if (!client->rrm_req[i].rrm_task) {
+            req = &client->rrm_req[i];
+            req->client = client;
+            break;
+        }
+    }
+
+    if (req)
+        LOGD("%s using %u/%u rrm request", client->mac_addr, i, ARRAY_SIZE(client->rrm_req));
+
+    return req;
+}
+
+void
+bm_client_put_rrm_req(bm_rrm_req_t *req)
+{
+    memset(req, 0, sizeof(*req));
+}
+
+static void
+bm_client_send_rrm_req_task(void *arg)
+{
+    bm_rrm_req_t *req = arg;
+    bm_client_t *client = req->client;
+
+    LOGI("%s %s issue rrm for channel %d", client->ifname, client->mac_addr, req->rrm_params.channel);
+    if (target_bsal_rrm_beacon_report_request(client->ifname, client->macaddr.addr, &req->rrm_params) < 0)
+        LOGE("RRM Beacon Report request failed for client %s", client->mac_addr);
+
+    bm_client_put_rrm_req(req);
+}
+
+void
+bm_client_send_rrm_req(bm_client_t *client, bm_client_rrm_req_type_t rrm_req_type, int delay)
+{
+    bm_rrm_req_t *req;
+    uint8_t channels[8];
+    int num_channels;
+    uint32_t delay_ms;
+    int i;
+
+    if (!client->connected)
+        return;
+    if (!strlen(client->ifname))
+        return;
+    if (!client->group)
+        return;
+    if (!client->info->rrm_caps.bcn_rpt_active)
+        return;
+
+    bm_client_reset_rrm_neighbors(client);
+    num_channels = bm_neighbor_get_channels(client, rrm_req_type, channels, sizeof(channels), 0);
+
+    for (i = 0; i < num_channels; i++) {
+        req = bm_client_get_rrm_req(client, channels[i]);
+        if (!req) {
+            LOGW("%s: could not get rrm_req slot", client->mac_addr);
+            break;
+        }
+
+        if (!bm_kick_get_rrm_params(&req->rrm_params)) {
+            LOGW("Client %s: Failed to get RRM params", client->mac_addr);
+            break;
+        }
+
+        /* Check only current SSID */
+        req->rrm_params.req_ssid = 1;
+        req->rrm_params.meas_dur = BM_CLIENT_RRM_ACTIVE_MEASUREMENT_DURATION;
+
+        /* TODO should we change to passive for DFS case? */
+        req->rrm_params.channel = channels[i];
+        req->rrm_params.op_class = bm_neighbor_get_op_class(channels[i]);
+
+        delay_ms = EVSCHED_SEC(delay) + i * 3 * BM_CLIENT_RRM_ACTIVE_MEASUREMENT_DURATION;
+
+        if (!delay_ms) {
+            bm_client_send_rrm_req_task(req);
+            continue;
+        }
+
+        req->rrm_task = evsched_task(bm_client_send_rrm_req_task, req, delay_ms);
+    }
+}
+
+void
+bm_client_update_rrm_neighbors(void)
+{
+    bm_client_t *client;
+    int delay = 3;
+
+    ds_tree_foreach(&bm_clients, client) {
+        if (!client->send_rrm_after_assoc)
+            continue;
+        if (!client->connected)
+            continue;
+        if (!client->info->rrm_caps.bcn_rpt_active)
+            continue;
+        if (!strlen(client->ifname))
+            continue;
+        if (!client->group)
+            continue;
+        bm_client_send_rrm_req(client, BM_CLIENT_RRM_OWN_BAND_ONLY, delay);
+        delay += 3;
+    }
+}
+
+static void
+bm_client_print_client_caps( bm_client_t *client )
+{
+    if (WARN_ON(!client->info))
+        return;
+
+    LOGD( " ~~~ Client '%s' ~~~", client->mac_addr );
+    LOGD( " isBTMSupported        : %s", client->info->is_BTM_supported ? "Yes":"No" );
+    LOGD( " isRRMSupported        : %s", client->info->is_RRM_supported ? "Yes":"No" );
+    LOGD( " Supports 2G           : %s", client->info->band_cap_2G ? "Yes":"No" );
+    LOGD( " Supports 5G           : %s", client->info->band_cap_5G ? "Yes":"No" );
+
+    LOGD( "   ~~~Datarate Information~~~    " );
+    LOGD( " Max Channel Width     : %hhu", client->info->datarate_info.max_chwidth );
+    LOGD( " Max Streams           : %hhu", client->info->datarate_info.max_streams );
+    LOGD( " PHY Mode              : %hhu", client->info->datarate_info.phy_mode );
+    LOGD( " Max MCS               : %hhu", client->info->datarate_info.max_MCS );
+    LOGD( " Max TX power          : %hhu", client->info->datarate_info.max_txpower );
+    LOGD( " Is Static SMPS?       : %s", client->info->datarate_info.is_static_smps ? "Yes":"No" );
+    LOGD( " Suports MU-MIMO       : %s", client->info->datarate_info.is_mu_mimo_supported? "Yes":"No" );
+
+    LOGD( "   ~~~RRM Capabilites~~~     " );
+    LOGD( " Link measurement      : %s", client->info->rrm_caps.link_meas ? "Yes":"No" );
+    LOGD( " Neighbor report       : %s", client->info->rrm_caps.neigh_rpt ? "Yes":"No" );
+    LOGD( " Beacon Report Passive : %s", client->info->rrm_caps.bcn_rpt_passive ? "Yes":"No" );
+    LOGD( " Beacon Report Active  : %s", client->info->rrm_caps.bcn_rpt_active ? "Yes":"No" );
+    LOGD( " Beacon Report Table   : %s", client->info->rrm_caps.bcn_rpt_table ? "Yes":"No" );
+    LOGD( " LCI measurement       : %s", client->info->rrm_caps.lci_meas ? "Yes":"No");
+    LOGD( " FTM Range report      : %s", client->info->rrm_caps.ftm_range_rpt ? "Yes":"No" );
+
+    LOGD( "   ~~~RRM Capabilites~~~     " );
+    LOGD( " ASSOC IE length       : %u", client->info->assoc_ies_len);
+
+    LOGD( " ~~~~~~~~~~~~~~~~~~~~ " );
+
+    return;
+}
+
+static void bm_client_report_caps(bm_client_t *client, const char *ifname, bsal_client_info_t *info)
+{
+    bsal_event_t event;
+
+    memset(&event, 0, sizeof(event));
+    STRSCPY(event.ifname, ifname);
+    event.type = BSAL_EVENT_CLIENT_CONNECT;
+    memcpy(&event.data.connect.client_addr,
+           &client->macaddr,
+           sizeof(event.data.connect.client_addr));
+
+    event.data.connect.is_BTM_supported = info->is_BTM_supported;
+    event.data.connect.is_RRM_supported = info->is_RRM_supported;
+    event.data.connect.band_cap_2G = info->band_cap_2G | client->band_cap_2G;
+    event.data.connect.band_cap_5G = info->band_cap_5G | client->band_cap_5G;
+    event.data.connect.assoc_ies_len = info->assoc_ies_len <= ARRAY_SIZE(event.data.connect.assoc_ies)
+                                     ? info->assoc_ies_len
+                                     : ARRAY_SIZE(event.data.connect.assoc_ies);
+    memcpy(&event.data.connect.datarate_info, &info->datarate_info, sizeof(event.data.connect.datarate_info));
+    memcpy(&event.data.connect.rrm_caps, &info->rrm_caps, sizeof(event.data.connect.rrm_caps));
+    memcpy(&event.data.connect.assoc_ies, info->assoc_ies, event.data.connect.assoc_ies_len);
+
+    bm_stats_add_event_to_report(client, &event, CLIENT_CAPABILITIES, false);
+}
+
+static bool bm_client_caps_changed(bm_client_t *client, const char *ifname, bsal_client_info_t *info)
+{
+    unsigned int i;
+    bsal_client_info_t *cur_info;
+
+    for (i = 0; i < client->ifcfg_num; i++) {
+        if (!strcmp(client->ifcfg[i].ifname, ifname))
+            break;
+    }
+
+    if (WARN_ON(i == client->ifcfg_num))
+        return false;
+
+    cur_info = &client->ifcfg[i].info;
+
+    // Check if BSS TM capability changed
+    if (info->is_BTM_supported != cur_info->is_BTM_supported) {
+        LOGT( "Client '%s': BSS TM capability changed, notifying", client->mac_addr );
+        return true;
+    }
+
+    // Check if RRM capability changed
+    if (info->is_RRM_supported != cur_info->is_RRM_supported ) {
+        LOGT( "Client '%s': RRM capability changed, notifying", client->mac_addr );
+        return true;
+    }
+
+    // Check if datarate information changed
+    if (memcmp(&info->datarate_info, &cur_info->datarate_info, sizeof(info->datarate_info))) {
+        LOGT( "Client '%s': Datarate information changed, notifying", client->mac_addr );
+        return true;
+    }
+
+    // Check if RRM capabilites changed
+    if (memcmp(&info->rrm_caps, &cur_info->rrm_caps, sizeof(info->rrm_caps))) {
+        LOGT( "Client '%s': RRM Capabilities changed, notifying", client->mac_addr );
+        return true;
+    }
+
+    if (cur_info->assoc_ies_len != info->assoc_ies_len) {
+        LOGT("%s: assoc_ies_len changed, notifying", client->mac_addr);
+        return true;
+    }
+
+    if (memcmp(cur_info->assoc_ies, info->assoc_ies, sizeof(cur_info->assoc_ies))) {
+        LOGT("%s: assoc_ies[] changed, notifying", client->mac_addr);
+        return true;
+    }
+
+    return false;
+}
+
+static void bm_client_record_client_caps(bm_client_t *client, const char *ifname, bsal_client_info_t *info)
+{
+    unsigned int i;
+
+    for (i = 0; i < client->ifcfg_num; i++) {
+        if (!strcmp(client->ifcfg[i].ifname, ifname))
+            break;
+    }
+
+    if (WARN_ON(i == client->ifcfg_num))
+        return;
+
+    memcpy(&client->ifcfg[i].info, info, sizeof(client->ifcfg[i].info));
+    client->info = &client->ifcfg[i].info;
+}
+
+static void bm_client_caps_recalc(bm_client_t *client, const char *ifname, bsal_client_info_t *info)
+{
+    info->band_cap_2G |= client->band_cap_2G;
+    info->band_cap_5G |= client->band_cap_5G;
+
+    if (bm_client_caps_changed(client, ifname, info))
+        bm_client_report_caps(client, ifname, info);
+
+    bm_client_record_client_caps(client, ifname, info);
+}
+
+void bm_client_check_connected(bm_client_t *client, bm_group_t *group, const char *ifname)
 {
     bsal_client_info_t          info;
-    bsal_event_t                event;
-    const char                  *ifname;
+    radio_type_t                radio_type;
 
-    ifname = pair->ifcfg[band].ifname;
-
-    if (target_bsal_client_info(ifname, macaddr.addr, &info)) {
+    if (target_bsal_client_info(ifname, client->macaddr.addr, &info)) {
         LOGD("%s: Client %s no client info.", ifname, client->mac_addr);
         return;
     }
@@ -281,249 +627,200 @@ static void bm_client_check_connected(bm_client_t *client, bm_pair_t *pair, bsal
         return;
     }
 
-    LOGI("%s: Client %s already connected.", ifname, client->mac_addr);
+    LOGI("%s: Client %s connected.", ifname, client->mac_addr);
 
-    /* create an event with correct CAPS */
-    memset(&event, 0, sizeof(event));
-
-    strncpy(event.ifname, ifname, BSAL_IFNAME_LEN);
-    event.type = BSAL_EVENT_CLIENT_CONNECT;
-    event.band = band;
-    memcpy(&event.data.connect.client_addr,
-           &macaddr,
-           sizeof(event.data.connect.client_addr));
-
-    event.data.connect.is_BTM_supported = info.is_BTM_supported;
-    event.data.connect.is_RRM_supported = info.is_RRM_supported;
-    event.data.connect.band_cap_2G = info.band_cap_2G | client->band_cap_2G;
-    event.data.connect.band_cap_5G = info.band_cap_5G | client->band_cap_5G;
-    memcpy(&event.data.connect.datarate_info, &info.datarate_info, sizeof(event.data.connect.datarate_info));
-    memcpy(&event.data.connect.rrm_caps, &info.rrm_caps, sizeof(event.data.connect.rrm_caps));
-
-    if (bm_events_client_cap_changed(client, &event)) {
-        bm_stats_add_event_to_report(client, &event, CLIENT_CAPABILITIES, false);
+    radio_type = bm_group_find_radio_type_by_ifname(ifname);
+    switch (radio_type) {
+        case RADIO_TYPE_2G:
+            client->band_cap_2G = true;
+            break;
+        case RADIO_TYPE_5G:
+        case RADIO_TYPE_5GL:
+        case RADIO_TYPE_5GU:
+            client->band_cap_5G = true;
+            break;
+        default:
+            break;
     }
 
-    bm_events_record_client_cap(client, &event);
-    bm_client_connected(client, pair->bsal, band, &event);
+    /* Check assoc IEs */
+    bm_client_parse_assoc_ies(client, info.assoc_ies, info.assoc_ies_len);
+
+    /* Recalc client capabilities */
+    bm_client_caps_recalc(client, ifname, &info);
+
+    bm_kick_cancel_btm_retry_task( client );
+    bm_client_preassoc_backoff_recalc(group, client, ifname);
+
+    if (client->steering_state == BM_CLIENT_CLIENT_STEERING) {
+        bm_client_cs_connect(client, ifname);
+    } else {
+        bm_client_bs_connect(group, client, ifname);
+    }
+
+    bm_client_connected(client, group, ifname);
+
+    /* Setup self neighbor - channel/bssid/op_class */
+    memset(&client->self_neigh, 0, sizeof(client->self_neigh));
+    WARN_ON(!bm_neighbor_get_self_neighbor(ifname, &client->self_neigh));
+
+    /* Check how client see our PODs */
+    if (client->send_rrm_after_assoc)
+        bm_client_send_rrm_req(client, BM_CLIENT_RRM_OWN_BAND_ONLY, 5);
 }
 
 static bool
-bm_client_add_to_pair(bm_client_t *client, bm_pair_t *pair)
+bm_client_add_to_group(bm_client_t *client, bm_group_t *group)
 {
     bsal_client_config_t        cli_conf;
-    os_macaddr_t                macaddr;
+    unsigned int                i;
 
-    if (!pair->enabled || !pair->bsal) {
+    if (!group->enabled) {
         return true;
     }
 
-    if (!os_nif_macaddr_from_str(&macaddr, client->mac_addr)) {
-        LOGE("Failed to parse mac address '%s'", client->mac_addr);
-        return false;
+    for (i = 0; i < group->ifcfg_num; i++) {
+        /* Adding this as band steering by default */
+        if (!bm_client_to_bsal_conf_bs(client, group, group->ifcfg[i].radio_type, &cli_conf)) {
+            LOGE("Failed to convert (add) client '%s' to BSAL %s config",
+                 client->mac_addr,
+                 c_get_str_by_key(map_bsal_bands, group->ifcfg[i].radio_type));
+            return false;
+        }
+
+        if (target_bsal_client_add(group->ifcfg[i].bsal.ifname, client->macaddr.addr, &cli_conf) < 0) {
+            LOGE("Failed to add client '%s' band %s to BSAL iface %s",
+                 client->mac_addr,
+                 c_get_str_by_key(map_bsal_bands, group->ifcfg[i].radio_type),
+                 group->ifcfg[i].bsal.ifname);
+            return false;
+        }
+
+        if (!bm_client_ifcfg_set(group, client, group->ifcfg[i].ifname,
+                                 group->ifcfg[i].radio_type,
+                                 group->ifcfg[i].bs_allowed)) {
+            LOGE("Failed to add client '%s' band %s to client ifcfg[] %s",
+                 client->mac_addr,
+                 c_get_str_by_key(map_bsal_bands, group->ifcfg[i].radio_type),
+                 group->ifcfg[i].ifname);
+            return false;
+        }
+
+
+        LOGI("Client '%s' band %s added to BSAL:%s (probe %d-%d auth %d-%d xing %d-%d-%d)",
+             client->mac_addr,
+             c_get_str_by_key(map_bsal_bands, group->ifcfg[i].radio_type),
+             group->ifcfg[i].bsal.ifname,
+             cli_conf.rssi_probe_lwm, cli_conf.rssi_probe_hwm,
+             cli_conf.rssi_auth_lwm, cli_conf.rssi_auth_hwm,
+             cli_conf.rssi_inact_xing, cli_conf.rssi_low_xing, cli_conf.rssi_high_xing);
+
+
+        bm_client_check_connected(client, group, group->ifcfg[i].ifname);
     }
-
-    // 2.4G
-    if (!bm_client_to_bsal_conf(client, BSAL_BAND_24G, &cli_conf)) {
-        LOGE("Failed to convert client '%s' to BSAL 2.4G config", client->mac_addr);
-        return false;
-    }
-
-    if (target_bsal_client_add(pair->ifcfg[BSAL_BAND_24G].ifname, (uint8_t *)&macaddr, &cli_conf) < 0) {
-        LOGE("Failed to add client '%s' to BSAL:%s",
-                                  client->mac_addr, pair->ifcfg[BSAL_BAND_24G].ifname);
-        return false;
-    }
-
-    LOGD("Client '%s' added to BSAL:%s",
-                                  client->mac_addr, pair->ifcfg[BSAL_BAND_24G].ifname);
-
-    // 5G
-    if (!bm_client_to_bsal_conf(client, BSAL_BAND_5G, &cli_conf)) {
-        LOGE("Failed to convert client '%s' to BSAL 5G config", client->mac_addr);
-        return false;
-    }
-
-    if (target_bsal_client_add(pair->ifcfg[BSAL_BAND_5G].ifname, (uint8_t *)&macaddr, &cli_conf) < 0) {
-        LOGE("Failed to add client '%s' to BSAL:%s",
-                                  client->mac_addr, pair->ifcfg[BSAL_BAND_5G].ifname);
-        return false;
-    }
-
-    LOGD("Client '%s' added to BSAL:%s",
-                                  client->mac_addr, pair->ifcfg[BSAL_BAND_5G].ifname);
-
-    // Now check to see if client is already connected
-    bm_client_check_connected(client, pair, BSAL_BAND_24G, macaddr);
-    bm_client_check_connected(client, pair, BSAL_BAND_5G, macaddr);
 
     return true;
 }
 
 static bool
-bm_client_update_pair(bm_client_t *client, bm_pair_t *pair)
+bm_client_update_group(bm_client_t *client, bm_group_t *group)
 {
     bsal_client_config_t        cli_conf;
-    os_macaddr_t                macaddr;
-    bsal_band_t                 blocked_band  = BSAL_BAND_24G;
-    bsal_band_t                 steering_band = BSAL_BAND_5G;
+    unsigned int                i;
 
-    if (!pair->enabled || !pair->bsal) {
+    if (!group->enabled) {
         return false;
     }
 
-    if (!os_nif_macaddr_from_str(&macaddr, client->mac_addr)) {
-        LOGE("Failed to parse mac address '%s'", client->mac_addr);
-        return false;
-    }
-
-    if( client->steering_state != BM_CLIENT_CLIENT_STEERING ) {
-        LOGT( "Client '%s': Applying Band Steering BSAL configuration", client->mac_addr );
-
-        // 2.4G
-        if (!bm_client_to_bsal_conf(client, BSAL_BAND_24G, &cli_conf)) {
-            LOGE("Failed to convert client '%s' to BSAL 2.4G config", client->mac_addr);
+    for (i = 0; i < group->ifcfg_num; i++) {
+        /* Updating this as band steering or client steering */
+        if (!bm_client_to_bsal_conf(client, group, group->ifcfg[i].radio_type, &cli_conf)) {
+            LOGE("Failed to convert (update) client '%s' to BSAL %s config",
+                 client->mac_addr,
+                 c_get_str_by_key(map_bsal_bands, group->ifcfg[i].radio_type));
             return false;
         }
 
-        if (target_bsal_client_update(pair->ifcfg[BSAL_BAND_24G].ifname, (uint8_t *)&macaddr, &cli_conf) < 0) {
-            LOGE("Failed to update client '%s' for BSAL:%s",
-                    client->mac_addr, pair->ifcfg[BSAL_BAND_24G].ifname);
+        if (target_bsal_client_update(group->ifcfg[i].bsal.ifname, client->macaddr.addr, &cli_conf) < 0) {
+            LOGE("Failed to update client '%s' band %s to BSAL iface %s",
+                 client->mac_addr,
+                 c_get_str_by_key(map_bsal_bands, group->ifcfg[i].radio_type),
+                 group->ifcfg[i].bsal.ifname);
             return false;
         }
 
-        LOGD("Client '%s' updated for BSAL:%s",
-                client->mac_addr, pair->ifcfg[BSAL_BAND_24G].ifname);
-
-        // 5G
-        if (!bm_client_to_bsal_conf(client, BSAL_BAND_5G, &cli_conf)) {
-            LOGE("Failed to convert client '%s' to BSAL 5G config", client->mac_addr);
+        if (!bm_client_ifcfg_set(group, client, group->ifcfg[i].ifname,
+                                 group->ifcfg[i].radio_type,
+                                 group->ifcfg[i].bs_allowed)) {
+            LOGE("Failed to update client '%s' band %s to client ifcfg[] %s",
+                 client->mac_addr,
+                 c_get_str_by_key(map_bsal_bands, group->ifcfg[i].radio_type),
+                 group->ifcfg[i].ifname);
             return false;
         }
 
-        if (target_bsal_client_update(pair->ifcfg[BSAL_BAND_5G].ifname, (uint8_t *)&macaddr, &cli_conf) < 0) {
-            LOGE("Failed to update client '%s' for BSAL:%s",
-                    client->mac_addr, pair->ifcfg[BSAL_BAND_5G].ifname);
-            return false;
-        }
-
-        LOGD("Client '%s' updated for BSAL:%s",
-                client->mac_addr, pair->ifcfg[BSAL_BAND_5G].ifname);
-    } else {
-        LOGT( "Client '%s': Applying Client Steering BSAL configuration", client->mac_addr );
-
-        if( client->cs_mode == BM_CLIENT_CS_MODE_HOME ) {
-            if( client->cs_band == BSAL_BAND_5G ) {
-                blocked_band  = BSAL_BAND_24G;
-                steering_band = BSAL_BAND_5G;
-            } else if( client->cs_band == BSAL_BAND_24G ) {
-                blocked_band  = BSAL_BAND_5G;
-                steering_band = BSAL_BAND_24G;
-            }
-
-            char *bandstr = c_get_str_by_key(map_bsal_bands, blocked_band);
-            LOGD( "Client '%s': HOME mode, blocked band = %s", client->mac_addr, bandstr );
-
-            if( !bm_client_to_cs_bsal_conf( client, &cli_conf, true ) ) {
-                LOGE( "Failed to convert client '%s' to blocked BSAL config", client->mac_addr );
-                return false;
-            }
-
-            // Blocked band
-            if( target_bsal_client_update(pair->ifcfg[blocked_band].ifname, (uint8_t *)&macaddr, &cli_conf ) < 0 ) {
-                LOGE( "Failed to update client '%s' for BSAL:%s",
-                        client->mac_addr, pair->ifcfg[blocked_band].ifname );
-                return false;
-            }
-
-            if( !bm_client_to_cs_bsal_conf( client, &cli_conf, false ) ) {
-                LOGE("Failed to convert client '%s' to steering BSAL config", client->mac_addr);
-                return false;
-            }
-
-            // Steering band
-            if (target_bsal_client_update(pair->ifcfg[steering_band].ifname, (uint8_t *)&macaddr, &cli_conf) < 0) {
-                LOGE("Failed to update client '%s' for BSAL:%s",
-                        client->mac_addr, pair->ifcfg[steering_band].ifname);
-                return false;
-            }
-        } else if( client->cs_mode == BM_CLIENT_CS_MODE_AWAY ) {
-            LOGD( "Client '%s': AWAY mode, blocking both bands", client->mac_addr );
-
-            // Block on both bands
-            if( !bm_client_to_cs_bsal_conf( client, &cli_conf, true ) ) {
-                LOGE( "Failed to convert client '%s' to blocked BSAL config", client->mac_addr );
-                return false;
-            }
-
-            if( target_bsal_client_update(pair->ifcfg[BSAL_BAND_24G].ifname, (uint8_t *)&macaddr, &cli_conf ) < 0 ) {
-                LOGE( "Failed to update client '%s' for BSAL:%s",
-                        client->mac_addr, pair->ifcfg[BSAL_BAND_24G].ifname );
-                return false;
-            }
-
-            if( target_bsal_client_update(pair->ifcfg[BSAL_BAND_5G].ifname, (uint8_t *)&macaddr, &cli_conf ) < 0 ) {
-                LOGE( "Failed to update client '%s' for BSAL:%s",
-                        client->mac_addr, pair->ifcfg[BSAL_BAND_5G].ifname );
-                return false;
-            }
-        }
+        LOGI("Client '%s' band %s updated for BSAL:%s (probe %d-%d auth %d-%d xing %d-%d-%d)",
+             client->mac_addr,
+             c_get_str_by_key(map_bsal_bands, group->ifcfg[i].radio_type),
+             group->ifcfg[i].bsal.ifname,
+             cli_conf.rssi_probe_lwm, cli_conf.rssi_probe_hwm,
+             cli_conf.rssi_auth_lwm, cli_conf.rssi_auth_hwm,
+             cli_conf.rssi_inact_xing, cli_conf.rssi_low_xing, cli_conf.rssi_high_xing);
     }
 
     return true;
 }
 
 static bool
-bm_client_remove_from_pair(bm_client_t *client, bm_pair_t *pair)
+bm_client_remove_from_group(bm_client_t *client, bm_group_t *group)
 {
-    os_macaddr_t                macaddr;
+    unsigned int                i;
 
-    if (!pair->enabled || !pair->bsal) {
+    if (!group->enabled) {
         return false;
     }
 
-    if (!os_nif_macaddr_from_str(&macaddr, client->mac_addr)) {
-        LOGE("Failed to parse mac address '%s'", client->mac_addr);
-        return false;
+    for (i = 0; i < group->ifcfg_num; i++) {
+        if (target_bsal_client_remove(group->ifcfg[i].bsal.ifname, client->macaddr.addr) < 0) {
+            LOGE("Failed to remove client '%s' band %s from BSAL:%s",
+                 client->mac_addr,
+                 c_get_str_by_key(map_bsal_bands, group->ifcfg[i].radio_type),
+                 group->ifcfg[i].bsal.ifname);
+            continue;
+        }
+
+        if (!bm_client_ifcfg_remove(client, group->ifcfg[i].ifname)) {
+            LOGE("Failed to remove client '%s' band %s from client ifcfg[] %s",
+                 client->mac_addr,
+                 c_get_str_by_key(map_bsal_bands, group->ifcfg[i].radio_type),
+                 group->ifcfg[i].ifname);
+        }
+
+        LOGI("Client '%s' band %s removed from BSAL:%s",
+             client->mac_addr,
+             c_get_str_by_key(map_bsal_bands, group->ifcfg[i].radio_type),
+             group->ifcfg[i].bsal.ifname);
     }
 
-    // 2.4G
-    if (target_bsal_client_remove(pair->ifcfg[BSAL_BAND_24G].ifname, (uint8_t *)&macaddr) < 0) {
-        LOGE("Failed to remove client '%s' from BSAL:%s",
-                                   client->mac_addr, pair->ifcfg[BSAL_BAND_24G].ifname);
-    }
-
-    LOGD("Client '%s' removed from BSAL:%s",
-                                   client->mac_addr, pair->ifcfg[BSAL_BAND_24G].ifname);
-
-    // 5G
-    if (target_bsal_client_remove(pair->ifcfg[BSAL_BAND_5G].ifname, (uint8_t *)&macaddr) < 0) {
-        LOGE("Failed to remove client '%s' from BSAL:%s",
-                                   client->mac_addr, pair->ifcfg[BSAL_BAND_5G].ifname);
-    }
-
-    LOGD("Client '%s' removed from BSAL:%s",
-                                   client->mac_addr, pair->ifcfg[BSAL_BAND_5G].ifname);
-
-    client->pair = NULL;
+    client->group = NULL;
 
     return true;
 }
 
 static bool
-bm_client_add_to_all_pairs(bm_client_t *client)
+bm_client_add_to_all_groups(bm_client_t *client)
 {
-    ds_tree_t       *pairs;
-    bm_pair_t       *pair;
+    ds_tree_t       *groups;
+    bm_group_t       *group;
     bool            success = true;
 
-    if (!(pairs = bm_pair_get_tree())) {
-        LOGE("bm_client_add_to_all_pairs() failed to get pair tree");
+    if (!(groups = bm_group_get_tree())) {
+        LOGE("bm_client_update_all_groups() failed to get group tree");
         return false;
     }
 
-    ds_tree_foreach(pairs, pair) {
-        if (bm_client_add_to_pair(client, pair) == false) {
+    ds_tree_foreach(groups, group) {
+        if (bm_client_add_to_group(client, group) == false) {
             success = false;
         }
     }
@@ -532,19 +829,19 @@ bm_client_add_to_all_pairs(bm_client_t *client)
 }
 
 static bool
-bm_client_update_all_pairs(bm_client_t *client)
+bm_client_update_all_groups(bm_client_t *client)
 {
-    ds_tree_t       *pairs;
-    bm_pair_t       *pair;
+    ds_tree_t       *groups;
+    bm_group_t       *group;
     bool            success = true;
 
-    if (!(pairs = bm_pair_get_tree())) {
-        LOGE("bm_client_update_all_pairs() failed to get pair tree");
+    if (!(groups = bm_group_get_tree())) {
+        LOGE("bm_client_update_all_groups() failed to get group tree");
         return false;
     }
 
-    ds_tree_foreach(pairs, pair) {
-        if (bm_client_update_pair(client, pair) == false) {
+    ds_tree_foreach(groups, group) {
+        if (bm_client_update_group(client, group) == false) {
             success = false;
         }
     }
@@ -553,19 +850,19 @@ bm_client_update_all_pairs(bm_client_t *client)
 }
 
 static bool
-bm_client_remove_from_all_pairs(bm_client_t *client)
+bm_client_remove_from_all_groups(bm_client_t *client)
 {
-    ds_tree_t       *pairs;
-    bm_pair_t       *pair;
+    ds_tree_t       *groups;
+    bm_group_t       *group;
     bool            success = true;
 
-    if (!(pairs = bm_pair_get_tree())) {
-        LOGE("bm_client_remove_from_all_pairs() failed to get pair tree");
+    if (!(groups = bm_group_get_tree())) {
+        LOGE("bm_client_update_all_groups() failed to get group tree");
         return false;
     }
 
-    ds_tree_foreach(pairs, pair) {
-        if (bm_client_remove_from_pair(client, pair) == false) {
+    ds_tree_foreach(groups, group) {
+        if (bm_client_remove_from_group(client, group) == false) {
             success = false;
         }
     }
@@ -576,12 +873,17 @@ bm_client_remove_from_all_pairs(bm_client_t *client)
 static void
 bm_client_remove(bm_client_t *client)
 {
-    if (!bm_client_remove_from_all_pairs(client)) {
-        LOGW("Client '%s' failed to remove from one or more pairs", client->mac_addr);
+    unsigned int i;
+
+    if (!bm_client_remove_from_all_groups(client)) {
+        LOGW("Client '%s' failed to remove from one or more groups", client->mac_addr);
     }
 
     while (evsched_task_cancel_by_find(NULL, client, EVSCHED_FIND_BY_ARG))
         ;
+
+    for (i = 0; i < ARRAY_SIZE(client->rrm_req); i++)
+        evsched_task_cancel(client->rrm_req[i].rrm_task);
 
     bm_kick_cleanup_by_client(client);
     free(client);
@@ -594,6 +896,7 @@ bm_client_cs_task( void *arg )
 {
     bm_client_t     *client = arg;
     bsal_event_t    event;
+    unsigned int    i;
 
     LOGN( "Client steering enforce period completed for client '%s'", client->mac_addr );
 
@@ -604,14 +907,18 @@ bm_client_cs_task( void *arg )
 
     memset( &event, 0, sizeof( event ) );
     if( client->cs_mode == BM_CLIENT_CS_MODE_AWAY ) {
-        event.band = BSAL_BAND_24G;
-        bm_stats_add_event_to_report( client, &event, CLIENT_STEERING_EXPIRED, false );
-
-        event.band = BSAL_BAND_5G;
-        bm_stats_add_event_to_report( client, &event, CLIENT_STEERING_EXPIRED, false );
+        for (i = 0; i < client->ifcfg_num; i++) {
+            STRSCPY(event.ifname, client->ifcfg[i].ifname);
+            bm_stats_add_event_to_report(client, &event, CLIENT_STEERING_EXPIRED, false);
+        }
     } else if( client->cs_mode == BM_CLIENT_CS_MODE_HOME ) {
-        event.band = client->cs_band;
-        bm_stats_add_event_to_report( client, &event, CLIENT_STEERING_EXPIRED, false );
+        for (i = 0; i < client->ifcfg_num; i++) {
+            if (client->ifcfg[i].radio_type != client->cs_radio_type)
+                continue;
+
+            STRSCPY(event.ifname, client->ifcfg[i].ifname);
+            bm_stats_add_event_to_report(client, &event, CLIENT_STEERING_EXPIRED, false);
+        }
     }
 
     return;
@@ -622,10 +929,11 @@ bm_client_trigger_client_steering( bm_client_t *client )
 {
     char            *modestr = c_get_str_by_key( map_cs_modes, client->cs_mode );
     bsal_event_t    event;
+    unsigned int    i;
 
     if( client->cs_mode == BM_CLIENT_CS_MODE_AWAY ||
         ( client->cs_mode == BM_CLIENT_CS_MODE_HOME &&
-          client->cs_band != BSAL_BAND_COUNT ) ) {
+          client->cs_radio_type != RADIO_TYPE_NONE ) ) {
         // Set client steering state
         client->steering_state = BM_CLIENT_CLIENT_STEERING;
         LOGN( "Setting state to CLIENT STEERING for '%s'", client->mac_addr );
@@ -633,14 +941,17 @@ bm_client_trigger_client_steering( bm_client_t *client )
         if( client->cs_state != BM_CLIENT_CS_STATE_STEERING ) {
             memset( &event, 0, sizeof( event ) );
             if( client->cs_mode == BM_CLIENT_CS_MODE_AWAY ) {
-                event.band = BSAL_BAND_24G;
-                bm_stats_add_event_to_report( client, &event, CLIENT_STEERING_STARTED, false );
-
-                event.band = BSAL_BAND_5G;
-                bm_stats_add_event_to_report( client, &event, CLIENT_STEERING_STARTED, false );
+                for (i = 0; i < client->ifcfg_num; i++) {
+                    STRSCPY(event.ifname, client->ifcfg[i].ifname);
+                    bm_stats_add_event_to_report( client, &event, CLIENT_STEERING_STARTED, false );
+                }
             } else if( client->cs_mode == BM_CLIENT_CS_MODE_HOME ) {
-                event.band = client->cs_band;
-                bm_stats_add_event_to_report( client, &event, CLIENT_STEERING_STARTED, false );
+                for (i = 0; i < client->ifcfg_num; i++) {
+                    if (client->ifcfg[i].radio_type != client->cs_radio_type)
+                        continue;
+                    STRSCPY(event.ifname, client->ifcfg[i].ifname);
+                    bm_stats_add_event_to_report( client, &event, CLIENT_STEERING_STARTED, false );
+                }
             }
         }
 
@@ -782,15 +1093,34 @@ bm_client_get_cs_params( struct schema_Band_Steering_Clients *bscli, bm_client_t
 
     if( !(val = bm_client_get_cs_param( bscli, "band" ))) {
         // ABS: Check if this is correct
-        LOGD("%s - unknown band", client->mac_addr);
-        client->cs_band = BSAL_BAND_COUNT;
+        LOGD("%s - unknown radio_type", client->mac_addr);
+        client->cs_radio_type = RADIO_TYPE_NONE;
     } else {
         item = c_get_item_by_str(map_bsal_bands, val);
         if( !item ) {
             LOGE(" Client %s - unknown band '%s'", client->mac_addr, val );
             return false;
         }
-        client->cs_band = ( bsal_band_t )item->key;
+        client->cs_radio_type = ( radio_type_t )item->key;
+    }
+
+    /*
+     * So far we need this before cloud will set this correctly.
+     * Today 5G could be 5G or 5GL/5GU for SP
+     */
+    if (client->cs_radio_type == RADIO_TYPE_5G) {
+        radio_type_t radio_type = client->cs_radio_type;
+        unsigned int i;
+
+        for (i = 0; i < client->ifcfg_num; i++) {
+            if (client->ifcfg[i].radio_type == RADIO_TYPE_2G)
+                continue;
+            radio_type = client->ifcfg[i].radio_type;
+            break;
+        }
+
+        LOGI("overwrite cs_radio_type from %d to %d", client->cs_radio_type, radio_type);
+        client->cs_radio_type = radio_type;
     }
 
     if( !bscli->cs_mode_exists ) {
@@ -1038,6 +1368,21 @@ bm_client_get_btm_params( struct schema_Band_Steering_Clients *bscli,
                 neigh->op_class = atoi( val );
             }
         }
+
+        /* If not set, derive op_class and phy_type from channel */
+        if (neigh->channel && type == BM_CLIENT_BTM_PARAMS_SC) {
+            if (!neigh->op_class) {
+                neigh->op_class = bm_neighbor_get_op_class(neigh->channel);
+                LOGD("%s: steering kick, setup op_class %d base on %d channel", client->mac_addr,
+                     neigh->op_class, neigh->channel);
+            }
+
+            if (!neigh->phy_type) {
+                neigh->phy_type = bm_neighbor_get_phy_type(neigh->channel);
+                LOGD("%s: steering kick, setup phy_type %d base on %d channel", client->mac_addr,
+                     neigh->phy_type, neigh->channel);
+            }
+        }
     }
 
     return true;
@@ -1047,8 +1392,14 @@ static bool
 bm_client_from_ovsdb(struct schema_Band_Steering_Clients *bscli, bm_client_t *client)
 {
     c_item_t                *item;
+    char                    *pref_allowed;
 
     STRSCPY(client->mac_addr, bscli->mac);
+
+    if (!os_nif_macaddr_from_str(&client->macaddr, bscli->mac)) {
+        LOGE("Failed to parse mac address '%s'", bscli->mac);
+        return false;
+    }
 
     if (!bscli->reject_detection_exists) {
         client->reject_detection = BM_CLIENT_REJECT_NONE;
@@ -1095,15 +1446,23 @@ bm_client_from_ovsdb(struct schema_Band_Steering_Clients *bscli, bm_client_t *cl
         client->sticky_kick_type            = (bm_client_kick_t)item->key;
     }
 
-    if (!bscli->pref_5g_exists) {
-        client->pref_5g = BM_CLIENT_5G_NEVER;
+    if (bscli->pref_bs_allowed_exists) {
+        pref_allowed = bscli->pref_bs_allowed;
+    } else if (bscli->pref_5g_exists) {
+        pref_allowed = bscli->pref_5g;
     } else {
-        item = c_get_item_by_str(map_ovsdb_pref_5g, bscli->pref_5g);
+        pref_allowed = NULL;
+    }
+
+    if (!pref_allowed) {
+        client->pref_allowed = BM_CLIENT_PREF_ALLOWED_NEVER;
+    } else {
+        item = c_get_item_by_str(map_ovsdb_pref_allowed, pref_allowed);
         if (!item) {
-            LOGE("Client %s - unknown pref_5g value '%s'", client->mac_addr, bscli->pref_5g);
+            LOGE("Client %s - unknown pref_allowed value '%s'", client->mac_addr, pref_allowed);
             return false;
         }
-        client->pref_5g                     = (bm_client_pref_5g)item->key;
+        client->pref_allowed                = (bm_client_pref_allowed)item->key;
     }
 
     if (!bscli->force_kick_exists) {
@@ -1140,6 +1499,36 @@ bm_client_from_ovsdb(struct schema_Band_Steering_Clients *bscli, bm_client_t *cl
         client->steer_during_backoff = bscli->steer_during_backoff;
     }
 
+    if (!bscli->sticky_kick_guard_time_exists) {
+        client->sticky_kick_guard_time = BM_CLIENT_STICKY_KICK_GUARD_TIME;
+    } else {
+        client->sticky_kick_guard_time = bscli->sticky_kick_guard_time;
+    }
+
+    if (!bscli->steering_kick_guard_time_exists) {
+        client->steering_kick_guard_time = BM_CLIENT_STEERING_KICK_GUARD_TIME;
+    } else {
+        client->steering_kick_guard_time = bscli->steering_kick_guard_time;
+    }
+
+    if (!bscli->sticky_kick_backoff_time_exists) {
+        client->sticky_kick_backoff_time = BM_CLIENT_STICKY_KICK_BACKOFF_TIME;
+    } else {
+        client->sticky_kick_backoff_time = bscli->sticky_kick_backoff_time;
+    }
+
+    if (!bscli->steering_kick_backoff_time_exists) {
+        client->steering_kick_backoff_time = BM_CLIENT_STEERING_KICK_BACKOFF_TIME;
+    } else {
+        client->steering_kick_backoff_time = bscli->steering_kick_backoff_time;
+    }
+
+    if (!bscli->settling_backoff_time_exists) {
+        client->settling_backoff_time = BM_CLIENT_SETTLING_BACKOFF_TIME;
+    } else {
+        client->settling_backoff_time = bscli->settling_backoff_time;
+    }
+
     // If the kick_debounce_period or sc_kick_debounce_period was
     // changed, reset the last_kick time
     if( ( client->kick_debounce_period != bscli->kick_debounce_period ) ||
@@ -1154,6 +1543,12 @@ bm_client_from_ovsdb(struct schema_Band_Steering_Clients *bscli, bm_client_t *cl
 
     client->kick_upon_idle              = bscli->kick_upon_idle;
     client->pre_assoc_auth_block        = bscli->pre_assoc_auth_block;
+
+    if (bscli->preq_snr_thr_exists) {
+        client->preq_snr_thr = bscli->preq_snr_thr;
+    } else {
+        client->preq_snr_thr = BM_CLIENT_DEFAULT_PREQ_SNR_THR;
+    }
 
     // Fetch all Client Steering parameters
     if( !bm_client_get_cs_params( bscli, client ) ) {
@@ -1186,26 +1581,38 @@ bm_client_from_ovsdb(struct schema_Band_Steering_Clients *bscli, bm_client_t *cl
         return false;
     }
 
+    if (!bscli->send_rrm_after_assoc_exists) {
+        client->send_rrm_after_assoc = true;
+    } else {
+        client->send_rrm_after_assoc = bscli->send_rrm_after_assoc;
+    }
+
+    if (!bscli->send_rrm_after_xing_exists) {
+        client->send_rrm_after_xing = true;
+    } else {
+        client->send_rrm_after_xing = bscli->send_rrm_after_xing;
+    }
+
+    if (!bscli->rrm_better_factor_exists) {
+        client->rrm_better_factor = 3;
+    } else {
+        client->rrm_better_factor = bscli->rrm_better_factor;
+    }
+
+    if (!bscli->rrm_age_time_exists) {
+        client->rrm_age_time = 15;
+    } else {
+        client->rrm_age_time = bscli->rrm_age_time;
+    }
+
+    if (!bscli->active_treshold_bps_exists) {
+        client->active_treshold_bps = BM_CLIENT_DEFAULT_ACTIVITY_BPS_TH;
+    } else {
+        client->active_treshold_bps = bscli->active_treshold_bps;
+    }
+
     return true;
 }
-
-#define ADD_STAT_BY_BAND(bandstr, bscli, key, val) \
-        do { \
-            int idx = bscli->stats_##bandstr##_len; \
-            STRSCPY(bscli->stats_##bandstr##_keys[idx], key); \
-            bscli->stats_##bandstr[idx] = val; \
-            bscli->stats_##bandstr##_len++; \
-        } while (0)
-
-#define ADD_STAT(band, bscli, key, val) \
-        do { \
-            if (band == BSAL_BAND_24G) { \
-                ADD_STAT_BY_BAND(2g, bscli, key, val); \
-            } \
-            else { \
-                ADD_STAT_BY_BAND(5g, bscli, key, val); \
-            } \
-        } while (0)
 
 /*
  * Check to see if OVSDB update transaction is from locally
@@ -1298,6 +1705,7 @@ bm_client_ovsdb_update_cb(ovsdb_update_monitor_t *self)
 
     uint8_t                                 prev_lwm;
     bm_client_force_kick_t                  prev_force_kick;
+    unsigned int                            i;
 
     switch(self->mon_type) {
 
@@ -1334,8 +1742,8 @@ bm_client_ovsdb_update_cb(ovsdb_update_monitor_t *self)
                                        ( EVSCHED_FIND_BY_FUNC | EVSCHED_FIND_BY_ARG ) );
         }
 
-        if (!bm_client_add_to_all_pairs(client)) {
-            LOGW("Client '%s' failed to add to one or more pairs", client->mac_addr);
+        if (!bm_client_add_to_all_groups(client)) {
+            LOGW("Client '%s' failed to add to one or more groups", client->mac_addr);
         }
 
         ds_tree_insert(&bm_clients, client, client->mac_addr);
@@ -1401,7 +1809,7 @@ bm_client_ovsdb_update_cb(ovsdb_update_monitor_t *self)
         } else if( bm_client_lwm_toggled( prev_lwm, client, false ) ||
                    bm_client_force_kick_type_toggled( prev_force_kick, client, false ) ) {
             LOGN( "Client '%s': Kicking mechanism toggled back, ignoring all" \
-                  " pairs update", client->mac_addr );
+                  " groups update", client->mac_addr );
             return;
         }
 
@@ -1419,19 +1827,19 @@ bm_client_ovsdb_update_cb(ovsdb_update_monitor_t *self)
                 //     CLIENT_STEERING_DISABLED event on both bands
                 memset( &event, 0, sizeof( event ) );
 
-                event.band = BSAL_BAND_24G;
-                bm_stats_add_event_to_report( client, &event, CLIENT_STEERING_DISABLED, false );
+                for (i = 0; i < client->ifcfg_num; i++) {
+                    STRSCPY(event.ifname, client->ifcfg[i].ifname);
+                    bm_stats_add_event_to_report( client, &event, CLIENT_STEERING_DISABLED, false );
+                }
 
-                event.band = BSAL_BAND_5G;
-                bm_stats_add_event_to_report( client, &event, CLIENT_STEERING_DISABLED, false );
             }
 
             evsched_task_cancel_by_find( bm_client_cs_task, client,
                                        ( EVSCHED_FIND_BY_FUNC | EVSCHED_FIND_BY_ARG ) );
         }
 
-        if (!bm_client_update_all_pairs(client)) {
-            LOGW("Client '%s' failed to update one or more pairs", client->mac_addr);
+        if (!bm_client_update_all_groups(client)) {
+            LOGW("Client '%s' failed to update one or more groups", client->mac_addr);
         }
 
         LOGN("Updated client %s (hwm=%u, lwm=%u, max_rejects=%d/%d sec)",
@@ -1477,7 +1885,7 @@ bm_client_backoff(bm_client_t *client, bool enable)
 
     if (enable) {
         bm_client_set_state(client, BM_CLIENT_STATE_BACKOFF);
-        bm_client_update_all_pairs(client);
+        bm_client_update_all_groups(client);
 
 
         connect_counter = client->backoff_connect_counter;
@@ -1487,7 +1895,7 @@ bm_client_backoff(bm_client_t *client, bool enable)
         exp = pow(client->backoff_exp_base, connect_counter);
         client->backoff_period_used = client->backoff_period * exp;
 
-        LOGI("%s using backoff period %dsec * %d (%d)", client->mac_addr,
+        LOGI("%s using pre-assoc backoff period %dsec * %d (%d)", client->mac_addr,
              client->backoff_period, exp, client->backoff_connect_counter);
 
         client->backoff_task = evsched_task(bm_client_task_backoff,
@@ -1495,13 +1903,13 @@ bm_client_backoff(bm_client_t *client, bool enable)
                                             EVSCHED_SEC(client->backoff_period_used));
     }
     else if (client->num_rejects != 0) {
-        LOGI("%s disable backoff", client->mac_addr);
+        LOGI("%s disable pre-assoc backoff", client->mac_addr);
         client->num_rejects = 0;
         client->backoff_connect_calculated = false;
         evsched_task_cancel(client->backoff_task);
-        bm_client_update_all_pairs(client);
+        bm_client_update_all_groups(client);
     } else {
-        LOGI("%s backoff(%d) num_rejects %d", client->mac_addr, enable, client->num_rejects);
+        LOGI("%s pre-assoc backoff(%d) num_rejects %d", client->mac_addr, enable, client->num_rejects);
     }
 
     return;
@@ -1520,7 +1928,7 @@ bm_client_disable_client_steering( bm_client_t *client )
     client->steering_state = BM_CLIENT_STEERING_NONE;
 
     // Disable client steering for this client, and reenable band steering
-    bm_client_update_all_pairs( client );
+    bm_client_update_all_groups( client );
 
     return;
 }
@@ -1530,7 +1938,7 @@ bm_client_disable_steering(bm_client_t *client)
 {
     // Disable band steering for this client
     client->hwm = 0;
-    bm_client_update_all_pairs(client);
+    bm_client_update_all_groups(client);
     return;
 }
 
@@ -1538,8 +1946,10 @@ static void
 bm_client_task_backoff(void *arg)
 {
     bm_client_t         *client = arg;
+    bsal_event_t        event;
+    unsigned int        i;
 
-    LOGN("'%s' backoff period has expired, re-enabling steering", client->mac_addr);
+    LOGN("'%s' pre-assoc backoff period has expired, re-enabling steering", client->mac_addr);
 
     // If the client has connected during backoff period:
     // - 0N 5G  : bm_client_state_change() disables backoff immediately and
@@ -1552,7 +1962,16 @@ bm_client_task_backoff(void *arg)
     }
 
     bm_client_backoff(client, false);
-    bm_stats_add_event_to_report( client, NULL, BACKOFF, false );
+
+    memset(&event, 0, sizeof(event));
+    for (i = 0; i < client->ifcfg_num; i++) {
+        if (client->ifcfg[i].bs_allowed)
+            continue;
+
+        STRSCPY(event.ifname, client->ifcfg[i].ifname);
+        bm_stats_add_event_to_report( client, &event, BACKOFF, false );
+    }
+
     return;
 }
 
@@ -1572,6 +1991,7 @@ bm_client_state_task( void *arg )
 
     // Reset the client's state machine to DISCONNECTED state
     client->connected = false;
+    STRSCPY(client->ifname, "");
     bm_client_set_state( client, BM_CLIENT_STATE_DISCONNECTED );
 
     return;
@@ -1584,7 +2004,9 @@ bm_client_state_change(bm_client_t *client, bm_client_state_t state, bool force)
     // The stats report interval is used to reset the client's state machine
     // from STEERING_5G to DISCONNECTED so that the client is not stuck in
     // in STEERING_5G for long periods of time.
-    uint16_t    interval = bm_stats_get_stats_report_interval();
+    uint16_t      interval = bm_stats_get_stats_report_interval();
+    unsigned int  i;
+    bsal_event_t event;
 
     if (!force && client->state == BM_CLIENT_STATE_BACKOFF) {
         if (state != BM_CLIENT_STATE_CONNECTED) {
@@ -1593,11 +2015,21 @@ bm_client_state_change(bm_client_t *client, bm_client_state_t state, bool force)
         }
     }
 
+    memset(&event, 0, sizeof(event));
+
     // Add backoff event to stats report only if the client was in
     // BM_CLIENT_STATE_BACKOFF
     if( client->state == BM_CLIENT_STATE_BACKOFF &&
-        state == BM_CLIENT_STATE_CONNECTED && client->band == BSAL_BAND_5G ) {
-        bm_stats_add_event_to_report( client, NULL, BACKOFF, false );
+        state == BM_CLIENT_STATE_CONNECTED &&
+        /* TODO check logic here */
+        bm_client_bs_ifname_allowed(client, client->ifname)) {
+        for (i = 0; i < client->ifcfg_num; i++) {
+            if (client->ifcfg[i].bs_allowed)
+                continue;
+
+            STRSCPY(event.ifname, client->ifcfg[i].ifname);
+            bm_stats_add_event_to_report(client, &event, BACKOFF, false);
+        }
     }
 
     if (client->state != state) {
@@ -1614,16 +2046,22 @@ bm_client_state_change(bm_client_t *client, bm_client_state_t state, bool force)
             {
                 // If the client has connected during backoff, only disable band
                 // steering immediately if the client connects on 5GHz.
-                if( client->band == BSAL_BAND_5G ) {
+                if( bm_client_bs_ifname_allowed(client, client->ifname)) {
                     bm_client_backoff(client, false);
                 }
-                client->active = true;
                 break;
             }
 
-            case BM_CLIENT_STATE_STEERING_5G:
+            case BM_CLIENT_STATE_STEERING:
             {
-                bm_stats_add_event_to_report( client, NULL, BAND_STEERING_ATTEMPT, false );
+                for (i = 0; i < client->ifcfg_num; i++) {
+                    if (!client->ifcfg[i].bs_allowed)
+                        continue;
+
+                    STRSCPY(event.ifname, client->ifcfg[i].ifname);
+                    bm_stats_add_event_to_report(client, &event, BAND_STEERING_ATTEMPT, false);
+                }
+
                 evsched_task_cancel_by_find( bm_client_state_task, client,
                                            ( EVSCHED_FIND_BY_ARG | EVSCHED_FIND_BY_FUNC ) );
 
@@ -1635,7 +2073,6 @@ bm_client_state_change(bm_client_t *client, bm_client_state_t state, bool force)
 
             default:
             {
-                client->active = false;
                 break;
             }
 
@@ -1650,6 +2087,7 @@ bm_client_cs_task_rssi_xing( void *arg )
 {
     bm_client_t     *client = arg;
     bsal_event_t    event;
+    unsigned int    i;
 
     if( !client ) {
         LOGT( "Client arg is NULL" );
@@ -1666,52 +2104,24 @@ bm_client_cs_task_rssi_xing( void *arg )
 
         memset( &event, 0, sizeof( event ) );
         if( client->cs_mode == BM_CLIENT_CS_MODE_AWAY ) {
-            event.band = BSAL_BAND_24G;
-            bm_stats_add_event_to_report( client, &event, CLIENT_STEERING_DISABLED, false );
-
-            event.band = BSAL_BAND_5G;
-            bm_stats_add_event_to_report( client, &event, CLIENT_STEERING_DISABLED, false );
+            for (i = 0; i < client->ifcfg_num; i++) {
+                STRSCPY(event.ifname, client->ifcfg[i].ifname);
+                bm_stats_add_event_to_report(client, &event, CLIENT_STEERING_DISABLED, false);
+            }
         } else if( client->cs_mode == BM_CLIENT_CS_MODE_HOME ) {
-            event.band = client->cs_band;
-            bm_stats_add_event_to_report( client, &event, CLIENT_STEERING_DISABLED, false );
+            for (i = 0; i < client->ifcfg_num; i++) {
+                if (client->ifcfg[i].radio_type != client->cs_radio_type)
+                    continue;
+ 
+                STRSCPY(event.ifname, client->ifcfg[i].ifname);
+                bm_stats_add_event_to_report(client, &event, CLIENT_STEERING_DISABLED, false);
+            }
         }
     } else {
         LOGT( "Client '%s': Updating the cs_state to XING_DISABLED",
                                                 client->mac_addr );
         bm_client_update_cs_state( client );
     }
-
-    return;
-}
-
-static void
-bm_client_print_client_caps( bm_client_t *client )
-{
-    LOGD( " ~~~ Client '%s' ~~~", client->mac_addr );
-    LOGD( " isBTMSupported        : %s", client->is_BTM_supported ? "Yes":"No" );
-    LOGD( " isRRMSupported        : %s", client->is_RRM_supported ? "Yes":"No" );
-    LOGD( " Supports 2G           : %s", client->band_cap_2G ? "Yes":"No" );
-    LOGD( " Supports 5G           : %s", client->band_cap_5G ? "Yes":"No" );
- 
-    LOGD( "   ~~~Datarate Information~~~    " );
-    LOGD( " Max Channel Width     : %hhu", client->datarate_info.max_chwidth );
-    LOGD( " Max Streams           : %hhu", client->datarate_info.max_streams );
-    LOGD( " PHY Mode              : %hhu", client->datarate_info.phy_mode );
-    LOGD( " Max MCS               : %hhu", client->datarate_info.max_MCS );
-    LOGD( " Max TX power          : %hhu", client->datarate_info.max_txpower );
-    LOGD( " Is Static SMPS?       : %s", client->datarate_info.is_static_smps ? "Yes":"No" );
-    LOGD( " Suports MU-MIMO       : %s", client->datarate_info.is_mu_mimo_supported? "Yes":"No" );
-
-    LOGD( "   ~~~RRM Capabilites~~~     " );
-    LOGD( " Link measurement      : %s", client->rrm_caps.link_meas ? "Yes":"No" );
-    LOGD( " Neighbor report       : %s", client->rrm_caps.neigh_rpt ? "Yes":"No" );
-    LOGD( " Beacon Report Passive : %s", client->rrm_caps.bcn_rpt_passive ? "Yes":"No" );
-    LOGD( " Beacon Report Active  : %s", client->rrm_caps.bcn_rpt_active ? "Yes":"No" );
-    LOGD( " Beacon Report Table   : %s", client->rrm_caps.bcn_rpt_table ? "Yes":"No" );
-    LOGD( " LCI measurement       : %s", client->rrm_caps.lci_meas ? "Yes":"No");
-    LOGD( " FTM Range report      : %s", client->rrm_caps.ftm_range_rpt ? "Yes":"No" );
-
-    LOGD( " ~~~~~~~~~~~~~~~~~~~~ " );
 
     return;
 }
@@ -1762,40 +2172,49 @@ bm_client_set_state(bm_client_t *client, bm_client_state_t state)
 }
 
 void
-bm_client_connected(bm_client_t *client, bsal_t bsal, bsal_band_t band, bsal_event_t *event)
+bm_client_connected(bm_client_t *client, bm_group_t *group, const char *ifname)
 {
+    bsal_event_t                event;
     bm_client_stats_t           *stats;
     bm_client_times_t           *times;
     time_t                      now = time(NULL);
 
-    if (!(client->pair = bm_pair_find_by_bsal(bsal))) {
-        LOGE("Unable to find BM pair for connected client '%s'", client->mac_addr);
-        return;
-    }
+    client->group = group;
+
+    memset(&event, 0, sizeof(event));
+    STRSCPY(event.ifname, ifname);
+    event.type = BSAL_EVENT_CLIENT_CONNECT;
 
     if (client->state == BM_CLIENT_STATE_CONNECTED) {
-        if (event && client->band != band) {
-            bm_stats_add_event_to_report( client, event, CONNECT, false );
-        }
+        if (strcmp(client->ifname, ifname))
+            bm_stats_add_event_to_report(client, &event, CONNECT, false);
     } else {
-	client->band = band;
+        STRSCPY(client->ifname, ifname);
         bm_client_set_state(client, BM_CLIENT_STATE_CONNECTED);
-        if (event) {
-            bm_stats_add_event_to_report( client, event, CONNECT, false );
-        }
+        bm_stats_add_event_to_report(client, &event, CONNECT, false);
     }
 
-    client->band = band;
+    STRSCPY(client->ifname, ifname); 
     client->connected = true;
     client->xing_snr = 0;
 
-    stats = &client->stats[band];
+    stats = bm_client_get_stats(client, ifname);
+    if (WARN_ON(!stats))
+        return;
+
     stats->connects++;
 
     times = &client->times;
     times->last_connect = now;
 
     bm_client_print_client_caps( client );
+
+    client->bytes_report_time = now;
+    client->tx_bytes = 0;
+    client->rx_bytes = 0;
+
+    /* By default set active */
+    bm_client_activity_action(client, true);
 
     return;
 }
@@ -1815,13 +2234,18 @@ bm_client_disconnected(bm_client_t *client)
 void
 bm_client_rejected(bm_client_t *client, bsal_event_t *event)
 {
-    bm_client_stats_t       *stats              = &client->stats[event->band];
+    bm_client_stats_t       *stats;
     bm_client_times_t       *times              = &client->times;
     int                     max_rejects         = client->max_rejects;
     int                     max_rejects_period  = client->max_rejects_period;
     time_t                  now                 = time(NULL);
 
     bsal_event_t            stats_event;
+    unsigned int            i;
+
+    stats = bm_client_get_stats(client, event->ifname);
+    if (WARN_ON(!stats))
+        return;
 
     if( client->cs_state == BM_CLIENT_CS_STATE_STEERING ) {
         max_rejects         = client->cs_max_rejects;
@@ -1874,14 +2298,18 @@ bm_client_rejected(bm_client_t *client, bsal_event_t *event)
 
             memset( &stats_event, 0, sizeof( stats_event ) );
             if( client->cs_mode == BM_CLIENT_CS_MODE_AWAY ) {
-                stats_event.band = BSAL_BAND_24G;
-                bm_stats_add_event_to_report( client, &stats_event, CLIENT_STEERING_FAILED, false );
-
-                stats_event.band = BSAL_BAND_5G;
-                bm_stats_add_event_to_report( client, &stats_event, CLIENT_STEERING_FAILED, false );
+                for (i = 0; i < client->ifcfg_num; i++) {
+                    STRSCPY(stats_event.ifname, client->ifcfg[i].ifname);
+                    bm_stats_add_event_to_report( client, &stats_event, CLIENT_STEERING_FAILED, false );
+                }
             } else if( client->cs_mode == BM_CLIENT_CS_MODE_HOME ) {
-                stats_event.band = client->cs_band;
-                bm_stats_add_event_to_report( client, &stats_event, CLIENT_STEERING_FAILED, false );
+                 for (i = 0; i < client->ifcfg_num; i++) {
+                     if (client->ifcfg[i].radio_type != client->cs_radio_type)
+                         continue;
+
+                     STRSCPY(stats_event.ifname, client->ifcfg[i].ifname);
+                     bm_stats_add_event_to_report( client, &stats_event, CLIENT_STEERING_FAILED, false );
+                }
             }
         } else {
             LOGN("'%s' (total: %u times), %s...",
@@ -1892,7 +2320,14 @@ bm_client_rejected(bm_client_t *client, bsal_event_t *event)
 
             if (client->backoff_period) {
                 bm_client_backoff(client, true);
-                bm_stats_add_event_to_report( client, NULL , BACKOFF, true );
+                for (i = 0; i < client->ifcfg_num; i++) {
+                    if (client->ifcfg[i].bs_allowed)
+                        continue;
+
+                    memset( &stats_event, 0, sizeof( stats_event ) );
+                    STRSCPY(stats_event.ifname, client->ifcfg[i].ifname);
+                    bm_stats_add_event_to_report(client, &stats_event, BACKOFF, true);
+                }
             }
             else {
                 bm_client_disable_steering(client);
@@ -1905,22 +2340,145 @@ bm_client_rejected(bm_client_t *client, bsal_event_t *event)
 }
 
 void
-bm_client_success(bm_client_t *client, bsal_band_t band)
+bm_client_success(bm_client_t *client, const char *ifname)
 {
-    char                    *bandstr = c_get_str_by_key(map_bsal_bands, band);
-    bm_client_stats_t       *stats = &client->stats[band];
+    radio_type_t            radio_type = bm_group_find_radio_type_by_ifname(ifname);
+    char                    *bandstr = c_get_str_by_key(map_bsal_bands, radio_type);
+    bm_client_stats_t       *stats;
+
+    stats = bm_client_get_stats(client, ifname);
+    if (WARN_ON(!stats))
+        return;
 
     stats->steering_success_cnt++;
-    LOGN("'%s' successfully steered to %s (total: %u times)",
-                        client->mac_addr, bandstr, stats->steering_success_cnt);
+    LOGN("'%s' successfully steered to %s %s (total: %u times)",
+                        client->mac_addr, ifname, bandstr, stats->steering_success_cnt);
 
     return;
 }
 
 void
-bm_client_cs_connect( bm_client_t *client, bsal_band_t band )
+bm_client_preassoc_backoff_recalc(bm_group_t *group, bm_client_t *client, const char *ifname)
 {
-    char            *bandstr = c_get_str_by_key(map_bsal_bands, band);
+    radio_type_t radio_type;
+    char *bandstr;
+    bool bs_ifname_allowed;
+
+    radio_type = bm_group_find_radio_type_by_ifname(ifname);
+    bandstr = c_get_str_by_key(map_bsal_bands, radio_type);
+    bs_ifname_allowed = bm_client_bs_ifname_allowed(client, ifname);
+
+    if (client->backoff && !bs_ifname_allowed && !client->backoff_connect_calculated) {
+        client->backoff_connect_counter++;
+        client->backoff_connect_calculated = true;
+        LOGI("[%s] %s recalc pre-assoc backoff - counter %d", bandstr, ifname,
+             client->backoff_connect_counter);
+    }
+
+    if (bs_ifname_allowed) {
+        LOGI("[%s] %s connected to bs_allowed (%s) - back to orignal pre-assoc backoff timeout", bandstr, client->mac_addr, ifname);
+        client->backoff_connect_counter = 0;
+    }
+}
+
+static void
+bm_client_postassoc_backoff_recalc(bm_group_t *group, bm_client_t *client, const char *ifname)
+{
+    time_t now;
+
+    now = time(NULL);
+
+    if (now - client->times.last_sticky_kick < client->sticky_kick_guard_time) {
+        LOGT("%s back early after sticky kick (%lds)", client->mac_addr, now - client->times.last_sticky_kick);
+        if (group->gw_only || !bm_neighbor_number(client)) {
+            if (bm_client_bs_ifname_allowed(client, ifname)) {
+                LOGI("%s (gw_only) connected back to %s skip sticky kick for %ds",
+                     client->mac_addr, ifname, client->sticky_kick_backoff_time);
+                client->skip_sticky_kick_till = now + client->sticky_kick_backoff_time;
+            }
+        } else {
+            LOGI("%s (multi AP) connected back to %s skip sticky kick for %ds",
+                 client->mac_addr, ifname, client->sticky_kick_backoff_time);
+            client->skip_sticky_kick_till = now + client->sticky_kick_backoff_time;
+        }
+    }
+
+    if (now - client->times.last_steering_kick < client->steering_kick_guard_time) {
+        LOGT("%s back early after steering kick (%lds)", client->mac_addr, now - client->times.last_steering_kick);
+        if (!bm_client_bs_ifname_allowed(client, ifname)) {
+            LOGI("%s connected back to %s skip steering kick for %ds",
+                 client->mac_addr, ifname, client->steering_kick_backoff_time);
+            client->skip_steering_kick_till = now + client->steering_kick_backoff_time;
+        }
+    }
+}
+
+static void
+bm_client_settling_backoff_recalc(bm_group_t *group, bm_client_t *client, const char *ifname)
+{
+    time_t now;
+
+    now = time(NULL);
+
+    if (!client->settling_backoff_time)
+        return;
+
+    LOGI("%s settling backoff recalc, skip xing for %d", client->mac_addr, client->settling_backoff_time);
+    client->settling_skip_xing_till = now + client->settling_backoff_time;
+}
+
+void
+bm_client_bs_connect(bm_group_t *group, bm_client_t *client, const char *ifname)
+{
+    bm_client_stats_t *stats;
+    time_t last_blocked = 0;
+    time_t now;
+    radio_type_t radio_type;
+    char *bandstr;
+    unsigned int i;
+
+    now = time(NULL);
+    radio_type = bm_group_find_radio_type_by_ifname(ifname);
+    bandstr = c_get_str_by_key(map_bsal_bands, radio_type);
+
+    if (!group) {
+        LOGD("%s: client %s ifname %s band %s !group", __func__, client->mac_addr, ifname, bandstr);
+        return;
+    }
+
+    bm_client_settling_backoff_recalc(group, client, ifname);
+    bm_client_postassoc_backoff_recalc(group, client, ifname);
+
+    if (!bm_client_bs_ifname_allowed(client, ifname)) {
+        LOGD("%s: client %s ifname %s band %s !bs_allowed", __func__, client->mac_addr, ifname, bandstr);
+        return;
+    }
+
+    if (client->state != BM_CLIENT_STATE_STEERING) {
+        LOGD("%s: client %s ifname %s band %s !steering", __func__, client->mac_addr, ifname, bandstr);
+        return;
+    }
+
+    /* Find last blocked inside the group */
+    for (i = 0; i < group->ifcfg_num; i++) {
+        if (group->ifcfg[i].bs_allowed)
+            continue;
+        stats = bm_client_get_stats(client, group->ifcfg[i].ifname);
+        if (WARN_ON(!stats))
+            continue;
+        last_blocked = MAX(last_blocked, stats->probe.last_blocked);
+    }
+
+    if ((now - last_blocked) <= group->success_threshold) {
+        bm_client_success(client, ifname);
+    }
+}
+
+void
+bm_client_cs_connect(bm_client_t *client, const char *ifname)
+{
+    radio_type_t    radio_type = bm_group_find_radio_type_by_ifname(ifname);;
+    char            *bandstr = c_get_str_by_key(map_bsal_bands, radio_type);
     bsal_event_t    event;
 
     memset( &event, 0, sizeof( event ) );
@@ -1941,7 +2499,7 @@ bm_client_cs_connect( bm_client_t *client, bsal_band_t band )
 
         client->cs_state = BM_CLIENT_CS_STATE_FAILED;
 
-        event.band = client->cs_band;
+        STRSCPY(event.ifname, ifname);
         bm_stats_add_event_to_report( client, &event, CLIENT_STEERING_FAILED, false );
     }
 
@@ -1990,10 +2548,12 @@ void
 bm_client_cs_check_rssi_xing( bm_client_t *client, bsal_event_t *event )
 {
     bool                    rssi_xing = false;
+    radio_type_t            radio_type;
     char                    *bandstr;
     evsched_task_t          task;
 
-    bandstr  = c_get_str_by_key(map_bsal_bands, event->band);
+    radio_type = bm_group_find_radio_type_by_ifname(event->ifname);
+    bandstr  = c_get_str_by_key(map_bsal_bands, radio_type);
 
     // This function should be called only when BSAL_EVENT_PROBE_REQ
     // is received.
@@ -2133,19 +2693,24 @@ bm_client_find_or_add_by_macaddr(os_macaddr_t *mac_addr)
     sprintf(mac_str, PRI(os_macaddr_lower_t), FMT(os_macaddr_t, *mac_addr));
     client = calloc(1, sizeof(*client));
     STRSCPY(client->mac_addr, mac_str);
+    if (!os_nif_macaddr_from_str(&client->macaddr, mac_str)) {
+        LOGE("%s Failed to parse mac address '%s'", __func__, mac_str);
+        free(client);
+        return NULL;
+    }
     ds_tree_insert(&bm_clients, client, client->mac_addr);
     LOGN("Added client %s", client->mac_addr);
     return client;
 }
 
 bool
-bm_client_add_all_to_pair(bm_pair_t *pair)
+bm_client_add_all_to_group(bm_group_t *group)
 {
     bm_client_t     *client;
     bool            success = true;
 
     ds_tree_foreach(&bm_clients, client) {
-        if (bm_client_add_to_pair(client, pair) == false) {
+        if (bm_client_add_to_group(client, group) == false) {
             success = false;
         }
     }
@@ -2154,16 +2719,465 @@ bm_client_add_all_to_pair(bm_pair_t *pair)
 }
 
 bool
-bm_client_remove_all_from_pair(bm_pair_t *pair)
+bm_client_update_all_from_group(bm_group_t *group)
 {
     bm_client_t     *client;
     bool            success = true;
 
     ds_tree_foreach(&bm_clients, client) {
-        if (bm_client_remove_from_pair(client, pair) == false) {
+        if (bm_client_update_group(client, group) == false) {
             success = false;
         }
     }
 
     return success;
+}
+
+bool
+bm_client_remove_all_from_group(bm_group_t *group)
+{
+    bm_client_t     *client;
+    bool            success = true;
+
+    ds_tree_foreach(&bm_clients, client) {
+        if (bm_client_remove_from_group(client, group) == false) {
+            success = false;
+        }
+    }
+
+    return success;
+}
+
+void bm_client_ifcfg_clean(bm_client_t *client)
+{
+    memset(client->ifcfg, 0, sizeof(client->ifcfg));
+    LOGD("%s clean ifcfg[]", client->mac_addr);
+}
+
+static bool
+bm_client_ifcfg_add(bm_group_t *group, bm_client_t *client,
+                    const char *ifname, radio_type_t radio_type,
+                    bool bs_allowed)
+{
+    bm_client_ifcfg_t *ifcfg;
+    unsigned int i;
+
+    if (WARN_ON(!client))
+        return false;
+
+    if (WARN_ON(client->ifcfg_num >= ARRAY_SIZE(client->ifcfg)))
+        return false;
+
+    /* ifname is unique - only one entry per ifname */
+    for (i = 0; i < client->ifcfg_num; i++) {
+        if (WARN_ON(!strcmp(client->ifcfg[i].ifname, ifname)))
+            return false;
+    }
+
+    ifcfg = &client->ifcfg[client->ifcfg_num];
+    STRSCPY(ifcfg->ifname, ifname);
+    ifcfg->radio_type= radio_type;
+    ifcfg->bs_allowed = bs_allowed;
+    ifcfg->group = group;
+
+    LOGD("%s: add ifcfg[%d]: ifname %s band %d allowed %d", client->mac_addr,
+         client->ifcfg_num, ifcfg->ifname, ifcfg->radio_type, ifcfg->bs_allowed);
+
+    client->ifcfg_num++;
+
+    return true;
+}
+
+bool
+bm_client_ifcfg_set(bm_group_t *group, bm_client_t *client,
+                    const char *ifname, radio_type_t radio_type,
+                    bool bs_allowed)
+{
+    unsigned int i;
+
+    if (WARN_ON(!client))
+        return false;
+
+    for (i = 0; i < client->ifcfg_num; i++) {
+        if (!strcmp(client->ifcfg[i].ifname, ifname)) {
+		client->ifcfg[i].radio_type = radio_type;
+		client->ifcfg[i].group = group;
+		client->ifcfg[i].bs_allowed = bs_allowed;
+                LOGD("%s: update ifcfg[%d]: ifname %s band %d allowed %d", client->mac_addr,
+                     i, client->ifcfg[i].ifname, client->ifcfg[i].radio_type,
+                     client->ifcfg[i].bs_allowed);
+		return true;
+	}
+    }
+
+    return bm_client_ifcfg_add(group, client, ifname, radio_type, bs_allowed);
+}
+
+bool
+bm_client_ifcfg_remove(bm_client_t *client, const char *ifname)
+{
+    unsigned int i, j;
+
+    if (WARN_ON(!client))
+        return false;
+
+    for (i = 0, j = 0; i < client->ifcfg_num; i++) {
+       if (i != j) {
+           memcpy(&client->ifcfg[j], &client->ifcfg[i], sizeof(client->ifcfg[0]));
+       }
+
+       if (!strcmp(client->ifcfg[i].ifname, ifname))
+           j++;
+    }
+
+    client->ifcfg_num = j;
+
+    LOGD("%s: remove ifcfg[]: ifname %s", client->mac_addr, ifname);
+    return true;
+}
+
+bool
+bm_client_bs_ifname_allowed(bm_client_t *client, const char *ifname)
+{
+    unsigned int i;
+
+    if (WARN_ON(!client))
+        return false;
+
+    for (i = 0; i < client->ifcfg_num; i++) {
+        if (!strcmp(client->ifcfg[i].ifname, ifname))
+            return client->ifcfg[i].bs_allowed;
+    }
+
+    LOGW("%s %s %s not found", __func__, client->mac_addr, ifname);;
+    return false;
+}
+
+void
+bm_client_add_dbg_event(bm_client_t *client,
+                        const char *ifname,
+                        dpp_bs_client_event_record_t *dpp_event)
+{
+    bm_event_stat_t *event;
+
+    if (client->d_events_idx >= ARRAY_SIZE(client->d_events))
+        client->d_events_idx = 0;
+
+    event = &client->d_events[client->d_events_idx];
+    memset(event, 0, sizeof(*event));
+    memcpy(&event->dpp_event, dpp_event, sizeof(event->dpp_event));
+    event->dpp_event_set = true;
+    STRSCPY_WARN(event->ifname, ifname);
+
+    client->d_events_idx++;
+}
+
+static void
+bm_client_dump_dbg_event(const bm_event_stat_t *events, unsigned int idx)
+{
+    const bm_event_stat_t *event;
+    const dpp_bs_client_event_record_t *dpp_event;
+    char extra_buf[1024] = {};
+
+    event = &events[idx];
+    dpp_event = &event->dpp_event;
+
+    if (!event->dpp_event_set)
+        return;
+
+    switch (dpp_event->type) {
+    case PROBE:
+        snprintf(extra_buf, sizeof(extra_buf), "snr %d bcast %d blocked %d",
+                 dpp_event->rssi, dpp_event->probe_bcast, dpp_event->probe_blocked);
+        break;
+    case DISCONNECT:
+        snprintf(extra_buf, sizeof(extra_buf), "src %d type %d",
+                 dpp_event->disconnect_src, dpp_event->disconnect_type);
+        break;
+    case ACTIVITY:
+        snprintf(extra_buf, sizeof(extra_buf), "active %d",
+                 dpp_event->active);
+        break;
+    case BACKOFF:
+        snprintf(extra_buf, sizeof(extra_buf), "enabled %d period %d",
+                 dpp_event->backoff_enabled, dpp_event->backoff_period);
+        break;
+    case AUTH_BLOCK:
+        snprintf(extra_buf, sizeof(extra_buf), "rejected %d",
+                 dpp_event->rejected);
+        break;
+    case CLIENT_CAPABILITIES:
+        snprintf(extra_buf, sizeof(extra_buf), "btm %d rrm %d 2G %d 5G %d chwidth %d nss %d phy_mode %d max_mcs %d link_meas %d neigh_rep %d bcn_rpt_passive %d bcn_rpt_active %d bcn_rpt_table %d lci_meas %d ftm_range_rpt %d assoc_ie_len %u",
+                 dpp_event->is_BTM_supported, dpp_event->is_RRM_supported, dpp_event->band_cap_2G, dpp_event->band_cap_5G,
+                 dpp_event->max_chwidth, dpp_event->max_streams, dpp_event->phy_mode, dpp_event->max_MCS,
+                 dpp_event->rrm_caps_link_meas, dpp_event->rrm_caps_neigh_rpt, dpp_event->rrm_caps_bcn_rpt_passive,
+                 dpp_event->rrm_caps_bcn_rpt_active, dpp_event->rrm_caps_bcn_rpt_table, dpp_event->rrm_caps_lci_meas,
+                 dpp_event->rrm_caps_ftm_range_rpt, dpp_event->assoc_ies_len);
+        break;
+    default:
+        break;
+    }
+
+    LOGI("ev[%03d]: %llu %s %s %s", idx, dpp_event->timestamp_ms,
+         bm_stats_get_event_to_str(dpp_event->type), event->ifname, extra_buf);
+}
+
+static void
+bm_client_dump(bm_client_t *client)
+{
+    unsigned int idx, i;
+    bm_rrm_neighbor_t *rrm_n;
+    time_t now;
+
+    idx = client->d_events_idx;
+    if (idx >= ARRAY_SIZE(client->d_events))
+       idx = 0;
+
+    for (i = 0; i < ARRAY_SIZE(client->d_events); i++) {
+        bm_client_dump_dbg_event(client->d_events, idx);
+
+        idx++;
+        if (idx >= ARRAY_SIZE(client->d_events))
+            idx = 0;
+    }
+
+    now = time(NULL);
+
+    /* Dump rrm_neighbors */
+    LOGI("rrm_neighbors:");
+    for (i = 0; i < client->rrm_neighbor_num; i++) {
+        rrm_n = &client->rrm_neighbor[i];
+        LOGI("[%d]: bssid %s chanel %u rcpi %u rssi %i age %u", i, rrm_n->bssid_str,
+             rrm_n->channel, rrm_n->rcpi, rrm_n->rssi, (unsigned int) (now - rrm_n->time));
+    }
+}
+
+void
+bm_client_dump_dbg_events(void)
+{
+    bm_client_t *client;
+
+    ds_tree_foreach(&bm_clients, client) {
+        LOGI("---- %s ----", client->mac_addr);
+        bm_client_dump(client);
+    }
+}
+
+void
+bm_client_reset_last_probe_snr(bm_client_t *client)
+{
+    bm_client_stats_t *stats;
+    unsigned int i;
+
+    for (i = 0; i < client->ifcfg_num; i++) {
+        stats = bm_client_get_stats(client, client->ifcfg[i].ifname);
+        if (stats)
+            stats->probe.last_snr = 0;
+    }
+}
+
+static int
+bm_rcpi_to_rssi(unsigned char rcpi)
+{
+    /* Table 9-154 RCPI values */
+    if (rcpi > 219)
+        /* P >= 0dBm, resered, measurement not available */
+        return 0;
+
+    return rcpi/2 - 110;
+}
+
+void
+bm_client_reset_rrm_neighbors(bm_client_t *client)
+{
+    time_t now;
+    unsigned int i;
+    unsigned int j;
+
+    now = time(NULL);
+
+    for (i = 0, j = 0; i < client->rrm_neighbor_num; i++) {
+       if (i != j) {
+           memcpy(&client->rrm_neighbor[j], &client->rrm_neighbor[i], sizeof(client->rrm_neighbor[0]));
+       }
+
+       if (now - client->rrm_neighbor[i].time < 120)
+           j++;
+       else
+           LOGD("%s remove rrm_neighbor[%u] %s age %u", client->mac_addr, i,
+                client->rrm_neighbor[i].bssid_str, (unsigned int) (now - client->rrm_neighbor[i].time));
+    }
+
+    client->rrm_neighbor_num = j;
+}
+
+bool
+bm_client_set_rrm_neighbor(bm_client_t *client,
+                           const unsigned char *bssid,
+                           unsigned char channel,
+                           unsigned char rcpi,
+                           unsigned char rsni)
+{
+    bm_rrm_neighbor_t *rrm_neighbor;
+    unsigned int i;
+
+    LOGD("%s %s", client->mac_addr, __func__);
+
+    if (!bm_neighbor_is_our_bssid(client, bssid))
+        return true;
+
+    for (i = 0; i < client->rrm_neighbor_num; i++) {
+        rrm_neighbor = &client->rrm_neighbor[i];
+        if (!memcmp(&rrm_neighbor->bssid, bssid, sizeof(rrm_neighbor->bssid)))
+            break;
+    }
+
+    if (WARN_ON(client->rrm_neighbor_num >= ARRAY_SIZE(client->rrm_neighbor)))
+        return false;
+
+    rrm_neighbor = &client->rrm_neighbor[i];
+    /* Check if new entry */
+    if (i == client->rrm_neighbor_num)
+        client->rrm_neighbor_num++;
+
+    memcpy(&rrm_neighbor->bssid, bssid, sizeof(rrm_neighbor->bssid));
+    sprintf(rrm_neighbor->bssid_str, PRI(os_macaddr_lower_t), FMT(os_macaddr_t, *(os_macaddr_t *)bssid));
+    rrm_neighbor->rcpi = rcpi;
+    rrm_neighbor->rsni = rsni;
+    rrm_neighbor->channel = channel;
+    rrm_neighbor->rssi = bm_rcpi_to_rssi(rcpi);
+    rrm_neighbor->time = time(NULL);
+
+    LOGI("%s set rrm_neighbor[%u] bssid %s channel %u rcpi %u rssi %d",
+         client->mac_addr, i, rrm_neighbor->bssid_str,
+         rrm_neighbor->channel, rrm_neighbor->rcpi,
+         rrm_neighbor->rssi);
+
+    return true;
+}
+
+/* Implementation for client active/inactive detection */
+static void
+bm_client_activity_action(bm_client_t *client, bool is_active)
+{
+    bm_client_stats_t *stats;
+    bm_client_times_t *times;
+    time_t now;
+    bsal_event_t event;
+
+    LOGI("%s: %s report %s", client->ifname, client->mac_addr, is_active ? "ACTIVE" : "INACTIVE");
+
+    client->is_active = is_active;
+
+    times = &client->times;
+    stats = bm_client_get_stats(client, client->ifname);
+    if (WARN_ON(!stats))
+        return;
+
+    now = time(NULL);
+    times->last_activity_change = now;
+    stats->activity_changes++;
+
+    if (!client->is_active && client->kick_info.kick_pending) {
+        LOGN("Client '%s': Issuing pending steering request", client->mac_addr);
+        bm_kick(client, client->kick_info.kick_type, client->kick_info.rssi);
+
+        client->kick_info.rssi         = 0;
+        client->kick_info.kick_pending = false;
+    }
+
+    if (client->is_active)
+       client->is_active_time = now;
+
+    memset(&event, 0, sizeof(event));
+    STRSCPY(event.ifname, client->ifname);
+    event.type = BSAL_EVENT_CLIENT_ACTIVITY;
+    event.data.activity.active = is_active;
+    memcpy(&event.data.activity.client_addr,
+           &client->macaddr,
+           sizeof(event.data.activity.client_addr));
+
+    bm_stats_add_event_to_report(client, &event, ACTIVITY, false);
+}
+
+static void
+bm_client_activity_recalc(bm_client_t *client, bsal_client_info_t *info)
+{
+    uint64_t old_bytes;
+    uint64_t new_bytes;
+    uint64_t current_bps;
+    bool is_active = false;
+    time_t now;
+
+    old_bytes = client->tx_bytes + client->rx_bytes;
+    new_bytes = info->tx_bytes + info->rx_bytes;
+    now = time(NULL);
+
+    if (!client->tx_bytes && !client->rx_bytes && !info->tx_bytes && !info->rx_bytes)
+        LOGI("%s: %s lack of tx/rx bytes - target layer issue?", client->ifname, client->mac_addr);
+
+    if (!(now - client->bytes_report_time))
+        return;
+
+    current_bps = ((new_bytes - old_bytes) * 8) / (now - client->bytes_report_time);
+
+    LOGD("%s: %s snr %u tx_bytes %llu rx_bytes %llu bps %llu", client->ifname, client->mac_addr, info->snr, info->tx_bytes, info->rx_bytes, current_bps);
+
+    if (current_bps > client->active_treshold_bps) {
+       is_active = true;
+       client->is_active_time = now;
+    }
+
+    if (!is_active) {
+        LOGD("%s: %s inactive for %u seconds", client->ifname, client->mac_addr, (unsigned int) (now - client->is_active_time));
+        if ((int) (now - client->is_active_time) < client->group->inact_tmout_sec_normal)
+            goto update_bytes;
+    }
+
+    if (client->is_active != is_active)
+        bm_client_activity_action(client, is_active);
+
+update_bytes:
+    client->tx_bytes = info->tx_bytes;
+    client->rx_bytes = info->rx_bytes;
+    client->bytes_report_time = now;
+}
+
+void bm_client_sta_info_update_callback(void)
+{
+    bsal_client_info_t info;
+    bm_client_t *client;
+
+    ds_tree_foreach(&bm_clients, client) {
+        /* Skip not connected clients */
+        if (!client->connected)
+            continue;
+
+        if (target_bsal_client_info(client->ifname, client->macaddr.addr, &info)) {
+            LOGI("%s: %s no client info.", client->ifname, client->mac_addr);
+            continue;
+        }
+
+        bm_client_activity_recalc(client, &info);
+
+    }
+}
+
+void bm_client_handle_ext_activity(bm_client_t *client, const char *ifname, bool active)
+{
+    bsal_client_info_t info;
+
+    if (!client->connected) {
+        LOGD("%s %s skip ext activity (%d) while client not connected", ifname, client->macaddr.addr, active);
+        return;
+    }
+
+    if (target_bsal_client_info(client->ifname, client->macaddr.addr, &info)) {
+        LOGI("%s: %s no client info, base on external activity event", client->ifname, client->mac_addr);
+        if (client->is_active != active)
+            bm_client_activity_action(client, active);
+        return;
+    }
+
+    bm_client_activity_recalc(client, &info);
 }

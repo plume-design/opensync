@@ -24,8 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __NET_HEADER_PARSE_H__
-#define __NET_HEADER_PARSE_H__
+#ifndef NET_HEADER_PARSE_H_INCLUDED
+#define NET_HEADER_PARSE_H_INCLUDED
 
 #include <pcap.h>
 #include <stdint.h>
@@ -40,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <netinet/in.h>
 
 #include "log.h"
+#include "network_metadata.h"
 #include "os_types.h"
 
 /**
@@ -55,19 +56,6 @@ enum
     FLOW_PASSTHROUGH,
     FLOW_DROP,
 };
-
-
-/**
- * @brief container for traffic tags
- */
-struct flow_tags
-{
-    char *vendor;
-    char *app_name;
-    size_t nelems;
-    char **tags;
-};
-
 
 /**
  * @brief container for parsed ethernet header information
@@ -112,6 +100,8 @@ struct net_header_parser
     size_t caplen;
     int flow_action;
     struct flow_tags tags;
+    struct flow_vendor_data_container vendor_data;
+    struct net_md_stats_accumulator *acc;
 };
 
 
@@ -430,4 +420,4 @@ net_header_fill_trace_buf(char *buf, size_t len,
     }
 }
 
-#endif /* __NET_HEADER_PARSE_H__ */
+#endif /* NET_HEADER_PARSE_H_INCLUDED */

@@ -24,8 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef DS_DS_H_INCLUDED
-#define DS_DS_H_INCLUDED
+#ifndef DS_H_INCLUDED
+#define DS_H_INCLUDED
 
 #include <stdlib.h>
 #include <stdint.h>
@@ -75,4 +75,4 @@ extern ds_key_cmp_t ds_str_cmp;
 /** Pointer comparison (the key value is stored directly) */
 extern ds_key_cmp_t ds_void_cmp;
 
-#endif /* DS_DS_H_INCLUDED */
+#endif /* DS_H_INCLUDED */

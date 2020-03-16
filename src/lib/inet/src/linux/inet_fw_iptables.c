@@ -39,13 +39,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define FW_RULE_IPV6                (1 << 1)
 #define FW_RULE_ALL                 (FW_RULE_IPV4 | FW_RULE_IPV6)
 
-#if !defined(CONFIG_USE_KCONFIG)
-
-#define CONFIG_INET_FW_IPTABLES_PATH    "/usr/sbin/iptables"
-#define CONFIG_INET_FW_IP6TABLES_PATH   "/usr/sbin/ip6tables"
-
-#endif /* CONFIG_USE_KCONFIG */
-
 struct __inet_fw
 {
     char                        fw_ifname[C_IFNAME_LEN];
@@ -484,7 +477,7 @@ bool fw_rule_add_a(inet_fw_t *self,int type, char *argv[])
     if (type & FW_RULE_IPV4)
     {
         argv[0] = CONFIG_INET_FW_IPTABLES_PATH;
-        status = execsh_log_a(LOG_SEVERITY_INFO, fw_rule_add_cmd, argv);
+        status = execsh_log_a(LOG_SEVERITY_DEBUG, fw_rule_add_cmd, argv);
         if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
         {
             LOG(WARN, "fw: %s: IPv4 rule insertion failed: %s",
@@ -497,10 +490,10 @@ bool fw_rule_add_a(inet_fw_t *self,int type, char *argv[])
     if (type & FW_RULE_IPV6)
     {
         argv[0] = CONFIG_INET_FW_IP6TABLES_PATH;
-        status = execsh_log_a(LOG_SEVERITY_INFO, fw_rule_add_cmd,  argv);
+        status = execsh_log_a(LOG_SEVERITY_DEBUG, fw_rule_add_cmd,  argv);
         if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
         {
-            LOG(WARN, "fw: %s: IPv6 rule deletion failed: %s",
+            LOG(WARN, "fw: %s: IPv6 rule insertion failed: %s",
                     self->fw_ifname,
                     fw_rule_add_cmd);
             retval = false;
@@ -531,7 +524,7 @@ bool fw_rule_del_a(inet_fw_t *self, int type, char *argv[])
     if (type & FW_RULE_IPV4)
     {
         argv[0] = CONFIG_INET_FW_IPTABLES_PATH;
-        status = execsh_log_a(LOG_SEVERITY_INFO, fw_rule_del_cmd, argv);
+        status = execsh_log_a(LOG_SEVERITY_DEBUG, fw_rule_del_cmd, argv);
         if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
         {
             LOG(WARN, "fw: %s: IPv4 rule deletion failed: %s",
@@ -544,7 +537,7 @@ bool fw_rule_del_a(inet_fw_t *self, int type, char *argv[])
     if (type & FW_RULE_IPV6)
     {
         argv[0] = CONFIG_INET_FW_IP6TABLES_PATH;
-        status = execsh_log_a(LOG_SEVERITY_INFO, fw_rule_del_cmd,  argv);
+        status = execsh_log_a(LOG_SEVERITY_DEBUG, fw_rule_del_cmd,  argv);
         if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
         {
             LOG(WARN, "fw: %s: IPv6 rule deletion failed: %s",

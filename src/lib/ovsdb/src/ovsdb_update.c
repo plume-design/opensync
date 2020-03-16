@@ -42,7 +42,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *  OVSDB Update response parser
  * ===========================================================================
  */
-static bool CRT(ovsdb_update_crt, ovsdb_update_parse_t *self);
 
 /*
  * Start parsing an OVS update request -- jupdate.
@@ -58,10 +57,7 @@ bool ovsdb_update_parse_start(ovsdb_update_parse_t *self, json_t *jtable)
     }
 
     self->up_jtable = jtable;
-    self->up_itable = json_object_iter(jtable);
-
-    /* Initialize the co-routine */
-    CRT_INIT(&self->up_crt);
+    self->up_itable = NULL;
 
     return true;
 }
@@ -71,16 +67,12 @@ bool ovsdb_update_parse_start(ovsdb_update_parse_t *self, json_t *jtable)
  */
 bool ovsdb_update_parse_next(ovsdb_update_parse_t *self)
 {
-    return CRT_RUN(&self->up_crt, ovsdb_update_crt, self);
-}
+    if (self->up_itable != NULL)
+    {
+        goto parse_next;
+    }
 
-/**
- * Iterator co-routine
- */
-bool CRT(ovsdb_update_crt, ovsdb_update_parse_t *self)
-{
-    CRT_BEGIN();
-
+    self->up_itable = json_object_iter(self->up_jtable);
     /*
      * Iterate over tables, tables are in the following format
      * { "TABLE": { ... }, "TABLE": { .... } }
@@ -105,7 +97,7 @@ bool CRT(ovsdb_update_crt, ovsdb_update_parse_t *self)
         if (!json_is_object(self->up_jrow))
         {
             LOG(ERR, "UPDATE: Row is not an object.");
-            CRT_EXIT(CRT_ERROR);
+            return false;
         }
 
         self->up_irow = json_object_iter(self->up_jrow);
@@ -118,7 +110,7 @@ bool CRT(ovsdb_update_crt, ovsdb_update_parse_t *self)
             if (!json_is_object(jdata))
             {
                 LOG(ERR, "UPDATE: Row data is not an object!");
-                CRT_EXIT(CRT_ERROR);
+                return false;
             }
 
             /*
@@ -137,7 +129,8 @@ bool CRT(ovsdb_update_crt, ovsdb_update_parse_t *self)
             self->up_jold = json_object_get(jdata, "old");
 
             /* Yield at current position */
-            CRT_YIELD(true);
+            return true;
+parse_next:
 
             /* Move to next row */
             self->up_irow = json_object_iter_next(self->up_jrow, self->up_irow);
@@ -146,8 +139,6 @@ bool CRT(ovsdb_update_crt, ovsdb_update_parse_t *self)
         /* Move to next element */
         self->up_itable = json_object_iter_next(self->up_jtable, self->up_itable);
     }
-
-    CRT_END();
 
     return false;
 }
@@ -247,6 +238,7 @@ void ovsdb_update_monitor_call_cbk(int id, json_t *js, void *data)
         LOG(ERR, "UPDATE: No \"method\" field in JSON-RPC call.");
         goto error;
     }
+
 
     if (strcmp(method, "update") != 0)
     {

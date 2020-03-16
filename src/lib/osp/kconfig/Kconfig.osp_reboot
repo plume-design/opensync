@@ -1,0 +1,17 @@
+#
+# OSP_PS_REBOOT_PSTORE options
+#
+config OSP_REBOOT_PSTORE_DEV
+    string "PSTORE logging device"
+    default "/dev/pmsg0"
+    help
+        The PSTORE logging device, typically /dev/pmsg0. This character device
+        is used for recording the reboot reason into PSTORE memory.
+
+config OSP_REBOOT_PSTORE_FS
+    string "Mount point of the PSTORE filesystem"
+    default "/sys/fs/pstore"
+    help
+        Mount point of the PSTORE filesystem. The filesystem must be mounted
+        by some sort of start-up script before the PSTORE backend code can
+        properly detect the reboot reason

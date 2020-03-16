@@ -27,6 +27,8 @@
 # Network manager
 #
 ###############################################################################
+UNIT_DISABLE := $(if $(CONFIG_MANAGER_NM),n,y)
+
 UNIT_NAME := nm
 
 # Template type:
@@ -50,11 +52,14 @@ UNIT_SRC    += src/nm2_mac_learning.c
 UNIT_SRC    += src/nm2_mac_tags.c
 UNIT_SRC    += src/nm2_main.c
 UNIT_SRC    += src/nm2_portfw.c
+UNIT_SRC    += src/nm2_port.c
 UNIT_SRC    += src/nm2_route.c
 UNIT_SRC    += src/nm2_util.c
+UNIT_SRC    += src/nm2_mcast.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -Isrc/lib/common/inc/
+UNIT_CFLAGS += -Isrc/lib/version/inc/
 
 UNIT_LDFLAGS += -ljansson
 UNIT_LDFLAGS += -lev
@@ -66,11 +71,10 @@ endif
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
 UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 
-UNIT_DEPS += src/lib/evsched
 UNIT_DEPS += src/lib/inet
 UNIT_DEPS += src/lib/ovsdb
 UNIT_DEPS += src/lib/pjs
 UNIT_DEPS += src/lib/reflink
 UNIT_DEPS += src/lib/schema
 UNIT_DEPS += src/lib/synclist
-UNIT_DEPS += src/lib/version
+UNIT_DEPS_CFLAGS += src/lib/version

@@ -1,31 +1,5 @@
-/*
-Copyright (c) 2015, Plume Design Inc. All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
-   1. Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-   2. Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-   3. Neither the name of the Plume Design Inc. nor the
-      names of its contributors may be used to endorse or promote products
-      derived from this software without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
-ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-DISCLAIMED. IN NO EVENT SHALL Plume Design Inc. BE LIABLE FOR ANY
-DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-#ifndef __DNS_PARSE_H__
-#define __DNS_PARSE_H__
+#ifndef DNS_PARSE_H_INCLUDED
+#define DNS_PARSE_H_INCLUDED
 
 #include <linux/if_packet.h>
 #include <pcap.h>
@@ -69,7 +43,6 @@ struct dns_session
     transport_info udp;
     tcp_config tcp_config;
     uint32_t dedup_pos;
-    ds_tree_t device_sessions;
     struct sockaddr_ll raw_dst;
     os_macaddr_t src_eth_addr;
     int sock_fd;
@@ -96,14 +69,10 @@ struct dns_session
     char *health_stats_report_topic;
     struct fsm_url_stats health_stats;
     struct web_cat_offline cat_offline;
+    struct fqdn_pending_req *req;
     bool initialized;
 };
 
-struct dns_cache
-{
-    bool initialized;
-    ds_tree_t fsm_sessions;
-};
 
 /* Holds the information for a dns question. */
 typedef struct dns_question
@@ -150,6 +119,19 @@ typedef struct
     dns_rr * additional;
 } dns_info;
 
+
+struct dns_cache
+{
+    bool initialized;
+    ds_tree_t fsm_sessions;
+    int req_cache_ttl;
+    int (*set_forward_context)(struct fsm_session *);
+    void (*forward)(struct dns_session *, dns_info *, uint8_t *, int);
+    void (*policy_init)(void);
+    void (*policy_check)(struct dns_device *, struct fqdn_pending_req *);
+};
+
+
 #define FORCE 1
 
 #define REQ_CACHE_TTL 120
@@ -181,8 +163,39 @@ int
 dns_plugin_init(struct fsm_session *session);
 
 void
+dns_plugin_exit(struct fsm_session *session);
+
+void
 dns_remove_req(struct dns_session *dns_session, os_macaddr_t *mac,
                uint16_t req_id);
+
+
+/**
+ * @brief create updated row for Openflow_Tag with newly matched IPs
+ *
+ * @param         req      request with update fields loaded
+ * @param[out]    output   row to be written to Openflow_Tag
+ *
+ * @return true loaded correctly built struct into output
+ * @return false output struct not built
+ */
+bool
+dns_generate_update_tag( struct fqdn_pending_req *req,
+                         struct schema_Openflow_Tag *output);
+
+typedef bool (*dns_ovsdb_updater)(const char *, const char *,
+                                  const char *, json_t *, ovs_uuid_t *);
+/**
+ * @brief update Openflow_Tag to map to new row
+ *
+ * @param       row      new row to be written to Openflow_Tag
+ * @param       updater  dependency injection for updating
+ *
+ * @return      true     succeeded in update
+ * @return      false    failed to update
+ */
+bool
+dns_upsert_tag(struct schema_Openflow_Tag *row, dns_ovsdb_updater updater);
 
 void
 dns_forward(struct dns_session *dns_session, dns_info *dns,
@@ -202,10 +215,19 @@ void
 dns_policy_check(struct dns_device *ds,
                  struct fqdn_pending_req *req);
 
+void
+dns_retire_reqs(struct fsm_session *session);
+
 struct dns_session *
 dns_lookup_session(struct fsm_session *session);
 
 struct dns_session *
 dns_get_session(struct fsm_session *session);
 
-#endif /* __DNS_PARSE_H__ */
+struct dns_cache *
+dns_get_mgr(void);
+
+void
+dns_mgr_init(void);
+
+#endif /* DNS_PARSE_H_INCLUDED */

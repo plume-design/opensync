@@ -24,8 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __JSON_MQTT_H__
-#define __JSON_MQTT_H__
+#ifndef JSON_MQTT_H_INCLUDED
+#define JSON_MQTT_H_INCLUDED
 
 #include <jansson.h>
 
@@ -91,4 +91,4 @@ char *
 jencode_dhcp_report(struct fsm_session *session,
                     struct dhcp_report *to_report);
 
-#endif /* __JSON_MQTT_H__ */
+#endif /* JSON_MQTT_H_INCLUDED */

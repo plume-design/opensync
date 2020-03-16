@@ -83,7 +83,6 @@ struct osn_ip6_neigh
 struct osn_ip6_status
 {
     const char             *is6_ifname;     /**< Interface name */
-    void                   *is6_data;       /**< Custom data */
     osn_ip6_addr_t         *is6_addr;       /**< List of IPv6 addresses on interface */
     size_t                  is6_addr_len;   /**< Length of is6_addr array */
     osn_ip6_addr_t         *is6_dns;        /**< List of configure DNSv6 servers */
@@ -135,7 +134,7 @@ osn_ip6_t *osn_ip6_new(const char *ifname);
  * The implementation may choose to remove all global IPv6 addresses regardless
  * if they were added using @ref osn_ip6_addr_add().
  */
-bool osn_ip6_del(osn_ip6_t *ip6);
+bool osn_ip6_del(osn_ip6_t *self);
 
 /**
  * Ensure that all configuration pertaining the @p self object is applied to
@@ -152,7 +151,7 @@ bool osn_ip6_del(osn_ip6_t *ip6);
  * as osn_ip6_apply() returns -- only that the configuration process
  * will be started for all pending operations.
  */
-bool osn_ip6_apply(osn_ip6_t *ip6);
+bool osn_ip6_apply(osn_ip6_t *self);
 
 /**
  * Add an IPv6 address to the IPv6 object.
@@ -175,7 +174,7 @@ bool osn_ip6_apply(osn_ip6_t *ip6);
  * If osn_ip6_addr_add() returns success when adding a duplicate address then
  * osn_ip6_addr_del() should return success when removing an invalid address.
  */
-bool osn_ip6_addr_add(osn_ip6_t *ip6, const osn_ip6_addr_t *addr);
+bool osn_ip6_addr_add(osn_ip6_t *self, const osn_ip6_addr_t *addr);
 
 /**
  * Remove an IPv6 address from the IPv6 object.
@@ -194,7 +193,7 @@ bool osn_ip6_addr_add(osn_ip6_t *ip6, const osn_ip6_addr_t *addr);
  * If osn_ip6_addr_add() returns success when adding a duplicate address then
  * osn_ip6_addr_del() should return success when removing an invalid address.
  */
-bool osn_ip6_addr_del(osn_ip6_t *ip6, const osn_ip6_addr_t *addr);
+bool osn_ip6_addr_del(osn_ip6_t *self, const osn_ip6_addr_t *addr);
 
 /**
  * Add an DNSv6 server address to the IPv6 object.
@@ -206,10 +205,10 @@ bool osn_ip6_addr_del(osn_ip6_t *ip6, const osn_ip6_addr_t *addr);
  * The new configuration may not take effect until @ref osn_ip6_apply() is
  * called.
  */
-bool osn_ip6_dns_add(osn_ip6_t *ip6, const osn_ip6_addr_t *dns);
+bool osn_ip6_dns_add(osn_ip6_t *self, const osn_ip6_addr_t *dns);
 
 /**
- * Remove an DNSv4 server IPv6 address from the IPv6 object.
+ * Remove an DNSv6 server IPv6 address from the IPv6 object.
  *
  * @param[in]   self  A valid pointer to an osn_ip_t object
  * @param[in]   dns   A pointer to a valid DNSv4 address (@ref osn_ip_addr_t)
@@ -218,7 +217,7 @@ bool osn_ip6_dns_add(osn_ip6_t *ip6, const osn_ip6_addr_t *dns);
  * The new configuration may not take effect until @ref osn_ip_apply() is
  * called.
  */
-bool osn_ip6_dns_del(osn_ip6_t *ip6, const osn_ip6_addr_t *dns);
+bool osn_ip6_dns_del(osn_ip6_t *self, const osn_ip6_addr_t *dns);
 
 /**
  * Set the IPv6 status callback.
@@ -231,7 +230,26 @@ bool osn_ip6_dns_del(osn_ip6_t *ip6, const osn_ip6_addr_t *dns);
  * @param[in]   self  A valid pointer to an osn_ip6_t object
  * @param[in]   fn    A pointer to the function implementation
  */
-void osn_ip6_status_notify(osn_ip6_t *ip6, osn_ip6_status_fn_t *fm, void *data);
+void osn_ip6_status_notify(osn_ip6_t *self, osn_ip6_status_fn_t *fn);
+
+/**
+ * Set the IPv6 user data.
+ *
+ * @param[in]   self  A valid pointer to an osn_ip6_t object
+ * @param[in]   data  Private data
+ */
+void osn_ip6_data_set(osn_ip6_t *self, void *data);
+
+/**
+ * Get the IPv6 user data.
+ *
+ * @param[in]   self  A valid pointer to an osn_ip6_t object
+ *
+ * @return
+ * This function returns the data that was previously set using
+ * @ref osn_ip6_data_set().
+ */
+void *osn_ip6_data_get(osn_ip6_t *self);
 
 /*
  * ===========================================================================
@@ -347,7 +365,7 @@ bool osn_ip6_radv_set(osn_ip6_radv_t *self, const struct osn_ip6_radv_options *o
  * @param[in]   self  A valid pointer to an osn_ip6_radv_t object
  * @param[in]   prefix  IPv6 prefix to add
  * @param[in]   autonomous  Set the A flag for this prefix
- * @param[in]   on_link  Set the L flag for this prefix
+ * @param[in]   onlink  Set the L flag for this prefix
  *
  * @return
  * Return true if the prefix was successfully added, false otherwise.

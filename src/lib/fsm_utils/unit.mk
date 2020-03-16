@@ -30,7 +30,7 @@
 UNIT_NAME := fsm_utils
 UNIT_TYPE := LIB
 
-UNIT_DISABLE := $(if $(CONFIG_TARGET_MANAGER_FSM),n,y)
+UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM),n,y)
 
 UNIT_SRC := src/fsm_dpi_utils.c
 
@@ -42,6 +42,9 @@ UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
 UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 
 UNIT_DEPS := src/lib/const
+UNIT_DEPS += src/lib/ds
 UNIT_DEPS += src/lib/log
 UNIT_DEPS += src/lib/ustack
 UNIT_DEPS += src/lib/nf_utils
+UNIT_DEPS += src/lib/fsm_policy
+UNIT_DEPS += src/lib/network_metadata

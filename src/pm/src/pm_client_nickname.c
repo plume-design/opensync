@@ -72,9 +72,8 @@ pm_client_nickname_update(struct schema_Client_Nickname_Config *cncfg, bool stat
     json_t             *where, *row;
     bool                ret;
 
-    /* Skip deleting the empty entries at startup */
-    if(!g_client_nickname_init && (strlen(cncfg->mac) == 0))
-    {
+    // skip deleting the empty entries at startup
+    if(!g_client_nickname_init && (strlen(cncfg->mac) == 0)) {
         return true;
     }
 
@@ -84,8 +83,7 @@ pm_client_nickname_update(struct schema_Client_Nickname_Config *cncfg, bool stat
         where = ovsdb_tran_cond(OCLM_STR, "mac", OFUNC_EQ, str_tolower(cncfg->mac));
         ret = ovsdb_sync_delete_where(OVSDB_MAC_TABLE, where);
         if (!ret) {
-            LOGE("Updating client %s nickname (Failed to remove entry)",
-                cncfg->mac);
+            LOGE("Updating client %s nickname (Failed to remove entry)", cncfg->mac);
             return false;
         }
         LOGN("Removed client '%s' nickname", cncfg->mac);
@@ -96,13 +94,10 @@ pm_client_nickname_update(struct schema_Client_Nickname_Config *cncfg, bool stat
         row   = schema_Client_Nickname_Config_to_json(cncfg, perr);
         ret = ovsdb_sync_upsert_where(OVSDB_MAC_TABLE, where, row, NULL);
         if (!ret) {
-            LOGE("Updating client nickname %s (Failed to insert entry)",
-                cncfg->mac);
+            LOGE("Updating client nickname %s (Failed to insert entry)", cncfg->mac);
             return false;
         }
-        LOGN("Updated client '%s' nickname '%s'",
-             cncfg->mac, cncfg->nickname);
-
+        LOGN("Updated client '%s' nickname '%s'", cncfg->mac, cncfg->nickname);
     }
 
     return true;
@@ -119,8 +114,7 @@ callback_Client_Nickname_Config(
     (void)row;
     (void)mon;
 
-    if (mon->mon_type == OVSDB_UPDATE_ERROR)
-    {
+    if (mon->mon_type == OVSDB_UPDATE_ERROR) {
         LOGE("Can't update OVSDB client nickname");
     }
     else if (mon->mon_type == OVSDB_UPDATE_DEL) {
@@ -143,12 +137,12 @@ pm_client_nickname_init(void)
 
     OVSDB_TABLE_INIT(Client_Nickname_Config, mac);
 
-    /* Register to client nickname changed ... */
+    // register to client nickname changed
     ret = target_client_nickname_register(pm_client_nickname_update);
     if (false == ret) {
         return false;
     }
-    // Initialize OVSDB monitor callback
+    // initialize OVSDB monitor callback
     OVSDB_CACHE_MONITOR(Client_Nickname_Config, false);
 
     g_client_nickname_init = true;

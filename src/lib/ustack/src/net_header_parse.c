@@ -85,16 +85,12 @@ size_t net_header_parse_eth(struct net_header_parser *parser)
     struct eth_header *eth_header = &parser->eth_header;
     uint8_t *bytes = parser->data;
     size_t parsed = 0;
-    int i;
 
     parser->parsed = 0;
     if (parser->packet_len < ETH_HLEN) return 0;
 
-    for (i = 0; i < ETH_ALEN; i++)
-    {
-        eth_header->dstmac = (os_macaddr_t *)(parser->data);
-        eth_header->srcmac = (os_macaddr_t *)(parser->data + ETH_ALEN);
-    }
+    eth_header->dstmac = (os_macaddr_t *)(parser->data);
+    eth_header->srcmac = (os_macaddr_t *)(parser->data + ETH_ALEN);
 
     parsed = 2 * ETH_ALEN;
 
@@ -371,7 +367,7 @@ struct ip6_hdr * net_header_get_ipv6_hdr(struct net_header_parser *parser)
  * @return true if the conversion succeeded, false otherwise
  */
 bool net_header_ip_str(struct net_header_parser *parser, bool src,
-                          char *ip_buf, size_t ip_buf_len)
+                       char *ip_buf, size_t ip_buf_len)
 {
     const void *ip, *ret;
 
@@ -543,7 +539,7 @@ net_header_fill_buf(char *buf, size_t len, struct net_header_parser *parser)
     char ip_dst[INET6_ADDRSTRLEN];
     struct eth_header *eth;
     char eth_pres[256];
-    char tpt_pres[128];
+    char tpt_pres[256];
     bool has_ip;
 
     eth = net_header_get_eth(parser);
@@ -579,8 +575,11 @@ net_header_fill_buf(char *buf, size_t len, struct net_header_parser *parser)
         tcph = parser->ip_pld.tcphdr;
 
         snprintf(tpt_pres, sizeof(tpt_pres),
-                 ", TCP: sport %u, dport %u",
-                 ntohs(tcph->source), ntohs(tcph->dest));
+                 ", TCP: sport %u, dport %u, seq %u, ack_seq %u, "
+                 "syn %u, ack %u, push %u, rst %u, fin %u",
+                 ntohs(tcph->source), ntohs(tcph->dest),
+                 ntohl(tcph->seq), ntohl(tcph->ack_seq),
+                 tcph->syn, tcph->ack, tcph->psh, tcph->rst, tcph->fin);
     }
     else if (parser->ip_protocol == IPPROTO_UDP)
     {

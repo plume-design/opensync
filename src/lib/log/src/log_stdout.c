@@ -30,7 +30,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sys/syscall.h>
 
 #include "log.h"
-#include "target.h"
 
 static logger_fn_t logger_stdout_log;
 

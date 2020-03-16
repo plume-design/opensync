@@ -37,12 +37,27 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 static int client_cmp(void *a, void *b)
 {
-    uintptr_t p_a = (uintptr_t)a;
-    uintptr_t p_b = (uintptr_t)b;
+    struct fsm_policy_client *client_a;
+    struct fsm_policy_client *client_b;
+    char *default_name = "default";
+    char *name_a;
+    char *name_b;
 
-    if (p_a ==  p_b) return 0;
+    client_a = (struct fsm_policy_client *)a;
+    client_b = (struct fsm_policy_client *)b;
+
+    uintptr_t p_a = (uintptr_t)(client_a->session);
+    uintptr_t p_b = (uintptr_t)(client_b->session);
+
+    /* Discriminate sessions */
     if (p_a < p_b) return -1;
-    return 1;
+    if (p_a > p_b) return 1;
+
+    /* Discriminate clients of the same session */
+    name_a = (client_a->name == NULL ? default_name : client_a->name);
+    name_b = (client_b->name == NULL ? default_name : client_b->name);
+
+    return strcmp(name_a, name_b);
 }
 
 void fsm_policy_client_init(void)
@@ -50,7 +65,7 @@ void fsm_policy_client_init(void)
     struct fsm_policy_session *mgr;
     ds_tree_t *tree;
 
-    mgr = get_mgr();
+    mgr = fsm_policy_get_mgr();
     tree = &mgr->clients;
 
     ds_tree_init(tree, client_cmp, struct fsm_policy_client, client_node);
@@ -68,9 +83,9 @@ void fsm_policy_register_client(struct fsm_policy_client *client)
     if (client == NULL) return;
     if (client->session == NULL) return;
 
-    mgr = get_mgr();
+    mgr = fsm_policy_get_mgr();
     tree = &mgr->clients;
-    p_client = ds_tree_find(tree, client->session);
+    p_client = ds_tree_find(tree, client);
     if (p_client != NULL)
     {
         /* Update the external client's table */
@@ -96,7 +111,7 @@ void fsm_policy_register_client(struct fsm_policy_client *client)
     table = ds_tree_find(&mgr->policy_tables, name);
     p_client->table = table;
     client->table = table;
-    ds_tree_insert(tree, p_client, p_client->session);
+    ds_tree_insert(tree, p_client, p_client);
 
     LOGD("%s: registered client %s", __func__, p_client->name);
 
@@ -115,8 +130,8 @@ void fsm_policy_deregister_client(struct fsm_policy_client *client)
     if (client == NULL) return;
     if (client->session == NULL) return;
 
-    mgr = get_mgr();
-    p_client = ds_tree_find(&mgr->clients, client->session);
+    mgr = fsm_policy_get_mgr();
+    p_client = ds_tree_find(&mgr->clients, client);
     if (p_client == NULL) return;
 
     ds_tree_remove(&mgr->clients, p_client);
@@ -133,7 +148,7 @@ void fsm_policy_update_clients(struct policy_table *table)
     char *default_name = "default";
     ds_tree_t *tree;
 
-    mgr = get_mgr();
+    mgr = fsm_policy_get_mgr();
     tree = &mgr->clients;
     client = ds_tree_head(tree);
 

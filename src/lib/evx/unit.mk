@@ -33,10 +33,8 @@ UNIT_NAME := evx
 # Template type:
 UNIT_TYPE := LIB
 
-ifdef CONFIG_USE_KCONFIG
 ifdef CONFIG_LIBEVX_USE_CARES
 BUILD_HAVE_LIBCARES=y
-endif
 endif
 
 UNIT_CFLAGS += -Isrc/lib/log/inc

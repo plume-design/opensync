@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <dlfcn.h>
+#include <limits.h>
 
 #include "os.h"
 #include "util.h"
@@ -53,6 +54,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "policy_tags.h"
 #include "qm_conn.h"
 #include "dppline.h"
+#include "fsm_dpi_utils.h"
 
 #define MODULE_ID LOG_MODULE_ID_OVSDB
 
@@ -60,6 +62,8 @@ ovsdb_table_t table_AWLAN_Node;
 ovsdb_table_t table_Flow_Service_Manager_Config;
 ovsdb_table_t table_Openflow_Tag;
 ovsdb_table_t table_Openflow_Tag_Group;
+ovsdb_table_t table_Node_Config;
+ovsdb_table_t table_Node_State;
 
 /**
  * This file manages the OVSDB updates for fsm.
@@ -113,6 +117,8 @@ fsm_sessions_cmp(void *a, void *b)
     return strcmp(a, b);
 }
 
+#define FSM_NODE_MODULE "fsm"
+#define FSM_NODE_STATE_MEM_KEY "max_mem"
 
 /**
  * @brief fsm manager init routine
@@ -121,6 +127,7 @@ void
 fsm_init_mgr(struct ev_loop *loop)
 {
     struct fsm_mgr *mgr;
+    int rc;
 
     mgr = fsm_get_mgr();
     memset(mgr, 0, sizeof(*mgr));
@@ -128,6 +135,24 @@ fsm_init_mgr(struct ev_loop *loop)
     snprintf(mgr->pid, sizeof(mgr->pid), "%d", (int)getpid());
     ds_tree_init(&mgr->fsm_sessions, fsm_sessions_cmp,
                  struct fsm_session, fsm_node);
+
+    /* Check the max amount of memory available */
+    rc = sysinfo(&mgr->sysinfo);
+    if (rc != 0)
+    {
+        rc = errno;
+        LOGE("%s: sysinfo failed: %s", __func__, strerror(rc));
+        memset(&mgr->sysinfo, 0, sizeof(mgr->sysinfo));
+        mgr->max_mem = INT_MAX;
+    }
+    else
+    {
+        /* Set default to 50% of the max mem available */
+        mgr->max_mem = (mgr->sysinfo.totalram * mgr->sysinfo.mem_unit) / 2;
+        mgr->max_mem /= 1000; /* kB */
+        LOGI("%s: fsm default max memory usage: %" PRIu64 " kB", __func__,
+             mgr->max_mem);
+    }
 }
 
 
@@ -188,7 +213,7 @@ fsm_walk_sessions_tree(void)
  * @param len number of elements of the ovsdb object
  */
 bool
-fsm_check_conversion(void *converted, int len)
+fsm_core_check_conversion(void *converted, int len)
 {
     if (len == 0) return true;
     if (converted == NULL) return false;
@@ -278,7 +303,7 @@ fsm_trigger_flood_mod(struct fsm_session *session)
 {
     char shell_cmd[1024] = { 0 };
 
-    if (session->type == FSM_WEB_CAT) return true;
+    if (!fsm_plugin_has_intf(session)) return true;
 
     LOGT("%s: session %s set tap_flood to %s", __func__,
          session->name, session->flood_tap ? "true" : "false");
@@ -388,13 +413,13 @@ fsm_session_update(struct fsm_session *session,
                                conf->other_config_len,
                                conf->other_config_keys,
                                conf->other_config);
-    check = fsm_check_conversion(session->conf, conf->other_config_len);
+    check = fsm_core_check_conversion(session->conf, conf->other_config_len);
     if (!check) goto err_free_fconf;
 
     fconf->other_config = other_config;
     session->topic = fsm_get_other_config_val(session, "mqtt_v");
 
-    if (session->type != FSM_WEB_CAT)
+    if (fsm_plugin_has_intf(session))
     {
         ret = mgr->get_br(session->conf->if_name,
                           session->bridge,
@@ -441,6 +466,13 @@ fsm_session_update(struct fsm_session *session,
     }
 
     fsm_set_tx_intf(session);
+
+    ret = fsm_is_dpi(session);
+    if (ret)
+    {
+        ret = fsm_init_dpi_context(session);
+        if (!ret) goto err_free_fconf;
+    }
 
     return true;
 
@@ -492,7 +524,7 @@ fsm_parse_dso(struct fsm_session *session)
     }
     else
     {
-        char *dir = "/usr/plume/lib";
+        char *dir = CONFIG_INSTALL_PREFIX"/lib";
         char dso[256];
 
         memset(dso, 0, sizeof(dso));
@@ -519,6 +551,8 @@ fsm_init_plugin(struct fsm_session *session)
     char *dso_init;
     char init_fn[256];
     char *error;
+
+    if (session->type == FSM_DPI_DISPATCH) return true;
 
     dlerror();
     session->handle = dlopen(session->dso, RTLD_NOW);
@@ -663,7 +697,7 @@ fsm_alloc_session(struct schema_Flow_Service_Manager_Config *conf)
     ret = fsm_parse_dso(session);
     if (!ret) goto err_free_conf;
 
-    if (session->type != FSM_WEB_CAT)
+    if (fsm_plugin_has_intf(session))
     {
         pcaps = calloc(1, sizeof(struct fsm_pcaps));
         if (pcaps == NULL) goto err_free_dso;
@@ -709,6 +743,7 @@ void
 fsm_free_session(struct fsm_session *session)
 {
     struct fsm_pcaps *pcaps;
+    bool ret;
 
     if (session == NULL) return;
 
@@ -719,6 +754,10 @@ fsm_free_session(struct fsm_session *session)
         fsm_pcap_close(session);
         free(pcaps);
     }
+
+    /* Free optional dpi context */
+    ret = fsm_is_dpi(session);
+    if (ret) fsm_free_dpi_context(session);
 
     /* Call the session exit routine */
     if (session->ops.exit != NULL) session->ops.exit(session);
@@ -772,7 +811,7 @@ fsm_add_session(struct schema_Flow_Service_Manager_Config *conf)
     }
     ds_tree_insert(sessions, session, session->name);
 
-    if (session->type != FSM_WEB_CAT)
+    if (fsm_plugin_has_intf(session))
     {
         ret = fsm_pcap_open(session);
         if (!ret)
@@ -1036,6 +1075,151 @@ callback_Openflow_Tag_Group(ovsdb_update_monitor_t *mon,
     }
 }
 
+/**
+ * @brief Upserts the Node_State ovsdb table entry for fsm's max mem limit
+ *
+ * Advertizes in Node_State the max amount of memory FSM is allowed to use
+ * @param module the Node_State module name
+ * @param key the Node_State key
+ * @param key the Node_State value
+ */
+void
+fsm_set_node_state(const char *module, const char *key, const char *value)
+{
+    struct schema_Node_State node_state;
+    json_t *where;
+    json_t *cond;
+
+    where = json_array();
+
+    cond = ovsdb_tran_cond_single("module", OFUNC_EQ, (char *)module);
+    json_array_append_new(where, cond);
+
+    MEMZERO(node_state);
+    SCHEMA_SET_STR(node_state.module, module);
+    SCHEMA_SET_STR(node_state.key, key);
+    SCHEMA_SET_STR(node_state.value, value);
+    ovsdb_table_upsert_where(&table_Node_State, where, &node_state, false);
+
+    json_decref(where);
+
+    return;
+}
+
+
+/**
+ * @brief processes the addition of an entry in Node_Config
+ */
+void
+fsm_get_node_config(struct schema_Node_Config *node_cfg)
+{
+    struct fsm_mgr *mgr;
+    char str_value[32];
+    char *module;
+    long value;
+    char *key;
+
+    int rc;
+
+    module = node_cfg->module;
+    rc = strcmp("fsm", module);
+    if (rc != 0) return;
+
+    key = node_cfg->key;
+    rc = strcmp("max_mem_percent", key);
+    if (rc != 0) return;
+
+    errno = 0;
+    value = strtol(node_cfg->value, NULL, 10);
+    if (errno != 0)
+    {
+        LOGE("%s: error reading value %s: %s", __func__,
+             node_cfg->value, strerror(errno));
+        return;
+    }
+
+    if (value < 0) return;
+    if (value > 100) return;
+
+    /* Get the manager */
+    mgr = fsm_get_mgr();
+
+    if (mgr->sysinfo.totalram == 0) return;
+
+    mgr->max_mem = mgr->sysinfo.totalram * mgr->sysinfo.mem_unit;
+    mgr->max_mem = (mgr->max_mem * value) / 100;
+    mgr->max_mem /= 1000; /* kB */
+
+    LOGI("%s: set fsm max mem usage to %" PRIu64 " kB", __func__,
+         mgr->max_mem);
+    snprintf(str_value, sizeof(str_value), "%" PRIu64 " kB", mgr->max_mem);
+    fsm_set_node_state(FSM_NODE_MODULE, FSM_NODE_STATE_MEM_KEY, str_value);
+}
+
+
+/**
+ * @brief processes the removal of an entry in Node_Config
+ */
+void
+fsm_rm_node_config(struct schema_Node_Config *old_rec)
+{
+    struct fsm_mgr *mgr;
+    char str_value[32];
+    char *module;
+    int rc;
+
+    module = old_rec->module;
+    rc = strcmp("fsm", module);
+    if (rc != 0) return;
+
+    /* Get the manager */
+    mgr = fsm_get_mgr();
+    if (mgr->sysinfo.totalram == 0) return;
+
+    mgr->max_mem = (mgr->sysinfo.totalram * mgr->sysinfo.mem_unit) / 2;
+    mgr->max_mem /= 1000; /* kB */
+    LOGI("%s: fsm default max memory usage: %" PRIu64 " kB", __func__,
+         mgr->max_mem);
+
+    snprintf(str_value, sizeof(str_value), "%" PRIu64 " kB", mgr->max_mem);
+    fsm_set_node_state(FSM_NODE_MODULE, FSM_NODE_STATE_MEM_KEY, str_value);
+}
+
+
+/**
+ * @brief processes the removal of an entry in Node_Config
+ */
+void
+fsm_update_node_config(struct schema_Node_Config *node_cfg)
+{
+    fsm_get_node_config(node_cfg);
+}
+
+
+/**
+ * @brief registered callback for Node_Config events
+ */
+void
+callback_Node_Config(ovsdb_update_monitor_t *mon,
+                    struct schema_Node_Config *old_rec,
+                    struct schema_Node_Config *node_cfg)
+{
+    if (mon->mon_type == OVSDB_UPDATE_NEW)
+    {
+        fsm_get_node_config(node_cfg);
+    }
+
+    if (mon->mon_type == OVSDB_UPDATE_DEL)
+    {
+        fsm_rm_node_config(old_rec);
+    }
+
+    if (mon->mon_type == OVSDB_UPDATE_MODIFY)
+    {
+        fsm_update_node_config(node_cfg);
+    }
+}
+
 
 /**
  * @brief register ovsdb callback events
@@ -1044,6 +1228,7 @@ int
 fsm_ovsdb_init(void)
 {
     struct fsm_mgr *mgr;
+    char str_value[32];
 
     LOGI("Initializing FSM tables");
     // Initialize OVSDB tables
@@ -1051,18 +1236,26 @@ fsm_ovsdb_init(void)
     OVSDB_TABLE_INIT_NO_KEY(Flow_Service_Manager_Config);
     OVSDB_TABLE_INIT_NO_KEY(Openflow_Tag);
     OVSDB_TABLE_INIT_NO_KEY(Openflow_Tag_Group);
+    OVSDB_TABLE_INIT_NO_KEY(Node_Config);
+    OVSDB_TABLE_INIT_NO_KEY(Node_State);
 
     // Initialize OVSDB monitor callbacks
     OVSDB_TABLE_MONITOR(AWLAN_Node, false);
     OVSDB_TABLE_MONITOR(Flow_Service_Manager_Config, false);
     OVSDB_TABLE_MONITOR(Openflow_Tag, false);
     OVSDB_TABLE_MONITOR(Openflow_Tag_Group, false);
+    OVSDB_TABLE_MONITOR(Node_Config, false);
 
     // Initialize the plugin loader routine
     mgr = fsm_get_mgr();
     mgr->init_plugin = fsm_init_plugin;
     mgr->flood_mod = fsm_trigger_flood_mod;
     mgr->get_br = get_home_bridge;
+    mgr->set_dpi_state = fsm_set_dpi_state;
+
+    // Advertize default memory limit usage
+    snprintf(str_value, sizeof(str_value), "%" PRIu64 " kB", mgr->max_mem);
+    fsm_set_node_state(FSM_NODE_MODULE, FSM_NODE_STATE_MEM_KEY, str_value);
 
     return 0;
 }

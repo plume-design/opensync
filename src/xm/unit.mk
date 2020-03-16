@@ -29,7 +29,7 @@
 ###############################################################################
 UNIT_NAME    := xm
 UNIT_TYPE    := BIN
-UNIT_DISABLE := $(if $(CONFIG_TARGET_MANAGER_XM),n,y)
+UNIT_DISABLE := $(if $(CONFIG_MANAGER_XM),n,y)
 
 UNIT_SRC     := src/xm_main.c
 UNIT_SRC     += src/xm_ovsdb.c
@@ -49,6 +49,4 @@ UNIT_DEPS    := src/lib/log
 UNIT_DEPS    := src/lib/ovsdb
 UNIT_DEPS    += src/lib/pjs
 UNIT_DEPS    += src/lib/schema
-UNIT_DEPS    += src/lib/version
-UNIT_DEPS    += src/lib/evsched
 UNIT_DEPS    += src/lib/connector

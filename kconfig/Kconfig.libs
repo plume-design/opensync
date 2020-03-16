@@ -1,0 +1,6 @@
+source "src/lib/evx/kconfig/Kconfig.libs"
+source "src/lib/inet/kconfig/Kconfig.libs"
+source "src/lib/log/kconfig/Kconfig.libs"
+
+osource "platform/*/kconfig/Kconfig.libs"
+osource "vendor/*/kconfig/Kconfig.libs"

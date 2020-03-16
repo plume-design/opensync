@@ -28,6 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define INET_BASE_H_INCLUDED
 
 #include "ds_tree.h"
+#include "evx.h"
 
 #include "inet.h"
 #include "inet_unit.h"
@@ -40,24 +41,24 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "osn_inet.h"
 #include "synclist.h"
 
-#define INET_BASE_SERVICE_LIST(M)   \
-    M(INET_BASE_INTERFACE)          \
-    M(INET_BASE_FIREWALL)           \
-    M(INET_BASE_UPNP)               \
-    M(INET_BASE_IGMP)               \
-    M(INET_BASE_NETWORK)            \
-    M(INET_BASE_MTU)                \
-    M(INET_BASE_SCHEME_NONE)        \
-    M(INET_BASE_SCHEME_STATIC)      \
-    M(INET_BASE_SCHEME_DHCP)        \
-    M(INET_BASE_DHCP_SERVER)        \
-    M(INET_BASE_DNS)                \
-    M(INET_BASE_DHCPSNIFF)          \
-    M(INET_BASE_INET6)              \
-    M(INET_BASE_DHCP6_CLIENT)       \
-    M(INET_BASE_DHCP6_SERVER)       \
-    M(INET_BASE_RADV)               \
-    M(INET_BASE_MAX)
+#define INET_BASE_SERVICE_LIST(M)                                   \
+    M(INET_BASE_IF_CREATE,      "Interface Creation")               \
+    M(INET_BASE_IF_EXISTS,      "Interface Ready")                  \
+    M(INET_BASE_FIREWALL,       "Firewall")                         \
+    M(INET_BASE_UPNP,           "UPnP")                             \
+    M(INET_BASE_IGMP,           "IGMP")                             \
+    M(INET_BASE_NETWORK,        "Basic Networking")                 \
+    M(INET_BASE_MTU,            "Interface MTU")                    \
+    M(INET_BASE_SCHEME_NONE,    "IPv4 Assignment Scheme: None")     \
+    M(INET_BASE_SCHEME_STATIC,  "IPv4 Assignment Scheme: Static")   \
+    M(INET_BASE_SCHEME_DHCP,    "IPv4 Assignment Scheme: DHCP")     \
+    M(INET_BASE_DHCP_SERVER,    "DHCPv4 Server")                    \
+    M(INET_BASE_DNS,            "DNS Settings")                     \
+    M(INET_BASE_DHCPSNIFF,      "DHCP Sniffing")                    \
+    M(INET_BASE_INET6,          "IPv6 Networking")                  \
+    M(INET_BASE_DHCP6_CLIENT,   "DHCPv6 Client")                    \
+    M(INET_BASE_DHCP6_SERVER,   "DHCPv6 Server")                    \
+    M(INET_BASE_RADV,           "IPv6 Route Advertisement")
 
 /*
  * This enum is used mainly to apply partial configurations through the
@@ -65,8 +66,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 enum inet_base_services
 {
-    #define _E(x) x,
-    INET_BASE_SERVICE_LIST(_E)
+    #define INET_BASE_ENUM(e, n) e,
+    INET_BASE_SERVICE_LIST(INET_BASE_ENUM)
+    #undef INET_BASE_ENUM
+    INET_BASE_MAX
 };
 
 typedef struct __inet_base inet_base_t;
@@ -97,6 +100,8 @@ struct __inet_base
 
     /* DHCP client class */
     osn_dhcp_client_t      *in_dhcpc;
+    inet_dhcpc_option_notify_fn_t*
+                           in_dhcpc_option_fn;
 
     /* Firewall class */
     inet_fw_t              *in_fw;
@@ -115,6 +120,7 @@ struct __inet_base
 
     /* Routing table */
     osn_route_t            *in_route;
+    inet_route_status_fn_t *in_route_status_fn;
 
     /* Osync IPv6 API */
     osn_ip6_t              *in_ip6;
@@ -179,7 +185,6 @@ struct __inet_base
 
     inet_dhcp6_client_notify_fn_t
                            *in_dhcp6_client_notify_fn;
-    void                   *in_dhcp6_client_notifyt_data;
 
     bool                    in_radv_enable;
     struct osn_ip6_radv_options
@@ -194,7 +199,14 @@ struct __inet_base
     ds_tree_t               in_dhcp6_server_lease_list;     /* DHCPv6 server lease list */
     inet_dhcp6_server_notify_fn_t
                            *in_dhcp6_server_notify_fn;
-    void                   *in_dhcp6_server_notify_data;
+
+    /*
+     * Status reporting
+     */
+    inet_state_fn_t        *in_state_fn;                    /* State handler function */
+    inet_state_t            in_state;                       /* Current state */
+    inet_state_t            in_state_prev;                  /* Previous state */
+    ev_debounce             in_state_timer;                 /* Debounce timer */
 };
 
 
@@ -266,7 +278,7 @@ extern bool inet_base_portforward_del(inet_t *super, const struct inet_portforwa
  */
 extern bool inet_base_dhcpc_option_request(inet_t *super, enum osn_dhcp_option opt, bool req);
 extern bool inet_base_dhcpc_option_set(inet_t *super, enum osn_dhcp_option opt, const char *value);
-extern bool inet_base_dhcpc_option_notify(inet_t *super, osn_dhcp_client_opt_notify_fn_t *fn, void *ctx);
+extern bool inet_base_dhcpc_option_notify(inet_t *super, inet_dhcpc_option_notify_fn_t *fn);
 
 /*
  * ===========================================================================
@@ -301,7 +313,7 @@ extern bool inet_base_dhsnif_lease_notify(inet_t *super, inet_dhcp_lease_fn_t *f
  *  Route functions
  * ===========================================================================
  */
-extern bool inet_base_route_notify(inet_t *super, osn_route_status_fn_t *func);
+extern bool inet_base_route_notify(inet_t *super, inet_route_status_fn_t *func);
 
 /*
  * ===========================================================================
@@ -320,7 +332,12 @@ extern bool inet_base_commit(inet_t *super);
  *  Interface status reporting
  * ===========================================================================
  */
-bool inet_base_state_get(inet_t *super, inet_state_t *out);
+
+/* Initiate a state update notification, if there are any changes */
+void inet_base_state_update(inet_base_t *self);
+
+/* Set the state notification handler */
+bool inet_base_state_notify(inet_t *super, inet_state_fn_t *fn);
 
 /*
  * ===========================================================================
@@ -346,7 +363,7 @@ bool inet_base_dhcp6_client_option_request(inet_t *self, int tag, bool request);
 /* DHCPv6 options that will be sent to the server */
 bool inet_base_dhcp6_client_option_send(inet_t *self, int tag, char *value);
 /* DHCPv6 client status notification */
-bool inet_base_dhcp6_client_notify(inet_t *super, inet_dhcp6_client_notify_fn_t *fn, void *ctx);
+bool inet_base_dhcp6_client_notify(inet_t *super, inet_dhcp6_client_notify_fn_t *fn);
 /* DHCPv6 Server: Options that will be sent to the server */
 bool inet_base_dhcp6_server(inet_t *self, bool enable);
 /* DHCPv6 Server: Add an IPv6 range to the server */
@@ -356,7 +373,7 @@ bool inet_base_dhcp6_server_option_send(inet_t *self, int tag, char *data);
 /* DHCPv6 Server: Lease list */
 bool inet_base_dhcp6_server_lease(inet_t *self, bool add, struct osn_dhcpv6_server_lease *lease);
 /* DHCPv6 Server: status notification */
-bool inet_base_dhcp6_server_notify(inet_t *self, inet_dhcp6_server_notify_fn_t *fn, void *ctx);
+bool inet_base_dhcp6_server_notify(inet_t *self, inet_dhcp6_server_notify_fn_t *fn);
 /* Router Advertisement: Push new options for this interface */
 bool inet_base_radv(inet_t *self, bool enable, struct osn_ip6_radv_options *opts);
 /* Router Advertisement: Add or remove an advertised prefix */

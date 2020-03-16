@@ -42,7 +42,10 @@ PROTOBUF_C__BEGIN_DECLS
 
 
 typedef struct _Traffic__ObservationPoint Traffic__ObservationPoint;
+typedef struct _Traffic__VendorDataKVPair Traffic__VendorDataKVPair;
+typedef struct _Traffic__VendorData Traffic__VendorData;
 typedef struct _Traffic__FlowTags Traffic__FlowTags;
+typedef struct _Traffic__FlowState Traffic__FlowState;
 typedef struct _Traffic__FlowKey Traffic__FlowKey;
 typedef struct _Traffic__FlowCounters Traffic__FlowCounters;
 typedef struct _Traffic__FlowStats Traffic__FlowStats;
@@ -66,6 +69,33 @@ struct  _Traffic__ObservationPoint
     , NULL, NULL }
 
 
+struct  _Traffic__VendorDataKVPair
+{
+  ProtobufCMessage base;
+  char *key;
+  char *val_str;
+  protobuf_c_boolean has_val_u32;
+  uint32_t val_u32;
+  protobuf_c_boolean has_val_u64;
+  uint64_t val_u64;
+};
+#define TRAFFIC__VENDOR_DATA__KVPAIR__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&traffic__vendor_data__kvpair__descriptor) \
+    , NULL, NULL, 0, 0, 0, 0 }
+
+
+struct  _Traffic__VendorData
+{
+  ProtobufCMessage base;
+  char *vendor;
+  size_t n_vendorkvpair;
+  Traffic__VendorDataKVPair **vendorkvpair;
+};
+#define TRAFFIC__VENDOR_DATA__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&traffic__vendor_data__descriptor) \
+    , NULL, 0,NULL }
+
+
 struct  _Traffic__FlowTags
 {
   ProtobufCMessage base;
@@ -77,6 +107,23 @@ struct  _Traffic__FlowTags
 #define TRAFFIC__FLOW_TAGS__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&traffic__flow_tags__descriptor) \
     , NULL, NULL, 0,NULL }
+
+
+struct  _Traffic__FlowState
+{
+  ProtobufCMessage base;
+  protobuf_c_boolean has_firstobservedat;
+  uint64_t firstobservedat;
+  protobuf_c_boolean has_lastobservedat;
+  uint64_t lastobservedat;
+  protobuf_c_boolean has_flowstart;
+  protobuf_c_boolean flowstart;
+  protobuf_c_boolean has_flowend;
+  protobuf_c_boolean flowend;
+};
+#define TRAFFIC__FLOW_STATE__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&traffic__flow_state__descriptor) \
+    , 0, 0, 0, 0, 0, 0, 0, 0 }
 
 
 struct  _Traffic__FlowKey
@@ -98,10 +145,13 @@ struct  _Traffic__FlowKey
   uint32_t tptdstport;
   size_t n_flowtags;
   Traffic__FlowTags **flowtags;
+  size_t n_vendordata;
+  Traffic__VendorData **vendordata;
+  Traffic__FlowState *flowstate;
 };
 #define TRAFFIC__FLOW_KEY__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&traffic__flow_key__descriptor) \
-    , NULL, NULL, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0,NULL }
+    , NULL, NULL, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0,NULL, 0,NULL, NULL }
 
 
 struct  _Traffic__FlowCounters
@@ -176,6 +226,44 @@ Traffic__ObservationPoint *
 void   traffic__observation_point__free_unpacked
                      (Traffic__ObservationPoint *message,
                       ProtobufCAllocator *allocator);
+/* Traffic__VendorDataKVPair methods */
+void   traffic__vendor_data__kvpair__init
+                     (Traffic__VendorDataKVPair         *message);
+size_t traffic__vendor_data__kvpair__get_packed_size
+                     (const Traffic__VendorDataKVPair   *message);
+size_t traffic__vendor_data__kvpair__pack
+                     (const Traffic__VendorDataKVPair   *message,
+                      uint8_t             *out);
+size_t traffic__vendor_data__kvpair__pack_to_buffer
+                     (const Traffic__VendorDataKVPair   *message,
+                      ProtobufCBuffer     *buffer);
+Traffic__VendorDataKVPair *
+       traffic__vendor_data__kvpair__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data);
+void   traffic__vendor_data__kvpair__free_unpacked
+                     (Traffic__VendorDataKVPair *message,
+                      ProtobufCAllocator *allocator);
+/* Traffic__VendorData methods */
+void   traffic__vendor_data__init
+                     (Traffic__VendorData         *message);
+size_t traffic__vendor_data__get_packed_size
+                     (const Traffic__VendorData   *message);
+size_t traffic__vendor_data__pack
+                     (const Traffic__VendorData   *message,
+                      uint8_t             *out);
+size_t traffic__vendor_data__pack_to_buffer
+                     (const Traffic__VendorData   *message,
+                      ProtobufCBuffer     *buffer);
+Traffic__VendorData *
+       traffic__vendor_data__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data);
+void   traffic__vendor_data__free_unpacked
+                     (Traffic__VendorData *message,
+                      ProtobufCAllocator *allocator);
 /* Traffic__FlowTags methods */
 void   traffic__flow_tags__init
                      (Traffic__FlowTags         *message);
@@ -194,6 +282,25 @@ Traffic__FlowTags *
                       const uint8_t       *data);
 void   traffic__flow_tags__free_unpacked
                      (Traffic__FlowTags *message,
+                      ProtobufCAllocator *allocator);
+/* Traffic__FlowState methods */
+void   traffic__flow_state__init
+                     (Traffic__FlowState         *message);
+size_t traffic__flow_state__get_packed_size
+                     (const Traffic__FlowState   *message);
+size_t traffic__flow_state__pack
+                     (const Traffic__FlowState   *message,
+                      uint8_t             *out);
+size_t traffic__flow_state__pack_to_buffer
+                     (const Traffic__FlowState   *message,
+                      ProtobufCBuffer     *buffer);
+Traffic__FlowState *
+       traffic__flow_state__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data);
+void   traffic__flow_state__free_unpacked
+                     (Traffic__FlowState *message,
                       ProtobufCAllocator *allocator);
 /* Traffic__FlowKey methods */
 void   traffic__flow_key__init
@@ -295,8 +402,17 @@ void   traffic__flow_report__free_unpacked
 typedef void (*Traffic__ObservationPoint_Closure)
                  (const Traffic__ObservationPoint *message,
                   void *closure_data);
+typedef void (*Traffic__VendorDataKVPair_Closure)
+                 (const Traffic__VendorDataKVPair *message,
+                  void *closure_data);
+typedef void (*Traffic__VendorData_Closure)
+                 (const Traffic__VendorData *message,
+                  void *closure_data);
 typedef void (*Traffic__FlowTags_Closure)
                  (const Traffic__FlowTags *message,
+                  void *closure_data);
+typedef void (*Traffic__FlowState_Closure)
+                 (const Traffic__FlowState *message,
                   void *closure_data);
 typedef void (*Traffic__FlowKey_Closure)
                  (const Traffic__FlowKey *message,
@@ -320,7 +436,10 @@ typedef void (*Traffic__FlowReport_Closure)
 /* --- descriptors --- */
 
 extern const ProtobufCMessageDescriptor traffic__observation_point__descriptor;
+extern const ProtobufCMessageDescriptor traffic__vendor_data__kvpair__descriptor;
+extern const ProtobufCMessageDescriptor traffic__vendor_data__descriptor;
 extern const ProtobufCMessageDescriptor traffic__flow_tags__descriptor;
+extern const ProtobufCMessageDescriptor traffic__flow_state__descriptor;
 extern const ProtobufCMessageDescriptor traffic__flow_key__descriptor;
 extern const ProtobufCMessageDescriptor traffic__flow_counters__descriptor;
 extern const ProtobufCMessageDescriptor traffic__flow_stats__descriptor;

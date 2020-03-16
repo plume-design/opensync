@@ -24,15 +24,12 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifdef BUILD_REMOTE_LOG
-
 #include <unistd.h>
 #include <stdbool.h>
 #include <syslog.h>
 #include <sys/syscall.h>
 
 #include "log.h"
-#include "target.h"
 #include "qm_conn.h"
 
 extern log_module_entry_t log_module_remote[LOG_MODULE_ID_LAST];
@@ -74,6 +71,4 @@ bool logger_remote_new(logger_t *self)
     self->match_fn = logger_remote_match;
     return true;
 }
-
-#endif
 

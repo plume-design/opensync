@@ -39,13 +39,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "inet_dns.h"
 
-#if !defined(CONFIG_USE_KCONFIG)
-
-#define CONFIG_INET_RESOLVCONF_PATH         "/tmp/resolv.conf"
-#define CONFIG_INET_RESOLVCONF_TMP          "/tmp/dns"
-
-#endif /* CONFIG_USE_KCONFIG */
-
 #define INET_DNS_DEBOUNCE           0.5                 /* Configuration delay, in seconds */
 #define INET_DNS_GLOB               "*.resolv"
 #define INET_DNS_LINE_LEN           256                 /* Max. single line length in *.resolv files */
@@ -373,7 +366,7 @@ void __inet_dns_update(EV_P_ ev_debounce *w, int revent)
             }
         }
 
-        fputs("\n", ftmp);
+        fputs("\n", fresolv);
 
         fclose(ftmp);
     }

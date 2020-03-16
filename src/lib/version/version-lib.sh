@@ -33,7 +33,8 @@
 # ---------------------------
 #
 # input:
-#  CURDIR   current directory
+#  CURDIR
+#  OPENSYNC_TARGET_VERSION_OVERRIDE
 #  VERSION_TARGET
 #  TARGET
 #  VENDOR_DIR
@@ -42,11 +43,13 @@
 #  IMAGE_DEPLOYMENT_PROFILE
 #  LAYER_LIST
 #  VER_DATE
+#  VERSION_APPEND
+#  VERSION_APPEND_END
 #
 # output:
 #  SHA1           (sha1 of git repository used to build)
 #  DIRTY_STRING   (local modifications string)
-#  VERSION        (marketing version)
+#  VERSION        (target/product version)
 #  USERNAME       (user used to build the image)
 #  HOSTNAME       (hostname used to build the image)
 #  VER_DATE       (date of image build)
@@ -54,8 +57,15 @@
 #  BUILD_NUMBER   (consecutive build number)
 #  OSYNC_VERSION  (OpenSync version - core/.version)
 #
-# Format: VERSION-BUILD_NUMBER-gSHA1-DIRTY_STRING-IMAGE_DEPLOYMENT_PROFILE
+# Full version format:
+#   VERSION-BUILD_NUMBER-gSHA1-DIRTY_STRING-VERSION_APPEND-IMAGE_DEPLOYMENT_PROFILE-VERSION_APPEND_END
 #
+# Version number uses the first defined value from the below list:
+#   1. env. var.    $OPENSYNC_TARGET_VERSION_OVERRIDE
+#   2. file         $VENDOR_DIR/.version.$VERSION_TARGET
+#   3. file         $VENDOR_DIR/.version.$TARGET
+#   4. file         $VENDOR_DIR/.version
+#   5. file         core/.version
 
 if [ -z "$CURDIR" ]; then
     CURDIR=`dirname $0`
@@ -86,11 +96,13 @@ if [ -z "$VERSION_FILE" ]; then
     fi
 fi
 
-VERSION=`cat $VERSION_FILE`
+if [ -n "$OPENSYNC_TARGET_VERSION_OVERRIDE" ]; then
+    VERSION="$OPENSYNC_TARGET_VERSION_OVERRIDE"
+else
+    VERSION=`cat $VERSION_FILE`
+fi
 
 OSYNC_VERSION=`cat .version`
-
-# echo "VERSION_FILE=$VERSION_FILE : $VERSION" >&2
 
 DIRTY_STRING=""
 if [ ${DIRTY} -ne 0 ]; then
@@ -132,6 +144,11 @@ if [ "${VERSION_NO_MODS}" != "1" ]; then
     APP_VERSION="${APP_VERSION}${DIRTY_STRING}"
 fi
 
+if [ -n "${VERSION_APPEND}" ]; then
+    # append custom string before profile
+    APP_VERSION="${APP_VERSION}-${VERSION_APPEND}"
+fi
+
 # append profile
 if [ "${VERSION_NO_PROFILE}" != "1" ]; then
     if [ -z "${IMAGE_DEPLOYMENT_PROFILE}" ]; then
@@ -140,6 +157,11 @@ if [ "${VERSION_NO_PROFILE}" != "1" ]; then
     if [ -n "${IMAGE_DEPLOYMENT_PROFILE}" -a "${IMAGE_DEPLOYMENT_PROFILE}" != "none" ]; then
         APP_VERSION="${APP_VERSION}-${IMAGE_DEPLOYMENT_PROFILE}"
     fi
+fi
+
+if [ -n "${VERSION_APPEND_END}" ]; then
+    # append custom string after profile
+    APP_VERSION="${APP_VERSION}-${VERSION_APPEND_END}"
 fi
 
 cd - >/dev/null

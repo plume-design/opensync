@@ -29,8 +29,8 @@
 * POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef NM3_INCLUDE_OSN_FW_PRI
-#define NM3_INCLUDE_OSN_FW_PRI
+#ifndef OSN_FW_PRI_H_INCLUDED
+#define OSN_FW_PRI_H_INCLUDED
 
 #include "osn_fw.h"
 #include "ds_dlist.h"
@@ -107,5 +107,5 @@ struct osfw_nfbase {
 	struct osfw_nfinet inet6;
 };
 
-#endif
+#endif /* OSN_FW_PRI_H_INCLUDED */
 

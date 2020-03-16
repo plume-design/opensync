@@ -127,10 +127,11 @@ struct nm2_iface
     bool                            if_commit;                  /* Commit pending */
     inet_t*                         if_inet;                    /* Inet structure */
     ds_tree_node_t                  if_tnode;                   /* ds_tree node -- for device lookup by name */
-    inet_state_t                    if_state;                   /* Remembered last interface status */
-    bool                            if_state_notify;            /* New status must be reported -- typically set by a configuration change */
+    inet_state_t                    if_inet_state;              /* Remembered last interface status */
     ds_tree_t                       if_dhcpc_options;           /* Options received from the DHCP client */
     struct nm2_ip_interface        *if_ipi;                     /* Non-NULL if there's a nm2_ip_interface structure associated */
+    struct nm2_dhcpv6_client       *if_dhcpv6_client;           /* Associated DHCPv6 client structure */
+    struct nm2_dhcpv6_server       *if_dhcpv6_server;           /* Associated DHCPv6 server structure */
 
     /*
      * Fields that should be copied from Wifi_Inet_Config to Wifi_Inet_State
@@ -138,7 +139,6 @@ struct nm2_iface
      */
     struct
     {
-        uint8_t                     if_type[NM2_IFACE_INET_CONFIG_SZ(if_type)];
         uint8_t                     if_uuid[NM2_IFACE_INET_CONFIG_SZ(if_uuid)];
         uint8_t                     _uuid[NM2_IFACE_INET_CONFIG_SZ(_uuid)];
         uint8_t                     dns[NM2_IFACE_INET_CONFIG_SZ(dns)];
@@ -170,6 +170,6 @@ struct nm2_iface *nm2_iface_find_by_ipv4(osn_ip_addr_t addr);
 bool nm2_iface_del(struct nm2_iface *piface);
 void nm2_iface_status_poll(void);
 bool nm2_iface_apply(struct nm2_iface *piface);
-void nm2_iface_status_sync(struct nm2_iface *piface);
+void nm2_iface_status_register(struct nm2_iface *piface);
 
 #endif /* NM2_IFACE_H_INCLUDED */

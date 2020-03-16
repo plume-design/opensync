@@ -40,6 +40,7 @@ enum {
     FSM_ACTION_NONE = 0,
     FSM_BLOCK,
     FSM_ALLOW,
+    FSM_UPDATE_TAG,
     FSM_OBSERVED,
     FSM_NO_MATCH,
     FSM_REDIRECT,
@@ -68,6 +69,7 @@ enum {
     FSM_FQDN_OP_XM = 0, /* exact match */
     FSM_FQDN_OP_SFR,    /* start from right */
     FSM_FQDN_OP_SFL,    /* start from left */
+    FSM_FQDN_OP_WILD,    /* match based on a pattern */
 };
 
 enum {
@@ -87,9 +89,11 @@ enum {
     FQDN_OP_IN = 0,
     FQDN_OP_SFR_IN,
     FQDN_OP_SFL_IN,
+    FQDN_OP_WILD_IN,
     FQDN_OP_OUT,
     FQDN_OP_SFR_OUT,
     FQDN_OP_SFL_OUT,
+    FQDN_OP_WILD_OUT,
 };
 
 enum {
@@ -180,6 +184,7 @@ struct fqdn_pending_req
     int cat_match;
     int risk_level;
     int action;
+    char *update_tag;
     bool redirect;
     int rd_ttl;
     char *policy;
@@ -187,6 +192,7 @@ struct fqdn_pending_req
     char *rule_name;
     uint8_t *response;
     int response_len;
+    int num_replies;
     struct dns_device *dev_session;
     time_t timestamp;
     bool to_report;
@@ -211,8 +217,6 @@ struct fqdn_pending_req
 
 struct fsm_policy_reply
 {
-    char *mac_tag_match; /* Tag including the device's mac if any */
-    char *fqdn_match;    /* fqdn match if any */
     int cat_match;       /* category match */
     int action;          /* action to take */
     bool redirect;       /* Redirect dns reply */
@@ -222,6 +226,7 @@ struct fsm_policy_reply
     char *policy;        /* the last matching policy */
     int policy_idx;      /* the policy index */
     char *rule_name;     /* the last matching rule name with the policy */
+    char *update_tag;    /* Tag to store results with if any */
 };
 
 
@@ -332,7 +337,7 @@ struct fsm_policy_session
 };
 
 void fsm_init_manager(void);
-struct fsm_policy_session * get_mgr(void);
+struct fsm_policy_session * fsm_policy_get_mgr(void);
 void fsm_walk_policy_macs(struct fsm_policy *p);
 void fsm_policy_init(void);
 
@@ -353,5 +358,6 @@ void fsm_policy_client_init(void);
 void fsm_policy_register_client(struct fsm_policy_client *client);
 void fsm_policy_deregister_client(struct fsm_policy_client *client);
 void fsm_policy_update_clients(struct policy_table *table);
+bool find_mac_in_set(os_macaddr_t *mac, struct str_set *macs_set);
 
-#endif /* FSM_H_INCLUDED */
+#endif /* FSM_POLICY_H_INCLUDED */

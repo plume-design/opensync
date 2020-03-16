@@ -27,6 +27,8 @@
 # Queue Manager (for MQTT)
 #
 ###############################################################################
+UNIT_DISABLE := $(if $(CONFIG_MANAGER_QM),n,y)
+
 UNIT_NAME := qm
 
 #
@@ -48,7 +50,6 @@ UNIT_LDFLAGS += -lz
 UNIT_DEPS := src/lib/ovsdb
 UNIT_DEPS += src/lib/pjs
 UNIT_DEPS += src/lib/schema
-UNIT_DEPS += src/lib/version
 UNIT_DEPS += src/lib/mosqev
 UNIT_DEPS += src/lib/datapipeline
 UNIT_DEPS += src/qm/qm_conn

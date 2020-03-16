@@ -43,15 +43,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define VLAN_TYPE_NAME   "vlan"
 #define GRE_TYPE_NAME    "gre"
 #define BRIDGE_TYPE_NAME "bridge"
-#define BR_WAN_NAME      "br-wan"
-#define BR_HOME_NAME     "br-home"
-
-#define CM2_DEFAULT_OVS_MAX_BACKOFF   60
-#define CM2_DEFAULT_OVS_MIN_BACKOFF   30
-#define CM2_DEFAULT_OVS_FAST_BACKOFF  8
-
-#define CM2_ETH_SYNC_TIMEOUT          5
-#define CM2_ETH_BOOT_TIMEOUT          120
 
 typedef enum
 {
@@ -227,7 +218,7 @@ bool cm2_ovsdb_set_AWLAN_Node_manager_addr(char *addr);
 bool cm2_connection_get_used_link(struct schema_Connection_Manager_Uplink *con);
 bool cm2_ovsdb_connection_get_connection_by_ifname(const char *if_name,
                                                    struct schema_Connection_Manager_Uplink *con);
-bool cm2_ovsdb_refresh_dhcp(char *if_name);
+void cm2_ovsdb_refresh_dhcp(char *if_name);
 bool cm2_ovsdb_set_Wifi_Inet_Config_network_state(bool state, char *ifname);
 bool cm2_ovsdb_connection_update_L3_state(const char *if_name, bool state);
 bool cm2_ovsdb_connection_update_ntp_state(const char *if_name, bool state);
@@ -240,9 +231,18 @@ bool cm2_ovsdb_is_port_name(char *port_name);
 void cm2_ovsdb_remove_unused_gre_interfaces(void);
 void cm2_ovsdb_connection_update_ble_phy_link(void);
 bool cm2_ovsdb_update_Port_tag(const char *ifname, int tag, bool set);
+bool cm2_ovsdb_update_Port_trunks(const char *ifname, int *trunks, int num_trunks);
 bool cm2_ovsdb_connection_update_loop_state(const char *if_name, bool state);
+bool cm2_ovsdb_WiFi_Inet_State_is_ip(const char *if_name);
 void cm2_ovsdb_connection_clean_link_counters(char *if_name);
 bool cm2_ovsdb_validate_bridge_port_conf(char *bname, char *pname);
+#ifdef CONFIG_CM2_USE_EXTRA_DEBUGS
+void cm2_ovsdb_dump_debug_data(void);
+#else
+static inline void cm2_ovsdb_dump_debug_data(void)
+{
+}
+#endif
 
 // addr resolve
 cm2_addr_t* cm2_get_addr(cm2_dest_e dest);
@@ -263,18 +263,57 @@ void cm2_clear_manager_addr(void);
 void cm2_free_addr_list(cm2_addr_t *addr);
 
 // stability and watchdog
+#ifdef CONFIG_CM2_USE_STABILITY_CHECK
 bool cm2_vtag_stability_check(void);
 void cm2_connection_req_stability_check(target_connectivity_check_option_t opts);
 void cm2_stability_init(struct ev_loop *loop);
 void cm2_stability_close(struct ev_loop *loop);
+#ifdef CONFIG_CM2_USE_TCPDUMP
+void cm2_tcpdump_start(char* ifname);
+void cm2_tcpdump_stop(char* ifname);
+#else
+static inline void cm2_tcpdump_start(char* ifname)
+{
+}
+static inline void cm2_tcpdump_stop(char* ifname)
+{
+}
+#endif /* CONFIG_CM2_USE_TCPDUMP */
+#else
+static inline bool cm2_vtag_stability_check(void)
+{
+    return true;
+}
+static inline void cm2_stability_init(struct ev_loop *loop)
+{
+}
+static inline void cm2_stability_close(struct ev_loop *loop)
+{
+}
+static inline void cm2_connection_req_stability_check(target_connectivity_check_option_t opts)
+{
+}
+#endif /* CONFIG_CM2_USE_STABILITY_CHECK */
+
+
+#ifdef CONFIG_CM2_USE_WDT
 void cm2_wdt_init(struct ev_loop *loop);
 void cm2_wdt_close(struct ev_loop *loop);
+#else
+static inline void cm2_wdt_init(struct ev_loop *loop)
+{
+}
+static inline void cm2_wdt_close(struct ev_loop *loop)
+{
+}
+#endif /* CONFIG_CM2_USE_WDT */
 
 // net
 int  cm2_ovs_insert_port_into_bridge(char *bridge, char *port, int flag_add);
-void cm2_dhcpc_start_dryrun(char* ifname, char *iftype, bool background);
+void cm2_dhcpc_start_dryrun(char* ifname, char *iftype, int cnt);
 void cm2_dhcpc_stop_dryrun(char* ifname);
-bool cm2_is_eth_type(char *if_type);
+bool cm2_is_eth_type(const char *if_type);
+bool cm2_is_wifi_type(const char *if_type);
 void cm2_delayed_eth_update(char *if_name, int timeout);
 bool cm2_is_iface_in_bridge(const char *bridge, const char *port);
-#endif
+#endif /* CM2_H_INCLUDED */

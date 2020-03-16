@@ -28,8 +28,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * Stats manager common header file
  */
 
-#ifndef __STATS_PRIV_H__
-#define __STATS_PRIV_H__
+#ifndef SM_H_INCLUDED
+#define SM_H_INCLUDED
 
 #include <stdbool.h>
 #include <jansson.h>
@@ -137,7 +137,7 @@ bool sm_mqtt_init(void);
 void sm_mqtt_set(const char *broker, const char *port, const char *topic, const char *qos, int compress);
 void sm_mqtt_stop(void);
 
-#ifdef USE_CAPACITY_QUEUE_STATS
+#ifdef CONFIG_SM_CAPACITY_QUEUE_STATS
 /******************************************************************************
  *  CAPACITY REPORT definitions
  *****************************************************************************/
@@ -306,4 +306,4 @@ void sm_sanity_check_report_timestamp(
         uint64_t   *reporting_timestamp,
         uint64_t   *report_ts);
 
-#endif /* __STATS_PRIV_H__ */
+#endif /* SM_H_INCLUDED */

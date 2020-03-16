@@ -38,7 +38,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <getopt.h>
 
 #include "ds_tree.h"
-#include "evsched.h"
 #include "log.h"
 #include "os.h"
 #include "os_socket.h"
@@ -82,12 +81,6 @@ int main(int argc, char ** argv)
 
     json_memdbg_init(loop);
 
-    if (evsched_init(loop) == false) {
-        LOGE("Initializing NM "
-             "(Failed to initialize EVSCHED)");
-        return -1;
-    }
-
     // Connect to ovsdb
     if (!ovsdb_init_loop(loop, "NM")) {
         LOGEM("Initializing NM "
@@ -102,6 +95,7 @@ int main(int argc, char ** argv)
         return -1;
     }
 
+    nm2_port_init();
     nm2_inet_config_init();
     nm2_inet_state_init();
     nm2_mac_learning_init();
@@ -116,6 +110,7 @@ int main(int argc, char ** argv)
     nm2_dhcpv6_server_init();
     nm2_dhcp_option_init();
     nm2_ipv6_routeadv_init();
+    nm2_mcast_init();
 
     ev_run(loop, 0);
 

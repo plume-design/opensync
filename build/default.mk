@@ -26,8 +26,11 @@
 TOP_SDK                     := ../sdk
 DEFAULT_IMAGE_TYPE          := squashfs
 DEFAULT_TARGET              := native
-INSTALL_PREFIX              ?= /usr/plume
-ROOTFS_COMPONENTS           ?= common target/$(TARGET) $(ROOTFS_PROFILE_COMPONENTS)
+INSTALL_PREFIX              ?= /usr/opensync
+ROOTFS_COMPONENTS           ?= common $(ROOTFS_KCONFIG_COMPONENTS) platform/$(PLATFORM) target/$(TARGET) $(ROOTFS_PROFILE_COMPONENTS)
+WORKDIR                     ?= work/$(TARGET)
+KCONFIG_ENV_FILE            ?= $(INSTALL_PREFIX)/etc/kconfig
+export INSTALL_PREFIX
 
 # Build features
 CFG_DEFINES :=
@@ -38,22 +41,8 @@ BUILD_BHAUL_WDS             ?= n
 BUILD_BAND_STEERING         ?= y
 # specifies whether Speed test is built or not
 BUILD_SPEED_TEST            ?= n
-# specifies whether logs should have PLUME prefix or not
-BUILD_LOG_PREFIX_PLUME      ?= n
-# specifies whether logs should include hostname
-BUILD_LOG_HOSTNAME          ?= n
-# specifies whether queue manager is built or not
-BUILD_QM                    ?= y
 # merge all static libraries to a single shared library and link that
 BUILD_SHARED_LIB            ?= y
-# specifies whether queue stats are built or not
-BUILD_CAPACITY_QUEUE_STATS  ?= n
-# specifies whether client nickname support is built or not
-BUILD_CLIENT_NICKNAME       ?= n
-# specifies whether client freeze support is built or not
-BUILD_CLIENT_FREEZE         ?= n
-# remote mqtt logging
-BUILD_REMOTE_LOG            ?= y
 # backtrace based on libgcc_s
 BUILD_WITH_LIBGCC_BACKTRACE ?= y
 

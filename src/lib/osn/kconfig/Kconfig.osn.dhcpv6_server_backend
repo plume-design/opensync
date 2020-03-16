@@ -1,0 +1,13 @@
+config OSN_BACKEND_DHCPV6_SERVER_NULL
+    bool "Null"
+
+    help
+        Use dummy implementation of the DHCPv6 server.
+
+config OSN_BACKEND_DHCPV6_SERVER_DNSMASQ6
+    bool "dnsmasq6"
+    select OSN_LINUX_ENABLED
+    select OSN_DNSMASQ6
+    help
+        Use the dnsmasq backend provided by OpenSync
+

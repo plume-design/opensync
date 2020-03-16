@@ -1,0 +1,10 @@
+#
+# OpenSync core DHCPv6 client backend
+#
+source "src/lib/osn/kconfig/Kconfig.osn.dhcpv6_client_backend"
+
+#
+# Platform/vendor DHCPv6 client backends
+#
+osource "platform/*/kconfig/Kconfig.osn.dhcpv6_client_backend"
+osource "vendor/*/kconfig/Kconfig.osn.dhcpv6_client_backend"

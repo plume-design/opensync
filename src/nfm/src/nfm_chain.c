@@ -30,6 +30,7 @@
 */
 
 #include "log.h"
+#include "util.h"
 #include "nfm_chain.h"
 #include "nfm_osfw.h"
 #include <string.h>
@@ -51,10 +52,8 @@ static bool nfm_chain_set(struct nfm_chain *self, int family, const char *table,
 		return false;
 	}
 	self->family = family;
-	strncpy(self->table, table, sizeof(self->table) - 1);
-	self->table[sizeof(self->table) - 1] = '\0';
-	strncpy(self->chain, chain, sizeof(self->chain) - 1);
-	self->chain[sizeof(self->chain) - 1] = '\0';
+	STRSCPY(self->table, table);
+	STRSCPY(self->chain, chain);
 
 	errcode = nfm_osfw_add_chain(self->family, self->table, self->chain);
 	if (!errcode) {

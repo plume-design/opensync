@@ -24,8 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __FSM_UPNP_CURL_H__
-#define __FSM_UPNP_CURL_H__
+#ifndef UPNP_CURL_H_INCLUDED
+#define UPNP_CURL_H_INCLUDED
 
 #include <curl/curl.h>
 #include <ev.h>
@@ -137,4 +137,5 @@ upnp_curl_exit(void);
 
 void
 new_conn(struct upnp_device_url *url);
-#endif /* __FSM_UPNP_CURL_H__ */
+
+#endif /* UPNP_CURL_H_INCLUDED */

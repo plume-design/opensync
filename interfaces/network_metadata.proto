@@ -31,10 +31,29 @@ message ObservationPoint {
      optional string locationId                                             = 2;
 }
 
+message VendorData_KVPair {
+    optional string key                                                     = 1;
+    optional string val_str                                                 = 2;
+    optional uint32 val_u32                                                 = 3;
+    optional uint64 val_u64                                                 = 4;
+}
+
+message VendorData {
+    optional string vendor                                                  = 1;
+    repeated VendorData_KVPair vendorKVPair                                 = 2;
+}
+
 message FlowTags {
     optional string vendor                                                  = 1;
     optional string appName                                                 = 2;
     repeated string appTags                                                 = 10;
+}
+
+message FlowState {
+    optional uint64 firstObservedAt                                         = 1;
+    optional uint64 lastObservedAt                                          = 2;
+    optional bool   flowStart                                               = 3;
+    optional bool   flowEnd                                                 = 4;
 }
 
 message FlowKey {
@@ -48,6 +67,8 @@ message FlowKey {
       optional uint32 tptSrcPort                                            = 8;
       optional uint32 tptDstPort                                            = 9;
       repeated FlowTags flowTags                                            = 10;
+      repeated VendorData vendorData                                        = 11;
+      optional FlowState flowState                                          = 12;
 }
 
 message FlowCounters {

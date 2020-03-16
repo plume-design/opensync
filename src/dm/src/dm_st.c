@@ -134,13 +134,13 @@ void pa_cb(int id, void * buff, int buff_sz)
 
     if (report.isp_exists)
     {
-        strcpy(st_status.ISP, report.isp);
+        STRSCPY(st_status.ISP, report.isp);
         st_status.ISP_exists = true;
     }
 
     if (report.sponsor_exists)
     {
-        strcpy(st_status.server_name, report.sponsor);
+        STRSCPY(st_status.server_name, report.sponsor);
         st_status.server_name_exists = true;
     }
 
@@ -164,7 +164,7 @@ void pa_cb(int id, void * buff, int buff_sz)
 
     st_status.testid = id;
     st_status.status = status;
-    strcpy(st_status.test_type, "OOKLA");
+    STRSCPY(st_status.test_type, "OOKLA");
     st_status.test_type_exists = true;
 
     /* fill the row with NODE data */

@@ -27,6 +27,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdbool.h>
 #include <ev.h>
 #include <assert.h>
+#include <errno.h>
 
 #include "ds.h"
 #include "ds_dlist.h"
@@ -36,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "target_impl.h"
 #include "target_common.h"
 #include "schema.h"
+#include "build_version.h"
 
 #define MODULE_ID LOG_MODULE_ID_TARGET
 
@@ -134,23 +136,15 @@ bool target_log_pull(const char *upload_location, const char *upload_token)
 #endif
 
 #ifndef IMPL_target_log_state_file
-const char *target_log_state_file(void)
-{
-    // Notes:
-    // * Call to target_init() is not required.
-    // * Path should be pointing to RW part of the file systems, since
-    //   ev_stat (inotify) is used to watch for file changes.
-    return NULL;
-}
+// target_log_state_file is obsolete, not providing a stub
+#else
+#warning target_log_state_file is obsolete, use CONFIG_TARGET_PATH_LOG_STATE instead!
 #endif
 
 #ifndef IMPL_target_log_trigger_dir
-const char *target_log_trigger_dir(void)
-{
-    // Notes:
-    // * Call to target_init() is not required.
-    return NULL;
-}
+// target_log_trigger_dir is obsolete, not providing a stub
+#else
+#warning target_log_trigger_dir is obsolete, use CONFIG_TARGET_PATH_LOG_TRIGGER instead!
 #endif
 
 #ifndef IMPL_target_tls_cacert_filename
@@ -652,55 +646,6 @@ const char *target_persistent_storage_dir(void)
 #endif
 
 /******************************************************************************
- * UPGRADE
- *****************************************************************************/
-
-#ifndef IMPL_target_upg_download_required
-bool target_upg_download_required(char *url)
-{
-    (void)url;
-    return true;
-}
-#endif
-
-#ifndef IMPL_target_upg_command
-char *target_upg_command()
-{
-    return NULL;
-}
-#endif
-
-#ifndef IMPL_target_upg_command_full
-char *target_upg_command_full()
-{
-    return NULL;
-}
-#endif
-
-#ifndef IMPL_target_upg_command_args
-char **target_upg_command_args(char *password)
-{
-    (void)password;
-    static char *upg_command_args[] = { NULL };
-    return upg_command_args;
-}
-#endif
-
-#ifndef IMPL_target_upg_free_space_err
-double target_upg_free_space_err()
-{
-    return 10000.0; /* MB */
-}
-#endif
-
-#ifndef IMPL_target_upg_free_space_warn
-double target_upg_free_space_warn()
-{
-    return 10000.0; /* MB */
-}
-#endif
-
-/******************************************************************************
  * STATS
  *****************************************************************************/
 #ifndef IMPL_target_stats_device_get
@@ -919,5 +864,81 @@ int target_bsal_rrm_remove_neighbor(const char *ifname, const bsal_neigh_info_t 
     (void)ifname;
     (void)nr;
     return -1;
+}
+#endif
+
+#ifndef IMPL_target_bsal_send_action
+int target_bsal_send_action(const char *ifname, const uint8_t *mac_addr, const uint8_t *data, unsigned int data_len)
+{
+    (void)ifname;
+    (void)mac_addr;
+    (void)data;
+    (void)data_len;
+    return -ENOTSUP;
+}
+#endif
+
+#ifndef IMPL_target_set_igmp_mcproxy_params
+bool target_set_igmp_mcproxy_params(target_mcproxy_params_t *mcparams)
+{
+    (void)mcparams;
+    return false;
+}
+#endif
+
+#ifndef IMPL_target_get_igmp_mcproxy_params
+bool target_get_igmp_mcproxy_params(target_mcproxy_params_t *mcparams)
+{
+    (void)mcparams;
+    return false;
+}
+#endif
+
+
+#ifndef IMPL_target_set_mld_mcproxy_params
+bool target_set_mld_mcproxy_params(target_mcproxy_params_t *mcparams)
+{
+    (void)mcparams;
+    return false;
+}
+#endif
+
+#ifndef IMPL_target_get_mld_mcproxy_params
+bool target_get_mld_mcproxy_params(target_mcproxy_params_t *mcparams)
+{
+    (void)mcparams;
+    return false;
+}
+#endif
+
+#ifndef IMPL_target_set_igmp_mcproxy_sys_params
+bool target_set_igmp_mcproxy_sys_params(struct schema_IGMP_Config *iccfg)
+{
+    (void)iccfg;
+    return false;
+}
+#endif
+
+#ifndef IMPL_target_get_igmp_mcproxy_sys_params
+bool target_get_igmp_mcproxy_sys_params(struct schema_IGMP_Config *iccfg)
+{
+    (void)iccfg;
+    return false;
+}
+#endif
+
+#ifndef IMPL_target_set_mld_mcproxy_sys_params
+bool target_set_mld_mcproxy_sys_params(struct schema_MLD_Config *mlcfg)
+{
+    (void)mlcfg;
+    return false;
+}
+#endif
+
+#ifndef IMPL_target_get_mld_mcproxy_sys_params
+bool target_get_mld_mcproxy_sys_params(struct schema_MLD_Config *mlcfg)
+{
+    (void)mlcfg;
+    return false;
 }
 #endif

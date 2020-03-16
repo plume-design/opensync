@@ -39,7 +39,9 @@ UNIT_MARK_FILES = $(foreach U,$(1),$(call UNIT_MARK_FILE,$(U)))
 
 # Create directory to store unit test binaries
 TESTBINDIR = $(BINDIR)/utest
-WORKDIRS += $(TESTBINDIR)
+
+$(TESTBINDIR): | $(WORKDIRS)
+	$(Q)$(MKDIR) $(@)
 
 ##########################################################
 # Overriding CFLAGS from the command line doesn't really
@@ -72,7 +74,7 @@ $(UNIT_BUILD)/.target: $(BINDIR)/$(UNIT_BIN)
 
 # Use the .target file to actually see if any of the libraries changed
 # Use -Wl,--start-group to force GNU LD to ignore the link order; this might be slower for larger projects
-$(BINDIR)/$(UNIT_BIN): $(call UNIT_MARK_FILES,$(UNIT_DEPS)) $(UNIT_OBJ)
+$(BINDIR)/$(UNIT_BIN): $(UNIT_OBJ) $(UNIT_ALL_DEPS)
 	$$(NQ) " $(call color_link,link)    [$$(call COLOR_BOLD,$(UNIT_BIN))] $$@"
 	$$(Q)$$(CC) -L$(LIBDIR) -Wl,--start-group $$(UNIT_BIN_LDFLAGS) $$(foreach DEP,$$(sort $$(DEPS_$(UNIT_PATH))),$$(LDFLAGS_$$(DEP))) $(UNIT_OBJ) -Wl,--end-group $$(LDFLAGS) $(UNIT_LDFLAGS) -o $$@
 
@@ -100,16 +102,16 @@ UNIT_ALL_INSTALL += $(UNIT_PATH)/install
 UNIT_ALL_CLEAN += $(UNIT_PATH)/clean
 UNIT_ALL_TEST_BIN_UNITS += $(UNIT_PATH)
 UNIT_ALL_TEST_BIN_FILES += $(TESTBINDIR)/$(UNIT_BIN)/unit
+UNIT_DIRS += $(TESTBINDIR)/$(UNIT_BIN)
 
 $(call UNIT_MAKE_RULES)
 
-$(UNIT_BUILD)/.target: $(TESTBINDIR)/$(UNIT_BIN) $(TESTBINDIR)/$(UNIT_BIN)/unit $(TESTBINDIR)/$(UNIT_BIN)/data
+$(UNIT_BUILD)/.target: $(TESTBINDIR)/$(UNIT_BIN)/unit $(TESTBINDIR)/$(UNIT_BIN)/data
 
 # Use the .target file to actually see if any of the libraries changed
 # Use -Wl,--start-group to force GNU LD to ignore the link order; this might be slower for larger projects
 # Special naming convetion for unit testing $(UNIT_BIN)/unit instead of $(UNIT_BIN)
-$(TESTBINDIR)/$(UNIT_BIN):
-	$$(Q)$(MKDIR) $(TESTBINDIR)/$(UNIT_BIN)
+$(TESTBINDIR)/$(UNIT_BIN): | $(TESTBINDIR)
 
 # In case data folder exist in UNIT_PATH, copy directory and its content to bin folder
 .PHONY: $(TESTBINDIR)/$(UNIT_BIN)/data
@@ -123,15 +125,15 @@ $(TESTBINDIR)/$(UNIT_BIN)/data:
 			true; \
 		fi
 
-$(TESTBINDIR)/$(UNIT_BIN)/unit: $(call UNIT_MARK_FILES,$(UNIT_DEPS)) $(UNIT_OBJ)
+$(TESTBINDIR)/$(UNIT_BIN)/unit: $(UNIT_OBJ) $(UNIT_ALL_DEPS)
 	$$(NQ) " $(call color_link,link)    [$$(call COLOR_BOLD,$(UNIT_BIN))] $$@"
 	$$(Q)$$(CC) -L$(LIBDIR) -Wl,--start-group $$(UNIT_BIN_LDFLAGS) $$(foreach DEP,$$(sort $$(DEPS_$(UNIT_PATH))),$$(LDFLAGS_$$(DEP))) $(UNIT_OBJ) -Wl,--end-group $$(LDFLAGS) $(UNIT_LDFLAGS) -o $$@
 
 $(UNIT_PATH)/install: $(UNIT_BUILD)/.target
 	$$(Q)true
 
-$(call UNIT_MAKE_DIRS)
-$(call UNIT_MAKE_INFO)
+$$(eval $$(call UNIT_MAKE_DIRS))
+$$(eval $$(call UNIT_MAKE_INFO))
 $(call UNIT_MAKE_CLEAN,$(TESTBINDIR)/$(UNIT_BIN))
 $(call UNIT_C_RULES)
 endef
@@ -149,7 +151,7 @@ $(call UNIT_MAKE_RULES)
 
 $(UNIT_BUILD)/.target: $(UNIT_BUILD)/lib$(UNIT_NAME).a
 
-$(UNIT_BUILD)/lib$(UNIT_NAME).a: $(UNIT_DEPS) $(UNIT_OBJ)
+$(UNIT_BUILD)/lib$(UNIT_NAME).a: $(UNIT_OBJ) $(UNIT_ALL_DEPS)
 	$$(NQ) " $(call color_link,link)    [$(call COLOR_BOLD,$(UNIT_NAME))] $$@"
 	$$(Q)$$(AR) rcs $$@ $(UNIT_OBJ)
 	@# error on duplicate symbols to prevent clashing with stubs
@@ -199,7 +201,7 @@ $(call UNIT_MAKE_RULES)
 $(UNIT_BUILD)/.target: $(BINDIR)/$(UNIT_BIN)
 
 # $(BINDIR)/$(UNIT_BIN) is never created. This is to call a makefile on every build
-$(BINDIR)/$(UNIT_BIN): $(UNIT_DEPS) $(UNIT_PRE) $(call UNIT_MARK_FILES,$(UNIT_DEPS)) $(UNIT_OBJ)
+$(BINDIR)/$(UNIT_BIN): $(UNIT_OBJ) $(UNIT_ALL_DEPS)
 	$$(NQ) " $(call color_callmakefile,compMak) [$(call COLOR_BOLD,$(UNIT_NAME))] $$@"
 	$$(Q)make $$(if $(V),,-s) -C $(UNIT_PATH) -f unit.Makefile $(UNIT_MAKEFILE_FLAGS) all
 
@@ -227,7 +229,7 @@ $(call UNIT_MAKE_RULES)
 
 $(UNIT_BUILD)/.target: $(LIBDIR)/lib$(UNIT_NAME).so
 
-$(LIBDIR)/lib$(UNIT_NAME).so: $(UNIT_DEPS) $(UNIT_PRE) $(call UNIT_MARK_FILES,$(UNIT_DEPS)) $(UNIT_OBJ)
+$(LIBDIR)/lib$(UNIT_NAME).so: $(UNIT_OBJ) $(UNIT_ALL_DEPS)
 	$$(NQ) " $(call color_link,link)    [$(call COLOR_BOLD,$(UNIT_NAME))] $$@"
 	$$(Q)$$(CC) $(UNIT_OBJ) -L$(LIBDIR) -shared -Wl,-soname=lib$(UNIT_NAME).so $$(LDFLAGS) $$(foreach DEP,$$(sort $$(DEPS_$(UNIT_PATH))),$$(LDFLAGS_$$(DEP))) $(UNIT_LDFLAGS) -o $$@
 
@@ -266,21 +268,21 @@ endef
 # Generic Make rules, applicable to all targets
 ##########################################################
 define UNIT_MAKE_RULES
-.PHONY: $(UNIT_NAME) $(UNIT_PATH)/ $(UNIT_PATH)/compile $(UNIT_PATH)/uninstall
+.PHONY: $(UNIT_PATH)/ $(UNIT_PATH)/compile $(UNIT_PATH)/uninstall
 $(UNIT_PATH) $(UNIT_PATH)/: $(UNIT_PATH)/compile
+
+$(UNIT_OBJ): $$(UNIT_OBJ_DEPS)
 
 $(UNIT_PATH)/compile: $(UNIT_BUILD)/.target
 
 # Build up .target dependency tree
-$(UNIT_BUILD)/.target: workdirs $(UNIT_DIRS) \
-								$(UNIT_PRE) \
-								$(call UNIT_MARK_FILES,$(UNIT_DEPS))
+$(UNIT_BUILD)/.target: $(call UNIT_MARK_FILES,$(UNIT_DEPS)) $(UNIT_PRE) | $(UNIT_DIRS)
 	$$(Q)touch "$$@"
 endef
 
 define UNIT_MAKE_DISABLED
 $(call UNIT_MAKE_INFO)
-.PHONY: $(UNIT_NAME) $(UNIT_PATH)/ $(UNIT_PATH)/compile
+.PHONY: $(UNIT_PATH)/ $(UNIT_PATH)/compile
 $(UNIT_PATH) $(UNIT_PATH)/: $(UNIT_PATH)/compile
 $(UNIT_PATH)/compile:
 	$(NQ) "ERROR: DISABLED UNIT: $(UNIT_NAME) PATH: $(UNIT_PATH) BUILD: $(UNIT_BUILD)"
@@ -295,7 +297,7 @@ GEN_C_FLAGS = $$(CFLAGS) $(UNIT_CFLAGS) $$(foreach DEP,$$(sort $$(DEPS_$(UNIT_PA
 define UNIT_C_RULES
 # Single step dependency + compilation, generate the .d and .o file
 # at the same time; but include the .d file only if it exists.
-$(UNIT_BUILD)/%.o: %.c $(UNIT_PRE)
+$(UNIT_BUILD)/%.o: %.c
 	$$(NQ) " $(call color_compile,compile) [$(call COLOR_BOLD,$(UNIT_NAME))] $$<"
 	$$(Q)$$(CC) $(call GEN_C_FLAGS) $(1) $$< -MMD -c -o $$@
 
@@ -317,9 +319,18 @@ endef
 # Common rules for creating directories
 ###########################################################
 define UNIT_MAKE_DIRS
-$(UNIT_DIRS):
-	$$(Q)$(MKDIR) $(UNIT_DIRS)
+# the : | syntax below is for order-only dependencies
+# this prevents the directory timestamp to cause rebuilding
+$(UNIT_DIRS): | $(WORKDIRS)
+	$$(Q)$(MKDIR) $$@
+
+# both UNIT_PRE and UNIT_SOURCES require UNIT_DIRS
+# as some sources can be dynamically generated
+$(UNIT_PRE): | $(UNIT_DIRS)
+$(UNIT_SOURCES): | $(UNIT_DIRS)
+
 endef
+
 
 ##########################################################
 # Common rules for the info target
@@ -332,6 +343,7 @@ $(UNIT_PATH)/info:
 	$(NQ) "UNIT_DISABLE:        " $(UNIT_DISABLE)
 	$(NQ) "UNIT_TYPE:           " $(UNIT_TYPE)
 	$(NQ) "UNIT_DEPS:           " $(UNIT_DEPS)
+	$(NQ) "UNIT_PRE:            " $(UNIT_PRE)
 	$(NQ) "EXPAND DEPS:         " '$$(sort $$(DEPS_$(UNIT_PATH)))'
 	$(NQ) "UNIT_DEPS_CFLAGS:    " $(UNIT_DEPS_CFLAGS)
 	$(NQ) "EXPAND DEPS_CFLAGS:  " '$$(sort $$(DEPS_CFLAGS_$(UNIT_PATH)))'
@@ -457,6 +469,11 @@ UNIT_CLEAN      += $$(patsubst %.o,%.d,$$(UNIT_OBJ))
 ifdef UNIT_POST_MACRO
 $$(eval $$(UNIT_POST_MACRO))
 endif
+
+UNIT_REGULAR_DEPS = $$(call UNIT_MARK_FILES,$$(UNIT_DEPS)) $$(UNIT_PRE)
+UNIT_ORDER_DEPS = $$(UNIT_DIRS)
+UNIT_ALL_DEPS = $$(UNIT_REGULAR_DEPS) | $$(UNIT_ORDER_DEPS)
+UNIT_OBJ_DEPS = $$(UNIT_PRE) | $$(UNIT_ORDER_DEPS) $$(call UNIT_MARK_FILES,$$(UNIT_DEPS))
 
 # Expand rules
 ifeq ($$(UNIT_DISABLE),y)

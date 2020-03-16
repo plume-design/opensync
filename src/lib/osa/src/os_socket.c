@@ -264,7 +264,7 @@ int ovsdb_conn()
     peer_addr.sun_family = AF_UNIX;
     char *sock_path = getenv(ENV_OVSDB_SOCK_PATH);
     if (!sock_path || !*sock_path) sock_path = OVSDB_SOCK_PATH;
-    strcpy(peer_addr.sun_path, sock_path);
+    STRSCPY(peer_addr.sun_path, sock_path);
     addrlen = strlen(peer_addr.sun_path) + sizeof(peer_addr.sun_family);
 
     success = connect(sock_fd, (const struct sockaddr *)&peer_addr, addrlen);

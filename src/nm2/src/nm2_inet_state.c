@@ -105,6 +105,7 @@ void nm2_inet_state_to_schema(
         struct nm2_iface *piface)
 {
     struct nm2_iface_dhcp_option *pdo;
+    const char *if_type;
 
     /**
      * Fill out the schema_Wifi_Inet_State structure
@@ -115,39 +116,39 @@ void nm2_inet_state_to_schema(
 
     strscpy(pstate->if_name, piface->if_name, sizeof(pstate->if_name));
 
-    pstate->enabled = piface->if_state.in_interface_enabled;
-    pstate->network = piface->if_state.in_network_enabled;
+    pstate->enabled = piface->if_inet_state.in_interface_enabled;
+    pstate->network = piface->if_inet_state.in_network_enabled;
 
     pstate->mtu_exists = true;
-    pstate->mtu = piface->if_state.in_mtu;
+    pstate->mtu = piface->if_inet_state.in_mtu;
 
     pstate->NAT_exists = true;
-    pstate->NAT = piface->if_state.in_nat_enabled;
+    pstate->NAT = piface->if_inet_state.in_nat_enabled;
 
     pstate->inet_addr_exists = true;
     snprintf(pstate->inet_addr, sizeof(pstate->inet_addr), PRI_osn_ip_addr,
-            FMT_osn_ip_addr( piface->if_state.in_ipaddr));
+            FMT_osn_ip_addr( piface->if_inet_state.in_ipaddr));
 
     pstate->netmask_exists = true;
     snprintf(pstate->netmask, sizeof(pstate->netmask), PRI_osn_ip_addr,
-            FMT_osn_ip_addr( piface->if_state.in_netmask));
+            FMT_osn_ip_addr( piface->if_inet_state.in_netmask));
 
     pstate->broadcast_exists = true;
     snprintf(pstate->broadcast, sizeof(pstate->broadcast), PRI_osn_ip_addr,
-            FMT_osn_ip_addr( piface->if_state.in_bcaddr));
+            FMT_osn_ip_addr( piface->if_inet_state.in_bcaddr));
 
     pstate->gateway_exists = true;
     snprintf(pstate->gateway, sizeof(pstate->gateway), PRI_osn_ip_addr,
-            FMT_osn_ip_addr( piface->if_state.in_gateway));
+            FMT_osn_ip_addr( piface->if_inet_state.in_gateway));
 
     snprintf(pstate->hwaddr, sizeof(pstate->hwaddr), PRI_osn_mac_addr,
-            FMT_osn_mac_addr(piface->if_state.in_macaddr));
+            FMT_osn_mac_addr(piface->if_inet_state.in_macaddr));
 
     /*
      * Copy the assignment scheme
      */
     char *scheme = NULL;
-    switch (piface->if_state.in_assign_scheme)
+    switch (piface->if_inet_state.in_assign_scheme)
     {
         case INET_ASSIGN_NONE:
             scheme = "none";
@@ -177,7 +178,7 @@ void nm2_inet_state_to_schema(
      * UPnP mode
      */
     char *upnp = NULL;
-    switch (piface->if_state.in_upnp_mode)
+    switch (piface->if_inet_state.in_upnp_mode)
     {
         case UPNP_MODE_NONE:
             upnp = "disabled";
@@ -195,8 +196,12 @@ void nm2_inet_state_to_schema(
     pstate->upnp_mode_exists = true;
     strscpy(pstate->upnp_mode, upnp, sizeof(pstate->upnp_mode));
 
-    /* Copy fields that should be simply copied to Wifi_Inet_State */
-    NM2_IFACE_INET_CONFIG_COPY(pstate->if_type, piface->if_cache.if_type);
+    if_type = nm2_iftype_tostr(piface->if_type);
+    if (if_type != NULL)
+    {
+        STRSCPY(pstate->if_type, if_type);
+    }
+
     //NM2_IFACE_INET_CONFIG_COPY(pstate->if_uuid, piface->if_cache.if_uuid);
     /* XXX: if_uuid must be populated from the _uuid field of Inet_Config -- if_uuid is not an uuid type though */
     strscpy(pstate->if_uuid, (char *)piface->if_cache._uuid, sizeof(pstate->if_uuid));
@@ -241,6 +246,7 @@ void nm2_inet_state_master_to_schema(
         struct nm2_iface *piface)
 {
     struct nm2_iface_dhcp_option *pdo;
+    const char *if_type;
 
     /**
      * Fill out the schema_Wifi_Inet_State structure
@@ -253,21 +259,25 @@ void nm2_inet_state_master_to_schema(
 
     pstate->port_state_exists = true;
     snprintf(pstate->port_state, sizeof(pstate->port_state), "%s",
-            piface->if_state.in_port_status ? "active" : "inactive");
+            piface->if_inet_state.in_port_status ? "active" : "inactive");
 
     pstate->network_state_exists = true;
     snprintf(pstate->network_state, sizeof(pstate->network_state), "%s",
-            piface->if_state.in_network_enabled ? "up" : "down");
+            piface->if_inet_state.in_network_enabled ? "up" : "down");
 
     pstate->inet_addr_exists = true;
     snprintf(pstate->inet_addr, sizeof(pstate->inet_addr), PRI_osn_ip_addr,
-            FMT_osn_ip_addr( piface->if_state.in_ipaddr));
+            FMT_osn_ip_addr(piface->if_inet_state.in_ipaddr));
 
     pstate->netmask_exists = true;
     snprintf(pstate->netmask, sizeof(pstate->netmask), PRI_osn_ip_addr,
-            FMT_osn_ip_addr(piface->if_state.in_netmask));
+            FMT_osn_ip_addr(piface->if_inet_state.in_netmask));
 
-    NM2_IFACE_INET_CONFIG_COPY(pstate->if_type, piface->if_cache.if_type);
+    if_type = nm2_iftype_tostr(piface->if_type);
+    if (if_type != NULL)
+    {
+        STRSCPY(pstate->if_type, if_type);
+    }
 
     // Apparently this is a required field, but it's not really used in PML1.2
     strscpy(pstate->if_uuid.uuid, "00000000-0000-0000-0000-000000000000", sizeof(pstate->if_uuid.uuid));
@@ -328,3 +338,15 @@ bool nm2_inet_state_del(const char *ifname)
 
     return retval;
 }
+
+/*
+ * Copy interface state and update status
+ */
+void nm2_inet_state_fn(inet_t *self, const inet_state_t *state)
+{
+    struct nm2_iface *piface = self->in_data;
+
+    piface->if_inet_state = *state;
+    nm2_inet_state_update(piface);
+}
+

@@ -28,8 +28,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * Schema tags library include file
  */
 
-#ifndef __SCHEMA_TAGS_H__
-#define __SCHEMA_TAGS_H__
+#ifndef POLICY_TAGS_H_INCLUDED
+#define POLICY_TAGS_H_INCLUDED
 
 #include "os.h"
 #include "ovsdb.h"
@@ -59,6 +59,13 @@ typedef enum {
     DELETE,
     UPDATE
 } om_action_t;
+
+enum
+{
+    NOT_A_OPENSYNC_TAG = -1,
+    OPENSYNC_TAG,
+    OPENSYNC_GROUP_TAG
+};
 
 /******************************************************************************
  * Tag List Definitions
@@ -162,4 +169,26 @@ extern om_tag_group_t *
                 om_tag_group_find_by_name(char *name);
 
 
-#endif /* __SCHEMA_TAGS_H__ */
+/******************************************************************************
+ * Utilities Definitions
+ *****************************************************************************/
+/**
+ * @brief return the tag type based on its name
+ *
+ * Lets the caller know if the string is a tag, a group tag, or no tag at all.
+ * @param name the string to check.
+ */
+int om_tag_get_type(char *name);
+
+
+/**
+ * @brief checks if a string is included in an opensync tag
+ *
+ * The tag can be a tag or a group tag
+ * @param value the string checked for inclusion
+ * @param tag_name the tag name to check
+ */
+bool
+om_tag_in(char *value, char *tag_name);
+
+#endif /* POLICY_TAGS_H_INCLUDED */

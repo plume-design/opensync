@@ -39,9 +39,19 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "schema.h"
 #include "target.h"
 #include "cm2.h"
+#include "kconfig.h"
 
 #define CM2_VAR_RUN_PATH               "/var/run"
+#define CM2_VAR_PLUME_PATH             "/var/plume"
+
 #define CM2_UDHCPC_DRYRUN_PREFIX_FILE  "udhcpc-cmdryrun"
+#define CM2_TCPDUMP_PREFIX_FILE        "tcpdump"
+
+/* Dryrun configuration */
+#define CM2_DRYRUN_TRIES_THRESH        120
+#define CM2_DRYRUN_T_PARAM             "1"
+#define CM2_DRYRUN_t_PARAM             "5"
+#define CM2_DRYRUN_A_PARAM             "2"
 
 /* ev_child must be the first element of the structure
  * based on that fact we can store additional data, in that case
@@ -50,7 +60,15 @@ typedef struct {
     ev_child cw;
     char     if_name[128];
     char     if_type[128];
+    int      cnt;
 } dhcp_dryrun_t;
+
+/* ev_child must be the first element of the structure */
+typedef struct {
+    ev_child cw;
+    char     if_name[128];
+    char     pckfile[128];
+} cm2_tcpdump_t;
 
 typedef struct {
     ev_timer timer;
@@ -89,13 +107,16 @@ int cm2_ovs_insert_port_into_bridge(char *bridge, char *port, int flag_add)
 /**
  * Return the PID of the udhcpc client serving on interface @p ifname
  */
-static int cm2_util_get_udhcp_pid(char *pidfile)
+static int cm2_util_get_pid(char *pidname)
 {
+    char pid_file[256];
     int  pid;
     FILE *f;
     int  rc;
 
-    f = fopen(pidfile, "r");
+    tsnprintf(pid_file, sizeof(pid_file), "%s.pid", pidname);
+
+    f = fopen(pid_file, "r");
     if (f == NULL)
         return 0;
 
@@ -123,6 +144,114 @@ bool cm2_is_iface_in_bridge(const char *bridge, const char *port)
     LOGD("%s: Command: %s", __func__, command);
     return target_device_execute(command);
 }
+
+#ifdef CONFIG_CM2_USE_TCPDUMP
+static void cm2_tcpdump_cb(struct ev_loop *loop, ev_child *w, int revents)
+{
+    cm2_tcpdump_t  *tcpdump;
+    char           cmd[256];
+
+    tcpdump = (cm2_tcpdump_t *) w;
+    ev_child_stop (loop, w);
+
+    LOGI("%s: tcpdump_cb: cleanup old pcaps", tcpdump->if_name);
+    tsnprintf(cmd, sizeof(cmd), "ls -1t %s/*%s-%s | sed 1d | xargs rm -v",
+              CM2_VAR_PLUME_PATH , CM2_TCPDUMP_PREFIX_FILE, tcpdump->if_name);
+
+    LOGD("%s: Command: %s", __func__, cmd);
+    target_device_execute(cmd);
+    free(tcpdump);
+}
+
+void cm2_tcpdump_start(char* ifname)
+{
+    struct tm  *timeinfo;
+    time_t     rawtime;
+    pid_t      pid;
+    char       pidname[512];
+    char       pckfile[256];
+    char       pidfile[256];
+    char       timebuf[40];
+
+    tsnprintf(pidname, sizeof(pidname), "%s/%s-%s",
+              CM2_VAR_RUN_PATH , CM2_TCPDUMP_PREFIX_FILE, ifname);
+
+    pid = cm2_util_get_pid(pidname);
+    if (pid > 0) {
+        LOGI("%s: tcpdump: skip new request (already running)", ifname);
+        return;
+    }
+
+    time(&rawtime);
+    timeinfo = localtime(&rawtime);
+    strftime(timebuf, sizeof(timebuf), "%F_%H-%M", timeinfo);
+
+    tsnprintf(pidfile, sizeof(pidfile), "%s.pid", pidname);
+    tsnprintf(pckfile, sizeof(pckfile), "%s/%s-%s-%s",
+              CM2_VAR_PLUME_PATH , timebuf, CONFIG_CM2_TCPDUMP_PREFIX_FILE, ifname);
+
+    LOGI("%s: tcpdump: starting [pidfile = %s pckfile = %s]",
+         ifname, pidfile, pckfile);
+
+    char *argv_tcp_dump[] = {
+        CONFIG_CM2_TCPDUMP_START_STOP_DAEMON_PATH,
+        "-p", pidfile,
+        "-m",
+        "-x", "timeout",
+        "-S", "--",
+        "-t", CONFIG_CM2_TCPDUMP_TIMEOUT_PARAM,
+        CONFIG_CM2_TCPDUMP_PATH,
+        "-i", ifname,
+        "-w", pckfile,
+        "-c", CONFIG_CM2_TCPDUMP_COUNT_PARAM,
+        "-s", CONFIG_CM2_TCPDUMP_SNAPLEN_PARAM,
+        NULL
+    };
+
+    pid = fork();
+    if (pid == 0) {
+        execv(argv_tcp_dump[0], argv_tcp_dump);
+        LOGW("%s: tcpdump: execv failed: %d (%s)",
+             ifname, errno, strerror(errno));
+        exit(1);
+    } else {
+        cm2_tcpdump_t *tcpdump = (cm2_tcpdump_t *) malloc(sizeof(cm2_tcpdump_t));
+        if (!tcpdump) {
+            LOGW("%s: tcpdump: memory allocation failure", ifname);
+            return;
+        }
+        memset(tcpdump, 0, sizeof(cm2_tcpdump_t));
+        STRSCPY(tcpdump->if_name, ifname);
+        STRSCPY(tcpdump->pckfile, pckfile);
+        ev_child_init (&tcpdump->cw, cm2_tcpdump_cb, pid, 0);
+        ev_child_start (EV_DEFAULT, &tcpdump->cw);
+    }
+}
+
+void cm2_tcpdump_stop(char *ifname)
+{
+    pid_t pid;
+    char  pidname[256];
+    char  cmd[512];
+
+    tsnprintf(pidname, sizeof(pidname), "%s/%s-%s",
+              CM2_VAR_RUN_PATH , CM2_TCPDUMP_PREFIX_FILE, ifname);
+
+    pid = cm2_util_get_pid(pidname);
+    if (!pid) {
+        LOGI("%s: tcpdump: client not running", ifname);
+        return;
+    }
+
+    LOGI("%s: tcpdump stop: pid: %d pid_name: %s", ifname, pid, pidname);
+
+    tsnprintf(cmd, sizeof(cmd), "%s -p %s.pid -K; rm %s.pid",
+              CONFIG_CM2_TCPDUMP_START_STOP_DAEMON_PATH, pidname, pidname);
+
+    LOGD("%s: Command: %s", __func__, cmd);
+    target_device_execute(cmd);
+}
+#endif /* CONFIG_CM2_USE_TCPDUMP */
 
 static void
 cm2_delayed_eth_update_cb(struct ev_loop *loop, ev_timer *timer, int revents)
@@ -160,7 +289,8 @@ void cm2_delayed_eth_update(char *if_name, int timeout)
     STRSCPY(p->if_name, if_name);
     ev_timer_init(&p->timer, cm2_delayed_eth_update_cb, timeout, 0);
     ev_timer_start(EV_DEFAULT, &p->timer);
-    LOGI("%s: scheduling delayed eth update", if_name);
+    LOGI("%s: scheduling delayed eth update, timeout = %d",
+         if_name, timeout);
 }
 
 static void cm2_dhcpc_dryrun_cb(struct ev_loop *loop, ev_child *w, int revents)
@@ -183,7 +313,7 @@ static void cm2_dhcpc_dryrun_cb(struct ev_loop *loop, ev_child *w, int revents)
         LOGD("%s: %s: rstatus = %d", __func__,
              dhcp_dryrun->if_name, WEXITSTATUS(w->rstatus));
 
-    LOGI("%s: dryrun state: %d", dhcp_dryrun->if_name, w->rstatus);
+    LOGD("%s: dryrun state: %d cnt = %d", dhcp_dryrun->if_name, w->rstatus, dhcp_dryrun->cnt);
 
     ret = cm2_ovsdb_connection_get_connection_by_ifname(dhcp_dryrun->if_name, &con);
     if (!ret) {
@@ -191,94 +321,108 @@ static void cm2_dhcpc_dryrun_cb(struct ev_loop *loop, ev_child *w, int revents)
         goto release;
     }
 
-    if (cm2_is_iface_in_bridge(BR_HOME_NAME, dhcp_dryrun->if_name)) {
-        LOGI("%s: Skip run dryrun in background, iface in %s",
-            dhcp_dryrun->if_name, BR_HOME_NAME);
+    if (cm2_is_iface_in_bridge(SCHEMA_CONSTS_BR_NAME_HOME, dhcp_dryrun->if_name)) {
+        LOGI("%s: Skip trigger new dryrun, iface in %s",
+            dhcp_dryrun->if_name, SCHEMA_CONSTS_BR_NAME_HOME);
         goto release;
     }
 
-    if (!status && con.has_L2 && !strcmp(dhcp_dryrun->if_type, ETH_TYPE_NAME)) {
-        cm2_dhcpc_start_dryrun(dhcp_dryrun->if_name, dhcp_dryrun->if_type, true);
+    if (!status && con.has_L2) {
+        if (dhcp_dryrun->cnt > CM2_DRYRUN_TRIES_THRESH) {
+                LOGI("%s: Stop dryruns due to exceeding the threshold [%d]",
+                     dhcp_dryrun->if_name, CM2_DRYRUN_TRIES_THRESH);
+                goto release;
+        }
 
-        if (g_state.link.is_used &&
-            !strcmp(g_state.link.if_type, GRE_TYPE_NAME)) {
-            LOGI("Detected Leaf with pluged ethernet, connected = %d",
-                 g_state.connected);
-            eth_timeout = g_state.connected ? CM2_ETH_SYNC_TIMEOUT : CM2_ETH_BOOT_TIMEOUT;
+        if (cm2_is_eth_type(dhcp_dryrun->if_type) &&
+                   g_state.link.is_used &&
+                   cm2_is_wifi_type(g_state.link.if_type)) {
+            LOGI("%s: Detected Leaf with pluged ethernet, connected = %d",
+                 dhcp_dryrun->if_name, g_state.connected);
+            eth_timeout = g_state.connected ? CONFIG_CM2_ETHERNET_SHORT_DELAY : CONFIG_CM2_ETHERNET_LONG_DELAY;
             cm2_delayed_eth_update(dhcp_dryrun->if_name, eth_timeout);
         }
+        cm2_dhcpc_start_dryrun(dhcp_dryrun->if_name, dhcp_dryrun->if_type, dhcp_dryrun->cnt + 1);
     }
 
+release:
     ret = cm2_ovsdb_connection_update_L3_state(dhcp_dryrun->if_name, status);
     if (!ret)
         LOGW("%s: %s: Update L3 state failed status = %d ret = %d",
              __func__, dhcp_dryrun->if_name, status, ret);
-release:
     free(dhcp_dryrun);
 }
 
-void cm2_dhcpc_start_dryrun(char* ifname, char *iftype, bool background)
+void cm2_dhcpc_start_dryrun(char* ifname, char *iftype, int cnt)
 {
-    char pidfile[256];
-    char udhcpc_s_option[256];
+    char  udhcpc_s_option[256];
+    char  vendor_classid[256];
+    char  pidfile[256];
+    char  pidname[512];
+    char  *argv[30];
+    int   argc;
     pid_t pid;
-    char n_param[3];
 
-    LOGN("%s: Trigger dryrun, background = %d", ifname, background);
+    LOGD("%s: Trigger dryrun [%d]", ifname, cnt);
 
-    tsnprintf(pidfile, sizeof(pidfile), "%s/%s-%s.pid",
+    tsnprintf(pidname, sizeof(pidname), "%s/%s-%s",
               CM2_VAR_RUN_PATH , CM2_UDHCPC_DRYRUN_PREFIX_FILE, ifname);
 
-    pid = cm2_util_get_udhcp_pid(pidfile);
+    pid = cm2_util_get_pid(pidname);
     if (pid > 0)
     {
-        LOGI("%s: DHCP client already running", ifname);
+        LOGI("%s: DHCP client [%d] already running", ifname, pid);
         return;
     }
 
+    tsnprintf(pidfile, sizeof(pidfile), "%s.pid", pidname);
     tsnprintf(udhcpc_s_option, sizeof(udhcpc_s_option),
-              "/usr/plume/bin/udhcpc-dryrun.sh");
-#ifndef CONFIG_UDHCPC_OPTIONS_DISABLE_VENDOR_CLASSID
-    char vendor_classid[256];
-    if(target_model_get(vendor_classid, sizeof(vendor_classid)) == false)
+              CONFIG_INSTALL_PREFIX"/bin/udhcpc-dryrun.sh");
+
+    if (kconfig_enabled(CONFIG_CM2_USE_UDHCPC_VENDOR_CLASSID))
     {
-        tsnprintf(vendor_classid, sizeof(vendor_classid),
-                  TARGET_NAME);
+        char vendor_classid[256];
+
+        if (target_model_get(vendor_classid, sizeof(vendor_classid)) == false)
+        {
+            tsnprintf(vendor_classid, sizeof(vendor_classid),
+                      TARGET_NAME);
+        }
     }
-#endif
 
-    if (background)
-        STRSCPY(n_param, "");
-    else
-        STRSCPY(n_param, "-n");
-
-    char *argv_dry_run[] = {
-        "/sbin/udhcpc",
-        "-p", pidfile,
-        n_param,
-        "-t", "6",
-        "-T", "1",
-        "-A", "2",
-        "-f",
-        "-i", ifname,
-        "-s", udhcpc_s_option,
-#ifndef CONFIG_UDHCPC_OPTIONS_USE_CLIENTID
-        "-C",
-#endif
-        "-S",
-#ifndef CONFIG_PLUME_CM2_USE_NOT_CUSTOM_UDHCPC
-        "-Q",
-#endif
-#ifndef CONFIG_UDHCPC_OPTIONS_DISABLE_VENDOR_CLASSID
-        "-V", vendor_classid,
-#endif
-        "-q",
-        NULL
-    };
+    argc = 0;
+    argv[argc++] = "/sbin/udhcpc";
+    argv[argc++] = "-p";
+    argv[argc++] = pidfile;
+    argv[argc++] = "-n";
+    argv[argc++] = "-t";
+    argv[argc++] = CM2_DRYRUN_t_PARAM;
+    argv[argc++] = "-T";
+    argv[argc++] = CM2_DRYRUN_T_PARAM;
+    argv[argc++] = "-A";
+    argv[argc++] = CM2_DRYRUN_A_PARAM;
+    argv[argc++] = "-f";
+    argv[argc++] = "-i";
+    argv[argc++] = ifname;
+    argv[argc++] = "-s";
+    argv[argc++] =  udhcpc_s_option;
+    if (!kconfig_enabled(CONFIG_UDHCPC_OPTIONS_USE_CLIENTID)) {
+        argv[argc++] = "-C";
+    }
+    argv[argc++] = "-S";
+    if (kconfig_enabled(CONFIG_CM2_USE_CUSTOM_UDHCPC)) {
+        argv[argc++] = "-Q";
+    }
+    if (kconfig_enabled(CONFIG_CM2_USE_UDHCPC_VENDOR_CLASSID)) {
+        argv[argc++] = "-V";
+        argv[argc++] = vendor_classid;
+    }
+    argv[argc++] = "-q",
+    argv[argc++] = NULL;
 
     pid = fork();
     if (pid == 0) {
-        execv(argv_dry_run[0], argv_dry_run);
+        execv(argv[0], argv);
         LOGW("%s: %s: failed to exec dry dhcp: %d (%s)",
              __func__, ifname, errno, strerror(errno));
         exit(1);
@@ -288,6 +432,7 @@ void cm2_dhcpc_start_dryrun(char* ifname, char *iftype, bool background)
         memset(dhcp_dryrun, 0, sizeof(dhcp_dryrun_t));
         STRSCPY(dhcp_dryrun->if_name, ifname);
         STRSCPY(dhcp_dryrun->if_type, iftype);
+        dhcp_dryrun->cnt = cnt;
 
         ev_child_init (&dhcp_dryrun->cw, cm2_dhcpc_dryrun_cb, pid, 0);
         ev_child_start (EV_DEFAULT, &dhcp_dryrun->cw);
@@ -297,26 +442,35 @@ void cm2_dhcpc_start_dryrun(char* ifname, char *iftype, bool background)
 void cm2_dhcpc_stop_dryrun(char *ifname)
 {
     pid_t pid;
-    char  pidfile[256];
+    char  pidname[512];
+    char  cmd[256];
 
-    tsnprintf(pidfile, sizeof(pidfile), "%s/%s-%s.pid",
+    tsnprintf(pidname, sizeof(pidname), "%s/%s-%s",
               CM2_VAR_RUN_PATH , CM2_UDHCPC_DRYRUN_PREFIX_FILE, ifname);
 
-    pid = cm2_util_get_udhcp_pid(pidfile);
+    pid = cm2_util_get_pid(pidname);
     if (!pid) {
         LOGI("%s: DHCP client is not running", ifname);
         return;
     }
 
-    LOGI("%s: pid: %d pid file: %s", ifname, pid, pidfile);
+    LOGI("%s: pid: %d pid_name: %s", ifname, pid, pidname);
 
     if (kill(pid, SIGKILL) < 0) {
         LOGW("%s: %s: failed to send kill signal: %d (%s)",
              __func__, ifname, errno, strerror(errno));
     }
+    tsnprintf(cmd, sizeof(cmd), "rm -f %s.pid", pidname);
+    LOGD("%s: Command: %s", __func__, cmd);
+    WARN_ON(!target_device_execute(cmd));
 }
 
-bool cm2_is_eth_type(char *if_type) {
+bool cm2_is_eth_type(const char *if_type) {
     return !strcmp(if_type, ETH_TYPE_NAME) ||
            !strcmp(if_type, VLAN_TYPE_NAME);
+}
+
+bool cm2_is_wifi_type(const char *if_type) {
+    return !strcmp(if_type, VIF_TYPE_NAME) ||
+           !strcmp(if_type, GRE_TYPE_NAME);
 }

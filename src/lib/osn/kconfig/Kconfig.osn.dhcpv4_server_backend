@@ -1,0 +1,13 @@
+config OSN_BACKEND_DHCPV4_SERVER_NULL
+    bool "Null"
+
+    help
+        Use dummy implementation of the DHCPv4 server.
+
+config OSN_BACKEND_DHCPV4_SERVER_DNSMASQ
+    bool "dnsmasq"
+    select OSN_LINUX_ENABLED
+    select OSN_DNSMASQ
+    help
+        Use the dnsmasq backend provided by OpenSync
+

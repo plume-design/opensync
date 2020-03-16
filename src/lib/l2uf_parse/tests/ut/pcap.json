@@ -1,0 +1,75 @@
+[
+  {
+    "_index": "packets-2019-07-29",
+    "_type": "pcap_file",
+    "_score": null,
+    "_source": {
+      "layers": {
+        "frame": {
+          "frame.interface_id": "0",
+          "frame.interface_id_tree": {
+            "frame.interface_name": "-"
+          },
+          "frame.encap_type": "1",
+          "frame.time": "Jul 29, 2019 10:03:44.023495000 PDT",
+          "frame.offset_shift": "0.000000000",
+          "frame.time_epoch": "1564419824.023495000",
+          "frame.time_delta": "8.290761000",
+          "frame.time_delta_displayed": "0.000000000",
+          "frame.time_relative": "38.541222000",
+          "frame.number": "45",
+          "frame.len": "22",
+          "frame.cap_len": "22",
+          "frame.marked": "0",
+          "frame.ignored": "0",
+          "frame.protocols": "eth:llc:data",
+          "frame.coloring_rule.name": "Broadcast",
+          "frame.coloring_rule.string": "eth[0] & 1"
+        },
+        "eth": {
+          "eth.dst": "ff:ff:ff:ff:ff:ff",
+          "eth.dst_tree": {
+            "eth.dst_resolved": "Broadcast",
+            "eth.addr": "ff:ff:ff:ff:ff:ff",
+            "eth.addr_resolved": "Broadcast",
+            "eth.lg": "1",
+            "eth.ig": "1"
+          },
+          "eth.src": "78:4f:43:9c:f7:fc",
+          "eth.src_tree": {
+            "eth.src_resolved": "Apple_9c:f7:fc",
+            "eth.addr": "78:4f:43:9c:f7:fc",
+            "eth.addr_resolved": "Apple_9c:f7:fc",
+            "eth.lg": "0",
+            "eth.ig": "0"
+          },
+          "eth.len": "8"
+        },
+        "llc": {
+          "llc.dsap": "0x00000000",
+          "llc.dsap_tree": {
+            "llc.dsap.sap": "0",
+            "llc.dsap.ig": "0"
+          },
+          "llc.ssap": "0x00000000",
+          "llc.ssap_tree": {
+            "llc.ssap.sap": "0",
+            "llc.ssap.cr": "0"
+          },
+          "llc.control": "0x000081f5",
+          "llc.control_tree": {
+            "llc.control.n_r": "64",
+            "llc.control.p": "1",
+            "llc.control.s_ftype": "0x00000001",
+            "llc.control.ftype": "0x00000001"
+          }
+        },
+        "data": {
+          "data.data": "80:00:00:00",
+          "data.len": "4"
+        }
+      }
+    }
+  }
+
+]

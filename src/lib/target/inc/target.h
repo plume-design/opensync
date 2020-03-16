@@ -37,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_types.h"
 #include "schema.h"
 #include "os_backtrace.h"
+#include "osp.h"
 
 #include "target_bsal.h"
 
@@ -294,6 +295,9 @@ bool target_model_get(void *buff, size_t buffsz);
  * @brief Return software version number
  *
  * This function provides a null terminated byte string containing the software version number.
+ * Expected format: VERSION-BUILD_NUMBER-gGITSHA-PROFILE
+ * Sample: 1.0.0.0-200-g1a2b3c-devel
+ *
  * @param buff   pointer to a string buffer
  * @param buffsz size of string buffer
  * @return true on success
@@ -328,25 +332,6 @@ bool target_hw_revision_get(void *buff, size_t buffsz);
  */
 bool target_platform_version_get(void *buff, size_t buffsz);
 
-/**
- * @brief Get full version string
- *
- * Long version of the OpenSync build.
- *
- * Expected format: VERSION-BUILD_NUMBER-gGIT_SHA-PROFILE
- *
- * Sample: 1.0.0.0-200-g1a2b3c-devel
- *
- * @return full version string
- */
-const char *app_build_ver_get();
-
-/**
- * @brief Get the build profile
- * @return build profile string
- */
-const char *app_build_profile_get();
-
 /// @} LIB_TARGET_ENTITY
 
 /// @defgroup LIB_TARGET_MAP Interface Mapping API
@@ -373,19 +358,6 @@ bool target_unmap_ifname_exists(const char *ifname);
 const char *target_map_ifname_to_bandstr(const char *ifname);
 
 /// @} LIB_TARGET_MAP
-
-/******************************************************************************
- *  UPGRADE definitions
- *****************************************************************************/
-/// @cond INTERNAL
-
-bool   target_upg_download_required(char *url);
-char  *target_upg_command();
-char  *target_upg_command_full();
-char **target_upg_command_args(char *password);
-double target_upg_free_space_err();
-double target_upg_free_space_warn();
-/// @endcond INTERNAL
 
 /******************************************************************************
  *  BLE definitions
@@ -479,15 +451,22 @@ bool target_log_open(char *name, int flags);
  */
 bool target_log_pull(const char *upload_location, const char *upload_token);
 
-/**
- * @brief Get the log state/config filename
- * @return log state filename
- */
-const char *target_log_state_file(void);
-const char *target_log_trigger_dir(void);
-
 /// @cond INTERNAL
+/**
+ * @brief return the printf-style path to the LED sysfs
+ *
+ * The string should contain a '%s' placeholder where the LED color should be placed
+ *
+ * @return null-terminated string
+ */
 const char *target_led_device_dir(void);
+
+/**
+ * @brief return an array of the available LED color names
+ *
+ * @param  leds pointer where array of strings of colors will be stored
+ * @return count of LED's available on the target
+ */
 int target_led_names(const char **leds[]);
 /// @endcond INTERNAL
 

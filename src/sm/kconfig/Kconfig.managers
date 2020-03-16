@@ -1,0 +1,23 @@
+menuconfig MANAGER_SM
+    bool "Statistics Manager (SM)"
+    default n
+    select MANAGER_QM
+    help
+        Enable Statistics Manager (SM)
+
+    config MANAGER_SM_CFG
+        depends on MANAGER_SM
+        string "SM Startup configuration"
+        default "sm;true"
+        help
+            Statistics Manager startup configuration
+
+    config SM_CAPACITY_QUEUE_STATS
+        depends on MANAGER_SM
+        bool "Capacity Queue Stats"
+        default n
+        help
+            Enable capacity queue statistics
+
+            Note: This may require support from platform modules.
+

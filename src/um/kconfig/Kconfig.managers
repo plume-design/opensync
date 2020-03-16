@@ -1,0 +1,12 @@
+menuconfig MANAGER_UM
+    bool "Upgrade Manager (UM)"
+    default n
+    help
+        Enable Upgrade Manager (UM)
+
+    config MANAGER_UM_CFG
+        depends on MANAGER_UM
+        string "UM Startup configuration"
+        default "um;true;needs_plan_b=true"
+        help
+            Upgrade Manager startup configuration

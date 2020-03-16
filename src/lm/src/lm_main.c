@@ -37,7 +37,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <syslog.h>
 #include <getopt.h>
 
-#include "evsched.h"
 #include "log.h"
 #include "os.h"
 #include "ovsdb.h"
@@ -66,7 +65,10 @@ static void
 lm_init(void)
 {
     MEMZERO(g_state);
-    g_state.log_state_file = target_log_state_file();
+    const char *path = CONFIG_TARGET_PATH_LOG_STATE;
+    // if empty string set to NULL to disable dynamic log
+    if (path != NULL && *path == 0) path = NULL;
+    g_state.log_state_file = path;
 }
 
 /******************************************************************************
@@ -90,12 +92,6 @@ int main(int argc, char ** argv)
     backtrace_init();
 
     json_memdbg_init(loop);
-
-    if (evsched_init(loop) == false) {
-        LOGE("Initializing LM "
-             "(Failed to initialize EVSCHED)");
-        return -1;
-    }
 
     if (!target_init(TARGET_INIT_MGR_LM, loop)) {
         return -1;

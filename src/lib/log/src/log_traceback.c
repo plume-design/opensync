@@ -30,7 +30,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sys/syscall.h>
 
 #include "log.h"
-#include "target.h"
+#include "util.h"
+#include "const.h"
 
 static void
 logger_traceback_log(logger_t *l, logger_msg_t *msg)

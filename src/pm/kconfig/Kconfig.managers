@@ -1,0 +1,104 @@
+menuconfig MANAGER_PM
+    bool "Platform Manager (PM)"
+    default n
+    help
+        Enable Platform Manager (PM)
+
+if MANAGER_PM
+    config MANAGER_PM_CFG
+        string "Startup configuration"
+        default "pm;true"
+        help
+            Startup configuration
+
+    config PM_ENABLE_CLIENT_FREEZE
+        bool "Enable support for client freeze"
+        default n
+        help
+            Use non-standard client freeze implementation
+
+    config PM_ENABLE_CLIENT_NICKNAME
+        bool "Enable support for client nickname"
+        default n
+        help
+            Enable client nickname feature Web UI synchronization
+
+    menuconfig PM_ENABLE_LED
+        depends on !MANAGER_LEDM
+        bool "Enable support for LED"
+        default n
+        select OSP_LED
+        help
+            Select to include OpenSync LED manager.
+            In case LED manager is selected, it will take full control of LED on the platform.
+
+
+        if PM_ENABLE_LED
+            config PM_LED_CONNECTING_TIMEOUT
+                int "Timeout in seconds to change from connected to connecting state"
+                default 180
+
+            config PM_LED_CONNECT_FAIL_TIMEOUT
+                int "Timeout in seconds to change from connecting to connect failed state"
+                default 0
+        endif
+
+    menuconfig PM_ENABLE_TM
+        depends on !MANAGER_TM
+        bool "Enable support for Thermal Management"
+        default n
+        help
+           Select to include thermal management as part of PM (Platform manager)
+
+        if PM_ENABLE_TM
+            config PM_TM_PERIOD_INTERVAL
+                int "Interval in seconds at which thermal loop is run at"
+                default 10
+                help
+                    At every period the thermal loop will read temperature
+                    and fan RPM, and set appropriate fan RPM and wifi Tx chainmasks.
+
+            config PM_TM_TEMPERATURE_HYSTERESIS
+                int "Temperature hysteresis in degrees centigrade"
+                default 3
+                help
+                    Thermal loop will decrease the thermal state only after
+                    the temperature source is lower by this value in degrees
+                    centigrade.
+
+            config PM_TM_FAN_RPM_TOLERANCE
+                int "Tolerance in RPM between actual and set RPM"
+                default 300
+                help
+                    Tolerance in fan RPM, between the RPM we set to the hardware,
+                    and the actual RPM read, before we report a fan error.
+
+            config PM_TM_FAN_ERROR_PERIOD_TOLERANCE
+                int "Tolerance of fan RPM errors before reporting error"
+                default 1
+                help
+                    If thermal loop detects an error in the fan RPM,
+                    it will wait this amount of thermal loops before reporting
+                    an error.
+                    This option prevents some flukes with the fan hardware,
+                    where controller in fan will independently lower fan RPM.
+
+            config PM_TM_CRITICAL_TEMPERATURE_PERIOD_TOLERANCE
+                int "Tolerance of number of critical temperature readings before rebooting"
+                default 2
+                help
+                    If thermal loop reads a temperature that is higher than
+                    the highest thermal state in thermal state table, it will
+                    issue a software reboot.
+                    This option prevents some flukes in the temperature readings.
+
+        endif
+
+
+    config PM_ENABLE_LM
+        depends on !MANAGER_LM
+        bool "Enable support for Log Management"
+        default n
+        help
+            Select to include log management as part of PM (Platform manager)
+endif

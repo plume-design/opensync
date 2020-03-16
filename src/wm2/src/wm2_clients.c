@@ -24,6 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#define _GNU_SOURCE
+
 #include <stdlib.h>
 #include <sys/wait.h>
 #include <stdint.h>
@@ -238,7 +240,7 @@ wm2_clients_isolate(const char *ifname, const char *sta, bool connected)
     }
 
     memset(sta_ifname, 0, sizeof(sta_ifname));
-    strcpy(sta_ifname, "sta");
+    STRSCPY(sta_ifname, "sta");
     for (p = sta; *p && strlen(sta_ifname) < sizeof(sta_ifname); p++)
         if (*p != ':')
             sta_ifname[strlen(sta_ifname)] = tolower(*p);
@@ -325,6 +327,7 @@ bool
 wm2_clients_update(struct schema_Wifi_Associated_Clients *schema, char *ifname, bool status)
 {
     struct schema_Wifi_Associated_Clients client;
+    const char *mac = str_tolower(strdupa(schema->mac));
     const char *column;
     const char *table;
     ovs_uuid_t uuid;
@@ -347,24 +350,24 @@ wm2_clients_update(struct schema_Wifi_Associated_Clients *schema, char *ifname, 
                  ifname, schema->key_id, oftag);
 
         LOGD("%s: key_id '%s' => oftag '%s'",
-             schema->mac, schema->key_id, oftag);
+             mac, schema->key_id, oftag);
     }
 
     LOGD("%s: update called with keyid='%s' oftag='%s' status=%d",
-         schema->mac, schema->key_id, oftag, status);
+         mac, schema->key_id, oftag, status);
 
     memset(&client, 0, sizeof(client));
     ovsdb_table_select_one(&table_Wifi_Associated_Clients,
                            SCHEMA_COLUMN(Wifi_Associated_Clients, mac),
-                           schema->mac,
+                           mac,
                            &client);
 
     if (status) {
         table = SCHEMA_TABLE(Wifi_Associated_Clients);
         column = SCHEMA_COLUMN(Wifi_Associated_Clients, mac);
-        where = ovsdb_where_simple(column, schema->mac);
+        where = ovsdb_where_simple(column, mac);
         row = json_object();
-        json_object_set_new(row, "mac", json_string(schema->mac));
+        json_object_set_new(row, "mac", json_string(mac));
         json_object_set_new(row, "key_id", json_string(schema->key_id));
         json_object_set_new(row, "state", json_string(schema->state));
         if (strlen(oftag) > 0)
@@ -378,7 +381,7 @@ wm2_clients_update(struct schema_Wifi_Associated_Clients *schema, char *ifname, 
         }
         else if (n == 0) {
             LOGN("Client '%s' connected on '%s' with key '%s'",
-                 schema->mac, ifname, schema->key_id);
+                 mac, ifname, schema->key_id);
 
             ok = ovsdb_sync_insert(table, row, &uuid);
             if (WARN_ON(!ok))
@@ -404,24 +407,24 @@ wm2_clients_update(struct schema_Wifi_Associated_Clients *schema, char *ifname, 
             client.mac_exists &&
             strcmp(client.key_id, schema->key_id)) {
             LOGN("Client '%s' re-connected on '%s' with key '%s'",
-                 schema->mac, ifname, schema->key_id);
+                 mac, ifname, schema->key_id);
         }
 
         if (n > 1) {
             LOGN("Client '%s' roamed to '%s' with key '%s'",
-                 schema->mac, ifname, schema->key_id);
+                 mac, ifname, schema->key_id);
         }
 
         if (strlen(client.oftag) > 0)
-            wm2_clients_oftag_unset(schema->mac, client.oftag);
+            wm2_clients_oftag_unset(mac, client.oftag);
         if (strlen(oftag) > 0)
-            wm2_clients_oftag_set(schema->mac, oftag);
-        wm2_clients_isolate(ifname, schema->mac, true);
-        wm2_clients_war_esw_2684_noc_163_plat_878(schema->mac, schema->key_id);
+            wm2_clients_oftag_set(mac, oftag);
+        wm2_clients_isolate(ifname, mac, true);
+        wm2_clients_war_esw_2684_noc_163_plat_878(mac, schema->key_id);
     } else {
         if (!client.mac_exists) {
             LOGD("Client '%s' cannot be removed from '%s' because it does not exist",
-                 schema->mac, ifname);
+                 mac, ifname);
             return true;
         }
 
@@ -434,22 +437,22 @@ wm2_clients_update(struct schema_Wifi_Associated_Clients *schema, char *ifname, 
         n = wm2_clients_get_refcount(client._uuid.uuid);
         if (n == 0) {
             LOGN("Client '%s' disconnected from '%s' with key '%s'",
-                 schema->mac, ifname, schema->key_id);
+                 mac, ifname, schema->key_id);
 
             table = SCHEMA_TABLE(Wifi_Associated_Clients);
             column = SCHEMA_COLUMN(Wifi_Associated_Clients, mac);
-            where = ovsdb_where_simple(column, schema->mac);
+            where = ovsdb_where_simple(column, mac);
             n = ovsdb_sync_delete_where(table, where);
             WARN_ON(n != 1);
 
             if (strlen(client.oftag) > 0)
-                wm2_clients_oftag_unset(schema->mac, client.oftag);
+                wm2_clients_oftag_unset(mac, client.oftag);
         } else {
             LOGN("Client '%s' removed from '%s' with key '%s'",
-                 schema->mac, ifname, schema->key_id);
+                 mac, ifname, schema->key_id);
         }
 
-        wm2_clients_isolate(ifname, schema->mac, false);
+        wm2_clients_isolate(ifname, mac, false);
     }
 
     return true;

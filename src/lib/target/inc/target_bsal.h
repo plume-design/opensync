@@ -59,14 +59,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define BSAL_MAX_TM_NEIGHBORS   3
 #define BSAL_MAX_ASSOC_IES_LEN  1024
 
-/*****************************************************************************/
-
-typedef enum {
-    BSAL_BAND_24G               = 0,
-    BSAL_BAND_5G,
-    BSAL_BAND_COUNT
-} bsal_band_t;
-
+#define BSAL_MAX_ACTION_FRAME_LEN 1024
 /*****************************************************************************/
 
 typedef struct {
@@ -155,6 +148,7 @@ typedef enum {
     BSAL_EVENT_STEER_SUCCESS, /**< deprecated */
     BSAL_EVENT_STEER_FAILURE, /**< deprecated */
     BSAL_EVENT_AUTH_FAIL, /**< reported when station is rejected by driver */
+    BSAL_EVENT_ACTION_FRAME, /**< received action frame */
 
     BSAL_EVENT_DEBUG_CHAN_UTIL  = 128, /**< deprecated */
     BSAL_EVENT_DEBUG_RSSI /**< deprecated */
@@ -176,10 +170,42 @@ typedef enum {
     BSAL_RSSI_LOWER
 } bsal_rssi_change_t;
 
+typedef enum {
+    BSAL_PHY_MODE_AUTO             = 0,    /* autoselect */
+    BSAL_PHY_MODE_11A              = 1,    /* 5GHz, OFDM */
+    BSAL_PHY_MODE_11B              = 2,    /* 2GHz, CCK */
+    BSAL_PHY_MODE_11G              = 3,    /* 2GHz, OFDM */
+    BSAL_PHY_MODE_FH               = 4,    /* 2GHz, GFSK */
+    BSAL_PHY_MODE_TURBO_A          = 5,    /* 5GHz, OFDM, 2x clock dynamic turbo */
+    BSAL_PHY_MODE_TURBO_G          = 6,    /* 2GHz, OFDM, 2x clock dynamic turbo */
+    BSAL_PHY_MODE_11NA_HT20        = 7,    /* 5Ghz, HT20 */
+    BSAL_PHY_MODE_11NG_HT20        = 8,    /* 2Ghz, HT20 */
+    BSAL_PHY_MODE_11NA_HT40PLUS    = 9,    /* 5Ghz, HT40 (ext ch +1) */
+    BSAL_PHY_MODE_11NA_HT40MINUS   = 10,   /* 5Ghz, HT40 (ext ch -1) */
+    BSAL_PHY_MODE_11NG_HT40PLUS    = 11,   /* 2Ghz, HT40 (ext ch +1) */
+    BSAL_PHY_MODE_11NG_HT40MINUS   = 12,   /* 2Ghz, HT40 (ext ch -1) */
+    BSAL_PHY_MODE_11NG_HT40        = 13,   /* 2Ghz, Auto HT40 */
+    BSAL_PHY_MODE_11NA_HT40        = 14,   /* 5Ghz, Auto HT40 */
+    BSAL_PHY_MODE_11AC_VHT20       = 15,   /* 5Ghz, VHT20 */
+    BSAL_PHY_MODE_11AC_VHT40PLUS   = 16,   /* 5Ghz, VHT40 (Ext ch +1) */
+    BSAL_PHY_MODE_11AC_VHT40MINUS  = 17,   /* 5Ghz  VHT40 (Ext ch -1) */
+    BSAL_PHY_MODE_11AC_VHT40       = 18,   /* 5Ghz, VHT40 */
+    BSAL_PHY_MODE_11AC_VHT80       = 19,   /* 5Ghz, VHT80 */
+    BSAL_PHY_MODE_11AC_VHT160      = 20,   /* 5Ghz, VHT160 */
+    BSAL_PHY_MODE_11AC_VHT80_80    = 21,   /* 5Ghz, VHT80_80 */
+} bsal_phy_mode_t;
+
+typedef enum {
+    BSAL_MAX_CHWIDTH_20MHZ  = 0,
+    BSAL_MAX_CHWIDTH_40MHZ  = 1,
+    BSAL_MAX_CHWIDTH_80MHZ  = 2,
+    BSAL_MAX_CHWIDTH_160MHZ = 3,
+} bsal_max_chwidth_t;
+
 typedef struct {
-    uint8_t                 max_chwidth;
+    bsal_max_chwidth_t      max_chwidth;
     uint8_t                 max_streams;
-    uint8_t                 phy_mode;
+    bsal_phy_mode_t         phy_mode;
     uint8_t                 max_MCS;
     uint8_t                 max_txpower;
     uint8_t                 is_static_smps;
@@ -205,12 +231,14 @@ typedef struct {
 
 typedef struct {
     uint8_t                 client_addr[BSAL_MAC_ADDR_LEN];
+    uint8_t                 assoc_ies[1024];
     uint8_t                 is_BTM_supported;
     uint8_t                 is_RRM_supported;
     bool                    band_cap_2G;
     bool                    band_cap_5G;
     bsal_datarate_info_t    datarate_info;
     bsal_rrm_caps_t         rrm_caps;
+    size_t                  assoc_ies_len;
 } bsal_ev_connect_t;
 
 typedef struct {
@@ -259,9 +287,13 @@ typedef struct {
 } bsal_ev_auth_fail_t;
 
 typedef struct {
+    uint8_t             data[BSAL_MAX_ACTION_FRAME_LEN];
+    unsigned int        data_len;
+} bsal_ev_action_frame_t;
+
+typedef struct {
     bsal_ev_type_t      type;
     char                ifname[BSAL_IFNAME_LEN];
-    bsal_band_t         band;
     uint64_t            timestamp_ms;
     union {
         bsal_ev_probe_req_t         probe_req;
@@ -273,6 +305,7 @@ typedef struct {
         bsal_ev_rssi_t              rssi;
         bsal_ev_steer_t             steer;
         bsal_ev_auth_fail_t         auth_fail;
+        bsal_ev_action_frame_t      action_frame;
     } data;
 } bsal_event_t;
 
@@ -285,7 +318,10 @@ typedef struct {
     bsal_datarate_info_t    datarate_info;
     bsal_rrm_caps_t         rrm_caps;
     uint8_t                 assoc_ies[BSAL_MAX_ASSOC_IES_LEN];
-    uint8_t                 assoc_ies_len;
+    uint16_t                assoc_ies_len;
+    uint8_t                 snr;
+    uint64_t                tx_bytes;
+    uint64_t                rx_bytes;
 } bsal_client_info_t;
 
 /*****************************************************************************/
@@ -493,6 +529,22 @@ int target_bsal_rrm_set_neighbor(const char *ifname,
  */
 int target_bsal_rrm_remove_neighbor(const char *ifname,
                                     const bsal_neigh_info_t *nr);
+
+/**
+ * @brief Request target to send action frame
+ *
+ * This is new way to handle BTM, RRM, NR.
+ *
+ * @note target_bsal_client_add() will be called sometime earlier first
+ * @param ifname Wireless interface name the client is connected on
+ * @param mac_addr 6-byte MAC address of the client
+ * @param data action frame buffer
+ * @param data_len action frame buffer length
+ */
+int target_bsal_send_action(const char *ifname,
+                            const uint8_t *mac_addr,
+                            const uint8_t *data,
+                            unsigned int data_len);
 
 /// @} LIB_TARGET_BSAL
 

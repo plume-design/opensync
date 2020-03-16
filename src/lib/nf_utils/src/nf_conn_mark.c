@@ -525,11 +525,15 @@ int nf_ct_set_mark_timeout(nf_flow_t *flow, uint32_t timeout)
     if (nf_ct_set_mark(flow) < 0)
     {
         LOGE("setting connection mark failed");
-        return -1;
+        goto err_set_mark;
     }
     ev_timer_init(&timer_ctx->timeout, nf_ct_timeout_cbk, timeout, 0);
     ev_timer_start(nf_ct.loop, &timer_ctx->timeout);
     return 0;
+
+err_set_mark:
+    free(timer_ctx);
+    return -1;
 }
 
 static struct nlmsghdr * nf_build_ip_nl_msg_alt(

@@ -33,6 +33,7 @@ UNIT_TYPE := LIB
 UNIT_SRC := src/policy_tags.c
 UNIT_SRC += src/policy_tag_groups.c
 UNIT_SRC += src/policy_tag_list.c
+UNIT_SRC += src/policy_tag_utils.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 

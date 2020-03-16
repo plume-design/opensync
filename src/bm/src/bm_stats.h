@@ -28,8 +28,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * Band Steering Manager - Stats
  */
 
-#ifndef __BM_STATS_H__
-#define __BM_STATS_H__
+#ifndef BM_STATS_H_INCLUDED
+#define BM_STATS_H_INCLUDED
 
 #include <stdbool.h>
 #include <jansson.h>
@@ -122,8 +122,6 @@ void    bm_stats_add_event_to_report(
 void    bm_stats_remove_client_from_report( bm_client_t *client );
 int     bm_stats_get_stats_report_interval( void );
 
-void    bm_stats_map_radio_type(bsal_band_t band, const char *ifname);
-
 /*****************************************************************************
  * RSSI BM STATS
  *****************************************************************************/
@@ -143,5 +141,6 @@ bool bm_stats_rssi_stats_results_update(
         mac_address_t               mac,
         uint32_t                    rssi,
         rssi_source_t               source);
+char *bm_stats_get_event_to_str(dpp_bs_client_event_type_t event);
 
-#endif /* __BM_STATS_H__ */
+#endif /* BM_STATS_H_INCLUDED */

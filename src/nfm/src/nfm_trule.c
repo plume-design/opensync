@@ -30,6 +30,7 @@
 */
 
 #include "log.h"
+#include "util.h"
 #include "nfm_trule.h"
 #include "nfm_chain.h"
 #include "nfm_ovsdb.h"
@@ -94,8 +95,7 @@ static void nfm_trule_set_status(struct nfm_trule *self, const char *status)
 		return;
 	}
 
-	strncpy(self->conf.status, status, sizeof(self->conf.status) - 1);
-	self->conf.status[sizeof(self->conf.status) - 1] = '\0';
+	STRSCPY(self->conf.status, status);
 	LOGD("Netfilter template rule %s status is %s", self->conf.name, status);
 }
 
@@ -285,8 +285,7 @@ static bool nfm_trule_apply(struct nfm_trule *self, om_action_t type, struct nfm
 	}
 
 	conf = self->conf;
-	strncpy(conf.rule, rule, sizeof(conf.rule) - 1);
-	conf.rule[sizeof(conf.rule) - 1] = '\0';
+	STRSCPY(conf.rule, rule);
 
 	switch (type) {
 	case ADD:

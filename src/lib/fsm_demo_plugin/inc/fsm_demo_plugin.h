@@ -24,8 +24,9 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __FSM_DEMO_PLUGIN_H__
-#define __FSM_DEMO_PLUGIN_H__
+#ifndef FSM_DEMO_PLUGIN_H_INCLUDED
+#define FSM_DEMO_PLUGIN_H_INCLUDED
+
 #include <jansson.h>
 #include <pcap.h>
 #include <stdint.h>
@@ -272,4 +273,4 @@ struct fsm_demo_plugin_cache *
 fsm_demo_get_mgr(void);
 
 
-#endif /* __FSM_DEMO_PLUGIN_H__ */
+#endif /* FSM_DEMO_PLUGIN_H_INCLUDED */

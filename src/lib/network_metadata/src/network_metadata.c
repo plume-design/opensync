@@ -450,6 +450,484 @@ err_free_pb_tags:
 
 
 /**
+ * @brief Allocates and sets a vendor key/value protobuf.
+ *
+ * Uses the vendor kv_pair info to fill a dynamically allocated
+ * flow key protobuf.
+ * The caller is responsible for freeing the returned pointer,
+ * @see free_pb_vendor_kv() for this purpose.
+ *
+ * @param key/vakue pair info used to fill up the protobuf
+ * @return a pointer to a flow counters protobuf structure
+ */
+Traffic__VendorDataKVPair *
+set_vendor_kv(struct vendor_data_kv_pair *kv_pair)
+{
+    Traffic__VendorDataKVPair *pb;
+    bool ret;
+
+    if (kv_pair == NULL) return NULL;
+
+    /* Allocate the protobuf structure */
+    pb = calloc(1, sizeof(Traffic__VendorDataKVPair));
+    if (pb == NULL) return NULL;
+
+    /* Initialize the protobuf structure */
+    traffic__vendor_data__kvpair__init(pb);
+
+    /* Set the protobuf fields */
+    ret = str_duplicate(kv_pair->key, &pb->key);
+    if (!ret) goto err_free_pb;
+
+    if (kv_pair->value_type == NET_VENDOR_STR)
+    {
+        ret = str_duplicate(kv_pair->str_value, &pb->val_str);
+        if (!ret) goto err_free_key;
+    }
+    else if (kv_pair->value_type == NET_VENDOR_U32)
+    {
+        pb->has_val_u32 = true;
+        pb->val_u32 = kv_pair->u32_value;
+    }
+    else if (kv_pair->value_type == NET_VENDOR_U64)
+    {
+        pb->has_val_u64 = true;
+        pb->val_u64 = kv_pair->u64_value;
+    }
+    else goto err_free_str_val;
+
+    return pb;
+
+err_free_str_val:
+    free(pb->val_str);
+
+err_free_key:
+    free(pb->key);
+
+err_free_pb:
+    free(pb);
+
+    return NULL;
+}
+
+
+/**
+ * @brief Free a flow tag protobuf structure.
+ *
+ * Free dynamically allocated fields and the protobuf structure.
+ *
+ * @param pb flow tag structure to free
+ * @return none
+ */
+void
+free_pb_vendor_kv(Traffic__VendorDataKVPair *pb)
+{
+    free(pb->key);
+    free(pb->val_str);
+    free(pb);
+
+    return;
+}
+
+
+/**
+ * @brief Allocates and sets a table of vendor_kv_pair protobufs
+ *
+ * Uses the key info to fill a dynamically allocated
+ * table of vendor data key/value pairs protobufs.
+ * The caller is responsible for freeing the returned pointer
+ *
+ * @param vdr_data info used to fill up the protobuf table
+ * @return a vendor key/value protobuf pointers table
+ */
+Traffic__VendorDataKVPair **
+set_pb_vendor_kv_pairs(struct flow_vendor_data *vdr_data)
+{
+    Traffic__VendorDataKVPair **kv_pair_pb_tbl;
+    Traffic__VendorDataKVPair **kv_pairs_pb;
+    struct vendor_data_kv_pair **kv_pairs;
+    size_t i, allocated;
+
+    if (vdr_data == NULL) return NULL;
+
+    if (vdr_data->nelems == 0) return NULL;
+
+    /* Allocate the array of flow stats */
+    kv_pair_pb_tbl = calloc(vdr_data->nelems,
+                            sizeof(Traffic__VendorDataKVPair *));
+    if (kv_pair_pb_tbl == NULL) return NULL;
+
+    /* Set each of the stats protobuf */
+    kv_pairs = vdr_data->kv_pairs;
+    kv_pairs_pb = kv_pair_pb_tbl;
+    allocated = 0;
+    for (i = 0; i < vdr_data->nelems; i++)
+    {
+        *kv_pairs_pb = set_vendor_kv(*kv_pairs);
+        if (*kv_pairs_pb == NULL) goto err_free_pb_kv_pairs;
+
+        allocated++;
+        kv_pairs++;
+        kv_pairs_pb++;
+    }
+
+    return kv_pair_pb_tbl;
+
+err_free_pb_kv_pairs:
+    kv_pairs_pb = kv_pair_pb_tbl;
+    for (i = 0; i < allocated; i++)
+    {
+        free_pb_vendor_kv(*kv_pairs_pb);
+        kv_pairs_pb++;
+    }
+    free(kv_pair_pb_tbl);
+
+    return NULL;
+}
+
+
+/**
+ * @brief Generates a vendor kvpair serialized protobuf
+ *
+ * Uses the information pointed by the kv pair parameter to generate
+ * a serialized vendor kvpair buffer.
+ * The caller is responsible for freeing to the returned serialized data,
+ * @see free_packed_buffer() for this purpose.
+ *
+ * @param counters info used to fill up the protobuf.
+ * @return a pointer to the serialized data.
+ */
+struct packed_buffer *
+serialize_vdr_kvpair(struct vendor_data_kv_pair *vendor_kvpair)
+{
+    Traffic__VendorDataKVPair *pb;
+    struct packed_buffer *serialized;
+    void *buf;
+    size_t len;
+
+    if (vendor_kvpair == NULL) return NULL;
+
+    /* Allocate serialization output container */
+    serialized = calloc(1, sizeof(struct packed_buffer));
+    if (serialized == NULL) return NULL;
+
+    /* Allocate and set flow stats protobuf */
+    pb = set_vendor_kv(vendor_kvpair);
+    if (pb == NULL) goto err_free_serialized;
+
+    /* Get serialization length */
+    len = traffic__vendor_data__kvpair__get_packed_size(pb);
+    if (len == 0) goto err_free_pb;
+
+    /* Allocate space for the serialized buffer */
+    buf = malloc(len);
+    if (buf == NULL) goto err_free_pb;
+
+    /* Serialize protobuf */
+    serialized->len = traffic__vendor_data__kvpair__pack(pb, buf);
+    serialized->buf = buf;
+
+    /* Free the protobuf structure */
+    free_pb_vendor_kv(pb);
+
+    /* Return serialized content */
+    return serialized;
+
+err_free_pb:
+    free_pb_vendor_kv(pb);
+
+err_free_serialized:
+    free(serialized);
+
+    return NULL;
+}
+
+
+/**
+ * @brief Allocates and sets a vendor key/value protobuf.
+ *
+ * Uses the vendor kv_pair info to fill a dynamically allocated
+ * flow key protobuf.
+ * The caller is responsible for freeing the returned pointer,
+ * @see free_pb_vendor_kv() for this purpose.
+ *
+ * @param counters info used to fill up the protobuf
+ * @return a pointer to a flow counters protobuf structure
+ */
+Traffic__VendorData *
+set_vendor_data(struct flow_vendor_data *vendor_data)
+{
+    Traffic__VendorData *pb;
+    bool ret;
+
+    /* Allocate the protobuf structure */
+    pb = calloc(1, sizeof(Traffic__VendorData));
+    if (pb == NULL) return NULL;
+
+    /* Initialize the protobuf structure */
+    traffic__vendor_data__init(pb);
+
+    /* Set the protobuf fields */
+    ret = str_duplicate(vendor_data->vendor, &pb->vendor);
+    if (!ret) goto err_free_pb;
+
+    if (vendor_data->nelems == 0) return pb;
+
+    pb->vendorkvpair = set_pb_vendor_kv_pairs(vendor_data);
+    if (pb == NULL) goto err_free_vendor;
+
+    pb->n_vendorkvpair = vendor_data->nelems;
+
+    return pb;
+
+err_free_vendor:
+    free(pb->vendor);
+
+err_free_pb:
+    free(pb);
+
+    return NULL;
+}
+
+
+/**
+ * @brief Free a flow tag protobuf structure.
+ *
+ * Free dynamically allocated fields and the protobuf structure.
+ *
+ * @param pb flow tag structure to free
+ * @return none
+ */
+void
+free_pb_vendor_data(Traffic__VendorData *pb)
+{
+    size_t i;
+
+    if (pb == NULL) return;
+
+    for (i = 0; i < pb->n_vendorkvpair; i++)
+    {
+        free_pb_vendor_kv(pb->vendorkvpair[i]);
+    }
+    free(pb->vendorkvpair);
+    free(pb->vendor);
+    free(pb);
+
+    return;
+}
+
+
+/**
+ * @brief Allocates and sets a table of vendor data protobufs
+ *
+ * Uses the key info to fill a dynamically allocated
+ * table of vendor data protobufs.
+ * The caller is responsible for freeing the returned pointer
+ *
+ * @param key info used to fill up the protobuf table
+ * @return a flow tags protobuf pointers table
+ */
+Traffic__VendorData **
+set_pb_vendor_data(struct flow_key *key)
+{
+    Traffic__VendorData **vd_pb_tbl;
+    Traffic__VendorData **vd_pb;
+    struct flow_vendor_data **vd;
+    size_t i, allocated;
+
+    if (key == NULL) return NULL;
+
+    if (key->num_vendor_data == 0) return NULL;
+
+    /* Allocate the array of flow stats */
+    vd_pb_tbl = calloc(key->num_vendor_data, sizeof(Traffic__VendorData *));
+    if (vd_pb_tbl == NULL) return NULL;
+
+    /* Set each of the stats protobuf */
+    vd = key->vdr_data;
+    vd_pb = vd_pb_tbl;
+    allocated = 0;
+    for (i = 0; i < key->num_vendor_data; i++)
+    {
+        *vd_pb = set_vendor_data(*vd);
+        if (*vd_pb == NULL) goto err_free_pb_tags;
+
+        allocated++;
+        vd++;
+        vd_pb++;
+    }
+
+    return vd_pb_tbl;
+
+err_free_pb_tags:
+    vd_pb = vd_pb_tbl;
+    for (i = 0; i < allocated; i++)
+    {
+        free_pb_vendor_data(*vd_pb);
+        vd_pb++;
+    }
+    free(vd_pb_tbl);
+
+    return NULL;
+}
+
+Traffic__FlowState *
+set_pb_flowstate(struct flow_state *key)
+{
+    Traffic__FlowState *pb;
+
+    if (key == NULL) return NULL;
+
+    pb = calloc(1, sizeof(Traffic__FlowState));
+
+    if (pb == NULL) return NULL;
+
+    traffic__flow_state__init(pb);
+
+    if (key->fstart)
+    {
+        pb->has_flowstart = true;
+        pb->flowstart = true;
+        LOGD("Setting flow state start");
+    }
+
+    if (key->fend)
+    {
+        pb->has_flowend = true;
+        pb->flowend = true;
+        LOGD("Setting flow state end");
+    }
+
+    if (key->first_obs > 0)
+    {
+        pb->has_firstobservedat = true;
+        pb->firstobservedat = key->first_obs;
+        LOGD("Setting flow state first_obs");
+    }
+
+    if (key->last_obs > 0)
+    {
+        pb->has_lastobservedat = true;
+        pb->lastobservedat = key->last_obs;
+        LOGD("Setting flow state last_obs");
+    }
+
+    return pb;
+}
+
+
+/**
+ * @brief Generates a flow vendor data serialized protobuf
+ *
+ * Uses the information pointed by the kv pair parameter to generate
+ * a serialized vendor kvpair buffer.
+ * The caller is responsible for freeing to the returned serialized data,
+ * @see free_packed_buffer() for this purpose.
+ *
+ * @param counters info used to fill up the protobuf.
+ * @return a pointer to the serialized data.
+ */
+struct packed_buffer *
+serialize_vendor_data(struct flow_vendor_data *vendor_data)
+{
+    Traffic__VendorData *pb;
+    struct packed_buffer *serialized;
+    void *buf;
+    size_t len;
+
+    if (vendor_data == NULL) return NULL;
+
+    /* Allocate serialization output container */
+    serialized = calloc(1, sizeof(struct packed_buffer));
+    if (serialized == NULL) return NULL;
+
+    /* Allocate and set flow key protobuf */
+    pb = set_vendor_data(vendor_data);
+    if (pb == NULL) goto err_free_serialized;
+
+    /* Get serialization length */
+    len = traffic__vendor_data__get_packed_size(pb);
+    if (len == 0) goto err_free_pb;;
+
+    /* Allocate space for the serialized buffer */
+    buf = malloc(len);
+    if (buf == NULL) goto err_free_pb;
+
+    serialized->len = traffic__vendor_data__pack(pb, buf);
+    serialized->buf = buf;
+
+    /* Free the protobuf structure */
+    free_pb_vendor_data(pb);
+
+    /* Return serialized content */
+    return serialized;
+
+err_free_pb:
+    free_pb_vendor_data(pb);
+
+err_free_serialized:
+    free(serialized);
+
+    return NULL;
+}
+
+/**
+ * @brief Generates a flow state serialized protobuf
+ *
+ * Uses the information pointed by the flowstate parameter to generate
+ * a serialized flow_state  buffer.
+ * The caller is responsible for freeing to the returned serialized data,
+ * @see free_packed_buffer() for this purpose.
+ *
+ * @param flow_state info used to fill up the protobuf.
+ * @return a pointer to the serialized data.
+ */
+struct packed_buffer *
+serialize_flow_state(struct flow_state *flow_state)
+{
+    Traffic__FlowState *pb;
+    struct packed_buffer *serialized;
+    void *buf;
+    size_t len;
+
+    if (flow_state ==  NULL) return NULL;
+
+    /* Allocate serialization output container */
+    serialized = calloc(1, sizeof(struct packed_buffer));
+    if (serialized == NULL) return NULL;
+
+    /* Allocate and set flow key protobuf */
+    pb = set_pb_flowstate(flow_state);
+    if (pb == NULL) goto err_free_serialized;
+
+    /* Get serialization length */
+    len = traffic__flow_state__get_packed_size(pb);
+    if (len == 0) goto err_free_pb;;
+
+    /* Allocate space for the serialized buffer */
+    buf = malloc(len);
+    if (buf == NULL) goto err_free_pb;
+
+    serialized->len = traffic__flow_state__pack(pb, buf);
+    serialized->buf = buf;
+
+    /* Free the protobuf structure */
+    free(pb);
+
+    /* Return serialized content */
+    return serialized;
+
+err_free_pb:
+    free(pb);
+
+err_free_serialized:
+    free(serialized);
+
+    return NULL;
+}
+
+
+/**
  * @brief Allocates and sets a flow key protobuf.
  *
  * Uses the key info to fill a dynamically allocated
@@ -463,6 +941,7 @@ err_free_pb_tags:
 static Traffic__FlowKey *set_flow_key(struct flow_key *key)
 {
     Traffic__FlowKey *pb;
+    size_t i;
     bool ret;
 
     if (key == NULL) return NULL;
@@ -493,15 +972,33 @@ static Traffic__FlowKey *set_flow_key(struct flow_key *key)
     set_uint32((uint32_t)key->sport, &pb->tptsrcport, &pb->has_tptsrcport);
     set_uint32((uint32_t)key->dport, &pb->tptdstport, &pb->has_tptdstport);
 
-    if (key->num_tags == 0) return pb;
+    if (key->num_tags != 0)
+    {
+        /* Add the flow tags */
+        pb->flowtags = set_pb_flow_tags(key);
+        if (pb->flowtags == NULL) goto err_free_dstip;
 
-    /* Add the flow tags */
-    pb->flowtags = set_pb_flow_tags(key);
-    if (pb->flowtags == NULL) goto err_free_dstip;
+        pb->n_flowtags = key->num_tags;
+    }
 
-    pb->n_flowtags = key->num_tags;
+    if (key->num_vendor_data != 0)
+    {
+        pb->vendordata = set_pb_vendor_data(key);
+        if (pb->vendordata == NULL) goto err_free_flow_tags;
+
+        pb->n_vendordata = key->num_vendor_data;
+    }
+
+    pb->flowstate = set_pb_flowstate(&key->state);
 
     return pb;
+
+err_free_flow_tags:
+    for (i = 0; i < pb->n_flowtags; i++)
+    {
+        free_pb_flow_tags(pb->flowtags[i]);
+    }
+    free(pb->flowtags);
 
 err_free_dstip:
     free(pb->dstip);
@@ -545,6 +1042,15 @@ static void free_pb_flowkey(Traffic__FlowKey *pb)
         free_pb_flow_tags(pb->flowtags[i]);
     }
     free(pb->flowtags);
+
+    for (i = 0; i < pb->n_vendordata; i++)
+    {
+        free_pb_vendor_data(pb->vendordata[i]);
+    }
+    free(pb->vendordata);
+
+    free(pb->flowstate);
+
     free(pb);
 }
 
@@ -579,7 +1085,7 @@ struct packed_buffer * serialize_flow_key(struct flow_key *key)
 
     /* Get serialization length */
     len = traffic__flow_key__get_packed_size(pb);
-    if (len == 0) goto err_free_pb;;
+    if (len == 0) goto err_free_pb;
 
     /* Allocate space for the serialized buffer */
     buf = malloc(len);

@@ -29,6 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 
 #include "osn_types.h"
+#include "util.h"
 
 /*
  * ===========================================================================
@@ -72,7 +73,7 @@ bool osn_ip_addr_from_str(osn_ip_addr_t *out, const char *str)
 
     if (strlen(str) >= sizeof(buf)) return false;
 
-    strcpy(buf, str);
+    STRSCPY(buf, str);
 
     /* Split the string further by using the '.' separator (extract the prefix) */
     pbuf = buf;
@@ -129,6 +130,18 @@ int osn_ip_addr_to_prefix(osn_ip_addr_t *addr)
 }
 
 /*
+ * Compute netmask address from prefix. For example 16 -> 255.255.0.0
+ */
+osn_ip_addr_t osn_ip_addr_from_prefix(int prefix)
+{
+    osn_ip_addr_t out = OSN_IP_ADDR_INIT;
+
+    out.ia_addr.s_addr = htonl(~(0xFFFFFFFFu >> prefix));
+
+    return out;
+}
+
+/*
  * Calculate the subnet from an IP/mask pair. For example, 192.168.40.1/24 -> 192.168.40.0/24
  */
 osn_ip_addr_t osn_ip_addr_subnet(osn_ip_addr_t *addr)
@@ -142,19 +155,36 @@ osn_ip_addr_t osn_ip_addr_subnet(osn_ip_addr_t *addr)
     {
         mask = 0xFFFFFFFF;
     }
-    /* The formula below doesn't work for 0 as 1 << 32 undefined behavior (shift count greater than width type) */
-    else if (addr->ia_prefix == 0)
-    {
-        mask = 0x0;
-    }
     else
     {
-        mask = (uint32_t)0 - (1 << (32 - addr->ia_prefix));
+        mask = ~(0xFFFFFFFFu >> addr->ia_prefix);
     }
 
     subnet.ia_addr.s_addr = subnet.ia_addr.s_addr & htonl(mask);
 
     return subnet;
+}
+
+osn_ip_addr_t osn_ip_addr_to_bcast(osn_ip_addr_t *addr)
+{
+    uint32_t mask;
+
+    osn_ip_addr_t out = *addr;
+
+    /* If no prefix is present, assume it's /32 */
+    if (addr->ia_prefix < 0 || addr->ia_prefix > 31)
+    {
+        mask = 0x0;
+    }
+    else
+    {
+        mask = 0xFFFFFFFFu >> addr->ia_prefix;
+    }
+
+    out.ia_addr.s_addr = out.ia_addr.s_addr | htonl(mask);
+    out.ia_prefix = -1;
+
+    return out;
 }
 
 /*
@@ -216,7 +246,7 @@ bool osn_ip6_addr_from_str(osn_ip6_addr_t *out, const char *str)
 
     if (strlen(str) >= sizeof(buf)) return false;
 
-    strcpy(buf, str);
+    STRSCPY(buf, str);
 
     pbuf = buf;
 
@@ -324,7 +354,7 @@ bool osn_mac_addr_from_str(osn_mac_addr_t *mac, const char *str)
     int  cmak;
 
     if (strlen(str) >= sizeof(pstr)) return false;
-    strcpy(pstr, str);
+    STRSCPY(pstr, str);
 
     mstr = pstr;
     cmak = 0;

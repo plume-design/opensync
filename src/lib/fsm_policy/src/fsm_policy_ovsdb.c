@@ -76,7 +76,7 @@ void fsm_redirects_fqdn_to_ip(struct fsm_policy *p, int family)
     char *cptr;
     int clen;
     char *pfx;
-    int rc, idx, clen;
+    int rc, idx;
     bool loop;
 
     set = p->redirects;
@@ -102,8 +102,8 @@ void fsm_redirects_fqdn_to_ip(struct fsm_policy *p, int family)
 
     if (infoptr == NULL) return;
 
-    clen = strlen(pfx);
-    strncpy(host, pfx, clen);
+    STRSCPY(host, pfx);
+    clen = strlen(host);
     cptr = host + clen;
     getnameinfo(infoptr->ai_addr, infoptr->ai_addrlen, cptr,
                 sizeof(host) - clen, NULL, 0, NI_NUMERICHOST);
@@ -196,7 +196,6 @@ void fsm_policy_get_next(struct policy_table *table,
     max = FSM_MAX_POLICIES;
     fpolicy->lookup_next = max;
     idx = fpolicy->idx + 1;
-    looking = ((idx >= max) && (table->lookup_array[idx] != NULL));
     do {
         looking = ((idx < max) && (table->lookup_array[idx] != NULL));
         if (looking) idx++;
@@ -303,6 +302,12 @@ bool fsm_set_fqdn_rules(struct fsm_policy_rules *rules,
 
     cmp = strcmp(spolicy->fqdn_op, "sfl_out");
     if (!cmp) rules->fqdn_op = FQDN_OP_SFL_OUT;
+
+    cmp = strcmp(spolicy->fqdn_op, "wild_in");
+    if (!cmp) rules->fqdn_op = FQDN_OP_WILD_IN;
+
+    cmp = strcmp(spolicy->fqdn_op, "wild_out");
+    if (!cmp) rules->fqdn_op = FQDN_OP_WILD_OUT;
 
     if (rules->fqdn_op == -1) return false;
 
@@ -475,7 +480,7 @@ void fsm_policy_set_next(struct fsm_policy * fpolicy)
     fpolicy->next_table_index = pair->value;
     fpolicy->jump_table = true;
 
-    mgr = get_mgr();
+    mgr = fsm_policy_get_mgr();
     tree = &mgr->policy_tables;
     table = ds_tree_find(tree, pair->key);
     if (!table)
@@ -483,7 +488,7 @@ void fsm_policy_set_next(struct fsm_policy * fpolicy)
         table = calloc(1, sizeof(*table));
         if (table == NULL) return;
 
-        strncpy(table->name, pair->key, sizeof(table->name));
+        STRSCPY(table->name, pair->key);
         ds_tree_init(&table->policies, policy_id_cmp,
                      struct fsm_policy, policy_node);
         ds_tree_insert(tree, table, table->name);
@@ -510,6 +515,13 @@ void fsm_policy_set_action(struct fsm_policy *fpolicy,
     if (cmp == 0)
     {
         fpolicy->action = FSM_BLOCK;
+        return;
+    }
+
+    cmp = strcmp(spolicy->action, "update_tag");
+    if (cmp == 0)
+    {
+        fpolicy->action = FSM_UPDATE_TAG;
         return;
     }
 }
@@ -640,7 +652,7 @@ struct fsm_policy * fsm_policy_lookup(struct schema_FSM_Policy *spolicy)
     char *name;
     int idx;
 
-    mgr = get_mgr();
+    mgr = fsm_policy_get_mgr();
     name = spolicy->policy;
     tree = &mgr->policy_tables;
     table = ds_tree_find(tree, name);
@@ -663,7 +675,7 @@ struct fsm_policy * fsm_policy_get(struct schema_FSM_Policy *spolicy)
 
     int idx;
 
-    mgr = get_mgr();
+    mgr = fsm_policy_get_mgr();
     name = spolicy->policy;
     tree = &mgr->policy_tables;
     table = ds_tree_find(tree, name);
@@ -672,7 +684,7 @@ struct fsm_policy * fsm_policy_get(struct schema_FSM_Policy *spolicy)
         table = calloc(1, sizeof(*table));
         if (table == NULL) return NULL;
 
-        strncpy(table->name, name, sizeof(table->name));
+        STRSCPY(table->name, name);
         ds_tree_init(&table->policies, policy_id_cmp,
                      struct fsm_policy, policy_node);
         ds_tree_insert(tree, table, table->name);
@@ -711,7 +723,7 @@ void fsm_add_policy(struct schema_FSM_Policy *spolicy)
     }
 
     no_name = !spolicy->policy_exists;
-    if (no_name) strncpy(spolicy->policy, name, sizeof(spolicy->policy));
+    if (no_name) STRSCPY(spolicy->policy, name);
 
     fpolicy = fsm_policy_get(spolicy);
     if (fpolicy == NULL)
@@ -761,7 +773,7 @@ void fsm_delete_policy(struct schema_FSM_Policy *spolicy)
     bool no_name;
 
     no_name = !spolicy->policy_exists;
-    if (no_name) strncpy(spolicy->policy, name, sizeof(spolicy->policy));
+    if (no_name) STRSCPY(spolicy->policy, name);
     fpolicy = fsm_policy_lookup(spolicy);
     if (fpolicy ==  NULL) return;
 
@@ -822,7 +834,9 @@ void fsm_init_manager(void)
 {
     struct fsm_policy_session *mgr;
 
-    mgr = get_mgr();
+    mgr = fsm_policy_get_mgr();
+    if (mgr->initialized) return;
+
     LOGD("%s: initializing", __func__);
 
     ds_tree_init(&mgr->policy_tables, table_name_cmp,
@@ -835,7 +849,7 @@ void fsm_init_manager(void)
 
 void fsm_policy_init(void)
 {
-    struct fsm_policy_session *mgr = get_mgr();
+    struct fsm_policy_session *mgr = fsm_policy_get_mgr();
 
     if (mgr->initialized)
     {

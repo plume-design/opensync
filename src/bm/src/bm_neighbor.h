@@ -25,11 +25,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 /*
- * Band Steering Manager - Neighbors 
+ * Band Steering Manager - Neighbors
  */
 
-#ifndef __BM_NEIGHBORS_H__
-#define __BM_NEIGHBORS_H__
+#ifndef BM_NEIGHBOR_H_INCLUDED
+#define BM_NEIGHBOR_H_INCLUDED
 
 #ifndef OVSDB_UUID_LEN
 #define OVSDB_UUID_LEN      37
@@ -60,14 +60,21 @@ extern bool     bm_neighbor_cleanup( void );
 ds_tree_t       *bm_neighbor_get_tree( void );
 bm_neighbor_t   *bm_neighbor_find_by_uuid( const char *uuid );
 bm_neighbor_t   *bm_neighbor_find_by_macstr( char *mac_str );
-unsigned int    bm_neighbor_number(bm_client_t *client, bsal_band_t band);
+unsigned int    bm_neighbor_number(bm_client_t *client);
+
+bool bm_neighbor_get_self_btm_values(bsal_btm_params_t *btm_params, bm_client_t *client, bool bs_allowed);
+bool bm_neighbor_build_btm_neighbor_list(bm_client_t *client, bsal_btm_params_t *btm_params);
 
 uint8_t         bm_neighbor_get_op_class(uint8_t channel);
 uint8_t         bm_neighbor_get_phy_type(uint8_t channel);
 
-void bm_neighbor_set_all_to_pair(const bm_pair_t *pair);
-void bm_neighbor_remove_all_from_pair(const bm_pair_t *pair);
+void bm_neighbor_set_all_to_group(const bm_group_t *group);
+void bm_neighbor_remove_all_from_group(const bm_group_t *group);
 
-bool bm_neighbor_get_self_neighbor(const bm_pair_t *pair, bsal_band_t band, bsal_neigh_info_t *neigh);
+bool bm_neighbor_get_self_neighbor(const char *ifname, bsal_neigh_info_t *neigh);
+bool bm_neighbor_only_dfs_channels(bm_client_t *client);
 
-#endif /* __BM_NEIGHBORS_H__ */
+bool bm_neighbor_is_our_bssid(const bm_client_t *client, const unsigned char *bssid);
+int bm_neighbor_get_channels(bm_client_t *client, bm_client_rrm_req_type_t rrm_req_type, uint8_t *channels, int channels_size, int self_first);
+
+#endif /* BM_NEIGHBOR_H_INCLUDED */

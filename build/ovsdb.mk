@@ -61,16 +61,29 @@ endef
 
 define ovsdb_run_hooks_in_dir
 	$(NQ) " $(call color_install,hooks) ovsdb in $(call color_profile,$1)"
-	$(Q)for JSON in $$(find $1 -maxdepth 1 -name '*.json' $(Q_STDERR)); do \
-		echo "  ovsdb transact: $$JSON"; \
-		ovsdb-tool transact "$(ROOTFS_OVSDB_FILENAME)" "$$(cat $$JSON)" $(Q_STDOUT) ; \
-    done
-	$(Q)for SH in $$(find $1 -maxdepth 1 -name '*.json.sh' $(Q_STDERR)); do \
-		echo "  ovsdb transact: $$SH"; \
-		OUT=$$( $(OVSDB_HOOK_ENV) sh $$SH \
-			| xargs -0 ovsdb-tool transact "$(ROOTFS_OVSDB_FILENAME)" 2>&1); \
+	$(Q)for FIL in $$(find $1 -maxdepth 1 -name '*.json' -or -name '*.json.sh' -or -name '*.json.jinja' $(Q_STDERR) | sort); do \
+		echo "  ovsdb transact: $$FIL"; \
+		case $$FIL in \
+		*.json) \
+			TRAN=$$(cat $$FIL); \
+			RET=$$?; \
+			;; \
+		*.json.sh) \
+			[ -x $$FIL ] && CMD=./$$FIL || CMD="sh -e $$FIL"; \
+			TRAN=$$($(OVSDB_HOOK_ENV) $$CMD); \
+			RET=$$?; \
+			;; \
+		*.json.jinja) \
+			TRAN=$$(build/templates.py --process-ovsdb $$FIL); \
+			RET=$$?; \
+			;; \
+		esac; \
+		if [ -z "$$TRAN" -o $$RET != 0 ]; then \
+			echo "ERROR: $$FIL $$RET '$$TRAN'"; exit 1; \
+		fi; \
+		OUT=$$(ovsdb-tool transact "$(ROOTFS_OVSDB_FILENAME)" "$$TRAN" 2>&1); \
 		RET=$$?; \
-		echo "  $$RET '$$OUT'" $(Q_STDOUT); \
+		echo "  $$RET '$$OUT' $$TRAN" $(Q_STDOUT); \
 		if [ $$RET != 0 ]; then exit 1; fi; \
 		if echo "$$OUT" | grep -q error; then exit 1; fi; \
 	done

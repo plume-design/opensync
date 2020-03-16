@@ -35,7 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ds.h"
 #include "ds_dlist.h"
 #include "log.h"
-#include "plume_stats.pb-c.h"
+#include "opensync_stats.pb-c.h"
 
 #include "dpp_client.h"
 #include "dpp_survey.h"
@@ -1305,12 +1305,8 @@ static void dppline_add_stat_device(Sts__Report *r, dppline_stats_t *s)
             assert(sr->ps_cpu_util[i]);
             size += sizeof(**sr->ps_cpu_util);
             sts__device__per_process_util__init(sr->ps_cpu_util[i]);
-
             sr->ps_cpu_util[i]->pid = device->record.top_cpu[i].pid;
-
-            device->record.top_cpu[i].cmd[sizeof(device->record.top_cpu[i].cmd)-1] = '\0';
-            sr->ps_cpu_util[i]->cmd = malloc(sizeof(device->record.top_cpu[i].cmd));
-            strcpy(sr->ps_cpu_util[i]->cmd, device->record.top_cpu[i].cmd);
+            sr->ps_cpu_util[i]->cmd = strdup(device->record.top_cpu[i].cmd);
             sr->ps_cpu_util[i]->util = device->record.top_cpu[i].util;
         }
     }
@@ -1328,12 +1324,8 @@ static void dppline_add_stat_device(Sts__Report *r, dppline_stats_t *s)
             assert(sr->ps_mem_util[i]);
             size += sizeof(**sr->ps_mem_util);
             sts__device__per_process_util__init(sr->ps_mem_util[i]);
-
             sr->ps_mem_util[i]->pid = device->record.top_mem[i].pid;
-
-            device->record.top_mem[i].cmd[sizeof(device->record.top_mem[i].cmd)-1] = '\0';
-            sr->ps_mem_util[i]->cmd = malloc(sizeof(device->record.top_mem[i].cmd));
-            strcpy(sr->ps_mem_util[i]->cmd, device->record.top_mem[i].cmd);
+            sr->ps_mem_util[i]->cmd = strdup(device->record.top_mem[i].cmd);
             sr->ps_mem_util[i]->util = device->record.top_mem[i].util;
         }
     }
@@ -1498,7 +1490,7 @@ static void dppline_add_stat_bs_client(Sts__Report * r, dppline_stats_t * s)
 
     dppline_bs_client_stats_t *bs_client = &s->u.bs_client;
 
-    uint32_t client, band, event;
+    uint32_t client, band, event, band_report;
 
     if (0 == bs_client->qty) {
         // if stats contain no clients omit sending an empty report
@@ -1555,22 +1547,34 @@ static void dppline_add_stat_bs_client(Sts__Report * r, dppline_stats_t * s)
 
         // alloc band list
         //printf("--- encode: %s\n", cr->mac_address);
-        cr->bs_band_report = calloc(c_rec->num_band_records, sizeof(*cr->bs_band_report));
-        assert(cr->bs_band_report);
-        cr->n_bs_band_report = c_rec->num_band_records;
-
-        // For each band per client
+        /* Calc bands we should alloc */
+        cr->n_bs_band_report = 0;
         for (band = 0; band < c_rec->num_band_records; band++)
         {
             dpp_bs_client_band_record_t *b_rec = &c_rec->band_record[band];
 
             if (b_rec->type == RADIO_TYPE_NONE) {
-                LOGW("%s: RADIO_TYPE_NONE", __func__);
+                continue;
+            }
+
+            cr->n_bs_band_report++;
+        }
+
+        cr->bs_band_report = calloc(cr->n_bs_band_report, sizeof(*cr->bs_band_report));
+        assert(cr->bs_band_report);
+
+        // For each band per client
+        for (band = 0, band_report = 0; band < c_rec->num_band_records; band++)
+        {
+            dpp_bs_client_band_record_t *b_rec = &c_rec->band_record[band];
+
+            if (b_rec->type == RADIO_TYPE_NONE) {
                 continue;
             }
 
             // Allocate memory for the band report
-            br = cr->bs_band_report[band] = malloc(sizeof(Sts__BSClient__BSBandReport));
+            br = cr->bs_band_report[band_report] = malloc(sizeof(Sts__BSClient__BSBandReport));
+            band_report++;
             assert(br);
             sts__bsclient__bsband_report__init(br);
 
@@ -1606,6 +1610,8 @@ static void dppline_add_stat_bs_client(Sts__Report * r, dppline_stats_t * s)
 
             br->probe_bcast_cnt = b_rec->probe_bcast_cnt;
             br->has_probe_bcast_cnt = true;
+
+            br->ifname = strdup(b_rec->ifname);
 
             // alloc event list
             br->event_list = calloc(b_rec->num_event_records, sizeof(*br->event_list));
@@ -1708,6 +1714,15 @@ static void dppline_add_stat_bs_client(Sts__Report * r, dppline_stats_t * s)
 
                 er->rrm_caps_ftm_range_rpt = e_rec->rrm_caps_ftm_range_rpt;
                 er->has_rrm_caps_ftm_range_rpt = true;
+
+                if (e_rec->assoc_ies_len) {
+                    er->assoc_ies.data = malloc(e_rec->assoc_ies_len);
+                    if (er->assoc_ies.data) {
+                        memcpy(er->assoc_ies.data, e_rec->assoc_ies, e_rec->assoc_ies_len);
+                        er->assoc_ies.len = e_rec->assoc_ies_len;
+                        er->has_assoc_ies = true;
+                    }
+                }
             }
         }
     }

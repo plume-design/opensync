@@ -27,6 +27,8 @@
 # Statistics Manager
 #
 ###############################################################################
+UNIT_DISABLE := $(if $(CONFIG_MANAGER_SM),n,y)
+
 UNIT_NAME    := sm
 
 # Template type:
@@ -43,7 +45,7 @@ UNIT_SRC     += src/sm_scan_schedule.c
 UNIT_SRC     += src/sm_rssi_report.c
 UNIT_SRC     += src/sm_common.c
 
-ifeq ($(BUILD_CAPACITY_QUEUE_STATS),y)
+ifeq ($(CONFIG_SM_CAPACITY_QUEUE_STATS),y)
 UNIT_SRC     += src/sm_capacity_report.c
 endif
 
@@ -58,11 +60,9 @@ UNIT_DEPS    := src/lib/ovsdb
 UNIT_DEPS    += src/lib/pjs
 UNIT_DEPS    += src/lib/schema
 UNIT_DEPS    += src/lib/datapipeline
-UNIT_DEPS    += src/lib/version
 UNIT_DEPS    += src/lib/target
-UNIT_DEPS    += src/lib/evsched
 
-ifeq ($(BUILD_QM),y)
+ifeq ($(CONFIG_MANAGER_QM),y)
 UNIT_SRC     += src/sm_qm.c
 UNIT_DEPS    += src/qm/qm_conn
 else

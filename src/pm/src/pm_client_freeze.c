@@ -52,7 +52,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "target.h"
 
-// Defines
+// defines
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
 // OVSDB constants
@@ -72,9 +72,8 @@ pm_client_freeze_update(struct schema_Client_Freeze_Config *cfcfg, bool status)
     json_t             *where, *row;
     bool                ret;
 
-    /* Skip deleting the empty entries at startup */
-    if(!g_client_freeze_init && (strlen(cfcfg->mac) == 0))
-    {
+    // skip deleting the empty entries at startup
+    if(!g_client_freeze_init && (strlen(cfcfg->mac) == 0)) {
         return true;
     }
 
@@ -84,8 +83,7 @@ pm_client_freeze_update(struct schema_Client_Freeze_Config *cfcfg, bool status)
         where = ovsdb_tran_cond(OCLM_STR, "mac", OFUNC_EQ, str_tolower(cfcfg->mac));
         ret = ovsdb_sync_delete_where(OVSDB_MAC_TABLE, where);
         if (!ret) {
-            LOGE("Updating client %s freeze (Failed to remove entry)",
-                cfcfg->mac);
+            LOGE("Updating client %s freeze (Failed to remove entry)", cfcfg->mac);
             return false;
         }
         LOGN("Removed client '%s' freeze", cfcfg->mac);
@@ -96,8 +94,7 @@ pm_client_freeze_update(struct schema_Client_Freeze_Config *cfcfg, bool status)
         row   = schema_Client_Freeze_Config_to_json(cfcfg, perr);
         ret = ovsdb_sync_upsert_where(OVSDB_MAC_TABLE, where, row, NULL);
         if (!ret) {
-            LOGE("Updating client freeze %s (Failed to insert entry)",
-                cfcfg->mac);
+            LOGE("Updating client freeze %s (Failed to insert entry)", cfcfg->mac);
             return false;
         }
         LOGN("Updated client '%s' freeze '%s'",
@@ -125,7 +122,8 @@ callback_Client_Freeze_Config(
         cfcfg->blocked = false;
         target_client_freeze_set(cfcfg);
     }
-    else { /* MOFIFY AND NEW */
+    else {
+        // modify and new
         target_client_freeze_set(cfcfg);
     }
 }
@@ -140,12 +138,12 @@ pm_client_freeze_init(void)
 
     OVSDB_TABLE_INIT(Client_Freeze_Config, mac);
 
-    /* Register to client freeze changed ... */
+    // register to client freeze changed
     ret = target_client_freeze_register(pm_client_freeze_update);
     if (false == ret) {
         return false;
     }
-    // Initialize OVSDB monitor callback
+    // initialize OVSDB monitor callback
     OVSDB_CACHE_MONITOR(Client_Freeze_Config, false);
 
     g_client_freeze_init = true;

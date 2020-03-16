@@ -182,7 +182,7 @@ bool ovsmac_init(void)
     for (ii=0; brlist[ii]; ii++)
     {
         bf = calloc(1, sizeof(struct bridge_flt_node));
-        strcpy(bf->bridge, brlist[ii]);
+        STRSCPY(bf->bridge, brlist[ii]);
         ds_tree_insert(&bridge_flt_list, bf, bf->bridge);
         LOG(INFO, "OVSMAC: * %s (bridge)", brlist[ii]);
     }
@@ -191,7 +191,7 @@ bool ovsmac_init(void)
     for (ii=0; iflist[ii]; ii++)
     {
         iff = calloc(1, sizeof(struct iface_flt_node));
-        strcpy(iff->if_iface, iflist[ii]);
+        STRSCPY(iff->if_iface, iflist[ii]);
         ds_tree_insert(&iface_flt_list, iff, iff->if_iface);
         LOG(INFO, "OVSMAC: * %s (interface)", iflist[ii]);
     }

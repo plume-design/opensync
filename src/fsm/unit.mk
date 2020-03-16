@@ -27,7 +27,7 @@
 # Flow Service Manager
 #
 ##############################################################################
-UNIT_DISABLE := $(if $(CONFIG_TARGET_MANAGER_FSM),n,y)
+UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM),n,y)
 
 UNIT_NAME := fsm
 
@@ -37,21 +37,21 @@ UNIT_SRC += src/fsm_ovsdb.c
 UNIT_SRC += src/fsm_pcap.c
 UNIT_SRC += src/fsm_event.c
 UNIT_SRC += src/fsm_service.c
+UNIT_SRC += src/fsm_dpi.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
+UNIT_CFLAGS += -Isrc/lib/imc/inc
 
 UNIT_LDFLAGS := -lev -ljansson -lpcap -lmnl
 
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
 UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 
-UNIT_DEPS += src/lib/ds
+UNIT_DEPS := src/lib/ds
 UNIT_DEPS += src/lib/common
-UNIT_DEPS := src/lib/ovsdb
+UNIT_DEPS += src/lib/ovsdb
 UNIT_DEPS += src/lib/pjs
 UNIT_DEPS += src/lib/schema
-UNIT_DEPS += src/lib/version
-UNIT_DEPS += src/lib/evsched
 UNIT_DEPS += src/lib/datapipeline
 UNIT_DEPS += src/lib/json_util
 UNIT_DEPS += src/lib/policy_tags

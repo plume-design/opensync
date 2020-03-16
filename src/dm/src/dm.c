@@ -44,6 +44,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "target.h"
 
 #include "dm.h"
+#include "module.h"
 
 /*****************************************************************************/
 
@@ -92,8 +93,8 @@ int main (int argc, char ** argv)
     struct ev_loop *loop;
 
     // Parse command-line arguments
-    if (os_get_opt(argc, argv, &dm_log_severity)){
-        return -1;
+    if (dm_cli(argc, argv, &dm_log_severity) == DM_CLI_DONE) {
+        return 0;
     }
 
     /* Log all errors, warnings, etc. */
@@ -148,8 +149,15 @@ int main (int argc, char ** argv)
 
     dm_apply_cfg();
 
+    /* Start all modules */
+    LOG(NOTICE, "Initializing modules...");
+    module_init();
+
     /* start main loop and wait for event to come */
     ev_run(loop, 0);
+
+    /* Stop all modules */
+    module_fini();
 
     dm_hook_close(loop);
 

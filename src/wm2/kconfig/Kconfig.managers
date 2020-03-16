@@ -1,0 +1,12 @@
+menuconfig MANAGER_WM
+    bool "Wireless Manager (WM)"
+    default y
+    help
+        Enable Wireless Manager (WM)
+
+    config MANAGER_WM_CFG
+        depends on MANAGER_WM
+        string "WM Startup configuration"
+        default "wm;true;needs_plan_b=true"
+        help
+            Wireless Manager startup configuration

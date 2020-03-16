@@ -28,15 +28,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * Band Steering Manager - Event Handling
  */
 
-#ifndef __BM_EVENTS_H__
-#define __BM_EVENTS_H__
+#ifndef BM_EVENTS_H_INCLUDED
+#define BM_EVENTS_H_INCLUDED
 
 #define                 BM_CB_QUEUE_MAX     256
 
 extern bool             bm_events_init(struct ev_loop *loop);
 extern bool             bm_events_cleanup(void);
 
-extern bool             bm_events_client_cap_changed(bm_client_t *client, bsal_event_t *event);
-extern void             bm_events_record_client_cap(bm_client_t *client, bsal_event_t *event);
+void bm_event_action_frame(const char *ifname, const uint8_t *data, unsigned int data_len);
 
-#endif /* __BM_EVENTS_H__ */
+#endif /* BM_EVENTS_H_INCLUDED */

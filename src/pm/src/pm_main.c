@@ -24,28 +24,18 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include <stdarg.h>
 #include <stdlib.h>
-#include <stdbool.h>
 #include <stdio.h>
-#include <netinet/in.h>
-#include <unistd.h>
-#include <string.h>
-#include <errno.h>
-#include <jansson.h>
-#include <ev.h>
-#include <syslog.h>
-#include <getopt.h>
+#include <stdint.h>
+#include <stdbool.h>
 
-#include "ds_tree.h"
-#include "evsched.h"
 #include "log.h"
-#include "os.h"
-#include "os_socket.h"
 #include "ovsdb.h"
-#include "evext.h"
-#include "os_backtrace.h"
+#include "schema.h"
+#include "ovsdb_table.h"
 #include "json_util.h"
+
+#include "osp.h"
 #include "pm.h"
 #include "target.h"
 
@@ -61,68 +51,105 @@ static log_severity_t pm_log_severity = LOG_SEVERITY_INFO;
  *  PROTECTED definitions
  *****************************************************************************/
 
+static bool pm_init(void)
+{
+#if CONFIG_PM_ENABLE_CLIENT_FREEZE
+    if (!pm_client_freeze_init())
+    {
+        return false;
+    }
+#endif
+
+#if CONFIG_PM_ENABLE_CLIENT_NICKNAME
+    if (!pm_client_nickname_init())
+    {
+        return false;
+    }
+#endif
+
+#if CONFIG_PM_ENABLE_LED
+    if (!pm_led_init())
+    {
+        return false;
+    }
+#endif
+
+#if CONFIG_PM_ENABLE_TM
+    if (!pm_tm_init())
+    {
+        return false;
+    }
+#endif
+
+#if CONFIG_PM_ENABLE_LM
+    if (!pm_lm_init())
+    {
+        return false;
+    }
+#endif
+
+    return true;
+}
+
+static bool pm_deinit(struct ev_loop *loop)
+{
+#if CONFIG_PM_ENABLE_TM
+    pm_tm_deinit();
+#endif
+
+    ovsdb_stop_loop(loop);
+    target_close(TARGET_INIT_MGR_PM, loop);
+    ev_default_destroy();
+
+    LOGN("Exiting PM");
+
+    return true;
+}
+
 /******************************************************************************
  *  PUBLIC API definitions
  *****************************************************************************/
 
-int main(int argc, char ** argv)
+int main(int argc, char *argv[])
 {
     struct ev_loop *loop = EV_DEFAULT;
 
     // Parse command-line arguments
-    if (os_get_opt(argc, argv, &pm_log_severity)){
+    if (os_get_opt(argc, argv, &pm_log_severity))
+    {
         return -1;
     }
 
-    // enable logging
+    // Initialize logging library
     target_log_open("PM", 0);
-    LOGN("Starting platform manager - PM");
+    LOGN("Starting Platform manager - PM");
     log_severity_set(pm_log_severity);
     log_register_dynamic_severity(loop);
 
     backtrace_init();
-
     json_memdbg_init(loop);
 
-    if (evsched_init(loop) == false) {
-        LOGE("Initializing PM "
-             "(Failed to initialize EVSCHED)");
+    if (!target_init(TARGET_INIT_MGR_PM, loop))
+    {
         return -1;
     }
 
-    if (!target_init(TARGET_INIT_MGR_PM, loop)) {
+    // Connect to OVSDB
+    if (!ovsdb_init_loop(loop, "PM"))
+    {
+        LOGEM("Initializing PM (Failed to initialize OVSDB)");
         return -1;
     }
 
-    // Connect to ovsdb
-    if (!ovsdb_init_loop(loop, "PM")) {
-        LOGEM("Initializing PM "
-              "(Failed to initialize OVSDB)");
+    if (!pm_init())
+    {
+        LOGEM("Initializing PM (Failed to initialize)");
         return -1;
     }
-
-#ifdef USE_CLIENT_NICKNAME
-    pm_client_nickname_init();
-#endif /* USE_CLIENT_NICKNAME */
-
-#ifdef USE_CLIENT_FREEZE
-    pm_client_freeze_init();
-#endif /* USE_CLIENT_FREEZE */
 
     ev_run(loop, 0);
 
-// exit:
-
-    target_close(TARGET_INIT_MGR_PM, loop);
-
-    if (!ovsdb_stop_loop(loop)) {
-        LOGE("Stopping PM "
-             "(Failed to stop OVSDB");
-    }
-
-    ev_default_destroy();
-
-    LOGN("Exiting PM");
+    pm_deinit(loop);
 
     return 0;
 }

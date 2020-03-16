@@ -27,8 +27,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /*
  * evlib.h extended types
  */
-#ifndef __EVEXT__H__
-#define __EVEXT__H__
+#ifndef EVEXT_H_INCLUDED
+#define EVEXT_H_INCLUDED
 
 typedef struct
 {
@@ -69,5 +69,4 @@ typedef struct
                                 erpc->w = X;                \
                                 erpc->udata = Y             \
 
-#endif /*  _EVEXT__H__ */
-
+#endif /*  EVEXT_H_INCLUDED */

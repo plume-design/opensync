@@ -29,6 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <ev.h>
 #include <pcap.h>
+#include <sys/sysinfo.h>
 #include <time.h>
 
 #include "ds_tree.h"
@@ -156,7 +157,10 @@ enum {
     FSM_PARSER = 0,
     FSM_WEB_CAT,
     FSM_DPI,
+    FSM_DPI_DISPATCH,
+    FSM_DPI_PLUGIN,
 };
+
 
 struct fsm_type
 {
@@ -170,14 +174,57 @@ enum {
 };
 
 
+enum fsm_dpi_state
+{
+    FSM_DPI_CLEAR    = 0,
+    FSM_DPI_INSPECT  = 1,
+    FSM_DPI_PASSTHRU = 2,
+    FSM_DPI_DROP     = 3,
+};
+
 /**
- * @brief sets the session type based on the ovsdb values
- *
- * @param the ovsdb configuration
- * @return an integer representing the type of service
+ * @brief dpi dispatcher specifics
  */
-int
-fsm_service_type(struct schema_Flow_Service_Manager_Config *conf);
+struct fsm_dpi_dispatcher
+{
+    struct net_header_parser net_parser;
+    struct net_md_aggregator *aggr;
+    struct fsm_session *session;
+    ds_tree_t plugin_sessions;
+    time_t periodic_ts;
+};
+
+
+/**
+ * @brief dpi plugin specifics
+ */
+struct fsm_dpi_plugin
+{
+    struct fsm_session *session;
+    char *targets;
+    bool bound;
+    ds_tree_node_t dpi_node;
+};
+
+/**
+ * @brief dpi plugin specifics
+ */
+union fsm_dpi_context
+{
+    struct fsm_dpi_dispatcher dispatch;
+    struct fsm_dpi_plugin plugin;
+};
+
+
+/**
+ * @brief per flow dpi plugin specifics
+ */
+struct fsm_dpi_flow_info
+{
+    struct fsm_session *session;
+    int decision;
+    ds_tree_node_t dpi_node;
+};
 
 
 /**
@@ -207,6 +254,7 @@ struct fsm_session
     ds_tree_node_t fsm_node;         /* Seesion manager node handle */
     char bridge[64];                 /* underlying bridge name */
     char tx_intf[64];                /* plugin's TX interface */
+    union fsm_dpi_context *dpi;      /* fsm dpi context */
 };
 
 
@@ -225,9 +273,13 @@ struct fsm_mgr
     ev_timer timer;           /* manager's event timer */
     time_t periodic_ts;       /* manager's periodic timestamp */
     char pid[16];             /* manager's pid */
+    struct sysinfo sysinfo;   /* system information */
+    uint64_t max_mem;         /* max amount of memory allowed in MB */
     bool (*init_plugin)(struct fsm_session *); /* DSO plugin init */
     bool (*flood_mod)(struct fsm_session *);   /* tap flood mode update */
     int (*get_br)(char *if_name, char *bridge, size_t len); /* get lan bridge */
+    int (*set_dpi_state)(struct net_header_parser *net_hdr,
+                         enum fsm_dpi_state state);
 };
 
 
@@ -237,8 +289,10 @@ struct fsm_mgr
 struct mem_usage
 {
     int curr_real_mem;
+    char curr_real_mem_unit[8];
     int peak_real_mem;
     int curr_virt_mem;
+    char curr_virt_mem_unit[8];
     int peak_virt_mem;
 };
 
@@ -433,6 +487,7 @@ fsm_dup_web_cat_session(struct fsm_session *session);
 bool
 fsm_get_web_cat_service(struct fsm_session *session);
 
+
 /**
  * @brief associate a web cat session to parser sessions
  *
@@ -441,5 +496,187 @@ fsm_get_web_cat_service(struct fsm_session *session);
  */
 void
 fsm_web_cat_service_update(struct fsm_session *session, int op);
+
+/**
+ * @brief sets the session type based on the ovsdb values
+ *
+ * @param the ovsdb configuration
+ * @return an integer representing the type of service
+ */
+int
+fsm_service_type(struct schema_Flow_Service_Manager_Config *conf);
+
+/**
+ * @brief check if a fsm session is a dpi session
+ *
+ * @param session the session to check
+ * @return true is the session is either a dpi dispatcher of a dpi plugin,
+ *         false otherwise.
+ */
+bool
+fsm_is_dpi(struct fsm_session *session);
+
+
+/**
+ * @brief initializes the dpi resources of a dispatcher session
+ *
+ * @param session the dispatcher session
+ * @return true if the initialization succeeeded, false otherwise
+ */
+bool
+fsm_init_dpi_dispatcher(struct fsm_session *session);
+
+
+/**
+ * @brief free the dpi resources of a dispatcher plugin
+ *
+ * @param session the session to free
+ */
+void
+fsm_free_dpi_dispatcher(struct fsm_session *session);
+
+
+/**
+ * @brief binds existing dpi plugins to to a dispatcher session
+ *
+ * Upon the creation of a dpi dispatcher plugin, walk through
+ * the existing plugins and bind the relevant dpi plugins
+ * @param session the dispatcher plugin session
+ */
+void
+fsm_dpi_bind_plugins(struct fsm_session *session);
+
+
+/**
+ * @brief initiates a dpi plugin session
+ *
+ * @param session a dpi plugin session to initialize
+ * @return true if the initialization succeeded, false otherwise
+ */
+bool
+fsm_init_dpi_plugin(struct fsm_session *session);
+
+
+/**
+ * @brief free the dpi resources of a dpi plugin
+ *
+ * @param session the session to free
+ */
+void
+fsm_free_dpi_plugin(struct fsm_session *session);
+
+
+/**
+ * @brief initializes the dpi reources of a dpi session
+ *
+ * Calls either the dispatcher or the dpi init plugin routine for the session
+ * based on its type
+ * @param session the session to initialize
+ * @return true if the initialization succeeded, false otherwise
+ */
+bool
+fsm_init_dpi_context(struct fsm_session *session);
+
+
+/**
+ * @brief Add a dpi plugin to a dispatcher session
+ *
+ * @param session a dpi plugin session to add to its dispatcher
+ * @return true if the addition succeeded, false otherwise
+ */
+bool
+fsm_dpi_add_plugin_to_dispatcher(struct fsm_session *session);
+
+
+/**
+ * @brief released the dpi reources of a dpi session
+ *
+ * Calls either the dispatcher or the dpi plugin release routine for the session
+ * based on its type
+ * @param session the session to release
+ */
+void
+fsm_free_dpi_context(struct fsm_session *session);
+
+
+/**
+ * @brief sets up a dispatcher plugin's function pointers
+ *
+ * Populates the dispatcher with the various function pointers
+ * (packet handler, periodic routine)
+ * @param session the dpi dispatcher session
+ * @return 0 if successful.
+ */
+int
+fsm_dispatch_set_ops(struct fsm_session *session);
+
+
+/**
+ * @brief retrieve the fsm dispatcher session for the given dpi plugin
+ *
+ * Looks up the dispatcher session as named in the other_config table.
+ * @param session the dpi plugin session
+ * @return the dispatcher session
+ */
+struct fsm_session *
+fsm_dpi_find_dispatcher(struct fsm_session *session);
+
+
+void
+fsm_dpi_alloc_flow_context(struct fsm_session *session,
+                           struct net_md_stats_accumulator *acc);
+
+
+struct net_md_stats_accumulator *
+fsm_net_parser_to_acc(struct net_header_parser *net_parser,
+                      struct net_md_aggregator *aggr);
+
+
+/**
+ * @brief routine periodically called
+ *
+ * Periodically walks the ggregator and removes the outdated flows
+ * @param session the dpi dispatcher session
+ */
+void
+fsm_dpi_periodic(struct fsm_session *session);
+
+
+/**
+ * @brief mark the flow for report
+ *
+ * @param session the dpi plugin session marking the flow
+ * @param acc the accumulator to mark for report
+ */
+void
+fsm_dpi_mark_for_report(struct fsm_session *session,
+                        struct net_md_stats_accumulator *acc);
+
+
+/**
+ * @brief sets the session type based on the ovsdb values
+ *
+ * @param session the fsm session
+ * @return true if the plugin is bound to tap interface
+ */
+static inline bool
+fsm_plugin_has_intf(struct fsm_session *session)
+{
+    if (session->type == FSM_WEB_CAT) return false;
+    if (session->type == FSM_DPI_PLUGIN) return false;
+
+    return true;
+}
+
+/**
+ * @brief sets/update the Node_State ovsdb table with max mem usage
+ *
+ * Advertizes in Node_State the max amount of memory FSM is allowed to use
+ * @param module the Node_State module name
+ * @param key the Node_State key
+ * @param key the Node_State value
+ */
+void
+fsm_set_node_state(const char *module, const char *key, const char *value);
 
 #endif /* FSM_H_INCLUDED */

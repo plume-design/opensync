@@ -53,8 +53,8 @@ UNIT_DEPS += src/lib/schema
 UNIT_DEPS += src/lib/osn
 UNIT_DEPS += src/lib/synclist
 UNIT_DEPS += src/lib/log
+UNIT_DEPS_CFLAGS += src/lib/version
 
-ifdef CONFIG_USE_KCONFIG
 #
 # Kconfig based configuration
 #
@@ -75,25 +75,5 @@ $(eval $(if $(CONFIG_INET_DHSNIFF_NULL),    UNIT_SRC += src/null/inet_dhsnif_nul
 $(eval $(if $(CONFIG_INET_DHSNIFF_PCAP),    UNIT_SRC += src/linux/inet_dhsnif_pcap.c))
 
 $(eval $(if $(CONFIG_INET_DHSNIFF_PCAP),    UNIT_LDFLAGS += -lpcap))
-else
-#
-# Legacy "configuration"
-#
-
-# Use GRETAP as default GRE provider
-#UNIT_CFLAGS += -DCONFIG_INET_GRE_USE_GRETAP
-
-UNIT_SRC += src/linux/inet_gretap.c
-UNIT_SRC += src/linux/inet_vlan.c
-
-UNIT_SRC += src/linux/inet_fw_iptables.c
-UNIT_SRC += src/linux/inet_igmp_snooping.c
-UNIT_SRC += src/linux/inet_dns_resolv.c
-
-# Let it soak on kconfig-enabled platforms before we enable this for "default" platforms
-UNIT_SRC += src/linux/inet_dhsnif_pcap.c
-#UNIT_SRC += src/null/inet_dhsnif_null.c
-UNIT_LDFLAGS += -lpcap
-endif
 
 UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)

@@ -24,8 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __HAVE_DPP_CLIENT_H__
-#define __HAVE_DPP_CLIENT_H__
+#ifndef DPP_CLIENT_H_INCLUDED
+#define DPP_CLIENT_H_INCLUDED
 
 #include "ds.h"
 #include "ds_dlist.h"
@@ -246,4 +246,4 @@ typedef struct
     ds_dlist_t                      list;       /* dpp_client_record_t */
 } dpp_client_report_data_t;
 
-#endif /* __HAVE_DPP_CLIENT_H__ */
+#endif /* DPP_CLIENT_H_INCLUDED */

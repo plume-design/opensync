@@ -142,7 +142,7 @@ upnp_scan_data(struct conn_info *conn)
                                        MXML_OPAQUE_CALLBACK);
     struct upnp_report to_report = { 0 };
     char *report = NULL;
-    size_t len, i;
+    size_t i;
 
     if (tree == NULL)
     {
@@ -178,10 +178,7 @@ upnp_scan_data(struct conn_info *conn)
 
         LOGT("%s: key %s, value %s", __func__,
              elements[i].key, temp);
-        len = (strlen(temp) < elements[i].val_max_len ?
-            strlen(temp) : elements[i].val_max_len - 1);
-        strncpy(elements[i].value, temp, len);
-        elements[i].value[len] = '\0';
+        strscpy(elements[i].value, temp, elements[i].val_max_len);
     }
 
     for (i = 0; i < NUM_OF_ELEMENTS; i++)

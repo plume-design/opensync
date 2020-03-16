@@ -303,7 +303,7 @@ void ovsdb_cache_update_cb(ovsdb_update_monitor_t *self)
                     table->table_name, typestr, mon_uuid);
                 return;
             }
-            if (table->cache_callback) table->cache_callback(self, old_record, row->record, row);
+            // remove row from the list
             ds_tree_remove(&table->rows, row);
             if (table->key_offset >= 0)
             {
@@ -313,6 +313,9 @@ void ovsdb_cache_update_cb(ovsdb_update_monitor_t *self)
             {
                 ds_tree_remove(&table->rows_k2, row);
             }
+            // callback
+            if (table->cache_callback) table->cache_callback(self, old_record, row->record, row);
+            // free row
             free(row);
             return;
 
@@ -436,8 +439,8 @@ int ovsdb_cache_upsert(ovsdb_table_t *table, void *record)
     if (row)
     {
         // copy uuid and version for compare
-        strcpy(rec + table->uuid_offset,    row->record + table->uuid_offset);
-        strcpy(rec + table->version_offset, row->record + table->version_offset);
+        strscpy(rec + table->uuid_offset,    row->record + table->uuid_offset, sizeof(ovs_uuid_t));
+        strscpy(rec + table->version_offset, row->record + table->version_offset, sizeof(ovs_uuid_t));
         if (memcmp(rec, row->record, table->schema_size) == 0)
         {
             LOG(INFO, "upsert %s %s: no change", table->table_name, key);
@@ -473,7 +476,7 @@ int ovsdb_cache_upsert(ovsdb_table_t *table, void *record)
         // add new
         ovsdb_cache_row_t *new_row;
         new_row = calloc(1, table->row_size);
-        strcpy(record + table->uuid_offset, uuid.uuid);
+        strscpy(record + table->uuid_offset, uuid.uuid, sizeof(ovs_uuid_t));
         memcpy(new_row->record, record, table->schema_size);
         LOG(INFO, "upsert %s %s: uuid: %s", table->table_name, key, uuid.uuid);
         _ovsdb_cache_insert_row(table, new_row);
@@ -489,7 +492,7 @@ int ovsdb_cache_upsert_get_uuid(ovsdb_table_t *table, void *record, ovs_uuid_t *
     if (ret) return ret;
     if (uuid)
     {
-        strcpy(uuid->uuid, rec + table->uuid_offset);
+        STRSCPY(uuid->uuid, rec + table->uuid_offset);
     }
     return ret;
 }

@@ -93,52 +93,63 @@ static void print_md_acc_key(struct net_md_stats_accumulator *md_acc)
  */
 static
 void net_md_print_net_md_flow_key_and_flow_key(struct net_md_flow_key *key,
-                                          struct flow_key *fkey)
+                                               struct flow_key *fkey)
 {
     char src_ip[INET6_ADDRSTRLEN] = {0};
     char dst_ip[INET6_ADDRSTRLEN] = {0};
+    struct flow_tags *ftag;
+    os_macaddr_t null_mac;
+    os_macaddr_t *smac;
+    os_macaddr_t *dmac;
+
+    size_t i, j;
+
+    memset(&null_mac, 0, sizeof(null_mac));
 
     if (key != NULL)
     {
         inet_ntop(AF_INET, key->src_ip, src_ip, INET6_ADDRSTRLEN);
         inet_ntop(AF_INET, key->dst_ip, dst_ip, INET6_ADDRSTRLEN);
 
+        smac = (key->smac != NULL ? key->smac : &null_mac);
+        dmac = (key->dmac != NULL ? key->dmac : &null_mac);
+
         LOGD("%s: Printing key => net_md_flow_key :: fkey => flow_key",
              __func__);
         LOGD("------------");
         LOGD(" smac:" PRI_os_macaddr_lower_t \
              " dmac:" PRI_os_macaddr_lower_t \
-             " vlanid: %d" \
-             " ethertype: %d" \
-             " ip_version: %d" \
-             " src_ip: %s" \
-             " dst_ip: %s" \
-             " ipprotocol: %d" \
-             " sport: %d" \
+             " vlanid: %d"                   \
+             " ethertype: %d"                \
+             " ip_version: %d"               \
+             " src_ip: %s"                   \
+             " dst_ip: %s"                   \
+             " ipprotocol: %d"               \
+             " sport: %d"                    \
              " dport: %d",
-            FMT_os_macaddr_t(*(key->smac)),
-            FMT_os_macaddr_t(*(key->dmac)),
-            key->vlan_id,
-            key->ethertype,
-            key->ip_version,
-            src_ip,
-            dst_ip,
-            key->ipprotocol,
-            ntohs(key->sport),
-            ntohs(key->dport));
+             FMT_os_macaddr_pt(smac),
+             FMT_os_macaddr_pt(dmac),
+             key->vlan_id,
+             key->ethertype,
+             key->ip_version,
+             src_ip,
+             dst_ip,
+             key->ipprotocol,
+             ntohs(key->sport),
+             ntohs(key->dport));
         LOGD("------------");
     }
     if (fkey != NULL)
     {
         /* LOGD("%s: Printing fkey => flow_key", __func__); */
-        LOGD(" smac: %s" \
-             " dmac: %s" \
-             " vlanid: %d" \
+        LOGD(" smac: %s"      \
+             " dmac: %s"      \
+             " vlanid: %d"    \
              " ethertype: %d" \
-             " src_ip: %s" \
-             " dst_ip: %s" \
-             " protocol: %d" \
-             " sport: %d" \
+             " src_ip: %s"    \
+             " dst_ip: %s"    \
+             " protocol: %d"  \
+             " sport: %d"     \
              " dport: %d",
              fkey->smac,
              fkey->dmac,
@@ -149,6 +160,19 @@ void net_md_print_net_md_flow_key_and_flow_key(struct net_md_flow_key *key,
              fkey->protocol,
              fkey->sport,
              fkey->dport);
+        for (i = 0; i < fkey->num_tags; i++)
+        {
+            ftag = fkey->tags[i];
+            LOGD(" vendor: %s" \
+                 " app_name: %s",
+                 ftag->vendor,
+                 ftag->app_name);
+            for (j = 0; j < ftag->nelems; j++)
+            {
+                LOGD(" tag[%zu]: %s",
+                     j, ftag->tags[j]);
+            }
+        }
         LOGD("------------");
     }
 }
@@ -164,55 +188,67 @@ void net_md_print_net_md_flow_key_and_flow_key(struct net_md_flow_key *key,
  */
 static bool apply_report_filter(struct net_md_stats_accumulator *md_acc)
 {
-    bool action;
+    bool seven_tuple_action;
     fcm_filter_l2_info_t mac_filter;
     fcm_filter_l3_info_t filter;
     fcm_filter_stats_t pkt;
+    struct net_md_flow_key *key = md_acc->key;
+    os_macaddr_t null_mac;
+    os_macaddr_t *smac;
+    os_macaddr_t *dmac;
 
+    memset(&null_mac, 0, sizeof(null_mac));
     if (filtername.report == NULL)
     {
         /* no filter name default included */
         return true;
     }
+
+    smac = (key->smac != NULL ? key->smac : &null_mac);
+    dmac = (key->dmac != NULL ? key->dmac : &null_mac);
+
     snprintf(mac_filter.src_mac, sizeof(mac_filter.src_mac),
-                 PRI_os_macaddr_lower_t,
-                 FMT_os_macaddr_t(*(md_acc->key->smac)));
+             PRI_os_macaddr_lower_t,
+             FMT_os_macaddr_pt(smac));
     snprintf(mac_filter.dst_mac, sizeof(mac_filter.dst_mac),
-                 PRI_os_macaddr_lower_t,
-                 FMT_os_macaddr_t(*(md_acc->key->dmac)));
+             PRI_os_macaddr_lower_t,
+             FMT_os_macaddr_pt(dmac));
 
-    mac_filter.vlan_id = md_acc->key->vlan_id;
-    mac_filter.eth_type = md_acc->key->ethertype;
+    mac_filter.vlan_id = key->vlan_id;
+    mac_filter.eth_type = key->ethertype;
 
-    if (inet_ntop(AF_INET, md_acc->key->src_ip, filter.src_ip,
+    if (inet_ntop(AF_INET, key->src_ip, filter.src_ip,
         INET6_ADDRSTRLEN) == NULL)
     {
         LOGE("inet_ntop src_ip error");
         return false;
     }
-    if (inet_ntop(AF_INET, md_acc->key->dst_ip, filter.dst_ip,
+    if (inet_ntop(AF_INET, key->dst_ip, filter.dst_ip,
         INET6_ADDRSTRLEN) == NULL)
     {
         LOGE("inet_ntop dst_ip error ");
         return false;
     }
 
-    filter.sport = ntohs(md_acc->key->sport);
-    filter.dport = ntohs(md_acc->key->dport);
-    filter.l4_proto = md_acc->key->ipprotocol;
+    filter.sport = ntohs(key->sport);
+    filter.dport = ntohs(key->dport);
+    filter.l4_proto = key->ipprotocol;
 
     /* key->ip_version No ip (0), ipv4 (4), ipv6 (6) */
-    filter.ip_type = (md_acc->key->ip_version <= 4)? AF_INET: AF_INET6;
+    filter.ip_type = (key->ip_version <= 4)? AF_INET: AF_INET6;
 
     pkt.pkt_cnt = md_acc->report_counters.packets_count;
     pkt.bytes = md_acc->report_counters.bytes_count;
+
+
     (void)pkt;
     fcm_filter_7tuple_apply(filtername.report,
                              &mac_filter,
                              &filter,
                              &pkt,
-                             &action);
-    return action;
+                             md_acc->fkey,
+                             &seven_tuple_action);
+    return seven_tuple_action;
 }
 
 

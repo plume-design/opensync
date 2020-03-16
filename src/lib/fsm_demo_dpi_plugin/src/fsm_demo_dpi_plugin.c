@@ -105,19 +105,22 @@ fsm_demo_session_cmp(void *a, void *b)
 struct net_md_aggregator *
 fsm_demo_alloc_aggr(struct fsm_demo_session *f_session)
 {
+    struct net_md_aggregator_set aggr_set;
     struct net_md_aggregator *aggr;
     struct fsm_session *session;
     struct node_info info;
-    int num_windows;
-    int acc_ttl;
 
     session = f_session->session;
     info.node_id = session->node_id;
     info.location_id = session->location_id;
-    num_windows = 1;
-    acc_ttl = 600;
-    aggr = net_md_allocate_aggregator(&info, num_windows, acc_ttl,
-                                      NET_MD_REPORT_RELATIVE, NULL);
+    aggr_set.info = &info;
+    aggr_set.num_windows = 1;
+    aggr_set.acc_ttl = 600;
+    aggr_set.report_type = NET_MD_REPORT_RELATIVE;
+    aggr_set.report_filter = NULL;
+    aggr_set.send_report = net_md_send_report;
+    aggr = net_md_allocate_aggregator(&aggr_set);
+
     return aggr;
 }
 
@@ -460,12 +463,12 @@ fsm_demo_process_message(struct fsm_demo_session *f_session)
         break;
  
         case FLOW_PASSTHROUGH:
-            fsm_set_dpi_state(f_session, net_parser, FSM_DPI_PASSTHRU);
+            fsm_set_dpi_state(net_parser, FSM_DPI_PASSTHRU);
             LOGD("%s: Application is detected", __func__);
         break;
            
         case FLOW_DROP:
-            fsm_set_dpi_state(f_session, net_parser, FSM_DPI_DROP);
+            fsm_set_dpi_state(net_parser, FSM_DPI_DROP);
             LOGD("%s: IP flow is blocked", __func__);
         break;
 

@@ -186,4 +186,4 @@ bool qm_conn_send_stream(qm_conn_t *qc, qm_request_t *req, char *topic,
 bool qm_conn_send_log(char *msg, qm_response_t *res);
 void qm_conn_log_close();
 
-#endif
+#endif /* QM_CONN_H_INCLUDED */

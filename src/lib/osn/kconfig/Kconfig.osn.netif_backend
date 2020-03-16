@@ -1,0 +1,13 @@
+config OSN_BACKEND_NETIF_NULL
+    bool "Null"
+
+    help
+        Use dummy implementation of L2 interface control
+
+config OSN_BACKEND_NETIF_LINUX
+    bool "Linux"
+    select OSN_LINUX_ENABLED
+    select OSN_LINUX_NETIF
+    help
+        Use the Linux L2 network interface backend provided by OpenSync
+

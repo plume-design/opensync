@@ -154,7 +154,8 @@ static bool
 wm2_sta_has_connected(const struct schema_Wifi_VIF_State *oldstate,
                       const struct schema_Wifi_VIF_State *newstate)
 {
-    return !strcmp(oldstate->mode, "sta") &&
+    return (!strcmp(oldstate->mode, "sta") ||
+            !strcmp(newstate->mode, "sta")) &&
            strcmp(newstate->parent, oldstate->parent) &&
            !strlen(oldstate->parent) &&
            strlen(newstate->parent);
@@ -164,7 +165,8 @@ static bool
 wm2_sta_has_reconnected(const struct schema_Wifi_VIF_State *oldstate,
                         const struct schema_Wifi_VIF_State *newstate)
 {
-    return !strcmp(oldstate->mode, "sta") &&
+    return (!strcmp(oldstate->mode, "sta") ||
+            !strcmp(newstate->mode, "sta")) &&
            strcmp(newstate->parent, oldstate->parent) &&
            strlen(oldstate->parent) &&
            strlen(newstate->parent);
@@ -174,7 +176,8 @@ static bool
 wm2_sta_has_disconnected(const struct schema_Wifi_VIF_State *oldstate,
                          const struct schema_Wifi_VIF_State *newstate)
 {
-    return !strcmp(oldstate->mode, "sta") &&
+    return (!strcmp(oldstate->mode, "sta") ||
+            !strcmp(newstate->mode, "sta")) &&
            strcmp(newstate->parent, oldstate->parent) &&
            strlen(oldstate->parent) &&
            !strlen(newstate->parent);
@@ -242,7 +245,7 @@ wm2_parent_change(void)
 
     parents_num = wm2_get_fallback_parents(parents, ARRAY_SIZE(parents));
     if (!parents_num) {
-        LOGI("%s seems no fallback parents found, restart managers", __func__);
+        LOGW("%s seems no fallback parents found, restart managers", __func__);
         target_device_restart_managers();
         return;
     }
@@ -282,7 +285,7 @@ wm2_sta_has_dfs_channel(const struct schema_Wifi_VIF_State *vstate)
     if (WARN_ON(!wm2_lookup_rstate_by_vstate(&rstate, vstate)))
         return status;
 
-    if (WARN_ON(!rstate.channel_exists))
+    if (!rstate.channel_exists)
          return status;
 
     /* TODO check all channels base on number/width */
@@ -537,6 +540,8 @@ wm2_vconf_changed(const struct schema_Wifi_VIF_Config *conf,
     CMP(CHANGED_INT, rrm);
     CMP(CHANGED_INT, btm);
     CMP(CHANGED_INT, dynamic_beacon);
+    CMP(CHANGED_INT, mcast2ucast);
+    CMP(CHANGED_STR, multi_ap);
     CMP(CHANGED_STR, bridge);
     CMP(CHANGED_STR, mac_list_type);
     CMP(CHANGED_STR, mode);
@@ -546,6 +551,9 @@ wm2_vconf_changed(const struct schema_Wifi_VIF_Config *conf,
     CMP(CHANGED_STR, min_hw_mode);
     CMP(CHANGED_SET_CASE, mac_list);
     CMP(CHANGED_MAP_STRSTR, security);
+    CMP(CHANGED_INT, wps);
+    CMP(CHANGED_INT, wps_pbc);
+    CMP(CHANGED_STR, wps_pbc_key_id);
 
     if (changed)
         LOGD("%s: changed (forced=%d)", conf->if_name, changedf->_uuid);
@@ -581,6 +589,7 @@ wm2_rconf_changed(const struct schema_Wifi_Radio_Config *conf,
     CMP(CHANGED_MAP_STRSTR, hw_config);
     CMP(CHANGED_MAP_INTSTR, temperature_control);
     CMP(CHANGED_MAP_STRINT, fallback_parents);
+    CMP(CHANGED_STR, zero_wait_dfs);
 
     if (changed)
         LOGD("%s: changed (forced=%d)", conf->if_name, changedf->_uuid);
@@ -799,7 +808,6 @@ wm2_vconf_recalc(const char *ifname, bool force)
     struct schema_Wifi_VIF_State vstate;
     struct schema_Wifi_Credential_Config cconfs[8];
     struct schema_Wifi_VIF_Config_flags vchanged;
-    json_t *where;
     int num_cconfs;
     bool want;
     bool has;
@@ -820,7 +828,23 @@ wm2_vconf_recalc(const char *ifname, bool force)
                                        &vstate)))
         wm2_vstate_init(&vstate, ifname);
 
-    if (!want && !has)
+    /* This is workaround to deal with unpatched controller.
+     * Having this on device side prevents it from saner 3rd
+     * party gw integrations where currently State needs to
+     * be copied over to Config to satisfy the architecture.
+     *
+     * This workaround is intended to not be applied on
+     * ap_vlan (wds) interfaces which inherently will almost
+     * always have only Wifi_VIF_State rows but no
+     * Wifi_VIF_Config rows associated.
+     */
+    if (!want && has && strcmp(vstate.mode, "ap_vlan") && vstate.enabled) {
+        LOGN("%s: config is gone, but non-ap_vlan bss is running - workaround to put it down", ifname);
+        SCHEMA_SET_INT(vconf.enabled, false);
+        want = true;
+    }
+
+    if (!want)
         return;
 
     if (!wm2_lookup_rconf_by_vif_ifname(&rconf, vconf.if_name)) {
@@ -887,33 +911,13 @@ wm2_vconf_recalc(const char *ifname, bool force)
     if (vchanged.parent)
         LOGN("%s: topology change: parent '%s' -> '%s'", ifname, vstate.parent, vconf.parent);
 
-    if (want && !has) {
-        if (WARN_ON(!(where = ovsdb_where_uuid(SCHEMA_COLUMN(Wifi_Radio_State, radio_config),
-                                               rconf._uuid.uuid))))
-            return;
-        if (WARN_ON(ovsdb_table_upsert_with_parent(&table_Wifi_VIF_State,
-                                                   &vstate,
-                                                   false, // uuid not needed
-                                                   NULL,
-                                                   // parent:
-                                                   SCHEMA_TABLE(Wifi_Radio_State),
-                                                   where,
-                                                   SCHEMA_COLUMN(Wifi_Radio_State, vif_states)) != 1))
-            return;
-    }
+    if (vchanged.ssid && strlen(vconf.ssid) > 0 && !strcmp(vconf.mode, "sta"))
+        LOGN("%s: topology change: ssid '%s' -> '%s'", ifname, vstate.ssid, vconf.ssid);
 
     if (!target_vif_config_set2(&vconf, &rconf, cconfs, &vchanged, num_cconfs)) {
         LOGW("%s: failed to configure, will retry later", ifname);
         wm2_delayed_recalc(wm2_vconf_recalc, ifname);
         return;
-    }
-
-    if (has && !want) {
-        ovsdb_table_delete_simple(&table_Wifi_VIF_State,
-                                  SCHEMA_COLUMN(Wifi_VIF_State, if_name),
-                                  ifname);
-        wm2_sta_print_status(&vstate, NULL);
-        wm2_radio_update_port_state(vconf.if_name);
     }
 
     wm2_delayed_recalc_cancel(wm2_vconf_recalc, ifname);
@@ -923,11 +927,8 @@ static void
 wm2_rconf_recalc_vifs(const struct schema_Wifi_Radio_Config *rconf)
 {
     struct schema_Wifi_VIF_Config vconf;
-    struct schema_Wifi_VIF_State *vstate;
     json_t *where;
-    void *buf;
     int i;
-    int n;
 
     /* For VIF_Config to be properly configured (created)
      * the associated parent Radio_Config must be known.
@@ -945,23 +946,6 @@ wm2_rconf_recalc_vifs(const struct schema_Wifi_Radio_Config *rconf)
             continue;
         if (ovsdb_table_select_one_where(&table_Wifi_VIF_Config, where, &vconf))
             wm2_vconf_recalc(vconf.if_name, false);
-    }
-
-    /* If WM2 misses (due to a bug, crash, etc) a VIF_Config
-     * row removal then it is a good idea to deconfigure
-     * (and remove) orphaned VIF_State rows
-     */
-    if ((buf = ovsdb_table_select_where(&table_Wifi_VIF_State, NULL, &n))) {
-        for (n--; n >= 0; n--) {
-            vstate = buf + (n * sizeof(*vstate));
-            if (!(where = ovsdb_where_simple(SCHEMA_COLUMN(Wifi_VIF_Config, if_name), vstate->if_name)))
-                continue;
-            if (!ovsdb_table_select_one_where(&table_Wifi_VIF_Config, where, &vconf)) {
-                LOGI("%s: removing stale config", vstate->if_name);
-                wm2_vconf_recalc(vstate->if_name, false);
-            }
-        }
-        free(buf);
     }
 }
 
@@ -1028,7 +1012,7 @@ wm2_rconf_recalc_fixup_channel(struct schema_Wifi_Radio_Config *rconf,
      * i.e. when radio_config channel is more important than
      * sta vif channel in cases of sta csa, sta (re)assoc.
      */
-    LOGW("%s: ignoring channel change %d -> %d because sta vif %s is connected on %d, see CAES-600",
+    LOGN("%s: ignoring channel change %d -> %d because sta vif %s is connected on %d, see CAES-600",
             rconf->if_name, rstate->channel, rconf->channel,
             vstate.if_name, vstate.channel);
     rconf->channel = vstate.channel;
@@ -1195,9 +1179,30 @@ wm2_op_rconf(const struct schema_Wifi_Radio_Config *rconf)
 }
 
 static void
-wm2_op_vstate(const struct schema_Wifi_VIF_State *vstate)
+wm2_vstate_security_fixup(const struct schema_Wifi_VIF_Config *vconf,
+                          struct schema_Wifi_VIF_State *vstate)
 {
-    struct schema_Wifi_Radio_Config rconf;
+    struct schema_Wifi_VIF_State orig;
+    bool want_mode;
+    bool has_mixed;
+    int i;
+
+    want_mode = SCHEMA_KEY_VAL_NULL(vconf->security, "mode");
+    has_mixed = !strcmp(SCHEMA_KEY_VAL(vstate->security, "mode"), "mixed");
+
+    memcpy(&orig, vstate, sizeof(*vstate));
+    memset(vstate->security, 0, sizeof(vstate->security));
+    memset(vstate->security_keys, 0, sizeof(vstate->security_keys));
+    vstate->security_len = 0;
+
+    for (i = 0; i < orig.security_len; i++)
+        if (strcmp(orig.security_keys[i], "mode") || want_mode || !has_mixed)
+            SCHEMA_KEY_VAL_APPEND(vstate->security, orig.security_keys[i], orig.security[i]);
+}
+
+static void
+wm2_op_vstate(const struct schema_Wifi_VIF_State *vstate, const char *phy)
+{
     struct schema_Wifi_VIF_Config vconf;
     struct schema_Wifi_VIF_State state;
     struct schema_Wifi_VIF_State oldstate;
@@ -1216,15 +1221,10 @@ wm2_op_vstate(const struct schema_Wifi_VIF_State *vstate)
     for (i = 0; i < state.mac_list_len; i++)
         str_tolower(state.mac_list[i]);
 
-    if (!(wm2_lookup_rconf_by_vif_ifname(&rconf, state.if_name)))
-        return;
-
-    if (!wm2_lookup_vconf_by_ifname(&vconf, state.if_name))
-        goto recalc;
-
     memset(&oldstate, 0, sizeof(oldstate));
     if ((where = ovsdb_where_simple(SCHEMA_COLUMN(Wifi_VIF_State, if_name), state.if_name)))
-        ovsdb_table_select_one_where(&table_Wifi_VIF_State, where, &oldstate);
+        if (!ovsdb_table_select_one_where(&table_Wifi_VIF_State, where, &oldstate))
+            wm2_vstate_init(&oldstate, state.if_name);
 
     /* Workaround for PIR-11008 */
     if (!state.ft_psk_exists) {
@@ -1232,27 +1232,68 @@ wm2_op_vstate(const struct schema_Wifi_VIF_State *vstate)
         state.ft_psk = 0;
     }
 
-    state.vif_config_exists = true;
-    state.vif_config_present = true;
-    memcpy(&state.vif_config, &vconf._uuid, sizeof(vconf._uuid));
+    if (wm2_lookup_vconf_by_ifname(&vconf, state.if_name)) {
+        wm2_vstate_security_fixup(&vconf, &state);
+        state.vif_config_exists = true;
+        state.vif_config_present = true;
+        memcpy(&state.vif_config, &vconf._uuid, sizeof(vconf._uuid));
+    } else if (strcmp(state.mode, "ap_vlan")) {
+        /* this will remove all non-wds related interfaces
+         * from vif state if there's no corresponding vif
+         * config row. this is required to keep master
+         * branch working with unpatched controller.
+         * unpatched controller ends up timing out
+         * onboarding bcm devices which causes all sort sof
+         * tests to fail and timeout too.
+         *
+         * once controller is patched this if-else branch
+         * needs to be removed.
+         */
+        if (state.enabled) {
+            /* this avoids a case where this workaround
+             * impact the other workaround in vif recalc
+             * where disappearing vif configs should
+             * deconfigure interface instead of leaving it
+             * alone.
+             *
+             * this doesn't skip the upsert intentionally so
+             * that another corner case where state never
+             * got to be created in the first place is
+             * handled too.
+             */
+            LOGI("%s: not removing vif state yet, needs a recalc first", state.if_name);
+        } else {
+            ovsdb_table_delete_simple(&table_Wifi_VIF_State,
+                                      SCHEMA_COLUMN(Wifi_VIF_State, if_name),
+                                      state.if_name);
+            LOGI("%s: removing vif state", state.if_name);
+            goto recalc;
+        }
+    }
 
-    if (!(where = ovsdb_where_uuid(SCHEMA_COLUMN(Wifi_Radio_State, radio_config),
-                                   rconf._uuid.uuid)))
-        return;
-    REQUIRE(state.if_name, ovsdb_table_upsert_with_parent(&table_Wifi_VIF_State,
-                                                          &state,
-                                                          false, // uuid not needed
-                                                          NULL,
-                                                          // parent:
-                                                          SCHEMA_TABLE(Wifi_Radio_State),
-                                                          where,
-                                                          SCHEMA_COLUMN(Wifi_Radio_State, vif_states)));
+    if (state.mac_exists) {
+        if (!(where = ovsdb_where_simple(SCHEMA_COLUMN(Wifi_Radio_State, if_name), phy)))
+            return;
+
+        REQUIRE(state.if_name, ovsdb_table_upsert_with_parent(&table_Wifi_VIF_State,
+                                                              &state,
+                                                              false, // uuid not needed
+                                                              NULL,
+                                                              // parent:
+                                                              SCHEMA_TABLE(Wifi_Radio_State),
+                                                              where,
+                                                              SCHEMA_COLUMN(Wifi_Radio_State, vif_states)));
+    } else {
+        ovsdb_table_delete_simple(&table_Wifi_VIF_State,
+                                  SCHEMA_COLUMN(Wifi_VIF_State, if_name),
+                                  state.if_name);
+    }
     LOGI("%s: updated vif state", state.if_name);
 recalc:
     /* Reconnect workaround is for CAES-771 */
     if (wm2_sta_has_reconnected(&oldstate, &state))
         wm2_radio_update_port_state_set_inactive(state.if_name);
-    wm2_sta_print_status(&oldstate, &state);
+    wm2_sta_print_status(&oldstate, state.enabled_exists ? &state : NULL);
     wm2_sta_handle_dfs_link_change(&oldstate, &state);
     wm2_radio_update_port_state(state.if_name);
     wm2_delayed_recalc(wm2_vconf_recalc, state.if_name);
@@ -1275,7 +1316,7 @@ wm2_op_rstate(const struct schema_Wifi_Radio_State *rstate)
     OVERRIDE(state.if_name, state.channel_mode_present, false);
 
     if (!wm2_lookup_rconf_by_ifname(&rconf, state.if_name))
-        goto recalc;
+        return;
 
     memcpy(&state.radio_config, &rconf._uuid, sizeof(rconf._uuid));
     state.radio_config_exists = true;
@@ -1289,7 +1330,6 @@ wm2_op_rstate(const struct schema_Wifi_Radio_State *rstate)
 
     REQUIRE(state.if_name, 1 == ovsdb_table_upsert_f(&table_Wifi_Radio_State, &state, false, NULL));
     LOGI("%s: updated radio state", state.if_name);
-recalc:
     wm2_delayed_recalc(wm2_rconf_recalc, state.if_name);
 }
 

@@ -77,10 +77,7 @@ void net_md_free_aggregator(struct net_md_aggregator *aggr)
  *         The caller is responsible to free the returned pointer.
  */
 struct net_md_aggregator *
-net_md_allocate_aggregator(struct node_info *info,
-                           size_t num_windows,
-                           int acc_ttl, int report_type,
-                           bool (*report_filter)(struct net_md_stats_accumulator *))
+net_md_allocate_aggregator(struct net_md_aggregator_set *aggr_set)
 {
     struct net_md_aggregator *aggr;
     struct flow_report *report;
@@ -98,27 +95,30 @@ net_md_allocate_aggregator(struct node_info *info,
     aggr->report = report;
 
     /* Set aggregator's node info */
-    node = net_md_set_node_info(info);
+    node = net_md_set_node_info(aggr_set->info);
     if (node == NULL) goto err_free_report;
 
     report->node_info = node;
 
     /* Allocate aggregator's report's windows */
-    windows_array = calloc(num_windows, sizeof(*windows_array));
+    windows_array = calloc(aggr_set->num_windows, sizeof(*windows_array));
     if (windows_array == NULL) goto err_free_node;
 
     report->flow_windows = windows_array;
     report->num_windows = 0;
 
-    aggr->max_windows = num_windows;
+    aggr->max_windows = aggr_set->num_windows;
     aggr->report_all_samples = false;
-    aggr->acc_ttl = acc_ttl;
-    aggr->report_type = report_type;
+    aggr->acc_ttl = aggr_set->acc_ttl;
+    aggr->report_type = aggr_set->report_type;
     ds_tree_init(&aggr->eth_pairs, net_md_eth_cmp,
                  struct net_md_eth_pair, eth_pair_node);
     ds_tree_init(&aggr->five_tuple_flows, net_md_5tuple_cmp,
                  struct net_md_flow, flow_node);
-    aggr->report_filter = report_filter;
+    aggr->report_filter = aggr_set->report_filter;
+    aggr->send_report = aggr_set->send_report;
+    if (aggr_set->send_report == NULL) aggr->send_report = net_md_send_report;
+    aggr->neigh_lookup = aggr_set->neigh_lookup;
 
     return aggr;
 
@@ -159,6 +159,11 @@ bool net_md_add_sample(struct net_md_aggregator *aggr,
     acc = net_md_lookup_acc(aggr, key);
     if (acc == NULL) return false;
 
+    /* Updated flow state */
+    if (key->fstart)
+        acc->fkey->state.fstart = key->fstart;
+    if (key->fend)
+        acc->fkey->state.fend = key->fend;
     net_md_set_counters(aggr, acc, counters);
 
     return true;
@@ -204,17 +209,21 @@ bool net_md_close_active_window(struct net_md_aggregator *aggr)
     window->ended_at = time(NULL);
 
     provisioned_stats = aggr->active_accs;
-    stats_array = calloc(provisioned_stats, sizeof(*stats_array));
-    if (stats_array == NULL) return false;
 
-    window->flow_stats = stats_array;
+    if (provisioned_stats != 0)
+    {
+        stats_array = calloc(provisioned_stats, sizeof(*stats_array));
+        if (stats_array == NULL) return false;
 
-    stats = calloc(provisioned_stats, sizeof(*stats));
-    if (stats == NULL) goto err_free_stats_array;
+        window->flow_stats = stats_array;
 
-    window->provisioned_stats = provisioned_stats;
+        stats = calloc(provisioned_stats, sizeof(*stats));
+        if (stats == NULL) goto err_free_stats_array;
 
-    for (i = 0; i < provisioned_stats; i++) *stats_array++ = stats++;
+        window->provisioned_stats = provisioned_stats;
+
+        for (i = 0; i < provisioned_stats; i++) *stats_array++ = stats++;
+    }
 
     net_md_report_accs(aggr);
 
@@ -251,6 +260,20 @@ bool net_md_send_report(struct net_md_aggregator *aggr, char *mqtt_topic)
 
     if (aggr == NULL) return false;
     if (mqtt_topic == NULL) return false;
+
+    /*
+     * Reset the counter indicating the # of inactive flows with
+     * a reference count. It will be updateed while building the report.
+     */
+    aggr->held_flows = 0;
+
+    if (aggr->active_accs == 0)
+    {
+        /* Reset the aggregator */
+        net_md_reset_aggregator(aggr);
+
+        return true;
+    }
 
     report = aggr->report;
     report->reported_at = time(NULL);

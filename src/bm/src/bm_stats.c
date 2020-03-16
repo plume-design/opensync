@@ -75,9 +75,6 @@ static struct ev_timer              g_bm_stats_qm_send_timer;
 
 static bm_stats_request_t           g_bm_stats_default_request;
 
-static radio_type_t                 g_bm_stats_2g_radio_type = RADIO_TYPE_2G;
-static radio_type_t                 g_bm_stats_5g_radio_type = RADIO_TYPE_5G;
-
 static ds_tree_t bm_stats_table =
 DS_TREE_INIT(
         (ds_key_cmp_t *)strcmp,
@@ -86,12 +83,12 @@ DS_TREE_INIT(
 
 /*****************************************************************************/
 
-static void bm_stats_steering_clear_all_stats();
+static void bm_stats_steering_clear_all_stats(bm_group_t *group);
 static void bm_stats_steering_clear_all_event_records();
 
 /*****************************************************************************/
 
-static char*
+char*
 bm_stats_get_event_to_str( dpp_bs_client_event_type_t event )
 {
     char *str = NULL;
@@ -260,28 +257,6 @@ bm_stats_get_disconnect_type_to_str( dpp_bs_client_disconnect_type_t type )
     return str;
 }
 
-static radio_type_t
-bm_stats_get_band_type( bsal_band_t band )
-{
-    radio_type_t type = RADIO_TYPE_NONE;
-
-    switch( band )
-    {
-        case BSAL_BAND_24G:
-            type = g_bm_stats_2g_radio_type;
-            break;
-
-        case BSAL_BAND_5G:
-            type = g_bm_stats_5g_radio_type;
-            break;
-
-        default:
-            break;
-    }
-
-    return type;
-}
-
 static dpp_bs_client_disconnect_src_t
 bm_stats_get_disconnect_src( bsal_event_t *event )
 {
@@ -339,7 +314,7 @@ bm_stats_steering_print_all_records()
     dpp_bs_client_band_record_t     *band_rec         = NULL;
     dpp_bs_client_event_record_t    *event_rec        = NULL;
 
-    int                             i,j;
+    unsigned int                    i,j;
 
     LOGT( "===== Printing all BS client records ======" );
 
@@ -358,7 +333,7 @@ bm_stats_steering_print_all_records()
         LOGT( "BS Client entry mac is " MAC_ADDRESS_FORMAT " and num_band_records = %d",
                MAC_ADDRESS_PRINT( bs_client_entry->mac ), bs_client_entry->num_band_records );
 
-        for( i = 0; i < BSAL_BAND_COUNT ; i++ )
+        for( i = 0; i < bs_client_entry->num_band_records ; i++ )
         {
             band_rec = &bs_client_entry->band_record[i];
 
@@ -367,9 +342,14 @@ bm_stats_steering_print_all_records()
                 continue;
             }
 
+            if (band_rec->type == RADIO_TYPE_NONE)
+                continue;
+
             LOGT( "\n");
 
-            LOGT( " ----- Band %s stats ------ ", ( i == BSAL_BAND_24G ) ? "2.4G" : "5G" );
+            LOGT( " ----- band_record[%d] ------ ", i);
+            LOGT( "radio_type           = %s (%d)", radio_get_name_from_type(band_rec->type), band_rec->type);
+            LOGT( "ifname               = %s", band_rec->ifname);
             LOGT( "Connected            = %s", band_rec->connected ? "Yes" : "No"  );
             LOGT( "Rejects              = %d", band_rec->rejects );
             LOGT( "Connects             = %d", band_rec->connects );
@@ -386,7 +366,7 @@ bm_stats_steering_print_all_records()
 
             LOGT( "Total event records  = %d", band_rec->num_event_records );
 
-            for( j = 0; j < (int)band_rec->num_event_records ; j++ )
+            for( j = 0; j < band_rec->num_event_records ; j++ )
             {
                 event_rec = &band_rec->event_record[j];
 
@@ -428,6 +408,7 @@ bm_stats_steering_print_all_records()
                 LOGT( "RRM Bcn Rpt Table    = %s", event_rec->rrm_caps_bcn_rpt_table ? "Yes" : "No" );
                 LOGT( "RRM LCI measurement  = %s", event_rec->rrm_caps_lci_meas ? "Yes" : "No" );
                 LOGT( "RRM FTM Range Rpt    = %s", event_rec->rrm_caps_ftm_range_rpt ? "Yes" : "No" );
+                LOGT( "ASSOC IE length      = %u", event_rec->assoc_ies_len);
                 LOGT( " // ------------------------ // " );
             }
 
@@ -446,19 +427,13 @@ bm_stats_steering_get_bs_client_record( bm_client_t *client )
     dpp_bs_client_record_t      *bs_client_entry    = NULL;
     ds_dlist_iter_t              bs_client_iter;
 
-    mac_address_t mac_addr;
-
     for( bs_client = ds_dlist_ifirst( &bs_client_iter, bs_client_list );
          bs_client != NULL;
          bs_client = ds_dlist_inext( &bs_client_iter ) )
     {
         bs_client_entry = &bs_client->entry;
 
-        if( !os_nif_macaddr_from_str((os_macaddr_t *)&mac_addr, client->mac_addr ) ) {
-            LOGE( "Failed to parse mac address '%s'", client->mac_addr );
-        }
-
-        if( MAC_ADDR_EQ( bs_client_entry->mac, mac_addr ) ) {
+        if( MAC_ADDR_EQ( bs_client_entry->mac, client->macaddr.addr ) ) {
             return bs_client_entry;
         }
     }
@@ -467,7 +442,7 @@ bm_stats_steering_get_bs_client_record( bm_client_t *client )
 }
 
 static void
-bm_stats_steering_process_stats( void )
+bm_stats_steering_process_stats(bm_group_t *group)
 {
     bm_client_t                 *client;
     bm_client_stats_t           *stats;
@@ -475,8 +450,8 @@ bm_stats_steering_process_stats( void )
     dpp_bs_client_record_t      *bs_client_entry    = NULL;
     dpp_bs_client_band_record_t *band_rec           = NULL;
 
-    int                         i;
-
+    unsigned int                i;
+    unsigned int                band_idx = 0;
     ds_tree_t *bm_clients = bm_client_get_tree();
 
     // Copy the stats into the super report
@@ -487,15 +462,29 @@ bm_stats_steering_process_stats( void )
             continue;
         }
 
-        for( i = 0; i < BSAL_BAND_COUNT ; i++ )
+        for (i = 0; i < group->ifcfg_num; i++)
         {
-            band_rec                        = &bs_client_entry->band_record[i];
-            stats                           = &client->stats[i];
+            band_idx = group->ifcfg[i].radio_type;
 
-            band_rec->type                  = bm_stats_get_band_type( i );
+            if (WARN_ON(band_idx == RADIO_TYPE_NONE))
+                continue;
+
+            band_idx--;
+            if (WARN_ON(band_idx >= bs_client_entry->num_band_records))
+                continue;
+
+            /* We have stats per band, while BM implement this per ifname */
+            band_rec = &bs_client_entry->band_record[band_idx];
+
+            stats = bm_client_get_stats(client, group->ifcfg[i].ifname);
+            if (WARN_ON(!stats))
+                continue;
+
+            band_rec->type                  = group->ifcfg[i].radio_type;
+            STRSCPY(band_rec->ifname, group->ifcfg[i].ifname);
 
             // Check if the client is connected on this band
-            if( (int)client->band == i ) {
+            if(!strcmp(client->ifname, group->ifcfg[i].ifname)) {
                 band_rec->connected         = client->connected;
             } else {
                 band_rec->connected         = 0;
@@ -536,7 +525,7 @@ bm_stats_steering_process_stats( void )
     bm_stats_steering_remove_all_clients();
 
     // Reset the stats for the clients
-    bm_stats_steering_clear_all_stats();
+    bm_stats_steering_clear_all_stats(group);
 
     return;
 }
@@ -552,7 +541,7 @@ bm_stats_steering_clear_all_event_records()
     dpp_bs_client_band_record_t  *band_rec          = NULL;
     dpp_bs_client_event_record_t *event_rec         = NULL;
 
-    int                          i,j;
+    unsigned int                 i,j;
 
     for( bs_client = ds_dlist_ifirst( &bs_client_iter, bs_client_list );
          bs_client != NULL;
@@ -565,7 +554,7 @@ bm_stats_steering_clear_all_event_records()
             continue;
         }
 
-        for( i = 0; i < BSAL_BAND_COUNT ; i++ )
+        for( i = 0; i < bs_client_entry->num_band_records; i++ )
         {
             band_rec = &bs_client_entry->band_record[i];
 
@@ -574,7 +563,7 @@ bm_stats_steering_clear_all_event_records()
                 continue;
             }
 
-            for( j = 0; j < (int)band_rec->num_event_records ; j++ )
+            for( j = 0; j < band_rec->num_event_records ; j++ )
             {
                 event_rec = &band_rec->event_record[j];
 
@@ -586,25 +575,31 @@ bm_stats_steering_clear_all_event_records()
                 memset( event_rec, 0, sizeof( dpp_bs_client_event_record_t ) );
             }
 
+            band_rec->type = RADIO_TYPE_NONE;
             band_rec->num_event_records = 0;
         }
     }
 }
 
 static void
-bm_stats_steering_clear_all_stats( void )
+bm_stats_steering_clear_all_stats(bm_group_t *group)
 {
     bm_client_t         *client;
     bm_client_stats_t   *stats;
-    int                 i;
+    unsigned int        i;
 
     ds_tree_t *bm_clients = bm_client_get_tree();
 
     ds_tree_foreach( bm_clients, client )
     {
-        for( i = 0; i < BSAL_BAND_COUNT ; i++ )
+        for (i = 0; i < group->ifcfg_num ; i++)
         {
-            stats = &client->stats[i];
+            if (WARN_ON(group->ifcfg[i].radio_type == RADIO_TYPE_NONE))
+                continue;
+
+            stats = bm_client_get_stats(client, group->ifcfg[i].ifname);
+            if (WARN_ON(!stats))
+                continue;
 
             stats->rejects = 0;
             stats->connects = 0;
@@ -651,14 +646,12 @@ bm_stats_steering_add_client_to_report( bm_client_t *client )
     bs_client_entry = &bs_client->entry;
 
     // Copy client mac and initialize number of bands and events to 0
-    if( !os_nif_macaddr_from_str((os_macaddr_t *)&bs_client_entry->mac,
-         client->mac_addr ) ) {
-        LOGE( "Failed to parse mac address '%s'", client->mac_addr );
-    }
+    memcpy(&bs_client_entry->mac, client->macaddr.addr, sizeof(bs_client_entry->mac));
 
-    bs_client_entry->num_band_records = BSAL_BAND_COUNT;
-    for( i = 0; i < BSAL_BAND_COUNT ; i++ )
+    bs_client_entry->num_band_records = DPP_MAX_BS_BANDS;
+    for( i = 0; i < DPP_MAX_BS_BANDS ; i++ )
     {
+        bs_client_entry->band_record[i].type = RADIO_TYPE_NONE;
         bs_client_entry->band_record[i].num_event_records = 0;
     }
 
@@ -673,8 +666,7 @@ bm_stats_steering_parse_event(
         bm_client_t                *client,
         bsal_event_t               *event,
         dpp_bs_client_event_type_t  bs_event,
-        bool                        backoff_enabled,
-        bsal_band_t                 band)
+        bool                        backoff_enabled)
 {
     dpp_bs_client_record_t         *bs_client_entry = NULL;
 
@@ -684,6 +676,7 @@ bm_stats_steering_parse_event(
     bm_stats_request_t             *request;
     ds_tree_iter_t                  iter;
     bool                            enabled = false;
+    unsigned int                   band_idx;
 
     // By default stats are enabled!
     if (g_bm_stats_default_request.reporting_interval) {
@@ -715,7 +708,19 @@ bm_stats_steering_parse_event(
         }
     }
 
-    band_rec  = &bs_client_entry->band_record[band];
+    band_idx = bm_group_find_radio_type_by_ifname(event->ifname);
+    if (band_idx == RADIO_TYPE_NONE) {
+        LOGE("%s ifname %s event %d RADIO_TYPE_NONE", __func__, event->ifname, bs_event);
+        return;
+    }
+
+    band_idx--;
+    if (band_idx >= ARRAY_SIZE(bs_client_entry->band_record)) {
+        LOGE("%s ifname %s event %d exceend array size", __func__, event->ifname, bs_event);
+        return;
+    }
+
+    band_rec  = &bs_client_entry->band_record[band_idx];
     event_rec = &band_rec->event_record[band_rec->num_event_records];
 
     if( band_rec->num_event_records >= DPP_MAX_BS_EVENT_RECORDS ) {
@@ -741,20 +746,14 @@ bm_stats_steering_parse_event(
             // We do this satisfy common api
             radio_entry_t radio_cfg;
             memset(&radio_cfg, 0, sizeof(radio_cfg));
-            radio_cfg.type = bm_stats_get_band_type(band);
+            radio_cfg.type = bm_group_find_radio_type_by_ifname(event->ifname);
             if(bm_stats_rssi_is_reporting_enabled(&radio_cfg)) {
-                mac_address_t mac;
-                if( os_nif_macaddr_from_str((os_macaddr_t *)&mac,
-                            client->mac_addr ) ) {
-                    // Add it into RSSI report
-                    bm_stats_rssi_stats_results_update(
-                            &radio_cfg,
-                            mac,
-                            (uint32_t)event->data.probe_req.rssi,
-                            RSSI_SOURCE_PROBE);
-                } else {
-                    LOGE( "Failed to parse mac address '%s'", client->mac_addr );
-                }
+                // Add it into RSSI report
+                bm_stats_rssi_stats_results_update(
+                        &radio_cfg,
+                        client->macaddr.addr,
+                        (uint32_t)event->data.probe_req.rssi,
+                        RSSI_SOURCE_PROBE);
             } else {
                 event_rec->rssi = event->data.probe_req.rssi;
             }
@@ -875,6 +874,15 @@ bm_stats_steering_parse_event(
             event_rec->rrm_caps_lci_meas = event->data.connect.rrm_caps.lci_meas ? 1 : 0;
             event_rec->rrm_caps_ftm_range_rpt =
                                     event->data.connect.rrm_caps.ftm_range_rpt ? 1 : 0;
+
+            event_rec->assoc_ies_len = event->data.connect.assoc_ies_len;
+            if (event_rec->assoc_ies_len > ARRAY_SIZE(event_rec->assoc_ies))
+                event_rec->assoc_ies_len = ARRAY_SIZE(event_rec->assoc_ies);
+
+            memcpy(event_rec->assoc_ies,
+                   event->data.connect.assoc_ies,
+                   event_rec->assoc_ies_len);
+
             break;
 
         case CLIENT_BS_BTM_RETRY:
@@ -926,6 +934,7 @@ bm_stats_steering_parse_event(
             break;
     }
 
+    bm_client_add_dbg_event(client, event->ifname, event_rec);
     band_rec->num_event_records++;
 
     if( band_rec->num_event_records == DPP_MAX_BS_EVENT_RECORDS ) {
@@ -940,11 +949,19 @@ bm_stats_steering_parse_event(
 static void
 bm_stats_ev_timer_cb(struct ev_loop *loop, ev_timer *watcher, int revents)
 {
+    ds_tree_t *bm_groups;
+    bm_group_t *group;
+
     (void)loop;
     (void)watcher;
     (void)revents;
 
-    bm_stats_steering_process_stats();
+    bm_groups = bm_group_get_tree();
+
+    /* Process stats per group */
+    ds_tree_foreach(bm_groups, group) {
+        bm_stats_steering_process_stats(group);
+    }
 }
 
 static void
@@ -1073,19 +1090,19 @@ bm_stats_enumerate(
 
     if (strcmp(schema->radio_type, RADIO_TYPE_STR_2G) == 0) {
         request->radio_type = RADIO_TYPE_2G;
-        strcpy(request->radio_cfg.phy_name, SCHEMA_CONSTS_RADIO_PHY_NAME_2G);
+        STRSCPY(request->radio_cfg.phy_name, SCHEMA_CONSTS_RADIO_PHY_NAME_2G);
     }
     else if (strcmp(schema->radio_type, RADIO_TYPE_STR_5G) == 0) {
         request->radio_type = RADIO_TYPE_5G;
-        strcpy(request->radio_cfg.phy_name, SCHEMA_CONSTS_RADIO_PHY_NAME_5G);
+        STRSCPY(request->radio_cfg.phy_name, SCHEMA_CONSTS_RADIO_PHY_NAME_5G);
     }
     else if (strcmp(schema->radio_type, RADIO_TYPE_STR_5GL) == 0) {
         request->radio_type = RADIO_TYPE_5GL;
-        strcpy(request->radio_cfg.phy_name, SCHEMA_CONSTS_RADIO_PHY_NAME_5GL);
+        STRSCPY(request->radio_cfg.phy_name, SCHEMA_CONSTS_RADIO_PHY_NAME_5GL);
     }
     else if (strcmp(schema->radio_type, RADIO_TYPE_STR_5GU) == 0) {
         request->radio_type = RADIO_TYPE_5GU;
-        strcpy(request->radio_cfg.phy_name, SCHEMA_CONSTS_RADIO_PHY_NAME_5GU);
+        STRSCPY(request->radio_cfg.phy_name, SCHEMA_CONSTS_RADIO_PHY_NAME_5GU);
     }
     else {
         LOGE("Steering stats update (unknown radio type %s)",
@@ -1241,8 +1258,10 @@ bm_stats_init(struct ev_loop *loop)
     LOGI("BM stats Initializing");
 
     g_bm_stats_evloop = loop;
+    ds_tree_t *bm_groups;
+    bm_group_t *group;
 
-    ASSERT(DPP_MAX_BS_BANDS >= BSAL_BAND_COUNT, "INVALID BAND COUNT");
+//    ASSERT(DPP_MAX_BS_BANDS >= BSAL_BAND_COUNT, "INVALID BAND COUNT");
 
     // Initialize the report list
     ds_dlist_init(
@@ -1253,7 +1272,13 @@ bm_stats_init(struct ev_loop *loop)
     // Initialize MQTT queue
     dpp_init();
 
-    bm_stats_steering_clear_all_stats();
+    bm_groups = bm_group_get_tree();
+
+    /* Process stats per group */
+    ds_tree_foreach(bm_groups, group) {
+        bm_stats_steering_clear_all_stats(group);
+    }
+
     bm_stats_steering_clear_all_event_records();
 
     // Start QM stats sending timer
@@ -1322,27 +1347,15 @@ bm_stats_add_event_to_report(
                         dpp_bs_client_event_type_t bs_event,
                         bool backoff_enabled )
 {
-    bsal_band_t band;
-
-    // Band steering is currently only done from 2.4 --> 5 band.
-    // Hence, add the backoff and BAND_STEERING_ATTEMPT events to 2.4G band
-    if ( bs_event == BACKOFF || bs_event == BAND_STEERING_ATTEMPT ) {
-        band = BSAL_BAND_24G;
-    } else {
-        band = event->band;
-    }
-
-    if (band == BSAL_BAND_COUNT) {
-        LOGW("%s: client %s event %d wrong band", __func__, client ? client->mac_addr : NULL, bs_event);
-    }
+    if (WARN_ON(!event))
+        return;
 
     /* Steering report */
     bm_stats_steering_parse_event(
             client,
             event,
             bs_event,
-            backoff_enabled,
-            band);
+            backoff_enabled);
 }
 
 void
@@ -1353,7 +1366,6 @@ bm_stats_remove_client_from_report( bm_client_t *client )
     dpp_bs_client_record_t      *bs_client_entry    = NULL;
     ds_dlist_iter_t             bs_client_iter;
 
-    mac_address_t mac_addr;
     LOGN("Removing '%s' client record from Band Steering report",
          client->mac_addr );
 
@@ -1363,12 +1375,7 @@ bm_stats_remove_client_from_report( bm_client_t *client )
     {
         bs_client_entry = &bs_client->entry;
 
-        if( !os_nif_macaddr_from_str((os_macaddr_t *)&mac_addr, client->mac_addr ) ) {
-            LOGE("Failed to parse mac address '%s'",
-                 client->mac_addr );
-        }
-
-        if( MAC_ADDR_EQ( bs_client_entry->mac, mac_addr ) )
+        if( MAC_ADDR_EQ( bs_client_entry->mac, client->macaddr.addr ) )
         {
             ds_dlist_iremove( &bs_client_iter );
             dpp_bs_client_record_free( bs_client );
@@ -1385,51 +1392,4 @@ int
 bm_stats_get_stats_report_interval( void )
 {
     return g_bm_stats_default_request.reporting_interval;
-}
-
-void
-bm_stats_map_radio_type(bsal_band_t band, const char *ifname)
-{
-    const char      *mapped_bandstr = target_map_ifname_to_bandstr(ifname);
-    radio_type_t    mapped_radio_type;
-
-    if (!mapped_bandstr) {
-        // No mapping found
-        return;
-    }
-
-    if (band == BSAL_BAND_24G && !strcmp(mapped_bandstr, "2G")) {
-        mapped_radio_type = RADIO_TYPE_2G;
-    }
-    else if (band == BSAL_BAND_5G && !strcmp(mapped_bandstr, "5G")) {
-        mapped_radio_type = RADIO_TYPE_5G;
-    }
-    else if (band == BSAL_BAND_5G && !strcmp(mapped_bandstr, "5GL")) {
-        mapped_radio_type = RADIO_TYPE_5GL;
-    }
-    else if (band == BSAL_BAND_5G && !strcmp(mapped_bandstr, "5GU")) {
-        mapped_radio_type = RADIO_TYPE_5GU;
-    }
-    else {
-        LOGW("%s: Ignoring unknown mapped band string \"%s\" for band %d",
-                                                    ifname, mapped_bandstr, band);
-        return;
-    }
-
-    switch(band) {
-
-    case BSAL_BAND_24G:
-        g_bm_stats_2g_radio_type = mapped_radio_type;
-        break;
-
-    case BSAL_BAND_5G:
-        g_bm_stats_5g_radio_type = mapped_radio_type;
-        break;
-
-    default:
-        break;
-
-    }
-
-    return;
 }

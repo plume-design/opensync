@@ -49,7 +49,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define DAEMON_DEFAULT_RESTART_DELAY      1.0   /* Default delay between daemon restarts in secods */
 #define DAEMON_DEFAULT_RESTART_MAX        5     /* Number of retries before giving up */
-#define DAEMON_DEFAULT_KILL_TIMEOUT       6.0   /* Seconds to wait for child termination */
+#define DAEMON_DEFAULT_KILL_TIMEOUT       10.0   /* Seconds to wait for child termination */
 
 /* Forward declaration of private functions */
 static void __daemon_arg_reset(daemon_t *self);
@@ -398,6 +398,9 @@ bool __daemon_start(daemon_t *self)
 
 void __daemon_child_ev(struct ev_loop *loop, ev_child *w, int revent)
 {
+    (void)loop;
+    (void)revent;
+
     daemon_t *self = (daemon_t *)w->data;
 
     /* Stop any active io watchers */
@@ -419,14 +422,14 @@ void __daemon_teardown(daemon_t *self, int wstatus)
         if (true)
 #endif
         {
-            LOG(INFO, "Daemon %s (%jd) was terminated by signal %d.",
+            LOG(ERR, "Daemon %s (%jd) was terminated by signal %d.",
                     self->dn_exec,
                     (intmax_t)self->dn_pid,
                     WTERMSIG(wstatus));
         }
         else
         {
-            LOG(INFO, "Daemon %s (%jd) crashed (signal %d) and produced a core dump.",
+            LOG(ERR, "Daemon %s (%jd) crashed (signal %d) and produced a core dump.",
                     self->dn_exec,
                     (intmax_t)self->dn_pid,
                     WTERMSIG(wstatus));
@@ -434,14 +437,21 @@ void __daemon_teardown(daemon_t *self, int wstatus)
     }
     else if (WIFEXITED(wstatus))
     {
-        LOG(INFO, "Daemon %s (%jd) exited with exit status %d.",
+        log_severity_t ls = LOG_SEVERITY_INFO;
+
+        if (WEXITSTATUS(wstatus) != 0)
+        {
+            ls = LOG_SEVERITY_ERR;
+        }
+
+        LOG_SEVERITY(ls, "Daemon %s (%jd) exited with exit status %d.",
                 self->dn_exec,
                 (intmax_t)self->dn_pid,
                 WEXITSTATUS(wstatus));
     }
     else
     {
-        LOG(INFO, "Daemon %s (%jd) exited abnormally with exit status %d.",
+        LOG(ERR, "Daemon %s (%jd) exited abnormally with exit status %d.",
                 self->dn_exec,
                 (intmax_t)self->dn_pid,
                 WEXITSTATUS(wstatus));
@@ -466,6 +476,12 @@ void __daemon_teardown(daemon_t *self, int wstatus)
     {
         if (self->dn_restart_num++ < self->dn_restart_max)
         {
+
+            if (self->dn_atrestart_fn != NULL)
+            {
+                (void)self->dn_atrestart_fn(self, wstatus);
+            }
+
             /* Schedule a restart */
             ev_timer_init(
                     &self->dn_restart_timer,
@@ -503,9 +519,11 @@ ssize_t __daemon_flush_pipe(daemon_t *self, read_until_t *ru, int fd)
 {
     char bname[C_MAXPATH_LEN];
     char *name;
-    char *prefix = "E";
     char *line;
     ssize_t nrd;
+
+    log_severity_t ls = LOG_SEVERITY_ERROR;
+    const char *prefix = "E";
 
     STRSCPY(bname, self->dn_exec);
 
@@ -513,16 +531,18 @@ ssize_t __daemon_flush_pipe(daemon_t *self, read_until_t *ru, int fd)
 
     if (fd == self->dn_stdout_fd)
     {
+        ls = LOG_SEVERITY_INFO;
         prefix = ">";
     }
     else if (fd == self->dn_stderr_fd)
     {
+        ls = LOG_SEVERITY_DEBUG;
         prefix = "|";
     }
 
     while ((nrd = read_until(ru, &line, fd, "\n")) > 0)
     {
-        LOG(INFO, "%s [%jd] %s %s", name, (intmax_t)self->dn_pid, prefix, line);
+        LOG_SEVERITY(ls, "%s [%jd] %s %s", name, (intmax_t)self->dn_pid, prefix, line);
     }
 
     return nrd;
@@ -571,6 +591,8 @@ void __daemon_log_output(struct ev_loop *loop, ev_io *w, int revent)
 
 void __daemon_restart_ev(struct ev_loop *loop, ev_timer *w, int revent)
 {
+    (void)revent;
+
     daemon_t *self = (daemon_t *)w->data;
 
     if (!__daemon_start(self))
@@ -584,6 +606,9 @@ void __daemon_restart_ev(struct ev_loop *loop, ev_timer *w, int revent)
 
 void __daemon_waitpid_fn(struct ev_loop *loop, ev_timer *w, int revent)
 {
+    (void)loop;
+    (void)w;
+    (void)revent;
 }
 
 /*
@@ -721,9 +746,9 @@ bool daemon_stop(daemon_t *self)
     /* Try to ask nicely first */
     if (self->dn_pid != 0)
     {
-        LOG(INFO, "Terminating daemon %s (%jd).",
+        LOG(INFO, "Terminating daemon %s (%jd, signal %d).",
                 self->dn_exec,
-                (intmax_t)self->dn_pid);
+                (intmax_t)self->dn_pid, self->dn_sig_term);
 
         kill(self->dn_pid, self->dn_sig_term);
         daemon_wait(self, DAEMON_DEFAULT_KILL_TIMEOUT);
@@ -731,9 +756,10 @@ bool daemon_stop(daemon_t *self)
 
     if (self->dn_pid != 0)
     {
-        LOG(WARN, "Daemon %s (%jd) refused to die. Forcing a kill...",
+        LOG(WARN, "Daemon %s (%jd) refused to die. Forcing a kill (signal %d)...",
                 self->dn_exec,
-                (intmax_t)self->dn_pid);
+                (intmax_t)self->dn_pid,
+                self->dn_sig_kill);
 
         kill(self->dn_pid, self->dn_sig_kill);
         daemon_wait(self, DAEMON_DEFAULT_KILL_TIMEOUT);
@@ -803,7 +829,6 @@ bool daemon_wait(daemon_t *self, double timeout)
         retval = true;
     }
 
-exit:
     /* retval == false, the child is still active, restart the watchers on the default loop */
     if (ev_is_active(&self->dn_stdout))
     {
@@ -862,6 +887,15 @@ bool daemon_restart_set(daemon_t *self, bool enabled, double delay, int max)
     else
         self->dn_restart_max = DAEMON_DEFAULT_RESTART_MAX;
 
+    return true;
+}
+
+/**
+ * Set the atrestart callback
+ */
+bool daemon_atrestart(daemon_t *self, daemon_atrestart_fn_t *fn)
+{
+    self->dn_atrestart_fn = fn;
     return true;
 }
 

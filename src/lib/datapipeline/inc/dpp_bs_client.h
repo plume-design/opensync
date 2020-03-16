@@ -24,8 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __HAVE_DPP_BS_CLIENT_H__
-#define __HAVE_DPP_BS_CLIENT_H__
+#ifndef DPP_BS_CLIENT_H_INCLUDED
+#define DPP_BS_CLIENT_H_INCLUDED
 
 #include "ds.h"
 #include "ds_dlist.h"
@@ -33,7 +33,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 #define DPP_MAX_BS_EVENT_RECORDS    60
-#define DPP_MAX_BS_BANDS            2
+#define DPP_MAX_BS_BANDS            4
+#define DPP_IFNAME_LEN              17
 
 // proto: BSEventType
 typedef enum
@@ -117,6 +118,8 @@ typedef struct
     bool                            rrm_caps_lci_meas;
     bool                            rrm_caps_ftm_range_rpt;
     uint32_t                        backoff_period;
+    uint8_t                         assoc_ies[1024];
+    size_t                          assoc_ies_len;
 } dpp_bs_client_event_record_t;
 
 typedef struct
@@ -137,6 +140,7 @@ typedef struct
     uint32_t                        probe_direct_blocked;
     uint32_t                        num_event_records;
     dpp_bs_client_event_record_t    event_record[DPP_MAX_BS_EVENT_RECORDS];
+    char                            ifname[DPP_IFNAME_LEN];
 } dpp_bs_client_band_record_t;
 
 typedef struct
@@ -181,4 +185,4 @@ typedef struct
     dpp_bs_client_list_t            list;
 } dpp_bs_client_report_data_t;
 
-#endif  /* __HAVE_DPP_BS_CLIENT_H__ */
+#endif  /* DPP_BS_CLIENT_H_INCLUDED */

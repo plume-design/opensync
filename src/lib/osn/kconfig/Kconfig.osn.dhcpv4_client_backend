@@ -1,0 +1,13 @@
+config OSN_BACKEND_DHCPV4_CLIENT_NULL
+    bool "Null"
+
+    help
+        Use a dummy DHCPv4 client backend.
+
+config OSN_BACKEND_DHCPV4_CLIENT_UDHCP
+    bool "udhcp client"
+    select OSN_LINUX_ENABLED
+    select OSN_UDHCPC
+    help
+        Use the the udhcp client backend provided by OpenSync
+

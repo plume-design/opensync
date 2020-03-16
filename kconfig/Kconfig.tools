@@ -1,0 +1,11 @@
+#
+# Include common tools configs
+#
+source "src/tools/osps/kconfig/Kconfig.tools"
+
+#
+# Include platform/vendor specific tool configs
+#
+osource "platform/*/kconfig/Kconfig.tools"
+osource "vendor/*/kconfig/Kconfig.tools"
+

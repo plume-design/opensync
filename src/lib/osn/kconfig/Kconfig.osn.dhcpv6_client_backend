@@ -1,0 +1,13 @@
+config OSN_BACKEND_DHCPV6_CLIENT_NULL
+    bool "Null"
+
+    help
+        Use a dummy DHCPv6 client backend.
+
+config OSN_BACKEND_DHCPV6_CLIENT_ODHCP6
+    bool "odhcp6 client"
+    select OSN_LINUX_ENABLED
+    select OSN_ODHCP6
+    help
+        Use the odhcp6 client backend provided by OpenSync
+

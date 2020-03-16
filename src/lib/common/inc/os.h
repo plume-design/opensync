@@ -24,8 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __OS__H__
-#define __OS__H__
+#ifndef OS_H_INCLUDED
+#define OS_H_INCLUDED
 
 #include <pthread.h>
 #include <stdio.h>
@@ -40,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdint.h>
 
 #include "log.h"
+#include "util.h"
 
 /* Macro to make it a bit harder to access private members of structures */
 #define PRIV(x) __priv__ ## x
@@ -75,11 +76,7 @@ task_once_t;
 #define strlcpy(dest, src, size)            \
 do                                          \
 {                                           \
-    if (size > 0)                           \
-    {                                       \
-        strncpy(dest, src, size - 1);       \
-        dest[size - 1] = '\0';              \
-    }                                       \
+    strscpy(dest, src, size);               \
 }                                           \
 while(0)
 
@@ -182,4 +179,4 @@ bool os_cmd_exec_xv(char **buffer, int *len, int *exit_code, int flags, char *fm
 bool os_cmd_exec_x(char **buffer, int *len, int *exit_code, int flags, char *fmt, ...);
 bool os_cmd_exec(char **buffer, char *fmt, ...);
 
-#endif /* __OS__H__ */
+#endif /* OS_H_INCLUDED */

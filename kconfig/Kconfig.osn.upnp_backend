@@ -1,0 +1,10 @@
+#
+# OpenSync core UPnP backend
+#
+source "src/lib/osn/kconfig/Kconfig.osn.upnp_backend"
+
+#
+# Platform/vendor UPnP backends
+#
+osource "platform/*/kconfig/Kconfig.osn.upnp_backend"
+osource "vendor/*/kconfig/Kconfig.osn.upnp_backend"

@@ -24,13 +24,12 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __NETWORK_METADATA_H__
-#define __NETWORK_METADATA_H__
+#ifndef NETWORK_METADATA_H_INCLUDED
+#define NETWORK_METADATA_H_INCLUDED
 
 #include <stdint.h>
 
 #include "network_metadata.pb-c.h"
-#include "net_header_parse.h"
 
 /**
  * @brief container of information needed to set an observation point protobuf.
@@ -44,6 +43,20 @@ struct node_info
 };
 
 /**
+ * @brief container of information about the flow state
+ *
+ * Stashes information related to flow start/end
+ */
+
+struct flow_state
+{
+    time_t   first_obs;
+    time_t   last_obs;
+    bool     fstart;
+    bool     fend;
+};
+
+/**
  * @brief container of information needed to set a flowkey protobuf.
  *
  * Stashes information related to a network flow.
@@ -54,6 +67,7 @@ struct flow_key
     char *dmac;         /*!< destination mac address of the flow */
     uint32_t vlan_id;   /*!< valid vlan id if detected, 0 otherwise */
     uint16_t ethertype; /*!< ethernet type as defined by IANA */
+    uint8_t ip_version; /*!< ip version */
     char *src_ip;       /*!< source IP in string representation */
     char *dst_ip;       /*!< destination IP in string representation */
     uint8_t protocol;   /*!< transport protocol ID (udp, tcp, etc ...) */
@@ -61,6 +75,9 @@ struct flow_key
     uint16_t dport;     /*!< transport protocol destination port */
     size_t num_tags;    /*!< number of flow tags */
     struct flow_tags **tags; /*!< flow tags */
+    size_t num_vendor_data;  /*!< number of vendor data containers */
+    struct flow_vendor_data **vdr_data; /*!< vendor data container */
+    struct flow_state state; /*!< Flow state */
 };
 
 /**
@@ -117,6 +134,60 @@ struct flow_report
     size_t num_windows;                /*!< number of flow stats containers */
     struct flow_window **flow_windows; /*!< array of flow window containers */
 };
+
+
+/**
+ * @brief container for traffic tags
+ */
+struct flow_tags
+{
+    char *vendor;
+    char *app_name;
+    size_t nelems;
+    char **tags;
+};
+
+
+enum vendor_value_type
+{
+    NET_VENDOR_STR = 0,
+    NET_VENDOR_U32,
+    NET_VENDOR_U64,
+};
+
+
+/**
+ * @brief container for <string key, string value> pair
+ */
+struct vendor_data_kv_pair
+{
+    char *key;
+    uint8_t value_type;
+    char *str_value;
+    uint32_t u32_value;
+    uint64_t u64_value;
+};
+
+
+/**
+ * @brief container for a specific vendor data
+ */
+struct flow_vendor_data
+{
+    char *vendor;
+    size_t nelems;
+    struct vendor_data_kv_pair **kv_pairs;
+};
+
+/**
+ * @brief container for all vendor data
+ */
+struct flow_vendor_data_container
+{
+    size_t nelems;
+    struct flow_vendor_data **vdr_data;
+};
+
 
 /**
  * @brief Container of protobuf serialization output
@@ -201,6 +272,38 @@ serialize_flow_tags(struct flow_tags *tags);
 
 
 /**
+ * @brief Generates a vendor kvpair serialized protobuf
+ *
+ * Uses the information pointed by the kv pair parameter to generate
+ * a serialized vendor kvpair buffer.
+ * The caller is responsible for freeing to the returned serialized data,
+ * @see free_packed_buffer() for this purpose.
+ *
+ * @param counters info used to fill up the protobuf.
+ * @return a pointer to the serialized data.
+ */
+struct packed_buffer *
+serialize_vdr_kvpair(struct vendor_data_kv_pair *vendor_kvpair);
+
+
+/**
+ * @brief Generates a flow vendor data serialized protobuf
+ *
+ * Uses the information pointed by the kv pair parameter to generate
+ * a serialized vendor kvpair buffer.
+ * The caller is responsible for freeing to the returned serialized data,
+ * @see free_packed_buffer() for this purpose.
+ *
+ * @param counters info used to fill up the protobuf.
+ * @return a pointer to the serialized data.
+ */
+struct packed_buffer *
+serialize_vendor_data(struct flow_vendor_data *vendor_data);
+
+struct packed_buffer *
+serialize_flow_state(struct flow_state *flow_state);
+
+/**
  * @brief Allocates and sets a flow tags protobuf.
  *
  * Uses the flow tags info to fill a dynamically allocated
@@ -216,6 +319,20 @@ set_flow_tags(struct flow_tags *tags);
 
 
 /**
+ * @brief Allocates and sets a table of tags protobufs
+ *
+ * Uses the key info to fill a dynamically allocated
+ * table of flow stats protobufs.
+ * The caller is responsible for freeing the returned pointer
+ *
+ * @param key info used to fill up the protobuf table
+ * @return a flow tags protobuf pointers table
+ */
+Traffic__FlowTags **
+set_pb_flow_tags(struct flow_key *key);
+
+
+/**
  * @brief Free a flow tag protobuf structure.
  *
  * Free dynamically allocated fields and the protobuf structure.
@@ -224,6 +341,87 @@ set_flow_tags(struct flow_tags *tags);
  * @return none
  */
 void free_pb_flow_tags(Traffic__FlowTags *pb);
+
+
+/**
+ * @brief Allocates and sets a vendor key/value protobuf.
+ *
+ * Uses the vendor kv_pair info to fill a dynamically allocated
+ * flow key protobuf.
+ * The caller is responsible for freeing the returned pointer,
+ * @see free_pb_vendor_kv() for this purpose.
+ *
+ * @param counters info used to fill up the protobuf
+ * @return a pointer to a flow counters protobuf structure
+ */
+Traffic__VendorDataKVPair *
+set_vendor_kv(struct vendor_data_kv_pair *kv_pair);
+
+
+/**
+ * @brief Free a flow tag protobuf structure.
+ *
+ * Free dynamically allocated fields and the protobuf structure.
+ *
+ * @param pb flow tag structure to free
+ * @return none
+ */
+void free_pb_vendor_kv(Traffic__VendorDataKVPair *pb);
+
+
+/**
+ * @brief Allocates and sets a table of vendor_kv_pair protobufs
+ *
+ * Uses the key info to fill a dynamically allocated
+ * table of flow stats protobufs.
+ * The caller is responsible for freeing the returned pointer
+ *
+ * @param key info used to fill up the protobuf table
+ * @return a flow tags protobuf pointers table
+ */
+Traffic__VendorDataKVPair **
+set_pb_vendor_kv_pairs(struct flow_vendor_data *vdr_data);
+
+
+/**
+ * @brief Allocates and sets a vendor key/value protobuf.
+ *
+ * Uses the vendor kv_pair info to fill a dynamically allocated
+ * flow key protobuf.
+ * The caller is responsible for freeing the returned pointer,
+ * @see free_pb_vendor_kv() for this purpose.
+ *
+ * @param counters info used to fill up the protobuf
+ * @return a pointer to a flow counters protobuf structure
+ */
+Traffic__VendorData *
+set_vendor_data(struct flow_vendor_data *vendor_data);
+
+
+/**
+ * @brief Free a flow tag protobuf structure.
+ *
+ * Free dynamically allocated fields and the protobuf structure.
+ *
+ * @param pb flow tag structure to free
+ * @return none
+ */
+void
+free_pb_vendor_data(Traffic__VendorData *pb);
+
+
+/**
+ * @brief Allocates and sets a table of vendor_kv_pair protobufs
+ *
+ * Uses the key info to fill a dynamically allocated
+ * table of flow stats protobufs.
+ * The caller is responsible for freeing the returned pointer
+ *
+ * @param key info used to fill up the protobuf table
+ * @return a flow tags protobuf pointers table
+ */
+Traffic__VendorData **
+set_pb_vendor_data(struct flow_key *flow_key);
 
 
 /**
@@ -238,6 +436,7 @@ void free_pb_flow_tags(Traffic__FlowTags *pb);
  */
 Traffic__FlowStats **set_pb_flow_stats(struct flow_window *window);
 
+
 /**
  * @brief Free a flow stats protobuf structure.
  *
@@ -247,6 +446,7 @@ Traffic__FlowStats **set_pb_flow_stats(struct flow_window *window);
  * @return none
  */
 void free_pb_flowstats(Traffic__FlowStats *pb);
+
 
 /**
  * @brief Generates a flow stats serialized protobuf
@@ -319,4 +519,4 @@ struct packed_buffer * serialize_flow_report(struct flow_report *report);
 void
 free_flow_key_tags(struct flow_key *key);
 
-#endif /* __NETWORK_METADATA_H__ */
+#endif /* NETWORK_METADATA_H_INCLUDED */

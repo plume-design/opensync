@@ -31,7 +31,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <jansson.h>
 
 #include "ovsdb.h"
-#include "crt.h"
 #include "os.h"
 
 /*
@@ -43,7 +42,6 @@ typedef struct ovsdb_update_parse ovsdb_update_parse_t;
 
 struct ovsdb_update_parse
 {
-    crt_t                up_crt;            /* Coroutine context */
     json_t              *up_jtable;         /* Table list */
     void                *up_itable;         /* Table list iterator */
     json_t              *up_jrow;           /* Current row list */

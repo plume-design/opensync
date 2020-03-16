@@ -29,6 +29,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "inet.h"
 #include "inet_dhsnif.h"
 
+struct __inet_dhsnif
+{
+};
+
+static inet_dhsnif_t g_inet_dhsnif;
+
 /*
  * Return a new instance of the DHCP sniffing class
  */
@@ -36,9 +42,9 @@ inet_dhsnif_t *inet_dhsnif_new(const char *ifname)
 {
     (void)ifname;
 
-    LOG(WARN, "inet_dhsnif: %s: DHCP sniffing not available on platform.", ifname);
+    LOG(NOTICE, "inet_dhsnif: %s: not using OpenSync DHCP sniffing on this platform.", ifname);
 
-    return (void *)0xdeadc0de;
+    return &g_inet_dhsnif;
 }
 
 /*

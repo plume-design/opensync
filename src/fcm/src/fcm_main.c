@@ -29,7 +29,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <time.h>
 #include <string.h>
 
-#include "evsched.h"     // ev helpers
 #include "log.h"         // logging routines
 #include "json_util.h"   // json routines
 #include "os.h"          // OS helpers
@@ -41,7 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fcm_priv.h"
 #include "fcm_mgr.h"
 #include "fcm_filter.h"
-#include "ip_map.h"
+#include "neigh_table.h"
 
 /* Default log severity */
 static log_severity_t  log_severity = LOG_SEVERITY_INFO;
@@ -57,6 +56,7 @@ static log_severity_t  log_severity = LOG_SEVERITY_INFO;
 int main(int argc, char ** argv)
 {
     struct ev_loop *loop = EV_DEFAULT;
+    struct neigh_table_mgr *mgr;
 
     // Parse command-line arguments
     if (os_get_opt(argc, argv, &log_severity))
@@ -77,14 +77,6 @@ int main(int argc, char ** argv)
 
     // Allow recurrent json memory usage reports in the log file
     json_memdbg_init(loop);
-
-    // Initialize EV context
-    if (evsched_init(loop) == false)
-    {
-        LOGE("Initializing FCM "
-             "(Failed to initialize EVSCHED)");
-        return -1;
-    }
 
     // Initialize target structure
     if (!target_init(TARGET_INIT_MGR_FCM, loop))
@@ -117,11 +109,15 @@ int main(int argc, char ** argv)
         return -1;
     }
 
-    if (ip_map_init())
+    if (neigh_table_init())
     {
-        LOGE("Initializing Ip Map failed " );
+        LOGE("Initializing Neighbour Table failed " );
         return -1;
     }
+
+    // FCM doesn't need to update ovsdb.
+    mgr = neigh_table_get_mgr();
+    if (mgr) mgr->update_ovsdb_tables = NULL;
 
     // Register to relevant OVSDB tables events
     if (fcm_ovsdb_init())
@@ -144,9 +140,10 @@ int main(int argc, char ** argv)
 
     target_close(TARGET_INIT_MGR_FCM, loop);
 
+    neigh_table_cleanup();
+
     // De-init FCM filter manager
     fcm_filter_cleanup();
-    ip_map_cleanup();
 
     if (!ovsdb_stop_loop(loop))
     {

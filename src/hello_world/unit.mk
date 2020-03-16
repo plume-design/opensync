@@ -29,7 +29,7 @@
 ##############################################################################
 UNIT_NAME := hello_world
 
-UNIT_DISABLE := $(if $(CONFIG_TARGET_MANAGER_HELLO_WORLD),n,y)
+UNIT_DISABLE := $(if $(CONFIG_MANAGER_HELLO_WORLD),n,y)
 
 # Template type:
 UNIT_TYPE := BIN
@@ -50,7 +50,6 @@ UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/ovsdb
 UNIT_DEPS += src/lib/pjs
 UNIT_DEPS += src/lib/schema
-UNIT_DEPS += src/lib/version
 UNIT_DEPS += src/lib/datapipeline
 UNIT_DEPS += src/lib/json_util
 UNIT_DEPS += src/lib/schema

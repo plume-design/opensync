@@ -1,0 +1,13 @@
+config OSN_BACKEND_IPV4_NULL
+    bool "Null"
+
+    help
+        Use dummy implementation of IPv4 networking.
+
+config OSN_BACKEND_IPV4_LINUX
+    bool "Linux"
+    select OSN_LINUX_ENABLED
+    select OSN_LINUX_IP
+    help
+        Use the Linux IPv4 backend provided by OpenSync
+

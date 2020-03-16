@@ -1,0 +1,235 @@
+menuconfig OSN_LINUX_ENABLED
+    bool "Generic Linux Implementation"
+    default y
+    help
+        Provide a generic Linux implementation of the OSN API. This includes:
+            - Linux L2 interface support (via ioctl())
+            - IPv4 support (via iproute2)
+            - IPv6 support (via iproute2)
+            - DHCPv4 server support (via dnsmasq)
+            - DHCPv4 client support (via udhcpc)
+            - DHCPv6 server support (via dnsmasq)
+            - DHCPv6 client support (via odhcp6c)
+            - Router Advertisement support (via dnsmasq)
+            - UPnP support (via miniupnpd)
+
+if OSN_LINUX_ENABLED
+    config OSN_LINUX_NETIF
+        bool "Linux L2 interface control"
+        default y
+        select OSN_LINUX_NETLINK
+        help
+            OpenSync L2 interface control implementation (generic Linux)
+
+            This option implements the lnx_netif API and enables the
+            "Linux L2 control" backend (osn_netif).
+
+    config OSN_LINUX_IP
+        bool "Linux IPv4"
+        default y
+        select OSN_LINUX_NETLINK
+        help
+            OpenSync IPv4 implementation (generic Linux)
+
+            This option implements the lnx_ip API and enables the
+            "Linux IPv4" backend (osn_ip).
+
+    config OSN_LINUX_IPV6
+        bool "Linux IPv6"
+        default y
+        select OSN_LINUX_NETLINK
+        help
+            OpenSync IPv6 implementation (generic Linux)
+
+            This option implements the lnx_ip6 API and enables the
+            "Linux IPv6" backend (osn_ip6).
+
+    menuconfig OSN_UDHCPC
+        bool "udhcp DHCPv4 client"
+        default y
+        help
+            OpenSync DHCPv4 client implementation using the busybox udhcpc
+
+            This option implements the udhcp_client API and enables the
+            "udhcp client" DHCPv4 client backend (osn_dhcp_client).
+
+        if OSN_UDHCPC
+            config OSN_UDHCPC_PATH
+                string "Path to the udhcpc binary"
+                default "/sbin/udhcpc"
+                help
+                    Full path to the udhcpc binary.
+        endif
+
+    menuconfig OSN_DNSMASQ
+        bool "dnsmasq DHCPv4 server"
+        default y
+        help
+            OpenSync DHCPv4 server implementation using dnsmasq
+
+            This option exports the dnsmasq_server API and enables
+            the "dnsmasq" DHCPv4 server backend (osn_dhcp_server).
+
+        if OSN_DNSMASQ
+            config OSN_DNSMASQ_PATH
+                string "Path to the dnsmasq binary"
+                default "/usr/sbin/dnsmasq"
+                help
+                    Full path to the dnsmasq binary
+
+            config OSN_DNSMASQ_ETC_PATH
+                string "dnsmasq configuration file path"
+                default "/var/etc/dnsmasq.conf"
+                help
+                    This is the path where the dnsmasq configuration file
+                    will be generated.
+
+            config OSN_DNSMASQ_LEASE_PATH
+                string "Location of the DHCP lease file"
+                default "/tmp/dhcp.leases"
+                help
+                    Location of the "leases" file. This is the dnsmasq
+                    DHCP lease database.
+
+            config OSN_DNSMASQ_PID_PATH
+                string "Location of the dnsmasq PID file"
+                default "/var/run/dnsmasq/dnsmasq.pid"
+                help
+                    Location of the dnsmasq PID file.
+
+            config OSN_DNSMASQ_KEEP_RUNNING
+                bool 'Daemon should be always running'
+
+                help
+                    The default behavior is to kill dnsmasq as soon as there are
+                    0 DHCP server configurations active. This option forces dnsmasq
+                    to be active regardless of the DHCP server configuration.
+
+                    This is useful on systems where dnsmasq is used as a DNS cache.
+        endif
+
+    menuconfig OSN_ODHCP6
+        bool "odhcp6 DHCPv6 and RA client"
+        default y
+        help
+            OpenSync DHCPv6/RA client implementation using odhcp6c
+
+            This option implements the odhcp6_client API and enables the
+            "odhcp6 client" DHCPv6 client backend (osn_dhcpv6_client).
+
+        if OSN_ODHCP6
+            config OSN_ODHCP6_PATH
+                string "Path to the odhcp6 binary"
+                default "/usr/sbin/odhcp6c"
+                help
+                    Full path to the odhcp6c binary.
+
+            config OSN_ODHCP6_SCRIPT_PATH
+                string "Path to the odhcp6 script"
+                default "$(INSTALL_PREFIX)/bin/odhcp6c.sh"
+
+            config OSN_ODHCP6_OPTS_FILE
+                string "Path to the option file"
+                default "/var/run/odhcp6c_%s.opts"
+                help
+                    Note: %s will be replaced with the interface name.
+
+            config OSN_ODHCP6_PID_FILE
+                string "Path to the PID file"
+                default "/var/run/odhcp6c_%s.pid"
+                help
+                    Note: %s will be replaced with the interface name.
+        endif
+
+    menuconfig OSN_DNSMASQ6
+        bool "dnsmasq DHCPv6 and RA server"
+        default y
+        help
+            OpenSync DHCPv6/RA server implementation using dnsmasq
+
+            This option exports the dnsmasq6_server and dnsmasq6_radv APIs and
+            enables the "dnsmasq6" DHCPv6 and RA server backends
+            (osn_dhcpv6_server, osn_ip_radv).
+
+        if OSN_DNSMASQ6
+            config OSN_DNSMASQ6_PATH
+                string "Path to the dnsmasq binary"
+                default "/usr/sbin/dnsmasq"
+                help
+                    Full path to the dnsmasq binary
+
+            config OSN_DNSMASQ6_ETC_PATH
+                string "dnsmasq configuration file path"
+                default "/var/etc/dnsmasq6.conf"
+                help
+                    This is the path where the dnsmasq configuration file
+                    will be generated.
+
+            config OSN_DNSMASQ6_LEASE_PATH
+                string "Location of the DHCPv6 lease file"
+                default "/tmp/dhcp6.leases"
+                help
+                    Location of the "leases" file. This is the dnsmasq
+                    DHCP lease database.
+
+            config OSN_DNSMASQ6_PID_PATH
+                string "Location of the dnsmasq6 PID file"
+                default "/var/run/dnsmasq/dnsmasq6.pid"
+                help
+                    Location of the dnsmasq PID file.
+       endif
+
+    menuconfig OSN_MINIUPNPD
+        bool "miniupnpd UPnP server"
+        default y
+        help
+            OpenSync UPnP server implementation using miniupnpd.
+
+            This option implements the mupnp_server API and enables the
+            "miniupnp" UPnP backend (osn_upnp).
+
+        if OSN_MINIUPNPD
+            config OSN_MINIUPNPD_PATH
+                string "Path to the miniupnpd binary"
+                default "/usr/sbin/miniupnpd"
+                help
+                    Full path to the miniupnpd binary
+
+            config OSN_MINIUPNPD_ETC
+                string "miniupnpd configuration folder"
+                default "/tmp/miniupnpd"
+                help
+                    This is the location where the miniupnpd.conf and upnpd.lease
+                    files will be created.
+        endif
+
+    config OSN_LINUX_ROUTE
+        bool "Linux routing table"
+        default y
+        select OSN_LINUX_NETLINK
+        help
+            Route notification using Linux interfaces:
+                - /proc/net/route
+                - NETLINK sockets
+
+            This option implements the lnx_route API and enables the "Linux"
+            route status backend (osn_route).
+
+    menuconfig OSN_LINUX_NETLINK
+        bool "Netlink socket support"
+        default y
+        help
+            Support for NETLINK sockets.
+
+        if OSN_LINUX_NETLINK
+            config OSN_NETLINK_DEBOUNCE_MS
+                int "Netlink event debouncing interval"
+                default 300
+                help
+                    Delay processing of netlink events for this amount in milliseconds.
+
+                    Netlink events may come in bursts. Delaying and aggregating them may
+                    yield some performance boost.
+        endif
+endif
+

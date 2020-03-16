@@ -24,6 +24,9 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#ifndef STATEM_H_INCLUDED
+#define STATEM_H_INCLUDED
+
 #include <stdbool.h>
 #include <ev.h>
 
@@ -74,3 +77,5 @@ bool act_check_id (void);
 bool act_insert_entity (void);
 bool act_update_entity (void);
 bool act_init_managers (void);
+
+#endif /* STATEM_H_INCLUDED */

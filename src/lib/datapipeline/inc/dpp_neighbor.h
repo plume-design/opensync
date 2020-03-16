@@ -24,8 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __HAVE_DPP_NEIGHBOR_H__
-#define __HAVE_DPP_NEIGHBOR_H__
+#ifndef DPP_NEIGHBOR_H_INCLUDED
+#define DPP_NEIGHBOR_H_INCLUDED
 
 #include "ds.h"
 #include "ds_dlist.h"
@@ -82,4 +82,4 @@ typedef struct
     dpp_neighbor_list_t             list;
 } dpp_neighbor_report_data_t;
 
-#endif /* __HAVE_DPP_NEIGHBOR_H__ */
+#endif /* DPP_NEIGHBOR_H_INCLUDED */

@@ -29,7 +29,7 @@
 ###############################################################################
 UNIT_NAME := json_mqtt
 
-UNIT_DISABLE := $(if $(CONFIG_TARGET_MANAGER_FSM),n,y)
+UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM),n,y)
 
 # Template type:
 UNIT_TYPE := LIB
@@ -52,3 +52,5 @@ UNIT_EXPORT_LDFLAGS := -ljansson
 
 UNIT_DEPS := src/lib/const
 UNIT_DEPS += src/lib/log
+UNIT_DEPS += src/lib/network_metadata
+UNIT_DEPS += src/lib/ovsdb

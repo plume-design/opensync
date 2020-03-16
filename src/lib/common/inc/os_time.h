@@ -24,8 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __OS_TIME__H__
-#define __OS_TIME__H__
+#ifndef OS_TIME_H_INCLUDED
+#define OS_TIME_H_INCLUDED
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -193,4 +193,4 @@ static inline bool  clock_trepeat(double *val, double to)
     return true;
 }
 
-#endif /* __OS_TIME__H__ */
+#endif /* OS_TIME_H_INCLUDED */

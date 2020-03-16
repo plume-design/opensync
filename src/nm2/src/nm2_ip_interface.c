@@ -359,8 +359,8 @@ bool nm2_ip_interface_update(struct nm2_ip_interface *ipi, struct schema_IP_Inte
         if (ipi->ipi_iface->if_ipi == NULL)
         {
             ipi->ipi_iface->if_ipi = ipi;
-            /* Resync data */
-            nm2_iface_status_sync(ipi->ipi_iface);
+            /* Re-registering status callbacks will force an immediate status update */
+            nm2_iface_status_register(ipi->ipi_iface);
         }
     }
 

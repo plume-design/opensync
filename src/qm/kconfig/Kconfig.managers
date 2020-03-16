@@ -1,0 +1,12 @@
+menuconfig MANAGER_QM
+    bool "Queue Manager (QM)"
+    default y
+    help
+        Enable Queue Manager (QM)
+
+    config MANAGER_QM_CFG
+        depends on MANAGER_QM
+        string "QM Startup configuration"
+        default "qm;true"
+        help
+            Queue Manager startup configuration

@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <unistd.h>
 #include <sys/sysinfo.h>
 #include <limits.h>
+#include <fnmatch.h>
 
 #include "os.h"
 #include "util.h"
@@ -64,7 +65,7 @@ static struct fsm_policy_session policy_mgr =
 };
 
 
-struct fsm_policy_session * get_mgr(void)
+struct fsm_policy_session * fsm_policy_get_mgr(void)
 {
     return &policy_mgr;
 }
@@ -106,7 +107,7 @@ void fsm_walk_policy_macs(struct fsm_policy *p)
         if (is_tag || is_gtag)
         {
             om_tag_list_entry_t *e;
-            char tag_name[256] = { 0 };
+            char tag_name[256];
             char *tag_s = s + 2; /* pass tag marker */
 
             /* pass tag values marker */
@@ -115,7 +116,7 @@ void fsm_walk_policy_macs(struct fsm_policy *p)
             if (tag_has_marker) tag_s += 1;
 
             /* Copy tag name, remove end marker */
-            strncpy(tag_name, tag_s, strlen(tag_s) - 1);
+            STRSCPY_LEN(tag_name, tag_s, -1);
             tag = om_tag_find_by_name(tag_name, is_gtag);
             if (tag == NULL) continue;
 
@@ -130,41 +131,38 @@ void fsm_walk_policy_macs(struct fsm_policy *p)
     }
 }
 
-/**
- * @brief looks up a mac address in a tag's value set
 
- * Looks up a tag by its name, then looks up the mac in the tag values set.
- * @param mac_s string representation of a MAC
- * @param schema_tag tag name as read in ovsdb schema
- * @param is_gtag boolean indicating a tag group if true
- * @return true if found, false otherwise.
- */
-static bool fsm_find_device_in_tag(char *mac_s, char *schema_tag, bool is_gtag)
+bool find_mac_in_set(os_macaddr_t *mac, struct str_set *macs_set)
 {
-    om_tag_t *tag = NULL;
-    om_tag_list_entry_t *e = NULL;
-    char tag_name[256] = { 0 };
-    char *tag_s = schema_tag + 2; // pass tag marker
-    bool tag_has_marker;
+    char mac_s[32] = { 0 };
+    size_t nelems;
+    size_t i;
+    bool rc;
+    int ret;
 
-    /* pass tag values marker */
-    tag_has_marker = (*tag_s == TEMPLATE_DEVICE_CHAR);
-    tag_has_marker |= (*tag_s == TEMPLATE_CLOUD_CHAR);
-    if (tag_has_marker) tag_s += 1;
+    snprintf(mac_s, sizeof(mac_s), PRI_os_macaddr_lower_t,
+             FMT_os_macaddr_pt(mac));
 
-    /* Copy tag name, remove end marker */
-    strncpy(tag_name, tag_s, strlen(tag_s) - 1);
+    nelems = macs_set->nelems;
 
-    tag = om_tag_find_by_name(tag_name, is_gtag);
-    if (tag == NULL) return false;
+    for (i = 0; i < nelems; i++)
+    {
+        char *set_entry;
 
-    e = om_tag_list_entry_find_by_value(&tag->values, mac_s);
-    if (e == NULL) return false;
+        set_entry = macs_set->array[i];
 
-    LOGT("%s: found %s in tag %s", __func__, mac_s, tag_name);
-    return true;
+        rc = om_tag_in(mac_s, set_entry);
+        if (rc) return true;
+
+        ret = strncmp(mac_s, set_entry, strlen(mac_s));
+        if (ret != 0) continue;
+
+        /* Found device */
+        return true;
+    }
+
+    return false;
 }
-
 
 /**
  * @brief looks up a mac address in a policy's macs set.
@@ -179,51 +177,14 @@ static bool fsm_find_device_in_tag(char *mac_s, char *schema_tag, bool is_gtag)
 bool fsm_device_in_set(struct fsm_policy_req *req, struct fsm_policy *p)
 {
     struct str_set *macs_set;
-    os_macaddr_t *mac = req->device_id;
-    char mac_s[32] = { 0 };
-    size_t i, nelems;
+    os_macaddr_t *mac;
 
     macs_set = p->rules.macs;
+    mac = req->device_id;
+
     if (macs_set == NULL) return false;
 
-    mac = req->device_id;
-    snprintf(mac_s, sizeof(mac_s), PRI_os_macaddr_lower_t,
-             FMT_os_macaddr_pt(mac));
-
-    nelems = macs_set->nelems;
-
-    for (i = 0; i < nelems; i++)
-    {
-        char *set_entry;
-        bool is_tag, is_gtag;
-
-        set_entry = macs_set->array[i];
-        is_tag = !strncmp(set_entry, tag_marker, sizeof(tag_marker));
-        is_gtag = !strncmp(set_entry, gtag_marker, sizeof(gtag_marker));
-        if (is_tag || is_gtag)
-        {
-            bool rc;
-
-            rc = fsm_find_device_in_tag(mac_s, set_entry, is_gtag);
-            if (rc == false) continue;
-
-            /* Found device in tag */
-            req->reply.mac_tag_match = set_entry;
-            return true;
-        }
-        else
-        {
-            int rc;
-
-            rc = strncmp(mac_s, set_entry, strlen(mac_s));
-            if (rc != 0) continue;
-
-            /* Found device */
-            return true;
-        }
-    }
-
-    return false;
+    return find_mac_in_set(mac, macs_set);
 }
 
 
@@ -263,6 +224,65 @@ static bool fsm_mac_check(struct fsm_policy_req *req,
 }
 
 
+bool wildmatch(char *pattern, char *domain)
+{
+    char *delim = ".";
+    char *saveptr1;
+    char *saveptr2;
+    char *str1;
+    char *str2;
+    char *sub1;
+    char *sub2;
+    int ret;
+    int j;
+
+   for (j = 1, str1 = strdup(pattern), str2 = strdup(domain); ;
+        j++, str1 = NULL, str2 = NULL)
+   {
+        sub1 = strtok_r(str1, delim, &saveptr1);
+        sub2 = strtok_r(str2, delim, &saveptr2);
+        /*
+         * If we have reached the end of both strings without returning false
+         * then these match
+         */
+        if (sub1 == NULL && sub2 == NULL)
+        {
+            free(str1);
+            free(str2);
+
+            return true;
+        }
+
+        /*
+         * If one of the strings has ended, they weren't even and
+         * there was no match
+         */
+        if (sub1 == NULL || sub2 == NULL)
+        {
+            free(str1);
+            free(str2);
+
+            return false;
+        }
+
+
+        ret = fnmatch(sub1, sub2, 0);
+        if (ret)
+        {
+            free(str1);
+            free(str2);
+
+            return false;
+        }
+
+        free(str1);
+        free(str2);
+   }
+
+   return false;
+}
+
+
 /**
  * fsm_fqdn_in_set: looks up a fqdn in a policy's fqdns values set.
  * @req: the policy request
@@ -291,6 +311,8 @@ static bool fsm_fqdn_in_set(struct fsm_policy_req *req, struct fsm_policy *p,
 
         if (entry_set_len > fqdn_req_len) continue;
 
+        if (op == FSM_FQDN_OP_WILD) return wildmatch(entry_set, fqdn_req);
+
         if (op == FSM_FQDN_OP_SFR) fqdn_req += (fqdn_req_len - entry_set_len);
 
         rc = strncmp(fqdn_req, entry_set, entry_set_len);
@@ -310,7 +332,7 @@ static bool fsm_fqdn_check(struct fsm_policy_req *req,
 {
     struct fsm_policy_rules *rules;
     bool rc = false;
-    bool in_policy, sfr, sfl;
+    bool in_policy, sfr, sfl, wild;
     int op;
 
     op = FSM_FQDN_OP_XM;
@@ -322,6 +344,8 @@ static bool fsm_fqdn_check(struct fsm_policy_req *req,
     in_policy = (rules->fqdn_op == FQDN_OP_IN);
     in_policy |= (rules->fqdn_op == FQDN_OP_SFR_IN);
     in_policy |= (rules->fqdn_op == FQDN_OP_SFL_IN);
+    in_policy |= (rules->fqdn_op == FQDN_OP_WILD_IN);
+
 
     sfr = (rules->fqdn_op == FQDN_OP_SFR_IN);
     sfr |= (rules->fqdn_op == FQDN_OP_SFR_OUT);
@@ -330,6 +354,12 @@ static bool fsm_fqdn_check(struct fsm_policy_req *req,
     sfl = (rules->fqdn_op == FQDN_OP_SFL_IN);
     sfl |= (rules->fqdn_op == FQDN_OP_SFL_OUT);
     if (sfl) op = FSM_FQDN_OP_SFL;
+
+
+    wild = (rules->fqdn_op == FQDN_OP_WILD_IN);
+    wild |= (rules->fqdn_op == FQDN_OP_WILD_OUT);
+    if (wild) op = FSM_FQDN_OP_WILD;
+
 
     rc = fsm_fqdn_in_set(req, policy, op);
 
@@ -418,6 +448,30 @@ static void set_action(struct fsm_policy_req *req, struct fsm_policy *p)
     req->reply.action = p->action;
 }
 
+#define UPDATE_TAG "tag_name"
+
+/**
+ * @brief set_tag_update: set whether the request is flagged to update tag
+ *
+ * @req: the request being processed
+ * @p: the matched policy
+ */
+void set_tag_update(struct fsm_policy_req *req, struct fsm_policy *p)
+{
+    struct str_pair *pair;
+    ds_tree_t *tree;
+
+    if (p == NULL) return;
+
+    tree = p->other_config;
+    if (tree == NULL) return;
+
+    pair = ds_tree_find(tree, UPDATE_TAG);
+    if (pair == NULL) return;
+
+    req->reply.update_tag = pair->value;
+}
+
 /**
  * set_reporting: set the request's reporting according to the policy
  * @req: the request being processed
@@ -499,8 +553,7 @@ void set_policy_redirects(struct fsm_policy_req *req,
     {
         LOGT("%s: Policy %s: redirect to %s (ttl %d seconds)",
              __func__, p->table_name, redirects->array[i], rd_ttl);
-        strncpy(req->fqdn_req->redirects[i], redirects->array[i],
-                strlen(redirects->array[i]) + 1);
+        STRSCPY(req->fqdn_req->redirects[i], redirects->array[i]);
     }
 
     req->reply.redirect = true;
@@ -579,8 +632,10 @@ bool fsm_risk_level_check(struct fsm_session *session,
 void fsm_apply_policies(struct fsm_session *session,
                         struct fsm_policy_req *req)
 {
+    struct fsm_policy *last_match_policy;
     struct policy_table *table;
-    struct fsm_policy *p = NULL;
+    struct fsm_policy *p;
+
     int i;
     bool rc, matched = false;
 
@@ -591,6 +646,8 @@ void fsm_apply_policies(struct fsm_session *session,
         req->reply.log = FSM_REPORT_NONE;
         return;
     }
+
+    last_match_policy = NULL;
 
     for (i = 0; i < FSM_MAX_POLICIES; i++)
     {
@@ -615,19 +672,25 @@ void fsm_apply_policies(struct fsm_session *session,
 
         LOGT("%s: %s:%s succeeded", __func__, p->table_name, p->rule_name);
 
-        set_reporting(req, p);
-        set_action(req, p);
-        set_policy_record(req, p);
-        set_policy_redirects(req, p);
-
         /*
          * No action implicitely means going to the next entry.
          * Though record we had a match
          */
         matched = true;
-        if (p->action != FSM_ACTION_NONE) return;
+        last_match_policy = p;
+        if (p->action != FSM_ACTION_NONE) break;
     }
-    if (!matched)
+
+    if (matched)
+    {
+        p = last_match_policy;
+        set_reporting(req, p);
+        set_tag_update(req, p);
+        set_action(req, p);
+        set_policy_record(req, p);
+        set_policy_redirects(req, p);
+    }
+    else
     {
         // No match. Report accordingly
         req->reply.action = FSM_NO_MATCH;

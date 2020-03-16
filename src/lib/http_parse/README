@@ -1,0 +1,5 @@
+The http parser includes source code from https://github.com/nodejs/http-parser.
+The original code has been substantially modified for use in OpenSync.
+
+The LICENSE-MIT file in this directory is a copy from the original code's license as found in
+https://github.com/nodejs/http-parser/blob/master/LICENSE-MIT.

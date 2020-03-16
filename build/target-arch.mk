@@ -31,9 +31,6 @@ OS_TARGETS += native
 ifeq ($(TARGET),native)
 ARCH = native
 ARCH_MK = build/$(ARCH).mk
-CPU_TYPE = $(shell uname -m)
-BUILD_LOG_PREFIX_PLUME                 := n
-BUILD_LOG_HOSTNAME                     := n
 # Disable unneeded units
 UNIT_DISABLE_src/bm                    := y
 UNIT_DISABLE_src/blem                  := y
@@ -47,10 +44,18 @@ UNIT_DISABLE_src/lib/network_telemetry := n
 UNIT_DISABLE_src/lib/ustack            := n
 UNIT_DISABLE_src/lib/fsm_demo_plugin   := n
 UNIT_DISABLE_src/fcm                   := n
-UNIT_DISABLE_src/lib/ip_map            := n
 UNIT_DISABLE_src/lib/fcm_filter        := n
 UNIT_DISABLE_src/lib/nf_utils          := n
-UNIT_DISABLE_src/fsm                   := n
+UNIT_DISABLE_src/lib/neigh_table       := n
+UNIT_DISABLE_src/lib/imc               := n
+UNIT_DISABLE_src/lib/policy_tags       := n
+UNIT_DISABLE_src/lib/ct_stats          := n
+UNIT_DISABLE_src/lib/lan_stats         := n
 KCONFIG_TARGET                         := kconfig/targets/config_$(TARGET)
+CPU_TYPE    := $(shell uname -m)
+DIST_NAME   := $(shell if [ -e /etc/os-release ]; then . /etc/os-release; echo $$ID$$VERSION_ID; fi)
+ifneq ($(DIST_NAME),)
+WORKDIR  = work/$(TARGET)-$(DIST_NAME)-$(CPU_TYPE)
+endif
 endif
 

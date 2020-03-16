@@ -24,19 +24,33 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __PASYNC_H__
-#define __PASYNC_H__
+#ifndef PASYNC_H_INCLUDED
+#define PASYNC_H_INCLUDED
 
+#include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <string.h>
 #include <ev.h>
 #include "log.h"
 
 
+typedef struct
+{
+    int    id;    /* user id for this async cmd */
+    void  *data;  /* optional user context data */
+    int    rc;    /* cmd return code or -1 if it didn't terminate normally */
+} pasync_ctx_t;
+
 /*
  * PASYNC callback function prototype
  */
-typedef void (pasync_cb)(int id, void * buff, int buff_sz);
+typedef void (pasync_cb)(int id, void *buff, int buff_sz);
+
+/*
+ * PASYNC callback with context passing function prototype
+ */
+typedef void (pasync_cbx)(pasync_ctx_t *ctx, void *buff, int buff_sz);
 
 /*
  * Async read process output implementation
@@ -55,6 +69,19 @@ bool pasync_ropen(struct ev_loop *loop,
                   int id,
                   const char * cmd,
                   pasync_cb * cb);
+
+/*
+ * The same as pasync_ropen() except that with this function
+ * arbitrary user context data can be specified and the same
+ * context data will be passed in callback function when it is
+ * invoked by async library.
+ */
+bool pasync_ropenx(struct ev_loop *loop,
+                   int id,
+                   void *ctx_data,
+                   const char * cmd,
+                   pasync_cbx * cb);
+
 /*
  * Not yet implemented write version of async process
  * interaction. When process is ready for write accept
@@ -65,4 +92,4 @@ bool pasync_wopen(struct ev_loop * loop,
                   const char * cmd,
                   pasync_cb * cb);
 
-#endif /* __PASYNC_H__ */
+#endif /* PASYNC_H_INCLUDED */

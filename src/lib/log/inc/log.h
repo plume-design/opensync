@@ -24,8 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __LOG__H__
-#define __LOG__H__
+#ifndef LOG_H_INCLUDED
+#define LOG_H_INCLUDED
 
 #include <ev.h>
 #include <stdint.h>
@@ -150,6 +150,9 @@ typedef enum log_sink_e
     ENTRY(KICK)                             \
     ENTRY(STATS)                            \
     ENTRY(WL)                               \
+    ENTRY(CTRL)                             \
+    ENTRY(HAPD)                             \
+    ENTRY(WPAS)                             \
     ENTRY(NEIGHBORS)
 
 #ifndef LOG_MODULE_TABLE_TARGET
@@ -337,5 +340,5 @@ bool logger_syslog_new(logger_t *self);
 bool logger_stdout_new(logger_t *self, bool quiet_mode);
 bool logger_remote_new(logger_t *self);
 bool logger_traceback_new(logger_t *);
-#endif /* __LOG__H__ */
 
+#endif /* LOG_H_INCLUDED */

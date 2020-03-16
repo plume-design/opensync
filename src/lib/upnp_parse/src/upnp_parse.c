@@ -209,7 +209,7 @@ upnp_get_url(struct upnp_session *u_session)
     url = calloc(sizeof(*url), 1);
     if (url == NULL) return NULL;
 
-    strncpy(url->url, parser->location, sizeof(parser->location));
+    STRSCPY(url->url, parser->location);
     url->udev = udev;
     url->session = u_session->session;
     ds_tree_insert(tree, url, url->url);
@@ -230,7 +230,6 @@ upnp_parse_content(struct upnp_parser *parser)
     struct net_header_parser *net_parser;
     char *notify, *notify_search = "ssdp:alive";
     char *location, *loc_search = "http://", *sloc_search = "https://";
-    char *locp;
     uintptr_t lookup_end, message_end;
     char ip_buf[INET6_ADDRSTRLEN] = { 0 };
     char *ip_loc;
@@ -256,19 +255,17 @@ upnp_parse_content(struct upnp_parser *parser)
     if (location == NULL) location = strstr((char *)parser->data, sloc_search);
     if (location == NULL) return 0;
 
+    /* find end of line, search for both CR and LF */
     size_t window = message_end - (uintptr_t)location;
-    for (i = 0; i < window && location[i] != '\n'; i++);
+    for (i = 0; i < window && !strchr("\r\n", location[i]); i++);
 
     if (i == window) return 0;
 
     /* Stash retrieved url */
-    locp = parser->location;
-    strncpy(locp, location, i);
-
-    locp[--i] = '\0';
+    STRSCPY_LEN(parser->location, location, i);
 
     /* Check for source/arvertized ip mismatch */
-    ip_loc = strstr(locp, ip_buf);
+    ip_loc = strstr(parser->location, ip_buf);
     if (ip_loc == NULL) return 0;
 
     return parser->upnp_len;

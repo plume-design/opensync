@@ -29,8 +29,8 @@
 * POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef NFM_INCLUDE_CHAIN
-#define NFM_INCLUDE_CHAIN
+#ifndef NFM_CHAIN_H_INCLUDED
+#define NFM_CHAIN_H_INCLUDED
 
 #include "ds_dlist.h"
 #include <arpa/inet.h>
@@ -49,5 +49,4 @@ bool nfm_chain_init(void);
 bool nfm_chain_get_ref(int family, const char *table, const char *chain);
 bool nfm_chain_put_ref(int family, const char *table, const char *chain);
 
-#endif
-
+#endif /* NFM_CHAIN_H_INCLUDED */

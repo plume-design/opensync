@@ -1,0 +1,21 @@
+config HOSTAP_TIMEOUT_T_SWITCH
+    bool "use -t switch with timeout command"
+    default y
+    help
+        Depending on busybox or coreutils package version
+        on target platform the "timeout" command either
+        will take "timeout -t 5 ..." or "timeout 5 ...".
+
+        Enable this if "timeout -t 5 ..." works on your platform.
+
+        Disable this if "timeout 5 ..." works on your platform.
+
+config HOSTAP_PSK_FILE_WPS
+    bool "use PSKs from wpa_psk_file for WPS sessions"
+    default n
+    help
+        This feature requires a patch on hostapd. We introduced new tag "wps" to PSK
+        file. That tag is used for marking PSKs usable in WPS sessions. By default
+        hostapd doesn't recognize this tag.
+
+        Enable this only on platforms using patched hostap.

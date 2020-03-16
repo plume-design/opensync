@@ -72,6 +72,7 @@ struct test_network_data_report
     char location_id[32];
     struct node_info node_info;
     struct flow_counters counters;
+    struct net_md_aggregator_set aggr_set;
     size_t nelems;
     struct net_md_flow_key **net_md_keys;
 };
@@ -92,4 +93,7 @@ void test_report_filter(void);
 void test_activate_and_free_aggr(void);
 void test_bogus_ttl(void);
 void test_flow_tags_one_key(void);
+void test_vendor_data_one_key(void);
+void test_flow_key_to_net_md_key(void);
+void test_vendor_data_serialize_deserialize(void);
 #endif // __TEST_NETWORK_METADATA_H__

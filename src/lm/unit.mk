@@ -27,6 +27,8 @@
 # Log manager
 #
 ###############################################################################
+UNIT_DISABLE := $(if $(CONFIG_MANAGER_LM),n,y)
+
 UNIT_NAME := lm
 
 # Template type:
@@ -46,8 +48,6 @@ UNIT_LDFLAGS += -lrt
 UNIT_DEPS := src/lib/ovsdb
 UNIT_DEPS += src/lib/pjs
 UNIT_DEPS += src/lib/schema
-UNIT_DEPS += src/lib/version
-UNIT_DEPS += src/lib/evsched
 UNIT_DEPS += src/lib/tailf
 UNIT_DEPS += src/lib/common
 

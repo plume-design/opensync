@@ -24,8 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __OS_BACKTRACE__H__
-#define __OS_BACKTRACE__H__
+#ifndef OS_BACKTRACE_H_INCLUDED
+#define OS_BACKTRACE_H_INCLUDED
 
 #include <stdbool.h>
 
@@ -57,4 +57,4 @@ bool backtrace_resolve(void *addr, const char **func, const char **fname);
 // Path where crashdump is generated
 #define BTRACE_DUMP_PATH "/var/log/lm/crash"
 
-#endif /* #define __OS_BACKTRACE__H__ */
+#endif /* OS_BACKTRACE_H_INCLUDED */

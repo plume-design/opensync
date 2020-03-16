@@ -24,8 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __HAVE_DPP_TYPES_H__
-#define __HAVE_DPP_TYPES_H__
+#ifndef DPP_TYPES_H_INCLUDED
+#define DPP_TYPES_H_INCLUDED
 
 #include "schema_consts.h"
 
@@ -281,6 +281,32 @@ static inline radio_type_t  radio_get_type_from_name(
     return RADIO_TYPE_NONE;
 }
 
+static inline radio_type_t  radio_get_type_from_str(
+        char                       *radio_name)
+{
+    if (!radio_name) {
+        return RADIO_TYPE_NONE;
+    }
+
+    if (strstr(radio_name, RADIO_TYPE_STR_2G)) {
+        return RADIO_TYPE_2G;
+    }
+
+    if (strstr(radio_name, RADIO_TYPE_STR_5GL)) {
+        return RADIO_TYPE_5GL;
+    }
+
+    if (strstr(radio_name, RADIO_TYPE_STR_5GU)) {
+        return RADIO_TYPE_5GU;
+    }
+
+    if (strstr(radio_name, RADIO_TYPE_STR_5G)) {
+        return RADIO_TYPE_5G;
+    }
+
+    return RADIO_TYPE_NONE;
+}
+
 static inline char * radio_get_scan_name_from_type(
 		radio_scan_type_t           scan_type)
 {
@@ -437,4 +463,4 @@ typedef enum
     RSSI_SOURCE_NEIGHBOR
 } rssi_source_t;
 
-#endif /* __HAVE_DPP_TYPES_H__ */
+#endif /* DPP_TYPES_H_INCLUDED */

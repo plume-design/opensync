@@ -1,0 +1,12 @@
+menuconfig MANAGER_NFM
+    bool "Netfilter Manager (NFM)"
+    default n
+    help
+        Enable Netfilter Manager (NFM)
+
+    config MANAGER_NFM_CFG
+        depends on MANAGER_NFM
+        string "NFM Startup configuration"
+        default "nfm;true"
+        help
+            Netfilter Manager startup configuration

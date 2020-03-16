@@ -30,7 +30,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <time.h>
 #include <string.h>
 
-#include "evsched.h"     /* ev helpers */
 #include "log.h"         /* Logging routines */
 #include "json_util.h"   /* json routines */
 #include "os.h"          /* OS helpers */
@@ -72,23 +71,25 @@ static void fcm_get_plugin_configs(fcm_collector_t *collector,
                                    struct schema_FCM_Collector_Config *conf)
 {
     char plugin_path[FCM_DSO_PATH_LEN] = {'\0'};
-    char *path = NULL;
-    char *init_fn = NULL;
+    char *init_fn;
+    char *path;
 
     path = fcm_get_other_config_val(collector->collect_conf.other_config,
                                     FCM_DSO_PATH);
-    if (path)
-        strcpy(plugin_path, path);
-    else
-        strcpy(plugin_path, FCM_DSO_DFLT_PATH);
-    sprintf(collector->dso_path, "%s%s%s%s", plugin_path, FCM_DSO_PREFIX,
-            collector->collect_conf.name, FCM_DSO_TYPE);
+    if (path != NULL) STRSCPY(plugin_path, path);
+    else STRSCPY(plugin_path, FCM_DSO_DFLT_PATH);
+
+    snprintf(collector->dso_path, sizeof(collector->dso_path),
+             "%s%s%s%s", plugin_path, FCM_DSO_PREFIX,
+             collector->collect_conf.name, FCM_DSO_TYPE);
 
     init_fn = fcm_get_other_config_val(collector->collect_conf.other_config,
                                        FCM_DSO_INIT);
-    if (init_fn)
-        strcpy(collector->dso_init, init_fn);
+    if (init_fn != NULL) STRSCPY(collector->dso_init, init_fn);
+    else snprintf(collector->dso_init, sizeof(collector->dso_init),
+                  "%s_plugin_init", collector->collect_conf.name);
     LOGD("%s: Plugin name: %s\n", __func__, collector->dso_path);
+    LOGD("%s: Plugin init function: %s\n", __func__, collector->dso_init);
 }
 
 static fcm_report_conf_t * fcm_get_report_config(char *name)
@@ -241,11 +242,17 @@ void init_collector_plugin(fcm_collector_t *collector)
 {
     void (*plugin_init)(fcm_collect_plugin_t *collector_plugin);
     fcm_collect_conf_t *collect_conf = NULL;
+    fcm_mgr_t *mgr;
 
+    mgr = fcm_get_mgr();
     if (collector->plugin_init == NULL) return;
     *(void **)(&plugin_init) = collector->plugin_init;
     collect_conf = &collector->collect_conf;
     collector->plugin.fcm = collector;
+    collector->plugin.loop = mgr->loop;
+    collector->plugin.get_mqtt_hdr_node_id = fcm_get_mqtt_hdr_node_id;
+    collector->plugin.get_mqtt_hdr_loc_id = fcm_get_mqtt_hdr_loc_id;
+    collector->plugin.get_other_config = fcm_plugin_get_other_config;
     /* call the init function of plugin */
     plugin_init(&collector->plugin);
     fcm_reset_collect_interval(&collector->sample_timer,
@@ -275,15 +282,11 @@ static void init_collect_conf_node(fcm_collect_conf_t *collect_conf,
         collect_conf->sample_time = schema_conf->interval;
     if (schema_conf->filter_name_present)
     {
-        strncpy(collect_conf->filter_name, schema_conf->filter_name,
-                FCM_FLTR_NAME_LEN - 1);
-        collect_conf->filter_name[FCM_FLTR_NAME_LEN - 1] = '\0';
+        STRSCPY(collect_conf->filter_name, schema_conf->filter_name);
     }
     if (schema_conf->report_name_present)
     {
-        strncpy(collect_conf->report_name, schema_conf->report_name,
-                FCM_RPT_NAME_LEN - 1);
-        collect_conf->report_name[FCM_RPT_NAME_LEN - 1] = '\0';
+        STRSCPY(collect_conf->report_name, schema_conf->report_name);
     }
     if (schema_conf->other_config_present)
     {
@@ -305,15 +308,11 @@ static void update_collect_conf_node(fcm_collect_conf_t *collect_conf,
         collect_conf->sample_time = schema_conf->interval;
     if (schema_conf->filter_name_changed)
     {
-        strncpy(collect_conf->filter_name, schema_conf->filter_name,
-                FCM_FLTR_NAME_LEN - 1);
-        collect_conf->filter_name[FCM_FLTR_NAME_LEN - 1] = '\0';
+        STRSCPY(collect_conf->filter_name, schema_conf->filter_name);
     }
     if (schema_conf->report_name_changed)
     {
-        strncpy(collect_conf->report_name, schema_conf->report_name,
-                FCM_RPT_NAME_LEN - 1);
-        collect_conf->report_name[FCM_RPT_NAME_LEN - 1] = '\0';
+        STRSCPY(collect_conf->report_name, schema_conf->report_name);
     }
     if (schema_conf->other_config_changed)
     {
@@ -341,7 +340,7 @@ static fcm_collector_t *lookup_collect_config(ds_tree_t *collect_tree,
         LOGE("Memory allocation failure\n");
         return NULL;
     }
-    strcpy(collector->collect_conf.name, name);
+    STRSCPY(collector->collect_conf.name, name);
     ds_tree_insert(collect_tree, collector, collector->collect_conf.name);
     LOGD("%s: New collector plugin added %s", __func__, collector->collect_conf.name);
     return collector;
@@ -360,7 +359,7 @@ static fcm_report_conf_t *lookup_report_config(ds_tree_t *conf_tree, char *name)
         LOGE("Memory allocation failure\n");
         return NULL;
     }
-    strcpy(conf->name, name);
+    STRSCPY(conf->name, name);
     ds_tree_insert(conf_tree, conf, conf->name);
     LOGD("%s: New report config added %s", __func__, conf->name);
     return conf;
@@ -391,21 +390,15 @@ static void init_report_conf_node(fcm_report_conf_t *report_conf,
        report_conf->hist_time = schema_conf->hist_interval;
     if (schema_conf->hist_filter_present)
     {
-        strncpy(report_conf->hist_filter, schema_conf->hist_filter,
-                FCM_HIST_NAME_LEN - 1);
-        report_conf->hist_filter[FCM_HIST_NAME_LEN - 1] = '\0';
+        STRSCPY(report_conf->hist_filter, schema_conf->hist_filter);
     }
     if (schema_conf->report_filter_present)
     {
-        strncpy(report_conf->report_filter, schema_conf->report_filter,
-                FCM_RPT_NAME_LEN - 1);
-        report_conf->report_filter[FCM_RPT_NAME_LEN - 1] = '\0';
+        STRSCPY(report_conf->report_filter, schema_conf->report_filter);
     }
     if (schema_conf->mqtt_topic_present)
     {
-        strncpy(report_conf->mqtt_topic, schema_conf->mqtt_topic,
-                FCM_MQTT_TOPIC_LEN - 1);
-        report_conf->mqtt_topic[FCM_MQTT_TOPIC_LEN - 1] = '\0';
+        STRSCPY(report_conf->mqtt_topic, schema_conf->mqtt_topic);
     }
     if (schema_conf->other_config_present)
     {
@@ -431,21 +424,15 @@ static void update_report_conf_node(fcm_report_conf_t *report_conf,
        report_conf->hist_time = schema_conf->hist_interval;
     if (schema_conf->hist_filter_changed)
     {
-        strncpy(report_conf->hist_filter, schema_conf->hist_filter,
-                FCM_HIST_NAME_LEN - 1);
-        report_conf->hist_filter[FCM_HIST_NAME_LEN - 1] = '\0';
+        STRSCPY(report_conf->hist_filter, schema_conf->hist_filter);
     }
     if (schema_conf->report_filter_changed)
     {
-        strncpy(report_conf->report_filter, schema_conf->report_filter,
-                FCM_RPT_NAME_LEN - 1);
-        report_conf->report_filter[FCM_RPT_NAME_LEN - 1] = '\0';
+        STRSCPY(report_conf->report_filter, schema_conf->report_filter);
     }
     if (schema_conf->mqtt_topic_changed)
     {
-        strncpy(report_conf->mqtt_topic, schema_conf->mqtt_topic,
-                FCM_MQTT_TOPIC_LEN - 1);
-        report_conf->mqtt_topic[FCM_MQTT_TOPIC_LEN - 1] = '\0';
+        STRSCPY(report_conf->mqtt_topic, schema_conf->mqtt_topic);
     }
     if (schema_conf->other_config_changed)
     {

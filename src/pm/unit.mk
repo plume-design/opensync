@@ -24,42 +24,29 @@
 
 ###############################################################################
 #
-# Platform  manager
+# Platform Manager
 #
 ###############################################################################
 UNIT_NAME := pm
-
-# Template type:
 UNIT_TYPE := BIN
+UNIT_DISABLE := $(if $(CONFIG_MANAGER_PM),n,y)
 
-#
-# The platform manager should be built only for platforms using
-# client nickname and freeze features
-#
-UNIT_DISABLE := $(if $(CONFIG_TARGET_MANAGER_PM),n,y)
+UNIT_SRC := src/pm_main.c
 
-UNIT_SRC    := src/pm_main.c
-ifeq ($(BUILD_CLIENT_NICKNAME),y)
-UNIT_SRC    += src/pm_client_nickname.c
-endif # BUILD_CLIENT_NICKNAME
+$(eval $(if $(CONFIG_PM_ENABLE_CLIENT_FREEZE),      UNIT_SRC += src/pm_client_freeze.c))
+$(eval $(if $(CONFIG_PM_ENABLE_CLIENT_NICKNAME),    UNIT_SRC += src/pm_client_nickname.c))
+$(eval $(if $(CONFIG_PM_ENABLE_LED),                UNIT_SRC += src/pm_led.c))
+$(eval $(if $(CONFIG_PM_ENABLE_LM),                 UNIT_SRC += src/pm_lm.c))
+ifeq ($(CONFIG_PM_ENABLE_TM),y)
+UNIT_SRC += src/pm_tm.c
+UNIT_SRC += src/pm_tm_ovsdb.c
+endif
 
-ifeq ($(BUILD_CLIENT_FREEZE),y)
-UNIT_SRC    += src/pm_client_freeze.c
-endif # BUILD_CLIENT_FREEZE
 
-UNIT_CFLAGS += -Isrc/lib/common/inc/
-
-UNIT_LDFLAGS := -lpthread
-UNIT_LDFLAGS += -ljansson
-UNIT_LDFLAGS += -ldl
+UNIT_CFLAGS  := -I$(UNIT_PATH)/inc
 UNIT_LDFLAGS += -lev
-UNIT_LDFLAGS += -lrt
 
-UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
-UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
-
-UNIT_DEPS := src/lib/ovsdb
-UNIT_DEPS += src/lib/pjs
+UNIT_DEPS += src/lib/common
+UNIT_DEPS += src/lib/osp
+UNIT_DEPS += src/lib/ovsdb
 UNIT_DEPS += src/lib/schema
-UNIT_DEPS += src/lib/version
-UNIT_DEPS += src/lib/evsched

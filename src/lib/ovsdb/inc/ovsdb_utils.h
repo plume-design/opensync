@@ -24,8 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __OVSDB_UTILS_H__
-#define __OVSDB_UTILS_H__
+#ifndef OVSDB_UTILS_H_INCLUDED
+#define OVSDB_UTILS_H_INCLUDED
 
 #include <stdlib.h>
 #include <stdint.h>
@@ -219,4 +219,5 @@ free_str_tree(ds_tree_t *tree);
  */
 void
 free_str_itree(ds_tree_t *tree);
-#endif /* __OVSDB_UTILS_H__ */
+
+#endif /* OVSDB_UTILS_H_INCLUDED */

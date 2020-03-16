@@ -617,7 +617,8 @@ void nm2_dhcpv6_server_set(struct nm2_dhcpv6_server *ds6, bool enable)
         return;
     }
 
-    if (!inet_dhcp6_server_notify(piface->if_inet, nm2_dhcpv6_server_notify, ds6))
+    piface->if_dhcpv6_server = ds6;
+    if (!inet_dhcp6_server_notify(piface->if_inet, nm2_dhcpv6_server_notify))
     {
         LOG(ERR, "dhcpv6_server: %s: Unable to set status notification callback.",
                 piface->if_name);
@@ -629,23 +630,12 @@ void nm2_dhcpv6_server_set(struct nm2_dhcpv6_server *ds6, bool enable)
 }
 
 /* DHCPv6 server status notification change callback */
-void nm2_dhcpv6_server_notify(void *data, struct osn_dhcpv6_server_status *status)
+void nm2_dhcpv6_server_notify(inet_t *inet, struct osn_dhcpv6_server_status *status)
 {
-    (void)data;
     int ii;
 
-    struct nm2_dhcpv6_server *ds6;
-    struct nm2_iface *piface;
-
-    ds6 = data;
-
-    piface = nm2_ip_interface_iface_get(&ds6->ds6_ip_interface_uuid);
-    if (piface == NULL)
-    {
-        LOG(WARN , "dhcpv6_server: %s: Got status notification, but IP_Interface is not ready yet.",
-                status->d6st_iface);
-        return;
-    }
+    struct nm2_iface *piface = inet->in_data;
+    struct nm2_dhcpv6_server *ds6 = piface->if_dhcpv6_server;
 
     LOG(INFO, "dhcpv6_server: Update: Number of leases: %d.", status->d6st_leases_len);
 

@@ -1,0 +1,12 @@
+menuconfig MANAGER_LM
+    bool "Log Manager (LM)"
+    default n
+    help
+        Enable Log Manager (LM)
+
+    config MANAGER_LM_CFG
+        depends on MANAGER_LM
+        string "LM Startup configuration"
+        default "lm;true;needs_plan_b=true"
+        help
+            Log Manager startup configuration

@@ -31,6 +31,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <ev.h>
 #include "os_types.h"
 #include "net_header_parse.h"
+#include "neigh_table.h"
 
 typedef union nf_ip_addr_
 {
@@ -84,4 +85,5 @@ int nf_ct_set_mark_timeout(nf_flow_t *flow, uint32_t timeout);
 
 int nf_ct_set_flow_mark(struct net_header_parser *net_pkt, uint32_t mark, uint16_t zone);
 
+bool nf_util_get_macaddr(struct neighbour_entry *req);
 #endif /* NF_UTILS_H_INCLUDED */

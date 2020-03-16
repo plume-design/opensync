@@ -45,14 +45,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_types.h"
 #include "target.h"
 #include "json_util.h"
+#include "build_version.h"
 
 #include "dm.h"
 
 #define DM_ECHO_STRING    "Hello JSON-RPC"
 
 STATE_MACHINE_USE;
-
-extern const char *app_build_ver_get();
 
 /*
  * Echo request CB. Invoked on echo response received
@@ -301,62 +300,62 @@ void fill_entity_data(struct schema_AWLAN_Node * s_awlan_node)
 
     if (true == target_serial_get(buff, sizeof(buff)))
     {
-        strcpy(s_awlan_node->serial_number, buff);
+        STRSCPY(s_awlan_node->serial_number, buff);
     }
     else
     {
         /* get some dummy value in this case    */
-        strcpy(s_awlan_node->serial_number,"1234567890");
+        STRSCPY(s_awlan_node->serial_number,"1234567890");
     }
     s_awlan_node->serial_number_exists = true;
 
     if (true == target_id_get(buff, sizeof(buff)))
     {
-        strcpy(s_awlan_node->id, buff);
+        STRSCPY(s_awlan_node->id, buff);
     }
     else
     {
         /* get some dummy value in this case    */
-        strcpy(s_awlan_node->id,"1234567890");
+        STRSCPY(s_awlan_node->id,"1234567890");
     }
     s_awlan_node->id_exists = true;
 
     if (true == target_sku_get(buff, sizeof(buff)))
     {
-        strcpy(s_awlan_node->sku_number, buff);
+        STRSCPY(s_awlan_node->sku_number, buff);
         s_awlan_node->sku_number_exists = true;
     }
 
     if (true == target_hw_revision_get(buff, sizeof(buff)))
     {
-        strcpy(s_awlan_node->revision, buff);
+        STRSCPY(s_awlan_node->revision, buff);
     }
     else
     {
-        strcpy(s_awlan_node->revision, "1");
+        STRSCPY(s_awlan_node->revision, "1");
     }
 
     if (true == target_sw_version_get(buff, sizeof(buff)))
     {
-        strcpy(s_awlan_node->firmware_version, buff);
+        STRSCPY(s_awlan_node->firmware_version, buff);
     }
     else
     {
-        strcpy(s_awlan_node->firmware_version, app_build_ver_get());
+        STRSCPY(s_awlan_node->firmware_version, app_build_ver_get());
     }
 
     if (true == target_platform_version_get(buff, sizeof(buff)))
     {
-        strcpy(s_awlan_node->platform_version, buff);
+        STRSCPY(s_awlan_node->platform_version, buff);
     }
 
     if (true == target_model_get(buff, sizeof(buff)))
     {
-        strcpy(s_awlan_node->model, buff);
+        STRSCPY(s_awlan_node->model, buff);
     }
     else
     {
-        strcpy(s_awlan_node->model, TARGET_NAME);
+        STRSCPY(s_awlan_node->model, TARGET_NAME);
     }
     s_awlan_node->model_exists = true;
 

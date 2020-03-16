@@ -28,7 +28,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <syslog.h>
 
 #include "log.h"
-#include "target.h"
 
 static logger_fn_t logger_syslog_log;
 
@@ -83,12 +82,9 @@ void logger_syslog_log(logger_t *self, logger_msg_t *msg)
             break;
     }
 
-#if defined(USE_LOG_PREFIX_PLUME)
-    syslog(syslog_sev, "PLUME %s: %s", msg->lm_tag, msg->lm_text);
-#elif defined(TARGET_LOG_PREFIX)
-    syslog(syslog_sev, "%s %s: %s", TARGET_LOG_PREFIX, msg->lm_tag, msg->lm_text);
+#if defined(CONFIG_LOG_USE_PREFIX)
+    syslog(syslog_sev, "%s %s: %s", CONFIG_LOG_PREFIX, msg->lm_tag, msg->lm_text);
 #else
     syslog(syslog_sev, "%s: %s", msg->lm_tag, msg->lm_text);
 #endif
 }
-

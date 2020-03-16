@@ -34,23 +34,62 @@ UNIT_NAME := osn
 UNIT_TYPE := LIB
 
 UNIT_CFLAGS += -I$(UNIT_PATH)/inc
-UNIT_EXPORT_CFLAGS := -I$(UNIT_PATH)/inc
+UNIT_CFLAGS += -I$(UNIT_PATH)/src
 
-UNIT_SRC += src/osn_dnsmasq.c
-UNIT_SRC += src/osn_dnsmasq6.c
-UNIT_SRC += src/osn_inet.c
-UNIT_SRC += src/osn_inet6.c
-UNIT_SRC += src/osn_miniupnpd.c
-UNIT_SRC += src/osn_odhcp6c.c
-UNIT_SRC += src/osn_priv_netlink.c
-UNIT_SRC += src/osn_route.c
-UNIT_SRC += src/osn_types.c
-UNIT_SRC += src/osn_udhcpc.c
 UNIT_SRC += src/osn_fw.c
+UNIT_SRC += src/osn_types.c
 
-UNIT_DEPS += src/lib/log
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_NETIF_NULL),src/osn_netif_null.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_NETIF_LINUX),src/osn_netif_linux.c)
+
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_IPV4_NULL),src/osn_ip_null.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_IPV4_LINUX),src/osn_ip_linux.c)
+
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_ROUTEV4_NULL),src/osn_route_null.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_ROUTEV4_LINUX),src/osn_route_linux.c)
+
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_DHCPV4_CLIENT_NULL),src/osn_dhcp_client_null.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_DHCPV4_CLIENT_UDHCP),src/osn_dhcp_client_udhcp.c)
+
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_DHCPV4_SERVER_NULL),src/osn_dhcp_server_null.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_DHCPV4_SERVER_DNSMASQ),src/osn_dhcp_server_dnsmasq.c)
+
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_UPNP_NULL),src/osn_upnp_null.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_UPNP_MINIUPNPD),src/osn_upnp_mupnp.c)
+
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_IPV6_NULL),src/osn_ip6_null.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_IPV6_LINUX),src/osn_ip6_linux.c)
+
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_DHCPV6_CLIENT_NULL),src/osn_dhcpv6_client_null.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_DHCPV6_CLIENT_ODHCP6),src/osn_dhcpv6_client_odhcp6.c)
+
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_DHCPV6_SERVER_NULL),src/osn_dhcpv6_server_null.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_DHCPV6_SERVER_DNSMASQ6),src/osn_dhcpv6_server_dnsmasq6.c)
+
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_IPV6_RADV_NULL),src/osn_ip6_radv_null.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_IPV6_RADV_DNSMASQ6),src/osn_ip6_radv_dnsmasq6.c)
+
+ifdef CONFIG_OSN_LINUX_ENABLED
+UNIT_CFLAGS += -I$(UNIT_PATH)/src/linux
+
+UNIT_SRC += $(if $(CONFIG_OSN_DNSMASQ6),src/linux/dnsmasq6_server.c)
+UNIT_SRC += $(if $(CONFIG_OSN_DNSMASQ),src/linux/dnsmasq_server.c)
+UNIT_SRC += $(if $(CONFIG_OSN_LINUX_IP),src/linux/lnx_ip.c)
+UNIT_SRC += $(if $(CONFIG_OSN_LINUX_IPV6),src/linux/lnx_ip6.c)
+UNIT_SRC += $(if $(CONFIG_OSN_LINUX_NETIF),src/linux/lnx_netif.c)
+UNIT_SRC += $(if $(CONFIG_OSN_LINUX_NETLINK),src/linux/lnx_netlink.c)
+UNIT_SRC += $(if $(CONFIG_OSN_LINUX_ROUTE),src/linux/lnx_route.c)
+UNIT_SRC += $(if $(CONFIG_OSN_MINIUPNPD),src/linux/mupnp_server.c)
+UNIT_SRC += $(if $(CONFIG_OSN_ODHCP6),src/linux/odhcp6_client.c)
+UNIT_SRC += $(if $(CONFIG_OSN_UDHCPC),src/linux/udhcp_client.c)
+
 UNIT_DEPS += src/lib/daemon
 UNIT_DEPS += src/lib/evx
 UNIT_DEPS += src/lib/ds
 UNIT_DEPS += src/lib/execsh
+endif
+
+UNIT_EXPORT_CFLAGS := -I$(UNIT_PATH)/inc
+
+UNIT_DEPS += src/lib/log
 UNIT_DEPS += src/lib/kconfig

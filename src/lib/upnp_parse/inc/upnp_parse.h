@@ -24,8 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef _UPNP_PARSE_H_
-#define _UPNP_PARSE_H_
+#ifndef UPNP_PARSE_H_INCLUDED
+#define UPNP_PARSE_H_INCLUDED
 
 #include <stdint.h>
 #include <time.h>
@@ -168,4 +168,5 @@ void
 upnp_periodic(struct fsm_session *session);
 
 struct upnp_cache *upnp_get_mgr(void);
-#endif /* _UPNP_PARSE_H_ */
+
+#endif /* UPNP_PARSE_H_INCLUDED */

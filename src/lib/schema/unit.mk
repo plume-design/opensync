@@ -31,7 +31,7 @@ UNIT_NAME := schema
 UNIT_TYPE := LIB
 
 # Source folder
-SCHEMA := interfaces/plume.ovsschema
+SCHEMA := interfaces/opensync.ovsschema
 
 # Source files
 UNIT_SRC := src/schema.c

@@ -38,7 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "log.h"
 #include "os_time.h"
-#include "target.h"
+#include "util.h"
 #include "assert.h"
 
 #define LF '\n'
@@ -142,7 +142,6 @@ bool log_open(char *name, int flags)
     /* Install default loggers */
     static logger_t logger_syslog;
     static logger_t logger_stdout;
-    static logger_t logger_remote;
     static logger_t logger_traceback;
 
     if ((flags == 0) || (flags & LOG_OPEN_DEFAULT))
@@ -164,7 +163,8 @@ bool log_open(char *name, int flags)
         log_register_logger(&logger_stdout);
     }
 
-#ifdef BUILD_REMOTE_LOG
+#ifdef CONFIG_LOG_REMOTE
+    static logger_t logger_remote;
     if (flags & LOG_OPEN_REMOTE)
     {
         // disable remote for QM
@@ -806,10 +806,13 @@ static void log_dynamic_state_handler(struct ev_loop *loop,
 
 static bool log_dynamic_init()
 {
-    log_dynamic.state_file_path = target_log_state_file();
+    const char *path = CONFIG_TARGET_PATH_LOG_STATE;
+    // if empty string set to NULL to disable dynamic log
+    if (path != NULL && *path == 0) path = NULL;
+    log_dynamic.state_file_path = path;
     if (!log_dynamic.state_file_path)
     {
-        // On this target we don't enable dynamic log handler
+        // disabled dynamic log handler
         return false;
     }
     return true;
@@ -827,7 +830,10 @@ static void log_dynamic_handler_init(struct ev_loop *loop)
 
         log_dynamic.enabled           = true;
         log_dynamic.trigger_value     = new_trigger;
-        log_dynamic.trigger_directory = target_log_trigger_dir();
+        const char *path = CONFIG_TARGET_PATH_LOG_TRIGGER;
+        // if empty string set to NULL to disable log trigger
+        if (path != NULL && *path == 0) path = NULL;
+        log_dynamic.trigger_directory = path;
 
         // Init timer
         ev_stat_init(&log_dynamic.stat,

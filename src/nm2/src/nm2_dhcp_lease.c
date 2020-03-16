@@ -38,7 +38,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <jansson.h>
 
 #include "json_util.h"
-#include "evsched.h"
 #include "schema.h"
 #include "log.h"
 #include "nm2.h"

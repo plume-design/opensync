@@ -33,6 +33,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_types.h"
 #include "const.h"
 
+#include "osn_netif.h"
+#include "osn_inet.h"
 #include "osn_inet6.h"
 #include "osn_dhcpv6.h"
 #include "osn_dhcp.h"
@@ -45,9 +47,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * ===========================================================================
  */
 
-/**
- * Amount of time to wait before commiting current configuration
- */
 enum inet_assign_scheme
 {
     INET_ASSIGN_INVALID,
@@ -79,6 +78,7 @@ struct __inet_state
     enum osn_upnp_mode      in_upnp_mode;
     bool                    in_dhcps_enabled;
     bool                    in_dhcpc_enabled;
+    bool                    in_interface_exists;
     bool                    in_port_status;
     osn_ip_addr_t           in_ipaddr;
     osn_ip_addr_t           in_netmask;
@@ -138,11 +138,27 @@ struct inet_ip6_neigh_status
     osn_mac_addr_t              in_hwaddr;
 };
 
+typedef void inet_state_fn_t(
+        inet_t *self,
+        const inet_state_t *state);
+
+typedef void inet_route_status_fn_t(
+        inet_t *self,
+        struct osn_route_status *status,
+        bool remove);
+
 /* Lease notify callback */
 typedef bool inet_dhcp_lease_fn_t(
         void *data,
         bool released,
         struct osn_dhcp_server_lease *dl);
+
+/* IPv6 neighbor notification */
+typedef void inet_dhcpc_option_notify_fn_t(
+        inet_t *self,
+        enum osn_notify hint,
+        const char *name,
+        const char *value);
 
 /* IPv6 status change notification */
 typedef void inet_ip6_addr_status_fn_t(
@@ -158,12 +174,12 @@ typedef void inet_ip6_neigh_status_fn_t(
 
 /* DHCPv6 Client status change notification */
 typedef void inet_dhcp6_client_notify_fn_t(
-        void *data,
+        inet_t *self,
         struct osn_dhcpv6_client_status *status);
 
 /* DHCPv6 Server status change notification */
 typedef void inet_dhcp6_server_notify_fn_t(
-        void *data,
+        inet_t *self,
         struct osn_dhcpv6_server_status *status);
 
 /* Pretty printing for inet_portforward */
@@ -236,7 +252,7 @@ struct __inet
     /* DHCP client options */
     bool        (*in_dhcpc_option_request_fn)(inet_t *self, enum osn_dhcp_option opt, bool req);
     bool        (*in_dhcpc_option_set_fn)(inet_t *self, enum osn_dhcp_option opt, const char *value);
-    bool        (*in_dhcpc_option_notify_fn)(inet_t *self, osn_dhcp_client_opt_notify_fn_t *fn, void *ctx);
+    bool        (*in_dhcpc_option_notify_fn)(inet_t *self, inet_dhcpc_option_notify_fn_t *fn);
 
     /* True if DHCP server should be enabled on this interface */
     bool        (*in_dhcps_enable_fn)(inet_t *self, bool enabled);
@@ -253,7 +269,7 @@ struct __inet
     bool        (*in_dhcps_rip_del_fn)(inet_t *super, osn_mac_addr_t macaddr);
 
 
-    /* IPv4 tunnels (GRE, softwds) */
+    /* IPv4 tunnels (GRE, Softwds) */
     bool        (*in_ip4tunnel_set_fn)(inet_t *self,
                         const char *parent,
                         osn_ip_addr_t local,
@@ -266,13 +282,13 @@ struct __inet
     bool        (*in_dhsnif_lease_notify_fn)(inet_t *self, inet_dhcp_lease_fn_t *func);
 
     /* Routing table methods  -- if set to NULL route state reporting is disabled */
-    bool        (*in_route_notify_fn)(inet_t *self, osn_route_status_fn_t *func);
+    bool        (*in_route_notify_fn)(inet_t *self, inet_route_status_fn_t *func);
 
     /* Commit all pending changes */
     bool        (*in_commit_fn)(inet_t *self);
 
-    /* State get method */
-    bool        (*in_state_get_fn)(inet_t *self, inet_state_t *out);
+    /* Interface status change notification registration method */
+    bool        (*in_state_notify_fn)(inet_t *self, inet_state_fn_t *fn);
 
     /*
      * ===========================================================================
@@ -315,7 +331,7 @@ struct __inet
     bool        (*in_dhcp6_client_option_send_fn)(inet_t *self, int tag, char *value);
 
     /* DHCPv6 client status notification */
-    bool        (*in_dhcp6_client_notify_fn)(inet_t *self, inet_dhcp6_client_notify_fn_t *fn, void *ctx);
+    bool        (*in_dhcp6_client_notify_fn)(inet_t *self, inet_dhcp6_client_notify_fn_t *fn);
 
     /* DHCPv6 Server options */
     bool        (*in_dhcp6_server_fn)(inet_t *self, bool enable);
@@ -336,7 +352,7 @@ struct __inet
                         struct osn_dhcpv6_server_lease *lease);
 
     /* DHCPv6 server status notification */
-    bool        (*in_dhcp6_server_notify_fn)(inet_t *self, inet_dhcp6_server_notify_fn_t *fn, void *ctx);
+    bool        (*in_dhcp6_server_notify_fn)(inet_t *self, inet_dhcp6_server_notify_fn_t *fn);
 
     /* Router Advertisement: Set options */
     bool        (*in_radv_fn)(
@@ -501,11 +517,11 @@ static inline bool inet_dhcpc_option_set(inet_t *self, enum osn_dhcp_option opt,
     return self->in_dhcpc_option_set_fn(self, opt, value);
 }
 
-static inline bool inet_dhcpc_option_notify(inet_t *self, osn_dhcp_client_opt_notify_fn_t *fn, void *ctx)
+static inline bool inet_dhcpc_option_notify(inet_t *self, inet_dhcpc_option_notify_fn_t *fn)
 {
     if (self->in_dhcpc_option_notify_fn == NULL) return false;
 
-    return self->in_dhcpc_option_notify_fn(self, fn, ctx);
+    return self->in_dhcpc_option_notify_fn(self, fn);
 }
 
 static inline bool inet_dhcps_enable(inet_t *self, bool enabled)
@@ -612,7 +628,7 @@ static inline bool inet_dhsnif_lease_notify(inet_t *self, inet_dhcp_lease_fn_t *
 /*
  * Subscribe to route table state changes.
  */
-static inline bool inet_route_notify(inet_t *self, osn_route_status_fn_t *func)
+static inline bool inet_route_notify(inet_t *self, inet_route_status_fn_t *func)
 {
     if (self->in_route_notify_fn == NULL) return false;
 
@@ -631,16 +647,19 @@ static inline bool inet_commit(inet_t *self)
     return self->in_commit_fn(self);
 }
 
-/**
- * State retrieval -- simple polling interface
+/*
+ * ===========================================================================
+ *  Status reporting
+ * ===========================================================================
  */
-static inline bool inet_state_get(inet_t *self, inet_state_t *out)
+
+/* Asynchronous interface state change notification method */
+static inline bool inet_state_notify(inet_t *self, inet_state_fn_t *fn)
 {
-    if (self->in_state_get_fn == NULL) return false;
+    if (self->in_state_notify_fn == NULL) return false;
 
-    return self->in_state_get_fn(self, out);
+    return self->in_state_notify_fn(self, fn);
 }
-
 
 /*
  * ===========================================================================
@@ -721,11 +740,11 @@ static inline bool inet_dhcp6_client_option_send(inet_t *self, int tag, char *va
     return self->in_dhcp6_client_option_send_fn(self, tag, value);
 }
 
-static inline bool inet_dhcp6_client_notify(inet_t *self, inet_dhcp6_client_notify_fn_t *fn, void *ctx)
+static inline bool inet_dhcp6_client_notify(inet_t *self, inet_dhcp6_client_notify_fn_t *fn)
 {
     if (self->in_dhcp6_client_notify_fn == NULL) return false;
 
-    return self->in_dhcp6_client_notify_fn(self, fn, ctx);
+    return self->in_dhcp6_client_notify_fn(self, fn);
 }
 
 /* DHCPv6 Server: Options that will be sent to the server */
@@ -761,11 +780,11 @@ static inline bool inet_dhcp6_server_lease(inet_t *self, bool add, struct osn_dh
     return self->in_dhcp6_server_lease_fn(self, add, lease);
 }
 
-static inline bool inet_dhcp6_server_notify(inet_t *self, inet_dhcp6_server_notify_fn_t *fn, void *ctx)
+static inline bool inet_dhcp6_server_notify(inet_t *self, inet_dhcp6_server_notify_fn_t *fn)
 {
     if (self->in_dhcp6_server_notify_fn == NULL) return false;
 
-    return self->in_dhcp6_server_notify_fn(self, fn, ctx);
+    return self->in_dhcp6_server_notify_fn(self, fn);
 }
 
 /* Router Advertisement: Push new options for this interface */

@@ -1,106 +1,7 @@
-PLUME_DIR := /usr/plume
-TOOLS_DIR := $(PLUME_DIR)/tools
-PLUME_BIN := $(PLUME_DIR)/bin
+OPENSYNC_DIR := $(INSTALL_PREFIX)
+TOOLS_DIR := $(OPENSYNC_DIR)/tools
+OPENSYNC_BIN := $(OPENSYNC_DIR)/bin
 LM_DIR := /var/log/lm
-
-menuconfig TARGET_MANAGER
-    bool "Manager customization"
-    default y
-    help
-        Use a kconfig based "target_manager_config[]" table. This table
-        defines which managers are started by DM at startup.
-
-        This option implements the target_manager_config[] array.
-
-    if TARGET_MANAGER
-        config TARGET_MANAGER_WM
-            bool "Wireless Manager (WM2)"
-            default y
-
-        config TARGET_MANAGER_NM
-            bool "Network Manager (NM2)"
-            default y
-
-        config TARGET_MANAGER_CM
-            bool "Connectivity Manager (CM2)"
-            default y
-
-       config TARGET_MANAGER_SM
-            bool "Statistics Manager (SM)"
-            default n
-            select TARGET_MANAGER_QM
-
-        config TARGET_MANAGER_QM
-            bool "Queue Manager (QM)"
-            default y
-
-       config TARGET_MANAGER_UM
-            bool "Upgrade Manager (UM)"
-            default n
-
-        config TARGET_MANAGER_LM
-            bool "Log Manager (LM)"
-            default n
-
-        config TARGET_MANAGER_BM
-            bool "Band-steering Manager (BM)"
-            default n
-
-        config TARGET_MANAGER_FM
-            bool "Flash Manager (FM)"
-            default n
-
-        config TARGET_MANAGER_LEDM
-            bool "LED Manager (LEDM)"
-            default n
-
-        config TARGET_MANAGER_OM
-            bool "Openflow Manager (OM)"
-            default n
-
-        config TARGET_MANAGER_BLEM
-            bool "Bluetooth Manager (BLEM)"
-            default n
-
-        config TARGET_MANAGER_TM
-            bool "Thermal Manager (TM)"
-            default n
-
-        config TARGET_MANAGER_FSM
-            bool "Flow Service Manager (FSM)"
-            default n
-
-        config TARGET_MANAGER_FCM
-            bool "Flow Collection Manager (FCM)"
-            default n
-
-        config TARGET_MANAGER_XM
-            bool "Exchange Manager (XM)"
-            default n
-
-        config TARGET_MANAGER_HELLO_WORLD
-            bool "Hello World Manager (hello_world)"
-            default n
-
-        config TARGET_MANAGER_PM
-            bool "Platform Manager (PM)"
-            default n
-
-        config TARGET_MANAGER_PPM
-            bool "Pod Manager (PPM)"
-            default n
-
-        config TARGET_MANAGER_NFM
-            bool "Netfilter Manager (NFM)"
-            default n
-
-        osource "3rdparty/*/src/lib/target/kconfig/Kconfig.managers"
-
-        osource "platform/*/src/lib/target/kconfig/Kconfig.managers"
-
-        osource "vendor/*/src/lib/target/kconfig/Kconfig.managers"
-
-    endif
 
 menu "Capabilities"
     config TARGET_CAP_GATEWAY
@@ -121,15 +22,15 @@ endmenu
 menu "Target paths"
     config TARGET_PATH_BIN
         string "Path to binaries/managers"
-        default "$(PLUME_BIN)"
+        default "$(OPENSYNC_BIN)"
 
     config TARGET_PATH_TOOLS
         string "Path to tools folder"
-        default "$(PLUME_DIR)/tools"
+        default "$(OPENSYNC_DIR)/tools"
 
     config TARGET_PATH_SCRIPTS
         string "Path to scripts folder"
-        default "$(PLUME_BIN)"
+        default "$(OPENSYNC_BIN)"
 
     config TARGET_PATH_PERSISTENT
         string "Path to persistent storage"
@@ -139,8 +40,10 @@ menu "Target paths"
         string "Path to the log state config file"
         default "/etc/log-state.conf"
         help
+            This is used for dynamically adjusting log and severity levels
             On systems with buggy inotify and overlayfs (QSDK 2.0),
             use the overlay path instead (/overlay/etc/log-state.conf)
+            To disable dynamic log set to an empty string
 
     config TARGET_PATH_LOG_LM
         string "Path to LM log storage"
@@ -150,7 +53,7 @@ menu "Target paths"
         string "Path to the log trigger folder"
         default "$(LM_DIR)/tmp"
         help
-            This is used for dynamically adjusting log and severity levels
+            To disable log trigger set to an empty string
 
     config TARGET_PATH_DISABLE_FATAL_STATE
         string "Path to the fatal state inhibit file"
@@ -197,6 +100,20 @@ if TARGET_ETH_LIST
     config TARGET_ETH3_NAME
         string "Ifname[3]"
         depends on TARGET_ETH3_LIST
+
+    config TARGET_ETH4_LIST
+        bool "Ethernet[4]"
+
+    config TARGET_ETH4_NAME
+        string "Ifname[4]"
+        depends on TARGET_ETH4_LIST
+
+    config TARGET_ETH5_LIST
+        bool "Ethernet[5]"
+
+    config TARGET_ETH5_NAME
+        string "Ifname[5]"
+        depends on TARGET_ETH5_LIST
 endif
 
 config TARGET_LAN_BRIDGE_NAME
@@ -205,10 +122,15 @@ config TARGET_LAN_BRIDGE_NAME
     help
         LAN bridge name that will be used
 
+config TARGET_WAN_BRIDGE_NAME
+    string "WAN bridge name"
+    default "br-wan"
+    help
+        WAN bridge name that will be used
+
 menuconfig TARGET_LED_SUPPORT
     bool "Enable LED support"
     default n
-    select TARGET_MANAGER_LEDM
     help
         Enable LED support (requires LEDM). This option implements the
         target_led_device_dir() and target_led_names() functions.
@@ -304,53 +226,6 @@ config TARGET_SKU_STRING
     depends on TARGET_FIXED_SKU
 endmenu
 
-menu "Upgrade, OTA ..."
-config TARGET_UPGRADE_SAFEUPDATE
-    bool "Device supports safeupdate upgrades"
-    help
-        Enable if the device supports upgrades via safeupdate
-
-        This implements the following functions:
-            - target_upg_command()
-            - target_upg_command_full()
-            - target_upg_command_args()
-            - target_upg_download_required()
-
-config TARGET_UPGRADE_NO_PRECHECK
-    bool "No extra pre-upgrade checks are required"
-    depends on TARGET_UPGRADE_SAFEUPDATE
-    default y
-
-    help
-        This option provides a dummy target_upg_download_required()
-        function which always returns true.
-
-config TARGET_FREE_SPACE_REPORTING
-    bool "Free space reporting"
-    default y
-    depends on TARGET_MANAGER_UM
-    help
-        Define Warning/Error thresholds for free space on /tmp during
-        upgrade image download.
-
-config TARGET_FREE_SPACE_ERROR
-    int "Free space error (in KB) on /tmp"
-    default 16384
-    depends on TARGET_FREE_SPACE_REPORTING
-    help
-        UM will refuse to download an upgrade image if free space is below this thershold
-        on /tmp.
-
-config TARGET_FREE_SPACE_WARNING
-    int "Free space warning (in KB)"
-    default 19456
-    depends on TARGET_FREE_SPACE_REPORTING
-    help
-        A warning will be displayhed when an upgrade is attempted and free space on /tmp
-        is below this value.
-
-endmenu
-
 menu "Misc..."
 config TARGET_RESTART_SCRIPT
     bool "Use a script to restart managers"
@@ -360,7 +235,7 @@ config TARGET_RESTART_SCRIPT
 
 config TARGET_RESTART_SCRIPT_CMD
     string "Command to execute"
-    default "$(PLUME_BIN)/restart.sh"
+    default "$(OPENSYNC_BIN)/restart.sh"
     depends on TARGET_RESTART_SCRIPT
 
 config TARGET_LINUX_LOGPULL
@@ -399,5 +274,12 @@ config TARGET_CM_LINUX_SUPPORT_PACKAGE
         all Linux platforms.
 
         Required by CM2.
+
+config TARGET_IMC
+    bool "Inter manager communication"
+    default n
+    help
+        Select this option if the platform enables zeromq
+
 
 endmenu

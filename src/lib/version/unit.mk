@@ -29,7 +29,7 @@
 ###############################################################################
 UNIT_NAME := version
 UNIT_TYPE := LIB
-UNIT_SRC := src/version.c
+UNIT_SRC := src/build_version.c
 
 VERSION_DEFS := $(UNIT_BUILD)/version_defs.h
 

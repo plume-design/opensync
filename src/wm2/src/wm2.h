@@ -64,4 +64,4 @@ void callback_Wifi_VIF_Config_v1(
 
 void wm2_radio_config_init_v1();
 
-#endif
+#endif /* WM2_H_INCLUDED */

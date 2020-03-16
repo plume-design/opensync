@@ -30,6 +30,7 @@
 */
 
 #include "log.h"
+#include "util.h"
 #include "nfm_rule.h"
 #include "nfm_chain.h"
 #include "nfm_ovsdb.h"
@@ -93,8 +94,7 @@ static void nfm_rule_set_status(struct nfm_rule *self, const char *status)
 		return;
 	}
 
-	strncpy(self->conf.status, status, sizeof(self->conf.status) - 1);
-	self->conf.status[sizeof(self->conf.status) - 1] = '\0';
+	STRSCPY(self->conf.status, status);
 	LOGD("[%s] Netfilter rule status is %s", self->conf.name, status);
 }
 

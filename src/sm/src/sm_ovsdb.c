@@ -63,7 +63,7 @@ char *sm_report_type_str[STS_REPORT_MAX] =
     "rssi",
 };
 
-#ifndef USE_QM
+#ifndef CONFIG_MANAGER_QM
 static ovsdb_update_monitor_t sm_update_awlan_node;
 static struct schema_AWLAN_Node awlan_node;
 #endif
@@ -92,7 +92,7 @@ DS_TREE_INIT(
 /******************************************************************************
  *                          AWLAN CONFIG
  *****************************************************************************/
-#ifndef USE_QM
+#ifndef CONFIG_MANAGER_QM
 // this is handled by QM if it's used
 static
 void sm_update_awlan_node_cbk(ovsdb_update_monitor_t *self)
@@ -174,7 +174,7 @@ void sm_update_awlan_node_cbk(ovsdb_update_monitor_t *self)
 
     return;
 }
-#endif // USE_QM
+#endif // CONFIG_MANAGER_QM
 
 /******************************************************************************
  *                          STATS CONFIG
@@ -348,7 +348,7 @@ bool sm_update_stats_config(sm_stats_config_t *stats_cfg)
             sm_device_report_request(&req);
             break;
         case STS_REPORT_CAPACITY:
-#ifdef USE_CAPACITY_QUEUE_STATS
+#ifdef CONFIG_SM_CAPACITY_QUEUE_STATS
             sm_capacity_report_request(&radio->config, &req);
 #else
             LOGW("Skip configuring capacity stats (stats not supported!)");
@@ -663,7 +663,7 @@ void sm_radio_cfg_update(void)
             sm_client_report_radio_change(&radio->config);
             sm_rssi_report_radio_change(&radio->config);
 
-#ifdef USE_CAPACITY_QUEUE_STATS
+#ifdef CONFIG_SM_CAPACITY_QUEUE_STATS
             sm_capacity_report_radio_change(&radio->config);
 #endif
         }
@@ -812,7 +812,7 @@ void sm_update_wifi_vif_state_cb(ovsdb_update_monitor_t *self)
  *****************************************************************************/
 int sm_setup_monitor(void)
 {
-#ifndef USE_QM
+#ifndef CONFIG_MANAGER_QM
     /* Monitor AWLAN_Node */
     if (!ovsdb_update_monitor(
             &sm_update_awlan_node,
@@ -824,7 +824,7 @@ int sm_setup_monitor(void)
                 SCHEMA_TABLE(AWLAN_Node));
         return -1;
     }
-#endif // USE_QM
+#endif // CONFIG_MANAGER_QM
 
     /* Monitor Wifi_Radio_State */
     if (!ovsdb_update_monitor(

@@ -78,6 +78,12 @@ const char **target_ethclient_iflist_get()
 #if defined(CONFIG_TARGET_ETH3_LIST)
         CONFIG_TARGET_ETH3_NAME,
 #endif
+#if defined(CONFIG_TARGET_ETH4_LIST)
+        CONFIG_TARGET_ETH4_NAME,
+#endif
+#if defined(CONFIG_TARGET_ETH5_LIST)
+        CONFIG_TARGET_ETH5_NAME,
+#endif
         NULL
     };
 
@@ -156,63 +162,6 @@ const char *target_persistent_storage_dir(void)
 }
 #endif /* CONFIG_TARGET_PATH_PERSISTENT */
 
-#if defined(CONFIG_TARGET_PATH_LOG_STATE)
-const char *target_log_state_file(void)
-{
-    return CONFIG_TARGET_PATH_LOG_STATE;
-}
-#endif /* CONFIG_TARGET_PATH_LOG_STATE */
-
-#if defined(CONFIG_TARGET_PATH_LOG_TRIGGER)
-const char *target_log_trigger_dir(void)
-{
-    return CONFIG_TARGET_PATH_LOG_TRIGGER;
-}
-#endif /* CONFIG_TARGET_PATH_LOG_TRIGGER */
-
-#if defined(CONFIG_TARGET_UPGRADE_SAFEUPDATE)
-char *target_upg_command()
-{
-    return "safeupdate";
-}
-
-char *target_upg_command_full()
-{
-    return CONFIG_TARGET_PATH_TOOLS "/safeupdate";
-}
-
-char **target_upg_command_args(char *password)
-{
-    static char *upg_command_args[] = {
-        CONFIG_TARGET_PATH_TOOLS "/safeupdate",
-        "-l",
-        "-p",
-        NULL,
-        NULL,
-        NULL,
-        NULL
-    };
-
-    // Handle password if given
-    upg_command_args[3] = password ? "-P"      : "-w";
-    upg_command_args[4] = password ? password  : NULL;
-    upg_command_args[5] = password ? "-w"      : NULL;
-
-    return upg_command_args;
-}
-
-#if defined(CONFIG_TARGET_UPGRADE_NO_PRECHECK)
-/*
- * Implement dummy pre-check function which always returns true
- */
-bool target_upg_download_required(char *url)
-{
-    (void)url;
-    return true;
-}
-#endif /* CONFIG_TARGET_UPGRADE_NO_PRECHECK */
-
-#endif /* CONFIG_TARGET_UPGRADE_SAFEUPDATE */
 
 #if defined(CONFIG_TARGET_RESTART_SCRIPT)
 bool target_device_restart_managers()
@@ -225,7 +174,7 @@ bool target_device_restart_managers()
         pid_t pid;
         char *argv[] = {NULL} ;
 
-        LOGEM("FATAL condition triggered, restarting managers...");
+        LOGI("FATAL condition triggered, restarting managers...");
         pid = fork();
         if (pid == 0) {
             int rc = execvp(CONFIG_TARGET_RESTART_SCRIPT_CMD, argv);
@@ -261,7 +210,7 @@ bool target_log_pull(const char *upload_location, const char *upload_token)
 }
 #endif
 
-#if defined(CONFIG_PML_TARGET) && !defined(CONFIG_TARGET_WATCHDOG)
+#if !defined(CONFIG_TARGET_WATCHDOG)
 /* Implement dummy watchdog function */
 bool target_device_wdt_ping(void)
 {
@@ -306,18 +255,6 @@ bool target_sku_get(void *buff, size_t buffsz)
             CONFIG_TARGET_SKU_STRING);
 
     return true;
-}
-#endif
-
-#if defined(CONFIG_TARGET_FREE_SPACE_REPORTING)
-double target_upg_free_space_err()
-{
-        return (double)CONFIG_TARGET_FREE_SPACE_ERROR / 1024.0;
-}
-
-double target_upg_free_space_warn()
-{
-        return (double)CONFIG_TARGET_FREE_SPACE_WARNING / 1024.0;
 }
 #endif
 
