@@ -49,6 +49,30 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define CONFIG_INET_GRE_USE_GRETAP
 #endif
 
+/*
+ * $1 - interface name
+ * $2 - parent interface name
+ * $3 - local address
+ * $4 - remote address
+ */
+static char gre_create_gretap[] =
+_S(
+    ip link add "$1" type gretap local "$3" remote "$4" dev "$2" tos 1;
+#ifdef WAR_GRE_MAC
+    /* Set the same MAC address for GRE as WiFI STA and enable locally administered bit */
+    [ -z "$(echo $1 | grep g-)" ] || ( addr="$(cat /sys/class/net/$2/address)" && a="$(echo $addr | cut -d : -f1)" && b="$(echo $addr | cut -d : -f2-)" && c=$(( 0x$a & 2 )) && [ $c -eq 0 ] && c=$(( 0x$a | 2 )) && d=$(printf "%x" $c) && ifconfig "$1" hw ether "$d:$b";)
+#endif
+);
+
+/*
+ * $1 - interface name, always return success
+ */
+static char gre_delete_gretap[] =
+_S(
+    [ ! -e "/sys/class/net/$1" ] && exit 0;
+    ip link del "$1"
+);
+
 #if defined(CONFIG_INET_GRE_USE_GRETAP)
 /*
  * inet_gretap_t was selected as the default tunnelling
@@ -98,6 +122,15 @@ inet_t *inet_gretap_new(const char *ifname)
 
 bool inet_gretap_init(inet_gretap_t *self, const char *ifname)
 {
+    int status;
+
+    status = execsh_log(LOG_SEVERITY_INFO, gre_delete_gretap, self->inet.in_ifname);
+    if (WEXITSTATUS(status) != 0)
+    {
+        LOG(ERR, "inet_gretap: %s: Error initializing GRETAP interface.", self->inet.in_ifname);
+        return false;
+    }
+
     if (!inet_eth_init(&self->eth, ifname))
     {
         LOG(ERR, "inet_gretap: %s: Failed to instantiate class, inet_eth_init() failed.", ifname);
@@ -158,36 +191,6 @@ bool inet_gretap_ip4tunnel_set(
  *  Commit and start/stop services
  * ===========================================================================
  */
-
-/*
- * $1 - interface name
- * $2 - parent interface name
- * $3 - local address
- * $4 - remote address
- */
-static char gre_create_gretap[] =
-_S(
-    if [ -e "/sys/class/net/$1" ];
-    then
-        ip link del "$1";
-    fi;
-    ip link add "$1" type gretap local "$3" remote "$4" dev "$2" tos 1;
-#ifdef WAR_GRE_MAC
-    /* Set the same MAC address for GRE as WiFI STA and enable locally administered bit */
-    [ -z "$(echo $1 | grep g-)" ] || ( addr="$(cat /sys/class/net/$2/address)" && a="$(echo $addr | cut -d : -f1)" && b="$(echo $addr | cut -d : -f2-)" && c=$(( 0x$a & 2 )) && [ $c -eq 0 ] && c=$(( 0x$a | 2 )) && d=$(printf "%x" $c) && ifconfig "$1" hw ether "$d:$b";)
-#endif
-);
-
-/*
- * $1 - interface name, always return success
- */
-static char gre_delete_gretap[] =
-_S(
-    [ ! -e "/sys/class/net/$1" ] && exit 0;
-    ip link del "$1"
-);
-
-
 /**
  * Create/destroy the GRETAP interface
  */
@@ -237,7 +240,7 @@ bool inet_gretap_interface_start(inet_gretap_t *self, bool enable)
     else
     {
         status = execsh_log(LOG_SEVERITY_INFO, gre_delete_gretap, self->inet.in_ifname);
-        if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
+        if (WIFEXITED(status) || WEXITSTATUS(status) != 0)
         {
             LOG(ERR, "inet_gretap: %s: Error deleting GRETAP interface.", self->inet.in_ifname);
         }

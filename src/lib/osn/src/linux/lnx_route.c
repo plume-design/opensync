@@ -96,15 +96,15 @@ struct lnx_route_arp_cache
 /*
  * Private functions
  */
-static bool lnx_route_nl_init(void);
+static void lnx_route_netlink_poll(lnx_netlink_t *nl, uint64_t event, const char *ifname);
 static void lnx_route_poll(void);
-static void lnx_route_poll_delayed(void);
 static void lnx_route_cache_reset(void);
 static void lnx_route_cache_update(const char *ifname, struct osn_route_status *rts);
 static void lnx_route_cache_flush(void);
 static void lnx_route_arp_refresh(void);
 static ds_key_cmp_t lnx_route_state_cmp;
 static ds_key_cmp_t lnx_route_arp_cmp;
+static bool route_osn_ip_addr_from_hexstr(osn_ip_addr_t *ip, const char *str);
 
 /* Global list of route objects, the primary key is the interface name */
 static ds_tree_t lnx_route_list = DS_TREE_INIT(ds_str_cmp, lnx_route_t, rt_tnode);
@@ -121,13 +121,6 @@ static ds_tree_t lnx_route_arp_cache = DS_TREE_INIT(lnx_route_arp_cmp, struct ln
  */
 bool lnx_route_init(lnx_route_t *self, const char *ifname)
 {
-    /* Initialize netlink sockets */
-    if (!lnx_route_nl_init())
-    {
-        LOG(ERR, "route: %s: Error initializing route global data.", ifname);
-        goto error;
-    }
-
     if (strscpy(self->rt_ifname, ifname, sizeof(self->rt_ifname)) < 0)
     {
         LOG(ERR, "route: %s: Interface name too long.", ifname);
@@ -140,7 +133,12 @@ bool lnx_route_init(lnx_route_t *self, const char *ifname)
     /* Add this instance to the global list */
     ds_tree_insert(&lnx_route_list, self, self->rt_ifname);
 
-    lnx_route_poll_delayed();
+    lnx_netlink_init(&self->rt_nl, lnx_route_netlink_poll);
+    lnx_netlink_set_ifname(&self->rt_nl, self->rt_ifname);
+    lnx_netlink_set_events(&self->rt_nl, LNX_NETLINK_IP4ROUTE | LNX_NETLINK_IP4NEIGH);
+    lnx_netlink_start(&self->rt_nl);
+
+    lnx_route_poll();
 
     return self;
 
@@ -155,6 +153,8 @@ bool lnx_route_fini(lnx_route_t *self)
 {
     ds_tree_iter_t iter;
     struct lnx_route_state_cache *rsc;
+
+    lnx_netlink_fini(&self->rt_nl);
 
     /* Remove all cache entries associated with this object */
     ds_tree_foreach_iter(&self->rt_cache, rsc, &iter)
@@ -184,36 +184,6 @@ bool lnx_route_status_notify(lnx_route_t *self, lnx_route_status_fn_t *func)
  *  Private functions
  * ===========================================================================
  */
-
-/* Netlink socket file descriptor */
-static int rt_nlsock = -1;
-/* Netlink socket watcher */
-static ev_io rt_nlsock_ev;
-
-/* Initiate a delayed poll -- the majority of the work is done in lnx_route_poll() */
-void lnx_route_poll_delayed_fn(struct ev_loop *loop, ev_debounce *ev, int revent)
-{
-    (void)loop;
-    (void)ev;
-    (void)revent;
-    lnx_route_poll();
-}
-
-void lnx_route_poll_delayed(void)
-{
-    static ev_debounce poll_ev;
-    static bool poll_init = false;
-
-    if (!poll_init)
-    {
-        ev_debounce_init(&poll_ev, lnx_route_poll_delayed_fn, LNX_ROUTE_POLL_DEBOUNCE_MS / 1000.0);
-        poll_init = true;
-    }
-
-    /* Re-start the debounce timer */
-    ev_debounce_start(EV_DEFAULT, &poll_ev);
-}
-
 /*
  * Global route initialization.
  *
@@ -224,78 +194,14 @@ void lnx_route_poll_delayed(void)
  * is used as it is a beast of its own -- netlink messages are just used as a trigger
  * for the actual polling of the /proc/net/route file.
  */
-void route_netlink_poll(struct ev_loop *loop, ev_io *w, int revent)
+void lnx_route_netlink_poll(lnx_netlink_t *nl, uint64_t event, const char *ifname)
 {
-    size_t  bufsz = getpagesize();
-    uint8_t buf[bufsz];
-
-    LOG(DEBUG, "route: Netlink event received.");
-
-    if (revent & EV_ERROR)
-    {
-        LOG(EMERG, "route: Netlink socket watcher error.");
-        ev_io_stop(loop, w);
-        return;
-    }
-
-    /* Discard all data */
-    if (recv(rt_nlsock, buf, bufsz, 0) < 0)
-    {
-        LOG(EMERG, "route: Netlink socket read error. Further polling will be disabled.");
-        ev_io_stop(loop, w);
-        return;
-    }
+    (void)nl;
+    (void)event;
+    (void)ifname;
 
     /* Trigger polling */
-    lnx_route_poll_delayed();
-}
-
-#define RTNLGRP(x)        ((RTNLGRP_ ## x) > 0 ? 1 << ((RTNLGRP_ ## x) - 1) : 0)
-
-bool lnx_route_nl_init(void)
-{
-    struct sockaddr_nl nladdr;
-
-    /* The netlink socket serves a double purpose as initialization guard */
-    if (rt_nlsock >= 0) return true;
-
-    /* Initialize netlink, subscribe to router change events */
-    rt_nlsock = socket(AF_NETLINK, SOCK_DGRAM, NETLINK_ROUTE);
-    if (rt_nlsock < 0)
-    {
-        LOG(ERR, "route: Failed to initialize AF_NETLINK socket.");
-        goto error;
-    }
-
-    memset(&nladdr, 0, sizeof(nladdr));
-    nladdr.nl_family = AF_NETLINK;
-    nladdr.nl_pid = 0;
-    /* Subscribe to IPVX_ROUTE events -- routing table changes */
-    nladdr.nl_groups =
-            RTNLGRP(IPV4_ROUTE) |
-            RTNLGRP(IPV6_ROUTE) |
-            RTNLGRP(NEIGH);
-
-    /* Bind the socket -- this entitles the socket for receiving NetLink events */
-    if (bind(rt_nlsock, (struct sockaddr *)&nladdr, sizeof(nladdr)) != 0)
-    {
-        LOG(EMERG, "route: Error binding netlink socket.");
-        goto error;
-    }
-
-    /* Initialize the netlink socket watcher */
-    ev_io_init(&rt_nlsock_ev, route_netlink_poll, rt_nlsock, EV_READ);
-    ev_io_start(EV_DEFAULT, &rt_nlsock_ev);
-
-    LOG(TRACE, "route: Netlink socket init.");
-
-    return true;
-
-error:
-    if (rt_nlsock >= 0) close(rt_nlsock);
-
-    rt_nlsock = -1;
-    return false;
+    lnx_route_poll();
 }
 
 bool route_osn_ip_addr_from_hexstr(osn_ip_addr_t *ip, const char *str)

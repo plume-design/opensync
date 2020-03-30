@@ -72,11 +72,24 @@ EOF
 gen_oflow_egress_cmd() {
     cat << EOF
 ovsh i Openflow_Config \
-     token:=${of_token} \
+     token:=${of_out_token} \
      bridge:=${bridge} \
      table:=0 \
      priority:=${priority} \
-     rule:=${of_rule} \
+     rule:=${of_out_rule} \
+     action:="normal,output:${ofport}"
+EOF
+}
+
+# Create the openflow rule for the egress traffic
+gen_oflow_ingress_cmd() {
+    cat << EOF
+ovsh i Openflow_Config \
+     token:=${of_in_token} \
+     bridge:=${bridge} \
+     table:=0 \
+     priority:=${priority} \
+     rule:=${of_in_rule} \
      action:="normal,output:${ofport}"
 EOF
 }
@@ -95,7 +108,7 @@ gen_fsmc_cmd() {
                "if_name": "${intf}",
                "pkt_capt_filter": "${filter}",
                "plugin": "${plugin}",
-               "other_config": ["map",[["mqtt_v","${mqtt_v}"],["dso_init","${dso_init}"]]]
+               "other_config": ["map",[["dso_init","${dso_init}"]]]
          }
     }
 ]
@@ -121,8 +134,10 @@ ofport=${4:-40004} # must be unique to the bridge
 
 # of_token: openflow_config rule name. Must start with 'dev' so the
 # controller leaves it alone
-of_token=dev_flow_ndp_out
-of_rule="dl_src=$[dev_all_connected_devices],ipv6,nw_proto=58"
+of_out_token=dev_flow_ndp_out
+of_out_rule="dl_dst=\$[dev_all_connected_devices],ipv6,nw_proto=58"
+of_in_token=dev_flow_ndp_in
+of_in_rule="dl_src=\$[dev_all_connected_devices],ipv6,nw_proto=58"
 
 # Flow_Service_Manager_Config parameters
 plugin=/usr/opensync/lib/libfsm_ndp.so
@@ -145,4 +160,5 @@ $(gen_tap_cmd)
 $(tap_up_cmd)
 $(gen_no_flood_cmd)
 $(gen_oflow_egress_cmd)
+$(gen_oflow_ingress_cmd)
 eval ovsdb-client transact \'$(gen_fsmc_cmd)\'

@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "const.h"
 #include "ds_tree.h"
 #include "osn_inet.h"
+#include "lnx_netlink.h"
 
 typedef struct lnx_route lnx_route_t;
 typedef void lnx_route_status_fn_t(
@@ -46,6 +47,7 @@ struct lnx_route
 {
     char                        rt_ifname[C_IFNAME_LEN];    /* Interface name */
     lnx_route_status_fn_t      *rt_fn;                      /* Route status notify callback */
+    lnx_netlink_t               rt_nl;                      /* Netlink object */
     ds_tree_t                   rt_cache;                   /* Cached entries for this interface */
     ds_tree_node_t              rt_tnode;                   /* Red-black tree node */
 };

@@ -146,7 +146,7 @@ find_dpi_rules() {
 
 get_cloud_dpi() {
     ovsh s -r Flow_Service_Manager_Config \
-         handler if_name -w type==dpi > /tmp/dpis
+         handler if_name -w type==dpi_dispatcher > /tmp/dpis
     awk '
     # Whitespace trimming functions
     function ltrim(s) { sub(/^[ \t\r\n]+/, "", s); return s }

@@ -109,6 +109,10 @@ def process_rootfs(dirname):
             except UnicodeDecodeError:
                 # Binary file
                 continue
+            except jinja2.TemplateSyntaxError as e:
+                msg = "#### Jinja2 template syntax error: {}:{} error: {}\n".format(filename, e.lineno, e.message)
+                sys.stderr.write('\x1b[31;1m' + msg.strip() + '\x1b[0;0m\n')
+                raise e
 
             with open(dst, 'w') as d:
                 d.write(template.render(KCONFIG_ALL=kconfig_vars, **kconfig_vars))

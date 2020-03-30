@@ -78,10 +78,6 @@ static ds_dlist_t delayed_list = DS_DLIST_INIT(struct wm2_delayed, list);
 static bool wm2_api2;
 
 static bool
-wm2_lookup_rstate_by_vstate(struct schema_Wifi_Radio_State *rstate,
-                            const struct schema_Wifi_VIF_State *vstate);
-
-static bool
 wm2_lookup_rstate_by_freq_band(struct schema_Wifi_Radio_State *rstate,
                                const char *freqband);
 /******************************************************************************
@@ -276,25 +272,22 @@ wm2_dfs_disconnect_check(const char *ifname, bool force)
 }
 
 static bool
-wm2_sta_has_dfs_channel(const struct schema_Wifi_VIF_State *vstate)
+wm2_sta_has_dfs_channel(const struct schema_Wifi_Radio_State *rstate,
+                        const struct schema_Wifi_VIF_State *vstate)
 {
-    struct schema_Wifi_Radio_State rstate;
     bool status = false;
     int i;
 
-    if (WARN_ON(!wm2_lookup_rstate_by_vstate(&rstate, vstate)))
-        return status;
-
-    if (!rstate.channel_exists)
+    if (!rstate->channel_exists)
          return status;
 
     /* TODO check all channels base on number/width */
-    for (i = 0; i < rstate.channels_len; i++) {
-        if (rstate.channel != atoi(rstate.channels_keys[i]))
+    for (i = 0; i < rstate->channels_len; i++) {
+        if (rstate->channel != atoi(rstate->channels_keys[i]))
             continue;
 
-        LOGI("%s: check channel %d (%d) %s", vstate->if_name, rstate.channel, vstate->channel, rstate.channels[i]);
-        if (!strstr(rstate.channels[i], "allowed"))
+        LOGI("%s: check channel %d (%d) %s", vstate->if_name, rstate->channel, vstate->channel, rstate->channels[i]);
+        if (!strstr(rstate->channels[i], "allowed"))
             status = true;
 
         break;
@@ -304,7 +297,8 @@ wm2_sta_has_dfs_channel(const struct schema_Wifi_VIF_State *vstate)
 }
 
 static void
-wm2_sta_handle_dfs_link_change(const struct schema_Wifi_VIF_State *oldstate,
+wm2_sta_handle_dfs_link_change(const struct schema_Wifi_Radio_State *rstate,
+                               const struct schema_Wifi_VIF_State *oldstate,
                                const struct schema_Wifi_VIF_State *newstate)
 {
     static const struct schema_Wifi_VIF_State empty;
@@ -313,12 +307,18 @@ wm2_sta_handle_dfs_link_change(const struct schema_Wifi_VIF_State *oldstate,
         newstate = &empty;
 
     if (wm2_sta_has_connected(oldstate, newstate) ||
-        wm2_sta_has_reconnected(oldstate, newstate))
+        wm2_sta_has_reconnected(oldstate, newstate) ||
+        !newstate->vif_config_exists)
         wm2_timer_cancel(wm2_dfs_disconnect_check, oldstate->if_name);
 
+    /* This must be a different-radio parent change. In that
+     * case don't attempt arming the fallback parent timer.
+     */
+    if (!newstate->vif_config_exists)
+        return;
 
     if (wm2_sta_has_disconnected(oldstate, newstate) &&
-        wm2_sta_has_dfs_channel(oldstate)) {
+        wm2_sta_has_dfs_channel(rstate, oldstate)) {
             LOGN("%s: sta: dfs: disconnected from %s - arm fallback parents timer", oldstate->if_name, oldstate->parent);
             wm2_timer(wm2_dfs_disconnect_check, oldstate->if_name, WM2_DFS_FALLBACK_GRACE_PERIOD_SECONDS);
     }
@@ -736,37 +736,6 @@ wm2_lookup_rstate_by_freq_band(struct schema_Wifi_Radio_State *rstate,
     if (!where)
         return false;
     return ovsdb_table_select_one_where(&table_Wifi_Radio_State, where, rstate);
-}
-
-static bool
-wm2_lookup_rstate_by_vstate(struct schema_Wifi_Radio_State *rstate,
-                            const struct schema_Wifi_VIF_State *vstate)
-{
-    const struct schema_Wifi_Radio_State *rs;
-    void *buf;
-    int n;
-    int i;
-
-    memset(rstate, 0, sizeof(*rstate));
-
-    buf = ovsdb_table_select_where(&table_Wifi_Radio_State, NULL, &n);
-    if (!buf)
-        return false;
-
-    for (n--; n >= 0; n--) {
-        rs = buf + (n * table_Wifi_Radio_State.schema_size);
-        for (i = 0; i < rs->vif_states_len; i++) {
-            if (!strcmp(rs->vif_states[i].uuid, vstate->_uuid.uuid)) {
-                memcpy(rstate, rs, sizeof(*rs));
-                free(buf);
-                LOGD("%s: found radio state %s via vif state", vstate->if_name, rs->if_name);
-                return true;
-            }
-        }
-    }
-
-    free(buf);
-    return false;
 }
 
 static int
@@ -1203,6 +1172,7 @@ wm2_vstate_security_fixup(const struct schema_Wifi_VIF_Config *vconf,
 static void
 wm2_op_vstate(const struct schema_Wifi_VIF_State *vstate, const char *phy)
 {
+    struct schema_Wifi_Radio_State rstate;
     struct schema_Wifi_VIF_Config vconf;
     struct schema_Wifi_VIF_State state;
     struct schema_Wifi_VIF_State oldstate;
@@ -1225,6 +1195,12 @@ wm2_op_vstate(const struct schema_Wifi_VIF_State *vstate, const char *phy)
     if ((where = ovsdb_where_simple(SCHEMA_COLUMN(Wifi_VIF_State, if_name), state.if_name)))
         if (!ovsdb_table_select_one_where(&table_Wifi_VIF_State, where, &oldstate))
             wm2_vstate_init(&oldstate, state.if_name);
+
+    memset(&rstate, 0, sizeof(rstate));
+    if (phy)
+        if ((where = ovsdb_where_simple(SCHEMA_COLUMN(Wifi_Radio_State, if_name), phy)))
+            if (!ovsdb_table_select_one_where(&table_Wifi_Radio_State, where, &rstate))
+                SCHEMA_SET_STR(rstate.if_name, phy);
 
     /* Workaround for PIR-11008 */
     if (!state.ft_psk_exists) {
@@ -1272,6 +1248,9 @@ wm2_op_vstate(const struct schema_Wifi_VIF_State *vstate, const char *phy)
     }
 
     if (state.mac_exists) {
+        if (WARN_ON(!phy))
+            return;
+
         if (!(where = ovsdb_where_simple(SCHEMA_COLUMN(Wifi_Radio_State, if_name), phy)))
             return;
 
@@ -1294,7 +1273,7 @@ recalc:
     if (wm2_sta_has_reconnected(&oldstate, &state))
         wm2_radio_update_port_state_set_inactive(state.if_name);
     wm2_sta_print_status(&oldstate, state.enabled_exists ? &state : NULL);
-    wm2_sta_handle_dfs_link_change(&oldstate, &state);
+    wm2_sta_handle_dfs_link_change(&rstate, &oldstate, &state);
     wm2_radio_update_port_state(state.if_name);
     wm2_delayed_recalc(wm2_vconf_recalc, state.if_name);
 }

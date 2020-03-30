@@ -360,6 +360,17 @@ bool __inet_dhsnif_start(inet_dhsnif_t *self)
         goto error;
     }
 
+    /*
+     * We do not want to block forever on receive. A timeout 0 means block
+     * forever, so use 1ms for the timeout.
+     */
+    rc = pcap_set_timeout(self->ds_pcap, 1);
+    if (rc != 0)
+    {
+        LOG(ERR, "inet_dhsnif: %s: Error setting buffer timeout.", self->ds_ifname);
+        goto error;
+    }
+
     /* Activate the interface */
     rc = pcap_activate(self->ds_pcap);
     if (rc != 0)

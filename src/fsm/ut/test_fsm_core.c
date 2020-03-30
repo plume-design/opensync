@@ -213,15 +213,13 @@ struct schema_Flow_Service_Manager_Config g_confs[] =
         .type = "dpi_dispatcher",
         .other_config_keys =
         {
-            "mqtt_v",                       /* topic */
             "dso_init",                     /* plugin init routine */
         },
         .other_config =
         {
-            "dev-test/fsm_core_ut/topic_6", /* topic */
             "test_6_dso_init",              /* plugin init routine */
         },
-        .other_config_len = 2,
+        .other_config_len = 1,
     },
 
     /* dpi plugin */

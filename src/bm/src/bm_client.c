@@ -372,7 +372,7 @@ bm_client_get_rrm_req(bm_client_t *client, uint8_t channel)
     }
 
     if (req)
-        LOGD("%s using %u/%u rrm request", client->mac_addr, i, ARRAY_SIZE(client->rrm_req));
+        LOGD("%s using %u/%zu rrm request", client->mac_addr, i, ARRAY_SIZE(client->rrm_req));
 
     return req;
 }
@@ -2891,8 +2891,9 @@ bm_client_dump_dbg_event(const bm_event_stat_t *events, unsigned int idx)
                  dpp_event->rssi, dpp_event->probe_bcast, dpp_event->probe_blocked);
         break;
     case DISCONNECT:
-        snprintf(extra_buf, sizeof(extra_buf), "src %d type %d",
-                 dpp_event->disconnect_src, dpp_event->disconnect_type);
+        snprintf(extra_buf, sizeof(extra_buf), "src %d type %d reason %d",
+                 dpp_event->disconnect_src, dpp_event->disconnect_type,
+                 dpp_event->disconnect_reason);
         break;
     case ACTIVITY:
         snprintf(extra_buf, sizeof(extra_buf), "active %d",
@@ -2907,7 +2908,7 @@ bm_client_dump_dbg_event(const bm_event_stat_t *events, unsigned int idx)
                  dpp_event->rejected);
         break;
     case CLIENT_CAPABILITIES:
-        snprintf(extra_buf, sizeof(extra_buf), "btm %d rrm %d 2G %d 5G %d chwidth %d nss %d phy_mode %d max_mcs %d link_meas %d neigh_rep %d bcn_rpt_passive %d bcn_rpt_active %d bcn_rpt_table %d lci_meas %d ftm_range_rpt %d assoc_ie_len %u",
+        snprintf(extra_buf, sizeof(extra_buf), "btm %d rrm %d 2G %d 5G %d chwidth %d nss %d phy_mode %d max_mcs %d link_meas %d neigh_rep %d bcn_rpt_passive %d bcn_rpt_active %d bcn_rpt_table %d lci_meas %d ftm_range_rpt %d assoc_ie_len %zu",
                  dpp_event->is_BTM_supported, dpp_event->is_RRM_supported, dpp_event->band_cap_2G, dpp_event->band_cap_5G,
                  dpp_event->max_chwidth, dpp_event->max_streams, dpp_event->phy_mode, dpp_event->max_MCS,
                  dpp_event->rrm_caps_link_meas, dpp_event->rrm_caps_neigh_rpt, dpp_event->rrm_caps_bcn_rpt_passive,
@@ -2918,7 +2919,7 @@ bm_client_dump_dbg_event(const bm_event_stat_t *events, unsigned int idx)
         break;
     }
 
-    LOGI("ev[%03d]: %llu %s %s %s", idx, dpp_event->timestamp_ms,
+    LOGI("ev[%03d]: %" PRIu64 " %s %s %s", idx, dpp_event->timestamp_ms,
          bm_stats_get_event_to_str(dpp_event->type), event->ifname, extra_buf);
 }
 
@@ -3121,7 +3122,7 @@ bm_client_activity_recalc(bm_client_t *client, bsal_client_info_t *info)
 
     current_bps = ((new_bytes - old_bytes) * 8) / (now - client->bytes_report_time);
 
-    LOGD("%s: %s snr %u tx_bytes %llu rx_bytes %llu bps %llu", client->ifname, client->mac_addr, info->snr, info->tx_bytes, info->rx_bytes, current_bps);
+    LOGD("%s: %s snr %u tx_bytes %" PRIu64 " rx_bytes %" PRIu64 " bps %" PRIu64, client->ifname, client->mac_addr, info->snr, info->tx_bytes, info->rx_bytes, current_bps);
 
     if (current_bps > client->active_treshold_bps) {
        is_active = true;
@@ -3168,7 +3169,7 @@ void bm_client_handle_ext_activity(bm_client_t *client, const char *ifname, bool
     bsal_client_info_t info;
 
     if (!client->connected) {
-        LOGD("%s %s skip ext activity (%d) while client not connected", ifname, client->macaddr.addr, active);
+        LOGD("%s %s skip ext activity (%d) while client not connected", ifname, client->mac_addr, active);
         return;
     }
 

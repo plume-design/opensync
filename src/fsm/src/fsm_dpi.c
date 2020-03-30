@@ -212,6 +212,9 @@ fsm_dpi_send_report(struct fsm_session *session)
         goto err_send;
     }
 
+    /* The protobuf buffer gets freed upon sending, free the pb envelope */
+    free(pb);
+
     return 0;
 
 err_send:
@@ -221,6 +224,7 @@ err_client:
 
     free(client->endpoint);
     client->initialized = false;
+
     return -1;
 }
 

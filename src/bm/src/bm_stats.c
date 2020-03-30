@@ -408,7 +408,7 @@ bm_stats_steering_print_all_records()
                 LOGT( "RRM Bcn Rpt Table    = %s", event_rec->rrm_caps_bcn_rpt_table ? "Yes" : "No" );
                 LOGT( "RRM LCI measurement  = %s", event_rec->rrm_caps_lci_meas ? "Yes" : "No" );
                 LOGT( "RRM FTM Range Rpt    = %s", event_rec->rrm_caps_ftm_range_rpt ? "Yes" : "No" );
-                LOGT( "ASSOC IE length      = %u", event_rec->assoc_ies_len);
+                LOGT( "ASSOC IE length      = %zu", event_rec->assoc_ies_len);
                 LOGT( " // ------------------------ // " );
             }
 
@@ -771,6 +771,7 @@ bm_stats_steering_parse_event(
             event_rec->type = DISCONNECT;
             event_rec->disconnect_src = bm_stats_get_disconnect_src( event );
             event_rec->disconnect_type = bm_stats_get_disconnect_type( event );
+            event_rec->disconnect_reason = event->data.disconnect.reason;
             break;
 
         case ACTIVITY:
