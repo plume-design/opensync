@@ -3,6 +3,7 @@
 import json
 import sys
 import os
+from collections import OrderedDict
 
 DEFAULT_STRING_LEN = 128            # Default string length, if not a set or map
 DEFAULT_MAP_STRING_LEN = 64         # Default string length, if map or set
@@ -222,7 +223,7 @@ if not os.path.isfile(sys.argv[1]):
     raise
 
 with open(sys.argv[1]) as jsfile:
-    schema = json.load(jsfile);
+    schema = json.load(jsfile, object_pairs_hook=OrderedDict);
 
 # Some rudimentary checks
 if not "name" in schema.keys() or schema["name"] != "Open_vSwitch":
