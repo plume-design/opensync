@@ -98,6 +98,9 @@ void
 ct_stats_print_contrack(ct_flow_t *flow);
 
 int
+ct_stats_get_ct_flow(int af_family);
+
+int
 data_cb(const struct nlmsghdr *nlh, void *data);
 
 void

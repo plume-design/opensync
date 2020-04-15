@@ -547,10 +547,11 @@ fsm_parse_dso(struct fsm_session *session)
 bool
 fsm_init_plugin(struct fsm_session *session)
 {
-    void (*init)(struct fsm_session *session);
+    int (*init)(struct fsm_session *session);
     char *dso_init;
     char init_fn[256];
     char *error;
+    int rc;
 
     if (session->type == FSM_DPI_DISPATCH) return true;
 
@@ -574,7 +575,7 @@ fsm_init_plugin(struct fsm_session *session)
 
     if (dso_init == NULL) return false;
 
-    *(void **)(&init) = dlsym(session->handle, dso_init);
+    *(int **)(&init) = dlsym(session->handle, dso_init);
     error = dlerror();
     if (error != NULL) {
         LOGE("%s: could not get init symbol %s: %s",
@@ -582,8 +583,9 @@ fsm_init_plugin(struct fsm_session *session)
         dlclose(session->handle);
         return false;
     }
-    init(session);
-    return true;
+    rc = init(session);
+
+    return (rc == 0);
 }
 
 

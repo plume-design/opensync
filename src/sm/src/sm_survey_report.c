@@ -707,7 +707,7 @@ bool sm_survey_update_list_cb (
                     record_entry,
                     result_entry);
         if (true != rc) {
-            LOGE("Processing %s %s %u survey record %u "
+            LOGN("Processing %s %s %u survey record %u "
                  "(Failed to convert stats)",
                  radio_get_name_from_cfg(radio_cfg_ctx),
                  radio_get_scan_name_from_type(scan_type),

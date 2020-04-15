@@ -633,14 +633,18 @@ bool dnsmasq6_server_write_config(void)
              * a DHCPv6_Server table must exists and therefore the DHCPv6 code will have to add it below.
              */
 
-            LOG(DEBUG, "ip6_radv: Flags for prefix "PRI_osn_ip6_addr" managed:%d other_config:%d auto:%d.",
+            LOG(DEBUG, "ip6_radv: Flags for prefix "PRI_osn_ip6_addr" managed:%d other_config:%d auto:%d onlink: %d.",
                     FMT_osn_ip6_addr(ra_prefix->rp_prefix),
                     ra->ra_opts.ra_managed,
                     ra->ra_opts.ra_other_config,
-                    ra_prefix->rp_autonomous);
+                    ra_prefix->rp_autonomous,
+                    ra_prefix->rp_onlink);
 
+            /*
+             * WAR: Assume the autonomous flag is always true if the prefix is
+             * referenced by IPv6_RouteAdv.
+             */
 #if 0
-WAR: ESW-3196: Assume the autonomous flag is true if its added to IPv6_RouteAdv
             if (!ra_prefix->rp_autonomous)
             {
                 /* Skip this address -- it will probably be handled by the DHCPv6_Server instance */
@@ -661,10 +665,11 @@ WAR: ESW-3196: Assume the autonomous flag is true if its added to IPv6_RouteAdv
                 ra_mode = "ra-only";
             }
 
-            fprintf(f, "dhcp-range=%s,::,constructor:%s,%s\n",
+            fprintf(f, "dhcp-range=%s,::,constructor:%s,%s%s\n",
                     ra->ra_ifname,
                     ra->ra_ifname,
-                    ra_mode);
+                    ra_mode,
+                    ra_prefix->rp_onlink ? "" : ",off-link");
         }
 
         /* Add RDNSS options */
@@ -727,9 +732,10 @@ WAR: ESW-3196: Assume the autonomous flag is true if its added to IPv6_RouteAdv
             else if(pf_vld_tmr > 0)
                 sprintf(prfx_valid_timer, ",%d", pf_vld_tmr);
 
-            fprintf(f, "dhcp-range=%s,::1,::FFFF:FFFF,constructor:%s%s\n",
+            fprintf(f, "dhcp-range=%s,::1,::FFFF:FFFF,constructor:%s%s%s\n",
                     d6s->d6s_ifname,
                     d6s->d6s_ifname,
+                    d6s_prefix->dp_prefix.ds6_onlink ? "" : ",off-link",
                     prfx_valid_timer);
         }
 

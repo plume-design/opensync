@@ -3107,12 +3107,15 @@ bm_client_activity_recalc(bm_client_t *client, bsal_client_info_t *info)
     uint64_t old_bytes;
     uint64_t new_bytes;
     uint64_t current_bps;
+    int inact_tmout_sec_normal;
     bool is_active = false;
     time_t now;
 
     old_bytes = client->tx_bytes + client->rx_bytes;
     new_bytes = info->tx_bytes + info->rx_bytes;
     now = time(NULL);
+
+    inact_tmout_sec_normal = client->group ? client->group->inact_tmout_sec_normal : 60;
 
     if (!client->tx_bytes && !client->rx_bytes && !info->tx_bytes && !info->rx_bytes)
         LOGI("%s: %s lack of tx/rx bytes - target layer issue?", client->ifname, client->mac_addr);
@@ -3131,7 +3134,7 @@ bm_client_activity_recalc(bm_client_t *client, bsal_client_info_t *info)
 
     if (!is_active) {
         LOGD("%s: %s inactive for %u seconds", client->ifname, client->mac_addr, (unsigned int) (now - client->is_active_time));
-        if ((int) (now - client->is_active_time) < client->group->inact_tmout_sec_normal)
+        if ((int) (now - client->is_active_time) < inact_tmout_sec_normal)
             goto update_bytes;
     }
 

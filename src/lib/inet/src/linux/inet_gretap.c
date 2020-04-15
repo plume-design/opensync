@@ -240,7 +240,7 @@ bool inet_gretap_interface_start(inet_gretap_t *self, bool enable)
     else
     {
         status = execsh_log(LOG_SEVERITY_INFO, gre_delete_gretap, self->inet.in_ifname);
-        if (WIFEXITED(status) || WEXITSTATUS(status) != 0)
+        if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
         {
             LOG(ERR, "inet_gretap: %s: Error deleting GRETAP interface.", self->inet.in_ifname);
         }

@@ -1170,30 +1170,46 @@ void fcm_delete_filter(struct schema_FCM_Filter *filter)
  */
 static
 void fcm_update_filter(struct schema_FCM_Filter *old_rec,
-                       struct schema_FCM_Filter *filter)
+                       struct schema_FCM_Filter *new_rec)
 {
     struct fcm_filter *rule = NULL;
     ds_dlist_t *filter_head = NULL;
 
-    if (!filter || !old_rec) return;
-    filter_head = fcm_filter_get_list_by_name(filter->name);
+    if (!new_rec || !old_rec) return;
+
+    filter_head = fcm_filter_get_list_by_name(new_rec->name);
     if (!filter_head)
     {
-        LOGE("fcm_filter: Couldn't find the filter[%s] to update", filter->name);
+        LOGE("fcm_filter: Couldn't find the filter[%s] to update", new_rec->name);
         return;
     }
 
     /* find the rule based on index */
-    rule = fcm_filter_find_rule(filter_head, old_rec->index);
+    if (old_rec->index_exists)
+    {
+        rule = fcm_filter_find_rule(filter_head, old_rec->index);
+
+        if (rule) {
+            free_schema_struct(&rule->filter_rule);
+            free_filter_app(&rule->app);
+        }
+    }
+
+    rule = fcm_filter_find_rule(filter_head, new_rec->index);
+
+    if (!rule) {
+        return fcm_add_filter(new_rec);
+    }
+
 
     free_schema_struct(&rule->filter_rule);
     free_filter_app(&rule->app);
 
-    if (copy_from_schema_struct(&rule->filter_rule, filter) < 0)
+    if (copy_from_schema_struct(&rule->filter_rule, new_rec) < 0)
         goto free_rule;
 
-    if (!fcm_filter_set_app_names(&rule->app, filter) ||
-        !fcm_filter_set_app_tags(&rule->app, filter))
+    if (!fcm_filter_set_app_names(&rule->app, new_rec) ||
+        !fcm_filter_set_app_tags(&rule->app, new_rec))
     {
         LOGE("fcm_filter: Failed to update app names/tags.");
         goto free_rule;

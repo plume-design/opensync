@@ -406,14 +406,13 @@ char *odhcp6_client_process_value(int optidx, const char *value)
 {
     switch (optidx)
     {
-#if 0
         /*
-         * ESW-3504: Not needed anymore. An option was added to odhcp6c which
+         * This not needed anymore. An option was added to odhcp6c which
          * inhibits lifetime update tracking within the odhcp6c client.
          *
          * They are always sent as received from the server.
          */
-
+#if 0
         /*
          * Remove the lifetimes from the ADDRESS option, they cause unnecessary OVSDB updates
          *

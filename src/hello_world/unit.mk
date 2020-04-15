@@ -29,7 +29,7 @@
 ##############################################################################
 UNIT_NAME := hello_world
 
-UNIT_DISABLE := $(if $(CONFIG_MANAGER_HELLO_WORLD),n,y)
+UNIT_DISABLE := $(if $(CONFIG_MANAGER_HELLOWORLD),n,y)
 
 # Template type:
 UNIT_TYPE := BIN

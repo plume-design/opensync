@@ -785,10 +785,18 @@ data_cb(const struct nlmsghdr *nlh, void *data)
         }
     }
 
-    if (tb[CTA_PROTOINFO] == NULL) goto flow_info_1_free;
+    if (flow->layer3_info.proto_type != 17  &&
+        tb[CTA_PROTOINFO] == NULL)
+    {
+        LOGT("%s: Missing protocol info.Dropping the ct_flow", __func__);
+        goto flow_info_1_free;
+    }
 
-    rc = get_protoinfo(tb[CTA_PROTOINFO], flow);
-    if (rc < 0) goto flow_info_1_free;
+    if (flow->layer3_info.proto_type != 17)
+    {
+        rc = get_protoinfo(tb[CTA_PROTOINFO], flow);
+        if (rc < 0) goto flow_info_1_free;
+    }
 
     if (tb[CTA_COUNTERS_ORIG] == NULL) goto flow_info_1_free;
 
@@ -797,7 +805,7 @@ data_cb(const struct nlmsghdr *nlh, void *data)
 
     ds_dlist_insert_tail(&ct_stats->ctflow_list, flow_info);
     ct_stats->node_count++;
-    if (reply_flag != 0) goto reply_flag_free;
+    if (af == AF_INET && reply_flag != 0) goto reply_flag_free;
 
     if (tb[CTA_COUNTERS_REPLY] == NULL) goto reply_flag_free;
 
@@ -827,8 +835,8 @@ reply_flag_free:
  * @param af the inet family targeted by the conntrack probe
  * @return MNL_CB_OK when successful, -1 otherwise
  */
-static int
-get_ct_flow(int af_family)
+int
+ct_stats_get_ct_flow(int af_family)
 {
     char buf[MNL_SOCKET_BUFFER_SIZE];
     struct mnl_socket *nl;
@@ -1082,7 +1090,6 @@ ct_flow_add_sample(flow_stats_t *ct_stats)
         {
             memset(&key, 0, sizeof(struct net_md_flow_key));
             memset(&pkts_ct, 0, sizeof(struct flow_counters));
-
             if (smac_lookup) key.smac = &smac;
             if (dmac_lookup) key.dmac = &dmac;
 
@@ -1282,14 +1289,14 @@ ct_stats_collect_cb(fcm_collect_plugin_t *collector)
 
     if (collector == NULL) return;
 
-    rc = get_ct_flow(AF_INET);
+    rc = ct_stats_get_ct_flow(AF_INET);
     if (rc == -1)
     {
         LOGE("%s: conntrack flow collection error", __func__);
         return;
     }
 
-    rc = get_ct_flow(AF_INET6);
+    rc = ct_stats_get_ct_flow(AF_INET6);
     if (rc == -1)
     {
         LOGE("%s: conntrack flow collection error", __func__);

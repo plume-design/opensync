@@ -575,6 +575,9 @@ void sm_radio_cfg_update(void)
         else if (strcmp(radio->schema.hw_mode, "11ac") == 0) {
             radio_cfg.protocol = RADIO_802_11_AC;
         }
+        else if (strcmp(radio->schema.hw_mode, "11ax") == 0) {
+            radio_cfg.protocol = RADIO_802_11_AX;
+        }
         else {
             LOG(DEBUG,
                 "Radio Config: Unkown protocol: %s",
@@ -636,7 +639,7 @@ void sm_radio_cfg_update(void)
             }
         }
         else {
-            LOG(WARNING,
+            LOG(DEBUG,
                 "Radio Config: No interfaces associated with %s radio.",
                 radio_get_name_from_cfg(&radio_cfg));
         }

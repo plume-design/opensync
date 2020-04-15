@@ -703,9 +703,12 @@ start:
             break;
 
         case CM2_STATE_TRY_CONNECT:
-            /* Workaround for CAES-599, double check */
-            cm2_ovsdb_remove_unused_gre_interfaces();
-            cm2_ovsdb_connection_update_unreachable_cloud_counter(g_state.link.if_name, -1);
+            if (cm2_is_extender())
+            {
+                /* Workaround for CAES-599, double check */
+                cm2_ovsdb_remove_unused_gre_interfaces();
+                cm2_ovsdb_connection_update_unreachable_cloud_counter(g_state.link.if_name, -1);
+            }
 
             if (cm2_curr_addr()->updated)
             {
@@ -802,8 +805,9 @@ start:
                 // quiesce ovsdb-server, wait for timeout
                 cm2_ovsdb_set_Manager_target("");
                 g_state.disconnects += 1;
-                cm2_ovsdb_connection_update_unreachable_cloud_counter(g_state.link.if_name,
-                                                                      g_state.disconnects);
+                if (cm2_is_extender())
+                    cm2_ovsdb_connection_update_unreachable_cloud_counter(g_state.link.if_name,
+                                                                          g_state.disconnects);
                 // Update timeouts based on AWLAN_Node contents
                 cm2_compute_backoff();
                 LOG(NOTICE, "===== Quiescing connection to: %s for %d seconds",

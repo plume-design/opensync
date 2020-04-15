@@ -145,6 +145,7 @@ ndp_plugin_init(struct fsm_session *session)
     return 0;
 }
 
+
 /**
  * @brief session exit point
  *
@@ -368,8 +369,15 @@ ndp_parse_advert(struct ndp_parser *parser)
     in6->sin6_family = AF_INET6;
     memcpy(&in6->sin6_addr, &na->nd_na_target, sizeof(in6->sin6_addr));
 
-    eth_hdr = net_header_get_eth(net_parser);
-    parser->entry.mac = eth_hdr->srcmac;
+    if (parser->opt_mac)
+    {
+        parser->entry.mac = parser->opt_mac;
+    }
+    else
+    {
+        eth_hdr = net_header_get_eth(net_parser);
+        parser->entry.mac = eth_hdr->srcmac;
+    }
 
     if (LOG_SEVERITY_ENABLED(LOG_SEVERITY_DEBUG))
     {

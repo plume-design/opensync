@@ -543,7 +543,7 @@ dns_plugin_init(struct fsm_session *session)
     return 0;
 
 error:
-    free(dns_session);
+    dns_delete_session(session);
     return -1;
 }
 

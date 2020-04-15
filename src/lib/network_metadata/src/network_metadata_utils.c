@@ -122,7 +122,7 @@ int net_md_5tuple_cmp(void *a, void *b)
     if (cmp != 0) return cmp;
 
     /* Get ip version compare length */
-    ipl = (key_a->ip_version == 4 ? 4 : 32);
+    ipl = (key_a->ip_version == 4 ? 4 : 16);
 
     /* Compare source IP addresses */
     cmp = memcmp(key_a->src_ip, key_b->src_ip, ipl);
@@ -141,7 +141,7 @@ int net_md_5tuple_cmp(void *a, void *b)
     if (cmp != 0) return cmp;
 
     /* Compare destination ports */
-    cmp = (int)(key_a->sport) - (int)(key_b->sport);
+    cmp = (int)(key_a->dport) - (int)(key_b->dport);
     return cmp;
 }
 
@@ -234,7 +234,7 @@ bool net_md_set_ip(uint8_t ipv, uint8_t *ip, uint8_t **ip_tgt)
         return true;
     }
 
-    ipl = (ipv == 4 ? 4 : 32);
+    ipl = (ipv == 4 ? 4 : 16);
 
     *ip_tgt = calloc(1, ipl);
     if (*ip_tgt == NULL) return false;
@@ -1238,9 +1238,6 @@ pbkey2net_md_key(struct net_md_aggregator *aggr, Traffic__FlowKey *pb_key)
     key->dmac = str2os_mac(pb_key->dstmac);
     err = ((pb_key->dstmac != NULL) && (key->dmac == NULL));
     if (err) goto err_free_smac;
-
-    key->vlan_id = pb_key->vlanid;
-    key->ethertype = (uint16_t)(pb_key->ethertype);
 
     key->vlan_id = pb_key->vlanid;
     key->ethertype = (uint16_t)(pb_key->ethertype);

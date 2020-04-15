@@ -78,6 +78,7 @@ typedef enum
     RADIO_802_11_NA,
     RADIO_802_11_A,
     RADIO_802_11_AC,
+    RADIO_802_11_AX,
     RADIO_MAX_802_11_PROTOCOLS
 } radio_protocols_t;
 

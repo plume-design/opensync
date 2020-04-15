@@ -1,7 +1,7 @@
 {
   "name": "Open_vSwitch",
-  "version": "7.11.201",
-  "cksum": "4052908338 190193",
+  "version": "7.11.203",
+  "cksum": "3380660315 190193",
   "tables": {
     "AWLAN_Node": {
       "columns": {
@@ -1225,7 +1225,7 @@
             "key": {
               "type": "integer",
               "minInteger": 1,
-              "maxInteger": 165
+              "maxInteger": 181
             },
             "min": 0,
             "max": 1
@@ -1532,7 +1532,7 @@
             "key": {
               "type": "integer",
               "minInteger": 1,
-              "maxInteger": 169
+              "maxInteger": 181
             },
             "min": 0,
             "max": 1
@@ -1712,10 +1712,10 @@
             "key": {
               "type": "integer",
               "minInteger": 1,
-              "maxInteger": 169
+              "maxInteger": 181
             },
             "min": 0,
-            "max": 36
+            "max": 64
           }
         },
         "channels": {
@@ -1735,7 +1735,7 @@
             "value": {
                  "type": "integer",
                  "minInteger": 1,
-                 "maxInteger": 165
+                 "maxInteger": 181
             },
             "min": 0,
             "max": 8
@@ -2173,7 +2173,7 @@
             "key": {
               "type": "integer",
               "minInteger": 1,
-              "maxInteger": 165
+              "maxInteger": 181
             },
             "min": 0,
             "max": 1
@@ -4643,10 +4643,10 @@
             "key": {
               "type": "integer",
               "minInteger": 1,
-              "maxInteger": 165
+              "maxInteger": 181
             },
             "min": 0,
-            "max": 32
+            "max": 64
           }
         },
         "threshold": {
@@ -6412,7 +6412,7 @@
                     "key": {
                         "type": "integer",
                         "minInteger": 1,
-                        "maxInteger": 165
+                        "maxInteger": 181
                     },
                     "min": 0,
                     "max": 1

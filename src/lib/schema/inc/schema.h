@@ -57,6 +57,7 @@ SCHEMA_LISTX(_SCHEMA_COL_DECL)
 
 #define SCHEMA_KEY_VAL_APPEND(FIELD, KEY, VALUE) \
         do { \
+            if (WARN_ON((size_t)FIELD##_len >= ARRAY_SIZE(FIELD))) break; \
             STRSCPY(FIELD##_keys[FIELD##_len], (KEY)); \
             STRSCPY(FIELD[FIELD##_len], (VALUE)); \
             FIELD##_present = true; \
@@ -75,6 +76,7 @@ SCHEMA_LISTX(_SCHEMA_COL_DECL)
 
 #define SCHEMA_VAL_APPEND(FIELD, VALUE) \
         do { \
+            if (WARN_ON((size_t)FIELD##_len >= ARRAY_SIZE(FIELD))) break; \
             STRSCPY(FIELD[FIELD##_len], (VALUE)); \
             FIELD##_present = true; \
             FIELD##_len++; \
@@ -82,6 +84,7 @@ SCHEMA_LISTX(_SCHEMA_COL_DECL)
 
 #define SCHEMA_VAL_APPEND_INT(FIELD, VALUE) \
         do { \
+            if (WARN_ON((size_t)FIELD##_len >= ARRAY_SIZE(FIELD))) break; \
             FIELD[FIELD##_len] = (VALUE); \
             FIELD##_present = true; \
             FIELD##_len++; \
@@ -124,6 +127,7 @@ SCHEMA_LISTX(_SCHEMA_COL_DECL)
 
 #define SCHEMA_KEY_VAL_APPEND_INT(FIELD, KEY, VALUE) \
         do { \
+            if (WARN_ON((size_t)FIELD##_len >= ARRAY_SIZE(FIELD))) break; \
             STRSCPY(FIELD##_keys[FIELD##_len], KEY); \
             FIELD[FIELD##_len] = VALUE; \
             FIELD##_present = true; \

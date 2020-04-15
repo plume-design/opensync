@@ -279,6 +279,7 @@ setUp(void)
 #ifdef ARCH_X86
     neigh_mgr = neigh_table_get_mgr();
     neigh_mgr->lookup_ovsdb_tables = NULL;
+    neigh_mgr->update_ovsdb_tables = NULL;
 #endif
 
     return;
@@ -450,6 +451,51 @@ test_advertizment_msg(void)
 }
 
 
+/**
+ * @brief validate neighbour advertizment message parsing
+ *
+ * This message contains an optional destination link address
+ */
+void
+test_advertizment_msg_v2(void)
+{
+    struct net_header_parser *net_parser;
+    struct ndp_session *n_session;
+    struct fsm_session *session;
+    struct ndp_parser *parser;
+    struct ip6_hdr *hdr;
+    uint16_t ethertype;
+    size_t len;
+
+    /* Select the first active session */
+    session = &g_sessions[0];
+    n_session = ndp_lookup_session(session);
+    TEST_ASSERT_NOT_NULL(n_session);
+
+    parser = &n_session->parser;
+    net_parser = calloc(1, sizeof(*net_parser));
+    TEST_ASSERT_NOT_NULL(net_parser);
+    parser->net_parser = net_parser;
+    PREPARE_UT(pkt6578, net_parser);
+    len = net_header_parse(net_parser);
+    TEST_ASSERT_TRUE(len != 0);
+    len = ndp_parse_message(parser);
+    TEST_ASSERT_TRUE(len != 0);
+
+    ethertype = net_header_get_ethertype(net_parser);
+    TEST_ASSERT_EQUAL_INT(ETH_P_IPV6, ethertype);
+
+    hdr = net_header_get_ipv6_hdr(net_parser);
+    TEST_ASSERT_NOT_NULL(hdr);
+    TEST_ASSERT_EQUAL_INT(IPPROTO_ICMPV6, net_parser->ip_protocol);
+
+    log_ip_mac_mapping(parser);
+    ndp_process_message(n_session);
+
+    free(net_parser);
+}
+
+
 int
 main(int argc, char *argv[])
 {
@@ -465,6 +511,7 @@ main(int argc, char *argv[])
     RUN_TEST(test_load_unload_plugin);
     RUN_TEST(test_solicitation_msg);
     RUN_TEST(test_advertizment_msg);
+    RUN_TEST(test_advertizment_msg_v2);
 
     global_test_exit();
 

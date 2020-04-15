@@ -269,7 +269,7 @@ typedef struct osn_dhcpv6_server osn_dhcpv6_server_t;
 struct osn_dhcpv6_server_prefix
 {
     osn_ip6_addr_t      d6s_prefix;       /**< The DHCPv6 server prefix */
-    bool                ds6_onlink;       /**< Unused */
+    bool                ds6_onlink;       /**< Onlink flag of prefix */
     bool                ds6_autonomous;   /**< Unused */
 };
 

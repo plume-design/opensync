@@ -727,6 +727,9 @@ fsm_init_dpi_context(struct fsm_session *session)
 
     if (!fsm_is_dpi(session)) return true;
 
+    /* Bail if already initialized */
+    if (session->dpi != NULL) return true;
+
     dpi_context = calloc(1, sizeof(*dpi_context));
     if (dpi_context == NULL) return false;
 
@@ -1003,7 +1006,7 @@ fsm_dispatch_pkt(struct net_header_parser *net_parser)
     drop = false;
     pass = true;
 
-    while (info != NULL)
+    while (info != NULL && !drop)
     {
         dpi_plugin = info->session;
         plugin_dpi_context = dpi_plugin->dpi;

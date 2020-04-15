@@ -326,6 +326,7 @@ void nm2_dhcpv6_server_prefixes_update(uuidset_t *us, enum uuidset_event type, r
 
     memset(&prefix, 0, sizeof(prefix));
     prefix.d6s_prefix = ip6p->ip6p_addr;
+    prefix.ds6_onlink = ip6p->ip6p_on_link;
 
     if (!inet_dhcp6_server_prefix(piface->if_inet, add, &prefix))
     {

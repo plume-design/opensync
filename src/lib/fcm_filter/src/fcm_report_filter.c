@@ -78,7 +78,7 @@ static void print_md_acc_key(struct net_md_stats_accumulator *md_acc)
 
     net_md_print_net_md_flow_key_and_flow_key(md_acc->key, md_acc->fkey);
 
-    LOGT("report_counter packets_count = %" PRIx64 "bytes_count = %"PRIx64,
+    LOGT("report_counter packets_count = %" PRIu64 "bytes_count = %"PRIu64,
          md_acc->report_counters.packets_count,
          md_acc->report_counters.bytes_count);
 }
@@ -101,15 +101,16 @@ void net_md_print_net_md_flow_key_and_flow_key(struct net_md_flow_key *key,
     os_macaddr_t null_mac;
     os_macaddr_t *smac;
     os_macaddr_t *dmac;
-
     size_t i, j;
+    int af;
 
     memset(&null_mac, 0, sizeof(null_mac));
 
     if (key != NULL)
     {
-        inet_ntop(AF_INET, key->src_ip, src_ip, INET6_ADDRSTRLEN);
-        inet_ntop(AF_INET, key->dst_ip, dst_ip, INET6_ADDRSTRLEN);
+        af = key->ip_version == 4 ? AF_INET : AF_INET6;
+        inet_ntop(af, key->src_ip, src_ip, INET6_ADDRSTRLEN);
+        inet_ntop(af, key->dst_ip, dst_ip, INET6_ADDRSTRLEN);
 
         smac = (key->smac != NULL ? key->smac : &null_mac);
         dmac = (key->dmac != NULL ? key->dmac : &null_mac);
@@ -137,6 +138,8 @@ void net_md_print_net_md_flow_key_and_flow_key(struct net_md_flow_key *key,
              key->ipprotocol,
              ntohs(key->sport),
              ntohs(key->dport));
+        if (key->fstart) LOGD(" Flow Starts");
+        if (key->fend) LOGD(" Flow Ends");
         LOGD("------------");
     }
     if (fkey != NULL)
@@ -146,6 +149,7 @@ void net_md_print_net_md_flow_key_and_flow_key(struct net_md_flow_key *key,
              " dmac: %s"      \
              " vlanid: %d"    \
              " ethertype: %d" \
+             " ip_version: %d"\
              " src_ip: %s"    \
              " dst_ip: %s"    \
              " protocol: %d"  \
@@ -155,11 +159,17 @@ void net_md_print_net_md_flow_key_and_flow_key(struct net_md_flow_key *key,
              fkey->dmac,
              fkey->vlan_id,
              fkey->ethertype,
+             fkey->ip_version,
              fkey->src_ip,
              fkey->dst_ip,
              fkey->protocol,
              fkey->sport,
              fkey->dport);
+        LOGD(" Flow State:");
+        LOGD(" First observed : %s", ctime(&fkey->state.first_obs));
+        LOGD(" Last  observed : %s", ctime(&fkey->state.last_obs));
+        if (fkey->state.fstart) LOGD(" Flow Starts");
+        if (fkey->state.fend) LOGD(" Flow Ends");
         for (i = 0; i < fkey->num_tags; i++)
         {
             ftag = fkey->tags[i];

@@ -70,6 +70,8 @@ static void lnx_netlink_sock_fn(struct ev_loop *loop, ev_io *ev, int revent);
 static bool lnx_netlink_dispatch(uint64_t nl_event, const char *ifname);
 /* Handler of the debounce timer -- this will actually dispatch pending events */
 static void lnx_netlink_dispatch_fn(struct ev_loop *loop, ev_debounce *ev, int revent);
+/* Filter out unwanted netlink messages as they cause too many  updates */
+static bool lnx_netlink_weed_out(struct nlmsghdr *nh);
 
 bool lnx_netlink_init(lnx_netlink_t *self, lnx_netlink_fn_t *fn)
 {
@@ -268,6 +270,12 @@ void lnx_netlink_sock_fn(struct ev_loop *loop, ev_io *w, int revent)
             NLMSG_OK(nl_msg, nl_len);
             nl_msg = NLMSG_NEXT(nl_msg, nl_len))
     {
+        /* Filter certain type of netlink messages as they cause too much unnecessary updates */
+        if (lnx_netlink_weed_out(nl_msg))
+        {
+            continue;
+        }
+
         switch (nl_msg->nlmsg_type)
         {
             case RTM_NEWLINK:
@@ -405,6 +413,39 @@ error:
     /* Error processing this event -- dispatch a global update */
     lnx_netlink_sock_close();
     lnx_netlink_dispatch(LNX_NETLINK_ALL, NULL);
+}
+
+bool lnx_netlink_weed_out(struct nlmsghdr *nh)
+{
+    struct rtmsg *rm;
+    struct rtattr *rta;
+    unsigned int rtalen;
+
+    rm = NLMSG_DATA(nh);
+
+    switch (nh->nlmsg_type)
+    {
+        case RTM_NEWLINK:
+        case RTM_DELLINK:
+        case RTM_GETLINK:
+            rta = IFLA_RTA(rm);
+            rtalen = RTM_PAYLOAD(nh);
+
+            for (;RTA_OK(rta, rtalen); rta = RTA_NEXT(rta, rtalen))
+            {
+                /*
+                 * IFLA_WIRELESS can became very noisy under certain conditions
+                 * (WPS enabled) -- ignore them as they can cause too much
+                 * updates.
+                 */
+                if (rta->rta_type == IFLA_WIRELESS)
+                {
+                    return true;
+                }
+            }
+    }
+
+    return false;
 }
 
 bool lnx_netlink_dispatch(uint64_t events, const char *ifname)

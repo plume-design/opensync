@@ -893,6 +893,24 @@ wm2_vconf_recalc(const char *ifname, bool force)
 }
 
 static void
+wm2_rstate_init(struct schema_Wifi_Radio_State *rstate, const char *phy)
+{
+    struct schema_Wifi_Radio_Config rconf;
+
+    memset(rstate, 0, sizeof(*rstate));
+    rstate->_partial_update = true;
+    SCHEMA_SET_STR(rstate->if_name, phy);
+    SCHEMA_SET_STR(rstate->freq_band, "2.4G"); /* satisfy ovsdb constraint */
+
+    /* best effort to fixup dummy freq_band, will converge eventually anyway */
+    if (ovsdb_table_select_one(&table_Wifi_Radio_Config,
+                               SCHEMA_COLUMN(Wifi_Radio_Config, if_name),
+                               phy,
+                               &rconf))
+        SCHEMA_SET_STR(rstate->freq_band, rconf.freq_band);
+}
+
+static void
 wm2_rconf_recalc_vifs(const struct schema_Wifi_Radio_Config *rconf)
 {
     struct schema_Wifi_VIF_Config vconf;
@@ -1177,6 +1195,7 @@ wm2_op_vstate(const struct schema_Wifi_VIF_State *vstate, const char *phy)
     struct schema_Wifi_VIF_State state;
     struct schema_Wifi_VIF_State oldstate;
     json_t *where;
+    bool rstate_exists;
     int i;
 
     memcpy(&state, vstate, sizeof(state));
@@ -1197,10 +1216,14 @@ wm2_op_vstate(const struct schema_Wifi_VIF_State *vstate, const char *phy)
             wm2_vstate_init(&oldstate, state.if_name);
 
     memset(&rstate, 0, sizeof(rstate));
+    rstate_exists = false;
     if (phy)
         if ((where = ovsdb_where_simple(SCHEMA_COLUMN(Wifi_Radio_State, if_name), phy)))
-            if (!ovsdb_table_select_one_where(&table_Wifi_Radio_State, where, &rstate))
-                SCHEMA_SET_STR(rstate.if_name, phy);
+            if (ovsdb_table_select_one_where(&table_Wifi_Radio_State, where, &rstate))
+                rstate_exists = true;
+
+    if (!rstate_exists && phy)
+        wm2_rstate_init(&rstate, phy);
 
     /* Workaround for PIR-11008 */
     if (!state.ft_psk_exists) {
@@ -1253,6 +1276,9 @@ wm2_op_vstate(const struct schema_Wifi_VIF_State *vstate, const char *phy)
 
         if (!(where = ovsdb_where_simple(SCHEMA_COLUMN(Wifi_Radio_State, if_name), phy)))
             return;
+
+        if (!rstate_exists)
+            WARN_ON(!ovsdb_table_insert(&table_Wifi_Radio_State, &rstate));
 
         REQUIRE(state.if_name, ovsdb_table_upsert_with_parent(&table_Wifi_VIF_State,
                                                               &state,

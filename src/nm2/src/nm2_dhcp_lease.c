@@ -44,14 +44,19 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb.h"
 #include "ovsdb_sync.h"
 
-#define WAR_ESW_3313
+/*
+ * WAR: Never populate DHCP_leased_IP with duplicate MAC entries, even if they
+ * exists in /tmp/dhcp.leases. In case there are two entries with the same MAC
+ * address, update DHCP_leased_IP with the most recent one.
+ */
+#define WAR_LEASE_UNIQUE_MAC
 
 // Defines
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
 static bool nm2_dhcp_table_update(struct schema_DHCP_leased_IP *dlip);
 
-#if defined(WAR_ESW_3313)
+#if defined(WAR_LEASE_UNIQUE_MAC)
 #include "ds_tree.h"
 #include "synclist.h"
 
@@ -161,7 +166,7 @@ static synclist_t dhcp_lease_synclist = SYNCLIST_INIT(
         dl_snode,
         osn_dhcp_server_lease_sync);
 /*
- * Hijack the nm2_dhcp_lease_notify funciton to handle ESW-3313 properly.
+ * Hijack the nm2_dhcp_lease_notify funciton to handle unique macs properly.
  */
 bool nm2_dhcp_lease_notify(
         void *data,
@@ -310,7 +315,7 @@ bool nm2_dhcp_table_update(struct schema_DHCP_leased_IP *dlip)
     cond = ovsdb_tran_cond_single("hwaddr", OFUNC_EQ, str_tolower(dlip->hwaddr));
     json_array_append_new(where, cond);
 
-#if !defined(WAR_ESW_3313)
+#if !defined(WAR_LEASE_UNIQUE_MAC)
     /*
      * Additionally, the DHCP sniffing code may pick up random DHCP updates
      * from across the network. It is imperative that there's always only 1 MAC

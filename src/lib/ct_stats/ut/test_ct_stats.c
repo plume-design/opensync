@@ -65,7 +65,7 @@ int g_seq = 1581959512;
 char *
 test_get_other_config(fcm_collect_plugin_t *plugin, char *key)
 {
-    return NULL;
+    return "1";
 }
 
 
@@ -229,6 +229,49 @@ test_process_v6(void)
     g_collector.send_report(&g_collector);
 }
 
+void
+test_ct_stat_v4(void)
+{
+    ctflow_info_t *flow_info;
+    flow_stats_t *mgr;
+    int ret;
+
+    mgr = ct_stats_get_mgr();
+    TEST_ASSERT_NOT_NULL(mgr);
+
+    ret = ct_stats_get_ct_flow(AF_INET);
+    TEST_ASSERT_EQUAL_INT(ret, 0);
+
+    ds_dlist_foreach(&mgr->ctflow_list, flow_info)
+    {
+        ct_stats_print_contrack(&flow_info->flow);
+    }
+
+    ct_flow_add_sample(mgr);
+    g_collector.send_report(&g_collector);
+}
+
+void
+test_ct_stat_v6(void)
+{
+    ctflow_info_t *flow_info;
+    flow_stats_t *mgr;
+    int ret;
+
+    mgr = ct_stats_get_mgr();
+    TEST_ASSERT_NOT_NULL(mgr);
+
+    ret = ct_stats_get_ct_flow(AF_INET6);
+    TEST_ASSERT_EQUAL_INT(ret, 0);
+
+    ds_dlist_foreach(&mgr->ctflow_list, flow_info)
+    {
+        ct_stats_print_contrack(&flow_info->flow);
+    }
+
+    ct_flow_add_sample(mgr);
+    g_collector.send_report(&g_collector);
+}
 
 int
 main(int argc, char *argv[])
@@ -243,6 +286,11 @@ main(int argc, char *argv[])
 
     RUN_TEST(test_process_v4);
     RUN_TEST(test_process_v6);
+#if !defined(__x86_64__)
+    RUN_TEST(test_ct_stat_v4);
+    RUN_TEST(test_ct_stat_v6);
+#endif
+
 
     return UNITY_END();
 }
