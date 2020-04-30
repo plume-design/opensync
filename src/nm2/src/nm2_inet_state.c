@@ -207,6 +207,7 @@ void nm2_inet_state_to_schema(
     strscpy(pstate->if_uuid, (char *)piface->if_cache._uuid, sizeof(pstate->if_uuid));
 
     NM2_IFACE_INET_CONFIG_COPY(pstate->inet_config, piface->if_cache._uuid);
+    NM2_IFACE_INET_CONFIG_COPY(pstate->gateway, piface->if_cache.gateway);
     NM2_IFACE_INET_CONFIG_COPY(pstate->dns, piface->if_cache.dns);
     NM2_IFACE_INET_CONFIG_COPY(pstate->dns_keys, piface->if_cache.dns_keys);
     pstate->dns_len = piface->if_cache.dns_len;

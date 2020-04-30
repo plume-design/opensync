@@ -87,7 +87,7 @@ static void MOD_CTOR module_ctor_##name(void)                                   
  */                                                                             \
 static void MOD_DTOR module_dtor_##name(void)                                   \
 {                                                                               \
-    module_unregister(&module_##name);                                          \
+    __module_dtor(&module_##name);                                              \
 }
 
 /**
@@ -198,5 +198,10 @@ bool module_load_all(const char *pattern);
  * using @ref module_load_all().
  */
 bool module_unload_all(const char *pattern);
+
+/*
+ * Internal module destructor handler
+ */
+void __module_dtor(module_t *mod);
 
 #endif /* MODULE_H_INCLUDED */

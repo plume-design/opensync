@@ -1,0 +1,135 @@
+\batchmode
+\documentclass{book}
+
+% Packages required by Doxygen
+\usepackage{fixltx2e}
+\usepackage{calc}
+\usepackage{doxygen}
+\usepackage[export]{adjustbox} % also loads graphicx
+\usepackage{graphicx}
+\usepackage[utf8]{inputenc}
+\usepackage{makeidx}
+\usepackage{multicol}
+\usepackage{multirow}
+\PassOptionsToPackage{warn}{textcomp}
+\usepackage{textcomp}
+\usepackage[nointegrals]{wasysym}
+\usepackage[table]{xcolor}
+\usepackage{lastpage}
+\usepackage[us]{datetime}
+
+% Font selection
+\usepackage[T1]{fontenc}
+\usepackage[scaled=.90]{helvet}
+\usepackage{courier}
+\usepackage{amssymb}
+\usepackage{sectsty}
+\renewcommand{\familydefault}{\sfdefault}
+\allsectionsfont{%
+  \fontseries{bc}\selectfont%
+  \color{darkgray}%
+}
+\renewcommand{\DoxyLabelFont}{%
+  \fontseries{bc}\selectfont%
+  \color{darkgray}%
+}
+\newcommand{\+}{\discretionary{\mbox{\scriptsize$\hookleftarrow$}}{}{}}
+
+% Page & text layout
+\usepackage{geometry}
+\geometry{%
+  letterpaper,%
+  top=0.8in,%
+  bottom=1.0in,%
+  left=1.0in,%
+  right=1.0in%
+}
+\tolerance=750
+\hfuzz=15pt
+\hbadness=750
+\setlength{\emergencystretch}{15pt}
+\setlength{\parindent}{0in}
+% parskip disabled here and set separately for TOC and content
+%\setlength{\parskip}{3ex plus 2ex minus 2ex}
+\makeatletter
+\renewcommand{\paragraph}{%
+  \@startsection{paragraph}{4}{0ex}{-1.0ex}{1.0ex}{%
+    \normalfont\normalsize\bfseries\SS@parafont%
+  }%
+}
+\renewcommand{\subparagraph}{%
+  \@startsection{subparagraph}{5}{0ex}{-1.0ex}{1.0ex}{%
+    \normalfont\normalsize\bfseries\SS@subparafont%
+  }%
+}
+\makeatother
+
+% Headers & footers
+\usepackage{fancyhdr}
+% Override 'plain' since pagestyle{fancyplain} doesn't work with \chapter
+\fancypagestyle{plain}{
+  \fancyhf{}
+  \fancyfoot[CE,CO]{\fancyplain{}{\thepage/\pageref*{LastPage}}}
+  \renewcommand{\headrulewidth}{0pt}
+  \setlength{\footskip}{36pt}
+}
+\pagestyle{plain}
+
+% Indices & bibliography
+\usepackage{natbib}
+\usepackage[titles]{tocloft}
+\setcounter{tocdepth}{3}
+\setcounter{secnumdepth}{5}
+\makeindex
+
+% OpenSync colors
+\definecolor{pink1}{RGB}{197, 133, 230}
+
+% Hyperlinks (required, but should be loaded last)
+\usepackage{ifpdf}
+\ifpdf
+  \usepackage[pdftex,pagebackref=true]{hyperref}
+\else
+  \usepackage[ps2pdf,pagebackref=true]{hyperref}
+\fi
+
+\hypersetup{colorlinks=true,linkcolor=pink1,citecolor=blue,linktoc=all,unicode}
+
+% Custom commands
+\newcommand{\clearemptydoublepage}{%
+  \newpage{\pagestyle{empty}\cleardoublepage}%
+}
+
+\usepackage{caption}
+\captionsetup{labelsep=space,justification=centering,font={bf},singlelinecheck=off,skip=4pt,position=top}
+
+%===== C O N T E N T S =====
+\begin{document}
+
+%===== FIRST PAGE  =====
+\hypersetup{pageanchor=false,bookmarksnumbered=true,pdfencoding=unicode}
+\pagenumbering{arabic}
+\begin{titlepage}
+\begin{center}
+\vspace*{1.55in}
+\includegraphics[width=6.5in]{../$projectlogo}\\
+\vspace*{4.45in}
+\end{center}
+{\Huge $projectname}
+\vspace*{16pt}\\
+{\large Date: \today}
+\vspace*{4pt}\\
+{\large Document ID: $projectnumber}
+\end{titlepage}
+
+%===== TOC =====
+\hypersetup{pageanchor=true}
+\let\cleardoublepage\clearpage
+\makeatletter \renewcommand{\cftdot}{} \makeatother
+
+\setlength{\parskip}{0.5ex}
+\renewcommand\cftchapafterpnum{\vskip 1em}
+\tableofcontents
+\setlength{\parskip}{3ex plus 2ex minus 2ex}
+
+%--- Begin generated contents ---

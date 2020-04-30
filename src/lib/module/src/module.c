@@ -45,6 +45,18 @@ struct module_load
     ds_tree_node_t  ml_tnode;       /* Tree node */
 };
 
+/*
+ * We want to unload modules automatically only when a module_unload() function
+ * is called. Destructors are called before the executable object is unloaded
+ * from memory, this includes any exit() functions or returns from the main
+ * function. In order to prevent unloading modules after the main() function is
+ * returned (or after forks()) the destructor function checks this variable
+ * is set to true. If its not, it will not auto-unload a module.
+ *
+ * module_load() will set this variable to true before calling dlclose().
+ */
+static bool module_unload_guard;
+
 static ds_dlist_t module_list = DS_DLIST_INIT(
         module_t,
         m_dnode);
@@ -53,6 +65,8 @@ static ds_tree_t module_load_list = DS_TREE_INIT(
         ds_str_cmp,
         struct module_load,
         ml_tnode);
+
+static bool __module_unload(struct module_load *ml);
 
 void module_register(module_t *mod)
 {
@@ -63,6 +77,17 @@ void module_unregister(module_t *mod)
 {
     module_stop(mod);
     ds_dlist_remove(&module_list, mod);
+}
+
+/*
+ * Autmoatically unload a module only when module_unload_guard is set to true.
+ * This typically happens inside module_unload().
+ */
+void __module_dtor(module_t *mod)
+{
+    if (!module_unload_guard) return;
+
+    module_unregister(mod);
 }
 
 void module_start(module_t *mod)
@@ -159,12 +184,21 @@ error:
 
 bool __module_unload(struct module_load *ml)
 {
+    int rc;
+
     /*
      * We can simply unload the module, destructor functions will take care
      * of un-registering the module from the module list and stopping it if
-     * necessary
+     * necessary. However, the destructor must be called only and exclusively
+     * during module_unload() or similar functions. In order to do this, a global
+     * flag (module_dlclose_guard) is set to true before each call to dlclose().
+     * This is to prevent the destructors from unloading modules during a call
+     * to exit() (when forking to background, for example).
      */
-    if (dlclose(ml->ml_dlhandle) != 0)
+    module_unload_guard = true;
+    rc = dlclose(ml->ml_dlhandle);
+    module_unload_guard = false;
+    if (rc != 0)
     {
         LOG(WARN, "module: Error unloading shared object for module: %s", ml->ml_path);
     }

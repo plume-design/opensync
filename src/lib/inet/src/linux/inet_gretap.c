@@ -124,7 +124,7 @@ bool inet_gretap_init(inet_gretap_t *self, const char *ifname)
 {
     int status;
 
-    status = execsh_log(LOG_SEVERITY_INFO, gre_delete_gretap, self->inet.in_ifname);
+    status = execsh_log(LOG_SEVERITY_INFO, gre_delete_gretap, (char *)ifname);
     if (WEXITSTATUS(status) != 0)
     {
         LOG(ERR, "inet_gretap: %s: Error initializing GRETAP interface.", self->inet.in_ifname);

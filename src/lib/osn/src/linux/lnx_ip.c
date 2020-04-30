@@ -235,7 +235,11 @@ bool lnx_ip_apply(lnx_ip_t *self)
     /* Apply IPv4 routes */
     ds_tree_foreach(&self->ip_route_gw_list, rnode)
     {
-        if (inet_ntop(AF_INET, &rnode->src.ia_addr, saddr, sizeof(saddr)) == NULL)
+        if (osn_ip_addr_cmp(&rnode->src, &OSN_IP_ADDR_INIT) == 0)
+        {
+            STRSCPY(saddr, "default");
+        }
+        else if (inet_ntop(AF_INET, &rnode->src.ia_addr, saddr, sizeof(saddr)) == NULL)
         {
             LOG(ERR, "ip: %s: Unable to convert IPv4 source address, skipping.", self->ip_ifname);
             continue;

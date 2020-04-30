@@ -824,22 +824,14 @@ void net_md_close_counters(struct net_md_aggregator *aggr,
     /* Relative report */
     if (aggr->report_type == NET_MD_REPORT_RELATIVE)
     {
-        if (acc->report_counters.bytes_count > acc->first_counters.bytes_count)
+        if (acc->report_counters.bytes_count >= acc->first_counters.bytes_count)
         {
             acc->report_counters.bytes_count -= acc->first_counters.bytes_count;
         }
-        else
-        {
-            acc->report_counters.bytes_count = 0;
-        }
 
-        if (acc->report_counters.packets_count > acc->first_counters.packets_count)
+        if (acc->report_counters.packets_count >= acc->first_counters.packets_count)
         {
             acc->report_counters.packets_count -= acc->first_counters.packets_count;
-        }
-        else
-        {
-            acc->report_counters.packets_count = 0;
         }
     }
 

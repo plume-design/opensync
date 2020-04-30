@@ -141,6 +141,7 @@ struct nm2_iface
     {
         uint8_t                     if_uuid[NM2_IFACE_INET_CONFIG_SZ(if_uuid)];
         uint8_t                     _uuid[NM2_IFACE_INET_CONFIG_SZ(_uuid)];
+        uint8_t                     gateway[NM2_IFACE_INET_CONFIG_SZ(gateway)];
         uint8_t                     dns[NM2_IFACE_INET_CONFIG_SZ(dns)];
         uint8_t                     dns_keys[NM2_IFACE_INET_CONFIG_SZ(dns_keys)];
         int                         dns_len;
