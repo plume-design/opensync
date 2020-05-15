@@ -856,7 +856,7 @@ wm2_vconf_recalc(const char *ifname, bool force)
 
     num_cconfs = wm2_cconf_get(&vconf, cconfs, sizeof(cconfs)/sizeof(cconfs[0]));
 
-    if (has && strlen(SCHEMA_KEY_VAL(vconf.security, "key")) < 8) {
+    if (has && strlen(SCHEMA_KEY_VAL(vconf.security, "key")) < 8 && !strcmp(vconf.mode, "sta")) {
         LOGD("%s: overriding 'ssid' and 'security' for onboarding", ifname);
         vconf.ssid_exists = vstate.ssid_exists;
         STRSCPY(vconf.ssid, vstate.ssid);

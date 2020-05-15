@@ -255,6 +255,27 @@ wpas_conf_gen_freqlist(struct wpas *wpas, char *freqs, size_t len)
     return strchomp(freqs, " ");
 }
 
+static int
+wpas_map_str2int(const struct schema_Wifi_VIF_Config *vconf)
+{
+    if (!vconf->multi_ap_exists) return 0;
+    if (!strcmp(vconf->multi_ap, "none")) return 0;
+    if (!strcmp(vconf->multi_ap, "backhaul_sta")) return 1;
+    WARN_ON(1);
+    return 0;
+}
+
+static const char *
+wpas_map_int2str(int i)
+{
+    switch (i) {
+        case 0: return "none";
+        case 1: return "backhaul_sta";
+    }
+    WARN_ON(1);
+    return "none";
+}
+
 int
 wpas_conf_gen(struct wpas *wpas,
               const struct schema_Wifi_Radio_Config *rconf,
@@ -281,6 +302,7 @@ wpas_conf_gen(struct wpas *wpas,
     csnprintf(&buf, &len, "%s", wpas_supports_disallow_dfs() ? "" : "#");
     csnprintf(&buf, &len, "disallow_dfs=%d\n", !(vconf->parent_exists && strlen(vconf->parent) > 0));
     csnprintf(&buf, &len, "scan_cur_freq=%d\n", vconf->parent_exists && strlen(vconf->parent) > 0);
+    csnprintf(&buf, &len, "#bridge=%s\n", vconf->bridge_exists ? vconf->bridge : "");
 
     wpa = wpas_util_get_mode(SCHEMA_KEY_VAL(vconf->security, "mode"));
     wpa_pairwise = wpas_util_get_pairwise(wpa);
@@ -303,6 +325,8 @@ wpas_conf_gen(struct wpas *wpas,
         csnprintf(&buf, &len, "\tkey_mgmt=%s\n", wpa_key_mgmt);
         csnprintf(&buf, &len, "\tpairwise=%s\n", wpa_pairwise);
         csnprintf(&buf, &len, "\tproto=%s\n", wpa_proto);
+        csnprintf(&buf, &len, "\t%s", wpas->respect_multi_ap ? "" : "#");
+        csnprintf(&buf, &len, "multi_ap_backhaul_sta=%d\n", wpas_map_str2int(vconf));
         csnprintf(&buf, &len, "\t%s", strlen(vconf->parent) > 0 ? "" : "#");
         csnprintf(&buf, &len, "bssid=%s\n", vconf->parent);
         csnprintf(&buf, &len, "}\n");
@@ -332,6 +356,8 @@ wpas_conf_gen(struct wpas *wpas,
         csnprintf(&buf, &len, "\tkey_mgmt=%s\n", wpa_key_mgmt);
         csnprintf(&buf, &len, "\tpairwise=%s\n", wpa_pairwise);
         csnprintf(&buf, &len, "\tproto=%s\n", wpa_proto);
+        csnprintf(&buf, &len, "\t%s", wpas->respect_multi_ap ? "" : "#");
+        csnprintf(&buf, &len, "multi_ap_backhaul_sta=%d\n", wpas_map_str2int(vconf));
         csnprintf(&buf, &len, "\t%s", strlen(vconf->parent) > 0 ? "" : "#");
         csnprintf(&buf, &len, "bssid=%s\n", vconf->parent);
         csnprintf(&buf, &len, "}\n");
@@ -343,9 +369,10 @@ wpas_conf_gen(struct wpas *wpas,
 static int
 wpas_ctrl_add(struct wpas *wpas)
 {
+    const char *bridge = ini_geta(wpas->conf, "#bridge") ?: "";
     int err = 0;
     LOGI("%s: adding", wpas->ctrl.bss);
-    err |= strcmp("OK", WPAS_GLOB_CLI("interface_add", wpas->ctrl.bss, wpas->confpath, wpas->driver, wpas->ctrl.sockdir) ?: "");
+    err |= strcmp("OK", WPAS_GLOB_CLI("interface_add", wpas->ctrl.bss, wpas->confpath, wpas->driver, wpas->ctrl.sockdir, "", bridge) ?: "");
     err |= strcmp("OK", WPAS_CLI(wpas, "log_level", "DEBUG") ?: "");
     return err;
 }
@@ -377,6 +404,9 @@ int
 wpas_conf_apply(struct wpas *wpas)
 {
     const char *oldconf = R(wpas->confpath) ?: "";
+    const char *oldbr = ini_geta(oldconf, "#bridge") ?: "";
+    const char *newbr = ini_geta(wpas->conf, "#bridge") ?: "";
+    int changed_br = strcmp(oldbr, newbr);
     int changed = strcmp(oldconf, wpas->conf);
     int add = !ctrl_running(&wpas->ctrl) && wpas_configured(wpas);
     int reload = ctrl_running(&wpas->ctrl) && wpas_configured(wpas) && changed;
@@ -384,8 +414,9 @@ wpas_conf_apply(struct wpas *wpas)
     int err = 0;
 
     if (changed) WARN_ON(W(wpas->confpath, wpas->conf) < 0);
-    if (add) err |= WARN_ON(wpas_ctrl_add(wpas));
-    if (reload) err |= WARN_ON(wpas_ctrl_reload(wpas));
+    if (reload && changed_br) err |= WARN_ON(wpas_ctrl_remove(wpas));
+    if (add || changed_br) err |= WARN_ON(wpas_ctrl_add(wpas));
+    if (reload && !changed_br) err |= WARN_ON(wpas_ctrl_reload(wpas));
     if (remove) err |= WARN_ON(wpas_ctrl_remove(wpas));
 
     return err;
@@ -397,9 +428,11 @@ wpas_bss_get_network(struct schema_Wifi_VIF_State *vstate,
                      const char *status)
 {
     const char *state = ini_geta(status, "wpa_state") ?: "";
+    const char *bridge = ini_geta(conf, "#bridge") ?: "";
     const char *bssid = ini_geta(status, "bssid");
     const char *ssid = ini_geta(status, "ssid");
     const char *id = ini_geta(status, "id") ?: "0";
+    const char *map;
     char *psk;
     char *network = strdupa(conf);
     int n = atoi(id) + 1;
@@ -411,6 +444,7 @@ wpas_bss_get_network(struct schema_Wifi_VIF_State *vstate,
         if ((network = strstr(network, "network={")))
             network += strlen("network={");
 
+    map = ini_geta(network, "multi_ap_backhaul_sta");
     psk = ini_geta(network, "psk") ?: "";
 
     /* entry in file looks actually like this: psk="passphrase", so remove the: " */
@@ -421,10 +455,12 @@ wpas_bss_get_network(struct schema_Wifi_VIF_State *vstate,
         STRSCPY_WARN(vstate->parent, bssid);
     if ((vstate->ssid_exists = (ssid != NULL)))
         STRSCPY_WARN(vstate->ssid, ssid);
+    if (map)
+        SCHEMA_SET_STR(vstate->multi_ap, wpas_map_int2str(atoi(map)));
 
     SCHEMA_KEY_VAL_APPEND(vstate->security, "encryption", "WPA-PSK");
     SCHEMA_KEY_VAL_APPEND(vstate->security, "key", psk);
-    SCHEMA_SET_STR(vstate->bridge, "");
+    SCHEMA_SET_STR(vstate->bridge, bridge);
 }
 
 int

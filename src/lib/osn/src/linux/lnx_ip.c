@@ -156,6 +156,8 @@ bool lnx_ip_fini(lnx_ip_t *self)
         free(rnode);
     }
 
+    free(self->ip_status.is_addr);
+
     return retval;
 }
 

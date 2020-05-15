@@ -23,32 +23,22 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-cat <<EOF
+if [ -z "$CONFIG_PM_ENABLE_LED" ]; then
+    # do nothing if not set
+    echo '["Open_vSwitch"]'
+    exit
+fi
+
+cat << EOF
 [
     "Open_vSwitch",
-$(for i in $(eval echo $CONFIG_TARGET_ETH0_NAME \
-                       $CONFIG_TARGET_ETH1_NAME \
-                       $CONFIG_TARGET_ETH2_NAME \
-                       $CONFIG_TARGET_ETH3_NAME)
-do
-test "$CONFIG_OVSDB_BOOTSTRAP" = y || continue
-cat <<EOI
     {
-        "op":"insert",
-        "table":"Wifi_Inet_Config",
-        "row":
-        {
-            "if_name": "$i",
-            "ip_assign_scheme": "none",
-            "if_type": "eth",
-            "enabled": true,
-            "network": true,
-            "mtu": 1500,
-            "NAT": false
+        "op":"update",
+        "table":"AWLAN_Node",
+        "where":[],
+        "row": {
+        "led_config": ["map",[["state","connecting"]]]
         }
-    },
-EOI
-done)
-    { "op": "comment", "comment": "" }
+    }
 ]
 EOF

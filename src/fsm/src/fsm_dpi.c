@@ -105,6 +105,8 @@ static int
 fsm_dpi_init_client(struct imc_context *client, imc_free_sndmsg free_cb,
                     void *hint)
 {
+    struct imc_sockoption opt;
+    int opt_value;
     int ret;
 
     if (g_imc_context.init_client == NULL)
@@ -113,7 +115,39 @@ fsm_dpi_init_client(struct imc_context *client, imc_free_sndmsg free_cb,
         return 0;
     }
 
+    /* initialize context */
+    g_imc_context.init_context(client);
+
+    /* Set the send threshold option */
+    opt.option_name = IMC_SNDHWM;
+    opt_value = 10; /* Allow 10 pending messages */
+    opt.value = &opt_value;
+    opt.len = sizeof(opt_value);
+    ret = g_imc_context.add_sockopt(client, &opt);
+    if (ret)
+    {
+        LOGI("%s: setting ICM_SNDHWM option failed", __func__);
+        return -1;
+    }
+
+    /* Set the linger option */
+    opt.option_name = IMC_LINGER;
+    opt_value = 0; /* Free all pending messages immediately on close */
+    opt.value = &opt_value;
+    opt.len = sizeof(opt_value);
+    ret = g_imc_context.add_sockopt(client, &opt);
+    if (ret)
+    {
+        LOGD("%s: setting ICM_LINGER option failed", __func__);
+        return -1;
+    }
+
+    /* Start the client */
     ret = g_imc_context.init_client(client, free_cb, hint);
+    if (ret)
+    {
+        LOGD("%s: init_client() failed", __func__);
+    }
 
     return ret;
 }
@@ -123,8 +157,8 @@ static void
 fsm_dpi_terminate_client(struct imc_context *client)
 {
     if (g_imc_context.terminate_client == NULL) return;
-
     g_imc_context.terminate_client(client);
+    g_imc_context.reset_context(client);
 }
 
 
@@ -169,18 +203,7 @@ fsm_dpi_send_report(struct fsm_session *session)
     if (dpi_context == NULL) return -1;
 
     client = &g_imc_client;
-    if (!client->initialized)
-    {
-        client->ztype = IMC_PUSH;
-
-        /* Start the client */
-        rc = fsm_dpi_init_client(client, free_send_msg, NULL);
-        if (rc != 0)
-        {
-            LOGE("%s: could not initiate client", __func__);
-            goto err_client;
-        }
-    }
+    if (!client->initialized) return -1;
 
     dispatch = &dpi_context->dispatch;
     aggr = dispatch->aggr;
@@ -204,28 +227,20 @@ fsm_dpi_send_report(struct fsm_session *session)
     session->ops.send_pb_report(session, mqtt_topic, pb->buf, pb->len);
 
     /* Beware, sending the pb through imc will schedule its freeing */
-    rc = fsm_dpi_client_send(client, pb->buf, pb->len, 0);
+    rc = fsm_dpi_client_send(client, pb->buf, pb->len, IMC_DONTWAIT);
     if (rc != 0)
     {
-        LOGE("%s: could not send message", __func__);
-        fsm_dpi_terminate_client(client);
+        LOGD("%s: could not send message", __func__);
+        client->io_failure_cnt++;
+        rc = -1;
         goto err_send;
     }
-
-    /* The protobuf buffer gets freed upon sending, free the pb envelope */
-    free(pb);
-
-    return 0;
+    client->io_success_cnt++;
 
 err_send:
-    free(pb); /* Assume that a send error still triggers the free callback */
+    free(pb);
 
-err_client:
-
-    free(client->endpoint);
-    client->initialized = false;
-
-    return -1;
+    return rc;
 }
 
 
@@ -553,6 +568,7 @@ fsm_init_dpi_dispatcher(struct fsm_session *session)
     struct fsm_dpi_dispatcher *dispatch;
     union fsm_dpi_context *dpi_context;
     struct net_md_aggregator *aggr;
+    struct imc_context *client;
     struct node_info node_info;
     ds_tree_t *dpi_sessions;
     struct fsm_mgr *mgr;
@@ -579,13 +595,6 @@ fsm_init_dpi_dispatcher(struct fsm_session *session)
 
     dispatch->aggr = aggr;
 
-    rc = net_md_activate_window(dispatch->aggr);
-    if (!rc)
-    {
-        LOGE("%s: failed to activate aggregator", __func__);
-        goto error;
-    }
-
     dispatch->session = session;
     dpi_sessions = &dispatch->plugin_sessions;
     ds_tree_init(dpi_sessions, fsm_dpi_sessions_cmp,
@@ -596,6 +605,22 @@ fsm_init_dpi_dispatcher(struct fsm_session *session)
 
     ret = fsm_dpi_load_imc();
     if (!ret) goto error;
+
+    client = &g_imc_client;
+    client->ztype = IMC_PUSH;
+    rc = fsm_dpi_init_client(client, free_send_msg, NULL);
+    if (rc)
+    {
+        LOGD("%s: could not initiate client", __func__);
+        goto error;
+    }
+
+    ret = net_md_activate_window(dispatch->aggr);
+    if (!ret)
+    {
+        LOGE("%s: failed to activate aggregator", __func__);
+        goto error;
+    }
 
     return true;
 
@@ -634,6 +659,8 @@ fsm_free_dpi_dispatcher(struct fsm_session *session)
         dpi_plugin = next;
     }
     net_md_free_aggregator(dispatch->aggr);
+
+    fsm_dpi_terminate_client(&g_imc_client);
 }
 
 
@@ -1208,6 +1235,9 @@ fsm_dpi_periodic(struct fsm_session *session)
         LOGI("%s: %s: total flows: %zu held flows: %zu, reported flows: %zu",
              __func__, session->name, aggr->total_flows, aggr->held_flows,
              window->num_stats);
+        LOGI("%s: imc: io successes: %" PRIu64
+             ", io failures: %" PRIu64, __func__,
+             g_imc_client.io_success_cnt, g_imc_client.io_failure_cnt);
         dispatch->periodic_ts = now;
     }
 

@@ -54,7 +54,9 @@ static mosqev_t         qm_mqtt;
 static bool             qm_mosquitto_init = false;
 static bool             qm_mosqev_init = false;
 static struct ev_timer  qm_mqtt_timer;
+#ifdef CONFIG_LOG_REMOTE
 static struct ev_timer  qm_mqtt_timer_log;
+#endif
 static int64_t          qm_mqtt_reconnect_ts = 0;
 static char             qm_mqtt_broker[HOST_NAME_MAX];
 static char             qm_mqtt_topic[HOST_NAME_MAX];
@@ -553,4 +555,3 @@ error:
 
     return false;
 }
-

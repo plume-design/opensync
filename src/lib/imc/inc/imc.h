@@ -32,6 +32,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdbool.h>
 #include <stdlib.h>
 
+#include "ds_list.h"
+
 /**
  * Derived from https://github.com/pijyoi/zmq_libev,
  * distributed under a MIT license
@@ -45,6 +47,7 @@ typedef void (*imc_recv)(void *, size_t);
 
 struct imc_context;
 struct imc_dso;
+struct imc_sockoption;
 
 typedef void (*imc_ev_cbfn)(struct ev_loop *, struct imc_context *, int);
 
@@ -56,6 +59,11 @@ typedef int (*client_send)(struct imc_context *, void *, size_t , int);
 
 typedef int (*init_server)(struct imc_context *, struct ev_loop *, imc_recv);
 typedef void (*terminate_server)(struct imc_context *);
+
+typedef int  (*add_sockopt)(struct imc_context *, struct imc_sockoption *);
+typedef void (*init_context)(struct imc_context *);
+typedef void (*reset_context)(struct imc_context *);
+
 typedef void (*init)(struct imc_dso *);
 
 struct imc_dso
@@ -70,7 +78,27 @@ struct imc_dso
 
     init_server init_server;
     terminate_server terminate_server;
+
+    init_context init_context;
+    reset_context reset_context;
+    add_sockopt add_sockopt;
 };
+
+
+struct imc_sockoption
+{
+    int option_name;
+    void *value;
+    size_t len;
+};
+
+
+struct imc_sockoption_node
+{
+    struct imc_sockoption option;
+    ds_list_node_t option_node;
+};
+
 
 struct imc_context
 {
@@ -90,6 +118,9 @@ struct imc_context
     ev_idle w_idle;
     ev_io w_io;
     bool initialized;
+    ds_list_t options;
+    uint64_t io_success_cnt;
+    uint64_t io_failure_cnt;
 };
 
 
@@ -100,7 +131,45 @@ enum
 {
     IMC_PULL = ZMQ_PULL,
     IMC_PUSH = ZMQ_PUSH,
+    IMC_DONTWAIT = ZMQ_DONTWAIT,
+    IMC_SNDHWM = ZMQ_SNDHWM,
+    IMC_RCVHWM = ZMQ_RCVHWM,
+    IMC_LINGER = ZMQ_LINGER,
 };
+
+
+/**
+ * @brief initializes an imc context
+ *
+ * @param context the imc context
+ */
+void
+imc_init_context(struct imc_context *context);
+
+
+/**
+ * @brief resets an imc context
+ *
+ * @param context the imc context
+ * @param frees non network resources of the imc context
+ */
+void
+imc_reset_context(struct imc_context *context);
+
+
+/**
+ * @brief add a socket to the imc context
+ * @param context the imc context
+ * @param the option container
+ *
+ * Memory usage: The option container is duplicated and
+ * the duplicate is stored in the context.
+ * This routine ought to be called brior to calling either
+ * @see imc_init_server or @see imc_init_client for the options to take effect.
+ * Call the routine for each option you wish to set.
+ */
+int
+imc_add_sockopt(struct imc_context *context, struct imc_sockoption *option);
 
 
 /**
@@ -158,6 +227,7 @@ imc_terminate_client(struct imc_context *client);
 int
 imc_send(struct imc_context *context, void *buf, size_t buflen, int flags);
 
+
 void
 imc_init_dso(struct imc_dso *dso);
 
@@ -167,7 +237,26 @@ enum
 {
     IMC_PULL = 0,
     IMC_PUSH,
+    IMC_DONTWAIT,
+    IMC_SNDHWM,
+    IMC_RCVHWM,
+    IMC_LINGER,
 };
+
+
+static inline int
+imc_init_context(struct imc_context *context)
+{
+    return 0;
+}
+
+
+static inline int
+imc_add_sockopt(struct imc_context *context, struct imc_sockoption *option)
+{
+    return 0;
+}
+
 
 static inline int
 imc_init_server(struct imc_context *server, struct ev_loop *loop,

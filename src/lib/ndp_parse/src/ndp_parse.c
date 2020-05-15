@@ -445,8 +445,10 @@ ndp_process_message(struct ndp_session *n_session)
     /* Add the tap interface to the entry upsert */
     parser->entry.ifname = conf->if_name;
 
+    parser->entry.source = FSM_NDP;
+
     /* Record the IP mac mapping */
-    neigh_table_cache_update(&parser->entry);
+    neigh_table_add(&parser->entry);
 
     free(parser->opt_mac);
     parser->opt_mac = NULL;

@@ -321,7 +321,8 @@ static void cm2_dhcpc_dryrun_cb(struct ev_loop *loop, ev_child *w, int revents)
         goto release;
     }
 
-    if (cm2_is_iface_in_bridge(SCHEMA_CONSTS_BR_NAME_HOME, dhcp_dryrun->if_name)) {
+    if (cm2_is_eth_type(dhcp_dryrun->if_type) &&
+        cm2_is_iface_in_bridge(SCHEMA_CONSTS_BR_NAME_HOME, dhcp_dryrun->if_name)) {
         LOGI("%s: Skip trigger new dryrun, iface in %s",
             dhcp_dryrun->if_name, SCHEMA_CONSTS_BR_NAME_HOME);
         goto release;

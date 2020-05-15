@@ -50,6 +50,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "target.h"
 #include "fsm.h"
 #include "nf_utils.h"
+#include "neigh_table.h"
 
 /******************************************************************************/
 
@@ -121,6 +122,8 @@ int main(int argc, char ** argv)
         LOGE("Initializing Neighbour Table failed " );
         return -1;
     }
+
+    neigh_table_init_monitor(loop, false, false);
 
     if (nf_ct_init(loop) < 0)
     {

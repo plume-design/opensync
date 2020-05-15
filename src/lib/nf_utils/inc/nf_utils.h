@@ -31,7 +31,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <ev.h>
 #include "os_types.h"
 #include "net_header_parse.h"
-#include "neigh_table.h"
 
 typedef union nf_ip_addr_
 {
@@ -75,6 +74,19 @@ typedef struct nf_flow_
     ev_timer timeout;
 } nf_flow_t;
 
+struct nf_neigh_info
+{
+    int event;
+    int af_family;
+    int ifindex;
+    void *ipaddr;
+    os_macaddr_t *hwaddr;
+    int state;
+    uint32_t source;
+    bool add;
+    bool delete;
+};
+
 int nf_ct_init(struct ev_loop *loop);
 
 int nf_ct_exit(void);
@@ -85,5 +97,27 @@ int nf_ct_set_mark_timeout(nf_flow_t *flow, uint32_t timeout);
 
 int nf_ct_set_flow_mark(struct net_header_parser *net_pkt, uint32_t mark, uint16_t zone);
 
-bool nf_util_get_macaddr(struct neighbour_entry *req);
+enum
+{
+    NF_UTIL_NEIGH_EVENT = 0,
+    NF_UTIL_LINK_EVENT,
+};
+
+typedef void (*process_nl_event_cb)(struct nf_neigh_info *neigh_info);
+struct nf_neigh_settings
+{
+    struct ev_loop *loop;
+    process_nl_event_cb neigh_cb;
+    process_nl_event_cb link_cb;
+    int source;
+};
+
+const char *nf_util_get_str_state(int state);
+
+int nf_neigh_init(struct nf_neigh_settings *neigh_settings);
+
+int nf_neigh_exit(void);
+
+bool nf_util_dump_neighs(int af_family);
+
 #endif /* NF_UTILS_H_INCLUDED */

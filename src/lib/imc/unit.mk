@@ -51,3 +51,4 @@ UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 UNIT_DEPS := src/lib/const
 UNIT_DEPS += src/lib/log
 UNIT_DEPS += src/lib/ovsdb
+UNIT_DEPS += src/lib/ds

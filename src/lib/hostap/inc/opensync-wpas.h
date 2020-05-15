@@ -35,6 +35,7 @@ struct wpas {
     char confpath[PATH_MAX];
     char conf[4096];
     int freqlist[64];
+    int respect_multi_ap;
     void (*connected)(struct wpas *wpas, const char *bssid, int id, const char *id_str);
     void (*disconnected)(struct wpas *wpas, const char *bssid, int reason, int local);
     struct ctrl ctrl;

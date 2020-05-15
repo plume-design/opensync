@@ -374,13 +374,6 @@ bool target_vif_config_set2(const struct schema_Wifi_VIF_Config *vconf,
 }
 #endif
 
-#ifndef IMPL_target_vif_get_sta_ifname
-const char * target_vif_get_sta_ifname(const char *phy)
-{
-    return NULL;
-}
-#endif
-
 #ifndef IMPL_target_vif_config_get
 bool target_vif_config_get(char *ifname, struct schema_Wifi_VIF_Config *vconf)
 {

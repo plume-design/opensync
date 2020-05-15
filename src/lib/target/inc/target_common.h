@@ -339,14 +339,6 @@ typedef void target_vif_config_cb_t(struct schema_Wifi_VIF_Config *vconf, schema
  */
 bool target_vif_config_register(char *ifname, target_vif_config_cb_t *vconfig_cb);
 
-/**
- * @brief Get vif station interface name
- *
- * @param phy phy name
- * @return station ifname
- */
-const char * target_vif_get_sta_ifname(const char *phy);
-
 /// @} LIB_TARGET_VIF
 
 /// @defgroup LIB_TARGET_DHCP DHCP API

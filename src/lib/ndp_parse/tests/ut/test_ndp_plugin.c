@@ -278,7 +278,6 @@ setUp(void)
 
 #ifdef ARCH_X86
     neigh_mgr = neigh_table_get_mgr();
-    neigh_mgr->lookup_ovsdb_tables = NULL;
     neigh_mgr->update_ovsdb_tables = NULL;
 #endif
 

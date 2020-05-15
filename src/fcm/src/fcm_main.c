@@ -115,6 +115,9 @@ int main(int argc, char ** argv)
         return -1;
     }
 
+    // FCM registers to both neighbor system and ovsdb events
+    neigh_table_init_monitor(loop, true, true);
+
     // FCM doesn't need to update ovsdb.
     mgr = neigh_table_get_mgr();
     if (mgr) mgr->update_ovsdb_tables = NULL;

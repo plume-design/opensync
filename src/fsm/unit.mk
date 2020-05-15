@@ -63,3 +63,5 @@ UNIT_DEPS += src/qm/qm_conn
 UNIT_DEPS += src/lib/json_mqtt
 UNIT_DEPS += src/lib/network_telemetry
 UNIT_DEPS += src/lib/network_metadata
+UNIT_DEPS += src/lib/neigh_table
+

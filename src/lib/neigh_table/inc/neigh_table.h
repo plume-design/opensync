@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ds_tree.h"
 #include "os.h"
 #include "os_types.h"
+#include "nf_utils.h"
 
 /******************************************************************************
 * Struct Declarations
@@ -48,24 +49,62 @@ struct neighbour_entry
     struct sockaddr_storage     *ipaddr;
     os_macaddr_t                *mac;
     char                        *ifname;
-    time_t                      cache_valid_ts;
+    int                         ifindex;
+    uint32_t                    source;
+    uint8_t                     *ip_tbl;           // for fast lookups
+    int                         af_family;         // for fast lookups
     ds_tree_node_t              entry_node;        // tree node structure
+};
+
+/*
+ * interface entry.
+ * Counts the number of neighbour entries bound to the interface
+ */
+struct neigh_interface
+{
+    int ifindex;
+    int entries_count;
+    ds_tree_node_t intf_node;
 };
 
 struct neigh_table_mgr
 {
     bool initialized;
     ds_tree_t neigh_table;
+    ds_tree_t interfaces;
     bool (*update_ovsdb_tables)(struct neighbour_entry *key, bool remove);
-    bool (*lookup_ovsdb_tables)(struct neighbour_entry *key);
-    bool (*lookup_kernel_entry)(struct neighbour_entry *key);
     void (*ovsdb_init)(void);
+};
+
+
+enum source
+{
+    NEIGH_SRC_NOT_SET       = 1 << 0,
+    NEIGH_TBL_SYSTEM        = 1 << 1,
+    OVSDB_DHCP_LEASE        = 1 << 2,
+    OVSDB_ARP               = 1 << 3,
+    FSM_ARP                 = OVSDB_ARP,
+    OVSDB_NDP               = 1 << 4,
+    FSM_NDP                 = OVSDB_NDP,
+    NEIGH_UT                = 1 << 5,
+};
+
+struct neigh_mapping_source
+{
+    char *source;
+    int source_enum;
 };
 
 #define NEIGH_CACHE_INTERVAL       600
 
 struct neigh_table_mgr
 *neigh_table_get_mgr(void);
+
+/**
+ * @brief initialize neighbor_table handle manager.
+ */
+void
+neigh_table_init_manager(void);
 
 /**
  * @brief initialize neighbor_table handle.
@@ -77,8 +116,10 @@ struct neigh_table_mgr
 int
 neigh_table_init(void);
 
+void neigh_table_cache_cleanup(void);
+
 /**
- * @brief cleanup allocatef memody.
+ * @brief cleanup allocated memory.
  *
  * receive none
  *
@@ -102,12 +143,6 @@ neigh_table_cmp(void *a, void *b);
 bool
 update_ip_in_ovsdb_table(struct neighbour_entry *key, bool remove);
 
-bool
-lookup_entry_in_kernel(struct neighbour_entry *key);
-
-bool
-lookup_ip_in_ovsdb_table(struct neighbour_entry *key);
-
 /**
  * @brief lookup for a neighbor table entry.
  *
@@ -118,17 +153,72 @@ neigh_table_lookup(struct sockaddr_storage *ip_in,
                    os_macaddr_t *mac_out);
 
 void
+print_neigh_entry(struct neighbour_entry *entry);
+
+void
 print_neigh_table(void);
+
+struct neighbour_entry *
+neigh_table_add_to_cache(struct neighbour_entry *to_add);
 
 bool
 neigh_table_add(struct neighbour_entry *to_add);
 
 void
+neigh_table_delete_from_cache(struct neighbour_entry *to_del);
+
+void
 neigh_table_delete(struct neighbour_entry *to_del);
 
-bool
+struct neighbour_entry *
 neigh_table_cache_lookup(struct neighbour_entry *key);
 
 bool
 neigh_table_cache_update(struct neighbour_entry *entry);
+
+/**
+ * @brief return the source based on its enum value
+ *
+ * @param source_enum the source represented as an integer
+ * @return a string pointer representing the source
+ */
+char *
+neigh_table_get_source(int source_enum);
+
+/**
+ * @brief set fast lookup fields of a neighbour entry
+ *
+ * @param entry the entry to set
+ * If not set, set the default source, the af_family
+ * and void ip address pointer used in the entry comparison routine
+ */
+void neigh_table_set_entry(struct neighbour_entry *entry);
+
+/**
+ * @brief lookup interface context.
+ *
+ * @param ifindex the interface system index
+ *
+ * Look up an interface context
+ */
+struct neigh_interface * neigh_table_lookup_intf(int ifindex);
+
+/**
+ * @brief lookup/create interface context.
+ *
+ * @param ifindex the interface system index
+ *
+ * Looks up an interface context. If not found, create one.
+ */
+struct neigh_interface * neigh_table_get_intf(int ifindex);
+
+/**
+ * @brief initializes ovsdb callback
+ */
+void
+neigh_src_init(void);
+
+void neigh_table_init_monitor(struct ev_loop *loop,
+                              bool system_event, bool ovsdb_event);
+
 #endif /* NEIGH_TABLE_H_INCLUDED */

@@ -181,6 +181,14 @@ hapd_ctrl_cb(struct ctrl *ctrl, int level, const char *buf, size_t len)
         return;
     }
 
+    if (!strcmp(event, EV(WPS_EVENT_DISABLE))) {
+        LOGI("%s: wps disable", hapd->ctrl.bss);
+        if (hapd->wps_disable)
+            hapd->wps_disable(hapd);
+
+        return;
+    }
+
     LOGI("%s: event: <%d> %s", ctrl->bss, level, buf);
 }
 
@@ -289,6 +297,31 @@ hapd_util_ft_md(const struct schema_Wifi_VIF_Config *vconf)
 }
 
 static int
+hapd_map_str2int(const struct schema_Wifi_VIF_Config *vconf)
+{
+    if (!vconf->multi_ap_exists) return 0;
+    if (!strcmp(vconf->multi_ap, "none")) return 0;
+    if (!strcmp(vconf->multi_ap, "fronthaul_bss")) return 2;
+    if (!strcmp(vconf->multi_ap, "backhaul_bss")) return 1;
+    if (!strcmp(vconf->multi_ap, "fronthaul_backhaul_bss")) return 3;
+    LOGW("%s: unknown multi_ap: '%s'", vconf->if_name, vconf->multi_ap);
+    return 0;
+}
+
+static const char *
+hapd_map_int2str(int i)
+{
+    switch (i) {
+        case 0: return "none";
+        case 1: return "backhaul_bss";
+        case 2: return "fronthaul_bss";
+        case 3: return "fronthaul_backhaul_bss";
+    }
+    LOGW("unknown map arg %d", i);
+    return "none";
+}
+
+static int
 hapd_conf_gen_psk(struct hapd *hapd,
                   const struct schema_Wifi_VIF_Config *vconf)
 {
@@ -376,6 +409,8 @@ hapd_conf_gen(struct hapd *hapd,
     csnprintf(&buf, &len, "channel=%d\n", rconf->channel);
     csnprintf(&buf, &len, "ignore_broadcast_ssid=%d\n", closed);
     csnprintf(&buf, &len, "wmm_enabled=1\n");
+    csnprintf(&buf, &len, "%s", hapd->respect_multi_ap ? "" : "#");
+    csnprintf(&buf, &len, "multi_ap=%d\n", hapd_map_str2int(vconf));
 
     /* FIXME: ieee80211n, iee80211ac, ieee80211ax is missing, also min_hw_mode..
      * perhaps some of this needs to be scheduled for wireless api rework
@@ -602,6 +637,8 @@ hapd_bss_get(struct hapd *hapd,
         vstate->ft_psk = atoi(p);
     if ((vstate->btm_exists = (p = ini_geta(conf, "bss_transition"))))
         vstate->btm = atoi(p);
+    if ((p = ini_geta(conf, "multi_ap")))
+        SCHEMA_SET_STR(vstate->multi_ap, hapd_map_int2str(atoi(p)));
 
     if (status) {
         hapd_bss_get_security(vstate, conf, status);

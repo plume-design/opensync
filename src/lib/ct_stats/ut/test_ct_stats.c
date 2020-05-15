@@ -106,7 +106,6 @@ test_send_report(struct net_md_aggregator *aggr, char *mqtt_topic)
 void
 setUp(void)
 {
-    struct neigh_table_mgr *neigh_mgr;
     struct net_md_aggregator *aggr;
     flow_stats_t *mgr;
     int rc;
@@ -127,10 +126,6 @@ setUp(void)
     aggr = mgr->aggr;
     TEST_ASSERT_NOT_NULL(aggr);
     aggr->send_report = test_send_report;
-
-    neigh_table_init();
-    neigh_mgr = neigh_table_get_mgr();
-    neigh_mgr->lookup_ovsdb_tables = NULL;
 }
 
 

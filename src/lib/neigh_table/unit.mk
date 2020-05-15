@@ -34,14 +34,12 @@ UNIT_TYPE := LIB
 UNIT_DIR := lib
 
 UNIT_SRC := src/neigh_table.c
-UNIT_SRC += src/neigh_src_kernel.c
 UNIT_SRC += src/neigh_src_ovsdb.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -I$(TOP_DIR)/src/lib/common/inc
 UNIT_CFLAGS += -Isrc/lib/ustack/inc
 UNIT_CFLAGS += -Isrc/lib/network_metadata/inc
-UNIT_CFLAGS += -Isrc/lib/nf_utils/inc
 
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
 UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
@@ -49,3 +47,4 @@ UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 UNIT_DEPS += src/lib/log
 UNIT_DEPS += src/lib/ds
 UNIT_DEPS += src/lib/ovsdb
+UNIT_DEPS += src/lib/nf_utils

@@ -209,6 +209,110 @@ err_recv:
 }
 
 
+/**
+ * @brief initializes an imc context
+ *
+ * @param context the imc context
+ */
+void
+imc_init_context(struct imc_context *context)
+{
+    ds_list_init(&context->options, struct imc_sockoption_node, option_node);
+}
+
+
+/**
+ * @brief resets an imc context
+ *
+ * @param context the imc context
+ * @param frees non network resources of the imc context
+ */
+void
+imc_reset_context(struct imc_context *context)
+{
+    struct imc_sockoption_node *node;
+
+    ds_list_t *list;
+
+    list = &context->options;
+    while (!ds_list_is_empty(list))
+    {
+        node = ds_list_remove_head(list);
+        free(node->option.value);
+        free(node);
+    }
+}
+
+
+/**
+ * @brief add a socket to the imc context
+ * @param context the imc context
+ * @param the option container
+ *
+ * Memory usage: The option container is duplicated and
+ * the duplicate is stored in the context.
+ * This routine ought to be called brior to calling either
+ * @see imc_init_server or @see imc_init_client for the options to take effect.
+ * Call the routine for each option you wish to set.
+ */
+
+int
+imc_add_sockopt(struct imc_context *context, struct imc_sockoption *option)
+{
+    struct imc_sockoption_node *node;
+    struct imc_sockoption *node_option;
+
+    /* Safety checks */
+    if (option == NULL) return -1;
+    if (option->len == 0) return -1;
+    if (option->value == NULL) return -1;
+
+    node = calloc(1, sizeof(*node));
+    if (node == NULL) return -1;
+
+    node_option = &node->option;
+
+    node_option->option_name = option->option_name;
+    node_option->value = calloc(1, option->len);
+    if (node_option == NULL) goto err_opt;
+    node_option->len = option->len;
+    memcpy(node_option->value, option->value, node_option->len);
+
+    ds_list_insert_tail(&context->options, node_option);
+
+    return 0;
+
+err_opt:
+    free(node);
+    return -1;
+}
+
+
+/**
+ * @brief apply options
+ */
+static int
+imc_apply_options(struct imc_context *context)
+{
+    struct imc_sockoption_node *node;
+    int rc;
+
+    ds_list_foreach(&context->options, node)
+    {
+        rc = zmq_setsockopt(context->zsock, node->option.option_name,
+                             node->option.value, node->option.len);
+        if (rc)
+        {
+            LOGE("%s: zmq_setsockopt %d failed: %s", __func__,
+                 node->option.option_name,
+                 strerror(errno));
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
 
 /**
  * @brief initiates a imc server
@@ -253,6 +357,10 @@ imc_init_server(struct imc_context *server, struct ev_loop *loop,
     }
 
     server->zsock = zsock;
+
+    /* Apply options */
+    rc = imc_apply_options(server);
+    if (rc) goto err_free_zsock;
 
     rc = zmq_bind(server->zsock, server->endpoint);
     if (rc == -1)
@@ -352,6 +460,10 @@ imc_init_client(struct imc_context *client, imc_free_sndmsg free_snd_msg,
 
     client->zsock = zsock;
 
+    /* Apply options */
+    rc = imc_apply_options(client);
+    if (rc) goto err_free_zsock;
+
     /* Connect the socket to the endpoint */
     rc = zmq_connect(client->zsock, client->endpoint);
     if (rc == -1)
@@ -372,7 +484,6 @@ err_free_zsock:
     zmq_close(client->zsock);
 
 err_free_zctx:
-    zmq_ctx_shutdown(client->zctx);
     zmq_ctx_term(client->zctx);
     client->zsock = NULL;
     client->zctx = NULL;
@@ -392,7 +503,6 @@ imc_terminate_client(struct imc_context *client)
     if (client->zctx == NULL) return;
 
     zmq_close(client->zsock);
-    zmq_ctx_shutdown(client->zctx);
     zmq_ctx_term(client->zctx);
     client->zsock = NULL;
     client->zctx = NULL;
@@ -421,13 +531,13 @@ imc_send(struct imc_context *client, void *buf, size_t buflen, int flags)
     int rc;
 
     zmq_msg_init_data(&msg, buf, buflen, client->imc_free_sndmsg, NULL);
-    rc = zmq_msg_send(&msg, client->zsock, 0);
+    rc = zmq_msg_send(&msg, client->zsock, flags);
     if (rc == -1)
     {
         rc = errno;
-        LOGE("%s: failed to send data to %s: %s", __func__,
+        LOGD("%s: failed to send data to %s: %s", __func__,
              client->endpoint, strerror(rc));
-
+        zmq_msg_close(&msg);
         return -1;
     }
 
@@ -440,7 +550,11 @@ imc_init_dso(struct imc_dso *dso)
     dso->init_client = imc_init_client;
     dso->terminate_client = imc_terminate_client;
     dso->client_send = imc_send;
-
+    dso->add_sockopt = imc_add_sockopt;
     dso->init_server = imc_init_server;
     dso->terminate_server = imc_terminate_server;
-};
+    dso->add_sockopt = imc_add_sockopt;
+    dso->init_context = imc_init_context;
+    dso->reset_context = imc_reset_context;
+}
+

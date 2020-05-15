@@ -40,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <time.h>
 #include <error.h>
 
+#include "os.h"
 #include "os_types.h"
 #include "neigh_table.h"
 #include "ovsdb.h"
@@ -51,140 +52,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "json_util.h"
 
-static bool
-lookup_ipv6_neigh_in_ovsdb(struct neighbour_entry *key)
-{
-    struct schema_IPv6_Neighbors    v6ip;
-    json_t                         *jrows;
-    json_t                         *where;
-    int                             cnt;
-    pjs_errmsg_t                    perr;
-    char                            ipstr[INET6_ADDRSTRLEN] = {0};
-    int                             err;
-
-    err = getnameinfo((struct sockaddr *)key->ipaddr,
-                      sizeof(struct sockaddr_storage),
-                      ipstr, sizeof(ipstr),
-                      0, 0, NI_NUMERICHOST);
-    if (err < 0)
-    {
-        LOGD("%s: Failed to get the ip: err[%s]",__func__,strerror(err));
-        return false;
-    }
-
-    where = ovsdb_tran_cond(OCLM_STR, "address", OFUNC_EQ, &ipstr);
-    if (where == NULL)
-    {
-        LOGD("%s: Failed to get address column in IPv6_Neighbors table.", __func__);
-        return false;
-    }
-
-    jrows = ovsdb_sync_select_where(SCHEMA_TABLE(IPv6_Neighbors), where);
-    if (jrows == NULL)
-    {
-        LOGD("%s: Couldn't find the column in IPv6_Neighbors table.",__func__);
-        json_decref(where);
-        return false;
-    }
-
-    cnt = json_array_size(jrows);
-    if (cnt == 0)
-    {
-        LOGD("%s: Couldn't find the ip[%s] in IPv6_Neighbors table.", __func__, ipstr);
-        goto err_ipv6;
-    }
-
-    if (cnt > 1) LOGD("%s: Found duplicate entries, taking the first one.",__func__);
-
-    if (!schema_IPv6_Neighbors_from_json(&v6ip, json_array_get(jrows, 0),
-                                         false, perr))
-    {
-        LOGE("%s: Unable to parse IPv6_Neighbors column: %s", __func__, perr);
-        goto err_ipv6;
-    }
-
-    err = hwaddr_aton(v6ip.hwaddr, key->mac->addr);
-    if (err)
-    {
-        LOGE("%s: Invalid mac address[%s] retrieved",__func__, v6ip.hwaddr);
-        goto err_ipv6;
-    }
-
-    json_decref(jrows);
-    return true;
-
-err_ipv6:
-    json_decref(jrows);
-    return false;
-}
-
-static bool
-lookup_ipv4_neigh_in_ovsdb(struct neighbour_entry *key)
-{
-    struct schema_DHCP_leased_IP    dlip;
-    json_t                         *jrows;
-    json_t                         *where;
-    int                             cnt;
-    pjs_errmsg_t                    perr;
-    char                            ipstr[INET6_ADDRSTRLEN] = {0};
-    int                             err;
-
-    err = getnameinfo((struct sockaddr *)key->ipaddr,
-                      sizeof(struct sockaddr_storage),
-                      ipstr, sizeof(ipstr),
-                      0, 0, NI_NUMERICHOST);
-    if (err < 0)
-    {
-        LOGD("%s: Failed to get the ip: err[%s]",__func__,strerror(err));
-        return false;
-    }
-
-    where = ovsdb_tran_cond(OCLM_STR, "inet_addr", OFUNC_EQ, &ipstr);
-    if (!where)
-    {
-        LOGD("%s: Failed to get inet_addr column in DHCP_leased_IP table.", __func__);
-        return false;
-    }
-
-    jrows = ovsdb_sync_select_where(SCHEMA_TABLE(DHCP_leased_IP), where);
-    if (jrows == NULL)
-    {
-        LOGD("%s: Couldn't find the column in DHCP_leased_IP table.",__func__);
-        json_decref(where);
-        return false;
-    }
-
-    cnt = json_array_size(jrows);
-    if (cnt == 0)
-    {
-        LOGD("%s: Couldn't find the ip[%s] in DHCP_leased_IP table.", __func__, ipstr);
-        goto err_ipv4;
-    }
-
-    if (cnt > 1) LOGD("%s: Found duplicate entries, taking the first one.",__func__);
-
-    if (!schema_DHCP_leased_IP_from_json(&dlip, json_array_get(jrows, 0),
-                                         false, perr))
-    {
-        LOGE("%s: Unable to parse DHCP_leased_IP column: %s", __func__, perr);
-        goto err_ipv4;
-    }
-
-    err = hwaddr_aton(dlip.hwaddr, key->mac->addr);
-    if (err)
-    {
-        LOGE("%s: Invalid mac address[%s] retrieved",__func__, dlip.hwaddr);
-        goto err_ipv4;
-    }
-
-    json_decref(jrows);
-    return true;
-
-err_ipv4:
-    json_decref(jrows);
-    return false;
-
-}
+ovsdb_table_t table_DHCP_leased_IP;
+ovsdb_table_t table_IPv6_Neighbors;
 
 static bool
 neigh_entry_to_ipv6_neighbor_schema(struct neighbour_entry *key,
@@ -284,6 +153,56 @@ update_ipv6_neigh_in_ovsdb(struct neighbour_entry *key, bool remove)
     return true;
 }
 
+static const struct neigh_mapping_source source_map[] =
+{
+    {
+        .source = "not set",
+        .source_enum = NEIGH_SRC_NOT_SET,
+    },
+    {
+        .source = "system neighbor table",
+        .source_enum = NEIGH_TBL_SYSTEM,
+    },
+    {
+        .source = "ovsdb dhcp lease",
+        .source_enum = OVSDB_DHCP_LEASE,
+    },
+    {
+        .source = "ovsdb ndp",
+        .source_enum = OVSDB_NDP,
+    },
+    {
+        .source = "ovsdb arp",
+        .source_enum = OVSDB_ARP,
+    },
+};
+
+/**
+ * @brief return the source based on its enum value
+ *
+ * @param source_enum the source represented as an integer
+ * @return a string pointer representing the source
+ */
+char *
+neigh_table_get_source(int source_enum)
+{
+    const struct neigh_mapping_source *map;
+    size_t nelems;
+    size_t i;
+
+    /* Walk the known sources */
+    nelems = (sizeof(source_map) / sizeof(source_map[0]));
+    map = source_map;
+    for (i = 0; i < nelems; i++)
+    {
+        if (source_enum == map->source_enum) return map->source;
+        map++;
+    }
+
+    return NULL;
+}
+
+
 bool
 update_ip_in_ovsdb_table(struct neighbour_entry *key, bool remove)
 {
@@ -295,23 +214,268 @@ update_ip_in_ovsdb_table(struct neighbour_entry *key, bool remove)
     {
         rc = update_ipv6_neigh_in_ovsdb(key, remove);
     }
+
     return rc;
 }
 
-bool
-lookup_ip_in_ovsdb_table(struct neighbour_entry *key)
+
+/**
+ * @brief add or update a dhcp cache entry
+ *
+ * @param dhcp_lease the ovsdb dhcp info about the entry to add/update
+ * If the entry's hw address is flagged as changed, update the cached entry.
+ * Otherwise add the entry.
+ */
+static void
+neigh_table_add_dhcp_entry(struct schema_DHCP_leased_IP *dhcp_lease)
 {
-    bool rc = false;
+    struct neighbour_entry entry;
+    os_macaddr_t mac;
+    uint8_t addr[4];
+    bool rc;
+    int ret;
 
-    if (!key) return rc;
+    memset(&entry, 0, sizeof(entry));
+    entry.af_family = AF_INET;
+    ret = inet_pton(entry.af_family, dhcp_lease->inet_addr, addr);
+    if (ret != 1)
+    {
+        LOGD("%s: conversion of %s failed", __func__, dhcp_lease->inet_addr);
+        return;
+    }
 
-    if (key->ipaddr->ss_family == AF_INET)
+    entry.ip_tbl = addr;
+    entry.source = OVSDB_DHCP_LEASE;
+    hwaddr_aton(dhcp_lease->hwaddr, mac.addr);
+    entry.mac = &mac;
+
+    /* If the hw address field is marked as changed, update the cache entry */
+    if (dhcp_lease->hwaddr_changed)
     {
-        rc = lookup_ipv4_neigh_in_ovsdb(key);
+        rc = neigh_table_cache_update(&entry);
+        if (!rc) LOGD("%s: failed to update the dhcp entry", __func__);
     }
-    else if (key->ipaddr->ss_family == AF_INET6)
+    else
     {
-        rc = lookup_ipv6_neigh_in_ovsdb(key);
+        rc = neigh_table_add_to_cache(&entry);
+        if (!rc) LOGD("%s: failed to add the dhcp entry", __func__);
     }
-    return rc;
+}
+
+/**
+ * @brief delete a dhcp cache entry
+ *
+ * @param dhcp_lease the ovsdb dhcp info about the entry to delete
+ */
+static void
+neigh_table_delete_dhcp_entry(struct schema_DHCP_leased_IP *dhcp_lease)
+{
+    struct neighbour_entry entry;
+    uint8_t addr[4];
+    int ret;
+
+    memset(&entry, 0, sizeof(entry));
+    entry.af_family = AF_INET;
+    ret = inet_pton(entry.af_family, dhcp_lease->inet_addr, addr);
+    if (ret != 1)
+    {
+        LOGD("%s: conversion of %s failed", __func__, dhcp_lease->inet_addr);
+        return;
+    }
+
+    entry.ip_tbl = addr;
+    entry.source = OVSDB_DHCP_LEASE;
+    neigh_table_delete_from_cache(&entry);
+}
+
+/**
+ * @brief add or update a dhcp cache entry
+ *
+ * @param old_rec the previous ovsdb dhcp info info about the entry
+ *        to add/update
+ * @param dhcp_lease the ovsdb dhcp info about the entry to add/update
+ *
+ * If the entry's ip address is flagged as changed, remove the old entry
+ * and add a new one.
+ * If the entry's hw address is flagged as changed, update the cached entry.
+ * Otherwise add the entry.
+ */
+static void
+neigh_table_update_dhcp_entry(struct schema_DHCP_leased_IP *old_rec,
+                              struct schema_DHCP_leased_IP *dhcp_lease)
+{
+    if (dhcp_lease->inet_addr_changed)
+    {
+        /* Remove the old record from the cache */
+        neigh_table_delete_dhcp_entry(old_rec);
+    }
+
+    /* Add/update the new record */
+    neigh_table_add_dhcp_entry(dhcp_lease);
+}
+
+/**
+ * @brief DHCP_leased_IP's event callbacks
+ */
+void
+callback_DHCP_leased_IP(ovsdb_update_monitor_t *mon,
+                        struct schema_DHCP_leased_IP *old_rec,
+                        struct schema_DHCP_leased_IP *dhcp_lease)
+{
+    if (mon->mon_type == OVSDB_UPDATE_NEW)
+    {
+        neigh_table_add_dhcp_entry(dhcp_lease);
+        return;
+    }
+
+    if (mon->mon_type == OVSDB_UPDATE_DEL)
+    {
+        neigh_table_delete_dhcp_entry(dhcp_lease);
+        return;
+    }
+
+    if (mon->mon_type == OVSDB_UPDATE_MODIFY)
+    {
+        neigh_table_update_dhcp_entry(old_rec, dhcp_lease);
+        return;
+    }
+}
+
+
+/**
+ * @brief add or update a IPv4_Neighbor cache entry
+ *
+ * @param dhcp_lease the ovsdb IPv4_Neighbor info about the entry to add/update
+ * If any of the entry's field but its IP address is marked as changed,
+ * consider the entry as an update.
+ * Otherwise add the entry.
+ */
+static void
+neigh_table_add_v6_entry(struct schema_IPv6_Neighbors *neigh)
+{
+    struct neighbour_entry entry;
+    os_macaddr_t mac;
+    uint8_t addr[16];
+    bool update;
+    bool rc;
+    int ret;
+
+    memset(&entry, 0, sizeof(entry));
+    entry.af_family = AF_INET6;
+    ret = inet_pton(entry.af_family, neigh->address, addr);
+    if (ret != 1)
+    {
+        LOGD("%s: conversion of %s failed", __func__, neigh->address);
+        return;
+    }
+    entry.ip_tbl = addr;
+    entry.source = OVSDB_NDP;
+    hwaddr_aton(neigh->hwaddr, mac.addr);
+    entry.mac = &mac;
+
+    update = neigh->hwaddr_changed;
+    update |= neigh->if_name_changed;
+    if (update)
+    {
+        rc = neigh_table_cache_update(&entry);
+        if (!rc) LOGD("%s: cache update failed", __func__);
+    }
+    else
+    {
+        rc = neigh_table_add_to_cache(&entry);
+        if (!rc) LOGD("%s: cache addition failed", __func__);
+    }
+}
+
+/**
+ * @brief delete a IPv6_Neighbor cached entry
+ *
+ * @brief neigh the IPv6_Neighbor info about the entry to delete
+ */
+static void
+neigh_table_delete_v6_entry(struct schema_IPv6_Neighbors *neigh)
+{
+    struct neighbour_entry entry;
+    os_macaddr_t mac;
+    uint8_t addr[16];
+    int ret;
+
+    memset(&entry, 0, sizeof(entry));
+    entry.af_family = AF_INET6;
+    ret = inet_pton(entry.af_family, neigh->address, addr);
+    if (ret != 1)
+    {
+        LOGD("%s: conversion of %s failed", __func__, neigh->address);
+        return;
+    }
+    entry.ip_tbl = addr;
+    entry.source = OVSDB_NDP;
+    hwaddr_aton(neigh->hwaddr, mac.addr);
+    entry.mac = &mac;
+    neigh_table_delete_from_cache(&entry);
+}
+
+/**
+ * @brief add or update a IPv6_Neighbor cache entry
+ *
+ * @param old_rec the previous ovsdb IPv6_Neighbor info about the entry
+ *        to add/update
+ * @param v6_neigh the ovsdb IPv6_Neighbor info about the entry to add/update
+ *
+ * If the entry's ip address is flagged as changed, remove the old entry
+ * and add a new one.
+ * Else update the entry.
+ */
+static void
+neigh_table_update_v6_entry(struct schema_IPv6_Neighbors *old_rec,
+                            struct schema_IPv6_Neighbors *v6_neigh)
+{
+    if (v6_neigh->address_changed)
+    {
+        /* Remove the old record from the cache */
+        neigh_table_delete_v6_entry(old_rec);
+    }
+
+    /* Add/update the new record */
+    neigh_table_add_v6_entry(v6_neigh);
+}
+
+/**
+ * @brief IPv6_Neighbors' event callbacks
+ */
+void
+callback_IPv6_Neighbors(ovsdb_update_monitor_t *mon,
+                        struct schema_IPv6_Neighbors *old_rec,
+                        struct schema_IPv6_Neighbors *v6_neigh)
+{
+    if (mon->mon_type == OVSDB_UPDATE_NEW)
+    {
+        neigh_table_add_v6_entry(v6_neigh);
+        return;
+    }
+
+    if (mon->mon_type == OVSDB_UPDATE_DEL)
+    {
+        neigh_table_delete_v6_entry(v6_neigh);
+        return;
+    }
+
+    if (mon->mon_type == OVSDB_UPDATE_MODIFY)
+    {
+        neigh_table_update_v6_entry(old_rec, v6_neigh);
+        return;
+    }
+}
+
+/**
+ * @brief registers to ovsdb tables updates
+ */
+void
+neigh_src_init(void)
+{
+    OVSDB_TABLE_INIT_NO_KEY(DHCP_leased_IP);
+    OVSDB_TABLE_INIT_NO_KEY(IPv6_Neighbors);
+
+    OVSDB_TABLE_MONITOR(DHCP_leased_IP, false);
+    OVSDB_TABLE_MONITOR(IPv6_Neighbors, false);
 }

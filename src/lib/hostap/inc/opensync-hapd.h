@@ -36,6 +36,7 @@ struct hapd {
     char confpath[PATH_MAX];
     char conf[4096];
     char psks[4096];
+    int respect_multi_ap;
     void (*sta_connected)(struct hapd *hapd, const char *mac, const char *keyid);
     void (*sta_disconnected)(struct hapd *hapd, const char *mac);
     void (*ap_enabled)(struct hapd *hapd);
@@ -43,6 +44,7 @@ struct hapd {
     void (*wps_active)(struct hapd *hapd);
     void (*wps_success)(struct hapd *hapd);
     void (*wps_timeout)(struct hapd *hapd);
+    void (*wps_disable)(struct hapd *hapd);
     struct ctrl ctrl;
 };
 

@@ -647,7 +647,10 @@ cm2_ovsdb_util_translate_master_port_state(struct schema_Wifi_Master_State *mast
     LOGN("%s: Detected new port_state = %s", master->if_name, master->port_state);
 
     if (!strcmp(master->if_type, VIF_TYPE_NAME) && cm2_util_vif_is_sta(master->if_name)) {
-        if (!cm2_util_is_wds_station(master->if_name)) {
+        if (!port_state &&
+            cm2_ovsdb_connection_get_connection_by_ifname(master->if_name, &con)) {
+            LOGD("%s: WDS sta interface is removing", master->if_name);
+        } else if (!cm2_util_is_wds_station(master->if_name)) {
             cm2_util_ifname2gre(gre_ifname, sizeof(gre_ifname), master->if_name);
             cm2_ovsdb_util_handle_master_sta_port_state(master, port_state, gre_ifname);
             return;
@@ -658,8 +661,6 @@ cm2_ovsdb_util_translate_master_port_state(struct schema_Wifi_Master_State *mast
              __func__, master->if_name, master->if_type);
         return;
     }
-
-    memset(&con, 0, sizeof(con));
 
     LOGI("%s: Add/update uplink in Connection Manager Uplink table", master->if_name);
 
@@ -978,7 +979,8 @@ void cm2_connection_set_L3(struct schema_Connection_Manager_Uplink *uplink) {
     if (!uplink->has_L2)
         return;
 
-    if (cm2_ovs_insert_port_into_bridge(SCHEMA_CONSTS_BR_NAME_HOME, uplink->if_name, false))
+    if (cm2_is_eth_type(uplink->if_name) &&
+        cm2_ovs_insert_port_into_bridge(SCHEMA_CONSTS_BR_NAME_HOME, uplink->if_name, false))
         LOGW("%s: Failed to remove port %s from %s", __func__, SCHEMA_CONSTS_BR_NAME_HOME, uplink->if_name);
 
     if (cm2_util_block_udhcpc_on_gre(uplink->if_name, uplink->if_type))
