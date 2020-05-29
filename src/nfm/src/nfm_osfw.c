@@ -194,13 +194,13 @@ bool nfm_osfw_del_chain(int family, const char *table, const char *chain)
 		LOGE("Delete firewall chain: invalid parameters");
 		return false;
 	} else if (!nfm_osfw_is_valid_chain(chain)) {
-		LOGD("Add firewall chain: %s is not a valid chain - ignore it", chain);
+		LOGD("Delete firewall chain: %s is not a valid chain - ignore it", chain);
 		return true;
 	}
 
 	errcode = osfw_chain_del(family, nfm_osfw_convert_table(table), chain);
 	if (!errcode) {
-		LOGE("Add firewall chain failed");
+		LOGE("Delete firewall chain failed");
 		return false;
 	}
 
