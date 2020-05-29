@@ -227,7 +227,7 @@ static bool osfw_nfchain_del(struct osfw_nfchain *self)
 	}
 
 	free(self);
-	return false;
+	return true;
 }
 
 static struct osfw_nfchain *osfw_nfchain_add(struct ds_dlist *parent, const char *chain)
