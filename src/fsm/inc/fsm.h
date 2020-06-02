@@ -145,7 +145,13 @@ struct fsm_pcaps
     int pcap_fd;
     ev_io fsm_evio;
     int pcap_datalink;
+    int buffer_size;
+    int cnt;
+    int snaplen;
+    int immediate;
+    int started;
 };
+
 
 /**
  * @brief supported fsm services.
@@ -678,5 +684,18 @@ fsm_plugin_has_intf(struct fsm_session *session)
  */
 void
 fsm_set_node_state(const char *module, const char *key, const char *value);
+
+/**
+ * @brief set a fsm policy provider
+ *
+ * Set a web cat provider service as indicated in the ovsdb other_config map.
+ * If none is passed, point to wc_null
+ * @param session the session to provide a service to.
+ */
+void
+fsm_process_provider(struct fsm_session *session);
+
+bool
+fsm_pcap_update(struct fsm_session *session);
 
 #endif /* FSM_H_INCLUDED */

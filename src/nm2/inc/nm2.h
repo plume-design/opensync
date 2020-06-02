@@ -184,6 +184,7 @@ struct nm2_dhcpv6_lease
 
 void nm2_dhcpv6_lease_init(void);
 reflink_t *nm2_dhcpv6_lease_getref(const ovs_uuid_t *uuid);
+bool nm2_dhcp_table_update(struct schema_DHCP_leased_IP *dlip);
 
 /*
  * IPv6_RouterAdv cached structure.

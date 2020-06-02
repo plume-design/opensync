@@ -55,14 +55,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 /**
- * @struct osn_ip6
+ * OSN IPv6 object type
  *
- * OSN IPv6 object. The actual structure implementation is hidden and is
+ * This is an opaque type. The actual structure implementation is hidden and is
  * platform dependent. A new instance of the object can be obtained by calling
  * @ref osn_ip6_new() and must be destroyed using @ref osn_ip6_del().
  */
-struct osn_ip6;
-
 typedef struct osn_ip6 osn_ip6_t;
 
 /**
@@ -92,13 +90,16 @@ struct osn_ip6_status
 };
 
 /**
- * osn_ip6_t status notification callback. This function will be invoked
- * whenever the osn_ip6_t object wishes to report the IPv6 status.
+ * osn_ip6_t status notification callback type
+ *
+ * A function of this type, registered via @ref osn_ip6_status_notify,
+ * will be invoked whenever the osn_ip6_t object wishes to report the
+ * IPv6 status.
  *
  * Typically this will happen whenever an IPv6 status change is detected (for
  * example, when the IP of the interface changes).
  *
- * Some implementation may choose to call this function periodically even if
+ * Some implementations may choose to call this function periodically even if
  * there has been no status change detected.
  *
  * @param[in]   self    A valid pointer to an osn_ip6_t object
@@ -116,7 +117,7 @@ typedef void osn_ip6_status_fn_t(osn_ip6_t *self, struct osn_ip6_status *status)
  * This function returns NULL if an error occurs, otherwise a valid @ref
  * osn_ip6_t object is returned.
  */
-osn_ip6_t *osn_ip6_new(const char *ifname);
+osn_ip6_t* osn_ip6_new(const char *ifname);
 
 /**
  * Destroy a valid osn_ip6_t object.
@@ -225,7 +226,7 @@ bool osn_ip6_dns_del(osn_ip6_t *self, const osn_ip6_addr_t *dns);
  * Depending on the implementation, the status callback may be invoked
  * periodically or whenever a IPv6 status change has been detected.
  * For maximum portability, the callback implementation should assume it can
- * be called using either modes of operation.
+ * be called using either mode of operation.
  *
  * @param[in]   self  A valid pointer to an osn_ip6_t object
  * @param[in]   fn    A pointer to the function implementation
@@ -266,15 +267,12 @@ void *osn_ip6_data_get(osn_ip6_t *self);
  */
 
 /**
- * @struct osn_ipv6_radv
+ * IPv6 Router Advertisement object type
  *
- * IPv6 Router Advertisement object. The actual structure implementation is
- * hidden and is platform dependent. A new instance of the object can be
- * obtained by calling @ref osn_ip6_radv_new() and must be destroyed using @ref
- * osn_ip6_radv_del().
+ * This is an opaque type. The actual structure implementation is hidden and is
+ * platform dependent. A new instance of the object can be obtained by calling
+ * @ref osn_ip6_radv_new() and must be destroyed using @ref osn_ip6_radv_del().
  */
-struct osn_ipv6_radv;
-
 typedef struct osn_ip6_radv osn_ip6_radv_t;
 
 /**
@@ -302,6 +300,7 @@ struct osn_ip6_radv_options
     int     ra_current_hop_limit;   /**< Current hop limit */
 };
 
+/** Initialization helper for struct osn_ip6_radv_options */
 #define OSN_IP6_RADV_OPTIONS_INIT (struct osn_ip6_radv_options) \
 {                                                               \
     .ra_max_adv_interval    = INT_MIN,                          \
@@ -483,7 +482,15 @@ bool osn_ip6_radv_add_dnssl(osn_ip6_radv_t *self, char *sl);
  */
 bool osn_ip6_radv_del_dnssl(osn_ip6_radv_t *self, char *sl);
 
-bool osn_ip6_radv_apply(osn_ip6_radv_t *ip6);
+/**
+ * Applies previously configured settings
+ *
+ * @param[in]   self  A valid pointer to an osn_ip6_radv_t object
+ *
+ * @return
+ * This function returns true on success. On error, false is returned.
+ */
+bool osn_ip6_radv_apply(osn_ip6_radv_t *self);
 
 /** @} OSN_IPV6_RA */
 

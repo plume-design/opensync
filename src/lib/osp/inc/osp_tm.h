@@ -29,17 +29,40 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <stdbool.h>
 
-// maximum number of temperature sources
+
+/// @file
+/// @brief Thermal Management API
+///
+/// @addtogroup OSP
+/// @{
+
+
+// ===========================================================================
+//  Thermal Management API
+// ===========================================================================
+
+/// @defgroup OSP_TM  Thermal Management API
+/// OpenSync Thermal Management API
+/// @{
+
+/**
+ * Maximum number of temperature sources
+ */
 #define OSP_TM_TEMP_SRC_MAX     (3)
 
-/*
- * measure running average of temperature over this number of temperature
- * samples this is a compromise between low number of samples to react to
- * fast rising temperature and high number of samples to react to bad
+/**
+ * Averaging window size
+ *
+ * Measure running average of temperature over this number of temperature
+ * samples. This is a compromise between a low number of samples to react to
+ * fast rising temperature, and a high number of samples to react to bad
  * temperature readings.
  */
 #define OSP_TM_TEMP_AVG_CNT     (3)
 
+/**
+ * Thermal state table element
+ */
 struct osp_tm_therm_state
 {
     int temp_thrld[OSP_TM_TEMP_SRC_MAX];
@@ -48,7 +71,7 @@ struct osp_tm_therm_state
 };
 
 /**
- * @brief OSP specific initialization.
+ * Initialize thermal management subsystem
  *
  * Should return a thermal states table, together with a count of thermal
  * states and count of temperature sources. Thermal states table should go
@@ -64,7 +87,7 @@ int osp_tm_init(
         void **priv);
 
 /**
- * OSP specific deinitialization
+ * Thermal management subsystem cleanup
  */
 void osp_tm_deinit(void *priv);
 
@@ -92,5 +115,9 @@ int osp_tm_get_fan_rpm(void *priv, unsigned int *rpm);
  * Set the desired fan RPM
  */
 int osp_tm_set_fan_rpm(void *priv, unsigned int rpm);
+
+
+/// @} OSP_TM
+/// @} OSP
 
 #endif /* OSP_TM_H_INCLUDED */

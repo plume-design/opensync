@@ -75,13 +75,25 @@ typedef struct {
     char     if_name[128];
 } cm2_delayed_eth_update_t;
 
+static const char *cm2_get_timeout_cmd_arg(void)
+{
+    static int checked;
+    static int needs_t_arg;
+
+    if (!checked) {
+        needs_t_arg = target_device_execute("timeout -t 0 true");
+        checked = 1;
+    }
+    return needs_t_arg ? "-t 10" : "10";
+}
+
 int cm2_ovs_insert_port_into_bridge(char *bridge, char *port, int flag_add)
 {
     char *op_add = "add-port";
     char *op_del = "del-port";
     char *op_and = "&&";
     char *op_or  = "||";
-    char command[128];
+    char command[512];
     char *op_log;
     char *op;
 
@@ -96,8 +108,8 @@ int cm2_ovs_insert_port_into_bridge(char *bridge, char *port, int flag_add)
     LOGI("OVS bridge: %s port = %s bridge = %s", op, port, bridge);
 
     /* add/delete it to/from OVS bridge */
-    sprintf(command, "ovs-vsctl list-ifaces %s | grep %s %s ovs-vsctl %s %s %s",
-            bridge, port, op_log, op, bridge, port);
+    sprintf(command, "timeout %s ovs-vsctl list-ifaces %s | grep %s %s timeout %s ovs-vsctl %s %s %s",
+            cm2_get_timeout_cmd_arg(), bridge, port, op_log, cm2_get_timeout_cmd_arg(), op, bridge, port);
 
     LOGD("%s: Command: %s", __func__, command);
 
@@ -135,11 +147,11 @@ static int cm2_util_get_pid(char *pidname)
 
 bool cm2_is_iface_in_bridge(const char *bridge, const char *port)
 {
-    char command[128];
+    char command[256];
 
     LOGD("OVS bridge: port = %s bridge = %s", port, bridge);
-    sprintf(command, "ovs-vsctl list-ifaces %s | grep %s",
-            bridge, port);
+    sprintf(command, "timeout %s ovs-vsctl list-ifaces %s | grep %s",
+            cm2_get_timeout_cmd_arg(), bridge, port);
 
     LOGD("%s: Command: %s", __func__, command);
     return target_device_execute(command);

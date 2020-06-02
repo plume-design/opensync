@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdint.h>
 #include <stdbool.h>
 #include <pcap.h>
+#include <errno.h>
 
 #include "log.h"
 #include "fsm.h"
@@ -37,6 +38,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "qm_conn.h"
 #include "os_types.h"
 #include "dppline.h"
+
+/* Set of default values for pcaps settings */
+static int g_buf_size = 0;
+static int g_snaplen = 2048;
+static int g_cnt = 1;
+static int g_immediate_mode = 1;
 
 
 static void
@@ -63,6 +70,198 @@ fsm_pcap_handler(uint8_t * args, const struct pcap_pkthdr *header,
 }
 
 
+/**
+ * @brief parse a session's pcap options from ovsdb.
+ *
+ * @param session the session
+ * @return true if the pcap session needs to be restared, false otherwise.
+ */
+bool
+fsm_get_pcap_options(struct fsm_session *session)
+{
+    struct fsm_pcaps *pcaps;
+    char *buf_size_str;
+    char *snaplen_str;
+    char *mode_str;
+    int prev_value;
+    char *cnt_str;
+    bool started;
+    bool restart;
+    char *iface;
+    long value;
+
+    pcaps = session->pcaps;
+    if (pcaps == NULL) return false;
+    started = (pcaps->started != 0);
+
+    iface = session->conf->if_name;
+    if (iface == NULL) return false;
+
+    restart = false;
+
+    /* Check the buffer size option */
+    prev_value = (started ? pcaps->buffer_size : g_buf_size);
+    if (!started) pcaps->buffer_size = g_buf_size;
+    buf_size_str = fsm_get_other_config_val(session, "pcap_bsize");
+    if (buf_size_str != NULL)
+    {
+        errno = 0;
+        value = strtol(buf_size_str, NULL, 10);
+        if (errno != 0)
+        {
+            LOGD("%s: error reading value %s: %s", __func__,
+                 buf_size_str, strerror(errno));
+        }
+        else pcaps->buffer_size = (int)value;
+    }
+    LOGD("%s: %s: buffer size: %d", __func__, iface, pcaps->buffer_size);
+    restart |= (started && (prev_value != pcaps->buffer_size));
+    if (restart)
+    {
+        LOGI("%s: %s: buf size changed from %d to %d. Will restart pcap socket",
+             __func__, iface, prev_value, pcaps->buffer_size);
+    }
+
+    /* Check the snaplen option */
+    prev_value = (started ? pcaps->snaplen : g_snaplen);
+    if (!started) pcaps->snaplen = g_snaplen;
+    snaplen_str = fsm_get_other_config_val(session, "pcap_snaplen");
+    if (snaplen_str != NULL)
+    {
+        errno = 0;
+        value = strtol(snaplen_str, NULL, 10);
+        if (errno != 0)
+        {
+            LOGD("%s: error reading value %s: %s", __func__,
+                 snaplen_str, strerror(errno));
+        }
+        else pcaps->snaplen = (int)value;
+    }
+    LOGD("%s: %s: snaplen: %d", __func__, iface, pcaps->snaplen);
+    restart |= (started && (prev_value != pcaps->snaplen));
+    if (restart)
+    {
+        LOGI("%s: %s: snaplen changed from %d to %d. Will restart pcap socket",
+             __func__, iface, prev_value, pcaps->snaplen);
+    }
+
+    /* Check the immediate mode option */
+    prev_value = (started ? pcaps->immediate : g_immediate_mode);
+    if (!started) pcaps->immediate = g_immediate_mode;
+    mode_str = fsm_get_other_config_val(session, "pcap_immediate");
+    if (mode_str != NULL)
+    {
+        pcaps->immediate = (strcmp(mode_str, "no") ? 1 : 0);
+    }
+    LOGD("%s: %s: immediate mode: %d", __func__, iface, pcaps->immediate);
+    restart |= (started && (prev_value != pcaps->immediate));
+    if (restart)
+    {
+        LOGI("%s: %s: immediate mode changed from %d to %d. "
+             "Will restart pcap socket",
+             __func__, iface, prev_value, pcaps->immediate);
+    }
+
+    pcaps->cnt = g_cnt;
+    cnt_str = fsm_get_other_config_val(session, "pcap_cnt");
+    if (cnt_str != NULL)
+    {
+        errno = 0;
+        value = strtol(cnt_str, NULL, 10);
+        if (errno != 0)
+        {
+            LOGD("%s: error reading value %s: %s", __func__,
+                 cnt_str, strerror(errno));
+        }
+        else pcaps->cnt = (int)value;
+    }
+    LOGD("%s: %s: delivery count: %d", __func__, iface, pcaps->cnt);
+
+    if (restart)
+    {
+        LOGEM("%s: detected pcap settings changes, restarting", __func__);
+        exit(EXIT_SUCCESS);
+    }
+
+    return restart;
+}
+
+
+bool
+fsm_set_pcap_options(struct fsm_session *session)
+{
+    struct fsm_pcaps *pcaps;
+    pcap_t *pcap;
+    char *iface;
+    bool ret;
+    int rc;
+
+    pcaps = session->pcaps;
+    pcap = pcaps->pcap;
+
+    iface = session->conf->if_name;
+    if (iface == NULL) return false;
+
+    ret = true;
+
+    /* set pcap buffer size */
+    LOGI("%s: setting %s buffer size to %d",
+         __func__, iface, pcaps->buffer_size);
+    rc = pcap_set_buffer_size(pcap, pcaps->buffer_size);
+    if (rc != 0)
+    {
+        LOGW("%s: Unable to set %s pcap buffer size",
+             __func__, iface);
+        ret = false;
+    }
+
+    /* set pcap immediate mode */
+    LOGI("%s: %ssetting %s in immediate mode",
+         __func__, (pcaps->immediate == 1) ? "" : "_not_ ", iface);
+    rc = pcap_set_immediate_mode(pcap, pcaps->immediate);
+    if (rc != 0)
+    {
+        LOGW("%s: Unable to set %s pcap immediate mode",
+             __func__, iface);
+        ret = false;
+    }
+
+    /* set pcap snap length */
+    LOGI("%s: setting %s snap length to %d",
+         __func__, iface, pcaps->snaplen);
+    rc = pcap_set_snaplen(pcap, pcaps->snaplen);
+    if (rc != 0)
+    {
+        LOGW("%s: unable to set %s snaplen to %d", __func__,
+             iface, pcaps->snaplen);
+        ret = false;
+    }
+
+    return ret;
+}
+
+bool
+fsm_pcap_update(struct fsm_session *session)
+{
+    bool ret;
+
+    if (!fsm_plugin_has_intf(session)) return true;
+
+    ret = fsm_get_pcap_options(session);
+    if (ret) fsm_pcap_close(session);
+
+    ret = fsm_pcap_open(session);
+    if (!ret)
+    {
+        LOGE("pcap open failed for handler %s",
+             session->name);
+        return false;
+    }
+
+    return true;
+}
+
+
 static void
 fsm_pcap_recv_fn(EV_P_ ev_io *ev, int revents)
 {
@@ -74,7 +273,7 @@ fsm_pcap_recv_fn(EV_P_ ev_io *ev, int revents)
     pcap_t *pcap = pcaps->pcap;
 
     /* Ready to receive packets */
-    pcap_dispatch(pcap, 1, fsm_pcap_handler, (void *)session);
+    pcap_dispatch(pcap, pcaps->cnt, fsm_pcap_handler, (void *)session);
 }
 
 
@@ -86,8 +285,7 @@ bool fsm_pcap_open(struct fsm_session *session) {
     struct bpf_program *bpf = pcaps->bpf;
     char *pkt_filter = session->conf->pkt_capt_filter;
     char pcap_err[PCAP_ERRBUF_SIZE];
-    /* TODO: get the mtu from the interface */
-    int set_snaplen = 65536;
+    bool ret;
     int rc;
 
     if (iface == NULL) return true;
@@ -99,17 +297,10 @@ bool fsm_pcap_open(struct fsm_session *session) {
         goto error;
     }
 
-    pcap = pcaps->pcap;
-    rc = pcap_set_immediate_mode(pcap, 1);
-    if (rc != 0) {
-        LOGW("Unable to set %s pcap immediate mode!", iface);
-    }
+    ret = fsm_set_pcap_options(session);
+    if (!ret) goto error;
 
-    rc = pcap_set_snaplen(pcap, set_snaplen);
-    if (rc != 0) {
-        LOGE("Unable to set %s snaplen to %d", iface, set_snaplen);
-        goto error;
-    }
+    pcap = pcaps->pcap;
 
     rc = pcap_setnonblock(pcap, 1, pcap_err);
     if (rc == -1) {
@@ -163,6 +354,7 @@ bool fsm_pcap_open(struct fsm_session *session) {
     pcaps->fsm_evio.data = (void *)session;
     /* Start watching it on the default queue */
     ev_io_start(mgr->loop, &pcaps->fsm_evio);
+    pcaps->started = 1;
 
     return true;
 
@@ -190,4 +382,5 @@ void fsm_pcap_close(struct fsm_session *session) {
         pcap_close(pcap);
         pcaps->pcap = NULL;
     }
+    pcaps->started = 0;
 }

@@ -30,6 +30,29 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sys/types.h>
 #include <stdbool.h>
 
+
+/// @file
+/// @brief Persistent Storage API
+///
+/// @addtogroup OSP
+/// @{
+
+
+// ===========================================================================
+//  Persistent Storage API
+// ===========================================================================
+
+/// @defgroup OSP_PS  Persistent Storage API
+/// OpenSync Persistent Storage API
+/// @{
+
+/**
+ * OSP Persistent Storage handle type
+ * 
+ * This is an opaque type. The actual structure implementation is hidden and is
+ * platform dependent. A new instance of the object can be obtained by calling
+ * @ref osp_ps_open() and must be destroyed using @ref osp_ps_close().
+ */
 typedef struct osp_ps osp_ps_t;
 
 /**
@@ -66,7 +89,7 @@ osp_ps_t* osp_ps_open(
  * Release the @p ps handle and clean up any resources associated with it.
  * Pending data will be flushed to persistent storage.
  *
- * @param[in]       ps          Store -- valid object return by
+ * @param[in]       ps          Store -- valid object returned by
  *                              @ref osp_ps_open()
  *
  * @note
@@ -78,12 +101,12 @@ bool osp_ps_close(osp_ps_t *ps);
 /**
  * Store value or delete value data associated with key @p key
  *
- * @param[in]       ps          Store -- valid object return by
+ * @param[in]       ps          Store -- valid object returned by
  *                              @ref osp_ps_open() with the flag
  *                              OSP_PS_WRITE
  * @param[in]       key         Key value
  * @param[in]       value       Pointer to value data to store; can be NULL
- *                              if @ref value_sz is 0
+ *                              if @p value_sz is 0
  * @param[in]       value_sz    Value data length, if 0 the key is deleted
  *
  * @return
@@ -104,22 +127,22 @@ ssize_t osp_ps_set(
 /**
  * Retrieve data associated with @p key from store
  *
- * @param[in]       ps          Store -- valid object return by
+ * @param[in]       ps          Store -- valid object returned by
  *                              @ref osp_ps_open() with the flag
  *                              OSP_PS_READ
  * @param[in]       key         Key to retrieve
  * @param[out]      value       Pointer to value data to store; can be NULL
- *                              if @ref value_sz is 0
- * @param[in]       value_sz    Maximum length of @ref value, data will be
+ *                              if @p value_sz is 0
+ * @param[in]       value_sz    Maximum length of @p value, data will be
  *                              truncated if the actual size exceeds
- *                              value_sz
+ *                              @p value_sz
  *
  * @return
  * Return the data size associated with the key, a value of <0 on error or 0
  * if they key was not found.
  *
  * @note
- * If value_sz is less than the actual key data, the data will be truncated.
+ * If @p value_sz is less than the actual key data, the data will be truncated.
  * However, the return value will still be the actual data size.
  */
 ssize_t osp_ps_get(
@@ -132,7 +155,7 @@ ssize_t osp_ps_get(
  * Flush all dirty data to persistent storage. When this function returns,
  * the data written by @ref osp_ps_set() should be considered safely stored.
  *
- * @param[in]       ps          Store -- valid object return by
+ * @param[in]       ps          Store -- valid object returned by
  *                              @ref osp_ps_open() with the flag
  *                              OSP_PS_WRITE
  * @return
@@ -141,5 +164,9 @@ ssize_t osp_ps_get(
  * may occur.
  */
 bool osp_ps_sync(osp_ps_t *ps);
+
+
+/// @} OSP_PS
+/// @} OSP
 
 #endif /* OSP_PS_H_INCLUDED */

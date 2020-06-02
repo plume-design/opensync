@@ -29,7 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <stdbool.h>
 
-#include "osp_tm.h"
+#include "osp.h"
 
 struct osp_tm_ctx
 {

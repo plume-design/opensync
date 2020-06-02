@@ -199,6 +199,39 @@ ct_stats_populate_sockaddr(int af, void *ip, struct sockaddr_storage *dst)
     return;
 }
 
+/**
+ * @brief checks if an ipv4 or ipv6 address represents
+ *        a brodacast or multicast ip.
+ *        ipv4 multicast starts 0xE.
+ *        ipv4 broadcast starts 0xF.
+ *        ipv6 multicast starts 0XFF.
+ * @param af the the inet family
+ * @param ip a pointer to the ip address buffer
+ * @return true if broadcast/multicast false otherwise.
+
+ */
+static bool
+ct_stats_filter_ip(int af, void *ip)
+{
+    if (af == AF_INET)
+    {
+        struct sockaddr_in *in4 = (struct sockaddr_in *)ip;
+        if (((in4->sin_addr.s_addr & 0xE0000000) == 0xE0000000) ||
+            ((in4->sin_addr.s_addr & 0xF0000000) == 0xF0000000))
+        {
+            return true;
+        }
+    }
+    else if (af == AF_INET6)
+    {
+        struct sockaddr_in6 *in6 = (struct sockaddr_in6 *)ip;
+        if ((in6->sin6_addr.s6_addr[0] & 0XFF) == 0XFF)
+        {
+            return true;
+        }
+    }
+    return false;
+}
 
 /**
  * @brief validates and stores conntrack counters
@@ -726,14 +759,12 @@ data_cb(const struct nlmsghdr *nlh, void *data)
     ct_flow_t *flow_1;
     uint16_t ct_zone;
     ct_flow_t *flow;
-    int reply_flag;
     int rc;
     int af;
 
     memset(tb, 0, (CTA_MAX+1) * sizeof(tb[0]));
     ct_stats = (flow_stats_t *)data;
     nfg = mnl_nlmsg_get_payload(nlh);
-    reply_flag = 1;
 
     rc = mnl_attr_parse(nlh, sizeof(*nfg), data_attr_cb, tb);
     if (rc < 0) return MNL_CB_ERROR;
@@ -770,19 +801,19 @@ data_cb(const struct nlmsghdr *nlh, void *data)
     rc = get_tuple(tb[CTA_TUPLE_REPLY], flow_1);
     if (rc < 0) goto flow_info_1_free;
 
+    af = flow->layer3_info.dst_ip.ss_family;
+    if (ct_stats_filter_ip(af, &flow->layer3_info.dst_ip)) goto flow_info_1_free;
+
     af = flow_1->layer3_info.src_ip.ss_family;
+    if (ct_stats_filter_ip(af, &flow_1->layer3_info.src_ip)) goto reply_dir_free;
+
+
+    af = flow_1->layer3_info.src_ip.ss_family;
+    // Getting the original ip for v4 NAT'ed case.
     if (af == AF_INET)
     {
-        struct sockaddr_in *ssrc;
-
-        ssrc = (struct sockaddr_in *)&flow->layer3_info.src_ip;
-
-        reply_flag = ((ssrc->sin_addr.s_addr & 0XFF000000) == 0XFF000000);
-        if (reply_flag == 0)
-        {
-            flow->layer3_info.dst_ip = flow_1->layer3_info.src_ip;
-            flow_1->layer3_info.dst_ip = flow->layer3_info.src_ip;
-        }
+        flow->layer3_info.dst_ip = flow_1->layer3_info.src_ip;
+        flow_1->layer3_info.dst_ip = flow->layer3_info.src_ip;
     }
 
     if (flow->layer3_info.proto_type != 17  &&
@@ -805,12 +836,11 @@ data_cb(const struct nlmsghdr *nlh, void *data)
 
     ds_dlist_insert_tail(&ct_stats->ctflow_list, flow_info);
     ct_stats->node_count++;
-    if (af == AF_INET && reply_flag != 0) goto reply_flag_free;
 
-    if (tb[CTA_COUNTERS_REPLY] == NULL) goto reply_flag_free;
+    if (tb[CTA_COUNTERS_REPLY] == NULL) goto reply_dir_free;
 
     rc = get_counter(tb[CTA_COUNTERS_REPLY], flow_1);
-    if (rc < 0) goto reply_flag_free;
+    if (rc < 0) goto reply_dir_free;
 
     ds_dlist_insert_tail(&ct_stats->ctflow_list, flow_info_1);
     ct_stats->node_count++;
@@ -823,7 +853,7 @@ flow_info_free:
     free(flow_info);
     return MNL_CB_OK;
 
-reply_flag_free:
+reply_dir_free:
     free(flow_info_1);
     return MNL_CB_OK;
 }
@@ -901,7 +931,6 @@ ct_stats_get_ct_flow(int af_family)
     }
 
     mnl_socket_close(nl);
-
 #ifdef CT_DEBUG_PRINT
     ctflow_info_t *flow_info = NULL;
     ds_dlist_foreach(&g_ct_stats.ctflow_list, flow_info)

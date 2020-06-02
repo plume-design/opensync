@@ -27,16 +27,23 @@ PROJECT_NAME    := "OpenSync $(DOC_SHORTVER) Southbound API"
 DOC_OUTPUT_NAME := "OpenSync_$(DOC_SHORTVER)_Southbound_API.pdf"
 
 .PHONY: doc
-doc:
+doc: doc-pdf
+
+.PHONY: doc-html
+doc-html:
 	$(NQ) "PROJECT_NAME=\"$(PROJECT_NAME)\""
 	$(NQ) " $(call color_generate,doc) $(call color_target,[HTML])"
 	$(Q)cd doc; \
 		(cat doxygen.conf; \
 		echo "PROJECT_NAME=\"$(PROJECT_NAME)\"") \
 		| doxygen - > doxygen.log 2>&1
+	$(Q)! grep 'error:' doc/doxygen.log
 	$(Q)echo -n "  "; ls -l doc/html/index.html
+
+.PHONY: doc-pdf
+doc-pdf: doc-html
 	$(NQ) " $(call color_generate,doc) $(call color_target,[PDF])"
-	$(Q)-cd doc/latex; make > ../latex.log 2>&1
+	$(Q)cd doc/latex; make > ../latex.log 2>&1
 	$(Q)echo -n "  "; ls -l doc/latex/*.pdf \
 		|| ( set -x; cat doc/latex.log; cat doc/latex/*.log | grep '^!' )
 	$(NQ) " $(call color_generate,doc) $(call color_target,[copy]) $(DOC_OUTPUT_NAME)"

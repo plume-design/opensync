@@ -36,8 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "osp.h"
 
 
-
-static const char *led_state_str[OSP_LED_ST_LAST] =
+static const char* led_state_str[OSP_LED_ST_LAST] =
 {
     [OSP_LED_ST_IDLE]           = "idle",
     [OSP_LED_ST_ERROR]          = "error",
@@ -58,7 +57,7 @@ static const char *led_state_str[OSP_LED_ST_LAST] =
 };
 
 
-const char *osp_led_state_to_str(enum osp_led_state state)
+const char* osp_led_state_to_str(enum osp_led_state state)
 {
     if ((state < 0) || (state >= OSP_LED_ST_LAST))
         return "";

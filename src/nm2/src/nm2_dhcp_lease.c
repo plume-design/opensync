@@ -54,8 +54,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // Defines
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
-static bool nm2_dhcp_table_update(struct schema_DHCP_leased_IP *dlip);
-
 #if defined(WAR_LEASE_UNIQUE_MAC)
 #include "ds_tree.h"
 #include "synclist.h"

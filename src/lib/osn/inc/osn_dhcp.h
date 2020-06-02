@@ -55,7 +55,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /**
  * @defgroup OSN_DHCPV4 DHCPv4
  *
- * Common DHCPv4 API definitions.
+ * Common DHCPv4 API definitions
  *
  * @{
  */
@@ -81,7 +81,7 @@ enum osn_notify
 };
 
 /**
- * DHCP option list.
+ * DHCP option list
  *
  * @note
  * This list is incomplete. Please find a full list of DHCP options on:
@@ -133,40 +133,53 @@ enum osn_dhcp_option
  * @{
  */
 
+/**
+ * OSN DHCPv6 client object type
+ * 
+ * This is an opaque type. The actual structure implementation is hidden and is
+ * platform dependent. A new instance of the object can be obtained by calling
+ * @ref osn_dhcp_client_new() and must be destroyed using @ref
+ * osn_dhcp_client_del().
+ */
 typedef struct osn_dhcp_client osn_dhcp_client_t;
+
+/** Error callback function type */
 typedef void osn_dhcp_client_error_fn_t(osn_dhcp_client_t *self);
 
-/**
- * DHCP client options reporting callback -- this callback will be triggered
- * when new DHCP options are received by the DHCP client.
- */
+/** Notification callback function type */
 typedef bool osn_dhcp_client_opt_notify_fn_t(
         osn_dhcp_client_t *self,
         enum osn_notify hint,
         const char *key,
         const char *value);
 
-osn_dhcp_client_t *osn_dhcp_client_new(const char *ifname);
+/** Create a new instance of a DHCPv6 client object */
+osn_dhcp_client_t* osn_dhcp_client_new(const char *ifname);
+/** Destroy a valid osn_dhcpv6_client_t object */
 bool osn_dhcp_client_del(osn_dhcp_client_t *self);
+
+/** Start the DHCP client service */
 bool osn_dhcp_client_start(osn_dhcp_client_t *self);
+/** Stop the DHCP client service */
 bool osn_dhcp_client_stop(osn_dhcp_client_t *self);
 
-/* Add this option to the server request options, if none is specified a default set will be sent */
+/** Add this option to the server request options, if none is specified a default set will be sent */
 bool osn_dhcp_client_opt_request(osn_dhcp_client_t *self, enum osn_dhcp_option opt, bool request);
-/* Set a DHCP client option -- these will be sent to the server */
+/** Set a DHCP client option -- these will be sent to the server */
 bool osn_dhcp_client_opt_set(osn_dhcp_client_t *self, enum osn_dhcp_option opt, const char *value);
-/* Retrieve DHCP option request status and set value (if any) */
+/** Retrieve DHCP option request status and set value (if any) */
 bool osn_dhcp_client_opt_get(osn_dhcp_client_t *self, enum osn_dhcp_option opt, bool *request, const char **value);
-/* Set the option reporting callback */
+/** Set the option reporting callback, called whenever new DHCP options are received by the DHCP client */
 bool osn_dhcp_client_opt_notify_set(osn_dhcp_client_t *self, osn_dhcp_client_opt_notify_fn_t *fn);
-/* Error callback, called whenever an error occurs on the dhcp client (sudden termination or otherwise) */
+/** Set the error callback, called whenever an error occurs on the dhcp client (sudden termination or otherwise) */
 bool osn_dhcp_client_error_fn_set(osn_dhcp_client_t *self, osn_dhcp_client_error_fn_t *fn);
-/* Set the vendor class */
+/** Set the vendor class */
 bool osn_dhcp_client_vendorclass_set(osn_dhcp_client_t *self, const char *vendorspec);
-/* Get the current active state of the DHCP client */
+/** Get the current active state of the DHCP client */
 bool osn_dhcp_client_state_get(osn_dhcp_client_t *self, bool *enabled);
-/* User data get/set */
+/** Set user data */
 void osn_dhcp_client_data_set(osn_dhcp_client_t *self, void *data);
+/** Get user data */
 void* osn_dhcp_client_data_get(osn_dhcp_client_t *self);
 
 /** @} */
@@ -186,14 +199,13 @@ void* osn_dhcp_client_data_get(osn_dhcp_client_t *self);
  */
 
 /**
- * @struct osn_dhcp_server
+ * OSN DHCPv4 server object type
  *
- * OSN DHCPv4 object. The actual structure implementation is hidden and is
+ * This is an opaque type. The actual structure implementation is hidden and is
  * platform dependent. An new instance of the object can be obtained by calling
- * @ref osn_dhcp_server_new() and must be destroyed using @ref osn_dhcp_server_del().
+ * @ref osn_dhcp_server_new() and must be destroyed using @ref
+ * osn_dhcp_server_del().
  */
-struct osn_dhcp_server;
-
 typedef struct osn_dhcp_server osn_dhcp_server_t;
 
 /**
@@ -256,18 +268,20 @@ struct osn_dhcp_server_status
 };
 
 /**
- * osn_dhcp_server_t status notification callback. This function will be invoked
- * whenever the osn_dhcp_server_t object wishes to report the DHCPv4 server
- * status.
+ * osn_dhcp_server_t status notification callback type
  *
- * Typically this will happen whenever a DHCPv4 status change is detected (for
+ * A function of this type, registered via @ref osn_dhcp_server_status_notify,
+ * will be invoked whenever the osn_dhcp_server_t object wishes to report
+ * the DHCPv4 server status.
+ *
+ * Typically this will happen whenever a status change is detected (for
  * example, when a DHCP IP lease has been given out).
  *
- * Some implementation may choose to call this function periodically even if
+ * Some implementations may choose to call this function periodically even if
  * there has been no status change detected.
  *
  * @param[in]   self    A valid pointer to an osn_dhcp_server_t object
- * @param[in]   status  A pointer to a @ref osn_dhcp_server status
+ * @param[in]   status  A pointer to a @ref osn_dhcp_server_t status
  */
 typedef void osn_dhcp_server_status_fn_t(
         osn_dhcp_server_t *self,
@@ -275,7 +289,7 @@ typedef void osn_dhcp_server_status_fn_t(
 
 
 /**
- * osn_dhcp_server_t error callback definition.
+ * osn_dhcp_server_t error callback type
  *
  * @param[in]   self  A valid pointer to an osn_dhcp_server_t object
  */
@@ -291,7 +305,7 @@ typedef void osn_dhcp_server_error_fn_t(osn_dhcp_server_t *self);
  * This function returns NULL if an error occurs, otherwise a valid @ref
  * osn_dhcp_server_t object is returned.
  */
-osn_dhcp_server_t *osn_dhcp_server_new(const char *ifname);
+osn_dhcp_server_t* osn_dhcp_server_new(const char *ifname);
 
 /**
  * Destroy a valid osn_dhcp_server_t object.
@@ -407,7 +421,7 @@ bool osn_dhcp_server_option_set(osn_dhcp_server_t *self, enum osn_dhcp_option op
  * Set the DHCPv4 server error callback.
  *
  * The error callback is invoked whenever an error condition is detected during
- * run-time (for * example, when the server unexpectedly dies).
+ * run-time (for example, when the server unexpectedly dies).
  *
  * @param[in]   self  A valid pointer to an osn_dhcp_server_t object
  * @param[in]   fn    A pointer to the function implementation
@@ -424,7 +438,7 @@ void osn_dhcp_server_error_notify(osn_dhcp_server_t *self, osn_dhcp_server_error
  * Depending on the implementation, the status callback may be invoked
  * periodically or whenever a DHCP server status change has been detected.
  * For maximum portability, the callback implementation should assume it can
- * be called using either modes of operation.
+ * be called using either mode of operation.
  *
  * @param[in]   self  A valid pointer to an osn_dhcp_server_t object
  * @param[in]   fn    A pointer to the function implementation

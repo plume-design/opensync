@@ -39,7 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  * @defgroup OSN_UPNP UPnP
  *
- * UPnP API definitions.
+ * UPnP API definitions
  *
  * @{
  */
@@ -53,12 +53,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "osn_types.h"
 
 /**
- * @struct osn_upnp
+ * OSN UPnP service object type
  *
- * OSN UPnP service object. The actual structure implementation is hidden
- * and is platform dependent. A new instance of the object can be obtained by
- * calling @ref osn_upnp_new() and must be destroyed using @ref
- * osn_upnp_del().
+ * This is an opaque type. The actual structure implementation is hidden and is
+ * platform dependent. A new instance of the object can be obtained by calling
+ * @ref osn_upnp_new() and must be destroyed using @ref osn_upnp_del().
  */
 typedef struct osn_upnp osn_upnp_t;
 
@@ -87,7 +86,7 @@ enum osn_upnp_mode
  * This function returns NULL if an error occurs, otherwise a valid @ref
  * osn_upnp_t object is returned.
  */
-osn_upnp_t *osn_upnp_new(const char *ifname);
+osn_upnp_t* osn_upnp_new(const char *ifname);
 
 /**
  * Destroy a valid osn_upnp_t object.
@@ -143,7 +142,7 @@ bool osn_upnp_set(osn_upnp_t *self, enum osn_upnp_mode mode);
  * @param[in]   self  A valid pointer to an osn_upnp_t object
  * @param[out]  mode  The UPnP mode for this interface as described in @ref osn_upnp_mode
  */
-bool osn_upnp_get(osn_upnp_t *self, enum osn_upnp_mode *upnp_mode);
+bool osn_upnp_get(osn_upnp_t *self, enum osn_upnp_mode *mode);
 
 /** @} OSN_UPNP */
 /** @} OSN_IPV4 */

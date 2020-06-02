@@ -34,14 +34,17 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /**
  * @file osn_netif.h
  *
- * @brief OpenSync Network Interface L2 abstraction
+ * @brief Network Interface L2 Abstraction
  *
- * This API provides access to L2 Ethernet-like interfaces management.
+ * This API provides management of L2 Ethernet-like interfaces.
  *
  * @addtogroup OSN
  * @{
  *
- * @addtogroup OSN_L2
+ * @defgroup OSN_L2 L2 Interface
+ *
+ * OpenSync L2 Interface Management API
+ *
  * @{
  */
 
@@ -60,14 +63,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 /**
- * @struct osn_netif
- *
- * OSN NETIF object. The actual structure implementation is hidden and is
+ * OSN NETIF object type
+ * 
+ * This is an opaque type. The actual structure implementation is hidden and is
  * platform dependent. A new instance of the object can be obtained by calling
  * @ref osn_netif_new() and must be destroyed using @ref osn_netif_del().
  */
-struct osn_netif;
-
 typedef struct osn_netif osn_netif_t;
 
 /**
@@ -76,7 +77,6 @@ typedef struct osn_netif osn_netif_t;
  * osn_netif_status_fn_t() and @ref osn_netif_status_notify() for more details.
  *
  * @note
- *
  * If the @ref ns_exists field is false, all subsequent fields should be
  * considered undefined.
  */
@@ -93,13 +93,16 @@ struct osn_netif_status
 };
 
 /**
- * osn_netif_t status notification callback. This function will be invoked
- * whenever the osn_netif_t object wishes to report the network interface status.
+ * osn_netif_t status notification callback type
+ * 
+ * A function of this type, registered via @ref osn_netif_status_notify,
+ * will be invoked whenever the osn_netif_t object wishes to report the status
+ * of the network interface.
  *
  * Typically this will happen whenever a status change is detected (for
  * example, when carrier is detected).
  *
- * Some implementation may choose to call this function periodically even if
+ * Some implementations may choose to call this function periodically even if
  * there has been no status change detected.
  *
  * @param[in]   self    The object that is reporting the status
@@ -166,7 +169,7 @@ void *osn_netif_data_get(osn_netif_t *self);
  * Depending on the implementation, the status callback may be invoked
  * periodically or whenever an interface status change has been detected.
  * For maximum portability, the callback implementation should assume it can
- * be called using either modes of operation.
+ * be called using either mode of operation.
  *
  * @param[in]   self  A valid pointer to an osn_netif_t object
  * @param[in]   fn    A pointer to the netif status callback handler
@@ -199,7 +202,7 @@ bool osn_netif_apply(osn_netif_t *self);
  * Set the interface state. If @p up is set to true, the interface will be
  * brought UP, otherwise it will be brought DOWN.
  *
- * @parma[in]   self A valid pointer to an osn_netif_t object
+ * @param[in]   self A valid pointer to an osn_netif_t object
  * @param[in]   up True if the interface state should be set to UP; for down
  *              use false
  *
@@ -215,7 +218,7 @@ bool osn_netif_state_set(osn_netif_t *self, bool up);
 /**
  * Set the interface MTU.
  *
- * @parma[in]   self A valid pointer to an osn_netif_t object
+ * @param[in]   self A valid pointer to an osn_netif_t object
  * @param[in]   mtu New MTU value
  *
  * @return
@@ -231,7 +234,7 @@ bool osn_netif_mtu_set(osn_netif_t *self, int mtu);
 /**
  * Set the interface hardware address.
  *
- * @parma[in]   self A valid pointer to an osn_eth_t object
+ * @param[in]   self A valid pointer to an osn_eth_t object
  * @param[in]   hwaddr The new interface hardware address
  *
  * @return

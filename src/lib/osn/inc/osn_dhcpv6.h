@@ -49,7 +49,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /**
  * @defgroup OSN_DHCPV6 DHCPv6
  *
- * Common DHCPv6 API definition.
+ * Common DHCPv6 API definition
  *
  * @{
  */
@@ -62,26 +62,25 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /**
  * @defgroup OSN_DHCPV6_CLIENT DHCPv6 Client
  *
- * DHCPv6 Client API definition.
+ * DHCPv6 Client API definition
  *
  * @{
  */
 
 /**
- * @struct osn_dhcpv6_client
- *
- * OSN DHCPv6 client object. The actual structure implementation is hidden
- * and is platform dependent. A new instance of the object can be obtained by
- * calling @ref osn_dhcpv6_client_new() and must be destroyed using @ref
+ * OSN DHCPv6 client object type
+ * 
+ * This is an opaque type. The actual structure implementation is hidden and is
+ * platform dependent. A new instance of the object can be obtained by calling
+ * @ref osn_dhcpv6_client_new() and must be destroyed using @ref
  * osn_dhcpv6_client_del().
  */
-struct osn_dhcpv6_client;
 typedef struct osn_dhcpv6_client osn_dhcpv6_client_t;
 
 /**
  * DHCPv6 client status report structure. A structure of this type is used
  * for reporting the status of the DHCPv6 client object. See @ref
- * osn_dhcpv6_client_notify_fn_t
+ * osn_dhcpv6_client_status_fn_t
  */
 struct osn_dhcpv6_client_status
 {
@@ -92,14 +91,16 @@ struct osn_dhcpv6_client_status
 };
 
 /**
- * osn_dhcpv6_client_t status notification callback. This function will be
- * invoked whenever the osn_dhcpv6_client_t object wishes to report the DHCPv6
- * status.
+ * osn_dhcpv6_client_t status notification callback type
  *
- * Typically this will happen whenever an DHCPv6 status change is detected (for
+ * A function of this type, registered via @ref osn_dhcpv6_client_status_notify,
+ * will be invoked whenever the osn_dhcpv6_client_t object wishes to report
+ * the DHCPv6 client status.
+ *
+ * Typically this will happen whenever a status change is detected (for
  * example, when DHCPv6 client options are received).
  *
- * Some implementation may choose to call this function periodically even if
+ * Some implementations may choose to call this function periodically even if
  * there has been no status change detected.
  *
  * @param[in]   self    A valid pointer to an osn_dhcpv6_client_t object
@@ -170,7 +171,7 @@ bool osn_dhcpv6_client_set(
  */
 bool osn_dhcpv6_client_option_request(osn_dhcpv6_client_t *self, int tag);
 
-/*
+/**
  * Set various DHCPv6 options that will be sent to the DHCPv6 server during
  * the DHCP_REQUEST phase.
  *
@@ -195,7 +196,7 @@ bool osn_dhcpv6_client_option_send(osn_dhcpv6_client_t *self, int tag, const cha
  * periodically or whenever the DHCPv6 client status change has been detected
  * (for example, when new DHCPv6 options are received).
  * For maximum portability, the callback implementation should assume it can
- * be called using either modes of operation.
+ * be called using either mode of operation.
  *
  * @param[in]   self  A valid pointer to an osn_ip6_t object
  * @param[in]   fn    A pointer to the function implementation
@@ -244,20 +245,19 @@ void* osn_dhcpv6_client_data_get(osn_dhcpv6_client_t *self);
 /**
  * @defgroup OSN_DHCPV6_SERVER DHCPv6 Server
  *
- * DHCPv6 Server API definition.
+ * DHCPv6 Server API definition
  *
  * @{
  */
 
 /**
- * @struct osn_dhcpv6_server
+ * OSN DHCPv6 server object type
  *
- * OSN DHCPv6 server object. The actual structure implementation is hidden
- * and is platform dependent. A new instance of the object can be obtained by
- * calling @ref osn_dhcpv6_server_new() and must be destroyed using @ref
+ * This is an opaque type. The actual structure implementation is hidden and is
+ * platform dependent. A new instance of the object can be obtained by calling
+ * @ref osn_dhcpv6_server_new() and must be destroyed using @ref
  * osn_dhcpv6_server_del().
  */
-struct osn_dhcpv6_server;
 typedef struct osn_dhcpv6_server osn_dhcpv6_server_t;
 
 /**
@@ -290,7 +290,7 @@ struct osn_dhcpv6_server_lease
 /**
  * DHCPv6 server status report structure. A structure of this type is used
  * for reporting the status of the DHCPv6 server object. See @ref
- * osn_dhcpv6_server_notify_fn_t
+ * osn_dhcpv6_server_status_fn_t
  */
 struct osn_dhcpv6_server_status
 {
@@ -301,11 +301,13 @@ struct osn_dhcpv6_server_status
 };
 
 /**
- * DHCPv6 server status reporting callback. A function of this type can be
- * registered with @ref osn_dhcpv6_server_notify() to start receiving status
- * events from the DHCPv6 server object. The callback may be invoked before
- * the osn_dhcpv6_server_apply() function is called. This can be used to
- * report the DHCPv6 status without applying any system configuration.
+ * DHCPv6 server status reporting callback type
+ *
+ * A function of this type, registered via @ref osn_dhcpv6_server_status_notify()
+ * will receive status events from the DHCPv6 server object.
+ * The callback may be invoked before the osn_dhcpv6_server_apply() function
+ * is called. This can be used to report the DHCPv6 status without applying
+ * any system configuration.
  *
  * @param[in]   d6s     DHPCv6 server object
  * @param[in]   status  A structure of type osn_dhcpv6_server_status
@@ -324,7 +326,7 @@ typedef void osn_dhcpv6_server_status_fn_t(
  * This function returns NULL if an error occurs, otherwise a valid @ref
  * osn_dhcpv6_server_t object is returned.
  */
-osn_dhcpv6_server_t *osn_dhcpv6_server_new(const char *iface);
+osn_dhcpv6_server_t* osn_dhcpv6_server_new(const char *iface);
 
 /**
  * Destroy a valid osn_dhcpv6_server_t object.

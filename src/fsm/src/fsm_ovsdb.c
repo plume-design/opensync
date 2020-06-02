@@ -474,6 +474,9 @@ fsm_session_update(struct fsm_session *session,
         if (!ret) goto err_free_fconf;
     }
 
+    ret = fsm_pcap_update(session);
+    if (!ret) goto err_free_fconf;
+
     return true;
 
 err_free_fconf:
@@ -693,16 +696,12 @@ fsm_alloc_session(struct schema_Flow_Service_Manager_Config *conf)
     session->ops.send_pb_report = fsm_send_pb_report;
     session->ops.get_config = fsm_get_other_config_val;
 
-    ret = fsm_session_update(session, conf);
-    if (!ret) goto err_free_plugin_ops;
-
-    ret = fsm_parse_dso(session);
-    if (!ret) goto err_free_conf;
-
+    pcaps = NULL;
+    bpf = NULL;
     if (fsm_plugin_has_intf(session))
     {
         pcaps = calloc(1, sizeof(struct fsm_pcaps));
-        if (pcaps == NULL) goto err_free_dso;
+        if (pcaps == NULL) goto err_free_plugin_ops;
 
         bpf = calloc(1, sizeof(struct bpf_program));
         if (bpf == NULL) goto err_free_pcaps;
@@ -712,16 +711,22 @@ fsm_alloc_session(struct schema_Flow_Service_Manager_Config *conf)
         session->p_ops->parser_ops.get_service = fsm_get_web_cat_service;
     }
 
-    return session;
+    ret = fsm_session_update(session, conf);
+    if (!ret) goto err_free_bpf;
 
-err_free_pcaps:
-    free(pcaps);
+    ret = fsm_parse_dso(session);
+    if (!ret) goto err_free_dso;
+
+    return session;
 
 err_free_dso:
     free(session->dso);
 
-err_free_conf:
-    fsm_free_session_conf(session->conf);
+err_free_bpf:
+    free(bpf);
+
+err_free_pcaps:
+    free(pcaps);
 
 err_free_plugin_ops:
     free(plugin_ops);
@@ -812,19 +817,6 @@ fsm_add_session(struct schema_Flow_Service_Manager_Config *conf)
         return;
     }
     ds_tree_insert(sessions, session, session->name);
-
-    if (fsm_plugin_has_intf(session))
-    {
-        ret = fsm_pcap_open(session);
-        if (!ret)
-        {
-            LOGE("pcap open failed for handler %s",
-                 session->name);
-            ds_tree_remove(sessions, session);
-            fsm_free_session(session);
-            return;
-        }
-    }
 
     ret = mgr->init_plugin(session);
     if (!ret)

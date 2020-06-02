@@ -54,14 +54,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 /**
- * @struct osn_ip
+ * OSN IPv4 object type
  *
- * OSN IPv4 object. The actual structure implementation is hidden and is
+ * This is an opaque type. The actual structure implementation is hidden and is
  * platform dependent. A new instance of the object can be obtained by calling
  * @ref osn_ip_new() and must be destroyed using @ref osn_ip_del().
  */
-struct osn_ip;
-
 typedef struct osn_ip osn_ip_t;
 
 /**
@@ -71,7 +69,7 @@ typedef struct osn_ip osn_ip_t;
  */
 struct osn_ip_status
 {
-    const char         *is_ifname;    /**<Interface name */
+    const char         *is_ifname;    /**< Interface name */
     size_t              is_addr_len;  /**< Length of is_addr array */
     osn_ip_addr_t      *is_addr;      /**< List of IPv4 addresses on interface */
     size_t              is_dns_len;   /**< Length of is_dns array */
@@ -79,13 +77,16 @@ struct osn_ip_status
 };
 
 /**
- * osn_ip_t status notification callback. This function will be invoked
- * whenever the osn_ip_t object wishes to report the IPv4 status.
+ * osn_ip_t status notification callback type
+ *
+ * A function of this type, registered via @ref osn_ip_status_notify,
+ * will be invoked whenever the osn_ip_t object wishes to report the
+ * IPv4 status.
  *
  * Typically this will happen whenever an IPv4 status change is detected (for
  * example, when the IP of the interface changes).
  *
- * Some implementation may choose to call this function periodically even if
+ * Some implementations may choose to call this function periodically even if
  * there has been no status change detected.
  *
  * @param[in]   ip      A valid pointer to an osn_ip_t object
@@ -103,7 +104,7 @@ typedef void osn_ip_status_fn_t(osn_ip_t *ip, struct osn_ip_status *status);
  * This function returns NULL if an error occurs, otherwise a valid @ref
  * osn_ip_t object is returned.
  */
-osn_ip_t *osn_ip_new(const char *ifname);
+osn_ip_t* osn_ip_new(const char *ifname);
 
 /**
  * Destroy a valid osn_ip_t object.
@@ -226,7 +227,7 @@ void *osn_ip_data_get(osn_ip_t *ip);
  * Depending on the implementation, the status callback may be invoked
  * periodically or whenever a IPv4 status change has been detected.
  * For maximum portability, the callback implementation should assume it can
- * be called using either modes of operation.
+ * be called using either mode of operation.
  *
  * @param[in]   ip    A valid pointer to an osn_ip_t object
  * @param[in]   fn    A pointer to the function implementation
@@ -268,14 +269,13 @@ bool osn_ip_apply(osn_ip_t *ip);
  */
 
 /**
- * @struct osn_route
+ * IPv4 Routing object type
  *
- * IPv4 Routing object. The actual structure implementation is hidden
+ * This is an opaque type. The actual structure implementation is hidden
  * and is platform dependent. A new instance of the object can be obtained by
  * calling @ref osn_route_new() and must be destroyed using @ref
  * osn_route_del().
  */
-struct osn_route;
 typedef struct osn_route osn_route_t;
 
 /**
@@ -284,10 +284,10 @@ typedef struct osn_route osn_route_t;
  */
 struct osn_route_status
 {
-    osn_ip_addr_t   rts_dst_ipaddr;  /* Destination */
-    osn_ip_addr_t   rts_dst_mask;    /* Netmask */
-    osn_ip_addr_t   rts_gw_ipaddr;   /* Gateway, of OSN_IP_ADDR_INIT if none */
-    osn_mac_addr_t  rts_gw_hwaddr;   /* Gateway MAC address */
+    osn_ip_addr_t   rts_dst_ipaddr;  /**< Destination */
+    osn_ip_addr_t   rts_dst_mask;    /**< Netmask */
+    osn_ip_addr_t   rts_gw_ipaddr;   /**< Gateway, of OSN_IP_ADDR_INIT if none */
+    osn_mac_addr_t  rts_gw_hwaddr;   /**< Gateway MAC address */
 };
 
 /**
@@ -315,8 +315,8 @@ struct osn_route_status
  * Some implementation may choose to call this function periodically even if
  * there has been no status change detected.
  *
- * @param[in]   data  Private data
- * @param[in]   rts   A pointer to a @ref osn_route_status
+ * @param[in]   data    Private data
+ * @param[in]   rts     A pointer to a @ref osn_route_status
  * @param[in]   remove  true if the route in @p rts was removed
  */
 typedef bool osn_route_status_fn_t(
@@ -359,7 +359,7 @@ bool osn_route_del(osn_route_t *self);
  * Depending on the implementation, the status callback may be invoked
  * periodically or whenever a IPv4 status change has been detected.
  * For maximum portability, the callback implementation should assume it can
- * be called using either modes of operation.
+ * be called using either mode of operation.
  *
  * @param[in]   self  A valid pointer to an osn_route_t object
  * @param[in]   fn    A pointer to the function implementation

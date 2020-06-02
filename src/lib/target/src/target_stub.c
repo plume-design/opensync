@@ -434,28 +434,6 @@ bool target_clients_register(char *ifname, target_clients_cb_t *clients_update_c
 #endif
 
 /******************************************************************************
- *  DHCP/HOSTS definitions
- *****************************************************************************/
-
-#ifndef IMPL_target_dhcp_leased_ip_register
-bool target_dhcp_leased_ip_register(target_dhcp_leased_ip_cb_t *dlip_cb)
-{
-    return true;
-}
-#endif
-
-/******************************************************************************
- * INET definitions
- *****************************************************************************/
-#ifndef IMPL_target_route_state_init
-bool target_route_state_init(ds_dlist_t *inets)
-{
-        ds_dlist_init(inets, target_route_state_init_t, dsl_node);
-            return true;
-}
-#endif
-
-/******************************************************************************
  * Ethernet clients
  *****************************************************************************/
 
@@ -472,13 +450,6 @@ const char **target_ethclient_iflist_get()
 {
     static const char *iflist[] = { "eth0", NULL };
     return iflist;
-}
-#endif
-
-#ifndef IMPL_target_route_state_register
-bool target_route_state_register(target_route_state_cb_t *rts_cb)
-{
-    return true;
 }
 #endif
 
@@ -698,18 +669,6 @@ bool target_stats_device_fanrpm_get(uint32_t        *fan_rpm)
 btrace_type target_get_btrace_type()
 {
     return BTRACE_FILE_LOG;
-}
-#endif
-
-/******************************************************************************
- * MAP
- *****************************************************************************/
-#ifndef IMPL_target_map_ifname_to_bandstr
-const char *
-target_map_ifname_to_bandstr(const char *ifname)
-{
-    (void)ifname;
-    return NULL;
 }
 #endif
 

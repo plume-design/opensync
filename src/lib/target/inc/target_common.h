@@ -55,21 +55,6 @@ typedef struct {
 } target_vif_cfg_t;
 
 typedef struct {
-    struct schema_Wifi_Inet_Config  iconfig;
-    ds_dlist_node_t                 dsl_node;
-} target_inet_config_init_t;
-
-typedef struct {
-    struct schema_Wifi_Inet_State   istate;
-    ds_dlist_node_t                 dsl_node;
-} target_inet_state_init_t;
-
-typedef struct {
-    struct schema_Wifi_Master_State mstate;
-    ds_dlist_node_t                 dsl_node;
-} target_master_state_init_t;
-
-typedef struct {
     struct schema_Wifi_Route_State  rstate;
     ds_dlist_node_t                 dsl_node;
 } target_route_state_init_t;
@@ -341,20 +326,6 @@ bool target_vif_config_register(char *ifname, target_vif_config_cb_t *vconfig_cb
 
 /// @} LIB_TARGET_VIF
 
-/// @defgroup LIB_TARGET_DHCP DHCP API
-/// Definitions and API related to control of DHCP.
-/// @{
-
-/******************************************************************************
- *  DHCP definitions
- *****************************************************************************/
-typedef bool target_dhcp_leased_ip_cb_t(struct schema_DHCP_leased_IP *dlip);
-bool target_dhcp_leased_ip_get(struct schema_DHCP_leased_IP *dlip);
-bool target_dhcp_leased_ip_register(target_dhcp_leased_ip_cb_t *dlip_cb);
-
-
-/// @} LIB_TARGET_DHCP
-
 /// @defgroup LIB_TARGET_CLIENTS Clients API
 /// Definitions and API related to control of clients.
 /// @{
@@ -370,52 +341,12 @@ typedef bool target_clients_cb_t(struct schema_Wifi_Associated_Clients *schema, 
  * @brief Subscribe to client change events.
  *
  * @param ifname interface name
- * @param vconfig_cb a callback function
+ * @param clients_cb a callback function
  * @return true on success
  */
 bool target_clients_register(char *ifname, target_clients_cb_t *clients_cb);
 
 /// @} LIB_TARGET_CLIENTS
-
-/// @defgroup LIB_TARGET_ROUTE Routes API
-/// Definitions and API related to control of routes.
-/// @{
-
-/**
- * @brief Initialize route state
- *
- * Initialize the target library router state layer and return a list of
- * currently configured network routes. @p rts is a double linked list of
- * target_route_state_init_t structures. This list is used to pre-populate the
- * Wifi_Route_State table.
- *
- * @note
- * Only routes that are significant for system operation must be returned
- * by this function. For example, the default route.
- * @note
- * the inet_ovs linked list is dynamically allocated, it must be freed by the caller.
- *
- * @param inets_ovs linked list of inet interfaces state (target_inet_state_init_t)
- * @return true on success
- */
-bool target_route_state_init(ds_dlist_t *rts);
-
-/** @brief Route state change callback type */
-typedef void target_route_state_cb_t(struct schema_Wifi_Route_State *mstate);
-
-/**
- * @brief Subscribe to network route/arp state change events.
- *
- * This function is used to subscribe to network route/arp state
- * change events.
- *
- * @param istate_cb a callback function of type
- *   void callback(struct schema_Wifi_Master_State *mstate);
- * @return true on success
- */
-bool target_route_state_register(target_route_state_cb_t *rts_cb);
-
-/// @} LIB_TARGET_ROUTE
 
 /// @defgroup LIB_TARGET_STATS Statistics Related APIs
 /// Definitions and API related to statistics.

@@ -41,7 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  * @defgroup OSN OpenSync Networking
  *
- * OpenSync Networking API
+ * OpenSync Networking APIs
  *
  * @{
  */
@@ -87,16 +87,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  * Use @ref OSN_IP_ADDR_INIT to initialize this structure.
  */
-struct osn_ip_addr
+typedef struct osn_ip_addr
 {
     struct in_addr      ia_addr;        /**< IPv4 Address */
     int                 ia_prefix;      /**< Netmask in /XX notation */
-};
-
-typedef struct osn_ip_addr osn_ip_addr_t;
+} osn_ip_addr_t;
 
 /**
- * Initializer for a IPv4 address structure (@ref osn_ip_addr_t)
+ * Initializer for an IPv4 address structure (@ref osn_ip_addr_t)
  */
 #define OSN_IP_ADDR_INIT (osn_ip_addr_t)    \
 {                                           \
@@ -128,11 +126,11 @@ typedef struct osn_ip_addr osn_ip_addr_t;
  * info.
  */
 #define FMT_osn_ip_addr(x)      (__FMT_osn_ip_addr((char[OSN_IP_ADDR_LEN]){0}, OSN_IP_ADDR_LEN, &x))
-
-char *__FMT_osn_ip_addr(char *buf, size_t sz, const osn_ip_addr_t *addr);
+char* __FMT_osn_ip_addr(char *buf, size_t sz, const osn_ip_addr_t *addr);
+/**< @copydoc FMT_osn_ip_addr */
 
 /**
- * Initialize a osn_ip_addr_t from a string. The valid string formats are:
+ * Initialize an osn_ip_addr_t from a string. Valid string formats are:
  *
  * "NN.NN.NN.NN"
  *
@@ -172,7 +170,7 @@ int osn_ip_addr_cmp(void *a, void *b);
  * @param[in]   addr  Address to convert
  *
  * @return
- * Returns a osn_ip_addr_t structure that has its non-subnet part set to all
+ * Returns an osn_ip_addr_t structure that has its non-subnet part set to all
  * zeroes
  */
 osn_ip_addr_t osn_ip_addr_subnet(osn_ip_addr_t *addr);
@@ -212,7 +210,7 @@ int osn_ip_addr_to_prefix(osn_ip_addr_t *addr);
  *
  * @code
  * 24 -> 255.255.255.0
- * @encode
+ * @endcode
  *
  * @param[in]   prefix  Prefix to convert
  *
@@ -247,18 +245,16 @@ osn_ip_addr_t osn_ip_addr_from_prefix(int prefix);
  *
  * Use OSN_IP6_ADDR_INIT to initialize this structure to default values.
  */
-struct osn_ip6_addr
+typedef struct osn_ip6_addr
 {
-    struct in6_addr     ia6_addr;           /* Global IP address */
-    int                 ia6_prefix;         /* IP prefix -- usually 64 */
-    int                 ia6_pref_lft;       /* Preferred lifetime in second - negative value mean infinite */
-    int                 ia6_valid_lft;      /* valid lifetime in second - negative value mean infinite */
-};
-
-typedef struct osn_ip6_addr osn_ip6_addr_t;
+    struct in6_addr     ia6_addr;           /**< Global IP address */
+    int                 ia6_prefix;         /**< IP prefix -- usually 64 */
+    int                 ia6_pref_lft;       /**< Preferred lifetime in seconds (INT_MIN means not set) */
+    int                 ia6_valid_lft;      /**< Valid lifetime in seconds (INT_MIN means not set) */
+} osn_ip6_addr_t;
 
 /**
- * Initializer for a osn_ip6_addr_t structure.
+ * Initializer for an IPv6 address structure (@ref osn_ip6_addr_t)
  */
 #define OSN_IP6_ADDR_INIT (osn_ip6_addr_t)  \
 {                                           \
@@ -292,14 +288,11 @@ typedef struct osn_ip6_addr osn_ip6_addr_t;
  * info.
  */
 #define FMT_osn_ip6_addr(x)     (__FMT_osn_ip6_addr((char[OSN_IP6_ADDR_LEN]){0}, OSN_IP6_ADDR_LEN, &x))
-
-/*
- * Functions
- */
-char *__FMT_osn_ip6_addr(char *buf, size_t sz, const osn_ip6_addr_t *addr);
+char* __FMT_osn_ip6_addr(char *buf, size_t sz, const osn_ip6_addr_t *addr);
+/**< @copydoc FMT_osn_ip6_addr */
 
 /**
- * Initialize a osn_ip6_addr_t from a string. The valid string formats are:
+ * Initialize an osn_ip6_addr_t from a string. Valid string formats are:
  *
  * IPV6_ADDR/PREFIX,MIN_LFT,MAX_LFT
  *
@@ -369,12 +362,10 @@ int osn_ip6_addr_nolft_cmp(void *_a, void *_b);
  * MAC address definition. It is advisable that this structure
  * is never used directly but through osn_mac_addr_* functions.
  */
-struct osn_mac_addr
+typedef struct osn_mac_addr
 {
-    uint8_t             ma_addr[6];
-};
-
-typedef struct osn_mac_addr osn_mac_addr_t;
+    uint8_t             ma_addr[6];  /**< Raw MAC address bytes */
+} osn_mac_addr_t;
 
 /**
  * Maximum length of MAC Address structure when expressed as a string,
@@ -415,7 +406,7 @@ typedef struct osn_mac_addr osn_mac_addr_t;
                                 (x).ma_addr[5]
 
 /**
- * Initialize a osn_mac_addr_t from a string. The valid string formats are:
+ * Initialize an osn_mac_addr_t from a string. Valid string formats are:
  *
  * "XX:XX:XX:XX:XX:XX"
  *

@@ -349,13 +349,10 @@ bool target_map_init(void);
 bool target_map_close(void);
 bool target_map_insert(char *if_name, char *map_name);
 
-bool target_map_ifname_init(void);
 char *target_map_ifname(char *ifname);
 bool target_map_ifname_exists(const char *ifname);
 char *target_unmap_ifname(char *ifname);
 bool target_unmap_ifname_exists(const char *ifname);
-
-const char *target_map_ifname_to_bandstr(const char *ifname);
 
 /// @} LIB_TARGET_MAP
 

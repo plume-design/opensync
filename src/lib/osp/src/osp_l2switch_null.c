@@ -30,25 +30,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "ds_tree.h"
 
-struct osp_l2switch_config
-{
-    void           *dummy;
-    ds_tree_node_t l2switch_cfg_tnode;
-};
-
 /**
- * @struct osp_l2switch_config
- *
- * OSP l2switch config. The actual structure implementation is hidden and is
- * platform dependent. A new instance of the object can be obtained by calling
- * @ref osp_l2switch_new() and must be destroyed using @ref osp_l2switch_del().
- */
-typedef struct osp_l2switch_config osp_l2switch_cfg_t;
-
-/**
- * Initialize l2switch subsystem.
- *
- * @return true on success, false on error
+ * Initialize l2switch subsystem
+ * @return true on success
  */
 bool osp_l2switch_init(void)
 {
@@ -56,8 +40,9 @@ bool osp_l2switch_init(void)
 }
 
 /**
- * Create the vlan config for the iface.
- * @param[in] ifname.
+ * Create the vlan config for the iface
+ * @param[in] ifname
+ * @return true on success
  */
 bool osp_l2switch_new(char *ifname)
 {
@@ -65,7 +50,7 @@ bool osp_l2switch_new(char *ifname)
 }
 
 /**
- * Delete a osp_l2sw_cfg obj using ifname as key..
+ * Delete vlan configuration object for an interface
  */
 void osp_l2switch_del(char *ifname)
 {
@@ -73,9 +58,8 @@ void osp_l2switch_del(char *ifname)
 }
 
 /**
- * Set the port's vlanid.
- * @param l2swcfg: configuration of vlan, port and is_tagged.
- * @return true on success, false on error
+ * Set the port's vlanid
+ * @return true on success
  */
 bool osp_l2switch_vlan_set(char *ifname, const int32_t vlan, bool tagged)
 {
@@ -84,8 +68,7 @@ bool osp_l2switch_vlan_set(char *ifname, const int32_t vlan, bool tagged)
 
 /**
  * Remove port's vlanid
- * @param l2swcfg: configuration of vlan, port and is_tagged.
- * @return true on success, false on error
+ * @return true on success
  */
 bool osp_l2switch_vlan_unset(char *ifname, const int32_t vlan)
 {
@@ -93,9 +76,8 @@ bool osp_l2switch_vlan_unset(char *ifname, const int32_t vlan)
 }
 
 /**
- * Apply the vlan settings for the interface.
- * @param ifname: port that needs to be applied.
- * @return true on succes, false on error.
+ * Apply the vlan settings for the interface
+ * @return true on success
  */
 bool osp_l2switch_apply(char *ifname)
 {

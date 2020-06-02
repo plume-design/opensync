@@ -35,7 +35,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb_table.h"
 #include "json_util.h"
 
-#include "osp.h"
 #include "pm.h"
 #include "target.h"
 

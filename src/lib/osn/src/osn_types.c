@@ -38,7 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 /*
- * Convert to string and write to @p buf a osn_ip_addr structure
+ * Convert to string and write to @p buf an osn_ip_addr structure
  */
 char *__FMT_osn_ip_addr(char *buf, size_t sz, const osn_ip_addr_t *addr)
 {
@@ -58,7 +58,7 @@ char *__FMT_osn_ip_addr(char *buf, size_t sz, const osn_ip_addr_t *addr)
 
 
 /*
- * Create a osn_ip_addr_t structure from string. The accepted string is in the following format:
+ * Create an osn_ip_addr_t structure from string. The accepted string is in the following format:
  *
  * IPV4_ADDR/PREFIX_LENGTH
  *
@@ -194,7 +194,7 @@ osn_ip_addr_t osn_ip_addr_to_bcast(osn_ip_addr_t *addr)
  */
 
 /*
- * Convert to string and write to @p buf a osn_ip6_addr structure
+ * Convert to string and write to @p buf an osn_ip6_addr structure
  */
 char *__FMT_osn_ip6_addr(char *buf, size_t sz, const osn_ip6_addr_t *addr)
 {
@@ -227,7 +227,7 @@ char *__FMT_osn_ip6_addr(char *buf, size_t sz, const osn_ip6_addr_t *addr)
 }
 
 /*
- * Create a osn_ip6_addr_t structure from string. The accepted string is in the following format:
+ * Create an osn_ip6_addr_t structure from string. The accepted string is in the following format:
  *
  * IPV6_ADDR/PREFIX_LENGTH,PREFERRED_LFT,VALID_LFT
  *
@@ -340,7 +340,7 @@ int osn_ip6_addr_nolft_cmp(void *_a, void *_b)
  */
 
 /*
- * Create a osn_mac_addr_t structure from string. The accepted string is in the following format:
+ * Create an osn_mac_addr_t structure from string. The accepted string is in the following format:
  *
  * XX:XX:XX:XX:XX:XX or XX-XX-XX-XX-XX-XX
  */
