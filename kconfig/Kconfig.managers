@@ -19,6 +19,7 @@ source "src/fcm/kconfig/Kconfig.managers"
 source "src/nfm/kconfig/Kconfig.managers"
 source "src/xm/kconfig/Kconfig.managers"
 source "src/hello_world/kconfig/Kconfig.managers"
+source "src/pwm/kconfig/Kconfig.managers"
 
 #
 # Include platform/vendor managers

@@ -1,7 +1,7 @@
 {
   "name": "Open_vSwitch",
-  "version": "7.11.203",
-  "cksum": "3380660315 190193",
+  "version": "7.11.204",
+  "cksum": "2604360394 192367",
   "tables": {
     "AWLAN_Node": {
       "columns": {
@@ -2107,7 +2107,32 @@
               "type": "string"
             }
           }
-        }
+        },
+        "if_type": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "private",
+                  "public"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+		"maxassoc": {
+		  "type": {
+		    "key": {
+		      "type": "integer"
+			},
+			"min": 0,
+			"max": 1
+		  }
+		}
       },
       "isRoot": true,
       "maxRows": 256
@@ -8525,6 +8550,90 @@
             }
         },
         "isRoot": true
+    },
+    "PublicWiFi": {
+      "columns": {
+        "enable": {
+         "type": {
+           "key": {
+             "type": "boolean"
+           }
+         }
+       },
+       "remote_endpoint": {
+         "type": {
+           "key": {
+             "type" : "string",
+             "minLength": 0,
+             "maxLength": 256
+           },
+           "min": 0,
+           "max": 1
+         }
+       },
+       "GRE_tunnel_status": {
+         "type": {
+           "key": {
+             "type" : "string",
+             "minLength": 0,
+             "maxLength": 256
+           },
+           "min": 0,
+           "max": 1
+         }
+       },
+       "radius_server_ip_address": {
+         "type": {
+           "key": {
+             "type" : "string",
+             "minLength": 0,
+             "maxLength": 256
+           },
+           "min": 0,
+           "max": 1
+         }
+       },
+       "radius_server_ip_port": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 0,
+              "maxInteger": 65535
+            },
+            "min": 0,
+            "max": 1
+          }
+       },
+       "radius_server_password": {
+         "type": {
+           "key": {
+             "type" : "string",
+             "minLength": 0,
+             "maxLength": 256
+           },
+           "min": 0,
+           "max": 1
+         }
+       },
+       "ssid": {
+         "type": {
+           "key": {
+             "type": "string",
+             "minLength": 1,
+             "maxLength": 64
+           }
+         }
+       },
+       "vlanid": {
+         "type": {
+           "key": {
+             "type": "integer"
+            }
+          }
+        }
+      },
+      "isRoot": true,
+      "maxRows": 1
     }
   }
 }

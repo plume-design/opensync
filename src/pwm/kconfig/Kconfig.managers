@@ -1,0 +1,12 @@
+menuconfig MANAGER_PWM
+    bool "Public WiFi Manager (NM)"
+    default n
+    help
+        Enable Public WiFi Manager (PWM)
+
+    config MANAGER_PWM_CFG
+        depends on MANAGER_PWM
+        string "PWM Startup configuration"
+        default "pwm;true;always_restart=true;restart_delay=-1"
+        help
+            Public WiFi Manager startup configuration

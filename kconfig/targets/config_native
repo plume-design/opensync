@@ -1,12 +1,12 @@
 CONFIG_MANAGER_CM_CFG="cm;false;needs_plan_b=true"
-CONFIG_MANAGER_NM_CFG="nm;false;needs_plan_b=true"
-CONFIG_MANAGER_WM_CFG="wm;false;needs_plan_b=true"
-CONFIG_MANAGER_QM_CFG="qm;false"
-CONFIG_MANAGER_FSM=y
 CONFIG_MANAGER_FCM=y
+CONFIG_MANAGER_FSM=y
 CONFIG_MANAGER_HELLOWORLD=y
+CONFIG_MANAGER_NM_CFG="nm;false;needs_plan_b=true"
+CONFIG_MANAGER_QM_CFG="qm;false"
+CONFIG_MANAGER_WM_CFG="wm;false;needs_plan_b=true"
+CONFIG_PLATFORM_IS_NATIVE=y
 # CONFIG_TARGET_ETH_LIST is not set
 CONFIG_TARGET_IMC=y
-CONFIG_TARGET_NAME="OpenSync Native Device"
 CONFIG_TARGET_MODEL="native"
-CONFIG_PLATFORM_IS_NATIVE=y
+CONFIG_TARGET_NAME="OpenSync Native Device"
