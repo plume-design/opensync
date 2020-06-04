@@ -1,7 +1,7 @@
 {
   "name": "Open_vSwitch",
-  "version": "7.11.203",
-  "cksum": "3380660315 190193",
+  "version": "7.11.204",
+  "cksum": "68652235 190297",
   "tables": {
     "AWLAN_Node": {
       "columns": {
@@ -247,6 +247,7 @@
                   "eth",
                   "vif",
                   "gre",
+                  "gre6",
                   "vlan",
                   "pppoe",
                   "softwds",
@@ -395,6 +396,7 @@
                   "eth",
                   "vif",
                   "gre",
+                  "gre6",
                   "pppoe",
                   "softwds",
                   "tap",
@@ -524,6 +526,7 @@
                   "eth",
                   "vif",
                   "gre",
+                  "gre6",
                   "vlan",
                   "pppoe",
                   "softwds",
@@ -864,6 +867,7 @@
                   "eth",
                   "vif",
                   "gre",
+                  "gre6",
                   "vlan",
                   "pppoe",
                   "softwds",

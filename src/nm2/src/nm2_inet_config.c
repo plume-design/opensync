@@ -118,6 +118,10 @@ static bool nm2_inet_ip4tunnel_set(
         struct nm2_iface *piface,
         const struct schema_Wifi_Inet_Config *pconfig);
 
+static bool nm2_inet_ip6tunnel_set(
+        struct nm2_iface *piface,
+        const struct schema_Wifi_Inet_Config *pconfig);
+
 static bool nm2_inet_dhsnif_set(
         struct nm2_iface *piface,
         const struct schema_Wifi_Inet_Config *pconfig);
@@ -234,6 +238,7 @@ bool nm2_inet_config_set(struct nm2_iface *piface, struct schema_Wifi_Inet_Confi
     retval &= nm2_inet_dns_set(piface, iconf);
     retval &= nm2_inet_dhcps_set(piface, iconf);
     retval &= nm2_inet_ip4tunnel_set(piface, iconf);
+    retval &= nm2_inet_ip6tunnel_set(piface, iconf);
     retval &= nm2_inet_dhsnif_set(piface, iconf);
     retval &= nm2_inet_vlan_set(piface, iconf);
     retval &= nm2_inet_igmp_proxy_set(piface, iconf);
@@ -891,6 +896,87 @@ bool nm2_inet_ip4tunnel_set(
                 ifparent,
                 FMT_osn_ip_addr(local_addr),
                 FMT_osn_ip_addr(remote_addr),
+                FMT_osn_mac_addr(remote_mac));
+
+        retval = false;
+    }
+
+    return retval;
+}
+
+/* Apply IPv6 tunnel settings */
+bool nm2_inet_ip6tunnel_set(
+        struct nm2_iface *piface,
+        const struct schema_Wifi_Inet_Config *iconf)
+{
+    bool retval = true;
+    const char *ifparent = NULL;
+    osn_ip6_addr_t local_addr = OSN_IP6_ADDR_INIT;
+    osn_ip6_addr_t remote_addr = OSN_IP6_ADDR_INIT;
+    osn_mac_addr_t remote_mac = OSN_MAC_ADDR_INIT;
+
+    if (piface->if_type != NM2_IFTYPE_GRE6) return retval;
+
+    if (iconf->gre_ifname_exists)
+    {
+        if (iconf->gre_ifname[0] == '\0')
+        {
+            LOG(WARN, "inet_config: %s (%s): Parent interface exists, but is empty.",
+                    piface->if_name,
+                    nm2_iftype_tostr(piface->if_type));
+            retval = false;
+        }
+
+        ifparent = iconf->gre_ifname;
+    }
+
+    if (iconf->gre_local_inet_addr_exists)
+    {
+        if (!osn_ip6_addr_from_str(&local_addr, iconf->gre_local_inet_addr))
+        {
+            LOG(WARN, "inet_config: %s (%s): Local IPv6 address is invalid: %s",
+                    piface->if_name,
+                    nm2_iftype_tostr(piface->if_type),
+                    iconf->gre_local_inet_addr);
+
+            retval = false;
+        }
+    }
+
+    if (iconf->gre_remote_inet_addr_exists)
+    {
+        if (!osn_ip6_addr_from_str(&remote_addr, iconf->gre_remote_inet_addr))
+        {
+            LOG(WARN, "inet_config: %s (%s): Remote IPv6 address is invalid: %s",
+                    piface->if_name,
+                    nm2_iftype_tostr(piface->if_type),
+                    iconf->gre_remote_inet_addr);
+
+            retval = false;
+        }
+    }
+
+    if (iconf->gre_remote_mac_addr_exists)
+    {
+        if (!osn_mac_addr_from_str(&remote_mac, iconf->gre_remote_mac_addr))
+        {
+            LOG(WARN, "inet_config: %s (%s): Remote MAC address is invalid: %s",
+                    piface->if_name,
+                    nm2_iftype_tostr(piface->if_type),
+                    iconf->gre_remote_mac_addr);
+
+            retval = false;
+        }
+    }
+
+    if (!inet_ip6tunnel_set(piface->if_inet, ifparent, local_addr, remote_addr, remote_mac))
+    {
+        LOG(ERR, "inet_config: %s (%s): Error setting IPv6 tunnel settings: parent=%s local="PRI_osn_ip6_addr" remote="PRI_osn_ip6_addr" remote_mac="PRI_osn_mac_addr,
+                piface->if_name,
+                nm2_iftype_tostr(piface->if_type),
+                ifparent,
+                FMT_osn_ip6_addr(local_addr),
+                FMT_osn_ip6_addr(remote_addr),
                 FMT_osn_mac_addr(remote_mac));
 
         retval = false;

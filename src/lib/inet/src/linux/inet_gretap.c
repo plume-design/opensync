@@ -54,10 +54,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * $2 - parent interface name
  * $3 - local address
  * $4 - remote address
+ * $5 - family
+ * $6 - type (gretap or ip6gretap)
  */
 static char gre_create_gretap[] =
 _S(
-    ip link add "$1" type gretap local "$3" remote "$4" dev "$2" tos 1;
+    ip "$5" link add "$1" type $6 local "$3" remote "$4" dev "$2" tos 1;
 #ifdef WAR_GRE_MAC
     /* Set the same MAC address for GRE as WiFI STA and enable locally administered bit */
     [ -z "$(echo $1 | grep g-)" ] || ( addr="$(cat /sys/class/net/$2/address)" && a="$(echo $addr | cut -d : -f1)" && b="$(echo $addr | cut -d : -f2-)" && c=$(( 0x$a & 2 )) && [ $c -eq 0 ] && c=$(( 0x$a | 2 )) && d=$(printf "%x" $c) && ifconfig "$1" hw ether "$d:$b";)
@@ -137,10 +139,12 @@ bool inet_gretap_init(inet_gretap_t *self, const char *ifname)
         return false;
     }
 
+    self->family = AF_UNSPEC;
     self->in_local_addr = OSN_IP_ADDR_INIT;
     self->in_remote_addr = OSN_IP_ADDR_INIT;
 
     self->inet.in_ip4tunnel_set_fn = inet_gretap_ip4tunnel_set;
+    self->inet.in_ip6tunnel_set_fn = inet_gretap_ip6tunnel_set;
     self->base.in_service_commit_fn = inet_gretap_service_commit;
 
     return true;
@@ -179,8 +183,50 @@ bool inet_gretap_ip4tunnel_set(
         return false;
     }
 
+    self->family = AF_INET;
     self->in_local_addr = laddr;
     self->in_remote_addr = raddr;
+
+    /* Interface must be recreated, therefore restart the top service */
+    return inet_unit_restart(self->base.in_units, INET_BASE_IF_CREATE, false);
+}
+
+/*
+ * ===========================================================================
+ *  IPv6 Tunnel functions
+ * ===========================================================================
+ */
+bool inet_gretap_ip6tunnel_set(
+        inet_t *super,
+        const char *parent,
+        osn_ip6_addr_t laddr,
+        osn_ip6_addr_t raddr,
+        osn_mac_addr_t rmac)
+{
+    (void)rmac; /* Unused */
+
+    inet_gretap_t *self = (inet_gretap_t *)super;
+
+    if (parent == NULL) parent = "";
+
+    if (strcmp(parent, self->in_ifparent) == 0 &&
+            osn_ip6_addr_cmp(&self->in6_local_addr, &laddr) == 0 &&
+            osn_ip6_addr_cmp(&self->in6_remote_addr, &raddr) == 0)
+    {
+        return true;
+    }
+
+    if (strscpy(self->in_ifparent, parent, sizeof(self->in_ifparent)) < 0)
+    {
+        LOG(ERR, "inet_gretap: %s: Parent interface name too long: %s.",
+                self->inet.in_ifname,
+                parent);
+        return false;
+    }
+
+    self->family = AF_INET6;
+    self->in6_local_addr = laddr;
+    self->in6_remote_addr = raddr;
 
     /* Interface must be recreated, therefore restart the top service */
     return inet_unit_restart(self->base.in_units, INET_BASE_IF_CREATE, false);
@@ -197,8 +243,10 @@ bool inet_gretap_ip4tunnel_set(
 bool inet_gretap_interface_start(inet_gretap_t *self, bool enable)
 {
     int status;
-    char slocal_addr[C_IP4ADDR_LEN];
-    char sremote_addr[C_IP4ADDR_LEN];
+    char slocal_addr[C_IPV6ADDR_LEN];
+    char sremote_addr[C_IPV6ADDR_LEN];
+    char family[32];
+    char type[32];
 
     if (enable)
     {
@@ -208,26 +256,58 @@ bool inet_gretap_interface_start(inet_gretap_t *self, bool enable)
             return false;
         }
 
-        if (osn_ip_addr_cmp(&self->in_local_addr, &OSN_IP_ADDR_INIT) == 0)
-        {
-            LOG(INFO, "inet_gretap: %s: No local address was specified.", self->inet.in_ifname);
-            return false;
-        }
+        switch (self->family) {
+        case AF_INET:
+            if (osn_ip_addr_cmp(&self->in_local_addr, &OSN_IP_ADDR_INIT) == 0)
+            {
+                LOG(INFO, "inet_gretap: %s: No local address was specified.", self->inet.in_ifname);
+                return false;
+            }
 
-        if (osn_ip_addr_cmp(&self->in_remote_addr, &OSN_IP_ADDR_INIT) == 0)
-        {
-            LOG(INFO, "inet_gretap: %s: No remote address was specified.", self->inet.in_ifname);
-            return false;
-        }
+            if (osn_ip_addr_cmp(&self->in_remote_addr, &OSN_IP_ADDR_INIT) == 0)
+            {
+                LOG(INFO, "inet_gretap: %s: No remote address was specified.", self->inet.in_ifname);
+                return false;
+            }
 
-        snprintf(slocal_addr, sizeof(slocal_addr), PRI_osn_ip_addr, FMT_osn_ip_addr(self->in_local_addr));
-        snprintf(sremote_addr, sizeof(sremote_addr), PRI_osn_ip_addr, FMT_osn_ip_addr(self->in_remote_addr));
+            snprintf(slocal_addr, sizeof(slocal_addr), PRI_osn_ip_addr, FMT_osn_ip_addr(self->in_local_addr));
+            snprintf(sremote_addr, sizeof(sremote_addr), PRI_osn_ip_addr, FMT_osn_ip_addr(self->in_remote_addr));
+            strncpy(family, "-4", sizeof(family));
+            strncpy(type, "gretap", sizeof(type));
+            break;
+
+        case AF_INET6:
+            if (osn_ip6_addr_cmp(&self->in6_local_addr, &OSN_IP6_ADDR_INIT) == 0)
+            {
+                LOG(INFO, "inet_gretap: %s: No local address was specified.", self->inet.in_ifname);
+                return false;
+            }
+
+            if (osn_ip6_addr_cmp(&self->in6_remote_addr, &OSN_IP6_ADDR_INIT) == 0)
+            {
+                LOG(INFO, "inet_gretap: %s: No remote address was specified.", self->inet.in_ifname);
+                return false;
+            }
+
+            snprintf(slocal_addr, sizeof(slocal_addr), PRI_osn_ip6_addr, FMT_osn_ip6_addr(self->in6_local_addr));
+            snprintf(sremote_addr, sizeof(sremote_addr), PRI_osn_ip6_addr, FMT_osn_ip6_addr(self->in6_remote_addr));
+            strncpy(family, "-6", sizeof(family));
+            strncpy(type, "ip6gretap", sizeof(type));
+            break;
+
+        default:
+            LOG(INFO, "inet_gretap: invalid address family.");
+            return false;
+            break;
+        }
 
         status = execsh_log(LOG_SEVERITY_INFO, gre_create_gretap,
                 self->inet.in_ifname,
                 self->in_ifparent,
                 slocal_addr,
-                sremote_addr);
+                sremote_addr,
+                family,
+                type);
 
         if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
         {

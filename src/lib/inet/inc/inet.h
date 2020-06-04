@@ -275,6 +275,12 @@ struct __inet
                         osn_ip_addr_t local,
                         osn_ip_addr_t remote,
                         osn_mac_addr_t macaddr);
+    /* IPv6 tunnels (GRE, Softwds) */
+    bool        (*in_ip6tunnel_set_fn)(inet_t *self,
+                        const char *parent,
+                        osn_ip6_addr_t local,
+                        osn_ip6_addr_t remote,
+                        osn_mac_addr_t macaddr);
     /* VLANs */
     bool       (*in_vlan_set_fn)(inet_t *self, const char *ifparent, int vlanid);
 
@@ -593,6 +599,26 @@ static inline bool inet_ip4tunnel_set(
     if (self->in_ip4tunnel_set_fn == NULL) return false;
 
     return self->in_ip4tunnel_set_fn(self, parent, laddr, raddr, rmac);
+}
+
+/**
+ * Set IPv6 tunnel options
+ *
+ * parent   - parent interface
+ * laddr    - local IP address
+ * raddr    - remote IP address
+ * rmac     - remote MAC address, this field is ignored for some protocols such as GRETAP
+ */
+static inline bool inet_ip6tunnel_set(
+        inet_t *self,
+        const char *parent,
+        osn_ip6_addr_t laddr,
+        osn_ip6_addr_t raddr,
+        osn_mac_addr_t rmac)
+{
+    if (self->in_ip6tunnel_set_fn == NULL) return false;
+
+    return self->in_ip6tunnel_set_fn(self, parent, laddr, raddr, rmac);
 }
 
 /*
