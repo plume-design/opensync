@@ -414,6 +414,7 @@ void __daemon_child_ev(struct ev_loop *loop, ev_child *w, int revent)
 void __daemon_teardown(daemon_t *self, int wstatus)
 {
     /* Figure out the reason the process died */
+    self->dn_exit_status = WEXITSTATUS(wstatus);
     if (WIFSIGNALED(wstatus))
     {
 #if defined(WCOREDUMP)

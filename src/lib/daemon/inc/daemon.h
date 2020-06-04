@@ -76,6 +76,7 @@ struct __daemon
     bool                    dn_auto_restart;    /* Enable daemoness auto restart on error */
     char                    *dn_pidfile_path;   /* PID file */
     bool                    dn_pidfile_create;  /* true whether we should create the PID file */
+    int                     dn_exit_status;     /* Exit status of the daemon */
 };
 
 extern bool daemon_init(daemon_t *self, const char *exe_path, int flags);
