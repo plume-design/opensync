@@ -38,20 +38,20 @@ struct __inet_gretap
     /* Subclass from inet_eth_t, include base and inet for convenience */
     union
     {
-        inet_t          inet;
-        inet_base_t     base;
-        inet_eth_t      eth;
+        inet_t      inet;
+        inet_base_t base;
+        inet_eth_t  eth;
     };
 
-    char                in_ifparent[C_IFNAME_LEN];      /* Parent interface */
-    int                 family;                         /* Family */
+    char            in_ifparent[C_IFNAME_LEN];      /* Parent interface */
+    int             family;                         /* Family */
     union {
-        osn_ip_addr_t   in_local_addr;                  /* Local IPv4 address */
-        osn_ip6_addr_t  in6_local_addr;                 /* Local IPv6 address */
+        osn_ip_addr_t   in_local_addr;              /* Local IPv4 address */
+        osn_ip6_addr_t  in6_local_addr;             /* Local IPv6 address */
     };
     union {
-        osn_ip_addr_t   in_remote_addr;                 /* Remote IPv4 address */
-        osn_ip6_addr_t  in6_remote_addr;                /* Remote IPv6 address */
+        osn_ip_addr_t   in_remote_addr;             /* Remote IPv4 address */
+        osn_ip6_addr_t  in6_remote_addr;            /* Remote IPv6 address */
     };
 
 };

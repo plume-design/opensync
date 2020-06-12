@@ -245,8 +245,8 @@ bool inet_gretap_interface_start(inet_gretap_t *self, bool enable)
     int status;
     char slocal_addr[C_IPV6ADDR_LEN];
     char sremote_addr[C_IPV6ADDR_LEN];
-    char family[32];
-    char type[32];
+    const char *family;
+    char char *type;
 
     if (enable)
     {
@@ -272,8 +272,8 @@ bool inet_gretap_interface_start(inet_gretap_t *self, bool enable)
 
             snprintf(slocal_addr, sizeof(slocal_addr), PRI_osn_ip_addr, FMT_osn_ip_addr(self->in_local_addr));
             snprintf(sremote_addr, sizeof(sremote_addr), PRI_osn_ip_addr, FMT_osn_ip_addr(self->in_remote_addr));
-            strncpy(family, "-4", sizeof(family));
-            strncpy(type, "gretap", sizeof(type));
+            family = "-4";
+            type = "gretap";
             break;
 
         case AF_INET6:
@@ -291,14 +291,13 @@ bool inet_gretap_interface_start(inet_gretap_t *self, bool enable)
 
             snprintf(slocal_addr, sizeof(slocal_addr), PRI_osn_ip6_addr, FMT_osn_ip6_addr(self->in6_local_addr));
             snprintf(sremote_addr, sizeof(sremote_addr), PRI_osn_ip6_addr, FMT_osn_ip6_addr(self->in6_remote_addr));
-            strncpy(family, "-6", sizeof(family));
-            strncpy(type, "ip6gretap", sizeof(type));
+            family = "-6";
+            type = "ip6gretap";
             break;
 
         default:
-            LOG(INFO, "inet_gretap: invalid address family.");
+            LOG(ERR, "inet_gretap: invalid address family.");
             return false;
-            break;
         }
 
         status = execsh_log(LOG_SEVERITY_INFO, gre_create_gretap,

@@ -87,7 +87,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     M(NM2_IFTYPE_VLAN,      "vlan")     \
     M(NM2_IFTYPE_BRIDGE,    "bridge")   \
     M(NM2_IFTYPE_GRE,       "gre")      \
-    M(NM2_IFTYPE_GRE6,      "gre6")      \
+    M(NM2_IFTYPE_GRE6,      "gre6")     \
     M(NM2_IFTYPE_TAP,       "tap")      \
     M(NM2_IFTYPE_MAX,       NULL)
 
