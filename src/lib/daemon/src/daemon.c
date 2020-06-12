@@ -1014,3 +1014,13 @@ static bool __daemon_set_nonblock(int fd, bool enable)
 
     return true;
 }
+
+bool daemon_get_exit_status(const daemon_t *self, int *exit_status)
+{
+    if (!self)
+        return false;
+    if (exit_status)
+        *exit_status = self->dn_exit_status;
+    return true;
+}
+
