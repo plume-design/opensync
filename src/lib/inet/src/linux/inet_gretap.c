@@ -94,6 +94,25 @@ inet_t *inet_gre_new(const char *ifname)
 }
 #endif
 
+#if defined(CONFIG_INET_GRE6_USE_GRETAP)
+/*
+ * inet_gretap_t was selected as the default tunnelling
+ * implementation -- return an instance with inet_gretap_new()
+ */
+inet_t *inet_gre6_new(const char *ifname)
+{
+    static bool once = true;
+
+    if (once)
+    {
+        LOG(NOTICE, "inet_gretap: Using Linux GRETAP implementation.");
+        once = false;
+    }
+
+    return inet_gretap_new(ifname);
+}
+#endif
+
 /*
  * ===========================================================================
  *  Initialization

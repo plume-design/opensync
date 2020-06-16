@@ -42,4 +42,17 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 extern inet_t *inet_gre_new(const char *ifname);
 
+/*
+ * The inet_gre6_new() function returns a GRE over IPv6 inet_t implementation.
+ * The default GRE over IPv6 implementation should override this function and
+ * return a suitable inet_t object that implements GRE over IPv6 tunneling.
+ *
+ * Note that this function can be more than a simple wrapper around the object
+ * constructor. Some platforms may use GRE over IPv6 acceleration and this can
+ * be probed run-time. If acceleration is available, it may return an object
+ * that knows how to deal with accelerated GRE tunnels or fallback to the
+ * default "inet_gretap_t" implementation otherwise.
+ */
+extern inet_t *inet_gre6_new(const char *ifname);
+
 #endif /* INET_GRE_H_INCLUDED */

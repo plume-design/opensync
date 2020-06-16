@@ -359,8 +359,11 @@ inet_t *nm2_iface_new_inet(const char *ifname, enum nm2_iftype type)
             break;
 
         case NM2_IFTYPE_GRE:
-        case NM2_IFTYPE_GRE6:
             nif = inet_gre_new(ifname);
+            break;
+
+        case NM2_IFTYPE_GRE6:
+            nif = inet_gre6_new(ifname);
             break;
 
         case NM2_IFTYPE_VLAN:

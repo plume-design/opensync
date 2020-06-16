@@ -45,6 +45,17 @@ menu "libinet Configuration"
             specific code should define inet_gre_new() function which returns a
             suitable interface object that implements a tunneling protocol.
 
+    config INET_GRE6_USE_GRETAP
+        bool "Use GRETAP as default GRE over IPv6 protocol implementation"
+        depends on INET_GRETAP
+        default y
+        help
+            Use the inet_gretap_t class as the default GRE over IPv6 implementation.
+            This option defines a inet_gre6_new() function which instantiates
+            a class of type inet_gretap_t. If not selected, the platform/device
+            specific code should define inet_gre6_new() function which returns a
+            suitable interface object that implements a tunneling protocol.
+
     config INET_VLAN_LINUX
         bool "Linux VLAN interfaces"
         depends on INET_ETH_LINUX
