@@ -11,37 +11,38 @@
 #include "ovsdb_table.h"
 #include "schema.h"
 #include "osp.h"
-#ifndef __WANO_MAPT_MANAGER_H__
-#define __WANO_MAPT_MANAGER_H__
+#ifndef __MAPTM_MANAGER_H__
+#define __MAPTM_MANAGER_H__
 
-#define WANO_MAPT_MODULE_NAME 		"WANO_MAPT"
+#define MAPTM_MODULE_NAME 		"WANO_MAPT"
 
-#define WANO_MAPT_TIMEOUT_INTERVAL          5 /* Interval to verify timer condition */
+#define MAPTM_TIMEOUT_INTERVAL          5 /* Interval to verify timer condition */
 	
-extern int wano_mapt_ovsdb_init(void);
-extern bool wano_mapt_ovsdb_nfm_add_rules(void);
-extern bool wano_mapt_ovsdb_nfm_del_rules(void);
-extern void wano_mapt_timerStart();
-extern void wano_mapt_timerStop();
-extern void wano_mapt_disableAccess();
-extern void wano_mapt_eligibilityStart(int WanConfig);
+extern int maptm_ovsdb_init(void);
+extern bool maptm_ovsdb_nfm_add_rules(void);
+extern bool maptm_ovsdb_nfm_del_rules(void);
+extern void maptm_timerStart();
+extern void maptm_timerStop();
+extern void maptm_disableAccess();
+extern void maptm_eligibilityStart(int WanConfig);
 extern bool config_mapt();
 extern bool stop_mapt();
 extern void Parse_95_option();
-extern void wano_mapt_eligibilityStop();
-extern void wano_mapt_callback_Timer();
-extern int wano_mapt_dhcp_option_init( void );
-extern bool wano_mapt_dhcp_option_update_15_option(bool maptSupport);
-int wano_mapt_main(int argc, char ** argv);
-#define WANO_MAPT_NO_ELIGIBLE_NO_IPV6 0x00 
-#define WANO_MAPT_NO_ELIGIBLE_IPV6 0x01 
-#define WANO_MAPT_ELIGIBLE_NO_IPV6 0x10 
-#define WANO_MAPT_ELIGIBLE_IPV6 0x11
-#define WANO_MAPT_ELIGIBILITY_ENABLE   0x10
-#define WANO_MAPT_IPV6_ENABLE   0x01
+extern void maptm_eligibilityStop();
+extern void maptm_callback_Timer();
+extern int maptm_dhcp_option_init( void );
+extern bool maptm_dhcp_option_update_15_option(bool maptSupport);
+extern bool maptm_dhcp_option_update_95_option(bool maptSupport);
+int maptm_main(int argc, char ** argv);
+#define MAPTM_NO_ELIGIBLE_NO_IPV6 0x00 
+#define MAPTM_NO_ELIGIBLE_IPV6 0x01 
+#define MAPTM_ELIGIBLE_NO_IPV6 0x10 
+#define MAPTM_ELIGIBLE_IPV6 0x11
+#define MAPTM_ELIGIBILITY_ENABLE   0x10
+#define MAPTM_IPV6_ENABLE   0x01
 
 #define OVSDB_UUID_LEN    40
-struct wano_mapt_MAPT
+struct maptm_MAPT
 {
 	int mapt_support;
 	bool mapt_95_Option;
@@ -76,12 +77,12 @@ struct list_rules {
    ds_dlist_t d_node;
 };
 
-struct wano_mapt_MAPT  strucWanConfig ; 
+struct maptm_MAPT  strucWanConfig ; 
 extern struct ovsdb_table table_DHCPv6_Client;
 extern struct ovsdb_table table_DHCP_Client;
 extern struct ovsdb_table table_Wifi_Inet_Config;
 extern struct ovsdb_table table_mapt;
 extern struct ovsdb_table table_Node_State;
-bool wano_mapt_persistent();
+bool maptm_persistent();
 
-#endif  /* __WANO_MAPT_MANAGER_H__ */
+#endif  /* __MAPTM_MANAGER_H__ */

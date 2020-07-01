@@ -37,9 +37,6 @@ UNIT_SRC += src/wano_ovsdb.c
 UNIT_SRC += src/wano_nat.c
 UNIT_SRC += src/wano_dhcp_option.c
 UNIT_SRC += src/wano_ntp.c
-UNIT_SRC += src/wano_mapt_eligibility.c
-UNIT_SRC += src/wano_mapt_ovsdb.c
-UNIT_SRC += src/wano_mapt_config.c
 
 UNIT_CFLAGS += -Isrc/lib/common/inc/
 

@@ -32,12 +32,12 @@
 #include "ovsdb_update.h"
 #include "ovsdb_sync.h"
 #include "ovsdb_table.h"
-#include "wano_mapt.h"
+#include "maptm.h"
 static ovsdb_table_t table_DHCP_Option;
 struct ovsdb_table table_DHCPv6_Server;
 struct ovsdb_table table_IPv6_Address;
 
-#ifdef WANO_MAPT_DEBUG
+#ifdef MAPTM_DEBUG
 #undef LOGI
 #define LOGI	printf
 #endif 
@@ -45,8 +45,8 @@ static ev_timer cs_timer;
 /*****************************************************************************/
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
-#define WANO_MAPT_CHARTER_NO_MAP "charter_no_map"
-#define WANO_MAPT_CHARTER_MAP    "charter_map"
+#define MAPTM_CHARTER_NO_MAP "charter_no_map"
+#define MAPTM_CHARTER_MAP    "charter_map"
 bool wait95Option= false;
 #define WANO_MODULE "WANO"
 /*****************************************************************************/
@@ -160,13 +160,13 @@ static void callback_DHCP_Option(
 					{
 						//if option 95 is added not need to wait timer to configure MAPT
 						ev_timer_stop(EV_DEFAULT,&cs_timer);
-						wano_mapt_callback_Timer();
+						maptm_callback_Timer();
 					}
 					else if(strucWanConfig.link_up &&(!strncmp("Dual-Stack",strucWanConfig.mapt_mode,sizeof("Dual-Stack")))					)
 					{
 						//restart the machine if option 95 is added after renew/rebuind 
 						StartStop_DHCPv4(false);
-						wano_mapt_callback_Timer();
+						maptm_callback_Timer();
 					}
 				}
 			}
@@ -205,7 +205,7 @@ static void callback_DHCP_Option(
 				if(!strncmp("MAP-T",strucWanConfig.mapt_mode,sizeof("MAP-T")) && strucWanConfig.mapt_support && strucWanConfig.link_up)
 				{
 					// restart the machine if the 95 option is removed
-					wano_mapt_eligibilityStart(WANO_MAPT_ELIGIBLE_IPV6);
+					maptm_eligibilityStart(MAPTM_ELIGIBLE_IPV6);
 				}
 				strucWanConfig.mapt_95_value[0] = '\0';
 				
@@ -231,7 +231,7 @@ static void callback_DHCP_Option(
             return;
     }
 }
-int wano_mapt_dhcp_option_init( void )
+int maptm_dhcp_option_init( void )
 {
 	   	OVSDB_TABLE_INIT_NO_KEY(DHCP_Option);
 	   	OVSDB_TABLE_MONITOR(DHCP_Option,false);
@@ -243,10 +243,11 @@ int intit_eligibility()
 	wait95Option=false;
 	StartStop_DHCPv6(false);
 	StartStop_DHCPv4(false);
+	strucWanConfig.mapt_EnableIpv6=true;
 	return 0;
 	
 }
-bool wano_mapt_dhcp_option_update_15_option(bool maptSupport)
+bool maptm_dhcp_option_update_15_option(bool maptSupport)
 {
     struct schema_DHCP_Option iconf_update;
     struct schema_DHCP_Option iconf;
@@ -256,22 +257,47 @@ bool wano_mapt_dhcp_option_update_15_option(bool maptSupport)
     MEMZERO(iconf_update);
 
     ret = ovsdb_table_select_one(&table_DHCP_Option,
-                SCHEMA_COLUMN(DHCP_Option, value), maptSupport?WANO_MAPT_CHARTER_NO_MAP:WANO_MAPT_CHARTER_MAP, &iconf);
+                SCHEMA_COLUMN(DHCP_Option, value), maptSupport?MAPTM_CHARTER_NO_MAP:MAPTM_CHARTER_MAP, &iconf);
     if (!ret)
         LOGE("%s: : Failed to get DHCP_Option config", __func__);
 
-    STRSCPY(iconf_update.value, maptSupport?WANO_MAPT_CHARTER_MAP:WANO_MAPT_CHARTER_NO_MAP);
+    STRSCPY(iconf_update.value, maptSupport?MAPTM_CHARTER_MAP:MAPTM_CHARTER_NO_MAP);
     iconf_update.value_exists = true;
     char *filter[] = { "+",
                        SCHEMA_COLUMN(DHCP_Option, value),
                        NULL };
 
     ret = ovsdb_table_update_where_f(&table_DHCP_Option,
-                 ovsdb_where_simple(SCHEMA_COLUMN(DHCP_Option, value), maptSupport?WANO_MAPT_CHARTER_NO_MAP:WANO_MAPT_CHARTER_MAP),
+                 ovsdb_where_simple(SCHEMA_COLUMN(DHCP_Option, value), maptSupport?MAPTM_CHARTER_NO_MAP:MAPTM_CHARTER_MAP),
                  &iconf_update, filter);
     return true;
 }
-static void wano_mapt_update_wan_mode(const char* status)
+bool maptm_dhcp_option_update_95_option(bool maptSupport)
+{
+	struct schema_DHCPv6_Client iconf_update;
+	struct schema_DHCPv6_Client iconf;
+
+	MEMZERO(iconf);
+	MEMZERO(iconf_update);
+	SCHEMA_VAL_APPEND_INT(iconf_update.request_options,23);
+	SCHEMA_VAL_APPEND_INT(iconf_update.request_options,24);
+	SCHEMA_VAL_APPEND_INT(iconf_update.request_options,56);
+    
+	if(maptSupport)
+	{
+		SCHEMA_VAL_APPEND_INT(iconf_update.request_options,95);
+	}
+
+	char *filter[] = { "+",
+                       SCHEMA_COLUMN(DHCPv6_Client, request_options),
+                       NULL };
+
+	ovsdb_table_update_where_f(&table_DHCPv6_Client,
+				ovsdb_where_simple_typed(SCHEMA_COLUMN(DHCPv6_Client,request_address),"true", OCLM_BOOL),
+                 &iconf_update, filter);
+    return true;
+}
+static void maptm_update_wan_mode(const char* status)
 {
 	struct schema_Node_State 	set;
 	json_t 				*where = NULL;
@@ -305,7 +331,7 @@ strcpy(strucWanConfig.mapt_mode,status);
 	}
 }
 
-void wano_mapt_callback_Timer()
+void maptm_callback_Timer()
 {
 	if(wait95Option==false)
 		wait95Option=true;
@@ -313,7 +339,7 @@ void wano_mapt_callback_Timer()
 	{
 		if(config_mapt())
 		{
-			wano_mapt_update_wan_mode("MAP-T");
+			maptm_update_wan_mode("MAP-T");
 			/* Start Workaround for MAPT Mode Add option 23 and 24 */
 			maptm_dhcpv6_server_add_option(strucWanConfig.option_23,true);
 			maptm_dhcpv6_server_add_option(strucWanConfig.option_24,true);  	
@@ -324,16 +350,16 @@ void wano_mapt_callback_Timer()
 			LOGE("Unable to Configure MAPT !!!");
 			/*Resolve Limitation Wrong MAP-T Rule */
 			StartStop_DHCPv4(true);
-			wano_mapt_update_wan_mode("Dual-Stack");
+			maptm_update_wan_mode("Dual-Stack");
 		}
     }
 	else
 	{
 		StartStop_DHCPv4(true);
-	    wano_mapt_update_wan_mode("Dual-Stack");
+	    maptm_update_wan_mode("Dual-Stack");
     }
 }
-void wano_mapt_eligibilityStop()
+void maptm_eligibilityStop()
 {
 	StartStop_DHCPv6(false);
 	StartStop_DHCPv4(false);
@@ -360,43 +386,43 @@ bool wano_ipv6IsEnabled()
 	return false ;
 }
 
-void wano_mapt_eligibilityStart(int WanConfig)
+void maptm_eligibilityStart(int WanConfig)
 {
 	intit_eligibility(); 
 	/*Check IPv6 is Enabled */
 	if(strucWanConfig.mapt_EnableIpv6 || wano_ipv6IsEnabled())
-		WanConfig|=WANO_MAPT_IPV6_ENABLE;
+		WanConfig|=MAPTM_IPV6_ENABLE;
 	else 
-		WanConfig&=WANO_MAPT_ELIGIBILITY_ENABLE;
+		WanConfig&=MAPTM_ELIGIBILITY_ENABLE;
 	/*check dhcpv6 services*/
 	switch ( WanConfig)
 	{
-		case WANO_MAPT_NO_ELIGIBLE_NO_IPV6: 	//check ipv4 only
+		case MAPTM_NO_ELIGIBLE_NO_IPV6: 	//check ipv4 only
 		{
 			LOGT("*********** ipv4 only");
-			wano_mapt_update_wan_mode("IPv4 Only");
+			maptm_update_wan_mode("IPv4 Only");
 			StartStop_DHCPv4(true);
 			break;
 		}
-		case WANO_MAPT_NO_ELIGIBLE_IPV6:
+		case MAPTM_NO_ELIGIBLE_IPV6:
 		{
 			LOGT("*********** Mode DUAL STACK");
-			wano_mapt_update_wan_mode("Dual-Stack");
+			maptm_update_wan_mode("Dual-Stack");
 			StartStop_DHCPv6(true);
 			StartStop_DHCPv4(true);
 			break;
 		}
-		case WANO_MAPT_ELIGIBLE_NO_IPV6:
+		case MAPTM_ELIGIBLE_NO_IPV6:
 		{
 			StartStop_DHCPv4(true);
 			LOGT("*********** ipv4 only");
-			wano_mapt_update_wan_mode("IPv4 Only");
+			maptm_update_wan_mode("IPv4 Only");
 			break;
 		}
-		case WANO_MAPT_ELIGIBLE_IPV6:
+		case MAPTM_ELIGIBLE_IPV6:
 		{
 			StartStop_DHCPv6(true);
-			ev_timer_init(&cs_timer,wano_mapt_callback_Timer,15,0);
+			ev_timer_init(&cs_timer,maptm_callback_Timer,15,0);
 			ev_timer_start(EV_DEFAULT,&cs_timer);
 			break;
 		}

@@ -37,21 +37,22 @@
 #include "ovsdb_sync.h"
 #include "ovsdb_table.h"
 #include "schema.h"
-#include "wano_mapt.h"
+#include "maptm.h"
 #include "osn_maptm.h"
 /*Firewall Rules*/
 #define V4_CHCEK_FORWARD "v4_check_forward"
 #define V4_MAPT_CHCEK_FORWARD "v4_mapt_check_forward"
 #define V4_MAPT_TCP_CHCEK_1 "v4_mapt_tcp_check_1"
 #define V4_MAPT_TCP_CHCEK_2 "v4_mapt_tcp_check_2"
-	
+
+#define V6_MAPT_TCP_CHCEK_3 "v6_tcp_check_3"
 
 struct ovsdb_table table_Netfilter;
 
 /*
  * Free MAPT struct
  */
-bool wano_mapt_remove_maptStruct(struct mapt* mapt_rule)
+bool maptm_remove_maptStruct(struct mapt* mapt_rule)
 {
    if(mapt_rule ==NULL)
       return true;
@@ -65,7 +66,7 @@ bool wano_mapt_remove_maptStruct(struct mapt* mapt_rule)
  *  Free list node
  */
  
- bool wano_mapt_remove_list(ds_dlist_t rules)
+ bool maptm_remove_list(ds_dlist_t rules)
 {
    ds_dlist_iter_t iter;
    struct list_rules *node =NULL;
@@ -149,7 +150,7 @@ struct mapt* parse_option_rule(char* rule)
    }
    return mapt_rule;
 free:
-   wano_mapt_remove_maptStruct(mapt_rule);
+   maptm_remove_maptStruct(mapt_rule);
    return NULL;
 }
 
@@ -234,7 +235,7 @@ struct mapt*  get_Mapt_Rule(char* option95,char* iapd)
       if(l_node->value == NULL) {
             LOGE("Unable to allocate update handler!");
             free(l_node);
-            wano_mapt_remove_list(l_rules);
+            maptm_remove_list(l_rules);
             return NULL;
       } 
       ds_dlist_insert_tail(&l_rules, l_node);
@@ -257,13 +258,13 @@ struct mapt*  get_Mapt_Rule(char* option95,char* iapd)
          }
          else 
          {
-            wano_mapt_remove_maptStruct(mapt_rule);
+            maptm_remove_maptStruct(mapt_rule);
          }
       }
     }
     
     if (ret) {
-      wano_mapt_remove_list(l_rules);
+      maptm_remove_list(l_rules);
       return mapt_rule;
     }
     return NULL;
@@ -304,7 +305,7 @@ void configureMapDomain(char*iapd,int iapd_length, struct mapt* mapt_rule ){
 }
 
 /* Get configuration of MAPT*/
-struct mapt* wano_mapt_getconfigure(char* option95 ,char* iapd , int iapd_len)
+struct mapt* maptm_getconfigure(char* option95 ,char* iapd , int iapd_len)
 {
 	struct mapt* selected_rule = get_Mapt_Rule(option95,iapd);
 	if(selected_rule== NULL)
@@ -315,7 +316,7 @@ struct mapt* wano_mapt_getconfigure(char* option95 ,char* iapd , int iapd_len)
 }
 
 /*MAP-T Firewall Configuration*/
-bool wano_mapt_ovsdb_nfm_set_rule(const char* rule , bool enable)
+bool maptm_ovsdb_nfm_set_rule(const char* rule , bool enable)
 {
    	struct schema_Netfilter set;
 	json_t *where = NULL;
@@ -338,23 +339,25 @@ bool wano_mapt_ovsdb_nfm_set_rule(const char* rule , bool enable)
 	}
 	return true;
 }
-bool wano_mapt_ovsdb_nfm_rules(bool enable)
+bool maptm_ovsdb_nfm_rules(bool enable)
 {
 	LOGD("%s , config Firewall MAPT",__func__);
-	if(!wano_mapt_ovsdb_nfm_set_rule(V4_CHCEK_FORWARD,!enable)) 
+	if(!maptm_ovsdb_nfm_set_rule(V4_CHCEK_FORWARD,!enable)) 
 		return false ;
-	if(!wano_mapt_ovsdb_nfm_set_rule(V4_MAPT_CHCEK_FORWARD,enable))
+	if(!maptm_ovsdb_nfm_set_rule(V4_MAPT_CHCEK_FORWARD,enable))
 		return false ;
-	if(!wano_mapt_ovsdb_nfm_set_rule(V4_MAPT_TCP_CHCEK_1,enable))
+	if(!maptm_ovsdb_nfm_set_rule(V4_MAPT_TCP_CHCEK_1,enable))
 		return false;
-	if(!wano_mapt_ovsdb_nfm_set_rule(V4_MAPT_TCP_CHCEK_2,enable))
+	if(!maptm_ovsdb_nfm_set_rule(V4_MAPT_TCP_CHCEK_2,enable))
 		return false;
-	
+	if(!maptm_ovsdb_nfm_set_rule(V6_MAPT_TCP_CHCEK_3,!enable))
+		return false;
+
 	return true;
 }
 bool stop_mapt()
 {
-	if(! wano_mapt_ovsdb_nfm_rules(false))
+	if(! maptm_ovsdb_nfm_rules(false))
 		LOGE("Unable to disable Firewall");
 	if(! osn_mapt_stop())
 		return false;
@@ -393,7 +396,7 @@ bool config_mapt()
       iapd_len = atoi(flag);
 	}
    
-	struct mapt* MaptConf=wano_mapt_getconfigure(strucWanConfig.mapt_95_value , iapd ,iapd_len);
+	struct mapt* MaptConf=maptm_getconfigure(strucWanConfig.mapt_95_value , iapd ,iapd_len);
    if(MaptConf == NULL){
       LOGE("Unable to get MAPT Rule");
       return false;
@@ -407,10 +410,10 @@ bool config_mapt()
    snprintf(ipv6prefix,sizeof(ipv6prefix)-1,"%s/%d",MaptConf->ipv6prefix,MaptConf->prefix6len);
    snprintf(ipv4PublicAddress,sizeof(ipv4PublicAddress)-1,"%s/%d",MaptConf->ipv4PublicAddress,MaptConf->prefix4len);
    /*Enable firewall*/
-   if(!wano_mapt_ovsdb_nfm_rules(true))
+   if(!maptm_ovsdb_nfm_rules(true))
    {
       LOGE("Unable to Config Firewall");
-      wano_mapt_remove_maptStruct(MaptConf);
+      maptm_remove_maptStruct(MaptConf);
       return false;
    }
    
@@ -426,12 +429,12 @@ bool config_mapt()
 							MaptConf->domaine_pssid)){
                      
                         LOGD("MAPT CONFIGURED");
-                        wano_mapt_remove_maptStruct(MaptConf);
+                        maptm_remove_maptStruct(MaptConf);
                         
                         return true;
    }
    
-   wano_mapt_remove_maptStruct(MaptConf);
+   maptm_remove_maptStruct(MaptConf);
    LOGE("MAPT NOT CONFIGURED");
    return false;
 }

@@ -40,7 +40,6 @@
 #include "ovsdb.h"
 #include "wano_dhcp_option.h"
 #include "wano_ntp.h"
-#include "wano_mapt.h"
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
@@ -49,12 +48,9 @@ static log_severity_t wano_log_severity = LOG_SEVERITY_INFO;
 static void wano_init(void)
 {
 	wano_nat_init();
-	wano_mapt_ovsdb_init();
 	wano_ovsdb_init();
 	wano_dhcp_option_init();
 	wano_time_table_init();
-	wano_mapt_dhcp_option_init();
-	wano_mapt_persistent();
 }
 
 int main(int argc, char **argv)

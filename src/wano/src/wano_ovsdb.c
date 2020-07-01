@@ -59,7 +59,6 @@
 #include "json_util.h"
 #include "wano_nat.h"
 #include "wano_ovsdb.h"
-#include "wano_mapt.h"
 
 #define MODULE_ID LOG_MODULE_ID_OVSDB
 #define RA_DEFAULT_LIFE_TIME 90
@@ -963,17 +962,17 @@ void callback_IPv6_Address(
 		case OVSDB_UPDATE_NEW:
 		if(new->enable && !strncmp(new->address,"fe80",sizeof("fe80")-1))
 		{
-			strucWanConfig.mapt_EnableIpv6=true;
+			//strucWanConfig.mapt_EnableIpv6=true;
 		}
 		break;
 		case OVSDB_UPDATE_MODIFY:
 		if((new->enable ==true) && (old->enable == false) && !strncmp(new->address,"fe80",sizeof("fe80")-1))
 		{
-			strucWanConfig.mapt_EnableIpv6=true;
+			//strucWanConfig.mapt_EnableIpv6=true;
 		}
 		else if((old->enable ==true) && (new->enable == false) && !strncmp(new->address,"fe80",sizeof("fe80")-1))
 		{
-			strucWanConfig.mapt_EnableIpv6=false;
+			//strucWanConfig.mapt_EnableIpv6=false;
 		}
 			break;
 		case OVSDB_UPDATE_DEL:

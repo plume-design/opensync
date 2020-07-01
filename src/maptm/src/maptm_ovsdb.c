@@ -14,9 +14,9 @@
 #include "schema.h"
 #include <stdio.h>
 
-#include "wano_mapt.h"
+#include "maptm.h"
 
-#ifdef WANO_MAPT_DEBUG
+#ifdef MAPTM_DEBUG
 #undef LOGI
 #define LOGI	printf
 #endif 
@@ -26,7 +26,7 @@
  */
 /* Log entries from this file will contain "OVSDB" */
 #define MODULE_ID LOG_MODULE_ID_OVSDB
-#define WANO_IFC_WAN "br-wan"
+#define MAPTM_IFC_WAN "br-wan"
 
 ovsdb_table_t table_Netfilter;
 ovsdb_table_t table_Node_Config;
@@ -40,7 +40,7 @@ struct ovsdb_table table_IPv6_Address;
 /* To change to Enum  */
 int WanConfig =0; 
 
-bool wano_mapt_update_mapt(bool enable)
+bool maptm_update_mapt(bool enable)
 {
 	int rc=0;
 	json_t *where = NULL;
@@ -82,7 +82,7 @@ bool wano_mapt_update_mapt(bool enable)
 }
 
 
-bool wano_mapt_persistent()
+bool maptm_persistent()
 {
 	bool ret = false ;
 	char mapt_support[10];
@@ -107,18 +107,18 @@ bool wano_mapt_persistent()
 
 	if(!strncmp(mapt_support,"true",sizeof("true")-1))
 	{
-		ret = wano_mapt_update_mapt(true);
+		ret = maptm_update_mapt(true);
 	}
 	else
 	{
-		ret = wano_mapt_update_mapt(false);
+		ret = maptm_update_mapt(false);
 	}
 
 	return ret;
 }
 
 
-bool wano_mapt_get_supportValue(char * value)
+bool maptm_get_supportValue(char * value)
 {
 	char str[64] ;
 	memset(str,0,sizeof(str));
@@ -151,12 +151,12 @@ void callback_Node_Config(ovsdb_update_monitor_t *mon,
              __func__, conf->module, conf->key, conf->value);
         if(!strncmp(conf->module,"WANO",sizeof("WANO")))
         {
-		if(wano_mapt_get_supportValue(conf->value)==true){
-			 WanConfig |= WANO_MAPT_ELIGIBILITY_ENABLE ;
+		if(maptm_get_supportValue(conf->value)==true){
+			 WanConfig |= MAPTM_ELIGIBILITY_ENABLE ;
 		 }
-		strucWanConfig.mapt_support=wano_mapt_get_supportValue(conf->value);
-		wano_mapt_dhcp_option_update_15_option(strucWanConfig.mapt_support);
-	    }
+		strucWanConfig.mapt_support=maptm_get_supportValue(conf->value);
+		maptm_dhcp_option_update_15_option(strucWanConfig.mapt_support);
+		maptm_dhcp_option_update_95_option(strucWanConfig.mapt_support);	    }
     }
 
     if (mon->mon_type == OVSDB_UPDATE_DEL) {
@@ -172,23 +172,25 @@ void callback_Node_Config(ovsdb_update_monitor_t *mon,
              conf->module, conf->key, conf->value);
 		if(!strncmp(conf->module,"WANO",sizeof("WANO")))
 		{
-			strucWanConfig.mapt_support = wano_mapt_get_supportValue(conf->value);
-			if(wano_mapt_get_supportValue(conf->value)!=wano_mapt_get_supportValue(old_rec->value))
+			strucWanConfig.mapt_support = maptm_get_supportValue(conf->value);
+			if(maptm_get_supportValue(conf->value)!=maptm_get_supportValue(old_rec->value))
 			{
-				wano_mapt_dhcp_option_update_15_option(strucWanConfig.mapt_support);
+				maptm_dhcp_option_update_15_option(strucWanConfig.mapt_support);
+				maptm_dhcp_option_update_95_option(strucWanConfig.mapt_support);
+				
 	        }
-			if((wano_mapt_get_supportValue(conf->value) == true) && (wano_mapt_get_supportValue(old_rec->value) ==false) )
+			if((maptm_get_supportValue(conf->value) == true) && (maptm_get_supportValue(old_rec->value) ==false) )
 			{
-				WanConfig |= WANO_MAPT_ELIGIBILITY_ENABLE;
+				WanConfig |= MAPTM_ELIGIBILITY_ENABLE;
 			}
-        	else if ((wano_mapt_get_supportValue(conf->value) == false) && (wano_mapt_get_supportValue(old_rec->value) ==true) )
+        	else if ((maptm_get_supportValue(conf->value) == false) && (maptm_get_supportValue(old_rec->value) ==true) )
         	{
-				WanConfig &= WANO_MAPT_IPV6_ENABLE;
+				WanConfig &= MAPTM_IPV6_ENABLE;
 			}
-        	if(wano_mapt_get_supportValue(conf->value)!=wano_mapt_get_supportValue(old_rec->value) )
+        	if(maptm_get_supportValue(conf->value)!=maptm_get_supportValue(old_rec->value) )
         	{
-				wano_mapt_eligibilityStart(WanConfig);
-				if (osp_ps_set("MAPT_SUPPORT", wano_mapt_get_supportValue(conf->value)?"true":"false") != true)
+				maptm_eligibilityStart(WanConfig);
+				if (osp_ps_set("MAPT_SUPPORT", maptm_get_supportValue(conf->value)?"true":"false") != true)
 				{
 					LOGE("SGC: Error saving new MAP-T support value");
 				}
@@ -219,12 +221,12 @@ static void callback_Interface(ovsdb_update_monitor_t *mon, struct schema_Interf
 				{
 					strucWanConfig.link_up=true;
 					if(record->link_state!= old->link_state)
-						wano_mapt_eligibilityStart(WanConfig);
+						maptm_eligibilityStart(WanConfig);
 				}
 				else if (!strncmp(record->link_state,"down",sizeof("down"))) 
 				{
 					strucWanConfig.link_up=false;
-					wano_mapt_eligibilityStop();
+					maptm_eligibilityStop();
 				}
 
 		}
@@ -236,7 +238,7 @@ static void callback_Interface(ovsdb_update_monitor_t *mon, struct schema_Interf
 		break;
 	}
 }
-int wano_mapt_ovsdb_init()
+int maptm_ovsdb_init()
 {
 	// Initialize persistent storage
     if (!osp_ps_init())
