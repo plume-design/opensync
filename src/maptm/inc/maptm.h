@@ -14,7 +14,7 @@
 #ifndef __MAPTM_MANAGER_H__
 #define __MAPTM_MANAGER_H__
 
-#define MAPTM_MODULE_NAME 		"WANO_MAPT"
+#define MAPTM_MODULE_NAME 		"MAPTM"
 
 #define MAPTM_TIMEOUT_INTERVAL          5 /* Interval to verify timer condition */
 	

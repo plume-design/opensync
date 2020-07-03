@@ -48,7 +48,7 @@ static ev_timer cs_timer;
 #define MAPTM_CHARTER_NO_MAP "charter_no_map"
 #define MAPTM_CHARTER_MAP    "charter_map"
 bool wait95Option= false;
-#define WANO_MODULE "WANO"
+#define MAPTM_MODULE "MAPTM"
 /*****************************************************************************/
 
 /******************************************************************************
@@ -310,7 +310,7 @@ strcpy(strucWanConfig.mapt_mode,status);
 	SCHEMA_SET_STR(set.value, status);
 
 	where = ovsdb_where_multi(
-		ovsdb_where_simple_typed(SCHEMA_COLUMN(Node_State, module),WANO_MODULE, OCLM_STR),
+		ovsdb_where_simple_typed(SCHEMA_COLUMN(Node_State, module),MAPTM_MODULE, OCLM_STR),
 		ovsdb_where_simple_typed(SCHEMA_COLUMN(Node_State, key),"maptMode", OCLM_STR),
 		NULL);
 
@@ -372,7 +372,7 @@ void maptm_eligibilityStop()
 
 /*Check IPv6 Mode is enabled */
 
-bool wano_ipv6IsEnabled()
+bool maptm_ipv6IsEnabled()
 {
 	struct schema_IPv6_Address addr;
 	int rc= 0;
@@ -390,7 +390,7 @@ void maptm_eligibilityStart(int WanConfig)
 {
 	intit_eligibility(); 
 	/*Check IPv6 is Enabled */
-	if(strucWanConfig.mapt_EnableIpv6 || wano_ipv6IsEnabled())
+	if(strucWanConfig.mapt_EnableIpv6 || maptm_ipv6IsEnabled())
 		WanConfig|=MAPTM_IPV6_ENABLE;
 	else 
 		WanConfig&=MAPTM_ELIGIBILITY_ENABLE;
