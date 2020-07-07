@@ -23,24 +23,23 @@
 #define LOGE    printf
 #endif
 
-bool osn_mapt_init(void);
 bool osn_mapt_configure(const char* brprefix, int ratio, const char* intfname, 
 							const char* wanintf, const char* IPv6prefix, const char* subnetcidr4, 
 							const char* ipv4PublicAddress, int PSIDoffset, int PSID);
 bool osn_mapt_stop();
 
 
-bool osn_mapt_init(void) {
-	return true;
-}
-
 bool osn_mapt_configure(const char* brprefix, int ratio, const char* intfname, 
 							const char* wanintf, const char* IPv6prefix, const char* subnetcidr4, 
 							const char* ipv4PublicAddress, int PSIDoffset, int PSID) {
 	char cmd[MAPTM_CMD_LEN]={0x0};
 
-	if (brprefix!=NULL && intfname!=NULL && wanintf!=NULL && IPv6prefix!=NULL && subnetcidr4!=NULL && ipv4PublicAddress!=NULL)
+    if (brprefix==NULL || intfname==NULL || wanintf==NULL || IPv6prefix==NULL || subnetcidr4==NULL || ipv4PublicAddress==NULL)
 	{
+	    LOG(ERR, "map-t: %s: Invalid parameter.", intfname);
+	    return false;
+	}
+	
 		snprintf(cmd, MAPTM_CMD_LEN,"ivictl -r -d -P %s -R %d -T ", brprefix, ratio);
 		/* We have to verify why cmd_log return false otherwise cmd is exc */
         LOGT("cmd:%s",cmd);
@@ -54,10 +53,6 @@ bool osn_mapt_configure(const char* brprefix, int ratio, const char* intfname,
         cmd_log(cmd);
 
 		return true;
-	}
-
-	LOGE("(errno: %d)\n", errno);
-	return false;
 	
 }
 
@@ -69,6 +64,5 @@ bool osn_mapt_stop() {
 		return true;
 	}
 	
-	LOGE("(errno: %d)\n", errno);
 	return false;
 }

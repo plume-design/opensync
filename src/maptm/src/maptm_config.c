@@ -52,15 +52,14 @@ struct ovsdb_table table_Netfilter;
 /*
  * Free MAPT struct
  */
-bool maptm_remove_maptStruct(struct mapt* mapt_rule)
+void maptm_remove_maptStruct(struct mapt* mapt_rule)
 {
    if(mapt_rule ==NULL)
-      return true;
+      return ;
    if(mapt_rule->dmr !=NULL ) free(mapt_rule->dmr);
    if(mapt_rule->ipv6prefix !=NULL ) free(mapt_rule->ipv6prefix);
    if(mapt_rule->ipv4prefix !=NULL ) free(mapt_rule->ipv4prefix);
    free(mapt_rule);
-   return true;
 }
 /*
  *  Free list node
@@ -103,9 +102,14 @@ struct mapt* parse_option_rule(char* rule)
       char *value;
       name = strsep(&p, "=");
       
-      if (name == NULL)  continue;
       value=p;
-      if (value == NULL)  continue;
+      name = strsep(&value, "=");
+      
+      if (value == NULL)
+      {
+		  LOG(DEBUG, "map-t: Error parsing rule.");
+		  continue;
+	  }
          
       if(!strncmp(name,"ealen",sizeof("ealen"))){
          mapt_rule->ealen = atoi(value);
@@ -210,7 +214,7 @@ int comparePrefix( const char *iapd_prefix, const char *mapt_prefix, int length)
  */
 struct mapt*  get_Mapt_Rule(char* option95,char* iapd)
 {
-   LOGD(" Get MAP-t Rules");
+   LOGT(" Get MAP-t Rules");
    if (!option95)
 		return NULL ;
    bool ret =false;
@@ -341,7 +345,7 @@ bool maptm_ovsdb_nfm_set_rule(const char* rule , bool enable)
 }
 bool maptm_ovsdb_nfm_rules(bool enable)
 {
-	LOGD("%s , config Firewall MAPT",__func__);
+	LOGT("%s , config Firewall MAPT",__func__);
 	if(!maptm_ovsdb_nfm_set_rule(V4_CHCEK_FORWARD,!enable)) 
 		return false ;
 	if(!maptm_ovsdb_nfm_set_rule(V4_MAPT_CHCEK_FORWARD,enable))
@@ -379,7 +383,7 @@ bool config_mapt()
 	int iapd_len=0;
 
 	char* flag= NULL;
-	snprintf(iapd,sizeof(iapd)-1,"%s",strucWanConfig.iapd);
+	snprintf(iapd,sizeof(iapd),"%s",strucWanConfig.iapd);
 
 	flag = strtok(iapd,",");
 	if(flag ==NULL) 
@@ -407,8 +411,8 @@ bool config_mapt()
    /* Add the Length to the Prefix v4/v6*/
    char ipv6prefix[100] = "";
    char ipv4PublicAddress[100] = "";
-   snprintf(ipv6prefix,sizeof(ipv6prefix)-1,"%s/%d",MaptConf->ipv6prefix,MaptConf->prefix6len);
-   snprintf(ipv4PublicAddress,sizeof(ipv4PublicAddress)-1,"%s/%d",MaptConf->ipv4PublicAddress,MaptConf->prefix4len);
+   snprintf(ipv6prefix,sizeof(ipv6prefix),"%s/%d",MaptConf->ipv6prefix,MaptConf->prefix6len);
+   snprintf(ipv4PublicAddress,sizeof(ipv4PublicAddress),"%s/%d",MaptConf->ipv4PublicAddress,MaptConf->prefix4len);
    /*Enable firewall*/
    if(!maptm_ovsdb_nfm_rules(true))
    {

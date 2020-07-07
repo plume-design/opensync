@@ -32,11 +32,11 @@ ovsdb_table_t table_Netfilter;
 ovsdb_table_t table_Node_Config;
 struct ovsdb_table table_Node_State;
 static ovsdb_table_t table_Interface;
-struct ovsdb_table table_IP_Interface;
-struct ovsdb_table table_Wifi_Inet_Config;
-struct ovsdb_table table_DHCPv6_Client;
-struct ovsdb_table table_DHCP_Client;
-struct ovsdb_table table_IPv6_Address;
+static ovsdb_table_t  table_IP_Interface;
+ovsdb_table_t  table_Wifi_Inet_Config;
+ovsdb_table_t  table_DHCPv6_Client;
+ovsdb_table_t  table_DHCP_Client;
+ovsdb_table_t  table_IPv6_Address;
 /* To change to Enum  */
 int WanConfig =0; 
 
@@ -49,12 +49,12 @@ bool maptm_update_mapt(bool enable)
 	rec_config._partial_update = true;
 
 	where = ovsdb_where_multi(
-		ovsdb_where_simple_typed(SCHEMA_COLUMN(Node_Config, module),"WANO", OCLM_STR),
+		ovsdb_where_simple_typed(SCHEMA_COLUMN(Node_Config, module),"MAPTM", OCLM_STR),
 		ovsdb_where_simple_typed(SCHEMA_COLUMN(Node_Config, key),"maptParams", OCLM_STR),
 		NULL);
 	if(!where)
 	{
-		LOGE("%s check current mode Dual-Stack",__func__);
+		LOGE("check current mode Dual-Stack");
 		goto exit;
 	}
 	if (enable)
@@ -88,7 +88,7 @@ bool maptm_persistent()
 	char mapt_support[10];
 	if (osp_ps_exists("MAPT_SUPPORT") )
 	{
-		if (osp_ps_get("MAPT_SUPPORT", mapt_support, 5) != true)
+		if (osp_ps_get("MAPT_SUPPORT", mapt_support, sizeof("MAPT_SUPPORT")) != true)
 		{
 			LOGE("%s Cannot get MAPT_SUPPORT Value", __func__ );
 			return false;
@@ -96,14 +96,14 @@ bool maptm_persistent()
 	}
 	else
 	{
-		snprintf(mapt_support,sizeof(mapt_support)-1, "%s", "true");
+		snprintf(mapt_support,sizeof(mapt_support), "%s", "true");
 		if ((osp_ps_set("MAPT_SUPPORT", mapt_support)) != true)
 		{
 			LOGE("%s Cannot save mapt support through osp API",__func__);
 			return false;
 		}
 	}
-	LOGD("%s MAPT_Support= %s",__func__,mapt_support);
+	LOGT("%s MAPT_Support= %s",__func__,mapt_support);
 
 	if(!strncmp(mapt_support,"true",sizeof("true")-1))
 	{
@@ -149,7 +149,7 @@ void callback_Node_Config(ovsdb_update_monitor_t *mon,
     if (mon->mon_type == OVSDB_UPDATE_NEW) {
         LOGD("%s: new node config entry: module %s, key: %s, value: %s",
              __func__, conf->module, conf->key, conf->value);
-        if(!strncmp(conf->module,"WANO",sizeof("WANO")))
+        if(!strncmp(conf->module,"MAPTM",sizeof("MAPTM")))
         {
 		if(maptm_get_supportValue(conf->value)==true){
 			 WanConfig |= MAPTM_ELIGIBILITY_ENABLE ;
