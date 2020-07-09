@@ -972,6 +972,11 @@ static Traffic__FlowKey *set_flow_key(struct flow_key *key)
     set_uint32((uint32_t)key->sport, &pb->tptsrcport, &pb->has_tptsrcport);
     set_uint32((uint32_t)key->dport, &pb->tptdstport, &pb->has_tptdstport);
 
+    pb->flowstate = set_pb_flowstate(&key->state);
+
+    /* Exit now if not requested to send vendor data */
+    if (!key->state.report_attrs) return pb;
+
     if (key->num_tags != 0)
     {
         /* Add the flow tags */
@@ -979,6 +984,7 @@ static Traffic__FlowKey *set_flow_key(struct flow_key *key)
         if (pb->flowtags == NULL) goto err_free_dstip;
 
         pb->n_flowtags = key->num_tags;
+        key->state.report_attrs = false;
     }
 
     if (key->num_vendor_data != 0)
@@ -987,9 +993,8 @@ static Traffic__FlowKey *set_flow_key(struct flow_key *key)
         if (pb->vendordata == NULL) goto err_free_flow_tags;
 
         pb->n_vendordata = key->num_vendor_data;
+        key->state.report_attrs = false;
     }
-
-    pb->flowstate = set_pb_flowstate(&key->state);
 
     return pb;
 
@@ -1413,6 +1418,9 @@ static Traffic__ObservationWindow * set_pb_window(struct flow_window *window)
 
     pb->has_endedat = true;
     pb->endedat = window->ended_at;
+
+    pb->has_droppedflows = (window->dropped_stats != 0);
+    pb->droppedflows = window->dropped_stats;
 
     /*
      * Accept windows with no stats, bail if stats are present and

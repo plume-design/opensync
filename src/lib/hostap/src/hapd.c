@@ -189,6 +189,11 @@ hapd_ctrl_cb(struct ctrl *ctrl, int level, const char *buf, size_t len)
         return;
     }
 
+    if (!strcmp(event, EV(WPS_EVENT_ENROLLEE_SEEN))) {
+        LOGD("%s: event: <%d> %s", ctrl->bss, level, buf);
+        return;
+    }
+
     LOGI("%s: event: <%d> %s", ctrl->bss, level, buf);
 }
 
@@ -468,6 +473,8 @@ hapd_conf_gen(struct hapd *hapd,
     if (kconfig_enabled(CONFIG_HOSTAP_PSK_FILE_WPS)) {
         csnprintf(&buf, &len, "wps_state=%d\n", vconf->wps ? 2 : 0);
         csnprintf(&buf, &len, "eap_server=%d\n", vconf->wps ? 1 : 0);
+        csnprintf(&buf, &len, "config_methods=virtual_push_button\n");
+        csnprintf(&buf, &len, "pbc_in_m1=1\n");
     }
 
     WARN_ON(len == 1); /* likely buf was truncated */

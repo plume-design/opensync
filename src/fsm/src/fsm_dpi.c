@@ -282,6 +282,8 @@ fsm_init_dpi_plugin(struct fsm_session *session)
     dpi_plugin->bound = false;
 
     dpi_plugin->targets = fsm_get_other_config_val(session, "targeted_devices");
+    dpi_plugin->excluded_targets = fsm_get_other_config_val(session,
+                                                            "excluded_devices");
 
     ret = fsm_dpi_add_plugin_to_dispatcher(session);
     if (!ret) return ret;
@@ -586,7 +588,7 @@ fsm_init_dpi_dispatcher(struct fsm_session *session)
     node_info.node_id = mgr->node_id;
     aggr_set.info = &node_info;
     aggr_set.num_windows = 1;
-    aggr_set.acc_ttl = 60;
+    aggr_set.acc_ttl = 120;
     aggr_set.report_type = NET_MD_REPORT_ABSOLUTE;
     aggr_set.report_filter = fsm_dpi_report_filter;
     aggr_set.send_report = net_md_send_report;
@@ -738,6 +740,27 @@ fsm_dpi_bind_plugins(struct fsm_session *session)
     }
 }
 
+
+static void
+fsm_update_dpi_plugin(struct fsm_session *session)
+{
+    union fsm_dpi_context *plugin_dpi_context;
+    struct fsm_dpi_plugin *plugin;
+
+    plugin_dpi_context = session->dpi;
+    plugin = &plugin_dpi_context->plugin;
+
+    plugin->targets = fsm_get_other_config_val(session,
+                                               "targeted_devices");
+    plugin->excluded_targets = fsm_get_other_config_val(session,
+                                                        "excluded_devices");
+    LOGD("%s: %s: targeted_devices: %s", __func__, session->name,
+         plugin->targets ? plugin->targets : "None");
+    LOGD("%s: %s: excluded_devices: %s", __func__, session->name,
+         plugin->excluded_targets ? plugin->excluded_targets : "None") ;
+}
+
+
 /**
  * @brief initializes the dpi reources of a dpi session
  *
@@ -747,16 +770,24 @@ fsm_dpi_bind_plugins(struct fsm_session *session)
  * @return true if the initialization succeeded, false otherwise
  */
 bool
-fsm_init_dpi_context(struct fsm_session *session)
+fsm_update_dpi_context(struct fsm_session *session)
 {
     union fsm_dpi_context *dpi_context;
     bool ret;
 
     if (!fsm_is_dpi(session)) return true;
 
-    /* Bail if already initialized */
-    if (session->dpi != NULL) return true;
+    /* Update if already initialized */
+    if (session->dpi != NULL)
+    {
+        if (session->type == FSM_DPI_PLUGIN)
+        {
+            fsm_update_dpi_plugin(session);
+        }
+        return true;
+    }
 
+    /* Allocate a new context */
     dpi_context = calloc(1, sizeof(*dpi_context));
     if (dpi_context == NULL) return false;
 
@@ -956,7 +987,7 @@ fsm_dpi_find_mac_in_val(os_macaddr_t *mac, char *val)
     bool rc;
     int ret;
 
-    if (val == NULL) return true;
+    if (val == NULL) return false;
 
     snprintf(mac_s, sizeof(mac_s), PRI_os_macaddr_lower_t,
              FMT_os_macaddr_pt(mac));
@@ -981,7 +1012,7 @@ fsm_dpi_find_macs_in_val(struct eth_header *eth_hdr, char *val)
 {
     bool rc;
 
-    if (val == NULL) return true;
+    if (val == NULL) return false;
 
     rc = fsm_dpi_find_mac_in_val(eth_hdr->srcmac, val);
     rc |= fsm_dpi_find_mac_in_val(eth_hdr->dstmac, val);
@@ -1010,9 +1041,10 @@ fsm_dispatch_pkt(struct net_header_parser *net_parser)
     struct eth_header *eth_hdr;
     struct fsm_mgr *mgr;
     ds_tree_t *tree;
+    bool excluded;
+    bool included;
     bool drop;
     bool pass;
-    bool rc;
 
     eth_hdr = &net_parser->eth_header;
 
@@ -1039,9 +1071,33 @@ fsm_dispatch_pkt(struct net_header_parser *net_parser)
         plugin_dpi_context = dpi_plugin->dpi;
         plugin = &plugin_dpi_context->plugin;
 
+        /* Check if the source or dest device is an excluded target */
+        if (plugin->excluded_targets == NULL)
+        {
+            excluded = false;
+        }
+        else
+        {
+            excluded = fsm_dpi_find_macs_in_val(eth_hdr,
+                                                plugin->excluded_targets);
+        }
+        if (excluded)
+        {
+            info = ds_tree_next(tree, info);
+            continue;
+        }
+
         /* Check if the source or dest device is a target */
-        rc = fsm_dpi_find_macs_in_val(eth_hdr, plugin->targets);
-        if (!rc)
+        /* No explicit target means include */
+        if (plugin->targets == NULL)
+        {
+            included = true;
+        }
+        else
+        {
+            included = fsm_dpi_find_macs_in_val(eth_hdr, plugin->targets);
+        }
+        if (!included)
         {
             info = ds_tree_next(tree, info);
             continue;

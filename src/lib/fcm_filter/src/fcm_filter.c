@@ -243,6 +243,7 @@ free_rule:
     return -1;
 }
 
+
 void free_filter_app(struct fcm_filter_app *app)
 {
     if (!app) return;
@@ -306,6 +307,20 @@ int free_schema_struct(schema_FCM_Filter_rule_t *rule)
     rule->action = 0;
     return 0;
 }
+
+static void
+fcm_remove_rule_from_filter(ds_dlist_t *filter_head, struct fcm_filter *rule)
+{
+    if (!filter_head || !rule) return;
+
+    LOGT("fcm_filter: Removing filter with index %d", rule->filter_rule.index);
+    ds_dlist_remove(filter_head, rule);
+    free_schema_struct(&rule->filter_rule);
+    free_filter_app(&rule->app);
+    free(rule);
+    return;
+}
+
 
 /**
  * fcm_filter_find_rule: looks up a rule that matches unique index
@@ -1153,12 +1168,8 @@ void fcm_delete_filter(struct schema_FCM_Filter *filter)
 
     rule = fcm_filter_find_rule(filter_head, filter->index);
 
-    LOGT("fcm_filter: Removing filter index %d = index %d", rule->filter_rule.index,
-         filter->index);
-    ds_dlist_remove(filter_head, rule);
-    free_schema_struct(&rule->filter_rule);
-    free_filter_app(&rule->app);
-    free(rule);
+
+    fcm_remove_rule_from_filter(filter_head, rule);
 
     if (LOG_SEVERITY_ENABLED(LOG_SEVERITY_TRACE))
         fcm_filter_print();
@@ -1190,8 +1201,7 @@ void fcm_update_filter(struct schema_FCM_Filter *old_rec,
         rule = fcm_filter_find_rule(filter_head, old_rec->index);
 
         if (rule) {
-            free_schema_struct(&rule->filter_rule);
-            free_filter_app(&rule->app);
+            fcm_remove_rule_from_filter(filter_head, rule);
         }
     }
 

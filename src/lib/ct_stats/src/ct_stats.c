@@ -143,7 +143,7 @@ ct_stats_init_server(struct imc_context *server, struct ev_loop *loop,
  *
  * @param server the imc context of the server
  */
-static void
+void
 ct_stats_terminate_server(struct imc_context *server)
 {
     if (g_imc_context.terminate_server == NULL) return;
@@ -156,18 +156,107 @@ ct_stats_terminate_server(struct imc_context *server)
 /**
  * Singleton tracking the plugin state
  */
-static flow_stats_t g_ct_stats;
+static flow_stats_mgr_t g_ct_stats =
+{
+    .initialized = false,
+};
+
+
+/**
+ * @brief compare sessions
+ *
+ * @param a session pointer
+ * @param b session pointer
+ * @return 0 if sessions matches
+ */
+static int
+ct_stats_session_cmp(void *a, void *b)
+{
+    uintptr_t p_a = (uintptr_t)a;
+    uintptr_t p_b = (uintptr_t)b;
+
+    if (p_a ==  p_b) return 0;
+    if (p_a < p_b) return -1;
+    return 1;
+}
+
+
+/**
+ * @brief look up a session
+ *
+ * Looks up a session.
+ * @param session the session to lookup
+ * @return the session if found, NULL otherwise
+ */
+flow_stats_t *
+ct_stats_lookup_session(fcm_collect_plugin_t *collector)
+{
+    flow_stats_t *ct_stats;
+    flow_stats_mgr_t *mgr;
+    ds_tree_t *sessions;
+
+    mgr = ct_stats_get_mgr();
+    sessions = &mgr->ct_stats_sessions;
+
+    ct_stats = ds_tree_find(sessions, collector);
+    return ct_stats;
+}
+
+
+/**
+ * @brief look up or allocate a session
+ *
+ * Looks up a session, and allocates it if not found.
+ * @param session the session to lookup
+ * @return the found/allocated session, or NULL if the allocation failed
+ */
+flow_stats_t *
+ct_stats_get_session(fcm_collect_plugin_t *collector)
+{
+    flow_stats_t *ct_stats;
+    flow_stats_mgr_t *mgr;
+    ds_tree_t *sessions;
+
+    mgr = ct_stats_get_mgr();
+    sessions = &mgr->ct_stats_sessions;
+
+    ct_stats = ds_tree_find(sessions, collector);
+    if (ct_stats != NULL) return ct_stats;
+
+    LOGD("%s: Adding a new session", __func__);
+    ct_stats = calloc(1, sizeof(*ct_stats));
+    if (ct_stats == NULL) return NULL;
+
+    ct_stats->initialized = false;
+
+    ds_tree_insert(sessions, ct_stats, collector);
+    return ct_stats;
+}
 
 
 /**
  * @brief returns the pointer to the plugin's global state tracker
  */
-flow_stats_t *
+flow_stats_mgr_t *
 ct_stats_get_mgr(void)
 {
     return &g_ct_stats;
 }
 
+
+/**
+ * @brief returns the pointer to the active plugin
+ */
+flow_stats_t *
+ct_stats_get_active_instance(void)
+{
+    flow_stats_mgr_t *mgr;
+
+    mgr = ct_stats_get_mgr();
+    if (mgr == NULL) return NULL;
+
+    return mgr->active;
+}
 
 /**
  * @brief popludates a sockaddr_storage structure from ip parameters
@@ -778,10 +867,10 @@ data_cb(const struct nlmsghdr *nlh, void *data)
         ct_zone = 0; /* Zone = 0 flows will not have CTA_ZONE */
     }
 
-    if (ct_zone != g_ct_stats.ct_zone) return MNL_CB_OK;
+    if (ct_zone != ct_stats->ct_zone) return MNL_CB_OK;
 
     LOGT("%s: Included IP flow for ct_zone: %d", __func__,
-         g_ct_stats.ct_zone);
+         ct_stats->ct_zone);
 
     flow_info = calloc(1, sizeof(struct ctflow_info));
     if(flow_info == NULL) return MNL_CB_OK;
@@ -869,12 +958,17 @@ int
 ct_stats_get_ct_flow(int af_family)
 {
     char buf[MNL_SOCKET_BUFFER_SIZE];
+    flow_stats_t *ct_stats;
+    flow_stats_mgr_t *mgr;
     struct mnl_socket *nl;
     struct nlmsghdr *nlh;
     struct nfgenmsg *nfh;
     uint32_t seq, portid;
     int ret;
     int rc;
+
+    ct_stats = ct_stats_get_active_instance();
+    if (ct_stats == NULL) return -1;
 
     nl = mnl_socket_open(NETLINK_NETFILTER);
     if (nl == NULL)
@@ -920,7 +1014,7 @@ ct_stats_get_ct_flow(int af_family)
             return 1;
         }
 
-        ret = mnl_cb_run(buf, ret, seq, portid, data_cb, &g_ct_stats);
+        ret = mnl_cb_run(buf, ret, seq, portid, data_cb, ct_stats);
         if (ret == -1)
         {
             ret = errno;
@@ -931,15 +1025,19 @@ ct_stats_get_ct_flow(int af_family)
     }
 
     mnl_socket_close(nl);
-#ifdef CT_DEBUG_PRINT
-    ctflow_info_t *flow_info = NULL;
-    ds_dlist_foreach(&g_ct_stats.ctflow_list, flow_info)
+
+    mgr = ct_stats_get_mgr();
+    if (mgr->debug)
     {
-        ct_stats_print_contrack(&flow_info->flow);
+        ctflow_info_t *flow_info = NULL;
+        ds_dlist_foreach(&ct_stats->ctflow_list, flow_info)
+        {
+            ct_stats_print_contrack(&flow_info->flow);
+        }
     }
-#endif
+
     if (LOG_SEVERITY_ENABLED(LOG_SEVERITY_TRACE))
-        LOGT("%s: total ct flow %d", __func__, g_ct_stats.node_count);
+        LOGT("%s: total ct flow %d", __func__, ct_stats->node_count);
 
     return 0;
 }
@@ -1169,19 +1267,61 @@ ct_flow_add_sample(flow_stats_t *ct_stats)
 }
 
 /**
+ * @brief collector filter callback processing flows pushed from fsm
+ *
+ * @param aggr the aggregator processed in the network_metadata library
+ * @key the flow key pushed by fsm
+ * This routine applies the collector filter on flows provided by FSM.
+ */
+static bool
+ct_stats_collect_filter_cb(struct net_md_aggregator *aggr,
+                           struct net_md_flow_key *key)
+{
+    fcm_collect_plugin_t *collector;
+    flow_stats_t *ct_stats;
+    bool rc;
+
+    ct_stats = ct_stats_get_active_instance();
+    if (ct_stats == NULL)
+    {
+        LOGD("%s: noactive instance", __func__);
+        return false;
+    }
+
+    collector = ct_stats->collector;
+    fcm_filter_context_init(collector);
+    if (key->ip_version == 4 ||
+        key->ip_version == 6)
+    {
+        if (ct_stats_filter_ip((key->ip_version == 4 ? AF_INET : AF_INET6), key->dst_ip))
+        {
+            LOGD("%s: Dropping  v4/v6 broadcast/multicast flows.", __func__);
+            return false;
+        }
+    }
+
+    rc = fcm_collect_filter_nmd_callback(key);
+
+    return rc;
+}
+
+
+/**
  * @brief allocates a flow aggregator
  *
  * @param the collector info passed by fcm
  * @return 0 if successful, -1 otherwise
  */
 static int
-alloc_aggr(fcm_collect_plugin_t *collector)
+alloc_aggr(flow_stats_t *ct_stats)
 {
     struct net_md_aggregator_set aggr_set;
+    fcm_collect_plugin_t *collector;
     struct net_md_aggregator *aggr;
     struct node_info node_info;
     int report_type;
 
+    collector = ct_stats->collector;
     memset(&aggr_set, 0, sizeof(aggr_set));
     node_info.node_id = collector->get_mqtt_hdr_node_id();
     node_info.location_id = collector->get_mqtt_hdr_loc_id();
@@ -1202,9 +1342,10 @@ alloc_aggr(fcm_collect_plugin_t *collector)
     }
 
     aggr_set.report_type = report_type;
-    aggr_set.num_windows = 1;;
+    aggr_set.num_windows = 1;
     aggr_set.acc_ttl = (2 * collector->report_interval);
-    aggr_set.report_filter = fcm_filter_nmd_callback;
+    aggr_set.report_filter = fcm_report_filter_nmd_callback;
+    aggr_set.collect_filter = ct_stats_collect_filter_cb;
     aggr_set.neigh_lookup = neigh_table_lookup;
     aggr = net_md_allocate_aggregator(&aggr_set);
     if (aggr == NULL)
@@ -1212,8 +1353,9 @@ alloc_aggr(fcm_collect_plugin_t *collector)
         LOGD("%s: Aggregator allocation failed", __func__);
         return -1;
     }
-    g_ct_stats.aggr = aggr;
-    collector->plugin_ctx = aggr;
+
+    ct_stats->aggr = aggr;
+    collector->plugin_ctx = ct_stats;
 
     return 0;
 }
@@ -1228,9 +1370,12 @@ int
 ct_stats_activate_window(fcm_collect_plugin_t *collector)
 {
     struct net_md_aggregator *aggr;
+    flow_stats_t *ct_stats;
     bool ret;
 
-    aggr = collector->plugin_ctx;
+    ct_stats = collector->plugin_ctx;
+    aggr = ct_stats->aggr;
+
     if (aggr == NULL)
     {
         LOGD("%s: Aggregator is empty", __func__);
@@ -1258,9 +1403,11 @@ void
 ct_stats_close_window(fcm_collect_plugin_t *collector)
 {
     struct net_md_aggregator *aggr;
+    flow_stats_t *ct_stats;
     bool ret;
 
-    aggr = collector->plugin_ctx;
+    ct_stats = collector->plugin_ctx;
+    aggr = ct_stats->aggr;
 
     if (aggr == NULL) return;
 
@@ -1284,10 +1431,13 @@ void
 ct_stats_send_aggr_report(fcm_collect_plugin_t *collector)
 {
     struct net_md_aggregator *aggr;
+    flow_stats_t *ct_stats;
     size_t n_flows;
     bool ret;
 
-    aggr = collector->plugin_ctx;
+    ct_stats = collector->plugin_ctx;
+    aggr = ct_stats->aggr;
+
     if (aggr == NULL) return;
 
     n_flows = net_md_get_total_flows(aggr);
@@ -1314,9 +1464,15 @@ ct_stats_send_aggr_report(fcm_collect_plugin_t *collector)
 void
 ct_stats_collect_cb(fcm_collect_plugin_t *collector)
 {
+    flow_stats_t *ct_stats;
+    flow_stats_mgr_t *mgr;
     int rc;
 
     if (collector == NULL) return;
+
+    mgr = ct_stats_get_mgr();
+    ct_stats = collector->plugin_ctx;
+    if (ct_stats != mgr->active) return;
 
     rc = ct_stats_get_ct_flow(AF_INET);
     if (rc == -1)
@@ -1331,8 +1487,10 @@ ct_stats_collect_cb(fcm_collect_plugin_t *collector)
         LOGE("%s: conntrack flow collection error", __func__);
         return;
     }
-    g_ct_stats.collect_filter = collector->filters.collect;
-    ct_flow_add_sample(&g_ct_stats);
+
+    ct_stats = collector->plugin_ctx;
+    ct_stats->collect_filter = collector->filters.collect;
+    ct_flow_add_sample(ct_stats);
 }
 
 
@@ -1344,28 +1502,53 @@ ct_stats_collect_cb(fcm_collect_plugin_t *collector)
 void
 ct_stats_report_cb(fcm_collect_plugin_t *collector)
 {
+    struct net_md_aggregator *aggr;
+    unsigned long max_flows;
+    flow_stats_t *ct_stats;
+    char *str_max_flows;
     uint16_t tmp_zone;
     char *ct_zone;
 
-
     if (collector == NULL) return;
+
     if (collector->mqtt_topic == NULL) return;
+
+    ct_stats = ct_stats_get_active_instance();
+    if (ct_stats != collector->plugin_ctx) return;
 
     fcm_filter_context_init(collector);
     ct_stats_close_window(collector);
     ct_stats_send_aggr_report(collector);
     ct_stats_activate_window(collector);
+
     /* Accept zone change after reporting */
     ct_zone = collector->get_other_config(collector, "ct_zone");
-
     tmp_zone = 0;
     if (ct_zone) tmp_zone = atoi(ct_zone);
 
-    if (g_ct_stats.ct_zone != tmp_zone)
+    if (ct_stats->ct_zone != tmp_zone)
     {
-        g_ct_stats.ct_zone = tmp_zone;
-        LOGD("%s: updated zone: %d", __func__, g_ct_stats.ct_zone);
+        ct_stats->ct_zone = tmp_zone;
+        LOGD("%s: updated zone: %d", __func__, ct_stats->ct_zone);
     }
+
+    str_max_flows = collector->get_other_config(collector,
+                                                "max_flows_per_window");
+    max_flows = 0;
+    if (str_max_flows != NULL)
+    {
+        max_flows = strtoul(str_max_flows, NULL, 10);
+        if (max_flows == ULONG_MAX)
+        {
+            LOGD("%s: conversion of %s failed: %s", __func__,
+                 str_max_flows, strerror(errno));
+            max_flows = 0;
+        }
+    }
+    aggr = collector->plugin_ctx;
+    if (aggr == NULL) return;
+
+    aggr->max_reports = (size_t)max_flows;
 }
 
 
@@ -1377,23 +1560,10 @@ ct_stats_report_cb(fcm_collect_plugin_t *collector)
 void
 ct_stats_plugin_close_cb(fcm_collect_plugin_t *collector)
 {
-    struct net_md_aggregator *aggr;
-    struct imc_context *server;
-
     LOGD("%s: CT stats plugin stopped", __func__);
-    aggr = collector->plugin_ctx;
+    ct_stats_plugin_exit(collector);
 
-    if (aggr == NULL)
-    {
-        LOGD("%s: Aggregator is empty\n", __func__);
-        return;
-    }
-
-    ct_stats_close_window(collector);
-    net_md_free_aggregator(aggr);
-
-    server = &g_imc_server;
-    ct_stats_terminate_server(server);
+    return;
 }
 
 
@@ -1408,8 +1578,16 @@ test_recv_cb(void *data, size_t len)
 {
     struct net_md_aggregator *aggr;
     struct packed_buffer recv_pb;
+    flow_stats_t *ct_stats;
 
-    aggr = g_ct_stats.aggr;
+    ct_stats = ct_stats_get_active_instance();
+    if (ct_stats == NULL)
+    {
+        LOGD("%s: No active instance", __func__);
+        return;
+    }
+
+    aggr = ct_stats->aggr;
     recv_pb.buf = data;
     recv_pb.len = len;
     net_md_update_aggr(aggr, &recv_pb);
@@ -1445,49 +1623,199 @@ err_init_imc:
     return -1;
 }
 
+
 /**
- * @brief initializes the ct_stats collector
+ * @brief initializes a ct_stats collector session
  *
  * @param collector ct_stats object provided by fcm
  */
 int
 ct_stats_plugin_init(fcm_collect_plugin_t *collector)
 {
+    struct net_md_aggregator *aggr;
+    unsigned long max_flows;
+    flow_stats_t *ct_stats;
+    flow_stats_mgr_t *mgr;
+    char *str_max_flows;
     char *ct_zone;
+    char *active;
+    char *name;
     int rc;
 
-    g_ct_stats.node_count = 0;
+    mgr = ct_stats_get_mgr();
+    if (!mgr->initialized) ct_stats_init_mgr(collector->loop);
 
+    if (mgr->num_sessions == mgr->max_sessions)
+    {
+        LOGI("%s: max session %d reached. Exiting", __func__,
+             mgr->max_sessions);
+        return -1;
+    }
+
+    ct_stats = ct_stats_get_session(collector);
+
+    if (ct_stats == NULL)
+    {
+        LOGD("%s: could not add instance", __func__);
+        return -1;
+    }
+
+    if (ct_stats->initialized) return 0;
+    ct_stats->collector = collector;
+    ct_stats->node_count = 0;
+    ct_stats->name = collector->name;
     collector->collect_periodic = ct_stats_collect_cb;
     collector->send_report = ct_stats_report_cb;
     collector->close_plugin = ct_stats_plugin_close_cb;
 
     fcm_filter_context_init(collector);
 
-    ds_dlist_init(&g_ct_stats.ctflow_list, ctflow_info_t, dl_node);
+    ds_dlist_init(&ct_stats->ctflow_list, ctflow_info_t, dl_node);
 
     ct_zone = collector->get_other_config(collector, "ct_zone");
-    if (ct_zone) g_ct_stats.ct_zone = atoi(ct_zone);
-    else g_ct_stats.ct_zone = 0;
-    LOGD("%s: configured zone: %d", __func__, g_ct_stats.ct_zone);
+    if (ct_zone) ct_stats->ct_zone = atoi(ct_zone);
+    else ct_stats->ct_zone = 0;
+    LOGD("%s: configured zone: %d", __func__, ct_stats->ct_zone);
 
-    g_ct_stats.loop = collector->loop;
-
-    rc = alloc_aggr(collector);
+    rc = alloc_aggr(ct_stats);
     if (rc != 0) return -1;
+
+    str_max_flows = collector->get_other_config(collector,
+                                                "max_flows_per_window");
+    max_flows = 0;
+    if (str_max_flows != NULL)
+    {
+        max_flows = strtoul(str_max_flows, NULL, 10);
+        if (max_flows == ULONG_MAX)
+        {
+            LOGD("%s: conversion of %s failed: %s", __func__,
+                 str_max_flows, strerror(errno));
+            max_flows = 0;
+        }
+    }
+
+    /* Check if the session ihas the active key set */
+    active = collector->get_other_config(collector,
+                                         "active");
+    aggr = ct_stats->aggr;
+    if (aggr == NULL) goto err;
+
+    aggr->max_reports = (size_t)max_flows;
 
     rc = ct_stats_activate_window(collector);
     if (rc != 0) goto err;
 
-    rc = ct_stats_imc_init();
-    if (rc != 0) goto err;
+    ct_stats->initialized = true;
+
+    /* Check if the session has a name */
+    name = collector->name;
+    mgr->num_sessions++;
+    if (mgr->num_sessions == 1)
+    {
+        LOGI("%s: %s is now the active session", __func__,
+             name ? name : "default");
+        mgr->active = ct_stats;
+        return 0;
+    }
+
+    /* Check if the session has the active key set */
+    active = collector->get_other_config(collector,
+                                         "active");
+    if (active != NULL)
+    {
+        LOGI("%s: %s is now the active session", __func__,
+             name ? name : "default");
+        mgr->active = ct_stats;
+    }
 
     return 0;
 
 err:
-    net_md_free_aggregator(g_ct_stats.aggr);
+    net_md_free_aggregator(ct_stats->aggr);
     collector->plugin_ctx = NULL;
-    g_ct_stats.aggr = NULL;
+    ct_stats->aggr = NULL;
 
     return -1;
+}
+
+/**
+ * @brief delete ct_stats collector session
+ *
+ * @param collector ct_stats object provided by fcm
+ */
+void
+ct_stats_plugin_exit(fcm_collect_plugin_t *collector)
+{
+    struct net_md_aggregator *aggr;
+    flow_stats_t *ct_stats;
+    flow_stats_mgr_t *mgr;
+
+    mgr = ct_stats_get_mgr();
+    if (!mgr->initialized) return;
+
+    if (mgr->num_sessions == 0) return;
+    mgr->num_sessions--;
+
+    ct_stats = ct_stats_lookup_session(collector);
+
+    if (ct_stats == NULL)
+    {
+        LOGI("%s: could not find instance", __func__);
+        return;
+    }
+
+    /* free the aggregator */
+    aggr = ct_stats->aggr;
+    net_md_close_active_window(aggr);
+    net_md_free_aggregator(aggr);
+
+    /* delete the session */
+    ds_tree_remove(&mgr->ct_stats_sessions, ct_stats);
+    free(ct_stats);
+
+    /* mark the remaining session as active if any */
+    ct_stats = ds_tree_head(&mgr->ct_stats_sessions);
+    if (ct_stats != NULL) mgr->active = ct_stats;
+
+    return;
+}
+
+void
+ct_stats_init_mgr(struct ev_loop *loop)
+{
+    flow_stats_mgr_t *mgr;
+    int rc;
+
+    mgr = ct_stats_get_mgr();
+    memset(mgr, 0, sizeof(*mgr));
+    mgr->loop = loop;
+    mgr->max_sessions = 2;
+    ds_tree_init(&mgr->ct_stats_sessions, ct_stats_session_cmp,
+                 flow_stats_t, ct_stats_node);
+
+    rc = ct_stats_imc_init();
+    if (rc != 0) goto err;
+
+    rc = nf_ct_init(loop);
+    if (rc != 0) goto err;
+
+    mgr->debug = false;
+    mgr->initialized = true;
+
+    return;
+
+err:
+    mgr->initialized = false;
+}
+
+void
+ct_stats_exit_mgr(void)
+{
+    flow_stats_mgr_t *mgr;
+
+    nf_ct_exit();
+
+    mgr = ct_stats_get_mgr();
+    memset(mgr, 0, sizeof(*mgr));
+    mgr->initialized = false;
 }

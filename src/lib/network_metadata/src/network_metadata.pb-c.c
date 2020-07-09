@@ -1087,7 +1087,7 @@ const ProtobufCMessageDescriptor traffic__flow_stats__descriptor =
   (ProtobufCMessageInit) traffic__flow_stats__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
-static const ProtobufCFieldDescriptor traffic__observation_window__field_descriptors[3] =
+static const ProtobufCFieldDescriptor traffic__observation_window__field_descriptors[4] =
 {
   {
     "startedAt",
@@ -1125,8 +1125,21 @@ static const ProtobufCFieldDescriptor traffic__observation_window__field_descrip
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
+  {
+    "droppedFlows",
+    4,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_UINT32,
+    offsetof(Traffic__ObservationWindow, has_droppedflows),
+    offsetof(Traffic__ObservationWindow, droppedflows),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
 };
 static const unsigned traffic__observation_window__field_indices_by_name[] = {
+  3,   /* field[3] = droppedFlows */
   1,   /* field[1] = endedAt */
   2,   /* field[2] = flowStats */
   0,   /* field[0] = startedAt */
@@ -1134,7 +1147,7 @@ static const unsigned traffic__observation_window__field_indices_by_name[] = {
 static const ProtobufCIntRange traffic__observation_window__number_ranges[1 + 1] =
 {
   { 1, 0 },
-  { 0, 3 }
+  { 0, 4 }
 };
 const ProtobufCMessageDescriptor traffic__observation_window__descriptor =
 {
@@ -1144,7 +1157,7 @@ const ProtobufCMessageDescriptor traffic__observation_window__descriptor =
   "Traffic__ObservationWindow",
   "traffic",
   sizeof(Traffic__ObservationWindow),
-  3,
+  4,
   traffic__observation_window__field_descriptors,
   traffic__observation_window__field_indices_by_name,
   1,  traffic__observation_window__number_ranges,

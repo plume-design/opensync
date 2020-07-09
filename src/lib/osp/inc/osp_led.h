@@ -50,7 +50,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /**
  * Available LED states
- * 
+ *
  * These are business logic level LED states, implemented by target layer.
  */
 enum osp_led_state
@@ -71,6 +71,7 @@ enum osp_led_state
     OSP_LED_ST_UPGRADING,       /**< Upgrade in progress */
     OSP_LED_ST_UPGRADED,        /**< Upgrade finished */
     OSP_LED_ST_UPGRADEFAIL,     /**< Upgrade failed */
+    OSP_LED_ST_HWTEST,          /**< Hardware test - FQC */
     OSP_LED_ST_LAST             /**< (table sentinel) */
 };
 
@@ -99,7 +100,7 @@ int osp_led_set_state(enum osp_led_state state, uint32_t priority);
 
 /**
  * Clear a LED state
- * 
+ *
  * If the specified state has the highest priority when being cleared, the
  * next highest priority state is applied.
  * If there are no states on the LED state stack, @ref OSP_LED_ST_IDLE is applied.

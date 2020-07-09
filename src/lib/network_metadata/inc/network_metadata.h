@@ -54,6 +54,7 @@ struct flow_state
     time_t   last_obs;
     bool     fstart;
     bool     fend;
+    bool     report_attrs;
 };
 
 /**
@@ -117,6 +118,7 @@ struct flow_window
     uint64_t ended_at;               /*!< time window end (epoch) */
     size_t num_stats;                /*!< # of reported flow stats containers */
     size_t provisioned_stats;        /*!< # of provisioned flow stats containers */
+    size_t dropped_stats;            /*!< # of dropped flow stats containers */
     struct flow_stats **flow_stats;  /*!< array of flow stats containers */
 };
 

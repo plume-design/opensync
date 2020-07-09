@@ -73,7 +73,6 @@ struct neigh_table_mgr
     ds_tree_t neigh_table;
     ds_tree_t interfaces;
     bool (*update_ovsdb_tables)(struct neighbour_entry *key, bool remove);
-    void (*ovsdb_init)(void);
 };
 
 
@@ -86,7 +85,8 @@ enum source
     FSM_ARP                 = OVSDB_ARP,
     OVSDB_NDP               = 1 << 4,
     FSM_NDP                 = OVSDB_NDP,
-    NEIGH_UT                = 1 << 5,
+    OVSDB_INET_STATE        = 1 << 5,
+    NEIGH_UT                = 1 << 6,
 };
 
 struct neigh_mapping_source
@@ -94,8 +94,6 @@ struct neigh_mapping_source
     char *source;
     int source_enum;
 };
-
-#define NEIGH_CACHE_INTERVAL       600
 
 struct neigh_table_mgr
 *neigh_table_get_mgr(void);

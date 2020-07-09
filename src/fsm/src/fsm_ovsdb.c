@@ -470,7 +470,7 @@ fsm_session_update(struct fsm_session *session,
     ret = fsm_is_dpi(session);
     if (ret)
     {
-        ret = fsm_init_dpi_context(session);
+        ret = fsm_update_dpi_context(session);
         if (!ret) goto err_free_fconf;
     }
 

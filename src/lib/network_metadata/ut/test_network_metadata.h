@@ -96,4 +96,8 @@ void test_flow_tags_one_key(void);
 void test_vendor_data_one_key(void);
 void test_flow_key_to_net_md_key(void);
 void test_vendor_data_serialize_deserialize(void);
+void test_update_flow_tags(void);
+void test_update_vendor_data(void);
+void test_update_filter_flow_tags(void);
+
 #endif // __TEST_NETWORK_METADATA_H__

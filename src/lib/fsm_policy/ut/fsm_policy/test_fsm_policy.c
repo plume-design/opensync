@@ -849,6 +849,7 @@ void test_fsm_policy_client(void)
     /* Register the client with no matching policy yet */
     spolicy = &spolicies[2];
     client->name = strdup(spolicy->policy);
+    client->session = session;
     TEST_ASSERT_NOT_NULL(client->name);
     fsm_policy_register_client(client);
     TEST_ASSERT_NULL(client->table);
@@ -862,6 +863,7 @@ void test_fsm_policy_client(void)
     /* Validate that the client's table pointer was updated */
     TEST_ASSERT_NOT_NULL(client->table);
     TEST_ASSERT_TRUE(table == client->table);
+    fsm_policy_deregister_client(client);
 
     free(client->name);
     free(client);

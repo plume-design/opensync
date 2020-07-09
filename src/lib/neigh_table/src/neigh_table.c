@@ -673,6 +673,7 @@ int lookup_sources[] =
     NEIGH_TBL_SYSTEM,
     OVSDB_NDP,
     OVSDB_ARP,
+    OVSDB_INET_STATE,
     NEIGH_SRC_NOT_SET,
     NEIGH_UT,
 };

@@ -109,21 +109,33 @@ static bool cm2_cpu_is_low_loadavg(void) {
     return retval;
 }
 
-static bool cm2_restore_connection(int cnt)
+static void cm2_restore_connection(int cnt)
 {
     char command[128];
-    bool ret = true;
+    bool ret;
 
-    LOGI("Trying restore connection");
-    if (cm2_is_eth_type(g_state.link.if_type)) {
+    if (cnt <= 0)
+        return;
+
+    if (!cm2_is_eth_type(g_state.link.if_type))
+        return;
+
+    sprintf(command, "sh "CONFIG_INSTALL_PREFIX"/scripts/kick-ethernet.sh %d 0 3 ", cnt);
+    LOGD("%s: Command: %s", __func__, command);
+    ret = target_device_execute(command);
+    if (!ret)
+        LOGW("kick-ethernet.sh: Checking port map failed");
+
+    if (cnt % CONFIG_CM2_STABILITY_THRESH_REST_CON == 0) {
+        LOGI("Trying restore connection");
         sprintf(command, "sh "CONFIG_INSTALL_PREFIX"/scripts/kick-ethernet.sh %d 0 2 ", cnt);
         LOGD("%s: Command: %s", __func__, command);
         ret = target_device_execute(command);
         if (!ret)
-            LOGW("Trigger ethernet kick script failed");
+            LOGW("kick-ethernet.sh: Dump data failed");
+
         cm2_ovsdb_refresh_dhcp(CONFIG_TARGET_WAN_BRIDGE_NAME);
     }
-    return ret;
 }
 
 static void cm2_stability_handle_fatal_state(int counter)
@@ -219,10 +231,7 @@ void cm2_connection_req_stability_check(target_connectivity_check_option_t opts)
         if (!ret)
             LOGW("%s Failed update router counter in ovsdb table", __func__);
 
-        if (counter > 0 && counter % CONFIG_CM2_STABILITY_THRESH_REST_CON == 0) {
-            if (cm2_restore_connection(counter))
-                LOGW("Restore connection trigger failed");
-        }
+        cm2_restore_connection(counter);
 
         if (kconfig_enabled(CONFIG_CM2_USE_TCPDUMP) &&
             counter == CONFIG_CM2_STABILITY_THRESH_TCPDUMP &&

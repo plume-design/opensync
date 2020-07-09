@@ -1994,3 +1994,596 @@ test_vendor_data_serialize_deserialize(void)
     net_md_free_aggregator(aggr_in);
     net_md_free_aggregator(aggr_out);
 }
+
+
+/**
+ * @brief add a flow_tag to a key
+ */
+void
+test_update_flow_tags(void)
+{
+    struct net_md_aggregator_set *aggr_set;
+    struct net_md_stats_accumulator *acc;
+    struct net_md_aggregator *alt_aggr;
+    struct flow_counters counters[1];
+    struct net_md_aggregator *aggr;
+    struct net_md_flow_key *key;
+    struct packed_buffer *pb;
+    struct flow_tags **tags;
+    struct flow_tags *tag;
+    struct flow_key *fkey;
+    bool ret;
+
+    TEST_ASSERT_TRUE(g_nd_test.initialized);
+    counters[0].bytes_count = 10000;
+    counters[0].packets_count = 100;
+
+    /* Allocate aggregator */
+    aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_type = NET_MD_REPORT_RELATIVE;
+    aggr = net_md_allocate_aggregator(aggr_set);
+    TEST_ASSERT_NOT_NULL(aggr);
+
+    /* Activate aggregator window */
+    ret = net_md_activate_window(aggr);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Add one sample */
+    key = g_nd_test.net_md_keys[5];
+    ret = net_md_add_sample(aggr, key, counters);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Validate the state of the accumulator bound to the key */
+    acc = net_md_lookup_acc(aggr, key);
+    TEST_ASSERT_NOT_NULL(acc);
+    fkey = acc->fkey;
+    TEST_ASSERT_NOT_NULL(fkey);
+
+    /* Add a flow tag to the key */
+    fkey->num_tags = 1;
+    fkey->tags = calloc(fkey->num_tags, sizeof(*fkey->tags));
+    TEST_ASSERT_NOT_NULL(fkey->tags);
+
+    tag = calloc(1, sizeof(*tag));
+    TEST_ASSERT_NOT_NULL(tag);
+
+    tag->vendor = strdup("Plume");
+    TEST_ASSERT_NOT_NULL(tag->vendor)
+
+    tag->app_name = strdup("Plume App");
+    TEST_ASSERT_NOT_NULL(tag->app_name);
+
+    tag->nelems = 2;
+    tag->tags = calloc(tag->nelems, sizeof(tags));
+    TEST_ASSERT_NOT_NULL(tag->tags);
+
+    tag->tags[0] = strdup("Plume Tag0");
+    TEST_ASSERT_NOT_NULL(tag->tags[0]);
+
+    tag->tags[1] = strdup("Plume Tag1");
+    TEST_ASSERT_NOT_NULL(tag->tags[1]);
+
+    *(fkey->tags) = tag;
+
+    /* Close the active window */
+    ret = net_md_close_active_window(aggr);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Keep access to the protobuf to test adding the same flow tag */
+    pb = serialize_flow_report(aggr->report);
+    net_md_reset_aggregator(aggr);
+
+    net_md_update_aggr(aggr, pb);
+
+    /* Free the serialized container */
+    free_packed_buffer(pb);
+
+    /* Validate the state of the accumulator bound to the key */
+    acc = net_md_lookup_acc(aggr, key);
+    TEST_ASSERT_NOT_NULL(acc);
+    fkey = acc->fkey;
+    TEST_ASSERT_NOT_NULL(fkey);
+
+    /* Validate the number of flow tags */
+    TEST_ASSERT_EQUAL_INT(1, fkey->num_tags);
+
+    /*
+     * Allocate alternative aggregator.
+     * Same settings as the original aggregator, different vendor for flow tags.
+     */
+    aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_type = NET_MD_REPORT_RELATIVE;
+    alt_aggr = net_md_allocate_aggregator(aggr_set);
+    TEST_ASSERT_NOT_NULL(alt_aggr);
+
+    /* Activate aggregator window */
+    ret = net_md_activate_window(alt_aggr);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Add one sample */
+    key = g_nd_test.net_md_keys[5];
+    ret = net_md_add_sample(alt_aggr, key, counters);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Validate the state of the accumulator bound to the key */
+    acc = net_md_lookup_acc(alt_aggr, key);
+    TEST_ASSERT_NOT_NULL(acc);
+    fkey = acc->fkey;
+    TEST_ASSERT_NOT_NULL(fkey);
+
+    /* Add a flow tag to the key */
+    fkey->num_tags = 1;
+    fkey->tags = calloc(fkey->num_tags, sizeof(*fkey->tags));
+    TEST_ASSERT_NOT_NULL(fkey->tags);
+
+    tag = calloc(1, sizeof(*tag));
+    TEST_ASSERT_NOT_NULL(tag);
+
+    tag->vendor = strdup("NotPlume");
+    TEST_ASSERT_NOT_NULL(tag->vendor)
+
+    tag->app_name = strdup("NotPlume App");
+    TEST_ASSERT_NOT_NULL(tag->app_name);
+
+    tag->nelems = 2;
+    tag->tags = calloc(tag->nelems, sizeof(tags));
+    TEST_ASSERT_NOT_NULL(tag->tags);
+
+    tag->tags[0] = strdup("NotPlume Tag0");
+    TEST_ASSERT_NOT_NULL(tag->tags[0]);
+
+    tag->tags[1] = strdup("NotPlume Tag1");
+    TEST_ASSERT_NOT_NULL(tag->tags[1]);
+
+    *(fkey->tags) = tag;
+
+    /* Close the active window */
+    ret = net_md_close_active_window(alt_aggr);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Keep access to the protobuf to test adding the same flow tag */
+    pb = serialize_flow_report(alt_aggr->report);
+    net_md_reset_aggregator(alt_aggr);
+
+    /* Update the original aggregator with the alt report */
+    net_md_update_aggr(aggr, pb);
+
+    /* Free the serialized container */
+    free_packed_buffer(pb);
+
+    /* Validate the state of the accumulator bound to the key */
+    acc = net_md_lookup_acc(aggr, key);
+    TEST_ASSERT_NOT_NULL(acc);
+    fkey = acc->fkey;
+    TEST_ASSERT_NOT_NULL(fkey);
+
+    /* Validate the number of flow tags */
+    TEST_ASSERT_EQUAL_INT(2, fkey->num_tags);
+
+    /* Free aggregators */
+    net_md_free_aggregator(alt_aggr);
+    net_md_free_aggregator(aggr);
+}
+
+
+void
+test_update_vendor_data(void)
+{
+    struct net_md_aggregator_set *aggr_set;
+    struct net_md_stats_accumulator *acc;
+    struct flow_counters counters[1];
+    struct net_md_aggregator *aggr_out;
+    struct net_md_aggregator *aggr_in;
+    struct flow_vendor_data *vd1;
+    struct flow_vendor_data *vd2;
+    struct net_md_flow_key *key;
+    struct flow_key *fkey;
+    bool ret;
+
+    struct vendor_data_kv_pair vd1_kps[] =
+    {
+        {
+            .key = "vd1_key1",
+            .value_type = NET_VENDOR_STR,
+            .str_value = "vd1_key1_val1",
+        },
+        {
+            .key = "vd1_key2",
+            .value_type = NET_VENDOR_U32,
+            .u32_value = 12345,
+        },
+        {
+            .key = "vd1_key3",
+            .value_type = NET_VENDOR_U64,
+            .u64_value = 12345678,
+        },
+    };
+
+    struct vendor_data_kv_pair vd2_kps[] =
+    {
+        {
+            .key = "vd2_key1",
+            .value_type = NET_VENDOR_STR,
+            .str_value = "vd2_key1_val1",
+        },
+        {
+            .key = "vd2_key2",
+            .value_type = NET_VENDOR_U32,
+            .u32_value = 54321,
+        },
+        {
+            .key = "vd2_key3",
+            .value_type = NET_VENDOR_U64,
+            .u64_value = 87654321,
+        },
+    };
+    struct vendor_data_kv_pair **kvps1;
+    struct vendor_data_kv_pair **kvps2;
+    struct vendor_data_kv_pair *kvp;
+    struct packed_buffer recv_pb;
+    struct packed_buffer *pb;
+    struct flow_tags **tags;
+    struct flow_tags *tag;
+    size_t nelems;
+    size_t i;
+
+    TEST_ASSERT_TRUE(g_nd_test.initialized);
+    counters[0].bytes_count = 10000;
+    counters[0].packets_count = 100;
+
+    /* Allocate aggregator */
+    aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_type = NET_MD_REPORT_RELATIVE;
+    aggr_in = net_md_allocate_aggregator(aggr_set);
+    TEST_ASSERT_NOT_NULL(aggr_in);
+
+    /* Activate aggregator window */
+    ret = net_md_activate_window(aggr_in);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Add one sample */
+    key = g_nd_test.net_md_keys[5];
+    ret = net_md_add_sample(aggr_in, key, counters);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Validate the state of the accumulator bound to the key */
+    acc = net_md_lookup_acc(aggr_in, key);
+    TEST_ASSERT_NOT_NULL(acc);
+    fkey = acc->fkey;
+    TEST_ASSERT_NOT_NULL(fkey);
+
+    /* Add vendor data to the key */
+    fkey->num_vendor_data = 2;
+    fkey->vdr_data = calloc(fkey->num_vendor_data,
+                            sizeof(*fkey->vdr_data));
+    TEST_ASSERT_NOT_NULL(fkey->vdr_data);
+
+    nelems = 3;
+
+    kvps1 = calloc(nelems, sizeof(struct vendor_data_kv_pair *));
+    TEST_ASSERT_NOT_NULL(kvps1);
+    for (i = 0; i < nelems; i++)
+    {
+        kvps1[i] = calloc(1, sizeof(struct vendor_data_kv_pair));
+        kvp = kvps1[i];
+        TEST_ASSERT_NOT_NULL(kvp);
+        kvp->key = strdup(vd1_kps[i].key);
+        if (vd1_kps[i].value_type == NET_VENDOR_STR)
+        {
+            kvp->value_type = NET_VENDOR_STR;
+            kvp->str_value = strdup(vd1_kps[i].str_value);
+            TEST_ASSERT_NOT_NULL(kvp->str_value);
+        }
+        else if (vd1_kps[i].value_type == NET_VENDOR_U32)
+        {
+            kvp->value_type = NET_VENDOR_U32;
+            kvp->u32_value = vd1_kps[i].u32_value;
+        }
+        else
+        {
+            kvp->value_type = NET_VENDOR_U64;
+            kvp->u64_value = vd1_kps[i].u64_value;
+        }
+        kvp++;
+    }
+    vd1 = calloc(1, sizeof(struct flow_vendor_data));
+    vd1->vendor = strdup("vendor1");
+    TEST_ASSERT_NOT_NULL(vd1->vendor);
+    vd1->nelems = 3;
+    vd1->kv_pairs = kvps1;
+
+    kvps2 = calloc(nelems, sizeof(struct vendor_data_kv_pair *));
+    TEST_ASSERT_NOT_NULL(kvps2);
+    for (i = 0; i < nelems; i++)
+    {
+        kvps2[i] = calloc(1, sizeof(struct vendor_data_kv_pair));
+        kvp = kvps2[i];
+        TEST_ASSERT_NOT_NULL(kvp);
+        kvp->key = strdup(vd2_kps[i].key);
+        if (vd2_kps[i].value_type == NET_VENDOR_STR)
+        {
+            kvp->str_value = strdup(vd2_kps[i].str_value);
+            TEST_ASSERT_NOT_NULL(kvp->str_value);
+        }
+        else if (vd2_kps[i].value_type == NET_VENDOR_U32)
+        {
+            kvp->value_type = NET_VENDOR_U32;
+            kvp->u32_value = vd2_kps[i].u32_value;
+        }
+        else
+        {
+            kvp->value_type = NET_VENDOR_U64;
+            kvp->u64_value = vd2_kps[i].u64_value;
+        }
+        kvp++;
+    }
+    vd2 = calloc(1, sizeof(struct flow_vendor_data));
+    vd2->vendor = strdup("vendor2");
+    TEST_ASSERT_NOT_NULL(vd2->vendor);
+    vd2->nelems = 3;
+    vd2->kv_pairs = kvps2;
+
+    fkey->vdr_data[0] = vd1;
+    fkey->vdr_data[1] = vd2;
+    fkey->num_vendor_data = 2;
+
+    /* Add a flow tag to the key */
+    fkey->num_tags = 1;
+    fkey->tags = calloc(fkey->num_tags, sizeof(*fkey->tags));
+    TEST_ASSERT_NOT_NULL(fkey->tags);
+
+    tag = calloc(1, sizeof(*tag));
+    TEST_ASSERT_NOT_NULL(tag);
+
+    tag->vendor = strdup("Plume");
+    TEST_ASSERT_NOT_NULL(tag->vendor)
+
+    tag->app_name = strdup("Plume App");
+    TEST_ASSERT_NOT_NULL(tag->app_name);
+
+    tag->nelems = 2;
+    tag->tags = calloc(tag->nelems, sizeof(tags));
+    TEST_ASSERT_NOT_NULL(tag->tags);
+
+    tag->tags[0] = strdup("Plume Tag0");
+    TEST_ASSERT_NOT_NULL(tag->tags[0]);
+
+    tag->tags[1] = strdup("Plume Tag1");
+    TEST_ASSERT_NOT_NULL(tag->tags[1]);
+
+    *(fkey->tags) = tag;
+
+    /* Close the active window */
+    ret = net_md_close_active_window(aggr_in);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Prepare the transfer to the receiving aggregator */
+    pb = serialize_flow_report(aggr_in->report);
+
+    recv_pb.len = pb->len;
+    recv_pb.buf = pb->buf;
+
+    test_emit_report(aggr_in);
+
+    /* Allocate the receiving aggregator */
+    aggr_out = net_md_allocate_aggregator(aggr_set);
+    TEST_ASSERT_NOT_NULL(aggr_out);
+
+    /* Activate the receiving aggregator window */
+    ret = net_md_activate_window(aggr_out);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Transfer tags and vendor data */
+    net_md_update_aggr(aggr_out, &recv_pb);
+
+    /* Validate the state of the accumulator bound to the key */
+    acc = net_md_lookup_acc(aggr_out, key);
+    TEST_ASSERT_NOT_NULL(acc);
+    fkey = acc->fkey;
+    TEST_ASSERT_NOT_NULL(fkey);
+
+    TEST_ASSERT_EQUAL_INT(2, fkey->num_vendor_data);
+
+    /* Transfer again tags and vendor data */
+    net_md_update_aggr(aggr_out, &recv_pb);
+
+    /* Validate the state of the accumulator bound to the key */
+    acc = net_md_lookup_acc(aggr_out, key);
+    TEST_ASSERT_NOT_NULL(acc);
+    fkey = acc->fkey;
+    TEST_ASSERT_NOT_NULL(fkey);
+
+    TEST_ASSERT_EQUAL_INT(2, fkey->num_vendor_data);
+
+    /* Free the serialized container */
+    free_packed_buffer(pb);
+    ret = net_md_close_active_window(aggr_out);
+
+    test_emit_report(aggr_out);
+    /* Free aggregators */
+    net_md_free_aggregator(aggr_in);
+    net_md_free_aggregator(aggr_out);
+}
+
+/**
+ * @brief collector filter
+ */
+static bool
+test_collect_filter_flow(struct net_md_aggregator *aggr,
+                         struct net_md_flow_key *key)
+{
+    return false;
+}
+
+/**
+ * @brief Test updating an aggregator from a protobuf with filtering
+ */
+void
+test_update_filter_flow_tags(void)
+{
+    struct net_md_aggregator_set *aggr_set;
+    struct net_md_stats_accumulator *acc;
+    struct net_md_aggregator *alt_aggr;
+    struct flow_counters counters[1];
+    struct net_md_aggregator *aggr;
+    struct net_md_flow_key *key;
+    struct packed_buffer *pb;
+    struct flow_tags **tags;
+    struct flow_tags *tag;
+    struct flow_key *fkey;
+    bool ret;
+
+    TEST_ASSERT_TRUE(g_nd_test.initialized);
+    counters[0].bytes_count = 10000;
+    counters[0].packets_count = 100;
+
+    /* Allocate aggregator */
+    aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_type = NET_MD_REPORT_RELATIVE;
+    aggr_set->collect_filter = test_collect_filter_flow;
+    aggr = net_md_allocate_aggregator(aggr_set);
+    TEST_ASSERT_NOT_NULL(aggr);
+
+    /* Activate aggregator window */
+    ret = net_md_activate_window(aggr);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Add one sample */
+    key = g_nd_test.net_md_keys[5];
+    ret = net_md_add_sample(aggr, key, counters);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Validate the state of the accumulator bound to the key */
+    acc = net_md_lookup_acc(aggr, key);
+    TEST_ASSERT_NOT_NULL(acc);
+    fkey = acc->fkey;
+    TEST_ASSERT_NOT_NULL(fkey);
+
+    /* Add a flow tag to the key */
+    fkey->num_tags = 1;
+    fkey->tags = calloc(fkey->num_tags, sizeof(*fkey->tags));
+    TEST_ASSERT_NOT_NULL(fkey->tags);
+
+    tag = calloc(1, sizeof(*tag));
+    TEST_ASSERT_NOT_NULL(tag);
+
+    tag->vendor = strdup("Plume");
+    TEST_ASSERT_NOT_NULL(tag->vendor)
+
+    tag->app_name = strdup("Plume App");
+    TEST_ASSERT_NOT_NULL(tag->app_name);
+
+    tag->nelems = 2;
+    tag->tags = calloc(tag->nelems, sizeof(tags));
+    TEST_ASSERT_NOT_NULL(tag->tags);
+
+    tag->tags[0] = strdup("Plume Tag0");
+    TEST_ASSERT_NOT_NULL(tag->tags[0]);
+
+    tag->tags[1] = strdup("Plume Tag1");
+    TEST_ASSERT_NOT_NULL(tag->tags[1]);
+
+    *(fkey->tags) = tag;
+
+    /* Close the active window */
+    ret = net_md_close_active_window(aggr);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Keep access to the protobuf to test adding the same flow tag */
+    pb = serialize_flow_report(aggr->report);
+    net_md_reset_aggregator(aggr);
+
+    net_md_update_aggr(aggr, pb);
+
+    /* Free the serialized container */
+    free_packed_buffer(pb);
+
+    /* Validate the state of the accumulator bound to the key */
+    acc = net_md_lookup_acc(aggr, key);
+    TEST_ASSERT_NOT_NULL(acc);
+    fkey = acc->fkey;
+    TEST_ASSERT_NOT_NULL(fkey);
+
+    /* Validate the number of flow tags */
+    TEST_ASSERT_EQUAL_INT(1, fkey->num_tags);
+
+    /*
+     * Allocate alternative aggregator.
+     * Same settings as the original aggregator, different vendor for flow tags.
+     */
+    aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_type = NET_MD_REPORT_RELATIVE;
+    alt_aggr = net_md_allocate_aggregator(aggr_set);
+    TEST_ASSERT_NOT_NULL(alt_aggr);
+
+    /* Activate aggregator window */
+    ret = net_md_activate_window(alt_aggr);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Add one sample */
+    key = g_nd_test.net_md_keys[5];
+    ret = net_md_add_sample(alt_aggr, key, counters);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Validate the state of the accumulator bound to the key */
+    acc = net_md_lookup_acc(alt_aggr, key);
+    TEST_ASSERT_NOT_NULL(acc);
+    fkey = acc->fkey;
+    TEST_ASSERT_NOT_NULL(fkey);
+
+    /* Add a flow tag to the key */
+    fkey->num_tags = 1;
+    fkey->tags = calloc(fkey->num_tags, sizeof(*fkey->tags));
+    TEST_ASSERT_NOT_NULL(fkey->tags);
+
+    tag = calloc(1, sizeof(*tag));
+    TEST_ASSERT_NOT_NULL(tag);
+
+    tag->vendor = strdup("NotPlume");
+    TEST_ASSERT_NOT_NULL(tag->vendor)
+
+    tag->app_name = strdup("NotPlume App");
+    TEST_ASSERT_NOT_NULL(tag->app_name);
+
+    tag->nelems = 2;
+    tag->tags = calloc(tag->nelems, sizeof(tags));
+    TEST_ASSERT_NOT_NULL(tag->tags);
+
+    tag->tags[0] = strdup("NotPlume Tag0");
+    TEST_ASSERT_NOT_NULL(tag->tags[0]);
+
+    tag->tags[1] = strdup("NotPlume Tag1");
+    TEST_ASSERT_NOT_NULL(tag->tags[1]);
+
+    *(fkey->tags) = tag;
+
+    /* Close the active window */
+    ret = net_md_close_active_window(alt_aggr);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Keep access to the protobuf to test adding the same flow tag */
+    pb = serialize_flow_report(alt_aggr->report);
+    net_md_reset_aggregator(alt_aggr);
+
+    /*
+     * Update the original aggregator with the alt report.
+     * The collector filter will reject all flows
+     */
+    net_md_update_aggr(aggr, pb);
+
+    /* Free the serialized container */
+    free_packed_buffer(pb);
+
+    /* Validate the state of the accumulator bound to the key */
+    acc = net_md_lookup_acc(aggr, key);
+    TEST_ASSERT_NOT_NULL(acc);
+    fkey = acc->fkey;
+    TEST_ASSERT_NOT_NULL(fkey);
+
+    /* Validate the number of flow tags */
+    TEST_ASSERT_EQUAL_INT(1, fkey->num_tags);
+
+    /* Free aggregators */
+    net_md_free_aggregator(alt_aggr);
+    net_md_free_aggregator(aggr);
+}

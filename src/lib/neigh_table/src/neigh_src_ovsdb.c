@@ -54,6 +54,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ovsdb_table_t table_DHCP_leased_IP;
 ovsdb_table_t table_IPv6_Neighbors;
+ovsdb_table_t table_Wifi_Inet_State;
 
 static bool
 neigh_entry_to_ipv6_neighbor_schema(struct neighbour_entry *key,
@@ -174,6 +175,10 @@ static const struct neigh_mapping_source source_map[] =
     {
         .source = "ovsdb arp",
         .source_enum = OVSDB_ARP,
+    },
+    {
+        .source = "ovsdb inet state",
+        .source_enum = OVSDB_INET_STATE,
     },
 };
 
@@ -468,6 +473,134 @@ callback_IPv6_Neighbors(ovsdb_update_monitor_t *mon,
 }
 
 /**
+ * @brief add or update a inet state entry
+ *
+ * @param inet_info the ovsdb inet info about the entry to add/update
+ * If the entry's hw address is flagged as changed, update the cached entry.
+ * Otherwise add the entry.
+ */
+static void
+neigh_table_add_inet_entry(struct schema_Wifi_Inet_State *inet_info)
+{
+    struct neighbour_entry entry;
+    os_macaddr_t mac;
+    uint8_t addr[4];
+    uint32_t *ipaddr = (uint32_t *)addr;
+    bool rc;
+    int ret;
+
+    memset(&entry, 0, sizeof(entry));
+    entry.af_family = AF_INET;
+    ret = inet_pton(entry.af_family, inet_info->inet_addr, addr);
+    if (ret != 1)
+    {
+        LOGD("%s: conversion of %s failed", __func__, inet_info->inet_addr);
+        return;
+    }
+
+    if (*ipaddr == 0) return;
+
+    entry.ip_tbl = addr;
+    entry.source = OVSDB_INET_STATE;
+    hwaddr_aton(inet_info->hwaddr, mac.addr);
+    entry.mac = &mac;
+
+    /* If the hw address field is marked as changed, update the cache entry */
+    if (inet_info->hwaddr_changed)
+    {
+        rc = neigh_table_cache_update(&entry);
+        if (!rc) LOGD("%s: failed to update the inet state entry", __func__);
+    }
+    else
+    {
+        rc = neigh_table_add_to_cache(&entry);
+        if (!rc) LOGD("%s: failed to add the inet state entry", __func__);
+    }
+}
+
+/**
+ * @brief delete a inet state entry
+ *
+ * @param inet_info the ovsdb inet info about the entry to delete
+ */
+static void
+neigh_table_delete_inet_entry(struct schema_Wifi_Inet_State *inet_info)
+{
+    struct neighbour_entry entry;
+    uint8_t addr[4];
+    uint32_t *ipaddr = (uint32_t *)addr;
+    int ret;
+
+    memset(&entry, 0, sizeof(entry));
+    entry.af_family = AF_INET;
+    ret = inet_pton(entry.af_family, inet_info->inet_addr, addr);
+    if (ret != 1)
+    {
+        LOGD("%s: conversion of %s failed", __func__, inet_info->inet_addr);
+        return;
+    }
+
+    if (*ipaddr == 0) return;
+
+    entry.ip_tbl = addr;
+    entry.source = OVSDB_INET_STATE;
+    neigh_table_delete_from_cache(&entry);
+}
+
+/**
+ * @brief add or update a inet state entry
+ *
+ * @param old_rec the previous ovsdb inet info info about the entry
+ *        to add/update
+ * @param inet_info the ovsdb inet info about the entry to add/update
+ *
+ * If the entry's ip address is flagged as changed, remove the old entry
+ * and add a new one.
+ * If the entry's hw address is flagged as changed, update the cached entry.
+ * Otherwise add the entry.
+ */
+static void
+neigh_table_update_inet_entry(struct schema_Wifi_Inet_State *old_rec,
+                              struct schema_Wifi_Inet_State *inet_info)
+{
+    if (inet_info->inet_addr_changed)
+    {
+        /* Remove the old record from the cache */
+        neigh_table_delete_inet_entry(old_rec);
+    }
+
+    /* Add/update the new record */
+    neigh_table_add_inet_entry(inet_info);
+}
+
+/**
+ * @brief DHCP_leased_IP's event callbacks
+ */
+void
+callback_Wifi_Inet_State(ovsdb_update_monitor_t *mon,
+                        struct schema_Wifi_Inet_State *old_rec,
+                        struct schema_Wifi_Inet_State *inet_info)
+{
+    if (mon->mon_type == OVSDB_UPDATE_NEW)
+    {
+        neigh_table_add_inet_entry(inet_info);
+        return;
+    }
+
+    if (mon->mon_type == OVSDB_UPDATE_DEL)
+    {
+        neigh_table_delete_inet_entry(inet_info);
+        return;
+    }
+
+    if (mon->mon_type == OVSDB_UPDATE_MODIFY)
+    {
+        neigh_table_update_inet_entry(old_rec, inet_info);
+        return;
+    }
+}
+
+/**
  * @brief registers to ovsdb tables updates
  */
 void
@@ -475,7 +608,9 @@ neigh_src_init(void)
 {
     OVSDB_TABLE_INIT_NO_KEY(DHCP_leased_IP);
     OVSDB_TABLE_INIT_NO_KEY(IPv6_Neighbors);
+    OVSDB_TABLE_INIT_NO_KEY(Wifi_Inet_State);
 
     OVSDB_TABLE_MONITOR(DHCP_leased_IP, false);
     OVSDB_TABLE_MONITOR(IPv6_Neighbors, false);
+    OVSDB_TABLE_MONITOR(Wifi_Inet_State, false);
 }

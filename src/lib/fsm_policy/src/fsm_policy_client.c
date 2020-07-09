@@ -139,6 +139,7 @@ void fsm_policy_deregister_client(struct fsm_policy_client *client)
     free(p_client);
 
     client->table = NULL;
+    client->session = NULL;
 }
 
 void fsm_policy_update_clients(struct policy_table *table)

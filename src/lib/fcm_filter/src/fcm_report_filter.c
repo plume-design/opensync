@@ -83,6 +83,7 @@ static void print_md_acc_key(struct net_md_stats_accumulator *md_acc)
          md_acc->report_counters.bytes_count);
 }
 
+
 /**
  * @brief print function net_md_stats_accumulator's key and fkey.
  *
@@ -189,26 +190,27 @@ void net_md_print_net_md_flow_key_and_flow_key(struct net_md_flow_key *key,
 
 
 /**
- * @brief call 7 tuple filter for report filter.
+ * @brief call 7 tuple filter.
  *
- * receive net_md_stats_accumulator and fill the structure for report filter.
+ * receive net_md_stats_accumulator and fill the structure for filter.
  *
  * @param valid pointer to net_md_stats_accumulator.
  * @return true for include, false for exclude.
  */
-static bool apply_report_filter(struct net_md_stats_accumulator *md_acc)
+static bool apply_filter(struct net_md_flow_key *key,
+                         fcm_filter_stats_t *pkt,
+                         struct flow_key *fkey,
+                         char *filter_name)
 {
     bool seven_tuple_action;
     fcm_filter_l2_info_t mac_filter;
     fcm_filter_l3_info_t filter;
-    fcm_filter_stats_t pkt;
-    struct net_md_flow_key *key = md_acc->key;
     os_macaddr_t null_mac;
     os_macaddr_t *smac;
     os_macaddr_t *dmac;
 
     memset(&null_mac, 0, sizeof(null_mac));
-    if (filtername.report == NULL)
+    if (filter_name == NULL)
     {
         /* no filter name default included */
         return true;
@@ -230,13 +232,15 @@ static bool apply_report_filter(struct net_md_stats_accumulator *md_acc)
     if (inet_ntop(AF_INET, key->src_ip, filter.src_ip,
         INET6_ADDRSTRLEN) == NULL)
     {
-        LOGE("inet_ntop src_ip error");
+        LOGE("%s: inet_ntop src_ip %s error: %s", __func__,
+             key->src_ip, strerror(errno));
         return false;
     }
     if (inet_ntop(AF_INET, key->dst_ip, filter.dst_ip,
         INET6_ADDRSTRLEN) == NULL)
     {
-        LOGE("inet_ntop dst_ip error ");
+        LOGE("%s: inet_ntop dst_ip %s error: %s", __func__,
+             key->dst_ip, strerror(errno));
         return false;
     }
 
@@ -247,18 +251,68 @@ static bool apply_report_filter(struct net_md_stats_accumulator *md_acc)
     /* key->ip_version No ip (0), ipv4 (4), ipv6 (6) */
     filter.ip_type = (key->ip_version <= 4)? AF_INET: AF_INET6;
 
+    fcm_filter_7tuple_apply(filter_name,
+                             &mac_filter,
+                             &filter,
+                             pkt,
+                             fkey,
+                             &seven_tuple_action);
+    return seven_tuple_action;
+}
+
+
+/**
+ * @brief call 7 tuple filter for collect filter.
+ *
+ * receive net_md_stats_accumulator and fill the structure for report filter.
+ *
+ * @param valid pointer to net_md_stats_accumulator.
+ * @return true for include, false for exclude.
+ */
+static bool apply_collect_filter(struct net_md_flow_key *key)
+{
+    return apply_filter(key, NULL, NULL, filtername.collect);
+}
+
+
+/**
+ * @brief call 7 tuple filter for report filter.
+ *
+ * receive net_md_stats_accumulator and fill the structure for report filter.
+ *
+ * @param valid pointer to net_md_stats_accumulator.
+ * @return true for include, false for exclude.
+ */
+static bool apply_report_filter(struct net_md_stats_accumulator *md_acc)
+{
+    struct net_md_flow_key *key;
+    fcm_filter_stats_t pkt;
+
+    if (md_acc == NULL) return true;
+
+    key = md_acc->key;
+    if (key == NULL) return true;
+
     pkt.pkt_cnt = md_acc->report_counters.packets_count;
     pkt.bytes = md_acc->report_counters.bytes_count;
 
+    return apply_filter(key, &pkt, md_acc->fkey, filtername.report);
+}
 
-    (void)pkt;
-    fcm_filter_7tuple_apply(filtername.report,
-                             &mac_filter,
-                             &filter,
-                             &pkt,
-                             md_acc->fkey,
-                             &seven_tuple_action);
-    return seven_tuple_action;
+
+/**
+ * @brief callback function for network metadata.
+ *
+ * receive net_md_stats_accumulator and call the collector filter.
+ *
+ * @param pointer to the flow key.
+ * @return true for include, false for exclude.
+ */
+bool fcm_collect_filter_nmd_callback(struct net_md_flow_key *key)
+{
+    if (key == NULL) return true;
+
+    return apply_collect_filter(key);
 }
 
 
@@ -270,7 +324,7 @@ static bool apply_report_filter(struct net_md_stats_accumulator *md_acc)
  * @param valid pointer to net_md_stats_accumulator.
  * @return true for include, false for exclude.
  */
-bool fcm_filter_nmd_callback(struct net_md_stats_accumulator *md_acc)
+bool fcm_report_filter_nmd_callback(struct net_md_stats_accumulator *md_acc)
 {
     if ((md_acc == NULL) || (md_acc->key == NULL))
     {

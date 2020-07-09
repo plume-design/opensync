@@ -572,6 +572,7 @@ bm_stats_steering_clear_all_event_records()
                     continue;
                 }
 
+                free(event_rec->assoc_ies);
                 memset( event_rec, 0, sizeof( dpp_bs_client_event_record_t ) );
             }
 
@@ -877,12 +878,21 @@ bm_stats_steering_parse_event(
                                     event->data.connect.rrm_caps.ftm_range_rpt ? 1 : 0;
 
             event_rec->assoc_ies_len = event->data.connect.assoc_ies_len;
-            if (event_rec->assoc_ies_len > ARRAY_SIZE(event_rec->assoc_ies))
-                event_rec->assoc_ies_len = ARRAY_SIZE(event_rec->assoc_ies);
+            if (event_rec->assoc_ies_len > ARRAY_SIZE(event->data.connect.assoc_ies))
+                event_rec->assoc_ies_len = ARRAY_SIZE(event->data.connect.assoc_ies);
 
-            memcpy(event_rec->assoc_ies,
-                   event->data.connect.assoc_ies,
-                   event_rec->assoc_ies_len);
+            if (event_rec->assoc_ies_len > 0) {
+                event_rec->assoc_ies = malloc(event_rec->assoc_ies_len);
+                WARN_ON(!event_rec->assoc_ies);
+
+                if (event_rec->assoc_ies) {
+                    memcpy(event_rec->assoc_ies,
+                           event->data.connect.assoc_ies,
+                           event_rec->assoc_ies_len);
+                } else {
+                    event_rec->assoc_ies_len = 0;
+                }
+            }
 
             break;
 
@@ -939,8 +949,10 @@ bm_stats_steering_parse_event(
     band_rec->num_event_records++;
 
     if( band_rec->num_event_records == DPP_MAX_BS_EVENT_RECORDS ) {
+        free(event_rec->assoc_ies);
+        memset(event_rec, 0, sizeof(*event_rec));
+
         event_rec->type = OVERRUN;
-        band_rec->num_event_records++;
 
         LOGW( "Max events limit reached for client "MAC_ADDRESS_FORMAT""
               ", adding OVERRUN event", MAC_ADDRESS_PRINT( bs_client_entry->mac ) );

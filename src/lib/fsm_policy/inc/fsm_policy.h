@@ -40,11 +40,11 @@ enum {
     FSM_ACTION_NONE = 0,
     FSM_BLOCK,
     FSM_ALLOW,
-    FSM_UPDATE_TAG,
     FSM_OBSERVED,
     FSM_NO_MATCH,
     FSM_REDIRECT,
     FSM_FORWARD,
+    FSM_UPDATE_TAG,
     FSM_NUM_ACTIONS, /* always last */
 };
 

@@ -178,6 +178,30 @@ static dppline_stats_t * dpp_alloc_stat()
     return calloc(1, sizeof(dppline_stats_t));
 }
 
+static void dppline_free_stat_bs_client(dppline_stats_t * s)
+{
+    dpp_bs_client_event_record_t *event;
+    dpp_bs_client_band_record_t *band;
+    dpp_bs_client_record_t *client = s->u.bs_client.list;
+    int clients = s->u.bs_client.qty;
+    int events;
+    int bands;
+
+    for (; clients; clients--, client++) {
+        bands = client->num_band_records;
+        band = &client->band_record[0];
+        for (; bands; bands--, band++) {
+            events = band->num_event_records;
+            event = &band->event_record[0];
+            for (; events; events--, event++) {
+                free(event->assoc_ies);
+            }
+        }
+    }
+
+    free(s->u.bs_client.list);
+}
+
 /* free allocated memory for single stat */
 static void dppline_free_stat(dppline_stats_t * s)
 {
@@ -210,7 +234,7 @@ static void dppline_free_stat(dppline_stats_t * s)
                 free(s->u.capacity.list);
                 break;
             case DPP_T_BS_CLIENT:
-                free(s->u.bs_client.list);
+                dppline_free_stat_bs_client(s);
                 break;
             case DPP_T_RSSI:
                 for (i=0; i<s->u.rssi.qty; i++)
@@ -223,6 +247,35 @@ static void dppline_free_stat(dppline_stats_t * s)
         }
 
         free(s);
+    }
+}
+
+static void dppline_unshare_assoc_ies(dpp_bs_client_record_t *c)
+{
+    dpp_bs_client_event_record_t *event;
+    dpp_bs_client_band_record_t *band;
+    void *assoc_ies;
+    int events;
+    int bands;
+
+    bands = c->num_band_records;
+    band = &c->band_record[0];
+    for (; bands; bands--, band++) {
+        events = band->num_event_records;
+        event = &band->event_record[0];
+        for (; events; events--, event++) {
+            if (event->assoc_ies) {
+                assoc_ies = calloc(1, event->assoc_ies_len);
+                WARN_ON(!assoc_ies);
+
+                if (assoc_ies)
+                    memcpy(assoc_ies, event->assoc_ies, event->assoc_ies_len);
+                else
+                    event->assoc_ies_len = 0;
+
+                event->assoc_ies = assoc_ies;
+            }
+        }
     }
 }
 
@@ -540,6 +593,7 @@ static bool dppline_copysts(dppline_stats_t * dst, void * sts)
                     memcpy(&dst->u.bs_client.list[count],
                             &result->entry,
                             sizeof(dpp_bs_client_record_t));
+                    dppline_unshare_assoc_ies(&dst->u.bs_client.list[count]);
                     count++;
                 }
             }
@@ -1956,7 +2010,7 @@ static bool dppline_put(DPP_STS_TYPE type, void * rpt)
     if (queue_depth > DPP_MAX_QUEUE_DEPTH
             || queue_size > DPP_MAX_QUEUE_SIZE_BYTES)
     {
-        LOG(DEBUG, "Queue size exceeded %d > %d || %d > %d",
+        LOG(WARN, "Queue size exceeded %d > %d || %d > %d",
                 queue_depth, DPP_MAX_QUEUE_DEPTH,
                 queue_size, DPP_MAX_QUEUE_SIZE_BYTES);
         dppline_remove_head();

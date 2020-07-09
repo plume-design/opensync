@@ -1498,6 +1498,7 @@ int main(int argc, char *argv[])
 
     UnityBegin("network_metadata");
     /* Protobuf serialization testing */
+
     RUN_TEST(test_serialize_node_info_null_ptr);
     RUN_TEST(test_serialize_node_info_no_field_set);
     RUN_TEST(test_serialize_node_info);
@@ -1533,6 +1534,10 @@ int main(int argc, char *argv[])
     RUN_TEST(test_vendor_data_one_key);
     RUN_TEST(test_flow_key_to_net_md_key);
     RUN_TEST(test_vendor_data_serialize_deserialize);
+
+    RUN_TEST(test_update_flow_tags);
+    RUN_TEST(test_update_vendor_data);
+    RUN_TEST(test_update_filter_flow_tags);
 
     return UNITY_END();
 }

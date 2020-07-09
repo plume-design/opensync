@@ -10,3 +10,12 @@ menuconfig MANAGER_FSM
         default "fsm;true;always_restart=true;restart_delay=-1"
         help
             Flow Service Manager startup configuration
+
+    config FSM_PCAP_SNAPLEN
+        depends on MANAGER_FSM
+        int "Set snapshot len"
+        default 0
+        help
+            Set a custom snapshot length.
+
+            If unsure, use 0 (use libpcap default - 65535).

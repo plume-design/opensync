@@ -69,12 +69,10 @@ int json_rpc_fd = -1;
 static int json_update_monitor_id = 0;
 
 /* JSON-RPC handler list */
-static ds_key_cmp_t rpc_response_handler_cmp;
-ds_tree_t json_rpc_handler_list = DS_TREE_INIT(rpc_response_handler_cmp, struct rpc_response_handler, rrh_node);
+ds_tree_t json_rpc_handler_list = DS_TREE_INIT(ds_int_cmp, struct rpc_response_handler, rrh_node);
 
 /* JSON-RPC update handler list */
-static ds_key_cmp_t rpc_update_handler_cmp;
-ds_tree_t json_rpc_update_handler_list = DS_TREE_INIT(rpc_update_handler_cmp, struct rpc_response_handler, rrh_node);
+ds_tree_t json_rpc_update_handler_list = DS_TREE_INIT(ds_int_cmp, struct rpc_update_handler, rrh_node);
 
 /******************************************************************************
  *  PROTECTED declarations
@@ -465,27 +463,6 @@ bool ovsdb_rpc_callback(int id, bool is_error, json_t *jsmsg)
     return true;
 }
 
-/**
- * Compassion function used by the tree data structure -- simple string compare of the method member
- */
-static int rpc_response_handler_cmp(void *a, void *b)
-{
-    if (*(int *)a < *(int *)b) return -1;
-    if (*(int *)a > *(int *)b) return 1;
-
-    return 0;
-}
-
-/**
- * Compassion function used by the tree data structure -- simple string compare of the method member
- */
-static int rpc_update_handler_cmp(void *a, void *b)
-{
-    if (*(int *)a < *(int *)b) return -1;
-    if (*(int *)a > *(int *)b) return 1;
-
-    return 0;
-}
 
 /******************************************************************************
  *  PUBLIC definitions

@@ -41,10 +41,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /* Set of default values for pcaps settings */
 static int g_buf_size = 0;
-static int g_snaplen = 2048;
 static int g_cnt = 1;
 static int g_immediate_mode = 1;
 
+#if defined(CONFIG_FSM_PCAP_SNAPLEN) && (CONFIG_FSM_PCAP_SNAPLEN > 0)
+static int g_snaplen = CONFIG_FSM_PCAP_SNAPLEN;
+#else
+static int g_snaplen = 2048;
+#endif
 
 static void
 fsm_pcap_handler(uint8_t * args, const struct pcap_pkthdr *header,
@@ -305,6 +309,18 @@ bool fsm_pcap_open(struct fsm_session *session) {
     rc = pcap_setnonblock(pcap, 1, pcap_err);
     if (rc == -1) {
         LOGE("Unable to set non-blocking mode: %s", pcap_err);
+        goto error;
+    }
+
+    /*
+     * We do not want to block forever on receive. A timeout 0 means block
+     * forever, so use 1ms for the timeout.
+     */
+    rc = pcap_set_timeout(pcap, 1);
+    if (rc != 0)
+    {
+        LOGE("%s: %s: Error setting buffer timeout.", __func__,
+            iface);
         goto error;
     }
 

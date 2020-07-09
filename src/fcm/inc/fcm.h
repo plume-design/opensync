@@ -52,6 +52,7 @@ typedef struct fcm_collect_plugin_
     fcm_rpt_fmt_t fmt;
     char *mqtt_topic;
     void *fcm;
+    char *name;
     int sample_interval;
     int report_interval;
     void (*collect_periodic)(struct fcm_collect_plugin_ *);

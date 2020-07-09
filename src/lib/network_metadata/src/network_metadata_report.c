@@ -115,6 +115,7 @@ net_md_allocate_aggregator(struct net_md_aggregator_set *aggr_set)
                  struct net_md_eth_pair, eth_pair_node);
     ds_tree_init(&aggr->five_tuple_flows, net_md_5tuple_cmp,
                  struct net_md_flow, flow_node);
+    aggr->collect_filter = aggr_set->collect_filter;
     aggr->report_filter = aggr_set->report_filter;
     aggr->send_report = aggr_set->send_report;
     if (aggr_set->send_report == NULL) aggr->send_report = net_md_send_report;
@@ -212,6 +213,12 @@ bool net_md_close_active_window(struct net_md_aggregator *aggr)
 
     if (provisioned_stats != 0)
     {
+        /* Compute the max number of flows allowed to be reported */
+        if (aggr->max_reports != 0)
+        {
+            provisioned_stats = (provisioned_stats < aggr->max_reports ?
+                                 provisioned_stats : aggr->max_reports);
+        }
         stats_array = calloc(provisioned_stats, sizeof(*stats_array));
         if (stats_array == NULL) return false;
 

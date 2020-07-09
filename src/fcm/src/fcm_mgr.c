@@ -73,15 +73,24 @@ static void fcm_get_plugin_configs(fcm_collector_t *collector,
     char plugin_path[FCM_DSO_PATH_LEN] = {'\0'};
     char *init_fn;
     char *path;
-
+    char *dso;
     path = fcm_get_other_config_val(collector->collect_conf.other_config,
                                     FCM_DSO_PATH);
     if (path != NULL) STRSCPY(plugin_path, path);
     else STRSCPY(plugin_path, FCM_DSO_DFLT_PATH);
 
-    snprintf(collector->dso_path, sizeof(collector->dso_path),
-             "%s%s%s%s", plugin_path, FCM_DSO_PREFIX,
-             collector->collect_conf.name, FCM_DSO_TYPE);
+    dso = fcm_get_other_config_val(collector->collect_conf.other_config,
+                                   FCM_DSO);
+    if (dso != NULL)
+    {
+        snprintf(collector->dso_path, sizeof(collector->dso_path), "%s", dso);
+    }
+    else
+    {
+        snprintf(collector->dso_path, sizeof(collector->dso_path),
+                 "%s%s%s%s", plugin_path, FCM_DSO_PREFIX,
+                 collector->collect_conf.name, FCM_DSO_TYPE);
+    }
 
     init_fn = fcm_get_other_config_val(collector->collect_conf.other_config,
                                        FCM_DSO_INIT);
@@ -253,6 +262,7 @@ void init_collector_plugin(fcm_collector_t *collector)
     collector->plugin.get_mqtt_hdr_node_id = fcm_get_mqtt_hdr_node_id;
     collector->plugin.get_mqtt_hdr_loc_id = fcm_get_mqtt_hdr_loc_id;
     collector->plugin.get_other_config = fcm_plugin_get_other_config;
+    collector->plugin.name = collector->collect_conf.name;
     /* call the init function of plugin */
     plugin_init(&collector->plugin);
     fcm_reset_collect_interval(&collector->sample_timer,

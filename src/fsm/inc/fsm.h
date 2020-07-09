@@ -208,6 +208,7 @@ struct fsm_dpi_plugin
 {
     struct fsm_session *session;
     char *targets;
+    char *excluded_targets;
     bool bound;
     ds_tree_node_t dpi_node;
 };
@@ -573,15 +574,15 @@ fsm_free_dpi_plugin(struct fsm_session *session);
 
 
 /**
- * @brief initializes the dpi reources of a dpi session
+ * @brief updates the dpi reources of a dpi session
  *
  * Calls either the dispatcher or the dpi init plugin routine for the session
- * based on its type
- * @param session the session to initialize
- * @return true if the initialization succeeded, false otherwise
+ * based on its type, or when the session gets updated
+ * @param session the session to update
+ * @return true if the update succeeded, false otherwise
  */
 bool
-fsm_init_dpi_context(struct fsm_session *session);
+fsm_update_dpi_context(struct fsm_session *session);
 
 
 /**

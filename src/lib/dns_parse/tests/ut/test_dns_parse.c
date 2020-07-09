@@ -336,6 +336,7 @@ void setUp(void)
 void tearDown(void)
 {
     struct fsm_policy_session *policy_mgr = fsm_policy_get_mgr();
+    struct schema_Flow_Service_Manager_Config *conf;
     struct policy_table *table, *t_to_remove;
     struct fsm_policy *fpolicy, *p_to_remove;
     ds_tree_t *tables_tree, *policies_tree;
@@ -361,6 +362,8 @@ void tearDown(void)
         free(t_to_remove);
     }
 
+    conf = &g_confs[0];
+    fsm_delete_session(conf);
     g_dns_mgr = NULL;
 
     fsm_reset_mgr();

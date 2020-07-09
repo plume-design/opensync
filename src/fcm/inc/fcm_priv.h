@@ -38,6 +38,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define FCM_DSO_TYPE             ".so"
 #define FCM_DSO_PATH_LEN         (255)
 #define FCM_DSO_INIT_LEN         (255)
+#define FCM_DSO                  "dso"
+#define FCM_DSO_LEN              (255)
 #define FCM_SAMPLE_INTVL         (0)
 #define FCM_REPORT_INTVL         (0)
 #define FCM_FLTR_NAME_LEN        (33)
@@ -108,6 +110,7 @@ typedef struct fcm_collector_
 {
     char dso_path[FCM_DSO_PATH_LEN]; // Path of plugin shared lib
     char dso_init[FCM_DSO_INIT_LEN]; // Plugin init function
+    char *dso;
     fcm_collect_conf_t collect_conf;
     void *handle; // Stores dlopen handle
     void *plugin_init; // Stores the plugin entry function

@@ -58,8 +58,8 @@ struct net_md_flow_key
     int fragment;         /* fragment indicator */
     uint16_t sport;       /* Network byte order */
     uint16_t dport;       /* Network byte order */
-    bool     fstart;      /* Flow start */
-    bool     fend;        /* Flow end */
+    bool fstart;          /* Flow start */
+    bool fend;            /* Flow end */
 };
 
 
@@ -115,7 +115,9 @@ struct net_md_aggregator
     size_t total_report_flows;    /* total flows to be reported */
     size_t total_flows;           /* # of flows tracked by the aggregator */
     size_t held_flows;            /* # of inactive flows with a ref count > 0 */
+    size_t max_reports;           /* Max # of flows to report per window */
     bool (*report_filter)(struct net_md_stats_accumulator *);
+    bool (*collect_filter)(struct net_md_aggregator *, struct net_md_flow_key *);
     bool (*send_report)(struct net_md_aggregator *, char *);
     bool (*neigh_lookup)(struct sockaddr_storage *, os_macaddr_t *);
 };
@@ -133,6 +135,10 @@ struct net_md_aggregator_set
     size_t num_windows;     /* the max # of windows the report will contain */
     int acc_ttl;            /* how long an incative accumulator is kept around */
     int report_type;        /* absolute or relative */
+
+    /* a collector filter routine */
+    bool (*collect_filter)(struct net_md_aggregator *aggr,
+                           struct net_md_flow_key *);
 
     /* a report filter routine */
     bool (*report_filter)(struct net_md_stats_accumulator *);
