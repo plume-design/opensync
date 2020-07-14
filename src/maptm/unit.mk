@@ -15,6 +15,8 @@
 ###############################################################################
 UNIT_NAME := maptm
 
+UNIT_DISABLE := $(if $(CONFIG_MANAGER_MAPTM),n,y)
+
 # Template type:
 UNIT_TYPE := BIN
 
