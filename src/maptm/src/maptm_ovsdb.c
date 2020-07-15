@@ -92,7 +92,7 @@ bool maptm_persistent(void)
     char mapt_support[10];
     if (osp_ps_exists("MAPT_SUPPORT"))
     {
-        if (osp_ps_get("MAPT_SUPPORT", mapt_support, sizeof("MAPT_SUPPORT")) != true)
+        if (!(osp_ps_get("MAPT_SUPPORT", mapt_support, sizeof("MAPT_SUPPORT"))))
         {
              LOGE("%s Cannot get MAPT_SUPPORT Value", __func__ );
              return false;
@@ -101,7 +101,7 @@ bool maptm_persistent(void)
     else
     {
         snprintf(mapt_support, sizeof(mapt_support), "%s", "true");
-        if ((osp_ps_set("MAPT_SUPPORT", mapt_support)) != true)
+        if (!(osp_ps_set("MAPT_SUPPORT", mapt_support)))
         {
              LOGE("%s Cannot save mapt support through osp API", __func__);
              return false;
@@ -146,19 +146,21 @@ bool maptm_get_supportValue(char *value)
 
     return false;
 }
-void callback_Node_Config(ovsdb_update_monitor_t *mon,
-                           struct schema_Node_Config *old_rec,
-                           struct schema_Node_Config *conf)
+void callback_Node_Config(
+        ovsdb_update_monitor_t *mon,
+        struct schema_Node_Config *old_rec,
+        struct schema_Node_Config *conf
+)
 {
 
-    if (mon->mon_type == OVSDB_UPDATE_NEW)
+    if ((mon->mon_type) == OVSDB_UPDATE_NEW)
     {
         LOGD("%s: new node config entry: module %s, key: %s, value: %s",
                 __func__, conf->module, conf->key, conf->value);
                 
         if (!strcmp(conf->module, "MAPTM"))
         {
-            if (maptm_get_supportValue(conf->value) == true)
+            if (maptm_get_supportValue(conf->value))
             {
                 WanConfig |= MAPTM_ELIGIBILITY_ENABLE;
             }
@@ -190,18 +192,18 @@ void callback_Node_Config(ovsdb_update_monitor_t *mon,
                 maptm_dhcp_option_update_15_option(strucWanConfig.mapt_support);
                 maptm_dhcp_option_update_95_option(strucWanConfig.mapt_support);     
             }
-            if ((maptm_get_supportValue(conf->value) == true) && !maptm_get_supportValue(old_rec->value))
+            if ((maptm_get_supportValue(conf->value)) && !maptm_get_supportValue(old_rec->value))
             {
                 WanConfig |= MAPTM_ELIGIBILITY_ENABLE;
             }
-            else if (!maptm_get_supportValue(conf->value) && (maptm_get_supportValue(old_rec->value) == true))
+            else if (!maptm_get_supportValue(conf->value) && (maptm_get_supportValue(old_rec->value)))
             {
                 WanConfig &= MAPTM_IPV6_ENABLE;
             }
             if (maptm_get_supportValue(conf->value) != maptm_get_supportValue(old_rec->value))
             {
                 maptm_eligibilityStart(WanConfig);
-                if (osp_ps_set("MAPT_SUPPORT", maptm_get_supportValue(conf->value) ? "true" : "false") != true)
+                if (!(osp_ps_set("MAPT_SUPPORT", maptm_get_supportValue(conf->value) ? "true" : "false")))
                 {
                     LOGE("SGC: Error saving new MAP-T support value");
                 }
@@ -209,9 +211,11 @@ void callback_Node_Config(ovsdb_update_monitor_t *mon,
         }
     }
 }
-static void callback_Interface(ovsdb_update_monitor_t *mon, 
-                            struct schema_Interface *old,
-                            struct schema_Interface *record)
+static void callback_Interface(
+        ovsdb_update_monitor_t *mon, 
+        struct schema_Interface *old,
+        struct schema_Interface *record
+)
 {
     LOGA("Starting callback_Interface %s name ", record->name);
     if (!mon || !record)
@@ -234,7 +238,7 @@ static void callback_Interface(ovsdb_update_monitor_t *mon,
                 if (!strcmp(record->link_state, "up"))
                 {
                      strucWanConfig.link_up = true;
-                     if (record->link_state != old->link_state) maptm_eligibilityStart(WanConfig);
+                     if ((record->link_state) != (old->link_state)) maptm_eligibilityStart(WanConfig);
                 }
                 else if (!strcmp(record->link_state, "down")) 
                 {

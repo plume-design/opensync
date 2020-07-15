@@ -53,7 +53,7 @@ static bool maptm_init(void)
 {
     bool retval = true;
     retval = maptm_persistent();
-    if (retval != true)
+    if (!retval)
     {
         LOGE("Failed setting up MAPT Table");
     }
@@ -78,7 +78,10 @@ int main(int argc, char ** argv)
     LOGT("Starting MAPT Manager");
 
     log_severity_set(maptm_log_severity);
-    if (!target_init(TARGET_INIT_MGR_MAPTM, loop))
+    
+    bool result;
+    result = target_init(TARGET_INIT_MGR_MAPTM, loop);
+    if (!result)
     { 
         return -1;
     }

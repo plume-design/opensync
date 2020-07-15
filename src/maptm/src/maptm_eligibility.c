@@ -69,30 +69,33 @@ static void StartStop_DHCPv4(bool refresh)
     MEMZERO(iconf);
     MEMZERO(iconf_update);
 
-    ret = ovsdb_table_select_one(&table_Wifi_Inet_Config,
-                 SCHEMA_COLUMN(Wifi_Inet_Config, if_name), "br-wan", &iconf);
+    ret = ovsdb_table_select_one(
+            &table_Wifi_Inet_Config,
+            SCHEMA_COLUMN(Wifi_Inet_Config, if_name), 
+            "br-wan", 
+            &iconf);
     if (!ret)
         LOGE("%s: Failed to get interface config", __func__);
 
     dhcp_active = !strcmp(iconf.ip_assign_scheme, "dhcp");
     if (!refresh && dhcp_active)
     {
-        
         STRSCPY(iconf_update.ip_assign_scheme, "none");
     }
     if (refresh)
     {
         if (!dhcp_active)
-             STRSCPY(iconf_update.ip_assign_scheme, "dhcp");
+        STRSCPY(iconf_update.ip_assign_scheme, "dhcp");
     }
     iconf_update.ip_assign_scheme_exists = true;
     char *filter[] = { "+",
                         SCHEMA_COLUMN(Wifi_Inet_Config, ip_assign_scheme),
                         NULL };
 
-    ret = ovsdb_table_update_where_f(&table_Wifi_Inet_Config,
-                  ovsdb_where_simple(SCHEMA_COLUMN(Wifi_Inet_Config, if_name), "br-wan"),
-                  &iconf_update, filter);
+    ret = ovsdb_table_update_where_f(
+            &table_Wifi_Inet_Config,
+            ovsdb_where_simple(SCHEMA_COLUMN(Wifi_Inet_Config, if_name), "br-wan"),
+            &iconf_update, filter);
 
 }
 void StartStop_DHCPv6(bool refresh)
@@ -108,9 +111,10 @@ void StartStop_DHCPv6(bool refresh)
                         SCHEMA_COLUMN(DHCPv6_Client, enable),
                         NULL };
 
-    ret = ovsdb_table_update_where_f(&table_DHCPv6_Client,
-                  ovsdb_where_simple_typed(SCHEMA_COLUMN(DHCPv6_Client, request_address), "true", OCLM_BOOL),
-                  &iconf_update, filter);
+    ret = ovsdb_table_update_where_f(
+            &table_DHCPv6_Client,
+            ovsdb_where_simple_typed(SCHEMA_COLUMN(DHCPv6_Client, request_address), "true", OCLM_BOOL),
+            &iconf_update, filter);
     if (!ret)
         LOGE("%s: Failed to get DHCPv6_Client config", __func__);
 
@@ -126,11 +130,11 @@ bool maptm_dhcpv6_server_add_option(char *uuid, bool add)
     ovsdb_table_select_one(&table_DHCPv6_Server, "status", "enabled", &server);
 
     ovsdb_sync_mutate_uuid_set(
-             SCHEMA_TABLE(DHCPv6_Server),
-             ovsdb_where_uuid("_uuid", server._uuid.uuid),
-             SCHEMA_COLUMN(DHCPv6_Server, options),
-             add ?OTR_INSERT:OTR_DELETE,
-             uuid);
+            SCHEMA_TABLE(DHCPv6_Server),
+            ovsdb_where_uuid("_uuid", server._uuid.uuid),
+            SCHEMA_COLUMN(DHCPv6_Server, options),
+            add ? OTR_INSERT : OTR_DELETE,
+            uuid);
     return true;
 }
 /* End Workaround for MAPT Mode Add option 23 and 24 */
@@ -138,7 +142,8 @@ bool maptm_dhcpv6_server_add_option(char *uuid, bool add)
 static void callback_DHCP_Option(
         ovsdb_update_monitor_t *mon,
         struct schema_DHCP_Option *old,
-        struct schema_DHCP_Option *new)
+        struct schema_DHCP_Option *new
+)
 {
 
     char buffer[512];
@@ -147,14 +152,14 @@ static void callback_DHCP_Option(
     switch (mon->mon_type)
     {
         case OVSDB_UPDATE_NEW:
-            if ((new->tag == 26) && (new->enable == true) && !strcmp(new->type, "rx"))
+            if (((new->tag) == 26) && (new->enable) && !strcmp((new->type), "rx"))
             {
                 snprintf(strucWanConfig.iapd, sizeof(strucWanConfig.iapd), "%s", new->value);
             }
 
-            if (new->tag == 95)
+            if ((new->tag) == 95)
             {
-                if (new->enable == true)
+                if (new->enable)
                 {
                     strucWanConfig.mapt_95_Option = true;
                     snprintf(strucWanConfig.mapt_95_value, sizeof(strucWanConfig.mapt_95_value), "%s", new->value);
@@ -178,11 +183,11 @@ static void callback_DHCP_Option(
             }
 
             /* Workaround for MAPT Mode Add option 23 and 24 */
-            if ((new->tag == 23) && (new->enable == true))
+            if (((new->tag) == 23) && (new->enable))
             {
                 snprintf(strucWanConfig.option_23, sizeof(strucWanConfig.option_23), "%s", new->_uuid.uuid);
             }
-            if ((new->tag == 24) && (new->enable == true))
+            if (((new->tag) == 24) && (new->enable))
             {
                 snprintf(strucWanConfig.option_24, sizeof(strucWanConfig.option_24), "%s", new->_uuid.uuid);
             }
@@ -191,9 +196,9 @@ static void callback_DHCP_Option(
             break;
 
         case OVSDB_UPDATE_MODIFY:
-            if (new->tag == 95)
+            if ((new->tag) == 95)
             {
-                if (new->enable == true)
+                if (new->enable)
                 {
                     strucWanConfig.mapt_95_Option = true;
                     snprintf(strucWanConfig.mapt_95_value, sizeof(strucWanConfig.mapt_95_value), "%s", new->value);
@@ -206,7 +211,7 @@ static void callback_DHCP_Option(
             break;
 
         case OVSDB_UPDATE_DEL:
-            if (old->tag == 95)
+            if ((old->tag) == 95)
             {
                 strucWanConfig.mapt_95_Option = false;
                 if (!strcmp("MAP-T", strucWanConfig.mapt_mode) 
@@ -225,11 +230,11 @@ static void callback_DHCP_Option(
             }
             
             /* Start Workaround for MAPT Mode Add option 23 and 24 */
-            if ((old->tag == 24) && (strucWanConfig.option_24[0] != '\0'))
+            if (((old->tag) == 24) && (strucWanConfig.option_24[0] != '\0'))
             {
                 strucWanConfig.option_24[0] = '\0';
             }
-            if ((old->tag == 23) && (strucWanConfig.option_23[0] != '\0'))
+            if (((old->tag) == 23) && (strucWanConfig.option_23[0] != '\0'))
             {
                 strucWanConfig.option_23[0] = '\0';
             }
@@ -240,7 +245,7 @@ static void callback_DHCP_Option(
         default:
             LOG(ERR, "dhcp_option OVSDB event: unkown type %d", mon->mon_type);
             return;
-    }
+    } /* switch */
 }
 
 int maptm_dhcp_option_init(void)
@@ -268,8 +273,10 @@ bool maptm_dhcp_option_update_15_option(bool maptSupport)
     MEMZERO(iconf);
     MEMZERO(iconf_update);
 
-    ret = ovsdb_table_select_one(&table_DHCP_Option,
-                 SCHEMA_COLUMN(DHCP_Option, value), maptSupport?MAPTM_CHARTER_NO_MAP:MAPTM_CHARTER_MAP, &iconf);
+    ret = ovsdb_table_select_one(
+            &table_DHCP_Option,
+            SCHEMA_COLUMN(DHCP_Option, value), 
+            maptSupport ? MAPTM_CHARTER_NO_MAP : MAPTM_CHARTER_MAP, &iconf);
     if (!ret)
         LOGE("%s: Failed to get DHCP_Option config", __func__);
 
@@ -279,10 +286,11 @@ bool maptm_dhcp_option_update_15_option(bool maptSupport)
                         SCHEMA_COLUMN(DHCP_Option, value),
                         NULL };
 
-    ret = ovsdb_table_update_where_f(&table_DHCP_Option,
-                  ovsdb_where_simple(SCHEMA_COLUMN(DHCP_Option, value),
-                  maptSupport?MAPTM_CHARTER_NO_MAP:MAPTM_CHARTER_MAP),
-                  &iconf_update, filter);
+    ret = ovsdb_table_update_where_f(
+            &table_DHCP_Option,
+            ovsdb_where_simple(SCHEMA_COLUMN(DHCP_Option, value),
+            maptSupport ? MAPTM_CHARTER_NO_MAP : MAPTM_CHARTER_MAP),
+            &iconf_update, filter);
     return true;
 }
 bool maptm_dhcp_option_update_95_option(bool maptSupport)
@@ -305,9 +313,11 @@ bool maptm_dhcp_option_update_95_option(bool maptSupport)
                         SCHEMA_COLUMN(DHCPv6_Client, request_options),
                         NULL };
 
-    ovsdb_table_update_where_f(&table_DHCPv6_Client,
-                 ovsdb_where_simple_typed(SCHEMA_COLUMN(DHCPv6_Client, request_address), "true", OCLM_BOOL),
-                  &iconf_update, filter);
+    ovsdb_table_update_where_f(
+            &table_DHCPv6_Client,
+            ovsdb_where_simple_typed(SCHEMA_COLUMN(DHCPv6_Client, request_address), "true", OCLM_BOOL),
+            &iconf_update, 
+            filter);
     return true;
 }
 static void maptm_update_wan_mode(const char *status)
@@ -323,9 +333,9 @@ static void maptm_update_wan_mode(const char *status)
     SCHEMA_SET_STR(set.value, status);
 
     where = ovsdb_where_multi(
-        ovsdb_where_simple_typed(SCHEMA_COLUMN(Node_State, module), WANO_MODULE, OCLM_STR),
-        ovsdb_where_simple_typed(SCHEMA_COLUMN(Node_State, key), "maptMode", OCLM_STR),
-        NULL);
+            ovsdb_where_simple_typed(SCHEMA_COLUMN(Node_State, module), WANO_MODULE, OCLM_STR),
+            ovsdb_where_simple_typed(SCHEMA_COLUMN(Node_State, key), "maptMode", OCLM_STR),
+            NULL);
 
     if (where == NULL)
     {

@@ -55,9 +55,9 @@ struct ovsdb_table table_Netfilter;
 void maptm_remove_maptStruct(struct mapt *mapt_rule)
 {
     if (mapt_rule == NULL) return;
-    if (mapt_rule->dmr != NULL) free(mapt_rule->dmr);
-    if (mapt_rule->ipv6prefix != NULL) free(mapt_rule->ipv6prefix);
-    if (mapt_rule->ipv4prefix != NULL) free(mapt_rule->ipv4prefix);
+    if ((mapt_rule->dmr) != NULL) free(mapt_rule->dmr);
+    if ((mapt_rule->ipv6prefix) != NULL) free(mapt_rule->ipv6prefix);
+    if ((mapt_rule->ipv4prefix) != NULL) free(mapt_rule->ipv4prefix);
     free(mapt_rule);
 }
 
@@ -135,7 +135,7 @@ struct mapt* parse_option_rule(char *rule)
         else if (!strcmp(name, "ipv4prefix"))
         {
             mapt_rule->ipv4prefix = strndup(value, strlen(value));
-            if (mapt_rule->ipv4prefix == NULL)
+            if ((mapt_rule->ipv4prefix) == NULL)
             {
                 LOGE("Unable to allocate update handler!");
                 goto free;
@@ -144,7 +144,7 @@ struct mapt* parse_option_rule(char *rule)
         else if (!strcmp(name, "ipv6prefix"))
         {
             mapt_rule->ipv6prefix = strndup(value, strlen(value));
-            if (mapt_rule->ipv6prefix == NULL)
+            if ((mapt_rule->ipv6prefix) == NULL)
             {
                 LOGE("Unable to allocate update handler!");
                 goto free;
@@ -153,14 +153,14 @@ struct mapt* parse_option_rule(char *rule)
         else if (!strcmp(name, "dmr"))
         {
             mapt_rule->dmr = strndup(value, strlen(value));
-            if (mapt_rule->dmr == NULL)
+            if ((mapt_rule->dmr) == NULL)
             {
                 LOGE("Unable to allocate update handler!");
                 goto free;
             }
         }
         p = strtok(NULL, ",");
-    }
+    } /* while */
     return mapt_rule;
 free:
     maptm_remove_maptStruct(mapt_rule);
@@ -168,7 +168,11 @@ free:
 }
 
 // Compare between the ipv6prefix of MAP-T rule and the IA-PD
-int comparePrefix(const char *iapd_prefix, const char *mapt_prefix, int length)
+int comparePrefix(
+        const char *iapd_prefix, 
+        const char *mapt_prefix, 
+        int length
+)
 {
     struct in6_addr iapd;
     struct in6_addr pref;
@@ -222,7 +226,7 @@ int comparePrefix(const char *iapd_prefix, const char *mapt_prefix, int length)
 }
 
 // Select matched MAP-T rule
-struct mapt*  get_Mapt_Rule(char *option95, char *iapd)
+struct mapt* get_Mapt_Rule(char *option95, char *iapd)
 {
     LOGT(" Get MAP-t Rules");
     if (!option95) return NULL;
@@ -247,7 +251,7 @@ struct mapt*  get_Mapt_Rule(char *option95, char *iapd)
         }
        
         l_node->value = strndup(rule, strlen(rule));
-        if (l_node->value == NULL)
+        if ((l_node->value) == NULL)
         {
             LOGE("Unable to allocate update handler!");
             free(l_node);
@@ -292,7 +296,11 @@ struct mapt*  get_Mapt_Rule(char *option95, char *iapd)
 }
 
 // Configure Map Domain
-void configureMapDomain(char*iapd, int iapd_length, struct mapt *mapt_rule )
+void configureMapDomain(
+        char*iapd, 
+        int iapd_length, 
+        struct mapt *mapt_rule
+)
 {
     struct in6_addr addr6Wan;
     char ipv6PrefixHex[19];
@@ -305,7 +313,9 @@ void configureMapDomain(char*iapd, int iapd_length, struct mapt *mapt_rule )
     
     // Set Domain PSID
     inet_pton(AF_INET6, iapd, &addr6Wan);
-    snprintf(ipv6PrefixHex, 19, 
+    snprintf(
+        ipv6PrefixHex, 
+        19, 
         "0x%02x%02x%02x%02x%02x%02x%02x%02x",
         (int)addr6Wan.s6_addr[0], 
         (int)addr6Wan.s6_addr[1], 
@@ -321,7 +331,7 @@ void configureMapDomain(char*iapd, int iapd_length, struct mapt *mapt_rule )
     ipv6addr <<= mapt_rule->prefix6len;
     ipv6addr >>= mapt_rule->prefix6len + (IPV6_PREFIX_MAX_SIZE - iapd_length);  
     uint32_t suffix = ipv6addr>>(mapt_rule->ealen-(IPV4_ADDRESS_SIZE-mapt_rule->prefix4len));
-    if (!(IPV4_ADDRESS_SIZE-mapt_rule->prefix4len == mapt_rule->ealen))
+    if (!((IPV4_ADDRESS_SIZE-mapt_rule->prefix4len) == (mapt_rule->ealen)))
     {
         mapt_rule->domaine_pssid = ipv6addr&(~( suffix  << (mapt_rule->ealen - (IPV4_ADDRESS_SIZE - mapt_rule->prefix4len))));
     }
@@ -451,21 +461,25 @@ bool config_mapt(void)
     // Enable firewall
     if (!maptm_ovsdb_nfm_rules(true))
     {
-       LOGE("Unable to Config Firewall");
-       maptm_remove_maptStruct(MaptConf);
-       return false;
+        LOGE("Unable to Config Firewall");
+        maptm_remove_maptStruct(MaptConf);
+        return false;
     }
     
+    bool result;    
+    result = osn_mapt_configure(
+            MaptConf->dmr,
+            MaptConf->ratio,
+            "BR_LAN",
+            "br-wan",
+            ipv6prefix,
+            subnetcidr4,
+            ipv4PublicAddress,
+            MaptConf->offset,
+            MaptConf->domaine_pssid);
+    
     // Run target MAPT Configuration
-    if (osn_mapt_configure( MaptConf->dmr,
-                            MaptConf->ratio,
-                            "BR_LAN",
-                            "br-wan",
-                            ipv6prefix,
-                            subnetcidr4,
-                            ipv4PublicAddress,
-                            MaptConf->offset,
-                            MaptConf->domaine_pssid))
+    if (result)
     {
         LOGT("MAPT CONFIGURED");
         maptm_remove_maptStruct(MaptConf);                          
