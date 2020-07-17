@@ -1,13 +1,33 @@
-/* Copyright (c) 2020 Charter, Inc.
- *
- * This module contains unpublished, confidential, proprietary
- * material. The use and dissemination of this material are
- * governed by a license. The above copyright notice does not
- * evidence any actual or intended publication of this material.
- *
- * Created: 05 February 2020
- *
- */
+/*
+* Copyright (c) 2020, Sagemcom.
+* All rights reserved.
+*
+* Redistribution and use in source and binary forms, with or without
+* modification, are permitted provided that the following conditions are met:
+*
+* 1. Redistributions of source code must retain the above copyright notice,
+*    this list of conditions and the following disclaimer.
+*
+* 2. Redistributions in binary form must reproduce the above copyright notice,
+*    this list of conditions and the following disclaimer in the documentation
+*    and/or other materials provided with the distribution.
+*
+* 3. Neither the name of the copyright holder nor the names of its contributors
+*    may be used to endorse or promote products derived from this software
+*    without specific prior written permission.
+*
+* THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+* AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+* IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+* ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+* LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+* CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+* SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+* INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+* CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+* ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+* POSSIBILITY OF SUCH DAMAGE.
+*/
  
 #include <stdio.h>
 
@@ -44,6 +64,7 @@ ovsdb_table_t  table_IPv6_Address;
 /* To change to Enum  */
 int WanConfig = 0; 
 
+// Update if board is MAP-T eligible
 bool maptm_update_mapt(bool enable)
 {
     int rc = 0;
@@ -86,6 +107,7 @@ exit:
     return false;
 }
 
+// Make MAPT_Support parameter persistent
 bool maptm_persistent(void)
 {
     bool ret = false;
@@ -121,7 +143,7 @@ bool maptm_persistent(void)
     return ret;
 }
 
-
+// Get MAPT_Support value
 bool maptm_get_supportValue(char *value)
 {
     char str[64];
@@ -146,6 +168,8 @@ bool maptm_get_supportValue(char *value)
 
     return false;
 }
+
+// Node_Config callback
 void callback_Node_Config(
         ovsdb_update_monitor_t *mon,
         struct schema_Node_Config *old_rec,
@@ -211,6 +235,8 @@ void callback_Node_Config(
         }
     }
 }
+
+// Interface callback
 static void callback_Interface(
         ovsdb_update_monitor_t *mon, 
         struct schema_Interface *old,
@@ -255,6 +281,8 @@ static void callback_Interface(
         break;
     }
 }
+
+// Initialize MAP-T ovsdb
 int maptm_ovsdb_init(void)
 {
     // Initialize persistent storage

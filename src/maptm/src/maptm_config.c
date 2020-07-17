@@ -1,13 +1,34 @@
-/* Copyright (c) 2020 Charter, Inc.
- *
- * This module contains unpublished, confidential, proprietary
- * material. The use and dissemination of this material are
- * governed by a license. The above copyright notice does not
- * evidence any actual or intended publication of this material.
- *
- * Created: 05 February 2020
- *
- */
+/*
+* Copyright (c) 2020, Sagemcom.
+* All rights reserved.
+*
+* Redistribution and use in source and binary forms, with or without
+* modification, are permitted provided that the following conditions are met:
+*
+* 1. Redistributions of source code must retain the above copyright notice,
+*    this list of conditions and the following disclaimer.
+*
+* 2. Redistributions in binary form must reproduce the above copyright notice,
+*    this list of conditions and the following disclaimer in the documentation
+*    and/or other materials provided with the distribution.
+*
+* 3. Neither the name of the copyright holder nor the names of its contributors
+*    may be used to endorse or promote products derived from this software
+*    without specific prior written permission.
+*
+* THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+* AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+* IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+* ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+* LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+* CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+* SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+* INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+* CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+* ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+* POSSIBILITY OF SUCH DAMAGE.
+*/
+
 #include <stdarg.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -51,7 +72,7 @@
 
 struct ovsdb_table table_Netfilter;
 
-// Free MAPT struct 
+// Free MAP-T struct 
 void maptm_remove_maptStruct(struct mapt *mapt_rule)
 {
     if (mapt_rule == NULL) return;
@@ -67,9 +88,9 @@ bool maptm_remove_list(ds_dlist_t rules)
     ds_dlist_iter_t iter;
     struct list_rules *node = NULL;
 
-    for (    node = ds_dlist_ifirst(&iter, &rules); 
-             node != NULL;
-             node = ds_dlist_inext(&iter))
+    for (   node = ds_dlist_ifirst(&iter, &rules); 
+            node != NULL;
+            node = ds_dlist_inext(&iter))
     {
         ds_dlist_iremove(&iter);
         free(node->value);
@@ -78,7 +99,7 @@ bool maptm_remove_list(ds_dlist_t rules)
     return true;
 }
 
-// Parse MAP-T Rules
+// Parse MAP-T rules
 struct mapt* parse_option_rule(char *rule)
 {
     if (rule == NULL)
@@ -228,7 +249,7 @@ int comparePrefix(
 // Select matched MAP-T rule
 struct mapt* get_Mapt_Rule(char *option95, char *iapd)
 {
-    LOGT(" Get MAP-t Rules");
+    LOGT("Get MAP-t Rules");
     if (!option95) return NULL;
     bool ret = false;
     char *mapt_option95 = NULL;
@@ -277,7 +298,7 @@ struct mapt* get_Mapt_Rule(char *option95, char *iapd)
             ret = comparePrefix(iapd, mapt_rule->ipv6prefix, mapt_rule->prefix6len);
             if (ret)
             {
-                LOGD("MAPT rule found");
+                LOGD("MAP-T rule found");
                 break;
             }
             else 
@@ -361,7 +382,7 @@ struct mapt* maptm_getconfigure(char *option95, char *iapd, int iapd_len)
     return selected_rule;
 }
 
-// MAP-T Firewall Configuration
+// MAP-T Firewall configuration
 bool maptm_ovsdb_nfm_set_rule(const char *rule, bool enable)
 {
     struct schema_Netfilter set;
@@ -388,9 +409,11 @@ bool maptm_ovsdb_nfm_set_rule(const char *rule, bool enable)
     }
     return true;
 }
+
+// Set MAP-T firewall rules
 bool maptm_ovsdb_nfm_rules(bool enable)
 {
-    LOGT("%s, config Firewall MAPT",__func__);
+    LOGT("%s, config Firewall MAP-T",__func__);
     
     if (!maptm_ovsdb_nfm_set_rule(V4_CHCEK_FORWARD, !enable)) return false;
     if (!maptm_ovsdb_nfm_set_rule(V4_MAPT_CHCEK_FORWARD, enable)) return false;
@@ -400,27 +423,30 @@ bool maptm_ovsdb_nfm_rules(bool enable)
 
     return true;
 }
+
+// Stop MAP-T functionality
 bool stop_mapt(void)
 {
-    if (!maptm_ovsdb_nfm_rules(false)) LOGE("Unable to disable Firewall");
+    if (!maptm_ovsdb_nfm_rules(false)) LOGE("Could not disable Firewall");
     if (!osn_mapt_stop()) return false;
     
     LOGD("Stopped Mapt");    
     return true;
 }
 
+// Configure MAP-T functionality
 bool config_mapt(void)
 {
     if (strucWanConfig.mapt_95_value[0] == '\0' ||  strucWanConfig.iapd[0] == '\0')
     {
-        LOGE("Unable to Configure MAPT Option");
+        LOGE("Unable to configure MAP-T option");
         return false;
     }
     
     /* Hard Coded value: Must be changed */
     char subnetcidr4[20] = "192.168.1.1/24";
     
-    // Get IAPD prefix and its length
+    // Get IA-PD prefix and its length
     char iapd[256] = "";
     int iapd_len = 0;
 
@@ -445,12 +471,12 @@ bool config_mapt(void)
     
     if (MaptConf == NULL)
     {
-        LOGE("Unable to get MAPT Rule");
+        LOGE("Unable to get MAP-T Rule");
         return false;
     }
     
-    // Show MAPT configuration
-    LOGT("MAPT Rule for Mapt Configuration: ");
+    // Show MAP-T configuration
+    LOGT("MAP-T Rule for MAP-T Configuration: ");
     
     // Add the length to the Prefix v4/v6
     char ipv6prefix[100] = "";
@@ -461,7 +487,7 @@ bool config_mapt(void)
     // Enable firewall
     if (!maptm_ovsdb_nfm_rules(true))
     {
-        LOGE("Unable to Config Firewall");
+        LOGE("Unable to configure Firewall");
         maptm_remove_maptStruct(MaptConf);
         return false;
     }
@@ -478,16 +504,16 @@ bool config_mapt(void)
             MaptConf->offset,
             MaptConf->domaine_pssid);
     
-    // Run target MAPT Configuration
+    // Run target MAP-T Configuration
     if (result)
     {
-        LOGT("MAPT CONFIGURED");
+        LOGT("MAP-T configured");
         maptm_remove_maptStruct(MaptConf);                          
         return true;
     }
     
     maptm_remove_maptStruct(MaptConf);
-    LOGE("MAPT NOT CONFIGURED");
+    LOGE("MAP-T not configured");
     
     return false;
 }

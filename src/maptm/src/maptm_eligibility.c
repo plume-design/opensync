@@ -1,13 +1,34 @@
-/* Copyright (c) 2020 Charter, Inc.
- *
- * This module contains unpublished, confidential, proprietary
- * material. The use and dissemination of this material are
- * governed by a license. The above copyright notice does not
- * evidence any actual or intended publication of this material.
- *
- * Created: 05 February 2020
- *
- */
+/*
+* Copyright (c) 2020, Sagemcom.
+* All rights reserved.
+*
+* Redistribution and use in source and binary forms, with or without
+* modification, are permitted provided that the following conditions are met:
+*
+* 1. Redistributions of source code must retain the above copyright notice,
+*    this list of conditions and the following disclaimer.
+*
+* 2. Redistributions in binary form must reproduce the above copyright notice,
+*    this list of conditions and the following disclaimer in the documentation
+*    and/or other materials provided with the distribution.
+*
+* 3. Neither the name of the copyright holder nor the names of its contributors
+*    may be used to endorse or promote products derived from this software
+*    without specific prior written permission.
+*
+* THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+* AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+* IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+* ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+* LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+* CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+* SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+* INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+* CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+* ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+* POSSIBILITY OF SUCH DAMAGE.
+*/
+
 #include <stdarg.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -58,7 +79,7 @@ bool wait95Option = false;
  *  PROTECTED definitions
  *****************************************************************************/
 
-
+// Start/Stop DHCPv4
 static void StartStop_DHCPv4(bool refresh)
 {
     struct schema_Wifi_Inet_Config iconf_update;
@@ -75,7 +96,7 @@ static void StartStop_DHCPv4(bool refresh)
             "br-wan", 
             &iconf);
     if (!ret)
-        LOGE("%s: Failed to get interface config", __func__);
+        LOGE("%s: Failed to get Interface config", __func__);
 
     dhcp_active = !strcmp(iconf.ip_assign_scheme, "dhcp");
     if (!refresh && dhcp_active)
@@ -98,6 +119,8 @@ static void StartStop_DHCPv4(bool refresh)
             &iconf_update, filter);
 
 }
+
+// Start/Stop DHCPv6
 void StartStop_DHCPv6(bool refresh)
 {
     struct schema_DHCPv6_Client iconf_update;
@@ -120,7 +143,7 @@ void StartStop_DHCPv6(bool refresh)
 
 }
 
-/* Start Workaround for MAPT Mode Add option 23 and 24 */
+/* Start Workaround for MAP-T Mode Add option 23 and 24 */
 bool maptm_dhcpv6_server_add_option(char *uuid, bool add)
 {
     struct schema_DHCPv6_Server server;
@@ -137,8 +160,9 @@ bool maptm_dhcpv6_server_add_option(char *uuid, bool add)
             uuid);
     return true;
 }
-/* End Workaround for MAPT Mode Add option 23 and 24 */
+/* End Workaround for MAP-T Mode Add option 23 and 24 */
 
+// DHCP_Option callback
 static void callback_DHCP_Option(
         ovsdb_update_monitor_t *mon,
         struct schema_DHCP_Option *old,
@@ -168,7 +192,7 @@ static void callback_DHCP_Option(
                 {
                     if (!wait95Option && strucWanConfig.link_up)
                     {
-                        // If option 95 is added, no need to wait until timer expires to configure MAPT
+                        // If option 95 is added, no need to wait until timer expires to configure MAP-T
                         ev_timer_stop(EV_DEFAULT, &cs_timer);
                         maptm_callback_Timer();
                     }
@@ -182,7 +206,7 @@ static void callback_DHCP_Option(
                 }
             }
 
-            /* Workaround for MAPT Mode Add option 23 and 24 */
+            /* Workaround for MAP-T Mode Add option 23 and 24 */
             if (((new->tag) == 23) && (new->enable))
             {
                 snprintf(strucWanConfig.option_23, sizeof(strucWanConfig.option_23), "%s", new->_uuid.uuid);
@@ -223,13 +247,13 @@ static void callback_DHCP_Option(
                 }
                  strucWanConfig.mapt_95_value[0] = '\0';
                  
-                /* Start Workaround for MAPT Mode Add option 23 and 24 */
+                /* Start Workaround for MAP-T Mode Add option 23 and 24 */
                 maptm_dhcpv6_server_add_option(strucWanConfig.option_24, false);
                 maptm_dhcpv6_server_add_option(strucWanConfig.option_23, false);
-                /* End Workaround for MAPT Mode Add option 23 and 24 */
+                /* End Workaround for MAP-T Mode Add option 23 and 24 */
             }
             
-            /* Start Workaround for MAPT Mode Add option 23 and 24 */
+            /* Start Workaround for MAP-T Mode Add option 23 and 24 */
             if (((old->tag) == 24) && (strucWanConfig.option_24[0] != '\0'))
             {
                 strucWanConfig.option_24[0] = '\0';
@@ -238,16 +262,17 @@ static void callback_DHCP_Option(
             {
                 strucWanConfig.option_23[0] = '\0';
             }
-            /* End Workaround for MAPT Mode Add option 23 and 24 */
+            /* End Workaround for MAP-T Mode Add option 23 and 24 */
             
             break;
 
         default:
-            LOG(ERR, "dhcp_option OVSDB event: unkown type %d", mon->mon_type);
+            LOG(ERR, "DHCP_Option OVSDB event: unkown type %d", mon->mon_type);
             return;
     } /* switch */
 }
 
+// Initialize and monitor DHCP_Option ovsdb table
 int maptm_dhcp_option_init(void)
 {
     OVSDB_TABLE_INIT_NO_KEY(DHCP_Option);
@@ -255,6 +280,7 @@ int maptm_dhcp_option_init(void)
     return 0;
 }
 
+// Initialize eligibility state machine
 int intit_eligibility(void)
 {
     wait95Option = false;
@@ -264,6 +290,8 @@ int intit_eligibility(void)
     return 0;
     
 }
+
+// Update DHCP option 15 which states if board is MAP-T eligible
 bool maptm_dhcp_option_update_15_option(bool maptSupport)
 {
     struct schema_DHCP_Option iconf_update;
@@ -293,6 +321,8 @@ bool maptm_dhcp_option_update_15_option(bool maptSupport)
             &iconf_update, filter);
     return true;
 }
+
+// Control the request of option 95
 bool maptm_dhcp_option_update_95_option(bool maptSupport)
 {
     struct schema_DHCPv6_Client iconf_update;
@@ -320,6 +350,8 @@ bool maptm_dhcp_option_update_95_option(bool maptSupport)
             filter);
     return true;
 }
+
+// Update WAN mode
 static void maptm_update_wan_mode(const char *status)
 {
     struct schema_Node_State set;
@@ -354,6 +386,7 @@ static void maptm_update_wan_mode(const char *status)
     }
 }
 
+// Timer callback
 void maptm_callback_Timer(void)
 {
     if (!wait95Option) wait95Option = true;
@@ -363,14 +396,14 @@ void maptm_callback_Timer(void)
         {
              maptm_update_wan_mode("MAP-T");
              
-             /* Start Workaround for MAPT Mode Add option 23 and 24 */
+             /* Start Workaround for MAP-T Mode Add option 23 and 24 */
              maptm_dhcpv6_server_add_option(strucWanConfig.option_23, true);
              maptm_dhcpv6_server_add_option(strucWanConfig.option_24, true);       
-             /* End Workaround for MAPT Mode Add option 23 and 24 */
+             /* End Workaround for MAP-T Mode Add option 23 and 24 */
         }
         else
         {
-             LOGE("Unable to Configure MAPT !!!");
+             LOGE("Unable to configure MAP-T!");
              
              /* Resolve limitation: Wrong MAP-T Rule */
              StartStop_DHCPv4(true);
@@ -383,18 +416,20 @@ void maptm_callback_Timer(void)
         maptm_update_wan_mode("Dual-Stack");
     }
 }
+
+// Stop eligibility state machine
 void maptm_eligibilityStop(void)
 {
     StartStop_DHCPv6(false);
     StartStop_DHCPv4(false);
     if (!strcmp("MAP-T", strucWanConfig.mapt_mode))
     {
-        LOGD("%s: Stop MAPT", __func__);
+        LOGD("%s: Stop MAP-T", __func__);
         stop_mapt();
     }
 }
 
-// Check IPv6 Mode is enabled
+// Check if IPv6 is enabled
 bool wano_ipv6IsEnabled(void)
 {
     struct schema_IPv6_Address addr;
@@ -409,6 +444,7 @@ bool wano_ipv6IsEnabled(void)
     return false;
 }
 
+// Start eligibility state machine
 void maptm_eligibilityStart(int WanConfig)
 {
     intit_eligibility(); 
@@ -423,12 +459,12 @@ void maptm_eligibilityStart(int WanConfig)
         WanConfig &= MAPTM_ELIGIBILITY_ENABLE;
     }
     
-    // Check dhcpv6 services
+    // Check DHCPv66 services
     switch ( WanConfig)
     {
         case MAPTM_NO_ELIGIBLE_NO_IPV6:  // Check ipv4 only
         {
-             LOGT("*********** ipv4 only");
+             LOGT("*********** IPv4 only");
              maptm_update_wan_mode("IPv4 Only");
              StartStop_DHCPv4(true);
              break;
@@ -444,7 +480,7 @@ void maptm_eligibilityStart(int WanConfig)
         case MAPTM_ELIGIBLE_NO_IPV6:
         {
              StartStop_DHCPv4(true);
-             LOGT("*********** ipv4 only");
+             LOGT("*********** IPv4 only");
              maptm_update_wan_mode("IPv4 Only");
              break;
         }
