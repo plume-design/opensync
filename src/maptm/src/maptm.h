@@ -32,7 +32,7 @@
 #include "ovsdb_table.h"
 #include "schema.h"
 #include "osp.h"
-
+#include "osp_ps.h"
 #ifndef MAPTM_H_INCLUDED
 #define MAPTM_H_INCLUDED
 

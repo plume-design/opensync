@@ -98,7 +98,7 @@ bool maptm_update_mapt(bool enable)
     if (rc != 1 )
     {
         LOGE("%s Could not update mapt table", __func__);
-        goto exit;
+            goto exit;
     }
 
     LOGD("%s Update mapt table", __func__);
@@ -112,18 +112,24 @@ bool maptm_persistent(void)
 {
     bool ret = false;
     char mapt_support[10];
-    if (osp_ps_exists("MAPT_SUPPORT"))
+	osp_ps_t *ps = NULL;
+	
+    ps = osp_ps_open("MAPT_SUPPORT", OSP_PS_RDWR | OSP_PS_PRESERVE);
+    if (ps == NULL)
     {
-        if (!(osp_ps_get("MAPT_SUPPORT", mapt_support, sizeof("MAPT_SUPPORT"))))
+        LOG(ERR, "maptm: Error opening \"%s\" persistent store.",
+                mapt_support);
+        return false;
+    }
+    
+	if (!(osp_ps_get(ps, "MAPT_SUPPORT", mapt_support, sizeof("MAPT_SUPPORT"))))
         {
              LOGE("%s Cannot get MAPT_SUPPORT Value", __func__ );
              return false;
         }
-    }
-    else
-    {
+
         snprintf(mapt_support, sizeof(mapt_support), "%s", "true");
-        if (!(osp_ps_set("MAPT_SUPPORT", mapt_support)))
+	if (!(osp_ps_set(ps, "MAPT_SUPPORT", mapt_support, sizeof("MAPT_SUPPORT"))))
         {
              LOGE("%s Cannot save mapt support through osp API", __func__);
              return false;
@@ -227,9 +233,15 @@ void callback_Node_Config(
             if (maptm_get_supportValue(conf->value) != maptm_get_supportValue(old_rec->value))
             {
                 maptm_eligibilityStart(WanConfig);
-                if (!(osp_ps_set("MAPT_SUPPORT", maptm_get_supportValue(conf->value) ? "true" : "false")))
+                osp_ps_t *ps = NULL;
+                ps = osp_ps_open("MAPT_SUPPORT", OSP_PS_RDWR | OSP_PS_PRESERVE);
+                if (ps == NULL)
                 {
-                    LOGE("SGC: Error saving new MAP-T support value");
+                    LOG(ERR, "Error saving new MAP-T support value");
+                }
+                if (!(osp_ps_set(ps, "MAPT_SUPPORT", wano_mapt_get_supportValue(conf->value) ? "true" : "false",sizeof(wano_mapt_get_supportValue(conf->value)))))
+                {
+                    LOGE("Error saving new MAP-T support value");
                 }
             }
         }
@@ -285,12 +297,6 @@ static void callback_Interface(
 // Initialize MAP-T ovsdb
 int maptm_ovsdb_init(void)
 {
-    // Initialize persistent storage
-    if (!osp_ps_init())
-    {
-        LOGE("Initializing osp ps (failed)");
-    }
-
     OVSDB_TABLE_INIT_NO_KEY(Interface);
     OVSDB_TABLE_INIT(IP_Interface, status);
     OVSDB_TABLE_INIT_NO_KEY(Node_Config);
