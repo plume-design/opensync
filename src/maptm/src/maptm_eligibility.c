@@ -79,7 +79,7 @@ bool wait95Option = false;
  *  PROTECTED definitions
  *****************************************************************************/
 
-// Start/Stop DHCPv4
+
 static void StartStop_DHCPv4(bool refresh)
 {
     struct schema_Wifi_Inet_Config iconf_update;
@@ -387,6 +387,13 @@ static void maptm_update_wan_mode(const char *status)
 }
 
 // Timer callback
+void maptm_Timer(struct ev_loop *loop, ev_timer *timer, int revents)
+{
+    (void)loop;
+    (void)timer;
+    (void)revents;
+    maptm_callback_Timer();
+}
 void maptm_callback_Timer(void)
 {
     if (!wait95Option) wait95Option = true;
@@ -487,7 +494,7 @@ void maptm_eligibilityStart(int WanConfig)
         case MAPTM_ELIGIBLE_IPV6:
         {
              StartStop_DHCPv6(true);
-             ev_timer_init(&cs_timer, maptm_callback_Timer, 15, 0);
+             ev_timer_init(&cs_timer, maptm_Timer, 15, 0);
              ev_timer_start(EV_DEFAULT, &cs_timer);
              break;
         }

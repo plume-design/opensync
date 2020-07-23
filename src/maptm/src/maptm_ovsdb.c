@@ -112,28 +112,26 @@ bool maptm_persistent(void)
 {
     bool ret = false;
     char mapt_support[10];
-	osp_ps_t *ps = NULL;
-	
+    osp_ps_t *ps = NULL;
+    
     ps = osp_ps_open("MAPT_SUPPORT", OSP_PS_RDWR | OSP_PS_PRESERVE);
     if (ps == NULL)
     {
-        LOG(ERR, "maptm: Error opening \"%s\" persistent store.",
-                mapt_support);
+        LOG(ERR, "maptm: Error opening \"%s\" persistent store.", mapt_support);
         return false;
     }
     
-	if (!(osp_ps_get(ps, "MAPT_SUPPORT", mapt_support, sizeof("MAPT_SUPPORT"))))
-        {
-             LOGE("%s Cannot get MAPT_SUPPORT Value", __func__ );
-             return false;
-        }
+    if (!(osp_ps_get(ps, "MAPT_SUPPORT", mapt_support, sizeof("MAPT_SUPPORT"))))
+    {
+        LOGE("%s Cannot get MAPT_SUPPORT Value", __func__ );
+        return false;
+    }
 
-        snprintf(mapt_support, sizeof(mapt_support), "%s", "true");
-	if (!(osp_ps_set(ps, "MAPT_SUPPORT", mapt_support, sizeof("MAPT_SUPPORT"))))
-        {
-             LOGE("%s Cannot save mapt support through osp API", __func__);
-             return false;
-        }
+    snprintf(mapt_support, sizeof(mapt_support), "%s", "true");
+    if (!(osp_ps_set(ps, "MAPT_SUPPORT", mapt_support, sizeof("MAPT_SUPPORT"))))
+    {
+        LOGE("%s Cannot save mapt support through osp API", __func__);
+        return false;
     }
     LOGT("%s MAPT_Support= %s", __func__, mapt_support);
 
