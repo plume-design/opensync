@@ -212,7 +212,7 @@ void callback_Node_Config(
                 __func__, old_rec->module, old_rec->key, old_rec->value,
                 conf->module, conf->key, conf->value);
                 
-        if (!strcmp(conf->module, "WANO"))
+        if (!strcmp(conf->module, "MAPTM"))
         {
             strucWanConfig.mapt_support = maptm_get_supportValue(conf->value);
             if (maptm_get_supportValue(conf->value) != maptm_get_supportValue(old_rec->value))
@@ -237,7 +237,7 @@ void callback_Node_Config(
                 {
                     LOG(ERR, "Error saving new MAP-T support value");
                 }
-                if (!(osp_ps_set(ps, "MAPT_SUPPORT", wano_mapt_get_supportValue(conf->value) ? "true" : "false",sizeof(wano_mapt_get_supportValue(conf->value)))))
+                if (!(osp_ps_set(ps, "MAPT_SUPPORT", maptm_get_supportValue(conf->value) ? "true" : "false",sizeof(maptm_get_supportValue(conf->value)))))
                 {
                     LOGE("Error saving new MAP-T support value");
                 }
