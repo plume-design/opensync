@@ -29,12 +29,13 @@
 * POSSIBILITY OF SUCH DAMAGE.
 */
 
+#ifndef MAPTM_H_INCLUDED
+#define MAPTM_H_INCLUDED
+
 #include "ovsdb_table.h"
 #include "schema.h"
 #include "osp.h"
 #include "osp_ps.h"
-#ifndef MAPTM_H_INCLUDED
-#define MAPTM_H_INCLUDED
 
 #define MAPTM_MODULE_NAME          "MAPTM"
 
