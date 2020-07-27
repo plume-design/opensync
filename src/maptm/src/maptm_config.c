@@ -76,9 +76,9 @@ struct ovsdb_table table_Netfilter;
 void maptm_remove_maptStruct(struct mapt *mapt_rule)
 {
     if (mapt_rule == NULL) return;
-    if ((mapt_rule->dmr) != NULL) free(mapt_rule->dmr);
-    if ((mapt_rule->ipv6prefix) != NULL) free(mapt_rule->ipv6prefix);
-    if ((mapt_rule->ipv4prefix) != NULL) free(mapt_rule->ipv4prefix);
+    free(mapt_rule->dmr);
+    free(mapt_rule->ipv6prefix);
+    free(mapt_rule->ipv4prefix);
     free(mapt_rule);
 }
 
@@ -114,7 +114,7 @@ struct mapt* parse_option_rule(char *rule)
         return NULL;
     }
     char *p = strtok(rule, ",");
-    while(p)
+    while (p != NULL)
     {
         char *name;
         char *value;
@@ -164,7 +164,7 @@ struct mapt* parse_option_rule(char *rule)
         }
         else if (!strcmp(name, "ipv6prefix"))
         {
-            mapt_rule->ipv6prefix = strndup(value, strlen(value));
+            mapt_rule->ipv6prefix = strdup(value);
             if ((mapt_rule->ipv6prefix) == NULL)
             {
                 LOGE("Unable to allocate update handler!");
@@ -173,7 +173,7 @@ struct mapt* parse_option_rule(char *rule)
         }
         else if (!strcmp(name, "dmr"))
         {
-            mapt_rule->dmr = strndup(value, strlen(value));
+            mapt_rule->dmr = strdup(value);
             if ((mapt_rule->dmr) == NULL)
             {
                 LOGE("Unable to allocate update handler!");
@@ -183,6 +183,7 @@ struct mapt* parse_option_rule(char *rule)
         p = strtok(NULL, ",");
     } /* while */
     return mapt_rule;
+    
 free:
     maptm_remove_maptStruct(mapt_rule);
     return NULL;
@@ -251,6 +252,7 @@ struct mapt* get_Mapt_Rule(char *option95, char *iapd)
 {
     LOGT("Get MAP-t Rules");
     if (!option95) return NULL;
+    
     bool ret = false;
     char *mapt_option95 = NULL;
     mapt_option95 = option95;
@@ -260,7 +262,7 @@ struct mapt* get_Mapt_Rule(char *option95, char *iapd)
  
     // Fill MAP-T rules list
     char *rule = strtok(mapt_option95, " ");
-    while( rule != NULL )
+    while (rule != NULL )
     {
         struct list_rules *l_node;
         l_node = malloc(sizeof(struct list_rules));
@@ -271,7 +273,7 @@ struct mapt* get_Mapt_Rule(char *option95, char *iapd)
             return NULL;
         }
        
-        l_node->value = strndup(rule, strlen(rule));
+        l_node->value = strdup(rule);
         if ((l_node->value) == NULL)
         {
             LOGE("Unable to allocate update handler!");
@@ -318,7 +320,7 @@ struct mapt* get_Mapt_Rule(char *option95, char *iapd)
 
 // Configure Map Domain
 void configureMapDomain(
-        char*iapd, 
+        char *iapd, 
         int iapd_length, 
         struct mapt *mapt_rule
 )
@@ -327,10 +329,10 @@ void configureMapDomain(
     char ipv6PrefixHex[19];
     
     // Set Domain PSID Length
-    mapt_rule->domaine_psidlen = mapt_rule->ealen-( IPV4_ADDRESS_SIZE - mapt_rule->prefix4len);
+    mapt_rule->domain_psid_len = mapt_rule->ealen - (IPV4_ADDRESS_SIZE - mapt_rule->prefix4len);
     
     // Set Ratio
-    mapt_rule->ratio = (1 << mapt_rule->domaine_psidlen);
+    mapt_rule->ratio = (1 << mapt_rule->domain_psid_len);
     
     // Set Domain PSID
     inet_pton(AF_INET6, iapd, &addr6Wan);
@@ -348,13 +350,13 @@ void configureMapDomain(
         (int)addr6Wan.s6_addr[7]); 
                                 
     uint64_t ipv6addr;
-    ipv6addr = strtoll (ipv6PrefixHex, NULL, 0);
+    ipv6addr = strtoll(ipv6PrefixHex, NULL, 0);
     ipv6addr <<= mapt_rule->prefix6len;
     ipv6addr >>= mapt_rule->prefix6len + (IPV6_PREFIX_MAX_SIZE - iapd_length);  
-    uint32_t suffix = ipv6addr>>(mapt_rule->ealen-(IPV4_ADDRESS_SIZE-mapt_rule->prefix4len));
+    uint32_t suffix = ipv6addr>>(mapt_rule->ealen - (IPV4_ADDRESS_SIZE-mapt_rule->prefix4len));
     if (!((IPV4_ADDRESS_SIZE-mapt_rule->prefix4len) == (mapt_rule->ealen)))
     {
-        mapt_rule->domaine_pssid = ipv6addr&(~( suffix  << (mapt_rule->ealen - (IPV4_ADDRESS_SIZE - mapt_rule->prefix4len))));
+        mapt_rule->domain_psid = ipv6addr&(~(suffix  << (mapt_rule->ealen - (IPV4_ADDRESS_SIZE - mapt_rule->prefix4len))));
     }
     
     // Set Public IPv4 Address
@@ -366,9 +368,8 @@ void configureMapDomain(
     struct in_addr ipv4BinPrefixRule;
     inet_pton(AF_INET, mapt_rule->ipv4prefix, &ipv4BinPrefixRule);
     struct in_addr ipv4BinPublicAddress;
-    ipv4BinPublicAddress.s_addr = ((uint32_t)ipv4BinPrefixRule.s_addr | swapped_suffix ); 
-    inet_ntop(AF_INET, &ipv4BinPublicAddress, mapt_rule->ipv4PublicAddress, IPV4_ADDRESS_SIZE);
-    
+    ipv4BinPublicAddress.s_addr = ((uint32_t)ipv4BinPrefixRule.s_addr | swapped_suffix);
+    inet_ntop(AF_INET, &ipv4BinPublicAddress, mapt_rule->ipv4PublicAddress, IPV4_ADDRESS_SIZE);    
 }
 
 // Get MAP-T configuration
@@ -413,7 +414,7 @@ bool maptm_ovsdb_nfm_set_rule(const char *rule, bool enable)
 // Set MAP-T firewall rules
 bool maptm_ovsdb_nfm_rules(bool enable)
 {
-    LOGT("%s, config Firewall MAP-T",__func__);
+    LOGT("%s, config Firewall MAP-T", __func__);
     
     if (!maptm_ovsdb_nfm_set_rule(V4_CHCEK_FORWARD, !enable)) return false;
     if (!maptm_ovsdb_nfm_set_rule(V4_MAPT_CHCEK_FORWARD, enable)) return false;
@@ -430,14 +431,14 @@ bool stop_mapt(void)
     if (!maptm_ovsdb_nfm_rules(false)) LOGE("Could not disable Firewall");
     if (!osn_mapt_stop()) return false;
     
-    LOGD("Stopped Mapt");    
+    LOGD("Stopped MAP-T");
     return true;
 }
 
 // Configure MAP-T functionality
 bool config_mapt(void)
 {
-    if (strucWanConfig.mapt_95_value[0] == '\0' ||  strucWanConfig.iapd[0] == '\0')
+    if (strucWanConfig.mapt_95_value[0] == '\0' || strucWanConfig.iapd[0] == '\0')
     {
         LOGE("Unable to configure MAP-T option");
         return false;
@@ -451,7 +452,7 @@ bool config_mapt(void)
     int iapd_len = 0;
 
     char *flag = NULL;
-    snprintf(iapd, sizeof(iapd), "%s", strucWanConfig.iapd);
+    STRSCPY(iapd, strucWanConfig.iapd);
 
     flag = strtok(iapd, ",");
     if (flag == NULL) return false;
@@ -461,7 +462,7 @@ bool config_mapt(void)
         flag = strtok(NULL, ",");
         if (flag == NULL)
         {
-            LOGE("Unable to allocate update handler!");
+            LOGE("Failed to parse IA-PD");
             return false;
         }
         iapd_len = atoi(flag);
@@ -502,7 +503,7 @@ bool config_mapt(void)
             subnetcidr4,
             ipv4PublicAddress,
             MaptConf->offset,
-            MaptConf->domaine_pssid);
+            MaptConf->domain_psid);
     
     // Run target MAP-T Configuration
     if (result)

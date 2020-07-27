@@ -45,27 +45,41 @@
 #define LOGE    printf
 #endif
 
-bool osn_mapt_configure(const char* brprefix, int ratio, const char* intfname, 
-        const char* wanintf, const char* IPv6prefix, const char* subnetcidr4, 
-        const char* ipv4PublicAddress, int PSIDoffset, int PSID);
+bool osn_mapt_configure(
+        const char *brprefix,
+        int ratio,
+        const char *intfname,
+        const char *wanintf,
+        const char *IPv6prefix,
+        const char *subnetcidr4,
+        const char *ipv4PublicAddress,
+        int PSIDoffset,
+        int PSID);
 bool osn_mapt_stop();
 
 
-bool osn_mapt_configure(const char* brprefix, int ratio, const char* intfname, 
-        const char* wanintf, const char* IPv6prefix, const char* subnetcidr4, 
-        const char* ipv4PublicAddress, int PSIDoffset, int PSID)
+bool osn_mapt_configure(
+        const char *brprefix,
+        int ratio,
+        const char *intfname,
+        const char *wanintf,
+        const char *IPv6prefix,
+        const char *subnetcidr4,
+        const char *ipv4PublicAddress,
+        int PSIDoffset,
+        int PSID)
 {
-    char cmd[MAPTM_CMD_LEN]={0x0};
+    char cmd[MAPTM_CMD_LEN] = {0x0};
 
     if ((brprefix==NULL) || (intfname==NULL) || (wanintf==NULL) || (IPv6prefix==NULL) || (subnetcidr4==NULL) || (ipv4PublicAddress==NULL))
     {
-        LOG(ERR, "map-t: %s: Invalid parameter.", intfname);
+        LOG(ERR, "map-t: Invalid parameter: %s", intfname);
         return false;
     }
     
-    snprintf(cmd, MAPTM_CMD_LEN,"ivictl -r -d -P %s -R %d -T ", brprefix, ratio);
+    snprintf(cmd, MAPTM_CMD_LEN, "ivictl -r -d -P %s -R %d -T ", brprefix, ratio);
     /* We have to verify why cmd_log return false otherwise cmd is exc */
-    LOGT("cmd:%s",cmd);
+    LOGT("cmd: %s", cmd);
     cmd_log(cmd);
 
     snprintf(
@@ -80,7 +94,7 @@ bool osn_mapt_configure(const char* brprefix, int ratio, const char* intfname,
         PSIDoffset, 
         ratio,
         PSID);
-    LOGT("cmd:%s",cmd);
+    LOGT("cmd: %s", cmd);
     /* We have to verify why cmd_log return false otherwise cmd is exc */
     cmd_log(cmd);
 
@@ -89,8 +103,8 @@ bool osn_mapt_configure(const char* brprefix, int ratio, const char* intfname,
 
 bool osn_mapt_stop()
 {
-    char cmd[MAPTM_CMD_LEN]={0x0};
-    snprintf(cmd, sizeof(cmd),"ivictl -q");
+    char cmd[MAPTM_CMD_LEN] = {0x0};
+    snprintf(cmd, sizeof(cmd), "ivictl -q");
     if (cmd_log(cmd)) return true;
     
     return false;

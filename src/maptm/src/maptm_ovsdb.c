@@ -70,6 +70,7 @@ bool maptm_update_mapt(bool enable)
     int rc = 0;
     json_t *where = NULL;
     struct schema_Node_Config rec_config;
+    
     memset(&rec_config, 0, sizeof(rec_config));
     rec_config._partial_update = true;
 
@@ -83,6 +84,7 @@ bool maptm_update_mapt(bool enable)
         LOGE("check current mode Dual-Stack");
         goto exit;
     }
+    
     if (enable)
     {
         SCHEMA_SET_STR(rec_config.value, "{\"support\":\"true\",\"interface\":\"br-wan\"}");
@@ -97,12 +99,13 @@ bool maptm_update_mapt(bool enable)
     
     if (rc != 1 )
     {
-        LOGE("%s Could not update mapt table", __func__);
-            goto exit;
+        LOGE("%s: Could not update mapt table", __func__);
+        goto exit;
     }
 
-    LOGD("%s Update mapt table", __func__);
+    LOGD("%s: Update mapt table", __func__);
     return true;
+    
 exit:
     return false;
 }
@@ -123,17 +126,17 @@ bool maptm_persistent(void)
     
     if (!(osp_ps_get(ps, "MAPT_SUPPORT", mapt_support, sizeof("MAPT_SUPPORT"))))
     {
-        LOGE("%s Cannot get MAPT_SUPPORT Value", __func__ );
+        LOGE("%s: Cannot get MAPT_SUPPORT value", __func__);
         return false;
     }
 
     snprintf(mapt_support, sizeof(mapt_support), "%s", "true");
     if (!(osp_ps_set(ps, "MAPT_SUPPORT", mapt_support, sizeof("MAPT_SUPPORT"))))
     {
-        LOGE("%s Cannot save mapt support through osp API", __func__);
+        LOGE("%s: Cannot save MAPT_SUPPORT through osp API", __func__);
         return false;
     }
-    LOGT("%s MAPT_Support= %s", __func__, mapt_support);
+    LOGT("%s: MAPT_SUPPORT = %s", __func__, mapt_support);
 
     if (!strcmp(mapt_support, "true"))
     {
@@ -151,9 +154,9 @@ bool maptm_persistent(void)
 bool maptm_get_supportValue(char *value)
 {
     char str[64];
-    memset(str, 0, sizeof(str));
-    strscpy(str, value, sizeof(str));
-    char delim[] = ":";
+    const char delim[] = ":";
+    
+    STRSCPY(str, value);
 
     char *ptr = strtok(str, delim);
 
@@ -206,7 +209,7 @@ void callback_Node_Config(
 
     if (mon->mon_type == OVSDB_UPDATE_MODIFY)
     {
-        LOGD(   "%s: node config entry updated: \n"
+        LOGD("%s: node config entry updated: \n"
                 "old module: %s, old key: %s, old value: %s \n"
                 "new module: %s, new key: %s, new value: %s",
                 __func__, old_rec->module, old_rec->key, old_rec->value,
@@ -220,6 +223,7 @@ void callback_Node_Config(
                 maptm_dhcp_option_update_15_option(strucWanConfig.mapt_support);
                 maptm_dhcp_option_update_95_option(strucWanConfig.mapt_support);     
             }
+            
             if ((maptm_get_supportValue(conf->value)) && !maptm_get_supportValue(old_rec->value))
             {
                 WanConfig |= MAPTM_ELIGIBILITY_ENABLE;
@@ -228,6 +232,7 @@ void callback_Node_Config(
             {
                 WanConfig &= MAPTM_IPV6_ENABLE;
             }
+            
             if (maptm_get_supportValue(conf->value) != maptm_get_supportValue(old_rec->value))
             {
                 maptm_eligibilityStart(WanConfig);
@@ -281,7 +286,6 @@ static void callback_Interface(
                     strucWanConfig.link_up = false;
                     maptm_eligibilityStop();
                 }
-
             }
 
         break;

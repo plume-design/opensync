@@ -109,7 +109,6 @@ int main(int argc, char ** argv)
         return -1;
     }
 
-    LOGT("Starting target_init  Manager");
     if (!ovsdb_init_loop(loop, "maptm"))
     {
         LOGE("Initializing maptm " "(Failed to initialize OVSDB)");
@@ -129,7 +128,7 @@ int main(int argc, char ** argv)
     if (!maptm_init())
     {
         LOGE("Failed in maptm_init()");
-        //return -1;
+        return -1;
     }
     
     // From this point on, log severity can change in runtime.

@@ -37,9 +37,9 @@
 #include "osp.h"
 #include "osp_ps.h"
 
-#define MAPTM_MODULE_NAME          "MAPTM"
+#define MAPTM_MODULE_NAME           "MAPTM"
 
-#define MAPTM_TIMEOUT_INTERVAL           5 /* Interval to verify timer condition */
+#define MAPTM_TIMEOUT_INTERVAL      5  /**< Interval to verify timer condition */
     
 extern int maptm_ovsdb_init(void);
 extern bool maptm_ovsdb_nfm_add_rules(void);
@@ -91,8 +91,8 @@ struct mapt
     uint8_t psidlen;
     uint16_t psid;
     char *dmr;
-    uint16_t domaine_pssid;
-    uint16_t domaine_psidlen;
+    uint16_t domain_psid;
+    uint16_t domain_psid_len;
     uint16_t ratio;
     char ipv4PublicAddress[100];
 };
@@ -110,4 +110,4 @@ extern struct ovsdb_table table_mapt;
 extern struct ovsdb_table table_Node_State;
 bool maptm_persistent(void);
 
-#endif  /* MAPTM_H_INCLUDED */
+#endif /* MAPTM_H_INCLUDED */

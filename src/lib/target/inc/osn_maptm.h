@@ -56,21 +56,22 @@ bool osn_mapt_init(void);                       //Initialize MAP-T functionality
 
 * @return true on success
 */
-bool osn_mapt_configure(const char* brprefix,     //Configure and start MAP-T module   
-						   int ratio, 
-						   const char* intfname, 
-						   const char* wanintf, 
-						   const char* IPv6prefix, 
-						   const char* subnetcidr4, 
-						   const char* ipv4PublicAddress, 
-						   int PSIDoffset, 
-						   int PSID);
+bool osn_mapt_configure(
+        const char *brprefix,
+        int ratio,
+        const char *intfname,
+        const char *wanintf,
+        const char *IPv6prefix,
+        const char *subnetcidr4,
+        const char *ipv4PublicAddress,
+        int PSIDoffset,
+        int PSID);
 
 /**
 * @brief Stop map-t module
 * @return true on success
 */						   
-bool osn_mapt_stop();                             //Stop MAP-T functionality 
+bool osn_mapt_stop();
 
 #endif /* OSN_MAPTM_H_INCLUDED */
 

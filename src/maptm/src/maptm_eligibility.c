@@ -96,7 +96,10 @@ static void StartStop_DHCPv4(bool refresh)
             "br-wan", 
             &iconf);
     if (!ret)
+    {
         LOGE("%s: Failed to get Interface config", __func__);
+        return;
+    }
 
     dhcp_active = !strcmp(iconf.ip_assign_scheme, "dhcp");
     if (!refresh && dhcp_active)
@@ -106,7 +109,9 @@ static void StartStop_DHCPv4(bool refresh)
     if (refresh)
     {
         if (!dhcp_active)
-        STRSCPY(iconf_update.ip_assign_scheme, "dhcp");
+        {
+            STRSCPY(iconf_update.ip_assign_scheme, "dhcp");
+        }
     }
     iconf_update.ip_assign_scheme_exists = true;
     char *filter[] = { "+",
@@ -140,15 +145,13 @@ void StartStop_DHCPv6(bool refresh)
             &iconf_update, filter);
     if (!ret)
         LOGE("%s: Failed to get DHCPv6_Client config", __func__);
-
 }
 
 /* Start Workaround for MAP-T Mode Add option 23 and 24 */
 bool maptm_dhcpv6_server_add_option(char *uuid, bool add)
 {
     struct schema_DHCPv6_Server server;
-    if (uuid[0] == '\0')
-        return false;
+    if (uuid[0] == '\0') return false;
     
     ovsdb_table_select_one(&table_DHCPv6_Server, "status", "enabled", &server);
 
@@ -158,6 +161,7 @@ bool maptm_dhcpv6_server_add_option(char *uuid, bool add)
             SCHEMA_COLUMN(DHCPv6_Server, options),
             add ? OTR_INSERT : OTR_DELETE,
             uuid);
+            
     return true;
 }
 /* End Workaround for MAP-T Mode Add option 23 and 24 */
@@ -228,7 +232,9 @@ static void callback_DHCP_Option(
                     snprintf(strucWanConfig.mapt_95_value, sizeof(strucWanConfig.mapt_95_value), "%s", new->value);
                 }
                 else
+                {
                     strucWanConfig.mapt_95_Option = false;
+                }
                  
             }
 
@@ -245,7 +251,7 @@ static void callback_DHCP_Option(
                     // Restart the state machine if the 95 option is removed
                     maptm_eligibilityStart(MAPTM_ELIGIBLE_IPV6);
                 }
-                 strucWanConfig.mapt_95_value[0] = '\0';
+                strucWanConfig.mapt_95_value[0] = '\0';
                  
                 /* Start Workaround for MAP-T Mode Add option 23 and 24 */
                 maptm_dhcpv6_server_add_option(strucWanConfig.option_24, false);
@@ -287,8 +293,7 @@ int intit_eligibility(void)
     StartStop_DHCPv6(false);
     StartStop_DHCPv4(false);
     strucWanConfig.mapt_EnableIpv6 = true;
-    return 0;
-    
+    return 0;    
 }
 
 // Update DHCP option 15 which states if board is MAP-T eligible
@@ -306,7 +311,10 @@ bool maptm_dhcp_option_update_15_option(bool maptSupport)
             SCHEMA_COLUMN(DHCP_Option, value), 
             maptSupport ? MAPTM_CHARTER_NO_MAP : MAPTM_CHARTER_MAP, &iconf);
     if (!ret)
+    {
         LOGE("%s: Failed to get DHCP_Option config", __func__);
+        return false;
+    }
 
     STRSCPY(iconf_update.value, maptSupport ? MAPTM_CHARTER_MAP : MAPTM_CHARTER_NO_MAP);
     iconf_update.value_exists = true;
@@ -319,6 +327,7 @@ bool maptm_dhcp_option_update_15_option(bool maptSupport)
             ovsdb_where_simple(SCHEMA_COLUMN(DHCP_Option, value),
             maptSupport ? MAPTM_CHARTER_NO_MAP : MAPTM_CHARTER_MAP),
             &iconf_update, filter);
+            
     return true;
 }
 
@@ -348,6 +357,7 @@ bool maptm_dhcp_option_update_95_option(bool maptSupport)
             ovsdb_where_simple_typed(SCHEMA_COLUMN(DHCPv6_Client, request_address), "true", OCLM_BOOL),
             &iconf_update, 
             filter);
+            
     return true;
 }
 
@@ -467,9 +477,9 @@ void maptm_eligibilityStart(int WanConfig)
     }
     
     // Check DHCPv66 services
-    switch ( WanConfig)
+    switch (WanConfig)
     {
-        case MAPTM_NO_ELIGIBLE_NO_IPV6:  // Check ipv4 only
+        case MAPTM_NO_ELIGIBLE_NO_IPV6:  // check ipv4 only
         {
              LOGT("*********** IPv4 only");
              maptm_update_wan_mode("IPv4 Only");
@@ -499,7 +509,7 @@ void maptm_eligibilityStart(int WanConfig)
              break;
         }
         default:
-             LOGE("Unable to find WAN Mode ");
+             LOGE("Unable to determine WAN Mode");
     }
     
 }
