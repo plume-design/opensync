@@ -1,4 +1,4 @@
-/*
+/* 
 * Copyright (c) 2020, Sagemcom.
 * All rights reserved.
 *
@@ -106,12 +106,9 @@ static void StartStop_DHCPv4(bool refresh)
     {
         STRSCPY(iconf_update.ip_assign_scheme, "none");
     }
-    if (refresh)
+    if (refresh && !dhcp_active)
     {
-        if (!dhcp_active)
-        {
-            STRSCPY(iconf_update.ip_assign_scheme, "dhcp");
-        }
+        STRSCPY(iconf_update.ip_assign_scheme, "dhcp");
     }
     iconf_update.ip_assign_scheme_exists = true;
     char *filter[] = { "+",
@@ -144,13 +141,16 @@ void StartStop_DHCPv6(bool refresh)
             ovsdb_where_simple_typed(SCHEMA_COLUMN(DHCPv6_Client, request_address), "true", OCLM_BOOL),
             &iconf_update, filter);
     if (!ret)
+    {
         LOGE("%s: Failed to get DHCPv6_Client config", __func__);
+    }
 }
 
 /* Start Workaround for MAP-T Mode Add option 23 and 24 */
 bool maptm_dhcpv6_server_add_option(char *uuid, bool add)
 {
     struct schema_DHCPv6_Server server;
+	
     if (uuid[0] == '\0') return false;
     
     ovsdb_table_select_one(&table_DHCPv6_Server, "status", "enabled", &server);
@@ -173,7 +173,6 @@ static void callback_DHCP_Option(
         struct schema_DHCP_Option *new
 )
 {
-
     char buffer[512];
     snprintf(buffer, sizeof(buffer), "%s", new->value);
 
@@ -203,7 +202,7 @@ static void callback_DHCP_Option(
                     else if (strucWanConfig.link_up 
                              && (!strcmp("Dual-Stack", strucWanConfig.mapt_mode)))
                     {
-                        // Restart the state machine if option 95 is added after renew/rebuind 
+                        // Restart the state machine if option 95 is added after renew/rebind 
                         StartStop_DHCPv4(false);
                         maptm_callback_Timer();
                     }
@@ -234,8 +233,7 @@ static void callback_DHCP_Option(
                 else
                 {
                     strucWanConfig.mapt_95_Option = false;
-                }
-                 
+                }                 
             }
 
             break;
@@ -273,12 +271,12 @@ static void callback_DHCP_Option(
             break;
 
         default:
-            LOG(ERR, "DHCP_Option OVSDB event: unkown type %d", mon->mon_type);
+            LOG(ERR, "DHCP_Option OVSDB event: unknown type %d", mon->mon_type);
             return;
     } /* switch */
 }
 
-// Initialize and monitor DHCP_Option ovsdb table
+// Initialize and monitor DHCP_Option Ovsdb table
 int maptm_dhcp_option_init(void)
 {
     OVSDB_TABLE_INIT_NO_KEY(DHCP_Option);
@@ -381,18 +379,18 @@ static void maptm_update_wan_mode(const char *status)
 
     if (where == NULL)
     {
-        LOGA(" [%s] ERROR: where is NULL", __FUNCTION__);
+        LOGA(" [%s] ERROR: where is NULL", __func__);
         return;
     }
 
     rc = ovsdb_table_update_where(&table_Node_State, where, &set);
     if (rc == 1)
     {
-        LOGA(" [%s] status is [%s]", __FUNCTION__, status);
+        LOGA(" [%s] status is [%s]", __func__, status);
     }
     else
     {
-        LOGA(" [%s] ERROR status: unexpected result [%d]", __FUNCTION__, rc);
+        LOGA(" [%s] ERROR status: unexpected result [%d]", __func__, rc);
     }
 }
 
@@ -476,10 +474,10 @@ void maptm_eligibilityStart(int WanConfig)
         WanConfig &= MAPTM_ELIGIBILITY_ENABLE;
     }
     
-    // Check DHCPv66 services
+    // Check DHCPv6 services
     switch (WanConfig)
     {
-        case MAPTM_NO_ELIGIBLE_NO_IPV6:  // check ipv4 only
+        case MAPTM_NO_ELIGIBLE_NO_IPV6:  // check IPv4 only
         {
              LOGT("*********** IPv4 only");
              maptm_update_wan_mode("IPv4 Only");

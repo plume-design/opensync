@@ -81,7 +81,7 @@ bool maptm_update_mapt(bool enable)
         
     if (!where)
     {
-        LOGE("check current mode Dual-Stack");
+		LOGE("Could not get maptParams value in Node_Config table");
         goto exit;
     }
     
@@ -99,11 +99,11 @@ bool maptm_update_mapt(bool enable)
     
     if (rc != 1 )
     {
-        LOGE("%s: Could not update mapt table", __func__);
+        LOGE("%s: Could not update Node_Config table", __func__);
         goto exit;
     }
 
-    LOGD("%s: Update mapt table", __func__);
+    LOGD("%s: Update Node_Config table", __func__);
     return true;
     
 exit:
@@ -124,7 +124,7 @@ bool maptm_persistent(void)
         return false;
     }
     
-    if (!(osp_ps_get(ps, "MAPT_SUPPORT", mapt_support, sizeof("MAPT_SUPPORT"))))
+    if (!(osp_ps_get(ps, "MAPT_SUPPORT", mapt_support, sizeof(mapt_support))))
     {
         LOGE("%s: Cannot get MAPT_SUPPORT value", __func__);
         return false;
@@ -296,7 +296,7 @@ static void callback_Interface(
     }
 }
 
-// Initialize MAP-T ovsdb
+// Initialize MAP-T Ovsdb
 int maptm_ovsdb_init(void)
 {
     OVSDB_TABLE_INIT_NO_KEY(Interface);

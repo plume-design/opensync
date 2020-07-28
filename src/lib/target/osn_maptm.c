@@ -45,18 +45,6 @@
 #define LOGE    printf
 #endif
 
-bool osn_mapt_configure(
-        const char *brprefix,
-        int ratio,
-        const char *intfname,
-        const char *wanintf,
-        const char *IPv6prefix,
-        const char *subnetcidr4,
-        const char *ipv4PublicAddress,
-        int PSIDoffset,
-        int PSID);
-bool osn_mapt_stop();
-
 
 bool osn_mapt_configure(
         const char *brprefix,
@@ -73,7 +61,7 @@ bool osn_mapt_configure(
 
     if ((brprefix==NULL) || (intfname==NULL) || (wanintf==NULL) || (IPv6prefix==NULL) || (subnetcidr4==NULL) || (ipv4PublicAddress==NULL))
     {
-        LOG(ERR, "map-t: Invalid parameter: %s", intfname);
+        LOG(ERR, "map-t: %s: Invalid parameter(s)", intfname);
         return false;
     }
     

@@ -40,7 +40,7 @@
 * @brief Initialize map-t module
 * @return true on success
 */
-bool osn_mapt_init(void);                       //Initialize MAP-T functionality 
+bool osn_mapt_init(void);
 
 /**
 * @brief Configure and start MAP-T module 
@@ -53,6 +53,7 @@ bool osn_mapt_init(void);                       //Initialize MAP-T functionality
 * @param[in] ipv4PublicAddress string value of IPv4 Shared Address  
 * @param[in] PSIDoffset type of value of PSID offset
 * @param[in] PSID type of value of PSID
+*
 
 * @return true on success
 */

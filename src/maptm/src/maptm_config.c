@@ -155,7 +155,7 @@ struct mapt* parse_option_rule(char *rule)
         }
         else if (!strcmp(name, "ipv4prefix"))
         {
-            mapt_rule->ipv4prefix = strndup(value, strlen(value));
+            mapt_rule->ipv4prefix = strdup(value);
             if ((mapt_rule->ipv4prefix) == NULL)
             {
                 LOGE("Unable to allocate update handler!");
@@ -262,7 +262,7 @@ struct mapt* get_Mapt_Rule(char *option95, char *iapd)
  
     // Fill MAP-T rules list
     char *rule = strtok(mapt_option95, " ");
-    while (rule != NULL )
+    while (rule != NULL)
     {
         struct list_rules *l_node;
         l_node = malloc(sizeof(struct list_rules));
@@ -338,7 +338,7 @@ void configureMapDomain(
     inet_pton(AF_INET6, iapd, &addr6Wan);
     snprintf(
         ipv6PrefixHex, 
-        19, 
+        sizeof(ipv6PrefixHex),
         "0x%02x%02x%02x%02x%02x%02x%02x%02x",
         (int)addr6Wan.s6_addr[0], 
         (int)addr6Wan.s6_addr[1], 
@@ -356,7 +356,7 @@ void configureMapDomain(
     uint32_t suffix = ipv6addr>>(mapt_rule->ealen - (IPV4_ADDRESS_SIZE-mapt_rule->prefix4len));
     if (!((IPV4_ADDRESS_SIZE-mapt_rule->prefix4len) == (mapt_rule->ealen)))
     {
-        mapt_rule->domain_psid = ipv6addr&(~(suffix  << (mapt_rule->ealen - (IPV4_ADDRESS_SIZE - mapt_rule->prefix4len))));
+        mapt_rule->domain_psid = ipv6addr&(~(suffix << (mapt_rule->ealen - (IPV4_ADDRESS_SIZE - mapt_rule->prefix4len))));
     }
     
     // Set Public IPv4 Address
@@ -414,7 +414,7 @@ bool maptm_ovsdb_nfm_set_rule(const char *rule, bool enable)
 // Set MAP-T firewall rules
 bool maptm_ovsdb_nfm_rules(bool enable)
 {
-    LOGT("%s, config Firewall MAP-T", __func__);
+    LOGT("%s, MAP-T firewall configuration", __func__);
     
     if (!maptm_ovsdb_nfm_set_rule(V4_CHCEK_FORWARD, !enable)) return false;
     if (!maptm_ovsdb_nfm_set_rule(V4_MAPT_CHCEK_FORWARD, enable)) return false;
@@ -475,9 +475,6 @@ bool config_mapt(void)
         LOGE("Unable to get MAP-T Rule");
         return false;
     }
-    
-    // Show MAP-T configuration
-    LOGT("MAP-T Rule for MAP-T Configuration: ");
     
     // Add the length to the Prefix v4/v6
     char ipv6prefix[100] = "";
