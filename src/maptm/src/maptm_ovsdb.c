@@ -183,7 +183,6 @@ void callback_Node_Config(
         struct schema_Node_Config *conf
 )
 {
-
     if ((mon->mon_type) == OVSDB_UPDATE_NEW)
     {
         LOGD("%s: new node config entry: module %s, key: %s, value: %s",
@@ -287,8 +286,7 @@ static void callback_Interface(
                     maptm_eligibilityStop();
                 }
             }
-
-        break;
+            break;
 
     default:
         LOGE("Netfilter OVSDB event: unknown type %d", mon->mon_type);

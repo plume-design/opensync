@@ -92,6 +92,7 @@ bool osn_mapt_configure(
 bool osn_mapt_stop()
 {
     char cmd[MAPTM_CMD_LEN] = {0x0};
+    
     snprintf(cmd, sizeof(cmd), "ivictl -q");
     if (cmd_log(cmd)) return true;
     

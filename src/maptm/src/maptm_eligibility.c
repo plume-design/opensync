@@ -1,4 +1,4 @@
-/* 
+/*
 * Copyright (c) 2020, Sagemcom.
 * All rights reserved.
 *
@@ -402,6 +402,7 @@ void maptm_Timer(struct ev_loop *loop, ev_timer *timer, int revents)
     (void)revents;
     maptm_callback_Timer();
 }
+
 void maptm_callback_Timer(void)
 {
     if (!wait95Option) wait95Option = true;
