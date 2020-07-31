@@ -674,7 +674,8 @@ start:
                 if (cm2_timeout(false) ||
                     g_state.resolve_retry_cnt > CM2_RESOLVE_RETRY_THRESHOLD) {
                     cm2_resolve_timeout();
-                    cm2_ovsdb_refresh_dhcp(CONFIG_TARGET_WAN_BRIDGE_NAME);
+                    if (cm2_is_extender())
+                        cm2_ovsdb_refresh_dhcp(CONFIG_TARGET_WAN_BRIDGE_NAME);
                     cm2_restart_ovs_connection(false);
                     return;
                 }

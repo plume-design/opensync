@@ -247,6 +247,8 @@ wpas_conf_gen_freqlist(struct wpas *wpas, char *freqs, size_t len)
     size_t i;
     size_t j;
 
+    memset(freqs, 0, len);
+
     for (i = 0; i < ARRAY_SIZE(wpas->freqlist); i++)
         for (j = 0; j < ARRAY_SIZE(onboard); j++)
             if (wpas->freqlist[i] && wpas->freqlist[i] == onboard[j])
@@ -444,11 +446,14 @@ wpas_bss_get_network(struct schema_Wifi_VIF_State *vstate,
         if ((network = strstr(network, "network={")))
             network += strlen("network={");
 
+    if (!network)
+        network = strdupa("");
+
     map = ini_geta(network, "multi_ap_backhaul_sta");
     psk = ini_geta(network, "psk") ?: "";
 
     /* entry in file looks actually like this: psk="passphrase", so remove the: " */
-    psk++;
+    if (strlen(psk) > 0) psk++;
     if (strlen(psk) > 0) psk[strlen(psk)-1] = 0;
 
     if ((vstate->parent_exists = (bssid != NULL)))

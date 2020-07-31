@@ -37,6 +37,7 @@ struct hapd {
     char conf[4096];
     char psks[4096];
     int respect_multi_ap;
+    int skip_probe_response;
     void (*sta_connected)(struct hapd *hapd, const char *mac, const char *keyid);
     void (*sta_disconnected)(struct hapd *hapd, const char *mac);
     void (*ap_enabled)(struct hapd *hapd);

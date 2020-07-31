@@ -416,6 +416,7 @@ hapd_conf_gen(struct hapd *hapd,
     csnprintf(&buf, &len, "wmm_enabled=1\n");
     csnprintf(&buf, &len, "%s", hapd->respect_multi_ap ? "" : "#");
     csnprintf(&buf, &len, "multi_ap=%d\n", hapd_map_str2int(vconf));
+    csnprintf(&buf, &len, "send_probe_response=%d\n", hapd->skip_probe_response ? 0 : 1);
 
     /* FIXME: ieee80211n, iee80211ac, ieee80211ax is missing, also min_hw_mode..
      * perhaps some of this needs to be scheduled for wireless api rework

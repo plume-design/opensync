@@ -278,10 +278,11 @@ exit:
 }
 
 /**
- * Open the dmesg file and look for the PC (instruction counter) line:
- * [ 3898.161124] PC is at sysrq_handle_crash+0x14/0x20
+ * Open the dmesg file and look for the PC (instruction counter) and LR (link register) lines:
+ * <4>[67763.426697] PC is at _raw_spin_lock+0x44/0x58
+ * <4>[67763.426754] LR is at ovs_flow_stats_update+0x54/0x144 [openvswitch]
  *
- * Store the PC line as the reboot reason.
+ * Store the PC and LR lines as the reboot reason.
  */
 void pstore_parse_dmesg(const char *path, enum osp_reboot_type *type, char *reason, ssize_t rsz)
 {
@@ -306,21 +307,39 @@ void pstore_parse_dmesg(const char *path, enum osp_reboot_type *type, char *reas
     }
 
     /*
-     * Scan the file and try to find the "PC is at" line, which should give
-     * some indication on where the kernel actually crashed.
+     * Scan the file and try to find the "PC is at" and "LR is at" lines,
+     * which should give some indication on where the kernel actually crashed.
      */
     while (fgets(dbuf, sizeof(dbuf), fd) != NULL)
     {
-        char *pcstr;
+        char *rsstr;
+        ssize_t cpysz;
 
-        pcstr = strstr(dbuf, "PC is at");
-        if (pcstr != NULL)
+        rsstr = strstr(dbuf, "PC is at");
+        if (rsstr != NULL)
         {
             /* Found it, copy it to the reason string */
             if (reason != NULL)
             {
-                strscpy(reason, dbuf, rsz);
+                cpysz = strscpy(reason, dbuf, rsz);
+                /* not enough space for copy, bailing */
+                if (cpysz < 0)
+                    break;
+                else
+                {
+                    reason += cpysz;
+                    rsz -= cpysz;
+                }
             }
+        }
+        /* LR is always after PC. Done with the collection after LR is found */
+        rsstr = strstr(dbuf, "LR is at");
+        if (rsstr != NULL)
+        {
+            /* Found it, copy it to the reason string */
+            if (reason != NULL)
+                strscpy(reason, dbuf, rsz);
+
             break;
         }
     }

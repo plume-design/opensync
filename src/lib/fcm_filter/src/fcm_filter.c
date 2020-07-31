@@ -1451,7 +1451,19 @@ void fcm_filter_7tuple_apply(char *filter_name, struct fcm_filter_l2_info *l2_in
                  name_allow,
                  allow?"YES":"NO" );
         }
-        if (pkts)
+
+        /*
+         * If there is no packets count available and the the rule enforces
+         * packet count check, consider the situation as a failure
+         */
+        if (!pkts)
+        {
+            schema_FCM_Filter_rule_t *pkt_rule;
+
+            pkt_rule = &rule->filter_rule;
+            allow &= (pkt_rule->pktcnt_op == FCM_MATH_NONE);
+        }
+        else
         {
             pktcnt_allow = fcm_pkt_cnt_filter(mgr, &rule->filter_rule, pkts);
             allow &= (pktcnt_allow == FCM_RULED_FALSE? false: true);
@@ -1464,7 +1476,7 @@ void fcm_filter_7tuple_apply(char *filter_name, struct fcm_filter_l2_info *l2_in
             }
         }
         if (LOG_SEVERITY_ENABLED(LOG_SEVERITY_TRACE))
-            LOGT("fcm_filter: rule sucess %s", allow?"YES":"NO" );
+            LOGT("fcm_filter: rule success %s", allow?"YES":"NO" );
 
         action_op = fcm_action_filter(&rule->filter_rule);
         if (allow) goto tuple_out;
