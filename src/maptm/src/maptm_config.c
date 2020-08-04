@@ -311,20 +311,13 @@ struct mapt* get_Mapt_Rule(char *option95, char *iapd)
         }
     }
 
-    if (ret)
+    maptm_remove_list(l_rules);
+    if (!ret)
     {
-        maptm_remove_list(l_rules);
-
-        if (!ret)
-        {
-            LOGD("MAP-T rule NOT found");
-            return NULL;
-        }
-
-    return mapt_rule;
-        return mapt_rule;
+        LOGD("MAP-T rule NOT found");
+        return NULL;
     }
-    return NULL;
+    return mapt_rule;
 }
 
 // Configure Map Domain

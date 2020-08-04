@@ -52,7 +52,6 @@ bool osn_mapt_init(void);
 * @param[in] PSIDoffset type of value of PSID offset
 * @param[in] PSID type of value of PSID
 *
-
 * @return true on success
 */
 bool osn_mapt_configure(

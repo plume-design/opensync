@@ -269,9 +269,9 @@ static void callback_DHCP_Option(
 
             break;
 
-        default:
-            LOG(ERR, "DHCP_Option OVSDB event: unknown type %d", mon->mon_type);
-            return;
+            default:
+                LOG(ERR, "DHCP_Option OVSDB event: unknown type %d", mon->mon_type);
+                return;
     } /* switch */
 }
 
