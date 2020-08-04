@@ -57,7 +57,7 @@
 #ifdef MAPTM_DEBUG
 #undef LOGI
 #define LOGI    printf
-#endif 
+#endif
 
 /*****************************************************************************/
 
@@ -70,7 +70,7 @@ static log_severity_t    maptm_log_severity = LOG_SEVERITY_INFO;
 /******************************************************************************
  *  PROTECTED definitions
  *****************************************************************************/
- 
+
 // Initialize maptm module
 static bool maptm_init(void)
 {
@@ -101,11 +101,11 @@ int main(int argc, char ** argv)
     LOGT("Starting MAPT Manager");
 
     log_severity_set(maptm_log_severity);
-    
+
     bool result;
     result = target_init(TARGET_INIT_MGR_MAPTM, loop);
     if (!result)
-    { 
+    {
         return -1;
     }
 
@@ -123,14 +123,14 @@ int main(int argc, char ** argv)
     {
         return -1;
     }
-    
+
     /* Load MAP-T configuration */
     if (!maptm_init())
     {
         LOGE("Failed in maptm_init()");
         return -1;
     }
-    
+
     // From this point on, log severity can change in runtime.
     log_register_dynamic_severity(loop);
 

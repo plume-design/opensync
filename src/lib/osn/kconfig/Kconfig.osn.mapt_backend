@@ -1,0 +1,13 @@
+config OSN_BACKEND_MAPT_NULL
+    bool "Null"
+
+    help
+        Use dummy implementation of MAP-T
+
+config OSN_BACKEND_MAPT_CERNET
+    bool "CERNET"
+    help
+        Use the CERNET MAP-T implementation (typically found on BCM devices).
+
+        https://github.com/cernet/MAP
+

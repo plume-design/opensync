@@ -28,7 +28,7 @@
 * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 * POSSIBILITY OF SUCH DAMAGE.
 */
- 
+
 #include <stdio.h>
 
 #include "ovsdb_update.h"
@@ -41,7 +41,7 @@
 #ifdef MAPTM_DEBUG
 #undef LOGI
 #define LOGI    printf
-#endif 
+#endif
 
 /**
  * Globals
@@ -62,7 +62,7 @@ ovsdb_table_t  table_DHCP_Client;
 ovsdb_table_t  table_IPv6_Address;
 
 /* To change to Enum  */
-int WanConfig = 0; 
+int WanConfig = 0;
 
 // Update if board is MAP-T eligible
 bool maptm_update_mapt(bool enable)
@@ -70,7 +70,7 @@ bool maptm_update_mapt(bool enable)
     int rc = 0;
     json_t *where = NULL;
     struct schema_Node_Config rec_config;
-    
+
     memset(&rec_config, 0, sizeof(rec_config));
     rec_config._partial_update = true;
 
@@ -78,17 +78,17 @@ bool maptm_update_mapt(bool enable)
         ovsdb_where_simple_typed(SCHEMA_COLUMN(Node_Config, module), "MAPTM", OCLM_STR),
         ovsdb_where_simple_typed(SCHEMA_COLUMN(Node_Config, key), "maptParams", OCLM_STR),
         NULL);
-        
+
     if (!where)
     {
-		LOGE("Could not get maptParams value in Node_Config table");
+        LOGE("Could not get maptParams value in Node_Config table");
         goto exit;
     }
-    
+
     if (enable)
     {
         SCHEMA_SET_STR(rec_config.value, "{\"support\":\"true\",\"interface\":\"br-wan\"}");
-    }    
+    }
     else
     {
         SCHEMA_SET_STR(rec_config.value, "{\"support\":\"false\",\"interface\":\"br-wan\"}");
@@ -96,7 +96,7 @@ bool maptm_update_mapt(bool enable)
     rec_config.value_exists = true;
 
     rc = ovsdb_table_update_where(&table_Node_Config, where, &rec_config);
-    
+
     if (rc != 1 )
     {
         LOGE("%s: Could not update Node_Config table", __func__);
@@ -105,7 +105,7 @@ bool maptm_update_mapt(bool enable)
 
     LOGD("%s: Update Node_Config table", __func__);
     return true;
-    
+
 exit:
     return false;
 }
@@ -116,14 +116,14 @@ bool maptm_persistent(void)
     bool ret = false;
     char mapt_support[10];
     osp_ps_t *ps = NULL;
-    
+
     ps = osp_ps_open("MAPT_SUPPORT", OSP_PS_RDWR | OSP_PS_PRESERVE);
     if (ps == NULL)
     {
         LOG(ERR, "maptm: Error opening \"%s\" persistent store.", mapt_support);
         return false;
     }
-    
+
     if (!(osp_ps_get(ps, "MAPT_SUPPORT", mapt_support, sizeof(mapt_support))))
     {
         LOGE("%s: Cannot get MAPT_SUPPORT value", __func__);
@@ -155,7 +155,7 @@ bool maptm_get_supportValue(char *value)
 {
     char str[64];
     const char delim[] = ":";
-    
+
     STRSCPY(str, value);
 
     char *ptr = strtok(str, delim);
@@ -187,7 +187,7 @@ void callback_Node_Config(
     {
         LOGD("%s: new node config entry: module %s, key: %s, value: %s",
                 __func__, conf->module, conf->key, conf->value);
-                
+
         if (!strcmp(conf->module, "MAPTM"))
         {
             if (maptm_get_supportValue(conf->value))
@@ -196,7 +196,7 @@ void callback_Node_Config(
             }
             strucWanConfig.mapt_support = maptm_get_supportValue(conf->value);
             maptm_dhcp_option_update_15_option(strucWanConfig.mapt_support);
-            maptm_dhcp_option_update_95_option(strucWanConfig.mapt_support);        
+            maptm_dhcp_option_update_95_option(strucWanConfig.mapt_support);
         }
     }
 
@@ -213,16 +213,16 @@ void callback_Node_Config(
                 "new module: %s, new key: %s, new value: %s",
                 __func__, old_rec->module, old_rec->key, old_rec->value,
                 conf->module, conf->key, conf->value);
-                
+
         if (!strcmp(conf->module, "MAPTM"))
         {
             strucWanConfig.mapt_support = maptm_get_supportValue(conf->value);
             if (maptm_get_supportValue(conf->value) != maptm_get_supportValue(old_rec->value))
             {
                 maptm_dhcp_option_update_15_option(strucWanConfig.mapt_support);
-                maptm_dhcp_option_update_95_option(strucWanConfig.mapt_support);     
+                maptm_dhcp_option_update_95_option(strucWanConfig.mapt_support);
             }
-            
+
             if ((maptm_get_supportValue(conf->value)) && !maptm_get_supportValue(old_rec->value))
             {
                 WanConfig |= MAPTM_ELIGIBILITY_ENABLE;
@@ -231,7 +231,7 @@ void callback_Node_Config(
             {
                 WanConfig &= MAPTM_IPV6_ENABLE;
             }
-            
+
             if (maptm_get_supportValue(conf->value) != maptm_get_supportValue(old_rec->value))
             {
                 maptm_eligibilityStart(WanConfig);
@@ -252,7 +252,7 @@ void callback_Node_Config(
 
 // Interface callback
 static void callback_Interface(
-        ovsdb_update_monitor_t *mon, 
+        ovsdb_update_monitor_t *mon,
         struct schema_Interface *old,
         struct schema_Interface *record
 )
@@ -280,7 +280,7 @@ static void callback_Interface(
                      strucWanConfig.link_up = true;
                      if ((record->link_state) != (old->link_state)) maptm_eligibilityStart(WanConfig);
                 }
-                else if (!strcmp(record->link_state, "down")) 
+                else if (!strcmp(record->link_state, "down"))
                 {
                     strucWanConfig.link_up = false;
                     maptm_eligibilityStop();
@@ -305,7 +305,7 @@ int maptm_ovsdb_init(void)
     OVSDB_TABLE_INIT_NO_KEY(DHCPv6_Client);
     OVSDB_TABLE_INIT_NO_KEY(Netfilter);
     OVSDB_TABLE_INIT_NO_KEY(IPv6_Address);
-    
+
     // Initialize OVSDB monitor callbacks
     OVSDB_TABLE_MONITOR(Interface, false);
     OVSDB_TABLE_MONITOR(Node_Config, false);

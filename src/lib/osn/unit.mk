@@ -69,6 +69,9 @@ UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_DHCPV6_SERVER_DNSMASQ6),src/osn_dhcpv6_ser
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_IPV6_RADV_NULL),src/osn_ip6_radv_null.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_IPV6_RADV_DNSMASQ6),src/osn_ip6_radv_dnsmasq6.c)
 
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_MAPT_NULL),src/osn_mapt_null.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_MAPT_CERNET),src/osn_mapt_cernet.c)
+
 ifdef CONFIG_OSN_LINUX_ENABLED
 UNIT_CFLAGS += -I$(UNIT_PATH)/src/linux
 

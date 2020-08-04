@@ -32,6 +32,7 @@
 #ifndef MAPTM_H_INCLUDED
 #define MAPTM_H_INCLUDED
 
+#include "ds_dlist.h"
 #include "ovsdb_table.h"
 #include "schema.h"
 #include "osp.h"
@@ -40,7 +41,7 @@
 #define MAPTM_MODULE_NAME           "MAPTM"
 
 #define MAPTM_TIMEOUT_INTERVAL      5  /**< Interval to verify timer condition */
-    
+
 extern int maptm_ovsdb_init(void);
 extern bool maptm_ovsdb_nfm_add_rules(void);
 extern bool maptm_ovsdb_nfm_del_rules(void);
@@ -57,9 +58,9 @@ extern int maptm_dhcp_option_init(void);
 extern bool maptm_dhcp_option_update_15_option(bool maptSupport);
 extern bool maptm_dhcp_option_update_95_option(bool maptSupport);
 int maptm_main(int argc, char **argv);
-#define MAPTM_NO_ELIGIBLE_NO_IPV6 0x00 
-#define MAPTM_NO_ELIGIBLE_IPV6 0x01 
-#define MAPTM_ELIGIBLE_NO_IPV6 0x10 
+#define MAPTM_NO_ELIGIBLE_NO_IPV6 0x00
+#define MAPTM_NO_ELIGIBLE_IPV6 0x01
+#define MAPTM_ELIGIBLE_NO_IPV6 0x10
 #define MAPTM_ELIGIBLE_IPV6 0x11
 #define MAPTM_ELIGIBILITY_ENABLE    0x10
 #define MAPTM_IPV6_ENABLE    0x01
@@ -102,12 +103,14 @@ struct list_rules
     ds_dlist_t d_node;
 };
 
-struct maptm_MAPT strucWanConfig; 
-extern struct ovsdb_table table_DHCPv6_Client;
-extern struct ovsdb_table table_DHCP_Client;
-extern struct ovsdb_table table_Wifi_Inet_Config;
-extern struct ovsdb_table table_mapt;
-extern struct ovsdb_table table_Node_State;
+extern struct maptm_MAPT strucWanConfig;
+extern ovsdb_table_t table_DHCPv6_Client;
+extern ovsdb_table_t table_DHCP_Client;
+extern ovsdb_table_t table_Wifi_Inet_Config;
+extern ovsdb_table_t table_mapt;
+extern ovsdb_table_t table_Node_State;
+extern ovsdb_table_t table_Netfilter;
+extern ovsdb_table_t table_IPv6_Address;
 bool maptm_persistent(void);
 
 #endif /* MAPTM_H_INCLUDED */

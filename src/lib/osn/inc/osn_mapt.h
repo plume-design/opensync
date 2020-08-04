@@ -29,23 +29,32 @@
 * POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include <stdlib.h>
-#include <stdint.h>
+#ifndef OSN_MAPTM_H_INCLUDED
+#define OSN_MAPTM_H_INCLUDED
+
 #include <stdbool.h>
-#include <errno.h>
 
-#include "target.h"
-#include "osn_maptm.h"
-#include "log.h"
+/**
+* @brief Initialize map-t module
+* @return true on success
+*/
+bool osn_mapt_init(void);
 
-#ifdef MAPTM_DEBUG
-#undef LOGI
-#define LOGI    printf
-#define LOGA    printf
-#define LOGE    printf
-#endif
+/**
+* @brief Configure and start MAP-T module 
+* @param[in] brprefix string value of border relay prefix
+* @param[in] ratio int value of address sharing ratio
+* @param[in] intfname string value of interface name
+* @param[in] wanintf string value of wan interface name
+* @param[in] IPv6prefix string value of the IPv6 prefix
+* @param[in] subnetcidr4 string value of CIDR subnet 
+* @param[in] ipv4PublicAddress string value of IPv4 Shared Address  
+* @param[in] PSIDoffset type of value of PSID offset
+* @param[in] PSID type of value of PSID
+*
 
-
+* @return true on success
+*/
 bool osn_mapt_configure(
         const char *brprefix,
         int ratio,
@@ -55,46 +64,13 @@ bool osn_mapt_configure(
         const char *subnetcidr4,
         const char *ipv4PublicAddress,
         int PSIDoffset,
-        int PSID)
-{
-    char cmd[MAPTM_CMD_LEN] = {0x0};
+        int PSID);
 
-    if ((brprefix==NULL) || (intfname==NULL) || (wanintf==NULL) || (IPv6prefix==NULL) || (subnetcidr4==NULL) || (ipv4PublicAddress==NULL))
-    {
-        LOG(ERR, "map-t: %s: Invalid parameter(s)", intfname);
-        return false;
-    }
-    
-    snprintf(cmd, MAPTM_CMD_LEN, "ivictl -r -d -P %s -R %d -T ", brprefix, ratio);
-    /* We have to verify why cmd_log return false otherwise cmd is exc */
-    LOGT("cmd: %s", cmd);
-    cmd_log(cmd);
+/**
+* @brief Stop map-t module
+* @return true on success
+*/						   
+bool osn_mapt_stop();
 
-    snprintf(
-        cmd,
-        MAPTM_CMD_LEN,
-        "ivictl -s -i %s -I %s -P %s -H -N -a %s -A %s -z %d -R %d -o %d -F 1 -T",
-        intfname,
-        wanintf,
-        IPv6prefix,
-        subnetcidr4,
-        ipv4PublicAddress,
-        PSIDoffset, 
-        ratio,
-        PSID);
-    LOGT("cmd: %s", cmd);
-    /* We have to verify why cmd_log return false otherwise cmd is exc */
-    cmd_log(cmd);
+#endif /* OSN_MAPTM_H_INCLUDED */
 
-    return true;
-}
-
-bool osn_mapt_stop()
-{
-    char cmd[MAPTM_CMD_LEN] = {0x0};
-    
-    snprintf(cmd, sizeof(cmd), "ivictl -q");
-    if (cmd_log(cmd)) return true;
-    
-    return false;
-}
