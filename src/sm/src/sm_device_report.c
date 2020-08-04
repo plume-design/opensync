@@ -39,6 +39,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <libgen.h>
 #include <limits.h>
 
+#ifdef CONFIG_SM_PUBLIC_API
+#include "sm_stats_pub.h"
+#endif
 #include "sm.h"
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
@@ -176,6 +179,9 @@ void sm_device_report (EV_P_ ev_timer *w, int revents)
     if (true != rc) {
         return;
     }
+#ifdef CONFIG_SM_PUBLIC_API
+    sm_stats_pub_device_update(&report_ctx->record);
+#endif
 
     LOG(DEBUG,
         "Sending device stats load %0.2f %0.2f %0.2f\n",

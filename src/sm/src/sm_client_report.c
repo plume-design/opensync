@@ -37,6 +37,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <libgen.h>
 #include <limits.h>
 
+#ifdef CONFIG_SM_PUBLIC_API
+#include "sm_stats_pub.h"
+#endif
 #include "sm.h"
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
@@ -1052,6 +1055,14 @@ bool sm_client_records_update_stats(
     memcpy (&record->cache,
             client_entry,
             sizeof(record->cache));
+#ifdef CONFIG_SM_PUBLIC_API
+    if (result_entry->stats.rate_rx == 0.0 && result_entry->stats.rate_tx == 0.0) {
+        LOGD("%s: ["MAC_ADDRESS_FORMAT"] Suppose it is the first measurement. Skip it for Stats "
+            "Pub", __func__, MAC_ADDRESS_PRINT(client_entry->info.mac));
+    } else {
+        sm_stats_pub_client_update(client_entry->info.mac, &result_entry->stats);
+    }
+#endif
 
     return true;
 }

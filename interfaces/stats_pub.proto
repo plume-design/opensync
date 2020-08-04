@@ -1,0 +1,38 @@
+syntax = "proto2";
+
+package sts_pub;
+
+message Survey {
+    required uint32     timestamp       = 1;    /* Timestamp in seconds */
+    required uint32     busy            = 2;    /* Busy = Rx + Tx + Interference */
+    required uint32     busy_tx         = 3;    /* Tx */
+    required uint32     busy_rx         = 4;    /* Rx = Rx_obss + Rx_self_success + Rx_self_err */
+    required uint32     busy_self       = 5;    /* Rx_self_success */
+    required uint32     busy_ext        = 6;    /* 40MHz extension channel busy */
+    required int32      noise_floor     = 7;    /* Noise Floor on the current channel */
+}
+
+message Device {
+    required uint32     timestamp       = 1;    /* Timestamp in seconds */
+    required uint32     mem_total       = 2;    /* Total amount of RAM memory */
+    required uint32     mem_used        = 3;    /* Amount of used RAM memory */
+    required uint32     cpu_util        = 4;    /* Momental CPU usage */
+    required double     cpu_util_1m     = 5;    /* Average CPU usage for last 1 min */
+    required double     cpu_util_5m     = 6;    /* Average CPU usage for last 5 min */
+    required double     cpu_util_15m    = 7;    /* Average CPU usage for last 15 min */
+}
+
+message Client {
+    required uint32     timestamp       = 1;    /* Timestamp in seconds */
+    required uint64     bytes_tx        = 3;
+    required uint64     bytes_rx        = 4;
+    required uint64     frames_tx       = 5;
+    required uint64     frames_rx       = 6;
+    required uint64     retries_rx      = 7;
+    required uint64     retries_tx      = 8;
+    required uint64     errors_rx       = 9;
+    required uint64     errors_tx       = 10;
+    required double     rate_rx         = 11;
+    required double     rate_tx         = 12;
+    required int32      rssi            = 13;
+}

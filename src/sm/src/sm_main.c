@@ -47,6 +47,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_backtrace.h"
 #include "json_util.h"
 
+#ifdef CONFIG_SM_PUBLIC_API
+#include "sm_stats_pub.h"
+#endif
 #include "sm.h"
 
 /*****************************************************************************/
@@ -134,9 +137,17 @@ int main (int argc, char **argv)
         return -1;
     }
 
+#ifdef CONFIG_SM_PUBLIC_API
+    if (sm_stats_pub_init()) {
+        return -1;
+    }
+#endif
     backtrace_init();
 
     ev_run(EV_DEFAULT, 0);
+#ifdef CONFIG_SM_PUBLIC_API
+    sm_stats_pub_uninit();
+#endif
 
     target_close(TARGET_INIT_MGR_SM, loop);
 

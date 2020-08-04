@@ -291,6 +291,23 @@ bool target_stats_clients_convert (
         target_client_record_t     *client_list_old,
         dpp_client_record_t        *client_record);
 
+/**
+ * @brief Get wifi client stats
+ *
+ * @param radio_type radio interface type
+ * @param if_name virtual interface name
+ * @param phy_name physical radio interface name
+ * @param mac MAC address of the client
+ * @param stats output; resulting client stats
+ * @return true on success
+ */
+bool target_stats_client_get(
+        radio_type_t                radio_type,
+        char                       *if_name,
+        char                       *phy_name,
+        mac_address_t               mac,
+        dpp_client_stats_t         *stats);
+
 /// @} LIB_TARGET_STATS
 
 /// @defgroup LIB_TARGET_SURVEY Survey API
@@ -351,6 +368,17 @@ bool target_stats_survey_convert (
         target_survey_record_t     *data_new,
         target_survey_record_t     *data_old,
         dpp_survey_record_t        *survey_record);
+
+/**
+ * @brief Get Noise Floor on current channel
+ *
+ * @param if_name virtual interface name
+ * @param value output; noise floor
+ * @return true on success
+ */
+bool target_stats_survey_noise_floor_get(
+        char                       *ifname,
+        int                        *noise_floor);
 
 /// @} LIB_TARGET_SURVEY
 

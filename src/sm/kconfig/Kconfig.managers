@@ -21,3 +21,9 @@ menuconfig MANAGER_SM
 
             Note: This may require support from platform modules.
 
+    config SM_PUBLIC_API
+        depends on MANAGER_SM
+        bool "Statistics Publication API"
+        default n
+        help
+            Enable SM Statistics Publication API and "stats_pub" library

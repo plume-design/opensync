@@ -1,0 +1,19 @@
+menuconfig MANAGER_WBM
+    bool "Wifi Blaster Manager (WBM)"
+    default n
+    help
+        Enable Wifi Blaster Manager (WBM)
+
+    config MANAGER_WBM_CFG
+        string "WBM Startup configuration"
+        depends on MANAGER_WBM
+        default "wbm;true;needs_plan_b=false"
+        help
+            Wifi Blaster Manager startup configuration
+
+   config PKTGEN_LIB_ENABLED
+        depends on MANAGER_WBM
+        bool "Pktgen configuration library"
+        default y
+        help
+            Enable pktgen configuration library 

@@ -48,6 +48,15 @@ UNIT_SRC     += src/sm_common.c
 ifeq ($(CONFIG_SM_CAPACITY_QUEUE_STATS),y)
 UNIT_SRC     += src/sm_capacity_report.c
 endif
+ifeq ($(CONFIG_SM_PUBLIC_API),y)
+UNIT_SRC     += src/sm_stats_pub.c
+UNIT_SRC     += src/sm_stats_pub_survey.c
+UNIT_SRC     += src/sm_stats_pub_device.c
+UNIT_SRC     += src/sm_stats_pub_client.c
+
+UNIT_CFLAGS := -I$(UNIT_PATH)/inc
+UNIT_CFLAGS += -I$(TOP_DIR)/src/lib/stats_pub/inc/
+endif
 
 UNIT_LDFLAGS := -lpthread
 UNIT_LDFLAGS += -ljansson
@@ -61,6 +70,9 @@ UNIT_DEPS    += src/lib/pjs
 UNIT_DEPS    += src/lib/schema
 UNIT_DEPS    += src/lib/datapipeline
 UNIT_DEPS    += src/lib/target
+ifeq ($(CONFIG_SM_PUBLIC_API),y)
+UNIT_DEPS    += src/lib/stats_pub
+endif
 
 ifeq ($(CONFIG_MANAGER_QM),y)
 UNIT_SRC     += src/sm_qm.c

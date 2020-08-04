@@ -43,6 +43,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_time.h"
 #include "util.h"
 
+#ifdef CONFIG_SM_PUBLIC_API
+#include "sm_stats_pub.h"
+#endif
 #include "sm.h"
 
 /******************************************************************************/
@@ -744,6 +747,10 @@ bool sm_survey_update_list_cb (
 
         survey_ctx->record_qty++;
 
+#ifdef CONFIG_SM_PUBLIC_API
+        sm_stats_pub_survey_update(radio_cfg_ctx->phy_name, radio_cfg_ctx->if_name,
+            result_entry->info.chan, result_entry);
+#endif
         ds_dlist_insert_tail(record_list, result_entry);
 
         /* Update cache */

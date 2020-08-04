@@ -23,6 +23,7 @@ source "src/maptm/kconfig/Kconfig.managers"
 source "src/xm/kconfig/Kconfig.managers"
 source "src/cpm/kconfig/Kconfig.managers"
 source "src/hello_world/kconfig/Kconfig.managers"
+source "src/wbm/kconfig/Kconfig.managers"
 
 #
 # Include platform/vendor managers

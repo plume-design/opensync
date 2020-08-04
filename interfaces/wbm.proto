@@ -1,0 +1,123 @@
+syntax = "proto2";
+
+package wbm;
+
+enum RadioBandType {
+    BAND_UNKNOWN                    = 0;
+    BAND2G                          = 1;
+    BAND5G                          = 2;
+    BAND5GL                         = 3;
+    BAND5GU                         = 4;
+}
+
+enum WiFiStandard  {
+    WIFI_STD_UNKNOWN                = 0;
+    WIFI_STD_80211_A                = 1;
+    WIFI_STD_80211_B                = 2;
+    WIFI_STD_80211_G                = 3;
+    WIFI_STD_80211_N                = 4;
+    WIFI_STD_80211_AC               = 5;
+    WIFI_STD_80211_AX               = 6;
+}
+
+enum ChanWidth {
+    CHAN_WIDTH_UNKNOWN              = 0;
+    CHAN_WIDTH_20MHZ                = 1;
+    CHAN_WIDTH_40MHZ                = 2;
+    CHAN_WIDTH_40MHZ_ABOVE          = 3;
+    CHAN_WIDTH_40MHZ_BELOW          = 4;
+    CHAN_WIDTH_80MHZ                = 5;
+    CHAN_WIDTH_160MHZ               = 6;
+    CHAN_WIDTH_80_PLUS_80MHZ        = 7;
+}
+
+enum ResultCode {
+    RESULT_CODE_UNDEFINED           = 0;
+    RESULT_CODE_SUCCEED             = 1;
+    RESULT_CODE_ERROR               = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// WifiBlastResult                              : Contains Health, Radio and Device metrics
+// - time_stamp                                 : Time since epoch, UTC TZ in milliseconds
+// - plan_id                                    : Plan ID this result corresponds to
+// - step_id                                    : Step ID this result corresponds to
+//
+// - HealthMetrics                              : Pod Health/Macrostate metrics
+//      - cpu_util                              : CPU utilization percentage
+//      - mem_util                              : Memory utilization in KB
+//      - load_avg                              : System load for periods: 1, 5 and 15 minutes
+//
+// - RadioMetrics                               : Metrics for current radio
+//      - noise_floor_dbm                       : The noise floor in dBm
+//      - channel_utilization                   : Percentage of time the channel was occupied
+//      - activity_factor                       : Percentage of time the channel was occupied due
+//                                                to its own activity
+//      - carriersense_threshold_exceeded       : Percentage of time that the radio was unable
+//                                                to transmit or receive WiFi packets (interference)
+//      - channel                               : Current channel in use
+//      - wifi_standard                         : 802.11 WiFi standard
+//      - chan_width                            : Current operating channel width
+//      - radio_band                            : Radio band in use
+//
+// - DeviceMetrics                              : Metrics for each device blasted
+//      - client_mac                            : MAC address
+//      - rssi                                  : RSSI (Received Signal Strength Indicator)
+//      - tx_phyrate                            : Tx PHY rate in Mbps
+//      - rx_Phyrate                            : Rx PHY rate in Mbps
+//      - snr                                   : Uplink Signal to Noise Ratio
+//      - throughput_samples                    : Array of calculated throughput in Mbps
+//      - tx_packet_retransmissions             : Array of retransmitted packets numbers
+//
+// - Status                                     : Final status of the blast request
+//      - code                                  : Status code
+//      - description                           : Detailed description as a string
+////////////////////////////////////////////////////////////////////////////////////////////////////
+message WifiBlastResult {
+
+    message HealthMetrics {
+        optional uint32                 cpu_util                            = 1;
+        optional uint32                 mem_util                            = 2;
+
+        message LoadAvg {
+            optional double             one                                 = 1;
+            optional double             five                                = 2;
+            optional double             fifteen                             = 3;
+        }
+        optional LoadAvg                load_avg                            = 3;
+    }
+
+    message RadioMetrics {
+        optional sint32                 noise_floor                         = 1;
+        optional uint32                 channel_utilization                 = 2;
+        optional uint32                 activity_factor                     = 3;
+        optional uint32                 carriersense_threshold_exceeded     = 4;
+        optional uint32                 channel                             = 5;
+        optional WiFiStandard           wifi_standard                       = 6;
+        optional ChanWidth              chan_width                          = 7;
+        optional RadioBandType          radio_band                          = 8;
+    }
+
+    message DeviceMetrics {
+        optional string                 client_mac                          = 1;
+        optional sint32                 rssi                                = 2;
+        optional uint32                 tx_phyrate                          = 3;
+        optional uint32                 rx_phyrate                          = 4;
+        optional sint32                 snr                                 = 5;
+        repeated double                 throughput_samples                  = 6  [packed=true];
+        repeated uint64                 tx_packet_retransmissions           = 7  [packed=true];
+    }
+
+    message Status {
+        required ResultCode             code                                = 1;
+        required string                 description                         = 2;
+    }
+
+    optional uint64                     time_stamp                          = 1;
+    optional string                     plan_id                             = 2;
+    optional uint32                     step_id                             = 3;
+    optional HealthMetrics              health_metrics                      = 4;
+    optional RadioMetrics               radio_metrics                       = 5;
+    optional DeviceMetrics              device_metrics                      = 6;
+    required Status                     status                              = 7;
+}

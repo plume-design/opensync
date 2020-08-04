@@ -1,7 +1,7 @@
 {
   "name": "Open_vSwitch",
-  "version": "7.11.233",
-  "cksum": "2978226557 202173",
+  "version": "7.11.234",
+  "cksum": "225155102 204010",
   "tables": {
     "AWLAN_Node": {
       "columns": {
@@ -5282,6 +5282,91 @@
             "max": 1
           }
 	}
+      },
+      "isRoot": true
+    },
+    "Wifi_Blaster_Config": {
+      "columns": {
+        "plan_id": {
+          "type": {
+            "key": {
+              "type": "string",
+              "maxLength": 37
+            }
+          },
+          "mutable": false
+        },
+        "step_id_and_dest": {
+          "type": {
+            "key": {
+                "type": "string",
+                "maxLength": 11
+            },
+            "value": {
+                "type": "string",
+                "maxLength": 18
+            },
+            "min": 0,
+            "max": 64
+          },
+          "mutable": false
+        },
+        "blast_packet_size": {
+          "type": "integer",
+          "mutable": false
+        },
+        "blast_duration": {
+          "type": "integer",
+          "mutable": false
+        },
+        "blast_sample_count": {
+          "type": "integer",
+          "mutable": false
+        },
+        "blast_config": {
+          "type": {
+            "key": {
+              "type": "string",
+              "maxLength": 65
+            },
+            "value": {
+              "type": "string",
+              "maxLength": 65
+            },
+            "min": 0,
+            "max": 64
+          },
+          "mutable": false
+        }
+      },
+      "isRoot": true
+    },
+    "Wifi_Blaster_State": {
+      "columns": {
+        "plan_id": {
+          "type": {
+            "key": {
+              "type": "string",
+              "maxLength": 65
+            }
+          },
+          "mutable": false
+        },
+        "state": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "new",
+                  "complete"
+                ]
+              ]
+            }
+          },
+          "mutable": false
+        }
       },
       "isRoot": true
     },
