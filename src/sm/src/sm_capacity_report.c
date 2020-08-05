@@ -433,6 +433,12 @@ void sm_capacity_update (EV_P_ ev_timer *w, int revents)
            we should not exit the processing therefore we
            skip this sample and send the report
          */
+        return;
+    }
+
+    if (capacity_ctx->request.reporting_interval == -1)
+    {
+        sm_capacity_report_send(capacity_ctx);
     }
 }
 
@@ -561,8 +567,10 @@ bool sm_capacity_stats_process (
             sm_capacity_update_timer_set(update_timer, true);
         }
 
-        report_timer->repeat = request_ctx->reporting_interval;
-        sm_capacity_report_timer_set(report_timer, true);
+        if (request_ctx->reporting_interval != -1) {
+            report_timer->repeat = request_ctx->reporting_interval;
+            sm_capacity_report_timer_set(report_timer, true);
+        }
         capacity_ctx->report_ts = get_timestamp();
 
         LOG(INFO,

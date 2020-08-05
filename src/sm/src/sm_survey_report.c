@@ -764,6 +764,10 @@ bool sm_survey_update_list_cb (
             if (channel_ctx->chan_index >= channel_ctx->chan_num) {
                 channel_ctx->chan_index = 0;
             }
+
+            if (survey_ctx->request.reporting_interval == -1) {
+                sm_survey_report_send(survey_ctx);
+            }
             break;
         case RADIO_SCAN_TYPE_FULL: /* Send report */
             sm_survey_report_send(survey_ctx);
@@ -1401,8 +1405,10 @@ bool sm_survey_init_cb (
         sm_survey_timer_set(update_timer, true);
     }
 
-    report_timer->repeat = request_ctx->reporting_interval;
-    sm_survey_timer_set(report_timer, true);
+    if (request_ctx->reporting_interval != -1) {
+        report_timer->repeat = request_ctx->reporting_interval;
+        sm_survey_timer_set(report_timer, true);
+    }
 
     survey_ctx->report_ts = get_timestamp();
 
