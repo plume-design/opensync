@@ -66,6 +66,7 @@ static int              qm_mqtt_qos = STATS_MQTT_QOS;
 static uint8_t          qm_mqtt_compress = 0;
 static char             qm_log_topic[128];
 static int              qm_log_interval = 0; // 0 = disabled
+static int              qm_agg_stats_interval = STATS_MQTT_INTERVAL;
 bool                    qm_log_enabled = false;
 
 bool qm_mqtt_is_connected()
@@ -163,6 +164,7 @@ bool qm_mqtt_config_valid(void)
 void qm_mqtt_stop(void)
 {
     ev_timer_stop(EV_DEFAULT, &qm_mqtt_timer);
+    qm_agg_stats_interval = STATS_MQTT_INTERVAL;
 
     if (qm_mosqev_init) mosqev_del(&qm_mqtt);
     if (qm_mosquitto_init) mosquitto_lib_cleanup();
@@ -496,6 +498,24 @@ void qm_mqtt_set_log_interval(int log_interval)
 #endif
 }
 
+void qm_mqtt_set_agg_stats_interval(int agg_stats_interval)
+{
+    if (agg_stats_interval < 0) {
+        LOGW("Invalid [%d] agg_stats_interval is configured", agg_stats_interval);
+        agg_stats_interval = STATS_MQTT_INTERVAL;
+    } else if (agg_stats_interval == 0) {
+        agg_stats_interval = STATS_MQTT_INTERVAL;
+    }
+
+    if (agg_stats_interval == qm_agg_stats_interval)
+        return;
+
+    LOGI("QM agg_stats_interval interval: %d", agg_stats_interval);
+    qm_agg_stats_interval = agg_stats_interval;
+    qm_mqtt_timer.repeat = agg_stats_interval;
+    ev_timer_again(EV_DEFAULT, &qm_mqtt_timer);
+}
+
 
 void qm_mqtt_log(mosqev_t *mqtt, void *data, int lvl, const char *str)
 {
@@ -540,9 +560,9 @@ bool qm_mqtt_init(void)
     qm_mosqev_init = true;
 
     // publish timer
-    LOGD("QM publish interval: %d", STATS_MQTT_INTERVAL);
+    LOGD("QM publish interval: %d", qm_agg_stats_interval);
     ev_timer_init(&qm_mqtt_timer, qm_mqtt_timer_handler,
-            STATS_MQTT_INTERVAL, STATS_MQTT_INTERVAL);
+            qm_agg_stats_interval, qm_agg_stats_interval);
     qm_mqtt_timer.data = &qm_mqtt;
     ev_timer_start(EV_DEFAULT, &qm_mqtt_timer);
 

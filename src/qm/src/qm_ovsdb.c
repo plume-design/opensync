@@ -64,6 +64,7 @@ void callback_AWLAN_Node(ovsdb_update_monitor_t *mon,
     const char  *mqtt_port = NULL;
     int         mqtt_compress = 0;
     int         log_interval = 0;
+    int         agg_stats_interval = 0;
 
     LOG(DEBUG, "%s %d %d", __FUNCTION__, mon->mon_type,
             awlan ? awlan->mqtt_settings_len : 0);
@@ -102,6 +103,10 @@ void callback_AWLAN_Node(ovsdb_update_monitor_t *mon,
                 log_interval = atoi(val);
                 if (log_interval < 0) log_interval = 0;
             }
+            else if (strcmp(key, "agg_stats_interval") == 0)
+            {
+                agg_stats_interval = atoi(val);
+            }
             else
             {
                 LOG(ERR, "Unkown MQTT option: %s", key);
@@ -111,6 +116,7 @@ void callback_AWLAN_Node(ovsdb_update_monitor_t *mon,
 
     qm_mqtt_set(mqtt_broker, mqtt_port, mqtt_topic, mqtt_qos, mqtt_compress);
     qm_mqtt_set_log_interval(log_interval);
+    qm_mqtt_set_agg_stats_interval(agg_stats_interval);
 }
 
 
