@@ -257,6 +257,23 @@ bool sm_enumerate_stats_config(sm_stats_config_t *stats)
 }
 
 static
+void sm_update_mqtt_interval(void)
+{
+    int interval = 0;
+    sm_stats_config_t *stats;
+
+    /* find minimum reporting_interval */
+    ds_tree_foreach(&stats_config_table, stats)
+    {
+        if (stats->schema.reporting_interval == 0) continue;
+        if (interval == 0 || stats->schema.reporting_interval < interval) {
+            interval = stats->schema.reporting_interval;
+        }
+    }
+    sm_mqtt_interval_set(interval);
+}
+
+static
 bool sm_update_stats_config(sm_stats_config_t *stats_cfg)
 {
     sm_stats_request_t              req;
@@ -271,6 +288,7 @@ bool sm_update_stats_config(sm_stats_config_t *stats_cfg)
     if(clock_gettime(CLOCK_REALTIME, &ts) != 0)
         return false;
 
+    sm_update_mqtt_interval();
 
     /* Search for existing radio entry and use fallback */
     sm_radio_state_t               *radio = NULL;

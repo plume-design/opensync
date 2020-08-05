@@ -47,8 +47,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "target.h"
 #include "dppline.h"
 
-#define STATS_MQTT_INTERVAL     5.0 /* Report interval in seconds -- float */
-
 struct sm_cxt {
     struct          ev_io nl_watcher;
     int             nl_fd;
@@ -135,6 +133,7 @@ int sm_init_nl(struct sm_cxt *cxt);
 
 bool sm_mqtt_init(void);
 void sm_mqtt_set(const char *broker, const char *port, const char *topic, const char *qos, int compress);
+void sm_mqtt_interval_set(int interval);
 void sm_mqtt_stop(void);
 
 #ifdef CONFIG_SM_CAPACITY_QUEUE_STATS
