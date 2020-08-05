@@ -38,10 +38,15 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
+#define SM_QM_INTERVAL         5.0    /* Default (MAX) report interval in seconds -- float */
+#define SM_QM_INTERVAL_MIN     0.1    /* Minimal report interval in seconds -- float */
+
 /* Global MQTT instance */
 static struct ev_timer  sm_mqtt_timer;
+static double           sm_mqtt_timer_interval = SM_QM_INTERVAL;
 static uint8_t          sm_mqtt_buf[STATS_MQTT_BUF_SZ];
 
+static
 bool sm_mqtt_publish(long mlen, void *mbuf)
 {
     qm_response_t res;
@@ -50,6 +55,7 @@ bool sm_mqtt_publish(long mlen, void *mbuf)
     return ret;
 }
 
+static
 void sm_mqtt_timer_handler(struct ev_loop *loop, ev_timer *timer, int revents)
 {
     (void)loop;
@@ -96,11 +102,38 @@ void sm_mqtt_timer_handler(struct ev_loop *loop, ev_timer *timer, int revents)
     }
 }
 
+/* sm_mqtt_timer interval must be <= 10% of the minimal reporting interval but in range:
+ * SM_QM_INTERVAL_MIN ... SM_QM_INTERVAL seconds
+ */
+void sm_mqtt_interval_set(int interval)
+{
+    double sm_qm_interv;
+
+    sm_qm_interv = (interval != 0) ? interval / 10.0 : SM_QM_INTERVAL;
+
+    if (sm_qm_interv < SM_QM_INTERVAL_MIN) {
+        sm_qm_interv = SM_QM_INTERVAL_MIN;
+    }
+
+    if (sm_qm_interv > SM_QM_INTERVAL) {
+        sm_qm_interv = SM_QM_INTERVAL;
+    }
+
+    if (sm_qm_interv == sm_mqtt_timer_interval) {
+        return;
+    }
+
+    LOGD("SM-QM timer interval is set to %f s", sm_qm_interv);
+    sm_mqtt_timer_interval = sm_qm_interv;
+    sm_mqtt_timer.repeat = sm_qm_interv;
+    ev_timer_again(EV_DEFAULT, &sm_mqtt_timer);
+}
+
 bool sm_mqtt_init(void)
 {
     // Start the MQTT report timer
     ev_timer_init(&sm_mqtt_timer, sm_mqtt_timer_handler,
-            STATS_MQTT_INTERVAL, STATS_MQTT_INTERVAL);
+            sm_mqtt_timer_interval, sm_mqtt_timer_interval);
     ev_timer_start(EV_DEFAULT, &sm_mqtt_timer);
     return true;
 }
@@ -108,5 +141,6 @@ bool sm_mqtt_init(void)
 void sm_mqtt_stop(void)
 {
     ev_timer_stop(EV_DEFAULT, &sm_mqtt_timer);
+    sm_mqtt_timer_interval = SM_QM_INTERVAL;
     LOG(NOTICE, "Closing MQTT connection.");
 }
