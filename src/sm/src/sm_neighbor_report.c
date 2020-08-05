@@ -758,6 +758,10 @@ void sm_neighbor_stats_results(
             if (channel_ctx->chan_index >= channel_ctx->chan_num) {
                 channel_ctx->chan_index = 0;
             }
+
+            if (neighbor_ctx->request.reporting_interval == -1) {
+                sm_neighbor_report_send(neighbor_ctx);
+            }
             break;
         case RADIO_SCAN_TYPE_FULL: /* Send report */
             sm_neighbor_report_send(neighbor_ctx);
@@ -1068,8 +1072,10 @@ bool sm_neighbor_stats_process (
             sm_neighbor_update_timer_set(update_timer, true);
         }
 
-        report_timer->repeat = request_ctx->reporting_interval;
-        sm_neighbor_report_timer_set(report_timer, true);
+        if (request_ctx->reporting_interval != -1) {
+            report_timer->repeat = request_ctx->reporting_interval;
+            sm_neighbor_report_timer_set(report_timer, true);
+        }
         neighbor_ctx->report_ts = get_timestamp();
 
         LOG(INFO,

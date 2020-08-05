@@ -1194,6 +1194,9 @@ update_cache:
 }
 
 static
+void sm_client_report_stats (sm_client_ctx_t *client_ctx);
+
+static
 bool sm_client_update_list_cb(
         ds_dlist_t                 *client_list,
         void                       *ctx,
@@ -1227,6 +1230,10 @@ bool sm_client_update_list_cb(
             "(failed to update client list)",
             radio_get_name_from_cfg(radio_cfg_ctx));
         goto clear;
+    }
+
+    if (client_ctx->request.reporting_interval == -1) {
+        sm_client_report_stats(client_ctx);
     }
 
 clear:
@@ -1300,12 +1307,10 @@ void sm_client_update (EV_P_ ev_timer *w, int revents)
 }
 
 static
-void sm_client_report (EV_P_ ev_timer *w, int revents)
+void sm_client_report_stats (sm_client_ctx_t *client_ctx)
 {
     bool                            status;
 
-    sm_client_ctx_t                *client_ctx =
-        (sm_client_ctx_t *) w->data;
     radio_entry_t                  *radio_cfg_ctx =
         client_ctx->radio_cfg;
 
@@ -1341,6 +1346,12 @@ void sm_client_report (EV_P_ ev_timer *w, int revents)
             radio_get_name_from_cfg(radio_cfg_ctx));
         return;
     }
+}
+
+static
+void sm_client_report (EV_P_ ev_timer *w, int revents)
+{
+    sm_client_report_stats(w->data);
 }
 
 static
@@ -1426,8 +1437,10 @@ bool sm_client_update_init_cb (
         sm_client_timer_set(update_timer, true);
     }
 
-    report_timer->repeat = request_ctx->reporting_interval;
-    sm_client_timer_set(report_timer, true);
+    if (request_ctx->reporting_interval != -1) {
+        report_timer->repeat = request_ctx->reporting_interval;
+        sm_client_timer_set(report_timer, true);
+    }
 
     /* Stop init timer and start with processing */
     sm_client_timer_set(init_timer, false);
