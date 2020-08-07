@@ -212,6 +212,11 @@ struct __inet
     /* Set MTU */
     bool        (*in_mtu_set_fn)(inet_t *self, int mtu);
 
+    /* Set parent interface */
+    bool        (*in_parent_ifname_set_fn)(inet_t *self, const char *parent_ifname);
+
+    /* Set credentials for interface. PPP or VPN links need this */
+    bool        (*in_credential_set_fn)(inet_t *self, const char *username, const char *password);
     /**
      * Set IP assignment scheme:
      *   - INET_ASSIGN_NONE     - Interface does not have any IPv4 configuration
@@ -276,7 +281,7 @@ struct __inet
                         osn_ip_addr_t remote,
                         osn_mac_addr_t macaddr);
     /* VLANs */
-    bool       (*in_vlan_set_fn)(inet_t *self, const char *ifparent, int vlanid);
+    bool       (*in_vlanid_set_fn)(inet_t *self, int vlanid);
 
     /* DHCP sniffing - register callback for DHCP sniffing - if set to NULL sniffing is disabled */
     bool        (*in_dhsnif_lease_notify_fn)(inet_t *self, inet_dhcp_lease_fn_t *func);
@@ -429,6 +434,41 @@ static inline bool inet_mtu_set(inet_t *self, int mtu)
     if (self->in_mtu_set_fn == NULL) return false;
 
     return self->in_mtu_set_fn(self, mtu);
+}
+
+static inline bool inet_parent_ifname_set(inet_t *self, const char *parent_ifname)
+{
+    /*
+     * If the parent_ifname_set method is not set and the parent interface is
+     * being cleared (parent_ifname == NULL), it is valid to return success
+     * (true).
+     *
+     * This also ensures backward compatibility.
+     */
+    if (self->in_parent_ifname_set_fn == NULL)
+    {
+        return (parent_ifname == NULL ? true : false);
+    }
+
+    return self->in_parent_ifname_set_fn(self, parent_ifname);
+}
+
+static inline bool inet_credential_set(
+        inet_t *self,
+        const char *username,
+        const char *password)
+{
+    if (self->in_credential_set_fn == NULL)
+    {
+        /*
+         * If the no in_credential_set method is defined, it is valid to unset
+         * the username as it was not possible to set it in the first place.
+         */
+
+        return (username == NULL ? true : false);
+    }
+
+    return self->in_credential_set_fn(self, username, password);
 }
 
 static inline bool inet_assign_scheme_set(inet_t *self, enum inet_assign_scheme scheme)
@@ -598,17 +638,15 @@ static inline bool inet_ip4tunnel_set(
 /*
  * VLAN settings
  *
- * ifparent     - parent interface
  * vlanid       - the VLAN id
  */
-static inline bool inet_vlan_set(
+static inline bool inet_vlanid_set(
         inet_t *self,
-        const char *ifparent,
         int vlanid)
 {
-    if (self->in_vlan_set_fn == NULL) return false;
+    if (self->in_vlanid_set_fn == NULL) return false;
 
-    return self->in_vlan_set_fn(self, ifparent, vlanid);
+    return self->in_vlanid_set_fn(self, vlanid);
 }
 
 /*

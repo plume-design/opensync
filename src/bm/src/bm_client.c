@@ -411,13 +411,25 @@ bm_client_send_rrm_req(bm_client_t *client, bm_client_rrm_req_type_t rrm_req_typ
         return;
     if (!client->group)
         return;
-    if (!client->info->rrm_caps.bcn_rpt_active)
+    if (!client->info->is_RRM_supported)
         return;
 
     bm_client_reset_rrm_neighbors(client);
     num_channels = bm_neighbor_get_channels(client, rrm_req_type, channels, sizeof(channels), 0);
 
     for (i = 0; i < num_channels; i++) {
+        if (bm_client_is_dfs_channel(channels[i])) {
+            if (!client->info->rrm_caps.bcn_rpt_passive) {
+                LOGD("%s skip rrm_req while DFS and !rrm_passive", client->mac_addr);
+                continue;
+            }
+        } else {
+            if (!client->info->rrm_caps.bcn_rpt_active) {
+                LOGD("%s skip rrm_req while non-DFS and !rrm_active", client->mac_addr);
+                continue;
+            }
+        }
+
         req = bm_client_get_rrm_req(client, channels[i]);
         if (!req) {
             LOGW("%s: could not get rrm_req slot", client->mac_addr);
@@ -433,11 +445,15 @@ bm_client_send_rrm_req(bm_client_t *client, bm_client_rrm_req_type_t rrm_req_typ
         req->rrm_params.req_ssid = 1;
         req->rrm_params.meas_dur = BM_CLIENT_RRM_ACTIVE_MEASUREMENT_DURATION;
 
-        /* TODO should we change to passive for DFS case? */
         req->rrm_params.channel = channels[i];
         req->rrm_params.op_class = bm_neighbor_get_op_class(channels[i]);
 
-        delay_ms = EVSCHED_SEC(delay) + i * 3 * BM_CLIENT_RRM_ACTIVE_MEASUREMENT_DURATION;
+        if (bm_client_is_dfs_channel(channels[i])) {
+            req->rrm_params.meas_mode = 0;
+            req->rrm_params.meas_dur = BM_CLIENT_RRM_PASIVE_MEASUREMENT_DURATION;
+        }
+
+        delay_ms = EVSCHED_SEC(delay) + i * 3 * req->rrm_params.meas_dur;
 
         if (!delay_ms) {
             bm_client_send_rrm_req_task(req);
@@ -459,7 +475,7 @@ bm_client_update_rrm_neighbors(void)
             continue;
         if (!client->connected)
             continue;
-        if (!client->info->rrm_caps.bcn_rpt_active)
+        if (!client->info->is_RRM_supported)
             continue;
         if (!strlen(client->ifname))
             continue;
@@ -698,7 +714,7 @@ bm_client_add_to_group(bm_client_t *client, bm_group_t *group)
 
         if (!bm_client_ifcfg_set(group, client, group->ifcfg[i].ifname,
                                  group->ifcfg[i].radio_type,
-                                 group->ifcfg[i].bs_allowed)) {
+                                 group->ifcfg[i].bs_allowed, &cli_conf)) {
             LOGE("Failed to add client '%s' band %s to client ifcfg[] %s",
                  client->mac_addr,
                  c_get_str_by_key(map_bsal_bands, group->ifcfg[i].radio_type),
@@ -751,7 +767,7 @@ bm_client_update_group(bm_client_t *client, bm_group_t *group)
 
         if (!bm_client_ifcfg_set(group, client, group->ifcfg[i].ifname,
                                  group->ifcfg[i].radio_type,
-                                 group->ifcfg[i].bs_allowed)) {
+                                 group->ifcfg[i].bs_allowed, &cli_conf)) {
             LOGE("Failed to update client '%s' band %s to client ifcfg[] %s",
                  client->mac_addr,
                  c_get_str_by_key(map_bsal_bands, group->ifcfg[i].radio_type),
@@ -1092,8 +1108,6 @@ bm_client_get_cs_params( struct schema_Band_Steering_Clients *bscli, bm_client_t
     }
 
     if( !(val = bm_client_get_cs_param( bscli, "band" ))) {
-        // ABS: Check if this is correct
-        LOGD("%s - unknown radio_type", client->mac_addr);
         client->cs_radio_type = RADIO_TYPE_NONE;
     } else {
         item = c_get_item_by_str(map_bsal_bands, val);
@@ -2196,7 +2210,7 @@ bm_client_connected(bm_client_t *client, bm_group_t *group, const char *ifname)
 
     STRSCPY(client->ifname, ifname); 
     client->connected = true;
-    client->xing_snr = 0;
+    client->prev_xing_snr = 0;
 
     stats = bm_client_get_stats(client, ifname);
     if (WARN_ON(!stats))
@@ -2223,7 +2237,7 @@ void
 bm_client_disconnected(bm_client_t *client)
 {
     client->connected = false;
-    client->xing_snr = 0;
+    client->prev_xing_snr = 0;
 
     if (client->state == BM_CLIENT_STATE_CONNECTED) {
         bm_client_set_state(client, BM_CLIENT_STATE_DISCONNECTED);
@@ -2757,7 +2771,7 @@ void bm_client_ifcfg_clean(bm_client_t *client)
 static bool
 bm_client_ifcfg_add(bm_group_t *group, bm_client_t *client,
                     const char *ifname, radio_type_t radio_type,
-                    bool bs_allowed)
+                    bool bs_allowed, bsal_client_config_t *conf)
 {
     bm_client_ifcfg_t *ifcfg;
     unsigned int i;
@@ -2779,6 +2793,7 @@ bm_client_ifcfg_add(bm_group_t *group, bm_client_t *client,
     ifcfg->radio_type= radio_type;
     ifcfg->bs_allowed = bs_allowed;
     ifcfg->group = group;
+    memcpy(&ifcfg->conf, conf, sizeof(*conf));
 
     LOGD("%s: add ifcfg[%d]: ifname %s band %d allowed %d", client->mac_addr,
          client->ifcfg_num, ifcfg->ifname, ifcfg->radio_type, ifcfg->bs_allowed);
@@ -2791,7 +2806,7 @@ bm_client_ifcfg_add(bm_group_t *group, bm_client_t *client,
 bool
 bm_client_ifcfg_set(bm_group_t *group, bm_client_t *client,
                     const char *ifname, radio_type_t radio_type,
-                    bool bs_allowed)
+                    bool bs_allowed, bsal_client_config_t *conf)
 {
     unsigned int i;
 
@@ -2803,6 +2818,7 @@ bm_client_ifcfg_set(bm_group_t *group, bm_client_t *client,
 		client->ifcfg[i].radio_type = radio_type;
 		client->ifcfg[i].group = group;
 		client->ifcfg[i].bs_allowed = bs_allowed;
+                memcpy(&client->ifcfg[i].conf, conf, sizeof(*conf));
                 LOGD("%s: update ifcfg[%d]: ifname %s band %d allowed %d", client->mac_addr,
                      i, client->ifcfg[i].ifname, client->ifcfg[i].radio_type,
                      client->ifcfg[i].bs_allowed);
@@ -2810,7 +2826,7 @@ bm_client_ifcfg_set(bm_group_t *group, bm_client_t *client,
 	}
     }
 
-    return bm_client_ifcfg_add(group, client, ifname, radio_type, bs_allowed);
+    return bm_client_ifcfg_add(group, client, ifname, radio_type, bs_allowed, conf);
 }
 
 bool
@@ -3147,6 +3163,76 @@ update_bytes:
     client->bytes_report_time = now;
 }
 
+/* handle client xing */
+static bsal_rssi_change_t
+bm_client_recalc_rssi_change(uint8_t snr, uint8_t watermark)
+{
+    return (snr < watermark ? BSAL_RSSI_LOWER : BSAL_RSSI_HIGHER);
+}
+
+static void
+bm_client_xing_recalc(bm_client_t *client, bsal_client_info_t *info)
+{
+    bm_client_ifcfg_t *ifcfg;
+    bsal_rssi_change_t new_xing_low;
+    bsal_rssi_change_t new_xing_high;
+    bsal_rssi_change_t prev_xing_low;
+    bsal_rssi_change_t prev_xing_high;
+    uint8_t xing_lwm, xing_hwm;
+    bsal_event_t event;
+    uint8_t new_snr;
+    uint8_t prev_snr;
+
+    ifcfg = bm_client_get_ifcfg(client, client->ifname);
+    if (WARN_ON(!ifcfg))
+        return;
+
+    new_snr = info->snr;
+    prev_snr = client->prev_xing_snr;
+
+    xing_lwm = ifcfg->conf.rssi_low_xing;
+    xing_hwm = ifcfg->conf.rssi_high_xing ;
+
+    new_xing_low = bm_client_recalc_rssi_change(new_snr, xing_lwm);
+    new_xing_high = bm_client_recalc_rssi_change(new_snr, xing_hwm);
+    prev_xing_low = bm_client_recalc_rssi_change(prev_snr, xing_lwm);
+    prev_xing_high = bm_client_recalc_rssi_change(prev_snr, xing_hwm);
+
+    LOGD("%s new_snr %u old_snr %u lwm %u hwm %u low %d->%d high %d->%d",
+         client->mac_addr, new_snr, prev_snr, xing_lwm, xing_hwm,
+         prev_xing_low, new_xing_low,
+         prev_xing_high, new_xing_high);
+
+    if (new_xing_low == prev_xing_low &&
+        new_xing_high == prev_xing_high)
+        return;
+
+    memset(&event, 0, sizeof(event));
+    STRSCPY(event.ifname, client->ifname);
+    event.data.rssi_change.rssi = new_snr;
+
+    if (new_xing_low == prev_xing_low)
+        event.data.rssi_change.low_xing = BSAL_RSSI_UNCHANGED;
+    else
+        event.data.rssi_change.low_xing = new_xing_low;
+
+    if (new_xing_high == prev_xing_high)
+        event.data.rssi_change.high_xing = BSAL_RSSI_UNCHANGED;
+    else
+        event.data.rssi_change.high_xing = new_xing_high;
+
+    /* While we don't know prev_snr we don't know xing */
+    if (!prev_snr) {
+        event.data.rssi_change.low_xing = BSAL_RSSI_UNCHANGED;
+        event.data.rssi_change.high_xing = BSAL_RSSI_UNCHANGED;
+    }
+
+    /* Save this to know (internal) prev state */
+    client->prev_xing_snr = new_snr;
+
+    bm_events_handle_rssi_xing(client, &event);
+}
+
 void bm_client_sta_info_update_callback(void)
 {
     bsal_client_info_t info;
@@ -3163,7 +3249,7 @@ void bm_client_sta_info_update_callback(void)
         }
 
         bm_client_activity_recalc(client, &info);
-
+        bm_client_xing_recalc(client, &info);
     }
 }
 
@@ -3184,4 +3270,21 @@ void bm_client_handle_ext_activity(bm_client_t *client, const char *ifname, bool
     }
 
     bm_client_activity_recalc(client, &info);
+}
+
+void bm_client_handle_ext_xing(bm_client_t *client, const char *ifname, bsal_event_t *event)
+{
+    bsal_client_info_t info;
+
+    if (!client->connected) {
+        LOGD("%s %s skip ext xing while client not connected", ifname, client->mac_addr);
+        return;
+    }
+
+    if (target_bsal_client_info(client->ifname, client->macaddr.addr, &info)) {
+        LOGI("%s: %s no client info, base on external xing event, snr %u", client->ifname, client->mac_addr, event->data.rssi_change.rssi);
+        info.snr = event->data.rssi_change.rssi;
+    }
+
+    bm_client_xing_recalc(client, &info);
 }

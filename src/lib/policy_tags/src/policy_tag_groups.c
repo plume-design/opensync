@@ -107,6 +107,11 @@ om_tag_group_create_list_from_schema(ds_tree_t *list,
             name++;
             flags |= OM_TLE_FLAG_CLOUD;
         }
+        else if (*name == TEMPLATE_LOCAL_CHAR) {
+            name++;
+            flags |= OM_TLE_FLAG_LOCAL;
+        }
+
         if (!om_tag_list_entry_add(list, name, flags)) {
             goto alloc_err;
         }

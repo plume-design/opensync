@@ -8,7 +8,7 @@ menu "Capabilities"
         bool "Gateway"
         default y
         help
-            This device can act as a gateway (residential or otherwisE).
+            This device can act as a gateway (residential or otherwise).
 
     config TARGET_CAP_EXTENDER
         bool "Extender"
@@ -122,11 +122,19 @@ config TARGET_LAN_BRIDGE_NAME
     help
         LAN bridge name that will be used
 
-config TARGET_WAN_BRIDGE_NAME
-    string "WAN bridge name"
-    default "br-wan"
+config TARGET_USE_WAN_BRIDGE
+    bool "Use WAN bridge"
+    default y
     help
-        WAN bridge name that will be used
+        Use additional bridge for WAN link
+
+if TARGET_USE_WAN_BRIDGE
+    config TARGET_WAN_BRIDGE_NAME
+        string "WAN bridge name"
+        default "br-wan"
+        help
+            WAN bridge name that will be used
+endif
 
 menuconfig TARGET_LED_SUPPORT
     bool "Enable LED support"
@@ -172,60 +180,6 @@ menuconfig TARGET_LED_SUPPORT
             depends on TARGET_LED3
     endif
 
-menu "Model/Serial Number/SKU ..."
-
-config TARGET_MODEL_GET
-    bool "Use TARGET_MODEL as the model name"
-    default y
-
-    help
-        Implement the target_model_get() function.
-
-        This returns the TARGET_MODEL as the model. TARGET_MODEL
-        is a top-level configuration option.
-
-config TARGET_SERIAL_FROM_MAC
-    bool "Use network interface MAC for serial number"
-    default y
-    help
-        This is a rather common case for devices that have no easy access
-        to their serial number or for early development stages.
-
-        This option implements the target_serial_get() function.
-
-config TARGET_SERIAL_FROM_MAC_IFNAME
-    string "Interface name"
-    default "eth0"
-    depends on TARGET_SERIAL_FROM_MAC
-    help
-        Interface name that will be used for calculating the serial
-        number from the MAC address
-
-config TARGET_FIXED_HWREV
-    bool "Use a fixed HW revision number"
-    default y
-    help
-        This implements the target_hw_revision_get() function and returns the
-        string as defined by TARGET_FIXED_HWREV_STRING
-
-config TARGET_FIXED_HWREV_STRING
-    string "HW revision number"
-    default "1"
-    depends on TARGET_FIXED_HWREV
-
-config TARGET_FIXED_SKU
-    bool "Use a fixed SKU number"
-    default y
-    help
-        This option implements the target_sku_get() function and returns the
-        string as defined by TARGET_SKU_STRING.
-
-config TARGET_SKU_STRING
-    string "SKU number"
-    default "SKU123456"
-    depends on TARGET_FIXED_SKU
-endmenu
-
 menu "Misc..."
 config TARGET_RESTART_SCRIPT
     bool "Use a script to restart managers"
@@ -263,7 +217,7 @@ config TARGET_LINUX_EXECUTE
         This implements the target_device_execute() function using the standard
         Linux system() call.
 
-        You may want to select Y here for most linux-based SDKs.
+        You may want to select 'Y' here for most Linux-based SDKs.
 
 config TARGET_CM_LINUX_SUPPORT_PACKAGE
     bool "CM Linux support package"
@@ -280,6 +234,5 @@ config TARGET_IMC
     default n
     help
         Select this option if the platform enables zeromq
-
 
 endmenu

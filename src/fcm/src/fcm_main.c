@@ -94,6 +94,8 @@ int main(int argc, char ** argv)
         return -1;
     }
 
+    fcm_event_init();
+
     // Connect to OVSDB
     if (!ovsdb_init_loop(loop, "FCM"))
     {

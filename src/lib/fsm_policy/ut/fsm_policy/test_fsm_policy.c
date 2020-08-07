@@ -274,9 +274,9 @@ struct schema_FSM_Policy spolicies[] =
         .ipaddrs_len = 0,
         .action_exists = true,
         .action = "update_tag",
-        .other_config_len = 1,
-        .other_config_keys = { "tag_name", },
-        .other_config = { "my_tag" },
+        .other_config_len = 2,
+        .other_config_keys = { "tagv4_name", "tagv6_name",},
+        .other_config = { "my_v4_tag", "my_v6_tag"},
     },
 };
 
@@ -715,7 +715,8 @@ void test_apply_wildcard_policy_match_in(void)
     reply = &req.reply;
 
     /* Verify reply struct has been properly built */
-    TEST_ASSERT_EQUAL_STRING("my_tag", reply->update_tag);
+    TEST_ASSERT_EQUAL_STRING("my_v4_tag", reply->updatev4_tag);
+    TEST_ASSERT_EQUAL_STRING("my_v6_tag", reply->updatev6_tag);
     TEST_ASSERT_EQUAL_INT(FSM_UPDATE_TAG, reply->action);
 
     free(reply->rule_name);

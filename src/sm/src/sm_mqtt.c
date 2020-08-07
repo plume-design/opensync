@@ -28,12 +28,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdio.h>
 #include <zlib.h>
 
+#include "log.h"
+#include "util.h"
 #include "os_time.h"
 #include "os_nif.h"
 #include "mosqev.h"
 #include "dppline.h"
-#include "target.h"
-#include "log.h"
+#include "osp_unit.h"
 
 #include "sm.h"
 
@@ -77,7 +78,7 @@ bool sm_mqtt_init(void)
      * Use the device serial number as client ID
      */
     char cID[64];
-    if (true != target_id_get(cID, sizeof(cID)))
+    if (true != osp_unit_id_get(cID, sizeof(cID)))
     {
         LOGE("acquiring device id number\n");
         goto error;

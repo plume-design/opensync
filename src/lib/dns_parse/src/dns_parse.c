@@ -20,6 +20,7 @@
 #include "rtypes.h"
 #include "strutils.h"
 #include "policy_tags.h"
+#include "os_util.h"
 
 #include "fsm.h"
 #include "fsm_policy.h"
@@ -85,57 +86,16 @@ dns_dev_id_cmp(void *a, void *b)
 
 
 static void
-dns_process_provider(struct fsm_session *session)
-{
-    struct dns_session *dns_session;
-    struct fsm_session *service;
-    bool reset;
-
-    dns_session = session->handler_ctxt;
-    /* If no provider plugin yet, attempt update */
-    if (dns_session->provider_plugin == NULL)
-    {
-        service = session->service;
-        dns_session->provider_plugin = service;
-        if (service != NULL)
-        {
-            dns_session->provider = strdup(service->name);
-            dns_session->provider_ops = &service->p_ops->web_cat_ops;
-        }
-        return;
-    }
-
-    LOGT("%s: original provider %s, new provider %s", __func__,
-         dns_session->provider,
-         session->service ? session->service->name : "unknown");
-
-    /* Provider was set, check if it changed */
-    reset = (dns_session->provider_plugin != session->service);
-
-    if (reset)
-    {
-        sleep(2);
-        LOGEM("%s: provider change detected. Restarting", __func__);
-        exit(EXIT_SUCCESS);
-    }
-}
-
-
-static void
 dns_parse_update(struct fsm_session *session)
 {
     struct dns_session *dns_session = session->handler_ctxt;
     char *dbg_str = session->ops.get_config(session, "debug");
     char *cache_ip_str = session->ops.get_config(session, "cache_ip");
     char *mqtt_blocker_topic = session->ops.get_config(session, "blk_mqtt");
-    char *policy_table = session->ops.get_config(session, "policy_table");
     char *hs_report_interval;
     char *hs_report_topic;
     long interval;
     int val;
-
-    dns_session->policy_client.name = policy_table;
-    dns_process_provider(session);
 
     dns_session->health_stats_report_interval = (long)INT_MAX;
     hs_report_interval = session->ops.get_config(session,
@@ -317,7 +277,6 @@ dns_free_session(struct dns_session *d_session)
         ds_tree_remove(tree, remove);
         dns_free_device(remove);
     }
-    free(d_session->provider);
     free(d_session);
 }
 
@@ -341,7 +300,6 @@ dns_delete_session(struct fsm_session *session)
     if (d_session == NULL) return;
 
     LOGD("%s: removing session %s", __func__, session->name);
-    fsm_policy_deregister_client(&d_session->policy_client);
     ds_tree_remove(sessions, d_session);
     dns_free_session(d_session);
 
@@ -358,24 +316,6 @@ dns_plugin_exit(struct fsm_session *session)
     if (!mgr->initialized) return;
 
     dns_delete_session(session);
-}
-
-
-void
-dns_update_client(struct fsm_session *session,
-                       struct policy_table *table)
-{
-    struct dns_session * dns_session;
-    struct fsm_policy_client *client;
-
-    if (session == NULL) return;
-    if (table == NULL) return;
-
-    dns_session = dns_lookup_session(session);
-    if (dns_session == NULL) return;
-
-    client = &dns_session->policy_client;
-    client->table = table;
 }
 
 
@@ -463,6 +403,7 @@ dns_mgr_init(void)
                  struct dns_session, session_node);
     mgr->set_forward_context = dns_set_forward_context;
     mgr->forward = dns_forward;
+    mgr->update_tag = dns_update_tag;
     mgr->policy_init = fsm_policy_init;
     mgr->policy_check = fqdn_policy_check;
     mgr->req_cache_ttl = REQ_CACHE_TTL;
@@ -475,9 +416,7 @@ dns_plugin_init(struct fsm_session *session)
 {
     struct dns_cache *mgr;
     struct dns_session *dns_session;
-    struct fsm_policy_client *client;
     struct fsm_parser_ops *parser_ops;
-    struct fsm_session *service;
     time_t now;
     int rc;
 
@@ -521,22 +460,11 @@ dns_plugin_init(struct fsm_session *session)
     dns_session->stat_log_ts = now;
     dns_session->debug = false;
     dns_set_provider(session);
-    dns_parse_update(session);
     mgr->policy_init();
-
-    client = &dns_session->policy_client;
-    client->session = session;
-    client->update_client = dns_update_client;
-    fsm_policy_register_client(&dns_session->policy_client);
 
     ds_tree_init(&dns_session->session_devices, dns_dev_id_cmp,
                  struct dns_device, device_node);
 
-    service = session->service;
-    if (session->service)
-    {
-        dns_session->provider_ops = &service->p_ops->web_cat_ops;
-    }
     dns_session->cat_offline.check_offline = 30;
     dns_session->cat_offline.provider_offline = false;
     dns_session->initialized = true;
@@ -696,6 +624,162 @@ dns_forward(struct dns_session *dns_session, dns_info *dns,
 }
 
 
+bool
+dns_updatev4_tag(struct fqdn_pending_req *req)
+{
+    bool result = false;
+    int  tle_flag;
+    size_t len = 0;
+
+    struct schema_Openflow_Tag regular_tag;
+    struct schema_Openflow_Local_Tag local_tag;
+
+    memset(&regular_tag, 0, sizeof(struct schema_Openflow_Tag));
+    memset(&local_tag, 0, sizeof(struct schema_Openflow_Local_Tag));
+
+    if (req->action != FSM_UPDATE_TAG) return false;
+
+    tle_flag = om_get_type_of_tag(req->updatev4_tag);
+
+    if (tle_flag == OM_TLE_FLAG_DEVICE ||
+        tle_flag == OM_TLE_FLAG_CLOUD)
+    {
+        len = strlen(req->updatev4_tag);
+        os_util_strncpy(regular_tag.name, &req->updatev4_tag[3], len - 3);
+        regular_tag.name_exists = true;
+        regular_tag.name_present = true;
+
+        result = dns_generate_update_tag(req, regular_tag.device_value,
+                                         &regular_tag.device_value_len, 4);
+        if (result)
+        {
+            result = dns_upsert_regular_tag(&regular_tag, ovsdb_sync_upsert);
+            if (!result)
+            {
+                LOGT("%s: Openflow_Tag not updated for request.", __func__);
+            }
+        }
+        else
+        {
+            LOGT("%s: Openflow_Tag not updated for request.", __func__);
+        }
+    } else if(tle_flag == OM_TLE_FLAG_LOCAL) {
+
+        len = strlen(req->updatev4_tag);
+        os_util_strncpy(local_tag.name, &req->updatev4_tag[3], len - 3);
+        local_tag.name_exists = true;
+        local_tag.name_present = true;
+
+        result = dns_generate_update_tag(req, local_tag.values, &local_tag.values_len, 4);
+        if (result)
+        {
+            result = dns_upsert_local_tag(&local_tag, ovsdb_sync_upsert);
+            if (!result)
+            {
+                LOGT("%s: Openflow_Local_Tag not updated for request.", __func__);
+            }
+        }
+        else
+        {
+            LOGT("%s: Openflow_Local_Tag not updated for request.", __func__);
+        }
+    }
+
+    return result;
+}
+
+
+bool
+dns_updatev6_tag(struct fqdn_pending_req *req)
+{
+    bool result = false;
+    int  tle_flag;
+    size_t len = 0;
+    struct schema_Openflow_Tag regular_tag;
+    struct schema_Openflow_Local_Tag local_tag;
+
+    memset(&regular_tag, 0, sizeof(struct schema_Openflow_Tag));
+    memset(&local_tag, 0, sizeof(struct schema_Openflow_Local_Tag));
+    if (req->action != FSM_UPDATE_TAG) return false;
+
+    tle_flag = om_get_type_of_tag(req->updatev6_tag);
+
+    if (tle_flag == OM_TLE_FLAG_DEVICE ||
+        tle_flag == OM_TLE_FLAG_CLOUD)
+    {
+        len = strlen(req->updatev6_tag);
+        os_util_strncpy(regular_tag.name, &req->updatev6_tag[3], len - 3);
+        regular_tag.name_exists = true;
+        regular_tag.name_present = true;
+
+        result = dns_generate_update_tag(req, regular_tag.device_value, &regular_tag.device_value_len, 6);
+        if (result)
+        {
+            result = dns_upsert_regular_tag(&regular_tag, ovsdb_sync_upsert);
+            if (!result)
+            {
+                LOGT("%s: Openflow_Tag not updated for request.", __func__);
+            }
+        }
+        else
+        {
+            LOGT("%s: Openflow_Tag not updated for request.", __func__);
+        }
+    } else if(tle_flag == OM_TLE_FLAG_LOCAL) {
+
+        len = strlen(req->updatev6_tag);
+        os_util_strncpy(local_tag.name, &req->updatev6_tag[3], len - 3);
+        local_tag.name_exists = true;
+        local_tag.name_present = true;
+
+        result = dns_generate_update_tag(req, local_tag.values, &local_tag.values_len, 6);
+        if (result)
+        {
+            result = dns_upsert_local_tag(&local_tag, ovsdb_sync_upsert);
+            if (!result)
+            {
+                LOGT("%s: Openflow_Local_Tag not updated for request.", __func__);
+            }
+        }
+        else
+        {
+            LOGT("%s: Openflow_Local_Tag not updated for request.", __func__);
+        }
+    }
+
+    return result;
+}
+
+
+void
+dns_update_tag(struct fqdn_pending_req *req)
+{
+    bool rc = false;
+
+    if (!req) return;
+
+    if (req->updatev4_tag)
+    {
+        rc = dns_updatev4_tag(req);
+        if (!rc)
+        {
+            LOGT("%s: Failed to update ipv4 OpenFlow tags.",__func__);
+        }
+    }
+
+    if (req->updatev6_tag)
+    {
+        rc = dns_updatev6_tag(req);
+        if (!rc)
+        {
+            LOGT("%s: Failed to update ipv6 OpenFlow tags.",__func__);
+        }
+    }
+
+    return;
+}
+
+
 static char redirect_prefix[RD_SZ][4] =
 {
     "A-", "4A-", "C-"
@@ -831,8 +915,17 @@ dns_handle_reply(struct dns_session *dns_session, dns_info *dns,
     dns_session->req = req;
     process_response_ips(dns, packet, req);
 
+    if (req->action == FSM_UPDATE_TAG)
+    {
+       /*
+        * Update Tag if we are interested
+        * in the IPs returned.
+        */
+        mgr->update_tag(req);
+    }
+
     /* forward the DNS response if the session has no categorization provider */
-    if (dns_session->provider_ops == NULL)
+    if (session->provider_ops == NULL)
     {
         LOGT("%s: %s session : no provider available", __func__,
              session->name);
@@ -842,11 +935,11 @@ dns_handle_reply(struct dns_session *dns_session, dns_info *dns,
     }
 
     /* forward DNS response to category filter */
-    if (dns_session->provider_ops->dns_response)
+    if (session->provider_ops->dns_response)
     {
         LOGT("%s: dns reply: forwarding to category provider %s", __func__,
-             dns_session->provider);
-        dns_session->provider_ops->dns_response(session, req);
+             session->provider);
+        session->provider_ops->dns_response(session, req);
     }
 
     if (req->action == FSM_FORWARD)
@@ -863,44 +956,17 @@ dns_handle_reply(struct dns_session *dns_session, dns_info *dns,
         mgr->forward(dns_session, dns, packet, header->caplen);
         dns_remove_req(dns_session, &eth->dstmac, req->req_id);
     }
-    else if (req->action == FSM_UPDATE_TAG)
-    {
-         /*
-          * Update Openflow_Tag if we are interested
-          * in the IPs returned.
-          */
-        struct schema_Openflow_Tag updated;
-        bool result;
-
-        result = dns_generate_update_tag(req, &updated);
-        if (result)
-        {
-            result = dns_upsert_tag(&updated, ovsdb_sync_upsert);
-            if (!result)
-            {
-                LOGT("%s: Openflow_Tag not updated for request.", __func__);
-            }
-        }
-        else
-        {
-            LOGT("%s: No update tag generated for OVSDB transaction.", __func__);
-        }
-
-        dns_forward(dns_session, dns, packet, header->caplen);
-        dns_remove_req(dns_session, &eth->dstmac, req->req_id);
-    }
-
     else if (req->action == FSM_BLOCK)
     {
         char reason[128] = { 0 };
         char risk[128] = { 0 };
 
         if (req->categorized == FSM_FQDN_CAT_SUCCESS) {
-            if (dns_session->provider_ops->cat2str && (req->cat_match != -1))
+            if (session->provider_ops->cat2str && (req->cat_match != -1))
             {
                 snprintf(reason, sizeof(reason), "categorized as %s",
-                         dns_session->provider_ops->cat2str(session,
-                                                            req->cat_match));
+                         session->provider_ops->cat2str(session,
+                                                        req->cat_match));
             }
             if (req->risk_level != -1)
             {
@@ -977,9 +1043,12 @@ set_provider_ops(struct dns_session *dns_session,
                  struct fqdn_pending_req *req)
 {
     struct web_cat_offline *offline;
+    struct fsm_session *session;
+
+    session = dns_session->fsm_context;
 
     /* No backend available. Bail */
-    if (dns_session->provider_ops == NULL) return;
+    if (session->provider_ops == NULL) return;
 
     /* Check if the backend provider is offline */
     offline = &dns_session->cat_offline;
@@ -998,8 +1067,8 @@ set_provider_ops(struct dns_session *dns_session,
     }
 
     /* Set the backend provider ops */
-    req->categories_check = dns_session->provider_ops->categories_check;
-    req->risk_level_check = dns_session->provider_ops->risk_level_check;
+    req->categories_check = session->provider_ops->categories_check;
+    req->risk_level_check = session->provider_ops->risk_level_check;
 }
 
 
@@ -1130,10 +1199,10 @@ dns_handler(struct fsm_session *session, struct net_header_parser *net_header)
     req->fsm_checked = false;
     req->risk_level = -1;
     req->cat_match = -1;
-    req->policy_table = dns_session->policy_client.table;
+    req->policy_table = session->policy_client.table;
 
     set_provider_ops(dns_session, req);
-    req->provider = dns_session->provider;
+    req->provider = session->provider;
     req_info = req->req_info;
     qnext = dns.queries;
     for (i = 0; i < dns.qdcount; i++)
@@ -1580,14 +1649,14 @@ dns_remove_req(struct dns_session *dns_session, os_macaddr_t *mac,
 
 
 bool
-is_in_device_set(struct schema_Openflow_Tag *row, char *checking)
+is_in_device_set(char values[][MAX_TAG_VALUES_LEN], int values_len, char *checking)
 {
     int ret;
     int i;
 
-    for(i = 0; i < row->device_value_len; i++)
+    for(i = 0; i < values_len; i++)
     {
-        ret = strcmp(row->device_value[i], checking);
+        ret = strcmp(values[i], checking);
         if (!ret) return true;
     }
     return false;
@@ -1596,72 +1665,90 @@ is_in_device_set(struct schema_Openflow_Tag *row, char *checking)
 
 bool
 dns_generate_update_tag(struct fqdn_pending_req *req,
-                        struct schema_Openflow_Tag *output)
+                        char values[][MAX_TAG_VALUES_LEN],
+                        int *values_len, int ip_ver)
 {
     bool added_information;
-    int device_value_len;
+    int  orig_values_len;
     om_tag_t *tag;
     char *adding;
+    char name[MAX_TAG_NAME_LEN] = {0};
+    int  name_len = 0;
     bool rc;
     int i;
 
     if (req->action != FSM_UPDATE_TAG) return false;
 
     added_information = false;
-    device_value_len = output->device_value_len;
+    orig_values_len = *values_len;
 
-    STRSCPY(output->name, req->update_tag);
-    output->name_exists = true;
-    output->name_present = true;
+
+    if (ip_ver == 4)
+    {
+      name_len = strlen(req->updatev4_tag);
+      os_util_strncpy(name, &req->updatev4_tag[3], name_len - 3);
+      tag = om_tag_find_by_name(name, false);
+    }
+    else if (ip_ver == 6)
+    {
+      name_len = strlen(req->updatev6_tag);
+      os_util_strncpy(name, &req->updatev6_tag[3], name_len - 3);
+      tag = om_tag_find_by_name(name, false);
+    }
+    else
+    {
+      return false;
+    }
 
     /* Load in current in memory tag state */
-    tag = om_tag_find_by_name(req->update_tag, false);
     if (tag != NULL)
     {
         om_tag_list_entry_t *iter;
-
         ds_tree_foreach(&tag->values, iter)
         {
             adding = iter->value;
-            rc = is_in_device_set(output, adding);
+            rc = is_in_device_set(values, *values_len, adding);
             if (!rc)
             {
-                STRSCPY(output->device_value[output->device_value_len], adding);
-                output->device_value_len++;
+                STRSCPY(values[*values_len], adding);
+                *values_len = *values_len + 1;
             }
         }
     }
 
-    /* Add new IPv4 and IPv6 responses to tag */
-    for (i = 0; i < req->ipv4_cnt; i++)
+    if (ip_ver == 4)
     {
-        adding = req->ipv4_addrs[i];
-        rc = is_in_device_set(output, adding);
-        if (!rc)
+        for (i = 0; i < req->ipv4_cnt; i++)
         {
-            STRSCPY(output->device_value[output->device_value_len], adding);
-            output->device_value_len++;
+            adding = req->ipv4_addrs[i];
+            rc = is_in_device_set(values, *values_len, adding);
+            if (!rc)
+            {
+                STRSCPY(values[*values_len], adding);
+                *values_len = *values_len + 1;
+            }
         }
-    }
+    } else if (ip_ver == 6) {
 
-    for (i = 0; i < req->ipv6_cnt; i++)
-    {
-        adding = req->ipv6_addrs[i];
-        rc = is_in_device_set(output, adding);
-        if (!rc)
+        for (i = 0; i < req->ipv6_cnt; i++)
         {
-            STRSCPY(output->device_value[output->device_value_len], adding);
-            output->device_value_len++;
+            adding = req->ipv6_addrs[i];
+            rc = is_in_device_set(values, *values_len, adding);
+            if (!rc)
+            {
+                STRSCPY(values[*values_len], adding);
+                *values_len = *values_len + 1;
+            }
         }
     }
-    added_information = (output->device_value_len != device_value_len);
-    output->device_value_present = added_information;
+    added_information = (*values_len != orig_values_len);
 
     return added_information;
 }
 
 
-bool dns_upsert_tag(struct schema_Openflow_Tag *row, dns_ovsdb_updater updater)
+
+bool dns_upsert_regular_tag(struct schema_Openflow_Tag *row, dns_ovsdb_updater updater)
 {
     pjs_errmsg_t err;
     json_t *jrow;
@@ -1688,6 +1775,36 @@ bool dns_upsert_tag(struct schema_Openflow_Tag *row, dns_ovsdb_updater updater)
 
     return false;
 }
+
+
+bool dns_upsert_local_tag(struct schema_Openflow_Local_Tag *row, dns_ovsdb_updater updater)
+{
+    pjs_errmsg_t err;
+    json_t *jrow;
+    bool ret;
+
+    jrow = schema_Openflow_Local_Tag_to_json(row, err);
+    if (jrow == NULL)
+    {
+        LOGD("%s: failed to generate JSON for upsert: %s", __func__, err);
+
+        return false;
+    }
+
+    ret = updater(SCHEMA_TABLE(Openflow_Local_Tag), SCHEMA_COLUMN(Openflow_Local_Tag, name),
+                  row->name, jrow, NULL);
+    json_decref(jrow);
+    if (ret)
+    {
+        LOGD("%s: Updated Openflow_Local_Tag: %s with new IP set.", __func__,
+             row->name);
+        return true;
+    }
+    LOGD("%s: Return value from OVSDB update was: %d", __func__, ret);
+
+    return false;
+}
+
 
 /* Local log interval */
 #define DNS_LOG_PERIODIC 120
@@ -1815,7 +1932,7 @@ dns_report_health_stats(struct dns_session *dns_session,
     hs.cache_size = count;
 
     /* Prepare report */
-    report.provider = dns_session->provider;
+    report.provider = session->provider;
     report.op = &op;
     report.ow = &ow;
     report.health_stats = &hs;
@@ -1902,8 +2019,8 @@ dns_periodic(struct fsm_session *session)
 
     /* Check if web categorization stats are available */
     if (session->service == NULL) return;
-    if (dns_session->provider_ops == NULL) return;
-    if (dns_session->provider_ops->get_stats == NULL) return;
+    if (session->provider_ops == NULL) return;
+    if (session->provider_ops->get_stats == NULL) return;
 
     /* Check if the time has come to log the health stats locally */
     cmp_log = now - dns_session->stat_log_ts;
@@ -1919,7 +2036,7 @@ dns_periodic(struct fsm_session *session)
 
     /* Get the stats */
     memset(&stats, 0, sizeof(stats));
-    dns_session->provider_ops->get_stats(session, &stats);
+    session->provider_ops->get_stats(session, &stats);
 
     /* Log locally if the time has come */
     if (cmp_log >= DNS_LOG_PERIODIC) dns_log_stats(dns_session, &stats, now);
@@ -1958,7 +2075,8 @@ fqdn_policy_check(struct dns_device *ds,
     req->fsm_checked = false;
     fsm_apply_policies(session, &preq);
     req->action = preq.reply.action;
-    req->update_tag = preq.reply.update_tag;
+    req->updatev4_tag = preq.reply.updatev4_tag;
+    req->updatev6_tag = preq.reply.updatev6_tag;
     req->policy = preq.reply.policy;
     req->policy_idx = preq.reply.policy_idx;
     req->rule_name = preq.reply.rule_name;

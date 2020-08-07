@@ -77,6 +77,7 @@ struct test_mgr
     struct test_timers system;
     struct test_timers neigh_add;
     struct test_timers dhcp_timers;
+    struct test_timers ipv4_neighbors_timers;
     struct test_timers ipv6_neighbors_timers;
     struct test_timers intf_timers;
     int ut_ifindex;
@@ -739,7 +740,7 @@ void test_lookup_neigh_entry_not_in_cache(void)
 
     /* Validate mac content */
     cmp = memcmp(&mac_out, entry1->mac, sizeof(os_macaddr_t));
-    TEST_ASSERT_TRUE(cmp != 0)
+    TEST_ASSERT_TRUE(cmp != 0);
 
     /* v6 tests */
     // fill sockaddr
@@ -754,7 +755,7 @@ void test_lookup_neigh_entry_not_in_cache(void)
 
     /* Validate mac content */
     cmp = memcmp(&mac_out, entry3->mac, sizeof(os_macaddr_t));
-    TEST_ASSERT_TRUE(cmp != 0)
+    TEST_ASSERT_TRUE(cmp != 0);
 
     LOGI("\n******************** %s: completed ****************", __func__);
 }
@@ -1174,6 +1175,255 @@ void setup_lookup_dhcp_entry_in_ovsdb(void)
 }
 
 
+void add_ipv4_neigh_entry_into_ovsdb_cb(EV_P_ ev_timer *w, int revents)
+{
+    struct neigh_table_mgr *mgr = neigh_table_get_mgr();
+    char ipstr[INET_ADDRSTRLEN] = { 0 };
+    struct neighbour_entry *entry;
+    char cmd[256];
+    int rc;
+
+    LOGI("\n\n\n\n ***** %s: entering\n", __func__);
+    mgr->update_ovsdb_tables = update_ip_in_ovsdb_table;
+
+    /* Add entry in ovsdb */
+    entry = entry1;
+    neigh_table_set_entry(entry);
+    memset(cmd, 0, sizeof(cmd));
+    inet_ntop(entry->af_family, entry->ip_tbl, ipstr, sizeof(ipstr));
+    snprintf(cmd, sizeof(cmd),
+             "ovsh i IPv4_Neighbors address:=%s hwaddr:=" PRI_os_macaddr_t
+             " if_name:=%s",
+             ipstr, FMT_os_macaddr_pt(entry->mac), g_dummy_intf);
+    LOGI("%s: cmd: %s", __func__, cmd);
+    rc = cmd_log(cmd);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    g_test_mgr.expected_v4_source = OVSDB_ARP;
+    g_test_mgr.expected = true;
+    LOGI("\n***** %s: done\n", __func__);
+}
+
+void delete_ipv4_neigh_entry_into_ovsdb_cb(EV_P_ ev_timer *w, int revents)
+{
+    struct neigh_table_mgr *mgr = neigh_table_get_mgr();
+    char ipstr[INET_ADDRSTRLEN] = { 0 };
+    struct neighbour_entry *entry;
+    char cmd[256];
+    int rc;
+
+    LOGI("\n\n\n\n ***** %s: entering\n", __func__);
+    mgr->update_ovsdb_tables = update_ip_in_ovsdb_table;
+
+    /* Add entry in ovsdb */
+    entry = entry1;
+    neigh_table_set_entry(entry);
+    memset(cmd, 0, sizeof(cmd));
+    inet_ntop(entry->af_family, entry->ip_tbl, ipstr, sizeof(ipstr));
+    snprintf(cmd, sizeof(cmd),
+             "ovsh d IPv4_Neighbors -w address==%s", ipstr);
+    rc = cmd_log(cmd);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    g_test_mgr.expected = false;
+    LOGI("\n***** %s: done\n", __func__);
+}
+
+void lookup_ipv4_neigh_in_cache_cb(EV_P_ ev_timer *w, int revents)
+{
+    uint32_t  v4udstip = htonl(0x04030201);
+    struct sockaddr_storage key;
+    os_macaddr_t mac_out;
+    bool rc_lookup;
+    int cmp;
+
+    LOGI("\n\n\n\n ***** %s: entering\n", __func__);
+    // fill sockaddr
+    memset(&key, 0, sizeof(struct sockaddr_storage));
+    util_populate_sockaddr(AF_INET, &v4udstip, &key);
+    /* Lookup the neighbour entry */
+    rc_lookup = neigh_table_lookup(&key, &mac_out);
+    /* Validate lookup to the neighbour entry */
+    TEST_ASSERT_TRUE(rc_lookup == g_test_mgr.expected);
+
+    if (g_test_mgr.expected)
+    {
+        struct neighbour_entry *lookup;
+        struct neighbour_entry entry;
+
+        /* Validate mac content */
+        cmp = memcmp(&mac_out, entry1->mac, sizeof(os_macaddr_t));
+        TEST_ASSERT_EQUAL_INT(cmp, 0);
+
+        /* Retrieve cached entry to validate its source */
+        memset(&entry, 0, sizeof(entry));
+        entry.ipaddr = &key;
+        entry.mac = &mac_out;
+        entry.ifname = NULL;
+        entry.source = g_test_mgr.expected_v4_source;
+        neigh_table_set_entry(&entry);
+        lookup = neigh_table_cache_lookup(&entry);
+        TEST_ASSERT_NOT_NULL(lookup);
+    }
+    LOGI("\n***** %s: done\n", __func__);
+}
+
+void update_ipv4_neigh_into_ovsdb_cb(EV_P_ ev_timer *w, int revents)
+{
+    os_macaddr_t mac = { { 0x11, 0x22, 0x33, 0x44, 0x55, 0x66} };
+    struct neigh_table_mgr *mgr = neigh_table_get_mgr();
+    uint32_t v4udstip = htonl(0x04030210);
+    char ipstr[INET_ADDRSTRLEN] = { 0 };
+    struct neighbour_entry *entry;
+    char cmd[256];
+    int rc;
+
+    LOGI("\n\n\n\n ***** %s: entering\n", __func__);
+    mgr->update_ovsdb_tables = update_ip_in_ovsdb_table;
+
+    /* Add entry1 in ovsdb */
+    entry = entry1;
+    neigh_table_set_entry(entry);
+    memset(cmd, 0, sizeof(cmd));
+    inet_ntop(entry->af_family, entry->ip_tbl, ipstr, sizeof(ipstr));
+    snprintf(cmd, sizeof(cmd),
+             "ovsh i IPv4_Neighbors address:=%s  hwaddr:=" PRI_os_macaddr_t
+             " if_name:=%s source:=UT",
+             ipstr, FMT_os_macaddr_pt(entry->mac), g_dummy_intf);
+    LOGI("%s: cmd: %s", __func__, cmd);
+    rc = cmd_log(cmd);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    /* Add entry2 in ovsdb */
+    entry = entry2;
+    neigh_table_set_entry(entry);
+    memset(cmd, 0, sizeof(cmd));
+    inet_ntop(entry->af_family, entry->ip_tbl, ipstr, sizeof(ipstr));
+    snprintf(cmd, sizeof(cmd),
+             "ovsh i IPv4_Neighbors address:=%s  hwaddr:=" PRI_os_macaddr_t
+             " if_name:=%s source:=UT",
+             ipstr, FMT_os_macaddr_pt(entry->mac), g_dummy_intf);
+    LOGI("%s: cmd: %s", __func__, cmd);
+    rc = cmd_log(cmd);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    /* Update entry1 mac address */
+    entry = entry1;
+    memset(cmd, 0, sizeof(cmd));
+    inet_ntop(entry->af_family, entry->ip_tbl, ipstr, sizeof(ipstr));
+    snprintf(cmd, sizeof(cmd),
+             "ovsh u IPv4_Neighbors -w address==%s hwaddr:=" PRI_os_macaddr_t,
+             ipstr, FMT_os_macaddr_t(mac));
+    LOGI("%s: cmd: %s", __func__, cmd);
+    rc = cmd_log(cmd);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    /* Update entry2 ip address */
+    entry = entry2;
+    memset(cmd, 0, sizeof(cmd));
+    inet_ntop(entry->af_family, &v4udstip, ipstr, sizeof(ipstr));
+    snprintf(cmd, sizeof(cmd),
+             "ovsh u IPv4_Neighbors -w hwaddr==" PRI_os_macaddr_t
+             " address:=%s",
+             FMT_os_macaddr_pt(entry->mac), ipstr);
+    LOGI("%s: cmd: %s", __func__, cmd);
+    rc = cmd_log(cmd);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    g_test_mgr.expected_v4_source = OVSDB_ARP;
+    LOGI("\n***** %s: done\n", __func__);
+}
+
+void lookup_ipv4_update_in_cache_cb(EV_P_ ev_timer *w, int revents)
+{
+    uint32_t v4udstip = htonl(0x04030210);
+    char ipstr[INET_ADDRSTRLEN] = { 0 };
+    struct neighbour_entry *entry;
+    char cmd[256];
+    int rc;
+
+    LOGI("\n\n\n\n ***** %s: entering\n", __func__);
+
+    /* Delete entry1 mac address */
+    entry = entry1;
+    memset(cmd, 0, sizeof(cmd));
+    inet_ntop(entry->af_family, entry->ip_tbl, ipstr, sizeof(ipstr));
+    snprintf(cmd, sizeof(cmd),
+             "ovsh d IPv4_Neighbors -w address==%s", ipstr);
+    LOGI("%s: cmd: %s", __func__, cmd);
+    rc = cmd_log(cmd);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    /* Delete entry2 ip address */
+    entry = entry2;
+    memset(cmd, 0, sizeof(cmd));
+    inet_ntop(entry->af_family, &v4udstip, ipstr, sizeof(ipstr));
+    snprintf(cmd, sizeof(cmd),
+             "ovsh d IPv4_Neighbors -w hwaddr==" PRI_os_macaddr_t,
+             FMT_os_macaddr_pt(entry->mac));
+    LOGI("%s: cmd: %s", __func__, cmd);
+    rc = cmd_log(cmd);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    LOGI("\n***** %s: done\n", __func__);
+}
+
+void setup_lookup_ipv4_neigh_entry_in_ovsdb(void)
+{
+    struct test_timers *t;
+    struct ev_loop *loop;
+
+    if (!g_test_mgr.has_ovsdb)
+    {
+        LOGI("%s: ovsdb support, bypassing test", __func__);
+        return;
+    }
+
+    t = &g_test_mgr.ipv4_neighbors_timers;
+    loop = g_test_mgr.loop;
+
+    /* Arm the addition execution timer */
+    ev_timer_init(&t->timeout_watcher_add, add_ipv4_neigh_entry_into_ovsdb_cb,
+                  g_test_mgr.g_timeout++, 0);
+    t->timeout_watcher_add.data = NULL;
+
+    /* Arm the cache lookup execution timer validating the cache addition */
+    ev_timer_init(&t->timeout_watcher_add_cache, lookup_ipv4_neigh_in_cache_cb,
+                  g_test_mgr.g_timeout++, 0);
+    t->timeout_watcher_add_cache.data = NULL;
+
+    /* Arm the deletion execution timer */
+    ev_timer_init(&t->timeout_watcher_delete, delete_ipv4_neigh_entry_into_ovsdb_cb,
+                  g_test_mgr.g_timeout++, 0);
+    t->timeout_watcher_delete.data = NULL;
+
+    /* Arm the cache lookup execution timer validating the cache deletion */
+    ev_timer_init(&t->timeout_watcher_delete_cache, lookup_ipv4_neigh_in_cache_cb,
+                  g_test_mgr.g_timeout++, 0);
+    t->timeout_watcher_delete_cache.data = NULL;
+
+    /* Arm the update execution timer */
+    ev_timer_init(&t->timeout_watcher_update,
+                  update_ipv4_neigh_into_ovsdb_cb,
+                  g_test_mgr.g_timeout++, 0);
+    t->timeout_watcher_update.data = NULL;
+
+    /* Arm the cache lookup execution timer validating the cache update */
+    ev_timer_init(&t->timeout_watcher_update_cache,
+                  lookup_ipv4_update_in_cache_cb,
+                  g_test_mgr.g_timeout++, 0);
+    t->timeout_watcher_update_cache.data = NULL;
+
+    t->timeout_watcher_delete_cache.data = NULL;
+    ev_timer_start(loop, &t->timeout_watcher_add);
+    ev_timer_start(loop, &t->timeout_watcher_add_cache);
+    ev_timer_start(loop, &t->timeout_watcher_delete);
+    ev_timer_start(loop, &t->timeout_watcher_delete_cache);
+    ev_timer_start(loop, &t->timeout_watcher_update);
+    ev_timer_start(loop, &t->timeout_watcher_update_cache);
+}
+
+
 void add_ipv6_neigh_entry_into_ovsdb_cb(EV_P_ ev_timer *w, int revents)
 {
     struct neigh_table_mgr *mgr = neigh_table_get_mgr();
@@ -1582,6 +1832,7 @@ void test_events(void)
     setup_lookup_neigh_entry_in_kernel();
     setup_lookup_neigh_entry_in_ovsdb();
     setup_lookup_dhcp_entry_in_ovsdb();
+    setup_lookup_ipv4_neigh_entry_in_ovsdb();
     setup_lookup_ipv6_neigh_entry_in_ovsdb();
     setup_intf_events_test();
 

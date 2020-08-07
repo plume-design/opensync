@@ -35,7 +35,7 @@ UNIT_TYPE := BIN
 UNIT_SRC := src/fcm_main.c
 UNIT_SRC += src/fcm_ovsdb.c
 UNIT_SRC += src/fcm_mgr.c
-
+UNIT_SRC += src/fcm_event.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 

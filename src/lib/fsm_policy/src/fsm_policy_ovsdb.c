@@ -690,10 +690,6 @@ struct fsm_policy * fsm_policy_get(struct schema_FSM_Policy *spolicy)
         ds_tree_insert(tree, table, table->name);
 
         LOGN("%s: Loading policy table %s", __func__, name);
-
-        /* Update policy clients */
-        fsm_policy_update_clients(table);
-
     }
 
     idx = spolicy->idx;
@@ -701,6 +697,10 @@ struct fsm_policy * fsm_policy_get(struct schema_FSM_Policy *spolicy)
     if (*fpolicy != NULL) return *fpolicy;
 
     *fpolicy = fsm_policy_insert_schema_p(table, spolicy);
+
+    /* Update policy clients */
+    fsm_policy_update_clients(table);
+
     return *fpolicy;
 }
 
@@ -818,6 +818,21 @@ void callback_FSM_Policy(ovsdb_update_monitor_t *mon,
     if (mon->mon_type == OVSDB_UPDATE_MODIFY) {
         fsm_update_policy(spolicy);
     }
+}
+
+struct policy_table * fsm_policy_find_table(char *name)
+{
+    struct fsm_policy_session *mgr;
+    struct policy_table *table;
+    ds_tree_t *tree;
+
+    if (name == NULL) return NULL;
+
+    mgr = fsm_policy_get_mgr();
+    tree = &mgr->policy_tables;
+    table = ds_tree_find(tree, name);
+
+    return table;
 }
 
 

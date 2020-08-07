@@ -42,8 +42,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "synclist.h"
 
 #define INET_BASE_SERVICE_LIST(M)                                   \
+    M(INET_BASE_IF_ENABLE,      "Ineterface Enable")                \
     M(INET_BASE_IF_CREATE,      "Interface Creation")               \
-    M(INET_BASE_IF_EXISTS,      "Interface Ready")                  \
+    M(INET_BASE_IF_READY,       "Interface Ready")                  \
     M(INET_BASE_FIREWALL,       "Firewall")                         \
     M(INET_BASE_UPNP,           "UPnP")                             \
     M(INET_BASE_IGMP,           "IGMP")                             \

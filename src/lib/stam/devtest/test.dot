@@ -1,0 +1,11 @@
+digraph {
+    INIT -> RETRANSITION;
+    RETRANSITION -> RUNNING[label="STATE_INIT,START"];
+    RUNNING -> STOPPED[label="STATE_INIT,STOP"];
+
+    STOPPED -> RUNNING[label="START"];
+
+    EXCEPTION -> STOPPED[label="!CANCEL"];
+    EXCEPTION -> STOPPED[label="!TIMEOUT"];
+    EXCEPTION -> RUNNING;
+}

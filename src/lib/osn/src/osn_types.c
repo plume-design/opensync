@@ -93,6 +93,33 @@ bool osn_ip_addr_from_str(osn_ip_addr_t *out, const char *str)
 }
 
 /*
+ * Create a osn_ip_addr_t structure from a in_addr structure. in_addr is
+ * commonly used hidden inside sockaddr
+ */
+bool osn_ip_addr_from_in_addr(osn_ip_addr_t *out, const struct in_addr *in)
+{
+    *out = OSN_IP_ADDR_INIT;
+    memcpy(&out->ia_addr, in, sizeof(out->ia_addr));
+
+    return true;
+}
+
+/*
+ * Create a osn_ip_addr_t structure from a sockaddr structure.
+ */
+bool osn_ip_addr_from_sockaddr(osn_ip_addr_t *out, const struct sockaddr *in)
+{
+    const struct sockaddr_in *sin = (const struct sockaddr_in *)in;
+
+    if (sin->sin_family != AF_INET)
+    {
+        return false;
+    }
+
+    return osn_ip_addr_from_in_addr(out, &sin->sin_addr);
+}
+
+/*
  * Comparator function -- compare two osn_ip_addr_t and return negative, 0 or positive if
  * a is lower than, equal to or greater than b, respectively.
  */

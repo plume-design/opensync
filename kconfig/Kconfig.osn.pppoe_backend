@@ -1,0 +1,11 @@
+#
+# OpenSync core network PPPoE backend
+#
+source "src/lib/osn/kconfig/Kconfig.osn.pppoe_backend"
+
+#
+# Platform/vendor PPPoE backends
+#
+osource "platform/*/kconfig/Kconfig.osn.pppoe_backend"
+osource "vendor/*/kconfig/Kconfig.osn.pppoe_backend"
+

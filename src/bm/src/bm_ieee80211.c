@@ -140,6 +140,11 @@ bm_action_frame_bss_trans_mgmt_query(bm_client_t *client,
 {
     bsal_btm_params_t btm_params;
 
+    if (!client->connected) {
+        LOGI("Client '%s': Not marked as connected. Can't process BTM yet", client->mac_addr);
+        return;
+    }
+
     memset(&btm_params, 0, sizeof(btm_params));
     btm_params.abridged = BTM_DEFAULT_ABRIDGED;
     btm_params.pref = BTM_DEFAULT_PREF;

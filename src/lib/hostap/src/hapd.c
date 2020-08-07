@@ -389,7 +389,11 @@ hapd_conf_gen(struct hapd *hapd,
 {
     const char *wpa_pairwise;
     const char *wpa_key_mgmt;
+    const char *radius_server_ip;
+    const char *radius_server_port;
+    const char *radius_server_secret;
     size_t len = sizeof(hapd->conf);
+    bool suppress_wps = false;
     char *buf = hapd->conf;
     char keys[32];
     int closed;
@@ -417,6 +421,12 @@ hapd_conf_gen(struct hapd *hapd,
     csnprintf(&buf, &len, "%s", hapd->respect_multi_ap ? "" : "#");
     csnprintf(&buf, &len, "multi_ap=%d\n", hapd_map_str2int(vconf));
     csnprintf(&buf, &len, "send_probe_response=%d\n", hapd->skip_probe_response ? 0 : 1);
+
+    if (strlen(hapd->country) > 0) {
+        csnprintf(&buf, &len, "country_code=%s\n", hapd->country);
+        csnprintf(&buf, &len, "ieee80211d=1\n");
+        csnprintf(&buf, &len, "ieee80211h=1\n");
+    }
 
     /* FIXME: ieee80211n, iee80211ac, ieee80211ax is missing, also min_hw_mode..
      * perhaps some of this needs to be scheduled for wireless api rework
@@ -465,13 +475,49 @@ hapd_conf_gen(struct hapd *hapd,
         csnprintf(&buf, &len, "wpa_psk_file=%s\n", hapd->pskspath);
         csnprintf(&buf, &len, "wpa=%d\n", wpa);
         csnprintf(&buf, &len, "wpa_pairwise=%s\n", wpa_pairwise);
+    } else if (!strcmp(wpa_key_mgmt, "WPA-EAP")) {
+        csnprintf(&buf, &len, "auth_algs=1\n");
+        csnprintf(&buf, &len, "ieee8021x=1\n");
+        csnprintf(&buf, &len, "own_ip_addr=127.0.0.1\n");
+        csnprintf(&buf, &len, "wpa_key_mgmt=WPA-EAP\n");
+        /* WPA-EAP supports solely WPA2 */
+        csnprintf(&buf, &len, "wpa=2\n");
+        csnprintf(&buf, &len, "wpa_pairwise=CCMP\n");
+
+        radius_server_ip = SCHEMA_KEY_VAL(vconf->security, "radius_server_ip");
+        radius_server_port = SCHEMA_KEY_VAL(vconf->security, "radius_server_port");
+        radius_server_secret = SCHEMA_KEY_VAL(vconf->security, "radius_server_secret");
+
+        csnprintf(&buf, &len, "auth_server_addr=%s\n", radius_server_ip);
+        csnprintf(&buf, &len, "auth_server_port=%s\n", radius_server_port);
+        csnprintf(&buf, &len, "auth_server_shared_secret=%s\n", radius_server_secret);
+    } else if (!strcmp(wpa_key_mgmt, "OPEN")) {
+        csnprintf(&buf, &len, "wpa=0\n");
+        csnprintf(&buf, &len, "auth_algs=1\n");
     } else {
         LOGW("%s: key mgmt '%s' not supported", vconf->if_name, wpa_key_mgmt);
         errno = ENOTSUP;
         return -1;
     }
 
-    if (kconfig_enabled(CONFIG_HOSTAP_PSK_FILE_WPS)) {
+    /*
+     * WPA-EAP + remote RADIUS excludes WPS on single VAP (hostapd doesn't support
+     * such configuration).
+     */
+    if (!strcmp(wpa_key_mgmt, "WPA-EAP") && vconf->wps) {
+        suppress_wps |= true;
+        LOGW("%s: Disabling WPS because WPA-EAP is enabled", vconf->if_name);
+    }
+
+    /*
+     * OPEN mode and WPS cannot be configred on single VAP.
+     */
+    if (!strcmp(wpa_key_mgmt, "OPEN") && vconf->wps) {
+        suppress_wps |= true;
+        LOGW("%s: Disabling WPS because OPEN mode is enabled", vconf->if_name);
+    }
+
+    if (kconfig_enabled(CONFIG_HOSTAP_PSK_FILE_WPS) && !suppress_wps) {
         csnprintf(&buf, &len, "wps_state=%d\n", vconf->wps ? 2 : 0);
         csnprintf(&buf, &len, "eap_server=%d\n", vconf->wps ? 1 : 0);
         csnprintf(&buf, &len, "config_methods=virtual_push_button\n");
@@ -489,17 +535,31 @@ hapd_bss_get_security(struct schema_Wifi_VIF_State *vstate,
                       const char *status)
 {
     const char *keys = ini_geta(status, "key_mgmt") ?: "";
-    const char *wpa = ini_geta(status, "wpa");
-    const char *mode = hapd_util_get_mode_str(atoi(wpa ?: ""));
 
-    /* `keys` can be also: 'FT-PSK WPA-PSK' */
-    if (WARN_ON(!strstr(keys, "WPA-PSK")))
-        return;
+    if (strstr(keys, "WPA-PSK")) {
+        const char *wpa = ini_geta(status, "wpa");
+        const char *mode = hapd_util_get_mode_str(atoi(wpa ?: ""));
 
-    SCHEMA_KEY_VAL_APPEND(vstate->security, "encryption", "WPA-PSK");
-    SCHEMA_KEY_VAL_APPEND(vstate->security, "mode", mode ?: "no_mode");
+        /* `keys` can be also: 'FT-PSK WPA-PSK' */
+        SCHEMA_KEY_VAL_APPEND(vstate->security, "encryption", "WPA-PSK");
+        SCHEMA_KEY_VAL_APPEND(vstate->security, "mode", mode ?: "no_mode");
+    }
+    else if (strcmp(keys, "WPA-EAP") == 0) {
+        const char *auth_server_addr = ini_geta(conf, "auth_server_addr");
+        const char *auth_server_port = ini_geta(conf, "auth_server_port");
+        const char *auth_server_shared_secret = ini_geta(conf, "auth_server_shared_secret");
 
-    /* FIXME: OPEN, WPA-EAP? */
+        SCHEMA_KEY_VAL_APPEND(vstate->security, "encryption", "WPA-EAP");
+        SCHEMA_KEY_VAL_APPEND(vstate->security, "radius_server_ip", auth_server_addr);
+        SCHEMA_KEY_VAL_APPEND(vstate->security, "radius_server_port", auth_server_port);
+        SCHEMA_KEY_VAL_APPEND(vstate->security, "radius_server_secret", auth_server_shared_secret);
+    }
+    else if (strcmp(keys, "") == 0) {
+        /* OPEN mode */
+        SCHEMA_KEY_VAL_APPEND(vstate->security, "encryption", "OPEN");
+    }
+
+    /* FIXME: WPA3? */
 }
 
 static void
@@ -628,6 +688,7 @@ hapd_bss_get(struct hapd *hapd,
     const char *status = HAPD_CLI(hapd, "get_config");
     const char *conf = R(hapd->confpath) ?: "";
     const char *psks = R(hapd->pskspath) ?: "";
+    const char *map = ini_geta(conf, "multi_ap");
     char *p;
 
     /* FIXME: return non-zero if interface doesnt exist? */
@@ -645,8 +706,8 @@ hapd_bss_get(struct hapd *hapd,
         vstate->ft_psk = atoi(p);
     if ((vstate->btm_exists = (p = ini_geta(conf, "bss_transition"))))
         vstate->btm = atoi(p);
-    if ((p = ini_geta(conf, "multi_ap")))
-        SCHEMA_SET_STR(vstate->multi_ap, hapd_map_int2str(atoi(p)));
+
+    SCHEMA_SET_STR(vstate->multi_ap, hapd_map_int2str(atoi(map ?: "0")));
 
     if (status) {
         hapd_bss_get_security(vstate, conf, status);

@@ -51,6 +51,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "target.h"
 #include "target_common.h"
 #include "fsm.h"
+#include "fsm_oms.h"
 #include "policy_tags.h"
 #include "qm_conn.h"
 #include "dppline.h"
@@ -58,12 +59,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define MODULE_ID LOG_MODULE_ID_OVSDB
 
-ovsdb_table_t table_AWLAN_Node;
-ovsdb_table_t table_Flow_Service_Manager_Config;
-ovsdb_table_t table_Openflow_Tag;
-ovsdb_table_t table_Openflow_Tag_Group;
-ovsdb_table_t table_Node_Config;
-ovsdb_table_t table_Node_State;
+static ovsdb_table_t table_AWLAN_Node;
+static ovsdb_table_t table_Flow_Service_Manager_Config;
+static ovsdb_table_t table_Openflow_Tag;
+static ovsdb_table_t table_Openflow_Local_Tag;
+static ovsdb_table_t table_Openflow_Tag_Group;
+static ovsdb_table_t table_Node_Config;
+static ovsdb_table_t table_Node_State;
 
 /**
  * This file manages the OVSDB updates for fsm.
@@ -354,6 +356,80 @@ fsm_set_tx_intf(struct fsm_session *session)
 }
 
 
+void
+fsm_process_provider(struct fsm_session *session)
+{
+    struct fsm_session *service;
+    bool reset;
+
+    if (session->type == FSM_WEB_CAT) return;
+
+    /* If no provider plugin yet, attempt update */
+    if (session->provider_plugin == NULL)
+    {
+        service = session->service;
+        session->provider_plugin = service;
+        if (service != NULL)
+        {
+            session->provider = strdup(service->name);
+            session->provider_ops = &service->p_ops->web_cat_ops;
+        }
+        return;
+    }
+
+    LOGI("%s: original provider %s, new provider %s", __func__,
+         session->provider, session->service ? session->service->name : "none");
+
+    /* Provider was set, check if it changed */
+    reset = (session->provider_plugin != session->service);
+
+    if (reset)
+    {
+        sleep(2);
+        LOGEM("%s: provider change detected. Restarting", __func__);
+        exit(EXIT_SUCCESS);
+    }
+}
+
+
+void
+fsm_update_client(struct fsm_session *session,
+                  struct policy_table *table)
+{
+    struct fsm_policy_client *client;
+
+    if (session == NULL) return;
+
+    client = &session->policy_client;
+    client->table = table;
+    if (session->ops.update != NULL) session->ops.update(session);
+}
+
+
+void
+fsm_update_client_table(struct fsm_session *session, char *table_name)
+{
+    struct policy_table *table;
+    int cmp;
+
+    table = fsm_policy_find_table(table_name);
+
+    /* Handle the case with no previous table set */
+    if (session->policy_client.name == NULL) goto update;
+
+    /* Handle the case with a table reset */
+    if (table_name == NULL) goto update;
+
+    /* No update */
+    cmp = strcmp(session->policy_client.name, table_name);
+    if (cmp == 0) return;
+
+update:
+    session->policy_client.name = table_name;
+    fsm_update_client(session, table);
+}
+
+
 /**
  * @brief update the ovsdb configuration of the session
  *
@@ -368,6 +444,7 @@ fsm_session_update(struct fsm_session *session,
     struct fsm_session_conf *fconf;
     ds_tree_t *other_config;
     struct fsm_mgr *mgr;
+    char *policy_table;
     char *flood;
     bool check;
     bool ret;
@@ -465,6 +542,10 @@ fsm_session_update(struct fsm_session *session,
         goto err_free_fconf;
     }
 
+    policy_table = fsm_get_other_config_val(session, "policy_table");
+    fsm_update_client_table(session, policy_table);
+
+    fsm_process_provider(session);
     fsm_set_tx_intf(session);
 
     ret = fsm_is_dpi(session);
@@ -695,6 +776,8 @@ fsm_alloc_session(struct schema_Flow_Service_Manager_Config *conf)
     session->ops.send_report = fsm_send_report;
     session->ops.send_pb_report = fsm_send_pb_report;
     session->ops.get_config = fsm_get_other_config_val;
+    session->ops.state_cb = fsm_set_object_state;
+    session->ops.latest_obj_cb = fsm_oms_get_highest_version;
 
     pcaps = NULL;
     bpf = NULL;
@@ -784,6 +867,9 @@ fsm_free_session(struct fsm_session *session)
     /* Free the session name */
     free(session->name);
 
+    /* Free the session provider */
+    free(session->provider);
+
     /* Finally free the session */
     free(session);
 }
@@ -797,6 +883,7 @@ fsm_free_session(struct fsm_session *session)
 void
 fsm_add_session(struct schema_Flow_Service_Manager_Config *conf)
 {
+    struct fsm_policy_client *client;
     struct fsm_session *session;
     struct fsm_mgr *mgr;
     ds_tree_t *sessions;
@@ -832,6 +919,11 @@ fsm_add_session(struct schema_Flow_Service_Manager_Config *conf)
         fsm_web_cat_service_update(session, FSM_SERVICE_ADD);
     }
 
+    client = &session->policy_client;
+    client->session = session;
+    client->update_client = fsm_update_client;
+    fsm_policy_register_client(&session->policy_client);
+
     fsm_walk_sessions_tree();
     return;
 
@@ -865,6 +957,7 @@ fsm_delete_session(struct schema_Flow_Service_Manager_Config *conf)
         fsm_web_cat_service_update(session, FSM_SERVICE_DELETE);
     }
 
+    fsm_policy_deregister_client(&session->policy_client);
     ds_tree_remove(sessions, session);
     fsm_free_session(session);
     fsm_walk_sessions_tree();
@@ -895,7 +988,7 @@ fsm_modify_session(struct schema_Flow_Service_Manager_Config *conf)
 /**
  * @brief registered callback for OVSDB Flow_Service_Manager_Config events
  */
-void
+static void
 callback_Flow_Service_Manager_Config(ovsdb_update_monitor_t *mon,
                                      struct schema_Flow_Service_Manager_Config *old_rec,
                                      struct schema_Flow_Service_Manager_Config *conf)
@@ -1015,7 +1108,7 @@ fsm_rm_awlan_headers(void)
 /**
  * @brief registered callback for AWLAN_Node events
  */
-void
+static void
 callback_AWLAN_Node(ovsdb_update_monitor_t *mon,
                     struct schema_AWLAN_Node *old_rec,
                     struct schema_AWLAN_Node *awlan)
@@ -1027,9 +1120,32 @@ callback_AWLAN_Node(ovsdb_update_monitor_t *mon,
 
 
 /**
+ * @brief registered callback for Openflow_Local_Tag events
+ */
+static void
+callback_Openflow_Local_Tag(ovsdb_update_monitor_t *mon,
+                            struct schema_Openflow_Local_Tag *old_rec,
+                            struct schema_Openflow_Local_Tag *tag)
+{
+    if (mon->mon_type == OVSDB_UPDATE_NEW) {
+        om_local_tag_add_from_schema(tag);
+    }
+
+    if (mon->mon_type == OVSDB_UPDATE_DEL) {
+        om_local_tag_remove_from_schema(tag);
+    }
+
+    if (mon->mon_type == OVSDB_UPDATE_MODIFY) {
+        om_local_tag_update_from_schema(tag);
+    }
+}
+
+
+
+/**
  * @brief registered callback for Openflow_Tag events
  */
-void
+static void
 callback_Openflow_Tag(ovsdb_update_monitor_t *mon,
                       struct schema_Openflow_Tag *old_rec,
                       struct schema_Openflow_Tag *tag)
@@ -1051,7 +1167,7 @@ callback_Openflow_Tag(ovsdb_update_monitor_t *mon,
 /**
  * @brief registered callback for Openflow_Tag_Group events
  */
-void
+static void
 callback_Openflow_Tag_Group(ovsdb_update_monitor_t *mon,
                             struct schema_Openflow_Tag_Group *old_rec,
                             struct schema_Openflow_Tag_Group *tag)
@@ -1193,7 +1309,7 @@ fsm_update_node_config(struct schema_Node_Config *node_cfg)
 /**
  * @brief registered callback for Node_Config events
  */
-void
+static void
 callback_Node_Config(ovsdb_update_monitor_t *mon,
                     struct schema_Node_Config *old_rec,
                     struct schema_Node_Config *node_cfg)
@@ -1229,6 +1345,7 @@ fsm_ovsdb_init(void)
     OVSDB_TABLE_INIT_NO_KEY(AWLAN_Node);
     OVSDB_TABLE_INIT_NO_KEY(Flow_Service_Manager_Config);
     OVSDB_TABLE_INIT_NO_KEY(Openflow_Tag);
+    OVSDB_TABLE_INIT_NO_KEY(Openflow_Local_Tag);
     OVSDB_TABLE_INIT_NO_KEY(Openflow_Tag_Group);
     OVSDB_TABLE_INIT_NO_KEY(Node_Config);
     OVSDB_TABLE_INIT_NO_KEY(Node_State);
@@ -1237,6 +1354,7 @@ fsm_ovsdb_init(void)
     OVSDB_TABLE_MONITOR(AWLAN_Node, false);
     OVSDB_TABLE_MONITOR(Flow_Service_Manager_Config, false);
     OVSDB_TABLE_MONITOR(Openflow_Tag, false);
+    OVSDB_TABLE_MONITOR(Openflow_Local_Tag, false);
     OVSDB_TABLE_MONITOR(Openflow_Tag_Group, false);
     OVSDB_TABLE_MONITOR(Node_Config, false);
 
@@ -1246,6 +1364,7 @@ fsm_ovsdb_init(void)
     mgr->flood_mod = fsm_trigger_flood_mod;
     mgr->get_br = get_home_bridge;
     mgr->set_dpi_state = fsm_set_dpi_state;
+    fsm_policy_init();
 
     // Advertize default memory limit usage
     snprintf(str_value, sizeof(str_value), "%" PRIu64 " kB", mgr->max_mem);

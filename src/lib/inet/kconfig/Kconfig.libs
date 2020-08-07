@@ -45,18 +45,6 @@ menu "libinet Configuration"
             specific code should define inet_gre_new() function which returns a
             suitable interface object that implements a tunneling protocol.
 
-    config INET_VLAN_LINUX
-        bool "Linux VLAN interfaces"
-        depends on INET_ETH_LINUX
-        default y
-        help
-            Select to include generic Linux VLAN interface support.
-
-            Applicable to most Linux platforms. If not selected, the
-            platform/device specific code should provide its own implementation.
-
-            This option implements the inet_vlan_t class.
-
     menuconfig INET_FW_ENABLED
         bool "Firewall"
         default y

@@ -94,7 +94,7 @@ void fsm_policy_register_client(struct fsm_policy_client *client)
         /* Update the internal client */
         p_client->update_client = client->update_client;
 
-        LOGD("%s: updating client %s", __func__, p_client->name);
+        LOGI("%s: updating client %s", __func__, p_client->name);
 
         return;
     }
@@ -113,7 +113,7 @@ void fsm_policy_register_client(struct fsm_policy_client *client)
     client->table = table;
     ds_tree_insert(tree, p_client, p_client);
 
-    LOGD("%s: registered client %s", __func__, p_client->name);
+    LOGI("%s: registered client %s", __func__, p_client->name);
 
     return;
 
@@ -153,6 +153,9 @@ void fsm_policy_update_clients(struct policy_table *table)
     tree = &mgr->clients;
     client = ds_tree_head(tree);
 
+    LOGI("%s: Updating clients of table: %s", __func__,
+         table->name == NULL ? default_name : table->name);
+
     while (client != NULL)
     {
         char *name;
@@ -162,8 +165,11 @@ void fsm_policy_update_clients(struct policy_table *table)
         name = (client->name == NULL ? default_name : client->name);
         cmp = strcmp(name, table->name);
         update = ((cmp == 0) && (client->update_client != NULL));
-        if (update) client->update_client(client->session, table);
-
+        if (update)
+        {
+            LOGI("%s: updating client %s", __func__, client->name);
+            client->update_client(client->session, table);
+        }
         client = ds_tree_next(tree, client);
     }
 }

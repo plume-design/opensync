@@ -34,7 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "module.h"
 #include "log.h"
-#include "osp.h"
+#include "osp_reboot.h"
 #include "osp_ps.h"
 #include "const.h"
 #include "util.h"

@@ -38,6 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "schema.h"
 #include "target.h"
+#include "osp_unit.h"
 #include "cm2.h"
 #include "kconfig.h"
 
@@ -334,9 +335,9 @@ static void cm2_dhcpc_dryrun_cb(struct ev_loop *loop, ev_child *w, int revents)
     }
 
     if (cm2_is_eth_type(dhcp_dryrun->if_type) &&
-        cm2_is_iface_in_bridge(SCHEMA_CONSTS_BR_NAME_HOME, dhcp_dryrun->if_name)) {
+        cm2_is_iface_in_bridge(CONFIG_TARGET_LAN_BRIDGE_NAME, dhcp_dryrun->if_name)) {
         LOGI("%s: Skip trigger new dryrun, iface in %s",
-            dhcp_dryrun->if_name, SCHEMA_CONSTS_BR_NAME_HOME);
+            dhcp_dryrun->if_name, CONFIG_TARGET_LAN_BRIDGE_NAME);
         goto release;
     }
 
@@ -396,7 +397,7 @@ void cm2_dhcpc_start_dryrun(char* ifname, char *iftype, int cnt)
     {
         char vendor_classid[256];
 
-        if (target_model_get(vendor_classid, sizeof(vendor_classid)) == false)
+        if (osp_unit_model_get(vendor_classid, sizeof(vendor_classid)) == false)
         {
             tsnprintf(vendor_classid, sizeof(vendor_classid),
                       TARGET_NAME);
@@ -480,10 +481,30 @@ void cm2_dhcpc_stop_dryrun(char *ifname)
 
 bool cm2_is_eth_type(const char *if_type) {
     return !strcmp(if_type, ETH_TYPE_NAME) ||
-           !strcmp(if_type, VLAN_TYPE_NAME);
+           !strcmp(if_type, VLAN_TYPE_NAME)||
+           !strcmp(if_type, PPPOE_TYPE_NAME);
 }
 
 bool cm2_is_wifi_type(const char *if_type) {
     return !strcmp(if_type, VIF_TYPE_NAME) ||
            !strcmp(if_type, GRE_TYPE_NAME);
+}
+
+char* cm2_get_uplink_name(void)
+{
+    if (g_state.link.is_bridge)
+        return g_state.link.bridge_name;
+
+    return g_state.link.if_name;
+}
+
+void cm2_update_limp_state(void)
+{
+    if (!cm2_is_eth_type(g_state.link.if_type))
+        return;
+
+    if (cm2_is_wan_bridge())
+        g_state.link.is_limp_state = !cm2_ovsdb_is_port_name("patch-w2h");
+    else
+        g_state.link.is_limp_state = !g_state.link.is_bridge;
 }

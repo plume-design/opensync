@@ -89,6 +89,12 @@ bool inet_vif_service_commit(inet_base_t *super, enum inet_base_services srv, bo
 
     switch (srv)
     {
+        /*
+         * In the parent's implementation (inet_eth) these two services are
+         * responsible for interface up/down sequences. We need to override them
+         * here as up/down of interfaces is handled by WM.
+         */
+        case INET_BASE_IF_READY:
         case INET_BASE_NETWORK:
             break;
 

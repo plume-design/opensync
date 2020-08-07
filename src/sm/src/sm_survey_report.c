@@ -428,6 +428,7 @@ bool sm_survey_report_calculate_average (
         CALC(chan_self);
         CALC(chan_rx);
         CALC(chan_busy_ext);
+        CALC(chan_noise);
     }
 
 #define AVG(_name) do { \
@@ -465,6 +466,7 @@ bool sm_survey_report_calculate_average (
             AVG(chan_self);
             AVG(chan_rx);
             AVG(chan_busy_ext);
+            AVG(chan_noise);
 
             ds_dlist_insert_tail(report_list, report_entry);
         }
@@ -519,7 +521,7 @@ bool sm_survey_report_calculate_raw (
         memcpy(report_entry, record_entry, sizeof(*report_entry));
 
         LOGD("Sending %s %s %u survey report "
-             "{busy=%u tx=%u self=%u rx=%u ext=%u duration=%u}",
+             "{busy=%u tx=%u self=%u rx=%u ext=%u noise=%d duration=%u}",
              radio_get_name_from_cfg(radio_cfg_ctx),
              radio_get_scan_name_from_type(scan_type),
              report_entry->info.chan,
@@ -528,6 +530,7 @@ bool sm_survey_report_calculate_raw (
              report_entry->chan_self,
              report_entry->chan_rx,
              report_entry->chan_busy_ext,
+             report_entry->chan_noise,
              report_entry->duration_ms);
 
         ds_dlist_insert_tail(report_list, report_entry);
@@ -723,7 +726,7 @@ bool sm_survey_update_list_cb (
                 result_entry);
 
         LOGD("Processed %s %s %u survey percent "
-             "{busy=%u tx=%u self=%u rx=%u ext=%u duration=%u}",
+             "{busy=%u tx=%u self=%u rx=%u ext=%u noise=%d duration=%u}",
              radio_get_name_from_cfg(radio_cfg_ctx),
              radio_get_scan_name_from_type(scan_type),
              result_entry->info.chan,
@@ -732,6 +735,7 @@ bool sm_survey_update_list_cb (
              result_entry->chan_self,
              result_entry->chan_rx,
              result_entry->chan_busy_ext,
+             result_entry->chan_noise,
              result_entry->duration_ms);
 
         result_entry->info.timestamp_ms =

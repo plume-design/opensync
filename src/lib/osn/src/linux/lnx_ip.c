@@ -52,6 +52,7 @@ struct lnx_ip_route_gw_node
 
 static bool lnx_ip_addr_flush(lnx_ip_t *self);
 static bool lnx_ip_route_flush(lnx_ip_t *self);
+static void lnx_ip_status_poll(lnx_ip_t *self);
 
 /* execsh commands */
 static char lnx_ip_addr_add_cmd[] = _S(ip address add "$2/$3" broadcast "+" dev "$1");
@@ -101,12 +102,6 @@ bool lnx_ip_init(lnx_ip_t *self, const char *ifname)
     /* Install netlink filters */
     lnx_netlink_set_events(&self->ip_nl, LNX_NETLINK_IP4ADDR);
     lnx_netlink_set_ifname(&self->ip_nl, self->ip_ifname);
-
-    if (!lnx_netlink_start(&self->ip_nl))
-    {
-        LOG(ERR, "ip: %s: Unable to start netlink object.", self->ip_ifname);
-        return false;
-    }
 
     return true;
 }
@@ -375,6 +370,21 @@ bool lnx_ip_dns_del(lnx_ip_t *ip, const osn_ip_addr_t *addr)
 void lnx_ip_status_notify(lnx_ip_t *self, lnx_ip_status_fn_t *fn)
 {
     self->ip_status_fn = fn;
+
+    if (fn != NULL)
+    {
+        if (!lnx_netlink_start(&self->ip_nl))
+        {
+            LOG(WARN, "ip: %s: Unable to start netlink object.", self->ip_ifname);
+        }
+    }
+    else
+    {
+        if (!lnx_netlink_stop(&self->ip_nl))
+        {
+            LOG(WARN, "ip: %s: Unable to stop netlink object.", self->ip_ifname);
+        }
+    }
 }
 
 /*

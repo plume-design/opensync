@@ -121,6 +121,10 @@ om_tflow_detect_vars(const char *token, const char *rule, char *what, char var_c
             s++;
             flag |= OM_TLE_FLAG_CLOUD;
         }
+        else if (*s == TEMPLATE_LOCAL_CHAR) {
+            s++;
+            flag |= OM_TLE_FLAG_LOCAL;
+        }
         if (!(p = strchr(s, end))) {
             LOGW("[%s] Template Flow has malformed %s (no ending '%c')",
                                                          token, what, end);
@@ -130,8 +134,7 @@ om_tflow_detect_vars(const char *token, const char *rule, char *what, char var_c
 
         LOGT("[%s] Template Flow detected %s %s'%s'",
                     token, what,
-                    (flag == OM_TLE_FLAG_DEVICE) ? "device " :
-                            (flag == OM_TLE_FLAG_CLOUD) ? "cloud " : "",
+                    om_tag_get_tle_flag(flag),
                     s);
 
         if (!om_tag_list_entry_find_by_val_flags(list, s, base_flags)) {

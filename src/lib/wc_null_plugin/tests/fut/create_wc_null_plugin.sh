@@ -74,30 +74,6 @@ gen_fsmc_wc_null_cmd() {
 EOF
 }
 
-# Create a dev wc_null policy entry
-gen_dev_wc_null_policy() {
-    cat <<EOF
-["Open_vSwitch",
-    {
-        "op": "insert",
-        "table": "FSM_Policy",
-        "row": {
-               "policy": "${provider_plugin}",
-               "name": "dev_wc_adult",
-               "idx": 0,
-               "action": "drop",
-               "log": "blocked",
-               "fqdn_op": "sfr_in",
-               "fqdns": ["set",
-                           ["playboy.com"]
-                           ],
-               "redirect": "A-18.204.152.241"
-       }
-   }
-]
-EOF
-}
-
 
 # h for help, long options otherwise
 optspec="h-:"
@@ -129,6 +105,7 @@ while getopts "$optspec" optchar; do
 done
 
 provider_plugin=${PROVIDER_PLUGIN:-dev_wc_null}
-
-eval ovsdb-client transact \'$(gen_dev_wc_null_policy)\'
-eval ovsdb-client transact \'$(gen_fsmc_wc_null_cmd)\'
+n="$(ovsh s Flow_Service_Manager_Config -w handler==${provider_plugin} -r | wc -l)"
+if [ ${n} -eq 0 ]; then
+    eval ovsdb-client transact \'$(gen_fsmc_wc_null_cmd)\'
+fi

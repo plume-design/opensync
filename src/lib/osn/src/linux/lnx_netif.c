@@ -79,13 +79,6 @@ bool lnx_netif_init(lnx_netif_t *self, const char *ifname)
     lnx_netlink_set_ifname(&self->ni_netlink, self->ni_ifname);
     lnx_netlink_set_events(&self->ni_netlink, LNX_NETLINK_LINK);
 
-    /* Start polling the interface status immediately */
-    if (!lnx_netlink_start(&self->ni_netlink))
-    {
-        LOG(ERR, "netif: %s: Error starting netlink object.", ifname);
-        return false;
-    }
-
     return true;
 }
 
@@ -212,11 +205,22 @@ void lnx_netif_status_notify(lnx_netif_t *self, lnx_netif_status_fn_t *fn)
 {
     self->ni_status_fn = fn;
 
-    /*
-     * Polling the interface right will cause the callback to be called before
-     * osn_netif_status_notify() actually returns
-     */
-    lnx_netif_status_poll(self);
+    if (fn != NULL)
+    {
+        /* Start polling the interface status immediately */
+        if (!lnx_netlink_start(&self->ni_netlink))
+        {
+            LOG(WARN, "netif: %s: Error stopping netlink object.", self->ni_ifname);
+        }
+    }
+    else
+    {
+        /* Start polling the interface status immediately */
+        if (!lnx_netlink_stop(&self->ni_netlink))
+        {
+            LOG(WARN, "netif: %s: Error starting netlink object.", self->ni_ifname);
+        }
+    }
 }
 
 

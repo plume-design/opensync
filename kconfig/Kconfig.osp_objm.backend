@@ -1,0 +1,11 @@
+#
+# Core OBJM modules
+#
+source "src/lib/osp/kconfig/Kconfig.osp_objm.backend"
+
+#
+# Vendor/Platform OBMJ modules
+#
+osource "platform/*/kconfig/Kconfig.osp_objm.backend"
+osource "vendor/*/kconfig/Kconfig.osp_objm.backend"
+

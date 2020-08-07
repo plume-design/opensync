@@ -24,11 +24,19 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include <errno.h>
+#include <inttypes.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <unistd.h>
+
 #include "ovsdb_update.h"
 #include "ovsdb_sync.h"
 #include "ovsdb_table.h"
 #include "schema.h"
 #include "log.h"
+#include "os.h"
 #include "qm_conn.h"
 #include "dppline.h"
 #include "network_metadata.h"
@@ -42,7 +50,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ovsdb_table_t table_AWLAN_Node;
 ovsdb_table_t table_FCM_Collector_Config;
 ovsdb_table_t table_FCM_Report_Config;
-
 
 /**
  * fcm_get_awlan_header_id: maps key to header_id
@@ -173,6 +180,7 @@ void callback_FCM_Report_Config(
              __func__, conf->name);
     }
 }
+
 
 int fcm_ovsdb_init(void)
 {

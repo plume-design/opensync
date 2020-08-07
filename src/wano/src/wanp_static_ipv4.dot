@@ -1,0 +1,13 @@
+digraph {
+    INIT[init=true];
+    INIT -> CONFIGURE_IP;
+    CONFIGURE_IP -> PROBE [label="INET_STATE_UPDATE"];
+    PROBE -> PROBE [label="PING_FAILED"];
+    PROBE -> RUNNING [label="PING_SUCCEEDED"];
+
+    TIMEOUT_EX[label="Timeout occurred"];
+    CANCEL_EX[label="WAN cancelled"];
+
+    TIMEOUT_EX -> EXCEPTION [label="!TIMEOUT"];
+    CANCEL_EX -> EXCEPTION [label="!CANCEL"];
+}

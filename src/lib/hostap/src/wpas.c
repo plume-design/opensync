@@ -460,11 +460,10 @@ wpas_bss_get_network(struct schema_Wifi_VIF_State *vstate,
         STRSCPY_WARN(vstate->parent, bssid);
     if ((vstate->ssid_exists = (ssid != NULL)))
         STRSCPY_WARN(vstate->ssid, ssid);
-    if (map)
-        SCHEMA_SET_STR(vstate->multi_ap, wpas_map_int2str(atoi(map)));
 
     SCHEMA_KEY_VAL_APPEND(vstate->security, "encryption", "WPA-PSK");
     SCHEMA_KEY_VAL_APPEND(vstate->security, "key", psk);
+    SCHEMA_SET_STR(vstate->multi_ap, wpas_map_int2str(atoi(map ?: "0")));
     SCHEMA_SET_STR(vstate->bridge, bridge);
 }
 

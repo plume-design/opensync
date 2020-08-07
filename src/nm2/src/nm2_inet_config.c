@@ -126,6 +126,10 @@ static bool nm2_inet_vlan_set(
         struct nm2_iface *piface,
         const struct schema_Wifi_Inet_Config *pconfig);
 
+static bool nm2_inet_credential_set(
+        struct nm2_iface *piface,
+        const struct schema_Wifi_Inet_Config *iconf);
+
 static void nm2_inet_copy(
         struct nm2_iface *piface,
         const struct schema_Wifi_Inet_Config *pconfig);
@@ -236,6 +240,7 @@ bool nm2_inet_config_set(struct nm2_iface *piface, struct schema_Wifi_Inet_Confi
     retval &= nm2_inet_ip4tunnel_set(piface, iconf);
     retval &= nm2_inet_dhsnif_set(piface, iconf);
     retval &= nm2_inet_vlan_set(piface, iconf);
+    retval &= nm2_inet_credential_set(piface, iconf);
     retval &= nm2_inet_igmp_proxy_set(piface, iconf);
     retval &= nm2_inet_mld_proxy_set(piface, iconf);
 
@@ -275,6 +280,14 @@ bool nm2_inet_interface_set(
                 piface->if_name,
                 nm2_iftype_tostr(piface->if_type),
                 iconf->mtu);
+
+        retval = false;
+    }
+
+    if (!inet_parent_ifname_set(piface->if_inet, iconf->parent_ifname_exists ? iconf->parent_ifname : NULL))
+    {
+        LOG(WARN, "inet_config: %s (%s): Error setting parent interface name.",
+                piface->if_name, nm2_iftype_tostr(piface->if_type));
 
         retval = false;
     }
@@ -918,7 +931,6 @@ bool nm2_inet_vlan_set(
         struct nm2_iface *piface,
         const struct schema_Wifi_Inet_Config *iconf)
 {
-    const char *ifparent = NULL;
     int vlanid = 0;
 
     /* Not supported for non-VLAN types */
@@ -929,12 +941,23 @@ bool nm2_inet_vlan_set(
         vlanid = iconf->vlan_id;
     }
 
-    if (iconf->parent_ifname_exists)
-    {
-        ifparent = iconf->parent_ifname;
-    }
+    return inet_vlanid_set(piface->if_inet, vlanid);
+}
 
-    return inet_vlan_set(piface->if_inet, ifparent, vlanid);
+/* Set interface credentials */
+bool nm2_inet_credential_set(
+        struct nm2_iface *piface,
+        const struct schema_Wifi_Inet_Config *iconf)
+{
+    /*
+     * Currently only PPPoE is supported
+     */
+    if (piface->if_type != NM2_IFTYPE_PPPOE) return true;
+
+    const char *username = SCHEMA_FIND_KEY(iconf->ppp_options, "username");
+    const char *password = SCHEMA_FIND_KEY(iconf->ppp_options, "password");
+
+    return inet_credential_set(piface->if_inet, username, password);
 }
 
 /*

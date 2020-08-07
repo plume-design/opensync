@@ -69,6 +69,12 @@ UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_DHCPV6_SERVER_DNSMASQ6),src/osn_dhcpv6_ser
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_IPV6_RADV_NULL),src/osn_ip6_radv_null.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_IPV6_RADV_DNSMASQ6),src/osn_ip6_radv_dnsmasq6.c)
 
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_PPPOE_NULL),src/osn_pppoe_null.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_PPPOE_LINUX),src/osn_pppoe_linux.c)
+
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_VLAN_NULL),src/osn_vlan_null.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_VLAN_LINUX),src/osn_vlan_linux.c)
+
 ifdef CONFIG_OSN_LINUX_ENABLED
 UNIT_CFLAGS += -I$(UNIT_PATH)/src/linux
 
@@ -82,6 +88,8 @@ UNIT_SRC += $(if $(CONFIG_OSN_LINUX_ROUTE),src/linux/lnx_route.c)
 UNIT_SRC += $(if $(CONFIG_OSN_MINIUPNPD),src/linux/mupnp_server.c)
 UNIT_SRC += $(if $(CONFIG_OSN_ODHCP6),src/linux/odhcp6_client.c)
 UNIT_SRC += $(if $(CONFIG_OSN_UDHCPC),src/linux/udhcp_client.c)
+UNIT_SRC += $(if $(CONFIG_OSN_LINUX_PPPOE),src/linux/lnx_pppoe.c)
+UNIT_SRC += $(if $(CONFIG_OSN_LINUX_VLAN),src/linux/lnx_vlan.c)
 
 UNIT_DEPS += src/lib/daemon
 UNIT_DEPS += src/lib/evx

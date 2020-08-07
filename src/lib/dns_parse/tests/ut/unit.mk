@@ -13,6 +13,7 @@ UNIT_SRC += ../../../../fsm/src/fsm_pcap.c
 UNIT_SRC += ../../../../fsm/src/fsm_event.c
 UNIT_SRC += ../../../../fsm/src/fsm_service.c
 UNIT_SRC += ../../../../fsm/src/fsm_dpi.c
+UNIT_SRC += ../../../../fsm/src/fsm_oms.c
 
 UNIT_DEPS := src/lib/log
 UNIT_DEPS += src/lib/common
@@ -22,3 +23,4 @@ UNIT_DEPS += src/lib/dns_parse
 UNIT_DEPS += src/lib/unity
 UNIT_DEPS += src/lib/fsm_utils
 UNIT_DEPS += src/lib/fsm_policy
+UNIT_DEPS += src/lib/oms

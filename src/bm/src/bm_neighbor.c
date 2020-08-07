@@ -708,6 +708,9 @@ bm_neighbor_build_btm_neighbor_list( bm_client_t *client, bsal_btm_params_t *btm
     int                         max_regular_neighbors;
     unsigned int                i;
 
+    if (WARN_ON(!client->group))
+        return false;
+
     if (!btm_params->inc_neigh) {
         LOGT(" Client '%s': NOT building sticky neighbor list", client->mac_addr );
         btm_params->pref      = 0;

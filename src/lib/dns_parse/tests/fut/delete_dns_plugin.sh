@@ -82,5 +82,6 @@ ovsh d Openflow_Config -w token==${of_tx_token}
 ovs-vsctl del-port ${bridge} ${intf}
 ovsh d FSM_Policy -w policy==dev_webpulse
 ovsh d FSM_Policy -w policy==dev_brightcloud
+ovsh d FSM_Policy -w policy==dev_test
 ovsh d Flow_Service_Manager_Config -w handler==dev_webpulse
 ovsh d Flow_Service_Manager_Config -w handler==dev_brightcloud

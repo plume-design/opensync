@@ -32,10 +32,12 @@ UNIT_NAME := inet
 # Template type:
 UNIT_TYPE := LIB
 
-UNIT_SRC := src/inet_base.c
-UNIT_SRC += src/inet_unit.c
 UNIT_SRC += src/inet_eth.c
+UNIT_SRC += src/inet_unit.c
 UNIT_SRC += src/inet_vif.c
+UNIT_SRC += src/inet_base.c
+UNIT_SRC += src/inet_pppoe.c
+UNIT_SRC += src/inet_vlan.c
 
 UNIT_EXPORT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS := $(UNIT_EXPORT_CFLAGS)
@@ -51,6 +53,7 @@ UNIT_DEPS += src/lib/kconfig
 UNIT_DEPS += src/lib/read_until
 UNIT_DEPS += src/lib/schema
 UNIT_DEPS += src/lib/osn
+UNIT_DEPS += src/lib/osp
 UNIT_DEPS += src/lib/synclist
 UNIT_DEPS += src/lib/log
 UNIT_DEPS_CFLAGS += src/lib/version
@@ -60,7 +63,6 @@ UNIT_DEPS_CFLAGS += src/lib/version
 #
 
 $(eval $(if $(CONFIG_INET_GRETAP),          UNIT_SRC += src/linux/inet_gretap.c))
-$(eval $(if $(CONFIG_INET_VLAN_LINUX),      UNIT_SRC += src/linux/inet_vlan.c))
 
 $(eval $(if $(CONFIG_INET_FW_NULL),         UNIT_SRC += src/null/inet_fw_null.c))
 $(eval $(if $(CONFIG_INET_FW_IPTABLES),     UNIT_SRC += src/linux/inet_fw_iptables.c))

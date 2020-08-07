@@ -335,23 +335,11 @@ wm2_clients_update(struct schema_Wifi_Associated_Clients *schema, char *ifname, 
     json_t *row;
     char oftag[32];
     bool ok;
-    int err;
     int n;
 
     oftag[0] = 0;
 
-    if (schema->key_id_exists) {
-        err = wm2_clients_oftag_from_key_id(ifname,
-                                            schema->key_id,
-                                            oftag,
-                                            sizeof(oftag));
-        if (err)
-            LOGW("%s: failed to convert key '%s' to oftag (%s), expect openflow/firewall issues",
-                 ifname, schema->key_id, oftag);
-
-        LOGD("%s: key_id '%s' => oftag '%s'",
-             mac, schema->key_id, oftag);
-    }
+    wm2_clients_oftag_from_key_id(ifname, schema->key_id, oftag, sizeof(oftag));
 
     LOGD("%s: update called with keyid='%s' oftag='%s' status=%d",
          mac, schema->key_id, oftag, status);
@@ -453,24 +441,6 @@ wm2_clients_update(struct schema_Wifi_Associated_Clients *schema, char *ifname, 
         }
 
         wm2_clients_isolate(ifname, mac, false);
-    }
-
-    return true;
-}
-
-/******************************************************************************
- *  PUBLIC definitions
- *****************************************************************************/
-bool
-wm2_clients_init(char *if_name)
-{
-    if (!if_name) {
-        LOGE("Initializing clients (input validation failed)" );
-        return false;
-    }
-
-    if (false == target_clients_register(if_name, wm2_clients_update)) {
-        return false;
     }
 
     return true;

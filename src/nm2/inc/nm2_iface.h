@@ -38,7 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdbool.h>
 #include <ev.h>
 
-#include "ds_list.h"
+#include "ds_dlist.h"
 #include "ds_tree.h"
 #include "schema.h"
 
@@ -48,6 +48,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "inet_vif.h"
 #include "inet_gre.h"
 #include "inet_vlan.h"
+#include "inet_pppoe.h"
 
 /* Debounce timer for interface configuration commit */
 #define NM2_IFACE_APPLY_TIMER 0.3
@@ -88,6 +89,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     M(NM2_IFTYPE_BRIDGE,    "bridge")   \
     M(NM2_IFTYPE_GRE,       "gre")      \
     M(NM2_IFTYPE_TAP,       "tap")      \
+    M(NM2_IFTYPE_PPPOE,     "pppoe")    \
     M(NM2_IFTYPE_MAX,       NULL)
 
 
@@ -127,6 +129,7 @@ struct nm2_iface
     bool                            if_commit;                  /* Commit pending */
     inet_t*                         if_inet;                    /* Inet structure */
     ds_tree_node_t                  if_tnode;                   /* ds_tree node -- for device lookup by name */
+    ds_dlist_node_t                 if_commit_dnode;            /* Node nm2_iface_commit_list */
     inet_state_t                    if_inet_state;              /* Remembered last interface status */
     ds_tree_t                       if_dhcpc_options;           /* Options received from the DHCP client */
     struct nm2_ip_interface        *if_ipi;                     /* Non-NULL if there's a nm2_ip_interface structure associated */

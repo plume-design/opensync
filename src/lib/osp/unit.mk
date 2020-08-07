@@ -34,7 +34,8 @@ UNIT_TYPE := LIB
 UNIT_CFLAGS += -I$(UNIT_PATH)/inc
 UNIT_EXPORT_CFLAGS := -I$(UNIT_PATH)/inc
 
-$(eval $(if $(CONFIG_OSP_LED),       UNIT_SRC += src/osp_led.c))
+UNIT_SRC += $(if $(CONFIG_OSP_UNIT_DEFAULT),src/osp_unit_default.c)
+UNIT_SRC += $(if $(CONFIG_OSP_LED),src/osp_led.c)
 UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/log
 UNIT_DEPS += src/lib/schema
@@ -48,6 +49,11 @@ endif
 ifeq ($(CONFIG_OSP_PS_PSFS),y)
 UNIT_SRC += src/osp_ps_psfs.c
 UNIT_DEPS += src/lib/psfs
+endif
+
+ifeq ($(CONFIG_OSP_OBJM_OBJMFS), y)
+UNIT_SRC += src/osp_objm_objmfs.c
+UNIT_DEPS += src/lib/objmfs
 endif
 
 UNIT_SRC += $(if $(CONFIG_OSP_L2SWITCH_NULL),src/osp_l2switch_null.c)

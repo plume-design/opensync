@@ -12,6 +12,8 @@ menuconfig OSN_LINUX_ENABLED
             - DHCPv6 client support (via odhcp6c)
             - Router Advertisement support (via dnsmasq)
             - UPnP support (via miniupnpd)
+            - PPPoE support (via pppd)
+            - VLAN support (via iproute2)
 
 if OSN_LINUX_ENABLED
     config OSN_LINUX_NETIF
@@ -202,6 +204,19 @@ if OSN_LINUX_ENABLED
                     This is the location where the miniupnpd.conf and upnpd.lease
                     files will be created.
         endif
+
+    config OSN_LINUX_PPPOE
+        bool "Linux pppd PPPoE support"
+        default y
+        help
+            PPPoE support using the pppd daemon and the rp-pppoe plug-in.
+            pppd version that supports the "ifname" config option is required.
+
+    config OSN_LINUX_VLAN
+        bool "Linux VLAN interface support"
+        default y
+        help
+            VLAN support uses the iproute2 package to create VLAN interfaces
 
     config OSN_LINUX_ROUTE
         bool "Linux routing table"

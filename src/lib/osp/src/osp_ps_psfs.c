@@ -50,7 +50,7 @@ osp_ps_t* osp_ps_open(
 
     if (!psfs_open(&ps->ps_psfs, store, flags))
     {
-        LOG(ERR, "osp_ps: %s: Error opening PSFS storage.", store);
+        LOG(DEBUG, "osp_ps: %s: Error opening PSFS storage.", store);
         goto error;
     }
 
@@ -89,6 +89,11 @@ ssize_t osp_ps_get(
         size_t value_sz)
 {
     return psfs_get(&ps->ps_psfs, key, value, value_sz);
+}
+
+bool osp_ps_erase(osp_ps_t *ps)
+{
+    return psfs_erase(&ps->ps_psfs);
 }
 
 bool osp_ps_sync(osp_ps_t *ps)

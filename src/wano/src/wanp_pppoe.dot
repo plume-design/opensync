@@ -1,0 +1,13 @@
+digraph {
+    INIT[init=true];
+    INIT -> ENABLE_PPPOE [label="INIT"];
+    ENABLE_PPPOE -> WAIT_IP [label="INET_STATE_UPDATE"];
+    ENABLE_PPPOE -> DONE;
+    WAIT_IP -> RUNNING;
+
+    TIMEOUT_EX[label="Timeout occurred"];
+    CANCEL_EX[label="WAN cancelled"];
+
+    TIMEOUT_EX -> EXCEPTION [label="!TIMEOUT"];
+    CANCEL_EX -> EXCEPTION [label="!CANCEL"];
+}

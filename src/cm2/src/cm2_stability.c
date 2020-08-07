@@ -30,27 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "schema.h"
 #include "cm2.h"
 #include "kconfig.h"
-
-cm2_main_link_type cm2_util_get_link_type(void)
-{
-    cm2_main_link_type type = CM2_LINK_NOT_DEFINED;
-
-    if (!g_state.link.is_used)
-        return type;
-
-    if (!strcmp(g_state.link.if_type, "eth")) {
-        if (cm2_ovsdb_is_port_name("patch-w2h"))
-           type = CM2_LINK_ETH_BRIDGE;
-        else
-           type = CM2_LINK_ETH_ROUTER;
-    }
-
-    if (!strcmp(g_state.link.if_type, "gre")) {
-        type = CM2_LINK_GRE;
-    }
-
-    return type;
-}
+#include "cm2_stability.h"
 
 bool cm2_vtag_stability_check(void) {
     cm2_vtag_t *vtag = &g_state.link.vtag;
@@ -109,33 +89,62 @@ static bool cm2_cpu_is_low_loadavg(void) {
     return retval;
 }
 
-static void cm2_restore_connection(int cnt)
+#ifdef CONFIG_CM2_STABILITY_USE_RESTORE_SWITCH_CFG
+void cm2_restore_switch_cfg_params(int counter, int thresh, cm2_restore_con_t *ropt)
+{
+    *ropt |= 1 << CM2_RESTORE_SWITCH_FIX_PORT_MAP;
+
+    if (counter % thresh == 0)
+        *ropt |=  (1 << CM2_RESTORE_SWITCH_DUMP_DATA) | (1 << CM2_RESTORE_SWITCH_FIX_AUTON);
+}
+
+void cm2_restore_switch_cfg(cm2_restore_con_t opt)
 {
     char command[128];
-    bool ret;
+    int  ret;
 
-    if (cnt <= 0)
+    if (opt & (1 << CM2_RESTORE_SWITCH_DUMP_DATA)) {
+        LOGI("Switch: Dump debug data");
+        sprintf(command, "sh "CONFIG_INSTALL_PREFIX"/scripts/kick-ethernet.sh 2 ");
+        LOGD("%s: Command: %s", __func__, command);
+        ret = target_device_execute(command);
+        if (!ret)
+            LOGW("kick-ethernet.sh: Dump data failed");
+    }
+
+    if (opt & (1 << CM2_RESTORE_SWITCH_FIX_PORT_MAP)) {
+       LOGI("Switch: Trigger fixing port map");
+       sprintf(command, "sh "CONFIG_INSTALL_PREFIX"/scripts/kick-ethernet.sh 3 %s",
+              g_state.link.gateway_hwaddr);
+       LOGD("%s: Command: %s", __func__, command);
+       ret = target_device_execute(command);
+       if (!ret)
+          LOGW("kick-ethernet.sh: Fixing port map failed");
+    }
+
+    if (opt & (1 << CM2_RESTORE_SWITCH_FIX_AUTON)) {
+        LOGI("Switch: Trigger autoneg restart");
+        sprintf(command, "sh "CONFIG_INSTALL_PREFIX"/scripts/kick-ethernet.sh 4 ");
+        LOGD("%s: Command: %s", __func__, command);
+        ret = target_device_execute(command);
+        if (!ret)
+            LOGW("kick-ethernet.sh: autoneg restart failed");
+    }
+}
+#endif /* CONFIG_CM2_STABILITY_USE_RESTORE_SWITCH_CFG */
+
+static void cm2_restore_connection(cm2_restore_con_t opt)
+{
+    if (opt == 0)
         return;
 
     if (!cm2_is_eth_type(g_state.link.if_type))
         return;
 
-    sprintf(command, "sh "CONFIG_INSTALL_PREFIX"/scripts/kick-ethernet.sh %d 0 3 ", cnt);
-    LOGD("%s: Command: %s", __func__, command);
-    ret = target_device_execute(command);
-    if (!ret)
-        LOGW("kick-ethernet.sh: Checking port map failed");
-
-    if (cnt % CONFIG_CM2_STABILITY_THRESH_REST_CON == 0) {
-        LOGI("Trying restore connection");
-        sprintf(command, "sh "CONFIG_INSTALL_PREFIX"/scripts/kick-ethernet.sh %d 0 2 ", cnt);
-        LOGD("%s: Command: %s", __func__, command);
-        ret = target_device_execute(command);
-        if (!ret)
-            LOGW("kick-ethernet.sh: Dump data failed");
-
-        cm2_ovsdb_refresh_dhcp(CONFIG_TARGET_WAN_BRIDGE_NAME);
-    }
+    if (opt & (1 << CM2_RESTORE_IP))
+        cm2_ovsdb_refresh_dhcp(cm2_get_uplink_name());
+    else
+        cm2_restore_switch_cfg(opt);
 }
 
 static void cm2_stability_handle_fatal_state(int counter)
@@ -143,7 +152,8 @@ static void cm2_stability_handle_fatal_state(int counter)
     if (counter > 0 &&
         cm2_vtag_stability_check() &&
         !g_state.link.is_limp_state &&
-            counter + 1 > CONFIG_CM2_STABILITY_THRESH_FATAL) {
+        g_state.gw_offline_cnt == 0 &&
+        counter + 1 > CONFIG_CM2_STABILITY_THRESH_FATAL) {
             LOGW("Restart managers due to exceeding the threshold for fatal failures");
             cm2_ovsdb_dump_debug_data();
             cm2_tcpdump_stop(g_state.link.if_name);
@@ -155,7 +165,8 @@ void cm2_connection_req_stability_check(target_connectivity_check_option_t opts)
 {
     struct schema_Connection_Manager_Uplink con;
     target_connectivity_check_t             cstate;
-    cm2_main_link_type                      link_type;
+    cm2_restore_con_t                       ropt;
+    const char                              *bridge;
     bool                                    ret;
     int                                     counter;
 
@@ -165,6 +176,8 @@ void cm2_connection_req_stability_check(target_connectivity_check_option_t opts)
 
     //TODO for all active links
     const char *if_name = g_state.link.if_name;
+
+    ropt = 0;
 
     if (!g_state.link.is_used) {
         LOGN("Waiting for new active link");
@@ -179,8 +192,9 @@ void cm2_connection_req_stability_check(target_connectivity_check_option_t opts)
         return;
     }
 
-    if (!cm2_ovsdb_validate_bridge_port_conf(SCHEMA_CONSTS_BR_NAME_WAN, g_state.link.if_name)) {
-        LOGW("Detected abnormal situation, main link %s", g_state.link.if_name);
+    if (con.bridge_exists &&
+        !cm2_ovsdb_validate_bridge_port_conf(con.bridge, g_state.link.if_name)) {
+        LOGW("Detected abnormal situation, main link %s con.bridge = %s", if_name, con.bridge);
         counter = con.unreachable_link_counter < 0 ? 1 : con.unreachable_link_counter + 1;
         LOGI("Detected broken link. Counter = %d", counter);
 
@@ -190,7 +204,7 @@ void cm2_connection_req_stability_check(target_connectivity_check_option_t opts)
                 LOGW("Force disable main uplink interface failed");
             else
                 g_state.link.restart_pending = true;
-
+            ret = cm2_ovsdb_set_Wifi_Inet_Config_network_state(true, g_state.link.if_name);
             if (counter + 1 > CONFIG_CM2_STABILITY_THRESH_FATAL) {
                 cm2_stability_handle_fatal_state(counter);
                 counter = 0;
@@ -204,7 +218,14 @@ void cm2_connection_req_stability_check(target_connectivity_check_option_t opts)
     }
 
     ret = target_device_connectivity_check(if_name, &cstate, opts);
-    LOGN("Connection status %d, main link: %s opts: = %x", ret, if_name, opts);
+    bridge = con.bridge_exists ? con.bridge : "none";
+    LOGN("Connection status %d, main link: %s bridge: %s opts: = %x",
+         ret, if_name, bridge, opts);
+    LOGD("%s: Stability counters: [%d, %d, %d, %d]",if_name,
+         con.unreachable_link_counter, con.unreachable_router_counter,
+         con.unreachable_internet_counter, con.unreachable_cloud_counter);
+    LOGD("%s: Stability states: [%d, %d, %d]", if_name,
+         cstate.link_state, cstate.router_state, cstate.internet_state);
 
     if (opts & LINK_CHECK) {
         counter = 0;
@@ -221,6 +242,9 @@ void cm2_connection_req_stability_check(target_connectivity_check_option_t opts)
         if (!cstate.router_state) {
             counter =  con.unreachable_router_counter < 0 ? 1 : con.unreachable_router_counter + 1;
             LOGW("Detected broken Router. Counter = %d", counter);
+            cm2_restore_switch_cfg_params(counter, CONFIG_CM2_STABILITY_THRESH_ROUTER + 2, &ropt);
+            if (counter % CONFIG_CM2_STABILITY_THRESH_ROUTER == 0)
+                ropt |= (1 << CM2_RESTORE_IP);
         }
         else if (kconfig_enabled(CONFIG_CM2_USE_TCPDUMP) &&
                  con.unreachable_router_counter >= CONFIG_CM2_STABILITY_THRESH_TCPDUMP) {
@@ -231,8 +255,6 @@ void cm2_connection_req_stability_check(target_connectivity_check_option_t opts)
         if (!ret)
             LOGW("%s Failed update router counter in ovsdb table", __func__);
 
-        cm2_restore_connection(counter);
-
         if (kconfig_enabled(CONFIG_CM2_USE_TCPDUMP) &&
             counter == CONFIG_CM2_STABILITY_THRESH_TCPDUMP &&
             cm2_is_eth_type(g_state.link.if_type)) {
@@ -242,16 +264,6 @@ void cm2_connection_req_stability_check(target_connectivity_check_option_t opts)
         if (con.unreachable_router_counter + 1 == CONFIG_CM2_STABILITY_THRESH_FATAL)
             cm2_tcpdump_stop(g_state.link.if_name);
 
-        link_type = cm2_util_get_link_type();
-        if (link_type == CM2_LINK_ETH_ROUTER) {
-            if (!g_state.link.is_limp_state)
-                LOGI("Device operates in Router mode");
-            g_state.link.is_limp_state = true;
-        } else if (link_type == CM2_LINK_ETH_BRIDGE) {
-            if (g_state.link.is_limp_state)
-                LOGI("Device operates in Bridge mode");
-            g_state.link.is_limp_state = false;
-        }
         cm2_stability_handle_fatal_state(con.unreachable_router_counter);
     }
     if (opts & INTERNET_CHECK) {
@@ -259,11 +271,11 @@ void cm2_connection_req_stability_check(target_connectivity_check_option_t opts)
         if (!cstate.internet_state) {
             counter = con.unreachable_internet_counter < 0 ? 1 : con.unreachable_internet_counter + 1;
             LOGW("Detected broken Internet. Counter = %d", counter);
-            if (counter % CONFIG_CM2_STABILITY_THRESH_INTERNET == 0) {
-                LOGN("Refresh br-wan interface due to Internet issue");
-                cm2_ovsdb_refresh_dhcp(CONFIG_TARGET_WAN_BRIDGE_NAME);
-            }
+            cm2_restore_switch_cfg_params(counter, CONFIG_CM2_STABILITY_THRESH_INTERNET + 2, &ropt);
+            if (counter % CONFIG_CM2_STABILITY_THRESH_INTERNET == 0)
+                ropt |= (1 << CM2_RESTORE_IP);
         }
+
         ret = cm2_ovsdb_connection_update_unreachable_internet_counter(if_name, counter);
         if (!ret)
             LOGW("%s Failed update internet counter in ovsdb table", __func__);
@@ -276,6 +288,7 @@ void cm2_connection_req_stability_check(target_connectivity_check_option_t opts)
         else
             g_state.ntp_check = cstate.ntp_state;
     }
+    cm2_restore_connection(ropt);
     return;
 }
 
@@ -283,7 +296,7 @@ static void cm2_connection_stability_check(void)
 {
     target_connectivity_check_option_t opts;
 
-    if (!cm2_cpu_is_low_loadavg())
+    if (g_state.connected && !cm2_cpu_is_low_loadavg())
         return;
 
     opts = LINK_CHECK | ROUTER_CHECK | NTP_CHECK;

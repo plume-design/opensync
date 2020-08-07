@@ -5,6 +5,7 @@ comment "Core Managers"
 #
 source "src/dm/kconfig/Kconfig.managers"
 source "src/cm2/kconfig/Kconfig.managers"
+source "src/wano/kconfig/Kconfig.managers"
 source "src/nm2/kconfig/Kconfig.managers"
 source "src/wm2/kconfig/Kconfig.managers"
 source "src/sm/kconfig/Kconfig.managers"
@@ -18,6 +19,7 @@ source "src/fsm/kconfig/Kconfig.managers"
 source "src/fcm/kconfig/Kconfig.managers"
 source "src/nfm/kconfig/Kconfig.managers"
 source "src/xm/kconfig/Kconfig.managers"
+source "src/cpm/kconfig/Kconfig.managers"
 source "src/hello_world/kconfig/Kconfig.managers"
 
 #

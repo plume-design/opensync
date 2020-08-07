@@ -76,6 +76,49 @@ void   sts__avg_type__free_unpacked
   assert(message->base.descriptor == &sts__avg_type__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
+void   sts__avg_type_signed__init
+                     (Sts__AvgTypeSigned         *message)
+{
+  static Sts__AvgTypeSigned init_value = STS__AVG_TYPE_SIGNED__INIT;
+  *message = init_value;
+}
+size_t sts__avg_type_signed__get_packed_size
+                     (const Sts__AvgTypeSigned *message)
+{
+  assert(message->base.descriptor == &sts__avg_type_signed__descriptor);
+  return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
+}
+size_t sts__avg_type_signed__pack
+                     (const Sts__AvgTypeSigned *message,
+                      uint8_t       *out)
+{
+  assert(message->base.descriptor == &sts__avg_type_signed__descriptor);
+  return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
+}
+size_t sts__avg_type_signed__pack_to_buffer
+                     (const Sts__AvgTypeSigned *message,
+                      ProtobufCBuffer *buffer)
+{
+  assert(message->base.descriptor == &sts__avg_type_signed__descriptor);
+  return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
+}
+Sts__AvgTypeSigned *
+       sts__avg_type_signed__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data)
+{
+  return (Sts__AvgTypeSigned *)
+     protobuf_c_message_unpack (&sts__avg_type_signed__descriptor,
+                                allocator, len, data);
+}
+void   sts__avg_type_signed__free_unpacked
+                     (Sts__AvgTypeSigned *message,
+                      ProtobufCAllocator *allocator)
+{
+  assert(message->base.descriptor == &sts__avg_type_signed__descriptor);
+  protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
+}
 void   sts__neighbor__neighbor_bss__init
                      (Sts__Neighbor__NeighborBss         *message)
 {
@@ -752,6 +795,83 @@ const ProtobufCMessageDescriptor sts__avg_type__descriptor =
   (ProtobufCMessageInit) sts__avg_type__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
+static const ProtobufCFieldDescriptor sts__avg_type_signed__field_descriptors[4] =
+{
+  {
+    "avg",
+    1,
+    PROTOBUF_C_LABEL_REQUIRED,
+    PROTOBUF_C_TYPE_INT32,
+    0,   /* quantifier_offset */
+    offsetof(Sts__AvgTypeSigned, avg),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "min",
+    2,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_INT32,
+    offsetof(Sts__AvgTypeSigned, has_min),
+    offsetof(Sts__AvgTypeSigned, min),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "max",
+    3,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_INT32,
+    offsetof(Sts__AvgTypeSigned, has_max),
+    offsetof(Sts__AvgTypeSigned, max),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "num",
+    4,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_UINT32,
+    offsetof(Sts__AvgTypeSigned, has_num),
+    offsetof(Sts__AvgTypeSigned, num),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned sts__avg_type_signed__field_indices_by_name[] = {
+  0,   /* field[0] = avg */
+  2,   /* field[2] = max */
+  1,   /* field[1] = min */
+  3,   /* field[3] = num */
+};
+static const ProtobufCIntRange sts__avg_type_signed__number_ranges[1 + 1] =
+{
+  { 1, 0 },
+  { 0, 4 }
+};
+const ProtobufCMessageDescriptor sts__avg_type_signed__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "sts.AvgTypeSigned",
+  "AvgTypeSigned",
+  "Sts__AvgTypeSigned",
+  "sts",
+  sizeof(Sts__AvgTypeSigned),
+  4,
+  sts__avg_type_signed__field_descriptors,
+  sts__avg_type_signed__field_indices_by_name,
+  1,  sts__avg_type_signed__number_ranges,
+  (ProtobufCMessageInit) sts__avg_type_signed__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
 static const ProtobufCFieldDescriptor sts__neighbor__neighbor_bss__field_descriptors[7] =
 {
   {
@@ -958,7 +1078,7 @@ const ProtobufCMessageDescriptor sts__neighbor__descriptor =
   (ProtobufCMessageInit) sts__neighbor__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
-static const ProtobufCFieldDescriptor sts__client__stats__field_descriptors[11] =
+static const ProtobufCFieldDescriptor sts__client__stats__field_descriptors[13] =
 {
   {
     "rx_bytes",
@@ -1092,6 +1212,30 @@ static const ProtobufCFieldDescriptor sts__client__stats__field_descriptors[11] 
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
+  {
+    "rx_rate_perceived",
+    12,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_DOUBLE,
+    offsetof(Sts__Client__Stats, has_rx_rate_perceived),
+    offsetof(Sts__Client__Stats, rx_rate_perceived),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "tx_rate_perceived",
+    13,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_DOUBLE,
+    offsetof(Sts__Client__Stats, has_tx_rate_perceived),
+    offsetof(Sts__Client__Stats, tx_rate_perceived),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
 };
 static const unsigned sts__client__stats__field_indices_by_name[] = {
   10,   /* field[10] = rssi */
@@ -1099,17 +1243,19 @@ static const unsigned sts__client__stats__field_indices_by_name[] = {
   6,   /* field[6] = rx_errors */
   2,   /* field[2] = rx_frames */
   8,   /* field[8] = rx_rate */
+  11,   /* field[11] = rx_rate_perceived */
   4,   /* field[4] = rx_retries */
   1,   /* field[1] = tx_bytes */
   7,   /* field[7] = tx_errors */
   3,   /* field[3] = tx_frames */
   9,   /* field[9] = tx_rate */
+  12,   /* field[12] = tx_rate_perceived */
   5,   /* field[5] = tx_retries */
 };
 static const ProtobufCIntRange sts__client__stats__number_ranges[1 + 1] =
 {
   { 1, 0 },
-  { 0, 11 }
+  { 0, 13 }
 };
 const ProtobufCMessageDescriptor sts__client__stats__descriptor =
 {
@@ -1119,7 +1265,7 @@ const ProtobufCMessageDescriptor sts__client__stats__descriptor =
   "Sts__Client__Stats",
   "sts",
   sizeof(Sts__Client__Stats),
-  11,
+  13,
   sts__client__stats__field_descriptors,
   sts__client__stats__field_indices_by_name,
   1,  sts__client__stats__number_ranges,
@@ -1912,7 +2058,7 @@ const ProtobufCMessageDescriptor sts__client_report__descriptor =
   (ProtobufCMessageInit) sts__client_report__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
-static const ProtobufCFieldDescriptor sts__survey__survey_sample__field_descriptors[10] =
+static const ProtobufCFieldDescriptor sts__survey__survey_sample__field_descriptors[11] =
 {
   {
     "channel",
@@ -2034,6 +2180,18 @@ static const ProtobufCFieldDescriptor sts__survey__survey_sample__field_descript
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
+  {
+    "noise_floor",
+    11,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_INT32,
+    offsetof(Sts__Survey__SurveySample, has_noise_floor),
+    offsetof(Sts__Survey__SurveySample, noise_floor),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
 };
 static const unsigned sts__survey__survey_sample__field_indices_by_name[] = {
   4,   /* field[4] = busy */
@@ -2043,6 +2201,7 @@ static const unsigned sts__survey__survey_sample__field_indices_by_name[] = {
   5,   /* field[5] = busy_tx */
   0,   /* field[0] = channel */
   1,   /* field[1] = duration_ms */
+  10,   /* field[10] = noise_floor */
   8,   /* field[8] = offset_ms */
   3,   /* field[3] = sample_count */
   2,   /* field[2] = total_count */
@@ -2050,7 +2209,7 @@ static const unsigned sts__survey__survey_sample__field_indices_by_name[] = {
 static const ProtobufCIntRange sts__survey__survey_sample__number_ranges[1 + 1] =
 {
   { 1, 0 },
-  { 0, 10 }
+  { 0, 11 }
 };
 const ProtobufCMessageDescriptor sts__survey__survey_sample__descriptor =
 {
@@ -2060,14 +2219,14 @@ const ProtobufCMessageDescriptor sts__survey__survey_sample__descriptor =
   "Sts__Survey__SurveySample",
   "sts",
   sizeof(Sts__Survey__SurveySample),
-  10,
+  11,
   sts__survey__survey_sample__field_descriptors,
   sts__survey__survey_sample__field_indices_by_name,
   1,  sts__survey__survey_sample__number_ranges,
   (ProtobufCMessageInit) sts__survey__survey_sample__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
-static const ProtobufCFieldDescriptor sts__survey__survey_avg__field_descriptors[6] =
+static const ProtobufCFieldDescriptor sts__survey__survey_avg__field_descriptors[7] =
 {
   {
     "channel",
@@ -2141,6 +2300,18 @@ static const ProtobufCFieldDescriptor sts__survey__survey_avg__field_descriptors
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
+  {
+    "noise_floor",
+    7,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_MESSAGE,
+    0,   /* quantifier_offset */
+    offsetof(Sts__Survey__SurveyAvg, noise_floor),
+    &sts__avg_type_signed__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
 };
 static const unsigned sts__survey__survey_avg__field_indices_by_name[] = {
   1,   /* field[1] = busy */
@@ -2149,11 +2320,12 @@ static const unsigned sts__survey__survey_avg__field_indices_by_name[] = {
   4,   /* field[4] = busy_self */
   2,   /* field[2] = busy_tx */
   0,   /* field[0] = channel */
+  6,   /* field[6] = noise_floor */
 };
 static const ProtobufCIntRange sts__survey__survey_avg__number_ranges[1 + 1] =
 {
   { 1, 0 },
-  { 0, 6 }
+  { 0, 7 }
 };
 const ProtobufCMessageDescriptor sts__survey__survey_avg__descriptor =
 {
@@ -2163,7 +2335,7 @@ const ProtobufCMessageDescriptor sts__survey__survey_avg__descriptor =
   "Sts__Survey__SurveyAvg",
   "sts",
   sizeof(Sts__Survey__SurveyAvg),
-  6,
+  7,
   sts__survey__survey_avg__field_descriptors,
   sts__survey__survey_avg__field_indices_by_name,
   1,  sts__survey__survey_avg__number_ranges,

@@ -41,6 +41,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 struct fsm_session;
 
+struct fsm_object
+{
+        char *object;
+        char *version;
+        int state;
+};
+
+
 /**
  * @brief session operations
 
@@ -65,7 +73,20 @@ struct fsm_session_ops
 
     /* other_config parser. Provided to the plugin */
     char * (*get_config)(struct fsm_session *, char *key);
+
+    /* object update notification callback. provided by the plugin */
+    void (*object_cb)(struct fsm_session *, struct fsm_object *, int);
+
+    /* object state notification callback. provided to the plugin */
+    void (*state_cb)(struct fsm_session *, struct fsm_object *);
+
+    /* object version comparison. provided by the plugin */
+    int (*version_cmp_cb)(char *, char *, char *);
+
+    /* Get latest object version. Provided to the plugin */
+    struct fsm_object * (*latest_obj_cb)(struct fsm_session *, char *, char *);
 };
+
 
 /**
  * @brief parser plugin specific operations
@@ -188,6 +209,16 @@ enum fsm_dpi_state
     FSM_DPI_DROP     = 3,
 };
 
+
+enum fsm_object_state
+{
+    FSM_OBJ_ACTIVE = 0,
+    FSM_OBJ_ERROR,
+    FSM_OBJ_OBSOLETE,
+    FSM_OBJ_LOAD_FAILED,
+};
+
+
 /**
  * @brief dpi dispatcher specifics
  */
@@ -262,6 +293,10 @@ struct fsm_session
     char bridge[64];                 /* underlying bridge name */
     char tx_intf[64];                /* plugin's TX interface */
     union fsm_dpi_context *dpi;      /* fsm dpi context */
+    char *provider;
+    struct fsm_policy_client policy_client;
+    struct fsm_session *provider_plugin;
+    struct fsm_web_cat_ops *provider_ops;
 };
 
 
@@ -686,6 +721,7 @@ fsm_plugin_has_intf(struct fsm_session *session)
 void
 fsm_set_node_state(const char *module, const char *key, const char *value);
 
+
 /**
  * @brief set a fsm policy provider
  *
@@ -696,7 +732,17 @@ fsm_set_node_state(const char *module, const char *key, const char *value);
 void
 fsm_process_provider(struct fsm_session *session);
 
+
 bool
 fsm_pcap_update(struct fsm_session *session);
+
+/**
+ * @brief update the OMS_State table with the given object state
+ *
+ * @param session the fsm session triggering the call
+ * @param object the object advertizing its state
+ */
+void
+fsm_set_object_state(struct fsm_session *session, struct fsm_object *object);
 
 #endif /* FSM_H_INCLUDED */

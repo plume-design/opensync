@@ -258,14 +258,14 @@ fsm_get_web_cat_service(struct fsm_session *session)
     ds_tree_t *sessions;
     char *service_name;
 
-    if (session->type != FSM_PARSER) return true;
+    if (session->type == FSM_WEB_CAT) return true;
 
     sessions = fsm_get_sessions();
 
     /*
      * If the parser plugin advertizes a provider_plugin, assume an ovsdb entry
      * dedicated to this provider. It might not be there yet. In this case, the
-     * parser seession will be updated later on.
+     * parser session will be updated later on.
      */
     provider_plugin = session->ops.get_config(session, "provider_plugin");
     if (provider_plugin != NULL)
@@ -320,6 +320,8 @@ fsm_web_cat_service_update(struct fsm_session *session, int op)
                 /* Set the service, call the parser update */
                 if (op == FSM_SERVICE_ADD) parser->service = session;
                 if (op == FSM_SERVICE_DELETE) parser->service = NULL;
+
+                fsm_process_provider(parser);
                 if (parser->ops.update != NULL) parser->ops.update(parser);
             }
         }

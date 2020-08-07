@@ -51,6 +51,7 @@ struct neighbour_entry
     char                        *ifname;
     int                         ifindex;
     uint32_t                    source;
+    time_t                      cache_valid_ts;
     uint8_t                     *ip_tbl;           // for fast lookups
     int                         af_family;         // for fast lookups
     ds_tree_node_t              entry_node;        // tree node structure
@@ -173,6 +174,15 @@ neigh_table_cache_lookup(struct neighbour_entry *key);
 
 bool
 neigh_table_cache_update(struct neighbour_entry *entry);
+
+
+/**
+ * @brief remove old cache entres added by fsm
+ *
+ * @param ttl the cache entry time to live
+ */
+void neigh_table_ttl_cleanup(int64_t ttl, uint32_t source_mask);
+
 
 /**
  * @brief return the source based on its enum value

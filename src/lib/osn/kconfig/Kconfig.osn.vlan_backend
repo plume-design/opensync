@@ -1,0 +1,14 @@
+config OSN_BACKEND_VLAN_NULL
+    bool "Null"
+    help
+        Use dummy VLAN implementation for platforms where VLAN functionality is
+        not desired or not supported.
+
+config OSN_BACKEND_VLAN_LINUX
+    bool "Linux"
+    select OSN_LINUX_ENABLED
+    select OSN_LINUX_VLAN
+    help
+        Use the Linux VLAN implementation that uses the iproute2 tool to create
+        VLAN interfaces.
+

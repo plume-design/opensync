@@ -40,8 +40,8 @@ In link selection state:
   waiting for main link that can be used
   if yes goes to br wan ip state
 
-In br wan ip state
-  Waiting for IP on br-wan with used link
+In wan ip state
+  Waiting for IP on WAN bridge or uplink
   if yes goes to init ovs state
 
 In init ovs state:
@@ -116,9 +116,11 @@ Note-1: the wait for re-connect back to same manager addr because
 #define CM2_ONBOARD_WAN_IP_TIMEOUT      20
 #define CM2_RESOLVE_TIMEOUT             180
 
-#define CM2_MAX_DISCONNECTS             4
+#define CM2_MAX_DISCONNECTS             10
 #define CM2_STABLE_PERIOD               300 // 5 min
 #define CM2_RESOLVE_RETRY_THRESHOLD     10
+#define CM2_GW_OFFLINE_RETRY_THRESHOLD  3
+
 // state info
 #define CM2_STATE_DIR  "/tmp/plume/"
 #define CM2_STATE_FILE CM2_STATE_DIR"cm.state"
@@ -384,14 +386,34 @@ static void cm2_link_sel_update_ble_state(void) {
 }
 
 static void cm2_trigger_restart_managers(void) {
-    if (!cm2_vtag_stability_check()) {
+    bool r;
+
+    r = cm2_vtag_stability_check();
+    if (!r) {
         LOGI("Skip restart system due to vtag pending");
         cm2_reset_time();
         return;
     }
 
-    if (g_state.link.is_limp_state) {
-        LOGI("Skip restart system due to limp state");
+    if (g_state.gw_offline_cnt < CM2_GW_OFFLINE_RETRY_THRESHOLD) {
+        r = cm2_ovsdb_is_gw_offline_ready();
+        if (r)
+            g_state.gw_offline_cnt++;
+
+        if (g_state.gw_offline_cnt == CM2_GW_OFFLINE_RETRY_THRESHOLD) {
+            r = cm2_ovsdb_enable_gw_offline_conf();
+            if (!r) {
+                LOGW("Enabling GW offline configuration failed");
+                g_state.gw_offline_cnt--;
+            } else {
+                LOGI("GW offline configuration enabled");
+            }
+        }
+    }
+
+    if (g_state.link.is_limp_state || g_state.gw_offline_cnt > 0) {
+        LOGI("Skip restart managers. Limp state = %d gw_offline_cnt = %d",
+             g_state.link.is_limp_state, g_state.gw_offline_cnt);
         cm2_reset_time();
         return;
     }
@@ -426,9 +448,9 @@ static bool cm2_set_new_vtag(void) {
         }
     }
 
-    if (!cm2_ovsdb_update_Port_tag(CONFIG_TARGET_WAN_BRIDGE_NAME, g_state.link.vtag.tag, true)) {
+    if (!cm2_ovsdb_update_Port_tag(cm2_get_uplink_name(), g_state.link.vtag.tag, true)) {
         LOGW("vtag: Failed to set new vtag = %d on %s",
-             g_state.link.vtag.tag, CONFIG_TARGET_WAN_BRIDGE_NAME);
+             g_state.link.vtag.tag, cm2_get_uplink_name());
         return false;
     }
     g_state.link.vtag.state = CM2_VTAG_PENDING;
@@ -440,16 +462,36 @@ static bool cm2_block_vtag(void) {
     g_state.link.vtag.state = CM2_VTAG_BLOCKED;
     g_state.link.vtag.failure = 0;
     g_state.link.vtag.blocked_tag = g_state.link.vtag.tag;
-    if (!cm2_ovsdb_update_Port_tag(CONFIG_TARGET_WAN_BRIDGE_NAME, g_state.link.vtag.tag, false)) {
+    if (!cm2_ovsdb_update_Port_tag(cm2_get_uplink_name(), g_state.link.vtag.tag, false)) {
         LOGW("vtag: Failed to remove vtag = %d on %s",
-             g_state.link.vtag.tag, CONFIG_TARGET_WAN_BRIDGE_NAME);
+             g_state.link.vtag.tag, cm2_get_uplink_name());
         return false;
     }
     return true;
 }
 
+static void cm2_handle_link_used(char *if_name, char *if_type, cm2_ip *ip)
+{
+    if (!cm2_is_wan_link_management() && cm2_is_eth_type(if_type))
+        return;
+
+    if (ip->ips == CM2_IPV4_DHCP && ip->is_ipa) {
+        LOGN("Refresh WAN link");
+        cm2_ovsdb_refresh_dhcp(if_name);
+        return;
+    }
+
+    if (ip->ips == CM2_IP_NONE) {
+        LOGI("%s: Trigger dhcp client for used link", if_name);
+        cm2_ovsdb_set_dhcp_client(if_name, true);
+    }
+}
+
 void cm2_update_state(cm2_reason_e reason)
 {
+    int  ret;
+    char *uplink;
+
 start:
     cm2_log_state(reason);
     cm2_state_e old_state = g_state.state;
@@ -464,18 +506,24 @@ start:
                     g_state.state == CM2_STATE_WAN_IP ||
                     g_state.state == CM2_STATE_NTP_CHECK;
 
+    uplink = cm2_get_uplink_name();
+
     switch(reason)
     {
         case CM2_REASON_LINK_NOT_USED:
             cm2_set_state(true, CM2_STATE_LINK_SEL);
             break;
         case CM2_REASON_LINK_USED:
-            if (cm2_ovsdb_WiFi_Inet_State_is_ip(CONFIG_TARGET_WAN_BRIDGE_NAME)) {
-                LOGN("Refresh br-wan state");
-                g_state.link.is_ip = false;
-                cm2_ovsdb_refresh_dhcp(CONFIG_TARGET_WAN_BRIDGE_NAME);
-            }
+            ret = cm2_get_link_ip(uplink, &g_state.link.ip);
+            if (ret < 0)
+                LOGW("%s: Failed get ip info", uplink);
+            cm2_handle_link_used(uplink, g_state.link.if_type, &g_state.link.ip);
             cm2_link_sel_update_ble_state();
+            if (g_state.link.is_bridge) {
+                ret = cm2_ovs_insert_port_into_bridge(g_state.link.bridge_name, g_state.link.if_name, true);
+                if (!ret)
+                    LOGW("%s: Failed to add port %s into %s", __func__, g_state.link.if_name, g_state.link.bridge_name);
+            }
             cm2_ovsdb_connection_clean_link_counters(g_state.link.if_name);
             cm2_connection_req_stability_check(LINK_CHECK);
             cm2_set_state(true, CM2_STATE_WAN_IP);
@@ -483,23 +531,22 @@ start:
         case CM2_REASON_SET_NEW_VTAG:
             LOGI("vtag: %d: creating", g_state.link.vtag.tag);
             if (cm2_set_new_vtag()) {
-                g_state.link.is_ip = false;
-                cm2_ovsdb_refresh_dhcp(CONFIG_TARGET_WAN_BRIDGE_NAME);
+                g_state.link.ip.ips = CM2_IP_NONE;
+                cm2_ovsdb_refresh_dhcp(uplink);
                 cm2_set_state(true, CM2_STATE_WAN_IP);
             }
             break;
         case CM2_REASON_BLOCK_VTAG:
             LOGI("vtag: %d: blocking", g_state.link.vtag.tag);
             if (cm2_block_vtag()) {
-                g_state.link.is_ip = false;
-                cm2_ovsdb_refresh_dhcp(CONFIG_TARGET_WAN_BRIDGE_NAME);
+                g_state.link.ip.ips = CM2_IP_NONE;
+                cm2_ovsdb_refresh_dhcp(uplink);
                 cm2_set_state(true, CM2_STATE_WAN_IP);
             }
             break;
         case CM2_REASON_OVS_INIT:
             LOGI("set async OVS INIT state");
-            if (cm2_is_extender())
-                cm2_ovsdb_refresh_dhcp(CONFIG_TARGET_WAN_BRIDGE_NAME);
+            cm2_ovsdb_refresh_dhcp(uplink);
             cm2_set_state(true, CM2_STATE_OVS_INIT);
             break;
         default:
@@ -577,7 +624,11 @@ start:
             {
                 LOGI("Waiting for finish get WLAN IP");
             }
-            if (g_state.link.is_ip)
+            ret = cm2_get_link_ip(uplink, &g_state.link.ip);
+            if (ret < 0)
+                LOGW("%s: Failed get ip info", g_state.link.if_name);
+
+            if (g_state.link.ip.is_ipa)
             {
                 cm2_connection_req_stability_check(ROUTER_CHECK);
                 cm2_set_state(true, CM2_STATE_NTP_CHECK);
@@ -643,6 +694,9 @@ start:
         case CM2_STATE_TRY_RESOLVE:
             if (cm2_state_changed() || g_state.resolve_retry)
             {
+                if (cm2_ovsdb_is_ipv6_global_link(uplink))
+                    g_state.link.ip.ips = CM2_IPV6_DHCP;
+
                 if (g_state.resolve_retry) {
                     LOGI("Trigger retry resolving, cnt: %d/%d",
                          g_state.resolve_retry_cnt, CM2_RESOLVE_RETRY_THRESHOLD);
@@ -674,8 +728,7 @@ start:
                 if (cm2_timeout(false) ||
                     g_state.resolve_retry_cnt > CM2_RESOLVE_RETRY_THRESHOLD) {
                     cm2_resolve_timeout();
-                    if (cm2_is_extender())
-                        cm2_ovsdb_refresh_dhcp(CONFIG_TARGET_WAN_BRIDGE_NAME);
+                    cm2_ovsdb_refresh_dhcp(uplink);
                     cm2_restart_ovs_connection(false);
                     return;
                 }
@@ -776,6 +829,17 @@ start:
                 if (cm2_is_extender()) {
                     g_state.run_stability = true;
                     cm2_ovsdb_connection_update_unreachable_cloud_counter(g_state.link.if_name, 0);
+                }
+
+                if (g_state.gw_offline_cnt == CM2_GW_OFFLINE_RETRY_THRESHOLD) {
+                    LOGI("Device is connected but gw_offline is set");
+                    ret = cm2_ovsdb_disable_gw_offline_conf();
+                    if (!ret) {
+                        LOGW("Disabling GW offline configuration failed");
+                    } else {
+                        g_state.gw_offline_cnt = 0;
+                        LOGI("GW offline configuration disabled");
+                    }
                 }
 
                 if (!g_state.is_con_stable && cm2_get_time() > CM2_STABLE_PERIOD) {

@@ -28,9 +28,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define FCM_MGR_H_INCLUDED
 
 #include <ev.h>          // libev routines
+#include <time.h>
 
 #include "ds_tree.h"
 #include "fcm.h"
+#include "schema.h"
 
 typedef struct fcm_mgr_
 {
@@ -38,6 +40,10 @@ typedef struct fcm_mgr_
     char *mqtt_headers[FCM_NUM_HEADER_IDS];
     ds_tree_t collect_tree;      // Holds fcm_collector_t
     ds_tree_t report_conf_tree;  // Holds fcm_report_conf_t
+    ev_timer timer;              // manager's event timer
+    time_t periodic_ts;          // periodic timestamp
+    char pid[16];                // manager's pid
+    int64_t neigh_cache_ttl;     // neighbour table cache ttl
 } fcm_mgr_t;
 
 bool fcm_init_mgr(struct ev_loop *loop);

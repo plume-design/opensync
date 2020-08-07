@@ -33,7 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <unistd.h>
 #include <fcntl.h>
 
-#include "osp.h"
+#include "osp_led.h"
 
 
 static const char* led_state_str[OSP_LED_ST_LAST] =

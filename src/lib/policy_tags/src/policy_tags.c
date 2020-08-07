@@ -97,6 +97,26 @@ err:
     return false;
 }
 
+// Fill in a local tag list from schema
+static bool
+om_local_tag_add_list_from_schema(ds_tree_t *list, struct schema_Openflow_Local_Tag *stag)
+{
+    int                 i;
+
+    // Local Value Array
+    for(i = 0;i < stag->values_len;i++) {
+        if (!om_tag_list_entry_add(list, stag->values[i], OM_TLE_FLAG_LOCAL)) {
+            goto err;
+        }
+    }
+
+    return true;
+
+err:
+    return false;
+}
+
+
 
 // Allocate a new tag, using data from schema row
 static om_tag_t *
@@ -123,6 +143,33 @@ alloc_err:
 
     return NULL;
 }
+
+// Allocate a new tag, using data from schema row
+static om_tag_t *
+om_local_tag_alloc_from_schema(struct schema_Openflow_Local_Tag *stag)
+{
+    om_tag_t            *tag;
+
+    if (!(tag = om_tag_alloc(stag->name, false))) {
+        goto alloc_err;
+    }
+
+    // Cloud and Device Value Arrays
+    if (!om_local_tag_add_list_from_schema(&tag->values, stag)) {
+        LOGEM("Failed to add list for local tag '%s'", stag->name);
+        goto alloc_err;
+    }
+
+    return tag;
+
+alloc_err:
+    if (tag) {
+        om_tag_free(tag);
+    }
+
+    return NULL;
+}
+
 
 
 /******************************************************************************
@@ -350,6 +397,65 @@ om_tag_update_from_schema(struct schema_Openflow_Tag *stag)
     // Build new list
     om_tag_list_init(&new_values);
     if (!om_tag_add_list_from_schema(&new_values, stag)) {
+        LOGE("[%s] Failed to allocate memory to handle update!", tag->name);
+        return false;
+    }
+
+    ret = om_tag_update(tag, &new_values);
+    om_tag_list_free(&new_values);
+
+    return ret;
+}
+
+// Add a new local tag from schema row
+bool
+om_local_tag_add_from_schema(struct schema_Openflow_Local_Tag *new)
+{
+    om_tag_t            *tag;
+
+    if (!(tag = om_local_tag_alloc_from_schema(new))) {
+        // Allocation failure -- reported already
+        return false;
+    }
+
+    if (!om_tag_add(tag)) {
+        om_tag_free(tag);
+        return false;
+    }
+
+    return true;
+}
+
+// Remove a tag from schema flow
+bool
+om_local_tag_remove_from_schema(struct schema_Openflow_Local_Tag *stag)
+{
+    om_tag_t            *tag;
+
+    if (!(tag = om_tag_find_by_name(stag->name, false))) {
+        // Not found
+        return false;
+    }
+
+    return om_tag_remove(tag);
+}
+
+// Update a tag from schema flow
+bool
+om_local_tag_update_from_schema(struct schema_Openflow_Local_Tag *stag)
+{
+    ds_tree_t           new_values;
+    om_tag_t            *tag;
+    bool                ret;
+
+    if (!(tag = om_tag_find_by_name(stag->name, false))) {
+        // Not found
+        return false;
+    }
+
+    // Build new list
+    om_tag_list_init(&new_values);
+    if (!om_local_tag_add_list_from_schema(&new_values, stag)) {
         LOGE("[%s] Failed to allocate memory to handle update!", tag->name);
         return false;
     }

@@ -156,6 +156,11 @@ location_id=$(get_location_id)
 node_id=$(get_node_id)
 mqtt_v="dev-test/${fsm_handler}/${node_id}/${location_id}"
 
+n="$(ovsh s Flow_Service_Manager_Config -w handler==${fsm_handler} -r | wc -l)"
+if [ ${n} -ne 0 ]; then
+    echo "${fsm_handler} already configured. Exiting"
+fi
+
 $(gen_tap_cmd)
 $(tap_up_cmd)
 $(gen_no_flood_cmd)

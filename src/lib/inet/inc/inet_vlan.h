@@ -24,12 +24,15 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#if !defined(INET_VLAN_H_INCLUDED)
+#ifndef INET_VLAN_H_INCLUDED
 #define INET_VLAN_H_INCLUDED
 
 #include "inet.h"
 #include "inet_base.h"
 #include "inet_eth.h"
+
+#include "osn_netif.h"
+#include "osn_vlan.h"
 
 typedef struct __inet_vlan inet_vlan_t;
 
@@ -43,22 +46,16 @@ struct __inet_vlan
         inet_eth_t  eth;
     };
 
-    char    vlan_parent[C_IFNAME_LEN];      /* Parent interface name */
-    int     vlan_id;                        /* VLAN ID */
+    char            in_parent_ifname[C_IFNAME_LEN];     /* Parent interface name */
+    osn_netif_t    *in_parent_netif;                    /* Parent interface */
+    char            in_l2s_ifname[C_IFNAME_LEN];        /* Interface name used for l2switch config */
+    int             in_l2s_vlanid;                      /* Currently configure l2switch vlan id */
+    osn_vlan_t     *in_vlan;                            /* OSN VLAN object */
+    int             in_vlanid;                          /* VLAN ID */
 };
 
-#if defined(CONFIG_INET_VLAN_LINUX)
-extern inet_t *inet_vlan_new(const char *ifname);
-extern bool inet_vlan_init(inet_vlan_t *self, const char *ifname);
-#else
-static inline inet_t *inet_vlan_new(const char *ifname)
-{
-    return NULL;
-}
-static inline bool inet_vlan_init(inet_vlan_t *self, const char *ifname)
-{
-    return false;
-}
-#endif
+inet_t *inet_vlan_new(const char *ifname);
+bool inet_vlan_init(inet_vlan_t *self, const char *ifname);
+bool inet_vlan_fini(inet_vlan_t *self);
 
 #endif /* INET_VLAN_H_INCLUDED */

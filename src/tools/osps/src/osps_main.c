@@ -51,6 +51,7 @@ static int osps_help(int argc, char *argv[]);
 static int osps_get(int argc, char *argv[]);
 static int osps_set(int argc, char *argv[]);
 static int osps_del(int argc, char *argv[]);
+static int osps_erase(int argc, char *argv[]);
 
 void osps_command_register(struct osps_command *oc)
 {
@@ -357,6 +358,74 @@ static int osps_del(int argc, char *argv[])
     return 0;
 }
 
+/*
+ * ===========================================================================
+ *  ERASE command
+ * ===========================================================================
+ */
+static struct osps_command osps_erase_cmd = OSPS_COMMAND_INIT(
+        "erase",
+        osps_erase,
+        "erase STORE ; Delete all keys from persistent storage",
+        "\n"
+        "Arguments:\n"
+        "\n"
+        "   STORE   - The persistent store name\n");
+
+static int osps_erase(int argc, char *argv[])
+{
+    osp_ps_t *ps;
+    int flags;
+
+    if (argc != 2)
+    {
+        osps_usage("erase", "Invalid number of arguments.");
+        return OSPS_CLI_ERROR;
+    }
+
+    /* First open in read-only mode just to see if the store exists */
+    flags = OSP_PS_READ;
+    if (osps_preserve) flags |= OSP_PS_PRESERVE;
+
+    ps = osp_ps_open(argv[1], flags);
+    if (ps == NULL)
+    {
+        fprintf(stderr, "Error opening store (RO): %s", argv[1]);
+        return 1;
+    }
+
+    if (!osp_ps_close(ps))
+    {
+        fprintf(stderr, "Warning: Error closing store (RO): %s\n", argv[1]);
+    }
+
+    /*
+     * Re-open store in write mode
+     */
+    flags = OSP_PS_WRITE;
+    if (osps_preserve) flags |= OSP_PS_PRESERVE;
+
+    ps = osp_ps_open(argv[1], flags);
+    if (ps == NULL)
+    {
+        fprintf(stderr, "Error opening store (RW): %s", argv[1]);
+        return 1;
+    }
+
+    if (!osp_ps_erase(ps))
+    {
+        fprintf(stderr, "Unable to erase store: %s\n", argv[1]);
+    }
+
+    if (!osp_ps_close(ps))
+    {
+        fprintf(stderr, "Warning: Error closing store: %s\n", argv[1]);
+        return 1;
+    }
+
+    return 0;
+}
+
 int main(int argc, char *argv[])
 {
     struct osps_command *oc;
@@ -378,6 +447,7 @@ int main(int argc, char *argv[])
     osps_command_register(&osps_get_cmd);
     osps_command_register(&osps_set_cmd);
     osps_command_register(&osps_del_cmd);
+    osps_command_register(&osps_erase_cmd);
 
     /*
      * Initialize modules

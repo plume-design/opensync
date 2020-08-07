@@ -59,6 +59,7 @@ bool psfs_open(psfs_t *ps, const char *name, int flags);
 bool psfs_close(psfs_t *ps);
 bool psfs_load(psfs_t *ps);
 bool psfs_sync(psfs_t *ps, bool force_prune);
+bool psfs_erase(psfs_t *ps);
 ssize_t psfs_set(psfs_t *ps, const char *key, const void *value, size_t value_sz);
 ssize_t psfs_get(psfs_t *ps, const char *key, void *value, size_t value_sz);
 

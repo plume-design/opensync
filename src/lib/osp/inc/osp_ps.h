@@ -152,6 +152,29 @@ ssize_t osp_ps_get(
         size_t value_sz);
 
 /**
+ * Erase content of store @p ps (delete all keys and their values)
+ *
+ * @param[in]       ps          Store -- valid object returned by
+ *                              @ref osp_ps_open() with the flag
+ *                              OSP_PS_WRITE
+ *
+ * @note
+ * Stores opened with the same name but with or without the OPS_PS_PRESERVE
+ * flag are different stores.
+ *
+ * @return
+ * This function returns true on success, or false if any errors were
+ * encountered. If false is returned, it should be assumed that store
+ * was not erased.
+ *
+ * @note
+ * This function does not guarantee that the data was deleted from
+ * persistent store. To ensure that the change hits the storage, a
+ * call to @ref osp_ps_sync() or @ref osp_ps_close() is required.
+ */
+bool osp_ps_erase(osp_ps_t *ps);
+
+/**
  * Flush all dirty data to persistent storage. When this function returns,
  * the data written by @ref osp_ps_set() should be considered safely stored.
  *

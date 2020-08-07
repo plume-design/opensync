@@ -1758,3 +1758,239 @@ net_md_update_aggr(struct net_md_aggregator *aggr, struct packed_buffer *pb)
 
     return;
 }
+
+
+/**
+ * @brief logs the content of an accumulator
+ *
+ * @param acc the accumulator to log
+ */
+void
+net_md_log_acc(struct net_md_stats_accumulator *acc)
+{
+    char src_ip[INET6_ADDRSTRLEN] = {0};
+    char dst_ip[INET6_ADDRSTRLEN] = {0};
+    struct net_md_flow_key *key;
+    struct flow_tags *ftag;
+    os_macaddr_t null_mac;
+    struct flow_key *fkey;
+    os_macaddr_t *smac;
+    os_macaddr_t *dmac;
+    size_t i, j;
+    int af;
+
+    if (!LOG_SEVERITY_ENABLED(LOG_SEVERITY_DEBUG)) return;
+
+    if (acc->key == NULL) return;
+    if (acc->fkey == NULL) return;
+
+    fkey = acc->fkey;
+    key = acc->key;
+
+    memset(&null_mac, 0, sizeof(null_mac));
+
+    if (key->ip_version == 4 || key->ip_version == 6)
+    {
+        af = key->ip_version == 4 ? AF_INET : AF_INET6;
+        inet_ntop(af, key->src_ip, src_ip, INET6_ADDRSTRLEN);
+        inet_ntop(af, key->dst_ip, dst_ip, INET6_ADDRSTRLEN);
+    }
+
+    smac = (key->smac != NULL ? key->smac : &null_mac);
+    dmac = (key->dmac != NULL ? key->dmac : &null_mac);
+
+    LOGD("%s: Printing key => net_md_flow_key :: fkey => flow_key",
+         __func__);
+    LOGD("------------");
+    LOGD(" smac:" PRI_os_macaddr_lower_t \
+         " dmac:" PRI_os_macaddr_lower_t \
+         " vlanid: %d"                   \
+         " ethertype: %d"                \
+         " ip_version: %d"               \
+         " src_ip: %s"                   \
+         " dst_ip: %s"                   \
+         " ipprotocol: %d"               \
+         " sport: %d"                    \
+         " dport: %d",
+         FMT_os_macaddr_pt(smac),
+         FMT_os_macaddr_pt(dmac),
+         key->vlan_id,
+         key->ethertype,
+         key->ip_version,
+         src_ip,
+         dst_ip,
+         key->ipprotocol,
+         ntohs(key->sport),
+         ntohs(key->dport));
+    if (key->fstart) LOGD(" Flow Starts");
+    if (key->fend) LOGD(" Flow Ends");
+    LOGD("------------");
+
+    LOGD(" smac: %s"      \
+         " dmac: %s"      \
+         " vlanid: %d"    \
+         " ethertype: %d" \
+         " ip_version: %d"\
+         " src_ip: %s"    \
+         " dst_ip: %s"    \
+         " protocol: %d"  \
+         " sport: %d"     \
+         " dport: %d",
+         fkey->smac,
+         fkey->dmac,
+         fkey->vlan_id,
+         fkey->ethertype,
+         fkey->ip_version,
+         fkey->src_ip ? fkey->src_ip : "None",
+         fkey->dst_ip ? fkey->dst_ip : "None",
+         fkey->protocol,
+         fkey->sport,
+         fkey->dport);
+    LOGD(" Flow State:");
+    LOGD(" First observed : %s", ctime(&fkey->state.first_obs));
+    LOGD(" Last  observed : %s", ctime(&fkey->state.last_obs));
+    if (fkey->state.fstart) LOGD(" Flow Starts");
+    if (fkey->state.fend) LOGD(" Flow Ends");
+    for (i = 0; i < fkey->num_tags; i++)
+    {
+        ftag = fkey->tags[i];
+        LOGD(" vendor: %s" \
+             " app_name: %s",
+             ftag->vendor,
+             ftag->app_name);
+        for (j = 0; j < ftag->nelems; j++)
+        {
+            LOGD(" tag[%zu]: %s",
+                 j, ftag->tags[j]);
+        }
+    }
+    LOGD("%s: ------------", __func__);
+    LOGD("%s: counter packets_count = %" PRIu64 ", bytes_count = %" PRIu64,
+         __func__,
+         acc->counters.packets_count,
+         acc->counters.bytes_count);
+}
+
+
+/**
+ * @brief log the content of accumulators in the given tree
+ *
+ * @param aggr the aggregator containing the accumulators
+ * @tree the tree of accumulators
+ */
+void
+net_md_log_accs(struct net_md_aggregator *aggr,
+                ds_tree_t *tree)
+{
+    struct net_md_flow *flow;
+
+    flow = ds_tree_head(tree);
+    while (flow != NULL)
+    {
+        struct net_md_stats_accumulator *acc;
+        struct net_md_flow *next;
+
+        acc = flow->tuple_stats;
+        net_md_log_acc(acc);
+        next = ds_tree_next(tree, flow);
+        flow = next;
+    }
+}
+
+
+void
+net_md_log_eth_acc(struct net_md_aggregator *aggr,
+                   struct net_md_eth_pair *eth_pair)
+{
+    struct net_md_stats_accumulator *eth_acc;
+    ds_tree_t *tree;
+
+    eth_acc = eth_pair->mac_stats;
+    net_md_log_acc(eth_acc);
+    tree = &eth_pair->ethertype_flows;
+    net_md_log_accs(aggr, tree);
+}
+
+
+/**
+ * @brief logs the content of an aggregator
+ *
+ * Walks the aggregator and logs its accumulators
+ * @param aggr the accumulator to log
+ */
+void net_md_log_aggr(struct net_md_aggregator *aggr)
+{
+    struct net_md_eth_pair *eth_pair;
+
+    eth_pair = ds_tree_head(&aggr->eth_pairs);
+    while (eth_pair != NULL)
+    {
+        net_md_log_eth_acc(aggr, eth_pair);
+        net_md_log_accs(aggr, &eth_pair->five_tuple_flows);
+        eth_pair = ds_tree_next(&aggr->eth_pairs, eth_pair);
+    }
+
+    net_md_log_accs(aggr, &aggr->five_tuple_flows);
+}
+
+/**
+ * @brief log the content of accumulators in the given tree
+ *
+ * @param aggr the aggregator containing the accumulators
+ * @tree the tree of accumulators
+ */
+void
+net_md_process_accs(struct net_md_aggregator *aggr,
+                    ds_tree_t *tree)
+{
+    struct net_md_flow *flow;
+
+    flow = ds_tree_head(tree);
+    while (flow != NULL)
+    {
+        struct net_md_stats_accumulator *acc;
+        struct net_md_flow *next;
+
+        acc = flow->tuple_stats;
+        aggr->process(acc);
+        next = ds_tree_next(tree, flow);
+        flow = next;
+    }
+}
+
+void
+net_md_process_eth_acc(struct net_md_aggregator *aggr,
+                       struct net_md_eth_pair *eth_pair)
+{
+    struct net_md_stats_accumulator *eth_acc;
+    ds_tree_t *tree;
+
+    eth_acc = eth_pair->mac_stats;
+    aggr->process(eth_acc);
+    tree = &eth_pair->ethertype_flows;
+    net_md_process_accs(aggr, tree);
+}
+
+
+/**
+ * @brief process an accumulator
+ *
+ * Process an accumulator
+ * @param acc the accumulator to process
+ */
+void net_md_process_aggr(struct net_md_aggregator *aggr)
+{
+    struct net_md_eth_pair *eth_pair;
+
+    if (aggr->process == NULL) return;
+
+    eth_pair = ds_tree_head(&aggr->eth_pairs);
+    while (eth_pair != NULL)
+    {
+        net_md_process_eth_acc(aggr, eth_pair);
+        net_md_process_accs(aggr, &eth_pair->five_tuple_flows);
+        eth_pair = ds_tree_next(&aggr->eth_pairs, eth_pair);
+    }
+
+    net_md_process_accs(aggr, &aggr->five_tuple_flows);
+}

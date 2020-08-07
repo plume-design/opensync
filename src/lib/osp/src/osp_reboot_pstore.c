@@ -40,7 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <fnmatch.h>
 
 #include "log.h"
-#include "osp.h"
+#include "osp_reboot.h"
 #include "const.h"
 #include "execsh.h"
 #include "kconfig.h"

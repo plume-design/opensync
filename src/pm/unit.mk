@@ -37,16 +37,26 @@ $(eval $(if $(CONFIG_PM_ENABLE_CLIENT_FREEZE),      UNIT_SRC += src/pm_client_fr
 $(eval $(if $(CONFIG_PM_ENABLE_CLIENT_NICKNAME),    UNIT_SRC += src/pm_client_nickname.c))
 $(eval $(if $(CONFIG_PM_ENABLE_LED),                UNIT_SRC += src/pm_led.c))
 $(eval $(if $(CONFIG_PM_ENABLE_LM),                 UNIT_SRC += src/pm_lm.c))
+
 ifeq ($(CONFIG_PM_ENABLE_TM),y)
 UNIT_SRC += src/pm_tm.c
 UNIT_SRC += src/pm_tm_ovsdb.c
 endif
 
+ifeq ($(CONFIG_PM_ENABLE_OBJM),y)
+UNIT_SRC += src/pm_objm.c
+UNIT_DEPS += src/lib/oms
+endif
 
-UNIT_CFLAGS  := -I$(UNIT_PATH)/inc
+ifeq ($(CONFIG_PM_GW_OFFLINE_CFG),y)
+UNIT_SRC += src/pm_gw_offline_cfg.c
+endif
+
+UNIT_CFLAGS  += -I$(UNIT_PATH)/inc
 UNIT_LDFLAGS += -lev
 
 UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/osp
 UNIT_DEPS += src/lib/ovsdb
 UNIT_DEPS += src/lib/schema
+UNIT_DEPS += src/lib/module

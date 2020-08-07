@@ -52,6 +52,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define TEMPLATE_GROUP_END      ']'
 
 #define TEMPLATE_DEVICE_CHAR    '@'
+#define TEMPLATE_LOCAL_CHAR     '*'
 #define TEMPLATE_CLOUD_CHAR     '#'
 
 typedef enum {
@@ -84,6 +85,7 @@ typedef struct {
     ds_tree_t       updated;
 } om_tag_list_diff_t;
 
+extern char    *om_tag_get_tle_flag(int flag_enum);
 extern bool     om_tag_list_entry_add(ds_tree_t *list,
                                       char *value, uint8_t flags);
 extern bool     om_tag_list_append_list(ds_tree_t *dest,
@@ -109,12 +111,22 @@ extern om_tag_list_entry_t *
 /******************************************************************************
  * Tag Definitions
  *****************************************************************************/
+enum om_tle_flag
+{
+    OM_TLE_FLAG_DEVICE   = 1 << 0,
+    OM_TLE_FLAG_LOCAL    = 1 << 1,
+    OM_TLE_FLAG_CLOUD    = 1 << 2,
+    OM_TLE_FLAG_GROUP    = 1 << 3,
+    OM_TLE_FLAG_NONE     = 1 << 4,
+};
 
-#define OM_TLE_FLAG_DEVICE      (1 << 0)
-#define OM_TLE_FLAG_CLOUD       (1 << 1)
-#define OM_TLE_FLAG_GROUP       (1 << 2)
+struct om_mapping_tle_flag
+{
+    char *flag;
+    int   flag_enum;
+};
 
-#define OM_TLE_VAR_FLAGS(x)     (x & (OM_TLE_FLAG_DEVICE | OM_TLE_FLAG_CLOUD))
+#define OM_TLE_VAR_FLAGS(x)     (x & (OM_TLE_FLAG_LOCAL | OM_TLE_FLAG_DEVICE | OM_TLE_FLAG_CLOUD))
 
 typedef struct {
     char            *name;
@@ -132,6 +144,9 @@ extern bool     om_tag_update(om_tag_t *tag, ds_tree_t *new_values);
 extern bool     om_tag_add_from_schema(struct schema_Openflow_Tag *stag);
 extern bool     om_tag_remove_from_schema(struct schema_Openflow_Tag *stag);
 extern bool     om_tag_update_from_schema(struct schema_Openflow_Tag *stag);
+extern bool     om_local_tag_add_from_schema(struct schema_Openflow_Local_Tag *stag);
+extern bool     om_local_tag_remove_from_schema(struct schema_Openflow_Local_Tag *stag);
+extern bool     om_local_tag_update_from_schema(struct schema_Openflow_Local_Tag *stag);
 extern om_tag_t *
                 om_tag_alloc(const char *name, bool group);
 extern om_tag_t *
@@ -179,6 +194,15 @@ extern om_tag_group_t *
  * @param name the string to check.
  */
 int om_tag_get_type(char *name);
+
+/**
+ * @brief return the tag source based on its name
+ *
+ * Lets the caller know if the string is a device tag, cloud tag or local tag.
+ * @param name the string to check.
+ */
+int
+om_get_type_of_tag(char *name);
 
 
 /**

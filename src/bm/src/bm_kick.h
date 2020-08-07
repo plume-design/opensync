@@ -47,7 +47,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define RRM_DEFAULT_CHANNEL             0                   // All channels
 #define RRM_DEFAULT_RAND_IVL            0
 #define RRM_DEFAULT_MEAS_DUR            100
-#define RRM_DEFAULT_MEAS_MODE           1
+#define RRM_DEFAULT_MEAS_MODE           1                   // 0 - passive, 1 - active
 #define RRM_DEFAULT_REQ_SSID            2                   // 1 for ssid, 2 for wildcard ssid
 #define RRM_DEFAULT_REP_COND            0
 #define RRM_DEFAULT_RPT_DETAIL          0

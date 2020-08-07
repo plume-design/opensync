@@ -24,12 +24,11 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <getopt.h>
 
-#include "target.h"
+#include "osp_unit.h"
 
 #include "dm.h"
 
@@ -39,6 +38,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define DM_CLI_SHOW_INFO_MODEL      "model"
 #define DM_CLI_SHOW_INFO_F_VERSION  "firmware_version"
 #define DM_CLI_SHOW_INFO_P_VERSION  "platform_version"
+#define DM_CLI_SHOW_INFO_SKU_NUMBER     "sku_number"
+#define DM_CLI_SHOW_INFO_VENDOR_NAME    "vendor_name"
+#define DM_CLI_SHOW_INFO_VENDOR_PART    "vendor_part"
+#define DM_CLI_SHOW_INFO_MANUFACTURER   "manufacturer"
+#define DM_CLI_SHOW_INFO_FACTORY        "factory"
+#define DM_CLI_SHOW_INFO_MFG_DATE       "manufacturer_date"
 
 
 static int dm_cli_show_info(char *opt)
@@ -48,23 +53,47 @@ static int dm_cli_show_info(char *opt)
 
     if (!opt || !strcmp(opt, DM_CLI_SHOW_INFO_ID))
     {
-        printf("id=%s\n", target_id_get(buf, buflen) ? buf : "?");
+        printf(DM_CLI_SHOW_INFO_ID"=%s\n", osp_unit_id_get(buf, buflen) ? buf : "?");
     }
     if (!opt || !strcmp(opt, DM_CLI_SHOW_INFO_SERIAL))
     {
-        printf("serial_number=%s\n", target_serial_get(buf, buflen) ? buf : "?");
+        printf(DM_CLI_SHOW_INFO_SERIAL"=%s\n", osp_unit_serial_get(buf, buflen) ? buf : "?");
     }
     if (!opt || !strcmp(opt, DM_CLI_SHOW_INFO_MODEL))
     {
-        printf("model=%s\n", target_model_get(buf, buflen) ? buf : "?");
+        printf(DM_CLI_SHOW_INFO_MODEL"=%s\n", osp_unit_model_get(buf, buflen) ? buf : "?");
     }
     if (!opt || !strcmp(opt, DM_CLI_SHOW_INFO_F_VERSION))
     {
-        printf("firmware_version=%s\n", target_sw_version_get(buf, buflen) ? buf : "?");
+        printf(DM_CLI_SHOW_INFO_F_VERSION"=%s\n", osp_unit_sw_version_get(buf, buflen) ? buf : "?");
     }
     if (!opt || !strcmp(opt, DM_CLI_SHOW_INFO_P_VERSION))
     {
-        printf("platform_version=%s\n", target_platform_version_get(buf, buflen) ? buf : "?");
+        printf(DM_CLI_SHOW_INFO_P_VERSION"=%s\n", osp_unit_platform_version_get(buf, buflen) ? buf : "?");
+    }
+    if (!opt || !strcmp(opt, DM_CLI_SHOW_INFO_SKU_NUMBER))
+    {
+        printf(DM_CLI_SHOW_INFO_SKU_NUMBER"=%s\n", osp_unit_sku_get(buf, buflen) ? buf : "?");
+    }
+    if (!opt || !strcmp(opt, DM_CLI_SHOW_INFO_VENDOR_NAME))
+    {
+        printf(DM_CLI_SHOW_INFO_VENDOR_NAME"=%s\n", osp_unit_vendor_name_get(buf, buflen) ? buf : "?");
+    }
+    if (!opt || !strcmp(opt, DM_CLI_SHOW_INFO_VENDOR_PART))
+    {
+        printf(DM_CLI_SHOW_INFO_VENDOR_PART"=%s\n", osp_unit_vendor_part_get(buf, buflen) ? buf : "?");
+    }
+    if (!opt || !strcmp(opt, DM_CLI_SHOW_INFO_MANUFACTURER))
+    {
+        printf(DM_CLI_SHOW_INFO_MANUFACTURER"=%s\n", osp_unit_manufacturer_get(buf, buflen) ? buf : "?");
+    }
+    if (!opt || !strcmp(opt, DM_CLI_SHOW_INFO_FACTORY))
+    {
+        printf(DM_CLI_SHOW_INFO_FACTORY"=%s\n", osp_unit_factory_get(buf, buflen) ? buf : "?");
+    }
+    if (!opt || !strcmp(opt, DM_CLI_SHOW_INFO_MFG_DATE))
+    {
+        printf(DM_CLI_SHOW_INFO_MFG_DATE"=%s\n", osp_unit_mfg_date_get(buf, buflen) ? buf : "?");
     }
 
     return DM_CLI_DONE;

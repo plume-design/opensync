@@ -152,7 +152,7 @@ om_template_rule_expand(om_tflow_t *tflow, om_tdata_t *tdata)
         strcat(erule, p);
 
         s += 2;
-        if (*s == TEMPLATE_DEVICE_CHAR || *s == TEMPLATE_CLOUD_CHAR) {
+        if (*s == TEMPLATE_DEVICE_CHAR || *s == TEMPLATE_CLOUD_CHAR || *s == TEMPLATE_LOCAL_CHAR) {
             s++;
         }
         if (!(e = strchr(s, end))) {

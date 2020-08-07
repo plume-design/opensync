@@ -70,6 +70,14 @@ typedef struct
     uint32_t                        num;
 } dpp_avg_t;
 
+typedef struct
+{
+    int32_t                         avg;
+    int32_t                         min;
+    int32_t                         max;
+    uint32_t                        num;
+} dpp_avg_signed_t;
+
 typedef enum
 {
     RADIO_802_11_AUTO = 0,

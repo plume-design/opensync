@@ -1,0 +1,6 @@
+#!/bin/sh
+
+. {{INSTALL_PREFIX}}/bin/dns_sub.sh
+
+dns_reset "$IFNAME"
+dns_apply "$IFNAME"

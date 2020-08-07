@@ -24,12 +24,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-/*
- * ===========================================================================
- *  Linux backend for the OSN IP API
- * ===========================================================================
- */
-#if !defined(LNX_IP_H_INCLUDED)
+#ifndef LNX_IP_H_INCLUDED
 #define LNX_IP_H_INCLUDED
 
 #include <stdbool.h>
@@ -39,6 +34,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ds_tree.h"
 #include "const.h"
 #include "lnx_netlink.h"
+
+/*
+ * ===========================================================================
+ *  Linux backend for the OSN IP API
+ * ===========================================================================
+ */
 
 typedef struct lnx_ip lnx_ip_t;
 typedef void lnx_ip_status_fn_t(lnx_ip_t *ip, struct osn_ip_status *status);

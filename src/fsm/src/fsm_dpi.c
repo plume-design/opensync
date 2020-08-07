@@ -333,7 +333,7 @@ fsm_dpi_add_plugin_to_dispatcher(struct fsm_session *session)
     if (dispatcher->type != FSM_DPI_DISPATCH) return false;
     if (dispatcher->dpi == NULL) return false;
 
-    LOGT("%s: adding dpi plugin %s to %s",
+    LOGI("%s: adding dpi plugin %s to %s",
          __func__, session->name, dispatcher->name);
 
     /* Add the dpi plugin to the dispatcher */

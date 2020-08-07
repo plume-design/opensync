@@ -101,4 +101,32 @@ if MANAGER_PM
         default n
         help
             Select to include log management as part of PM (Platform manager)
+
+    menuconfig PM_ENABLE_OBJM
+        bool "Enable support for Object Management"
+        default n
+        help
+            Select to include Object management as part of PM (Platform manager)
+
+        if PM_ENABLE_OBJM
+            config PM_OBJM_DOWNLOAD_DIR
+            string "Location of tmp download dir"
+            default "/tmp/obj-dl"
+            help
+                Location of temporary folder where all the objects are downloaded before installing
+
+            config PM_OBJM_INTEGRATED_DIR
+            string "Location of pre integrated dir"
+            default "$(INSTALL_PREFIX)/storage"
+            help
+                Location of preintegrated packages
+        endif
+
+    config PM_GW_OFFLINE_CFG
+        bool "Enable support for GW offline config"
+        default n
+        help
+            Ability to recover previously working ethernet connected POD acting as a GW
+            on reboot with loss of Internet access with local HOME LAN service
+            from stored subset of Cloud-provisioned OVSDB configuration.
 endif

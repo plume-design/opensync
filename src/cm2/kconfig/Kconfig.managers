@@ -12,6 +12,12 @@ if MANAGER_CM
         help
             Manager startup options
 
+    config CM2_USE_WAN_LINK_MANAGEMENT
+        bool "Use CM to manage WAN links"
+        default y
+        help
+            Use Wifi_Master_State table to manage WAN links
+
     config CM2_USE_DRYRUN_ON_GRE
         bool "Use udhcpc dryrun on gre interfaces"
         default y
@@ -157,7 +163,7 @@ if MANAGER_CM
             help
                 Threshold of subsequent check failures to restart OpenSync
 
-        config CM2_STABILITY_THRESH_REST_CON
+        config CM2_STABILITY_THRESH_ROUTER
             int "Threshold of restore connection"
             default 4
             help
@@ -181,16 +187,23 @@ if MANAGER_CM
             help
                 Threshold of loadavg (number of currently executing kernel scheduling entities) to allow trigger stability checking
 
-       config CM2_STABILITY_THRESH_TCPDUMP
+        config CM2_STABILITY_THRESH_TCPDUMP
             int "Threshold of tcpdump running"
             default 4
             help
                Threshold of subsequent router check failures to trigger collect data on main interface
 
+        config CM2_STABILITY_USE_RESTORE_SWITCH_CFG
+            bool "Use restoring switch configuration"
+            default n
+            help
+               Some devices require restoring switch configuration when problems with connectivity is detected
+
         endif
+
     config CM2_USE_EXTRA_DEBUGS
-       bool "Use additional debug logs"
-       default y
-       help
-          Enable additional debug logs"
+        bool "Use additional debug logs"
+        default y
+        help
+           Enable additional debug logs"
 endif

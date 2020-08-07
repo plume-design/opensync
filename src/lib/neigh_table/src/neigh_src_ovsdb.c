@@ -53,6 +53,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "json_util.h"
 
 ovsdb_table_t table_DHCP_leased_IP;
+ovsdb_table_t table_IPv4_Neighbors;
 ovsdb_table_t table_IPv6_Neighbors;
 ovsdb_table_t table_Wifi_Inet_State;
 
@@ -207,6 +208,121 @@ neigh_table_get_source(int source_enum)
     return NULL;
 }
 
+static bool
+neigh_entry_to_ipv4_neighbor_schema(struct neighbour_entry *key,
+                                    struct schema_IPv4_Neighbors *ipv4entry)
+{
+    struct sockaddr_storage *ipaddr;
+    os_macaddr_t *mac;
+    char   *ifname;
+    char   *source;
+    int     err;
+
+    if (!key || !ipv4entry) return false;
+
+    ipaddr = key->ipaddr;
+    ifname = key->ifname;
+    mac = key->mac;
+
+    if (!mac || !ipaddr || !ifname) return false;
+
+    memset(ipv4entry, 0, sizeof(struct schema_IPv4_Neighbors));
+
+    snprintf(ipv4entry->hwaddr,
+             sizeof(ipv4entry->hwaddr),
+             PRI_os_macaddr_t, FMT_os_macaddr_pt(key->mac));
+
+    err = getnameinfo((struct sockaddr *)key->ipaddr,
+                      sizeof(struct sockaddr_storage),
+                      ipv4entry->address, sizeof(ipv4entry->address),
+                      0, 0, NI_NUMERICHOST);
+    if (err < 0)
+    {
+        LOGD("%s: Failed to get the ip: err[%s]", __func__, strerror(err));
+        return false;
+    }
+
+    memcpy(ipv4entry->if_name, key->ifname, sizeof(ipv4entry->if_name));
+
+    source = neigh_table_get_source(key->source);
+    if (source == NULL) return true;
+
+    memcpy(ipv4entry->source, source, sizeof(ipv4entry->source));
+
+    return true;
+}
+
+static bool
+update_ipv4_neigh_in_ovsdb(struct neighbour_entry *key, bool remove)
+{
+    struct schema_IPv4_Neighbors    ipv4entry;
+    pjs_errmsg_t    perr;
+    json_t      *cond;
+    json_t      *where;
+    json_t      *row;
+    bool         ret;
+
+    if (!key) return false;
+
+    where = json_array();
+
+    ret = neigh_entry_to_ipv4_neighbor_schema(key, &ipv4entry);
+    if (!ret)
+    {
+        LOGD("%s: Couldn't convert neighbor_entry to schema.", __func__);
+        return false;
+    }
+
+    cond = ovsdb_tran_cond_single("address", OFUNC_EQ, ipv4entry.address);
+    json_array_append_new(where, cond);
+
+    if (key->ifname)
+    {
+        cond = ovsdb_tran_cond_single("if_name", OFUNC_EQ, key->ifname);
+        json_array_append_new(where, cond);
+    }
+
+    if (strlen(ipv4entry.source) != 0)
+    {
+        cond = ovsdb_tran_cond_single("source", OFUNC_EQ,
+                                      (char *)ipv4entry.source);
+        json_array_append_new(where, cond);
+    }
+
+    if (remove)
+    {
+        ret = ovsdb_sync_delete_where(SCHEMA_TABLE(IPv4_Neighbors), where);
+        if (!ret)
+        {
+            LOGE("%s: Failed to remove entry from IPv4_Neighbors.", __func__);
+            json_decref(where);
+            return false;
+        }
+        LOGD("%s: Removing ip[%s]-mac[%s] mapping in IPv4_Neighbors table."
+             ,__func__, ipv4entry.address, ipv4entry.hwaddr);
+    }
+    else
+    {
+        row = schema_IPv4_Neighbors_to_json(&ipv4entry, perr);
+        if (row == NULL)
+        {
+            LOGE("%s: Error convert schema structure to JSON.", __func__);
+            return false;
+        }
+
+        ret = ovsdb_sync_upsert_where(SCHEMA_TABLE(IPv4_Neighbors),
+                                      where, row, NULL);
+        if (!ret)
+        {
+            LOGE("%s: Failed to upsert entry into IPv4_Neighbors.", __func__);
+            return false;
+        }
+        LOGD("%s: Adding ip[%s]-mac[%s] mapping in IPv4_Neighbors table."
+             ,__func__, ipv4entry.address, ipv4entry.hwaddr);
+    }
+
+    return true;
+}
 
 bool
 update_ip_in_ovsdb_table(struct neighbour_entry *key, bool remove)
@@ -219,7 +335,10 @@ update_ip_in_ovsdb_table(struct neighbour_entry *key, bool remove)
     {
         rc = update_ipv6_neigh_in_ovsdb(key, remove);
     }
-
+    else if (key->ipaddr->ss_family == AF_INET)
+    {
+        rc = update_ipv4_neigh_in_ovsdb(key, remove);
+    }
     return rc;
 }
 
@@ -346,6 +465,132 @@ callback_DHCP_leased_IP(ovsdb_update_monitor_t *mon,
     }
 }
 
+
+/**
+ * @brief add or update a IPv4_Neighbor cache entry
+ *
+ * @param dhcp_lease the ovsdb IPv4_Neighbor info about the entry to add/update
+ * If any of the entry's field but its IP address is marked as changed,
+ * consider the entry as an update.
+ * Otherwise add the entry.
+ */
+static void
+neigh_table_add_v4_entry(struct schema_IPv4_Neighbors *neigh)
+{
+    struct neighbour_entry entry;
+    os_macaddr_t mac;
+    uint8_t addr[4];
+    bool update;
+    bool rc;
+    int ret;
+
+    memset(&entry, 0, sizeof(entry));
+    entry.af_family = AF_INET;
+    ret = inet_pton(entry.af_family, neigh->address, addr);
+    if (ret != 1)
+    {
+        LOGD("%s: conversion of %s failed", __func__, neigh->address);
+        return;
+    }
+    entry.ip_tbl = addr;
+    entry.source = OVSDB_ARP;
+    hwaddr_aton(neigh->hwaddr, mac.addr);
+    entry.mac = &mac;
+
+    update = neigh->hwaddr_changed;
+    update |= neigh->source_changed;
+    update |= neigh->if_name_changed;
+    if (update)
+    {
+        rc = neigh_table_cache_update(&entry);
+        if (!rc) LOGD("%s: cache update failed", __func__);
+    }
+    else
+    {
+        rc = neigh_table_add_to_cache(&entry);
+        if (!rc) LOGD("%s: cache addition failed", __func__);
+    }
+}
+
+/**
+ * @brief delete a IPv4_Neighbor cached entry
+ *
+ * @brief neigh the IPv4_Neighbor info about the entry to delete
+ */
+static void
+neigh_table_delete_v4_entry(struct schema_IPv4_Neighbors *neigh)
+{
+    struct neighbour_entry entry;
+    os_macaddr_t mac;
+    uint8_t addr[4];
+    int ret;
+
+    memset(&entry, 0, sizeof(entry));
+    entry.af_family = AF_INET;
+    ret = inet_pton(entry.af_family, neigh->address, addr);
+    if (ret != 1)
+    {
+        LOGD("%s: conversion of %s failed", __func__, neigh->address);
+        return;
+    }
+    entry.ip_tbl = addr;
+    entry.source = OVSDB_ARP;
+    hwaddr_aton(neigh->hwaddr, mac.addr);
+    entry.mac = &mac;
+    neigh_table_delete_from_cache(&entry);
+}
+
+/**
+ * @brief add or update a IPv4_Neighbor cache entry
+ *
+ * @param old_rec the previous ovsdb IPv4_Neighbor info about the entry
+ *        to add/update
+ * @param v4_neigh the ovsdb IPv4_Neighbor info about the entry to add/update
+ *
+ * If the entry's ip address is flagged as changed, remove the old entry
+ * and add a new one.
+ * Else update the entry.
+ */
+static void
+neigh_table_update_v4_entry(struct schema_IPv4_Neighbors *old_rec,
+                            struct schema_IPv4_Neighbors *v4_neigh)
+{
+    if (v4_neigh->address_changed)
+    {
+        /* Remove the old record from the cache */
+        neigh_table_delete_v4_entry(old_rec);
+    }
+
+    /* Add/update the new record */
+    neigh_table_add_v4_entry(v4_neigh);
+}
+
+/**
+ * @brief IPv4_Neighbors' event callbacks
+ */
+void
+callback_IPv4_Neighbors(ovsdb_update_monitor_t *mon,
+                        struct schema_IPv4_Neighbors *old_rec,
+                        struct schema_IPv4_Neighbors *v4_neigh)
+{
+    if (mon->mon_type == OVSDB_UPDATE_NEW)
+    {
+        neigh_table_add_v4_entry(v4_neigh);
+        return;
+    }
+
+    if (mon->mon_type == OVSDB_UPDATE_DEL)
+    {
+        neigh_table_delete_v4_entry(v4_neigh);
+        return;
+    }
+
+    if (mon->mon_type == OVSDB_UPDATE_MODIFY)
+    {
+        neigh_table_update_v4_entry(old_rec, v4_neigh);
+        return;
+    }
+}
 
 /**
  * @brief add or update a IPv4_Neighbor cache entry
@@ -607,10 +852,12 @@ void
 neigh_src_init(void)
 {
     OVSDB_TABLE_INIT_NO_KEY(DHCP_leased_IP);
+    OVSDB_TABLE_INIT_NO_KEY(IPv4_Neighbors);
     OVSDB_TABLE_INIT_NO_KEY(IPv6_Neighbors);
     OVSDB_TABLE_INIT_NO_KEY(Wifi_Inet_State);
 
     OVSDB_TABLE_MONITOR(DHCP_leased_IP, false);
+    OVSDB_TABLE_MONITOR(IPv4_Neighbors, false);
     OVSDB_TABLE_MONITOR(IPv6_Neighbors, false);
     OVSDB_TABLE_MONITOR(Wifi_Inet_State, false);
 }

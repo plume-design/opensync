@@ -147,7 +147,7 @@ retry:
     ps->psfs_fd = openat(ps->psfs_dirfd, name, oflags, 0600);
     if (ps->psfs_fd < 0)
     {
-        LOG(ERR, "psfs: %s: Error opening store. Error: %s",
+        LOG(DEBUG, "psfs: %s: Error opening store. Error: %s",
                 ps->psfs_name,
                 strerror(errno));
         goto error;
@@ -386,6 +386,53 @@ bool psfs_load(psfs_t *ps)
         ps->psfs_used += pr->pr_used;
     }
     while (rc != 0);
+
+    return true;
+}
+
+/**
+ * Erase a PSFS store (delete all keys and their values). This flags the store
+ * as dirty and will be written to disk at the first psfs_sync() or psfs_close()
+ * operation.
+ *
+ * @return
+ * This function will return true on success, or false on error.
+ *
+ * @note
+ * If the store is opened in read-only mode (OSP_PS_READ), it will return an
+ * error.
+ */
+bool psfs_erase(psfs_t *ps)
+{
+    struct psfs_record *pr;
+    ds_tree_iter_t iter;
+
+    if ((ps->psfs_flags & OSP_PS_WRITE) == 0)
+    {
+        /* psfs_erase() not supported in read-only mode */
+        return false;
+    }
+
+    /* Truncate file to 0 bytes  */
+    if (ftruncate(ps->psfs_fd, 0) != 0)
+    {
+        LOG(ERR, "psfs: %s: Error truncating store (erase).", ps->psfs_name);
+        return false;
+    }
+
+    /* Move file pointer to the beginning of the file */
+    if (lseek(ps->psfs_fd, 0, SEEK_SET) != 0)
+    {
+        LOG(ERR, "psfs: %s: Error seeking to the beginning of file (erase).", ps->psfs_name);
+        return false;
+    }
+
+    /* Drop all in-memory records */
+    ds_tree_foreach_iter(&ps->psfs_root, pr, &iter)
+    {
+        LOG(DEBUG, "psfs: %s: Deleting record '%s'.", ps->psfs_name, pr->pr_key);
+        psfs_drop_record(ps, pr, &iter);
+    }
 
     return true;
 }

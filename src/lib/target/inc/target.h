@@ -37,7 +37,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_types.h"
 #include "schema.h"
 #include "os_backtrace.h"
-#include "osp.h"
 
 #include "target_bsal.h"
 
@@ -224,115 +223,6 @@ const char **target_ethclient_brlist_get();
 
 /// @} LIB_TARGET_ETHCLIENT
 
-/// @defgroup LIB_TARGET_ENTITY Entity API
-/// API for retrieval of basic information about the device.
-/// @{
-
-/******************************************************************************
- *  ENTITY definitions
- *****************************************************************************/
-/**
- * @brief Return device identification
- *
- * This function provides a null terminated byte string containing the device
- * identification. The device identification is a part of AWLAN_Node table.
- * In the simplest implementation, this function may be the same as
- * target_serial_get().
- *
- * @param buff   pointer to a string buffer
- * @param buffsz size of string buffer
- * @return true on success
- */
-bool target_id_get(void *buff, size_t buffsz);
-
-/**
- * @brief Return device serial number
- *
- * This function provides a null terminated byte string containing the serial number.
- * The serial number is a part of AWLAN_Node table.
- * For example, the serial number may be derived from the MAC address.
- * Please see implementation inside target_native.c file for the reference.
- *
- * @param buff   pointer to a string buffer
- * @param buffsz size of string buffer
- * @return true on success
- */
-bool target_serial_get(void *buff, size_t buffsz);
-
-/**
- * @brief Return device stock keeping unit number
- *
- * This function provides a null terminated byte string containing the stock keeping
- * unit number. It is usually used by stores to track inventory.
- * The SKU is a part of AWLAN_Node table.
- * If cloud doesn't support SKU for this target, this function should
- * return false. The fixed SKU can be provided by setting CONFIG_TARGET_FIXED_SKU
- * and CONFIG_TARGET_SKU_STRING.
- *
- * @param buff   pointer to a string buffer
- * @param buffsz size of string buffer
- * @return true on success
- */
-bool target_sku_get(void *buff, size_t buffsz);
-
-/**
- * @brief Return device model
- *
- * This function provides a null terminated byte string containing the device model.
- * The device model is a part of AWLAN_Node table.
- * For example, this function may return just the serial number (see target_serial_get()).
- * The fixed model name can be provided by setting CONFIG_TARGET_MODEL_GET and
- * CONFIG_TARGET_MODEL. It is safe to return false here. The TARGET_NAME will be used
- * as a model name in that case.
- *
- * @param buff   pointer to a string buffer
- * @param buffsz size of string buffer
- * @return true on success
- */
-bool target_model_get(void *buff, size_t buffsz);
-
-/**
- * @brief Return software version number
- *
- * This function provides a null terminated byte string containing the software version number.
- * Expected format: VERSION-BUILD_NUMBER-gGITSHA-PROFILE
- * Sample: 1.0.0.0-200-g1a2b3c-devel
- *
- * @param buff   pointer to a string buffer
- * @param buffsz size of string buffer
- * @return true on success
- */
-bool target_sw_version_get(void *buff, size_t buffsz);
-
-/**
- * @brief Return hardware version number
- *
- * This function provides a null terminated byte string containing the hardware
- * version number. The hardware version is a part of AWLAN_Node table.
- * If not needed this function should return false.
- * Fixed HWREV can be provided by setting CONFIG_TARGET_FIXED_HWREV and
- * CONFIG_TARGET_FIXED_HWREV_STRING.
- *
- * @param buff   pointer to a string buffer
- * @param buffsz size of string buffer
- * @return true on success
- */
-bool target_hw_revision_get(void *buff, size_t buffsz);
-
-/**
- * @brief Return platform version number
- *
- * This function provides a null terminated byte string containing the platform
- * version number. The platform version number is a part of AWLAN_Node table.
- * If not needed this function should return false.
- *
- * @param buff   pointer to a string buffer
- * @param buffsz size of string buffer
- * @return true on success
- */
-bool target_platform_version_get(void *buff, size_t buffsz);
-
-/// @} LIB_TARGET_ENTITY
 
 /// @defgroup LIB_TARGET_MAP Interface Mapping API
 /// API for mapping of interface names that the cloud uses to actual interface
@@ -447,6 +337,19 @@ bool target_log_open(char *name, int flags);
  * @return true on success
  */
 bool target_log_pull(const char *upload_location, const char *upload_token);
+
+/**
+ * @brief Collect logs (using specified method).
+ *
+ * An extended variant of the basic target_log_pull() function.
+ *
+ * @param upload_location      URL
+ * @param upload_token         filename to upload
+ * @param upload_method        method/procedure required to upload a logpull
+ *                             with the specified type of URL.
+ * @return true on success
+ */
+bool target_log_pull_ext(const char *upload_location, const char *upload_token, const char *upload_method);
 
 /// @cond INTERNAL
 /**

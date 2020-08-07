@@ -1,0 +1,21 @@
+if OSP_OBJM_OBJMFS
+
+menuconfig OBJMFS_ENABLED
+    bool "OBJMFS Backend"
+    default n
+    help
+        OBJMFS is short for Object management file system and is a library
+        that implements object management on read-write filesystem
+
+    comment "OBJMFS Options"
+        depends on OBJMFS_ENABLED
+
+    config OBJMFS_DIR
+        depends on OBJMFS_ENABLED
+        string "Folder location"
+        default "$(INSTALL_PREFIX)/storage"
+        help
+            Folder location where installed objects are stored. Objects are
+            stored in sub-folders as <name>/<version>
+
+endif

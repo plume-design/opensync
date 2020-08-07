@@ -44,13 +44,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /*
  * ===========================================================================
- *  Inet Ethernet implementation for Linux
+ *  Inet Ethernet implementation
  * ===========================================================================
  */
 static bool inet_eth_dtor(inet_t *super);
 static osn_netif_status_fn_t inet_eth_netif_status_fn;
 static osn_ip_status_fn_t inet_eth_ip4_status_fn;
-static void inet_eth_netif_async_fn(struct ev_loop *loop, ev_async *w, int revents);
+static bool inet_eth_service_IF_READY(inet_eth_t *self, bool enable);
+static bool inet_eth_network_start(inet_eth_t *self, bool enable);
 
 /*
  * ===========================================================================
@@ -65,7 +66,7 @@ inet_t *inet_eth_new(const char *ifname)
 {
     inet_eth_t *self;
 
-    self = calloc(1, sizeof(*self));
+    self = malloc(sizeof(*self));
     if (self == NULL)
     {
         goto error;
@@ -95,14 +96,11 @@ bool inet_eth_init(inet_eth_t *self, const char *ifname)
     }
 
     /* Interface existence will be detected, assume it doesn't exist for now */
-    inet_unit_stop(self->base.in_units, INET_BASE_IF_EXISTS);
+    inet_unit_stop(self->base.in_units, INET_BASE_IF_READY);
 
     /* Override inet_t class methods */
     self->inet.in_dtor_fn = inet_eth_dtor;
     self->base.in_service_commit_fn = inet_eth_service_commit;
-
-    ev_async_init(&self->in_netif_async, inet_eth_netif_async_fn);
-    ev_async_start(EV_DEFAULT, &self->in_netif_async);
 
     /*
      * Initialize osn_netif_t -- L2 interface for ethernet-like interfaces
@@ -110,7 +108,6 @@ bool inet_eth_init(inet_eth_t *self, const char *ifname)
     self->in_netif = osn_netif_new(ifname);
     osn_netif_data_set(self->in_netif, self);
     osn_netif_status_notify(self->in_netif, inet_eth_netif_status_fn);
-
 
     /*
      * Initialize osn_ip_t -- IPv4 interface configuration
@@ -124,27 +121,32 @@ bool inet_eth_init(inet_eth_t *self, const char *ifname)
 
 bool inet_eth_dtor(inet_t *super)
 {
-    bool retval;
-
     inet_eth_t *self = (void *)super;
 
-    /* Stop async status updater */
-    ev_async_stop(EV_DEFAULT, &self->in_netif_async);
+    return inet_eth_fini(self);
+}
 
-    retval = inet_base_dtor(super);
+bool inet_eth_fini(inet_eth_t *self)
+{
+    bool retval = true;
+
+    if (!inet_base_dtor(&self->inet))
+    {
+        retval = false;
+    }
 
     /* Dispose of the osn_netif_t class */
     if (self->in_netif != NULL && !osn_netif_del(self->in_netif))
     {
         LOG(WARN, "inet_eth: %s: Error detected during deletion of osn_netif_t instance.",
-                super->in_ifname);
+                self->inet.in_ifname);
         retval = false;
     }
 
     if (self->in_ip != NULL && !osn_ip_del(self->in_ip))
     {
         LOG(WARN, "inet_eth: %s: Error detected during deletion of osn_ip_t instance.",
-                super->in_ifname);
+                self->inet.in_ifname);
         retval = false;
     }
 
@@ -157,24 +159,16 @@ bool inet_eth_dtor(inet_t *super)
  *  Commit and service start & stop functions
  * ===========================================================================
  */
-bool inet_eth_interface_start(inet_eth_t *self, bool enable)
+
+
+bool inet_eth_service_IF_READY(inet_eth_t *self, bool enable)
 {
-    /* If the interface has not been started yet, return */
-    if (!enable) return true;
+    (void)enable;
 
     /*
-     * Just check if the interface exists -- report an error otherwise so no
-     * other services will be started.
+     * By default just bring the interface down
      */
-    if (!self->base.in_state.in_interface_exists)
-    {
-        LOG(NOTICE, "inet_eth: %s: Interface does not exists. Stopping.",
-                self->inet.in_ifname);
-
-        return false;
-    }
-
-    return true;
+    return inet_eth_network_start(self, false);
 }
 
 /**
@@ -401,8 +395,12 @@ bool inet_eth_service_commit(inet_base_t *super, enum inet_base_services srv, bo
 
     switch (srv)
     {
-        case INET_BASE_IF_CREATE:
-            return inet_eth_interface_start(self, enable);
+        case INET_BASE_IF_READY:
+            if (!inet_eth_service_IF_READY(self, enable))
+            {
+                return false;
+            }
+            break;
 
         case INET_BASE_NETWORK:
             return inet_eth_network_start(self, enable);
@@ -417,16 +415,11 @@ bool inet_eth_service_commit(inet_base_t *super, enum inet_base_services srv, bo
             return inet_eth_mtu_start(self, enable);
 
         default:
-            LOG(DEBUG, "inet_eth: %s: Delegating service %s %s to inet_base.",
-                    self->inet.in_ifname,
-                    inet_base_service_str(srv),
-                    enable ? "start" : "stop");
-
-            /* Delegate everything else to inet_base() */
-            return inet_base_service_commit(super, srv, enable);
+            break;
     }
 
-    return true;
+    /* Delegate the service handling to the parent class */
+    return inet_base_service_commit(super, srv, enable);
 }
 
 /*
@@ -456,7 +449,7 @@ void inet_eth_netif_status_fn(osn_netif_t *netif, struct osn_netif_status *statu
 
     inet_base_state_update(&self->base);
 
-    enabled = inet_unit_is_enabled(self->base.in_units, INET_BASE_IF_EXISTS);
+    enabled = inet_unit_is_enabled(self->base.in_units, INET_BASE_IF_READY);
     if (enabled != self->base.in_state.in_interface_exists)
     {
         if (self->base.in_state.in_interface_exists)
@@ -476,17 +469,10 @@ void inet_eth_netif_status_fn(osn_netif_t *netif, struct osn_netif_status *statu
          */
         inet_unit_enable(
                 self->base.in_units,
-                INET_BASE_IF_EXISTS,
+                INET_BASE_IF_READY,
                 self->base.in_state.in_interface_exists);
 
-        /*
-         * Since this function is called soon after a osn_netif_notify() call, it
-         * can happen that this function is called within a inet_commit() code path.
-         *
-         * If we want to stop an non-existing interface, schedule an async event
-         * to do a delayed inet_commit().
-         */
-        ev_async_send(EV_DEFAULT, &self->in_netif_async);
+        inet_commit(&self->inet);
     }
 }
 
@@ -512,18 +498,3 @@ void inet_eth_ip4_status_fn(osn_ip_t *ip, struct osn_ip_status *status)
 
     inet_base_state_update(&self->base);
 }
-
-/*
- * Asynchronously process some netif events.
- *
- * Specifically, handle the interface exists flag here. Since the original netif
- * status handler can be called from inside a inet_commit(), defer processing
- * of some events to the main event loop.
- */
-void inet_eth_netif_async_fn(struct ev_loop *loop, ev_async *w, int revents)
-{
-    inet_eth_t *self = CONTAINER_OF(w, inet_eth_t, in_netif_async);
-
-    inet_commit(&self->inet);
-}
-

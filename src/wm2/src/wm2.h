@@ -40,28 +40,10 @@ extern ovsdb_table_t table_Openflow_Tag;
 
 int     wm2_radio_init(void);
 
-bool    wm2_clients_init(char *ssid);
-
 bool    wm2_clients_update(struct schema_Wifi_Associated_Clients *client,
                            char *vif,
                            bool associated);
 
 void wm2_radio_update_port_state(const char *cloud_vif_ifname);
-
-// v1 api:
-
-void callback_Wifi_Radio_Config_v1(
-        ovsdb_update_monitor_t          *mon,
-        struct schema_Wifi_Radio_Config *old_rec,
-        struct schema_Wifi_Radio_Config *rconf,
-        ovsdb_cache_row_t *row);
-
-void callback_Wifi_VIF_Config_v1(
-        ovsdb_update_monitor_t          *mon,
-        struct schema_Wifi_VIF_Config   *old_rec,
-        struct schema_Wifi_VIF_Config   *vconf,
-        ovsdb_cache_row_t               *row);
-
-void wm2_radio_config_init_v1();
 
 #endif /* WM2_H_INCLUDED */

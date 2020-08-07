@@ -47,6 +47,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fcm_report_filter.h"
 #include "imc.h"
 #include "neigh_table.h"
+#include "util.h"
+#include "fsm_dpi_utils.h"
+#include "nf_utils.h"
 
 #include <netdb.h>
 #include <sys/stat.h>
@@ -69,6 +72,16 @@ static struct imc_context g_imc_server =
 {
     .initialized = false,
     .endpoint = "ipc:///tmp/imc_fsm2fcm",
+};
+
+
+/**
+ * IMC server used for fsm -> fcm app list communication
+ */
+static struct imc_context g_imc_app_server =
+{
+    .initialized = false,
+    .endpoint = "ipc:///tmp/imc_fsm2fcm_app",
 };
 
 
@@ -161,6 +174,7 @@ static flow_stats_mgr_t g_ct_stats =
     .initialized = false,
 };
 
+static char *g_appname;
 
 /**
  * @brief compare sessions
@@ -1266,6 +1280,57 @@ ct_flow_add_sample(flow_stats_t *ct_stats)
     free_ct_flow_list(ct_stats);
 }
 
+
+void
+ct_stats_block_flow(struct net_md_stats_accumulator *acc)
+{
+    struct net_md_flow_key *key;
+    struct flow_key *fkey;
+    int af;
+
+    fkey = acc->fkey;
+    key = acc->key;
+    if (key == NULL) return;
+
+    af = 0;
+    if (key->ip_version == 4) af = AF_INET;
+    if (key->ip_version == 6) af = AF_INET6;
+    if (af == 0) return;
+
+    LOGI("%s: blocking flow src: %s, dst: %s, proto: %d, sport: %d, dport: %d",
+         __func__,
+         fkey->src_ip, fkey->dst_ip, fkey->protocol, fkey->sport, fkey->dport);
+
+    fsm_set_ip_dpi_state(NULL, key->src_ip, key->dst_ip,
+                         key->sport, key->dport,
+                         key->ipprotocol, af, FSM_DPI_DROP);
+    fsm_set_ip_dpi_state(NULL, key->dst_ip, key->src_ip,
+                         key->dport, key->sport,
+                         key->ipprotocol, af, FSM_DPI_DROP);
+}
+
+
+bool
+ct_stats_process_acc(struct net_md_stats_accumulator *acc)
+{
+    struct flow_tags *ftag;
+    struct flow_key *fkey;
+    size_t i;
+    int rc;
+
+    if (acc->fkey == NULL) return true;
+    fkey = acc->fkey;
+
+    for (i = 0; i < fkey->num_tags; i++)
+    {
+        ftag = fkey->tags[i];
+        rc = strcmp(ftag->app_name, g_appname);
+        if (rc == 0) ct_stats_block_flow(acc);
+    }
+    return true;
+}
+
+
 /**
  * @brief collector filter callback processing flows pushed from fsm
  *
@@ -1353,6 +1418,7 @@ alloc_aggr(flow_stats_t *ct_stats)
         LOGD("%s: Aggregator allocation failed", __func__);
         return -1;
     }
+    aggr->process = ct_stats_process_acc;
 
     ct_stats->aggr = aggr;
     collector->plugin_ctx = ct_stats;
@@ -1568,13 +1634,13 @@ ct_stats_plugin_close_cb(fcm_collect_plugin_t *collector)
 
 
 /**
- * @brief imc callobak processing the protobuf receivd from fsm
+ * @brief imc callback processing the protobuf received from fsm
  *
  * @param data a pointer to the protobuf
  * @param len the protobuf length
  */
 static void
-test_recv_cb(void *data, size_t len)
+proto_recv_cb(void *data, size_t len)
 {
     struct net_md_aggregator *aggr;
     struct packed_buffer recv_pb;
@@ -1591,6 +1657,38 @@ test_recv_cb(void *data, size_t len)
     recv_pb.buf = data;
     recv_pb.len = len;
     net_md_update_aggr(aggr, &recv_pb);
+}
+
+
+
+/**
+ * @brief imc callback processing the app name received from fsm
+ *
+ * @param data a pointer to the string
+ * @param len the protobuf length
+ */
+static void
+app_recv_cb(void *data, size_t len)
+{
+    flow_stats_t *ct_stats;
+    char *str;
+
+    ct_stats = ct_stats_get_active_instance();
+    if (ct_stats == NULL)
+    {
+        LOGD("%s: No active instance", __func__);
+        return;
+    }
+
+    str = calloc(1, len + 1);
+    if (str == NULL) return;
+
+    strscpy(str, (char *)data, len + 1);
+    LOGI("%s: received app name %s", __func__, str);
+    g_appname = str;
+    net_md_process_aggr(ct_stats->aggr);
+    g_appname = NULL;
+    free(str);
 }
 
 
@@ -1613,7 +1711,17 @@ ct_stats_imc_init(void)
     /* Start the server */
     server->ztype = IMC_PULL;
     loop = g_ct_stats.loop;
-    rc = ct_stats_init_server(server, loop, test_recv_cb);
+    rc = ct_stats_init_server(server, loop, proto_recv_cb);
+    if (rc != 0) goto err_init_imc;
+
+    server->initialized = true;
+
+    server = &g_imc_app_server;
+
+    /* Start the server */
+    server->ztype = IMC_PULL;
+    loop = g_ct_stats.loop;
+    rc = ct_stats_init_server(server, loop, app_recv_cb);
     if (rc != 0) goto err_init_imc;
 
     server->initialized = true;

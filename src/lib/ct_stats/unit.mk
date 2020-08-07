@@ -65,4 +65,5 @@ UNIT_DEPS += src/lib/log
 UNIT_DEPS += src/lib/fcm_filter
 UNIT_DEPS += src/lib/ustack
 UNIT_DEPS += src/lib/nf_utils
+UNIT_DEPS += src/lib/fsm_utils
 UNIT_DEPS += src/lib/neigh_table

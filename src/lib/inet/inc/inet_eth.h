@@ -51,6 +51,7 @@ struct __inet_eth
 
 extern inet_t *inet_eth_new(const char *ifname);
 extern bool inet_eth_init(inet_eth_t *self, const char *ifname);
+extern bool inet_eth_fini(inet_eth_t *self);
 
 extern bool inet_eth_mtu_set(inet_t *super, int mtu);
 extern bool inet_eth_service_commit(inet_base_t *super, enum inet_base_services srv, bool enable);

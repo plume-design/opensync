@@ -48,9 +48,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 static fcm_plugin_filter_t filtername;
 
 
-static
-void net_md_print_net_md_flow_key_and_flow_key(struct net_md_flow_key *key,
-                                          struct flow_key *fkey);
 /**
  * @brief initialization function filter name.
  *
@@ -76,116 +73,7 @@ static void print_md_acc_key(struct net_md_stats_accumulator *md_acc)
     LOGT("net_md_stats_accumulator=%p key=%p fkey=%p",
             md_acc, md_acc->key, md_acc->fkey);
 
-    net_md_print_net_md_flow_key_and_flow_key(md_acc->key, md_acc->fkey);
-
-    LOGT("report_counter packets_count = %" PRIu64 "bytes_count = %"PRIu64,
-         md_acc->report_counters.packets_count,
-         md_acc->report_counters.bytes_count);
-}
-
-
-/**
- * @brief print function net_md_stats_accumulator's key and fkey.
- *
- * receive net_md_stats_accumulator and fill the structure for report filter.
- *
- * @param valid pointer to net_md_flow_key and flow_key.
- * @return void.
- */
-static
-void net_md_print_net_md_flow_key_and_flow_key(struct net_md_flow_key *key,
-                                               struct flow_key *fkey)
-{
-    char src_ip[INET6_ADDRSTRLEN] = {0};
-    char dst_ip[INET6_ADDRSTRLEN] = {0};
-    struct flow_tags *ftag;
-    os_macaddr_t null_mac;
-    os_macaddr_t *smac;
-    os_macaddr_t *dmac;
-    size_t i, j;
-    int af;
-
-    memset(&null_mac, 0, sizeof(null_mac));
-
-    if (key != NULL)
-    {
-        af = key->ip_version == 4 ? AF_INET : AF_INET6;
-        inet_ntop(af, key->src_ip, src_ip, INET6_ADDRSTRLEN);
-        inet_ntop(af, key->dst_ip, dst_ip, INET6_ADDRSTRLEN);
-
-        smac = (key->smac != NULL ? key->smac : &null_mac);
-        dmac = (key->dmac != NULL ? key->dmac : &null_mac);
-
-        LOGD("%s: Printing key => net_md_flow_key :: fkey => flow_key",
-             __func__);
-        LOGD("------------");
-        LOGD(" smac:" PRI_os_macaddr_lower_t \
-             " dmac:" PRI_os_macaddr_lower_t \
-             " vlanid: %d"                   \
-             " ethertype: %d"                \
-             " ip_version: %d"               \
-             " src_ip: %s"                   \
-             " dst_ip: %s"                   \
-             " ipprotocol: %d"               \
-             " sport: %d"                    \
-             " dport: %d",
-             FMT_os_macaddr_pt(smac),
-             FMT_os_macaddr_pt(dmac),
-             key->vlan_id,
-             key->ethertype,
-             key->ip_version,
-             src_ip,
-             dst_ip,
-             key->ipprotocol,
-             ntohs(key->sport),
-             ntohs(key->dport));
-        if (key->fstart) LOGD(" Flow Starts");
-        if (key->fend) LOGD(" Flow Ends");
-        LOGD("------------");
-    }
-    if (fkey != NULL)
-    {
-        /* LOGD("%s: Printing fkey => flow_key", __func__); */
-        LOGD(" smac: %s"      \
-             " dmac: %s"      \
-             " vlanid: %d"    \
-             " ethertype: %d" \
-             " ip_version: %d"\
-             " src_ip: %s"    \
-             " dst_ip: %s"    \
-             " protocol: %d"  \
-             " sport: %d"     \
-             " dport: %d",
-             fkey->smac,
-             fkey->dmac,
-             fkey->vlan_id,
-             fkey->ethertype,
-             fkey->ip_version,
-             fkey->src_ip,
-             fkey->dst_ip,
-             fkey->protocol,
-             fkey->sport,
-             fkey->dport);
-        LOGD(" Flow State:");
-        LOGD(" First observed : %s", ctime(&fkey->state.first_obs));
-        LOGD(" Last  observed : %s", ctime(&fkey->state.last_obs));
-        if (fkey->state.fstart) LOGD(" Flow Starts");
-        if (fkey->state.fend) LOGD(" Flow Ends");
-        for (i = 0; i < fkey->num_tags; i++)
-        {
-            ftag = fkey->tags[i];
-            LOGD(" vendor: %s" \
-                 " app_name: %s",
-                 ftag->vendor,
-                 ftag->app_name);
-            for (j = 0; j < ftag->nelems; j++)
-            {
-                LOGD(" tag[%zu]: %s",
-                     j, ftag->tags[j]);
-            }
-        }
-        LOGD("------------");
-    }
+    net_md_log_acc(md_acc);
 }
 
 

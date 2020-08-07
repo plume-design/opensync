@@ -41,8 +41,19 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define VIF_TYPE_NAME    "vif"
 #define ETH_TYPE_NAME    "eth"
 #define VLAN_TYPE_NAME   "vlan"
+#define PPPOE_TYPE_NAME  "pppoe"
 #define GRE_TYPE_NAME    "gre"
 #define BRIDGE_TYPE_NAME "bridge"
+
+#ifdef CONFIG_TARGET_USE_WAN_BRIDGE
+#ifdef CONFIG_TARGET_WAN_BRIDGE_NAME
+#define CM2_WAN_BRIDGE_NAME CONFIG_TARGET_WAN_BRIDGE_NAME
+#else
+#define CM2_WAN_BRIDGE_NAME SCHEMA_CONSTS_BR_NAME_WAN
+#endif /* CONFIG_TARGET_WAN_BRIDGE_NAME */
+#else
+#define CM2_WAN_BRIDGE_NAME ""
+#endif /* CONFIG_TARGET_USE_WAN_BRIDGE */
 
 typedef enum
 {
@@ -98,6 +109,15 @@ typedef enum
 #define CM2_HOSTNAME_MAX 256
 #define CM2_PROTO_MAX 6
 
+#ifdef BUILD_HAVE_LIBCARES
+typedef struct
+{
+    char            addr[INET6_ADDRSTRLEN];
+    int             addr_type;
+    ds_list_node_t  le_node;
+} cm2_addr_list_entry;
+#endif
+
 typedef struct
 {
     bool updated;
@@ -111,15 +131,8 @@ typedef struct
     struct addrinfo *ai_list;
     struct addrinfo *ai_curr;
 #else
-    /* h_addr_list comes from hostent structure which
-     * is defined in <netdb.h>
-     * An array of pointers to network addresses for the host (in
-     * network byte order), terminated by a null pointer.
-     * */
-    char **h_addr_list;
-    int h_length;
-    int h_addrtype;
-    int h_cur_idx;
+    ds_dlist_t addr_list;
+    cm2_addr_list_entry *cur;
 #endif
 } cm2_addr_t;
 
@@ -137,17 +150,32 @@ typedef struct {
     int              blocked_tag;
 } cm2_vtag_t;
 
+typedef enum {
+    CM2_IP_NOT_SET,
+    CM2_IP_NONE,
+    CM2_IP_STATIC,
+    CM2_IPV4_DHCP,
+    CM2_IPV6_DHCP,
+} cm2_ip_assign_scheme;
+
+typedef struct {
+    cm2_ip_assign_scheme ips;
+    bool                 is_ipa;
+} cm2_ip;
+
 typedef struct
 {
     char        if_name[IFNAME_SIZE];
     char        if_type[IFTYPE_SIZE];
-    bool        has_L3;
+    bool        is_bridge;
+    char        bridge_name[IFNAME_SIZE];
     bool        is_used;
     bool        restart_pending;
     int         priority;
-    bool        is_ip;
+    cm2_ip      ip;
     bool        is_limp_state;
     bool        gretap_softwds;
+    char        gateway_hwaddr[OS_MACSTR_SZ];
     cm2_vtag_t  vtag;
 } cm2_main_link_t;
 
@@ -183,6 +211,7 @@ typedef struct
     bool              fast_reconnect;
     bool              resolve_retry;
     int               resolve_retry_cnt;
+    int               gw_offline_cnt;
 } cm2_state_t;
 
 extern cm2_state_t g_state;
@@ -236,6 +265,13 @@ bool cm2_ovsdb_connection_update_loop_state(const char *if_name, bool state);
 bool cm2_ovsdb_WiFi_Inet_State_is_ip(const char *if_name);
 void cm2_ovsdb_connection_clean_link_counters(char *if_name);
 bool cm2_ovsdb_validate_bridge_port_conf(char *bname, char *pname);
+bool cm2_ovsdb_is_ipv6_global_link(const char *if_name);
+void cm2_ovsdb_set_dhcp_client(const char *if_name, bool enabled);
+bool cm2_ovsdb_is_gw_offline_ready(void);
+bool cm2_ovsdb_enable_gw_offline_conf(void);
+bool cm2_ovsdb_disable_gw_offline_conf(void);
+int  cm2_get_link_ip(char *if_name, cm2_ip *ip);
+
 #ifdef CONFIG_CM2_USE_EXTRA_DEBUGS
 void cm2_ovsdb_dump_debug_data(void);
 #else
@@ -308,6 +344,24 @@ static inline void cm2_wdt_close(struct ev_loop *loop)
 }
 #endif /* CONFIG_CM2_USE_WDT */
 
+static inline bool cm2_is_wan_bridge(void)
+{
+#ifdef CONFIG_TARGET_USE_WAN_BRIDGE
+    return true;
+#else
+    return false;
+#endif
+}
+
+static inline bool cm2_is_wan_link_management(void)
+{
+#ifdef CONFIG_CM2_USE_WAN_LINK_MANAGEMENT
+    return true;
+#else
+    return false;
+#endif
+}
+
 // net
 int  cm2_ovs_insert_port_into_bridge(char *bridge, char *port, int flag_add);
 void cm2_dhcpc_start_dryrun(char* ifname, char *iftype, int cnt);
@@ -316,4 +370,6 @@ bool cm2_is_eth_type(const char *if_type);
 bool cm2_is_wifi_type(const char *if_type);
 void cm2_delayed_eth_update(char *if_name, int timeout);
 bool cm2_is_iface_in_bridge(const char *bridge, const char *port);
+char* cm2_get_uplink_name(void);
+void cm2_update_limp_state(void);
 #endif /* CM2_H_INCLUDED */

@@ -56,6 +56,7 @@ typedef struct fcm_collect_plugin_
     int sample_interval;
     int report_interval;
     void (*collect_periodic)(struct fcm_collect_plugin_ *);
+    void (*periodic)(struct fcm_collect_plugin_ *);
     void (*send_report)(struct fcm_collect_plugin_ *);
     void (*close_plugin)(struct fcm_collect_plugin_ *);
     char * (*get_mqtt_hdr_node_id)(void);

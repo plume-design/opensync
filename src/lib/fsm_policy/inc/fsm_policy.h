@@ -184,7 +184,8 @@ struct fqdn_pending_req
     int cat_match;
     int risk_level;
     int action;
-    char *update_tag;
+    char *updatev4_tag;
+    char *updatev6_tag;
     bool redirect;
     int rd_ttl;
     char *policy;
@@ -226,7 +227,8 @@ struct fsm_policy_reply
     char *policy;        /* the last matching policy */
     int policy_idx;      /* the policy index */
     char *rule_name;     /* the last matching rule name with the policy */
-    char *update_tag;    /* Tag to store results with if any */
+    char *updatev4_tag;  /* Tag to store ipv4 dns results with if any */
+    char *updatev6_tag;  /* Tag to store ipv6 dns results with if any */
 };
 
 
@@ -349,7 +351,7 @@ void fsm_add_policy(struct schema_FSM_Policy *spolicy);
 void fsm_delete_policy(struct schema_FSM_Policy *spolicy);
 void fsm_update_policy(struct schema_FSM_Policy *spolicy);
 void fsm_free_policy(struct fsm_policy *fpolicy);
-struct policy_table *fsm_policy_select_table(void);
+struct policy_table *fsm_policy_find_table(char *name);
 void fsm_apply_policies(struct fsm_session *session,
                         struct fsm_policy_req *req);
 bool fsm_fqdncats_in_set(struct fsm_policy_req *req, struct fsm_policy *p);

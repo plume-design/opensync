@@ -460,6 +460,10 @@ neigh_table_add_to_cache(struct neighbour_entry *to_add)
     {
         LOGD("%s: entry already exists", __func__);
         print_neigh_entry(entry);
+
+        /* Refresh timestamp */
+        entry->cache_valid_ts = to_add->cache_valid_ts;
+
         return NULL;
     }
 
@@ -482,6 +486,8 @@ neigh_table_add_to_cache(struct neighbour_entry *to_add)
     memcpy(entry->mac, to_add->mac, sizeof(os_macaddr_t));
     entry->source = to_add->source;
     entry->ifindex = to_add->ifindex;
+    entry->cache_valid_ts = to_add->cache_valid_ts;
+
     neigh_table_set_entry(entry);
     LOGT("%s: adding to cache: ", __func__);
     print_neigh_entry(entry);
@@ -711,6 +717,53 @@ bool neigh_table_lookup(struct sockaddr_storage *ip_in, os_macaddr_t *mac_out)
     if (LOG_SEVERITY_ENABLED(LOG_SEVERITY_TRACE)) print_neigh_table();
 
     return ret;
+}
+
+
+/**
+ * @brief remove old cache entres added by fsm
+ *
+ * @param ttl the cache entry time to live
+ */
+void neigh_table_ttl_cleanup(int64_t ttl, uint32_t source_mask)
+{
+    struct neigh_table_mgr *mgr = neigh_table_get_mgr();
+    struct neighbour_entry *remove_node;
+    struct neighbour_entry *entry_node;
+    ds_tree_t *tree;
+    time_t now;
+
+    if (!mgr->initialized) return;
+
+    now = time(NULL);
+    tree = &mgr->neigh_table;
+    entry_node = ds_tree_head(tree);
+    while (entry_node != NULL)
+    {
+        /* We are only interested in the fsm added entries */
+        if (!(entry_node->source & source_mask))
+        {
+            entry_node = ds_tree_next(tree, entry_node);
+            continue;
+        }
+
+        if ((now - entry_node->cache_valid_ts) < ttl)
+        {
+            entry_node = ds_tree_next(tree, entry_node);
+            continue;
+        }
+
+        remove_node = entry_node;
+
+        if (mgr->update_ovsdb_tables)
+        {
+            mgr->update_ovsdb_tables(remove_node, true);
+        }
+
+        entry_node = ds_tree_next(tree, entry_node);
+        ds_tree_remove(tree, remove_node);
+        free_neigh_entry(remove_node);
+    }
 }
 
 

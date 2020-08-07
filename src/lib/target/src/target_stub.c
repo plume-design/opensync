@@ -66,60 +66,6 @@ bool target_close(target_init_opt_t opt, struct ev_loop *loop)
 }
 #endif
 
-/******************************************************************************
- * Identity
- *****************************************************************************/
-
-#ifndef IMPL_target_serial_get
-bool target_serial_get(void *buff, size_t buffsz)
-{
-    strscpy(((char*)buff), "STUB_SERIAL", buffsz);
-    return true;
-}
-#endif
-
-#ifndef IMPL_target_id_get
-bool target_id_get(void *buff, size_t buffsz)
-{
-    return target_serial_get(buff, buffsz);
-}
-#endif
-
-#ifndef IMPL_target_sku_get
-bool target_sku_get(void *buff, size_t buffsz)
-{
-    return false;
-}
-#endif
-
-#ifndef IMPL_target_model_get
-bool target_model_get(void *buff, size_t buffsz)
-{
-    return false;
-}
-#endif
-
-#ifndef IMPL_target_sw_version_get
-bool target_sw_version_get(void *buff, size_t buffsz)
-{
-    snprintf(buff, buffsz, "%s", app_build_ver_get());
-    return true;
-}
-#endif
-
-#ifndef IMPL_target_hw_revision_get
-bool target_hw_revision_get(void *buff, size_t buffsz)
-{
-    return false;
-}
-#endif
-
-#ifndef IMPL_target_platform_version_get
-bool target_platform_version_get(void *buff, size_t buffsz)
-{
-    return false;
-}
-#endif
 
 #ifndef IMPL_target_log_open
 bool target_log_open(char *name, int flags)
@@ -130,6 +76,13 @@ bool target_log_open(char *name, int flags)
 
 #ifndef IMPL_target_log_pull
 bool target_log_pull(const char *upload_location, const char *upload_token)
+{
+    return true;
+}
+#endif
+
+#ifndef IMPL_target_log_pull_ext
+bool target_log_pull_ext(const char *upload_location, const char *upload_token, const char *upload_method)
 {
     return true;
 }
@@ -247,18 +200,6 @@ bool target_radio_init(const struct target_radio_ops *ops)
 }
 #endif
 
-#ifndef IMPL_target_radio_config_init
-bool target_radio_config_init(ds_dlist_t *init_cfg)
-{
-    memset(init_cfg, 0, sizeof(*init_cfg));
-    return false;
-}
-#else
-#if __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6)
-#pragma message("target_radio_config_init is deprecated")
-#endif
-#endif
-
 #ifndef IMPL_target_radio_config_init2
 bool target_radio_config_init2(void)
 {
@@ -273,34 +214,12 @@ bool target_radio_config_need_reset(void)
 }
 #endif
 
-#ifndef IMPL_target_radio_config_set
-bool target_radio_config_set(char *ifname, struct schema_Wifi_Radio_Config *rconf)
-{
-  return true;
-}
-#else
-#if __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6)
-#pragma message("target_radio_config_set is deprecated")
-#endif
-#endif
-
 #ifndef IMPL_target_radio_config_set2
 bool target_radio_config_set2(const struct schema_Wifi_Radio_Config *rconf,
                               const struct schema_Wifi_Radio_Config_flags *changed)
 {
   return true;
 }
-#endif
-
-#ifndef IMPL_target_radio_config_get
-bool target_radio_config_get(char *ifname, struct schema_Wifi_Radio_Config *rconf)
-{
-  return true;
-}
-#else
-#if __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6)
-#pragma message("target_radio_config_get is deprecated")
-#endif
 #endif
 
 #ifndef IMPL_target_radio_state_get
@@ -311,28 +230,6 @@ bool target_radio_state_get(char *ifname, struct schema_Wifi_Radio_State *rstate
 #else
 #if __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6)
 #pragma message("target_radio_state_get is deprecated")
-#endif
-#endif
-
-#ifndef IMPL_target_radio_state_register
-bool target_radio_state_register(char  *ifname, target_radio_state_cb_t *rstate_cb)
-{
-  return true;
-}
-#else
-#if __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6)
-#pragma message("target_radio_state_register is deprecated")
-#endif
-#endif
-
-#ifndef IMPL_target_radio_config_register
-bool target_radio_config_register(char  *ifname, target_radio_config_cb_t *rconf_cb)
-{
-  return true;
-}
-#else
-#if __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6)
-#pragma message("target_radio_config_register is deprecated")
 #endif
 #endif
 
@@ -352,17 +249,6 @@ const char *target_wan_interface_name()
  * VIF
  *****************************************************************************/
 
-#ifndef IMPL_target_vif_config_set
-bool target_vif_config_set (char *ifname, struct schema_Wifi_VIF_Config *vconf)
-{
-    return true;
-}
-#else
-#if __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6)
-#pragma message("target_vif_config_set is deprecated")
-#endif
-#endif
-
 #ifndef IMPL_target_vif_config_set2
 bool target_vif_config_set2(const struct schema_Wifi_VIF_Config *vconf,
                             const struct schema_Wifi_Radio_Config *rconf,
@@ -374,17 +260,6 @@ bool target_vif_config_set2(const struct schema_Wifi_VIF_Config *vconf,
 }
 #endif
 
-#ifndef IMPL_target_vif_config_get
-bool target_vif_config_get(char *ifname, struct schema_Wifi_VIF_Config *vconf)
-{
-    return true;
-}
-#else
-#if __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6)
-#pragma message("target_vif_config_get is deprecated")
-#endif
-#endif
-
 #ifndef IMPL_target_vif_state_get
 bool target_vif_state_get(char  *ifname, struct schema_Wifi_VIF_State *vstate)
 {
@@ -393,43 +268,6 @@ bool target_vif_state_get(char  *ifname, struct schema_Wifi_VIF_State *vstate)
 #else
 #if __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6)
 #pragma message("target_vif_state_get is deprecated")
-#endif
-#endif
-
-#ifndef IMPL_target_vif_state_register
-bool target_vif_state_register(char *ifname, target_vif_state_cb_t *vstate_cb)
-{
-    return true;
-}
-#else
-#if __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6)
-#pragma message("target_vif_state_register is deprecated")
-#endif
-#endif
-
-#ifndef IMPL_target_vif_config_register
-bool target_vif_config_register(char  *ifname, target_vif_config_cb_t *rconf_cb)
-{
-    return true;
-}
-#else
-#if __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6)
-#pragma message("target_vif_config_register is deprecated")
-#endif
-#endif
-
-/******************************************************************************
- *  CLIENTS definitions
- *****************************************************************************/
-
-#ifndef IMPL_target_clients_register
-bool target_clients_register(char *ifname, target_clients_cb_t *clients_update_cb)
-{
-    return true;
-}
-#else
-#if __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6)
-#pragma message("target_clients_register is deprecated")
 #endif
 #endif
 

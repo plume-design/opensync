@@ -120,6 +120,22 @@ struct schema_FSM_Policy g_spolicies[] =
         .action = "allow",
         .log_exists = true,
         .log = "all",
+    },
+    { /* entry 2. Always matching, action is update tag. */
+        .policy_exists = true,
+        .policy = "test_policy",
+        .name = "test_policy_update",
+        .idx = 0,
+        .mac_op_exists = false,
+        .fqdn_op_exists = false,
+        .fqdncat_op_exists = false,
+        .action_exists = true,
+        .action = "update_tag",
+        .log_exists = true,
+        .log = "all",
+        .other_config_len = 2,
+        .other_config_keys = { "tagv4_name", "tagv6_name",},
+        .other_config = { "upd_v4_tag", "upd_v6_tag"},
     }
 };
 
@@ -261,6 +277,14 @@ test_dns_forward(struct dns_session *dns_session, dns_info *dns_info,
 
 
 void
+test_dns_update_tag(struct fqdn_pending_req *req)
+{
+    LOGI("%s: here", __func__);
+    TEST_ASSERT_EQUAL_STRING(req->updatev4_tag, "upd_v4_tag");
+}
+
+
+void
 test_dns_policy_init(void)
 {
     fsm_init_manager();
@@ -278,7 +302,6 @@ void setUp(void)
 {
     struct schema_Flow_Service_Manager_Config *conf;
     struct schema_FSM_Policy *spolicy;
-    struct dns_session *dns_session;
     struct fsm_policy_session *mgr;
     ds_tree_t *sessions;
     size_t nelems;
@@ -321,11 +344,10 @@ void setUp(void)
     g_dns_mgr = dns_get_mgr();
     g_dns_mgr->set_forward_context = test_set_fwd_context;
     g_dns_mgr->forward = test_dns_forward;
+    g_dns_mgr->update_tag = test_dns_update_tag;
     g_dns_mgr->policy_init = test_dns_policy_init;
 
     dns_plugin_init(g_fsm_parser);
-    dns_session = (struct dns_session *)(g_fsm_parser->handler_ctxt);
-    dns_session->provider_ops = &g_plugin_ops.web_cat_ops;
 
     g_ipv4_cnt = 0;
 
@@ -477,6 +499,47 @@ test_type_A_query_response(void)
 }
 
 /**
+ * @brief test type A dns query and response
+ */
+void
+test_type_A_query_response_update_tag(void)
+{
+    struct net_header_parser *net_parser;
+    struct dns_session *dns_session;
+    size_t len;
+
+    dns_session = dns_lookup_session(g_fsm_parser);
+    TEST_ASSERT_NOT_NULL(dns_session);
+
+    net_parser = calloc(1, sizeof(*net_parser));
+    TEST_ASSERT_NOT_NULL(net_parser);
+
+    /* Process query */
+    PREPARE_UT(pkt46, net_parser);
+    len = net_header_parse(net_parser);
+    TEST_ASSERT_TRUE(len != 0);
+    dns_handler(g_fsm_parser, net_parser);
+
+    /*
+     * The captured dns answer has 8 resolved IP addresses.
+     * Set validation expectations
+     */
+    g_ipv4_cnt = 8;
+
+    /* Process response */
+    memset(net_parser, 0, sizeof(*net_parser));
+    PREPARE_UT(pkt47, net_parser);
+    len = net_header_parse(net_parser);
+    TEST_ASSERT_TRUE(len != 0);
+    dns_handler(g_fsm_parser, net_parser);
+
+    g_dns_mgr->req_cache_ttl = 0;
+    dns_retire_reqs(g_fsm_parser);
+
+    free(net_parser);
+}
+
+/**
  * @brief test type A duplicate dns query single response
  */
 void
@@ -586,6 +649,7 @@ int main(int argc, char *argv[])
     RUN_TEST(test_type_A_query);
     RUN_TEST(test_type_PTR_query);
     RUN_TEST(test_type_A_query_response);
+    RUN_TEST(test_type_A_query_response_update_tag);
     RUN_TEST(test_type_A_duplicate_query_response);
     RUN_TEST(test_type_A_duplicate_query_duplicate_response);
 

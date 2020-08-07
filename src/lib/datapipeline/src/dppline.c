@@ -31,10 +31,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <unistd.h>
 
 #include "target.h"
+#include "osp_unit.h"
 #include "dppline.h"
 #include "ds.h"
 #include "ds_dlist.h"
-#include "log.h"
 #include "opensync_stats.pb-c.h"
 
 #include "dpp_client.h"
@@ -680,7 +680,7 @@ static char * getNodeid()
         return NULL;
     }
 
-    if (!target_id_get(buff, TARGET_ID_SZ))
+    if (!osp_unit_id_get(buff, TARGET_ID_SZ))
     {
         LOG(ERR, "Error acquiring node id.");
         free(buff);
@@ -796,7 +796,8 @@ static void dppline_add_stat_survey(Sts__Report *r, dppline_stats_t *s)
 
             dr->channel = rec->info.chan;
 
-            Sts__AvgType   *davg;
+            Sts__AvgType         *davg;
+            Sts__AvgTypeSigned   *davgs;
 #define CP_AVG(_name, _name1) do { \
         if (rec->_name1.avg) { \
             davg = dr->_name = malloc(sizeof(*dr->_name)); \
@@ -817,13 +818,35 @@ static void dppline_add_stat_survey(Sts__Report *r, dppline_stats_t *s)
         } \
     } while (0)
 
+#define CP_AVG_SIGNED(_name, _name1) do { \
+        if (rec->_name1.avg) { \
+            davgs = dr->_name = malloc(sizeof(*dr->_name)); \
+            sts__avg_type_signed__init(davgs); \
+            davgs->avg = rec->_name1.avg; \
+            if(rec->_name1.min) { \
+                davgs->min = rec->_name1.min; \
+                davgs->has_min = true;; \
+            } \
+            if(rec->_name1.max) { \
+                davgs->max = rec->_name1.max; \
+                davgs->has_max = true;; \
+            } \
+            if(rec->_name1.num) { \
+                davgs->num = rec->_name1.num; \
+                davgs->has_num = true;; \
+            } \
+        } \
+    } while (0)
+
             CP_AVG(busy,       chan_busy);
             CP_AVG(busy_tx,    chan_tx);
             CP_AVG(busy_self,  chan_self);
             CP_AVG(busy_rx,    chan_rx);
             CP_AVG(busy_ext,   chan_busy_ext);
+            CP_AVG_SIGNED(noise_floor,chan_noise);
 
 #undef CP_AVG
+#undef CP_AVG_SIGNED
         }
         /* LOG(DEBUG, "============= %s size raw: %d proto struct: %d", __FUNCTION__,
            sizeof(s->u.survey) + s->u.survey.numrec * sizeof(dpp_survey_record_avg_t),
@@ -859,6 +882,7 @@ static void dppline_add_stat_survey(Sts__Report *r, dppline_stats_t *s)
             CP_OPT(busy_self,  chan_self);
             CP_OPT(busy_rx,    chan_rx);
             CP_OPT(busy_ext,   chan_busy_ext);
+            CP_OPT(noise_floor,chan_noise);
 
 #undef CP_OPT
 
@@ -1134,6 +1158,14 @@ static void dppline_add_stat_client(Sts__Report *r, dppline_stats_t *s)
         if (rec->stats.rssi) {
             dr->stats->rssi = rec->stats.rssi;
             dr->stats->has_rssi = true;
+        }
+        if (rec->stats.rate_rx_perceived) {
+            dr->stats->rx_rate_perceived = rec->stats.rate_rx_perceived;
+            dr->stats->has_rx_rate_perceived = true;
+        }
+        if (rec->stats.rate_tx_perceived) {
+            dr->stats->tx_rate_perceived = rec->stats.rate_tx_perceived;
+            dr->stats->has_tx_rate_perceived = true;
         }
 
         dr->rx_stats = malloc(client->list[i].rx_qty * sizeof(*dr->rx_stats));

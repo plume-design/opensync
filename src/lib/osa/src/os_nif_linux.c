@@ -48,6 +48,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_util.h"
 #include "os_regex.h"
 #include "target.h"
+#include "osp_unit.h"
 #include "build_version.h"
 
 #define MODULE_ID LOG_MODULE_ID_OSA
@@ -782,10 +783,10 @@ bool os_nif_dhcpc_start(char* ifname, bool apply, int dhcp_time)
     }
 
     /* read SERIAL number & SKU, inputs for options 12 & 0xe */
-    target_serial_get(serial_num, sizeof(serial_num));
+    osp_unit_serial_get(serial_num, sizeof(serial_num));
 
     /* read SKU number, if empty, reset buffer */
-    if (false == target_sku_get(sku_num, sizeof(sku_num)))
+    if (false == osp_unit_sku_get(sku_num, sizeof(sku_num)))
     {
         snprintf(hostname, sizeof(hostname), "hostname:%s_Pod", serial_num);
     }
@@ -832,7 +833,7 @@ bool os_nif_dhcpc_start(char* ifname, bool apply, int dhcp_time)
         snprintf(serial_opt + len, sizeof(serial_opt) - len, "%02X", serial_num[i]);
     }
 
-    if (false == target_model_get(dhcp_vendor_class, sizeof(dhcp_vendor_class)))
+    if (false == osp_unit_model_get(dhcp_vendor_class, sizeof(dhcp_vendor_class)))
     {
         STRSCPY(dhcp_vendor_class, TARGET_NAME);
     }

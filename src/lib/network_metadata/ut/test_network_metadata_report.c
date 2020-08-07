@@ -1391,7 +1391,7 @@ test_flow_tags_one_key(void)
     TEST_ASSERT_NOT_NULL(tag);
 
     tag->vendor = strdup("Plume");
-    TEST_ASSERT_NOT_NULL(tag->vendor)
+    TEST_ASSERT_NOT_NULL(tag->vendor);
 
     tag->app_name = strdup("Plume App");
     TEST_ASSERT_NOT_NULL(tag->app_name);
@@ -1945,7 +1945,7 @@ test_vendor_data_serialize_deserialize(void)
     TEST_ASSERT_NOT_NULL(tag);
 
     tag->vendor = strdup("Plume");
-    TEST_ASSERT_NOT_NULL(tag->vendor)
+    TEST_ASSERT_NOT_NULL(tag->vendor);
 
     tag->app_name = strdup("Plume App");
     TEST_ASSERT_NOT_NULL(tag->app_name);
@@ -2048,7 +2048,7 @@ test_update_flow_tags(void)
     TEST_ASSERT_NOT_NULL(tag);
 
     tag->vendor = strdup("Plume");
-    TEST_ASSERT_NOT_NULL(tag->vendor)
+    TEST_ASSERT_NOT_NULL(tag->vendor);
 
     tag->app_name = strdup("Plume App");
     TEST_ASSERT_NOT_NULL(tag->app_name);
@@ -2120,7 +2120,7 @@ test_update_flow_tags(void)
     TEST_ASSERT_NOT_NULL(tag);
 
     tag->vendor = strdup("NotPlume");
-    TEST_ASSERT_NOT_NULL(tag->vendor)
+    TEST_ASSERT_NOT_NULL(tag->vendor);
 
     tag->app_name = strdup("NotPlume App");
     TEST_ASSERT_NOT_NULL(tag->app_name);
@@ -2336,7 +2336,7 @@ test_update_vendor_data(void)
     TEST_ASSERT_NOT_NULL(tag);
 
     tag->vendor = strdup("Plume");
-    TEST_ASSERT_NOT_NULL(tag->vendor)
+    TEST_ASSERT_NOT_NULL(tag->vendor);
 
     tag->app_name = strdup("Plume App");
     TEST_ASSERT_NOT_NULL(tag->app_name);
@@ -2468,7 +2468,7 @@ test_update_filter_flow_tags(void)
     TEST_ASSERT_NOT_NULL(tag);
 
     tag->vendor = strdup("Plume");
-    TEST_ASSERT_NOT_NULL(tag->vendor)
+    TEST_ASSERT_NOT_NULL(tag->vendor);
 
     tag->app_name = strdup("Plume App");
     TEST_ASSERT_NOT_NULL(tag->app_name);
@@ -2540,7 +2540,7 @@ test_update_filter_flow_tags(void)
     TEST_ASSERT_NOT_NULL(tag);
 
     tag->vendor = strdup("NotPlume");
-    TEST_ASSERT_NOT_NULL(tag->vendor)
+    TEST_ASSERT_NOT_NULL(tag->vendor);
 
     tag->app_name = strdup("NotPlume App");
     TEST_ASSERT_NOT_NULL(tag->app_name);
