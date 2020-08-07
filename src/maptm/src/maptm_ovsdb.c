@@ -64,50 +64,24 @@ ovsdb_table_t  table_IPv6_Address;
 /* To change to Enum  */
 int WanConfig = 0;
 
-// Update if board is MAP-T eligible
-bool maptm_update_mapt(bool enable)
+// Testing MAP-T tables presence
+bool maptm_ovsdb_tabs_ready()
 {
-    int rc = 0;
-    json_t *where = NULL;
-    struct schema_Node_Config rec_config;
-
-    memset(&rec_config, 0, sizeof(rec_config));
-    rec_config._partial_update = true;
-
-    where = ovsdb_where_multi(
-        ovsdb_where_simple_typed(SCHEMA_COLUMN(Node_Config, module), "MAPTM", OCLM_STR),
-        ovsdb_where_simple_typed(SCHEMA_COLUMN(Node_Config, key), "maptParams", OCLM_STR),
-        NULL);
-
-    if (!where)
+    json_t *where_config = NULL;
+    bool retval = false;
+    
+    //Checking MAP-T entry presence in Node_Config table
+    where_config = ovsdb_where_multi(
+            ovsdb_where_simple_typed(SCHEMA_COLUMN(Node_Config, module),"WANO", OCLM_STR),
+            ovsdb_where_simple_typed(SCHEMA_COLUMN(Node_Config, key),"maptParams", OCLM_STR),
+            NULL);
+    if(!where_config)
     {
-        LOGE("Could not get maptParams value in Node_Config table");
-        goto exit;
+        LOGI("Node_Config table is not set by the cloud yet!");
+        retval = false; // switch to Cloud independant mode
     }
-
-    if (enable)
-    {
-        SCHEMA_SET_STR(rec_config.value, "{\"support\":\"true\",\"interface\":\"br-wan\"}");
-    }
-    else
-    {
-        SCHEMA_SET_STR(rec_config.value, "{\"support\":\"false\",\"interface\":\"br-wan\"}");
-    }
-    rec_config.value_exists = true;
-
-    rc = ovsdb_table_update_where(&table_Node_Config, where, &rec_config);
-
-    if (rc != 1 )
-    {
-        LOGE("%s: Could not update Node_Config table", __func__);
-        goto exit;
-    }
-
-    LOGD("%s: Update Node_Config table", __func__);
-    return true;
-
-exit:
-    return false;
+    
+    return retval;
 }
 
 // Make MAPT_Support parameter persistent
@@ -138,13 +112,9 @@ bool maptm_persistent(void)
     }
     LOGT("%s: MAPT_SUPPORT = %s", __func__, mapt_support);
 
-    if (!strcmp(mapt_support, "true"))
+    if(strncmp(mapt_support,"true",sizeof("true")-1))
     {
-        ret = maptm_update_mapt(true);
-    }
-    else
-    {
-        ret = maptm_update_mapt(false);
+        strucWanConfig.mapt_support = false;
     }
 
     return ret;
@@ -197,13 +167,36 @@ void callback_Node_Config(
             strucWanConfig.mapt_support = maptm_get_supportValue(conf->value);
             maptm_dhcp_option_update_15_option(strucWanConfig.mapt_support);
             maptm_dhcp_option_update_95_option(strucWanConfig.mapt_support);
+
+            osp_ps_t *ps = NULL;
+            ps = osp_ps_open("MAPT_SUPPORT", OSP_PS_RDWR | OSP_PS_PRESERVE);
+            if (ps == NULL)
+            {
+                LOG(ERR, "Error saving new MAP-T support value");
+            }
+            if (!(osp_ps_set(ps, "MAPT_SUPPORT", maptm_get_supportValue(conf->value) ? "true" : "false",sizeof(maptm_get_supportValue(conf->value)))))
+            {
+                LOGE("Error saving new MAP-T support value");
+            }
         }
     }
 
     if (mon->mon_type == OVSDB_UPDATE_DEL)
     {
+        
         LOGD("%s: node config entry deleted: module %s, key: %s, value: %s",
                 __func__, old_rec->module, old_rec->key, old_rec->value);
+
+        osp_ps_t *ps = NULL;
+        ps = osp_ps_open("MAPT_SUPPORT", OSP_PS_RDWR | OSP_PS_PRESERVE);
+        if (ps == NULL)
+        {
+            LOG(ERR, "Error saving new MAP-T support value");
+        }
+        if (!(osp_ps_set(ps, "MAPT_SUPPORT", "true", sizeof(maptm_get_supportValue(conf->value)))))
+        {
+            LOGE("Error saving new MAP-T support value");
+        }
     }
 
     if (mon->mon_type == OVSDB_UPDATE_MODIFY)

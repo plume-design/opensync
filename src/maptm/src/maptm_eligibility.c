@@ -463,7 +463,15 @@ bool maptm_ipv6IsEnabled(void)
 void maptm_eligibilityStart(int WanConfig)
 {
     intit_eligibility();
-
+    
+    //If Cloud did not set MAP-T tables, set default MAP-T support value
+    if (!maptm_ovsdb_tabs_ready()) 
+    {   
+        WanConfig |= MAPTM_ELIGIBILITY_ENABLE;   
+        maptm_dhcp_option_update_15_option(strucWanConfig.mapt_support);
+        maptm_dhcp_option_update_95_option(strucWanConfig.mapt_support);
+    }
+    
     // Check IPv6 is Enabled
     if (strucWanConfig.mapt_EnableIpv6 || maptm_ipv6IsEnabled())
     {

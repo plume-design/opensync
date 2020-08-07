@@ -75,6 +75,7 @@ static log_severity_t    maptm_log_severity = LOG_SEVERITY_INFO;
 static bool maptm_init(void)
 {
     bool retval = true;
+    strucWanConfig.mapt_support = true;
     retval = maptm_persistent();
     if (!retval)
     {
@@ -128,7 +129,6 @@ int main(int argc, char ** argv)
     if (!maptm_init())
     {
         LOGE("Failed in maptm_init()");
-        return -1;
     }
 
     // From this point on, log severity can change in runtime.
