@@ -52,7 +52,6 @@
 #include "target.h"
 
 #include "maptm.h"
-//#include "target_maptm.h"
 
 #ifdef MAPTM_DEBUG
 #undef LOGI

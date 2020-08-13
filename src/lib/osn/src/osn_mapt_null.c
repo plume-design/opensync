@@ -2,8 +2,6 @@
 
 #include "osn_mapt.h"
 
-//#warning MAP-T NULL
-
 bool osn_mapt_configure(
         const char *brprefix,
         int ratio,

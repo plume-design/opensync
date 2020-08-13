@@ -119,12 +119,12 @@ struct mapt* parse_option_rule(char *rule)
         char *name;
         char *value;
         name = strsep(&p, "=");
-        
+
         if (name == NULL) continue;
         value = p;
         if (value == NULL)
         {
-            LOG(DEBUG, "map-t: Error parsing rule.");
+            LOGD("MAP-T: Error parsing rule.");
             continue;
         }
 

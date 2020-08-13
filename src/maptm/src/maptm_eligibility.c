@@ -68,7 +68,7 @@ static ev_timer cs_timer;
 /*****************************************************************************/
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
-#define MAPTM_CHARTER_NO_MAP "charter_no_map"
+#define MAPTM_CHARTER_DUALSTACK "charter_dualstack"
 #define MAPTM_CHARTER_MAP    "charter_map"
 bool wait95Option = false;
 #define MAPTM_MODULE "MAPTM"
@@ -270,7 +270,7 @@ static void callback_DHCP_Option(
             break;
 
             default:
-                LOG(ERR, "DHCP_Option OVSDB event: unknown type %d", mon->mon_type);
+                LOGE("DHCP_Option OVSDB event: unknown type %d", mon->mon_type);
                 return;
     } /* switch */
 }
@@ -306,14 +306,14 @@ bool maptm_dhcp_option_update_15_option(bool maptSupport)
     ret = ovsdb_table_select_one(
             &table_DHCP_Option,
             SCHEMA_COLUMN(DHCP_Option, value),
-            maptSupport ? MAPTM_CHARTER_NO_MAP : MAPTM_CHARTER_MAP, &iconf);
+            maptSupport ? MAPTM_CHARTER_DUALSTACK : MAPTM_CHARTER_MAP, &iconf);
     if (!ret)
     {
         LOGE("%s: Failed to get DHCP_Option config", __func__);
         return false;
     }
 
-    STRSCPY(iconf_update.value, maptSupport ? MAPTM_CHARTER_MAP : MAPTM_CHARTER_NO_MAP);
+    STRSCPY(iconf_update.value, maptSupport ? MAPTM_CHARTER_MAP : MAPTM_CHARTER_DUALSTACK);
     iconf_update.value_exists = true;
     char *filter[] = { "+",
                         SCHEMA_COLUMN(DHCP_Option, value),
@@ -322,7 +322,7 @@ bool maptm_dhcp_option_update_15_option(bool maptSupport)
     ret = ovsdb_table_update_where_f(
             &table_DHCP_Option,
             ovsdb_where_simple(SCHEMA_COLUMN(DHCP_Option, value),
-            maptSupport ? MAPTM_CHARTER_NO_MAP : MAPTM_CHARTER_MAP),
+            maptSupport ? MAPTM_CHARTER_DUALSTACK : MAPTM_CHARTER_MAP),
             &iconf_update, filter);
 
     return true;
@@ -463,15 +463,15 @@ bool maptm_ipv6IsEnabled(void)
 void maptm_eligibilityStart(int WanConfig)
 {
     intit_eligibility();
-    
-    //If Cloud did not set MAP-T tables, set default MAP-T support value
-    if (!maptm_ovsdb_tabs_ready()) 
-    {   
+
+    // If Cloud did not set MAP-T tables, set default MAP-T support value
+    if (!maptm_ovsdb_tables_ready()) 
+    {
         WanConfig |= MAPTM_ELIGIBILITY_ENABLE;   
         maptm_dhcp_option_update_15_option(strucWanConfig.mapt_support);
         maptm_dhcp_option_update_95_option(strucWanConfig.mapt_support);
     }
-    
+
     // Check IPv6 is Enabled
     if (strucWanConfig.mapt_EnableIpv6 || maptm_ipv6IsEnabled())
     {

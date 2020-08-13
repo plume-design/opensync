@@ -65,22 +65,22 @@ ovsdb_table_t  table_IPv6_Address;
 int WanConfig = 0;
 
 // Testing MAP-T tables presence
-bool maptm_ovsdb_tabs_ready()
+bool maptm_ovsdb_tables_ready()
 {
     json_t *where_config = NULL;
     bool retval = false;
-    
-    //Checking MAP-T entry presence in Node_Config table
+
+    // Checking MAP-T entry presence in Node_Config table
     where_config = ovsdb_where_multi(
-            ovsdb_where_simple_typed(SCHEMA_COLUMN(Node_Config, module),"WANO", OCLM_STR),
-            ovsdb_where_simple_typed(SCHEMA_COLUMN(Node_Config, key),"maptParams", OCLM_STR),
+            ovsdb_where_simple_typed(SCHEMA_COLUMN(Node_Config, module), "MAPTM", OCLM_STR),
+            ovsdb_where_simple_typed(SCHEMA_COLUMN(Node_Config, key), "maptParams", OCLM_STR),
             NULL);
-    if(!where_config)
+    if (!where_config)
     {
         LOGI("Node_Config table is not set by the cloud yet!");
-        retval = false; // switch to Cloud independant mode
+        retval = false;  // switch to cloud-independent mode
     }
-    
+
     return retval;
 }
 
@@ -94,7 +94,7 @@ bool maptm_persistent(void)
     ps = osp_ps_open("MAPT_SUPPORT", OSP_PS_RDWR | OSP_PS_PRESERVE);
     if (ps == NULL)
     {
-        LOG(ERR, "maptm: Error opening \"%s\" persistent store.", mapt_support);
+        LOGE("maptm: Error opening persistent store \"%s\"", MAPT_SUPPORT_STORE)
         return false;
     }
 
@@ -105,7 +105,7 @@ bool maptm_persistent(void)
     }
 
     snprintf(mapt_support, sizeof(mapt_support), "%s", "true");
-    if (!(osp_ps_set(ps, "MAPT_SUPPORT", mapt_support, sizeof("MAPT_SUPPORT"))))
+    if (!(osp_ps_set(ps, "MAPT_SUPPORT", mapt_support, strlen(mapt_support)+1)))
     {
         LOGE("%s: Cannot save MAPT_SUPPORT through osp API", __func__);
         return false;
@@ -172,7 +172,7 @@ void callback_Node_Config(
             ps = osp_ps_open("MAPT_SUPPORT", OSP_PS_RDWR | OSP_PS_PRESERVE);
             if (ps == NULL)
             {
-                LOG(ERR, "Error saving new MAP-T support value");
+                LOGE("Error saving new MAP-T support value");
             }
             if (!(osp_ps_set(ps, "MAPT_SUPPORT", maptm_get_supportValue(conf->value) ? "true" : "false",sizeof(maptm_get_supportValue(conf->value)))))
             {
@@ -183,7 +183,6 @@ void callback_Node_Config(
 
     if (mon->mon_type == OVSDB_UPDATE_DEL)
     {
-        
         LOGD("%s: node config entry deleted: module %s, key: %s, value: %s",
                 __func__, old_rec->module, old_rec->key, old_rec->value);
 
@@ -191,7 +190,7 @@ void callback_Node_Config(
         ps = osp_ps_open("MAPT_SUPPORT", OSP_PS_RDWR | OSP_PS_PRESERVE);
         if (ps == NULL)
         {
-            LOG(ERR, "Error saving new MAP-T support value");
+            LOGE("Error saving new MAP-T support value");
         }
         if (!(osp_ps_set(ps, "MAPT_SUPPORT", "true", sizeof(maptm_get_supportValue(conf->value)))))
         {
@@ -232,7 +231,7 @@ void callback_Node_Config(
                 ps = osp_ps_open("MAPT_SUPPORT", OSP_PS_RDWR | OSP_PS_PRESERVE);
                 if (ps == NULL)
                 {
-                    LOG(ERR, "Error saving new MAP-T support value");
+                    LOGE("Error saving new MAP-T support value");
                 }
                 if (!(osp_ps_set(ps, "MAPT_SUPPORT", maptm_get_supportValue(conf->value) ? "true" : "false",sizeof(maptm_get_supportValue(conf->value)))))
                 {
@@ -270,8 +269,8 @@ static void callback_Interface(
             {
                 if (!strcmp(record->link_state, "up"))
                 {
-                     strucWanConfig.link_up = true;
-                     if ((record->link_state) != (old->link_state)) maptm_eligibilityStart(WanConfig);
+                    strucWanConfig.link_up = true;
+                    if ((record->link_state) != (old->link_state)) maptm_eligibilityStart(WanConfig);
                 }
                 else if (!strcmp(record->link_state, "down"))
                 {
