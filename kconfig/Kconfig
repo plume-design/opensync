@@ -79,6 +79,12 @@ menu "Common"
                 source "kconfig/Kconfig.osn.vlan_backend"
             endchoice
 
+            choice
+                prompt "MAP-T"
+                default OSN_BACKEND_MAPT_NULL
+                source "kconfig/Kconfig.osn.mapt_backend"
+            endchoice
+
             source "kconfig/Kconfig.osn"
         endmenu
 

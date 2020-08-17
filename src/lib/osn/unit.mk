@@ -75,6 +75,9 @@ UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_PPPOE_LINUX),src/osn_pppoe_linux.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_VLAN_NULL),src/osn_vlan_null.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_VLAN_LINUX),src/osn_vlan_linux.c)
 
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_MAPT_NULL),src/osn_mapt_null.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_MAPT_CERNET),src/osn_mapt_cernet.c)
+
 ifdef CONFIG_OSN_LINUX_ENABLED
 UNIT_CFLAGS += -I$(UNIT_PATH)/src/linux
 

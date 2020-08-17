@@ -1,0 +1,13 @@
+menuconfig MANAGER_MAPTM
+    depends on !MANAGER_WANO && !CM2_USE_WAN_LINK_MANAGEMENT
+    bool "MAP-T Manager (MAPTM)"
+    default n
+    help
+        Enable MAP-T Manager (MAPTM)
+
+    config MANAGER_MAPTM_CFG
+        depends on MANAGER_MAPTM
+        string "MAPTM Startup configuration"
+        default "maptm;true"
+        help
+            MAP-T Manager startup configuration
