@@ -84,39 +84,101 @@ bool maptm_ovsdb_tables_ready()
     return retval;
 }
 
+// Function used to set values in persistant storage
+bool maptm_ps_set(const char *key, char *value)
+{
+    bool ret = false;
+    osp_ps_t *ps = NULL;
+    ssize_t size = -1;
+
+    ps = osp_ps_open("MAPT_SUPPORT", OSP_PS_WRITE | OSP_PS_PRESERVE);
+    if (!ps)
+    {
+        LOGE("Open persistent storage failed");
+        goto out;
+    }
+
+    size = osp_ps_set(ps, key, value, strlen(value));
+    if (size < 0)
+    {
+        LOGE("Set OpenSync platform persistent storage failed");
+        goto out;
+    }
+
+    ret = true;
+out:
+    if (ps)
+    {
+        ret = osp_ps_close(ps);
+        if (!ret)
+        {
+            LOGE("Close persistent storage failed");
+            return false;
+        }
+    }
+    return ret;
+}
+
 // Make MAPT_Support parameter persistent
 bool maptm_persistent(void)
 {
     bool ret = false;
-    char mapt_support[10];
     osp_ps_t *ps = NULL;
+    ssize_t size = -1;
+    char mapt_support[10];
 
+    // Open persistent storage in read-write mode
     ps = osp_ps_open("MAPT_SUPPORT", OSP_PS_RDWR | OSP_PS_PRESERVE);
-    if (ps == NULL)
+    if (!ps)
     {
-        LOGE("maptm: Error opening persistent store \"%s\"", MAPT_SUPPORT_STORE)
-        return false;
+        LOGE("Failed when opening persistent storage");
+        goto out;
     }
 
-    if (!(osp_ps_get(ps, "MAPT_SUPPORT", mapt_support, sizeof(mapt_support))))
+    // Check if persistent storage exists
+    size = osp_ps_get(ps, "MAPT_SUPPORT", NULL, 0);
+    if (size < 0)
     {
-        LOGE("%s: Cannot get MAPT_SUPPORT value", __func__);
-        return false;
+        LOGE("Persistent storage does not exist");
+        goto out;
+    }
+    else if (size > 0)
+    {
+        ret = true;
+    }
+
+    // Get persistent storage value
+    size = osp_ps_get(ps, "MAPT_SUPPORT", mapt_support, strlen(mapt_support));
+    if (size <= 0)
+    {
+        LOGE("Failed when getting persistent storage value");
+        goto out;
     }
 
     snprintf(mapt_support, sizeof(mapt_support), "%s", "true");
-    if (!(osp_ps_set(ps, "MAPT_SUPPORT", mapt_support, strlen(mapt_support)+1)))
+
+    // Set persistent storage value
+    if (!(osp_ps_set(ps, "MAPT_SUPPORT", mapt_support, strlen(mapt_support))))
     {
-        LOGE("%s: Cannot save MAPT_SUPPORT through osp API", __func__);
-        return false;
+        LOGE("Failed when setting persistent storage value");
+        goto out;
     }
     LOGT("%s: MAPT_SUPPORT = %s", __func__, mapt_support);
 
-    if(strncmp(mapt_support,"true",sizeof("true")-1))
+    if(strcmp(mapt_support,"true"))
     {
         strucWanConfig.mapt_support = false;
     }
+    ret = true;
 
+out:
+    //Check if value was safely stored and cleanly release ps handle
+    ret = osp_ps_close(ps);
+    if (!ret)
+    {
+        LOGE("Failed when closing persistent storage");
+        return false;
+    }
     return ret;
 }
 
@@ -168,13 +230,7 @@ void callback_Node_Config(
             maptm_dhcp_option_update_15_option(strucWanConfig.mapt_support);
             maptm_dhcp_option_update_95_option(strucWanConfig.mapt_support);
 
-            osp_ps_t *ps = NULL;
-            ps = osp_ps_open("MAPT_SUPPORT", OSP_PS_RDWR | OSP_PS_PRESERVE);
-            if (ps == NULL)
-            {
-                LOGE("Error saving new MAP-T support value");
-            }
-            if (!(osp_ps_set(ps, "MAPT_SUPPORT", maptm_get_supportValue(conf->value) ? "true" : "false",sizeof(maptm_get_supportValue(conf->value)))))
+            if (!(maptm_ps_set("MAPT_SUPPORT", maptm_get_supportValue(conf->value) ? "true" : "false")))
             {
                 LOGE("Error saving new MAP-T support value");
             }
@@ -186,13 +242,7 @@ void callback_Node_Config(
         LOGD("%s: node config entry deleted: module %s, key: %s, value: %s",
                 __func__, old_rec->module, old_rec->key, old_rec->value);
 
-        osp_ps_t *ps = NULL;
-        ps = osp_ps_open("MAPT_SUPPORT", OSP_PS_RDWR | OSP_PS_PRESERVE);
-        if (ps == NULL)
-        {
-            LOGE("Error saving new MAP-T support value");
-        }
-        if (!(osp_ps_set(ps, "MAPT_SUPPORT", "true", sizeof(maptm_get_supportValue(conf->value)))))
+        if (!(maptm_ps_set("MAPT_SUPPORT", maptm_get_supportValue(conf->value) ? "true" : "false")))
         {
             LOGE("Error saving new MAP-T support value");
         }
@@ -227,13 +277,7 @@ void callback_Node_Config(
             if (maptm_get_supportValue(conf->value) != maptm_get_supportValue(old_rec->value))
             {
                 maptm_eligibilityStart(WanConfig);
-                osp_ps_t *ps = NULL;
-                ps = osp_ps_open("MAPT_SUPPORT", OSP_PS_RDWR | OSP_PS_PRESERVE);
-                if (ps == NULL)
-                {
-                    LOGE("Error saving new MAP-T support value");
-                }
-                if (!(osp_ps_set(ps, "MAPT_SUPPORT", maptm_get_supportValue(conf->value) ? "true" : "false",sizeof(maptm_get_supportValue(conf->value)))))
+                if (!(maptm_ps_set("MAPT_SUPPORT", maptm_get_supportValue(conf->value) ? "true" : "false")))
                 {
                     LOGE("Error saving new MAP-T support value");
                 }
