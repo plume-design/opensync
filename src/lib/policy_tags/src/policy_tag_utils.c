@@ -29,6 +29,50 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "policy_tags.h"
 
+static const struct om_mapping_tle_flag tle_flag_map[] =
+{
+    {
+        .flag = "device",
+        .flag_enum = OM_TLE_FLAG_DEVICE,
+    },
+    {
+        .flag = "cloud",
+        .flag_enum = OM_TLE_FLAG_CLOUD,
+    },
+    {
+        .flag = "local",
+        .flag_enum = OM_TLE_FLAG_LOCAL,
+    },
+    {
+        .flag = "group",
+        .flag_enum = OM_TLE_FLAG_GROUP,
+    }
+};
+
+/**
+ * @brief return the flag based on its enum value
+ *
+ * @param flag_enum the flag represented as an integer.
+ */
+char *
+om_tag_get_tle_flag(int flag_enum)
+{
+    const struct om_mapping_tle_flag *map;
+    size_t nelems;
+    size_t i;
+
+    /* Walk the known flags */
+    nelems = (sizeof(tle_flag_map) / sizeof(tle_flag_map[0]));
+    map = tle_flag_map;
+    for (i = 0; i < nelems; i++)
+    {
+        if (flag_enum == map->flag_enum) return map->flag;
+        map++;
+    }
+
+    return NULL;
+}
+
 /**
  * @brief return the tag type based on its name
  *
@@ -67,6 +111,28 @@ om_tag_get_type(char *name)
     return NOT_A_OPENSYNC_TAG;
 }
 
+/**
+ * @brief return the tag source based on its name
+ *
+ * Lets the caller know if the string is a device tag, cloud tag or local tag.
+ * @param name the string to check.
+ */
+int
+om_get_type_of_tag(char *name)
+{
+    if (name == NULL) return -1;
+
+    if(om_tag_get_type(name) == NOT_A_OPENSYNC_TAG) return OM_TLE_FLAG_NONE;
+
+    if (name[2] == TEMPLATE_DEVICE_CHAR)
+        return OM_TLE_FLAG_DEVICE;
+    else if (name[2] == TEMPLATE_CLOUD_CHAR)
+        return OM_TLE_FLAG_CLOUD;
+    else if (name[2] == TEMPLATE_LOCAL_CHAR)
+        return OM_TLE_FLAG_LOCAL;
+    else
+        return OM_TLE_FLAG_NONE;
+}
 
 /**
  * @brief checks if a string is included in an opensync tag
@@ -103,6 +169,11 @@ om_tag_in(char *value, char *tag_name)
     else if (*tag_s == TEMPLATE_CLOUD_CHAR)
     {
         match_flags = OM_TLE_FLAG_CLOUD;
+        tag_s += 1;
+    }
+    else if (*tag_s == TEMPLATE_LOCAL_CHAR)
+    {
+        match_flags = OM_TLE_FLAG_LOCAL;
         tag_s += 1;
     }
 

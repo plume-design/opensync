@@ -405,11 +405,12 @@ bool inet_base_init(inet_base_t *self, const char *ifname)
      * Define the unit dependency tree structure
      */
     self->in_units =
-            inet_unit_s(INET_BASE_IF_CREATE,
+        inet_unit(INET_BASE_IF_ENABLE,
+                inet_unit(INET_BASE_IF_CREATE,
                         inet_unit(INET_BASE_FIREWALL, NULL),
-                        inet_unit_s(INET_BASE_IF_EXISTS,
+                        inet_unit(INET_BASE_IF_READY,
                                     inet_unit(INET_BASE_MTU, NULL),
-                                    inet_unit_s(INET_BASE_NETWORK,
+                                    inet_unit(INET_BASE_NETWORK,
                                                 inet_unit_s(INET_BASE_SCHEME_NONE, NULL),
                                                 inet_unit(INET_BASE_SCHEME_STATIC,
                                                           inet_unit(INET_BASE_DHCP_SERVER, NULL),
@@ -426,13 +427,19 @@ bool inet_base_init(inet_base_t *self, const char *ifname)
                                     inet_unit(INET_BASE_DHCP6_CLIENT, NULL),
                                     inet_unit(INET_BASE_UPNP, NULL),
                                     NULL),
-                        NULL);
+                        NULL),
+                NULL);
 
     if (self->in_units == NULL)
     {
         LOG(ERR, "inet_base: %s: Error initializing units structure.", self->inet.in_ifname);
         goto error;
     }
+
+    /* By default always create the interface */
+    inet_unit_start(self->in_units, INET_BASE_IF_CREATE);
+    /* Assume interface exists by default */
+    inet_unit_start(self->in_units, INET_BASE_IF_READY);
 
     static bool once = true;
 
@@ -467,17 +474,22 @@ error:
 
 bool inet_base_dtor(inet_t *super)
 {
+    inet_base_t *self = CONTAINER_OF(super, inet_base_t, inet);
+
+    return inet_base_fini(self);
+}
+
+bool inet_base_fini(inet_base_t *self)
+{
     ds_tree_iter_t iter;
     int ii;
 
     bool retval = true;
 
-    inet_base_t *self = (inet_base_t *)super;
-
     if (self->in_units != NULL)
     {
-        /* Stop the top service (INET_BASE_IF_CREATE) -- this will effectively shut down ALL services */
-        inet_unit_stop(self->in_units, INET_BASE_IF_CREATE);
+        /* Stop the top service (INET_BASE_IF_ENABLE) -- this will effectively shut down ALL services */
+        inet_unit_stop(self->in_units, INET_BASE_IF_ENABLE);
         if (!inet_commit(&self->inet))
         {
             LOG(WARN, "inet_base: %s: Error shutting down services.", self->inet.in_ifname);
@@ -710,7 +722,7 @@ bool inet_base_interface_enable(inet_t *super, bool enabled)
 
     LOG(INFO, "inet_base: %s: %s interface.", self->inet.in_ifname, enabled ? "Starting" : "Stopping");
 
-    return inet_unit_enable(self->in_units, INET_BASE_IF_CREATE, enabled);
+    return inet_unit_enable(self->in_units, INET_BASE_IF_ENABLE, enabled);
 }
 
 /*
@@ -1483,8 +1495,7 @@ bool inet_base_commit(inet_t *super)
     /*
      * Update various statuses when we finish committing the new configuration
      */
-    self->in_state.in_interface_enabled = inet_unit_status(self->in_units,
-                                                           INET_BASE_IF_CREATE);
+    self->in_state.in_interface_enabled = inet_unit_status(self->in_units, INET_BASE_IF_ENABLE);
     self->in_state.in_network_enabled = inet_unit_status(self->in_units, INET_BASE_NETWORK);
     self->in_state.in_nat_enabled = false;
     self->in_state.in_upnp_mode = UPNP_MODE_NONE;
@@ -1535,7 +1546,16 @@ bool inet_base_service_commit(
 
     switch (srv)
     {
-        case INET_BASE_IF_EXISTS:
+        case INET_BASE_IF_ENABLE:
+            return true;
+
+        case INET_BASE_IF_CREATE:
+            return true;
+
+        case INET_BASE_IF_READY:
+            return true;
+
+        case INET_BASE_NETWORK:
             return true;
 
         case INET_BASE_FIREWALL:
@@ -1575,11 +1595,11 @@ bool inet_base_service_commit(
             return inet_base_dhcp6_server_commit(self, start);
 
         default:
-            LOG(INFO, "inet_base: %s: Ignoring service start/stop request: %s -> %d",
+            LOG(DEBUG, "inet_base: %s: Ignoring non-implemented service start/stop request: %s -> %d",
                     self->inet.in_ifname,
                     inet_base_service_str(srv),
                     start);
-            break;
+            return true;
     }
 
     return false;

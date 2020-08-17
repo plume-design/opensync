@@ -65,6 +65,7 @@ include build/dirs.mk
 include build/verbose.mk
 include build/version.mk
 include build/git.mk
+include build/stam.mk
 include build/unit-build.mk
 include build/tags.mk
 include build/app_install.mk
@@ -74,8 +75,9 @@ include build/schema.mk
 include build/devshell.mk
 include build/help.mk
 include build/doc.mk
+include build/fut.mk
 
-build_all: workdirs schema-check unit-install
+build_all: workdirs schema-check unit-install fut
 
 clean:
 	$(NQ) " $(call color_clean,clean)   [$(call COLOR_BOLD,workdir)] $(WORKDIR)"

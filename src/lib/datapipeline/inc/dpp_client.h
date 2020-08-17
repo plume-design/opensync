@@ -186,6 +186,8 @@ typedef struct
     double                          rate_rx;
     double                          rate_tx;
     int32_t                         rssi;
+    double                          rate_rx_perceived;
+    double                          rate_tx_perceived;
 } dpp_client_stats_t;
 
 typedef void (*dpp_client_report_cb_t)(

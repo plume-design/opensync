@@ -24,7 +24,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#if !defined(OSN_NETIF_H_INCLUDED)
+#ifndef OSN_NETIF_H_INCLUDED
 #define OSN_NETIF_H_INCLUDED
 
 #include <stdbool.h>
@@ -250,4 +250,4 @@ bool osn_netif_hwaddr_set(osn_netif_t *self, osn_mac_addr_t hwaddr);
 /** @} OSN_L2 */
 /** @} OSN */
 
-#endif /* OSN_NETIF_H_INCLUDED) */
+#endif /* OSN_NETIF_H_INCLUDED */

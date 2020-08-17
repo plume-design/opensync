@@ -51,6 +51,7 @@ struct neighbour_entry
     char                        *ifname;
     int                         ifindex;
     uint32_t                    source;
+    time_t                      cache_valid_ts;
     uint8_t                     *ip_tbl;           // for fast lookups
     int                         af_family;         // for fast lookups
     ds_tree_node_t              entry_node;        // tree node structure
@@ -73,7 +74,6 @@ struct neigh_table_mgr
     ds_tree_t neigh_table;
     ds_tree_t interfaces;
     bool (*update_ovsdb_tables)(struct neighbour_entry *key, bool remove);
-    void (*ovsdb_init)(void);
 };
 
 
@@ -86,7 +86,8 @@ enum source
     FSM_ARP                 = OVSDB_ARP,
     OVSDB_NDP               = 1 << 4,
     FSM_NDP                 = OVSDB_NDP,
-    NEIGH_UT                = 1 << 5,
+    OVSDB_INET_STATE        = 1 << 5,
+    NEIGH_UT                = 1 << 6,
 };
 
 struct neigh_mapping_source
@@ -94,8 +95,6 @@ struct neigh_mapping_source
     char *source;
     int source_enum;
 };
-
-#define NEIGH_CACHE_INTERVAL       600
 
 struct neigh_table_mgr
 *neigh_table_get_mgr(void);
@@ -175,6 +174,15 @@ neigh_table_cache_lookup(struct neighbour_entry *key);
 
 bool
 neigh_table_cache_update(struct neighbour_entry *entry);
+
+
+/**
+ * @brief remove old cache entres added by fsm
+ *
+ * @param ttl the cache entry time to live
+ */
+void neigh_table_ttl_cleanup(int64_t ttl, uint32_t source_mask);
+
 
 /**
  * @brief return the source based on its enum value

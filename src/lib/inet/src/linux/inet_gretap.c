@@ -183,7 +183,7 @@ bool inet_gretap_ip4tunnel_set(
     self->in_remote_addr = raddr;
 
     /* Interface must be recreated, therefore restart the top service */
-    return inet_unit_restart(self->base.in_units, INET_BASE_IF_CREATE, false);
+    return inet_unit_restart(self->base.in_units, INET_BASE_IF_ENABLE, false);
 }
 
 /*
@@ -262,7 +262,7 @@ bool inet_gretap_service_commit(inet_base_t *super, enum inet_base_services srv,
 
     switch (srv)
     {
-        case INET_BASE_IF_CREATE:
+        case INET_BASE_IF_ENABLE:
             return inet_gretap_interface_start(self, enable);
 
         default:

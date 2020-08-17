@@ -243,6 +243,7 @@ free_rule:
     return -1;
 }
 
+
 void free_filter_app(struct fcm_filter_app *app)
 {
     if (!app) return;
@@ -306,6 +307,20 @@ int free_schema_struct(schema_FCM_Filter_rule_t *rule)
     rule->action = 0;
     return 0;
 }
+
+static void
+fcm_remove_rule_from_filter(ds_dlist_t *filter_head, struct fcm_filter *rule)
+{
+    if (!filter_head || !rule) return;
+
+    LOGT("fcm_filter: Removing filter with index %d", rule->filter_rule.index);
+    ds_dlist_remove(filter_head, rule);
+    free_schema_struct(&rule->filter_rule);
+    free_filter_app(&rule->app);
+    free(rule);
+    return;
+}
+
 
 /**
  * fcm_filter_find_rule: looks up a rule that matches unique index
@@ -1153,12 +1168,8 @@ void fcm_delete_filter(struct schema_FCM_Filter *filter)
 
     rule = fcm_filter_find_rule(filter_head, filter->index);
 
-    LOGT("fcm_filter: Removing filter index %d = index %d", rule->filter_rule.index,
-         filter->index);
-    ds_dlist_remove(filter_head, rule);
-    free_schema_struct(&rule->filter_rule);
-    free_filter_app(&rule->app);
-    free(rule);
+
+    fcm_remove_rule_from_filter(filter_head, rule);
 
     if (LOG_SEVERITY_ENABLED(LOG_SEVERITY_TRACE))
         fcm_filter_print();
@@ -1190,8 +1201,7 @@ void fcm_update_filter(struct schema_FCM_Filter *old_rec,
         rule = fcm_filter_find_rule(filter_head, old_rec->index);
 
         if (rule) {
-            free_schema_struct(&rule->filter_rule);
-            free_filter_app(&rule->app);
+            fcm_remove_rule_from_filter(filter_head, rule);
         }
     }
 
@@ -1441,7 +1451,19 @@ void fcm_filter_7tuple_apply(char *filter_name, struct fcm_filter_l2_info *l2_in
                  name_allow,
                  allow?"YES":"NO" );
         }
-        if (pkts)
+
+        /*
+         * If there is no packets count available and the the rule enforces
+         * packet count check, consider the situation as a failure
+         */
+        if (!pkts)
+        {
+            schema_FCM_Filter_rule_t *pkt_rule;
+
+            pkt_rule = &rule->filter_rule;
+            allow &= (pkt_rule->pktcnt_op == FCM_MATH_NONE);
+        }
+        else
         {
             pktcnt_allow = fcm_pkt_cnt_filter(mgr, &rule->filter_rule, pkts);
             allow &= (pktcnt_allow == FCM_RULED_FALSE? false: true);
@@ -1454,7 +1476,7 @@ void fcm_filter_7tuple_apply(char *filter_name, struct fcm_filter_l2_info *l2_in
             }
         }
         if (LOG_SEVERITY_ENABLED(LOG_SEVERITY_TRACE))
-            LOGT("fcm_filter: rule sucess %s", allow?"YES":"NO" );
+            LOGT("fcm_filter: rule success %s", allow?"YES":"NO" );
 
         action_op = fcm_action_filter(&rule->filter_rule);
         if (allow) goto tuple_out;

@@ -82,6 +82,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define BM_CLIENT_RRM_NEIGHBOR_MAX 16
 #define BM_CLIENT_RRM_REQ_MAX   8
 #define BM_CLIENT_RRM_ACTIVE_MEASUREMENT_DURATION 30
+#define BM_CLIENT_RRM_PASIVE_MEASUREMENT_DURATION 100
 
 #define BM_CLIENT_DEFAULT_ACTIVITY_BPS_TH 2000
 
@@ -237,6 +238,7 @@ typedef struct {
     bm_group_t                  *group;
     bm_client_stats_t           stats;
     bsal_client_info_t          info;
+    bsal_client_config_t        conf;
 } bm_client_ifcfg_t;
 
 typedef struct {
@@ -293,9 +295,7 @@ typedef struct {
     uint8_t                     hwm;
     uint8_t                     lwm;
 
-    uint8_t                     xing_snr;
-    bsal_rssi_change_t          xing_low;
-    bsal_rssi_change_t          xing_high;
+    uint8_t                     prev_xing_snr;
 
     int                         max_rejects;
     int                         max_rejects_period;
@@ -401,6 +401,20 @@ typedef struct {
     ds_tree_node_t              dst_node;
 } bm_client_t;
 
+static inline bm_client_ifcfg_t *
+bm_client_get_ifcfg(bm_client_t *client, const char *ifname)
+{
+    unsigned int i;
+
+    for (i = 0; i < client->ifcfg_num; i++) {
+        if (!strcmp(client->ifcfg[i].ifname, ifname)) {
+            return &client->ifcfg[i];
+        }
+    }
+
+    return NULL;
+}
+
 static inline bm_client_stats_t *
 bm_client_get_stats(bm_client_t *client, const char *ifname)
 {
@@ -471,7 +485,7 @@ extern bm_client_t *        bm_client_find_by_uuid(const char *uuid);
 extern bm_client_t *        bm_client_find_by_macstr(char *mac_str);
 extern bm_client_t *        bm_client_find_by_macaddr(os_macaddr_t mac_addr);
 extern bm_client_t *        bm_client_find_or_add_by_macaddr(os_macaddr_t *mac_addr);
-extern bool                 bm_client_ifcfg_set(bm_group_t *group, bm_client_t *client, const char *ifname, radio_type_t radio_type, bool bs_allowed);
+extern bool                 bm_client_ifcfg_set(bm_group_t *group, bm_client_t *client, const char *ifname, radio_type_t radio_type, bool bs_allowed, bsal_client_config_t *conf);
 extern bool                 bm_client_ifcfg_remove(bm_client_t *client, const char *ifname);
 extern void                 bm_client_ifcfg_clean(bm_client_t *client);
 extern bool                 bm_client_bs_ifname_allowed(bm_client_t *client, const char *ifname);
@@ -486,4 +500,5 @@ extern void                 bm_client_send_rrm_req(bm_client_t *client, bm_clien
 extern void                 bm_client_parse_assoc_ies(bm_client_t *client, const uint8_t *ies, size_t ies_len);
 extern void                 bm_client_sta_info_update_callback(void);
 extern void                 bm_client_handle_ext_activity(bm_client_t *client, const char *ifname, bool active);
+extern void                 bm_client_handle_ext_xing(bm_client_t *client, const char *ifname, bsal_event_t *event);
 #endif /* BM_CLIENT_H_INCLUDED */

@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "ovsdb.h"
 #include "schema.h"
+#include "module.h"
 #include "ovsdb_table.h"
 #include "json_util.h"
 
@@ -82,6 +83,13 @@ static bool pm_init(void)
 
 #if CONFIG_PM_ENABLE_LM
     if (!pm_lm_init())
+    {
+        return false;
+    }
+#endif
+
+#if CONFIG_PM_ENABLE_OBJM
+    if (!pm_objm_init())
     {
         return false;
     }
@@ -146,7 +154,14 @@ int main(int argc, char *argv[])
         return -1;
     }
 
+    /* Start all modules */
+    LOG(NOTICE, "Initializing modules...");
+    module_init();
+
     ev_run(loop, 0);
+
+    /* Stop all modules */
+    module_fini();
 
     pm_deinit(loop);
 

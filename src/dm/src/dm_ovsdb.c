@@ -44,6 +44,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_nif.h"
 #include "os_types.h"
 #include "target.h"
+#include "osp_unit.h"
 #include "json_util.h"
 #include "build_version.h"
 
@@ -288,76 +289,59 @@ bool act_check_id (void)
 }
 
 
-void fill_entity_data(struct schema_AWLAN_Node * s_awlan_node)
+static void fill_entity_data(struct schema_AWLAN_Node *s_awlan_node)
 {
     char buff[TARGET_BUFF_SZ];
 
-    if (NULL == s_awlan_node)
-    {
-        return;
-    }
     memset(s_awlan_node, 0, sizeof(struct schema_AWLAN_Node));
 
-    if (true == target_serial_get(buff, sizeof(buff)))
-    {
-        STRSCPY(s_awlan_node->serial_number, buff);
-    }
-    else
-    {
-        /* get some dummy value in this case    */
-        STRSCPY(s_awlan_node->serial_number,"1234567890");
-    }
-    s_awlan_node->serial_number_exists = true;
+    /* serial */
+    if (osp_unit_serial_get(buff, sizeof(buff)) == true)
+        SCHEMA_SET_STR(s_awlan_node->serial_number, buff);
 
-    if (true == target_id_get(buff, sizeof(buff)))
-    {
-        STRSCPY(s_awlan_node->id, buff);
-    }
-    else
-    {
-        /* get some dummy value in this case    */
-        STRSCPY(s_awlan_node->id,"1234567890");
-    }
-    s_awlan_node->id_exists = true;
+    /* id */
+    if (osp_unit_id_get(buff, sizeof(buff)) == true)
+        SCHEMA_SET_STR(s_awlan_node->id, buff);
 
-    if (true == target_sku_get(buff, sizeof(buff)))
-    {
-        STRSCPY(s_awlan_node->sku_number, buff);
-        s_awlan_node->sku_number_exists = true;
-    }
+    /* sku number */
+    if (osp_unit_sku_get(buff, sizeof(buff)) == true)
+        SCHEMA_SET_STR(s_awlan_node->sku_number, buff);
 
-    if (true == target_hw_revision_get(buff, sizeof(buff)))
-    {
-        STRSCPY(s_awlan_node->revision, buff);
-    }
-    else
-    {
-        STRSCPY(s_awlan_node->revision, "1");
-    }
+    /* revision */
+    if (osp_unit_hw_revision_get(buff, sizeof(buff)) == true)
+        SCHEMA_SET_STR(s_awlan_node->revision, buff);
 
-    if (true == target_sw_version_get(buff, sizeof(buff)))
-    {
-        STRSCPY(s_awlan_node->firmware_version, buff);
-    }
-    else
-    {
-        STRSCPY(s_awlan_node->firmware_version, app_build_ver_get());
-    }
+    /* firmware version */
+    if (osp_unit_sw_version_get(buff, sizeof(buff)) == true)
+        SCHEMA_SET_STR(s_awlan_node->firmware_version, buff);
 
-    if (true == target_platform_version_get(buff, sizeof(buff)))
-    {
-        STRSCPY(s_awlan_node->platform_version, buff);
-    }
+    /* platform version */
+    if (osp_unit_platform_version_get(buff, sizeof(buff)) == true)
+        SCHEMA_SET_STR(s_awlan_node->platform_version, buff);
 
-    if (true == target_model_get(buff, sizeof(buff)))
-    {
-        STRSCPY(s_awlan_node->model, buff);
-    }
-    else
-    {
-        STRSCPY(s_awlan_node->model, TARGET_NAME);
-    }
-    s_awlan_node->model_exists = true;
+    /* model */
+    if (osp_unit_model_get(buff, sizeof(buff)) == true)
+        SCHEMA_SET_STR(s_awlan_node->model, buff);
+
+    /* vendor name */
+    if (osp_unit_vendor_name_get(buff, sizeof(buff)) == true)
+        SCHEMA_SET_STR(s_awlan_node->vendor_name, buff);
+
+    /* vendor part number */
+    if (osp_unit_vendor_part_get(buff, sizeof(buff)) == true)
+        SCHEMA_SET_STR(s_awlan_node->vendor_part_number, buff);
+
+    /* vendor manufacturer */
+    if (osp_unit_manufacturer_get(buff, sizeof(buff)) == true)
+        SCHEMA_SET_STR(s_awlan_node->vendor_manufacturer, buff);
+
+    /* vendor factory */
+    if (osp_unit_factory_get(buff, sizeof(buff)) == true)
+        SCHEMA_SET_STR(s_awlan_node->vendor_factory, buff);
+
+    /* vendor manufacturer date */
+    if (osp_unit_mfg_date_get(buff, sizeof(buff)) == true)
+        SCHEMA_SET_STR(s_awlan_node->vendor_mfg_date, buff);
 
     LOG(NOTICE, "Device entity {serial=%s id=%s version=%s platform=%s sku=%s}",
             s_awlan_node->serial_number,
@@ -422,6 +406,11 @@ bool act_update_entity (void)
                                  "sku_number",
                                  "upgrade_status",
                                  "upgrade_timer",
+                                 "vendor_name",
+                                 "vendor_part_number",
+                                 "vendor_manufacturer",
+                                 "vendor_factory",
+                                 "vendor_mfg_date",
                                  NULL)
                              );
 

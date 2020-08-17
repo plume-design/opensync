@@ -31,10 +31,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <unistd.h>
 
 #include "target.h"
+#include "osp_unit.h"
 #include "dppline.h"
 #include "ds.h"
 #include "ds_dlist.h"
-#include "log.h"
 #include "opensync_stats.pb-c.h"
 
 #include "dpp_client.h"
@@ -178,6 +178,30 @@ static dppline_stats_t * dpp_alloc_stat()
     return calloc(1, sizeof(dppline_stats_t));
 }
 
+static void dppline_free_stat_bs_client(dppline_stats_t * s)
+{
+    dpp_bs_client_event_record_t *event;
+    dpp_bs_client_band_record_t *band;
+    dpp_bs_client_record_t *client = s->u.bs_client.list;
+    int clients = s->u.bs_client.qty;
+    int events;
+    int bands;
+
+    for (; clients; clients--, client++) {
+        bands = client->num_band_records;
+        band = &client->band_record[0];
+        for (; bands; bands--, band++) {
+            events = band->num_event_records;
+            event = &band->event_record[0];
+            for (; events; events--, event++) {
+                free(event->assoc_ies);
+            }
+        }
+    }
+
+    free(s->u.bs_client.list);
+}
+
 /* free allocated memory for single stat */
 static void dppline_free_stat(dppline_stats_t * s)
 {
@@ -210,7 +234,7 @@ static void dppline_free_stat(dppline_stats_t * s)
                 free(s->u.capacity.list);
                 break;
             case DPP_T_BS_CLIENT:
-                free(s->u.bs_client.list);
+                dppline_free_stat_bs_client(s);
                 break;
             case DPP_T_RSSI:
                 for (i=0; i<s->u.rssi.qty; i++)
@@ -223,6 +247,35 @@ static void dppline_free_stat(dppline_stats_t * s)
         }
 
         free(s);
+    }
+}
+
+static void dppline_unshare_assoc_ies(dpp_bs_client_record_t *c)
+{
+    dpp_bs_client_event_record_t *event;
+    dpp_bs_client_band_record_t *band;
+    void *assoc_ies;
+    int events;
+    int bands;
+
+    bands = c->num_band_records;
+    band = &c->band_record[0];
+    for (; bands; bands--, band++) {
+        events = band->num_event_records;
+        event = &band->event_record[0];
+        for (; events; events--, event++) {
+            if (event->assoc_ies) {
+                assoc_ies = calloc(1, event->assoc_ies_len);
+                WARN_ON(!assoc_ies);
+
+                if (assoc_ies)
+                    memcpy(assoc_ies, event->assoc_ies, event->assoc_ies_len);
+                else
+                    event->assoc_ies_len = 0;
+
+                event->assoc_ies = assoc_ies;
+            }
+        }
     }
 }
 
@@ -540,6 +593,7 @@ static bool dppline_copysts(dppline_stats_t * dst, void * sts)
                     memcpy(&dst->u.bs_client.list[count],
                             &result->entry,
                             sizeof(dpp_bs_client_record_t));
+                    dppline_unshare_assoc_ies(&dst->u.bs_client.list[count]);
                     count++;
                 }
             }
@@ -626,7 +680,7 @@ static char * getNodeid()
         return NULL;
     }
 
-    if (!target_id_get(buff, TARGET_ID_SZ))
+    if (!osp_unit_id_get(buff, TARGET_ID_SZ))
     {
         LOG(ERR, "Error acquiring node id.");
         free(buff);
@@ -742,7 +796,8 @@ static void dppline_add_stat_survey(Sts__Report *r, dppline_stats_t *s)
 
             dr->channel = rec->info.chan;
 
-            Sts__AvgType   *davg;
+            Sts__AvgType         *davg;
+            Sts__AvgTypeSigned   *davgs;
 #define CP_AVG(_name, _name1) do { \
         if (rec->_name1.avg) { \
             davg = dr->_name = malloc(sizeof(*dr->_name)); \
@@ -763,13 +818,35 @@ static void dppline_add_stat_survey(Sts__Report *r, dppline_stats_t *s)
         } \
     } while (0)
 
+#define CP_AVG_SIGNED(_name, _name1) do { \
+        if (rec->_name1.avg) { \
+            davgs = dr->_name = malloc(sizeof(*dr->_name)); \
+            sts__avg_type_signed__init(davgs); \
+            davgs->avg = rec->_name1.avg; \
+            if(rec->_name1.min) { \
+                davgs->min = rec->_name1.min; \
+                davgs->has_min = true;; \
+            } \
+            if(rec->_name1.max) { \
+                davgs->max = rec->_name1.max; \
+                davgs->has_max = true;; \
+            } \
+            if(rec->_name1.num) { \
+                davgs->num = rec->_name1.num; \
+                davgs->has_num = true;; \
+            } \
+        } \
+    } while (0)
+
             CP_AVG(busy,       chan_busy);
             CP_AVG(busy_tx,    chan_tx);
             CP_AVG(busy_self,  chan_self);
             CP_AVG(busy_rx,    chan_rx);
             CP_AVG(busy_ext,   chan_busy_ext);
+            CP_AVG_SIGNED(noise_floor,chan_noise);
 
 #undef CP_AVG
+#undef CP_AVG_SIGNED
         }
         /* LOG(DEBUG, "============= %s size raw: %d proto struct: %d", __FUNCTION__,
            sizeof(s->u.survey) + s->u.survey.numrec * sizeof(dpp_survey_record_avg_t),
@@ -805,6 +882,7 @@ static void dppline_add_stat_survey(Sts__Report *r, dppline_stats_t *s)
             CP_OPT(busy_self,  chan_self);
             CP_OPT(busy_rx,    chan_rx);
             CP_OPT(busy_ext,   chan_busy_ext);
+            CP_OPT(noise_floor,chan_noise);
 
 #undef CP_OPT
 
@@ -1080,6 +1158,14 @@ static void dppline_add_stat_client(Sts__Report *r, dppline_stats_t *s)
         if (rec->stats.rssi) {
             dr->stats->rssi = rec->stats.rssi;
             dr->stats->has_rssi = true;
+        }
+        if (rec->stats.rate_rx_perceived) {
+            dr->stats->rx_rate_perceived = rec->stats.rate_rx_perceived;
+            dr->stats->has_rx_rate_perceived = true;
+        }
+        if (rec->stats.rate_tx_perceived) {
+            dr->stats->tx_rate_perceived = rec->stats.rate_tx_perceived;
+            dr->stats->has_tx_rate_perceived = true;
         }
 
         dr->rx_stats = malloc(client->list[i].rx_qty * sizeof(*dr->rx_stats));
@@ -1956,7 +2042,7 @@ static bool dppline_put(DPP_STS_TYPE type, void * rpt)
     if (queue_depth > DPP_MAX_QUEUE_DEPTH
             || queue_size > DPP_MAX_QUEUE_SIZE_BYTES)
     {
-        LOG(DEBUG, "Queue size exceeded %d > %d || %d > %d",
+        LOG(WARN, "Queue size exceeded %d > %d || %d > %d",
                 queue_depth, DPP_MAX_QUEUE_DEPTH,
                 queue_size, DPP_MAX_QUEUE_SIZE_BYTES);
         dppline_remove_head();

@@ -58,8 +58,8 @@ struct net_md_flow_key
     int fragment;         /* fragment indicator */
     uint16_t sport;       /* Network byte order */
     uint16_t dport;       /* Network byte order */
-    bool     fstart;      /* Flow start */
-    bool     fend;        /* Flow end */
+    bool fstart;          /* Flow start */
+    bool fend;            /* Flow end */
 };
 
 
@@ -115,9 +115,12 @@ struct net_md_aggregator
     size_t total_report_flows;    /* total flows to be reported */
     size_t total_flows;           /* # of flows tracked by the aggregator */
     size_t held_flows;            /* # of inactive flows with a ref count > 0 */
+    size_t max_reports;           /* Max # of flows to report per window */
     bool (*report_filter)(struct net_md_stats_accumulator *);
+    bool (*collect_filter)(struct net_md_aggregator *, struct net_md_flow_key *);
     bool (*send_report)(struct net_md_aggregator *, char *);
     bool (*neigh_lookup)(struct sockaddr_storage *, os_macaddr_t *);
+    bool (*process)(struct net_md_stats_accumulator *);
 };
 
 
@@ -133,6 +136,10 @@ struct net_md_aggregator_set
     size_t num_windows;     /* the max # of windows the report will contain */
     int acc_ttl;            /* how long an incative accumulator is kept around */
     int report_type;        /* absolute or relative */
+
+    /* a collector filter routine */
+    bool (*collect_filter)(struct net_md_aggregator *aggr,
+                           struct net_md_flow_key *);
 
     /* a report filter routine */
     bool (*report_filter)(struct net_md_stats_accumulator *);
@@ -216,5 +223,42 @@ bool net_md_send_report(struct net_md_aggregator *aggr, char *mqtt_topic);
  * @return total number of flows to be reported
  */
 size_t net_md_get_total_flows(struct net_md_aggregator *aggr);
+
+/**
+ * @brief logs the content of an accumulator
+ *
+ * @param acc the accumulator to log
+ */
+void
+net_md_log_acc(struct net_md_stats_accumulator *acc);
+
+/**
+ * @brief logs the content of an aggregator
+ *
+ * Walks the aggregator and logs its accumulators
+ * @param aggr the accumulator to log
+ */
+void
+net_md_log_aggr(struct net_md_aggregator *aggr);
+
+/**
+ * @brief process an accumulator
+ *
+ * Process an accumulator
+ * @param aggr the accumulator to process
+ * @param acc the accumulator to process
+ */
+void
+net_md_process_acc(struct net_md_aggregator *aggr,
+                   struct net_md_stats_accumulator *acc);
+
+/**
+ * @brief logs the content of an accumulator
+ *
+ * Walks an aggregator and processes its accumulators
+ * @param acc the accumulator to process
+ */
+void
+net_md_process_aggr(struct net_md_aggregator *aggr);
 
 #endif /* NETWORK_METADATA_REPORT_H_INCLUDED */

@@ -159,6 +159,34 @@ gen_dev_webpulse_policy() {
 EOF
 }
 
+gen_dev_update_tag_policy() {
+    cat <<EOF
+["Open_vSwitch",
+    {
+        "op": "insert",
+        "table": "FSM_Policy",
+        "row": {
+               "policy": "${policy_table}",
+               "name": "dev_update_tag_test",
+               "idx": 0,
+               "action": "update_tag",
+               "fqdn_op": "sfr_in",
+               "fqdns":
+                   ["set",
+                   ["facebook.com","linkedin.com","google.com"
+                   ]],
+               "other_config":
+                        ["map",[
+                        ["tagv4_name","\${*testv4_tag}"],
+                        ["tagv6_name","\${*testv6_tag}"]
+                        ]]
+       }
+   }
+]
+EOF
+}
+
+
 
 # Create a dev webpulse policy entry
 gen_dev_brightcloud_policy() {
@@ -345,6 +373,7 @@ $(gen_tag_cmd)
 eval ovsdb-client transact \'$(gen_fsmc_cmd)\'
 eval ovsdb-client transact \'$(gen_dev_brightcloud_policy)\'
 eval ovsdb-client transact \'$(gen_dev_webpulse_policy)\'
+eval ovsdb-client transact \'$(gen_dev_update_tag_policy)\'
 set_br_home_tx
 $(gen_oflow_tx_cmd)
 

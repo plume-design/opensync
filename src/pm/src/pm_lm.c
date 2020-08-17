@@ -68,7 +68,10 @@ ovsdb_table_t table_AW_LM_Config;
 ovsdb_table_t table_AW_Debug;
 
 
-static void pm_lm_do_log_pull(char *upload_token, char *upload_location)
+static void pm_lm_do_log_pull(
+        const char *upload_token,
+        const char *upload_location,
+        const char *upload_method)
 {
     // check presence of necessary data in order to execute log-pull
     if (!strlen(upload_token) || !strlen(upload_location)) {
@@ -78,7 +81,7 @@ static void pm_lm_do_log_pull(char *upload_token, char *upload_location)
 
     LOGN("LM: Run log-pull procedure.");
 
-    if (!target_log_pull(upload_location, upload_token)) {
+    if (!target_log_pull_ext(upload_location, upload_token, upload_method)) {
         LOGE("LM: Log-pull procedure failed!");
     }
 }
@@ -88,8 +91,10 @@ static void callback_AW_LM_Config(
         struct schema_AW_LM_Config *old_rec,
         struct schema_AW_LM_Config *config)
 {
-    if (mon->mon_type == OVSDB_UPDATE_MODIFY) {
-        pm_lm_do_log_pull(config->upload_token, config->upload_location);
+    if (mon->mon_type == OVSDB_UPDATE_MODIFY ||
+        mon->mon_type == OVSDB_UPDATE_NEW) {
+        /* AW_LM_Config::name is used to define logpull upload method. */
+        pm_lm_do_log_pull(config->upload_token, config->upload_location, config->name);
     }
 }
 

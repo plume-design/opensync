@@ -52,7 +52,6 @@ struct mnl_buf
 
 const char *test_name = "fcm_ct_stats_tests";
 
-fcm_collect_plugin_t g_collector;
 
 char *g_node_id = "4C718002B3";
 char *g_loc_id = "59efd33d2c93832025330a3e";
@@ -62,17 +61,37 @@ char *g_mqtt_topic = "dev-test/ct_stats/4C718002B3/59efd33d2c93832025330a3e";
 int g_portid = 18404;
 int g_seq = 1581959512;
 
+
 char *
-test_get_other_config(fcm_collect_plugin_t *plugin, char *key)
+test_get_other_config_0(fcm_collect_plugin_t *plugin, char *key)
 {
-    return "1";
+    if (!strcmp(key, "name")) return "ct_stats_0";
+
+    return NULL;
 }
 
 
 char *
+test_get_other_config_1(fcm_collect_plugin_t *plugin, char *key)
+{
+    if (!strcmp(key, "name")) return "ct_stats_1";
+    if (!strcmp(key, "active")) return "true";
+
+    return NULL;
+}
+
+char *
+test_get_other_config_2(fcm_collect_plugin_t *plugin, char *key)
+{
+    if (!strcmp(key, "name")) return "ct_stats_2";
+
+    return NULL;
+}
+
+char *
 test_get_mqtt_hdr_node_id(void)
 {
-    return g_node_id;;
+    return g_node_id;
 }
 
 char *
@@ -103,27 +122,51 @@ test_send_report(struct net_md_aggregator *aggr, char *mqtt_topic)
 #endif
 }
 
+fcm_collect_plugin_t g_collector_tbl[3] =
+{
+    {
+        .get_other_config = test_get_other_config_0,
+    },
+    {
+        .get_other_config = test_get_other_config_1,
+    },
+    {
+        .get_other_config = test_get_other_config_2,
+    },
+};
+
 void
 setUp(void)
 {
     struct net_md_aggregator *aggr;
-    flow_stats_t *mgr;
+    flow_stats_t *ct_stats;
+    flow_stats_mgr_t *mgr;
+    size_t num_c;
+    size_t i;
     int rc;
-
-    neigh_table_init();
-    memset(&g_collector, 0, sizeof(g_collector));
-    g_collector.get_other_config = test_get_other_config;
-    g_collector.get_mqtt_hdr_node_id = test_get_mqtt_hdr_node_id;
-    g_collector.get_mqtt_hdr_loc_id = test_get_mqtt_hdr_loc_id;
-    g_collector.mqtt_topic = g_mqtt_topic;
-    g_collector.loop = EV_DEFAULT;
-    rc = ct_stats_plugin_init(&g_collector);
-    TEST_ASSERT_EQUAL_INT(0, rc);
 
     mgr = ct_stats_get_mgr();
     TEST_ASSERT_NOT_NULL(mgr);
 
-    aggr = mgr->aggr;
+    neigh_table_init();
+
+    num_c = sizeof(g_collector_tbl) / sizeof(g_collector_tbl[0]);
+    for (i = 0; i < num_c; i++)
+    {
+        g_collector_tbl[i].mqtt_topic = g_mqtt_topic;
+        g_collector_tbl[i].loop = EV_DEFAULT;
+        g_collector_tbl[i].get_mqtt_hdr_node_id = test_get_mqtt_hdr_node_id;
+        g_collector_tbl[i].get_mqtt_hdr_loc_id = test_get_mqtt_hdr_loc_id;
+
+        rc = ct_stats_plugin_init(&g_collector_tbl[i]);
+        if ((int)i < mgr->max_sessions) TEST_ASSERT_EQUAL_INT(0, rc);
+        else TEST_ASSERT_EQUAL_INT(-1, rc);
+    }
+
+    ct_stats = ct_stats_get_active_instance();
+    TEST_ASSERT_NOT_NULL(ct_stats);
+
+    aggr = ct_stats->aggr;
     TEST_ASSERT_NOT_NULL(aggr);
     aggr->send_report = test_send_report;
 }
@@ -132,41 +175,56 @@ setUp(void)
 void
 tearDown(void)
 {
-    flow_stats_t *mgr;
+    size_t num_c;
+    size_t i;
 
-    mgr = ct_stats_get_mgr();
-    memset(&g_collector, 0, sizeof(g_collector));
-    neigh_table_cleanup();
-    net_md_free_aggregator(mgr->aggr);
+    num_c = sizeof(g_collector_tbl) / sizeof(g_collector_tbl[0]);
+    for (i = 0; i < num_c; i++)
+    {
+        ct_stats_plugin_exit(&g_collector_tbl[i]);
+    }
     neigh_table_cleanup();
 }
 
 void
 test_collect(void)
 {
-    ct_stats_collect_cb(&g_collector);
+    flow_stats_t *ct_stats;
+
+    ct_stats = ct_stats_get_active_instance();
+    TEST_ASSERT_NOT_NULL(ct_stats);
+    ct_stats_collect_cb(ct_stats->collector);
 }
 
 
 void
 test_process_v4(void)
 {
+    fcm_collect_plugin_t *collector;
     ctflow_info_t *flow_info;
+    flow_stats_t *ct_stats;
     struct mnl_buf *p_mnl;
-    flow_stats_t *mgr;
+    flow_stats_mgr_t *mgr;
     bool loop;
     int idx;
     int ret;
 
     mgr = ct_stats_get_mgr();
     TEST_ASSERT_NOT_NULL(mgr);
+
+    ct_stats = ct_stats_get_active_instance();
+    TEST_ASSERT_NOT_NULL(ct_stats);
+
+    collector = ct_stats->collector;
+    TEST_ASSERT_NOT_NULL(collector);
 
     loop = true;
     idx = 0;
     while (loop)
     {
         p_mnl = &g_mnl_buf_ipv4[idx];
-        ret = mnl_cb_run(p_mnl->data, p_mnl->len, g_seq, g_portid, data_cb, mgr);
+        ret = mnl_cb_run(p_mnl->data, p_mnl->len, g_seq, g_portid,
+                         data_cb, ct_stats);
         if (ret == -1)
         {
             ret = errno;
@@ -177,22 +235,24 @@ test_process_v4(void)
         idx++;
     }
 
-    ds_dlist_foreach(&mgr->ctflow_list, flow_info)
+    ds_dlist_foreach(&ct_stats->ctflow_list, flow_info)
     {
         ct_stats_print_contrack(&flow_info->flow);
     }
 
-    ct_flow_add_sample(mgr);
-    g_collector.send_report(&g_collector);
+    ct_flow_add_sample(ct_stats);
+    collector->send_report(collector);
 }
 
 
 void
 test_process_v6(void)
 {
+    fcm_collect_plugin_t *collector;
     ctflow_info_t *flow_info;
+    flow_stats_t *ct_stats;
+    flow_stats_mgr_t *mgr;
     struct mnl_buf *p_mnl;
-    flow_stats_t *mgr;
     bool loop;
     int idx;
     int ret;
@@ -200,12 +260,19 @@ test_process_v6(void)
     mgr = ct_stats_get_mgr();
     TEST_ASSERT_NOT_NULL(mgr);
 
+    ct_stats = ct_stats_get_active_instance();
+    TEST_ASSERT_NOT_NULL(ct_stats);
+
+    collector = ct_stats->collector;
+    TEST_ASSERT_NOT_NULL(collector);
+
     loop = true;
     idx = 0;
     while (loop)
     {
         p_mnl = &g_mnl_buf_ipv6[idx];
-        ret = mnl_cb_run(p_mnl->data, p_mnl->len, g_seq, g_portid, data_cb, mgr);
+        ret = mnl_cb_run(p_mnl->data, p_mnl->len, g_seq, g_portid,
+                         data_cb, ct_stats);
         if (ret == -1)
         {
             ret = errno;
@@ -216,56 +283,74 @@ test_process_v6(void)
         idx++;
     }
 
-    ds_dlist_foreach(&mgr->ctflow_list, flow_info)
+    ds_dlist_foreach(&ct_stats->ctflow_list, flow_info)
     {
         ct_stats_print_contrack(&flow_info->flow);
     }
-    ct_flow_add_sample(mgr);
-    g_collector.send_report(&g_collector);
+
+    ct_flow_add_sample(ct_stats);
+    collector->send_report(collector);
 }
+
 
 void
 test_ct_stat_v4(void)
 {
+    fcm_collect_plugin_t *collector;
     ctflow_info_t *flow_info;
-    flow_stats_t *mgr;
+    flow_stats_t *ct_stats;
+    flow_stats_mgr_t *mgr;
     int ret;
 
     mgr = ct_stats_get_mgr();
     TEST_ASSERT_NOT_NULL(mgr);
 
+    ct_stats = ct_stats_get_active_instance();
+    TEST_ASSERT_NOT_NULL(ct_stats);
+
+    collector = ct_stats->collector;
+    TEST_ASSERT_NOT_NULL(collector);
+
     ret = ct_stats_get_ct_flow(AF_INET);
     TEST_ASSERT_EQUAL_INT(ret, 0);
 
-    ds_dlist_foreach(&mgr->ctflow_list, flow_info)
+    ds_dlist_foreach(&ct_stats->ctflow_list, flow_info)
     {
         ct_stats_print_contrack(&flow_info->flow);
     }
 
-    ct_flow_add_sample(mgr);
-    g_collector.send_report(&g_collector);
+    ct_flow_add_sample(ct_stats);
+    collector->send_report(collector);
 }
 
 void
 test_ct_stat_v6(void)
 {
+    fcm_collect_plugin_t *collector;
     ctflow_info_t *flow_info;
-    flow_stats_t *mgr;
+    flow_stats_t *ct_stats;
+    flow_stats_mgr_t *mgr;
     int ret;
 
     mgr = ct_stats_get_mgr();
     TEST_ASSERT_NOT_NULL(mgr);
 
+    ct_stats = ct_stats_get_active_instance();
+    TEST_ASSERT_NOT_NULL(ct_stats);
+
+    collector = ct_stats->collector;
+    TEST_ASSERT_NOT_NULL(collector);
+
     ret = ct_stats_get_ct_flow(AF_INET6);
     TEST_ASSERT_EQUAL_INT(ret, 0);
 
-    ds_dlist_foreach(&mgr->ctflow_list, flow_info)
+    ds_dlist_foreach(&ct_stats->ctflow_list, flow_info)
     {
         ct_stats_print_contrack(&flow_info->flow);
     }
 
-    ct_flow_add_sample(mgr);
-    g_collector.send_report(&g_collector);
+    ct_flow_add_sample(ct_stats);
+    collector->send_report(collector);
 }
 
 int
@@ -275,7 +360,7 @@ main(int argc, char *argv[])
     (void)argv;
 
     target_log_open("TEST", LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_TRACE);
+    log_severity_set(LOG_SEVERITY_INFO);
 
     UnityBegin(test_name);
 
@@ -286,6 +371,7 @@ main(int argc, char *argv[])
     RUN_TEST(test_ct_stat_v6);
 #endif
 
+    ct_stats_exit_mgr();
 
     return UNITY_END();
 }

@@ -38,7 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdio.h>
 #include <string.h>
 
-#include "osp.h"
+#include "osp_reboot.h"
 #if 1
 #include "util.h"
 #include "const.h"

@@ -39,7 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  * @defgroup OSN_UPNP UPnP
  *
- * UPnP API definitions
+ * OpenSync UPnP API
  *
  * @{
  */

@@ -139,6 +139,28 @@ $(call UNIT_C_RULES)
 endef
 
 ##########################################################
+# Definition of a "FUT" type unit
+##########################################################
+define UNIT_BUILD_FUT
+# Add the unit to the global list of units
+UNIT_ALL += $(UNIT_PATH)
+UNIT_ALL_INSTALL += $(UNIT_PATH)/install
+UNIT_ALL_CLEAN += $(UNIT_PATH)/clean
+UNIT_ALL_FUT_UNITS += $(UNIT_PATH)
+
+.PHONY: $(UNIT_PATH)/install
+$(UNIT_PATH) $(UNIT_PATH)/: $(UNIT_PATH)/install
+$(UNIT_PATH)/install:
+	$(NQ) " $(call color_copy,copy)    [$(call COLOR_BOLD,$(UNIT_PATH))] -> $(FUTDIR)/$(UNIT_DIR)"
+	$(Q)$(MKDIR) $(foreach SRC,$(UNIT_FILE),'$(dir $(FUTDIR)/$(UNIT_DIR)/$(SRC))')
+	$(Q)$(foreach SRC,$(UNIT_FILE),$(CP) $(UNIT_PATH)/$(SRC) $(dir $(FUTDIR)/$(UNIT_DIR)/$(SRC));)
+
+$(call UNIT_MAKE_DIRS)
+$(call UNIT_MAKE_INFO)
+$(call UNIT_MAKE_CLEAN,$(FUTDIR)/$(UNIT_DIR))
+endef
+
+##########################################################
 # Definition of a "LIB" type unit
 ##########################################################
 # Helper for LIB and STATIC_LIB
@@ -357,6 +379,7 @@ $(UNIT_PATH)/info:
 	$(NQ) "UNIT_OBJ:            " $(UNIT_OBJ)
 	$(NQ) "UNIT_EXPORT_CFLAGS:  " $(UNIT_EXPORT_CFLAGS)
 	$(NQ) "UNIT_EXPORT_LDFLAGS: " $(UNIT_EXPORT_LDFLAGS)
+	$(NQ) "UNIT_FILE:           " $(UNIT_FILE)
 	$(NQ) "UNIT_CLEAN:          " $(UNIT_CLEAN)
 endef
 
@@ -415,6 +438,7 @@ UNIT_PRE:=
 UNIT_DIR:=
 UNIT_POST_MACRO:=
 UNIT_INSTALL:=
+UNIT_FILE:=
 
 UNIT_MK         := $(1)
 UNIT_PATH       := $(call CANNED_PATH,$(dir $(UNIT_MK)))

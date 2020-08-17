@@ -1,0 +1,10 @@
+#
+# Include core OSP OBJM modules
+#
+source "src/lib/osp/kconfig/Kconfig.osp_objm"
+
+#
+# Include platform/vendor OSP OBJM modules
+#
+osource "platform/*/kconfig/Kconfig.osp_objm"
+osource "vendor/*/kconfig/Kconfig.osp_objm"

@@ -33,6 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "mosqev.h"
 #include "dppline.h"
 #include "target.h"
+#include "osp_unit.h"
 #include "log.h"
 #include "ds_dlist.h"
 #include "opensync_stats.pb-c.h"
@@ -519,7 +520,7 @@ bool qm_mqtt_init(void)
      * Use the device serial number as client ID
      */
     char cID[64];
-    if (true != target_id_get(cID, sizeof(cID)))
+    if (true != osp_unit_id_get(cID, sizeof(cID)))
     {
         LOGE("acquiring device id number\n");
         goto error;

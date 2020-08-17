@@ -91,49 +91,6 @@ const char **target_ethclient_iflist_get()
 }
 #endif
 
-#if defined(CONFIG_TARGET_SERIAL_FROM_MAC)
-/*
- * Returns true if device serial name is correctly read
- */
-bool target_serial_get(void *buff, size_t buffsz)
-{
-    size_t n;
-    memset(buff, 0, buffsz);
-
-    os_macaddr_t mac;
-
-    /* get eth0 MAC address */
-    if (!os_nif_macaddr(CONFIG_TARGET_SERIAL_FROM_MAC_IFNAME, &mac))
-    {
-        LOG(ERR, "Unable to retrieve MAC address for %s.", CONFIG_TARGET_SERIAL_FROM_MAC_IFNAME);
-        return false;
-    }
-
-    /* convert this to string and set id & serial_number */
-    n = snprintf(buff, buffsz, PRI(os_macaddr_plain_t), FMT(os_macaddr_t, mac));
-    if (n >= buffsz)
-    {
-        LOG(ERR, "buffer not large enough");
-        return false;
-    }
-
-    return true;
-}
-#endif /* CONFIG_TARGET_SERIAL_FROM_MAC */
-
-#if defined(CONFIG_TARGET_MODEL_GET)
-bool target_model_get(void *buff, size_t buffsz)
-{
-    snprintf(
-            buff,
-            buffsz,
-            "%s",
-            CONFIG_TARGET_MODEL);
-
-    return true;
-}
-#endif /* CONFIG_TARGET_MODEL_GET */
-
 #if defined(CONFIG_TARGET_PATH_BIN)
 const char *target_bin_dir(void)
 {
@@ -187,13 +144,16 @@ bool target_device_restart_managers()
 #endif
 
 #if defined(CONFIG_TARGET_LINUX_LOGPULL)
-bool target_log_pull(const char *upload_location, const char *upload_token)
+bool target_log_pull_ext(
+        const char *upload_location,
+        const char *upload_token,
+        const char *upload_method)
 {
     // TODO: command cleanup (remove hc params, etc...)
     char shell_cmd[1024];
     snprintf(shell_cmd, sizeof(shell_cmd),
         "sh "CONFIG_TARGET_PATH_SCRIPTS"/lm_logs_collector.sh"
-        " %s"
+        " \"%s\""
         " %s"
         " "CONFIG_TARGET_PATH_LOG_LM
         " syslog"
@@ -201,12 +161,19 @@ bool target_log_pull(const char *upload_location, const char *upload_token)
         " tmp"
         " crash"
         " /tmp/etc/openvswitch/conf.db"
-        " /tmp/ovsdb.log",
+        " /tmp/ovsdb.log"
+        " %s",
         upload_location,
-        upload_token);
+        upload_token,
+        upload_method);
 
     // On success we return true
     return !cmd_log(shell_cmd);
+}
+
+bool target_log_pull(const char *upload_location, const char *upload_token)
+{
+    return target_log_pull_ext(upload_location, upload_token, "lm-awlan");
 }
 #endif
 
@@ -224,35 +191,6 @@ bool target_device_execute(const char *cmd)
     int rc = system(cmd);
 
     if (!WIFEXITED(rc) || WEXITSTATUS(rc) != 0) return false;
-
-    return true;
-}
-#endif
-
-#if defined(CONFIG_TARGET_FIXED_HWREV)
-bool target_hw_revision_get(void *buff, size_t buffsz)
-{
-    snprintf(
-            buff,
-            buffsz,
-            "%s",
-            CONFIG_TARGET_FIXED_HWREV_STRING);
-
-    return true;
-}
-#endif
-
-#if defined(CONFIG_TARGET_FIXED_SKU)
-/*
- * Dummy function
- */
-bool target_sku_get(void *buff, size_t buffsz)
-{
-    snprintf(
-            buff,
-            buffsz,
-            "%s",
-            CONFIG_TARGET_SKU_STRING);
 
     return true;
 }
@@ -312,8 +250,23 @@ int target_led_names(const char **leds[])
 
 #define DEFAULT_BACKHAUL_PREFIX         "169.254."
 
-// Internet IP Addresses
+/* Root Servers based on https://www.iana.org/domains/root/servers */
 static char *util_connectivity_check_inet_addrs[] = {
+    "a.root-servers.net",
+    "b.root-servers.net",
+    "c.root-servers.net",
+    "d.root-servers.net",
+    "f.root-servers.net",
+    "h.root-servers.net",
+    "i.root-servers.net",
+    "j.root-servers.net",
+    "k.root-servers.net",
+    "m.root-servers.net",
+    NULL
+};
+
+/* IPv4 Root Servers */
+static char *util_connectivity_check_inet_ipv4_addrs[] = {
     "198.41.0.4",
     "192.228.79.201",
     "192.33.4.12",
@@ -328,9 +281,25 @@ static char *util_connectivity_check_inet_addrs[] = {
     NULL
 };
 
-static int util_connectivity_get_inet_addr_cnt(void)
+/* IPv6 Root Servers */
+static char *util_connectivity_check_inet_ipv6_addrs[] = {
+    "2001:503:ba3e::2:30",
+    "2001:500:200::b",
+    "2001:500:2::c",
+    "2001:500:2d::d",
+    "2001:500:2f::f",
+    "2001:500:1::53",
+    "2001:7fe::53",
+    "2001:503:c27::2:30",
+    "2001:7fd::1",
+    "2001:500:9f::42",
+    "2001:dc3::35",
+    NULL
+};
+
+static int util_connectivity_get_inet_addr_cnt(char **addr)
 {
-    char **p = util_connectivity_check_inet_addrs;
+    char **p = addr;
     int n = 0;
 
     while (*p) {
@@ -398,13 +367,16 @@ util_ntp_check(void)
 }
 
 static bool
-util_ping_cmd(const char *ipstr)
+util_ping_cmd(const char *ipstr, bool ipv6)
 {
     char cmd[256];
+    char *ipv6_s;
     bool rc;
 
-    snprintf(cmd, sizeof(cmd), "ping %s -s %d -c %d -w %d >/dev/null 2>&1",
-             ipstr, DEFAULT_PING_PACKET_SIZE, DEFAULT_PING_PACKET_CNT,
+    ipv6_s = ipv6 ? "-6" : "";
+
+    snprintf(cmd, sizeof(cmd), "ping %s %s -s %d -c %d -w %d >/dev/null 2>&1",
+             ipv6_s, ipstr, DEFAULT_PING_PACKET_SIZE, DEFAULT_PING_PACKET_CNT,
              DEFAULT_PING_TIMEOUT);
 
     rc = target_device_execute(cmd);
@@ -437,7 +409,7 @@ util_arping_cmd(const char *ipstr)
 }
 
 static bool
-util_get_router_ip(struct in_addr *dest)
+util_get_router_ipv4(struct in_addr *dest)
 {
     FILE *f1;
     char line[128];
@@ -472,17 +444,54 @@ util_get_router_ip(struct in_addr *dest)
         fclose(f1);
 
         if (rc) {
-            LOGD("%s: Found router IP %s", PROC_NET_ROUTE, inet_ntoa(*dest));
+            LOGD("%s: Found router IPv4 %s", PROC_NET_ROUTE, inet_ntoa(*dest));
         }
         else {
-            LOGW("%s: No router IP found", PROC_NET_ROUTE);
+            LOGD("%s: No router IPv4 found", PROC_NET_ROUTE);
         }
     }
     else {
-        LOGE("Failed to get router IP, unable to open %s", PROC_NET_ROUTE);
+        LOGE("Failed to get router IPv4, unable to open %s", PROC_NET_ROUTE);
     }
 
     return rc;
+}
+
+static bool
+util_get_router_ipv6(char *dest, int size)
+{
+    FILE *f1;
+    char line[128];
+    bool retval;
+    char cmd[128];
+
+    f1 = NULL;
+    retval = false;
+
+    snprintf(cmd, sizeof(cmd), "ip -6 r | awk '$1 == \"default\" && $3 != \"::\" {print $5 \"%%\" $7}'");
+    f1 = popen(cmd, "r");
+    if (!f1) {
+        LOGE("Failed to get ipv6 route info");
+        goto done;
+    }
+
+    if (fgets(line, sizeof(line), f1) == NULL) {
+        LOGD("IPv6 default route not available");
+        goto done;
+    }
+
+    while(line[strlen(line)-1] == '\r' || line[strlen(line)-1] == '\n') {
+        line[strlen(line)-1] = '\0';
+    }
+
+    retval = true;
+    strscpy(dest, line, size);
+
+done:
+    if (f1 != NULL)
+        pclose(f1);
+
+    return retval;
 }
 
 static bool
@@ -561,7 +570,7 @@ util_connectivity_link_check(const char *ifname)
 
     if (util_get_link_ip(ifname + 2, &link_ip))
     {
-        if (util_ping_cmd(inet_ntoa(link_ip)) == false)
+        if (util_ping_cmd(inet_ntoa(link_ip), false) == false)
         {
             /* ARP traffic tends to be treated differently, i.e.
              * it lands on different TID in Wi-Fi driver.
@@ -579,38 +588,107 @@ util_connectivity_link_check(const char *ifname)
 }
 
 static bool
-util_connectivity_router_check()
+util_get_ipv6_global_interface(char *ifn, int ifn_size)
 {
-    struct in_addr r_addr;
-    bool           ret;
+    FILE *f1;
+    char line[128];
+    bool retval;
+    char cmd[128];
 
-    if (util_get_router_ip(&r_addr) == false) {
-        // If we don't have a router, that's considered a failure
-        return false;
+    f1 = NULL;
+    retval = false;
+
+    snprintf(cmd, sizeof(cmd), "ip -6 r | awk '$1 == \"default\" && $3 != \"::\" {print $7}'");
+    f1 = popen(cmd, "r");
+    if (!f1) {
+        LOGE("Failed to get ipv6 route info");
+        goto done;
     }
 
-    ret = util_ping_cmd(inet_ntoa(r_addr));
-    if (!ret) {
-        LOGI("Router check: ping failed, arping checking");
-        ret = util_arping_cmd(inet_ntoa(r_addr));
+    if (fgets(line, sizeof(line), f1) == NULL) {
+        LOGD("IPv6 default route not available");
+        goto done;
     }
-    return ret;
+
+    while(line[strlen(line)-1] == '\r' || line[strlen(line)-1] == '\n') {
+        line[strlen(line)-1] = '\0';
+    }
+
+    retval = true;
+    strscpy(ifn, line, ifn_size);
+
+    LOGI("Global IPv6 interface: %s", ifn);
+done:
+    if (f1 != NULL)
+        pclose(f1);
+
+    return retval;
 }
 
 static bool
-util_connectivity_internet_check() {
-    int r;
-    int cnt_addr = util_connectivity_get_inet_addr_cnt();
+util_connectivity_router_check(void)
+{
+    struct in_addr  r_addr;
+    char            r_6addr[128];
+    bool            cipv4;
+    bool            cipv6;
 
-    r = os_rand() % cnt_addr;
-    if (util_ping_cmd(util_connectivity_check_inet_addrs[r]) == false) {
-        // Try again.. Some of these DNS root servers are a little flakey
-        r = os_rand() % cnt_addr;
-        if (util_ping_cmd(util_connectivity_check_inet_addrs[r]) == false) {
-            return false;
+    cipv6 = util_get_router_ipv6(r_6addr, sizeof(r_6addr));
+    if (cipv6)
+        cipv6 = util_ping_cmd(r_6addr, true);
+
+    if (util_get_router_ipv4(&r_addr) == false) {
+        /* If we don't have a router, that's considered a failure for IPv4 */
+        return cipv6;
+    }
+    cipv4 = util_ping_cmd(inet_ntoa(r_addr), false);
+    if (!cipv4) {
+        cipv4 = util_arping_cmd(inet_ntoa(r_addr));
+        LOGI("Router check: ping ipv4 failed, arping ret = %d", cipv4);
+    }
+
+    return cipv4 || cipv6;
+}
+
+static bool
+util_connectivity_internet_check(void) {
+    char  ipv6_addr[256];
+    char  ipv6_if[126];
+    bool  ipv6;
+    bool  ret;
+    int   cnt_addr1;
+    int   cnt_addr2;
+    int   tries;
+    int   r1, r2;
+
+    cnt_addr1 = util_connectivity_get_inet_addr_cnt(util_connectivity_check_inet_addrs);
+    ipv6 = util_get_ipv6_global_interface(ipv6_if, sizeof(ipv6_if));
+    ret = false;
+    tries = 2;
+
+    while (tries--) {
+        r1 = os_rand() % cnt_addr1;
+        if (ipv6) {
+            ret = util_ping_cmd(util_connectivity_check_inet_addrs[r1], true);
+            if (ret)
+                break;
+            LOGW("DNS [%s] Internet checking failed", util_connectivity_check_inet_addrs[r1]);
+            cnt_addr2 = util_connectivity_get_inet_addr_cnt(util_connectivity_check_inet_ipv6_addrs);
+            r2 = os_rand() % cnt_addr2;
+            snprintf(ipv6_addr, sizeof(ipv6_addr), "%s%%%s", util_connectivity_check_inet_ipv6_addrs[r2], ipv6_if);
+            ret = util_ping_cmd(ipv6_addr, true);
+            if (ret)
+                break;
+        }
+
+        ret = util_ping_cmd(util_connectivity_check_inet_addrs[r1], false);
+        if (!ret) {
+            cnt_addr2 = util_connectivity_get_inet_addr_cnt(util_connectivity_check_inet_ipv4_addrs);
+            r2 = os_rand() % cnt_addr2;
+            ret = util_ping_cmd(util_connectivity_check_inet_ipv4_addrs[r2], true);
         }
     }
-    return true;
+    return ret;
 }
 
 /******************************************************************************
@@ -621,33 +699,35 @@ bool target_device_connectivity_check(const char *ifname,
                                       target_connectivity_check_t *cstate,
                                       target_connectivity_check_option_t opts)
 {
+    int ret;
+
     memset(cstate, 0 , sizeof(target_connectivity_check_t));
+    ret = true;
 
     if (opts & LINK_CHECK) {
         cstate->link_state = util_connectivity_link_check(ifname);
         if (!cstate->link_state)
-            return false;
+            ret = false;
     }
 
     if (opts & ROUTER_CHECK) {
         cstate->router_state = util_connectivity_router_check();
         if (!cstate->router_state)
-            return false;
+            ret = false;
     }
 
     if (opts & INTERNET_CHECK) {
         cstate->internet_state = util_connectivity_internet_check();
         if (!cstate->internet_state)
-            return false;
+            ret = false;
     }
 
     if (opts & NTP_CHECK) {
         cstate->ntp_state = util_ntp_check();
         if (!cstate->ntp_state)
-            return false;
+            ret = false;
     }
 
-    return true;
+    return ret;
 }
 #endif
-

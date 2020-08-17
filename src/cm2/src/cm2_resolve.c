@@ -81,8 +81,12 @@ bool cm2_parse_resource(cm2_addr_t *addr, cm2_dest_e dest)
 
 bool cm2_set_addr(cm2_dest_e dest, char *resource)
 {
-    bool ret = false;
-    cm2_addr_t *addr = cm2_get_addr(dest);
+    cm2_addr_t *addr;
+    bool       ret;
+
+    addr = cm2_get_addr(dest);
+    ret = false;
+
     STRSCPY(addr->resource, resource);
     addr->resolved = false;
     addr->updated = false;

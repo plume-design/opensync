@@ -160,6 +160,70 @@ test_tag_type(void)
     }
 }
 
+void
+test_type_of_tag(void)
+{
+    struct tag_validate
+    {
+        char *name;
+        int flag;
+    } tag_types[] =
+      {
+          {
+              .name = "coucou",
+              .flag = OM_TLE_FLAG_NONE,
+          },
+          {
+              .name = "${&}",
+              .flag = OM_TLE_FLAG_NONE,
+          },
+          {
+              .name = "${@}",
+              .flag = OM_TLE_FLAG_DEVICE,
+          },
+          {
+              .name = "${#}",
+              .flag = OM_TLE_FLAG_CLOUD,
+          },
+          {
+              .name = "${*}",
+              .flag = OM_TLE_FLAG_LOCAL,
+          },
+          {
+              .name = "$[&]",
+              .flag = OM_TLE_FLAG_NONE,
+          },
+          {
+              .name = "$[@]",
+              .flag = OM_TLE_FLAG_DEVICE,
+          },
+          {
+              .name = "$[#]",
+              .flag = OM_TLE_FLAG_CLOUD,
+          },
+          {
+              .name = "$[*]",
+              .flag = OM_TLE_FLAG_LOCAL,
+          },
+      };
+
+    int expected;
+    char *name;
+    size_t len;
+    int flag;
+    size_t i;
+
+    len = sizeof(tag_types) / sizeof(tag_types[0]);
+
+    for (i = 0; i < len; i++)
+    {
+        name = tag_types[i].name;
+        expected = tag_types[i].flag;
+        flag = om_get_type_of_tag(name);
+        TEST_ASSERT_EQUAL_INT(expected, flag);
+    }
+}
+
 
 void
 setUp(void)
@@ -296,6 +360,7 @@ main(int argc, char *argv[])
     UnityBegin(g_test_name);
 
     RUN_TEST(test_tag_type);
+    RUN_TEST(test_type_of_tag);
     RUN_TEST(test_val_in_tag);
     RUN_TEST(test_val_in_tag_group);
 

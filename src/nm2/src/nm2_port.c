@@ -24,12 +24,13 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include "log.h"
+#include "util.h"
 #include "ovsdb_table.h"
 #include "os_util.h"
 #include "reflink.h"
 #include "synclist.h"
 #include "ovsdb_sync.h"
-#include "target.h"
 #include "osp_l2switch.h"
 
 #include "nm2.h"

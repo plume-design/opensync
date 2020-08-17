@@ -98,7 +98,7 @@ void create_hex_dump(const char *fname, const uint8_t *buf, size_t len)
  */
 struct schema_Flow_Service_Manager_Config g_confs[] =
 {
-    /* parser plugin, no type provided */
+    /* parser plugin, no type provided, idx: 0 */
     {
         .handler = "fsm_session_test_0",
         .plugin = "plugin_0",
@@ -118,7 +118,7 @@ struct schema_Flow_Service_Manager_Config g_confs[] =
         .other_config_len = 3,
     },
 
-    /* parser plugin, type provided */
+    /* parser plugin, type provided, idx: 1 */
     {
         .handler = "fsm_session_test_1",
         .plugin = "plugin_1",
@@ -141,7 +141,7 @@ struct schema_Flow_Service_Manager_Config g_confs[] =
         .other_config_len = 4,
     },
 
-    /* web categorization plugin */
+    /* web categorization plugin, idx: 2 */
     {
         .handler = "fsm_session_test_2",
         .plugin = "plugin_2",
@@ -159,7 +159,7 @@ struct schema_Flow_Service_Manager_Config g_confs[] =
         .other_config_len = 2,
     },
 
-    /* dpi plugin */
+    /* dpi plugin, idx: 3 */
     {
         .handler = "fsm_session_test_3",
         .plugin = "plugin_3",
@@ -177,7 +177,7 @@ struct schema_Flow_Service_Manager_Config g_confs[] =
         .other_config_len = 2,
     },
 
-    /* bogus plugin */
+    /* bogus plugin, , idx: 4 */
     {
         .handler = "fsm_bogus_plugin",
         .plugin = "bogus",
@@ -185,6 +185,7 @@ struct schema_Flow_Service_Manager_Config g_confs[] =
         .other_config_len = 0,
     },
 
+    /* idx: 5 */
     {
         .handler = "fsm_session_test_5",
         .plugin = "plugin_5",
@@ -206,7 +207,7 @@ struct schema_Flow_Service_Manager_Config g_confs[] =
         .other_config_len = 4,
     },
 
-    /* dpi dispatch plugin */
+    /* dpi dispatch plugin, idx: 6 */
     {
         .handler = "fsm_session_test_6",
         .plugin = "plugin_6",
@@ -222,7 +223,7 @@ struct schema_Flow_Service_Manager_Config g_confs[] =
         .other_config_len = 1,
     },
 
-    /* dpi plugin */
+    /* dpi plugin, idx: 7 */
     {
         .handler = "fsm_session_test_7",
         .plugin = "plugin_7",
@@ -242,6 +243,46 @@ struct schema_Flow_Service_Manager_Config g_confs[] =
         .other_config_len = 3,
     },
 
+    /* parser plugin, type provided, idx: 8 */
+    {
+        .handler = "fsm_session_test_8",
+        .plugin = "plugin_8",
+        .pkt_capt_filter = "bpf_filter_8",
+        .type = "parser",
+        .other_config_keys =
+        {
+            "mqtt_v",                       /* topic */
+            "dso_init",                     /* plugin init routine */
+            "provider_plugin",              /* service provider */
+            "policy_table",                 /* FSM policy entry */
+        },
+        .other_config =
+        {
+            "dev-test/fsm_core_ut/topic_8", /* topic */
+            "test_dso_init",                /* plugin init routine */
+            "fsm_session_provider_plugin",  /* service provider */
+            "fsm_test_policy",              /* FSM policy entry */
+        },
+        .other_config_len = 4,
+    },
+
+    /* web categorization plugin, idx: 9 */
+    {
+        .handler = "fsm_session_provider_plugin",
+        .plugin = "plugin_9",
+        .type = "web_cat_provider",
+        .other_config_keys =
+        {
+            "mqtt_v",                       /* topic */
+            "dso_init",                     /* plugin init routine */
+        },
+        .other_config =
+        {
+            "dev-test/fsm_core_ut/topic_2", /* topic */
+            "test_dso_init",                /* plugin init routine */
+        },
+        .other_config_len = 2,
+    },
 };
 
 /**
@@ -275,6 +316,30 @@ struct schema_AWLAN_Node g_awlan_nodes[] =
         },
         .mqtt_headers_len = 2,
     },
+};
+
+
+struct schema_FSM_Policy g_spolicies[] =
+{
+    { /* entry 1. Always matching, action is set. */
+        .policy_exists = true,
+        .policy = "fsm_test_policy",
+        .name = "block_facebook",
+        .idx = 1,
+        .mac_op_exists = false,
+        .fqdn_op_exists = true,
+        .fqdn_op = "in",
+        .fqdns_len = 1,
+        .fqdns =
+        {
+            "facebook",
+        },
+        .fqdncat_op_exists = false,
+        .action_exists = true,
+        .action = "block",
+        .log_exists = true,
+        .log = "all",
+    }
 };
 
 
@@ -337,6 +402,7 @@ test_send_report(struct net_md_aggregator *aggr, char *mqtt_topic)
 void
 setUp(void)
 {
+    struct fsm_policy_session *policy_mgr;
     size_t nelems;
     size_t i;
 
@@ -356,6 +422,9 @@ setUp(void)
     }
     fsm_get_awlan_headers(&g_awlan_nodes[0]);
 
+    policy_mgr = fsm_policy_get_mgr();
+    if (!policy_mgr->initialized) fsm_init_manager();
+
     return;
 }
 
@@ -363,6 +432,30 @@ setUp(void)
 void
 tearDown(void)
 {
+    struct fsm_policy_session *policy_mgr = fsm_policy_get_mgr();
+    struct policy_table *table, *t_to_remove;
+    struct fsm_policy *fpolicy, *p_to_remove;
+    ds_tree_t *tables_tree, *policies_tree;
+
+    /* Clean up policies */
+    tables_tree = &policy_mgr->policy_tables;
+    table = ds_tree_head(tables_tree);
+    while (table != NULL)
+    {
+        policies_tree = &table->policies;
+        fpolicy = ds_tree_head(policies_tree);
+        while (fpolicy != NULL)
+        {
+            p_to_remove = fpolicy;
+            fpolicy = ds_tree_next(policies_tree, fpolicy);
+            fsm_free_policy(p_to_remove);
+        }
+        t_to_remove = table;
+        table = ds_tree_next(tables_tree, table);
+        ds_tree_remove(tables_tree, t_to_remove);
+        free(t_to_remove);
+    }
+
     fsm_reset_mgr();
     g_mgr->init_plugin = NULL;
 
@@ -1095,6 +1188,58 @@ test_5_dpi_dispatcher_and_plugin(void)
 }
 
 
+/**
+ * @brief validates the sequence policy table/parser/web cat service
+ */
+void
+test_6_service_plugin(void)
+{
+    struct schema_Flow_Service_Manager_Config *conf;
+    struct fsm_web_cat_ops *provider_ops;
+    struct fsm_session *web_cat_plugin;
+    struct fsm_session *parser_plugin;
+    struct schema_FSM_Policy *spolicy;
+    struct fsm_policy_client *client;
+    struct policy_table *table;
+    struct fsm_policy *fpolicy;
+    ds_tree_t *sessions;
+
+    /* Add the parser plugin */
+    conf = &g_confs[8];
+    fsm_add_session(conf);
+    sessions = fsm_get_sessions();
+    parser_plugin = ds_tree_find(sessions, conf->handler);
+    TEST_ASSERT_NOT_NULL(parser_plugin);
+    TEST_ASSERT_NULL(parser_plugin->service);
+    TEST_ASSERT_NULL(parser_plugin->provider_plugin);
+
+    /* Add web cat plugin */
+    conf = &g_confs[9];
+    fsm_add_session(conf);
+    sessions = fsm_get_sessions();
+    web_cat_plugin = ds_tree_find(sessions, conf->handler);
+    TEST_ASSERT_NOT_NULL(web_cat_plugin);
+
+    /* Validate the service provider settings */
+    TEST_ASSERT_NOT_NULL(parser_plugin->service);
+    TEST_ASSERT_TRUE(parser_plugin->service == web_cat_plugin);
+    TEST_ASSERT_NOT_NULL(parser_plugin->provider_plugin);
+    TEST_ASSERT_TRUE(parser_plugin->provider_plugin == web_cat_plugin);
+    provider_ops = &web_cat_plugin->p_ops->web_cat_ops;
+    TEST_ASSERT_TRUE(parser_plugin->provider_ops == provider_ops);
+
+    /* Add policy */
+    spolicy = &g_spolicies[0];
+    fsm_add_policy(spolicy);
+    fpolicy = fsm_policy_lookup(spolicy);
+    TEST_ASSERT_NOT_NULL(fpolicy);
+
+    client = &parser_plugin->policy_client;
+    table = fpolicy->table;
+    TEST_ASSERT_TRUE(client->table == table);
+}
+
+
 int
 main(int argc, char *argv[])
 {
@@ -1123,6 +1268,7 @@ main(int argc, char *argv[])
     RUN_TEST(test_3_dpi_dispatcher_and_plugin);
     RUN_TEST(test_4_dpi_dispatcher_and_plugin);
     RUN_TEST(test_5_dpi_dispatcher_and_plugin);
+    RUN_TEST(test_6_service_plugin);
 
     return UNITY_END();
 }

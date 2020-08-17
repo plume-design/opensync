@@ -29,11 +29,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdint.h>
 
 #include "log.h"
+#include "util.h"
 #include "ovsdb.h"
-#include "target.h"
+
 #include "pm.h"
 #include "pm_tm.h"
-#include "osp.h"
+#include "osp_reboot.h"
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
 

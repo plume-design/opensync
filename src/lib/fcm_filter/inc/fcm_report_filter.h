@@ -30,7 +30,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fcm.h"
 #include "network_metadata_report.h"
 
-bool fcm_filter_nmd_callback (struct net_md_stats_accumulator *md_acc);
+bool fcm_collect_filter_nmd_callback(struct net_md_flow_key *md_key);
+
+bool fcm_report_filter_nmd_callback(struct net_md_stats_accumulator *md_acc);
 
 void fcm_filter_context_init(fcm_collect_plugin_t *collector);
 

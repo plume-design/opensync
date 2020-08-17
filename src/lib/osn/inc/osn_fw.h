@@ -29,7 +29,7 @@
 * POSSIBILITY OF SUCH DAMAGE.
 */
 
-#if !defined(OSN_FW_H_INCLUDED)
+#ifndef OSN_FW_H_INCLUDED
 #define OSN_FW_H_INCLUDED
 
 #include <netinet/in.h>
@@ -126,4 +126,3 @@ bool osfw_rule_del(int family, enum osfw_table table, const char *chain,
 bool osfw_apply(void);
 
 #endif /* OSN_FW_H_INCLUDED */
-

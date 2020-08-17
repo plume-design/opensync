@@ -24,7 +24,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#if !defined(OSN_TYPES_H_INCLUDED)
+#ifndef OSN_TYPES_H_INCLUDED
 #define OSN_TYPES_H_INCLUDED
 
 #include <sys/socket.h>
@@ -146,6 +146,17 @@ char* __FMT_osn_ip_addr(char *buf, size_t sz, const osn_ip_addr_t *addr);
  * false otherwise. If false is returned, @p out should be considered invalid.
  */
 bool osn_ip_addr_from_str(osn_ip_addr_t *out, const char *str);
+
+/**
+ * Initialize a osn_ip_addr_t structure from a in_addr structure. in_addr is
+ * commonly used hidden inside struct sockaddr
+ */
+bool osn_ip_addr_from_in_addr(osn_ip_addr_t *out, const struct in_addr *in);
+
+/**
+ * Initialize a son_ip_addr_t structure from a sockaddr structure.
+ */
+bool osn_ip_addr_from_sockaddr(osn_ip_addr_t *out, const struct sockaddr *in);
 
 /**
  * Comparator for @ref osn_ip_addr_t structures.

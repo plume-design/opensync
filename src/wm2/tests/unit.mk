@@ -26,7 +26,6 @@ UNIT_TYPE := TEST_BIN
 UNIT_NAME := test_wm2
 UNIT_SRC := test.c
 UNIT_SRC += ../src/wm2_radio.c
-UNIT_SRC += ../src/wm2_radio1.c
 UNIT_SRC += ../src/wm2_clients.c
 UNIT_CFLAGS += -I$(UNIT_PATH)/../src/
 UNIT_DEPS := src/lib/common

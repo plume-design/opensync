@@ -33,5 +33,6 @@ bool pm_led_init(void);
 bool pm_tm_init(void);
 bool pm_tm_deinit(void);
 bool pm_lm_init(void);
+bool pm_objm_init(void);
 
 #endif /* PM_H_INCLUDED */

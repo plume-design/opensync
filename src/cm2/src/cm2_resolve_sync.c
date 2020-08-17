@@ -31,9 +31,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "cm2.h"
 
+
 void cm2_free_addr_list(cm2_addr_t *addr)
 {
-    if (addr->ai_list) freeaddrinfo(addr->ai_list);
+    if (addr->ai_list)
+        freeaddrinfo(addr->ai_list);
+
     addr->ai_list = NULL;
     addr->ai_curr = NULL;
 }
@@ -62,12 +65,22 @@ int cm2_getaddrinfo(char *hostname, struct addrinfo **res, char *msg)
 
 bool cm2_resolve(cm2_dest_e dest)
 {
-    cm2_addr_t *addr = cm2_get_addr(dest);
-    char *dstr = cm2_dest_name(dest);
-    int ret;
+    struct addrinfo  *ai, *found;
+    const char       *result;
+    cm2_addr_t       *addr;
+    size_t           bsize;
+    char             *dstr;
+    char             buf[2048];
+    char             *bp;
+    int              ret;
 
+    addr = cm2_get_addr(dest);
+    dstr = cm2_dest_name(dest);
     addr->updated = false;
     addr->resolved = false;
+    found = NULL;
+    bp = buf;
+    bsize = sizeof(buf);
 
     if (!addr->valid)
     {
@@ -78,18 +91,15 @@ bool cm2_resolve(cm2_dest_e dest)
 
     cm2_free_addr_list(addr);
 
-    struct addrinfo *ai, *found = NULL;
-
     // resolve
     ret = cm2_getaddrinfo(addr->hostname, &addr->ai_list, dstr);
     if (ret != 0)
     {
         addr->ai_list = NULL;
+        LOGI("sync resolving: get address failed");
         return false;
     }
 
-    char buf[2048] = "", *bp = buf;
-    size_t bsize = sizeof(buf);
     ai = addr->ai_list;
     while (ai)
     {
@@ -97,11 +107,13 @@ bool cm2_resolve(cm2_dest_e dest)
         {
             char buffer[INET_ADDRSTRLEN] = "";
             struct sockaddr_in   *sain;
+
             sain = (struct sockaddr_in *)ai->ai_addr;
-            const char* result = inet_ntop(AF_INET, &sain->sin_addr, buffer, sizeof(buffer));
+            result = inet_ntop(AF_INET, &sain->sin_addr, buffer, sizeof(buffer));
             if (result)
             {
-                if (!found) found = ai;
+                if (!found)
+                    found = ai;
                 append_snprintf(&bp, &bsize, "%s ", buffer);
             }
         }
@@ -109,11 +121,13 @@ bool cm2_resolve(cm2_dest_e dest)
         {
             char buffer[INET6_ADDRSTRLEN] = "";
             struct sockaddr_in6  *sain6;
+
             sain6 = (struct sockaddr_in6 *)ai->ai_addr;
-            const char* result = inet_ntop(AF_INET6, &sain6->sin6_addr, buffer, sizeof(buffer));
+            result = inet_ntop(AF_INET6, &sain6->sin6_addr, buffer, sizeof(buffer));
             if (result)
             {
-                if(!found) found = ai;
+                if (!found)
+                    found = ai;
                 append_snprintf(&bp, &bsize, "[%s] ", buffer);
             }
         }
@@ -130,6 +144,7 @@ bool cm2_resolve(cm2_dest_e dest)
     return true;
 }
 
+/* Empty function not used in sync resolving process */
 void cm2_resolve_timeout(void)
 {
 }

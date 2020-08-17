@@ -1,0 +1,10 @@
+#
+# OpenSync core platform OSP Unit backend
+#
+source "src/lib/osp/kconfig/Kconfig.osp_unit.backend"
+
+#
+# Platform/vendor OSP Unit backends
+#
+osource "platform/*/kconfig/Kconfig.osp_unit.backend"
+osource "vendor/*/kconfig/Kconfig.osp_unit.backend"

@@ -23,6 +23,15 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+exit_empty()
+{
+    echo '[ "Open_vSwitch" ]'
+    exit 0
+}
+
+[ -n "$CONFIG_MANAGER_WANO" ] && exit_empty
+[ -z "$CONFIG_TARGET_WAN_BRIDGE_NAME" ] && exit_empty
+
 cat <<OVS
 [
         "Open_vSwitch",

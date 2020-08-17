@@ -1,0 +1,32 @@
+menuconfig MANAGER_CAPTIVEPORTAL
+    bool "Captive Portal"
+    default y
+    help
+        Enable Captive Portal
+
+        The Captive Portal manager is to run services related to bringing up captive portal
+        at a location. You can start it by using the following command:
+
+        ovsh u Node_Services --where service==cpm enable:=true
+
+    config MANAGER_CAPTIVEPORTAL_CFG
+        string "Captive Portal Startup configuration"
+        depends on MANAGER_CAPTIVEPORTAL
+        default "cpm;false"
+        help
+            Captive Portal startup configuration
+
+    config CPM_TINYPROXY_PATH
+        string "Path to the tinyproxy binary"
+        depends on MANAGER_CAPTIVEPORTAL
+        default "/usr/sbin/tinyproxy"
+        help
+            Full path to the tinyproxy binary
+
+    config CPM_TINYPROXY_ETC
+        string "tinyproxy configuration folder"
+        depends on MANAGER_CAPTIVEPORTAL
+        default "/tmp/tinyproxy"
+        help
+            This is the location where the tinyproxy.conf
+            file will be created.

@@ -43,22 +43,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /// @addtogroup LIB_TARGET
 /// @{
 
-typedef struct {
-    struct schema_Wifi_Radio_Config rconf;
-    ds_dlist_t                      vifs_cfg;
-    ds_dlist_node_t                 dsl_node;
-} target_radio_cfg_t;
-
-typedef struct {
-    struct schema_Wifi_VIF_Config   vconf;
-    ds_dlist_node_t                 dsl_node;
-} target_vif_cfg_t;
-
-typedef struct {
-    struct schema_Wifi_Route_State  rstate;
-    ds_dlist_node_t                 dsl_node;
-} target_route_state_init_t;
-
 /// @defgroup LIB_TARGET_RADIO Radio API
 /// Definitions and API related to control of radios.
 /// @{
@@ -124,22 +108,6 @@ struct target_radio_ops {
 bool target_radio_init(const struct target_radio_ops *ops);
 
 /**
- * @brief Initialize radio interfaces config
- *
- * Initialize the target library radio configuration layer and return a list
- * of currently configured radio interfaces. init_cfg is a double linked list
- * of target_radio_cfg_t structures. This list is used to pre-populate
- * the Wifi_Radio_Config table.
- *
- * @note
- * The init_cfg linked list is dynamically allocated, it must be freed by the caller.
- *
- * @param init_cfg linked list of radio interfaces config (target_radio_cfg_t)
- * @return true on success
- */
-bool target_radio_config_init(ds_dlist_t *init_cfg);
-
-/**
  * @brief Initialize radio interface configuration
  *
  * This is called during WM initialization only if
@@ -173,17 +141,6 @@ bool target_radio_config_need_reset(void);
 /**
  * @brief Apply the configuration for the radio interface
  *
- * The interface ifname must already exist on the system.
- *
- * @param ifname interface name
- * @param rconf radio interface config
- * @return true on success
- */
-bool target_radio_config_set (char *ifname, struct schema_Wifi_Radio_Config *rconf);
-
-/**
- * @brief Apply the configuration for the radio interface
- *
  * This is API v2. Will be called only if target_radio_init() returned
  * true during init.
  *
@@ -211,36 +168,6 @@ bool target_radio_config_set2(const struct schema_Wifi_Radio_Config *rconf,
  */
 bool target_radio_state_get(char *ifname, struct schema_Wifi_Radio_State *rstate);
 
-/** @brief Radio state change callback type */
-typedef void target_radio_state_cb_t(struct schema_Wifi_Radio_State *rstate, schema_filter_t *filter);
-
-/**
- * @brief Subscribe to radio interface state change events.
- *
- * @note
- * The interface state is typically polled
- *
- * @param ifname interface name
- * @param radio_state_cb a callback function
- * @return true on success
- */
-bool target_radio_state_register(char *ifname, target_radio_state_cb_t *radio_state_cb);
-
-/** @brief Radio config change callback type */
-typedef void target_radio_config_cb_t(struct schema_Wifi_Radio_Config *rconf, schema_filter_t *filter);
-
-/**
- * @brief Subscribe to radio interface config change events.
- *
- * @note
- * The interface state is typically polled
- *
- * @param ifname interface name
- * @param radio_config_cb a callback function
- * @return true on success
- */
-bool target_radio_config_register(char *ifname, target_radio_config_cb_t *radio_config_cb);
-
 /// @} LIB_TARGET_RADIO
 
 /// @defgroup LIB_TARGET_VIF VIF API
@@ -250,15 +177,6 @@ bool target_radio_config_register(char *ifname, target_radio_config_cb_t *radio_
 /******************************************************************************
  *  VIF definitions
  *****************************************************************************/
-
-/**
- * @brief Apply the configuration for the vif interface
- *
- * @param ifname interface name
- * @param vconf vif interface config
- * @return true on success
- */
-bool target_vif_config_set (char *ifname, struct schema_Wifi_VIF_Config *vconf);
 
 /**
  * @brief Apply the configuration for the vif interface
@@ -294,59 +212,7 @@ bool target_vif_config_set2(const struct schema_Wifi_VIF_Config *vconf,
  */
 bool target_vif_state_get(char *ifname, struct schema_Wifi_VIF_State *vstate);
 
-/** @brief VIF state change callback type */
-typedef void target_vif_state_cb_t(struct schema_Wifi_VIF_State *rstate, schema_filter_t *filter);
-
-/**
- * @brief Subscribe to vif interface state change events.
- *
- * @note
- * The interface state is typically polled
- *
- * @param ifname interface name
- * @param vstate_cb a callback function
- * @return true on success
- */
-bool target_vif_state_register(char *ifname, target_vif_state_cb_t *vstate_cb);
-
-/** @brief VIF config change callback type */
-typedef void target_vif_config_cb_t(struct schema_Wifi_VIF_Config *vconf, schema_filter_t *filter);
-
-/**
- * @brief Subscribe to vif interface config change events.
- *
- * @note
- * The interface state is typically polled
- *
- * @param ifname interface name
- * @param vconfig_cb a callback function
- * @return true on success
- */
-bool target_vif_config_register(char *ifname, target_vif_config_cb_t *vconfig_cb);
-
 /// @} LIB_TARGET_VIF
-
-/// @defgroup LIB_TARGET_CLIENTS Clients API
-/// Definitions and API related to control of clients.
-/// @{
-
-/******************************************************************************
- *  CLIENTS definitions
- *****************************************************************************/
-
-/** @brief Client change callback type */
-typedef bool target_clients_cb_t(struct schema_Wifi_Associated_Clients *schema, char *ifname, bool status);
-
-/**
- * @brief Subscribe to client change events.
- *
- * @param ifname interface name
- * @param clients_cb a callback function
- * @return true on success
- */
-bool target_clients_register(char *ifname, target_clients_cb_t *clients_cb);
-
-/// @} LIB_TARGET_CLIENTS
 
 /// @defgroup LIB_TARGET_STATS Statistics Related APIs
 /// Definitions and API related to statistics.
@@ -813,30 +679,28 @@ typedef struct mcproxyd_params {
 } target_mcproxy_params_t;
 
 /**
- * @brief Applies config to mcproxy
- * and reloads the corresponding daemon.
- * @param target_mcproxyd_params_t contains protocol,upstream and downstream ifs info.
+ * @brief Applies config to mcproxy and reloads the corresponding daemon.
+ * @param mcparams contains protocol, upstream, and downstream ifs info.
  * @return true on success
  */
 bool target_set_igmp_mcproxy_params(target_mcproxy_params_t *mcparams);
 
 /**
  * @brief Get config from the mcproxy.
- * @param target_mcproxyd_params_t contains protocol,upstream and downstream ifs info.
+ * @param mcparams contains protocol, upstream, and downstream ifs info.
  * @return true on success
  */
 bool target_get_igmp_mcproxy_params(target_mcproxy_params_t *mcparams);
 
 /**
- * @brief Applies config to mcproxy
- * and reloads the corresponding daemon.
- * @param target_mcproxyd_params_t contains protocol,upstream and downstream ifs info.
+ * @brief Applies config to mcproxy and reloads the corresponding daemon.
+ * @param mcparams contains protocol, upstream, and downstream ifs info.
  * @return true on success
  */
 bool target_set_mld_mcproxy_params(target_mcproxy_params_t *mcparams);
 /**
  * @brief Get config from the mcproxy.
- * @param target_mcproxyd_params_t contains protocol,upstream and downstream ifs info.
+ * @param mcparams contains protocol, upstream, and downstream ifs info.
  * @return true on success
  */
 bool target_get_mld_mcproxy_params(target_mcproxy_params_t *mcparams);
@@ -844,30 +708,29 @@ bool target_get_mld_mcproxy_params(target_mcproxy_params_t *mcparams);
 /**
  * @brief Applies mcproxy system parameters and reloads the corresponding
  * proxy daemon.
- * @param schema_IGMP_Config contains all the IGMP params required.
- * @return true on sucess.
+ * @param iccfg contains all required IGMP params.
+ * @return true on success
  */
 bool target_set_igmp_mcproxy_sys_params(struct schema_IGMP_Config *iccfg);
 /**
  * @brief Get mcproxy system parameters.
- * @param schema_IGMP_Config contains all the IGMP params required.
- * @return true on sucess.
+ * @param iccfg contains all required IGMP params.
+ * @return true on success
  */
 bool target_get_igmp_mcproxy_sys_params(struct schema_IGMP_Config *iccfg);
 
 /**
  * @brief Applies mcproxy system parameters and reloads the corresponding
  * proxy daemon.
- * @param schema_MLD_Config contains all the IGMP params required.
- * @return true on sucess.
+ * @param mlcfg contains all required IGMP params.
+ * @return true on success
  */
 bool target_set_mld_mcproxy_sys_params(struct schema_MLD_Config *mlcfg);
 
 /**
  * @brief Get mcproxy system parameters.
- * @param schema_IGMP_Config contains all the IGMP params required.
- * @param schema_MLD_Config contains all the IGMP params required.
- * @return true on sucess.
+ * @param iccfg contains all required IGMP params.
+ * @return true on success
  */
 bool target_get_mld_mcproxy_sys_params(struct schema_MLD_Config *iccfg);
 

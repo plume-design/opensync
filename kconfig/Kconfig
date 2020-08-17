@@ -68,6 +68,18 @@ menu "Common"
             endchoice
 
             choice
+                prompt "PPPoE"
+                default OSN_BACKEND_PPPOE_LINUX
+                source "kconfig/Kconfig.osn.pppoe_backend"
+            endchoice
+
+            choice
+                prompt "VLAN"
+                default OSN_BACKEND_VLAN_LINUX
+                source "kconfig/Kconfig.osn.vlan_backend"
+            endchoice
+
+            choice
                 prompt "MAP-T"
                 default OSN_BACKEND_MAPT_NULL
                 source "kconfig/Kconfig.osn.mapt_backend"
@@ -77,6 +89,12 @@ menu "Common"
         endmenu
 
         menu "Platform (OSP)"
+            comment "Unit (OSP unit)"
+            choice
+                prompt "OSP Unit Backend"
+                source "kconfig/Kconfig.osp_unit.backend"
+            endchoice
+
             comment "Persistent Storage (OSP_PS)"
             choice
                 prompt "Persistent Storage Backend"
@@ -99,6 +117,14 @@ menu "Common"
                 prompt "L2Switch backend"
                 source "kconfig/Kconfig.osp_l2switch.backend"
             endchoice
+
+            comment "Object Management (OSP_OBJM)"
+            choice
+                prompt "Object Management Backend"
+                source "kconfig/Kconfig.osp_objm.backend"
+            endchoice
+            source "kconfig/Kconfig.osp_objm"
+
 
         endmenu
     endmenu

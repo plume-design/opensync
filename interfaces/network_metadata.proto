@@ -85,6 +85,7 @@ message ObservationWindow {
      optional uint64    startedAt                                           = 1;
      optional uint64    endedAt                                             = 2;
      repeated FlowStats flowStats                                           = 3;
+     optional uint32     droppedFlows                                       = 4;
 }
 
 message FlowReport {

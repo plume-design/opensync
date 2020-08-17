@@ -50,9 +50,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "json_util.h"
 #include "pm.h"
 
-#include "target.h"
 
-// defines
+// Defines
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
 // OVSDB constants

@@ -31,6 +31,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "fcm.h"
 #include "ds_dlist.h"
+#include "ds_tree.h"
 
 #define MAX_CT_STATS        (256)
 #define MAX_IPV4_IPV6_LEN    (46)
@@ -73,7 +74,7 @@ typedef struct ctflow_info
 
 typedef struct flow_stats_
 {
-
+    fcm_collect_plugin_t *collector;
     char node_info_id[32];
     char node_info_location_id[32];
     char mqtt_topic[256];
@@ -86,13 +87,35 @@ typedef struct flow_stats_
     uint32_t report_type;
     uint32_t acc_ttl;
     uint16_t ct_zone; // CT_ZONE at connection level
-    struct ev_loop *loop;
     ds_dlist_t ctflow_list;
+    size_t index;
+    bool active;
+    ds_tree_node_t ct_stats_node;
+    bool initialized;
+    char *name;
 } flow_stats_t;
 
 
-flow_stats_t *
+typedef struct flow_stats_mgr_
+{
+    bool initialized;
+    struct ev_loop *loop;
+    ds_tree_t ct_stats_sessions;
+    int num_sessions;
+    int max_sessions;
+    flow_stats_t *active;
+    bool debug;
+} flow_stats_mgr_t;
+
+
+void
+ct_stats_init_mgr(struct ev_loop *loop);
+
+flow_stats_mgr_t *
 ct_stats_get_mgr(void);
+
+flow_stats_t *
+ct_stats_get_active_instance(void);
 
 void
 ct_stats_print_contrack(ct_flow_t *flow);
@@ -123,5 +146,11 @@ ct_stats_report_cb(fcm_collect_plugin_t *collector);
 
 int
 ct_stats_plugin_init(fcm_collect_plugin_t *collector);
+
+void
+ct_stats_plugin_exit(fcm_collect_plugin_t *collector);
+
+void
+ct_stats_exit_mgr(void);
 
 #endif /* CT_STATS_H_INCLUDED */

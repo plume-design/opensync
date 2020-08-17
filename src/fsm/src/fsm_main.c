@@ -49,6 +49,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "json_util.h"
 #include "target.h"
 #include "fsm.h"
+#include "fsm_oms.h"
 #include "nf_utils.h"
 #include "neigh_table.h"
 
@@ -130,6 +131,9 @@ int main(int argc, char ** argv)
         LOGE("Eror initializing conntrack\n");
         return -1;
     }
+
+    fsm_oms_init();
+
     ev_run(loop, 0);
 
     target_close(TARGET_INIT_MGR_FSM, loop);

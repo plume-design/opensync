@@ -1,0 +1,13 @@
+config OSN_BACKEND_PPPOE_NULL
+    bool "Null"
+    help
+        Use dummy PPPoE implementation for platforms that do not support it.
+
+config OSN_BACKEND_PPPOE_LINUX
+    bool "Linux"
+    select OSN_LINUX_ENABLED
+    select OSN_LINUX_PPPOE
+    help
+        Use the Linux PPPoE implementation that uses the pppd daemon and the
+        rp-pppoe plug-in.
+

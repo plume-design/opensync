@@ -125,6 +125,13 @@ message AvgType {
     optional uint32     num                 = 4;
 }
 
+message AvgTypeSigned {
+    required int32      avg                 = 1;
+    optional int32      min                 = 2;
+    optional int32      max                 = 3;
+    optional uint32     num                 = 4;
+}
+
 enum DiffType {
     ADDED                                   = 0;
     REMOVED                                 = 1;
@@ -175,9 +182,11 @@ message Client {
         optional uint64     tx_retries      = 6;
         optional uint64     rx_errors       = 7;
         optional uint64     tx_errors       = 8;
-        optional double     rx_rate         = 9;
-        optional double     tx_rate         = 10;
+        optional double     rx_rate         = 9; /* best-effort report of SU capacity, mbps */
+        optional double     tx_rate         = 10; /* best-effort report of SU capacity, mbps */
         optional uint32     rssi            = 11;
+        optional double     rx_rate_perceived = 12; /* accounts mixed SU+MU, mbps */
+        optional double     tx_rate_perceived = 13; /* accounts mixed SU+MU, mbps */
     }
     message RxStats {
         message ChainRSSI {
@@ -263,14 +272,16 @@ message Survey {
         optional uint32     busy_self       = 8;    /* Rx_self (derived from succesful Rx frames)*/
         optional uint32     offset_ms       = 9;
         optional uint32     busy_ext        = 10;   /* 40MHz extention channel busy */
+        optional int32      noise_floor     = 11;   /* dBm */
     }
     message SurveyAvg {
-        required uint32     channel         = 1;
-        optional AvgType    busy            = 2;    /* Busy = Rx + Tx + Interference */
-        optional AvgType    busy_tx         = 3;    /* Tx */
-        optional AvgType    busy_rx         = 4;    /* Rx = Rx_obss + Rx_errr (self and obss errors) */
-        optional AvgType    busy_self       = 5;    /* Rx_self (derived from succesful Rx frames)*/
-        optional AvgType    busy_ext        = 6;   /* 40MHz extention channel busy */
+        required uint32        channel         = 1;
+        optional AvgType       busy            = 2;    /* Busy = Rx + Tx + Interference */
+        optional AvgType       busy_tx         = 3;    /* Tx */
+        optional AvgType       busy_rx         = 4;    /* Rx = Rx_obss + Rx_errr (self and obss errors) */
+        optional AvgType       busy_self       = 5;    /* Rx_self (derived from succesful Rx frames)*/
+        optional AvgType       busy_ext        = 6;   /* 40MHz extention channel busy */
+        optional AvgTypeSigned noise_floor     = 7;    /* dBm */
     }
     required RadioBandType  band            = 1;
     required SurveyType     survey_type     = 2;

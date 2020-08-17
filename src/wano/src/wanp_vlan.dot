@@ -1,0 +1,9 @@
+digraph {
+    INIT[init=true];
+    INIT -> IF_CREATE [label="INIT"];
+    IF_CREATE -> PPLINE_CREATE [label="INET_STATE_UPDATE"];
+    IF_CREATE -> ERROR [label="STATE_INIT"];
+    PPLINE_CREATE -> IDLE [label="PPLINE_UPDATE"];
+    PPLINE_CREATE -> ERROR [label="PPLINE_UPDATE,STATE_INIT"];
+
+}

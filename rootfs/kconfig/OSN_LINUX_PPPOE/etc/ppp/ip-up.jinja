@@ -1,0 +1,15 @@
+#!/bin/sh
+
+. {{INSTALL_PREFIX}}/bin/dns_sub.sh
+
+dns_reset "$IFNAME"
+
+[ -n "$DNS1" ] && {
+    dns_add "$IFNAME" "nameserver $DNS1"
+}
+
+[ -n "$DNS2" ] && {
+    dns_add "$IFNAME" "nameserver $DNS2"
+}
+
+dns_apply "$IFNAME"

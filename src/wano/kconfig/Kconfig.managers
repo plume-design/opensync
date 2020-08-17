@@ -1,0 +1,67 @@
+menuconfig MANAGER_WANO
+    bool "WAN Orchestrator (WANO)"
+    default n
+    help
+        Enable WAN Orchestrator (WANO)
+
+if MANAGER_WANO
+    config MANAGER_WANO_CFG
+        string "WANO Startup configuration"
+        default "wano;false;needs_plan_b=true"
+        help
+            WAN Orchestrator startup configuration
+
+    config MANAGER_WANO_IFACE_LIST
+        string "WANO Interface List"
+        default "eth0"
+        help
+            Space separated interface list that will be used for WAN probing.
+
+    config MANAGER_WANO_PLUGIN_TIMEOUT
+        int "WAN plug-in link probing timeout"
+        default 60
+        help
+            If the WAN plug-in probing doesn't reach a conclusion in the amount
+            of time defined by this option, it is terminated and WANO moves to
+            the next plug-in in the list.
+
+    config MANAGER_WANO_PLUGIN_DHCPV4
+        bool "WANO IPv4 DHCP plugin"
+        default n
+        help
+            WANO DHCPv4 plug-in for interface configuration via the DHCPv4
+            protocol.
+
+    config MANAGER_WANO_PLUGIN_DHCPV6
+        bool "WANO IPv6 DHCP plugin"
+        default n
+        help
+            WANO DHCPv6 plug-in for interface configuration via the DHCPv6/RA
+            protocol.
+
+    config MANAGER_WANO_PLUGIN_STATIC_IPV4
+        bool "WANO static IPv4 plugin"
+        default n
+        help
+            Plugin configuring static IP address on WAN interfaces.
+            Configuration parameters are read from "wanp" key-value OPS, here
+            is the list of parameters:
+            "static-ipv4-ip-addr" : The IP address (string)
+            "static-ipv4-netmask" : The netmask (string)
+            "static-ipv4-gateway" : The gateway (string)
+            "static-ipv4-ping-addrs" : Addresses for ping (semicolon separated
+                                       list)
+    config MANAGER_WANO_PLUGIN_PPPOE
+        bool "WANO pppoe plugin"
+        default n
+        help
+            WANO pppoe plug-in for interface configuration via the pppoe
+            protocol. Configuration is read from persistant storage.
+
+    config MANAGER_WANO_PLUGIN_VLAN
+        bool "WANO VLAN plugin"
+        default n
+        help
+            WANO pppoe plug-in for VLAN interface configuration. The VLAN
+            configuration is read from persistent storage.
+endif

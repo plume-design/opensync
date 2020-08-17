@@ -56,6 +56,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define WM2_DFS_FALLBACK_GRACE_PERIOD_SECONDS 10
 #define REQUIRE(ctx, cond) if (!(cond)) { LOGW("%s: %s: failed check: %s", ctx, __func__, #cond); return; }
 #define OVERRIDE(ctx, lv, rv) if (lv != rv) { lv = rv; LOGW("%s: overriding '%s' - this is target impl bug", ctx, #lv); }
+#define bitcount __builtin_popcount
 
 struct wm2_delayed {
     ev_timer timer;
@@ -75,7 +76,6 @@ ovsdb_table_t table_Wifi_Master_State;
 ovsdb_table_t table_Openflow_Tag;
 
 static ds_dlist_t delayed_list = DS_DLIST_INIT(struct wm2_delayed, list);
-static bool wm2_api2;
 
 static bool
 wm2_lookup_rstate_by_freq_band(struct schema_Wifi_Radio_State *rstate,
@@ -863,6 +863,14 @@ wm2_vconf_recalc(const char *ifname, bool force)
         memcpy(vconf.security, vstate.security, sizeof(vconf.security));
     }
 
+    if (want && has && !rconf.enabled) {
+        LOGI("%s: disabling because radio %s is disabled too", vconf.if_name, rconf.if_name);
+        SCHEMA_SET_INT(vconf.enabled, false);
+    }
+
+    if (want && !vconf.enabled && (!has || !vstate.enabled))
+        return;
+
     if (!wm2_vconf_changed(&vconf, &vstate, &vchanged) && !force)
         return;
 
@@ -1043,6 +1051,8 @@ wm2_rconf_recalc_fixup_tx_chainmask(struct schema_Wifi_Radio_Config *rconf)
         return;
     if (!rconf->thermal_tx_chainmask_exists)
         return;
+    if (rconf->tx_chainmask_exists && bitcount(rconf->tx_chainmask) < bitcount(rconf->thermal_tx_chainmask))
+        return;
 
     rconf->tx_chainmask = rconf->thermal_tx_chainmask;
     rconf->tx_chainmask_exists = true;
@@ -1094,6 +1104,9 @@ wm2_rconf_recalc(const char *ifname, bool force)
         wm2_rconf_recalc_fixup_nop_channel(&rconf, &rstate);
         wm2_rconf_recalc_fixup_tx_chainmask(&rconf);
     }
+
+    if (want && !rconf.enabled && (!has || !rstate.enabled))
+        return;
 
     if (!wm2_rconf_changed(&rconf, &rstate, &changed) && !force)
         goto recalc;
@@ -1170,6 +1183,8 @@ wm2_vstate_security_fixup(const struct schema_Wifi_VIF_Config *vconf,
                           struct schema_Wifi_VIF_State *vstate)
 {
     struct schema_Wifi_VIF_State orig;
+    const char *key;
+    const char *val;
     bool want_mode;
     bool has_mixed;
     int i;
@@ -1182,9 +1197,26 @@ wm2_vstate_security_fixup(const struct schema_Wifi_VIF_Config *vconf,
     memset(vstate->security_keys, 0, sizeof(vstate->security_keys));
     vstate->security_len = 0;
 
-    for (i = 0; i < orig.security_len; i++)
-        if (strcmp(orig.security_keys[i], "mode") || want_mode || !has_mixed)
-            SCHEMA_KEY_VAL_APPEND(vstate->security, orig.security_keys[i], orig.security[i]);
+    for (i = 0; i < orig.security_len; i++) {
+        key = orig.security_keys[i];
+        val = orig.security[i];
+
+        if (strstr(key, "oftag") == key)
+            continue;
+
+        if (!strcmp(key, "mode") && !want_mode && has_mixed)
+            continue;
+
+        SCHEMA_KEY_VAL_APPEND(vstate->security, key, val);
+    }
+
+    for (i = 0; i < vconf->security_len; i++) {
+        key = vconf->security_keys[i];
+        val = vconf->security[i];
+
+        if (strstr(key, "oftag") == key)
+            SCHEMA_KEY_VAL_APPEND(vstate->security, key, val);
+    }
 }
 
 static void
@@ -1449,30 +1481,20 @@ static void
 callback_Wifi_Radio_Config(
         ovsdb_update_monitor_t          *mon,
         struct schema_Wifi_Radio_Config *old_rec,
-        struct schema_Wifi_Radio_Config *rconf,
-        ovsdb_cache_row_t *row)
+        struct schema_Wifi_Radio_Config *rconf)
 {
-    if (wm2_api2) {
-        LOGD("%s: ovsdb updated", rconf->if_name);
-        wm2_rconf_recalc(rconf->if_name, false);
-    } else {
-        callback_Wifi_Radio_Config_v1(mon, old_rec, rconf, row);
-    }
+    LOGD("%s: ovsdb updated", rconf->if_name);
+    wm2_rconf_recalc(rconf->if_name, false);
 }
 
 static void
 callback_Wifi_VIF_Config(
         ovsdb_update_monitor_t          *mon,
         struct schema_Wifi_VIF_Config   *old_rec,
-        struct schema_Wifi_VIF_Config   *vconf,
-        ovsdb_cache_row_t               *row)
+        struct schema_Wifi_VIF_Config   *vconf)
 {
-    if (wm2_api2) {
-        LOGD("%s: ovsdb updated", vconf->if_name);
-        wm2_vconf_recalc(vconf->if_name, false);
-    } else {
-        callback_Wifi_VIF_Config_v1(mon, old_rec, vconf, row);
-    }
+    LOGD("%s: ovsdb updated", vconf->if_name);
+    wm2_vconf_recalc(vconf->if_name, false);
 }
 
 static void
@@ -1506,7 +1528,7 @@ wm2_radio_config_bump(void)
  *  PUBLIC API definitions
  *****************************************************************************/
 int
-wm2_radio_init_v2(void)
+wm2_radio_init_kickoff(void)
 {
     ovsdb_table_delete_where(&table_Wifi_Associated_Clients, json_array());
 
@@ -1551,17 +1573,14 @@ wm2_radio_init(void)
     OVSDB_TABLE_INIT(Wifi_Master_State, if_name);
     OVSDB_TABLE_INIT(Openflow_Tag, name);
 
-    if ((wm2_api2 = target_radio_init(&rops))) {
-        LOGI("Using new API v2");
-        wm2_radio_init_v2();
-    } else {
-        LOGW("Using old deprecated API v1");
-        wm2_radio_config_init_v1();
-    }
+    if (WARN_ON(!target_radio_init(&rops)))
+        return -1;
+
+    wm2_radio_init_kickoff();
 
     // Initialize OVSDB monitor callbacks
-    OVSDB_CACHE_MONITOR(Wifi_Radio_Config, true);
-    OVSDB_CACHE_MONITOR(Wifi_VIF_Config, true);
+    OVSDB_TABLE_MONITOR(Wifi_Radio_Config, true);
+    OVSDB_TABLE_MONITOR(Wifi_VIF_Config, true);
 
     return 0;
 }

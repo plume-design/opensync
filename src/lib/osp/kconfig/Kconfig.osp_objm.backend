@@ -1,0 +1,5 @@
+config OSP_OBJM_OBJMFS
+    bool "Object management on filesystem (OBJMFS)"
+    select OBJMFS_ENABLED
+    help
+        Use the file system backend provided by the objmfs library

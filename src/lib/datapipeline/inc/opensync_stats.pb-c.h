@@ -42,6 +42,7 @@ PROTOBUF_C__BEGIN_DECLS
 
 
 typedef struct _Sts__AvgType Sts__AvgType;
+typedef struct _Sts__AvgTypeSigned Sts__AvgTypeSigned;
 typedef struct _Sts__Neighbor Sts__Neighbor;
 typedef struct _Sts__Neighbor__NeighborBss Sts__Neighbor__NeighborBss;
 typedef struct _Sts__Client Sts__Client;
@@ -198,6 +199,22 @@ struct  _Sts__AvgType
     , 0, 0,0, 0,0, 0,0 }
 
 
+struct  _Sts__AvgTypeSigned
+{
+  ProtobufCMessage base;
+  int32_t avg;
+  protobuf_c_boolean has_min;
+  int32_t min;
+  protobuf_c_boolean has_max;
+  int32_t max;
+  protobuf_c_boolean has_num;
+  uint32_t num;
+};
+#define STS__AVG_TYPE_SIGNED__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&sts__avg_type_signed__descriptor) \
+    , 0, 0,0, 0,0, 0,0 }
+
+
 struct  _Sts__Neighbor__NeighborBss
 {
   ProtobufCMessage base;
@@ -263,16 +280,32 @@ struct  _Sts__Client__Stats
   uint64_t rx_errors;
   protobuf_c_boolean has_tx_errors;
   uint64_t tx_errors;
+  /*
+   * best-effort report of SU capacity, mbps 
+   */
   protobuf_c_boolean has_rx_rate;
   double rx_rate;
+  /*
+   * best-effort report of SU capacity, mbps 
+   */
   protobuf_c_boolean has_tx_rate;
   double tx_rate;
   protobuf_c_boolean has_rssi;
   uint32_t rssi;
+  /*
+   * accounts mixed SU+MU, mbps 
+   */
+  protobuf_c_boolean has_rx_rate_perceived;
+  double rx_rate_perceived;
+  /*
+   * accounts mixed SU+MU, mbps 
+   */
+  protobuf_c_boolean has_tx_rate_perceived;
+  double tx_rate_perceived;
 };
 #define STS__CLIENT__STATS__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&sts__client__stats__descriptor) \
-    , 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0 }
+    , 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0 }
 
 
 struct  _Sts__Client__RxStats__ChainRSSI
@@ -479,10 +512,15 @@ struct  _Sts__Survey__SurveySample
    */
   protobuf_c_boolean has_busy_ext;
   uint32_t busy_ext;
+  /*
+   * dBm 
+   */
+  protobuf_c_boolean has_noise_floor;
+  int32_t noise_floor;
 };
 #define STS__SURVEY__SURVEY_SAMPLE__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&sts__survey__survey_sample__descriptor) \
-    , 0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0 }
+    , 0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0 }
 
 
 struct  _Sts__Survey__SurveyAvg
@@ -509,10 +547,14 @@ struct  _Sts__Survey__SurveyAvg
    * 40MHz extention channel busy 
    */
   Sts__AvgType *busy_ext;
+  /*
+   * dBm 
+   */
+  Sts__AvgTypeSigned *noise_floor;
 };
 #define STS__SURVEY__SURVEY_AVG__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&sts__survey__survey_avg__descriptor) \
-    , 0, NULL, NULL, NULL, NULL, NULL }
+    , 0, NULL, NULL, NULL, NULL, NULL, NULL }
 
 
 /*
@@ -1003,6 +1045,25 @@ Sts__AvgType *
 void   sts__avg_type__free_unpacked
                      (Sts__AvgType *message,
                       ProtobufCAllocator *allocator);
+/* Sts__AvgTypeSigned methods */
+void   sts__avg_type_signed__init
+                     (Sts__AvgTypeSigned         *message);
+size_t sts__avg_type_signed__get_packed_size
+                     (const Sts__AvgTypeSigned   *message);
+size_t sts__avg_type_signed__pack
+                     (const Sts__AvgTypeSigned   *message,
+                      uint8_t             *out);
+size_t sts__avg_type_signed__pack_to_buffer
+                     (const Sts__AvgTypeSigned   *message,
+                      ProtobufCBuffer     *buffer);
+Sts__AvgTypeSigned *
+       sts__avg_type_signed__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data);
+void   sts__avg_type_signed__free_unpacked
+                     (Sts__AvgTypeSigned *message,
+                      ProtobufCAllocator *allocator);
 /* Sts__Neighbor__NeighborBss methods */
 void   sts__neighbor__neighbor_bss__init
                      (Sts__Neighbor__NeighborBss         *message);
@@ -1280,6 +1341,9 @@ void   sts__report__free_unpacked
 typedef void (*Sts__AvgType_Closure)
                  (const Sts__AvgType *message,
                   void *closure_data);
+typedef void (*Sts__AvgTypeSigned_Closure)
+                 (const Sts__AvgTypeSigned *message,
+                  void *closure_data);
 typedef void (*Sts__Neighbor__NeighborBss_Closure)
                  (const Sts__Neighbor__NeighborBss *message,
                   void *closure_data);
@@ -1394,6 +1458,7 @@ extern const ProtobufCEnumDescriptor    sts__report_type__descriptor;
 extern const ProtobufCEnumDescriptor    sts__fs_type__descriptor;
 extern const ProtobufCEnumDescriptor    sts__diff_type__descriptor;
 extern const ProtobufCMessageDescriptor sts__avg_type__descriptor;
+extern const ProtobufCMessageDescriptor sts__avg_type_signed__descriptor;
 extern const ProtobufCMessageDescriptor sts__neighbor__descriptor;
 extern const ProtobufCMessageDescriptor sts__neighbor__neighbor_bss__descriptor;
 extern const ProtobufCMessageDescriptor sts__client__descriptor;

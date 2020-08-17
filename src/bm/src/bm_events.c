@@ -115,7 +115,6 @@ static c_item_t map_bsal_disc_reasons[] = {
 
 /*****************************************************************************/
 static void     bm_events_handle_event(bsal_event_t *event );
-static void     bm_events_handle_rssi_xing( bm_client_t *client, bsal_event_t *event );
 /*****************************************************************************/
 
 // Callback function for BSAL upon receiving steering events from the driver
@@ -443,8 +442,7 @@ bm_events_handle_event(bsal_event_t *event)
             break;
         }
 
-        bm_events_handle_rssi_xing( client, event );
-
+        bm_client_handle_ext_xing(client, client->ifname, event);
         break;
 
     case BSAL_EVENT_RSSI:
@@ -534,10 +532,11 @@ bm_events_handle_event(bsal_event_t *event)
                 bm_stats_add_event_to_report( client, event, AUTH_BLOCK, false );
             }
 
-            if (client->state == BM_CLIENT_STATE_CONNECTED && !strcmp(client->ifname, event->ifname)) {
+            if (client->state == BM_CLIENT_STATE_CONNECTED) {
                 bsal_event_t disconnect_event;
 
-                LOGI("[%s]: %s in connected state (assume we lost last deauth/disassoc)", bandstr, ifname);
+                LOGI("[%s]: %s in connected state %s (assume we lost last deauth/disassoc)", bandstr,
+                     client->ifname, event->ifname);
 
                 memset(&disconnect_event, 0, sizeof(disconnect_event));
                 STRSCPY(disconnect_event.ifname, client->ifname);
@@ -669,11 +668,6 @@ bm_events_handle_rssi_xing_bs(bm_client_t *client, bsal_event_t *event)
     LOGI("[%s]: xing_bs '%s' snr %d (%d,%d)", event->ifname, client->mac_addr, event->data.rssi_change.rssi,
          event->data.rssi_change.low_xing, event->data.rssi_change.high_xing);
 
-    if (client->xing_snr == 0 && (now - times->last_connect < 4)) {
-        LOGI("[%s]: xing_bs '%s' skip XING event (first after connection)", event->ifname, client->mac_addr);
-        return;
-    }
-
     if (client->backoff && !client->steer_during_backoff) {
         LOGI("[%s]: xing_bs '%s' skip XING event, don't steer during pre-assoc backoff ", event->ifname, client->mac_addr);
         return;
@@ -785,17 +779,9 @@ bm_events_handle_rssi_xing_cs(bm_client_t *client, bsal_event_t *event)
     }
 }
 
-static void
+void
 bm_events_handle_rssi_xing(bm_client_t *client, bsal_event_t *event)
 {
-    if (event->data.rssi_change.low_xing == client->xing_low &&
-        event->data.rssi_change.high_xing == client->xing_high &&
-        (abs(event->data.rssi_change.rssi - client->xing_snr) <= BM_CLIENT_SNR_XING_DIFF)) {
-        LOGT("%s same xing skip (%d, %d) snr %d old %d", client->mac_addr, client->xing_low, client->xing_high,
-             event->data.rssi_change.rssi, client->xing_snr);
-        return;
-    }
-
     switch (client->steering_state) {
     case BM_CLIENT_CLIENT_STEERING:
         bm_events_handle_rssi_xing_cs(client, event);
@@ -806,11 +792,6 @@ bm_events_handle_rssi_xing(bm_client_t *client, bsal_event_t *event)
         bm_events_handle_rssi_xing_bs(client, event);
         break;
     }
-
-    /* Save last XING values */
-    client->xing_snr = event->data.rssi_change.rssi;
-    client->xing_low = event->data.rssi_change.low_xing;
-    client->xing_high = event->data.rssi_change.high_xing;
 }
 
 /*****************************************************************************/

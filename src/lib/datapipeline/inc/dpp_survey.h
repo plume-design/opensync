@@ -52,6 +52,7 @@ typedef struct
     dpp_avg_t                       chan_self;
     dpp_avg_t                       chan_rx;
     dpp_avg_t                       chan_tx;
+    dpp_avg_signed_t                chan_noise; /* dBm */
     ds_dlist_node_t                 node;
 } dpp_survey_record_avg_t;
 
@@ -67,6 +68,7 @@ typedef struct
     uint32_t                        chan_self;
     uint32_t                        chan_rx;
     uint32_t                        chan_tx;
+    int32_t                         chan_noise; /* dBm */
     uint32_t                        duration_ms;
 
     /* Linked list survey data */

@@ -31,14 +31,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <fcntl.h>
 
 #include "log.h"
+#include "util.h"
 #include "ovsdb.h"
 #include "schema.h"
 #include "ovsdb_table.h"
 #include "json_util.h"
 
-#include "osp.h"
 #include "pm.h"
-#include "target.h"
 
 
 #define PM_LED_TS_FILE          "/tmp/pm.led.ts"

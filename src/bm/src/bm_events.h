@@ -37,5 +37,6 @@ extern bool             bm_events_init(struct ev_loop *loop);
 extern bool             bm_events_cleanup(void);
 
 void bm_event_action_frame(const char *ifname, const uint8_t *data, unsigned int data_len);
+void bm_events_handle_rssi_xing(bm_client_t *client, bsal_event_t *event);
 
 #endif /* BM_EVENTS_H_INCLUDED */

@@ -313,7 +313,7 @@ bool ovsmac_scan_br(char *brif)
             }
         }
 
-        LOG(DEBUG, "bridge:%s ofport:%s vlan:%s mac:%s\n", brif, ifname, svlan, smac);
+        LOG(DEBUG, "OVSMAC: bridge:%s ofport:%s vlan:%s mac:%s\n", brif, ifname, svlan, smac);
 
         /*
          * Check if given interface is in interface filter list
@@ -488,11 +488,41 @@ int ovsmac_cmp_fn(void *_a, void *_b)
  *  Bridge table functions
  * ===========================================================================
  */
+static void bridge_schema_to_reduced(const struct schema_Bridge *s_br, struct reduced_bridge *r_br)
+{
+    int i;
+    int len;
+    int dst_buf_len;
+
+    /* Copy data from schema to reduced struct */
+    STRSCPY_WARN(r_br->name, s_br->name);
+    r_br->_uuid = s_br->_uuid;
+    len = s_br->ports_len;
+
+    dst_buf_len = ARRAY_LEN(r_br->ports);
+
+    if (dst_buf_len < s_br->ports_len)
+    {
+        LOG(WARN, "OVSMAC: Destination buffer too small (%d vs %d), skip copying part of Bridge ports",
+                  dst_buf_len, s_br->ports_len);
+
+        len = dst_buf_len;
+    }
+
+    for (i = 0; i < len; i++)
+    {
+        r_br->ports[i] = s_br->ports[i];
+    }
+
+    r_br->ports_len = len;
+}
+
 void bridge_mon_fn(ovsdb_update_monitor_t *self)
 {
     pjs_errmsg_t pjerr;
 
     struct bridge_node *bn = NULL;
+    struct schema_Bridge btmp;
 
     switch (self->mon_type)
     {
@@ -506,7 +536,7 @@ void bridge_mon_fn(ovsdb_update_monitor_t *self)
             }
 
             if (!schema_Bridge_from_json(
-                    &bn->br_bridge,
+                    &btmp,
                     self->mon_json_new,
                     false,
                     pjerr))
@@ -515,6 +545,8 @@ void bridge_mon_fn(ovsdb_update_monitor_t *self)
                 free(bn);
                 return;
             }
+
+            bridge_schema_to_reduced(&btmp, &(bn->br_bridge));
 
             /* Insert interface into tree */
             ds_tree_insert(&bridge_list, bn, bn->br_bridge._uuid.uuid);
@@ -532,9 +564,8 @@ void bridge_mon_fn(ovsdb_update_monitor_t *self)
                 return;
             }
 
-            /* Update entry */
             if (!schema_Bridge_from_json(
-                    &bn->br_bridge,
+                    &btmp,
                     self->mon_json_new,
                     true,
                     pjerr))
@@ -542,6 +573,9 @@ void bridge_mon_fn(ovsdb_update_monitor_t *self)
                 LOG(ERR, "OVSMAC: Error parsing updated bridge entry: %s", pjerr);
                 return;
             }
+
+            /* Update entry */
+            bridge_schema_to_reduced(&btmp, &(bn->br_bridge));
 
             LOG(DEBUG, "OVSMAC: Modified bridge interface: %s", bn->br_bridge.name);
 
@@ -574,11 +608,41 @@ void bridge_mon_fn(ovsdb_update_monitor_t *self)
  *  Port table functions
  * ===========================================================================
  */
+static void port_schema_to_reduced(const struct schema_Port *s_pr, struct reduced_port *r_pr)
+{
+    int i;
+    int len;
+    int dst_buf_len;
+
+    /* Copy data from schema to reduced struct */
+    STRSCPY_WARN(r_pr->name, s_pr->name);
+    r_pr->_uuid = s_pr->_uuid;
+    len = s_pr->interfaces_len;
+
+    dst_buf_len = ARRAY_LEN(r_pr->interfaces);
+
+    if (dst_buf_len < s_pr->interfaces_len)
+    {
+        LOG(WARN, "OVSMAC: Destination buffer too small (%d vs %d), skip copying part of Port interfaces",
+                  dst_buf_len, s_pr->interfaces_len);
+
+        len = dst_buf_len;
+    }
+
+    for (i = 0; i < len; i++)
+    {
+        r_pr->interfaces[i] = s_pr->interfaces[i];
+    }
+
+    r_pr->interfaces_len = len;
+}
+
 void port_mon_fn(ovsdb_update_monitor_t *self)
 {
     pjs_errmsg_t pjerr;
 
     struct port_node *pr = NULL;
+    struct schema_Port prtmp;
 
     switch (self->mon_type)
     {
@@ -591,7 +655,7 @@ void port_mon_fn(ovsdb_update_monitor_t *self)
             }
 
             if (!schema_Port_from_json(
-                    &pr->pr_port,
+                    &prtmp,
                     self->mon_json_new,
                     false,
                     pjerr))
@@ -601,6 +665,10 @@ void port_mon_fn(ovsdb_update_monitor_t *self)
                 return;
             }
 
+            /* Copy data to reduced struct */
+            port_schema_to_reduced(&prtmp, &(pr->pr_port));
+
+            /* Insert interface into tree */
             ds_tree_insert(&port_list, pr, pr->pr_port._uuid.uuid);
 
             LOG(DEBUG, "OVSMAC: Added Port added: %s", pr->pr_port.name);
@@ -616,9 +684,8 @@ void port_mon_fn(ovsdb_update_monitor_t *self)
                 return;
             }
 
-            /* Update entry */
             if (!schema_Port_from_json(
-                    &pr->pr_port,
+                    &prtmp,
                     self->mon_json_new,
                     true,
                     pjerr))
@@ -626,6 +693,9 @@ void port_mon_fn(ovsdb_update_monitor_t *self)
                 LOG(ERR, "OVSMAC: Error parsing updated port entry: %s", pjerr);
                 return;
             }
+
+            /* Update entry */
+            port_schema_to_reduced(&prtmp, &(pr->pr_port));
 
             LOG(DEBUG, "OVSMAC: Modified port: %s", pr->pr_port.name);
 
@@ -659,11 +729,21 @@ void port_mon_fn(ovsdb_update_monitor_t *self)
  *  Interface table functions
  * ===========================================================================
  */
+static void iface_schema_to_reduced(const struct schema_Interface *s_if, struct reduced_interface *r_if)
+{
+    /* Copy data from schema to reduced struct */
+    STRSCPY_WARN(r_if->name, s_if->name);
+    r_if->_uuid = s_if->_uuid;
+    r_if->ofport = s_if->ofport;
+    r_if->ofport_exists = s_if->ofport_exists;
+}
+
 void iface_mon_fn(ovsdb_update_monitor_t *self)
 {
     pjs_errmsg_t pjerr;
 
     struct iface_node *ifn = NULL;
+    struct schema_Interface iftmp;
 
     switch (self->mon_type)
     {
@@ -676,7 +756,7 @@ void iface_mon_fn(ovsdb_update_monitor_t *self)
             }
 
             if (!schema_Interface_from_json(
-                    &ifn->if_iface,
+                    &iftmp,
                     self->mon_json_new,
                     false,
                     pjerr))
@@ -685,6 +765,10 @@ void iface_mon_fn(ovsdb_update_monitor_t *self)
                 return;
             }
 
+            /* Copy data to reduced struct */
+            iface_schema_to_reduced(&iftmp, &(ifn->if_iface));
+
+            /* Insert interface into tree */
             ds_tree_insert(&iface_list, ifn, ifn->if_iface._uuid.uuid);
 
             LOG(DEBUG, "OVSMAC: Added interface: %s", ifn->if_iface.name);
@@ -700,9 +784,8 @@ void iface_mon_fn(ovsdb_update_monitor_t *self)
                 return;
             }
 
-            /* Update entry */
             if (!schema_Interface_from_json(
-                    &ifn->if_iface,
+                    &iftmp,
                     self->mon_json_new,
                     true,
                     pjerr))
@@ -710,6 +793,9 @@ void iface_mon_fn(ovsdb_update_monitor_t *self)
                 LOG(ERR, "OVSMAC: Error parsing updated bridge entry: %s", pjerr);
                 return;
             }
+
+            /* Update entry */
+            iface_schema_to_reduced(&iftmp, &(ifn->if_iface));
 
             LOG(DEBUG, "OVSMAC: Modified interface: %s", ifn->if_iface.name);
             break;

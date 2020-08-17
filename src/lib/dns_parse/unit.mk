@@ -34,3 +34,4 @@ UNIT_DEPS += src/lib/osa
 UNIT_DEPS += src/lib/fsm_policy
 UNIT_DEPS += src/lib/network_telemetry
 UNIT_DEPS += src/lib/json_mqtt
+UNIT_DEPS += src/lib/common

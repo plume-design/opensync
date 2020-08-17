@@ -39,6 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * bridge name, interface name and MAC address
  */
 #define OVSMAC_FLAG_ACTIVE      (1 << 1)
+#define FIELD_ARRAY_LEN(TYPE,FIELD) ARRAY_LEN(((TYPE*)0)->FIELD)
 
 struct ovsmac_node
 {
@@ -48,11 +49,39 @@ struct ovsmac_node
 };
 
 /*
+ * Reduced structs. To save memory use reduced custom struct instead of complete schema struct.
+ * Custom reduced struct only has information that is needed for ovs mac learning to work.
+ */
+struct reduced_bridge
+{
+    char name[C_IFNAME_LEN];
+    ovs_uuid_t _uuid;
+    ovs_uuid_t ports[FIELD_ARRAY_LEN(struct schema_Bridge, ports)];
+    int ports_len;
+};
+
+struct reduced_port
+{
+    char name[C_IFNAME_LEN];
+    ovs_uuid_t _uuid;
+    ovs_uuid_t interfaces[FIELD_ARRAY_LEN(struct schema_Port, interfaces)];
+    int interfaces_len;
+};
+
+struct reduced_interface
+{
+    char name[C_IFNAME_LEN];
+    ovs_uuid_t _uuid;
+    int ofport;
+    _Bool ofport_exists;
+};
+
+/*
  * Bridge cache list
  */
 struct bridge_node
 {
-    struct schema_Bridge        br_bridge;
+    struct reduced_bridge       br_bridge;
     ds_tree_node_t              br_node;
 };
 
@@ -61,7 +90,7 @@ struct bridge_node
  */
 struct port_node
 {
-    struct schema_Port          pr_port;
+    struct reduced_port         pr_port;
     ds_tree_node_t              pr_node;
 };
 
@@ -70,7 +99,7 @@ struct port_node
  */
 struct iface_node
 {
-    struct schema_Interface     if_iface;
+    struct reduced_interface    if_iface;
     ds_tree_node_t              if_node;
 };
 

@@ -71,6 +71,9 @@ static struct schema_FCM_Report_Config test_report[] =
     }
 };
 
+void setUp() {}
+void tearDown() {}
+
 void fcm_test_init(void)
 {
     struct ev_loop *loop = EV_DEFAULT;

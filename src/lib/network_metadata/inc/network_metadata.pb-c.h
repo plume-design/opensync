@@ -187,10 +187,12 @@ struct  _Traffic__ObservationWindow
   uint64_t endedat;
   size_t n_flowstats;
   Traffic__FlowStats **flowstats;
+  protobuf_c_boolean has_droppedflows;
+  uint32_t droppedflows;
 };
 #define TRAFFIC__OBSERVATION_WINDOW__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&traffic__observation_window__descriptor) \
-    , 0, 0, 0, 0, 0,NULL }
+    , 0, 0, 0, 0, 0,NULL, 0, 0 }
 
 
 struct  _Traffic__FlowReport

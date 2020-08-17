@@ -101,6 +101,12 @@ bool lnx_netlink_start(lnx_netlink_t *self)
     self->nl_active = true;
     ds_dlist_insert_tail(&lnx_netlink_list, self);
 
+    /*
+     * Immediately dispatch an event -- this ensures that at least 1 event is
+     * received by the listener and that it is received sooner rather than later
+     */
+    lnx_netlink_dispatch(self->nl_events, self->nl_ifname);
+
 exit:
     return self->nl_active;
 }

@@ -73,6 +73,8 @@ struct ndp_session
 {
     struct fsm_session *session;
     bool initialized;
+    time_t timestamp;
+    uint64_t ttl;
     struct ndp_parser parser;
     ds_tree_node_t session_node;
 };
@@ -109,6 +111,24 @@ ndp_plugin_init(struct fsm_session *session);
  */
 void
 ndp_plugin_exit(struct fsm_session *session);
+
+
+/**
+ * @brief periodic routine
+ *
+ * @param session the fsm session keying the ndp session to process
+ */
+void
+ndp_plugin_periodic(struct fsm_session *session);
+
+
+/**
+ * @brief update routine
+ *
+ * @param session the fsm session keying the ndp session to update
+ */
+void
+ndp_plugin_update(struct fsm_session *session);
 
 
 /**

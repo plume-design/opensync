@@ -448,7 +448,7 @@ struct rpc_response_handler
 struct rpc_update_handler
 {
     int                     rrh_id;                     /**< Response ID */
-    ovsdb_update_process_t    *rrh_callback;               /**< Callback   */
+    ovsdb_update_process_t *rrh_callback;               /**< Callback   */
     void                   *data;                       /**< User data  */
     ds_tree_node_t          rrh_node;                   /**< Node structure */
 };

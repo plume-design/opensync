@@ -130,6 +130,9 @@ static bool nfm_trule_detect_vars(struct nfm_trule *self, char *what, char var_c
 		} else if (*s == TEMPLATE_CLOUD_CHAR) {
 			s++;
 			flag |= OM_TLE_FLAG_CLOUD;
+		} else if (*s == TEMPLATE_LOCAL_CHAR) {
+			s++;
+			flag |= OM_TLE_FLAG_LOCAL;
 		}
 		if (!(p = strchr(s, end))) {
 			LOGW("[%s] Netfilter template rule has malformed %s (no ending '%c')",
@@ -139,8 +142,7 @@ static bool nfm_trule_detect_vars(struct nfm_trule *self, char *what, char var_c
 		*p++ = '\0';
 
 		LOGT("[%s] Netfilter template rule detected %s %s'%s'",
-				self->conf.name, what, (flag == OM_TLE_FLAG_DEVICE) ? "device " :
-				(flag == OM_TLE_FLAG_CLOUD) ? "cloud " : "", s);
+				self->conf.name, what, om_tag_get_tle_flag(flag), s);
 		if (!om_tag_list_entry_find_by_val_flags(&self->tags, s, base_flags)) {
 			if (!om_tag_list_entry_add(&self->tags, s, flag)) {
 				errcode = false;
@@ -241,7 +243,7 @@ static char *nfm_trule_expand(struct nfm_trule *self, struct nfm_tdata *tdata)
 		strcat(erule, p);
 
 		s += 2;
-		if (*s == TEMPLATE_DEVICE_CHAR || *s == TEMPLATE_CLOUD_CHAR) {
+		if (*s == TEMPLATE_DEVICE_CHAR || *s == TEMPLATE_CLOUD_CHAR || *s == TEMPLATE_LOCAL_CHAR) {
 			s++;
 		}
 		if (!(e = strchr(s, end))) {

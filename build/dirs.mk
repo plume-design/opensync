@@ -26,6 +26,7 @@ SRCDIR   = src
 OBJDIR   = $(WORKDIR)/obj
 BINDIR   = $(WORKDIR)/bin
 LIBDIR   = $(WORKDIR)/lib
+FUTDIR   = $(WORKDIR)/fut
 BUILD_ROOTFS_DIR  ?= $(WORKDIR)/rootfs
 APP_ROOTFS        ?= $(BUILD_ROOTFS_DIR)
 IMAGEDIR = images

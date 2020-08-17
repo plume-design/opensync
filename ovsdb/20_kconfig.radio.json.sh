@@ -68,6 +68,7 @@ cat <<VIF
         "mode": "sta",
         "wds": false,
         "vif_radio_idx": 0,
+        "multi_ap": "none",
         "ssid": "$bhaul_ssid",
         "security": ["map", [
             ["encryption", "WPA-PSK"],

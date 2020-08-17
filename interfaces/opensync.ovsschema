@@ -1,7 +1,7 @@
 {
   "name": "Open_vSwitch",
-  "version": "7.11.203",
-  "cksum": "3380660315 190193",
+  "version": "7.11.225",
+  "cksum": "558562310 199380",
   "tables": {
     "AWLAN_Node": {
       "columns": {
@@ -195,6 +195,56 @@
             "key": {
               "type": "integer"
             }
+          }
+        },
+        "vendor_name": {
+          "type": {
+            "key": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "vendor_part_number": {
+          "type": {
+            "key": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "vendor_manufacturer": {
+          "type": {
+            "key": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "vendor_factory": {
+          "type": {
+            "key": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "vendor_mfg_date": {
+          "type": {
+            "key": {
+              "type": "string",
+              "maxLength": 16
+            },
+            "min": 0,
+            "max": 1
           }
         }
       },
@@ -442,6 +492,15 @@
           "type": {
             "key": {
               "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "bridge": {
+          "type": {
+            "key": {
+              "type": "string"
             },
             "min": 0,
             "max": 1
@@ -824,6 +883,16 @@
               "type": "integer",
               "minInteger": 10,
               "maxInteger": 1000000
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "role": {
+          "type": {
+            "key": {
+              "type": "string",
+              "maxLength": 64
             },
             "min": 0,
             "max": 1
@@ -1249,7 +1318,8 @@
                 [
                   "auto",
                   "manual",
-                  "cloud"
+                  "cloud",
+                  "acs"
                 ]
               ]
             },
@@ -1359,8 +1429,7 @@
           "type": {
             "key": {
               "type": "integer",
-              "minInteger": 1,
-              "maxInteger": 32
+              "minInteger": 1
             },
             "min": 0,
             "max": 1
@@ -1556,7 +1625,8 @@
                 [
                   "auto",
                   "manual",
-                  "cloud"
+                  "cloud",
+                  "acs"
                 ]
               ]
             },
@@ -1672,8 +1742,7 @@
           "type": {
             "key": {
               "type": "integer",
-              "minInteger": 1,
-              "maxInteger": 32
+              "minInteger": 1
             },
             "min": 0,
             "max": 1
@@ -2297,7 +2366,7 @@
               "refType": "weak"
             },
             "min": 0,
-            "max": "unlimited"
+            "max": 256
           }
         },
         "vlan_id": {
@@ -2675,7 +2744,7 @@
           "type": {
             "key": {
               "type": "string",
-              "maxLength": 128
+              "maxLength": 512
             },
             "min": 0,
             "max": 1
@@ -2755,6 +2824,15 @@
            "max": 1
          }
        },
+       "connectable": {
+         "type": {
+           "key": {
+             "type": "boolean"
+           },
+           "min": 0,
+           "max": 1
+         }
+       },
        "interval_millis" : {
         "type" : {
            "key": {
@@ -2817,6 +2895,15 @@
                   "on"
                 ]
               ]
+           },
+           "min": 0,
+           "max": 1
+         }
+       },
+       "connectable": {
+         "type": {
+           "key": {
+             "type": "boolean"
            },
            "min": 0,
            "max": 1
@@ -5890,6 +5977,31 @@
         },
         "isRoot": true
     },
+    "Openflow_Local_Tag": {
+        "columns": {
+          "name": {
+            "type": {
+              "key": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 32
+              }
+            }
+           },
+           "values": {
+             "type": {
+               "key": {
+                 "type": "string",
+                 "minLength": 1,
+                 "maxLength": 64
+               },
+               "min": 0,
+               "max": 1024
+             }
+           }
+        },
+        "isRoot": true
+    },
     "Openflow_Tag_Group": {
         "columns": {
             "name": {
@@ -6447,6 +6559,64 @@
                     },
                     "min": 0,
                     "max": 1
+                }
+            }
+        },
+        "isRoot": true
+    },
+    "Wifi_Channels": {
+        "columns": {
+            "channel": {
+                "type": {
+                    "key": {
+                        "type": "integer",
+                        "minInteger": 1
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
+            "radio_ifname": {
+                "type": {
+                    "key": {
+                        "type": "string"
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
+            "tx_power": {
+                "type": {
+                    "key": {
+                        "type": "integer",
+                        "minInteger": 1
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
+            "max_tx_power_allowed": {
+                "type": {
+                    "key": {
+                        "type": "integer",
+                        "minInteger": 1
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
+            "acs_enable": {
+                "type": {
+                    "key": {
+                        "type": "boolean"
+                    }
+                }
+            },
+            "acs_is_enabled": {
+                "type": {
+                    "key": {
+                        "type": "boolean"
+                    }
                 }
             }
         },
@@ -8261,6 +8431,46 @@
       },
       "isRoot": true
     },
+    "IPv4_Neighbors": {
+      "columns": {
+        "address": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 49
+            }
+          }
+        },
+        "hwaddr": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 12,
+              "maxLength": 17
+            }
+          }
+        },
+        "if_name": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 31
+            }
+          }
+        },
+        "source": {
+          "type": {
+            "key": {
+              "type": "string",
+              "maxLength": 16
+            }
+          }
+        }
+      },
+      "isRoot": true
+    },
     "IGMP_Config": {
       "columns": {
         "query_interval": {
@@ -8523,6 +8733,174 @@
                     "max": "unlimited"
                 }
             }
+        },
+        "isRoot": true
+    },
+    "OMS_Config": {
+        "columns": {
+            "object_name": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128
+                    }
+                }
+            },
+            "version": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128
+                    }
+                }
+            },
+            "other_config": {
+                "type": {
+                    "key": "string",
+                    "value": {
+                        "type": "string",
+                        "maxLength": 128
+                    },
+                    "min": 0,
+                    "max": "unlimited"
+                }
+            }
+        },
+        "isRoot": true
+    },
+    "Object_Store_Config": {
+        "columns": {
+            "name": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "maxLength": 64
+                    }
+                }
+            },
+            "version": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 16
+                    }
+                }
+            },
+            "dl_url": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "maxLength": 512
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
+            "dl_timeout": {
+                "type": {
+                    "key": {
+                        "type": "integer"
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            }
+        },
+        "isRoot": true
+    },
+    "Object_Store_State": {
+        "columns": {
+            "name": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "maxLength": 64
+                    }
+                }
+            },
+            "version": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 16
+                    }
+                }
+            },
+            "status": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "enum": [
+                            "set",
+                            [
+                                "install-failed",
+                                "install-done",
+                                "download-started",
+                                "download-failed",
+                                "download-done",
+                                "load-failed",
+                                "active",
+                                "error",
+                                "obsolete"
+                            ]
+                        ]
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
+            "fw_integrated": {
+                "type": {
+                    "key": {
+                        "type": "boolean"
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            }
+        },
+        "isRoot": true
+    },
+    "Captive_Portal": {
+        "columns": {
+          "name": {
+            "type": {
+               "key": {
+                 "type": "string"
+               },
+               "min": 1,
+               "max": 1
+            }
+          },
+          "uam_url": {
+            "type": {
+              "key": {
+                "type": "string"
+              },
+              "min": 1,
+              "max": 1
+            }
+          },
+          "additional_headers": {
+            "type": {
+                "key": "string",
+                "value": "string",
+                "min": 0,
+                "max": "unlimited"
+              }
+          },
+          "other_config": {
+           "type": {
+             "key": "string",
+               "value": "string",
+               "min": 0,
+               "max": "unlimited"
+            }
+          }
         },
         "isRoot": true
     }

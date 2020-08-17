@@ -27,7 +27,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef FCM_PRIV_H_INCLUDED
 #define FCM_PRIV_H_INCLUDED
 
-#include "ds_list.h"
+#include "ds_dlist.h"
 #include "ds_tree.h"
 #include "fcm.h"
 
@@ -38,6 +38,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define FCM_DSO_TYPE             ".so"
 #define FCM_DSO_PATH_LEN         (255)
 #define FCM_DSO_INIT_LEN         (255)
+#define FCM_DSO                  "dso"
+#define FCM_DSO_LEN              (255)
 #define FCM_SAMPLE_INTVL         (0)
 #define FCM_REPORT_INTVL         (0)
 #define FCM_FLTR_NAME_LEN        (33)
@@ -47,7 +49,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define FCM_MQTT_TOPIC_LEN       (257)
 #define FCM_OTHER_CONFIG_KEY_LEN (65)
 #define FCM_OTHER_CONFIG_VAL_LEN FCM_OTHER_CONFIG_KEY_LEN
-
+#define FCM_MGR_INTERVAL         120
 
 typedef enum {
     FCM_NO_HEADER          = -1,
@@ -108,6 +110,7 @@ typedef struct fcm_collector_
 {
     char dso_path[FCM_DSO_PATH_LEN]; // Path of plugin shared lib
     char dso_init[FCM_DSO_INIT_LEN]; // Plugin init function
+    char *dso;
     fcm_collect_conf_t collect_conf;
     void *handle; // Stores dlopen handle
     void *plugin_init; // Stores the plugin entry function
@@ -118,6 +121,21 @@ typedef struct fcm_collector_
     ds_tree_node_t node;
 } fcm_collector_t;
 
+/**
+ * @brief manager's memory usage counters
+ */
+struct mem_usage
+{
+    int curr_real_mem;
+    char curr_real_mem_unit[8];
+    int peak_real_mem;
+    int curr_virt_mem;
+    char curr_virt_mem_unit[8];
+    int peak_virt_mem;
+};
+
+void fcm_get_memory(struct mem_usage *mem);
 int fcm_ovsdb_init(void);
+void fcm_event_init(void);
 
 #endif /* FCM_PRIV_H_INCLUDED */

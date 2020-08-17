@@ -54,12 +54,17 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "om.h"
 #include "util.h"
 #include "ovsdb_sync.h"
+#include "ovsdb_update.h"
+#include "ovsdb_sync.h"
+#include "ovsdb_table.h"
+#include "schema.h"
 
 
 /*****************************************************************************/
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
 /*****************************************************************************/
+ovsdb_table_t table_Openflow_Local_Tag;
 static ovsdb_update_monitor_t   om_monitor_config;
 static ovsdb_update_monitor_t   om_monitor_tags;
 static ovsdb_update_monitor_t   om_monitor_tag_groups;
@@ -187,7 +192,7 @@ om_range_clear_range_rules(void)
     struct om_rule_node *data;
     ds_list_iter_t      iter;
 
-    for (data = ds_list_ifirst(&iter, &range_rules); 
+    for (data = ds_list_ifirst(&iter, &range_rules);
          data != NULL; data = ds_list_inext(&iter))
     {
         ds_list_iremove(&iter);
@@ -267,19 +272,21 @@ om_range_long_to_dot_ip(uint32_t ipnum)
 static void
 om_range_rmv_substr(char *s,const char *toremove)
 {
-    while( (s=strstr(s,toremove)) ) { 
+    while( (s=strstr(s,toremove)) ) {
         memmove(s,s+strlen(toremove),1+strlen(s+strlen(toremove)));
     }
 }
 
-// Pull out the start and end values for a string, 
+// Pull out the start and end values for a string,
 // Example: tcp,tp_src=$<1-4> turns into (1, 4, tcp)
 static bool
 om_range_extract(struct schema_Openflow_Config *sflow, char *pattern,
-        char *start, char *end, size_t str_size, struct schema_Openflow_Config *out) 
+        char *start, char *end, size_t str_size, struct schema_Openflow_Config *out)
 {
     char *token, *str, *iter;
     char removing[1024];
+    char *orig_str;
+    bool rc = false;
 
     memcpy(out, sflow, sizeof(*out));
 
@@ -288,24 +295,19 @@ om_range_extract(struct schema_Openflow_Config *sflow, char *pattern,
     iter = iter + 3;
 
     str   = strdup(iter);  // We own str's memory now.
+    orig_str = str;
 
     token = strsep(&str, "-");
     if (!token) {
-        if (str) {
-            free(str);
-        }
-
-        return false;
+        rc = false;
+        goto err;
     }
     strscpy(start, token, str_size);
 
     token = strsep(&str, ">");
     if (!token) {
-        if (str) {
-            free(str);
-        }
-
-        return false;
+        rc = false;
+        goto err;
     }
     strscpy(end, token, str_size);
 
@@ -314,11 +316,11 @@ om_range_extract(struct schema_Openflow_Config *sflow, char *pattern,
     if ( strstr(sflow->rule, removing) != NULL ) {
         STRSCPY(out->rule, sflow->rule);
         om_range_rmv_substr(out->rule, removing);
-    
-        return true;
+        rc = true;
     }
-
-    return false;
+err:
+    if (orig_str) free(orig_str);
+    return rc;
 }
 
 static bool
@@ -711,6 +713,31 @@ om_monitor_update_tags(om_action_t type, json_t *js)
 }
 
 /******************************************************************************
+ * Adds/deletes/updates local tags based on Openflow_Local_Tag table
+ *****************************************************************************/
+void callback_Openflow_Local_Tag(
+        ovsdb_update_monitor_t *mon,
+        struct schema_Openflow_Local_Tag *old_rec,
+        struct schema_Openflow_Local_Tag *conf)
+{
+    if (mon->mon_type == OVSDB_UPDATE_NEW)
+    {
+        om_local_tag_add_from_schema(conf);
+    }
+
+    if (mon->mon_type == OVSDB_UPDATE_DEL)
+    {
+        om_local_tag_remove_from_schema(old_rec);
+    }
+
+    if (mon->mon_type == OVSDB_UPDATE_MODIFY)
+    {
+        om_local_tag_update_from_schema(conf);
+    }
+}
+
+
+/******************************************************************************
  * Handle Openflow_Tag callbacks
  ******************************************************************************/
 static void
@@ -836,6 +863,9 @@ om_monitor_init(void)
         LOGE("Failed to monitor OVSDB table '%s'", SCHEMA_TABLE(Openflow_Tag_Group));
         return false;
     }
+
+    OVSDB_TABLE_INIT_NO_KEY(Openflow_Local_Tag);
+    OVSDB_TABLE_MONITOR(Openflow_Local_Tag, false);
 
     return true;
 }

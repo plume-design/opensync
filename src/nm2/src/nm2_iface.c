@@ -26,11 +26,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "osa_assert.h"
 #include "log.h"
+#include "util.h"
 #include "build_version.h"
 #include "inet.h"
 #include "evx.h"
 #include "schema.h"
-#include "target.h"
+#include "osp_unit.h"
 
 #include "nm2.h"
 #include "nm2_iface.h"
@@ -43,6 +44,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 static ds_key_cmp_t nm2_iface_cmp;
 
 ds_tree_t nm2_iface_list = DS_TREE_INIT(nm2_iface_cmp, struct nm2_iface, if_tnode);
+/* Ordered list of pending commits */
+ds_dlist_t nm2_iface_commit_list = DS_DLIST_INIT(struct nm2_iface, if_commit_dnode);
 
 static void nm2_iface_dhcpc_notify(inet_t *self, enum osn_notify hint, const char *name, const char *value);
 static inet_t *nm2_iface_new_inet(const char *ifname, enum nm2_iftype type);
@@ -197,6 +200,11 @@ bool nm2_iface_del(struct nm2_iface *piface)
 
     bool retval = true;
 
+    /* Remove the interface from the "pending commits" list */
+    if (piface->if_commit)
+    {
+        ds_dlist_remove(&nm2_iface_commit_list, piface);
+    }
 
     /* Destroy the inet object */
     if (!inet_del(piface->if_inet))
@@ -284,11 +292,10 @@ void __nm2_iface_apply(EV_P_ ev_debounce *w, int revent)
     TRACE();
 
     struct nm2_iface *piface;
+    ds_dlist_iter_t iter;
 
-    ds_tree_foreach(&nm2_iface_list, piface)
+    ds_dlist_foreach_iter(&nm2_iface_commit_list, piface, iter)
     {
-        /* If not commit bit is set, continue */
-        if (!piface->if_commit) continue;
         piface->if_commit = false;
 
         /* Apply the configuration */
@@ -298,6 +305,8 @@ void __nm2_iface_apply(EV_P_ ev_debounce *w, int revent)
                     piface->if_name,
                     nm2_iftype_tostr(piface->if_type));
         }
+
+        ds_dlist_iremove(&iter);
     }
 }
 
@@ -310,8 +319,12 @@ bool nm2_iface_apply(struct nm2_iface *piface)
 
     static bool apply_init = false;
 
+    /* If already flagged, do not add to the list */
+    if (piface->if_commit) return true;
+
     /* Flag the interface as pending for commit */
     piface->if_commit = true;
+    ds_dlist_insert_tail(&nm2_iface_commit_list, piface);
 
     /* If it's not already initialized, initialize the commit timer */
     if (!apply_init)
@@ -333,7 +346,7 @@ bool nm2_iface_apply(struct nm2_iface *piface)
  * Additionally, it initializes some of the DHCP client options -- this is
  * true also for interfaces that do not actually use DHCP.
  *
- * TODO: Get rid of the target dependency (target_sku_get(), target_model_get() etc).
+ * TODO: Get rid of the target dependency (osp_unit_sku_get(), osp_unit_model_get() etc).
  */
 inet_t *nm2_iface_new_inet(const char *ifname, enum nm2_iftype type)
 {
@@ -366,6 +379,10 @@ inet_t *nm2_iface_new_inet(const char *ifname, enum nm2_iftype type)
             nif = inet_vlan_new(ifname);
             break;
 
+        case NM2_IFTYPE_PPPOE:
+            nif = inet_pppoe_new(ifname);
+            break;
+
         default:
             /* Unsupported types */
             LOG(ERR, "nm2_iface: %s: Unsupported interface type: %d", ifname, type);
@@ -383,20 +400,20 @@ inet_t *nm2_iface_new_inet(const char *ifname, enum nm2_iftype type)
      */
 
     /* Retrieve vendor class, sku, hostname ... we need these values to populate DHCP options */
-    if (vendor_class[0] == '\0' && target_model_get(vendor_class, sizeof(vendor_class)) == false)
+    if (vendor_class[0] == '\0' && osp_unit_model_get(vendor_class, sizeof(vendor_class)) == false)
     {
         STRSCPY(vendor_class, TARGET_NAME);
     }
 
     if (serial_num[0] == '\0')
     {
-        target_serial_get(serial_num, sizeof(serial_num));
+        osp_unit_serial_get(serial_num, sizeof(serial_num));
     }
 
     /* read SKU number, if empty, reset buffer */
     if (hostname[0] == '\0')
     {
-        if (target_sku_get(sku_num, sizeof(sku_num)) == false)
+        if (osp_unit_sku_get(sku_num, sizeof(sku_num)) == false)
         {
             tsnprintf(hostname, sizeof(hostname), "%s_Pod", serial_num);
         }

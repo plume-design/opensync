@@ -30,7 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdbool.h>
 
 /**
- * Executables that want to take advantage of backtracing should be compiled with -fasnychronous-unwind-tables
+ * Executables that want to take advantage of backtracing should be compiled with -fasynchronous-unwind-tables
  * and linked with -rdynamic to get the best results.
  *
  * Executables with debug symbols can be used post-mortem to get more accurate information about the stack trace;

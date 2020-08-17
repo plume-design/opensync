@@ -102,7 +102,8 @@ void callback_AW_LM_Config(ovsdb_update_monitor_t *mon,
         struct schema_AW_LM_Config *old_rec,
         struct schema_AW_LM_Config *config)
 {
-    if (mon->mon_type == OVSDB_UPDATE_MODIFY)
+    if (mon->mon_type == OVSDB_UPDATE_MODIFY ||
+        mon->mon_type == OVSDB_UPDATE_NEW)
     {
         // Update new upload location and token
         STRSCPY(g_state.config.upload_token,    config->upload_token);

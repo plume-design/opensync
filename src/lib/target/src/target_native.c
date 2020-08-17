@@ -50,54 +50,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *  TARGET definitions
  */
 
-/**
- * Returns true if device serial name is correctly read
- */
-bool target_serial_get(void *buff, size_t buffsz)
-{
-    memset(buff, 0, buffsz);
-
-    os_macaddr_t mac;
-    size_t n;
-
-    // get eth0 MAC address
-    if (true == os_nif_macaddr("eth0",  &mac))
-    {
-        n = snprintf(buff, buffsz, PRI(os_macaddr_plain_t), FMT(os_macaddr_t, mac));
-        if (n >= buffsz) {
-            LOG(ERR, "buffer not large enough");
-            return false;
-        }
-        return true;
-    }
-
-    // eth0 not found, find en* interface
-    char interface[256];
-    FILE *f;
-    int r;
-    *interface = 0;
-    f = popen("cd /sys/class/net; ls -d en* | head -1", "r");
-    if (!f) return false;
-    r = fread(interface, 1, sizeof(interface), f);
-    if (r > 0) {
-        if (interface[r - 1] == '\n') r--;
-        interface[r] = 0;
-    }
-    pclose(f);
-    if (!*interface) return false;
-    if (true == os_nif_macaddr(interface,  &mac))
-    {
-        n = snprintf(buff, buffsz, PRI(os_macaddr_plain_t), FMT(os_macaddr_t, mac));
-        if (n >= buffsz) {
-            LOG(ERR, "buffer not large enough");
-            return false;
-        }
-        return true;
-    }
-
-    return false;
-}
-
 void target_managers_restart(void)
 {
 }

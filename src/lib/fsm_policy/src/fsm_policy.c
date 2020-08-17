@@ -113,6 +113,7 @@ void fsm_walk_policy_macs(struct fsm_policy *p)
             /* pass tag values marker */
             tag_has_marker = (*tag_s == TEMPLATE_DEVICE_CHAR);
             tag_has_marker |= (*tag_s == TEMPLATE_CLOUD_CHAR);
+            tag_has_marker |= (*tag_s == TEMPLATE_LOCAL_CHAR);
             if (tag_has_marker) tag_s += 1;
 
             /* Copy tag name, remove end marker */
@@ -448,7 +449,8 @@ static void set_action(struct fsm_policy_req *req, struct fsm_policy *p)
     req->reply.action = p->action;
 }
 
-#define UPDATE_TAG "tag_name"
+#define UPDATEv4_TAG "tagv4_name"
+#define UPDATEv6_TAG "tagv6_name"
 
 /**
  * @brief set_tag_update: set whether the request is flagged to update tag
@@ -465,11 +467,15 @@ void set_tag_update(struct fsm_policy_req *req, struct fsm_policy *p)
 
     tree = p->other_config;
     if (tree == NULL) return;
-
-    pair = ds_tree_find(tree, UPDATE_TAG);
+    pair = ds_tree_find(tree, UPDATEv4_TAG);
     if (pair == NULL) return;
 
-    req->reply.update_tag = pair->value;
+    req->reply.updatev4_tag = pair->value;
+
+    pair = ds_tree_find(tree, UPDATEv6_TAG);
+    if (pair == NULL) return;
+
+    req->reply.updatev6_tag = pair->value;
 }
 
 /**

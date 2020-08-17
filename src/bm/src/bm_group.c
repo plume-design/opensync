@@ -55,6 +55,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /*****************************************************************************/
 
+static ovsdb_table_t table_Wifi_VIF_Config;
+static ovsdb_table_t table_Wifi_Radio_Config;
+
 static ovsdb_update_monitor_t   bm_group_ovsdb_update;
 static ds_tree_t                bm_groups = DS_TREE_INIT((ds_key_cmp_t *)strcmp,
                                                          bm_group_t,
@@ -150,7 +153,40 @@ bm_ifconfigs_from_ovsdb(struct schema_Band_Steering_Config *bsconf, bm_group_t *
 static bool
 bm_ifconfigs_from_ovsdb_old(struct schema_Band_Steering_Config *bsconf, bm_group_t *group)
 {
+    struct schema_Wifi_Radio_Config rconf;
+    struct schema_Wifi_VIF_Config vconf;
     radio_type_t radio_type;
+    const char *column;
+    json_t *where;
+    int ret;
+
+    column = SCHEMA_COLUMN(Wifi_VIF_Config, if_name);
+    where = ovsdb_tran_cond(OCLM_STR, column, OFUNC_EQ, bsconf->if_name_5g);
+    if (!where) {
+        LOGW("%s: Failed alloc ovsdb cond (5G VAP in Wifi_VIF_Config)",
+             bsconf->if_name_5g);
+        return false;
+    }
+
+    ret = ovsdb_table_select_one_where(&table_Wifi_VIF_Config, where, &vconf);
+    if (!ret) {
+        LOGW("%s: 5G VAP not found in in Wifi_VIF_Config", bsconf->if_name_5g);
+        return false;
+    }
+
+    column = SCHEMA_COLUMN(Wifi_Radio_Config, vif_configs);
+    where = ovsdb_tran_cond(OCLM_UUID, column, OFUNC_INC, vconf._uuid.uuid);
+    if (!where) {
+        LOGW("%s: Failed alloc ovsdb cond (5G VAP's UUID in Wifi_Radio_Config)",
+             bsconf->if_name_5g);
+        return false;
+    }
+
+    ret = ovsdb_table_select_one_where(&table_Wifi_Radio_Config, where, &rconf);
+    if (!ret) {
+        LOGW("%s: 5G VAP's UUID not found in in table_Wifi_Radio_Config", bsconf->if_name_5g);
+        return false;
+    }
 
     /* This could be handled on the Cloud */
     char *target_name_2g = target_map_ifname(bsconf->if_name_2g);
@@ -168,13 +204,15 @@ bm_ifconfigs_from_ovsdb_old(struct schema_Band_Steering_Config *bsconf, bm_group
     if (!bm_ifconfig_from_ovsdb(target_name_2g, RADIO_TYPE_2G, false, bsconf, group)) {
         return false;
     }
+
     /*
-     * So far we need this for SP and old if_name_2g/if_name_5g iface.
+     * Previously this code looked for "l50"/"u50" in ifname we used to distinguish
+     * between 5GL and 5GU. This was SP-specific.
      * We will not need this when cloud config ::ifnames
      */
-    if (strstr(bsconf->if_name_5g, "u50"))
+    if (strcmp(rconf.freq_band, SCHEMA_CONSTS_RADIO_TYPE_STR_5GU) == 0)
         radio_type = RADIO_TYPE_5GU;
-    else if (strstr(bsconf->if_name_5g, "l50"))
+    else if (strcmp(rconf.freq_band, SCHEMA_CONSTS_RADIO_TYPE_STR_5GL) == 0)
         radio_type = RADIO_TYPE_5GL;
     else
         radio_type = RADIO_TYPE_5G;
@@ -399,6 +437,9 @@ bm_group_init(void)
         LOGE("Failed to monitor OVSDB table '%s'", SCHEMA_TABLE(Band_Steering_Config));
         return false;
     }
+
+    OVSDB_TABLE_INIT(Wifi_VIF_Config, if_name);
+    OVSDB_TABLE_INIT(Wifi_Radio_Config, if_name);
 
     return true;
 }

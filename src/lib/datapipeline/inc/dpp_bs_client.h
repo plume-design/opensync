@@ -118,7 +118,7 @@ typedef struct
     bool                            rrm_caps_lci_meas;
     bool                            rrm_caps_ftm_range_rpt;
     uint32_t                        backoff_period;
-    uint8_t                         assoc_ies[1024];
+    uint8_t                        *assoc_ies;
     size_t                          assoc_ies_len;
 } dpp_bs_client_event_record_t;
 

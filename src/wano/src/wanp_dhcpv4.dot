@@ -1,0 +1,12 @@
+digraph {
+    INIT[init=true];
+    INIT -> ENABLE_DHCP [label="STATE_INIT"];
+    ENABLE_DHCP -> WAIT_IP [label="INET_STATE_UPDATE"];
+    WAIT_IP -> RUNNING;
+
+    TIMEOUT_EX[label="Timeout occurred"];
+    CANCEL_EX[label="WAN cancelled"];
+
+    TIMEOUT_EX -> EXCEPTION [label="!TIMEOUT"];
+    CANCEL_EX -> EXCEPTION [label="!CANCEL"];
+}

@@ -24,6 +24,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include <errno.h>
 #include <netinet/icmp6.h>
 #include <stdlib.h>
 #include <stddef.h>
@@ -129,6 +130,8 @@ ndp_plugin_init(struct fsm_session *session)
     }
 
     /* Set the fsm session */
+    session->ops.update = ndp_plugin_update;
+    session->ops.periodic = ndp_plugin_periodic;
     session->ops.exit = ndp_plugin_exit;
     session->handler_ctxt = ndp_session;
 
@@ -138,6 +141,8 @@ ndp_plugin_init(struct fsm_session *session)
 
     /* Wrap up the session initialization */
     ndp_session->session = session;
+    ndp_session->timestamp = time(NULL);
+    ndp_plugin_update(session);
 
     ndp_session->initialized = true;
     LOGD("%s: added session %s", __func__, session->name);
@@ -446,6 +451,7 @@ ndp_process_message(struct ndp_session *n_session)
     parser->entry.ifname = conf->if_name;
 
     parser->entry.source = FSM_NDP;
+    parser->entry.cache_valid_ts = n_session->timestamp;
 
     /* Record the IP mac mapping */
     neigh_table_add(&parser->entry);
@@ -527,4 +533,73 @@ ndp_delete_session(struct fsm_session *session)
     ndp_free_session(n_session);
 
     return;
+}
+
+#define FSM_NDP_CHECK_TTL (2*60)
+/**
+ * @brief periodic routine
+ *
+ * @param session the fsm session keying the arp session to delete
+ */
+void
+ndp_plugin_periodic(struct fsm_session *session)
+{
+    struct ndp_session *n_session;
+    struct ndp_cache *mgr;
+    ds_tree_t *sessions;
+    double cmp_clean;
+    time_t now;
+
+    mgr = ndp_get_mgr();
+    sessions = &mgr->fsm_sessions;
+
+    n_session = ds_tree_find(sessions, session);
+    if (n_session == NULL) return;
+
+    now = time(NULL);
+    cmp_clean = now - n_session->timestamp;
+    if (cmp_clean < FSM_NDP_CHECK_TTL) return;
+
+    neigh_table_ttl_cleanup(n_session->ttl, OVSDB_NDP);
+    n_session->timestamp = now;
+}
+
+
+#define FSM_NDP_DEFAULT_TTL (36*60*60)
+/**
+ * @brief update routine
+ *
+ * @param session the fsm session keying the ndp session to update
+ */
+void
+ndp_plugin_update(struct fsm_session *session)
+{
+    struct ndp_session *n_session;
+    struct ndp_cache *mgr;
+    ds_tree_t *sessions;
+    unsigned long ttl;
+    char *str_ttl;
+
+    mgr = ndp_get_mgr();
+    sessions = &mgr->fsm_sessions;
+
+    n_session = ds_tree_find(sessions, session);
+    if (n_session == NULL) return;
+
+    /* set the default timer */
+    n_session->ttl = FSM_NDP_DEFAULT_TTL;
+    str_ttl = session->ops.get_config(session, "ttl");
+    if (str_ttl == NULL) goto log_settings;
+
+    ttl = strtoul(str_ttl, NULL, 10);
+    if (ttl == 0 || ttl == ULONG_MAX)
+    {
+        LOGE("%s: conversion of %s failed: %d", __func__, str_ttl, errno);
+        goto log_settings;
+    }
+    n_session->ttl = (uint64_t)ttl;
+
+log_settings:
+    LOGI("%s: %s: setting neighbor entry ttl to %" PRIu64 " secs", __func__,
+         session->name, n_session->ttl);
 }

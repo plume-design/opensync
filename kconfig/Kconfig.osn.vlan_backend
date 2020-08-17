@@ -1,0 +1,11 @@
+#
+# OpenSync core network VLAN backend
+#
+source "src/lib/osn/kconfig/Kconfig.osn.vlan_backend"
+
+#
+# Platform/vendor VLAN backends
+#
+osource "platform/*/kconfig/Kconfig.osn.vlan_backend"
+osource "vendor/*/kconfig/Kconfig.osn.vlan_backend"
+

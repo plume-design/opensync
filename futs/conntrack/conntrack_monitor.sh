@@ -69,7 +69,8 @@ get_counters()
     capture=$2
     source_ip=$3
     nw_proto=$4
-    dbg=$5
+    destination_port=$5
+    dbg=$6
 
     # If no debug output provided, set the debug output to /dev/null
     if [ -z ${dbg} ]; then
@@ -80,6 +81,7 @@ get_counters()
     # parse both previous records if any and the ovs-ofctl output
     awk -v dbgo=${dbg} \
         -v source="${source_ip}" \
+        -v dest_port="${destination_port}" \
         -v proto="${nw_proto}" '
     BEGIN
     {
@@ -104,8 +106,9 @@ get_counters()
             # Process TCP flows
             if ($0 ~ /tcp/)
             {
+                timeout = $3
                 src = $5
-                if (source != "None")
+                if (source != "src=None")
                 {
                     if (!(src ~ source )) { next }
                 }
@@ -118,16 +121,18 @@ get_counters()
             # Process UDP flows
             else if ($0 ~ /udp/)
             {
+                timeout = $3
                 src = $4
                 dst = $5
                 sport = $6
                 dport = $7
                 out_packets = $8
-                in_packets = $14
+                in_packets = $15
             }
             # process ICMP flows
             else if ($0 ~ /icmp/)
             {
+                timeout = $3
                 src = $4
                 dst = $5
                 sport = $6
@@ -145,10 +150,16 @@ get_counters()
             {
                 if (!(protocol ~ proto )) { next }
             }
-            if (source != "None")
+            if (source != "src=None")
             {
                 if (!(src ~ source )) { next }
             }
+
+            if (dest_port != "dport=None")
+            {
+                if (!(dest_port ~ dport )) { next }
+            }
+
             # Process the packet counters
             o_p = substr(out_packets, 9, length(out_packets) - 8)
             i_p = substr(in_packets, 9, length(in_packets) - 8)
@@ -166,13 +177,13 @@ get_counters()
                 mark = substr(ms, 6, length(ms) - 5)
             }
 
-            if (zone == 0) { z0_tc = z0_tc + 1;  next }
+            if (zone == 0) { z0_tc = z0_tc + 1}
             tc = tc + 1
             offload_np = (o_p > 20) || (i_p > 20)
             offload_zn = (mark == 2)
             offload = offload_np && offload_zn
             if (offload) { ofc = ofc + 1 }
-            print protocol,src,dst,sport,dport,"zone="zone, \
+            print protocol,src,dst,sport,dport,"timeout="timeout,"zone="zone, \
                   " mark="mark " offload: "offload \
                   " outbound packets: "o_p, " inbound packets: "i_p
 
@@ -210,10 +221,30 @@ while getopts "$optspec" optchar; do
                    opt=${OPTARG%=$val}
                    SOURCE=$val
                    ;;
+               dest=?* )
+                   val=${LONG_OPTARG}
+                   opt=${OPTARG%=$val}
+                   DEST=$val
+                   ;;
+               sport=?* )
+                   val=${LONG_OPTARG}
+                   opt=${OPTARG%=$val}
+                   SPORT=$val
+                   ;;
+               dport=?* )
+                   val=${LONG_OPTARG}
+                   opt=${OPTARG%=$val}
+                   DPORT=$val
+                   ;;
                proto=?* )
                    val=${LONG_OPTARG}
                    opt=${OPTARG%=$val}
                    PROTO=$val
+                   ;;
+               af=?* )
+                   val=${LONG_OPTARG}
+                   opt=${OPTARG%=$val}
+                   AF=$val
                    ;;
                *)
                    if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
@@ -235,8 +266,12 @@ done
 
 dbg_output=${DBGO:-}
 seconds_to_wait=${INTERVAL:-5}
-source=${SOURCE:-"None"}
+source="src="${SOURCE:-"None"}
+dest="dst="${DEST:-"None"}
+sport="sport"=${SPORT:-"None"}
+dport="dport="${DPORT:-"None"}
 proto=${PROTO:-"None"}
+af=${AF:-"ipv4"}
 
 # Check required commands
 check_cmd 'conntrack'
@@ -244,9 +279,9 @@ check_cmd 'conntrack'
 # Make sure conntrack outputs the flow packet counters
 echo 1 > /proc/sys/net/netfilter/nf_conntrack_acct
 
-echo "$(date) Starting monitoring openflow activity every ${seconds_to_wait} seconds"
+echo "$(date) Starting monitoring conntrack activity every ${seconds_to_wait} seconds"
 echo ""
-conntrack -L > ${capture}
+conntrack -L -f ${af} > ${capture}
 
 # First capture, do not output the flows
 get_counters ${capture} ${capture} ${source} ${proto} ${dbg_output}
@@ -255,9 +290,9 @@ get_counters ${capture} ${capture} ${source} ${proto} ${dbg_output}
 while true; do
     sleep ${seconds_to_wait}
     # echo -e '\033[0;0H\033[2J'
-    echo "$(date) openflow activity over the past ${seconds_to_wait} seconds"
+    echo "$(date) conntrack activity over the past ${seconds_to_wait} seconds"
     echo "----------------------------------------------------------------------"
-    conntrack -L > ${capture}
-    get_counters ${capture} ${capture} ${source} ${proto} ${dbg_output}
+    conntrack -L -f ${af} > ${capture}
+    get_counters ${capture} ${capture} ${source} ${proto} ${dport} ${dbg_output}
     echo ""
 done

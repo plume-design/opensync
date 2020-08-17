@@ -34,6 +34,7 @@ UNIT_SRC += ../src/fsm_pcap.c
 UNIT_SRC += ../src/fsm_event.c
 UNIT_SRC += ../src/fsm_service.c
 UNIT_SRC += ../src/fsm_dpi.c
+UNIT_SRC += ../src/fsm_oms.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/../inc
 UNIT_CFLAGS += -Isrc/lib/imc/inc
@@ -50,3 +51,4 @@ UNIT_DEPS += src/lib/unity
 UNIT_DEPS += src/lib/fsm_utils
 UNIT_DEPS += src/lib/fsm_policy
 UNIT_DEPS += src/lib/network_metadata
+UNIT_DEPS += src/lib/oms
