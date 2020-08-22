@@ -309,6 +309,7 @@ void cm2_delayed_eth_update(char *if_name, int timeout)
 static void cm2_dhcpc_dryrun_cb(struct ev_loop *loop, ev_child *w, int revents)
 {
     struct schema_Connection_Manager_Uplink con;
+    cm2_l3_state_t                          l3state;
     dhcp_dryrun_t                           *dhcp_dryrun;
     bool                                    status;
     int                                     ret;
@@ -360,7 +361,8 @@ static void cm2_dhcpc_dryrun_cb(struct ev_loop *loop, ev_child *w, int revents)
     }
 
 release:
-    ret = cm2_ovsdb_connection_update_L3_state(dhcp_dryrun->if_name, status);
+    l3state = status ? CM2_L3_TRUE : CM2_L3_FALSE;
+    ret = cm2_ovsdb_connection_update_L3_state(dhcp_dryrun->if_name, l3state);
     if (!ret)
         LOGW("%s: %s: Update L3 state failed status = %d ret = %d",
              __func__, dhcp_dryrun->if_name, status, ret);

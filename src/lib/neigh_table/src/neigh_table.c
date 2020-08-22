@@ -38,7 +38,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <time.h>
-#include <error.h>
 #include <net/if.h>
 
 #include "os_types.h"

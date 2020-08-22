@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <ctype.h>
 #include <errno.h>
 #include <getopt.h>
@@ -8,7 +9,6 @@
 #include <string.h>
 #include <stddef.h>
 #include <unistd.h>
-#include <linux/if_ether.h>
 #include <linux/if_packet.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>

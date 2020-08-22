@@ -19,7 +19,7 @@ if MANAGER_WANO
 
     config MANAGER_WANO_PLUGIN_TIMEOUT
         int "WAN plug-in link probing timeout"
-        default 60
+        default 20
         help
             If the WAN plug-in probing doesn't reach a conclusion in the amount
             of time defined by this option, it is terminated and WANO moves to

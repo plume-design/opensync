@@ -157,6 +157,7 @@ static void cm2_stability_handle_fatal_state(int counter)
             LOGW("Restart managers due to exceeding the threshold for fatal failures");
             cm2_ovsdb_dump_debug_data();
             cm2_tcpdump_stop(g_state.link.if_name);
+            WARN_ON(!target_device_wdt_ping());
             target_device_restart_managers();
         }
 }
@@ -216,6 +217,9 @@ void cm2_connection_req_stability_check(target_connectivity_check_option_t opts)
             LOGW("%s Failed update link counter in ovsdb table", __func__);
         return;
     }
+
+    /* Ping WDT before run connectivity check */
+    WARN_ON(!target_device_wdt_ping());
 
     ret = target_device_connectivity_check(if_name, &cstate, opts);
     bridge = con.bridge_exists ? con.bridge : "none";

@@ -946,6 +946,10 @@ bool sm_survey_threshold_util_cb (
     }
 
     memset(&result_entry, 0, sizeof (result_entry));
+
+    /* Copy general data (chan) */
+    result_entry.info = survey_entry->info;
+
     rc =
         target_stats_survey_convert (
                 radio_cfg_ctx,

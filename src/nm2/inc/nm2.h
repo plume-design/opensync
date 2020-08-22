@@ -244,6 +244,7 @@ inet_route_status_fn_t nm2_route_notify;
  * ===========================================================================
  */
 bool nm2_mac_learning_init(void);
+void nm2_mac_reporting_set(const char *ifname, bool enable);
 bool nm2_client_nickname_init(void);
 int nm2_mac_tags_ovsdb_init(void);
 int lan_clients_oftag_add_mac(char *mac);

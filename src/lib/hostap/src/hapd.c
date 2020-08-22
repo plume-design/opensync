@@ -817,7 +817,7 @@ hapd_configured(struct hapd *hapd)
 }
 
 static char *
-hapd_conf_strip(char *buf)
+hapd_conf_strip(char *buf, bool running)
 {
     const size_t buf_size = strlen(buf) + 1;
     size_t len = buf_size;
@@ -831,19 +831,25 @@ hapd_conf_strip(char *buf)
      * Bss parameters may not change but channel can via
      * csa. If this happens bss should not be considered to
      * have changed and therefore should not be reloaded.
+     *
+     * If hostapd isn't running yet the channel is
+     * important. It could be an invalid or unusable
+     * channel. As such it should be able to recalc a
+     * subsequent channel fixup and retry adding hostapd
+     * instance.
      */
     while ((line = strsep(&lines, "\n")))
-        if (strstr(line, "channel=") != line)
+        if (!running || strstr(line, "channel=") != line)
             csnprintf(&ptr, &len, "%s\n", line);
     strscpy(buf, tmp, buf_size); /* its guaranteed to fit */
     return buf;
 }
 
 static int
-hapd_conf_changed(const char *a, const char *b)
+hapd_conf_changed(const char *a, const char *b, bool running)
 {
-    const char *x = hapd_conf_strip(strdupa(a));
-    const char *y = hapd_conf_strip(strdupa(b));
+    const char *x = hapd_conf_strip(strdupa(a), running);
+    const char *y = hapd_conf_strip(strdupa(b), running);
     return strcmp(x, y);
 }
 
@@ -852,7 +858,8 @@ hapd_conf_apply(struct hapd *hapd)
 {
     const char *oldconf = R(hapd->confpath) ?: "";
     const char *oldpsks = R(hapd->pskspath) ?: "";
-    int changed_conf = hapd_conf_changed(oldconf, hapd->conf);
+    bool running = ctrl_running(&hapd->ctrl);
+    int changed_conf = hapd_conf_changed(oldconf, hapd->conf, running);
     int changed_psks = strcmp(oldpsks, hapd->psks);
     int add = !ctrl_running(&hapd->ctrl) && hapd_configured(hapd);
     int reload = ctrl_running(&hapd->ctrl) && hapd_configured(hapd);

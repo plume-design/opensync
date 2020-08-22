@@ -24,7 +24,7 @@
 
 UNIT_NAME := fut_sm
 
-UNIT_DISABLE := $(if $(CONFIG_MANAGER_SM),n,y)
+UNIT_DISABLE := n
 
 # Template type:
 UNIT_TYPE := FUT

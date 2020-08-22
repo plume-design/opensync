@@ -109,12 +109,13 @@ wm_setup_test_environment()
 vif_clean()
 {
     fn_name="wm2_lib:vif_clean"
+    VIF_CLEAN_TIMEOUT=60
     log -deb "$fn_name - Purging VIF"
 
     empty_ovsdb_table Wifi_VIF_Config ||
         raise "empty_ovsdb_table" -l "$fn_name" -oe
 
-    wait_for_empty_ovsdb_table Wifi_VIF_State ||
+    wait_for_empty_ovsdb_table Wifi_VIF_State ${VIF_CLEAN_TIMEOUT} ||
         raise "wait_for_empty_ovsdb_table" -l "$fn_name" -ow
 }
 

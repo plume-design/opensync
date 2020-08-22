@@ -489,7 +489,7 @@ cm2_util_refresh_dhcp(struct schema_Wifi_Master_State *master, bool refresh)
             LOGI("%s: Use static static IP address: %s", master->if_name, master->inet_addr);
             cm2_dhcpc_stop_dryrun(master->if_name);
             cm2_util_ifname2gre(gre_ifname, sizeof(gre_ifname), master->if_name);
-            cm2_ovsdb_connection_update_L3_state(gre_ifname, true);
+            cm2_ovsdb_connection_update_L3_state(gre_ifname, CM2_L3_TRUE);
          }
          return false;
     }
@@ -713,10 +713,9 @@ cm2_ovsdb_util_translate_master_ip(struct schema_Wifi_Master_State *master)
            return;
        }
 
-       /* Skip creating more gre during onboarding, workaround for CAES-599 */
-       if (g_state.link.is_used) {
-           LOGI("Skip creating new gre for %s CAES-599",
-                master->if_name);
+       if (g_state.link.is_used &&
+           strstr(g_state.link.if_name, master->if_name) == NULL) {
+           LOGI("%s: Link is used, skip creating new gre", master->if_name);
            return;
        }
 
@@ -1073,17 +1072,17 @@ cm2_ovsdb_is_port_in_bridge(struct schema_Bridge *bridge, struct schema_Port *po
 }
 
 bool
-cm2_ovsdb_connection_update_L3_state(const char *if_name, bool state)
+cm2_ovsdb_connection_update_L3_state(const char *if_name, cm2_l3_state_t l3state)
 {
     struct schema_Connection_Manager_Uplink con;
     char *filter[] = { "+", SCHEMA_COLUMN(Connection_Manager_Uplink, has_L3), NULL };
     int ret;
 
-    LOGI("%s: Set has L3 state: %d", if_name, state);
+    LOGI("%s: Set has_L3 state: %d", if_name, l3state);
 
     memset(&con, 0, sizeof(con));
-    con.has_L3_exists = true;
-    con.has_L3 = state;
+    con.has_L3_exists = l3state == CM2_L3_NOT_SET ? false : true;
+    con.has_L3 = l3state == CM2_L3_TRUE ? true : false;
 
     ret = ovsdb_table_update_where_f(&table_Connection_Manager_Uplink,
                                      ovsdb_where_simple(SCHEMA_COLUMN(Connection_Manager_Uplink, if_name), if_name),
@@ -1309,7 +1308,7 @@ static void cm2_util_skip_gre_configuration(char *if_name)
 
     LOGI("%s: Skipping GRE configuration", if_name);
 
-    ret = cm2_ovsdb_connection_update_L3_state(if_name, true);
+    ret = cm2_ovsdb_connection_update_L3_state(if_name, CM2_L3_TRUE);
     if (!ret)
         LOGW("%s: %s: Update L3 state failed ret = %d",
              __func__, if_name, ret);
@@ -1318,6 +1317,8 @@ static void cm2_util_skip_gre_configuration(char *if_name)
 void cm2_connection_set_L3(struct schema_Connection_Manager_Uplink *uplink) {
     if (!uplink->has_L2)
         return;
+
+    cm2_ovsdb_connection_update_L3_state(uplink->if_name, CM2_L3_NOT_SET);
 
     if (cm2_is_eth_type(uplink->if_type) &&
         cm2_ovs_insert_port_into_bridge(CONFIG_TARGET_LAN_BRIDGE_NAME, uplink->if_name, false))
@@ -1721,7 +1722,7 @@ cm2_uplink_skip_L2_handle(struct schema_Connection_Manager_Uplink *uplink)
         LOGI("%s Uplink skipped", uplink->if_name);
         return true;
     }
-    LOGI("%s Uplink no skipped wan = %d eth = %d, type = %sX", uplink->if_name, cm2_is_wan_link_management(), cm2_is_eth_type(uplink->if_type), uplink->if_type);
+
     return false;
 }
 
@@ -1759,7 +1760,7 @@ cm2_Connection_Manager_Uplink_handle_update(
     }
 
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Connection_Manager_Uplink, has_L2))) {
-        LOGN("%s: Uplink table: detected hasL2 change = %d", uplink->if_name, uplink->has_L2);
+        LOGN("%s: Uplink table: detected has_L2 change = %d", uplink->if_name, uplink->has_L2);
 
         if (uplink->has_L2)
             cm2_set_ble_onboarding_link_state(true, uplink->if_type, uplink->if_name);
@@ -1782,7 +1783,7 @@ cm2_Connection_Manager_Uplink_handle_update(
                 }
 
                 filter[idx++] = SCHEMA_COLUMN(Connection_Manager_Uplink, has_L3);
-                uplink->has_L3 = false;
+                uplink->has_L3_exists = false;
                 g_state.link.vtag.state = CM2_VTAG_NOT_USED;
 
                 if (!strcmp(g_state.link.if_name, uplink->if_name) && g_state.link.restart_pending) {
@@ -1801,7 +1802,7 @@ cm2_Connection_Manager_Uplink_handle_update(
 
     /* Setting state part */
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Connection_Manager_Uplink, has_L3))) {
-        LOGN("%s: Uplink table: detected hasL3 change = %d", uplink->if_name, uplink->has_L3);
+        LOGN("%s: Uplink table: detected has_L3 change = %d", uplink->if_name, uplink->has_L3);
         cm2_connection_set_is_used(uplink);
     }
 

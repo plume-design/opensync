@@ -227,6 +227,12 @@ typedef enum {
     BLE_ONBOARDING_STATUS_MAX
 } cm2_ble_onboarding_status_t;
 
+typedef enum {
+    CM2_L3_NOT_SET,
+    CM2_L3_TRUE,
+    CM2_L3_FALSE
+} cm2_l3_state_t;
+
 // misc
 bool cm2_is_extender(void);
 
@@ -249,7 +255,7 @@ bool cm2_ovsdb_connection_get_connection_by_ifname(const char *if_name,
                                                    struct schema_Connection_Manager_Uplink *con);
 void cm2_ovsdb_refresh_dhcp(char *if_name);
 bool cm2_ovsdb_set_Wifi_Inet_Config_network_state(bool state, char *ifname);
-bool cm2_ovsdb_connection_update_L3_state(const char *if_name, bool state);
+bool cm2_ovsdb_connection_update_L3_state(const char *if_name, cm2_l3_state_t state);
 bool cm2_ovsdb_connection_update_ntp_state(const char *if_name, bool state);
 bool cm2_ovsdb_connection_update_unreachable_link_counter(const char *if_name, int counter);
 bool cm2_ovsdb_connection_update_unreachable_router_counter(const char *if_name, int counter);

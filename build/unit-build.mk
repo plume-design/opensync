@@ -58,6 +58,14 @@ CFLAGS += $(LOCAL_CFLAGS)
 endif
 
 ##########################################################
+# Decide if c or c++ linker needs to be used
+# Usage: $(call GET_LINKER,$(UNIT_SRC))
+##########################################################
+define GET_LINKER
+$(if $(findstring .cpp,$(1)),$(CXX),$(CC))
+endef
+
+##########################################################
 # Definition of a "BIN" type unit
 ##########################################################
 define UNIT_BUILD_BIN
@@ -76,7 +84,7 @@ $(UNIT_BUILD)/.target: $(BINDIR)/$(UNIT_BIN)
 # Use -Wl,--start-group to force GNU LD to ignore the link order; this might be slower for larger projects
 $(BINDIR)/$(UNIT_BIN): $(UNIT_OBJ) $(UNIT_ALL_DEPS)
 	$$(NQ) " $(call color_link,link)    [$$(call COLOR_BOLD,$(UNIT_BIN))] $$@"
-	$$(Q)$$(CC) -L$(LIBDIR) -Wl,--start-group $$(UNIT_BIN_LDFLAGS) $$(foreach DEP,$$(sort $$(DEPS_$(UNIT_PATH))),$$(LDFLAGS_$$(DEP))) $(UNIT_OBJ) -Wl,--end-group $$(LDFLAGS) $(UNIT_LDFLAGS) -o $$@
+	$$(Q)$(call GET_LINKER,$(UNIT_SRC)) -L$(LIBDIR) -Wl,--start-group $$(UNIT_BIN_LDFLAGS) $$(foreach DEP,$$(sort $$(DEPS_$(UNIT_PATH))),$$(LDFLAGS_$$(DEP))) $(UNIT_OBJ) -Wl,--end-group $$(LDFLAGS) $(UNIT_LDFLAGS) -o $$@
 
 $(UNIT_PATH)/install: $(UNIT_BUILD)/.target
 ifneq ($$(UNIT_INSTALL),n)
@@ -90,6 +98,7 @@ $(call UNIT_MAKE_DIRS)
 $(call UNIT_MAKE_INFO)
 $(call UNIT_MAKE_CLEAN,$(BINDIR)/$(UNIT_BIN))
 $(call UNIT_C_RULES)
+$(call UNIT_CXX_RULES)
 endef
 
 ##########################################################
@@ -337,6 +346,18 @@ $(UNIT_BUILD)/%.o: $(UNIT_BUILD)/%.c
 -include $(patsubst %.o,%.d,$(UNIT_OBJ))
 endef
 
+##########################################################
+# Common C++ makefile rules
+##########################################################
+define UNIT_CXX_RULES
+# Single step dependency + compilation, generate the .d and .o file
+# at the same time; but include the .d file only if it exists.
+$(UNIT_BUILD)/%.o: %.cpp
+	$$(NQ) " $(call color_compile,compile) [$(call COLOR_BOLD,$(UNIT_NAME))] $$<"
+	$$(Q)$$(CXX) $(call GEN_C_FLAGS) $(1) $$< -MMD -c -o $$@
+
+endef
+
 ###########################################################
 # Common rules for creating directories
 ###########################################################
@@ -477,6 +498,7 @@ $$(eval UNIT_NAME_$$(UNIT_PATH) = $$(UNIT_NAME))
 UNIT_SOURCES    := $$(foreach SRC,$$(UNIT_SRC),$$(call CANNED_PATH,$$(UNIT_PATH)/$$(SRC)))
 UNIT_SOURCES    += $$(foreach SRC,$$(UNIT_SRC_TOP),$$(call CANNED_PATH,$$(SRC)))
 UNIT_OBJ        += $$(foreach SRC,$$(UNIT_SOURCES),$$(patsubst %.c,$$(UNIT_BUILD)/%.o,$$(SRC)))
+UNIT_OBJ        := $$(foreach SRC,$$(UNIT_OBJ),$$(patsubst %.cpp,$$(UNIT_BUILD)/%.o,$$(SRC)))
 
 # Expand external variables if defined
 ifdef UNIT_EXTERNAL_SRC

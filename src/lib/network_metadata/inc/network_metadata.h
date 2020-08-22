@@ -28,6 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define NETWORK_METADATA_H_INCLUDED
 
 #include <stdint.h>
+#include <time.h>
 
 #include "network_metadata.pb-c.h"
 

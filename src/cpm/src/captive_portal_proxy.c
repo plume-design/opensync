@@ -95,7 +95,7 @@ cportal_proxy_fill_vals(struct cportal *self, struct cportal_proxy_other_config 
    pconf->listenip =  cportal_proxy_get_other_config_val(self, "listenip");
    pconf->listenport =  cportal_proxy_get_other_config_val(self, "listenport");
    pconf->xtinyproxy_hdr =  cportal_proxy_get_other_config_val(self, "xtinyproxyhdr");
-   pconf->xtinyproxy_hdr =  cportal_proxy_get_other_config_val(self, "xtinyproxymachdr");
+   pconf->xtinyproxy_mac_hdr =  cportal_proxy_get_other_config_val(self, "xtinyproxymachdr");
    pconf->viahdr =  cportal_proxy_get_other_config_val(self, "viaproxyname");
    pconf->timeout =  cportal_proxy_get_other_config_val(self, "timeout");
    pconf->max_clients =  cportal_proxy_get_other_config_val(self, "max_clients");
@@ -175,7 +175,7 @@ cportal_proxy_write_other_config(struct cportal *self)
         fprintf(fconf, "XTinyproxy %s\n",pconf.xtinyproxy_hdr);
 
     if (pconf.xtinyproxy_mac_hdr)
-        fprintf(fconf, "XTinyproxy-MAC %s\n",pconf.xtinyproxy_hdr);
+        fprintf(fconf, "XTinyproxy-MAC %s\n",pconf.xtinyproxy_mac_hdr);
 
     if (pconf.viahdr)
         fprintf(fconf, "ViaProxyName \"%s\"\n", pconf.viahdr);

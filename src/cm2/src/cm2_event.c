@@ -418,6 +418,7 @@ static void cm2_trigger_restart_managers(void) {
         return;
     }
 
+    WARN_ON(!target_device_wdt_ping());
     LOGW("Trigger restart managers");
     cm2_ovsdb_dump_debug_data();
     WARN_ON(target_device_restart_managers());

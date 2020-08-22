@@ -48,6 +48,11 @@ get_managers_script()
     echo "/etc/init.d/opensync"
 }
 
+get_process_cmd()
+{
+    echo "ps -w"
+}
+
 # Get the MAC address of an interface
 mac_get()
 {
@@ -104,19 +109,19 @@ start_udhcpc()
 # deprecated in favor of "get_pids", which provides all pids matching expression
 get_pid()
 {
-    PID=$(ps -w | grep -e "$1" | grep -v 'grep' | awk '{ print $1 }')
+    PID=$($(get_process_cmd) | grep -e "$1" | grep -v 'grep' | awk '{ print $1 }')
     echo "$PID"
 }
 
 get_pids()
 {
-    PID="$(ps -w | grep -e ${1} | grep -v 'grep' | awk '{ print $1 }')"
+    PID="$($(get_process_cmd) | grep -e ${1} | grep -v 'grep' | awk '{ print $1 }')"
     echo "${PID}"
 }
 
 get_pid_mem()
 {
-    PID_MEM=$(ps -w | grep -e "$1" | grep -v 'grep' | awk '{ printf $3 }')
+    PID_MEM=$($(get_process_cmd) | grep -e "$1" | grep -v 'grep' | awk '{ printf $3 }')
     echo "$PID_MEM"
 }
 
@@ -145,7 +150,7 @@ check_pid_udhcp()
 {
     local fn_name="unit_lib:check_pid_udhcp"
     local if_name="${1}"
-    PID=$(ps -w | grep -e udhcpc | grep -e ${if_name} | grep -v 'grep' | awk '{ print $1 }')
+    PID=$($(get_process_cmd) | grep -e udhcpc | grep -e ${if_name} | grep -v 'grep' | awk '{ print $1 }')
     if [ -z "$PID" ]; then
         log -deb "${fn_name} - DHCP client not running on ${if_name}"
         return 1
@@ -214,7 +219,7 @@ start_openswitch()
     fn_name="unit_lib:start_openswitch"
     log -deb "$fn_name - Starting Open vSwitch"
 
-    ovs_run=$(ps -w  | grep -v "grep" | grep "ovs-vswitchd")
+    ovs_run=$($(get_process_cmd)  | grep -v "grep" | grep "ovs-vswitchd")
 
     if [ "$?" -eq 0 ]; then
         log -deb "$fn_name - Open vSwitch already running"
@@ -242,7 +247,7 @@ stop_healthcheck()
         /etc/init.d/healthcheck stop || true
 
         log -deb "$fn_name - Check if healthcheck is disabled"
-        wait_for_function_response 1 "ps -w | grep -e 'healthcheck' | grep -v 'grep'"
+        wait_for_function_response 1 "$(get_process_cmd) | grep -e 'healthcheck' | grep -v 'grep'"
         if [ "$?" -ne 0 ]; then
             log -deb "$fn_name - Healthcheck is NOT disabled ! PID: $(get_pid "healthcheck")"
             return 1
@@ -279,7 +284,7 @@ start_managers()
     fi
 
     # Check dm slave PID
-    PID=$(ps -w | grep -e ${OPENSYNC_ROOTDIR}/bin/dm | grep -v 'grep' | grep -v slave | awk '{ print $1 }')
+    PID=$($(get_process_cmd) | grep -e ${OPENSYNC_ROOTDIR}/bin/dm | grep -v 'grep' | grep -v slave | awk '{ print $1 }')
     if [ -z "$PID" ]; then
         raise "Issue during manager start, dm slave not running" -l "$fn_name" -ds
     else
@@ -287,7 +292,7 @@ start_managers()
     fi
 
     # Check dm master PID
-    PID=$(ps -w | grep -e ${OPENSYNC_ROOTDIR}/bin/dm | grep -v 'grep' | grep -v master | awk '{ print $1 }')
+    PID=$($(get_process_cmd) | grep -e ${OPENSYNC_ROOTDIR}/bin/dm | grep -v 'grep' | grep -v master | awk '{ print $1 }')
     if [ -z "$PID" ]; then
         raise "Issue during manager start, dm master not running" -l "$fn_name" -ds
     else
@@ -491,6 +496,7 @@ wait_for_empty_ovsdb_table()
 {
     fn_name="unit_lib:wait_for_empty_ovsdb_table"
     ovsdb_table=$1
+    empty_timeout=${2:-$DEFAULT_WAIT_TIME}
     wait_time=0
 
     log -deb "$fn_name - Waiting for table $1 deletion"
@@ -504,7 +510,7 @@ wait_for_empty_ovsdb_table()
             break
         fi
 
-        if [ $wait_time -gt $DEFAULT_WAIT_TIME ]; then
+        if [ $wait_time -gt $empty_timeout ]; then
             raise "{$1 -> delete}" -l "$fn_name" -oe
         fi
 

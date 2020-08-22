@@ -69,5 +69,5 @@ else
     raise "Failure: ${fnc_str}" -l "${tc_name}" -f
 fi
 
-echo "${iface_mac_raw}"
+echo -n "${iface_mac_raw}"
 exit 0

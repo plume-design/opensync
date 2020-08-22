@@ -302,6 +302,10 @@ bool nm2_inet_interface_set(
         retval = false;
     }
 
+    /* Enable or disable MAC reporting on the interface */
+    bool mac_reporting = iconf->mac_reporting_exists ? iconf->mac_reporting : false;
+    nm2_mac_reporting_set(piface->if_name, mac_reporting);
+
     return retval;
 }
 

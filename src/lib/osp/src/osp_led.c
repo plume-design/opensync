@@ -48,6 +48,7 @@ static const char* led_state_str[OSP_LED_ST_LAST] =
     [OSP_LED_ST_LOCATE]         = "locate",
     [OSP_LED_ST_HWERROR]        = "hwerror",
     [OSP_LED_ST_THERMAL]        = "thermal",
+    [OSP_LED_ST_BTCONNECTABLE]  = "btconnectable",
     [OSP_LED_ST_BTCONNECTING]   = "btconnecting",
     [OSP_LED_ST_BTCONNECTED]    = "btconnected",
     [OSP_LED_ST_BTCONNECTFAIL]  = "btconnectfail",

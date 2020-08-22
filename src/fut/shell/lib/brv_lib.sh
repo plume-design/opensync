@@ -87,7 +87,7 @@ check_ovs_version()
     [ ${ec} -ne 0 ] && raise "Failed to get ovs version" -l "${fn_name}" -ec ${ec} -arg
 
     if [ "${OVS_ACTUAL_VER}" != "${OVS_EXPECTED_VER}" ]; then
-        raise "Failed to get ovs version" -l "${fn_name}" -arg
+        raise "Actual ovs version mismatches expected ovs version" -l "${fn_name}" -tc
     fi
     return 0
 }

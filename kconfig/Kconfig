@@ -180,3 +180,7 @@ menu "Vendor Configuration"
     endchoice
     orsource "../vendor/*/kconfig/Kconfig"
 endmenu
+
+menu "3rdparty Configuration"
+    orsource "../3rdparty/*/kconfig/Kconfig.3rdparty"
+endmenu

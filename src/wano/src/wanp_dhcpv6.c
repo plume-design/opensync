@@ -162,7 +162,7 @@ void callback_IP_Interface(
                 continue;
             }
 
-            if (strcmp(ipv6_address.origin, "auto_configured") != 0)
+            if (strcmp(ipv6_address.origin, "auto_configured") == 0)
             {
                 self->wd6_has_global_ip = true;
             }
@@ -320,7 +320,7 @@ enum wanp_dhcpv6_state wanp_dhcpv6_state_IDLE(
     switch (action)
     {
         case wanp_dhcpv6_do_STATE_INIT:
-            LOG(INFO, "wano_dhcpv6: %s: Acquired global IP.",
+            LOG(INFO, "wano_dhcpv6: %s: Acquired IPv6 address.",
                         self->wd6_handle.wh_ifname);
 
             struct wano_plugin_status ws = WANO_PLUGIN_STATUS(WANP_OK);
@@ -332,13 +332,13 @@ enum wanp_dhcpv6_state wanp_dhcpv6_state_IDLE(
         case wanp_dhcpv6_do_OVSDB_UPDATE:
             if (!self->wd6_has_global_ip)
             {
-                LOG(INFO, "wano_dhcpv6: %s: Lost global IP, aborting.",
+                LOG(INFO, "wano_dhcpv6: %s: Lost IPv6 address.",
                         self->wd6_handle.wh_ifname);
-
-                struct wano_plugin_status ws = WANO_PLUGIN_STATUS(WANP_ERROR);
-                STRSCPY(ws.ws_ifname, self->wd6_handle.wh_ifname);
-                STRSCPY(ws.ws_iftype, "eth");
-                self->wd6_status_fn(&self->wd6_handle, &ws);
+            }
+            else
+            {
+                LOG(INFO, "wano_dhcpv6: %s: Re-acquired IPv6 address.",
+                        self->wd6_handle.wh_ifname);
             }
             break;
 

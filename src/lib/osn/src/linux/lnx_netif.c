@@ -246,7 +246,9 @@ void lnx_netif_status_poll(lnx_netif_t *self)
     self->ni_status.ns_ifname = self->ni_ifname;
 
     if_idx = if_nametoindex(self->ni_ifname);
-    if ((self->ni_index != 0) && (if_idx != self->ni_index))
+    if ((self->ni_index != 0) &&
+            (if_idx != 0) &&
+            (if_idx != self->ni_index))
     {
         LOG(NOTICE, "netif: %s: Interface fast re-creation detected.", self->ni_ifname);
         /*

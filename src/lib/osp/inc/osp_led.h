@@ -65,6 +65,7 @@ enum osp_led_state
     OSP_LED_ST_LOCATE,          /**< Locating */
     OSP_LED_ST_HWERROR,         /**< Hardware fault */
     OSP_LED_ST_THERMAL,         /**< Thermal panic*/
+    OSP_LED_ST_BTCONNECTABLE,   /**< Bluetooth accepting connections */
     OSP_LED_ST_BTCONNECTING,    /**< Bluetooth connecting */
     OSP_LED_ST_BTCONNECTED,     /**< Bluetooth connected */
     OSP_LED_ST_BTCONNECTFAIL,   /**< Bluetooth connection failed */

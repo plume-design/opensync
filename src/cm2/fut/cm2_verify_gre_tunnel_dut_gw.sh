@@ -153,9 +153,7 @@ LEAF_RADIO_MAC="$(echo "$LEAF_RADIO_MAC_RAW" | tr [A-Z] [a-z])"
 # SETUP:
 log "$tc_name: GW initial setup"
 cm_disable_fatal_state
-wpd_set_auto
-stop_healthcheck
-stop_managers
+device_init
 start_openswitch
 start_wireless_driver
 start_specific_manager nm

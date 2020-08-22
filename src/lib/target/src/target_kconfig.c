@@ -249,6 +249,7 @@ int target_led_names(const char **leds[])
 #define DEFAULT_PING_TIMEOUT            4
 
 #define DEFAULT_BACKHAUL_PREFIX         "169.254."
+#define DEFAULT_TIMEOUT_ARG             5
 
 /* Root Servers based on https://www.iana.org/domains/root/servers */
 static char *util_connectivity_check_inet_addrs[] = {
@@ -261,6 +262,7 @@ static char *util_connectivity_check_inet_addrs[] = {
     "i.root-servers.net",
     "j.root-servers.net",
     "k.root-servers.net",
+    "l.root-servers.net",
     "m.root-servers.net",
     NULL
 };
@@ -268,7 +270,7 @@ static char *util_connectivity_check_inet_addrs[] = {
 /* IPv4 Root Servers */
 static char *util_connectivity_check_inet_ipv4_addrs[] = {
     "198.41.0.4",
-    "192.228.79.201",
+    "199.9.14.201",
     "192.33.4.12",
     "199.7.91.13",
     "192.5.5.241",
@@ -366,6 +368,33 @@ util_ntp_check(void)
     return ret;
 }
 
+static void
+util_set_timeout_cmd_arg(char *arg, size_t s, int timeout)
+{
+    static bool checked = false;
+    static bool needs_t_arg = false;
+    char       *t;
+
+    if (!checked) {
+        needs_t_arg = target_device_execute("timeout -t 0 true");
+        checked = true;
+    }
+
+    t = needs_t_arg ? "-t" : "";
+    snprintf(arg, s, "%s %d", t, timeout);
+}
+
+static int
+util_system_cmd(const char *cmd)
+{
+    char command[512];
+    char targ[64];
+
+    util_set_timeout_cmd_arg(targ, sizeof(targ), DEFAULT_TIMEOUT_ARG);
+    snprintf(command, sizeof(command), "timeout %s %s", targ, cmd);
+    return target_device_execute(command);
+}
+
 static bool
 util_ping_cmd(const char *ipstr, bool ipv6)
 {
@@ -379,7 +408,7 @@ util_ping_cmd(const char *ipstr, bool ipv6)
              ipv6_s, ipstr, DEFAULT_PING_PACKET_SIZE, DEFAULT_PING_PACKET_CNT,
              DEFAULT_PING_TIMEOUT);
 
-    rc = target_device_execute(cmd);
+    rc = util_system_cmd(cmd);
     LOGD("Ping %s result %d (cmd=%s)", ipstr, rc, cmd);
     if (!rc)
         LOGI("Ping %s failed (cmd=%s)", ipstr, cmd);
@@ -402,7 +431,7 @@ util_arping_cmd(const char *ipstr)
              DEFAULT_PING_TIMEOUT,
              ipstr);
 
-    ret = target_device_execute(cmd);
+    ret = util_system_cmd(cmd);
 
     LOGI("Arping %s result %d (cmd=%s)", ipstr, ret, cmd);
     return ret;
@@ -668,6 +697,7 @@ util_connectivity_internet_check(void) {
 
     while (tries--) {
         r1 = os_rand() % cnt_addr1;
+
         if (ipv6) {
             ret = util_ping_cmd(util_connectivity_check_inet_addrs[r1], true);
             if (ret)
@@ -685,7 +715,7 @@ util_connectivity_internet_check(void) {
         if (!ret) {
             cnt_addr2 = util_connectivity_get_inet_addr_cnt(util_connectivity_check_inet_ipv4_addrs);
             r2 = os_rand() % cnt_addr2;
-            ret = util_ping_cmd(util_connectivity_check_inet_ipv4_addrs[r2], true);
+            ret = util_ping_cmd(util_connectivity_check_inet_ipv4_addrs[r2], false);
         }
     }
     return ret;
