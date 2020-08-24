@@ -1,7 +1,7 @@
 {
   "name": "Open_vSwitch",
-  "version": "7.11.225",
-  "cksum": "558562310 199380",
+  "version": "7.11.226",
+  "cksum": "835670784 201497",
   "tables": {
     "AWLAN_Node": {
       "columns": {
@@ -8901,6 +8901,92 @@
                "max": "unlimited"
             }
           }
+        },
+        "isRoot": true
+    },
+    "IOT_Rule_Config": {
+      "columns": {
+        "name": {
+          "type": {
+            "key": {
+              "type": "string"
+            }
+          }
+        },
+        "event": {
+          "type": {
+            "key": {
+              "type": "string"
+            }
+          }
+        },
+        "filter": {
+            "type": {
+                "key": "string",
+                "value": {
+                    "type": "string",
+                    "maxLength": 128
+                },
+                "min": 0,
+                "max": "unlimited"
+            }
+        },
+        "actions": {
+            "type": {
+                "key": "string",
+                "value": {
+                    "type": "string",
+                    "maxLength": 128
+                },
+                "min": 0,
+                "max": "unlimited"
+            }
+        },
+        "params": {
+            "type": {
+                "key": "string",
+                "value": {
+                    "type": "string",
+                    "maxLength": 128
+                },
+                "min": 0,
+                "max": "unlimited"
+            }
+        }
+      },
+      "isRoot": true
+    },
+    "IOT_Manager_Config": {
+        "columns": {
+            "handler": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "minLength": 2,
+                        "maxLength": 64
+                    }
+                }
+            },
+            "plugin": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "minLength": 0,
+                        "maxLength": 128
+                    }
+                }
+            },
+            "other_config": {
+                "type": {
+                    "key": "string",
+                    "value": {
+                        "type": "string",
+                        "maxLength": 128
+                    },
+                    "min": 0,
+                    "max": "unlimited"
+                }
+            }
         },
         "isRoot": true
     }
