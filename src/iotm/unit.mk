@@ -27,6 +27,7 @@
 # Service that tracks stats during an AR walk
 #
 ##############################################################################
+UNIT_DISABLE := $(if $(CONFIG_MANAGER_IOTM),n,y)
 UNIT_NAME := iotm
 
 # Template type:

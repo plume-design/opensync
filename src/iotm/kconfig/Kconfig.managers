@@ -1,0 +1,12 @@
+menuconfig MANAGER_IOTM
+    bool "IoT Manager (IOTM)"
+    default n
+    help
+        Enable IoT Manager (IOTM)
+
+    config MANAGER_IOTM_CFG
+        depends on MANAGER_IOTM
+        string "IOTM Startup configuration"
+        default "iotm;true;always_restart=true;restart_delay=-1"
+        help
+            IoT Manager startup configuration
