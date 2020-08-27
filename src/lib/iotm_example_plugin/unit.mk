@@ -26,9 +26,10 @@
 # iotm example plugin library
 #
 ###############################################################################
+UNIT_DISABLE := $(if $(CONFIG_IOTM_EXAMPLE_PLUGIN),n,y)
+
 UNIT_NAME := iotm_example
 
-UNIT_DISABLE := $(if $(CONFIG_MANAGER_IOTM),n,y)
 
 # Template type.
 # If compiled with clang, assume a native unit test target
