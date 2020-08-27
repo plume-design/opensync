@@ -24,7 +24,7 @@
 
 ##############################################################################
 #
-# Service that tracks stats during an AR walk
+# IoT(M) Enables event based rules for IoT plugins
 #
 ##############################################################################
 UNIT_DISABLE := $(if $(CONFIG_MANAGER_IOTM),n,y)
