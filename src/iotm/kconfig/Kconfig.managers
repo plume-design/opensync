@@ -10,3 +10,24 @@ menuconfig MANAGER_IOTM
         default "iotm;true;always_restart=true;restart_delay=-1"
         help
             IoT Manager startup configuration
+
+    config IOTM_EXAMPLE_PLUGIN
+        depends on MANAGER_IOTM
+        bool "Example Plugin"
+        default n
+        help
+            enable example plugin to print events sent to it. 
+
+    config IOTM_BLE_PLUGIN
+        depends on MANAGER_IOTM
+        bool "BLE Plugin"
+        default n
+        help
+            enable ble plugin given BLE radios exist on platform.
+
+    config IOTM_ZIGBEE_PLUGIN
+        depends on MANAGER_IOTM
+        bool "Zigbee Plugin"
+        default n
+        help
+            enable zigbee plugin given Zigbee radios exist on platform.
