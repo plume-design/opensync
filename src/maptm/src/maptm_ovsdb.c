@@ -98,7 +98,7 @@ bool maptm_ps_set(const char *key, char *value)
         goto out;
     }
 
-    size = osp_ps_set(ps, key, value, strlen(value));
+    size = osp_ps_set(ps, key, value, strlen(value) + 1);
     if (size < 0)
     {
         LOGE("Set OpenSync platform persistent storage failed");
@@ -148,21 +148,20 @@ bool maptm_persistent(void)
     }
 
     // Get persistent storage value
-    size = osp_ps_get(ps, "MAPT_SUPPORT", mapt_support, strlen(mapt_support));
+    size = osp_ps_get(ps, "MAPT_SUPPORT", mapt_support, sizeof(mapt_support));
     if (size <= 0)
     {
         LOGE("Failed when getting persistent storage value");
-        goto out;
+        snprintf(mapt_support, sizeof(mapt_support), "%s", "true");
+        
+        // Set persistent storage value
+        if (!(osp_ps_set(ps, "MAPT_SUPPORT", mapt_support, sizeof(mapt_support))))
+        {
+            LOGE("Failed when setting persistent storage value");
+            goto out;
+        }
     }
 
-    snprintf(mapt_support, sizeof(mapt_support), "%s", "true");
-
-    // Set persistent storage value
-    if (!(osp_ps_set(ps, "MAPT_SUPPORT", mapt_support, strlen(mapt_support))))
-    {
-        LOGE("Failed when setting persistent storage value");
-        goto out;
-    }
     LOGT("%s: MAPT_SUPPORT = %s", __func__, mapt_support);
 
     if(strcmp(mapt_support,"true"))
