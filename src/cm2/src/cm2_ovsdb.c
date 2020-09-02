@@ -489,7 +489,7 @@ cm2_util_refresh_dhcp(struct schema_Wifi_Master_State *master, bool refresh)
             LOGI("%s: Use static static IP address: %s", master->if_name, master->inet_addr);
             cm2_dhcpc_stop_dryrun(master->if_name);
             cm2_util_ifname2gre(gre_ifname, sizeof(gre_ifname), master->if_name);
-            cm2_ovsdb_connection_update_L3_state(gre_ifname, CM2_L3_TRUE);
+            cm2_ovsdb_connection_update_L3_state(gre_ifname, CM2_PAR_TRUE);
          }
          return false;
     }
@@ -666,6 +666,31 @@ void cm2_ovsdb_remove_unused_gre_interfaces(void) {
     }
 }
 
+int
+cm2_ovsdb_update_mac_reporting(char *ifname, bool state)
+{
+    struct schema_Wifi_Inet_Config icfg;
+    int                            ret;
+
+    memset(&icfg, 0, sizeof(icfg));
+
+    if (strlen(ifname) == 0)
+        return -1;
+
+    LOGI("%s: Update mac_reporting state: %d", ifname, state);
+
+    icfg.mac_reporting = state;
+    char *filter[] = { "+",
+                       SCHEMA_COLUMN(Wifi_Inet_Config, mac_reporting ),
+                       NULL };
+
+    ret = ovsdb_table_update_where_f(&table_Wifi_Inet_Config,
+                 ovsdb_where_simple(SCHEMA_COLUMN(Wifi_Inet_Config, if_name), ifname),
+                 &icfg, filter);
+
+    return ret;
+}
+
 bool
 cm2_ovsdb_set_Wifi_Inet_Config_network_state(bool state, char *ifname)
 {
@@ -770,10 +795,8 @@ cm2_ovsdb_util_handle_master_sta_port_state(struct schema_Wifi_Master_State *mas
         }
     } else {
         if (!strcmp(gre_ifname, g_state.link.if_name) && g_state.link.is_used && g_state.link.is_bridge) {
-            ret = cm2_ovs_insert_port_into_bridge(g_state.link.bridge_name, g_state.link.if_name, false);
-            if (!ret)
-                LOGW("%s: Failed to remove port %s from %s", __func__, master->if_name, g_state.link.bridge_name);
-
+            cm2_update_bridge_cfg(g_state.link.bridge_name, g_state.link.if_name, false,
+                                  CM2_PAR_NOT_SET);
             cm2_ovsdb_connection_remove_uplink(gre_ifname);
         }
 
@@ -1072,7 +1095,7 @@ cm2_ovsdb_is_port_in_bridge(struct schema_Bridge *bridge, struct schema_Port *po
 }
 
 bool
-cm2_ovsdb_connection_update_L3_state(const char *if_name, cm2_l3_state_t l3state)
+cm2_ovsdb_connection_update_L3_state(const char *if_name, cm2_par_state_t l3state)
 {
     struct schema_Connection_Manager_Uplink con;
     char *filter[] = { "+", SCHEMA_COLUMN(Connection_Manager_Uplink, has_L3), NULL };
@@ -1081,8 +1104,8 @@ cm2_ovsdb_connection_update_L3_state(const char *if_name, cm2_l3_state_t l3state
     LOGI("%s: Set has_L3 state: %d", if_name, l3state);
 
     memset(&con, 0, sizeof(con));
-    con.has_L3_exists = l3state == CM2_L3_NOT_SET ? false : true;
-    con.has_L3 = l3state == CM2_L3_TRUE ? true : false;
+    con.has_L3_exists = l3state == CM2_PAR_NOT_SET ? false : true;
+    con.has_L3 = l3state == CM2_PAR_TRUE ? true : false;
 
     ret = ovsdb_table_update_where_f(&table_Connection_Manager_Uplink,
                                      ovsdb_where_simple(SCHEMA_COLUMN(Connection_Manager_Uplink, if_name), if_name),
@@ -1308,7 +1331,7 @@ static void cm2_util_skip_gre_configuration(char *if_name)
 
     LOGI("%s: Skipping GRE configuration", if_name);
 
-    ret = cm2_ovsdb_connection_update_L3_state(if_name, CM2_L3_TRUE);
+    ret = cm2_ovsdb_connection_update_L3_state(if_name, CM2_PAR_TRUE);
     if (!ret)
         LOGW("%s: %s: Update L3 state failed ret = %d",
              __func__, if_name, ret);
@@ -1318,11 +1341,11 @@ void cm2_connection_set_L3(struct schema_Connection_Manager_Uplink *uplink) {
     if (!uplink->has_L2)
         return;
 
-    cm2_ovsdb_connection_update_L3_state(uplink->if_name, CM2_L3_NOT_SET);
+    cm2_ovsdb_connection_update_L3_state(uplink->if_name, CM2_PAR_NOT_SET);
 
-    if (cm2_is_eth_type(uplink->if_type) &&
-        cm2_ovs_insert_port_into_bridge(CONFIG_TARGET_LAN_BRIDGE_NAME, uplink->if_name, false))
-        LOGW("%s: Failed to remove port %s from %s", __func__, CONFIG_TARGET_LAN_BRIDGE_NAME, uplink->if_name);
+    if (cm2_is_eth_type(uplink->if_type))
+        cm2_update_bridge_cfg(CONFIG_TARGET_LAN_BRIDGE_NAME, uplink->if_name, false,
+                              CM2_PAR_FALSE);
 
     if (cm2_util_block_udhcpc_on_gre(uplink->if_name, uplink->if_type))
         cm2_util_skip_gre_configuration(uplink->if_name);
@@ -1336,12 +1359,16 @@ bool cm2_connection_get_used_link(struct schema_Connection_Manager_Uplink *uplin
 
 static void cm2_connection_clear_used(void)
 {
-    int  ret;
+    cm2_par_state_t macrep;
+    int             ret;
 
     if (g_state.link.is_used) {
         LOGN("%s: Remove old used link.", g_state.link.if_name);
-        if (g_state.link.is_bridge)
-            cm2_ovs_insert_port_into_bridge(g_state.link.bridge_name, g_state.link.if_name, false);
+        if (g_state.link.is_bridge) {
+            macrep = cm2_is_eth_type(g_state.link.if_type) ? CM2_PAR_FALSE : CM2_PAR_NOT_SET;
+            cm2_update_bridge_cfg(g_state.link.bridge_name, g_state.link.if_name, false,
+                                  macrep);
+        }
 
         ret = cm2_ovsdb_connection_update_used_state(g_state.link.if_name, false);
         if (!ret)
@@ -1510,34 +1537,53 @@ void cm2_ovsdb_connection_clean_link_counters(char *if_name)
 int cm2_ovsdb_ble_config_update(uint8_t ble_status)
 {
     struct schema_AW_Bluetooth_Config ble;
-    int ret;
+    char   *filter[] = { "+",
+                         SCHEMA_COLUMN(AW_Bluetooth_Config, mode),
+                         SCHEMA_COLUMN(AW_Bluetooth_Config, command),
+                         SCHEMA_COLUMN(AW_Bluetooth_Config, payload),
+                         SCHEMA_COLUMN(AW_Bluetooth_Config, interval_millis),
+                         SCHEMA_COLUMN(AW_Bluetooth_Config, txpower),
+                         NULL };
+    int    ret;
 
     memset(&ble, 0, sizeof(ble));
 
-    ble.mode_exists = true;
-    STRSCPY(ble.mode, CM2_BLE_MODE_ON);
-
-    ble.command_exists = true;
-    STRSCPY(ble.command, CM2_BLE_MSG_ONBOARDING);
-
-    ble.payload_exists = true;
+    SCHEMA_SET_STR(ble.mode, CM2_BLE_MODE_ON);
+    SCHEMA_SET_STR(ble.command, CM2_BLE_MSG_ONBOARDING);
+    SCHEMA_SET_INT(ble.interval_millis, CM2_BLE_INTERVAL_VALUE_DEFAULT);
+    SCHEMA_SET_INT(ble.txpower, CM2_BLE_TXPOWER_VALUE_DEFAULT);
     snprintf(ble.payload, sizeof(ble.payload), "%02x:00:00:00:00:00", ble_status);
+    ble.payload_exists = true;
+    ble.payload_present = true;
 
-    ble.interval_millis_exists = true;
-    ble.interval_millis = CM2_BLE_INTERVAL_VALUE_DEFAULT;
-
-    ble.txpower_exists = true;
-    ble.txpower = CM2_BLE_TXPOWER_VALUE_DEFAULT;
-
-    ret = ovsdb_table_upsert_simple(&table_AW_Bluetooth_Config,
-                                   SCHEMA_COLUMN(AW_Bluetooth_Config, command),
-                                   ble.command,
-                                   &ble,
-                                   NULL);
+    ret = ovsdb_table_upsert_simple_f(&table_AW_Bluetooth_Config,
+                                      SCHEMA_COLUMN(AW_Bluetooth_Config, command),
+                                      ble.command,
+                                      &ble,
+                                      NULL,
+                                      filter);
     if (!ret)
         LOGE("%s Insert new row failed for %s", __func__, ble.command);
 
     return ret == 1;
+}
+
+int
+cm2_ovsdb_ble_set_connectable(bool state)
+{
+    struct schema_AW_Bluetooth_Config ble;
+    char   *filter[] = { "+",
+                       SCHEMA_COLUMN(AW_Bluetooth_Config, connectable),
+                       NULL };
+
+    memset(&ble, 0, sizeof(ble));
+    SCHEMA_SET_INT(ble.connectable, state);
+
+    LOGI("Changing ble connectable state: %d", state);
+
+    return  ovsdb_table_update_where_f(&table_AW_Bluetooth_Config,
+                 ovsdb_where_simple(SCHEMA_COLUMN(AW_Bluetooth_Config, command), CM2_BLE_MSG_ONBOARDING),
+                 &ble, filter);
 }
 
 void cm2_set_ble_onboarding_link_state(bool state, char *if_type, char *if_name)
@@ -1632,7 +1678,7 @@ cm2_util_set_not_used_link(void)
 
 
 static int
-cm2_util_update_bridge_conf(char *up_src, char *up_dst, char *up_raw)
+cm2_util_update_bridge_conf(char *up_src, char *up_dst, char *up_raw, cm2_par_state_t macrep)
 {
     int     ret;
 
@@ -1644,12 +1690,9 @@ cm2_util_update_bridge_conf(char *up_src, char *up_dst, char *up_raw)
         return -1;
     }
 
-    if (up_raw) {
-        /* Put main raw interface into dest uplink */
-        ret = cm2_ovs_insert_port_into_bridge(up_dst, up_raw, true);
-        if (!ret)
-            LOGI("%s: Failed to add port %s to %s", __func__, up_raw, up_dst);
-    }
+    /* Put main raw interface into dest uplink */
+    if (up_raw)
+        cm2_update_bridge_cfg(up_dst, up_raw, true, macrep);
 
     return 0;
 }
@@ -1659,11 +1702,12 @@ cm2_util_update_bridge_handle(
         struct schema_Connection_Manager_Uplink *old_uplink,
         struct schema_Connection_Manager_Uplink *uplink)
 {
-    char s_uplink[126];
-    char d_uplink[126];
-    char r_uplink[126];
-    char *r_p;
-    int  ret;
+    cm2_par_state_t   macrep;
+    char              s_uplink[64];
+    char              d_uplink[64];
+    char              r_uplink[64];
+    char              *r_p;
+    int               ret;
 
     if (!cm2_util_get_link_is_used(uplink)) {
         LOGI("%s: bridge [%s] updated for not main link", uplink->if_name, uplink->bridge);
@@ -1676,6 +1720,7 @@ cm2_util_update_bridge_handle(
     }
 
     r_p = NULL;
+    macrep = cm2_is_eth_type(uplink->if_type) ? CM2_PAR_FALSE : CM2_PAR_NOT_SET;
 
     if (uplink->bridge_exists) {
         STRSCPY(g_state.link.bridge_name, uplink->bridge);
@@ -1688,11 +1733,7 @@ cm2_util_update_bridge_handle(
             STRSCPY(s_uplink, old_uplink->bridge);
             STRSCPY(d_uplink, uplink->bridge);
             STRSCPY(r_uplink, uplink->if_name);
-            ret = cm2_ovs_insert_port_into_bridge(s_uplink, r_uplink, false);
-            if (!ret) {
-                LOGI("%s: Failed to remove port %s from %s", __func__, r_uplink, s_uplink);
-            }
-
+            cm2_update_bridge_cfg(s_uplink, r_uplink, false, macrep);
        } else {
             STRSCPY(s_uplink, uplink->if_name);
             STRSCPY(d_uplink, uplink->bridge);
@@ -1703,12 +1744,11 @@ cm2_util_update_bridge_handle(
         g_state.link.is_bridge = false;
         STRSCPY(s_uplink, old_uplink->bridge);
         STRSCPY(d_uplink, uplink->if_name);
-        ret = cm2_ovs_insert_port_into_bridge(s_uplink, d_uplink, false);
-        if (!ret)
-            LOGI("%s: Failed to remove port %s from %s", __func__, d_uplink, s_uplink);
+        cm2_update_bridge_cfg(s_uplink, d_uplink, false, macrep);
     }
 
-    ret = cm2_util_update_bridge_conf(s_uplink, d_uplink, r_p );
+    macrep = cm2_is_eth_type(uplink->if_type) ? CM2_PAR_FALSE : CM2_PAR_NOT_SET;
+    ret = cm2_util_update_bridge_conf(s_uplink, d_uplink, r_p, macrep);
     if (ret < 0) {
         LOGI("%s: Failed to update IPv4 configuration from %s to %s", __func__,
              s_uplink, d_uplink);
@@ -1769,12 +1809,9 @@ cm2_Connection_Manager_Uplink_handle_update(
             if (!uplink->has_L2) {
                 cm2_dhcpc_stop_dryrun(uplink->if_name);
 
-                if (cm2_is_eth_type(uplink->if_type)) {
-                    ret = cm2_ovs_insert_port_into_bridge(CONFIG_TARGET_LAN_BRIDGE_NAME, uplink->if_name, false);
-                    if (!ret)
-                        LOGI("%s: Failed to remove port %s from %s", __func__,
-                             CONFIG_TARGET_LAN_BRIDGE_NAME, uplink->if_name);
-                }
+                if (cm2_is_eth_type(uplink->if_type))
+                    cm2_update_bridge_cfg(CONFIG_TARGET_LAN_BRIDGE_NAME, uplink->if_name, false,
+                                          CM2_PAR_FALSE);
 
                 if (cm2_util_get_link_is_used(uplink)) {
                     reconfigure = true;
@@ -1883,8 +1920,6 @@ void callback_Connection_Manager_Uplink(ovsdb_update_monitor_t *mon,
                                         struct schema_Connection_Manager_Uplink *old_row,
                                         struct schema_Connection_Manager_Uplink *uplink)
 {
-    int ret;
-
     LOGD("%s mon_type = %d", __func__, mon->mon_type);
 
     switch (mon->mon_type) {
@@ -1899,11 +1934,9 @@ void callback_Connection_Manager_Uplink(ovsdb_update_monitor_t *mon,
             }
             cm2_dhcpc_stop_dryrun(uplink->if_name);
 
-            if (!strcmp(uplink->if_type, ETH_TYPE_NAME)) {
-                ret = cm2_ovs_insert_port_into_bridge(CONFIG_TARGET_LAN_BRIDGE_NAME, uplink->if_name, false);
-                if (!ret)
-                    LOGI("%s: Failed to remove port %s from %s", __func__, CONFIG_TARGET_LAN_BRIDGE_NAME, uplink->if_name);
-            }
+            if (cm2_is_eth_type(uplink->if_type))
+                cm2_update_bridge_cfg(CONFIG_TARGET_LAN_BRIDGE_NAME, uplink->if_name, false,
+                                      CM2_PAR_FALSE);
             break;
         case OVSDB_UPDATE_NEW:
         case OVSDB_UPDATE_MODIFY:
@@ -2421,6 +2454,7 @@ bool cm2_ovsdb_update_Port_tag(const char *if_name, int tag, bool set)
 
     return ret == 1;
 }
+
 
 static
 bool cm2_util_is_dump_master_links(const char *iftype,

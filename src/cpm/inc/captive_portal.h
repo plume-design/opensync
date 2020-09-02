@@ -34,6 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 struct cportal {
     bool                    enabled;
+    int                     proxy_method;
     char                    *name;
     char                    *pkt_mark;
     char                    *rt_tbl_id;
@@ -42,6 +43,12 @@ struct cportal {
     ds_tree_t               *additional_headers;
 
     ds_tree_node_t           cp_tnode;
+};
+
+enum cportal_proxy_method
+{
+    FORWARD = 0,
+    REVERSE
 };
 
 bool cportal_proxy_init(void);

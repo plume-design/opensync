@@ -102,7 +102,7 @@ fsm_set_object_state(struct fsm_session *session, struct fsm_object *object)
     state.object = object->object;
     state.version = object->version;
     state.state = fsm_state_id_to_str(object->state);
-    oms_add_state_entry(&state);
+    oms_update_state_entry(&state);
 }
 
 

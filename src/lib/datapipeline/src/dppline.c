@@ -1809,6 +1809,9 @@ static void dppline_add_stat_bs_client(Sts__Report * r, dppline_stats_t * s)
                         er->has_assoc_ies = true;
                     }
                 }
+
+                er->btm_status = e_rec->btm_status;
+                er->has_btm_status = true;
             }
         }
     }

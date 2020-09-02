@@ -1,7 +1,7 @@
 {
   "name": "Open_vSwitch",
-  "version": "7.11.226",
-  "cksum": "3150276011 199517",
+  "version": "7.11.229",
+  "cksum": "1996913466 199967",
   "tables": {
     "AWLAN_Node": {
       "columns": {
@@ -8882,6 +8882,22 @@
                "min": 1,
                "max": 1
             }
+          },
+          "proxy_method": {
+              "type": {
+                  "key": {
+                      "type": "string",
+                      "enum": [
+                          "set",
+                          [
+                              "forward",
+                              "reverse"
+                          ]
+                      ]
+                  },
+                  "min": 0,
+                  "max": 1
+              }
           },
           "uam_url": {
             "type": {

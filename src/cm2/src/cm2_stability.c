@@ -149,8 +149,17 @@ static void cm2_restore_connection(cm2_restore_con_t opt)
 
 static void cm2_stability_handle_fatal_state(int counter)
 {
-    if (counter > 0 &&
-        cm2_vtag_stability_check() &&
+    if (counter <= 0)
+        return; 
+
+    if (cm2_is_config_via_ble_enabled() &&
+        !g_state.is_onboarded) {
+        LOGI("Stability: Enabling two way mode comunication");
+        cm2_ovsdb_ble_set_connectable(true);
+        return;
+    }
+
+    if (cm2_vtag_stability_check() &&
         !g_state.link.is_limp_state &&
         g_state.gw_offline_cnt == 0 &&
         counter + 1 > CONFIG_CM2_STABILITY_THRESH_FATAL) {

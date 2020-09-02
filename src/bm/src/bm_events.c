@@ -563,6 +563,17 @@ bm_events_handle_event(bsal_event_t *event)
         bm_event_action_frame(ifname, event->data.action_frame.data, event->data.action_frame.data_len);
         break;
 
+    case BSAL_EVENT_BTM_STATUS:
+        if (!(client = bm_client_find_by_macaddr(*(os_macaddr_t *)&event->data.btm_status.client_addr))) {
+            break;
+        }
+
+        LOGN("[%s] %s: BSAL_EVENT_BTM_STATUS %s status %u", bandstr, ifname,
+                                                            client->mac_addr,
+                                                            event->data.btm_status.status);
+        bm_stats_add_event_to_report(client, event, CLIENT_BTM_STATUS, false);
+        break;
+
     default:
         LOGW("[%s] Unhandled event type %u", bandstr, event->type);
         break;

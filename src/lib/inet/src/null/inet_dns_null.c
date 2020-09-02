@@ -33,7 +33,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "inet_dns.h"
 
-struct __inet_dns{
+struct __inet_dns
+{
 };
 
 static inet_dns_t g_inet_dhs;

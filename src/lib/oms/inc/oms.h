@@ -193,6 +193,14 @@ int
 oms_add_state_entry(struct oms_state_entry *entry);
 
 /**
+ * @brief update a state entry in the ovsdb object state table
+ *
+ * @param entry the entry to update
+ */
+int
+oms_update_state_entry(struct oms_state_entry *entry);
+
+/**
  * @brief add a state entry in the ovsdb object state table
  *
  * @param entry the entry to add

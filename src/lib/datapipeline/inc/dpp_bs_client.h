@@ -66,6 +66,7 @@ typedef enum
     CLIENT_SPECULATIVE_KICK,
     CLIENT_DIRECTED_KICK,
     CLIENT_GHOST_DEVICE_KICK,
+    CLIENT_BTM_STATUS,
     MAX_EVENTS
 } dpp_bs_client_event_type_t;
 
@@ -120,6 +121,7 @@ typedef struct
     uint32_t                        backoff_period;
     uint8_t                        *assoc_ies;
     size_t                          assoc_ies_len;
+    uint32_t                        btm_status;
 } dpp_bs_client_event_record_t;
 
 typedef struct

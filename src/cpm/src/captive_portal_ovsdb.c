@@ -242,6 +242,19 @@ cportal_alloc_inst(struct schema_Captive_Portal *new)
         return NULL;
     }
 
+    if (!strcmp(new->proxy_method, "forward"))
+    {
+        inst->proxy_method = FORWARD;
+    }
+    else if (!strcmp(new->proxy_method, "reverse"))
+    {
+        inst->proxy_method = REVERSE;
+    }
+    else
+    {
+        inst->proxy_method = REVERSE;
+    }
+
     inst->name = strdup(new->name);
     if (!inst->name)
     {

@@ -2931,6 +2931,10 @@ bm_client_dump_dbg_event(const bm_event_stat_t *events, unsigned int idx)
                  dpp_event->rrm_caps_bcn_rpt_active, dpp_event->rrm_caps_bcn_rpt_table, dpp_event->rrm_caps_lci_meas,
                  dpp_event->rrm_caps_ftm_range_rpt, dpp_event->assoc_ies_len);
         break;
+    case CLIENT_BTM_STATUS:
+        snprintf(extra_buf, sizeof(extra_buf), "status %u",
+                 dpp_event->btm_status);
+        break;
     default:
         break;
     }

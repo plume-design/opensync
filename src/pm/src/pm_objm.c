@@ -404,7 +404,7 @@ static bool install(struct pm_objm_ctx_t *d_ctx)
 
     // Insert to Object_Store_State
     pm_ctx_to_oms_state(&s_entry, d_ctx);
-    oms_add_state_entry(&s_entry);
+    oms_update_state_entry(&s_entry);
 
     // Update OMS_Config table
     pm_ctx_to_oms_config(&c_entry, d_ctx);
@@ -415,7 +415,7 @@ static bool install(struct pm_objm_ctx_t *d_ctx)
 install_failed:
     // Insert to Object_Store_State
     pm_ctx_to_oms_state(&s_entry, d_ctx);
-    oms_add_state_entry(&s_entry);
+    oms_update_state_entry(&s_entry);
     return false;
 }
 
@@ -559,7 +559,7 @@ static void cb_dl(const enum osp_dl_status status, void *ctx)
         STRSCPY_WARN(d_ctx->status, PM_OBJS_DOWNLOAD_FAILED);
         // Insert to Object_Store_State
         pm_ctx_to_oms_state(&s_entry, d_ctx);
-        oms_add_state_entry(&s_entry);
+        oms_update_state_entry(&s_entry);
 
         free(d_ctx);
         return;
@@ -568,7 +568,7 @@ static void cb_dl(const enum osp_dl_status status, void *ctx)
 
     // Insert to Object_Store_State
     pm_ctx_to_oms_state(&s_entry, d_ctx);
-    oms_add_state_entry(&s_entry);
+    oms_update_state_entry(&s_entry);
 
     // Call ev_async to start install
     ev_install_async.data = d_ctx;
@@ -694,37 +694,36 @@ static void oms_state_cb(struct oms_state_entry *entry, int event)
 
             break;
         case OVSDB_UPDATE_DEL:
+            strcpy(entry->state, PM_OBJS_REMOVED);
             break;
     }
 
-    // Send mqtt report
-    // Filtering of status to send is done trough oms_report_cb callback
-    if (!pm_objm_get_mqtt_topic(mqtt_topic, 128))
-    {
-        LOG(ERR, "objm: no mqtt topic '%s' found in AWLAN_Node", PM_OBJM_MQTT);
-        return;
-    }
-    LOG(INFO, "Sending mqtt report to %s", mqtt_topic);
-    oms_report_send_report(mqtt_topic);
-
-}
-
-static bool oms_report_cb(struct oms_state_entry *entry)
-{
-    bool ret = false;
 
     if (strcmp(entry->state, PM_OBJS_OBSOLETE)        == 0 ||
         strcmp(entry->state, PM_OBJS_ACTIVE)          == 0 ||
         strcmp(entry->state, PM_OBJS_DOWNLOAD_FAILED) == 0 ||
         strcmp(entry->state, PM_OBJS_INSTALL_FAILED)  == 0 ||
         strcmp(entry->state, PM_OBJS_LOAD_FAILED)     == 0 ||
+        strcmp(entry->state, PM_OBJS_REMOVED)         == 0 ||
         strcmp(entry->state, PM_OBJS_ERROR)           == 0 )
     {
-        ret = true;
+        // Send mqtt report
+        if (!pm_objm_get_mqtt_topic(mqtt_topic, 128))
+        {
+            LOG(ERR, "objm: no mqtt topic '%s' found in AWLAN_Node", PM_OBJM_MQTT);
+            return;
+        }
+        LOG(INFO, "objm: Sending mqtt report to %s", mqtt_topic);
+        oms_report_send_report(mqtt_topic);
     }
+}
 
-    LOG(INFO, "objm: object: %s,  state: %s, reporting: %s",
-        entry->object, entry->state, ret ? "true" : "false");
+static bool oms_report_cb(struct oms_state_entry *entry)
+{
+    bool ret = true;
+
+    LOG(DEBUG, "objm (%s): object: %s, version: %s, state: %s, reporting: %s",
+        __func__, entry->object, entry->version, entry->state, ret ? "true" : "false");
 
     return ret;
 }

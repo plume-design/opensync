@@ -120,6 +120,7 @@ Note-1: the wait for re-connect back to same manager addr because
 #define CM2_STABLE_PERIOD               300 // 5 min
 #define CM2_RESOLVE_RETRY_THRESHOLD     10
 #define CM2_GW_OFFLINE_RETRY_THRESHOLD  3
+#define CM2_GW_SKIP_RESTART_THRESHOLD   360
 
 // state info
 #define CM2_STATE_DIR  "/tmp/plume/"
@@ -362,6 +363,7 @@ static void cm2_extender_init_state(void) {
         g_state.link.priority = -1;
     }
     g_state.fast_backoff = true;
+    g_state.is_onboarded = false;
 }
 
 static void cm2_link_sel_update_ble_state(void) {
@@ -386,13 +388,22 @@ static void cm2_link_sel_update_ble_state(void) {
 }
 
 static void cm2_trigger_restart_managers(void) {
+    bool skip_restart;
     bool r;
+
+    skip_restart = false;
 
     r = cm2_vtag_stability_check();
     if (!r) {
         LOGI("Skip restart system due to vtag pending");
-        cm2_reset_time();
-        return;
+        skip_restart = true;
+    }
+
+    if (cm2_is_config_via_ble_enabled() &&
+        !g_state.is_onboarded) {
+        LOGI("Enabling two way mode comunication. skip restart managers");
+        cm2_ovsdb_ble_set_connectable(true);
+        skip_restart = true;
     }
 
     if (g_state.gw_offline_cnt < CM2_GW_OFFLINE_RETRY_THRESHOLD) {
@@ -411,9 +422,16 @@ static void cm2_trigger_restart_managers(void) {
         }
     }
 
-    if (g_state.link.is_limp_state || g_state.gw_offline_cnt > 0) {
-        LOGI("Skip restart managers. Limp state = %d gw_offline_cnt = %d",
+    if (g_state.gw_offline_cnt > 0 || g_state.link.is_limp_state) {
+        LOGI("Limp state = %d gw_offline_cnt = %d",
              g_state.link.is_limp_state, g_state.gw_offline_cnt);
+        skip_restart = true;
+    }
+
+    if (skip_restart &&
+        g_state.skip_restart_cnt++ < CM2_GW_SKIP_RESTART_THRESHOLD) {
+        LOGI("Skip restart managers [%d/%d]",
+             g_state.skip_restart_cnt, CM2_GW_SKIP_RESTART_THRESHOLD);
         cm2_reset_time();
         return;
     }
@@ -520,11 +538,11 @@ start:
                 LOGW("%s: Failed get ip info", uplink);
             cm2_handle_link_used(uplink, g_state.link.if_type, &g_state.link.ip);
             cm2_link_sel_update_ble_state();
-            if (g_state.link.is_bridge) {
-                ret = cm2_ovs_insert_port_into_bridge(g_state.link.bridge_name, g_state.link.if_name, true);
-                if (!ret)
-                    LOGW("%s: Failed to add port %s into %s", __func__, g_state.link.if_name, g_state.link.bridge_name);
-            }
+
+            if (g_state.link.is_bridge)
+                cm2_update_bridge_cfg(g_state.link.bridge_name, g_state.link.if_name, true,
+                                      CM2_PAR_FALSE);
+
             cm2_ovsdb_connection_clean_link_counters(g_state.link.if_name);
             cm2_connection_req_stability_check(LINK_CHECK);
             cm2_set_state(true, CM2_STATE_WAN_IP);
@@ -848,8 +866,12 @@ start:
                          CM2_STABLE_PERIOD, g_state.disconnects);
 
                     g_state.is_con_stable = true;
+                    g_state.is_onboarded = true;
                     g_state.disconnects = 0;
                     g_state.fast_backoff = false;
+
+                    if (cm2_is_config_via_ble_enabled())
+                        cm2_ovsdb_ble_set_connectable(false);
 
                     if (g_state.link.vtag.state == CM2_VTAG_PENDING) {
                         LOGI("vtag: %d: set as used", g_state.link.vtag.tag);

@@ -168,8 +168,16 @@ cportal_proxy_write_other_config(struct cportal *self)
     else
         fprintf(fconf, "port 8888\n");
 
-    if (self->uam_url)
+    if (self->uam_url &&
+        self->proxy_method == FORWARD)
+    {
         fprintf(fconf, "upstream http %s\n", self->uam_url);
+    }
+    else if (self->uam_url &&
+             self->proxy_method == REVERSE)
+    {
+        fprintf(fconf, "ReversePath \"/\" \"http://%s\"\n", self->uam_url);
+    }
 
     if (pconf.xtinyproxy_hdr)
         fprintf(fconf, "XTinyproxy %s\n",pconf.xtinyproxy_hdr);

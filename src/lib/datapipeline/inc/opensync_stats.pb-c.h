@@ -868,10 +868,12 @@ struct  _Sts__BSClient__BSEvent
   uint32_t backoff_period;
   protobuf_c_boolean has_assoc_ies;
   ProtobufCBinaryData assoc_ies;
+  protobuf_c_boolean has_btm_status;
+  uint32_t btm_status;
 };
 #define STS__BSCLIENT__BSEVENT__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&sts__bsclient__bsevent__descriptor) \
-    , 0, 0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,{0,NULL} }
+    , 0, 0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,{0,NULL}, 0,0 }
 
 
 struct  _Sts__BSClient__BSBandReport

@@ -363,10 +363,6 @@ util_link_cb(const struct nlmsghdr *nlh, void *data)
     msgtype = nlh->nlmsg_type;
     ifn = if_indextoname(ifindex, ifname);
 
-    LOGT("%s: ifindex: %d, name: %s, msgtype: 0x%x, change: 0x%x, flags: 0x%x",
-         __func__,
-         ifindex, ifn ? ifn : "None", msgtype, msg->ifi_change, msg->ifi_flags);
-
     /* Check if the event is an interface creation */
     change = msg->ifi_change;
     created = (msgtype == RTM_NEWLINK);

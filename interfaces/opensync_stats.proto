@@ -423,6 +423,7 @@ message BSClient {
         optional bool           rrm_caps_ftm_range_rpt      = 29;
         optional uint32         backoff_period              = 30;
         optional bytes          assoc_ies                   = 31;
+        optional uint32         btm_status                  = 32;
     }
     message BSBandReport {
         required RadioBandType  band                        = 1;

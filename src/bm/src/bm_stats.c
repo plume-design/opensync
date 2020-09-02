@@ -203,6 +203,10 @@ bm_stats_get_event_to_str( dpp_bs_client_event_type_t event )
             str = "CLIENT_GHOST_DEVICE_KICK";
             break;
 
+        case CLIENT_BTM_STATUS:
+            str = "CLIENT_BTM_STATUS";
+            break;
+
         default:
             str = "NONE";
             break;
@@ -939,6 +943,12 @@ bm_stats_steering_parse_event(
         case CLIENT_GHOST_DEVICE_KICK:
             LOGT( "Adding Client_GHOST_DEVICE_KICK event" );
             event_rec->type = CLIENT_GHOST_DEVICE_KICK;
+            break;
+
+        case CLIENT_BTM_STATUS:
+            LOGT("Adding  Client_BTM_STATUS event");
+            event_rec->type = CLIENT_BTM_STATUS;
+            event_rec->btm_status = event->data.btm_status.status;
             break;
 
         default:

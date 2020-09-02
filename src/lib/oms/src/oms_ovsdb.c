@@ -121,14 +121,15 @@ oms_delete_config_entry(struct oms_config_entry *entry)
     return ret;
 }
 
-
 /**
- * @brief add a state entry in the ovsdb object state table
+ * @brief modify a state entry in the ovsdb object state table based on update_only
  *
  * @param entry the entry to add
+ * @param update_only if true only update the state, don't update name, version and fw_integrated
  */
+
 int
-oms_add_state_entry(struct oms_state_entry *entry)
+oms_modify_state_entry(struct oms_state_entry *entry, bool update_only)
 {
     struct schema_Object_Store_State state;
     const char *key;
@@ -149,21 +150,25 @@ oms_add_state_entry(struct oms_state_entry *entry)
     json_array_append_new(where, cond);
 
     MEMZERO(state);
+    state._partial_update = true;
 
-    /* Object name */
-    key = entry->object;
-    if (key != NULL) SCHEMA_SET_STR(state.name, key);
+    if (update_only == false)
+    {
+        /* Object name */
+        key = entry->object;
+        if (key != NULL) SCHEMA_SET_STR(state.name, key);
 
-    /* Version */
-    key = entry->version;
-    if (key != NULL) SCHEMA_SET_STR(state.version, key);
+        /* Version */
+        key = entry->version;
+        if (key != NULL) SCHEMA_SET_STR(state.version, key);
+
+        /* Fw integrated */
+        SCHEMA_SET_INT(state.fw_integrated, entry->fw_integrated);
+    }
 
     /* State */
     key = entry->state;
     if (key != NULL) SCHEMA_SET_STR(state.status, key);
-
-    /* Fw integrated */
-    SCHEMA_SET_INT(state.fw_integrated, entry->fw_integrated);
 
     /* other_config, to be processed */
 
@@ -175,6 +180,28 @@ oms_add_state_entry(struct oms_state_entry *entry)
     return ret;
 }
 
+
+/**
+ * @brief add a state entry in the ovsdb object state table
+ *
+ * @param entry the entry to add
+ */
+int
+oms_add_state_entry(struct oms_state_entry *entry)
+{
+    return oms_modify_state_entry(entry, false);
+}
+
+/**
+ * @brief update only state field of state entry in the ovsdb object state table
+ *
+ * @param entry the entry to update
+ */
+int
+oms_update_state_entry(struct oms_state_entry *entry)
+{
+    return oms_modify_state_entry(entry, true);
+}
 
 /**
  * @brief delete a state entry from the ovsdb object state table

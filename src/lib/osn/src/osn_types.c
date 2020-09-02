@@ -31,6 +31,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "osn_types.h"
 #include "util.h"
 
+static int bitcmp(const void *a, const void *b, size_t nbits);
+
 /*
  * ===========================================================================
  *  IPv4 functions
@@ -359,6 +361,64 @@ int osn_ip6_addr_nolft_cmp(void *_a, void *_b)
     return rc;
 }
 
+/**
+ * Return true if @p addr is part of subnet @p subnet
+ */
+bool osn_ip6_addr_is_subnet(osn_ip6_addr_t *addr, osn_ip6_addr_t *subnet)
+{
+    int addr_prefix = addr->ia6_prefix;
+    int subnet_prefix = subnet->ia6_prefix;
+
+    if (addr_prefix == -1) addr_prefix = 128;
+    if (subnet_prefix == -1) subnet_prefix = 128;
+
+    /* The address prefix is greater than subnet */
+    if (addr_prefix < subnet_prefix) return false;
+
+    return bitcmp(&addr->ia6_addr.s6_addr, &subnet->ia6_addr.s6_addr, subnet->ia6_prefix) == 0;
+}
+
+/*
+ * Parse the @p ip6 address and return osn_ip6_addr_type enum representing
+ * its type
+ */
+enum osn_ip6_addr_type osn_ip6_addr_type(osn_ip6_addr_t *ip6)
+{
+    osn_ip6_addr_t addr;
+
+    osn_ip6_addr_from_str(&addr, "::1/128");
+    if (osn_ip6_addr_cmp(ip6, &addr) == 0)
+    {
+        return OSN_IP6_ADDR_LOOPBACK;
+    }
+
+    osn_ip6_addr_from_str(&addr, "fe80::/10");
+    if (osn_ip6_addr_is_subnet(ip6, &addr))
+    {
+        return OSN_IP6_ADDR_LOCAL_LINK;
+    }
+
+    osn_ip6_addr_from_str(&addr, "fc00::/7");
+    if (osn_ip6_addr_is_subnet(ip6, &addr))
+    {
+        return OSN_IP6_ADDR_LOCAL_UNIQUE;
+    }
+
+    osn_ip6_addr_from_str(&addr, "ff::/8");
+    if (osn_ip6_addr_is_subnet(ip6, &addr))
+    {
+        return OSN_IP6_ADDR_MULTICAST;
+    }
+
+    osn_ip6_addr_from_str(&addr, "2000::/3");
+    if (osn_ip6_addr_is_subnet(ip6, &addr))
+    {
+        return OSN_IP6_ADDR_GLOBAL;
+    }
+
+    return OSN_IP6_ADDR_INVALID;
+}
+
 
 /*
  * ===========================================================================
@@ -420,4 +480,39 @@ int osn_mac_addr_cmp(void *_a, void *_b)
     osn_mac_addr_t *b = _b;
 
     return memcmp(a->ma_addr, b->ma_addr, sizeof(a->ma_addr));
+}
+
+/*
+ * ===========================================================================
+ *  MISC functions
+ * ===========================================================================
+ */
+
+/*
+ * Similar to memcmp(), but compares up to @p nbits bits of the two memory
+ * locations
+ */
+static int bitcmp(const void *_a, const void *_b, const size_t nbits)
+{
+    size_t ii;
+    uint8_t mask;
+
+    const uint8_t *a = _a;
+    const uint8_t *b = _b;
+
+    for (ii = 0; (ii + 8) < nbits; ii += 8)
+    {
+        if (*a != *b) return *a - *b;
+        a++;
+        b++;
+    }
+
+    /* Calculate the mask that should be used to compare the last (partial) byte */
+    mask = 0xff << ((ii - nbits) & 7);
+    if ((*a & mask) != (*b & mask))
+    {
+        return (*a & mask) - (*b & mask);
+    }
+
+    return 0;
 }

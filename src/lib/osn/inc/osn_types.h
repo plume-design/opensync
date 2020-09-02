@@ -303,6 +303,20 @@ char* __FMT_osn_ip6_addr(char *buf, size_t sz, const osn_ip6_addr_t *addr);
 /**< @copydoc FMT_osn_ip6_addr */
 
 /**
+ * IPv6 address type. Use in conjunction with @ref osn_ip6_addr_type() to
+ * determine the address type.
+ */
+enum osn_ip6_addr_type
+{
+    OSN_IP6_ADDR_INVALID,               /* Invalid or unknown address type */
+    OSN_IP6_ADDR_LOOPBACK,              /* The loopback address, "::1/128" */
+    OSN_IP6_ADDR_LOCAL_LINK,            /* Link-local address */
+    OSN_IP6_ADDR_LOCAL_UNIQUE,          /* Unique local address */
+    OSN_IP6_ADDR_GLOBAL,                /* Global address */
+    OSN_IP6_ADDR_MULTICAST,             /* Multicast address */
+};
+
+/**
  * Initialize an osn_ip6_addr_t from a string. Valid string formats are:
  *
  * IPV6_ADDR/PREFIX,MIN_LFT,MAX_LFT
@@ -352,6 +366,18 @@ int osn_ip6_addr_cmp(void *a, void *b);
  * greater than @p b.
  */
 int osn_ip6_addr_nolft_cmp(void *_a, void *_b);
+
+/**
+ * Detect the IPv6 address type.
+ *
+ * @param[in]   ip6 IPv6 address
+ *
+ * @return
+ * This function returns an osn_ipv6_addr_type enum value which corresponds to the
+ * detected IPv6 interface type.
+ */
+enum osn_ip6_addr_type osn_ip6_addr_type(osn_ip6_addr_t *ip6);
+
 
 /** @} OSN_COMMON_osn_ip6_addr_t */
 

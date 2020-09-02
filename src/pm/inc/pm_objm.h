@@ -42,6 +42,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define PM_OBJS_LOAD_FAILED         "load-failed"       // Load of object failed
 #define PM_OBJS_ACTIVE              "active"            // Object is activly used by final user
 #define PM_OBJS_OBSOLETE            "obsolete"          // Object is not used by final user and can be removed
+#define PM_OBJS_REMOVED             "removed"           // Object is removed from device storage
 #define PM_OBJS_ERROR               "error"             // General error
 
 #define FIELD_ARRAY_LEN(TYPE,FIELD) ARRAY_LEN(((TYPE*)0)->FIELD)

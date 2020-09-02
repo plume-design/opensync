@@ -35,7 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os.h"
 
 #define FIELD_ARRAY_LEN(TYPE,FIELD) ARRAY_LEN(((TYPE*)0)->FIELD)
-#define CMD_LEN 1024
+#define CMD_LEN (C_MAXPATH_LEN * 2 + 128)
 
 /******************************************************************************
  *  Support functions
@@ -49,7 +49,7 @@ static bool objmfs_rmdir(char *path)
         LOG(ERR, "objmfs: removing / is not allowed: '%s'", path);
         return false;
     }
-    sprintf(cmd, "rm -fr %s", path);
+    snprintf(cmd, sizeof(cmd), "rm -fr %s", path);
     LOG(TRACE, "objmfs: rmdir: %s", cmd);
     if (cmd_log(cmd))
     {
@@ -62,7 +62,7 @@ static bool objmfs_rmdir(char *path)
 static bool objmfs_mkdir(char *path)
 {
     char cmd[CMD_LEN];
-    sprintf(cmd, "mkdir -p %s", path);
+    snprintf(cmd, sizeof(cmd), "mkdir -p %s", path);
     LOG(TRACE, "objmfs: mkdir: %s", cmd);
     if (cmd_log(cmd))
     {
@@ -79,8 +79,8 @@ bool objmfs_install(char *path, char *name, char *version)
 {
     FILE *fd;
     char cmd[CMD_LEN];
-    char folder_path[PATH_MAX];
-    char version_path[PATH_MAX];
+    char folder_path[C_MAXPATH_LEN];
+    char tpath[C_MAXPATH_LEN];
     char *line = NULL;
 
     char object_name[FIELD_ARRAY_LEN(struct schema_Object_Store_Config, name)];
@@ -88,23 +88,20 @@ bool objmfs_install(char *path, char *name, char *version)
     size_t len = 0;
     ssize_t read;
     bool ret;
+    int rsz;
 
     ret = true;
     LOG(DEBUG, "objmfs: (%s): Installing: %s:%s:%s", __func__, name, version, path);
 
     objmfs_mkdir(CONFIG_OBJMFS_DIR);
-    sprintf(folder_path, "%s/%s", CONFIG_OBJMFS_DIR, name);
+    snprintf(folder_path, sizeof(folder_path), "%s/%s", CONFIG_OBJMFS_DIR, name);
     objmfs_mkdir(folder_path);
-    sprintf(folder_path, "%s/%s/%s", CONFIG_OBJMFS_DIR, name, version);
-    objmfs_mkdir(folder_path);
-
-    sprintf(version_path, "%s/version", folder_path);
-
+    snprintf(folder_path, sizeof(folder_path), "%s/%s/%s", CONFIG_OBJMFS_DIR, name, version);
     objmfs_mkdir(folder_path);
 
     // Validate md5 of downloaded data
     // Note: currently only tar.gz is supported, .deb package would require additional handling
-    sprintf(cmd, "gzip -t %s", path);
+    snprintf(cmd, sizeof(cmd), "gzip -t %s", path);
     if (cmd_log(cmd))
     {
         LOG(ERR, "objmfs: Integrity check of package failed: %s", cmd);
@@ -113,7 +110,14 @@ bool objmfs_install(char *path, char *name, char *version)
     }
 
     // Extract tarball (or deb package)
-    sprintf(cmd, "tar -xzf %s -C %s", path, folder_path);
+    rsz = snprintf(cmd, sizeof(cmd), "tar -xozf %s -C %s", path, folder_path);
+    if (rsz >= (int)sizeof(cmd))
+    {
+        LOG(ERR, "objmfs: Unable to extract, command line too long.");
+        ret = false;
+        goto cleanup;
+    }
+
     LOG(TRACE, "objmfs: Extract base tarball command: %s", cmd);
     if (cmd_log(cmd))
     {
@@ -123,7 +127,15 @@ bool objmfs_install(char *path, char *name, char *version)
     }
 
     // Read name & version file and compare with data from ovsdb
-    fd = fopen(version_path, "r");
+    rsz = snprintf(tpath, sizeof(tpath), "%s/version", folder_path);
+    if (rsz >= (int)sizeof(tpath))
+    {
+        LOG(ERR, "objmfs: Version path too long.");
+        ret = false;
+        goto cleanup;
+    }
+
+    fd = fopen(tpath, "r");
     while ((read = getline(&line, &len, fd)) != -1)
     {
         if (strstr(line, "name") != NULL)
@@ -153,7 +165,14 @@ bool objmfs_install(char *path, char *name, char *version)
     }
 
     // Extract data directly to storage
-    sprintf(cmd, "tar -xzf %s/data.tar.gz -C %s", folder_path, folder_path);
+    rsz = snprintf(cmd, sizeof(cmd), "tar -xozf %s/data.tar.gz -C %s", folder_path, folder_path);
+    if (rsz >= (int)sizeof(cmd))
+    {
+        LOG(ERR, "objmfs: Error extracting to storage, command line too long.");
+        ret = false;
+        goto cleanup;
+    }
+
     LOG(TRACE, "objmfs: Extract data command: %s", cmd);
     if (cmd_log(cmd))
     {
@@ -163,18 +182,25 @@ bool objmfs_install(char *path, char *name, char *version)
     }
 
 cleanup:
-    sprintf(folder_path, "%s/data.tar.gz", folder_path);
-    objmfs_rmdir(folder_path);
-    objmfs_rmdir(path); //clean downloaded tarball
+    objmfs_rmdir(path);  // clean downloaded tarball
+    rsz = snprintf(tpath, sizeof(tpath), "%s/data.tar.gz", folder_path);
+    if (rsz < (int)sizeof(tpath))
+    {
+        objmfs_rmdir(tpath);
+    }
+    else
+    {
+        LOG(ERR, "objmfs: Error cleaning up, path too long.");
+    }
 
     return ret;
 }
 
 bool objmfs_remove(char *name, char *version)
 {
-    char buf[PATH_MAX];
+    char buf[C_MAXPATH_LEN];
     LOG(DEBUG, "objmfs: Removing %s version %s from objmfs", name, version);
-    sprintf(buf, "%s/%s/%s", CONFIG_OBJMFS_DIR, name, version);
+    snprintf(buf, sizeof(buf), "%s/%s/%s", CONFIG_OBJMFS_DIR, name, version);
     objmfs_rmdir(buf);
     return true;
 }

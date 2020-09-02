@@ -104,6 +104,7 @@ bm_action_frame_bss_trans_mgmt_resp(bm_client_t *client,
 {
     u8 status_code;
     u8 bss_termination_delay;
+    bsal_event_t event;
 
     if (plen < 3) {
         LOGI("%s btm resp short", client->mac_addr);
@@ -131,6 +132,15 @@ bm_action_frame_bss_trans_mgmt_resp(bm_client_t *client,
     default:
         break;
     }
+
+    if (!client->ifname)
+        return;
+
+    memset(&event, 0, sizeof(event));
+    STRSCPY(event.ifname, client->ifname);
+    event.type = BSAL_EVENT_BTM_STATUS;
+    event.data.btm_status.status = status_code;
+    bm_stats_add_event_to_report(client, &event, CLIENT_BTM_STATUS, false);
 }
 
 static void

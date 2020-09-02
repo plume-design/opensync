@@ -457,9 +457,6 @@ neigh_table_add_to_cache(struct neighbour_entry *to_add)
     entry = neigh_table_cache_lookup(to_add);
     if (entry)
     {
-        LOGD("%s: entry already exists", __func__);
-        print_neigh_entry(entry);
-
         /* Refresh timestamp */
         entry->cache_valid_ts = to_add->cache_valid_ts;
 
@@ -493,8 +490,6 @@ neigh_table_add_to_cache(struct neighbour_entry *to_add)
 
     ds_tree_insert(&mgr->neigh_table, entry, entry);
 
-    if (LOG_SEVERITY_ENABLED(LOG_SEVERITY_TRACE)) print_neigh_table();
-
     return entry;
 
 err_free_mac:
@@ -518,8 +513,6 @@ bool neigh_table_add(struct neighbour_entry *to_add)
 
     neigh_table_set_entry(to_add);
 
-    LOGT("%s: adding: ", __func__);
-    print_neigh_entry(to_add);
     entry = neigh_table_add_to_cache(to_add);
     if (entry == NULL)
     {
@@ -547,17 +540,12 @@ void neigh_table_delete_from_cache(struct neighbour_entry *to_del)
     if (!to_del) return;
 
     neigh_table_set_entry(to_del);
-    LOGT("%s: about to delete", __func__);
-    print_neigh_entry(to_del);
     lookup = neigh_table_cache_lookup(to_del);
     if (lookup == NULL)
     {
         LOGD("%s: entry not found", __func__);
         return;
     }
-
-    LOGT("%s: found", __func__);
-    print_neigh_entry(lookup);
 
     ds_tree_remove(&mgr->neigh_table, lookup);
     free_neigh_entry(lookup);
@@ -571,17 +559,12 @@ void neigh_table_delete(struct neighbour_entry *to_del)
     if (!to_del) return;
 
     neigh_table_set_entry(to_del);
-    LOGT("%s: about to delete", __func__);
-    print_neigh_entry(to_del);
     lookup = neigh_table_cache_lookup(to_del);
     if (lookup == NULL)
     {
         LOGD("%s: entry not found", __func__);
         return;
     }
-
-    LOGT("%s: found", __func__);
-    print_neigh_entry(lookup);
 
     ds_tree_remove(&mgr->neigh_table, lookup);
 
@@ -593,8 +576,6 @@ void neigh_table_delete(struct neighbour_entry *to_del)
         return;
     }
     free_neigh_entry(lookup);
-
-    if (LOG_SEVERITY_ENABLED(LOG_SEVERITY_TRACE)) print_neigh_table();
 
     return;
 }
@@ -608,8 +589,6 @@ bool neigh_table_cache_update(struct neighbour_entry *entry)
 
     neigh_table_set_entry(entry);
 
-    LOGT("%s: entry: ", __func__);
-    print_neigh_entry(entry);
     lookup = ds_tree_find(&mgr->neigh_table, entry);
 
     // We dont have it. Add it.
@@ -633,11 +612,6 @@ bool neigh_table_cache_update(struct neighbour_entry *entry)
     }
     lookup->source = entry->source;
 
-    LOGT("%s: updated cache entry to: ", __func__);
-    print_neigh_entry(lookup);
-
-    if (LOG_SEVERITY_ENABLED(LOG_SEVERITY_TRACE)) print_neigh_table();
-
     return true;
 }
 
@@ -651,13 +625,7 @@ neigh_table_cache_lookup(struct neighbour_entry *key)
 
     neigh_table_set_entry(key);
     lookup = ds_tree_find(&mgr->neigh_table, key);
-    if (!lookup)
-    {
-        LOGT("%s: could not find entry", __func__);
-        print_neigh_entry(key);
-
-        return NULL;
-    }
+    if (!lookup) return NULL;
 
     LOGT("%s: found entry", __func__);
     print_neigh_entry(lookup);
@@ -666,8 +634,6 @@ neigh_table_cache_lookup(struct neighbour_entry *key)
     {
         memcpy(key->mac, lookup->mac, sizeof(os_macaddr_t));
     }
-
-    if (LOG_SEVERITY_ENABLED(LOG_SEVERITY_TRACE)) print_neigh_table();
 
     return lookup;
 }
@@ -712,8 +678,6 @@ bool neigh_table_lookup(struct sockaddr_storage *ip_in, os_macaddr_t *mac_out)
         ret = (lookup != NULL);
         if (ret) break;
     }
-
-    if (LOG_SEVERITY_ENABLED(LOG_SEVERITY_TRACE)) print_neigh_table();
 
     return ret;
 }

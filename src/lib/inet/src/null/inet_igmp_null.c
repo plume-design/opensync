@@ -79,7 +79,6 @@ inet_igmp_t *inet_igmp_new(const char *ifname)
     LOG(NOTICE, "inet_igmp: %s: not using OpenSync IGMP snooping on this platform.", ifname);
 
     return &g_igmp;
-;
 }
 
 bool inet_igmp_del(inet_igmp_t *self)

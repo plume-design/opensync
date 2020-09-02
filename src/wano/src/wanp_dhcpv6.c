@@ -41,7 +41,7 @@ struct wanp_dhcpv6
     wano_plugin_handle_t        wd6_handle;
     wano_plugin_status_fn_t    *wd6_status_fn;
     wanp_dhcpv6_state_t         wd6_state;
-    osn_ip_addr_t               wd6_ipaddr;
+    osn_ip6_addr_t              wd6_ip6addr;
     bool                        wd6_has_global_ip;
     bool                        wd6_ovsdb_subscribed;
     ds_tree_node_t              wd6_tnode;
@@ -152,6 +152,8 @@ void callback_IP_Interface(
          */
         for (ii = 0; ii < new->ipv6_addr_len; ii++)
         {
+            osn_ip6_addr_t addr;
+
             if (!ovsdb_table_select_one_where(
                         &table_IPv6_Address,
                         ovsdb_where_uuid("_uuid", new->ipv6_addr[ii].uuid),
@@ -162,10 +164,30 @@ void callback_IP_Interface(
                 continue;
             }
 
-            if (strcmp(ipv6_address.origin, "auto_configured") == 0)
+            if (strcmp(ipv6_address.origin, "auto_configured") != 0)
             {
-                self->wd6_has_global_ip = true;
+                continue;
             }
+
+            if (!osn_ip6_addr_from_str(&addr, ipv6_address.address))
+            {
+                LOG(WARN, "wanp_dhcpv6: %s: Invalid IPv6 address: %s",
+                        self->wd6_handle.wh_ifname,
+                        ipv6_address.address);
+                continue;
+            }
+
+            if (osn_ip6_addr_type(&addr) != OSN_IP6_ADDR_GLOBAL)
+            {
+                LOG(DEBUG, "wanp_dhcpv6: %s: Not a global IPv6 address: %s",
+                        self->wd6_handle.wh_ifname,
+                        ipv6_address.address);
+                continue;
+            }
+
+            self->wd6_has_global_ip = true;
+            self->wd6_ip6addr = addr;
+            break;
         }
     }
 
@@ -320,8 +342,9 @@ enum wanp_dhcpv6_state wanp_dhcpv6_state_IDLE(
     switch (action)
     {
         case wanp_dhcpv6_do_STATE_INIT:
-            LOG(INFO, "wano_dhcpv6: %s: Acquired IPv6 address.",
-                        self->wd6_handle.wh_ifname);
+            LOG(INFO, "wano_dhcpv6: %s: Acquired IPv6 address: "PRI_osn_ip6_addr,
+                        self->wd6_handle.wh_ifname,
+                        FMT_osn_ip6_addr(self->wd6_ip6addr));
 
             struct wano_plugin_status ws = WANO_PLUGIN_STATUS(WANP_OK);
             STRSCPY(ws.ws_ifname, self->wd6_handle.wh_ifname);
@@ -337,8 +360,9 @@ enum wanp_dhcpv6_state wanp_dhcpv6_state_IDLE(
             }
             else
             {
-                LOG(INFO, "wano_dhcpv6: %s: Re-acquired IPv6 address.",
-                        self->wd6_handle.wh_ifname);
+                LOG(INFO, "wano_dhcpv6: %s: Re-acquired IPv6 address: "PRI_osn_ip6_addr,
+                        self->wd6_handle.wh_ifname,
+                        FMT_osn_ip6_addr(self->wd6_ip6addr));
             }
             break;
 

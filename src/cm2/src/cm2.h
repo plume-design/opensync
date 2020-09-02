@@ -187,6 +187,7 @@ typedef struct
     bool              state_changed;
     bool              connected;
     bool              is_con_stable;
+    bool              is_onboarded;
     time_t            timestamp;
     int               disconnects;
     cm2_addr_t        addr_redirector;
@@ -212,6 +213,7 @@ typedef struct
     bool              resolve_retry;
     int               resolve_retry_cnt;
     int               gw_offline_cnt;
+    int               skip_restart_cnt;
 } cm2_state_t;
 
 extern cm2_state_t g_state;
@@ -228,10 +230,10 @@ typedef enum {
 } cm2_ble_onboarding_status_t;
 
 typedef enum {
-    CM2_L3_NOT_SET,
-    CM2_L3_TRUE,
-    CM2_L3_FALSE
-} cm2_l3_state_t;
+    CM2_PAR_NOT_SET,
+    CM2_PAR_TRUE,
+    CM2_PAR_FALSE
+} cm2_par_state_t;
 
 // misc
 bool cm2_is_extender(void);
@@ -255,13 +257,14 @@ bool cm2_ovsdb_connection_get_connection_by_ifname(const char *if_name,
                                                    struct schema_Connection_Manager_Uplink *con);
 void cm2_ovsdb_refresh_dhcp(char *if_name);
 bool cm2_ovsdb_set_Wifi_Inet_Config_network_state(bool state, char *ifname);
-bool cm2_ovsdb_connection_update_L3_state(const char *if_name, cm2_l3_state_t state);
+bool cm2_ovsdb_connection_update_L3_state(const char *if_name, cm2_par_state_t state);
 bool cm2_ovsdb_connection_update_ntp_state(const char *if_name, bool state);
 bool cm2_ovsdb_connection_update_unreachable_link_counter(const char *if_name, int counter);
 bool cm2_ovsdb_connection_update_unreachable_router_counter(const char *if_name, int counter);
 bool cm2_ovsdb_connection_update_unreachable_cloud_counter(const char *if_name, int counter);
 bool cm2_ovsdb_connection_update_unreachable_internet_counter(const char *if_name, int counter);
 int  cm2_ovsdb_ble_config_update(uint8_t ble_status);
+int  cm2_ovsdb_ble_set_connectable(bool state);
 bool cm2_ovsdb_is_port_name(char *port_name);
 void cm2_ovsdb_remove_unused_gre_interfaces(void);
 void cm2_ovsdb_connection_update_ble_phy_link(void);
@@ -277,6 +280,7 @@ bool cm2_ovsdb_is_gw_offline_ready(void);
 bool cm2_ovsdb_enable_gw_offline_conf(void);
 bool cm2_ovsdb_disable_gw_offline_conf(void);
 int  cm2_get_link_ip(char *if_name, cm2_ip *ip);
+int  cm2_ovsdb_update_mac_reporting(char *ifname, bool state);
 
 #ifdef CONFIG_CM2_USE_EXTRA_DEBUGS
 void cm2_ovsdb_dump_debug_data(void);
@@ -368,8 +372,17 @@ static inline bool cm2_is_wan_link_management(void)
 #endif
 }
 
+static inline bool cm2_is_config_via_ble_enabled(void)
+{
+#ifdef CONFIG_PLUME_CONFIG_VIA_BLE_ENABLED
+    return true;
+#else
+    return false;
+#endif
+}
+
 // net
-int  cm2_ovs_insert_port_into_bridge(char *bridge, char *port, int flag_add);
+void cm2_update_bridge_cfg(char *bridge, char *port, bool brop, cm2_par_state_t state);
 void cm2_dhcpc_start_dryrun(char* ifname, char *iftype, int cnt);
 void cm2_dhcpc_stop_dryrun(char* ifname);
 bool cm2_is_eth_type(const char *if_type);

@@ -646,7 +646,7 @@ static void
 wm2_vstate_init(struct schema_Wifi_VIF_State *vstate, const char *ifname)
 {
     memset(vstate, 0, sizeof(*vstate));
-    STRSCPY(vstate->if_name, ifname);
+    SCHEMA_SET_STR(vstate->if_name, ifname);
 }
 
 static bool
@@ -895,6 +895,19 @@ wm2_vconf_recalc(const char *ifname, bool force)
         LOGW("%s: failed to configure, will retry later", ifname);
         wm2_delayed_recalc(wm2_vconf_recalc, ifname);
         return;
+    }
+
+    if (!has) {
+        /* If the target implementation delays (debounces) calling of op_vstate()
+         * there's a chance client is reported by the target right after
+         * interface is brought up and before a matching VIF_State record exists.
+         * In that case the client would not be registered. To prevent that
+         * an initial VIF_State record is immediately created here with only
+         * the key field 'if_name' set (by wm2_vstate_init). This record will
+         * be updated properly when the target api calls op_vstate()
+         */
+        vstate._partial_update = true;
+        WARN_ON(!ovsdb_table_upsert(&table_Wifi_VIF_State, &vstate, false));
     }
 
     wm2_delayed_recalc_cancel(wm2_vconf_recalc, ifname);

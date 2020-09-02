@@ -88,7 +88,7 @@ static const char *cm2_get_timeout_cmd_arg(void)
     return needs_t_arg ? "-t 10" : "10";
 }
 
-int cm2_ovs_insert_port_into_bridge(char *bridge, char *port, int flag_add)
+static int cm2_ovs_insert_port_into_bridge(char *bridge, char *port, bool add)
 {
     char *op_add = "add-port";
     char *op_del = "del-port";
@@ -98,7 +98,7 @@ int cm2_ovs_insert_port_into_bridge(char *bridge, char *port, int flag_add)
     char *op_log;
     char *op;
 
-    if (flag_add) {
+    if (add) {
         op = op_add;
         op_log = op_or;
     } else {
@@ -115,6 +115,27 @@ int cm2_ovs_insert_port_into_bridge(char *bridge, char *port, int flag_add)
     LOGD("%s: Command: %s", __func__, command);
 
     return target_device_execute(command);
+}
+
+void cm2_update_bridge_cfg(char *bridge, char *port, bool brop,
+                           cm2_par_state_t mstate)
+{
+    bool macrep;
+    int  r;
+
+    if (mstate != CM2_PAR_NOT_SET) {
+        macrep = (mstate == CM2_PAR_TRUE) ? true : false;
+        r = cm2_ovsdb_update_mac_reporting(port, macrep);
+        if (!r) {
+            LOGW("%s: Failed to update mac reporting, state: %d",
+                 port, macrep);
+        }
+    }
+
+    r = cm2_ovs_insert_port_into_bridge(bridge, port, brop);
+    if (!r)
+        LOGW("Failed to update port %s in %s [state = %d]",
+             port, bridge, mstate);
 }
 
 /**
@@ -309,7 +330,7 @@ void cm2_delayed_eth_update(char *if_name, int timeout)
 static void cm2_dhcpc_dryrun_cb(struct ev_loop *loop, ev_child *w, int revents)
 {
     struct schema_Connection_Manager_Uplink con;
-    cm2_l3_state_t                          l3state;
+    cm2_par_state_t                         l3state;
     dhcp_dryrun_t                           *dhcp_dryrun;
     bool                                    status;
     int                                     ret;
@@ -361,7 +382,7 @@ static void cm2_dhcpc_dryrun_cb(struct ev_loop *loop, ev_child *w, int revents)
     }
 
 release:
-    l3state = status ? CM2_L3_TRUE : CM2_L3_FALSE;
+    l3state = status ? CM2_PAR_TRUE : CM2_PAR_FALSE;
     ret = cm2_ovsdb_connection_update_L3_state(dhcp_dryrun->if_name, l3state);
     if (!ret)
         LOGW("%s: %s: Update L3 state failed status = %d ret = %d",

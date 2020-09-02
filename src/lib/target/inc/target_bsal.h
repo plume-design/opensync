@@ -149,6 +149,7 @@ typedef enum {
     BSAL_EVENT_STEER_FAILURE, /**< deprecated */
     BSAL_EVENT_AUTH_FAIL, /**< reported when station is rejected by driver */
     BSAL_EVENT_ACTION_FRAME, /**< received action frame */
+    BSAL_EVENT_BTM_STATUS, /**< BTM status */
 
     BSAL_EVENT_DEBUG_CHAN_UTIL  = 128, /**< deprecated */
     BSAL_EVENT_DEBUG_RSSI /**< deprecated */
@@ -292,6 +293,11 @@ typedef struct {
 } bsal_ev_action_frame_t;
 
 typedef struct {
+    uint8_t             client_addr[BSAL_MAC_ADDR_LEN];
+    uint8_t             status;
+} bsal_ev_btm_status_t;
+
+typedef struct {
     bsal_ev_type_t      type;
     char                ifname[BSAL_IFNAME_LEN];
     uint64_t            timestamp_ms;
@@ -306,6 +312,7 @@ typedef struct {
         bsal_ev_steer_t             steer;
         bsal_ev_auth_fail_t         auth_fail;
         bsal_ev_action_frame_t      action_frame;
+        bsal_ev_btm_status_t        btm_status;
     } data;
 } bsal_event_t;
 
