@@ -70,7 +70,7 @@ static ev_timer cs_timer;
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
 bool wait95Option = false;
-#define MAPTM_MODULE "MAPTM"
+
 /*****************************************************************************/
 
 /******************************************************************************
@@ -275,7 +275,7 @@ static void callback_DHCP_Option(
 }
 
 // Initialize eligibility state machine
-int intit_eligibility(void)
+int init_eligibility(void)
 {
     wait95Option = false;
     StartStop_DHCPv6(false);
@@ -462,7 +462,7 @@ bool maptm_ipv6IsEnabled(void)
 // Start eligibility state machine
 void maptm_eligibilityStart(int WanConfig)
 {
-    intit_eligibility();
+    init_eligibility();
 
     // If Cloud did not set MAP-T tables, set default MAP-T support value
     if (!maptm_ovsdb_tables_ready()) 

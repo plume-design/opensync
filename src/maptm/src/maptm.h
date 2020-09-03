@@ -39,6 +39,10 @@
 #include "osp_ps.h"
 
 #define MAPTM_MODULE_NAME           "MAPTM"
+#define MAPTM_MODULE                "MAPTM"
+
+#define MAPT_SUPPORT_STORE "MAPT_SUPPORT"
+#define MAPT_SUPPORT_VALUE "MAPT_SUPPORT"
 
 #define MAPTM_TIMEOUT_INTERVAL      5  /**< Interval to verify timer condition */
 
