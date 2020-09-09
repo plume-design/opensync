@@ -72,7 +72,7 @@ bool maptm_ovsdb_tables_ready()
 
     // Checking MAP-T entry presence in Node_Config table
     where_config = ovsdb_where_multi(
-            ovsdb_where_simple_typed(SCHEMA_COLUMN(Node_Config, module), MAPTM_MODULE, OCLM_STR),
+            ovsdb_where_simple_typed(SCHEMA_COLUMN(Node_Config, module), MAPTM_MODULE_NAME, OCLM_STR),
             ovsdb_where_simple_typed(SCHEMA_COLUMN(Node_Config, key), "maptParams", OCLM_STR),
             NULL);
     if (!where_config)

@@ -39,7 +39,6 @@
 #include "osp_ps.h"
 
 #define MAPTM_MODULE_NAME           "MAPTM"
-#define MAPTM_MODULE                "MAPTM"
 
 #define MAPT_SUPPORT_STORE "mapt"
 #define MAPT_SUPPORT_VALUE "elected"
