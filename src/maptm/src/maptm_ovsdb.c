@@ -72,7 +72,7 @@ bool maptm_ovsdb_tables_ready()
 
     // Checking MAP-T entry presence in Node_Config table
     where_config = ovsdb_where_multi(
-            ovsdb_where_simple_typed(SCHEMA_COLUMN(Node_Config, module), MAPTM_MODULE_NAME, OCLM_STR),
+            ovsdb_where_simple_typed(SCHEMA_COLUMN(Node_Config, module), MAPT_MODULE_NAME, OCLM_STR),
             ovsdb_where_simple_typed(SCHEMA_COLUMN(Node_Config, key), "maptParams", OCLM_STR),
             NULL);
     if (!where_config)
@@ -136,7 +136,7 @@ bool maptm_persistent(void)
     }
 
     // Get persistent storage value
-    size = osp_ps_get(ps, MAPT_SUPPORT_VALUE, mapt_support, strlen(mapt_support)+1);
+    size = osp_ps_get(ps, MAPT_SUPPORT_VALUE, mapt_support, sizeof(mapt_support));
     if (size <= 0)
     {
         LOGE("Failed when getting persistent storage value");
@@ -207,7 +207,7 @@ void callback_Node_Config(
         LOGD("%s: new node config entry: module %s, key: %s, value: %s",
                 __func__, conf->module, conf->key, conf->value);
 
-        if (!strcmp(conf->module, MAPTM_MODULE_NAME))
+        if (!strcmp(conf->module, MAPT_MODULE_NAME))
         {
             if (maptm_get_supportValue(conf->value))
             {
@@ -243,7 +243,7 @@ void callback_Node_Config(
                 __func__, old_rec->module, old_rec->key, old_rec->value,
                 conf->module, conf->key, conf->value);
 
-        if (!strcmp(conf->module, MAPTM_MODULE_NAME))
+        if (!strcmp(conf->module, MAPT_MODULE_NAME))
         {
             strucWanConfig.mapt_support = maptm_get_supportValue(conf->value);
             if (maptm_get_supportValue(conf->value) != maptm_get_supportValue(old_rec->value))

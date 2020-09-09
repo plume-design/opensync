@@ -363,7 +363,7 @@ static void maptm_update_wan_mode(const char *status)
     SCHEMA_SET_STR(set.value, status);
 
     where = ovsdb_where_multi(
-            ovsdb_where_simple_typed(SCHEMA_COLUMN(Node_State, module), MAPTM_MODULE_NAME, OCLM_STR),
+            ovsdb_where_simple_typed(SCHEMA_COLUMN(Node_State, module), MAPT_MODULE_NAME, OCLM_STR),
             ovsdb_where_simple_typed(SCHEMA_COLUMN(Node_State, key), "maptMode", OCLM_STR),
             NULL);
 
