@@ -38,10 +38,10 @@
 #include "osp.h"
 #include "osp_ps.h"
 
-#define MAPT_MODULE_NAME           "MAPT"
+#define MAPT_MODULE_NAME    "MAPT"
 
-#define MAPT_SUPPORT_STORE "mapt"
-#define MAPT_SUPPORT_VALUE "elected"
+#define MAPT_SUPPORT_STORE  MAPT_MODULE_NAME  /**< store name == module name */
+#define MAPT_SUPPORT_VALUE  "enabled"
 
 #define MAPTM_TIMEOUT_INTERVAL      5  /**< Interval to verify timer condition */
 
