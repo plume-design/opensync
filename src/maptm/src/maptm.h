@@ -40,8 +40,8 @@
 
 #define MAPT_MODULE_NAME    "MAPT"
 
-#define MAPT_SUPPORT_STORE  MAPT_MODULE_NAME  /**< store name == module name */
-#define MAPT_SUPPORT_VALUE  "enabled"
+#define MAPT_PS_STORE_NAME  MAPT_MODULE_NAME  /**< store name == module name */
+#define MAPT_PS_KEY_NAME    "enabled"
 
 #define MAPTM_TIMEOUT_INTERVAL      5  /**< Interval to verify timer condition */
 
