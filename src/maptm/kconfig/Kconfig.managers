@@ -11,3 +11,14 @@ menuconfig MANAGER_MAPTM
         default "maptm;true"
         help
             MAP-T Manager startup configuration
+            
+    config MAPTM_WAN_MAP
+        depends on MANAGER_MAPTM
+        string "MAPTM Eligibility mode"
+        default "map"
+        
+    config MAPTM_WAN_DUALSTACK
+        depends on MANAGER_MAPTM
+        string "MAPTM Eligibility mode"
+        default "dualstack"
+        

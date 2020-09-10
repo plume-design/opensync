@@ -68,10 +68,9 @@ static ev_timer cs_timer;
 /*****************************************************************************/
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
-#define MAPTM_CHARTER_DUALSTACK "charter_dualstack"
-#define MAPTM_CHARTER_MAP    "charter_map"
+
 bool wait95Option = false;
-#define MAPTM_MODULE "MAPTM"
+
 /*****************************************************************************/
 
 /******************************************************************************
@@ -275,16 +274,8 @@ static void callback_DHCP_Option(
     } /* switch */
 }
 
-// Initialize and monitor DHCP_Option Ovsdb table
-int maptm_dhcp_option_init(void)
-{
-    OVSDB_TABLE_INIT_NO_KEY(DHCP_Option);
-    OVSDB_TABLE_MONITOR(DHCP_Option, false);
-    return 0;
-}
-
 // Initialize eligibility state machine
-int intit_eligibility(void)
+int init_eligibility(void)
 {
     wait95Option = false;
     StartStop_DHCPv6(false);
@@ -306,14 +297,14 @@ bool maptm_dhcp_option_update_15_option(bool maptSupport)
     ret = ovsdb_table_select_one(
             &table_DHCP_Option,
             SCHEMA_COLUMN(DHCP_Option, value),
-            maptSupport ? MAPTM_CHARTER_DUALSTACK : MAPTM_CHARTER_MAP, &iconf);
+            maptSupport ? CONFIG_MAPTM_WAN_DUALSTACK : CONFIG_MAPTM_WAN_MAP, &iconf);
     if (!ret)
     {
         LOGE("%s: Failed to get DHCP_Option config", __func__);
         return false;
     }
 
-    STRSCPY(iconf_update.value, maptSupport ? MAPTM_CHARTER_MAP : MAPTM_CHARTER_DUALSTACK);
+    STRSCPY(iconf_update.value, maptSupport ? CONFIG_MAPTM_WAN_MAP : CONFIG_MAPTM_WAN_DUALSTACK);
     iconf_update.value_exists = true;
     char *filter[] = { "+",
                         SCHEMA_COLUMN(DHCP_Option, value),
@@ -322,7 +313,7 @@ bool maptm_dhcp_option_update_15_option(bool maptSupport)
     ret = ovsdb_table_update_where_f(
             &table_DHCP_Option,
             ovsdb_where_simple(SCHEMA_COLUMN(DHCP_Option, value),
-            maptSupport ? MAPTM_CHARTER_DUALSTACK : MAPTM_CHARTER_MAP),
+            maptSupport ? CONFIG_MAPTM_WAN_DUALSTACK : CONFIG_MAPTM_WAN_MAP),
             &iconf_update, filter);
 
     return true;
@@ -372,7 +363,7 @@ static void maptm_update_wan_mode(const char *status)
     SCHEMA_SET_STR(set.value, status);
 
     where = ovsdb_where_multi(
-            ovsdb_where_simple_typed(SCHEMA_COLUMN(Node_State, module), MAPTM_MODULE, OCLM_STR),
+            ovsdb_where_simple_typed(SCHEMA_COLUMN(Node_State, module), MAPT_MODULE_NAME, OCLM_STR),
             ovsdb_where_simple_typed(SCHEMA_COLUMN(Node_State, key), "maptMode", OCLM_STR),
             NULL);
 
@@ -432,6 +423,15 @@ void maptm_callback_Timer(void)
     }
 }
 
+// Initialize and monitor DHCP_Option Ovsdb table
+int maptm_dhcp_option_init(void)
+{
+    OVSDB_TABLE_INIT_NO_KEY(DHCP_Option);
+    OVSDB_TABLE_MONITOR(DHCP_Option, false);
+    ev_timer_init(&cs_timer, maptm_Timer, 15, 0);
+    return 0;
+}
+
 // Stop eligibility state machine
 void maptm_eligibilityStop(void)
 {
@@ -462,7 +462,7 @@ bool maptm_ipv6IsEnabled(void)
 // Start eligibility state machine
 void maptm_eligibilityStart(int WanConfig)
 {
-    intit_eligibility();
+    init_eligibility();
 
     // If Cloud did not set MAP-T tables, set default MAP-T support value
     if (!maptm_ovsdb_tables_ready()) 
@@ -494,7 +494,7 @@ void maptm_eligibilityStart(int WanConfig)
         }
         case MAPTM_NO_ELIGIBLE_IPV6:
         {
-             LOGT("*********** Mode DUAL STACK");
+             LOGT("*********** DUAL STACK");
              maptm_update_wan_mode("Dual-Stack");
              StartStop_DHCPv6(true);
              StartStop_DHCPv4(true);
@@ -509,10 +509,12 @@ void maptm_eligibilityStart(int WanConfig)
         }
         case MAPTM_ELIGIBLE_IPV6:
         {
-             StartStop_DHCPv6(true);
-             ev_timer_init(&cs_timer, maptm_Timer, 15, 0);
-             ev_timer_start(EV_DEFAULT, &cs_timer);
-             break;
+            LOGI("*********** MAP-T");
+            StartStop_DHCPv6(true);
+            ev_timer_stop(EV_DEFAULT, &cs_timer);
+            ev_timer_set(&cs_timer, 15., 0.);
+            ev_timer_start(EV_DEFAULT, &cs_timer);
+            break;
         }
         default:
              LOGE("Unable to determine WAN Mode");
