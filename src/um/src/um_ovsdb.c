@@ -333,7 +333,7 @@ static void callback_AWLAN_Node(
                         {
                            free(upg_url);
                            upg_url = NULL;
-                        }   
+                        }
                         upg_url = strdup(awlan_node->firmware_url);
                         um_start_download(upg_url, awlan_node->upgrade_dl_timer);
                     }
