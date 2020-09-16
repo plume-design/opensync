@@ -26,6 +26,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <stdlib.h>
 
+#include "osa_assert.h"
+
 #include "ds_list.h"
 
 static inline void ds_list_node_insert_after(
@@ -179,7 +181,7 @@ static inline void* ds_list_ifirst(ds_list_iter_t* iter, ds_list_t* list)
 /**
  * Return the next node
  */
-static inline void* ds_list_inext(ds_list_iter_t* iter)
+static inline void* ds_list_inext_err(ds_list_iter_t *iter)
 {
     if (iter->oli_list->ol_ndel != iter->oli_ndel)
     {
@@ -203,7 +205,7 @@ static inline void* ds_list_inext(ds_list_iter_t* iter)
 /*
  * Insert an element at the current position in the iterator
  */
-static inline void* ds_list_iinsert(ds_list_iter_t *iter, void *data)
+static inline void* ds_list_iinsert_err(ds_list_iter_t *iter, void *data)
 {
     if (iter->oli_list->ol_ndel != iter->oli_ndel)
     {
@@ -220,7 +222,7 @@ static inline void* ds_list_iinsert(ds_list_iter_t *iter, void *data)
 /**
  * Remove the node at the current iterator position
  */
-static inline void* ds_list_iremove(ds_list_iter_t* iter)
+static inline void* ds_list_iremove_err(ds_list_iter_t *iter)
 {
     if (iter->oli_list->ol_ndel != iter->oli_ndel)
     {
@@ -242,6 +244,28 @@ static inline void* ds_list_iremove(ds_list_iter_t* iter)
 
     return NODE_TO_CONT(rm, iter->oli_list->ol_cof);
 }
+
+static inline void* ds_list_inext(ds_list_iter_t *iter)
+{
+    void *data = ds_list_inext_err(iter);
+    ASSERT(data != DS_ITER_ERROR, "ds_list: inext: [%p] iteration error", iter->oli_list);
+    return data;
+}
+
+static inline void* ds_list_iinsert(ds_list_iter_t *iter, void *data)
+{
+    data = ds_list_inext_err(iter);
+    ASSERT(data != DS_ITER_ERROR, "ds_list: iinsert: [%p] iteration error", iter->oli_list);
+    return data;
+}
+
+static inline void* ds_list_iremove(ds_list_iter_t *iter)
+{
+    void *data = ds_list_iremove_err(iter);
+    ASSERT(data != DS_ITER_ERROR, "ds_list: iremove: [%p] iteration error", iter->oli_list);
+    return data;
+}
+
 
 /*
  * ============================================================

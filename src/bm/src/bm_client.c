@@ -247,6 +247,9 @@ bm_client_to_bsal_conf_bs(bm_client_t *client, bm_group_t *group, radio_type_t r
         if (client->pref_allowed == BM_CLIENT_PREF_ALLOWED_HWM)
             dest->rssi_probe_lwm = 0;
 
+        if (group->gw_only)
+            dest->rssi_low_xing = 0;
+
         if( client->pre_assoc_auth_block ) {
             LOGT( "Client '%s': Blocking auth requests for"
                   " pre-assocation band steering", client->mac_addr );
@@ -2069,7 +2072,13 @@ bm_client_state_change(bm_client_t *client, bm_client_state_t state, bool force)
             case BM_CLIENT_STATE_STEERING:
             {
                 for (i = 0; i < client->ifcfg_num; i++) {
-                    if (!client->ifcfg[i].bs_allowed)
+                    /*
+                     * At the moment BAND_STEERING_ATTEMPT is allowed only for
+                     * 2.4 to 5 GHz. Cloud expects BAND_STEERING_ATTEMPT to convey
+                     * information about "from" band (2.4 GHz), therefore we look
+                     * for iface with disable bs_allowed.
+                     */
+                    if (client->ifcfg[i].bs_allowed)
                         continue;
 
                     STRSCPY(event.ifname, client->ifcfg[i].ifname);

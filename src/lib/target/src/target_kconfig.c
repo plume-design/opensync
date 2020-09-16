@@ -497,7 +497,7 @@ util_get_router_ipv6(char *dest, int size)
     f1 = NULL;
     retval = false;
 
-    snprintf(cmd, sizeof(cmd), "ip -6 r | awk '$1 == \"default\" && $3 != \"::\" {print $5 \"%%\" $7}'");
+    snprintf(cmd, sizeof(cmd), "ip -6 route show default | awk '$2 != \"from\" {print $3 \"%%\" $5}'");
     f1 = popen(cmd, "r");
     if (!f1) {
         LOGE("Failed to get ipv6 route info");
@@ -627,7 +627,7 @@ util_get_ipv6_global_interface(char *ifn, int ifn_size)
     f1 = NULL;
     retval = false;
 
-    snprintf(cmd, sizeof(cmd), "ip -6 r | awk '$1 == \"default\" && $3 != \"::\" {print $7}'");
+    snprintf(cmd, sizeof(cmd), "ip -6 route show default | awk '$2 != \"from\" {print $5}'");
     f1 = popen(cmd, "r");
     if (!f1) {
         LOGE("Failed to get ipv6 route info");

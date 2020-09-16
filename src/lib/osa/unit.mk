@@ -40,6 +40,7 @@ UNIT_SRC += src/os_proc.c
 UNIT_SRC += src/os_file_ops.c
 UNIT_SRC += src/os_file.c
 UNIT_SRC += src/os_random.c
+UNIT_SRC += src/os_assert.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 ifeq ($(BUILD_WITH_LIBGCC_BACKTRACE),y)

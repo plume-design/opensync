@@ -182,6 +182,29 @@ cm2_util_get_link_is_used(struct schema_Connection_Manager_Uplink *uplink)
 }
 
 static bool
+cm2_util_is_ifname_on_stalist(const char *ifname)
+{
+#ifndef CONFIG_OVSDB_BOOTSTRAP_WIFI_STA_LIST
+    return false;
+#else
+    char stalist[256];
+    char *iface;
+    char *pair;
+
+    STRSCPY_WARN(stalist, CONFIG_OVSDB_BOOTSTRAP_WIFI_STA_LIST);
+    pair = strtok (stalist," ");
+    while (pair != NULL) {
+        iface = strstr(pair, ":");
+        if (iface && strcmp(iface + 1, ifname) == 0)
+            return true;
+        pair = strtok(NULL, " ");
+    }
+    
+    return false;
+#endif
+}
+
+static bool
 cm2_util_vif_is_sta(const char *ifname)
 {
     struct schema_Wifi_VIF_Config vconf;
@@ -203,12 +226,7 @@ cm2_util_vif_is_sta(const char *ifname)
      * interfaces so we're stuck with wl%d and wl%d.%d.
      * Moreover extenders are expected (due to apparent
      * wl driver limitation) to use wl%d primary interfaces
-     * for station role. However non-extender devices will
-     * use wl%d as an ap interface. This isn't a problem
-     * because we can check cm2_is_extender() and filter
-     * that case out.
-     *
-     * TODO: define a target api as this is platform dependant
+     * for station role.
      */
 
     if (!cm2_is_extender())
@@ -222,12 +240,10 @@ cm2_util_vif_is_sta(const char *ifname)
                 SCHEMA_COLUMN(Wifi_VIF_State, if_name), ifname, &vstate))
         return !strcmp(vstate.mode, "sta");
 
-    LOGI("%s: %s: unable to find in ovsdb, guessing", __func__, ifname);
+    LOGI("%s: %s: unable to find in ovsdb, checking interfaces",
+         __func__, ifname);
 
-    if (strstr(ifname, "wl") == ifname && !strstr(ifname, "."))
-        return true;
-
-    if (strstr(ifname, "bhaul-sta") == ifname)
+    if (cm2_util_is_ifname_on_stalist(ifname))
         return true;
 
     LOGI("%s: %s: either not a sta, or unable to infer", __func__, ifname);
@@ -1448,8 +1464,14 @@ void cm2_check_master_state_links(void) {
 
     for (i = 0; i < count; i++) {
         link = (struct schema_Wifi_Master_State *) (link_p + table_Wifi_Master_State.schema_size * i);
+
+        if (cm2_util_is_wds_station(link->if_name))
+            continue;
+
         if (cm2_util_vif_is_sta(link->if_name) &&
-            !cm2_util_is_wds_station(link->if_name)) {
+            link->inet_addr_exists &&
+            strcmp(link->inet_addr, "0.0.0.0") != 0) {
+
             LOGN("%s: Trigger creating gre", link->if_name);
 
             ret = cm2_ovsdb_insert_Wifi_Inet_Config(link);

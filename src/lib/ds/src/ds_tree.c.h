@@ -32,6 +32,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdbool.h>
 #include <string.h>
 
+#include "osa_assert.h"
+
 #include "ds_tree.h"
 
 static inline void              *ds_tree_node_key(ds_tree_node_t *node);
@@ -204,7 +206,7 @@ static inline void* ds_tree_ifirst(ds_tree_iter_t *iter, ds_tree_t *root)
 /**
  * Retrieve the next node
  */
-static inline void* ds_tree_inext(ds_tree_iter_t *iter)
+static inline void* ds_tree_inext_err(ds_tree_iter_t *iter)
 {
     if (iter->oti_ndel != iter->oti_root->ot_ndel)
     {
@@ -219,10 +221,17 @@ static inline void* ds_tree_inext(ds_tree_iter_t *iter)
     return NODE_TO_CONT(iter->oti_curr, iter->oti_root->ot_cof);
 }
 
+static inline void* ds_tree_inext(ds_tree_iter_t *iter)
+{
+    void *data = ds_tree_inext_err(iter);
+    ASSERT(data != DS_ITER_ERROR, "ds_tree: inext: [%p] iteration error", iter->oti_root);
+    return data;
+}
+
 /**
- * Retrieve the next node while deleting the current node
+ * Delete and return the current node
  */
-static inline void* ds_tree_iremove(ds_tree_iter_t *iter)
+static inline void* ds_tree_iremove_err(ds_tree_iter_t *iter)
 {
     if (iter->oti_ndel != iter->oti_root->ot_ndel)
     {
@@ -243,6 +252,13 @@ static inline void* ds_tree_iremove(ds_tree_iter_t *iter)
     iter->oti_ndel++;
 
     return NODE_TO_CONT(curr, iter->oti_root->ot_cof);
+}
+
+static inline void* ds_tree_iremove(ds_tree_iter_t *iter)
+{
+    void *data = ds_tree_iremove_err(iter);
+    ASSERT(data != DS_ITER_ERROR, "ds_tree: iremove: [%p] iteration error", iter->oti_root);
+    return data;
 }
 
 /*

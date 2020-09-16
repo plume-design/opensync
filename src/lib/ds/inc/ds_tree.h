@@ -59,6 +59,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ds_tree_foreach_iter(tree, p, iter) \
     for (p = ds_tree_ifirst(iter, tree); p != NULL; p = ds_tree_inext(iter))
 
+#define ds_tree_foreach_iter_err(tree, p, iter) \
+    for (p = ds_tree_ifirst(iter, tree); p != NULL; p = ds_tree_inext_err(iter))
+
 typedef struct ds_tree_node ds_tree_node_t;
 typedef struct ds_tree ds_tree_t;
 typedef struct ds_tree_iter ds_tree_iter_t;
@@ -127,6 +130,8 @@ static inline void  *ds_tree_remove(ds_tree_t *root, void *data);
  * ===========================================================================
  */
 static inline void  *ds_tree_ifirst(ds_tree_iter_t *iter, ds_tree_t *root);
+static inline void  *ds_tree_inext_err(ds_tree_iter_t *iter);
+static inline void  *ds_tree_iremove_err(ds_tree_iter_t *iter);
 static inline void  *ds_tree_inext(ds_tree_iter_t *iter);
 static inline void  *ds_tree_iremove(ds_tree_iter_t *iter);
 

@@ -25,6 +25,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include <stdlib.h>
+#include <assert.h>
+
+#include "osa_assert.h"
 
 #include "ds_dlist.h"
 
@@ -237,7 +240,7 @@ static inline void* ds_dlist_ifirst(ds_dlist_iter_t* iter, ds_dlist_t* list)
 /**
  * Return the next node
  */
-static inline void* ds_dlist_inext(ds_dlist_iter_t* iter)
+static inline void* ds_dlist_inext_err(ds_dlist_iter_t *iter)
 {
     if (iter->odi_list->od_ndel != iter->odi_ndel)
     {
@@ -253,7 +256,7 @@ static inline void* ds_dlist_inext(ds_dlist_iter_t* iter)
     return NODE_TO_CONT(iter->odi_curr, iter->odi_list->od_cof);
 }
 
-static inline void* ds_dlist_iinsert(ds_dlist_iter_t *iter, void *data)
+static inline void* ds_dlist_iinsert_err(ds_dlist_iter_t *iter, void *data)
 {
     if (iter->odi_list->od_ndel != iter->odi_ndel)
     {
@@ -273,7 +276,7 @@ static inline void* ds_dlist_iinsert(ds_dlist_iter_t *iter, void *data)
 /**
  * Remove the current iteration element and return the next element;
  */
-static inline void* ds_dlist_iremove(ds_dlist_iter_t* iter)
+static inline void* ds_dlist_iremove_err(ds_dlist_iter_t *iter)
 {
     if (iter->odi_list->od_ndel != iter->odi_ndel)
     {
@@ -290,6 +293,27 @@ static inline void* ds_dlist_iremove(ds_dlist_iter_t* iter)
     iter->odi_ndel++;
 
     return NODE_TO_CONT(node, iter->odi_list->od_cof);
+}
+
+static inline void* ds_dlist_inext(ds_dlist_iter_t *iter)
+{
+    void *data = ds_dlist_inext_err(iter);
+    ASSERT(data != DS_ITER_ERROR, "ds_dlist: inext: [%p] iteration error", iter->odi_list);
+    return data;
+}
+
+static inline void* ds_dlist_iinsert(ds_dlist_iter_t *iter, void *data)
+{
+    data = ds_dlist_iinsert_err(iter, data);
+    ASSERT(data != DS_ITER_ERROR, "ds_dlist: iinsert: [%p] iteration error", iter->odi_list);
+    return data;
+}
+
+static inline void* ds_dlist_iremove(ds_dlist_iter_t *iter)
+{
+    void *data = ds_dlist_iremove_err(iter);
+    ASSERT(data != DS_ITER_ERROR, "ds_dlist: iremove: [%p] iteration error", iter->odi_list);
+    return data;
 }
 
 /*

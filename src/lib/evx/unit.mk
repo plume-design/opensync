@@ -37,10 +37,9 @@ ifdef CONFIG_LIBEVX_USE_CARES
 BUILD_HAVE_LIBCARES=y
 endif
 
-UNIT_CFLAGS += -Isrc/lib/log/inc
-
 UNIT_SRC += src/evx_debounce.c
 UNIT_SRC += src/evx_debounce_call.c
+UNIT_DEPS += src/lib/log
 UNIT_DEPS += src/lib/ds
 UNIT_DEPS += src/lib/const
 

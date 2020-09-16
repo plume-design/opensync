@@ -51,10 +51,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ds_dlist_foreach(list, p)       \
     for (p = ds_dlist_head(list); p != NULL; p = ds_dlist_next(list, p))
 
-#define ds_dlist_foreach_iter ds_dlist_iforeach
+#define ds_dlist_iforeach ds_dlist_foreach_iter
 
-#define ds_dlist_iforeach(list, p, iter) \
+#define ds_dlist_foreach_iter(list, p, iter) \
     for (p = ds_dlist_ifirst(&iter, list); p != NULL; p = ds_dlist_inext(&iter))
+
+#define ds_dlist_foreach_iter_err(list, p, iter) \
+    for (p = ds_dlist_ifirst(&iter, list); p != NULL; p = ds_dlist_inext_err(&iter))
 
 /*
  * ============================================================
@@ -119,8 +122,11 @@ static inline void  *ds_dlist_remove_before(ds_dlist_t *list, void *before);
  * ===========================================================================
  */
 static inline void  *ds_dlist_ifirst(ds_dlist_iter_t* iter, ds_dlist_t* list);
-static inline void  *ds_dlist_inext(ds_dlist_iter_t* iter);
+static inline void  *ds_dlist_iinsert_err(ds_dlist_iter_t *iter, void *data);
+static inline void  *ds_dlist_inext_err(ds_dlist_iter_t *iter);
+static inline void  *ds_dlist_iremove_err(ds_dlist_iter_t *iter);
 static inline void  *ds_dlist_iinsert(ds_dlist_iter_t *iter, void *data);
+static inline void  *ds_dlist_inext(ds_dlist_iter_t *iter);
 static inline void  *ds_dlist_iremove(ds_dlist_iter_t* iter);
 
 #include "../src/ds_dlist.c.h"

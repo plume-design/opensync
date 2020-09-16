@@ -281,7 +281,7 @@ int execsh_fn_a(execsh_fn_t *fn, void *ctx, const char *script, char *__argv[])
         goto exit;
     }
 
-    retval = WEXITSTATUS(retval);
+    retval = WEXITSTATUS(wstat);
 
 exit:
     if (loop != NULL) ev_loop_destroy(loop);
@@ -296,7 +296,7 @@ exit:
         if (perr[ii] >= 0) close(perr[ii]);
     }
 
-    return WEXITSTATUS(retval);
+    return retval;
 }
 
 void __execsh_fn_std_write(struct ev_loop *loop, ev_io *w, int revent)

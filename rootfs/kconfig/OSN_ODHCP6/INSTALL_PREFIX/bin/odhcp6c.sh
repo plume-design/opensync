@@ -33,26 +33,6 @@ INSTALL_PREFIX={{INSTALL_PREFIX}}
 
 OPTS_FILE=/var/run/odhcp6c_$1.opts
 
-route_add()
-{
-    local addr="$1"
-    local gw="$2"
-    local metric="$3"
-    local dev="$4"
-    local from="$5"
-    local proto="$6"
-
-    if [ -n "$gw" -a -n "$from" ]; then
-        if [ -z $(ip -6 route show "$addr" via "$gw" dev "$device" from "$from" proto "$proto" | grep "metric $metric") ]; then
-            ip -6 route add "$addr" via "$gw" metric "$metric" dev "$device" from "$from" proto "$proto"
-        fi
-    else
-        if [ -z $(ip -6 route show "$addr" dev "$device" proto "$proto" | grep "metric $metric") ]; then
-            ip -6 route add "$addr" metric "$metric" dev "$device" proto "$proto"
-        fi
-    fi
-}
-
 update_resolv()
 {
     dns_reset "$1_ipv6"
@@ -155,14 +135,14 @@ setup_interface()
         local metric="${entry%%,*}"
 
         if [ -n "$gw" ]; then
-            route_add "$addr" "$gw" "$metric" "$device" "::/128" ra
+            ip -6 route replace "$addr" via "$gw" metric "$metric" dev "$device" proto ra
         else
-            route_add "$addr" "" "$metric" "$device" "" ra
+            ip -6 route replace "$addr" metric "$metric" dev "$device" proto ra
         fi
 
         for prefix in $PREFIXES; do
             local paddr="${prefix%%,*}"
-            [ -n "$gw" ] && route_add "$addr" "$gw" "$metric" "$device" "$paddr" ra
+            [ -n "$gw" ] && ip -6 route replace "$addr" via "$gw" metric "$metric" dev "$device" from "$paddr" proto ra
         done
     done
 

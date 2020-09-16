@@ -24,41 +24,23 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef OSA_ASSERT_H_INCLUDED
-#define OSA_ASSERT_H_INCLUDED
+#include "log.h"
 
-#include <assert.h>
-#include <stdlib.h>
-#include <string.h>
-#include <signal.h>
-#include <stdio.h>
+#include "osa_assert.h"
 
-#include "os_backtrace.h"
-
-#define ASSERT_EXIT_RESTART     64
-
-#define ASSERT_RET(cond, ret, fmt...)                                              \
-   if (!(cond))                                                                    \
-{                                                                                  \
-   osa_assert_dump(#cond, __FUNCTION__, __FILE__, __LINE__, fmt);                  \
-   backtrace_dump();                                                               \
-   exit(ret); /* Exit with errors .... */                                          \
-}
-
-/** Asserts restart the agent, while errors shut it down */
-#define ASSERT(cond, fmt...)   ASSERT_RET(cond, ASSERT_EXIT_RESTART, fmt)
-#define FAIL(cond, fmt...)     ASSERT_RET(cond, 1, fmt)
-
-#define ASSERT_INVALID_ARG "invalid argument"
-
-#define ASSERT_ARG(cond) ASSERT(cond, ASSERT_INVALID_ARG)
-
-extern void osa_assert_dump(
+void osa_assert_dump(
         const char *cond,
         const char *func,
         const char *file,
         const int line,
         const char *fmt,
-        ...);
+        ...)
+{
+    char buf[1024];
+    va_list va;
 
-#endif /* OSA_ASSERT_H_INCLUDED */
+    va_start(va, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, va);
+    LOG(ALERT, "%s: ASSERT: %s, %s:%d %s", func, cond, file, line, buf);
+    va_end(va);
+}
