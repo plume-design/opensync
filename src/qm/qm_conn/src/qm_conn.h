@@ -34,6 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define QM_REQUEST_TAG "QREQ"
 #define QM_REQUEST_VER 2
+#define QM_CONN_DEFAULT_TIMEOUT 2.0 // timeout in seconds (float)
 
 enum qm_req_cmd
 {
@@ -140,6 +141,28 @@ char *qm_conn_status_str(enum qm_res_conn_status x);
 bool qm_conn_accept(int listen_fd, int *accept_fd);
 bool qm_conn_server(int *pfd);
 bool qm_conn_client(int *pfd);
+
+/**
+ * @brief Set the qm_conn default timeout
+ *
+ * This overrides the default timeout of QM_CONN_DEFAULT_TIMEOUT
+ * If set to 0 then never timeout
+ *
+ * @param timeout timeout in seconds (float)
+ */
+void qm_conn_set_default_timeout(double timeout);
+
+/**
+ * @brief Set the qm_conn timeout for a specific session
+ *
+ * This overrides the qm_conn timeout for a specific session
+ * If set to 0 then never timeout
+ *
+ * @param fd qm_conn session
+ * @param timeout timeout in seconds (float)
+ */
+bool qm_conn_set_fd_timeout(int fd, double timeout);
+
 
 void qm_req_init(qm_request_t *req);
 bool qm_req_valid(qm_request_t *req);

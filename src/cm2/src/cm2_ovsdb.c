@@ -1440,6 +1440,8 @@ static void cm2_connection_set_is_used(struct schema_Connection_Manager_Uplink *
        cm2_ovsdb_connection_update_bridge_state(uplink->if_name, CONFIG_TARGET_LAN_BRIDGE_NAME);
     }
 
+    cm2_update_limp_state(uplink->if_type);
+
     ret = cm2_ovsdb_connection_update_used_state(uplink->if_name, true);
     if (!ret)
         LOGW("%s: %s: Failed to set used state", __func__, uplink->if_name);
@@ -2161,6 +2163,7 @@ bool cm2_ovsdb_validate_bridge_port_conf(char *bname, char *pname)
     return true;
 }
 
+static
 void cm2_util_sync_limp_state(char *br, char *port, bool state)
 {
     bool u;

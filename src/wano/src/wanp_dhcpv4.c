@@ -148,8 +148,6 @@ enum wanp_dhcpv4_state wanp_dhcpv4_state_RUNNING(
     if (action == wanp_dhcpv4_do_STATE_INIT)
     {
         struct wano_plugin_status ws = WANO_PLUGIN_STATUS(WANP_OK);
-        STRSCPY(ws.ws_ifname, wd4->wd4_handle.wh_ifname);
-        STRSCPY(ws.ws_iftype, "eth");
         wd4->wd4_status_fn(&wd4->wd4_handle, &ws);
     }
 

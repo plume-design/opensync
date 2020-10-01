@@ -268,6 +268,7 @@ void test_udp_ipv4(void)
     memset(data, 0, sizeof(data));
     memcpy(data, parser->data, strlen(expected_data));
     TEST_ASSERT_EQUAL_STRING(expected_data, data);
+    TEST_ASSERT_TRUE(parser->packet_len != parser->parsed);
 }
 
 
@@ -395,6 +396,48 @@ void test_icmp4_reply(void)
 }
 
 
+/**
+ * @brief Parsing pcap.c's pkt_udp_no_data
+ *
+ * pkt_udp_no_data is a udp packet over IPv4 with no data.
+ */
+void test_udp_ipv4_no_data(void)
+{
+    struct net_header_parser *parser;
+    struct eth_header *eth_header;
+    char *src_ip = "10.2.0.43";
+    char *dst_ip = "10.2.0.2";
+    struct in_addr src_addr;
+    struct in_addr dst_addr;
+    struct iphdr *ip_hdr;
+    size_t len;
+
+    parser = &g_parser;
+    PREPARE_UT(pkt_udp_no_data);
+
+    /* Validate parsing success */
+    len = net_header_parse(parser);
+    TEST_ASSERT_TRUE(len != 0);
+
+    LOGI("%s: %s", __func__,
+         net_header_fill_info_buf(log_buf, NET_HDR_BUFF_SIZE, parser));
+
+    /* validate vlan id */
+    eth_header = &parser->eth_header;
+    TEST_ASSERT_EQUAL_UINT(0, eth_header->vlan_id);
+
+    ip_hdr = net_header_get_ipv4_hdr(parser);
+    TEST_ASSERT_NOT_NULL(ip_hdr);
+    TEST_ASSERT_EQUAL_INT(IPPROTO_UDP, parser->ip_protocol);
+
+    inet_pton(AF_INET, src_ip, &src_addr);
+    inet_pton(AF_INET, dst_ip, &dst_addr);
+    TEST_ASSERT_EQUAL_UINT32(src_addr.s_addr, ip_hdr->saddr);
+    TEST_ASSERT_EQUAL_UINT32(dst_addr.s_addr, ip_hdr->daddr);
+    TEST_ASSERT_TRUE(parser->packet_len == parser->parsed);
+}
+
+
 int main(int argc, char *argv[])
 {
     (void)argc;
@@ -411,5 +454,7 @@ int main(int argc, char *argv[])
     RUN_TEST(test_icmpv6_pcap_parse);
     RUN_TEST(test_icmp4_request);
     RUN_TEST(test_icmp4_reply);
+    RUN_TEST(test_udp_ipv4_no_data);
+
     return UNITY_END();
 }

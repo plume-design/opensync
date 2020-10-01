@@ -735,24 +735,28 @@ bool target_device_connectivity_check(const char *ifname,
     ret = true;
 
     if (opts & LINK_CHECK) {
+        WARN_ON(!target_device_wdt_ping());
         cstate->link_state = util_connectivity_link_check(ifname);
         if (!cstate->link_state)
             ret = false;
     }
 
     if (opts & ROUTER_CHECK) {
+        WARN_ON(!target_device_wdt_ping());
         cstate->router_state = util_connectivity_router_check();
         if (!cstate->router_state)
             ret = false;
     }
 
     if (opts & INTERNET_CHECK) {
+        WARN_ON(!target_device_wdt_ping());
         cstate->internet_state = util_connectivity_internet_check();
         if (!cstate->internet_state)
             ret = false;
     }
 
     if (opts & NTP_CHECK) {
+        WARN_ON(!target_device_wdt_ping());
         cstate->ntp_state = util_ntp_check();
         if (!cstate->ntp_state)
             ret = false;

@@ -553,19 +553,35 @@ err_free_fkey:
     return NULL;
 }
 
+void net_md_acc_destroy_cb(struct net_md_stats_accumulator *acc)
+{
+    struct net_md_aggregator *aggr;
+
+    aggr = acc->aggr;
+    if (aggr == NULL) return;
+    if (aggr->on_acc_destroy == NULL) return;
+
+    aggr->on_acc_destroy(aggr, acc);
+}
+
 
 void net_md_free_acc(struct net_md_stats_accumulator *acc)
 {
     if (acc == NULL) return;
 
+    net_md_acc_destroy_cb(acc);
+
     free_net_md_flow_key(acc->key);
     free_flow_key(acc->fkey);
     if (acc->free_plugins != NULL) acc->free_plugins(acc);
+
     free(acc);
 }
 
 
-struct net_md_stats_accumulator * net_md_set_acc(struct net_md_flow_key *key)
+struct net_md_stats_accumulator *
+net_md_set_acc(struct net_md_aggregator *aggr,
+               struct net_md_flow_key *key)
 {
     struct net_md_stats_accumulator *acc;
 
@@ -581,6 +597,9 @@ struct net_md_stats_accumulator * net_md_set_acc(struct net_md_flow_key *key)
     if (acc->fkey == NULL) goto err_free_md_flow_key;
 
     acc->fkey->state.report_attrs = true;
+
+    if (aggr->on_acc_create != NULL) aggr->on_acc_create(aggr, acc);
+    acc->aggr = aggr;
 
     return acc;
 
@@ -632,7 +651,9 @@ void net_md_free_eth_pair(struct net_md_eth_pair *pair)
 }
 
 
-struct net_md_eth_pair * net_md_set_eth_pair(struct net_md_flow_key *key)
+struct net_md_eth_pair *
+net_md_set_eth_pair(struct net_md_aggregator *aggr,
+                    struct net_md_flow_key *key)
 {
     struct net_md_eth_pair *eth_pair;
 
@@ -641,7 +662,7 @@ struct net_md_eth_pair * net_md_set_eth_pair(struct net_md_flow_key *key)
     eth_pair = calloc(1, sizeof(*eth_pair));
     if (eth_pair == NULL) return NULL;
 
-    eth_pair->mac_stats = net_md_set_acc(key);
+    eth_pair->mac_stats = net_md_set_acc(aggr, key);
     if (eth_pair->mac_stats == NULL) goto err_free_eth_pair;
 
     ds_tree_init(&eth_pair->ethertype_flows, net_md_ethertype_cmp,
@@ -681,10 +702,9 @@ net_md_tree_lookup_acc(struct net_md_aggregator *aggr,
     if (flow == NULL) return NULL;
 
     /* Allocate the flow accumulator */
-    acc = net_md_set_acc(key);
+    acc = net_md_set_acc(aggr, key);
     if (acc == NULL) goto err_free_flow;
 
-    acc->aggr = aggr;
     flow->tuple_stats = acc;
     ds_tree_insert(tree, flow, acc->key);
     aggr->total_flows++;
@@ -737,7 +757,7 @@ struct net_md_eth_pair * net_md_lookup_eth_pair(struct net_md_aggregator *aggr,
     if (eth_pair != NULL) return eth_pair;
 
     /* Allocate and insert a new ethernet pair */
-    eth_pair = net_md_set_eth_pair(key);
+    eth_pair = net_md_set_eth_pair(aggr, key);
     if (eth_pair == NULL) return NULL;
 
     ds_tree_insert(&aggr->eth_pairs, eth_pair, eth_pair->mac_stats->key);

@@ -24,6 +24,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include <unistd.h>
 #include <ev.h>
 #include <stdio.h>
 #include <string.h>
@@ -101,6 +102,8 @@ void wano_stop_builtin_ifaces(void)
 
 int main(int argc, char *argv[])
 {
+    srand(getpid());
+
     // Parse command-line arguments
     if (os_get_opt(argc, argv, &wano_log_severity))
     {
@@ -127,7 +130,21 @@ int main(int argc, char *argv[])
     // Initialize the Wifi_Inet_State/Wifi_Master_State watchers
     if (!wano_inet_state_init())
     {
-        LOG(EMERG, "Error initializing WANO Inet_State.");
+        LOG(EMERG, "Error initializing Inet_State monitor.");
+        return 1;
+    }
+
+    // Initialize the Connection_Manager_Uplink watcher
+    if (!wano_connmgr_uplink_init())
+    {
+        LOG(EMERG, "Error initializing Connection_Manager_Uplink monitor.");
+        return 1;
+    }
+
+    // Initialize the Port table watcher
+    if (!wano_ovs_port_init())
+    {
+        LOG(EMERG, "Error initializing Port table monitor.");
         return 1;
     }
 
@@ -135,7 +152,7 @@ int main(int argc, char *argv[])
     module_init();
 
     // Delete all Connection_Manager_Uplink rows
-    if (wano_connection_manager_uplink_flush())
+    if (!wano_connmgr_uplink_flush())
     {
         LOG(WARN, "wano: Error clearing the Connection_Manager_Uplink table.");
     }

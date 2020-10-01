@@ -134,7 +134,7 @@ void cm2_update_bridge_cfg(char *bridge, char *port, bool brop,
 
     r = cm2_ovs_insert_port_into_bridge(bridge, port, brop);
     if (!r)
-        LOGW("Failed to update port %s in %s [state = %d]",
+        LOGI("Failed to update port %s in %s [state = %d]",
              port, bridge, mstate);
 }
 
@@ -521,9 +521,9 @@ char* cm2_get_uplink_name(void)
     return g_state.link.if_name;
 }
 
-void cm2_update_limp_state(void)
+void cm2_update_limp_state(const char *iftype)
 {
-    if (!cm2_is_eth_type(g_state.link.if_type))
+    if (!cm2_is_eth_type(iftype))
         return;
 
     if (cm2_is_wan_bridge())

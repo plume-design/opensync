@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ds_tree.h"
 #include "log.h"
 #include "util.h"
+#include "os_time.h"
 
 #include "inet.h"
 #include "inet_dhsnif.h"
@@ -882,9 +883,10 @@ void __inet_dhsnif_process_dhcp(
             break;
 
         case DHCP_MSG_ACK:
-            /* Update the IP address */
+            /* Update the IP address and timestamp */
             lease->le_info.dl_ipaddr = OSN_IP_ADDR_INIT;
             lease->le_info.dl_ipaddr.ia_addr = dhcp->dhcp_yiaddr;
+            lease->le_info.dl_leasetime = clock_mono_double();
 
             LOG(NOTICE, "inet_dhsnif: ACK IP:"PRI_osn_ip_addr" MAC:"PRI_osn_mac_addr" Hostname:%s",
                     FMT_osn_ip_addr(lease->le_info.dl_ipaddr),

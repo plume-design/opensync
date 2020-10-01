@@ -390,5 +390,5 @@ bool cm2_is_wifi_type(const char *if_type);
 void cm2_delayed_eth_update(char *if_name, int timeout);
 bool cm2_is_iface_in_bridge(const char *bridge, const char *port);
 char* cm2_get_uplink_name(void);
-void cm2_update_limp_state(void);
+void cm2_update_limp_state(const char *iftype);
 #endif /* CM2_H_INCLUDED */

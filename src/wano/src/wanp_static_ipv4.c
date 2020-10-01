@@ -310,10 +310,6 @@ enum wanp_static_ipv4_state wanp_static_ipv4_state_RUNNING(
     if (action == wanp_static_ipv4_do_STATE_INIT)
     {
         struct wano_plugin_status ws = WANO_PLUGIN_STATUS(WANP_OK);
-
-        STRSCPY(ws.ws_ifname, h->handle.wh_ifname);
-        STRSCPY(ws.ws_iftype, "eth");
-
         h->status_fn(&h->handle, &ws);
     }
 

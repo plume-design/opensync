@@ -40,4 +40,18 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 bool wano_inet_state_init(void);
 
+/*
+ * ===========================================================================
+ *  Connection_Manager_Uplink
+ * ===========================================================================
+ */
+bool wano_connmgr_uplink_init(void);
+
+/*
+ * ===========================================================================
+ *  Port table
+ * ===========================================================================
+ */
+bool wano_ovs_port_init(void);
+
 #endif /* WANO_INTERNAL_H_INCLUDED */

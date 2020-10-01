@@ -663,6 +663,9 @@ hapd_bss_get_wps(struct hapd *hapd,
     const char *pbc_status;
     char *ptr;
 
+    if (!buf)
+        return;
+
     ptr = strdupa(buf);
     if (WARN_ON(!ptr))
         return;

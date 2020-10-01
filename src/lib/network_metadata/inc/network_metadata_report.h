@@ -121,6 +121,8 @@ struct net_md_aggregator
     bool (*send_report)(struct net_md_aggregator *, char *);
     bool (*neigh_lookup)(struct sockaddr_storage *, os_macaddr_t *);
     bool (*process)(struct net_md_stats_accumulator *);
+    void (*on_acc_create)(struct net_md_aggregator *, struct net_md_stats_accumulator *);
+    void (*on_acc_destroy)(struct net_md_aggregator *, struct net_md_stats_accumulator *);
 };
 
 
@@ -149,6 +151,10 @@ struct net_md_aggregator_set
 
     /* a report IP to mac mapping routine */
     bool (*neigh_lookup)(struct sockaddr_storage *, os_macaddr_t *);
+
+    /* callback on accumulator creation */
+    void (*on_acc_create)(struct net_md_aggregator *, struct net_md_stats_accumulator *);
+    void (*on_acc_destroy)(struct net_md_aggregator *, struct net_md_stats_accumulator *);
 };
 
 

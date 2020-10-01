@@ -102,8 +102,10 @@ bool net_md_set_ip(uint8_t ipv, uint8_t *ip, uint8_t **ip_tgt);
 struct node_info * net_md_set_node_info(struct node_info *info);
 void net_md_free_acc(struct net_md_stats_accumulator *acc);
 void net_md_free_flow_tree(ds_tree_t *tree);
-struct net_md_stats_accumulator * net_md_set_acc(struct net_md_flow_key *key);
-struct net_md_eth_pair * net_md_set_eth_pair(struct net_md_flow_key *key);
+struct net_md_stats_accumulator * net_md_set_acc(struct net_md_aggregator *aggr,
+                                                 struct net_md_flow_key *key);
+struct net_md_eth_pair * net_md_set_eth_pair(struct net_md_aggregator *aggr,
+                                             struct net_md_flow_key *key);
 struct net_md_eth_pair * net_md_lookup_eth_pair(struct net_md_aggregator *aggr,
                                                 struct net_md_flow_key *key);
 bool is_eth_only(struct net_md_flow_key *key);

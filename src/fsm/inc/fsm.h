@@ -317,6 +317,7 @@ struct fsm_mgr
     char pid[16];             /* manager's pid */
     struct sysinfo sysinfo;   /* system information */
     uint64_t max_mem;         /* max amount of memory allowed in MB */
+    time_t qm_backoff;        /* backoff interval on qm connection errors */
     bool (*init_plugin)(struct fsm_session *); /* DSO plugin init */
     bool (*flood_mod)(struct fsm_session *);   /* tap flood mode update */
     int (*get_br)(char *if_name, char *bridge, size_t len); /* get lan bridge */

@@ -558,6 +558,58 @@ fsm_dpi_report_filter(struct net_md_stats_accumulator *acc)
 
 
 /**
+ * @brief callback from the accumulator creation
+ *
+ * Called on the creation of an accumulator
+ * @param aggr the core dpi aggregator
+ * @param the accumulator being created
+ */
+void
+fsm_dpi_on_acc_creation(struct net_md_aggregator *aggr,
+                        struct net_md_stats_accumulator *acc)
+{
+    /* Place holder */
+}
+
+
+/**
+ * @brief check for UDP flow with no data
+ *
+ * @param acc the accumulator to check
+ */
+static void
+fsm_dpi_check_udp_no_data(struct net_md_stats_accumulator *acc)
+{
+    struct net_md_flow_key *key;
+
+    if (acc->counters.payload_bytes_count != 0) return;
+
+    key = acc->key;
+    if (key == NULL) return;
+
+    if (key->ipprotocol != IPPROTO_UDP) return;
+    LOGI("%s: destroying UDP flow with no payload", __func__);
+
+    net_md_log_acc(acc);
+}
+
+
+/**
+ * @brief callback to the accumulaor destruction
+ *
+ * Called on the destruction of an accumulator
+ * @param aggr the core dpi aggregator
+ * @param the accumulator being destroyed
+ */
+void
+fsm_dpi_on_acc_destruction(struct net_md_aggregator *aggr,
+                           struct net_md_stats_accumulator *acc)
+{
+    fsm_dpi_check_udp_no_data(acc);
+}
+
+
+/**
  * @brief initializes the dpi resources of a dispatcher session
  *
  * @param session the dispatcher session
@@ -592,6 +644,8 @@ fsm_init_dpi_dispatcher(struct fsm_session *session)
     aggr_set.report_type = NET_MD_REPORT_ABSOLUTE;
     aggr_set.report_filter = fsm_dpi_report_filter;
     aggr_set.send_report = net_md_send_report;
+    aggr_set.on_acc_create = fsm_dpi_on_acc_creation;
+    aggr_set.on_acc_destroy = fsm_dpi_on_acc_destruction;
     aggr = net_md_allocate_aggregator(&aggr_set);
     if (aggr == NULL) return false;
 
@@ -1137,6 +1191,26 @@ fsm_dispatch_pkt(struct net_header_parser *net_parser)
     if (drop || pass) acc->dpi_done = 1;
 }
 
+/**
+ * @brief filter packets not worth presenting to the dpi plugins
+ *
+ * @param net_parser the parsed packet
+ * @return true is to be presented, false otherwise
+ */
+static bool
+fsm_dpi_filter_packet(struct net_header_parser *net_parser)
+{
+    bool ret = true;
+
+    /* filter out UDP packets with no data */
+    if (net_parser->ip_protocol == IPPROTO_UDP)
+    {
+        ret &= (net_parser->packet_len != net_parser->parsed);
+    }
+
+    return ret;
+}
+
 
 /**
  * @brief the dispatcher plugin's packet handler
@@ -1155,6 +1229,8 @@ fsm_dpi_handler(struct fsm_session *session,
     struct fsm_dpi_dispatcher *dispatch;
     union fsm_dpi_context *dpi_context;
     struct flow_counters counters;
+    size_t payload_len;
+    bool filter;
 
     dpi_context = session->dpi;
     if (dpi_context == NULL) return;
@@ -1166,10 +1242,15 @@ fsm_dpi_handler(struct fsm_session *session,
 
     counters.packets_count = acc->counters.packets_count + 1;
     counters.bytes_count = acc->counters.bytes_count + net_parser->packet_len;
+    payload_len = net_parser->packet_len - net_parser->parsed;
+    counters.payload_bytes_count = acc->counters.payload_bytes_count + payload_len;
     net_md_set_counters(dispatch->aggr, acc, &counters);
 
     fsm_dpi_alloc_flow_context(session, acc);
     net_parser->acc = acc;
+
+    filter = fsm_dpi_filter_packet(net_parser);
+    if (!filter) return;
 
     fsm_dispatch_pkt(net_parser);
 }

@@ -44,6 +44,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define QM_SOCK_MAX_PENDING 10
 #define QM_COMPACT_SEND_SIZE (64*1024)
 
+static double qm_conn_default_timeout = QM_CONN_DEFAULT_TIMEOUT;
+
 extern const char *log_get_name();
 
 // server
@@ -100,6 +102,28 @@ bool qm_conn_accept(int listen_fd, int *accept_fd)
 
 // client
 
+void qm_conn_set_default_timeout(double timeout)
+{
+    qm_conn_default_timeout = timeout;
+}
+
+bool qm_conn_set_fd_timeout(int fd, double timeout)
+{
+    int ret;
+    struct timeval tv;
+    tv.tv_sec = (int)timeout;
+    tv.tv_usec = (int)((timeout - (int)timeout) * 1000000.0);
+    ret = setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);
+    if (ret != 0) goto error;
+    ret = setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, (const char*)&tv, sizeof tv);
+    if (ret != 0) goto error;
+    return true;
+error:
+    LOGE("setsockopt(%d,%f) = %d %d", fd, timeout, ret, errno);
+    return false;
+}
+
+
 bool qm_conn_client(int *pfd)
 {
     struct sockaddr_un addr;
@@ -113,6 +137,14 @@ bool qm_conn_client(int *pfd)
     if ( fd < 0) {
         LOG(ERR, "socket");
         return false;
+    }
+
+    // set timeout; if 0 then never timeout
+    if (qm_conn_default_timeout > 0) {
+        if (!qm_conn_set_fd_timeout(fd, qm_conn_default_timeout)) {
+            close(fd);
+            return false;
+        }
     }
 
     memset(&addr, 0, sizeof(addr));
@@ -224,7 +256,7 @@ bool qm_conn_write_req(int fd, qm_request_t *req, char *topic, void *data, int d
     return true;
 
 write_err:
-    LOG(ERR, "%s: write error %d / %d / %d", __FUNCTION__, size, ret, errno);
+    LOG(ERR, "%s: write error %d / %d / %d %s", __FUNCTION__, size, ret, errno, strerror(errno));
     return false;
 
 }
@@ -272,7 +304,7 @@ alloc_err:
     LOG(ERR, "%s: alloc %d", __FUNCTION__, size);
     goto error;
 read_err:
-    LOG(ERR, "%s: read error %d / %d / %d", __FUNCTION__, size, ret, errno);
+    LOG(ERR, "%s: read error %d / %d / %d %s", __FUNCTION__, size, ret, errno, strerror(errno));
 error:
     free(*topic);
     free(*data);
@@ -387,7 +419,7 @@ bool qm_conn_read_res(int fd, qm_response_t *res)
     errno = 0;
     ret = read(fd, res, size);
     if (ret != size) {
-        LOG(ERR, "%s: read error %d / %d / %d", __FUNCTION__, size, ret, errno);
+        LOG(ERR, "%s: read error %d / %d / %d %s", __FUNCTION__, size, ret, errno, strerror(errno));
         res->response = QM_RESPONSE_ERROR;
         res->error = QM_ERROR_CONNECT;
         return false;

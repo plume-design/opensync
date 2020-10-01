@@ -89,8 +89,9 @@ struct flow_key
  */
 struct flow_counters
 {
-    uint64_t packets_count; /*!< packet count */
-    uint64_t bytes_count;   /*!< bytes count */
+    uint64_t packets_count;       /*!< packet count */
+    uint64_t bytes_count;         /*!< bytes count */
+    uint64_t payload_bytes_count; /*!< payload bytes count */
 };
 
 /**

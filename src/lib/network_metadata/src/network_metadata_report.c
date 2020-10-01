@@ -120,6 +120,8 @@ net_md_allocate_aggregator(struct net_md_aggregator_set *aggr_set)
     aggr->send_report = aggr_set->send_report;
     if (aggr_set->send_report == NULL) aggr->send_report = net_md_send_report;
     aggr->neigh_lookup = aggr_set->neigh_lookup;
+    aggr->on_acc_create = aggr_set->on_acc_create;
+    aggr->on_acc_destroy = aggr_set->on_acc_destroy;
 
     return aggr;
 

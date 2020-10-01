@@ -289,6 +289,10 @@ void sm_device_thermal_report (EV_P_ ev_timer *w, int revents)
         thermal_record->txchainmask_qty = radio_idx;
         radio_idx++;
         thermal_valid = true;
+        LOG(DEBUG,
+            "Sending device stats tx chain %s=%u",
+            radio_get_name_from_type(tx_chainmask.type),
+            tx_chainmask.value);
     }
 
     rc = target_stats_device_fanrpm_get(&fan_rpm);
@@ -296,6 +300,9 @@ void sm_device_thermal_report (EV_P_ ev_timer *w, int revents)
     {
         thermal_record->fan_rpm = fan_rpm;
         thermal_valid = true;
+        LOG(DEBUG,
+            "Sending device stats fan rpm=%u",
+            thermal_record->fan_rpm);
     }
     else
     {

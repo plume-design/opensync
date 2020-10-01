@@ -313,8 +313,6 @@ enum wanp_vlan_state wanp_vlan_state_IDLE(
         case wanp_vlan_do_STATE_INIT:
         {
             struct wano_plugin_status ws = WANO_PLUGIN_STATUS(WANP_BUSY);
-            STRSCPY(ws.ws_ifname, self->wvl_handle.wh_ifname);
-            STRSCPY(ws.ws_iftype, "eth");
             self->wvl_status_fn(&self->wvl_handle, &ws);
             break;
         }
@@ -359,8 +357,6 @@ enum wanp_vlan_state wanp_vlan_state_ERROR(
         case wanp_vlan_do_STATE_INIT:
         {
             struct wano_plugin_status ws = WANO_PLUGIN_STATUS(WANP_ERROR);
-            STRSCPY(ws.ws_ifname, self->wvl_handle.wh_ifname);
-            STRSCPY(ws.ws_iftype, "eth");
             self->wvl_status_fn(&self->wvl_handle, &ws);
             break;
         }

@@ -49,6 +49,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "wano.h"
 #include "wano_internal.h"
 
+#define WANO_PPLINE_RETRY_TIME      3       /* Retry time increment in seconds */
+#define WANO_PPLINE_RETRY_MAX       5       /* Maximum values of retries (for calculations) */
+
 /*
  * Structure describing a single plug-in running on the pipeline
  */
@@ -82,8 +85,12 @@ static void wano_ppline_runq_del(wano_ppline_t *self, struct wano_ppline_plugin 
 static void wano_ppline_runq_flush(wano_ppline_t *self);
 static wano_inet_state_event_fn_t wano_ppline_inet_state_event_fn;
 static wano_plugin_status_fn_t wano_ppline_plugin_status_fn;
+static void wano_ppline_retry_timer_fn(struct ev_loop *loop, ev_timer *w, int revent);
 static void wano_ppline_status_async_fn(struct ev_loop *, ev_async *ev, int revent);
 static void wano_ppline_plugin_timeout_fn(struct ev_loop *loop, ev_timer *w, int revent);
+static wano_connmgr_uplink_event_fn_t wano_ppline_cmu_event_fn;
+static wano_ovs_port_event_fn_t wano_ppline_ovs_port_event_fn;
+static void wano_ppline_check_freeze(wano_ppline_t *wpl);
 static void wano_ppline_reset_ipv6(wano_ppline_t *self);
 
 bool wano_ppline_init(
@@ -113,6 +120,21 @@ bool wano_ppline_init(
         return false;
     }
 
+    wano_connmgr_uplink_event_init(&self->wpl_cmu_event, wano_ppline_cmu_event_fn);
+    if (!wano_connmgr_uplink_event_start(&self->wpl_cmu_event, ifname))
+    {
+        LOG(WARN, "wano: %s: Error initializing connmgr_uplink_event object.", self->wpl_ifname);
+    }
+
+    wano_ovs_port_event_init(&self->wpl_ovs_port_event, wano_ppline_ovs_port_event_fn);
+    if (!wano_ovs_port_event_start(&self->wpl_ovs_port_event, ifname))
+    {
+        LOG(WARN, "wano: %s: Error initializing wano_ovs_port_event object.",
+                self->wpl_ifname);
+    }
+
+    ev_timer_init(&self->wpl_retry_timer, wano_ppline_retry_timer_fn, 0.0, 0.0);
+
     self->wpl_init = true;
 
     LOG(NOTICE, "wano: %s: Created WAN pipeline on interface.", ifname);
@@ -135,6 +157,12 @@ void wano_ppline_fini(wano_ppline_t *self)
     wano_inet_state_event_fini(&self->wpl_inet_state_event);
 
     wano_ppline_stop_queues(self);
+
+    /*
+     * Remove any entries that this interface might have in the
+     * Connection_Manager_Uplink table
+     */
+    (void)wano_connmgr_uplink_delete(self->wpl_ifname);
 }
 
 /*
@@ -307,7 +335,7 @@ void __wano_ppline_runq_stop(wano_ppline_t *self, struct wano_ppline_plugin *wpp
     /* If the plug-in reported its own interface for WAN, clear the uplink table */
     if (wpp->wpp_status.ws_ifname[0] != '\0')
     {
-        if (!wano_connection_manager_uplink_delete(wpp->wpp_status.ws_ifname))
+        if (!wano_connmgr_uplink_delete(wpp->wpp_status.ws_ifname))
         {
             LOG(ERR, "wano: %s: Error clearing Connection_Manager_Uplink.",
                     wpp->wpp_status.ws_ifname);
@@ -404,11 +432,11 @@ void wano_ppline_status_async_fn(struct ev_loop *loop, ev_async *ev, int revent)
 
             if (wpp->wpp_status.ws_iftype[0] != '\0')
             {
-                iftype =  wpp->wpp_status.ws_iftype;
+                iftype = wpp->wpp_status.ws_iftype;
             }
 
             /* Update the connection manager table */
-            if (!WANO_CONNECTION_MANAGER_UPLINK_UPDATE(
+            if (!WANO_CONNMGR_UPLINK_UPDATE(
                         ifname,
                         .if_type = iftype,
                         .has_L2 = WANO_TRI_TRUE,
@@ -417,6 +445,9 @@ void wano_ppline_status_async_fn(struct ev_loop *loop, ev_async *ev, int revent)
                 LOG(WARN, "wano: %s: Error updating Connection_Manager_Uplink table (has_L3 = true).",
                         self->wpl_ifname);
             }
+
+            /* Reset the retries count */
+            self->wpl_retries = 0;
 
             /* Notify upper layers */
             if (self->wpl_status_fn != NULL)
@@ -478,6 +509,68 @@ void wano_ppline_plugin_timeout_fn(struct ev_loop *loop, ev_timer *w, int revent
     wano_ppline_state_do(&self->wpl_state, wano_ppline_do_PLUGIN_UPDATE, NULL);
 }
 
+void wano_ppline_cmu_event_fn(wano_connmgr_uplink_event_t *ce, struct wano_connmgr_uplink_state *state)
+{
+    wano_ppline_t *wpl = CONTAINER_OF(ce, wano_ppline_t, wpl_cmu_event);
+    wpl->wpl_uplink_bridge = (state->bridge[0] != '\0');
+
+    wano_ppline_check_freeze(wpl);
+}
+
+void wano_ppline_ovs_port_event_fn(wano_ovs_port_event_t *pe, struct wano_ovs_port_state *state)
+{
+    wano_ppline_t *wpl = CONTAINER_OF(pe, wano_ppline_t, wpl_ovs_port_event);
+    wpl->wpl_uplink_bridge = state->ps_exists;
+
+    wano_ppline_check_freeze(wpl);
+}
+
+/*
+ * Check if pipeline FREEZE/UNFREEZE events should be sent
+ */
+void wano_ppline_check_freeze(wano_ppline_t *wpl)
+{
+    /*
+     * The pipeline should be frozen if the interface is bridged
+     * (wpl->wpl_bridged is true when the interface is present in the Port
+     * table) or the bridge column is set in the Connection_Manager_Uplink table
+     * (wpl->wpl_uplink_bridged is true).
+     */
+    bool freeze = wpl->wpl_bridge || wpl->wpl_uplink_bridge;
+
+    /*
+     * If the pipeline is frozen (the current state is FREEZE) and the bridge name
+     * is empty, we need to unfreeze the pipeline
+     */
+    if (!freeze && wano_ppline_state_get(&wpl->wpl_state) == wano_ppline_FREEZE)
+    {
+        wano_ppline_state_do(&wpl->wpl_state, wano_ppline_do_PPLINE_UNFREEZE, NULL);
+    }
+    /*
+     * If the pipeline is not frozen and the bridge column is not empty, issue
+     * a FREEZE exception so that WANO relinquishes control of the pipeline
+     * as fast as possible
+     */
+    else if (freeze && wano_ppline_state_get(&wpl->wpl_state) != wano_ppline_FREEZE)
+    {
+        wano_ppline_state_do(&wpl->wpl_state, wano_ppline_exception_PPLINE_FREEZE, NULL);
+    }
+}
+
+/*
+ * Retry timer -- this is used in the IDLE state to restart the pipeline after a
+ * backoff timer (logarithmic increase)
+ */
+void wano_ppline_retry_timer_fn(struct ev_loop *loop, ev_timer *w, int revent)
+{
+    (void)loop;
+    (void)revent;
+
+    wano_ppline_t *self = CONTAINER_OF(w, wano_ppline_t, wpl_retry_timer);
+
+    wano_ppline_state_do(&self->wpl_state, wano_ppline_do_IDLE_TIMEOUT, NULL);
+}
+
 void wano_ppline_reset_ipv6(wano_ppline_t *self)
 {
     ovsdb_table_t table_IP_Interface;
@@ -525,12 +618,12 @@ enum wano_ppline_state wano_ppline_state_INIT(
     wano_ppline_t *self = CONTAINER_OF(state, wano_ppline_t, wpl_state);
 
     /* Remove any entries in the Connection_Manager_Uplink table */
-    if (wano_connection_manager_uplink_delete(self->wpl_ifname))
+    if (wano_connmgr_uplink_delete(self->wpl_ifname))
     {
         LOG(INFO, "wano: %s: Stale Connection_Manager_Uplink entry was removed.", self->wpl_ifname);
     }
 
-    if (!WANO_CONNECTION_MANAGER_UPLINK_UPDATE(
+    if (!WANO_CONNMGR_UPLINK_UPDATE(
                 self->wpl_ifname,
                 .if_type = self->wpl_iftype,
                 .has_L2 = WANO_TRI_FALSE))
@@ -572,7 +665,8 @@ enum wano_ppline_state wano_ppline_state_IF_L2_RESET(
                         self->wpl_ifname,
                         .if_type = self->wpl_iftype,
                         .enabled = WANO_TRI_FALSE,
-                        .network = WANO_TRI_FALSE))
+                        .network = WANO_TRI_FALSE,
+                        .ip_assign_scheme = "none"))
             {
                 LOG(WARN, "wano: %s: Error writing Wifi_Inet_Config in IF_L2_RESET.", self->wpl_ifname);
             }
@@ -583,6 +677,7 @@ enum wano_ppline_state wano_ppline_state_IF_L2_RESET(
         case wano_ppline_do_INET_STATE_UPDATE:
             if (is->is_enabled) break;
             if (is->is_network) break;
+            if (strcmp(is->is_ip_assign_scheme, "none") != 0) break;
 
             return wano_ppline_IF_ENABLE;
 
@@ -660,7 +755,7 @@ enum wano_ppline_state wano_ppline_state_IF_CARRIER(
 
             self->wpl_carrier_exception = true;
 
-            if (!WANO_CONNECTION_MANAGER_UPLINK_UPDATE(self->wpl_ifname, .has_L2 = WANO_TRI_TRUE))
+            if (!WANO_CONNMGR_UPLINK_UPDATE(self->wpl_ifname, .has_L2 = WANO_TRI_TRUE))
             {
                 LOG(WARN, "wano: %s: Error updating Connection_Manager_Uplinkg talbe (has_L2 = true).",
                         self->wpl_ifname);
@@ -811,6 +906,10 @@ enum wano_ppline_state wano_ppline_state_IDLE(
     (void)state;
     (void)data;
 
+    int retries;
+    double maxtime;
+    double rtime;
+
     wano_ppline_t *self = CONTAINER_OF(state, wano_ppline_t, wpl_state);
 
     switch (action)
@@ -819,7 +918,7 @@ enum wano_ppline_state wano_ppline_state_IDLE(
             /*
              * Update connection manager table
              */
-            if (!WANO_CONNECTION_MANAGER_UPLINK_UPDATE(self->wpl_ifname, .has_L3 = WANO_TRI_FALSE))
+            if (!WANO_CONNMGR_UPLINK_UPDATE(self->wpl_ifname, .has_L3 = WANO_TRI_FALSE))
             {
                 LOG(WARN, "wano: %s: Error updating the Connection_Manager_Uplink table (has_L3 = false)",
                         self->wpl_ifname);
@@ -835,12 +934,61 @@ enum wano_ppline_state wano_ppline_state_IDLE(
              */
             if (!WANO_INET_CONFIG_UPDATE(
                         self->wpl_ifname,
+                        .ip_assign_scheme = "none",
                         .nat = WANO_TRI_FALSE))
             {
                 LOG(WARN, "wano: %s: Error disabling NAT.", self->wpl_ifname);
             }
 
+            /* Calculate retry timer */
+            retries = (self->wpl_retries < WANO_PPLINE_RETRY_MAX) ? self->wpl_retries : WANO_PPLINE_RETRY_MAX;
+            maxtime = WANO_PPLINE_RETRY_TIME << retries;
+            /* Add the random component */
+            rtime = maxtime * 0.5 * (random() % 1000) / 1000.0;
+            /* Add the fixed component */
+            rtime += maxtime * 0.5;
+
+            /* Re-arm retry timer */
+            ev_timer_stop(EV_DEFAULT, &self->wpl_retry_timer);
+            ev_timer_set(&self->wpl_retry_timer, rtime, 0.0);
+            ev_timer_start(EV_DEFAULT, &self->wpl_retry_timer);
+            self->wpl_retries++;
+
+            LOG(INFO, "wano: %s: Entered IDLE state, pipeline retry timer is %0.2f seconds.",
+                    self->wpl_ifname, rtime);
             break;
+
+        case wano_ppline_do_IDLE_TIMEOUT:
+            LOG(INFO, "wano: %s: Idle timeout reached, restarting pipeline.", self->wpl_ifname);
+            ev_timer_stop(EV_DEFAULT, &self->wpl_retry_timer);
+            return wano_ppline_INIT;
+
+        default:
+            break;
+    }
+
+    return 0;
+}
+
+enum wano_ppline_state wano_ppline_state_FREEZE(
+        wano_ppline_state_t *state,
+        enum wano_ppline_action action,
+        void *data)
+{
+    (void)state;
+    (void)data;
+
+    wano_ppline_t *self = CONTAINER_OF(state, wano_ppline_t, wpl_state);
+
+    switch (action)
+    {
+        case wano_ppline_do_STATE_INIT:
+            LOG(NOTICE, "wano: %s: Pipeline frozen.", self->wpl_ifname);
+            break;
+
+        case wano_ppline_do_PPLINE_UNFREEZE:
+            LOG(NOTICE, "wano: %s: Unfreezing pipeline.", self->wpl_ifname);
+            return wano_ppline_INIT;
 
         default:
             break;
@@ -857,6 +1005,9 @@ enum wano_ppline_state wano_ppline_state_EXCEPTION(
     (void)data;
 
     wano_ppline_t *self = CONTAINER_OF(state, wano_ppline_t, wpl_state);
+
+    /* Stop any pending timers */
+    ev_timer_stop(EV_DEFAULT, &self->wpl_retry_timer);
 
     /*
      * Tear-down the wait and run queues and any plug-ins on them
@@ -876,6 +1027,9 @@ enum wano_ppline_state wano_ppline_state_EXCEPTION(
 
         case wano_ppline_exception_PPLINE_ABORT:
             return wano_ppline_IDLE;
+
+        case wano_ppline_exception_PPLINE_FREEZE:
+            return wano_ppline_FREEZE;
 
         default:
             break;

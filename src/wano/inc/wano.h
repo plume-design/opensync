@@ -372,7 +372,43 @@ bool wano_inet_config_update(const char *ifname, struct wano_inet_config_args *a
  * ===========================================================================
  */
 
-struct wano_connection_manager_uplink_args
+struct wano_connmgr_uplink;
+struct wano_connmgr_uplink_event;
+struct wano_connmgr_uplink_state;
+
+typedef struct wano_connmgr_uplink_event wano_connmgr_uplink_event_t;
+
+typedef void wano_connmgr_uplink_event_fn_t(
+        wano_connmgr_uplink_event_t *event,
+        struct wano_connmgr_uplink_state *state);
+
+/*
+ * Structure used for reporting Connection_Manager_Uplink status
+ */
+struct wano_connmgr_uplink_state
+{
+    char        if_name[C_IFNAME_LEN];
+    char        bridge[C_IFNAME_LEN];
+    bool        has_L2;
+    bool        has_L3;
+};
+
+/**
+ * Structure for processing Connection_Manager_Uplink events
+ */
+struct wano_connmgr_uplink_event
+{
+    wano_connmgr_uplink_event_fn_t *ce_event_fn;                /* Event callback */
+    ev_async                        ce_async;                   /* Wake-up object */
+    bool                            ce_started;                 /* Started flag */
+    struct wano_connmgr_uplink     *ce_cmu;                     /* Object pointer to wano_connmgr_uplink */
+    reflink_t                       ce_cmu_reflink;             /* Reflink to wano_connmgr_uplink */
+};
+
+/**
+ * Structure used for writing to Connection_Manager_Uplink
+ */
+struct wano_connmgr_uplink_args
 {
     const char     *if_type;
     int             priority;
@@ -380,16 +416,99 @@ struct wano_connection_manager_uplink_args
     wano_tri_t      has_L3;
 };
 
-bool wano_connection_manager_uplink_flush(void);
+/**
+ * Initialize a Connection_Manager_Uplink event listening object
+ */
+void wano_connmgr_uplink_event_init(
+        wano_connmgr_uplink_event_t *self,
+        wano_connmgr_uplink_event_fn_t *fn);
 
-#define WANO_CONNECTION_MANAGER_UPLINK_UPDATE(ifname, ...) \
-    wano_connection_manager_uplink_update(ifname, &(struct wano_connection_manager_uplink_args){ __VA_ARGS__ })
+/**
+ * Start receiving events from the row associated with @p ifname in the
+ * Connection_Manager_Uplink table
+ */
+bool wano_connmgr_uplink_event_start(wano_connmgr_uplink_event_t *self, const char *ifname);
 
-bool wano_connection_manager_uplink_update(
+/**
+ * Stop receiving events from the registered interface row in the
+ * Connection_Manager_Uplink table
+ */
+void wano_connmgr_uplink_event_stop(wano_connmgr_uplink_event_t *self);
+
+/**
+ * Flush the Connection_Manager_Uplink table
+ */
+bool wano_connmgr_uplink_flush(void);
+
+#define WANO_CONNMGR_UPLINK_UPDATE(ifname, ...) \
+    wano_connmgr_uplink_update(ifname, &(struct wano_connmgr_uplink_args){ __VA_ARGS__ })
+
+/**
+ * Update the Connection_Manager_Uplink table
+ */
+bool wano_connmgr_uplink_update(
         const char *ifname,
-        struct wano_connection_manager_uplink_args *args);
+        struct wano_connmgr_uplink_args *args);
+/**
+ * Delete a single row from the Connection_Manager_Uplink table
+ */
+bool wano_connmgr_uplink_delete(const char *ifname);
 
-bool wano_connection_manager_uplink_delete(const char *ifname);
+/*
+ * ===========================================================================
+ *  WANO Port table API - Wrapper for monitoring the Port table
+ * ===========================================================================
+ */
+struct wano_ovs_port;
+struct wano_ovs_port_event;
+struct wano_ovs_port_state;
+
+typedef struct wano_ovs_port_event wano_ovs_port_event_t;
+
+typedef void wano_ovs_port_event_fn_t(
+        wano_ovs_port_event_t *event,
+        struct wano_ovs_port_state *state);
+
+/**
+ * Structure used for reporting Port table status
+ */
+struct wano_ovs_port_state
+{
+    bool                        ps_exists;                 /**< True if a Port entry for this interface exists */
+    char                        ps_name[C_IFNAME_LEN];     /**< Port/interface name */
+};
+
+/**
+ * Structure for processing Port table events
+ */
+struct wano_ovs_port_event
+{
+    struct wano_ovs_port       *pe_ovs_port;                /**< Pointer to the cached object */
+    reflink_t                   pe_ovs_port_reflink;        /**< Reflink to the object above */
+    bool                        pe_exists;                  /**< Port for this interface exists */
+    wano_ovs_port_event_fn_t   *pe_event_fn;                /**< Event callback */
+    ev_async                    pe_async;                   /**< Async watcher */
+    bool                        pe_started;                 /**< True wano_ovs_port_event_start() was called */
+};
+
+/**
+ * Initialize a Port table event listening object
+ */
+void wano_ovs_port_event_init(
+        wano_ovs_port_event_t *self,
+        wano_ovs_port_event_fn_t *fn);
+
+/**
+ * Start receiving events from the row associated with @p ifname in the
+ * Connection_Manager_Uplink table
+ */
+bool wano_ovs_port_event_start(wano_ovs_port_event_t *self, const char *ifname);
+
+/**
+ * Stop receiving events from the registered interface row in the
+ * Connection_Manager_Uplink table
+ */
+void wano_ovs_port_event_stop(wano_ovs_port_event_t *self);
 
 /*
  * ===========================================================================
@@ -446,6 +565,12 @@ struct wano_ppline
     wano_ppline_status_fn_t    *wpl_status_fn;              /**< Status callback */
     bool                        wpl_carrier_exception;      /**< Generate a PPLINE_RESTART exception on carrier loss */
     bool                        wpl_init;                   /**< True if successfully initialized */
+    wano_connmgr_uplink_event_t wpl_cmu_event;              /**< Connection_Manager_Uplink watcher */
+    wano_ovs_port_event_t       wpl_ovs_port_event;         /**< Port table watcher */
+    int                         wpl_retries;                /**< Number of retries */
+    ev_timer                    wpl_retry_timer;            /**< Retry timer */
+    bool                        wpl_bridge;                 /**< True interface is in bridge */
+    bool                        wpl_uplink_bridge;          /**< True if Connection_Manager_Uplink:bridge is set */
 };
 
 /**

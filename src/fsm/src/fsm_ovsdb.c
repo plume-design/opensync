@@ -672,6 +672,58 @@ fsm_init_plugin(struct fsm_session *session)
     return (rc == 0);
 }
 
+#define FSM_QM_BACKOFF_INTERVAL 20
+
+/**
+ * @brief send data to QM provided no prior connect error.
+ *
+ * @param compression flag
+ * @param topic the mqtt topic
+ * @param data to send
+ * @param data_size data length
+ * @return true if the data was successfully sent to QM, false otherwise
+ *
+ * If connecting to QM fails with the specific connect error,
+ * do not attempt to reconnnect for a while.
+ */
+static bool
+fsm_send_to_qm(qm_compress_t compress, char *topic, void *data, int data_size)
+{
+    struct fsm_mgr *mgr;
+    qm_response_t res;
+    bool backoff;
+    time_t now;
+    bool ret;
+
+    mgr = fsm_get_mgr();
+    if (mgr->qm_backoff != 0)
+    {
+	 now = time(NULL);
+	 backoff = ((now - mgr->qm_backoff) < FSM_QM_BACKOFF_INTERVAL);
+	 if (backoff) LOGD("%s: in back off since %ld seconds", __func__,
+			   (now - mgr->qm_backoff));
+	 if (backoff) return false;
+
+	 /* Reflect that we are out of back off */
+	 LOGD("%s: out of back off since %ld seconds", __func__,
+	      (now - mgr->qm_backoff) - FSM_QM_BACKOFF_INTERVAL);
+	 mgr->qm_backoff = 0;
+    }
+
+    ret = qm_conn_send_direct(compress, topic, data, data_size, &res);
+    if (ret) return true;
+
+    LOGE("%s: error sending mqtt with topic %s: response: %u, error: %u",
+	 __func__, topic, res.response, res.error);
+
+    if (res.error != QM_ERROR_CONNECT) return false;
+
+    now = time(NULL);
+    mgr->qm_backoff = now;
+
+    return false;
+}
+
 
 /**
  * @brief send a json report over mqtt
@@ -683,8 +735,7 @@ fsm_init_plugin(struct fsm_session *session)
 void
 fsm_send_report(struct fsm_session *session, char *report)
 {
-    qm_response_t res;
-    bool ret = false;
+    bool ret;
 
     LOGT("%s: msg len: %zu, msg: %s\n, topic: %s",
          __func__, report ? strlen(report) : 0,
@@ -693,12 +744,9 @@ fsm_send_report(struct fsm_session *session, char *report)
     if (report == NULL) return;
     if (session->topic == NULL) goto free_report;
 
-    ret = qm_conn_send_direct(QM_REQ_COMPRESS_DISABLE, session->topic,
-                              report, strlen(report), &res);
-    if (ret == false) {
-        LOGE("%s: error sending mqtt with topic %s", __func__, session->topic);
-    }
-    session->report_count++;
+    ret = fsm_send_to_qm(QM_REQ_COMPRESS_DISABLE, session->topic,
+			 report, strlen(report));
+    if (ret) session->report_count++;
 
 free_report:
     json_free(report);
@@ -717,8 +765,7 @@ void
 fsm_send_pb_report(struct fsm_session *session, char *topic,
                    void *pb_report, size_t pb_len)
 {
-    qm_response_t res;
-    bool ret = false;
+    bool ret;
 
     LOGT("%s: msg len: %zu, topic: %s",
          __func__, pb_len, topic ? topic: "None");
@@ -726,14 +773,8 @@ fsm_send_pb_report(struct fsm_session *session, char *topic,
     if (pb_report == NULL) return;
     if (topic == NULL) return;
 
-    ret = qm_conn_send_direct(QM_REQ_COMPRESS_IF_CFG, topic,
-                              pb_report, pb_len, &res);
-    if (ret == false) {
-        LOGE("%s: error sending mqtt with topic %s", __func__, topic);
-    }
-    session->report_count++;
-
-    return;
+    ret = fsm_send_to_qm(QM_REQ_COMPRESS_IF_CFG, topic,pb_report, pb_len);
+    if (ret) session->report_count++;
 }
 
 

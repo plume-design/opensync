@@ -151,8 +151,12 @@ bool lnx_netlink_global_init(void)
 
      if (!lnx_netlink_sock_open())
      {
-         lnx_netlink_dispatch(LNX_NETLINK_ALL, NULL);
-         return false;
+         /*
+          * lnx_netlink_sock_open() will dispatch a global debounce event which
+          * will re-try to open the netlink socket, or re-arm the timer. Issue
+          * a warning if this happens this early.
+          */
+         LOG(WARN, "netlink: Error opening the netlink socket; using polling.");
      }
 
      return true;
@@ -170,6 +174,12 @@ bool lnx_netlink_sock_open(void)
      struct sockaddr_nl nladdr;
 
      if (lnx_netlink_sock >= 0) return true;
+
+     /*
+      * Dispatch a global event to synchronize the state; on error this
+      * will kick-off the polling
+      */
+     lnx_netlink_dispatch(LNX_NETLINK_ALL, NULL);
 
      /* Create the netlink socket in the NETLINK_ROUTE domain */
      lnx_netlink_sock = socket(AF_NETLINK, SOCK_DGRAM, NETLINK_ROUTE);
@@ -265,7 +275,7 @@ void lnx_netlink_sock_fn(struct ev_loop *loop, ev_io *w, int revent)
     rc = recv(lnx_netlink_sock, buf, sizeof(buf), 0);
     if (rc < 0)
     {
-        LOG(ERR, "netlink: Received error from netlink socket: %s (%d)", strerror(errno), errno);
+        LOG(NOTICE, "netlink: Received error from netlink socket: %s (%d)", strerror(errno), errno);
         goto error;
     }
 
@@ -505,11 +515,7 @@ void lnx_netlink_dispatch_fn(struct ev_loop *loop, ev_debounce *ev, int revent)
      * revert back to a polling method. Each polling interval we will retry
      * opening the NETLINK socket until it succeeds.
      */
-    if (!lnx_netlink_sock_open())
-    {
-        /* If we cannot acquire a netlink socket, revert to polling */
-        lnx_netlink_dispatch(LNX_NETLINK_ALL, NULL);
-    }
+    (void)lnx_netlink_sock_open();
 
     return;
 }

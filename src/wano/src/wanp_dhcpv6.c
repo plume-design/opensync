@@ -347,8 +347,6 @@ enum wanp_dhcpv6_state wanp_dhcpv6_state_IDLE(
                         FMT_osn_ip6_addr(self->wd6_ip6addr));
 
             struct wano_plugin_status ws = WANO_PLUGIN_STATUS(WANP_OK);
-            STRSCPY(ws.ws_ifname, self->wd6_handle.wh_ifname);
-            STRSCPY(ws.ws_iftype, "eth");
             self->wd6_status_fn(&self->wd6_handle, &ws);
             break;
 
