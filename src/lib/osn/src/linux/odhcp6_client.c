@@ -308,7 +308,7 @@ void odhcp6_client_debounce_fn(struct ev_loop *loop, ev_debounce *w, int revent)
     (void)loop;
     (void)revent;
 
-    char buf[1024];
+    char buf[8200];
     int ii;
 
     odhcp6_client_t *self = w->data;

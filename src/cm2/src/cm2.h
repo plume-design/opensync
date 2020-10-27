@@ -159,8 +159,10 @@ typedef enum {
 } cm2_ip_assign_scheme;
 
 typedef struct {
-    cm2_ip_assign_scheme ips;
-    bool                 is_ipa;
+    cm2_ip_assign_scheme ipv4;
+    cm2_ip_assign_scheme ipv6;
+    bool                 is_ipv4;
+    bool                 is_ipv6;
 } cm2_ip;
 
 typedef struct

@@ -104,6 +104,7 @@ struct nm2_dhcpv6_client
 {
     ovs_uuid_t          dc6_uuid;                   /* UUID of this structure */
     reflink_t           dc6_reflink;                /* Main reflink of this object */
+    bool                dc6_enable;                 /* Enable/Disable DHCPv6 Client */
     bool                dc6_valid;                  /* True if entry is valid */
     ovs_uuid_t          dc6_ip_interface_uuid;      /* UUID of the referenced IP_Interface */
     reflink_t           dc6_ip_interface_reflink;   /* Reflink to IP_Interface */

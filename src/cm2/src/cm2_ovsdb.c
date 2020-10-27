@@ -301,21 +301,21 @@ cm2_util_set_ip_cfg(struct schema_Wifi_Inet_State *istate, cm2_ip *ip)
 {
     if (istate->ip_assign_scheme_exists) {
         if (!strcmp(istate->ip_assign_scheme, "static"))
-            ip->ips = CM2_IP_STATIC;
+            ip->ipv4 = CM2_IP_STATIC;
         else if (!strcmp(istate->ip_assign_scheme, "none"))
-            ip->ips = CM2_IP_NONE;
+            ip->ipv4 = CM2_IP_NONE;
         else if (!strcmp(istate->ip_assign_scheme, "dhcp"))
-            ip->ips = CM2_IPV4_DHCP;
+            ip->ipv4 = CM2_IPV4_DHCP;
     } else {
-        ip->ips = CM2_IP_NOT_SET;
+        ip->ipv4 = CM2_IP_NOT_SET;
     }
 
     if (!istate->inet_addr_exists ||
         (istate->inet_addr_exists && (strlen(istate->inet_addr) <= 0 ||
          !strcmp(istate->inet_addr, "0.0.0.0")))) {
-        ip->is_ipa = false;
+        ip->is_ipv4 = false;
     } else {
-        ip->is_ipa = true;
+        ip->is_ipv4 = true;
     }
 }
 
@@ -371,8 +371,8 @@ cm2_ovsdb_set_dhcp_client(const char *if_name, bool enabled)
 int cm2_get_link_ip(char *if_name, cm2_ip *ip)
 {
     if (cm2_ovsdb_is_ipv6_global_link(if_name)) {
-        ip->is_ipa = true;
-        ip->ips = CM2_IPV6_DHCP;
+        ip->is_ipv6 = true;
+        ip->ipv6 = CM2_IPV6_DHCP;
         return 0;
     }
 
@@ -510,29 +510,19 @@ cm2_util_refresh_dhcp(struct schema_Wifi_Master_State *master, bool refresh)
          return false;
     }
 
-    if (!refresh && !empty_addr)
+    /* Expected IP assignment */
+    if (!refresh && dhcp_active && !empty_addr)
         return true;
 
-    if (empty_addr && dhcp_active)
+    /* Waiting for pending configuration */
+    if ((refresh && !dhcp_active && !empty_addr) ||
+        (refresh && dhcp_active && empty_addr) ||
+        (!refresh && dhcp_active && empty_addr))
         return false;
 
-    if (!refresh && dhcp_active && !empty_addr) {
-        /* Trigger NM2 state machine */
-        if (iconf.enabled) {
-            ret = cm2_ovsdb_set_Wifi_Inet_Config_interface_enabled(false, master->if_name);
-            if (!ret)
-                LOGW("%s: %s: Failed to clear interface enabled", __func__, master->if_name);
-        }
-        ret = cm2_ovsdb_set_Wifi_Inet_Config_interface_enabled(true, master->if_name);
-        if (!ret)
-            LOGW("%s: %s: Failed to set interface enabled", __func__, master->if_name);
-        return false;
-    }
-
-    if (refresh && dhcp_active && !empty_addr)
+    if (refresh && dhcp_active)
         dhcp_enabled = false;
-
-    if (empty_addr && !dhcp_active)
+    else
         dhcp_enabled = true;
 
     cm2_ovsdb_set_dhcp_client(master->if_name, dhcp_enabled);
@@ -817,7 +807,7 @@ cm2_ovsdb_util_handle_master_sta_port_state(struct schema_Wifi_Master_State *mas
         }
 
         ret = cm2_util_get_ip_inet_state_cfg(master->if_name, &ip);
-        if (!ret && ip.ips != CM2_IP_STATIC)
+        if (!ret && ip.ipv4 != CM2_IP_STATIC)
             cm2_ovsdb_remove_Wifi_Inet_Config(gre_ifname, true);
     }
 
@@ -2269,8 +2259,8 @@ void callback_IP_Interface(ovsdb_update_monitor_t *mon,
                         if (strncmp(ipv6_addr.address, "fe80", 4) == 0)
                             continue;
 
-                        g_state.link.ip.ips = CM2_IPV6_DHCP;
-                        g_state.link.ip.is_ipa = true;
+                        g_state.link.ip.ipv6 = CM2_IPV6_DHCP;
+                        g_state.link.ip.is_ipv6 = true;
                     }
                 }
             }

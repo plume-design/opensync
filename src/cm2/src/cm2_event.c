@@ -494,13 +494,13 @@ static void cm2_handle_link_used(char *if_name, char *if_type, cm2_ip *ip)
     if (!cm2_is_wan_link_management() && cm2_is_eth_type(if_type))
         return;
 
-    if (ip->ips == CM2_IPV4_DHCP && ip->is_ipa) {
+    if (ip->ipv4 == CM2_IPV4_DHCP && ip->is_ipv4) {
         LOGN("Refresh WAN link");
         cm2_ovsdb_refresh_dhcp(if_name);
         return;
     }
 
-    if (ip->ips == CM2_IP_NONE) {
+    if (ip->ipv4 == CM2_IP_NONE) {
         LOGI("%s: Trigger dhcp client for used link", if_name);
         cm2_ovsdb_set_dhcp_client(if_name, true);
     }
@@ -550,7 +550,7 @@ start:
         case CM2_REASON_SET_NEW_VTAG:
             LOGI("vtag: %d: creating", g_state.link.vtag.tag);
             if (cm2_set_new_vtag()) {
-                g_state.link.ip.ips = CM2_IP_NONE;
+                g_state.link.ip.ipv4 = CM2_IP_NONE;
                 cm2_ovsdb_refresh_dhcp(uplink);
                 cm2_set_state(true, CM2_STATE_WAN_IP);
             }
@@ -558,7 +558,7 @@ start:
         case CM2_REASON_BLOCK_VTAG:
             LOGI("vtag: %d: blocking", g_state.link.vtag.tag);
             if (cm2_block_vtag()) {
-                g_state.link.ip.ips = CM2_IP_NONE;
+                g_state.link.ip.ipv4 = CM2_IP_NONE;
                 cm2_ovsdb_refresh_dhcp(uplink);
                 cm2_set_state(true, CM2_STATE_WAN_IP);
             }
@@ -627,7 +627,6 @@ start:
             }
             if (g_state.link.is_used)
             {
-                cm2_ovsdb_connection_clean_link_counters(g_state.link.if_name);
                 cm2_connection_req_stability_check(LINK_CHECK);
                 cm2_set_state(true, CM2_STATE_WAN_IP);
                 cm2_link_sel_update_ble_state();
@@ -647,7 +646,7 @@ start:
             if (ret < 0)
                 LOGW("%s: Failed get ip info", g_state.link.if_name);
 
-            if (g_state.link.ip.is_ipa)
+            if (g_state.link.ip.is_ipv4 || g_state.link.ip.is_ipv6)
             {
                 cm2_connection_req_stability_check(ROUTER_CHECK);
                 cm2_set_state(true, CM2_STATE_NTP_CHECK);
@@ -713,8 +712,13 @@ start:
         case CM2_STATE_TRY_RESOLVE:
             if (cm2_state_changed() || g_state.resolve_retry)
             {
-                if (cm2_ovsdb_is_ipv6_global_link(uplink))
-                    g_state.link.ip.ips = CM2_IPV6_DHCP;
+                if (cm2_ovsdb_is_ipv6_global_link(uplink)) {
+                    g_state.link.ip.ipv6 = CM2_IPV6_DHCP;
+                    g_state.link.ip.is_ipv6 = true;
+                }
+
+                if (cm2_is_extender())
+                    cm2_connection_req_stability_check(LINK_CHECK | ROUTER_CHECK | INTERNET_CHECK);
 
                 if (g_state.resolve_retry) {
                     LOGI("Trigger retry resolving, cnt: %d/%d",

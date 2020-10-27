@@ -59,6 +59,7 @@
 #include "ovsdb_table.h"
 #include "schema.h"
 #include "osn_mapt.h"
+#include "osn_types.h"
 
 #include "maptm.h"
 
@@ -67,6 +68,7 @@
 #define V4_MAPT_CHCEK_FORWARD "v4_mapt_check_forward"
 #define V4_MAPT_TCP_CHCEK_1 "v4_mapt_tcp_check_1"
 #define V4_MAPT_TCP_CHCEK_2 "v4_mapt_tcp_check_2"
+#define V4_CT_CHECK "v4_ct_check"
 
 #define V6_MAPT_TCP_CHCEK_3 "v6_tcp_check_3"
 
@@ -254,8 +256,8 @@ struct mapt* get_Mapt_Rule(char *option95, char *iapd)
     if (!option95) return NULL;
 
     bool ret = false;
-    char *mapt_option95 = NULL;
-    mapt_option95 = option95;
+    char *mapt_option95 = strdup(option95);
+    if (mapt_option95 == NULL) return NULL;
 
     ds_dlist_t l_rules;
     ds_dlist_init(&l_rules, struct list_rules, d_node);
@@ -270,6 +272,7 @@ struct mapt* get_Mapt_Rule(char *option95, char *iapd)
         {
             LOGE("Unable to allocate update handler!");
             free(l_node);
+            free(mapt_option95);
             return NULL;
         }
 
@@ -279,6 +282,7 @@ struct mapt* get_Mapt_Rule(char *option95, char *iapd)
             LOGE("Unable to allocate update handler!");
             free(l_node);
             maptm_remove_list(l_rules);
+            free(mapt_option95);
             return NULL;
         }
 
@@ -309,7 +313,7 @@ struct mapt* get_Mapt_Rule(char *option95, char *iapd)
             }
         }
     }
-
+    free(mapt_option95);
     maptm_remove_list(l_rules);
     if (!ret)
     {
