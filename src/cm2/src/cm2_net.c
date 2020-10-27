@@ -118,7 +118,7 @@ static int cm2_ovs_insert_port_into_bridge(char *bridge, char *port, bool add)
 }
 
 void cm2_update_bridge_cfg(char *bridge, char *port, bool brop,
-                           cm2_par_state_t mstate)
+                           cm2_par_state_t mstate, bool dhcp_update)
 {
     bool macrep;
     int  r;
@@ -135,7 +135,11 @@ void cm2_update_bridge_cfg(char *bridge, char *port, bool brop,
     r = cm2_ovs_insert_port_into_bridge(bridge, port, brop);
     if (!r)
         LOGI("Failed to update port %s in %s [state = %d]",
-             port, bridge, mstate);
+             port, bridge, brop);
+
+    /* Update dhcp client on bridge */
+    if (dhcp_update)
+        cm2_ovsdb_set_dhcp_client(bridge, brop);
 }
 
 /**
@@ -306,11 +310,6 @@ void cm2_delayed_eth_update(char *if_name, int timeout)
 
     if (!cm2_ovsdb_connection_get_connection_by_ifname(if_name, &con)) {
         LOGW("%s: eth_update: interface does not exist", if_name);
-        return;
-    }
-
-    if (con.loop) {
-        LOGI("%s: eth_update: skip due to existed loop ", if_name);
         return;
     }
 
@@ -521,13 +520,20 @@ char* cm2_get_uplink_name(void)
     return g_state.link.if_name;
 }
 
-void cm2_update_limp_state(const char *iftype)
+void cm2_update_device_type(const char *iftype)
 {
-    if (!cm2_is_eth_type(iftype))
-        return;
+    bool bridge_mode;
 
-    if (cm2_is_wan_bridge())
-        g_state.link.is_limp_state = !cm2_ovsdb_is_port_name("patch-w2h");
-    else
-        g_state.link.is_limp_state = !g_state.link.is_bridge;
+    if (cm2_is_wifi_type(iftype)) {
+        g_state.dev_type = CM2_DEVICE_LEAF;
+    } else {
+        if (cm2_is_wan_bridge())
+            bridge_mode = cm2_ovsdb_is_port_name("patch-w2h");
+        else
+            bridge_mode = g_state.link.is_bridge;
+
+        g_state.dev_type = bridge_mode ? CM2_DEVICE_BRIDGE : CM2_DEVICE_ROUTER;
+    }
+
+    LOGI("Device type: %d", g_state.dev_type);
 }

@@ -414,6 +414,7 @@ struct wano_connmgr_uplink_args
     int             priority;
     wano_tri_t      has_L2;
     wano_tri_t      has_L3;
+    wano_tri_t      loop;
 };
 
 /**
@@ -571,6 +572,7 @@ struct wano_ppline
     ev_timer                    wpl_retry_timer;            /**< Retry timer */
     bool                        wpl_bridge;                 /**< True interface is in bridge */
     bool                        wpl_uplink_bridge;          /**< True if Connection_Manager_Uplink:bridge is set */
+    double                      wpl_immediate_timeout;      /**< Immedate timeout */
 };
 
 /**

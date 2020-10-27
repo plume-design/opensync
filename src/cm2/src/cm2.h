@@ -57,14 +57,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 typedef enum
 {
-    CM2_LINK_NOT_DEFINED,
-    CM2_LINK_ETH_BRIDGE,
-    CM2_LINK_ETH_ROUTER,
-    CM2_LINK_GRE,
-} cm2_main_link_type;
-
-typedef enum
-{
     CM2_STATE_INIT,
     CM2_STATE_LINK_SEL,       // EXTENDER only
     CM2_STATE_WAN_IP,         // EXTENDER only
@@ -94,6 +86,7 @@ typedef enum
     CM2_REASON_SET_NEW_VTAG,
     CM2_REASON_BLOCK_VTAG,
     CM2_REASON_OVS_INIT,
+    CM2_REASON_RESOLVE_UPDATE,
     CM2_REASON_NUM,
 } cm2_reason_e;
 
@@ -159,9 +152,19 @@ typedef enum {
 } cm2_ip_assign_scheme;
 
 typedef struct {
-    cm2_ip_assign_scheme ips;
-    bool                 is_ipa;
+    cm2_ip_assign_scheme ipv4;
+    cm2_ip_assign_scheme ipv6;
+    bool                 is_ipv4;
+    bool                 is_ipv6;
 } cm2_ip;
+
+typedef enum
+{
+    CM2_DEVICE_NONE,
+    CM2_DEVICE_ROUTER,
+    CM2_DEVICE_BRIDGE,
+    CM2_DEVICE_LEAF,
+} cm2_dev_type;
 
 typedef struct
 {
@@ -173,7 +176,6 @@ typedef struct
     bool        restart_pending;
     int         priority;
     cm2_ip      ip;
-    bool        is_limp_state;
     bool        gretap_softwds;
     char        gateway_hwaddr[OS_MACSTR_SZ];
     cm2_vtag_t  vtag;
@@ -187,7 +189,6 @@ typedef struct
     bool              state_changed;
     bool              connected;
     bool              is_con_stable;
-    bool              is_onboarded;
     time_t            timestamp;
     int               disconnects;
     cm2_addr_t        addr_redirector;
@@ -214,6 +215,7 @@ typedef struct
     int               resolve_retry_cnt;
     int               gw_offline_cnt;
     int               skip_restart_cnt;
+    cm2_dev_type      dev_type;
 } cm2_state_t;
 
 extern cm2_state_t g_state;
@@ -276,6 +278,7 @@ void cm2_ovsdb_connection_clean_link_counters(char *if_name);
 bool cm2_ovsdb_validate_bridge_port_conf(char *bname, char *pname);
 bool cm2_ovsdb_is_ipv6_global_link(const char *if_name);
 void cm2_ovsdb_set_dhcp_client(const char *if_name, bool enabled);
+bool cm2_ovsdb_is_gw_offline_enabled(void);
 bool cm2_ovsdb_is_gw_offline_ready(void);
 bool cm2_ovsdb_enable_gw_offline_conf(void);
 bool cm2_ovsdb_disable_gw_offline_conf(void);
@@ -382,7 +385,8 @@ static inline bool cm2_is_config_via_ble_enabled(void)
 }
 
 // net
-void cm2_update_bridge_cfg(char *bridge, char *port, bool brop, cm2_par_state_t state);
+void cm2_update_bridge_cfg(char *bridge, char *port, bool brop,
+                           cm2_par_state_t state, bool dhcp_update);
 void cm2_dhcpc_start_dryrun(char* ifname, char *iftype, int cnt);
 void cm2_dhcpc_stop_dryrun(char* ifname);
 bool cm2_is_eth_type(const char *if_type);
@@ -390,5 +394,5 @@ bool cm2_is_wifi_type(const char *if_type);
 void cm2_delayed_eth_update(char *if_name, int timeout);
 bool cm2_is_iface_in_bridge(const char *bridge, const char *port);
 char* cm2_get_uplink_name(void);
-void cm2_update_limp_state(const char *iftype);
+void cm2_update_device_type(const char *iftype);
 #endif /* CM2_H_INCLUDED */

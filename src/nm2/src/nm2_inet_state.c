@@ -221,9 +221,10 @@ void nm2_inet_state_to_schema(
     NM2_IFACE_INET_CONFIG_COPY(pstate->gre_remote_inet_addr, piface->if_cache.gre_remote_inet_addr);
     pstate->gre_local_inet_addr_exists = piface->if_cache.gre_local_inet_addr_exists;
     NM2_IFACE_INET_CONFIG_COPY(pstate->gre_local_inet_addr, piface->if_cache.gre_local_inet_addr);
+    NM2_IFACE_INET_CONFIG_COPY(pstate->vlan_id, piface->if_cache.vlan_id);
+    pstate->vlan_id_exists = piface->if_cache.vlan_id_exists;
 
     /* Unsupported fields, for now */
-    pstate->vlan_id_exists = false;
     pstate->parent_ifname_exists = false;
 
     pstate->softwds_mac_addr_exists = false;

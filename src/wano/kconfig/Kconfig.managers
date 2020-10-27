@@ -25,6 +25,15 @@ if MANAGER_WANO
             of time defined by this option, it is terminated and WANO moves to
             the next plug-in in the list.
 
+    config MANAGER_WANO_PLUGIN_IMMEDIATE_TIMEOUT
+        int "WAN plug-in immediate timeout"
+        default 300
+        help
+            This is the amount of time that the pipeline is allowed to do an
+            immediate restart without using a backoff timer. After the amount of
+            seconds defined in this variable, the pipeline will sleep for an
+            increasing amout of time before restarting plug-ins.
+
     config MANAGER_WANO_PLUGIN_DHCPV4
         bool "WANO IPv4 DHCP plugin"
         default n

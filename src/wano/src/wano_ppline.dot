@@ -1,9 +1,8 @@
 digraph {
     INIT[init="true"];
 
-    INIT -> IF_L2_RESET[label="STATE_INIT"];
-    INIT -> IF_ENABLE[label="STATE_INIT"];
-    IF_L2_RESET -> IF_ENABLE [label="INET_STATE_UPDATE"];
+    INIT -> START[label="STATE_INIT"];
+    START -> IF_ENABLE[label="STATE_INIT"];
     IF_ENABLE -> IF_CARRIER[label="INET_STATE_UPDATE"];
     IF_CARRIER -> PLUGIN_SCHED [label="INET_STATE_UPDATE"];
     PLUGIN_SCHED -> IF_IPV4_RESET;
@@ -15,6 +14,7 @@ digraph {
     PLUGIN_RUN -> PLUGIN_RUN [label="INET_STATE_UPDATE"];
     PLUGIN_RUN -> IDLE [label="STATE_INIT"];
     IDLE -> IDLE[label="INET_STATE_UPDATE"];
+    IDLE -> START[label="STATE_INIT"];
     IDLE -> INIT[label="IDLE_TIMEOUT"];
 
     FREEZE -> FREEZE[label="INET_STATE_UPDATE"];

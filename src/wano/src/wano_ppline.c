@@ -42,6 +42,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <ev.h>
 
+#include "os_time.h"
 #include "osa_assert.h"
 #include "ovsdb_sync.h"
 #include "ovsdb_table.h"
@@ -106,6 +107,8 @@ bool wano_ppline_init(
     STRSCPY_WARN(self->wpl_iftype, iftype);
     self->wpl_plugin_emask = emask;
     self->wpl_status_fn = status_fn;
+
+    self->wpl_immediate_timeout = clock_mono_double() + CONFIG_MANAGER_WANO_PLUGIN_IMMEDIATE_TIMEOUT;
 
     ds_dlist_init(&self->wpl_plugin_waitq, struct wano_ppline_plugin, wpp_dnode);
     ds_dlist_init(&self->wpl_plugin_runq, struct wano_ppline_plugin, wpp_dnode);
@@ -520,7 +523,7 @@ void wano_ppline_cmu_event_fn(wano_connmgr_uplink_event_t *ce, struct wano_connm
 void wano_ppline_ovs_port_event_fn(wano_ovs_port_event_t *pe, struct wano_ovs_port_state *state)
 {
     wano_ppline_t *wpl = CONTAINER_OF(pe, wano_ppline_t, wpl_ovs_port_event);
-    wpl->wpl_uplink_bridge = state->ps_exists;
+    wpl->wpl_bridge = state->ps_exists;
 
     wano_ppline_check_freeze(wpl);
 }
@@ -603,10 +606,6 @@ void wano_ppline_reset_ipv6(wano_ppline_t *self)
  *  State Machine
  * ===========================================================================
  */
-
-/*
- * Move to the IF_L2_RESET state if WANO_PLUGIN_MASK_L2 is not set
- */
 enum wano_ppline_state wano_ppline_state_INIT(
         wano_ppline_state_t *state,
         enum wano_ppline_action action,
@@ -632,60 +631,22 @@ enum wano_ppline_state wano_ppline_state_INIT(
                 self->wpl_ifname, self->wpl_iftype);
     }
 
-    wano_ppline_start_queues(self);
-
-    /*
-     * Do not reset the interface L2 layer
-     */
-    if (self->wpl_plugin_emask & WANO_PLUGIN_MASK_L2)
-    {
-        return wano_ppline_IF_ENABLE;
-    }
-
-    return wano_ppline_IF_L2_RESET;
+    return wano_ppline_START;
 }
 
-/*
- * The IF_L2_RESET state simply sets the Wifi_Inet_Config:enabled,network fields
- * to false and waits until Wifi_Inet_State reflects the change.
- */
-enum wano_ppline_state wano_ppline_state_IF_L2_RESET(
+enum wano_ppline_state wano_ppline_state_START(
         wano_ppline_state_t *state,
         enum wano_ppline_action action,
         void *data)
 {
+    (void)action;
+    (void)data;
+
     wano_ppline_t *self = CONTAINER_OF(state, wano_ppline_t, wpl_state);
-    struct wano_inet_state *is = data;
 
-    switch (action)
-    {
-        case wano_ppline_do_STATE_INIT:
-            LOG(INFO, "wano: %s: Resetting interface L2.", self->wpl_ifname);
-            if (!WANO_INET_CONFIG_UPDATE(
-                        self->wpl_ifname,
-                        .if_type = self->wpl_iftype,
-                        .enabled = WANO_TRI_FALSE,
-                        .network = WANO_TRI_FALSE,
-                        .ip_assign_scheme = "none"))
-            {
-                LOG(WARN, "wano: %s: Error writing Wifi_Inet_Config in IF_L2_RESET.", self->wpl_ifname);
-            }
+    wano_ppline_start_queues(self);
 
-            wano_inet_state_event_refresh(&self->wpl_inet_state_event);
-            return 0;
-
-        case wano_ppline_do_INET_STATE_UPDATE:
-            if (is->is_enabled) break;
-            if (is->is_network) break;
-            if (strcmp(is->is_ip_assign_scheme, "none") != 0) break;
-
-            return wano_ppline_IF_ENABLE;
-
-        default:
-            break;
-    }
-
-    return 0;
+    return wano_ppline_IF_ENABLE;
 }
 
 /*
@@ -709,7 +670,8 @@ enum wano_ppline_state wano_ppline_state_IF_ENABLE(
                         .if_type = self->wpl_iftype,
                         .enabled = WANO_TRI_TRUE,
                         .network = WANO_TRI_TRUE,
-                        .nat = WANO_TRI_TRUE))
+                        .nat = WANO_TRI_TRUE,
+                        .ip_assign_scheme = "none"))
             {
                 LOG(WARN, "wano: %s: Error writing Wifi_Inet_Config in IF_ENABLE.", self->wpl_ifname);
             }
@@ -720,6 +682,8 @@ enum wano_ppline_state wano_ppline_state_IF_ENABLE(
             if (!is->is_enabled) break;
             if (!is->is_network) break;
             if (!is->is_nat) break;
+            if (strcmp(is->is_ip_assign_scheme, "none") != 0) break;
+
             return wano_ppline_IF_CARRIER;
 
         default:
@@ -916,12 +880,29 @@ enum wano_ppline_state wano_ppline_state_IDLE(
     {
         case wano_ppline_do_STATE_INIT:
             /*
-             * Update connection manager table
+             * Update connection manager table, has_L3 must be false and loop
+             * must be true. This is required by the Cloud/CM state machines.
              */
-            if (!WANO_CONNMGR_UPLINK_UPDATE(self->wpl_ifname, .has_L3 = WANO_TRI_FALSE))
+            if (!WANO_CONNMGR_UPLINK_UPDATE(
+                    self->wpl_ifname,
+                    .has_L3 = WANO_TRI_FALSE,
+                    .loop = WANO_TRI_TRUE))
             {
                 LOG(WARN, "wano: %s: Error updating the Connection_Manager_Uplink table (has_L3 = false)",
                         self->wpl_ifname);
+            }
+
+            if (clock_mono_double() < self->wpl_immediate_timeout)
+            {
+                LOG(INFO, "wano: %s: Peforming immediate restarts for the next %0.2f seconds.",
+                        self->wpl_ifname, self->wpl_immediate_timeout - clock_mono_double());
+                /*
+                 * This is a requirement for CM: After the plugin pipeline is
+                 * exhausted, set has_L3 to false and restart provisioning. The
+                 * START state only restarts the pipeline without touching the
+                 * Connection_Manager_Uplink state
+                 */
+                return wano_ppline_START;
             }
 
             if (self->wpl_status_fn != NULL)
@@ -1005,6 +986,9 @@ enum wano_ppline_state wano_ppline_state_EXCEPTION(
     (void)data;
 
     wano_ppline_t *self = CONTAINER_OF(state, wano_ppline_t, wpl_state);
+
+    /* Reset the immediate restart timer */
+    self->wpl_immediate_timeout = clock_mono_double() + CONFIG_MANAGER_WANO_PLUGIN_IMMEDIATE_TIMEOUT;
 
     /* Stop any pending timers */
     ev_timer_stop(EV_DEFAULT, &self->wpl_retry_timer);

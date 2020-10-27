@@ -153,22 +153,23 @@ static void cm2_stability_handle_fatal_state(int counter)
         return; 
 
     if (cm2_is_config_via_ble_enabled() &&
-        !g_state.is_onboarded) {
+        g_state.dev_type == CM2_DEVICE_NONE &&
+        (!g_state.link.is_used || cm2_is_eth_type(g_state.link.if_type))) {
         LOGI("Stability: Enabling two way mode comunication");
         cm2_ovsdb_ble_set_connectable(true);
         return;
     }
 
     if (cm2_vtag_stability_check() &&
-        !g_state.link.is_limp_state &&
+        g_state.dev_type != CM2_DEVICE_ROUTER &&
         g_state.gw_offline_cnt == 0 &&
         counter + 1 > CONFIG_CM2_STABILITY_THRESH_FATAL) {
-            LOGW("Restart managers due to exceeding the threshold for fatal failures");
-            cm2_ovsdb_dump_debug_data();
-            cm2_tcpdump_stop(g_state.link.if_name);
-            WARN_ON(!target_device_wdt_ping());
-            target_device_restart_managers();
-        }
+        LOGW("Restart managers due to exceeding the threshold for fatal failures");
+        cm2_ovsdb_dump_debug_data();
+        cm2_tcpdump_stop(g_state.link.if_name);
+        WARN_ON(!target_device_wdt_ping());
+        target_device_restart_managers();
+    }
 }
 
 void cm2_connection_req_stability_check(target_connectivity_check_option_t opts)

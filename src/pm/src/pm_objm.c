@@ -634,13 +634,11 @@ static void callback_Object_Store_Config(ovsdb_update_monitor_t *mon,
 
         case OVSDB_UPDATE_MODIFY:
             // Install new version
-            if (strcmp(old_rec->version, new->version) == 0)
+            // Only download if url changed to an non empty string
+            if (new->dl_url_changed && strcmp(new->dl_url, "") != 0)
             {
-                // Ignore update version did not change
-                LOG(DEBUG, "objm: ignoring (%s) modify - version not changed", __func__);
-                break;
+                start_download(new);
             }
-            start_download(new);
             break;
 
         case OVSDB_UPDATE_DEL:

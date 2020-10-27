@@ -365,6 +365,15 @@ bool wano_connmgr_uplink_update(
         SCHEMA_SET_INT(conn_up.has_L3, false);
     }
 
+    if (args->loop == WANO_TRI_TRUE)
+    {
+        SCHEMA_SET_INT(conn_up.loop, true);
+    }
+    else if (args->loop == WANO_TRI_FALSE)
+    {
+        SCHEMA_SET_INT(conn_up.loop, false);
+    }
+
     OVSDB_TABLE_INIT(Connection_Manager_Uplink, if_name);
 
     return ovsdb_table_upsert_simple(

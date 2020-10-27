@@ -993,6 +993,8 @@ void nm2_inet_copy(
     NM2_IFACE_INET_CONFIG_COPY(piface->if_cache.gre_remote_inet_addr, iconf->gre_remote_inet_addr);
     piface->if_cache.gre_local_inet_addr_exists = iconf->gre_local_inet_addr_exists;
     NM2_IFACE_INET_CONFIG_COPY(piface->if_cache.gre_local_inet_addr, iconf->gre_local_inet_addr);
+    piface->if_cache.vlan_id_exists = iconf->vlan_id_exists;
+    NM2_IFACE_INET_CONFIG_COPY(piface->if_cache.vlan_id, iconf->vlan_id);
 }
 
 

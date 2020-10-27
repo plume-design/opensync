@@ -45,6 +45,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "execsh.h"
 #include "kconfig.h"
 #include "os_time.h"
+#include "os_regex.h"
 #include "util.h"
 
 /** Pattern for matching the dmesg file */
@@ -277,17 +278,43 @@ exit:
     return retval;
 }
 
+/* define signatures. keep 0 as last id for 'no-match' */
+static os_reg_list_t dmesg_sig_pattern[] =
+{
+    /* ARM __show_regs */
+    OS_REG_LIST_ENTRY(1, "PC is at"),
+    OS_REG_LIST_ENTRY(2, "LR is at"),
+
+    /* MIPS __show_regs */
+    OS_REG_LIST_ENTRY(3, "epc"RE_SPACE": [[:xdigit:]]+"),
+    OS_REG_LIST_ENTRY(4, "ra"RE_SPACE": [[:xdigit:]]+"),
+
+    /* QCOM Wifi firmware assert */
+    OS_REG_LIST_ENTRY(5, "\\[wifi"RE_NUM"\\]: XXX TARGET ASSERTED XXX"),
+    OS_REG_LIST_ENTRY(6, "\\[02\\]"RE_SPACE":"RE_SPACE RE_XNUM),
+
+    /* BUG crash recovery */
+    OS_REG_LIST_ENTRY(7, "detected wmi/htc/ce stall"),
+    OS_REG_LIST_ENTRY(8, "Temperature over thermal shutdown limit"),
+
+    OS_REG_LIST_END(0)
+};
+
 /**
- * Open the dmesg file and look for the PC (instruction counter) and LR (link register) lines:
- * <4>[67763.426697] PC is at _raw_spin_lock+0x44/0x58
- * <4>[67763.426754] LR is at ovs_flow_stats_update+0x54/0x144 [openvswitch]
- *
- * Store the PC and LR lines as the reboot reason.
+ * Open the dmesg file and search for signatures
  */
 void pstore_parse_dmesg(const char *path, enum osp_reboot_type *type, char *reason, ssize_t rsz)
 {
     FILE *fd;
     char dbuf[1024];
+    int match;
+    ssize_t cpysz;
+
+    if ((NULL == reason) || (0 == rsz))
+    {
+        LOG(ERR, "osp_reboot: reason buffer is not valid");
+        return;
+    }
 
     fd = fopen(path, "r");
     if (fd == NULL)
@@ -301,10 +328,9 @@ void pstore_parse_dmesg(const char *path, enum osp_reboot_type *type, char *reas
      * crashed
      */
     *type = OSP_REBOOT_CRASH;
-    if (reason != NULL)
-    {
-        strscpy(reason, "(Unknown)", rsz);
-    }
+
+    /* quick way of cleaning up string buffer */
+    reason[0] = '\0';
 
     /*
      * Scan the file and try to find the "PC is at" and "LR is at" lines,
@@ -312,37 +338,22 @@ void pstore_parse_dmesg(const char *path, enum osp_reboot_type *type, char *reas
      */
     while (fgets(dbuf, sizeof(dbuf), fd) != NULL)
     {
-        char *rsstr;
-        ssize_t cpysz;
-
-        rsstr = strstr(dbuf, "PC is at");
-        if (rsstr != NULL)
+        match = os_reg_list_match(dmesg_sig_pattern, dbuf, NULL, 0);
+        if (match)
         {
-            /* Found it, copy it to the reason string */
-            if (reason != NULL)
+            cpysz = strscat(reason, dbuf, rsz);
+            if (cpysz < 0)
             {
-                cpysz = strscpy(reason, dbuf, rsz);
-                /* not enough space for copy, bailing */
-                if (cpysz < 0)
-                    break;
-                else
-                {
-                    reason += cpysz;
-                    rsz -= cpysz;
-                }
+                LOG(WARN, "%s: not enough memory to save dmesg sig reason",
+                          __func__);
+                break;
             }
         }
-        /* LR is always after PC. Done with the collection after LR is found */
-        rsstr = strstr(dbuf, "LR is at");
-        if (rsstr != NULL)
-        {
-            /* Found it, copy it to the reason string */
-            if (reason != NULL)
-                strscpy(reason, dbuf, rsz);
-
-            break;
-        }
     }
+
+    /* Unknown if no-match */
+    if (0 == strnlen(reason, rsz))
+        strscpy(reason, "(Unknown)", rsz);
 
     fclose(fd);
 }

@@ -64,13 +64,17 @@ typedef struct ct_flow
     bool end;
 } ct_flow_t;
 
-
 typedef struct ctflow_info
 {
     ct_flow_t flow;
     ds_dlist_node_t dl_node;
 } ctflow_info_t;
 
+struct flow_tracker
+{
+    ctflow_info_t *flowptr;
+    ds_tree_node_t  ft_tnode;
+};
 
 typedef struct flow_stats_
 {

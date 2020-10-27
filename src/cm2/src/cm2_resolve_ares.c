@@ -100,7 +100,7 @@ cm2_ares_host_cb(void *arg, int status, int timeouts, struct hostent *hostent)
                 }
                 memcpy(n->addr, hostent->h_addr_list[i], hostent->h_length);
                 n->addr_type = hostent->h_addrtype;
-                ptype = g_state.link.ip.ips == CM2_IPV6_DHCP ? AF_INET6 : AF_INET;
+                ptype = g_state.link.ip.is_ipv6 ? AF_INET6 : AF_INET;
                 if (n->addr_type == ptype)
                 {
                     ds_dlist_insert_head(&addr->addr_list, n);
@@ -112,6 +112,7 @@ cm2_ares_host_cb(void *arg, int status, int timeouts, struct hostent *hostent)
             }
             addr->resolved = true;
             addr->cur = ds_dlist_head(&addr->addr_list);
+            cm2_update_state(CM2_REASON_RESOLVE_UPDATE);
             break;
         case ARES_EDESTRUCTION:
             LOGI("ares: channel was destroyed");

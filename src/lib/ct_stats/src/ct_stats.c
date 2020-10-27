@@ -90,6 +90,99 @@ static struct imc_context g_imc_app_server =
  */
 static struct imc_dso g_imc_context = { 0 };
 
+static int flow_cmp(void *a, void *b);
+
+/**
+ * Temporary list to merge similar flows across zones.
+ */
+ds_tree_t flow_tracker_list = DS_TREE_INIT(flow_cmp, struct flow_tracker, ft_tnode);
+
+/**
+ * @brief compare flows.
+ *
+ * @param a flow pointer
+ * @param b flow pointer
+ * @return 0 if flows match
+ */
+static int
+flow_cmp (void *a, void *b)
+{
+    layer3_ct_info_t  *l3_a = (layer3_ct_info_t *)a;
+    layer3_ct_info_t  *l3_b = (layer3_ct_info_t *)b;
+
+    return memcmp(l3_a, l3_b, sizeof(layer3_ct_info_t));
+}
+
+static void
+flow_free_merged_multi_zonestats(ds_tree_t *tree)
+{
+    struct flow_tracker *ft, *next;
+    int count = 0;
+
+    if (tree == NULL) return;
+
+    ft = ds_tree_head(tree);
+    while (ft != NULL)
+    {
+        next = ds_tree_next(tree, ft);
+        ds_tree_remove(tree, ft);
+        free(ft);
+        ft = next;
+        count++;
+    }
+    LOGT("%s: Total merged flows freed: %d\n",__func__,count);
+    return;
+}
+
+/**
+ * @brief merge multiple zone stats.
+ *
+ * @param flow key to look for.
+ * @return true if inserted/merged.
+ */
+static bool
+flow_merge_multi_zonestats(ctflow_info_t *flow)
+{
+    layer3_ct_info_t *l3_key = &flow->flow.layer3_info;
+    struct flow_tracker *ft;
+    pkts_ct_info_t  *ft_pkts;
+    pkts_ct_info_t  *ct_pkts;
+
+    ft = ds_tree_find(&flow_tracker_list, l3_key);
+
+    if (ft == NULL)
+    {
+      // Allocate for the flow.
+      ft = calloc(1, sizeof(struct flow_tracker));
+      if (ft == NULL)
+      {
+          LOGE("%s: Unable to allocate memory for flow tracker.", __func__);
+          return false;
+      }
+
+      ft->flowptr = flow;
+      ds_tree_insert(&flow_tracker_list, ft, &flow->flow.layer3_info);
+    }
+    else
+    {
+        ct_pkts = &ft->flowptr->flow.pkt_info;
+        ft_pkts = &flow->flow.pkt_info;
+
+        if (ft_pkts->pkt_cnt > ct_pkts->pkt_cnt &&
+            ft_pkts->bytes > ct_pkts->bytes)
+        {
+            ct_pkts->pkt_cnt = ft_pkts->pkt_cnt;
+            ct_pkts->bytes = ft_pkts->bytes;
+        }
+        else if (ft_pkts->pkt_cnt < ct_pkts->pkt_cnt &&
+                 ft_pkts->bytes < ct_pkts->bytes)
+        {
+            ft_pkts->pkt_cnt = ct_pkts->pkt_cnt;
+            ft_pkts->bytes = ct_pkts->bytes;
+        }
+    }
+    return true;
+}
 
 /**
  * @brief dynamically load the imc library and initializes its context
@@ -881,10 +974,14 @@ data_cb(const struct nlmsghdr *nlh, void *data)
         ct_zone = 0; /* Zone = 0 flows will not have CTA_ZONE */
     }
 
-    if (ct_zone != ct_stats->ct_zone) return MNL_CB_OK;
+    LOGT("%s: Lookup IP flow for ct_zone: %d, retrieved: %d", __func__,
+         ct_stats->ct_zone, ct_zone);
+
+    if (ct_stats->ct_zone != USHRT_MAX &&
+        ct_stats->ct_zone != ct_zone) return MNL_CB_OK;
 
     LOGT("%s: Included IP flow for ct_zone: %d", __func__,
-         ct_stats->ct_zone);
+          ct_zone);
 
     flow_info = calloc(1, sizeof(struct ctflow_info));
     if(flow_info == NULL) return MNL_CB_OK;
@@ -937,6 +1034,9 @@ data_cb(const struct nlmsghdr *nlh, void *data)
     rc = get_counter(tb[CTA_COUNTERS_ORIG], flow);
     if (rc < 0) goto flow_info_1_free;
 
+    if (ct_stats->ct_zone == USHRT_MAX) flow_merge_multi_zonestats(flow_info);
+
+
     ds_dlist_insert_tail(&ct_stats->ctflow_list, flow_info);
     ct_stats->node_count++;
 
@@ -945,9 +1045,10 @@ data_cb(const struct nlmsghdr *nlh, void *data)
     rc = get_counter(tb[CTA_COUNTERS_REPLY], flow_1);
     if (rc < 0) goto reply_dir_free;
 
+    if (ct_stats->ct_zone == USHRT_MAX) flow_merge_multi_zonestats(flow_info_1);
+
     ds_dlist_insert_tail(&ct_stats->ctflow_list, flow_info_1);
     ct_stats->node_count++;
-
     return MNL_CB_OK;
 
 flow_info_1_free:
@@ -1049,6 +1150,8 @@ ct_stats_get_ct_flow(int af_family)
             ct_stats_print_contrack(&flow_info->flow);
         }
     }
+
+    flow_free_merged_multi_zonestats(&flow_tracker_list);
 
     if (LOG_SEVERITY_ENABLED(LOG_SEVERITY_TRACE))
         LOGT("%s: total ct flow %d", __func__, ct_stats->node_count);
