@@ -240,19 +240,10 @@ void callback_Node_Config(
             LOGD("%s: node config entry deleted: module %s, key: %s, value: %s",
                     __func__, old_rec->module, old_rec->key, old_rec->value);
 
-            if (conf->value == NULL)
+
+            if (!(maptm_ps_set(MAPT_PS_KEY_NAME, maptm_get_supportValue(conf->value) ? "true" : "false")))
             {
-                if (!(maptm_ps_set(MAPT_PS_KEY_NAME, "true")))
-                {
-                    LOGE("Error saving new MAP-T support value");
-                }
-            }
-            else
-            {
-                if (!(maptm_ps_set(MAPT_PS_KEY_NAME, maptm_get_supportValue(conf->value) ? "true" : "false")))
-                {
-                    LOGE("Error saving new MAP-T support value");
-                }
+                LOGE("Error saving new MAP-T support value");
             }
         }
     }
