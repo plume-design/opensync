@@ -16,4 +16,13 @@ if MANAGER_DM
         help
             This is the folder where PID files of the started processes will
             be stored. The files will be named [MANAGER_NAME].pid
+
+    config SPEED_TEST_CMD
+        string "Speed test command and options"
+        help
+            The command and command line options that execute a speed test.  Do not specify the path, the command must be located in $(PLUME_DIR)/tools.  Setting a command line enables speed test support.
+
+    config SPEEDTEST
+        bool
+        default y if SPEED_TEST_CMD != ""
 endif

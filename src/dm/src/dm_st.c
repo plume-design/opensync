@@ -239,7 +239,7 @@ void dm_stupdate_cb(ovsdb_update_monitor_t *self)
                 }
 
                 char st_cmd[TARGET_BUFF_SZ];
-                sprintf(st_cmd, "%s/st_ookla -qlvJ", tools_dir);
+                sprintf(st_cmd, "%s/%s", tools_dir, CONFIG_SPEED_TEST_CMD);
                 if (false == pasync_ropen(EV_DEFAULT, st_config.testid, st_cmd, pa_cb))
                 {
                     LOG(ERR, "Error running pasync_ropen 1");
