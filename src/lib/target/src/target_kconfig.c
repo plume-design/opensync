@@ -645,8 +645,6 @@ util_get_ipv6_global_interface(char *ifn, int ifn_size)
 
     retval = true;
     strscpy(ifn, line, ifn_size);
-
-    LOGI("Global IPv6 interface: %s", ifn);
 done:
     if (f1 != NULL)
         pclose(f1);
@@ -702,7 +700,7 @@ util_connectivity_internet_check(void) {
             ret = util_ping_cmd(util_connectivity_check_inet_addrs[r1], true);
             if (ret)
                 break;
-            LOGW("DNS [%s] Internet checking failed", util_connectivity_check_inet_addrs[r1]);
+            LOGI("DNS [%s] Internet checking failed", util_connectivity_check_inet_addrs[r1]);
             cnt_addr2 = util_connectivity_get_inet_addr_cnt(util_connectivity_check_inet_ipv6_addrs);
             r2 = os_rand() % cnt_addr2;
             snprintf(ipv6_addr, sizeof(ipv6_addr), "%s%%%s", util_connectivity_check_inet_ipv6_addrs[r2], ipv6_if);

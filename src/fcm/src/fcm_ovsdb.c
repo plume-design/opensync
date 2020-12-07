@@ -50,6 +50,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ovsdb_table_t table_AWLAN_Node;
 ovsdb_table_t table_FCM_Collector_Config;
 ovsdb_table_t table_FCM_Report_Config;
+ovsdb_table_t table_Node_State;
+ovsdb_table_t table_Node_Config;
+
+#define FCM_NODE_MODULE "fcm"
+#define FCM_NODE_STATE_MEM_KEY "max_mem"
 
 /**
  * fcm_get_awlan_header_id: maps key to header_id
@@ -69,6 +74,124 @@ static fcm_header_ids fcm_get_awlan_header_id(const char *key)
 }
 
 /**
+ * @brief Upserts the Node_State ovsdb table entry for fcm's max mem limit
+ *
+ * Advertizes in Node_State the max amount of memory FCM is allowed to use
+ * @param module the Node_State module name
+ * @param key the Node_State key
+ * @param key the Node_State value
+ */
+void
+fcm_set_node_state(const char *module, const char *key, const char *value)
+{
+    struct schema_Node_State node_state;
+    json_t *where;
+    json_t *cond;
+
+    where = json_array();
+
+    cond = ovsdb_tran_cond_single("module", OFUNC_EQ, (char *)module);
+    json_array_append_new(where, cond);
+
+    MEMZERO(node_state);
+    SCHEMA_SET_STR(node_state.module, module);
+    SCHEMA_SET_STR(node_state.key, key);
+    SCHEMA_SET_STR(node_state.value, value);
+    ovsdb_table_upsert_where(&table_Node_State, where, &node_state, false);
+
+    json_decref(where);
+
+    return;
+}
+
+/**
+ * @brief processes the removal of an entry in Node_Config
+ */
+void
+fcm_rm_node_config(struct schema_Node_Config *old_rec)
+{
+    fcm_mgr_t *mgr;
+    char str_value[32];
+    char *module;
+    int rc;
+
+    module = old_rec->module;
+    rc = strcmp("fcm", module);
+    if (rc != 0) return;
+
+    /* Get the manager */
+    mgr = fcm_get_mgr();
+    if (mgr->sysinfo.totalram == 0) return;
+
+    mgr->max_mem = (mgr->sysinfo.totalram * mgr->sysinfo.mem_unit) / 2;
+    mgr->max_mem /= 1000; /* kB */
+    LOGI("%s: fcm default max memory usage: %" PRIu64 " kB", __func__,
+         mgr->max_mem);
+
+    snprintf(str_value, sizeof(str_value), "%" PRIu64 " kB", mgr->max_mem);
+    fcm_set_node_state(FCM_NODE_MODULE, FCM_NODE_STATE_MEM_KEY, str_value);
+}
+
+/**
+ * @brief processes the addition of an entry in Node_Config
+ */
+void
+fcm_get_node_config(struct schema_Node_Config *node_cfg)
+{
+    fcm_mgr_t *mgr;
+    char str_value[32];
+    char *module;
+    long value;
+    char *key;
+
+    int rc;
+
+    module = node_cfg->module;
+    rc = strcmp("fcm", module);
+    if (rc != 0) return;
+
+    key = node_cfg->key;
+    rc = strcmp("max_mem_percent", key);
+    if (rc != 0) return;
+
+    errno = 0;
+    value = strtol(node_cfg->value, NULL, 10);
+    if (errno != 0)
+    {
+        LOGE("%s: error reading value %s: %s", __func__,
+             node_cfg->value, strerror(errno));
+        return;
+    }
+
+    if (value < 0) return;
+    if (value > 100) return;
+
+    /* Get the manager */
+    mgr = fcm_get_mgr();
+
+    if (mgr->sysinfo.totalram == 0) return;
+
+    mgr->max_mem = mgr->sysinfo.totalram * mgr->sysinfo.mem_unit;
+    mgr->max_mem = (mgr->max_mem * value) / 100;
+    mgr->max_mem /= 1000; /* kB */
+
+    LOGI("%s: set fcm max mem usage to %" PRIu64 " kB", __func__,
+         mgr->max_mem);
+    snprintf(str_value, sizeof(str_value), "%" PRIu64 " kB", mgr->max_mem);
+    fcm_set_node_state(FCM_NODE_MODULE, FCM_NODE_STATE_MEM_KEY, str_value);
+}
+
+/**
+ * @brief processes the removal of an entry in Node_Config
+ */
+void
+fcm_update_node_config(struct schema_Node_Config *node_cfg)
+{
+    fcm_get_node_config(node_cfg);
+}
+
+
+/**
  * fcm_get_awlan_headers: gather mqtt records from AWLAN_Node's
  * mqtt headers table
  * @awlan: AWLAN_Node record
@@ -79,6 +202,7 @@ static fcm_header_ids fcm_get_awlan_header_id(const char *key)
 static void fcm_get_awlan_headers(struct schema_AWLAN_Node *awlan)
 {
     fcm_mgr_t *mgr = fcm_get_mgr();
+
     int i = 0;
 
     LOGT("%s %d", __FUNCTION__,
@@ -181,20 +305,55 @@ void callback_FCM_Report_Config(
     }
 }
 
+/**
+ * @brief registered callback for Node_Config events
+ */
+static void
+callback_Node_Config(ovsdb_update_monitor_t *mon,
+                    struct schema_Node_Config *old_rec,
+                    struct schema_Node_Config *node_cfg)
+{
+    if (mon->mon_type == OVSDB_UPDATE_NEW)
+    {
+        fcm_get_node_config(node_cfg);
+    }
+
+    if (mon->mon_type == OVSDB_UPDATE_DEL)
+    {
+        fcm_rm_node_config(old_rec);
+    }
+
+    if (mon->mon_type == OVSDB_UPDATE_MODIFY)
+    {
+        fcm_update_node_config(node_cfg);
+    }
+}
 
 int fcm_ovsdb_init(void)
 {
-    LOGD("Initializing FCM tables");
+    fcm_mgr_t *mgr;
+    char str_value[32] = { 0 };
+
+    LOGI("Initializing FCM tables");
+
+    mgr = fcm_get_mgr();
 
     // Initialize OVSDB tables
     OVSDB_TABLE_INIT_NO_KEY(AWLAN_Node);
     OVSDB_TABLE_INIT_NO_KEY(FCM_Collector_Config);
     OVSDB_TABLE_INIT_NO_KEY(FCM_Report_Config);
+    OVSDB_TABLE_INIT_NO_KEY(Node_Config);
+    OVSDB_TABLE_INIT_NO_KEY(Node_State);
 
     // Initialize OVSDB monitor callbacks
     OVSDB_TABLE_MONITOR(AWLAN_Node, false);
     OVSDB_TABLE_MONITOR(FCM_Collector_Config, false);
     OVSDB_TABLE_MONITOR(FCM_Report_Config, false);
+    OVSDB_TABLE_MONITOR(Node_Config, false);
+
+    // Advertize default memory limit usage
+    snprintf(str_value, sizeof(str_value), "%" PRIu64 " kB", mgr->max_mem);
+    fcm_set_node_state(FCM_NODE_MODULE, FCM_NODE_STATE_MEM_KEY, str_value);
 
     return 0;
 }

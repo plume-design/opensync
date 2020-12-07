@@ -60,6 +60,8 @@ struct wano_ppline_plugin
 {
     /** True if the plug-in has been started (wano_plugin_run() was called) */
     bool                        wpp_running;
+    /** True if plug-in is detached */
+    bool                        wpp_detached;
     /** Parent pipeline */
     wano_ppline_t              *wpp_ppline;
     /** Plug-in structure */
@@ -83,7 +85,7 @@ static bool wano_ppline_runq_add(wano_ppline_t *self, struct wano_ppline_plugin 
 static bool wano_ppline_runq_start(wano_ppline_t *self);
 static void __wano_ppline_runq_stop(wano_ppline_t *self, struct wano_ppline_plugin *wpp);
 static void wano_ppline_runq_del(wano_ppline_t *self, struct wano_ppline_plugin *wpp);
-static void wano_ppline_runq_flush(wano_ppline_t *self);
+static void wano_ppline_runq_flush(wano_ppline_t *self, bool flush_detached);
 static wano_inet_state_event_fn_t wano_ppline_inet_state_event_fn;
 static wano_plugin_status_fn_t wano_ppline_plugin_status_fn;
 static void wano_ppline_retry_timer_fn(struct ev_loop *loop, ev_timer *w, int revent);
@@ -98,18 +100,15 @@ bool wano_ppline_init(
         wano_ppline_t *self,
         const char *ifname,
         const char *iftype,
-        uint64_t emask,
-        wano_ppline_status_fn_t *status_fn)
+        uint64_t emask)
 {
     memset(self, 0, sizeof(*self));
 
     STRSCPY_WARN(self->wpl_ifname, ifname);
     STRSCPY_WARN(self->wpl_iftype, iftype);
     self->wpl_plugin_emask = emask;
-    self->wpl_status_fn = status_fn;
 
-    self->wpl_immediate_timeout = clock_mono_double() + CONFIG_MANAGER_WANO_PLUGIN_IMMEDIATE_TIMEOUT;
-
+    ds_dlist_init(&self->wpl_event_list, wano_ppline_event_t, wpe_dnode);
     ds_dlist_init(&self->wpl_plugin_waitq, struct wano_ppline_plugin, wpp_dnode);
     ds_dlist_init(&self->wpl_plugin_runq, struct wano_ppline_plugin, wpp_dnode);
 
@@ -168,6 +167,56 @@ void wano_ppline_fini(wano_ppline_t *self)
     (void)wano_connmgr_uplink_delete(self->wpl_ifname);
 }
 
+wano_ppline_t *wano_ppline_from_plugin_handle(wano_plugin_handle_t *plugin)
+{
+    struct wano_ppline_plugin *wpl = plugin->wh_data;
+
+    if (wpl == NULL) return NULL;
+
+    return wpl->wpp_ppline;
+}
+
+/*
+ * Initialize a plug-in pipeline event object
+ */
+void wano_ppline_event_init(wano_ppline_event_t *self, wano_ppline_event_fn_t *fn)
+{
+    memset(self, 0, sizeof(*self));
+    self->wpe_event_fn = fn;
+}
+
+/*
+ * Start listening to plug-in pipeline @p wpp events
+ */
+void wano_ppline_event_start(wano_ppline_event_t *self, wano_ppline_t *wpp)
+{
+    if (self->wpe_ppline != NULL) return;
+
+    self->wpe_ppline = wpp;
+    ds_dlist_insert_tail(&wpp->wpl_event_list, self);
+}
+
+/*
+ * Stop listening to plug-in pipeline @p wpp events
+ */
+void wano_ppline_event_stop(wano_ppline_event_t *self)
+{
+    if (self->wpe_ppline == NULL) return;
+
+    ds_dlist_remove(&self->wpe_ppline->wpl_event_list, self);
+    self->wpe_ppline = NULL;
+}
+
+void wano_ppline_event_dispatch(wano_ppline_t *self, enum wano_ppline_status status)
+{
+    wano_ppline_event_t *ppe;
+
+    ds_dlist_foreach(&self->wpl_event_list, ppe)
+    {
+        ppe->wpe_event_fn(ppe, status);
+    }
+}
+
 /*
  * Initialize the plug-in run and wait queue
  */
@@ -175,6 +224,9 @@ void wano_ppline_start_queues(wano_ppline_t *self)
 {
     struct wano_plugin *wp;
     wano_plugin_iter_t wpi;
+
+    /* Destroy queues if they are active */
+    wano_ppline_stop_queues(self);
 
     /*
      * Populate the waitqueue
@@ -219,7 +271,7 @@ void wano_ppline_stop_queues(wano_ppline_t *self)
     /*
      * Free the running queue and terminate all currently running plug-ins
      */
-    wano_ppline_runq_flush(self);
+    wano_ppline_runq_flush(self, true);
 
     self->wpl_plugin_rmask = 0;
 }
@@ -298,13 +350,18 @@ bool wano_ppline_runq_start(wano_ppline_t *self)
 {
     struct wano_ppline_plugin *wpp;
 
-    if (ds_dlist_is_empty(&self->wpl_plugin_runq))
-    {
-        return false;
-    }
+    bool retval = false;
 
     ds_dlist_foreach(&self->wpl_plugin_runq, wpp)
     {
+        /* Do not count detached plug-in towards pipeline exhaustion */
+        if (wpp->wpp_detached)
+        {
+            continue;
+        }
+
+        retval = true;
+
         if (wpp->wpp_running)
         {
             continue;
@@ -325,7 +382,7 @@ bool wano_ppline_runq_start(wano_ppline_t *self)
         wpp->wpp_running = true;
     }
 
-    return true;
+    return retval;
 }
 
 /*
@@ -333,10 +390,15 @@ bool wano_ppline_runq_start(wano_ppline_t *self)
  */
 void __wano_ppline_runq_stop(wano_ppline_t *self, struct wano_ppline_plugin *wpp)
 {
-    self->wpl_plugin_rmask &= ~wpp->wpp_plugin->wanp_mask;
+    /* If the plug-in was detached, the run mask was already cleared */
+    if (!wpp->wpp_detached)
+    {
+        self->wpl_plugin_rmask &= ~wpp->wpp_plugin->wanp_mask;
+    }
 
     /* If the plug-in reported its own interface for WAN, clear the uplink table */
-    if (wpp->wpp_status.ws_ifname[0] != '\0')
+    if (wpp->wpp_status.ws_ifname[0] != '\0' &&
+            strcmp(wpp->wpp_ppline->wpl_ifname, wpp->wpp_status.ws_ifname) != 0)
     {
         if (!wano_connmgr_uplink_delete(wpp->wpp_status.ws_ifname))
         {
@@ -365,13 +427,28 @@ void wano_ppline_runq_del(wano_ppline_t *self, struct wano_ppline_plugin *wpp)
     ds_dlist_remove(&self->wpl_plugin_runq, wpp);
 }
 
-static void wano_ppline_runq_flush(wano_ppline_t *self)
+void wano_ppline_runq_detach(wano_ppline_t *self, struct wano_ppline_plugin *wpp)
+{
+    wpp->wpp_detached = true;
+    self->wpl_plugin_rmask &= ~wpp->wpp_plugin->wanp_mask;
+
+    /* Stop the timeout handler */
+    ev_timer_stop(EV_DEFAULT, &wpp->wpp_timeout);
+}
+
+static void wano_ppline_runq_flush(wano_ppline_t *self, bool flush_detached)
 {
     ds_dlist_iter_t iter;
     struct wano_ppline_plugin *wpp;
 
     ds_dlist_foreach_iter(&self->wpl_plugin_runq, wpp, iter)
     {
+        /* Do not terminate detached plug-ins */
+        if (!flush_detached && wpp->wpp_detached)
+        {
+            continue;
+        }
+
         ds_dlist_iremove(&iter);
         __wano_ppline_runq_stop(self, wpp);
         free(wpp);
@@ -453,10 +530,7 @@ void wano_ppline_status_async_fn(struct ev_loop *loop, ev_async *ev, int revent)
             self->wpl_retries = 0;
 
             /* Notify upper layers */
-            if (self->wpl_status_fn != NULL)
-            {
-                self->wpl_status_fn(self, WANO_PPLINE_OK);
-            }
+            wano_ppline_event_dispatch(self, WANO_PPLINE_OK);
             return;
 
         case WANP_SKIP:
@@ -479,6 +553,15 @@ void wano_ppline_status_async_fn(struct ev_loop *loop, ev_async *ev, int revent)
 
             wano_ppline_runq_del(self, wpp);
             free(wpp);
+            wano_ppline_state_do(&self->wpl_state, wano_ppline_do_PLUGIN_UPDATE, NULL);
+            break;
+
+        case WANP_DETACH:
+            LOG(INFO, "wano: %s: Plug-in %s detached.",
+                    self->wpl_ifname, wano_plugin_name(wpp->wpp_handle));
+
+            ev_timer_stop(EV_DEFAULT, &wpp->wpp_timeout);
+            wano_ppline_runq_detach(self, wpp);
             wano_ppline_state_do(&self->wpl_state, wano_ppline_do_PLUGIN_UPDATE, NULL);
             break;
 
@@ -621,6 +704,8 @@ enum wano_ppline_state wano_ppline_state_INIT(
     {
         LOG(INFO, "wano: %s: Stale Connection_Manager_Uplink entry was removed.", self->wpl_ifname);
     }
+
+    self->wpl_immediate_timeout = clock_mono_double() + CONFIG_MANAGER_WANO_PLUGIN_IMMEDIATE_TIMEOUT;
 
     if (!WANO_CONNMGR_UPLINK_UPDATE(
                 self->wpl_ifname,
@@ -791,6 +876,9 @@ enum wano_ppline_state wano_ppline_state_IF_IPV4_RESET(
             if (strcmp(is->is_ip_assign_scheme, "none") != 0) break;
             return wano_ppline_IF_IPV6_RESET;
 
+        case wano_ppline_do_PLUGIN_UPDATE:
+            return wano_ppline_PLUGIN_SCHED;
+
         default:
             break;
     }
@@ -823,6 +911,9 @@ enum wano_ppline_state wano_ppline_state_IF_IPV6_RESET(
 
             self->wpl_plugin_imask &= ~WANO_PLUGIN_MASK_IPV6;
             return wano_ppline_PLUGIN_RUN;
+
+        case wano_ppline_do_PLUGIN_UPDATE:
+            return wano_ppline_PLUGIN_SCHED;
 
         default:
             break;
@@ -879,6 +970,9 @@ enum wano_ppline_state wano_ppline_state_IDLE(
     switch (action)
     {
         case wano_ppline_do_STATE_INIT:
+            /* Stop active plug-ins */
+            wano_ppline_runq_flush(self, false);
+
             /*
              * Update connection manager table, has_L3 must be false and loop
              * must be true. This is required by the Cloud/CM state machines.
@@ -905,10 +999,7 @@ enum wano_ppline_state wano_ppline_state_IDLE(
                 return wano_ppline_START;
             }
 
-            if (self->wpl_status_fn != NULL)
-            {
-                self->wpl_status_fn(self, WANO_PPLINE_IDLE);
-            }
+            wano_ppline_event_dispatch(self, WANO_PPLINE_IDLE);
 
             /*
              * Disable NAT
@@ -942,7 +1033,7 @@ enum wano_ppline_state wano_ppline_state_IDLE(
         case wano_ppline_do_IDLE_TIMEOUT:
             LOG(INFO, "wano: %s: Idle timeout reached, restarting pipeline.", self->wpl_ifname);
             ev_timer_stop(EV_DEFAULT, &self->wpl_retry_timer);
-            return wano_ppline_INIT;
+            return wano_ppline_START;
 
         default:
             break;
@@ -964,6 +1055,7 @@ enum wano_ppline_state wano_ppline_state_FREEZE(
     switch (action)
     {
         case wano_ppline_do_STATE_INIT:
+            wano_ppline_stop_queues(self);
             LOG(NOTICE, "wano: %s: Pipeline frozen.", self->wpl_ifname);
             break;
 
@@ -993,20 +1085,11 @@ enum wano_ppline_state wano_ppline_state_EXCEPTION(
     /* Stop any pending timers */
     ev_timer_stop(EV_DEFAULT, &self->wpl_retry_timer);
 
-    /*
-     * Tear-down the wait and run queues and any plug-ins on them
-     */
-    wano_ppline_stop_queues(self);
-
     switch (action)
     {
         case wano_ppline_exception_PPLINE_RESTART:
             /* Return to the init state */
-            if (self->wpl_status_fn != NULL)
-            {
-                self->wpl_status_fn(self, WANO_PPLINE_RESTART);
-            }
-
+            wano_ppline_event_dispatch(self, WANO_PPLINE_RESTART);
             return wano_ppline_INIT;
 
         case wano_ppline_exception_PPLINE_ABORT:

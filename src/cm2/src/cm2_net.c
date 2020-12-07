@@ -41,6 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "osp_unit.h"
 #include "cm2.h"
 #include "kconfig.h"
+#include "osn_types.h"
 
 #define CM2_VAR_RUN_PATH               "/var/run"
 #define CM2_VAR_PLUME_PATH             "/var/plume"
@@ -138,8 +139,10 @@ void cm2_update_bridge_cfg(char *bridge, char *port, bool brop,
              port, bridge, brop);
 
     /* Update dhcp client on bridge */
-    if (dhcp_update)
+    if (dhcp_update) {
         cm2_ovsdb_set_dhcp_client(bridge, brop);
+        cm2_ovsdb_set_dhcpv6_client(bridge, brop);
+    }
 }
 
 /**
@@ -536,4 +539,22 @@ void cm2_update_device_type(const char *iftype)
     }
 
     LOGI("Device type: %d", g_state.dev_type);
+}
+
+bool cm2_osn_is_ipv6_global_link(const char *ifname, const char *ipv6_addr)
+{
+    osn_ip6_addr_t addr;
+
+    if (!osn_ip6_addr_from_str(&addr, ipv6_addr)) {
+        LOGW("%s: Invalid IPv6 address: %s", ifname, ipv6_addr);
+        return false;
+    }
+
+    if (osn_ip6_addr_type(&addr) != OSN_IP6_ADDR_GLOBAL) {
+        LOGI("%s: Not a global IPv6 address: %s", ifname, ipv6_addr);
+        return false;
+    }
+
+    LOGI("%s: Global IPv6 address: %s", ifname, ipv6_addr);
+    return true;
 }

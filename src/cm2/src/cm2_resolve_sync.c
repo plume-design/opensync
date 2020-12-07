@@ -234,3 +234,8 @@ bool cm2_write_next_target_addr(void)
     struct addrinfo *ai = cm2_get_next_addrinfo(addr);
     return cm2_write_target_addr(addr, ai);
 }
+
+bool cm2_is_addr_resolved(const cm2_addr_t *addr)
+{
+    return addr->resolved;
+}

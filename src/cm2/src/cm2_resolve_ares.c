@@ -31,7 +31,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "cm2.h"
 
-static int cm2_start_ares_resolve(struct evx_ares *eares_p)
+static int
+cm2_start_ares_resolve(struct evx_ares *eares_p)
 {
     int cnt;
 
@@ -39,7 +40,7 @@ static int cm2_start_ares_resolve(struct evx_ares *eares_p)
 
     cnt = evx_ares_get_count_busy_fds(eares_p);
     if (cnt > 0) {
-        LOGW("ares: fds are still busy [left = %d], skip creating new channel", cnt);
+        LOGI("ares: fds are still busy [left = %d], skip creating new channel", cnt);
         return -1;
     }
     evx_start_ares(eares_p);
@@ -47,35 +48,42 @@ static int cm2_start_ares_resolve(struct evx_ares *eares_p)
     return 0;
 }
 
+static void
+cm2_util_free_addr_list(cm2_addr_list *list)
+{
+    int i;
+
+    if (list->h_addr_list)
+    {
+        for (i = 0; !list->h_addr_list[i]; i++) {
+            if (!list->h_addr_list[i]) {
+                free(list->h_addr_list[i]);
+                list->h_addr_list[i] = NULL;
+            }
+        }
+        free(list->h_addr_list);
+        list->h_addr_list = NULL;
+    }
+}
+
 void cm2_free_addr_list(cm2_addr_t *addr)
 {
-   cm2_addr_list_entry  *addr_e;
-   ds_dlist_iter_t      list_iter;
-
-   for (addr_e = ds_dlist_ifirst(&list_iter, &addr->addr_list);
-        addr_e != NULL;
-        addr_e = ds_dlist_inext(&list_iter)) {
-            ds_dlist_iremove(&list_iter);
-            free(addr_e);
-            addr_e = NULL;
-   }
-
-   addr->cur = NULL;
+    cm2_util_free_addr_list(&addr->ipv6_addr_list);
+    cm2_util_free_addr_list(&addr->ipv4_addr_list);
 }
 
 static void
 cm2_ares_host_cb(void *arg, int status, int timeouts, struct hostent *hostent)
 {
-    cm2_addr_list_entry  *n;
-    cm2_addr_t           *addr;
+    cm2_addr_list        *addr;
     char                 buf[INET6_ADDRSTRLEN];
-    int                  ptype;
     int                  cnt;
     int                  i;
 
-    addr = (cm2_addr_t *) arg;
+    addr = (cm2_addr_list *) arg;
 
     LOGI("ares: cb: status[%d]: %s  Timeouts: %d\n", status, ares_strerror(status), timeouts);
+    addr->state = CM2_ARES_R_FINISHED;
 
     switch(status) {
         case ARES_SUCCESS:
@@ -88,31 +96,17 @@ cm2_ares_host_cb(void *arg, int status, int timeouts, struct hostent *hostent)
             }
 
             cnt = i;
+            addr->h_addr_list = (char **) malloc(sizeof(char*) * (cnt + 1));
 
             for (i = 0; i < cnt; i++)
             {
-                n = malloc(sizeof(cm2_addr_list_entry));
-                if (n == NULL)
-                {
-                    LOGE("ares: Allocation new addres failed");
-                    cm2_free_addr_list(addr);
-                    return;
-                }
-                memcpy(n->addr, hostent->h_addr_list[i], hostent->h_length);
-                n->addr_type = hostent->h_addrtype;
-                ptype = g_state.link.ip.is_ipv6 ? AF_INET6 : AF_INET;
-                if (n->addr_type == ptype)
-                {
-                    ds_dlist_insert_head(&addr->addr_list, n);
-                }
-                else
-                {
-                    ds_dlist_insert_tail(&addr->addr_list, n);
-                }
+                addr->h_addr_list[i] = (char *) malloc(sizeof(char) * hostent->h_length);
+                memcpy(addr->h_addr_list[i], hostent->h_addr_list[i], hostent->h_length);
             }
-            addr->resolved = true;
-            addr->cur = ds_dlist_head(&addr->addr_list);
-            cm2_update_state(CM2_REASON_RESOLVE_UPDATE);
+            addr->h_addr_list[i] = NULL;
+            addr->state = CM2_ARES_R_RESOLVED;
+            addr->h_addrtype = hostent->h_addrtype;;
+            addr->h_cur_idx = 0;
             break;
         case ARES_EDESTRUCTION:
             LOGI("ares: channel was destroyed");
@@ -121,7 +115,7 @@ cm2_ares_host_cb(void *arg, int status, int timeouts, struct hostent *hostent)
         case ARES_ETIMEOUT:
         case ARES_ECANCELLED:
             g_state.resolve_retry = true;
-            g_state.resolve_retry_cnt++;
+            g_state.cnts.ovs_resolve++;
             break;
         default:
             LOGI("ares: didn't get address: status = %d, %d timeouts\n", status, timeouts);
@@ -132,11 +126,25 @@ cm2_ares_host_cb(void *arg, int status, int timeouts, struct hostent *hostent)
 
 bool cm2_resolve(cm2_dest_e dest)
 {
-    cm2_addr_t *addr = cm2_get_addr(dest);
+    cm2_addr_t *addr;
+    bool       ipv6;
+    bool       ipv4;   
 
+    addr = cm2_get_addr(dest);
+
+    ipv6 = g_state.link.ip.is_ipv6 && addr->ipv6_addr_list.state != CM2_ARES_R_IN_PROGRESS ? true : false;
+    ipv4 = g_state.link.ip.is_ipv4 && addr->ipv4_addr_list.state != CM2_ARES_R_IN_PROGRESS ? true : false;
+
+    if (addr->ipv4_addr_list.state == CM2_ARES_R_IN_PROGRESS ||
+        addr->ipv6_addr_list.state == CM2_ARES_R_IN_PROGRESS)
+    {
+        LOGI("Waiting for uplinks: ipv6: [%d, %d], ipv4: [%d, %d]",
+             g_state.link.ip.is_ipv6, addr->ipv6_addr_list.state,
+             g_state.link.ip.is_ipv4, addr->ipv4_addr_list.state);
+        return false;
+    }
+ 
     addr->updated = false;
-    addr->resolved = false;
-
     if (!addr->valid)
         return false;
 
@@ -147,17 +155,25 @@ bool cm2_resolve(cm2_dest_e dest)
 
     cm2_free_addr_list(addr);
 
-    /* Initialize the list */
-    ds_dlist_init(&addr->addr_list, cm2_addr_list_entry, le_node);
     if (!g_state.eares.chan_initialized) {
         LOGI("ares: channel not initialized yet");
         return false;
     }
-    LOGI("ares: trigger get hostname");
+
     /* IPv6 */
-    ares_gethostbyname(g_state.eares.ares.channel, addr->hostname, AF_INET6, cm2_ares_host_cb, (void *) addr);
+    if (ipv6) {
+        LOGI("Resolving IPv6 addresses");
+        addr->ipv6_addr_list.state = CM2_ARES_R_IN_PROGRESS;
+        ares_gethostbyname(g_state.eares.ares.channel, addr->hostname, AF_INET6, cm2_ares_host_cb, (void *) &addr->ipv6_addr_list);
+    }
+
     /* IPv4 */
-    ares_gethostbyname(g_state.eares.ares.channel, addr->hostname, AF_INET, cm2_ares_host_cb, (void *) addr);
+    if (ipv4) {
+        LOGI("Resolving IPv4 addresses");
+        addr->ipv4_addr_list.state = CM2_ARES_R_IN_PROGRESS;
+        ares_gethostbyname(g_state.eares.ares.channel, addr->hostname, AF_INET, cm2_ares_host_cb, (void *) &addr->ipv4_addr_list);
+    }
+
     return true;
 }
 
@@ -167,47 +183,40 @@ void cm2_resolve_timeout(void)
     evx_stop_ares(&g_state.eares);
 }
 
-static bool cm2_write_target_addr(cm2_addr_t *addr)
+static bool
+cm2_validate_target_addr(cm2_addr_list *list, int addr_type)
 {
-    const char *result;
-    char       target[256];
-    char       *buf;
-    bool       ret;
-
-    if (!addr->cur)
-    {
-        LOGD("ares: Current address item is null");
+    if (!g_state.link.ip.is_ipv4 && addr_type == AF_INET)
         return false;
-    }
 
-    buf = addr->cur->addr;
-    if (!buf)
-    {
-        LOGI("ares: Current address is null");
+    if (!g_state.link.ip.is_ipv6 && addr_type == AF_INET6)
         return false;
-    }
 
-    if (addr->cur->addr_type == AF_INET)
-    {
-        char buffer[INET_ADDRSTRLEN] = "";
+    if (!list->h_addr_list)
+        return false;
 
-        result = inet_ntop(AF_INET, buf, buffer, sizeof(buffer));
+    if (!list->h_addr_list[list->h_cur_idx])
+        return false;
 
-        if (result == 0)
-        {
-            LOGD("ares: translation to ipv4 address failed");
-            return false;
-        }
+    if (list->h_addrtype != addr_type)
+        return false;
 
-        snprintf(target, sizeof(target), "%s:%s:%d",
-                addr->proto,
-                buffer,
-                addr->port);
-    }
-    else if (addr->cur->addr_type == AF_INET6)
+    return true;
+}
+
+static bool
+cm2_write_target_addr(cm2_addr_t *addr)
+{
+    const char     *result;
+    char           target[256];
+    char           *buf;
+    int            ret;
+
+    if (cm2_validate_target_addr(&addr->ipv6_addr_list, AF_INET6))
     {
         char buffer[INET6_ADDRSTRLEN] = "";
 
+        buf = addr->ipv6_addr_list.h_addr_list[addr->ipv6_addr_list.h_cur_idx];
         result = inet_ntop(AF_INET6, buf, buffer, sizeof(buffer));
         if (result == 0)
         {
@@ -219,10 +228,31 @@ static bool cm2_write_target_addr(cm2_addr_t *addr)
                  addr->proto,
                  buffer,
                  addr->port);
+
+        addr->ipv6_cur = true;
+    }
+    else if (cm2_validate_target_addr(&addr->ipv4_addr_list, AF_INET))
+    {
+        char buffer[INET_ADDRSTRLEN] = "";
+
+        buf = addr->ipv4_addr_list.h_addr_list[addr->ipv4_addr_list.h_cur_idx];
+        result = inet_ntop(AF_INET, buf, buffer, sizeof(buffer));
+        if (result == 0)
+        {
+            LOGD("ares: translation to ipv4 address failed");
+            return false;
+        }
+
+        snprintf(target, sizeof(target), "%s:[%s]:%d",
+                 addr->proto,
+                 buffer,
+                 addr->port);
+
+        addr->ipv6_cur = false;
     }
     else
     {
-        LOGI("ares: unsupported address type");
+        LOGI("ares: No address available");
         return false;
     }
 
@@ -244,6 +274,17 @@ bool cm2_write_next_target_addr(void)
     cm2_addr_t *addr;
 
     addr = cm2_curr_addr();
-    addr->cur = ds_dlist_next(&addr->addr_list, addr->cur);
+    if (addr->ipv6_cur)
+        addr->ipv6_addr_list.h_cur_idx++;
+    else
+        addr->ipv4_addr_list.h_cur_idx++;
+
     return  cm2_write_target_addr(addr);
 }
+
+bool cm2_is_addr_resolved(const cm2_addr_t *addr)
+{
+    LOGI("Resolved state: ipv4: %d ipv6: %d", addr->ipv4_addr_list.state, addr->ipv6_addr_list.state);
+    return addr->ipv4_addr_list.state != CM2_ARES_R_IN_PROGRESS && addr->ipv6_addr_list.state != CM2_ARES_R_IN_PROGRESS;
+}
+

@@ -75,7 +75,7 @@ static char     *upg_url;
  * Map error codes between osp to cloud
  *
  * Cloud and osp uses different numbering for error code
- * so maping between them is needed.
+ * so mapping between them is needed.
  */
 int um_map_errno_osp_to_cloud(osp_upg_status_t osp_err){
     switch (osp_err){
@@ -234,11 +234,11 @@ exit:
 }
 
 /**
- * * @brief Callback invoked by target layer during download & upgrade process
- * * @param[in] op - operation: download, download CS file or upgrade
- * * @param[in] status status
- * * @param[in] completed percentage of completed work 0 - 100%
- * */
+ * @brief Callback invoked by target layer during download & upgrade process
+ * @param[in] op - operation: download, download CS file or upgrade
+ * @param[in] status status
+ * @param[in] completed percentage of completed work 0 - 100%
+ */
 static void cb_upg(const osp_upg_op_t op,
                    const osp_upg_status_t status,
                    uint8_t completed)
@@ -312,8 +312,8 @@ static void callback_AWLAN_Node(
         struct schema_AWLAN_Node *old_rec,
         struct schema_AWLAN_Node *awlan_node)
 {
-    LOG(DEBUG, "Firmaware url %s: %s",    awlan_node->firmware_url_changed     ? "changed" : "same", awlan_node->firmware_url);
-    LOG(DEBUG, "Firmaware pass %s: %s",   awlan_node->firmware_pass_changed    ? "changed" : "same", awlan_node->firmware_pass);
+    LOG(DEBUG, "Firmware url %s: %s",    awlan_node->firmware_url_changed     ? "changed" : "same", awlan_node->firmware_url);
+    LOG(DEBUG, "Firmware pass %s: %s",   awlan_node->firmware_pass_changed    ? "changed" : "same", awlan_node->firmware_pass);
     LOG(DEBUG, "Upgrade timer %s: %d",    awlan_node->upgrade_timer_changed    ? "changed" : "same", awlan_node->upgrade_timer);
     LOG(DEBUG, "Upgrade dl timer %s: %d", awlan_node->upgrade_dl_timer_changed ? "changed" : "same", awlan_node->upgrade_dl_timer);
 

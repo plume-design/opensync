@@ -73,6 +73,7 @@ typedef struct ctflow_info
 struct flow_tracker
 {
     ctflow_info_t *flowptr;
+    uint16_t  zone_id;
     ds_tree_node_t  ft_tnode;
 };
 

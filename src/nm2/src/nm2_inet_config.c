@@ -195,7 +195,7 @@ bool nm2_inet_util_get_snooping_intfs(target_mcproxy_params_t *proxy_params)
         return false;
     }
 
-   proxy_params->dwnstrm_ifs = (ifname *)calloc(1, cnt * sizeof(ifname *));
+   proxy_params->dwnstrm_ifs = (ifname *)calloc(cnt, sizeof(proxy_params->dwnstrm_ifs[0]));
 
     for (i = 0; i < cnt; i++)
     {

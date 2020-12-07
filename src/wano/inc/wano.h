@@ -132,11 +132,14 @@ struct wano_plugin_status
     enum
     {
         WANP_OK,        /* WANO link was successfully provisioned */
-        WANP_ERROR,     /* Error occurred while provisioning plug-in, skip to the next plugin */
+        WANP_ERROR,     /* Error occurred while provisioning plug-in, skip to the next plug-in */
         WANP_SKIP,      /* Skip this plug-in */
         WANP_BUSY,      /* Plug-in is busy doing work, stop the timeout timer */
         WANP_RESTART,   /* Error occurred while provisioning plug-in, restart the pipeline */
         WANP_ABORT,     /* Abort this plug-in and terminate the current plug-in pipeline */
+        WANP_DETACH     /* Detach plug-in: the plug-in stays active but for all intent and purposes is ignored by the
+                           pipeline. The plug-in is terminated only when a pipeline restart or termination occurs.
+                           Useful for implementing monitoring or passive type of plug-ins */
     }
     ws_type;
 
@@ -543,11 +546,6 @@ enum wano_ppline_status
 };
 
 /**
- * WANO plug-in pipeline status callback
- */
-typedef void wano_ppline_status_fn_t(wano_ppline_t *self, enum wano_ppline_status status);
-
-/**
  * WAN pipeline structure
  */
 struct wano_ppline
@@ -563,7 +561,6 @@ struct wano_ppline
     ds_dlist_t                  wpl_plugin_runq;            /**< Queue of currently running plug-ins */
     wano_ppline_state_t         wpl_state;                  /**< STAM state machine */
     wano_inet_state_event_t     wpl_inet_state_event;       /**< Interface status monitoring */
-    wano_ppline_status_fn_t    *wpl_status_fn;              /**< Status callback */
     bool                        wpl_carrier_exception;      /**< Generate a PPLINE_RESTART exception on carrier loss */
     bool                        wpl_init;                   /**< True if successfully initialized */
     wano_connmgr_uplink_event_t wpl_cmu_event;              /**< Connection_Manager_Uplink watcher */
@@ -573,6 +570,26 @@ struct wano_ppline
     bool                        wpl_bridge;                 /**< True interface is in bridge */
     bool                        wpl_uplink_bridge;          /**< True if Connection_Manager_Uplink:bridge is set */
     double                      wpl_immediate_timeout;      /**< Immedate timeout */
+    ds_dlist_t                  wpl_event_list;             /**< List of event callbacks */
+};
+
+typedef struct wano_ppline_event wano_ppline_event_t;
+
+/**
+ * WANO plug-in pipeline event callback
+ */
+typedef void wano_ppline_event_fn_t(
+        wano_ppline_event_t *wpe,
+        enum wano_ppline_status status);
+
+/**
+ * WANO plug-in pipeline event object
+ */
+struct wano_ppline_event
+{
+    wano_ppline_event_fn_t     *wpe_event_fn;
+    wano_ppline_t              *wpe_ppline;
+    ds_dlist_node_t             wpe_dnode;
 };
 
 /**
@@ -594,12 +611,28 @@ bool wano_ppline_init(
         wano_ppline_t *self,
         const char *ifname,
         const char *iftype,
-        uint64_t emask,
-        wano_ppline_status_fn_t *status_fn);
+        uint64_t emask);
 
 /**
  * Terminate the plug-in pipeline and stop all currently active plug-ins.
  */
 void wano_ppline_fini(wano_ppline_t *self);
+
+/**
+ * Utility function for retrieving the pipeline instance from a plug-in
+ * handle
+ */
+wano_ppline_t *wano_ppline_from_plugin_handle(wano_plugin_handle_t *plugin);
+
+/** Initialize a plug-in pipeline event structure */
+void wano_ppline_event_init(
+        wano_ppline_event_t *event,
+        wano_ppline_event_fn_t *fn);
+
+/** Start listening to pipeline events */
+void wano_ppline_event_start(wano_ppline_event_t *self, wano_ppline_t *wpp);
+
+/** Stop listening to pipeline events */
+void wano_ppline_event_stop(wano_ppline_event_t *event);
 
 #endif /* WANO_H_INCLUDED */

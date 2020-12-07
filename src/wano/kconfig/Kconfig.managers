@@ -73,4 +73,36 @@ if MANAGER_WANO
         help
             WANO pppoe plug-in for VLAN interface configuration. The VLAN
             configuration is read from persistent storage.
+
+    config MANAGER_WANO_PLUGIN_ETHCLIENT
+        bool "WANO ethernet client detection plugin"
+        default y
+        help
+            WANO plug-in for quick ethernet client-only port detection. This
+            plug-in tries to detect clients that are directly connected to the
+            ethernet port. If such case is found, all WAN plug-ins on the
+            current interface are aborted.
+
+    config MANAGER_WANO_PLUGIN_ETHCLIENT_DHCP_WAIT
+        int "Ethernet client wait time in seconds"
+        default 5
+        depends on MANAGER_WANO_PLUGIN_ETHCLIENT
+        help
+            This is the timeout in seconds that the plug-in will wait after
+            receiving the first DHCP discover packet from a client, after which
+            it will consider that an ethernet client was successfully detected.
+            If another DHCP message type is received or another client sends a
+            DHCP discover message, the timer is aborted.
+
+    config MANAGER_WANO_PLUGIN_ETHCLIENT_DHCP_NUM
+        int "Ethernet client DISCOVER packet number"
+        default 3
+        depends on MANAGER_WANO_PLUGIN_ETHCLIENT
+        help
+            Number of DISCOVER type packets to be received from a single host
+            after which the ethernet client is considered to be successfully
+            detected.
+
+            If another DHCP packet type is received, or another host sends any
+            type of DHCP packet, this number is ignored.
 endif

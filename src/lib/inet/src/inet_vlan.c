@@ -155,6 +155,8 @@ bool inet_vlan_parent_ifname_set(inet_t *super, const char *parent_ifname)
 {
     inet_vlan_t *self = CONTAINER_OF(super, inet_vlan_t, inet);
 
+    if (parent_ifname == NULL) parent_ifname = "";
+
     if (strcmp(self->in_parent_ifname, parent_ifname) == 0) return true;
 
     if (strlen(parent_ifname) >= sizeof(self->in_parent_ifname))

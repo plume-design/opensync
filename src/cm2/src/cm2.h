@@ -86,7 +86,6 @@ typedef enum
     CM2_REASON_SET_NEW_VTAG,
     CM2_REASON_BLOCK_VTAG,
     CM2_REASON_OVS_INIT,
-    CM2_REASON_RESOLVE_UPDATE,
     CM2_REASON_NUM,
 } cm2_reason_e;
 
@@ -103,12 +102,27 @@ typedef enum
 #define CM2_PROTO_MAX 6
 
 #ifdef BUILD_HAVE_LIBCARES
+typedef enum
+{
+    CM2_ARES_R_NOT_STARTED,
+    CM2_ARES_R_IN_PROGRESS,
+    CM2_ARES_R_FINISHED,
+    CM2_ARES_R_RESOLVED,
+} cm2_resolve_state;
+
 typedef struct
 {
-    char            addr[INET6_ADDRSTRLEN];
-    int             addr_type;
-    ds_list_node_t  le_node;
-} cm2_addr_list_entry;
+    /* h_addr_list comes from hostent structure which
+     * is defined in <netdb.h>
+     * An array of pointers to network addresses for the host (in
+     * network byte order), terminated by a null pointer.
+     */
+    char **h_addr_list;
+    int h_length;
+    int h_addrtype;
+    int h_cur_idx;
+    cm2_resolve_state state;
+} cm2_addr_list;
 #endif
 
 typedef struct
@@ -124,8 +138,9 @@ typedef struct
     struct addrinfo *ai_list;
     struct addrinfo *ai_curr;
 #else
-    ds_dlist_t addr_list;
-    cm2_addr_list_entry *cur;
+    cm2_addr_list ipv6_addr_list;
+    cm2_addr_list ipv4_addr_list;
+    bool          ipv6_cur;
 #endif
 } cm2_addr_t;
 
@@ -165,6 +180,15 @@ typedef enum
     CM2_DEVICE_BRIDGE,
     CM2_DEVICE_LEAF,
 } cm2_dev_type;
+
+typedef struct
+{
+    int   ovs_resolve;
+    int   ovs_resolve_fail;
+    int   ovs_con;
+    int   gw_offline;
+    int   skip_restart;
+} cm2_retries_cnt;
 
 typedef struct
 {
@@ -212,9 +236,7 @@ typedef struct
     int               target_type;
     bool              fast_reconnect;
     bool              resolve_retry;
-    int               resolve_retry_cnt;
-    int               gw_offline_cnt;
-    int               skip_restart_cnt;
+    cm2_retries_cnt   cnts;
     cm2_dev_type      dev_type;
 } cm2_state_t;
 
@@ -280,10 +302,12 @@ bool cm2_ovsdb_is_ipv6_global_link(const char *if_name);
 void cm2_ovsdb_set_dhcp_client(const char *if_name, bool enabled);
 bool cm2_ovsdb_is_gw_offline_enabled(void);
 bool cm2_ovsdb_is_gw_offline_ready(void);
+bool cm2_ovsdb_is_gw_offline_active(void);
 bool cm2_ovsdb_enable_gw_offline_conf(void);
 bool cm2_ovsdb_disable_gw_offline_conf(void);
 int  cm2_get_link_ip(char *if_name, cm2_ip *ip);
 int  cm2_ovsdb_update_mac_reporting(char *ifname, bool state);
+void cm2_ovsdb_set_default_wan_bridge(char *if_name, char *if_type);
 
 #ifdef CONFIG_CM2_USE_EXTRA_DEBUGS
 void cm2_ovsdb_dump_debug_data(void);
@@ -300,6 +324,7 @@ void cm2_free_addrinfo(cm2_addr_t *addr);
 void cm2_clear_addr(cm2_addr_t *addr);
 bool cm2_parse_resource(cm2_addr_t *addr, cm2_dest_e dest);
 bool cm2_set_addr(cm2_dest_e dest, char *resource);
+bool cm2_is_addr_resolved(const cm2_addr_t *addr);
 #ifndef BUILD_HAVE_LIBCARES
 int  cm2_getaddrinfo(char *hostname, struct addrinfo **res, char *msg);
 struct addrinfo* cm2_get_next_addrinfo(cm2_addr_t *addr);
@@ -314,7 +339,7 @@ void cm2_free_addr_list(cm2_addr_t *addr);
 // stability and watchdog
 #ifdef CONFIG_CM2_USE_STABILITY_CHECK
 bool cm2_vtag_stability_check(void);
-void cm2_connection_req_stability_check(target_connectivity_check_option_t opts);
+bool cm2_connection_req_stability_check(target_connectivity_check_option_t opts, bool db_update);
 void cm2_stability_init(struct ev_loop *loop);
 void cm2_stability_close(struct ev_loop *loop);
 #ifdef CONFIG_CM2_USE_TCPDUMP
@@ -339,7 +364,7 @@ static inline void cm2_stability_init(struct ev_loop *loop)
 static inline void cm2_stability_close(struct ev_loop *loop)
 {
 }
-static inline void cm2_connection_req_stability_check(target_connectivity_check_option_t opts)
+static inline void cm2_connection_req_stability_check(target_connectivity_check_option_t opts, bool db_update)
 {
 }
 #endif /* CONFIG_CM2_USE_STABILITY_CHECK */
@@ -395,4 +420,6 @@ void cm2_delayed_eth_update(char *if_name, int timeout);
 bool cm2_is_iface_in_bridge(const char *bridge, const char *port);
 char* cm2_get_uplink_name(void);
 void cm2_update_device_type(const char *iftype);
+bool cm2_ovsdb_set_dhcpv6_client(char *ifname, bool enable);
+bool cm2_osn_is_ipv6_global_link(const char *ifname, const char *ipv6_addr);
 #endif /* CM2_H_INCLUDED */

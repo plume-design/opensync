@@ -32,7 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define PM_OBJM_STORAGE "pm_obj"
 #define PM_OBJM_KEY     "store"
 
-#define PM_OBJM_MQTT    "objectStore"
+#define PM_OBJM_MQTT    "ObjectStore"
 
 #define PM_OBJS_INSTALLED           "install-done"      // Object is installed on the device
 #define PM_OBJS_DOWNLOAD_STARTED    "download-started"  // Download of the object started

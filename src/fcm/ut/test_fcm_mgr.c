@@ -58,6 +58,22 @@ static struct schema_FCM_Collector_Config test_collect[] =
    }
 };
 
+static struct schema_Node_Config test_nodecfg[] =
+{
+    {
+        .persist = true,
+        .module  = "fcm",
+        .key     = "max_mem_percent",
+        .value   = "20",
+    },
+    {
+        .persist = true,
+        .module  = "fcm",
+        .key     = "max_mem_percent",
+        .value   = "40",
+    }
+};
+
 static struct schema_FCM_Report_Config test_report[] =
 {
     {
@@ -78,6 +94,8 @@ void fcm_test_init(void)
 {
     struct ev_loop *loop = EV_DEFAULT;
     fcm_init_mgr(loop);
+    fcm_event_init();
+    fcm_ovsdb_init();
 }
 
 void test_add_collect_config(void)
@@ -116,8 +134,42 @@ void test_del_collect_config(void)
     delete_collect_config(&test_collect[0]);
 }
 
+void test_get_default_mem(void)
+{
+   fcm_mgr_t *mgr;
+
+   mgr = fcm_get_mgr();
+   TEST_ASSERT_GREATER_THAN_UINT(250000, mgr->max_mem);
+}
+
+void test_add_node_cfg(void)
+{
+   fcm_mgr_t *mgr;
+   mgr = fcm_get_mgr();
+   fcm_get_node_config(&test_nodecfg[0]);
+   TEST_ASSERT_GREATER_THAN_UINT(100000, mgr->max_mem);
+}
+
+void test_del_node_cfg(void)
+{
+   fcm_mgr_t *mgr;
+   mgr = fcm_get_mgr();
+   fcm_rm_node_config(&test_nodecfg[0]);
+   TEST_ASSERT_GREATER_THAN_UINT(250000, mgr->max_mem);
+}
+
+void test_update_node_cfg(void)
+{
+   fcm_mgr_t *mgr;
+   mgr = fcm_get_mgr();
+   fcm_get_node_config(&test_nodecfg[0]);
+   TEST_ASSERT_GREATER_THAN_UINT(100000, mgr->max_mem);
+   fcm_update_node_config(&test_nodecfg[1]);
+   TEST_ASSERT_GREATER_THAN_UINT(200000, mgr->max_mem);
+}
+
 int main(int argc, char *argv[])
-{    
+{
     (void)argc;
     (void)argv;
 
@@ -130,5 +182,9 @@ int main(int argc, char *argv[])
     RUN_TEST(test_add_report_config);
     RUN_TEST(test_del_report_config);
     RUN_TEST(test_del_collect_config);
+    RUN_TEST(test_get_default_mem);
+    RUN_TEST(test_add_node_cfg);
+    RUN_TEST(test_del_node_cfg);
+    RUN_TEST(test_update_node_cfg);
     return UNITY_END();
 }

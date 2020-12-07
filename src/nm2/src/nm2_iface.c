@@ -453,8 +453,15 @@ void nm2_iface_status_register(struct nm2_iface *piface)
     /* Register to IPv6 address updates registrations */
     inet_ip6_addr_status_notify(piface->if_inet, nm2_ip6_addr_status_fn);
 
-    /* Register to IPv6 status updates registrations */
-    inet_ip6_neigh_status_notify(piface->if_inet, nm2_ip6_neigh_status_fn);
+    /*
+     * Register to IPv6 status updates registrations, except for TAP interfaces
+     * as those typically generate duplicate entries (the same entries are present
+     * on physical interfaces)
+     */
+    if (piface->if_type != NM2_IFTYPE_TAP)
+    {
+        inet_ip6_neigh_status_notify(piface->if_inet, nm2_ip6_neigh_status_fn);
+    }
 
     /* Register DHCP client option registrations */
     inet_dhcpc_option_notify(piface->if_inet, nm2_iface_dhcpc_notify);

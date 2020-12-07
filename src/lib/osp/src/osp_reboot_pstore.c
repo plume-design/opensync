@@ -227,7 +227,7 @@ bool osp_unit_reboot_get(enum osp_reboot_type *type, char *reason, ssize_t reaso
             *type = OSP_REBOOT_POWER_CYCLE;
             if (reason != NULL)
             {
-                strscpy(reason, "(unknown)", reason_sz);
+                strscpy(reason, "Power cycle.", reason_sz);
             }
         }
 
@@ -240,6 +240,7 @@ bool osp_unit_reboot_get(enum osp_reboot_type *type, char *reason, ssize_t reaso
      * that it's a cold boot
      */
     *type = OSP_REBOOT_COLD_BOOT;
+    strscpy(reason, "Power up.", reason_sz);
 
     /* Write the cache file */
     retval = true;

@@ -36,10 +36,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fcm_priv.h"
 #include "fcm_mgr.h"
 #include "log.h"
+#include "neigh_table.h"
 
 // Intervals and timeouts in seconds
-#define FCM_MGR_INTERVAL 120
-
+#define FCM_TIMER_INTERVAL   5
+#define FCM_MGR_INTERVAL   120
 
 /**
  * @brief periodic routine.
@@ -50,9 +51,10 @@ fcm_event_cb(struct ev_loop *loop, ev_timer *watcher, int revents)
     fcm_collect_plugin_t *plugin;
     fcm_collector_t *collector;
     ds_tree_t *collectors;
-    struct mem_usage mem;
+    struct mem_usage mem = { 0 };
     fcm_mgr_t *mgr;
     time_t now;
+    bool reset;
 
     (void)loop;
     (void)watcher;
@@ -61,11 +63,23 @@ fcm_event_cb(struct ev_loop *loop, ev_timer *watcher, int revents)
     mgr = fcm_get_mgr();
 
     now = time(NULL);
-    mgr->periodic_ts = now;
 
+    if ((now - mgr->periodic_ts) < FCM_MGR_INTERVAL) return;
+
+    mgr->periodic_ts = now;
     fcm_get_memory(&mem);
     LOGI("%s: pid %s: mem usage: real mem: %u, virt mem %u", __func__,
          mgr->pid, mem.curr_real_mem, mem.curr_virt_mem);
+
+    reset = ((uint64_t)mem.curr_real_mem > mgr->max_mem);
+
+    if (reset)
+    {
+        sleep(2);
+        LOGEM("%s: max mem usage %" PRIu64 " kB reached, restarting",
+              __func__, mgr->max_mem);
+        exit(EXIT_SUCCESS);
+    }
 
     collectors = &mgr->collect_tree;
     collector = ds_tree_head(collectors);
@@ -75,6 +89,8 @@ fcm_event_cb(struct ev_loop *loop, ev_timer *watcher, int revents)
         if (plugin->periodic != NULL) plugin->periodic(plugin);
         collector = ds_tree_next(collectors, collector);
     }
+
+    neigh_table_ttl_cleanup(mgr->neigh_cache_ttl, NEIGH_TBL_SYSTEM);
 }
 
 
@@ -88,7 +104,7 @@ fcm_event_init(void)
 
     LOGI("Initializing FCM event");
     ev_timer_init(&mgr->timer, fcm_event_cb,
-                  FCM_MGR_INTERVAL, FCM_MGR_INTERVAL);
+                  FCM_TIMER_INTERVAL, FCM_MGR_INTERVAL);
     mgr->timer.data = NULL;
     mgr->periodic_ts = time(NULL);
     ev_timer_start(mgr->loop, &mgr->timer);

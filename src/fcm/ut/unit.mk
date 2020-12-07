@@ -32,6 +32,7 @@ UNIT_SRC := test_fcm_mgr.c
 UNIT_SRC += test_fcm_mock_fun.c
 UNIT_SRC += ../src/fcm_ovsdb.c
 UNIT_SRC += ../src/fcm_mgr.c
+UNIT_SRC += ../src/fcm_event.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/../inc
 
@@ -43,3 +44,4 @@ UNIT_DEPS += src/lib/unity
 UNIT_DEPS += src/lib/osa
 UNIT_DEPS += src/lib/network_metadata
 UNIT_DEPS += src/lib/ovsdb
+UNIT_DEPS += src/lib/neigh_table

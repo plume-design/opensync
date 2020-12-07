@@ -370,34 +370,69 @@ cm2_ovsdb_set_dhcp_client(const char *if_name, bool enabled)
 }
 
 static
+bool cm2_ovsdb_is_dhcpv6_running(const char *ifname)
+{
+    struct schema_DHCPv6_Client  dhcpv6_client;
+    struct schema_IP_Interface   ip_interface;
+    bool   ret;
+
+    memset(&ip_interface, 0, sizeof(ip_interface));
+
+    if (!ovsdb_table_select_one(&table_IP_Interface, "if_name", ifname, &ip_interface)) {
+        LOGI("%s Interface not available", ifname);
+        return false;
+    }
+
+    memset(&dhcpv6_client, 0, sizeof(dhcpv6_client));
+
+    ret = ovsdb_table_select_one_where(&table_DHCPv6_Client,
+                                       ovsdb_where_uuid("ip_interface", ip_interface._uuid.uuid),
+                                       &dhcpv6_client);
+    LOGI("DHCP running state = %d", ret);
+    return ret;
+}
+
+static
 bool cm2_ovsdb_dhcpv6_enable(char *ifname)
 {
     struct schema_DHCPv6_Client  dhcpv6_client;
     struct schema_IP_Interface   ip_interface;
 
+    if (cm2_ovsdb_is_dhcpv6_running(ifname)) {
+        LOGI("DHCP IPv6 client is enabled");
+        return true;
+    }
+
+    LOGI("%s: Enabling DHCP IPv6 client", ifname);
+
     memset(&ip_interface, 0, sizeof(ip_interface));
 
-    ip_interface._partial_update = true;
+    if (!ovsdb_table_select_one(&table_IP_Interface, "if_name", ifname, &ip_interface)) {
+        memset(&ip_interface, 0, sizeof(ip_interface));
+        ip_interface._partial_update = true;
 
-    SCHEMA_SET_STR(ip_interface.name, ifname);
-    SCHEMA_SET_STR(ip_interface.if_name, ifname);
-    SCHEMA_SET_INT(ip_interface.enable, true);
-    SCHEMA_SET_STR(ip_interface.status, "up");
+        SCHEMA_SET_STR(ip_interface.name, ifname);
+        SCHEMA_SET_STR(ip_interface.if_name, ifname);
+        SCHEMA_SET_INT(ip_interface.enable, true);
+        SCHEMA_SET_STR(ip_interface.status, "up");
 
-    if (!ovsdb_table_upsert_simple(
-            &table_IP_Interface,
-            "name",
-            ifname,
-            &ip_interface,
-            true)) {
-        LOGE("%s: Error upserting IP_Interface", ifname);
-        return false;
+        if (!ovsdb_table_upsert_simple(
+                &table_IP_Interface,
+                "name",
+                ifname,
+                &ip_interface,
+                true)) {
+            LOGE("%s: Error upserting IP_Interface", ifname);
+            return false;
+        }
+
     }
 
     memset(&dhcpv6_client, 0, sizeof(dhcpv6_client));
     dhcpv6_client._partial_update = true;
     SCHEMA_SET_UUID(dhcpv6_client.ip_interface, ip_interface._uuid.uuid);
     SCHEMA_SET_INT(dhcpv6_client.enable, true);
+    SCHEMA_SET_INT(dhcpv6_client.renew, true);
     SCHEMA_SET_INT(dhcpv6_client.request_address, true);
     SCHEMA_SET_INT(dhcpv6_client.request_prefixes, true);
 
@@ -418,6 +453,8 @@ void cm2_ovsdb_dhcpv6_disable(char *ifname)
 {
     struct schema_IP_Interface ip_interface;
 
+    LOGI("%s: Disabling DHCP IPv6 client", ifname);
+
     memset(&ip_interface, 0, sizeof(ip_interface));
 
     if (!ovsdb_table_select_one(&table_IP_Interface, "if_name", ifname, &ip_interface)) {
@@ -434,7 +471,6 @@ void cm2_ovsdb_dhcpv6_disable(char *ifname)
     }
 }
 
-static
 bool cm2_ovsdb_set_dhcpv6_client(char *ifname, bool enable)
 {
     if (enable)
@@ -1018,11 +1054,9 @@ cm2_ovsdb_is_ipv6_global_link(const char *if_name)
         if (!ret)
             continue;
 
-        if (ipv6_addr.address_exists &&
-            strlen(ipv6_addr.address) >= 4) {
+        if (ipv6_addr.address_exists) {
             LOGD("%s: ipv6 addrr: %s", if_name, ipv6_addr.address);
-
-            if (strncmp(ipv6_addr.address, "fe80", 4) == 0)
+            if (!cm2_osn_is_ipv6_global_link(if_name, ipv6_addr.address))
                 continue;
 
             return true;
@@ -1138,25 +1172,18 @@ bool cm2_ovsdb_is_gw_offline_ready(void)
     return cm2_ovsdb_is_gw_offline_status(CM2_PM_GW_OFFLINE_STATUS_READY);
 }
 
+bool cm2_ovsdb_is_gw_offline_active(void)
+{
+    return cm2_ovsdb_is_gw_offline_status(CM2_PM_GW_OFFLINE_STATUS_ACTIVE);
+}
+
 bool cm2_ovsdb_enable_gw_offline_conf(void)
 {
-    bool r;
-
-    r = cm2_ovsdb_is_gw_offline_status(CM2_PM_GW_OFFLINE_STATUS_READY);
-    if (!r)
-        return r;
-
     return cm2_ovsdb_set_gw_offline_config(true);
 }
 
 bool cm2_ovsdb_disable_gw_offline_conf(void)
 {
-    bool r;
-
-    r = cm2_ovsdb_is_gw_offline_status(CM2_PM_GW_OFFLINE_STATUS_ACTIVE);
-    if (!r)
-        return true;
-
     return cm2_ovsdb_set_gw_offline_config(false);
 }
 
@@ -1528,12 +1555,6 @@ static bool cm2_connection_set_is_used(struct schema_Connection_Manager_Uplink *
     }
 
     LOGN("%s: Set new used link", uplink->if_name);
-
-    if (cm2_is_wan_bridge()) {
-        cm2_ovsdb_connection_update_bridge_state(uplink->if_name, CM2_WAN_BRIDGE_NAME);
-    } else if (cm2_is_wifi_type(uplink->if_type)) {
-       cm2_ovsdb_connection_update_bridge_state(uplink->if_name, CONFIG_TARGET_LAN_BRIDGE_NAME);
-    }
 
     ret = cm2_ovsdb_connection_update_used_state(uplink->if_name, true);
     if (!ret) {
@@ -1928,7 +1949,7 @@ cm2_util_handling_loop_state(struct schema_Connection_Manager_Uplink *uplink)
                      cm2_is_wifi_type(g_state.link.if_type);
 
     if (delayed_update) {
-        LOGI("%s: Detected Leaf with pluged ethernet, connected = %d",
+        LOGI("%s: Detected Leaf with plugged ethernet, connected = %d",
              uplink->if_name, g_state.connected);
         eth_timeout = g_state.connected ? CONFIG_CM2_ETHERNET_SHORT_DELAY : CONFIG_CM2_ETHERNET_LONG_DELAY;
         cm2_delayed_eth_update(uplink->if_name, eth_timeout);
@@ -1975,6 +1996,7 @@ cm2_Connection_Manager_Uplink_handle_update(
     }
 
     if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Connection_Manager_Uplink, bridge))) {
+        LOGN("%s: Uplink table: detected bridge change = %s", uplink->if_name, uplink->bridge);
         cm2_util_update_bridge_handle(old_uplink, uplink);
     }
 
@@ -2360,12 +2382,23 @@ static void cm2_check_bridge_mismatch(struct schema_Bridge *base_bridge,
     }
 }
 
+void cm2_ovsdb_set_default_wan_bridge(char *if_name, char *if_type)
+{
+    if (cm2_is_wan_bridge()) {
+        cm2_ovsdb_connection_update_bridge_state(if_name, CM2_WAN_BRIDGE_NAME);
+    } else if (cm2_is_wifi_type(if_type)) {
+        cm2_ovsdb_connection_update_bridge_state(if_name, CONFIG_TARGET_LAN_BRIDGE_NAME);
+    }
+}
+
 void callback_IP_Interface(ovsdb_update_monitor_t *mon,
                      struct schema_IP_Interface *old_ip,
                      struct schema_IP_Interface *ip)
 {
     struct schema_IPv6_Address ipv6_addr;
     json_t                     *where;
+    bool                       resolve_update;
+    bool                       ipv6;
     int                        ret;
     int                        i;
 
@@ -2389,6 +2422,9 @@ void callback_IP_Interface(ovsdb_update_monitor_t *mon,
                     return;
                 }
 
+                ipv6 = false;
+                resolve_update = false;
+
                 for (i = 0; i < ip->ipv6_addr_len; i++) {
                     if (!(where = ovsdb_where_uuid("_uuid", ip->ipv6_addr[i].uuid)))
                         continue;
@@ -2401,13 +2437,23 @@ void callback_IP_Interface(ovsdb_update_monitor_t *mon,
                         strlen(ipv6_addr.address) >= 4) {
                         LOGI("%s: ipv6 addrr: %s", ip->if_name, ipv6_addr.address);
 
-                        if (strncmp(ipv6_addr.address, "fe80", 4) == 0)
+                        if (!cm2_osn_is_ipv6_global_link(ip->if_name, ipv6_addr.address))
                             continue;
 
-                        g_state.link.ip.ipv6 = CM2_IPV6_DHCP;
-                        g_state.link.ip.is_ipv6 = true;
-                    }
+                        ipv6 = true;
+                   }
                 }
+
+                if (ipv6 != g_state.link.ip.is_ipv6) {
+                    LOGI("Changed resolved addr ipv6: %d is_ipv6: %d", ipv6, g_state.link.ip.is_ipv6);
+                    resolve_update = true;
+                }
+
+                g_state.link.ip.is_ipv6 = ipv6;
+                g_state.link.ip.ipv6 = ipv6 ? CM2_IPV6_DHCP : CM2_IP_NOT_SET;
+
+                if (resolve_update)
+                    cm2_update_state(CM2_REASON_OVS_INIT);
             }
             break;
     }
