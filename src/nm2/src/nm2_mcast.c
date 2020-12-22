@@ -118,3 +118,16 @@ void callback_MLD_Config(
     }
     return;
 }
+
+void nm2_mcast_uplink_notify(const char *ifname, bool is_uplink, bool is_wan, const char *bridge)
+{
+    LOG(INFO, "mcast: Flagging interface %s as uplink=%s wan=%s",
+            ifname, is_uplink ? "true" : "false", is_wan ? "true" : "false");
+
+    if (!target_set_mcast_uplink(ifname, is_uplink, is_wan, bridge))
+    {
+        LOG(ERR, "mcast: Error setting interface %s uplink flag to %s.",
+                ifname, is_uplink ? "true" : "false");
+    }
+}
+

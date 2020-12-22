@@ -34,6 +34,7 @@ UNIT_NAME := nm
 # Template type:
 UNIT_TYPE := BIN
 
+UNIT_SRC    += src/nm2_connmgr_uplink.c
 UNIT_SRC    += src/nm2_dhcp_lease.c
 UNIT_SRC    += src/nm2_dhcp_option.c
 UNIT_SRC    += src/nm2_dhcp_rip.c
@@ -51,11 +52,11 @@ UNIT_SRC    += src/nm2_ipv6_routeadv.c
 UNIT_SRC    += src/nm2_mac_learning.c
 UNIT_SRC    += src/nm2_mac_tags.c
 UNIT_SRC    += src/nm2_main.c
-UNIT_SRC    += src/nm2_portfw.c
+UNIT_SRC    += src/nm2_mcast.c
 UNIT_SRC    += src/nm2_port.c
+UNIT_SRC    += src/nm2_portfw.c
 UNIT_SRC    += src/nm2_route.c
 UNIT_SRC    += src/nm2_util.c
-UNIT_SRC    += src/nm2_mcast.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -Isrc/lib/common/inc/

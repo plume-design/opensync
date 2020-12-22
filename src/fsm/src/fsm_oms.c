@@ -156,6 +156,7 @@ fsm_oms_config_cb(struct oms_config_entry *entry, int ovsdb_event)
     case OVSDB_UPDATE_DEL:
         LOGD("%s: delete entry %s version %s", __func__,
              entry->object, entry->version);
+        fsm_oms_notify_plugins(entry, ovsdb_event);
         break;
 
     case OVSDB_UPDATE_MODIFY:

@@ -152,6 +152,11 @@ oms_modify_state_entry(struct oms_state_entry *entry, bool update_only)
     MEMZERO(state);
     state._partial_update = true;
 
+    /* Populate State */
+    key = entry->state;
+    if (key != NULL) SCHEMA_SET_STR(state.status, key);
+
+    /* New enty only */
     if (update_only == false)
     {
         /* Object name */
@@ -164,15 +169,20 @@ oms_modify_state_entry(struct oms_state_entry *entry, bool update_only)
 
         /* Fw integrated */
         SCHEMA_SET_INT(state.fw_integrated, entry->fw_integrated);
+
+        /* Upset new entry */
+        rc = ovsdb_table_upsert_where(&table_Object_Store_State, where, &state, false);
+    }
+    else
+    {
+        /*
+         * Only update not upsert. In case that this entry is already gone
+         * usert will triggere error of missing name and version. Avoid with
+         * using update instead of upsert.
+         */
+        rc = ovsdb_table_update_where(&table_Object_Store_State, where, &state);
     }
 
-    /* State */
-    key = entry->state;
-    if (key != NULL) SCHEMA_SET_STR(state.status, key);
-
-    /* other_config, to be processed */
-
-    rc = ovsdb_table_upsert_where(&table_Object_Store_State, where, &state, false);
     json_decref(where);
 
     ret = rc ? 0 : -1;
@@ -348,11 +358,13 @@ oms_ovsdb_del_config_entry(struct schema_OMS_Config *config)
     entry = ds_tree_find(tree, &lookup);
     if (entry == NULL) return;
 
+    /* Remove entry */
+    ds_tree_remove(tree, entry);
+
     /* Notify the manager */
     if (mgr->config_cb) (mgr->config_cb(entry, OVSDB_UPDATE_DEL));
 
-    /* remove and free the entry */
-    ds_tree_remove(tree, entry);
+    /* Free the entry */
     oms_free_config_entry(entry);
 
 }

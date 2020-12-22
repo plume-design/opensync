@@ -334,6 +334,16 @@ bool nm2_inet_igmp_set(
         return false;
     }
 
+    if (!target_set_igmp_snooping(piface->if_name, iigmp))
+    {
+        LOG(WARN, "inet_config: %s (%s): Error set target IGMP (%d).",
+                piface->if_name,
+                nm2_iftype_tostr(piface->if_type),
+                iconf->igmp_exists && iconf->igmp);
+
+        return false;
+    }
+
     return true;
 }
 

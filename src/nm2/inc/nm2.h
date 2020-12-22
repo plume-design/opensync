@@ -221,6 +221,7 @@ bool nm2_port_init(void);
 
 /* mcast tuning params tables */
 void nm2_mcast_init(void);
+void nm2_mcast_uplink_notify(const char *ifname, bool is_uplink, bool is_wan, const char *bridge);
 
 /*Interface config and state */
 void nm2_inet_config_init(void);
@@ -249,6 +250,7 @@ bool nm2_client_nickname_init(void);
 int nm2_mac_tags_ovsdb_init(void);
 int lan_clients_oftag_add_mac(char *mac);
 int lan_clients_oftag_remove_mac(char *mac);
+void nm2_cmu_init(void);
 
 /*
  * ===========================================================================
