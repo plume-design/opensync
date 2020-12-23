@@ -1,0 +1,11 @@
+#
+# OpenSync core network Firewall
+#
+source "src/lib/osn/kconfig/Kconfig.osn.fw"
+
+#
+# Platform/vendor Firewall
+#
+osource "platform/*/kconfig/Kconfig.osn.fw"
+osource "vendor/*/kconfig/Kconfig.osn.fw"
+

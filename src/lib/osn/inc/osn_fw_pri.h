@@ -65,6 +65,7 @@
 #define OSFW_STR_TARGET_RETURN "RETURN"
 #define OSFW_STR_TARGET_REJECT "REJECT"
 #define OSFW_STR_TARGET_QUEUE "QUEUE"
+#define OSFW_STR_TARGET_MASQUERADE "MASQUERADE"
 
 struct osfw_nfchain {
 	struct ds_dlist_node elt;

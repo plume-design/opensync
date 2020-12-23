@@ -1,0 +1,16 @@
+config OPENSYNC_NFM_FIREWALL
+    bool
+    default y if MANAGER_NFM && OSN_BACKEND_FW_IPTABLES_FULL
+    default n
+    help
+        This is a hidden option (not visible from the menu). It is set to 'y' if
+        OpenSync is using NFM for managing iptables.
+
+config OPENSYNC_LEGACY_FIREWALL
+    bool
+    default y if !OPENSYNC_NFM_FIREWALL
+    default n
+    help
+        This is a hidden option (not visible from the menu). It is set to 'y' if
+        OpenSync is NOT using NFM for managing iptables.
+

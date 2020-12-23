@@ -42,6 +42,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fcm_filter.h"
 #include "lan_stats.h"
 #include "util.h"
+#include "policy_tags.h"
+
+#define ETH_DEVICES_TAG "${eth_devices}"
 
 static char *dflt_fltr_name = "none";
 static char *collect_cmd = OVS_DPCTL_DUMP_FLOWS;
@@ -53,6 +56,7 @@ static unsigned int get_eth_type(char *eth)
     eth_val = strtol(eth, NULL, 16);
     return eth_val;
 }
+
 /*
  * For speedy parsing did the hand-coded parser with the assumption the
  * output format of ovs-dpctl dump-flows  is consistent
@@ -242,6 +246,11 @@ static void send_aggr_report(fcm_collect_plugin_t *collector)
         LOGD("Aggregator send report failed\n");
         return;
     }
+
+    if (LOG_SEVERITY_ENABLED(LOG_SEVERITY_TRACE))
+    {
+        net_md_log_aggr(aggr);
+    }
 }
 
 static void set_filter_info(fcm_filter_l2_info_t *l2_filter_info,
@@ -255,6 +264,18 @@ static void set_filter_info(fcm_filter_l2_info_t *l2_filter_info,
 
     l2_filter_pkts->pkt_cnt = stats->pkts;
     l2_filter_pkts->bytes = stats->bytes;
+}
+
+static bool
+lan_stats_is_mac_in_tag(char *tag, os_macaddr_t *mac)
+{
+    char mac_s[32] = { 0 };
+
+    snprintf(mac_s, sizeof(mac_s), PRI_os_macaddr_lower_t,
+             FMT_os_macaddr_pt(mac));
+
+    return om_tag_in(mac_s, tag);
+
 }
 
 static void aggr_add_sample(fcm_collect_plugin_t *collector, dp_ctl_stats_t *stats)
@@ -274,8 +295,11 @@ static void aggr_add_sample(fcm_collect_plugin_t *collector, dp_ctl_stats_t *sta
     memset(&key, 0, sizeof(struct net_md_flow_key));
     memset(&pkts_ct, 0, sizeof(struct flow_counters));
     key.smac = &stats->smac_key;
+    key.isparent_of_smac = lan_stats_is_mac_in_tag(ETH_DEVICES_TAG, key.smac);
     key.dmac = &stats->dmac_key;
+    key.isparent_of_dmac = lan_stats_is_mac_in_tag(ETH_DEVICES_TAG, key.dmac);
     key.ethertype = stats->eth_val;
+
     if (stats->vlan_id > 0)
     {
         key.vlan_id = stats->vlan_id;

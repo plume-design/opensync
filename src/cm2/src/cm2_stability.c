@@ -141,10 +141,16 @@ static void cm2_restore_connection(cm2_restore_con_t opt)
     if (!cm2_is_eth_type(g_state.link.if_type))
         return;
 
-    if (opt & (1 << CM2_RESTORE_IP))
+    if (opt & (1 << CM2_RESTORE_IP)) {
         cm2_ovsdb_refresh_dhcp(cm2_get_uplink_name());
-    else
+    }
+    else if (opt & (1 << CM2_RESTORE_MAIN_LINK)) {
+        WARN_ON(!cm2_ovsdb_set_Wifi_Inet_Config_interface_enabled(false, cm2_get_uplink_name()));
+        WARN_ON(!cm2_ovsdb_set_Wifi_Inet_Config_interface_enabled(true, cm2_get_uplink_name()));
+    }
+    else {
         cm2_restore_switch_cfg(opt);
+    }
 }
 
 static void cm2_stability_handle_fatal_state(int counter)
@@ -269,6 +275,8 @@ bool cm2_connection_req_stability_check(target_connectivity_check_option_t opts,
             cm2_restore_switch_cfg_params(counter, CONFIG_CM2_STABILITY_THRESH_ROUTER + 2, &ropt);
             if (counter % CONFIG_CM2_STABILITY_THRESH_ROUTER == 0)
                 ropt |= (1 << CM2_RESTORE_IP);
+            if (counter % CONFIG_CM2_STABILITY_THRESH_ROUTER + 1 == 0)
+                ropt |= (1 << CM2_RESTORE_MAIN_LINK);
         }
         else if (kconfig_enabled(CONFIG_CM2_USE_TCPDUMP) &&
                  con.unreachable_router_counter >= CONFIG_CM2_STABILITY_THRESH_TCPDUMP) {
@@ -298,6 +306,8 @@ bool cm2_connection_req_stability_check(target_connectivity_check_option_t opts,
             cm2_restore_switch_cfg_params(counter, CONFIG_CM2_STABILITY_THRESH_INTERNET + 2, &ropt);
             if (counter % CONFIG_CM2_STABILITY_THRESH_INTERNET == 0)
                 ropt |= (1 << CM2_RESTORE_IP);
+            if (counter % CONFIG_CM2_STABILITY_THRESH_ROUTER + 1 == 0)
+                ropt |= (1 << CM2_RESTORE_MAIN_LINK);
         }
 
         ret = cm2_ovsdb_connection_update_unreachable_internet_counter(if_name, counter);

@@ -47,6 +47,8 @@ struct __inet_eth
     osn_ip_t                   *in_ip;              /* IPv4 Configuration */
     osn_netif_t                *in_netif;           /* L2 Configuration */
     ev_async                    in_netif_async;     /* Some netif events needs to be dealt with from the main loop */
+    bool                        in_noflood_set;     /* Whether the noflood option is set */
+    bool                        in_noflood;         /* OVS no flood option */
 };
 
 extern inet_t *inet_eth_new(const char *ifname);

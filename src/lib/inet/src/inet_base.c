@@ -895,30 +895,16 @@ bool inet_base_mtu_set(inet_t *super, int mtu)
 
     self->in_mtu = mtu;
 
-    if (self->in_mtu <= 0)
+    /* Start the MTU service */
+    if (!inet_unit_restart(self->in_units, INET_BASE_MTU, true))
     {
-        /* Stop the MTU service */
-        if (!inet_unit_stop(self->in_units, INET_BASE_MTU))
-        {
-            LOG(ERR, "inet_base: %s: Error stopping INET_BASE_MTU.",
-                    self->inet.in_ifname);
-            return false;
-        }
-    }
-    else
-    {
-        /* Start the MTU service */
-        if (!inet_unit_restart(self->in_units, INET_BASE_MTU, true))
-        {
-            LOG(ERR, "inet_base: %s: Error restarting INET_BASE_MTU",
-                    self->inet.in_ifname);
-            return false;
-        }
+        LOG(ERR, "inet_base: %s: Error restarting INET_BASE_MTU",
+                self->inet.in_ifname);
+        return false;
     }
 
     return true;
 }
-
 
 /**
  * IP assignment scheme -- this is basically a tristate. It toggles between NONE, STATIC and DHCP

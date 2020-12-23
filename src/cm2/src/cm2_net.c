@@ -110,8 +110,8 @@ static int cm2_ovs_insert_port_into_bridge(char *bridge, char *port, bool add)
     LOGI("OVS bridge: %s port = %s bridge = %s", op, port, bridge);
 
     /* add/delete it to/from OVS bridge */
-    sprintf(command, "timeout %s ovs-vsctl list-ifaces %s | grep %s %s timeout %s ovs-vsctl %s %s %s",
-            cm2_get_timeout_cmd_arg(), bridge, port, op_log, cm2_get_timeout_cmd_arg(), op, bridge, port);
+    sprintf(command, "timeout %s ovs-vsctl port-to-br %s | grep %s %s timeout %s ovs-vsctl %s %s %s",
+            cm2_get_timeout_cmd_arg(), port, bridge, op_log, cm2_get_timeout_cmd_arg(), op, bridge, port);
 
     LOGD("%s: Command: %s", __func__, command);
 

@@ -212,6 +212,9 @@ struct __inet
     /* Set MTU */
     bool        (*in_mtu_set_fn)(inet_t *self, int mtu);
 
+    /* Set OVS no-flood */
+    bool        (*in_noflood_set_fn)(inet_t *self, bool enable);
+
     /* Set parent interface */
     bool        (*in_parent_ifname_set_fn)(inet_t *self, const char *parent_ifname);
 
@@ -434,6 +437,13 @@ static inline bool inet_mtu_set(inet_t *self, int mtu)
     if (self->in_mtu_set_fn == NULL) return false;
 
     return self->in_mtu_set_fn(self, mtu);
+}
+
+static inline bool inet_noflood_set(inet_t *self, bool enable)
+{
+    if (self->in_noflood_set_fn == NULL) return false;
+
+    return self->in_noflood_set_fn(self, enable);
 }
 
 static inline bool inet_parent_ifname_set(inet_t *self, const char *parent_ifname)

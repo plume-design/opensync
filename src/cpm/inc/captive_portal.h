@@ -32,6 +32,18 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "ds_tree.h"
 
+typedef enum proto_type {
+	PT_NONE = 0,
+	PT_HTTP,
+	PT_HTTPS
+} proto_type;
+
+struct url_s {
+    proto_type              proto;
+    char                    *domain_name;
+    char                    *port;
+};
+
 struct cportal {
     bool                    enabled;
     int                     proxy_method;
@@ -39,11 +51,14 @@ struct cportal {
     char                    *pkt_mark;
     char                    *rt_tbl_id;
     char                    *uam_url;
+    struct url_s            *url;
     ds_tree_t               *other_config;
     ds_tree_t               *additional_headers;
 
     ds_tree_node_t           cp_tnode;
 };
+
+
 
 enum cportal_proxy_method
 {

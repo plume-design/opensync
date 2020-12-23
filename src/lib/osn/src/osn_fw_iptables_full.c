@@ -32,6 +32,7 @@
 #include "log.h"
 #include "osn_fw_pri.h"
 #include "os.h"
+#include "const.h"
 #include "util.h"
 #include <string.h>
 #include <stdio.h>
@@ -40,7 +41,36 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "kconfig.h"
+
 #define MODULE_ID LOG_MODULE_ID_TARGET
+
+static char *osfw_target_builtin[] =
+{
+	"ACCEPT",
+	"CLASSIFY",
+	"DNAT",
+	"DROP",
+	"DSCP",
+	"ECN",
+	"LOG",
+	"MARK",
+	"MASQUERADE",
+	"MIRROR",
+	"NETMAP",
+	"NFLOG",
+	"NFQUEUE",
+	"QUEUE",
+	"REDIRECT",
+	"REJECT",
+	"RETURN",
+	"SAME",
+	"SNAT",
+	"TCPMSS",
+	"TOS",
+	"TTL",
+	"ULOG"
+};
 
 static struct osfw_nfbase osfw_nfbase;
 
@@ -120,16 +150,12 @@ static const char *osfw_convert_table(enum osfw_table table)
 
 static bool osfw_is_builtin_chain(enum osfw_table table, const char *chain)
 {
-	if (!strncmp(chain, OSFW_STR_TARGET_ACCEPT, sizeof(OSFW_STR_TARGET_ACCEPT))) {
-		return true;
-	} else if (!strncmp(chain, OSFW_STR_TARGET_DROP, sizeof(OSFW_STR_TARGET_DROP))) {
-		return true;
-	} else if (!strncmp(chain, OSFW_STR_TARGET_REJECT, sizeof(OSFW_STR_TARGET_REJECT))) {
-		return true;
-	} else if (!strncmp(chain, OSFW_STR_TARGET_QUEUE, sizeof(OSFW_STR_TARGET_QUEUE))) {
-		return true;
-	} else if (!strncmp(chain, OSFW_STR_TARGET_RETURN, sizeof(OSFW_STR_TARGET_RETURN))) {
-		return true;
+	int ci;
+
+	for (ci = 0; ci < ARRAY_LEN(osfw_target_builtin); ci++) {
+		if (strcmp(chain, osfw_target_builtin[ci]) == 0) {
+			return true;
+		}
 	}
 
 	switch (table) {
@@ -366,8 +392,16 @@ static void osfw_nfrule_print(const struct osfw_nfrule *self, FILE *stream)
 	if (!self || !stream) {
 		return;
 	}
-	fprintf(stream, "-A %s %s -j %s\n", self->chain, self->match, self->target);
+	fprintf(stream, "-A %s -j %s %s\n", self->chain, self->target, self->match);
 }
+
+#define KCONFIG_DEFAULT_POLICY2(kconfig) \
+    kconfig_enabled(kconfig##_ACCEPT) ? OSFW_STR_TARGET_ACCEPT : \
+            (kconfig_enabled(kconfig##_REJECT) ? OSFW_STR_TARGET_REJECT : \
+                OSFW_STR_TARGET_DROP)
+
+#define KCONFIG_DEFAULT_POLICY(table, chain) \
+    KCONFIG_DEFAULT_POLICY2(CONFIG_OSN_FW_IPTABLES_POLICY_##table##_##chain)
 
 static void osfw_nftable_print_header(const struct osfw_nftable *self, FILE *stream)
 {
@@ -378,34 +412,34 @@ static void osfw_nftable_print_header(const struct osfw_nftable *self, FILE *str
 
 	switch (self->table) {
 	case OSFW_TABLE_FILTER:
-		fprintf(stream, ":%s %s [0:0]\n", OSFW_STR_CHAIN_INPUT, OSFW_STR_TARGET_DROP);
-		fprintf(stream, ":%s %s [0:0]\n", OSFW_STR_CHAIN_FORWARD, OSFW_STR_TARGET_DROP);
-		fprintf(stream, ":%s %s [0:0]\n", OSFW_STR_CHAIN_OUTPUT, OSFW_STR_TARGET_DROP);
+		fprintf(stream, ":%s %s [0:0]\n", OSFW_STR_CHAIN_INPUT, KCONFIG_DEFAULT_POLICY(FILTER, INPUT));
+		fprintf(stream, ":%s %s [0:0]\n", OSFW_STR_CHAIN_FORWARD, KCONFIG_DEFAULT_POLICY(FILTER, FORWARD));
+		fprintf(stream, ":%s %s [0:0]\n", OSFW_STR_CHAIN_OUTPUT, KCONFIG_DEFAULT_POLICY(FILTER, OUTPUT));
 		break;
 
 	case OSFW_TABLE_NAT:
-		fprintf(stream, ":%s %s [0:0]\n", OSFW_STR_CHAIN_PREROUTING, OSFW_STR_TARGET_ACCEPT);
-		fprintf(stream, ":%s %s [0:0]\n", OSFW_STR_CHAIN_OUTPUT, OSFW_STR_TARGET_ACCEPT);
-		fprintf(stream, ":%s %s [0:0]\n", OSFW_STR_CHAIN_POSTROUTING, OSFW_STR_TARGET_ACCEPT);
+		fprintf(stream, ":%s %s [0:0]\n", OSFW_STR_CHAIN_PREROUTING, KCONFIG_DEFAULT_POLICY(NAT, PREROUTING));
+		fprintf(stream, ":%s %s [0:0]\n", OSFW_STR_CHAIN_OUTPUT, KCONFIG_DEFAULT_POLICY(NAT, OUTPUT));
+		fprintf(stream, ":%s %s [0:0]\n", OSFW_STR_CHAIN_POSTROUTING, KCONFIG_DEFAULT_POLICY(NAT, POSTROUTING));
 		break;
 
 	case OSFW_TABLE_MANGLE:
-		fprintf(stream, ":%s %s [0:0]\n", OSFW_STR_CHAIN_PREROUTING, OSFW_STR_TARGET_ACCEPT);
-		fprintf(stream, ":%s %s [0:0]\n", OSFW_STR_CHAIN_INPUT, OSFW_STR_TARGET_ACCEPT);
-		fprintf(stream, ":%s %s [0:0]\n", OSFW_STR_CHAIN_FORWARD, OSFW_STR_TARGET_ACCEPT);
-		fprintf(stream, ":%s %s [0:0]\n", OSFW_STR_CHAIN_OUTPUT, OSFW_STR_TARGET_ACCEPT);
-		fprintf(stream, ":%s %s [0:0]\n", OSFW_STR_CHAIN_POSTROUTING, OSFW_STR_TARGET_ACCEPT);
+		fprintf(stream, ":%s %s [0:0]\n", OSFW_STR_CHAIN_PREROUTING, KCONFIG_DEFAULT_POLICY(MANGLE, PREROUTING));
+		fprintf(stream, ":%s %s [0:0]\n", OSFW_STR_CHAIN_INPUT, KCONFIG_DEFAULT_POLICY(MANGLE, INPUT));
+		fprintf(stream, ":%s %s [0:0]\n", OSFW_STR_CHAIN_FORWARD, KCONFIG_DEFAULT_POLICY(MANGLE, FORWARD));
+		fprintf(stream, ":%s %s [0:0]\n", OSFW_STR_CHAIN_OUTPUT, KCONFIG_DEFAULT_POLICY(MANGLE, OUTPUT));
+		fprintf(stream, ":%s %s [0:0]\n", OSFW_STR_CHAIN_POSTROUTING, KCONFIG_DEFAULT_POLICY(MANGLE, POSTROUTING));
 		break;
 
 	case OSFW_TABLE_RAW:
-		fprintf(stream, ":%s %s [0:0]\n", OSFW_STR_CHAIN_PREROUTING, OSFW_STR_TARGET_ACCEPT);
-		fprintf(stream, ":%s %s [0:0]\n", OSFW_STR_CHAIN_OUTPUT, OSFW_STR_TARGET_ACCEPT);
+		fprintf(stream, ":%s %s [0:0]\n", OSFW_STR_CHAIN_PREROUTING, KCONFIG_DEFAULT_POLICY(RAW, PREROUTING));
+		fprintf(stream, ":%s %s [0:0]\n", OSFW_STR_CHAIN_OUTPUT, KCONFIG_DEFAULT_POLICY(RAW, OUTPUT));
 		break;
 
 	case OSFW_TABLE_SECURITY:
-		fprintf(stream, ":%s %s [0:0]\n", OSFW_STR_CHAIN_INPUT, OSFW_STR_TARGET_ACCEPT);
-		fprintf(stream, ":%s %s [0:0]\n", OSFW_STR_CHAIN_FORWARD, OSFW_STR_TARGET_ACCEPT);
-		fprintf(stream, ":%s %s [0:0]\n", OSFW_STR_CHAIN_OUTPUT, OSFW_STR_TARGET_ACCEPT);
+		fprintf(stream, ":%s %s [0:0]\n", OSFW_STR_CHAIN_INPUT, KCONFIG_DEFAULT_POLICY(SECURITY, INPUT));
+		fprintf(stream, ":%s %s [0:0]\n", OSFW_STR_CHAIN_FORWARD, KCONFIG_DEFAULT_POLICY(SECURITY, FORWARD));
+		fprintf(stream, ":%s %s [0:0]\n", OSFW_STR_CHAIN_OUTPUT, KCONFIG_DEFAULT_POLICY(SECURITY, OUTPUT));
 		break;
 
 	default:

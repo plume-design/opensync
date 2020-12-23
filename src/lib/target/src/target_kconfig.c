@@ -548,8 +548,14 @@ util_get_link_ip(const char *ifname, struct in_addr *dest)
                  "cat /sys/class/net/g-%s/softwds/ip4gre_remote_ip",
                  ifname);
     } else {
-        snprintf(cmd, sizeof(cmd), "ip -d link | egrep gretap | "
-                 "egrep %s | ( read a b c d; echo $c )", ifname);
+        /* Given ifname==wl0 it is expected to match a line looking like so:
+         *  gretap remote 169.254.3.129 local 169.254.3.247 dev wl0 ttl inherit tos inherit
+         *
+         * And to extract:
+         *  169.254.3.129
+         */
+         snprintf(cmd, sizeof(cmd), "ip -d link | "
+                  "awk '$1 == \"gretap\" && $7 == \"%s\"' {print $3}", ifname);
     }
 
     f1 = popen(cmd, "r");

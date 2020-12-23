@@ -284,6 +284,14 @@ bool nm2_inet_interface_set(
         retval = false;
     }
 
+    if (iconf->no_flood_exists && !inet_noflood_set(piface->if_inet, iconf->no_flood))
+    {
+        LOG(WARN, "inet_config: %s (%s): Error setting no-flood to %s.",
+                piface->if_name,
+                nm2_iftype_tostr(piface->if_type),
+                iconf->no_flood ? "true" : "false");
+    }
+
     if (!inet_parent_ifname_set(piface->if_inet, iconf->parent_ifname_exists ? iconf->parent_ifname : NULL))
     {
         LOG(WARN, "inet_config: %s (%s): Error setting parent interface name.",

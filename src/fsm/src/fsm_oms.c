@@ -26,6 +26,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "fsm.h"
 #include "oms.h"
+#include "oms_ps.h"
 #include "ovsdb_update.h"
 
 
@@ -234,6 +235,33 @@ fsm_oms_get_highest_version(struct fsm_session *session, char *name,
     return object;
 }
 
+/**
+ * @brief return the last active version of an object
+ *
+ * @param session the querying fsm session
+ * @param object the object name
+ * @return the object with the active version
+ *
+ * If no last active version is saved in persistent storage return NULL
+ * The caller is responsible for freeing the returned object
+ */
+struct fsm_object *
+fsm_oms_get_last_active_version(struct fsm_session *session, char *name)
+{
+    struct oms_config_entry *entry;
+    struct fsm_object *object;
+
+    entry = oms_ps_get_last_active_version(name);
+    if (entry ==  NULL) return NULL;
+
+    object = calloc(1, sizeof(*object));
+    if (object == NULL) return NULL;
+
+    object->object = name;
+    object->version = entry->version;
+
+    return object;
+}
 
 static bool
 fsm_oms_accept_id(const char *object_id)

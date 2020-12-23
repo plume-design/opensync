@@ -69,6 +69,8 @@ message FlowKey {
       repeated FlowTags flowTags                                            = 10;
       repeated VendorData vendorData                                        = 11;
       optional FlowState flowState                                          = 12;
+      optional bool parentOfSrcMac                                          = 13;
+      optional bool parentOfDstMac                                          = 14;
 }
 
 message FlowCounters {

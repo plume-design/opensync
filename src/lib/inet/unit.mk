@@ -66,6 +66,7 @@ $(eval $(if $(CONFIG_INET_GRETAP),          UNIT_SRC += src/linux/inet_gretap.c)
 
 $(eval $(if $(CONFIG_INET_FW_NULL),         UNIT_SRC += src/null/inet_fw_null.c))
 $(eval $(if $(CONFIG_INET_FW_IPTABLES),     UNIT_SRC += src/linux/inet_fw_iptables.c))
+$(eval $(if $(CONFIG_INET_FW_NFM),          UNIT_SRC += src/linux/inet_fw_nfm.c))
 
 $(eval $(if $(CONFIG_INET_IGMP_NULL),       UNIT_SRC += src/null/inet_igmp_null.c))
 $(eval $(if $(CONFIG_INET_IGMP_SNOOPING),   UNIT_SRC += src/linux/inet_igmp_snooping.c))

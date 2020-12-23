@@ -571,6 +571,7 @@ struct wano_ppline
     bool                        wpl_uplink_bridge;          /**< True if Connection_Manager_Uplink:bridge is set */
     double                      wpl_immediate_timeout;      /**< Immedate timeout */
     ds_dlist_t                  wpl_event_list;             /**< List of event callbacks */
+    bool                        wpl_has_l3;                 /**< True if the has_L3 column was set */
 };
 
 typedef struct wano_ppline_event wano_ppline_event_t;

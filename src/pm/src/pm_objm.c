@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "oms.h"
 #include "oms_report.h"
+#include "oms_ps.h"
 
 #include "osp_ps.h"
 #include "osp_objm.h"
@@ -713,6 +714,11 @@ static void oms_state_cb(struct oms_state_entry *entry, int event)
             break;
     }
 
+    if (strncmp(entry->state, PM_OBJS_ACTIVE, strlen(PM_OBJS_ACTIVE)) == 0)
+    {
+        // Save last active version to persistant storage
+        oms_ps_save_last_active_version(entry);
+    }
 
     if (strcmp(entry->state, PM_OBJS_OBSOLETE)        == 0 ||
         strcmp(entry->state, PM_OBJS_ACTIVE)          == 0 ||

@@ -47,7 +47,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 struct net_md_flow_key
 {
     os_macaddr_t *smac;
+    bool          isparent_of_smac;
     os_macaddr_t *dmac;
+    bool          isparent_of_dmac;
     int16_t vlan_id;      /* Host representation of the 12 bits vid */
     uint16_t ethertype;   /* Network byte order */
     uint8_t ip_version;   /* No ip (0), ipv4 (4), ipv6 (6) */

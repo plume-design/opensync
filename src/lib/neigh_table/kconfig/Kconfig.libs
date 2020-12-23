@@ -1,0 +1,9 @@
+menu "libneigh_table Configuration"
+    config LIBNEIGH_TABLE
+        bool "Library for ip to mac address mapping"
+        default y
+        help
+            Enable support for neigh_table caching mechanism to
+            cache ip to mac address mapping which can be used
+            by any of the managers.
+endmenu

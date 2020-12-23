@@ -1,0 +1,193 @@
+if OSN_BACKEND_FW_IPTABLES_FULL
+    comment "iptables full options"
+    menu "Default Policy"
+        comment "FILTER Table"
+        choice
+            prompt "INPUT"
+            default OSN_FW_IPTABLES_POLICY_FILTER_INPUT_DROP
+
+            config OSN_FW_IPTABLES_POLICY_FILTER_INPUT_ACCEPT
+                bool "Accept"
+
+            config OSN_FW_IPTABLES_POLICY_FILTER_INPUT_REJECT
+                bool "Reject"
+
+            config OSN_FW_IPTABLES_POLICY_FILTER_INPUT_DROP
+                bool "Drop"
+        endchoice
+
+        choice
+            prompt "OUTPUT"
+            default OSN_FW_IPTABLES_POLICY_FILTER_OUTPUT_ACCEPT
+
+            config OSN_FW_IPTABLES_POLICY_FILTER_OUTPUT_ACCEPT
+                bool "Accept"
+
+            config OSN_FW_IPTABLES_POLICY_FILTER_OUTPUT_REJECT
+                bool "Reject"
+
+            config OSN_FW_IPTABLES_POLICY_FILTER_OUTPUT_DROP
+                bool "Drop"
+        endchoice
+
+        choice
+            prompt "FORWARD"
+            default OSN_FW_IPTABLES_POLICY_FILTER_FORWARD_ACCEPT
+
+            config OSN_FW_IPTABLES_POLICY_FILTER_FORWARD_ACCEPT
+                bool "Accept"
+
+            config OSN_FW_IPTABLES_POLICY_FILTER_FORWARD_REJECT
+                bool "Reject"
+
+            config OSN_FW_IPTABLES_POLICY_FILTER_FORWARD_DROP
+                bool "Drop"
+        endchoice
+
+        comment "NAT Table"
+        choice
+            prompt "PREROUTING"
+            default OSN_FW_IPTABLES_POLICY_NAT_PREROUTING_ACCEPT
+
+            config OSN_FW_IPTABLES_POLICY_NAT_PREROUTING_ACCEPT
+                bool "Accept"
+
+            config OSN_FW_IPTABLES_POLICY_NAT_PREROUTING_DROP
+                bool "Drop"
+        endchoice
+
+        choice
+            prompt "OUTPUT"
+            default OSN_FW_IPTABLES_POLICY_NAT_OUTPUT_ACCEPT
+
+            config OSN_FW_IPTABLES_POLICY_NAT_OUTPUT_ACCEPT
+                bool "Accept"
+
+            config OSN_FW_IPTABLES_POLICY_NAT_OUTPUT_DROP
+                bool "Drop"
+        endchoice
+
+        choice
+            prompt "POSTROUTING"
+            default OSN_FW_IPTABLES_POLICY_NAT_POSTROUTING_ACCEPT
+
+            config OSN_FW_IPTABLES_POLICY_NAT_POSTROUTING_ACCEPT
+                bool "Accept"
+
+            config OSN_FW_IPTABLES_POLICY_NAT_POSTROUTING_DROP
+                bool "Drop"
+        endchoice
+
+        comment "MANGLE Table"
+        choice
+            prompt "PREROUTING"
+            default OSN_FW_IPTABLES_POLICY_MANGLE_PREROUTING_ACCEPT
+
+            config OSN_FW_IPTABLES_POLICY_MANGLE_PREROUTING_ACCEPT
+                bool "Accept"
+
+            config OSN_FW_IPTABLES_POLICY_MANGLE_PREROUTING_DROP
+                bool "Drop"
+        endchoice
+
+        choice
+            prompt "INPUT"
+            default OSN_FW_IPTABLES_POLICY_MANGLE_INPUT_ACCEPT
+
+            config OSN_FW_IPTABLES_POLICY_MANGLE_INPUT_ACCEPT
+                bool "Accept"
+
+            config OSN_FW_IPTABLES_POLICY_MANGLE_INPUT_DROP
+                bool "Drop"
+        endchoice
+
+        choice
+            prompt "FORWARD"
+            default OSN_FW_IPTABLES_POLICY_MANGLE_FORWARD_ACCEPT
+
+            config OSN_FW_IPTABLES_POLICY_MANGLE_FORWARD_ACCEPT
+                bool "Accept"
+
+            config OSN_FW_IPTABLES_POLICY_MANGLE_FORWARD_DROP
+                bool "Drop"
+        endchoice
+
+        choice
+            prompt "OUTPUT"
+            default OSN_FW_IPTABLES_POLICY_MANGLE_OUTPUT_ACCEPT
+
+            config OSN_FW_IPTABLES_POLICY_MANGLE_OUTPUT_ACCEPT
+                bool "Accept"
+
+            config OSN_FW_IPTABLES_POLICY_MANGLE_OUTPUT_DROP
+                bool "Drop"
+        endchoice
+
+        choice
+            prompt "POSTROUTING"
+            default OSN_FW_IPTABLES_POLICY_MANGLE_POSTROUTING_ACCEPT
+
+            config OSN_FW_IPTABLES_POLICY_MANGLE_POSTROUTING_ACCEPT
+                bool "Accept"
+
+            config OSN_FW_IPTABLES_POLICY_MANGLE_POSTROUTING_DROP
+                bool "Drop"
+        endchoice
+
+        comment "RAW Table"
+        choice
+            prompt "PREROUTING"
+            default OSN_FW_IPTABLES_POLICY_RAW_PREROUTING_ACCEPT
+
+            config OSN_FW_IPTABLES_POLICY_RAW_PREROUTING_ACCEPT
+                bool "Accept"
+
+            config OSN_FW_IPTABLES_POLICY_RAW_PREROUTING_DROP
+                bool "Drop"
+        endchoice
+
+        choice
+            prompt "OUTPUT"
+            default OSN_FW_IPTABLES_POLICY_RAW_OUTPUT_ACCEPT
+
+            config OSN_FW_IPTABLES_POLICY_RAW_OUTPUT_ACCEPT
+                bool "Accept"
+
+            config OSN_FW_IPTABLES_POLICY_RAW_OUTPUT_DROP
+                bool "Drop"
+        endchoice
+
+        comment "SECURITY Table"
+        choice
+            prompt "INPUT"
+            default OSN_FW_IPTABLES_POLICY_SECURITY_INPUT_ACCEPT
+
+            config OSN_FW_IPTABLES_POLICY_SECURITY_INPUT_ACCEPT
+                bool "Accept"
+
+            config OSN_FW_IPTABLES_POLICY_SECURITY_INPUT_DROP
+                bool "Drop"
+        endchoice
+
+        choice
+            prompt "FORWARD"
+            default OSN_FW_IPTABLES_POLICY_SECURITY_FORWARD_ACCEPT
+
+            config OSN_FW_IPTABLES_POLICY_SECURITY_FORWARD_ACCEPT
+                bool "Accept"
+
+            config OSN_FW_IPTABLES_POLICY_SECURITY_FORWARD_DROP
+                bool "Drop"
+        endchoice
+        choice
+            prompt "OUTPUT"
+            default OSN_FW_IPTABLES_POLICY_SECURITY_OUTPUT_ACCEPT
+
+            config OSN_FW_IPTABLES_POLICY_SECURITY_OUTPUT_ACCEPT
+                bool "Accept"
+
+            config OSN_FW_IPTABLES_POLICY_SECURITY_OUTPUT_DROP
+                bool "Drop"
+        endchoice
+    endmenu
+endif

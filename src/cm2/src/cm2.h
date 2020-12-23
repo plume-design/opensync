@@ -308,6 +308,7 @@ bool cm2_ovsdb_disable_gw_offline_conf(void);
 int  cm2_get_link_ip(char *if_name, cm2_ip *ip);
 int  cm2_ovsdb_update_mac_reporting(char *ifname, bool state);
 void cm2_ovsdb_set_default_wan_bridge(char *if_name, char *if_type);
+bool cm2_ovsdb_set_Wifi_Inet_Config_interface_enabled(bool state, char *ifname);
 
 #ifdef CONFIG_CM2_USE_EXTRA_DEBUGS
 void cm2_ovsdb_dump_debug_data(void);

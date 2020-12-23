@@ -526,6 +526,8 @@ void wano_ppline_status_async_fn(struct ev_loop *loop, ev_async *ev, int revent)
                         self->wpl_ifname);
             }
 
+            self->wpl_has_l3 = true;
+
             /* Reset the retries count */
             self->wpl_retries = 0;
 
@@ -716,6 +718,8 @@ enum wano_ppline_state wano_ppline_state_INIT(
                 self->wpl_ifname, self->wpl_iftype);
     }
 
+    self->wpl_has_l3 = false;
+
     return wano_ppline_START;
 }
 
@@ -874,6 +878,7 @@ enum wano_ppline_state wano_ppline_state_IF_IPV4_RESET(
 
         case wano_ppline_do_INET_STATE_UPDATE:
             if (strcmp(is->is_ip_assign_scheme, "none") != 0) break;
+            if (osn_ip_addr_cmp(&is->is_ipaddr, &OSN_IP_ADDR_INIT) != 0) break;
             return wano_ppline_IF_IPV6_RESET;
 
         case wano_ppline_do_PLUGIN_UPDATE:
@@ -1056,6 +1061,20 @@ enum wano_ppline_state wano_ppline_state_FREEZE(
     {
         case wano_ppline_do_STATE_INIT:
             wano_ppline_stop_queues(self);
+
+            /*
+             * If there was no successful WAN configuration found on the
+             * interface, reset any lingering IPv4 configuration by setting
+             * the ip_assign_scheme to none.
+             */
+            if (!self->wpl_has_l3 && !WANO_INET_CONFIG_UPDATE(
+                        self->wpl_ifname,
+                        .nat = WANO_TRI_FALSE,
+                        .ip_assign_scheme = "none"))
+            {
+                LOG(WARN, "wano: %s: Error writing Wifi_Inet_Config in FREEZE.", self->wpl_ifname);
+            }
+
             LOG(NOTICE, "wano: %s: Pipeline frozen.", self->wpl_ifname);
             break;
 

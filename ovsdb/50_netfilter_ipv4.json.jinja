@@ -1,0 +1,160 @@
+[
+    "Open_vSwitch"
+{% if 'CONFIG_OPENSYNC_NFM_FIREWALL' in KCONFIG_ALL %}
+    ,
+    {
+        "op":"insert",
+        "table":"Netfilter",
+        "row": {
+            "name": "default.ipv4.input.related_and_established",
+            "enable": true,
+            "priority": 10,
+            "protocol": "ipv4",
+            "table": "filter",
+            "chain": "INPUT",
+            "rule": "-m state --state RELATED,ESTABLISHED",
+            "target": "ACCEPT"
+        }
+    },
+    {
+        "op":"insert",
+        "table":"Netfilter",
+        "row": {
+            "name": "default.ipv4.forward.related_and_established",
+            "enable": true,
+            "priority": 10,
+            "protocol": "ipv4",
+            "table": "filter",
+            "chain": "FORWARD",
+            "rule": "-m state --state RELATED,ESTABLISHED",
+            "target": "ACCEPT"
+        }
+    },
+    {
+        "op":"insert",
+        "table":"Netfilter",
+        "row": {
+            "name": "default.ipv4.output.related_and_established",
+            "enable": true,
+            "priority": 10,
+            "protocol": "ipv4",
+            "table": "filter",
+            "chain": "OUTPUT",
+            "rule": "-m state --state RELATED,ESTABLISHED",
+            "target": "ACCEPT"
+        }
+    },
+    {
+        "op":"insert",
+        "table":"Netfilter",
+        "row": {
+            "name": "default.ipv4.local",
+            "enable": true,
+            "priority": 10,
+            "protocol": "ipv4",
+            "table": "filter",
+            "chain": "INPUT",
+            "rule": "-i lo",
+            "target": "ACCEPT"
+        }
+    },
+    {
+        "op":"insert",
+        "table":"Netfilter",
+        "row": {
+            "name": "default.ipv4.eth0.debugnet",
+            "enable": true,
+            "priority": 10,
+            "protocol": "ipv4",
+            "table": "filter",
+            "chain": "INPUT",
+            "rule": "-i eth0.4",
+            "target": "ACCEPT"
+        }
+    },
+    {
+        "op":"insert",
+        "table":"Netfilter",
+        "row": {
+            "name": "default.ipv4.eth1.debugnet",
+            "enable": true,
+            "priority": 10,
+            "protocol": "ipv4",
+            "table": "filter",
+            "chain": "INPUT",
+            "rule": "-i eth1.4",
+            "target": "ACCEPT"
+        }
+    },
+    {
+        "op":"insert",
+        "table":"Netfilter",
+        "row": {
+            "name": "default.ipv4.icmp",
+            "enable": true,
+            "priority": 10,
+            "protocol": "ipv4",
+            "table": "filter",
+            "chain": "INPUT",
+            "rule": "-p icmp",
+            "target": "ACCEPT"
+        }
+    },
+    {
+        "op":"insert",
+        "table":"Netfilter",
+        "row": {
+            "name": "default.ipv4.igmp",
+            "enable": true,
+            "priority": 10,
+            "protocol": "ipv4",
+            "table": "filter",
+            "chain": "INPUT",
+            "rule": "-p igmp",
+            "target": "ACCEPT"
+        }
+    },
+    {
+        "op":"insert",
+        "table":"Netfilter",
+        "row": {
+            "name": "default.ipv4.nm_input",
+            "enable": true,
+            "priority": 1000,
+            "protocol": "ipv4",
+            "table": "filter",
+            "chain": "INPUT",
+            "rule": "",
+            "target": "NM_INPUT"
+        }
+    },
+    {
+        "op":"insert",
+        "table":"Netfilter",
+        "row": {
+            "name": "default.ipv4.nm_nat",
+            "enable": true,
+            "priority": 1000,
+            "protocol": "ipv4",
+            "table": "nat",
+            "chain": "POSTROUTING",
+            "rule": "",
+            "target": "NM_NAT"
+        }
+    },
+    {
+        "op":"insert",
+        "table":"Netfilter",
+        "row": {
+            "name": "default.ipv4.nm_forward",
+            "enable": true,
+            "priority": 1000,
+            "protocol": "ipv4",
+            "table": "nat",
+            "chain": "PREROUTING",
+            "rule": "",
+            "target": "NM_PORT_FORWARD"
+        }
+    }
+{% endif %}
+]

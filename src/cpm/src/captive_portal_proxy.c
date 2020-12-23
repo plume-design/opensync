@@ -34,6 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "const.h"
 #include "util.h"
 #include "log.h"
+#include "os_util.h"
 
 #include "captive_portal.h"
 
@@ -139,10 +140,65 @@ cportal_proxy_write_additional_hdrs(struct cportal *self)
 }
 
 static bool
+cportal_proxy_parse_url(struct cportal *self)
+{
+    char *proto;
+    char *domain;
+    char *port;
+    char *sptr;
+    char *org_url;
+
+    struct url_s *url_ptr;
+    url_ptr = self->url;
+
+    if (!self->uam_url)
+        return false;
+
+    org_url = strdup(self->uam_url);
+    proto = strtok_r(org_url, "://", &sptr);
+    if (!proto)
+    {
+        LOG(ERR, "%s: Error parsing protocol field from", __func__);
+        free(org_url);
+        return false;
+    }
+
+    if (strcmp(proto, "https") == 0)
+        url_ptr->proto = PT_HTTPS;
+    else
+        url_ptr->proto = PT_HTTP;
+
+    domain = strtok_r(NULL, ":", &sptr);
+    if (domain)
+    {
+        domain += 2; /* skip leading "//" */
+        url_ptr->domain_name = strdup(domain);
+    }
+
+    /* if the port number is provided use it else assign default port value */
+    port = strtok_r(NULL, "\n", &sptr);
+    if (port)
+    {
+        url_ptr->port = strdup(port);
+    }
+    else
+    {
+        url_ptr->port = (url_ptr->proto == PT_HTTPS) ? strdup("443") : strdup("80");
+    }
+
+    LOG(INFO, "%s: parsed url vales: protocol:%d domain:%s, port:%s", __func__,
+                url_ptr->proto, url_ptr->domain_name, url_ptr->port);
+
+    free(org_url);
+    return true;
+}
+
+static bool
 cportal_proxy_write_other_config(struct cportal *self)
 {
     FILE *fconf = NULL;
     struct cportal_proxy_other_config pconf;
+    int ret;
 
     if (!self) return false;
 
@@ -153,6 +209,13 @@ cportal_proxy_write_other_config(struct cportal *self)
     if (fconf == NULL)
     {
         LOG(ERR, "%s: Error creating tinyproxy config file: %s", __func__, TINYPROXY_CONF_PATH);
+        return false;
+    }
+
+    ret = cportal_proxy_parse_url(self);
+    if (!ret)
+    {
+        LOG(ERR, "%s: Error parsing configured url", __func__);
         return false;
     }
 
@@ -168,15 +231,27 @@ cportal_proxy_write_other_config(struct cportal *self)
     else
         fprintf(fconf, "port 8888\n");
 
-    if (self->uam_url &&
+    if (self->url->domain_name &&
         self->proxy_method == FORWARD)
     {
-        fprintf(fconf, "upstream http %s\n", self->uam_url);
+        if (self->url->proto == PT_HTTPS)
+        {
+            fprintf(fconf, "upstream https %s:%s\n", self->url->domain_name,
+                     (self->url->port != NULL) ? self->url->port: "443");
+        }
+        else
+        {
+            fprintf(fconf, "upstream http %s:%s\n", self->url->domain_name,
+                    (self->url->port != NULL) ? self->url->port: "80");
+        }
     }
-    else if (self->uam_url &&
+    else if (self->url->domain_name &&
              self->proxy_method == REVERSE)
     {
-        fprintf(fconf, "ReversePath \"/\" \"http://%s\"\n", self->uam_url);
+        fprintf(fconf, "ReversePath \"/\" \"%s://%s:%s\"\n",
+                (self->url->proto == PT_HTTPS) ? "https" : "http",
+                 self->url->domain_name,
+                 (self->url->port) ? self->url->port : "http");
     }
 
     if (pconf.xtinyproxy_hdr)
@@ -352,6 +427,10 @@ bool cportal_proxy_init(void)
         {
             LOG(ERR, "%s: Error initializing proxy pid file.", __func__);
             return false;
+        }
+        if (!daemon_restart_set(&cportal_proxy_process, true, 0, 10))
+        {
+            LOGE("%s: Error enabling daemon auto-restart.", __func__);
         }
 
         cportal_proxy_global_init = true;
