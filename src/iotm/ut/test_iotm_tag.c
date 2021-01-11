@@ -39,6 +39,7 @@ void test_loading_tags(void)
 
     add_tag_to_tree(tree, &tags[1]);
     struct iotm_list_t *other = iotm_tree_find(tree, "othertag");
+    TEST_ASSERT_NOT_NULL(other);
     TEST_ASSERT_EQUAL_INT(other->len, 2);
 
     iotm_tree_free(tree);

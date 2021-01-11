@@ -33,6 +33,7 @@ bool compare(char *first, char *second)
 {
     if (strcmp(first, second) == 0) return true;
     if (strcmp(first, "*") == 0) return true;
+    if (strcmp(second, "*") == 0) return true;
     return false;
 }
 
@@ -221,7 +222,9 @@ void get_matched_rule_actions(struct iotm_rule *rule, void *ctx)
 void route_actions_cb(ds_list_t *ds, struct iotm_value_t *val, void *ctx)
 {
     struct plugin_command_t *cmd = (struct plugin_command_t *) val->other;
-
+    LOGD("%s: routing command for [%s]", __func__, val->key);
+    LOGD("%s: About to print params ---", __func__);
+    iotm_tree_foreach_value(cmd->params, iotm_print_value, NULL);
     route(val->key, cmd);
 }
 

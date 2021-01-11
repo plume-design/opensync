@@ -153,6 +153,7 @@ void iotm_delete_rule(struct schema_IOT_Rule_Config *row)
 struct routable_data_t
 {
     struct iotm_rule *rule;
+    char *mac;
     struct plugin_event_t *plugin_event;
     struct iotm_tree_t *output_actions;
 };
@@ -166,6 +167,26 @@ void get_routable_action_wrapper(ds_list_t *ds, struct iotm_value_t *rule_action
             rule_action,
             data->plugin_event,
             data->output_actions);
+}
+
+void foreach_connected_device(ds_list_t *dl, struct iotm_value_t *tag, void *ctx)
+{
+    LOGD("%s: Checking to see if the connected device [%s] matches the rule.", __func__, tag->value);
+    struct routable_data_t *data = (struct routable_data_t *)ctx;
+    if (compare(tag->value, data->mac)) 
+    {
+        struct plugin_event_t *p_event = plugin_event_new();
+        plugin_event_add_str(p_event, MAC_KEY, tag->value);
+        data->plugin_event = p_event;
+
+        iotm_tree_foreach_value(
+                data->rule->actions,
+                get_routable_action_wrapper,
+                data);
+
+        LOGD("%s: processed an event for mac [%s]", __func__, tag->value);
+        plugin_event_free(p_event);
+    } else LOGD("%s: Compare returned false for (%s) == (%s)", __func__, tag->value, data->mac);
 }
 
 int iotm_get_connected_routable_actions(
@@ -184,26 +205,15 @@ int iotm_get_connected_routable_actions(
 
     if (mac == NULL) return -1;
 
-    if (is_in_list_str(connected, mac))
+    struct routable_data_t data =
     {
-        struct plugin_event_t *p_event = plugin_event_new();
-        plugin_event_add_str(p_event, MAC_KEY, mac);
+        .rule = rule,
+        .mac =  mac,
+        .plugin_event = NULL,
+        .output_actions = actions,
+    };
 
-        struct routable_data_t data =
-        {
-            .rule = rule,
-            .plugin_event = p_event,
-            .output_actions = actions,
-        };
-
-        iotm_tree_foreach_value(
-                rule->actions,
-                get_routable_action_wrapper,
-                &data);
-
-        plugin_event_free(p_event);
-    }
-
+    iotm_list_foreach(connected, foreach_connected_device, &data);
     return -1;
 }
 
@@ -224,7 +234,7 @@ int iotm_route_new_rule_if_connected(struct iotm_rule *rule)
     if (routable_actions->len > 0)
     {
         iotm_tree_foreach_value(routable_actions, route_actions_cb, NULL);
-    }
+    } else LOGD("%s: no routable actions for the rule [%s]", __func__, rule->name);
     iotm_tree_free(routable_actions);
     return 0;
 }

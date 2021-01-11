@@ -327,6 +327,7 @@ int iotm_tree_get_single_type(
     int err = -1;
     char *str_input = NULL;
 
+    if (self == NULL || key == NULL) return err;
     str_input = iotm_tree_get_single_str(self, key);
     err = convert_to_type(str_input, type, out);
     return err;

@@ -293,6 +293,7 @@ int convert_from_type(void *input, int type, char *out)
 int convert_to_type(char *input, int type, void *out)
 {
     int err = -1;
+    if (input == NULL) return err;
     switch (type)
     {
         case UINT8:

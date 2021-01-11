@@ -100,20 +100,9 @@ void test_data_type_hex_to_char(void)
 
     unsigned char out_array[2];
     memset(out_array, 0, sizeof(*out_array));
-    iot_barray_t check_end = 
-    {
-        .data = out_array,
-        .data_length = 0,
-    };
-
     err = convert_from_type(&input, HEX_ARRAY, check);
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, err, "Converted from a byte array to a string");
-
-    err = convert_to_type(check, HEX_ARRAY, &check_end);
-
-    TEST_ASSERT_EQUAL_UINT_ARRAY_MESSAGE(tmp, check_end.data, 2, "Output bytee array same as input byte array");
-
-    TEST_ASSERT_EQUAL_INT_MESSAGE(2, check_end.data_length, "Converted the correct number of bytes");
+    TEST_ASSERT_EQUAL_STRING("ABFE", check);
 }
 
 void test_data_type_suite()

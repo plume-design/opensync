@@ -36,6 +36,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "iotm.h"
 
 /**
+ * @brief compare two values, allows for wildcards
+ */
+bool compare(char *first, char *second);
+
+/**
  * @brief iterate over each action that has been queued and send it to the
  * plugin handler that matches
  */
