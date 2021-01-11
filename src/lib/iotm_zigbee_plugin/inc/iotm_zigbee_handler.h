@@ -40,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 #define TL_KEY "zigbee"
+#define ZB_VERSION "0.0.1"
 /**
  * @brief valid parameter  keys for zigbee
  */
@@ -72,9 +73,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define DECODE_TYPE            "decode_type"
 
 // device pairing defines
-#define ZB_PAIRING_ENABLE "zigbee_enable_pairing"
-#define ZB_PAIRING_START "enable_pairing_start_epoch"
-#define ZB_PAIRING_DURATION "enable_pairing_timeout"
+#define ZB_PAIRING_ENABLE "zigbee_permit_joining"
+#define ZB_PAIRING_START "permit_joining_start_epoch"
+#define ZB_PAIRING_DURATION "permit_joining_timeout"
 
 
 /**

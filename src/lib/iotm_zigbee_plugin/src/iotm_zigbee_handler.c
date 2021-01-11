@@ -538,7 +538,7 @@ void remove_timer_node(struct iotm_zigbee_session *session, struct pairing_node_
     free_pairing_node(node);
 }
 
-int enable_pairing(struct timer_data_t *pair)
+int permit_joining(struct timer_data_t *pair)
 {
     bool ret = false;
     void *tl_context = NULL;
@@ -591,7 +591,7 @@ static void pairing_timer_cb(EV_P_ ev_timer *w, int revents)
     int err = -1;
     struct timer_data_t *data = (struct timer_data_t *)w->data;
     // Do pairing things
-    err = enable_pairing(data);
+    err = permit_joining(data);
     if (err)
     {
         LOGE("%s: Failed to start pairing.", __func__);
@@ -792,6 +792,7 @@ void setup_initial_pair_rules(struct iotm_session *session)
 int
 iotm_zigbee_handler_init(struct iotm_session *session)
 {
+    LOGI("%s: Loading the Zigbee Handler Plugin version [%s]", __func__, ZB_VERSION);
     if (session == NULL)
     {
         LOGE("%s: No session passed, exiting initialization.",
@@ -1162,19 +1163,20 @@ int add_zigbee_default_response(
     zigbee_send_cluster_specific_command_params_t *params = &event->op.default_response.params;
     zigbee_default_response_t *response = &event->op.default_response.contents;
 
+    LOGD("%s: Parsing the cluster from the params...", __func__);
     err = add_zigbee_cluster(iot_ev, &params->cluster);
     if (err) LOGE("%s: Unable to get cluster from parameters of event", __func__);
 
-
+    LOGD("%s: Parsing the command id from the params...", __func__);
     iot_ev->ops.add_param_type(iot_ev, ZB_CMD_ID, UINT8, &params->command_id);
 
-    err = add_data_array(iot_ev, ZB_DATA, params->data);
-    if (err) LOGE("%s: Couldnt add data byte array from parameter.", __func__);
+    if (params->data != NULL) 
+    {
+        LOGD("%s: Parsing the data from the params...", __func__);
+        err = add_data_array(iot_ev, ZB_PARAM_DATA, params->data);
+        if (err) LOGE("%s: Couldnt add data byte array from parameter.", __func__);
+    }
 
-    err = add_zigbee_cluster(iot_ev, &response->cluster);
-    if (err) LOGE("%s: Couldn't add cluster from response.", __func__);
-
-    err = iot_ev->ops.add_param_type(iot_ev, ZB_CMD_ID, UINT8, &response->comm_id) || err;
     err = iot_ev->ops.add_param_type(iot_ev, ZB_STATUS, UINT8, &response->status.s_code) || err;
     return err;
 }
@@ -1353,9 +1355,9 @@ void free_data_param(zb_barray_t *zb_barray)
 
 int get_mac(
         struct plugin_command_t *cmd,
-        char *mac)
+        char **mac)
 {
-    mac = cmd->ops.get_param(cmd, ZB_MAC);
+    *mac = cmd->ops.get_param(cmd, ZB_MAC);
     if (mac == NULL)
     {
         LOGE("%s: Could not get a mac from the command, returning an error.",
@@ -1371,11 +1373,13 @@ void handle_configure_reporting(
 {
     void *tl_context = NULL;
     bool ret = false;
-    char *mac;
+    char *mac = NULL;
+    int err;
     zigbee_cluster_t cluster;
     zb_barray_t zb_barray;
 
     tl_context = get_ctx(session);
+    err = get_mac(cmd, &mac);
     mac = cmd->ops.get_param(cmd, ZB_MAC);
 
     memset(&cluster, 0, sizeof(cluster));
@@ -1416,7 +1420,7 @@ void handle_discover_attributes(
 
     tl_context = get_ctx(session);
 
-    err = get_mac(cmd, mac);
+    err = get_mac(cmd, &mac);
     if (err)
     {
         LOGE("%s: Couldn't get mac, not continuing.",
@@ -1479,7 +1483,8 @@ void handle_discover_commands_generated(
     zigbee_discover_commands_generated_params_t params;
     memset(&params, 0, sizeof(params));
 
-    err = get_mac(cmd, mac);
+    tl_context = get_ctx(session);
+    err = get_mac(cmd, &mac);
     if (err)
     {
         LOGE("%s: Error getting mac for device",
@@ -1529,7 +1534,8 @@ void handle_discover_commands_received(
     zigbee_discover_commands_received_params_t params;
     memset(&params, 0, sizeof(params));
 
-    err = get_mac(cmd, mac);
+    tl_context = get_ctx(session);
+    err = get_mac(cmd, &mac);
     if (err)
     {
         LOGE("%s: Error getting mac for device",
@@ -1579,7 +1585,8 @@ void handle_discover_endpoints(
     zigbee_discover_endpoints_params_t params;
     memset(&params, 0, sizeof(params));
 
-    err = get_mac(cmd, mac);
+    tl_context = get_ctx(session);
+    err = get_mac(cmd, &mac);
     if (err)
     {
         LOGE("%s: Error getting mac for device",
@@ -1600,6 +1607,7 @@ void handle_discover_endpoints(
         params.num_endpoint_filters = 0;
     } 
 
+    LOGD("%s: About to discover the endpoints of the device [%s]", __func__, mac);
     ret = zigbee_discover_endpoints(
             tl_context,
             mac,
@@ -1620,7 +1628,8 @@ void handle_read_attributes(
     zigbee_read_attributes_params_t params;
     memset(&params, 0, sizeof(params));
 
-    err = get_mac(cmd, mac);
+    tl_context = get_ctx(session);
+    err = get_mac(cmd, &mac);
     if (err)
     {
         LOGE("%s: Error getting mac for device",
@@ -1663,7 +1672,8 @@ void handle_read_reporting_configuration(
     zigbee_read_reporting_configuration_params_t params;
     memset(&params, 0, sizeof(params));
 
-    err = get_mac(cmd, mac);
+    tl_context = get_ctx(session);
+    err = get_mac(cmd, &mac);
     if (err)
     {
         LOGE("%s: Error getting mac for device",
@@ -1709,7 +1719,9 @@ void handle_send_cluster_specific_command(
     zigbee_send_cluster_specific_command_params_t params;
     memset(&params, 0, sizeof(params));
 
-    err = get_mac(cmd, mac);
+    LOGD("%s: about to gather parameters.", __func__);
+    tl_context = get_ctx(session);
+    err = get_mac(cmd, &mac);
     if (err)
     {
         LOGE("%s: Error getting mac for device",
@@ -1744,7 +1756,8 @@ void handle_send_network_leave(
     char *mac = NULL;
     void *tl_context = NULL;
 
-    err = get_mac(cmd, mac);
+    tl_context = get_ctx(session);
+    err = get_mac(cmd, &mac);
     if (err)
     {
         LOGE("%s: Error getting mac for device",
@@ -1771,7 +1784,8 @@ void handle_write_attributes(
     zigbee_write_attributes_params_t params;
     memset(&params, 0, sizeof(params));
 
-    err = get_mac(cmd, mac);
+    tl_context = get_ctx(session);
+    err = get_mac(cmd, &mac);
     if (err)
     {
         LOGE("%s: Error getting mac for device",

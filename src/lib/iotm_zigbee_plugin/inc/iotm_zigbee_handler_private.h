@@ -263,7 +263,7 @@ long get_key(struct timer_data_t *data);
  * @return 0   pairing enabled
  * @return -1  failed to enable pairing
  */
-int enable_pairing(struct timer_data_t *pair);
+int permit_joining(struct timer_data_t *pair);
 ///@}
 
 /**

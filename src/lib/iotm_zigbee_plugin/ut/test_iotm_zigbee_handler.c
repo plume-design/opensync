@@ -161,7 +161,7 @@ void test_log_zigbee_handler(void)
     struct plugin_command_t cmd =
     {
         .params = &tree,
-        .action = "zigbee_enable_pairing",
+        .action = "zigbee_permit_joining",
         .ops = 
         { 
             .get_param_type = fake_get_param_type,
@@ -660,7 +660,7 @@ void test_add_zigbee_default_response(void)
     add_param_calls = 0;
     add_zigbee_default_response(&event, &zb_event);
     TEST_ASSERT_EQUAL_INT(1, num_add_zb_default_added);
-    TEST_ASSERT_EQUAL_INT(7, add_param_calls);
+    TEST_ASSERT_EQUAL_INT(4, add_param_calls);
 }
 
 char *fake_cluster_params(struct plugin_command_t *_, char *key)
@@ -921,7 +921,7 @@ void test_queue_timer(void)
     TEST_ASSERT_EQUAL_INT(now + duration, zb_session->join_until);
 }
 
-void test_enable_pairing_other_pairing_running(void)
+void test_permit_joining_other_pairing_running(void)
 {
     int err = -1;
     struct iotm_session session = 
@@ -948,7 +948,7 @@ void test_enable_pairing_other_pairing_running(void)
     long fake_prior_pairing = now + duration + 3;
     zb_session->join_until = fake_prior_pairing;
 
-    err = enable_pairing(&data);
+    err = permit_joining(&data);
     TEST_ASSERT_EQUAL_INT_MESSAGE(
             -1,
             err,
@@ -960,7 +960,7 @@ void test_enable_pairing_other_pairing_running(void)
             "Pair until shoud not have been updated to different time.");
 }
 
-void test_enable_pairing_valid(void)
+void test_permit_joining_valid(void)
 {
     int err = -1;
     struct iotm_session session = 
@@ -987,7 +987,7 @@ void test_enable_pairing_valid(void)
     long fake_prior_pairing = now + duration - 3;
     zb_session->join_until = fake_prior_pairing;
 
-    err = enable_pairing(&data);
+    err = permit_joining(&data);
     TEST_ASSERT_EQUAL_INT_MESSAGE(
             0,
             err,
@@ -1033,8 +1033,8 @@ int main(int argc, char *argv[])
     RUN_TEST(test_get_pairing_params);
     RUN_TEST(test_is_in_past);
     RUN_TEST(test_queue_timer);
-    RUN_TEST(test_enable_pairing_other_pairing_running);
-    RUN_TEST(test_enable_pairing_valid);
+    RUN_TEST(test_permit_joining_other_pairing_running);
+    RUN_TEST(test_permit_joining_valid);
 
     return UNITY_END();
 }
