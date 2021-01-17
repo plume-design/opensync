@@ -62,6 +62,18 @@ void nm2_ipv6_address_init(void)
     OVSDB_TABLE_MONITOR(IPv6_Address, false);
 }
 
+bool nm2_ipv6_address_is_modified(struct schema_IPv6_Address *schema)
+{
+    if (schema->enable_changed || schema->status_changed ||
+        schema->address_status_changed || schema->address_changed ||
+        schema->origin_changed || schema->prefix_changed)
+    {
+        return true;
+    }
+
+    return false;
+}
+
 /*
  * OVSDB monitor update callback for IP_Interface
  */
@@ -111,6 +123,12 @@ void callback_IPv6_Address(
         default:
             LOG(ERR, "ipv6_addr: Monitor update error.");
             return;
+    }
+
+    if (mon->mon_type == OVSDB_UPDATE_MODIFY && !nm2_ipv6_address_is_modified(new))
+    {
+        LOG(INFO, "ipv6_addr: No need to modify IPv6 address.");
+        return;
     }
 
     if (!nm2_ipv6_address_update(ip6, new))
