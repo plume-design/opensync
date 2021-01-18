@@ -64,7 +64,6 @@ struct ovsdb_table table_DHCPv6_Server;
 #undef LOGI
 #define LOGI    printf
 #endif
-static ev_timer cs_timer;
 /*****************************************************************************/
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
@@ -77,6 +76,7 @@ bool wait95Option = false;
  *  PROTECTED definitions
  *****************************************************************************/
 
+static void maptm_update_wan_mode(const char *status);
 
 static void StartStop_DHCPv4(bool refresh)
 {
@@ -91,7 +91,7 @@ static void StartStop_DHCPv4(bool refresh)
     ret = ovsdb_table_select_one(
             &table_Wifi_Inet_Config,
             SCHEMA_COLUMN(Wifi_Inet_Config, if_name),
-            "br-wan",
+            MAPT_IFC_WAN,
             &iconf);
     if (!ret)
     {
@@ -115,7 +115,7 @@ static void StartStop_DHCPv4(bool refresh)
 
     ret = ovsdb_table_update_where_f(
             &table_Wifi_Inet_Config,
-            ovsdb_where_simple(SCHEMA_COLUMN(Wifi_Inet_Config, if_name), "br-wan"),
+            ovsdb_where_simple(SCHEMA_COLUMN(Wifi_Inet_Config, if_name), MAPT_IFC_WAN),
             &iconf_update, filter);
 
 }
@@ -147,15 +147,11 @@ void StartStop_DHCPv6(bool refresh)
 /* Start Workaround for MAP-T Mode Add option 23 and 24 */
 bool maptm_dhcpv6_server_add_option(char *uuid, bool add)
 {
-    struct schema_DHCPv6_Server server;
-
     if (uuid[0] == '\0') return false;
-
-    ovsdb_table_select_one(&table_DHCPv6_Server, "status", "enabled", &server);
 
     ovsdb_sync_mutate_uuid_set(
             SCHEMA_TABLE(DHCPv6_Server),
-            ovsdb_where_uuid("_uuid", server._uuid.uuid),
+            ovsdb_where_simple(SCHEMA_COLUMN(DHCPv6_Server, status), "enabled"),
             SCHEMA_COLUMN(DHCPv6_Server, options),
             add ? OTR_INSERT : OTR_DELETE,
             uuid);
@@ -163,6 +159,34 @@ bool maptm_dhcpv6_server_add_option(char *uuid, bool add)
     return true;
 }
 /* End Workaround for MAP-T Mode Add option 23 and 24 */
+
+// IPv6_Address callback
+void callback_IPv6_Address(
+        ovsdb_update_monitor_t *mon,
+        struct schema_IPv6_Address *old,
+        struct schema_IPv6_Address *new)
+{
+    switch (mon->mon_type)
+    {
+        case OVSDB_UPDATE_NEW:
+            // Check if IPv6 is UP and we didn't recive an option 95
+            if((strncmp(new->address, "fe80", 4) != 0) &&
+               (strucWanConfig.mapt_95_value[0] == '\0') &&
+               (strucWanConfig.iapd[0] != '\0'))
+            {
+                StartStop_DHCPv4(true);
+                maptm_update_wan_mode("Dual-Stack");
+            }
+
+            break;
+
+        case OVSDB_UPDATE_MODIFY:
+        case OVSDB_UPDATE_DEL:
+
+        default:
+            return;
+    }
+}
 
 // DHCP_Option callback
 static void callback_DHCP_Option(
@@ -194,15 +218,14 @@ static void callback_DHCP_Option(
                     if (!wait95Option && strucWanConfig.link_up)
                     {
                         // If option 95 is added, no need to wait until timer expires to configure MAP-T
-                        ev_timer_stop(EV_DEFAULT, &cs_timer);
-                        maptm_callback_Timer();
+                        maptm_wan_mode();
                     }
                     else if (strucWanConfig.link_up
                              && (!strcmp("Dual-Stack", strucWanConfig.mapt_mode)))
                     {
                         // Restart the state machine if option 95 is added after renew/rebind
                         StartStop_DHCPv4(false);
-                        maptm_callback_Timer();
+                        maptm_wan_mode();
                     }
                 }
             }
@@ -210,13 +233,31 @@ static void callback_DHCP_Option(
             /* Workaround for MAP-T Mode Add option 23 and 24 */
             if (((new->tag) == 23) && (new->enable))
             {
+                /* Option 23 is updated And MAP-T is configured We need to update */
+                if (!strcmp("MAP-T", strucWanConfig.mapt_mode) && strucWanConfig.option_23[0]!='\0')
+                {
+                    maptm_dhcpv6_server_add_option(strucWanConfig.option_23, false);
+                    maptm_dhcpv6_server_add_option(new->_uuid.uuid, true);
+                }
                 snprintf(strucWanConfig.option_23, sizeof(strucWanConfig.option_23), "%s", new->_uuid.uuid);
             }
             if (((new->tag) == 24) && (new->enable))
             {
+                /* Option 24 is updated And MAP-T is configured We need to update */
+                if(!strcmp("MAP-T", strucWanConfig.mapt_mode) && strucWanConfig.option_24[0]!='\0')
+                {
+                    maptm_dhcpv6_server_add_option(strucWanConfig.option_24, false);
+                    maptm_dhcpv6_server_add_option(new->_uuid.uuid, true);
+                }
                 snprintf(strucWanConfig.option_24, sizeof(strucWanConfig.option_24), "%s", new->_uuid.uuid);
             }
             /* End Workaround add Option */
+
+            if (((new->tag) == 10) && (strcmp((new->value),"1") == 0))
+            {
+                StartStop_DHCPv4(true);
+                maptm_update_wan_mode("Dual-Stack");
+            }
 
             break;
 
@@ -237,35 +278,55 @@ static void callback_DHCP_Option(
             break;
 
         case OVSDB_UPDATE_DEL:
-            if ((old->tag) == 95)
+            if ((old->tag) == 95
+                && strucWanConfig.mapt_support
+                && !strcmp("MAP-T", strucWanConfig.mapt_mode ))
             {
-                strucWanConfig.mapt_95_Option = false;
-                if (!strcmp("MAP-T", strucWanConfig.mapt_mode)
-                    && strucWanConfig.mapt_support
-                    && strucWanConfig.link_up)
+                if (!strucWanConfig.link_up)
                 {
-                    // Restart the state machine if the 95 option is removed
+                    strucWanConfig.mapt_95_Option = false;
+                    strucWanConfig.mapt_95_value[0] = '\0';
+                    maptm_eligibilityStop();
+                }
+                else if(!strcmp(old->value,strucWanConfig.mapt_95_value))
+                {
+                    /* Option 95 has been removed we need to restart eligibility state machine */
+                    maptm_eligibilityStop();
                     maptm_eligibilityStart(MAPTM_ELIGIBLE_IPV6);
                 }
-                strucWanConfig.mapt_95_value[0] = '\0';
-
-                /* Start Workaround for MAP-T Mode Add option 23 and 24 */
-                maptm_dhcpv6_server_add_option(strucWanConfig.option_24, false);
-                maptm_dhcpv6_server_add_option(strucWanConfig.option_23, false);
-                /* End Workaround for MAP-T Mode Add option 23 and 24 */
+                else
+                {
+                    maptm_wan_mode();
+                }
             }
 
             /* Start Workaround for MAP-T Mode Add option 23 and 24 */
-            if (((old->tag) == 24) && (strucWanConfig.option_24[0] != '\0'))
+            if ((old->tag == 24) &&
+                !strcmp("MAP-T", strucWanConfig.mapt_mode ) &&
+                !strcmp(old->_uuid.uuid,strucWanConfig.option_24))
             {
                 strucWanConfig.option_24[0] = '\0';
             }
-            if (((old->tag) == 23) && (strucWanConfig.option_23[0] != '\0'))
+            if ((old->tag == 23) &&
+                !strcmp("MAP-T", strucWanConfig.mapt_mode ) &&
+                !strcmp(old->_uuid.uuid,strucWanConfig.option_23))
             {
                 strucWanConfig.option_23[0] = '\0';
             }
             /* End Workaround for MAP-T Mode Add option 23 and 24 */
-
+            if((old->tag) == 26)
+            {
+                char *flag = NULL;
+                if (!strcmp(old->value,strucWanConfig.iapd)) strucWanConfig.iapd[0] = '\0';
+                flag = strtok(old->value, ",");
+                char cmd[300]="";
+                if(flag)
+                {
+                    sprintf(cmd,"ip -6 route del %s",old->value);    
+                    system(cmd);
+                }
+            }
+            
             break;
 
             default:
@@ -384,22 +445,14 @@ static void maptm_update_wan_mode(const char *status)
     }
 }
 
-// Timer callback
-void maptm_Timer(struct ev_loop *loop, ev_timer *timer, int revents)
-{
-    (void)loop;
-    (void)timer;
-    (void)revents;
-    maptm_callback_Timer();
-}
-
-void maptm_callback_Timer(void)
+void maptm_wan_mode(void)
 {
     if (!wait95Option) wait95Option = true;
     if (strucWanConfig.mapt_95_Option)
     {
         if (config_mapt())
         {
+             StartStop_DHCPv4(false);
              maptm_update_wan_mode("MAP-T");
 
              /* Start Workaround for MAP-T Mode Add option 23 and 24 */
@@ -416,19 +469,16 @@ void maptm_callback_Timer(void)
              maptm_update_wan_mode("Dual-Stack");
         }
     }
-    else
-    {
-        StartStop_DHCPv4(true);
-        maptm_update_wan_mode("Dual-Stack");
-    }
 }
 
 // Initialize and monitor DHCP_Option Ovsdb table
 int maptm_dhcp_option_init(void)
 {
     OVSDB_TABLE_INIT_NO_KEY(DHCP_Option);
+    OVSDB_TABLE_INIT_NO_KEY(IPv6_Address);
+
     OVSDB_TABLE_MONITOR(DHCP_Option, false);
-    ev_timer_init(&cs_timer, maptm_Timer, 15, 0);
+    OVSDB_TABLE_MONITOR(IPv6_Address, false);
     return 0;
 }
 
@@ -437,6 +487,9 @@ void maptm_eligibilityStop(void)
 {
     StartStop_DHCPv6(false);
     StartStop_DHCPv4(false);
+    wait95Option = false;
+    maptm_dhcpv6_server_add_option(strucWanConfig.option_23, false);
+    maptm_dhcpv6_server_add_option(strucWanConfig.option_24, false);
     if (!strcmp("MAP-T", strucWanConfig.mapt_mode))
     {
         LOGD("%s: Stop MAP-T", __func__);
@@ -511,9 +564,6 @@ void maptm_eligibilityStart(int WanConfig)
         {
             LOGI("*********** MAP-T");
             StartStop_DHCPv6(true);
-            ev_timer_stop(EV_DEFAULT, &cs_timer);
-            ev_timer_set(&cs_timer, 15., 0.);
-            ev_timer_start(EV_DEFAULT, &cs_timer);
             break;
         }
         default:

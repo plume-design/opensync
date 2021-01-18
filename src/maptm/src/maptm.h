@@ -43,20 +43,19 @@
 #define MAPT_PS_STORE_NAME  MAPT_MODULE_NAME  /**< store name == module name */
 #define MAPT_PS_KEY_NAME    "enabled"
 
-#define MAPTM_TIMEOUT_INTERVAL      5  /**< Interval to verify timer condition */
+#define MAPT_IFC_WAN "br-wan"
+#define MAPT_IFC_LAN "BR_LAN"
 
 extern int maptm_ovsdb_init(void);
 extern bool maptm_ovsdb_nfm_add_rules(void);
 extern bool maptm_ovsdb_nfm_del_rules(void);
-extern void maptm_timerStart(void);
-extern void maptm_timerStop(void);
 extern void maptm_disableAccess(void);
 extern void maptm_eligibilityStart(int WanConfig);
 extern bool config_mapt(void);
 extern bool stop_mapt(void);
 extern void Parse_95_option(void);
 extern void maptm_eligibilityStop(void);
-extern void maptm_callback_Timer(void);
+extern void maptm_wan_mode(void);
 extern int maptm_dhcp_option_init(void);
 extern bool maptm_dhcp_option_update_15_option(bool maptSupport);
 extern bool maptm_dhcp_option_update_95_option(bool maptSupport);

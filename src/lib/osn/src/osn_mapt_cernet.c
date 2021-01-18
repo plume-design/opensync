@@ -68,7 +68,7 @@ bool osn_mapt_configure(
     snprintf(
         cmd,
         MAPTM_CMD_LEN,
-        "ivictl -s -i %s -I %s -P %s -H -N -a %s -A %s -z %d -R %d -o %d -F 1 -T",
+        "ivictl -s -i %s -I %s -P %s -H -N -a %s -A %s -z %d -R %d -o %d -T",
         intfname,
         wanintf,
         IPv6prefix,

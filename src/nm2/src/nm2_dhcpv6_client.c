@@ -156,7 +156,7 @@ void callback_DHCPv6_Client(
         LOG(ERR, "dhcpv6_client: Unable to parse DHCPv6_Client schema.");
     }
 
-    nm2_dhcpv6_client_set(dc6, true);
+    nm2_dhcpv6_client_set(dc6, dc6->dc6_enable);
 }
 
 /*
@@ -229,7 +229,7 @@ void nm2_dhcpv6_client_ip_interface_ref_fn(reflink_t *obj, reflink_t *sender)
     if (sender == NULL) return;
 
     /* Parent interface was updated, push new settings */
-    nm2_dhcpv6_client_set(dc6, true);
+    nm2_dhcpv6_client_set(dc6, dc6->dc6_enable);
 
     return;
 }
@@ -372,6 +372,7 @@ bool nm2_dhcpv6_client_update(
         }
     }
 
+    dc6->dc6_enable = schema->enable;
     dc6->dc6_request_address = schema->request_address;
     dc6->dc6_request_prefixes = schema->request_prefixes;
     dc6->dc6_rapid_commit = schema->rapid_commit;
