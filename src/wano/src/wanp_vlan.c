@@ -58,7 +58,7 @@ static wano_ppline_event_fn_t wanp_vlan_ppline_event_fn;
 
 static struct wano_plugin wanp_vlan = WANO_PLUGIN_INIT(
         "vlan",
-        50,
+        40,
         WANO_PLUGIN_MASK_ALL,
         wanp_vlan_init,
         wanp_vlan_run,
@@ -108,6 +108,8 @@ wano_plugin_handle_t *wanp_vlan_init(
     /* Generate the interface name */
     snprintf(self->wvl_ifvlan, sizeof(self->wvl_ifvlan), "%s.%d", self->wvl_handle.wh_ifname, self->wvl_vlanid);
 
+    wano_ppline_event_init(&self->wvl_ppe, wanp_vlan_ppline_event_fn);
+
     LOG(INFO, "wanp_vlan: Creating interface %s with VLAN ID %d.", self->wvl_ifvlan, self->wvl_vlanid);
 
     return &self->wvl_handle;
@@ -125,6 +127,8 @@ void wanp_vlan_fini(wano_plugin_handle_t *wh)
     struct wanp_vlan *self = CONTAINER_OF(wh, struct wanp_vlan, wvl_handle);
 
     wano_inet_state_event_fini(&self->wvl_inet_state_event);
+
+    wano_ppline_event_stop(&self->wvl_ppe);
 
     wano_ppline_fini(&self->wvl_ppl);
 
@@ -275,7 +279,6 @@ enum wanp_vlan_state wanp_vlan_state_PPLINE_CREATE(
                 return wanp_vlan_ERROR;
             }
 
-            wano_ppline_event_init(&self->wvl_ppe, wanp_vlan_ppline_event_fn);
             wano_ppline_event_start(&self->wvl_ppe, &self->wvl_ppl);
             break;
 
@@ -356,6 +359,8 @@ enum wanp_vlan_state wanp_vlan_state_ERROR(
     (void)data;
 
     struct wanp_vlan *self = CONTAINER_OF(state, struct wanp_vlan, wvl_state);
+
+    wano_ppline_event_stop(&self->wvl_ppe);
 
     switch (action)
     {

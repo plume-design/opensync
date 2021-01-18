@@ -98,7 +98,8 @@ bool odhcp6_client_fini(odhcp6_client_t *self)
 {
     int ii;
 
-    /* Stop watcher */
+    /* Stop watchers */
+    ev_debounce_stop(EV_DEFAULT, &self->oc_debounce);
     ev_stat_stop(EV_DEFAULT, &self->oc_opts_ev);
 
     /* Stop the current service, if it is running */

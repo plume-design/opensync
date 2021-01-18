@@ -122,6 +122,7 @@ typedef struct
     int h_addrtype;
     int h_cur_idx;
     cm2_resolve_state state;
+    int req_addr_type;
 } cm2_addr_list;
 #endif
 

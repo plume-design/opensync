@@ -156,6 +156,8 @@ void wano_ppline_fini(wano_ppline_t *self)
 
     self->wpl_init = false;
 
+    wano_ovs_port_event_stop(&self->wpl_ovs_port_event);
+    wano_connmgr_uplink_event_stop(&self->wpl_cmu_event);
     wano_inet_state_event_fini(&self->wpl_inet_state_event);
 
     wano_ppline_stop_queues(self);

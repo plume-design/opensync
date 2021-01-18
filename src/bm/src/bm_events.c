@@ -314,14 +314,14 @@ bm_events_handle_event(bsal_event_t *event)
         }
 
         /* This one managed by cloud */
-        if (abs(stats->probe.last_snr - event->data.probe_req.rssi) < client->preq_snr_thr) {
+        if (abs((int)stats->probe.last_snr - (int)event->data.probe_req.rssi) < client->preq_snr_thr) {
             LOGD("[%s] %s: %s skip preq report (%d %d)", bandstr, ifname, client->mac_addr,
                  stats->probe.last_snr, event->data.probe_req.rssi);
             break;
         }
 
         /* This is short time probe report filtering/limitation */
-        if (abs(stats->probe.last_snr - event->data.probe_req.rssi) <= BM_CLIENT_PREQ_SNR_TH &&
+        if (abs((int)stats->probe.last_snr - (int)event->data.probe_req.rssi) <= BM_CLIENT_PREQ_SNR_TH &&
             (now - last_probe) < BM_CLIENT_PREQ_TIME_TH) {
             LOGD("[%s] %s: %s skip preq report (%d %d) short time", bandstr, ifname, client->mac_addr,
                  stats->probe.last_snr, event->data.probe_req.rssi);

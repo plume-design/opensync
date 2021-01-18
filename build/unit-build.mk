@@ -155,14 +155,15 @@ define UNIT_BUILD_FUT
 UNIT_ALL += $(UNIT_PATH)
 UNIT_ALL_INSTALL += $(UNIT_PATH)/install
 UNIT_ALL_CLEAN += $(UNIT_PATH)/clean
-UNIT_ALL_FUT_UNITS += $(UNIT_PATH)
+UNIT_ALL_FUT_FILES += $(foreach FILE,$(UNIT_FILE),$(UNIT_PATH)/$(FILE))
+UNIT_ALL_FUT_DIRS += $(foreach SRC,$(UNIT_FILE),'$(dir $(FUTDIR)/$(UNIT_DIR)/$(SRC))')
+UNIT_ALL_FUT_COPY += echo " $(call color_copy,copy)    [$(call COLOR_BOLD,$(UNIT_PATH))] -> $(FUTDIR)/$(UNIT_DIR)";
+UNIT_ALL_FUT_COPY += $(foreach SRC,$(UNIT_FILE),$(CP) $(UNIT_PATH)/$(SRC) $(dir $(FUTDIR)/$(UNIT_DIR)/$(SRC));)
 
+.PHONY: $(UNIT_PATH)
+.PHONY: $(UNIT_PATH)/
 .PHONY: $(UNIT_PATH)/install
-$(UNIT_PATH) $(UNIT_PATH)/: $(UNIT_PATH)/install
-$(UNIT_PATH)/install:
-	$(NQ) " $(call color_copy,copy)    [$(call COLOR_BOLD,$(UNIT_PATH))] -> $(FUTDIR)/$(UNIT_DIR)"
-	$(Q)$(MKDIR) $(foreach SRC,$(UNIT_FILE),'$(dir $(FUTDIR)/$(UNIT_DIR)/$(SRC))')
-	$(Q)$(foreach SRC,$(UNIT_FILE),$(CP) $(UNIT_PATH)/$(SRC) $(dir $(FUTDIR)/$(UNIT_DIR)/$(SRC));)
+$(UNIT_PATH) $(UNIT_PATH)/ $(UNIT_PATH)/install: fut
 
 $(call UNIT_MAKE_DIRS)
 $(call UNIT_MAKE_INFO)

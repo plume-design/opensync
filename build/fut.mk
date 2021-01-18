@@ -26,18 +26,20 @@ FUT_PACK_NAME := $(TARGET)-$(shell $(call version-gen,make))
 FUT_PACK_FILENAME := fut-$(FUT_PACK_NAME).tar.bz2
 FUT_PACK_PATHNAME ?= $(IMAGEDIR)/$(FUT_PACK_FILENAME)
 
-.PHONY: fut-store
+.PHONY: fut
+.PHONY: fut-always-check-files
 
-fut-clean:
-	$(NQ) "$(call color_install,clean) $(call color_profile,$(FUTDIR))"
-	$(Q)rm -rf $(FUTDIR)
+$(FUTDIR)/.files: $(FUTDIR) fut-always-check-files
+	$(Q)echo "$(UNIT_ALL_FUT_FILES)" | xargs -n1 | sort > $@.new
+	$(Q)test -e $@ && diff $@ $@.new || mv -v $@.new $@
+	$(Q)rm -f $@.new
 
-fut-store:
-	$(NQ) "$(call color_install, create) $(FUT_PACK_FILENAME)"
-	$(Q)$(TAR) -cjf $(FUT_PACK_PATHNAME) -C $(dir $(FUTDIR)) $(notdir $(FUTDIR))
+$(FUT_PACK_PATHNAME): $(UNIT_ALL_FUT_FILES) $(FUTDIR)/.files
+	$(NQ) "$(call color_clean, clean)   $(FUTDIR)"
+	$(Q)$(RM) -rf $(FUTDIR)/*
+	$(Q)$(MKDIR) $(UNIT_ALL_FUT_DIRS)
+	$(Q)$(UNIT_ALL_FUT_COPY)
+	$(NQ) "$(call color_install, create)  $@"
+	$(Q)$(TAR) -cjf $@ -C $(dir $(FUTDIR)) $(notdir $(FUTDIR))
 
-fut-make: $(UNIT_ALL_FUT_UNITS)
-
-fut: fut-clean
-	$(Q)$(MAKE) fut-make
-	$(Q)$(MAKE) fut-store
+fut: $(FUT_PACK_PATHNAME)

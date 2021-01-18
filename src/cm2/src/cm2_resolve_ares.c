@@ -87,7 +87,11 @@ cm2_ares_host_cb(void *arg, int status, int timeouts, struct hostent *hostent)
 
     switch(status) {
         case ARES_SUCCESS:
-            LOGN("ares: got address of host %s, timeouts: %d\n", hostent->h_name, timeouts);
+            LOGI("ares: got address of host %s, req_type: %d, h addr type = %d timeouts: %d\n",
+                 hostent->h_name, addr->req_addr_type, hostent->h_addrtype, timeouts);
+
+            if (addr->req_addr_type != hostent->h_addrtype)
+                return;
 
             for (i = 0; hostent->h_addr_list[i]; ++i)
             {
@@ -164,6 +168,7 @@ bool cm2_resolve(cm2_dest_e dest)
     if (ipv6) {
         LOGI("Resolving IPv6 addresses");
         addr->ipv6_addr_list.state = CM2_ARES_R_IN_PROGRESS;
+        addr->ipv6_addr_list.req_addr_type = AF_INET6;
         ares_gethostbyname(g_state.eares.ares.channel, addr->hostname, AF_INET6, cm2_ares_host_cb, (void *) &addr->ipv6_addr_list);
     }
 
@@ -171,6 +176,7 @@ bool cm2_resolve(cm2_dest_e dest)
     if (ipv4) {
         LOGI("Resolving IPv4 addresses");
         addr->ipv4_addr_list.state = CM2_ARES_R_IN_PROGRESS;
+        addr->ipv4_addr_list.req_addr_type = AF_INET;
         ares_gethostbyname(g_state.eares.ares.channel, addr->hostname, AF_INET, cm2_ares_host_cb, (void *) &addr->ipv4_addr_list);
     }
 
@@ -287,4 +293,3 @@ bool cm2_is_addr_resolved(const cm2_addr_t *addr)
     LOGI("Resolved state: ipv4: %d ipv6: %d", addr->ipv4_addr_list.state, addr->ipv6_addr_list.state);
     return addr->ipv4_addr_list.state != CM2_ARES_R_IN_PROGRESS && addr->ipv6_addr_list.state != CM2_ARES_R_IN_PROGRESS;
 }
-

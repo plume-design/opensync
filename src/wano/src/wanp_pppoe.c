@@ -60,7 +60,7 @@ static bool wanp_pppoe_get_credentials(struct wano_localconfig_pppoe *cred);
 static struct wano_plugin wanp_pppoe = WANO_PLUGIN_INIT(
         "pppoe",
         50,
-        WANO_PLUGIN_MASK_ALL,
+        WANO_PLUGIN_MASK_IPV4 | WANO_PLUGIN_MASK_IPV6,
         wanp_pppoe_init,
         wanp_pppoe_run,
         wanp_pppoe_fini);

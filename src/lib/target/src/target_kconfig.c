@@ -555,7 +555,7 @@ util_get_link_ip(const char *ifname, struct in_addr *dest)
          *  169.254.3.129
          */
          snprintf(cmd, sizeof(cmd), "ip -d link | "
-                  "awk '$1 == \"gretap\" && $7 == \"%s\"' {print $3}", ifname);
+                  "awk '$1 == \"gretap\" && $7 == \"%s\" {print $3}'", ifname);
     }
 
     f1 = popen(cmd, "r");
