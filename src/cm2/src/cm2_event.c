@@ -113,12 +113,14 @@ Note-1: the wait for re-connect back to same manager addr because
 #define CM2_DEFAULT_TIMEOUT             60  // 1 min
 #define CM2_FAST_RECONNECT_TIMEOUT      20
 #define CM2_ONBOARD_LINK_SEL_TIMEOUT    120
-#define CM2_ONBOARD_WAN_IP_TIMEOUT      20
 #define CM2_RESOLVE_TIMEOUT             180
+#define CM2_CONNECT_TIMEOUT             30
 
 #define CM2_MAX_DISCONNECTS             10
 #define CM2_STABLE_PERIOD               300 // 5 min
 #define CM2_RESOLVE_RETRY_THRESHOLD     10
+#define CM2_RESOLVE_FATAL_THRESHOLD     5
+#define CM2_CONNECT_FATAL_THRESHOLD     10
 #define CM2_GW_OFFLINE_RETRY_THRESHOLD  3
 #define CM2_GW_SKIP_RESTART_THRESHOLD   360
 
@@ -137,12 +139,12 @@ cm2_state_info_t cm2_state_info[CM2_STATE_NUM] =
 {
     [CM2_STATE_INIT]             = { "INIT",                CM2_NO_TIMEOUT },
     [CM2_STATE_LINK_SEL]         = { "LINK_SEL",            CM2_ONBOARD_LINK_SEL_TIMEOUT },
-    [CM2_STATE_WAN_IP]           = { "WAN_IP",              CM2_ONBOARD_WAN_IP_TIMEOUT },
+    [CM2_STATE_WAN_IP]           = { "WAN_IP",              CM2_DEFAULT_TIMEOUT },
     [CM2_STATE_NTP_CHECK]        = { "NTP_CHECK",           CM2_DEFAULT_TIMEOUT },
     [CM2_STATE_OVS_INIT]         = { "OVS_INIT",            CM2_NO_TIMEOUT },
     [CM2_STATE_TRY_RESOLVE]      = { "TRY_RESOLVE",         CM2_RESOLVE_TIMEOUT },
-    [CM2_STATE_RE_CONNECT]       = { "RE_CONNECT",          CM2_DEFAULT_TIMEOUT },
-    [CM2_STATE_TRY_CONNECT]      = { "TRY_CONNECT",         CM2_DEFAULT_TIMEOUT },
+    [CM2_STATE_RE_CONNECT]       = { "RE_CONNECT",          CM2_CONNECT_TIMEOUT },
+    [CM2_STATE_TRY_CONNECT]      = { "TRY_CONNECT",         CM2_CONNECT_TIMEOUT },
     [CM2_STATE_FAST_RECONNECT]   = { "FAST_RECONNECT",      CM2_FAST_RECONNECT_TIMEOUT },
     [CM2_STATE_CONNECTED]        = { "CONNECTED",           CM2_NO_TIMEOUT },
     [CM2_STATE_QUIESCE_OVS]      = { "QUIESCE_OVS",         CM2_DEFAULT_TIMEOUT },
@@ -173,6 +175,32 @@ void cm2_ble_onboarding_set_status(bool state, cm2_ble_onboarding_status_t statu
 void cm2_ble_onboarding_apply_config(void)
 {
     cm2_ovsdb_ble_config_update(g_state.ble_status);
+}
+
+static void cm2_set_backhaul_update_ble_state(void) {
+    bool eth_type;
+
+    eth_type = !strcmp(g_state.link.if_type, ETH_TYPE_NAME) ||
+               !strcmp(g_state.link.if_type, VLAN_TYPE_NAME);
+
+    g_state.ble_status = 0;
+    if (eth_type) {
+        cm2_ble_onboarding_set_status(true,
+                BLE_ONBOARDING_STATUS_ETHERNET_LINK);
+        cm2_ble_onboarding_set_status(true,
+                BLE_ONBOARDING_STATUS_ETHERNET_BACKHAUL);
+    }  else {
+        cm2_ble_onboarding_set_status(true,
+                BLE_ONBOARDING_STATUS_WIFI_LINK);
+        cm2_ble_onboarding_set_status(true,
+                BLE_ONBOARDING_STATUS_WIFI_BACKHAUL);
+    }
+    cm2_ble_onboarding_apply_config();
+}
+
+static void cm2_set_ble_state(bool state, cm2_ble_onboarding_status_t status) {
+    cm2_ble_onboarding_set_status(state, status);
+    cm2_ble_onboarding_apply_config();
 }
 
 char* cm2_dest_name(cm2_dest_e dest)
@@ -350,6 +378,7 @@ static void cm2_compute_backoff(void)
 
 static void cm2_extender_init_state(void) {
     struct schema_Connection_Manager_Uplink con;
+    memset(&g_state.link.ip, 0, sizeof(g_state.link.ip));
     memset(&g_state.link, 0, sizeof(g_state.link));
 
     if (cm2_connection_get_used_link(&con)) {
@@ -363,28 +392,7 @@ static void cm2_extender_init_state(void) {
         g_state.link.priority = -1;
     }
     g_state.fast_backoff = true;
-    g_state.is_onboarded = false;
-}
-
-static void cm2_link_sel_update_ble_state(void) {
-    bool eth_type;
-
-    eth_type = !strcmp(g_state.link.if_type, ETH_TYPE_NAME) ||
-               !strcmp(g_state.link.if_type, VLAN_TYPE_NAME);
-
-    g_state.ble_status = 0;
-    if (eth_type) {
-        cm2_ble_onboarding_set_status(true,
-                BLE_ONBOARDING_STATUS_ETHERNET_LINK);
-        cm2_ble_onboarding_set_status(true,
-                BLE_ONBOARDING_STATUS_ETHERNET_BACKHAUL);
-    }  else {
-        cm2_ble_onboarding_set_status(true,
-                BLE_ONBOARDING_STATUS_WIFI_LINK);
-        cm2_ble_onboarding_set_status(true,
-                BLE_ONBOARDING_STATUS_WIFI_BACKHAUL);
-    }
-    cm2_ble_onboarding_apply_config();
+    g_state.dev_type = CM2_DEVICE_NONE;
 }
 
 static void cm2_trigger_restart_managers(void) {
@@ -393,58 +401,86 @@ static void cm2_trigger_restart_managers(void) {
 
     skip_restart = false;
 
+    if (cm2_is_wifi_type(g_state.link.if_type))
+        goto restart;
+
     r = cm2_vtag_stability_check();
     if (!r) {
-        LOGI("Skip restart system due to vtag pending");
+        LOGI("Vtag pending, skip restart managers");
         skip_restart = true;
+        goto restart;
     }
 
     if (cm2_is_config_via_ble_enabled() &&
-        !g_state.is_onboarded) {
-        LOGI("Enabling two way mode comunication. skip restart managers");
+        g_state.dev_type == CM2_DEVICE_NONE) {
+        LOGI("Enable two way mode communication, skip restart managers");
         cm2_ovsdb_ble_set_connectable(true);
         skip_restart = true;
     }
 
-    if (g_state.gw_offline_cnt < CM2_GW_OFFLINE_RETRY_THRESHOLD) {
-        r = cm2_ovsdb_is_gw_offline_ready();
-        if (r)
-            g_state.gw_offline_cnt++;
+    if (g_state.dev_type == CM2_DEVICE_ROUTER) {
+        LOGI("Detected device in Router mode, skip restart managers");
+        skip_restart = true;
+        goto restart;
+    }
 
-        if (g_state.gw_offline_cnt == CM2_GW_OFFLINE_RETRY_THRESHOLD) {
+    if (cm2_ovsdb_is_gw_offline_enabled()) {
+        if (cm2_ovsdb_is_gw_offline_active()) {
+            LOGI("GW offline in active state, skip restart managers");
+            goto restart;
+        }
+
+        LOGI("Waiting for applying GW offline functionality [%d,%d]",
+             g_state.cnts.gw_offline, CM2_GW_OFFLINE_RETRY_THRESHOLD);
+
+        skip_restart = true;
+
+        if (g_state.cnts.gw_offline < CM2_GW_OFFLINE_RETRY_THRESHOLD)
+            g_state.cnts.gw_offline++;
+
+        if (g_state.cnts.gw_offline != CM2_GW_OFFLINE_RETRY_THRESHOLD)
+            goto restart;
+
+        if (cm2_ovsdb_is_gw_offline_ready()) {
             r = cm2_ovsdb_enable_gw_offline_conf();
             if (!r) {
                 LOGW("Enabling GW offline configuration failed");
-                g_state.gw_offline_cnt--;
+                g_state.cnts.gw_offline--;
             } else {
                 LOGI("GW offline configuration enabled");
             }
+        } else {
+            LOGW("GW offline configuration not ready, restart managers");
+            skip_restart = false;
         }
+        goto restart;
     }
 
-    if (g_state.gw_offline_cnt > 0 || g_state.link.is_limp_state) {
-        LOGI("Limp state = %d gw_offline_cnt = %d",
-             g_state.link.is_limp_state, g_state.gw_offline_cnt);
-        skip_restart = true;
-    }
-
+restart:
+    cm2_ovsdb_dump_debug_data();
     if (skip_restart &&
-        g_state.skip_restart_cnt++ < CM2_GW_SKIP_RESTART_THRESHOLD) {
-        LOGI("Skip restart managers [%d/%d]",
-             g_state.skip_restart_cnt, CM2_GW_SKIP_RESTART_THRESHOLD);
+        g_state.cnts.skip_restart++ < CM2_GW_SKIP_RESTART_THRESHOLD) {
+        LOGI("Device type: %d, Skip restart managers [%d/%d]",
+             g_state.dev_type, g_state.cnts.skip_restart,
+             CM2_GW_SKIP_RESTART_THRESHOLD);
         cm2_reset_time();
         return;
     }
 
     WARN_ON(!target_device_wdt_ping());
     LOGW("Trigger restart managers");
-    cm2_ovsdb_dump_debug_data();
     WARN_ON(target_device_restart_managers());
 }
 
 static void cm2_restart_ovs_connection(bool state) {
     if (cm2_is_extender())
-        cm2_set_state(state, CM2_STATE_LINK_SEL);
+    {
+        if (g_state.cnts.ovs_resolve_fail < CM2_RESOLVE_FATAL_THRESHOLD &&
+            g_state.cnts.ovs_con < CM2_CONNECT_FATAL_THRESHOLD)
+            cm2_set_state(state, CM2_STATE_LINK_SEL);
+        else
+            cm2_trigger_restart_managers();
+    }
     else
         cm2_set_state(state, CM2_STATE_OVS_INIT);
 }
@@ -489,20 +525,17 @@ static bool cm2_block_vtag(void) {
     return true;
 }
 
-static void cm2_handle_link_used(char *if_name, char *if_type, cm2_ip *ip)
+static void cm2_disable_gw_offline_state(void)
 {
-    if (!cm2_is_wan_link_management() && cm2_is_eth_type(if_type))
+    if (g_state.cnts.gw_offline != CM2_GW_OFFLINE_RETRY_THRESHOLD ||
+        !cm2_ovsdb_is_gw_offline_active())
         return;
 
-    if (ip->ipv4 == CM2_IPV4_DHCP && ip->is_ipv4) {
-        LOGN("Refresh WAN link");
-        cm2_ovsdb_refresh_dhcp(if_name);
-        return;
-    }
-
-    if (ip->ipv4 == CM2_IP_NONE) {
-        LOGI("%s: Trigger dhcp client for used link", if_name);
-        cm2_ovsdb_set_dhcp_client(if_name, true);
+    if (cm2_ovsdb_disable_gw_offline_conf()) {
+        g_state.cnts.gw_offline = 0;
+        LOGI("GW offline configuration disabled");
+    } else {
+        LOGW("Disabling GW offline configuration failed");
     }
 }
 
@@ -536,21 +569,22 @@ start:
             ret = cm2_get_link_ip(uplink, &g_state.link.ip);
             if (ret < 0)
                 LOGW("%s: Failed get ip info", uplink);
-            cm2_handle_link_used(uplink, g_state.link.if_type, &g_state.link.ip);
-            cm2_link_sel_update_ble_state();
+            cm2_set_backhaul_update_ble_state();
 
-            if (g_state.link.is_bridge)
+            if (g_state.link.is_bridge) {
                 cm2_update_bridge_cfg(g_state.link.bridge_name, g_state.link.if_name, true,
-                                      CM2_PAR_FALSE);
+                                      CM2_PAR_FALSE, true);
+            } else {
+                cm2_ovsdb_set_default_wan_bridge( g_state.link.if_name,  g_state.link.if_type);
+            }
 
             cm2_ovsdb_connection_clean_link_counters(g_state.link.if_name);
-            cm2_connection_req_stability_check(LINK_CHECK);
+            cm2_connection_req_stability_check(LINK_CHECK, false);
             cm2_set_state(true, CM2_STATE_WAN_IP);
             break;
         case CM2_REASON_SET_NEW_VTAG:
             LOGI("vtag: %d: creating", g_state.link.vtag.tag);
             if (cm2_set_new_vtag()) {
-                g_state.link.ip.ipv4 = CM2_IP_NONE;
                 cm2_ovsdb_refresh_dhcp(uplink);
                 cm2_set_state(true, CM2_STATE_WAN_IP);
             }
@@ -558,15 +592,19 @@ start:
         case CM2_REASON_BLOCK_VTAG:
             LOGI("vtag: %d: blocking", g_state.link.vtag.tag);
             if (cm2_block_vtag()) {
-                g_state.link.ip.ipv4 = CM2_IP_NONE;
                 cm2_ovsdb_refresh_dhcp(uplink);
                 cm2_set_state(true, CM2_STATE_WAN_IP);
             }
             break;
         case CM2_REASON_OVS_INIT:
-            LOGI("set async OVS INIT state");
-            cm2_ovsdb_refresh_dhcp(uplink);
-            cm2_set_state(true, CM2_STATE_OVS_INIT);
+            if (g_state.state != CM2_STATE_WAN_IP &&
+                !link_sel) {
+                LOGI("set async OVS INIT state");
+                cm2_ovsdb_set_Manager_target("");
+                g_state.connected = false;
+                g_state.fast_reconnect = false;
+                cm2_set_state(true, CM2_STATE_WAN_IP);
+            }
             break;
         default:
             break;
@@ -607,6 +645,7 @@ start:
             } else {
                 cm2_extender_init_state();
                 g_state.resolve_retry = false;
+                g_state.cnts.ovs_resolve_fail = 0;
                 cm2_set_state(true, CM2_STATE_LINK_SEL);
             }
             break;
@@ -627,9 +666,9 @@ start:
             }
             if (g_state.link.is_used)
             {
-                cm2_connection_req_stability_check(LINK_CHECK);
+                cm2_connection_req_stability_check(LINK_CHECK, false);
+                cm2_set_backhaul_update_ble_state();
                 cm2_set_state(true, CM2_STATE_WAN_IP);
-                cm2_link_sel_update_ble_state();
             }
             else if (cm2_timeout(false))
             {
@@ -642,13 +681,14 @@ start:
             {
                 LOGI("Waiting for finish get WLAN IP");
             }
-            ret = cm2_get_link_ip(uplink, &g_state.link.ip);
-            if (ret < 0)
-                LOGW("%s: Failed get ip info", g_state.link.if_name);
+            WARN_ON(cm2_get_link_ip(uplink, &g_state.link.ip) < 0);
+            ret = 0;
+            if (g_state.link.ip.is_ipv4 || g_state.link.ip.is_ipv6) {
+                ret = cm2_connection_req_stability_check(ROUTER_CHECK, false);
+                cm2_set_ble_state(ret, BLE_ONBOARDING_STATUS_ROUTER_OK);
+            }
 
-            if (g_state.link.ip.is_ipv4 || g_state.link.ip.is_ipv6)
-            {
-                cm2_connection_req_stability_check(ROUTER_CHECK);
+            if (ret) {
                 cm2_set_state(true, CM2_STATE_NTP_CHECK);
             }
             else if (cm2_timeout(false))
@@ -662,26 +702,20 @@ start:
         case CM2_STATE_NTP_CHECK: // EXTENDER only
             if (cm2_state_changed()) // first iteration
             {
-                cm2_connection_req_stability_check(NTP_CHECK);
                 LOGI("Waiting for finish NTP");
             }
-            if (g_state.ntp_check)
+            if (cm2_connection_req_stability_check(INTERNET_CHECK | NTP_CHECK, true))
             {
-                cm2_connection_req_stability_check(INTERNET_CHECK);
+                cm2_state_e n_state;
 
-                if (g_state.fast_reconnect)
-                     cm2_set_state(true, CM2_STATE_FAST_RECONNECT);
+                cm2_set_ble_state(true, BLE_ONBOARDING_STATUS_INTERNET_OK);
 
-                else
-                     cm2_set_state(true, CM2_STATE_OVS_INIT);
+                n_state = g_state.fast_reconnect ? CM2_STATE_FAST_RECONNECT : CM2_STATE_OVS_INIT;
+                cm2_set_state(true, n_state);
             }
             else if (cm2_timeout(false))
             {
                 cm2_trigger_restart_managers();
-            }
-            else
-            {
-                cm2_connection_req_stability_check(NTP_CHECK);
             }
             break;
 
@@ -718,11 +752,11 @@ start:
                 }
 
                 if (cm2_is_extender())
-                    cm2_connection_req_stability_check(LINK_CHECK | ROUTER_CHECK | INTERNET_CHECK);
+                    cm2_connection_req_stability_check(LINK_CHECK | ROUTER_CHECK | INTERNET_CHECK, false);
 
                 if (g_state.resolve_retry) {
                     LOGI("Trigger retry resolving, cnt: %d/%d",
-                         g_state.resolve_retry_cnt, CM2_RESOLVE_RETRY_THRESHOLD);
+                         g_state.cnts.ovs_resolve, CM2_RESOLVE_RETRY_THRESHOLD);
                     g_state.resolve_retry = false;
                 }
 
@@ -730,28 +764,30 @@ start:
                      cm2_curr_addr()->hostname);
 
                 if (!cm2_resolve(g_state.dest)) {
-                    cm2_restart_ovs_connection(false);
+                    g_state.cnts.ovs_resolve_fail++;
+                    cm2_restart_ovs_connection(true);
                     return;
                 }
             }
 
-            if (cm2_curr_addr()->resolved)
+            if (cm2_is_addr_resolved(cm2_curr_addr()))
             {
                 LOGN("Address %s resolved", cm2_curr_addr()->hostname);
                 // successfully resolved
-                g_state.resolve_retry_cnt = 0;
+                g_state.cnts.ovs_resolve = 0;
+                g_state.cnts.ovs_resolve_fail = 0;
                 cm2_set_state(true, CM2_STATE_RE_CONNECT);
             }
             else
             {
-                if (g_state.resolve_retry_cnt > CM2_RESOLVE_RETRY_THRESHOLD) {
-                    LOGI("Restart channel due to exceeded resolve threshold");
-                    g_state.resolve_retry_cnt = 0;
-                }
                 if (cm2_timeout(false) ||
-                    g_state.resolve_retry_cnt > CM2_RESOLVE_RETRY_THRESHOLD) {
+                    g_state.cnts.ovs_resolve > CM2_RESOLVE_RETRY_THRESHOLD) {
+                    LOGI("Restart channel due to exceeded resolve threshold [%d/%d] or timeout",
+                         g_state.cnts.ovs_resolve, CM2_RESOLVE_RETRY_THRESHOLD);
+                    g_state.cnts.ovs_resolve = 0;
                     cm2_resolve_timeout();
                     cm2_ovsdb_refresh_dhcp(uplink);
+                    g_state.cnts.ovs_resolve_fail++;
                     cm2_restart_ovs_connection(false);
                     return;
                 }
@@ -774,6 +810,7 @@ start:
             else if (cm2_timeout(false))
             {
                 // stuck? back to init
+                g_state.cnts.ovs_con++;
                 cm2_restart_ovs_connection(false);
                 return;
             }
@@ -799,6 +836,7 @@ start:
             {
                 if (!cm2_write_current_target_addr())
                 {
+                    g_state.cnts.ovs_con++;
                     cm2_restart_ovs_connection(false);
                     return;
                 }
@@ -818,6 +856,7 @@ start:
                 else
                 {
                     // no more addresses
+                    g_state.cnts.ovs_con++;
                     cm2_restart_ovs_connection(false);
                     return;
                 }
@@ -843,34 +882,25 @@ start:
             if (cm2_state_changed()) // first iteration
             {
                 LOG(NOTICE, "===== Connected to: %s", cm2_curr_dest_name());
-                if (cm2_is_extender())
-                    cm2_connection_req_stability_check(LINK_CHECK | ROUTER_CHECK | INTERNET_CHECK);
+                if (cm2_is_extender()) {
+                    cm2_connection_req_stability_check(LINK_CHECK | ROUTER_CHECK | INTERNET_CHECK, true);
+                    cm2_set_ble_state(true, BLE_ONBOARDING_STATUS_CLOUD_OK);
+                    cm2_update_device_type(g_state.link.if_type);
+                    g_state.cnts.skip_restart = 0;
+                    g_state.cnts.ovs_con = 0;
+                    g_state.run_stability = true;
+                    cm2_ovsdb_connection_update_unreachable_cloud_counter(g_state.link.if_name, 0);
+                    cm2_disable_gw_offline_state();
+                }
 
             }
 
             if (g_state.connected) {
-                if (cm2_is_extender()) {
-                    g_state.run_stability = true;
-                    cm2_ovsdb_connection_update_unreachable_cloud_counter(g_state.link.if_name, 0);
-                }
-
-                if (g_state.gw_offline_cnt == CM2_GW_OFFLINE_RETRY_THRESHOLD) {
-                    LOGI("Device is connected but gw_offline is set");
-                    ret = cm2_ovsdb_disable_gw_offline_conf();
-                    if (!ret) {
-                        LOGW("Disabling GW offline configuration failed");
-                    } else {
-                        g_state.gw_offline_cnt = 0;
-                        LOGI("GW offline configuration disabled");
-                    }
-                }
-
                 if (!g_state.is_con_stable && cm2_get_time() > CM2_STABLE_PERIOD) {
                     LOGI("Connection stable by %d sec, disconnects: %d",
                          CM2_STABLE_PERIOD, g_state.disconnects);
 
                     g_state.is_con_stable = true;
-                    g_state.is_onboarded = true;
                     g_state.disconnects = 0;
                     g_state.fast_backoff = false;
 
@@ -897,6 +927,8 @@ start:
                 // quiesce ovsdb-server, wait for timeout
                 cm2_ovsdb_set_Manager_target("");
                 g_state.disconnects += 1;
+                cm2_set_ble_state(false, BLE_ONBOARDING_STATUS_CLOUD_OK);
+
                 if (cm2_is_extender())
                     cm2_ovsdb_connection_update_unreachable_cloud_counter(g_state.link.if_name,
                                                                           g_state.disconnects);

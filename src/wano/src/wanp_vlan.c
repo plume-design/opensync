@@ -45,6 +45,7 @@ struct wanp_vlan
     wanp_vlan_state_t           wvl_state;
     wano_inet_state_event_t     wvl_inet_state_event;
     wano_ppline_t               wvl_ppl;
+    wano_ppline_event_t         wvl_ppe;
 };
 
 static void wanp_vlan_module_start(void);
@@ -53,7 +54,7 @@ static wano_plugin_ops_init_fn_t wanp_vlan_init;
 static wano_plugin_ops_run_fn_t wanp_vlan_run;
 static wano_plugin_ops_fini_fn_t wanp_vlan_fini;
 static wano_inet_state_event_fn_t wanp_vlan_inet_state_event_fn;
-static wano_ppline_status_fn_t wanp_vlan_ppline_status_fn;
+static wano_ppline_event_fn_t wanp_vlan_ppline_event_fn;
 
 static struct wano_plugin wanp_vlan = WANO_PLUGIN_INIT(
         "vlan",
@@ -150,9 +151,11 @@ void wanp_vlan_inet_state_event_fn(wano_inet_state_event_t *ise, struct wano_ine
     wanp_vlan_state_do(&self->wvl_state, wanp_vlan_do_INET_STATE_UPDATE, is);
 }
 
-void wanp_vlan_ppline_status_fn(wano_ppline_t *ppl, enum wano_ppline_status ps)
+void wanp_vlan_ppline_event_fn(
+        wano_ppline_event_t *wpe,
+        enum wano_ppline_status ps)
 {
-    struct wanp_vlan *self = CONTAINER_OF(ppl, struct wanp_vlan, wvl_ppl);
+    struct wanp_vlan *self = CONTAINER_OF(wpe, struct wanp_vlan, wvl_ppe);
 
     wanp_vlan_state_do(&self->wvl_state, wanp_vlan_do_PPLINE_UPDATE, &ps);
 }
@@ -265,13 +268,15 @@ enum wanp_vlan_state wanp_vlan_state_PPLINE_CREATE(
                     &self->wvl_ppl,
                     self->wvl_ifvlan,
                     "vlan",
-                    ~(WANO_PLUGIN_MASK_IPV4 | WANO_PLUGIN_MASK_IPV6),
-                    wanp_vlan_ppline_status_fn))
+                    ~(WANO_PLUGIN_MASK_IPV4 | WANO_PLUGIN_MASK_IPV6)))
             {
                 LOG(ERR, "wanp_vlan: %s: Error creating new plug-in pipeline on interface %s.",
                         self->wvl_handle.wh_ifname, self->wvl_ifvlan);
                 return wanp_vlan_ERROR;
             }
+
+            wano_ppline_event_init(&self->wvl_ppe, wanp_vlan_ppline_event_fn);
+            wano_ppline_event_start(&self->wvl_ppe, &self->wvl_ppl);
             break;
 
         case wanp_vlan_do_PPLINE_UPDATE:

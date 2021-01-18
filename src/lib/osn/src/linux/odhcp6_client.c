@@ -184,7 +184,6 @@ bool odhcp6_client_apply(odhcp6_client_t *self)
     daemon_arg_add(&self->oc_daemon, "-e");
     /* -Q              Do not track or update address lifetimes */
     daemon_arg_add(&self->oc_daemon, "-Q");
-
     /* -s <script>     Status update script (/usr/sbin/odhcp6c-update) */
     daemon_arg_add(&self->oc_daemon, "-s", CONFIG_OSN_ODHCP6_SCRIPT_PATH);
 
@@ -205,6 +204,14 @@ bool odhcp6_client_apply(odhcp6_client_t *self)
         /* -N <mode>       Mode for requesting addresses [try|force|none] */
         daemon_arg_add(&self->oc_daemon, "-N", "try");
     }
+
+    /*
+     *  Due to bugs in odhc6pc, this options only really takes effect if it's the
+     *  last option.
+     *
+     *  -S <time>       Wait at least <time> sec for a DHCP-server (0)
+     */
+    daemon_arg_add(&self->oc_daemon, "-S3");
 
     /* Add the interface name */
     daemon_arg_add(&self->oc_daemon, self->oc_ifname);

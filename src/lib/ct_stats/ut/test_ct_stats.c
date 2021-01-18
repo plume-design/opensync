@@ -43,13 +43,20 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 struct mnl_buf
 {
+    uint32_t portid;
+    uint32_t seq;
 	size_t len;
 	uint8_t data[4096];
 };
 
 #include "mnl_dump_2.c"
+#include "mnl_dump_2_zones.c"
 #include "mnl_dump_10.c"
+#include "mnl_dump_10_zones.c"
 
+extern ds_tree_t flow_tracker_list;
+void process_merged_multi_zonestats(ds_dlist_t *list, ds_tree_t *tree);
+void flow_free_merged_multi_zonestats(ds_tree_t *tree);
 const char *test_name = "fcm_ct_stats_tests";
 
 
@@ -205,6 +212,8 @@ test_process_v4(void)
     flow_stats_t *ct_stats;
     struct mnl_buf *p_mnl;
     flow_stats_mgr_t *mgr;
+    uint32_t portid;
+    uint32_t seq;
     bool loop;
     int idx;
     int ret;
@@ -223,7 +232,11 @@ test_process_v4(void)
     while (loop)
     {
         p_mnl = &g_mnl_buf_ipv4[idx];
-        ret = mnl_cb_run(p_mnl->data, p_mnl->len, g_seq, g_portid,
+        portid = g_portid;
+        if (p_mnl->portid != 0) portid = p_mnl->portid;
+        seq = g_seq;
+        if (p_mnl->seq != 0) seq = p_mnl->seq;
+        ret = mnl_cb_run(p_mnl->data, p_mnl->len, seq, portid,
                          data_cb, ct_stats);
         if (ret == -1)
         {
@@ -292,6 +305,129 @@ test_process_v6(void)
     collector->send_report(collector);
 }
 
+void
+test_process_v4_zones(void)
+{
+    fcm_collect_plugin_t *collector;
+    ctflow_info_t *flow_info;
+    flow_stats_t *ct_stats;
+    struct mnl_buf *p_mnl;
+    flow_stats_mgr_t *mgr;
+    uint32_t portid;
+    uint32_t seq;
+    bool loop;
+    int idx;
+    int ret;
+
+    mgr = ct_stats_get_mgr();
+    TEST_ASSERT_NOT_NULL(mgr);
+
+    ct_stats = ct_stats_get_active_instance();
+    TEST_ASSERT_NOT_NULL(ct_stats);
+
+    collector = ct_stats->collector;
+    TEST_ASSERT_NOT_NULL(collector);
+    ct_stats->ct_zone = USHRT_MAX;
+
+    loop = true;
+    idx = 0;
+    while (loop)
+    {
+        p_mnl = &g_mnl_buf_zones_ipv4[idx];
+        portid = g_portid;
+        if (p_mnl->portid != 0) portid = p_mnl->portid;
+        seq = g_seq;
+        if (p_mnl->seq != 0) seq = p_mnl->seq;
+        ret = mnl_cb_run(p_mnl->data, p_mnl->len, seq, portid,
+                         data_cb, ct_stats);
+        if (ret == -1)
+        {
+            ret = errno;
+            LOGE("%s: mnl_cb_run failed: %s", __func__, strerror(ret));
+            loop = false;
+        }
+        else if (ret <= MNL_CB_STOP) loop = false;
+        idx++;
+    }
+
+    ds_dlist_foreach(&ct_stats->ctflow_list, flow_info)
+    {
+        ct_stats_print_contrack(&flow_info->flow);
+    }
+
+    if (ct_stats->ct_zone == USHRT_MAX)
+        process_merged_multi_zonestats(&ct_stats->ctflow_list,
+                                       &flow_tracker_list);
+
+    flow_free_merged_multi_zonestats(&flow_tracker_list);
+
+    ct_flow_add_sample(ct_stats);
+    collector->send_report(collector);
+}
+
+
+void
+test_process_v6_zones(void)
+{
+    fcm_collect_plugin_t *collector;
+    ctflow_info_t *flow_info;
+    flow_stats_t *ct_stats;
+    flow_stats_mgr_t *mgr;
+    struct mnl_buf *p_mnl;
+    uint32_t portid;
+    uint32_t seq;
+    bool loop;
+    int idx;
+    int ret;
+
+    mgr = ct_stats_get_mgr();
+    TEST_ASSERT_NOT_NULL(mgr);
+
+    ct_stats = ct_stats_get_active_instance();
+    TEST_ASSERT_NOT_NULL(ct_stats);
+
+    collector = ct_stats->collector;
+    TEST_ASSERT_NOT_NULL(collector);
+    ct_stats->ct_zone = USHRT_MAX;
+
+    loop = true;
+    idx = 0;
+    while (loop)
+    {
+        p_mnl = &g_mnl_buf_zones_ipv6[idx];
+        portid = g_portid;
+        if (p_mnl->portid != 0) portid = p_mnl->portid;
+        seq = g_seq;
+        if (p_mnl->seq != 0) seq = p_mnl->seq;
+
+        ret = mnl_cb_run(p_mnl->data, p_mnl->len, seq, portid,
+                         data_cb, ct_stats);
+        if (ret == -1)
+        {
+            ret = errno;
+            LOGE("%s: mnl_cb_run failed: %s", __func__, strerror(ret));
+            loop = false;
+        }
+        else if (ret <= MNL_CB_STOP) loop = false;
+        idx++;
+    }
+
+    ds_dlist_foreach(&ct_stats->ctflow_list, flow_info)
+    {
+        ct_stats_print_contrack(&flow_info->flow);
+    }
+
+    if (ct_stats->ct_zone == USHRT_MAX)
+        process_merged_multi_zonestats(&ct_stats->ctflow_list,
+                                       &flow_tracker_list);
+
+    flow_free_merged_multi_zonestats(&flow_tracker_list);
+
+    ct_flow_add_sample(ct_stats);
+    collector->send_report(collector);
+}
+
+
 
 void
 test_ct_stat_v4(void)
@@ -322,6 +458,7 @@ test_ct_stat_v4(void)
     ct_flow_add_sample(ct_stats);
     collector->send_report(collector);
 }
+
 
 void
 test_ct_stat_v6(void)
@@ -366,6 +503,8 @@ main(int argc, char *argv[])
 
     RUN_TEST(test_process_v4);
     RUN_TEST(test_process_v6);
+    RUN_TEST(test_process_v4_zones);
+    RUN_TEST(test_process_v6_zones);
 #if !defined(__x86_64__)
     RUN_TEST(test_ct_stat_v4);
     RUN_TEST(test_ct_stat_v6);

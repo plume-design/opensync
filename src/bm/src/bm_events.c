@@ -664,12 +664,10 @@ static void
 bm_events_handle_rssi_xing_bs(bm_client_t *client, bsal_event_t *event)
 {
     bm_client_stats_t *stats;
-    bm_client_times_t  *times;
     time_t now;
     int delay;
 
     now = time(NULL);
-    times = &client->times;
     delay = 0;
 
     stats = bm_client_get_stats(client, event->ifname);

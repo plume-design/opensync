@@ -1,4 +1,5 @@
 source "src/lib/evx/kconfig/Kconfig.libs"
+source "src/lib/neigh_table/kconfig/Kconfig.libs"
 source "src/lib/inet/kconfig/Kconfig.libs"
 source "src/lib/log/kconfig/Kconfig.libs"
 

@@ -32,11 +32,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "log.h"
 #include "util.h"
+#include "const.h"
 #include "ovsdb.h"
 #include "schema.h"
 #include "ovsdb_table.h"
 #include "json_util.h"
 
+#include "osp_led.h"
 #include "pm.h"
 
 

@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "oms.h"
 #include "oms_report.h"
+#include "oms_ps.h"
 
 #include "osp_ps.h"
 #include "osp_objm.h"
@@ -73,7 +74,7 @@ static void oms_state_to_oms_config(struct oms_state_entry *c_entry, struct oms_
  * Support functions for interacting with persistent storage
  *****************************************************************************/
 
-// Load object database from presistent storage
+// Load object database from persistent storage
 static bool pm_objm_ps_load(struct pm_objm_store *st)
 {
     pjs_errmsg_t perr;
@@ -191,7 +192,7 @@ static bool pm_objm_ps_save(struct pm_objm_store *st)
         goto exit;
     }
 
-    // Store the string representation to peristent storage
+    // Store the string representation to persistent storage
     strsz = (ssize_t)strlen(str) + 1;
     if (osp_ps_set(ps, PM_OBJM_KEY, str, (size_t)strsz) < strsz)
     {
@@ -226,6 +227,7 @@ static bool pm_objm_ps_add(struct pm_objm_store *st, char *name, char *version, 
 
     return pm_objm_ps_save(st);
 }
+
 /*
  *  Remove object from object database
  *
@@ -233,7 +235,7 @@ static bool pm_objm_ps_add(struct pm_objm_store *st, char *name, char *version, 
  *  any free spots in array is to remove mentioned element and move last element to removed
  *  element position. This is possible since order of element does not matter.
  *
- * */
+ */
 static bool pm_objm_ps_remove(struct pm_objm_store *st, char *name, char *version)
 {
     int i;
@@ -310,6 +312,7 @@ static bool pm_objm_obj_exist(struct pm_objm_store *st, char *name, char *versio
     }
     return false;
 }
+
 /******************************************************************************
  *  Support functions for interacting with OVSDB tables
  *****************************************************************************/
@@ -404,7 +407,7 @@ static bool install(struct pm_objm_ctx_t *d_ctx)
 
     // Insert to Object_Store_State
     pm_ctx_to_oms_state(&s_entry, d_ctx);
-    oms_update_state_entry(&s_entry);
+    oms_add_state_entry(&s_entry);
 
     // Update OMS_Config table
     pm_ctx_to_oms_config(&c_entry, d_ctx);
@@ -415,7 +418,7 @@ static bool install(struct pm_objm_ctx_t *d_ctx)
 install_failed:
     // Insert to Object_Store_State
     pm_ctx_to_oms_state(&s_entry, d_ctx);
-    oms_update_state_entry(&s_entry);
+    oms_add_state_entry(&s_entry);
     return false;
 }
 
@@ -527,7 +530,7 @@ static void object_remove(struct pm_objm_ctx_t *d_ctx)
         LOG(ERR, "objm: remove from storage failed");
         return;
     }
-    // Remove Object information from persistant storage
+    // Remove Object information from persistent storage
     pm_objm_ps_remove(&db, d_ctx->name, d_ctx->version);
 
     // Remove entry from OMS_Config for final user to process
@@ -577,6 +580,8 @@ static void cb_dl(const enum osp_dl_status status, void *ctx)
 
 static void start_download(struct schema_Object_Store_Config *new)
 {
+    char *filename;
+    char *query_str;
     struct oms_state_entry s_entry;
     // Fill ctx struct
     struct pm_objm_ctx_t *d_ctx;
@@ -587,7 +592,19 @@ static void start_download(struct schema_Object_Store_Config *new)
     STRSCPY_WARN(d_ctx->url, new->dl_url);
     STRSCPY_WARN(d_ctx->name, new->name);
     STRSCPY_WARN(d_ctx->version, new->version);
-    sprintf(d_ctx->dl_path, "%s/%s", CONFIG_PM_OBJM_DOWNLOAD_DIR, basename(d_ctx->url));
+
+    filename = basename(d_ctx->url);
+    query_str = strchr(filename, '?');
+    if (query_str != NULL)
+    {
+        /* generate full file path dir + file name up to questionmark (?) */
+        sprintf(d_ctx->dl_path, "%s/%.*s", CONFIG_PM_OBJM_DOWNLOAD_DIR, (query_str - filename), filename);
+    }
+    else
+    {
+        /* generate full file path, dir + file name */
+        sprintf(d_ctx->dl_path, "%s/%s", CONFIG_PM_OBJM_DOWNLOAD_DIR, filename);
+    }
     STRSCPY_WARN(d_ctx->status, PM_OBJS_DOWNLOAD_STARTED);
 
     if (!osp_dl_download(d_ctx->url, CONFIG_PM_OBJM_DOWNLOAD_DIR, d_ctx->timeout, cb_dl, d_ctx))
@@ -634,13 +651,11 @@ static void callback_Object_Store_Config(ovsdb_update_monitor_t *mon,
 
         case OVSDB_UPDATE_MODIFY:
             // Install new version
-            if (strcmp(old_rec->version, new->version) == 0)
+            // Only download if url changed to an non empty string
+            if (new->dl_url_changed && strcmp(new->dl_url, "") != 0)
             {
-                // Ignore update version did not change
-                LOG(DEBUG, "objm: ignoring (%s) modify - version not changed", __func__);
-                break;
+                start_download(new);
             }
-            start_download(new);
             break;
 
         case OVSDB_UPDATE_DEL:
@@ -660,6 +675,7 @@ static void callback_Object_Store_Config(ovsdb_update_monitor_t *mon,
 /******************************************************************************
  * OMS lib support functions
  *****************************************************************************/
+
 static void oms_state_cb(struct oms_state_entry *entry, int event)
 {
     struct pm_objm_ctx_t d_ctx;
@@ -698,6 +714,11 @@ static void oms_state_cb(struct oms_state_entry *entry, int event)
             break;
     }
 
+    if (strncmp(entry->state, PM_OBJS_ACTIVE, strlen(PM_OBJS_ACTIVE)) == 0)
+    {
+        // Save last active version to persistant storage
+        oms_ps_save_last_active_version(entry);
+    }
 
     if (strcmp(entry->state, PM_OBJS_OBSOLETE)        == 0 ||
         strcmp(entry->state, PM_OBJS_ACTIVE)          == 0 ||
@@ -799,7 +820,7 @@ bool pm_objm_init(void)
 
     oms_ovsdb_init(&oms_set);
 
-    // Load database of installed object from presistent storage
+    // Load database of installed object from persistent storage
     memset(&db, 0, sizeof(struct pm_objm_store));
     if (pm_objm_ps_load(&db) == false)
     {
@@ -809,7 +830,7 @@ bool pm_objm_init(void)
 
     if (db.obj_records_len == 0)
     {
-        LOG(NOTICE, "objm: No objects in persistant database - checking integrated packages");
+        LOG(NOTICE, "objm: No objects in persistent database - checking integrated packages");
         if (install_integrated_objects(CONFIG_PM_OBJM_INTEGRATED_DIR) > 0)
         {
             // Reload database after installing preintegrated packages

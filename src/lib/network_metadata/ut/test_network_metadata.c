@@ -142,9 +142,13 @@ static struct flow_key * set_flow_key(int id)
     key->smac = strndup(smac, sizeof(smac));
     if (key->smac == NULL) goto err_free_key;
 
+    key->isparent_of_smac  = true;
+
     snprintf(dmac, sizeof(dmac), "aa:bb:cc:dd:%de", id);
     key->dmac = strndup(dmac, sizeof(dmac));
     if (key->dmac == NULL) goto err_free_smac;
+
+    key->isparent_of_dmac  = true;
 
     key->vlan_id = (id == 1 ? 0 : id);
     key->ethertype = (id == 1 ? 0 : (17 + id));
@@ -529,6 +533,8 @@ static void validate_flow_key(struct flow_key *key,
 {
     TEST_ASSERT_EQUAL_STRING(key->smac, key_pb->srcmac);
     TEST_ASSERT_EQUAL_STRING(key->dmac, key_pb->dstmac);
+    TEST_ASSERT_EQUAL_INT(key->isparent_of_smac, key_pb->parentofsrcmac);
+    TEST_ASSERT_EQUAL_INT(key->isparent_of_dmac, key_pb->parentofdstmac);
     TEST_ASSERT_EQUAL_STRING(key->src_ip, key_pb->srcip);
     TEST_ASSERT_EQUAL_STRING(key->dst_ip, key_pb->dstip);
     validate_uint32_field((uint32_t)key->vlan_id, key_pb->vlanid,

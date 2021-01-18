@@ -88,3 +88,7 @@ ifeq ($(CONFIG_MANAGER_WANO_PLUGIN_VLAN),y)
 UNIT_SRC += src/wanp_vlan.c
 $(eval $(call stam_generate,src/wanp_vlan.dot))
 endif
+
+ifeq ($(CONFIG_MANAGER_WANO_PLUGIN_ETHCLIENT),y)
+UNIT_SRC += src/wanp_ethclient.c
+endif

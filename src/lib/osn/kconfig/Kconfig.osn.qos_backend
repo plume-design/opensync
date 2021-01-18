@@ -1,0 +1,14 @@
+config OSN_BACKEND_QOS_NULL
+    bool "Null"
+
+    help
+        Use QoS dummy implementation
+
+config OSN_BACKEND_QOS_LINUX
+    bool "Linux"
+
+    select OSN_LINUX_ENABLED
+    select OSN_LINUX_QOS
+    help
+        Use the Linux QoS implementation that uses the tc tool to configure 
+        interface qdiscs/queues.

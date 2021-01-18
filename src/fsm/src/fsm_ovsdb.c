@@ -819,6 +819,7 @@ fsm_alloc_session(struct schema_Flow_Service_Manager_Config *conf)
     session->ops.get_config = fsm_get_other_config_val;
     session->ops.state_cb = fsm_set_object_state;
     session->ops.latest_obj_cb = fsm_oms_get_highest_version;
+    session->ops.last_active_obj_cb = fsm_oms_get_last_active_version;
 
     pcaps = NULL;
     bpf = NULL;

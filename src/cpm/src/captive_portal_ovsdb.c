@@ -221,6 +221,9 @@ cportal_free_cportal(struct cportal *inst)
 
     free(inst->name);
     free(inst->uam_url);
+    free(inst->url->port);
+    free(inst->url->domain_name);
+    free(inst->url);
 
     free_str_tree(inst->other_config);
     free_str_tree(inst->additional_headers);
@@ -265,15 +268,26 @@ cportal_alloc_inst(struct schema_Captive_Portal *new)
     inst->uam_url = strdup(new->uam_url);
     if (!inst->uam_url)
     {
-        LOG(ERR, "%s: Couldn't allocate memory for url[%s]", __func__, new->uam_url);
+        LOG(ERR, "%s: Couldn't allocate memory for uam_url[%s]", __func__, new->uam_url);
         goto err_uam;
     }
+
+    inst->url = calloc(1, sizeof(struct url_s));
+    if (!inst->url)
+    {
+        LOG(ERR, "%s: Couldn't allocate memory for url", __func__);
+        goto err_url;
+    }
+
 
     cportal_parse_other_config(inst, new);
 
     cportal_parse_additional_hdrs(inst, new);
 
     return inst;
+
+err_url:
+    free(inst->uam_url);
 err_uam:
     free(inst->name);
 err_name:

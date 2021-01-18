@@ -85,6 +85,9 @@ struct fsm_session_ops
 
     /* Get latest object version. Provided to the plugin */
     struct fsm_object * (*latest_obj_cb)(struct fsm_session *, char *, char *);
+
+    /* Get last active object version. Provided to the plugin */
+    struct fsm_object * (*last_active_obj_cb)(struct fsm_session *, char *);
 };
 
 

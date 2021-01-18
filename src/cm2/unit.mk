@@ -73,6 +73,7 @@ UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 UNIT_DEPS := src/lib/ovsdb
 UNIT_DEPS += src/lib/pjs
 UNIT_DEPS += src/lib/schema
+UNIT_DEPS += src/lib/osn
 ifeq ($(BUILD_HAVE_LIBCARES),y)
 UNIT_DEPS += src/lib/evx
 endif

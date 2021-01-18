@@ -38,6 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "json_util.h"
 #include "log.h"
 #include "osp_ps.h"
+#include "os.h"
 
 
 #define KEY_OFFLINE_CFG             "gw_offline_cfg"
@@ -84,6 +85,15 @@ struct gw_offline_cfg
     json_t *dhcp_reserved_ip;
 };
 
+enum gw_offline_stat
+{
+    status_disabled = 0,
+    status_enabled,
+    status_ready,
+    status_active,
+    status_error
+};
+
 MODULE(pm_gw_offline, pm_gw_offline_init, pm_gw_offline_fini)
 
 static ovsdb_table_t table_Node_Config;
@@ -100,6 +110,7 @@ static struct gw_offline_cfg cfg_cache;
 static bool gw_offline_cfg;
 static bool gw_offline_mon;
 static bool gw_offline;
+static enum gw_offline_stat gw_offline_stat;
 
 static bool gw_offline_ps_store(const char *ps_key, const json_t *config);
 static bool gw_offline_cfg_ps_store(const struct gw_offline_cfg *cfg);
@@ -177,6 +188,15 @@ static bool pm_node_state_set(const char *key, const char *value)
     else
     {
         ovsdb_table_delete_where(&table_Node_State, where);
+    }
+
+    if (strcmp(key, KEY_OFFLINE_STATUS) == 0)
+    {
+        if (strcmp(value, VAL_STATUS_DISABLED) == 0) gw_offline_stat = status_disabled;
+        else if (strcmp(value, VAL_STATUS_ENABLED) == 0) gw_offline_stat = status_enabled;
+        else if (strcmp(value, VAL_STATUS_READY) == 0) gw_offline_stat = status_ready;
+        else if (strcmp(value, VAL_STATUS_ACTIVE) == 0) gw_offline_stat = status_active;
+        else if (strcmp(value, VAL_STATUS_ERROR) == 0) gw_offline_stat = status_error;
     }
     return true;
 }
@@ -353,6 +373,19 @@ static void callback_Node_Config(
         {
             /* Enabled by CM when no Cloud/Internet connectivity and other
              * conditions are met for certain amount of time. */
+
+            if (gw_offline_mon)
+            {
+                LOG(WARN, "Offline config mode triggered, but config monitoring is enabled. Ignoring.");
+                return;
+            }
+            if (gw_offline_stat != status_ready)
+            {
+                LOG(WARN, "Offline config mode triggered, but gw_offline_status "\
+                           "!= ready. status=%d. Ignoring", gw_offline_stat);
+                return;
+            }
+
             gw_offline = true;
             LOG(INFO, "offline_cfg: Offline config mode enabled. Load && apply persistent config triggered.");
             pm_gw_offline_load_and_apply_config();
@@ -432,7 +465,6 @@ static bool gw_offline_cfg_set_radio_if_names(struct gw_offline_cfg *cfg)
         }
         LOG(DEBUG, "offline_cfg: For VIF with uuid=%s found radio if_name=%s", vif_str_uuid, radio_if_name);
         json_array_append_new(cfg->radio_if_names, json_string(radio_if_name));
-
     }
     return true;
 }
@@ -476,10 +508,8 @@ static bool ovsdb_add_uuid_to_radio_config(const char *if_name, ovs_uuid_t uuid)
     if (rv != 1)
     {
         LOG(ERR, "offline_cfg: Error updating Wifi_Radio_Config: rv=%d", rv);
-        json_decref(row);
         return false;
     }
-    json_decref(row);
     return true;
 }
 
@@ -820,9 +850,17 @@ static bool gw_offline_cfg_ovsdb_apply(const struct gw_offline_cfg *cfg)
     int rc;
     json_t *row;
 
+    /* Delete all rows in Wifi_VIF_Config to start clean: */
+    rc = ovsdb_sync_delete_where("Wifi_VIF_Config", NULL);
+    if (rc == -1)
+    {
+        LOG(ERR, "offline_cfg: Error deleting Wifi_VIF_Config");
+        return false;
+    }
+
     /* Update inet config: */
     if ((rc = ovsdb_sync_update("Wifi_Inet_Config", "if_name", LAN_BRIDGE,
-                      json_array_get(cfg->inet_config, 0))) != 1)
+                      json_incref(json_array_get(cfg->inet_config, 0)))) != 1)
     {
         LOG(ERR, "offline_cfg: Error updating Wifi_Inet_Config, rc=%d", rc);
         return false;
@@ -834,7 +872,7 @@ static bool gw_offline_cfg_ovsdb_apply(const struct gw_offline_cfg *cfg)
     {
         const char *if_name = json_string_value(json_object_get(row, "if_name"));
 
-        if (ovsdb_sync_update("Wifi_Radio_Config", "if_name", if_name, row) == -1)
+        if (ovsdb_sync_update("Wifi_Radio_Config", "if_name", if_name, json_incref(row)) == -1)
         {
             LOG(ERR, "offline_cfg: Error updating Wifi_Radio_Config");
             return false;
@@ -844,10 +882,16 @@ static bool gw_offline_cfg_ovsdb_apply(const struct gw_offline_cfg *cfg)
     /* Create VIF interfaces... */
     json_array_foreach(cfg->vif_config, index, row)
     {
+        char cmd_vif_to_br[128];
         const char *if_name = json_string_value(json_object_get(row, "if_name"));
 
+        /* json object might get modified later, localy remember this if_name
+         * and already construct a shell command to be used later: */
+        snprintf(cmd_vif_to_br, sizeof(cmd_vif_to_br),
+                 "ovs-vsctl add-port %s %s", LAN_BRIDGE, if_name);
+
         /* Insert a row for this VIF: */
-        if (ovsdb_sync_insert("Wifi_VIF_Config", row, &uuid))
+        if (ovsdb_sync_insert("Wifi_VIF_Config", json_incref(row), &uuid))
         {
             /* Add created vif uuid to Wifi_Radio_Config... */
             const char *radio_if_name = json_string_value(json_array_get(cfg->radio_if_names, index));
@@ -855,12 +899,8 @@ static bool gw_offline_cfg_ovsdb_apply(const struct gw_offline_cfg *cfg)
             ovsdb_add_uuid_to_radio_config(radio_if_name, uuid);
 
             /* Add this home VIF interface to lan bridge: */
-            char cmd_buf[1024];
-            sprintf(cmd_buf, "ovs-vsctl add-port %s %s", LAN_BRIDGE, if_name);
-
-            LOG(DEBUG, "offline_cfg: :::: Executing shell cmd: %s", cmd_buf);
-            rc = system(cmd_buf);
-            if (WIFEXITED(rc) && WEXITSTATUS(rc) == 0)
+            rc = cmd_log(cmd_vif_to_br);
+            if (rc == 0)
                 LOG(INFO, "offline_cfg: ovs-vsctl: added %s to %s", if_name, LAN_BRIDGE);
             else
                 LOG(ERR, "offline_cfg: ovs-vsctl: Error adding %s to %s", if_name, LAN_BRIDGE);
@@ -875,7 +915,9 @@ static bool gw_offline_cfg_ovsdb_apply(const struct gw_offline_cfg *cfg)
     /* Add home-aps entries to Wifi_Inet_Config... */
     json_array_foreach(cfg->inet_config_home_aps, index, row)
     {
-        if (!ovsdb_sync_insert("Wifi_Inet_Config", row, NULL))
+        const char *if_name = json_string_value(json_object_get(row, "if_name"));
+
+        if (!ovsdb_sync_upsert("Wifi_Inet_Config", "if_name", if_name, json_incref(row), NULL))
         {
             LOG(ERR, "offline_cfg: Error inserting into Wifi_Inet_Config: row=%s", json_dumps_static(row, 0));
             return false;
@@ -883,9 +925,15 @@ static bool gw_offline_cfg_ovsdb_apply(const struct gw_offline_cfg *cfg)
     }
 
     /* Configure DHCP reservations: */
+    rc = ovsdb_sync_delete_where("DHCP_reserved_IP", NULL);
+    if (rc == -1)
+    {
+        LOG(ERR, "offline_cfg: Error deleting DHCP_reserved_IP");
+        return false;
+    }
     json_array_foreach(cfg->dhcp_reserved_ip, index, row)
     {
-        if (!ovsdb_sync_insert("DHCP_reserved_IP", row, NULL))
+        if (!ovsdb_sync_insert("DHCP_reserved_IP", json_incref(row), NULL))
         {
             LOG(ERR, "offline_cfg: Error inserting into DHCP_reserved_IP: row=%s", json_dumps_static(row, 0));
             return false;

@@ -171,7 +171,7 @@ void   object_manager__status__object_status_report__free_unpacked
 static const ProtobufCFieldDescriptor object_manager__status__observation_point__field_descriptors[2] =
 {
   {
-    "nodeId",
+    "node_id",
     1,
     PROTOBUF_C_LABEL_OPTIONAL,
     PROTOBUF_C_TYPE_STRING,
@@ -183,7 +183,7 @@ static const ProtobufCFieldDescriptor object_manager__status__observation_point_
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
-    "locationId",
+    "location_id",
     2,
     PROTOBUF_C_LABEL_OPTIONAL,
     PROTOBUF_C_TYPE_STRING,
@@ -207,10 +207,10 @@ static const ProtobufCIntRange object_manager__status__observation_point__number
 const ProtobufCMessageDescriptor object_manager__status__observation_point__descriptor =
 {
   PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
-  "objectManager.status.ObservationPoint",
-  "ObservationPoint",
-  "ObjectManager__Status__ObservationPoint",
-  "objectManager.status",
+  "object_manager.status.observation_point",
+  "observation_point",
+  "object_manager__status__observation_point",
+  "object_manager.status",
   sizeof(ObjectManager__Status__ObservationPoint),
   2,
   object_manager__status__observation_point__field_descriptors,
@@ -222,7 +222,7 @@ const ProtobufCMessageDescriptor object_manager__status__observation_point__desc
 static const ProtobufCFieldDescriptor object_manager__status__object_status__field_descriptors[3] =
 {
   {
-    "objectName",
+    "name",
     1,
     PROTOBUF_C_LABEL_OPTIONAL,
     PROTOBUF_C_TYPE_STRING,
@@ -271,10 +271,10 @@ static const ProtobufCIntRange object_manager__status__object_status__number_ran
 const ProtobufCMessageDescriptor object_manager__status__object_status__descriptor =
 {
   PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
-  "objectManager.status.ObjectStatus",
-  "ObjectStatus",
-  "ObjectManager__Status__ObjectStatus",
-  "objectManager.status",
+  "object_manager.status.object_status",
+  "object_status",
+  "object_manager__status__object_status",
+  "object_manager.status",
   sizeof(ObjectManager__Status__ObjectStatus),
   3,
   object_manager__status__object_status__field_descriptors,
@@ -286,7 +286,7 @@ const ProtobufCMessageDescriptor object_manager__status__object_status__descript
 static const ProtobufCFieldDescriptor object_manager__status__object_status_report__field_descriptors[3] =
 {
   {
-    "reportedAt",
+    "reported_at",
     1,
     PROTOBUF_C_LABEL_OPTIONAL,
     PROTOBUF_C_TYPE_UINT64,
@@ -298,7 +298,7 @@ static const ProtobufCFieldDescriptor object_manager__status__object_status_repo
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
-    "observationPoint",
+    "observation_point",
     2,
     PROTOBUF_C_LABEL_OPTIONAL,
     PROTOBUF_C_TYPE_MESSAGE,
@@ -310,7 +310,7 @@ static const ProtobufCFieldDescriptor object_manager__status__object_status_repo
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
-    "objectStatus",
+    "object_status",
     3,
     PROTOBUF_C_LABEL_REPEATED,
     PROTOBUF_C_TYPE_MESSAGE,
@@ -335,10 +335,10 @@ static const ProtobufCIntRange object_manager__status__object_status_report__num
 const ProtobufCMessageDescriptor object_manager__status__object_status_report__descriptor =
 {
   PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
-  "objectManager.status.ObjectStatusReport",
-  "ObjectStatusReport",
-  "ObjectManager__Status__ObjectStatusReport",
-  "objectManager.status",
+  "object_manager.status.object_status_Report",
+  "Object_status_report",
+  "Object_manager__status__object_status_report",
+  "object_manager.status",
   sizeof(ObjectManager__Status__ObjectStatusReport),
   3,
   object_manager__status__object_status_report__field_descriptors,

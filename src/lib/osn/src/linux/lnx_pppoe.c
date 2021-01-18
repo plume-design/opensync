@@ -34,6 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "const.h"
 #include "ds_tree.h"
+#include "kconfig.h"
 #include "log.h"
 #include "osa_assert.h"
 #include "osn_types.h"
@@ -42,10 +43,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "lnx_pppoe.h"
 #include "lnx_netlink.h"
 
-#define LNX_PPPOE_PPP_DIR       "/tmp/ppp"
-#define LNX_PPPOE_PEERS_DIR     "/tmp/ppp/peers"
-#define LNX_PPPOE_PAP_SECRETS   "/tmp/ppp/pap-secrets"
-#define LNX_PPPOE_CHAP_SECRETS  "/tmp/ppp/chap-secrets"
+#define LNX_PPPOE_PEERS_DIR     CONFIG_OSN_LINUX_PPPOE_ETC_DIR"/peers"
+#define LNX_PPPOE_PAP_SECRETS   CONFIG_OSN_LINUX_PPPOE_ETC_DIR"/pap-secrets"
+#define LNX_PPPOE_CHAP_SECRETS  CONFIG_OSN_LINUX_PPPOE_ETC_DIR"/chap-secrets"
 
 /* Template for the "peers" (config) file */
 const char lnx_pppoe_peers_template[] =
@@ -118,9 +118,9 @@ bool lnx_pppoe_init(lnx_pppoe_t *self, const char *ifname)
 {
     memset(self, 0, sizeof(*self));
 
-    if (mkdir(LNX_PPPOE_PPP_DIR, 0700) != 0 && errno != EEXIST)
+    if (mkdir(CONFIG_OSN_LINUX_PPPOE_ETC_DIR, 0700) != 0 && errno != EEXIST)
     {
-        LOG(WARN, "pppoe: %s: Error creating folder: %s", ifname, LNX_PPPOE_PPP_DIR);
+        LOG(WARN, "pppoe: %s: Error creating folder: %s", ifname, CONFIG_OSN_LINUX_PPPOE_ETC_DIR);
     }
 
     if (mkdir(LNX_PPPOE_PEERS_DIR, 0700) != 0 && errno != EEXIST)
@@ -130,7 +130,7 @@ bool lnx_pppoe_init(lnx_pppoe_t *self, const char *ifname)
 
     STRSCPY_WARN(self->lp_ifname, ifname);
 
-    if (!daemon_init(&self->lp_pppd, "/usr/sbin/pppd", DAEMON_LOG_ALL))
+    if (!daemon_init(&self->lp_pppd, CONFIG_OSN_LINUX_PPPOE_BIN, DAEMON_LOG_ALL))
     {
         LOG(ERR, "pppoe: %s: Unable to initialize pppd daemon object.", ifname);
         return false;

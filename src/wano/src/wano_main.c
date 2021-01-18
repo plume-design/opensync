@@ -76,7 +76,7 @@ void wano_start_builtin_ifaces(void)
     for (ii = 0; ii < wano_builtin_pplines_len; ii++)
     {
         /* Add plug-in pipeline to interface  */
-        if (!wano_ppline_init(&wano_builtin_pplines[ii], pif, "eth", 0, NULL))
+        if (!wano_ppline_init(&wano_builtin_pplines[ii], pif, "eth", 0))
         {
             LOG(ERR, "wano: %s: Error starting plug-in interface on built-in interface.", pif);
         }

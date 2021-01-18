@@ -14,6 +14,7 @@ menuconfig OSN_LINUX_ENABLED
             - UPnP support (via miniupnpd)
             - PPPoE support (via pppd)
             - VLAN support (via iproute2)
+            - QoS support (via tc)
 
 if OSN_LINUX_ENABLED
     config OSN_LINUX_NETIF
@@ -205,18 +206,55 @@ if OSN_LINUX_ENABLED
                     files will be created.
         endif
 
-    config OSN_LINUX_PPPOE
+    menuconfig OSN_LINUX_PPPOE
         bool "Linux pppd PPPoE support"
         default y
         help
             PPPoE support using the pppd daemon and the rp-pppoe plug-in.
             pppd version that supports the "ifname" config option is required.
 
+        config OSN_LINUX_PPPOE_BIN
+            depends on OSN_LINUX_PPPOE
+            string "Path to the pppd binary"
+            default "/usr/sbin/pppd"
+            help
+                Path to the pppd binary.
+
+        config OSN_LINUX_PPPOE_ETC_DIR
+            depends on OSN_LINUX_PPPOE
+            string "Path to the pppd configuration directory"
+            default "/tmp/ppp"
+            help
+                Path to the pppd configuration folder. This folder will be used
+                to generate the pap-secrets, chap-secrets files and entries in
+                peers sub-folder.
+
+        config OSN_LINUX_PPPOE_ETC_SYMLINKS
+            depends on OSN_LINUX_PPPOE
+            bool "Create symlinks in /etc/ppp"
+            default y
+            help
+                pppd has no options for changing the path of various
+                configuration files. This problem is solved by installing
+                symlinks in /etc/ppp which point to the actual configuration
+                files (in /tmp/ppp). However some platforms patch pppd to provide
+                alternative paths. In such cases it is not necessary to use
+                symlinks.
+
+                This options affects only the generation of rootfs.
+
     config OSN_LINUX_VLAN
         bool "Linux VLAN interface support"
         default y
         help
             VLAN support uses the iproute2 package to create VLAN interfaces
+
+    config OSN_LINUX_QOS
+        bool "Linux QoS"
+        default y
+        help
+            QoS management via the tc/qdisc framework. This option implements
+            the lnx_qos API and enables the "Linux" QoS backend (osn_qos).
 
     config OSN_LINUX_ROUTE
         bool "Linux routing table"
@@ -246,5 +284,6 @@ if OSN_LINUX_ENABLED
                     Netlink events may come in bursts. Delaying and aggregating them may
                     yield some performance boost.
         endif
+
 endif
 

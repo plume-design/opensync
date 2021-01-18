@@ -157,6 +157,8 @@ struct nm2_iface
         uint8_t                     gre_remote_inet_addr[NM2_IFACE_INET_CONFIG_SZ(gre_remote_inet_addr)];
         bool                        gre_local_inet_addr_exists;
         uint8_t                     gre_local_inet_addr[NM2_IFACE_INET_CONFIG_SZ(gre_local_inet_addr)];
+        bool                        vlan_id_exists;
+        int                         vlan_id;
     }
     if_cache;
 };

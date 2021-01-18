@@ -80,6 +80,21 @@ menu "Common"
             endchoice
 
             choice
+                prompt "QoS"
+                default OSN_BACKEND_QOS_LINUX
+                source "kconfig/Kconfig.osn.qos_backend"
+            endchoice
+
+            menu "Firewall"
+                choice
+                    prompt "Implementation"
+                    default OSN_BACKEND_FW_IPTABLES_FULL
+                    source "kconfig/Kconfig.osn.fw_backend"
+                endchoice
+                source "kconfig/Kconfig.osn.fw"
+            endmenu
+
+            choice
                 prompt "MAP-T"
                 default OSN_BACKEND_MAPT_NULL
                 source "kconfig/Kconfig.osn.mapt_backend"
@@ -184,3 +199,5 @@ endmenu
 menu "3rdparty Configuration"
     orsource "../3rdparty/*/kconfig/Kconfig.3rdparty"
 endmenu
+
+orsource "Kconfig.hidden"

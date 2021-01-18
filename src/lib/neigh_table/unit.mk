@@ -28,7 +28,8 @@
 #
 ###############################################################################
 UNIT_NAME := neigh_table
-UNIT_DISABLE := $(if $(CONFIG_MANAGER_FCM),n,y)
+
+UNIT_DISABLE:= $(if $(CONFIG_LIBNEIGH_TABLE),n,y)
 
 UNIT_TYPE := LIB
 UNIT_DIR := lib

@@ -66,7 +66,9 @@ struct flow_state
 struct flow_key
 {
     char *smac;         /*!< source mac address of the flow */
+    bool isparent_of_smac;  /*!< is this report from parent of the source mac. */
     char *dmac;         /*!< destination mac address of the flow */
+    bool isparent_of_dmac;  /*!< is this report from parent of the reporting pod. */
     uint32_t vlan_id;   /*!< valid vlan id if detected, 0 otherwise */
     uint16_t ethertype; /*!< ethernet type as defined by IANA */
     uint8_t ip_version; /*!< ip version */

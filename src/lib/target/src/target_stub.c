@@ -732,3 +732,23 @@ bool target_get_mld_mcproxy_sys_params(struct schema_MLD_Config *mlcfg)
     return false;
 }
 #endif
+
+#ifndef IMPL_target_set_mcast_uplink
+bool target_set_mcast_uplink(const char *ifname, bool enable, bool is_wan, const char *bridge)
+{
+    (void)ifname;
+    (void)enable;
+    (void)is_wan;
+    (void)bridge;
+    return true;
+}
+#endif
+
+#ifndef IMPL_target_set_igmp_snooping
+bool target_set_igmp_snooping(const char *ifname, bool enable)
+{
+    (void)ifname;
+    (void)enable;
+    return true;
+}
+#endif

@@ -195,7 +195,7 @@ bool nm2_inet_util_get_snooping_intfs(target_mcproxy_params_t *proxy_params)
         return false;
     }
 
-   proxy_params->dwnstrm_ifs = (ifname *)calloc(1, cnt * sizeof(ifname *));
+   proxy_params->dwnstrm_ifs = (ifname *)calloc(cnt, sizeof(proxy_params->dwnstrm_ifs[0]));
 
     for (i = 0; i < cnt; i++)
     {
@@ -284,6 +284,14 @@ bool nm2_inet_interface_set(
         retval = false;
     }
 
+    if (iconf->no_flood_exists && !inet_noflood_set(piface->if_inet, iconf->no_flood))
+    {
+        LOG(WARN, "inet_config: %s (%s): Error setting no-flood to %s.",
+                piface->if_name,
+                nm2_iftype_tostr(piface->if_type),
+                iconf->no_flood ? "true" : "false");
+    }
+
     if (!inet_parent_ifname_set(piface->if_inet, iconf->parent_ifname_exists ? iconf->parent_ifname : NULL))
     {
         LOG(WARN, "inet_config: %s (%s): Error setting parent interface name.",
@@ -327,6 +335,16 @@ bool nm2_inet_igmp_set(
     if (!inet_igmp_enable(piface->if_inet, iigmp, iage, itsize))
     {
         LOG(WARN, "inet_config: %s (%s): Error enabling IGMP (%d).",
+                piface->if_name,
+                nm2_iftype_tostr(piface->if_type),
+                iconf->igmp_exists && iconf->igmp);
+
+        return false;
+    }
+
+    if (!target_set_igmp_snooping(piface->if_name, iigmp))
+    {
+        LOG(WARN, "inet_config: %s (%s): Error set target IGMP (%d).",
                 piface->if_name,
                 nm2_iftype_tostr(piface->if_type),
                 iconf->igmp_exists && iconf->igmp);
@@ -993,6 +1011,8 @@ void nm2_inet_copy(
     NM2_IFACE_INET_CONFIG_COPY(piface->if_cache.gre_remote_inet_addr, iconf->gre_remote_inet_addr);
     piface->if_cache.gre_local_inet_addr_exists = iconf->gre_local_inet_addr_exists;
     NM2_IFACE_INET_CONFIG_COPY(piface->if_cache.gre_local_inet_addr, iconf->gre_local_inet_addr);
+    piface->if_cache.vlan_id_exists = iconf->vlan_id_exists;
+    NM2_IFACE_INET_CONFIG_COPY(piface->if_cache.vlan_id, iconf->vlan_id);
 }
 
 

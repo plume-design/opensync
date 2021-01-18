@@ -57,7 +57,8 @@ menu "libinet Configuration"
             comment "INET firewall configuration"
             choice
                 prompt "Firewall implementation"
-                default INET_FW_NULL
+                default INET_FW_IPTABLES if OPENSYNC_LEGACY_FIREWALL
+                default INET_FW_NFM if OPENSYNC_NFM_FIREWALL
 
                 config INET_FW_NULL
                     bool "Null"
@@ -68,8 +69,18 @@ menu "libinet Configuration"
 
                 config INET_FW_IPTABLES
                     bool "iptables"
+                    depends on OPENSYNC_LEGACY_FIREWALL
                     help
                         Use the generic Linux iptables firewall implementation.
+
+                config INET_FW_NFM
+                    bool "Netfilter Manager"
+                    depends on OPENSYNC_NFM_FIREWALL
+                    help
+                        Use NFM for firewall management. With this option enabled,
+                        libinet will use the Netfilter table to manage NAT/LAN and
+                        port forwarding firewall rules. NFM should be enabled in
+                        order to apply rules from the Netfilter table to the system.
             endchoice
 
             if INET_FW_IPTABLES

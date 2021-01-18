@@ -29,6 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <getopt.h>      /* command line arguments */
 #include <time.h>
 #include <string.h>
+#include <errno.h>
 
 #include "log.h"         /* Logging routines */
 #include "json_util.h"   /* json routines */
@@ -592,12 +593,41 @@ void delete_collect_config(struct schema_FCM_Collector_Config *conf)
 
 bool fcm_init_mgr(struct ev_loop *loop)
 {
-    fcm_mgr.loop = loop;
+    fcm_mgr_t *mgr;
+    int rc;
+
+    mgr = fcm_get_mgr();
+    memset(mgr, 0, sizeof(fcm_mgr_t));
+    mgr->loop = loop;
+
+    snprintf(mgr->pid, sizeof(mgr->pid), "%d", (int)getpid());
     ds_tree_init(&fcm_mgr.collect_tree, fcm_tree_node_cmp,
                  fcm_collector_t, node);
     ds_tree_init(&fcm_mgr.report_conf_tree, fcm_tree_node_cmp,
                  fcm_report_conf_t, node);
-    LOGD("FCM Manager Initialized\n");
+
+    /* Check the max amount of memory available */
+    rc = sysinfo(&mgr->sysinfo);
+    if (rc != 0)
+    {
+        rc = errno;
+        LOGE("%s: sysinfo failed: %s", __func__, strerror(rc));
+        memset(&mgr->sysinfo, 0, sizeof(mgr->sysinfo));
+        mgr->max_mem = INT_MAX;
+    }
+    else
+    {
+        /* Set default to 50% of the max mem available */
+        mgr->max_mem = (mgr->sysinfo.totalram * mgr->sysinfo.mem_unit) / 2;
+        mgr->max_mem /= 1000; /* kB */
+        LOGI("%s: fcm default max memory usage: %" PRIu64 " kB", __func__,
+             mgr->max_mem);
+    }
+
+    /* Set the default timer for neigh_table entries*/
+    mgr->neigh_cache_ttl = FCM_NEIGH_SYS_ENTRY_TTL;
+
+    LOGI("FCM Manager Initialized\n");
     return true;
 }
 

@@ -31,7 +31,8 @@ typedef enum {
     CM2_RESTORE_IP = 0,               // Bit 0
     CM2_RESTORE_SWITCH_DUMP_DATA,     // Bit 1
     CM2_RESTORE_SWITCH_FIX_PORT_MAP,  // Bit 2
-    CM2_RESTORE_SWITCH_FIX_AUTON      // Bit 3
+    CM2_RESTORE_SWITCH_FIX_AUTON,     // Bit 3
+    CM2_RESTORE_MAIN_LINK,            // Bit 4
 } cm2_restore_con_t;
 
 #ifndef CONFIG_CM2_STABILITY_USE_RESTORE_SWITCH_CFG

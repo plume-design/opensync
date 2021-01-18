@@ -36,7 +36,6 @@ UNIT_TYPE := LIB
 UNIT_CFLAGS += -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -I$(UNIT_PATH)/src
 
-UNIT_SRC += src/osn_fw.c
 UNIT_SRC += src/osn_types.c
 
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_NETIF_NULL),src/osn_netif_null.c)
@@ -75,6 +74,13 @@ UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_PPPOE_LINUX),src/osn_pppoe_linux.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_VLAN_NULL),src/osn_vlan_null.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_VLAN_LINUX),src/osn_vlan_linux.c)
 
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_QOS_NULL),src/osn_qos_null.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_QOS_LINUX),src/osn_qos_linux.c)
+
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_FW_NULL),src/osn_fw_null.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_FW_IPTABLES_FULL),src/osn_fw_iptables_full.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_FW_IPTABLES_THIN),src/osn_fw_iptables_thin.c)
+
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_MAPT_NULL),src/osn_mapt_null.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_MAPT_CERNET),src/osn_mapt_cernet.c)
 
@@ -93,6 +99,7 @@ UNIT_SRC += $(if $(CONFIG_OSN_ODHCP6),src/linux/odhcp6_client.c)
 UNIT_SRC += $(if $(CONFIG_OSN_UDHCPC),src/linux/udhcp_client.c)
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_PPPOE),src/linux/lnx_pppoe.c)
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_VLAN),src/linux/lnx_vlan.c)
+UNIT_SRC += $(if $(CONFIG_OSN_LINUX_QOS),src/linux/lnx_qos.c)
 
 UNIT_DEPS += src/lib/daemon
 UNIT_DEPS += src/lib/evx

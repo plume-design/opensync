@@ -1,0 +1,14 @@
+menuconfig MANAGER_QOSM
+    bool "QoS Manager (QoSM)"
+    default n
+    help
+        Enable QoS Manager (QoSM)
+
+if MANAGER_QOSM
+    config MANAGER_QOSM_CFG
+        string "QoSM Startup configuration"
+        default "qosm;true"
+        help
+            QoS Manager startup configuration
+endif
+

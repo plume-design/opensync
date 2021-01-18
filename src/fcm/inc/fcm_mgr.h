@@ -29,10 +29,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <ev.h>          // libev routines
 #include <time.h>
+#include <sys/sysinfo.h>
 
 #include "ds_tree.h"
 #include "fcm.h"
 #include "schema.h"
+
+#define FCM_NEIGH_SYS_ENTRY_TTL (36*60*60)
 
 typedef struct fcm_mgr_
 {
@@ -44,6 +47,8 @@ typedef struct fcm_mgr_
     time_t periodic_ts;          // periodic timestamp
     char pid[16];                // manager's pid
     int64_t neigh_cache_ttl;     // neighbour table cache ttl
+    struct sysinfo sysinfo;      /* system information */
+    uint64_t max_mem;            /* max amount of memory allowed in kB */
 } fcm_mgr_t;
 
 bool fcm_init_mgr(struct ev_loop *loop);
@@ -54,5 +59,7 @@ void delete_collect_config(struct schema_FCM_Collector_Config *conf);
 void init_report_config(struct schema_FCM_Report_Config *conf);
 void update_report_config(struct schema_FCM_Report_Config *conf);
 void delete_report_config(struct schema_FCM_Report_Config *conf);
-
+void fcm_rm_node_config(struct schema_Node_Config *old_rec);
+void fcm_get_node_config(struct schema_Node_Config *node_cfg);
+void fcm_update_node_config(struct schema_Node_Config *node_cfg);
 #endif /* FCM_MGR_H_INCLUDED */

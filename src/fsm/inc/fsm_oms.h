@@ -53,6 +53,18 @@ struct fsm_object *
 fsm_oms_get_highest_version(struct fsm_session *session, char *name,
                             char *max_version);
 
+/**
+ * @brief return the last active version of an object
+ *
+ * @param session the querying fsm session
+ * @param object the object name
+ * @return the object with the active version
+ *
+ * If no last active version is saved in persistent storage return NULL
+ * The caller is responsible for freeing the returned object
+ */
+struct fsm_object *
+fsm_oms_get_last_active_version(struct fsm_session *session, char *name);
 
 /**
  * @brief initializes the oms library

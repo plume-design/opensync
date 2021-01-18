@@ -957,8 +957,20 @@ static Traffic__FlowKey *set_flow_key(struct flow_key *key)
     ret = str_duplicate(key->smac, &pb->srcmac);
     if (!ret) goto err_free_pb;
 
+    if (key->isparent_of_smac)
+    {
+        pb->has_parentofsrcmac = true;
+        pb->parentofsrcmac = true;
+    }
+
     ret = str_duplicate(key->dmac, &pb->dstmac);
     if (!ret) goto err_free_srcmac;
+
+    if (key->isparent_of_dmac)
+    {
+        pb->has_parentofdstmac = true;
+        pb->parentofdstmac = true;
+    }
 
     ret = str_duplicate(key->src_ip, &pb->srcip);
     if (!ret) goto err_free_dstmac;

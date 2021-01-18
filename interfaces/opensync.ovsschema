@@ -1,7 +1,7 @@
 {
   "name": "Open_vSwitch",
-  "version": "7.11.229",
-  "cksum": "1996913466 199967",
+  "version": "7.11.233",
+  "cksum": "2978226557 202173",
   "tables": {
     "AWLAN_Node": {
       "columns": {
@@ -903,6 +903,15 @@
             "key": {
               "type": "boolean"
             }
+          }
+        },
+        "no_flood": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
           }
         }
       },
@@ -7222,6 +7231,16 @@
             "min": 0,
             "max": 64
           }
+        },
+        "qos": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "Interface_QoS"
+            },
+            "min": 0,
+            "max": 1
+          }
         }
       },
       "isRoot": true,
@@ -8926,6 +8945,96 @@
           }
         },
         "isRoot": true
+    },
+    "Interface_QoS": {
+      "columns": {
+        "queues": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "Interface_Queue"
+            },
+            "min": 0,
+            "max": 64
+          }
+        },
+        "other_config": {
+          "type": {
+            "key": "string",
+            "value": "string",
+            "min": 0,
+            "max": 64
+          }
+        },
+        "status": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "success",
+                  "error"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          },
+          "ephemeral": true
+        }
+      }
+    },
+    "Interface_Queue": {
+      "columns": {
+        "priority": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "bandwidth": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "tag": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            },
+            "min": 1,
+            "max": 1
+          }
+        },
+        "other_config": {
+          "type": {
+            "key": "string",
+            "value": "string",
+            "min": 0,
+            "max": 64
+          }
+        },
+        "mark": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          },
+          "ephemeral": true
+        }
+      }
     }
   }
 }

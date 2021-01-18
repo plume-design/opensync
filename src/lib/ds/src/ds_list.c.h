@@ -254,7 +254,7 @@ static inline void* ds_list_inext(ds_list_iter_t *iter)
 
 static inline void* ds_list_iinsert(ds_list_iter_t *iter, void *data)
 {
-    data = ds_list_inext_err(iter);
+    data = ds_list_iinsert_err(iter, data);
     ASSERT(data != DS_ITER_ERROR, "ds_list: iinsert: [%p] iteration error", iter->oli_list);
     return data;
 }

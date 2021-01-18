@@ -118,6 +118,7 @@ void process_neigh_event(struct nf_neigh_info *neigh_info)
     os_macaddr_t *pmac;
     char *ifn;
     bool rc;
+    time_t now;
 
     pmac = (neigh_info->hwaddr != NULL) ? neigh_info->hwaddr : &mac;
     inet_ntop(neigh_info->af_family, neigh_info->ipaddr, ipstr, sizeof(ipstr));
@@ -130,12 +131,13 @@ void process_neigh_event(struct nf_neigh_info *neigh_info)
          neigh_info->delete ? "del" : "no_del",
          (ifn != NULL) ? ifn : "none");
     memset(&entry, 0, sizeof(entry));
-
+    now = time(NULL);
     entry.af_family = neigh_info->af_family;
     entry.ip_tbl = neigh_info->ipaddr;
     entry.source = neigh_info->source;
     entry.mac = neigh_info->hwaddr;
     entry.ifindex = neigh_info->ifindex;
+    entry.cache_valid_ts = now;
     if (neigh_info->add)
     {
         rc = neigh_table_add_to_cache(&entry);

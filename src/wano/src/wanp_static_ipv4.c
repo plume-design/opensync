@@ -66,6 +66,9 @@ typedef struct
     osn_ip_addr_t gateway;
     osn_ip_addr_t dns1;
     osn_ip_addr_t dns2;
+
+    /** True if this plug-in detected a working WAN configuration */
+    bool plugin_has_wan;
 } wanp_static_ipv4_handle_t;
 
 static void wanp_static_ipv4_module_start(void);
@@ -83,6 +86,12 @@ static struct wano_plugin wanp_static_ipv4 = WANO_PLUGIN_INIT(
         wanp_static_ipv4_run,
         wanp_static_ipv4_fini);
 
+/*
+ * This variable will be set to true if a plug-in instance successfully probes
+ * a static IPv4 WAN configuration. In such case all other instances should fail
+ * until this flag is cleared.
+ */
+static bool wanp_static_ipv4_wan_lock = false;
 
 static void ping_fd_watcher_cb(struct ev_loop *loop, ev_io *w, int revents)
 {
@@ -310,6 +319,9 @@ enum wanp_static_ipv4_state wanp_static_ipv4_state_RUNNING(
     if (action == wanp_static_ipv4_do_STATE_INIT)
     {
         struct wano_plugin_status ws = WANO_PLUGIN_STATUS(WANP_OK);
+
+        h->plugin_has_wan = true;
+        wanp_static_ipv4_wan_lock = true;
         h->status_fn(&h->handle, &ws);
     }
 
@@ -341,6 +353,13 @@ wano_plugin_handle_t *wanp_static_ipv4_init(
         wano_plugin_status_fn_t *status_fn)
 {
     wanp_static_ipv4_handle_t *h;
+
+    if (wanp_static_ipv4_wan_lock)
+    {
+        LOG(INFO, "static_ipv4: %s: Another plug-in instance is active.",
+                ifname);
+        return NULL;
+    }
 
     h = calloc(1, sizeof(wanp_static_ipv4_handle_t));
     ASSERT(h != NULL, "Error allocating static_ipv4 object")
@@ -422,6 +441,12 @@ void wanp_static_ipv4_run(wano_plugin_handle_t *wh)
 void wanp_static_ipv4_fini(wano_plugin_handle_t *wh)
 {
     wanp_static_ipv4_handle_t *wsh = CONTAINER_OF(wh, wanp_static_ipv4_handle_t, handle);
+
+    /* If this plug-in holds the global WAN lock, release it */
+    if (wsh->plugin_has_wan)
+    {
+        wanp_static_ipv4_wan_lock = false;
+    }
 
     if (wsh->ping_pid > 0)
     {

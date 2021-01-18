@@ -58,7 +58,7 @@ static void lnx_ip_status_poll(lnx_ip_t *self);
 static char lnx_ip_addr_add_cmd[] = _S(ip address add "$2/$3" broadcast "+" dev "$1");
 static char lnx_ip_addr_flush_cmd[] = _S([ ! -e "/sys/class/net/$1" ] || ip -4 address flush dev "$1");
 
-static char lnx_ip_route_gw_add_cmd[] = _S(ip route add "$2" via "$3" dev "$1");
+static char lnx_ip_route_gw_add_cmd[] = _S(route add "$2" gw "$3" dev "$1");
 
 /* Scope global doesn't flush "local" or "link" routes */
 static char lnx_ip_route_gw_flush_cmd[] = _S([ ! -e "/sys/class/net/$1" ] || ip -4 route flush dev "$1" scope global);

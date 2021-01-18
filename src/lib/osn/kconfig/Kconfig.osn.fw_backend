@@ -1,0 +1,29 @@
+config OSN_BACKEND_FW_NULL
+    bool "Null"
+    help
+        Use dummy Firewall implementation
+
+config OSN_BACKEND_FW_IPTABLES_FULL
+    bool "iptables full"
+    help
+        Use the iptables full backend.
+
+        This implementation uses the iptables-restore command to apply firewall
+        rules and fully takes control over system firewall configuration. This
+        means that any rules that were not applied via this API will be
+        destroyed. This allows for tighter control of firewall rules and
+        guarantees atomicity.
+
+config OSN_BACKEND_FW_IPTABLES_THIN
+    bool "iptables thin"
+    help
+        Use the iptables thin backend.
+
+        As opposed to the full implementation, the thin implementation uses the
+        standard `iptables` command to manipulate firewall rules. It works on a
+        iptables chain scope, meaning that it does not touch tables or chains
+        that are not referenced in the Netfilter table.
+
+        Use this option when you just want NFM to manage selected chains instead
+        of the global firewall configuration.
+

@@ -1,0 +1,146 @@
+[
+    "Open_vSwitch"
+{% if 'CONFIG_OPENSYNC_NFM_FIREWALL' in KCONFIG_ALL %}
+    ,
+    {
+        "op":"insert",
+        "table":"Netfilter",
+        "row": {
+            "name": "default.input.related_and_established",
+            "enable": true,
+            "priority": 0,
+            "protocol": "ipv6",
+            "table": "filter",
+            "chain": "INPUT",
+            "rule": "-m state --state RELATED,ESTABLISHED",
+            "target": "ACCEPT"
+        }
+    },
+    {
+        "op":"insert",
+        "table":"Netfilter",
+        "row": {
+            "name": "default.output.related_and_established",
+            "enable": true,
+            "priority": 0,
+            "protocol": "ipv6",
+            "table": "filter",
+            "chain": "OUTPUT",
+            "rule": "-m state --state RELATED,ESTABLISHED",
+            "target": "ACCEPT"
+        }
+    },
+    {
+        "op":"insert",
+        "table":"Netfilter",
+        "row": {
+            "name": "default.forward.related_and_established",
+            "enable": true,
+            "priority": 0,
+            "protocol": "ipv6",
+            "table": "filter",
+            "chain": "FORWARD",
+            "rule": "-m state --state RELATED,ESTABLISHED",
+            "target": "ACCEPT"
+        }
+    },
+    {
+        "op":"insert",
+        "table":"Netfilter",
+        "row": {
+            "name": "default.ipv6.local",
+            "enable": true,
+            "priority": 0,
+            "protocol": "ipv6",
+            "table": "filter",
+            "chain": "INPUT",
+            "rule": "-i lo",
+            "target": "ACCEPT"
+        }
+    },
+    {
+        "op":"insert",
+        "table":"Netfilter",
+        "row": {
+            "name": "default.ipv6.eth0.debugnet",
+            "enable": true,
+            "priority": 0,
+            "protocol": "ipv6",
+            "table": "filter",
+            "chain": "INPUT",
+            "rule": "-i eth0.4",
+            "target": "ACCEPT"
+        }
+    },
+    {
+        "op":"insert",
+        "table":"Netfilter",
+        "row": {
+            "name": "default.ipv6.eth1.debugnet",
+            "enable": true,
+            "priority": 0,
+            "protocol": "ipv6",
+            "table": "filter",
+            "chain": "INPUT",
+            "rule": "-i eth1.4",
+            "target": "ACCEPT"
+        }
+    },
+    {
+        "op":"insert",
+        "table":"Netfilter",
+        "row": {
+            "name": "default.ipv6.icmp",
+            "enable": true,
+            "priority": 0,
+            "protocol": "ipv6",
+            "table": "filter",
+            "chain": "INPUT",
+            "rule": "-p icmpv6",
+            "target": "ACCEPT"
+        }
+    },
+    {
+        "op":"insert",
+        "table":"Netfilter",
+        "row": {
+            "name": "default.ipv6.dhcpv6",
+            "enable": true,
+            "priority": 0,
+            "protocol": "ipv6",
+            "table": "filter",
+            "chain": "INPUT",
+            "rule": "-m state --state NEW -m udp -p udp --dport 546 -d fe80::/64",
+            "target": "ACCEPT"
+        }
+    },
+    {
+        "op":"insert",
+        "table":"Netfilter",
+        "row": {
+            "name": "default.ipv6.nm_input",
+            "enable": true,
+            "priority": 1000,
+            "protocol": "ipv6",
+            "table": "filter",
+            "chain": "INPUT",
+            "rule": "",
+            "target": "NM_INPUT"
+        }
+    },
+    {
+        "op":"insert",
+        "table":"Netfilter",
+        "row": {
+            "name": "default.ipv6.nm_forward",
+            "enable": true,
+            "priority": 1000,
+            "protocol": "ipv6",
+            "table": "filter",
+            "chain": "FORWARD",
+            "rule": "",
+            "target": "NM_FORWARD"
+        }
+    }
+{% endif %}
+]

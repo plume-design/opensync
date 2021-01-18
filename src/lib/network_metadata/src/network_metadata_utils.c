@@ -440,9 +440,13 @@ struct net_md_flow_key * set_net_md_flow_key(struct net_md_flow_key *lkey)
     err = ((key->smac == NULL) && (lkey->smac != NULL));
     if (err) goto err_free_key;
 
+    key->isparent_of_smac = lkey->isparent_of_smac;
+
     key->dmac = net_md_set_os_macaddr(lkey->dmac);
     err = ((key->dmac == NULL) && (lkey->dmac != NULL));
     if (err) goto err_free_smac;
+
+    key->isparent_of_dmac = lkey->isparent_of_dmac;
 
     ret = net_md_set_ip(lkey->ip_version, lkey->src_ip, &key->src_ip);
     if (!ret) goto err_free_dmac;
@@ -494,6 +498,7 @@ struct flow_key * net_md_set_flow_key(struct net_md_flow_key *key)
                  FMT_os_macaddr_pt(key->smac));
         fkey->smac = strndup(buf, sizeof(buf));
         if (fkey->smac == NULL) goto err_free_fkey;
+        fkey->isparent_of_smac = key->isparent_of_smac;
     }
 
     if (key->dmac != NULL)
@@ -502,6 +507,7 @@ struct flow_key * net_md_set_flow_key(struct net_md_flow_key *key)
                  FMT_os_macaddr_pt(key->dmac));
         fkey->dmac = strndup(buf, sizeof(buf));
         if (fkey->dmac == NULL) goto err_free_smac;
+        fkey->isparent_of_dmac = key->isparent_of_dmac;
     }
 
     fkey->vlan_id = key->vlan_id;
@@ -1824,6 +1830,8 @@ net_md_log_acc(struct net_md_stats_accumulator *acc)
     LOGD("------------");
     LOGD(" smac:" PRI_os_macaddr_lower_t \
          " dmac:" PRI_os_macaddr_lower_t \
+         " isparent_of_smac: %s"         \
+         " isparent_of_dmac: %s"         \
          " vlanid: %d"                   \
          " ethertype: %d"                \
          " ip_version: %d"               \
@@ -1834,6 +1842,8 @@ net_md_log_acc(struct net_md_stats_accumulator *acc)
          " dport: %d",
          FMT_os_macaddr_pt(smac),
          FMT_os_macaddr_pt(dmac),
+         (key->isparent_of_smac ? "true" : "false"),
+         (key->isparent_of_dmac ? "true" : "false"),
          key->vlan_id,
          key->ethertype,
          key->ip_version,
@@ -1848,6 +1858,8 @@ net_md_log_acc(struct net_md_stats_accumulator *acc)
 
     LOGD(" smac: %s"      \
          " dmac: %s"      \
+         " isparent_of_smac: %s"    \
+         " isparent_of_dmac: %s"    \
          " vlanid: %d"    \
          " ethertype: %d" \
          " ip_version: %d"\
@@ -1858,6 +1870,8 @@ net_md_log_acc(struct net_md_stats_accumulator *acc)
          " dport: %d",
          fkey->smac,
          fkey->dmac,
+         (fkey->isparent_of_smac ? "true" : "false"),
+         (fkey->isparent_of_dmac ? "true" : "false"),
          fkey->vlan_id,
          fkey->ethertype,
          fkey->ip_version,

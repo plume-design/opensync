@@ -35,6 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "log.h"
 #include "util.h"
+#include "execsh.h"
 
 #include "osn_netif.h"
 
@@ -50,8 +51,23 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 static bool inet_eth_dtor(inet_t *super);
 static osn_netif_status_fn_t inet_eth_netif_status_fn;
 static osn_ip_status_fn_t inet_eth_ip4_status_fn;
+static bool inet_eth_noflood_set(inet_t *self, bool enable);
 static bool inet_eth_service_IF_READY(inet_eth_t *self, bool enable);
 static bool inet_eth_network_start(inet_eth_t *self, bool enable);
+
+/*
+ * ===========================================================================
+ *  Globals
+ * ===========================================================================
+ */
+
+/*
+ * Command for enabling the "no-flood" option for OVS interfaces
+ */
+static char inet_eth_ovs_noflood_cmd[] = _S(
+        ifname="$1";
+        flood="$2";
+        bridge=$(ovs-vsctl port-to-br "$ifname") && ovs-ofctl mod-port "$bridge" "$ifname" "$flood");
 
 /*
  * ===========================================================================
@@ -101,6 +117,7 @@ bool inet_eth_init(inet_eth_t *self, const char *ifname)
     /* Override inet_t class methods */
     self->inet.in_dtor_fn = inet_eth_dtor;
     self->base.in_service_commit_fn = inet_eth_service_commit;
+    self->inet.in_noflood_set_fn = inet_eth_noflood_set;
 
     /*
      * Initialize osn_netif_t -- L2 interface for ethernet-like interfaces
@@ -152,6 +169,24 @@ bool inet_eth_fini(inet_eth_t *self)
 
     /* Call parent destructor */
     return retval;
+}
+
+bool inet_eth_noflood_set(inet_t *super, bool enable)
+{
+    inet_eth_t *self = CONTAINER_OF(super, inet_eth_t, inet);
+
+    self->in_noflood_set = true;
+    self->in_noflood = enable;
+
+    /* Restart the MTU service to which the noflood option is tied to */
+    if (!inet_unit_restart(self->base.in_units, INET_BASE_MTU, true))
+    {
+        LOG(ERR, "inet_base: %s: Error restarting INET_BASE_MTU (noflood)",
+                self->inet.in_ifname);
+        return false;
+    }
+
+    return true;
 }
 
 /*
@@ -351,6 +386,26 @@ bool inet_eth_scheme_static_start(inet_eth_t *self, bool enable)
 bool inet_eth_mtu_start(inet_eth_t *self, bool enable)
 {
     if (!enable) return true;
+
+    /*
+     * No flood flag: This might not exactly belong under the MTU category, but
+     * creating another service just for this option seems a bit overkill.
+     */
+    if (self->in_noflood_set)
+    {
+        int rc;
+
+        rc = execsh_log(
+                LOG_SEVERITY_INFO,
+                inet_eth_ovs_noflood_cmd,
+                self->inet.in_ifname,
+                self->in_noflood ? "no-flood" : "flood");
+        if (rc != 0)
+        {
+            LOG(WARN, "inet_eth: %s: Error setting no-flood.",
+                    self->inet.in_ifname);
+        }
+    }
 
     /* MTU not set */
     if (self->base.in_mtu <= 0) return true;

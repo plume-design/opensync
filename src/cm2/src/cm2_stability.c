@@ -141,10 +141,16 @@ static void cm2_restore_connection(cm2_restore_con_t opt)
     if (!cm2_is_eth_type(g_state.link.if_type))
         return;
 
-    if (opt & (1 << CM2_RESTORE_IP))
+    if (opt & (1 << CM2_RESTORE_IP)) {
         cm2_ovsdb_refresh_dhcp(cm2_get_uplink_name());
-    else
+    }
+    else if (opt & (1 << CM2_RESTORE_MAIN_LINK)) {
+        WARN_ON(!cm2_ovsdb_set_Wifi_Inet_Config_interface_enabled(false, cm2_get_uplink_name()));
+        WARN_ON(!cm2_ovsdb_set_Wifi_Inet_Config_interface_enabled(true, cm2_get_uplink_name()));
+    }
+    else {
         cm2_restore_switch_cfg(opt);
+    }
 }
 
 static void cm2_stability_handle_fatal_state(int counter)
@@ -153,35 +159,37 @@ static void cm2_stability_handle_fatal_state(int counter)
         return; 
 
     if (cm2_is_config_via_ble_enabled() &&
-        !g_state.is_onboarded) {
+        g_state.dev_type == CM2_DEVICE_NONE &&
+        (!g_state.link.is_used || cm2_is_eth_type(g_state.link.if_type))) {
         LOGI("Stability: Enabling two way mode comunication");
         cm2_ovsdb_ble_set_connectable(true);
         return;
     }
 
     if (cm2_vtag_stability_check() &&
-        !g_state.link.is_limp_state &&
-        g_state.gw_offline_cnt == 0 &&
+        g_state.dev_type != CM2_DEVICE_ROUTER &&
+        g_state.cnts.gw_offline == 0 &&
         counter + 1 > CONFIG_CM2_STABILITY_THRESH_FATAL) {
-            LOGW("Restart managers due to exceeding the threshold for fatal failures");
-            cm2_ovsdb_dump_debug_data();
-            cm2_tcpdump_stop(g_state.link.if_name);
-            WARN_ON(!target_device_wdt_ping());
-            target_device_restart_managers();
-        }
+        LOGW("Restart managers due to exceeding the threshold for fatal failures");
+        cm2_ovsdb_dump_debug_data();
+        cm2_tcpdump_stop(g_state.link.if_name);
+        WARN_ON(!target_device_wdt_ping());
+        target_device_restart_managers();
+    }
 }
 
-void cm2_connection_req_stability_check(target_connectivity_check_option_t opts)
+bool cm2_connection_req_stability_check(target_connectivity_check_option_t opts, bool db_update)
 {
     struct schema_Connection_Manager_Uplink con;
     target_connectivity_check_t             cstate;
     cm2_restore_con_t                       ropt;
     const char                              *bridge;
+    bool                                    status;
     bool                                    ret;
     int                                     counter;
 
     if (!cm2_is_extender()) {
-        return;
+        return true;
     }
 
     //TODO for all active links
@@ -193,58 +201,67 @@ void cm2_connection_req_stability_check(target_connectivity_check_option_t opts)
         LOGN("Waiting for new active link");
         g_state.ble_status = 0;
         cm2_ovsdb_connection_update_ble_phy_link();
-        return;
+        return false;
     }
 
     ret = cm2_ovsdb_connection_get_connection_by_ifname(if_name, &con);
     if (!ret) {
         LOGW("%s interface does not exist", __func__);
-        return;
-    }
-
-    if (con.bridge_exists &&
-        !cm2_ovsdb_validate_bridge_port_conf(con.bridge, g_state.link.if_name)) {
-        LOGW("Detected abnormal situation, main link %s con.bridge = %s", if_name, con.bridge);
-        counter = con.unreachable_link_counter < 0 ? 1 : con.unreachable_link_counter + 1;
-        LOGI("Detected broken link. Counter = %d", counter);
-
-        if (counter == CONFIG_CM2_STABILITY_THRESH_LINK) {
-            ret = cm2_ovsdb_set_Wifi_Inet_Config_network_state(false, g_state.link.if_name);
-            if (!ret)
-                LOGW("Force disable main uplink interface failed");
-            else
-                g_state.link.restart_pending = true;
-            ret = cm2_ovsdb_set_Wifi_Inet_Config_network_state(true, g_state.link.if_name);
-            if (counter + 1 > CONFIG_CM2_STABILITY_THRESH_FATAL) {
-                cm2_stability_handle_fatal_state(counter);
-                counter = 0;
-            }
-        }
-
-        ret = cm2_ovsdb_connection_update_unreachable_link_counter(if_name, counter);
-        if (!ret)
-            LOGW("%s Failed update link counter in ovsdb table", __func__);
-        return;
+        return false;
     }
 
     /* Ping WDT before run connectivity check */
     WARN_ON(!target_device_wdt_ping());
 
-    ret = target_device_connectivity_check(if_name, &cstate, opts);
+    status = target_device_connectivity_check(if_name, &cstate, opts);
     bridge = con.bridge_exists ? con.bridge : "none";
     LOGN("Connection status %d, main link: %s bridge: %s opts: = %x",
-         ret, if_name, bridge, opts);
+         status, if_name, bridge, opts);
     LOGD("%s: Stability counters: [%d, %d, %d, %d]",if_name,
          con.unreachable_link_counter, con.unreachable_router_counter,
          con.unreachable_internet_counter, con.unreachable_cloud_counter);
     LOGD("%s: Stability states: [%d, %d, %d]", if_name,
          cstate.link_state, cstate.router_state, cstate.internet_state);
 
+    if (!db_update)
+        return status;
+
+    if (g_state.link.is_bridge &&
+        !strcmp(g_state.link.bridge_name, con.bridge) &&
+        con.bridge_exists &&
+        !cm2_ovsdb_validate_bridge_port_conf(con.bridge, g_state.link.if_name))
+    {
+        LOGW("Detected abnormal situation, main link %s con.bridge = %s", if_name, con.bridge);
+
+        counter = con.unreachable_link_counter < 0 ? 1 : con.unreachable_link_counter + 1;
+        if (counter > 0) {
+            LOGI("Detected broken link. Counter = %d", counter);
+
+            if (counter == CONFIG_CM2_STABILITY_THRESH_LINK) {
+                ret = cm2_ovsdb_set_Wifi_Inet_Config_network_state(false, g_state.link.if_name);
+                if (!ret)
+                    LOGW("Force disable main uplink interface failed");
+                else
+                    g_state.link.restart_pending = true;
+                ret = cm2_ovsdb_set_Wifi_Inet_Config_network_state(true, g_state.link.if_name);
+                if (counter + 1 > CONFIG_CM2_STABILITY_THRESH_FATAL) {
+                    cm2_stability_handle_fatal_state(counter);
+                    counter = 0;
+                }
+            }
+
+            ret = cm2_ovsdb_connection_update_unreachable_link_counter(if_name, counter);
+            if (!ret)
+                LOGW("%s Failed update link counter in ovsdb table", __func__);
+            return false;
+        }
+    }
+
     if (opts & LINK_CHECK) {
         counter = 0;
         if (!cstate.link_state) {
             counter = con.unreachable_link_counter < 0 ? 1 : con.unreachable_link_counter + 1;
-            LOGW("Detected broken link. Counter = %d", counter);
+            LOGI("Detected broken link. Counter = %d", counter);
         }
         ret = cm2_ovsdb_connection_update_unreachable_link_counter(if_name, counter);
         if (!ret)
@@ -254,10 +271,12 @@ void cm2_connection_req_stability_check(target_connectivity_check_option_t opts)
         counter = 0;
         if (!cstate.router_state) {
             counter =  con.unreachable_router_counter < 0 ? 1 : con.unreachable_router_counter + 1;
-            LOGW("Detected broken Router. Counter = %d", counter);
+            LOGI("Detected broken Router. Counter = %d", counter);
             cm2_restore_switch_cfg_params(counter, CONFIG_CM2_STABILITY_THRESH_ROUTER + 2, &ropt);
             if (counter % CONFIG_CM2_STABILITY_THRESH_ROUTER == 0)
                 ropt |= (1 << CM2_RESTORE_IP);
+            if (counter % CONFIG_CM2_STABILITY_THRESH_ROUTER + 1 == 0)
+                ropt |= (1 << CM2_RESTORE_MAIN_LINK);
         }
         else if (kconfig_enabled(CONFIG_CM2_USE_TCPDUMP) &&
                  con.unreachable_router_counter >= CONFIG_CM2_STABILITY_THRESH_TCPDUMP) {
@@ -283,10 +302,12 @@ void cm2_connection_req_stability_check(target_connectivity_check_option_t opts)
         counter = 0;
         if (!cstate.internet_state) {
             counter = con.unreachable_internet_counter < 0 ? 1 : con.unreachable_internet_counter + 1;
-            LOGW("Detected broken Internet. Counter = %d", counter);
+            LOGI("Detected broken Internet. Counter = %d", counter);
             cm2_restore_switch_cfg_params(counter, CONFIG_CM2_STABILITY_THRESH_INTERNET + 2, &ropt);
             if (counter % CONFIG_CM2_STABILITY_THRESH_INTERNET == 0)
                 ropt |= (1 << CM2_RESTORE_IP);
+            if (counter % CONFIG_CM2_STABILITY_THRESH_ROUTER + 1 == 0)
+                ropt |= (1 << CM2_RESTORE_MAIN_LINK);
         }
 
         ret = cm2_ovsdb_connection_update_unreachable_internet_counter(if_name, counter);
@@ -302,7 +323,7 @@ void cm2_connection_req_stability_check(target_connectivity_check_option_t opts)
             g_state.ntp_check = cstate.ntp_state;
     }
     cm2_restore_connection(ropt);
-    return;
+    return status;
 }
 
 static void cm2_connection_stability_check(void)
@@ -316,7 +337,7 @@ static void cm2_connection_stability_check(void)
     if (!g_state.connected)
         opts |= INTERNET_CHECK;
 
-    cm2_connection_req_stability_check(opts);
+    cm2_connection_req_stability_check(opts, true);
 }
 
 void cm2_stability_cb(struct ev_loop *loop, ev_timer *watcher, int revents)

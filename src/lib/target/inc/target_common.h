@@ -734,7 +734,23 @@ bool target_set_mld_mcproxy_sys_params(struct schema_MLD_Config *mlcfg);
  */
 bool target_get_mld_mcproxy_sys_params(struct schema_MLD_Config *iccfg);
 
+/**
+ * @brief Set uplink for multicast deamon
+ * @param ifname uplink interface name
+ * @param enable state of uplink
+ * @param is_wan true whether interface is a WAN interface
+ * @param bridge the parent bridge of the interface or NULL if none
+ * @return true on success
+ */
+bool target_set_mcast_uplink(const char *ifname, bool enable, bool is_wan, const char *bridge);
 
+/**
+ * @brief Set IGMP snooping for multicast deamon
+ * @param ifname snooping interface name
+ * @param enable state of snooping
+ * @return true on success
+ */
+bool target_set_igmp_snooping(const char *ifname, bool enable);
 
 /******************************************************************************
  *  PLATFORM SPECIFIC definitions
