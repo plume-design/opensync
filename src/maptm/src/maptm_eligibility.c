@@ -169,10 +169,10 @@ void callback_IPv6_Address(
     switch (mon->mon_type)
     {
         case OVSDB_UPDATE_NEW:
-            // Check if IPv6 is UP and we didn't recive an option 95
-            if((strncmp(new->address, "fe80", 4) != 0) &&
-               (strucWanConfig.mapt_95_value[0] == '\0') &&
-               (strucWanConfig.iapd[0] != '\0'))
+            // Check if IPv6 is UP and we didn't receive an option 95
+            if ((strncmp(new->address, "fe80", 4) != 0) &&
+                (strucWanConfig.mapt_95_value[0] == '\0') &&
+                (strucWanConfig.iapd[0] != '\0'))
             {
                 StartStop_DHCPv4(true);
                 maptm_update_wan_mode("Dual-Stack");
@@ -314,19 +314,20 @@ static void callback_DHCP_Option(
                 strucWanConfig.option_23[0] = '\0';
             }
             /* End Workaround for MAP-T Mode Add option 23 and 24 */
-            if((old->tag) == 26)
+
+            if ((old->tag) == 26)
             {
                 char *flag = NULL;
                 if (!strcmp(old->value,strucWanConfig.iapd)) strucWanConfig.iapd[0] = '\0';
                 flag = strtok(old->value, ",");
                 char cmd[300]="";
-                if(flag)
+                if (flag)
                 {
-                    sprintf(cmd,"ip -6 route del %s",old->value);    
+                    sprintf(cmd,"ip -6 route del %s",old->value);
                     system(cmd);
                 }
             }
-            
+
             break;
 
             default:

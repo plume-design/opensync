@@ -313,6 +313,7 @@ struct mapt* get_Mapt_Rule(char *option95, char *iapd)
             }
         }
     }
+
     free(mapt_option95);
     maptm_remove_list(l_rules);
     if (!ret)
