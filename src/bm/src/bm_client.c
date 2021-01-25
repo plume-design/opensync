@@ -876,7 +876,7 @@ bm_client_remove_from_all_groups(bm_client_t *client)
     bool            success = true;
 
     if (!(groups = bm_group_get_tree())) {
-        LOGE("bm_client_update_all_groups() failed to get group tree");
+        LOGE("bm_client_remove_from_all_groups() failed to get group tree");
         return false;
     }
 
