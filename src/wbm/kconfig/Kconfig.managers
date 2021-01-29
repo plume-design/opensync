@@ -16,4 +16,4 @@ menuconfig MANAGER_WBM
         bool "Pktgen configuration library"
         default y
         help
-            Enable pktgen configuration library 
+            Enable pktgen configuration library
