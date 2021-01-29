@@ -1,5 +1,5 @@
 #############################################
-# update protobuf c files based on protobuf 
+# update protobuf c files based on protobuf
 #############################################
 
 RELDIR=$(basename $(dirname $PWD))/$(basename $PWD)
