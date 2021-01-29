@@ -441,7 +441,7 @@ static wbm_report_pb_t* wbm_report_pb_create(wbm_node_t *node)
 
     report_pb->len = wbm__wifi_blast_result__pack(wb_res_pb, buf);
     if (report_pb->len <= 0) {
-        LOGE("%s: Failed to pack result protobuf! Lengh [%zu]", __func__, report_pb->len);
+        LOGE("%s: Failed to pack result protobuf! Length [%zu]", __func__, report_pb->len);
         goto Error;
     }
     report_pb->buf = buf;
