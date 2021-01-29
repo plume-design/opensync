@@ -133,7 +133,7 @@ int stats_pub_device_get(stats_pub_device_t *stats)
 
     rec = stats_pub_device_struct_create(buffer, res);
     if (rec == NULL) {
-        LOGE("%s: Failed to convert prototobuf data", __func__);
+        LOGE("%s: Failed to convert protobuf data", __func__);
         goto Exit;
     }
     memcpy(stats, rec, sizeof(*stats));
