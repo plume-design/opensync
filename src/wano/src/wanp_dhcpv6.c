@@ -314,7 +314,7 @@ enum wanp_dhcpv6_state wanp_dhcpv6_state_ENABLE(
             /* Subscribe to OVSDB events */
             self->wd6_ovsdb_subscribed = true;
             ds_tree_insert(&wanp_dhcpv6_ovsdb_list, self, self->wd6_handle.wh_ifname);
-            /* Fallthrough */
+            /* FALLTHROUGH */
 
         case wanp_dhcpv6_do_OVSDB_UPDATE:
             if (!self->wd6_has_global_ip)

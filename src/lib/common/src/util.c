@@ -296,13 +296,13 @@ ssize_t base64_encode(char *out, ssize_t out_sz, void *input, ssize_t input_sz)
                 m[2] = pin[2] >> 6;
 
                 pout[3] = base64_table[m[3] & 63];
-                /* Falls through. */
+                /* FALLTHROUGH */
 
             case 2:
                 m[2] |= pin[1] << 2;
                 m[1] |= pin[1] >> 4;
                 pout[2] = base64_table[m[2] & 63];
-                /* Falls through. */
+                /* FALLTHROUGH */
 
             case 1:
                 m[1] |= pin[0] << 4;
@@ -310,7 +310,7 @@ ssize_t base64_encode(char *out, ssize_t out_sz, void *input, ssize_t input_sz)
 
                 pout[1] = base64_table[m[1] & 63];
                 pout[0] = base64_table[m[0] & 63];
-                /* Falls through. */
+                /* FALLTHROUGH */
         }
 
         pout += 4;
@@ -374,13 +374,13 @@ ssize_t base64_decode(void *out, ssize_t out_sz, char *input)
         {
             default:
                 pout[2] = (m[2] << 6) | m[3];
-                /* Falls through. */
+                /* FALLTHROUGH */
             case 3:
                 pout[1] = (m[1] << 4) | (m[2] >> 2);
-                /* Falls through. */
+                /* FALLTHROUGH */
             case 2:
                 pout[0] = (m[0] << 2) | (m[1] >> 4);
-                /* Falls through. */
+                /* FALLTHROUGH */
         }
 
         pout += isz - 1;

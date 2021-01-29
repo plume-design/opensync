@@ -107,6 +107,15 @@ int main(int argc, char ** argv)
 
     fsm_event_init();
 
+    // WAR: Init oms before fsm ovsdb tables
+    // OMS needs to be initialized before any plugins are loaded.
+    // This way first callbacks are missed by plugins. This avoids
+    // problem when fsm crashes and after recovery plugins will
+    // get back multiple versions without guaranteed order. This
+    // might confuse plugin since they expect that last update is
+    // the one that needs to be used.
+    fsm_oms_init();
+
     if (fsm_ovsdb_init()) {
         LOGE("Initializing FSM "
              "(Failed to initialize FSM tables)");
@@ -132,7 +141,6 @@ int main(int argc, char ** argv)
         return -1;
     }
 
-    fsm_oms_init();
 
     ev_run(loop, 0);
 

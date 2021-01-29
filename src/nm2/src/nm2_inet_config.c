@@ -715,12 +715,12 @@ bool nm2_inet_dhcps_set(
                 case 'h':
                 case 'H':
                     lease_time *= 60;
-                    /* fall through */
+                    /* FALLTHROUGH */
 
                 case 'm':
                 case 'M':
                     lease_time *= 60;
-                    /* fall through */
+                    /* FALLTHROUGH */
 
                 case 's':
                 case 'S':

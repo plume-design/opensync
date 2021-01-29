@@ -38,6 +38,8 @@ struct wpas {
     int respect_multi_ap;
     void (*connected)(struct wpas *wpas, const char *bssid, int id, const char *id_str);
     void (*disconnected)(struct wpas *wpas, const char *bssid, int reason, int local);
+    void (*scan_results)(struct wpas *wpas);
+    void (*scan_failed)(struct wpas *wpas, int status);
     struct ctrl ctrl;
 };
 

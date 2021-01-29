@@ -49,7 +49,6 @@
 
 /* Log entries from this file will contain "OVSDB" */
 #define MODULE_ID LOG_MODULE_ID_OVSDB
-#define MAPTM_IFC_WAN "br-wan"
 
 ovsdb_table_t table_Netfilter;
 ovsdb_table_t table_Node_Config;
@@ -67,18 +66,28 @@ int WanConfig = 0;
 // Testing MAP-T tables presence
 bool maptm_ovsdb_tables_ready()
 {
-    json_t *where_config = NULL;
+    json_t *where = NULL;
     bool retval = false;
+    struct schema_Node_Config iconf;
+    int eval;
 
     // Checking MAP-T entry presence in Node_Config table
-    where_config = ovsdb_where_multi(
+    where = ovsdb_where_multi(
             ovsdb_where_simple_typed(SCHEMA_COLUMN(Node_Config, module), MAPT_MODULE_NAME, OCLM_STR),
             ovsdb_where_simple_typed(SCHEMA_COLUMN(Node_Config, key), "maptParams", OCLM_STR),
             NULL);
-    if (!where_config)
+    if (!where) LOGI(" [%s] ERROR: where is NULL", __func__);
+
+    eval = ovsdb_table_select_one_where(&table_Node_Config, where, &iconf);
+    if (!eval)
     {
         LOGI("Node_Config table is not set by the cloud yet!");
         retval = false;  // switch to cloud-independent mode
+    }
+    else
+    {
+        LOGI("Node_Config table is set by the cloud!");
+        retval = true;
     }
 
     return retval;
@@ -226,12 +235,16 @@ void callback_Node_Config(
 
     if (mon->mon_type == OVSDB_UPDATE_DEL)
     {
-        LOGD("%s: node config entry deleted: module %s, key: %s, value: %s",
-                __func__, old_rec->module, old_rec->key, old_rec->value);
-
-        if (!(maptm_ps_set(MAPT_PS_KEY_NAME, maptm_get_supportValue(conf->value) ? "true" : "false")))
+        if (!strcmp(conf->module, MAPT_MODULE_NAME))
         {
-            LOGE("Error saving new MAP-T support value");
+            LOGD("%s: node config entry deleted: module %s, key: %s, value: %s",
+                    __func__, old_rec->module, old_rec->key, old_rec->value);
+
+
+            if (!(maptm_ps_set(MAPT_PS_KEY_NAME, maptm_get_supportValue(conf->value) ? "true" : "false")))
+            {
+                LOGE("Error saving new MAP-T support value");
+            }
         }
     }
 
@@ -296,12 +309,12 @@ static void callback_Interface(
             break;
 
         case OVSDB_UPDATE_MODIFY:
-            if (!strcmp(record->name, "br-wan"))
+            if (!strcmp(record->name, MAPT_IFC_WAN))
             {
-                if (!strcmp(record->link_state, "up"))
+                if (!strcmp(record->link_state, "up") && (strucWanConfig.link_up == false))
                 {
                     strucWanConfig.link_up = true;
-                    if ((record->link_state) != (old->link_state)) maptm_eligibilityStart(WanConfig);
+                    maptm_eligibilityStart(WanConfig);
                 }
                 else if (!strcmp(record->link_state, "down"))
                 {

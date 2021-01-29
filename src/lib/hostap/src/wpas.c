@@ -113,6 +113,8 @@ wpas_ctrl_cb(struct ctrl *ctrl, int level, const char *buf, size_t len)
     int reason = 0;
     int local = 0;
     int id = 0;
+    int ret = 0;
+    int retry = 0;
 
     /* CTRL-EVENT-CONNECTED - Connection to 00:1d:73:73:88:ea completed [id=0 id_str=]
      * CTRL-EVENT-DISCONNECTED bssid=00:1d:73:73:88:ea reason=3 locally_generated=1
@@ -160,6 +162,32 @@ wpas_ctrl_cb(struct ctrl *ctrl, int level, const char *buf, size_t len)
         LOGI("%s: %s: disconnected reason=%d local=%d", wpas->ctrl.bss, bssid, reason, local);
         if (wpas->disconnected)
             wpas->disconnected(wpas, bssid, reason, local);
+
+        return;
+    }
+
+    if (!strcmp(event, EV(WPA_EVENT_SCAN_RESULTS))) {
+        LOGI("%s: scan results available", wpas->ctrl.bss);
+        if (wpas->scan_results)
+            wpas->scan_results(wpas);
+
+        return;
+    }
+
+    if (!strcmp(event, EV(WPA_EVENT_SCAN_FAILED))) {
+        while ((kv = strsep(&str, " "))) {
+            if ((k = strsep(&kv, "=")) &&
+                (v = strsep(&kv, ""))) {
+                if (!strcmp(k, "ret"))
+                    ret = atoi(v);
+                else if (!strcmp(k, "retry"))
+                    retry = atoi(v);
+            }
+        }
+
+        LOGI("%s: scan failed ret=%d retry=%d", wpas->ctrl.bss, ret, retry);
+        if (wpas->scan_failed)
+            wpas->scan_failed(wpas, ret);
 
         return;
     }
