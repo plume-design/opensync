@@ -46,7 +46,7 @@ static int sm_stats_pub_survey_send(int client_fd, char *buf, int len)
     token = strtok(buffer, s);
     token = strtok(NULL, s);
     if (token == NULL) {
-        LOGE("%s: Didn't find radio interafce name", __func__);
+        LOGE("%s: Didn't find radio interface name", __func__);
         return -1;
     }
     memset(name, 0, sizeof(name));
