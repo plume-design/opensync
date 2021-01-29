@@ -643,7 +643,7 @@ static void callback_AWLAN_Node(
 
     if (mon->mon_type == OVSDB_UPDATE_DEL)
     {
-        LOGD("%s: MQTT topis has been removed", __func__);
+        LOGD("%s: MQTT topic has been removed", __func__);
         memset(g_mqtt_topic, 0, sizeof(g_mqtt_topic));
         return;
     }
