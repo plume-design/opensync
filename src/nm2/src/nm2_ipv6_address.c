@@ -62,6 +62,28 @@ void nm2_ipv6_address_init(void)
     OVSDB_TABLE_MONITOR(IPv6_Address, false);
 }
 
+/*
+ * (Askey) Check if any field other than valid_lifetime and/or 
+ * preferred_lifetime has changed, this is used in callback_IPv6_Address() to 
+ * determine whether to skip nm2_ipv6_address_update() that follows.
+ *    
+ * Note the schema_IPv6_Address has following definition:  (per schema_pre.h)
+ *  struct schema_IPv6_Address
+ *  {
+ *  int _update_type;
+ *  ovs_uuid_t _uuid;
+ *  ovs_uuid_t _version;
+ *  char address_status[128 + 1];
+ *  char prefix[49 + 1];
+ *  char address[49 + 1];
+ *  char valid_lifetime[64 + 1];    //<- valid_lifetime
+ *  char preferred_lifetime[64 + 1];  //<- preferred_lifetime
+ *  char origin[128 + 1];
+ *  char status[128 + 1];
+ *  _Bool enable;
+ *  }; 
+ * 
+ */
 bool nm2_ipv6_address_is_modified(struct schema_IPv6_Address *schema)
 {
     if (schema->enable_changed || schema->status_changed ||
@@ -125,6 +147,18 @@ void callback_IPv6_Address(
             return;
     }
 
+    /*
+     * (Askey) 
+     * Determine if the only change(s) was valid_lifetime and/or 
+     * preferred_lifetime, if so then skip nm2_ipv6_address_update() that 
+     * follows to avoid triggering the full-blown address provision and 
+     * disruption (can go as much as 6-10 seconds) on LAN side.
+     * To be aware, the skipping of nm2_ipv6_address_update() might come with 
+     * the side effect of not having correct stateful address lifetime on LAN 
+     * side, with the benefit of not causing LAN side disruption.
+     * 
+     * Should revisit once a better or complementary solution is in place.
+     */
     if (mon->mon_type == OVSDB_UPDATE_MODIFY && !nm2_ipv6_address_is_modified(new))
     {
         LOG(INFO, "ipv6_addr: No need to modify IPv6 address.");
