@@ -1,0 +1,18 @@
+#!/bin/sh
+self=$(readlink -f "$0")
+dir=$(dirname "$self")
+
+for i in $(cd "$dir" ; echo case-*)
+do
+	echo -n "$i: "
+	if buf=$($dir/run $i 2>&1)
+	then
+		echo ok
+	else
+		echo failed
+		touch log.bad
+	fi
+	echo "$buf" >> "$dir/log.txt"
+done
+
+! test -e log.bad

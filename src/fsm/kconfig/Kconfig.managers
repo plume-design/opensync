@@ -1,6 +1,6 @@
 menuconfig MANAGER_FSM
     bool "Flow Service Manager (FSM)"
-    default n
+    default y
     help
         Enable Flow Service Manager (FSM)
 

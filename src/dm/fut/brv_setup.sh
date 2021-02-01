@@ -29,10 +29,34 @@
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut_set_env.sh" ] && source /tmp/fut_set_env.sh
 # Include shared libraries and library overrides
-source ${FUT_TOPDIR}/shell/lib/brv_lib.sh
+source "${FUT_TOPDIR}/shell/lib/brv_lib.sh"
+
+tc_name="brv/$(basename "$0")"
+usage()
+{
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Setup device for BRV testing
+Arguments:
+    -h : show this help message
+Script usage example:
+    ./${tc_name}
+usage_string
+}
+while getopts h option; do
+    case "$option" in
+        h)
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
+            ;;
+    esac
+done
 
 brv_setup_env &&
-    log "brv/$(basename "$0"): brv_setup_env - Success " ||
-    die "brv/$(basename "$0"): brv_setup_env - Failed"
+    log "${tc_name}: brv_setup_env - Success " ||
+    raise "brv_setup_env - Failed" -l "$tc_name" -ds
 
 exit 0

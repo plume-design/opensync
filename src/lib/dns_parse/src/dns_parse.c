@@ -457,7 +457,6 @@ dns_plugin_init(struct fsm_session *session)
 
     now = time(NULL);
     dns_session->stat_report_ts = now;
-    dns_session->stat_log_ts = now;
     dns_session->debug = false;
     dns_set_provider(session);
     mgr->policy_init();
@@ -758,7 +757,8 @@ dns_update_tag(struct fqdn_pending_req *req)
 
     if (!req) return;
 
-    if (req->updatev4_tag)
+    if (req->updatev4_tag &&
+        req->ipv4_cnt != 0)
     {
         rc = dns_updatev4_tag(req);
         if (!rc)
@@ -767,7 +767,8 @@ dns_update_tag(struct fqdn_pending_req *req)
         }
     }
 
-    if (req->updatev6_tag)
+    if (req->updatev6_tag &&
+        req->ipv6_cnt != 0)
     {
         rc = dns_updatev6_tag(req);
         if (!rc)
@@ -1069,6 +1070,7 @@ set_provider_ops(struct dns_session *dns_session,
     /* Set the backend provider ops */
     req->categories_check = session->provider_ops->categories_check;
     req->risk_level_check = session->provider_ops->risk_level_check;
+    req->gatekeeper_req = session->provider_ops->gatekeeper_req;
 }
 
 
@@ -1680,7 +1682,7 @@ dns_generate_update_tag(struct fqdn_pending_req *req,
     if (req->action != FSM_UPDATE_TAG) return false;
 
     added_information = false;
-    orig_values_len = *values_len;
+    orig_values_len = 0;
 
 
     if (ip_ver == 4)
@@ -1714,6 +1716,7 @@ dns_generate_update_tag(struct fqdn_pending_req *req,
                 *values_len = *values_len + 1;
             }
         }
+        orig_values_len = *values_len;
     }
 
     if (ip_ver == 4)
@@ -1728,7 +1731,9 @@ dns_generate_update_tag(struct fqdn_pending_req *req,
                 *values_len = *values_len + 1;
             }
         }
-    } else if (ip_ver == 6) {
+    }
+    else if (ip_ver == 6)
+    {
 
         for (i = 0; i < req->ipv6_cnt; i++)
         {
@@ -1764,7 +1769,6 @@ bool dns_upsert_regular_tag(struct schema_Openflow_Tag *row, dns_ovsdb_updater u
 
     ret = updater(SCHEMA_TABLE(Openflow_Tag), SCHEMA_COLUMN(Openflow_Tag, name),
                   row->name, jrow, NULL);
-    json_decref(jrow);
     if (ret)
     {
         LOGD("%s: Updated Openflow_Tag: %s with new IP set.", __func__,
@@ -1793,7 +1797,6 @@ bool dns_upsert_local_tag(struct schema_Openflow_Local_Tag *row, dns_ovsdb_updat
 
     ret = updater(SCHEMA_TABLE(Openflow_Local_Tag), SCHEMA_COLUMN(Openflow_Local_Tag, name),
                   row->name, jrow, NULL);
-    json_decref(jrow);
     if (ret)
     {
         LOGD("%s: Updated Openflow_Local_Tag: %s with new IP set.", __func__,
@@ -1810,7 +1813,7 @@ bool dns_upsert_local_tag(struct schema_Openflow_Local_Tag *row, dns_ovsdb_updat
 #define DNS_LOG_PERIODIC 120
 
 static void dns_log_stats(struct dns_session *dns_session,
-                          struct fsm_url_stats *stats, time_t now)
+                          struct wc_health_stats *hs)
 {
     struct fsm_session *session;
 
@@ -1826,79 +1829,56 @@ static void dns_log_stats(struct dns_session *dns_session,
         LOGI("dns: reported lookup retries: %d",
              dns_session->remote_lookup_retries);
     }
-    LOGI("dns: cloud lookups: %" PRId64, stats->cloud_lookups);
-    LOGI("dns: cloud lookup errors: %" PRId64,
-         stats->cloud_lookup_failures);
-    LOGI("dns: cloud hits: %" PRId64, stats->cloud_hits);
-    LOGI("dns: cloud categorization errors: %" PRId64,
-         stats->categorization_failures);
-    LOGI("dns: cloud uncategorized responses: %" PRId64,
-         stats->uncategorized);
-    LOGI("dns: cache lookups: %" PRId64, stats->cache_lookups);
-    LOGI("dns: cache hits: %" PRId64, stats->cache_hits);
-    LOGI("dns: cache entries: [%" PRId64 "/%" PRId64 "]",
-         stats->cache_entries, stats->cache_size);
-    LOGI("dns: min lookup latency in ms: %" PRId64,
-         stats->min_lookup_latency);
-    LOGI("dns: max lookup latency in ms: %" PRId64,
-         stats->max_lookup_latency);
-    LOGI("dns: avg lookup latency in ms: %" PRId64,
-         stats->avg_lookup_latency);
-
-    dns_session->stat_log_ts = now;
+    LOGI("dns: total lookups: %u", hs->total_lookups);
+    LOGI("dns: total cache hits: %u", hs->cache_hits);
+    LOGI("dns: total remote lookups: %u", hs->remote_lookups);
+    LOGI("dns: cloud uncategorized responses: %u",
+         hs->uncategorized);
+    LOGI("dns: cache entries: [%u/%u]",
+         hs->cached_entries, hs->cache_size);
+    LOGI("dns: min lookup latency in ms: %u",
+         hs->min_latency);
+    LOGI("dns: max lookup latency in ms: %u",
+         hs->max_latency);
+    LOGI("dns: avg lookup latency in ms: %u",
+         hs->avg_latency);
 }
 
 
 static void
-dns_report_health_stats(struct dns_session *dns_session,
-                        struct fsm_url_stats *stats,
-                        time_t now)
+dns_report_compute_health_stats(struct dns_session *dns_session,
+				struct fsm_url_stats *stats,
+				struct wc_health_stats *hs)
 {
-    struct wc_packed_buffer *serialized;
     struct fsm_url_stats *prev_stats;
-    struct wc_observation_window ow;
-    struct wc_observation_point op;
-    struct wc_stats_report report;
-    struct fsm_session *session;
-    struct wc_health_stats hs;
     uint32_t count;
 
-    memset(&report, 0, sizeof(report));
-    memset(&ow, 0, sizeof(ow));
-    memset(&op, 0, sizeof(op));
-    memset(&hs, 0, sizeof(hs));
-    session = dns_session->fsm_context;
-
-    /* Set opbservation point */
-    op.location_id = session->location_id;
-    op.node_id = session->node_id;
-
-    /* set observation window */
-    ow.started_at = dns_session->stat_report_ts;
-    ow.ended_at = now;
-    dns_session->stat_report_ts = now;
-
-    /* set health metrics */
     prev_stats = &dns_session->health_stats;
 
     /* Compute total lookups */
-    count = (uint32_t)(stats->cloud_lookups + stats->cache_lookups);
-    count -= (uint32_t)(prev_stats->cloud_lookups + prev_stats->cache_lookups);
-    hs.total_lookups = count;
+    /* In the plugin, every dns transaction is first checked if present in
+     * the cache, and hence, every transaction is a cache lookup. Due to this,
+     * cache_lookups are not filled in by the plugin. Successful cache lookups
+     * result in cache_hits being incremented. Hence, use cache_hits in counting
+     * total_lookups */
+    count = (uint32_t)(stats->cloud_lookups + stats->cache_hits);
+    count -= (uint32_t)(prev_stats->cloud_lookups + prev_stats->cache_hits);
+
+    hs->total_lookups = count;
     prev_stats->cache_lookups = stats->cache_lookups;
 
     /* Compute cache hits */
     count = (uint32_t)(stats->cache_hits - prev_stats->cache_hits);
-    hs.cache_hits = count;
+    hs->cache_hits = count;
     prev_stats->cache_hits = stats->cache_hits;
 
     /* Compute remote_lookups */
     count = (uint32_t)(stats->cloud_lookups - prev_stats->cloud_lookups);
-    hs.remote_lookups = count;
+    hs->remote_lookups = count;
     prev_stats->cloud_lookups = stats->cloud_lookups;
 
     /* Compute connectivity_failures */
-    hs.connectivity_failures = dns_session->cat_offline.connection_failures;
+    hs->connectivity_failures = dns_session->cat_offline.connection_failures;
     dns_session->cat_offline.connection_failures = 0;
 
     /* Compute service_failures */
@@ -1908,28 +1888,90 @@ dns_report_health_stats(struct dns_session *dns_session,
 
     /* Compute uncategorized requests */
     count = (uint32_t)(stats->uncategorized - prev_stats->uncategorized);
-    hs.uncategorized = count;
+    hs->uncategorized = count;
     prev_stats->uncategorized = stats->uncategorized;
 
     /* Compute min latency */
     count = (uint32_t)(stats->min_lookup_latency);
-    hs.min_latency = count;
+    hs->min_latency = count;
 
     /* Compute max latency */
     count = (uint32_t)(stats->max_lookup_latency);
-    hs.max_latency = count;
+    hs->max_latency = count;
 
     /* Compute average latency */
     count = (uint32_t)(stats->avg_lookup_latency);
-    hs.avg_latency = count;
+    hs->avg_latency = count;
 
     /* Compute cached entries */
     count = (uint32_t)(stats->cache_entries);
-    hs.cached_entries = count;
+    hs->cached_entries = count;
 
     /* Compute cache size */
     count = (uint32_t)(stats->cache_size);
-    hs.cache_size = count;
+    hs->cache_size = count;
+}
+
+
+static void
+dns_report_fill_health_stats(struct wc_health_stats *hs,
+			     struct fsm_url_report_stats *report_stats)
+{
+    hs->total_lookups = report_stats->total_lookups;
+    hs->cache_hits = report_stats->cache_hits;
+    hs->remote_lookups = report_stats->remote_lookups;
+    hs->connectivity_failures = report_stats->connectivity_failures;
+    hs->service_failures = report_stats->service_failures;
+    hs->uncategorized = report_stats->uncategorized;
+    hs->min_latency = report_stats->min_latency;
+    hs->max_latency = report_stats->max_latency;
+    hs->avg_latency = report_stats->avg_latency;
+    hs->cached_entries = report_stats->cached_entries;
+    hs->cache_size = report_stats->cache_size;
+}
+
+
+static void
+dns_report_health_stats(struct dns_session *dns_session,
+                        struct fsm_url_stats *stats,
+                        time_t now)
+{
+    struct fsm_url_report_stats report_stats;
+    struct wc_packed_buffer *serialized;
+    struct wc_observation_window ow;
+    struct wc_observation_point op;
+    struct wc_stats_report report;
+    struct fsm_session *session;
+    struct wc_health_stats hs;
+
+    memset(&report, 0, sizeof(report));
+    memset(&ow, 0, sizeof(ow));
+    memset(&op, 0, sizeof(op));
+    memset(&hs, 0, sizeof(hs));
+    memset(&report_stats, 0, sizeof(report_stats));
+    session = dns_session->fsm_context;
+
+    /* Set observation point */
+    op.location_id = session->location_id;
+    op.node_id = session->node_id;
+
+    /* set observation window */
+    ow.started_at = dns_session->stat_report_ts;
+    ow.ended_at = now;
+    dns_session->stat_report_ts = now;
+
+    if (session->provider_ops->report_stats != NULL)
+    {
+        session->provider_ops->report_stats(session, &report_stats);
+        dns_report_fill_health_stats(&hs, &report_stats);
+    }
+    else
+    {
+        dns_report_compute_health_stats(dns_session, stats, &hs);
+    }
+
+    /* Log locally */
+    dns_log_stats(dns_session, &hs);
 
     /* Prepare report */
     report.provider = session->provider;
@@ -2007,9 +2049,7 @@ dns_periodic(struct fsm_session *session)
     struct fsm_url_stats stats;
     time_t now = time(NULL);
     double cmp_report;
-    double cmp_log;
     bool get_stats;
-    bool report;
 
     dns_session = dns_lookup_session(session);
     if (dns_session == NULL) return;
@@ -2022,14 +2062,9 @@ dns_periodic(struct fsm_session *session)
     if (session->provider_ops == NULL) return;
     if (session->provider_ops->get_stats == NULL) return;
 
-    /* Check if the time has come to log the health stats locally */
-    cmp_log = now - dns_session->stat_log_ts;
-    get_stats = (cmp_log >= DNS_LOG_PERIODIC);
-
     /* Check if the time has come to report the stats through mqtt */
     cmp_report = now - dns_session->stat_report_ts;
-    report = (cmp_report >= dns_session->health_stats_report_interval);
-    get_stats |= report;
+    get_stats = (cmp_report >= dns_session->health_stats_report_interval);
 
     /* No need to gather stats, bail */
     if (!get_stats) return;
@@ -2038,11 +2073,8 @@ dns_periodic(struct fsm_session *session)
     memset(&stats, 0, sizeof(stats));
     session->provider_ops->get_stats(session, &stats);
 
-    /* Log locally if the time has come */
-    if (cmp_log >= DNS_LOG_PERIODIC) dns_log_stats(dns_session, &stats, now);
-
-    /* Report to mqtt if the time has come */
-    if (report) dns_report_health_stats(dns_session, &stats, now);
+    /* Report to mqtt */
+    dns_report_health_stats(dns_session, &stats, now);
 }
 
 

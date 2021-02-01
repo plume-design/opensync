@@ -37,3 +37,4 @@ UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/qm/qm_conn
 UNIT_DEPS += src/lib/unity
 UNIT_DEPS += src/lib/fsm_policy
+UNIT_DEPS += src/lib/network_metadata

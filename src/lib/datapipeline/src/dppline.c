@@ -63,6 +63,7 @@ typedef enum
     DPP_T_DEVICE    = 5,
     DPP_T_BS_CLIENT = 6,
     DPP_T_RSSI      = 7,
+    DPP_T_CLIENT_AUTH_FAILS = 8,
 } DPP_STS_TYPE;
 
 uint32_t queue_depth;
@@ -151,6 +152,27 @@ typedef struct dpp_rssi_stats
     uint64_t                        timestamp_ms;
 } dppline_rssi_stats_t;
 
+typedef struct dppline_client_auth_fails_client_rec
+{
+    mac_address_str_t                mac;
+    uint32_t                         auth_fails;
+    uint32_t                         invalid_psk;
+} dppline_client_auth_fails_client_rec_t;
+
+typedef struct dppline_client_auth_fails_bss_rec
+{
+    ifname_t                                if_name;
+    dppline_client_auth_fails_client_rec_t *list;
+    uint32_t                                qty;
+} dppline_client_auth_fails_bss_rec_t;
+
+typedef struct dpp_client_auth_fails_stats
+{
+    radio_type_t                         radio_type;
+    dppline_client_auth_fails_bss_rec_t *list;
+    uint32_t                             qty;
+} dppline_client_auth_fails_stats_t;
+
 /* DPP stats type, used as element in internal double ds */
 typedef struct dpp_stats
 {
@@ -166,6 +188,7 @@ typedef struct dpp_stats
         dppline_device_stats_t      device;
         dppline_bs_client_stats_t   bs_client;
         dppline_rssi_stats_t        rssi;
+        dppline_client_auth_fails_stats_t client_auth_fails;
     } u;
 } dppline_stats_t;
 
@@ -242,6 +265,13 @@ static void dppline_free_stat(dppline_stats_t * s)
                     free(s->u.rssi.list[i].raw);
                 }
                 free(s->u.rssi.list);
+                break;
+            case DPP_T_CLIENT_AUTH_FAILS:
+                for (i=0; i < s->u.client_auth_fails.qty; i++)
+                {
+                    free(s->u.client_auth_fails.list[i].list);
+                }
+                free(s->u.client_auth_fails.list);
                 break;
             default:;
         }
@@ -656,6 +686,57 @@ static bool dppline_copysts(dppline_stats_t * dst, void * sts)
                     }
 
                     dst->u.rssi.qty++;
+                }
+            }
+            break;
+
+        case DPP_T_CLIENT_AUTH_FAILS:
+            {
+                dpp_client_auth_fails_report_data_t *report_data = sts;
+                dpp_client_auth_fails_bss_t         *bss_entry = NULL;
+                ds_dlist_iter_t                      bss_iter;
+                dpp_client_auth_fails_client_t      *client_entry = NULL;
+                ds_dlist_iter_t                      client_iter;
+
+                dst->u.client_auth_fails.radio_type = report_data->radio_type;
+                ds_dlist_iforeach(&report_data->bsses, bss_entry, bss_iter) {
+                    const size_t bss_size = (dst->u.client_auth_fails.qty + 1) * sizeof(dpp_client_auth_fails_bss_t);
+                    if (!dst->u.client_auth_fails.qty) {
+                        dst->u.client_auth_fails.list = calloc(1, bss_size);
+                    }
+                    else {
+                        dst->u.client_auth_fails.list = realloc(dst->u.client_auth_fails.list, bss_size);
+                        if (!dst->u.client_auth_fails.list)
+                            continue;
+
+                        memset(&dst->u.client_auth_fails.list[dst->u.client_auth_fails.qty], 0, sizeof(dpp_client_auth_fails_bss_t));
+                    }
+
+                    STRSCPY_WARN(dst->u.client_auth_fails.list[dst->u.client_auth_fails.qty].if_name, bss_entry->if_name);
+                    ds_dlist_iforeach(&bss_entry->clients, client_entry, client_iter) {
+                        dppline_client_auth_fails_bss_rec_t *dst_bss = &dst->u.client_auth_fails.list[dst->u.client_auth_fails.qty];
+                        const size_t client_size = (dst_bss->qty + 1) * sizeof(dpp_client_auth_fails_client_t);
+                        if (!dst_bss->qty) {
+                            dst_bss->list = calloc(1, client_size);
+                        }
+                        else {
+                            dst_bss->list = realloc(dst_bss->list, client_size);
+                            if (!dst_bss->list)
+                                continue;
+
+                            memset(&dst_bss->list[dst_bss->qty], 0, sizeof(dpp_client_auth_fails_client_t));
+                        }
+
+                        STRSCPY_WARN(dst_bss->list[dst_bss->qty].mac, client_entry->mac);
+                        dst_bss->list[dst_bss->qty].auth_fails = client_entry->auth_fails;
+                        dst_bss->list[dst_bss->qty].invalid_psk = client_entry->invalid_psk;
+
+                        size += client_size;
+                        dst_bss->qty++;
+                    }
+
+                    size += bss_size;
+                    dst->u.client_auth_fails.qty++;
                 }
             }
             break;
@@ -1940,6 +2021,62 @@ static void dppline_add_stat_rssi(Sts__Report *r, dppline_stats_t *s)
     }
 }
 
+static void dppline_add_stat_client_auth_fails(Sts__Report *r, dppline_stats_t *s)
+{
+    dppline_client_auth_fails_stats_t *client_auth_fails = &s->u.client_auth_fails;
+    Sts__ClientAuthFailsReport *sr = NULL;
+    size_t i;
+    size_t j;
+
+    // increase the number of rssi_report
+    r->n_client_auth_fails_report++;
+
+    // allocate or extend the size of rssi_report
+    r->client_auth_fails_report = realloc(r->client_auth_fails_report, r->n_client_auth_fails_report * sizeof(Sts__ClientAuthFailsReport*));
+
+    // allocate new buffer
+    sr = malloc(sizeof(Sts__ClientAuthFailsReport));
+    assert(sr);
+    r->client_auth_fails_report[r->n_client_auth_fails_report - 1] = sr;
+
+    sts__client_auth_fails_report__init(sr);
+    sr->band = dppline_to_proto_radio(client_auth_fails->radio_type);
+    sr->bss_list = malloc(client_auth_fails->qty * sizeof(*sr->bss_list));
+    assert(sr->bss_list);
+    sr->n_bss_list = client_auth_fails->qty;
+    for (i = 0; i < client_auth_fails->qty; i++)
+    {
+        dppline_client_auth_fails_bss_rec_t *bss;
+        Sts__ClientAuthFailsReport__BSS *br;
+
+        bss = &client_auth_fails->list[i];
+        br = sr->bss_list[i] = malloc(sizeof(Sts__ClientAuthFailsReport__BSS));
+        assert(br);
+
+        sts__client_auth_fails_report__bss__init(br);
+        br->ifname = strdup(bss->if_name);
+
+        br->client_list = malloc(bss->qty * sizeof(*br->client_list));
+        assert(br->client_list);
+        br->n_client_list = bss->qty;
+
+        for (j = 0; j < bss->qty; j++)
+        {
+            dppline_client_auth_fails_client_rec_t *client;
+            Sts__ClientAuthFailsReport__BSS__Client *cr;
+
+            client = &bss->list[j];
+            cr = br->client_list[j] = malloc(sizeof(Sts__ClientAuthFailsReport__BSS__Client));
+            assert(cr);
+
+            sts__client_auth_fails_report__bss__client__init(cr);
+            cr->mac_address = strdup(client->mac);
+            cr->auth_fails = client->auth_fails;
+            cr->invalid_psk = client->invalid_psk;
+        }
+    }
+}
+
 static void dppline_add_stat(Sts__Report * r, dppline_stats_t * s)
 {
     switch(s->type)
@@ -1970,6 +2107,10 @@ static void dppline_add_stat(Sts__Report * r, dppline_stats_t * s)
 
         case DPP_T_RSSI:
             dppline_add_stat_rssi(r, s);
+            break;
+
+        case DPP_T_CLIENT_AUTH_FAILS:
+            dppline_add_stat_client_auth_fails(r, s);
             break;
 
         default:
@@ -2125,6 +2266,11 @@ bool dpp_put_bs_client(dpp_bs_client_report_data_t *rpt)
 bool dpp_put_rssi(dpp_rssi_report_data_t * rpt)
 {
     return dppline_put(DPP_T_RSSI, rpt);
+}
+
+bool dpp_put_client_auth_fails(dpp_client_auth_fails_report_data_t *rpt)
+{
+    return dppline_put(DPP_T_CLIENT_AUTH_FAILS, rpt);
 }
 
 /*

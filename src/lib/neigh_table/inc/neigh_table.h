@@ -90,6 +90,14 @@ enum source
     NEIGH_UT                = 1 << 6,
 };
 
+enum ovsdb_table_lookup
+{
+    DHCP_LEASED_IP          = 1 << 0,
+    IPV4_NEIGHBORS          = 1 << 1,
+    IPV6_NEIGHBORS          = 1 << 2,
+    WIFI_INET_STATE         = 1 << 3,
+};
+
 struct neigh_mapping_source
 {
     char *source;
@@ -224,9 +232,9 @@ struct neigh_interface * neigh_table_get_intf(int ifindex);
  * @brief initializes ovsdb callback
  */
 void
-neigh_src_init(void);
+neigh_src_init(uint32_t ovsdb_event);
 
 void neigh_table_init_monitor(struct ev_loop *loop,
-                              bool system_event, bool ovsdb_event);
+                              bool system_event, uint32_t ovsdb_event);
 
 #endif /* NEIGH_TABLE_H_INCLUDED */

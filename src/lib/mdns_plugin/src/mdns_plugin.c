@@ -38,6 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "schema.h"
 
 #include "mdns_plugin.h"
+#include "mdns_records.h"
 
 static struct mdns_plugin_mgr
 mgr =
@@ -170,6 +171,9 @@ mdns_plugin_exit(struct fsm_session *session)
 
     mdnsd_ctxt_exit();
     mdns_delete_session(session);
+
+    mdns_records_exit();
+
     mgr->initialized = false;
     return;
 }
@@ -186,14 +190,57 @@ void
 mdns_plugin_handler(struct fsm_session *session,
                     struct net_header_parser *net_parser)
 {
-    struct mdns_session *f_session;
-    struct mdns_parser *parser;
+    (void)session;
+    (void)net_parser;
+
+    /* mdns parsing is not done here, this is handled by
+       exclusively by libmdnsd library(mdnsd_in()) */
+    return;
+}
+
+static void
+mdns_plugin_update(struct fsm_session *session)
+{
+    struct mdns_session     *f_session;
+    char                    *mdns_report_interval;
+    char                    *report_records;
+    long                     interval;
+    bool                     prev_enabled;
+
+    if (!session) return;
 
     f_session = (struct mdns_session *)session->handler_ctxt;
-    parser = &f_session->parser;
-    parser->net_parser = net_parser;
 
-    // mdns parsing to be added
+    prev_enabled = f_session->report_records;
+
+    /* Check if MDNS records need to be reported */
+    report_records = session->ops.get_config(session, "report_records");
+    if (report_records) f_session->report_records = true;
+    else                f_session->report_records = false;
+
+    /* If report_records enabled now, initialize the report */
+    if (!prev_enabled && f_session->report_records)
+    {
+        (void)mdns_records_init(f_session);
+    }
+
+    /* Get the MDNS record report interval and MQTT topic */
+    mdns_report_interval = session->ops.get_config(session, "records_report_interval");
+    if (mdns_report_interval)
+    {
+        interval = strtoul(mdns_report_interval, NULL, 10);
+        f_session->records_report_interval = (long)interval;
+    }
+    else
+    {
+        /* No value provided, take default */
+        f_session->records_report_interval = (long)DEFAULT_MDNS_RECORDS_REPORT_INTERVAL;
+    }
+
+    /* Get the targeted_devices and excluded_devices */
+    f_session->targeted_devices = session->ops.get_config(session, "targeted_devices");
+    f_session->excluded_devices = session->ops.get_config(session, "excluded_devices");
+
     return;
 }
 
@@ -211,12 +258,26 @@ mdns_plugin_periodic(struct fsm_session *session)
     struct mdns_plugin_mgr *mgr = mdns_get_mgr();
     struct mdnsd_context *pctxt = mgr->ctxt;
 
+    time_t now = time(NULL);
+    double cmp_report;
+    bool   send_report = false;
+
     if (session->topic == NULL || !pctxt) return;
 
     f_session = session->handler_ctxt;
 
     // Update mdnsd ctxt.
     mdnsd_ctxt_update(f_session);
+
+    /* Report records only if enabled */
+    if (f_session->report_records)
+    {
+        cmp_report  = now - f_session->records_report_ts;
+        send_report = (cmp_report >= f_session->records_report_interval);
+
+        /* Report to cloud via mqtt */
+        if (send_report)    mdns_records_send_records(f_session);
+    }
 
     return;
 }
@@ -234,6 +295,13 @@ mdns_plugin_init(struct fsm_session *session)
 {
     struct mdns_plugin_mgr *mgr;
     struct mdns_session    *md_session;
+    struct mdnsd_context   *pctxt;
+    struct fsm_parser_ops  *parser_ops;
+
+    time_t                  now;
+    char                    *mdns_report_interval;
+    long                    interval;
+    char                    *report_records;
 
     if (session == NULL) return -1;
 
@@ -255,15 +323,65 @@ mdns_plugin_init(struct fsm_session *session)
     if (md_session->initialized) return 0;
 
     /* Set the fsm session */
+    session->ops.update = mdns_plugin_update;
     session->ops.periodic = mdns_plugin_periodic;
     session->ops.exit = mdns_plugin_exit;
     session->handler_ctxt = md_session;
+
+    /* Set the handler ops */
+    parser_ops = &session->p_ops->parser_ops;
+    parser_ops->handler = mdns_plugin_handler;
 
     /* Wrap up the session initialization */
     md_session->session = session;
 
     // Initialize mdnsd.
     if (!mdnsd_ctxt_init(md_session)) goto err_plugin;
+
+    // Start the daemon
+    pctxt = mgr->ctxt;
+    if (!pctxt)
+    {
+        LOGE("%s: mdnsd context is NULL", __func__);
+        goto err_plugin;
+    }
+
+    if (!mdnsd_ctxt_start(pctxt))
+    {
+        LOGE("%s: mdnsd_daemon: Couldn't start the mdnsd daemon", __func__);
+        goto err_plugin;
+    }
+
+    /* Check if MDNS records need to be reported */
+    report_records = session->ops.get_config(session, "report_records");
+    if (report_records) md_session->report_records = true;
+    else                md_session->report_records = false;
+
+    /* Get the MDNS record report interval */
+    mdns_report_interval = session->ops.get_config(session, "records_report_interval");
+    if (mdns_report_interval)
+    {
+        interval = strtoul(mdns_report_interval, NULL, 10);
+        md_session->records_report_interval = (long)interval;
+    }
+    else
+    {
+        /* No value provided, take default */
+        md_session->records_report_interval = (long)DEFAULT_MDNS_RECORDS_REPORT_INTERVAL;
+    }
+
+    /* Get the targeted_devices and excluded_devices tags */
+    md_session->targeted_devices = session->ops.get_config(session, "targeted_devices");
+    md_session->excluded_devices = session->ops.get_config(session, "excluded_devices");
+
+    now = time(NULL);
+    md_session->records_report_ts = now;
+
+    if (!mdns_records_init(md_session))
+    {
+        LOGE("%s: mdns_records_init() failed", __func__);
+        goto err_plugin;
+    }
 
     md_session->initialized = true;
     LOGD("%s: added session %s", __func__, session->name);

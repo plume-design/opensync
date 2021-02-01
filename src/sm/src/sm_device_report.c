@@ -390,7 +390,9 @@ bool sm_device_report_request(
 
     if (request_ctx->reporting_interval) {
         device_ctx->report_ts = get_timestamp();
-        report_timer->repeat = request_ctx->reporting_interval;
+        report_timer->repeat = request_ctx->reporting_interval == -1 ?
+           1 : request_ctx->reporting_interval;
+
         dpp_device_report_timer_set(report_timer, true);
         if(request_ctx->sampling_interval == 0)
         {

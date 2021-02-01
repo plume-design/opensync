@@ -43,6 +43,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "inet_vlan.h"
 
 static bool inet_vlan_vlanid_set(inet_t *super, int vlanid);
+/* TODO: leading underscore used to break the same naming convention used for local
+functions and public inet.h interface functions. Naming change recommended */
+static bool _inet_vlan_egress_qos_map_set(inet_t *super, const char *qos_map);
 static bool inet_vlan_parent_ifname_set(inet_t *super, const char *ifname);
 static bool inet_vlan_service_commit(inet_base_t *super, enum inet_base_services srv, bool enable);
 static bool inet_vlan_service_IF_ENABLE(inet_vlan_t *self, bool enable);
@@ -103,6 +106,7 @@ bool inet_vlan_init(inet_vlan_t *self, const char *ifname)
     }
 
     self->inet.in_vlanid_set_fn = inet_vlan_vlanid_set;
+    self->inet.in_vlan_egress_qos_map_set_fn = _inet_vlan_egress_qos_map_set;
     self->inet.in_parent_ifname_set_fn = inet_vlan_parent_ifname_set;
     self->base.in_service_commit_fn = inet_vlan_service_commit;
 
@@ -137,7 +141,7 @@ bool inet_vlan_fini(inet_vlan_t *self)
  *  VLAN class methods
  * ===========================================================================
  */
-bool inet_vlan_vlanid_set(
+static bool inet_vlan_vlanid_set(
         inet_t *super,
         int vlanid)
 {
@@ -150,6 +154,28 @@ bool inet_vlan_vlanid_set(
     /* Interface must be recreated, therefore restart the IF_CREATE service */
     return inet_unit_restart(self->base.in_units, INET_BASE_IF_CREATE, false);
 }
+
+static bool _inet_vlan_egress_qos_map_set(
+        inet_t *super,
+        const char *qos_map)
+{
+    inet_vlan_t *self = CONTAINER_OF(super, inet_vlan_t, inet);
+
+    if (0 == strcmp(self->in_egress_qos_map, qos_map)) return true;
+
+    if (strlen(qos_map) >= sizeof(self->in_egress_qos_map))
+    {
+        LOG(ERR, "inet_vlan: %s: Egress QOS mapping too long: %s",
+                self->inet.in_ifname, qos_map);
+        return false;
+    }
+
+    STRSCPY(self->in_egress_qos_map, qos_map);
+
+    /* Interface must be recreated, therefore restart the IF_CREATE service */
+    return inet_unit_restart(self->base.in_units, INET_BASE_IF_CREATE, false);
+}
+
 
 bool inet_vlan_parent_ifname_set(inet_t *super, const char *parent_ifname)
 {
@@ -310,6 +336,8 @@ bool inet_vlan_service_IF_CREATE(inet_vlan_t *self, bool enable)
     {
         osn_vlan_vid_set(self->in_vlan, self->in_vlanid);
     }
+
+    (void)osn_vlan_egress_qos_map_set(self->in_vlan, self->in_egress_qos_map);
 
     if (!enable) return true;
 

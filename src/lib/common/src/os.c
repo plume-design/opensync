@@ -324,10 +324,7 @@ bool os_pid_exists(pid_t pid)
     return false;
 }
 
-/*
- * Execute shell_cmd and return shell exit code in a wait() style format
- */
-int cmd_log(const char *shell_cmd)
+static int exec_cmd_capture_output(const char *shell_cmd, void(* line_captured_fn)(const char* line))
 {
     char buf[1024];
 
@@ -345,7 +342,7 @@ int cmd_log(const char *shell_cmd)
 
     while (fgets(buf, sizeof(buf), fcmd) != NULL)
     {
-        LOG(INFO, ">>::output=%s", buf);
+        line_captured_fn(buf);
     }
 
     if (ferror(fcmd))
@@ -366,6 +363,50 @@ exit:
     }
 
     return rc;
+}
+
+typedef struct s_outbuf
+{
+    char *buf; //< ptr to buffer
+    size_t size; //< buffer size
+    size_t slen; //< string length in the buffer
+} outbuf_t;
+
+static outbuf_t outbuf;
+
+static void log_line(const char *line)
+{
+    LOG(DEBUG, ">>::output=%s", line);
+}
+
+static void capture_cout(const char *line)
+{
+    log_line(line);
+
+    size_t space = outbuf.size - outbuf.slen;
+    int n = snprintf(outbuf.buf + outbuf.slen, space, "%s\n", line);
+    if(n > 0 && (size_t)n < space)
+    {
+        outbuf.slen += n;
+    }
+}
+
+int cmd_buf(const char *shell_cmd, char *buf, size_t bufsize)
+{
+    buf[0] = 0; // terminate buf just in case
+    outbuf.buf = buf;
+    outbuf.size = bufsize;
+    outbuf.slen = 0;
+
+    return exec_cmd_capture_output(shell_cmd, &capture_cout);
+}
+
+/*
+ * Execute shell_cmd and return shell exit code in a wait() style format
+ */
+int cmd_log(const char *shell_cmd)
+{
+    return exec_cmd_capture_output(shell_cmd, &log_line);
 }
 
 /*
@@ -408,3 +449,15 @@ int os_get_opt(int argc, char ** argv, log_severity_t* log_severity)
     return 0;
 }
 
+/* Faster check if buffer is zero filled. Can be improved using size_t * 
+ * type casting with tested buffer memory alignment. To be done later */
+bool is_memzero(const void *mem, size_t size)
+{
+    const uint8_t *p_src = mem;
+    const uint8_t * const p_end = p_src + size;
+    while (p_src < p_end)
+    {
+        if (*p_src++) return false;
+    }
+    return true;
+}

@@ -34,6 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "log.h"
 #include "fsm.h"
+#include "fsm_internal.h"
 #include "json_util.h"
 #include "qm_conn.h"
 #include "os_types.h"
@@ -249,7 +250,21 @@ fsm_pcap_update(struct fsm_session *session)
 {
     bool ret;
 
-    if (!fsm_plugin_has_intf(session)) return true;
+    if (session->tap_type != FSM_TAP_PCAP) return false;
+    if (session->pcaps == NULL)
+    {
+        struct bpf_program *bpf;
+        struct fsm_pcaps *pcaps;
+
+        pcaps = calloc(1, sizeof(struct fsm_pcaps));
+        if (pcaps == NULL) return false;
+        session->pcaps = pcaps;
+
+        bpf = calloc(1, sizeof(struct bpf_program));
+        if (bpf == NULL) goto err_free_pcaps;
+
+        session->pcaps->bpf = bpf;
+    }
 
     ret = fsm_get_pcap_options(session);
     if (ret) fsm_pcap_close(session);
@@ -259,10 +274,18 @@ fsm_pcap_update(struct fsm_session *session)
     {
         LOGE("pcap open failed for handler %s",
              session->name);
-        return false;
+        goto err_free_bpf;
     }
 
     return true;
+
+err_free_bpf:
+    free(session->pcaps->bpf);
+
+err_free_pcaps:
+    free(session->pcaps);
+
+    return false;
 }
 
 

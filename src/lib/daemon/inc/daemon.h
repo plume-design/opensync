@@ -90,7 +90,7 @@ extern bool daemon_restart_set(daemon_t *self, bool auto_restart, double delay, 
 extern bool daemon_atexit(daemon_t *self, daemon_atexit_fn_t *fn);
 extern bool daemon_atrestart(daemon_t *self, daemon_atrestart_fn_t *fn);
 extern bool daemon_pidfile_set(daemon_t *self, const char *path, bool create);
-extern bool daemon_is_started(daemon_t *self, bool *started);
+extern bool daemon_is_started(const daemon_t *self, bool *started);
 
 #define daemon_arg_add(self, ...)   \
     daemon_arg_add_a(self, C_VPACK(__VA_ARGS__))

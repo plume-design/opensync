@@ -34,23 +34,26 @@ fi
 source ${FUT_TOPDIR}/shell/lib/wm2_lib.sh
 source ${LIB_OVERRIDE_FILE}
 
-
-usage="$(basename "$0") [-h]
-
-Script is used to empty Wifi_VIF_Config table
-
-Script does following:
-    - delete whole Wifi_VIF_Config table
-
-Example of usage:
-    $(basename "$0") - delete/empty Wifi_VIF_Config table
-"
-
+tc_name="tools/device/$(basename "$0")"
+usage()
+{
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Script is used to empty Wifi_VIF_Config table and waits for the State table to be emptied
+Arguments:
+    -h  show this help message
+Script usage example:
+   ./${tc_name}
+usage_string
+}
 while getopts h option; do
     case "$option" in
         h)
-            echo "$usage"
-            exit 1
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
             ;;
     esac
 done

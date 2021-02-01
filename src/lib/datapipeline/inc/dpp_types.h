@@ -220,9 +220,6 @@ typedef struct
     char                            if_name[RADIO_NAME_LEN];
 } radio_info_t;
 
-radio_entry_t * radio_get_config_from_type(
-        radio_type_t                radio_type);
-
 static inline char * radio_get_name_from_type(
 		radio_type_t                radio_type)
 {

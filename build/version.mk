@@ -22,6 +22,22 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+ifeq ($(VERSION_GIT_SHA1),)
+VERSION_GIT_SHA1 := $(shell \
+	( git -C .. log --pretty=oneline --abbrev-commit -1 2>/dev/null || \
+	  git -C .  log --pretty=oneline --abbrev-commit -1 2>/dev/null ) \
+	| awk '{ print "g" $$1 }' | cut -b1-7 \
+	| grep . || echo nogit)
+export VERSION_GIT_SHA1
+endif
+ifeq ($(VERSION_GIT_DIRTY),)
+VERSION_GIT_DIRTY := $(shell \
+	( git -C .. status --porcelain 2>/dev/null || \
+	  git -C .  status --porcelain 2>/dev/null ) \
+	| grep -v -e '^??' \
+	| wc -l)
+export VERSION_GIT_DIRTY
+endif
 
 VERSION_TARGET ?= $(TARGET)
 VER_GEN := src/lib/version/version-gen
@@ -46,6 +62,8 @@ VERSION_ENV += VERSION_STAMP_DIR=$(VERSION_STAMP_DIR)
 VERSION_ENV += VERSION_APPEND=$(VERSION_APPEND)
 VERSION_ENV += VERSION_APPEND_END=$(VERSION_APPEND_END)
 VERSION_ENV += OPENSYNC_TARGET_VERSION_OVERRIDE=$(OPENSYNC_TARGET_VERSION_OVERRIDE)
+VERSION_ENV += VERSION_GIT_SHA1=$(VERSION_GIT_SHA1)
+VERSION_ENV += VERSION_GIT_DIRTY=$(VERSION_GIT_DIRTY)
 
 ifeq ($(BUILD_NUMBER),)
 BUILD_NUMBER := $(shell $(VERSION_ENV) $(VER_GEN) build_number)

@@ -4,7 +4,7 @@ if OSN_BACKEND_FW_IPTABLES_FULL
         comment "FILTER Table"
         choice
             prompt "INPUT"
-            default OSN_FW_IPTABLES_POLICY_FILTER_INPUT_DROP
+            default OSN_FW_IPTABLES_POLICY_FILTER_INPUT_ACCEPT
 
             config OSN_FW_IPTABLES_POLICY_FILTER_INPUT_ACCEPT
                 bool "Accept"

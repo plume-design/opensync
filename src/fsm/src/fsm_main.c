@@ -75,6 +75,7 @@ static log_severity_t  fsm_log_severity = LOG_SEVERITY_INFO;
 int main(int argc, char ** argv)
 {
     struct ev_loop *loop = EV_DEFAULT;
+    uint32_t neigh_table_lookup = 0;
 
     // Parse command-line arguments
     if (os_get_opt(argc, argv, &fsm_log_severity)) {
@@ -133,7 +134,7 @@ int main(int argc, char ** argv)
         return -1;
     }
 
-    neigh_table_init_monitor(loop, false, false);
+    neigh_table_init_monitor(loop, false, neigh_table_lookup);
 
     if (nf_ct_init(loop) < 0)
     {

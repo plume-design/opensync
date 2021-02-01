@@ -124,28 +124,6 @@ const char *target_tls_privkey_filename(void)
 }
 #endif
 
-
-/******************************************************************************
- * LED
- *****************************************************************************/
-
-#ifndef IMPL_target_led_device_dir
-const char *target_led_device_dir(void)
-{
-    // Notes:
-    // * Call to target_init() is not required.
-    return NULL;
-}
-#endif
-
-#ifndef IMPL_target_led_names
-int target_led_names(const char **leds[])
-{
-    /* Return number of different LEDs and their names for current target */
-    return 0;
-}
-#endif
-
 /******************************************************************************
  * BLE
  *****************************************************************************/
@@ -269,6 +247,31 @@ bool target_vif_state_get(char  *ifname, struct schema_Wifi_VIF_State *vstate)
 #if __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6)
 #pragma message("target_vif_state_get is deprecated")
 #endif
+#endif
+
+/******************************************************************************
+ * DPP
+ *****************************************************************************/
+
+#ifndef IMPL_target_dpp_supported
+bool target_dpp_supported(void)
+{
+    return false;
+}
+#endif
+
+#ifndef IMPL_target_dpp_config_set
+bool target_dpp_config_set(const struct schema_DPP_Config *config)
+{
+    return false;
+}
+#endif
+
+#ifndef IMPL_target_dpp_key_get
+bool target_dpp_key_get(struct target_dpp_key *key)
+{
+    return false;
+}
 #endif
 
 /******************************************************************************

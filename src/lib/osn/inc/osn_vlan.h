@@ -138,6 +138,21 @@ bool osn_vlan_vid_set(
         osn_vlan_t *self,
         int vlanid);
 
+/**
+ * @brief Sets vlan egress qos mapping (PCP in 802.1Q header)
+ * Refer to egress-qos-map of 'ip link' command for details
+ * Note: qos mapping string format validation can be postponed until
+ * osn_vlan_apply method call
+ * 
+ * @param[in] self a valid pointer to an osn_vlan_t object
+ * @param[in] qos_map qos map to be set in the format of 
+ * FROM:TO with multiple mappings separated by spaces e.g '0:3 4:3'
+ * @return true when qos mapping set (but not applied); false otherwise
+ */
+bool osn_vlan_egress_qos_map_set(
+        osn_vlan_t *self,
+        const char *qos_map);
+
 /** @} OSN_VLAN */
 /** @} OSN */
 

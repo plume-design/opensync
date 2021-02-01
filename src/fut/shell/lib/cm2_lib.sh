@@ -29,78 +29,112 @@
 if [ -e "/tmp/fut_set_env.sh" ]; then
     source /tmp/fut_set_env.sh
 else
-    source ${FUT_TOPDIR}/shell/config/default_shell.sh
+    source "${FUT_TOPDIR}/shell/config/default_shell.sh"
 fi
-source ${FUT_TOPDIR}/shell/lib/unit_lib.sh
-source ${LIB_OVERRIDE_FILE}
+# Sourcing guard variable
+export CM2_LIB_SOURCED=True
 
+source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+source "${LIB_OVERRIDE_FILE}"
 
-############################################ INFORMATION SECTION - START ###############################################
+####################### INFORMATION SECTION - START ###########################
 #
 #   Base library of common Connection Manager functions
 #
-############################################ INFORMATION SECTION - STOP ################################################
+####################### INFORMATION SECTION - STOP ############################
 
-############################################ SETUP SECTION - START #####################################################
+####################### SETUP SECTION - START #################################
 
+###############################################################################
+# DESCRIPTION:
+#   Function prepares device for CM tests.
+#   Can be used with parameter to wait for bluetooth payload from CM.
+#   Can be used with parameter to make device a gateway, adding WAN interface
+#   to bridge.
+#   Raises an exception on fail.
+# INPUT PARAMETER(S):
+#   $1  interface name (optional, default: eth0)
+#   $2  is gateway (optional, default: true)
+# RETURNS:
+#   0   On success.
+#   See description.
+# USAGE EXAMPLE(S):
+#   cm_setup_test_environment
+#   cm_setup_test_environment eth0 true
+#   cm_setup_test_environment eth0 false
+###############################################################################
 cm_setup_test_environment()
 {
-    cm2_if_name=${1:-eth0}
-    [ "$2" == "true" ] && cm2_wait_payload=true || cm2_wait_payload=false
-    [ "$3" == "gw" ] && cm2_is_gw=true || cm2_is_gw=false
     fn_name="cm2_lib:cm_setup_test_environment"
+    cm2_if_name=${1:-eth0}
+    cm2_is_gw=${2:-true}
 
     log -deb "$fn_name - Running CM2 setup"
 
     device_init ||
-        raise "device_init" -l "$fn_name" -fc
+        raise "FAIL: Could not initialize device: device_init" -l "$fn_name" -ds
+
     cm_disable_fatal_state ||
-        raise "cm_disable_fatal_state" -l "$fn_name" -fc
+        raise "FAIL: Could not disable fatal state: cm_disable_fatal_state" -l "$fn_name" -ds
+
     start_openswitch ||
-        raise "start_openswitch" -l "$fn_name" -fc
+        raise "FAIL: Could not start OpenvSwitch: start_openswitch" -l "$fn_name" -ds
+
     manipulate_iptables_protocol unblock DNS ||
-        raise "manipulate_iptables_protocol unblock DNS" -l "$fn_name" -fc
+        raise "FAIL: Could not unblock DNS traffic: manipulate_iptables_protocol unblock DNS" -l "$fn_name" -ds
+
     manipulate_iptables_protocol unblock SSL ||
-        raise "manipulate_iptables_protocol unblock SSL" -l "$fn_name" -fc
+        raise "FAIL: Could not unblock SSL traffic: manipulate_iptables_protocol unblock SSL" -l "$fn_name" -ds
 
     # This needs to execute before we start the managers. Flow is essential.
     if [ "$cm2_is_gw" == "true" ]; then
         add_bridge_interface br-wan "$cm2_if_name" ||
-            raise "add_bridge_interface $cm2_if_name" -l "$fn_name" -fc
+            raise "FAIL: Could not add interface to br-wan bridge: add_bridge_interface br-wan $cm2_if_name" -l "$fn_name" -ds
     fi
 
     start_specific_manager cm -v ||
-        raise "start_specific_manager cm" -l "$fn_name" -fc
+        raise "FAIL: Could not start manager: start_specific_manager cm" -l "$fn_name" -ds
+
     start_specific_manager nm ||
-        raise "start_specific_manager nm" -l "$fn_name" -fc
+        raise "FAIL: Could not start manager: start_specific_manager nm" -l "$fn_name" -ds
+
+    start_if_specific_manager wano ||
+        raise "FAIL: Could not start manager: start_if_specific_manager wano" -l "$fn_name" -ds
+
     empty_ovsdb_table AW_Debug ||
-        raise "empty_ovsdb_table AW_Debug" -l "$fn_name" -fc
+        raise "FAIL: Could not empty table: empty_ovsdb_table AW_Debug" -l "$fn_name" -ds
+
     set_manager_log CM TRACE ||
-        raise "set_manager_log CM TRACE" -l "$fn_name" -fc
+        raise "FAIL: Could not set manager log severity: set_manager_log CM TRACE" -l "$fn_name" -ds
+
     set_manager_log NM TRACE ||
-        raise "set_manager_log NM TRACE" -l "$fn_name" -fc
+        raise "FAIL: Could not set manager log severity: set_manager_log NM TRACE" -l "$fn_name" -ds
 
     if [ "$cm2_is_gw" == "true" ]; then
         wait_for_function_response 0 "check_default_route_gw" ||
-            raise "Default GW not added to routes" -l "$fn_name" -ds
-    fi
-
-    if [ "$cm2_wait_payload" == "true" ]; then
-        wait_ovsdb_entry AW_Bluetooth_Config -is payload 75:00:00:00:00:00 &&
-            log -deb "$fn_name AW_Bluetooth_Config changed {payload:=75:00:00:00:00:00}" ||
-            raise "AW_Bluetooth_Config - {payload:=75:00:00:00:00:00}" -l "$fn_name" -ow
+            raise "FAIL: Default GW not added to routes" -l "$fn_name" -ds
     fi
 
     return 0
 }
 
+###############################################################################
+# DESCRIPTION:
+#   Function makes a tear down for CM tests. Removes bridge interface and
+#   kills CM. Function is used after CM tests session.
+# INPUT PARAMETER(S):
+#   None.
+# RETURNS:
+# USAGE EXAMPLE(S):
+#   cm2_teardown
+###############################################################################
 cm2_teardown()
 {
     fn_name="cm2_lib:cm2_teardown"
     log -deb "$fn_name - Running CM2 teardown"
     remove_bridge_interface br-wan &&
         log -deb "$fn_name - Success: remove_bridge_interface br-wan" ||
-        log -deb "$fn_name - Failed remove_bridge_interface br-wan"
+        log -deb "$fn_name - Failed: remove_bridge_interface br-wan"
 
     log -deb "$fn_name - Killing CM pid"
     cm_pids=$(pgrep "cm")
@@ -109,39 +143,94 @@ cm2_teardown()
         log -deb "$fn_name - Failed to kill CM pids"
 }
 
-############################################ SETUP SECTION - STOP #####################################################
+####################### SETUP SECTION - STOP ##################################
 
-############################################ CLOUD SECTION - START #####################################################
+####################### CLOUD SECTION - START #################################
 
+###############################################################################
+# DESCRIPTION:
+#   Function waits for Cloud status in Manager table to become
+#   as provided in parameter.
+#   Cloud statuses are:
+#       ACTIVE          device is connected to Cloud.
+#       BACKOFF         device could not connect to Cloud, will retry.
+#       CONNECTING      connecting to Cloud in progress.
+#       DISCONNECTED    device is disconnected from Cloud.
+#   Raises an exception on fail.
+# INPUT PARAMETER(S):
+#   $1  desired cloud state (required)
+# RETURNS:
+#   None.
+#   See DESCRIPTION.
+# USAGE EXAMPLE(S):
+#   wait_cloud_state ACTIVE
+###############################################################################
 wait_cloud_state()
 {
-    wait_for_cloud_state=$1
     fn_name="cm2_lib:wait_cloud_state"
+    local NARGS=1
+    [ $# -ne ${NARGS} ] &&
+        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+    wait_for_cloud_state=$1
+
     log -deb "$fn_name - Waiting for cloud state $wait_for_cloud_state"
     wait_for_function_response 0 "${OVSH} s Manager status -r | grep -q \"$wait_for_cloud_state\"" &&
         log -deb "$fn_name - Cloud state is $wait_for_cloud_state" ||
-        raise "Manager - {status:=$wait_for_cloud_state}" -l "$fn_name" -ow
+        raise "FAIL: Manager::status is not $wait_for_cloud_state}" -l "$fn_name" -ow
     print_tables Manager
 }
 
-
+###############################################################################
+# DESCRIPTION:
+#   Function waits for Cloud status in Manager table not to become
+#   as provided in parameter.
+#   Cloud statuses are:
+#       ACTIVE          device is connected to Cloud.
+#       BACKOFF         device could not connect to Cloud, will retry.
+#       CONNECTING      connecting to Cloud in progress.
+#       DISCONNECTED    device is disconnected from Cloud.
+#   Raises an exception on fail.
+# INPUT PARAMETER(S):
+#   $1  un-desired cloud state (required)
+# RETURNS:
+#   None.
+#   See DESCRIPTION.
+# USAGE EXAMPLE(S):
+#   wait_cloud_state_not ACTIVE
+###############################################################################
 wait_cloud_state_not()
 {
-    wait_for_cloud_state_not=$1
     fn_name="cm2_lib:wait_cloud_state_not"
+    local NARGS=1
+    [ $# -lt ${NARGS} ] &&
+        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+    wait_for_cloud_state_not=${1}
+    wait_for_cloud_state_not_timeout=${2:-60}
 
     log -deb "$fn_name - Waiting for cloud state not to be $wait_for_cloud_state_not"
-    wait_for_function_response 0 "${OVSH} s Manager status -r | grep -q \"$wait_for_cloud_state_not\"" &&
-        raise "Manager - {status:=$wait_for_cloud_state_not}" -l "$fn_name" -ow ||
+    wait_for_function_response 0 "${OVSH} s Manager status -r | grep -q \"$wait_for_cloud_state_not\"" "${wait_for_cloud_state_not_timeout}" &&
+        raise "FAIL: Manager::status is $wait_for_cloud_state_not}" -l "$fn_name" -ow ||
         log -deb "$fn_name - Cloud state is $wait_for_cloud_state_not"
 
     print_tables Manager
 }
 
-############################################ CLOUD SECTION - STOP ######################################################
+####################### CLOUD SECTION - STOP ##################################
 
-############################################ ROUTE SECTION - START #####################################################
+####################### ROUTE SECTION - START #################################
 
+###############################################################################
+# DESCRIPTION:
+#   Function checks if default gateway route exists.
+#   Function uses route tool. Must be installed on device.
+# INPUT PARAMETER(S):
+#   None.
+# RETURNS:
+#   0   Default route exists.
+#   1   Default route does not exist.
+# USAGE EXAMPLE(S):
+#   check_default_route_gw
+###############################################################################
 check_default_route_gw()
 {
     default_gw=$(route -n | tr -s ' ' | grep -i UG | awk '{printf $2}';)
@@ -152,25 +241,43 @@ check_default_route_gw()
     fi
 }
 
-############################################ ROUTE SECTION - STOP ######################################################
+####################### ROUTE SECTION - STOP ##################################
+
+####################### LINKS SECTION - START #################################
+
+####################### LINKS SECTION - STOP ##################################
 
 
-############################################ LINKS SECTION - START #####################################################
+####################### TEST CASE SECTION - START #############################
 
-############################################ LINKS SECTION - STOP ######################################################
-
-
-############################################ TEST CASE SECTION - START #################################################
-
-# Adds (inserts) or removes (deletes) rules to iptable.
-# Supports DNS and SSL rules.
-# Can block traffic by inserting rule (-I option)
-# Can unblock traffic by deleting rule (-D option)
+###############################################################################
+# DESCRIPTION:
+#   Function manipulates traffic by protocol using iptables.
+#   Adds (inserts) or removes (deletes) rules to OUTPUT chain.
+#   Can block traffic by using block option.
+#   Can unblock traffic by using unblock option.
+#   Supports traffic types:
+#       - DNS
+#       - SSL
+#   Raises exception if rule cannot be applied.
+# INPUT PARAMETER(S):
+#   $1  option, block or unblock traffic (required)
+#   $2  traffic type (required)
+# RETURNS:
+#   None.
+#   See DESCRIPTION.
+# USAGE EXAMPLE(S):
+#   manipulate_iptables_protocol unblock SSL
+#   manipulate_iptables_protocol unblock DNS
+###############################################################################
 manipulate_iptables_protocol()
 {
+    fn_name="cm2_lib:manipulate_iptables_protocol"
+    local NARGS=2
+    [ $# -ne ${NARGS} ] &&
+        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
     option=$1
     traffic_type=$2
-    fn_name="cm2_lib:manipulate_iptables_protocol"
 
     log -deb "$fn_name - $option $traffic_type traffic"
 
@@ -182,7 +289,7 @@ manipulate_iptables_protocol()
         # Waiting for exit code 1 if multiple iptables rules are inserted - safer way
         exit_code=1
     else
-        raise "option -> {given:$option, supported: block, unblock}" -l "$fn_name" -arg
+        raise "FAIL: Wrong option, given:$option, supported: block, unblock" -l "$fn_name" -arg
     fi
 
     if [ "$traffic_type" == "DNS" ]; then
@@ -192,7 +299,7 @@ manipulate_iptables_protocol()
         traffic_port="443"
         traffic_port_type="tcp"
     else
-        raise "traffic_type -> {given:$option, supported: DNS, SSL}" -l "$fn_name" -arg
+        raise "FAIL: Wrong traffic_type, given:$option, supported: DNS, SSL" -l "$fn_name" -arg
     fi
 
     $(iptables -S | grep -q "OUTPUT -p $traffic_port_type -m $traffic_port_type --dport $traffic_port -j DROP")
@@ -200,20 +307,36 @@ manipulate_iptables_protocol()
     if [ "$?" -ne 0 ] || [ "$option" == "unblock" ]; then
         wait_for_function_response $exit_code "iptables -$iptable_option OUTPUT -p $traffic_port_type --dport $traffic_port -j DROP" &&
             log -deb "$fn_name - $traffic_type traffic ${option}ed" ||
-            raise "Failed to $option $traffic_type traffic" -l "$fn_name" -nf
+            raise "FAIL: Could not $option $traffic_type traffic" -l "$fn_name" -nf
     else
-        log "lib/$fn_name - Add failure: Rule already in chain"
+        log "$fn_name - Add failure: Rule already in chain"
     fi
 }
 
-# Adds (inserts) or removes (deletes) rules to iptables for OUTPUT chain.
-# Can block OUTPUT traffic by inserting rule (-I option) for provided source address
-# Can unblock OUTPUT traffic by deleting rule (-D option) for provided source address
+###############################################################################
+# DESCRIPTION:
+#   Function manipulates traffic by source address using iptables.
+#   Adds (inserts) or removes (deletes) rules to OUTPUT chain.
+#   Can block traffic by using block option.
+#   Can unblock traffic by using unblock option.
+#   Raises exception is rule cannot be applied.
+# INPUT PARAMETER(S):
+#   $1  option, block or unblock traffic
+#   $2  source address to be blocked
+# RETURNS:
+#   None.
+#   See DESCRIPTION.
+# USAGE EXAMPLE(S):
+#   manipulate_iptables_address block 192.168.200.10
+###############################################################################
 manipulate_iptables_address()
 {
+    fn_name="cm2_lib:manipulate_iptables_address"
+    local NARGS=2
+    [ $# -ne ${NARGS} ] &&
+        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
     option=$1
     address=$2
-    fn_name="cm2_lib:manipulate_iptables_address"
 
     log -deb "$fn_name - $option $address internet"
 
@@ -225,7 +348,7 @@ manipulate_iptables_address()
         # Waiting for exit code 1 if multiple iptables rules are inserted - safer way
         exit_code=1
     else
-        raise "option -> {given:$option, supported: block, unblock}" -l "$fn_name" -arg
+        raise "FAIL: Wrong option, given:$option, supported: block, unblock" -l "$fn_name" -arg
     fi
 
     $(iptables -S | grep -q "OUTPUT -s $address -j DROP")
@@ -233,10 +356,10 @@ manipulate_iptables_address()
     if [ "$?" -ne 0 ] || [ "$option" == "unblock" ]; then
         wait_for_function_response $exit_code "iptables -$iptable_option OUTPUT -s $address -j DROP" &&
             log -deb "$fn_name - internet ${option}ed" ||
-            raise "Failed to $option internet" -l "$fn_name" -nf
+            raise "FAIL: Could not $option internet" -l "$fn_name" -nf
     else
-        log "lib/$fn_name - Add failure: Rule already in chain"
+        log "$fn_name - Add failure: Rule already in chain"
     fi
 }
 
-############################################ TEST CASE SECTION - STOP ##################################################
+####################### TEST CASE SECTION - STOP ##############################

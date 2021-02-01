@@ -71,8 +71,8 @@ typedef struct
     bool plugin_has_wan;
 } wanp_static_ipv4_handle_t;
 
-static void wanp_static_ipv4_module_start(void);
-static void wanp_static_ipv4_module_stop(void);
+static void wanp_static_ipv4_module_start(void *data);
+static void wanp_static_ipv4_module_stop(void *data);
 static wano_plugin_ops_init_fn_t wanp_static_ipv4_init;
 static wano_plugin_ops_run_fn_t wanp_static_ipv4_run;
 static wano_plugin_ops_fini_fn_t wanp_static_ipv4_fini;
@@ -488,12 +488,12 @@ void wanp_static_ipv4_inet_state_event_fn(
  *  Module Support
  * ===========================================================================
  */
-void wanp_static_ipv4_module_start(void)
+void wanp_static_ipv4_module_start(void *data)
 {
     wano_plugin_register(&wanp_static_ipv4);
 }
 
-void wanp_static_ipv4_module_stop(void)
+void wanp_static_ipv4_module_stop(void *data)
 {
     wano_plugin_unregister(&wanp_static_ipv4);
 }

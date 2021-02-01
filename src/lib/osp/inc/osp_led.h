@@ -73,6 +73,7 @@ enum osp_led_state
     OSP_LED_ST_UPGRADED,        /**< Upgrade finished */
     OSP_LED_ST_UPGRADEFAIL,     /**< Upgrade failed */
     OSP_LED_ST_HWTEST,          /**< Hardware test - FQC */
+    OSP_LED_ST_IOT_ALARM,       /**< Alarm triggered by IoT devices */
     OSP_LED_ST_LAST             /**< (table sentinel) */
 };
 

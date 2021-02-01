@@ -39,7 +39,7 @@ Options:
 Arguments:
     ip_address=$1 -- IP address to perform action on - (string)(required)
     type=$2 -- type of action to perform: block/unblock - (string)(required)
-example of usage:
+Usage:
    ${tc_name} "192.168.200.11" "block"
    ${tc_name} "192.168.200.10" "unblock"
 EOF
@@ -60,4 +60,4 @@ ip_address=${1}
 type=${2}
 
 log "${tc_name}: Manipulate DNS traffic: ${type} ${ip_address}"
-address_dns_manipulation2 "$ip_address" "$type"
+address_dns_manipulation "$ip_address" "$type"

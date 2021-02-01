@@ -1,6 +1,6 @@
 menuconfig MANAGER_SM
     bool "Statistics Manager (SM)"
-    default n
+    default y
     select MANAGER_QM
     help
         Enable Statistics Manager (SM)
@@ -21,3 +21,20 @@ menuconfig MANAGER_SM
 
             Note: This may require support from platform modules.
 
+    config SM_BACKEND_HAPD
+        depends on MANAGER_SM
+        bool "hostapd statistics backend"
+        default n
+        help
+            Enable hostapd backend providing following statistics:
+            - client auth fails
+
+    config SM_BACKEND_HAPD_CLIENTS_AUTH_FAILS_PER_VAP_LIMIT
+        int "Clients auth fails limit per VAP per report"
+        default 256
+        help
+            An upper bound of unique clients' authentication failure counters
+            stored per VAP per one reporting interval.
+
+            This value should be always greater than or equal to 2 and be a
+            power of 2.

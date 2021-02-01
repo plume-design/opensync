@@ -421,6 +421,17 @@ static void cm2_trigger_restart_managers(void) {
     if (g_state.dev_type == CM2_DEVICE_ROUTER) {
         LOGI("Detected device in Router mode, skip restart managers");
         skip_restart = true;
+
+        /* When device operates in Router mode, restart managers is skipped
+         * due to keep LAN connectivity.
+         * Two methods to help restore connection are triggered,
+         * refresh dhcp or restart interface.
+        */
+        if (g_state.cnts.skip_restart % 2)
+            cm2_ovsdb_refresh_dhcp(g_state.link.if_name);
+        else
+            cm2_restart_iface(g_state.link.if_name);
+
         goto restart;
     }
 
@@ -704,6 +715,7 @@ start:
             {
                 LOGI("Waiting for finish NTP");
             }
+
             if (cm2_connection_req_stability_check(INTERNET_CHECK | NTP_CHECK, true))
             {
                 cm2_state_e n_state;
@@ -741,6 +753,9 @@ start:
                 cm2_set_state(true, CM2_STATE_TRY_RESOLVE);
                 g_state.disconnects = 0;
             }
+
+            // Update boot_time in AWLAN_Node
+            cm2_ovsdb_set_AWLAN_Node_boot_time();
             break;
 
         case CM2_STATE_TRY_RESOLVE:

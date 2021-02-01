@@ -125,7 +125,7 @@ struct schema_FSM_Policy g_spolicies[] =
         .policy_exists = true,
         .policy = "test_policy",
         .name = "test_policy_update",
-        .idx = 0,
+        .idx = 2,
         .mac_op_exists = false,
         .fqdn_op_exists = false,
         .fqdncat_op_exists = false,
@@ -135,7 +135,7 @@ struct schema_FSM_Policy g_spolicies[] =
         .log = "all",
         .other_config_len = 2,
         .other_config_keys = { "tagv4_name", "tagv6_name",},
-        .other_config = { "upd_v4_tag", "upd_v6_tag"},
+        .other_config = { "${*upd_v4_tag}", "${*upd_v6_tag}"},
     }
 };
 
@@ -149,9 +149,8 @@ test_init_plugin(struct fsm_session *session)
     return true;
 }
 
-
 static bool
-test_flood_mod(struct fsm_session *session)
+test_update_tap(struct fsm_session *session)
 {
     return true;
 }
@@ -309,7 +308,7 @@ void setUp(void)
 
     fsm_init_mgr(NULL);
     g_fsm_mgr->init_plugin = test_init_plugin;
-    g_fsm_mgr->flood_mod = test_flood_mod;
+    g_fsm_mgr->update_session_tap = test_update_tap;
     g_fsm_mgr->get_br = test_get_br;
 
     mgr = fsm_policy_get_mgr();
@@ -344,7 +343,7 @@ void setUp(void)
     g_dns_mgr = dns_get_mgr();
     g_dns_mgr->set_forward_context = test_set_fwd_context;
     g_dns_mgr->forward = test_dns_forward;
-    g_dns_mgr->update_tag = test_dns_update_tag;
+    g_dns_mgr->update_tag = dns_update_tag;
     g_dns_mgr->policy_init = test_dns_policy_init;
 
     dns_plugin_init(g_fsm_parser);

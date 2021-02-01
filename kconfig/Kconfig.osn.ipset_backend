@@ -1,0 +1,11 @@
+#
+# OpenSync core network ipset backend
+#
+source "src/lib/osn/kconfig/Kconfig.osn.ipset_backend"
+
+#
+# Platform/vendor ipset backends
+#
+osource "platform/*/kconfig/Kconfig.osn.ipset_backend"
+osource "vendor/*/kconfig/Kconfig.osn.ipset_backend"
+

@@ -87,11 +87,15 @@ void free_flow_counters(struct flow_counters *counters);
 void free_flow_key(struct flow_key *key);
 void free_flow_key_vdr_data(struct flow_key *key);
 void free_node_info(struct node_info *node);
-struct net_md_stats_accumulator * net_md_treelookup_acc(struct net_md_eth_pair *pair,
-                                                        struct net_md_flow_key *key);
-
-struct net_md_stats_accumulator * net_md_lookup_acc(struct net_md_aggregator *aggr,
-                                                    struct net_md_flow_key *key);
+struct net_md_stats_accumulator *
+net_md_treelookup_acc(struct net_md_eth_pair *pair,
+		      struct net_md_flow_key *key);
+struct net_md_stats_accumulator *
+net_md_lookup_acc(struct net_md_aggregator *aggr,
+		  struct net_md_flow_key *key);
+struct net_md_stats_accumulator *
+net_md_lookup_reverse_acc(struct net_md_aggregator *aggr,
+			  struct net_md_stats_accumulator *acc);
 void net_md_free_flow(struct net_md_flow *flow);
 void net_md_free_eth_pair(struct net_md_eth_pair *pair);
 int net_md_eth_cmp(void *a, void *b);

@@ -68,10 +68,9 @@ ifneq (,$(findstring clang,$(CC)))
 	LDFLAGS += -fsanitize=address
 endif
 
-LDFLAGS += -lssl -lcrypto
+LDFLAGS += -lssl -lcrypto -lpcap
 
 export CC
 export CXX
 export CFLAGS
 export LIBS
-

@@ -25,61 +25,72 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include "log.h"
-#include "osn_upnp.h"
 
-#include "mupnp_server.h"
+#include "linux/upnp_server.h"
+#include "linux/mupnp_server.h"
+#include "linux/mupnp_cfg_wan.h"
+#include "linux/mupnp_cfg_iptv.h"
 
-struct osn_upnp
+upnp_server_t *upnp_server_new(enum upnp_srv_id id)
 {
-    mupnp_server_t  upnp_mupnp;
-};
-
-osn_upnp_t *osn_upnp_new(const char *ifname)
-{
-    osn_upnp_t *self = malloc(sizeof(*self));
-
-    if (!mupnp_server_init(&self->upnp_mupnp, ifname))
+    upnp_server_t *object = NULL;
+    switch(id)
     {
-        LOG(ERR, "upnp: %s: Error initializing MiniUPNP object.", ifname);
-        free(self);
-        return NULL;
+        case UPNP_ID_WAN:
+            object = mupnp_server_new(mupnp_cfg_wan());
+            break;
+        case UPNP_ID_IPTV:
+            object = mupnp_server_new(mupnp_cfg_iptv());
+            break;
+        
+        // dummy case to generate incomplete enum switch error
+        case UPNP_ID_COUNT:
+            break;
     }
 
-    return self;
-}
-
-bool osn_upnp_del(osn_upnp_t *self)
-{
-    bool retval =  true;
-
-    if (!mupnp_server_fini(&self->upnp_mupnp))
+    if (NULL == object)
     {
-        LOG(ERR, "upnp: Error stopping UPNP on interface: %s", self->upnp_mupnp.upnp_ifname);
-        retval = false;
+        LOG(ERR, "upnp: Error creating UPNP server of id=%d.", id);
     }
-
-    free(self);
-
-    return retval;
+    return object;
 }
 
-bool osn_upnp_start(osn_upnp_t *self)
+void upnp_server_del(upnp_server_t *self)
 {
-    return mupnp_server_start(&self->upnp_mupnp);
+    mupnp_server_del(self);
 }
 
-bool osn_upnp_stop(osn_upnp_t *self)
+bool upnp_server_attach_external(upnp_server_t *self, const char *ifname)
 {
-    return mupnp_server_stop(&self->upnp_mupnp);
+    return mupnp_server_attach_external(self, ifname);
 }
 
-bool osn_upnp_set(osn_upnp_t *self, enum osn_upnp_mode mode)
+bool upnp_server_attach_external6(upnp_server_t *self, const char *ifname)
 {
-    return mupnp_server_set(&self->upnp_mupnp, mode);
+    return mupnp_server_attach_external6(self, ifname);
 }
 
-bool osn_upnp_get(osn_upnp_t *self, enum osn_upnp_mode *mode)
+bool upnp_server_attach_internal(upnp_server_t *self, const char *ifname)
 {
-    return mupnp_server_get(&self->upnp_mupnp, mode);
+    return mupnp_server_attach_internal(self, ifname);
 }
 
+bool upnp_server_detach(upnp_server_t *self, const char *ifname)
+{
+    return mupnp_server_detach(self, ifname);
+}
+
+bool upnp_server_start(upnp_server_t *self)
+{
+    return mupnp_server_start(self);
+}
+
+bool upnp_server_stop(upnp_server_t *self)
+{
+    return mupnp_server_stop(self);
+}
+
+bool upnp_server_started(const upnp_server_t *self)
+{
+    return mupnp_server_started(self);
+}

@@ -45,6 +45,7 @@ enum {
     FSM_REDIRECT,
     FSM_FORWARD,
     FSM_UPDATE_TAG,
+    FSM_GATEKEEPER_REQ,
     FSM_NUM_ACTIONS, /* always last */
 };
 
@@ -168,6 +169,19 @@ struct fsm_url_request
 #define MAX_RESOLVED_ADDRS 32
 
 
+enum
+{
+    FSM_UNKNOWN_REQ_TYPE = -1,
+    FSM_FQDN_REQ,
+    FSM_URL_REQ,
+    FSM_HOST_REQ,
+    FSM_SNI_REQ,
+    FSM_IP_REQ,
+    FSM_APP_REQ,
+    FSM_IPFLOW_REQ,
+};
+
+
 struct fsm_policy_req;
 struct fsm_policy;
 
@@ -207,12 +221,16 @@ struct fqdn_pending_req
     char *ipv6_addrs[MAX_RESOLVED_ADDRS];
     struct policy_table *policy_table;
     char *provider;
+    int req_type;
+    struct net_md_stats_accumulator *acc;
     bool (*categories_check)(struct fsm_session *session,
                              struct fsm_policy_req *req,
                              struct fsm_policy *policy);
     bool (*risk_level_check)(struct fsm_session *session,
                              struct fsm_policy_req *req,
                              struct fsm_policy *policy);
+    bool (*gatekeeper_req)(struct fsm_session *session,
+                           struct fsm_policy_req *req);
     ds_tree_node_t req_node;           // DS tree node
 };
 
@@ -236,6 +254,8 @@ struct fsm_policy_req
 {
     os_macaddr_t *device_id;
     char *url;
+    struct sockaddr_storage *ip_addr;
+    struct net_md_stats_accumulator *acc;
     struct fqdn_pending_req *fqdn_req;
     struct fsm_policy_reply reply;
 };
@@ -313,6 +333,20 @@ struct fsm_url_stats {
     int64_t avg_lookup_latency;      /* average lookup latency */
 };
 
+struct fsm_url_report_stats {
+    uint32_t total_lookups;
+    uint32_t cache_hits;
+    uint32_t remote_lookups;
+    uint32_t connectivity_failures;
+    uint32_t service_failures;
+    uint32_t uncategorized;
+    uint32_t min_latency;
+    uint32_t max_latency;
+    uint32_t avg_latency;
+    uint32_t cached_entries;
+    uint32_t cache_size;
+};
+
 #define POLICY_NAME_SIZE 32
 struct policy_table
 {
@@ -362,4 +396,5 @@ void fsm_policy_deregister_client(struct fsm_policy_client *client);
 void fsm_policy_update_clients(struct policy_table *table);
 bool find_mac_in_set(os_macaddr_t *mac, struct str_set *macs_set);
 
+int fsm_policy_get_req_type(struct fsm_policy_req *req);
 #endif /* FSM_POLICY_H_INCLUDED */

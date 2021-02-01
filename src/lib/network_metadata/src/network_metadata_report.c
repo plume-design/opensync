@@ -122,6 +122,7 @@ net_md_allocate_aggregator(struct net_md_aggregator_set *aggr_set)
     aggr->neigh_lookup = aggr_set->neigh_lookup;
     aggr->on_acc_create = aggr_set->on_acc_create;
     aggr->on_acc_destroy = aggr_set->on_acc_destroy;
+    aggr->context = aggr_set->context;
 
     return aggr;
 

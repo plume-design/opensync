@@ -156,6 +156,9 @@ json_t* ovsdb_table_where(ovsdb_table_t *table, void *record)
 {
     if (record && table->key_offset >= 0 && *table->key_name)
     {
+        if (!strcmp(table->key_name, "_uuid"))
+            return ovsdb_tran_cond(OCLM_UUID, table->key_name, OFUNC_EQ, record + table->key_offset);
+
         return ovsdb_where_simple(table->key_name, record + table->key_offset);
     }
     return NULL;

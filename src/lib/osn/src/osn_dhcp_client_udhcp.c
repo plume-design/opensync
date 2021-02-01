@@ -109,14 +109,13 @@ bool osn_dhcp_client_state_get(osn_dhcp_client_t *self, bool *enabled)
 
 bool osn_dhcp_client_opt_udhcp(
         udhcp_client_t *udhcp,
-        enum osn_notify hint,
-        const char *key,
+        enum osn_dhcp_option opt,
         const char *value)
 {
     osn_dhcp_client_t *self = CONTAINER_OF(udhcp, osn_dhcp_client_t, dc_udhcp);
 
     if (self->dc_opt_notify_fn != NULL)
-        return self->dc_opt_notify_fn(self, hint, key, value);
+        return self->dc_opt_notify_fn(self, opt, value);
 
     return true;
 }

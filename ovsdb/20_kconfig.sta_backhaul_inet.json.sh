@@ -37,6 +37,7 @@ cat << EOI
         "row": {
             "if_name": "$vif",
             "ip_assign_scheme": "dhcp",
+            "dhcp_req": ["set", [ 1 ]],
             "mtu": $mtu,
             "if_type": "vif",
             "enabled" : true,

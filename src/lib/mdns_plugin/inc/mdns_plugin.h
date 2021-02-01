@@ -57,6 +57,11 @@ struct mdns_session
     struct fsm_session     *session;
     bool                    initialized;
     struct mdns_parser      parser;
+    long                    records_report_interval;
+    time_t                  records_report_ts;
+    bool                    report_records;
+    char                   *targeted_devices;
+    char                   *excluded_devices;
 
     ds_tree_node_t          session_node;
 };
@@ -68,18 +73,27 @@ struct mdnsd_context
 {
     bool                  enabled;
     mdns_daemon_t        *dmn;
-    int                   mcast_fd;
+    int                   ipv4_mcast_fd;
+    int                   ipv6_mcast_fd;
     char                 *srcip;
     char                 *txintf;
+    char                 *tapintf;
     struct timeval        sleep_tv;
-    ev_io                 read;
+    ev_io                 ipv4_read;
+    ev_io                 ipv6_read;
     ev_timer              timer;
     ds_tree_t             services;
 
-    int  (*dmn_get_mcast_sock)();
-    void (*dmn_ev_io_init)();
+    int  (*dmn_get_mcast_ipv4_sock)();
+    void (*dmn_ev_io_ipv4_init)();
+
+    int  (*dmn_get_mcast_ipv6_sock)();
+    void (*dmn_ev_io_ipv6_init)();
+
+    void (*dmn_ipv4_rcvcb)(EV_P_ ev_io *r, int revents);
+    void (*dmn_ipv6_rcvcb)(EV_P_ ev_io *r, int revents);
+
     void (*dmn_ev_timer_init)();
-    void (*dmn_rcvcb)(EV_P_ ev_io *r, int revents);
     void (*dmn_timercb)(EV_P_ struct ev_timer *w, int revents);
 };
 
@@ -153,13 +167,19 @@ void
 mdns_plugin_periodic(struct fsm_session  *session);
 
 void
-mdnsd_recv_cb(EV_P_ ev_io *r, int revents);
+mdnsd_ipv4_recv_cb(EV_P_ ev_io *r, int revents);
+
+void
+mdnsd_ipv6_recv_cb(EV_P_ ev_io *r, int revents);
 
 void
 mdnsd_timer_cb(EV_P_ struct ev_timer *w, int revents);
 
 void
-mdnsd_ev_io_init(void);
+mdnsd_ev_io_ipv4_init(void);
+
+void
+mdnsd_ev_io_ipv6_init(void);
 
 void
 mdnsd_ev_timer_init(void);
@@ -186,7 +206,7 @@ bool
 mdnsd_ctxt_set_srcip(struct mdns_session *md_session);
 
 bool
-mdnsd_ctxt_set_txintf(struct mdns_session *md_session);
+mdnsd_ctxt_set_intf(struct mdns_session *md_session);
 
 void
 callback_Service_Announcement(ovsdb_update_monitor_t *mon,

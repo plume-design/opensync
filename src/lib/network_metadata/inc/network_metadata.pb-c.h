@@ -55,6 +55,19 @@ typedef struct _Traffic__FlowReport Traffic__FlowReport;
 
 /* --- enums --- */
 
+typedef enum _Traffic__Direction {
+  TRAFFIC__DIRECTION__FLOW_DIRECTION_UNSPECIFIED = 0,
+  TRAFFIC__DIRECTION__FLOW_DIRECTION_OUTBOUND = 1,
+  TRAFFIC__DIRECTION__FLOW_DIRECTION_INBOUND = 2,
+  TRAFFIC__DIRECTION__FLOW_DIRECTION_LAN2LAN = 3
+    PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(TRAFFIC__DIRECTION)
+} Traffic__Direction;
+typedef enum _Traffic__Originator {
+  TRAFFIC__ORIGINATOR__FLOW_ORIGINATOR_UNSPECIFIED = 0,
+  TRAFFIC__ORIGINATOR__FLOW_ORIGINATOR_SRC = 1,
+  TRAFFIC__ORIGINATOR__FLOW_ORIGINATOR_DST = 2
+    PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(TRAFFIC__ORIGINATOR)
+} Traffic__Originator;
 
 /* --- messages --- */
 
@@ -148,6 +161,10 @@ struct  _Traffic__FlowKey
   size_t n_vendordata;
   Traffic__VendorData **vendordata;
   Traffic__FlowState *flowstate;
+  protobuf_c_boolean has_direction;
+  Traffic__Direction direction;
+  protobuf_c_boolean has_originator;
+  Traffic__Originator originator;
   protobuf_c_boolean has_parentofsrcmac;
   protobuf_c_boolean parentofsrcmac;
   protobuf_c_boolean has_parentofdstmac;
@@ -155,7 +172,7 @@ struct  _Traffic__FlowKey
 };
 #define TRAFFIC__FLOW_KEY__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&traffic__flow_key__descriptor) \
-    , NULL, NULL, 0,0, 0,0, NULL, NULL, 0,0, 0,0, 0,0, 0,NULL, 0,NULL, NULL, 0,0, 0,0 }
+    , NULL, NULL, 0,0, 0,0, NULL, NULL, 0,0, 0,0, 0,0, 0,NULL, 0,NULL, NULL, 0,0, 0,0, 0,0, 0,0 }
 
 
 struct  _Traffic__FlowCounters
@@ -441,6 +458,8 @@ typedef void (*Traffic__FlowReport_Closure)
 
 /* --- descriptors --- */
 
+extern const ProtobufCEnumDescriptor    traffic__direction__descriptor;
+extern const ProtobufCEnumDescriptor    traffic__originator__descriptor;
 extern const ProtobufCMessageDescriptor traffic__observation_point__descriptor;
 extern const ProtobufCMessageDescriptor traffic__vendor_data__kvpair__descriptor;
 extern const ProtobufCMessageDescriptor traffic__vendor_data__descriptor;

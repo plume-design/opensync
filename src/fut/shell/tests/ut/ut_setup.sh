@@ -39,6 +39,28 @@ source ${FUT_TOPDIR}/shell/lib/ut_lib.sh
 source ${LIB_OVERRIDE_FILE}
 
 tc_name="ut/$(basename "$0")"
+usage()
+{
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Setup device for UT testing
+Arguments:
+    -h : show this help message
+Script usage example:
+    ./${tc_name}
+usage_string
+}
+while getopts h option; do
+    case "$option" in
+        h)
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
+            ;;
+    esac
+done
 
 ut_setup_test_environment "$@" &&
     log "$tc_name: ut_setup_test_environment - Success " ||

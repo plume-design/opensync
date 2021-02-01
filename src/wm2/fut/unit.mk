@@ -29,7 +29,7 @@ UNIT_DISABLE := n
 # Template type:
 UNIT_TYPE := FUT
 # Output directory
-UNIT_DIR := shell/tests/wm
+UNIT_DIR := shell/tests/wm2
 
 UNIT_FILE := wm2_setup.sh
 UNIT_FILE += wm2_dfs_cac_aborted.sh
@@ -43,8 +43,8 @@ UNIT_FILE += wm2_set_channel.sh
 UNIT_FILE += wm2_set_ht_mode.sh
 UNIT_FILE += wm2_set_radio_country.sh
 UNIT_FILE += wm2_set_radio_enabled.sh
-UNIT_FILE += wm2_set_radio_fallback_parents.sh
 UNIT_FILE += wm2_set_radio_thermal_tx_chainmask.sh
 UNIT_FILE += wm2_set_radio_tx_chainmask.sh
 UNIT_FILE += wm2_set_radio_tx_power.sh
 UNIT_FILE += wm2_set_radio_vif_configs.sh
+UNIT_FILE += wm2_set_ssid.sh

@@ -49,8 +49,8 @@ struct wanp_pppoe_handle
     struct wano_plugin_status       wpoe_status;
 };
 
-static void wanp_pppoe_module_start(void);
-static void wanp_pppoe_module_stop(void);
+static void wanp_pppoe_module_start(void *data);
+static void wanp_pppoe_module_stop(void *data);
 static wano_plugin_ops_init_fn_t wanp_pppoe_init;
 static wano_plugin_ops_run_fn_t wanp_pppoe_run;
 static wano_plugin_ops_fini_fn_t wanp_pppoe_fini;
@@ -360,12 +360,12 @@ bool wanp_pppoe_get_credentials(struct wano_localconfig_pppoe *cred)
  *  Module Support
  * ===========================================================================
  */
-void wanp_pppoe_module_start(void)
+void wanp_pppoe_module_start(void *data)
 {
     wano_plugin_register(&wanp_pppoe);
 }
 
-void wanp_pppoe_module_stop(void)
+void wanp_pppoe_module_stop(void *data)
 {
     wano_plugin_unregister(&wanp_pppoe);
 }

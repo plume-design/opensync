@@ -43,6 +43,20 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 const char lnx_vlan_create[] = _S(
     ip link add link "$2" name "$1" type vlan id "$3");
 
+
+/*
+ * Script for setting default VLAN egress PCP (qos) in VLAN interface.
+ *
+ * Input parameters:
+ *
+ * $1 - Interface name
+ * $2 - egress QOS map : cannot be quoted, each FROM:TO map entry is 
+ * parsed as a separate arg by egress-qos-map command
+ */
+const char lnx_vlan_set_egress[] = _S(
+    ip link set "$1" type vlan egress-qos-map $2);
+
+
 /*
  * Script for deleting a VLAN interface
  *
@@ -87,7 +101,7 @@ bool lnx_vlan_fini(lnx_vlan_t *self)
 
 bool lnx_vlan_apply(lnx_vlan_t *self)
 {
-    char svlanid[C_INT32_LEN];
+    char snum[C_INT32_LEN];
     int rc;
 
     if (self->lv_vlanid < 1 || self->lv_vlanid > 4095)
@@ -106,7 +120,7 @@ bool lnx_vlan_apply(lnx_vlan_t *self)
 
     self->lv_applied = true;
 
-    snprintf(svlanid, sizeof(svlanid), "%d", self->lv_vlanid);
+    snprintf(snum, sizeof(snum), "%d", self->lv_vlanid);
 
     /* Silently delete old interfaces, if there are any */
     execsh_log(LOG_SEVERITY_DEBUG, lnx_vlan_delete, self->lv_ifname);
@@ -116,12 +130,29 @@ bool lnx_vlan_apply(lnx_vlan_t *self)
             lnx_vlan_create,
             self->lv_ifname,
             self->lv_pifname,
-            svlanid);
+            snum);
     if (rc != 0)
     {
-        LOG(ERR, "vlan: %s: Error creating VLAN interface (parent %s, vlanid %d).",
-                self->lv_ifname, self->lv_pifname, self->lv_vlanid);
+        LOG(ERR, "vlan: %s: Error creating VLAN interface (parent %s, vlanid %s).",
+                self->lv_ifname, self->lv_pifname, snum);
         return false;
+    }
+
+    // set egress qos map only if requested i.e. not empty string
+    // otherwise leave default system settings
+    if (self->lv_egress_qos_map[0] != '\0')
+    {
+        rc = execsh_log(
+                LOG_SEVERITY_DEBUG,
+                lnx_vlan_set_egress,
+                self->lv_ifname,
+                self->lv_egress_qos_map);
+        if (rc != 0)
+        {
+            LOG(ERR, "vlan: %s: Error setting vlan egress qos map to %s.",
+                    self->lv_ifname, self->lv_egress_qos_map);
+            return false;
+        }
     }
 
     return true;
@@ -151,5 +182,16 @@ bool lnx_vlan_vid_set(lnx_vlan_t *self, int vid)
 
     self->lv_vlanid = vid;
 
+    return true;
+}
+
+bool lnx_vlan_egress_qos_map_set(lnx_vlan_t *self, const char *qos_map)
+{
+    if (strlen(qos_map) >= sizeof(self->lv_egress_qos_map))
+    {
+        LOG(ERR, "vlan: egress qos map too long: %s", qos_map);
+        return false;
+    }
+    strcpy(self->lv_egress_qos_map, qos_map);
     return true;
 }

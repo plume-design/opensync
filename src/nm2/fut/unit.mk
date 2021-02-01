@@ -29,7 +29,7 @@ UNIT_DISABLE := n
 # Template type:
 UNIT_TYPE := FUT
 # Output directory
-UNIT_DIR := shell/tests/nm
+UNIT_DIR := shell/tests/nm2
 
 UNIT_FILE := nm2_setup.sh
 UNIT_FILE += nm2_configure_nonexistent_iface.sh
@@ -37,8 +37,6 @@ UNIT_FILE += nm2_enable_disable_iface_network.sh
 UNIT_FILE += nm2_ovsdb_configure_interface_dhcpd.sh
 UNIT_FILE += nm2_ovsdb_ip_port_forward.sh
 UNIT_FILE += nm2_ovsdb_remove_reinsert_iface.sh
-UNIT_FILE += nm2_rapid_multiple_insert_delete_iface.sh
-UNIT_FILE += nm2_rapid_multiple_insert_delete_ovsdb_row.sh
 UNIT_FILE += nm2_set_broadcast.sh
 UNIT_FILE += nm2_set_dns.sh
 UNIT_FILE += nm2_set_gateway.sh
@@ -47,6 +45,5 @@ UNIT_FILE += nm2_set_ip_assign_scheme.sh
 UNIT_FILE += nm2_set_mtu.sh
 UNIT_FILE += nm2_set_nat.sh
 UNIT_FILE += nm2_set_netmask.sh
-UNIT_FILE += nm2_set_parent_ifname.sh
 UNIT_FILE += nm2_set_upnp_mode.sh
-UNIT_FILE += nm2_set_vlan_id.sh
+UNIT_FILE += nm2_vlan_interface.sh

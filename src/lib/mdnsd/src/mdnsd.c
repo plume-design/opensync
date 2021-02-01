@@ -30,6 +30,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <errno.h>
+#include <arpa/inet.h>
 
 #define SPRIME 108      /* Size of query/publish hashes */
 #define LPRIME 1009     /* Size of cache hash */
@@ -753,10 +754,12 @@ void mdnsd_register_receive_callback(mdns_daemon_t *d, mdnsd_record_received_cal
     d->received_callback_data = data;
 }
 
-int mdnsd_in(mdns_daemon_t *d, struct message *m, unsigned long int ip, unsigned short int port)
+int mdnsd_in(mdns_daemon_t *d, struct message *m, struct sockaddr_storage *from)
 {
     int i, j;
     mdns_record_t *r = NULL;
+    unsigned short int port = 0;
+    struct sockaddr_in  *in4;
 
     if (d->shutdown)
         return 1;
@@ -818,7 +821,7 @@ int mdnsd_in(mdns_daemon_t *d, struct message *m, unsigned long int ip, unsigned
                         continue;
 
                     if (d->received_callback)
-                        d->received_callback(&m->an[j], d->received_callback_data);
+                        d->received_callback(&m->an[j], d->received_callback_data, from);
 
                     /* Do they already have this answer? */
                     if (_a_match(&m->an[j], &r->rr))
@@ -833,8 +836,12 @@ int mdnsd_in(mdns_daemon_t *d, struct message *m, unsigned long int ip, unsigned
             }
 
             /* Send the matching unicast reply */
-            if (!has_conflict && port != 5353)
-                _u_push(d, r_start, m->id, ip, port);
+            if (from->ss_family == AF_INET) {
+                in4  = (struct sockaddr_in *)from;
+                port = in4->sin_port;
+                if (!has_conflict && port != 5353)
+                    _u_push(d, r_start, m->id, (unsigned long int)in4->sin_addr.s_addr, (unsigned short int)port);
+            }
         }
 
         return 0;
@@ -854,7 +861,7 @@ int mdnsd_in(mdns_daemon_t *d, struct message *m, unsigned long int ip, unsigned
             _conflict(d, r);
 
         if (d->received_callback)
-            d->received_callback(&m->an[i], d->received_callback_data);
+            d->received_callback(&m->an[i], d->received_callback_data, from);
 
         if (_cache(d, &m->an[i]) != 0) {
             ERR("Failed caching answer, possibly too long packet, skipping.");
@@ -1317,9 +1324,9 @@ void mdnsd_set_srv(mdns_daemon_t *d, mdns_record_t *r, unsigned short priority, 
 
 static int process_in(mdns_daemon_t *d, int sd)
 {
-    struct sockaddr_in from;
+    struct sockaddr_storage from;
     unsigned char buf[MAX_PACKET_LEN];
-    socklen_t ssize = sizeof(struct sockaddr_in);
+    socklen_t ssize = sizeof(struct sockaddr_storage);
     ssize_t bsize;
 
     while ((bsize = recvfrom(sd, buf, MAX_PACKET_LEN, 0, (struct sockaddr *)&from, &ssize)) > 0) {
@@ -1330,7 +1337,7 @@ static int process_in(mdns_daemon_t *d, int sd)
 
         memset(&m, 0, sizeof(m));
         message_parse(&m, buf);
-        rc = mdnsd_in(d, &m, (unsigned long int)from.sin_addr.s_addr, ntohs(from.sin_port));
+        rc = mdnsd_in(d, &m, &from);
         if (rc)
             return 1;
     }

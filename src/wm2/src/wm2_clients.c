@@ -44,11 +44,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ds_list.h"
 #include "schema.h"
 #include "log.h"
+#include "target.h"
 #include "wm2.h"
+#include "wm2_dpp.h"
 #include "ovsdb.h"
 #include "ovsdb_sync.h"
 #include "ovsdb_table.h"
-#include "target.h"
 
 // Defines
 #define MODULE_ID LOG_MODULE_ID_MAIN
@@ -71,8 +72,6 @@ wm2_clients_oftag_from_key_id(const char *cloud_vif_ifname,
 {
     struct schema_Wifi_VIF_Config vconf;
     ovsdb_table_t table_Wifi_VIF_Config;
-    char oftagkey[32];
-    char *ptr;
     bool ok;
 
     OVSDB_TABLE_INIT(Wifi_VIF_Config, if_name);
@@ -85,23 +84,54 @@ wm2_clients_oftag_from_key_id(const char *cloud_vif_ifname,
         return -1;
     }
 
-    if (strlen(SCHEMA_KEY_VAL(vconf.security, "oftag")) == 0) {
-        LOGD("%s: no main oftag found, assuming backhaul/non-home interface, ignoring",
-             cloud_vif_ifname);
+    if (vconf.security_len > 0) {
+        /* Legacy impl based on deprecated Wifi_VIF_Config:security */
+        char oftagkey[32];
+        char *ptr;
+
+        if (strlen(SCHEMA_KEY_VAL(vconf.security, "oftag")) == 0) {
+            LOGD("%s: no main oftag found, assuming backhaul/non-home interface, ignoring",
+                 cloud_vif_ifname);
+            return 0;
+        }
+
+        if (strstr(key_id, "key-") == key_id)
+            snprintf(oftagkey, sizeof(oftagkey), "oftag-%s", key_id);
+        else
+            snprintf(oftagkey, sizeof(oftagkey), "oftag");
+
+        ptr = SCHEMA_KEY_VAL(vconf.security, oftagkey);
+        if (!ptr || strlen(ptr) == 0)
+            return -1;
+
+        snprintf(oftag, len, "%s", ptr);
         return 0;
     }
+    else {
+        const char *ptr;
 
-    if (strstr(key_id, "key-") == key_id)
-        snprintf(oftagkey, sizeof(oftagkey), "oftag-%s", key_id);
-    else
-        snprintf(oftagkey, sizeof(oftagkey), "oftag");
+        if (vconf.wpa_oftags_len == 0 && !vconf.default_oftag_exists) {
+            LOGD("%s: no main oftag found, assuming backhaul/non-home interface, ignoring",
+                 cloud_vif_ifname);
+            return 0;
+        }
 
-    ptr = SCHEMA_KEY_VAL(vconf.security, oftagkey);
-    if (!ptr || strlen(ptr) == 0)
-        return -1;
+        ptr = SCHEMA_KEY_VAL(vconf.wpa_oftags, key_id);
+        if (ptr && strlen(ptr) > 0) {
+            snprintf(oftag, len, "%s", ptr);
+            return 0;
+        }
 
-    snprintf(oftag, len, "%s", ptr);
-    return 0;
+        if (vconf.default_oftag_exists && strlen(vconf.default_oftag) > 0) {
+            snprintf(oftag, len, "%s", vconf.default_oftag);
+            return 0;
+        }
+
+        LOGD("%s: Neither wpa_oftags or default_oftag contains oftag for keyid: '%s'",
+             cloud_vif_ifname, key_id);
+
+        return 0;
+    }
 }
 
 static int
@@ -323,6 +353,22 @@ wm2_clients_war_esw_2684_noc_163_plat_878(const char *addr, const char *key_id)
     WARN_ON(ovsdb_sync_update(table, mac, addr, row) != 1);
 }
 
+static bool
+wm2_clients_get_default_oftag(const char *ifname, char *oftag, int size)
+{
+    struct schema_Wifi_VIF_Config vconf;
+    const char *column;
+    bool ok;
+
+    column = SCHEMA_COLUMN(Wifi_VIF_Config, if_name);
+    ok = ovsdb_table_select_one(&table_Wifi_VIF_Config, column, ifname, &vconf);
+    if (!ok) return false;
+    if (!vconf.default_oftag_exists) return false;
+
+    strscpy(oftag, vconf.default_oftag, size);
+    return true;
+}
+
 bool
 wm2_clients_update(struct schema_Wifi_Associated_Clients *schema, char *ifname, bool status)
 {
@@ -339,7 +385,14 @@ wm2_clients_update(struct schema_Wifi_Associated_Clients *schema, char *ifname, 
 
     oftag[0] = 0;
 
-    wm2_clients_oftag_from_key_id(ifname, schema->key_id, oftag, sizeof(oftag));
+    if (schema->dpp_netaccesskey_sha256_hex_exists) {
+        if (!wm2_dpp_key_to_oftag(schema->dpp_netaccesskey_sha256_hex, oftag, sizeof(oftag)))
+            if (!wm2_clients_get_default_oftag(ifname, oftag, sizeof(oftag)))
+                LOGN("%s: %s: could not map oftag", ifname, mac);
+    }
+    else {
+        wm2_clients_oftag_from_key_id(ifname, schema->key_id, oftag, sizeof(oftag));
+    }
 
     LOGD("%s: update called with keyid='%s' oftag='%s' status=%d",
          mac, schema->key_id, oftag, status);

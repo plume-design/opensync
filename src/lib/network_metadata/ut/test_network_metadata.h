@@ -99,5 +99,7 @@ void test_vendor_data_serialize_deserialize(void);
 void test_update_flow_tags(void);
 void test_update_vendor_data(void);
 void test_update_filter_flow_tags(void);
-
+void test_reverse_lookup_acc(void);
+void test_direction_originator_data_serialize_deserialize(void);
+void test_acc_flow_info_report(void);
 #endif // __TEST_NETWORK_METADATA_H__

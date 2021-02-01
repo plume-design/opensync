@@ -983,6 +983,8 @@ static Traffic__FlowKey *set_flow_key(struct flow_key *key)
     set_uint32((uint32_t)key->protocol, &pb->ipprotocol, &pb->has_ipprotocol);
     set_uint32((uint32_t)key->sport, &pb->tptsrcport, &pb->has_tptsrcport);
     set_uint32((uint32_t)key->dport, &pb->tptdstport, &pb->has_tptdstport);
+    set_uint32((uint32_t)key->direction, &pb->direction, &pb->has_direction);
+    set_uint32((uint32_t)key->originator, &pb->originator, &pb->has_originator);
 
     pb->flowstate = set_pb_flowstate(&key->state);
 

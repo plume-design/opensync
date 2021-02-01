@@ -235,11 +235,11 @@ $(UNIT_BUILD)/.target: $(BINDIR)/$(UNIT_BIN)
 # $(BINDIR)/$(UNIT_BIN) is never created. This is to call a makefile on every build
 $(BINDIR)/$(UNIT_BIN): $(UNIT_OBJ) $(UNIT_ALL_DEPS)
 	$$(NQ) " $(call color_callmakefile,compMak) [$(call COLOR_BOLD,$(UNIT_NAME))] $$@"
-	$$(Q)make $$(if $(V),,-s) -C $(UNIT_PATH) -f unit.Makefile $(UNIT_MAKEFILE_FLAGS) all
+	$$(Q)$(MAKE) $$(if $(V),,-s) -C $(UNIT_PATH) -f unit.Makefile $(UNIT_MAKEFILE_FLAGS) all
 
 $(UNIT_PATH)/install: $(UNIT_BUILD)/.target
 	$$(NQ) " $(call color_install,install) [$(call COLOR_BOLD,$(UNIT_NAME))] $$@"
-	$$(Q)make $$(if $(V),,-s) -C $(UNIT_PATH) -f unit.Makefile $(UNIT_MAKEFILE_FLAGS) install
+	$$(Q)$(MAKE) $$(if $(V),,-s) -C $(UNIT_PATH) -f unit.Makefile $(UNIT_MAKEFILE_FLAGS) install
 
 $(call UNIT_MAKE_DIRS)
 $(call UNIT_MAKE_INFO)

@@ -29,32 +29,46 @@
 if [ -e "/tmp/fut_set_env.sh" ]; then
     source /tmp/fut_set_env.sh
 else
-    source ${FUT_TOPDIR}/shell/config/default_shell.sh
+    source "${FUT_TOPDIR}/shell/config/default_shell.sh"
 fi
-source ${FUT_TOPDIR}/shell/lib/cm2_lib.sh
-source ${LIB_OVERRIDE_FILE}
+# Sourcing guard variable
+export UT_LIB_SOURCED
 
-############################################ INFORMATION SECTION - START ###############################################
+export SOURCE_CM2_LIB=True
+source "${FUT_TOPDIR}/shell/lib/lib_sources.sh"
+source "${LIB_OVERRIDE_FILE}"
+
+####################### INFORMATION SECTION - START ###########################
 #
-#   Base library of common Upgrade Manager functions (Plume specific)
+#   Base library of common Unit Test functions
 #
-############################################ INFORMATION SECTION - STOP ################################################
+####################### INFORMATION SECTION - STOP ############################
 
+####################### SETUP SECTION - START #################################
 
-############################################ SETUP SECTION - START #####################################################
-
+###############################################################################
+# DESCRIPTION:
+#   Function prepares device for UT tests.
+# INPUT PARAMETER(S):
+#   None.
+# RETURNS:
+#   None.
+# USAGE EXAMPLE(S):
+#   ut_setup_test_environment
+###############################################################################
 ut_setup_test_environment()
 {
-    log -deb "UT SETUP"
+    fn_name="ut_lib:ut_setup_test_environment"
+    log -deb "$fn_name - Running UT setup"
 
     stop_healthcheck ||
-        die "lib/um_lib: ut_setup_test_environment - Failed stop_healthcheck"
+        raise "FAIL: Failed to stop health check: stop_healthcheck" -l "$fn_name" -ds
 
     cm_disable_fatal_state ||
-        die "lib/cm2_lib: ut_setup_test_environment - Failed: cm_disable_fatal_state"
+        raise "FAIL: Failed to disable fatal state: cm_disable_fatal_state" -l "$fn_name" -fc
 
     # Ignoring failures
     /etc/init.d/manager restart || true
 }
 
-############################################ SETUP SECTION - STOP ######################################################
+####################### SETUP SECTION - STOP ##################################

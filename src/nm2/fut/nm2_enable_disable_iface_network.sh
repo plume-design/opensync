@@ -47,56 +47,53 @@ if [ -e "/tmp/fut_set_env.sh" ]; then
 else
     source /tmp/fut-base/shell/config/default_shell.sh
 fi
-source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
 source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
 source "${LIB_OVERRIDE_FILE}"
 
-# Fill variables with provided arguments or defaults.
+tc_name="nm2/$(basename "$0")"
+manager_setup_file="nm2/nm2_setup.sh"
+usage()
+{
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Script enables and disables interface through Wifi_Inet_Config table
+        Script fails if Wifi_Inet_State 'network' field does not match Wifi_Inet_Config
+Arguments:
+    -h  show this help message
+    \$1 (if_name) : used as if_name in Wifi_Inet_Config table : (string)(required)
+    \$2 (if_type) : used as if_type in Wifi_Inet_Config table : (string)(required)
+Testcase procedure:
+    - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
+                 Run: ./${tc_name} <IF-NAME> <IF-TYPE>
+Script usage example:
+   ./${tc_name} eth0 eth
+usage_string
+}
+while getopts h option; do
+    case "$option" in
+        h)
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
+            ;;
+    esac
+done
+NARGS=2
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+
 trap '
     reset_inet_entry $if_name || true
     run_setup_if_crashed nm || true
     check_restore_management_access || true
 ' EXIT SIGINT SIGTERM
 
-usage="
-$(basename "$0") [-h] \$1 \$2
-
-where options are:
-    -h  show this help message
-
-where arguments are:
-    if_name=\$1 -- used as if_name in Wifi_Inet_Config table - (string)(required)
-    if_type=\$2 -- used as if_type in Wifi_Inet_Config table - default 'vif'- (string)(optional)
-
-this script is dependent on following:
-    - running NM manager
-
-example of usage:
-   /tmp/fut-base/shell/nm2/nm2_enable_disable_iface_network.sh eth0 eth
-"
-
-while getopts h option; do
-    case "$option" in
-        h)
-            echo "$usage"
-            exit 1
-            ;;
-    esac
-done
-
-# Provide at least 1 argument(s).
-if [ $# -lt 1 ]; then
-    echo 1>&2 "$0: not enough arguments"
-    echo "$usage"
-    exit 2
-fi
-
 if_name=$1
 if_type=$2
 inet_addr=10.10.10.30
 
-tc_name="nm2/$(basename "$0")"
-
+log_title "$tc_name: NM2 test - Enable disable interface"
 
 log "$tc_name: Creating Wifi_Inet_Config entries for: $if_name"
 create_inet_entry \

@@ -128,6 +128,13 @@ ifeq ($(CONTROLLER_ADDR),)
 $(error TARGET=$(TARGET): Please add IMAGE_DEPLOYMENT_PROFILE section for $(IMAGE_DEPLOYMENT_PROFILE))
 endif
 
+# export so the variables are accessible in hooks and jinja templates
+export CONTROLLER_ADDR
+export BACKHAUL_SSID
+export BACKHAUL_PASS
+export PROVIDER_BACKHAUL_CREDS
+export MULTI_BACKHAUL_CREDS
+
 endif # SERVICE_PROVIDERS
 
 service-provider/info:

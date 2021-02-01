@@ -52,6 +52,96 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *****************************************************************************/
 
 /**
+ * @brief Used to report chirping in @ref
+ * target_radio_ops.op_dpp_announcement
+ */
+struct target_dpp_chirp_obj {
+    const char *ifname;
+    const char *mac_addr;
+    const char *sha256_hex;
+};
+
+/**
+ * @brief Used to report configuration completion in @ref
+ * target_radio_ops.op_dpp_conf_enrollee
+ */
+struct target_dpp_conf_enrollee {
+    const char *ifname;
+    const char *sta_mac_addr;
+    const char *sta_netaccesskey_sha256_hex; /**< public key hash */
+};
+
+/**
+ * @brief Possible AKMs that can be reported in @ref
+ * target_radio_ops.target_dpp_conf_network
+ */
+enum target_dpp_conf_akm {
+    TARGET_DPP_CONF_UNKNOWN,
+    TARGET_DPP_CONF_PSK,
+    TARGET_DPP_CONF_SAE,
+    TARGET_DPP_CONF_PSK_SAE,
+    TARGET_DPP_CONF_DPP,
+    TARGET_DPP_CONF_DPP_SAE,
+    TARGET_DPP_CONF_DPP_PSK_SAE,
+};
+
+/**
+ * @brief Used to report configuration completion in @ref
+ * target_radio_ops.op_dpp_conf_network
+ *
+ * Depending on the @ref target_dpp_conf_network.akm value other
+ * fields are expected to be set accordingly.
+ *
+ * Whenever a PSK or SAE AKM is listed, then the following fields must
+ * be set:
+ * - @ref target_dpp_conf_network.ssid_hex
+ * - @ref target_dpp_conf_network.psk_hex or @ref target_dpp_conf_network.pmk_hex
+ *
+ * Whenever a DPP is listed, then the following fields must be set:
+ * - @ref target_dpp_conf_network.dpp_netaccesskey_hex
+ * - @ref target_dpp_conf_network.dpp_connector
+ * - @ref target_dpp_conf_network.dpp_csign_hex
+ *
+ * In some cases all fields must be set.
+ */
+struct target_dpp_conf_network {
+    const char *ifname;
+    enum target_dpp_conf_akm akm;
+    const char *ssid_hex;
+    const char *psk_hex;
+    const char *pmk_hex;
+    const char *dpp_netaccesskey_hex; /**< private key part */
+    const char *dpp_connector;
+    const char *dpp_csign_hex;
+};
+
+/**
+ * @brief Used to identify what key material is provided in @ref target_dpp_key
+ *
+ * These are all EC keys. You can refer to hostapd project
+ * to get a better idea.
+ */
+enum target_dpp_key_type {
+    TARGET_DPP_KEY_PRIME256V1,
+    TARGET_DPP_KEY_SECP384R1,
+    TARGET_DPP_KEY_SECP512R1,
+    TARGET_DPP_KEY_BRAINPOOLP256R1,
+    TARGET_DPP_KEY_BRAINPOOLP384R1,
+    TARGET_DPP_KEY_BRAINPOOLP512R1,
+};
+
+
+#define TARGET_DPP_KEY_LEN 512
+
+/**
+ * @brief Used for extender onboarding, see @ref target_dpp_key_get
+ */
+struct target_dpp_key {
+    enum target_dpp_key_type type;
+    char hex[TARGET_DPP_KEY_LEN + 1];
+};
+
+/**
  * @brief List of callbacks for radio/vif changes
  */
 struct target_radio_ops {
@@ -89,6 +179,30 @@ struct target_radio_ops {
      *  fully re-sync connects clients (i.e. the call will be followed
      *  by op_client() calls) or when a vif is deconfigured abruptly */
     void (*op_flush_clients)(const char *vif);
+
+    /** target shall call this whenever chirping packets are received */
+    void (*op_dpp_announcement)(const struct target_dpp_chirp_obj *c);
+
+    /** target shall call this whenever DPP Enrollee is given out a
+     *  DPP Configuration. This marks completion of prior
+     *  @ref target_dpp_config_set call.
+     *  This shall not be called from within @ref target_dpp_config_set itself.
+     */
+    void (*op_dpp_conf_enrollee)(const struct target_dpp_conf_enrollee *c);
+
+    /** target shall call this whenever DPP Configurator gives us out
+     *  a configuration. This marks completion of prior
+     *  @ref target_dpp_config_set call.
+     *  This shall not be called from within @ref target_dpp_config_set itself.
+     */
+    void (*op_dpp_conf_network)(const struct target_dpp_conf_network *c);
+
+    /** target shall call this whenever DPP Configurator failed at any
+     *  stage (internal timeout, rejection, empty conf object, etc).
+     *  This marks completion of prior @ref target_dpp_config_set call.
+     *  This shall not be called from within @ref target_dpp_config_set itself.
+     */
+    void (*op_dpp_conf_failed)(void);
 };
 
 /**
@@ -181,6 +295,10 @@ bool target_radio_state_get(char *ifname, struct schema_Wifi_Radio_State *rstate
 /**
  * @brief Apply the configuration for the vif interface
  *
+ * If vconf.wpa_key_mgmt contains "dpp" then the interface shall capture DPP
+ * Announcements (chirping) and report it through @ref
+ * target_radio_ops.op_dpp_announcement.
+ *
  * @param vconf complete desired vif config
  * @param rconf complete desired radio config
  * @param cconfs complete desired vif credential config, used for
@@ -213,6 +331,99 @@ bool target_vif_config_set2(const struct schema_Wifi_VIF_Config *vconf,
 bool target_vif_state_get(char *ifname, struct schema_Wifi_VIF_State *vstate);
 
 /// @} LIB_TARGET_VIF
+
+/// @defgroup LIB_TARGET_DPP Related APIs
+/// Definitions and API related to Device Provisioning Protocol.
+/// @{
+
+/******************************************************************************
+ *  DPP definitions
+ *****************************************************************************/
+
+/**
+ * @brief Interrogate target if DPP is supported
+ *
+ * @return true if DPP supported
+ */
+bool target_dpp_supported(void);
+
+/**
+ * @brief Start or stop DPP related actions
+ *
+ * When @config is NULL:
+ *  - any ongoing chirping, listening or authentication must be stopped
+ *  - if any sta interfaces are present, they must resume roaming
+ *  - any configurators, bootstraps shall be flushed
+ *  - dpp announcements shall still be reported via @ref
+ *    target_radio_ops.op_dpp_announcement as per @ref
+ *    target_vif_config_set2 configuration
+ *
+ * When @config is not NULL:
+ *  - if any other DPP was already programmed in target, it must be
+ *    stopped and flushed
+ *  - depending on @config.auth value the target shall start chirping,
+ *    listening, initiate auth, or wait for chirping
+ *  - if ifnames[] are station interfaces, then roaming on these
+ *    interfaces must be stopped if config.auth is demanding chirping
+ *    or listening
+ *
+ * Upon completion one of the @ref target_radio_ops must be called:
+ *  - @ref target_radio_ops.op_dpp_conf_enrollee: when acting as Configurator
+ *  - @ref target_radio_ops.op_dpp_conf_network: when acting as Enrollee
+ *  - @ref target_radio_ops.op_dpp_conf_failed: either Enrollee or Configurator
+ *
+ * The following fields need to be respected by the target implementation:
+ * Fields description:
+ *  - configurator_key_hex
+ *  - configurator_key_curve
+ *  - configurator_conf_role
+ *  - configurator_conf_ssid_hex
+ *  - configurator_conf_psk_hex
+ *  - peer_bi_uri
+ *  - own_bi_key_hex
+ *  - own_bi_key_curve
+ *  - timeout_seconds
+ *  - auth
+ *  - ifnames
+ *  - status
+ *
+ * The following fields need to be ignored by the target implementation. These
+ * fields are used to expose given DPP_Config's results back to the cloud and
+ * are managed by opensync core. These are essentially provided back explicitly
+ * via @ref target_radio_ops.op_dpp_conf_enrollee or @ref
+ * target_radio_ops.op_dpp_conf_network:
+ *  - sta_mac_addr
+ *  - sta_netaccesskey_hex
+ *  - akm
+ *  - ssid_hex
+ *  - wpa_pass_hex
+ *  - wpa_pmk_hex
+ *  - dpp_netaccesskey_hex
+ *  - dpp_connector
+ *  - dpp_csign_hex
+ *
+ * @param config DPP action specification, or NULL
+ * @return true on success
+ */
+bool target_dpp_config_set(const struct schema_DPP_Config *config);
+
+/**
+ * @brief Fetch a key to be used for DPP Onboarding
+ *
+ * Opensync extenders may attempt to perform onboarding
+ * through DPP. For this purpose they must be provisioned
+ * with a compatible EC key. That key needs to be exposed in
+ * this call.
+ *
+ * Logistically the public representation of the EC key must
+ * be known to the controller inventory so that parent APs
+ * can recognize it and allow it in.
+ *
+ * It is intended to be used through DPP 1.2 Announcements.
+ */
+bool target_dpp_key_get(struct target_dpp_key *key);
+
+/// @} LIB_TARGET_DPP
 
 /// @defgroup LIB_TARGET_STATS Statistics Related APIs
 /// Definitions and API related to statistics.

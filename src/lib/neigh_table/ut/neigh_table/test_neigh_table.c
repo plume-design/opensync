@@ -69,7 +69,7 @@ struct test_mgr
 {
     struct ev_loop *loop;
     ev_timer timeout_watcher;
-    bool has_ovsdb;
+    uint32_t has_ovsdb;
     bool has_net_dummy;
     bool expected;
     int expected_v4_source;
@@ -112,14 +112,15 @@ neigh_ovsdb_test_setup(void)
         return -1;
     }
 
-    g_test_mgr.has_ovsdb = true;
+    /* Registering to all ovsdb table updates */
+    g_test_mgr.has_ovsdb = 0xff;
     return 0;
 }
 
 #else
 int neigh_ovsdb_test_setup(void)
 {
-    g_test_mgr.has_ovsdb = false;
+    g_test_mgr.has_ovsdb = 0;
     return 0;
 }
 #endif
@@ -146,7 +147,7 @@ void neigh_global_test_setup(void)
     char *ifn;
     int rc;
 
-    g_test_mgr.has_ovsdb = false;
+    g_test_mgr.has_ovsdb = 0;
     g_test_mgr.has_net_dummy = false;
     g_test_mgr.loop = EV_DEFAULT;
     g_test_mgr.g_timeout = 1.0;
@@ -190,7 +191,7 @@ void neigh_global_test_teardown(void)
 {
     char cmd[256];
 
-    g_test_mgr.has_ovsdb = false;
+    g_test_mgr.has_ovsdb = 0;
 
     if (g_test_mgr.has_net_dummy)
     {
@@ -1122,7 +1123,7 @@ void setup_lookup_dhcp_entry_in_ovsdb(void)
     struct test_timers *t;
     struct ev_loop *loop;
 
-    if (!g_test_mgr.has_ovsdb)
+    if (!(g_test_mgr.has_ovsdb & DHCP_LEASED_IP))
     {
         LOGI("%s: ovsdb support, bypassing test", __func__);
         return;
@@ -1373,7 +1374,7 @@ void setup_lookup_ipv4_neigh_entry_in_ovsdb(void)
     struct test_timers *t;
     struct ev_loop *loop;
 
-    if (!g_test_mgr.has_ovsdb)
+    if (!(g_test_mgr.has_ovsdb & IPV4_NEIGHBORS))
     {
         LOGI("%s: ovsdb support, bypassing test", __func__);
         return;
@@ -1639,7 +1640,7 @@ void setup_lookup_ipv6_neigh_entry_in_ovsdb(void)
     struct test_timers *t;
     struct ev_loop *loop;
 
-    if (!g_test_mgr.has_ovsdb)
+    if (!(g_test_mgr.has_ovsdb & IPV6_NEIGHBORS))
     {
         LOGI("%s: ovsdb support, bypassing test", __func__);
         return;

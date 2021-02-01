@@ -145,8 +145,7 @@ static void cm2_restore_connection(cm2_restore_con_t opt)
         cm2_ovsdb_refresh_dhcp(cm2_get_uplink_name());
     }
     else if (opt & (1 << CM2_RESTORE_MAIN_LINK)) {
-        WARN_ON(!cm2_ovsdb_set_Wifi_Inet_Config_interface_enabled(false, cm2_get_uplink_name()));
-        WARN_ON(!cm2_ovsdb_set_Wifi_Inet_Config_interface_enabled(true, cm2_get_uplink_name()));
+        cm2_restart_iface(cm2_get_uplink_name());
     }
     else {
         cm2_restore_switch_cfg(opt);

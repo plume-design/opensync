@@ -145,7 +145,7 @@ gen_dev_webpulse_policy() {
         "row": {
                "policy": "dev_webpulse",
                "name": "dev_wp_adult",
-               "idx": 0,
+               "idx": ${policy_idx},
                "action": "drop",
                "log": "blocked",
                "fqdncat_op": "in",
@@ -168,7 +168,7 @@ gen_dev_update_tag_policy() {
         "row": {
                "policy": "${policy_table}",
                "name": "dev_update_tag_test",
-               "idx": 0,
+               "idx": ${policy_idx},
                "action": "update_tag",
                "fqdn_op": "sfr_in",
                "fqdns":
@@ -198,7 +198,7 @@ gen_dev_brightcloud_policy() {
         "row": {
                "policy": "dev_brightcloud",
                "name": "dev_br_adult",
-               "idx": 0,
+               "idx": ${policy_idx},
                "action": "drop",
                "log": "blocked",
                "fqdncat_op": "in",
@@ -237,6 +237,15 @@ set_br_home_tx() {
     $(tap_up_cmd)
 }
 
+
+# get policy index to start from.
+get_policy_idx() {
+    bump=$1
+    idx=$(ovsh s FSM_Policy idx -r | wc -l)
+    # bump up the index by one if required
+    idx=$((idx+bump))
+    echo ${idx}
+}
 
 # h for help, long options otherwise
 optspec="h-:"
@@ -361,9 +370,8 @@ fi
 
 location_id=$(get_location_id)
 node_id=$(get_node_id)
-mqtt_v="dev-test/${fsm_handler}/${node_id}/${location_id}"
-mqtt_hs="dev-test/${fsm_handler}/health_stats/${node_id}/${location_id}"
-
+mqtt_v="dev-test/DNS/Queries/futs/${node_id}/${location_id}"
+mqtt_hs="dev-test/WC/Stats/Health/futs/${node_id}/${location_id}"
 $(gen_tap_cmd)
 $(tap_up_cmd)
 $(gen_no_flood_cmd)
@@ -371,9 +379,19 @@ $(gen_oflow_egress_cmd)
 $(gen_oflow_ingress_cmd)
 $(gen_tag_cmd)
 eval ovsdb-client transact \'$(gen_fsmc_cmd)\'
+
+policy_idx=$(get_policy_idx 1)
 eval ovsdb-client transact \'$(gen_dev_brightcloud_policy)\'
+sleep 1
+
+policy_idx=$((policy_idx+1))
 eval ovsdb-client transact \'$(gen_dev_webpulse_policy)\'
+sleep 1
+
+policy_idx=$((policy_idx+1))
 eval ovsdb-client transact \'$(gen_dev_update_tag_policy)\'
 set_br_home_tx
+sleep 1
+
 $(gen_oflow_tx_cmd)
 

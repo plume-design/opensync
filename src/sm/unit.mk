@@ -44,10 +44,14 @@ UNIT_SRC     += src/sm_radio_config.c
 UNIT_SRC     += src/sm_scan_schedule.c
 UNIT_SRC     += src/sm_rssi_report.c
 UNIT_SRC     += src/sm_common.c
+UNIT_SRC     += src/sm_backend.c
+UNIT_SRC     += src/sm_client_auth_fails_report.c
 
 ifeq ($(CONFIG_SM_CAPACITY_QUEUE_STATS),y)
 UNIT_SRC     += src/sm_capacity_report.c
 endif
+
+UNIT_SRC     += $(if $(CONFIG_SM_BACKEND_HAPD),src/sm_hapd.c,)
 
 UNIT_LDFLAGS := -lpthread
 UNIT_LDFLAGS += -ljansson
@@ -61,6 +65,8 @@ UNIT_DEPS    += src/lib/pjs
 UNIT_DEPS    += src/lib/schema
 UNIT_DEPS    += src/lib/datapipeline
 UNIT_DEPS    += src/lib/target
+UNIT_DEPS    += src/lib/module
+UNIT_DEPS    += $(if $(CONFIG_SM_BACKEND_HAPD),src/lib/hostap,)
 
 ifeq ($(CONFIG_MANAGER_QM),y)
 UNIT_SRC     += src/sm_qm.c

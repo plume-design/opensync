@@ -40,9 +40,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "inet_dhsnif.h"
 #include "osn_inet.h"
 #include "synclist.h"
+#include "inet_routes.h"
 
 #define INET_BASE_SERVICE_LIST(M)                                   \
-    M(INET_BASE_IF_ENABLE,      "Ineterface Enable")                \
+    M(INET_BASE_IF_ENABLE,      "Interface Enable")                 \
     M(INET_BASE_IF_CREATE,      "Interface Creation")               \
     M(INET_BASE_IF_READY,       "Interface Ready")                  \
     M(INET_BASE_FIREWALL,       "Firewall")                         \
@@ -59,7 +60,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     M(INET_BASE_INET6,          "IPv6 Networking")                  \
     M(INET_BASE_DHCP6_CLIENT,   "DHCPv6 Client")                    \
     M(INET_BASE_DHCP6_SERVER,   "DHCPv6 Server")                    \
-    M(INET_BASE_RADV,           "IPv6 Route Advertisement")
+    M(INET_BASE_RADV,           "IPv6 Route Advertisement")         \
+    M(INET_BASE_ROUTES,         "Static routes")                    \
+    M(INET_BASE_IPV4_READY,     "IPv4 ready")                       \
 
 /*
  * This enum is used mainly to apply partial configurations through the
@@ -122,6 +125,7 @@ struct __inet_base
     /* Routing table */
     osn_route_t            *in_route;
     inet_route_status_fn_t *in_route_status_fn;
+    inet_routes_t          *in_routes_set;
 
     /* Osync IPv6 API */
     osn_ip6_t              *in_ip6;
@@ -279,6 +283,7 @@ extern bool inet_base_portforward_del(inet_t *super, const struct inet_portforwa
  */
 extern bool inet_base_dhcpc_option_request(inet_t *super, enum osn_dhcp_option opt, bool req);
 extern bool inet_base_dhcpc_option_set(inet_t *super, enum osn_dhcp_option opt, const char *value);
+extern bool inet_base_dhcpc_option_get(inet_t *super, enum osn_dhcp_option opt, bool *req, const char **value);
 extern bool inet_base_dhcpc_option_notify(inet_t *super, inet_dhcpc_option_notify_fn_t *fn);
 
 /*
@@ -315,6 +320,8 @@ extern bool inet_base_dhsnif_lease_notify(inet_t *super, inet_dhcp_lease_fn_t *f
  * ===========================================================================
  */
 extern bool inet_base_route_notify(inet_t *super, inet_route_status_fn_t *func);
+extern bool inet_base_route_add(inet_t *super, const osn_route4_t *route);
+extern bool inet_base_route_remove(inet_t *super, const osn_route4_t *route);
 
 /*
  * ===========================================================================

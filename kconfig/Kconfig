@@ -5,6 +5,10 @@ menu "Common"
         source "kconfig/Kconfig.managers"
     endmenu
 
+    menu "Services"
+        source "kconfig/Kconfig.services"
+    endmenu
+
     menu "OpenSync API"
         menu "Networking (OSN)"
             choice
@@ -87,11 +91,16 @@ menu "Common"
 
             menu "Firewall"
                 choice
-                    prompt "Implementation"
+                    prompt "Firewall implementation"
                     default OSN_BACKEND_FW_IPTABLES_FULL
                     source "kconfig/Kconfig.osn.fw_backend"
                 endchoice
                 source "kconfig/Kconfig.osn.fw"
+                choice
+                    prompt "ipset implementation"
+                    default OSN_BACKEND_IPSET_LINUX
+                    source "kconfig/Kconfig.osn.ipset_backend"
+                endchoice
             endmenu
 
             choice
@@ -125,7 +134,7 @@ menu "Common"
             source "kconfig/Kconfig.osp_reboot"
 
             comment "OSP LED"
-            source "src/lib/osp/kconfig/Kconfig.osp_led"
+            source "kconfig/Kconfig.osp_led"
 
             comment "L2Switch control"
             choice
@@ -169,6 +178,9 @@ menu "Common"
     menu "Target"
         orsource "../src/lib/target/kconfig/Kconfig"
     endmenu
+
+    config INCLUDE
+        string "Include base config"
 
     config INSTALL_PREFIX
         string "Install prefix path"

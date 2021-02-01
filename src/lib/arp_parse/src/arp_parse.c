@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stddef.h>
 #include <time.h>
 
+#include <netinet/if_ether.h>
 #include <linux/if_ether.h>
 #include <net/if_arp.h>
 

@@ -52,7 +52,6 @@ struct dns_session
     int last_byte_pos;
     struct fsm_session *fsm_context;
     time_t stat_report_ts;
-    time_t stat_log_ts;
     bool debug;
     bool cache_ip;
     char *blocker_topic;

@@ -1,0 +1,130 @@
+#!/bin/sh -ex
+tohex() { od -tx1 -An | tr -d ' \n'; }
+
+ifname=wlan0
+mac=11:22:33:44:55:66
+ssid=test-ssid
+ssidhex=$(echo -n $ssid | tohex)
+urikeyhex=3081dc0201010442004610a3215c23534c8fb05ae035527eba0a1bd00fda5e466da41bbeb907c54da8e49e0c1727f2bbcae1fbca21a310e4c650daf279b690a8f176192841976a8917d2a00706052b81040023a18189038186000400b4b7ef20a48f6cbb703536cef162fcd85e0a991841fcc800137917ea47a541182d0eb1ef9c2522ec82384f825c3c8386ab412eb84589405d347bb0cbb88339854d00b009e99e5c8d3ac3c06d0ce19667c50bbca4aa06bd5d8d9fe64ca6b819c1559b661d88dcd2422a0fe58232011e88cea1f82c8350634c79b476451c3da35efeae3d
+uri="DPP:K:MFgwEAYHKoZIzj0CAQYFK4EEACMDRAADALS37yCkj2y7cDU2zvFi/NheCpkYQfzIABN5F+pHpUEYLQ6x75wlIuyCOE+CXDyDhqtBLrhFiUBdNHuwy7iDOYVN;;"
+# user@localhost:~:0$ echo -n "$(xclip -o | base64 -d)" | sha256sum
+# 8bee9e8fe4aeab308bff2944149277290f12752c25cd881237ab4751a9c9c08b  -
+# user@localhost:~:0$ ( echo -n chirp; xclip -o | base64 -d ) | sha256sum
+# eaed892cab15d5f37293f56df9cdaeeec7dfa33f7440efa5070a43bafe1a9043  -
+sha=eaed892cab15d5f37293f56df9cdaeeec7dfa33f7440efa5070a43bafe1a9043
+psk=12345678
+pskhex=$(echo -n $psk | tohex)
+keyhex=3077020101042012e69031788cc1787e35fcde2868f3c20120cb04feb36066e13be2a80b512391a00a06082a8648ce3d030107a14403420004c094692f026399e3058e80408f974203e4a925b96d0241be23398b5ee1544db84f0330621d903dd8fd213aa0eff4a4d9fbc1a62b910f7af8f723f0091649e3ef
+confhex=307702010104202d8961acd594a13ce84028f97e5c0d652f784d70b5d6fe216ef06b5aa9ad2132a00a06082a8648ce3d030107a144034200048467341d13849741f9fdb2ce7b843ee72bb8ee284c696a228e00fec9b6ea37c48ca5fe2f021ee73081078a6805477430442c14efb85ae24461cfc3aaafcd6ee2
+dppnet=3077020101042012e69031788cc1787e35fcde2868f3c20120cb04feb36066e13be2a80b512391a00a06082a8648ce3d030107a14403420004c094692f026399e3058e80408f974203e4a925b96d0241be23398b5ee1544db84f0330621d903dd8fd213aa0eff4a4d9fbc1a62b910f7af8f723f0091649e3ef
+dppconn="eyJ0eXAiOiJkcHBDb24iLCJraWQiOiJfNURkaUZVZ3dYZXJWTlktaHlDY2hqZmg3Si1nakN0R0RVZE9PMm1na1lZIiwiYWxnIjoiRVMyNTYifQ.eyJncm91cHMiOlt7Imdyb3VwSWQiOiIqIiwibmV0Um9sZSI6InN0YSJ9XSwibmV0QWNjZXNzS2V5Ijp7Imt0eSI6IkVDIiwiY3J2IjoiUC0yNTYiLCJ4Ijoid0pScEx3SmptZU1Gam9CQWo1ZENBLVNwSmJsdEFrRy1Jem1MWHVGVVRiZyIsInkiOiJUd013WWgyUVBkajlJVHFnN19TazJmdkJwaXVSRDNyNDl5UHdDUlpKNC04In19.vdim-I9V20D_zyVd32D1moznVyx940C2UMZZ0X0GsKB2eiuP9g4KzCrqlBc27TbSMwUVr7o55nV7nwx_ePsMOA"
+dppcsign=3059301306072a8648ce3d020106082a8648ce3d030107034200048467341d13849741f9fdb2ce7b843ee72bb8ee284c696a228e00fec9b6ea37c48ca5fe2f021ee73081078a6805477430442c14efb85ae24461cfc3aaafcd6ee2
+
+initiate_now() {
+	$ovsh d DPP_Config
+	$ovsh d DPP_Announcement
+
+	$ovsh i DPP_Config \
+		configurator_key_hex~=$confhex \
+		configurator_key_curve:=prime256v1 \
+		configurator_conf_role:=sta-dpp-psk-sae \
+		configurator_conf_psk_hex~=$pskhex \
+		configurator_conf_ssid_hex~=$ssidhex \
+		timeout_seconds:=30 \
+		'ifnames:=["set",["wlan0"]]' \
+		auth:=initiate_now \
+		status:=requested \
+		peer_bi_uri:="$uri"
+	timeout 1 $ovsh w DPP_Config -w status==in_progress status:=in_progress
+	timeout 1 $ovsh s DPP_Config -c >&2
+
+	echo "dpp_enrollee $ifname $mac $keyhex"
+	timeout 1 $ovsh w DPP_Config -w status==succeeded status:=succeeded
+	timeout 1 $ovsh s DPP_Config -c >&2
+}
+
+initiate_on_announce() {
+	$ovsh d DPP_Config
+	$ovsh d DPP_Announcement
+
+	echo "dpp_announcement wlan0 $mac $sha"
+	timeout 1 $ovsh w DPP_Announcement -w sta_mac_addr==$mac sta_mac_addr:=$mac
+	timeout 1 $ovsh s DPP_Announcement -c >&2
+
+	$ovsh i DPP_Config \
+		configurator_key_hex~=$confhex \
+		configurator_key_curve:=prime256v1 \
+		configurator_conf_role:=sta-dpp-psk-sae \
+		configurator_conf_psk_hex~=$pskhex \
+		configurator_conf_ssid_hex~=$ssidhex \
+		timeout_seconds:=30 \
+		'ifnames:=["set",["wlan0"]]' \
+		auth:=initiate_on_announce \
+		status:=requested \
+		peer_bi_uri:="$uri"
+	timeout 1 $ovsh w DPP_Config -w status==in_progress status:=in_progress
+	timeout 1 $ovsh s DPP_Config -c >&2
+
+	echo "dpp_enrollee $ifname $mac $keyhex"
+	timeout 1 $ovsh w DPP_Config -w status==succeeded status:=succeeded
+	timeout 1 $ovsh s DPP_Config -c >&2
+}
+
+respond_only() {
+	$ovsh d DPP_Config
+	$ovsh d DPP_Announcement
+
+	$ovsh i DPP_Config \
+		configurator_key_hex~=$confhex \
+		configurator_key_curve:=prime256v1 \
+		configurator_conf_role:=sta-dpp-psk-sae \
+		configurator_conf_psk_hex~=$pskhex \
+		configurator_conf_ssid_hex~=$ssidhex \
+		timeout_seconds:=30 \
+		'ifnames:=["set",["wlan0"]]' \
+		auth:=respond_only \
+		status:=requested \
+		own_bi_key_curve:=prime256v1 \
+		own_bi_key_hex:="$dppnet"
+	timeout 1 $ovsh w DPP_Config -w status==in_progress status:=in_progress
+	timeout 1 $ovsh s DPP_Config -c >&2
+
+	echo "dpp_enrollee $ifname $mac $keyhex"
+	timeout 1 $ovsh w DPP_Config -w status==succeeded status:=succeeded
+	timeout 1 $ovsh s DPP_Config -c >&2
+}
+
+chirp_and_respond() {
+	$ovsh d DPP_Config
+	$ovsh d DPP_Announcement
+
+	$ovsh i DPP_Config \
+		timeout_seconds:=30 \
+		'ifnames:=["set",["wlan0"]]' \
+		auth:=chirp_and_respond \
+		status:=requested \
+		own_bi_key_curve:=prime256v1 \
+		own_bi_key_hex:="$keyhex"
+	timeout 1 $ovsh w DPP_Config -w status==in_progress status:=in_progress
+	timeout 1 $ovsh s DPP_Config -c >&2
+
+	echo "dpp_network $ifname 1 $ssidhex $pskhex $pmkhex $dppnet $dppconn $dppcsign"
+	timeout 1 $ovsh w DPP_Config -w status==succeeded status:=succeeded
+	timeout 1 $ovsh s DPP_Config -c >&2
+}
+
+case "$1" in
+init)
+	. ./env-ap
+	;;
+
+test)
+	timeout 1 $ovsh w Wifi_Radio_State if_name:=phy0
+	timeout 1 $ovsh w Wifi_VIF_State if_name:=wlan0
+
+	initiate_now
+	initiate_on_announce
+	respond_only
+	chirp_and_respond
+	;;
+esac

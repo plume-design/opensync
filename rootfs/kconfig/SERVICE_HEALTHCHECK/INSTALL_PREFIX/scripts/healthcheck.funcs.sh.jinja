@@ -1,0 +1,41 @@
+#!/bin/sh
+# {# jinja-parse #}
+INSTALL_PREFIX={{CONFIG_INSTALL_PREFIX}}
+
+export LOG_PROCESS="healthcheck"
+[ -z "$LOG_MODULE" ] && export LOG_MODULE="MAIN"
+
+OVSH=$INSTALL_PREFIX/tools/ovsh
+
+. $INSTALL_PREFIX/scripts/log.funcs.sh
+
+Healthcheck_Enabled()
+{
+    true
+}
+
+Healthcheck_Fail()
+{
+    exit 1
+}
+
+Healthcheck_Pass()
+{
+    exit 0
+}
+
+ovsdb_upgrade_status()
+{
+    $OVSH -o "%d" s AWLAN_Node upgrade_status 2> /dev/null || echo -1
+}
+
+# Load any additional healthcheck funcs which can be platform or
+# vendor specific and can override any of the above functions.
+# Healthcheck_Fatal needs to be defined in one of these files
+
+for F in $INSTALL_PREFIX/scripts/healthcheck.funcs.d/*.sh; do
+    if [ -f "$F" ]; then
+        . $F
+    fi
+done
+

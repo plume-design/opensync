@@ -33,25 +33,30 @@ fi
 source ${FUT_TOPDIR}/shell/lib/unit_lib.sh
 source ${LIB_OVERRIDE_FILE}
 
-tc_name="tools/device/$(basename $0)"
-help()
+
+tc_name="tools/device/$(basename "$0")"
+usage()
 {
-cat << EOF
-${tc_name} [-h]
-
-This script returns the device into a default state, that should be equal to the state right after boot.
-EOF
-raise "Printed help" -l "$tc_name" -arg
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - This script returns the device into a default state, that should be equal to the state right after boot.
+Arguments:
+    -h  show this help message
+Script usage example:
+   ./${tc_name}
+usage_string
 }
-
 while getopts h option; do
     case "$option" in
         h)
-            help
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
             ;;
     esac
 done
-
 
 log "${tc_name}: Device Default Setup"
 

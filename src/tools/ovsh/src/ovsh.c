@@ -83,7 +83,6 @@ static bool     ovsh_upsert(char *table, json_t *where, int coln, char *colv[], 
 static bool     ovsh_wait(char *table, json_t *where, bool equals, int coln, char *colv[]);
 static bool     ovsh_delete(char *table, json_t *where, int coln, char *colv[]);
 static json_t  *json_value(char *str);
-static bool     ovsh_parse_where_statement(json_t *where, char *_str, bool is_parent_where);
 static bool     ovsh_parse_where(json_t *where, char *str, bool is_parent_where);
 static bool     ovsh_parse_columns(json_t *columns, int argc, char *argv[]);
 bool            ovsh_parse_mutations(json_t *mutations, int *colc, char *colv[]);
@@ -370,6 +369,8 @@ void ovsh_usage(const char *fmt, ...)
     fprintf(stderr, "Additional options are:\n");
     fprintf(stderr, "   -w EXPR | --where=EXPR\n");
     fprintf(stderr, "                   - Use a WHERE statement to filter rows (select, update, wait)\n");
+    fprintf(stderr, "                     Multi-EXPR WHERE statement can be expressed with multiple -w\n");
+    fprintf(stderr, "                     args, one EXPR per -w arg\n");
     fprintf(stderr, "   -j|--json       - print the result in JSON format (select, insert, update)\n");
     fprintf(stderr, "   -T|--table      - print the result in table format (select)\n");
     fprintf(stderr, "   -r|--raw        - print the result in RAW format (select)\n");
@@ -393,6 +394,8 @@ void ovsh_usage(const char *fmt, ...)
     fprintf(stderr, "Operators:\n");
     fprintf(stderr, "   ==  compare equal\n");
     fprintf(stderr, "   !=  compare not equal\n");
+    fprintf(stderr, "   :inc:  select map or set including value\n");
+    fprintf(stderr, "   :exc:  select for map or set excluding value\n");
     fprintf(stderr, "   :=  assign value: bool, int or string\n");
     fprintf(stderr, "   ~=  assign value: string\n");
     fprintf(stderr, "   ::  assign value: json object\n");
@@ -1171,11 +1174,10 @@ static bool ovsh_parse_parent(json_t *parent_where,  // json array
 /*
  * Parse a "WHERE" statement and build up a JSON object that is suitable for OVSDB
  */
-static bool ovsh_parse_where_statement(json_t *where, char *_str, bool is_parent_where)
+static bool ovsh_parse_where(json_t *where, char *_str, bool is_parent_where)
 {
-    char str[OVSH_COL_STR];
-
     bool retval = false;
+    char str[OVSH_COL_STR];
 
     if (strlen(_str) + 1 > sizeof(str))
     {
@@ -1189,6 +1191,8 @@ static bool ovsh_parse_where_statement(json_t *where, char *_str, bool is_parent
     {
         "==",
         "!=",
+        ":inc:",
+        ":exc:",
         NULL,
     };
 
@@ -1197,6 +1201,20 @@ static bool ovsh_parse_where_statement(json_t *where, char *_str, bool is_parent
     {
         DEBUG("Error parsing expression: %s", _str);
         return false;
+    }
+
+    /* Convert ovsh opt o ovsdb op */
+    if (strcmp(op, ":inc:") == 0)
+    {
+        op = "includes";
+    }
+    else if (strcmp(op, ":exc:") == 0)
+    {
+        op = "excludes";
+    }
+    else
+    {
+        /* Other ovsh operators (where_delims) match 1:1 to ovsdb operators */
     }
 
     /*
@@ -1249,32 +1267,6 @@ error:
     if (jop != NULL) json_decref(jop);
 
     return retval;
-}
-
-/*
- * Parse a "WHERE" argument (which may chain multiple WHERE statements separated
- * by a comma) and build up a JSON object that is suitable for OVSDB.
- */
-static bool ovsh_parse_where(json_t *where, char *_str, bool is_parent_where)
-{
-    char str[OVSH_COL_STR];
-    char *tok;
-
-
-    STRSCPY(str, _str);
-    tok = strtok(str, ",");
-    while (tok != NULL)
-    {
-        if (!ovsh_parse_where_statement(where, tok, is_parent_where))
-        {
-            DEBUG("Error parsing WHERE statement: %s in WHERE argument: %s\n",
-                   tok, _str);
-            return false;
-        }
-        tok = strtok(NULL, ",");
-    }
-
-    return true;
 }
 
 

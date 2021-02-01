@@ -33,6 +33,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 #include <errno.h>
 #include <jansson.h>
+#include <linux/kernel.h>
+#include <sys/sysinfo.h>
 
 #include "os.h"
 #include "util.h"
@@ -298,7 +300,7 @@ cm2_ovsdb_set_Wifi_Inet_Config_interface_enabled(bool state, char *ifname)
 }
 
 static void
-cm2_util_set_ip_cfg(struct schema_Wifi_Inet_State *istate, cm2_ip *ip)
+cm2_util_set_local_ip_cfg(struct schema_Wifi_Inet_State *istate, cm2_ip *ip)
 {
     if (istate->ip_assign_scheme_exists) {
         if (!strcmp(istate->ip_assign_scheme, "static"))
@@ -336,7 +338,7 @@ cm2_util_get_ip_inet_state_cfg(char *if_name, cm2_ip *ip)
     }
 
     LOGI("%s IP address info: inet_addr = %s assign_scheme = %s", if_name, istate.inet_addr, istate.ip_assign_scheme);
-    cm2_util_set_ip_cfg(&istate, ip);
+    cm2_util_set_local_ip_cfg(&istate, ip);
 
     return 0;
 }
@@ -497,7 +499,7 @@ cm2_ovsdb_copy_dhcp_ipv4_configuration(char *up_src, char *up_dst)
 {
     struct  schema_Wifi_Inet_Config ups_iconf;
     struct  schema_Wifi_Inet_Config upd_iconf;
-    char    *filter[8];
+    char    *filter[9];
     int     idx;
     int     dns_idx;
     int     ret;
@@ -570,6 +572,8 @@ cm2_ovsdb_copy_dhcp_ipv4_configuration(char *up_src, char *up_dst)
 
     cm2_ovsdb_set_dhcp_client(up_src, false);
 
+    filter[idx] = NULL;
+
     /* Enable new configuration for dest uplink */
     ret = ovsdb_table_update_where_f(&table_Wifi_Inet_Config,
                  ovsdb_where_simple(SCHEMA_COLUMN(Wifi_Inet_Config, if_name), up_dst),
@@ -583,9 +587,8 @@ cm2_ovsdb_copy_dhcp_ipv4_configuration(char *up_src, char *up_dst)
 }
 
 static bool
-cm2_util_set_dhcp_ipv4_cfg(struct schema_Wifi_Master_State *master, bool refresh)
+cm2_util_set_dhcp_ipv4_cfg(char *if_name, char *inet_addr, bool refresh)
 {
-    struct schema_Wifi_Inet_Config iconf_update;
     struct schema_Wifi_Inet_Config iconf;
     bool                           dhcp_active;
     bool                           dhcp_static;
@@ -593,31 +596,28 @@ cm2_util_set_dhcp_ipv4_cfg(struct schema_Wifi_Master_State *master, bool refresh
     bool                           empty_addr;
     int                            ret;
 
-    if (!strcmp(master->port_state, "inactive"))
-        return false;
-
     MEMZERO(iconf);
-    MEMZERO(iconf_update);
     dhcp_enabled = false;
 
     ret = ovsdb_table_select_one(&table_Wifi_Inet_Config,
-                SCHEMA_COLUMN(Wifi_Inet_Config, if_name), master->if_name, &iconf);
+                SCHEMA_COLUMN(Wifi_Inet_Config, if_name), if_name, &iconf);
     if (!ret)
-        LOGI("%s: %s: Failed to get interface config", __func__, master->if_name);
+        LOGI("%s: %s: Failed to get interface config", __func__, if_name);
 
-    LOGI("%s Set dhcp: inet_addr = %s assign_scheme = %s refresh = %d", master->if_name, master->inet_addr, iconf.ip_assign_scheme, refresh);
+    LOGI("%s Set dhcp: inet_addr = %s assign_scheme = %s refresh = %d",
+         if_name, inet_addr, iconf.ip_assign_scheme, refresh);
 
     dhcp_active = !strcmp(iconf.ip_assign_scheme, "dhcp");
     dhcp_static = !strcmp(iconf.ip_assign_scheme, "static");
 
-    empty_addr = !((strlen(master->inet_addr) > 0) && strcmp(master->inet_addr, "0.0.0.0") != 0);
+    empty_addr = !((strlen(inet_addr) > 0) && strcmp(inet_addr, "0.0.0.0") != 0);
     if (dhcp_static) {
         if (!empty_addr) {
             char gre_ifname[IFNAME_SIZE];
 
-            LOGI("%s: Use static static IP address: %s", master->if_name, master->inet_addr);
-            cm2_dhcpc_stop_dryrun(master->if_name);
-            cm2_util_ifname2gre(gre_ifname, sizeof(gre_ifname), master->if_name);
+            LOGI("%s: Use static static IP address: %s", if_name, inet_addr);
+            cm2_dhcpc_stop_dryrun(if_name);
+            cm2_util_ifname2gre(gre_ifname, sizeof(gre_ifname), if_name);
             cm2_ovsdb_connection_update_L3_state(gre_ifname, CM2_PAR_TRUE);
          }
          return false;
@@ -638,8 +638,21 @@ cm2_util_set_dhcp_ipv4_cfg(struct schema_Wifi_Master_State *master, bool refresh
     else
         dhcp_enabled = true;
 
-    cm2_ovsdb_set_dhcp_client(master->if_name, dhcp_enabled);
+    cm2_ovsdb_set_dhcp_client(if_name, dhcp_enabled);
     return false;
+}
+
+static bool cm2_util_set_dhcp_ipv4_cfg_from_master(struct schema_Wifi_Master_State *master, bool refresh)
+{
+    if (!strcmp(master->port_state, "inactive"))
+        return false;
+
+    return cm2_util_set_dhcp_ipv4_cfg(master->if_name, master->inet_addr, refresh);
+}
+
+static bool cm2_util_set_dhcp_ipv4_cfg_from_inet(struct schema_Wifi_Inet_State *inet, bool refresh)
+{
+    return cm2_util_set_dhcp_ipv4_cfg(inet->if_name, inet->inet_addr, refresh);
 }
 
 void
@@ -653,21 +666,20 @@ cm2_ovsdb_refresh_dhcp(char *if_name)
 
     LOGI("%s: Trigger refresh dhcp", if_name);
 
-    MEMZERO(mstate);
-
-    ret = ovsdb_table_select_one(&table_Wifi_Master_State,
-                SCHEMA_COLUMN(Wifi_Master_State, if_name), if_name, &mstate);
-    if (!ret) {
-        LOGW("%s: %s: Failed to get master row", __func__, mstate.if_name);
-        return;
-    }
-
     if (g_state.link.ip.ipv6 == CM2_IPV6_DHCP) {
         cm2_ovsdb_set_dhcpv6_client(if_name, false);
         cm2_ovsdb_set_dhcpv6_client(if_name, true);
     }
     else {
-        cm2_util_set_dhcp_ipv4_cfg(&mstate, true);
+        MEMZERO(mstate);
+
+        ret = ovsdb_table_select_one(&table_Wifi_Master_State,
+                    SCHEMA_COLUMN(Wifi_Master_State, if_name), if_name, &mstate);
+        if (!ret) {
+            LOGW("%s: %s: Failed to get master row", __func__, mstate.if_name);
+            return;
+        }
+        cm2_util_set_dhcp_ipv4_cfg_from_master(&mstate, true);
     }
 }
 
@@ -850,7 +862,7 @@ cm2_ovsdb_util_translate_master_ip(struct schema_Wifi_Master_State *master)
    if (strcmp(master->if_name, cm2_get_uplink_name()) && !is_sta)
        return;
 
-   if (!(cm2_util_set_dhcp_ipv4_cfg(master, false)))
+   if (!(cm2_util_set_dhcp_ipv4_cfg_from_master(master, false)))
        return;
 
    if (is_sta) {
@@ -919,7 +931,7 @@ cm2_ovsdb_util_handle_master_sta_port_state(struct schema_Wifi_Master_State *mas
             LOGW("%s: %s: Failed to set interface enabled", __func__, master->if_name);
 
         if (!wds)
-            cm2_util_set_dhcp_ipv4_cfg(master, true);
+            cm2_util_set_dhcp_ipv4_cfg_from_master(master, true);
     } else {
         if (g_state.link.is_used && g_state.link.is_bridge) {
             bool br_update = true;
@@ -2285,7 +2297,8 @@ void callback_Wifi_Inet_State(ovsdb_update_monitor_t *mon,
                 } else if (strcmp(g_state.link.if_name, inet_state->if_name)) {
                     break;
                 }
-                cm2_util_set_ip_cfg(inet_state, &g_state.link.ip);
+                cm2_util_set_dhcp_ipv4_cfg_from_inet(inet_state, false);
+                cm2_util_set_local_ip_cfg(inet_state, &g_state.link.ip);
             }
 
             if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_Inet_State, dhcpc)))
@@ -2603,6 +2616,40 @@ bool cm2_ovsdb_set_AWLAN_Node_manager_addr(char *addr)
     char *filter[] = { "+", SCHEMA_COLUMN(AWLAN_Node, manager_addr), NULL };
     int ret = ovsdb_table_update_where_f(&table_AWLAN_Node, NULL, &awlan, filter);
     return ret == 1;
+}
+
+void cm2_ovsdb_set_AWLAN_Node_boot_time(void)
+{
+    struct schema_AWLAN_Node awlan;
+    struct sysinfo           s_info;
+    int                      ret;
+    time_t                   boot_time, now;
+    char                     *filter[] = {"+", SCHEMA_COLUMN(AWLAN_Node, boot_time), NULL};
+
+    memset(&awlan, 0, sizeof(awlan));
+    memset(&s_info, 0, sizeof(s_info));
+
+    ret = sysinfo(&s_info);
+    if (ret)
+    {
+        LOGE("%s: failed to get uptime from sysinfo, '%s'", __func__, strerror(errno));
+        return;
+    }
+
+    now = time(NULL);
+    boot_time = now - s_info.uptime;
+
+    awlan.boot_time = boot_time;
+    awlan.boot_time_exists = true;
+
+    ret = ovsdb_table_update_where_f(&table_AWLAN_Node, NULL, &awlan, filter);
+    if (!ret)
+    {
+        LOGE("%s: failed to update AWLAN_Node boot_time", __func__);
+        return;
+    }
+
+    return;
 }
 
 static void

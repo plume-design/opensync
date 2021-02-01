@@ -34,3 +34,4 @@ UNIT_DIR := shell/tools/rpi/files
 UNIT_FILE := fut_controller.pem
 UNIT_FILE += haproxy.cfg
 UNIT_FILE += plume_ca_chain.pem
+UNIT_FILE += fut_mqtt.conf

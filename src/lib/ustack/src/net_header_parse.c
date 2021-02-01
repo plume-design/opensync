@@ -111,6 +111,7 @@ size_t net_header_parse_eth(struct net_header_parser *parser)
     parser->data += parsed;
 
     parser->eth_pld.payload = parser->data;
+    parser->eth_header_available = true;
 
     return parsed;
 }
@@ -541,6 +542,7 @@ net_header_fill_buf(char *buf, size_t len, struct net_header_parser *parser)
     char eth_pres[256];
     char tpt_pres[256];
     bool has_ip;
+    bool has_eth;
 
     eth = net_header_get_eth(parser);
     memset(eth_pres, 0, sizeof(eth_pres));
@@ -549,13 +551,18 @@ net_header_fill_buf(char *buf, size_t len, struct net_header_parser *parser)
     memset(buf, 0, len);
 
     /* Prepare ethernet presentation */
-    snprintf(eth_pres, sizeof(eth_pres),
-             "ETH: src: " PRI_os_macaddr_lower_t
-             ", dst: " PRI_os_macaddr_lower_t
-             ", ethertype 0x%X, vlan id %u",
-             FMT_os_macaddr_pt(eth->srcmac),
-             FMT_os_macaddr_pt(eth->dstmac),
-             net_header_get_ethertype(parser), eth->vlan_id);
+    has_eth = eth->srcmac ? true : false;
+    has_eth &= eth->dstmac ? true : false;
+    if (has_eth)
+    {
+        snprintf(eth_pres, sizeof(eth_pres),
+                 "ETH: src: " PRI_os_macaddr_lower_t
+                 ", dst: " PRI_os_macaddr_lower_t
+                 ", ethertype 0x%X, vlan id %u",
+                 FMT_os_macaddr_pt(eth->srcmac),
+                 FMT_os_macaddr_pt(eth->dstmac),
+                 net_header_get_ethertype(parser), eth->vlan_id);
+    }
 
     /* Prepare ip presentation */
     has_ip = net_header_srcip_str(parser, ip_src, sizeof(ip_src));

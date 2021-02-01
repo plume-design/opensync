@@ -524,6 +524,13 @@ void fsm_policy_set_action(struct fsm_policy *fpolicy,
         fpolicy->action = FSM_UPDATE_TAG;
         return;
     }
+
+    cmp = strcmp(spolicy->action, "gatekeeper");
+    if (cmp == 0)
+    {
+        fpolicy->action = FSM_GATEKEEPER_REQ;
+        return;
+    }
 }
 
 

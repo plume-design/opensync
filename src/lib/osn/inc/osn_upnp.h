@@ -68,12 +68,19 @@ typedef struct osn_upnp osn_upnp_t;
  *                        UPnP configuration
  * - UPNP_MODE_INTERNAL - This interface is a UPnP LAN facing interface
  * - UPNP_MODE_EXTERNAL - This interface is a UPnP WAN facing interface
+ * - UPNP_MODE_INTERNAL_IPTV - This interface is a UPnP LAN facing IPTV interface
+ * - UPNP_MODE_EXTERNAL_IPTV - This interface is a UPnP WAN facing IPTV interface
+ * 
  */
 enum osn_upnp_mode
 {
     UPNP_MODE_NONE,         /**< Default, no UPnP settings */
     UPNP_MODE_INTERNAL,     /**< This is the LAN facing UPnP interface */
     UPNP_MODE_EXTERNAL,     /**< This is the WAN facing UPnP interface */
+    UPNP_MODE_INTERNAL_IPTV,/**< This is the LAN facing UPnP IPTV interface */
+    UPNP_MODE_EXTERNAL_IPTV,/**< This is the WAN facing UPnP IPTV interface */
+
+    /*place for next upnp types:always in pairs*/
 };
 
 

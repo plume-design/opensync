@@ -47,8 +47,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "target.h"
 #include "dppline.h"
 
-#define STATS_MQTT_INTERVAL     5.0 /* Report interval in seconds -- float */
-
 struct sm_cxt {
     struct          ev_io nl_watcher;
     int             nl_fd;
@@ -135,6 +133,7 @@ int sm_init_nl(struct sm_cxt *cxt);
 
 bool sm_mqtt_init(void);
 void sm_mqtt_set(const char *broker, const char *port, const char *topic, const char *qos, int compress);
+void sm_mqtt_interval_set(int interval);
 void sm_mqtt_stop(void);
 
 #ifdef CONFIG_SM_CAPACITY_QUEUE_STATS
@@ -264,6 +263,7 @@ typedef enum
     STS_REPORT_ESSID,
     STS_REPORT_DEVICE,
     STS_REPORT_RSSI,
+    STS_REPORT_CLIENT_AUTH_FAILS,
     STS_REPORT_MAX,
     STS_REPORT_ERROR = STS_REPORT_MAX
 } sm_report_type_t;
@@ -305,5 +305,66 @@ void sm_sanity_check_report_timestamp(
         uint64_t    timestamp_ms,
         uint64_t   *reporting_timestamp,
         uint64_t   *report_ts);
+
+/******************************************************************************
+ *  CLIENT AUTH FAILS definitions
+ *****************************************************************************/
+typedef struct {
+    mac_address_str_t mac;
+    uint32_t auth_fails;
+    uint32_t invalid_psk;
+} sm_client_auth_fails_client_t;
+
+typedef struct {
+    ifname_t if_name;
+    sm_client_auth_fails_client_t *clients;
+    size_t clients_len;
+} sm_client_auth_fails_bss_t;
+
+typedef struct {
+    radio_type_t radio_type;
+    sm_client_auth_fails_bss_t *bsses;
+    size_t bsses_len;
+} sm_client_auth_fails_report_t;
+
+void sm_client_auth_fails_report_start(
+    const sm_stats_request_t       *request);
+void sm_client_auth_fails_report_update(
+    const sm_stats_request_t       *request);
+void sm_client_auth_fails_report_stop(
+    const sm_stats_request_t       *request);
+void sm_client_auth_fails_report(
+    const sm_client_auth_fails_report_t* report);
+
+/******************************************************************************
+ *  BACKEND support definitions
+ *****************************************************************************/
+typedef void sm_backend_start_f(sm_report_type_t report_type,
+                                const sm_stats_request_t *request);
+typedef void sm_backend_update_f(sm_report_type_t report_type,
+                                 const sm_stats_request_t *request);
+typedef void sm_backend_stop_f(sm_report_type_t report_type,
+                               const sm_stats_request_t *request);
+
+typedef struct {
+    sm_backend_start_f             *start;
+    sm_backend_update_f            *update;
+    sm_backend_stop_f              *stop;
+} sm_backend_funcs_t;
+
+void sm_backend_register(
+        const char                 *name,
+        const sm_backend_funcs_t   *funcs);
+void sm_backend_unregister(
+        const char                 *name);
+void sm_backend_report_start(
+        sm_report_type_t            report_type,
+        const sm_stats_request_t   *request);
+void sm_backend_report_update(
+        sm_report_type_t            report_type,
+        const sm_stats_request_t   *request);
+void sm_backend_report_stop(
+        sm_report_type_t            report_type,
+        const sm_stats_request_t   *request);
 
 #endif /* SM_H_INCLUDED */

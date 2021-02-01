@@ -46,6 +46,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "dppline.h"
 #include "os_backtrace.h"
 #include "json_util.h"
+#include "module.h"
 
 #include "sm.h"
 
@@ -135,6 +136,7 @@ int main (int argc, char **argv)
     }
 
     backtrace_init();
+    module_init();
 
     ev_run(EV_DEFAULT, 0);
 

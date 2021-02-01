@@ -33,6 +33,5 @@ UNIT_DIR := shell/tools/rpi/um
 
 UNIT_FILE := um_create_corrupt_image_file.sh
 UNIT_FILE += um_create_corrupt_md5_file.sh
-UNIT_FILE += um_create_fw_key_file.sh
 UNIT_FILE += um_create_md5_file.sh
 UNIT_FILE += um_encrypt_image.sh

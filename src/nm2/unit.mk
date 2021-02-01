@@ -56,6 +56,7 @@ UNIT_SRC    += src/nm2_mcast.c
 UNIT_SRC    += src/nm2_port.c
 UNIT_SRC    += src/nm2_portfw.c
 UNIT_SRC    += src/nm2_route.c
+UNIT_SRC    += src/nm2_route_config.c
 UNIT_SRC    += src/nm2_util.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc

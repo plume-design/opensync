@@ -784,7 +784,7 @@ const ProtobufCMessageDescriptor traffic__flow_state__descriptor =
   (ProtobufCMessageInit) traffic__flow_state__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
-static const ProtobufCFieldDescriptor traffic__flow_key__field_descriptors[14] =
+static const ProtobufCFieldDescriptor traffic__flow_key__field_descriptors[16] =
 {
   {
     "srcMac",
@@ -931,8 +931,32 @@ static const ProtobufCFieldDescriptor traffic__flow_key__field_descriptors[14] =
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
-    "parentOfSrcMac",
+    "direction",
     13,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_ENUM,
+    offsetof(Traffic__FlowKey, has_direction),
+    offsetof(Traffic__FlowKey, direction),
+    &traffic__direction__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "originator",
+    14,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_ENUM,
+    offsetof(Traffic__FlowKey, has_originator),
+    offsetof(Traffic__FlowKey, originator),
+    &traffic__originator__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "parentOfSrcMac",
+    15,
     PROTOBUF_C_LABEL_OPTIONAL,
     PROTOBUF_C_TYPE_BOOL,
     offsetof(Traffic__FlowKey, has_parentofsrcmac),
@@ -944,7 +968,7 @@ static const ProtobufCFieldDescriptor traffic__flow_key__field_descriptors[14] =
   },
   {
     "parentOfDstMac",
-    14,
+    16,
     PROTOBUF_C_LABEL_OPTIONAL,
     PROTOBUF_C_TYPE_BOOL,
     offsetof(Traffic__FlowKey, has_parentofdstmac),
@@ -956,14 +980,16 @@ static const ProtobufCFieldDescriptor traffic__flow_key__field_descriptors[14] =
   },
 };
 static const unsigned traffic__flow_key__field_indices_by_name[] = {
+  12,   /* field[12] = direction */
   5,   /* field[5] = dstIp */
   1,   /* field[1] = dstMac */
   3,   /* field[3] = etherType */
   11,   /* field[11] = flowState */
   9,   /* field[9] = flowTags */
   6,   /* field[6] = ipProtocol */
-  13,   /* field[13] = parentOfDstMac */
-  12,   /* field[12] = parentOfSrcMac */
+  13,   /* field[13] = originator */
+  15,   /* field[15] = parentOfDstMac */
+  14,   /* field[14] = parentOfSrcMac */
   4,   /* field[4] = srcIp */
   0,   /* field[0] = srcMac */
   8,   /* field[8] = tptDstPort */
@@ -974,7 +1000,7 @@ static const unsigned traffic__flow_key__field_indices_by_name[] = {
 static const ProtobufCIntRange traffic__flow_key__number_ranges[1 + 1] =
 {
   { 1, 0 },
-  { 0, 14 }
+  { 0, 16 }
 };
 const ProtobufCMessageDescriptor traffic__flow_key__descriptor =
 {
@@ -984,7 +1010,7 @@ const ProtobufCMessageDescriptor traffic__flow_key__descriptor =
   "Traffic__FlowKey",
   "traffic",
   sizeof(Traffic__FlowKey),
-  14,
+  16,
   traffic__flow_key__field_descriptors,
   traffic__flow_key__field_indices_by_name,
   1,  traffic__flow_key__number_ranges,
@@ -1233,4 +1259,66 @@ const ProtobufCMessageDescriptor traffic__flow_report__descriptor =
   1,  traffic__flow_report__number_ranges,
   (ProtobufCMessageInit) traffic__flow_report__init,
   NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCEnumValue traffic__direction__enum_values_by_number[4] =
+{
+  { "FLOW_DIRECTION_UNSPECIFIED", "TRAFFIC__DIRECTION__FLOW_DIRECTION_UNSPECIFIED", 0 },
+  { "FLOW_DIRECTION_OUTBOUND", "TRAFFIC__DIRECTION__FLOW_DIRECTION_OUTBOUND", 1 },
+  { "FLOW_DIRECTION_INBOUND", "TRAFFIC__DIRECTION__FLOW_DIRECTION_INBOUND", 2 },
+  { "FLOW_DIRECTION_LAN2LAN", "TRAFFIC__DIRECTION__FLOW_DIRECTION_LAN2LAN", 3 },
+};
+static const ProtobufCIntRange traffic__direction__value_ranges[] = {
+{0, 0},{0, 4}
+};
+static const ProtobufCEnumValueIndex traffic__direction__enum_values_by_name[4] =
+{
+  { "FLOW_DIRECTION_INBOUND", 2 },
+  { "FLOW_DIRECTION_LAN2LAN", 3 },
+  { "FLOW_DIRECTION_OUTBOUND", 1 },
+  { "FLOW_DIRECTION_UNSPECIFIED", 0 },
+};
+const ProtobufCEnumDescriptor traffic__direction__descriptor =
+{
+  PROTOBUF_C__ENUM_DESCRIPTOR_MAGIC,
+  "traffic.Direction",
+  "Direction",
+  "Traffic__Direction",
+  "traffic",
+  4,
+  traffic__direction__enum_values_by_number,
+  4,
+  traffic__direction__enum_values_by_name,
+  1,
+  traffic__direction__value_ranges,
+  NULL,NULL,NULL,NULL   /* reserved[1234] */
+};
+static const ProtobufCEnumValue traffic__originator__enum_values_by_number[3] =
+{
+  { "FLOW_ORIGINATOR_UNSPECIFIED", "TRAFFIC__ORIGINATOR__FLOW_ORIGINATOR_UNSPECIFIED", 0 },
+  { "FLOW_ORIGINATOR_SRC", "TRAFFIC__ORIGINATOR__FLOW_ORIGINATOR_SRC", 1 },
+  { "FLOW_ORIGINATOR_DST", "TRAFFIC__ORIGINATOR__FLOW_ORIGINATOR_DST", 2 },
+};
+static const ProtobufCIntRange traffic__originator__value_ranges[] = {
+{0, 0},{0, 3}
+};
+static const ProtobufCEnumValueIndex traffic__originator__enum_values_by_name[3] =
+{
+  { "FLOW_ORIGINATOR_DST", 2 },
+  { "FLOW_ORIGINATOR_SRC", 1 },
+  { "FLOW_ORIGINATOR_UNSPECIFIED", 0 },
+};
+const ProtobufCEnumDescriptor traffic__originator__descriptor =
+{
+  PROTOBUF_C__ENUM_DESCRIPTOR_MAGIC,
+  "traffic.Originator",
+  "Originator",
+  "Traffic__Originator",
+  "traffic",
+  3,
+  traffic__originator__enum_values_by_number,
+  3,
+  traffic__originator__enum_values_by_name,
+  1,
+  traffic__originator__value_ranges,
+  NULL,NULL,NULL,NULL   /* reserved[1234] */
 };

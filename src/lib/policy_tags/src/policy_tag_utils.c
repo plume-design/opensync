@@ -120,9 +120,12 @@ om_tag_get_type(char *name)
 int
 om_get_type_of_tag(char *name)
 {
+    int type;
+
     if (name == NULL) return -1;
 
-    if(om_tag_get_type(name) == NOT_A_OPENSYNC_TAG) return OM_TLE_FLAG_NONE;
+    type = om_tag_get_type(name);
+    if (type == NOT_A_OPENSYNC_TAG) return OM_TLE_FLAG_NONE;
 
     if (name[2] == TEMPLATE_DEVICE_CHAR)
         return OM_TLE_FLAG_DEVICE;
@@ -132,6 +135,41 @@ om_get_type_of_tag(char *name)
         return OM_TLE_FLAG_LOCAL;
     else
         return OM_TLE_FLAG_NONE;
+}
+
+
+/**
+ * @brief find a tag based on its name
+ *
+ * return the tag structure if found, NULL otherwise
+ */
+om_tag_t *
+om_tag_find(char *tag_name)
+{
+    char name[256];
+    om_tag_t *tag;
+    bool is_gtag;
+    int tag_type;
+    char *tag_s;
+
+    /* Sanity checks */
+    if (tag_name == NULL) return false;
+
+    tag_type = om_tag_get_type(tag_name);
+    if (tag_type == NOT_A_OPENSYNC_TAG) return false;
+
+    tag_s = tag_name + 2;
+    if (*tag_s == TEMPLATE_DEVICE_CHAR) tag_s += 1;
+    else if (*tag_s == TEMPLATE_CLOUD_CHAR) tag_s += 1;
+    else if (*tag_s == TEMPLATE_LOCAL_CHAR) tag_s += 1;
+
+    /* Copy tag name, remove end marker */
+    STRSCPY_LEN(name, tag_s, -1);
+
+    is_gtag = (tag_type == OPENSYNC_GROUP_TAG);
+
+    tag = om_tag_find_by_name(name, is_gtag);
+    return tag;
 }
 
 /**

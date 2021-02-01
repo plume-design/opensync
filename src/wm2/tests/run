@@ -1,0 +1,15 @@
+#!/bin/sh -axe
+db=$(readlink -f core/work/native-*/rootfs/usr/opensync/etc/conf.db.bck)
+wm=$(readlink -f core/work/native-*/bin/wm)
+ovsh=$(readlink -f core/work/native-*/bin/ovsh)
+self=$(readlink -f "$0")
+dir=$(dirname "$self")
+
+cd "$dir"
+cp -v "$db" /var/lib/openvswitch/conf.db
+
+DUMMY_WM_CMD=./$1
+WM2_DPP_RECALC_SECONDS=0
+exec ovsdb-server \
+	--remote=punix:/var/run/db.sock \
+	--run "$wm"

@@ -35,8 +35,8 @@ source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
 source "${LIB_OVERRIDE_FILE}"
 
 
-############################################ INFORMATION SECTION - START ###############################################
+####################### INFORMATION SECTION - START ###########################
 #
 #   Base library of common Diagnostic Manager functions
 #
-############################################ INFORMATION SECTION - STOP ################################################
+####################### INFORMATION SECTION - STOP ############################

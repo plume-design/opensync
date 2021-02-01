@@ -16,4 +16,11 @@ if MANAGER_DM
         help
             This is the folder where PID files of the started processes will
             be stored. The files will be named [MANAGER_NAME].pid
+
+    config DM_OSYNC_CRASH_REPORTS
+        bool "OpenSync crash reports sent to cloud"
+        default y
+        help
+            If an OpenSync process crashes, a concise crash report
+            will be generated and sent to the cloud.
 endif

@@ -82,6 +82,8 @@ struct flow_key
     size_t num_vendor_data;  /*!< number of vendor data containers */
     struct flow_vendor_data **vdr_data; /*!< vendor data container */
     struct flow_state state; /*!< Flow state */
+    uint16_t direction;      /*!< flow direction */
+    uint16_t originator;     /*!< flow originator */
 };
 
 /**

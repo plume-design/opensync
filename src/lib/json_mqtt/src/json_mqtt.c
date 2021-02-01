@@ -279,6 +279,126 @@ jencode_bc_report(struct fsm_url_reply *reply)
 }
 
 
+static json_t *
+jencode_flow_dir(struct net_md_stats_accumulator *acc)
+{
+    const char* dir = NULL;
+    switch (acc->direction)
+    {
+    case NET_MD_ACC_INBOUND_DIR:
+        dir = "inbound";
+        break;
+    case NET_MD_ACC_OUTBOUND_DIR:
+        dir = "outbound";
+        break;
+    default:
+        dir = "unknown";
+        break;
+    }
+
+    return json_string(dir);
+}
+
+/**
+ * @brief encodes IP flow information
+ *
+ * @param acc the ip flow info to report
+ */
+static json_t *
+jencode_ip_flow_report(struct net_md_stats_accumulator *acc)
+{
+    char ip_buf[INET6_ADDRSTRLEN];
+    struct net_md_flow_key *key;
+    json_t *ip_flow_info;
+    const char *str_ip;
+    uint16_t sport;
+    uint16_t dport;
+    uint8_t *my_ip;
+    int af_family;
+    bool matters;
+    char *tpt;
+
+    if (acc == NULL) return NULL;
+
+    key = acc->key;
+    if (key == NULL) return NULL;
+
+
+    matters = (acc->direction == NET_MD_ACC_INBOUND_DIR ||
+               acc->direction == NET_MD_ACC_OUTBOUND_DIR);
+    if (!matters) return NULL;
+
+    tpt = NULL;
+    sport = 0;
+    dport = 0;
+    my_ip = NULL;
+
+    ip_flow_info = json_object();
+    if (key->ipprotocol == IPPROTO_UDP) tpt = "udp";
+    if (key->ipprotocol == IPPROTO_TCP) tpt = "tcp";
+    if (tpt != NULL)
+    {
+        json_object_set_new(ip_flow_info, "proto", json_string(tpt));
+    }
+    if (acc->direction == NET_MD_ACC_OUTBOUND_DIR)
+    {
+        if (acc->originator == NET_MD_ACC_ORIGINATOR_SRC)
+        {
+            sport = ntohs(key->sport);
+            dport = ntohs(key->dport);
+            my_ip = key->src_ip;
+        }
+        else if (acc->originator == NET_MD_ACC_ORIGINATOR_DST)
+        {
+            sport = ntohs(key->sport);
+            dport = ntohs(key->dport);
+            my_ip = key->dst_ip;
+        }
+    }
+    else if (acc->direction == NET_MD_ACC_INBOUND_DIR)
+    {
+        if (acc->originator == NET_MD_ACC_ORIGINATOR_SRC)
+        {
+            sport = ntohs(key->sport);
+            dport = ntohs(key->dport);
+            my_ip = key->dst_ip;
+        }
+        else if (acc->originator == NET_MD_ACC_ORIGINATOR_DST)
+        {
+            sport = ntohs(key->sport);
+            dport = ntohs(key->dport);
+            my_ip = key->src_ip;
+        }
+    }
+
+    if (sport)
+    {
+        json_object_set_new(ip_flow_info, "srcPort",
+                            json_integer(sport));
+    }
+    if (dport)
+    {
+        json_object_set_new(ip_flow_info, "dstPort",
+                            json_integer(dport));
+    }
+
+    if (my_ip != NULL)
+    {
+        af_family = (key->ip_version == 4) ? AF_INET : AF_INET6;
+        str_ip = inet_ntop(af_family, my_ip, ip_buf, sizeof(ip_buf));
+        if (str_ip != NULL)
+        {
+            if(acc->direction == NET_MD_ACC_OUTBOUND_DIR)
+                json_object_set_new(ip_flow_info, "srcIpaddr", json_string(str_ip));
+            else if (acc->direction == NET_MD_ACC_INBOUND_DIR)
+                json_object_set_new(ip_flow_info, "dstIpaddr", json_string(str_ip));
+        }
+    }
+
+    return ip_flow_info;
+}
+
+
 /**
  * @brief encodes a FQDN report in json format
  *
@@ -326,7 +446,39 @@ jencode_url_report(struct fsm_session *session,
     str = str_mac;
     json_object_set_new(body, "deviceMac", json_string(str));
     str = url_info->url;
-    json_object_set_new(body, "dnsAddress", json_string(str));
+    switch(to_report->req_type)
+    {
+    case FSM_FQDN_REQ:
+        json_object_set_new(body, "dnsAddress", json_string(str));
+        break;
+
+    case FSM_URL_REQ:
+        json_object_set_new(body, "httpUrl", json_string(str));
+        break;
+
+    case FSM_HOST_REQ:
+        json_object_set_new(body, "httpHost", json_string(str));
+        break;
+
+    case FSM_SNI_REQ:
+        json_object_set_new(body, "httpsSni", json_string(str));
+        break;
+
+    case FSM_IP_REQ:
+        json_object_set_new(body, "classifiedBy", json_string("ip"));
+        json_object_set_new(body, "ipAddr", json_string(str));
+        break;
+
+    case FSM_APP_REQ:
+        json_object_set_new(body, "classifiedBy", json_string("ip"));
+        json_object_set_new(body, "appName", json_string(str));
+        break;
+
+    default:
+        json_object_set_new(body, "unknownType", json_string(str));
+        break;
+    }
+
     str = get_action_str(to_report);
     json_object_set_new(body, "action", json_string(str));
     str = to_report->policy;
@@ -358,7 +510,32 @@ jencode_url_report(struct fsm_session *session,
                             json_string(str));
 
         /* Add categorization to the body */
-        json_object_set_new(body, "dnsCategorization", categorization);
+        switch(to_report->req_type)
+        {
+        case FSM_FQDN_REQ:
+            json_object_set_new(body, "dnsCategorization", categorization);
+            break;
+
+        case FSM_URL_REQ:
+            json_object_set_new(body, "httpUrlCategorization", categorization);
+            break;
+
+        case FSM_HOST_REQ:
+            json_object_set_new(body, "httpHostCategorization", categorization);
+            break;
+
+        case FSM_SNI_REQ:
+            json_object_set_new(body, "httpsSniCategorization", categorization);
+            break;
+
+        case FSM_IP_REQ:
+            json_object_set_new(body, "ipCategorization", categorization);
+            break;
+
+        default:
+            json_object_set_new(body, "unknownTypeCategorization", categorization);
+            break;
+        }
     }
 
     if (to_report->ipv4_cnt != 0)
@@ -394,9 +571,46 @@ jencode_url_report(struct fsm_session *session,
         }
     }
 
+    if (to_report->acc != NULL)
+    {
+        json_t *ip_info;
+
+        ip_info = jencode_ip_flow_report(to_report->acc);
+        if (ip_info != NULL) json_object_set_new(body, "flow", ip_info);
+
+        ip_info = jencode_flow_dir(to_report->acc);
+        if (ip_info != NULL) json_object_set_new(body, "direction", ip_info);
+    }
+
     /* Encode body envelope */
     json_array_append_new(body_envelope, body);
-    json_object_set_new(json_report, "dnsQueries", body_envelope);
+    switch(to_report->req_type)
+    {
+    case FSM_FQDN_REQ:
+    case FSM_IP_REQ:
+        json_object_set_new(json_report, "dnsQueries", body_envelope);
+        break;
+
+    case FSM_URL_REQ:
+        json_object_set_new(json_report, "httpUrlQueries", body_envelope);
+        break;
+
+    case FSM_HOST_REQ:
+        json_object_set_new(json_report, "httpHostQueries", body_envelope);
+        break;
+
+    case FSM_SNI_REQ:
+        json_object_set_new(json_report, "httpsSniQueries", body_envelope);
+        break;
+
+    case FSM_APP_REQ:
+        json_object_set_new(json_report, "appNameQueries", body_envelope);
+        break;
+
+    default:
+        json_object_set_new(json_report, "unknownTypeQueries", body_envelope);
+        break;
+    }
 
     /* Convert json object in a compact string */
     json_msg = json_dumps(json_report, JSON_COMPACT);

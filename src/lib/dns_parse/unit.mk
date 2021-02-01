@@ -35,3 +35,4 @@ UNIT_DEPS += src/lib/fsm_policy
 UNIT_DEPS += src/lib/network_telemetry
 UNIT_DEPS += src/lib/json_mqtt
 UNIT_DEPS += src/lib/common
+UNIT_DEPS += src/lib/neigh_table

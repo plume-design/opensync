@@ -59,26 +59,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 /**
- * List update protocol
- *
- *      NOTIFY_UPDATE   - Report a new or update a current entry; during SYNC/FLUSH cycled un-flag entry for deletion
- *      NOTIFY_DELETE   - Delete entry
- *
- *      NOTIFY_SYNC     - Start synchronization cycle, flag all entries for deletion
- *      NOTIFY_FLUSH    - Flush all entries flagged for deletion
- *
- * @note
- * Obsolete.
- */
-enum osn_notify
-{
-    NOTIFY_UPDATE,
-    NOTIFY_DELETE,
-    NOTIFY_SYNC,
-    NOTIFY_FLUSH
-};
-
-/**
  * DHCP option list
  *
  * @note
@@ -92,14 +72,20 @@ enum osn_dhcp_option
     DHCP_OPTION_DNS_SERVERS = 6,
     DHCP_OPTION_HOSTNAME = 12,
     DHCP_OPTION_DOMAIN_NAME = 15,
+    DHCP_OPTION_IP_TTL = 23,
+    DHCP_OPTION_MTU = 26,
     DHCP_OPTION_BCAST_ADDR = 28,
+    DHCP_OPTION_ROUTES = 33,
     DHCP_OPTION_VENDOR_SPECIFIC = 43,
     DHCP_OPTION_ADDRESS_REQUEST = 50,
     DHCP_OPTION_LEASE_TIME = 51,
     DHCP_OPTION_MSG_TYPE = 53,
+    DHCP_OPTION_SERVER_ID = 54,
     DHCP_OPTION_PARAM_LIST = 55,
     DHCP_OPTION_VENDOR_CLASS = 60,
-    DHCP_OPTION_DOMAIN_SEARCH= 119,
+    DHCP_OPTION_DOMAIN_SEARCH = 119,
+    DHCP_OPTION_STATIC_ROUTES = 121,
+    DHCP_OPTION_MS_STATIC_ROUTES = 249,
     DHCP_OPTION_OSYNC_SWVER = 225,
     DHCP_OPTION_OSYNC_PROFILE = 226,
     DHCP_OPTION_OSYNC_SERIAL_OPT = 227,
@@ -132,7 +118,7 @@ enum osn_dhcp_option
  */
 
 /**
- * OSN DHCPv6 client object type
+ * OSN DHCPv4 client object type
  * 
  * This is an opaque type. The actual structure implementation is hidden and is
  * platform dependent. A new instance of the object can be obtained by calling
@@ -147,8 +133,7 @@ typedef void osn_dhcp_client_error_fn_t(osn_dhcp_client_t *self);
 /** Notification callback function type */
 typedef bool osn_dhcp_client_opt_notify_fn_t(
         osn_dhcp_client_t *self,
-        enum osn_notify hint,
-        const char *key,
+        enum osn_dhcp_option opt,
         const char *value);
 
 /** Create a new instance of a DHCPv6 client object */

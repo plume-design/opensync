@@ -68,6 +68,7 @@ static char *osfw_target_builtin[] =
 	"SNAT",
 	"TCPMSS",
 	"TOS",
+	"TPROXY",
 	"TTL",
 	"ULOG"
 };

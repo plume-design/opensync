@@ -40,3 +40,4 @@ UNIT_SRC += src/objmfs.c
 
 UNIT_DEPS_CFLAGS += src/lib/log
 UNIT_DEPS_CFLAGS += src/lib/osp
+UNIT_DEPS    += src/lib/schema

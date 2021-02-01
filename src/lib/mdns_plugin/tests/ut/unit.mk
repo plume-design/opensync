@@ -22,16 +22,19 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-UNIT_DISABLE := $(if $(CONFIG_TARGET_MANAGER_FSM),n,y)
+UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM),n,y)
 
 UNIT_NAME := test_mdns_plugin
 
 UNIT_TYPE := TEST_BIN
 
 UNIT_SRC := test_mdns_plugin.c
+UNIT_SRC += test_mdns_records_report.c
 
 UNIT_DEPS := src/lib/log
 UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/unity
+UNIT_DEPS += src/lib/osa
+UNIT_DEPS += src/qm/qm_conn
 UNIT_DEPS += src/lib/mdnsd
 UNIT_DEPS += src/lib/mdns_plugin

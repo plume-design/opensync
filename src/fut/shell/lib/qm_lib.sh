@@ -31,12 +31,15 @@ if [ -e "/tmp/fut_set_env.sh" ]; then
 else
     source "${FUT_TOPDIR}/shell/config/default_shell.sh"
 fi
+# Sourcing guard variable
+export QM_LIB_SOURCED=True
+
 source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
 source "${LIB_OVERRIDE_FILE}"
 
 
-############################################ INFORMATION SECTION - START ###############################################
+####################### INFORMATION SECTION - START ###########################
 #
 #   Base library of common Queue Manager functions
 #
-############################################ INFORMATION SECTION - STOP ################################################
+####################### INFORMATION SECTION - STOP ############################

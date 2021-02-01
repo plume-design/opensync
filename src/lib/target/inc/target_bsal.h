@@ -56,6 +56,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define BSAL_IFNAME_LEN         17
 #define BSAL_MAC_ADDR_LEN       6
 
+/*
+ * During testing it was noticed that some clients tend to get confused when
+ * BTM requests have more than three neighbors. Moreover, some drivers only
+ * handle neighbor lists with up to three entries.
+ */
 #define BSAL_MAX_TM_NEIGHBORS   3
 #define BSAL_MAX_ASSOC_IES_LEN  1024
 

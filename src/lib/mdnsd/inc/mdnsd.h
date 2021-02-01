@@ -50,7 +50,8 @@ typedef struct mdns_daemon mdns_daemon_t;
 typedef struct mdns_record mdns_record_t;
 
 /* Callback for received record. Data is passed from the register call */
-typedef void (*mdnsd_record_received_callback)(const struct resource* r, void* data);
+typedef void (*mdnsd_record_received_callback)(const struct resource* r, void* data,
+                                               struct sockaddr_storage *from);
 
 /* Answer data */
 typedef struct mdns_answer {
@@ -146,7 +147,7 @@ void mdnsd_register_receive_callback(mdns_daemon_t *d, mdnsd_record_received_cal
 /**
  * Oncoming message from host (to be cached/processed)
  */
-int mdnsd_in(mdns_daemon_t *d, struct message *m, unsigned long int ip, unsigned short int port);
+int mdnsd_in(mdns_daemon_t *d, struct message *m, struct sockaddr_storage *from);
 
 /**
  * Outgoing messge to be delivered to host, returns >0 if one was

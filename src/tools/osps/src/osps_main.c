@@ -24,6 +24,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include <errno.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
@@ -186,7 +187,12 @@ static int osps_get(int argc, char *argv[])
         goto error;
     }
 
-    write(1, pdata, datasz);
+    retval = write(1, pdata, datasz);
+    if (retval == -1)
+    {
+        fprintf(stderr, "write error: %s", strerror(errno));
+        goto error;
+    }
 
     retval = 0;
 

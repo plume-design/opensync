@@ -153,22 +153,22 @@ void intf_stats_window_free(intf_stats_window_list_t *window)
 
 /******************************************************************************/
 
-extern void                             intf_stats_dump_report(intf_stats_report_data_t *report);
-extern void                             intf_stats_activate_window(intf_stats_report_data_t  *report);
-extern void                             intf_stats_close_window(intf_stats_report_data_t *report);
-extern intf_stats_window_t             *intf_stats_get_current_window(intf_stats_report_data_t *report);
-extern void                             intf_stats_reset_report(intf_stats_report_data_t *report);
+extern void                                       intf_stats_dump_report(intf_stats_report_data_t *report);
+extern void                                       intf_stats_activate_window(intf_stats_report_data_t  *report);
+extern void                                       intf_stats_close_window(intf_stats_report_data_t *report);
+extern intf_stats_window_t                       *intf_stats_get_current_window(intf_stats_report_data_t *report);
+extern void                                       intf_stats_reset_report(intf_stats_report_data_t *report);
 
-extern void                             intf_stats_free_pb_intf_stats(Intf__Stats__IntfStats *pb);
-extern packed_buffer_t                 *intf_stats_serialize_intf_stats(intf_stats_t *intf);
-extern packed_buffer_t                 *intf_stats_serialize_window(intf_stats_window_t *window);
-extern packed_buffer_t                 *intf_stats_serialize_node_info(node_info_t *node);
-extern void                             intf_stats_free_pb_window(Intf__Stats__ObservationWindow *pb);
-extern packed_buffer_t                 *intf_stats_serialize_report(intf_stats_report_data_t *report);
-extern bool                             intf_stats_send_report(intf_stats_report_data_t *report, char *mqtt_topic);
-extern void                             intf_stats_free_packed_buffer(packed_buffer_t *pb);
+extern void                                       intf_stats_free_pb_intf_stats(Interfaces__IntfStats__IntfStats *pb);
+extern packed_buffer_t                           *intf_stats_serialize_intf_stats(intf_stats_t *intf);
+extern packed_buffer_t                           *intf_stats_serialize_window(intf_stats_window_t *window);
+extern packed_buffer_t                           *intf_stats_serialize_node_info(node_info_t *node);
+extern void                                       intf_stats_free_pb_window(Interfaces__IntfStats__ObservationWindow *pb);
+extern packed_buffer_t                           *intf_stats_serialize_report(intf_stats_report_data_t *report);
+extern bool                                       intf_stats_send_report(intf_stats_report_data_t *report, char *mqtt_topic);
+extern void                                       intf_stats_free_packed_buffer(packed_buffer_t *pb);
 
-extern Intf__Stats__ObservationWindow **intf_stats_set_pb_windows(intf_stats_report_data_t *report);
-extern Intf__Stats__IntfStats         **intf_stats_set_pb_intf_stats(intf_stats_window_t *window);
+extern Interfaces__IntfStats__ObservationWindow **intf_stats_set_pb_windows(intf_stats_report_data_t *report);
+extern Interfaces__IntfStats__IntfStats         **intf_stats_set_pb_intf_stats(intf_stats_window_t *window);
 
 #endif /* INTF_STATS_H_INCLUDED */

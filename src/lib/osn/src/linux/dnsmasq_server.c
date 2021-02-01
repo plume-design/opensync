@@ -202,6 +202,8 @@ bool dnsmasq_server_init(dnsmasq_server_t *self, const char *ifname)
         /* Initialize arguments */
         daemon_arg_add(&dnsmasq_server_daemon, "--keep-in-foreground");                /* Do not fork to background */
         daemon_arg_add(&dnsmasq_server_daemon, "--bind-interfaces");                   /* Bind to only interfaces in use */
+        daemon_arg_add(&dnsmasq_server_daemon, "-p", CONFIG_OSN_DNSMASQ_PORT);         /* Configure dnsmasq port, default 53 */
+        daemon_arg_add(&dnsmasq_server_daemon, "-u", CONFIG_OSN_DNSMASQ_USER);         /* Change user (default nobody)*/
         daemon_arg_add(&dnsmasq_server_daemon, "-C", CONFIG_OSN_DNSMASQ_ETC_PATH);     /* Config file path */
         daemon_arg_add(&dnsmasq_server_daemon, "-x", CONFIG_OSN_DNSMASQ_PID_PATH);     /* PID file */
 
@@ -342,6 +344,11 @@ exit:
         /* Propagate the error */
         dnsmasq_server_dispatch_error();
     }
+}
+
+void dnsmasq_server_enable(dnsmasq_server_t *self, bool enable)
+{
+    self->ds_enabled = enable;
 }
 
 /*
@@ -523,6 +530,8 @@ bool dnsmasq_server_config_write(void)
     for (pds = ds_dlist_ifirst(&iter, &dnsmasq_server_list); pds != NULL; pds = ds_dlist_inext(&iter))
     {
         struct dnsmasq_range *dr;
+
+        if (!pds->ds_enabled) continue;
 
         /* Write out the range */
         fprintf(fconf, "# Interface: %s\n", pds->ds_ifname);

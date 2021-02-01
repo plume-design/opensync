@@ -645,7 +645,8 @@ bool sm_rssi_stats_process (
             return false;
         }
 
-        report_timer->repeat = request_ctx->reporting_interval;
+        report_timer->repeat = request_ctx->reporting_interval == -1 ?
+            1 : request_ctx->reporting_interval;
         sm_rssi_report_timer_set(report_timer, true);
         rssi_ctx->report_ts = get_timestamp();
 

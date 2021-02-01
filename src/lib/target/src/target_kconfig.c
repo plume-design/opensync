@@ -143,26 +143,20 @@ bool target_device_restart_managers()
 }
 #endif
 
-#if defined(CONFIG_TARGET_LINUX_LOGPULL)
+#if defined(CONFIG_TARGET_LOGPULL_REMOTE)
 bool target_log_pull_ext(
         const char *upload_location,
         const char *upload_token,
         const char *upload_method)
 {
-    // TODO: command cleanup (remove hc params, etc...)
     char shell_cmd[1024];
+
     snprintf(shell_cmd, sizeof(shell_cmd),
-        "sh "CONFIG_TARGET_PATH_SCRIPTS"/lm_logs_collector.sh"
+        "sh %s/logpull/logpull.sh --remote"
         " \"%s\""
-        " %s"
-        " "CONFIG_TARGET_PATH_LOG_LM
-        " syslog"
-        " syslog_copy"
-        " tmp"
-        " crash"
-        " /tmp/etc/openvswitch/conf.db"
-        " /tmp/ovsdb.log"
-        " %s",
+        " \"%s\""
+        " \"%s\"",
+        CONFIG_INSTALL_PREFIX"/scripts", // TODO change with target_scripts_dir
         upload_location,
         upload_token,
         upload_method);
@@ -195,36 +189,6 @@ bool target_device_execute(const char *cmd)
     return true;
 }
 #endif
-
-#if defined(CONFIG_TARGET_LED_SUPPORT)
-const char *target_led_device_dir(void)
-{
-    return CONFIG_TARGET_LED_PATH;
-}
-
-int target_led_names(const char **leds[])
-{
-    static const char *led_names[] =
-    {
-#if defined(CONFIG_TARGET_LED0)
-        CONFIG_TARGET_LED0_NAME,
-#endif
-#if defined(CONFIG_TARGET_LED1)
-        CONFIG_TARGET_LED1_NAME,
-#endif
-#if defined(CONFIG_TARGET_LED2)
-        CONFIG_TARGET_LED2_NAME,
-#endif
-#if defined(CONFIG_TARGET_LED3)
-        CONFIG_TARGET_LED3_NAME,
-#endif
-        NULL
-    };
-
-    *leds = led_names;
-    return (sizeof(led_names) / (sizeof(led_names[0]))) - 1;
-}
-#endif /* CONFIG_TARGET_LED_SUPPORT */
 
 
 #if defined(CONFIG_TARGET_CM_LINUX_SUPPORT_PACKAGE)

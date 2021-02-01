@@ -42,14 +42,20 @@ endif
 UNIT_SRC := src/mdns_plugin.c
 UNIT_SRC += src/mdns_ovsdb.c
 UNIT_SRC += src/mdns_daemon.c
+UNIT_SRC += src/mdns_records.c
+UNIT_SRC += src/mdns_records_report.c
+UNIT_SRC += src/mdns_records_telemetry.pb-c.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -Isrc/fsm/inc
 
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
 UNIT_EXPORT_LDFLAGS := -lpcap
+UNIT_LDFLAGS += -lprotobuf-c
 
 UNIT_DEPS := src/lib/const
 UNIT_DEPS += src/lib/log
 UNIT_DEPS += src/lib/ovsdb
 UNIT_DEPS += src/lib/mdnsd
+UNIT_DEPS += src/lib/neigh_table
+UNIT_DEPS += src/qm/qm_conn

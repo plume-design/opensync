@@ -46,18 +46,26 @@ if [ -z "$OVSH" ]; then
     export OVSH="${OPENSYNC_ROOTDIR}/tools/ovsh --quiet --timeout=180000"
 fi
 
-if [ -z "$OVSH_FAST" ]; then
-    export OVSH_FAST="${OPENSYNC_ROOTDIR}/tools/ovsh --quiet --timeout=10000"
-fi
-
-if [ -z "$OVSH_SLOW" ]; then
-    export OVSH_SLOW="${OPENSYNC_ROOTDIR}/tools/ovsh --quiet --timeout=50000"
+if [ -z "$CAC_TIMEOUT" ]; then
+    export CAC_TIMEOUT=60
 fi
 
 if [ -z "$LIB_OVERRIDE_FILE" ]; then
-    export LIB_OVERRIDE_FILE="/tmp/fut-base/shell/config/empty.sh"
+    export LIB_OVERRIDE_FILE="${FUT_TOPDIR}/shell/config/empty.sh"
 fi
 
 if [ -z "$PATH" ]; then
     export PATH="/bin:/sbin:/usr/bin:/usr/sbin:${OPENSYNC_ROOTDIR}/tools:${OPENSYNC_ROOTDIR}/bin"
+fi
+
+if [ -z "$MGMT_IFACE" ]; then
+    export MGMT_IFACE=eth0
+fi
+
+if [ -z "$MGMT_IFACE_UP_TIMEOUT" ]; then
+    export MGMT_IFACE_UP_TIMEOUT=10
+fi
+
+if [ -z "$MGMT_CONN_TIMEOUT" ]; then
+    export MGMT_CONN_TIMEOUT=30
 fi

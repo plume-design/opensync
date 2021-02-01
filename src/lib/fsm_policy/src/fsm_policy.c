@@ -37,6 +37,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sys/sysinfo.h>
 #include <limits.h>
 #include <fnmatch.h>
+#include <sys/socket.h>
+#include <netdb.h>
 
 #include "os.h"
 #include "util.h"
@@ -68,6 +70,20 @@ static struct fsm_policy_session policy_mgr =
 struct fsm_policy_session * fsm_policy_get_mgr(void)
 {
     return &policy_mgr;
+}
+
+
+int
+fsm_policy_get_req_type(struct fsm_policy_req *req)
+{
+    struct fqdn_pending_req *fqdn_req;
+
+    if (req == NULL) return FSM_UNKNOWN_REQ_TYPE;
+
+    fqdn_req = req->fqdn_req;
+    if (fqdn_req == NULL) return FSM_UNKNOWN_REQ_TYPE;
+
+    return fqdn_req->req_type;
 }
 
 
@@ -373,6 +389,7 @@ static bool fsm_fqdn_check(struct fsm_policy_req *req,
     return true;
 }
 
+
 /**
  * cat_search: search a category within a policy setfilter
  * @val: category value to look for within the policy'sset of categories
@@ -430,6 +447,86 @@ bool fsm_fqdncats_in_set(struct fsm_policy_req *req, struct fsm_policy *p)
         return true;
     }
     return false;
+}
+
+
+/**
+ * @brief looks up a fqdn in a policy's fqdns values set.
+ * @param req the policy request
+ * @param p the policy
+ * @param op the lookup operation
+ *
+ * Checks if the request's ip is either an exact match, start from right
+ * or start form left superset of an entry in the policy's fqdn set entry.
+ */
+static bool fsm_ip_in_set(struct fsm_policy_req *req, struct fsm_policy *p,
+                          int op)
+{
+    struct net_md_stats_accumulator *acc;
+    struct net_md_flow_key *key;
+    struct str_set *ips_set;
+    size_t ip_str_len;
+    size_t nelems;
+    int af_family;
+    size_t len;
+    size_t i;
+    int rc;
+
+    acc = req->acc;
+    key = acc->key;
+    af_family = 0;
+    if (key->ip_version == 4) af_family = AF_INET;
+    if (key->ip_version == 6) af_family = AF_INET6;
+    if (af_family == 0) return false;
+
+    ips_set = p->rules.ipaddrs;
+    if (ips_set == NULL) return false;
+
+    ip_str_len = strlen(req->url);
+    nelems = ips_set->nelems;
+    for (i = 0; i < nelems; i++)
+    {
+        char *entry_set;
+
+        entry_set = ips_set->array[i];
+        len = strlen(entry_set);
+        if (len != ip_str_len) continue;
+        rc = strncmp(req->url, entry_set, len);
+        if (!rc) return true;
+
+    }
+    return false;
+}
+
+
+/**
+ * @brief check if a fqdn matches the policy's ipaddr rule
+ * @req: the request being processed
+ * @policy: the policy being checked against
+ *
+ */
+static bool fsm_ip_check(struct fsm_policy_req *req,
+                         struct fsm_policy *policy)
+{
+    struct fsm_policy_rules *rules;
+    bool in_policy;
+    bool rc;
+    int op;
+
+    rules = &policy->rules;
+    if (!rules->ip_rule_present) return true;
+
+    in_policy = (rules->ip_op == IP_OP_IN);
+    op = rules->ip_op;
+    rc = fsm_ip_in_set(req, policy, op);
+
+    /* If fqdn in set and policy applies to fqdns out of set, no match */
+    if ((rc) && (!in_policy)) return false;
+
+    /* If fqdn out of set and policy applies to fqdns in set, no match */
+    if ((!rc) && (in_policy)) return false;
+
+    return true;
 }
 
 
@@ -628,6 +725,27 @@ bool fsm_risk_level_check(struct fsm_session *session,
 }
 
 
+bool fsm_gatekeeper_check(struct fsm_session *session,
+                          struct fsm_policy_req *req,
+                          struct fsm_policy *p)
+{
+    bool rc;
+
+    if (p->action != FSM_GATEKEEPER_REQ) return true;
+
+    /*
+     * The policy requires gatekeeper checking, no gatekeeper provider.
+     * Return failure.
+     */
+    if (req->fqdn_req->gatekeeper_req == NULL) return false;
+
+    /* Apply the gatekeeper rules */
+    rc = req->fqdn_req->gatekeeper_req(session, req);
+
+    return rc;
+}
+
+
 /**
  * fsm_apply_policies: check a request against stored policies
  * @req: policy checking (mac, fqdn, categories) request
@@ -668,6 +786,10 @@ void fsm_apply_policies(struct fsm_session *session,
         rc = fsm_fqdn_check(req, p);
         if (!rc) continue;
 
+        /* IP rule passed. Check IP */
+        rc = fsm_ip_check(req, p);
+        if (!rc) continue;
+
         /* fqdn rule passed. Check categories */
         rc = fsm_cat_check(session, req, p);
         if (!rc) continue;
@@ -690,6 +812,7 @@ void fsm_apply_policies(struct fsm_session *session,
     if (matched)
     {
         p = last_match_policy;
+        fsm_gatekeeper_check(session, req, p);
         set_reporting(req, p);
         set_tag_update(req, p);
         set_action(req, p);

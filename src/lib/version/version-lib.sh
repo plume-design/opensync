@@ -73,27 +73,26 @@ fi
 
 cd ${CURDIR}/../../../
 
-if [ -e .git -o -e ../.git ]; then
-    SHA1='g'`[ -e ../.git ] && cd ..; git log --pretty=oneline --abbrev-commit -1 | awk '{ print $1 }' | cut -b1-7`
-    DIRTY=`[ -e ../.git ] && cd ..; git status --porcelain | grep -v -e '^??' | wc -l`
-else
-    echo "WARNING: version not in git" 1>&2
-    SHA1="notgit"
-    DIRTY=0
-fi
+die() { echo "$@" >&2; exit 1; }
+test -n "$VERSION_GIT_SHA1" || die "VERSION_GIT_SHA1 empty"
+test -n "$VERSION_GIT_DIRTY" || die "VERSION_GIT_DIRTY empty"
+
+SHA1=$VERSION_GIT_SHA1
+DIRTY=$VERSION_GIT_DIRTY
 
 # per vendor/product versioning:
 if [ -z "$VERSION_FILE" ]; then
-    VERSION_FILE="$VENDOR_DIR/.version.$VERSION_TARGET"
-    if [ ! -f "$VERSION_FILE" ]; then
-        VERSION_FILE="$VENDOR_DIR/.version.$TARGET"
-    fi
-    if [ ! -f "$VERSION_FILE" ]; then
-        VERSION_FILE="$VENDOR_DIR/.version"
-    fi
-    if [ ! -f "$VERSION_FILE" ]; then
-        VERSION_FILE=".version"
-    fi
+    VERSION_FILE=$(
+        (
+            if [ -n "$VENDOR_DIR" ]; then
+                stat -c %n "$VENDOR_DIR/.version.$VERSION_TARGET" \
+                           "$VENDOR_DIR/.version.$TARGET" \
+                           "$VENDOR_DIR/.version" \
+                           2>/dev/null
+            fi
+            echo ".version"
+        ) | head -n 1
+    )
 fi
 
 if [ -n "$OPENSYNC_TARGET_VERSION_OVERRIDE" ]; then

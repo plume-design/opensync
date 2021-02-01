@@ -277,6 +277,7 @@ char* cm2_curr_dest_name(void);
 int cm2_ovsdb_init(void);
 bool cm2_ovsdb_set_Manager_target(char *target);
 bool cm2_ovsdb_set_AWLAN_Node_manager_addr(char *addr);
+void cm2_ovsdb_set_AWLAN_Node_boot_time(void);
 bool cm2_connection_get_used_link(struct schema_Connection_Manager_Uplink *con);
 bool cm2_ovsdb_connection_get_connection_by_ifname(const char *if_name,
                                                    struct schema_Connection_Manager_Uplink *con);
@@ -424,4 +425,5 @@ char* cm2_get_uplink_name(void);
 void cm2_update_device_type(const char *iftype);
 bool cm2_ovsdb_set_dhcpv6_client(char *ifname, bool enable);
 bool cm2_osn_is_ipv6_global_link(const char *ifname, const char *ipv6_addr);
+void cm2_restart_iface(char *ifname);
 #endif /* CM2_H_INCLUDED */

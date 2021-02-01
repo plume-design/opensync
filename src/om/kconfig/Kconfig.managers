@@ -1,6 +1,6 @@
 menuconfig MANAGER_OM
     bool "Openflow Manager (OM)"
-    default n
+    default y
     help
         Enable Openflow Manager (OM)
 

@@ -75,3 +75,9 @@ bool osn_vlan_apply(osn_vlan_t *self)
     return true;
 }
 
+bool osn_vlan_egress_qos_map_set(osn_vlan_t *self, const char *qos_map)
+{
+    (void)self;
+    (void)qos_map;
+    return true;
+}

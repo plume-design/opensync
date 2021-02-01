@@ -1,6 +1,6 @@
 menuconfig MANAGER_BM
     bool "Band-steering Manager (BM)"
-    default n
+    default y
     help
         Enable Band-steering Manager (BM)
 

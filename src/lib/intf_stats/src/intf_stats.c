@@ -222,51 +222,73 @@ intf_stats_get_current_window(intf_stats_report_data_t *report)
 
 /******************************************************************************/
 
-/*
- * Parses the list of interfaces provided by the cloud via the
- * "other_config", and builds the tree
- */
 static void
-intf_stats_get_intf_names(fcm_collect_plugin_t *collector)
+intf_stats_add_to_list(char *intf_name, char *role)
 {
-    intf_stats_t    *intf       = NULL;
-    char            *interfaces = NULL;
-    char            *list, *tok;
+    intf_stats_t    *intf = NULL;
 
-    interfaces = collector->get_other_config(collector, "intf_list");
-    if (!interfaces)
+    intf = intf_stats_intf_alloc();
+    if (!intf)
     {
-        LOGE("Interface List received from cloud is empty");
+        LOGE("Interface memory allocation failed");
         return;
     }
 
-    list = strdupa(interfaces);
-    while ((tok = strsep(&list, ",")) != NULL)
-    {
-        intf = intf_stats_intf_alloc();
-        if (!intf)
-        {
-            LOGE("Interface memory allocation failed");
-            return;
-        }
+    STRSCPY(intf->ifname, intf_name);
+    if (role)   STRSCPY(intf->role, role);
+    else        STRSCPY(intf->role, "default");
 
-        STRSCPY(intf->ifname, tok);
-
-        ds_dlist_insert_tail(&cloud_intf_list, intf);
-        LOGI("Monitoring interface '%s'", intf->ifname);
-    }
+    ds_dlist_insert_tail(&cloud_intf_list, intf);
+    LOGI("Monitoring interface '%s'", intf->ifname);
 
     return;
 }
 
+/*
+ * Reads the Wifi_Inet_Config to build the tree of interfaces. For each interface,
+ * he cloud marks "collect_config" as true if it wants stats to be collected for
+ * that interface.
+ */
 static void
-intf_stats_get_node_info(fcm_collect_plugin_t *collector)
+intf_stats_get_intfs_from_inet_config(void)
 {
-    node_info_t *node_info = &report.node_info;
+    struct schema_Wifi_Inet_Config   inet_conf;
+    json_t                          *jrows;
+    json_t                          *where;
+    int                              count = 0, i = 0;
+    pjs_errmsg_t                     perr;
 
-    node_info->node_id     = collector->get_mqtt_hdr_node_id();
-    node_info->location_id = collector->get_mqtt_hdr_loc_id();
+    where = ovsdb_tran_cond(OCLM_BOOL, "collect_stats", OFUNC_EQ, "true");
+    if (!where)     return;
 
+    jrows = ovsdb_sync_select_where(SCHEMA_TABLE(Wifi_Inet_Config), where);
+    if (!jrows)
+    {
+        json_decref(where);
+        return;
+    }
+
+    count = json_array_size(jrows);
+    if (!count)
+    {
+        json_decref(jrows);
+        return;
+    }
+
+    for (i = 0; i < count; i++)
+    {
+        if (!schema_Wifi_Inet_Config_from_json(&inet_conf, json_array_get(jrows, i),
+                                        false, perr))
+        {
+            LOGE("Unable to parse Wifi_Inet_Config column: %s", perr);
+            json_decref(jrows);
+            return;
+        }
+
+         intf_stats_add_to_list(inet_conf.if_name, inet_conf.role);
+    }
+
+    json_decref(jrows);
     return;
 }
 
@@ -326,13 +348,57 @@ intf_stats_get_intf_roles(void)
     return;
 }
 
+/*
+ * Parses the list of interfaces provided by the cloud via the
+ * "other_config", and builds the tree. If "intf_list" in
+ * "other_config" is empty, builds the tree by reading Wifi_Inet_Config
+ */
+static void
+intf_stats_get_intf_names(fcm_collect_plugin_t *collector)
+{
+    char            *interfaces = NULL;
+    char            *list, *tok;
+
+    interfaces = collector->get_other_config(collector, "intf_list");
+    if (!interfaces)
+    {
+        LOGT("'intf_list' is empty, reading Wifi_Inet_Config to build list of interfaces");
+        /* No "intf_list" provided in other_config. The cloud has marked the interfaces
+         * in the Wifi_Inet_Config (collect_stats == true). Read it from there.
+         * The 'role' is also fetched at the same time.
+         */
+        intf_stats_get_intfs_from_inet_config();
+
+        return;
+    }
+
+    list = strdupa(interfaces);
+    while ((tok = strsep(&list, ",")) != NULL)
+    {
+        intf_stats_add_to_list(tok, NULL);
+    }
+
+    /* Get the interface roles from Wifi_Inet_Config */
+    intf_stats_get_intf_roles();
+
+    return;
+}
+
 static void
 intf_stats_inet_config_ovsdb_update_cb(ovsdb_update_monitor_t *self)
 {
     struct schema_Wifi_Inet_Config  inet;
     pjs_errmsg_t                    perr;
 
-    intf_stats_t                    *intf = NULL;
+    intf_stats_t                    *intf         = NULL;
+    intf_stats_window_t             *window_entry = NULL;
+
+    window_entry = intf_stats_get_current_window(&report);
+    if (!window_entry)
+    {
+        LOGE("%s: Unable to get current active window", __func__);
+        return;
+    }
 
     switch (self->mon_type)
     {
@@ -350,10 +416,25 @@ intf_stats_inet_config_ovsdb_update_cb(ovsdb_update_monitor_t *self)
             intf = intf_stats_find_by_ifname(&cloud_intf_list, inet.if_name);
             if (!intf)
             {
-                /* This interface is not being tracked for stats */
+                /* The interface was marked for stats collection by the cloud */
+                if (inet.collect_stats)
+                {
+                    intf_stats_add_to_list(inet.if_name, inet.role);
+                }
+
                 break;
             }
 
+            if (!inet.collect_stats)
+            {
+                /* The cloud does not want stats to be reported on this interface anymore */
+                ds_dlist_remove(&cloud_intf_list, intf);
+                intf_stats_intf_free(intf);
+                window_entry->num_intfs--;
+                break;
+            }
+
+            /* Just the role is updated, note the change */
             if ((!inet.role_exists) || (strlen(inet.role) == 0))    STRSCPY(intf->role, "default");
             else                                                    STRSCPY(intf->role, inet.role);
 
@@ -361,9 +442,42 @@ intf_stats_inet_config_ovsdb_update_cb(ovsdb_update_monitor_t *self)
         }
 
         case OVSDB_UPDATE_DEL:
+        {
+            /* The interface was deleted, remove it from the list if it was being tracked */
+            if (!schema_Wifi_Inet_Config_from_json(&inet, self->mon_json_old, false, perr))
+            {
+                LOGE("Failed to parse old Wifi_Inet_Config row: %s", perr);
+                break;
+            }
+
+            if (!inet.if_name_exists) break;
+
+            intf = intf_stats_find_by_ifname(&cloud_intf_list, inet.if_name);
+            if (intf)
+            {
+                ds_dlist_remove(&cloud_intf_list, intf);
+                intf_stats_intf_free(intf);
+                window_entry->num_intfs--;
+                break;
+            }
+
+            break;
+        }
+
         default:
             break;
     }
+
+    return;
+}
+
+static void
+intf_stats_get_node_info(fcm_collect_plugin_t *collector)
+{
+    node_info_t *node_info = &report.node_info;
+
+    node_info->node_id     = collector->get_mqtt_hdr_node_id();
+    node_info->location_id = collector->get_mqtt_hdr_loc_id();
 
     return;
 }
@@ -608,9 +722,6 @@ int intf_stats_plugin_init(fcm_collect_plugin_t *collector)
     /* Initialize the list to hold the interfaces provided by the cloud */
     ds_dlist_init(&cloud_intf_list, intf_stats_t, node);
     intf_stats_get_intf_names(collector);
-
-    /* Get the interface roles from Wifi_Inet_Config */
-    intf_stats_get_intf_roles();
 
     /* Initialize the report list */
     memset(&report, 0, sizeof(report));

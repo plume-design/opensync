@@ -505,7 +505,7 @@ void mon_sig_crash(int signum)
     mon_sig_str(signum, sigstr, sizeof(sigstr));
     LOG(ALERT, "Signal %s received, generating stack dump...\n", sigstr);
 
-    backtrace_dump();
+    sig_crash_report(signum);
 
     if (signum != SIGUSR2)
     {

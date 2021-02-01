@@ -38,6 +38,7 @@ UNIT_DIR := lib
 
 UNIT_SRC := src/nf_conn_mark.c
 UNIT_SRC += src/nf_util_neigh.c
+UNIT_SRC += src/nf_queue.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -I$(TOP_DIR)/src/lib/common/inc/

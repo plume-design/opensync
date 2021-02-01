@@ -1,0 +1,50 @@
+#!/bin/sh
+
+export HEALTHCHECK_INTERVAL=60
+export HEALTHCHECK_THRESHOLD=10
+DIR=$(dirname "$(readlink -f "$0")")
+
+. "$DIR"/healthcheck.funcs.sh
+. "$DIR"/../etc/kconfig
+
+log_notice "Starting Health Check Service"
+
+# if Healthcheck_Fatal is not defined in funcs then log a warning
+# and define a default handler that logs a critical message
+if ! type Healthcheck_Fatal >/dev/null; then
+    HC_FATAL_UNDEFINED="### Healthcheck_Fatal action not defined ###"
+    log_warn $HC_FATAL_UNDEFINED
+    Healthcheck_Fatal()
+    {
+        log_emerg $HC_FATAL_UNDEFINED
+    }
+fi
+
+let _hc_failcnt=0
+while true; do
+    sleep $HEALTHCHECK_INTERVAL
+
+    log_info "Checking...."
+
+    for x in "$DIR"/healthcheck.d/[0-9+]*; do
+        ( . $x; )
+        RET=$?
+        if [ $RET -gt 0 ]; then
+            log_err "$(basename "$x") check failed"
+            break
+        fi
+        log_debug "$(basename "$x") check passed"
+    done
+
+    if [ $RET -eq 0 -a $_hc_failcnt -gt 0 ]; then
+        log_notice "system now ok"
+        let _hc_failcnt=0
+    elif [ $RET -gt 0 ]; then
+        let _hc_failcnt++
+        log_warn "${_hc_failcnt}/${HEALTHCHECK_THRESHOLD} failures reached"
+        if [ $_hc_failcnt -ge $HEALTHCHECK_THRESHOLD ]; then
+            Healthcheck_Fatal $(basename "$x")
+        fi
+    fi
+done
+

@@ -25,6 +25,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include <ev.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -84,6 +85,7 @@ fsm_event_cb(struct ev_loop *loop, ev_timer *watcher, int revents)
     ds_tree_t *sessions = fsm_get_sessions();
     struct fsm_session *session = ds_tree_head(sessions);
     struct mem_usage mem = { 0 };
+    struct nfqnl_counters nfq_counters = { 0 };
     time_t now = time(NULL);
     bool reset;
 
@@ -108,6 +110,16 @@ fsm_event_cb(struct ev_loop *loop, ev_timer *watcher, int revents)
     }
 
     mgr->periodic_ts = now;
+
+    fsm_get_nfqcounters(&nfq_counters);
+    LOGI(
+        "netlink queue stats: queue total: %u copy mode: %hhu copy range: %u qdrop: %u user drop: %u",
+        nfq_counters.queue_total,
+        nfq_counters.copy_mode,
+        nfq_counters.copy_range,
+        nfq_counters.queue_dropped,
+        nfq_counters.queue_user_dropped);
+
     fsm_get_memory(&mem);
     LOGI("pid %s: mem usage: real mem: %u, virt mem %u",
          mgr->pid, mem.curr_real_mem, mem.curr_virt_mem);
@@ -179,6 +191,7 @@ fsm_get_memory(struct mem_usage *mem)
     struct fsm_mgr *mgr = fsm_get_mgr();
     char buffer[1024] = "";
     char fname[128];
+    int rc;
 
     snprintf(fname, sizeof(fname), "/proc/%s/status", mgr->pid);
     FILE* file = fopen(fname, "r");
@@ -188,28 +201,74 @@ fsm_get_memory(struct mem_usage *mem)
     memset(mem, 0, sizeof(*mem));
 
     // read the entire file
-    while (fscanf(file, " %1023s", buffer) == 1)
+    while ((rc = fscanf(file, " %1023s", buffer)) == 1)
     {
+        errno = 0;
         if (strcmp(buffer, "VmRSS:") == 0)
         {
-            fscanf(file, " %d %s", &mem->curr_real_mem, mem->curr_real_mem_unit);
+            rc = fscanf(file, " %d %s", &mem->curr_real_mem, mem->curr_real_mem_unit);
+            if ((rc != 1) && (errno != 0)) goto err_scan;
+
             fsm_mem_adjust_counter(file, mem->curr_real_mem,
                                    mem->curr_real_mem_unit);
         }
         else if (strcmp(buffer, "VmHWM:") == 0)
         {
-            fscanf(file, " %d", &mem->peak_real_mem);
+            rc = fscanf(file, " %d", &mem->peak_real_mem);
+            if ((rc != 1) && (errno != 0)) goto err_scan;
         }
         else if (strcmp(buffer, "VmSize:") == 0)
         {
-            fscanf(file, " %d %s", &mem->curr_virt_mem, mem->curr_virt_mem_unit);
+            rc = fscanf(file, " %d %s", &mem->curr_virt_mem, mem->curr_virt_mem_unit);
+            if ((rc != 1) && (errno != 0)) goto err_scan;
+
             fsm_mem_adjust_counter(file, mem->curr_virt_mem,
                                    mem->curr_virt_mem_unit);
         }
         else if (strcmp(buffer, "VmPeak:") == 0)
         {
-            fscanf(file, " %d", &mem->peak_virt_mem);
+            rc = fscanf(file, " %d", &mem->peak_virt_mem);
+            if ((rc != 1) && (errno != 0)) goto err_scan;
         }
     }
+
     fclose(file);
+    return;
+
+err_scan:
+    LOGD("%s: error scanning %s: %s", __func__, fname, strerror(errno));
+    fclose(file);
+}
+
+/**
+ * @brief get netfilters queue stats
+ *
+ * @param nfq_counters nf queue container
+ */
+void
+fsm_get_nfqcounters(struct nfqnl_counters *nfq_counters)
+{
+    char filename[] = "/proc/net/netfilter/nfnetlink_queue";
+    FILE *fp;
+    int rc;
+
+    fp = fopen(filename, "r");
+    if (fp == NULL) return;
+
+    errno = 0;
+    rc = fscanf(fp,
+                "%hu %u %u %hhu %u %u %u %u",
+                &nfq_counters->queue_num,
+                &nfq_counters->portid,
+                &nfq_counters->queue_total,
+                &nfq_counters->copy_mode,
+                &nfq_counters->copy_range,
+                &nfq_counters->queue_dropped,
+                &nfq_counters->queue_user_dropped,
+                &nfq_counters->id_sequence);
+    if ((rc != 1) && (errno != 0))
+    {
+        LOGD("%s: error scanning %s: %s", __func__, filename, strerror(errno));
+    }
+    fclose(fp);
 }

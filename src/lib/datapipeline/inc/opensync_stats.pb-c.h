@@ -53,6 +53,9 @@ typedef struct _Sts__Client__TxStats Sts__Client__TxStats;
 typedef struct _Sts__Client__TidStats Sts__Client__TidStats;
 typedef struct _Sts__Client__TidStats__Sojourn Sts__Client__TidStats__Sojourn;
 typedef struct _Sts__ClientReport Sts__ClientReport;
+typedef struct _Sts__ClientAuthFailsReport Sts__ClientAuthFailsReport;
+typedef struct _Sts__ClientAuthFailsReport__BSS Sts__ClientAuthFailsReport__BSS;
+typedef struct _Sts__ClientAuthFailsReport__BSS__Client Sts__ClientAuthFailsReport__BSS__Client;
 typedef struct _Sts__Survey Sts__Survey;
 typedef struct _Sts__Survey__SurveySample Sts__Survey__SurveySample;
 typedef struct _Sts__Survey__SurveyAvg Sts__Survey__SurveyAvg;
@@ -473,6 +476,42 @@ struct  _Sts__ClientReport
 #define STS__CLIENT_REPORT__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&sts__client_report__descriptor) \
     , 0, 0,0, 0,NULL, 0 }
+
+
+struct  _Sts__ClientAuthFailsReport__BSS__Client
+{
+  ProtobufCMessage base;
+  char *mac_address;
+  uint32_t auth_fails;
+  uint32_t invalid_psk;
+};
+#define STS__CLIENT_AUTH_FAILS_REPORT__BSS__CLIENT__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&sts__client_auth_fails_report__bss__client__descriptor) \
+    , NULL, 0, 0 }
+
+
+struct  _Sts__ClientAuthFailsReport__BSS
+{
+  ProtobufCMessage base;
+  char *ifname;
+  size_t n_client_list;
+  Sts__ClientAuthFailsReport__BSS__Client **client_list;
+};
+#define STS__CLIENT_AUTH_FAILS_REPORT__BSS__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&sts__client_auth_fails_report__bss__descriptor) \
+    , NULL, 0,NULL }
+
+
+struct  _Sts__ClientAuthFailsReport
+{
+  ProtobufCMessage base;
+  Sts__RadioBandType band;
+  size_t n_bss_list;
+  Sts__ClientAuthFailsReport__BSS **bss_list;
+};
+#define STS__CLIENT_AUTH_FAILS_REPORT__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&sts__client_auth_fails_report__descriptor) \
+    , 0, 0,NULL }
 
 
 struct  _Sts__Survey__SurveySample
@@ -1022,10 +1061,12 @@ struct  _Sts__Report
   Sts__BSReport **bs_report;
   size_t n_rssi_report;
   Sts__RssiReport **rssi_report;
+  size_t n_client_auth_fails_report;
+  Sts__ClientAuthFailsReport **client_auth_fails_report;
 };
 #define STS__REPORT__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&sts__report__descriptor) \
-    , NULL, 0,NULL, 0,NULL, 0,NULL, 0,NULL, 0,NULL, 0,NULL, 0,NULL }
+    , NULL, 0,NULL, 0,NULL, 0,NULL, 0,NULL, 0,NULL, 0,NULL, 0,NULL, 0,NULL }
 
 
 /* Sts__AvgType methods */
@@ -1143,6 +1184,31 @@ Sts__ClientReport *
                       const uint8_t       *data);
 void   sts__client_report__free_unpacked
                      (Sts__ClientReport *message,
+                      ProtobufCAllocator *allocator);
+/* Sts__ClientAuthFailsReport__BSS__Client methods */
+void   sts__client_auth_fails_report__bss__client__init
+                     (Sts__ClientAuthFailsReport__BSS__Client         *message);
+/* Sts__ClientAuthFailsReport__BSS methods */
+void   sts__client_auth_fails_report__bss__init
+                     (Sts__ClientAuthFailsReport__BSS         *message);
+/* Sts__ClientAuthFailsReport methods */
+void   sts__client_auth_fails_report__init
+                     (Sts__ClientAuthFailsReport         *message);
+size_t sts__client_auth_fails_report__get_packed_size
+                     (const Sts__ClientAuthFailsReport   *message);
+size_t sts__client_auth_fails_report__pack
+                     (const Sts__ClientAuthFailsReport   *message,
+                      uint8_t             *out);
+size_t sts__client_auth_fails_report__pack_to_buffer
+                     (const Sts__ClientAuthFailsReport   *message,
+                      ProtobufCBuffer     *buffer);
+Sts__ClientAuthFailsReport *
+       sts__client_auth_fails_report__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data);
+void   sts__client_auth_fails_report__free_unpacked
+                     (Sts__ClientAuthFailsReport *message,
                       ProtobufCAllocator *allocator);
 /* Sts__Survey__SurveySample methods */
 void   sts__survey__survey_sample__init
@@ -1376,6 +1442,15 @@ typedef void (*Sts__Client_Closure)
 typedef void (*Sts__ClientReport_Closure)
                  (const Sts__ClientReport *message,
                   void *closure_data);
+typedef void (*Sts__ClientAuthFailsReport__BSS__Client_Closure)
+                 (const Sts__ClientAuthFailsReport__BSS__Client *message,
+                  void *closure_data);
+typedef void (*Sts__ClientAuthFailsReport__BSS_Closure)
+                 (const Sts__ClientAuthFailsReport__BSS *message,
+                  void *closure_data);
+typedef void (*Sts__ClientAuthFailsReport_Closure)
+                 (const Sts__ClientAuthFailsReport *message,
+                  void *closure_data);
 typedef void (*Sts__Survey__SurveySample_Closure)
                  (const Sts__Survey__SurveySample *message,
                   void *closure_data);
@@ -1471,6 +1546,9 @@ extern const ProtobufCMessageDescriptor sts__client__tx_stats__descriptor;
 extern const ProtobufCMessageDescriptor sts__client__tid_stats__descriptor;
 extern const ProtobufCMessageDescriptor sts__client__tid_stats__sojourn__descriptor;
 extern const ProtobufCMessageDescriptor sts__client_report__descriptor;
+extern const ProtobufCMessageDescriptor sts__client_auth_fails_report__descriptor;
+extern const ProtobufCMessageDescriptor sts__client_auth_fails_report__bss__descriptor;
+extern const ProtobufCMessageDescriptor sts__client_auth_fails_report__bss__client__descriptor;
 extern const ProtobufCMessageDescriptor sts__survey__descriptor;
 extern const ProtobufCMessageDescriptor sts__survey__survey_sample__descriptor;
 extern const ProtobufCMessageDescriptor sts__survey__survey_avg__descriptor;

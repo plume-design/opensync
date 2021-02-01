@@ -1,6 +1,6 @@
 menuconfig MANAGER_PM
     bool "Platform Manager (PM)"
-    default n
+    default y
     help
         Enable Platform Manager (PM)
 
@@ -24,7 +24,6 @@ if MANAGER_PM
             Enable client nickname feature Web UI synchronization
 
     menuconfig PM_ENABLE_LED
-        depends on !MANAGER_LEDM
         bool "Enable support for LED"
         default n
         select OSP_LED
@@ -98,7 +97,7 @@ if MANAGER_PM
     config PM_ENABLE_LM
         depends on !MANAGER_LM
         bool "Enable support for Log Management"
-        default n
+        default y
         help
             Select to include log management as part of PM (Platform manager)
 

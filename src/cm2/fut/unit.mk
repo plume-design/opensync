@@ -29,7 +29,7 @@ UNIT_DISABLE := n
 # Template type:
 UNIT_TYPE := FUT
 # Output directory
-UNIT_DIR := shell/tests/cm
+UNIT_DIR := shell/tests/cm2
 
 UNIT_FILE := cm2_ble_status_interface_down.sh
 UNIT_FILE += cm2_ble_status_internet_block.sh

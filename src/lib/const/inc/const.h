@@ -63,6 +63,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define C_HEXINT32_LEN  sizeof("-0xFFFFFFFF")               /**< Space needed to represent a 32-bit hex integer */
 #define C_HEXINT64_LEN  sizeof("-0xFFFFFFFFFFFFFFFF")       /**< Space needed to represent a 64-bit hex integer */
 #define C_PID_LEN       C_INT64_LEN
+#define C_QOS_MAP_LEN \
+        sizeof("0:0 1:0 2:0 3:0 4:0 5:0 6:0 7:0")           /**< Maximum length of VLAN QOS map string */
 
 /*
  * ===========================================================================
@@ -292,5 +294,10 @@ extern bool             _c_get_param_by_key(c_item_t *list, int list_sz, int key
 #define C_STATIC_ASSERT(COND,MSG) typedef char __LINE1(___STATIC_ASSERT,__LINE__)[(COND)?1:-1]
 
 #endif
+
+/*
+ * Return the size of a structure member
+ */
+#define C_FIELD_SZ(type, field)     sizeof(((type *)NULL)->field)
 
 #endif /* CONST_H_INCLUDED */

@@ -47,8 +47,8 @@ struct wanp_dhcpv6
     ds_tree_node_t              wd6_tnode;
 };
 
-static void wanp_dhcpv6_module_start(void);
-static void wanp_dhcpv6_module_stop(void);
+static void wanp_dhcpv6_module_start(void *data);
+static void wanp_dhcpv6_module_stop(void *data);
 static wano_plugin_ops_init_fn_t wanp_dhcpv6_init;
 static wano_plugin_ops_run_fn_t wanp_dhcpv6_run;
 static wano_plugin_ops_fini_fn_t wanp_dhcpv6_fini;
@@ -376,7 +376,7 @@ enum wanp_dhcpv6_state wanp_dhcpv6_state_IDLE(
  *  Module Support
  * ===========================================================================
  */
-void wanp_dhcpv6_module_start(void)
+void wanp_dhcpv6_module_start(void *data)
 {
 
     /* Subscribe to IP_Interface changes */
@@ -393,7 +393,7 @@ void wanp_dhcpv6_module_start(void)
     wano_plugin_register(&wanp_dhcpv6);
 }
 
-void wanp_dhcpv6_module_stop(void)
+void wanp_dhcpv6_module_stop(void *data)
 {
     wano_plugin_unregister(&wanp_dhcpv6);
 }

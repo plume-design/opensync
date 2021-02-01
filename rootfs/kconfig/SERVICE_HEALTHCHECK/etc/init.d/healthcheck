@@ -1,0 +1,35 @@
+#!/bin/sh -e
+# {# jinja-parse #}
+INSTALL_PREFIX={{CONFIG_INSTALL_PREFIX}}
+
+START=99
+
+PID_FILE=/var/run/healthcheck.pid
+SRV=$INSTALL_PREFIX/scripts/healthcheck.service
+
+. $INSTALL_PREFIX/scripts/healthcheck.funcs.sh
+
+start()
+{
+    if Healthcheck_Enabled
+    then
+        start-stop-daemon -K -p $PID_FILE -x $SRV -t || \
+        start-stop-daemon -S -p $PID_FILE -x $SRV -b -m
+    fi
+}
+
+stop()
+{
+    if Healthcheck_Enabled
+    then
+        ! start-stop-daemon -K -p $PID_FILE -t || \
+        start-stop-daemon -K -p $PID_FILE
+    fi
+}
+
+case "$1" in
+    boot) start ;;
+    start) start ;;
+    stop) stop ;;
+    *) exit 1 ;;
+esac

@@ -43,7 +43,7 @@ doc-html:
 .PHONY: doc-pdf
 doc-pdf: doc-html
 	$(NQ) " $(call color_generate,doc) $(call color_target,[PDF])"
-	$(Q)cd doc/latex; make > ../latex.log 2>&1
+	$(Q)cd doc/latex; $(MAKE) > ../latex.log 2>&1
 	$(Q)echo -n "  "; ls -l doc/latex/*.pdf \
 		|| ( set -x; cat doc/latex.log; cat doc/latex/*.log | grep '^!' )
 	$(NQ) " $(call color_generate,doc) $(call color_target,[copy]) $(DOC_OUTPUT_NAME)"
