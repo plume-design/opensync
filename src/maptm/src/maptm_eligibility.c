@@ -69,6 +69,7 @@ struct ovsdb_table table_DHCPv6_Server;
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
 bool wait95Option = false;
+bool needReconfigure = false;
 
 /*****************************************************************************/
 
@@ -203,6 +204,11 @@ static void callback_DHCP_Option(
         case OVSDB_UPDATE_NEW:
             if (((new->tag) == 26) && (new->enable) && !strcmp((new->type), "rx"))
             {
+                if(strcmp(new->value, strucWanConfig.iapd) && !strcmp("MAP-T", strucWanConfig.mapt_mode))
+                {
+                    LOGD("%s IAPD is changed, we need to update MAP-T configuration", __func__);
+                    needReconfigure = true;
+                }
                 snprintf(strucWanConfig.iapd, sizeof(strucWanConfig.iapd), "%s", new->value);
             }
 
@@ -210,6 +216,11 @@ static void callback_DHCP_Option(
             {
                 if (new->enable)
                 {
+                    if(strcmp(new->value, strucWanConfig.mapt_95_value))
+                    {
+                        LOGD("%s Option 95 is changed, we need to update MAP-T configuration", __func__);
+                        needReconfigure = true;
+                    }
                     strucWanConfig.mapt_95_Option = true;
                     snprintf(strucWanConfig.mapt_95_value, sizeof(strucWanConfig.mapt_95_value), "%s", new->value);
                 }
@@ -221,7 +232,7 @@ static void callback_DHCP_Option(
                         maptm_wan_mode();
                     }
                     else if (strucWanConfig.link_up
-                             && (!strcmp("Dual-Stack", strucWanConfig.mapt_mode)))
+                            && (!strcmp("Dual-Stack", strucWanConfig.mapt_mode)))
                     {
                         // Restart the state machine if option 95 is added after renew/rebind
                         StartStop_DHCPv4(false);
@@ -294,8 +305,10 @@ static void callback_DHCP_Option(
                     maptm_eligibilityStop();
                     maptm_eligibilityStart(MAPTM_ELIGIBLE_IPV6);
                 }
-                else
+                else if(needReconfigure)
                 {
+                    LOGD("%s Reconfigure MAP-T", __func__);
+                    stop_mapt();
                     maptm_wan_mode();
                 }
             }
@@ -318,12 +331,19 @@ static void callback_DHCP_Option(
             if ((old->tag) == 26)
             {
                 char *flag = NULL;
-                if (!strcmp(old->value,strucWanConfig.iapd)) strucWanConfig.iapd[0] = '\0';
+                if (!strcmp(old->value, strucWanConfig.iapd)) strucWanConfig.iapd[0] = '\0';
+                else if (needReconfigure)
+                {
+                    LOGE(" [%s] Reconfigure MAPT", __func__);
+                    stop_mapt();
+                    maptm_wan_mode();
+                }
+
                 flag = strtok(old->value, ",");
-                char cmd[300]="";
+                char cmd[300] = "";
                 if (flag)
                 {
-                    sprintf(cmd,"ip -6 route del %s",old->value);
+                    sprintf(cmd,"ip -6 route del %s", old->value);
                     system(cmd);
                 }
             }
@@ -418,7 +438,7 @@ static void maptm_update_wan_mode(const char *status)
     json_t *where = NULL;
     int rc = 0;
 
-    LOGA(" [%s] ",  status);
+    LOGA(" [%s] ", status);
     strcpy(strucWanConfig.mapt_mode, status);
     memset(&set, 0, sizeof(set));
     set._partial_update = true;
@@ -470,6 +490,7 @@ void maptm_wan_mode(void)
              maptm_update_wan_mode("Dual-Stack");
         }
     }
+    needReconfigure = false;
 }
 
 // Initialize and monitor DHCP_Option Ovsdb table
@@ -521,7 +542,7 @@ void maptm_eligibilityStart(int WanConfig)
     // If Cloud did not set MAP-T tables, set default MAP-T support value
     if (!maptm_ovsdb_tables_ready()) 
     {
-        WanConfig |= MAPTM_ELIGIBILITY_ENABLE;   
+        WanConfig |= MAPTM_ELIGIBILITY_ENABLE;
         maptm_dhcp_option_update_15_option(strucWanConfig.mapt_support);
         maptm_dhcp_option_update_95_option(strucWanConfig.mapt_support);
     }
@@ -533,7 +554,7 @@ void maptm_eligibilityStart(int WanConfig)
     }
     else
     {
-        WanConfig &= MAPTM_ELIGIBILITY_ENABLE;
+        WanConfig &= MAPTM_ELIGIBLE_NO_IPV6;
     }
 
     // Check DHCPv6 services
