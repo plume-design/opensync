@@ -222,7 +222,7 @@ bm_event_action_frame(const char *ifname,
         return;
     }
 
-    LOGI("[%s]: %s BSAL_EVENT_ACTION_FRAME %d lenght %d", ifname, client->mac_addr, mgmt->u.action.category, data_len);
+    LOGI("[%s]: %s BSAL_EVENT_ACTION_FRAME %d length %d", ifname, client->mac_addr, mgmt->u.action.category, data_len);
     switch (mgmt->u.action.category) {
     case WLAN_ACTION_RADIO_MEASUREMENT:
         bm_action_frame_rrm(client, mgmt, data_len);
