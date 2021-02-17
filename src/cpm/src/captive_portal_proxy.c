@@ -216,6 +216,7 @@ cportal_proxy_write_other_config(struct cportal *self)
     if (!ret)
     {
         LOG(ERR, "%s: Error parsing configured url", __func__);
+        fclose(fconf);
         return false;
     }
 
