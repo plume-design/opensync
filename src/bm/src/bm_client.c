@@ -1998,7 +1998,7 @@ bm_client_state_task( void *arg )
     bm_client_t         *client = arg;
 
     evsched_task_cancel_by_find( bm_client_state_task, client,
-                               ( EVSCHED_FIND_BY_FUNC | EVSCHED_FIND_BY_FUNC ) );
+                               ( EVSCHED_FIND_BY_ARG | EVSCHED_FIND_BY_FUNC ) );
 
     if( client->state == BM_CLIENT_STATE_CONNECTED ) {
         LOGT( "Client '%s' connected, client state machine in proper state",
