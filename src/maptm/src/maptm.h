@@ -114,7 +114,6 @@ extern ovsdb_table_t table_Node_State;
 extern ovsdb_table_t table_Netfilter;
 extern ovsdb_table_t table_IPv6_Address;
 bool maptm_persistent(void);
-bool maptm_ovsdb_tables_ready(void);
 bool maptm_ps_set(const char *key, char *value);
 
 #endif /* MAPTM_H_INCLUDED */
