@@ -218,6 +218,7 @@ typedef struct
     int               disconnects;
     cm2_addr_t        addr_redirector;
     cm2_addr_t        addr_manager;
+    bool              ipv6_manager_con;
     ev_timer          timer;
     ev_timer          wdt_timer;
     ev_timer          stability_timer;
@@ -424,4 +425,5 @@ char* cm2_get_uplink_name(void);
 void cm2_update_device_type(const char *iftype);
 bool cm2_ovsdb_set_dhcpv6_client(char *ifname, bool enable);
 bool cm2_osn_is_ipv6_global_link(const char *ifname, const char *ipv6_addr);
+void cm2_restart_iface(char *ifname);
 #endif /* CM2_H_INCLUDED */

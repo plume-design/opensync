@@ -136,6 +136,14 @@ if MANAGER_CM
 
         endif
 
+    config CM2_CLOUD_FATAL_THRESHOLD
+            int "Threshold of resolving tries and amount of new controller address used"
+            default 0
+            help
+                Threshold of resolving tries and new tries of connection to the controller without success.
+                The reason of usage is protection against resolving library hanged or ovsdb-server.
+                Value 0 means threshold disabled
+
     menuconfig CM2_USE_STABILITY_CHECK
         bool "Use stability checking"
         default y

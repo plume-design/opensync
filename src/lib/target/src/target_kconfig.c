@@ -659,35 +659,42 @@ done:
 }
 
 static bool
-util_connectivity_router_check(void)
+util_connectivity_router_check(bool ipv4, bool ipv6)
 {
     struct in_addr  r_addr;
     char            r_6addr[128];
     bool            cipv4;
     bool            cipv6;
 
-    cipv6 = util_get_router_ipv6(r_6addr, sizeof(r_6addr));
-    if (cipv6)
-        cipv6 = util_ping_cmd(r_6addr, true);
+    cipv4 = false;
+    cipv6 = false;
 
-    if (util_get_router_ipv4(&r_addr) == false) {
-        /* If we don't have a router, that's considered a failure for IPv4 */
-        return cipv6;
+    if (ipv6) {
+        cipv6 = util_get_router_ipv6(r_6addr, sizeof(r_6addr));
+        if (cipv6)
+            cipv6 = util_ping_cmd(r_6addr, true);
     }
-    cipv4 = util_ping_cmd(inet_ntoa(r_addr), false);
-    if (!cipv4) {
-        cipv4 = util_arping_cmd(inet_ntoa(r_addr));
-        LOGI("Router check: ping ipv4 failed, arping ret = %d", cipv4);
+
+    if (ipv4) {
+        if (util_get_router_ipv4(&r_addr) == false) {
+            /* If we don't have a router, that's considered a failure for IPv4 */
+            return cipv6;
+        }
+        cipv4 = util_ping_cmd(inet_ntoa(r_addr), false);
+        if (!cipv4) {
+            cipv4 = util_arping_cmd(inet_ntoa(r_addr));
+            LOGI("Router check: ping ipv4 failed, arping ret = %d", cipv4);
+        }
     }
 
     return cipv4 || cipv6;
 }
 
 static bool
-util_connectivity_internet_check(void) {
+util_connectivity_internet_check(bool ipv4, bool ipv6) {
     char  ipv6_addr[256];
     char  ipv6_if[126];
-    bool  ipv6;
+    bool  ipv6_skip;
     bool  ret;
     int   cnt_addr1;
     int   cnt_addr2;
@@ -695,31 +702,43 @@ util_connectivity_internet_check(void) {
     int   r1, r2;
 
     cnt_addr1 = util_connectivity_get_inet_addr_cnt(util_connectivity_check_inet_addrs);
-    ipv6 = util_get_ipv6_global_interface(ipv6_if, sizeof(ipv6_if));
-    ret = false;
     tries = 2;
+    ipv6_skip = false;
+    ret = false;
+
+    if (ipv6) {
+        ret = util_get_ipv6_global_interface(ipv6_if, sizeof(ipv6_if));
+        if (!ret) {
+            ipv6_skip = true;
+            LOGI("IPv6 global interface not available");
+        }
+    }
 
     while (tries--) {
         r1 = os_rand() % cnt_addr1;
 
-        if (ipv6) {
+        if (ipv6 && !ipv6_skip) {
             ret = util_ping_cmd(util_connectivity_check_inet_addrs[r1], true);
-            if (ret)
-                break;
-            LOGI("DNS [%s] Internet checking failed", util_connectivity_check_inet_addrs[r1]);
-            cnt_addr2 = util_connectivity_get_inet_addr_cnt(util_connectivity_check_inet_ipv6_addrs);
-            r2 = os_rand() % cnt_addr2;
-            snprintf(ipv6_addr, sizeof(ipv6_addr), "%s%%%s", util_connectivity_check_inet_ipv6_addrs[r2], ipv6_if);
-            ret = util_ping_cmd(ipv6_addr, true);
-            if (ret)
-                break;
-        }
+            if (!ret) {
+                cnt_addr2 = util_connectivity_get_inet_addr_cnt(util_connectivity_check_inet_ipv6_addrs);
+                r2 = os_rand() % cnt_addr2;
+                snprintf(ipv6_addr, sizeof(ipv6_addr), "%s%%%s", util_connectivity_check_inet_ipv6_addrs[r2], ipv6_if);
+                ret = util_ping_cmd(ipv6_addr, true);
+                if (!ret)
+                    LOGI("Internet IPv6 checking failed, dns1: %s, dns2: %s",
+                         util_connectivity_check_inet_addrs[r1], util_connectivity_check_inet_ipv6_addrs[r2]);
 
-        ret = util_ping_cmd(util_connectivity_check_inet_addrs[r1], false);
-        if (!ret) {
-            cnt_addr2 = util_connectivity_get_inet_addr_cnt(util_connectivity_check_inet_ipv4_addrs);
-            r2 = os_rand() % cnt_addr2;
-            ret = util_ping_cmd(util_connectivity_check_inet_ipv4_addrs[r2], false);
+            }
+        }
+        if (ipv4) {
+            ret = util_ping_cmd(util_connectivity_check_inet_addrs[r1], false);
+            if (!ret) {
+                cnt_addr2 = util_connectivity_get_inet_addr_cnt(util_connectivity_check_inet_ipv4_addrs);
+                r2 = os_rand() % cnt_addr2;
+                ret = util_ping_cmd(util_connectivity_check_inet_ipv4_addrs[r2], false);
+                LOGI("Internet IPv4 checking failed, dns1: %s, dns2: %s",
+                     util_connectivity_check_inet_addrs[r1], util_connectivity_check_inet_ipv4_addrs[r2]);
+            }
         }
     }
     return ret;
@@ -747,14 +766,14 @@ bool target_device_connectivity_check(const char *ifname,
 
     if (opts & ROUTER_CHECK) {
         WARN_ON(!target_device_wdt_ping());
-        cstate->router_state = util_connectivity_router_check();
+        cstate->router_state = util_connectivity_router_check(opts & IPV4_CHECK, opts & IPV6_CHECK);
         if (!cstate->router_state)
             ret = false;
     }
 
     if (opts & INTERNET_CHECK) {
         WARN_ON(!target_device_wdt_ping());
-        cstate->internet_state = util_connectivity_internet_check();
+        cstate->internet_state = util_connectivity_internet_check(opts & IPV4_CHECK, opts & IPV6_CHECK);
         if (!cstate->internet_state)
             ret = false;
     }

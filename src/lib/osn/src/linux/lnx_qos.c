@@ -63,7 +63,19 @@ uint8_t lnx_qos_obj_id_map[LNX_QOS_MAX + 7 / 8];
  */
 static char lnx_qos_qdisc_reset[] = _S(tc qdisc del dev "$1" root || true);
 
-static char lnx_qos_qdisc_set[] = _S(tc qdisc add dev "$1" root handle 1: htb);
+static char lnx_qos_qdisc_set[] = _S(
+        tc qdisc add dev "$1" root handle 1: htb default fffe;
+
+        tc class add dev "$1" \
+                parent 1: \
+                classid "1:fffe" \
+                htb \
+                prio 0 \
+                rate "3.5gbit" \
+                burst 15k;
+
+        tc qdisc add dev "$1" parent "1:fffe" fq_codel;
+        );
 
 static char lnx_qos_qdisc_add[] = _S(
         ifname="$1";
@@ -71,6 +83,7 @@ static char lnx_qos_qdisc_add[] = _S(
         mark="$3";
         priority="$4";
         bandwidth="$5";
+        shared="$6";
 
         tc class add dev "$ifname" \
                 parent 1: \
@@ -78,7 +91,8 @@ static char lnx_qos_qdisc_add[] = _S(
                 htb \
                 prio "${priority}" \
                 rate "${bandwidth}kbit" \
-                burst 15k;
+                burst 15k \
+                ${shared:+shared ${shared}};
 
         tc qdisc add dev "$ifname" parent "1:${qid}" fq_codel;
 
@@ -201,14 +215,14 @@ bool lnx_qos_queue_begin(
         const struct osn_qos_other_config *other_config,
         struct osn_qos_queue_status *qqs)
 {
-    (void)other_config;
-
     char sqid[C_INT32_LEN];
     char sprio[C_INT32_LEN];
     char sbw[C_INT32_LEN];
     char smark[C_INT32_LEN];
     uint32_t mark;
+    char *value;
     int rc;
+    int qi;
 
     memset(qqs, 0, sizeof(*qqs));
 
@@ -231,6 +245,16 @@ bool lnx_qos_queue_begin(
         bandwidth = 1000;
     }
 
+    value = "";
+    /* Scan otherconfig for the shared option */
+    for (qi = 0; qi < other_config->oc_len; qi++)
+    {
+        if (strcmp(other_config->oc_config[qi].ov_key, "shared") == 0)
+        {
+            value = other_config->oc_config[qi].ov_value;
+        }
+    }
+
     mark = LNX_QOS_MARK_BASE |
             (self->lq_obj_id << 16) |
             (self->lq_qos_id << 8) |
@@ -248,7 +272,8 @@ bool lnx_qos_queue_begin(
             sqid,
             smark,
             sprio,
-            sbw);
+            sbw,
+            value);
     if (rc != 0)
     {
         LOG(ERR, "qos: %s: Error applying Queue [%d:%d] configuration.",
