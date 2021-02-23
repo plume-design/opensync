@@ -462,7 +462,7 @@ char* set_subnetcidr4(char *subnetcidr4)
         LOGE("%s: Failed to get Interface config", __func__);
         return NULL;
     }
-    if(!osn_ip_addr_from_str(&netmask, iconf.netmask))
+    if (!osn_ip_addr_from_str(&netmask, iconf.netmask))
     {
         LOGE("%s: Wrong Netmask", __func__);
         return NULL;
@@ -484,7 +484,7 @@ bool config_mapt(void)
     // Get LAN Subnet
     char subnetcidr4[20] = "";
     set_subnetcidr4(subnetcidr4);
-    if(subnetcidr4 == NULL)
+    if (subnetcidr4 == NULL)
     {
         LOGE("Unable to configure MAP-T option Unable to get subnetcidr4");
         return false;

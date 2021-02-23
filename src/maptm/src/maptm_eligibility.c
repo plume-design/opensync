@@ -204,9 +204,9 @@ static void callback_DHCP_Option(
         case OVSDB_UPDATE_NEW:
             if (((new->tag) == 26) && (new->enable) && !strcmp((new->type), "rx"))
             {
-                if(strcmp(new->value, strucWanConfig.iapd) && !strcmp("MAP-T", strucWanConfig.mapt_mode))
+                if (strcmp(new->value, strucWanConfig.iapd) && !strcmp("MAP-T", strucWanConfig.mapt_mode))
                 {
-                    LOGD("%s IAPD is changed, we need to update MAP-T configuration", __func__);
+                    LOGD("%s: IAPD is changed, we need to update MAP-T configuration", __func__);
                     needReconfigure = true;
                 }
                 snprintf(strucWanConfig.iapd, sizeof(strucWanConfig.iapd), "%s", new->value);
@@ -216,9 +216,9 @@ static void callback_DHCP_Option(
             {
                 if (new->enable)
                 {
-                    if(strcmp(new->value, strucWanConfig.mapt_95_value))
+                    if (strcmp(new->value, strucWanConfig.mapt_95_value))
                     {
-                        LOGD("%s Option 95 is changed, we need to update MAP-T configuration", __func__);
+                        LOGD("%s: Option 95 is changed, we need to update MAP-T configuration", __func__);
                         needReconfigure = true;
                     }
                     strucWanConfig.mapt_95_Option = true;
@@ -232,7 +232,7 @@ static void callback_DHCP_Option(
                         maptm_wan_mode();
                     }
                     else if (strucWanConfig.link_up
-                            && (!strcmp("Dual-Stack", strucWanConfig.mapt_mode)))
+                             && (!strcmp("Dual-Stack", strucWanConfig.mapt_mode)))
                     {
                         // Restart the state machine if option 95 is added after renew/rebind
                         StartStop_DHCPv4(false);
@@ -255,7 +255,7 @@ static void callback_DHCP_Option(
             if (((new->tag) == 24) && (new->enable))
             {
                 /* Option 24 is updated And MAP-T is configured We need to update */
-                if(!strcmp("MAP-T", strucWanConfig.mapt_mode) && strucWanConfig.option_24[0]!='\0')
+                if (!strcmp("MAP-T", strucWanConfig.mapt_mode) && strucWanConfig.option_24[0]!='\0')
                 {
                     maptm_dhcpv6_server_add_option(strucWanConfig.option_24, false);
                     maptm_dhcpv6_server_add_option(new->_uuid.uuid, true);
@@ -299,13 +299,13 @@ static void callback_DHCP_Option(
                     strucWanConfig.mapt_95_value[0] = '\0';
                     maptm_eligibilityStop();
                 }
-                else if(!strcmp(old->value,strucWanConfig.mapt_95_value))
+                else if (!strcmp(old->value,strucWanConfig.mapt_95_value))
                 {
                     /* Option 95 has been removed we need to restart eligibility state machine */
                     maptm_eligibilityStop();
                     maptm_eligibilityStart(MAPTM_ELIGIBLE_IPV6);
                 }
-                else if(needReconfigure)
+                else if (needReconfigure)
                 {
                     LOGD("%s Reconfigure MAP-T", __func__);
                     stop_mapt();
@@ -331,7 +331,10 @@ static void callback_DHCP_Option(
             if ((old->tag) == 26)
             {
                 char *flag = NULL;
-                if (!strcmp(old->value, strucWanConfig.iapd)) strucWanConfig.iapd[0] = '\0';
+                if (!strcmp(old->value, strucWanConfig.iapd))
+                {
+                    strucWanConfig.iapd[0] = '\0';
+                }
                 else if (needReconfigure)
                 {
                     LOGE(" [%s] Reconfigure MAPT", __func__);
