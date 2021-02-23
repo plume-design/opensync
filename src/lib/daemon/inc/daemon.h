@@ -76,6 +76,7 @@ struct __daemon
     bool                    dn_auto_restart;    /* Enable daemoness auto restart on error */
     char                    *dn_pidfile_path;   /* PID file */
     bool                    dn_pidfile_create;  /* true whether we should create the PID file */
+    int                     dn_exit_status;     /* Exit status of the daemon */
 };
 
 extern bool daemon_init(daemon_t *self, const char *exe_path, int flags);
@@ -91,6 +92,7 @@ extern bool daemon_atexit(daemon_t *self, daemon_atexit_fn_t *fn);
 extern bool daemon_atrestart(daemon_t *self, daemon_atrestart_fn_t *fn);
 extern bool daemon_pidfile_set(daemon_t *self, const char *path, bool create);
 extern bool daemon_is_started(daemon_t *self, bool *started);
+extern bool daemon_get_exit_status(const daemon_t *self, int *exit_status);
 
 #define daemon_arg_add(self, ...)   \
     daemon_arg_add_a(self, C_VPACK(__VA_ARGS__))
