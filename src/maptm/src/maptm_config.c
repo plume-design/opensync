@@ -443,7 +443,7 @@ bool stop_mapt(void)
 }
 
 // Get LAN Subnet
-char* set_subnetcidr4(char *subnetcidr4)
+char* get_subnetcidr4(char *subnetcidr4)
 {
     struct schema_Wifi_Inet_Config iconf;
     int ret;
@@ -483,10 +483,9 @@ bool config_mapt(void)
 
     // Get LAN Subnet
     char subnetcidr4[20] = "";
-    set_subnetcidr4(subnetcidr4);
-    if (subnetcidr4 == NULL)
+    if (get_subnetcidr4(subnetcidr4) == NULL)
     {
-        LOGE("Unable to configure MAP-T option Unable to get subnetcidr4");
+        LOGE("Unable to configure MAP-T option (unable to get subnetcidr4)");
         return false;
     }
 
