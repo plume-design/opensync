@@ -511,8 +511,11 @@ void maptm_eligibilityStart(int WanConfig)
 
     // Check mapt_support value and update WanConfig and requested options list
     LOGT("%s mapt_support is %s" , __func__, strucWanConfig.mapt_support ? "enabled" : "disabled");
-    if (strucWanConfig.mapt_support) WanConfig |= MAPTM_ELIGIBILITY_ENABLE;
-    else WanConfig &= MAPTM_IPV6_ENABLE;
+    if (strucWanConfig.mapt_support) {
+        WanConfig |= MAPTM_ELIGIBILITY_ENABLE;
+    } else {
+        WanConfig &= MAPTM_IPV6_ENABLE;
+    }
     maptm_dhcp_option_update_15_option(strucWanConfig.mapt_support);
     maptm_dhcp_option_update_95_option(strucWanConfig.mapt_support);
 
