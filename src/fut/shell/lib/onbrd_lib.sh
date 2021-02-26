@@ -26,17 +26,9 @@
 
 
 # Include basic environment config
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source "${FUT_TOPDIR}/shell/config/default_shell.sh"
-fi
-# Sourcing guard variable
-export ONBRD_LIB_SOURCED=True
-
-source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
-
+export FUT_ONBRD_LIB_SRC=true
+[ "${FUT_UNIT_LIB_SRC}" != true ] && source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+echo "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh sourced"
 ####################### INFORMATION SECTION - START ###########################
 #
 #   Base library of common On-boarding functions
@@ -60,15 +52,19 @@ source "${LIB_OVERRIDE_FILE}"
 onbrd_setup_test_environment()
 {
     fn_name="onbrd_lib:onbrd_setup_test_environment"
-    log -deb "$fn_name - Running ONBRD setup"
 
-    device_init ||
+    log "$fn_name - Running ONBRD setup"
+
+    device_init &&
+        log -deb "$fn_name - Device initialized - Success" ||
         raise "FAIL: Could not initialize device: device_init" -l "$fn_name" -ds
 
-    cm_disable_fatal_state ||
+    cm_disable_fatal_state &&
+        log -deb "$fn_name - Fatal state disabled - Success" ||
         raise "FAIL: Could not disable fatal state: cm_disable_fatal_state" -l "$fn_name" -ds
 
-    start_openswitch ||
+    start_openswitch &&
+        log -deb "$fn_name - OpenvSwitch started - Success" ||
         raise "FAIL: Could not start OpenvSwitch: start_openswitch" -l "$fn_name" -ds
 
     restart_managers
@@ -77,9 +73,12 @@ onbrd_setup_test_environment()
     # Check if all radio interfaces are created
     for if_name in "$@"
     do
-        wait_ovsdb_entry Wifi_Radio_State -w if_name "$if_name" -is if_name "$if_name" ||
+        wait_ovsdb_entry Wifi_Radio_State -w if_name "$if_name" -is if_name "$if_name" &&
+            log -deb "$fn_name - Wifi_Radio_State::if_name '$if_name' present - Success" ||
             raise "FAIL: Wifi_Radio_State::if_name for $if_name does not exist" -l "$fn_name" -ds
     done
+
+    log "$fn_name - ONBRD setup - end"
 
     return 0
 }
@@ -246,102 +245,6 @@ check_if_patch_exists()
         return 0
     else
         log -deb "$fn_name - '$patch' interface does not exist"
-        return 1
-    fi
-}
-
-###############################################################################
-# DESCRIPTION:
-#   Function checks if target field value in Manager table equals any
-#   of valid resolutions in parameters.
-# INPUT PARAMETER(S):
-#   $@  expected resolutions (required)
-# RETURNS:
-#   0   Hostname is resolved.
-#   1   Hostname is not resolved.
-# USAGE EXAMPLE(S):
-#   onbrd_check_hostname_resolved <resolutions>
-###############################################################################
-onbrd_check_hostname_resolved()
-{
-    fn_name="onbrd_lib:onbrd_check_hostname_resolved"
-
-    target=$(get_ovsdb_entry_value Manager target -r)
-
-    # shellcheck disable=SC2068
-    for resolution in $@
-    do
-        if [ "$target" = "$resolution" ]; then
-            log -deb "$fn_name - Manager::target '$target' equals resolution '$resolution'"
-            return 0
-        else
-            log -deb "$fn_name - Manager::target '$target' not equal to resolution '$resolution'"
-        fi
-    done
-
-    return 1
-}
-
-###############################################################################
-# DESCRIPTION:
-#   Function checks if firmware_version field value in AWLAN_Node table
-#   has valid pattern.
-# INPUT PARAMETER(S):
-#   None.
-# RETURNS:
-#   0   Firmware follows required pattern.
-#   1   Firmware does not follow required pattern.
-# USAGE EXAMPLE(S):
-#   onbrd_check_fw_pattern_match
-###############################################################################
-onbrd_check_fw_pattern_match()
-{
-    fn_name="onbrd_lib:onbrd_check_fw_pattern_match"
-    local match
-
-    fw=$(get_ovsdb_entry_value AWLAN_Node firmware_version -r)
-    log -deb "$fn_name - Checking if '$fw' matches pattern"
-
-    while true ; do
-        echo "$fw" | grep -q '^[0-9][.][0-9][.][0-9][.][0-9][\-].*'
-        if [ "$?" = "0" ]; then
-            match="true"
-            break;
-        fi
-        echo "$fw" | grep -q '^[0-9][.][0-9][.][0-9][\-].*'
-        if [ "$?" = "0" ]; then
-            match="true"
-            break;
-        fi
-        echo "$fw" | grep -q '^[0-9][.][0-9][\-].*'
-        if [ "$?" = "0" ]; then
-            match="true"
-            break;
-        fi
-        echo "$fw" | grep -q '^[0-9][.][0-9][.][0-9][.][0-9]$'
-        if [ "$?" = "0" ]; then
-            match="true"
-            break;
-        fi
-        echo "$fw" | grep -q '^[0-9][.][0-9][.][0-9]$'
-        if [ "$?" = "0" ]; then
-            match="true"
-            break;
-        fi
-        echo "$fw" | grep -q '^[0-9][.][0-9]$'
-        if [ "$?" = "0" ]; then
-            match="true"
-            break;
-        fi
-        match="false"
-        break;
-    done
-
-    if [ "$match" = "true" ]; then
-        log -deb "$fn_name - Pattern matched"
-        return 0
-    else
-        log -deb "$fn_name - Pattern did not match"
         return 1
     fi
 }

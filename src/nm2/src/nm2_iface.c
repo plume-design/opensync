@@ -396,6 +396,10 @@ inet_t *nm2_iface_new_inet(const char *ifname, enum nm2_iftype type)
             nif = inet_pppoe_new(ifname);
             break;
 
+        case NM2_IFTYPE_LTE:
+            nif = inet_lte_new(ifname);
+            break;
+
         default:
             /* Unsupported types */
             LOG(ERR, "nm2_iface: %s: Unsupported interface type: %d", ifname, type);

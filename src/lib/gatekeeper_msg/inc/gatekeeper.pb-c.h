@@ -322,10 +322,13 @@ struct  _Gatekeeper__Southbound__V1__GatekeeperCommonReply
   uint32_t request_id;
   Gatekeeper__Southbound__V1__GatekeeperAction action;
   uint32_t ttl;
+  char *policy;
+  uint32_t category_id;
+  uint32_t confidence_level;
 };
 #define GATEKEEPER__SOUTHBOUND__V1__GATEKEEPER_COMMON_REPLY__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&gatekeeper__southbound__v1__gatekeeper_common_reply__descriptor) \
-    , 0, GATEKEEPER__SOUTHBOUND__V1__GATEKEEPER_ACTION__GATEKEEPER_ACTION_UNSPECIFIED, 0 }
+    , 0, GATEKEEPER__SOUTHBOUND__V1__GATEKEEPER_ACTION__GATEKEEPER_ACTION_UNSPECIFIED, 0, (char *)protobuf_c_empty_string, 0, 0 }
 
 
 struct  _Gatekeeper__Southbound__V1__GatekeeperFqdnRedirectReply

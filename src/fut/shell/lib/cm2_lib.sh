@@ -26,17 +26,9 @@
 
 
 # Include basic environment config
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source "${FUT_TOPDIR}/shell/config/default_shell.sh"
-fi
-# Sourcing guard variable
-export CM2_LIB_SOURCED=True
-
-source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
-
+export FUT_CM2_LIB_SRC=true
+[ "${FUT_UNIT_LIB_SRC}" != true ] && source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+echo "${FUT_TOPDIR}/shell/lib/cm2_lib.sh sourced"
 ####################### INFORMATION SECTION - START ###########################
 #
 #   Base library of common Connection Manager functions
@@ -69,78 +61,71 @@ cm_setup_test_environment()
     cm2_if_name=${1:-eth0}
     cm2_is_gw=${2:-true}
 
-    log -deb "$fn_name - Running CM2 setup"
+    log "$fn_name - Running CM2 setup"
 
-    device_init ||
+    device_init &&
+        log -deb "$fn_name - Device initialized - Success" ||
         raise "FAIL: Could not initialize device: device_init" -l "$fn_name" -ds
 
-    cm_disable_fatal_state ||
+    cm_disable_fatal_state &&
+        log -deb "$fn_name - Fatal state disabled - Success" ||
         raise "FAIL: Could not disable fatal state: cm_disable_fatal_state" -l "$fn_name" -ds
 
-    start_openswitch ||
+    start_openswitch &&
+        log -deb "$fn_name - OpenvSwitch started - Success" ||
         raise "FAIL: Could not start OpenvSwitch: start_openswitch" -l "$fn_name" -ds
 
-    manipulate_iptables_protocol unblock DNS ||
+    manipulate_iptables_protocol unblock DNS &&
+        log -deb "$fn_name - iptables unblock DNS - Success" ||
         raise "FAIL: Could not unblock DNS traffic: manipulate_iptables_protocol unblock DNS" -l "$fn_name" -ds
 
-    manipulate_iptables_protocol unblock SSL ||
+    manipulate_iptables_protocol unblock SSL &&
+        log -deb "$fn_name - iptables unblock SSL - Success" ||
         raise "FAIL: Could not unblock SSL traffic: manipulate_iptables_protocol unblock SSL" -l "$fn_name" -ds
 
     # This needs to execute before we start the managers. Flow is essential.
     if [ "$cm2_is_gw" == "true" ]; then
-        add_bridge_interface br-wan "$cm2_if_name" ||
+        add_bridge_interface br-wan "$cm2_if_name" &&
+            log -deb "$fn_name - interface '$cm2_if_name' added to bridge 'br-wan' - Success" ||
             raise "FAIL: Could not add interface to br-wan bridge: add_bridge_interface br-wan $cm2_if_name" -l "$fn_name" -ds
     fi
 
-    start_specific_manager cm -v ||
+    start_specific_manager cm -v &&
+        log -deb "$fn_name - start_specific_manager cm - Success" ||
         raise "FAIL: Could not start manager: start_specific_manager cm" -l "$fn_name" -ds
 
-    start_specific_manager nm ||
+    start_specific_manager nm &&
+        log -deb "$fn_name - start_specific_manager nm - Success" ||
         raise "FAIL: Could not start manager: start_specific_manager nm" -l "$fn_name" -ds
 
-    start_if_specific_manager wano ||
-        raise "FAIL: Could not start manager: start_if_specific_manager wano" -l "$fn_name" -ds
+    check_kconfig_option "CONFIG_MANAGER_WANO" "y"
+    if [ $? -eq 0 ]; then
+        start_specific_manager wano &&
+            log -deb "$fn_name - start_specific_manager wano - Success" ||
+            raise "FAIL: Could not start manager: start_if_specific_manager wano" -l "$fn_name" -ds
+    fi
 
-    empty_ovsdb_table AW_Debug ||
+    empty_ovsdb_table AW_Debug &&
+        log -deb "$fn_name - AW_Debug table emptied - Success" ||
         raise "FAIL: Could not empty table: empty_ovsdb_table AW_Debug" -l "$fn_name" -ds
 
-    set_manager_log CM TRACE ||
+    set_manager_log CM TRACE &&
+        log -deb "$fn_name - Manager log for CM set to TRACE - Success" ||
         raise "FAIL: Could not set manager log severity: set_manager_log CM TRACE" -l "$fn_name" -ds
 
-    set_manager_log NM TRACE ||
+    set_manager_log NM TRACE &&
+        log -deb "$fn_name - Manager log for NM set to TRACE - Success" ||
         raise "FAIL: Could not set manager log severity: set_manager_log NM TRACE" -l "$fn_name" -ds
 
     if [ "$cm2_is_gw" == "true" ]; then
-        wait_for_function_response 0 "check_default_route_gw" ||
+        wait_for_function_response 0 "check_default_route_gw" &&
+            log -deb "$fn_name - Default GW added to routes - Success" ||
             raise "FAIL: Default GW not added to routes" -l "$fn_name" -ds
     fi
 
+    log "$fn_name - CM setup - end"
+
     return 0
-}
-
-###############################################################################
-# DESCRIPTION:
-#   Function makes a tear down for CM tests. Removes bridge interface and
-#   kills CM. Function is used after CM tests session.
-# INPUT PARAMETER(S):
-#   None.
-# RETURNS:
-# USAGE EXAMPLE(S):
-#   cm2_teardown
-###############################################################################
-cm2_teardown()
-{
-    fn_name="cm2_lib:cm2_teardown"
-    log -deb "$fn_name - Running CM2 teardown"
-    remove_bridge_interface br-wan &&
-        log -deb "$fn_name - Success: remove_bridge_interface br-wan" ||
-        log -deb "$fn_name - Failed: remove_bridge_interface br-wan"
-
-    log -deb "$fn_name - Killing CM pid"
-    cm_pids=$(pgrep "cm")
-    kill $cm_pids &&
-        log -deb "$fn_name - CM pids killed" ||
-        log -deb "$fn_name - Failed to kill CM pids"
 }
 
 ####################### SETUP SECTION - STOP ##################################

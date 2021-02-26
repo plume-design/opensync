@@ -24,16 +24,13 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-# Include basic environment config from default shell file and if any from FUT framework generated /tmp/fut_set_env.sh file
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
-source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
-source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
+
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/fsm_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
+source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
 tc_name="fsm/$(basename "$0")"
 # Default of_port must be unique between fsm tests for valid testing
@@ -83,7 +80,7 @@ tap_upnp_if="${lan_bridge_if}.tupnp"
 log_title "$tc_name: FSM test - Configure uPnP plugin"
 
 log "$tc_name: Configuring TAP interfaces required for FSM testing"
-add_bridge_port "br-home" "${tap_upnp_if}"
+add_bridge_port "${lan_bridge_if}" "${tap_upnp_if}"
 set_ovs_vsctl_interface_option "${tap_upnp_if}" "type" "internal"
 set_ovs_vsctl_interface_option "${tap_upnp_if}" "ofport_request" "${of_port}"
 create_inet_entry2 \

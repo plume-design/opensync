@@ -88,6 +88,9 @@ UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_IPSET_LINUX),src/osn_ipset_linux.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_MAPT_NULL),src/osn_mapt_null.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_MAPT_CERNET),src/osn_mapt_cernet.c)
 
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_LTE_NULL),src/osn_lte_null.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_LTE_LINUX),src/osn_lte_linux.c)
+
 ifdef CONFIG_OSN_LINUX_ENABLED
 UNIT_CFLAGS += -I$(UNIT_PATH)/src/linux
 
@@ -109,6 +112,7 @@ UNIT_SRC += $(if $(CONFIG_OSN_LINUX_IPSET),src/linux/lnx_ipset.c)
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_PPPOE),src/linux/lnx_pppoe.c)
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_VLAN),src/linux/lnx_vlan.c)
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_QOS),src/linux/lnx_qos.c)
+UNIT_SRC += $(if $(CONFIG_OSN_LINUX_LTE),src/linux/lnx_lte.c)
 
 UNIT_DEPS += src/lib/daemon
 UNIT_DEPS += src/lib/evx

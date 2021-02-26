@@ -30,12 +30,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <time.h>
 #include <mxml.h>
 
-#include "gatekeeper_curl.h"
+#include "gatekeeper_multi_curl.h"
 #include "log.h"
 
 static struct http2_curl curl_mgr;
 
-struct http2_curl *get_curl_mgr(void)
+struct http2_curl *get_curl_multi_mgr(void)
 {
     return &curl_mgr;
 }
@@ -93,7 +93,7 @@ gk_curl_exit(void)
 {
     CURLMcode mret;
 
-    struct http2_curl *cmgr = get_curl_mgr();
+    struct http2_curl *cmgr = get_curl_multi_mgr();
 
     mret = curl_multi_cleanup(cmgr->multi);
     if (mret != CURLM_OK) return false;
@@ -108,9 +108,9 @@ gk_curl_exit(void)
  *
  */
 void
-gk_free_conn(struct conn_info *conn)
+gk_free_conn(struct gk_conn_info *conn)
 {
-    struct http2_curl *mgr = get_curl_mgr();
+    struct http2_curl *mgr = get_curl_multi_mgr();
     if (conn->easy)
     {
         curl_multi_remove_handle(mgr->multi, conn->easy);
@@ -130,7 +130,7 @@ gk_free_conn(struct conn_info *conn)
 static void
 check_multi_info(struct http2_curl *mgr)
 {
-    struct conn_info *conn;
+    struct gk_conn_info *conn;
     char *eff_url;
     CURLMsg *msg;
     int msgs_left;
@@ -209,7 +209,7 @@ timer_cb(EV_P_ struct ev_timer *w, int revents)
  * @param mgr http2_curl structure used to stop ev_io events
  */
 static void
-remsock(struct sock_info *f, struct http2_curl *mgr)
+remsock(struct gk_sock_info *f, struct http2_curl *mgr)
 {
     if (f == NULL) return;
 
@@ -228,7 +228,7 @@ remsock(struct sock_info *f, struct http2_curl *mgr)
  * @param mgr http2_curl structure used to stop ev_io events
  */
 static void
-setsock(struct sock_info *f, curl_socket_t s, CURL *e, int act,
+setsock(struct gk_sock_info *f, curl_socket_t s, CURL *e, int act,
         struct http2_curl *mgr)
 {
     int kind = (act & CURL_POLL_IN ? EV_READ : 0) |
@@ -255,11 +255,11 @@ static void
 addsock(curl_socket_t s, CURL *easy, int action,
         struct http2_curl *mgr)
 {
-    struct sock_info *fdp;
+    struct gk_sock_info *fdp;
 
     LOGT("http2: %s %p, %d, %d, %p", __func__, easy, s, action, mgr);
 
-    fdp = calloc(1, sizeof(struct sock_info));
+    fdp = calloc(1, sizeof(struct gk_sock_info));
 
     fdp->global = mgr;
     setsock(fdp, s, easy, action, mgr);
@@ -281,7 +281,7 @@ static int
 curl_sock_cb(CURL *e, curl_socket_t s, int what, void *userp, void *sockp)
 {
     struct http2_curl *mgr = userp;
-    struct sock_info *fdp = sockp;
+    struct gk_sock_info *fdp = sockp;
     const char *whatstr[] = { "none", "IN", "OUT", "INOUT", "REMOVE"};
 
     LOGT("http2: %s() socket callback: s=%d e=%p what=%s ",
@@ -354,7 +354,7 @@ static int
 prog_cb(void *p, double dltotal, double dlnow, double ult,
                    double uln)
 {
-  struct conn_info *conn = (struct conn_info *)p;
+  struct gk_conn_info *conn = (struct gk_conn_info *)p;
 
   LOGT("%s() Progress: %s (%g/%g)\n", __func__, conn->url, dlnow, dltotal);
   return CURLE_OK;
@@ -371,13 +371,13 @@ bool
 gk_new_conn(char *url)
 {
     struct http2_curl *cmgr;
-    struct conn_info *conn;
+    struct gk_conn_info *conn;
     CURLMcode rc;
 
     LOGN("http2: %s() adding url %s", __func__, url);
-    cmgr = get_curl_mgr();
+    cmgr = get_curl_multi_mgr();
 
-    conn = calloc(1, sizeof(struct conn_info));
+    conn = calloc(1, sizeof(struct gk_conn_info));
     if (conn == NULL) return false;
 
     conn->error[0]='\0';
@@ -424,9 +424,9 @@ err_free_conn:
  *         false otherwise
  */
 bool
-gk_curl_init(struct ev_loop *loop)
+gk_multi_curl_init(struct ev_loop *loop)
 {
-    struct http2_curl *cmgr = get_curl_mgr();
+    struct http2_curl *cmgr = get_curl_multi_mgr();
     CURLcode  rc;
     CURLMcode cmret;
 

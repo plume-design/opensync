@@ -236,6 +236,7 @@ cm2_write_target_addr(cm2_addr_t *addr)
                  addr->port);
 
         addr->ipv6_cur = true;
+        g_state.ipv6_manager_con = true;
     }
     else if (cm2_validate_target_addr(&addr->ipv4_addr_list, AF_INET))
     {
@@ -255,6 +256,7 @@ cm2_write_target_addr(cm2_addr_t *addr)
                  addr->port);
 
         addr->ipv6_cur = false;
+        g_state.ipv6_manager_con = false;
     }
     else
     {

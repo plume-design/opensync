@@ -25,18 +25,10 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-# Include basic environment config from default shell file and if any from FUT framework generated /tmp/fut_set_env.sh file
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
-# Sourcing guard variable
-export FSM_LIB_SOURCED=True
-
-source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
-
+# Include basic environment config
+export FUT_FSM_LIB_SRC=true
+[ "${FUT_UNIT_LIB_SRC}" != true ] && source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+echo "${FUT_TOPDIR}/shell/lib/fsm_lib.sh sourced"
 ####################### INFORMATION SECTION - START ###########################
 #
 #   Base library of common Flow Control Manager functions
@@ -60,27 +52,32 @@ fsm_setup_test_environment()
 {
     fn_name="fsm_lib:fsm_setup_test_environment"
 
-    log -deb "$fn_name - Running FSM setup"
+    log "$fn_name - Running FSM setup"
 
-    device_init ||
+    device_init  &&
+        log -deb "$fn_name - Device initialized - Success" ||
         raise "FAIL: Could not initialize device: device_init" -l "$fn_name" -ds
 
-    cm_disable_fatal_state ||
+    cm_disable_fatal_state &&
+        log -deb "$fn_name - Fatal state disabled - Success"  ||
         raise "FAIL: Could not disable fatal state: cm_disable_fatal_state" -l "$fn_name" -ds
 
-    start_openswitch ||
+    start_openswitch &&
+        log -deb "$fn_name - OpenvSwitch started - Success"  ||
         raise "FAIL: Could not start OpenvSwitch: start_openswitch" -l "$fn_name" -ds
 
     restart_managers
     log "${fn_name} - Executed restart_managers, exit code: $?"
 
-    empty_ovsdb_table AW_Debug ||
+    empty_ovsdb_table AW_Debug &&
+        log -deb "$fn_name - AW_Debug table emptied - Success"  ||
         raise "FAIL: Could not empty table: empty_ovsdb_table AW_Debug" -l "$fn_name" -ds
 
-    set_manager_log FSM TRACE ||
+    set_manager_log FSM TRACE &&
+        log -deb "$fn_name - Manager log for FSM set to TRACE - Success"||
         raise "FAIL: Could not set manager log severity: set_manager_log FSM TRACE" -l "$fn_name" -ds
 
-    log -deb "$fn_name - FSM setup - end"
+    log "$fn_name - FSM setup - end"
 
     return 0
 }

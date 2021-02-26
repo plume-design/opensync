@@ -27,7 +27,8 @@
 
 # Series of generic routines updating ovsdb tables.
 # TBD: It would make sense to commonize them all.
-
+# usage example:
+#  /tmp/create_gatekeeper_plugin.sh --server_url=https://ovs_dev.plume.com:443 --certs=/tmp/cacert.pem
 prog=$0
 
 # Check if a specific command is in the path. Bail if not found.
@@ -44,10 +45,12 @@ check_cmd() {
 # usage
 usage() {
   cat <<EOF
-          Usage: ${prog} --mac=<the client device> <[options]>
+          Usage: ${prog} <[options]>
           Options:
                 -h this mesage
                 --provider_plugin=<the web cat provider>
+                --server_url=<gatekeeper server url>
+                --certs=<targeted application>
 EOF
 }
 
@@ -72,7 +75,9 @@ gen_gk_plugin_cmd() {
                "plugin": "/usr/plume/lib/libfsm_gk.so",
                "other_config":
                         ["map",[
-                        ["dso_init","gatekeeper_plugin_init"]
+                        ["dso_init","gatekeeper_plugin_init"],
+                        ["gk_url","${SERVER_URL}"],
+                        ["cacert","${CERTS}"]
                         ]]
         }
     }
@@ -85,7 +90,7 @@ gen_policy_cmd() {
     cat << EOF
 ["Open_vSwitch",
     {
-        "op": "${cmd}",
+        "op": "insert",
         "table": "FSM_Policy",
         "row": {
                "policy": "${policy_name}",
@@ -111,6 +116,16 @@ while getopts "$optspec" optchar; do
                     opt=${OPTARG%=$val}
                     PROVIDER_PLUGIN=$val
                     ;;
+                server_url=?* )
+                   val=${LONG_OPTARG}
+                   opt=${OPTARG%=$val}
+                   SERVER_URL=$val
+                   ;;
+                certs=?* )
+                   val=${LONG_OPTARG}
+                   opt=${OPTARG%=$val}
+                   CERTS=$val
+                   ;;
                 *)
                     if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
                         echo "Unknown option --${OPTARG}" >&2
@@ -130,6 +145,26 @@ while getopts "$optspec" optchar; do
 done
 
 provider_plugin=${PROVIDER_PLUGIN:-dev_gatekeeper}
+policy_name=${POLICY_TABLE:-dev_gatekeeper}
+# Insert policy command
+# idx=$(get_policy_idx)
+# eval ovsdb-client transact \'$(gen_policy_cmd)\'
+cmd=
+
+# Validate the command argument
+if [ -z ${SERVER_URL} ]; then
+    echo "Server URL not provided"
+    usage
+    exit 2
+fi
+
+# Validate the command argument
+if [ -z ${CERTS} ]; then
+    echo "Certificates path not provided"
+    usage
+    exit 2
+fi
+
 n="$(ovsh s Flow_Service_Manager_Config -w handler==${provider_plugin} -r | wc -l)"
 if [ ${n} -eq 0 ]; then
     eval ovsdb-client transact \'$(gen_gk_plugin_cmd)\'

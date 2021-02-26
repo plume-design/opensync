@@ -29,7 +29,9 @@ cat <<EOF
 $(for i in $(eval echo $CONFIG_TARGET_ETH0_NAME \
                        $CONFIG_TARGET_ETH1_NAME \
                        $CONFIG_TARGET_ETH2_NAME \
-                       $CONFIG_TARGET_ETH3_NAME)
+                       $CONFIG_TARGET_ETH3_NAME \
+                       $CONFIG_TARGET_ETH4_NAME \
+                       $CONFIG_TARGET_ETH5_NAME)
 do
 test "$CONFIG_OVSDB_BOOTSTRAP" = y || continue
 cat <<EOI

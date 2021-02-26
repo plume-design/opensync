@@ -33,6 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "schema.h"
 #include "ovsdb_table.h"
 #include "json_util.h"
+#include "module.h"
 
 #include "oms.h"
 #include "oms_report.h"
@@ -42,7 +43,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "osp_objm.h"
 #include "osp_dl.h"
 
-#include "pm.h"
 #include "pm_objm.h"
 
 /*
@@ -53,6 +53,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "pm_objm_pjs.h"
 #include "pjs_gen_c.h"
+
+MODULE(pm_objm, pm_objm_init, pm_objm_fini);
+
 
 static ovsdb_table_t table_Object_Store_Config;
 static ovsdb_table_t table_AWLAN_Node;
@@ -790,7 +793,7 @@ static bool pm_objm_ovsdb_init(void)
     return true;
 }
 
-bool pm_objm_init(void)
+void pm_objm_init(void *data)
 {
     struct oms_ovsdb_set oms_set;
     struct oms_config_entry c_entry;
@@ -805,7 +808,7 @@ bool pm_objm_init(void)
     ev_async_start(EV_DEFAULT, &ev_install_async);
 
     if (!pm_objm_ovsdb_init()) {
-        return false;
+        return;
     }
 
     oms_init_manager();
@@ -825,7 +828,7 @@ bool pm_objm_init(void)
     if (pm_objm_ps_load(&db) == false)
     {
         LOG(ERR, "objm: failed to load db from ps");
-        return false;
+        return;
     }
 
     if (db.obj_records_len == 0)
@@ -837,7 +840,7 @@ bool pm_objm_init(void)
             if (pm_objm_ps_load(&db) == false)
             {
                 LOG(ERR, "objm: failed to load db from ps");
-                return false;
+                return;
             }
         }
     }
@@ -864,6 +867,9 @@ bool pm_objm_init(void)
     }
 
     LOG(INFO, "objm: %d objects info loaded from persistent storage to ovsdb table Object_Storage", db.obj_records_len);
+}
 
-    return true;
+void pm_objm_fini(void *data)
+{
+    LOGN("Deinitializing Object Upgrade");
 }

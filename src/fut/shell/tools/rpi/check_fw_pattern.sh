@@ -25,11 +25,14 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-set -u
-FUT_TOPDIR=${FUT_TOPDIR:?}
-set +u
-source "${FUT_TOPDIR}/shell/config/default_shell.sh"
-source "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh"
+current_dir=$(dirname "$(realpath "$BASH_SOURCE")")
+fut_topdir="$(realpath "$current_dir"/../..)"
+
+# FUT environment loading
+source "${fut_topdir}"/config/default_shell.sh
+# Ignore errors for fut_set_env.sh sourcing
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh &> /dev/null
+source "${fut_topdir}/shell/lib/onbrd_lib.sh"
 
 tc_name="check_fw_pattern.sh"
 usage()

@@ -174,6 +174,11 @@ void callback_Manager(ovsdb_update_monitor_t *mon,
     cm2_update_state(CM2_REASON_MANAGER);
 }
 
+static inline const char* bool2string(const bool a)
+{
+    return a ? "enabled" : "disabled";
+}
+
 static bool
 cm2_util_get_link_is_used(struct schema_Connection_Manager_Uplink *uplink)
 {
@@ -2099,7 +2104,7 @@ cm2_Connection_Manager_Uplink_handle_update(
             cm2_update_state(CM2_REASON_LINK_USED);
     }
 
-    if (uplink->is_used) {
+    if (uplink->is_used && !g_state.connected) {
         bool ble_update = false;
 
         if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Connection_Manager_Uplink, unreachable_router_counter))) {
@@ -2434,7 +2439,7 @@ void callback_IP_Interface(ovsdb_update_monitor_t *mon,
 {
     struct schema_IPv6_Address ipv6_addr;
     json_t                     *where;
-    bool                       resolve_update;
+    bool                       ipv6_mismatch;
     bool                       ipv6;
     int                        ret;
     int                        i;
@@ -2458,10 +2463,7 @@ void callback_IP_Interface(ovsdb_update_monitor_t *mon,
                     LOGI("%s: IP interface skip not main link %s", ip->name, cm2_get_uplink_name());
                     return;
                 }
-
                 ipv6 = false;
-                resolve_update = false;
-
                 for (i = 0; i < ip->ipv6_addr_len; i++) {
                     if (!(where = ovsdb_where_uuid("_uuid", ip->ipv6_addr[i].uuid)))
                         continue;
@@ -2481,15 +2483,15 @@ void callback_IP_Interface(ovsdb_update_monitor_t *mon,
                    }
                 }
 
-                if (ipv6 != g_state.link.ip.is_ipv6) {
-                    LOGI("Changed resolved addr ipv6: %d is_ipv6: %d", ipv6, g_state.link.ip.is_ipv6);
-                    resolve_update = true;
-                }
+                LOGI("%s Updated IPv6 configuration: old state: %s, new state: %s, ipv6_controller: %s",
+                     ip->if_name, bool2string(ipv6), bool2string(g_state.link.ip.is_ipv6),
+                     bool2string(g_state.ipv6_manager_con));
 
                 g_state.link.ip.is_ipv6 = ipv6;
                 g_state.link.ip.ipv6 = ipv6 ? CM2_IPV6_DHCP : CM2_IP_NOT_SET;
 
-                if (resolve_update)
+                ipv6_mismatch = (g_state.ipv6_manager_con && !ipv6) || (!g_state.ipv6_manager_con && ipv6);
+                if (ipv6_mismatch)
                     cm2_update_state(CM2_REASON_OVS_INIT);
             }
             break;

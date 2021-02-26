@@ -26,16 +26,9 @@
 
 
 # Include basic environment config
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source "${FUT_TOPDIR}/shell/config/default_shell.sh"
-fi
-# Sourcing guard variable
-export UM_LIB_SOURCED=True
-
-source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
+export FUT_UM_LIB_SRC=true
+[ "${FUT_UNIT_LIB_SRC}" != true ] && source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+echo "${FUT_TOPDIR}/shell/lib/um_lib.sh sourced"
 
 ####################### INFORMATION SECTION - START ###########################
 #
@@ -68,24 +61,31 @@ um_setup_test_environment()
     fw_path=$1
     if_name=${2:-eth0}
 
-    log -deb "$fn_name - Running UM setup"
+    log "$fn_name - Running UM setup"
 
-    device_init ||
+    device_init &&
+        log -deb "$fn_name - Device initialized - Success" ||
         raise "FAIL: Could not initialize device: device_init" -l "$fn_name" -ds
 
-    start_openswitch ||
+    start_openswitch &&
+        log -deb "$fn_name - OpenvSwitch started - Success" ||
         raise "FAIL: Could not start OpenvSwitch: start_openswitch" -l "$fn_name" -ds
 
-    start_udhcpc "$if_name" true ||
+    start_udhcpc "$if_name" true &&
+        log -deb "$fn_name - start_udhcpc on '$if_name' started - Success" ||
         raise "FAIL: Could not start DHCP client: start_udhcpc" -l "$fn_name" -ds
 
     log -deb "${fn_name} - Erasing $fw_path"
-    rm -rf "$fw_path" || true
+    rm -rf "$fw_path" ||
+        true
 
-    start_specific_manager um -d ||
+    start_specific_manager um -d &&
+        log -deb "$fn_name - start_specific_manager um - Success" ||
         raise "FAIL: Could not start manager: start_specific_manager um" -l "$fn_name" -ds
 
-    log -deb "$fn_name - UM setup - end"
+    log "$fn_name - UM setup - end"
+
+    return 0
 }
 
 ###############################################################################

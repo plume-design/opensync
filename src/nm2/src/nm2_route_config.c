@@ -41,11 +41,20 @@ static ovsdb_table_t table_Wifi_Route_Config;
 static bool parse_route_cfg(osn_route4_t *route, const struct schema_Wifi_Route_Config *psch)
 {
     // initial dest validation done by schema
-    if (!osn_ip_addr_from_str(&route->dest, psch->dest))
+    if (!osn_ip_addr_from_str(&route->dest, psch->dest_addr))
     {
-        LOG_TAB_E("dest", "Invalid destination IP address: %s", psch->dest);
+        LOG_TAB_E("dest_addr", "Invalid destination IP address: %s", psch->dest_addr);
         return false;
     }
+
+    osn_ip_addr_t mask;
+    if (!osn_ip_addr_from_str(&mask, psch->dest_mask))
+    {
+        LOG_TAB_E("dest_mask", "Invalid destination IP mask: %s", psch->dest_mask);
+        return false;
+    }
+
+    route->dest.ia_prefix = osn_ip_addr_to_prefix(&mask);
 
     route->gw = OSN_IP_ADDR_INIT;
     route->gw_valid = false;
@@ -162,7 +171,7 @@ static void callback_Wifi_Route_Config(
 void nm2_route_write_init()
 {
     // Initialize OVSDB tables
-    OVSDB_TABLE_INIT(Wifi_Route_Config, dest);
+    OVSDB_TABLE_INIT(Wifi_Route_Config, dest_addr);
 
     // Initialize OVSDB monitor callbacks
     OVSDB_TABLE_MONITOR(Wifi_Route_Config, false);

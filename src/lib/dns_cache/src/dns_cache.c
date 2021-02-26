@@ -40,6 +40,7 @@ static struct dns_cache_mgr
 mgr =
 {
     .initialized = false,
+    .refcount = 0,
 };
 
 struct dns_cache_mgr *
@@ -92,7 +93,7 @@ print_dns_cache_entry(struct ip2action *i2a)
     os_macaddr_t           nullmac = { 0 };
     os_macaddr_t           *pmac;
     const char             *ip;
-
+    size_t                 index;
 
     if (!i2a) return;
 
@@ -105,9 +106,30 @@ print_dns_cache_entry(struct ip2action *i2a)
 
     pmac = (i2a->device_mac != NULL) ? i2a->device_mac : &nullmac;
     LOGD("ip %s, mac "PRI_os_macaddr_lower_t
-         " action: %d ttl: %d",
+         " action: %d ttl: %d policy_idx: %d service_id: %d",
          ipstr, FMT_os_macaddr_pt(pmac),
-         i2a->action, i2a->cache_ttl);
+         i2a->action, i2a->cache_ttl, i2a->policy_idx, i2a->service_id);
+
+    if (i2a->service_id)
+    {
+        LOGD("%s risk_level: %d", __func__, i2a->cache_wb.risk_level);
+    }
+    else
+    {
+        LOGD("%s reputationScore: %d", __func__, i2a->cache_bc.reputation);
+    }
+
+    for (index = 0; index < i2a->nelems; index++)
+    {
+        LOGD(" %s categories: %d", __func__, i2a->categories[index]);
+
+        if (i2a->service_id == IP2ACTION_BC_SVC)
+        {
+            LOGD(" %s confidence_levels: %d", __func__,
+                 i2a->cache_bc.confidence_levels[index]);
+        }
+    }
+
 }
 
 /**
@@ -118,12 +140,17 @@ dns_cache_init_mgr(struct dns_cache_mgr *mgr)
 {
     if (!mgr) return;
 
-    if (mgr->initialized) return;
+    if (mgr->initialized)
+    {
+        mgr->refcount++;
+        return;
+    }
 
     ds_tree_init(&mgr->ip2a_tree, dns_cache_ip2action_cmp,
                  struct ip2action, ip2a_tnode);
 
     mgr->initialized = true;
+    mgr->refcount++;
     return;
 
 }
@@ -192,8 +219,13 @@ dns_cache_cleanup_mgr(void)
     struct dns_cache_mgr *mgr = dns_cache_get_mgr();
 
     if (!mgr->initialized) return;
-    dns_cache_cleanup();
-    mgr->initialized = false;
+    mgr->refcount--;
+
+    if (mgr->refcount == 0)
+    {
+        dns_cache_cleanup();
+        mgr->initialized = false;
+    }
 }
 
 
@@ -281,6 +313,20 @@ dns_cache_ip2action_lookup(struct ip2action_req *req)
 
    req->action = i2a->action;
    req->cache_ttl = i2a->cache_ttl;
+   req->policy_idx = i2a->policy_idx;
+   req->service_id = i2a->service_id;
+   req->nelems = i2a->nelems;
+   memcpy(req->categories, i2a->categories,
+          (sizeof(uint8_t) * URL_REPORT_MAX_ELEMS));
+   if (req->service_id == IP2ACTION_BC_SVC)
+   {
+       memcpy(&req->cache_bc, &i2a->cache_bc,
+              sizeof(struct ip2action_bc_info));
+   }
+   else
+   {
+       memcpy(&req->cache_wb, &i2a->cache_wb, sizeof(struct ip2action_wb_info));
+   }
 
    LOGD("%s: found entry:", __func__);
    print_dns_cache_entry(i2a);
@@ -308,6 +354,21 @@ dns_cache_alloc_ip2action(struct ip2action_req  *to_add)
     i2a->action  = to_add->action;
     i2a->cache_ttl  = to_add->cache_ttl;
     i2a->cache_ts  = time(NULL);
+    i2a->policy_idx = to_add->policy_idx;
+    i2a->service_id = to_add->service_id;
+    i2a->nelems = to_add->nelems;
+    memcpy(i2a->categories, to_add->categories,
+           (sizeof(uint8_t) * URL_REPORT_MAX_ELEMS));
+    if (i2a->service_id == IP2ACTION_BC_SVC)
+    {
+        memcpy(&i2a->cache_bc, &to_add->cache_bc,
+               sizeof(struct ip2action_bc_info));
+    }
+    else
+    {
+        memcpy(&i2a->cache_wb, &to_add->cache_wb,
+               sizeof(struct ip2action_wb_info));
+    }
 
     dns_cache_set_ip(i2a);
     return i2a;
@@ -462,5 +523,22 @@ print_dns_cache_size(void)
     }
     LOGT("%s: ip2action_cache %d IPs cached", __func__, no_of_elements);
     return;
+}
+
+/**
+ * @brief returns cache ref count.
+ *
+ * @param None
+ *
+ * @return cache refcount
+ */
+uint8_t
+dns_cache_get_refcount(void)
+{
+    struct dns_cache_mgr *mgr;
+
+    mgr = dns_cache_get_mgr();
+    if (!mgr->initialized) return 0;
+    return mgr->refcount;
 }
 

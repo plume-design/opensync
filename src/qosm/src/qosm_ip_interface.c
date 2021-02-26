@@ -202,6 +202,7 @@ void qosm_ip_interface_debounce_fn(struct ev_loop *loop, ev_debounce *w, int rev
                 ipi->ipi_qos,
                 que->que_priority,
                 que->que_bandwidth,
+                que->que_tag[0] == '\0' ? NULL : que->que_tag,
                 &que->que_other_config,
                 &qqs);
 

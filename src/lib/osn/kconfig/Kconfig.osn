@@ -15,6 +15,7 @@ menuconfig OSN_LINUX_ENABLED
             - PPPoE support (via pppd)
             - VLAN support (via iproute2)
             - QoS support (via tc)
+            - LTE support (via quectel)
 
 if OSN_LINUX_ENABLED
     config OSN_LINUX_NETIF
@@ -292,6 +293,12 @@ if OSN_LINUX_ENABLED
 
             This option implements the lnx_route API and enables the "Linux"
             route status backend (osn_route).
+
+    config OSN_LINUX_LTE
+        bool "Linux LTE support"
+        default y
+        help
+            LTE support using the quectel daemon.
 
     menuconfig OSN_LINUX_NETLINK
         bool "Netlink socket support"

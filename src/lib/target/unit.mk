@@ -36,7 +36,6 @@ TARGET_COMMON_SRC := src/target_stub.c
 TARGET_COMMON_SRC += src/target_map.c
 TARGET_COMMON_SRC += src/target_linux.c
 TARGET_COMMON_SRC += src/target_mac_learn.c
-TARGET_COMMON_SRC += $(if $(CONFIG_TARGET_DUMMY_WM),src/target_dummy_wm.c,)
 
 UNIT_SRC += $(TARGET_COMMON_SRC)
 ifeq ($(filter-out native,$(TARGET)),)

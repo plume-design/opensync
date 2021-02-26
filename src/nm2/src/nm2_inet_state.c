@@ -224,11 +224,11 @@ void nm2_inet_state_to_schema(
     pstate->vlan_id_exists = piface->if_cache.vlan_id_exists;
     NM2_IFACE_INET_CONFIG_COPY(pstate->vlan_egress_qos_map, piface->if_cache.vlan_egress_qos_map);
     pstate->vlan_egress_qos_map_exists = piface->if_cache.vlan_egress_qos_map_exists;
+    NM2_IFACE_INET_CONFIG_COPY(pstate->parent_ifname, piface->if_cache.parent_ifname);
+    pstate->parent_ifname_exists = piface->if_cache.parent_ifname_exists;
 
 
     /* Unsupported fields, for now */
-    pstate->parent_ifname_exists = false;
-
     pstate->softwds_mac_addr_exists = false;
     pstate->softwds_wrap = false;
 

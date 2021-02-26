@@ -36,7 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 void   traffic__observation_point__init
                      (Traffic__ObservationPoint         *message)
 {
-  static Traffic__ObservationPoint init_value = TRAFFIC__OBSERVATION_POINT__INIT;
+  static const Traffic__ObservationPoint init_value = TRAFFIC__OBSERVATION_POINT__INIT;
   *message = init_value;
 }
 size_t traffic__observation_point__get_packed_size
@@ -73,13 +73,15 @@ void   traffic__observation_point__free_unpacked
                      (Traffic__ObservationPoint *message,
                       ProtobufCAllocator *allocator)
 {
+  if(!message)
+    return;
   assert(message->base.descriptor == &traffic__observation_point__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
 void   traffic__vendor_data__kvpair__init
                      (Traffic__VendorDataKVPair         *message)
 {
-  static Traffic__VendorDataKVPair init_value = TRAFFIC__VENDOR_DATA__KVPAIR__INIT;
+  static const Traffic__VendorDataKVPair init_value = TRAFFIC__VENDOR_DATA__KVPAIR__INIT;
   *message = init_value;
 }
 size_t traffic__vendor_data__kvpair__get_packed_size
@@ -116,13 +118,15 @@ void   traffic__vendor_data__kvpair__free_unpacked
                      (Traffic__VendorDataKVPair *message,
                       ProtobufCAllocator *allocator)
 {
+  if(!message)
+    return;
   assert(message->base.descriptor == &traffic__vendor_data__kvpair__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
 void   traffic__vendor_data__init
                      (Traffic__VendorData         *message)
 {
-  static Traffic__VendorData init_value = TRAFFIC__VENDOR_DATA__INIT;
+  static const Traffic__VendorData init_value = TRAFFIC__VENDOR_DATA__INIT;
   *message = init_value;
 }
 size_t traffic__vendor_data__get_packed_size
@@ -159,13 +163,15 @@ void   traffic__vendor_data__free_unpacked
                      (Traffic__VendorData *message,
                       ProtobufCAllocator *allocator)
 {
+  if(!message)
+    return;
   assert(message->base.descriptor == &traffic__vendor_data__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
 void   traffic__flow_tags__init
                      (Traffic__FlowTags         *message)
 {
-  static Traffic__FlowTags init_value = TRAFFIC__FLOW_TAGS__INIT;
+  static const Traffic__FlowTags init_value = TRAFFIC__FLOW_TAGS__INIT;
   *message = init_value;
 }
 size_t traffic__flow_tags__get_packed_size
@@ -202,13 +208,15 @@ void   traffic__flow_tags__free_unpacked
                      (Traffic__FlowTags *message,
                       ProtobufCAllocator *allocator)
 {
+  if(!message)
+    return;
   assert(message->base.descriptor == &traffic__flow_tags__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
 void   traffic__flow_state__init
                      (Traffic__FlowState         *message)
 {
-  static Traffic__FlowState init_value = TRAFFIC__FLOW_STATE__INIT;
+  static const Traffic__FlowState init_value = TRAFFIC__FLOW_STATE__INIT;
   *message = init_value;
 }
 size_t traffic__flow_state__get_packed_size
@@ -245,13 +253,15 @@ void   traffic__flow_state__free_unpacked
                      (Traffic__FlowState *message,
                       ProtobufCAllocator *allocator)
 {
+  if(!message)
+    return;
   assert(message->base.descriptor == &traffic__flow_state__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
 void   traffic__flow_key__init
                      (Traffic__FlowKey         *message)
 {
-  static Traffic__FlowKey init_value = TRAFFIC__FLOW_KEY__INIT;
+  static const Traffic__FlowKey init_value = TRAFFIC__FLOW_KEY__INIT;
   *message = init_value;
 }
 size_t traffic__flow_key__get_packed_size
@@ -288,13 +298,15 @@ void   traffic__flow_key__free_unpacked
                      (Traffic__FlowKey *message,
                       ProtobufCAllocator *allocator)
 {
+  if(!message)
+    return;
   assert(message->base.descriptor == &traffic__flow_key__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
 void   traffic__flow_counters__init
                      (Traffic__FlowCounters         *message)
 {
-  static Traffic__FlowCounters init_value = TRAFFIC__FLOW_COUNTERS__INIT;
+  static const Traffic__FlowCounters init_value = TRAFFIC__FLOW_COUNTERS__INIT;
   *message = init_value;
 }
 size_t traffic__flow_counters__get_packed_size
@@ -331,13 +343,15 @@ void   traffic__flow_counters__free_unpacked
                      (Traffic__FlowCounters *message,
                       ProtobufCAllocator *allocator)
 {
+  if(!message)
+    return;
   assert(message->base.descriptor == &traffic__flow_counters__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
 void   traffic__flow_stats__init
                      (Traffic__FlowStats         *message)
 {
-  static Traffic__FlowStats init_value = TRAFFIC__FLOW_STATS__INIT;
+  static const Traffic__FlowStats init_value = TRAFFIC__FLOW_STATS__INIT;
   *message = init_value;
 }
 size_t traffic__flow_stats__get_packed_size
@@ -374,13 +388,15 @@ void   traffic__flow_stats__free_unpacked
                      (Traffic__FlowStats *message,
                       ProtobufCAllocator *allocator)
 {
+  if(!message)
+    return;
   assert(message->base.descriptor == &traffic__flow_stats__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
 void   traffic__observation_window__init
                      (Traffic__ObservationWindow         *message)
 {
-  static Traffic__ObservationWindow init_value = TRAFFIC__OBSERVATION_WINDOW__INIT;
+  static const Traffic__ObservationWindow init_value = TRAFFIC__OBSERVATION_WINDOW__INIT;
   *message = init_value;
 }
 size_t traffic__observation_window__get_packed_size
@@ -417,13 +433,15 @@ void   traffic__observation_window__free_unpacked
                      (Traffic__ObservationWindow *message,
                       ProtobufCAllocator *allocator)
 {
+  if(!message)
+    return;
   assert(message->base.descriptor == &traffic__observation_window__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
 void   traffic__flow_report__init
                      (Traffic__FlowReport         *message)
 {
-  static Traffic__FlowReport init_value = TRAFFIC__FLOW_REPORT__INIT;
+  static const Traffic__FlowReport init_value = TRAFFIC__FLOW_REPORT__INIT;
   *message = init_value;
 }
 size_t traffic__flow_report__get_packed_size
@@ -460,6 +478,8 @@ void   traffic__flow_report__free_unpacked
                      (Traffic__FlowReport *message,
                       ProtobufCAllocator *allocator)
 {
+  if(!message)
+    return;
   assert(message->base.descriptor == &traffic__flow_report__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
@@ -931,32 +951,8 @@ static const ProtobufCFieldDescriptor traffic__flow_key__field_descriptors[16] =
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
-    "direction",
-    13,
-    PROTOBUF_C_LABEL_OPTIONAL,
-    PROTOBUF_C_TYPE_ENUM,
-    offsetof(Traffic__FlowKey, has_direction),
-    offsetof(Traffic__FlowKey, direction),
-    &traffic__direction__descriptor,
-    NULL,
-    0,             /* flags */
-    0,NULL,NULL    /* reserved1,reserved2, etc */
-  },
-  {
-    "originator",
-    14,
-    PROTOBUF_C_LABEL_OPTIONAL,
-    PROTOBUF_C_TYPE_ENUM,
-    offsetof(Traffic__FlowKey, has_originator),
-    offsetof(Traffic__FlowKey, originator),
-    &traffic__originator__descriptor,
-    NULL,
-    0,             /* flags */
-    0,NULL,NULL    /* reserved1,reserved2, etc */
-  },
-  {
     "parentOfSrcMac",
-    15,
+    13,
     PROTOBUF_C_LABEL_OPTIONAL,
     PROTOBUF_C_TYPE_BOOL,
     offsetof(Traffic__FlowKey, has_parentofsrcmac),
@@ -968,7 +964,7 @@ static const ProtobufCFieldDescriptor traffic__flow_key__field_descriptors[16] =
   },
   {
     "parentOfDstMac",
-    16,
+    14,
     PROTOBUF_C_LABEL_OPTIONAL,
     PROTOBUF_C_TYPE_BOOL,
     offsetof(Traffic__FlowKey, has_parentofdstmac),
@@ -978,18 +974,42 @@ static const ProtobufCFieldDescriptor traffic__flow_key__field_descriptors[16] =
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
+  {
+    "direction",
+    15,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_ENUM,
+    offsetof(Traffic__FlowKey, has_direction),
+    offsetof(Traffic__FlowKey, direction),
+    &traffic__direction__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "originator",
+    16,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_ENUM,
+    offsetof(Traffic__FlowKey, has_originator),
+    offsetof(Traffic__FlowKey, originator),
+    &traffic__originator__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
 };
 static const unsigned traffic__flow_key__field_indices_by_name[] = {
-  12,   /* field[12] = direction */
+  14,   /* field[14] = direction */
   5,   /* field[5] = dstIp */
   1,   /* field[1] = dstMac */
   3,   /* field[3] = etherType */
   11,   /* field[11] = flowState */
   9,   /* field[9] = flowTags */
   6,   /* field[6] = ipProtocol */
-  13,   /* field[13] = originator */
-  15,   /* field[15] = parentOfDstMac */
-  14,   /* field[14] = parentOfSrcMac */
+  15,   /* field[15] = originator */
+  13,   /* field[13] = parentOfDstMac */
+  12,   /* field[12] = parentOfSrcMac */
   4,   /* field[4] = srcIp */
   0,   /* field[0] = srcMac */
   8,   /* field[8] = tptDstPort */

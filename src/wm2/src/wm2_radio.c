@@ -50,6 +50,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "target.h"
 #include "wm2_dpp.h"
+#include "wm2_target.h"
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
@@ -790,6 +791,24 @@ wm2_cconf_get(const struct schema_Wifi_VIF_Config *vconf,
 }
 
 static bool
+wm2_vstate_sta_is_connected(const char *ifname)
+{
+    struct schema_Wifi_VIF_State vstate = {0};
+    bool ok;
+
+    ok = ovsdb_table_select_one(&table_Wifi_VIF_State,
+                                SCHEMA_COLUMN(Wifi_VIF_State, if_name),
+                                ifname,
+                                &vstate);
+    if (!ok)
+        return false;
+    if (strcmp(vstate.mode, SCHEMA_CONSTS_VIF_MODE_STA))
+        return false;
+
+    return strlen(vstate.parent) > 0;
+}
+
+static bool
 wm2_vconf_allows_dpp(const struct schema_Wifi_VIF_Config *vconf)
 {
     bool is_sta = !strcmp(vconf->mode, "sta");
@@ -940,7 +959,7 @@ wm2_vconf_recalc(const char *ifname, bool force)
     if (vchanged.ssid && strlen(vconf.ssid) > 0 && !strcmp(vconf.mode, "sta"))
         LOGN("%s: topology change: ssid '%s' -> '%s'", ifname, vstate.ssid, vconf.ssid);
 
-    if (!target_vif_config_set2(&vconf, &rconf, cconfs, &vchanged, num_cconfs)) {
+    if (!wm2_target_vif_config_set2(&vconf, &rconf, cconfs, &vchanged, num_cconfs)) {
         LOGW("%s: failed to configure, will retry later", ifname);
         wm2_delayed_recalc(wm2_vconf_recalc, ifname);
         return;
@@ -1216,7 +1235,7 @@ wm2_rconf_recalc(const char *ifname, bool force)
              rconf.channel, rconf.ht_mode);
     }
 
-    if (!target_radio_config_set2(&rconf, &changed)) {
+    if (!wm2_target_radio_config_set2(&rconf, &changed)) {
         LOGW("%s: failed to configure, will retry later", ifname);
         wm2_delayed_recalc(wm2_rconf_recalc, ifname);
         return;
@@ -1646,12 +1665,12 @@ wm2_radio_init_kickoff(void)
 {
     ovsdb_table_delete_where(&table_Wifi_Associated_Clients, json_array());
 
-    if (target_radio_config_need_reset()) {
+    if (wm2_target_radio_config_need_reset()) {
         ovsdb_table_delete_where(&table_Wifi_Radio_Config, json_array());
         ovsdb_table_delete_where(&table_Wifi_Radio_State, json_array());
         ovsdb_table_delete_where(&table_Wifi_VIF_Config, json_array());
         ovsdb_table_delete_where(&table_Wifi_VIF_State, json_array());
-        if (!target_radio_config_init2()) {
+        if (!wm2_target_radio_config_init2()) {
             LOGE("Failed to initialize radio");
             return -1;
         }
@@ -1690,6 +1709,8 @@ wm2_radio_onboard_vifs(char *buf, size_t len)
             n_ap++;
         if (vconf->parent_exists && strlen(vconf->parent) > 0)
             n_parent++;
+        if (wm2_vstate_sta_is_connected(vconf->if_name))
+            n_parent++;
 
         if (!strcmp(vconf->mode, SCHEMA_CONSTS_VIF_MODE_STA))
             csnprintf(&buf, &len, "%s ", vconf->if_name);
@@ -1716,7 +1737,7 @@ wm2_radio_init(void)
 
     wm2_dpp_init();
 
-    if (WARN_ON(!target_radio_init(&rops)))
+    if (WARN_ON(!wm2_target_radio_init(&rops)))
         return -1;
 
     wm2_radio_init_kickoff();

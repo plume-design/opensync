@@ -82,10 +82,10 @@ message FlowKey {
       repeated FlowTags flowTags                                            = 10;
       repeated VendorData vendorData                                        = 11;
       optional FlowState flowState                                          = 12;
-      optional Direction direction                                          = 13;
-      optional Originator originator                                        = 14;
-      optional bool parentOfSrcMac                                          = 15;
-      optional bool parentOfDstMac                                          = 16;
+      optional bool parentOfSrcMac                                          = 13;
+      optional bool parentOfDstMac                                          = 14;
+      optional Direction direction                                          = 15;
+      optional Originator originator                                        = 16;
 }
 
 message FlowCounters {

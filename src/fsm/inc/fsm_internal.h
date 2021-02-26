@@ -245,4 +245,13 @@ fsm_nfq_set_verdict(struct fsm_session *session, int action);
 struct nlmsghdr *
 nfq_build_verdict(char *buf, int id, int queue_num, int verd);
 
+
+/**
+ * @brief free the dpi resources of a dpi_plugin_client session
+ *
+ * @param session the session to free
+ */
+void
+fsm_free_dpi_plugin_client(struct fsm_session *session);
+
 #endif /* FSM_INTERNAL_H_INCLUDED */

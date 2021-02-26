@@ -49,6 +49,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "inet_gre.h"
 #include "inet_vlan.h"
 #include "inet_pppoe.h"
+#include "inet_lte.h"
 
 /* Debounce timer for interface configuration commit */
 #define NM2_IFACE_APPLY_TIMER 0.3
@@ -90,6 +91,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     M(NM2_IFTYPE_GRE,       "gre")      \
     M(NM2_IFTYPE_TAP,       "tap")      \
     M(NM2_IFTYPE_PPPOE,     "pppoe")    \
+    M(NM2_IFTYPE_LTE,       "lte")      \
     M(NM2_IFTYPE_MAX,       NULL)
 
 
@@ -161,6 +163,8 @@ struct nm2_iface
         int                         vlan_id;
         bool                        vlan_egress_qos_map_exists;
         uint8_t                     vlan_egress_qos_map[NM2_IFACE_INET_CONFIG_SZ(vlan_egress_qos_map)];
+        bool                        parent_ifname_exists;
+        uint8_t                     parent_ifname[NM2_IFACE_INET_CONFIG_SZ(parent_ifname)];
     }
     if_cache;
 };

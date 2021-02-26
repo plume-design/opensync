@@ -102,6 +102,7 @@ gkc_del_flow_from_tree(ds_tree_t *flow_tree, struct gkc_ip_flow_interface *req)
 
         /* found the flow. Free memory used by the flow structure.*/
         free_flow_members(remove);
+        if (remove->gk_policy) free(remove->gk_policy);
         /* remove it from the tree*/
         ds_tree_remove(flow_tree, remove);
         /* free the entry */
@@ -192,6 +193,7 @@ gkc_cleanup_ttl_flow_tree(ds_tree_t *flow_tree,
 
         /* found the flow. Free memory used by the flow structure.*/
         free_flow_members(remove);
+        if (remove->gk_policy) free(remove->gk_policy);
         /* remove it from the tree*/
         ds_tree_remove(flow_tree, remove);
         /* free the entry */

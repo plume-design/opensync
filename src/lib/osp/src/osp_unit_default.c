@@ -61,25 +61,28 @@ static bool util_if_mac_get(void *buff, size_t buffsz, char *if_name)
     return false;
 }
 
-
+/**
+  * @brief get the serial number
+  *        Serial number is defined by kconfig
+  *        (CONFIG_TARGET_WAN_BRIDGE_NAME, CONFIG_TARGET_ETH0_NAME). If these are
+  *        not defined, get it from eth0 interface or en* interface.
+  */
 bool osp_unit_serial_get(char *buff, size_t buffsz)
 {
     memset(buff, 0, buffsz);
 
-    // try to get br-wan MAC first
-    // else get eth0 MAC address
 #if defined(CONFIG_TARGET_WAN_BRIDGE_NAME)
-    if (true == util_if_mac_get(buff, buffsz, CONFIG_TARGET_WAN_BRIDGE_NAME))
+    if (util_if_mac_get(buff, buffsz, CONFIG_TARGET_WAN_BRIDGE_NAME))
     {
         return true;
     }
 #elif defined(CONFIG_TARGET_ETH0_NAME)
-    if (true == util_if_mac_get(buff, buffsz, CONFIG_TARGET_ETH0_NAME))
+    if (util_if_mac_get(buff, buffsz, CONFIG_TARGET_ETH0_NAME))
     {
         return true;
     }
 #else
-    if (true == util_if_mac_get(buff, buffsz, "eth0"))
+    if (util_if_mac_get(buff, buffsz, "eth0"))
     {
         return true;
     }
@@ -99,7 +102,7 @@ bool osp_unit_serial_get(char *buff, size_t buffsz)
     }
     pclose(f);
     if (!*interface) return false;
-    if (true == util_if_mac_get(buff, buffsz, interface))
+    if (util_if_mac_get(buff, buffsz, interface))
     {
         return true;
     }
@@ -166,26 +169,24 @@ bool osp_unit_mfg_date_get(char *buff, size_t buffsz)
 
 bool osp_unit_dhcpc_hostname_get(void *buff, size_t buffsz)
 {
-    char serial_num[100] = { 0 };
-    char model_name[100] = { 0 };
+    char serial_num[buffsz];
+    char model_name[buffsz];
 
-    if (osp_unit_serial_get(serial_num, sizeof(serial_num)) != true)
+    memset(serial_num, 0, (sizeof(char) * buffsz));
+    memset(model_name, 0, (sizeof(char) * buffsz));
+
+    if (!osp_unit_serial_get(serial_num, sizeof(serial_num)))
     {
         LOG(ERR, "Unable to get serial number");
         return false;
     }
-    if (osp_unit_model_get(model_name, sizeof(model_name)) != true)
+    if (!osp_unit_model_get(model_name, sizeof(model_name)))
     {
         LOG(ERR, "Unable to get model name");
         return false;
     }
 
-    snprintf(
-            buff,
-            buffsz,
-            "%s_%s",
-            serial_num,
-            model_name);
+    snprintf(buff, buffsz, "%s_%s", serial_num, model_name);
 
     return true;
 }

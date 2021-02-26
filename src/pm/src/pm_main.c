@@ -36,7 +36,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb_table.h"
 #include "json_util.h"
 
-#include "pm.h"
 #include "target.h"
 
 /*****************************************************************************/
@@ -46,72 +45,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /*****************************************************************************/
 
 static log_severity_t pm_log_severity = LOG_SEVERITY_INFO;
-
-/******************************************************************************
- *  PROTECTED definitions
- *****************************************************************************/
-
-static bool pm_init(void)
-{
-#if CONFIG_PM_ENABLE_CLIENT_FREEZE
-    if (!pm_client_freeze_init())
-    {
-        return false;
-    }
-#endif
-
-#if CONFIG_PM_ENABLE_CLIENT_NICKNAME
-    if (!pm_client_nickname_init())
-    {
-        return false;
-    }
-#endif
-
-#if CONFIG_PM_ENABLE_LED
-    if (!pm_led_init())
-    {
-        return false;
-    }
-#endif
-
-#if CONFIG_PM_ENABLE_TM
-    if (!pm_tm_init())
-    {
-        return false;
-    }
-#endif
-
-#if CONFIG_PM_ENABLE_LM
-    if (!pm_lm_init())
-    {
-        return false;
-    }
-#endif
-
-#if CONFIG_PM_ENABLE_OBJM
-    if (!pm_objm_init())
-    {
-        return false;
-    }
-#endif
-
-    return true;
-}
-
-static bool pm_deinit(struct ev_loop *loop)
-{
-#if CONFIG_PM_ENABLE_TM
-    pm_tm_deinit();
-#endif
-
-    ovsdb_stop_loop(loop);
-    target_close(TARGET_INIT_MGR_PM, loop);
-    ev_default_destroy();
-
-    LOGN("Exiting PM");
-
-    return true;
-}
 
 /******************************************************************************
  *  PUBLIC API definitions
@@ -148,12 +81,6 @@ int main(int argc, char *argv[])
         return -1;
     }
 
-    if (!pm_init())
-    {
-        LOGEM("Initializing PM (Failed to initialize)");
-        return -1;
-    }
-
     /* Start all modules */
     LOG(NOTICE, "Initializing modules...");
     module_init();
@@ -163,7 +90,11 @@ int main(int argc, char *argv[])
     /* Stop all modules */
     module_fini();
 
-    pm_deinit(loop);
+    ovsdb_stop_loop(loop);
+    target_close(TARGET_INIT_MGR_PM, loop);
+    ev_default_destroy();
+
+    LOGN("Exiting PM");
 
     return 0;
 }

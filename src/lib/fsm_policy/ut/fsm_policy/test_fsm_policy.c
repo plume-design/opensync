@@ -24,6 +24,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include <sys/socket.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdbool.h>
@@ -651,7 +652,7 @@ void test_apply_policies(void)
 
     free(reply->rule_name);
     free(reply->policy);
-    free(req_info.reply);
+    fsm_free_url_reply(fqdn_req.req_info->reply);
 }
 void test_wildcard_ovsdb_conversions(void)
 {
@@ -748,7 +749,8 @@ void test_apply_wildcard_policy_match_in(void)
 
     free(reply->rule_name);
     free(reply->policy);
-    free(req_info.reply);
+    fsm_free_url_reply(fqdn_req.req_info->reply);
+
 }
 
 
@@ -827,7 +829,7 @@ void test_apply_wildcard_policy_no_match(void)
     TEST_ASSERT_EQUAL_INT(FSM_NO_MATCH, reply->action);
     free(reply->rule_name);
     free(reply->policy);
-    free(req_info.reply);
+    fsm_free_url_reply(fqdn_req.req_info->reply);
 }
 
 static void test_update_client(struct fsm_session *session,
@@ -1114,7 +1116,7 @@ void test_apply_mac_policies(void)
 
         free(reply->rule_name);
         free(reply->policy);
-        free(req_info.reply);
+        fsm_free_url_reply(fqdn_req.req_info->reply);
     }
 }
 
@@ -1168,7 +1170,7 @@ void test_apply_no_action_policy(void)
 
     free(reply->rule_name);
     free(reply->policy);
-    free(req_info.reply);
+    fsm_free_url_reply(fqdn_req.req_info->reply);
 }
 
 
@@ -1260,7 +1262,7 @@ void test_ip_threat_blacklist(void)
 
     free(reply->rule_name);
     free(reply->policy);
-    free(req_info.reply);
+    fsm_free_url_reply(fqdn_req.req_info->reply);
 }
 
 

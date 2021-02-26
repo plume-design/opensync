@@ -453,6 +453,12 @@ ct_stats_filter_ip(int af, void *ip)
                   __func__, in4->sin_addr.s_addr);
             return true;
         }
+        else if ((in4->sin_addr.s_addr & htonl(0x7F000000)) == htonl(0x7F000000))
+        {
+            LOGD("%s: Dropping ipv4 localhost[%x]\n",
+                  __func__, in4->sin_addr.s_addr);
+            return true;
+        }
     }
     else if (af == AF_INET6)
     {
@@ -461,6 +467,13 @@ ct_stats_filter_ip(int af, void *ip)
         {
             LOGD("%s: Dropping ipv6 multicast starting with [%x%x]\n",
                   __func__, in6->sin6_addr.s6_addr[0], in6->sin6_addr.s6_addr[1]);
+            return true;
+        }
+        else if (memcmp(&in6->sin6_addr, &in6addr_loopback,
+                        sizeof(struct in6_addr)) == 0)
+        {
+            LOGD("%s: Dropping ipv6 localhost [::%x]\n",
+                  __func__, in6->sin6_addr.s6_addr[15]);
             return true;
         }
     }

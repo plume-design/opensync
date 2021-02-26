@@ -166,6 +166,9 @@ bool osn_qos_end(osn_qos_t *qos);
  *                              present
  * @param[in]   bandwidth       Queue bandwidth in kbit/s or a negative value if
  *                              not present
+ * @param[in]   tag             Queue tag; this may be used to identify shared
+ *                              queues (queues with the same tag are shared).
+ *                              The implementation may choose to ignore this.
  * @param[in]   other_config    Other config can specify advanced/specific
  *                              configuration for the queuing. Can be NULL.
  *
@@ -183,6 +186,7 @@ bool osn_qos_queue_begin(
         osn_qos_t *qos,
         int priority,
         int bandwidth,
+        const char *tag,
         const struct osn_qos_other_config *other_config,
         struct osn_qos_queue_status *qqs);
 

@@ -181,8 +181,6 @@ create_inet_entry2 \
     -if_name "${GW_WAN_BRIDGE}" \
     -if_type "bridge" \
     -ip_assign_scheme "dhcp" \
-    -upnp_mode "external" \
-    -NAT true \
     -network true \
     -enabled true &&
         log -deb "$tc_name: Interface ${GW_WAN_BRIDGE} successfully created" ||

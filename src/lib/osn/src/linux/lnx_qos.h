@@ -28,17 +28,30 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define LNX_QOS_H_INCLUDED
 
 #include "const.h"
+#include "lnx_netlink.h"
 #include "osn_qos.h"
 
 typedef struct lnx_qos lnx_qos_t;
 
+/* Single Queue instance */
+struct lnx_qos_queue
+{
+
+    int                     qq_id;          /* QoS queue ID as allocated by lnx_qos_id_get() */
+    int                     qq_priority;    /* Queue priority */
+    int                     qq_bandwidth;   /* Queue bandwidth */
+    char                   *qq_shared;      /* Shared value */
+};
+
 struct lnx_qos
 {
-    char    lq_ifname[C_IFNAME_LEN];
-    int     lq_obj_id;
-    int     lq_qos_id;
-    int     lq_que_id;
-    bool    lq_que_begin;
+    char                    lq_ifname[C_IFNAME_LEN];
+    bool                    lq_qos_begin;
+    bool                    lq_que_begin;
+    struct lnx_qos_queue   *lq_queue;
+    struct lnx_qos_queue   *lq_queue_e;
+    lnx_netlink_t           lq_netlink;     /* Interface monitorting object */
+    unsigned int            lq_ifindex;     /* Interface index */
 };
 
 bool lnx_qos_init(lnx_qos_t *self, const char *ifname);
@@ -52,6 +65,7 @@ bool lnx_qos_queue_begin(
         lnx_qos_t *self,
         int priority,
         int bandwidth,
+        const char *tag,
         const struct osn_qos_other_config *other_config,
         struct osn_qos_queue_status *qqs);
 

@@ -332,7 +332,6 @@ struct fsm_session
     struct fsm_session_ops ops;      /* session function pointers */
     union fsm_plugin_ops *p_ops;     /* plugin function pointers */
     struct fsm_pcaps *pcaps;         /* pcaps container */
-    struct fsm_nfqs *nfqs;           /* nfqs container */
     ds_tree_t *mqtt_headers;         /* mqtt headers from AWLAN_Node */
     char *name;                      /* convenient session name pointer */
     char *topic;                     /* convenient mqtt topic pointer */

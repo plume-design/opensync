@@ -25,16 +25,53 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-source "${FUT_TOPDIR}/shell/lib/base_lib.sh"
+# FUT environment loading
+# shellcheck disable=SC1091
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
+source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
-file="lib_sources.sh"
+tc_name="tools/device/$(basename "$0")"
+usage()
+{
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Script checks device Kconfig option value
+    - If kconfig_option value is equal to kconfig_value script exits with exit code 0
+    - If kconfig_option value is not equal to kconfig_value script exits with exit code 1
+Arguments:
+    -h  show this help message
+    - \$1 (kconfig_option) : Kconfig option to check : (string)(required)
+    - \$2 (kconfig_value)  : Kconfig value to check  : (string)(required)
+Script usage example:
+   ./${tc_name} CONFIG_MANAGER_WM y
+usage_string
+}
 
-if [ "$SOURCE_WM2_LIB" = "True" ] && [ ! "$WM2_LIB_SOURCED" = "True" ]; then
-    log -deb "$file: LIBRARY: wm2_lib.sh SOURCED!"
-    source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
-fi
+while getopts h option > /dev/null 2>&1; do
+    case "$option" in
+        h)
+            usage && exit 1
+            ;;
+        *)
+            ;;
+    esac
+done
 
-if [ "$SOURCE_CM2_LIB" = "True" ] && [ ! "$CM2_LIB_SOURCED" = "True" ]; then
-    log -deb "$file: LIBRARY: cm2_lib.sh SOURCED!"
-    source "${FUT_TOPDIR}/shell/lib/cm2_lib.sh"
+# INPUT ARGUMENTS:
+NARGS=2
+[ $# -lt ${NARGS} ] && raise "Requires at least '${NARGS}' input argument(s)" -arg
+kconfig_option=${1}
+kconfig_value=${2}
+
+check_kconfig_option "${kconfig_option}" "${kconfig_value}"
+# shellcheck disable=SC2181
+if [ $? -eq 0 ]; then
+    log "${tc_name}: kconfig option is equal to expected: ${kconfig_option}==${kconfig_value}"
+    exit 0
+else
+    log "${tc_name}: kconfig option is NOT equal to expected: ${kconfig_option}==${kconfig_value}"
+    exit 1
 fi

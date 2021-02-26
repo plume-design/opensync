@@ -2220,6 +2220,10 @@ test_1_dpi_plugin_and_client_plugin(void)
                                                         tag_item->value,
                                                         NULL, NULL);
     }
+
+    /* Remove the dpi client session */
+    conf = &g_confs[14];
+    fsm_delete_session(conf);
 }
 
 void
@@ -2329,6 +2333,10 @@ test_2_dpi_plugin_and_client_plugin(void)
                                                         tag_item->value,
                                                         NULL, NULL);
     }
+
+    /* Remove the dpi client session */
+    conf = &g_confs[14];
+    fsm_delete_session(conf);
 }
 
 /**
@@ -2381,6 +2389,10 @@ test_tags_added_to_monitor_list(void)
     mgr = fsm_get_mgr();
     dpi_tag = ds_tree_find(&mgr->dpi_client_tags_tree, tag->name);
     TEST_ASSERT_NOT_NULL(dpi_tag);
+
+    /* Remove the dpi client session */
+    conf = &g_confs[14];
+    fsm_delete_session(conf);
 }
 
 /**
@@ -2434,6 +2446,9 @@ test_adding_group_tags(void)
     dpi_tag = ds_tree_find(&mgr->dpi_client_tags_tree, tag->name);
     TEST_ASSERT_NOT_NULL(dpi_tag);
 
+    /* Remove the dpi client session */
+    conf = &g_confs[15];
+    fsm_delete_session(conf);
 }
 
 /**
@@ -2476,6 +2491,19 @@ create_client_plugin_session(void)
 }
 
 /**
++ * @brief helper function to delete dpi_client_plugin session
++ *
++ */
+void
+free_client_plugin_session(void)
+{
+    struct schema_Flow_Service_Manager_Config *conf;
+
+    conf = &g_confs[14];
+    fsm_delete_session(conf);
+}
+
+/**
  * @brief test if new flow attribute is registered
  *        with dpi plugin
  * inital flow attribute values:
@@ -2507,6 +2535,7 @@ test_add_new_tag_value(void)
 
     create_client_plugin_session();
     om_tag_update_from_schema(&ovsdb_tag);
+    free_client_plugin_session();
 }
 
 /**
@@ -2541,6 +2570,7 @@ test_del_tag_value(void)
 
     create_client_plugin_session();
     om_tag_update_from_schema(&ovsdb_tag);
+    free_client_plugin_session();
 }
 
 /**
@@ -2576,7 +2606,7 @@ test_tag_update_value(void)
 
     create_client_plugin_session();
     om_tag_update_from_schema(&ovsdb_tag);
-
+    free_client_plugin_session();
 }
 
 /**

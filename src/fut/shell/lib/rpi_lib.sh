@@ -26,12 +26,10 @@
 
 
 lib_dir=$(dirname "$(realpath "$BASH_SOURCE")")
-FUT_TOPDIR="$(realpath "$lib_dir"/../..)"
-
-# Sourcing guard variable
-export RPI_LIB_SOURCED=True
-
-source "$lib_dir/unit_lib.sh"
+export FUT_TOPDIR="$(realpath "$lib_dir"/../..)"
+export FUT_RPI_LIB_SRC=true
+[ "${FUT_UNIT_LIB_SRC}" != true ] && source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+echo "${FUT_TOPDIR}/shell/lib/rpi_lib.sh sourced"
 
 ####################### INFORMATION SECTION - START ###########################
 #
@@ -194,27 +192,6 @@ stop_fut_mqtt() {
 ####################### NETWORK SECTION - STOP ################################
 
 ####################### FW IMAGE SECTION - START ##############################
-
-###############################################################################
-# DESCRIPTION:
-# INPUT PARAMETER(S):
-# RETURNS:
-# USAGE EXAMPLE(S):
-###############################################################################
-um_create_fw_key_file()
-{
-    fn_name="rpi_lib:um_create_fw_key_file"
-    local NARGS=2
-    [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
-    um_fw_path=$1
-    um_fw_key=$2
-
-    log "$fn_name - Creating fw key $um_fw_key at $um_fw_path"
-    echo "$um_fw_key" > "$um_fw_path.key" &&
-        log "$fn_name - Created $um_fw_path.key" ||
-        raise "FAIL: Could not create $um_fw_path.key" -l "$fn_name" -ds
-}
 
 ###############################################################################
 # DESCRIPTION:
@@ -410,46 +387,6 @@ address_internet_check()
 
 ###############################################################################
 # DESCRIPTION:
-#   Function checks if internet access is already blocked or unblocked
-#   for interface.
-#   #   Dies if internet access is already blocked or unblocked.
-# INPUT PARAMETER(S):
-#   $1  interface to be blocked or unblocked (required)
-#   $2  type of manipulation, supported block, unblock (required)
-#   $3  sudo command (defaults to sudo) (optional)
-# RETURNS:
-#   0   Traffic already blocked or unblocked.
-#   1   Traffic not yet manipulated.
-# USAGE EXAMPLE(S):
-#   N/A
-###############################################################################
-interface_internet_check()
-{
-    local fn_name="rpi_lib:interface_internet_check"
-    NARGS_MIN=2
-    NARGS_MAX=3
-    [ $# -ge ${NARGS_MIN} ] && [ $# -le ${NARGS_MAX} ] ||
-        raise "${fn_name} requires ${NARGS_MIN}-${NARGS_MAX} input arguments, $# given" -arg
-    local if_name=${1}
-    local type=${2}
-    local sudo_cmd=${3:-"sudo"}
-    local fn_sleep=3
-
-    if [[ "$type" == 'block' ]]; then
-        exit_code=0
-    else
-        exit_code=1
-    fi
-
-    wait_for_function_response "$exit_code" "${sudo_cmd} ${iptables_cmd} -C INPUT -i $if_name -j DROP" "${fn_sleep}" &&
-        raise "FAIL: Internet already ${type}ed for interface $if_name" -l "$fn_name" -ec 0 -ds ||
-        return 1
-
-    return 0
-}
-
-###############################################################################
-# DESCRIPTION:
 #   Function manipulates DNS traffic for source IP by adding or removing
 #   DROP rule. Traffic can be blocked or unblocked.
 #   Raises exception if there are not enough arguments, invalid arguments,
@@ -553,6 +490,7 @@ address_dns_check()
         exit_code=1
     fi
 
+    # shellcheck disable=SC2034
     check_ec=$(${sudo_cmd} ${iptables_cmd} -C ${iptables_chain} -p udp -s "$ip_address" --dport 53 -j DROP)
     if [ "$?" -eq "$exit_code" ]; then
         log -deb "$fn_name - DNS traffic already ${type}ed for address $ip_address"

@@ -26,17 +26,9 @@
 
 
 # Include basic environment config
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source "${FUT_TOPDIR}/shell/config/default_shell.sh"
-fi
-# Sourcing guard variable
-export WM2_LIB_SOURCED=True
-
-source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
-
+export FUT_WM2_LIB_SRC=true
+[ "${FUT_UNIT_LIB_SRC}" != true ] && source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+echo "${FUT_TOPDIR}/shell/lib/wm2_lib.sh sourced"
 ####################### INFORMATION SECTION - START ###########################
 #
 #   Base library of common Wireless Manager functions
@@ -119,35 +111,49 @@ start_wireless_driver()
 wm_setup_test_environment()
 {
     fn_name="wm2_lib:wm_setup_test_environment"
-    log -deb "$fn_name - Running WM2 setup"
 
-    device_init ||
+    log "$fn_name - Running WM2 setup"
+
+    device_init &&
+        log -deb "$fn_name - Device initialized - Success" ||
         raise "FAIL: Could not initialize device: device_init" -l "$fn_name" -ds
 
-    start_openswitch ||
+    start_openswitch &&
+        log -deb "$fn_name - OpenvSwitch started - Success" ||
         raise "FAIL: Could not start OpenvSwitch: start_openswitch" -l "$fn_name" -ds
 
-    start_wireless_driver ||
+    start_wireless_driver &&
+        log -deb "$fn_name - Wireless driver started - Success" ||
         raise "FAIL: Could not start wireles driver: start_wireless_driver" -l "$fn_name" -ds
 
-    start_specific_manager wm ||
+    start_specific_manager wm &&
+        log -deb "$fn_name - start_specific_manager wm - Success" ||
         raise "FAIL: Could not start manager: start_specific_manager wm" -l "$fn_name" -ds
 
-    empty_ovsdb_table AW_Debug ||
+    empty_ovsdb_table AW_Debug &&
+        log -deb "$fn_name - AW_Debug table emptied - Success" ||
         raise "FAIL: Could not empty table: empty_ovsdb_table AW_Debug" -l "$fn_name" -ds
 
-    set_manager_log WM TRACE ||
+    set_manager_log WM TRACE &&
+        log -deb "$fn_name - Manager log for WM set to TRACE - Success" ||
         raise "FAIL: Could not set manager log severity: set_manager_log WM TRACE" -l "$fn_name" -ds
 
-    vif_clean ||
+    vif_clean &&
+        log -deb "$fn_name - vif_clean - Success" ||
         raise "FAIL: Could not clean VIFs: vif_clean" -l "$fn_name" -ow
 
     # Check if all radio interfaces are created
     for if_name in "$@"
     do
-        wait_ovsdb_entry Wifi_Radio_State -w if_name "$if_name" -is if_name "$if_name" ||
+        wait_ovsdb_entry Wifi_Radio_State -w if_name "$if_name" -is if_name "$if_name" &&
+            log -deb "$fn_name - Wifi_Radio_State::if_name '$if_name' present - Success" ||
             raise "FAIL: Wifi_Radio_State::if_name for $if_name does not exist" -l "$fn_name" -ds
     done
+
+    log "$fn_name - WM setup - end"
+
+    return 0
+
 }
 ####################### SETUP SECTION - STOP ##################################
 
@@ -158,17 +164,18 @@ wm_setup_test_environment()
 #   Function empties all VIF interfaces.
 #   Raises exception on fail.
 # INPUT PARAMETER(S):
-#   None.
+#   $1  wait timeout in seconds (int, optional, default=60)
 # RETURNS:
 #   None.
 #   See DESCRIPTION.
 # USAGE EXAMPLE(S):
 #   vif_clean
+#   vif_clean -t 240
 ###############################################################################
 vif_clean()
 {
     fn_name="wm2_lib:vif_clean"
-    VIF_CLEAN_TIMEOUT=60
+    VIF_CLEAN_TIMEOUT=${1:-60}
     log -deb "$fn_name - Purging VIF"
 
     empty_ovsdb_table Wifi_VIF_Config ||
@@ -1471,8 +1478,3 @@ remove_sta_interfaces()
 }
 
 ############################################ STATION SECTION - STOP ####################################################
-
-
-############################################ DHCP SECTION - START ######################################################
-
-############################################ DHCP SECTION - STOP #######################################################

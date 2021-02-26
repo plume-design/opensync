@@ -139,7 +139,19 @@ gkc_init_per_dev(os_macaddr_t *device_mac)
                  ds_str_cmp,
                  struct attr_cache,
                  attr_tnode);
+    ds_tree_init(&pdevice_cache->host_tree,
+                 ds_str_cmp,
+                 struct attr_cache,
+                 attr_tnode);
     ds_tree_init(&pdevice_cache->sni_tree,
+                 ds_str_cmp,
+                 struct attr_cache,
+                 attr_tnode);
+    ds_tree_init(&pdevice_cache->ipv4_tree,
+                 ds_str_cmp,
+                 struct attr_cache,
+                 attr_tnode);
+    ds_tree_init(&pdevice_cache->ipv6_tree,
                  ds_str_cmp,
                  struct attr_cache,
                  attr_tnode);
@@ -210,8 +222,20 @@ gkc_new_attr_entry(struct gk_attr_cache_interface *entry)
         new_attr->attr.url = strdup(entry->attr_name);
         break;
 
+    case GK_CACHE_REQ_TYPE_HOST:
+        new_attr->attr.host = strdup(entry->attr_name);
+        break;
+
     case GK_CACHE_REQ_TYPE_SNI:
         new_attr->attr.sni = strdup(entry->attr_name);
+        break;
+
+    case GK_CACHE_REQ_TYPE_IPV4:
+        new_attr->attr.ipv4 = strdup(entry->attr_name);
+        break;
+
+    case GK_CACHE_REQ_TYPE_IPV6:
+        new_attr->attr.ipv6 = strdup(entry->attr_name);
         break;
 
     case GK_CACHE_REQ_TYPE_APP:
@@ -229,6 +253,14 @@ gkc_new_attr_entry(struct gk_attr_cache_interface *entry)
 
     /* set action value: allow or block */
     new_attr->action = entry->action;
+    new_attr->categorized = entry->categorized;
+    new_attr->category_id = entry->category_id;
+    new_attr->confidence_level = entry->confidence_level;
+    if (entry->gk_policy)
+    {
+        new_attr->gk_policy = strdup(entry->gk_policy);
+    }
+
     return new_attr;
 }
 
@@ -265,9 +297,24 @@ gkc_add_attr_tree(struct per_device_cache *pdevice_cache,
                 &pdevice_cache->url_tree, new_attr_cache, new_attr_cache->attr.url);
         break;
 
+    case GK_CACHE_REQ_TYPE_HOST:
+            ds_tree_insert(
+                &pdevice_cache->host_tree, new_attr_cache, new_attr_cache->attr.host);
+        break;
+
     case GK_CACHE_REQ_TYPE_SNI:
             ds_tree_insert(
                 &pdevice_cache->sni_tree, new_attr_cache, new_attr_cache->attr.sni);
+        break;
+
+    case GK_CACHE_REQ_TYPE_IPV4:
+            ds_tree_insert(
+                &pdevice_cache->ipv4_tree, new_attr_cache, new_attr_cache->attr.ipv4);
+        break;
+
+    case GK_CACHE_REQ_TYPE_IPV6:
+            ds_tree_insert(
+                &pdevice_cache->ipv6_tree, new_attr_cache, new_attr_cache->attr.ipv6);
         break;
 
     case GK_CACHE_REQ_TYPE_APP:
@@ -317,7 +364,7 @@ gkc_add_attribute_entry(struct gk_attr_cache_interface *entry)
 
     /* return if attribute type is not valid */
     if (entry->attribute_type < GK_CACHE_REQ_TYPE_FQDN
-        || entry->attribute_type > GK_CACHE_REQ_TYPE_SNI)
+        || entry->attribute_type > GK_CACHE_REQ_TYPE_APP)
         return false;
 
     pdevice_cache = ds_tree_find(&mgr->per_device_tree, entry->device_mac);
@@ -560,6 +607,15 @@ gkc_lookup_attr_tree(ds_tree_t *tree, struct gk_attr_cache_interface *req, int u
     /* update the request with hit counter */
     req->hit_counter = attr_entry->hit_count;
 
+    req->action = attr_entry->action;
+    req->categorized = attr_entry->categorized;
+    req->category_id = attr_entry->category_id;
+    req->confidence_level = attr_entry->confidence_level;
+    if (attr_entry->gk_policy != NULL)
+    {
+        req->gk_policy = strdup(attr_entry->gk_policy);
+    }
+
     return true;
 }
 
@@ -588,8 +644,20 @@ gkc_lookup_attributes_tree(struct per_device_cache *pdevice,
         ret = gkc_lookup_attr_tree(&pdevice->url_tree, req, update_count);
         break;
 
+    case GK_CACHE_REQ_TYPE_HOST:
+        ret = gkc_lookup_attr_tree(&pdevice->host_tree, req, update_count);
+        break;
+
     case GK_CACHE_REQ_TYPE_SNI:
         ret = gkc_lookup_attr_tree(&pdevice->sni_tree, req, update_count);
+        break;
+
+    case GK_CACHE_REQ_TYPE_IPV4:
+        ret = gkc_lookup_attr_tree(&pdevice->ipv4_tree, req, update_count);
+        break;
+
+    case GK_CACHE_REQ_TYPE_IPV6:
+        ret = gkc_lookup_attr_tree(&pdevice->ipv6_tree, req, update_count);
         break;
 
     case GK_CACHE_REQ_TYPE_APP:
@@ -801,8 +869,20 @@ dump_attr_tree(ds_tree_t *tree, enum gk_cache_request_type req_type)
             LOGT("\t\t\t %s", entry->attr.url);
             break;
 
+        case GK_CACHE_REQ_TYPE_HOST:
+            LOGT("\t\t\t %s", entry->attr.host);
+            break;
+
         case GK_CACHE_REQ_TYPE_SNI:
             LOGT("\t\t\t %s", entry->attr.sni);
+            break;
+
+        case GK_CACHE_REQ_TYPE_IPV4:
+            LOGT("\t\t\t %s", entry->attr.ipv4);
+            break;
+
+        case GK_CACHE_REQ_TYPE_IPV6:
+            LOGT("\t\t\t %s", entry->attr.ipv6);
             break;
 
         case GK_CACHE_REQ_TYPE_APP:
@@ -878,9 +958,21 @@ gkc_cache_entries(void)
         LOGT("\t URL Entries : \n");
         dump_attr_tree(subtree, GK_CACHE_REQ_TYPE_URL);
 
+        subtree = &entry->host_tree;
+        LOGT("\t HOST Entries : \n");
+        dump_attr_tree(subtree, GK_CACHE_REQ_TYPE_HOST);
+
         subtree = &entry->sni_tree;
         LOGT("\t SNI Entries : \n");
         dump_attr_tree(subtree, GK_CACHE_REQ_TYPE_SNI);
+
+        subtree = &entry->ipv4_tree;
+        LOGT("\t IPv4 Entries : \n");
+        dump_attr_tree(subtree, GK_CACHE_REQ_TYPE_IPV4);
+
+        subtree = &entry->ipv6_tree;
+        LOGT("\t IPv6 Entries : \n");
+        dump_attr_tree(subtree, GK_CACHE_REQ_TYPE_IPV6);
 
         subtree = &entry->app_tree;
         LOGT("\t APP Name Entries : \n");

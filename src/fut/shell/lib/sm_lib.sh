@@ -26,17 +26,9 @@
 
 
 # Include basic environment config
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source "${FUT_TOPDIR}/shell/config/default_shell.sh"
-fi
-# Sourcing guard variable
-export SM_LIB_SOURCED=True
-
-export SOURCE_WM2_LIB=True
-source "${FUT_TOPDIR}/shell/lib/lib_sources.sh"
-source "${LIB_OVERRIDE_FILE}"
+export FUT_SM_LIB_SRC=true
+[ "${FUT_WM2_LIB_SRC}" != true ] && source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
+echo "${FUT_TOPDIR}/shell/lib/sm_lib.sh sourced"
 
 ####################### INFORMATION SECTION - START ###########################
 #
@@ -71,6 +63,8 @@ sm_setup_test_environment()
         log -deb "$fn_name - wm_setup_test_environment - Success" ||
         raise "FAIL: wm_setup_test_environment" -l "$fn_name" -ds
 
+    log "$fn_name - Running SM setup"
+
     # Check if LM can be started, if not try starting PM.
     # If it fails raises an exception.
     start_specific_manager lm
@@ -95,11 +89,17 @@ sm_setup_test_environment()
         log -deb "$fn_name - start_specific_manager sm - Success" ||
         raise "FAIL: Could not start manager: start_specific_manager sm" -l "$fn_name" -ds
 
-    empty_ovsdb_table AW_Debug ||
+    empty_ovsdb_table AW_Debug &&
+        log -deb "$fn_name - AW_Debug table emptied - Success" ||
         raise "FAIL: Could not empty table: empty_ovsdb_table AW_Debug" -l "$fn_name" -ds
 
-    set_manager_log SM TRACE ||
+    set_manager_log SM TRACE &&
+        log -deb "$fn_name - Manager log for SM set to TRACE - Success" ||
         raise "FAIL: Could not set manager log severity: set_manager_log SM TRACE" -l "$fn_name" -ds
+
+    log "$fn_name - SM setup - end"
+
+    return 0
 }
 
 ###############################################################################

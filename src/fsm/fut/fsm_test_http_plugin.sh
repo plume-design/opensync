@@ -24,23 +24,19 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-# Include basic environment config from default shell file and if any from FUT framework generated /tmp/fut_set_env.sh file
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
-source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
-source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
+
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/fsm_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
 tc_name="fsm/$(basename "$0")"
 manager_setup_file="fsm/fsm_setup.sh"
 create_rad_vif_if_file="tools/device/create_radio_vif_interface.sh"
 create_inet_file="tools/device/create_inet_interface.sh"
 add_bridge_port_file="tools/device/add_bridge_port.sh"
-configure_wan_bridge_file="tools/device/configure_wan_bridge.sh"
+configure_lan_bridge_for_wan_connectivity_file="tools/device/configure_lan_bridge_for_wan_connectivity.sh"
 client_connect_file="tools/rpi/connect_to_wpa2.sh"
 client_send_curl_file="tools/rpi/fsm/fsm_make_curl_agent_req.sh"
 usage() {
@@ -62,7 +58,7 @@ Testcase procedure:
             Add bridge port to VIF interface onto home bridge
                 Run: ./${add_bridge_port_file} (see ${add_bridge_port_file} -h)
             Configure WAN bridge settings
-                Run: ./${configure_wan_bridge_file} (see ${configure_wan_bridge_file} -h)
+                Run: ./${configure_lan_bridge_for_wan_connectivity_file} (see ${configure_lan_bridge_for_wan_connectivity_file} -h)
             Update Inet entry for home bridge interface for dhcpd (br-home)
                 Run: ./${create_inet_file} (see ${create_inet_file} -h)
             Configure FSM for HTTP plugin test

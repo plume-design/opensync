@@ -161,7 +161,6 @@ fsm_update_session_tap(struct fsm_session *session)
 void fsm_free_tap_resources(struct fsm_session *session)
 {
     struct fsm_pcaps *pcaps;
-    struct fsm_nfqs *nfqs;
     int tap_type;
 
     tap_type = session->tap_type;
@@ -180,12 +179,7 @@ void fsm_free_tap_resources(struct fsm_session *session)
 
     case FSM_TAP_NFQ:
         /* Free nfq resources */
-        nfqs = session->nfqs;
-        if (nfqs != NULL)
-        {
-            nf_queue_exit();
-            free(nfqs);
-        }
+        nf_queue_exit();
         break;
 
     case FSM_TAP_RAW:

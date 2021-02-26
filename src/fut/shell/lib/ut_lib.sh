@@ -26,18 +26,9 @@
 
 
 # Include basic environment config
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source "${FUT_TOPDIR}/shell/config/default_shell.sh"
-fi
-# Sourcing guard variable
-export UT_LIB_SOURCED
-
-export SOURCE_CM2_LIB=True
-source "${FUT_TOPDIR}/shell/lib/lib_sources.sh"
-source "${LIB_OVERRIDE_FILE}"
-
+export FUT_UT_LIB_SRC=true
+[ "${FUT_UNIT_LIB_SRC}" != true ] && source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+echo "${FUT_TOPDIR}/shell/lib/ut_lib.sh sourced"
 ####################### INFORMATION SECTION - START ###########################
 #
 #   Base library of common Unit Test functions
@@ -59,16 +50,24 @@ source "${LIB_OVERRIDE_FILE}"
 ut_setup_test_environment()
 {
     fn_name="ut_lib:ut_setup_test_environment"
-    log -deb "$fn_name - Running UT setup"
 
-    stop_healthcheck ||
+    log "$fn_name - Running UT setup"
+
+    stop_healthcheck &&
+        log -deb "$fn_name - healtcheck disabled - Success" ||
         raise "FAIL: Failed to stop health check: stop_healthcheck" -l "$fn_name" -ds
 
-    cm_disable_fatal_state ||
-        raise "FAIL: Failed to disable fatal state: cm_disable_fatal_state" -l "$fn_name" -fc
+    cm_disable_fatal_state &&
+        log -deb "$fn_name - Fatal state disabled - Success" ||
+        raise "FAIL: Failed to disable fatal state: cm_disable_fatal_state" -l "$fn_name" -ds
 
     # Ignoring failures
-    /etc/init.d/manager restart || true
+    /etc/init.d/manager restart ||
+        true
+
+    log "$fn_name - UT setup - end"
+
+    return 0
 }
 
 ####################### SETUP SECTION - STOP ##################################

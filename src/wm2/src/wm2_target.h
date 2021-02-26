@@ -24,15 +24,21 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef PM_H_INCLUDED
-#define PM_H_INCLUDED
+#ifndef WM2_TARGET_H_INCLUDED
+#define WM2_TARGET_H_INCLUDED
 
-bool pm_client_nickname_init(void);
-bool pm_client_freeze_init(void);
-bool pm_led_init(void);
-bool pm_tm_init(void);
-bool pm_tm_deinit(void);
-bool pm_lm_init(void);
-bool pm_objm_init(void);
+bool wm2_target_radio_init(const struct target_radio_ops *ops);
+bool wm2_target_radio_config_init2(void);
+bool wm2_target_radio_config_need_reset(void);
+bool wm2_target_radio_config_set2(const struct schema_Wifi_Radio_Config *rconf,
+                                  const struct schema_Wifi_Radio_Config_flags *rchanged);
+bool wm2_target_vif_config_set2(const struct schema_Wifi_VIF_Config *vconf,
+                                const struct schema_Wifi_Radio_Config *rconf,
+                                const struct schema_Wifi_Credential_Config *cconfs,
+                                const struct schema_Wifi_VIF_Config_flags *vchanged,
+                                int num_cconfs);
+bool wm2_target_dpp_supported(void);
+bool wm2_target_dpp_config_set(const struct schema_DPP_Config *config);
+bool wm2_target_dpp_key_get(struct target_dpp_key *key);
 
-#endif /* PM_H_INCLUDED */
+#endif /* WM2_TARGET_H_INCLUDED */

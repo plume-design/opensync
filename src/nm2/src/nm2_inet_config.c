@@ -1098,6 +1098,8 @@ void nm2_inet_copy(
     NM2_IFACE_INET_CONFIG_COPY(piface->if_cache.vlan_id, iconf->vlan_id);
     piface->if_cache.vlan_egress_qos_map_exists = iconf->vlan_egress_qos_map_exists;
     NM2_IFACE_INET_CONFIG_COPY(piface->if_cache.vlan_egress_qos_map, iconf->vlan_egress_qos_map);
+    piface->if_cache.parent_ifname_exists = iconf->parent_ifname_exists;
+    NM2_IFACE_INET_CONFIG_COPY(piface->if_cache.parent_ifname, iconf->parent_ifname);
 }
 
 

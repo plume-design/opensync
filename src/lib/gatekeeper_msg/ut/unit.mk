@@ -38,3 +38,4 @@ UNIT_DEPS += src/lib/osa
 UNIT_DEPS += src/lib/target
 UNIT_DEPS += src/lib/unity
 UNIT_DEPS += src/lib/network_metadata
+UNIT_DEPS += src/lib/fsm_policy

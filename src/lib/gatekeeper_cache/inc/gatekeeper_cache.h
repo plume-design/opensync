@@ -39,14 +39,18 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fsm_policy.h"
 
 #define GK_MAX_CACHE_ENTRIES 100000
+#define GK_DEFAULT_TTL 300
 
 /* enum with supported request types */
 enum gk_cache_request_type
 {
     GK_CACHE_REQ_TYPE_FQDN = 0,
     GK_CACHE_REQ_TYPE_URL,
-    GK_CACHE_REQ_TYPE_APP,
+    GK_CACHE_REQ_TYPE_HOST,
     GK_CACHE_REQ_TYPE_SNI,
+    GK_CACHE_REQ_TYPE_IPV4,
+    GK_CACHE_REQ_TYPE_IPV6,
+    GK_CACHE_REQ_TYPE_APP,
     GK_CACHE_REQ_TYPE_INBOUND,
     GK_CACHE_REQ_TYPE_OUTBOUDND,
     GK_CACHE_MAX_REQ_TYPES
@@ -57,8 +61,11 @@ union attribute_type
 {
     char *url;
     char *fqdn;
+    char *host;
     char *app_name;
     char *sni;
+    char *ipv4;
+    char *ipv6;
 };
 
 /* enum for flow direction */
@@ -80,7 +87,11 @@ struct attr_cache
     int cache_ttl;             /* TLL value for this entry */
     time_t cache_ts;           /* time when the entry was added */
     int action;                /* action specified : Allow or block */
+    char *gk_policy;              /* gatekeeper rule string */
+    uint32_t category_id;      /* category plume id */
+    uint32_t confidence_level; /* risk/confidence level */
     uint64_t hit_count;        /* number of times lookup is performed */
+    int categorized;           /* categorized */
     ds_tree_node_t attr_tnode;
 };
 
@@ -99,6 +110,9 @@ struct ip_flow_cache
     uint8_t direction;    /* direction of this flow: inbound or outbound */
     int action;           /* action specified: Allow or Block */
     int cache_ttl;        /* TLL value for this flow entry */
+    char *gk_policy;              /* gatekeeper rule string */
+    uint32_t category_id;      /* category plume id */
+    uint32_t confidence_level; /* risk/confidence level */
     time_t cache_ts;      /* time when the entry was added */
     uint64_t hit_count;   /* number of times lookup is performed */
     ds_tree_node_t ipflow_tnode;
@@ -126,7 +140,10 @@ struct per_device_cache
                                                  this device */
     ds_tree_t fqdn_tree;     /* tree to hold entries of attr_cache */
     ds_tree_t url_tree;      /* attr_cache */
+    ds_tree_t host_tree;      /* attr_cache */
     ds_tree_t sni_tree;      /* attr_cache */
+    ds_tree_t ipv4_tree;      /* attr_cache */
+    ds_tree_t ipv6_tree;      /* attr_cache */
     ds_tree_t app_tree;      /* attr_cache */
     ds_tree_t outbound_tree; /* ip_flow_cache */
     ds_tree_t inbound_tree;  /* ip_flow_cache */
@@ -160,7 +177,11 @@ struct gk_attr_cache_interface
     uint64_t cache_ttl;   /* TTL value that should be set */
     uint8_t action;       /* action req when adding will be set when lookup is
                              performed */
+    char *gk_policy;              /* gatekeeper rule string */
+    uint32_t category_id;      /* category plume id */
+    uint32_t confidence_level; /* risk/confidence level */
     uint64_t hit_counter; /* hit count will be set when lookup is performed */
+    int categorized;
 };
 
 /**
@@ -184,6 +205,9 @@ struct gkc_ip_flow_interface
     uint64_t cache_ttl;       /* TTL value that should be set */
     uint8_t action;           /* action req when adding will be set when lookup is
                                  performed */
+    char *gk_policy;              /* gatekeeper rule string */
+    uint32_t category_id;      /* category plume id */
+    uint32_t confidence_level; /* risk/confidence level */
     uint64_t hit_counter;     /* will be updated when lookup is performed */
 };
 

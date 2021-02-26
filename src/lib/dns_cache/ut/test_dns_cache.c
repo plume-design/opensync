@@ -473,6 +473,33 @@ void test_upd_dns_cache(void)
     LOGI("\n******************** %s: completed ****************\n", __func__);
 }
 
+void test_dns_cache_ref_count(void)
+{
+    uint8_t refcount = 0;
+    refcount = dns_cache_get_refcount();
+    TEST_ASSERT_EQUAL_INT(1, refcount);
+
+    dns_cache_init();
+    refcount = dns_cache_get_refcount();
+    TEST_ASSERT_EQUAL_INT(2, refcount);
+
+    dns_cache_cleanup_mgr();
+    refcount = dns_cache_get_refcount();
+    TEST_ASSERT_EQUAL_INT(1, refcount);
+
+    dns_cache_cleanup_mgr();
+    refcount = dns_cache_get_refcount();
+    TEST_ASSERT_EQUAL_INT(0, refcount);
+
+    dns_cache_cleanup_mgr();
+    refcount = dns_cache_get_refcount();
+    TEST_ASSERT_EQUAL_INT(0, refcount);
+
+    dns_cache_init();
+    refcount = dns_cache_get_refcount();
+    TEST_ASSERT_EQUAL_INT(1, refcount);
+}
+
 void test_events(void)
 {
     /* Test overall test duration */
@@ -496,6 +523,7 @@ int main(int argc, char *argv[])
     RUN_TEST(test_add_dns_cache);
     RUN_TEST(test_del_dns_cache);
     RUN_TEST(test_upd_dns_cache);
+    RUN_TEST(test_dns_cache_ref_count);
 
     dns_cache_global_test_teardown();
     return UNITY_END();

@@ -26,17 +26,9 @@
 
 
 # Include basic environment config
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source "${FUT_TOPDIR}/shell/config/default_shell.sh"
-fi
-# Sourcing guard variable
-export LEDM_LIB_SOURCED=True
-
-source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
-
+export FUT_PM_LED_LIB_SRC=true
+[ "${FUT_UNIT_LIB_SRC}" != true ] && source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+echo "${FUT_TOPDIR}/shell/lib/pm_led_lib.sh sourced"
 ####################### INFORMATION SECTION - START ###########################
 #
 #   Base library of common LED Manager functions
@@ -66,37 +58,46 @@ test_pm_led_config()
     fn_name="pm_led_lib:test_pm_led_config"
 
     log -deb "$fn_name - Turning on WHITE LED"
-    led_config_ovsdb on ||
+    led_config_ovsdb on &&
+        log -deb "$fn_name - led_config_ovsdb on - Success" ||
         raise "FAIL: Could not set WHITE LED on: led_config_ovsdb on" -l "$fn_name" -tc
-    check_led_gpio_state on ||
+    check_led_gpio_state on &&
+        log -deb "$fn_name - check_led_gpio_state on - Success" ||
         raise "FAIL: WHITE LED not on: check_led_gpio_state on" -l "$fn_name" -tc
     sleep 1
 
     log -deb "$fn_name - Turning LED off"
-    led_config_ovsdb off ||
+    led_config_ovsdb off &&
+        log -deb "$fn_name - led_config_ovsdb off - Success" ||
         raise "FAIL: Could not set LED off: led_config_ovsdb off" -l "$fn_name" -tc
-    check_led_gpio_state off ||
+    check_led_gpio_state off &&
+        log -deb "$fn_name - check_led_gpio_state off - Success" ||
         raise "FAIL: LED not off: check_led_gpio_state off" -l "$fn_name" -tc
     sleep 1
 
     log -deb "$fn_name - LED mode blink"
-    led_config_ovsdb blink ||
+    led_config_ovsdb blink &&
+        log -deb "$fn_name - led_config_ovsdb blink - Success" ||
         raise "FAIL: Could not set LED blink: led_config_ovsdb blink" -l "$fn_name" -tc
     sleep 5
 
     log -deb "$fn_name - LED mode breathe"
-    led_config_ovsdb breathe ||
+    led_config_ovsdb breathe &&
+        log -deb "$fn_name - led_config_ovsdb breathe - Success" ||
         raise "FAIL: Could not set LED breathe: led_config_ovsdb breathe" -l "$fn_name" -tc
     sleep 5
 
     log -deb "$fn_name - LED mode pattern"
-    led_config_ovsdb pattern ||
+    led_config_ovsdb pattern &&
+        log -deb "$fn_name - led_config_ovsdb pattern - Success" ||
         raise "FAIL: Could not set LED pattern: led_config_ovsdb pattern" -l "$fn_name" -tc
     sleep 5
 
-    led_config_ovsdb off ||
+    led_config_ovsdb off &&
+        log -deb "$fn_name - led_config_ovsdb off - Success" ||
         raise "FAIL: Could not set LED off: led_config_ovsdb off" -l "$fn_name" -tc
-    check_led_gpio_state off ||
+    check_led_gpio_state off &&
+        log -deb "$fn_name - check_led_gpio_state off - Success" ||
         raise "FAIL: LED not off: check_led_gpio_state off" -l "$fn_name" -tc
 }
 

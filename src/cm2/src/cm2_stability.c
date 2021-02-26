@@ -90,12 +90,27 @@ static bool cm2_cpu_is_low_loadavg(void) {
 }
 
 #ifdef CONFIG_CM2_STABILITY_USE_RESTORE_SWITCH_CFG
+static bool cm2_util_skip_restore_switch_fix_auton()
+{
+    if (g_state.dev_type == CM2_DEVICE_BRIDGE &&
+        cm2_ovsdb_is_gw_offline_enabled() &&
+        (cm2_ovsdb_is_gw_offline_active() || cm2_ovsdb_is_gw_offline_ready())) {
+        LOGI("GW offline skip restore fix auton");
+        return true;
+    }
+    return false;
+}
+
 void cm2_restore_switch_cfg_params(int counter, int thresh, cm2_restore_con_t *ropt)
 {
     *ropt |= 1 << CM2_RESTORE_SWITCH_FIX_PORT_MAP;
 
-    if (counter % thresh == 0)
-        *ropt |=  (1 << CM2_RESTORE_SWITCH_DUMP_DATA) | (1 << CM2_RESTORE_SWITCH_FIX_AUTON);
+
+    if (counter % thresh == 0) {
+        *ropt |=  (1 << CM2_RESTORE_SWITCH_DUMP_DATA);
+        if (!cm2_util_skip_restore_switch_fix_auton())
+            *ropt |= (1 << CM2_RESTORE_SWITCH_FIX_AUTON);
+    }
 }
 
 void cm2_restore_switch_cfg(cm2_restore_con_t opt)
@@ -165,9 +180,11 @@ static void cm2_stability_handle_fatal_state(int counter)
         return;
     }
 
+    if (cm2_enable_gw_offline())
+        return;
+
     if (cm2_vtag_stability_check() &&
         g_state.dev_type != CM2_DEVICE_ROUTER &&
-        g_state.cnts.gw_offline == 0 &&
         counter + 1 > CONFIG_CM2_STABILITY_THRESH_FATAL) {
         LOGW("Restart managers due to exceeding the threshold for fatal failures");
         cm2_ovsdb_dump_debug_data();
@@ -175,6 +192,15 @@ static void cm2_stability_handle_fatal_state(int counter)
         WARN_ON(!target_device_wdt_ping());
         target_device_restart_managers();
     }
+}
+
+void cm2_util_add_ip_opts(target_connectivity_check_option_t *opts)
+{
+    if (g_state.link.ip.is_ipv4)
+        *opts |= IPV4_CHECK;
+
+    if (g_state.link.ip.is_ipv6)
+        *opts |= IPV6_CHECK;
 }
 
 bool cm2_connection_req_stability_check(target_connectivity_check_option_t opts, bool db_update)
@@ -212,6 +238,8 @@ bool cm2_connection_req_stability_check(target_connectivity_check_option_t opts,
     /* Ping WDT before run connectivity check */
     WARN_ON(!target_device_wdt_ping());
 
+    cm2_util_add_ip_opts(&opts);
+
     status = target_device_connectivity_check(if_name, &cstate, opts);
     bridge = con.bridge_exists ? con.bridge : "none";
     LOGN("Connection status %d, main link: %s bridge: %s opts: = %x",
@@ -221,6 +249,9 @@ bool cm2_connection_req_stability_check(target_connectivity_check_option_t opts,
          con.unreachable_internet_counter, con.unreachable_cloud_counter);
     LOGD("%s: Stability states: [%d, %d, %d]", if_name,
          cstate.link_state, cstate.router_state, cstate.internet_state);
+
+    if (opts & NTP_CHECK)
+        g_state.ntp_check = cstate.ntp_state;
 
     if (!db_update)
         return status;
@@ -305,8 +336,8 @@ bool cm2_connection_req_stability_check(target_connectivity_check_option_t opts,
             cm2_restore_switch_cfg_params(counter, CONFIG_CM2_STABILITY_THRESH_INTERNET + 2, &ropt);
             if (counter % CONFIG_CM2_STABILITY_THRESH_INTERNET == 0)
                 ropt |= (1 << CM2_RESTORE_IP);
-            if (counter % CONFIG_CM2_STABILITY_THRESH_ROUTER + 1 == 0)
-                ropt |= (1 << CM2_RESTORE_MAIN_LINK);
+            if (counter % CONFIG_CM2_STABILITY_THRESH_INTERNET + 1 == 0)
+                   ropt |= (1 << CM2_RESTORE_MAIN_LINK);
         }
 
         ret = cm2_ovsdb_connection_update_unreachable_internet_counter(if_name, counter);
@@ -318,8 +349,6 @@ bool cm2_connection_req_stability_check(target_connectivity_check_option_t opts,
                                                     cstate.ntp_state);
         if (!ret)
             LOGW("%s Failed update ntp state in ovsdb table", __func__);
-        else
-            g_state.ntp_check = cstate.ntp_state;
     }
     cm2_restore_connection(ropt);
     return status;

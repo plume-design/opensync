@@ -194,12 +194,4 @@ config TARGET_IMC
     default n
     help
         Select this option if the platform enables zeromq
-
-config TARGET_DUMMY_WM
-    bool "WM dummy target implementation"
-    default n
-    help
-        Intended for unit / function testing of WM2.
-
-        If unsure, leave as 'n'.
 endmenu

@@ -50,7 +50,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sys/types.h>
 
 #include "os_common.h"
+#include "os_time.h"
 #include "os_proc.h"
+#include "osp_unit.h"
 
 #include "log.h"
 #include "os.h"
@@ -205,20 +207,19 @@ void sig_crash_report(int signum)
             pid = getpid();
             os_pid_to_name(pid, pname, sizeof(pname));
 
-            fprintf(fp_crash_report, "{\n");
-            fprintf(fp_crash_report, "\"pid\":%d,\n", pid);
-            fprintf(fp_crash_report, "\"name\":\"%s\",\n", pname);
-            fprintf(fp_crash_report, "\"reason\":\"SIG %d (%s)\",\n",
+            fprintf(fp_crash_report, "pid %d\n", pid);
+            fprintf(fp_crash_report, "name %s\n", pname);
+            fprintf(fp_crash_report, "reason SIG %d (%s)\n",
                     signum, strsignal(signum));
-            fprintf(fp_crash_report, "\"time\":%lld,\n", (long long)time(NULL));
-            fprintf(fp_crash_report, "\"backtrace\":\"");
+            fprintf(fp_crash_report, "timestamp %lld\n", (long long)clock_real_ms());
+            fprintf(fp_crash_report, "backtrace ");
         }
     }
 
     backtrace_dump_generic(target_get_btrace_type());
     if (fp_crash_report)
     {
-        fprintf(fp_crash_report, "\"\n}\n");
+        fprintf(fp_crash_report, "\n");
 
         fclose(fp_crash_report);
         fp_crash_report = NULL;

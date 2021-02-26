@@ -24,69 +24,60 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef GK_CURL_H_INCLUDED
-#define GK_CURL_H_INCLUDED
+#include <sys/socket.h>
+#include <sys/ioctl.h>
+#include <net/if.h>
+#include <arpa/inet.h>
+#include <errno.h>
 
-#include <curl/curl.h>
-#include <ev.h>
+#include <string.h>
 
-#include "ds_tree.h"
-#include "os_types.h"
+#include "log.h"
+#include "util.h"
 
-struct http2_curl
-{
-    struct ev_loop *loop;
-    struct ev_io fifo_event;
-    struct ev_timer timer_event;
-    CURLM *multi;
-    int still_running;
-};
-
-struct conn_info
-{
-    CURL *easy;
-    char *url;
-    struct http2_curl *global;
-    char error[CURL_ERROR_SIZE];
-};
-
-struct sock_info
-{
-    curl_socket_t sockfd;
-    CURL *easy;
-    int action;
-    long timeout;
-    struct ev_io ev;
-    int evset;
-    struct http2_curl *global;
-};
+#include "inet.h"
+#include "inet_base.h"
+#include "inet_lte.h"
+#include "osn_lte.h"
 
 /**
- * @brief Create a new easy handle, and add it to the global curl_multi
- * @param url url to add.
- * @return true if the initialization succeeded,
- *         false otherwise
+ * New-type constructor
  */
-bool
-gk_new_conn(char *url);
+inet_t *inet_lte_new(const char *ifname)
+{
+    inet_lte_t *self = NULL;
 
+    self = malloc(sizeof(*self));
+    if (self == NULL)
+    {
+        goto error;
+    }
 
-/**
- * @brief cleans up curl library.
- *
- */
-bool
-gk_curl_exit(void);
+    if (!inet_lte_init(self, ifname))
+    {
+        LOG(ERR, "inet_lte: %s: Failed to initialize interface instance.", ifname);
+        goto error;
+    }
 
+    return (inet_t *)self;
 
-/**
- * @brief initialize curl library
- * @param loop pointer to ev_loop structure
- * @return true if the initialization succeeded,
- *         false otherwise
- */
-bool
-gk_curl_init(struct ev_loop *loop);
+ error:
+    if (self != NULL) free(self);
+    return NULL;
+}
 
+bool inet_lte_init(inet_lte_t *self, const char *ifname)
+{
+    if (!osn_lte_new(ifname)) {
+        LOG(ERR, "inet_lte: %s: Failed to instantiate class, osn_lte_new() failed.", ifname);
+        return false;
+    }
 
-#endif /* GK_CURL_H_INCLUDED */
+    if (!inet_eth_init(&self->eth, ifname))
+    {
+        LOG(ERR, "inet_lte: %s: Failed to instantiate class, inet_eth_init() failed.", ifname);
+        return false;
+    }
+
+    return true;
+}

@@ -26,13 +26,9 @@
 
 
 # Include basic environment config
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source "${FUT_TOPDIR}/shell/config/default_shell.sh"
-fi
-source "${FUT_TOPDIR}/shell/lib/base_lib.sh"
-
+export FUT_UNIT_LIB_SRC=true
+[ "${FUT_BASE_LIB_SRC}" != true ] && source "${FUT_TOPDIR}/shell/lib/base_lib.sh"
+echo "${FUT_TOPDIR}/shell/lib/unit_lib.sh sourced"
 ####################### INFORMATION SECTION - START ###########################
 #
 #   Common library of shared functions, used globally
@@ -54,6 +50,21 @@ source "${FUT_TOPDIR}/shell/lib/base_lib.sh"
 get_managers_script()
 {
     echo "/etc/init.d/opensync"
+}
+
+###############################################################################
+# DESCRIPTION:
+#   Function returns filename of the script manipulating openvswitch.
+# INPUT PARAMETER(S):
+#   None.
+# RETURNS:
+#   Path to openvswitch script.
+# USAGE EXAMPLE(S):
+#   get_openvswitch_script
+###############################################################################
+get_openvswitch_script()
+{
+    echo "/etc/init.d/openvswitch"
 }
 
 ###############################################################################
@@ -375,14 +386,15 @@ start_openswitch()
     fn_name="unit_lib:start_openswitch"
 
     log -deb "$fn_name - Starting Open vSwitch"
-    # shellcheck disable=SC2034
+    # shellcheck disable=SC2034,2091
     ovs_run=$($(get_process_cmd)  | grep -v "grep" | grep "ovs-vswitchd")
     if [ "$?" -eq 0 ]; then
         log -deb "$fn_name - Open vSwitch already running"
         return 0
     fi
 
-    /etc/init.d/openvswitch start ||
+    OPENVSWITCH_SCRIPT=$(get_openvswitch_script)
+    ${OPENVSWITCH_SCRIPT} start ||
         raise "FAIL: Issue during Open vSwitch start" -l "$fn_name" -ds
 
     wait_for_function_response 0 "pidof ovs-vswitchd" &&
@@ -435,6 +447,7 @@ start_managers()
     fi
 
     # Check dm slave PID
+    # shellcheck disable=2091
     PID=$($(get_process_cmd) | grep -e "${OPENSYNC_ROOTDIR}/bin/dm" | grep -v 'grep' | grep -v slave | awk '{ print $1 }')
     if [ -z "$PID" ]; then
         raise "FAIL: Issue during manager start, dm slave not running" -l "$fn_name" -ds
@@ -443,6 +456,7 @@ start_managers()
     fi
 
     # Check dm master PID
+    # shellcheck disable=2091
     PID=$($(get_process_cmd) | grep -e "${OPENSYNC_ROOTDIR}/bin/dm" | grep -v 'grep' | grep -v master | awk '{ print $1 }')
     if [ -z "$PID" ]; then
         raise "FAIL: Issue during manager start, dm master not running" -l "$fn_name" -ds
@@ -469,6 +483,7 @@ restart_managers()
     fn_name="unit_lib:restart_managers"
     log -deb "$fn_name - Restarting OpenSync managers"
     MANAGER_SCRIPT=$(get_managers_script)
+    # shellcheck disable=2034
     ret=$($MANAGER_SCRIPT restart)
     ec=$?
     log -deb "$fn_name - manager restart exit code ${ec}"
@@ -526,43 +541,6 @@ start_specific_manager()
     if [ ! -x "$manager" ]; then
         log -deb "$fn_name - Manager $manager does not exist or is not executable"
         return 1
-    fi
-
-    # Start manager
-    # shellcheck disable=SC2018,SC2019
-    log -deb "$fn_name - Starting $manager $option" | tr a-z A-Z
-    $manager "$option" >/dev/null 2>&1 &
-    sleep 1
-}
-
-###############################################################################
-# DESCRIPTION:
-#   Function starts a single specific OpenSync manager if exists.
-# INPUT PARAMETER(S):
-#   $1  manager name (required)
-#   $2  option used with start manager (optional)
-# RETURNS:
-#   0   On success.
-#   0   Manager is not executable.
-#   See DESCRIPTION.
-# USAGE EXAMPLE(S):
-#   start_if_specific_manager cm -v
-#   start_if_specific_manager cm -d
-###############################################################################
-start_if_specific_manager()
-{
-    fn_name="unit_lib:start_if_specific_manager"
-    NARGS_MIN=1
-    NARGS_MAX=2
-    [ $# -ge ${NARGS_MIN} ] && [ $# -le ${NARGS_MAX} ] ||
-        raise "${fn_name} requires ${NARGS_MIN}-${NARGS_MAX} input arguments, $# given" -arg
-    manager="${OPENSYNC_ROOTDIR}/bin/$1"
-    option=$2
-
-    # Check if executable
-    if [ ! -x "$manager" ]; then
-        log -deb "$fn_name - Manager $manager does not exist or is not executable"
-        return 0
     fi
 
     # Start manager
@@ -857,7 +835,7 @@ wait_for_empty_ovsdb_table()
 
     log -deb "$fn_name - Waiting for table $ovsdb_table deletion"
     wait_time=0
-    while [ $wait_time -le "$empty_timeout" ] ; do
+    while [ $wait_time -le $empty_timeout ]; do
         wait_time=$((wait_time+1))
 
         log -deb "$fn_name - Select $ovsdb_table try $wait_time"
@@ -932,7 +910,7 @@ wait_ovsdb_entry_remove()
     log -deb "$info_string"
     select_entry_command="$ovsdb_table $conditions_string"
     wait_time=0
-    while [ $wait_time -le "$DEFAULT_WAIT_TIME" ] ; do
+    while [ $wait_time -le $DEFAULT_WAIT_TIME ]; do
         wait_time=$((wait_time+1))
 
         # shellcheck disable=SC2086
@@ -1021,7 +999,7 @@ update_ovsdb_entry()
     entry_command="${OVSH} u $ovsdb_table $conditions_string $update_string"
     log -deb "$fn_name - Executing update command\n$entry_command"
 
-    $($entry_command) || $(return 1)
+    ${entry_command}
     # shellcheck disable=SC2181
     if [ "$?" -eq 0 ]; then
         log -deb "$fn_name - Entry updated"
@@ -1090,9 +1068,7 @@ remove_ovsdb_entry()
 
     remove_command="${OVSH} d $ovsdb_table $conditions_string"
     log -deb "$fn_name - $remove_command"
-
-    $($remove_command) || $(return 1)
-
+    ${remove_command}
     if [ "$?" -eq 0 ]; then
         log -deb "$fn_name - Entry removed"
     else
@@ -1217,7 +1193,7 @@ wait_ovsdb_entry()
     shift
     conditions_string=""
     where_is_string=""
-    exit_code=0
+    expected_ec=0
     ovsh_cmd=${OVSH}
 
     while [ -n "$1" ]; do
@@ -1241,7 +1217,7 @@ wait_ovsdb_entry()
                 shift 2
                 ;;
             -ec)
-                exit_code=1
+                expected_ec=1
                 ;;
             -t)
                 # Timeout is given in seconds, ovsh takes milliseconds
@@ -1259,9 +1235,15 @@ wait_ovsdb_entry()
 
     log -deb "$fn_name - Waiting for entry: \n$wait_entry_command"
 
-    $($wait_entry_command) || $(return 1)
-
-    if [ "$?" -eq "$exit_code" ]; then
+    ${wait_entry_command} 2>/dev/null
+    actual_ec="$?"
+    if [ "$actual_ec" -eq "$expected_ec" ]; then
+        log -deb "$fn_name - SUCCESS: $wait_entry_command"
+        # shellcheck disable=SC2086
+        ${OVSH} s "$ovsdb_table" $conditions_string
+        return 0
+    # ovsh exit code 255 = ovsh wait timed-out
+    elif [ "$expected_ec" -eq "1" ] && [ "$actual_ec" -eq "255" ]; then
         log -deb "$fn_name - SUCCESS: $wait_entry_command"
         # shellcheck disable=SC2086
         ${OVSH} s "$ovsdb_table" $conditions_string
@@ -1325,7 +1307,7 @@ wait_for_function_response()
         log -deb "$fn_name - Waiting for function $function_to_wait_for exit code $wait_for_value"
     fi
 
-    while [ $func_exec_time -le "$wait_time" ] ; do
+    while [ $func_exec_time -le $wait_time ]; do
         log -deb "$fn_name - Executing: $function_to_wait_for"
         func_exec_time=$((func_exec_time+1))
 
@@ -1401,7 +1383,7 @@ wait_for_function_output()
         is_get_ovsdb_entry_value=1
 
     log -deb "$fn_name - Executing $function_to_wait_for, waiting for $wait_for_value response"
-    while [ $fn_exec_cnt -le "$retry_count" ] ; do
+    while [ $fn_exec_cnt -le $retry_count ]; do
         fn_exec_cnt=$(( $fn_exec_cnt + 1 ))
 
         res=$($function_to_wait_for)
@@ -1488,7 +1470,7 @@ wait_for_function_exitcode()
 # DESCRIPTION:
 #   Function returns state of the interface provided in parameter.
 #
-#   Uses and required ifconfig tool to be insalled on device.
+#   Uses and required ifconfig tool to be installed on device.
 #   Provide adequate function in overrides otherwise.
 #
 # INPUT PARAMETER(S):
@@ -1507,6 +1489,56 @@ interface_is_up()
     if_name=$1
 
     ifconfig "$if_name" 2>/dev/null | grep Metric | grep -q UP
+    return $?
+}
+
+###############################################################################
+# DESCRIPTION:
+#   Function drops interface
+#
+#   Uses and required ifconfig tool to be installed on device.
+#   Provide adequate function in overrides otherwise.
+#
+# INPUT PARAMETER(S):
+#   $1  interface name (required)
+# RETURNS:
+#   0   if interface was dropped, non zero otherwise.
+# USAGE EXAMPLE(S):
+#   interface_bring_down eth0
+###############################################################################
+interface_bring_down()
+{
+    fn_name="unit_lib:interface_bring_down"
+    local NARGS=1
+    [ $# -ne ${NARGS} ] &&
+        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+    if_name=$1
+    ifconfig "$if_name" down
+    return $?
+}
+
+###############################################################################
+# DESCRIPTION:
+#   Function brings up interface
+#
+#   Uses and required ifconfig tool to be installed on device.
+#   Provide adequate function in overrides otherwise.
+#
+# INPUT PARAMETER(S):
+#   $1  interface name (required)
+# RETURNS:
+#   0   if interface was bringed up, non zero otherwise.
+# USAGE EXAMPLE(S):
+#   interface_bring_up eth0
+###############################################################################
+interface_bring_up()
+{
+    fn_name="unit_lib:interface_bring_up"
+    local NARGS=1
+    [ $# -ne ${NARGS} ] &&
+        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+    if_name=$1
+    ifconfig "$if_name" up
     return $?
 }
 
@@ -1612,6 +1644,9 @@ check_restore_management_access()
 print_tables()
 {
     fn_name="unit_lib:print_tables"
+    NARGS_MIN=1
+    [ $# -ge ${NARGS_MIN} ] ||
+        raise "${fn_name} requires at least ${NARGS_MIN} input argument(s), $# given" -arg
 
     for table in "$@"
     do
@@ -1943,7 +1978,6 @@ check_if_port_in_bridge()
     br_name=$2
 
     ovs-vsctl list-ports "$br_name" | grep -q "$port_name"
-
     if [ "$?" = 0 ]; then
         log -deb "$fn_name - Port $port_name exists on bridge $br_name"
         return 0
@@ -2113,7 +2147,7 @@ wait_cloud_state()
 # DESCRIPTION:
 #   Function checks kconfig value from ${OPENSYNC_ROOTDIR}/etc/kconfig
 #       if it matches given value
-#   Raises an exception if kconfig fiel is missing from given path.
+#   Raises an exception if kconfig field is missing from given path.
 # INPUT PARAMETER(S):
 #   $1  kconfig option name (required)
 #   $2  kconfig option value to check (required)
@@ -2125,10 +2159,15 @@ wait_cloud_state()
 ###############################################################################
 check_kconfig_option()
 {
+    fn_name="unit_lib:check_kconfig_option"
+    local NARGS=2
+    [ $# -ne ${NARGS} ] &&
+        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
     kconfig_option_name=${1}
     kconfig_option_value=${2}
+
     kconfig_path="${OPENSYNC_ROOTDIR}/etc/kconfig"
-    if ! [ -f "${kconfig_path}" ];then
+    if ! [ -f "${kconfig_path}" ]; then
         raise "kconfig file is not present on ${kconfig_path}" -l "unit_lib:check_kconfig_option" -ds
     fi
     cat "${kconfig_path}" | grep -q "${kconfig_option_name}=${kconfig_option_value}"
@@ -2138,7 +2177,7 @@ check_kconfig_option()
 ###############################################################################
 # DESCRIPTION:
 #   Function echoes kconfig value from ${OPENSYNC_ROOTDIR}/etc/kconfig which matches value name
-#   Raises an exception if kconfig fiel is missing from given path.
+#   Raises an exception if kconfig field is missing from given path.
 # INPUT PARAMETER(S):
 #   $1  kconfig option name (required)
 # RETURNS:
@@ -2149,9 +2188,14 @@ check_kconfig_option()
 ###############################################################################
 get_kconfig_option_value()
 {
+    fn_name="unit_lib:check_kconfig_option"
+    local NARGS=1
+    [ $# -ne ${NARGS} ] &&
+        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
     kconfig_option_name=${1}
+
     kconfig_path="${OPENSYNC_ROOTDIR}/etc/kconfig"
-    if ! [ -f "${kconfig_path}" ];then
+    if ! [ -f "${kconfig_path}" ]; then
         raise "kconfig file is not present on ${kconfig_path}" -l "unit_lib:check_kconfig_option" -ds
     fi
     cat "${kconfig_path}" | grep "${kconfig_option_name}" |  cut -d "=" -f2

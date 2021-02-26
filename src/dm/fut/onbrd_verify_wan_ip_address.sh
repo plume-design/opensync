@@ -25,13 +25,12 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
+# FUT environment loading
+# shellcheck disable=SC1091
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
 tc_name="onbrd/$(basename "$0")"
 manager_setup_file="onbrd/onbrd_setup.sh"
@@ -43,14 +42,13 @@ Description:
     - Validate wan ip address
 Arguments:
     -h  show this help message
-    \$1 (eth_wan_interface) : used as interface name to check WAN IP if WANO is enabled  : (string)(required)
-    \$2 (wan_interface)     : used as interface name to check WAN IP if WANO is disabled : (string)(required)
-    \$3 (wan_ip)            : used as WAN IP address to be checked                       : (string)(required)
+    \$1 (wan_interface)     : used as interface name to check WAN IP if WANO is disabled : (string)(required)
+    \$2 (wan_ip)            : used as WAN IP address to be checked                       : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name} <CERT-FILE>
+                 Run: ./${tc_name} br-wan 192.168.200.10
 Script usage example:
-   ./${tc_name} eth0 br-wan 192.168.200.10
+   ./${tc_name} br-wan 192.168.200.10
 usage_string
 }
 while getopts h option; do
@@ -65,24 +63,10 @@ while getopts h option; do
 done
 NARGS=2
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+wan_interface=${1}
+inet_addr=${2}
 
-eth_wan_interface=${1}
-wan_interface=${2}
-inet_addr=${3}
-
-check_kconfig_option "CONFIG_MANAGER_WANO" "y"
-if [ "$?" -eq 0 ]; then
-    log "$tc_name: WANO is enabled, using ETH-WAN interface (${eth_wan_interface}) as BR-WAN"
-    wan_interface=${eth_wan_interface}
-else
-    log "$tc_name: WANO is disabled, using BR-WAN interface (${wan_interface})"
-fi
-
-log_title "$tc_name: ONBRD test - Verify WAN_IP in  Wifi_Inet_State is correctly applied"
-
-log "$tc_name: Waiting for Wifi_Inet_State::if_name == ${wan_interface}"
-wait_for_function_response 0 "wait_ovsdb_entry Wifi_Inet_State -w if_name $wan_interface" &&
-    log "$tc_name: Wifi_Inet_State is ready"
+log_title "$tc_name: ONBRD test - Verify WAN_IP in Wifi_Inet_State is correctly applied"
 
 log "$tc_name: Verify WAN IP address '$inet_addr' for interface '$wan_interface'"
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$wan_interface" -is inet_addr "$inet_addr" &&

@@ -126,6 +126,7 @@ struct dns_device
 enum {
     URL_BC_SVC,
     URL_WP_SVC,
+    URL_GK_SVC,
 };
 
 #define URL_REPORT_MAX_ELEMS 8
@@ -141,6 +142,13 @@ struct fsm_wp_info
     uint8_t risk_level;
 };
 
+struct fsm_gk_info
+{
+    uint32_t confidence_level;
+    uint32_t category_id;
+    char *gk_policy;
+};
+
 struct fsm_url_reply
 {
     int service_id;
@@ -153,9 +161,11 @@ struct fsm_url_reply
     {
         struct fsm_bc_info bc_info;
         struct fsm_wp_info wp_info;
+        struct fsm_gk_info gk_info;
     } reply_info;
 #define bc reply_info.bc_info
 #define wb reply_info.wp_info
+#define gk reply_info.gk_info
 };
 
 struct fsm_url_request
@@ -176,9 +186,11 @@ enum
     FSM_URL_REQ,
     FSM_HOST_REQ,
     FSM_SNI_REQ,
-    FSM_IP_REQ,
+    FSM_IPV4_REQ,
+    FSM_IPV6_REQ,
     FSM_APP_REQ,
-    FSM_IPFLOW_REQ,
+    FSM_IPV4_FLOW_REQ,
+    FSM_IPV6_FLOW_REQ,
 };
 
 
@@ -222,6 +234,7 @@ struct fqdn_pending_req
     struct policy_table *policy_table;
     char *provider;
     int req_type;
+    bool from_cache;
     struct net_md_stats_accumulator *acc;
     bool (*categories_check)(struct fsm_session *session,
                              struct fsm_policy_req *req,
@@ -258,6 +271,7 @@ struct fsm_policy_req
     struct net_md_stats_accumulator *acc;
     struct fqdn_pending_req *fqdn_req;
     struct fsm_policy_reply reply;
+    struct fsm_policy *policy;
 };
 
 
@@ -395,6 +409,6 @@ void fsm_policy_register_client(struct fsm_policy_client *client);
 void fsm_policy_deregister_client(struct fsm_policy_client *client);
 void fsm_policy_update_clients(struct policy_table *table);
 bool find_mac_in_set(os_macaddr_t *mac, struct str_set *macs_set);
-
+void fsm_free_url_reply(struct fsm_url_reply *reply);
 int fsm_policy_get_req_type(struct fsm_policy_req *req);
 #endif /* FSM_POLICY_H_INCLUDED */

@@ -143,6 +143,8 @@ typedef enum {
 #define SCHEMA_CONSTS_INET_DHCP_FORCE       "force"
 
 #define SCHEMA_CONSTS_KEY_DPP "dpp"
+#define SCHEMA_CONSTS_KEY_SAE "sae"
+#define SCHEMA_CONSTS_KEY_WPA2_PSK "wpa2-psk"
 
 #define SCHEMA_CONSTS_DPP_INIT_ON_ANNOUNCE "initiate_on_announce"
 #define SCHEMA_CONSTS_DPP_INIT_NOW         "initiate_now"

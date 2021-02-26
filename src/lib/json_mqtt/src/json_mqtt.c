@@ -192,6 +192,27 @@ get_action_str(struct fqdn_pending_req *to_report)
     return remote_lookup_failure; /* remote lookup error */
 }
 
+static json_t *
+jencode_gk_report(struct fsm_url_reply *reply)
+{
+    struct fsm_gk_info *info;
+    json_t *categorization;
+
+    categorization = json_object();
+    info = &reply->gk;
+
+    /* Encode categorization */
+    json_object_set_new(categorization, "confidenceLevel",
+                        json_integer(info->confidence_level));
+    json_object_set_new(categorization, "categoryId",
+                        json_integer(info->category_id));
+    if (info->gk_policy != NULL)
+    {
+        json_object_set_new(categorization, "gatekeeperFilter",
+                            json_string(info->gk_policy));
+    }
+    return categorization;
+}
 
 static json_t *
 jencode_wb_report(struct fsm_url_reply *reply)
@@ -217,7 +238,7 @@ jencode_wb_report(struct fsm_url_reply *reply)
         category_id = reply->categories[i];
         /* Encode category and confidence */
         json_object_set_new(category, "categoryId",
-                            json_integer(category_id));;
+                            json_integer(category_id));
 
         /* Append category, confidence data to the categories array */
         json_array_append_new(categories, category);
@@ -283,17 +304,17 @@ static json_t *
 jencode_flow_dir(struct net_md_stats_accumulator *acc)
 {
     const char* dir = NULL;
-    switch (acc->direction)
+    switch(acc->direction)
     {
-    case NET_MD_ACC_INBOUND_DIR:
-        dir = "inbound";
-        break;
-    case NET_MD_ACC_OUTBOUND_DIR:
-        dir = "outbound";
-        break;
-    default:
-        dir = "unknown";
-        break;
+        case NET_MD_ACC_INBOUND_DIR:
+            dir = "inbound";
+            break;
+        case NET_MD_ACC_OUTBOUND_DIR:
+            dir = "outbound";
+            break;
+        default:
+            dir = "unknown";
+            break;
     }
 
     return json_string(dir);
@@ -448,35 +469,36 @@ jencode_url_report(struct fsm_session *session,
     str = url_info->url;
     switch(to_report->req_type)
     {
-    case FSM_FQDN_REQ:
-        json_object_set_new(body, "dnsAddress", json_string(str));
-        break;
+        case FSM_FQDN_REQ:
+            json_object_set_new(body, "dnsAddress", json_string(str));
+            break;
 
-    case FSM_URL_REQ:
-        json_object_set_new(body, "httpUrl", json_string(str));
-        break;
+        case FSM_URL_REQ:
+            json_object_set_new(body, "httpUrl", json_string(str));
+            break;
 
-    case FSM_HOST_REQ:
-        json_object_set_new(body, "httpHost", json_string(str));
-        break;
+        case FSM_HOST_REQ:
+            json_object_set_new(body, "httpHost", json_string(str));
+            break;
 
-    case FSM_SNI_REQ:
-        json_object_set_new(body, "httpsSni", json_string(str));
-        break;
+        case FSM_SNI_REQ:
+            json_object_set_new(body, "httpsSni", json_string(str));
+            break;
 
-    case FSM_IP_REQ:
-        json_object_set_new(body, "classifiedBy", json_string("ip"));
-        json_object_set_new(body, "ipAddr", json_string(str));
-        break;
+        case FSM_IPV4_REQ:
+        case FSM_IPV6_REQ:
+            json_object_set_new(body, "classifiedBy", json_string("ip"));
+            json_object_set_new(body, "ipAddr", json_string(str));
+            break;
 
-    case FSM_APP_REQ:
-        json_object_set_new(body, "classifiedBy", json_string("ip"));
-        json_object_set_new(body, "appName", json_string(str));
-        break;
+        case FSM_APP_REQ:
+            json_object_set_new(body, "classifiedBy", json_string("ip"));
+            json_object_set_new(body, "appName", json_string(str));
+            break;
 
-    default:
-        json_object_set_new(body, "unknownType", json_string(str));
-        break;
+        default:
+            json_object_set_new(body, "unknownType", json_string(str));
+            break;
     }
 
     str = get_action_str(to_report);
@@ -488,9 +510,19 @@ jencode_url_report(struct fsm_session *session,
     str = to_report->rule_name;
     json_object_set_new(body, "ruleName", json_string(str));
 
+    if (to_report->from_cache)
+    {
+        json_object_set_new(body, "fromCache", json_string("true"));
+    }
+    else
+    {
+        json_object_set_new(body, "fromCache", json_string("false"));
+    }
+
     /* Report categories if a categorization query was done and successful */
     report_categories = ((to_report->categorized != FSM_FQDN_CAT_NOP) &&
                          (to_report->categorized != FSM_FQDN_CAT_FAILED));
+
 
     reply = url_info->reply;
 
@@ -503,6 +535,7 @@ jencode_url_report(struct fsm_session *session,
         service_id = reply->service_id;
         if (service_id == URL_BC_SVC) categorization = jencode_bc_report(reply);
         if (service_id == URL_WP_SVC) categorization = jencode_wb_report(reply);
+        if (service_id == URL_GK_SVC) categorization = jencode_gk_report(reply);
 
         /* Add categorization source */
         str = (to_report->provider != NULL ? to_report->provider : no_provider);
@@ -512,29 +545,30 @@ jencode_url_report(struct fsm_session *session,
         /* Add categorization to the body */
         switch(to_report->req_type)
         {
-        case FSM_FQDN_REQ:
-            json_object_set_new(body, "dnsCategorization", categorization);
-            break;
+            case FSM_FQDN_REQ:
+                json_object_set_new(body, "dnsCategorization", categorization);
+                break;
 
-        case FSM_URL_REQ:
-            json_object_set_new(body, "httpUrlCategorization", categorization);
-            break;
+            case FSM_URL_REQ:
+                json_object_set_new(body, "httpUrlCategorization", categorization);
+                break;
 
-        case FSM_HOST_REQ:
-            json_object_set_new(body, "httpHostCategorization", categorization);
-            break;
+            case FSM_HOST_REQ:
+                json_object_set_new(body, "httpHostCategorization", categorization);
+                break;
 
-        case FSM_SNI_REQ:
-            json_object_set_new(body, "httpsSniCategorization", categorization);
-            break;
+            case FSM_SNI_REQ:
+                json_object_set_new(body, "httpsSniCategorization", categorization);
+                break;
 
-        case FSM_IP_REQ:
-            json_object_set_new(body, "ipCategorization", categorization);
-            break;
+            case FSM_IPV4_REQ:
+            case FSM_IPV6_REQ:
+                json_object_set_new(body, "ipCategorization", categorization);
+                break;
 
-        default:
-            json_object_set_new(body, "unknownTypeCategorization", categorization);
-            break;
+            default:
+                json_object_set_new(body, "unknownTypeCategorization", categorization);
+                break;
         }
     }
 
@@ -586,30 +620,31 @@ jencode_url_report(struct fsm_session *session,
     json_array_append_new(body_envelope, body);
     switch(to_report->req_type)
     {
-    case FSM_FQDN_REQ:
-    case FSM_IP_REQ:
-        json_object_set_new(json_report, "dnsQueries", body_envelope);
-        break;
+        case FSM_FQDN_REQ:
+        case FSM_IPV4_REQ:
+        case FSM_IPV6_REQ:
+            json_object_set_new(json_report, "dnsQueries", body_envelope);
+            break;
 
-    case FSM_URL_REQ:
-        json_object_set_new(json_report, "httpUrlQueries", body_envelope);
-        break;
+        case FSM_URL_REQ:
+            json_object_set_new(json_report, "httpUrlQueries", body_envelope);
+            break;
 
-    case FSM_HOST_REQ:
-        json_object_set_new(json_report, "httpHostQueries", body_envelope);
-        break;
+        case FSM_HOST_REQ:
+            json_object_set_new(json_report, "httpHostQueries", body_envelope);
+            break;
 
-    case FSM_SNI_REQ:
-        json_object_set_new(json_report, "httpsSniQueries", body_envelope);
-        break;
+        case FSM_SNI_REQ:
+            json_object_set_new(json_report, "httpsSniQueries", body_envelope);
+            break;
 
-    case FSM_APP_REQ:
-        json_object_set_new(json_report, "appNameQueries", body_envelope);
-        break;
+        case FSM_APP_REQ:
+            json_object_set_new(json_report, "appNameQueries", body_envelope);
+            break;
 
-    default:
-        json_object_set_new(json_report, "unknownTypeQueries", body_envelope);
-        break;
+        default:
+            json_object_set_new(json_report, "unknownTypeQueries", body_envelope);
+            break;
     }
 
     /* Convert json object in a compact string */

@@ -32,4 +32,3 @@ UNIT_TYPE := FUT
 UNIT_DIR := shell/config
 
 UNIT_FILE := default_shell.sh
-UNIT_FILE += empty.sh

@@ -24,6 +24,7 @@
 
 #include "fsm.h"
 #include "fsm_policy.h"
+#include "dns_cache.h"
 #include "dns_parse.h"
 #include "ds_tree.h"
 #include "json_mqtt.h"
@@ -315,6 +316,7 @@ dns_plugin_exit(struct fsm_session *session)
     mgr = dns_get_mgr();
     if (!mgr->initialized) return;
 
+    dns_cache_cleanup_mgr();
     dns_delete_session(session);
 }
 
@@ -407,6 +409,10 @@ dns_mgr_init(void)
     mgr->policy_init = fsm_policy_init;
     mgr->policy_check = fqdn_policy_check;
     mgr->req_cache_ttl = REQ_CACHE_TTL;
+
+    /* Initialize the DNS cache */
+    dns_cache_init();
+
     mgr->initialized = true;
 }
 
@@ -542,19 +548,49 @@ process_response_ip(struct fqdn_pending_req *req,
 
 
 static void
+dns_parse_populate_sockaddr(int af, void *ip_addr, struct sockaddr_storage *dst)
+{
+    if (!ip_addr) return;
+
+    if (af == AF_INET)
+    {
+        struct sockaddr_in *in4 = (struct sockaddr_in *)dst;
+
+        memset(in4, 0, sizeof(struct sockaddr_in));
+        in4->sin_family = af;
+        memcpy(&in4->sin_addr, ip_addr, sizeof(in4->sin_addr));
+    } else if (af == AF_INET6) {
+        struct sockaddr_in6 *in6 = (struct sockaddr_in6 *)dst;
+
+        memset(in6, 0, sizeof(struct sockaddr_in6));
+        in6->sin6_family = af;
+        memcpy(&in6->sin6_addr, ip_addr, sizeof(in6->sin6_addr));
+    }
+    return;
+}
+
+
+static void
 process_response_ips(dns_info *dns, uint8_t *packet,
                      struct fqdn_pending_req *req)
 {
+    struct ip2action_req ip_cache_req;
+    struct sockaddr_storage ipaddr;
     dns_rr *answer;
     const char *res;
     int qtype = -1;
+    uint32_t ttl;
     int i = 0;
+    void *ip;
+    bool rc;
+    bool add_entry;
 
     if (dns == NULL) return;
     if (req->num_replies > 1) return;
 
     if (dns->queries == NULL) LOGT("%s: no queries", __func__);
 
+    ttl = 0;
     answer = dns->answers;
     qtype = dns->queries->type;
     LOGT("%s: query type: %d",
@@ -566,8 +602,11 @@ process_response_ips(dns_info *dns, uint8_t *packet,
              __func__, i, qtype);
         if (answer->type == qtype)
         {
-            LOGT("%s: type %d answer, addr %s",
-                 __func__, qtype, answer->data);
+            add_entry = false;
+            ttl = answer->ttl;
+            ip = packet + answer->type_pos + 10;
+            LOGT("%s: type %d answer, addr %s ttl: %d",
+                 __func__, qtype, answer->data, ttl);
             if (qtype == 1) /* IPv4 redirect */
             {
                 char ipv4_addr[INET_ADDRSTRLEN];
@@ -581,6 +620,8 @@ process_response_ips(dns_info *dns, uint8_t *packet,
                 }
                 else
                 {
+                    add_entry = true;
+                    dns_parse_populate_sockaddr(AF_INET, ip, &ipaddr);
                     process_response_ip(req, ipv4_addr, INET_ADDRSTRLEN);
                 }
             }
@@ -597,9 +638,42 @@ process_response_ips(dns_info *dns, uint8_t *packet,
                 }
                 else
                 {
+                    add_entry = true;
+                    dns_parse_populate_sockaddr(AF_INET6, ip, &ipaddr);
                     process_response_ip(req, ipv6_addr, INET6_ADDRSTRLEN);
                 }
             }
+
+            if (add_entry && (req->req_info->reply != NULL))
+            {
+                memset(&ip_cache_req, 0, sizeof(ip_cache_req));
+                ip_cache_req.device_mac = &req->dev_id;
+                ip_cache_req.ip_addr = &ipaddr;
+                ip_cache_req.cache_ttl = ((req->rd_ttl != -1) ?
+                                          req->rd_ttl : (int)ttl);
+                ip_cache_req.action = req->action;
+                ip_cache_req.policy_idx = req->policy_idx;
+                ip_cache_req.service_id = req->req_info->reply->service_id;
+                ip_cache_req.nelems = req->req_info->reply->nelems;
+                memcpy(ip_cache_req.categories,
+                       req->req_info->reply->categories,
+                       (sizeof(uint8_t) * URL_REPORT_MAX_ELEMS));
+                if (ip_cache_req.service_id == IP2ACTION_BC_SVC)
+                {
+                    memcpy(&ip_cache_req.cache_bc, &req->req_info->reply->bc,
+                           sizeof(struct ip2action_bc_info));
+                }
+                else
+                {
+                    memcpy(&ip_cache_req.cache_wb, &req->req_info->reply->wb,
+                           sizeof(struct ip2action_wb_info));
+                }
+                rc = dns_cache_add_entry(&ip_cache_req);
+                if (rc == false)
+                {
+                    LOGW("%s: Couldn't add ip2action entry to cache.",__func__);
+                }
+           }
         }
         answer = answer->next;
     }
@@ -827,6 +901,7 @@ update_a_rrs(dns_info *dns, uint8_t *packet,
         if (answer->type == qtype)
         {
             uint8_t *p_ttl = packet + answer->type_pos + 4;
+
             LOGT("%s: type %d answer, addr %s",
                  __func__, qtype, answer->data);
             if (qtype == 1)  /* IPv4 redirect */
@@ -1202,7 +1277,7 @@ dns_handler(struct fsm_session *session, struct net_header_parser *net_header)
     req->risk_level = -1;
     req->cat_match = -1;
     req->policy_table = session->policy_client.table;
-
+    req->req_type = FSM_FQDN_REQ;
     set_provider_ops(dns_session, req);
     req->provider = session->provider;
     req_info = req->req_info;
@@ -1596,7 +1671,7 @@ dns_free_req(struct fqdn_pending_req *req)
     req_info = req->req_info;
     for (i = 0; i < req->numq; i++)
     {
-        free(req_info->reply);
+        fsm_free_url_reply(req_info->reply);
         req_info++;
     }
     free(req->req_info);
@@ -2053,6 +2128,10 @@ dns_periodic(struct fsm_session *session)
 
     dns_session = dns_lookup_session(session);
     if (dns_session == NULL) return;
+
+    /* Clean up expired ip2action entries */
+    dns_cache_ttl_cleanup();
+    print_dns_cache_size();
 
     /* Retire unresolved old requests */
     dns_retire_reqs(session);

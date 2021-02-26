@@ -119,8 +119,6 @@ Note-1: the wait for re-connect back to same manager addr because
 #define CM2_MAX_DISCONNECTS             10
 #define CM2_STABLE_PERIOD               300 // 5 min
 #define CM2_RESOLVE_RETRY_THRESHOLD     10
-#define CM2_RESOLVE_FATAL_THRESHOLD     5
-#define CM2_CONNECT_FATAL_THRESHOLD     10
 #define CM2_GW_OFFLINE_RETRY_THRESHOLD  3
 #define CM2_GW_SKIP_RESTART_THRESHOLD   360
 
@@ -395,6 +393,54 @@ static void cm2_extender_init_state(void) {
     g_state.dev_type = CM2_DEVICE_NONE;
 }
 
+bool cm2_enable_gw_offline()
+{
+    bool r;
+
+    if (cm2_is_wifi_type(g_state.link.if_type))
+        return false;
+
+    if (cm2_is_connected_to(CM2_DEST_MANAGER))
+        return false;
+
+    if (g_state.dev_type == CM2_DEVICE_ROUTER) {
+        LOGI("GW offline, skipped for active Router mode");
+        return false;
+    }
+
+    if (!cm2_ovsdb_is_gw_offline_enabled())
+        return false;
+
+    if (cm2_ovsdb_is_gw_offline_active()) {
+        LOGI("GW offline in active state");
+        return true;
+    }
+
+    if (!cm2_ovsdb_is_gw_offline_ready()) {
+        LOGI("GW offline configuration not ready");
+        return false;
+    }
+
+    LOGI("Waiting for applying GW offline functionality [%d,%d]",
+         g_state.cnts.gw_offline + 1, CM2_GW_OFFLINE_RETRY_THRESHOLD);
+
+    if (g_state.cnts.gw_offline < CM2_GW_OFFLINE_RETRY_THRESHOLD)
+        g_state.cnts.gw_offline++;
+
+    if (g_state.cnts.gw_offline != CM2_GW_OFFLINE_RETRY_THRESHOLD)
+        return true;
+
+    r = cm2_ovsdb_enable_gw_offline_conf();
+    if (!r) {
+        LOGW("Enabling GW offline configuration failed");
+        g_state.cnts.gw_offline--;
+    } else {
+        LOGI("GW offline configuration enabled");
+    }
+
+    return true;
+}
+
 static void cm2_trigger_restart_managers(void) {
     bool skip_restart;
     bool r;
@@ -435,35 +481,9 @@ static void cm2_trigger_restart_managers(void) {
         goto restart;
     }
 
-    if (cm2_ovsdb_is_gw_offline_enabled()) {
-        if (cm2_ovsdb_is_gw_offline_active()) {
-            LOGI("GW offline in active state, skip restart managers");
-            goto restart;
-        }
-
-        LOGI("Waiting for applying GW offline functionality [%d,%d]",
-             g_state.cnts.gw_offline, CM2_GW_OFFLINE_RETRY_THRESHOLD);
-
-        skip_restart = true;
-
-        if (g_state.cnts.gw_offline < CM2_GW_OFFLINE_RETRY_THRESHOLD)
-            g_state.cnts.gw_offline++;
-
-        if (g_state.cnts.gw_offline != CM2_GW_OFFLINE_RETRY_THRESHOLD)
-            goto restart;
-
-        if (cm2_ovsdb_is_gw_offline_ready()) {
-            r = cm2_ovsdb_enable_gw_offline_conf();
-            if (!r) {
-                LOGW("Enabling GW offline configuration failed");
-                g_state.cnts.gw_offline--;
-            } else {
-                LOGI("GW offline configuration enabled");
-            }
-        } else {
-            LOGW("GW offline configuration not ready, restart managers");
-            skip_restart = false;
-        }
+    skip_restart = cm2_enable_gw_offline();
+    if (skip_restart) {
+        LOGI("GW offline enabled, skip restart managers");
         goto restart;
     }
 
@@ -486,9 +506,12 @@ restart:
 static void cm2_restart_ovs_connection(bool state) {
     if (cm2_is_extender())
     {
-        if (g_state.cnts.ovs_resolve_fail < CM2_RESOLVE_FATAL_THRESHOLD &&
-            g_state.cnts.ovs_con < CM2_CONNECT_FATAL_THRESHOLD)
+        if (CONFIG_CM2_CLOUD_FATAL_THRESHOLD == 0 ||
+            (g_state.cnts.ovs_resolve_fail < CONFIG_CM2_CLOUD_FATAL_THRESHOLD &&
+             g_state.cnts.ovs_con < CONFIG_CM2_CLOUD_FATAL_THRESHOLD)) {
+            cm2_enable_gw_offline();
             cm2_set_state(state, CM2_STATE_LINK_SEL);
+        }
         else
             cm2_trigger_restart_managers();
     }
@@ -714,9 +737,10 @@ start:
             if (cm2_state_changed()) // first iteration
             {
                 LOGI("Waiting for finish NTP");
+                cm2_connection_req_stability_check(INTERNET_CHECK, true);
             }
 
-            if (cm2_connection_req_stability_check(INTERNET_CHECK | NTP_CHECK, true))
+            if (cm2_connection_req_stability_check(NTP_CHECK, false))
             {
                 cm2_state_e n_state;
 
@@ -779,7 +803,8 @@ start:
                      cm2_curr_addr()->hostname);
 
                 if (!cm2_resolve(g_state.dest)) {
-                    g_state.cnts.ovs_resolve_fail++;
+                    if (CONFIG_CM2_CLOUD_FATAL_THRESHOLD != 0)
+                        g_state.cnts.ovs_resolve_fail++;
                     cm2_restart_ovs_connection(true);
                     return;
                 }
@@ -802,7 +827,8 @@ start:
                     g_state.cnts.ovs_resolve = 0;
                     cm2_resolve_timeout();
                     cm2_ovsdb_refresh_dhcp(uplink);
-                    g_state.cnts.ovs_resolve_fail++;
+                    if (CONFIG_CM2_CLOUD_FATAL_THRESHOLD != 0)
+                        g_state.cnts.ovs_resolve_fail++;
                     cm2_restart_ovs_connection(false);
                     return;
                 }
@@ -825,7 +851,8 @@ start:
             else if (cm2_timeout(false))
             {
                 // stuck? back to init
-                g_state.cnts.ovs_con++;
+                if (CONFIG_CM2_CLOUD_FATAL_THRESHOLD != 0)
+                    g_state.cnts.ovs_con++;
                 cm2_restart_ovs_connection(false);
                 return;
             }
@@ -851,7 +878,8 @@ start:
             {
                 if (!cm2_write_current_target_addr())
                 {
-                    g_state.cnts.ovs_con++;
+                    if (CONFIG_CM2_CLOUD_FATAL_THRESHOLD != 0)
+                        g_state.cnts.ovs_con++;
                     cm2_restart_ovs_connection(false);
                     return;
                 }
@@ -871,7 +899,8 @@ start:
                 else
                 {
                     // no more addresses
-                    g_state.cnts.ovs_con++;
+                    if (CONFIG_CM2_CLOUD_FATAL_THRESHOLD != 0)
+                        g_state.cnts.ovs_con++;
                     cm2_restart_ovs_connection(false);
                     return;
                 }

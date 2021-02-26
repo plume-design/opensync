@@ -45,6 +45,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "target.h"
 #include "json_util.h"
+#include "module.h"
 
 #define MODULE_ID                               LOG_MODULE_ID_OVSDB
 
@@ -53,6 +54,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define PM_LM_CONFIG_DUMMY_PERIODICITY          "weekly"
 #define PM_LM_CONFIG_DUMMY_UPLOAD_TOKEN         ""
 #define PM_LM_CONFIG_DUMMY_UPLOAD_LOCATION      ""
+
+MODULE(pm_lm, pm_lm_init, pm_lm_fini);
 
 
 typedef struct
@@ -249,7 +252,7 @@ static int pm_lm_ovsdb_init(void)
     return 0;
 }
 
-bool pm_lm_init(int argc, char ** argv)
+void pm_lm_init(void *data)
 {
     LOGN("Initializing LM");
 
@@ -261,8 +264,10 @@ bool pm_lm_init(int argc, char ** argv)
 
     if (pm_lm_ovsdb_init()) {
         LOGE("LM: Failed to initialize LM tables");
-        return false;
     }
+}
 
-    return true;
+void pm_lm_fini(void *data)
+{
+    LOGN("Deinitializing LM");
 }

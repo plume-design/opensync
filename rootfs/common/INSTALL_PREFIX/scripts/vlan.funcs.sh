@@ -1,4 +1,4 @@
-#!/bin/sh -e
+#!/bin/sh
 
 # Copyright (c) 2015, Plume Design Inc. All rights reserved.
 # 
@@ -24,3 +24,27 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+
+vlan_log()
+{
+    logger -st vlan "$@"
+}
+
+vlan_ifname()
+{
+    echo "$1.$2"
+}
+
+vlan_add()
+{
+    [ -d "/sys/class/net/$1.$2" ] && return 0
+    vlan_log "Adding VLAN interface $1.$2 usig vconfig"
+    vconfig add "$1" "$2"
+}
+
+vlan_del()
+{
+    [ ! -d "/sys/class/net/$1.$2" ] && return 0
+    vlan_log "Removing VLAN interface $1.$2 using vconfig"
+    vconfig rem "$1.$2"
+}

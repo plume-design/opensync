@@ -169,6 +169,10 @@ fsm_nfq_tap_update(struct fsm_session *session)
     bool ret;
     struct nfq_settings nfqs;
     struct fsm_mgr *mgr;
+    char   *buf_size_str;
+    char   *queue_len_str;
+    uint32_t nlbuf_sz = 3*(1024 * 1024); // 3M netlink packet buffer.
+    uint32_t queue_len = 10240;  // number of packets in queue.
 
     if (session->tap_type != FSM_TAP_NFQ) return false;
 
@@ -183,6 +187,42 @@ fsm_nfq_tap_update(struct fsm_session *session)
     {
         LOGE("%s : nfqs init failed", __func__);
         return false;
+    }
+
+    buf_size_str = fsm_get_other_config_val(session, "nfqueue_buff_size");
+    if (buf_size_str != NULL)
+    {
+        errno = 0;
+        nlbuf_sz = strtoul(buf_size_str, NULL, 10);
+        if (errno != 0)
+        {
+            LOGD("%s: error reading value %s: %s", __func__,
+                 buf_size_str, strerror(errno));
+        }
+    }
+
+    ret = nf_queue_set_nlsock_buffsz(nlbuf_sz);
+    if (ret == false)
+    {
+        LOGE("%s: Failed to set netlink sock buf size[%u].",__func__, nlbuf_sz);
+    }
+
+    queue_len_str = fsm_get_other_config_val(session, "nfqueue_length");
+    if (queue_len_str != NULL)
+    {
+        errno = 0;
+        queue_len = strtoul(queue_len_str, NULL, 10);
+        if (errno != 0)
+        {
+            LOGD("%s: error reading value %s: %s", __func__,
+                 buf_size_str, strerror(errno));
+        }
+    }
+
+    ret = nf_queue_set_queue_maxlen(queue_len);
+    if (ret == false)
+    {
+        LOGE("%s: Failed to set default nfueue length[%u].",__func__,queue_len);
     }
 
     return true;

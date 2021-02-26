@@ -56,6 +56,7 @@ static struct nf_queue_context
     process_nfq_event_cb nfq_cb;
     int    nfq_fd;
     void *user_data;
+    bool initialized;
 } nf_queue_context;
 
 static struct nf_queue_context *
@@ -144,8 +145,8 @@ nf_queue_cb(const struct nlmsghdr *nlh, void *data)
 
     if (tb[NFQA_HWADDR]) phw = mnl_attr_get_payload(tb[NFQA_HWADDR]);
 
-    /* Default verdict is Accept */
-    pkt_info->verdict = NF_ACCEPT;
+    /* Default verdict is Inspect */
+    pkt_info->verdict = NF_UTIL_NFQ_INSPECT;
     pkt_info->packet_id = id;
     pkt_info->payload = mnl_attr_get_payload(tb[NFQA_PAYLOAD]);
     pkt_info->payload_len = mnl_attr_get_payload_len(tb[NFQA_PAYLOAD]);
@@ -236,7 +237,7 @@ nf_queue_send_verdict(struct nlmsghdr *nlh, struct nfqnl_msg_verdict_hdr *vhdr)
     struct nfq_pkt_info *pkt_info;
     struct nlattr *nest;
     int ret;
-    uint32_t mark = 0;
+    uint32_t mark = 1;
 
     ctxt = nf_queue_get_context();
     pkt_info = &ctxt->pkt_info;
@@ -249,8 +250,7 @@ nf_queue_send_verdict(struct nlmsghdr *nlh, struct nfqnl_msg_verdict_hdr *vhdr)
                 vhdr->verdict = htonl(NF_ACCEPT);
                 break;
         case NF_UTIL_NFQ_INSPECT:
-                LOGT("%s: Setting mark 1, need more packets.",__func__);
-                mark = 1;
+                LOGT("%s: Continue inspection, need more packets.",__func__);
                 vhdr->verdict = htonl(NF_ACCEPT);
                 break;
         case NF_UTIL_NFQ_DROP:
@@ -262,9 +262,12 @@ nf_queue_send_verdict(struct nlmsghdr *nlh, struct nfqnl_msg_verdict_hdr *vhdr)
 
     mnl_attr_put(nlh, NFQA_VERDICT_HDR, sizeof(struct nfqnl_msg_verdict_hdr), vhdr);
 
-    nest = mnl_attr_nest_start(nlh, NFQA_CT);
-    mnl_attr_put_u32(nlh, CTA_MARK, htonl(mark));
-    mnl_attr_nest_end(nlh, nest);
+    if (mark == 2 || mark == 3)
+    {
+        nest = mnl_attr_nest_start(nlh, NFQA_CT);
+        mnl_attr_put_u32(nlh, CTA_MARK, htonl(mark));
+        mnl_attr_nest_end(nlh, nest);
+    }
 
     ret = mnl_socket_sendto(ctxt->nfq_mnl, nlh, nlh->nlmsg_len);
     if (ret == -1)
@@ -389,7 +392,7 @@ error:
  * @return 0 if the nfqueue initialization successful, -1 otherwise
  */
 bool
-nfq_set_nlsock_buffsz(uint32_t sock_buff_sz)
+nf_queue_set_nlsock_buffsz(uint32_t sock_buff_sz)
 {
     struct nf_queue_context *ctxt;
     int ret;
@@ -417,7 +420,7 @@ nfq_set_nlsock_buffsz(uint32_t sock_buff_sz)
  * @return 0 if the nfqueue initialization successful, -1 otherwise
  */
 bool
-nfq_set_queue_maxlen(uint32_t queue_maxlen)
+nf_queue_set_queue_maxlen(uint32_t queue_maxlen)
 {
     struct nf_queue_context *ctxt;
     struct nlmsghdr *nlh;
@@ -443,10 +446,10 @@ nf_queue_init(struct nfq_settings *nfqs)
 {
     struct nf_queue_context *ctxt;
     bool ret;
-    uint32_t nlbuf_sz = 3*(1024 * 1024); // 3M netlink packet buffer.
-    uint32_t queue_len = 10240;  // number of packets in queue.
 
     ctxt = nf_queue_get_context();
+    if (ctxt->initialized) return true;
+
     memset(ctxt, 0, sizeof(struct nf_queue_context));
     ctxt->loop = nfqs->loop;
     ctxt->nfq_cb = nfqs->nfq_cb;
@@ -459,19 +462,7 @@ nf_queue_init(struct nfq_settings *nfqs)
         LOGE("%s: nf queue event monitor init failure.", __func__);
         return false;
     }
-
-    ret = nfq_set_nlsock_buffsz(nlbuf_sz);
-    if (ret == false)
-    {
-        LOGE("%s: Failed to set default netlink sock buf size.",__func__);
-    }
-
-    ret = nfq_set_queue_maxlen(queue_len);
-    if (ret == false)
-    {
-        LOGE("%s: Failed to set nf queue's max length.",__func__);
-    }
-
+    ctxt->initialized = true;
     return true;
 }
 
@@ -501,6 +492,7 @@ nf_queue_exit(void)
     nf_queue_send_nlh_request(nlh, NFQA_CFG_CMD, &cmd);
 
     mnl_socket_close(ctxt->nfq_mnl);
+    ctxt->initialized = false;
     return;
 }
 

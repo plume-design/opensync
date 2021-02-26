@@ -27,12 +27,38 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef GATEKEEPER_H_INCLUDED
 #define GATEKEEPER_H_INCLUDED
 
+#include <curl/curl.h>
 #include <limits.h>
 #include <stdint.h>
 
 #include "fsm.h"
 #include "ds_tree.h"
 
+#define GK_PERIODIC_INTERVAL 120
+#define GK_CURL_TIMEOUT      (2*60)
+#define MAX_PATH_LEN 256
+
+struct gk_req_ids
+{
+    uint32_t req_fqdn_id;
+    uint32_t req_ipv4_id;
+    uint32_t req_ipv6_id;
+    uint32_t req_ipv4_tuple_id;
+    uint32_t req_ipv6_tuple_id;
+    uint32_t req_app_id;
+    uint32_t req_https_sni_id;
+    uint32_t req_http_host_id;
+    uint32_t req_http_url_id;
+};
+
+struct gk_curl_easy_info
+{
+    CURL *curl_handle;
+    bool connection_active;
+    time_t connection_time;
+    char *server_url;
+    char *cert_path;
+};
 
 /**
  * @brief the plugin manager, a singleton tracking instances
@@ -43,9 +69,26 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 struct fsm_gk_mgr
 {
     bool initialized;
+    time_t gk_time;
+    struct gk_req_ids req_ids;
+    char ssl_cert_path[MAX_PATH_LEN];
     ds_tree_t fsm_sessions;
 };
 
+struct fsm_gk_verdict
+{
+    struct fsm_policy_req *policy_req;
+    struct gk_packed_buffer *gk_pb;
+};
+
+
+struct gatekeeper_offline
+{
+    time_t offline_ts;
+    time_t check_offline;
+    bool provider_offline;
+    uint32_t connection_failures;
+};
 
 /**
  * @brief a session, instance of processing state and routines.
@@ -62,8 +105,16 @@ struct fsm_gk_mgr
 struct fsm_gk_session
 {
     struct fsm_session *session;
+    struct gk_curl_easy_info ecurl;
     bool initialized;
+    time_t stat_report_ts;
+    int32_t reported_lookup_failures;
+    int32_t remote_lookup_retries;
     ds_tree_node_t session_node;
+    long health_stats_report_interval;
+    char *health_stats_report_topic;
+    struct fsm_url_stats health_stats;
+    struct gatekeeper_offline gk_offline;
 };
 
 
@@ -82,6 +133,17 @@ gatekeeper_get_mgr(void);
 int
 gatekeeper_plugin_init(struct fsm_session *session);
 
+
+/**
+ * @brief initializes gatekeeper module plugin
+ *
+ * Initializes the plugin specific fields of the session,
+ * like the pcap handler and the periodic routines called
+ * by fsm.
+ * @param session pointer provided by fsm
+ */
+int
+gatekeeper_module_init(struct fsm_session *session);
 
 /**
  * @brief session exit point
@@ -103,6 +165,9 @@ gatekeeper_exit(struct fsm_session *session);
 void
 gatekeeper_periodic(struct fsm_session *session);
 
+
+void
+gatekeeper_update(struct fsm_session *session);
 
 /**
  * @brief looks up a session
@@ -158,5 +223,18 @@ gatekeeper_category_check(struct fsm_session *session,
                           struct fsm_policy_req *req,
                           struct fsm_policy *policy);
 
+/**
+ * @brief frees fsm_gk_verdict structure
+ *
+ * @return None
+ */
+void
+free_gk_verdict(struct fsm_gk_verdict *gk_verdict);
+
+bool
+gk_check_policy_in_cache(struct fsm_policy_req *req);
+
+bool
+gk_add_policy_to_cache(struct fsm_policy_req *req);
 
 #endif /* GATEKEEPER_H_INCLUDED */

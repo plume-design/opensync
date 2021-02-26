@@ -46,4 +46,3 @@ UNIT_FILE += unit_lib.sh
 UNIT_FILE += ut_lib.sh
 UNIT_FILE += wm2_lib.sh
 UNIT_FILE += fsm_lib.sh
-UNIT_FILE += lib_sources.sh

@@ -28,10 +28,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <netinet/in.h>
 #include <stdint.h>
 
-#include "network_metadata_report.h"
+#include "fsm_policy.h"
 #include "gatekeeper.pb-c.h"
 #include "gatekeeper_msg.h"
 #include "log.h"
+#include "network_metadata_report.h"
 #include "os_types.h"
 #include "target.h"
 #include "unity.h"
@@ -64,8 +65,6 @@ struct test_tuple
     int direction;
     int originator;
 };
-
-
 struct test_tuple g_v4_tuple =
 {
     .family = AF_INET,
@@ -83,8 +82,8 @@ struct test_tuple g_v6_tuple =
 {
     .family = AF_INET6,
     .transport = IPPROTO_UDP,
-    .src_ip = "1::2::3",
-    .dst_ip = "5::4::3",
+    .src_ip = "1:2::3",
+    .dst_ip = "2:4::3",
     .src_port = 12345,
     .dst_port = 32190,
     .direction = NET_MD_ACC_OUTBOUND_DIR,
@@ -97,6 +96,35 @@ struct net_md_flow_key g_v4_key;
 
 struct net_md_stats_accumulator g_v6_acc;
 struct net_md_flow_key g_v6_key;
+
+char *pb_files[] =
+{
+    "/tmp/gk_fqdn.bin",       /* 0 */
+    "/tmp/gk_https_sni.bin",  /* 1 */
+    "/tmp/gk_http_url.bin",   /* 2 */
+    "/tmp/gk_http_host.bin",  /* 3 */
+    "/tmp/gk_app.bin",        /* 4 */
+    "/tmp/gk_ipv4.bin",       /* 5 */
+    "/tmp/gk_ipv6.bin",       /* 6 */
+};
+
+
+/**
+ * @brief writes the contents of a serialized buffer in a file
+ *
+ * @param pb serialized buffer to be written
+ * @param fpath target file path
+ *
+ * @return returns the number of bytes written
+ */
+static size_t pb2file(struct gk_packed_buffer *pb, char *fpath)
+{
+    FILE *f = fopen(fpath, "w");
+    size_t nwrite = fwrite(pb->buf, 1, pb->len, f);
+    fclose(f);
+
+    return nwrite;
+}
 
 
 void
@@ -118,6 +146,7 @@ setUp(void)
     rc = inet_pton(AF_INET, g_v4_tuple.dst_ip, g_v4_key.dst_ip);
     TEST_ASSERT_EQUAL_INT(1, rc);
 
+    g_v4_key.ip_version = 4;
     g_v4_key.ipprotocol = g_v4_tuple.transport;
     g_v4_key.sport = htons(g_v4_tuple.src_port);
     g_v4_key.dport = htons(g_v4_tuple.dst_port);
@@ -140,6 +169,7 @@ setUp(void)
     rc = inet_pton(AF_INET6, g_v6_tuple.dst_ip, g_v6_key.dst_ip);
     TEST_ASSERT_EQUAL_INT(1, rc);
 
+    g_v6_key.ip_version = 6;
     g_v6_key.ipprotocol = g_v6_tuple.transport;
     g_v6_key.sport = htons(g_v6_tuple.src_port);
     g_v6_key.dport = htons(g_v6_tuple.dst_port);
@@ -180,6 +210,7 @@ test_serialize_fqdn_request(void)
     struct gk_request req;
 
     memset(&req, 0, sizeof(req));
+    req.type = FSM_FQDN_REQ;
     req_data = &req.req;
     gk_fqdn_req = &req_data->gk_fqdn_req;
     gk_fqdn_req->header = &g_gk_req_header;
@@ -187,12 +218,16 @@ test_serialize_fqdn_request(void)
 
     /* Serialize the fqdn request */
     gk_pb = gk_serialize_request(&req);
+    TEST_ASSERT_NOT_NULL(gk_pb);
     TEST_ASSERT_TRUE(gk_pb->len != 0);
 
     /* Deserialize buffer */
     unpacked_req = gatekeeper__southbound__v1__gatekeeper_req__unpack(NULL,
                                                                       gk_pb->len,
                                                                       gk_pb->buf);
+
+    /* Save the serialized protobuf in a file */
+    pb2file(gk_pb, pb_files[0]);
 
     /* Free packed buffer */
     gk_free_packed_buffer(gk_pb);
@@ -216,6 +251,7 @@ test_serialize_https_sni_request(void)
     struct gk_request req;
 
     memset(&req, 0, sizeof(req));
+    req.type = FSM_SNI_REQ;
     req_data = &req.req;
     gk_sni_req = &req_data->gk_sni_req;
     gk_sni_req->header = &g_gk_req_header;
@@ -223,7 +259,11 @@ test_serialize_https_sni_request(void)
 
     /* Serialize the fqdn request */
     gk_pb = gk_serialize_request(&req);
+    TEST_ASSERT_NOT_NULL(gk_pb);
     TEST_ASSERT_TRUE(gk_pb->len != 0);
+
+    /* Save the serialized protobuf in a file */
+    pb2file(gk_pb, pb_files[1]);
 
     /* Deserialize buffer */
     unpacked_req = gatekeeper__southbound__v1__gatekeeper_req__unpack(NULL,
@@ -252,6 +292,7 @@ test_serialize_http_host_request(void)
     struct gk_request req;
 
     memset(&req, 0, sizeof(req));
+    req.type = FSM_HOST_REQ;
     req_data = &req.req;
     gk_host_req = &req_data->gk_host_req;
     gk_host_req->header = &g_gk_req_header;
@@ -259,12 +300,16 @@ test_serialize_http_host_request(void)
 
     /* Serialize the fqdn request */
     gk_pb = gk_serialize_request(&req);
+    TEST_ASSERT_NOT_NULL(gk_pb);
     TEST_ASSERT_TRUE(gk_pb->len != 0);
 
     /* Deserialize buffer */
     unpacked_req = gatekeeper__southbound__v1__gatekeeper_req__unpack(NULL,
                                                                       gk_pb->len,
                                                                       gk_pb->buf);
+
+    /* Save the serialized protobuf in a file */
+    pb2file(gk_pb, pb_files[3]);
 
     /* Free packed buffer */
     gk_free_packed_buffer(gk_pb);
@@ -288,6 +333,7 @@ test_serialize_http_url_request(void)
     struct gk_request req;
 
     memset(&req, 0, sizeof(req));
+    req.type = FSM_URL_REQ;
     req_data = &req.req;
     gk_url_req = &req_data->gk_url_req;
     gk_url_req->header = &g_gk_req_header;
@@ -295,12 +341,16 @@ test_serialize_http_url_request(void)
 
     /* Serialize the fqdn request */
     gk_pb = gk_serialize_request(&req);
+    TEST_ASSERT_NOT_NULL(gk_pb);
     TEST_ASSERT_TRUE(gk_pb->len != 0);
 
     /* Deserialize buffer */
     unpacked_req = gatekeeper__southbound__v1__gatekeeper_req__unpack(NULL,
                                                                       gk_pb->len,
                                                                       gk_pb->buf);
+
+    /* Save the serialized protobuf in a file */
+    pb2file(gk_pb, pb_files[2]);
 
     /* Free packed buffer */
     gk_free_packed_buffer(gk_pb);
@@ -324,6 +374,7 @@ test_serialize_app_request(void)
     struct gk_request req;
 
     memset(&req, 0, sizeof(req));
+    req.type = FSM_APP_REQ;
     req_data = &req.req;
     gk_app_req = &req_data->gk_app_req;
     gk_app_req->header = &g_gk_req_header;
@@ -331,12 +382,16 @@ test_serialize_app_request(void)
 
     /* Serialize the fqdn request */
     gk_pb = gk_serialize_request(&req);
+    TEST_ASSERT_NOT_NULL(gk_pb);
     TEST_ASSERT_TRUE(gk_pb->len != 0);
 
     /* Deserialize buffer */
     unpacked_req = gatekeeper__southbound__v1__gatekeeper_req__unpack(NULL,
                                                                       gk_pb->len,
                                                                       gk_pb->buf);
+
+    /* Save the serialized protobuf in a file */
+    pb2file(gk_pb, pb_files[4]);
 
     /* Free packed buffer */
     gk_free_packed_buffer(gk_pb);
@@ -359,6 +414,7 @@ test_serialize_ipv4_request(void)
     struct gk_request req;
 
     memset(&req, 0, sizeof(req));
+    req.type = FSM_IPV4_REQ;
     req_data = &req.req;
     gk_ip_req = &req_data->gk_ip_req;
     gk_ip_req->header = &g_gk_req_header;
@@ -366,12 +422,16 @@ test_serialize_ipv4_request(void)
 
     /* Serialize the fqdn request */
     gk_pb = gk_serialize_request(&req);
+    TEST_ASSERT_NOT_NULL(gk_pb);
     TEST_ASSERT_TRUE(gk_pb->len != 0);
 
     /* Deserialize buffer */
     unpacked_req = gatekeeper__southbound__v1__gatekeeper_req__unpack(NULL,
                                                                       gk_pb->len,
                                                                       gk_pb->buf);
+
+    /* Save the serialized protobuf in a file */
+    pb2file(gk_pb, pb_files[5]);
 
     /* Free packed buffer */
     gk_free_packed_buffer(gk_pb);
@@ -394,6 +454,7 @@ test_serialize_ipv6_request(void)
     struct gk_request req;
 
     memset(&req, 0, sizeof(req));
+    req.type = FSM_IPV6_REQ;
     req_data = &req.req;
     gk_ip_req = &req_data->gk_ip_req;
     gk_ip_req->header = &g_gk_req_header;
@@ -401,12 +462,16 @@ test_serialize_ipv6_request(void)
 
     /* Serialize the fqdn request */
     gk_pb = gk_serialize_request(&req);
+    TEST_ASSERT_NOT_NULL(gk_pb);
     TEST_ASSERT_TRUE(gk_pb->len != 0);
 
     /* Deserialize buffer */
     unpacked_req = gatekeeper__southbound__v1__gatekeeper_req__unpack(NULL,
                                                                       gk_pb->len,
                                                                       gk_pb->buf);
+
+    /* Save the serialized protobuf in a file */
+    pb2file(gk_pb, pb_files[6]);
 
     /* Free packed buffer */
     gk_free_packed_buffer(gk_pb);

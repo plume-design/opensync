@@ -1,0 +1,13 @@
+config OSN_BACKEND_LTE_NULL
+    bool "Null"
+    help
+        Use dummy LTE implementation for platforms where LTE functionality is
+        not desired or not supported.
+
+config OSN_BACKEND_LTE_LINUX
+    bool "Linux"
+    select OSN_LINUX_ENABLED
+    select OSN_LINUX_LTE
+    help
+        Use the Linux LTE implementation that uses the Quectel app to initialize LTE interfaces.
+

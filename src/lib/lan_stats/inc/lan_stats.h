@@ -63,6 +63,9 @@ typedef struct dp_ctl_stats_
     unsigned long   pkts;
     unsigned long   bytes;
     time_t          stime;
+
+    ds_tree_node_t  dp_tnode;
 } dp_ctl_stats_t;
+
 
 #endif /* LAN_STATS_H_INCLUDED */

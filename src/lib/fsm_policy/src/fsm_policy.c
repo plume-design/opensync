@@ -55,6 +55,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fsm.h"
 #include "policy_tags.h"
 #include "fsm_policy.h"
+#include "dns_cache.h"
 
 
 static char tag_marker[2] = "${";
@@ -146,6 +147,18 @@ void fsm_walk_policy_macs(struct fsm_policy *p)
             }
         }
     }
+}
+
+
+void fsm_free_url_reply(struct fsm_url_reply *reply)
+{
+    if (reply == NULL) return;
+
+    if (reply->service_id == URL_GK_SVC)
+    {
+        free(reply->reply_info.gk_info.gk_policy);
+    }
+    free(reply);
 }
 
 
@@ -537,6 +550,9 @@ static bool fsm_ip_check(struct fsm_policy_req *req,
  */
 static void set_action(struct fsm_policy_req *req, struct fsm_policy *p)
 {
+    if (req->fqdn_req->from_cache) return;
+    if (p->action == FSM_GATEKEEPER_REQ) return;
+
     if (p->action == FSM_ACTION_NONE)
     {
         req->reply.action = FSM_OBSERVED;
@@ -664,6 +680,61 @@ void set_policy_redirects(struct fsm_policy_req *req,
 }
 
 /**
+ * @brief Look up for dns cache entry
+ *
+ * @param req the request
+ */
+
+bool fsm_dns_cache_lookup(struct fsm_policy_req *req)
+{
+    struct ip2action_req  lkp_req;
+    int req_type;
+    bool rc;
+
+    req_type = req->fqdn_req->req_type;
+    if (req_type == FSM_IPV4_REQ || req_type == FSM_IPV6_REQ)
+    {
+        if (req->fqdn_req->from_cache) return true;
+
+        lkp_req.device_mac = req->device_id;
+        lkp_req.ip_addr = req->ip_addr;
+        rc = dns_cache_ip2action_lookup(&lkp_req);
+        if (rc)
+        {
+            struct fsm_url_reply *reply;
+            req->fqdn_req->from_cache = true;
+            req->reply.action = lkp_req.action;
+            req->fqdn_req->policy_idx = lkp_req.policy_idx;
+
+            reply = req->fqdn_req->req_info->reply;
+            reply = calloc(1, sizeof(struct fsm_url_reply));
+            if (reply == NULL) return false;
+
+            reply->service_id = lkp_req.service_id;
+            reply->nelems = lkp_req.nelems;
+            memcpy(reply->categories, lkp_req.categories,
+                   (sizeof(uint8_t) * URL_REPORT_MAX_ELEMS));
+            if (lkp_req.service_id == IP2ACTION_BC_SVC)
+            {
+              memcpy(&reply->bc, &lkp_req.cache_bc,
+                     sizeof(struct ip2action_bc_info));
+            }
+           else
+           {
+              memcpy(&reply->wb, &lkp_req.cache_wb,
+                     sizeof(struct ip2action_wb_info));
+           }
+
+           req->fqdn_req->categorized = FSM_FQDN_CAT_SUCCESS;
+           req->fqdn_req->req_info->reply = reply;
+           return true;
+        }
+    }
+
+    return false;
+}
+
+/**
  * @brief Applies categorization policy
  *
  * @param session the requesting session
@@ -677,6 +748,9 @@ bool fsm_cat_check(struct fsm_session *session,
     struct fsm_policy_rules *rules;
     bool rc;
 
+    rc = fsm_dns_cache_lookup(req);
+    if (rc) return true;
+
     /* If no categorization request, return success */
     rules = &policy->rules;
     if (!rules->cat_rule_present) return true;
@@ -686,6 +760,29 @@ bool fsm_cat_check(struct fsm_session *session,
      * Return failure.
      */
     if (req->fqdn_req->categories_check == NULL) return false;
+
+    /*
+     * If the FQDN is already categorized, don't check it again.
+     * This optimizes to do only one categorization lookup per fqdn request
+     */
+    if (req->fqdn_req->categorized != FSM_FQDN_CAT_NOP)
+    {
+        rc = fsm_fqdncats_in_set(req, policy);
+
+        /*
+         * If category in set and policy applies to categories out of the set,
+         * no match
+         */
+        if (rc && (rules->cat_op == CAT_OP_OUT)) return false;
+
+        /*
+         * If category not in set and policy applies to categories in the set,
+         * no match
+         */
+        if (!rc && (rules->cat_op == CAT_OP_IN)) return false;
+
+        return true;
+    }
 
     /* Apply the web_cat rules */
     rc = req->fqdn_req->categories_check(session, req, policy);
@@ -707,6 +804,9 @@ bool fsm_risk_level_check(struct fsm_session *session,
 {
     struct fsm_policy_rules *rules;
     bool rc;
+
+    rc = fsm_dns_cache_lookup(req);
+    if (rc) return true;
 
     /* If no risk level request, return success */
     rules = &policy->rules;
@@ -739,9 +839,11 @@ bool fsm_gatekeeper_check(struct fsm_session *session,
      */
     if (req->fqdn_req->gatekeeper_req == NULL) return false;
 
+    /* Save the policy */
+    req->policy = p;
+
     /* Apply the gatekeeper rules */
     rc = req->fqdn_req->gatekeeper_req(session, req);
-
     return rc;
 }
 
@@ -759,6 +861,7 @@ void fsm_apply_policies(struct fsm_session *session,
     struct fsm_policy *last_match_policy;
     struct policy_table *table;
     struct fsm_policy *p;
+    int req_type;
 
     int i;
     bool rc, matched = false;
@@ -770,6 +873,9 @@ void fsm_apply_policies(struct fsm_session *session,
         req->reply.log = FSM_REPORT_NONE;
         return;
     }
+
+    req_type = fsm_policy_get_req_type(req);
+    LOGT("%s(): request type %d", __func__, req_type);
 
     last_match_policy = NULL;
 
@@ -812,7 +918,13 @@ void fsm_apply_policies(struct fsm_session *session,
     if (matched)
     {
         p = last_match_policy;
-        fsm_gatekeeper_check(session, req, p);
+        rc = fsm_gatekeeper_check(session, req, p);
+        if (!rc)
+        {
+            req->reply.action = FSM_NO_MATCH;
+            req->reply.log = FSM_REPORT_NONE;
+            return;
+        }
         set_reporting(req, p);
         set_tag_update(req, p);
         set_action(req, p);

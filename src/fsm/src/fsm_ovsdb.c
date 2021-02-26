@@ -883,12 +883,15 @@ fsm_free_session(struct fsm_session *session)
     /* free fsm tap resources */
     fsm_free_tap_resources(session);
 
+    /* Call the session exit routine */
+    if (session->ops.exit != NULL) session->ops.exit(session);
+
     /* Free optional dpi context */
     ret = fsm_is_dpi(session);
     if (ret) fsm_free_dpi_context(session);
 
-    /* Call the session exit routine */
-    if (session->ops.exit != NULL) session->ops.exit(session);
+    ret = fsm_is_dpi_client(session);
+    if (ret) fsm_free_dpi_plugin_client(session);
 
     /* Close the dynamic library handler */
     if (session->handle != NULL) dlclose(session->handle);

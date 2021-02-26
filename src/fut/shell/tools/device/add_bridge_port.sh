@@ -25,14 +25,11 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-# Include basic environment config from default shell file and if any from FUT framework generated /tmp/fut_set_env.sh file
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
-source ${FUT_TOPDIR}/shell/lib/nm2_lib.sh
-source ${LIB_OVERRIDE_FILE}
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
+source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
 tc_name="tools/device/$(basename "$0")"
 usage()
@@ -62,10 +59,10 @@ done
 NARGS=2
 [ $# -lt ${NARGS} ] && raise "Requires at least '${NARGS}' input argument(s)" -arg
 
-lan_bridge=${1}
+bridge=${1}
 port_if=${2}
-add_bridge_port "${lan_bridge}" "${port_if}" &&
-    log -deb "$tc_name: Interface ${port_if} successfully added to bridge ${lan_bridge}" ||
-    raise "Failed to add interface ${port_if} to bridge ${lan_bridge}" -l "$tc_name" -ds
+add_bridge_port "${bridge}" "${port_if}" &&
+    log -deb "$tc_name: Interface ${port_if} successfully added to bridge ${bridge}" ||
+    raise "Failed to add interface ${port_if} to bridge ${bridge}" -l "$tc_name" -ds
 
 exit 0

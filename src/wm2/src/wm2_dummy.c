@@ -74,7 +74,7 @@ static ev_io g_cmd_io;
 static FILE *g_cmd;
 
 static void
-dummy_wm_cmd_cb(EV_P_ ev_child *c, int events)
+wm2_dummy_cmd_cb(EV_P_ ev_child *c, int events)
 {
     LOGI("cmd finished, terminating %d", c->rstatus);
     assert(c->rstatus == 0);
@@ -82,7 +82,7 @@ dummy_wm_cmd_cb(EV_P_ ev_child *c, int events)
 }
 
 static void
-dummy_wm_cmd_io_cb(EV_P_ ev_io *io, int events)
+wm2_dummy_cmd_io_cb(EV_P_ ev_io *io, int events)
 {
     char buf[16*1024] = {0};
     char *ptr = buf;
@@ -190,7 +190,7 @@ dummy_wm_cmd_io_cb(EV_P_ ev_io *io, int events)
 
 __attribute__((constructor))
 static void
-target_dummy_init(void)
+wm2_dummy_target_dummy_init(void)
 {
     const char *cmd = getenv("DUMMY_WM_CMD");
     char buf[4096];
@@ -203,7 +203,7 @@ target_dummy_init(void)
     LOGD("%s: system() returned %d", __func__, rc);
 }
 
-bool target_radio_init(const struct target_radio_ops *ops)
+bool wm2_dummy_target_radio_init(const struct target_radio_ops *ops)
 {
     const char *cmd = getenv("DUMMY_WM_CMD");
 
@@ -228,10 +228,10 @@ bool target_radio_init(const struct target_radio_ops *ops)
             assert(0); /* never reached */
         }
 
-        ev_io_init(&g_cmd_io, dummy_wm_cmd_io_cb, g_cmd_stdout[0], EV_READ);
+        ev_io_init(&g_cmd_io, wm2_dummy_cmd_io_cb, g_cmd_stdout[0], EV_READ);
         ev_io_start(EV_DEFAULT_ &g_cmd_io);
 
-        ev_child_init(&g_cmd_child, dummy_wm_cmd_cb, pid, trace);
+        ev_child_init(&g_cmd_child, wm2_dummy_cmd_cb, pid, trace);
         ev_child_start(EV_DEFAULT_ &g_cmd_child);
     }
 
@@ -241,18 +241,18 @@ bool target_radio_init(const struct target_radio_ops *ops)
     return atoi(file_geta(F("radio_init")) ?: "1");
 }
 
-bool target_radio_config_init2(void)
+bool wm2_dummy_target_radio_config_init2(void)
 {
     return atoi(file_geta(F("radio_config_init2")) ?: "0");
 }
 
-bool target_radio_config_need_reset(void)
+bool wm2_dummy_target_radio_config_need_reset(void)
 {
     return atoi(file_geta(F("radio_config_need_reset")) ?: "0");
 }
 
-bool target_radio_config_set2(const struct schema_Wifi_Radio_Config *rconf,
-                              const struct schema_Wifi_Radio_Config_flags *changed)
+bool wm2_dummy_target_radio_config_set2(const struct schema_Wifi_Radio_Config *rconf,
+                                        const struct schema_Wifi_Radio_Config_flags *changed)
 {
     struct schema_Wifi_Radio_State rstate = {0};
 
@@ -278,11 +278,11 @@ bool target_radio_config_set2(const struct schema_Wifi_Radio_Config *rconf,
     return true;
 }
 
-bool target_vif_config_set2(const struct schema_Wifi_VIF_Config *vconf,
-                            const struct schema_Wifi_Radio_Config *rconf,
-                            const struct schema_Wifi_Credential_Config *cconfs,
-                            const struct schema_Wifi_VIF_Config_flags *changed,
-                            int num_cconfs)
+bool wm2_dummy_target_vif_config_set2(const struct schema_Wifi_VIF_Config *vconf,
+                                      const struct schema_Wifi_Radio_Config *rconf,
+                                      const struct schema_Wifi_Credential_Config *cconfs,
+                                      const struct schema_Wifi_VIF_Config_flags *changed,
+                                      int num_cconfs)
 {
     struct schema_Wifi_VIF_State vstate = {0};
 
@@ -335,20 +335,25 @@ bool target_vif_config_set2(const struct schema_Wifi_VIF_Config *vconf,
     return true;
 }
 
-bool target_dpp_supported(void)
+bool wm2_dummy_target_dpp_supported(void)
 {
     return atoi(file_geta(F("dpp_supported")) ?: "1");
 }
 
-bool target_dpp_config_set(const struct schema_DPP_Config *config)
+bool wm2_dummy_target_dpp_config_set(const struct schema_DPP_Config *config)
 {
     return atoi(file_geta(F("dpp_config")) ?: "1");
 }
 
-bool target_dpp_key_get(struct target_dpp_key *key)
+bool wm2_dummy_target_dpp_key_get(struct target_dpp_key *key)
 {
     key->type = atoi(file_geta(F("dpp_key_curve")) ?: "0");
     STRSCPY_WARN(key->hex, file_geta(F("dpp_key_hex")) ?: "");
 
-    return atoi(file_geta(F("dpp_key")) ?: "1");
+    return atoi(file_geta(F("dpp_key")) ?: "0");
+}
+
+bool wm2_dummy_target_desired(void)
+{
+    return strlen(getenv("DUMMY_WM_CMD") ?: "") > 0;
 }

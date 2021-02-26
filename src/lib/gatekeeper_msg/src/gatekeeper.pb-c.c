@@ -2159,7 +2159,7 @@ const ProtobufCMessageDescriptor gatekeeper__southbound__v1__gatekeeper_req__des
   (ProtobufCMessageInit) gatekeeper__southbound__v1__gatekeeper_req__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
-static const ProtobufCFieldDescriptor gatekeeper__southbound__v1__gatekeeper_common_reply__field_descriptors[3] =
+static const ProtobufCFieldDescriptor gatekeeper__southbound__v1__gatekeeper_common_reply__field_descriptors[6] =
 {
   {
     "request_id",
@@ -2197,16 +2197,55 @@ static const ProtobufCFieldDescriptor gatekeeper__southbound__v1__gatekeeper_com
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
+  {
+    "policy",
+    4,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_STRING,
+    0,   /* quantifier_offset */
+    offsetof(Gatekeeper__Southbound__V1__GatekeeperCommonReply, policy),
+    NULL,
+    &protobuf_c_empty_string,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "category_id",
+    5,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_UINT32,
+    0,   /* quantifier_offset */
+    offsetof(Gatekeeper__Southbound__V1__GatekeeperCommonReply, category_id),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "confidence_level",
+    6,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_UINT32,
+    0,   /* quantifier_offset */
+    offsetof(Gatekeeper__Southbound__V1__GatekeeperCommonReply, confidence_level),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
 };
 static const unsigned gatekeeper__southbound__v1__gatekeeper_common_reply__field_indices_by_name[] = {
   1,   /* field[1] = action */
+  4,   /* field[4] = category_id */
+  5,   /* field[5] = confidence_level */
+  3,   /* field[3] = policy */
   0,   /* field[0] = request_id */
   2,   /* field[2] = ttl */
 };
 static const ProtobufCIntRange gatekeeper__southbound__v1__gatekeeper_common_reply__number_ranges[1 + 1] =
 {
   { 1, 0 },
-  { 0, 3 }
+  { 0, 6 }
 };
 const ProtobufCMessageDescriptor gatekeeper__southbound__v1__gatekeeper_common_reply__descriptor =
 {
@@ -2216,7 +2255,7 @@ const ProtobufCMessageDescriptor gatekeeper__southbound__v1__gatekeeper_common_r
   "Gatekeeper__Southbound__V1__GatekeeperCommonReply",
   "gatekeeper.southbound.v1",
   sizeof(Gatekeeper__Southbound__V1__GatekeeperCommonReply),
-  3,
+  6,
   gatekeeper__southbound__v1__gatekeeper_common_reply__field_descriptors,
   gatekeeper__southbound__v1__gatekeeper_common_reply__field_indices_by_name,
   1,  gatekeeper__southbound__v1__gatekeeper_common_reply__number_ranges,

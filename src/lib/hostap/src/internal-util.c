@@ -55,7 +55,9 @@ util_vif_get_wpa_pairwise(const struct schema_Wifi_VIF_Config *vconf,
 
     if (util_vif_wpa_key_mgmt_match(vconf, "wpa-"))
         csnprintf(&buf, &len, "TKIP ");
-    if (util_vif_wpa_key_mgmt_match(vconf, "wpa2-") || util_vif_wpa_key_mgmt_match(vconf, "sae"))
+    if (util_vif_wpa_key_mgmt_match(vconf, "wpa2-") ||
+        util_vif_wpa_key_mgmt_match(vconf, "sae") ||
+        util_vif_wpa_key_mgmt_match(vconf, "dpp"))
         csnprintf(&buf, &len, "CCMP ");
 
     WARN_ON(len == 1); /* likely buf was truncated */
@@ -77,6 +79,7 @@ util_vif_get_wpa_key_mgmt(const struct schema_Wifi_VIF_Config *vconf,
     if (util_vif_wpa_key_mgmt_match(vconf, "wpa2-eap")) csnprintf(&buf, &len, "WPA-EAP ");
     if (util_vif_wpa_key_mgmt_match(vconf, "sae")) csnprintf(&buf, &len, "SAE ");
     if (util_vif_wpa_key_mgmt_match(vconf, "ft-wpa2-psk")) csnprintf(&buf, &len, "FT-PSK ");
+    if (util_vif_wpa_key_mgmt_match(vconf, "dpp")) csnprintf(&buf, &len, "DPP ");
 
     WARN_ON(len == 1); /* likely buf was truncated */
 }
@@ -86,22 +89,22 @@ util_vif_get_ieee80211w(const struct schema_Wifi_VIF_Config *vconf,
                         char *buf,
                         size_t len)
 {
+    bool need_11w = util_vif_wpa_key_mgmt_match(vconf, "sae")
+                 || util_vif_wpa_key_mgmt_match(vconf, "dpp");
+    bool non_11w = util_vif_wpa_key_mgmt_match(vconf, "ft-wpa2-")
+                || util_vif_wpa_key_mgmt_match(vconf, "wpa2-");
+
     memset(buf, 0, len);
 
     if (!vconf->wpa)
         return;
 
-    if (util_vif_wpa_key_mgmt_match(vconf, "sae")) {
-        if (vconf->wpa_key_mgmt_len >= 2) {
-            /* Mixed mode with SAE, PMF is optional */
-            csnprintf(&buf, &len, "1");
-        }
-        else {
-            /* SAE-only, PMF is required */
+    if (need_11w) {
+        if (non_11w)
+            csnprintf(&buf, &len, "1"); /* optional, for mixed mode */
+        else
             csnprintf(&buf, &len, "2");
-        }
     }
-
     /* For non-SAE configs leave ieee80211w empty ("") */
 
     WARN_ON(len == 1); /* likely buf was truncated */

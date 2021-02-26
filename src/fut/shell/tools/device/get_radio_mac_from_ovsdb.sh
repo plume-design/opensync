@@ -25,10 +25,12 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-source /tmp/fut-base/shell/config/default_shell.sh
-[ -e "/tmp/fut_set_env.sh" ] && source /tmp/fut_set_env.sh
-source ${FUT_TOPDIR}/shell/lib/unit_lib.sh
-source ${LIB_OVERRIDE_FILE}
+# FUT environment loading
+# Script echoes single line so we are redirecting source output to /dev/null
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh &> /dev/null
+source /tmp/fut-base/shell/config/default_shell.sh &> /dev/null
+source "${FUT_TOPDIR}/shell/lib/unit_lib.sh" &> /dev/null
+[ -n "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" &> /dev/null
 
 tc_name="tools/device/$(basename "$0")"
 usage()

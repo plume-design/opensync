@@ -27,7 +27,7 @@
 # Gate Keeper plugin
 #
 ###############################################################################
-UNIT_NAME := fsm_gk
+UNIT_NAME := fsm_gatekeeper
 
 UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM),n,y)
 
@@ -42,7 +42,8 @@ else
 endif
 
 UNIT_SRC := src/gatekeeper.c
-UNIT_SRC += src/gatekeeper_curl.c
+UNIT_SRC += src/gatekeeper_multi_curl.c
+UNIT_SRC += src/gatekeeper_single_curl.c
 UNIT_SRC += src/gatekeeper_data.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
@@ -56,3 +57,5 @@ UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 UNIT_DEPS := src/lib/log
 UNIT_DEPS += src/lib/fsm_policy
 UNIT_DEPS += src/lib/gatekeeper_msg
+UNIT_DEPS += src/lib/gatekeeper_cache
+UNIT_DEPS += src/lib/network_telemetry

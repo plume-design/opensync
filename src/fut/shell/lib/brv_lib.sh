@@ -40,16 +40,9 @@
 #   which
 
 # Include basic environment config
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source "${FUT_TOPDIR}/shell/config/default_shell.sh"
-fi
-# Sourcing guard variable
-export BRV_LIB_SOURCED=True
-
-source "${FUT_TOPDIR}/shell/lib/base_lib.sh"
-
+export FUT_BRV_LIB_SRC=true
+[ "${FUT_BASE_LIB_SRC}" != true ] && source "${FUT_TOPDIR}/shell/lib/base_lib.sh"
+echo "${FUT_TOPDIR}/shell/lib/brv_lib.sh sourced"
 ####################### INFORMATION SECTION - START ###########################
 #
 #   Base library of common BRV functions

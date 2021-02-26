@@ -24,7 +24,6 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-
 #
 # Base library of shared functions with minimal prerequisites:
 #   [
@@ -33,7 +32,7 @@
 #   echo
 #   printf
 #
-
+echo "${FUT_TOPDIR}/shell/lib/base_lib.sh sourced"
 ###############################################################################
 # DESCRIPTION:
 #   Function is used to raise an exception, usually during test execution.
@@ -124,6 +123,12 @@ raise()
             -tc)
                 exception_name="TestFailure"
                 exception_type="FAIL"
+                ;;
+            # Use for testcase failures
+            -olfm)
+                exception_name="OverrideLibFileMissing"
+                exception_type="FAIL"
+                exception_msg="Missing LIB_OVERRIDE_FILE=${LIB_OVERRIDE_FILE} file. Check LIB_OVERRIDE_FILE and file existence"
                 ;;
             # Use when error occurred due to invalid or missing argument
             -arg)

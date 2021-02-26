@@ -156,7 +156,7 @@ void nf_queue_exit(void);
 
 bool nf_queue_set_verdict(uint32_t packet_id, int action);
 
-bool nfq_set_nlsock_buffsz(uint32_t sock_buff_sz);
+bool nf_queue_set_nlsock_buffsz(uint32_t sock_buff_sz);
 
-bool nfq_set_queue_maxlen(uint32_t queue_maxlen);
+bool nf_queue_set_queue_maxlen(uint32_t queue_maxlen);
 #endif /* NF_UTILS_H_INCLUDED */

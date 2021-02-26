@@ -40,11 +40,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ds_dlist.h"
 #include "target.h"
 #include "wm2.h"
+#include "wm2_target.h"
 
-#define WM2_DPP_RECALC_SECONDS atoi(getenv("WM2_DPP_RECALC_SECONDS") ?: "3")
+#define WM2_DPP_RECALC_SECONDS atoi(getenv("WM2_DPP_RECALC_SECONDS") ?: "1")
 #define WM2_DPP_TRIES atoi(getenv("WM2_DPP_TRIES") ?: "3")
 #define WM2_DPP_ONBOARD_TIMEOUT_SECONDS atoi(getenv("WM2_DPP_ONBOARD_TIMEOUT_SECONDS") ?: "30")
 #define WM2_DPP_SSID_LEN 32
+#define WM2_DPP_PSK_LEN 64
 
 /**
  * There may be multiple jobs in a list. However at any
@@ -55,6 +57,7 @@ struct wm2_dpp_job {
     struct ds_dlist_node list;
     struct schema_DPP_Config config;
     bool gone;
+    bool interrupted;
     int tries_left;
 };
 
@@ -284,7 +287,6 @@ static void
 wm2_dpp_jobs_interrupt(void)
 {
     struct wm2_dpp_job *job;
-    bool ok;
 
     job = wm2_dpp_jobs_get_current();
     if (!job)
@@ -293,9 +295,23 @@ wm2_dpp_jobs_interrupt(void)
     LOGI("dpp: %s: interrupting, will restart soon", job->config._uuid.uuid);
 
     ev_timer_stop(EV_DEFAULT_ &g_wm2_dpp_timeout_timer);
-    SCHEMA_SET_STR(job->config.status, SCHEMA_CONSTS_DPP_REQUESTED);
-    ok = ovsdb_table_update(&table_DPP_Config, &job->config);
-    WARN_ON(!ok);
+    job->interrupted = true;
+    ovsdb_table_update(&table_DPP_Config, &job->config);
+}
+
+static const char *
+wm2_dpp_keytype_to_str(enum target_dpp_key_type type)
+{
+    switch (type) {
+        case TARGET_DPP_KEY_PRIME256V1: return SCHEMA_CONSTS_DPP_PRIME256V1;
+        case TARGET_DPP_KEY_SECP384R1: return SCHEMA_CONSTS_DPP_SECP384R1;
+        case TARGET_DPP_KEY_SECP512R1: return SCHEMA_CONSTS_DPP_SECP521R1;
+        case TARGET_DPP_KEY_BRAINPOOLP256R1: return SCHEMA_CONSTS_DPP_BRAINPOOLP256R1;
+        case TARGET_DPP_KEY_BRAINPOOLP384R1: return SCHEMA_CONSTS_DPP_BRAINPOOLP384R1;
+        case TARGET_DPP_KEY_BRAINPOOLP512R1: return SCHEMA_CONSTS_DPP_BRAINPOOLP512R1;
+    }
+    WARN_ON(1);
+    return "";
 }
 
 static const char *
@@ -336,13 +352,48 @@ wm2_dpp_akm_is_sae(const enum target_dpp_conf_akm akm)
            akm == TARGET_DPP_CONF_DPP_SAE;
 }
 
+static bool
+wm2_dpp_onboard_each_psk_sae(struct schema_Wifi_VIF_Config *vconf,
+                             const struct target_dpp_conf_network *c,
+                             const char *wpa_key_mgmt)
+
+{
+    const char *hex;
+    char psk[WM2_DPP_PSK_LEN + 1] = {0};
+    int i;
+
+    if (WARN_ON(strlen(c->psk_hex) > (2 * WM2_DPP_PSK_LEN)))
+        return false;
+    if (WARN_ON((strlen(c->psk_hex) % 2) != 0))
+        return false;
+
+    for (i = 0, hex = c->psk_hex; *hex; i++, hex += 2)
+        if (WARN_ON(sscanf(hex, "%2hhx", &psk[i]) != 1))
+            return false;
+
+    SCHEMA_VAL_APPEND(vconf->wpa_key_mgmt, wpa_key_mgmt);
+    SCHEMA_VAL_APPEND(vconf->wpa_psks, psk);
+    return true;
+}
+
+static bool
+wm2_dpp_onboard_each_dpp(struct schema_Wifi_VIF_Config *vconf,
+                         const struct target_dpp_conf_network *c)
+{
+    SCHEMA_VAL_APPEND(vconf->wpa_key_mgmt, SCHEMA_CONSTS_KEY_DPP);
+    SCHEMA_SET_STR(vconf->dpp_connector, c->dpp_connector);
+    SCHEMA_SET_STR(vconf->dpp_netaccesskey_hex, c->dpp_netaccesskey_hex);
+    SCHEMA_SET_STR(vconf->dpp_csign_hex, c->dpp_csign_hex);
+    return true;
+}
+
 static void
 wm2_dpp_onboard_each(const char *ifname, const struct target_dpp_conf_network *c)
 {
     struct schema_Wifi_VIF_Config vconf = {0};
     const char *hex;
     char ssid[WM2_DPP_SSID_LEN + 1] = {0};
-    bool ok;
+    bool ok = false;
     int i;
 
     if (WARN_ON(strlen(c->ssid_hex) > (2 * WM2_DPP_SSID_LEN)))
@@ -363,12 +414,39 @@ wm2_dpp_onboard_each(const char *ifname, const struct target_dpp_conf_network *c
 
     SCHEMA_SET_STR(vconf.if_name, ifname);
     SCHEMA_SET_INT(vconf.wpa, true);
-    SCHEMA_VAL_APPEND(vconf.wpa_key_mgmt, SCHEMA_CONSTS_KEY_DPP);
-
     SCHEMA_SET_STR(vconf.ssid, ssid);
-    SCHEMA_SET_STR(vconf.dpp_connector, c->dpp_connector);
-    SCHEMA_SET_STR(vconf.dpp_netaccesskey_hex, c->dpp_netaccesskey_hex);
-    SCHEMA_SET_STR(vconf.dpp_csign_hex, c->dpp_csign_hex);
+
+    /* TODO: Arguably this could just push data blindly to
+     * Wifi_VIF_Config and let the supplicant do the job at
+     * picking the key mgmt. This isn't handled / tested yet
+     * and the following should be good enough for now.
+     */
+    switch (c->akm) {
+    case TARGET_DPP_CONF_UNKNOWN:
+        WARN_ON(1);
+        return;
+    case TARGET_DPP_CONF_SAE:
+        ok = wm2_dpp_onboard_each_psk_sae(&vconf, c, SCHEMA_CONSTS_KEY_SAE);
+        break;
+    case TARGET_DPP_CONF_PSK_SAE:
+        ok = wm2_dpp_onboard_each_psk_sae(&vconf, c, SCHEMA_CONSTS_KEY_SAE);
+        break;
+    case TARGET_DPP_CONF_PSK:
+        ok = wm2_dpp_onboard_each_psk_sae(&vconf, c, SCHEMA_CONSTS_KEY_WPA2_PSK);
+        break;
+    case TARGET_DPP_CONF_DPP:
+        ok = wm2_dpp_onboard_each_dpp(&vconf, c);
+        break;
+    case TARGET_DPP_CONF_DPP_SAE:
+        ok = wm2_dpp_onboard_each_dpp(&vconf, c);
+        break;
+    case TARGET_DPP_CONF_DPP_PSK_SAE:
+        ok = wm2_dpp_onboard_each_dpp(&vconf, c);
+        break;
+    }
+
+    if (WARN_ON(!ok))
+        return;
 
     ok = ovsdb_table_update(&table_Wifi_VIF_Config, &vconf);
     WARN_ON(!ok);
@@ -404,19 +482,107 @@ wm2_dpp_onboard(struct wm2_dpp_job *job, const struct target_dpp_conf_network *c
         return;
     }
 
-    if (!wm2_dpp_akm_is_dpp(c->akm)) {
-        LOGE("dpp: %s: non-dpp akm onboarding is not supported", job->config._uuid.uuid);
-        return;
-    }
-
-    if (WARN_ON(!c->ssid_hex) ||
-        WARN_ON(!c->dpp_connector) ||
-        WARN_ON(!c->dpp_csign_hex) ||
-        WARN_ON(!c->dpp_netaccesskey_hex))
-        return;
-
     for (i = 0; i < job->config.ifnames_len; i++)
         wm2_dpp_onboard_each(job->config.ifnames[i], c);
+}
+
+static bool
+wm2_dpp_onboard_completed(void)
+{
+    struct wm2_dpp_job *job;
+    ds_dlist_foreach(&g_wm2_dpp_jobs, job) {
+        if (!strcmp(job->config.auth, SCHEMA_CONSTS_DPP_CHIRP) &&
+            (!strcmp(job->config.status, SCHEMA_CONSTS_DPP_FAILED) ||
+             !strcmp(job->config.status, SCHEMA_CONSTS_DPP_TIMED_OUT) ||
+             !strcmp(job->config.status, SCHEMA_CONSTS_DPP_SUCCEEDED)))
+            return true;
+    }
+    return false;
+}
+
+static bool
+wm2_dpp_job_has_ifname(const struct wm2_dpp_job *job, const char *ifname)
+{
+    int i;
+    for (i = 0; i < job->config.ifnames_len; i++)
+        if (!strcmp(job->config.ifnames[i], ifname))
+            return true;
+    return false;
+}
+
+static struct wm2_dpp_job *
+wm2_dpp_onboard_get_current_job(void)
+{
+    struct wm2_dpp_job *job;
+    ds_dlist_foreach(&g_wm2_dpp_jobs, job) {
+        if (!strcmp(job->config.auth, SCHEMA_CONSTS_DPP_CHIRP) &&
+            (!strcmp(job->config.status, SCHEMA_CONSTS_DPP_REQUESTED) ||
+             !strcmp(job->config.status, SCHEMA_CONSTS_DPP_IN_PROGRESS)))
+            return job;
+    }
+    return NULL;
+}
+
+static void
+wm2_dpp_onboard_clear(void)
+{
+    const char *column = SCHEMA_COLUMN(DPP_Config, auth);
+    const char *value = SCHEMA_CONSTS_DPP_CHIRP;
+
+    ovsdb_table_delete_simple(&table_DPP_Config, column, value);
+}
+
+static void
+wm2_dpp_recalc_onboard(void)
+{
+    struct schema_DPP_Config c = {0};
+    struct target_dpp_key key = {0};
+    struct wm2_dpp_job *job = wm2_dpp_onboard_get_current_job();
+    const char *vif;
+    char buf[4096] = {0};
+    char *vifs = buf;
+    size_t len = sizeof(buf);
+    bool changed = false;
+    bool ok;
+
+    if (!g_wm2_dpp_supported)
+        return;
+
+    ok = wm2_target_dpp_key_get(&key);
+    if (!ok)
+        return;
+
+    if (wm2_dpp_onboard_completed())
+        return;
+
+    if (!wm2_radio_onboard_vifs(buf, len))
+        return;
+
+    c._partial_update = true;
+    SCHEMA_SET_INT(c.timeout_seconds, WM2_DPP_ONBOARD_TIMEOUT_SECONDS);
+    SCHEMA_SET_STR(c.own_bi_key_curve, wm2_dpp_keytype_to_str(key.type));
+    SCHEMA_SET_STR(c.own_bi_key_hex, key.hex);
+    SCHEMA_SET_STR(c.auth, SCHEMA_CONSTS_DPP_CHIRP);
+    SCHEMA_SET_STR(c.status, SCHEMA_CONSTS_DPP_REQUESTED);
+
+    while ((vif = strsep(&vifs, " "))) {
+        if (strlen(vif) == 0)
+            continue;
+
+        SCHEMA_VAL_APPEND(c.ifnames, vif);
+
+        if (job && !wm2_dpp_job_has_ifname(job, vif))
+            changed = true;
+    }
+
+    if (job && !changed)
+        return;
+
+    LOGI("dpp: preparing onboarding");
+    wm2_dpp_onboard_clear();
+
+    ok = ovsdb_table_insert(&table_DPP_Config, &c);
+    WARN_ON(!ok);
 }
 
 static void
@@ -427,8 +593,16 @@ wm2_dpp_recalc(void)
 
     LOGD("dpp: recalculating");
     wm2_dpp_jobs_pull();
+    wm2_dpp_recalc_onboard();
 
     job = wm2_dpp_jobs_get_current();
+
+    if (job && job->interrupted) {
+        SCHEMA_SET_STR(job->config.status, SCHEMA_CONSTS_DPP_REQUESTED);
+        job->interrupted = false;
+        job = NULL; /* force new job selection */
+    }
+
     if (job) {
         WARN_ON(!ev_is_active(&g_wm2_dpp_timeout_timer));
         LOGI("dpp: %s: still running (timeout in %.2lf seconds)",
@@ -445,7 +619,7 @@ wm2_dpp_recalc(void)
     else
         LOGD("dpp: stopping");
 
-    ok = target_dpp_config_set(job ? &job->config : NULL);
+    ok = wm2_target_dpp_config_set(job ? &job->config : NULL);
     if (WARN_ON(!ok)) {
         if (job && job->tries_left > 0) {
             LOGI("dpp: %s: failed to start, will retry", job->config._uuid.uuid);
@@ -468,8 +642,9 @@ wm2_dpp_recalc(void)
     ev_timer_set(&g_wm2_dpp_timeout_timer, job->config.timeout_seconds, 0);
     ev_timer_start(EV_DEFAULT_ &g_wm2_dpp_timeout_timer);
 
-    LOGI("dpp: %s: started (timeout in %.2lf seconds)",
+    LOGI("dpp: %s: started %s (timeout in %.2lf seconds)",
          job->config._uuid.uuid,
+         job->config.auth,
          ev_timer_remaining(EV_DEFAULT_ &g_wm2_dpp_timeout_timer));
 
     SCHEMA_SET_STR(job->config.status, SCHEMA_CONSTS_DPP_IN_PROGRESS);
@@ -669,10 +844,12 @@ wm2_dpp_op_conf_network(const struct target_dpp_conf_network *c)
 
     if (wm2_dpp_akm_is_psk(c->akm) || wm2_dpp_akm_is_sae(c->akm)) {
         err |= WARN_ON(!c->ssid_hex);
+        err |= WARN_ON(!c->psk_hex);
         err |= WARN_ON(!c->psk_hex && !c->pmk_hex);
     }
 
     if (wm2_dpp_akm_is_dpp(c->akm)) {
+        err |= WARN_ON(!c->ssid_hex);
         err |= WARN_ON(!c->dpp_netaccesskey_hex);
         err |= WARN_ON(!c->dpp_connector);
         err |= WARN_ON(!c->dpp_csign_hex);
@@ -728,60 +905,6 @@ wm2_dpp_op_conf_failed(void)
     wm2_dpp_recalc_schedule();
 }
 
-static const char *
-wm2_dpp_keytype_to_str(enum target_dpp_key_type type)
-{
-    switch (type) {
-        case TARGET_DPP_KEY_PRIME256V1: return SCHEMA_CONSTS_DPP_PRIME256V1;
-        case TARGET_DPP_KEY_SECP384R1: return SCHEMA_CONSTS_DPP_SECP384R1;
-        case TARGET_DPP_KEY_SECP512R1: return SCHEMA_CONSTS_DPP_SECP521R1;
-        case TARGET_DPP_KEY_BRAINPOOLP256R1: return SCHEMA_CONSTS_DPP_BRAINPOOLP256R1;
-        case TARGET_DPP_KEY_BRAINPOOLP384R1: return SCHEMA_CONSTS_DPP_BRAINPOOLP384R1;
-        case TARGET_DPP_KEY_BRAINPOOLP512R1: return SCHEMA_CONSTS_DPP_BRAINPOOLP512R1;
-    }
-    WARN_ON(1);
-    return "";
-}
-
-static void
-wm2_dpp_init_onboard(void)
-{
-    struct schema_DPP_Config c = {0};
-    struct target_dpp_key key = {0};
-    const char *vif;
-    char buf[4096] = {0};
-    char *vifs = buf;
-    size_t len = sizeof(buf);
-    bool ok;
-
-    if (!g_wm2_dpp_supported)
-        return;
-
-    ok = target_dpp_key_get(&key);
-    if (WARN_ON(!ok))
-        return;
-
-    if (!wm2_radio_onboard_vifs(buf, len))
-        return;
-
-    LOGI("dpp: preparing onboarding");
-    ovsdb_table_delete_where(&table_DPP_Config, json_array());
-
-    c._partial_update = true;
-    SCHEMA_SET_INT(c.timeout_seconds, WM2_DPP_ONBOARD_TIMEOUT_SECONDS);
-    SCHEMA_SET_STR(c.own_bi_key_curve, wm2_dpp_keytype_to_str(key.type));
-    SCHEMA_SET_STR(c.own_bi_key_hex, key.hex);
-    SCHEMA_SET_STR(c.auth, SCHEMA_CONSTS_DPP_CHIRP);
-    SCHEMA_SET_STR(c.status, SCHEMA_CONSTS_DPP_REQUESTED);
-
-    while ((vif = strsep(&vifs, " ")))
-        if (strlen(vif) > 0)
-            SCHEMA_VAL_APPEND(c.ifnames, vif);
-
-    ok = ovsdb_table_insert(&table_DPP_Config, &c);
-    WARN_ON(!ok);
-}
-
 void
 wm2_dpp_init(void)
 {
@@ -795,10 +918,8 @@ wm2_dpp_init(void)
     ev_init(&g_wm2_dpp_recalc_timer, wm2_dpp_recalc_cb);
     ev_init(&g_wm2_dpp_timeout_timer, wm2_dpp_timeout_cb);
 
-    g_wm2_dpp_supported = target_dpp_supported();
+    g_wm2_dpp_supported = wm2_target_dpp_supported();
 
     if (g_wm2_dpp_supported)
         LOGI("dpp: supported");
-
-    wm2_dpp_init_onboard();
 }

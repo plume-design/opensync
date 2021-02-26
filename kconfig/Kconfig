@@ -89,6 +89,12 @@ menu "Common"
                 source "kconfig/Kconfig.osn.qos_backend"
             endchoice
 
+            choice
+                prompt "LTE"
+                default OSN_BACKEND_LTE_LINUX
+                source "kconfig/Kconfig.osn.lte_backend"
+            endchoice
+
             menu "Firewall"
                 choice
                     prompt "Firewall implementation"

@@ -25,15 +25,11 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-# Include basic environment config from default shell file and if any from FUT framework generated /tmp/fut_set_env.sh file
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
-source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
 tc_name="wm2/$(basename "$0")"
 manager_setup_file="wm2/wm2_setup.sh"
@@ -57,7 +53,7 @@ Testcase info:
         - Set <CHANNEL1> in Wifi_Radio_Config, wait for <CHANNEL2> nop_finished
           and <CHANNEL1> is cac_started simultaneously, else fail after 30s
 Arguments:
-    -h  show this help message
+    -h  show this help messae
     \$1  (radio_idx)        : Wifi_VIF_Config::vif_radio_idx                 : (int)(required)
     \$2  (if_name)          : Wifi_Radio_Config::if_name                     : (string)(required)
     \$3  (ssid)             : Wifi_VIF_Config::ssid                          : (string)(required)

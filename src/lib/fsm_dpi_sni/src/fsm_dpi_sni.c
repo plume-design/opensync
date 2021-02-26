@@ -361,6 +361,7 @@ fsm_dpi_sni_policy_req(struct fsm_session *session,
     memset(&fqdn_req, 0, sizeof(fqdn_req));
     policy_client = &session->policy_client;
 
+    fqdn_req.provider = session->service->name;
     fqdn_req.fsm_context = session;
     fqdn_req.send_report = session->ops.send_report;
     memcpy(fqdn_req.dev_id.addr, mac->addr,
@@ -417,7 +418,7 @@ fsm_dpi_sni_policy_req(struct fsm_session *session,
 
     free(fqdn_req.rule_name);
     free(fqdn_req.policy);
-    free(fqdn_req.req_info->reply);
+    fsm_free_url_reply(fqdn_req.req_info->reply);
     free(fqdn_req.req_info);
 
     return action;

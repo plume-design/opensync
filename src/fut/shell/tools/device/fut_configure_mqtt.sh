@@ -24,16 +24,12 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-# Include basic environment config from default shell file and if any from FUT framework generated /tmp/fut_set_env.sh file
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
-source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
-source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
-source "${FUT_TOPDIR}/shell/lib/fsm_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
+
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
+source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
 tc_name="fsm/$(basename "$0")"
 usage() {
@@ -48,8 +44,9 @@ Arguments:
     \$3 (location_id) : locationId for AWLAN_Node:mqtt_headers : (string)(required)
     \$4 (node_id)     : nodeId for AWLAN_Node:mqtt_headers     : (string)(required)
     \$5 (topics)      : topics for AWLAN_Node:mqtt_settings    : (string)(required)
+    \$6 (dut_ca_path) : Path to certificates folder on DUT     : (string)(required)
 Script usage example:
-    ./${tc_name} 192.168.200.1 65002 1000 100 http
+    ./${tc_name} 192.168.200.1 65002 1000 100 http /var/certs/
 usage_string
 }
 while getopts h option; do
@@ -72,11 +69,16 @@ port=${2}
 location_id=${3}
 node_id=${4}
 topics=${5}
+dut_ca_path=${6:-FUT_TOPDIR}
 fut_ca_path="${FUT_TOPDIR}/shell/tools/device/files/fut_ca.pem"
 
-log "$tc_name: Adding FUT cert to ca.pem"
-cat "${fut_ca_path}" >> /var/certs/ca.pem ||
-    raise "Failed to add fut cert to ca.pem" -ds -l "${tc_name}"
+log "$tc_name: Adding FUT cert to device"
+cat "${fut_ca_path}" >> "${dut_ca_path}/ca.pem" ||
+    raise "Failed to add FUT cert to device" -ds -l "${tc_name}"
+
+update_ovsdb_entry SSL \
+    -u ca_cert "${dut_ca_path}/ca.pem" ||
+    raise "Failed to set ca_cert in SSL table to ${dut_ca_path}/ca.pem" -ds -l "${tc_name}"
 
 log "$tc_name: Configuring MQTT AWLAN_Node settings"
 update_ovsdb_entry AWLAN_Node \

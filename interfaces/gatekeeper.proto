@@ -158,6 +158,9 @@ message GatekeeperCommonReply {
     uint32 request_id = 1;
     GatekeeperAction action = 2;
     uint32 ttl = 3;
+    string policy = 4;
+    uint32 category_id = 5;
+    uint32 confidence_level = 6;
 }
 
 message GatekeeperFqdnRedirectReply {

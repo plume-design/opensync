@@ -44,10 +44,9 @@ insert_policy_1_cmd() {
 ovsh i FSM_Policy \
      policy:=${policy_name} \
      idx:=${idx} \
-     fqdncat_op:=in \
-     fqdncats:=["set",[11]] \
-     action:=drop \
-     log:=blocked \
+     mac_op:=out \
+     action:=gatekeeper \
+     log:=all \
      name:="${policy_name}_rule_0"
 EOF
 }
@@ -156,6 +155,16 @@ while getopts "$optspec" optchar; do
                    opt=${OPTARG%=$val}
                    DPI_PLUGIN=$val
                    ;;
+               provider_plugin=?* )
+                   val=${LONG_OPTARG}
+                   opt=${OPTARG%=$val}
+                   PROVIDER_PLUGIN=$val
+                   ;;
+               policy_table=?* )
+                   val=${LONG_OPTARG}
+                   opt=${OPTARG%=$val}
+                   POLICY_TABLE=$val
+                   ;;
                *)
                    if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
                        echo "Unknown option --${OPTARG}" >&2
@@ -177,8 +186,8 @@ done
 cmd=${CMD}
 attrs_tag=${ATTRS_TAG:-'${dev_dpi_attrs}'}
 dpi_plugin=${DPI_PLUGIN}
-policy_name=dev_brightcloud
-provider_plugin=brightcloud
+policy_name=${POLICY_TABLE:-dev_brightcloud}
+provider_plugin=${PROVIDER_PLUGIN:-brightcloud}
 fsm_handler=dev_fsm_dpi_sni
 
 # Validate the command argument
@@ -221,3 +230,7 @@ sleep 1
 ovsh u FSM_Policy -w name=="adultAndSensitive:d:,adultAndSen" fqdncats:del:'["set",[11]]'
 # Add the dpi client plugin
 eval ovsdb-client transact \'$(gen_fsmc_cmd)\'
+
+sleep 1
+ovsh U Flow_Service_Manager_Config -w handler==core_dpi_dispatch \
+     other_config:ins:'["map",[["included_devices","$[all_clients]"]]]'

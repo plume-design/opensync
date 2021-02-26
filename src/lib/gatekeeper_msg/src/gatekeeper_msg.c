@@ -31,6 +31,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fsm_policy.h"
 #include "gatekeeper_msg.h"
 #include "gatekeeper.pb-c.h"
+#include "log.h"
 #include "network_metadata_report.h"
 #include "os_types.h"
 
@@ -498,6 +499,9 @@ gk_set_pb_ipv4_flow(struct net_md_stats_accumulator *acc)
     pb = calloc(1, sizeof(*pb));
     if (pb == NULL) return NULL;
 
+    /* Initialize the protobuf structure */
+    gatekeeper__southbound__v1__gatekeeper_ipv4_flow_tuple__init(pb);
+
     pb->transport = key->ipprotocol;
     if (acc->direction == NET_MD_ACC_OUTBOUND_DIR)
     {
@@ -602,6 +606,9 @@ gk_set_pb_ipv6_flow(struct net_md_stats_accumulator *acc)
 
     pb = calloc(1, sizeof(*pb));
     if (pb == NULL) return NULL;
+
+    /* Initialize the protobuf structure */
+    gatekeeper__southbound__v1__gatekeeper_ipv6_flow_tuple__init(pb);
 
     pb->transport = key->ipprotocol;
     if (acc->direction == NET_MD_ACC_OUTBOUND_DIR)
@@ -994,47 +1001,49 @@ gk_set_pb_request(struct gk_request *request)
     req_data = &request->req;
     switch (request->type)
     {
-    case FSM_FQDN_REQ:
-        gk_fqdn_req = &req_data->gk_fqdn_req;
-        pb->req_fqdn = gk_set_pb_fqdn_req(gk_fqdn_req);
-        if (pb->req_fqdn == NULL) goto out_err;
-        break;
+        case FSM_FQDN_REQ:
+            gk_fqdn_req = &req_data->gk_fqdn_req;
+            pb->req_fqdn = gk_set_pb_fqdn_req(gk_fqdn_req);
+            if (pb->req_fqdn == NULL) goto out_err;
+            break;
 
-    case FSM_SNI_REQ:
-        gk_sni_req = &req_data->gk_sni_req;
-        pb->req_https_sni = gk_set_pb_sni_req(gk_sni_req);
-        if (pb->req_https_sni == NULL) goto out_err;
-        break;
+        case FSM_SNI_REQ:
+            gk_sni_req = &req_data->gk_sni_req;
+            pb->req_https_sni = gk_set_pb_sni_req(gk_sni_req);
+            if (pb->req_https_sni == NULL) goto out_err;
+            break;
 
-    case FSM_HOST_REQ:
-        gk_host_req = &req_data->gk_host_req;
-        pb->req_http_host = gk_set_pb_host_req(gk_host_req);
-        if (pb->req_http_host == NULL) goto out_err;
-        break;
+        case FSM_HOST_REQ:
+            gk_host_req = &req_data->gk_host_req;
+            pb->req_http_host = gk_set_pb_host_req(gk_host_req);
+            if (pb->req_http_host == NULL) goto out_err;
+            break;
 
-    case FSM_URL_REQ:
-        gk_url_req = &req_data->gk_url_req;
-        pb->req_http_url = gk_set_pb_url_req(gk_url_req);
-        if (pb->req_http_url == NULL) goto out_err;
-        break;
+        case FSM_URL_REQ:
+            gk_url_req = &req_data->gk_url_req;
+            pb->req_http_url = gk_set_pb_url_req(gk_url_req);
+            if (pb->req_http_url == NULL) goto out_err;
+            break;
 
-    case FSM_APP_REQ:
-        gk_app_req = &req_data->gk_app_req;
-        pb->req_app = gk_set_pb_app_req(gk_app_req);
-        if (pb->req_app == NULL) goto out_err;
-        break;
+        case FSM_APP_REQ:
+            gk_app_req = &req_data->gk_app_req;
+            pb->req_app = gk_set_pb_app_req(gk_app_req);
+            if (pb->req_app == NULL) goto out_err;
+            break;
 
-    case FSM_IP_REQ:
-        gk_ip_req = &req_data->gk_ip_req;
-        rc = gk_set_pb_ip_req(pb, gk_ip_req);
-        if (!rc) goto out_err;
-        break;
+        case FSM_IPV4_REQ:
+        case FSM_IPV6_REQ:
+            gk_ip_req = &req_data->gk_ip_req;
+            rc = gk_set_pb_ip_req(pb, gk_ip_req);
+            if (!rc) goto out_err;
+            break;
 
-    case FSM_IPFLOW_REQ:
-        gk_ip_flow_req = &req_data->gk_ip_flow_req;
-        rc = gk_set_pb_ip_flow_req(pb, gk_ip_flow_req);
-        if (!rc) goto out_err;
-        break;
+        case FSM_IPV4_FLOW_REQ:
+        case FSM_IPV6_FLOW_REQ:
+            gk_ip_flow_req = &req_data->gk_ip_flow_req;
+            rc = gk_set_pb_ip_flow_req(pb, gk_ip_flow_req);
+            if (!rc) goto out_err;
+            break;
     }
 
     return pb;

@@ -218,6 +218,7 @@ typedef struct
     int               disconnects;
     cm2_addr_t        addr_redirector;
     cm2_addr_t        addr_manager;
+    bool              ipv6_manager_con;
     ev_timer          timer;
     ev_timer          wdt_timer;
     ev_timer          stability_timer;
@@ -272,6 +273,7 @@ void cm2_ble_onboarding_set_status(bool state, cm2_ble_onboarding_status_t statu
 void cm2_ble_onboarding_apply_config(void);
 char* cm2_dest_name(cm2_dest_e dest);
 char* cm2_curr_dest_name(void);
+bool cm2_enable_gw_offline(void);
 
 // ovsdb
 int cm2_ovsdb_init(void);

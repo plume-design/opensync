@@ -51,6 +51,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define IPTHREAT_CACHE_INTERVAL  120
 
+#define IPTHREAT_DEFAULT_TTL 300
+
 static struct ipthreat_dpi_cache
 cache_mgr =
 {
@@ -266,10 +268,30 @@ ipthreat_dpi_plugin_init(struct fsm_session *session)
 void
 ipthreat_dpi_plugin_exit(struct fsm_session *session)
 {
+    struct ipthreat_dpi_session *ipthreat_dpi_session;
+    struct fsm_policy_client *client;
     struct ipthreat_dpi_cache *mgr;
+    char *outbound;
+    char *inbound;
 
     mgr = ipthreat_dpi_get_mgr();
     if (!mgr->initialized) return;
+
+    /* Deregister policy clients */
+    ipthreat_dpi_session = session->handler_ctxt;
+    outbound = session->ops.get_config(session, "outbound_policy_table");
+    if (outbound != NULL)
+    {
+        client = &ipthreat_dpi_session->outbound;
+        fsm_policy_deregister_client(client);
+    }
+
+    inbound = session->ops.get_config(session, "inbound_policy_table");
+    if (inbound != NULL)
+    {
+        client = &ipthreat_dpi_session->inbound;
+        fsm_policy_deregister_client(client);
+    }
 
     dns_cache_cleanup_mgr();
     ipthreat_dpi_delete_session(session);
@@ -302,10 +324,12 @@ ipthreat_dpi_send_report(struct fsm_policy_req *policy_req)
 static int
 ipthreat_dpi_policy_req(struct ipthreat_dpi_req *ip_req)
 {
-    struct fsm_policy_req    policy_req;
-    struct ip2action_req     cache_req;
-    struct fsm_session       *session;
-    struct fqdn_pending_req  fqdn_req;
+    struct fsm_policy_req           policy_req;
+    struct ip2action_req            cache_req;
+    struct fsm_session              *session;
+    struct fqdn_pending_req         fqdn_req;
+    struct net_md_stats_accumulator *acc;
+    struct net_md_flow_key          *key;
     int  action;
     int  ttl;
     int  ret;
@@ -324,6 +348,14 @@ ipthreat_dpi_policy_req(struct ipthreat_dpi_req *ip_req)
 
     if (!fqdn_req.provider) return FSM_ACTION_NONE;
 
+    acc = ip_req->acc;
+    if (acc == NULL) return FSM_DPI_PASSTHRU;
+
+    key = acc->key;
+    if (key == NULL) return FSM_DPI_PASSTHRU;
+
+    if (key->ip_version == 0) return FSM_DPI_PASSTHRU;
+
     fqdn_req.fsm_context = session;
     fqdn_req.send_report = session->ops.send_report;
     memcpy(fqdn_req.dev_id.addr, ip_req->dev_id,
@@ -331,10 +363,11 @@ ipthreat_dpi_policy_req(struct ipthreat_dpi_req *ip_req)
     fqdn_req.redirect = false;
     fqdn_req.to_report = false;
     fqdn_req.fsm_checked = false;
-    fqdn_req.req_type = FSM_IP_REQ;
+    fqdn_req.req_type = (key->ip_version == 4 ? FSM_IPV4_REQ : FSM_IPV6_REQ);
     fqdn_req.policy_table = ip_req->table;
     fqdn_req.numq = 1;
     fqdn_req.acc = ip_req->acc;
+    fqdn_req.rd_ttl = IPTHREAT_DEFAULT_TTL;
     fqdn_req.req_info = calloc(1, sizeof(struct fsm_url_request));
     if (fqdn_req.req_info == NULL) return FSM_DPI_PASSTHRU;
     ret = getnameinfo((struct sockaddr *)(ip_req->ip),
@@ -363,22 +396,43 @@ ipthreat_dpi_policy_req(struct ipthreat_dpi_req *ip_req)
     fqdn_req.policy = policy_req.reply.policy;
     fqdn_req.policy_idx = policy_req.reply.policy_idx;
     fqdn_req.rule_name = policy_req.reply.rule_name;
-    fqdn_req.rd_ttl = policy_req.reply.rd_ttl;
+
+    ttl = (fqdn_req.rd_ttl < policy_req.reply.rd_ttl ?
+                       fqdn_req.rd_ttl : policy_req.reply.rd_ttl);
+    if (ttl == -1)
+        ttl = IPTHREAT_DEFAULT_TTL;
 
     action = (policy_req.reply.action == FSM_BLOCK ?
               FSM_DPI_DROP : FSM_DPI_PASSTHRU);
-    ttl = (fqdn_req.rd_ttl < policy_req.reply.rd_ttl ?
-           fqdn_req.rd_ttl : policy_req.reply.rd_ttl);
 
-    cache_req.device_mac = ip_req->dev_id;
-    cache_req.ip_addr = ip_req->ip;
-    cache_req.cache_ttl = ttl;
-    cache_req.action = action;
-
-    rc = dns_cache_add_entry(&cache_req);
-    if (rc == false)
+    /* Add cache if entry not found */
+    if (!policy_req.fqdn_req->from_cache)
     {
-        LOGW("%s: Couldn't add ip2action entry to cache.",__func__);
+        cache_req.device_mac = ip_req->dev_id;
+        cache_req.ip_addr = ip_req->ip;
+        cache_req.cache_ttl = ttl;
+        cache_req.action = policy_req.reply.action;
+        cache_req.policy_idx = fqdn_req.policy_idx;
+        cache_req.service_id = fqdn_req.req_info->reply->service_id;
+        cache_req.nelems = fqdn_req.req_info->reply->nelems;
+        memcpy(cache_req.categories, fqdn_req.req_info->reply->categories,
+               (sizeof(uint8_t) * URL_REPORT_MAX_ELEMS));
+        if (cache_req.service_id == IP2ACTION_BC_SVC)
+        {
+            memcpy(&cache_req.cache_bc, &fqdn_req.req_info->reply->bc,
+                   sizeof(struct ip2action_bc_info));
+        }
+        else
+        {
+            memcpy(&cache_req.cache_wb, &fqdn_req.req_info->reply->wb,
+                   sizeof(struct ip2action_wb_info));
+        }
+
+        rc = dns_cache_add_entry(&cache_req);
+        if (!rc)
+        {
+            LOGW("%s: Couldn't add ip2action entry to cache.",__func__);
+        }
     }
 
     fqdn_req.to_report = true;
@@ -405,7 +459,7 @@ ipthreat_dpi_policy_req(struct ipthreat_dpi_req *ip_req)
 
     free(fqdn_req.policy);
     free(fqdn_req.rule_name);
-    free(fqdn_req.req_info->reply);
+    fsm_free_url_reply(fqdn_req.req_info->reply);
     free(fqdn_req.req_info);
 
     return action;
@@ -512,11 +566,9 @@ ipthreat_dpi_process_message(struct ipthreat_dpi_session *ds_session)
     struct net_md_flow_key key;
     struct iphdr *iphdr;
     struct ip6_hdr *ip6hdr;
-    struct ip2action_req     lkp_req;
     struct sockaddr_storage  ip_addr;
     os_macaddr_t             *dev_mac;
     struct ipthreat_dpi_req  ip_req;
-    bool rc;
     int action = 0;
     uint8_t *ip = NULL;
 
@@ -574,25 +626,14 @@ ipthreat_dpi_process_message(struct ipthreat_dpi_session *ds_session)
 
     util_populate_sockaddr(key.ip_version == 4 ? AF_INET : AF_INET6, ip, &ip_addr);
 
-    lkp_req.device_mac = dev_mac;
-    lkp_req.ip_addr = &ip_addr;
+    memset(&ip_req, 0, sizeof(ip_req));
+    ip_req.session = session;
+    ip_req.dev_id = dev_mac;
+    ip_req.ip = &ip_addr;
+    ip_req.acc = acc;
+    ip_req.table = table;
+    action = ipthreat_dpi_policy_req(&ip_req);
 
-    rc = dns_cache_ip2action_lookup(&lkp_req);
-    if (!rc)
-    {
-        memset(&ip_req, 0, sizeof(ip_req));
-        ip_req.session = session;
-        ip_req.dev_id = dev_mac;
-        ip_req.ip = &ip_addr;
-        ip_req.acc = acc;
-        ip_req.table = table;
-        action = ipthreat_dpi_policy_req(&ip_req);
-    }
-    else
-    {
-        action = lkp_req.action;
-
-    }
     if (action == FSM_DPI_DROP)
     {
         char *direction = (acc->direction == NET_MD_ACC_OUTBOUND_DIR) ?

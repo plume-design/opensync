@@ -1,0 +1,288 @@
+#!/bin/bash -e
+myname=$(basename $0)
+
+TAG=${DOCKER_TAG:-$(dirname "$(readlink -f "$0")" | tr / - | cut -b2- | tr A-Z a-z)}
+ENTRYPOINT="/bin/sh -c"
+
+#=============================================================================
+
+usage()
+{
+    cat << EOF
+usage: [ENVOPT] $0 [OPTIONS] [COMMAND] [ARGS]
+ENVOPT:
+DOCK_OPT=... : additional docker options
+OPTIONS:
+    --root
+        run as root instead of user (this also skips mounting of home, passwd,...)
+    --build-docker-image
+        just (re)build the docker image and exit
+    -q, --quiet-docker-build
+        use '--quiet' option for docker image rebuild
+    -qq, --skip-docker-rebuild
+        quick and quiet (skip rebuilding the docker image)
+    -qqq
+        quick and very quiet (suppress everything but the command output)
+    --color
+        use colors in output even if redirected
+    --no-color
+        disable colors in script's output
+
+EOF
+    exit $1
+}
+
+: ${ColorERROR:=$'\e[1;91m'}  ${ColorWARN:=$'\e[1;93m'}     ${ColorINFO:=$'\e[96m'}
+: ${ColorDEBUG:=$'\e[36m'}    ${ColorDim:=$'\e[38;5;248m'}  ${ColorOff:=$'\e[0m'}
+if [ -t 2 ]; then have_tty_output=1 ; else have_tty_output=0 ; fi
+
+set_color_output()
+{
+    if [ -n "$FORCE_SCRIPT_COLORS" -a "$FORCE_SCRIPT_COLORS" != "0" ]; then return; fi
+    if [ -z "$FORCE_SCRIPT_COLORS" -a $have_tty_output -eq 1 ]; then return; fi
+
+    unset -v ColorERROR ColorWARN ColorINFO ColorDEBUG ColorDim ColorOff
+}
+
+abort()
+{
+    echo >&2 ; echo "[${myname}:ERROR] ${ColorERROR}${1}${ColorOff}" >&2
+    echo >&2 ; exit ${2:-1}
+}
+
+echo_report()
+{
+    if [ $OPT_QUIET -ge 1 ]; then return; fi
+
+    if [ $# -eq 0 ]; then echo >&2; return; fi  # empty line
+
+    # timestamp format is the same as '--rfc-3339=seconds', but portable
+    timestamp="[$(date +'%Y-%m-%d %H:%M:%S%:z')]"
+
+    echo "${ColorDim}${timestamp}[${myname}]${ColorOff} $@" >&2
+}
+
+echo_debug()
+{
+    if [ $OPT_QUIET -ge 1 ]; then return; fi
+
+    echo "${ColorDEBUG}$@${ColorOff}" >&2
+}
+
+#=============================================================================
+
+rebuild_docker()
+{
+    # Always run docker image rebuild.
+    # - If the Dockerfile changes, the image has to be rebuilt.
+    # - If there are no changes then the docker finishes quickly
+    #   and does not produce a new image, so this is efficient.
+    # - The rebuild can be skipped by explicitly specifying a
+    #   command-line parameter.
+
+    if [ $OPT_SKIP_DOCKER_REBUILD -eq 0 ]; then
+    (
+        cd `dirname $0`
+
+        if [ $OPT_QUIET_DOCKER_BUILD -eq 1 ]; then
+            # The '--quiet' option can be used to silence the docker build.
+            # If the docker build fails, it will dump all the printout it
+            # would normally output, so failures can still be diagnosed.
+            docker_quiet_opt="--quiet"
+        fi
+
+        echo_report "--------------------------------------------------"
+        echo_report "Building docker image [TAG=$TAG] ..."
+        echo_report "--------------------------------------------------"
+
+        start_time="$(date -u +%s)"
+
+        ######################################################################
+
+        # quasi 'set -x' ...
+        echo_debug  "+" \
+        docker build ${docker_quiet_opt} --tag "$TAG" .
+
+        # ... and then the real thing:
+        echo "${ColorDim}" >&2
+
+        docker build ${docker_quiet_opt} --tag "$TAG" . >&2  # to stderr
+
+        echo "${ColorOff}" >&2
+
+        ######################################################################
+
+        end_time="$(date -u +%s)"
+        elapsed="$(($end_time-$start_time))"
+        elapsed_hms=$(date -d@"${elapsed}" -u "+%-kh %Mm %Ss")
+        echo_debug "=> Docker image (re)build duration: ${elapsed_hms}"
+        echo_report
+    )
+    fi
+
+    if [ $OPT_BUILD_DOCKER_IMAGE -eq 1 ]; then
+        echo_report "--------------------------------------------------"
+        echo_report "Docker image (re)built, script exiting."
+        echo_report "--------------------------------------------------"
+        echo
+        exit
+    fi
+}
+
+#=============================================================================
+
+run_docker()
+{
+    # find top-most git repo
+    # submodules use dummy .git files instead of directories
+    topgit=$(pwd \
+        | tr '/' '\n' \
+        | awk '{x=x $1 "/"; print x ".git"}' \
+        | xargs -n1 sh -c 'test -d $0 && echo $0' \
+        | head -n1 \
+        | xargs dirname \
+        | grep .)
+
+    ARGS=(
+    --cap-add SYS_PTRACE
+    --security-opt seccomp=unconfined
+    --rm
+    --env TERM
+    --tmpfs=/tmp:exec
+    --net=host
+    -edebian_chroot=DOCKER:"$TAG"
+    )
+
+    [ -t 1 -a -t 0 ] && {
+        ARGS+=(
+        "--tty"
+        "--interactive"
+        )
+    }
+
+    ARGS+=(
+        -eHOME="$HOME"
+        -v"$topgit:$topgit"
+        -v"$(pwd):$(pwd)"
+        -v"$HOME:$HOME"
+        -v/etc/passwd:/etc/passwd
+        -v/etc/group:/etc/group
+        -v/etc/ssl:/etc/ssl
+    )
+
+    [ "${ROOT:-no}" = "no" ] && {
+        ARGS+=(-u$UID:$UID)
+        [ -e "$SSH_AUTH_SOCK" ] && {
+            ARGS+=(-eSSH_AUTH_SOCK -v"$SSH_AUTH_SOCK:$SSH_AUTH_SOCK")
+        }
+    }
+
+    # Add Jenkins workspaces to docker
+    [ -d "/data/jenkins/" ] && {
+        ARGS+=("-v/data/jenkins:/data/jenkins")
+    }
+
+    ARGS+=(-w"$PWD")
+
+    ARGS+=($DOCK_OPT)
+
+    ARGS+=("$TAG")
+
+    # Run bash by default
+    [ "$#" -eq 0 ] && { ARGS+=("/bin/bash" "-i"); }
+
+    echo_report "--------------------------------------------------"
+    echo_report "Executing docker run ..."
+    echo_report "--------------------------------------------------"
+
+    start_time="$(date -u +%s)"
+
+    ######################################################################
+
+    # quasi 'set -x' ...
+    echo_debug "+" \
+    docker run "${ARGS[@]}" "$@"
+
+    # ... and then the real thing:
+    echo_report
+    docker run "${ARGS[@]}" "$@"
+
+    ######################################################################
+
+    echo_report
+
+    end_time="$(date -u +%s)"
+    elapsed="$(($end_time-$start_time))"
+    elapsed_hms=$(date -d@"${elapsed}" -u "+%-kh %Mm %Ss")
+    echo_debug "=> Docker command execution duration: ${elapsed_hms}"
+    echo_report
+}
+
+#=============================================================================
+
+OPT_BUILD_DOCKER_IMAGE=0
+OPT_QUIET_DOCKER_BUILD=${DOCK_RUN_OPT_QUIET_DOCKER_BUILD:-0}
+OPT_SKIP_DOCKER_REBUILD=0
+OPT_QUIET=0
+
+#
+# Parse arguments
+#
+while true
+do
+    case "$1" in
+        --)
+            shift
+            break
+            ;;
+        -h)
+            usage
+            ;;
+        --root)
+            ROOT="yes"
+            ;;
+        --build-docker-image)
+            OPT_BUILD_DOCKER_IMAGE=1
+            ;;
+        --quiet-docker-build)  ;&
+        -q)
+            OPT_QUIET_DOCKER_BUILD=1
+            ;;
+        --skip-docker-rebuild)  ;&
+        -qq)
+            OPT_SKIP_DOCKER_REBUILD=1
+            ;;
+        -qqq)
+            OPT_SKIP_DOCKER_REBUILD=1
+            OPT_QUIET=1
+            ;;
+        --color)
+            FORCE_SCRIPT_COLORS=1
+            ;;
+        --no-color)
+            FORCE_SCRIPT_COLORS=0
+            ;;
+        -*)
+            abort "Unknown option: $1"
+            ;;
+        *)
+            break
+    esac
+    shift
+done
+
+set_color_output
+
+if [ $OPT_SKIP_DOCKER_REBUILD -ge 1 -a $OPT_BUILD_DOCKER_IMAGE -ge 1 ]; then
+    abort "Conflicting options - cannot rebuild and skip at the same time!"
+fi
+
+rebuild_docker
+
+run_docker "$@"
+
+echo_report "--------------------------------------------------"
+echo_report "Done."
+echo_report "--------------------------------------------------"
+
+echo_report

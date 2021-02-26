@@ -567,3 +567,54 @@ fsm_dpi_call_client(struct fsm_session *dpi_plugin_session, char *attr, char *va
 
     return rc;
 }
+
+
+/**
+ * @brief free the dpi reources of a dpi_plugin_client session
+ *
+ * @param session the session to free
+ */
+void
+fsm_free_dpi_plugin_client(struct fsm_session *session)
+{
+    struct fsm_dpi_client_tags *dpi_tag;
+    struct fsm_session *dpi_plugin;
+    om_tag_list_entry_t *tag_item;
+    char *dpi_plugin_handler;
+    ds_tree_t *tag_values;
+    char *attributes_tag;
+    ds_tree_t *sessions;
+    struct fsm_mgr *mgr;
+    om_tag_t *tag;
+
+    /* Look up the dpi plugin handler in the other_config settings */
+    dpi_plugin_handler = session->ops.get_config(session, "dpi_plugin");
+    if (dpi_plugin_handler == NULL) return;
+
+    /* Look up the corresponding session */
+    sessions = fsm_get_sessions();
+    dpi_plugin = ds_tree_find(sessions, dpi_plugin_handler);
+    if (dpi_plugin == NULL) return;
+
+    attributes_tag = session->ops.get_config(session, "flow_attributes");
+    if (attributes_tag == NULL) return;
+
+    /* Get the actual tag from its name */
+    tag = om_tag_find(attributes_tag);
+    if (tag == NULL) return;
+
+    tag_values = &tag->values;
+    ds_tree_foreach(tag_values, tag_item)
+    {
+        fsm_dpi_unregister_client(dpi_plugin, tag_item->value);
+    }
+
+    /* get the tag name associated with this session */
+    mgr = fsm_get_mgr();
+    dpi_tag = fsm_get_tag_by_name(mgr, session->name);
+    if (dpi_tag == NULL) return;
+
+    ds_tree_remove(&mgr->dpi_client_tags_tree, dpi_tag);
+    fsm_free_plugin_tags(dpi_tag);
+    free(dpi_tag);
+}

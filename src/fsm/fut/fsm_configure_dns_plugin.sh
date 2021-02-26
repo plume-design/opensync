@@ -24,23 +24,20 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-# Include basic environment config from default shell file and if any from FUT framework generated /tmp/fut_set_env.sh file
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
-source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
-source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
+
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/fsm_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
+source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
 tc_name="fsm/$(basename "$0")"
 manager_setup_file="fsm/fsm_setup.sh"
 create_rad_vif_if_file="tools/device/create_radio_vif_interface.sh"
 create_inet_file="tools/device/create_inet_interface.sh"
 add_bridge_port_file="tools/device/add_bridge_port.sh"
-configure_wan_bridge_file="tools/device/configure_wan_bridge.sh"
+configure_lan_bridge_for_wan_connectivity_file="tools/device/configure_lan_bridge_for_wan_connectivity.sh"
 client_connect_file="tools/rpi/connect_to_wpa2.sh"
 fsm_test_dns_file="tools/rpi/fsm/fsm_test_dns_plugin.sh"
 # Default of_port must be unique between fsm tests for valid testing
@@ -71,7 +68,7 @@ Testcase procedure:
             Add bridge port to VIF interface onto home bridge
                 Run: ./${add_bridge_port_file} (see ${add_bridge_port_file} -h)
             Configure WAN bridge settings
-                Run: ./${configure_wan_bridge_file} (see ${configure_wan_bridge_file} -h)
+                Run: ./${configure_lan_bridge_for_wan_connectivity_file} (see ${configure_lan_bridge_for_wan_connectivity_file} -h)
             Update Inet entry for home bridge interface for dhcpd (br-home)
                 Run: ./${create_inet_file} (see ${create_inet_file} -h)
             Configure FSM for DNS plugin test
@@ -120,7 +117,7 @@ tap_tx_if="${lan_bridge_if}.tx"
 log_title "$tc_name: FSM test - Configuring DNS plugin required for FSM testing"
 
 log "$tc_name: Configuring TAP interfaces required for FSM testing"
-add_bridge_port "br-home" "${tap_tdns_if}"
+add_bridge_port "${lan_bridge_if}" "${tap_tdns_if}"
 set_ovs_vsctl_interface_option "${tap_tdns_if}" "type" "internal"
 set_ovs_vsctl_interface_option "${tap_tdns_if}" "ofport_request" "${of_port}"
 create_inet_entry2 \
@@ -132,7 +129,7 @@ create_inet_entry2 \
     -enabled true &&
     log -deb "$tc_name: Interface ${tap_tdns_if} successfully created" ||
     raise "Failed to create interface ${tap_tdns_if}" -l "$tc_name" -ds
-add_bridge_port "br-home" "${tap_tx_if}"
+add_bridge_port "${lan_bridge_if}" "${tap_tx_if}"
 set_ovs_vsctl_interface_option "${tap_tx_if}" "type" "internal"
 set_ovs_vsctl_interface_option "${tap_tx_if}" "ofport_request" "${in_port}"
 create_inet_entry2 \

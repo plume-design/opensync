@@ -63,6 +63,7 @@ struct hapd {
     char dpp_enrollee_conf_psk_hex[65];
     char dpp_enrollee_conf_csign_hex[513];
     char dpp_enrollee_conf_netaccesskey_hex[513];
+    char dpp_enrollee_conf_akm[513];
     char dpp_pending_conf_sta[18];
     int dpp_pending_conf;
     int dpp_pending_auth_success;

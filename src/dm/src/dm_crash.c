@@ -37,13 +37,16 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <dirent.h>
 #include <unistd.h>
 #include <stdbool.h>
+#include <string.h>
 #include <limits.h>
 #include <sys/inotify.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 
 #include "module.h"
+#include "target.h"
 #include "log.h"
+#include "osp_unit.h"
 #include "os_util.h"
 #include "ovsdb_table.h"
 #include "schema.h"
@@ -71,7 +74,13 @@ static ev_stat crash_reports_stat;
 static ev_debounce crash_reports_debounce;
 static ev_debounce backoff_debounce;
 
-static char crash_reports_topic[128];   // MQTT topic for crash reports
+static struct
+{
+    char crash_reports_topic[TARGET_BUFF_SZ];   // MQTT topic for crash reports
+    char location_id[TARGET_BUFF_SZ];
+    char node_id[TARGET_BUFF_SZ];
+} awlan_config;
+
 static time_t qm_mqtt_backoff;          // QM or MQTT backoff on errors
 
 
@@ -90,50 +99,115 @@ static bool crash_report_send_to_qm(char *topic, void *data, int data_size)
     return true;
 }
 
+static bool crash_report_add_meta_data(json_t *json)
+{
+    char buff[TARGET_BUFF_SZ];
+
+    // node ID:
+    if (*awlan_config.node_id == '\0')
+    {
+        LOG(WARN, LTAG"nodeId not yet configured in AWLAN_Node");
+        return false;
+    }
+    json_object_set_new(json, "nodeId", json_string(awlan_config.node_id));
+
+    // location ID:
+    if (*awlan_config.location_id == '\0')
+    {
+        LOG(WARN, LTAG"locationId not yet configured in AWLAN_Node");
+        return false;
+    }
+    json_object_set_new(json, "locationId", json_string(awlan_config.location_id));
+
+    // firmware version:
+    if (!osp_unit_sw_version_get(buff, sizeof(buff)))
+        STRSCPY_WARN(buff, "<NA>");
+    json_object_set_new(json, "firmwareVersion", json_string(buff));
+
+    // model:
+    if (!osp_unit_model_get(buff, sizeof(buff)))
+        STRSCPY_WARN(buff, "<NA>");
+    json_object_set_new(json, "model", json_string(buff));
+
+    return true;
+}
+
 static enum cr_status crash_report_send(const char *crash_report_filename)
 {
     enum cr_status rv = cr_err_general;
-    struct stat statbuf;
-    char *crash_report = NULL;
+    char buffer[8*1024];
+    json_t *json = NULL;
     FILE *f = NULL;
 
-    if (*crash_reports_topic == '\0')
+    if (*awlan_config.crash_reports_topic == '\0')
     {
         LOG(INFO, LTAG"Crash Reports MQTT topic not configured");
         rv = cr_err_mqtt_topic;
         return false;
     }
 
-    // Load the crash report (in json format) from tmp file:
+    // Load the crash report from tmp file:
     f = fopen(crash_report_filename, "r");
-    if (f == NULL || fstat(fileno(f), &statbuf) == -1)
+    if (f == NULL)
     {
         LOG(ERROR, LTAG"Error opening file: %s", crash_report_filename);
         goto error_out;
     }
-    crash_report = malloc(statbuf.st_size + 1);
 
-    if (fread(crash_report, 1, statbuf.st_size, f) < (size_t)statbuf.st_size)
+    json = json_object();
+    // Add meta data (headers) to json:
+    if (!crash_report_add_meta_data(json))
     {
-        LOG(ERROR, LTAG"Error reading from file: %s", crash_report_filename);
+        LOG(ERR, LTAG"Error adding headers to crash report json.");
         goto error_out;
     }
-    crash_report[statbuf.st_size] = '\0';
-    LOG(DEBUG, LTAG"Loaded crash report from file %s: %s", crash_report_filename, crash_report);
+
+    // Add crash report data to json:
+    while (fgets(buffer, sizeof(buffer), f) != NULL)
+    {
+        char *key;
+        char *value;
+
+        key = strtok(buffer, " ");
+        if (key == NULL)
+        {
+            LOG(ERR, LTAG"No key found in crash report tmp file %s", crash_report_filename);
+            goto error_out;
+        }
+        value = strtok(NULL, "\n");
+        if (value == NULL)
+        {
+            LOG(ERR, LTAG"No value for key=%s found in crash report tmp file %s", key, crash_report_filename);
+            goto error_out;
+        }
+
+        if (strcmp(key, "timestamp") == 0)
+            json_object_set_new(json, key, json_integer(atoll(value)));
+        else
+            json_object_set_new(json, key, json_string(value));
+    }
+
+    if (!json_gets(json, buffer, sizeof(buffer), 0))
+    {
+        LOG(ERR, LTAG"Error dumping JSON string");
+        goto error_out;
+    }
+    LOG(INFO, LTAG"Crash report JSON (len=%zd): %s", strlen(buffer), buffer);
 
     // Send json osync crash report to mqtt via qm:
-    if (!crash_report_send_to_qm(crash_reports_topic, crash_report, statbuf.st_size))
+    if (!crash_report_send_to_qm(awlan_config.crash_reports_topic, buffer, strlen(buffer)))
     {
         LOG(ERROR, LTAG"Error sending crash report to QM");
         rv = cr_err_qm_mqtt;
         goto error_out;
     }
-    LOG(INFO, LTAG"Sent crash report %s to MQTT topic %s", crash_report_filename, crash_reports_topic);
+    LOG(INFO, LTAG"Sent crash report %s to MQTT topic %s", crash_report_filename,
+            awlan_config.crash_reports_topic);
 
     rv = cr_ok_sent;
 error_out:
     if (f != NULL) fclose(f);
-    free(crash_report);
+    json_decref(json);
     return rv;
 }
 
@@ -253,27 +327,47 @@ static void callback_AWLAN_Node(
         struct schema_AWLAN_Node *config)
 {
     const char *mqtt_topic = NULL;
+    const char *location_id = NULL;
+    const char *node_id = NULL;
     int i;
 
     if (mon->mon_type == OVSDB_UPDATE_ERROR)
         return;
 
+    // Record crash reports MQTT topic from mqtt_topics:
     for (i = 0; i < config->mqtt_topics_len; i++)
     {
         const char *key = config->mqtt_topics_keys[i];
-        const char *topic = config->mqtt_topics[i];
+        const char *value = config->mqtt_topics[i];
 
-        if (strcmp(key, AWLAN_MQTT_TOPIC_KEY) == 0 && *topic != '\0')
+        if (strcmp(key, AWLAN_MQTT_TOPIC_KEY) == 0 && *value != '\0')
         {
-            mqtt_topic = topic;
+            mqtt_topic = value;
             break;
         }
     }
 
-    if (mqtt_topic != NULL && strcmp(mqtt_topic, crash_reports_topic) != 0)
+    // Record nodeId and locationId from mqtt_headers:
+    for (i = 0; i < config->mqtt_headers_len; i++)
     {
-        strscpy(crash_reports_topic, mqtt_topic, sizeof(crash_reports_topic));
-        LOG(INFO, LTAG"Configured Crash.Reports MQTT topic: '%s'", crash_reports_topic);
+        const char *key = config->mqtt_headers_keys[i];
+        const char *value = config->mqtt_headers[i];
+
+        if (strcmp(key, "locationId") == 0 && *value != '\0')
+            location_id = value;
+        if (strcmp(key, "nodeId") == 0 && *value != '\0')
+            node_id = value;
+    }
+
+    if (location_id != NULL)
+        STRSCPY_WARN(awlan_config.location_id, location_id);
+    if (node_id != NULL)
+        STRSCPY_WARN(awlan_config.node_id, node_id);
+
+    if (mqtt_topic != NULL && strcmp(mqtt_topic, awlan_config.crash_reports_topic) != 0)
+    {
+        STRSCPY_WARN(awlan_config.crash_reports_topic, mqtt_topic);
+        LOG(INFO, LTAG"Configured Crash.Reports MQTT topic: '%s'", awlan_config.crash_reports_topic);
 
         crash_reports_start();
     }

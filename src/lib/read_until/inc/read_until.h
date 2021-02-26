@@ -27,8 +27,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef READ_UNTIL_H_INCLUDED
 #define READ_UNTIL_H_INCLUDED
 
+#include <sys/types.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
 
 /**
  * This is quite similar to fgets() except that it works with non-blocking I/O

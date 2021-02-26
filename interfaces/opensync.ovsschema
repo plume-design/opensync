@@ -1,7 +1,7 @@
 {
   "name": "Open_vSwitch",
-  "version": "7.11.250",
-  "cksum": "1988003834 218636",
+  "version": "7.11.251",
+  "cksum": "3198025429 218878",
   "tables": {
     "AWLAN_Node": {
       "columns": {
@@ -1229,12 +1229,23 @@
 
     "Wifi_Route_Config": {
       "columns": {
-        "dest": {
+        "dest_addr": {
           "type": {
             "key": {
               "type": "string",
               "minLength": 7,
-              "maxLength": 18
+              "maxLength": 15
+            },
+            "min": 1,
+            "max": 1
+          }
+        },
+        "dest_mask": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 7,
+              "maxLength": 15
             },
             "min": 1,
             "max": 1

@@ -44,7 +44,26 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 struct dns_cache_mgr
 {
     bool        initialized;
+    uint8_t     refcount;
     ds_tree_t   ip2a_tree;
+};
+
+#define URL_REPORT_MAX_ELEMS 8
+
+enum {
+    IP2ACTION_BC_SVC,
+    IP2ACTION_WP_SVC,
+};
+
+struct ip2action_bc_info
+{
+    uint8_t confidence_levels[URL_REPORT_MAX_ELEMS];
+    uint8_t reputation;
+};
+
+struct ip2action_wb_info
+{
+    uint8_t risk_level;
 };
 
 struct ip2action
@@ -56,6 +75,17 @@ struct ip2action
     time_t                      cache_ts;
     int                         af_family;
     uint8_t                     *ip_tbl;
+    uint8_t                     policy_idx;
+    int                         service_id;
+    uint8_t                     nelems;
+    uint8_t                     categories[URL_REPORT_MAX_ELEMS];
+    union
+    {
+        struct ip2action_bc_info bc_info;
+        struct ip2action_wb_info wb_info;
+    } cache_info;
+#define cache_bc cache_info.bc_info
+#define cache_wb cache_info.wb_info
     ds_tree_node_t              ip2a_tnode;
 };
 
@@ -66,6 +96,17 @@ struct ip2action_req
 
    int                      cache_ttl;
    int                      action;
+   uint8_t                  policy_idx;
+   int                      service_id;
+   uint8_t                  nelems;
+   uint8_t                  categories[URL_REPORT_MAX_ELEMS];
+   union
+   {
+        struct ip2action_bc_info bc_info;
+        struct ip2action_wb_info wb_info;
+   } cache_info;
+#define cache_bc cache_info.bc_info
+#define cache_wb cache_info.wb_info
 };
 
 struct dns_cache_mgr *
@@ -153,5 +194,15 @@ print_dns_cache(void);
  */
 void
 print_dns_cache_size(void);
+
+/**
+ * @brief returns cache ref count.
+ *
+ * @param None
+ *
+ * @return cache refcount
+ */
+uint8_t
+dns_cache_get_refcount(void);
 
 #endif /* DNS_CACHE_H_INCLUDED */
