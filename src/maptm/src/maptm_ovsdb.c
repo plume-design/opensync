@@ -225,14 +225,14 @@ void callback_Node_Config(
                 {
                     WanConfig |= MAPTM_ELIGIBILITY_ENABLE;
                 }
-            }
-            strucWanConfig.mapt_support = maptm_get_supportValue(conf->value);
-            maptm_dhcp_option_update_15_option(strucWanConfig.mapt_support);
-            maptm_dhcp_option_update_95_option(strucWanConfig.mapt_support);
-            maptm_eligibilityStart(WanConfig);
-            if (!(maptm_ps_set(MAPT_PS_KEY_NAME, maptm_get_supportValue(conf->value) ? "true" : "false")))
-            {
-                LOGE("Error saving new MAP-T support value");
+                strucWanConfig.mapt_support = maptm_get_supportValue(conf->value);
+                maptm_dhcp_option_update_15_option(strucWanConfig.mapt_support);
+                maptm_dhcp_option_update_95_option(strucWanConfig.mapt_support);
+                maptm_eligibilityStart(WanConfig);
+                if (!(maptm_ps_set(MAPT_PS_KEY_NAME, maptm_get_supportValue(conf->value) ? "true" : "false")))
+                {
+                    LOGE("Error saving new MAP-T support value");
+                }
             }
         }
     }
