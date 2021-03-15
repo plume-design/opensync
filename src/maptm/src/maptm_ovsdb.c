@@ -63,36 +63,6 @@ ovsdb_table_t  table_IPv6_Address;
 /* To change to Enum  */
 int WanConfig = 0;
 
-// Testing MAP-T tables presence
-bool maptm_ovsdb_tables_ready()
-{
-    json_t *where = NULL;
-    bool retval = false;
-    struct schema_Node_Config iconf;
-    int eval;
-
-    // Checking MAP-T entry presence in Node_Config table
-    where = ovsdb_where_multi(
-            ovsdb_where_simple_typed(SCHEMA_COLUMN(Node_Config, module), MAPT_MODULE_NAME, OCLM_STR),
-            ovsdb_where_simple_typed(SCHEMA_COLUMN(Node_Config, key), "maptParams", OCLM_STR),
-            NULL);
-    if (!where) LOGI(" [%s] ERROR: where is NULL", __func__);
-
-    eval = ovsdb_table_select_one_where(&table_Node_Config, where, &iconf);
-    if (!eval)
-    {
-        LOGI("Node_Config table is not set by the cloud yet!");
-        retval = false;  // switch to cloud-independent mode
-    }
-    else
-    {
-        LOGI("Node_Config table is set by the cloud!");
-        retval = true;
-    }
-
-    return retval;
-}
-
 // Function used to set values in persistant storage
 bool maptm_ps_set(const char *key, char *value)
 {
@@ -155,6 +125,7 @@ bool maptm_persistent(void)
         if (!(osp_ps_set(ps, MAPT_PS_KEY_NAME, mapt_support, strlen(mapt_support)+1) <= 0))
         {
             LOGE("Failed when setting persistent storage value");
+            strucWanConfig.mapt_support = true;
             goto out;
         }
     }
@@ -279,6 +250,8 @@ void callback_Node_Config(
 
             if (maptm_get_supportValue(conf->value) != maptm_get_supportValue(old_rec->value))
             {
+                // Restart the eligibility state machine
+                maptm_eligibilityStop();
                 maptm_eligibilityStart(WanConfig);
                 if (!(maptm_ps_set(MAPT_PS_KEY_NAME, maptm_get_supportValue(conf->value) ? "true" : "false")))
                 {
@@ -316,6 +289,8 @@ static void callback_Interface(
             {
                 if (!strcmp(record->link_state, "up") && (strucWanConfig.link_up == false))
                 {
+                    // Restart the eligibility state machine
+                    maptm_eligibilityStop();
                     strucWanConfig.link_up = true;
                     maptm_eligibilityStart(WanConfig);
                 }

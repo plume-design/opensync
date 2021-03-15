@@ -83,7 +83,6 @@ static void StartStop_DHCPv4(bool refresh)
 {
     struct schema_Wifi_Inet_Config iconf_update;
     struct schema_Wifi_Inet_Config iconf;
-    bool dhcp_active;
     int ret;
 
     MEMZERO(iconf);
@@ -100,15 +99,7 @@ static void StartStop_DHCPv4(bool refresh)
         return;
     }
 
-    dhcp_active = !strcmp(iconf.ip_assign_scheme, "dhcp");
-    if (!refresh && dhcp_active)
-    {
-        STRSCPY(iconf_update.ip_assign_scheme, "none");
-    }
-    if (refresh && !dhcp_active)
-    {
-        STRSCPY(iconf_update.ip_assign_scheme, "dhcp");
-    }
+    STRSCPY(iconf_update.ip_assign_scheme, refresh ? "dhcp" : "none");
     iconf_update.ip_assign_scheme_exists = true;
     char *filter[] = { "+",
                         SCHEMA_COLUMN(Wifi_Inet_Config, ip_assign_scheme),
@@ -295,8 +286,6 @@ static void callback_DHCP_Option(
             {
                 if (!strucWanConfig.link_up)
                 {
-                    strucWanConfig.mapt_95_Option = false;
-                    strucWanConfig.mapt_95_value[0] = '\0';
                     maptm_eligibilityStop();
                 }
                 else if (!strcmp(old->value,strucWanConfig.mapt_95_value))
@@ -513,6 +502,8 @@ void maptm_eligibilityStop(void)
     StartStop_DHCPv6(false);
     StartStop_DHCPv4(false);
     wait95Option = false;
+    strucWanConfig.mapt_95_Option = false;
+    strucWanConfig.mapt_95_value[0] = '\0';
     maptm_dhcpv6_server_add_option(strucWanConfig.option_23, false);
     maptm_dhcpv6_server_add_option(strucWanConfig.option_24, false);
     if (!strcmp("MAP-T", strucWanConfig.mapt_mode))
@@ -542,13 +533,15 @@ void maptm_eligibilityStart(int WanConfig)
 {
     init_eligibility();
 
-    // If Cloud did not set MAP-T tables, set default MAP-T support value
-    if (!maptm_ovsdb_tables_ready()) 
-    {
+    // Check mapt_support value and update WanConfig and requested options list
+    LOGT("%s mapt_support is %s" , __func__, strucWanConfig.mapt_support ? "enabled" : "disabled");
+    if (strucWanConfig.mapt_support) {
         WanConfig |= MAPTM_ELIGIBILITY_ENABLE;
-        maptm_dhcp_option_update_15_option(strucWanConfig.mapt_support);
-        maptm_dhcp_option_update_95_option(strucWanConfig.mapt_support);
+    } else {
+        WanConfig &= MAPTM_IPV6_ENABLE;
     }
+    maptm_dhcp_option_update_15_option(strucWanConfig.mapt_support);
+    maptm_dhcp_option_update_95_option(strucWanConfig.mapt_support);
 
     // Check IPv6 is Enabled
     if (strucWanConfig.mapt_EnableIpv6 || maptm_ipv6IsEnabled())
