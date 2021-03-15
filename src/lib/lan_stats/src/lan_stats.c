@@ -48,6 +48,52 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 static char *dflt_fltr_name = "none";
 static char *collect_cmd = OVS_DPCTL_DUMP_FLOWS;
+/**
+ * @brief compare flows.
+ *
+ * @param a flow pointer
+ * @param b flow pointer
+ * @return 0 if flows match
+ */
+static int
+flow_cmp (void *a, void *b)
+{
+    dp_ctl_stats_t  *l2_a = (dp_ctl_stats_t *)a;
+    dp_ctl_stats_t  *l2_b = (dp_ctl_stats_t *)b;
+    int mac_cmp;
+    int eth_type_cmp;
+    int vlan_cmp;
+    int vlan_eth_cmp;
+
+    /* compare src mac-address */
+    mac_cmp = memcmp(&l2_a->smac_key, &l2_b->smac_key, sizeof(os_macaddr_t));
+    if (mac_cmp != 0) return mac_cmp;
+
+    /* compare dst mac-address */
+    mac_cmp = memcmp(&l2_a->dmac_key, &l2_b->dmac_key, sizeof(os_macaddr_t));
+    if (mac_cmp != 0) return mac_cmp;
+
+    /* compare eth type */
+    eth_type_cmp = l2_a->eth_val - l2_b->eth_val;
+    if (eth_type_cmp != 0) return eth_type_cmp;
+
+    /* compare vlanid */
+    vlan_cmp = l2_a->vlan_id - l2_b->vlan_id;
+    if (vlan_cmp != 0) return vlan_cmp;
+
+    /* compare vlan eth type */
+    vlan_eth_cmp = l2_a->vlan_eth_val - l2_b->vlan_eth_val;
+    if (vlan_eth_cmp != 0) return vlan_eth_cmp;
+
+    return 0;
+}
+
+
+/**
+ * Temporary list to merge same flows stats.
+ */
+ds_tree_t flow_tracker_list = DS_TREE_INIT(flow_cmp, dp_ctl_stats_t, dp_tnode);
+
 
 static unsigned int get_eth_type(char *eth)
 {
@@ -61,12 +107,14 @@ static unsigned int get_eth_type(char *eth)
  * For speedy parsing did the hand-coded parser with the assumption the
  * output format of ovs-dpctl dump-flows  is consistent
  */
-static void parse_lan_stats(char *buf[], dp_ctl_stats_t *stats)
+static dp_ctl_stats_t *parse_lan_stats(char *buf[])
 {
     int i = 0;
     char *pos = NULL;
     int ret = 0;
+    dp_ctl_stats_t *stats;
 
+    stats = calloc(1, sizeof(*stats));
     while (buf[i] != NULL)
     {
         if (strncmp(buf[i], OVS_DUMP_ETH_SRC_PREFIX, \
@@ -91,14 +139,8 @@ static void parse_lan_stats(char *buf[], dp_ctl_stats_t *stats)
             }
             i++;
         }
-        else if (strncmp(buf[i], OVS_DUMP_ETH_DST_PREFIX, \
-                   OVS_DUMP_ETH_DST_PREFIX_LEN) == 0)
-        {
-            // Get dst mac
-            // pos = buf[i] + OVS_DUMP_ETH_DST_PREFIX_LEN;
-            // STRSCPY(stats->dmac, pos);
-        } else if (strncmp(buf[i], OVS_DUMP_ETH_TYPE_PREFIX, \
-                   OVS_DUMP_ETH_TYPE_PREFIX_LEN) == 0)
+        else if (strncmp(buf[i], OVS_DUMP_ETH_TYPE_PREFIX, \
+                 OVS_DUMP_ETH_TYPE_PREFIX_LEN) == 0)
         {
             // Get eth type
             pos = buf[i] + OVS_DUMP_ETH_TYPE_PREFIX_LEN;
@@ -139,14 +181,34 @@ static void parse_lan_stats(char *buf[], dp_ctl_stats_t *stats)
         i++;
     }
     stats->stime = time(NULL); // sample time
+    return stats;
 }
 
-static void parse_flows(char *buf, dp_ctl_stats_t *stats)
+static void merge_flows(dp_ctl_stats_t *new)
+{
+    dp_ctl_stats_t *old = NULL;
+
+    // Check if the same flow exists.
+    old = ds_tree_find(&flow_tracker_list, new);
+    if (old)
+    {
+       old->pkts += new->pkts;
+       old->bytes += new->bytes;
+       free(new);
+    }
+    else
+    {
+        ds_tree_insert(&flow_tracker_list, new, new);
+    }
+}
+
+static void parse_flows(char *buf)
 {
     char *sep = ",";
     char *tok = NULL;
     char *tokens[MAX_TOKENS] = {0};
     int i = 0;
+    dp_ctl_stats_t *new;
 
     tok = strtok(buf, sep);
     while (tok)
@@ -157,8 +219,10 @@ static void parse_flows(char *buf, dp_ctl_stats_t *stats)
             break;
     }
     tokens[i] = NULL;
-    parse_lan_stats(tokens, stats);
+    new = parse_lan_stats(tokens);
+    merge_flows(new);
 }
+
 
 static void alloc_aggr(fcm_collect_plugin_t *collector)
 {
@@ -324,18 +388,16 @@ static void lan_stats_send_report_cb(fcm_collect_plugin_t *collector)
    activate_window(collector);
 }
 
-static void lan_stats_collect_cb(fcm_collect_plugin_t *collector)
+
+static void lan_stats_collect_flows(fcm_collect_plugin_t *collector)
 {
     FILE *fp = NULL;
     char line_buf[LINE_BUFF_LEN] = {0,};
-    dp_ctl_stats_t stats;
-    fcm_filter_l2_info_t l2_filter_info;
-    fcm_filter_stats_t   l2_filter_pkts;
-    bool allow = false;
 
     collect_cmd  = collector->fcm_plugin_ctx;
     if (collect_cmd == NULL)
         collect_cmd = OVS_DPCTL_DUMP_FLOWS;
+
     if ((fp = popen(collect_cmd, "r")) == NULL)
     {
         LOGE("popen error");
@@ -345,9 +407,24 @@ static void lan_stats_collect_cb(fcm_collect_plugin_t *collector)
     while (fgets(line_buf, LINE_BUFF_LEN, fp) != NULL)
     {
         LOGD("ovs-dpctl dump line %s", line_buf);
-        memset(&stats, 0, sizeof(stats));
-        parse_flows(line_buf, &stats);
-        set_filter_info(&l2_filter_info, &l2_filter_pkts, &stats);
+        parse_flows(line_buf);
+        memset(line_buf, 0, sizeof(line_buf));
+    }
+    pclose(fp);
+    fp = NULL;
+}
+
+static void lan_stats_flows_filter(fcm_collect_plugin_t *collector, ds_tree_t *tree)
+{
+    fcm_filter_l2_info_t l2_filter_info;
+    fcm_filter_stats_t   l2_filter_pkts;
+    bool allow = false;
+    dp_ctl_stats_t *stats, *next;
+
+    stats = ds_tree_head(tree);
+    while (stats != NULL)
+    {
+        set_filter_info(&l2_filter_info, &l2_filter_pkts, stats);
         if (collector->filters.collect != NULL)
         {
             fcm_filter_layer2_apply(collector->filters.collect,
@@ -359,10 +436,10 @@ static void lan_stats_collect_cb(fcm_collect_plugin_t *collector)
                      "bytes: %ld\n",\
                       collector->filters.collect ?
                       collector->filters.collect : dflt_fltr_name,
-                      stats.smac_addr,
-                      stats.dmac_addr, stats.vlan_id, stats.eth_val,
-                      stats.pkts, stats.bytes);
-                aggr_add_sample(collector, &stats);
+                      stats->smac_addr,
+                      stats->dmac_addr, stats->vlan_id, stats->eth_val,
+                      stats->pkts, stats->bytes);
+                aggr_add_sample(collector, stats);
             }
             else
                 LOGD("Flow collect dropped: filter_name: %s, smac: %s, "\
@@ -370,18 +447,47 @@ static void lan_stats_collect_cb(fcm_collect_plugin_t *collector)
                      "bytes: %ld\n",\
                       collector->filters.collect ?
                       collector->filters.collect : dflt_fltr_name,
-                      stats.smac_addr, stats.dmac_addr,
-                      stats.vlan_id, stats.eth_val, stats.pkts, stats.bytes);
+                      stats->smac_addr, stats->dmac_addr,
+                      stats->vlan_id, stats->eth_val, stats->pkts, stats->bytes);
         }
         else
         {
             LOGD("Aggr add sample\n");
-            aggr_add_sample(collector, &stats);
+            aggr_add_sample(collector, stats);
         }
-        memset(line_buf, 0, sizeof(line_buf));
+
+        next = ds_tree_next(tree, stats);
+        stats = next;
     }
-    pclose(fp);
-    fp = NULL;
+}
+
+
+static void lan_stats_clean_flows(ds_tree_t *tree)
+{
+    dp_ctl_stats_t *stats, *next;
+    int count = 0;
+
+    if (tree == NULL) return;
+
+    stats = ds_tree_head(tree);
+    while (stats != NULL)
+    {
+        next = ds_tree_next(tree, stats);
+        ds_tree_remove(tree, stats);
+        free(stats);
+        stats = next;
+        count++;
+    }
+    LOGT("%s: Total flows freed: %d\n",__func__,count);
+    return;
+}
+
+
+static void lan_stats_collect_cb(fcm_collect_plugin_t *collector)
+{
+    lan_stats_collect_flows(collector);
+    lan_stats_flows_filter(collector, &flow_tracker_list);
+    lan_stats_clean_flows(&flow_tracker_list);
 }
 
 

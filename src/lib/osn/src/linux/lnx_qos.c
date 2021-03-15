@@ -39,23 +39,45 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *  specific queue.
  * ===========================================================================
  */
+#include <net/if.h>
+
 #include <stdlib.h>
+#include <unistd.h>
 
 #include "const.h"
+#include "ds_tree.h"
 #include "execsh.h"
 #include "log.h"
 #include "util.h"
+#include "memutil.h"
 
 #include "lnx_qos.h"
 
-#define LNX_QOS_MAX             256             /**< Maximum number of lnx_qos_t objects */
-#define LNX_QOS_ID_MAX          1               /**< Maximum ID as acllocated by lnx_qos_begin() */
-#define LNX_QOS_ID_QUEUE_MAX    255             /**< Maximum ID as allocated by lnx_qos_queue_begin() */
-#define LNX_QOS_MARK_BASE       0x44000000      /**< Base mask for calculating the fwmark. The fwmark is calcualted
+#define LNX_QOS_ID_MAX          1024            /**< Maximum ID as allocated by lnx_qos_begin() */
+#define LNX_QOS_MARK_BASE       0x44000000      /**< Base mask for calculating the fwmark. The fwmark is calculated
                                                      from the lnx_qos_t ID, the qos ID and the queue ID */
+/*
+ * Structure representing an allocated Queue ID
+ *
+ * Queues with the same tag should return the same queue ID; this structure
+ * keeps track of allocated tag <-> qid mappings
+ */
+struct lnx_qos_qid
+{
+    int             qi_id;
+    char           *qi_tag;
+    int             qi_refcnt;
+    ds_tree_node_t  qi_qid_tnode;
+    ds_tree_node_t  qi_tag_tnode;
+};
 
-/* List of free IDs, each lnx_qos_t object allocates its own ID from this array */
-uint8_t lnx_qos_obj_id_map[LNX_QOS_MAX + 7 / 8];
+/* List of free queue IDs; new IDs should be allocated from this pool */
+static uint8_t lnx_qos_qid_free[(LNX_QOS_ID_MAX + 7) / 8];
+
+/* Map between tags and queue ID objects */
+static ds_tree_t lnx_qos_tag_map = DS_TREE_INIT(ds_str_cmp, struct lnx_qos_qid, qi_tag_tnode);
+/* Map between queue ID and their respective objects */
+static ds_tree_t lnx_qos_qid_map = DS_TREE_INIT(ds_int_cmp, struct lnx_qos_qid, qi_qid_tnode);
 
 /*
  * "tc qdisc del" may return an error if there's no qdisc configured on the
@@ -104,35 +126,24 @@ static char lnx_qos_qdisc_add[] = _S(
                 flowid "1:${qid}");
 
 
+static bool lnx_qos_reconfigure(lnx_qos_t *self);
+static int lnx_qos_id_get(const char *tag);
+static void lnx_qos_id_put(int qid);
+static lnx_netlink_fn_t lnx_qos_netlink_fn;
+
+/*
+ * ===========================================================================
+ *  Public implementation
+ * ===========================================================================
+ */
 bool lnx_qos_init(lnx_qos_t *self, const char *ifname)
 {
-    int qid;
-
     memset(self, 0, sizeof(*self));
     STRSCPY(self->lq_ifname, ifname);
 
-    /* Allocate a unique ID for this object */
-    for (qid = 0; qid < LNX_QOS_MAX; qid++)
-    {
-        int idx = qid >> 3;
-        int bit = 1 << (qid & 7);
-
-        if (!(lnx_qos_obj_id_map[idx] & bit))
-        {
-            lnx_qos_obj_id_map[idx] |= bit;
-            break;
-        }
-    }
-
-    /* Maximum number of lnx_qos_t objects reached, return error */
-    if (qid >= LNX_QOS_MAX)
-    {
-        LOG(ERR, "qos: %s: Maximum number of objects reached.", ifname);
-        return false;
-    }
-
-    self->lq_obj_id = qid;
-    self->lq_qos_id = 1;
+    lnx_netlink_init(&self->lq_netlink, lnx_qos_netlink_fn);
+    lnx_netlink_set_ifname(&self->lq_netlink, self->lq_ifname);
+    lnx_netlink_set_events(&self->lq_netlink, LNX_NETLINK_LINK);
 
     return true;
 }
@@ -140,9 +151,9 @@ bool lnx_qos_init(lnx_qos_t *self, const char *ifname)
 void lnx_qos_fini(lnx_qos_t *self)
 {
     int rc;
+    struct lnx_qos_queue *qp;
 
-    /* Clear the bit that corresponds to this object id */
-    lnx_qos_obj_id_map[self->lq_obj_id >> 3] &= ~(1 << (self->lq_obj_id & 7));
+    lnx_netlink_fini(&self->lq_netlink);
 
     LOG(INFO, "qos: %s: Resetting QoS.", self->lq_ifname);
     rc = execsh_log(LOG_SEVERITY_DEBUG, lnx_qos_qdisc_reset, self->lq_ifname);
@@ -152,15 +163,27 @@ void lnx_qos_fini(lnx_qos_t *self)
         return;
     }
 
+    for (qp = self->lq_queue; qp < self->lq_queue_e; qp++)
+    {
+        lnx_qos_id_put(qp->qq_id);
+        free(qp->qq_shared);
+    }
+
+    free(self->lq_queue);
 }
 
 bool lnx_qos_apply(lnx_qos_t *self)
 {
-    if (self->lq_qos_id <= 0 || self->lq_que_id <= 0)
+    if (self->lq_qos_begin || self->lq_que_begin)
     {
-        LOG(ERR, "qos: %s: Invalid QoS configuration.", self->lq_ifname);
+        LOG(ERR, "qos: %s: qos_end() or queue_end() missing.", self->lq_ifname);
         return false;
     }
+
+    /* Restart netlink monitoring */
+    lnx_netlink_stop(&self->lq_netlink);
+    self->lq_ifindex = 0;
+    lnx_netlink_start(&self->lq_netlink);
 
     return true;
 }
@@ -169,42 +192,26 @@ bool lnx_qos_begin(lnx_qos_t *self, struct osn_qos_other_config *other_config)
 {
     (void)other_config;
 
-    int rc;
-
-    if (self->lq_qos_id > LNX_QOS_ID_MAX)
+    if (self->lq_qos_begin)
     {
-        LOG(ERR, "qos: %s: Maximum number (%d) of QoS definitions reached.",
-                self->lq_ifname, LNX_QOS_ID_MAX);
+        LOG(ERR, "qos: %s: QoS nesting not supported.", self->lq_ifname);
         return false;
     }
-
-    self->lq_que_id = 1;
-
-    LOG(INFO, "qos: %s: Initializing QoS [%d:%d].",
-            self->lq_ifname, self->lq_obj_id, self->lq_qos_id);
-
-    rc = execsh_log(LOG_SEVERITY_DEBUG, lnx_qos_qdisc_reset, self->lq_ifname);
-    if (rc != 0)
-    {
-        LOG(ERR, "qos: %s: Error resetting QoS [%d:%d].",
-                self->lq_ifname, self->lq_obj_id, self->lq_qos_id);
-        return false;
-    }
-
-    rc = execsh_log(LOG_SEVERITY_DEBUG, lnx_qos_qdisc_set, self->lq_ifname);
-    if (rc != 0)
-    {
-        LOG(ERR, "qos: %s: Error setting QoS [%d:%d].",
-                self->lq_ifname, self->lq_obj_id, self->lq_qos_id);
-        return false;
-    }
+    self->lq_qos_begin = true;
 
     return true;
 }
 
 bool lnx_qos_end(lnx_qos_t *self)
 {
-    self->lq_qos_id++;
+    if (!self->lq_qos_begin)
+    {
+        LOG(ERR, "qos: %s: qos_begin/qos_end mismatch.", self->lq_ifname);
+        return false;
+    }
+
+    self->lq_qos_begin = false;
+
     return true;
 }
 
@@ -212,17 +219,13 @@ bool lnx_qos_queue_begin(
         lnx_qos_t *self,
         int priority,
         int bandwidth,
+        const char *tag,
         const struct osn_qos_other_config *other_config,
         struct osn_qos_queue_status *qqs)
 {
-    char sqid[C_INT32_LEN];
-    char sprio[C_INT32_LEN];
-    char sbw[C_INT32_LEN];
-    char smark[C_INT32_LEN];
+    struct lnx_qos_queue *qp;
     uint32_t mark;
-    char *value;
-    int rc;
-    int qi;
+    int ii;
 
     memset(qqs, 0, sizeof(*qqs));
 
@@ -233,71 +236,40 @@ bool lnx_qos_queue_begin(
     }
     self->lq_que_begin = true;
 
-    if (self->lq_que_id > LNX_QOS_ID_QUEUE_MAX)
-    {
-        LOG(ERR, "qos: Maximum number of queues reached.");
-        return false;
-    }
-
     if (bandwidth <= 0)
     {
         LOG(WARN, "qos: %s: Bandwidth set to 1000 kbit/s.", self->lq_ifname);
         bandwidth = 1000;
     }
 
-    value = "";
-    /* Scan otherconfig for the shared option */
-    for (qi = 0; qi < other_config->oc_len; qi++)
+    qp = MEM_APPEND(&self->lq_queue, &self->lq_queue_e, sizeof(struct lnx_qos_queue));
+    qp->qq_priority = priority;
+    qp->qq_bandwidth = bandwidth;
+
+    qp->qq_id= lnx_qos_id_get(tag);
+    if (qp->qq_id < 0)
     {
-        if (strcmp(other_config->oc_config[qi].ov_key, "shared") == 0)
-        {
-            value = other_config->oc_config[qi].ov_value;
-        }
-    }
-
-    mark = LNX_QOS_MARK_BASE |
-            (self->lq_obj_id << 16) |
-            (self->lq_qos_id << 8) |
-            self->lq_que_id;
-
-    snprintf(sqid, sizeof(sqid), "%d", self->lq_que_id);
-    snprintf(sprio, sizeof(sprio), "%d", priority);
-    snprintf(sbw, sizeof(sbw), "%d", bandwidth);
-    snprintf(smark, sizeof(smark), "%u", mark);
-
-    rc = execsh_log(
-            LOG_SEVERITY_DEBUG,
-            lnx_qos_qdisc_add,
-            self->lq_ifname,
-            sqid,
-            smark,
-            sprio,
-            sbw,
-            value);
-    if (rc != 0)
-    {
-        LOG(ERR, "qos: %s: Error applying Queue [%d:%d] configuration.",
-                self->lq_ifname, self->lq_qos_id, self->lq_que_id);
+        LOG(ERR, "qos: %s: Error allocating queue ID for tag %s.",
+                self->lq_ifname, tag);
         return false;
     }
 
-    LOG(INFO, "qos: %s: Configured Queue [%d:%d:%d]: bandwidth=%d priority=%d",
-            self->lq_ifname,
-            self->lq_obj_id,
-            self->lq_qos_id,
-            self->lq_que_id,
-            bandwidth,
-            priority);
+    qp->qq_shared = NULL;
+    /* Scan otherconfig for the shared options */
+    for (ii = 0; ii < other_config->oc_len; ii++)
+    {
+        if (strcmp(other_config->oc_config[ii].ov_key, "shared") == 0)
+        {
+            qp->qq_shared = strdup(other_config->oc_config[ii].ov_value);
+        }
+    }
 
+    mark = LNX_QOS_MARK_BASE | qp->qq_id;
     qqs->qqs_fwmark = mark;
-    snprintf(qqs->qqs_class, sizeof(qqs->qqs_class), "1:%d", self->lq_que_id);
-
-    /* Increase the Queue number */
-    self->lq_que_id++;
+    snprintf(qqs->qqs_class, sizeof(qqs->qqs_class), "1:%d", qp->qq_id);
 
     return true;
 }
-
 bool lnx_qos_queue_end(lnx_qos_t *self)
 {
     if (!self->lq_que_begin)
@@ -308,4 +280,203 @@ bool lnx_qos_queue_end(lnx_qos_t *self)
     self->lq_que_begin = false;
 
     return true;
+}
+
+/*
+ * ===========================================================================
+ *  Helper functions
+ * ===========================================================================
+ */
+bool lnx_qos_reconfigure(lnx_qos_t *self)
+{
+    struct lnx_qos_queue *qp;
+    char sqid[C_INT32_LEN];
+    char sprio[C_INT32_LEN];
+    char sbw[C_INT32_LEN];
+    char smark[C_INT32_LEN];
+    uint32_t mark;
+    int rc;
+
+    LOG(INFO, "qos: %s: Initializing QoS configuration.", self->lq_ifname);
+
+    rc = execsh_log(LOG_SEVERITY_DEBUG, lnx_qos_qdisc_reset, self->lq_ifname);
+    if (rc != 0)
+    {
+        LOG(ERR, "qos: %s: Error resetting QoS configuration.", self->lq_ifname);
+        return false;
+    }
+
+    rc = execsh_log(LOG_SEVERITY_DEBUG, lnx_qos_qdisc_set, self->lq_ifname);
+    if (rc != 0)
+    {
+        LOG(ERR, "qos: %s: Error setting QoS configuration.", self->lq_ifname);
+        return false;
+    }
+
+    for (qp = self->lq_queue; qp < self->lq_queue_e; qp++)
+    {
+        mark = LNX_QOS_MARK_BASE | qp->qq_id;
+
+        snprintf(sqid, sizeof(sqid), "%d", qp->qq_id);
+        snprintf(sprio, sizeof(sprio), "%d", qp->qq_priority);
+        snprintf(sbw, sizeof(sbw), "%d", qp->qq_bandwidth);
+        snprintf(smark, sizeof(smark), "%u", mark);
+
+        rc = execsh_log(
+                LOG_SEVERITY_DEBUG,
+                lnx_qos_qdisc_add,
+                self->lq_ifname,
+                sqid,
+                smark,
+                sprio,
+                sbw,
+                qp->qq_shared == NULL ? "" : qp->qq_shared);
+        if (rc != 0)
+        {
+            LOG(ERR, "qos: %s: Error applying Queue configuration [%d].",
+                    self->lq_ifname, qp->qq_id);
+            return false;
+        }
+
+        LOG(INFO, "qos: %s: Configured Queue [%d]: bandwidth=%d priority=%d",
+                self->lq_ifname,
+                qp->qq_id,
+                qp->qq_bandwidth,
+                qp->qq_priority);
+    }
+
+    return true;
+}
+
+int lnx_qos_id_get(const char *tag)
+{
+    struct lnx_qos_qid *qi;
+    int qid;
+
+    if (tag != NULL)
+    {
+        qi = ds_tree_find(&lnx_qos_tag_map, (void *)tag);
+        if (qi != NULL)
+        {
+            qi->qi_refcnt++;
+            return qi->qi_id;
+        }
+    }
+
+    qi = calloc(1, sizeof(*qi) + ((tag == NULL) ? 0 : strlen(tag) + 1));
+
+    /* Remember the tag, if present */
+    if (tag != NULL)
+    {
+        qi->qi_tag = (char *)qi + sizeof(*qi);
+        strcpy(qi->qi_tag, tag);
+    }
+
+    /* Allocate the ID; start counting from 1 as the tc class id cannot be 0 */
+    for (qid = 1; qid < LNX_QOS_ID_MAX; qid++)
+    {
+        if ((lnx_qos_qid_free[qid >> 3] & (1 << (qid & 7))) == 0)
+        {
+            break;
+        }
+    }
+
+    if (qid >= LNX_QOS_ID_MAX)
+    {
+        free(qi);
+        return -1;
+    }
+
+    lnx_qos_qid_free[qid >> 3] |= 1 << (qid & 7);
+
+    qi->qi_refcnt = 1;
+    qi->qi_id = qid;
+
+    if (tag != NULL)
+    {
+        ds_tree_insert(&lnx_qos_tag_map, qi, qi->qi_tag);
+    }
+    ds_tree_insert(&lnx_qos_qid_map, qi, &qi->qi_id);
+
+    return qi->qi_id;
+}
+
+void lnx_qos_id_put(int qid)
+{
+    struct lnx_qos_qid *qi;
+
+    if (qid <= 0)
+    {
+        return;
+    }
+
+    qi = ds_tree_find(&lnx_qos_qid_map, (void *)&qid);
+    if (qi == NULL)
+    {
+        LOG(ERR, "lnx_qos: Unable to deallocate QID %d.", qid);
+        return;
+    }
+
+    qi->qi_refcnt--;
+
+    if (qi->qi_refcnt > 0) return;
+
+    if (qi->qi_tag != NULL)
+    {
+        ds_tree_remove(&lnx_qos_tag_map, qi);
+    }
+    ds_tree_remove(&lnx_qos_qid_map, qi);
+
+    lnx_qos_qid_free[qi->qi_id >> 3] &= ~(1 << (qi->qi_id & 7));
+
+    free(qi);
+}
+
+void lnx_qos_netlink_fn(lnx_netlink_t *nl, uint64_t event, const char *ifname)
+{
+    (void)event;
+    (void)ifname;
+
+    unsigned int ifindex;
+    char master_path[C_MAXPATH_LEN];
+
+    struct lnx_qos *self = CONTAINER_OF(nl, struct lnx_qos, lq_netlink);
+
+    ifindex = if_nametoindex(self->lq_ifname);
+
+    /*
+     * OVS wipes the qdisc configuration when an interface is added to an OVS
+     * bridge. We need to re-apply the configuration when this happens.
+     *
+     * Adding/removing an interface to/from an OVS bridge generates a netlink
+     * event. To check if the interface was added to a bridge, we can simply check
+     * if the /sys/class/net/IF/master symbolic link exists.
+     */
+    snprintf(master_path, sizeof(master_path), "/sys/class/net/%s/master", self->lq_ifname);
+    if (access(master_path, F_OK) == 0)
+    {
+        /* Flip a bit, this will force an interface index change */
+        ifindex ^= 0x4000;
+    }
+
+    LOG(DEBUG, "qosm: %s: Interface status changed, index %u->%u", self->lq_ifname, self->lq_ifindex, ifindex);
+
+    if (self->lq_ifindex == ifindex)
+    {
+        LOG(DEBUG, "qos: %s: No interface change.", self->lq_ifname);
+    }
+    else if (ifindex == 0)
+    {
+        LOG(NOTICE, "qos: %s: Interface ceased to exist.", self->lq_ifname);
+    }
+    else
+    {
+        LOG(NOTICE, "qos: %s: Interface exists. Reconfiguring QoS.", self->lq_ifname);
+        if (!lnx_qos_reconfigure(self))
+        {
+            LOG(ERR, "qos: %s: QoS reconfiguration failed.", self->lq_ifname);
+        }
+    }
+
+    self->lq_ifindex = ifindex;
 }

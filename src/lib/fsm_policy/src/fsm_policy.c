@@ -453,6 +453,29 @@ static void set_action(struct fsm_policy_req *req, struct fsm_policy *p)
 #define UPDATEv6_TAG "tagv6_name"
 
 /**
+ * @brief set_excluded_devices_tag: set the excluded_devices tag.
+ *
+ * @req: the request being processed
+ * @p: the matched policy
+ */
+void set_excluded_devices_tag(struct fsm_policy_req *req, struct fsm_policy *p)
+{
+    struct str_pair *pair;
+    ds_tree_t *tree;
+
+    if (p == NULL) return;
+
+    tree = p->other_config;
+    if (tree == NULL) return;
+
+    pair = ds_tree_find(tree, "excluded_devices");
+    if (pair == NULL) return;
+
+    req->reply.excluded_devices = pair->value;
+}
+
+
+/**
  * @brief set_tag_update: set whether the request is flagged to update tag
  *
  * @req: the request being processed
@@ -590,6 +613,29 @@ bool fsm_cat_check(struct fsm_session *session,
      */
     if (req->fqdn_req->categories_check == NULL) return false;
 
+    /*
+     * If the FQDN is already categorized, don't check it again.
+     * This optimizes to do only one categorization lookup per fqdn request
+     */
+    if (req->fqdn_req->categorized != FSM_FQDN_CAT_NOP)
+    {
+        rc = fsm_fqdncats_in_set(req, policy);
+
+        /*
+         * If category in set and policy applies to categories out of the set,
+         * no match
+         */
+        if (rc && (rules->cat_op == CAT_OP_OUT)) return false;
+
+        /*
+         * If category not in set and policy applies to categories in the set,
+         * no match
+         */
+        if (!rc && (rules->cat_op == CAT_OP_IN)) return false;
+
+        return true;
+    }
+
     /* Apply the web_cat rules */
     rc = req->fqdn_req->categories_check(session, req, policy);
 
@@ -692,6 +738,7 @@ void fsm_apply_policies(struct fsm_session *session,
         p = last_match_policy;
         set_reporting(req, p);
         set_tag_update(req, p);
+        set_excluded_devices_tag(req, p);
         set_action(req, p);
         set_policy_record(req, p);
         set_policy_redirects(req, p);

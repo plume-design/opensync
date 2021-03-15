@@ -73,6 +73,7 @@ bool osn_qos_queue_begin(
         osn_qos_t *self,
         int priority,
         int bandwidth,
+        const char *tag,
         const struct osn_qos_other_config *other_config,
         struct osn_qos_queue_status *qqs)
 {
@@ -80,6 +81,7 @@ bool osn_qos_queue_begin(
             &self->oq_lnx,
             priority,
             bandwidth,
+            tag,
             other_config,
             qqs);
 }

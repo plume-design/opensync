@@ -24,41 +24,67 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef READ_UNTIL_H_INCLUDED
-#define READ_UNTIL_H_INCLUDED
-
-#include <sys/types.h>
 #include <stdlib.h>
 #include <string.h>
 
-/**
- * This is quite similar to fgets() except that it works with non-blocking I/O
- */
-typedef struct __read_until read_until_t;
-
-struct __read_until
+static inline void* memutil_inline_malloc(
+        size_t sz,
+        const char *func,
+        const char *file,
+        const int line)
 {
-    char        *buf;
-    ssize_t     bufsz;
-    char        *head;
-    char        *tail;
-};
+    void *ptr = malloc(sz);
+    if (ptr == NULL)
+    {
+        osa_assert_dump("malloc() returned NULL", func, file, line, "Out of memory.");
+    }
 
-#define READ_UNTIL_INIT(b, bsz)  \
-{                                       \
-    .buf = (b),                         \
-    .bufsz = (bsz),                     \
-    .head = (b),                        \
-    .tail = (b)                         \
+    return ptr;
 }
 
-static inline void read_until_init(read_until_t *self, char *buf, ssize_t bufsz)
+static inline void* memutil_inline_calloc(
+        size_t n,
+        size_t sz,
+        const char *func,
+        const char *file,
+        const int line)
 {
-    read_until_t tmp = READ_UNTIL_INIT(buf, bufsz);
+    void *ptr = calloc(n, sz);
+    if (ptr == NULL)
+    {
+        osa_assert_dump("calloc() returned NULL", func, file, line, "Out of memory.");
+    }
 
-    memcpy(self, &tmp, sizeof(*self));
+    return ptr;
 }
 
-extern ssize_t read_until(read_until_t *self, char **out, int fd, char *dm);
+static inline void* memutil_inline_realloc(
+        void *cptr,
+        size_t sz,
+        const char *func,
+        const char *file,
+        const int line)
+{
+    void *ptr = realloc(cptr, sz);
+    if (ptr == NULL && sz > 0)
+    {
+        osa_assert_dump("realloc() returned NULL", func, file, line, "Out of memory.");
+    }
 
-#endif /* READ_UNTIL_H_INCLUDED */
+    return ptr;
+}
+
+static inline void* memutil_inline_strdup(
+        const char *str,
+        const char *func,
+        const char *file,
+        const int line)
+{
+    char *ptr = strdup(str);
+    if (ptr == NULL)
+    {
+        osa_assert_dump("strdup() returned NULL", func, file, line, "Out of memory.");
+    }
+
+    return ptr;
+}

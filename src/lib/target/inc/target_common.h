@@ -579,13 +579,16 @@ int target_device_capabilities_get();
 
 /** States returned by @ref target_device_connectivity_check() */
 typedef struct {
-    bool link_state;     //!< @brief  If link has an IP, the link_state should
-                         //!< be set to 'true' if it can be pinged.
-                         //!< Otherwise a custom (vendor-specific) way of
-                         //!< checking link state must be provided.
-    bool router_state;   //!< True if the IP of default gateway can be pinged.
-    bool internet_state; //!< True if external IP address can be pinged.
-    bool ntp_state;      //!< True if current datetime is set correctly.
+    bool link_state;          //!< @brief  If link has an IP, the link_state should
+                              //!< be set to 'true' if it can be pinged.
+                              //!< Otherwise a custom (vendor-specific) way of
+                              //!< checking link state must be provided.
+    bool router_ipv4_state;   //!< true if the ipv4 of default gateway can be pinged.
+    bool router_ipv6_state;   //!< true if the ipv6 of default gateway can be pinged.
+    bool internet_ipv4_state; //!< True if external IP address can be pinged.
+    bool internet_ipv6_state; //!< True if the IP of default gateway can be pinged.
+    bool internet_state;      //!< True if external IP address can be pinged.
+    bool ntp_state;           //!< True if current datetime is set correctly.
 } target_connectivity_check_t;
 
 /** Option flags for @ref target_device_connectivity_check() */

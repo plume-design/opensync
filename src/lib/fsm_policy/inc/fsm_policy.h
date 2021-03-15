@@ -186,6 +186,7 @@ struct fqdn_pending_req
     int action;
     char *updatev4_tag;
     char *updatev6_tag;
+    char *excluded_devices;
     bool redirect;
     int rd_ttl;
     char *policy;
@@ -229,6 +230,7 @@ struct fsm_policy_reply
     char *rule_name;     /* the last matching rule name with the policy */
     char *updatev4_tag;  /* Tag to store ipv4 dns results with if any */
     char *updatev6_tag;  /* Tag to store ipv6 dns results with if any */
+    char *excluded_devices; /* Tag containing list of excludede devices */
 };
 
 

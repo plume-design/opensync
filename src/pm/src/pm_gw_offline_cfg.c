@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb_sync.h"
 #include "schema.h"
 #include "json_util.h"
+#include "util.h"
 #include "log.h"
 #include "osp_ps.h"
 #include "os.h"
@@ -120,6 +121,8 @@ static bool gw_offline_cfg_ps_load(struct gw_offline_cfg *cfg);
 static bool gw_offline_cfg_ovsdb_read(struct gw_offline_cfg *cfg);
 static bool gw_offline_cfg_ovsdb_apply(const struct gw_offline_cfg *cfg);
 
+static bool gw_offline_uplink_bridge_set(const struct gw_offline_cfg *cfg);
+
 bool pm_gw_offline_cfg_is_available();
 bool pm_gw_offline_load_and_apply_config();
 bool pm_gw_offline_read_and_store_config();
@@ -153,6 +156,21 @@ static void gw_offline_cfg_delete_special_keys(struct gw_offline_cfg *cfg)
     delete_special_ovsdb_keys(cfg->radio_config);
     delete_special_ovsdb_keys(cfg->inet_config_home_aps);
     delete_special_ovsdb_keys(cfg->dhcp_reserved_ip);
+}
+
+/* Determine if the saved config is "bridge config": */
+static bool gw_offline_cfg_is_bridge(const struct gw_offline_cfg *cfg)
+{
+    json_t *row;
+    const char *ip_assign_scheme;
+
+    row = json_array_get(cfg->inet_config, 0);
+    ip_assign_scheme = json_string_value(json_object_get(row, "ip_assign_scheme"));
+
+    if (ip_assign_scheme != NULL && strcmp(ip_assign_scheme, "dhcp") == 0)
+        return true;
+
+    return false;
 }
 
 static void on_timeout_cfg_no_change(struct ev_loop *loop, ev_timer *watcher, int revent)
@@ -376,12 +394,12 @@ static void callback_Node_Config(
 
             if (gw_offline_mon)
             {
-                LOG(WARN, "Offline config mode triggered, but config monitoring is enabled. Ignoring.");
+                LOG(WARN, "offline_cfg: Offline config mode triggered, but config monitoring is enabled. Ignoring.");
                 return;
             }
             if (gw_offline_stat != status_ready)
             {
-                LOG(WARN, "Offline config mode triggered, but gw_offline_status "\
+                LOG(WARN, "offline_cfg: Offline config mode triggered, but gw_offline_status "\
                            "!= ready. status=%d. Ignoring", gw_offline_stat);
                 return;
             }
@@ -392,6 +410,12 @@ static void callback_Node_Config(
         }
         else
         {
+            if (!gw_offline)
+            {
+                LOG(WARN, "offline_cfg: Not in offline config mode and exit triggered. Ignoring.");
+                return;
+            }
+
             /* Disabled by CM when Cloud/Internet connectivity reestablished.
              *
              * In this case, PM does nothing -- Cloud will push proper ovsdb
@@ -943,6 +967,99 @@ static bool gw_offline_cfg_ovsdb_apply(const struct gw_offline_cfg *cfg)
     return true;
 }
 
+/* Get uplink interface name */
+static bool gw_offline_uplink_ifname_get(char *if_name_buf, size_t len)
+{
+    const char *if_name;
+    json_t *json;
+    bool rv = false;
+
+    json = ovsdb_sync_select_where("Connection_Manager_Uplink",
+                       ovsdb_where_simple_typed("is_used", "true", OCLM_BOOL));
+
+    if (json == NULL || json_array_size(json) != 1)
+    {
+        LOG(WARN, "offline_cfg: Cannot determine GW's uplink interface");
+        goto err_out;
+    }
+
+    if_name = json_string_value(json_object_get(json_array_get(json, 0), "if_name"));
+    if (if_name != NULL)
+    {
+        LOG(INFO, "offline_cfg: This GW's uplink interface=%s", if_name);
+        strscpy(if_name_buf, if_name, len);
+    }
+
+    rv = true;
+err_out:
+    json_decref(json);
+    return rv;
+}
+
+/* Check if interface has IP assigned */
+static bool gw_offline_intf_is_ip_set(const char *if_name)
+{
+    json_t *json;
+    json_t *inet_addr;
+    bool rv = false;
+
+    json = ovsdb_sync_select("Wifi_Inet_State", "if_name", if_name);
+    inet_addr = json_object_get(json_array_get(json, 0), "inet_addr");
+    LOG(DEBUG, "offline_cfg: if_name=%s, IP=%s", if_name, json_string_value(inet_addr));
+
+    if (inet_addr != NULL && strcmp(json_string_value(inet_addr), "0.0.0.0") != 0)
+        rv = true;
+
+    json_decref(json);
+    return rv;
+}
+
+/* Set specified uplink to LAN_BRIDGE */
+static bool gw_offline_uplink_set_lan_bridge(const char *uplink)
+{
+    json_t *row;
+    int rv;
+
+    row = json_pack("{ s : s }", "bridge", LAN_BRIDGE);
+    if (row == NULL)
+    {
+        LOG(ERR, "offline_cfg: %s: Error packing json", __func__);
+        return false;
+    }
+    rv = ovsdb_sync_update("Connection_Manager_Uplink", "if_name", uplink, row);
+    if (rv != 1)
+    {
+        LOG(ERR, "offline_cfg: %s: Error updating Connection_Manager_Uplink: rv=%d",
+                __func__, rv);
+        return false;
+    }
+    return true;
+}
+
+/* Determine uplink and set uplink bridge to LAN_BRIDGE */
+static bool gw_offline_uplink_bridge_set(const struct gw_offline_cfg *cfg)
+{
+    char uplink[32];
+
+    // Config must be BRIDGE config, otherwise ignore:
+    if (!gw_offline_cfg_is_bridge(cfg))
+        return false;
+
+    // Determine uplink interface name:
+    if (!gw_offline_uplink_ifname_get(uplink, sizeof(uplink)))
+        return false;
+
+    // Check if uplink interface has IP assigned:
+    if (!gw_offline_intf_is_ip_set(uplink))
+        return false;
+
+    // Set uplink to LAN_BRIDGE:
+    if (!gw_offline_uplink_set_lan_bridge(uplink))
+        return false;
+
+    return true;
+}
+
 /* Is persistent-storage config available? */
 bool pm_gw_offline_cfg_is_available()
 {
@@ -982,7 +1099,7 @@ bool pm_gw_offline_read_and_store_config()
 
     if (!(gw_offline_cfg && gw_offline_mon))
     {
-        LOG(TRACE, "%s() called, but gw_offline_cfg=%d, gw_offline_mon=%d. Ignoring.",
+        LOG(WARN, "offline_cfg: %s() called, but gw_offline_cfg=%d, gw_offline_mon=%d. Ignoring.",
                 __func__, gw_offline_cfg, gw_offline_mon);
         return false;
     }
@@ -1043,6 +1160,16 @@ bool pm_gw_offline_load_and_apply_config()
         goto exit;
     }
     LOG(INFO, "offline_cfg: Applied config to OVSDB.");
+
+    if (gw_offline_cfg_is_bridge(&gw_cfg))
+    {
+        LOG(DEBUG, "offline_cfg: This is BRIDGE config, will set uplink to LAN_BRIDGE (%s)", LAN_BRIDGE);
+        if (!gw_offline_uplink_bridge_set(&gw_cfg))
+        {   LOG(ERR, "offline_cfg: Error seting uplink to LAN_BRIDGE (%s)", LAN_BRIDGE);
+            goto exit;
+        }
+        LOG(INFO, "offline_cfg: Uplink set to LAN_BRIDGE (%s)", LAN_BRIDGE);
+    }
 
     rv = true;
 exit:

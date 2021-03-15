@@ -168,10 +168,10 @@ typedef enum {
 } cm2_ip_assign_scheme;
 
 typedef struct {
-    cm2_ip_assign_scheme ipv4;
-    cm2_ip_assign_scheme ipv6;
-    bool                 is_ipv4;
-    bool                 is_ipv6;
+    cm2_ip_assign_scheme assign_scheme;
+    bool                 is_ip;
+    bool                 resolve_retry;
+    bool                 blocked;
 } cm2_ip;
 
 typedef enum
@@ -200,7 +200,8 @@ typedef struct
     bool        is_used;
     bool        restart_pending;
     int         priority;
-    cm2_ip      ip;
+    cm2_ip      ipv4;
+    cm2_ip      ipv6;
     bool        gretap_softwds;
     char        gateway_hwaddr[OS_MACSTR_SZ];
     cm2_vtag_t  vtag;
@@ -212,17 +213,23 @@ typedef struct
     cm2_reason_e      reason;
     cm2_dest_e        dest;
     bool              state_changed;
-    bool              connected;
-    bool              is_con_stable;
+    bool              connected; /* Device connected to the Controller */
+    bool              is_con_stable; /* Connection marked as stable */
+    bool              ipv6_manager_con; /* Device connected to the Controller using IPv6 */
     time_t            timestamp;
-    int               disconnects;
+    int               disconnects; /* Number of disconnects */
     cm2_addr_t        addr_redirector;
     cm2_addr_t        addr_manager;
-    bool              ipv6_manager_con;
     ev_timer          timer;
     ev_timer          wdt_timer;
     ev_timer          stability_timer;
     bool              run_stability;
+    target_connectivity_check_option_t stability_opts_now;
+    target_connectivity_check_option_t stability_opts_next;
+    bool              stability_update_now;
+    bool              stability_update_next;
+    bool              stability_repeat;
+    ev_child          stability_child;
     cm2_main_link_t   link;
     uint8_t           ble_status;
     bool              ntp_check;
@@ -273,6 +280,7 @@ void cm2_ble_onboarding_set_status(bool state, cm2_ble_onboarding_status_t statu
 void cm2_ble_onboarding_apply_config(void);
 char* cm2_dest_name(cm2_dest_e dest);
 char* cm2_curr_dest_name(void);
+bool cm2_enable_gw_offline(void);
 
 // ovsdb
 int cm2_ovsdb_init(void);
@@ -307,7 +315,7 @@ bool cm2_ovsdb_is_gw_offline_ready(void);
 bool cm2_ovsdb_is_gw_offline_active(void);
 bool cm2_ovsdb_enable_gw_offline_conf(void);
 bool cm2_ovsdb_disable_gw_offline_conf(void);
-int  cm2_get_link_ip(char *if_name, cm2_ip *ip);
+int  cm2_update_main_link_ip(cm2_main_link_t *link);
 int  cm2_ovsdb_update_mac_reporting(char *ifname, bool state);
 void cm2_ovsdb_set_default_wan_bridge(char *if_name, char *if_type);
 bool cm2_ovsdb_set_Wifi_Inet_Config_interface_enabled(bool state, char *ifname);
@@ -342,7 +350,9 @@ void cm2_free_addr_list(cm2_addr_t *addr);
 // stability and watchdog
 #ifdef CONFIG_CM2_USE_STABILITY_CHECK
 bool cm2_vtag_stability_check(void);
+target_connectivity_check_option_t cm2_util_add_ip_opts(target_connectivity_check_option_t opts);
 bool cm2_connection_req_stability_check(target_connectivity_check_option_t opts, bool db_update);
+void cm2_connection_req_stability_check_async(target_connectivity_check_option_t opts, bool db_update, bool repeat);
 void cm2_stability_init(struct ev_loop *loop);
 void cm2_stability_close(struct ev_loop *loop);
 #ifdef CONFIG_CM2_USE_TCPDUMP

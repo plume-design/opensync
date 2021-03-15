@@ -376,7 +376,8 @@ static void cm2_compute_backoff(void)
 
 static void cm2_extender_init_state(void) {
     struct schema_Connection_Manager_Uplink con;
-    memset(&g_state.link.ip, 0, sizeof(g_state.link.ip));
+    memset(&g_state.link.ipv4, 0, sizeof(g_state.link.ipv4));
+    memset(&g_state.link.ipv6, 0, sizeof(g_state.link.ipv6));
     memset(&g_state.link, 0, sizeof(g_state.link));
 
     if (cm2_connection_get_used_link(&con)) {
@@ -391,6 +392,54 @@ static void cm2_extender_init_state(void) {
     }
     g_state.fast_backoff = true;
     g_state.dev_type = CM2_DEVICE_NONE;
+}
+
+bool cm2_enable_gw_offline()
+{
+    bool r;
+
+    if (cm2_is_wifi_type(g_state.link.if_type))
+        return false;
+
+    if (cm2_is_connected_to(CM2_DEST_MANAGER))
+        return false;
+
+    if (g_state.dev_type == CM2_DEVICE_ROUTER) {
+        LOGI("GW offline, skipped for active Router mode");
+        return false;
+    }
+
+    if (!cm2_ovsdb_is_gw_offline_enabled())
+        return false;
+
+    if (cm2_ovsdb_is_gw_offline_active()) {
+        LOGI("GW offline in active state");
+        return true;
+    }
+
+    if (!cm2_ovsdb_is_gw_offline_ready()) {
+        LOGI("GW offline configuration not ready");
+        return false;
+    }
+
+    LOGI("Waiting for applying GW offline functionality [%d,%d]",
+         g_state.cnts.gw_offline + 1, CM2_GW_OFFLINE_RETRY_THRESHOLD);
+
+    if (g_state.cnts.gw_offline < CM2_GW_OFFLINE_RETRY_THRESHOLD)
+        g_state.cnts.gw_offline++;
+
+    if (g_state.cnts.gw_offline != CM2_GW_OFFLINE_RETRY_THRESHOLD)
+        return true;
+
+    r = cm2_ovsdb_enable_gw_offline_conf();
+    if (!r) {
+        LOGW("Enabling GW offline configuration failed");
+        g_state.cnts.gw_offline--;
+    } else {
+        LOGI("GW offline configuration enabled");
+    }
+
+    return true;
 }
 
 static void cm2_trigger_restart_managers(void) {
@@ -433,35 +482,9 @@ static void cm2_trigger_restart_managers(void) {
         goto restart;
     }
 
-    if (cm2_ovsdb_is_gw_offline_enabled()) {
-        if (cm2_ovsdb_is_gw_offline_active()) {
-            LOGI("GW offline in active state, skip restart managers");
-            goto restart;
-        }
-
-        LOGI("Waiting for applying GW offline functionality [%d,%d]",
-             g_state.cnts.gw_offline, CM2_GW_OFFLINE_RETRY_THRESHOLD);
-
-        skip_restart = true;
-
-        if (g_state.cnts.gw_offline < CM2_GW_OFFLINE_RETRY_THRESHOLD)
-            g_state.cnts.gw_offline++;
-
-        if (g_state.cnts.gw_offline != CM2_GW_OFFLINE_RETRY_THRESHOLD)
-            goto restart;
-
-        if (cm2_ovsdb_is_gw_offline_ready()) {
-            r = cm2_ovsdb_enable_gw_offline_conf();
-            if (!r) {
-                LOGW("Enabling GW offline configuration failed");
-                g_state.cnts.gw_offline--;
-            } else {
-                LOGI("GW offline configuration enabled");
-            }
-        } else {
-            LOGW("GW offline configuration not ready, restart managers");
-            skip_restart = false;
-        }
+    skip_restart = cm2_enable_gw_offline();
+    if (skip_restart) {
+        LOGI("GW offline enabled, skip restart managers");
         goto restart;
     }
 
@@ -486,8 +509,10 @@ static void cm2_restart_ovs_connection(bool state) {
     {
         if (CONFIG_CM2_CLOUD_FATAL_THRESHOLD == 0 ||
             (g_state.cnts.ovs_resolve_fail < CONFIG_CM2_CLOUD_FATAL_THRESHOLD &&
-             g_state.cnts.ovs_con < CONFIG_CM2_CLOUD_FATAL_THRESHOLD))
+             g_state.cnts.ovs_con < CONFIG_CM2_CLOUD_FATAL_THRESHOLD)) {
+            cm2_enable_gw_offline();
             cm2_set_state(state, CM2_STATE_LINK_SEL);
+        }
         else
             cm2_trigger_restart_managers();
     }
@@ -576,9 +601,7 @@ start:
             cm2_set_state(true, CM2_STATE_LINK_SEL);
             break;
         case CM2_REASON_LINK_USED:
-            ret = cm2_get_link_ip(uplink, &g_state.link.ip);
-            if (ret < 0)
-                LOGW("%s: Failed get ip info", uplink);
+            WARN_ON(cm2_update_main_link_ip(&g_state.link) < 0);
             cm2_set_backhaul_update_ble_state();
 
             if (g_state.link.is_bridge) {
@@ -589,7 +612,7 @@ start:
             }
 
             cm2_ovsdb_connection_clean_link_counters(g_state.link.if_name);
-            cm2_connection_req_stability_check(LINK_CHECK, false);
+            cm2_connection_req_stability_check_async(LINK_CHECK, false, false);
             cm2_set_state(true, CM2_STATE_WAN_IP);
             break;
         case CM2_REASON_SET_NEW_VTAG:
@@ -654,7 +677,9 @@ start:
                 cm2_set_state(true, CM2_STATE_OVS_INIT);
             } else {
                 cm2_extender_init_state();
-                g_state.resolve_retry = false;
+                g_state.link.ipv4.resolve_retry = false;
+                g_state.link.ipv6.resolve_retry = false;
+                g_state.cnts.ovs_resolve = 0;
                 g_state.cnts.ovs_resolve_fail = 0;
                 cm2_set_state(true, CM2_STATE_LINK_SEL);
             }
@@ -676,7 +701,7 @@ start:
             }
             if (g_state.link.is_used)
             {
-                cm2_connection_req_stability_check(LINK_CHECK, false);
+                cm2_connection_req_stability_check_async(LINK_CHECK, false, false);
                 cm2_set_backhaul_update_ble_state();
                 cm2_set_state(true, CM2_STATE_WAN_IP);
             }
@@ -691,10 +716,11 @@ start:
             {
                 LOGI("Waiting for finish get WLAN IP");
             }
-            WARN_ON(cm2_get_link_ip(uplink, &g_state.link.ip) < 0);
+            WARN_ON(cm2_update_main_link_ip(&g_state.link) < 0);
             ret = 0;
-            if (g_state.link.ip.is_ipv4 || g_state.link.ip.is_ipv6) {
-                ret = cm2_connection_req_stability_check(ROUTER_CHECK, false);
+
+            if (g_state.link.ipv4.is_ip || g_state.link.ipv6.is_ip) {
+                ret = cm2_connection_req_stability_check(cm2_util_add_ip_opts(ROUTER_CHECK), false);
                 cm2_set_ble_state(ret, BLE_ONBOARDING_STATUS_ROUTER_OK);
             }
 
@@ -713,9 +739,10 @@ start:
             if (cm2_state_changed()) // first iteration
             {
                 LOGI("Waiting for finish NTP");
+                cm2_connection_req_stability_check_async(INTERNET_CHECK, true, false);
             }
 
-            if (cm2_connection_req_stability_check(NTP_CHECK, false))
+            if (cm2_connection_req_stability_check(cm2_util_add_ip_opts(NTP_CHECK), false))
             {
                 cm2_state_e n_state;
 
@@ -756,20 +783,20 @@ start:
             break;
 
         case CM2_STATE_TRY_RESOLVE:
-            if (cm2_state_changed() || g_state.resolve_retry)
+            if (cm2_state_changed() ||
+                g_state.link.ipv4.resolve_retry ||
+                g_state.link.ipv6.resolve_retry)
             {
-                if (cm2_ovsdb_is_ipv6_global_link(uplink)) {
-                    g_state.link.ip.ipv6 = CM2_IPV6_DHCP;
-                    g_state.link.ip.is_ipv6 = true;
+                if (cm2_is_extender()) {
+                    WARN_ON(cm2_update_main_link_ip(&g_state.link) < 0);
+                    cm2_connection_req_stability_check_async(LINK_CHECK | ROUTER_CHECK | INTERNET_CHECK, false, true);
                 }
 
-                if (cm2_is_extender())
-                    cm2_connection_req_stability_check(LINK_CHECK | ROUTER_CHECK | INTERNET_CHECK, false);
-
-                if (g_state.resolve_retry) {
+                if (g_state.link.ipv4.resolve_retry ||
+                    g_state.link.ipv6.resolve_retry) {
+                    g_state.cnts.ovs_resolve++;
                     LOGI("Trigger retry resolving, cnt: %d/%d",
                          g_state.cnts.ovs_resolve, CM2_RESOLVE_RETRY_THRESHOLD);
-                    g_state.resolve_retry = false;
                 }
 
                 LOGI("Trying to resolve %s: %s", cm2_curr_dest_name(),
@@ -849,6 +876,11 @@ start:
             }
             if (cm2_state_changed()) // first iteration
             {
+                if (cm2_is_extender()) {
+                    WARN_ON(cm2_update_main_link_ip(&g_state.link) < 0);
+                    cm2_connection_req_stability_check_async(LINK_CHECK | ROUTER_CHECK | INTERNET_CHECK, false, true);
+                }
+
                 if (!cm2_write_current_target_addr())
                 {
                     if (CONFIG_CM2_CLOUD_FATAL_THRESHOLD != 0)
@@ -864,6 +896,11 @@ start:
             }
             else if (cm2_timeout(false))
             {
+                if (cm2_is_extender()) {
+                    WARN_ON(cm2_update_main_link_ip(&g_state.link) < 0);
+                    cm2_connection_req_stability_check_async(LINK_CHECK | ROUTER_CHECK | INTERNET_CHECK, false, true);
+                }
+
                 // timeout - write next address
                 if (cm2_write_next_target_addr())
                 {
@@ -900,7 +937,7 @@ start:
             {
                 LOG(NOTICE, "===== Connected to: %s", cm2_curr_dest_name());
                 if (cm2_is_extender()) {
-                    cm2_connection_req_stability_check(LINK_CHECK | ROUTER_CHECK | INTERNET_CHECK, true);
+                    cm2_connection_req_stability_check_async(LINK_CHECK | ROUTER_CHECK | INTERNET_CHECK, true, false);
                     cm2_set_ble_state(true, BLE_ONBOARDING_STATUS_CLOUD_OK);
                     cm2_update_device_type(g_state.link.if_type);
                     g_state.cnts.skip_restart = 0;
@@ -946,9 +983,11 @@ start:
                 g_state.disconnects += 1;
                 cm2_set_ble_state(false, BLE_ONBOARDING_STATUS_CLOUD_OK);
 
-                if (cm2_is_extender())
+                if (cm2_is_extender()) {
                     cm2_ovsdb_connection_update_unreachable_cloud_counter(g_state.link.if_name,
                                                                           g_state.disconnects);
+                    g_state.run_stability = false;
+                }
                 // Update timeouts based on AWLAN_Node contents
                 cm2_compute_backoff();
                 LOG(NOTICE, "===== Quiescing connection to: %s for %d seconds",

@@ -24,41 +24,52 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef READ_UNTIL_H_INCLUDED
-#define READ_UNTIL_H_INCLUDED
-
-#include <sys/types.h>
+#include <stddef.h>
 #include <stdlib.h>
-#include <string.h>
 
-/**
- * This is quite similar to fgets() except that it works with non-blocking I/O
- */
-typedef struct __read_until read_until_t;
+#include "memutil.h"
 
-struct __read_until
+size_t mem_optimized_size(size_t req_size)
 {
-    char        *buf;
-    ssize_t     bufsz;
-    char        *head;
-    char        *tail;
-};
+    size_t nsz = 16;
+    size_t m = 16;
 
-#define READ_UNTIL_INIT(b, bsz)  \
-{                                       \
-    .buf = (b),                         \
-    .bufsz = (bsz),                     \
-    .head = (b),                        \
-    .tail = (b)                         \
+    /*
+     * Grow buffer using a Fibonacci sequence where nsz and m are the starting
+     * parameters. This creates a growth ratio of Phi (golden ratio), which,
+     * according to some quick investigation, seems to be a better factor than 2.
+     * For reference, it seems that Java and .NET use 1.5 for resizing their
+     * arrays.
+     */
+    while (nsz < req_size)
+    {
+        nsz += m;
+        m = nsz - m;
+    }
+
+    return nsz;
 }
 
-static inline void read_until_init(read_until_t *self, char *buf, ssize_t bufsz)
+void* mem_append(void **base, void **cur, size_t sz)
 {
-    read_until_t tmp = READ_UNTIL_INIT(buf, bufsz);
+    size_t nsz;
+    size_t csz;
 
-    memcpy(self, &tmp, sizeof(*self));
+    if (*cur == NULL) *cur = *base;
+
+    csz = *cur - *base;
+    nsz = mem_optimized_size(csz);
+
+    /* Resize the region if needed */
+    if (nsz < (csz + sz) || csz == 0)
+    {
+        nsz = mem_optimized_size(csz + sz);
+
+        /* Reallocate the buffer, adjust the 'base' and 'end' pointers */
+        *base = realloc(*base, nsz);
+        *cur = *base + csz;
+    }
+
+    *cur += sz;
+    return *cur - sz;
 }
-
-extern ssize_t read_until(read_until_t *self, char **out, int fd, char *dm);
-
-#endif /* READ_UNTIL_H_INCLUDED */

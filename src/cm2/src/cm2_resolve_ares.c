@@ -118,8 +118,10 @@ cm2_ares_host_cb(void *arg, int status, int timeouts, struct hostent *hostent)
         case ARES_ECONNREFUSED:
         case ARES_ETIMEOUT:
         case ARES_ECANCELLED:
-            g_state.resolve_retry = true;
-            g_state.cnts.ovs_resolve++;
+            if (addr->req_addr_type == AF_INET6)
+                g_state.link.ipv6.resolve_retry = true;
+            else
+                g_state.link.ipv4.resolve_retry = true;
             break;
         default:
             LOGI("ares: didn't get address: status = %d, %d timeouts\n", status, timeouts);
@@ -136,18 +138,30 @@ bool cm2_resolve(cm2_dest_e dest)
 
     addr = cm2_get_addr(dest);
 
-    ipv6 = g_state.link.ip.is_ipv6 && addr->ipv6_addr_list.state != CM2_ARES_R_IN_PROGRESS ? true : false;
-    ipv4 = g_state.link.ip.is_ipv4 && addr->ipv4_addr_list.state != CM2_ARES_R_IN_PROGRESS ? true : false;
+    ipv6 = g_state.link.ipv6.is_ip && addr->ipv6_addr_list.state != CM2_ARES_R_IN_PROGRESS ? true : false;
+    ipv4 = g_state.link.ipv4.is_ip && addr->ipv4_addr_list.state != CM2_ARES_R_IN_PROGRESS ? true : false;
+
+    if ((g_state.link.ipv4.resolve_retry && addr->ipv6_addr_list.state == CM2_ARES_R_RESOLVED) ||
+        (g_state.link.ipv6.resolve_retry && addr->ipv4_addr_list.state == CM2_ARES_R_RESOLVED))
+    {
+        LOGI("Skip resolve re-trying");
+        g_state.link.ipv4.resolve_retry = false;
+        g_state.link.ipv6.resolve_retry = false;
+        return true;
+    }
+
+    g_state.link.ipv4.resolve_retry = false;
+    g_state.link.ipv6.resolve_retry = false;
 
     if (addr->ipv4_addr_list.state == CM2_ARES_R_IN_PROGRESS ||
         addr->ipv6_addr_list.state == CM2_ARES_R_IN_PROGRESS)
     {
         LOGI("Waiting for uplinks: ipv6: [%d, %d], ipv4: [%d, %d]",
-             g_state.link.ip.is_ipv6, addr->ipv6_addr_list.state,
-             g_state.link.ip.is_ipv4, addr->ipv4_addr_list.state);
+             g_state.link.ipv6.is_ip, addr->ipv6_addr_list.state,
+             g_state.link.ipv4.is_ip, addr->ipv4_addr_list.state);
         return false;
     }
- 
+
     addr->updated = false;
     if (!addr->valid)
         return false;
@@ -192,10 +206,10 @@ void cm2_resolve_timeout(void)
 static bool
 cm2_validate_target_addr(cm2_addr_list *list, int addr_type)
 {
-    if (!g_state.link.ip.is_ipv4 && addr_type == AF_INET)
+    if (addr_type == AF_INET && (!g_state.link.ipv4.is_ip || g_state.link.ipv4.blocked))
         return false;
 
-    if (!g_state.link.ip.is_ipv6 && addr_type == AF_INET6)
+    if (addr_type == AF_INET6 && (!g_state.link.ipv6.is_ip || g_state.link.ipv6.blocked))
         return false;
 
     if (!list->h_addr_list)

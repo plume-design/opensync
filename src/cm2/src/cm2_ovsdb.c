@@ -307,21 +307,21 @@ cm2_util_set_local_ip_cfg(struct schema_Wifi_Inet_State *istate, cm2_ip *ip)
 {
     if (istate->ip_assign_scheme_exists) {
         if (!strcmp(istate->ip_assign_scheme, "static"))
-            ip->ipv4 = CM2_IP_STATIC;
+            ip->assign_scheme = CM2_IP_STATIC;
         else if (!strcmp(istate->ip_assign_scheme, "none"))
-            ip->ipv4 = CM2_IP_NONE;
+            ip->assign_scheme = CM2_IP_NONE;
         else if (!strcmp(istate->ip_assign_scheme, "dhcp"))
-            ip->ipv4 = CM2_IPV4_DHCP;
+            ip->assign_scheme = CM2_IPV4_DHCP;
     } else {
-        ip->ipv4 = CM2_IP_NOT_SET;
+        ip->assign_scheme = CM2_IP_NOT_SET;
     }
 
     if (!istate->inet_addr_exists ||
         (istate->inet_addr_exists && (strlen(istate->inet_addr) <= 0 ||
          !strcmp(istate->inet_addr, "0.0.0.0")))) {
-        ip->is_ipv4 = false;
+        ip->is_ip = false;
     } else {
-        ip->is_ipv4 = true;
+        ip->is_ip = true;
     }
 }
 
@@ -486,15 +486,18 @@ bool cm2_ovsdb_set_dhcpv6_client(char *ifname, bool enable)
     return true;
 }
 
-int cm2_get_link_ip(char *if_name, cm2_ip *ip)
+int cm2_update_main_link_ip(cm2_main_link_t *link)
 {
-    if (cm2_ovsdb_is_ipv6_global_link(if_name)) {
-        ip->is_ipv6 = true;
-        ip->ipv6 = CM2_IPV6_DHCP;
+    char *uplink;
+
+    uplink = cm2_get_uplink_name();
+    if (cm2_ovsdb_is_ipv6_global_link(uplink)) {
+        link->ipv6.is_ip = true;
+        link->ipv6.assign_scheme = CM2_IPV6_DHCP;
         return 0;
     }
 
-    return cm2_util_get_ip_inet_state_cfg(if_name, ip);
+    return cm2_util_get_ip_inet_state_cfg(uplink, &link->ipv4);
 }
 
 static int
@@ -667,7 +670,7 @@ cm2_ovsdb_refresh_dhcp(char *if_name)
 
     LOGI("%s: Trigger refresh dhcp", if_name);
 
-    if (g_state.link.ip.ipv6 == CM2_IPV6_DHCP) {
+    if (g_state.link.ipv6.assign_scheme == CM2_IPV6_DHCP) {
         cm2_ovsdb_set_dhcpv6_client(if_name, false);
         cm2_ovsdb_set_dhcpv6_client(if_name, true);
     }
@@ -923,7 +926,7 @@ cm2_ovsdb_util_handle_master_sta_port_state(struct schema_Wifi_Master_State *mas
                                             char *gre_ifname,
                                             bool wds)
 {
-    cm2_ip ip;
+    cm2_ip ipv4;
     int    ret;
 
     if (port_state) {
@@ -952,8 +955,8 @@ cm2_ovsdb_util_handle_master_sta_port_state(struct schema_Wifi_Master_State *mas
                                       CM2_PAR_NOT_SET, true);
         }
 
-        ret = cm2_util_get_ip_inet_state_cfg(master->if_name, &ip);
-        if (!ret && ip.ipv4 != CM2_IP_STATIC)
+        ret = cm2_util_get_ip_inet_state_cfg(master->if_name, &ipv4);
+        if (!ret && ipv4.assign_scheme != CM2_IP_STATIC)
             cm2_ovsdb_remove_Wifi_Inet_Config(gre_ifname, true);
     }
 
@@ -2298,8 +2301,12 @@ void callback_Wifi_Inet_State(ovsdb_update_monitor_t *mon,
                 } else if (strcmp(g_state.link.if_name, inet_state->if_name)) {
                     break;
                 }
+
+                if (cm2_is_wifi_type(inet_state->if_type))
+                    break;
+
                 cm2_util_set_dhcp_ipv4_cfg_from_inet(inet_state, false);
-                cm2_util_set_local_ip_cfg(inet_state, &g_state.link.ip);
+                cm2_util_set_local_ip_cfg(inet_state, &g_state.link.ipv4);
             }
 
             if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Wifi_Inet_State, dhcpc)))
@@ -2480,11 +2487,11 @@ void callback_IP_Interface(ovsdb_update_monitor_t *mon,
                 }
 
                 LOGI("%s Updated IPv6 configuration: old state: %s, new state: %s, ipv6_controller: %s",
-                     ip->if_name, bool2string(ipv6), bool2string(g_state.link.ip.is_ipv6),
+                     ip->if_name, bool2string(ipv6), bool2string(g_state.link.ipv6.is_ip),
                      bool2string(g_state.ipv6_manager_con));
 
-                g_state.link.ip.is_ipv6 = ipv6;
-                g_state.link.ip.ipv6 = ipv6 ? CM2_IPV6_DHCP : CM2_IP_NOT_SET;
+                g_state.link.ipv6.is_ip = ipv6;
+                g_state.link.ipv6.assign_scheme = ipv6 ? CM2_IPV6_DHCP : CM2_IP_NOT_SET;
 
                 ipv6_mismatch = (g_state.ipv6_manager_con && !ipv6) || (!g_state.ipv6_manager_con && ipv6);
                 if (ipv6_mismatch)

@@ -171,16 +171,20 @@ dns_remove_req(struct dns_session *dns_session, os_macaddr_t *mac,
 /**
  * @brief create updated row for OF Tag with newly matched IPs
  *
- * @param         req        request with update fields loaded
- * @parami[out]   values     buffer to update values.
- * @param[out]    values_len length of the values updated.
+ * @param        req          request with update fields loaded
+ * @param[out]   values       buffer to update values.
+ * @param[out]   values_len   length of the values updated.
+ * @param[in]    max_capacity the buffer maximum capacity
+ * @param[in]    ip_ver       the IP protocol version
  *
  * @return true loaded correctly built struct into output
  * @return false output struct not built
  */
 bool
 dns_generate_update_tag(struct fqdn_pending_req *req,
-                        char values[][MAX_TAG_VALUES_LEN], int *values_len, int ip_ver);
+                        char values[][MAX_TAG_VALUES_LEN],
+                        int *values_len, size_t max_capacity,
+                        int ip_ver);
 
 typedef bool (*dns_ovsdb_updater)(const char *, const char *,
                                   const char *, json_t *, ovs_uuid_t *);
