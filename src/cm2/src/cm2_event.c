@@ -119,8 +119,6 @@ Note-1: the wait for re-connect back to same manager addr because
 #define CM2_MAX_DISCONNECTS             10
 #define CM2_STABLE_PERIOD               300 // 5 min
 #define CM2_RESOLVE_RETRY_THRESHOLD     10
-#define CM2_RESOLVE_FATAL_THRESHOLD     5
-#define CM2_CONNECT_FATAL_THRESHOLD     10
 #define CM2_GW_OFFLINE_RETRY_THRESHOLD  3
 #define CM2_GW_SKIP_RESTART_THRESHOLD   360
 
@@ -421,6 +419,17 @@ static void cm2_trigger_restart_managers(void) {
     if (g_state.dev_type == CM2_DEVICE_ROUTER) {
         LOGI("Detected device in Router mode, skip restart managers");
         skip_restart = true;
+
+        /* When device operates in Router mode, restart managers is skipped
+         * due to keep LAN connectivity.
+         * Two methods to help restore connection are triggered,
+         * refresh dhcp or restart interface.
+        */
+        if (g_state.cnts.skip_restart % 2)
+            cm2_ovsdb_refresh_dhcp(g_state.link.if_name);
+        else
+            cm2_restart_iface(g_state.link.if_name);
+
         goto restart;
     }
 
@@ -475,8 +484,9 @@ restart:
 static void cm2_restart_ovs_connection(bool state) {
     if (cm2_is_extender())
     {
-        if (g_state.cnts.ovs_resolve_fail < CM2_RESOLVE_FATAL_THRESHOLD &&
-            g_state.cnts.ovs_con < CM2_CONNECT_FATAL_THRESHOLD)
+        if (CONFIG_CM2_CLOUD_FATAL_THRESHOLD == 0 ||
+            (g_state.cnts.ovs_resolve_fail < CONFIG_CM2_CLOUD_FATAL_THRESHOLD &&
+             g_state.cnts.ovs_con < CONFIG_CM2_CLOUD_FATAL_THRESHOLD))
             cm2_set_state(state, CM2_STATE_LINK_SEL);
         else
             cm2_trigger_restart_managers();
@@ -704,7 +714,8 @@ start:
             {
                 LOGI("Waiting for finish NTP");
             }
-            if (cm2_connection_req_stability_check(INTERNET_CHECK | NTP_CHECK, true))
+
+            if (cm2_connection_req_stability_check(NTP_CHECK, false))
             {
                 cm2_state_e n_state;
 
@@ -741,6 +752,7 @@ start:
                 cm2_set_state(true, CM2_STATE_TRY_RESOLVE);
                 g_state.disconnects = 0;
             }
+
             break;
 
         case CM2_STATE_TRY_RESOLVE:
@@ -764,7 +776,8 @@ start:
                      cm2_curr_addr()->hostname);
 
                 if (!cm2_resolve(g_state.dest)) {
-                    g_state.cnts.ovs_resolve_fail++;
+                    if (CONFIG_CM2_CLOUD_FATAL_THRESHOLD != 0)
+                        g_state.cnts.ovs_resolve_fail++;
                     cm2_restart_ovs_connection(true);
                     return;
                 }
@@ -787,7 +800,8 @@ start:
                     g_state.cnts.ovs_resolve = 0;
                     cm2_resolve_timeout();
                     cm2_ovsdb_refresh_dhcp(uplink);
-                    g_state.cnts.ovs_resolve_fail++;
+                    if (CONFIG_CM2_CLOUD_FATAL_THRESHOLD != 0)
+                        g_state.cnts.ovs_resolve_fail++;
                     cm2_restart_ovs_connection(false);
                     return;
                 }
@@ -810,7 +824,8 @@ start:
             else if (cm2_timeout(false))
             {
                 // stuck? back to init
-                g_state.cnts.ovs_con++;
+                if (CONFIG_CM2_CLOUD_FATAL_THRESHOLD != 0)
+                    g_state.cnts.ovs_con++;
                 cm2_restart_ovs_connection(false);
                 return;
             }
@@ -836,7 +851,8 @@ start:
             {
                 if (!cm2_write_current_target_addr())
                 {
-                    g_state.cnts.ovs_con++;
+                    if (CONFIG_CM2_CLOUD_FATAL_THRESHOLD != 0)
+                        g_state.cnts.ovs_con++;
                     cm2_restart_ovs_connection(false);
                     return;
                 }
@@ -856,7 +872,8 @@ start:
                 else
                 {
                     // no more addresses
-                    g_state.cnts.ovs_con++;
+                    if (CONFIG_CM2_CLOUD_FATAL_THRESHOLD != 0)
+                        g_state.cnts.ovs_con++;
                     cm2_restart_ovs_connection(false);
                     return;
                 }

@@ -145,8 +145,7 @@ static void cm2_restore_connection(cm2_restore_con_t opt)
         cm2_ovsdb_refresh_dhcp(cm2_get_uplink_name());
     }
     else if (opt & (1 << CM2_RESTORE_MAIN_LINK)) {
-        WARN_ON(!cm2_ovsdb_set_Wifi_Inet_Config_interface_enabled(false, cm2_get_uplink_name()));
-        WARN_ON(!cm2_ovsdb_set_Wifi_Inet_Config_interface_enabled(true, cm2_get_uplink_name()));
+        cm2_restart_iface(cm2_get_uplink_name());
     }
     else {
         cm2_restore_switch_cfg(opt);
@@ -176,6 +175,15 @@ static void cm2_stability_handle_fatal_state(int counter)
         WARN_ON(!target_device_wdt_ping());
         target_device_restart_managers();
     }
+}
+
+void cm2_util_add_ip_opts(target_connectivity_check_option_t *opts)
+{
+    if (g_state.link.ip.is_ipv4)
+        *opts |= IPV4_CHECK;
+
+    if (g_state.link.ip.is_ipv6)
+        *opts |= IPV6_CHECK;
 }
 
 bool cm2_connection_req_stability_check(target_connectivity_check_option_t opts, bool db_update)
@@ -213,6 +221,8 @@ bool cm2_connection_req_stability_check(target_connectivity_check_option_t opts,
     /* Ping WDT before run connectivity check */
     WARN_ON(!target_device_wdt_ping());
 
+    cm2_util_add_ip_opts(&opts);
+
     status = target_device_connectivity_check(if_name, &cstate, opts);
     bridge = con.bridge_exists ? con.bridge : "none";
     LOGN("Connection status %d, main link: %s bridge: %s opts: = %x",
@@ -222,6 +232,9 @@ bool cm2_connection_req_stability_check(target_connectivity_check_option_t opts,
          con.unreachable_internet_counter, con.unreachable_cloud_counter);
     LOGD("%s: Stability states: [%d, %d, %d]", if_name,
          cstate.link_state, cstate.router_state, cstate.internet_state);
+
+    if (opts & NTP_CHECK)
+        g_state.ntp_check = cstate.ntp_state;
 
     if (!db_update)
         return status;
@@ -319,8 +332,6 @@ bool cm2_connection_req_stability_check(target_connectivity_check_option_t opts,
                                                     cstate.ntp_state);
         if (!ret)
             LOGW("%s Failed update ntp state in ovsdb table", __func__);
-        else
-            g_state.ntp_check = cstate.ntp_state;
     }
     cm2_restore_connection(ropt);
     return status;

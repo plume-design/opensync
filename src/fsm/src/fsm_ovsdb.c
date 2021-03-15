@@ -887,12 +887,12 @@ fsm_free_session(struct fsm_session *session)
         free(pcaps);
     }
 
+    /* Call the session exit routine */
+    if (session->ops.exit != NULL) session->ops.exit(session);
+
     /* Free optional dpi context */
     ret = fsm_is_dpi(session);
     if (ret) fsm_free_dpi_context(session);
-
-    /* Call the session exit routine */
-    if (session->ops.exit != NULL) session->ops.exit(session);
 
     /* Close the dynamic library handler */
     if (session->handle != NULL) dlclose(session->handle);

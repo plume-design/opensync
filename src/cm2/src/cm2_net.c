@@ -366,7 +366,7 @@ static void cm2_dhcpc_dryrun_cb(struct ev_loop *loop, ev_child *w, int revents)
     }
 
     if (!status && con.has_L2) {
-        if (dhcp_dryrun->cnt > CM2_DRYRUN_TRIES_THRESH) {
+        if (g_state.link.is_used && dhcp_dryrun->cnt > CM2_DRYRUN_TRIES_THRESH) {
                 LOGI("%s: Stop dryruns due to exceeding the threshold [%d]",
                      dhcp_dryrun->if_name, CM2_DRYRUN_TRIES_THRESH);
                 goto release;
@@ -557,4 +557,10 @@ bool cm2_osn_is_ipv6_global_link(const char *ifname, const char *ipv6_addr)
 
     LOGI("%s: Global IPv6 address: %s", ifname, ipv6_addr);
     return true;
+}
+
+void cm2_restart_iface(char *ifname)
+{
+    WARN_ON(!cm2_ovsdb_set_Wifi_Inet_Config_interface_enabled(false, ifname));
+    WARN_ON(!cm2_ovsdb_set_Wifi_Inet_Config_interface_enabled(true, ifname));
 }

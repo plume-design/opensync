@@ -370,6 +370,8 @@ void fsm_dpi_set_acc_state(
     struct net_md_stats_accumulator *acc;
     struct fsm_dpi_flow_info *info;
 
+    if (session == NULL) return;
+
     acc = net_parser->acc;
     if (acc == NULL) return;
 
