@@ -150,7 +150,7 @@ bool maptm_persistent(void)
     {
         LOGE("Failed when getting persistent storage value");
         snprintf(mapt_support, sizeof(mapt_support), "%s", "true");
-        
+
         // Set persistent storage value
         if (!(osp_ps_set(ps, MAPT_PS_KEY_NAME, mapt_support, strlen(mapt_support)+1) <= 0))
         {
@@ -218,17 +218,21 @@ void callback_Node_Config(
 
         if (!strcmp(conf->module, MAPT_MODULE_NAME))
         {
-            if (maptm_get_supportValue(conf->value))
+            if (strucWanConfig.mapt_support != maptm_get_supportValue(conf->value))
             {
-                WanConfig |= MAPTM_ELIGIBILITY_ENABLE;
-            }
-            strucWanConfig.mapt_support = maptm_get_supportValue(conf->value);
-            maptm_dhcp_option_update_15_option(strucWanConfig.mapt_support);
-            maptm_dhcp_option_update_95_option(strucWanConfig.mapt_support);
-
-            if (!(maptm_ps_set(MAPT_PS_KEY_NAME, maptm_get_supportValue(conf->value) ? "true" : "false")))
-            {
-                LOGE("Error saving new MAP-T support value");
+                WanConfig = 0;
+                if (maptm_get_supportValue(conf->value))
+                {
+                    WanConfig |= MAPTM_ELIGIBILITY_ENABLE;
+                }
+                strucWanConfig.mapt_support = maptm_get_supportValue(conf->value);
+                maptm_dhcp_option_update_15_option(strucWanConfig.mapt_support);
+                maptm_dhcp_option_update_95_option(strucWanConfig.mapt_support);
+                maptm_eligibilityStart(WanConfig);
+                if (!(maptm_ps_set(MAPT_PS_KEY_NAME, maptm_get_supportValue(conf->value) ? "true" : "false")))
+                {
+                    LOGE("Error saving new MAP-T support value");
+                }
             }
         }
     }
@@ -239,7 +243,6 @@ void callback_Node_Config(
         {
             LOGD("%s: node config entry deleted: module %s, key: %s, value: %s",
                     __func__, old_rec->module, old_rec->key, old_rec->value);
-
 
             if (!(maptm_ps_set(MAPT_PS_KEY_NAME, maptm_get_supportValue(conf->value) ? "true" : "false")))
             {

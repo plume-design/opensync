@@ -427,6 +427,7 @@ bool maptm_ovsdb_nfm_rules(bool enable)
     if (!maptm_ovsdb_nfm_set_rule(V4_MAPT_TCP_CHCEK_1, enable)) return false;
     if (!maptm_ovsdb_nfm_set_rule(V4_MAPT_TCP_CHCEK_2, enable)) return false;
     if (!maptm_ovsdb_nfm_set_rule(V6_MAPT_TCP_CHCEK_3, !enable)) return false;
+    if (!maptm_ovsdb_nfm_set_rule(V4_CT_CHECK, !enable)) return false;
 
     return true;
 }
@@ -441,6 +442,36 @@ bool stop_mapt(void)
     return true;
 }
 
+// Get LAN Subnet
+char* get_subnetcidr4(char *subnetcidr4)
+{
+    struct schema_Wifi_Inet_Config iconf;
+    int ret;
+    osn_ip_addr_t netmask;
+    int prefix = 0;
+    MEMZERO(iconf);
+
+    ret = ovsdb_table_select_one(
+            &table_Wifi_Inet_Config,
+            SCHEMA_COLUMN(Wifi_Inet_Config, if_name),
+            MAPT_IFC_LAN,
+            &iconf);
+
+    if (!ret)
+    {
+        LOGE("%s: Failed to get Interface config", __func__);
+        return NULL;
+    }
+    if (!osn_ip_addr_from_str(&netmask, iconf.netmask))
+    {
+        LOGE("%s: Wrong Netmask", __func__);
+        return NULL;
+    }
+    prefix = osn_ip_addr_to_prefix(&netmask);
+    sprintf(subnetcidr4, "%s/%d", iconf.inet_addr, prefix);
+    return subnetcidr4;
+}
+
 // Configure MAP-T functionality
 bool config_mapt(void)
 {
@@ -450,8 +481,13 @@ bool config_mapt(void)
         return false;
     }
 
-    /* Hard Coded value: Must be changed */
-    char subnetcidr4[20] = "192.168.1.1/24";
+    // Get LAN Subnet
+    char subnetcidr4[20] = "";
+    if (get_subnetcidr4(subnetcidr4) == NULL)
+    {
+        LOGE("Unable to configure MAP-T option (unable to get subnetcidr4)");
+        return false;
+    }
 
     // Get IA-PD prefix and its length
     char iapd[256] = "";
@@ -500,8 +536,8 @@ bool config_mapt(void)
     result = osn_mapt_configure(
             MaptConf->dmr,
             MaptConf->ratio,
-            "BR_LAN",
-            "br-wan",
+            MAPT_IFC_LAN,
+            MAPT_IFC_WAN,
             ipv6prefix,
             subnetcidr4,
             ipv4PublicAddress,
