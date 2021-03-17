@@ -329,6 +329,11 @@ static void callback_AWLAN_Node(
                 if (strlen(awlan_node->firmware_url) > 0)
                 {
                     if(upg_url == NULL || strncmp(upg_url, awlan_node->firmware_url, sizeof(awlan_node->firmware_url))){
+                        if(upg_url)
+                        {
+                           free(upg_url);
+                           upg_url = NULL;
+                        }
                         upg_url = strdup(awlan_node->firmware_url);
                         um_start_download(upg_url, awlan_node->upgrade_dl_timer);
                     }
