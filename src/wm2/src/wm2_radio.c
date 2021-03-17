@@ -1106,12 +1106,12 @@ wm2_rconf_recalc(const char *ifname, bool force)
         if (wm2_rconf_recalc_fixup_channel(&rconf, &rstate))
             wm2_delayed_recalc(wm2_rconf_recalc, ifname);
 
-    if (want)
-        if (rconf.channel_exists && rconf.vif_configs_len == 0) {
-            LOGD("%s: ignoring rconf channel %d: no vifs available yet",
-                  rconf.if_name, rconf.channel);
-            rconf.channel = rstate.channel;
-        }
+    if (want && rconf.vif_configs_len == 0) {
+        LOGD("%s: ignoring rconf channel, ht_mode and hw_mode: no VIFs configured", rconf.if_name);
+        rconf.channel_exists = false;
+        rconf.ht_mode_exists = false;
+        rconf.hw_mode_exists = false;
+    }
 
     if (want) {
         wm2_rconf_recalc_fixup_nop_channel(&rconf, &rstate);
