@@ -42,8 +42,8 @@ struct wanp_dhcpv4_handle
     osn_ip_addr_t               wd4_ipaddr;
 };
 
-static void wanp_dhcpv4_module_start(void);
-static void wanp_dhcpv4_module_stop(void);
+static void wanp_dhcpv4_module_start(void *data);
+static void wanp_dhcpv4_module_stop(void *data);
 static wano_plugin_ops_init_fn_t wanp_dhcpv4_init;
 static wano_plugin_ops_run_fn_t wanp_dhcpv4_run;
 static wano_plugin_ops_fini_fn_t wanp_dhcpv4_fini;
@@ -239,12 +239,12 @@ void wanp_dhcpv4_inet_state_event_fn(
  *  Module Support
  * ===========================================================================
  */
-void wanp_dhcpv4_module_start(void)
+void wanp_dhcpv4_module_start(void *data)
 {
     wano_plugin_register(&wanp_dhcpv4);
 }
 
-void wanp_dhcpv4_module_stop(void)
+void wanp_dhcpv4_module_stop(void *data)
 {
     wano_plugin_unregister(&wanp_dhcpv4);
 }

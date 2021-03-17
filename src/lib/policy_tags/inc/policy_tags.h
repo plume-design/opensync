@@ -215,4 +215,13 @@ om_get_type_of_tag(char *name);
 bool
 om_tag_in(char *value, char *tag_name);
 
+
+/**
+ * @brief find a tag based on its name
+ *
+ * return the tag structure if found, NULL otherwise
+ */
+om_tag_t *
+om_tag_find(char *tag_name);
+
 #endif /* POLICY_TAGS_H_INCLUDED */

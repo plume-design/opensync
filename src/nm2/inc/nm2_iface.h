@@ -49,6 +49,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "inet_gre.h"
 #include "inet_vlan.h"
 #include "inet_pppoe.h"
+#include "inet_lte.h"
 
 /* Debounce timer for interface configuration commit */
 #define NM2_IFACE_APPLY_TIMER 0.3
@@ -90,6 +91,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     M(NM2_IFTYPE_GRE,       "gre")      \
     M(NM2_IFTYPE_TAP,       "tap")      \
     M(NM2_IFTYPE_PPPOE,     "pppoe")    \
+    M(NM2_IFTYPE_LTE,       "lte")      \
     M(NM2_IFTYPE_MAX,       NULL)
 
 
@@ -109,13 +111,12 @@ bool nm2_iftype_fromstr(enum nm2_iftype *type, const char *str);
  *  DHCP options -- cached per interface
  * ===========================================================================
  */
-struct nm2_iface_dhcp_option
+
+typedef struct dhcp_options
 {
-    char                *do_name;
-    char                *do_value;
-    bool                do_invalid;
-    ds_tree_node_t      do_tnode;
-};
+    size_t length; // number of available options
+    uint8_t option_id[0]; // collection of dhcp option ID's
+} dhcp_options_t;
 
 /*
  * ===========================================================================
@@ -131,7 +132,8 @@ struct nm2_iface
     ds_tree_node_t                  if_tnode;                   /* ds_tree node -- for device lookup by name */
     ds_dlist_node_t                 if_commit_dnode;            /* Node nm2_iface_commit_list */
     inet_state_t                    if_inet_state;              /* Remembered last interface status */
-    ds_tree_t                       if_dhcpc_options;           /* Options received from the DHCP client */
+    dhcp_options_t                 *if_dhcp_req_options;        /* Set of DHCP client requested options */
+    ev_debounce                     if_opt_debounce;            /* Debounce timer for DHCP option change notifications */
     struct nm2_ip_interface        *if_ipi;                     /* Non-NULL if there's a nm2_ip_interface structure associated */
     struct nm2_dhcpv6_client       *if_dhcpv6_client;           /* Associated DHCPv6 client structure */
     struct nm2_dhcpv6_server       *if_dhcpv6_server;           /* Associated DHCPv6 server structure */
@@ -159,6 +161,10 @@ struct nm2_iface
         uint8_t                     gre_local_inet_addr[NM2_IFACE_INET_CONFIG_SZ(gre_local_inet_addr)];
         bool                        vlan_id_exists;
         int                         vlan_id;
+        bool                        vlan_egress_qos_map_exists;
+        uint8_t                     vlan_egress_qos_map[NM2_IFACE_INET_CONFIG_SZ(vlan_egress_qos_map)];
+        bool                        parent_ifname_exists;
+        uint8_t                     parent_ifname[NM2_IFACE_INET_CONFIG_SZ(parent_ifname)];
     }
     if_cache;
 };

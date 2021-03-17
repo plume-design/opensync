@@ -32,14 +32,13 @@
 #   Layer 2: verify that the expected action resulted in changes on the system
 #            is reflected in Node_State table, after supposed expected action.
 
-# Include basic environment config from default shell file and if any from FUT framework generated /tmp/fut_set_env.sh file
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
-source ${FUT_TOPDIR}/shell/lib/unit_lib.sh
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
+source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
+tc_name="hello_world_insert_module_key_value.sh"
 DEMO_MODULE_NAME="hello-world"
 DEMO_OUTPUT_FILE=${DEMO_OUTPUT_FILE:-"/tmp/$DEMO_MODULE_NAME-demo"}
 DEMO_TEST_TITLE="Insert module-key-value into OVSDB"
@@ -50,21 +49,26 @@ DEMO_TEST_VALUE=${2:-"test-value"}
 log_title "$DEMO_MODULE_NAME: $DEMO_TEST_TITLE"
 
 log "Test preconditions: Clean ovsdb table if not empty"
-${OVSH} delete Node_Config || die "Failed to empty table"
+${OVSH} delete Node_Config ||
+    raise "Failed to empty table!" -l "$tc_name" -tc
 
 log "Start test: Write to Node_Config"
-${OVSH} insert Node_Config module:=$DEMO_MODULE_NAME key:=$DEMO_TEST_KEY value:=$DEMO_TEST_VALUE || die "Failed"
+${OVSH} insert Node_Config module:=$DEMO_MODULE_NAME key:=$DEMO_TEST_KEY value:=$DEMO_TEST_VALUE ||
+    raise "Failed to insert to Node_Config table!" -l "$tc_name" -tc
 
 # Level 1 test - checking correct OVSDB behaviour
 log "Waiting for Node_State table to reflect entry in Node_Config table"
-${OVSH} wait Node_State --where module==$DEMO_MODULE_NAME key:=$DEMO_TEST_KEY module:=$DEMO_MODULE_NAME value:=$DEMO_TEST_VALUE || die_with_code 11 "Failed"
+${OVSH} wait Node_State --where module==$DEMO_MODULE_NAME key:=$DEMO_TEST_KEY module:=$DEMO_MODULE_NAME value:=$DEMO_TEST_VALUE ||
+    raise "Failed to reflect Node_Config table to Node_State table!" -l "$tc_name" -tc -ec 11
 
 # Level 2 test - checking the expected actions were applied to the system
 log "Checking correct system action was performed"
 log "Verifying existence of file $DEMO_OUTPUT_FILE."
-[ -f $DEMO_OUTPUT_FILE ] || die_with_code 21 "File not present on system!"
+[ -f $DEMO_OUTPUT_FILE ] ||
+    raise "File not present on system!" -l "$tc_name" -tc -ec 21
 file_content="$(cat $DEMO_OUTPUT_FILE)"
 log "Expecting file content: $DEMO_TEST_KEY=$DEMO_TEST_VALUE"
-[ "$file_content" = "$DEMO_TEST_KEY=$DEMO_TEST_VALUE" ] || die_with_code 22 "File content not correct: $file_content"
+[ "$file_content" = "$DEMO_TEST_KEY=$DEMO_TEST_VALUE" ] ||
+    raise "File content not correct: $file_content" -l "$tc_name" -tc -ec 22
 
 pass "$DEMO_TEST_TITLE - TEST PASSED"

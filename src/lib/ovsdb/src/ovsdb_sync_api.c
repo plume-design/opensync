@@ -527,9 +527,6 @@ bool ovsdb_sync_insert_with_parent(const char *table, json_t *row, ovs_uuid_t *u
     // [{}, {"uuid": ["uuid", "88755b78-d56d-414f-92d8-01bd47937da4"]}, {}, {"count": 1}]
     count = ovsdb_get_update_result_count_off(result, table, "insert_w_parent", 2);
     success = ovsdb_get_insert_result_uuid(result, table, "insert_w_parent", uuid);
-    if (result){
-        json_decref(result);
-    }
     if (!success || count != 1)
     {
         LOG(ERR, "%s: invalid result: insert: %s count: %d", __FUNCTION__,

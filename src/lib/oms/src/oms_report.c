@@ -100,7 +100,6 @@ oms_report_set_node_info(void)
 
     /* Set the protobuf fields */
     ret = oms_report_str_duplicate(mgr->node_id, &pb->nodeid);
-    LOGI("%s: nodeid set to %s", __func__, pb->nodeid);
     if (!ret) goto err_free_pb;
 
     ret = oms_report_str_duplicate(mgr->location_id, &pb->locationid);

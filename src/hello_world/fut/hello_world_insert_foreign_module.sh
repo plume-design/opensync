@@ -30,14 +30,13 @@
 # shows that several managers can use the same ovsdb table and not interfere
 # with each other, if the correct "module" field value is chosen.
 
-# Include basic environment config from default shell file and if any from FUT framework generated /tmp/fut_set_env.sh file
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
-source ${FUT_TOPDIR}/shell/lib/unit_lib.sh
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
+source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
+tc_name="hello_world_insert_foreign_module.sh"
 DEMO_MODULE_NAME="hello-world"
 DEMO_OUTPUT_FILE=${DEMO_OUTPUT_FILE:-"/tmp/$DEMO_MODULE_NAME-demo"}
 DEMO_TEST_TITLE="Fail to update ovsdb table"
@@ -51,14 +50,17 @@ DEMO_OUTPUT_ALT_FILE=${DEMO_OUTPUT_ALT_FILE:-"/tmp/$DEMO_TEST_FOREIGN_MODULE"}
 log_title "$DEMO_MODULE_NAME: $DEMO_TEST_TITLE"
 
 log "Test preconditions: Clean ovsdb table if not empty"
-${OVSH} delete Node_Config || die "Failed to empty table"
+${OVSH} delete Node_Config ||
+    raise "Failed to empty table!" -l "$tc_name" -tc
 
 log "Start test: Write to Node_Config"
-${OVSH} insert Node_Config module:=$DEMO_TEST_FOREIGN_MODULE key:=$DEMO_TEST_KEY value:=$DEMO_TEST_VALUE || die "Failed"
+${OVSH} insert Node_Config module:=$DEMO_TEST_FOREIGN_MODULE key:=$DEMO_TEST_KEY value:=$DEMO_TEST_VALUE ||
+    raise "Failed to insert to Node_Config table!" -l "$tc_name" -tc
 
 # Level 1 test - checking correct OVSDB behaviour
 log "Checking for Node_State table entry, reflecting entry in Node_Config table"
-${OVSH} select Node_State --where module==$DEMO_TEST_FOREIGN_MODULE key:=$DEMO_TEST_KEY module:=$DEMO_TEST_FOREIGN_MODULE value:=$DEMO_TEST_VALUE || die_with_code 11 "Failed - entry found!"
+${OVSH} select Node_State --where module==$DEMO_TEST_FOREIGN_MODULE key:=$DEMO_TEST_KEY module:=$DEMO_TEST_FOREIGN_MODULE value:=$DEMO_TEST_VALUE ||
+    raise "Failed - entry found!" -l "$tc_name" -tc -ec 11
 log "OK: no entry found, continuing"
 
 # Level 2 test - checking that no actions were applied to the system
@@ -71,6 +73,7 @@ else
     log "OK: File $DEMO_OUTPUT_FILE not present on system"
 fi
 log "Verifying existence of file $DEMO_OUTPUT_ALT_FILE."
-[ -f $DEMO_OUTPUT_ALT_FILE ] && die_with_code 23 "File exists!"
+[ -f $DEMO_OUTPUT_ALT_FILE ] &&
+    raise "File exists!" -l "$tc_name" -tc -ec 23
 
 pass "$DEMO_TEST_TITLE - TEST PASSED"

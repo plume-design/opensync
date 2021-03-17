@@ -37,12 +37,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "schema.h"
 #include "ovsdb_table.h"
 #include "json_util.h"
+#include "module.h"
 
 #include "osp_led.h"
-#include "pm.h"
 
 
 #define PM_LED_TS_FILE          "/tmp/pm.led.ts"
+
+MODULE(pm_led, pm_led_init, pm_led_fini);
 
 
 static ovsdb_table_t table_AWLAN_Node;
@@ -288,7 +290,7 @@ static void pm_led_tmr_connectfail_cb(struct ev_loop *loop, ev_timer *watcher, i
     pm_led_write_state_to_ovs(OSP_LED_ST_CONNECTFAIL);
 }
 
-bool pm_led_init(void)
+void pm_led_init(void *data)
 {
     int led_cnt;
     uint64_t ts;
@@ -297,11 +299,11 @@ bool pm_led_init(void)
     LOGN("Initializing LEDM");
 
     if (osp_led_init(&led_cnt) != 0) {
-        return false;
+        return;
     }
 
     if (!pm_led_ovsdb_init()) {
-        return false;
+        return;
     }
 
 
@@ -353,5 +355,10 @@ bool pm_led_init(void)
     }
 
     osp_led_get_state(&state, NULL);
-    return (osp_led_set_state(state, OSP_LED_PRIORITY_DEFAULT) == 0) ? true : false;
+    osp_led_set_state(state, OSP_LED_PRIORITY_DEFAULT);
+}
+
+void pm_led_fini(void *data)
+{
+    LOGN("Deinitializing LEDM");
 }

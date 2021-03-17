@@ -31,11 +31,8 @@ UNIT_TYPE := FUT
 # Output directory
 UNIT_DIR := shell/tests/dm
 
-# DM specific FUTs
-UNIT_FILE := dm_setup.sh
-UNIT_FILE += dm_fetch_managers_startup.sh
 # BRV specific FUTs
-UNIT_FILE += brv_setup.sh
+UNIT_FILE := brv_setup.sh
 UNIT_FILE += brv_busybox_builtins.sh
 UNIT_FILE += brv_is_tool_on_system.sh
 UNIT_FILE += brv_ovs_correct_version.sh

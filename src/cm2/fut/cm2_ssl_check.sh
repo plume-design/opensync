@@ -25,74 +25,66 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-# Include basic environment config from default shell file and if any from FUT framework generated /tmp/fut_set_env.sh file
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
-
-source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/cm2_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
-trap '
-    check_restore_management_access || true
-    run_setup_if_crashed cm || true
-' EXIT SIGINT SIGTERM
-
-usage="
-$(basename "$0") [-h] \$1
-
-where options are:
+tc_name="cm2/$(basename "$0")"
+cm_setup_file="cm2/cm2_setup.sh"
+usage()
+{
+cat << usage_string
+${tc_name} [-h]
+Description:
+    - Script checks for required SSL verification files used by CM contained in SSL table
+      Test fails if only one of the file is not present in given path or it is empty
+Options:
     -h  show this help message
-
-this script is dependent on following:
-    - running CM manager
-    - running NM manager
-
-example of usage:
-    /tmp/fut-base/shell/cm2/$(basename "$0")
-"
-
+Testcase procedure:
+    - On DEVICE: Run: ./${cm_setup_file} (see ${cm_setup_file} -h)
+    - On DEVICE: Run: ./${tc_name}
+Script usage example:
+    ./${tc_name}
+usage_string
+}
 while getopts h option; do
     case "$option" in
         h)
-            echo "$usage"
-            exit 1
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
             ;;
     esac
 done
 
-tc_name="cm2/$(basename "$0")"
-log "$tc_name: CM2 test - SSL check"
+trap '
+check_restore_management_access || true
+run_setup_if_crashed cm || true' EXIT SIGINT SIGTERM
+
+log_title "$tc_name: CM2 test - SSL Check"
 
 ca_cert_path=$(get_ovsdb_entry_value SSL ca_cert)
 certificate_path=$(get_ovsdb_entry_value SSL certificate)
 private_key_path=$(get_ovsdb_entry_value SSL private_key)
-
 [ -e "$ca_cert_path" ] &&
     log "$tc_name: ca_cert file is valid - $ca_cert_path" ||
     raise "ca_cert file is missing - $ca_cert_path" -l "$tc_name" -tc
-
 [ -e "$certificate_path" ] &&
     log "$tc_name: certificate file is valid - $certificate_path" ||
     raise "certificate file is missing - $certificate_path" -l "$tc_name" -tc
-
 [ -e "$private_key_path" ] &&
     log "$tc_name: private_key file is valid - $private_key_path" ||
     raise "private_key file is missing - $private_key_path" -l "$tc_name" -tc
-
 [ -s "$ca_cert_path" ] &&
     log "$tc_name: ca_cert file is not empty - $ca_cert_path" ||
     raise "ca_cert file is empty - $ca_cert_path" -l "$tc_name" -tc
-
 [ -s "$certificate_path" ] &&
     log "$tc_name: certificate file is not empty - $certificate_path" ||
     raise "certificate file is empty - $certificate_path" -l "$tc_name" -tc
-
 [ -s "$private_key_path" ] &&
     log "$tc_name: private_key file is not empty - $private_key_path" ||
     raise "private_key file is empty - $private_key_path" -l "$tc_name" -tc
-
 pass

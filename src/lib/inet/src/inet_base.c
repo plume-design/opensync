@@ -62,7 +62,7 @@ static bool inet_base_inet6_commit(inet_base_t *self, bool start);
 static bool inet_base_dhcp6_client_commit(inet_base_t *self, bool start);
 static bool inet_base_radv_commit(inet_base_t *self, bool start);
 static bool inet_base_dhcp6_server_commit(inet_base_t *self, bool start);
-static void inet_base_upnp_start_stop(inet_base_t *self);
+static bool inet_base_upnp_start_stop(inet_base_t *self);
 static osn_route_status_fn_t inet_base_route_status;
 static osn_dhcp_client_opt_notify_fn_t inet_base_dhcp_client_option_fn;
 
@@ -224,6 +224,7 @@ bool inet_base_init(inet_base_t *self, const char *ifname)
     self->inet.in_portforward_del_fn            = inet_base_portforward_del;
     self->inet.in_dhcpc_option_request_fn       = inet_base_dhcpc_option_request;
     self->inet.in_dhcpc_option_set_fn           = inet_base_dhcpc_option_set;
+    self->inet.in_dhcpc_option_get_fn           = inet_base_dhcpc_option_get;
     self->inet.in_dhcpc_option_notify_fn        = inet_base_dhcpc_option_notify;
     self->inet.in_dhcps_enable_fn               = inet_base_dhcps_enable;
     self->inet.in_dhcps_lease_set_fn            = inet_base_dhcps_lease_set;
@@ -235,6 +236,8 @@ bool inet_base_init(inet_base_t *self, const char *ifname)
     self->inet.in_dns_set_fn                    = inet_base_dns_set;
     self->inet.in_dhsnif_lease_notify_fn        = inet_base_dhsnif_lease_notify;
     self->inet.in_route_notify_fn               = inet_base_route_notify;
+    self->inet.in_route4_add_fn                    = inet_base_route_add;
+    self->inet.in_route4_remove_fn                 = inet_base_route_remove;
     self->inet.in_commit_fn                     = inet_base_commit;
     self->inet.in_state_notify_fn               = inet_base_state_notify;
 
@@ -390,6 +393,13 @@ bool inet_base_init(inet_base_t *self, const char *ifname)
         goto error;
     }
 
+    self->in_routes_set = inet_routes_new(self->inet.in_ifname);
+    if (self->in_routes_set == NULL)
+    {
+        LOG(ERR, "inet_base: %s: Error creating ROUTES_SET instance.", self->inet.in_ifname);
+        goto error;
+    }
+
     /*
      * Initialize state update debounce timer.
      */
@@ -413,12 +423,15 @@ bool inet_base_init(inet_base_t *self, const char *ifname)
                                     inet_unit(INET_BASE_NETWORK,
                                                 inet_unit_s(INET_BASE_SCHEME_NONE, NULL),
                                                 inet_unit(INET_BASE_SCHEME_STATIC,
-                                                          inet_unit(INET_BASE_DHCP_SERVER, NULL),
+                                                          inet_unit_s(INET_BASE_DHCP_SERVER, NULL),
                                                           inet_unit(INET_BASE_DNS, NULL),
                                                           NULL),
                                                 inet_unit(INET_BASE_SCHEME_DHCP, NULL),
                                                 inet_unit(INET_BASE_DHCPSNIFF, NULL),
                                                 inet_unit(INET_BASE_IGMP, NULL),
+                                                inet_unit(INET_BASE_IPV4_READY,
+                                                            inet_unit(INET_BASE_ROUTES, NULL),
+                                                            NULL),
                                                 NULL),
                                     inet_unit(INET_BASE_INET6,
                                               inet_unit(INET_BASE_RADV, NULL),
@@ -440,6 +453,9 @@ bool inet_base_init(inet_base_t *self, const char *ifname)
     inet_unit_start(self->in_units, INET_BASE_IF_CREATE);
     /* Assume interface exists by default */
     inet_unit_start(self->in_units, INET_BASE_IF_READY);
+
+    /* Activate static routes service when interface is ready */
+    inet_unit_start(self->in_units, INET_BASE_ROUTES);
 
     static bool once = true;
 
@@ -574,6 +590,11 @@ bool inet_base_fini(inet_base_t *self)
     {
         LOG(WARN, "inet_base: %s: Error freeing ROUTE object.", self->inet.in_ifname);
         retval = false;
+    }
+
+    if (self->in_routes_set != NULL)
+    {
+        inet_routes_del(self->in_routes_set);
     }
 
     if (self->in_ip6 != NULL && !osn_ip6_del(self->in_ip6))
@@ -761,7 +782,7 @@ bool inet_base_nat_enable(inet_t *super, bool enabled)
     }
 
     /* NAT settings also affect UPnP, so handle it here */
-    inet_base_upnp_start_stop(self);
+    (void)inet_base_upnp_start_stop(self);
 
     return true;
 }
@@ -827,8 +848,8 @@ bool inet_base_upnp_mode_set(inet_t *super, enum osn_upnp_mode mode)
     {
         if (!osn_upnp_set(self->in_upnp, mode))
         {
-            LOG(ERR, "inet_base: %s: Error setting UPnP mode on interface.",
-                    self->inet.in_ifname);
+            LOG(ERR, "inet_base: %s: Error setting UPnP mode=%d on interface.",
+                    self->inet.in_ifname, mode);
             return false;
         }
 
@@ -838,29 +859,42 @@ bool inet_base_upnp_mode_set(inet_t *super, enum osn_upnp_mode mode)
         inet_unit_stop(self->in_units, INET_BASE_UPNP);
     }
 
-    inet_base_upnp_start_stop(self);
-
-    return true;
+    return inet_base_upnp_start_stop(self);
 }
 
-void inet_base_upnp_start_stop(inet_base_t *self)
+bool inet_base_upnp_start_stop(inet_base_t *self)
 {
+    bool rv;
     switch (self->in_upnp_mode)
     {
         case UPNP_MODE_NONE:
             /* Stop the UPnP service */
-            inet_unit_stop(self->in_units, INET_BASE_UPNP);
-            break;
+            return inet_unit_stop(self->in_units, INET_BASE_UPNP);
 
         case UPNP_MODE_INTERNAL:
+        case UPNP_MODE_INTERNAL_IPTV:
             /* Start the UPnP service only if we're not in NAT mode */
-            inet_unit_enable(self->in_units, INET_BASE_UPNP, !self->in_nat_enabled);
-            break;
+            rv = inet_unit_enable(self->in_units, INET_BASE_UPNP, !self->in_nat_enabled);
+            if (self->in_nat_enabled)
+            {
+                LOG(WARN, "inet_base: %s: Warning, internal UPnP mode disabled due to active NAT", self->inet.in_ifname);
+                rv = false;
+            }
+            return rv;
 
         case UPNP_MODE_EXTERNAL:
+        case UPNP_MODE_EXTERNAL_IPTV:
             /* Star the UPnP service only if we're in NAT mode */
-            inet_unit_enable(self->in_units, INET_BASE_UPNP, self->in_nat_enabled);
-            break;
+            rv = inet_unit_enable(self->in_units, INET_BASE_UPNP, self->in_nat_enabled);
+            if (!self->in_nat_enabled)
+            {
+                LOG(WARN, "inet_base: %s: Warning, external UPnP mode disabled due to inactive NAT", self->inet.in_ifname);
+                rv = false;
+            }
+            return rv;
+
+        default:
+            return false;
     }
 }
 
@@ -1049,24 +1083,31 @@ bool inet_base_portforward_del(inet_t *super, const struct inet_portforward *pf)
  *  DHCP Client methods
  * ===========================================================================
  */
+bool inet_base_dhcpc_option_get(inet_t *super, enum osn_dhcp_option opt, bool *req, const char **value)
+{
+    inet_base_t *self = (void *)super;
+    if (!osn_dhcp_client_opt_get(self->in_dhcpc, opt, req, value))
+    {
+        LOG(ERR, "inet_base: %s: Error retrieving DHCP client option %d.", self->inet.in_ifname, opt);
+        return false;
+    }
+    return true;
+}
+
 bool inet_base_dhcpc_option_request(inet_t *super, enum osn_dhcp_option opt, bool req)
 {
     inet_base_t *self = (void *)super;
     bool _req;
     const char *_value;
 
-    if (!osn_dhcp_client_opt_get(self->in_dhcpc, opt, &_req, &_value))
-    {
-        LOG(ERR, "inet_base: %s: Error retrieving DHCP client options.", self->inet.in_ifname);
-        return false;
-    }
+    if (!inet_base_dhcpc_option_get(super, opt, &_req, &_value)) return false;
 
     /* No change required */
     if (req == _req) return true;
 
     if (!osn_dhcp_client_opt_request(self->in_dhcpc, opt, req))
     {
-        LOG(ERR, "inet_base: %s: Error requesting option: %d", self->inet.in_ifname, opt);
+        LOG(ERR, "inet_base: %s: Error requesting DHCP option: %d", self->inet.in_ifname, opt);
         return false;
     }
 
@@ -1080,11 +1121,7 @@ bool inet_base_dhcpc_option_set(inet_t *super, enum osn_dhcp_option opt, const c
     bool _req;
     const char *_value;
 
-    if (!osn_dhcp_client_opt_get(self->in_dhcpc, opt, &_req, &_value))
-    {
-        LOG(ERR, "inet_base: %s: Error retrieving DHCP client options.", self->inet.in_ifname);
-        return false;
-    }
+    if (!inet_base_dhcpc_option_get(super, opt, &_req, &_value)) return false;
 
     /* Both values are NULL, no change needed */
     if (value == NULL && _value == NULL)
@@ -1114,14 +1151,13 @@ bool inet_base_dhcpc_option_set(inet_t *super, enum osn_dhcp_option opt, const c
 
 bool inet_base_dhcp_client_option_fn(
         osn_dhcp_client_t *dhcpc,
-        enum osn_notify hint,
-        const char *name,
+        enum osn_dhcp_option opt,
         const char *value)
 {
     inet_base_t *self = osn_dhcp_client_data_get(dhcpc);
 
     if (self->in_dhcpc_option_fn != NULL)
-        self->in_dhcpc_option_fn(&self->inet, hint, name, value);
+        self->in_dhcpc_option_fn(&self->inet, opt, value);
 
     return true;
 }
@@ -1437,6 +1473,14 @@ bool inet_base_route_status(osn_route_t *rt, struct osn_route_status *status, bo
 {
     inet_base_t *self = osn_route_data_get(rt);
 
+    if (remove)
+    {
+        /* One of routes was removed for this interface, it could be the effect
+         * of temporary down/up of the interface causing static route to be
+         * flushed by kernel. If this is the case try to reapply the route */
+        inet_routes_reapply(self->in_routes_set, &status->rts_route);
+    }
+
     if (self->in_route_status_fn != NULL)
         self->in_route_status_fn(&self->inet, status, remove);
 
@@ -1450,6 +1494,26 @@ bool inet_base_route_notify(inet_t *super, inet_route_status_fn_t *func)
     self->in_route_status_fn = func;
     /* Re-register handler to trigger an immediate update */
     return osn_route_status_notify(self->in_route, inet_base_route_status);
+}
+
+static bool inet_base_routes_commit(inet_base_t *self, bool start)
+{
+    bool rv = inet_routes_enable(self->in_routes_set, start);
+    if (!rv)
+    {
+        LOG(WARN, "inet_base: %s: Error %s INET_BASE_ROUTES", self->inet.in_ifname, start ? "starting" : "stopping");
+    }
+    return rv;
+}
+
+bool inet_base_route_add(inet_t *super, const osn_route4_t *route)
+{
+    return inet_routes_add(((inet_base_t*)super)->in_routes_set, route);
+}
+
+bool inet_base_route_remove(inet_t *super, const osn_route4_t *route)
+{
+    return inet_routes_remove(((inet_base_t*)super)->in_routes_set, route);
 }
 
 /*
@@ -1558,6 +1622,12 @@ bool inet_base_service_commit(
 
         case INET_BASE_SCHEME_DHCP:
             return inet_base_dhcp_client_commit(self, start);
+
+        case INET_BASE_IPV4_READY:
+            return true;
+
+        case INET_BASE_ROUTES:
+            return inet_base_routes_commit(self, start);
 
         case INET_BASE_DHCP_SERVER:
             return inet_base_dhcp_server_commit(self, start);
@@ -1775,8 +1845,6 @@ bool inet_base_dhcp_server_commit(inet_base_t *self, bool start)
     if (self->in_dhcps != NULL) osn_dhcp_server_del(self->in_dhcps);
     self->in_dhcps = NULL;
 
-    if (!start) return true;
-
     /*
      * Create new DHCPv4 object
      */
@@ -1839,6 +1907,8 @@ bool inet_base_dhcp_server_commit(inet_base_t *self, bool start)
                     rn->rn_hostname == NULL ? "(null)" : rn->rn_hostname);
         }
     }
+
+    if (!start) return true;
 
     /* Apply configuration */
     if (!osn_dhcp_server_apply(self->in_dhcps))
@@ -1930,6 +2000,18 @@ void inet_base_state_update_fn(struct ev_loop *ev, ev_debounce *w, int revent)
     (void)revent;
 
     inet_base_t *self = (inet_base_t *)w->data;
+
+    {
+        /* TODO: This is temporary solution to detect when IPv4 interface config is ready 
+         * In the future it should be replaced with inet_unit logic which handles transition 
+         * STARTED -> READY to control dependent units correctly */
+        
+        static const osn_ip_addr_t empty_addr = OSN_IP_ADDR_INIT;
+        bool valid_ipv4_addr = (0 != memcmp(&self->in_state.in_ipaddr, &empty_addr, sizeof(empty_addr)));
+
+        inet_unit_enable(self->in_units, INET_BASE_IPV4_READY, valid_ipv4_addr);
+        (void)inet_commit(&self->inet);
+    }
 
     if (self->in_state_fn != NULL)
     {
@@ -2178,7 +2260,7 @@ void *ip6_addr_status_node_sync(synclist_t *sync, void *_sold, void *_snew)
 
     if (aold == NULL) /* Insert */
     {
-        aold = calloc(1, sizeof(struct ip6_neigh_status_node));
+        aold = calloc(1, sizeof(struct ip6_addr_status_node));
         aold->as_addr = anew->as_addr;
 
         if (self->in_ip6_addr_status_fn != NULL)
@@ -2889,9 +2971,6 @@ bool inet_base_dhcp6_server_commit(inet_base_t *self, bool start)
         }
     }
 
-    /* If we're stopping the service, return right now */
-    if (!start) return true;
-
     /*
      * Create new object, apply cached configuration
      */
@@ -2943,6 +3022,9 @@ bool inet_base_dhcp6_server_commit(inet_base_t *self, bool start)
             return false;
         }
     }
+
+    /* If we're stopping the service, return right now */
+    if (!start) return true;
 
     /* Apply configuration */
     if (!osn_dhcpv6_server_apply(self->in_dhcp6_server))

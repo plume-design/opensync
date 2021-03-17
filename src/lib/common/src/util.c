@@ -614,6 +614,21 @@ char *str_toupper(char *str)
     return str;
 }
 
+char *str_trimws(char *s)
+{
+    size_t size = strlen(s);
+    if (0 == size) return s;
+
+    // trim trailing whitespaces
+    char *end = s + size - 1;
+    while (end >= s && isspace(*end)) { end--; }
+    *(end + 1) = '\0';
+
+    // trim leading whitespaces
+    while (*s && isspace(*s)) { s++; }
+
+    return s;
+}
 
 bool str_is_mac_address(const char *mac)
 {
@@ -1093,4 +1108,24 @@ const int *unii_5g_chan2list(int chan, int width)
                     return start;
 
     return NULL;
+}
+
+bool ascii2hex(const char *input, char *output, size_t size)
+{
+    int loop = 0;
+    int i = 0;
+
+    if (size < (strlen(input)*2)+1) {
+        return false;
+    }
+
+    while (input[loop] != '\0')
+    {
+        sprintf(output+i, "%02X", input[loop]);
+        loop += 1;
+        i += 2;
+    }
+    //insert NULL at the end of the output string
+    output[i] = '\0';
+    return true;
 }

@@ -25,48 +25,50 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
-source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
-usage="
-$(basename "$0") [-h] \$1
-
-where options are:
+tc_name="onbrd/$(basename "$0")"
+manager_setup_file="onbrd/onbrd_setup.sh"
+usage()
+{
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Validate dhcp dry run
+Arguments:
     -h  show this help message
-
-this script is dependent on following:
-    - running DM manager
-
-example of usage:
-   /tmp/fut-base/shell/onbrd/$(basename "$0") eth0
-"
-
+    \$1 (if_name) : Used to define WAN interface : (string)(required)
+Testcase procedure:
+    - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
+                 Run: ./${tc_name} <IF-NAME>
+Script usage example:
+   ./${tc_name} eth0
+usage_string
+}
 while getopts h option; do
     case "$option" in
         h)
-            echo "$usage"
-            exit 1
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
             ;;
     esac
 done
-
-if [ $# -ne 1 ]; then
-    echo 1>&2 "$0: not enough arguments"
-    echo "$usage"
-    exit 2
-fi
+NARGS=1
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 
 if_name=$1
 
-tc_name="onbrd/$(basename "$0")"
+log_title "$tc_name: ONBRD test - Verify DHCP dry run success"
 
-log "$tc_name: ONBRD Verify DHCP dry run success"
+log "$tc_name: Checking if WANO is enabled, if yes, skip..."
+check_kconfig_option "CONFIG_MANAGER_WANO" "y" &&
+    raise "WANO manager is enabled, skipping test!" -l "${tc_name}" -s
 
 update_ovsdb_entry Connection_Manager_Uplink -w if_name "$if_name" -u has_L2 false &&
     log "$tc_name: update_ovsdb_entry - Connection_Manager_Uplink table updated - has_L2 false" ||
@@ -79,7 +81,6 @@ wait_ovsdb_entry Connection_Manager_Uplink -w if_name "$if_name" -is has_L2 fals
 wait_ovsdb_entry Connection_Manager_Uplink -w if_name "$if_name" -is has_L3 false &&
     log "$tc_name: wait_ovsdb_entry - Connection_Manager_Uplink - has_L3 is false" ||
     raise "wait_ovsdb_entry - Failed to reflect has_L3 to Connection_Manager_Uplink has_L3 is not false" -l "$tc_name" -tc
-
 
 update_ovsdb_entry Connection_Manager_Uplink -w if_name "$if_name" -u has_L2 true &&
     log "$tc_name: update_ovsdb_entry - Connection_Manager_Uplink table updated - has_L2 false" ||

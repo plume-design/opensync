@@ -44,10 +44,135 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "util.h"
 #include "policy_tags.h"
 
-#define ETH_DEVICES_TAG "${eth_devices}"
+#define ETH_DEVICES_TAG "${@eth_devices}"
 
 static char *dflt_fltr_name = "none";
 static char *collect_cmd = OVS_DPCTL_DUMP_FLOWS;
+
+/* Copied from openvswitchd */
+/* Returns the value of 'c' as a hexadecimal digit. */
+int
+hexit_value(int c)
+{
+    switch (c)
+    {
+        case '0': case '1': case '2': case '3': case '4':
+        case '5': case '6': case '7': case '8': case '9':
+            return c - '0';
+
+        case 'a': case 'A':
+            return 0xa;
+
+        case 'b': case 'B':
+            return 0xb;
+
+        case 'c': case 'C':
+            return 0xc;
+
+        case 'd': case 'D':
+            return 0xd;
+
+        case 'e': case 'E':
+            return 0xe;
+
+        case 'f': case 'F':
+            return 0xf;
+
+        default:
+            return -1;
+    }
+}
+
+
+/* An initializer or expression for an all-zero UFID. */
+#define UFID_ZERO ((ovs_u128) { .id.u32 = { 0, 0, 0, 0 } })
+
+/* Returns the integer value of the 'n' hexadecimal digits starting at 's', or
+ * UINTMAX_MAX if one of those "digits" is not really a hex digit.  Sets '*ok'
+ * to true if the conversion succeeds or to false if a non-hex digit is
+ * detected. */
+uintmax_t
+hexits_value(const char *s, size_t n, bool *ok)
+{
+    uintmax_t value;
+    size_t i;
+
+    value = 0;
+    for (i = 0; i < n; i++)
+    {
+        int hexit = hexit_value(s[i]);
+        if (hexit < 0)
+        {
+            *ok = false;
+            return UINTMAX_MAX;
+        }
+        value = (value << 4) + hexit;
+    }
+    *ok = true;
+    return value;
+}
+
+
+/* Sets 'ufid' to all-zero-bits. */
+void
+ufid_zero(ovs_u128 *ufid)
+{
+    *ufid = UFID_ZERO;
+}
+
+
+bool
+ufid_from_string_prefix(ovs_u128 *ufid, const char *s)
+{
+    /* 0         1         2         3      */
+    /* 012345678901234567890123456789012345 */
+    /* ------------------------------------ */
+    /* 00000000-1111-1111-2222-222233333333 */
+
+    bool ok;
+
+    ufid->id.u32[0] = hexits_value(s, 8, &ok);
+    if (!ok || s[8] != '-')
+    {
+        goto error;
+    }
+
+    ufid->id.u32[1] = hexits_value(s + 9, 4, &ok) << 16;
+    if (!ok || s[13] != '-')
+    {
+        goto error;
+    }
+
+    ufid->id.u32[1] += hexits_value(s + 14, 4, &ok);
+    if (!ok || s[18] != '-')
+    {
+        goto error;
+    }
+
+    ufid->id.u32[2] = hexits_value(s + 19, 4, &ok) << 16;
+    if (!ok || s[23] != '-')
+    {
+        goto error;
+    }
+
+    ufid->id.u32[2] += hexits_value(s + 24, 4, &ok);
+    if (!ok)
+    {
+        goto error;
+    }
+
+    ufid->id.u32[3] = hexits_value(s + 28, 8, &ok);
+    if (!ok)
+    {
+        goto error;
+    }
+    return true;
+
+error:
+    ufid_zero(ufid);
+    return false;
+}
+
 /**
  * @brief compare flows.
  *
@@ -60,10 +185,15 @@ flow_cmp (void *a, void *b)
 {
     dp_ctl_stats_t  *l2_a = (dp_ctl_stats_t *)a;
     dp_ctl_stats_t  *l2_b = (dp_ctl_stats_t *)b;
+    int ufid_cmp;
     int mac_cmp;
     int eth_type_cmp;
     int vlan_cmp;
     int vlan_eth_cmp;
+
+    /* compare ufid */
+    ufid_cmp = memcmp(&l2_a->ufid.id, &l2_b->ufid.id, sizeof(os_ufid_t));
+    if (ufid_cmp != 0) return ufid_cmp;
 
     /* compare src mac-address */
     mac_cmp = memcmp(&l2_a->smac_key, &l2_b->smac_key, sizeof(os_macaddr_t));
@@ -112,11 +242,23 @@ static dp_ctl_stats_t *parse_lan_stats(char *buf[])
     int i = 0;
     char *pos = NULL;
     int ret = 0;
+    bool rc;
     dp_ctl_stats_t *stats;
 
     stats = calloc(1, sizeof(*stats));
     while (buf[i] != NULL)
     {
+        ret = strncmp(buf[i], OVS_DUMP_UFID_PREFIX, OVS_DUMP_UFID_PREFIX_LEN);
+        if (ret == 0)
+        {
+            // Get ufid
+            pos = buf[i] + OVS_DUMP_UFID_PREFIX_LEN;
+            rc = ufid_from_string_prefix(&stats->ufid, pos);
+            if (!rc)
+            {
+                LOGE("Couldn't convert ufid string to value\n");
+            }
+        }
         if (strncmp(buf[i], OVS_DUMP_ETH_SRC_PREFIX, \
                     OVS_DUMP_ETH_SRC_PREFIX_LEN) == 0)
         {
@@ -358,6 +500,7 @@ static void aggr_add_sample(fcm_collect_plugin_t *collector, dp_ctl_stats_t *sta
 
     memset(&key, 0, sizeof(struct net_md_flow_key));
     memset(&pkts_ct, 0, sizeof(struct flow_counters));
+    key.ufid = &stats->ufid.id;
     key.smac = &stats->smac_key;
     key.isparent_of_smac = lan_stats_is_mac_in_tag(ETH_DEVICES_TAG, key.smac);
     key.dmac = &stats->dmac_key;
@@ -431,11 +574,12 @@ static void lan_stats_flows_filter(fcm_collect_plugin_t *collector, ds_tree_t *t
                                   &l2_filter_info, &l2_filter_pkts, &allow);
             if (allow)
             {
-                LOGD("Flow collect allowed: filter_name: %s, smac: %s, " \
-                     "dmac: %s, vlan_id: %d, eth_type: %d, pks: %ld, " \
+                LOGD("Flow collect allowed: filter_name: %s, ufid: "PRI_os_ufid_t \
+                     " smac: %s, dmac: %s, vlan_id: %d, eth_type: %d, pks: %ld, " \
                      "bytes: %ld\n",\
                       collector->filters.collect ?
                       collector->filters.collect : dflt_fltr_name,
+                      FMT_os_ufid_t_pt(&stats->ufid.id),
                       stats->smac_addr,
                       stats->dmac_addr, stats->vlan_id, stats->eth_val,
                       stats->pkts, stats->bytes);

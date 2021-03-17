@@ -38,6 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define SCHEMA_TABLE(table)                 SCHEMA__ ## table
 #define SCHEMA_COLUMN(table, column)        SCHEMA__ ## table ## __ ## column
+#define SCHEMA_COLUMN_SZ(table, column)     sizeof(((struct schema_##table *)NULL)->column)
 #define SCHEMA_COLUMN_LISTX(table, COL)     SCHEMA_COLUMN__ ## table(COL)
 #define _STR_COMMA(X) #X,
 #define SCHEMA_COLUMNS_LIST(table)          SCHEMA_COLUMN_LISTX(table, _STR_COMMA)
@@ -158,6 +159,18 @@ SCHEMA_LISTX(_SCHEMA_COL_DECL)
 
 #define SCHEMA_FILTER_LEN                   (SCHEMA_MAX_COLUMNS + 2)
 
+/* unsets the field/map/set in ovsdb */
+#define SCHEMA_UNSET_MAP(FIELD)     \
+        do {                        \
+            FIELD##_len = 0;        \
+            FIELD##_present = true; \
+        } while (0)
+
+#define SCHEMA_UNSET_FIELD(FIELD)    \
+        do {                         \
+            FIELD##_exists  = false; \
+            FIELD##_present = true;  \
+        } while (0)
 
 // void schema_TABLE_mark_changed(schema old*, schema *rec);
 // This will sets all rec->*_changed flag for each old->*_present flag
@@ -285,6 +298,14 @@ void schema_filter_blacklist(schema_filter_t *f, char *column);
                 *(dest)->field, sizeof((dest)->field[0]), ARRAY_LEN((dest)->field), &(dest)->field##_len); \
     } while(0)
 
+#define SCHEMA_FIELD_COPY_MAP(src, dest, field) \
+    do { \
+        fsa_copy(*(src)->field, sizeof((src)->field[0]), ARRAY_LEN((src)->field), (src)->field##_len, \
+                *(dest)->field, sizeof((dest)->field[0]), ARRAY_LEN((dest)->field), &(dest)->field##_len); \
+        fsa_copy(*(src)->field##_keys, sizeof((src)->field##_keys[0]), ARRAY_LEN((src)->field##_keys), (src)->field##_len, \
+                *(dest)->field##_keys, sizeof((dest)->field##_keys[0]), ARRAY_LEN((dest)->field##_keys), &(dest)->field##_len); \
+    } while(0)
+
 typedef int (*smap_cmp_fn_t)(const void *, const void *, size_t n);
 
 static inline bool
@@ -343,4 +364,31 @@ schema_changed_set(const void *a,
     return false;
 }
 
+/*
+ * Checks whether "subset" set is a valid non-empty subset of non-empty "set" set.
+ */
+static inline bool
+schema_changed_subset(const void *set,
+                      const void *subset,
+                      const int set_len,
+                      const int subset_len,
+                      const int size,
+                      int (*cmp)(const char *s1, const char *s2, size_t n))
+{
+    int found = 0;
+    int i;
+    int j;
+
+    for (i=0; i<subset_len; i++) {
+        for (j=0; j<set_len; j++) {
+            if (!cmp(set + (j * size), subset + (i * size), size))
+                found++;
+        }
+    }
+
+    if (found == 0 && set_len > 0)
+        return true;
+
+    return found != subset_len;
+}
 #endif /* SCHEMA_H_INCLUDED */

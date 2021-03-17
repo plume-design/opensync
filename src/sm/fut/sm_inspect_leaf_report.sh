@@ -25,63 +25,53 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-# Include basic environment config from default shell file and if any from FUT framework generated /tmp/fut_set_env.sh file
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
-
-source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/sm_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
-trap 'run_setup_if_crashed sm' EXIT SIGINT SIGTERM
-
-usage="$(basename "$0") [-h] \$1 \$2 \$3 \$4 \$5
-
-where arguments are:
-    sm_report_radio=\$1 -- freq_band that is reported inside SM manager in logs (string)(required)
-        - example:
-            Caesar:
-                50U freq_band is reported as 5GU
-                50L freq_band is reported as 5GL
-            Tyrion:
-                50L freq_band is reported as 5G
-    sm_reporting_interval=\$2 -- used as reporting_interval column in Wifi_Stats_Config (int)(required)
-    sm_sampling_interval=\$3 -- used as sampling_interval column in Wifi_Stats_Config (int)(required)
-    sm_report_type=\$4 -- used as report_type column in Wifi_Stats_Config (string)(required)
-    sm_leaf_mac=\$5 -- inspect logs for given Leaf MAC address reports (string)(required)
-
-Script does following:
-    - insert into Wifi_Stats_Config appropriate leaf (client) reporting configuration
-    - tail logs (/tmp/logs/messages - logread -f) for matching patterns for SM leaf reporting
-        - log messages are device/platform dependent
-
-Dependent on:
-    - running WM/NM managers - min_wm2_setup.sh - existance of active interfaces
-    - sm_setup.sh
-    - sm_reporting_env_setup.sh
-    - existence of connected Leaf device - if not, test will timeout
-
-Example of usage:
-    $(basename "$0")
-"
-
+tc_name="sm/$(basename "$0")"
+manager_setup_file="sm/sm_setup.sh"
+radio_vif_create_path="tools/device/create_radio_vif_interface.sh"
+usage()
+{
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Script configures SM leaf reporting and inspects the logs for the leaf device being reported by SM, fails otherwise
+Arguments:
+    -h  show this help message
+    \$1 (radio_type)         : used as radio_type in Wifi_Inet_Config table         : (string)(required)
+    \$2 (reporting_interval) : used as reporting_interval in Wifi_Inet_Config table : (string)(required)
+    \$3 (sampling_interval)  : used as sampling_interval in Wifi_Inet_Config table  : (string)(required)
+    \$4 (report_type)        : used as report_type in Wifi_Inet_Config table        : (string)(required)
+    \$5 (leaf_mac)           : used as to check logs to validate sm leaf reporting  : (string)(required)
+Testcase procedure:
+    - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
+                 Create required Radio-VIF interface settings (see ${radio_vif_create_path} -h)
+    - On LEAF:   Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
+                 Create required Radio-VIF STA interface settings to associate it to DUT/DEVICE (see ${radio_vif_create_path} -h)
+    - On DEVICE:
+                 Run: ./${tc_name} <RADIO-TYPE> <REPORTING-INTERVAL> <SAMPLING-INTERVAL> <REPORT-TYPE> <LEAF-MAC>
+Script usage example:
+   ./${tc_name} 2.4G 10 5 raw 3c:7b:96:4d:11:5c
+usage_string
+}
 while getopts h option; do
     case "$option" in
         h)
-            echo "$usage"
-            exit 1
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
             ;;
     esac
 done
+NARGS=5
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 
-if [ $# -lt 5 ]; then
-    echo 1>&2 "$0: not enough arguments"
-    echo "$usage"
-    exit 2
-fi
+trap 'run_setup_if_crashed sm' EXIT SIGINT SIGTERM
 
 sm_radio_type=$1
 sm_reporting_interval=$2
@@ -89,15 +79,14 @@ sm_sampling_interval=$3
 sm_report_type=$4
 sm_leaf_mac=$5
 
-tc_name="sm/$(basename "$0")"
+log_title "$tc_name: SM test - Inspect leaf report"
 
 log "$tc_name: Inspecting leaf report on $sm_radio_type for leaf $sm_leaf_mac"
-
 inspect_leaf_report \
     "$sm_radio_type" \
     "$sm_reporting_interval" \
     "$sm_sampling_interval" \
     "$sm_report_type" \
-    "$sm_leaf_mac" || die "sm/$(basename "$0"): inspect_leaf_report - Failed"
-
+    "$sm_leaf_mac" ||
+        raise "Failed: inspect_leaf_report" -l "$tc_name" -tc
 pass

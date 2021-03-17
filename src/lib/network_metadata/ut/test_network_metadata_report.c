@@ -44,34 +44,34 @@ struct test_network_data_report g_nd_test;
 
 struct in_key in_keys[] =
 {
-    {
+    {    /* 0 */
         .smac = "11:22:33:44:55:66",
         .dmac = "dd:ee:ff:cc:bb:aa",
         .vlan_id = 0,
         .ethertype = 0,
         .ip_version = 0
     },
-    {
+    {    /* 1 */
         .smac = "11:22:33:44:55:66",
         .dmac = "dd:ee:ff:cc:bb:aa",
         .vlan_id = 0,
         .ethertype = 1,
         .ip_version = 0
     },
-    {
+    {   /* 2 */
         .smac = "11:22:33:44:55:66",
         .dmac = "dd:ee:ff:cc:bb:aa",
         .vlan_id = 1,
         .ethertype = 0x8000,
         .ip_version = 0
     },
-    {
+    {   /* 3 */
         .ip_version = 4,
         .src_ip = "192.168.40.1",
         .dst_ip = "32.33.34.35",
         .ipprotocol = 2,
     },
-    {
+    {   /* 4 */
         .ip_version = 4,
         .src_ip = "192.168.40.1",
         .dst_ip = "32.33.34.35",
@@ -79,7 +79,7 @@ struct in_key in_keys[] =
         .sport = 36000,
         .dport = 1234,
     },
-    {
+    {   /* 5 */
         .smac = "11:22:33:44:55:66",
         .dmac = "dd:ee:ff:cc:bb:aa",
         .vlan_id = 0,
@@ -91,7 +91,7 @@ struct in_key in_keys[] =
         .sport = 12345,
         .dport = 53,
     },
-    {
+    {   /* 6 */
         .smac = "11:22:33:44:55:66",
         .dmac = "dd:ee:ff:cc:bb:aa",
         .vlan_id = 0,
@@ -103,21 +103,21 @@ struct in_key in_keys[] =
         .sport = 12346,
         .dport = 53,
     },
-    {
+    {   /* 7 */
         .smac = "11:22:33:44:55:66",
         .dmac = "dd:ee:ff:cc:bb:aa",
         .vlan_id = 100,
         .ethertype = 0,
         .ip_version = 0
     },
-    {
+    {   /* 8 */
         .smac = "22:33:44:55:66:77",
         .dmac = "dd:ee:ff:cc:bb:aa",
         .vlan_id = 100,
         .ethertype = 0,
         .ip_version = 0
     },
-    {
+    {   /* 9 */
         .smac = "11:22:33:44:55:66",
         .vlan_id = 0,
         .ethertype = 0,
@@ -128,7 +128,7 @@ struct in_key in_keys[] =
         .sport = 12345,
         .dport = 53,
     },
-    {
+    {   /* 10 */
         .dmac = "dd:ee:ff:cc:bb:aa",
         .vlan_id = 0,
         .ethertype = 0,
@@ -139,7 +139,7 @@ struct in_key in_keys[] =
         .sport = 12345,
         .dport = 53,
     },
-    {
+    {   /* 11 */
         .smac = "11:22:33:44:55:66",
         .vlan_id = 0,
         .ethertype = 0,
@@ -150,7 +150,7 @@ struct in_key in_keys[] =
         .sport = 60078,
         .dport = 5001,
     },
-    {
+    {   /* 12 */
         .dmac = "11:22:33:44:55:66",
         .vlan_id = 0,
         .ethertype = 0,
@@ -161,7 +161,7 @@ struct in_key in_keys[] =
         .sport = 5001,
         .dport = 60078,
     },
-    {
+    {   /* 13 */
         .smac = "11:22:33:44:55:66",
         .vlan_id = 0,
         .ethertype = 0,
@@ -172,7 +172,7 @@ struct in_key in_keys[] =
         .sport = 42081,
         .dport = 5001,
     },
-    {
+    {   /* 14 */
         .dmac = "11:22:33:44:55:66",
         .vlan_id = 0,
         .ethertype = 0,
@@ -183,8 +183,47 @@ struct in_key in_keys[] =
         .sport = 5001,
         .dport = 42081,
     },
+    {   /* 15 */
+        .smac = "11:22:33:44:55:66",
+        .dmac = "66:55:44:33:22:11",
+        .vlan_id = 0,
+        .ethertype = 0,
+        .ip_version = 4,
+        .src_ip = "192.168.40.1",
+        .dst_ip = "32.33.34.35",
+        .ipprotocol = 17,
+        .sport = 42081,
+        .dport = 5001,
+    },
+    {   /* 16 */
+        .smac = "66:55:44:33:22:11",
+        .dmac = "11:22:33:44:55:66",
+        .vlan_id = 0,
+        .ethertype = 0,
+        .ip_version = 4,
+        .src_ip = "32.33.34.35",
+        .dst_ip = "192.168.40.1",
+        .ipprotocol = 17,
+        .sport = 5001,
+        .dport = 42081,
+    },
 };
 
+os_ufid_t ufid[] =
+{
+  {
+    .u32[0] = 1942808158,
+    .u32[1] = 2090304818,
+    .u32[2] = 1862539095,
+    .u32[3] = 1411918068,
+  },
+  {
+    .u32[0] = 1293127805,
+    .u32[1] = 1805432549,
+    .u32[2] = 1562745426,
+    .u32[3] = 1934593071,
+  },
+};
 
 /**
  * @brief: translates reader friendly in_key structure in a net_md_flow_key
@@ -2585,5 +2624,350 @@ test_update_filter_flow_tags(void)
 
     /* Free aggregators */
     net_md_free_aggregator(alt_aggr);
+    net_md_free_aggregator(aggr);
+}
+
+
+/**
+ * @brief Test reverse acc lookup
+ */
+void
+test_reverse_lookup_acc(void)
+{
+    struct net_md_stats_accumulator *lookup_reverse_acc;
+    struct net_md_stats_accumulator *reverse_acc;
+    struct net_md_aggregator_set *aggr_set;
+    struct net_md_stats_accumulator *acc;
+    struct flow_counters counters[1];
+    struct net_md_aggregator *aggr;
+    struct net_md_flow_key *key;
+    struct flow_key *fkey;
+    bool ret;
+
+    TEST_ASSERT_TRUE(g_nd_test.initialized);
+    counters[0].bytes_count = 10000;
+    counters[0].packets_count = 100;
+
+    /* Allocate aggregator */
+    aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_type = NET_MD_REPORT_RELATIVE;
+    aggr_set->collect_filter = test_collect_filter_flow;
+    aggr = net_md_allocate_aggregator(aggr_set);
+    TEST_ASSERT_NOT_NULL(aggr);
+
+    /* Activate aggregator window */
+    ret = net_md_activate_window(aggr);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Add one sample */
+    key = g_nd_test.net_md_keys[15];
+    ret = net_md_add_sample(aggr, key, counters);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Validate the state of the accumulator bound to the key */
+    acc = net_md_lookup_acc(aggr, key);
+    TEST_ASSERT_NOT_NULL(acc);
+    fkey = acc->fkey;
+    TEST_ASSERT_NOT_NULL(fkey);
+
+    /* Look up reverse acc */
+    reverse_acc = net_md_lookup_reverse_acc(aggr, acc);
+    TEST_ASSERT_NULL(reverse_acc);
+
+    /* Add the reverse sample */
+    key = g_nd_test.net_md_keys[16];
+    ret = net_md_add_sample(aggr, key, counters);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Validate the state of the accumulator bound to the key */
+    reverse_acc = net_md_lookup_acc(aggr, key);
+    TEST_ASSERT_NOT_NULL(reverse_acc);
+    fkey = reverse_acc->fkey;
+    TEST_ASSERT_NOT_NULL(fkey);
+
+    /* Lookup the reverse acc from the original acc */
+    lookup_reverse_acc = net_md_lookup_reverse_acc(aggr, acc);
+    TEST_ASSERT_NOT_NULL(lookup_reverse_acc);
+    fkey = lookup_reverse_acc->fkey;
+    TEST_ASSERT_NOT_NULL(fkey);
+
+    net_md_free_aggregator(aggr);
+}
+
+
+/**
+ * @brief validates originator and direction of aggregator
+ *
+ * test validates orginator and direction of aggregator and generated
+ * aggregator from protobuf.
+ */
+void
+test_direction_originator_data_serialize_deserialize(void)
+{
+    struct net_md_stats_accumulator *acc_out;
+    struct net_md_stats_accumulator *acc_in;
+    struct net_md_aggregator_set *aggr_set;
+    struct net_md_aggregator *aggr_out;
+    struct net_md_aggregator *aggr_in;
+    struct flow_counters counters[1];
+    struct net_md_flow_key *key;
+    bool ret;
+
+    struct packed_buffer recv_pb;
+    struct packed_buffer *pb;
+
+    TEST_ASSERT_TRUE(g_nd_test.initialized);
+    counters[0].bytes_count = 10000;
+    counters[0].packets_count = 100;
+
+    /* Allocate aggregator */
+    aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_type = NET_MD_REPORT_RELATIVE;
+    aggr_in = net_md_allocate_aggregator(aggr_set);
+    TEST_ASSERT_NOT_NULL(aggr_in);
+
+    /* Activate aggregator window */
+    ret = net_md_activate_window(aggr_in);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Add one sample */
+    key = g_nd_test.net_md_keys[5];
+    ret = net_md_add_sample(aggr_in, key, counters);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Validate the state of the accumulator bound to the key */
+    acc_in = net_md_lookup_acc(aggr_in, key);
+    TEST_ASSERT_NOT_NULL(acc_in);
+
+    /* Add Originator and Direction to acc */
+    acc_in->direction = NET_MD_ACC_OUTBOUND_DIR;
+    acc_in->originator = NET_MD_ACC_ORIGINATOR_SRC;
+
+    /* Close the active window */
+    ret = net_md_close_active_window(aggr_in);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Prepare the transfer to the receiving aggregator */
+    pb = serialize_flow_report(aggr_in->report);
+
+    recv_pb.len = pb->len;
+    recv_pb.buf = pb->buf;
+
+    test_emit_report(aggr_in);
+
+    /* Allocate the receiving aggregator */
+    aggr_out = net_md_allocate_aggregator(aggr_set);
+    TEST_ASSERT_NOT_NULL(aggr_out);
+
+    /* Activate the receiving aggregator window */
+    ret = net_md_activate_window(aggr_out);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Transfer tags and vendor data */
+    net_md_update_aggr(aggr_out, &recv_pb);
+
+    /* Free the serialized container */
+    free_packed_buffer(pb);
+    ret = net_md_close_active_window(aggr_out);
+
+    /* Validate the state of the accumulator bound to the key */
+    acc_out = net_md_lookup_acc(aggr_out, key);
+    TEST_ASSERT_NOT_NULL(acc_out);
+
+    /* Validate accumulator direction and originator is same or not */
+    TEST_ASSERT_EQUAL_INT(acc_in->direction, acc_out->direction);
+    TEST_ASSERT_EQUAL_INT(acc_in->originator, acc_out->originator);
+
+    test_emit_report(aggr_out);
+
+    /* Free aggregators */
+    net_md_free_aggregator(aggr_in);
+    net_md_free_aggregator(aggr_out);
+}
+
+
+/**
+ * @brief test validate flow info
+ *
+ */
+void
+test_acc_flow_info_report(void)
+{
+    struct net_md_aggregator_set *aggr_set;
+    struct net_md_stats_accumulator *acc;
+    struct flow_counters counters[1];
+    struct net_md_flow_key *acc_key;
+    struct net_md_aggregator *aggr;
+    struct net_md_flow_info info;
+    struct net_md_flow_key *key;
+    bool ret;
+
+
+    TEST_ASSERT_TRUE(g_nd_test.initialized);
+    counters[0].bytes_count = 10000;
+    counters[0].packets_count = 100;
+
+    /* Allocate aggregator */
+    aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_type = NET_MD_REPORT_RELATIVE;
+    aggr = net_md_allocate_aggregator(aggr_set);
+    TEST_ASSERT_NOT_NULL(aggr);
+
+    /* Activate aggregator window */
+    ret = net_md_activate_window(aggr);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Add one sample */
+    key = g_nd_test.net_md_keys[5];
+    ret = net_md_add_sample(aggr, key, counters);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Validate the state of the accumulator bound to the key */
+    acc = net_md_lookup_acc(aggr, key);
+    TEST_ASSERT_NOT_NULL(acc);
+    TEST_ASSERT_NOT_NULL(acc->key);
+
+    acc_key = acc->key;
+
+    /* Add Originator and Direction to acc */
+    acc->direction = NET_MD_ACC_OUTBOUND_DIR;
+    acc->originator = NET_MD_ACC_ORIGINATOR_SRC;
+
+    memset(&info, 0, sizeof(info));
+    ret = net_md_get_flow_info(acc, &info);
+    TEST_ASSERT_TRUE(ret);
+    TEST_ASSERT_EQUAL(acc_key->src_ip, info.local_ip);
+
+    net_md_free_aggregator(aggr);
+}
+
+/**
+ * @brief validates ufid of the flow
+ *
+ */
+void
+test_net_md_ufid(void)
+{
+    struct net_md_stats_accumulator *acc, *eth_acc;
+    struct net_md_flow_key *key1, *lookup_key1;
+    struct net_md_flow_key *key, *lookup_key;
+    struct net_md_aggregator_set *aggr_set;
+    struct net_md_eth_pair *eth_pair;
+    struct flow_counters counters[2];
+    struct net_md_aggregator *aggr;
+    size_t index;
+    bool ret;
+
+    TEST_ASSERT_TRUE(g_nd_test.initialized);
+    counters[0].bytes_count = 10000; /* First flow counters */
+    counters[0].packets_count = 100;
+    counters[1].bytes_count = 20000; /* Second flow counters */
+    counters[1].packets_count = 200;
+
+    /* Allocate aggregator */
+    aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_type = NET_MD_REPORT_RELATIVE;
+    aggr = net_md_allocate_aggregator(aggr_set);
+
+    /* Activate window */
+    ret = net_md_activate_window(aggr);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Add ufid */
+    key = g_nd_test.net_md_keys[0];
+    key->ufid = &ufid[0];
+
+    LOGD("%s Adding first sample ", __func__);
+
+    /* Add sample */
+    ret = net_md_add_sample(aggr, key, &counters[0]);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Validate the state of the accumulator bound to the key */
+    acc = net_md_lookup_acc(aggr, key);
+    TEST_ASSERT_NOT_NULL(acc);
+    LOGD("%s: validating acc %p for first sample", __func__, acc);
+
+    lookup_key = acc->key;
+    TEST_ASSERT_NOT_NULL(lookup_key);
+
+    LOGD("%s: validating acc %p ufid for first sample", __func__, acc);
+
+    /* Validate ufid */
+    for (index = 0 ; index < 4; index++)
+    {
+        TEST_ASSERT_EQUAL_UINT32(ufid[0].u32[index], lookup_key->ufid->u32[index]);
+    }
+
+    /* Add different ufid to same flow */
+    key1 = g_nd_test.net_md_keys[0];
+    key1->ufid = &ufid[1];
+
+    LOGD("%s Adding second sample ", __func__);
+
+    /* Add sample */
+    ret = net_md_add_sample(aggr, key1, &counters[1]);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Validate the state of the accumulator bound to the key */
+    acc = net_md_lookup_acc(aggr, key1);
+    TEST_ASSERT_NOT_NULL(acc);
+    LOGD("%s: validating acc %p for second sample", __func__, acc);
+
+    lookup_key1 = acc->key;
+    TEST_ASSERT_NOT_NULL(lookup_key1);
+
+    LOGD("%s: validating acc %p ufid for second sample", __func__, acc);
+
+    /* Validate ufid */
+    for (index = 0 ; index < 4; index++)
+    {
+        TEST_ASSERT_EQUAL_UINT32(ufid[1].u32[index], lookup_key1->ufid->u32[index]);
+    }
+
+    LOGD("%s Reverifying first flow sample ", __func__);
+
+    /* Verify first sample is present or not */
+    key = g_nd_test.net_md_keys[0];
+    key->ufid = &ufid[0];
+    acc = net_md_lookup_acc(aggr, key);
+    TEST_ASSERT_NOT_NULL(acc);
+    LOGD("%s: Revalidating acc %p of the first sample", __func__, acc);
+
+    lookup_key = acc->key;
+    TEST_ASSERT_NOT_NULL(lookup_key);
+
+    LOGD("%s: Revalidating acc %p ufid for first sample", __func__, acc);
+
+    /* Validate ufid */
+    for (index = 0 ; index < 4; index++)
+    {
+        TEST_ASSERT_EQUAL_UINT32(ufid[0].u32[index], lookup_key->ufid->u32[index]);
+    }
+
+    /* Close the aggregator window */
+    ret = net_md_close_active_window(aggr);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Emit the report */
+    test_emit_report(aggr);
+
+    LOGD("%s Validating report counters ", __func__);
+
+   /* Validate  first report counters */
+    key = g_nd_test.net_md_keys[0];
+    key->ufid = &ufid[0];
+    eth_pair = net_md_lookup_eth_pair(aggr, key);
+    TEST_ASSERT_NOT_NULL(eth_pair);
+    eth_acc = eth_pair->mac_stats;
+    validate_counters(&counters[0], &eth_acc->report_counters);
+
+   /* Validate second report counters */
+    key1 = g_nd_test.net_md_keys[0];
+    key1->ufid = &ufid[1];
+    eth_pair = net_md_lookup_eth_pair(aggr, key1);
+    TEST_ASSERT_NOT_NULL(eth_pair);
+    eth_acc = eth_pair->mac_stats;
+    validate_counters(&counters[1], &eth_acc->report_counters);
     net_md_free_aggregator(aggr);
 }

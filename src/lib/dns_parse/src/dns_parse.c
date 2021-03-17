@@ -21,9 +21,11 @@
 #include "strutils.h"
 #include "policy_tags.h"
 #include "os_util.h"
+#include "memutil.h"
 
 #include "fsm.h"
 #include "fsm_policy.h"
+#include "dns_cache.h"
 #include "dns_parse.h"
 #include "ds_tree.h"
 #include "json_mqtt.h"
@@ -315,6 +317,7 @@ dns_plugin_exit(struct fsm_session *session)
     mgr = dns_get_mgr();
     if (!mgr->initialized) return;
 
+    dns_cache_cleanup_mgr();
     dns_delete_session(session);
 }
 
@@ -407,6 +410,10 @@ dns_mgr_init(void)
     mgr->policy_init = fsm_policy_init;
     mgr->policy_check = fqdn_policy_check;
     mgr->req_cache_ttl = REQ_CACHE_TTL;
+
+    /* Initialize the DNS cache */
+    dns_cache_init();
+
     mgr->initialized = true;
 }
 
@@ -457,7 +464,6 @@ dns_plugin_init(struct fsm_session *session)
 
     now = time(NULL);
     dns_session->stat_report_ts = now;
-    dns_session->stat_log_ts = now;
     dns_session->debug = false;
     dns_set_provider(session);
     mgr->policy_init();
@@ -543,19 +549,107 @@ process_response_ip(struct fqdn_pending_req *req,
 
 
 static void
+dns_parse_populate_sockaddr(int af, void *ip_addr, struct sockaddr_storage *dst)
+{
+    if (!ip_addr) return;
+
+    if (af == AF_INET)
+    {
+        struct sockaddr_in *in4 = (struct sockaddr_in *)dst;
+
+        memset(in4, 0, sizeof(struct sockaddr_in));
+        in4->sin_family = af;
+        memcpy(&in4->sin_addr, ip_addr, sizeof(in4->sin_addr));
+    } else if (af == AF_INET6) {
+        struct sockaddr_in6 *in6 = (struct sockaddr_in6 *)dst;
+
+        memset(in6, 0, sizeof(struct sockaddr_in6));
+        in6->sin6_family = af;
+        memcpy(&in6->sin6_addr, ip_addr, sizeof(in6->sin6_addr));
+    }
+    return;
+}
+
+/**
+ * @brief Set wb details..
+ *
+ * receive wb dst and src.
+ *
+ * @return void.
+ *
+ */
+void
+populate_dns_wb_cache_entry(struct ip2action_wb_info *i2a_cache_wb,
+                            struct fsm_wp_info *fqdn_reply_wb)
+{
+    i2a_cache_wb->risk_level = fqdn_reply_wb->risk_level;
+}
+
+/**
+ * @brief Set bc details.
+ *
+ * receive bc dst, src and nelems.
+ *
+ * @return void.
+ *
+ */
+void
+populate_dns_bc_cache_entry(struct ip2action_bc_info *i2a_cache_bc,
+                            struct fsm_bc_info *fqdn_reply_bc,
+                            uint8_t nelems)
+{
+    size_t index;
+
+    i2a_cache_bc->reputation = fqdn_reply_bc->reputation;
+    for (index = 0; index < nelems; index++)
+    {
+        i2a_cache_bc->confidence_levels[index] =
+            fqdn_reply_bc->confidence_levels[index];
+    }
+}
+
+/**
+ * @brief Set gk details.
+ *
+ * receive gk dst and src.
+ *
+ * @return void.
+ *
+ */
+void
+populate_dns_gk_cache_entry(struct ip2action_gk_info *i2a_cache_gk,
+                            struct fsm_gk_info *fqdn_reply_gk)
+{
+    i2a_cache_gk->confidence_level = fqdn_reply_gk->confidence_level;
+    i2a_cache_gk->category_id = fqdn_reply_gk->category_id;
+    if (fqdn_reply_gk->gk_policy)
+    {
+        i2a_cache_gk->gk_policy = strdup(fqdn_reply_gk->gk_policy);
+    }
+}
+
+static void
 process_response_ips(dns_info *dns, uint8_t *packet,
                      struct fqdn_pending_req *req)
 {
+    struct ip2action_req ip_cache_req;
+    struct sockaddr_storage ipaddr;
     dns_rr *answer;
     const char *res;
     int qtype = -1;
+    size_t index;
+    uint32_t ttl;
     int i = 0;
+    void *ip;
+    bool rc;
+    bool add_entry;
 
     if (dns == NULL) return;
     if (req->num_replies > 1) return;
 
     if (dns->queries == NULL) LOGT("%s: no queries", __func__);
 
+    ttl = 0;
     answer = dns->answers;
     qtype = dns->queries->type;
     LOGT("%s: query type: %d",
@@ -567,8 +661,11 @@ process_response_ips(dns_info *dns, uint8_t *packet,
              __func__, i, qtype);
         if (answer->type == qtype)
         {
-            LOGT("%s: type %d answer, addr %s",
-                 __func__, qtype, answer->data);
+            add_entry = false;
+            ttl = answer->ttl;
+            ip = packet + answer->type_pos + 10;
+            LOGT("%s: type %d answer, addr %s ttl: %d",
+                 __func__, qtype, answer->data, ttl);
             if (qtype == 1) /* IPv4 redirect */
             {
                 char ipv4_addr[INET_ADDRSTRLEN];
@@ -582,6 +679,8 @@ process_response_ips(dns_info *dns, uint8_t *packet,
                 }
                 else
                 {
+                    add_entry = true;
+                    dns_parse_populate_sockaddr(AF_INET, ip, &ipaddr);
                     process_response_ip(req, ipv4_addr, INET_ADDRSTRLEN);
                 }
             }
@@ -598,9 +697,58 @@ process_response_ips(dns_info *dns, uint8_t *packet,
                 }
                 else
                 {
+                    add_entry = true;
+                    dns_parse_populate_sockaddr(AF_INET6, ip, &ipaddr);
                     process_response_ip(req, ipv6_addr, INET6_ADDRSTRLEN);
                 }
             }
+
+            if (add_entry && (req->req_info->reply != NULL))
+            {
+                memset(&ip_cache_req, 0, sizeof(ip_cache_req));
+                ip_cache_req.device_mac = &req->dev_id;
+                ip_cache_req.ip_addr = &ipaddr;
+                ip_cache_req.cache_ttl = ((req->rd_ttl != -1) ?
+                                          req->rd_ttl : (int)ttl);
+                ip_cache_req.action = req->action;
+                ip_cache_req.policy_idx = req->policy_idx;
+                ip_cache_req.service_id = req->req_info->reply->service_id;
+                ip_cache_req.nelems = req->req_info->reply->nelems;
+
+                for (index = 0; index < req->req_info->reply->nelems; ++index)
+                {
+                    ip_cache_req.categories[index] =
+                        req->req_info->reply->categories[index];
+                }
+
+                if (ip_cache_req.service_id == IP2ACTION_BC_SVC)
+                {
+                    populate_dns_bc_cache_entry(&ip_cache_req.cache_bc,
+                                                &req->req_info->reply->bc,
+                                                req->req_info->reply->nelems);
+                }
+                else if (ip_cache_req.service_id == IP2ACTION_WP_SVC)
+                {
+                    populate_dns_wb_cache_entry(&ip_cache_req.cache_wb,
+                                                &req->req_info->reply->wb);
+                }
+                else if (ip_cache_req.service_id == IP2ACTION_GK_SVC)
+                {
+                    populate_dns_gk_cache_entry(&ip_cache_req.cache_gk,
+                                                &req->req_info->reply->gk);
+                }
+                else
+                {
+                    LOGD("%s : service id %d no recognized", __func__,
+                         req->req_info->reply->service_id);
+                }
+
+                rc = dns_cache_add_entry(&ip_cache_req);
+                if (rc == false)
+                {
+                    LOGW("%s: Couldn't add ip2action entry to cache.", __func__);
+                }
+           }
         }
         answer = answer->next;
     }
@@ -649,7 +797,7 @@ dns_updatev4_tag(struct fqdn_pending_req *req)
     if (tle_flag == OM_TLE_FLAG_DEVICE ||
         tle_flag == OM_TLE_FLAG_CLOUD)
     {
-        regular_tag = calloc(1, sizeof(*regular_tag));
+        regular_tag = CALLOC(1, sizeof(*regular_tag));
         if (regular_tag == NULL) goto out;
 
         value_len = sizeof(regular_tag->device_value);
@@ -679,7 +827,7 @@ dns_updatev4_tag(struct fqdn_pending_req *req)
     }
     else if (tle_flag == OM_TLE_FLAG_LOCAL)
     {
-        local_tag = calloc(1, sizeof(*local_tag));
+        local_tag = CALLOC(1, sizeof(*local_tag));
         if (local_tag == NULL) goto out;
 
         value_len = sizeof(local_tag->values);
@@ -709,8 +857,8 @@ dns_updatev4_tag(struct fqdn_pending_req *req)
     }
 
 out:
-    free(regular_tag);
-    free(local_tag);
+    FREE(regular_tag);
+    FREE(local_tag);
 
     return result;
 }
@@ -741,7 +889,7 @@ dns_updatev6_tag(struct fqdn_pending_req *req)
     if (tle_flag == OM_TLE_FLAG_DEVICE ||
         tle_flag == OM_TLE_FLAG_CLOUD)
     {
-        regular_tag = calloc(1, sizeof(*regular_tag));
+        regular_tag = CALLOC(1, sizeof(*regular_tag));
         if (regular_tag == NULL) goto out;
 
         value_len = sizeof(regular_tag->device_value);
@@ -771,7 +919,7 @@ dns_updatev6_tag(struct fqdn_pending_req *req)
     }
     else if(tle_flag == OM_TLE_FLAG_LOCAL)
     {
-        local_tag = calloc(1, sizeof(*local_tag));
+        local_tag = CALLOC(1, sizeof(*local_tag));
         if (local_tag == NULL) goto out;
 
         value_len = sizeof(local_tag->values);
@@ -801,8 +949,8 @@ dns_updatev6_tag(struct fqdn_pending_req *req)
     }
 
 out:
-    free(regular_tag);
-    free(local_tag);
+    FREE(regular_tag);
+    FREE(local_tag);
 
     return result;
 }
@@ -905,6 +1053,7 @@ update_a_rrs(dns_info *dns, uint8_t *packet,
         if (answer->type == qtype)
         {
             uint8_t *p_ttl = packet + answer->type_pos + 4;
+
             LOGT("%s: type %d answer, addr %s",
                  __func__, qtype, answer->data);
             if (qtype == 1)  /* IPv4 redirect */
@@ -1148,6 +1297,7 @@ set_provider_ops(struct dns_session *dns_session,
     /* Set the backend provider ops */
     req->categories_check = session->provider_ops->categories_check;
     req->risk_level_check = session->provider_ops->risk_level_check;
+    req->gatekeeper_req = session->provider_ops->gatekeeper_req;
 }
 
 
@@ -1279,7 +1429,7 @@ dns_handler(struct fsm_session *session, struct net_header_parser *net_header)
     req->risk_level = -1;
     req->cat_match = -1;
     req->policy_table = session->policy_client.table;
-
+    req->req_type = FSM_FQDN_REQ;
     set_provider_ops(dns_session, req);
     req->provider = session->provider;
     req_info = req->req_info;
@@ -1673,7 +1823,7 @@ dns_free_req(struct fqdn_pending_req *req)
     req_info = req->req_info;
     for (i = 0; i < req->numq; i++)
     {
-        free(req_info->reply);
+        fsm_free_url_reply(req_info->reply);
         req_info++;
     }
     free(req->req_info);
@@ -1902,7 +2052,7 @@ dns_upsert_local_tag(struct schema_Openflow_Local_Tag *row, dns_ovsdb_updater up
 #define DNS_LOG_PERIODIC 120
 
 static void dns_log_stats(struct dns_session *dns_session,
-                          struct fsm_url_stats *stats, time_t now)
+                          struct wc_health_stats *hs)
 {
     struct fsm_session *session;
 
@@ -1918,79 +2068,56 @@ static void dns_log_stats(struct dns_session *dns_session,
         LOGI("dns: reported lookup retries: %d",
              dns_session->remote_lookup_retries);
     }
-    LOGI("dns: cloud lookups: %" PRId64, stats->cloud_lookups);
-    LOGI("dns: cloud lookup errors: %" PRId64,
-         stats->cloud_lookup_failures);
-    LOGI("dns: cloud hits: %" PRId64, stats->cloud_hits);
-    LOGI("dns: cloud categorization errors: %" PRId64,
-         stats->categorization_failures);
-    LOGI("dns: cloud uncategorized responses: %" PRId64,
-         stats->uncategorized);
-    LOGI("dns: cache lookups: %" PRId64, stats->cache_lookups);
-    LOGI("dns: cache hits: %" PRId64, stats->cache_hits);
-    LOGI("dns: cache entries: [%" PRId64 "/%" PRId64 "]",
-         stats->cache_entries, stats->cache_size);
-    LOGI("dns: min lookup latency in ms: %" PRId64,
-         stats->min_lookup_latency);
-    LOGI("dns: max lookup latency in ms: %" PRId64,
-         stats->max_lookup_latency);
-    LOGI("dns: avg lookup latency in ms: %" PRId64,
-         stats->avg_lookup_latency);
-
-    dns_session->stat_log_ts = now;
+    LOGI("dns: total lookups: %u", hs->total_lookups);
+    LOGI("dns: total cache hits: %u", hs->cache_hits);
+    LOGI("dns: total remote lookups: %u", hs->remote_lookups);
+    LOGI("dns: cloud uncategorized responses: %u",
+         hs->uncategorized);
+    LOGI("dns: cache entries: [%u/%u]",
+         hs->cached_entries, hs->cache_size);
+    LOGI("dns: min lookup latency in ms: %u",
+         hs->min_latency);
+    LOGI("dns: max lookup latency in ms: %u",
+         hs->max_latency);
+    LOGI("dns: avg lookup latency in ms: %u",
+         hs->avg_latency);
 }
 
 
 static void
-dns_report_health_stats(struct dns_session *dns_session,
-                        struct fsm_url_stats *stats,
-                        time_t now)
+dns_report_compute_health_stats(struct dns_session *dns_session,
+				struct fsm_url_stats *stats,
+				struct wc_health_stats *hs)
 {
-    struct wc_packed_buffer *serialized;
     struct fsm_url_stats *prev_stats;
-    struct wc_observation_window ow;
-    struct wc_observation_point op;
-    struct wc_stats_report report;
-    struct fsm_session *session;
-    struct wc_health_stats hs;
     uint32_t count;
 
-    memset(&report, 0, sizeof(report));
-    memset(&ow, 0, sizeof(ow));
-    memset(&op, 0, sizeof(op));
-    memset(&hs, 0, sizeof(hs));
-    session = dns_session->fsm_context;
-
-    /* Set opbservation point */
-    op.location_id = session->location_id;
-    op.node_id = session->node_id;
-
-    /* set observation window */
-    ow.started_at = dns_session->stat_report_ts;
-    ow.ended_at = now;
-    dns_session->stat_report_ts = now;
-
-    /* set health metrics */
     prev_stats = &dns_session->health_stats;
 
     /* Compute total lookups */
-    count = (uint32_t)(stats->cloud_lookups + stats->cache_lookups);
-    count -= (uint32_t)(prev_stats->cloud_lookups + prev_stats->cache_lookups);
-    hs.total_lookups = count;
+    /* In the plugin, every dns transaction is first checked if present in
+     * the cache, and hence, every transaction is a cache lookup. Due to this,
+     * cache_lookups are not filled in by the plugin. Successful cache lookups
+     * result in cache_hits being incremented. Hence, use cache_hits in counting
+     * total_lookups */
+    count = (uint32_t)(stats->cloud_lookups + stats->cache_hits);
+    count -= (uint32_t)(prev_stats->cloud_lookups + prev_stats->cache_hits);
+
+    hs->total_lookups = count;
     prev_stats->cache_lookups = stats->cache_lookups;
 
     /* Compute cache hits */
     count = (uint32_t)(stats->cache_hits - prev_stats->cache_hits);
-    hs.cache_hits = count;
+    hs->cache_hits = count;
     prev_stats->cache_hits = stats->cache_hits;
 
     /* Compute remote_lookups */
     count = (uint32_t)(stats->cloud_lookups - prev_stats->cloud_lookups);
-    hs.remote_lookups = count;
+    hs->remote_lookups = count;
     prev_stats->cloud_lookups = stats->cloud_lookups;
 
     /* Compute connectivity_failures */
-    hs.connectivity_failures = dns_session->cat_offline.connection_failures;
+    hs->connectivity_failures = dns_session->cat_offline.connection_failures;
     dns_session->cat_offline.connection_failures = 0;
 
     /* Compute service_failures */
@@ -2000,28 +2127,90 @@ dns_report_health_stats(struct dns_session *dns_session,
 
     /* Compute uncategorized requests */
     count = (uint32_t)(stats->uncategorized - prev_stats->uncategorized);
-    hs.uncategorized = count;
+    hs->uncategorized = count;
     prev_stats->uncategorized = stats->uncategorized;
 
     /* Compute min latency */
     count = (uint32_t)(stats->min_lookup_latency);
-    hs.min_latency = count;
+    hs->min_latency = count;
 
     /* Compute max latency */
     count = (uint32_t)(stats->max_lookup_latency);
-    hs.max_latency = count;
+    hs->max_latency = count;
 
     /* Compute average latency */
     count = (uint32_t)(stats->avg_lookup_latency);
-    hs.avg_latency = count;
+    hs->avg_latency = count;
 
     /* Compute cached entries */
     count = (uint32_t)(stats->cache_entries);
-    hs.cached_entries = count;
+    hs->cached_entries = count;
 
     /* Compute cache size */
     count = (uint32_t)(stats->cache_size);
-    hs.cache_size = count;
+    hs->cache_size = count;
+}
+
+
+static void
+dns_report_fill_health_stats(struct wc_health_stats *hs,
+			     struct fsm_url_report_stats *report_stats)
+{
+    hs->total_lookups = report_stats->total_lookups;
+    hs->cache_hits = report_stats->cache_hits;
+    hs->remote_lookups = report_stats->remote_lookups;
+    hs->connectivity_failures = report_stats->connectivity_failures;
+    hs->service_failures = report_stats->service_failures;
+    hs->uncategorized = report_stats->uncategorized;
+    hs->min_latency = report_stats->min_latency;
+    hs->max_latency = report_stats->max_latency;
+    hs->avg_latency = report_stats->avg_latency;
+    hs->cached_entries = report_stats->cached_entries;
+    hs->cache_size = report_stats->cache_size;
+}
+
+
+static void
+dns_report_health_stats(struct dns_session *dns_session,
+                        struct fsm_url_stats *stats,
+                        time_t now)
+{
+    struct fsm_url_report_stats report_stats;
+    struct wc_packed_buffer *serialized;
+    struct wc_observation_window ow;
+    struct wc_observation_point op;
+    struct wc_stats_report report;
+    struct fsm_session *session;
+    struct wc_health_stats hs;
+
+    memset(&report, 0, sizeof(report));
+    memset(&ow, 0, sizeof(ow));
+    memset(&op, 0, sizeof(op));
+    memset(&hs, 0, sizeof(hs));
+    memset(&report_stats, 0, sizeof(report_stats));
+    session = dns_session->fsm_context;
+
+    /* Set observation point */
+    op.location_id = session->location_id;
+    op.node_id = session->node_id;
+
+    /* set observation window */
+    ow.started_at = dns_session->stat_report_ts;
+    ow.ended_at = now;
+    dns_session->stat_report_ts = now;
+
+    if (session->provider_ops->report_stats != NULL)
+    {
+        session->provider_ops->report_stats(session, &report_stats);
+        dns_report_fill_health_stats(&hs, &report_stats);
+    }
+    else
+    {
+        dns_report_compute_health_stats(dns_session, stats, &hs);
+    }
+
+    /* Log locally */
+    dns_log_stats(dns_session, &hs);
 
     /* Prepare report */
     report.provider = session->provider;
@@ -2099,12 +2288,14 @@ dns_periodic(struct fsm_session *session)
     struct fsm_url_stats stats;
     time_t now = time(NULL);
     double cmp_report;
-    double cmp_log;
     bool get_stats;
-    bool report;
 
     dns_session = dns_lookup_session(session);
     if (dns_session == NULL) return;
+
+    /* Clean up expired ip2action entries */
+    dns_cache_ttl_cleanup();
+    print_dns_cache_size();
 
     /* Retire unresolved old requests */
     dns_retire_reqs(session);
@@ -2114,14 +2305,9 @@ dns_periodic(struct fsm_session *session)
     if (session->provider_ops == NULL) return;
     if (session->provider_ops->get_stats == NULL) return;
 
-    /* Check if the time has come to log the health stats locally */
-    cmp_log = now - dns_session->stat_log_ts;
-    get_stats = (cmp_log >= DNS_LOG_PERIODIC);
-
     /* Check if the time has come to report the stats through mqtt */
     cmp_report = now - dns_session->stat_report_ts;
-    report = (cmp_report >= dns_session->health_stats_report_interval);
-    get_stats |= report;
+    get_stats = (cmp_report >= dns_session->health_stats_report_interval);
 
     /* No need to gather stats, bail */
     if (!get_stats) return;
@@ -2130,11 +2316,8 @@ dns_periodic(struct fsm_session *session)
     memset(&stats, 0, sizeof(stats));
     session->provider_ops->get_stats(session, &stats);
 
-    /* Log locally if the time has come */
-    if (cmp_log >= DNS_LOG_PERIODIC) dns_log_stats(dns_session, &stats, now);
-
-    /* Report to mqtt if the time has come */
-    if (report) dns_report_health_stats(dns_session, &stats, now);
+    /* Report to mqtt */
+    dns_report_health_stats(dns_session, &stats, now);
 }
 
 

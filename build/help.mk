@@ -29,6 +29,7 @@ help:
 	$(NQ) "Makefile commands:"
 	$(NQ) "   all                       builds all enabled units"
 	$(NQ) "   os                        builds device image based on specified SDK"
+	$(NQ) "   fut                       Creates tarball containing functional unit test scripts"
 	$(NQ) "   tags                      Creates CTAGS for src directories"
 	$(NQ) "   cscope                    Creates CSCOPE for the same directories as ctags"
 	$(NQ) "   clean                     Removes generated, compiled objects"

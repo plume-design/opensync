@@ -27,58 +27,127 @@
 
 current_dir=$(dirname "$(realpath "$BASH_SOURCE")")
 fut_topdir="$(realpath "$current_dir"/../..)"
+
+# FUT environment loading
+source "${fut_topdir}"/config/default_shell.sh
+# Ignore errors for fut_set_env.sh sourcing
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh &> /dev/null
 source "$fut_topdir/lib/rpi_lib.sh"
 
-usage="$(basename "$0") [-h] \$1 \$2 \$3
-
-where arguments are:
-    interface=\$1 --  interface name which to use to connect to network (string)(required)
-    network_ssid=\$2 --  network ssid to which rpi client will try and connect (string)(required)
-    network_bssid=\$3 --  network bssid (MAC) to which rpi client will try and connect (string)(required)
-    network_pass=\$4 -- network password which rpi client will use to try and connect to network (string)(required)
-    network_key_mgmt=\$5 -- used as key_mgmt value in wpa_supplicant.conf file
-    enable_dhcp=\$6 -- enable or disable DHCPDISCOVER on network !!! PARTIALLY IMPLEMENTED !!!
-        - possibilities:
-            - on (string) - enable dhcp discover for interface
-            - off (string) - disable dhcp discover for interface - (default value)
-                    - killing dhclient process after 5 seconds - workaround
-    msg_prefix=\$7 -- used as message prefix for log messages (string)(optional)
-Script is used to connect RPI client to WPA2 network
-
-Script does following:
-    - bring down interface wlan0 -> ifdown wlan0
-    - clear wpa_supplicant.conf file
-    - create new wpa_supplicant.conf using wpa_passphrase and other configuration
-    - bring up interface wlan0 -> ifup wlan0
-    - check if RPI client is connected to netowork -> ip link show wlan0
-
-Example of usage:
-    $(basename "$0") wlan0 wm_dut_24g_network 72:a7:56:f0:0d:72 WifiPassword123 WPA-PSK on
-        - connect to wm_dut_24g_network ssid with bssid 72:a7:56:f0:0d:72 using wlan0 interface key_mgmnt mode of
-          WPA-PSK using network password WifiPassword123 and keeping dhcp discover on
-"
-
+tc_name="tools/device/$(basename "$0")"
+usage() {
+    cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Connect RPI client to Wireless network
+Arguments:
+    -h  show this help message
+    \$1 (wlan_namespace)      : Interface namespace name                                : (string)(required)
+    \$2 (wlan_name)           : Wireless interface name                                 : (string)(required)
+    \$3 (wpa_supp_cfg_path)   : wpa_supplicant.conf file path                           : (string)(required)
+    \$4 (ssid)                : Wireless ssid name                                      : (string)(required)
+    \$5 (psk)                 : Wireless psk key                                        : (string)(required)
+    \$6 (enable_dhcp)         : Wait for IP address from DHCP after connect             : (string)(option)   : (default:true)
+    \$7 (check_internet_ip)   : Check internet access on specific IP, ('false' to skip) : (string)(option)   : (default:8.8.8.8)
+Script usage example:
+   ./${tc_name} nswifi1 wlan0 /etc/netns/nswifi1/wpa_supplicant/wpa_supplicant.conf network_ssid_name network_psk_key
+   ./${tc_name} nswifi1 wlan0 /etc/netns/nswifi1/wpa_supplicant/wpa_supplicant.conf network_ssid_name network_psk_key false
+usage_string
+}
 while getopts h option; do
     case "$option" in
-        h)
-            echo "$usage"
-            exit 1
-            ;;
+    h)
+        usage && exit 1
+        ;;
+    *) ;;
+
     esac
 done
+NARGS=5
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 
-if [[ $# -lt 6 ]]; then
-    echo 1>&2 "$0: not enough arguments"
-    echo "$usage"
-    exit 2
+wlan_namespace=${1}
+wlan_name=${2}
+wpa_supp_cfg_path=${3}
+ssid=${4}
+psk=${5}
+enable_dhcp=${6:-true}
+check_internet_ip=${7:-"8.8.8.8"}
+wlan_namespace_cmd="ip netns exec ${wlan_namespace} bash"
+
+if [[ "$EUID" -ne 0 ]]; then
+    raise "FAIL: Please run this function as root - sudo" -l "${tc_name}"
 fi
 
-interface=$1
-network_ssid=$2
-network_bssid=$3
-network_pass=$4
-network_key_mgmt=$5
-enable_dhcp=$6
-msg_prefix=$7
+connect_to_wpa2()
+{
+    log "$tc_name Bringing $wlan_name down: ifdown"
+    ${wlan_namespace_cmd} -c "ifdown ${wlan_name} --force"
+    sleep 1
+    if [ "$?" -ne 0 ]; then
+        log "$tc_name Failed while bringing interface ${wlan_name} down - maybe already down?"
+    fi
+    log "$tc_name Bringing $wlan_name down: ifconfig down"
+    ${wlan_namespace_cmd} -c "ifconfig ${wlan_name} down"
+    sleep 1
+    # Check if wpa_supplicant is running - force kill
+    wpa_supp_pids=$(${wlan_namespace_cmd} -c "pidof wpa_supplicant")
+    if [[ -n "${wpa_supp_pids}" ]]; then
+        ${wlan_namespace_cmd} -c "kill ${wpa_supp_pids}"
+    fi
+    log "$tc_name Bringing $wlan_name down: ifconfig up"
+    ${wlan_namespace_cmd} -c "ifconfig ${wlan_name} up"
+    sleep 1
+    log "$tc_name Bringing $wlan_name up: ifup"
+    if [[ "$enable_dhcp" == true ]]; then
+        log "$tc_name: Using DHCP"
+        ${wlan_namespace_cmd} -c "ifup ${wlan_name}"
+    else
+        log "$tc_name: Not using dhcp - killing dhclient after 10 seconds - workaround... "
+        ${wlan_namespace_cmd} -c "timeout 10 ifup ${wlan_name} && kill $(pidof dhclient)"
+    fi
+}
 
-network_connect_to_wpa2 $interface $network_ssid $network_bssid $network_pass $network_key_mgmt $enable_dhcp $msg_prefix
+rm "${wpa_supp_cfg_path}"
+touch "${wpa_supp_cfg_path}"
+log "$tc_name: Creating ${wpa_supp_cfg_path} file"
+echo 'ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev' > "${wpa_supp_cfg_path}"
+echo 'update_config=1' >> "${wpa_supp_cfg_path}"
+echo "
+network={
+    ssid=\"${ssid}\"
+    psk=\"${psk}\"
+}" >> "${wpa_supp_cfg_path}"
+log "$tc_name - ${wpa_supp_cfg_path} file:"
+cat "${wpa_supp_cfg_path}"
+
+connected=false
+connect_retry_max=3
+connect_retry_count=1
+while [ "${connected}" == false ] && [ "${connect_retry_count}" -le "${connect_retry_max}" ]; do
+    log "$tc_name: Starting connection to network - #${connect_retry_count}"
+    connect_to_wpa2
+    log "$tc_name: Checking if connected to network - $ssid"
+    ssid_connected=$(${wlan_namespace_cmd} -c "iwconfig ${wlan_name} | grep $ssid")
+    if [ "$?" -ne 0 ]; then
+        log "$tc_name: Interface $wlan_name not connected to $ssid" -l "${tc_name}" -tc
+        ${wlan_namespace_cmd} -c "iwconfig"
+    else
+        if [ "${check_internet_ip}" != false ]; then
+            ${wlan_namespace_cmd} -c "ping -c 3 ${check_internet_ip}"
+            internet_check="$?"
+            if [ "$internet_check" != 0 ]; then
+                log "$tc_name: Could not ping internet ${check_internet_ip}"
+            else
+                log "$tc_name: Internet access available"
+                connected=true
+            fi
+        else
+            connected=true
+        fi
+    fi
+    connect_retry_count=$((connect_retry_count+1))
+done
+[ "${connected}" == true ] &&
+    pass "$tc_name Interface $wlan_name is connected to the network $ssid"
+    raise -l "${tc_name}" "Failed to connect to network" -tc

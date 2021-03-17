@@ -27,9 +27,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef OSN_INET_H_INCLUDED
 #define OSN_INET_H_INCLUDED
 
-#include <stdbool.h>
-
-#include "osn_types.h"
+#include "osn_routes.h"
 
 /**
  * @file osn_inet.h
@@ -251,137 +249,6 @@ void osn_ip_status_notify(osn_ip_t *ip, osn_ip_status_fn_t *fn);
  */
 bool osn_ip_apply(osn_ip_t *ip);
 
-/*
- * ===========================================================================
- *  IPv4 Routing API
- * ===========================================================================
- */
-
-/**
- * @defgroup OSN_ROUTEV4 IPv4 Routing
- *
- * OpenSync IPv4 Routing API
- *
- * @note The IPv4 routing API is subject to change and may be merged with the
- * osn_ip_t class in the future.
- *
- * @{
- */
-
-/**
- * IPv4 Routing object type
- *
- * This is an opaque type. The actual structure implementation is hidden
- * and is platform dependent. A new instance of the object can be obtained by
- * calling @ref osn_route_new() and must be destroyed using @ref
- * osn_route_del().
- */
-typedef struct osn_route osn_route_t;
-
-/**
- * Structure passed to the route state notify callback, see @ref
- * osn_route_status_fn_t()
- */
-struct osn_route_status
-{
-    osn_ip_addr_t   rts_dst_ipaddr;  /**< Destination */
-    osn_ip_addr_t   rts_dst_mask;    /**< Netmask */
-    osn_ip_addr_t   rts_gw_ipaddr;   /**< Gateway, of OSN_IP_ADDR_INIT if none */
-    osn_mac_addr_t  rts_gw_hwaddr;   /**< Gateway MAC address */
-};
-
-/**
- * Initializer for the @ref osn_route_status structure.
- *
- * Use this macro to initialize a @ref osn_route_status structure to its
- * default values
- */
-#define OSN_ROUTE_STATUS_INIT (struct osn_route_status) \
-{                                                       \
-    .rts_dst_ipaddr = OSN_IP_ADDR_INIT,                 \
-    .rts_dst_mask = OSN_IP_ADDR_INIT,                   \
-    .rts_gw_ipaddr = OSN_IP_ADDR_INIT,                  \
-    .rts_gw_hwaddr = OSN_MAC_ADDR_INIT,                 \
-}
-
-/**
- * osn_route_t status notification callback. This function will be invoked
- * whenever the osn_route_t object detects a status change and wishes to report
- * it.
- *
- * Typically this will happen whenever an routing change is detected (for
- * example, when a new route is added to the system).
- *
- * Some implementation may choose to call this function periodically even if
- * there has been no status change detected.
- *
- * @param[in]   data    Private data
- * @param[in]   rts     A pointer to a @ref osn_route_status
- * @param[in]   remove  true if the route in @p rts was removed
- */
-typedef bool osn_route_status_fn_t(
-        osn_route_t *self,
-        struct osn_route_status *rts,
-        bool remove);
-
-/**
- * Create a new IPv4 routing object. This object can be used to add/remove
- * IPv4 routing rules. The object is bound to the interface @p ifname.
- *
- * @param[in]   ifname  Interface name to which the routing object instance
- *                      will be bound to
- *
- * @return
- * This function returns NULL if an error occurs, otherwise a valid @ref
- * osn_route_t object is returned.
- */
-osn_route_t *osn_route_new(const char *ifname);
-
-/**
- * Destroy a valid osn_route_t object.
- *
- * @param[in]   self  A valid pointer to an osn_route_t object
- *
- * @return
- * This function returns true on success. On error, false is returned.
- * The input parameter should be considered invalid after this function
- * returns, regardless of the error code.
- *
- * @note
- * All resources that were allocated during the lifetime of the object are
- * freed.
- */
-bool osn_route_del(osn_route_t *self);
-
-/**
- * Set the IPv4 status callback.
- *
- * Depending on the implementation, the status callback may be invoked
- * periodically or whenever a IPv4 status change has been detected.
- * For maximum portability, the callback implementation should assume it can
- * be called using either mode of operation.
- *
- * @param[in]   self  A valid pointer to an osn_route_t object
- * @param[in]   fn    A pointer to the function implementation
- */
-bool osn_route_status_notify(osn_route_t *self, osn_route_status_fn_t *fn);
-
-/**
- * Set user data
- *
- * @param[in]   self  A valid pointer to an osn_route_t object
- * @param[in]   data  Private data, will be passed to the callback
- */
-void osn_route_data_set(osn_route_t *self, void *data);
-
-/**
- * Get user data
- *
- * @param[in]   self  A valid pointer to an osn_route_t object
- */
-void* osn_route_data_get(osn_route_t *self);
-
-/** @} OSN_ROUTEV4 */
 /** @} OSN_IPV4 */
 /** @} OSN */
 

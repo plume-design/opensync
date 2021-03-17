@@ -219,6 +219,18 @@ bool osp_unit_factory_get(char *buff, size_t buffsz);
  */
 bool osp_unit_mfg_date_get(char *buff, size_t buffsz);
 
+/**
+ * @brief Return serial_model hostname
+ *
+ * This function provides a null terminated byte string to be used as a 
+ * hostname for DHCP client. The default implementation returns
+ * string in <SERIAL>_<MODEL> format
+ *
+ * @param  buff   pointer to a string buffer
+ * @param  buffsz size of string buffer
+ * @return true on success
+ */
+bool osp_unit_dhcpc_hostname_get(void *buff, size_t buffsz);
 
 /// @} OSP_UNIT
 /// @} OSP

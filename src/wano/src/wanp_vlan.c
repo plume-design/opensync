@@ -48,8 +48,8 @@ struct wanp_vlan
     wano_ppline_event_t         wvl_ppe;
 };
 
-static void wanp_vlan_module_start(void);
-static void wanp_vlan_module_stop(void);
+static void wanp_vlan_module_start(void *data);
+static void wanp_vlan_module_stop(void *data);
 static wano_plugin_ops_init_fn_t wanp_vlan_init;
 static wano_plugin_ops_run_fn_t wanp_vlan_run;
 static wano_plugin_ops_fini_fn_t wanp_vlan_fini;
@@ -90,7 +90,7 @@ wano_plugin_handle_t *wanp_vlan_init(
         return NULL;
     }
 
-    if (wlc.DataService.VLAN <= 1 || wlc.DataService.VLAN >= 4096)
+    if (wlc.DataService.VLAN < C_VLAN_MIN || wlc.DataService.VLAN > C_VLAN_MAX)
     {
         LOG(INFO, "wanp_vlan: Invalid VLAN ID: %d", wlc.DataService.VLAN);
         return NULL;
@@ -383,12 +383,12 @@ enum wanp_vlan_state wanp_vlan_state_ERROR(
  *  Module Support
  * ===========================================================================
  */
-void wanp_vlan_module_start(void)
+void wanp_vlan_module_start(void *data)
 {
     wano_plugin_register(&wanp_vlan);
 }
 
-void wanp_vlan_module_stop(void)
+void wanp_vlan_module_stop(void *data)
 {
     wano_plugin_unregister(&wanp_vlan);
 }

@@ -1,0 +1,81 @@
+#!/bin/sh -e
+mac=00:11:22:33:44:55
+
+wait_sta() { timeout 3 $ovsh w Wifi_Associated_Clients -w mac==$1 mac:=$1; }
+wait_nosta() { timeout 3 $ovsh w Wifi_Associated_Clients -n -w mac==$1 mac:=$1; }
+wait_sta_in_vif() {
+	uuid=$($ovsh -rU s Wifi_Associated_Clients -w mac==$2 _uuid)
+	timeout 3 $ovsh w Wifi_VIF_State -w if_name==$1 -w "associated_clients:inc:[\"set\",[$uuid]]" if_name:=$1
+}
+wait_nosta_in_vif() {
+	uuid=$($ovsh -rU s Wifi_Associated_Clients -w mac==$2 _uuid)
+	timeout 3 $ovsh w Wifi_VIF_State -w if_name==$1 -w "associated_clients:inc:[\"set\",[$uuid]]" if_name:=$1 -n
+}
+
+case "$1" in
+init)
+	vif1=$($ovsh -Ur i Wifi_VIF_Config \
+		enabled:=true \
+		if_name:=wlan0 \
+		'security::["map",[["encryption", "WPA-PSK"],["mode", "2"],["key","12345678"],["oftag", "home--1"]]]' \
+		mode:=ap
+	)
+
+	vif2=$($ovsh -Ur i Wifi_VIF_Config \
+		enabled:=true \
+		if_name:=wlan1 \
+		mode:=ap
+	)
+
+	$ovsh i Wifi_Radio_Config \
+		enabled:=true \
+		if_name:=phy0 \
+		freq_band:=2.4G \
+		"vif_configs::[\"set\",[[\"uuid\",\"$vif1\"],[\"uuid\",\"$vif2\"]]]"
+	;;
+
+test)
+	timeout 1 $ovsh w Wifi_Radio_State -w if_name==phy0 if_name:=phy0
+	timeout 1 $ovsh w Wifi_VIF_State -w if_name==wlan0 if_name:=wlan0
+	timeout 1 $ovsh w Wifi_VIF_State -w if_name==wlan1 if_name:=wlan1
+
+	# Simple connect - disconnect
+
+	echo "client wlan0 1 $mac key "
+	wait_sta $mac
+
+	echo "client wlan0 0 $mac key "
+	wait_nosta $mac
+
+	# Overlap reconnect between vifs
+
+	echo "client wlan0 1 $mac key "
+	wait_sta $mac
+	wait_sta_in_vif wlan0 $mac
+	wait_nosta_in_vif wlan1 $mac
+
+	echo "client wlan1 1 $mac key "
+	wait_sta $mac
+	wait_sta_in_vif wlan0 $mac
+	wait_sta_in_vif wlan1 $mac
+
+	echo "client wlan0 0 $mac key "
+	wait_sta $mac
+	wait_nosta_in_vif wlan0 $mac
+	wait_sta_in_vif wlan1 $mac
+
+	echo "client wlan1 0 $mac key "
+	wait_nosta $mac
+
+	# Reconnect with a different passphrase
+
+	echo "client wlan0 1 $mac key "
+	wait_sta $mac
+
+	echo "client wlan0 1 $mac key2 "
+	wait_sta $mac
+
+	echo "client wlan0 0 $mac key2 "
+	wait_nosta $mac
+	;;
+esac

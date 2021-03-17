@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdlib.h>
 
 #include "log.h"
+#include "memutil.h"
 #include "network_metadata_report.h"
 
 #define MAX_STRLEN 256
@@ -70,8 +71,13 @@ int net_md_eth_cmp(void *a, void *b)
         if (cmp != 0) return cmp;
     }
 
-    /* Compare vlan id */
+   /* Compare vlan id */
    cmp = (int)(key_a->vlan_id) - (int)(key_b->vlan_id);
+   if (cmp != 0) return cmp;
+
+   /* Compare ufid */
+   if ((key_a->ufid != NULL) && (key_b->ufid != NULL))
+        cmp = memcmp(key_a->ufid, key_b->ufid, sizeof(os_ufid_t));
 
    return cmp;
 }
@@ -208,6 +214,19 @@ char * net_md_set_str(char *in_str)
     out = strndup(in_str, MAX_STRLEN);
 
     return out;
+}
+
+os_ufid_t * net_md_set_ufid(os_ufid_t *in_ufid)
+{
+    os_ufid_t *ufid;
+
+    if (in_ufid == NULL) return NULL;
+
+    ufid = CALLOC(1, sizeof(*in_ufid));
+    if (ufid == NULL) return NULL;
+
+    memcpy(ufid, in_ufid, sizeof(os_ufid_t));
+    return ufid;
 }
 
 os_macaddr_t * net_md_set_os_macaddr(os_macaddr_t *in_mac)
@@ -419,6 +438,7 @@ void free_net_md_flow_key(struct net_md_flow_key *lkey)
 {
     if (lkey == NULL) return;
 
+    FREE(lkey->ufid);
     free(lkey->smac);
     free(lkey->dmac);
     free(lkey->src_ip);
@@ -435,6 +455,8 @@ struct net_md_flow_key * set_net_md_flow_key(struct net_md_flow_key *lkey)
 
     key = calloc(1, sizeof(*key));
     if (key == NULL) return NULL;
+
+    key->ufid = net_md_set_ufid(lkey->ufid);
 
     key->smac = net_md_set_os_macaddr(lkey->smac);
     err = ((key->smac == NULL) && (lkey->smac != NULL));
@@ -462,7 +484,7 @@ struct net_md_flow_key * set_net_md_flow_key(struct net_md_flow_key *lkey)
     key->dport = lkey->dport;
     key->fstart = lkey->fstart;
     key->fend = lkey->fend;
-
+    key->tcp_flags = lkey->tcp_flags;
     return key;
 
 err_free_src_ip:
@@ -475,6 +497,7 @@ err_free_smac:
     free(key->smac);
 
 err_free_key:
+    FREE(key->ufid);
     free(key);
 
     return NULL;
@@ -664,6 +687,7 @@ net_md_set_eth_pair(struct net_md_aggregator *aggr,
     struct net_md_eth_pair *eth_pair;
 
     if (key == NULL) return NULL;
+    if (key->flags == NET_MD_ACC_LOOKUP_ONLY) return NULL;
 
     eth_pair = calloc(1, sizeof(*eth_pair));
     if (eth_pair == NULL) return NULL;
@@ -702,6 +726,9 @@ net_md_tree_lookup_acc(struct net_md_aggregator *aggr,
 
     flow = ds_tree_find(tree, key);
     if (flow != NULL) return flow->tuple_stats;
+
+    /* Return if the acc creation is not requested */
+    if (key->flags == NET_MD_ACC_LOOKUP_ONLY) return NULL;
 
     /* Allocate flow */
     flow = calloc(1, sizeof(*flow));
@@ -805,6 +832,35 @@ net_md_lookup_acc(struct net_md_aggregator *aggr,
     if (acc != NULL) acc->aggr = aggr;
 
     return acc;
+}
+
+
+struct net_md_stats_accumulator *
+net_md_lookup_reverse_acc(struct net_md_aggregator *aggr,
+                          struct net_md_stats_accumulator *acc)
+{
+    struct net_md_stats_accumulator *reverse_acc;
+    struct net_md_flow_key *okey;
+    struct net_md_flow_key rkey;
+
+    memset(&rkey, 0, sizeof(rkey));
+    okey = acc->key;
+    if (okey == NULL) return NULL;
+
+    rkey.smac = okey->dmac;
+    rkey.dmac = okey->smac;
+    rkey.vlan_id = okey->vlan_id;
+    rkey.ethertype = okey->ethertype;
+    rkey.ip_version = okey->ip_version;
+    rkey.src_ip = okey->dst_ip;
+    rkey.dst_ip = okey->src_ip;
+    rkey.ipprotocol = okey->ipprotocol;
+    rkey.sport = okey->dport;
+    rkey.dport = okey->sport;
+    rkey.flags = NET_MD_ACC_LOOKUP_ONLY;
+    reverse_acc = net_md_lookup_acc(aggr, &rkey);
+
+    return reverse_acc;
 }
 
 
@@ -914,6 +970,8 @@ bool net_md_add_sample_to_window(struct net_md_aggregator *aggr,
 
     stats->owns_key = false;
     stats->key = acc->fkey;
+    stats->key->direction = acc->direction;
+    stats->key->originator = acc->originator;
     *stats->counters = acc->report_counters;
 
     aggr->stats_cur_idx++;
@@ -946,6 +1004,10 @@ void net_md_report_5tuples_accs(struct net_md_aggregator *aggr,
         if (active_flow)
         {
             net_md_close_counters(aggr, acc);
+            if (aggr->on_acc_report != NULL)
+            {
+                aggr->on_acc_report(aggr, acc);
+            }
             net_md_add_sample_to_window(aggr, acc);
             acc->state = ACC_STATE_WINDOW_RESET;
         }
@@ -1649,6 +1711,25 @@ err_free_new_vds:
 
 
 /**
+ * @brief check flowkey info
+ *
+ * @param report_pb flow report protobuf
+ * @return true protobuf has flowkey info
+ *         false otherwise.
+ */
+bool
+net_md_check_update(Traffic__FlowKey *flowkey_pb)
+{
+    if (flowkey_pb->n_flowtags) return true;
+    if (flowkey_pb->n_vendordata) return true;
+    if (flowkey_pb->has_direction) return true;
+    if (flowkey_pb->has_originator) return true;
+
+    return false;
+}
+
+
+/**
  * @brief Updates the content of flow windows from flow report protobuf
  *
  * @param aggr the aggregator to update
@@ -1663,7 +1744,8 @@ net_md_update_flow_key(struct net_md_aggregator *aggr,
     struct flow_key *fkey;
     bool rc;
 
-    if ((!flowkey_pb->n_flowtags) && (!flowkey_pb->n_vendordata)) return;
+    rc = net_md_check_update(flowkey_pb);
+    if (!rc) return;
 
     key = pbkey2net_md_key(aggr, flowkey_pb);
     if (key == NULL) return;
@@ -1679,6 +1761,14 @@ net_md_update_flow_key(struct net_md_aggregator *aggr,
 
     if (acc == NULL) goto free_flow_key;
     fkey = acc->fkey;
+
+    /* Update flow direction to accumulator */
+    if (flowkey_pb->has_direction)
+        acc->direction = flowkey_pb->direction;
+
+    /*Update flow originator to accumulator */
+    if (flowkey_pb->has_originator)
+        acc->originator = flowkey_pb->originator;
 
     /* Update flow tags */
     net_md_update_flow_tags(fkey, flowkey_pb);
@@ -2027,4 +2117,76 @@ void net_md_process_aggr(struct net_md_aggregator *aggr)
     }
 
     net_md_process_accs(aggr, &aggr->five_tuple_flows);
+}
+
+
+/**
+ * @brief provides local and remote info
+ *
+ * @param acc the accumulator
+ * @param info the returning info
+ *
+ * @return true if filled, false otherwise
+ */
+bool
+net_md_get_flow_info(struct net_md_stats_accumulator *acc,
+                     struct net_md_flow_info *info)
+{
+    struct net_md_flow_key *key;
+    bool process;
+
+    if (acc == NULL) return false;
+    if (info == NULL) return false;
+
+    key = acc->key;
+    if (key == NULL) return false;
+
+    process = (acc->direction == NET_MD_ACC_OUTBOUND_DIR);
+    process |= (acc->direction == NET_MD_ACC_INBOUND_DIR);
+    if (!process) return false;
+
+    if (acc->direction == NET_MD_ACC_OUTBOUND_DIR)
+    {
+        if (acc->originator == NET_MD_ACC_ORIGINATOR_SRC)
+        {
+            info->local_mac = key->smac;
+            info->local_ip = key->src_ip;
+            info->local_port = key->sport;
+            info->remote_mac = key->dmac;
+            info->remote_ip = key->dst_ip;
+            info->remote_port = key->dport;
+        }
+        else if (acc->originator == NET_MD_ACC_ORIGINATOR_DST)
+        {
+            info->local_mac = key->dmac;
+            info->local_ip = key->dst_ip;
+            info->local_port = key->dport;
+            info->remote_mac = key->smac;
+            info->remote_ip = key->src_ip;
+            info->remote_port = key->sport;
+        }
+    }
+    else if (acc->direction == NET_MD_ACC_INBOUND_DIR)
+    {
+        if (acc->originator == NET_MD_ACC_ORIGINATOR_SRC)
+        {
+            info->local_mac = key->dmac;
+            info->local_ip = key->dst_ip;
+            info->local_port = key->dport;
+            info->remote_mac = key->smac;
+            info->remote_ip = key->src_ip;
+            info->remote_port = key->sport;
+        }
+        else if (acc->originator == NET_MD_ACC_ORIGINATOR_DST)
+        {
+            info->local_mac = key->smac;
+            info->local_ip = key->src_ip;
+            info->local_port = key->sport;
+            info->remote_mac = key->dmac;
+            info->remote_ip = key->dst_ip;
+            info->remote_port = key->dport;
+        }
+    }
+
+    return true;
 }

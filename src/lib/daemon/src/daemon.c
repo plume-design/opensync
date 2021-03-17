@@ -476,12 +476,11 @@ void __daemon_teardown(daemon_t *self, int wstatus)
     {
         if (self->dn_restart_num++ < self->dn_restart_max)
         {
-
-            if (self->dn_atrestart_fn != NULL)
-            {
-                (void)self->dn_atrestart_fn(self, wstatus);
-            }
-
+            LOG(INFO, "Restarting daemon %s (%d/%d).",
+                    self->dn_exec,
+                    self->dn_restart_num,
+                    self->dn_restart_max);
+                    
             /* Schedule a restart */
             ev_timer_init(
                     &self->dn_restart_timer,
@@ -491,18 +490,12 @@ void __daemon_teardown(daemon_t *self, int wstatus)
 
             ev_timer_start(EV_DEFAULT, &self->dn_restart_timer);
 
-            LOG(INFO, "Restarting daemon %s (%d/%d).",
-                    self->dn_exec,
-                    self->dn_restart_num,
-                    self->dn_restart_max);
+            if (self->dn_atrestart_fn != NULL)
+            {
+                (void)self->dn_atrestart_fn(self, wstatus);
+            }
             return;
         }
-    }
-
-    /* ataxit() callback */
-    if (self->dn_enabled && self->dn_atexit_fn != NULL)
-    {
-        (void)self->dn_atexit_fn(self);
     }
 
     /* Remove the PID file */
@@ -513,6 +506,12 @@ void __daemon_teardown(daemon_t *self, int wstatus)
     }
 
     self->dn_pid = 0;
+
+    /* ataxit() callback */
+    if (self->dn_enabled && self->dn_atexit_fn != NULL)
+    {
+        (void)self->dn_atexit_fn(self);
+    }
 }
 
 ssize_t __daemon_flush_pipe(daemon_t *self, read_until_t *ru, int fd)
@@ -912,7 +911,7 @@ bool daemon_atexit(daemon_t *self, daemon_atexit_fn_t *fn)
  * Return true if the daemon has been started (this does not mean that it is
  * necessarily runing (during autorestart))
  */
-bool daemon_is_started(daemon_t *self, bool *started)
+bool daemon_is_started(const daemon_t *self, bool *started)
 {
     *started = self->dn_enabled;
     return true;

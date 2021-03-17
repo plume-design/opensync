@@ -41,10 +41,10 @@ PROTOBUF_C__BEGIN_DECLS
 #endif
 
 
-typedef struct _Intf__Stats__ObservationPoint Intf__Stats__ObservationPoint;
-typedef struct _Intf__Stats__IntfStats Intf__Stats__IntfStats;
-typedef struct _Intf__Stats__ObservationWindow Intf__Stats__ObservationWindow;
-typedef struct _Intf__Stats__IntfReport Intf__Stats__IntfReport;
+typedef struct _Interfaces__IntfStats__ObservationPoint Interfaces__IntfStats__ObservationPoint;
+typedef struct _Interfaces__IntfStats__IntfStats Interfaces__IntfStats__IntfStats;
+typedef struct _Interfaces__IntfStats__ObservationWindow Interfaces__IntfStats__ObservationWindow;
+typedef struct _Interfaces__IntfStats__IntfReport Interfaces__IntfStats__IntfReport;
 
 
 /* --- enums --- */
@@ -52,154 +52,192 @@ typedef struct _Intf__Stats__IntfReport Intf__Stats__IntfReport;
 
 /* --- messages --- */
 
-struct  _Intf__Stats__ObservationPoint
+struct  _Interfaces__IntfStats__ObservationPoint
 {
   ProtobufCMessage base;
-  char *nodeid;
-  char *locationid;
+  /*
+   * Serial number of the device reporting the stats
+   */
+  char *node_id;
+  /*
+   * Location id of the device reporting the stats
+   */
+  char *location_id;
 };
-#define INTF__STATS__OBSERVATION_POINT__INIT \
- { PROTOBUF_C_MESSAGE_INIT (&intf__stats__observation_point__descriptor) \
+#define INTERFACES__INTF_STATS__OBSERVATION_POINT__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&interfaces__intf_stats__observation_point__descriptor) \
     , NULL, NULL }
 
 
-struct  _Intf__Stats__IntfStats
+struct  _Interfaces__IntfStats__IntfStats
 {
   ProtobufCMessage base;
-  char *ifname;
-  protobuf_c_boolean has_txbytes;
-  uint64_t txbytes;
-  protobuf_c_boolean has_rxbytes;
-  uint64_t rxbytes;
-  protobuf_c_boolean has_txpackets;
-  uint64_t txpackets;
-  protobuf_c_boolean has_rxpackets;
-  uint64_t rxpackets;
+  char *if_name;
+  /*
+   * The counters can either be accumulative or deltas. This
+   * is specified in the FCM_Report_Config table.
+   */
+  protobuf_c_boolean has_tx_bytes;
+  uint64_t tx_bytes;
+  protobuf_c_boolean has_rx_bytes;
+  uint64_t rx_bytes;
+  protobuf_c_boolean has_tx_packets;
+  uint64_t tx_packets;
+  protobuf_c_boolean has_rx_packets;
+  uint64_t rx_packets;
+  /*
+   * Holds information about the interface such as its role in the
+   * network, the network to which it's assigned, the vap type, id, etc
+   * Read from Wifi_Inet_Config table
+   */
   char *role;
 };
-#define INTF__STATS__INTF_STATS__INIT \
- { PROTOBUF_C_MESSAGE_INIT (&intf__stats__intf_stats__descriptor) \
+#define INTERFACES__INTF_STATS__INTF_STATS__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&interfaces__intf_stats__intf_stats__descriptor) \
     , NULL, 0,0, 0,0, 0,0, 0,0, NULL }
 
 
-struct  _Intf__Stats__ObservationWindow
+struct  _Interfaces__IntfStats__ObservationWindow
 {
   ProtobufCMessage base;
-  protobuf_c_boolean has_startedat;
-  uint64_t startedat;
-  protobuf_c_boolean has_endedat;
-  uint64_t endedat;
-  size_t n_intfstats;
-  Intf__Stats__IntfStats **intfstats;
+  /*
+   * The start fime for this window, represented as seconds since epoch
+   */
+  protobuf_c_boolean has_started_at;
+  uint64_t started_at;
+  /*
+   * The end time for this window, represented as seconds since epoch
+   */
+  protobuf_c_boolean has_ended_at;
+  uint64_t ended_at;
+  /*
+   * Statistics corresponding to per-interface
+   */
+  size_t n_intf_stats;
+  Interfaces__IntfStats__IntfStats **intf_stats;
 };
-#define INTF__STATS__OBSERVATION_WINDOW__INIT \
- { PROTOBUF_C_MESSAGE_INIT (&intf__stats__observation_window__descriptor) \
+#define INTERFACES__INTF_STATS__OBSERVATION_WINDOW__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&interfaces__intf_stats__observation_window__descriptor) \
     , 0,0, 0,0, 0,NULL }
 
 
-struct  _Intf__Stats__IntfReport
+/*
+ * Report describing per-interface bandwidth consumed
+ * metrics and statistics
+ */
+struct  _Interfaces__IntfStats__IntfReport
 {
   ProtobufCMessage base;
-  protobuf_c_boolean has_reportedat;
-  uint64_t reportedat;
-  Intf__Stats__ObservationPoint *observationpoint;
-  size_t n_observationwindow;
-  Intf__Stats__ObservationWindow **observationwindow;
+  /*
+   * Time when the messaged is reported, represented as seconds since epoch
+   */
+  protobuf_c_boolean has_reported_at;
+  uint64_t reported_at;
+  /*
+   * Information to identify a device uniquely, serial no and location id
+   */
+  Interfaces__IntfStats__ObservationPoint *observation_point;
+  /*
+   * A fix time frame during which statistics are recorded. Each report
+   * can contain one or more such windows
+   */
+  size_t n_observation_windows;
+  Interfaces__IntfStats__ObservationWindow **observation_windows;
 };
-#define INTF__STATS__INTF_REPORT__INIT \
- { PROTOBUF_C_MESSAGE_INIT (&intf__stats__intf_report__descriptor) \
+#define INTERFACES__INTF_STATS__INTF_REPORT__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&interfaces__intf_stats__intf_report__descriptor) \
     , 0,0, NULL, 0,NULL }
 
 
-/* Intf__Stats__ObservationPoint methods */
-void   intf__stats__observation_point__init
-                     (Intf__Stats__ObservationPoint         *message);
-size_t intf__stats__observation_point__get_packed_size
-                     (const Intf__Stats__ObservationPoint   *message);
-size_t intf__stats__observation_point__pack
-                     (const Intf__Stats__ObservationPoint   *message,
+/* Interfaces__IntfStats__ObservationPoint methods */
+void   interfaces__intf_stats__observation_point__init
+                     (Interfaces__IntfStats__ObservationPoint         *message);
+size_t interfaces__intf_stats__observation_point__get_packed_size
+                     (const Interfaces__IntfStats__ObservationPoint   *message);
+size_t interfaces__intf_stats__observation_point__pack
+                     (const Interfaces__IntfStats__ObservationPoint   *message,
                       uint8_t             *out);
-size_t intf__stats__observation_point__pack_to_buffer
-                     (const Intf__Stats__ObservationPoint   *message,
+size_t interfaces__intf_stats__observation_point__pack_to_buffer
+                     (const Interfaces__IntfStats__ObservationPoint   *message,
                       ProtobufCBuffer     *buffer);
-Intf__Stats__ObservationPoint *
-       intf__stats__observation_point__unpack
+Interfaces__IntfStats__ObservationPoint *
+       interfaces__intf_stats__observation_point__unpack
                      (ProtobufCAllocator  *allocator,
                       size_t               len,
                       const uint8_t       *data);
-void   intf__stats__observation_point__free_unpacked
-                     (Intf__Stats__ObservationPoint *message,
+void   interfaces__intf_stats__observation_point__free_unpacked
+                     (Interfaces__IntfStats__ObservationPoint *message,
                       ProtobufCAllocator *allocator);
-/* Intf__Stats__IntfStats methods */
-void   intf__stats__intf_stats__init
-                     (Intf__Stats__IntfStats         *message);
-size_t intf__stats__intf_stats__get_packed_size
-                     (const Intf__Stats__IntfStats   *message);
-size_t intf__stats__intf_stats__pack
-                     (const Intf__Stats__IntfStats   *message,
+/* Interfaces__IntfStats__IntfStats methods */
+void   interfaces__intf_stats__intf_stats__init
+                     (Interfaces__IntfStats__IntfStats         *message);
+size_t interfaces__intf_stats__intf_stats__get_packed_size
+                     (const Interfaces__IntfStats__IntfStats   *message);
+size_t interfaces__intf_stats__intf_stats__pack
+                     (const Interfaces__IntfStats__IntfStats   *message,
                       uint8_t             *out);
-size_t intf__stats__intf_stats__pack_to_buffer
-                     (const Intf__Stats__IntfStats   *message,
+size_t interfaces__intf_stats__intf_stats__pack_to_buffer
+                     (const Interfaces__IntfStats__IntfStats   *message,
                       ProtobufCBuffer     *buffer);
-Intf__Stats__IntfStats *
-       intf__stats__intf_stats__unpack
+Interfaces__IntfStats__IntfStats *
+       interfaces__intf_stats__intf_stats__unpack
                      (ProtobufCAllocator  *allocator,
                       size_t               len,
                       const uint8_t       *data);
-void   intf__stats__intf_stats__free_unpacked
-                     (Intf__Stats__IntfStats *message,
+void   interfaces__intf_stats__intf_stats__free_unpacked
+                     (Interfaces__IntfStats__IntfStats *message,
                       ProtobufCAllocator *allocator);
-/* Intf__Stats__ObservationWindow methods */
-void   intf__stats__observation_window__init
-                     (Intf__Stats__ObservationWindow         *message);
-size_t intf__stats__observation_window__get_packed_size
-                     (const Intf__Stats__ObservationWindow   *message);
-size_t intf__stats__observation_window__pack
-                     (const Intf__Stats__ObservationWindow   *message,
+/* Interfaces__IntfStats__ObservationWindow methods */
+void   interfaces__intf_stats__observation_window__init
+                     (Interfaces__IntfStats__ObservationWindow         *message);
+size_t interfaces__intf_stats__observation_window__get_packed_size
+                     (const Interfaces__IntfStats__ObservationWindow   *message);
+size_t interfaces__intf_stats__observation_window__pack
+                     (const Interfaces__IntfStats__ObservationWindow   *message,
                       uint8_t             *out);
-size_t intf__stats__observation_window__pack_to_buffer
-                     (const Intf__Stats__ObservationWindow   *message,
+size_t interfaces__intf_stats__observation_window__pack_to_buffer
+                     (const Interfaces__IntfStats__ObservationWindow   *message,
                       ProtobufCBuffer     *buffer);
-Intf__Stats__ObservationWindow *
-       intf__stats__observation_window__unpack
+Interfaces__IntfStats__ObservationWindow *
+       interfaces__intf_stats__observation_window__unpack
                      (ProtobufCAllocator  *allocator,
                       size_t               len,
                       const uint8_t       *data);
-void   intf__stats__observation_window__free_unpacked
-                     (Intf__Stats__ObservationWindow *message,
+void   interfaces__intf_stats__observation_window__free_unpacked
+                     (Interfaces__IntfStats__ObservationWindow *message,
                       ProtobufCAllocator *allocator);
-/* Intf__Stats__IntfReport methods */
-void   intf__stats__intf_report__init
-                     (Intf__Stats__IntfReport         *message);
-size_t intf__stats__intf_report__get_packed_size
-                     (const Intf__Stats__IntfReport   *message);
-size_t intf__stats__intf_report__pack
-                     (const Intf__Stats__IntfReport   *message,
+/* Interfaces__IntfStats__IntfReport methods */
+void   interfaces__intf_stats__intf_report__init
+                     (Interfaces__IntfStats__IntfReport         *message);
+size_t interfaces__intf_stats__intf_report__get_packed_size
+                     (const Interfaces__IntfStats__IntfReport   *message);
+size_t interfaces__intf_stats__intf_report__pack
+                     (const Interfaces__IntfStats__IntfReport   *message,
                       uint8_t             *out);
-size_t intf__stats__intf_report__pack_to_buffer
-                     (const Intf__Stats__IntfReport   *message,
+size_t interfaces__intf_stats__intf_report__pack_to_buffer
+                     (const Interfaces__IntfStats__IntfReport   *message,
                       ProtobufCBuffer     *buffer);
-Intf__Stats__IntfReport *
-       intf__stats__intf_report__unpack
+Interfaces__IntfStats__IntfReport *
+       interfaces__intf_stats__intf_report__unpack
                      (ProtobufCAllocator  *allocator,
                       size_t               len,
                       const uint8_t       *data);
-void   intf__stats__intf_report__free_unpacked
-                     (Intf__Stats__IntfReport *message,
+void   interfaces__intf_stats__intf_report__free_unpacked
+                     (Interfaces__IntfStats__IntfReport *message,
                       ProtobufCAllocator *allocator);
 /* --- per-message closures --- */
 
-typedef void (*Intf__Stats__ObservationPoint_Closure)
-                 (const Intf__Stats__ObservationPoint *message,
+typedef void (*Interfaces__IntfStats__ObservationPoint_Closure)
+                 (const Interfaces__IntfStats__ObservationPoint *message,
                   void *closure_data);
-typedef void (*Intf__Stats__IntfStats_Closure)
-                 (const Intf__Stats__IntfStats *message,
+typedef void (*Interfaces__IntfStats__IntfStats_Closure)
+                 (const Interfaces__IntfStats__IntfStats *message,
                   void *closure_data);
-typedef void (*Intf__Stats__ObservationWindow_Closure)
-                 (const Intf__Stats__ObservationWindow *message,
+typedef void (*Interfaces__IntfStats__ObservationWindow_Closure)
+                 (const Interfaces__IntfStats__ObservationWindow *message,
                   void *closure_data);
-typedef void (*Intf__Stats__IntfReport_Closure)
-                 (const Intf__Stats__IntfReport *message,
+typedef void (*Interfaces__IntfStats__IntfReport_Closure)
+                 (const Interfaces__IntfStats__IntfReport *message,
                   void *closure_data);
 
 /* --- services --- */
@@ -207,10 +245,10 @@ typedef void (*Intf__Stats__IntfReport_Closure)
 
 /* --- descriptors --- */
 
-extern const ProtobufCMessageDescriptor intf__stats__observation_point__descriptor;
-extern const ProtobufCMessageDescriptor intf__stats__intf_stats__descriptor;
-extern const ProtobufCMessageDescriptor intf__stats__observation_window__descriptor;
-extern const ProtobufCMessageDescriptor intf__stats__intf_report__descriptor;
+extern const ProtobufCMessageDescriptor interfaces__intf_stats__observation_point__descriptor;
+extern const ProtobufCMessageDescriptor interfaces__intf_stats__intf_stats__descriptor;
+extern const ProtobufCMessageDescriptor interfaces__intf_stats__observation_window__descriptor;
+extern const ProtobufCMessageDescriptor interfaces__intf_stats__intf_report__descriptor;
 
 PROTOBUF_C__END_DECLS
 

@@ -165,9 +165,9 @@ static bool xm_radio_update(const struct schema_Wifi_Radio_Config *rconf)
     struct schema_Wifi_Radio_Config tmp;
 
     memcpy(&tmp, rconf, sizeof(tmp));
-    LOGI("External: Updating radio %s (partial %d)", tmp.if_name, rconf->_partial_update);
+    tmp._partial_update = true;
+    LOGI("External: Updating radio %s (partial %d)", tmp.if_name, tmp._partial_update);
     REQUIRE(rconf->if_name, strlen(rconf->if_name) > 0);
-    tmp.vif_configs_present = false;
     REQUIRE(rconf->if_name, 1 == ovsdb_table_upsert_f(&table_Wifi_Radio_Config, &tmp, false, NULL));
     LOGI("External: Update radio %s", tmp.if_name);
 
@@ -181,7 +181,8 @@ static bool xm_vif_update(const struct schema_Wifi_VIF_Config *vconf,
     json_t *where;
 
     memcpy(&tmp, vconf, sizeof(tmp));
-    LOGI("External: Updating vif %s @ %s (partial %d)", vconf->if_name, radio_ifname, vconf->_partial_update);
+    tmp._partial_update = true;
+    LOGI("External: Updating vif %s @ %s (partial %d)", vconf->if_name, radio_ifname, tmp._partial_update);
     REQUIRE(vconf->if_name, strlen(vconf->if_name) > 0);
     if (!(where = ovsdb_where_simple(SCHEMA_COLUMN(Wifi_Radio_Config, if_name), radio_ifname))){
         LOGI("External: Updating vif %s @ %s (no radio found)", vconf->if_name, radio_ifname);

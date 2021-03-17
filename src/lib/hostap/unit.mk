@@ -28,10 +28,13 @@ UNIT_TYPE := LIB
 UNIT_SRC += src/hapd.c
 UNIT_SRC += src/wpas.c
 UNIT_SRC += src/ctrl.c
+UNIT_SRC += src/ctrl-dpp.c
+UNIT_SRC += src/internal-util.c
 
 UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/schema
 UNIT_DEPS += src/lib/ds
+UNIT_DEPS_CFLAGS += src/lib/target
 
 UNIT_CFLAGS += -I$(UNIT_PATH)/inc
 UNIT_EXPORT_CFLAGS += $(UNIT_CFLAGS)

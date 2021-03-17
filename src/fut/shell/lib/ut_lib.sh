@@ -26,35 +26,48 @@
 
 
 # Include basic environment config
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source ${FUT_TOPDIR}/shell/config/default_shell.sh
-fi
-source ${FUT_TOPDIR}/shell/lib/cm2_lib.sh
-source ${LIB_OVERRIDE_FILE}
-
-############################################ INFORMATION SECTION - START ###############################################
+export FUT_UT_LIB_SRC=true
+[ "${FUT_UNIT_LIB_SRC}" != true ] && source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+echo "${FUT_TOPDIR}/shell/lib/ut_lib.sh sourced"
+####################### INFORMATION SECTION - START ###########################
 #
-#   Base library of common Upgrade Manager functions (Plume specific)
+#   Base library of common Unit Test functions
 #
-############################################ INFORMATION SECTION - STOP ################################################
+####################### INFORMATION SECTION - STOP ############################
 
+####################### SETUP SECTION - START #################################
 
-############################################ SETUP SECTION - START #####################################################
-
+###############################################################################
+# DESCRIPTION:
+#   Function prepares device for UT tests.
+# INPUT PARAMETER(S):
+#   None.
+# RETURNS:
+#   None.
+# USAGE EXAMPLE(S):
+#   ut_setup_test_environment
+###############################################################################
 ut_setup_test_environment()
 {
-    log -deb "UT SETUP"
+    fn_name="ut_lib:ut_setup_test_environment"
 
-    stop_healthcheck ||
-        die "lib/um_lib: ut_setup_test_environment - Failed stop_healthcheck"
+    log "$fn_name - Running UT setup"
 
-    cm_disable_fatal_state ||
-        die "lib/cm2_lib: ut_setup_test_environment - Failed: cm_disable_fatal_state"
+    stop_healthcheck &&
+        log -deb "$fn_name - healtcheck disabled - Success" ||
+        raise "FAIL: Failed to stop health check: stop_healthcheck" -l "$fn_name" -ds
+
+    cm_disable_fatal_state &&
+        log -deb "$fn_name - Fatal state disabled - Success" ||
+        raise "FAIL: Failed to disable fatal state: cm_disable_fatal_state" -l "$fn_name" -ds
 
     # Ignoring failures
-    /etc/init.d/manager restart || true
+    /etc/init.d/manager restart ||
+        true
+
+    log "$fn_name - UT setup - end"
+
+    return 0
 }
 
-############################################ SETUP SECTION - STOP ######################################################
+####################### SETUP SECTION - STOP ##################################

@@ -25,14 +25,38 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-# Include environment config from default shell file
+# FUT environment loading
 source /tmp/fut-base/shell/config/default_shell.sh
-[ -e "/tmp/fut_set_env.sh" ] && source /tmp/fut_set_env.sh
-# Include shared libraries and library overrides
-source ${FUT_TOPDIR}/shell/lib/brv_lib.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
+source "${FUT_TOPDIR}/shell/lib/brv_lib.sh"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+
+tc_name="brv/$(basename "$0")"
+usage()
+{
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Setup device for BRV testing
+Arguments:
+    -h : show this help message
+Script usage example:
+    ./${tc_name}
+usage_string
+}
+while getopts h option; do
+    case "$option" in
+        h)
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
+            ;;
+    esac
+done
 
 brv_setup_env &&
-    log "brv/$(basename "$0"): brv_setup_env - Success " ||
-    die "brv/$(basename "$0"): brv_setup_env - Failed"
+    log "${tc_name}: brv_setup_env - Success " ||
+    raise "brv_setup_env - Failed" -l "$tc_name" -ds
 
 exit 0

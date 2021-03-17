@@ -38,6 +38,8 @@ UNIT_SRC += src/inet_vif.c
 UNIT_SRC += src/inet_base.c
 UNIT_SRC += src/inet_pppoe.c
 UNIT_SRC += src/inet_vlan.c
+UNIT_SRC += src/inet_routes.c
+UNIT_SRC += src/inet_lte.c
 
 UNIT_EXPORT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS := $(UNIT_EXPORT_CFLAGS)

@@ -1,0 +1,7 @@
+menu "libgatekeeper_msg Configuration"
+    config LIBGATEKEEPER_MSG
+        bool "Library to manage Gatekeeper message format"
+        default y
+        help
+            Enable support to serialize/deserialize messages from/to the gatekeeper service
+endmenu

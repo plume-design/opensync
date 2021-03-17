@@ -1,0 +1,18 @@
+#!/bin/sh -ex
+tohex() { od -tx1 -An | tr -d ' '; }
+
+case "$1" in
+init)
+	pwd >&2
+	. ./env-sta-onboarding
+	;;
+
+test)
+	timeout 1 $ovsh w Wifi_Radio_State if_name:=phy0
+	timeout 1 $ovsh w Wifi_VIF_State if_name:=wlan0
+	timeout 1 $ovsh w DPP_Config -w status==in_progress status:=in_progress
+
+	echo "dpp_failed"
+	timeout 1 $ovsh w DPP_Config -w status==failed status:=failed
+	;;
+esac

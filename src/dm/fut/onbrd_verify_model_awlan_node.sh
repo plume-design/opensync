@@ -25,51 +25,48 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
-source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
-usage="
-$(basename "$0") [-h] \$@
-
-where options are:
+tc_name="onbrd/$(basename "$0")"
+manager_setup_file="onbrd/onbrd_setup.sh"
+usage()
+{
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Validate AWLAN_Node model field
+Arguments:
     -h  show this help message
-
-where arguments are:
-    model=\$@ -- used as model to verify correct model entry - (string)(required)
-
-this script is dependent on following:
-    - running DM manager
-
-example of usage:
-   /tmp/fut-base/shell/onbrd/$(basename "$0") PP213X_EX
-"
-
+    \$1 (model) : used as model to verify correct model entry : (string)(required)
+Testcase procedure:
+    - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
+                 Run: ./${tc_name} <MODEL>
+Script usage example:
+   ./${tc_name} PP203X
+usage_string
+}
 while getopts h option; do
     case "$option" in
         h)
-            echo "$usage"
-            exit 1
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
             ;;
     esac
 done
-
-if [ $# -lt 1 ]; then
-    echo 1>&2 "$0: not enough arguments"
-    echo "$usage"
-    exit 2
-fi
+NARGS=1
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 
 expected_model=$1
 
-tc_name="onbrd/$(basename "$0")"
+log_title "$tc_name: ONBRD test - Verify model in AWLAN_Node, waiting for '$expected_model' string"
 
-log "$tc_name: ONBRD Verify model, waiting for '$expected_model'"
+log "$tc_name: Verify model, waiting for '$expected_model'"
 wait_for_function_response 0 "check_ovsdb_entry AWLAN_Node -w model \"'$expected_model'\"" &&
     log "$tc_name: SUCCESS: check_model '$expected_model'" ||
     raise "FAIL: check_model '$expected_model'" -l "$tc_name" -tc

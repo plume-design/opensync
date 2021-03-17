@@ -90,8 +90,10 @@ distclean: $(DISTCLEAN_TARGETS)
 	$(Q)$(RM) -r $(WORKDIRS) tags cscope.out files.idx .files.idx.dep
 
 ifneq ($(filter-out $(OS_TARGETS),$(TARGET)),)
+ifeq ($(filter $(NO_TARGET_GOALS),$(MAKECMDGOALS)),)
 $(error Unsupported TARGET ($(TARGET)). Supported targets are: \
 	$(COL_CFG_GREEN)$(OS_TARGETS)$(COL_CFG_NONE))
+endif
 endif
 
 # Include makefile for target-specific rules, if it exists

@@ -126,6 +126,10 @@ static bool nm2_inet_vlan_set(
         struct nm2_iface *piface,
         const struct schema_Wifi_Inet_Config *pconfig);
 
+static bool nm2_inet_vlan_egress_qos_map_set(
+        struct nm2_iface *piface,
+        const struct schema_Wifi_Inet_Config *iconf);
+
 static bool nm2_inet_credential_set(
         struct nm2_iface *piface,
         const struct schema_Wifi_Inet_Config *iconf);
@@ -240,6 +244,7 @@ bool nm2_inet_config_set(struct nm2_iface *piface, struct schema_Wifi_Inet_Confi
     retval &= nm2_inet_ip4tunnel_set(piface, iconf);
     retval &= nm2_inet_dhsnif_set(piface, iconf);
     retval &= nm2_inet_vlan_set(piface, iconf);
+    retval &= nm2_inet_vlan_egress_qos_map_set(piface, iconf);
     retval &= nm2_inet_credential_set(piface, iconf);
     retval &= nm2_inet_igmp_proxy_set(piface, iconf);
     retval &= nm2_inet_mld_proxy_set(piface, iconf);
@@ -459,6 +464,46 @@ err:
 }
 
 
+static void nm2_inet_dhcp_req_options_set(
+        struct nm2_iface *piface,
+        const struct schema_Wifi_Inet_Config *iconf)
+{
+    size_t n;
+    dhcp_options_t *opts = piface->if_dhcp_req_options;
+
+    // clear old requested options before reconfiguration
+    for (n = 0; n < opts->length; n++)
+    {
+        (void)inet_dhcpc_option_request(piface->if_inet, (enum osn_dhcp_option)opts->option_id[n], false);
+    }
+
+    if (iconf->dhcp_req_len > 0)
+    {
+        free(piface->if_dhcp_req_options);
+        piface->if_dhcp_req_options = NULL;
+
+        opts = calloc(1, sizeof(*opts) + 
+            iconf->dhcp_req_len * sizeof(opts->option_id[0]));
+        
+        opts->length = (size_t)iconf->dhcp_req_len;
+
+        for (n = 0; n < opts->length; n++)
+        {
+            opts->option_id[n] = (uint8_t)iconf->dhcp_req[n];
+        }
+
+        piface->if_dhcp_req_options = opts;
+    }
+    else // get default options when not provided by interface
+    {
+        opts = piface->if_dhcp_req_options;
+    }
+    
+    for (n = 0; n < opts->length; n++)
+    {
+        (void)inet_dhcpc_option_request(piface->if_inet, (enum osn_dhcp_option)opts->option_id[n], true);
+    }
+}
 
 /* Apply IP assignment scheme from OVSDB schema */
 bool nm2_inet_ip_assign_scheme_set(
@@ -475,6 +520,7 @@ bool nm2_inet_ip_assign_scheme_set(
         }
         else if (strcmp(iconf->ip_assign_scheme, "dhcp") == 0)
         {
+            nm2_inet_dhcp_req_options_set(piface, iconf);
             assign_scheme = INET_ASSIGN_DHCP;
         }
     }
@@ -492,6 +538,49 @@ bool nm2_inet_ip_assign_scheme_set(
     return true;
 }
 
+typedef struct upnp_map_item
+{
+    const char* name;
+    enum osn_upnp_mode mode;    
+} t_upnp_map_item;
+
+static const t_upnp_map_item upnp_map[] =
+{
+    { .name = "disabled", .mode = UPNP_MODE_NONE },
+    { .name = "internal", .mode = UPNP_MODE_INTERNAL },
+    { .name = "external", .mode = UPNP_MODE_EXTERNAL },
+    { .name = "internal_iptv", .mode = UPNP_MODE_INTERNAL_IPTV },
+    { .name = "external_iptv", .mode = UPNP_MODE_EXTERNAL_IPTV }
+};
+
+enum osn_upnp_mode nm2_str2upnp(const char *str)
+{
+    size_t n;
+    for(n = 0; n < ARRAY_SIZE(upnp_map); ++n)
+    {
+        if(0 == strcmp(str, upnp_map[n].name))
+        {
+            return upnp_map[n].mode;
+        }
+    }
+    LOG(WARN, "inet_config: Unknown UPnP mode %s. Assuming \"disabled\".", str);
+    return UPNP_MODE_NONE;
+}
+
+const char *nm2_upnp2str(enum osn_upnp_mode mode)
+{
+    size_t n;
+    for(n = 0; n < ARRAY_SIZE(upnp_map); ++n)
+    {
+        if(mode == upnp_map[n].mode)
+        {
+            return upnp_map[n].name;
+        }
+    }
+    LOG(WARN, "inet_config: Unknown UPnP mode = %d.", mode);
+    return NULL;
+}
+
 /* Apply UPnP settings from schema */
 bool nm2_inet_upnp_set(
         struct nm2_iface *piface,
@@ -501,25 +590,7 @@ bool nm2_inet_upnp_set(
 
     if (iconf->upnp_mode_exists)
     {
-        if (strcmp(iconf->upnp_mode, "disabled") == 0)
-        {
-            upnp = UPNP_MODE_NONE;
-        }
-        else if (strcmp(iconf->upnp_mode, "internal") == 0)
-        {
-            upnp = UPNP_MODE_INTERNAL;
-        }
-        else if (strcmp(iconf->upnp_mode, "external") == 0)
-        {
-            upnp = UPNP_MODE_EXTERNAL;
-        }
-        else
-        {
-            LOG(WARN, "inet_config: %s (%s): Unknown UPnP mode %s. Assuming \"disabled\".",
-                    piface->if_name,
-                    nm2_iftype_tostr(piface->if_type),
-                    iconf->upnp_mode);
-        }
+        upnp = nm2_str2upnp(iconf->upnp_mode);
     }
 
     if (!inet_upnp_mode_set(piface->if_inet, upnp))
@@ -966,6 +1037,18 @@ bool nm2_inet_vlan_set(
     return inet_vlanid_set(piface->if_inet, vlanid);
 }
 
+static bool nm2_inet_vlan_egress_qos_map_set(
+        struct nm2_iface *piface,
+        const struct schema_Wifi_Inet_Config *iconf)
+{
+    /* Not supported for non-VLAN types */
+    if (piface->if_type != NM2_IFTYPE_VLAN) return true;
+
+    return inet_vlan_egress_qos_map_set(piface->if_inet, 
+        iconf->vlan_egress_qos_map_exists ? iconf->vlan_egress_qos_map : ""/*=safe,default*/);
+}
+
+
 /* Set interface credentials */
 bool nm2_inet_credential_set(
         struct nm2_iface *piface,
@@ -1013,6 +1096,10 @@ void nm2_inet_copy(
     NM2_IFACE_INET_CONFIG_COPY(piface->if_cache.gre_local_inet_addr, iconf->gre_local_inet_addr);
     piface->if_cache.vlan_id_exists = iconf->vlan_id_exists;
     NM2_IFACE_INET_CONFIG_COPY(piface->if_cache.vlan_id, iconf->vlan_id);
+    piface->if_cache.vlan_egress_qos_map_exists = iconf->vlan_egress_qos_map_exists;
+    NM2_IFACE_INET_CONFIG_COPY(piface->if_cache.vlan_egress_qos_map, iconf->vlan_egress_qos_map);
+    piface->if_cache.parent_ifname_exists = iconf->parent_ifname_exists;
+    NM2_IFACE_INET_CONFIG_COPY(piface->if_cache.parent_ifname, iconf->parent_ifname);
 }
 
 

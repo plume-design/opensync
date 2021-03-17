@@ -50,5 +50,4 @@ UNIT_DEPS += src/lib/json_util
 UNIT_DEPS += src/lib/policy_tags
 UNIT_DEPS += src/lib/ustack
 UNIT_DEPS += src/lib/target
-
-
+UNIT_DEPS += src/lib/dns_cache

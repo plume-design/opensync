@@ -28,10 +28,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define LAN_STATS_H_INCLUDED
 
 #define MAC_ADDR_STR_LEN     (18)
-#define OVS_DPCTL_DUMP_FLOWS "ovs-dpctl dump-flows"
+#define OVS_DPCTL_DUMP_FLOWS "ovs-dpctl dump-flows -m"
 #define LINE_BUFF_LEN        (2048)
 #define MAX_TOKENS           (30)
 
+#define OVS_DUMP_UFID_PREFIX   "ufid:"
 #define OVS_DUMP_ETH_SRC_PREFIX   "eth(src="
 #define OVS_DUMP_ETH_DST_PREFIX   "dst="
 #define OVS_DUMP_ETH_TYPE_PREFIX  "eth_type("
@@ -40,6 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define OVS_DUMP_VLAN_ID_PREFIX   "vlan(vid="
 #define OVS_DUMP_VLAN_ETH_TYPE_PREFIX "encap(eth_type("
 
+#define OVS_DUMP_UFID_PREFIX_LEN (5) // Length of "ufid:"
 #define OVS_DUMP_ETH_SRC_PREFIX_LEN  (8) // Length of "eth(src="
 #define OVS_DUMP_ETH_DST_PREFIX_LEN  (4) // Length of "dst="
 #define OVS_DUMP_ETH_TYPE_PREFIX_LEN (9) // Length of "eth_type("
@@ -49,8 +51,16 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define OVS_DUMP_VLAN_ETH_TYPE_PREFIX_LEN  (15) // Length of "encap(eth_type("
 #define MAX_HISTOGRAMS               (1)
 
+typedef union ovs_u128 {
+    os_ufid_t id;
+    struct {
+        uint64_t lo, hi;
+    } u64;
+} ovs_u128;
+
 typedef struct dp_ctl_stats_
 {
+    ovs_u128        ufid;
     char            smac_addr[MAC_ADDR_STR_LEN];
     char            dmac_addr[MAC_ADDR_STR_LEN];
     os_macaddr_t    smac_key;

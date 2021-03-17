@@ -25,66 +25,70 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
-source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
-usage="
-$(basename "$0") [-h] \$1 \$2
-
-where options are:
-    -h  show this help message
-
-where arguments are:
-    firmware_version=\$1 -- used as FW version to verify running correct FW - (string)(required)
-    only_check_nonempty=\$2 -- used to override exact FW version match and only check if firmware_version is populated - (string)(optional)
-
-this script is dependent on following:
-    - running DM manager
-
-example of usage:
-   /tmp/fut-base/shell/onbrd/$(basename "$0") 2.4.3-72-g65b961c-dev-debug
-"
-
+tc_name="onbrd/$(basename "$0")"
+manager_setup_file="onbrd/onbrd_setup.sh"
+usage()
+{
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    Validate firmware_version field in table AWLAN_Node.
+    The test script acquires the FW version string automatically from the
+    device and matches to one of two matching rules.
+Arguments:
+    -h              : show this help message
+    \$1 match_rule  : how do we verify that the FW version string is valid: (string)(required)
+                    : Options:
+                    :   - non_empty(default): only verify that the version string is present and not empty
+                    :   - pattern_match     : match the version string with the requirements set by the cloud
+Testcase procedure:
+    - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
+                 Run: ./${tc_name} match_rule
+Script usage example:
+   ./${tc_name} non_empty
+   ./${tc_name} pattern_match
+usage_string
+exit 1
+}
 while getopts h option; do
     case "$option" in
         h)
-            echo "$usage"
-            exit 1
+            usage
+            ;;
+        *)
+            raise "Unknown argument" -l "${tc_name}" -arg
             ;;
     esac
 done
+NARGS=1
+[ $# -ne ${NARGS} ] && raise "Requires exactly '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 
-if [ $# -ne 1 ]; then
-    echo 1>&2 "$0: incorrect number of input arguments"
-    echo "$usage"
-    exit 2
-fi
+match_rule=${1:-"non_empty"}
 
-search_rule=${1:-"non_empty"}
+log_title "$tc_name: ONBRD test - Verify FW version string in AWLAN_Node '${match_rule}'"
 
-tc_name="onbrd/$(basename "$0")"
+# TESTCASE:
+fw_version_string=$(get_ovsdb_entry_value AWLAN_Node firmware_version -r)
+log "$tc_name: Verifying FW version string '${fw_version_string}'"
 
-if [ "$search_rule" = "non_empty" ]; then
-    log "$tc_name: ONBRD Verify FW version, waiting for $search_rule string"
-    wait_for_function_response 'notempty' "get_ovsdb_entry_value AWLAN_Node firmware_version" &&
-        log "$tc_name: check_firmware_version_populated - firmware_version populated" ||
-        raise "check_firmware_version_populated - firmware_version un-populated" -l "$tc_name" -tc
-elif [ "$search_rule" = "pattern_match" ]; then
-    log "$tc_name: ONBRD Verify FW version, waiting for $search_rule"
-    wait_for_function_response 0 "onbrd_check_fw_pattern_match" &&
-        log "$tc_name: check_fw_pattern_match - firmware_version patter match" ||
-        raise "check_fw_pattern_match - firmware_version patter didn't match" -l "$tc_name" -tc
+if [ "${match_rule}" = "non_empty" ]; then
+    log -deb "$tc_name: FW version string must not be empty"
+    [ "${fw_version_string}" = "non_empty" ] &&
+        log -deb "$tc_name: FW version string is not empty" ||
+        raise "FW version string is empty" -l "$tc_name" -tc
+elif [ "${match_rule}" = "pattern_match" ]; then
+    log -deb "$tc_name: FW version string must match parsing rules and regular expression"
+    onbrd_verify_fw_pattern "${fw_version_string}" &&
+        log -deb "$tc_name: FW version string is valid" ||
+        raise "FW version string is not valid" -l "$tc_name" -tc
 else
-    log "$tc_name: ONBRD Verify FW version, waiting for exactly '$search_rule'"
-    wait_ovsdb_entry AWLAN_Node -is firmware_version "$search_rule" &&
-        log "$tc_name: wait_ovsdb_entry - AWLAN_Node firmware_version equal to '$1'" ||
-        raise "wait_ovsdb_entry - AWLAN_Node firmware_version NOT equal to '$1'" -l "$tc_name" -tc
+    raise "Invalid match_rule '${match_rule}', must be 'non_empty' or 'pattern_match'" -l "$tc_name" -arg
 fi
 
 pass

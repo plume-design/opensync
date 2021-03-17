@@ -40,85 +40,159 @@
 #   which
 
 # Include basic environment config
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source ${FUT_TOPDIR}/shell/config/default_shell.sh
-fi
-source ${FUT_TOPDIR}/shell/lib/base_lib.sh
+export FUT_BRV_LIB_SRC=true
+[ "${FUT_BASE_LIB_SRC}" != true ] && source "${FUT_TOPDIR}/shell/lib/base_lib.sh"
+echo "${FUT_TOPDIR}/shell/lib/brv_lib.sh sourced"
+####################### INFORMATION SECTION - START ###########################
+#
+#   Base library of common BRV functions
+#
+####################### INFORMATION SECTION - STOP ############################
 
-file_name="$(basename $0)"
+####################### SETUP SECTION - START #################################
 
+###############################################################################
+# DESCRIPTION:
+#   Function prepares device for BRV tests.
+# INPUT PARAMETER(S):
+#   None.
+# RETURNS:
+#   0   Always.
+# USAGE EXAMPLE(S):
+#   brv_setup_env
+###############################################################################
 brv_setup_env()
 {
-    local fn_name="${file_name}:brv_setup_env"
+    local fn_name="brv_lib:brv_setup_env"
     log -deb "${fn_name} - Running BRV setup"
     # There are currently no setup steps
     return 0
 }
 
-_get_ovs_version()
-{
-    local fn_name="${file_name}:_get_ovs_version"
-    local OVS_NAME="ovs-vswitchd"
-    local OVS_CMD=$(command -v $OVS_NAME)
-    # try which if command utility is not available
-    [ -z ${OVS_CMD} ] && OVS_CMD=$(which $OVS_NAME)
-    [ -z ${OVS_CMD} ] && raise "Can not call ${OVS_NAME}" -l "${fn_name}" -nf
+####################### SETUP SECTION - STOP ##################################
 
-    OVS_ACTUAL_VER=$(${OVS_CMD} -V | cut -d' ' -f4)
+###############################################################################
+# DESCRIPTION:
+#   Function echoes current ovs version.
+#   Raises an exception if cannot obtain actual ovs version.
+# INPUT PARAMETER(S):
+#   None.
+# ECHOES:
+#   Echoes ovs version.
+#   See DESCRIPTION.
+# USAGE EXAMPLE(S):
+#   get_ovs_version
+###############################################################################
+get_ovs_version()
+{
+    local fn_name="brv_lib:_get_ovs_version"
+    local OVS_NAME="ovs-vswitchd"
+    local OVS_CMD
+
+    OVS_CMD=$(command -v $OVS_NAME)
+    # try which if command utility is not available
+    [ -z "${OVS_CMD}" ] &&
+        OVS_CMD=$(which $OVS_NAME)
+    [ -z "${OVS_CMD}" ] &&
+        raise "FAIL: Can not call ${OVS_NAME}" -l "${fn_name}" -nf
+
+    OVS_ACTUAL_VER=$(${OVS_CMD} -V | head -n1 | cut -d' ' -f4)
     ec=$?
-    [ ${ec} -ne 0 ] && raise "Error calling ${OVS_CMD}" -l "${fn_name}" -ec ${ec} -fc
-    [ -z ${OVS_ACTUAL_VER} ] && raise "Failed to get ovs version" -l "${fn_name}" -f
+    [ ${ec} -ne 0 ] &&
+        raise "FAIL: Error calling ${OVS_CMD}" -l "${fn_name}" -ec ${ec} -fc
+    [ -z "${OVS_ACTUAL_VER}" ] &&
+        raise "FAIL: Could not get ovs version" -l "${fn_name}" -f
 
     echo "${OVS_ACTUAL_VER}"
 }
 
+###############################################################################
+# DESCRIPTION:
+#   Function checks if actual ovs version is equal to expected ovs version.
+# INPUT PARAMETER(S):
+#   $1  expected ovs version (required)
+#   $2  actual ovs version (required)
+# RETURNS:
+#   0   Versions match.
+#   1   Versions do not match.
+# USAGE EXAMPLE(S):
+#   check_ovs_version 2.8.7 2.8.7
+#   check_ovs_version 2.8.7 2.8.6
+###############################################################################
 check_ovs_version()
 {
-    local fn_name="${file_name}:check_ovs_version"
-    log -deb "${fn_name} - Getting device ovs version"
-    local NARGS=1
-    [ $# -ne ${NARGS} ] && raise "Requires ${NARGS} input arguments" -l "${fn_name}" -arg
-
+    local fn_name="brv_lib:check_ovs_version"
+    local NARGS=2
+    [ $# -ne ${NARGS} ] &&
+        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
     local OVS_EXPECTED_VER=$1
-    OVS_ACTUAL_VER="$(_get_ovs_version)"
-    ec=$?
-    [ ${ec} -ne 0 ] && raise "Failed to get ovs version" -l "${fn_name}" -ec ${ec} -arg
+    local OVS_ACTUAL_VER=$2
 
     if [ "${OVS_ACTUAL_VER}" != "${OVS_EXPECTED_VER}" ]; then
-        raise "Actual ovs version mismatches expected ovs version" -l "${fn_name}" -tc
+        log -deb "${fn_name} - Actual ovs version mismatches expected ovs version"
+        return 1
+    else
+        return 0
     fi
-    return 0
 }
 
+###############################################################################
+# DESCRIPTION:
+#   Function checks if tool is installed on system.
+# INPUT PARAMETER(S):
+#   $1  command/tool name (required)
+# RETURNS:
+#   0   Successful completion.
+#   126 The utility specified by command name was found but could not be invoked.
+#   >0  The command name could not be found or an error occurred.
+# USAGE EXAMPLE(S):
+#   is_tool_on_system arping
+#   is_tool_on_system cat
+###############################################################################
 is_tool_on_system()
 {
-    local fn_name="${file_name}:is_tool_on_system"
-    log -deb "${fn_name} - Checking tool presence on system"
+    local fn_name="brv_lib:is_tool_on_system"
     local NARGS=1
-    [ $# -ne ${NARGS} ] && raise "Requires ${NARGS} input arguments" -l "${fn_name}" -arg
+    [ $# -ne ${NARGS} ] &&
+        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+    cmd_name=$1
 
-    command -v $1
+    log -deb "${fn_name} - Checking tool presence on system"
+    command -v "$cmd_name"
     rc=$?
-    # "command [-vV] command_name" builtin utility exit codes:
-    # 0:   Successful completion.
-    # 126: The utility specified by command_name was found but could not be invoked.
-    # >0:  The command_name could not be found or an error occurred.
-    if [ $rc -gt 0 -a $rc -ne 126 ]; then
-        which $1
+    if [ $rc -gt 0 ] && [ $rc -ne 126 ]; then
+        which "$cmd_name"
+        rc=$?
+    fi
+    if [ $rc -gt 0 ] && [ $rc -ne 126 ]; then
+        type "$cmd_name"
         rc=$?
     fi
     return ${rc}
 }
 
+###############################################################################
+# DESCRIPTION:
+#   Function checks if tool is built into busybox.
+# INPUT PARAMETER(S):
+#   $1 command/tool name (required)
+# ECHOES:
+#   is tool shell keyword, builtin or not found
+# RETURNS:
+#   0   Successful completion.
+#   >0  The command_name could not be found or an error occurred.
+# USAGE EXAMPLE(S):
+#   is_busybox_builtin arping
+#   is_busybox_builtin chmod
+###############################################################################
 is_busybox_builtin()
 {
-    local fn_name="${file_name}:is_busybox_builtin"
+    local fn_name="brv_lib:is_busybox_builtin"
     log -deb "${fn_name} - Checking if tool is built into busybox"
     local NARGS=1
-    [ $# -ne ${NARGS} ] && raise "Requires '${NARGS}' input arguments" -l "${fn_name}" -arg
-
-    busybox --list | grep -wF $1
+    [ $# -ne ${NARGS} ] &&
+        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+    cmd_name=$1
+    type "${cmd_name}"
     return $?
 }

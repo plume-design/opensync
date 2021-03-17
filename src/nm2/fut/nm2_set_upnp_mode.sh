@@ -24,15 +24,45 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-# Include basic environment config from default shell file and if any from FUT framework generated /tmp/fut_set_env.sh file
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
-source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+
+tc_name="nm2/$(basename "$0")"
+manager_setup_file="nm2/nm2_setup.sh"
+usage()
+{
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Script configures interfaces upnp through Wifi_inet_Config 'upnp_mode' field and checks if it is propagated
+      into Wifi_Inet_State table and to the system, fails otherwise
+Arguments:
+    -h  show this help message
+    \$1 (internal_if) : used to set internal_if in Wifi_Inet_Config table as internal UPnP interface : (string)(required)
+    \$2 (external_if) : used to set external_if in Wifi_Inet_Config table as external UPnP interface : (string)(required)
+Testcase procedure:
+    - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
+                 Run: ./${tc_name} <INTERNAL-IF> <EXTERNAL-IF>
+Script usage example:
+   ./${tc_name} eth0 br-wan
+usage_string
+}
+while getopts h option; do
+    case "$option" in
+        h)
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
+            ;;
+    esac
+done
+NARGS=2
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 
 trap '
     reset_inet_entry $internal_if
@@ -41,44 +71,10 @@ trap '
     check_restore_management_access || true
 ' EXIT SIGINT SIGTERM
 
-usage="
-$(basename "$0") [-h] \$1 \$2
-
-where options are:
-    -h  show this help message
-
-where arguments are:
-    internal_if=\$1 -- used to set internal_if in Wifi_Inet_Config table as internal UPnP interface - (string)(required)
-    external_if=\$2 -- used to set external_if in Wifi_Inet_Config table as external UPnP interface - (string)(required)
-
-
-this script is dependent on following:
-    - running NM manager
-    - running WM manager
-
-example of usage:
-   /tmp/fut-base/shell/nm2/nm2_set_upnp_mode.sh eth0 br-wan
-"
-
-while getopts h option; do
-    case "$option" in
-        h)
-            echo "$usage"
-            exit 1
-            ;;
-    esac
-done
-
-if [ $# -lt 2 ]; then
-    echo 1>&2 "$0: not enough arguments"
-    echo "$usage"
-    exit 2
-fi
-
 internal_if=$1
 external_if=$2
 
-tc_name="nm2/$(basename "$0")"
+log_title "$tc_name: NM2 test - Testing UPnP mode"
 
 log "$tc_name: Creating Wifi_Inet_Config entries for $internal_if"
 create_inet_entry \

@@ -38,8 +38,7 @@ typedef struct udhcp_client udhcp_client_t;
 
 typedef bool udhcp_client_opt_notify_fn_t(
         udhcp_client_t *self,
-        enum osn_notify hint,
-        const char *key,
+        enum osn_dhcp_option opt,
         const char *value);
 
 typedef void udhcp_client_error_fn_t(udhcp_client_t *self);
@@ -68,5 +67,49 @@ bool udhcp_client_opt_get(udhcp_client_t *self, enum osn_dhcp_option opt, bool *
 bool udhcp_client_state_get(udhcp_client_t *self, bool *enabled);
 bool udhcp_client_error_notify(udhcp_client_t *self, udhcp_client_error_fn_t *errfn);
 bool udhcp_client_opt_notify(udhcp_client_t *self, udhcp_client_opt_notify_fn_t *fn);
+
+/**
+ * @brief Gets id of the requested option if supported by udhcpc
+ * @param opt_name requested option name
+ * @return id of the found option, or -1 if not supported
+ */
+int udhcp_client_get_option_id(const char *opt_name);
+
+/**
+ * @brief Checks if given option is settable by udhcpc DHCP client
+ * @param id id of the option
+ * @return true when settable, false otherwise
+ */
+bool udhcp_client_is_set_option(int id);
+
+/**
+ * @brief Checks if given option is requestable by udhcpc DHCP client
+ * @param id id of the option
+ * @return true when requestable, false otherwise
+ */
+bool udhcp_client_is_req_option(int id);
+
+/**
+ * @brief Checks if given option is supported by udhcp client
+ * Option is supported if it is settable or requestable
+ * @param id option id
+ * @return true if supported, false otherwise
+ */
+bool udhcp_client_is_supported_option(int id);
+
+/**
+ * @brief Gets option name for specified option index
+ * @param opt_id option index in 1..255 range
+ * @return ptr to opton name string or empty string when not found
+ */
+const char* dhcp_option_name(int opt_id);
+
+/**
+ * @brief Gets option id for specified option name
+ * Search is case sensitive
+ * @param opt_name ptr to option name string
+ * @return option index or -1 when not found
+ */
+int dhcp_option_id(const char* opt_name);
 
 #endif /* UDHCP_CLIENT_H_INCLUDED */

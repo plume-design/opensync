@@ -28,6 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define FSM_H_INCLUDED
 
 #include <ev.h>
+#include <libmnl/libmnl.h>
 #include <pcap.h>
 #include <sys/sysinfo.h>
 #include <time.h>
@@ -38,6 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb_utils.h"
 #include "schema.h"
 #include "net_header_parse.h"
+#include "network_metadata_report.h"
 
 struct fsm_session;
 
@@ -88,6 +90,9 @@ struct fsm_session_ops
 
     /* Get last active object version. Provided to the plugin */
     struct fsm_object * (*last_active_obj_cb)(struct fsm_session *, char *);
+
+    /* Update policy client */
+    void (*update_client)(struct fsm_session *, struct policy_table *);
 };
 
 
@@ -127,7 +132,42 @@ struct fsm_web_cat_ops
                              struct fsm_policy *);
     char * (*cat2str)(struct fsm_session *, int id);
     void (*get_stats)(struct fsm_session *, struct fsm_url_stats *);
+    void (*report_stats)(struct fsm_session *,
+                         struct fsm_url_report_stats *);
     void (*dns_response)(struct fsm_session *, struct fqdn_pending_req *);
+    bool (*gatekeeper_req)(struct fsm_session *, struct fsm_policy_req *);
+};
+
+
+/**
+ * @brief dpi plugin specific operations
+ *
+ * The callbacks are provided by the plugin
+ */
+struct fsm_dpi_plugin_ops
+{
+    void (*handler)(struct fsm_session *, struct net_header_parser *);
+    bool (*register_client)(struct fsm_session *,
+                            struct fsm_session *,
+                            char *);
+    bool (*unregister_client)(struct fsm_session *, char *);
+    int (*flow_attr_cmp)(void *, void *);
+    int (*notify_client)(struct fsm_session *, char *, char *,
+                         struct net_md_stats_accumulator *acc);
+    void (*register_clients)(struct fsm_session *);
+    void (*unregister_clients)(struct fsm_session *);
+};
+
+
+/**
+ * @brief dpi plugin client specific operations
+ *
+ * The callbacks are provided by the plugin
+ */
+struct fsm_dpi_plugin_client_ops
+{
+    int (*process_attr)(struct fsm_session *, char *, char *,
+                        struct net_md_stats_accumulator *acc);
 };
 
 
@@ -136,11 +176,12 @@ struct fsm_web_cat_ops
  *
  * The callbacks are provided to or by the service plugin
  */
-
 union fsm_plugin_ops
 {
     struct fsm_parser_ops parser_ops;
     struct fsm_web_cat_ops web_cat_ops;
+    struct fsm_dpi_plugin_ops dpi_plugin_ops;
+    struct fsm_dpi_plugin_client_ops dpi_plugin_client_ops;
 };
 
 
@@ -189,6 +230,7 @@ enum {
     FSM_DPI,
     FSM_DPI_DISPATCH,
     FSM_DPI_PLUGIN,
+    FSM_DPI_PLUGIN_CLIENT,
 };
 
 
@@ -210,6 +252,7 @@ enum fsm_dpi_state
     FSM_DPI_INSPECT  = 1,
     FSM_DPI_PASSTHRU = 2,
     FSM_DPI_DROP     = 3,
+    FSM_DPI_IGNORED  = 4,
 };
 
 
@@ -222,6 +265,12 @@ enum fsm_object_state
 };
 
 
+enum
+{
+    FSM_TCP_SYN = 1 << 1,
+    FSM_TCP_ACK = 1 << 4,
+};
+
 /**
  * @brief dpi dispatcher specifics
  */
@@ -232,6 +281,8 @@ struct fsm_dpi_dispatcher
     struct fsm_session *session;
     ds_tree_t plugin_sessions;
     time_t periodic_ts;
+    char *included_devices;
+    char *excluded_devices;
 };
 
 
@@ -244,6 +295,8 @@ struct fsm_dpi_plugin
     char *targets;
     char *excluded_targets;
     bool bound;
+    bool clients_init;
+    ds_tree_t dpi_clients;
     ds_tree_node_t dpi_node;
 };
 
@@ -289,6 +342,7 @@ struct fsm_session
     char *dso;                       /* plugin dso path */
     bool flood_tap;                  /* openflow flood enabled or not */
     int type;                        /* Session'service type */
+    int tap_type;                    /* Session's tap type */
     int64_t report_count;            /* mqtt reports counter */
     struct ev_loop *loop;            /* event loop */
     struct fsm_session *service;     /* service provider */
@@ -321,11 +375,12 @@ struct fsm_mgr
     struct sysinfo sysinfo;   /* system information */
     uint64_t max_mem;         /* max amount of memory allowed in MB */
     time_t qm_backoff;        /* backoff interval on qm connection errors */
+    ds_tree_t dpi_client_tags_tree;  /* monitor tag updates */
     bool (*init_plugin)(struct fsm_session *); /* DSO plugin init */
-    bool (*flood_mod)(struct fsm_session *);   /* tap flood mode update */
     int (*get_br)(char *if_name, char *bridge, size_t len); /* get lan bridge */
     int (*set_dpi_state)(struct net_header_parser *net_hdr,
                          enum fsm_dpi_state state);
+    bool (*update_session_tap)(struct fsm_session *); /* session tap update */
 };
 
 
@@ -342,6 +397,18 @@ struct mem_usage
     int peak_virt_mem;
 };
 
+struct nfqnl_counters
+{
+    uint8_t copy_mode;               /* copy mode*/
+    uint16_t queue_num;              /* queue number */
+    uint32_t portid;                 /* peer port id*/
+    unsigned int queue_total;        /* current number of packets the queue */
+    unsigned int copy_range;         /* length of the packet data */
+    unsigned int queue_dropped;      /* number of packets dropped */
+    unsigned int queue_user_dropped; /* number of packets dropped because netlink message
+                                        could not be sent to userspace */
+    unsigned int id_sequence;        /* packet id of the last packet */
+};
 
 /**
  * @brief fsm manager accessor
@@ -410,7 +477,6 @@ fsm_ovsdb_init(void);
 void
 fsm_event_init(void);
 
-
 /**
  * @brief manager's periodic work exit routine
  */
@@ -425,6 +491,14 @@ fsm_event_close(void);
  */
 void
 fsm_get_memory(struct mem_usage *mem);
+
+/**
+ * @brief get netfilters queue stats
+ *
+ * @param nfq_counters netfilter queue container
+ */
+void
+fsm_get_nfqcounters(struct nfqnl_counters *nfq_counters);
 
 /**
  * @brief add a fsm session
@@ -710,9 +784,11 @@ fsm_plugin_has_intf(struct fsm_session *session)
 {
     if (session->type == FSM_WEB_CAT) return false;
     if (session->type == FSM_DPI_PLUGIN) return false;
+    if (session->type == FSM_DPI_PLUGIN_CLIENT) return false;
 
     return true;
 }
+
 
 /**
  * @brief sets/update the Node_State ovsdb table with max mem usage
@@ -737,9 +813,6 @@ void
 fsm_process_provider(struct fsm_session *session);
 
 
-bool
-fsm_pcap_update(struct fsm_session *session);
-
 /**
  * @brief update the OMS_State table with the given object state
  *
@@ -748,5 +821,8 @@ fsm_pcap_update(struct fsm_session *session);
  */
 void
 fsm_set_object_state(struct fsm_session *session, struct fsm_object *object);
+
+void
+fsm_get_node_config(struct schema_Node_Config *node_cfg);
 
 #endif /* FSM_H_INCLUDED */

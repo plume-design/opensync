@@ -25,46 +25,66 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
-source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
-source "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh"
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
-usage="
-$(basename "$0") [-h] \$1
-
-where options are:
+tc_name="onbrd/$(basename "$0")"
+manager_setup_file="onbrd/onbrd_setup.sh"
+eth_wan_default="eth0"
+br_wan_default="br-wan"
+br_home_default="br-home"
+start_pool_default="10.10.10.20"
+end_pool_default="10.10.10.50"
+usage()
+{
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Validate device router mode settings
+Arguments:
     -h  show this help message
-
-this script is dependent on following:
-    - running DM manager
-
-example of usage:
-   /tmp/fut-base/shell/onbrd/$(basename "$0") br-wan br-home 10.10.10.20 10.10.10.50
-"
-
+    \$1 (eth_wan)    : Used to define eth_wan    : (string)(optional) : (default:${eth_wan_default})
+    \$2 (br_wan)     : Used to define br_wan     : (string)(optional) : (default:${br_wan_default})
+    \$3 (br_home)    : Used to define br_home    : (string)(optional) : (default:${br_home_default})
+    \$4 (start_pool) : Used to define start_pool : (string)(optional) : (default:${start_pool_default})
+    \$5 (end_pool)   : Used to define end_pool   : (string)(optional) : (default:${end_pool_default})
+Testcase procedure:
+    - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
+                 Run: ./${tc_name} <BR-WAN> <BR-HOME> <START-POOL> <END-POOL>
+Script usage example:
+   ./${tc_name} ${eth_wan_default} ${br_wan_default} ${br_home_default} ${start_pool_default} ${end_pool_default}
+usage_string
+}
 while getopts h option; do
     case "$option" in
         h)
-            echo "$usage"
-            exit 1
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
             ;;
     esac
 done
+########### End Options, Args, Usage and Util ################
+eth_wan=${1:-${eth_wan_default}}
+br_wan=${2:-${br_wan_default}}
+br_home=${3:-${br_home_default}}
+start_pool=${4:-${start_pool_default}}
+end_pool=${5:-${end_pool_default}}
 
-br_wan=${1:-br-wan}
-br_home=${2:-br-home}
-start_pool=${3:-10.10.10.20}
-end_pool=${4:-10.10.10.50}
+log "$tc_name: Checking if WANO is enabled"
+check_kconfig_option "CONFIG_MANAGER_WANO" "y"
+if [ "$?" -eq 0 ]; then
+    log "$tc_name: WANO is enabled, using ETH-WAN interface (${eth_wan}) as BR-WAN"
+    br_wan="${eth_wan}"
+else
+    log "$tc_name: WANO is disabled, using BR-WAN interface (${br_wan})"
+fi
 
-tc_name="onbrd/$(basename "$0")"
-
-log "$tc_name: ONBRD Verify router mode settings applied"
+log_title "$tc_name: ONBRD test - Verify router mode settings applied"
 
 # br-wan section
 log "$tc_name: Check if interface is UP - $br_wan"
@@ -85,7 +105,6 @@ update_ovsdb_entry Wifi_Inet_Config -w if_name "$br_wan" -u NAT true &&
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$br_wan" -is NAT true &&
     log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State - NAT=true" ||
     raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - NAT=true" -l "$tc_name" -tc
-
 # br-home section
 log "$tc_name: Setting DHCP range on $br_home"
 enable_disable_dhcp_server "$br_home" "$start_pool" "$end_pool" ||

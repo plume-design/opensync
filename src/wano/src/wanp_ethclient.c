@@ -87,8 +87,8 @@ struct dhcp_hdr
     uint8_t                 dhcp_options[0];    /* DHCP options */
 };
 
-static void wanp_ethclient_module_start(void);
-static void wanp_ethclient_module_stop(void);
+static void wanp_ethclient_module_start(void *data);
+static void wanp_ethclient_module_stop(void *data);
 static wano_plugin_ops_init_fn_t wanp_ethclient_init;
 static wano_plugin_ops_run_fn_t wanp_ethclient_run;
 static wano_plugin_ops_fini_fn_t wanp_ethclient_fini;
@@ -513,12 +513,12 @@ void wanp_ethclient_dhcp_timeout(struct ev_loop *loop, ev_timer *ev, int revent)
  *  Module Support
  * ===========================================================================
  */
-void wanp_ethclient_module_start(void)
+void wanp_ethclient_module_start(void *data)
 {
     wano_plugin_register(&wanp_ethclient_module);
 }
 
-void wanp_ethclient_module_stop(void)
+void wanp_ethclient_module_stop(void *data)
 {
     wano_plugin_unregister(&wanp_ethclient_module);
 }

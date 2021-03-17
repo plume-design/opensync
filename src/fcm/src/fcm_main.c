@@ -57,6 +57,8 @@ int main(int argc, char ** argv)
 {
     struct ev_loop *loop = EV_DEFAULT;
     struct neigh_table_mgr *mgr;
+    /* All first four bits set */
+    uint32_t neigh_table_lookup = 0xff;
 
     // Parse command-line arguments
     if (os_get_opt(argc, argv, &log_severity))
@@ -118,7 +120,7 @@ int main(int argc, char ** argv)
     }
 
     // FCM registers to both neighbor system and ovsdb events
-    neigh_table_init_monitor(loop, true, true);
+    neigh_table_init_monitor(loop, true, neigh_table_lookup);
 
     // FCM doesn't need to update ovsdb.
     mgr = neigh_table_get_mgr();

@@ -28,6 +28,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define OPENSYNC_WPAS_H_INCLUDED
 
 #include "schema.h"
+#include "target.h"
+#include "target_common.h"
 
 struct wpas {
     char phy[IFNAMSIZ];
@@ -40,7 +42,15 @@ struct wpas {
     void (*disconnected)(struct wpas *wpas, const char *bssid, int reason, int local);
     void (*scan_results)(struct wpas *wpas);
     void (*scan_failed)(struct wpas *wpas, int status);
+    void (*dpp_conf_received)(const struct target_dpp_conf_network *conf);
     struct ctrl ctrl;
+    char dpp_enrollee_conf_ssid_hex[65];
+    char dpp_enrollee_conf_connector[1025];
+    char dpp_enrollee_conf_psk_hex[65];
+    char dpp_enrollee_conf_csign_hex[513];
+    char dpp_enrollee_conf_netaccesskey_hex[513];
+    char dpp_enrollee_conf_akm[65];
+    int dpp_pending_auth_success;
 };
 
 struct wpas *wpas_lookup(const char *bss);
@@ -54,5 +64,7 @@ int wpas_conf_gen(struct wpas *wpas,
 int wpas_conf_apply(struct wpas *wpas);
 int wpas_bss_get(struct wpas *wpas,
                  struct schema_Wifi_VIF_State *vstate);
+void wpas_dpp_set_target_akm(struct target_dpp_conf_network *conf);
+int wpas_each(int (*iter)(struct ctrl *ctrl, void *ptr), void *ptr);
 
 #endif /* OPENSYNC_WPAS_H_INCLUDED */

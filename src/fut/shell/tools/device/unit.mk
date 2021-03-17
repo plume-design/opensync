@@ -31,18 +31,14 @@ UNIT_TYPE := FUT
 # Output directory
 UNIT_DIR := shell/tools/device
 
-UNIT_FILE := change_channel.sh
-UNIT_FILE += check_time.sh
-UNIT_FILE += check_wifi_presence.sh
-UNIT_FILE += connect_to_fut_cloud_min.sh
-UNIT_FILE += connect_to_fut_cloud.sh
-UNIT_FILE += create_inet_interface.sh
+UNIT_FILE := create_inet_interface.sh
 UNIT_FILE += create_radio_vif_interface.sh
+UNIT_FILE += add_bridge_port.sh
+UNIT_FILE += configure_lan_bridge_for_wan_connectivity.sh
 UNIT_FILE += default_setup.sh
-UNIT_FILE += genCA.sh
 UNIT_FILE += get_radio_mac_from_ovsdb.sh
-UNIT_FILE += man_traffic_address.sh
-UNIT_FILE += man_traffic_protocol.sh
-UNIT_FILE += start_udhcpc.sh
 UNIT_FILE += vif_clean.sh
 UNIT_FILE += wm2_setup.sh
+UNIT_FILE += fut_configure_mqtt.sh
+UNIT_FILE += check_kconfig_option.sh
+UNIT_FILE += check_wan_connectivity.sh

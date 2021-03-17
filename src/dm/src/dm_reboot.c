@@ -106,7 +106,7 @@ static const char* dm_reboot_type_str(enum osp_reboot_type type);
 /**
  * Initialize the reboot module
  */
-void dm_reboot_init(void)
+void dm_reboot_init(void *data)
 {
     enum osp_reboot_type type;
     char reason[1024];
@@ -179,7 +179,7 @@ void dm_reboot_init(void)
 /**
  * Deinitialize the reboot module
  */
-void dm_reboot_fini(void)
+void dm_reboot_fini(void *data)
 {
     ev_debounce_stop(EV_DEFAULT, &dm_reboot_update_ev);
     LOG(INFO, "dm_reboot: Finishing.");

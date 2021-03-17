@@ -94,7 +94,7 @@ void module_start(module_t *mod)
 {
     if (mod->m_started) return;
 
-    mod->m_start_fn();
+    mod->m_start_fn(mod->m_data);
     mod->m_started = true;
 }
 
@@ -102,7 +102,7 @@ void module_stop(module_t *mod)
 {
     if (!mod->m_started) return;
 
-    mod->m_stop_fn();
+    mod->m_stop_fn(mod->m_data);
     mod->m_started = false;
 }
 

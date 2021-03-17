@@ -24,15 +24,56 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-# Include basic environment config from default shell file and if any from FUT framework generated /tmp/fut_set_env.sh file
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
-source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+
+tc_name="nm2/$(basename "$0")"
+manager_setup_file="nm2/nm2_setup.sh"
+create_radio_vif_file="tools/device/create_radio_vif_interface.sh"
+if_type_default="vif"
+start_pool_default="10.10.10.20"
+end_pool_default="10.10.10.50"
+usage()
+{
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Script configures dhcpd on the interface through Wifi_Inet_Config table
+        Script passes if Wifi_Inet_State table properly reflects changes from Wifi_Inet_Config table and dhcpd process on
+        the system starts and stop when configured from Wifi_Inet_Config table
+Arguments:
+    -h  show this help message
+    \$1 (if_name)    : field if_name in Wifi_Inet_Config table             : (string)(required)
+    \$2 (if_type)    : field if_type in Wifi_Inet_Config table             : (string)(optional) : (default:${if_type_default})
+    \$3 (start_pool) : value start_pool in field dhcpd in Wifi_Inet_Config : (string)(optional) : (default:${start_pool_default})
+    \$4 (end_pool)   : value end_pool in field dhcpd in Wifi_Inet_Config   : (string)(optional) : (default:${end_pool_default})
+Testcase procedure:
+    - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
+          In case of if_type==eth:
+              Run: ./${tc_name} <IF-NAME> <IF-TYPE> <START-POOL> <END-POOL>
+          In case of if_type==vif:
+               Create radio-vif interface (see ${create_radio_vif_file} -h)
+              Run: ./${tc_name} <IF-NAME> <IF-TYPE> <START-POOL> <END-POOL>
+Script usage example:
+   ./${tc_name} wifi0 ${if_type_default} ${start_pool_default} ${end_pool_default}
+usage_string
+}
+while getopts h option; do
+    case "$option" in
+        h)
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
+            ;;
+    esac
+done
+NARGS=1
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 
 trap '
     reset_inet_entry $if_name || true
@@ -41,42 +82,12 @@ trap '
     check_restore_management_access || true
 ' EXIT SIGINT SIGTERM
 
-tc_name="nm2/$(basename "$0")"
-usage()
-{
-cat << EOF
-${tc_name} [-h] if_name [if_type] [start_pool] [end_pool]
-Options:
-    -h  show this help message
-Arguments:
-    if_name=$1 -- field if_name in Wifi_Inet_Config table - (string)(required)
-    if_type=$2 -- field if_type in Wifi_Inet_Config table - (string)(optional, default: vif)
-    start_pool=$3 -- value start_pool in field dhcpd in Wifi_Inet_Config - (string)(optional, default: 10.10.10.20)
-    end_pool=$4 -- value end_pool in field dhcpd in Wifi_Inet_Config - (string)(optional, default: 10.10.10.50)
-Dependencies:
-    NM manager, WM manager
-Example:
-    ${tc_name} wifi0 vif 10.10.10.16 10.10.10.32
-EOF
-exit 1
-}
-
-while getopts h option; do
-    case "$option" in
-        h)
-            usage
-            ;;
-    esac
-done
-
-NARGS=1
-[ $# -lt ${NARGS} ] && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 if_name=$1
-if_type=${2:-"vif"}
-start_pool=${3:-"10.10.10.20"}
-end_pool=${4:-"10.10.10.50"}
+if_type=${2:-${if_type_default}}
+start_pool=${3:-${start_pool_default}}
+end_pool=${4:-${end_pool_default}}
 
-log_title "${tc_name}: Testing table Wifi_Inet_Config field dhcpd"
+log_title "${tc_name}: NM2 test - Testing table Wifi_Inet_Config field dhcpd"
 
 log "${tc_name}: Creating Wifi_Inet_Config entries for $if_name"
 create_inet_entry \

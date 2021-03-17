@@ -46,6 +46,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     _a > _b ? _a : _b; })
 #endif
 
+bool ascii2hex(const char *input, char *output, size_t size);
 int csnprintf(char **str, size_t *size, const char *fmt, ...);
 #define append_snprintf csnprintf
 int tsnprintf(char *str, size_t size, const char *fmt, ...) __attribute__((format(printf, 3, 4)));
@@ -89,6 +90,7 @@ void fsa_copy(const void *array, int size, int len, int num, void *dest, int dsi
 
 char *str_tolower(char *str);
 char *str_toupper(char *str);
+char *str_trimws(char *s);
 bool str_is_mac_address(const char *mac);
 bool parse_uri(char *uri, char *proto, size_t proto_size, char *host, size_t host_size, int *port);
 

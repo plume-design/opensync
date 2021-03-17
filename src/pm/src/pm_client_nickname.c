@@ -48,7 +48,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "ds.h"
 #include "json_util.h"
-#include "pm.h"
+#include "module.h"
 
 
 // Defines
@@ -56,6 +56,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // OVSDB constants
 #define OVSDB_MAC_TABLE            "Client_Nickname_Config"
+
+MODULE(pm_client_nickname, pm_client_nickname_init, pm_client_nickname_fini);
+
 
 ovsdb_table_t                       table_Client_Nickname_Config;
 
@@ -129,8 +132,8 @@ callback_Client_Nickname_Config(
 /******************************************************************************
  *  PUBLIC definitions
  *****************************************************************************/
-bool
-pm_client_nickname_init(void)
+void
+pm_client_nickname_init(void *data)
 {
     bool         ret;
 
@@ -139,12 +142,16 @@ pm_client_nickname_init(void)
     // register to client nickname changed
     ret = target_client_nickname_register(pm_client_nickname_update);
     if (false == ret) {
-        return false;
+        return;
     }
     // initialize OVSDB monitor callback
     OVSDB_CACHE_MONITOR(Client_Nickname_Config, false);
 
     g_client_nickname_init = true;
+}
 
-    return true;
+void
+pm_client_nickname_fini(void *data)
+{
+    LOGN("Deinitializing Client Nickname");
 }

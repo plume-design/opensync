@@ -35,68 +35,75 @@
 # - Internet lost counter is suppose to reset to zero.
 # - Cloud connection should go to ACTIVE.
 
-# Include basic environment config from default shell file and if any from FUT framework generated /tmp/fut_set_env.sh file
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
-
-source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/cm2_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
-trap '
-    check_restore_management_access || true
-    run_setup_if_crashed cm || true
-' EXIT SIGINT SIGTERM
-
-usage="
-$(basename "$0") [-h] \$1
-
-where options are:
-    -h  show this help message
-
-where arguments are:
-    unreachable_internet_counter=\$@ -- used as value counter must reach - (string)
-    test_type=\$@ -- used as test step - (string)
-
-this script is dependent on following:
-    - running CM manager
-    - running NM manager
-
-example of usage:
-    /tmp/fut-base/shell/cm2/$(basename "$0") 4 check_counter
-    /tmp/fut-base/shell/cm2/$(basename "$0") 0 internet_recovered
-"
-
+tc_name="cm2/$(basename "$0")"
+cm_setup_file="cm2/cm2_setup.sh"
+adr_internet_man_file="tools/rpi/cm/address_internet_man.sh"
+step_1_name="check_counter"
+step_2_name="internet_recovered"
+counter_default=4
+usage()
+{
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Script checks if CM updates Connection_Manager_Uplink field 'unreachable_internet_counter' reaches given value when internet is unreachable
+      If the field 'unreachable_internet_counter' doesen't reach given value, test fails
+Arguments:
+    -h : show this help message
+    \$1 (if_name)                      : WAN interface name               : (string)(required)
+    \$2 (unreachable_internet_counter) : used as value counter must reach : (int)(optional)    : (default:${counter_default})
+    \$3 (test_step)                    : used as test step                : (string)(optional) : (default:${step_1_name}) : (${step_1_name}, ${step_2_name})
+Testcase procedure:
+    - On DEVICE: Run: ./${cm_setup_file} (see ${cm_setup_file} -h)
+                 Run: ./${tc_name} <WAN_IF_NAME> <UNRCH-CLOUD-COUNTER> ${step_1_name}
+    - On RPI SERVER: Run: ./${adr_internet_man_file} <WAN-IP-ADDRESS> block
+    - On DEVICE: Run: ./${tc_name} <WAN_IF_NAME> <UNRCH-CLOUD-COUNTER> ${step_2_name}
+    - On RPI SERVER: Run: ./${adr_internet_man_file} <WAN-IP-ADDRESS> unblock
+Script usage example:
+    ./${tc_name} eth0 ${counter_default} ${step_1_name}
+    ./${tc_name} eth0 0 ${step_2_name}
+usage_string
+}
 while getopts h option; do
     case "$option" in
         h)
-            echo "$usage"
-            exit 1
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
             ;;
     esac
 done
+NARGS=1
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 
-unreachable_internet_counter=${1:-4}
-test_type=${2:-"check_counter"}
+trap '
+check_restore_management_access || true
+run_setup_if_crashed cm || true' EXIT SIGINT SIGTERM
 
-tc_name="cm2/$(basename "$0")"
-log "$tc_name: CM2 test - Internet lost - $test_type"
+if_name=${1}
+unreachable_internet_counter=${2:-${counter_default}}
+test_type=${3:-"${step_1_name}"}
 
-if [ "$test_type" = "check_counter" ]; then
+log_title "$tc_name: CM2 test - Internet Lost - $test_type"
+
+if [ "$test_type" = "${step_1_name}" ]; then
     log "$tc_name: Waiting for unreachable_internet_counter to reach $unreachable_internet_counter"
-    wait_ovsdb_entry Connection_Manager_Uplink -w if_name eth0 -is unreachable_internet_counter "$unreachable_internet_counter" &&
+    wait_ovsdb_entry Connection_Manager_Uplink -w if_name "${if_name}" -is unreachable_internet_counter "$unreachable_internet_counter" &&
         log "$tc_name: Connection_Manager_Uplink unreachable_internet_counter reached $unreachable_internet_counter" ||
         raise "Connection_Manager_Uplink - {unreachable_internet_counter:=$unreachable_internet_counter}" -l "$tc_name" -ow
-elif [ "$test_type" = "internet_recovered" ]; then
+elif [ "$test_type" = "${step_2_name}" ]; then
     log "$tc_name: Waiting for unreachable_internet_counter to reset to 0"
-    wait_ovsdb_entry Connection_Manager_Uplink -w if_name eth0 -is unreachable_internet_counter "0" &&
+    wait_ovsdb_entry Connection_Manager_Uplink -w if_name "${if_name}" -is unreachable_internet_counter "0" &&
         log "$tc_name: Connection_Manager_Uplink unreachable_internet_counter reset to 0" ||
         raise "Connection_Manager_Uplink - {unreachable_internet_counter:=0}" -l "$tc_name" -ow
 else
     raise "Wrong test type option" -l "$tc_name" -tc
 fi
-
 pass

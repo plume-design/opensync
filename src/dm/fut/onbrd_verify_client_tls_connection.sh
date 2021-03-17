@@ -25,56 +25,66 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
-usage="
-$(basename "$0") [-h] \$1
-
-where options are:
+tc_name="onbrd/$(basename "$0")"
+manager_setup_file="onbrd/onbrd_setup.sh"
+haproxy_cfg_path="tools/rpi/files/haproxy.cfg"
+fut_cloud_start_path="tools/rpi/start_cloud_simulation.sh"
+usage()
+{
+cat << usage_string
+${tc_name} [-h]
+Description:
+    - Validate CM connecting to specific Cloud TLS version
+Arguments:
     -h  show this help message
-
-this script is dependent on following:
-    - running DM manager
-    - both DUT and cloud controller (simulation service on RPI) must have correct certificates and CA files
-    - device time synched to real time
-
-example of usage:
-   /tmp/fut-base/shell/onbrd/$(basename "$0")
-"
-
+Testcase procedure:
+    - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
+    - On RPI SERVER:
+        - Edit ${haproxy_cfg_path} to change TLS version
+            Look for:
+              ssl-default-bind-options force-tlsv<TLS-VERSION> ssl-max-ver TLSv<TLS-VERSION> ssl-min-ver TLSv<TLS-VERSION>
+              ssl-default-server-options force-tlsv<TLS-VERSION> ssl-max-ver TLSv<TLS-VERSION> ssl-min-ver TLSv<TLS-VERSION>
+            Change <TLS-VERSION> to one of following: 1.0, 1.1. 1.2
+        - Run ./${fut_cloud_start_path} -r
+    - On DEVICE: Run: ./${tc_name}
+Script usage example:
+   ./${tc_name}
+usage_string
+}
 while getopts h option; do
     case "$option" in
         h)
-            echo "$usage"
-            exit 1
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
             ;;
     esac
 done
 
-tc_name="onbrd/$(basename "$0")"
+log "$tc_name: Setting CM log level to TRACE"
+set_manager_log CM TRACE
 
-log "$tc_name: ONBRD Verify client TLS connection"
+log_title "$tc_name: ONBRD test - Verify client TLS connection"
 
 connect_to_fut_cloud &&
     log "$tc_name: Device connected to FUT cloud. Start test case execution" ||
     raise "Failed to connect device to FUT cloud. Terminate test" -l "$tc_name" -tc
-
 # Check if connection is maintained for 60s
 log "$tc_name: Checking if connection is maintained and stable"
 for interval in $(seq 1 3); do
     log "$tc_name: Sleeping for 20 seconds"
     sleep 20
-
-    log "$tc_name: Wait for connection status in Manager table is ACTIVE, check num: $interval"
-    wait_for_function_response 0 "wait_cloud_state ACTIVE" &&
+    log "$tc_name: Check connection status in Manager table is ACTIVE, check num: $interval"
+    ${OVSH} s Manager status -r | grep "ACTIVE" &&
         log "$tc_name: wait_cloud_state - Connection state is ACTIVE, check num: $interval" ||
-        raise "wait_cloud_state - FAILED: Connection state is NOT ACTIVE, check num: $interval" -l "$tc_name" -tc
+        raise "wait_cloud_state - FAILED: Connection state is NOT ACTIVE, check num: $interval, connection should be maintained" -l "$tc_name" -tc
 done
 
 pass

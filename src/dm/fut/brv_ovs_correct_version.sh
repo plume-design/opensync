@@ -25,44 +25,50 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-# Include environment config from default shell file
+# FUT environment loading
 source /tmp/fut-base/shell/config/default_shell.sh
-[ -e "/tmp/fut_set_env.sh" ] && source /tmp/fut_set_env.sh
-# Include shared libraries and library overrides
-source ${FUT_TOPDIR}/shell/lib/brv_lib.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
+source "${FUT_TOPDIR}/shell/lib/brv_lib.sh"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
-tc_name="brv/$(basename $0)"
+tc_name="brv/$(basename "$0")"
+brv_setup_file="brv/brv_setup.sh"
 usage()
 {
-cat << EOF
-${tc_name} [-h] expected_version
-where options are:
-    -h  show this help message
-input arguments:
-    expected_version=$1 -- expected version of the Open vSwitch - (string)(required)
-this script is dependent on following:
-    - running brv_setup.sh
-example of usage:
-   ${tc_name} "2.8.7"
-EOF
+cat << usage_string
+${tc_name} [-h] \$1
+Description:
+    - Script checks if correct OVS version is on the system, fails otherwise
+Arguments:
+    -h : show this help message
+    \$1 (expected_version) : expected version of the Open vSwitch : (string)(required)
+Testcase procedure:
+    - On DEVICE: Run: ./${brv_setup_file} (see ${brv_setup_file} -h)
+                 Run: ./${tc_name} <EXPECTED-VERSION>
+Usage:
+   ./${tc_name} "2.8.7"
+usage_string
 }
-
 while getopts h option; do
     case "$option" in
         h)
-            usage
-            exit 1
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
             ;;
     esac
 done
-
 NARGS=1
-[ $# -ne ${NARGS} ] && raise "Requires ${NARGS} input arguments" -l "${tc_name}" -arg
-expected_ovs_ver=$1
-log_title "${tc_name}: Verify OVS version is ${expected_ovs_ver}"
+[ $# -ne ${NARGS} ] && usage && raise "Requires exactly '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 
-check_ovs_version ${expected_ovs_ver} &&
-    log -deb "${tc_name}: OVS version on the device is as expected: ${expected_ovs_ver}" ||
-    raise "OVS version on the device: ${actual_ovs_ver} is NOT as expected: ${expected_ovs_ver}" -l "${tc_name}" -tc
+expected_ovs_ver=$1
+
+log_title "${tc_name}: BRV test - Verify OVS version is '${expected_ovs_ver}'"
+
+actual_ovs_ver="$(get_ovs_version)"
+check_ovs_version "${expected_ovs_ver}" "${actual_ovs_ver}" &&
+    log -deb "${tc_name}: Actual on device OVS version: ${actual_ovs_ver} is as expected: ${expected_ovs_ver}" ||
+    raise "Actual on device OVS version: ${actual_ovs_ver} is NOT as expected: ${expected_ovs_ver}" -l "${tc_name}" -tc
 
 pass

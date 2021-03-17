@@ -42,6 +42,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "log.h"
 #include "network_metadata.h"
+#include "network_metadata_report.h"
 #include "os_types.h"
 
 /**
@@ -103,6 +104,8 @@ struct net_header_parser
     struct flow_tags tags;
     struct flow_vendor_data_container vendor_data;
     struct net_md_stats_accumulator *acc;
+    bool eth_header_available;
+    uint32_t packet_id;
 };
 
 

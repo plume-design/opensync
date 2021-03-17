@@ -1,0 +1,7 @@
+menu "lib_gatekeeper_cache Configuration"
+    config LIBGATEKEEPER_CACHE
+        bool "Library for caching Gatekeeper Service (IP flows and flow attributes)"
+        default y
+        help
+            Library for caching Gatekeeper Service (IP flows and flow attributes)
+endmenu

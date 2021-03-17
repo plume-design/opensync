@@ -24,7 +24,6 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-
 #
 # Base library of shared functions with minimal prerequisites:
 #   [
@@ -33,26 +32,39 @@
 #   echo
 #   printf
 #
-
+echo "${FUT_TOPDIR}/shell/lib/base_lib.sh sourced"
+###############################################################################
+# DESCRIPTION:
+#   Function is used to raise an exception, usually during test execution.
+# INPUT PARAMETER(S):
+#   The function has 5 parameters for the user to customize and 2 modes:
+#   Parameters:
+#       exception_msg: Message to be displayed in terminal
+#       exception_location: Where did the error happen
+#       exception_name: Error name to report to framework:
+#                   "FunctionCall"
+#                   "DeviceSetup"
+#                   "OvsdbWait"
+#                   "OvsdbException"
+#                   "NativeFunction"
+#                   "TestFailure"
+#                   "InvalidOrMissingArgument"
+#       exception_type: Type of error to report to framework: ERROR|BROKEN
+#       exit_code: actual process exit code to return to calling function
+#   Modes:
+#       is_skip=true: propagate skip condition to framework (exit_code=3)
+#       is_skip=false: an error occurred
+# EXITS:
+#   With exit code:
+#       - 1, default
+#       - 3, -s, skipped test
+#       - custom, use -ec flag
+# USAGE EXAMPLE(S):
+#   raise <raise message> -l <raise location> -tc
+#   raise <raise message> -l <raise location> -ds
+###############################################################################
 raise()
 {
-    # The function has 5 parameters for the user to customize and 2 modes:
-    # Parameters:
-    #   exception_msg: Message to be displayed in terminal
-    #   exception_location: Where did the error happen
-    #   exception_name: Error name to report to framework:
-    #                   "FunctionCall"
-    #                   "DeviceSetup"
-    #                   "OvsdbWait"
-    #                   "OvsdbException"
-    #                   "NativeFunction"
-    #                   "TestFailure"
-    #                   "InvalidOrMissingArgument"
-    #   exception_type: Type of error to report to framework: ERROR|BROKEN
-    #   exit_code: actual process exit code to return to calling function
-    # Modes:
-    #   is_skip=true: propagate skip condition to framework (exit_code=3)
-    #   is_skip=false: an error occurred
     exception_msg=${1:-"Unknown error"}
     shift 1
     exception_location=$(basename "$0")
@@ -112,6 +124,12 @@ raise()
                 exception_name="TestFailure"
                 exception_type="FAIL"
                 ;;
+            # Use for testcase failures
+            -olfm)
+                exception_name="OverrideLibFileMissing"
+                exception_type="FAIL"
+                exception_msg="Missing LIB_OVERRIDE_FILE=${LIB_OVERRIDE_FILE} file. Check LIB_OVERRIDE_FILE and file existence"
+                ;;
             # Use when error occurred due to invalid or missing argument
             -arg)
                 exception_name="InvalidOrMissingArgument"
@@ -127,20 +145,16 @@ raise()
     exit "$exit_code"
 }
 
-die()
-{
-    log -deb "[DEPRECATED] - Function die() deprecated, use raise() instead!"
-    raise "$*"
-}
-
-die_with_code()
-{
-    code=$1
-    shift
-    log -deb "[DEPRECATED] - Function die_with_code() deprecated, use raise() instead!"
-    raise "$*" -ec "$code"
-}
-
+###############################################################################
+# DESCRIPTION:
+#   Function is used to mark test as passes.
+# INPUT PARAMETER(S):
+#   $1  pass message
+# EXITS:
+#   0   Always.
+# USAGE EXAMPLE(S):
+#
+###############################################################################
 pass()
 {
     if [ $# -ge 1 ]; then
@@ -151,6 +165,14 @@ pass()
     exit 0
 }
 
+###############################################################################
+# DESCRIPTION:
+#   Function is used to log title.
+# INPUT PARAMETER(S):
+# RETURNS:
+# USAGE EXAMPLE(S):
+#   log_title <log title>
+###############################################################################
 log_title()
 {
     c=${2:-"*"}
@@ -158,6 +180,21 @@ log_title()
     echo -ne "${v}\n ${1} \n${v}\n"
 }
 
+###############################################################################
+# DESCRIPTION:
+#   Function is used to log test event.
+#   Echoes log message prefixed with time mark.
+#   Supported flags:
+#       -deb    mark log message as debug
+#       -err    mark log message as error
+# INPUT PARAMETER(S):
+#   $1  flag, setting debug or error message type
+# RETURNS:
+#   0   DEBUG or SHELL message logged.
+#   1   ERROR message logged.
+# USAGE EXAMPLE(S):
+#   log <log message>
+###############################################################################
 log()
 {
     msg_type="[SHELL]"

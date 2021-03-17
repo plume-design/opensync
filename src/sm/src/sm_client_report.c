@@ -1399,7 +1399,7 @@ bool sm_client_update_init_cb (
             "Processing %s client report "
             "(failed to get client list)",
             radio_get_name_from_cfg(radio_cfg_ctx));
-        return false;
+        goto clear;
     }
 
     /* Update cached client list with new entries
@@ -1415,7 +1415,7 @@ bool sm_client_update_init_cb (
             "Processing %s client report "
             "(failed to update client list)",
             radio_get_name_from_cfg(radio_cfg_ctx));
-        return false;
+        goto clear;
     }
 
     /* Clear temporary received client target list */
@@ -1450,6 +1450,19 @@ bool sm_client_update_init_cb (
         radio_get_name_from_cfg(radio_cfg_ctx));
 
     return true;
+clear:
+    /* Clear temporary received client target list */
+    status =
+        sm_client_target_clear(
+                client_ctx,
+                client_list);
+    if (true != status) {
+        LOG(ERR,
+            "Processing %s client report "
+            "(failed to clear client list)",
+            radio_get_name_from_cfg(radio_cfg_ctx));
+    }
+    return false;
 }
 
 static

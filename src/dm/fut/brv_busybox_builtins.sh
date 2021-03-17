@@ -25,49 +25,53 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-# Include environment config from default shell file
+# FUT environment loading
 source /tmp/fut-base/shell/config/default_shell.sh
-[ -e "/tmp/fut_set_env.sh" ] && source /tmp/fut_set_env.sh
-# Include shared libraries and library overrides
-source ${FUT_TOPDIR}/shell/lib/brv_lib.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
+source "${FUT_TOPDIR}/shell/lib/brv_lib.sh"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
-tc_name="brv/$(basename $0)"
+tc_name="brv/$(basename "$0")"
+brv_setup_file="brv/brv_setup.sh"
 usage()
 {
-cat << EOF
-${tc_name} [-h] builtin_tool
-where options are:
-    -h  show this help message
-input arguments:
-    builtin_tool=$1 -- name of the required busybox built-in tool - (string)(required)
-this script is dependent on following:
-    - running brv_setup.sh
-example of usage:
-   ${tc_name} "tail"
-EOF
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Script checks if the specified tool is busybox builtin tool, fails otherwise
+Arguments:
+    -h : show this help message
+    \$1 (builtin_tool) : name of the required busybox built-in tool : (string)(required)
+Testcase procedure:
+    - On DEVICE: Run: ./${brv_setup_file} (see ${brv_setup_file} -h)
+                 Run: ./${tc_name} <TOOL-NAME>
+Script usage example:
+   ./${tc_name} "tail"
+usage_string
 }
-
 while getopts h option; do
     case "$option" in
         h)
-            usage
-            exit 1
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
             ;;
     esac
 done
-
 NARGS=1
-[ $# -lt ${NARGS} ] && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -ne ${NARGS} ] && usage && raise "Requires exactly '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+
 builtin_tool=$1
-log_title "${tc_name}: Verify '${builtin_tool}' is built into busybox"
+
+log_title "${tc_name}: BRV test - Verify '${builtin_tool}' is built into busybox"
 
 is_tool_on_system "busybox"
 rc=$?
 if [ $rc != 0 ]; then
     raise "Refusing tool search, busybox is not present on system" -l "${tc_name}" -nf
 fi
-
-is_busybox_builtin ${builtin_tool}
+is_busybox_builtin "${builtin_tool}"
 rc=$?
 if [ $rc == 0 ]; then
     log -deb "${tc_name}: '${builtin_tool}' is built into busybox"

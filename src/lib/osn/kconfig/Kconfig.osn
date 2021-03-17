@@ -15,6 +15,7 @@ menuconfig OSN_LINUX_ENABLED
             - PPPoE support (via pppd)
             - VLAN support (via iproute2)
             - QoS support (via tc)
+            - LTE support (via quectel)
 
 if OSN_LINUX_ENABLED
     config OSN_LINUX_NETIF
@@ -102,13 +103,25 @@ if OSN_LINUX_ENABLED
 
             config OSN_DNSMASQ_KEEP_RUNNING
                 bool 'Daemon should be always running'
-
                 help
                     The default behavior is to kill dnsmasq as soon as there are
                     0 DHCP server configurations active. This option forces dnsmasq
                     to be active regardless of the DHCP server configuration.
 
                     This is useful on systems where dnsmasq is used as a DNS cache.
+
+            config OSN_DNSMASQ_PORT
+                string "dnsmasq port"
+                default "53"
+                help
+                   Specify port to listen for DNS requests on (defaults to 53). Setting
+                   this to 0 disables DNS function, leaving only DHCP and/or TFTP.
+
+            config OSN_DNSMASQ_USER
+                string "dnsmasq user"
+                default "nobody"
+                help
+                   Change to this user after startup. (defaults to nobody).
         endif
 
     menuconfig OSN_ODHCP6
@@ -180,7 +193,20 @@ if OSN_LINUX_ENABLED
                 default "/var/run/dnsmasq/dnsmasq6.pid"
                 help
                     Location of the dnsmasq PID file.
-       endif
+
+            config OSN_DNSMASQ6_PORT
+                string "dnsmasq port"
+                default "0"
+                help
+                   Specify port to listen for DNS requests on (defaults to 0). Setting
+                   this to 0 disables DNS function, leaving only DHCP and/or TFTP.
+
+            config OSN_DNSMASQ6_USER
+                string "dnsmasq user"
+                default "nobody"
+                help
+                   Change to this user after startup. (defaults to nobody).
+        endif
 
     menuconfig OSN_MINIUPNPD
         bool "miniupnpd UPnP server"
@@ -267,6 +293,12 @@ if OSN_LINUX_ENABLED
 
             This option implements the lnx_route API and enables the "Linux"
             route status backend (osn_route).
+
+    config OSN_LINUX_LTE
+        bool "Linux LTE support"
+        default y
+        help
+            LTE support using the quectel daemon.
 
     menuconfig OSN_LINUX_NETLINK
         bool "Netlink socket support"

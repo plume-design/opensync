@@ -3,3 +3,9 @@ config OSP_L2SWITCH_NULL
 
     help
         Use a dummy L2 switch implementation
+
+config OSP_L2SWITCH_SWCONFIG
+    bool "swconfig"
+
+    help
+        Use the swconfig tool for configuring the internal L2 switch

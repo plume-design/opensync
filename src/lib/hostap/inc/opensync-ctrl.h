@@ -51,5 +51,7 @@ int ctrl_enable(struct ctrl *ctrl);
 int ctrl_disable(struct ctrl *ctrl);
 int ctrl_running(struct ctrl *ctrl);
 int ctrl_request(struct ctrl *ctrl, const char *cmd, size_t cmd_len, char *reply, size_t *reply_len);
+bool ctrl_request_ok(struct ctrl *ctrl, const char *cmd);
+bool ctrl_request_int(struct ctrl *ctrl, const char *cmd, int *ret);
 
 #endif /* OPENSYNC_CTRL_H_INCLUDED */

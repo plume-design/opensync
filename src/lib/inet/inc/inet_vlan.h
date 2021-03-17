@@ -52,6 +52,7 @@ struct __inet_vlan
     int             in_l2s_vlanid;                      /* Currently configure l2switch vlan id */
     osn_vlan_t     *in_vlan;                            /* OSN VLAN object */
     int             in_vlanid;                          /* VLAN ID */
+    char            in_egress_qos_map[C_QOS_MAP_LEN];   /* VLAN egress QOS mapping */
 };
 
 inet_t *inet_vlan_new(const char *ifname);

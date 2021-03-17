@@ -101,6 +101,7 @@ static void lnx_route_poll(void);
 static void lnx_route_cache_reset(void);
 static void lnx_route_cache_update(const char *ifname, struct osn_route_status *rts);
 static void lnx_route_cache_flush(void);
+static void lnx_route_cache_free(lnx_route_t *rt, struct lnx_route_state_cache *rsc);
 static void lnx_route_arp_refresh(void);
 static ds_key_cmp_t lnx_route_state_cmp;
 static ds_key_cmp_t lnx_route_arp_cmp;
@@ -160,7 +161,7 @@ bool lnx_route_fini(lnx_route_t *self)
     ds_tree_foreach_iter(&self->rt_cache, rsc, &iter)
     {
         ds_tree_iremove(&iter);
-        free(rsc);
+        lnx_route_cache_free(self, rsc);
     }
 
     ds_tree_remove(&lnx_route_list, self);
@@ -292,17 +293,19 @@ void lnx_route_poll(void)
         os_reg_match_cpy(r_metric, sizeof(r_metric), buf, rem[5]);
         os_reg_match_cpy(r_mask, sizeof(r_mask), buf, rem[6]);
 
-        if (!route_osn_ip_addr_from_hexstr(&rts.rts_dst_ipaddr, r_dest))
+        if (!route_osn_ip_addr_from_hexstr(&rts.rts_route.dest, r_dest))
         {
             LOG(ERR, "route: Invalid destination address: %s -- %s", r_dest, buf);
             continue;
         }
 
-        if (!route_osn_ip_addr_from_hexstr(&rts.rts_dst_mask, r_mask))
+        osn_ip_addr_t mask;
+        if (!route_osn_ip_addr_from_hexstr(&mask, r_mask))
         {
             LOG(ERR, "route: Invalid netmask address: %s -- %s", r_mask, buf);
             continue;
         }
+        rts.rts_route.dest.ia_prefix = osn_ip_addr_to_prefix(&mask);
 
         if (!os_strtoul(r_flags, &flags, 0))
         {
@@ -315,14 +318,15 @@ void lnx_route_poll(void)
             LOG(ERR, "route: Metric is invalid: %s -- %s", r_metric, buf);
             continue;
         }
+        rts.rts_route.metric = (int)metric;
 
-        rts.rts_gw_ipaddr = OSN_IP_ADDR_INIT;
         if (flags & RTF_GATEWAY)
         {
             /*
              * This route has a gateway, parse the IP and try to resolve the MAC address
              */
-            if (!route_osn_ip_addr_from_hexstr(&rts.rts_gw_ipaddr, r_gateway))
+            rts.rts_route.gw_valid = route_osn_ip_addr_from_hexstr(&rts.rts_route.gw, r_gateway);
+            if (!rts.rts_route.gw_valid)
             {
                 LOG(ERR, "route: Invalid gateway address %s.", r_gateway);
                 continue;
@@ -377,8 +381,8 @@ void lnx_route_cache_update(const char *ifname, struct osn_route_status *rts)
         /* No lnx_route object, skip this entry */
         LOG(DEBUG, "route: %s: No match: "PRI_osn_ip_addr" -> "PRI_osn_ip_addr,
                 ifname,
-                FMT_osn_ip_addr(rts->rts_dst_ipaddr),
-                FMT_osn_ip_addr(rts->rts_gw_ipaddr));
+                FMT_osn_ip_addr(rts->rts_route.dest),
+                FMT_osn_ip_addr(rts->rts_route.gw));
         return;
     }
 
@@ -394,8 +398,8 @@ void lnx_route_cache_update(const char *ifname, struct osn_route_status *rts)
 
         LOG(DEBUG, "route: %s: New: "PRI_osn_ip_addr" -> "PRI_osn_ip_addr,
                 ifname,
-                FMT_osn_ip_addr(rsc->rsc_state.rts_dst_ipaddr),
-                FMT_osn_ip_addr(rsc->rsc_state.rts_gw_ipaddr));
+                FMT_osn_ip_addr(rsc->rsc_state.rts_route.dest),
+                FMT_osn_ip_addr(rsc->rsc_state.rts_route.gw));
 
         notify = true;
     }
@@ -408,7 +412,7 @@ void lnx_route_cache_update(const char *ifname, struct osn_route_status *rts)
 
     osn_mac_addr_t gwaddr;
     strscpy(akey.arp_ifname, ifname, sizeof(akey.arp_ifname));
-    memcpy(&akey.arp_ipaddr, &rts->rts_gw_ipaddr, sizeof(akey.arp_ipaddr));
+    memcpy(&akey.arp_ipaddr, &rts->rts_route.gw, sizeof(akey.arp_ipaddr));
 
     gwaddr = OSN_MAC_ADDR_INIT;
     /* If we have a valid ARP entry, compare the MAC addresses */
@@ -422,8 +426,8 @@ void lnx_route_cache_update(const char *ifname, struct osn_route_status *rts)
     {
         LOG(DEBUG, "route: %s: ARP: "PRI_osn_ip_addr" -> "PRI_osn_ip_addr" |----> "PRI_osn_mac_addr" -> "PRI_osn_mac_addr,
                 ifname,
-                FMT_osn_ip_addr(rsc->rsc_state.rts_dst_ipaddr),
-                FMT_osn_ip_addr(rsc->rsc_state.rts_gw_ipaddr),
+                FMT_osn_ip_addr(rsc->rsc_state.rts_route.dest),
+                FMT_osn_ip_addr(rsc->rsc_state.rts_route.gw),
                 FMT_osn_mac_addr(rsc->rsc_state.rts_gw_hwaddr),
                 FMT_osn_mac_addr(gwaddr));
 
@@ -436,6 +440,22 @@ void lnx_route_cache_update(const char *ifname, struct osn_route_status *rts)
     {
         rt->rt_fn(rt, &rsc->rsc_state, false);
     }
+}
+
+static void lnx_route_cache_free(lnx_route_t *rt, struct lnx_route_state_cache *rsc)
+{
+    LOG(DEBUG, "route: %s: Del: "PRI_osn_ip_addr" -> "PRI_osn_ip_addr,
+            rt->rt_ifname,
+            FMT_osn_ip_addr(rsc->rsc_state.rts_route.dest),
+            FMT_osn_ip_addr(rsc->rsc_state.rts_route.gw));
+
+    /* Send delete notifications */
+    if (rt->rt_fn != NULL)
+    {
+        rt->rt_fn(rt, &rsc->rsc_state, true);
+    }
+
+    free(rsc);
 }
 
 /*
@@ -456,19 +476,7 @@ void lnx_route_cache_flush(void)
             if (rsc->rsc_valid) continue;
 
             ds_tree_iremove(&iter);
-
-            LOG(DEBUG, "route: %s: Del: "PRI_osn_ip_addr" -> "PRI_osn_ip_addr,
-                    rt->rt_ifname,
-                    FMT_osn_ip_addr(rsc->rsc_state.rts_dst_ipaddr),
-                    FMT_osn_ip_addr(rsc->rsc_state.rts_gw_ipaddr));
-
-            /* Send delete notifications */
-            if (rt->rt_fn != NULL)
-            {
-                rt->rt_fn(rt, &rsc->rsc_state, true);
-            }
-
-            free(rsc);
+            lnx_route_cache_free(rt, rsc);
         }
     }
 }
@@ -599,13 +607,10 @@ int lnx_route_state_cmp(void *_a, void *_b)
     struct osn_route_status *a = _a;
     struct osn_route_status *b = _b;
 
-    rc = osn_ip_addr_cmp(&a->rts_dst_ipaddr, &b->rts_dst_ipaddr);
+    rc = osn_ip_addr_cmp(&a->rts_route.dest, &b->rts_route.dest);
     if (rc != 0) return rc;
 
-    rc = osn_ip_addr_cmp(&a->rts_dst_mask, &b->rts_dst_mask);
-    if (rc != 0) return rc;
-
-    rc = osn_ip_addr_cmp(&a->rts_gw_ipaddr, &b->rts_gw_ipaddr);
+    rc = osn_ip_addr_cmp(&a->rts_route.gw, &b->rts_route.gw);
     if (rc != 0) return rc;
 
     return 0;

@@ -24,34 +24,36 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-# Include basic environment config from default shell file and if any from FUT framework generated /tmp/fut_set_env.sh file
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
-source ${FUT_TOPDIR}/shell/lib/unit_lib.sh
-source ${LIB_OVERRIDE_FILE}
 
-tc_name="tools/device/$(basename $0)"
-help()
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
+source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+
+tc_name="tools/device/$(basename "$0")"
+usage()
 {
-cat << EOF
-${tc_name} [-h]
-
-This script returns the device into a default state, that should be equal to the state right after boot.
-EOF
-raise "Printed help" -l "$tc_name" -arg
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - This script returns the device into a default state, that should be equal to the state right after boot.
+Arguments:
+    -h  show this help message
+Script usage example:
+   ./${tc_name}
+usage_string
 }
-
 while getopts h option; do
     case "$option" in
         h)
-            help
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
             ;;
     esac
 done
-
 
 log "${tc_name}: Device Default Setup"
 

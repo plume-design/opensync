@@ -46,62 +46,60 @@
 # - if nonexisting interface was created but it shouldn't be
 # - NM crashed (PID is no longer available)
 
-# Include basic environment config from default shell file and if any from FUT framework generated /tmp/fut_set_env.sh file
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
-source ${FUT_TOPDIR}/shell/lib/unit_lib.sh
-source ${FUT_TOPDIR}/shell/lib/nm2_lib.sh
-source ${LIB_OVERRIDE_FILE}
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
+source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
-# Execute on EXIT signal.
-trap 'run_setup_if_crashed nm || true' EXIT SIGINT SIGTERM
-
-usage="
-$(basename "$0") [-h] \$1 \$2 \$3
-
-where options are:
+tc_name="nm2/$(basename "$0")"
+manager_setup_file="nm2/nm2_setup.sh"
+usage()
+{
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Script creates undefined interface through Wifi_Inet_Config table
+        Script fails if:
+          Undefined interface is not present in Wifi_Inet_State
+          Undefined interface is present on system
+          NM crashes during creation of undefined interface
+Arguments:
     -h  show this help message
-
-where arguments are:
-    if_name=\$1 -- used as if_name in Wifi_Inet_Config table - (string)(required)
-    if_type=\$2 -- used as if_type in Wifi_Inet_Config table - (string)(required)
-    inet_addr=\$3 -- used as inet_addr in Wifi_Inet_Config table - (string)(required)
-
-this script is dependent on following:
-    - running NM manager
-
-example of usage:
-   /tmp/fut-base/shell/ob/$(basename "$0") test1 eth 10.10.10.15
-"
-
+    \$1 (if_name)   : used as if_name in Wifi_Inet_Config table   : (string)(required)
+    \$2 (if_type)   : used as if_type in Wifi_Inet_Config table   : (string)(required)
+    \$3 (inet_addr) : used as inet_addr in Wifi_Inet_Config table : (string)(required)
+Testcase procedure:
+    - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
+                 Run: ./${tc_name} <IF-NAME> <IF-TYPE> <INET-ADDR>
+Script usage example:
+   ./${tc_name} test1 eth 10.10.10.15
+usage_string
+}
 while getopts h option; do
     case "$option" in
         h)
-            echo "$usage"
-            exit 1
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
             ;;
     esac
 done
+NARGS=3
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 
-# Provide at least 3 argument(s).
-if [ $# -lt 3 ]; then
-    echo 1>&2 "$0: not enough arguments"
-    echo "$usage"
-    exit 2
-fi
+# Execute on EXIT signal.
+trap 'run_setup_if_crashed nm || true' EXIT SIGINT SIGTERM
 
 # Fill variables with provided arguments or defaults.
 if_name=$1
 if_type=$2
 ip_address=$3
 
-tc_name="nm2/$(basename "$0")"
+log_title "$tc_name: NM2 test - Configure non-existent interface"
 
 log "$tc_name: Creating NONEXISTENT interface $if_name of type $if_type"
-
 insert_ovsdb_entry Wifi_Inet_Config \
     -i if_name "$if_name" \
     -i if_type "$if_type" \

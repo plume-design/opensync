@@ -110,6 +110,7 @@ fsm_demo_alloc_aggr(struct fsm_demo_session *f_session)
     struct fsm_session *session;
     struct node_info info;
 
+    memset(&aggr_set, 0, sizeof(aggr_set));
     session = f_session->session;
     info.node_id = session->node_id;
     info.location_id = session->location_id;

@@ -177,7 +177,7 @@ static void on_timeout_cfg_no_change(struct ev_loop *loop, ev_timer *watcher, in
 {
     if (!(gw_offline_cfg && gw_offline_mon))
     {
-        LOG(TRACE, "offline_cfg: %s() called, but gw_offline_cfg=%d, gw_offline_mon=%d. Ignoring",
+        LOG(DEBUG, "offline_cfg: %s() called, but gw_offline_cfg=%d, gw_offline_mon=%d. Ignoring",
                 __func__, gw_offline_cfg, gw_offline_mon);
         return;
     }
@@ -361,15 +361,7 @@ static void callback_Node_Config(
         // Set enable/disable config monitoring flag:
         if (strcmp(config->value, VAL_OFFLINE_ON) == 0)
         {
-            if (!gw_offline_cfg)
-            {
-                LOG(WARN, "offline_cfg: Cloud tried to enable config monitoring but feature is disabled. Ignoring.");
-                return;
-            }
             gw_offline_mon = true;
-
-            // Do the initial read config and store to persistent storage:
-            pm_gw_offline_read_and_store_config();
 
             // Enable monitoring of ovsdb config subset:
             gw_offline_enable_cfg_mon();
@@ -538,7 +530,7 @@ static bool ovsdb_add_uuid_to_radio_config(const char *if_name, ovs_uuid_t uuid)
 }
 
 /* Initiate this module. */
-void pm_gw_offline_init(void)
+void pm_gw_offline_init(void *data)
 {
     json_t *json_en = NULL;
 
@@ -594,7 +586,7 @@ void pm_gw_offline_init(void)
     OVSDB_TABLE_MONITOR(Node_Config, true);
 }
 
-void pm_gw_offline_fini(void)
+void pm_gw_offline_fini(void *data)
 {
     LOG(INFO, "offline_cfg: %s()", __func__);
 }
@@ -906,13 +898,14 @@ static bool gw_offline_cfg_ovsdb_apply(const struct gw_offline_cfg *cfg)
     /* Create VIF interfaces... */
     json_array_foreach(cfg->vif_config, index, row)
     {
-        char cmd_vif_to_br[128];
+        char cmd_vif_to_br[1024];
         const char *if_name = json_string_value(json_object_get(row, "if_name"));
 
         /* json object might get modified later, localy remember this if_name
          * and already construct a shell command to be used later: */
         snprintf(cmd_vif_to_br, sizeof(cmd_vif_to_br),
-                 "ovs-vsctl add-port %s %s", LAN_BRIDGE, if_name);
+                 "ovs-vsctl list-ports %s | grep %s || ovs-vsctl add-port %s %s",
+                 LAN_BRIDGE, if_name, LAN_BRIDGE, if_name);
 
         /* Insert a row for this VIF: */
         if (ovsdb_sync_insert("Wifi_VIF_Config", json_incref(row), &uuid))

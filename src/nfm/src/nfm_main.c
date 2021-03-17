@@ -35,6 +35,8 @@
 #include "nfm_rule.h"
 #include "nfm_trule.h"
 #include "nfm_ovsdb.h"
+#include "nfm_ipset.h"
+#include "nfm_objm.h"
 #include "os.h"
 #include "target.h"
 #include "os_backtrace.h"
@@ -53,6 +55,8 @@ static void nfm_init(struct ev_loop *loop)
 	nfm_rule_init();
 	nfm_trule_init();
 	nfm_ovsdb_init();
+	nfm_ipset_init();
+	nfm_objm_init();
 }
 
 static void nfm_fini(void)

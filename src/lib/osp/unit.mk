@@ -57,3 +57,4 @@ UNIT_DEPS += src/lib/objmfs
 endif
 
 UNIT_SRC += $(if $(CONFIG_OSP_L2SWITCH_NULL),src/osp_l2switch_null.c)
+UNIT_SRC += $(if $(CONFIG_OSP_L2SWITCH_SWCONFIG),src/osp_l2switch_swconfig.c)

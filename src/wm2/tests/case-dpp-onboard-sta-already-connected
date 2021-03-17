@@ -1,0 +1,17 @@
+#!/bin/sh -ex
+tohex() { od -tx1 -An | tr -d ' '; }
+
+case "$1" in
+init)
+	. ./env-sta-onboarded
+	;;
+test)
+	timeout 1 $ovsh w Wifi_Radio_State if_name:=phy0
+	timeout 1 $ovsh w Wifi_VIF_State if_name:=wlan0
+
+	# If STA vif is set for a parent then its no longer onboarding.
+	# As such it should not attempt to do DPP_Config injection for onboarding either.
+	! timeout 1 $ovsh w DPP_Config -w status==in_progress status:=in_progress
+	;;
+esac
+

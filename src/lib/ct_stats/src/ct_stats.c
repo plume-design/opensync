@@ -453,6 +453,12 @@ ct_stats_filter_ip(int af, void *ip)
                   __func__, in4->sin_addr.s_addr);
             return true;
         }
+        else if ((in4->sin_addr.s_addr & htonl(0x7F000000)) == htonl(0x7F000000))
+        {
+            LOGD("%s: Dropping ipv4 localhost[%x]\n",
+                  __func__, in4->sin_addr.s_addr);
+            return true;
+        }
     }
     else if (af == AF_INET6)
     {
@@ -461,6 +467,13 @@ ct_stats_filter_ip(int af, void *ip)
         {
             LOGD("%s: Dropping ipv6 multicast starting with [%x%x]\n",
                   __func__, in6->sin6_addr.s6_addr[0], in6->sin6_addr.s6_addr[1]);
+            return true;
+        }
+        else if (memcmp(&in6->sin6_addr, &in6addr_loopback,
+                        sizeof(struct in6_addr)) == 0)
+        {
+            LOGD("%s: Dropping ipv6 localhost [::%x]\n",
+                  __func__, in6->sin6_addr.s6_addr[15]);
             return true;
         }
     }
@@ -1516,6 +1529,35 @@ ct_stats_collect_filter_cb(struct net_md_aggregator *aggr,
 
 
 /**
+ * @brief callback from the accumulator reporting
+ *
+ * Called on the reporting of an accumulator
+ * @param aggr the ct_stats aggregator
+ * @param the accumulator being reported
+ */
+static void
+ct_stats_on_acc_report(struct net_md_aggregator *aggr,
+                       struct net_md_stats_accumulator *acc)
+{
+    struct net_md_stats_accumulator *rev_acc;
+
+    if (aggr == NULL) return;
+
+    if (acc->direction != NET_MD_ACC_UNSET_DIR) return;
+
+    rev_acc = net_md_lookup_reverse_acc(aggr, acc);
+    if ((rev_acc != NULL) && (rev_acc->direction != NET_MD_ACC_UNSET_DIR))
+    {
+        acc->direction = rev_acc->direction;
+        acc->originator = (rev_acc->originator == NET_MD_ACC_ORIGINATOR_SRC ?
+                           NET_MD_ACC_ORIGINATOR_DST : NET_MD_ACC_ORIGINATOR_SRC);
+    }
+
+    return;
+}
+
+
+/**
  * @brief allocates a flow aggregator
  *
  * @param the collector info passed by fcm
@@ -1556,6 +1598,7 @@ alloc_aggr(flow_stats_t *ct_stats)
     aggr_set.report_filter = fcm_report_filter_nmd_callback;
     aggr_set.collect_filter = ct_stats_collect_filter_cb;
     aggr_set.neigh_lookup = neigh_table_lookup;
+    aggr_set.on_acc_report = ct_stats_on_acc_report;
     aggr = net_md_allocate_aggregator(&aggr_set);
     if (aggr == NULL)
     {

@@ -27,7 +27,6 @@
 
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut_set_env.sh" ] && source /tmp/fut_set_env.sh
-source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
 source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
 source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
 source "${LIB_OVERRIDE_FILE}"
@@ -101,7 +100,7 @@ N_PING=${9:-"5"}
 LEAF_GRE_NAME="g-${LEAF_BHAUL_STA_IFNAME}"
 
 log "$tc_name: Check LEAF backhaul STA interface"
-fnc_str="check_interface_exists2 ${LEAF_BHAUL_STA_IFNAME}"
+fnc_str="check_interface_exists ${LEAF_BHAUL_STA_IFNAME}"
 wait_for_function_response 0 "${fnc_str}" &&
     log -deb "$tc_name: Interface ${LEAF_BHAUL_STA_IFNAME} exists on system" ||
     raise"Interface ${LEAF_BHAUL_STA_IFNAME} does NOT exist on system" -l "$tc_name" -ds
@@ -109,9 +108,14 @@ check_ovsdb_entry Wifi_VIF_Config -w if_name "${LEAF_BHAUL_STA_IFNAME}" &&
     log -deb "$tc_name: Entry ${LEAF_BHAUL_STA_IFNAME} exists in Wifi_VIF_Config" ||
     raise "Entry ${LEAF_BHAUL_STA_IFNAME} does NOT exist in Wifi_VIF_Config" -l "${tc_name}" -ds
 
+log "$tc_name: Remove old LEAF backhaul test credentials"
+remove_ovsdb_entry Wifi_Credential_Config \
+    -w ssid "${BHAUL_SSID}" &&
+        log -deb "$tc_name: Success remove_ovsdb_entry Wifi_Credential_Config" ||
+        raise "Failure remove_ovsdb_entry Wifi_Credential_Config" -l "$tc_name" -tc
 log "$tc_name: Insert new LEAF backhaul test credentials"
 log -deb "$tc_name: LEAF backhaul credentials are preset on device FW, changing them serves test purposes only"
-insert_ovsdb_entry2 Wifi_Credential_Config \
+insert_ovsdb_entry Wifi_Credential_Config \
     -i onboard_type "gre" \
     -i ssid "${BHAUL_SSID}" \
     -i security '["map",[["encryption","WPA-PSK"],["key","'${BHAUL_PSK}'"],["mode","2"]]]' &&
@@ -136,7 +140,7 @@ check_sta_associated "${LEAF_BHAUL_STA_IFNAME}" "${ASSOCIATE_RETRY_COUNT}" "${AS
     raise "Failed to associate to GW backhaul AP in ${ASSOCIATE_RETRY_COUNT} retries" -l "$tc_name" -ow
 
 log "$tc_name: LEAF creates GRE interface"
-check_interface_exists2 "${LEAF_GRE_NAME}"
+check_interface_exists "${LEAF_GRE_NAME}"
 
 log "$tc_name: Check that GRE interface is in WAN bridge on LEAF node"
 check_if_port_in_bridge "${LEAF_WAN_BRIDGE}" "${LEAF_GRE_NAME}"

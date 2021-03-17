@@ -1,0 +1,13 @@
+#!/bin/sh -exe
+vif=$($ovsh -Ur i Wifi_VIF_Config \
+	enabled:=true \
+	if_name:=wlan0 \
+	parent:=11:22:33:44:55:66 \
+	mode:=sta
+)
+
+$ovsh i Wifi_Radio_Config \
+	enabled:=true \
+	if_name:=phy0 \
+	freq_band:=2.4G \
+	"vif_configs::[\"set\",[[\"uuid\",\"$vif\"]]]"

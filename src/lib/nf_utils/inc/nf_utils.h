@@ -87,6 +87,20 @@ struct nf_neigh_info
     bool delete;
 };
 
+/**
+ * @brief nfq packet info.
+ */
+struct nfq_pkt_info
+{
+    int                queue_num;
+    uint32_t           packet_id;
+    uint16_t           hw_protocol;
+    uint8_t            *hw_addr;
+    size_t             payload_len;
+    void               *payload;
+    int                verdict;
+};
+
 int nf_ct_init(struct ev_loop *loop);
 
 int nf_ct_exit(void);
@@ -120,4 +134,29 @@ int nf_neigh_exit(void);
 
 bool nf_util_dump_neighs(int af_family);
 
+typedef void (*process_nfq_event_cb)(struct nfq_pkt_info *pkt_info, void *data);
+struct nfq_settings
+{
+    struct ev_loop *loop;
+    process_nfq_event_cb nfq_cb;
+    int queue_num;
+    void *data;
+};
+
+enum
+{
+    NF_UTIL_NFQ_DROP = 0,
+    NF_UTIL_NFQ_INSPECT,
+    NF_UTIL_NFQ_ACCEPT,
+};
+
+bool nf_queue_init(struct nfq_settings *nfqs);
+
+void nf_queue_exit(void);
+
+bool nf_queue_set_verdict(uint32_t packet_id, int action);
+
+bool nf_queue_set_nlsock_buffsz(uint32_t sock_buff_sz);
+
+bool nf_queue_set_queue_maxlen(uint32_t queue_maxlen);
 #endif /* NF_UTILS_H_INCLUDED */

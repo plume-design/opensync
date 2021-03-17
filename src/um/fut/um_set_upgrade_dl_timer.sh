@@ -25,65 +25,67 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
-source ${FUT_TOPDIR}/shell/lib/unit_lib.sh
-source ${FUT_TOPDIR}/shell/lib/um_lib.sh
-source ${LIB_OVERRIDE_FILE}
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
+source "${FUT_TOPDIR}/shell/lib/um_lib.sh"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
-usage="
-$(basename "$0") [-h] \$1 \$2 \$3 \$4
-
-where options are:
+tc_name="um/$(basename "$0")"
+manager_setup_file="um/um_setup.sh"
+um_resource_path="resource/um/"
+um_image_name_default="um_set_upg_dl_timer_fw"
+um_create_md5_file_path="tools/rpi/um/um_create_md5_file.sh"
+usage()
+{
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Script validate UM upgrade_dl_timer being respected while UM downloads the FW
+      Script fails if UM download is not aborted if the download time is greater than upgrade_dl_timer
+Arguments:
     -h  show this help message
-
-where arguments are:
-    fw_path=\$1 -- download path of UM - used to clear the folder on UM setup - (string)(required)
-    fw_url=\$2 -- used as firmware_url in AWLAN_Node table - (string)(required)
-    fw_dl_timer=\$3 -- used as upgrade_dl_timer in AWLAN_Node table - (int)(required)
-
-this script is dependent on following:
-    - running UM manager
-    - udhcpc on interface
-
-example of usage:
-   /tmp/fut-base/shell/nm2/$(basename "$0").sh http://url_to_image image_name.eim 10
-"
-
-while getopts hcs:fs: option; do
+    \$1 (fw_path)      : download path of UM - used to clear the folder on UM setup  : (string)(required)
+    \$2 (fw_url)       : used as firmware_url in AWLAN_Node table                    : (string)(required)
+    \$3 (fw_dl_timer)  : used as upgrade_dl_timer in AWLAN_Node table                : (string)(required)
+Testcase procedure:
+    - On RPI SERVER: Prepare clean FW (.img) in ${um_resource_path}
+                     Duplicate image with different name (example. ${um_image_name_default}.img) (cp <CLEAN-IMG> <NEW-IMG>)
+                     Create MD5 sum for image (example. ${um_image_name_default}.img.md5) (see ${um_create_md5_file_path} -h)
+    - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
+                 Run: ./${tc_name} <FW-PATH> <FW-URL>
+Script usage example:
+   ./${tc_name} /tmp/pfirmware http://192.168.4.1:8000/fut-base/resource/um/${um_image_name_default}.img
+usage_string
+}
+while getopts h option; do
     case "$option" in
         h)
-            echo "$usage"
-            exit 1
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
             ;;
     esac
 done
-
-if [[ $# -lt 2 ]]; then
-    echo 1>&2 "$0: not enough arguments"
-    echo "$usage"
-    exit 2
-fi
+NARGS=3
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 
 fw_path=$1
 fw_url=$2
 fw_dl_timer=$3
-tc_name="um/$(basename "$0")"
 
 trap '
   reset_um_triggers $fw_path || true
   run_setup_if_crashed um || true
 ' EXIT SIGINT SIGTERM
 
-log "$tc_name: UM Download FW - upgrade_dl_timer - 2 seconds +/-"
+log_title "$tc_name: UM test - Download FW - upgrade_dl_timer - 2 seconds +/-"
 
 log "$tc_name: Setting upggrade_dl_timer to $fw_dl_timer firmware_url to $fw_url"
 update_ovsdb_entry AWLAN_Node \
-    -u upgrade_dl_timer $fw_dl_timer \
-    -u firmware_url $fw_url &&
+    -u upgrade_dl_timer "$fw_dl_timer" \
+    -u firmware_url "$fw_url" &&
         log "$tc_name: update_ovsdb_entry - Success to update" ||
         raise "update_ovsdb_entry - Failed to update" -l "$tc_name" -tc
 
@@ -91,13 +93,13 @@ start_time=$(date -D "%H:%M:%S"  +"%Y.%m.%d-%H:%M:%S")
 
 dl_start_code=$(get_um_code "UPG_STS_FW_DL_START")
 log "$tc_name: Waiting for FW download start"
-wait_ovsdb_entry AWLAN_Node -is upgrade_status $dl_start_code &&
+wait_ovsdb_entry AWLAN_Node -is upgrade_status "$dl_start_code" &&
     log "$tc_name: wait_ovsdb_entry - AWLAN_Node upgrade_status is $dl_start_code" ||
     raise "wait_ovsdb_entry - Failed to set upgrade_status in AWLAN_Node to $dl_start_code" -l "$tc_name" -tc
 
 log "$tc_name: Waiting for FW download finish"
-wait_ovsdb_entry AWLAN_Node -is upgrade_status $(get_um_code "UPG_STS_FW_DL_END") &&
-    fw_dl_timer_result 0 $start_time $fw_dl_timer ||
-    fw_dl_timer_result 1 $start_time $fw_dl_timer
+wait_ovsdb_entry AWLAN_Node -is upgrade_status "$(get_um_code "UPG_STS_FW_DL_END")" &&
+    fw_dl_timer_result 0 "$start_time" "$fw_dl_timer" ||
+    fw_dl_timer_result 1 "$start_time" "$fw_dl_timer"
 
 pass

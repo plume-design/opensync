@@ -29,15 +29,15 @@ UNIT_DISABLE := n
 # Template type:
 UNIT_TYPE := FUT
 # Output directory
-UNIT_DIR := shell/tests/cm
+UNIT_DIR := shell/tests/cm2
 
-UNIT_FILE := cm2_ble_status_interface_down.sh
+UNIT_FILE := cm2_setup.sh
+UNIT_FILE += cm2_ble_status_interface_down.sh
 UNIT_FILE += cm2_ble_status_internet_block.sh
 UNIT_FILE += cm2_cloud_down.sh
 UNIT_FILE += cm2_dns_failure.sh
 UNIT_FILE += cm2_internet_lost.sh
 UNIT_FILE += cm2_link_lost.sh
-UNIT_FILE += cm2_setup.sh
 UNIT_FILE += cm2_ssl_check.sh
 UNIT_FILE += cm2_verify_gre_tunnel_dut_gw.sh
 UNIT_FILE += cm2_verify_gre_tunnel_ref_extender.sh

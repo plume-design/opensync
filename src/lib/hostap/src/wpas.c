@@ -47,6 +47,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <opensync-wpas.h>
 
 /* local */
+#include "internal-util.h"
+
 #define F(...) strfmta(__VA_ARGS__)
 #define E(...) strexa(__VA_ARGS__)
 #define R(...) file_geta(__VA_ARGS__)
@@ -68,6 +70,30 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define EV(x) strchomp(strdupa(x), " ")
 
 #define MODULE_ID LOG_MODULE_ID_WPAS
+#ifndef DPP_CLI_UNSUPPORTED
+#define DPP_CLI_UNSUPPORTED "not supported"
+#ifndef DPP_EVENT_AUTH_SUCCESS
+#define DPP_EVENT_AUTH_SUCCESS DPP_CLI_UNSUPPORTED
+#endif
+#endif
+#ifndef DPP_EVENT_CONFOBJ_SSID
+#define DPP_EVENT_CONFOBJ_SSID DPP_CLI_UNSUPPORTED
+#endif
+#ifndef DPP_EVENT_CONNECTOR
+#define DPP_EVENT_CONNECTOR DPP_CLI_UNSUPPORTED
+#endif
+#ifndef DPP_EVENT_C_SIGN_KEY
+#define DPP_EVENT_C_SIGN_KEY DPP_CLI_UNSUPPORTED
+#endif
+#ifndef DPP_EVENT_NET_ACCESS_KEY
+#define DPP_EVENT_NET_ACCESS_KEY DPP_CLI_UNSUPPORTED
+#endif
+#ifndef DPP_EVENT_CONF_REQ_RX
+#define DPP_EVENT_CONF_REQ_RX DPP_CLI_UNSUPPORTED
+#endif
+#ifndef DPP_EVENT_CONF_RECEIVED
+#define DPP_EVENT_CONF_RECEIVED DPP_CLI_UNSUPPORTED
+#endif
 
 static struct wpas g_wpas[CONFIG_WPAS_MAX_BSS];
 
@@ -97,6 +123,51 @@ wpas_lookup_unused(void)
     LOGE("out of memory");
     assert(0);
     return NULL;
+}
+
+static enum target_dpp_conf_akm
+wpas_dpp_akm_str2enum(const char *s)
+{
+    if (!strcmp(s, "dpp")) return TARGET_DPP_CONF_DPP;
+    if (!strcmp(s, "psk")) return TARGET_DPP_CONF_PSK;
+    if (!strcmp(s, "sae")) return TARGET_DPP_CONF_SAE;
+    if (!strcmp(s, "psk+sae")) return TARGET_DPP_CONF_PSK_SAE;
+    if (!strcmp(s, "dpp+sae")) return TARGET_DPP_CONF_DPP_SAE;
+    if (!strcmp(s, "dpp+psk+sae")) return TARGET_DPP_CONF_DPP_PSK_SAE;
+    if (!strcmp(s, "dot1x")) return TARGET_DPP_CONF_UNKNOWN;
+    if (!strcmp(s, "??")) return TARGET_DPP_CONF_UNKNOWN;
+    return TARGET_DPP_CONF_UNKNOWN;
+}
+
+void wpas_dpp_conf_received_callback(struct wpas *wpas)
+{
+    if (wpas->dpp_conf_received)
+        // Aggregate multiple CLI Messages here
+        if (strlen(wpas->dpp_enrollee_conf_ssid_hex) > 1
+            && strlen(wpas->dpp_enrollee_conf_connector) > 1
+            && strlen(wpas->dpp_enrollee_conf_netaccesskey_hex) > 1
+            && strlen(wpas->dpp_enrollee_conf_csign_hex) > 1)
+            {
+                struct target_dpp_conf_network dpp_enrollee_conf = {
+                    .ifname = wpas->ctrl.bss,
+                    .ssid_hex = wpas->dpp_enrollee_conf_ssid_hex,
+                    .dpp_connector = wpas->dpp_enrollee_conf_connector,
+                    .dpp_netaccesskey_hex = wpas->dpp_enrollee_conf_netaccesskey_hex,
+                    .dpp_csign_hex = wpas->dpp_enrollee_conf_csign_hex,
+                    .akm = wpas_dpp_akm_str2enum(wpas->dpp_enrollee_conf_akm),
+                    .psk_hex = wpas->dpp_enrollee_conf_psk_hex,
+                };
+                wpas->dpp_conf_received(&dpp_enrollee_conf);
+
+                // Clear out wpas buffers
+                memset(wpas->dpp_enrollee_conf_ssid_hex, 0, sizeof(wpas->dpp_enrollee_conf_ssid_hex));
+                memset(wpas->dpp_enrollee_conf_connector, 0, sizeof(wpas->dpp_enrollee_conf_connector));
+                memset(wpas->dpp_enrollee_conf_netaccesskey_hex, 0, sizeof(wpas->dpp_enrollee_conf_netaccesskey_hex));
+                memset(wpas->dpp_enrollee_conf_csign_hex, 0, sizeof(wpas->dpp_enrollee_conf_csign_hex));
+                memset(wpas->dpp_enrollee_conf_psk_hex, 0, sizeof(wpas->dpp_enrollee_conf_psk_hex));
+                memset(wpas->dpp_enrollee_conf_akm, 0, sizeof(wpas->dpp_enrollee_conf_akm));
+                return;
+        }
 }
 
 static void
@@ -202,6 +273,70 @@ wpas_ctrl_cb(struct ctrl *ctrl, int level, const char *buf, size_t len)
         return;
     }
 
+    //DPP Events for Enrollee
+    if (!strcmp(event, EV(DPP_EVENT_CONFOBJ_SSID))) {
+        if (ascii2hex(str, wpas->dpp_enrollee_conf_ssid_hex, sizeof(wpas->dpp_enrollee_conf_ssid_hex))) {
+            LOGI("%s: dpp conf received ssid: %s, hex: %s", wpas->ctrl.bss, str, wpas->dpp_enrollee_conf_ssid_hex);
+            wpas_dpp_conf_received_callback(wpas);
+        }
+        return;
+    }
+
+    if (!strcmp(event, EV(DPP_EVENT_CONNECTOR))) {
+        LOGI("%s: dpp connector received: %s", wpas->ctrl.bss, str);
+        STRSCPY_WARN(wpas->dpp_enrollee_conf_connector, str);
+        wpas_dpp_conf_received_callback(wpas);
+
+        return;
+    }
+
+    if (!strcmp(event, EV(DPP_EVENT_C_SIGN_KEY))) {
+        LOGI("%s: dpp c-sign key recieved: %s", wpas->ctrl.bss, str);
+        STRSCPY_WARN(wpas->dpp_enrollee_conf_csign_hex, str);
+        wpas_dpp_conf_received_callback(wpas);
+
+        return;
+    }
+
+    if (!strcmp(event, EV(DPP_EVENT_NET_ACCESS_KEY))) {
+        LOGI("%s: dpp net access key recieved: %s", wpas->ctrl.bss, str);
+        STRSCPY_WARN(wpas->dpp_enrollee_conf_netaccesskey_hex, str);
+        wpas_dpp_conf_received_callback(wpas);
+
+        return;
+    }
+
+    if (!strcmp(event, EV(DPP_EVENT_CONFOBJ_PASS))) {
+        LOGI("%s: dpp pass recieved: %s", wpas->ctrl.bss, str);
+        STRSCPY_WARN(wpas->dpp_enrollee_conf_psk_hex, str);
+        wpas_dpp_conf_received_callback(wpas);
+
+        return;
+    }
+
+    if (!strcmp(event, EV(DPP_EVENT_CONFOBJ_AKM))) {
+        LOGI("%s: dpp akm recieved: %s", wpas->ctrl.bss, str);
+        STRSCPY_WARN(wpas->dpp_enrollee_conf_akm, str);
+        wpas_dpp_conf_received_callback(wpas);
+
+        return;
+    }
+
+    if (!strcmp(event, EV(DPP_EVENT_CONF_RECEIVED))) {
+        LOGI("%s: dpp conf received", wpas->ctrl.bss);
+        if (wpas->dpp_pending_auth_success && wpas->dpp_conf_received)
+            wpas->dpp_pending_auth_success = 0;
+
+        return;
+    }
+
+    if (!strcmp(event, EV(DPP_EVENT_AUTH_SUCCESS))) {
+        LOGI("%s: dpp auth success received", wpas->ctrl.bss);
+        wpas->dpp_pending_auth_success = 1;
+
+        return;
+    }
+
     LOGI("%s: event: <%d> %s", ctrl->bss, level, buf);
 }
 
@@ -229,7 +364,7 @@ wpas_new(const char *phy, const char *bss)
 }
 
 static const char *
-wpas_util_get_proto(int wpa)
+wpas_util_get_proto_legacy(int wpa)
 {
     switch (wpa) {
         case 1: return "WPA";
@@ -306,6 +441,213 @@ wpas_map_int2str(int i)
     return "none";
 }
 
+static void
+wpas_util_get_wpa_proto(const struct schema_Wifi_VIF_Config *vconf,
+                        char *buf,
+                        size_t len)
+{
+    memset(buf, 0, len);
+
+    if (!vconf->wpa)
+        return;
+
+    csnprintf(&buf, &len, "RSN");
+
+    WARN_ON(len == 1); /* likely buf was truncated */
+}
+
+static bool
+wpas_util_validate_key_mgmt(const struct schema_Wifi_VIF_Config *vconf)
+{
+    /* At the moment STA supports solely WPA2-PSK and/or SAE */
+
+    const char *valid_key_mgmts[] = { "wpa2-psk", "sae", "dpp" };
+    size_t j;
+    int i;
+
+    if (vconf->wpa_key_mgmt_len == 0)
+        return false;
+
+    for (i = 0; i < vconf->wpa_key_mgmt_len; i++) {
+        for (j = 0; j < ARRAY_SIZE(valid_key_mgmts); j++) {
+            if (strcmp(vconf->wpa_key_mgmt[i], valid_key_mgmts[j]) == 0)
+                break;
+        }
+
+        if (j == ARRAY_SIZE(valid_key_mgmts))
+            return false;
+    }
+
+    return true;
+}
+
+bool
+wpas_conf_gen_vif_network(struct wpas *wpas,
+                          const struct schema_Wifi_VIF_Config *vconf,
+                          char **buf,
+                          size_t *len)
+{
+    const char *wpa_passphrase;
+    char wpa_pairwise[64];
+    char wpa_key_mgmt[64];
+    char ieee80211w[64];
+    char wpa_proto[64];
+    bool dfs_allowed;
+    char freqlist[512];
+    bool psk;
+
+    if (!vconf->wpa) {
+        LOGW("%s: open security mode is not supported for sta", wpas->ctrl.bss);
+        return false;
+    }
+
+    if (!wpas_util_validate_key_mgmt(vconf)) {
+        LOGW("%s: unsupported security modes (Wifi_VIF_Config::wpa_key_mgmt) configured for sta",
+             wpas->ctrl.bss);
+        return false;
+    }
+
+    if (vconf->wpa_psks_len > 1)
+        LOGW("%s: Too many PSKs were configured for STA, first PSK will be used", wpas->ctrl.bss);
+
+    wpas_util_get_wpa_proto(vconf, ARRAY_AND_SIZE(wpa_proto));
+    util_vif_get_wpa_pairwise(vconf, ARRAY_AND_SIZE(wpa_pairwise));
+    util_vif_get_wpa_key_mgmt(vconf, ARRAY_AND_SIZE(wpa_key_mgmt));
+    util_vif_get_ieee80211w(vconf, ARRAY_AND_SIZE(ieee80211w));
+    wpa_passphrase = vconf->wpa_psks[0];
+    wpas_conf_gen_freqlist(wpas, freqlist, sizeof(freqlist));
+    dfs_allowed = (vconf->parent_exists && strlen(vconf->parent) > 0);
+    psk = strstr(wpa_key_mgmt, "-PSK") || strstr(wpa_key_mgmt, "SAE");
+
+    csnprintf(buf, len, "network={\n");
+    csnprintf(buf, len, "\tscan_ssid=1\n");
+    csnprintf(buf, len, "\tbgscan=\"\"\n");
+    csnprintf(buf, len, "\tscan_freq=%s\n", dfs_allowed ? "" : freqlist);
+    csnprintf(buf, len, "\tfreq_list=%s\n", dfs_allowed ? "" : freqlist);
+    csnprintf(buf, len, "\tssid=\"%s\"\n", vconf->ssid);
+    csnprintf(buf, len, "\t%s", psk ? "" : "#");
+    csnprintf(buf, len, "psk=\"%s\"\n", wpa_passphrase);
+    csnprintf(buf, len, "\tkey_mgmt=%s\n", wpa_key_mgmt);
+    csnprintf(buf, len, "\tpairwise=%s\n", wpa_pairwise);
+    csnprintf(buf, len, "\tproto=%s\n", wpa_proto);
+    csnprintf(buf, len, "\t%s", wpas->respect_multi_ap ? "" : "#");
+    csnprintf(buf, len, "multi_ap_backhaul_sta=%d\n", wpas_map_str2int(vconf));
+    csnprintf(buf, len, "\t%s", strlen(vconf->parent) > 0 ? "" : "#");
+    csnprintf(buf, len, "bssid=%s\n", vconf->parent);
+    csnprintf(buf, len, "\t%s", strlen(ieee80211w) > 0 ? "" : "#");
+    csnprintf(buf, len, "ieee80211w=%s\n", ieee80211w);
+    csnprintf(buf, len, "\t%s", vconf->dpp_connector_exists ? "" : "#");
+    csnprintf(buf, len, "dpp_connector=\"%s\"\n", vconf->dpp_connector);
+    csnprintf(buf, len, "\t%s", vconf->dpp_netaccesskey_hex_exists ? "" : "#");
+    csnprintf(buf, len, "dpp_netaccesskey=%s\n", vconf->dpp_netaccesskey_hex);
+    csnprintf(buf, len, "\t%s", vconf->dpp_csign_hex_exists ? "" : "#");
+    csnprintf(buf, len, "dpp_csign=%s\n", vconf->dpp_csign_hex);
+
+    csnprintf(buf, len, "}\n");
+
+    WARN_ON(*len == 1); /* likely buf was truncated */
+
+    return true;
+}
+
+bool
+wpas_conf_gen_vif_network_legacy(struct wpas *wpas,
+                                 const struct schema_Wifi_VIF_Config *vconf,
+                                 char **buf,
+                                 size_t *len)
+{
+    const char *wpa_passphrase;
+    const char *wpa_pairwise;
+    const char *wpa_key_mgmt;
+    const char *wpa_proto;
+    bool dfs_allowed;
+    char freqlist[512];
+    int wpa;
+
+    wpa = wpas_util_get_mode(SCHEMA_KEY_VAL(vconf->security, "mode"));
+    wpa_pairwise = wpas_util_get_pairwise(wpa);
+    wpa_proto = wpas_util_get_proto_legacy(wpa);
+    wpa_key_mgmt = SCHEMA_KEY_VAL(vconf->security, "encryption");
+    wpa_passphrase = SCHEMA_KEY_VAL(vconf->security, "key");
+    wpas_conf_gen_freqlist(wpas, freqlist, sizeof(freqlist));
+    dfs_allowed = (vconf->parent_exists && strlen(vconf->parent) > 0);
+
+    csnprintf(buf, len, "network={\n");
+    csnprintf(buf, len, "\tscan_ssid=1\n");
+    csnprintf(buf, len, "\tbgscan=\"\"\n");
+    csnprintf(buf, len, "\tscan_freq=%s\n", dfs_allowed ? "" : freqlist);
+    csnprintf(buf, len, "\tfreq_list=%s\n", dfs_allowed ? "" : freqlist);
+    csnprintf(buf, len, "\tssid=\"%s\"\n", vconf->ssid);
+    csnprintf(buf, len, "\tpsk=\"%s\"\n", wpa_passphrase);
+    csnprintf(buf, len, "\tkey_mgmt=%s\n", wpa_key_mgmt);
+    csnprintf(buf, len, "\tpairwise=%s\n", wpa_pairwise);
+    csnprintf(buf, len, "\tproto=%s\n", wpa_proto);
+    csnprintf(buf, len, "\t%s", wpas->respect_multi_ap ? "" : "#");
+    csnprintf(buf, len, "multi_ap_backhaul_sta=%d\n", wpas_map_str2int(vconf));
+    csnprintf(buf, len, "\t%s", strlen(vconf->parent) > 0 ? "" : "#");
+    csnprintf(buf, len, "bssid=%s\n", vconf->parent);
+    csnprintf(buf, len, "\t#ieee80211w=\n");
+    csnprintf(buf, len, "}\n");
+
+    WARN_ON(*len == 1); /* likely buf was truncated */
+
+    return true;
+}
+
+bool
+wpas_conf_gen_cred_config_networks(struct wpas *wpas,
+                                   const struct schema_Wifi_VIF_Config *vconf,
+                                   const struct schema_Wifi_Credential_Config *cconfs,
+                                   size_t n_cconfs,
+                                   char **buf,
+                                   size_t *len)
+{
+    const char *wpa_passphrase;
+    const char *wpa_pairwise;
+    const char *wpa_key_mgmt;
+    const char *wpa_proto;
+    char freqlist[512];
+    bool dfs_allowed;
+    int wpa;
+
+    wpa = wpas_util_get_mode(SCHEMA_KEY_VAL(vconf->security, "mode"));
+    wpa_pairwise = wpas_util_get_pairwise(wpa);
+    wpa_proto = wpas_util_get_proto_legacy(wpa);
+    wpa_key_mgmt = SCHEMA_KEY_VAL(vconf->security, "encryption");
+    wpa_passphrase = SCHEMA_KEY_VAL(vconf->security, "key");
+    wpas_conf_gen_freqlist(wpas, freqlist, sizeof(freqlist));
+    dfs_allowed = (vconf->parent_exists && strlen(vconf->parent) > 0);
+
+    for (; n_cconfs; n_cconfs--, cconfs++) {
+        wpa = wpas_util_get_mode(SCHEMA_KEY_VAL(vconf->security, "mode"));
+        wpa_pairwise = wpas_util_get_pairwise(wpa);
+        wpa_proto = wpas_util_get_proto_legacy(wpa);
+        wpa_key_mgmt = SCHEMA_KEY_VAL(cconfs->security, "encryption");
+        wpa_passphrase = SCHEMA_KEY_VAL(cconfs->security, "key");
+
+        csnprintf(buf, len, "network={\n");
+        csnprintf(buf, len, "\tscan_ssid=1\n");
+        csnprintf(buf, len, "\tbgscan=\"\"\n");
+        csnprintf(buf, len, "\tscan_freq=%s\n", dfs_allowed ? "" : freqlist);
+        csnprintf(buf, len, "\tfreq_list=%s\n", dfs_allowed ? "" : freqlist);
+        csnprintf(buf, len, "\tssid=\"%s\"\n", cconfs->ssid);
+        csnprintf(buf, len, "\tpsk=\"%s\"\n", wpa_passphrase);
+        csnprintf(buf, len, "\tkey_mgmt=%s\n", wpa_key_mgmt);
+        csnprintf(buf, len, "\tpairwise=%s\n", wpa_pairwise);
+        csnprintf(buf, len, "\tproto=%s\n", wpa_proto);
+        csnprintf(buf, len, "\t%s", wpas->respect_multi_ap ? "" : "#");
+        csnprintf(buf, len, "multi_ap_backhaul_sta=%d\n", wpas_map_str2int(vconf));
+        csnprintf(buf, len, "\t%s", strlen(vconf->parent) > 0 ? "" : "#");
+        csnprintf(buf, len, "bssid=%s\n", vconf->parent);
+        csnprintf(buf, len, "\t#ieee80211w=\n");
+        csnprintf(buf, len, "}\n");
+    }
+
+    WARN_ON(*len == 1); /* likely buf was truncated */
+
+    return true;
+}
+
 int
 wpas_conf_gen(struct wpas *wpas,
               const struct schema_Wifi_Radio_Config *rconf,
@@ -313,15 +655,10 @@ wpas_conf_gen(struct wpas *wpas,
               const struct schema_Wifi_Credential_Config *cconfs,
               size_t n_cconfs)
 {
-    const char *wpa_passphrase;
-    const char *wpa_pairwise;
-    const char *wpa_key_mgmt;
-    const char *wpa_proto;
+    const char *wpa_passphrase = SCHEMA_KEY_VAL(vconf->security, "key");
     size_t len = sizeof(wpas->conf);
     char *buf = wpas->conf;
-    char freqlist[512];
-    bool dfs_allowed = (vconf->parent_exists && strlen(vconf->parent) > 0);
-    int wpa;
+    bool ok;
 
     memset(wpas->conf, 0, sizeof(wpas->conf));
 
@@ -334,66 +671,19 @@ wpas_conf_gen(struct wpas *wpas,
     csnprintf(&buf, &len, "scan_cur_freq=%d\n", vconf->parent_exists && strlen(vconf->parent) > 0);
     csnprintf(&buf, &len, "#bridge=%s\n", vconf->bridge_exists ? vconf->bridge : "");
 
-    wpa = wpas_util_get_mode(SCHEMA_KEY_VAL(vconf->security, "mode"));
-    wpa_pairwise = wpas_util_get_pairwise(wpa);
-    wpa_proto = wpas_util_get_proto(wpa);
-    wpa_key_mgmt = SCHEMA_KEY_VAL(vconf->security, "encryption");
-    wpa_passphrase = SCHEMA_KEY_VAL(vconf->security, "key");
-    wpas_conf_gen_freqlist(wpas, freqlist, sizeof(freqlist));
+    /* Credential_Config is supposed to be used only
+     * during initial onboarding/bootstrap. After that
+     * the cloud is supposed to always provide a single
+     * parent to connect to.
+     */
+    if (vconf->wpa_exists)
+        ok = wpas_conf_gen_vif_network(wpas, vconf, &buf, &len);
+    else if (vconf->security_len > 0 && vconf->ssid_exists && strlen(wpa_passphrase) > 0)
+        ok = wpas_conf_gen_vif_network_legacy(wpas, vconf, &buf, &len);
+    else
+        ok = wpas_conf_gen_cred_config_networks(wpas, vconf, cconfs, n_cconfs, &buf, &len);
 
-    if (vconf->security_len > 0 &&
-        vconf->ssid_exists &&
-        strlen(wpa_passphrase) > 0) {
-        /* FIXME: Unify security and creds generation */
-        csnprintf(&buf, &len, "network={\n");
-        csnprintf(&buf, &len, "\tscan_ssid=1\n");
-        csnprintf(&buf, &len, "\tbgscan=\"\"\n");
-        csnprintf(&buf, &len, "\tscan_freq=%s\n", dfs_allowed ? "" : freqlist);
-        csnprintf(&buf, &len, "\tfreq_list=%s\n", dfs_allowed ? "" : freqlist);
-        csnprintf(&buf, &len, "\tssid=\"%s\"\n", vconf->ssid);
-        csnprintf(&buf, &len, "\tpsk=\"%s\"\n", wpa_passphrase);
-        csnprintf(&buf, &len, "\tkey_mgmt=%s\n", wpa_key_mgmt);
-        csnprintf(&buf, &len, "\tpairwise=%s\n", wpa_pairwise);
-        csnprintf(&buf, &len, "\tproto=%s\n", wpa_proto);
-        csnprintf(&buf, &len, "\t%s", wpas->respect_multi_ap ? "" : "#");
-        csnprintf(&buf, &len, "multi_ap_backhaul_sta=%d\n", wpas_map_str2int(vconf));
-        csnprintf(&buf, &len, "\t%s", strlen(vconf->parent) > 0 ? "" : "#");
-        csnprintf(&buf, &len, "bssid=%s\n", vconf->parent);
-        csnprintf(&buf, &len, "}\n");
-
-        /* Credential_Config is supposed to be used only
-         * during initial onboarding/bootstrap. After that
-         * the cloud is supposed to always provide a single
-         * parent to connect to.
-         */
-        return len > 1;
-    }
-
-    for (; n_cconfs; n_cconfs--, cconfs++) {
-        wpa = wpas_util_get_mode(SCHEMA_KEY_VAL(vconf->security, "mode"));
-        wpa_pairwise = wpas_util_get_pairwise(wpa);
-        wpa_proto = wpas_util_get_proto(wpa);
-        wpa_key_mgmt = SCHEMA_KEY_VAL(cconfs->security, "encryption");
-        wpa_passphrase = SCHEMA_KEY_VAL(cconfs->security, "key");
-
-        csnprintf(&buf, &len, "network={\n");
-        csnprintf(&buf, &len, "\tscan_ssid=1\n");
-        csnprintf(&buf, &len, "\tbgscan=\"\"\n");
-        csnprintf(&buf, &len, "\tscan_freq=%s\n", dfs_allowed ? "" : freqlist);
-        csnprintf(&buf, &len, "\tfreq_list=%s\n", dfs_allowed ? "" : freqlist);
-        csnprintf(&buf, &len, "\tssid=\"%s\"\n", cconfs->ssid);
-        csnprintf(&buf, &len, "\tpsk=\"%s\"\n", wpa_passphrase);
-        csnprintf(&buf, &len, "\tkey_mgmt=%s\n", wpa_key_mgmt);
-        csnprintf(&buf, &len, "\tpairwise=%s\n", wpa_pairwise);
-        csnprintf(&buf, &len, "\tproto=%s\n", wpa_proto);
-        csnprintf(&buf, &len, "\t%s", wpas->respect_multi_ap ? "" : "#");
-        csnprintf(&buf, &len, "multi_ap_backhaul_sta=%d\n", wpas_map_str2int(vconf));
-        csnprintf(&buf, &len, "\t%s", strlen(vconf->parent) > 0 ? "" : "#");
-        csnprintf(&buf, &len, "bssid=%s\n", vconf->parent);
-        csnprintf(&buf, &len, "}\n");
-    }
-
-    return len > 1;
+    return ok ? 0 : -1;
 }
 
 static int
@@ -453,6 +743,74 @@ wpas_conf_apply(struct wpas *wpas)
 }
 
 static void
+wpas_bss_get_network_security_legacy(struct schema_Wifi_VIF_State *vstate,
+                                     const char *network)
+{
+    const char *key_mgmt;
+    char *psk;
+
+    key_mgmt = ini_geta(network, "key_mgmt") ?: "";
+    if (strcmp(key_mgmt, "WPA-PSK") != 0) {
+        LOGD("%s: sta configured with non-wpa-psk keys mgmt, " \
+             "leaving Wifi_VIF_State:security empty", vstate->if_name);
+        return;
+    }
+
+    psk = ini_geta(network, "psk") ?: "";
+
+    /* entry in file looks actually like this: psk="passphrase", so remove the: " */
+    if (strlen(psk) > 0) psk++;
+    if (strlen(psk) > 0) psk[strlen(psk)-1] = 0;
+
+    SCHEMA_KEY_VAL_APPEND(vstate->security, "encryption", "WPA-PSK");
+    SCHEMA_KEY_VAL_APPEND(vstate->security, "key", psk);
+}
+
+static void
+wpas_bss_get_network_security(struct schema_Wifi_VIF_State *vstate,
+                              const char *network)
+{
+    const char *key_mgmt = ini_geta(network, "key_mgmt") ?: "";
+    const bool wpa2_psk = strstr(key_mgmt, "WPA-PSK") != NULL;
+    const bool sae = strstr(key_mgmt, "SAE") != NULL;
+    const bool dpp = strstr(key_mgmt, "DPP") != NULL;
+    char *psk = ini_geta(network, "psk") ?: "";
+    char *dpp_conn = ini_geta(network, "dpp_connector") ?: "";
+    char *dpp_key = ini_geta(network, "dpp_netaccesskey") ?: "";
+    char *dpp_csign = ini_geta(network, "dpp_csign") ?: "";
+    int wpa;
+
+    if (!sae && !wpa2_psk && !dpp) {
+        LOGW("%s: Cannot fill Wifi_VIF_State, unknown sta key mgmt: %s",
+             vstate->if_name, key_mgmt);
+        return;
+    }
+
+    if (psk) {
+        /* entry in file looks actually like this: psk="passphrase", so remove the: " */
+        if (strlen(psk) > 0) psk++;
+        if (strlen(psk) > 0) psk[strlen(psk)-1] = 0;
+    }
+
+    if (dpp_conn) {
+        /* entry in file looks actually like this: dpp_connector="...", so remove the: " */
+        if (strlen(dpp_conn) > 0) dpp_conn++;
+        if (strlen(dpp_conn) > 0) dpp_conn[strlen(dpp_conn)-1] = 0;
+    }
+
+    wpa = wpa2_psk || sae || dpp;
+
+    SCHEMA_SET_INT(vstate->wpa, wpa);
+    if (wpa2_psk) SCHEMA_VAL_APPEND(vstate->wpa_key_mgmt, "wpa2-psk");
+    if (sae) SCHEMA_VAL_APPEND(vstate->wpa_key_mgmt, "sae");
+    if (dpp) SCHEMA_VAL_APPEND(vstate->wpa_key_mgmt, "dpp");
+    if (psk) SCHEMA_VAL_APPEND(vstate->wpa_psks, psk);
+    if (dpp_conn) SCHEMA_SET_STR(vstate->dpp_connector, dpp_conn);
+    if (dpp_key) SCHEMA_SET_STR(vstate->dpp_netaccesskey_hex, dpp_key);
+    if (dpp_csign) SCHEMA_SET_STR(vstate->dpp_csign_hex, dpp_csign);
+}
+
+static void
 wpas_bss_get_network(struct schema_Wifi_VIF_State *vstate,
                      const char *conf,
                      const char *status)
@@ -463,7 +821,6 @@ wpas_bss_get_network(struct schema_Wifi_VIF_State *vstate,
     const char *ssid = ini_geta(status, "ssid");
     const char *id = ini_geta(status, "id") ?: "0";
     const char *map;
-    char *psk;
     char *network = strdupa(conf);
     int n = atoi(id) + 1;
 
@@ -478,21 +835,17 @@ wpas_bss_get_network(struct schema_Wifi_VIF_State *vstate,
         network = strdupa("");
 
     map = ini_geta(network, "multi_ap_backhaul_sta");
-    psk = ini_geta(network, "psk") ?: "";
-
-    /* entry in file looks actually like this: psk="passphrase", so remove the: " */
-    if (strlen(psk) > 0) psk++;
-    if (strlen(psk) > 0) psk[strlen(psk)-1] = 0;
 
     if ((vstate->parent_exists = (bssid != NULL)))
-        STRSCPY_WARN(vstate->parent, bssid);
+        SCHEMA_SET_STR(vstate->parent, bssid);
     if ((vstate->ssid_exists = (ssid != NULL)))
-        STRSCPY_WARN(vstate->ssid, ssid);
+        SCHEMA_SET_STR(vstate->ssid, ssid);
 
-    SCHEMA_KEY_VAL_APPEND(vstate->security, "encryption", "WPA-PSK");
-    SCHEMA_KEY_VAL_APPEND(vstate->security, "key", psk);
     SCHEMA_SET_STR(vstate->multi_ap, wpas_map_int2str(atoi(map ?: "0")));
     SCHEMA_SET_STR(vstate->bridge, bridge);
+
+    wpas_bss_get_network_security_legacy(vstate, network);
+    wpas_bss_get_network_security(vstate, network);
 }
 
 int
@@ -512,4 +865,17 @@ wpas_destroy(struct wpas *wpas)
     wpas_ctrl_remove(wpas);
     ctrl_disable(&wpas->ctrl);
     memset(wpas, 0, sizeof(*wpas));
+}
+
+int
+wpas_each(int (*iter)(struct ctrl *ctrl, void *ptr), void *ptr)
+{
+    size_t i;
+    int err = 0;
+
+    for (i = 0; i < ARRAY_SIZE(g_wpas); i++)
+        if (strlen(g_wpas[i].ctrl.bss) > 0)
+            err |= iter(&g_wpas[i].ctrl, ptr);
+
+    return err;
 }

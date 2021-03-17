@@ -27,27 +27,41 @@
 
 current_dir=$(dirname "$(realpath "$BASH_SOURCE")")
 fut_topdir="$(realpath "$current_dir"/../../..)"
+
+# FUT environment loading
+source "${fut_topdir}"/config/default_shell.sh
+# Ignore errors for fut_set_env.sh sourcing
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh &> /dev/null
 source "$fut_topdir/lib/rpi_lib.sh"
 
-usage="$(basename "$0") [-h] \$1 \$2
-
-"
-
+tc_name="tools/rpi/$(basename "$0")"
+usage()
+{
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Creates MD5 file of FW image
+Arguments:
+    -h  show this help message
+    \$1 (um_fw_path) : path to clean FW which to create corrupted copy : (string)(required)
+Script usage example:
+   ./${tc_name} /tmp/clean_device_fw.img
+Result:
+    - Creates MD5 file for FW image (example clean_device_fw.img.md5)
+usage_string
+}
 while getopts h option; do
     case "$option" in
         h)
-            echo "$usage"
-            exit 1
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
             ;;
     esac
 done
+NARGS=1
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 
-if [[ $# -lt 1 ]]; then
-    echo 1>&2 "$0: not enough arguments"
-    echo "$usage"
-    exit 2
-fi
-
-um_file_path=$1
-
-um_create_md5_file "$um_file_path"
+um_fw_path=$1
+um_create_md5_file "$um_fw_path"

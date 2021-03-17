@@ -58,6 +58,18 @@ static void nm2_inet_state_master_to_schema(
         struct schema_Wifi_Master_State *pstate,
         struct nm2_iface *piface);
 
+/**
+ * UPnP mode to string conversion function */
+extern const char * nm2_upnp2str(enum osn_upnp_mode mode);
+
+/**
+ * DHCP option id to name conversion
+ * The implementation is Plume specific, since there is no standard
+ * with definitions of exact DHCP option names.
+ * @param opt_id option id in 1..255 range
+ * @return found option name or empty string when not found
+ */
+extern const char* dhcp_option_name(int opt_id);
 
 /*
  * Initialize NM Inet State OVSDB tables
@@ -104,7 +116,6 @@ void nm2_inet_state_to_schema(
         struct schema_Wifi_Inet_State *pstate,
         struct nm2_iface *piface)
 {
-    struct nm2_iface_dhcp_option *pdo;
     const char *if_type;
 
     /**
@@ -177,24 +188,12 @@ void nm2_inet_state_to_schema(
     /*
      * UPnP mode
      */
-    char *upnp = NULL;
-    switch (piface->if_inet_state.in_upnp_mode)
+    const char *upnp = nm2_upnp2str(piface->if_inet_state.in_upnp_mode);
+    pstate->upnp_mode_exists = (upnp != NULL);
+    if(pstate->upnp_mode_exists)
     {
-        case UPNP_MODE_NONE:
-            upnp = "disabled";
-            break;
-
-        case UPNP_MODE_INTERNAL:
-            upnp = "internal";
-            break;
-
-        case UPNP_MODE_EXTERNAL:
-            upnp = "external";
-            break;
+        strscpy(pstate->upnp_mode, upnp, sizeof(pstate->upnp_mode));
     }
-
-    pstate->upnp_mode_exists = true;
-    strscpy(pstate->upnp_mode, upnp, sizeof(pstate->upnp_mode));
 
     if_type = nm2_iftype_tostr(piface->if_type);
     if (if_type != NULL)
@@ -223,20 +222,30 @@ void nm2_inet_state_to_schema(
     NM2_IFACE_INET_CONFIG_COPY(pstate->gre_local_inet_addr, piface->if_cache.gre_local_inet_addr);
     NM2_IFACE_INET_CONFIG_COPY(pstate->vlan_id, piface->if_cache.vlan_id);
     pstate->vlan_id_exists = piface->if_cache.vlan_id_exists;
+    NM2_IFACE_INET_CONFIG_COPY(pstate->vlan_egress_qos_map, piface->if_cache.vlan_egress_qos_map);
+    pstate->vlan_egress_qos_map_exists = piface->if_cache.vlan_egress_qos_map_exists;
+    NM2_IFACE_INET_CONFIG_COPY(pstate->parent_ifname, piface->if_cache.parent_ifname);
+    pstate->parent_ifname_exists = piface->if_cache.parent_ifname_exists;
+
 
     /* Unsupported fields, for now */
-    pstate->parent_ifname_exists = false;
-
     pstate->softwds_mac_addr_exists = false;
     pstate->softwds_wrap = false;
 
     /* Add DHCP client options */
-    pstate->dhcpc_len = 0;
-    ds_tree_foreach(&piface->if_dhcpc_options, pdo)
+    const dhcp_options_t *p_opts = piface->if_dhcp_req_options;
+    size_t n;
+
+    for(n = 0, pstate->dhcpc_len = 0; n < p_opts->length; n++)
     {
-        STRSCPY(pstate->dhcpc_keys[pstate->dhcpc_len], pdo->do_name);
-        STRSCPY(pstate->dhcpc[pstate->dhcpc_len], pdo->do_value);
-        pstate->dhcpc_len++;
+        enum osn_dhcp_option optid = (enum osn_dhcp_option)p_opts->option_id[n];
+        const char *value; bool req;
+        if (inet_dhcpc_option_get(piface->if_inet, optid, &req, &value) && value != NULL)
+        {
+            STRSCPY(pstate->dhcpc_keys[pstate->dhcpc_len], dhcp_option_name(optid));
+            STRSCPY(pstate->dhcpc[pstate->dhcpc_len], value);
+            pstate->dhcpc_len++;
+        }
     }
 }
 
@@ -247,7 +256,6 @@ void nm2_inet_state_master_to_schema(
         struct schema_Wifi_Master_State *pstate,
         struct nm2_iface *piface)
 {
-    struct nm2_iface_dhcp_option *pdo;
     const char *if_type;
 
     /**
@@ -288,7 +296,6 @@ void nm2_inet_state_master_to_schema(
     /* XXX: Unsupported fields for now */
     pstate->onboard_type_exists = false;
     pstate->uplink_priority_exists = false;
-    pstate->dhcpc_len = 0;
 
     /* Do not update the port_status for VIF interfaces */
     if (piface->if_type == NM2_IFTYPE_VIF)
@@ -300,12 +307,19 @@ void nm2_inet_state_master_to_schema(
     }
 
     /* Add DHCP client options */
-    pstate->dhcpc_len = 0;
-    ds_tree_foreach(&piface->if_dhcpc_options, pdo)
+    const dhcp_options_t *p_opts = piface->if_dhcp_req_options;
+    size_t n;
+
+    for(n = 0, pstate->dhcpc_len = 0; n < p_opts->length; n++)
     {
-        STRSCPY(pstate->dhcpc_keys[pstate->dhcpc_len], pdo->do_name);
-        STRSCPY(pstate->dhcpc[pstate->dhcpc_len], pdo->do_value);
-        pstate->dhcpc_len++;
+        enum osn_dhcp_option optid = (enum osn_dhcp_option)p_opts->option_id[n];
+        const char *value; bool req;
+        if (inet_dhcpc_option_get(piface->if_inet, optid, &req, &value) && value != NULL)
+        {
+            STRSCPY(pstate->dhcpc_keys[pstate->dhcpc_len], dhcp_option_name(optid));
+            STRSCPY(pstate->dhcpc[pstate->dhcpc_len], value);
+            pstate->dhcpc_len++;
+        }
     }
 }
 

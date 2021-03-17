@@ -25,6 +25,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include <ev.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -151,6 +152,7 @@ fcm_get_memory(struct mem_usage *mem)
     fcm_mgr_t *mgr = fcm_get_mgr();
     char buffer[1024] = "";
     char fname[128];
+    int rc;
 
     mgr = fcm_get_mgr();
 
@@ -162,28 +164,41 @@ fcm_get_memory(struct mem_usage *mem)
     memset(mem, 0, sizeof(*mem));
 
     // read the entire file
-    while (fscanf(file, " %1023s", buffer) == 1)
+    while ((rc = fscanf(file, " %1023s", buffer)) == 1)
     {
+        errno = 0;
         if (strcmp(buffer, "VmRSS:") == 0)
         {
-            fscanf(file, " %d %s", &mem->curr_real_mem, mem->curr_real_mem_unit);
+            rc = fscanf(file, " %d %s", &mem->curr_real_mem, mem->curr_real_mem_unit);
+            if ((rc != 1) && (errno != 0)) goto err_scan;
+
             fcm_mem_adjust_counter(file, mem->curr_real_mem,
                                    mem->curr_real_mem_unit);
         }
         else if (strcmp(buffer, "VmHWM:") == 0)
         {
-            fscanf(file, " %d", &mem->peak_real_mem);
+            rc = fscanf(file, " %d", &mem->peak_real_mem);
+            if ((rc != 1) && (errno != 0)) goto err_scan;
         }
         else if (strcmp(buffer, "VmSize:") == 0)
         {
-            fscanf(file, " %d %s", &mem->curr_virt_mem, mem->curr_virt_mem_unit);
+            rc = fscanf(file, " %d %s", &mem->curr_virt_mem, mem->curr_virt_mem_unit);
+            if ((rc != 1) && (errno != 0)) goto err_scan;
+
             fcm_mem_adjust_counter(file, mem->curr_virt_mem,
                                    mem->curr_virt_mem_unit);
         }
         else if (strcmp(buffer, "VmPeak:") == 0)
         {
-            fscanf(file, " %d", &mem->peak_virt_mem);
+            rc = fscanf(file, " %d", &mem->peak_virt_mem);
+            if ((rc != 1) && (errno != 0)) goto err_scan;
         }
     }
+
+    fclose(file);
+    return;
+
+err_scan:
+    LOGD("%s: error scanning %s: %s", __func__, fname, strerror(errno));
     fclose(file);
 }

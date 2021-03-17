@@ -1,0 +1,10 @@
+#
+# OpenSync core platform OSP LED
+#
+source "src/lib/osp/kconfig/Kconfig.osp_led"
+
+#
+# Platform/vendor OSP LED
+#
+osource "platform/*/kconfig/Kconfig.osp_led"
+osource "vendor/*/kconfig/Kconfig.osp_led"

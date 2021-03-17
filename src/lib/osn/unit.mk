@@ -54,6 +54,7 @@ UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_DHCPV4_SERVER_NULL),src/osn_dhcp_server_nu
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_DHCPV4_SERVER_DNSMASQ),src/osn_dhcp_server_dnsmasq.c)
 
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_UPNP_NULL),src/osn_upnp_null.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_UPNP_MINIUPNPD),src/osn_upnp.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_UPNP_MINIUPNPD),src/osn_upnp_mupnp.c)
 
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_IPV6_NULL),src/osn_ip6_null.c)
@@ -81,8 +82,14 @@ UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_FW_NULL),src/osn_fw_null.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_FW_IPTABLES_FULL),src/osn_fw_iptables_full.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_FW_IPTABLES_THIN),src/osn_fw_iptables_thin.c)
 
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_IPSET_NULL),src/osn_ipset_null.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_IPSET_LINUX),src/osn_ipset_linux.c)
+
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_MAPT_NULL),src/osn_mapt_null.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_MAPT_CERNET),src/osn_mapt_cernet.c)
+
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_LTE_NULL),src/osn_lte_null.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_LTE_LINUX),src/osn_lte_linux.c)
 
 ifdef CONFIG_OSN_LINUX_ENABLED
 UNIT_CFLAGS += -I$(UNIT_PATH)/src/linux
@@ -94,12 +101,18 @@ UNIT_SRC += $(if $(CONFIG_OSN_LINUX_IPV6),src/linux/lnx_ip6.c)
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_NETIF),src/linux/lnx_netif.c)
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_NETLINK),src/linux/lnx_netlink.c)
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_ROUTE),src/linux/lnx_route.c)
+UNIT_SRC += $(if $(CONFIG_OSN_LINUX_ROUTE),src/linux/lnx_route_config.c)
 UNIT_SRC += $(if $(CONFIG_OSN_MINIUPNPD),src/linux/mupnp_server.c)
+UNIT_SRC += $(if $(CONFIG_OSN_MINIUPNPD),src/linux/mupnp_cfg_iptv.c)
+UNIT_SRC += $(if $(CONFIG_OSN_MINIUPNPD),src/linux/mupnp_cfg_wan.c)
 UNIT_SRC += $(if $(CONFIG_OSN_ODHCP6),src/linux/odhcp6_client.c)
+UNIT_SRC += $(if $(CONFIG_OSN_UDHCPC),src/linux/udhcp_const.c)
 UNIT_SRC += $(if $(CONFIG_OSN_UDHCPC),src/linux/udhcp_client.c)
+UNIT_SRC += $(if $(CONFIG_OSN_LINUX_IPSET),src/linux/lnx_ipset.c)
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_PPPOE),src/linux/lnx_pppoe.c)
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_VLAN),src/linux/lnx_vlan.c)
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_QOS),src/linux/lnx_qos.c)
+UNIT_SRC += $(if $(CONFIG_OSN_LINUX_LTE),src/linux/lnx_lte.c)
 
 UNIT_DEPS += src/lib/daemon
 UNIT_DEPS += src/lib/evx

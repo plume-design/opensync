@@ -25,44 +25,45 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
-usage="
-$(basename "$0") [-h] \$1
-
-where options are:
+tc_name="onbrd/$(basename "$0")"
+manager_setup_file="onbrd/onbrd_setup.sh"
+device_mode_default="not_set"
+usage()
+{
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Validate device mode value in AWLAN_Node table
+Arguments:
     -h  show this help message
-
-this script is dependent on following:
-    - running DM manager
-
-example of usage:
-   /tmp/fut-base/shell/onbrd/$(basename "$0") not_set
-   /tmp/fut-base/shell/onbrd/$(basename "$0") cloud
-   /tmp/fut-base/shell/onbrd/$(basename "$0") monitor
-   /tmp/fut-base/shell/onbrd/$(basename "$0") battery
-"
-
+    \$1 (device_mode) : Used as value to check for in AWLAN_Node table : (string)(optional) : (default:${device_mode_default})
+Testcase procedure:
+    - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
+                 Run: ./${tc_name} <DEVICE-MODE>
+Script usage example:
+   ./${tc_name} ${device_mode_default}
+usage_string
+}
 while getopts h option; do
     case "$option" in
         h)
-            echo "$usage"
-            exit 1
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
             ;;
     esac
 done
 
-device_mode=${1:-"not_set"}
+device_mode=${1:-"${device_mode_default}"}
 
-tc_name="onbrd/$(basename "$0")"
-
-log "$tc_name: ONBRD Verify device mode in AWLAN_Node"
+log_title "$tc_name: ONBRD test - Verify device mode in AWLAN_Node"
 
 if [ "$device_mode" = "not_set" ]; then
     wait_ovsdb_entry AWLAN_Node -is device_mode "[\"set\",[]]" &&

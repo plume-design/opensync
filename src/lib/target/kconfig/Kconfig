@@ -6,13 +6,13 @@ LM_DIR := /var/log/lm
 menu "Capabilities"
     config TARGET_CAP_GATEWAY
         bool "Gateway"
-        default y
+        default n
         help
             This device can act as a gateway (residential or otherwise).
 
     config TARGET_CAP_EXTENDER
         bool "Extender"
-        default n
+        default y
         select TARGET_CAP_GATEWAY
         help
             This device can act as an extender.
@@ -125,6 +125,7 @@ config TARGET_LAN_BRIDGE_NAME
 config TARGET_USE_WAN_BRIDGE
     bool "Use WAN bridge"
     default y
+    depends on !MANAGER_WANO
     help
         Use additional bridge for WAN link
 
@@ -135,50 +136,6 @@ if TARGET_USE_WAN_BRIDGE
         help
             WAN bridge name that will be used
 endif
-
-menuconfig TARGET_LED_SUPPORT
-    bool "Enable LED support"
-    default n
-    help
-        Enable LED support (requires LEDM). This option implements the
-        target_led_device_dir() and target_led_names() functions.
-
-    if TARGET_LED_SUPPORT
-        config TARGET_LED_PATH
-            string "LED path pattern"
-            default "/sys/class/leds/%s"
-            help
-                The pattern used to access a LED device.
-                The %s will be replaced with the LED name (see below).
-
-        config TARGET_LED0
-            bool "LED[0]"
-
-        config TARGET_LED0_NAME
-            string "Name[0]"
-            depends on TARGET_LED0
-
-        config TARGET_LED1
-            bool "LED[1]"
-
-        config TARGET_LED1_NAME
-            string "Name[1]"
-            depends on TARGET_LED1
-
-        config TARGET_LED2
-            bool "LED[2]"
-
-        config TARGET_LED2_NAME
-            string "Name[2]"
-            depends on TARGET_LED2
-
-        config TARGET_LED3
-            bool "LED[3]"
-
-        config TARGET_LED3_NAME
-            string "Name[3]"
-            depends on TARGET_LED3
-    endif
 
 menu "Misc..."
 config TARGET_RESTART_SCRIPT
@@ -192,15 +149,18 @@ config TARGET_RESTART_SCRIPT_CMD
     default "$(OPENSYNC_BIN)/restart.sh"
     depends on TARGET_RESTART_SCRIPT
 
-config TARGET_LINUX_LOGPULL
-    bool "Device supports standard logpull"
+config TARGET_LOGPULL_REMOTE
+    bool "Enables support for remote logpulls"
     default y
     help
-        Device has the lm_logs_collector.sh script
-        which can be used for generating log pulls.
+        This option enables support for remote logpulls in
+        OpenSync target layer and logpull.sh.
 
-        This option implements the target_log_pull() function.
-
+config TARGET_OPENSYNC_CAFILE
+    string "OpenSync CA certificate file"
+    default "$(OPENSYNC_DIR)/certs/opensync_ca.pem"
+    help
+        Full file path to CA certificate used by OpenSync features such as logpull.
 
 config TARGET_WATCHDOG
     bool "Device has a watchdog"
@@ -234,5 +194,4 @@ config TARGET_IMC
     default n
     help
         Select this option if the platform enables zeromq
-
 endmenu

@@ -142,5 +142,39 @@ typedef enum {
 #define SCHEMA_CONSTS_INET_DHCP_LEASE_TIME  "lease_time"
 #define SCHEMA_CONSTS_INET_DHCP_FORCE       "force"
 
+#define SCHEMA_CONSTS_KEY_DPP "dpp"
+#define SCHEMA_CONSTS_KEY_SAE "sae"
+#define SCHEMA_CONSTS_KEY_WPA2_PSK "wpa2-psk"
+
+#define SCHEMA_CONSTS_DPP_INIT_ON_ANNOUNCE "initiate_on_announce"
+#define SCHEMA_CONSTS_DPP_INIT_NOW         "initiate_now"
+#define SCHEMA_CONSTS_DPP_RESPOND_ONLY     "respond_only"
+#define SCHEMA_CONSTS_DPP_CHIRP            "chirp_and_respond"
+
+#define SCHEMA_CONSTS_DPP_AKM_UNKNOWN     "unknown"
+#define SCHEMA_CONSTS_DPP_AKM_PSK         "psk"
+#define SCHEMA_CONSTS_DPP_AKM_SAE         "sae"
+#define SCHEMA_CONSTS_DPP_AKM_PSK_SAE     "psk-sae"
+#define SCHEMA_CONSTS_DPP_AKM_DPP         "dpp"
+#define SCHEMA_CONSTS_DPP_AKM_DPP_SAE     "dpp-sae"
+#define SCHEMA_CONSTS_DPP_AKM_DPP_PSK_SAE "dpp-psk-sae"
+
+#define SCHEMA_CONSTS_DPP_REQUESTED   "requested"
+#define SCHEMA_CONSTS_DPP_IN_PROGRESS "in_progress"
+#define SCHEMA_CONSTS_DPP_TIMED_OUT   "timed_out"
+#define SCHEMA_CONSTS_DPP_FAILED      "failed"
+#define SCHEMA_CONSTS_DPP_SUCCEEDED   "succeeded"
+
+#define SCHEMA_CONSTS_DPP_PRIME256V1      "prime256v1"
+#define SCHEMA_CONSTS_DPP_SECP384R1       "secp384r1"
+#define SCHEMA_CONSTS_DPP_SECP521R1       "secp521r1"
+#define SCHEMA_CONSTS_DPP_BRAINPOOLP256R1 "brainpoolP256r1"
+#define SCHEMA_CONSTS_DPP_BRAINPOOLP384R1 "brainpoolP384r1"
+#define SCHEMA_CONSTS_DPP_BRAINPOOLP512R1 "brainpoolP512r1"
+
+#define SCHEMA_CONSTS_DPP_STA_DPP "sta-dpp"
+#define SCHEMA_CONSTS_DPP_STA_PSK "sta-psk"
+#define SCHEMA_CONSTS_DPP_AP_DPP  "ap-dpp"
+#define SCHEMA_CONSTS_DPP_AP_PSK  "ap-psk"
 
 #endif /* SCHEMA_CONSTS_H_INCLUDED */

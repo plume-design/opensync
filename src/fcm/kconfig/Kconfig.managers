@@ -1,6 +1,6 @@
 menuconfig MANAGER_FCM
     bool "Flow Collection Manager (FCM)"
-    default n
+    default y
     help
         Enable Flow Collection Manager (FCM)
 

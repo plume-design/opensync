@@ -24,15 +24,46 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-# Include basic environment config from default shell file and if any from FUT framework generated /tmp/fut_set_env.sh file
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
-source ${FUT_TOPDIR}/shell/lib/unit_lib.sh
-source ${LIB_OVERRIDE_FILE}
 
+# FUT environment loading
+# Script echoes single line so we are redirecting source output to /dev/null
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh &> /dev/null
+source /tmp/fut-base/shell/config/default_shell.sh &> /dev/null
+source "${FUT_TOPDIR}/shell/lib/unit_lib.sh" &> /dev/null
+[ -n "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" &> /dev/null
+
+
+tc_name="device/ovsdb/$(basename "$0")"
+usage()
+{
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Echoes the value of a single field in an OVSDB table
+Arguments:
+    -h  show this help message
+    \$1 (ovsdb_table)       : OVSDB table name which to use           : (string)(required)
+    \$2 (ovsdb_field)       : OVSDB table field name to acquire       : (string)(required)
+    \$3 (ovsdb_where_field) : OVSDB field name for where condition    : (string)(required)
+    \$4 (ovsdb_where_value) : Value for where condition field         : (string)(required)
+    \$5 (ovsdb_raw)         : Acquire raw result from OVSDB (ovsh -r) : (bool)(optional) : (default:false)
+Script usage example:
+   ./${tc_name} Wifi_Radio_State channel if_name wifi0
+   ./${tc_name} Wifi_Radio_State channel if_name wifi0 true
+usage_string
+}
+while getopts h option; do
+    case "$option" in
+        h)
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
+            ;;
+    esac
+done
+NARGS=4
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 
 ovsdb_table=${1}
 ovsdb_field=${2}

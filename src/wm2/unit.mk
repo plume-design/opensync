@@ -37,6 +37,9 @@ UNIT_TYPE    := BIN
 UNIT_SRC     := src/wm2_main.c
 UNIT_SRC     += src/wm2_radio.c
 UNIT_SRC     += src/wm2_clients.c
+UNIT_SRC     += src/wm2_dpp.c
+UNIT_SRC     += src/wm2_target.c
+UNIT_SRC     += src/wm2_dummy.c
 
 UNIT_CFLAGS  += -I$(TOP_DIR)/src/lib/common/inc/
 

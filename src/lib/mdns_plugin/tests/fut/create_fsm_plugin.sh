@@ -117,7 +117,7 @@ gen_fsmc_cmd() {
                "if_name": "${intf}",
                "pkt_capt_filter": "${filter}",
                "plugin": "${plugin}",
-               "other_config": ["map",[["mqtt_v","${mqtt_v}"],["dso_init","${dso_init}"],["mdns_src_ip","${mdns_sip}"]]]
+               "other_config": ["map",[["mqtt_v","${mqtt_v}"],["dso_init","${dso_init}"],["mdns_src_ip","${mdns_sip}"],["records_report_interval","60"],["report_records","true"],["targeted_devices","$[all_clients]"]]]
          }
     }
 ]
@@ -178,7 +178,7 @@ filter="udp port 67"
 plugin=/usr/plume/lib/libfsm_mdns.so
 dso_init=mdns_plugin_init
 fsm_handler=dev_mdns # must start with 'dev' so the controller leaves it alone
-mdns_sip="$(ifconfig | grep -A 1 'br-wan' | tail -1 | cut -d ':' -f 2 | cut -d ' ' -f 1)"
+mdns_sip="$(ifconfig | grep -A 1 'br-home' | sed -n '2 p' | cut -d ":" -f 2 | cut -d ' ' -f 1)"
 
 priority=200 # must be higher than controller pushed rules
 
@@ -206,7 +206,7 @@ check_cmd 'ovs-ofctl'
 
 location_id=$(get_location_id)
 node_id=$(get_node_id)
-mqtt_v="dev-test/${fsm_handler}/${node_id}/${location_id}"
+mqtt_v="dev-test/MDNS/Records/${fsm_handler}/${node_id}/${location_id}"
 
 $(gen_tap_cmd)
 $(tap_up_cmd)

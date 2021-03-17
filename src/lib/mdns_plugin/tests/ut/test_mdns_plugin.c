@@ -34,15 +34,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "target.h"
 #include "unity.h"
-#include "ovsdb.h"
-#include "ovsdb_update.h"
-#include "ovsdb_sync.h"
-#include "ovsdb_table.h"
 
 #include "pcap.c"
 
-#include "mdns_plugin.h"
-
+#include "test_mdns.h"
 
 #define OTHER_CONFIG_NELEMS 4
 #define OTHER_CONFIG_NELEM_SIZE 128
@@ -94,10 +89,14 @@ char g_other_configs[][2][OTHER_CONFIG_NELEMS][OTHER_CONFIG_NELEM_SIZE] =
         {
             "mdns_src_ip",
             "tx_intf",
+            "records_report_interval",
+            "report_records",
         },
         {
             "192.168.1.90",
             "br-home.tx",
+            "60",
+            "true",
         },
     },
 };
@@ -115,6 +114,8 @@ struct fsm_session g_sessions[] =
     {
         .type = FSM_PARSER,
         .conf = &g_confs[0],
+        .node_id = "1S6D808DB4",
+        .location_id = "5e3a194bb03594384016458",
     }
 };
 
@@ -157,7 +158,6 @@ time_t timer_start;
 time_t timer_stop;
 struct ev_loop  *g_loop;
 
-
 void setUp(void)
 {
     g_loop = EV_DEFAULT;
@@ -173,6 +173,9 @@ void setUp(void)
                                               g_other_configs[0][1]);
     session->loop =  g_loop;
 
+    /* Setup test_mgr for mdns records reporting */
+    setup_mdns_records_report();
+
     return;
 }
 
@@ -181,6 +184,9 @@ void tearDown(void)
     struct fsm_session *session = &g_sessions[0];
 
     free_str_tree(session->conf->other_config);
+
+    /* Free the mdns records reporting test mgr */
+    teardown_mdns_records_report();
 
     return;
 }
@@ -442,6 +448,27 @@ int main(int argc, char *argv[])
     log_severity_set(LOG_SEVERITY_TRACE);
 
     UnityBegin(test_name);
+
+    /* Node Info(Observation Point) tests */
+    RUN_TEST(test_serialize_node_info);
+    RUN_TEST(test_serialize_node_info_null_ptr);
+    RUN_TEST(test_serialize_node_info_no_field_set);
+
+    /* Observation window tests */
+    RUN_TEST(test_serialize_observation_window);
+    RUN_TEST(test_serialize_observation_window_null_ptr);
+    RUN_TEST(test_serialize_observation_window_no_field_set);
+
+    /* Mdns Record tests */
+    RUN_TEST(test_serialize_record);
+    RUN_TEST(test_set_records);
+
+    /* Mdns client tests */
+    RUN_TEST(test_serialize_client);
+    RUN_TEST(test_set_serialization_clients);
+
+    RUN_TEST(test_serialize_report);
+    RUN_TEST(test_Mdns_Records_Report);
 
     RUN_TEST(test_load_unload_plugin);
     RUN_TEST(test_add_mdnsd_service);

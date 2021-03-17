@@ -91,20 +91,18 @@ endif
 endif
 
 # $(1) = source rootfs base dir
-# $(2) = component (profile or target dir)
 define rootfs_prepare_dir
-	$(Q)if [ -d $(1)/$(2) ]; then \
-		echo "$(call color_install,prepare) rootfs $(call color_profile,$(1)/$(2)) -> $(BUILD_ROOTFS_DIR)"; \
-		(cd $(1)/$(2) && tar cf - . --exclude=.keep) | (cd $(BUILD_ROOTFS_DIR) && tar xf - $(TARV) $(ROOTFS_TAR_TRANSFORM)); \
-		build/templates.py --process-rootfs $(BUILD_ROOTFS_DIR); \
-	fi
+	echo "$(call color_install,prepare) rootfs $(call color_profile,$(1)) -> $(BUILD_ROOTFS_DIR)"; \
+	(cd $(1) && tar cf - --exclude=.keep .) | (cd $(BUILD_ROOTFS_DIR) && tar xf - $(TARV) $(ROOTFS_TAR_TRANSFORM)); \
+	build/templates.py --process-rootfs $(BUILD_ROOTFS_DIR); \
 
 endef
 
 define rootfs_prepare
-	$(foreach DIR,$(ROOTFS_SOURCE_DIRS),\
+	$(Q)$(foreach PREPDIR,$(wildcard $(foreach DIR,$(ROOTFS_SOURCE_DIRS),\
 		$(foreach COMPONENT,$(ROOTFS_COMPONENTS),\
-			$(call rootfs_prepare_dir,$(DIR),$(COMPONENT))))
+			$(DIR)/$(COMPONENT)))),\
+				$(call rootfs_prepare_dir,$(PREPDIR)))
 endef
 
 # Checks for rootfs kconfig layer conflicts
@@ -134,35 +132,19 @@ endef
 # $1 = target rootfs dir
 # $2 = script path-name (post-install)
 define rootfs_run_hook_script
-	$(Q)if [ -x "$2" ]; then \
-		echo "$(call color_install,hooks) rootfs $(call color_profile,$2) in $1"; \
-		$(ROOTFS_HOOK_ENV) $2 $1; \
-	fi
-endef
+	echo "$(call color_install,hooks) rootfs $(call color_profile,$2) in $1"; \
+	$(ROOTFS_HOOK_ENV) $2 $1; \
 
-# $1 = target rootfs dir
-# $2 = hooks dir
-# $3 = script-name (post-install)
-define rootfs_run_hooks_in_dir
-	$(call rootfs_run_hook_script,$1,"$2/$3")
-	$(call rootfs_run_hook_script,$1,"$2/$3.$(TARGET)")
-
-endef
-
-# $1 = target rootfs dir
-# $2 = source rootfs base dir
-# $3 = component (profile or target dir)
-# $4 = script-name (post-install)
-define rootfs_run_hooks_in
-	$(call rootfs_run_hooks_in_dir,$1,$2/hooks/$3,$4)
 endef
 
 # $1 = target rootfs dir
 # $2 = script-name (post-install)
 define rootfs_run_hooks
-	$(foreach DIR,$(ROOTFS_SOURCE_DIRS),\
+	$(foreach SCRIPT,$(wildcard $(foreach DIR,$(ROOTFS_SOURCE_DIRS),\
 		$(foreach COMPONENT,$(ROOTFS_COMPONENTS),\
-			$(call rootfs_run_hooks_in,$1,$(DIR),$(COMPONENT),$2)))
+			$(foreach F_SUFFIX,$2 $2.$(TARGET),\
+				$(DIR)/hooks/$(COMPONENT)/$(F_SUFFIX))))),\
+				$(call rootfs_run_hook_script,$1,$(SCRIPT)))
 endef
 
 ROOTFS_PREPARE_HOOK_SCRIPT ?= pre-install
@@ -186,7 +168,7 @@ endef
 #   - rootfs-prepare: copy source rootfs skeleton
 
 rootfs-clean:
-	$(NQ) "$(call color_install,clean) plume-rootfs $(call color_profile,$(BUILD_ROOTFS_DIR))"
+	$(NQ) "$(call color_install,clean) rootfs $(call color_profile,$(BUILD_ROOTFS_DIR))"
 	$(Q)rm -rf $(BUILD_ROOTFS_DIR)
 
 rootfs-make: build_all rootfs-prepare ovsdb-create
@@ -210,22 +192,22 @@ rootfs-prepare-append: rootfs-prepare-main
 
 rootfs-prepare: rootfs-prepare-prepend rootfs-prepare-main rootfs-prepare-append
 
-# plume-rootfs-pack = plume-only part of rootfs (work/target/rootfs)
-plume-rootfs-pack: rootfs plume-rootfs-pack-only
+# rootfs-pack = opensync-only part of rootfs (work/target/rootfs)
+rootfs-pack: rootfs rootfs-pack-only
 
-ifeq ($(PLUME_ROOTFS_PACK_VERSION),)
-PLUME_ROOTFS_PACK_VERSION := $(shell $(call version-gen,make,$(PLUME_ROOTFS_PACK_VER_OPT)))
+ifeq ($(ROOTFS_PACK_VERSION),)
+ROOTFS_PACK_VERSION := $(shell $(call version-gen,make,$(ROOTFS_PACK_VER_OPT)))
 endif
-PLUME_ROOTFS_PACK_FILENAME ?= plume-rootfs-$(TARGET)-$(PLUME_ROOTFS_PACK_VERSION).tgz
-PLUME_ROOTFS_PACK_PATHNAME ?= $(IMAGEDIR)/$(PLUME_ROOTFS_PACK_FILENAME)
+ROOTFS_PACK_FILENAME ?= opensync-rootfs-$(TARGET)-$(ROOTFS_PACK_VERSION).tgz
+ROOTFS_PACK_PATHNAME ?= $(IMAGEDIR)/$(ROOTFS_PACK_FILENAME)
 
-plume-rootfs-pack-only: workdirs
-	$(NQ) "$(call color_install,pack) plume-rootfs $(call color_profile,$(BUILD_ROOTFS_DIR) => $(PLUME_ROOTFS_PACK_PATHNAME))"
-	$(Q)tar czf $(PLUME_ROOTFS_PACK_PATHNAME) -C $(BUILD_ROOTFS_DIR) .
+rootfs-pack-only: workdirs
+	$(NQ) "$(call color_install,pack) rootfs $(call color_profile,$(BUILD_ROOTFS_DIR) => $(ROOTFS_PACK_PATHNAME))"
+	$(Q)tar czf $(ROOTFS_PACK_PATHNAME) -C $(BUILD_ROOTFS_DIR) .
 
-# optional include plume-rootfs-pack in rootfs:
-ifeq ($(BUILD_PLUME_ROOTFS_PACK),y)
-rootfs: plume-rootfs-pack-only
+# optional include rootfs-pack in rootfs:
+ifeq ($(BUILD_ROOTFS_PACK),y)
+rootfs: rootfs-pack-only
 endif
 
 # rootfs-install:

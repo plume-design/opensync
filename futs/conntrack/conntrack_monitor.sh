@@ -38,6 +38,9 @@ usage() {
           Options:
                 -h this message
                 --source=<the source IP to filter on>
+                --sport=<the source port to filter on>
+                --dest=<the destination IP to filter on>
+                --dport=<the destination port to filter on>
                 --interval=<the polling interval in seconds> (default 5 seconds)
                 --dbg_output=<path to a file> (default: n dbg output)
 EOF
@@ -68,9 +71,11 @@ get_counters()
     prev=$1
     capture=$2
     source_ip=$3
-    nw_proto=$4
-    destination_port=$5
-    dbg=$6
+    dest_ip=$4
+    nw_proto=$5
+    source_port=$6
+    destination_port=$7
+    dbg=$8
 
     # If no debug output provided, set the debug output to /dev/null
     if [ -z ${dbg} ]; then
@@ -81,10 +86,11 @@ get_counters()
     # parse both previous records if any and the ovs-ofctl output
     awk -v dbgo=${dbg} \
         -v source="${source_ip}" \
+        -v src_port="${source_port}" \
+        -v dest="${dest_ip}" \
         -v dest_port="${destination_port}" \
         -v proto="${nw_proto}" '
-    BEGIN
-    {
+    BEGIN {
         OFS=","
         z0_tc = 0
         tc = 0
@@ -98,6 +104,7 @@ get_counters()
             npackets_out[record_key] = $2
             npackets_in[record_key] = $3
             next
+
         }
         {
             # Jump the line if it does not contain the packets string
@@ -108,16 +115,15 @@ get_counters()
             {
                 timeout = $3
                 src = $5
-                if (source != "src=None")
-                {
-                    if (!(src ~ source )) { next }
-                }
                 dst = $6
                 sport = $7
                 dport = $8
                 out_packets = $9
+                out_bytes = $10
                 in_packets = $15
+                in_bytes = $16
             }
+
             # Process UDP flows
             else if ($0 ~ /udp/)
             {
@@ -127,7 +133,17 @@ get_counters()
                 sport = $6
                 dport = $7
                 out_packets = $8
-                in_packets = $15
+                out_bytes = $9
+		if ($0 ~ /UNREPLIED/)
+		{
+                    in_packets = $15
+                    in_bytes = $16
+		}
+		else
+		{
+                    in_packets = $14
+                    in_bytes = $15
+		}
             }
             # process ICMP flows
             else if ($0 ~ /icmp/)
@@ -135,34 +151,62 @@ get_counters()
                 timeout = $3
                 src = $4
                 dst = $5
-                sport = $6
-                dport = $7
                 out_packets = $9
+                out_bytes = $10
                 in_packets = $16
+                in_bytes = $17
             }
             else
             {
                 next
             }
 
+            # Filtering
+
+            # Filter protocol
             protocol = $1
-            if (proto != "None")
+            # print "proto filter: " proto, " protocol: " protocol
+            if (proto != "proto=None")
             {
-                if (!(protocol ~ proto )) { next }
-            }
-            if (source != "src=None")
-            {
-                if (!(src ~ source )) { next }
+                if (proto !~ protocol) { next }
             }
 
+            # Filter source address
+            # print "source address filter: " source, " source address: " src
+            if (source != "src=None")
+            {
+                if (src !~ source) { next }
+            }
+
+            # Filter destination IP address
+            # print "destination address filter: " dest, " destination address: " dst
+            if (dest != "dst=None")
+            {
+                if (dst !~ dest) { next }
+            }
+
+            # Validate source port
+            # print "source port filter: " src_port, " source port: " sport
+            if (src_port != "sport=None")
+            {
+                if (src_port !~ sport) { next }
+            }
+
+            # Validate destination port
+            # print "destination port filter: " dest_port, " destination port: " dport
             if (dest_port != "dport=None")
             {
-                if (!(dest_port ~ dport )) { next }
+                if (dest_port !~ dport) { next }
             }
 
             # Process the packet counters
             o_p = substr(out_packets, 9, length(out_packets) - 8)
             i_p = substr(in_packets, 9, length(in_packets) - 8)
+	    # print "in_packets: " in_packets, "i_p: " i_p
+            # Process the bytes counters
+            o_b = substr(out_bytes, 7, length(out_bytes) - 6)
+            i_b = substr(in_bytes, 7, length(in_bytes) - 6)
+	    # print "in_bytes: " in_bytes, "i_b: " i_b
             if ($0 ~ /zone/)
             {
                 zs = $(NF - 1)
@@ -183,14 +227,23 @@ get_counters()
             offload_zn = (mark == 2)
             offload = offload_np && offload_zn
             if (offload) { ofc = ofc + 1 }
-            print protocol,src,dst,sport,dport,"timeout="timeout,"zone="zone, \
-                  " mark="mark " offload: "offload \
-                  " outbound packets: "o_p, " inbound packets: "i_p
-
+	    if (protocol !~ /icmp/)
+	    {
+                print protocol,src,dst,sport,dport,"timeout="timeout,"zone="zone, \
+                      " mark="mark " offload: "offload \
+                      " outbound packets: "o_p, " inbound packets: "i_p \
+		      " outbound_bytes: "o_b, " inbound_bytes: "i_b
+	    }
+	    if (protocol ~ /icmp/)
+	    {
+                print protocol,src,dst,"timeout="timeout,"zone="zone, \
+                      " mark="mark " offload: "offload \
+                      " outbound packets: "o_p, " inbound packets: "i_p \
+                      " outbound bytes: "o_b, " inbound bytes: "i_b
+	    }
         }
     }
-    END
-    {
+    END {
         OFS = " "
         print "----------------------------------------------------------------------"
         print "Zone 0: total connections: " z0_tc
@@ -270,7 +323,7 @@ source="src="${SOURCE:-"None"}
 dest="dst="${DEST:-"None"}
 sport="sport"=${SPORT:-"None"}
 dport="dport="${DPORT:-"None"}
-proto=${PROTO:-"None"}
+proto="proto="${PROTO:-"None"}
 af=${AF:-"ipv4"}
 
 # Check required commands
@@ -293,6 +346,6 @@ while true; do
     echo "$(date) conntrack activity over the past ${seconds_to_wait} seconds"
     echo "----------------------------------------------------------------------"
     conntrack -L -f ${af} > ${capture}
-    get_counters ${capture} ${capture} ${source} ${proto} ${dport} ${dbg_output}
+    get_counters ${capture} ${capture} ${source} ${dest} ${proto} ${sport} ${dport} ${dbg_output}
     echo ""
 done

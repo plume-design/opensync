@@ -251,6 +251,22 @@ message ClientReport {
     required uint32         channel         = 4;
 }
 
+message ClientAuthFailsReport {
+    message BSS {
+        message Client {
+            required string mac_address  = 1;
+            required uint32 auth_fails   = 2;
+            required uint32 invalid_psk  = 3;
+        }
+
+        required string ifname      = 1;
+        repeated Client client_list = 2;
+    }
+
+    required RadioBandType band     = 1;
+    repeated BSS           bss_list = 2;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 // Survey report : Chanel utilization. Report contains samples 
@@ -498,5 +514,6 @@ message Report {
     repeated Device         device          = 6;
     repeated BSReport       bs_report       = 7;
     repeated RssiReport     rssi_report     = 8;
+    repeated ClientAuthFailsReport client_auth_fails_report = 9;
 }
 

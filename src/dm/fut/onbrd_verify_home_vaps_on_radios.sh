@@ -25,57 +25,56 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh"
-source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
+source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
-usage="
-$(basename "$0") [-h] \$1
-
-where options are:
+tc_name="onbrd/$(basename "$0")"
+manager_setup_file="onbrd/onbrd_setup.sh"
+usage()
+{
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Validate home VAPs on radios exist
+Arguments:
     -h  show this help message
-
-where arguments are:
-    if_name=\$1 -- used as interface name to check - (string)(required)
-
-this script is dependent on following:
-    - running DM manager
-
-example of usage:
-   /tmp/fut-base/shell/onbrd/$(basename "$0") home-ap-24
-   /tmp/fut-base/shell/onbrd/$(basename "$0") home-ap-l50
-   /tmp/fut-base/shell/onbrd/$(basename "$0") home-ap-u50
-"
-
+    \$1 (if_name) : used as interface name to check : (string)(required)
+Testcase procedure:
+    - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
+                 Run: ./${tc_name} <IF-NAME>
+Script usage example:
+   ./${tc_name} home-ap-24
+   ./${tc_name} home-ap-l50
+   ./${tc_name} home-ap-u50
+usage_string
+}
 while getopts h option; do
     case "$option" in
         h)
-            echo "$usage"
-            exit 1
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
             ;;
     esac
 done
-
-if [ $# -ne 1 ]; then
-    echo 1>&2 "$0: incorrect number of input arguments"
-    echo "$usage"
-    exit 2
-fi
-
+NARGS=1
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 interface_name=$1
 
-tc_name="onbrd/$(basename "$0")"
-
-log "$tc_name: ONBRD Verify home VAPs on all radios, check interface $interface_name"
+log_title "$tc_name: ONBRD test - Verify home VAPs on all radios, check interface '${interface_name}'"
 
 wait_for_function_response 0 "check_ovsdb_entry Wifi_VIF_State -w if_name $interface_name" &&
     log "SUCCESS: interface $interface_name exists" ||
     raise "FAIL: interface $interface_name does not exist" -l "$tc_name" -tc
+
+wait_for_function_response 0 "check_interface_exists $interface_name" &&
+    log "$tc_name: SUCCESS: Interface $interface_name exists on system" ||
+    raise "FAIL: Interface $interface_name does not exist on system" -l "$tc_name" -tc
 
 log "$tc_name: Clean created interfaces after test"
 vif_clean

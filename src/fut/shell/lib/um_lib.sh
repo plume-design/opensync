@@ -26,52 +26,86 @@
 
 
 # Include basic environment config
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source ${FUT_TOPDIR}/shell/config/default_shell.sh
-fi
-source ${FUT_TOPDIR}/shell/lib/unit_lib.sh
-source ${LIB_OVERRIDE_FILE}
+export FUT_UM_LIB_SRC=true
+[ "${FUT_UNIT_LIB_SRC}" != true ] && source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+echo "${FUT_TOPDIR}/shell/lib/um_lib.sh sourced"
 
-############################################ INFORMATION SECTION - START ###############################################
+####################### INFORMATION SECTION - START ###########################
 #
 #   Base library of common Upgrade Manager functions (Plume specific)
 #
-############################################ INFORMATION SECTION - STOP ################################################
+####################### INFORMATION SECTION - STOP ############################
 
+####################### SETUP SECTION - START #################################
 
-############################################ SETUP SECTION - START #####################################################
-
+###############################################################################
+# DESCRIPTION:
+#   Function prepares device for UM tests.
+#   Raises exception on fail.
+# INPUT PARAMETER(S):
+#   $1  path to FW image (required)
+#   $2  interface name (optional, default: eth0)
+# RETURNS:
+#   See DESCRIPTION.
+# USAGE EXAMPLE(S):
+#   um_setup_test_environment  <fw_path>
+#   um_setup_test_environment  <fw_path> eth0
+###############################################################################
 um_setup_test_environment()
 {
-    fw_path=$1
     fn_name="um_lib:um_setup_test_environment"
+    NARGS_MIN=1
+    NARGS_MAX=2
+    [ $# -ge ${NARGS_MIN} ] && [ $# -le ${NARGS_MAX} ] ||
+        raise "${fn_name} requires ${NARGS_MIN}-${NARGS_MAX} input arguments, $# given" -arg
+    fw_path=$1
+    if_name=${2:-eth0}
 
-    log -deb "UM SETUP"
+    log "$fn_name - Running UM setup"
 
-    device_init ||
-        raise "device_init" -l "$fn_name" -fc
+    device_init &&
+        log -deb "$fn_name - Device initialized - Success" ||
+        raise "FAIL: Could not initialize device: device_init" -l "$fn_name" -ds
 
-    start_openswitch ||
-        raise "start_openswitch" -l "$fn_name" -fc
+    start_openswitch &&
+        log -deb "$fn_name - OpenvSwitch started - Success" ||
+        raise "FAIL: Could not start OpenvSwitch: start_openswitch" -l "$fn_name" -ds
 
-    start_udhcpc eth0 true ||
-        raise "start_udhcpc" -l "$fn_name" -fc
+    start_udhcpc "$if_name" true &&
+        log -deb "$fn_name - start_udhcpc on '$if_name' started - Success" ||
+        raise "FAIL: Could not start DHCP client: start_udhcpc" -l "$fn_name" -ds
 
-    log -deb "lib/um_lib: um_setup_environment - Erasing $fw_path"
-    rm -rf "$fw_path" || true
+    log -deb "${fn_name} - Erasing $fw_path"
+    rm -rf "$fw_path" ||
+        true
 
-    start_specific_manager um -d ||
-        raise "start_specific_manager um" -l "$fn_name" -fc
+    start_specific_manager um -d &&
+        log -deb "$fn_name - start_specific_manager um - Success" ||
+        raise "FAIL: Could not start manager: start_specific_manager um" -l "$fn_name" -ds
 
-    log -deb "$fn_name - UM setup - end"
+    log "$fn_name - UM setup - end"
+
+    return 0
 }
 
+###############################################################################
+# DESCRIPTION:
+#   Function resets all triggers that would start upgrade process.
+#   Raises exception on fail.
+# INPUT PARAMETER(S):
+#   $1  path to FW image (required)
+# RETURNS:
+#   See DESCRIPTION.
+# USAGE EXAMPLE(S):
+#   reset_um_triggers <fw_path>
+###############################################################################
 reset_um_triggers()
 {
-    fw_path=$1
     fn_name="um_lib:reset_um_triggers"
+    local NARGS=1
+    [ $# -ne ${NARGS} ] &&
+        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+    fw_path=$1
 
     log -deb "$fn_name - Erasing $fw_path"
     rm -rf "$fw_path" || true
@@ -84,15 +118,31 @@ reset_um_triggers()
       -u upgrade_status '0' \
       -u upgrade_timer '0' &&
           log -deb "$fn_name - AWLAN_Node UM fields reset" ||
-          raise "{AWLAN_Node -> update}" -l "$fn_name" -oe
+          raise "FAIL: Could not reset AWLAN_Node fields" -l "$fn_name" -oe
 }
 
-############################################ SETUP SECTION - STOP ######################################################
+####################### SETUP SECTION - STOP ##################################
 
+###############################################################################
+# DESCRIPTION:
+#   Function echoes upgrade manager's numerical code of identifier.
+#   Raises exception if identifier not found.
+# INPUT PARAMETER(S):
+#   $1  upgrade_identifier (string) (required)
+# RETURNS:
+#   Echoes code.
+#   See DESCRIPTION.
+# USAGE EXAMPLE(S):
+#   get_um_code UPG_ERR_DL_FW
+#   get_um_code UPG_STS_FW_DL_END
+###############################################################################
 get_um_code()
 {
-    upgrade_identifier=$1
     fn_name="um_lib:get_um_code"
+    local NARGS=1
+    [ $# -ne ${NARGS} ] &&
+        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+    upgrade_identifier=$1
 
     case "$upgrade_identifier" in
         "UPG_ERR_ARGS")
@@ -156,16 +206,31 @@ get_um_code()
             echo  "31"
             ;;
         *)
-            raise "upgrade_identifier {given:=$upgrade_identifier}" -l "$fn_name" -arg
+            raise "FAIL: Unknown upgrade_identifier {given:=$upgrade_identifier}" -l "$fn_name" -arg
             ;;
     esac
 }
 
+###############################################################################
+# DESCRIPTION:
+#   Function displays and interprets image dowload results.
+#   Raises exception on fail.
+# INPUT PARAMETER(S):
+#   $1  exit code
+#   $2  download start time
+#   $3  download timeout (not used)
+# RETURNS:
+#   0   On success.
+#   See DESCRIPTION.
+# USAGE EXAMPLE(S):
+#   fw_dl_timer_result 0 2020.08.31-13:32:51
+#   fw_dl_timer_result 1 2020.08.31-13:32:51
+###############################################################################
 fw_dl_timer_result()
 {
+    fn_name="um_lib:fw_dl_timer_result"
     exit_code=$1
     start_time=$2
-    fn_name="um_lib:fw_dl_timer_result"
 
     end_time=$(date -D "%H:%M:%S"  +"%Y.%m.%d-%H:%M:%S")
     t1=$(date -u -d "$start_time" +"%s")
@@ -174,16 +239,14 @@ fw_dl_timer_result()
     download_time=$(( t2 - t1 ))
 
     if [ "$exit_code" -eq 0 ]; then
-        log -deb "$fn_name - FW downloaded in given download_timer - downloaded in $download_time"
+        log -deb "$fn_name - FW downloaded in given download time - downloaded in $download_time seconds"
     else
-
         ${OVSH} s AWLAN_Node -w upgrade_status=="$(get_um_code "UPG_ERR_DL_FW")"
-
         if [ "$?" -eq 0 ]; then
             log -deb "$fn_name - FW downloaded was aborted after upgrade_dl_timer"
         else
             ${OVSH} s AWLAN_Node
-            raise "FW download was not aborted after upgrade_dl_timer" -l "$fn_name" -tc
+            raise "FAIL: FW download was not aborted after upgrade_dl_timer" -l "$fn_name" -tc
         fi
     fi
 

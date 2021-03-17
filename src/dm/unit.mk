@@ -42,15 +42,21 @@ UNIT_SRC += src/dm_hook.c
 UNIT_SRC += src/dm_manager.c
 UNIT_SRC += src/statem.c
 UNIT_SRC += src/dm_reboot.c
-ifeq ($(BUILD_SPEED_TEST),y)
-UNIT_SRC += src/dm_st.c
+ifeq ($(CONFIG_DM_OSYNC_CRASH_REPORTS),y)
+UNIT_SRC += src/dm_crash.c
 endif
+UNIT_SRC += src/dm_st.c
+UNIT_SRC += src/dm_st_iperf.c
+UNIT_SRC += src/dm_st_plugin.c
 
 # Unit specific CFLAGS
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 
 UNIT_LDFLAGS := -lev
 UNIT_LDFLAGS += -ljansson
+
+UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
+UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 
 # Other units that this unit may depend on
 UNIT_DEPS := src/lib/common
@@ -65,7 +71,6 @@ UNIT_DEPS += src/lib/target
 UNIT_DEPS += src/lib/const
 UNIT_DEPS += src/lib/module
 UNIT_DEPS += src/lib/evx
-ifeq ($(BUILD_SPEED_TEST),y)
 UNIT_DEPS += src/lib/pasync
-endif
+
 UNIT_DEPS_CFLAGS += src/lib/version

@@ -290,6 +290,61 @@ void   sts__client_report__free_unpacked
   assert(message->base.descriptor == &sts__client_report__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
+void   sts__client_auth_fails_report__bss__client__init
+                     (Sts__ClientAuthFailsReport__BSS__Client         *message)
+{
+  static Sts__ClientAuthFailsReport__BSS__Client init_value = STS__CLIENT_AUTH_FAILS_REPORT__BSS__CLIENT__INIT;
+  *message = init_value;
+}
+void   sts__client_auth_fails_report__bss__init
+                     (Sts__ClientAuthFailsReport__BSS         *message)
+{
+  static Sts__ClientAuthFailsReport__BSS init_value = STS__CLIENT_AUTH_FAILS_REPORT__BSS__INIT;
+  *message = init_value;
+}
+void   sts__client_auth_fails_report__init
+                     (Sts__ClientAuthFailsReport         *message)
+{
+  static Sts__ClientAuthFailsReport init_value = STS__CLIENT_AUTH_FAILS_REPORT__INIT;
+  *message = init_value;
+}
+size_t sts__client_auth_fails_report__get_packed_size
+                     (const Sts__ClientAuthFailsReport *message)
+{
+  assert(message->base.descriptor == &sts__client_auth_fails_report__descriptor);
+  return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
+}
+size_t sts__client_auth_fails_report__pack
+                     (const Sts__ClientAuthFailsReport *message,
+                      uint8_t       *out)
+{
+  assert(message->base.descriptor == &sts__client_auth_fails_report__descriptor);
+  return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
+}
+size_t sts__client_auth_fails_report__pack_to_buffer
+                     (const Sts__ClientAuthFailsReport *message,
+                      ProtobufCBuffer *buffer)
+{
+  assert(message->base.descriptor == &sts__client_auth_fails_report__descriptor);
+  return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
+}
+Sts__ClientAuthFailsReport *
+       sts__client_auth_fails_report__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data)
+{
+  return (Sts__ClientAuthFailsReport *)
+     protobuf_c_message_unpack (&sts__client_auth_fails_report__descriptor,
+                                allocator, len, data);
+}
+void   sts__client_auth_fails_report__free_unpacked
+                     (Sts__ClientAuthFailsReport *message,
+                      ProtobufCAllocator *allocator)
+{
+  assert(message->base.descriptor == &sts__client_auth_fails_report__descriptor);
+  protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
+}
 void   sts__survey__survey_sample__init
                      (Sts__Survey__SurveySample         *message)
 {
@@ -2056,6 +2111,172 @@ const ProtobufCMessageDescriptor sts__client_report__descriptor =
   sts__client_report__field_indices_by_name,
   1,  sts__client_report__number_ranges,
   (ProtobufCMessageInit) sts__client_report__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCFieldDescriptor sts__client_auth_fails_report__bss__client__field_descriptors[3] =
+{
+  {
+    "mac_address",
+    1,
+    PROTOBUF_C_LABEL_REQUIRED,
+    PROTOBUF_C_TYPE_STRING,
+    0,   /* quantifier_offset */
+    offsetof(Sts__ClientAuthFailsReport__BSS__Client, mac_address),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "auth_fails",
+    2,
+    PROTOBUF_C_LABEL_REQUIRED,
+    PROTOBUF_C_TYPE_UINT32,
+    0,   /* quantifier_offset */
+    offsetof(Sts__ClientAuthFailsReport__BSS__Client, auth_fails),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "invalid_psk",
+    3,
+    PROTOBUF_C_LABEL_REQUIRED,
+    PROTOBUF_C_TYPE_UINT32,
+    0,   /* quantifier_offset */
+    offsetof(Sts__ClientAuthFailsReport__BSS__Client, invalid_psk),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned sts__client_auth_fails_report__bss__client__field_indices_by_name[] = {
+  1,   /* field[1] = auth_fails */
+  2,   /* field[2] = invalid_psk */
+  0,   /* field[0] = mac_address */
+};
+static const ProtobufCIntRange sts__client_auth_fails_report__bss__client__number_ranges[1 + 1] =
+{
+  { 1, 0 },
+  { 0, 3 }
+};
+const ProtobufCMessageDescriptor sts__client_auth_fails_report__bss__client__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "sts.ClientAuthFailsReport.BSS.Client",
+  "Client",
+  "Sts__ClientAuthFailsReport__BSS__Client",
+  "sts",
+  sizeof(Sts__ClientAuthFailsReport__BSS__Client),
+  3,
+  sts__client_auth_fails_report__bss__client__field_descriptors,
+  sts__client_auth_fails_report__bss__client__field_indices_by_name,
+  1,  sts__client_auth_fails_report__bss__client__number_ranges,
+  (ProtobufCMessageInit) sts__client_auth_fails_report__bss__client__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCFieldDescriptor sts__client_auth_fails_report__bss__field_descriptors[2] =
+{
+  {
+    "ifname",
+    1,
+    PROTOBUF_C_LABEL_REQUIRED,
+    PROTOBUF_C_TYPE_STRING,
+    0,   /* quantifier_offset */
+    offsetof(Sts__ClientAuthFailsReport__BSS, ifname),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "client_list",
+    2,
+    PROTOBUF_C_LABEL_REPEATED,
+    PROTOBUF_C_TYPE_MESSAGE,
+    offsetof(Sts__ClientAuthFailsReport__BSS, n_client_list),
+    offsetof(Sts__ClientAuthFailsReport__BSS, client_list),
+    &sts__client_auth_fails_report__bss__client__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned sts__client_auth_fails_report__bss__field_indices_by_name[] = {
+  1,   /* field[1] = client_list */
+  0,   /* field[0] = ifname */
+};
+static const ProtobufCIntRange sts__client_auth_fails_report__bss__number_ranges[1 + 1] =
+{
+  { 1, 0 },
+  { 0, 2 }
+};
+const ProtobufCMessageDescriptor sts__client_auth_fails_report__bss__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "sts.ClientAuthFailsReport.BSS",
+  "BSS",
+  "Sts__ClientAuthFailsReport__BSS",
+  "sts",
+  sizeof(Sts__ClientAuthFailsReport__BSS),
+  2,
+  sts__client_auth_fails_report__bss__field_descriptors,
+  sts__client_auth_fails_report__bss__field_indices_by_name,
+  1,  sts__client_auth_fails_report__bss__number_ranges,
+  (ProtobufCMessageInit) sts__client_auth_fails_report__bss__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCFieldDescriptor sts__client_auth_fails_report__field_descriptors[2] =
+{
+  {
+    "band",
+    1,
+    PROTOBUF_C_LABEL_REQUIRED,
+    PROTOBUF_C_TYPE_ENUM,
+    0,   /* quantifier_offset */
+    offsetof(Sts__ClientAuthFailsReport, band),
+    &sts__radio_band_type__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "bss_list",
+    2,
+    PROTOBUF_C_LABEL_REPEATED,
+    PROTOBUF_C_TYPE_MESSAGE,
+    offsetof(Sts__ClientAuthFailsReport, n_bss_list),
+    offsetof(Sts__ClientAuthFailsReport, bss_list),
+    &sts__client_auth_fails_report__bss__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned sts__client_auth_fails_report__field_indices_by_name[] = {
+  0,   /* field[0] = band */
+  1,   /* field[1] = bss_list */
+};
+static const ProtobufCIntRange sts__client_auth_fails_report__number_ranges[1 + 1] =
+{
+  { 1, 0 },
+  { 0, 2 }
+};
+const ProtobufCMessageDescriptor sts__client_auth_fails_report__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "sts.ClientAuthFailsReport",
+  "ClientAuthFailsReport",
+  "Sts__ClientAuthFailsReport",
+  "sts",
+  sizeof(Sts__ClientAuthFailsReport),
+  2,
+  sts__client_auth_fails_report__field_descriptors,
+  sts__client_auth_fails_report__field_indices_by_name,
+  1,  sts__client_auth_fails_report__number_ranges,
+  (ProtobufCMessageInit) sts__client_auth_fails_report__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
 static const ProtobufCFieldDescriptor sts__survey__survey_sample__field_descriptors[11] =
@@ -4329,7 +4550,7 @@ const ProtobufCMessageDescriptor sts__rssi_report__descriptor =
   (ProtobufCMessageInit) sts__rssi_report__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
-static const ProtobufCFieldDescriptor sts__report__field_descriptors[8] =
+static const ProtobufCFieldDescriptor sts__report__field_descriptors[9] =
 {
   {
     "nodeID",
@@ -4427,10 +4648,23 @@ static const ProtobufCFieldDescriptor sts__report__field_descriptors[8] =
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
+  {
+    "client_auth_fails_report",
+    9,
+    PROTOBUF_C_LABEL_REPEATED,
+    PROTOBUF_C_TYPE_MESSAGE,
+    offsetof(Sts__Report, n_client_auth_fails_report),
+    offsetof(Sts__Report, client_auth_fails_report),
+    &sts__client_auth_fails_report__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
 };
 static const unsigned sts__report__field_indices_by_name[] = {
   6,   /* field[6] = bs_report */
   2,   /* field[2] = capacity */
+  8,   /* field[8] = client_auth_fails_report */
   4,   /* field[4] = clients */
   5,   /* field[5] = device */
   3,   /* field[3] = neighbors */
@@ -4441,7 +4675,7 @@ static const unsigned sts__report__field_indices_by_name[] = {
 static const ProtobufCIntRange sts__report__number_ranges[1 + 1] =
 {
   { 1, 0 },
-  { 0, 8 }
+  { 0, 9 }
 };
 const ProtobufCMessageDescriptor sts__report__descriptor =
 {
@@ -4451,7 +4685,7 @@ const ProtobufCMessageDescriptor sts__report__descriptor =
   "Sts__Report",
   "sts",
   sizeof(Sts__Report),
-  8,
+  9,
   sts__report__field_descriptors,
   sts__report__field_indices_by_name,
   1,  sts__report__number_ranges,

@@ -28,6 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define INET_PPPOE_H_INCLUDED
 
 #include "const.h"
+#include "osn_netif.h"
 #include "osn_pppoe.h"
 
 #include "inet.h"

@@ -25,57 +25,53 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
-source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+# FUT environment loading
+# shellcheck disable=SC1091
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
-usage="
-$(basename "$0") [-h] \$1
-
-where options are:
+tc_name="onbrd/$(basename "$0")"
+manager_setup_file="onbrd/onbrd_setup.sh"
+usage()
+{
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Validate wan ip address
+Arguments:
     -h  show this help message
-
-    wan_interface=\$1 -- used as interface name to check WAN IP for - (string)(required)
-    wan_ip=\$2 -- used as WAN IP address to be checked - (string)(required)
-
-this script is dependent on following:
-    - running DM manager
-
-example of usage:
-   /tmp/fut-base/shell/onbrd/$(basename "$0") br-wan 192.168.200.10
-"
-
+    \$1 (wan_interface)     : used as interface name to check WAN IP if WANO is disabled : (string)(required)
+    \$2 (wan_ip)            : used as WAN IP address to be checked                       : (string)(required)
+Testcase procedure:
+    - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
+                 Run: ./${tc_name} br-wan 192.168.200.10
+Script usage example:
+   ./${tc_name} br-wan 192.168.200.10
+usage_string
+}
 while getopts h option; do
     case "$option" in
         h)
-            echo "$usage"
-            exit 1
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
             ;;
     esac
 done
+NARGS=2
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+wan_interface=${1}
+inet_addr=${2}
 
-if [ $# -lt 2 ]; then
-    echo 1>&2 "$0: not enough arguments"
-    echo "$usage"
-    exit 2
-fi
+log_title "$tc_name: ONBRD test - Verify WAN_IP in Wifi_Inet_State is correctly applied"
 
-wan_interface=$1
-inet_addr=$2
-
-tc_name="onbrd/$(basename "$0")"
-
-log "$tc_name: ONBRD Verify WAN IP address '$inet_addr' for interface '$wan_interface'"
-
+log "$tc_name: Verify WAN IP address '$inet_addr' for interface '$wan_interface'"
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$wan_interface" -is inet_addr "$inet_addr" &&
     log "$tc_name: wait_ovsdb_entry - Wifi_Inet_State '$wan_interface' inet_addr is equal to '$inet_addr'" ||
     raise "wait_ovsdb_entry - Wifi_Inet_State '$wan_interface' inet_addr is NOT equal to '$inet_addr'" -l "$tc_name" -tc
-
 wait_for_function_response 0 "verify_wan_ip_l2 $wan_interface $inet_addr" &&
     log "$tc_name: LEVEL2 WAN IP for '$wan_interface' is equal to '$inet_addr'" ||
     raise "LEVEL2 WAN IP for '$wan_interface' is NOT equal to '$inet_addr'" -l "$tc_name" -tc

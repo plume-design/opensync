@@ -33,6 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <errno.h>
 #include <string.h>
 
+#include "const.h"
 #include "execsh.h"
 #include "log.h"
 #include "osp_l2switch.h"
@@ -43,6 +44,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "inet_vlan.h"
 
 static bool inet_vlan_vlanid_set(inet_t *super, int vlanid);
+/* TODO: leading underscore used to break the same naming convention used for local
+functions and public inet.h interface functions. Naming change recommended */
+static bool _inet_vlan_egress_qos_map_set(inet_t *super, const char *qos_map);
 static bool inet_vlan_parent_ifname_set(inet_t *super, const char *ifname);
 static bool inet_vlan_service_commit(inet_base_t *super, enum inet_base_services srv, bool enable);
 static bool inet_vlan_service_IF_ENABLE(inet_vlan_t *self, bool enable);
@@ -103,8 +107,10 @@ bool inet_vlan_init(inet_vlan_t *self, const char *ifname)
     }
 
     self->inet.in_vlanid_set_fn = inet_vlan_vlanid_set;
+    self->inet.in_vlan_egress_qos_map_set_fn = _inet_vlan_egress_qos_map_set;
     self->inet.in_parent_ifname_set_fn = inet_vlan_parent_ifname_set;
     self->base.in_service_commit_fn = inet_vlan_service_commit;
+    self->in_vlanid = C_VLAN_INVALID;
 
     return true;
 }
@@ -137,7 +143,7 @@ bool inet_vlan_fini(inet_vlan_t *self)
  *  VLAN class methods
  * ===========================================================================
  */
-bool inet_vlan_vlanid_set(
+static bool inet_vlan_vlanid_set(
         inet_t *super,
         int vlanid)
 {
@@ -150,6 +156,28 @@ bool inet_vlan_vlanid_set(
     /* Interface must be recreated, therefore restart the IF_CREATE service */
     return inet_unit_restart(self->base.in_units, INET_BASE_IF_CREATE, false);
 }
+
+static bool _inet_vlan_egress_qos_map_set(
+        inet_t *super,
+        const char *qos_map)
+{
+    inet_vlan_t *self = CONTAINER_OF(super, inet_vlan_t, inet);
+
+    if (0 == strcmp(self->in_egress_qos_map, qos_map)) return true;
+
+    if (strlen(qos_map) >= sizeof(self->in_egress_qos_map))
+    {
+        LOG(ERR, "inet_vlan: %s: Egress QOS mapping too long: %s",
+                self->inet.in_ifname, qos_map);
+        return false;
+    }
+
+    STRSCPY(self->in_egress_qos_map, qos_map);
+
+    /* Interface must be recreated, therefore restart the IF_CREATE service */
+    return inet_unit_restart(self->base.in_units, INET_BASE_IF_CREATE, false);
+}
+
 
 bool inet_vlan_parent_ifname_set(inet_t *super, const char *parent_ifname)
 {
@@ -225,7 +253,7 @@ bool inet_vlan_service_IF_ENABLE(inet_vlan_t *self, bool enable)
     {
         osp_l2switch_del(self->in_l2s_ifname);
         self->in_l2s_ifname[0] = '\0';
-        self->in_l2s_vlanid = 0;
+        self->in_l2s_vlanid = C_VLAN_INVALID;
     }
 
     if (self->in_parent_netif != NULL)
@@ -276,14 +304,14 @@ bool inet_vlan_service_IF_ENABLE(inet_vlan_t *self, bool enable)
  */
 bool inet_vlan_service_IF_CREATE(inet_vlan_t *self, bool enable)
 {
-    if (self->in_l2s_ifname[0] != '\0' && self->in_l2s_vlanid != 0)
+    if (self->in_l2s_ifname[0] != '\0' && self->in_l2s_vlanid >= 0)
     {
         if (!osp_l2switch_vlan_unset(self->in_l2s_ifname, self->in_l2s_vlanid))
         {
             LOG(WARN, "inet_vlan: %s: Error unsetting VLAN %d on interface %s.",
                     self->inet.in_ifname, self->in_l2s_vlanid, self->in_l2s_ifname);
         }
-        self->in_l2s_vlanid = 0;
+        self->in_l2s_vlanid = C_VLAN_INVALID;
     }
 
     if (self->in_vlan != NULL)
@@ -306,10 +334,12 @@ bool inet_vlan_service_IF_CREATE(inet_vlan_t *self, bool enable)
         osn_vlan_parent_set(self->in_vlan, self->in_parent_ifname);
     }
 
-    if (self->in_vlanid >= 1 && self->in_vlanid <= 4095)
+    if (self->in_vlanid >= C_VLAN_MIN && self->in_vlanid <= C_VLAN_MAX)
     {
         osn_vlan_vid_set(self->in_vlan, self->in_vlanid);
     }
+
+    (void)osn_vlan_egress_qos_map_set(self->in_vlan, self->in_egress_qos_map);
 
     if (!enable) return true;
 

@@ -43,6 +43,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb.h"
 #include "ovsdb_update.h"
 #include "schema.h"
+#include "schema_consts.h"
 
 #include "sm.h"
 
@@ -61,6 +62,7 @@ char *sm_report_type_str[STS_REPORT_MAX] =
     "essid",
     "device",
     "rssi",
+    "client_auth_fails"
 };
 
 #ifndef CONFIG_MANAGER_QM
@@ -274,7 +276,8 @@ void sm_update_mqtt_interval(void)
 }
 
 static
-bool sm_update_stats_config(sm_stats_config_t *stats_cfg)
+bool sm_update_stats_config(sm_stats_config_t *stats_cfg,
+                            ovsdb_update_type_t mon_type)
 {
     sm_stats_request_t              req;
     int                             i;
@@ -375,6 +378,22 @@ bool sm_update_stats_config(sm_stats_config_t *stats_cfg)
         case STS_REPORT_RSSI:
             sm_rssi_report_request(&radio->config, &req);
             break;
+        case STS_REPORT_CLIENT_AUTH_FAILS:
+            switch(mon_type)
+            {
+                case OVSDB_UPDATE_NEW:
+                    sm_client_auth_fails_report_start(&req);
+                    break;
+                case OVSDB_UPDATE_MODIFY:
+                    sm_client_auth_fails_report_update(&req);
+                    break;
+                case OVSDB_UPDATE_DEL:
+                    sm_client_auth_fails_report_stop(&req);
+                    break;
+                default:
+                    break;
+            }
+            break;
         default:
             return false;
     }
@@ -406,6 +425,7 @@ void sm_update_wifi_stats_config_cb(ovsdb_update_monitor_t *self)
                 return;
             }
             ds_tree_insert(&stats_config_table, stats, stats->schema._uuid.uuid);
+            sm_update_stats_config(stats, self->mon_type);
             break;
 
         case OVSDB_UPDATE_MODIFY:
@@ -422,6 +442,7 @@ void sm_update_wifi_stats_config_cb(ovsdb_update_monitor_t *self)
                 LOG(ERR, "Parsing Wifi_Stats_Config MODIFY request.");
                 return;
             }
+            sm_update_stats_config(stats, self->mon_type);
             break;
 
         case OVSDB_UPDATE_DEL:
@@ -434,19 +455,15 @@ void sm_update_wifi_stats_config_cb(ovsdb_update_monitor_t *self)
             /* Reset configuration */
             stats->schema.reporting_interval = 0;
             stats->schema.reporting_count = 0;
-            sm_update_stats_config(stats);
+            sm_update_stats_config(stats, self->mon_type);
             ds_tree_remove(&stats_config_table, stats);
             free(stats);
-            return;
+            break;
 
         default:
             LOG(ERR, "Update Monitor for Wifi_Stats_Config reported an error. %s", self->mon_uuid);
             return;
     }
-
-    sm_update_stats_config(stats);
-
-    return;
 }
 
 /******************************************************************************

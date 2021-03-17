@@ -104,6 +104,7 @@ static char *osfw_target_builtin[] =
     "SNAT",
     "TCPMSS",
     "TOS",
+    "TPROXY",
     "TTL",
     "ULOG"
 };
@@ -145,21 +146,21 @@ static const char osfw_iptables_chain_add_cmd[] = _S(
         cmd="$1";
         table="$2";
         chain="$3";
-        result=$("$cmd" -t "$table" -N "$chain" 2>&1) || [ "$result" == "iptables: Chain already exists." ]);
+        result=$("$cmd" -w -t "$table" -N "$chain" 2>&1) || [ "$result" == "iptables: Chain already exists." ]);
 
 /* Built-in script for removing a chain */
 static const char osfw_iptables_chain_del_cmd[] = _S(
         cmd="$1";
         table="$2";
         chain="$3";
-        "$cmd" -t "$table" -X "$chain");
+        "$cmd" -w -t "$table" -X "$chain");
 
 /* Built-in script for flushing a chain */
 static const char osfw_iptables_chain_flush_cmd[] = _S(
         cmd="$1";
         table="$2";
         chain="$3";
-        "$cmd" -t "$table" -F "$chain");
+        "$cmd" -w -t "$table" -F "$chain");
 
 /* Built-in script for adding a rule */
 static const char osfw_iptables_rule_add_cmd[] = _S(
@@ -168,7 +169,7 @@ static const char osfw_iptables_rule_add_cmd[] = _S(
         chain="$3";
         match="$4";
         target="$5";
-        "$cmd" -t "$table" -A "$chain" -j "$target" $match);
+        "$cmd" -w -t "$table" -A "$chain" -j "$target" $match);
 
 
 /*
@@ -218,13 +219,13 @@ bool osfw_chain_del(
     /* Check if all rules in the chain were deleted */
     ds_tree_foreach(&osfw_rule_list, prule)
     {
-        if ((prule->fr_table == table) &&
-                (strcmp(prule->fr_chain, chain) == 0))
-        {
-            LOG(ERR, "osfw: %s.%s.%s: Unable to delete chain as it still contains rules.",
-                    OSFW_FAMILY_STR(family), osfw_table_str(table), chain);
-            return false;
-        }
+        if (prule->fr_family != family) continue;
+        if (prule->fr_table != table) continue;
+        if (strcmp(prule->fr_chain, chain) != 0) continue;
+
+        LOG(ERR, "osfw: %s.%s.%s: Unable to delete chain as it still contains rules: %s",
+                OSFW_FAMILY_STR(family), osfw_table_str(table), prule->fr_chain, prule->fr_rule);
+        return false;
     }
 
     return osfw_iptables_chain_del(family, table, chain);
@@ -242,7 +243,7 @@ bool osfw_rule_add(
     struct osfw_rule *prule;
 
     LOG(INFO, "osfw: %s.%s.%s: Adding rule (priority %d): %s -> %s",
-                OSFW_IPTABLES_CMD(family),
+                OSFW_FAMILY_STR(family),
                 osfw_table_str(table),
                 chain,
                 priority,
@@ -283,7 +284,7 @@ bool osfw_rule_del(
     struct osfw_rule key;
 
     LOG(INFO, "osfw: %s.%s.%s: Deleting rule (priority %d): %s -> %s",
-                OSFW_IPTABLES_CMD(family),
+                OSFW_FAMILY_STR(family),
                 osfw_table_str(table),
                 chain,
                 priority,

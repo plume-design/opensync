@@ -71,6 +71,7 @@ KCONFIG_PREFIX      = 'CONFIG_'
 TEMPLATE_SUFFIX     = '.jinja'
 TEMPLATE_COMMENT    = '# {# jinja-parse #}\n'
 OVSDB_SUFFIX        = '.json.jinja'
+OPT_ALL_ENV         = True
 
 def get_kconfig_env():
     """Returns dict of Kconfig variable=value items."""
@@ -82,10 +83,17 @@ def get_kconfig_env():
     env['INSTALL_PREFIX'] = os.environ['INSTALL_PREFIX']
     return env
 
+def get_env():
+    if OPT_ALL_ENV:
+        """ All environment variables """
+        return os.environ
+    else:
+        return get_kconfig_env()
+
 def process_rootfs(dirname):
     """Processes .jinja files in given directory."""
 
-    kconfig_vars = get_kconfig_env()
+    kconfig_vars = get_env()
 
     for (dirpath, dirnames, filenames) in os.walk(dirname):
         for filename in filenames:
@@ -126,7 +134,7 @@ def process_rootfs(dirname):
 def process_ovsdb(filename):
     """Processes given ovsdb .json.jinja file"""
 
-    kconfig_vars = get_kconfig_env()
+    kconfig_vars = get_env()
 
     if not filename.endswith(OVSDB_SUFFIX):
         return
@@ -141,6 +149,14 @@ def main():
 
     if len(sys.argv) != 3:
         return
+
+    if '--all-env' in sys.argv:
+        sys.argv.remove('--all-env')
+        OPT_ALL_ENV = True
+
+    if '--kconfig-env' in sys.argv:
+        sys.argv.remove('--kconfig-env')
+        OPT_ALL_ENV = False
 
     if sys.argv[1] == '--process-rootfs':
         process_rootfs(sys.argv[2])

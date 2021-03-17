@@ -1,0 +1,42 @@
+if OSP_L2SWITCH_SWCONFIG
+    comment "Swconfig Options"
+    config OSP_L2SWITCH_SWCONFIG_DEVICE
+        string "Swconfig Device"
+        default "switch0"
+        help
+            The swconfig device, typically "switch0".
+
+    config OSP_L2SWITCH_SWCONFIG_PORT_CPU
+        int "Swconfig CPU Port Number"
+        default 0
+        help
+            This option spceifies the switch CPU port number.
+
+    config OSP_L2SWITCH_SWCONFIG_PORT_MAP
+        string "Swconfig Interface Mapping"
+        default "eth0=5 eth1=4"
+        help
+            This option defines mappings between interface names and switch
+            port numbers.
+
+            The format is a list of IF_NAME=PORT_NUMBER keywords separated by
+            spaces.
+
+    config OSP_L2SWITCH_SWCONFIG_VLAN0_WAR
+        bool "Use custom ports string for VLAN0"
+        default n
+        help
+            Some internal switches have issues handling VLAN 0. In such cases
+            it is necessary to use an alternative (fixed) "ports" parameter for
+            swconfig.
+
+            Enable this option to specify a custom string.
+
+    config OSP_L2SWITCH_SWCONFIG_VLAN0_PORTS
+        string "VLAN0 ports string"
+        default ""
+        depends on OSP_L2SWITCH_SWCONFIG_VLAN0_WAR
+        help
+            Specify the "ports" string to be used with VLAN0.
+
+endif

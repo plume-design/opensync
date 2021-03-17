@@ -25,53 +25,47 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
-source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
-usage="
-$(basename "$0") [-h] \$1
-
-where options are:
+tc_name="onbrd/$(basename "$0")"
+manager_setup_file="onbrd/onbrd_setup.sh"
+usage()
+{
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Validate redirector address in AWLAN_Node table
+Arguments:
     -h  show this help message
-
-where arguments are:
-    redirector_address=\$1 -- used as FW version to verify running correct FW - (string)(required)
-
-this script is dependent on following:
-    - running DM manager
-
-example of usage:
-   /tmp/fut-base/shell/onbrd/$(basename "$0") ssl:wildfire.plume.tech:443
-"
-
+Testcase procedure:
+    - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
+                 Run: ./${tc_name}
+Script usage example:
+   ./${tc_name}
+usage_string
+}
 while getopts h option; do
     case "$option" in
         h)
-            echo "$usage"
-            exit 1
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
             ;;
     esac
 done
 
-if [ $# -lt 1 ]; then
-    echo 1>&2 "$0: not enough arguments"
-    echo "$usage"
-    exit 2
-fi
+log_title "$tc_name: ONBRD test - Verify redirector address"
 
-redirector_addr=$1
-tc_name="onbrd/$(basename "$0")"
-
-log "$tc_name: ONBRD Verify redirector address, waiting for '$redirector_addr'"
-
-wait_ovsdb_entry AWLAN_Node -is redirector_addr "$redirector_addr" &&
-    log "$tc_name: wait_ovsdb_entry - AWLAN_Node redirector_addr equal to '$redirector_addr'" ||
-    raise "wait_ovsdb_entry - AWLAN_Node redirector_addr NOT equal to '$redirector_addr'" -l "$tc_name" -tc
-
+wait_for_function_response 'notempty' "get_ovsdb_entry_value AWLAN_Node redirector_addr" &&
+    check_pass=true ||
+    check_pass=false
+print_tables AWLAN_Node
+[ "${check_pass}" = true ] &&
+    log "$tc_name: AWLAN_Node redirector_addr populated" ||
+    raise "AWLAN_Node redirector_addr NOT populated" -l "$tc_name" -tc
 pass

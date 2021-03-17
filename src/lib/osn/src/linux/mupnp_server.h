@@ -27,27 +27,54 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef MUPNP_SERVER_H_INCLUDED
 #define MUPNP_SERVER_H_INCLUDED
 
-#include "const.h"
-#include "ds_dlist.h"
-#include "osn_upnp.h"
+#include <stddef.h>
+#include <stdbool.h>
 
-typedef struct mupnp_server mupnp_server_t;
+/**
+ * Command used to execute the miniupnpd firewall script (iptscript.sh)
+ *
+ * - $1 is the action to perform, see iptscript.sh for details
+ */
+#define MUPNP_IPTSCRIPT_CMD _S(/etc/miniupnpd/iptscript.sh $1)
 
-struct mupnp_server
+/**
+ * @brief Interface of miniupnpd daemon service which
+ * complies with generic upnp server interface defined in
+ * upnp_server.h
+ */
+
+/**
+ * @brief Declaration of miniupnpd server object type
+ */
+typedef struct upnp_server mupnp_server_t;
+
+/**
+ * @brief Definition of miniupnpd server configuration structure
+ */
+typedef struct mupnp_config
 {
-    char                    upnp_ifname[C_IFNAME_LEN];
-    bool                    upnp_enabled;
-    bool                    upnp_nat_enabled;
-    enum osn_upnp_mode      upnp_mode_active;
-    enum osn_upnp_mode      upnp_mode_inactive;
-    ds_dlist_t              upnp_dnode;
-};
+    const char *name; //< upnp server name
+    const char *config_dir_path; //< config file directory path
+    bool enable_natpmp; //< enable NAT-PMP support
+    bool secure_mode; //< allow clients to add mappings only to their own IP
+    bool system_uptime; //< report system uptime instead of service uptime
+    const char **perm_rules; //< NULL terminated array of permission rules
+    unsigned http_port; //< HTTP port for UPnP device description and SOAP (0 for autoselect)
+    const char *upnp_forward_chain; //< UPnP forward chain name or NULL when not provided
+    const char *upnp_nat_chain; //< UPnP nat chain name or NULL when not provided
 
-bool mupnp_server_init(mupnp_server_t *self, const char *ifname);
-bool mupnp_server_fini(mupnp_server_t *self);
+} mupnp_config_t;
+
+mupnp_server_t *mupnp_server_new(const mupnp_config_t *cfg);
+void mupnp_server_del(mupnp_server_t *self);
+
+bool mupnp_server_attach_external(mupnp_server_t *self, const char *ifname);
+bool mupnp_server_attach_external6(mupnp_server_t *self, const char *ifname);
+bool mupnp_server_attach_internal(mupnp_server_t *self, const char *ifname);
+bool mupnp_server_detach(mupnp_server_t *self, const char *ifname);
+
 bool mupnp_server_start(mupnp_server_t *self);
 bool mupnp_server_stop(mupnp_server_t *self);
-bool mupnp_server_set(mupnp_server_t *self, enum osn_upnp_mode mode);
-bool mupnp_server_get(mupnp_server_t *self, enum osn_upnp_mode *mode);
+bool mupnp_server_started(const mupnp_server_t *self);
 
 #endif /* MUPNP_SERVER_H_INCLUDED */

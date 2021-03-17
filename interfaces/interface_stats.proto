@@ -24,30 +24,54 @@
 
 syntax = "proto2";
 
-package intf.stats;
+package interfaces.intf_stats;
 
 message ObservationPoint {
-     optional string nodeId                                                 = 1;
-     optional string locationId                                             = 2;
+  // Serial number of the device reporting the stats
+  optional string node_id = 1;
+
+  // Location id of the device reporting the stats
+  optional string location_id = 2;
 }
 
 message IntfStats {
-     optional string ifName                                                 = 1;
-     optional uint64 txBytes                                                = 2;
-     optional uint64 rxBytes                                                = 3;
-     optional uint64 txPackets                                              = 4;
-     optional uint64 rxPackets                                              = 5;
-     optional string role                                                   = 6;
+  optional string if_name = 1;
+
+  // The counters can either be accumulative or deltas. This
+  // is specified in the FCM_Report_Config table.
+  optional uint64 tx_bytes = 2;
+  optional uint64 rx_bytes = 3;
+  optional uint64 tx_packets = 4;
+  optional uint64 rx_packets = 5;
+
+  // Holds information about the interface such as its role in the
+  // network, the network to which it's assigned, the vap type, id, etc
+  // Read from Wifi_Inet_Config table
+  optional string role = 6;
 }
 
 message ObservationWindow {
-     optional uint64    startedAt                                           = 1;
-     optional uint64    endedAt                                             = 2;
-     repeated IntfStats intfStats                                           = 3;
+  // The start fime for this window, represented as seconds since epoch
+  optional uint64 started_at = 1;
+
+  // The end time for this window, represented as seconds since epoch
+  optional uint64 ended_at = 2;
+
+  // Statistics corresponding to per-interface
+  repeated IntfStats intf_stats = 3;
 }
 
+// Report describing per-interface bandwidth consumed
+// metrics and statistics
 message IntfReport {
-     optional uint64            reportedAt                                  = 1;
-     optional ObservationPoint  observationPoint                            = 2;
-     repeated ObservationWindow observationWindow                           = 3;
+
+  // Time when the messaged is reported, represented as seconds since epoch
+  optional uint64 reported_at = 1;
+
+  // Information to identify a device uniquely, serial no and location id
+  optional ObservationPoint  observation_point = 2;
+
+  // A fix time frame during which statistics are recorded. Each report
+  // can contain one or more such windows
+  repeated ObservationWindow observation_windows = 3;
 }

@@ -111,6 +111,7 @@ size_t net_header_parse_eth(struct net_header_parser *parser)
     parser->data += parsed;
 
     parser->eth_pld.payload = parser->data;
+    parser->eth_header_available = true;
 
     return parsed;
 }
@@ -534,28 +535,37 @@ net_header_log(int log_level, struct net_header_parser *parser)
 char *
 net_header_fill_buf(char *buf, size_t len, struct net_header_parser *parser)
 {
+    struct net_md_stats_accumulator *acc;
     char ip_pres[2 * INET6_ADDRSTRLEN + 128];
     char ip_src[INET6_ADDRSTRLEN];
     char ip_dst[INET6_ADDRSTRLEN];
     struct eth_header *eth;
+    char flow_pres[256];
     char eth_pres[256];
     char tpt_pres[256];
     bool has_ip;
+    bool has_eth;
 
     eth = net_header_get_eth(parser);
     memset(eth_pres, 0, sizeof(eth_pres));
     memset(ip_pres, 0, sizeof(ip_pres));
     memset(tpt_pres, 0, sizeof(tpt_pres));
+    memset(flow_pres, 0, sizeof(flow_pres));
     memset(buf, 0, len);
 
     /* Prepare ethernet presentation */
-    snprintf(eth_pres, sizeof(eth_pres),
-             "ETH: src: " PRI_os_macaddr_lower_t
-             ", dst: " PRI_os_macaddr_lower_t
-             ", ethertype 0x%X, vlan id %u",
-             FMT_os_macaddr_pt(eth->srcmac),
-             FMT_os_macaddr_pt(eth->dstmac),
-             net_header_get_ethertype(parser), eth->vlan_id);
+    has_eth = eth->srcmac ? true : false;
+    has_eth &= eth->dstmac ? true : false;
+    if (has_eth)
+    {
+        snprintf(eth_pres, sizeof(eth_pres),
+                 "ETH: src: " PRI_os_macaddr_lower_t
+                 ", dst: " PRI_os_macaddr_lower_t
+                 ", ethertype 0x%X, vlan id %u",
+                 FMT_os_macaddr_pt(eth->srcmac),
+                 FMT_os_macaddr_pt(eth->dstmac),
+                 net_header_get_ethertype(parser), eth->vlan_id);
+    }
 
     /* Prepare ip presentation */
     has_ip = net_header_srcip_str(parser, ip_src, sizeof(ip_src));
@@ -592,7 +602,15 @@ net_header_fill_buf(char *buf, size_t len, struct net_header_parser *parser)
                  ntohs(udph->source), ntohs(udph->dest));
     }
 
-    snprintf(buf, len, "%s%s%s", eth_pres, ip_pres, tpt_pres);
+    /* Prepare flow presentation */
+    acc = parser->acc;
+    if (acc != NULL)
+    {
+        snprintf(flow_pres, sizeof(flow_pres), ", FLOW: direction: %u, "
+                 "originator: %u", acc->direction, acc->originator);
+    }
+
+    snprintf(buf, len, "%s%s%s%s", eth_pres, ip_pres, tpt_pres, flow_pres);
 
     return buf;
 }

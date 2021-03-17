@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <ev.h>
 
 #include "log.h"
+#include "dm_st_plugin.h"
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
@@ -44,6 +45,8 @@ bool init_statem();
 bool dm_hook_init();
 bool dm_hook_close();
 bool dm_st_monitor();
+void dm_st_in_progress_set(bool value);
+bool dm_st_in_progress_get();
 
 /**
  * Register a new manager
@@ -51,7 +54,7 @@ bool dm_st_monitor();
  * @param[in]   path            Path to manager (can be a full path)
  * @param[in]   plan_b          True whether manager requires plan B
  * @param[in]   restart         True if manager should be always restarted, even
- *                              when killed by signals that usually do not 
+ *                              when killed by signals that usually do not
  *                              trigger a restart
  * @param[in]   restart_timer   Restart timer in seconds or 0 to use default
  */

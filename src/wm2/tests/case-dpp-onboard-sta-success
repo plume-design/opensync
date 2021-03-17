@@ -1,0 +1,41 @@
+#!/bin/sh -ex
+tohex() { od -tx1 -An | tr -d ' '; }
+
+case "$1" in
+init)
+	. ./env-sta-onboarding
+	;;
+
+test)
+	timeout 1 $ovsh w Wifi_Radio_State if_name:=phy0
+	timeout 1 $ovsh w Wifi_VIF_State if_name:=wlan0
+	timeout 1 $ovsh w DPP_Config -w status==in_progress status:=in_progress
+
+	akm_psk=1
+	akm_sae=2
+	akm_psk_sae=2
+	akm_dpp=4
+	akm_dpp_sae=5
+	akm_dpp_psk_sae=7
+
+	ifname=wlan0
+	akm=$akm_dpp
+	ssid=test
+	ssid_hex=$(echo -n $ssid | tohex)
+	psk=12345678
+	psk_hex=$(echo -n $psk | tohex)
+	pmk_hex=
+	dpp_netaccesskey_hex=3077020101042012e69031788cc1787e35fcde2868f3c20120cb04feb36066e13be2a80b512391a00a06082a8648ce3d030107a14403420004c094692f026399e3058e80408f974203e4a925b96d0241be23398b5ee1544db84f0330621d903dd8fd213aa0eff4a4d9fbc1a62b910f7af8f723f0091649e3ef
+	dpp_connector="eyJ0eXAiOiJkcHBDb24iLCJraWQiOiJfNURkaUZVZ3dYZXJWTlktaHlDY2hqZmg3Si1nakN0R0RVZE9PMm1na1lZIiwiYWxnIjoiRVMyNTYifQ.eyJncm91cHMiOlt7Imdyb3VwSWQiOiIqIiwibmV0Um9sZSI6InN0YSJ9XSwibmV0QWNjZXNzS2V5Ijp7Imt0eSI6IkVDIiwiY3J2IjoiUC0yNTYiLCJ4Ijoid0pScEx3SmptZU1Gam9CQWo1ZENBLVNwSmJsdEFrRy1Jem1MWHVGVVRiZyIsInkiOiJUd013WWgyUVBkajlJVHFnN19TazJmdkJwaXVSRDNyNDl5UHdDUlpKNC04In19.vdim-I9V20D_zyVd32D1moznVyx940C2UMZZ0X0GsKB2eiuP9g4KzCrqlBc27TbSMwUVr7o55nV7nwx_ePsMOA"
+	dpp_csign_hex=3059301306072a8648ce3d020106082a8648ce3d030107034200048467341d13849741f9fdb2ce7b843ee72bb8ee284c696a228e00fec9b6ea37c48ca5fe2f021ee73081078a6805477430442c14efb85ae24461cfc3aaafcd6ee2
+	echo "dpp_network $ifname $akm $ssid_hex $psk_hex $pmk_hex $dpp_netaccesskey_hex $dpp_connector $dpp_csign_hex"
+
+	timeout 1 $ovsh w DPP_Config -w status==succeeded status:=succeeded
+	timeout 1 $ovsh s DPP_Config -c >&2
+	timeout 1 $ovsh w Wifi_VIF_Config -w if_name==wlan0 ssid:=$ssid
+	timeout 1 $ovsh w Wifi_VIF_Config -w if_name==wlan0 dpp_connector:="$dpp_connector"
+	timeout 1 $ovsh w Wifi_VIF_Config -w if_name==wlan0 dpp_csign_hex:=$dpp_csign_hex
+	timeout 1 $ovsh w Wifi_VIF_Config -w if_name==wlan0 dpp_netaccesskey_hex:=$dpp_netaccesskey_hex
+	timeout 1 $ovsh s Wifi_VIF_Config -c >&2
+	;;
+esac

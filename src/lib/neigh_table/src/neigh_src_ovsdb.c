@@ -848,15 +848,29 @@ callback_Wifi_Inet_State(ovsdb_update_monitor_t *mon,
  * @brief registers to ovsdb tables updates
  */
 void
-neigh_src_init(void)
+neigh_src_init(uint32_t ovsdb_event)
 {
-    OVSDB_TABLE_INIT_NO_KEY(DHCP_leased_IP);
-    OVSDB_TABLE_INIT_NO_KEY(IPv4_Neighbors);
-    OVSDB_TABLE_INIT_NO_KEY(IPv6_Neighbors);
-    OVSDB_TABLE_INIT_NO_KEY(Wifi_Inet_State);
+    if (ovsdb_event & DHCP_LEASED_IP)
+    {
+        OVSDB_TABLE_INIT_NO_KEY(DHCP_leased_IP);
+        OVSDB_TABLE_MONITOR(DHCP_leased_IP, false);
+    }
 
-    OVSDB_TABLE_MONITOR(DHCP_leased_IP, false);
-    OVSDB_TABLE_MONITOR(IPv4_Neighbors, false);
-    OVSDB_TABLE_MONITOR(IPv6_Neighbors, false);
-    OVSDB_TABLE_MONITOR(Wifi_Inet_State, false);
+    if (ovsdb_event & IPV4_NEIGHBORS)
+    {
+        OVSDB_TABLE_INIT_NO_KEY(IPv4_Neighbors);
+        OVSDB_TABLE_MONITOR(IPv4_Neighbors, false);
+    }
+
+    if (ovsdb_event & IPV6_NEIGHBORS)
+    {
+        OVSDB_TABLE_INIT_NO_KEY(IPv6_Neighbors);
+        OVSDB_TABLE_MONITOR(IPv6_Neighbors, false);
+    }
+
+    if (ovsdb_event & WIFI_INET_STATE)
+    {
+        OVSDB_TABLE_INIT_NO_KEY(Wifi_Inet_State);
+        OVSDB_TABLE_MONITOR(Wifi_Inet_State, false);
+    }
 }

@@ -25,18 +25,52 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-# Include basic environment config from default shell file and if any from FUT framework generated /tmp/fut_set_env.sh file
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
-source ${FUT_TOPDIR}/shell/lib/unit_lib.sh
-source ${FUT_TOPDIR}/shell/lib/nm2_lib.sh
-source ${LIB_OVERRIDE_FILE}
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
+source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+
+tc_name="tools/device/$(basename "$0")"
+usage()
+{
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Create/updates Inet interface and validate it in State table
+Arguments:
+    -h  show this help message
+    -if_name              : Wifi_Inet_Config::if_name                                            : (string)(required)
+    -enabled              : Wifi_Inet_Config::enabled                                            : (string)(optional)
+    -network              : Wifi_Inet_Config::network                                            : (string)(optional)
+    -if_type              : Wifi_Inet_Config::if_type                                            : (string)(optional)
+    -inet_addr            : Wifi_Inet_Config::inet_addr                                          : (string)(optional)
+    -netmask              : Wifi_Inet_Config::netmask                                            : (string)(optional)
+    -dns                  : Wifi_Inet_Config::dns                                                : (string)(optional)
+    -gateway              : Wifi_Inet_Config::gateway                                            : (string)(optional)
+    -broadcast            : Wifi_Inet_Config::broadcast                                          : (string)(optional)
+    -ip_assign_scheme     : Wifi_Inet_Config::ip_assign_scheme                                   : (string)(optional)
+    -mtu                  : Wifi_Inet_Config::mtu                                                : (string)(optional)
+    -NAT                  : Wifi_Inet_Config::NAT                                                : (string)(optional)
+    -upnp_mode            : Wifi_Inet_Config::upnp_mode                                          : (string)(optional)
+    -dhcpd                : Wifi_Inet_Config::dhcpd                                              : (string)(optional)
+    -gre_ifname           : Wifi_Inet_Config::gre_ifname                                         : (string)(optional)
+    -gre_remote_inet_addr : Wifi_Inet_Config::gre_remote_inet_addr                               : (string)(optional)
+    -gre_local_inet_addr  : Wifi_Inet_Config::gre_local_inet_addr                                : (string)(optional)
+    -broadcast_n          : Used to generate Wifi_Inet_Config::broadcast,dhcpd,inet_addr,netmask : (string)(optional)
+    -inet_addr_n          : Used to generate Wifi_Inet_Config::broadcast,dhcpd,inet_addr,netmask : (string)(optional)
+    -subnet               : Used to generate Wifi_Inet_Config::broadcast,dhcpd,inet_addr,netmask : (string)(optional)
+Script usage example:
+   ./${tc_name} -if_name eth0 -NAT false -mtu 1600
+   ./${tc_name} -if_name eth1 -netmask 255.50.255.255.1
+   ./${tc_name} -if_name wifi0 -enabled false -network false
+usage_string
+}
+NARGS=1
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 
 log "tools/device/$(basename "$0"): Creating Inet entry"
-create_inet_entry "$@" &&
+create_inet_entry2 "$@" &&
     log "tools/device/$(basename "$0"): create_inet_entry - Success" ||
     raise "create_inet_entry - Failed" -l "tools/device/$(basename "$0")" -tc
 

@@ -47,7 +47,11 @@ static const struct fsm_type types_map[] =
     {
         .ovsdb_type = "dpi_plugin",
         .fsm_type = FSM_DPI_PLUGIN,
-    }
+    },
+    {
+        .ovsdb_type = "dpi_client",
+        .fsm_type = FSM_DPI_PLUGIN_CLIENT,
+    },
 };
 
 /**

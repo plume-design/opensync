@@ -46,6 +46,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 struct net_md_flow_key
 {
+    os_ufid_t *ufid;     /* Unique id of the flow */
     os_macaddr_t *smac;
     bool          isparent_of_smac;
     os_macaddr_t *dmac;
@@ -60,8 +61,10 @@ struct net_md_flow_key
     int fragment;         /* fragment indicator */
     uint16_t sport;       /* Network byte order */
     uint16_t dport;       /* Network byte order */
+    uint16_t tcp_flags;   /* Network byte order */
     bool fstart;          /* Flow start */
     bool fend;            /* Flow end */
+    uint32_t flags;       /* key flags */
 };
 
 
@@ -83,8 +86,56 @@ struct net_md_stats_accumulator
     int dpi_done;                          /* All dpi engines are done */
     int refcnt;                            /* # of entities accessing the acc */
     bool report;                           /* send a report */
+    uint16_t direction;                    /* flow direction */
+    uint16_t originator;                   /* flow originator */
 };
 
+
+/**
+ * @brief local and remote fields of a flow
+ */
+struct net_md_flow_info
+{
+    os_macaddr_t *local_mac;
+    os_macaddr_t *remote_mac;
+    uint8_t *local_ip;
+    uint8_t *remote_ip;
+    uint16_t local_port;
+    uint16_t remote_port;
+};
+
+
+/**
+ * net_md_flow_key flags values influencing the accumulator lookup
+ */
+enum
+{
+    NET_MD_ACC_CREATE = 0,
+    NET_MD_ACC_LOOKUP_ONLY,
+};
+
+
+/**
+ * net_md_flow_key direction values influencing the accumulator lookup
+ */
+enum
+{
+    NET_MD_ACC_UNSET_DIR = 0,
+    NET_MD_ACC_OUTBOUND_DIR,
+    NET_MD_ACC_INBOUND_DIR,
+    NET_MD_ACC_LAN2LAN_DIR,
+};
+
+
+/**
+ * net_md_flow_key originator values influencing the accumulator lookup
+ */
+enum
+{
+    NET_MD_ACC_UNKNOWN_ORIGINATOR = 0,
+    NET_MD_ACC_ORIGINATOR_SRC,
+    NET_MD_ACC_ORIGINATOR_DST,
+};
 
 
 /**
@@ -125,6 +176,8 @@ struct net_md_aggregator
     bool (*process)(struct net_md_stats_accumulator *);
     void (*on_acc_create)(struct net_md_aggregator *, struct net_md_stats_accumulator *);
     void (*on_acc_destroy)(struct net_md_aggregator *, struct net_md_stats_accumulator *);
+    void (*on_acc_report)(struct net_md_aggregator *, struct net_md_stats_accumulator *);
+    void *context;
 };
 
 
@@ -157,6 +210,8 @@ struct net_md_aggregator_set
     /* callback on accumulator creation */
     void (*on_acc_create)(struct net_md_aggregator *, struct net_md_stats_accumulator *);
     void (*on_acc_destroy)(struct net_md_aggregator *, struct net_md_stats_accumulator *);
+    void (*on_acc_report)(struct net_md_aggregator *, struct net_md_stats_accumulator *);
+    void *context;
 };
 
 
@@ -268,5 +323,17 @@ net_md_process_acc(struct net_md_aggregator *aggr,
  */
 void
 net_md_process_aggr(struct net_md_aggregator *aggr);
+
+/**
+ * @brief provides local and remote info
+ *
+ * @param acc the accumulator
+ * @param info the returning info
+ *
+ * @return true if filled, false otherwise
+ */
+bool
+net_md_get_flow_info(struct net_md_stats_accumulator *acc,
+                     struct net_md_flow_info *info);
 
 #endif /* NETWORK_METADATA_REPORT_H_INCLUDED */

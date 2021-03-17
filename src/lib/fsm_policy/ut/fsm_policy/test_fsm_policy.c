@@ -24,13 +24,17 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include <sys/socket.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
+#include <sys/socket.h>
+#include <netdb.h>
 
 #include "fsm.h"
 #include "log.h"
+#include "network_metadata_report.h"
 #include "os.h"
 #include "os_types.h"
 #include "fsm_policy.h"
@@ -278,6 +282,30 @@ struct schema_FSM_Policy spolicies[] =
         .other_config_keys = {"excluded_devices", "tagv4_name", "tagv6_name",},
         .other_config = {"exclude_tag", "my_v4_tag", "my_v6_tag"},
     },
+    { /* entry 8 */
+        .policy_exists = true,
+        .policy = "dev_plume_ipthreat",
+        .name = "RuleIpThreat0",
+        .idx = 9,
+        .mac_op_exists = false,
+        .fqdn_op_exists = false,
+        .fqdncat_op_exists = false,
+        .risk_op_exists = false,
+        .risk_op = "lte",
+        .risk_level = 7,
+        .ipaddr_op_exists = true,
+        .ipaddr_op = "in",
+        .ipaddrs_len = 2,
+        .ipaddrs =
+        {
+            "1.2.3.4",
+            "::1",
+        },
+        .action_exists = true,
+        .action = "drop",
+        .log_exists = true,
+        .log = "blocked",
+    }
 };
 
 
@@ -624,7 +652,7 @@ void test_apply_policies(void)
 
     free(reply->rule_name);
     free(reply->policy);
-    free(req_info.reply);
+    fsm_free_url_reply(fqdn_req.req_info->reply);
 }
 void test_wildcard_ovsdb_conversions(void)
 {
@@ -722,7 +750,8 @@ void test_apply_wildcard_policy_match_in(void)
 
     free(reply->rule_name);
     free(reply->policy);
-    free(req_info.reply);
+    fsm_free_url_reply(fqdn_req.req_info->reply);
+
 }
 
 
@@ -801,7 +830,7 @@ void test_apply_wildcard_policy_no_match(void)
     TEST_ASSERT_EQUAL_INT(FSM_NO_MATCH, reply->action);
     free(reply->rule_name);
     free(reply->policy);
-    free(req_info.reply);
+    fsm_free_url_reply(fqdn_req.req_info->reply);
 }
 
 static void test_update_client(struct fsm_session *session,
@@ -1088,7 +1117,7 @@ void test_apply_mac_policies(void)
 
         free(reply->rule_name);
         free(reply->policy);
-        free(req_info.reply);
+        fsm_free_url_reply(fqdn_req.req_info->reply);
     }
 }
 
@@ -1142,8 +1171,101 @@ void test_apply_no_action_policy(void)
 
     free(reply->rule_name);
     free(reply->policy);
-    free(req_info.reply);
+    fsm_free_url_reply(fqdn_req.req_info->reply);
 }
+
+
+/**
+ * @brief test the translation of ip threat attributes from ovsdb to fsm policy
+ */
+void test_ip_threat_blacklist(void)
+{
+    struct net_md_stats_accumulator acc;
+    struct fsm_session session = { 0 };
+    struct schema_FSM_Policy *spolicy;
+    struct fqdn_pending_req fqdn_req;
+    struct fsm_url_request req_info;
+    struct fsm_policy_session *mgr;
+    struct fsm_policy_reply *reply;
+    struct sockaddr_storage ss_ip;
+    struct net_md_flow_key key;
+    struct policy_table *table;
+    struct fsm_policy *fpolicy;
+    struct fsm_policy_req req;
+    char *ip_str = "1.2.3.4";
+    struct sockaddr_in *in4;
+    os_macaddr_t dev_mac;
+    struct in_addr in_ip;
+    int rc;
+
+    /* Initialize local structures */
+    memset(&fqdn_req, 0, sizeof(fqdn_req));
+    memset(&req_info, 0, sizeof(req_info));
+    memset(&req, 0, sizeof(req));
+    memset(&dev_mac, 0, sizeof(dev_mac));
+    memset(&ss_ip, 0, sizeof(ss_ip));
+    memset(&acc, 0, sizeof(acc));
+    memset(&key, 0, sizeof(key));
+
+    /* Insert ip threat policy */
+    spolicy = &spolicies[8];
+    fsm_add_policy(spolicy);
+    fpolicy = fsm_policy_lookup(spolicy);
+
+    mgr = fsm_policy_get_mgr();
+    table = ds_tree_find(&mgr->policy_tables, spolicy->policy);
+    TEST_ASSERT_NOT_NULL(table);
+
+    /* Validate access to the fsm policy */
+    TEST_ASSERT_NOT_NULL(fpolicy);
+
+    rc = inet_pton(AF_INET, ip_str, &in_ip);
+    TEST_ASSERT_EQUAL_INT(1, rc);
+
+    in4 = (struct sockaddr_in *)&ss_ip;
+
+    memset(in4, 0, sizeof(struct sockaddr_in));
+    in4->sin_family = AF_INET;
+    memcpy(&in4->sin_addr, &in_ip, sizeof(in4->sin_addr));
+
+    fqdn_req.req_info = &req_info;
+    rc = getnameinfo((struct sockaddr *)&ss_ip, sizeof(ss_ip),
+                     fqdn_req.req_info->url, sizeof(fqdn_req.req_info->url),
+                     0, 0, NI_NUMERICHOST);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    rc = strcmp(ip_str, fqdn_req.req_info->url);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    req.device_id = &dev_mac;
+    req.fqdn_req = &fqdn_req;
+
+    key.src_ip = (uint8_t *)&in_ip.s_addr;
+    key.ip_version = 4;
+    acc.key = &key;
+    acc.direction = NET_MD_ACC_OUTBOUND_DIR;
+    acc.originator = NET_MD_ACC_ORIGINATOR_SRC;
+    /* Build the request elements */
+    fqdn_req.numq = 1;
+    fqdn_req.policy_table = table;
+    fqdn_req.categories_check = test_cat_check;
+    fqdn_req.risk_level_check = test_risk_level;
+    req.fqdn_req = &fqdn_req;
+    req.device_id = &dev_mac;
+    req.ip_addr = &ss_ip;
+    req.acc = &acc;
+    req.url = fqdn_req.req_info->url;
+    fsm_apply_policies(&session, &req);
+    reply = &req.reply;
+    TEST_ASSERT_EQUAL_INT(FSM_BLOCK, reply->action);
+    TEST_ASSERT_EQUAL_INT(FSM_REPORT_BLOCKED, reply->log);
+    TEST_ASSERT_EQUAL_INT(9, reply->policy_idx);
+
+    free(reply->rule_name);
+    free(reply->policy);
+    fsm_free_url_reply(fqdn_req.req_info->reply);
+}
+
 
 int main(int argc, char *argv[])
 {
@@ -1168,6 +1290,7 @@ int main(int argc, char *argv[])
     RUN_TEST(test_apply_mac_policies);
     RUN_TEST(test_apply_wildcard_policy_match_in);
     RUN_TEST(test_apply_wildcard_policy_no_match);
+    RUN_TEST(test_ip_threat_blacklist);
 
     return UNITY_END();
 }

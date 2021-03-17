@@ -131,10 +131,16 @@ send_report(struct fsm_session *session, char *report)
     return;
 }
 
+char *
+get_other_config_val(struct fsm_session *session, char *key)
+{
+    return NULL;
+}
 
 struct fsm_session_ops g_ops =
 {
     .send_report = send_report,
+    .get_config = get_other_config_val,
 };
 
 
@@ -381,6 +387,26 @@ void test_load_unload_plugin(void)
      */
 }
 
+void util_populate_sockaddr(int af, void *ip, struct sockaddr_storage *dst)
+{
+    if (af == AF_INET)
+    {
+        struct sockaddr_in *in4 = (struct sockaddr_in *)dst;
+
+        memset(in4, 0, sizeof(struct sockaddr_in));
+        in4->sin_family = af;
+        memcpy(&in4->sin_addr, ip, sizeof(in4->sin_addr));
+    }
+    else if (af == AF_INET6)
+    {
+        struct sockaddr_in6 *in6 = (struct sockaddr_in6 *)dst;
+
+        memset(in6, 0, sizeof(struct sockaddr_in6));
+        in6->sin6_family = af;
+        memcpy(&in6->sin6_addr, ip, sizeof(in6->sin6_addr));
+    }
+    return;
+}
 
 /**
  * @brief test arp request parsing
@@ -498,6 +524,62 @@ void test_gratuitous_arp_reply(void)
     free(net_parser);
 }
 
+/**
+ * @brief test ip to mac mapping
+ *
+ */
+void test_ip_mac_mapping(void)
+{
+    struct net_header_parser *net_parser;
+    struct arp_session *a_session;
+    struct fsm_session *session;
+    struct sockaddr_storage key;
+    struct arp_parser *parser;
+    os_macaddr_t mac_out;
+    uint32_t ip_addr;
+    bool rc_lookup;
+    size_t len;
+    bool ret;
+    int cmp;
+
+    /* Select the first active session */
+    session = &g_sessions[0];
+    a_session = arp_lookup_session(session);
+    TEST_ASSERT_NOT_NULL(a_session);
+
+    parser = &a_session->parser;
+    net_parser = calloc(1, sizeof(*net_parser));
+    TEST_ASSERT_NOT_NULL(net_parser);
+    parser->net_parser = net_parser;
+    PREPARE_UT(pkt134, net_parser);
+    len = net_header_parse(net_parser);
+    TEST_ASSERT_TRUE(len != 0);
+
+    len = arp_parse_message(parser);
+    TEST_ASSERT_TRUE(len != 0);
+
+    ret = arp_parse_is_gratuitous(&parser->arp);
+    TEST_ASSERT_FALSE(ret);
+
+    arp_process_message(a_session);
+
+    /* fill sockaddr */
+    ip_addr = parser->arp.s_ip;
+    memset(&key, 0, sizeof(struct sockaddr_storage));
+    util_populate_sockaddr(AF_INET, &ip_addr, &key);
+    rc_lookup = neigh_table_lookup(&key, &mac_out);
+
+    /* Validate lookup to the neighbour entry */
+    TEST_ASSERT_TRUE(rc_lookup);
+
+    /* Validate mac content */
+    cmp = memcmp(&mac_out, parser->arp.s_eth, sizeof(os_macaddr_t));
+    TEST_ASSERT_EQUAL_INT(0, cmp);
+    log_ip_mac_mapping(parser);
+
+    free(net_parser);
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -514,6 +596,7 @@ main(int argc, char *argv[])
     RUN_TEST(test_arp_req);
     RUN_TEST(test_arp_reply);
     RUN_TEST(test_gratuitous_arp_reply);
+    RUN_TEST(test_ip_mac_mapping);
 
     global_test_exit();
 

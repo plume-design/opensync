@@ -61,7 +61,7 @@ emit_report(packed_buffer_t *pb)
     if (!g_test_mgr.has_qm) return;
 
     ret = qm_conn_send_direct(QM_REQ_COMPRESS_IF_CFG,
-                              "dev-ut_intf_stats",
+                              "dev-test/interfaceStats/a/b/c",
                               pb->buf, pb->len, &res);
     TEST_ASSERT_TRUE(ret);
 }
@@ -110,18 +110,18 @@ test_Intf__Stats__Report(void)
     char *location_id = "intf_stats_test_location";
     char *node_id = "4C718002B3";
 
-    Intf__Stats__ObservationWindow **obs_pb_tbl;
-    Intf__Stats__ObservationWindow *obs_pb;
-    Intf__Stats__ObservationPoint *obs_p;
-    Intf__Stats__IntfStats **stats_pb_tbl;
-    Intf__Stats__IntfStats *stats_pb;
-    packed_buffer_t *serialized;
-    Intf__Stats__IntfReport *report;
+    Interfaces__IntfStats__ObservationWindow **obs_pb_tbl;
+    Interfaces__IntfStats__ObservationWindow  *obs_pb;
+    Interfaces__IntfStats__ObservationPoint   *obs_p;
+    Interfaces__IntfStats__IntfStats         **stats_pb_tbl;
+    Interfaces__IntfStats__IntfStats          *stats_pb;
+    packed_buffer_t                           *serialized;
+    Interfaces__IntfStats__IntfReport         *report;
 
     size_t num_intfs_w0;
     size_t num_w;
     size_t len;
-    void *buf;
+    void   *buf;
 
     /* Allocate serialization output structure */
     serialized = calloc(sizeof(packed_buffer_t), 1);
@@ -132,72 +132,73 @@ test_Intf__Stats__Report(void)
     TEST_ASSERT_NOT_NULL(report);
 
     /* Initialize protobuf */
-    intf__stats__intf_report__init(report);
+    interfaces__intf_stats__intf_report__init(report);
 
     /* Set reported field */
-    report->has_reportedat = true;
-    report->reportedat = 10;
+    report->has_reported_at = true;
+    report->reported_at = 10;
 
     /* Set observation point */
     obs_p = calloc(1, sizeof(*obs_p));
     TEST_ASSERT_NOT_NULL(obs_p);
 
     /* Initialize the observation point */
-    intf__stats__observation_point__init(obs_p);
+    interfaces__intf_stats__observation_point__init(obs_p);
 
     /* set observation point node id */
-    obs_p->nodeid = strdup(node_id);
-    TEST_ASSERT_NOT_NULL(obs_p->nodeid);
+    obs_p->node_id = strdup(node_id);
+    TEST_ASSERT_NOT_NULL(obs_p->node_id);
 
     /* set observation point location id */
-    obs_p->locationid = strdup(location_id);
-    TEST_ASSERT_NOT_NULL(obs_p->locationid);
+    obs_p->location_id = strdup(location_id);
+    TEST_ASSERT_NOT_NULL(obs_p->location_id);
 
-    report->observationpoint = obs_p;
+    report->observation_point = obs_p;
 
     /* Allocate the observation windows table, it will carry one entry */
     num_w = 1;
-    report->n_observationwindow = num_w;
+    report->n_observation_windows = num_w;
     obs_pb_tbl = calloc(num_w, sizeof(*obs_pb_tbl));
     TEST_ASSERT_NOT_NULL(obs_pb_tbl);
-    report->observationwindow = obs_pb_tbl;
+    report->observation_windows = obs_pb_tbl;
 
     /* Allocate the unique entry of the observation windows table */
     obs_pb = calloc(1, sizeof(*obs_pb));
     TEST_ASSERT_NOT_NULL(obs_pb);
 
     /* Initialize the observation window */
-    intf__stats__observation_window__init(obs_pb);
+    interfaces__intf_stats__observation_window__init(obs_pb);
     obs_pb_tbl[0] = obs_pb;
 
     /* Allocate the interface stats table with 2 entries */
     num_intfs_w0 = 2;
-    obs_pb->n_intfstats = num_intfs_w0;
+    obs_pb->n_intf_stats = num_intfs_w0;
     stats_pb_tbl = calloc(num_intfs_w0, sizeof(*stats_pb_tbl));
     TEST_ASSERT_NOT_NULL(stats_pb_tbl);
 
     /* Assign the stats table to the observation window */
-    obs_pb->intfstats = stats_pb_tbl;
+    obs_pb->intf_stats = stats_pb_tbl;
 
     /* Allocate the first stats entry */
     stats_pb = calloc(1, sizeof(*stats_pb));
     TEST_ASSERT_NOT_NULL(stats_pb);
 
     /* Initialize the first stats entry */
-    intf__stats__intf_stats__init(stats_pb);
+    interfaces__intf_stats__intf_stats__init(stats_pb);
 
     /* Fill up the first stats entry */
-    stats_pb->ifname = strdup("test_intf1");
-    stats_pb->role   = strdup("uplink");
-    TEST_ASSERT_NOT_NULL(stats_pb->ifname);
-    stats_pb->has_txbytes = true;
-    stats_pb->txbytes = 10;
-    stats_pb->has_rxbytes = true;
-    stats_pb->rxbytes = 20;
-    stats_pb->has_txpackets = true;
-    stats_pb->txpackets = 1;
-    stats_pb->has_rxpackets = true;
-    stats_pb->rxpackets = 1;
+    stats_pb->if_name = strdup("test_intf1");
+    stats_pb->role    = strdup("uplink");
+    TEST_ASSERT_NOT_NULL(stats_pb->if_name);
+    TEST_ASSERT_NOT_NULL(stats_pb->role);
+    stats_pb->has_tx_bytes = true;
+    stats_pb->tx_bytes = 10;
+    stats_pb->has_rx_bytes = true;
+    stats_pb->rx_bytes = 20;
+    stats_pb->has_tx_packets = true;
+    stats_pb->tx_packets = 1;
+    stats_pb->has_rx_packets = true;
+    stats_pb->rx_packets = 1;
 
     /* Assign the first interface stats to the stats table */
     stats_pb_tbl[0] = stats_pb;
@@ -207,33 +208,34 @@ test_Intf__Stats__Report(void)
     TEST_ASSERT_NOT_NULL(stats_pb);
 
     /* Initialize the second stats entry */
-    intf__stats__intf_stats__init(stats_pb);
+    interfaces__intf_stats__intf_stats__init(stats_pb);
 
     /* Fill up the second stats entry */
-    stats_pb->ifname = strdup("test_intf2");
-    stats_pb->role   = strdup("onboarding");
-    TEST_ASSERT_NOT_NULL(stats_pb->ifname);
-    stats_pb->has_txbytes = true;
-    stats_pb->txbytes = 100;
-    stats_pb->has_rxbytes = true;
-    stats_pb->rxbytes = 200;
-    stats_pb->has_txpackets = true;
-    stats_pb->txpackets = 40;
-    stats_pb->has_rxpackets = true;
-    stats_pb->rxpackets = 50;
+    stats_pb->if_name = strdup("test_intf2");
+    stats_pb->role    = strdup("onboarding");
+    TEST_ASSERT_NOT_NULL(stats_pb->if_name);
+    TEST_ASSERT_NOT_NULL(stats_pb->role);
+    stats_pb->has_tx_bytes = true;
+    stats_pb->tx_bytes = 100;
+    stats_pb->has_rx_bytes = true;
+    stats_pb->rx_bytes = 200;
+    stats_pb->has_tx_packets = true;
+    stats_pb->tx_packets = 40;
+    stats_pb->has_rx_packets = true;
+    stats_pb->rx_packets = 50;
 
     /* Assign the first interface stats to the stats table */
     stats_pb_tbl[1] = stats_pb;
 
     /* Get serialization length */
-    len = intf__stats__intf_report__get_packed_size(report);
+    len = interfaces__intf_stats__intf_report__get_packed_size(report);
     TEST_ASSERT_TRUE(len != 0);
 
     /* Allocate space for the serialized buffer */
     buf = malloc(len);
     TEST_ASSERT_NOT_NULL(buf);
 
-    serialized->len = intf__stats__intf_report__pack(report, buf);
+    serialized->len = interfaces__intf_stats__intf_report__pack(report, buf);
     serialized->buf = buf;
 
     emit_report(serialized);
@@ -245,13 +247,13 @@ test_Intf__Stats__Report(void)
 
     /* free first stats resources */
     stats_pb = stats_pb_tbl[0];
-    free(stats_pb->ifname);
+    free(stats_pb->if_name);
     free(stats_pb->role);
     free(stats_pb);
 
     /* free second stats resources */
     stats_pb = stats_pb_tbl[1];
-    free(stats_pb->ifname);
+    free(stats_pb->if_name);
     free(stats_pb->role);
     free(stats_pb);
 
@@ -266,8 +268,8 @@ test_Intf__Stats__Report(void)
     free(obs_pb_tbl);
 
     /* free the observation point */
-    free(obs_p->locationid);
-    free(obs_p->nodeid);
+    free(obs_p->location_id);
+    free(obs_p->node_id);
     free(obs_p);
 
     /* free the report */
@@ -281,10 +283,10 @@ test_Intf__Stats__Report(void)
  * @param op observation point protobuf to validate
  */
 static void 
-validate_node_info(node_info_t *node, Intf__Stats__ObservationPoint *op)
+validate_node_info(node_info_t *node, Interfaces__IntfStats__ObservationPoint *op)
 {
-    TEST_ASSERT_EQUAL_STRING(node->node_id, op->nodeid);
-    TEST_ASSERT_EQUAL_STRING(node->location_id, op->locationid);
+    TEST_ASSERT_EQUAL_STRING(node->node_id, op->node_id);
+    TEST_ASSERT_EQUAL_STRING(node->location_id, op->location_id);
 }
 
 /**
@@ -294,16 +296,16 @@ validate_node_info(node_info_t *node, Intf__Stats__ObservationPoint *op)
  * @param intf stats protobuf to validate
  */
 static void
-validate_intf_stats(intf_stats_t *intf, Intf__Stats__IntfStats *stats_pb)
+validate_intf_stats(intf_stats_t *intf, Interfaces__IntfStats__IntfStats *stats_pb)
 {
-    TEST_ASSERT_EQUAL_STRING(intf->ifname, stats_pb->ifname);
+    TEST_ASSERT_EQUAL_STRING(intf->ifname, stats_pb->if_name);
     TEST_ASSERT_EQUAL_STRING(intf->role  , stats_pb->role  );
 
-    TEST_ASSERT_EQUAL_UINT(intf->tx_bytes, stats_pb->txbytes);
-    TEST_ASSERT_EQUAL_UINT(intf->rx_bytes, stats_pb->rxbytes);
+    TEST_ASSERT_EQUAL_UINT(intf->tx_bytes, stats_pb->tx_bytes);
+    TEST_ASSERT_EQUAL_UINT(intf->rx_bytes, stats_pb->rx_bytes);
 
-    TEST_ASSERT_EQUAL_UINT(intf->tx_packets, stats_pb->txpackets);
-    TEST_ASSERT_EQUAL_UINT(intf->rx_packets, stats_pb->rxpackets);
+    TEST_ASSERT_EQUAL_UINT(intf->tx_packets, stats_pb->tx_packets);
+    TEST_ASSERT_EQUAL_UINT(intf->rx_packets, stats_pb->rx_packets);
 }
 
 /**
@@ -313,11 +315,11 @@ validate_intf_stats(intf_stats_t *intf, Intf__Stats__IntfStats *stats_pb)
  * @param op observation point protobuf to validate
  */
 static void
-validate_observation_window(intf_stats_window_t *window, Intf__Stats__ObservationWindow *window_pb)
+validate_observation_window(intf_stats_window_t *window, Interfaces__IntfStats__ObservationWindow *window_pb)
 {
-    TEST_ASSERT_EQUAL_UINT(window->started_at, window_pb->startedat);
-    TEST_ASSERT_EQUAL_UINT(window->ended_at, window_pb->endedat);
-    TEST_ASSERT_EQUAL_UINT(window->num_intfs, window_pb->n_intfstats);
+    TEST_ASSERT_EQUAL_UINT(window->started_at, window_pb->started_at);
+    TEST_ASSERT_EQUAL_UINT(window->ended_at, window_pb->ended_at);
+    TEST_ASSERT_EQUAL_UINT(window->num_intfs, window_pb->n_intf_stats);
 }
 
 /**
@@ -327,10 +329,10 @@ validate_observation_window(intf_stats_window_t *window, Intf__Stats__Observatio
  * @param report_pb Intf Stat report protobuf to validate
  */
 static void
-validate_windows(intf_stats_report_data_t *report, Intf__Stats__IntfReport *report_pb)
+validate_windows(intf_stats_report_data_t *report, Interfaces__IntfStats__IntfReport *report_pb)
 {
-    Intf__Stats__ObservationWindow **windows_pb_tbl;
-    Intf__Stats__ObservationWindow **window_pb;
+    Interfaces__IntfStats__ObservationWindow **windows_pb_tbl;
+    Interfaces__IntfStats__ObservationWindow **window_pb;
 
     intf_stats_list_t               *window_list = &report->window_list;
     intf_stats_window_list_t        *window = NULL;
@@ -339,7 +341,7 @@ validate_windows(intf_stats_report_data_t *report, Intf__Stats__IntfReport *repo
 
     ds_dlist_iter_t                 win_iter;
 
-    TEST_ASSERT_EQUAL_UINT(report->num_windows, report_pb->n_observationwindow);
+    TEST_ASSERT_EQUAL_UINT(report->num_windows, report_pb->n_observation_windows);
 
     windows_pb_tbl = intf_stats_set_pb_windows(report);
     window_pb = windows_pb_tbl;
@@ -370,10 +372,10 @@ validate_windows(intf_stats_report_data_t *report, Intf__Stats__IntfReport *repo
  * @param report_pb flow report protobuf to validate
  */
 static void
-validate_report(intf_stats_report_data_t *report, Intf__Stats__IntfReport *report_pb)
+validate_report(intf_stats_report_data_t *report, Interfaces__IntfStats__IntfReport *report_pb)
 {
-    TEST_ASSERT_EQUAL_UINT(report->reported_at, report_pb->reportedat);
-    validate_node_info(&report->node_info, report_pb->observationpoint);
+    TEST_ASSERT_EQUAL_UINT(report->reported_at, report_pb->reported_at);
+    validate_node_info(&report->node_info, report_pb->observation_point);
     validate_windows(report, report_pb);
 }
 
@@ -412,12 +414,12 @@ void test_serialize_node_info_no_field_set(void)
 void
 test_serialize_node_info(void)
 {
-    node_info_t                     *node;
-    packed_buffer_t                 *pb;
-    packed_buffer_t                 pb_r = { 0 };
-    uint8_t                         rbuf[4096];
-    size_t                          nread = 0;
-    Intf__Stats__ObservationPoint   *op;
+    node_info_t                             *node;
+    packed_buffer_t                         *pb;
+    packed_buffer_t                          pb_r = { 0 };
+    uint8_t                                  rbuf[4096];
+    size_t                                   nread = 0;
+    Interfaces__IntfStats__ObservationPoint *op;
 
     TEST_ASSERT_TRUE(g_test_mgr.initialized);
 
@@ -441,14 +443,14 @@ test_serialize_node_info(void)
     pb_r.buf = rbuf;
     pb_r.len = sizeof(rbuf);
     nread = file2pb(g_test_mgr.f_name, &pb_r);
-    op = intf__stats__observation_point__unpack(NULL, nread, rbuf);
+    op = interfaces__intf_stats__observation_point__unpack(NULL, nread, rbuf);
 
     /* Validate the deserialized content */
     TEST_ASSERT_NOT_NULL(op);
     validate_node_info(node, op);
 
     /* Free the deserialized content */
-    intf__stats__observation_point__free_unpacked(op, NULL);
+    interfaces__intf_stats__observation_point__free_unpacked(op, NULL);
 }
 
 /**
@@ -457,11 +459,11 @@ test_serialize_node_info(void)
 void
 test_intf_stats(intf_stats_t *intf)
 {
-    packed_buffer_t         *pb;
-    packed_buffer_t          pb_r = { 0 };
-    uint8_t                  rbuf[4096];
-    size_t                   nread = 0;
-    Intf__Stats__IntfStats  *stats_pb;
+    packed_buffer_t                  *pb;
+    packed_buffer_t                   pb_r = { 0 };
+    uint8_t                           rbuf[4096];
+    size_t                            nread = 0;
+    Interfaces__IntfStats__IntfStats *stats_pb;
 
     /* Serialize the intf stats data */
     pb = intf_stats_serialize_intf_stats(intf);
@@ -480,14 +482,14 @@ test_intf_stats(intf_stats_t *intf)
     pb_r.buf = rbuf;
     pb_r.len = sizeof(rbuf);
     nread    = file2pb(g_test_mgr.f_name, &pb_r);
-    stats_pb = intf__stats__intf_stats__unpack(NULL, nread, rbuf);
+    stats_pb = interfaces__intf_stats__intf_stats__unpack(NULL, nread, rbuf);
 
     /* Validate the deserialzed content */
     TEST_ASSERT_NOT_NULL(stats_pb);
     validate_intf_stats(intf, stats_pb);
 
     /* Free the deserialized content */
-    intf__stats__intf_stats__free_unpacked(stats_pb, NULL);
+    interfaces__intf_stats__intf_stats__free_unpacked(stats_pb, NULL);
 }
 
 /**
@@ -527,8 +529,8 @@ test_set_intf_stats(void)
     intf_stats_t             *intf         = NULL;
     ds_dlist_iter_t           intf_iter;
 
-    Intf__Stats__IntfStats  **stats_pb_tbl;
-    Intf__Stats__IntfStats  **stats_pb;
+    Interfaces__IntfStats__IntfStats  **stats_pb_tbl;
+    Interfaces__IntfStats__IntfStats  **stats_pb;
 
     window = ds_dlist_head(&report->window_list);
     TEST_ASSERT_NOT_NULL(window);
@@ -567,11 +569,11 @@ test_set_intf_stats(void)
 void
 test_observation_window(intf_stats_window_t *window)
 {
-    packed_buffer_t *pb;
-    packed_buffer_t  pb_r = { 0 };
-    uint8_t          rbuf[4096];
-    size_t           nread = 0;
-    Intf__Stats__ObservationWindow *window_pb;
+    packed_buffer_t                          *pb;
+    packed_buffer_t                           pb_r = { 0 };
+    uint8_t                                   rbuf[4096];
+    size_t                                    nread = 0;
+    Interfaces__IntfStats__ObservationWindow *window_pb;
 
     /* Serialize the observation window */
     pb = intf_stats_serialize_window(window);
@@ -590,14 +592,14 @@ test_observation_window(intf_stats_window_t *window)
     pb_r.buf  = rbuf;
     pb_r.len  = sizeof(rbuf);
     nread     = file2pb(g_test_mgr.f_name, &pb_r);
-    window_pb = intf__stats__observation_window__unpack(NULL, nread, rbuf);
+    window_pb = interfaces__intf_stats__observation_window__unpack(NULL, nread, rbuf);
 
     /* Validate the deserialized contetn */
     TEST_ASSERT_NOT_NULL(window_pb);
     validate_observation_window(window, window_pb);
 
     /* Free the deserialized content */
-    intf__stats__observation_window__free_unpacked(window_pb, NULL);
+    interfaces__intf_stats__observation_window__free_unpacked(window_pb, NULL);
 }
 
 /**
@@ -625,9 +627,9 @@ test_serialize_observation_windows(void)
 void
 test_set_serialization_windows(void)
 {
-    intf_stats_report_data_t         *report = &g_test_mgr.report;
-    Intf__Stats__ObservationWindow  **windows_pb_tbl;
-    Intf__Stats__ObservationWindow  **window_pb;
+    intf_stats_report_data_t                   *report = &g_test_mgr.report;
+    Interfaces__IntfStats__ObservationWindow  **windows_pb_tbl;
+    Interfaces__IntfStats__ObservationWindow  **window_pb;
 
     intf_stats_list_t                *window_list = &report->window_list;
     intf_stats_window_list_t         *window = NULL;
@@ -670,12 +672,12 @@ test_set_serialization_windows(void)
 void
 test_serialize_report(void)
 {
-    intf_stats_report_data_t *report = &g_test_mgr.report;
-    packed_buffer_t          *pb = NULL;
-    packed_buffer_t          pb_r = { 0 };
-    uint8_t                  rbuf[4096];
-    size_t                   nread = 0;
-    Intf__Stats__IntfReport  *pb_report = NULL;
+    intf_stats_report_data_t          *report = &g_test_mgr.report;
+    packed_buffer_t                   *pb = NULL;
+    packed_buffer_t                    pb_r = { 0 };
+    uint8_t                            rbuf[4096];
+    size_t                             nread = 0;
+    Interfaces__IntfStats__IntfReport *pb_report = NULL;
 
     /* Validate the serialized content */
     pb = intf_stats_serialize_report(report);
@@ -698,14 +700,14 @@ test_serialize_report(void)
     pb_r.buf = rbuf;
     pb_r.len = sizeof(rbuf);
     nread = file2pb(g_test_mgr.f_name, &pb_r);
-    pb_report = intf__stats__intf_report__unpack(NULL, nread, rbuf);
+    pb_report = interfaces__intf_stats__intf_report__unpack(NULL, nread, rbuf);
     TEST_ASSERT_NOT_NULL(pb_report);
 
     /* Validate the de-serialized content */
     validate_report(report, pb_report);
 
     /* Free the dserialized content */
-    intf__stats__intf_report__free_unpacked(pb_report, NULL);
+    interfaces__intf_stats__intf_report__free_unpacked(pb_report, NULL);
 
     return;
 }

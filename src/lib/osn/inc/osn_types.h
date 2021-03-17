@@ -125,7 +125,7 @@ typedef struct osn_ip_addr
  * Macro helper for printf() formatting. See @ref PRI_osn_ip_addr for more
  * info.
  */
-#define FMT_osn_ip_addr(x)      (__FMT_osn_ip_addr((char[OSN_IP_ADDR_LEN]){0}, OSN_IP_ADDR_LEN, &x))
+#define FMT_osn_ip_addr(x)      (__FMT_osn_ip_addr((char[OSN_IP_ADDR_LEN]){0}, OSN_IP_ADDR_LEN, &(x)))
 char* __FMT_osn_ip_addr(char *buf, size_t sz, const osn_ip_addr_t *addr);
 /**< @copydoc FMT_osn_ip_addr */
 

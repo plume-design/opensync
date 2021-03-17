@@ -25,65 +25,75 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-# Include basic environment config from default shell file and if any from FUT framework generated /tmp/fut_set_env.sh file
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
-
-source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/cm2_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
-trap '
-    check_restore_management_access || true
-    run_setup_if_crashed cm || true
-' EXIT SIGINT SIGTERM
-
-usage="
-$(basename "$0") [-h] \$1
-
-where options are:
-    -h  show this help message
-
-where arguments are:
-    test_type=\$@ -- used as test step - (string)(required)
-
-this script is dependent on following:
-    - running CM manager
-    - running NM manager
-
-example of usage:
-   /tmp/fut-base/shell/cm2/$(basename "$0") internet_blocked
-   /tmp/fut-base/shell/cm2/$(basename "$0") internet_recovered
-"
-
+tc_name="cm2/$(basename "$0")"
+cm_setup_file="cm2/cm2_setup.sh"
+adr_internet_man_file="tools/rpi/cm/address_internet_man.sh"
+step_1_name="internet_blocked"
+step_1_bit_process="75 35 15 05"
+step_2_name="internet_recovered"
+step_2_bit_process="75"
+usage()
+{
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Script observes AW_Bluetooth_Config table field 'payload' during internet reconnection
+      If AW_Bluetooth_Config payload field fails to change in given sequence (${step_1_bit_process} - ${step_2_bit_process}), test fails
+Arguments:
+    -h : show this help message
+    \$1 (test_step) : used as test step : (string)(required) : (${step_1_name}, ${step_2_name})
+Testcase procedure:
+    - On DEVICE: Run: ${cm_setup_file} (see ${cm_setup_file} -h)
+                 Run: ${tc_name} ${step_1_name}
+    - On RPI SERVER: Run: ${adr_internet_man_file} <WAN-IP-ADDRESS> block
+    - On DEVICE: Run: ${tc_name} ${step_2_name}
+    - On RPI SERVER: Run: ${adr_internet_man_file} <WAN-IP-ADDRESS> unblock
+Script usage example:
+   ./${tc_name} ${step_1_name}
+   ./${tc_name} ${step_2_name}
+usage_string
+}
 while getopts h option; do
     case "$option" in
         h)
-            echo "$usage"
-            exit 1
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
             ;;
     esac
 done
 
-test_type=$1
+check_kconfig_option "CONFIG_MANAGER_BLEM" "y" ||
+    raise "CONFIG_MANAGER_BLEM != y - BLE not present on device" -l "${tc_name}" -s
 
-tc_name="cm2/$(basename "$0")"
-log "$tc_name: CM2 test - CM OBSERVE BLE STATUS - internet blocked"
+NARGS=1
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 
-case $test_type in
-    internet_blocked)
-        bit_process="75 35 15 05"
+trap '
+check_restore_management_access || true
+run_setup_if_crashed cm || true' EXIT SIGINT SIGTERM
+
+test_step=${1}
+
+log_title "$tc_name: CM2 test - Observe BLE Status - Internet Blocked"
+
+case $test_step in
+    ${step_1_name})
+        bit_process=${step_1_bit_process}
     ;;
-    internet_recovered)
-        bit_process="75"
+    ${step_2_name})
+        bit_process=${step_2_bit_process}
     ;;
     *)
-        raise "Incorrect test_type provided" -l "$tc_name" -arg
+        raise "Incorrect test_step provided" -l "$tc_name" -arg
 esac
-
 for bit in $bit_process; do
     log "$tc_name: Checking AW_Bluetooth_Config payload for $bit:00:00:00:00:00"
     wait_ovsdb_entry AW_Bluetooth_Config -is payload "$bit:00:00:00:00:00" &&

@@ -42,8 +42,17 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <unwind.h>
 #include <stdio.h>
 #include <signal.h>
+#include <string.h>
+#include <unistd.h>
+#include <time.h>
+#include <kconfig.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #include "os_common.h"
+#include "os_time.h"
+#include "os_proc.h"
+#include "osp_unit.h"
 
 #include "log.h"
 #include "os.h"
@@ -65,6 +74,7 @@ static _Unwind_Reason_Code      backtrace_handle(struct _Unwind_Context *uc, voi
 static backtrace_func_t         backtrace_dump_cbk;
 
 static FILE                     *fp = NULL;
+static FILE                     *fp_crash_report = NULL;
 
 /**
  * Install crash handlers that dump the current stack in the log file
@@ -98,7 +108,7 @@ void backtrace_sig_crash(int signum)
 {
     LOG(ALERT, "Signal %d received, generating stack dump...\n", signum);
 
-    backtrace_dump();
+    sig_crash_report(signum);
 
     if (signum != SIGUSR2)
     {
@@ -135,6 +145,14 @@ static void crash_print(char *fmt, ...)
     va_end(args);
 }
 
+static void crash_report_print(char *line)
+{
+    if (fp_crash_report)
+    {
+        fprintf(fp_crash_report, "%s\\n", line);
+    }
+}
+
 static void backtrace_dump_generic(btrace_type btrace)
 {
     struct  backtrace_dump_info di;
@@ -161,6 +179,53 @@ static void backtrace_dump_generic(btrace_type btrace)
     }
 }
 
+void sig_crash_report(int signum)
+{
+    char template[128] = CRASH_REPORTS_TMP_DIR "/crashed_XXXXXX";
+    char pname[64] = "<NA>";
+    int32_t pid;
+
+    if (kconfig_enabled(CONFIG_DM_OSYNC_CRASH_REPORTS) && signum != SIGUSR2)
+    {
+        int fd;
+
+        mkdir(CRASH_REPORTS_TMP_DIR, 0755);
+
+        fp_crash_report = NULL;
+        if ((fd = mkstemp(template)) != -1)
+        {
+            fp_crash_report = fdopen(fd, "w");
+            if (fp_crash_report == NULL) close(fd);
+        }
+        if (fp_crash_report == NULL)
+        {
+            LOG(ERR, "Error creating temporary file: %s", strerror(errno));
+        }
+
+        if (fp_crash_report != NULL)
+        {
+            pid = getpid();
+            os_pid_to_name(pid, pname, sizeof(pname));
+
+            fprintf(fp_crash_report, "pid %d\n", pid);
+            fprintf(fp_crash_report, "name %s\n", pname);
+            fprintf(fp_crash_report, "reason SIG %d (%s)\n",
+                    signum, strsignal(signum));
+            fprintf(fp_crash_report, "timestamp %lld\n", (long long)clock_real_ms());
+            fprintf(fp_crash_report, "backtrace ");
+        }
+    }
+
+    backtrace_dump_generic(target_get_btrace_type());
+    if (fp_crash_report)
+    {
+        fprintf(fp_crash_report, "\n");
+
+        fclose(fp_crash_report);
+        fp_crash_report = NULL;
+    }
+}
+
 void backtrace_dump()
 {
     btrace_type btrace = target_get_btrace_type();
@@ -171,8 +236,11 @@ bool backtrace_dump_cbk(void *ctx, void *addr, const char *func, const char *obj
 {
     struct backtrace_dump_info *di = ctx;
     char addr_str[64];
+    char line_buf[128];
 
-    crash_print("%3d > %16p: %24s %-16s", di->frame_no++, addr, func, obj);
+    sprintf(line_buf, "%3d > %16p: %24s %-16s", di->frame_no++, addr, func, obj);
+    crash_print("%s", line_buf);
+    crash_report_print(line_buf);
 
     snprintf(addr_str, sizeof(addr_str), "%p ", addr);
     strlcat(di->addr_info, addr_str, sizeof(di->addr_info));

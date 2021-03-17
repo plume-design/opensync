@@ -40,52 +40,47 @@
 # Test is failed:
 # - otherwise
 
-# Include basic environment config from default shell file and if any from FUT framework generated /tmp/fut_set_env.sh file
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
-source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
-usage="
-$(basename "$0") [-h] \$1 \$2 \$3 \$4 \$5
-
-where options are:
+tc_name="nm2/$(basename "$0")"
+manager_setup_file="nm2/nm2_setup.sh"
+usage()
+{
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Script checks if IP port forward rule is created on the system when configured through IP_Port_Forward table
+        Script fails if IP port is not forwarded on the system
+Arguments:
     -h  show this help message
-
-where arguments are:
-    src_ifname=\$1 -- used as src_ifname in IP_Port_Forward table - (string)(required)
-    src_port=\$2 -- used as src_port in IP_Port_Forward table - (string)(required)
-    dst_ipaddr=\$3 -- used as dst_ipaddr in IP_Port_Forward table - (string)(required)
-    dst_port=\$4 -- used as dst_port in IP_Port_Forward table - (string)(required)
-    protocol=\$5 -- used as protocol in IP_Port_Forward table - (string)(required)
-
-this script is dependent on following:
-    - running NM manager
-    - running WM manager
-
-example of usage:
-   /tmp/fut-base/shell/nm2/nm2_ovsdb_ip_port_forward.sh wifi0 8080 10.10.10.200 80 tcp
-"
-
+    \$1 (src_ifname) : used as src_ifname in IP_Port_Forward table : (string)(required)
+    \$2 (src_port)   : used as src_port in IP_Port_Forward table   : (string)(required)
+    \$3 (dst_ipaddr) : used as dst_ipaddr in IP_Port_Forward table : (string)(required)
+    \$4 (dst_port)   : used as dst_port in IP_Port_Forward table   : (string)(required)
+    \$5 (protocol)   : used as protocol in IP_Port_Forward table   : (string)(required)
+Testcase procedure:
+    - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
+                 Run: ./${tc_name} <SRC-IFNAME> <SRC-PORT> <DST-IPADDR> <DST-PORT> <PROTOCOL>
+Script usage example:
+   ./${tc_name} wifi0 8080 10.10.10.200 80 tcp
+usage_string
+}
 while getopts h option; do
     case "$option" in
         h)
-            echo "$usage"
-            exit 1
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
             ;;
     esac
 done
-
-# Provide all 5 arguments.
-if [ $# -lt 5 ]; then
-    echo 1>&2 "$0: not enough arguments"
-    echo "$usage"
-    exit 2
-fi
+NARGS=5
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 
 trap 'run_setup_if_crashed nm || true' EXIT SIGINT SIGTERM
 
@@ -96,7 +91,7 @@ dst_ipaddr=$3
 dst_port=$4
 protocol=$5
 
-tc_name="nm2/$(basename "$0")"
+log_title "$tc_name: NM2 test - Testing IP port forwarding"
 
 log "$tc_name: Set IP FORWARD in OVSDB"
 set_ip_forward "$src_ifname" "$src_port" "$dst_ipaddr" "$dst_port" "$protocol" &&

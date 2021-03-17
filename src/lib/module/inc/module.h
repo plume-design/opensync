@@ -32,11 +32,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /**
  * Initializer for the module_t structure
  */
-#define MODULE_INIT(name, start, stop)  \
+#define MODULE_INIT(name, start, stop, data)  \
 {                                       \
     .m_name = (name),                   \
     .m_start_fn = (start),              \
-    .m_stop_fn = (stop)                 \
+    .m_stop_fn = (stop),                \
+    .m_data = (data),                   \
 }
 
 /*
@@ -67,12 +68,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * Macro for registering a module
  */
 
-#define MODULE(name, start, stop)                                               \
+#define MODULE(name, start, stop) MODULE_DATA(name, start, stop, NULL)
+
+#define MODULE_DATA(name, start, stop, data)                                    \
                                                                                 \
 module_fn_t start;                                                              \
 module_fn_t stop;                                                               \
                                                                                 \
-static struct module module_##name = MODULE_INIT(#name, start, stop);           \
+static struct module module_##name = MODULE_INIT(#name, start, stop, data);     \
                                                                                 \
 /*                                                                              \
  * Constructor function, this will be called during object initialization       \
@@ -93,7 +96,7 @@ static void MOD_DTOR module_dtor_##name(void)                                   
 /**
  * Prototype for module start/stop functions
  */
-typedef void module_fn_t(void);
+typedef void module_fn_t(void *data);
 
 /*
  * Basic module structure
@@ -103,6 +106,7 @@ struct module
     const char         *m_name;         /* Module name */
     module_fn_t        *m_start_fn;     /* Start function pointer */
     module_fn_t        *m_stop_fn;      /* Stop function pointer */
+    void               *m_data;         /* Optional data pointer */
     bool                m_started;      /* True if module has been started */
     ds_dlist_node_t     m_dnode;
 };

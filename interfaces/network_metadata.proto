@@ -56,6 +56,19 @@ message FlowState {
     optional bool   flowEnd                                                 = 4;
 }
 
+enum Direction {
+    FLOW_DIRECTION_UNSPECIFIED                                              = 0;
+    FLOW_DIRECTION_OUTBOUND                                                 = 1;
+    FLOW_DIRECTION_INBOUND                                                  = 2;
+    FLOW_DIRECTION_LAN2LAN                                                  = 3;
+}
+
+enum Originator {
+    FLOW_ORIGINATOR_UNSPECIFIED                                             = 0;
+    FLOW_ORIGINATOR_SRC                                                     = 1;
+    FLOW_ORIGINATOR_DST                                                     = 2;
+}
+
 message FlowKey {
       optional string srcMac                                                = 1;
       optional string dstMac                                                = 2;
@@ -71,6 +84,8 @@ message FlowKey {
       optional FlowState flowState                                          = 12;
       optional bool parentOfSrcMac                                          = 13;
       optional bool parentOfDstMac                                          = 14;
+      optional Direction direction                                          = 15;
+      optional Originator originator                                        = 16;
 }
 
 message FlowCounters {

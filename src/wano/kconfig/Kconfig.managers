@@ -1,13 +1,13 @@
 menuconfig MANAGER_WANO
     bool "WAN Orchestrator (WANO)"
-    default n
+    default y
     help
         Enable WAN Orchestrator (WANO)
 
 if MANAGER_WANO
     config MANAGER_WANO_CFG
         string "WANO Startup configuration"
-        default "wano;false;needs_plan_b=true"
+        default "wano;true;needs_plan_b=true"
         help
             WAN Orchestrator startup configuration
 
@@ -36,21 +36,21 @@ if MANAGER_WANO
 
     config MANAGER_WANO_PLUGIN_DHCPV4
         bool "WANO IPv4 DHCP plugin"
-        default n
+        default y
         help
             WANO DHCPv4 plug-in for interface configuration via the DHCPv4
             protocol.
 
     config MANAGER_WANO_PLUGIN_DHCPV6
         bool "WANO IPv6 DHCP plugin"
-        default n
+        default y
         help
             WANO DHCPv6 plug-in for interface configuration via the DHCPv6/RA
             protocol.
 
     config MANAGER_WANO_PLUGIN_STATIC_IPV4
         bool "WANO static IPv4 plugin"
-        default n
+        default y
         help
             Plugin configuring static IP address on WAN interfaces.
             Configuration parameters are read from "wanp" key-value OPS, here
@@ -62,14 +62,14 @@ if MANAGER_WANO
                                        list)
     config MANAGER_WANO_PLUGIN_PPPOE
         bool "WANO pppoe plugin"
-        default n
+        default y
         help
             WANO pppoe plug-in for interface configuration via the pppoe
             protocol. Configuration is read from persistant storage.
 
     config MANAGER_WANO_PLUGIN_VLAN
         bool "WANO VLAN plugin"
-        default n
+        default y
         help
             WANO pppoe plug-in for VLAN interface configuration. The VLAN
             configuration is read from persistent storage.

@@ -10,9 +10,9 @@
 #include "qm_conn.h"
 #include "target.h"
 #include "unity.h"
+#include "memutil.h"
 #include "policy_tags.h"
 #include "pcap.c"
-#include "memutil.h"
 
 /**
  * @brief a set of sessions as delivered by the ovsdb API
@@ -173,13 +173,11 @@ test_init_plugin(struct fsm_session *session)
     return true;
 }
 
-
 static bool
-test_flood_mod(struct fsm_session *session)
+test_update_tap(struct fsm_session *session)
 {
     return true;
 }
-
 
 static const char g_test_br[16] = "test_br";
 
@@ -335,7 +333,7 @@ void setUp(void)
 
     fsm_init_mgr(NULL);
     g_fsm_mgr->init_plugin = test_init_plugin;
-    g_fsm_mgr->flood_mod = test_flood_mod;
+    g_fsm_mgr->update_session_tap = test_update_tap;
     g_fsm_mgr->get_br = test_get_br;
 
     mgr = fsm_policy_get_mgr();
@@ -722,9 +720,9 @@ test_update_v4_tag_generation(void)
     bool rc;
     int i;
 
-    regular_tag = calloc(1, sizeof(*regular_tag));
+    regular_tag = CALLOC(1, sizeof(*regular_tag));
     TEST_ASSERT_NOT_NULL(regular_tag);
-    local_tag = calloc(1, sizeof(*local_tag));
+    local_tag = CALLOC(1, sizeof(*local_tag));
     TEST_ASSERT_NOT_NULL(local_tag);
 
     /* Prepare a request */
@@ -763,8 +761,8 @@ test_update_v4_tag_generation(void)
 
     /* Free allocated resources */
     for (i = 0; i < req.ipv4_cnt; i++) free(req.ipv4_addrs[i]);
-    free(regular_tag);
-    free(local_tag);
+    FREE(regular_tag);
+    FREE(local_tag);
 }
 
 
@@ -784,9 +782,9 @@ test_update_v6_tag_generation(void)
     bool rc;
     int i;
 
-    regular_tag = calloc(1, sizeof(*regular_tag));
+    regular_tag = CALLOC(1, sizeof(*regular_tag));
     TEST_ASSERT_NOT_NULL(regular_tag);
-    local_tag = calloc(1, sizeof(*local_tag));
+    local_tag = CALLOC(1, sizeof(*local_tag));
     TEST_ASSERT_NOT_NULL(local_tag);
 
     /* Prepare a request */
@@ -825,8 +823,8 @@ test_update_v6_tag_generation(void)
 
     /* Free allocated resources */
     for (i = 0; i < req.ipv6_cnt; i++) free(req.ipv6_addrs[i]);
-    free(regular_tag);
-    free(local_tag);
+    FREE(regular_tag);
+    FREE(local_tag);
 }
 
 
@@ -844,7 +842,7 @@ test_update_v4_tag_generation_with_duplicates(void)
     bool rc;
     int i;
 
-    local_tag = calloc(1, sizeof(*local_tag));
+    local_tag = CALLOC(1, sizeof(*local_tag));
     TEST_ASSERT_NOT_NULL(local_tag);
 
     /* Prepare a request */
@@ -878,7 +876,7 @@ test_update_v4_tag_generation_with_duplicates(void)
 
     /* Free allocated resources */
     for (i = 0; i < req.ipv4_cnt; i++) free(req.ipv4_addrs[i]);
-    free(local_tag);
+    FREE(local_tag);
 }
 
 
@@ -896,7 +894,7 @@ test_update_v6_tag_generation_with_duplicates(void)
     bool rc;
     int i;
 
-    local_tag = calloc(1, sizeof(*local_tag));
+    local_tag = CALLOC(1, sizeof(*local_tag));
     TEST_ASSERT_NOT_NULL(local_tag);
 
     /* Prepare a request */
@@ -928,7 +926,7 @@ test_update_v6_tag_generation_with_duplicates(void)
 
     /* Free allocated resources */
     for (i = 0; i < req.ipv6_cnt; i++) free(req.ipv6_addrs[i]);
-    free(local_tag);
+    FREE(local_tag);
 }
 
 

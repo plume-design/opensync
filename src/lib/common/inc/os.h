@@ -105,6 +105,9 @@ while (0)
 #define STRLCAT(DEST, SRC) strlcat(DEST, SRC, sizeof(DEST))
 #define MEMZERO(DEST) memset(&DEST, 0, sizeof(DEST))
 
+// test of zeroed memory
+bool is_memzero(const void *mem, size_t size);
+#define IS_MEMZERO(SRC) is_memzero(&SRC, sizeof(SRC))
 
 /* Replace char 'c' with char 'r' for every occurrence in str */
 #define STR_REPLACE_CHAR(str, c, r)                         \
@@ -125,6 +128,14 @@ int32_t hwaddr_aton(const char *txt, uint8_t *addr);
 extern pid_t os_popen(const char *shell_cmd, int *pipe_desc);
 
 /**
+ * @brief Helper macros for determination if child process execution 
+ * completed successfully or with failure on basis of returned status
+ * value of the child process 
+ */
+#define WEXIT_SUCCESS(rc) (WIFEXITED(rc) && 0 == WEXITSTATUS(rc))
+#define WEXIT_FAILURE(rc) (!WEXIT_SUCCESS(rc))
+
+/**
  * Execute the command @p shell_cmd and redirect it's standard output to the
  * log file.
  *
@@ -137,6 +148,20 @@ extern pid_t os_popen(const char *shell_cmd, int *pipe_desc);
  * This function returns the shell exit code or -1 on error.
  */
 extern int cmd_log(const char *shell_cmd);
+
+/**
+ * @brief 
+ * Execute the command @p shell_cmd and redirect it's standard output to the
+ * provided output buffer. 
+ * Note: this implementation is NOT thread-safe
+ * 
+ * @param shell_cmd Command to execute
+ * @param buf output buffer for captured std output
+ * @param bufsize output buffer size
+ * @return  This function returns the shell exit code using wait() semantics or a
+ * negative number in case of error.
+ */
+extern int cmd_buf(const char *shell_cmd, char *buf, size_t bufsize);
 
 /**
  * Parse command-line arguments and sets the log severity

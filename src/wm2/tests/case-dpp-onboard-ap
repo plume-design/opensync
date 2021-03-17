@@ -1,0 +1,47 @@
+#!/bin/sh -ex
+tohex() { od -tx1 -An | tr -d ' \n'; }
+
+case "$1" in
+init)
+	. ./env-ap
+	;;
+
+test)
+	timeout 1 $ovsh w Wifi_Radio_State if_name:=phy0
+	timeout 1 $ovsh w Wifi_VIF_State if_name:=wlan0
+
+	ifname=wlan0
+	mac=00:11:22:33:44:55
+	ssid=test-ssid
+	ssidhex=$(echo -n $ssid | tohex)
+	uri="DPP:K:MDkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDIgADL1/ZcW2VfPoUg4Xzb7KO7lpEZm3Wcebbvp3oFiQdoyE=;;"
+	confhex=307702010104202d8961acd594a13ce84028f97e5c0d652f784d70b5d6fe216ef06b5aa9ad2132a00a06082a8648ce3d030107a144034200048467341d13849741f9fdb2ce7b843ee72bb8ee284c696a228e00fec9b6ea37c48ca5fe2f021ee73081078a6805477430442c14efb85ae24461cfc3aaafcd6ee2
+	keyhex=3077020101042012e69031788cc1787e35fcde2868f3c20120cb04feb36066e13be2a80b512391a00a06082a8648ce3d030107a14403420004c094692f026399e3058e80408f974203e4a925b96d0241be23398b5ee1544db84f0330621d903dd8fd213aa0eff4a4d9fbc1a62b910f7af8f723f0091649e3ef
+	sha=$(echo -n | sha256sum | awk '{print $1}')
+
+	echo "dpp_announcement wlan0 $mac $sha"
+	timeout 1 $ovsh w DPP_Announcement -w sta_mac_addr==$mac sta_mac_addr:=$mac
+
+	# This is what cloud controller should do when it
+	# sees a DPP_Announcement with a recognized hash.
+	# It'll inject this with the appopriate
+	# peer_bi_uri.
+	$ovsh i DPP_Config \
+		configurator_key_hex~=$confhex \
+		configurator_conf_ssid_hex~=$ssidhex \
+		timeout_seconds:=30 \
+		'ifnames:=["set",["wlan0"]]' \
+		auth:=initiate_on_announce \
+		status:=requested \
+		peer_bi_uri:="$uri"
+	timeout 1 $ovsh w DPP_Config -w status==in_progress status:=in_progress
+	timeout 1 $ovsh s DPP_Config -c >&2
+
+	# This is actually a random private key, but it
+	# should be sufficient to act as an example to
+	# present how ovsdb would look like roughly.
+	echo "dpp_enrollee $ifname $mac $keyhex"
+	timeout 1 $ovsh w DPP_Config -w status==succeeded status:=succeeded
+	timeout 1 $ovsh s DPP_Config -c >&2
+	;;
+esac

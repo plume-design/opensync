@@ -27,19 +27,15 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef INET_H_INCLUDED
 #define INET_H_INCLUDED
 
-#include <stdbool.h>
 #include <stdlib.h>
 
 #include "os_types.h"
-#include "const.h"
 
-#include "osn_netif.h"
 #include "osn_inet.h"
-#include "osn_inet6.h"
 #include "osn_dhcpv6.h"
 #include "osn_dhcp.h"
 #include "osn_upnp.h"
-#include "osn_inet.h"
+
 
 /*
  * ===========================================================================
@@ -153,11 +149,10 @@ typedef bool inet_dhcp_lease_fn_t(
         bool released,
         struct osn_dhcp_server_lease *dl);
 
-/* IPv6 neighbor notification */
+/* IPv4 neighbor notification */
 typedef void inet_dhcpc_option_notify_fn_t(
         inet_t *self,
-        enum osn_notify hint,
-        const char *name,
+        enum osn_dhcp_option opt,
         const char *value);
 
 /* IPv6 status change notification */
@@ -260,6 +255,7 @@ struct __inet
     /* DHCP client options */
     bool        (*in_dhcpc_option_request_fn)(inet_t *self, enum osn_dhcp_option opt, bool req);
     bool        (*in_dhcpc_option_set_fn)(inet_t *self, enum osn_dhcp_option opt, const char *value);
+    bool        (*in_dhcpc_option_get_fn)(inet_t *self, enum osn_dhcp_option opt, bool *request, const char **value);
     bool        (*in_dhcpc_option_notify_fn)(inet_t *self, inet_dhcpc_option_notify_fn_t *fn);
 
     /* True if DHCP server should be enabled on this interface */
@@ -285,12 +281,16 @@ struct __inet
                         osn_mac_addr_t macaddr);
     /* VLANs */
     bool       (*in_vlanid_set_fn)(inet_t *self, int vlanid);
+    bool       (*in_vlan_egress_qos_map_set_fn)(inet_t *self, const char *qos_map);
 
     /* DHCP sniffing - register callback for DHCP sniffing - if set to NULL sniffing is disabled */
     bool        (*in_dhsnif_lease_notify_fn)(inet_t *self, inet_dhcp_lease_fn_t *func);
 
     /* Routing table methods  -- if set to NULL route state reporting is disabled */
     bool        (*in_route_notify_fn)(inet_t *self, inet_route_status_fn_t *func);
+    bool (*in_route4_add_fn)(inet_t *super, const osn_route4_t *route);
+    bool (*in_route4_remove_fn)(inet_t *super, const osn_route4_t *route);
+
 
     /* Commit all pending changes */
     bool        (*in_commit_fn)(inet_t *self);
@@ -555,7 +555,7 @@ static inline bool inet_dns_set(inet_t *self, osn_ip_addr_t primary, osn_ip_addr
 
 static inline bool inet_dhcpc_option_request(inet_t *self, enum osn_dhcp_option opt, bool req)
 {
-    if (self->in_dhcpc_option_set_fn == NULL) return false;
+    if (self->in_dhcpc_option_request_fn == NULL) return false;
 
     return self->in_dhcpc_option_request_fn(self, opt, req);
 }
@@ -565,6 +565,11 @@ static inline bool inet_dhcpc_option_set(inet_t *self, enum osn_dhcp_option opt,
     if (self->in_dhcpc_option_set_fn == NULL) return false;
 
     return self->in_dhcpc_option_set_fn(self, opt, value);
+}
+
+static inline bool inet_dhcpc_option_get(inet_t *self, enum osn_dhcp_option opt, bool *request, const char **value)
+{
+    return (NULL != self->in_dhcpc_option_get_fn) ? self->in_dhcpc_option_get_fn(self, opt, request, value) : false;
 }
 
 static inline bool inet_dhcpc_option_notify(inet_t *self, inet_dhcpc_option_notify_fn_t *fn)
@@ -659,6 +664,19 @@ static inline bool inet_vlanid_set(
     return self->in_vlanid_set_fn(self, vlanid);
 }
 
+/**
+ * @brief Setting of VLAN egress QOS mapping i.e. linux packet priority to PCP field
+ * 
+ * @param self ptr to inet object
+ * @param qos_map new egress qos mapping in FROM:TO pri pairs separated by spaces
+ * @return true when setting accepted, false; when rejected or not supported
+ */
+static inline bool inet_vlan_egress_qos_map_set(inet_t *self, const char *qos_map)
+{
+    return (self->in_vlan_egress_qos_map_set_fn == NULL) ? false : self->in_vlan_egress_qos_map_set_fn(self, qos_map);
+}
+
+
 /*
  * DHCP sniffing - @p func will be called each time a DHCP packet is sniffed
  * on the interface. This can happen multiple times for the same client
@@ -681,6 +699,16 @@ static inline bool inet_route_notify(inet_t *self, inet_route_status_fn_t *func)
     if (self->in_route_notify_fn == NULL) return false;
 
     return self->in_route_notify_fn(self, func);
+}
+
+static inline bool inet_route4_add(inet_t *self, const osn_route4_t *route)
+{
+    return self->in_route4_add_fn ? self->in_route4_add_fn(self, route) : false;
+}
+
+static inline bool inet_route4_remove(inet_t *self, const osn_route4_t *route)
+{
+    return self->in_route4_remove_fn ? self->in_route4_remove_fn(self, route) : false;
 }
 
 /**

@@ -1,0 +1,11 @@
+#
+# OpenSync core network Firewall
+#
+source "src/lib/osp/kconfig/Kconfig.osp_l2switch"
+
+#
+# Platform/vendor Firewall
+#
+osource "platform/*/kconfig/Kconfig.osp_l2switch"
+osource "vendor/*/kconfig/Kconfig.osp_l2switch"
+

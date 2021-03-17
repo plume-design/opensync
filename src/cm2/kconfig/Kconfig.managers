@@ -15,12 +15,13 @@ if MANAGER_CM
     config CM2_USE_WAN_LINK_MANAGEMENT
         bool "Use CM to manage WAN links"
         default y
+        depends on !MANAGER_WANO
         help
             Use Wifi_Master_State table to manage WAN links
 
     config CM2_USE_DRYRUN_ON_GRE
         bool "Use udhcpc dryrun on gre interfaces"
-        default y
+        default n
         help
             Run udhcpc dryrun on gre interfaces during link examination
 

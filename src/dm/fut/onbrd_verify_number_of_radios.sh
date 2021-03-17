@@ -25,52 +25,49 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
-source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
-usage="
-$(basename "$0") [-h] \$@
-
-where options are:
+tc_name="onbrd/$(basename "$0")"
+manager_setup_file="onbrd/onbrd_setup.sh"
+usage()
+{
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Validate number of radios on device
+Arguments:
     -h  show this help message
-
-where arguments are:
-    num_of_radios=\$@ -- used as number of radios to verify correct number of radios configured - (string)(required)
-
-this script is dependent on following:
-    - running DM manager
-
-example of usage:
-   /tmp/fut-base/shell/onbrd/$(basename "$0") 2
-   /tmp/fut-base/shell/onbrd/$(basename "$0") 3
-"
-
+    \$1 (num_of_radios) : used as number of radios to verify correct number of radios configured : (int)(required)
+Testcase procedure:
+    - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
+                 Run: ./${tc_name} <NUM-OF-RADIOS>
+Script usage example:
+   ./${tc_name} 2
+   ./${tc_name} 3
+usage_string
+}
 while getopts h option; do
     case "$option" in
         h)
-            echo "$usage"
-            exit 1
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
             ;;
     esac
 done
-
-if [ $# -lt 1 ]; then
-    echo 1>&2 "$0: not enough arguments"
-    echo "$usage"
-    exit 2
-fi
+NARGS=1
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 
 num_of_radios=$1
 
-tc_name="onbrd/$(basename "$0")"
-log "$tc_name: ONBRD Verify number of radios, waiting for '$num_of_radios'"
+log_title "$tc_name: ONBRD test - Verify number of radios"
 
+log "$tc_name: Verify number of radios, waiting for '${num_of_radios}'"
 wait_for_function_response 0 "check_number_of_radios $num_of_radios" &&
     log "$tc_name: SUCCESS: number of radios $num_of_radios" ||
     raise "FAIL: number of radios $num_of_radios" -l "$tc_name" -tc

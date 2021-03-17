@@ -25,48 +25,48 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-# Include basic environment config
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source ${FUT_TOPDIR}/shell/config/default_shell.sh
-fi
-source ${FUT_TOPDIR}/shell/lib/brv_lib.sh
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
+source "${FUT_TOPDIR}/shell/lib/brv_lib.sh"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
-tc_name="brv/$(basename $0)"
+tc_name="brv/$(basename "$0")"
+brv_setup_file="brv/brv_setup.sh"
 usage()
 {
-cat << EOF
-${tc_name} [-h] tool_path
-where options are:
-    -h  show this help message
-input arguments:
-    tool_path=$1 -- name or path of the required tool - (string)(required)
-                    If only the tool name is provided, PATH is searched.
-                    If the absolute path is provided, that is used to confirm the presence.
-this script is dependent on following:
-    - running brv_setup.sh
-example of usage:
-   ${tc_name} "ls"
-   ${tc_name} "bc"
-EOF
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Script checks if the specified tool is present on the system, fails otherwise
+Arguments:
+    -h : show this help message
+    \$1 (builtin_tool) : name of the required busybox built-in tool : (string)(required)
+Testcase procedure:
+    - On DEVICE: Run: ./${brv_setup_file} (see ${brv_setup_file} -h)
+                 Run: ./${tc_name} <TOOL-NAME>
+Script usage example:
+   ./${tc_name} "tail"
+usage_string
 }
-
 while getopts h option; do
     case "$option" in
         h)
-            usage
-            exit 1
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
             ;;
     esac
 done
-
 NARGS=1
-[ $# -lt ${NARGS} ] && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
-tool_path=$1
-log_title "${tc_name}: Verify tool '${tool_path}' is present on device"
+[ $# -ne ${NARGS} ] && usage && raise "Requires exactly '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 
-is_tool_on_system ${tool_path}
+tool_path=$1
+
+log_title "${tc_name}: BRV test - Verify tool '${tool_path}' is present on device"
+
+is_tool_on_system "${tool_path}"
 rc=$?
 if [ $rc == 0 ]; then
     log -deb "${tc_name}: tool '${tool_path}' found on device"

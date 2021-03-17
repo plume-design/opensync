@@ -1,0 +1,59 @@
+#!/bin/sh -ex
+tohex() { od -tx1 -An | tr -d ' \n'; }
+
+case "$1" in
+init)
+	. ./env-ap
+	;;
+
+test)
+	timeout 1 $ovsh w Wifi_Radio_State if_name:=phy0
+	timeout 1 $ovsh w Wifi_VIF_State if_name:=wlan0
+
+	ssid=test-ssid
+	ssid_hex=$(echo -n $ssid | tohex)
+	confhex=$(dd bs=1 count=60 </dev/urandom 2>/dev/null | tohex)
+
+	# There should be only wlan0. wlan1 is missing.
+	# WM should not start such a job. Instead it
+	# should wait for the interface to become
+	# available.
+	$ovsh i DPP_Config \
+		configurator_key_hex~=$confhex \
+		configurator_conf_ssid_hex~=$ssid_hex \
+		timeout_seconds:=30 \
+		'ifnames:=["set",["wlan0", "wlan1"]]' \
+		auth:=initiate_on_announce \
+		status:=requested \
+		peer_bi_uri:=one
+
+	! timeout 1 $ovsh w DPP_Config -w peer_bi_uri==one status:=in_progress
+
+	# It should start another job if dependencies are met.
+	$ovsh i DPP_Config \
+		configurator_key_hex~=$confhex \
+		configurator_conf_ssid_hex~=$ssid_hex \
+		timeout_seconds:=30 \
+		'ifnames:=["set",["wlan0"]]' \
+		auth:=initiate_on_announce \
+		status:=requested \
+		peer_bi_uri:=two
+
+	timeout 1 $ovsh w DPP_Config -w peer_bi_uri==two status:=in_progress
+	echo dpp_failed
+	timeout 1 $ovsh w DPP_Config -w peer_bi_uri==two status:=failed
+
+	# Once the wlan1 appears then DPP should pick up the old job.
+	uuid=$($ovsh i Wifi_VIF_Config \
+		if_name:=wlan1 \
+		mode:=ap \
+		enabled:=true
+	)
+
+	$ovsh u Wifi_Radio_Config "vif_configs:ins:[\"set\",[[\"uuid\", \"$uuid\"]]]"
+	timeout 1 $ovsh w DPP_Config -w peer_bi_uri==one status:=in_progress
+
+	echo dpp_failed
+	timeout 1 $ovsh w DPP_Config -w peer_bi_uri==one status:=failed
+	;;
+esac

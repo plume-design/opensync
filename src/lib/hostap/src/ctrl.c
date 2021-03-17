@@ -326,3 +326,44 @@ ctrl_request(struct ctrl *ctrl, const char *cmd, size_t cmd_len, char *reply, si
     LOGD("%s: reply='%s'", ctrl->bss, reply);
     return 0;
 }
+
+bool
+ctrl_request_ok(struct ctrl *ctrl, const char *cmd)
+{
+    const char *fail = "FAIL";
+    char reply[1024];
+    size_t reply_len = sizeof(reply);
+    int err;
+
+    err = ctrl_request(ctrl, cmd, strlen(cmd), reply, &reply_len);
+    if (err)
+        return false;
+    if (!strncmp(reply, fail, strlen(fail)))
+        return false;
+
+    return true;
+}
+
+bool
+ctrl_request_int(struct ctrl *ctrl, const char *cmd, int *ret)
+{
+    const char *fail = "FAIL";
+    char reply[1024];
+    char *perr = 0;
+    size_t reply_len = sizeof(reply);
+    int err;
+
+    err = ctrl_request(ctrl, cmd, strlen(cmd), reply, &reply_len);
+    if (err)
+        return false;
+    if (!strncmp(reply, fail, strlen(fail)))
+        return false;
+    if (reply_len == 0)
+        return -1;
+
+    *ret = strtol(reply, &perr, 10);
+    if (*ret == 0 && perr == reply)
+        return false;
+
+    return true;
+}

@@ -25,65 +25,60 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh"
-source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
-usage="
-$(basename "$0") [-h] \$1
-
-where options are:
+tc_name="onbrd/$(basename "$0")"
+manager_setup_file="onbrd/onbrd_setup.sh"
+usage()
+{
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Validate home vaps on home bridge exist
+Arguments:
     -h  show this help message
-
-where arguments are:
-    interface_name=\$1 -- used as interface name to check - (string)(required)
-    bridge_home_interface=\$2 -- used as bridge interface name to check - (string)(required)
-
-this script is dependent on following:
-    - running DM manager
-
-example of usage:
-   /tmp/fut-base/shell/onbrd/$(basename "$0") wl1.2 br-home
-   /tmp/fut-base/shell/onbrd/$(basename "$0") home-ap-l50 br-home
-"
-
+    \$1 (interface_name)        : used as interface name to check        : (string)(required)
+    \$2 (bridge_home_interface) : used as bridge interface name to check : (string)(required)
+Testcase procedure:
+    - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
+                 Run: ./${tc_name} <INTERFACE-NAME> <BRIDGE-HOME-INTERFACE>
+Script usage example:
+   ./${tc_name} wl1.2 br-home
+   ./${tc_name} home-ap-l50 br-home
+usage_string
+}
 while getopts h option; do
     case "$option" in
         h)
-            echo "$usage"
-            exit 1
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
             ;;
     esac
 done
-
-if [ $# -ne 2 ]; then
-    echo 1>&2 "$0: incorrect number of input arguments"
-    echo "$usage"
-    exit 2
-fi
+NARGS=2
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 
 interface_name=$1
 bridge_home_interface=$2
 
-tc_name="onbrd/$(basename "$0")"
-
-log "$tc_name: ONBRD Verify home VAPs on home bridge, check if interface $interface_name in $bridge_home_interface"
+log_title "$tc_name: ONBRD test - Verify home VAPs on home bridge, check if interface '${interface_name}' in '${bridge_home_interface}'"
 
 wait_for_function_response 0 "check_ovsdb_entry Wifi_VIF_State -w if_name $interface_name" &&
     log "$tc_name: SUCCESS: interface $interface_name exists" ||
     raise "FAIL: interface $interface_name does not exist" -l "$tc_name" -tc
 
-log "$tc_name: ONBRD Setting Wifi_VIF_Config bridge to $bridge_home_interface"
+log "$tc_name: Setting Wifi_VIF_Config bridge to $bridge_home_interface"
 update_ovsdb_entry Wifi_VIF_Config -u bridge "$bridge_home_interface" &&
     log "$tc_name: update_ovsdb_entry - Wifi_VIF_Config table updated - bridge $bridge_home_interface" ||
     raise "update_ovsdb_entry - Failed to update Wifi_VIF_Config table - bridge $bridge_home_interface" -l "$tc_name" -tc
 
-log "$tc_name: ONBRD Verify bridge, waiting for Wifi_VIF_State bridge is $bridge_home_interface"
+log "$tc_name: Verify bridge, waiting for Wifi_VIF_State bridge is $bridge_home_interface"
 wait_ovsdb_entry Wifi_VIF_State -w if_name "$interface_name" -is bridge "$bridge_home_interface" &&
     log "$tc_name: wait_ovsdb_entry - Wifi_VIF_State bridge is $bridge_home_interface" ||
     raise "wait_ovsdb_entry - Wifi_VIF_State bridge is NOT $bridge_home_interface" -l "$tc_name" -tc

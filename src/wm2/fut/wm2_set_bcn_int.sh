@@ -25,63 +25,55 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-# Include basic environment config from default shell file and if any from FUT framework generated /tmp/fut_set_env.sh file
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
-source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
-source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
-trap 'run_setup_if_crashed wm || true' EXIT SIGINT SIGTERM
-
-usage="$(basename "$0") [-h] [-c] [-s] [-fs] \$1 \$2 \$3 \$4 \$5 \$6 \$7 \$8 \$9 \$10
-
-where options are:
+tc_name="wm2/$(basename "$0")"
+manager_setup_file="wm2/wm2_setup.sh"
+usage()
+{
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Script tries to set chosen BEACON INTERVAL. If interface is not UP it brings up the interface, and tries to set
+      BEACON INTERVAL to desired value.
+Arguments:
     -h  show this help message
-
-where arguments are:
-    radio_idx=\$1 -- used as vif_radio_idx in Wifi_VIF_Config table - (int)(required)
-    if_name=\$2 -- used as if_name in Wifi_Radio_Config table - (string)(required)
-    ssid=\$3 -- used as ssid in Wifi_VIF_Config table - (string)(required)
-    password=\$4 -- used as ssid password at security column in Wifi_VIF_Config table - (string)(required)
-    channel=\$5 -- used as channel in Wifi_Radio_Config table - (int)(required)
-    ht_mode=\$6 -- used as ht_mode in Wifi_Radio_Config table - (string)(required)
-    hw_mode=\$7 -- used as hw_mode in Wifi_Radio_Config table - (string)(required)
-    mode=\$8 -- used as mode in Wifi_VIF_Config table - (string)(required)
-    country=\$9 -- used as country in Wifi_Radio_Config table - (string)(required)
-    vif_if_name=\$10 -- used as if_name in Wifi_VIF_Config table - (string)(required)
-    bcn_int=\$11 -- used as bcn_int in Wifi_Radio_Config table - (int)(required)
-
-this script is dependent on following:
-    - running both WM and NM manager
-
-Script tries to set chosen BEACON INTERVAL. If interface is not UP it brings up the interface, and tries to set
-BEACON INTERVAL to desired value.
-
-Dependent on:
-    - running WM/NM managers - min_wm2_setup
-
-example of usage:
-   $(basename "$0") 2 wifi1 test_wifi_50L WifiPassword123 44 HT20 11ac ap US home-ap-l50 36 200"
-
+    \$1  (radio_idx)   : Wifi_VIF_Config::vif_radio_idx             : (int)(required)
+    \$2  (if_name)     : Wifi_Radio_Config::if_name                 : (string)(required)
+    \$3  (ssid)        : Wifi_VIF_Config::ssid                      : (string)(required)
+    \$4  (security)    : Wifi_VIF_Config::security                  : (string)(required)
+    \$5  (channel)     : Wifi_Radio_Config::channel                 : (int)(required)
+    \$6  (ht_mode)     : Wifi_Radio_Config::ht_mode                 : (string)(required)
+    \$7  (hw_mode)     : Wifi_Radio_Config::hw_mode                 : (string)(required)
+    \$8  (mode)        : Wifi_VIF_Config::mode                      : (string)(required)
+    \$9  (country)     : Wifi_Radio_Config::country                 : (string)(required)
+    \$10 (vif_if_name) : Wifi_VIF_Config::if_name                   : (string)(required)
+    \$11 (bcn_int)     : used as bcn_int in Wifi_Radio_Config table : (int)(required)
+Testcase procedure:
+    - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
+                 Run: ./${tc_name}
+Script usage example:
+   ./${tc_name} 2 wifi1 test_wifi_50L WifiPassword123 44 HT20 11ac ap US home-ap-l50 36 200
+usage_string
+}
 while getopts h option; do
     case "$option" in
         h)
-            echo "$usage"
-            exit 1
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
             ;;
     esac
 done
+NARGS=11
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 
-if [ $# -lt 11 ]; then
-    echo 1>&2 "$0: not enough arguments"
-    echo "$usage"
-    exit 2
-fi
+trap 'run_setup_if_crashed wm || true' EXIT SIGINT SIGTERM
 
 vif_radio_idx=$1
 if_name=$2
@@ -95,7 +87,7 @@ country=$9
 vif_if_name=${10}
 bcn_int=${11}
 
-tc_name="wm2/$(basename "$0")"
+log_title "$tc_name: WM2 test - Testing Wifi_Radio_Config field bcn_int - '${bcn_int}'}"
 
 log "$tc_name: Checking if Radio/VIF states are valid for test"
 check_radio_vif_state \

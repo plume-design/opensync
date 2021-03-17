@@ -27,6 +27,11 @@
 
 current_dir=$(dirname "$(realpath "$BASH_SOURCE")")
 fut_topdir="$(realpath "$current_dir"/../../..)"
+
+# FUT environment loading
+source "${fut_topdir}"/config/default_shell.sh
+# Ignore errors for fut_set_env.sh sourcing
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh &> /dev/null
 source "$fut_topdir/lib/rpi_lib.sh"
 
 tc_name="tools/rpi/cm/$(basename $0)"
@@ -39,7 +44,7 @@ Options:
 Arguments:
     ip_address=$1 -- IP address to perform action on - (string)(required)
     type=$2 -- type of action to perform: block/unblock - (string)(required)
-example of usage:
+Usage:
    ${tc_name} "192.168.200.11" "block"
    ${tc_name} "192.168.200.10" "unblock"
 EOF

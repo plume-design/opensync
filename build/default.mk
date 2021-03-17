@@ -27,10 +27,15 @@ TOP_SDK                     := ../sdk
 DEFAULT_IMAGE_TYPE          := squashfs
 DEFAULT_TARGET              := native
 INSTALL_PREFIX              ?= /usr/opensync
-ROOTFS_COMPONENTS           ?= common $(ROOTFS_KCONFIG_COMPONENTS) platform/$(PLATFORM) target/$(TARGET) $(ROOTFS_PROFILE_COMPONENTS)
+ROOTFS_PLATFORM_COMPONENTS  ?= platform/$(PLATFORM)
+ROOTFS_TARGET_COMPONENTS    ?= target/$(TARGET)
+ROOTFS_COMPONENTS           ?= common $(ROOTFS_KCONFIG_COMPONENTS) $(ROOTFS_PLATFORM_COMPONENTS) $(ROOTFS_TARGET_COMPONENTS) $(ROOTFS_PROFILE_COMPONENTS)
 WORKDIR                     ?= work/$(TARGET)
 KCONFIG_ENV_FILE            ?= $(INSTALL_PREFIX)/etc/kconfig
 export INSTALL_PREFIX
+
+# make goals that don't require the TARGET to be set
+NO_TARGET_GOALS = help doc menuconfig kconfig/info
 
 # Build features
 CFG_DEFINES :=
@@ -39,8 +44,6 @@ CFG_DEFINES :=
 BUILD_BHAUL_WDS             ?= n
 # specifies whether Band Steering is built or not
 BUILD_BAND_STEERING         ?= y
-# specifies whether Speed test is built or not
-BUILD_SPEED_TEST            ?= n
 # merge all static libraries to a single shared library and link that
 BUILD_SHARED_LIB            ?= y
 # backtrace based on libgcc_s
@@ -67,4 +70,3 @@ SRCEXT   = cpp
 SRCEXT.c = c
 DEPEXT   = d
 OBJEXT   = o
-

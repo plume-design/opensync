@@ -34,6 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "log.h"
 #include "fsm.h"
+#include "fsm_internal.h"
 #include "json_util.h"
 #include "qm_conn.h"
 #include "os_types.h"
@@ -78,7 +79,7 @@ fsm_pcap_handler(uint8_t * args, const struct pcap_pkthdr *header,
  * @brief parse a session's pcap options from ovsdb.
  *
  * @param session the session
- * @return true if the pcap session needs to be restared, false otherwise.
+ * @return true if the pcap session needs to be restarted, false otherwise.
  */
 bool
 fsm_get_pcap_options(struct fsm_session *session)
@@ -249,20 +250,46 @@ fsm_pcap_update(struct fsm_session *session)
 {
     bool ret;
 
-    if (!fsm_plugin_has_intf(session)) return true;
+    if (session->tap_type != FSM_TAP_PCAP) return false;
 
     ret = fsm_get_pcap_options(session);
     if (ret) fsm_pcap_close(session);
 
+    if (session->pcaps == NULL)
+    {
+        struct bpf_program *bpf;
+        struct fsm_pcaps *pcaps;
+
+        pcaps = calloc(1, sizeof(struct fsm_pcaps));
+        if (pcaps == NULL) return false;
+        session->pcaps = pcaps;
+
+        bpf = calloc(1, sizeof(struct bpf_program));
+        if (bpf == NULL) goto err_free_pcaps;
+
+        session->pcaps->bpf = bpf;
+    }
+
+    ret = fsm_get_pcap_options(session);
     ret = fsm_pcap_open(session);
     if (!ret)
     {
         LOGE("pcap open failed for handler %s",
              session->name);
-        return false;
+        goto err_free_bpf;
     }
 
     return true;
+
+err_free_bpf:
+    free(session->pcaps->bpf);
+    session->pcaps->bpf = NULL;
+
+err_free_pcaps:
+    free(session->pcaps);
+    session->pcaps = NULL;
+
+    return false;
 }
 
 
@@ -345,7 +372,6 @@ bool fsm_pcap_open(struct fsm_session *session) {
     if (rc != 0) {
         LOGE("Error compiling capture filter: '%s'. PCAP error:\n>>> %s",
              pkt_filter, pcap_geterr(pcap));
-        pcaps->bpf = NULL;
         goto error;
     }
 
@@ -392,11 +418,13 @@ void fsm_pcap_close(struct fsm_session *session) {
     if (pcaps->bpf != NULL) {
         pcap_freecode(pcaps->bpf);
         free(pcaps->bpf);
+        pcaps->bpf = NULL;
     }
 
     if (pcap != NULL) {
         pcap_close(pcap);
         pcaps->pcap = NULL;
     }
-    pcaps->started = 0;
+    free(pcaps);
+    session->pcaps = NULL;
 }

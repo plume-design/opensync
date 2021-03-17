@@ -69,7 +69,7 @@ typedef enum {
     TARGET_INIT_MGR_BM              =  6,
     TARGET_INIT_MGR_FM              =  7,
     TARGET_INIT_MGR_LM              =  8,
-    TARGET_INIT_MGR_LEDM            =  9,
+/*  TARGET_INIT_MGR_LEDM            =  9, obsoleted */
     TARGET_INIT_MGR_OM              = 10,
     TARGET_INIT_MGR_BLEM            = 11,
     TARGET_INIT_MGR_QM              = 12,
@@ -80,7 +80,8 @@ typedef enum {
     TARGET_INIT_MGR_FCM             = 17,
     TARGET_INIT_MGR_PPM             = 18,
     TARGET_INIT_MGR_NFM             = 19,
-    TARGET_INIT_MGR_MAPTM           = 20
+    TARGET_INIT_MGR_MAPTM           = 20,
+    TARGET_INIT_MGR_LTEM            = 21
 } target_init_opt_t;
 
 /**
@@ -351,25 +352,6 @@ bool target_log_pull(const char *upload_location, const char *upload_token);
  * @return true on success
  */
 bool target_log_pull_ext(const char *upload_location, const char *upload_token, const char *upload_method);
-
-/// @cond INTERNAL
-/**
- * @brief return the printf-style path to the LED sysfs
- *
- * The string should contain a '%s' placeholder where the LED color should be placed
- *
- * @return null-terminated string
- */
-const char *target_led_device_dir(void);
-
-/**
- * @brief return an array of the available LED color names
- *
- * @param  leds pointer where array of strings of colors will be stored
- * @return count of LED's available on the target
- */
-int target_led_names(const char **leds[]);
-/// @endcond INTERNAL
 
 /**
  * @brief Get the directory for scripts

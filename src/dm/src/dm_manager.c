@@ -207,10 +207,7 @@ bool act_init_managers (void)
 
     if (true == retval)
     {
-#if defined(USE_SPEED_TEST) || defined(CONFIG_SPEEDTEST)
-        /* start monitoring speedtest config table */
         dm_st_monitor();
-#endif
     }
 
     STATE_TRANSIT(STATE_IDLE);
@@ -900,4 +897,3 @@ void dm_manager_node_service_update(
         LOG(ERR, "Error updating Node_Services status: %s = %s", service, status);
     }
 }
-

@@ -47,8 +47,18 @@ ds_tree_t nm2_iface_list = DS_TREE_INIT(nm2_iface_cmp, struct nm2_iface, if_tnod
 /* Ordered list of pending commits */
 ds_dlist_t nm2_iface_commit_list = DS_DLIST_INIT(struct nm2_iface, if_commit_dnode);
 
-static void nm2_iface_dhcpc_notify(inet_t *self, enum osn_notify hint, const char *name, const char *value);
+static void nm2_iface_dhcpc_notify(inet_t *self, enum osn_dhcp_option opt, const char *value);
 static inet_t *nm2_iface_new_inet(const char *ifname, enum nm2_iftype type);
+
+static const uint8_t dhcp_default_req_options[] = {
+    DHCP_OPTION_SUBNET_MASK,
+    DHCP_OPTION_ROUTER,
+    DHCP_OPTION_DNS_SERVERS,
+    DHCP_OPTION_HOSTNAME,
+    DHCP_OPTION_DOMAIN_NAME,
+    DHCP_OPTION_BCAST_ADDR,
+    DHCP_OPTION_VENDOR_SPECIFIC
+ };
 
 /*
  * ===========================================================================
@@ -136,6 +146,15 @@ struct nm2_iface *nm2_iface_get_by_name(char *_ifname)
     return NULL;
 }
 
+
+static void nm2_dhcp_opt_update(struct ev_loop *loop, ev_debounce *w, int revent)
+{
+    struct nm2_iface *piface = (struct nm2_iface *)w->data;
+
+    /* Force a status update */
+    nm2_inet_state_update(piface);
+}
+
 /*
 * Creates a new interface of the specified type.
 * Also initializes dhcp_options and inet interface.
@@ -160,12 +179,14 @@ struct nm2_iface *nm2_iface_new(const char *_ifname, enum nm2_iftype if_type)
         return NULL;
     }
 
-    /* Dynamically initialize the DHCP client options tree */
-    ds_tree_init(
-            &piface->if_dhcpc_options,
-            ds_str_cmp,
-            struct nm2_iface_dhcp_option,
-            do_tnode);
+    /* Dynamically initialize the DHCP client options */
+    dhcp_options_t *opts = calloc(1, sizeof(*opts) + sizeof(dhcp_default_req_options));
+    memcpy(opts->option_id, dhcp_default_req_options, sizeof(dhcp_default_req_options));
+    opts->length = ARRAY_SIZE(dhcp_default_req_options);
+    piface->if_dhcp_req_options = opts;
+
+    ev_debounce_init(&piface->if_opt_debounce, nm2_dhcp_opt_update, 0.5);
+    piface->if_opt_debounce.data = piface;
 
     piface->if_inet = nm2_iface_new_inet(ifname, if_type);
     if (piface->if_inet == NULL)
@@ -195,9 +216,6 @@ struct nm2_iface *nm2_iface_new(const char *_ifname, enum nm2_iftype if_type)
  */
 bool nm2_iface_del(struct nm2_iface *piface)
 {
-    ds_tree_iter_t iter;
-    struct nm2_iface_dhcp_option *popt;
-
     bool retval = true;
 
     /* Remove the interface from the "pending commits" list */
@@ -216,12 +234,8 @@ bool nm2_iface_del(struct nm2_iface *piface)
     }
 
     /* Destroy DHCP options list */
-    ds_tree_foreach_iter(&piface->if_dhcpc_options, popt, &iter)
-    {
-        ds_tree_iremove(&iter);
-        free(popt);
-    }
-
+    ev_debounce_stop(EV_DEFAULT, &piface->if_opt_debounce);
+    free(piface->if_dhcp_req_options);
 
     /* Remove interface from global interface list */
     ds_tree_remove(&nm2_iface_list, piface);
@@ -353,7 +367,6 @@ inet_t *nm2_iface_new_inet(const char *ifname, enum nm2_iftype type)
     TRACE();
 
     char serial_num[100] = { 0 };
-    char sku_num[100] = { 0 };
     char hostname[C_HOSTNAME_LEN] = { 0 };
     char vendor_class[OSN_DHCP_VENDORCLASS_MAX] = { 0 };
 
@@ -383,6 +396,10 @@ inet_t *nm2_iface_new_inet(const char *ifname, enum nm2_iftype type)
             nif = inet_pppoe_new(ifname);
             break;
 
+        case NM2_IFTYPE_LTE:
+            nif = inet_lte_new(ifname);
+            break;
+
         default:
             /* Unsupported types */
             LOG(ERR, "nm2_iface: %s: Unsupported interface type: %d", ifname, type);
@@ -410,27 +427,14 @@ inet_t *nm2_iface_new_inet(const char *ifname, enum nm2_iftype type)
         osp_unit_serial_get(serial_num, sizeof(serial_num));
     }
 
-    /* read SKU number, if empty, reset buffer */
     if (hostname[0] == '\0')
     {
-        if (osp_unit_sku_get(sku_num, sizeof(sku_num)) == false)
+        if (osp_unit_dhcpc_hostname_get(hostname, sizeof(hostname)) != true)
         {
-            tsnprintf(hostname, sizeof(hostname), "%s_Pod", serial_num);
-        }
-        else
-        {
-            tsnprintf(hostname, sizeof(hostname), "%s_Pod_%s", serial_num, sku_num);
+            /* In case hostname failed then use model name for hostname */
+            tsnprintf(hostname, sizeof(hostname), "%s", vendor_class);
         }
     }
-
-    /* Request DHCP options */
-    inet_dhcpc_option_request(nif, DHCP_OPTION_SUBNET_MASK, true);
-    inet_dhcpc_option_request(nif, DHCP_OPTION_ROUTER, true);
-    inet_dhcpc_option_request(nif, DHCP_OPTION_DNS_SERVERS, true);
-    inet_dhcpc_option_request(nif, DHCP_OPTION_HOSTNAME, true);
-    inet_dhcpc_option_request(nif, DHCP_OPTION_DOMAIN_NAME, true);
-    inet_dhcpc_option_request(nif, DHCP_OPTION_BCAST_ADDR, true);
-    inet_dhcpc_option_request(nif, DHCP_OPTION_VENDOR_SPECIFIC, true);
 
     /* Set DHCP options */
     inet_dhcpc_option_set(nif, DHCP_OPTION_VENDOR_CLASS, vendor_class);
@@ -475,90 +479,14 @@ void nm2_iface_status_register(struct nm2_iface *piface)
  * DHCP client options notifications
  * ===========================================================================
  */
-void nm2_iface_dhcpc_notify(inet_t *inet, enum osn_notify hint, const char *name, const char *value)
+void nm2_iface_dhcpc_notify(inet_t *inet, enum osn_dhcp_option opt, const char *value)
 {
-    struct nm2_iface_dhcp_option *pdo;
-    ds_tree_iter_t ido;
-
     struct nm2_iface *piface = inet->in_data;
-    bool update_status = false;
+    
+    (void)opt;
+    (void)value;
 
-    switch (hint)
-    {
-        case NOTIFY_SYNC:
-            /* Flag all entries as invalid */
-            ds_tree_foreach(&piface->if_dhcpc_options, pdo)
-            {
-                pdo->do_invalid = true;
-            }
-            break;
-
-        case NOTIFY_FLUSH:
-            update_status = true;
-            /*
-             * Delete all invalid entries -- use an iterator version of foreach
-             * so we can safely remove elements while traversing the list
-             */
-            ds_tree_foreach_iter(&piface->if_dhcpc_options, pdo, &ido)
-            {
-                if (!pdo->do_invalid) continue;
-
-                ds_tree_iremove(&ido);
-                free(pdo->do_name);
-                free(pdo->do_value);
-                free(pdo);
-            }
-            break;
-
-        case NOTIFY_UPDATE:
-            pdo = ds_tree_find(&piface->if_dhcpc_options, (void *)name);
-            if (pdo == NULL)
-            {
-                /* New entry, create and add it to the tree */
-                pdo = calloc(1, sizeof(struct nm2_iface_dhcp_option));
-                pdo->do_name = strdup(name);
-
-                ds_tree_insert(&piface->if_dhcpc_options, pdo, pdo->do_name);
-            }
-
-            if (pdo->do_value != NULL) free(pdo->do_value);
-
-            /*
-             * If we're updating an invalid entry it means we're in the middle of
-             * a SYNC/FLUSH cycle. Do not force an update at this point.
-             */
-            update_status = !pdo->do_invalid;
-
-            pdo->do_value = strdup(value);
-            pdo->do_invalid = false;
-
-            break;
-
-        case NOTIFY_DELETE:
-            update_status = true;
-            pdo = ds_tree_find(&piface->if_dhcpc_options, (void *)name);
-            if (pdo == NULL)
-            {
-                LOG(ERR, "nm2_iface: %s: Unable to delete option -- Interface has no DHCP client option named: %s",
-                        piface->if_name,
-                        name);
-                return;
-            }
-
-            /* Free the entry */
-            ds_tree_remove(&piface->if_dhcpc_options, pdo);
-            free(pdo->do_name);
-            free(pdo->do_value);
-            free(pdo);
-            break;
-    }
-
-    /* Update the interface status */
-    if (update_status)
-    {
-        /* Force a status update */
-        nm2_inet_state_update(piface);
-    }
+    ev_debounce_start(EV_DEFAULT, &piface->if_opt_debounce);
 }
 
 /*

@@ -192,12 +192,12 @@ error:
  */
 MODULE(osps_psfs, osps_psfs_init, osps_psfs_fini)
 
-void osps_psfs_init(void)
+void osps_psfs_init(void *data)
 {
     osps_command_register(&osps_list_cmd);
     osps_command_register(&osps_prune_cmd);
 }
 
-void osps_psfs_fini(void)
+void osps_psfs_fini(void *data)
 {
 }

@@ -26,7 +26,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "log.h"
 
-#include "lnx_vlan.h"
+#include "linux/lnx_vlan.h"
 
 #include "osn_vlan.h"
 
@@ -61,7 +61,7 @@ bool osn_vlan_del(osn_vlan_t *self)
 
     if (!lnx_vlan_fini(&self->ov_vlan))
     {
-        LOG(WARN, "osn_pppoe: %s: Error destroying PPPoE object.", self->ov_vlan.lv_ifname);
+        LOG(WARN, "osn_vlan: %s: Error destroying the VLAN object.", self->ov_vlan.lv_ifname);
         retval = false;
     }
 
@@ -83,4 +83,9 @@ bool osn_vlan_vid_set(osn_vlan_t *self, int vlanid)
 bool osn_vlan_apply(osn_vlan_t *self)
 {
     return lnx_vlan_apply(&self->ov_vlan);
+}
+
+bool osn_vlan_egress_qos_map_set(osn_vlan_t *self, const char *qos_map)
+{
+    return lnx_vlan_egress_qos_map_set(&self->ov_vlan, qos_map);
 }

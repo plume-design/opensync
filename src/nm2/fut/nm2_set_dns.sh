@@ -24,15 +24,47 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-# Include basic environment config from default shell file and if any from FUT framework generated /tmp/fut_set_env.sh file
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
-source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+
+tc_name="nm2/$(basename "$0")"
+manager_setup_file="nm2/nm2_setup.sh"
+usage()
+{
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Script configures interfaces dns through Wifi_inet_Config 'dns' field and checks if it is propagated
+      into Wifi_Inet_State table and to the system, fails otherwise
+Arguments:
+    -h  show this help message
+    \$1 (if_name)       : field if_name in Wifi_Inet_Config table                 : (string)(required)
+    \$2 (if_type)       : field if_type in Wifi_Inet_Config table                 : (string)(required)
+    \$3 (primary_dns)   : primary entry for field dns in Wifi_Inet_Config table   : (string)(required)
+    \$4 (secondary_dns) : secondary entry for field dns in Wifi_Inet_Config table : (string)(required)
+Testcase procedure:
+    - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
+                 Run: ./${tc_name} <IF-NAME> <IF-TYPE> <PRIMARY-DNS> <SECONDARY-DNS>
+Script usage example:
+   ./${tc_name} wifi0 vif 1.2.3.4 4.5.6.7
+usage_string
+}
+while getopts h option; do
+    case "$option" in
+        h)
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
+            ;;
+    esac
+done
+NARGS=4
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 
 trap '
     reset_inet_entry $if_name || true
@@ -40,42 +72,12 @@ trap '
     check_restore_management_access || true
 ' EXIT SIGINT SIGTERM
 
-tc_name="nm2/$(basename "$0")"
-usage()
-{
-cat << EOF
-${tc_name} [-h] if_name if_type primary_dns secondary_dns
-Options:
-    -h  show this help message
-Arguments:
-    if_name=$1 -- field if_name in Wifi_Inet_Config table - (string)(required)
-    if_type=$2 -- field if_type in Wifi_Inet_Config table - (string)(required)
-    primary_dns=$2 -- primary entry for field dns in Wifi_Inet_Config table - (string)(required)
-    secondary_dns=$3 -- secondary entry for field dns in Wifi_Inet_Config table - (string)(required)
-Dependencies:
-    NM manager, WM manager
-Example:
-    ${tc_name} wifi0 vif 8.8.4.4 1.1.1.1
-EOF
-exit 1
-}
-
-while getopts h option; do
-    case "$option" in
-        h)
-            usage
-            ;;
-    esac
-done
-
-NARGS=4
-[ $# -ne ${NARGS} ] && raise "Requires exactly '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 if_name=$1
 if_type=$2
 primary_dns=$3
 secondary_dns=$4
 
-log_title "${tc_name}: Testing table Wifi_Inet_Config field dns"
+log_title "${tc_name}: NM2 test - Testing table Wifi_Inet_Config field dns"
 
 log "${tc_name}: Creating Wifi_Inet_Config entries for $if_name"
 create_inet_entry \

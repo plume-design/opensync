@@ -286,6 +286,7 @@ bool cm2_enable_gw_offline(void);
 int cm2_ovsdb_init(void);
 bool cm2_ovsdb_set_Manager_target(char *target);
 bool cm2_ovsdb_set_AWLAN_Node_manager_addr(char *addr);
+void cm2_ovsdb_set_AWLAN_Node_boot_time(void);
 bool cm2_connection_get_used_link(struct schema_Connection_Manager_Uplink *con);
 bool cm2_ovsdb_connection_get_connection_by_ifname(const char *if_name,
                                                    struct schema_Connection_Manager_Uplink *con);

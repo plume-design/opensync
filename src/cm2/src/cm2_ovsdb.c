@@ -33,6 +33,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 #include <errno.h>
 #include <jansson.h>
+#include <linux/kernel.h>
+#include <sys/sysinfo.h>
 
 #include "os.h"
 #include "util.h"
@@ -505,7 +507,7 @@ cm2_ovsdb_copy_dhcp_ipv4_configuration(char *up_src, char *up_dst)
 {
     struct  schema_Wifi_Inet_Config ups_iconf;
     struct  schema_Wifi_Inet_Config upd_iconf;
-    char    *filter[8];
+    char    *filter[9];
     int     idx;
     int     dns_idx;
     int     ret;
@@ -577,6 +579,8 @@ cm2_ovsdb_copy_dhcp_ipv4_configuration(char *up_src, char *up_dst)
     LOGI("%s: Updating DHCP configuration: %s", up_dst, upd_iconf.ip_assign_scheme);
 
     cm2_ovsdb_set_dhcp_client(up_src, false);
+
+    filter[idx] = NULL;
 
     /* Enable new configuration for dest uplink */
     ret = ovsdb_table_update_where_f(&table_Wifi_Inet_Config,
@@ -2103,7 +2107,7 @@ cm2_Connection_Manager_Uplink_handle_update(
             cm2_update_state(CM2_REASON_LINK_USED);
     }
 
-    if (uplink->is_used) {
+    if (uplink->is_used && !g_state.connected) {
         bool ble_update = false;
 
         if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Connection_Manager_Uplink, unreachable_router_counter))) {
@@ -2621,6 +2625,40 @@ bool cm2_ovsdb_set_AWLAN_Node_manager_addr(char *addr)
     char *filter[] = { "+", SCHEMA_COLUMN(AWLAN_Node, manager_addr), NULL };
     int ret = ovsdb_table_update_where_f(&table_AWLAN_Node, NULL, &awlan, filter);
     return ret == 1;
+}
+
+void cm2_ovsdb_set_AWLAN_Node_boot_time(void)
+{
+    struct schema_AWLAN_Node awlan;
+    struct sysinfo           s_info;
+    int                      ret;
+    time_t                   boot_time, now;
+    char                     *filter[] = {"+", SCHEMA_COLUMN(AWLAN_Node, boot_time), NULL};
+
+    memset(&awlan, 0, sizeof(awlan));
+    memset(&s_info, 0, sizeof(s_info));
+
+    ret = sysinfo(&s_info);
+    if (ret)
+    {
+        LOGE("%s: failed to get uptime from sysinfo, '%s'", __func__, strerror(errno));
+        return;
+    }
+
+    now = time(NULL);
+    boot_time = now - s_info.uptime;
+
+    awlan.boot_time = boot_time;
+    awlan.boot_time_exists = true;
+
+    ret = ovsdb_table_update_where_f(&table_AWLAN_Node, NULL, &awlan, filter);
+    if (!ret)
+    {
+        LOGE("%s: failed to update AWLAN_Node boot_time", __func__);
+        return;
+    }
+
+    return;
 }
 
 static void

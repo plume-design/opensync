@@ -38,6 +38,8 @@ UNIT_SRC += src/nfm_chain.c
 UNIT_SRC += src/nfm_rule.c
 UNIT_SRC += src/nfm_trule.c
 UNIT_SRC += src/nfm_osfw.c
+UNIT_SRC += src/nfm_ipset.c
+UNIT_SRC += src/nfm_objm.c
 
 UNIT_CFLAGS += -Isrc/lib/common/inc/
 

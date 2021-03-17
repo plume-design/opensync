@@ -57,8 +57,10 @@ void nm2_route_update(struct schema_Wifi_Route_State *rts)
 {
     json_t *where;
     json_t *cond;
+    bool upsert = (rts->_update_type != OVSDB_UPDATE_DEL);
 
-    LOG(INFO, "route: Updating Wifi_Route_State: if_name=%s dest_addr=%s dest_mask=%s gateway=%s gateway_hwaddr=%s",
+    LOG(INFO, "route: Wifi_Route_State %s: if_name=%s dest_addr=%s dest_mask=%s gateway=%s gateway_hwaddr=%s",
+            upsert ? "upsert" : "delete",
             rts->if_name,
             rts->dest_addr,
             rts->dest_mask,
@@ -80,7 +82,7 @@ void nm2_route_update(struct schema_Wifi_Route_State *rts)
     cond = ovsdb_tran_cond_single("gateway", OFUNC_EQ, rts->gateway);
     json_array_append_new(where, cond);
 
-    if (rts->_update_type != OVSDB_UPDATE_DEL)
+    if (upsert)
     {
         if (!ovsdb_table_upsert_where(&table_Wifi_Route_State, where, rts, false))
         {
@@ -111,14 +113,16 @@ void nm2_route_notify(inet_t *inet, struct osn_route_status *rts, bool remove)
         return;
     }
 
+    osn_ip_addr_t dest_addr = { .ia_addr = rts->rts_route.dest.ia_addr, .ia_prefix = -1 };
     snprintf(schema_rts.dest_addr, sizeof(schema_rts.dest_addr), PRI_osn_ip_addr,
-            FMT_osn_ip_addr(rts->rts_dst_ipaddr));
+            FMT_osn_ip_addr(dest_addr));
 
+    osn_ip_addr_t dest_mask = osn_ip_addr_from_prefix(rts->rts_route.dest.ia_prefix);
     snprintf(schema_rts.dest_mask, sizeof(schema_rts.dest_mask), PRI_osn_ip_addr,
-            FMT_osn_ip_addr(rts->rts_dst_mask));
+            FMT_osn_ip_addr(dest_mask));
 
     snprintf(schema_rts.gateway, sizeof(schema_rts.gateway), PRI_osn_ip_addr,
-            FMT_osn_ip_addr(rts->rts_gw_ipaddr));
+            FMT_osn_ip_addr(rts->rts_route.gw));
 
     snprintf(schema_rts.gateway_hwaddr, sizeof(schema_rts.gateway_hwaddr), PRI_osn_mac_addr,
             FMT_osn_mac_addr(rts->rts_gw_hwaddr));

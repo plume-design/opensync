@@ -251,7 +251,7 @@ struct neigh_interface * neigh_table_get_intf(int ifindex)
 }
 
 void neigh_table_init_monitor(struct ev_loop *loop,
-                              bool system_event, bool ovsdb_event)
+                              bool system_event, uint32_t ovsdb_event)
 {
     int rc;
 
@@ -270,7 +270,7 @@ void neigh_table_init_monitor(struct ev_loop *loop,
         LOGI("%s: system event monitoring %s", __func__,
              rc ? "failed" : "enabled");
     }
-    if (ovsdb_event) neigh_src_init();
+    if (ovsdb_event) neigh_src_init(ovsdb_event);
 }
 
 

@@ -25,58 +25,54 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
-source ${FUT_TOPDIR}/shell/lib/unit_lib.sh
-source ${FUT_TOPDIR}/shell/lib/um_lib.sh
-source ${LIB_OVERRIDE_FILE}
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
+source "${FUT_TOPDIR}/shell/lib/um_lib.sh"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
-usage="
-$(basename "$0") [-h] \$1 \$2 \$3 \$4
-
-where options are:
+tc_name="um/$(basename "$0")"
+manager_setup_file="um/um_setup.sh"
+usage()
+{
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Script validates AWLAN_Node 'upgrade_status' field proper code change if invalid fw url is provided
+Arguments:
     -h  show this help message
-
-where arguments are:
-    fw_path=\$1 -- download path of UM - used to clear the folder on UM setup - (string)(required)
-    fw_url=\$2 -- used as firmware_url in AWLAN_Node table - (string)(required)
-
-this script is dependent on following:
-    - running UM manager
-    - udhcpc on interface
-
-example of usage:
-   /tmp/fut-base/shell/nm2/$(basename "$0").sh https://s3-us-west-2.amazonaws.com/invalid_url
-"
-
-while getopts hcs:fs: option; do
+    \$1 (fw_path) : download path of UM - used to clear the folder on UM setup  : (string)(required)
+    \$2 (fw_url)  : used as firmware_url in AWLAN_Node table                    : (string)(required)
+    \$3 (fw_pass) : used as firmware_pass in AWLAN_Node table                   : (string)(required)
+Testcase procedure:
+    - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
+                 Run: ./${tc_name} <FW-PATH> <FW-URL> <FW-PASS>
+Script usage example:
+   ./${tc_name} /tmp/pfirmware http://some_random_url_without_fw_image/fw.img
+usage_string
+}
+while getopts h option; do
     case "$option" in
         h)
-            echo "$usage"
-            exit 1
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
             ;;
     esac
 done
-
-if [[ $# -lt 1 ]]; then
-    echo 1>&2 "$0: not enough arguments"
-    echo "$usage"
-    exit 2
-fi
+NARGS=2
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 
 fw_path=$1
 fw_url=$2
-tc_name="um/$(basename "$0")"
 
 trap '
   reset_um_triggers $fw_path || true
   run_setup_if_crashed um || true
 ' EXIT SIGINT SIGTERM
 
-log "$tc_name: UM Download FW - invalid firmware_url"
+log_title "$tc_name: UM test - Download FW - invalid firmware_url"
 
 log "$tc_name: Setting firmware_url to $fw_url"
 update_ovsdb_entry AWLAN_Node -u firmware_url "$fw_url" &&

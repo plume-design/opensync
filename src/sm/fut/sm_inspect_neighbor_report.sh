@@ -25,69 +25,56 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-# Include basic environment config from default shell file and if any from FUT framework generated /tmp/fut_set_env.sh file
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
-
-source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/sm_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
-trap 'run_setup_if_crashed sm' EXIT SIGINT SIGTERM
-
-usage="$(basename "$0") [-h] \$1 \$2 \$3 \$4 \$5
-
-where arguments are:
-    sm_report_radio=\$1 -- freq_band that is reported inside SM manager in logs (string)(required)
-        - example:
-            Caesar:
-                50U freq_band is reported as 5GU
-                50L freq_band is reported as 5GL
-            Tyrion:
-                50L freq_band is reported as 5G
-    sm_channel=\$2 -- channel to inspect survey reporting on (int)(required)
-    sm_survey_type=\$3 -- type of channel survey type in Wifi_Stats_Config (string)(required)
-        - example
-            - on-chan - inspect survey reporting on given channel
-            - off-chan - inspect survey reporting off channel
-    sm_reporting_interval=\$4 -- used as reporting_interval column value in Wifi_Stats_Config table (int)(required)
-    sm_sampling_interval=\$5 -- used as sampling_interval column value in Wifi_Stats_Config table (int)(required)
-    sm_report_type=\$6 -- used as report_type column value in Wifi_Stats_Config table (string)(required)
-    sm_neighbor_mac=\$7 -- inspect logs for given Neighbor MAC address reports (string)(required)
-    sm_neighbor_ssid=\$8 -- inspect logs for given Neighbor SSID address reports (string)(required)
-
-Script does following:
-    - insert into Wifi_Stats_Config appropriate neighbor reporting configuration
-    - tail logs (/tmp/logs/messages - logread -f) for matching patterns for SM neighbor reporting
-        - log messages are device/platform dependent
-
-Dependent on:
-    - running WM/NM managers - min_wm2_setup.sh - existance of active interfaces
-    - sm_setup.sh
-    - sm_reporting_env_setup.sh
-    - existence of given neighbor - if not, test will timeout
-
-Example of usage:
-    $(basename "$0")
-"
-
+tc_name="sm/$(basename "$0")"
+manager_setup_file="sm/sm_setup.sh"
+radio_vif_create_path="tools/device/create_radio_vif_interface.sh"
+usage()
+{
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Script configures SM neighbor reporting and inspects the logs for the neighbor device being reported by SM, fails otherwise
+Arguments:
+    -h  show this help message
+    \$1 (radio_type)         : used as radio_type in Wifi_Inet_Config table           : (string)(required)
+    \$2 (channel)            : used as channel in Wifi_Inet_Config table              : (string)(required)
+    \$3 (survey_type)        : used as survey_type in Wifi_Inet_Config table          : (string)(required)
+    \$4 (reporting_interval) : used as reporting_interval in Wifi_Inet_Config table   : (string)(required)
+    \$5 (sampling_interval)  : used as sampling_interval in Wifi_Inet_Config table    : (string)(required)
+    \$6 (report_type)        : used as report_type in Wifi_Inet_Config table          : (string)(required)
+    \$7 (neighbor_ssid)      : sed as to check logs to validate sm neighbor reporting : (string)(required)
+    \$8 (neighbor_mac)       : sed as to check logs to validate sm neighbor reporting : (string)(required)
+Testcase procedure:
+    - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
+                 Create required Radio-VIF interface settings (see ${radio_vif_create_path} -h)
+    - On LEAF:   Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
+                 Create required Radio-VIF interface settings to create test neighbor network (see ${radio_vif_create_path} -h)
+    - On DEVICE:
+                 Run: ./${tc_name} <RADIO-TYPE> <CHANNEL> <SURVEY-TYPE> <REPORTING-INTERVAL> <SAMPLING-INTERVAL> <REPORT-TYPE> <NEIGHBOR-SSID> <NEIGHBOR-MAC>
+Script usage example:
+   ./${tc_name} 2.4G 6 on-chan 10 5 raw neighbor_ssid_name 3c:7b:96:4d:11:5c
+usage_string
+}
 while getopts h option; do
     case "$option" in
         h)
-            echo "$usage"
-            exit 1
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
             ;;
     esac
 done
+NARGS=8
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 
-if [ $# -lt 8 ]; then
-    echo 1>&2 "$0: not enough arguments"
-    echo "$usage"
-    exit 2
-fi
+trap 'run_setup_if_crashed sm' EXIT SIGINT SIGTERM
 
 sm_radio_type=$1
 sm_channel=$2
@@ -98,10 +85,9 @@ sm_report_type=$6
 sm_neighbor_ssid=$7
 sm_neighbor_mac=$8
 
-tc_name="sm/$(basename "$0")"
+log_title "$tc_name: SM test - Inspect neigbor report"
 
 log "$tc_name: Inspecting neighbor report on $sm_radio_type $sm_survey_type for $sm_neighbor_mac $sm_neighbor_ssid"
-
 inspect_neighbor_report \
     "$sm_radio_type" \
     "$sm_channel" \
@@ -110,6 +96,6 @@ inspect_neighbor_report \
     "$sm_sampling_interval" \
     "$sm_report_type" \
     "$sm_neighbor_ssid" \
-    "$sm_neighbor_mac" || die "sm/$(basename "$0"): inspect_neighbor_report - Failed"
-
+    "$sm_neighbor_mac" ||
+        raise "Failed: inspect_neighbor_report" -l "$tc_name" -tc
 pass

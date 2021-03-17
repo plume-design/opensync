@@ -26,17 +26,11 @@
 
 
 # Include basic environment config
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source "${FUT_TOPDIR}/shell/config/default_shell.sh"
-fi
-source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
-
-
-############################################ INFORMATION SECTION - START ###############################################
+export FUT_QM_LIB_SRC=true
+[ "${FUT_UNIT_LIB_SRC}" != true ] && source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+echo "${FUT_TOPDIR}/shell/lib/qm_lib.sh sourced"
+####################### INFORMATION SECTION - START ###########################
 #
 #   Base library of common Queue Manager functions
 #
-############################################ INFORMATION SECTION - STOP ################################################
+####################### INFORMATION SECTION - STOP ############################

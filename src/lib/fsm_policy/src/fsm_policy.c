@@ -37,6 +37,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sys/sysinfo.h>
 #include <limits.h>
 #include <fnmatch.h>
+#include <sys/socket.h>
+#include <netdb.h>
 
 #include "os.h"
 #include "util.h"
@@ -53,6 +55,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fsm.h"
 #include "policy_tags.h"
 #include "fsm_policy.h"
+#include "dns_cache.h"
 
 
 static char tag_marker[2] = "${";
@@ -68,6 +71,20 @@ static struct fsm_policy_session policy_mgr =
 struct fsm_policy_session * fsm_policy_get_mgr(void)
 {
     return &policy_mgr;
+}
+
+
+int
+fsm_policy_get_req_type(struct fsm_policy_req *req)
+{
+    struct fqdn_pending_req *fqdn_req;
+
+    if (req == NULL) return FSM_UNKNOWN_REQ_TYPE;
+
+    fqdn_req = req->fqdn_req;
+    if (fqdn_req == NULL) return FSM_UNKNOWN_REQ_TYPE;
+
+    return fqdn_req->req_type;
 }
 
 
@@ -130,6 +147,18 @@ void fsm_walk_policy_macs(struct fsm_policy *p)
             }
         }
     }
+}
+
+
+void fsm_free_url_reply(struct fsm_url_reply *reply)
+{
+    if (reply == NULL) return;
+
+    if (reply->service_id == URL_GK_SVC)
+    {
+        free(reply->reply_info.gk_info.gk_policy);
+    }
+    free(reply);
 }
 
 
@@ -373,6 +402,7 @@ static bool fsm_fqdn_check(struct fsm_policy_req *req,
     return true;
 }
 
+
 /**
  * cat_search: search a category within a policy setfilter
  * @val: category value to look for within the policy'sset of categories
@@ -434,12 +464,95 @@ bool fsm_fqdncats_in_set(struct fsm_policy_req *req, struct fsm_policy *p)
 
 
 /**
+ * @brief looks up a fqdn in a policy's fqdns values set.
+ * @param req the policy request
+ * @param p the policy
+ * @param op the lookup operation
+ *
+ * Checks if the request's ip is either an exact match, start from right
+ * or start form left superset of an entry in the policy's fqdn set entry.
+ */
+static bool fsm_ip_in_set(struct fsm_policy_req *req, struct fsm_policy *p,
+                          int op)
+{
+    struct net_md_stats_accumulator *acc;
+    struct net_md_flow_key *key;
+    struct str_set *ips_set;
+    size_t ip_str_len;
+    size_t nelems;
+    int af_family;
+    size_t len;
+    size_t i;
+    int rc;
+
+    acc = req->acc;
+    key = acc->key;
+    af_family = 0;
+    if (key->ip_version == 4) af_family = AF_INET;
+    if (key->ip_version == 6) af_family = AF_INET6;
+    if (af_family == 0) return false;
+
+    ips_set = p->rules.ipaddrs;
+    if (ips_set == NULL) return false;
+
+    ip_str_len = strlen(req->url);
+    nelems = ips_set->nelems;
+    for (i = 0; i < nelems; i++)
+    {
+        char *entry_set;
+
+        entry_set = ips_set->array[i];
+        len = strlen(entry_set);
+        if (len != ip_str_len) continue;
+        rc = strncmp(req->url, entry_set, len);
+        if (!rc) return true;
+
+    }
+    return false;
+}
+
+
+/**
+ * @brief check if a fqdn matches the policy's ipaddr rule
+ * @req: the request being processed
+ * @policy: the policy being checked against
+ *
+ */
+static bool fsm_ip_check(struct fsm_policy_req *req,
+                         struct fsm_policy *policy)
+{
+    struct fsm_policy_rules *rules;
+    bool in_policy;
+    bool rc;
+    int op;
+
+    rules = &policy->rules;
+    if (!rules->ip_rule_present) return true;
+
+    in_policy = (rules->ip_op == IP_OP_IN);
+    op = rules->ip_op;
+    rc = fsm_ip_in_set(req, policy, op);
+
+    /* If fqdn in set and policy applies to fqdns out of set, no match */
+    if ((rc) && (!in_policy)) return false;
+
+    /* If fqdn out of set and policy applies to fqdns in set, no match */
+    if ((!rc) && (in_policy)) return false;
+
+    return true;
+}
+
+
+/**
  * set_action: set the request's action according to the policy
  * @req: the request being processed
  * @p: the matched policy
  */
 static void set_action(struct fsm_policy_req *req, struct fsm_policy *p)
 {
+    if (req->fqdn_req->from_cache) return;
+    if (p->action == FSM_GATEKEEPER_REQ) return;
+
     if (p->action == FSM_ACTION_NONE)
     {
         req->reply.action = FSM_OBSERVED;
@@ -553,6 +666,8 @@ void set_policy_redirects(struct fsm_policy_req *req,
     size_t i, nelems;
     int rd_ttl = -1;
 
+    if (p->action == FSM_GATEKEEPER_REQ) return;
+
     req->reply.redirect = false;
     req->reply.rd_ttl = -1;
     rd_ttl = -1;
@@ -572,7 +687,6 @@ void set_policy_redirects(struct fsm_policy_req *req,
         rd_ttl = strtol(ttl->value, NULL, 10);
         if (errno != 0) return;
     }
-
     redirects = p->redirects;
     if (redirects == NULL) return;
 
@@ -590,6 +704,132 @@ void set_policy_redirects(struct fsm_policy_req *req,
 }
 
 /**
+ * @brief Set wb details..
+ *
+ * receive wb dst and src.
+ *
+ * @return void.
+ *
+ */
+void populate_wb_cache_entry(struct fsm_wp_info *fqdn_reply_wb,
+                             struct ip2action_wb_info *i2a_cache_wb)
+{
+    fqdn_reply_wb->risk_level = i2a_cache_wb->risk_level;
+}
+
+/**
+ * @brief Set bc details.
+ *
+ * receive bc dst, src and nelems.
+ *
+ * @return void.
+ *
+ */
+void populate_bc_cache_entry(struct fsm_bc_info *fqdn_reply_bc,
+                             struct ip2action_bc_info *i2a_cache_bc,
+                             uint8_t nelems)
+{
+    size_t index;
+
+    fqdn_reply_bc->reputation = i2a_cache_bc->reputation;
+    for (index = 0; index < nelems; index++)
+    {
+        fqdn_reply_bc->confidence_levels[index] =
+            i2a_cache_bc->confidence_levels[index];
+    }
+}
+
+/**
+ * @brief Set gk details.
+ *
+ * receive gk dst and src.
+ *
+ * @return void.
+ *
+ */
+void populate_gk_cache_entry(struct fsm_gk_info *fqdn_reply_gk,
+                             struct ip2action_gk_info *i2a_cache_gk)
+{
+    fqdn_reply_gk->confidence_level = i2a_cache_gk->confidence_level;
+    fqdn_reply_gk->category_id = i2a_cache_gk->category_id;
+    if (i2a_cache_gk->gk_policy)
+    {
+        fqdn_reply_gk->gk_policy = strdup(i2a_cache_gk->gk_policy);
+    }
+}
+
+
+/**
+ * @brief Look up for dns cache entry
+ *
+ * @param req the request
+ */
+bool fsm_dns_cache_lookup(struct fsm_policy_req *req)
+{
+    struct ip2action_req  lkp_req;
+    struct fsm_url_reply *reply;
+    int req_type;
+    size_t index;
+    bool process;
+    bool rc;
+
+    /* Bail if the reuqest of no interest */
+    req_type = req->fqdn_req->req_type;
+    process = (req_type == FSM_IPV4_REQ);
+    process |= (req_type == FSM_IPV6_REQ);
+    if (!process) return false;
+
+    /* Bail if the request is already from the cache */
+    if (req->fqdn_req->from_cache) return true;
+
+    /* look up the dns cache */
+    memset(&lkp_req, 0, sizeof(lkp_req));
+    lkp_req.device_mac = req->device_id;
+    lkp_req.ip_addr = req->ip_addr;
+    rc = dns_cache_ip2action_lookup(&lkp_req);
+
+    /* bail if the dns cache lookup failed */
+    if (!rc) return false;
+
+    req->fqdn_req->from_cache = true;
+    req->reply.action = lkp_req.action;
+    req->fqdn_req->policy_idx = lkp_req.policy_idx;
+
+    reply = req->fqdn_req->req_info->reply;
+    reply = calloc(1, sizeof(struct fsm_url_reply));
+    if (reply == NULL) return false;
+
+    reply->service_id = lkp_req.service_id;
+    reply->nelems = lkp_req.nelems;
+
+    for (index = 0; index < lkp_req.nelems; ++index)
+    {
+        reply->categories[index] = lkp_req.categories[index];
+    }
+
+    if (lkp_req.service_id == IP2ACTION_BC_SVC)
+    {
+        populate_bc_cache_entry(&reply->bc, &lkp_req.cache_bc,
+                                lkp_req.nelems);
+    }
+    else if (lkp_req.service_id == IP2ACTION_WP_SVC)
+    {
+        populate_wb_cache_entry(&reply->wb, &lkp_req.cache_wb);
+    }
+    else if (lkp_req.service_id == IP2ACTION_GK_SVC)
+    {
+        populate_gk_cache_entry(&reply->gk, &lkp_req.cache_gk);
+        free(lkp_req.cache_gk.gk_policy);
+    }
+
+    req->fqdn_req->categorized = FSM_FQDN_CAT_SUCCESS;
+    req->fqdn_req->req_info->reply = reply;
+
+    return true;
+}
+
+
+/**
  * @brief Applies categorization policy
  *
  * @param session the requesting session
@@ -602,6 +842,9 @@ bool fsm_cat_check(struct fsm_session *session,
 {
     struct fsm_policy_rules *rules;
     bool rc;
+
+    rc = fsm_dns_cache_lookup(req);
+    if (rc) return true;
 
     /* If no categorization request, return success */
     rules = &policy->rules;
@@ -657,6 +900,9 @@ bool fsm_risk_level_check(struct fsm_session *session,
     struct fsm_policy_rules *rules;
     bool rc;
 
+    rc = fsm_dns_cache_lookup(req);
+    if (rc) return true;
+
     /* If no risk level request, return success */
     rules = &policy->rules;
     if (!rules->risk_rule_present) return true;
@@ -674,6 +920,32 @@ bool fsm_risk_level_check(struct fsm_session *session,
 }
 
 
+bool fsm_gatekeeper_check(struct fsm_session *session,
+                          struct fsm_policy_req *req,
+                          struct fsm_policy *p)
+{
+    bool rc;
+
+    if (p->action != FSM_GATEKEEPER_REQ) return true;
+
+    rc = fsm_dns_cache_lookup(req);
+    if (rc) return true;
+
+    /*
+     * The policy requires gatekeeper checking, no gatekeeper provider.
+     * Return failure.
+     */
+    if (req->fqdn_req->gatekeeper_req == NULL) return false;
+
+    /* Save the policy */
+    req->policy = p;
+
+    /* Apply the gatekeeper rules */
+    rc = req->fqdn_req->gatekeeper_req(session, req);
+    return rc;
+}
+
+
 /**
  * fsm_apply_policies: check a request against stored policies
  * @req: policy checking (mac, fqdn, categories) request
@@ -687,6 +959,7 @@ void fsm_apply_policies(struct fsm_session *session,
     struct fsm_policy *last_match_policy;
     struct policy_table *table;
     struct fsm_policy *p;
+    int req_type;
 
     int i;
     bool rc, matched = false;
@@ -698,6 +971,9 @@ void fsm_apply_policies(struct fsm_session *session,
         req->reply.log = FSM_REPORT_NONE;
         return;
     }
+
+    req_type = fsm_policy_get_req_type(req);
+    LOGT("%s(): request type %d", __func__, req_type);
 
     last_match_policy = NULL;
 
@@ -712,6 +988,10 @@ void fsm_apply_policies(struct fsm_session *session,
 
         /* MAC rule passed. Check FQDN */
         rc = fsm_fqdn_check(req, p);
+        if (!rc) continue;
+
+        /* IP rule passed. Check IP */
+        rc = fsm_ip_check(req, p);
         if (!rc) continue;
 
         /* fqdn rule passed. Check categories */
@@ -736,6 +1016,13 @@ void fsm_apply_policies(struct fsm_session *session,
     if (matched)
     {
         p = last_match_policy;
+        rc = fsm_gatekeeper_check(session, req, p);
+        if (!rc)
+        {
+            req->reply.action = FSM_NO_MATCH;
+            req->reply.log = FSM_REPORT_NONE;
+            return;
+        }
         set_reporting(req, p);
         set_tag_update(req, p);
         set_excluded_devices_tag(req, p);

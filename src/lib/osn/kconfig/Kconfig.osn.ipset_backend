@@ -1,0 +1,16 @@
+config OSN_BACKEND_IPSET_NULL
+    bool "Null"
+    help
+        Use a dummy ipset implementation.
+
+        This option provides an stub implementation of the osn_ipset_t API.
+
+config OSN_BACKEND_IPSET_LINUX
+    bool "ipset"
+    depends on OSN_BACKEND_FW_IPTABLES_FULL || OSN_BACKEND_FW_IPTABLES_THIN
+    help
+        Use the ipset generic Linux backend.
+
+        This backend uses the `ipset` linux command to manage iptables
+        ipsets. The target platform must provide the `ipset` command line
+        utility.

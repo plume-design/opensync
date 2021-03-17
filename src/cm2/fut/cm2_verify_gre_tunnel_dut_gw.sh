@@ -25,9 +25,9 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
+# shellcheck disable=SC1091,SC2119,SC2120
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut_set_env.sh" ] && source /tmp/fut_set_env.sh
-source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
 source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
 source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
 source "${LIB_OVERRIDE_FILE}"
@@ -84,7 +84,8 @@ raise "Printed help and usage string" -l "$tc_name" -arg
 while getopts h option; do
     case "$option" in
         h)
-            help
+            help &&
+                exit 1
             ;;
     esac
 done
@@ -141,13 +142,15 @@ GW_RADIO_CHANNEL_MODE="manual"
 GW_BHAUL_BROADCAST_N="255"
 GW_BHAUL_INET_ADDR_N="129"
 GW_BHAUL_NETMASK="255.255.255.128"
-GW_BHAUL_SUBNET="169.254.5"
+# GW_BHAUL_SUBNET must be unique for each test run, so the channel value is used
+GW_BHAUL_SUBNET="169.254.${GW_RADIO_CHANNEL}"
 GW_BHAUL_BROADCAST="${GW_BHAUL_SUBNET}.${GW_BHAUL_BROADCAST_N}"
 GW_BHAUL_DHCPD_START="${GW_BHAUL_SUBNET}.$((GW_BHAUL_INET_ADDR_N + 1))"
 GW_BHAUL_DHCPD_STOP="${GW_BHAUL_SUBNET}.$((GW_BHAUL_BROADCAST_N - 1))"
 GW_BHAUL_INET_ADDR="${GW_BHAUL_SUBNET}.${GW_BHAUL_INET_ADDR_N}"
 GW_BHAUL_DHCPD='["map",[["dhcp_option","26,1600"],["force","false"],["lease_time","12h"],["start","'${GW_BHAUL_DHCPD_START}'"],["stop","'${GW_BHAUL_DHCPD_STOP}'"]]]'
 log "$tc_name: Get the corresponding LEAF radio interface MAC address, for whitelisting"
+# shellcheck disable=SC2060
 LEAF_RADIO_MAC="$(echo "$LEAF_RADIO_MAC_RAW" | tr [A-Z] [a-z])"
 
 # SETUP:
@@ -160,6 +163,7 @@ start_specific_manager nm
 start_specific_manager wm
 
 log "$tc_name: Configure GW uplink"
+# shellcheck disable=SC2060
 MAC_ETH0=$(mac_get "${GW_WAN_ETH_IFACE}" | tr [A-Z] [a-z])
 [ -z "${MAC_ETH0}" ] && raise "Ethernet MAC 0 empty" -arg
 MAC_ETH1=$(printf "%02x:%s" $(( 0x${MAC_ETH0%%:*} | 0x2 )) "${MAC_ETH0#*:}")
@@ -177,8 +181,6 @@ create_inet_entry2 \
     -if_name "${GW_WAN_BRIDGE}" \
     -if_type "bridge" \
     -ip_assign_scheme "dhcp" \
-    -upnp_mode "external" \
-    -NAT true \
     -network true \
     -enabled true &&
         log -deb "$tc_name: Interface ${GW_WAN_BRIDGE} successfully created" ||
@@ -214,17 +216,27 @@ create_vif_interface \
     -ssid "${BHAUL_SSID}" \
     -ssid_broadcast "disabled" \
     -vif_radio_idx "${GW_BHAUL_VIF_RADIO_IDX}" \
-    -enabled true &&
+    -enabled false &&
         log -deb "$tc_name - Success create_vif_interface" ||
         raise "Failure create_vif_interface" -l "$tc_name" -ds
 
+# The interface could be enabled during creation but this sometimes leads to
+# issues with triband devices on transition between 5GHz upper and lower radio
+log "$tc_name: Enable created GW backhaul AP"
+update_ovsdb_entry Wifi_VIF_Config -w if_name "${GW_BHAUL_AP_IFNAME}" -u enabled true &&
+    log -deb "$tc_name - Success - update_ovsdb_entry Wifi_VIF_Config -w if_name ${GW_BHAUL_AP_IFNAME}" ||
+    raise "FAIL: update_ovsdb_entry Wifi_VIF_Config -w if_name ${GW_BHAUL_AP_IFNAME}" -l "$tc_name" -oe
+wait_ovsdb_entry Wifi_VIF_State -w if_name "${GW_BHAUL_AP_IFNAME}" -is enabled true &&
+    log -deb "$tc_name - Success wait_ovsdb_entry Wifi_VIF_State -w if_name ${GW_BHAUL_AP_IFNAME}" ||
+    raise "FAIL: wait_ovsdb_entry Wifi_VIF_State -w if_name ${GW_BHAUL_AP_IFNAME}" -l "$tc_name" -ow
+
 log "$tc_name: Configure GW radio channel and ht_mode now that AP is created"
-configure_radio_interface \
-    -if_name "${GW_RADIO_IF}" \
-    -channel "${GW_RADIO_CHANNEL}" \
+change_radio_channel_ht_mode \
+    "${GW_RADIO_IF}" \
+    "${GW_RADIO_CHANNEL}" \
     -ht_mode "${GW_RADIO_HT_MODE}" &&
-        log -deb "$tc_name - Success subsequent configure_radio_interface" ||
-        raise "Failure subsequent configure_radio_interface" -l "$tc_name" -ds
+        log -deb "$tc_name - Success change_radio_channel_ht_mode" ||
+        raise "Failure change_radio_channel_ht_mode" -l "$tc_name" -ds
 
 log "$tc_name: Configure GW backhaul AP"
 create_inet_entry2 \
@@ -244,7 +256,7 @@ create_inet_entry2 \
 
 log "$tc_name: Waiting for LEAF backhaul STA to associate to GW backhaul AP"
 fnc_str="get_ovsdb_entry_value DHCP_leased_IP inet_addr -w hwaddr ${LEAF_RADIO_MAC} -raw"
-wait_for_function_output "notempty" "${fnc_str}" ${ASSOCIATE_RETRY_COUNT} ${ASSOCIATE_RETRY_SLEEP}
+wait_for_function_output "notempty" "${fnc_str}" "${ASSOCIATE_RETRY_COUNT}" "${ASSOCIATE_RETRY_SLEEP}"
 if [ $? -eq 0 ]; then
     LEAF_STA_INET_ADDR=$($fnc_str) &&
         log -deb "$tc_name: LEAF ${LEAF_STA_INET_ADDR} associated" ||
@@ -252,7 +264,7 @@ if [ $? -eq 0 ]; then
 else
     raise "$tc_name - LEAF ${LEAF_STA_INET_ADDR} NOT associated" -l "$tc_name" -ds
 fi
-GW_GRE_NAME="pgd$(echo ${LEAF_STA_INET_ADDR//./-}| cut -d'-' -f3-4)"
+GW_GRE_NAME="pgd$(echo "${LEAF_STA_INET_ADDR//./-}" | cut -d'-' -f3-4)"
 echo "${GW_GRE_NAME}"
 GW_AP_INET_ADDR=$(${OVSH} s Wifi_Inet_Config -w if_name=="${GW_BHAUL_AP_IFNAME}" inet_addr -r)
 echo "$GW_AP_INET_ADDR"
@@ -286,10 +298,12 @@ set_interface_patch "${GW_LAN_BRIDGE}" "${GW_PATCH_HOME_TO_WAN}" "${GW_PATCH_WAN
 log "$tc_name: Test GW connectivity to LEAF GRE and WAN IP"
 
 LEAF_GRE_INET_ADDR=$(cat /tmp/dhcp.leases | grep "${LEAF_RADIO_MAC}" | awk '{print $3}')
-[ -z "${LEAF_GRE_INET_ADDR}" ] && raise "Failed to get LEAF GRE IP" -l "${tc_name}" -tc
-ping -c${N_PING} "${LEAF_GRE_INET_ADDR}" && log -deb "Can ping LEAF GRE" || raise "Can not ping LEAF GRE" -tc
+[ -z "${LEAF_GRE_INET_ADDR}" ] &&
+    raise "Failed to get LEAF GRE IP" -l "${tc_name}" -tc
+ping -c"${N_PING}" "${LEAF_GRE_INET_ADDR}" && log -deb "Can ping LEAF GRE" || raise "Can not ping LEAF GRE" -tc
 
-[ -z "${LEAF_WAN_INET_ADDR}" ] && raise "Failed to get LEAF WAN IP" -l "${tc_name}" -tc
-ping -c${N_PING} "${LEAF_WAN_INET_ADDR}" && log -deb "Can ping LEAF WAN" || raise "Can not ping LEAF WAN" -tc
+[ -z "${LEAF_WAN_INET_ADDR}" ] &&
+    raise "Failed to get LEAF WAN IP" -l "${tc_name}" -tc
+ping -c"${N_PING}" "${LEAF_WAN_INET_ADDR}" && log -deb "Can ping LEAF WAN" || raise "Can not ping LEAF WAN" -tc
 
 pass

@@ -27,28 +27,44 @@
 
 current_dir=$(dirname "$(realpath "$BASH_SOURCE")")
 fut_topdir="$(realpath "$current_dir"/../../..)"
+
+# FUT environment loading
+source "${fut_topdir}"/config/default_shell.sh
+# Ignore errors for fut_set_env.sh sourcing
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh &> /dev/null
 source "$fut_topdir/lib/rpi_lib.sh"
 
-usage="$(basename "$0") [-h] \$1 \$2
-
-"
-
+tc_name="tools/rpi/$(basename "$0")"
+usage()
+{
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Creates encrypted FW image from clean image using given key
+Arguments:
+    -h  show this help message
+    \$1 (um_fw_path)     : path to clean FW which to create corrupted copy : (string)(required)
+    \$2 (um_fw_key_path) : path to file containing key string              : (string)(required)
+Script usage example:
+   ./${tc_name} /tmp/clean_device_fw.img /tmp/my_custom_key.key
+Result:
+    - Creates encrypted .eim FW image encrypted with key from um_fw_key_path
+usage_string
+}
 while getopts h option; do
     case "$option" in
         h)
-            echo "$usage"
-            exit 1
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
             ;;
     esac
 done
+NARGS=1
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 
-if [[ $# -lt 2 ]]; then
-    echo 1>&2 "$0: not enough arguments"
-    echo "$usage"
-    exit 2
-fi
-
-um_fw_unc_path=$1
+um_fw_path=$1
 um_fw_key_path=$2
 
-um_encrypt_image "$um_fw_unc_path" "$um_fw_key_path"
+um_encrypt_image "$um_fw_path" "$um_fw_key_path"

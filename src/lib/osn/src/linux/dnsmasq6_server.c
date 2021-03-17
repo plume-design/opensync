@@ -39,6 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "util.h"
 #include "daemon.h"
 #include "evx.h"
+#include "kconfig.h"
 
 #include "dnsmasq6_server.h"
 
@@ -554,9 +555,6 @@ bool dnsmasq6_server_write_config(void)
         goto error;
     }
 
-    /* Disable DNS */
-    fprintf(f, "port=0\n");
-
     /* Lease file */
     fprintf(f, "dhcp-leasefile=%s\n", CONFIG_OSN_DNSMASQ6_LEASE_PATH);
 
@@ -850,8 +848,10 @@ bool dnsmasq6_server_global_apply(void)
             LOG(WARN, "dhcpv6_server: Error enabling daemon auto-restart on global instance.");
         }
 
-        daemon_arg_add(&dnsmasq6_server_daemon, "--keep-in-foreground");    /* Do not fork to background */
-        daemon_arg_add(&dnsmasq6_server_daemon, "--bind-interfaces");       /* Bind only to interfaces in use */
+        daemon_arg_add(&dnsmasq6_server_daemon, "--keep-in-foreground");                /* Do not fork to background */
+        daemon_arg_add(&dnsmasq6_server_daemon, "--bind-interfaces");                   /* Bind only to interfaces in use */
+        daemon_arg_add(&dnsmasq6_server_daemon, "-p", CONFIG_OSN_DNSMASQ6_PORT);        /* Configure dnsmasq port, default 0 */
+        daemon_arg_add(&dnsmasq6_server_daemon, "-u", CONFIG_OSN_DNSMASQ6_USER);        /* Change user (default nobody)*/
         daemon_arg_add(&dnsmasq6_server_daemon, "-C", CONFIG_OSN_DNSMASQ6_ETC_PATH);
         daemon_arg_add(&dnsmasq6_server_daemon, "-x", CONFIG_OSN_DNSMASQ6_PID_PATH);
 

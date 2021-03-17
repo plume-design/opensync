@@ -39,6 +39,25 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define PRI_os_ipaddr_t         "%d.%d.%d.%d"
 #define FMT_os_ipaddr_t(x)      (x).addr[0], (x).addr[1], (x).addr[2], (x).addr[3]
 
+/* Formats a UFID as a string, in the conventional format.
+ *
+ * Example:
+ *   struct ufid ufid = ...;
+ *   printf("This UFID is "PRI_os_ufid_t"\n", FMT_os_ufid_t_pt(&ufid));
+ *
+ */
+#define UFID_LEN (36)
+
+#define PRI_os_ufid_t "%08x-%04x-%04x-%04x-%04x%08x"
+#define FMT_os_ufid_t_pt(UFID)                             \
+    ((unsigned int) ((UFID)->u32[0])),            \
+    ((unsigned int) ((UFID)->u32[1] >> 16)),      \
+    ((unsigned int) ((UFID)->u32[1] & 0xffff)),   \
+    ((unsigned int) ((UFID)->u32[2] >> 16)),      \
+    ((unsigned int) ((UFID)->u32[2] & 0xffff)),   \
+    ((unsigned int) ((UFID)->u32[3]))
+
+
 /* Plain MAC string takes exactly 13 chars. Because alignment it is better
  * to use 16 bytes instead
  */
@@ -57,5 +76,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 typedef struct { uint8_t addr[6]; } os_macaddr_t;
 typedef struct { uint8_t addr[4]; } os_ipaddr_t;
+typedef struct { uint32_t u32[4]; } os_ufid_t;
 
 #endif /* OS_TYPES_H_INCLUDED */

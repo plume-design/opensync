@@ -40,6 +40,7 @@ struct lnx_vlan
     bool        lv_applied;                     /* True if configuration was applied */
     int         lv_vlanid;                      /* VLAN ID */
     ev_async    lv_async;                       /* Async watcher */
+    char        lv_egress_qos_map[C_QOS_MAP_LEN]; /* Egress QOS map */
 };
 
 bool lnx_vlan_init(lnx_vlan_t *self, const char *ifname);
@@ -47,5 +48,6 @@ bool lnx_vlan_fini(lnx_vlan_t *self);
 bool lnx_vlan_apply(lnx_vlan_t *self);
 bool lnx_vlan_parent_ifname_set(lnx_vlan_t *self, const char *parent_ifname);
 bool lnx_vlan_vid_set(lnx_vlan_t *self, int vid);
+bool lnx_vlan_egress_qos_map_set(lnx_vlan_t *self, const char *qos_map);
 
 #endif /* LNX_VLAN_H_INCLUDED */

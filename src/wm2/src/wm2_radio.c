@@ -49,6 +49,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "wm2.h"
 
 #include "target.h"
+#include "wm2_dpp.h"
+#include "wm2_target.h"
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
@@ -500,6 +502,14 @@ wm2_radio_update_port_state_set_inactive(const char *ifname)
                                  sizeof(*conf->name), \
                                  strncasecmp))
 
+#define CHANGED_SUBSET(conf, state, name, force) \
+    (force || schema_changed_subset(conf->name, \
+                                    state->name, \
+                                    conf->name##_len, \
+                                    state->name##_len, \
+                                    sizeof(*conf->name), \
+                                    strncmp))
+
 #define CHANGED_INT(conf, state, name, force) \
     (conf->name##_exists && ((state->name##_exists && (conf->name != state->name)) || \
                              !state->name##_exists || \
@@ -554,7 +564,19 @@ wm2_vconf_changed(const struct schema_Wifi_VIF_Config *conf,
     CMP(CHANGED_INT, wps);
     CMP(CHANGED_INT, wps_pbc);
     CMP(CHANGED_STR, wps_pbc_key_id);
-
+    CMP(CHANGED_INT, wpa);
+    /* The way wpa_key_mgmt is checked depends on VIF mode (STA or AP) */
+    if (strcmp(conf->mode, "sta") == 0 && strcmp(conf->mode, state->mode) == 0)
+        CMP(CHANGED_SUBSET, wpa_key_mgmt);
+    else
+        CMP(CHANGED_SET, wpa_key_mgmt);
+    CMP(CHANGED_MAP_STRSTR, wpa_psks);
+    CMP(CHANGED_STR, radius_srv_addr);
+    CMP(CHANGED_INT, radius_srv_port);
+    CMP(CHANGED_STR, radius_srv_secret);
+    CMP(CHANGED_STR, dpp_connector);
+    CMP(CHANGED_STR, dpp_netaccesskey_hex);
+    CMP(CHANGED_STR, dpp_csign_hex);
     if (changed)
         LOGD("%s: changed (forced=%d)", conf->if_name, changedf->_uuid);
 
@@ -768,6 +790,38 @@ wm2_cconf_get(const struct schema_Wifi_VIF_Config *vconf,
     return n;
 }
 
+static bool
+wm2_vstate_sta_is_connected(const char *ifname)
+{
+    struct schema_Wifi_VIF_State vstate = {0};
+    bool ok;
+
+    ok = ovsdb_table_select_one(&table_Wifi_VIF_State,
+                                SCHEMA_COLUMN(Wifi_VIF_State, if_name),
+                                ifname,
+                                &vstate);
+    if (!ok)
+        return false;
+    if (strcmp(vstate.mode, SCHEMA_CONSTS_VIF_MODE_STA))
+        return false;
+
+    return strlen(vstate.parent) > 0;
+}
+
+static bool
+wm2_vconf_allows_dpp(const struct schema_Wifi_VIF_Config *vconf)
+{
+    bool is_sta = !strcmp(vconf->mode, "sta");
+    bool has_parent = strlen(vconf->parent) > 0;
+    bool has_connector = strlen(vconf->dpp_connector);
+    bool is_onboarding = !has_parent && !has_connector;
+
+    if (is_sta && !is_onboarding)
+        return false;
+
+    return vconf->enabled;
+}
+
 static void
 wm2_vconf_recalc(const char *ifname, bool force)
 {
@@ -856,11 +910,19 @@ wm2_vconf_recalc(const char *ifname, bool force)
 
     num_cconfs = wm2_cconf_get(&vconf, cconfs, sizeof(cconfs)/sizeof(cconfs[0]));
 
-    if (has && strlen(SCHEMA_KEY_VAL(vconf.security, "key")) < 8 && !strcmp(vconf.mode, "sta")) {
+    if (has && strlen(SCHEMA_KEY_VAL(vconf.security, "key")) < 8 && !vconf.wpa_exists && !strcmp(vconf.mode, "sta")) {
         LOGD("%s: overriding 'ssid' and 'security' for onboarding", ifname);
         vconf.ssid_exists = vstate.ssid_exists;
         STRSCPY(vconf.ssid, vstate.ssid);
         memcpy(vconf.security, vstate.security, sizeof(vconf.security));
+    }
+
+    if (want && vconf.security_len > 0 && vconf.wpa_exists) {
+        LOGN("%s: Both `security` and `wpa` in Wifi_VIF_Config are set, ignoring `security`",
+             vconf.if_name);
+        memset(vconf.security, 0, sizeof(vconf.security));
+        memset(vconf.security_keys, 0, sizeof(vconf.security_keys));
+        vconf.security_len = 0;
     }
 
     if (want && has && !rconf.enabled) {
@@ -870,6 +932,12 @@ wm2_vconf_recalc(const char *ifname, bool force)
 
     if (want && !vconf.enabled && (!has || !vstate.enabled))
         return;
+
+    if (want && wm2_dpp_in_progress(ifname) && wm2_dpp_is_chirping()) {
+        LOGI("%s: skipping recalc, dpp onboarding attempt in progress", ifname);
+        wm2_delayed_recalc(wm2_vconf_recalc, ifname);
+        return;
+    }
 
     if (!wm2_vconf_changed(&vconf, &vstate, &vchanged) && !force)
         return;
@@ -891,11 +959,14 @@ wm2_vconf_recalc(const char *ifname, bool force)
     if (vchanged.ssid && strlen(vconf.ssid) > 0 && !strcmp(vconf.mode, "sta"))
         LOGN("%s: topology change: ssid '%s' -> '%s'", ifname, vstate.ssid, vconf.ssid);
 
-    if (!target_vif_config_set2(&vconf, &rconf, cconfs, &vchanged, num_cconfs)) {
+    if (!wm2_target_vif_config_set2(&vconf, &rconf, cconfs, &vchanged, num_cconfs)) {
         LOGW("%s: failed to configure, will retry later", ifname);
         wm2_delayed_recalc(wm2_vconf_recalc, ifname);
         return;
     }
+
+    wm2_dpp_ifname_set(ifname, wm2_vconf_allows_dpp(&vconf));
+    wm2_dpp_interrupt();
 
     if (!has) {
         /* If the target implementation delays (debounces) calling of op_vstate()
@@ -1072,6 +1143,36 @@ wm2_rconf_recalc_fixup_tx_chainmask(struct schema_Wifi_Radio_Config *rconf)
 }
 
 static void
+wm2_rconf_recalc_fixup_op_mode(struct schema_Wifi_Radio_Config *rconf,
+                               const struct schema_Wifi_Radio_State *rstate)
+{
+    struct schema_Wifi_VIF_State vstate;
+
+    if (!wm2_rconf_lookup_sta(&vstate, rstate))
+        return;
+    if (!vstate.parent_exists)
+        return;
+    if (strlen(vstate.parent) == 0)
+        return;
+
+    /* Many drivers don't support mixing operation modes and
+     * if they act as a repeater they will inherit parameters
+     * from the parent AP onto local APs. Therefore it makes
+     * no sense to enforce hw_mode/ht_mode because it'd just
+     * result in trying to do the impossible and churn
+     * through reconnects.
+     */
+
+    LOGD("%s: inheriting parent ap ht_mode and hw_mode", rconf->if_name);
+
+    if (rstate->hw_mode_exists)
+        SCHEMA_SET_STR(rconf->hw_mode, rstate->hw_mode);
+
+    if (rstate->ht_mode_exists)
+        SCHEMA_SET_STR(rconf->ht_mode, rstate->ht_mode);
+}
+
+static void
 wm2_rconf_recalc(const char *ifname, bool force)
 {
     struct schema_Wifi_Radio_Config rconf;
@@ -1116,6 +1217,7 @@ wm2_rconf_recalc(const char *ifname, bool force)
     if (want) {
         wm2_rconf_recalc_fixup_nop_channel(&rconf, &rstate);
         wm2_rconf_recalc_fixup_tx_chainmask(&rconf);
+        wm2_rconf_recalc_fixup_op_mode(&rconf, &rstate);
     }
 
     if (want && !rconf.enabled && (!has || !rstate.enabled))
@@ -1133,11 +1235,13 @@ wm2_rconf_recalc(const char *ifname, bool force)
              rconf.channel, rconf.ht_mode);
     }
 
-    if (!target_radio_config_set2(&rconf, &changed)) {
+    if (!wm2_target_radio_config_set2(&rconf, &changed)) {
         LOGW("%s: failed to configure, will retry later", ifname);
         wm2_delayed_recalc(wm2_rconf_recalc, ifname);
         return;
     }
+
+    wm2_dpp_interrupt();
 
     if (has && !want) {
         ovsdb_table_delete_simple(&table_Wifi_Radio_State,
@@ -1229,6 +1333,18 @@ wm2_vstate_security_fixup(const struct schema_Wifi_VIF_Config *vconf,
 
         if (strstr(key, "oftag") == key)
             SCHEMA_KEY_VAL_APPEND(vstate->security, key, val);
+    }
+
+    if (vconf->security_len) {
+        SCHEMA_UNSET_FIELD(vstate->wpa);
+        SCHEMA_UNSET_MAP(vstate->wpa_key_mgmt);
+        SCHEMA_UNSET_MAP(vstate->wpa_psks);
+        SCHEMA_UNSET_FIELD(vstate->radius_srv_addr);
+        SCHEMA_UNSET_FIELD(vstate->radius_srv_port);
+        SCHEMA_UNSET_FIELD(vstate->radius_srv_secret);
+    }
+    else {
+        SCHEMA_UNSET_MAP(vstate->security);
     }
 }
 
@@ -1488,6 +1604,10 @@ static const struct target_radio_ops rops = {
     .op_client = wm2_op_client,
     .op_clients = wm2_op_clients,
     .op_flush_clients = wm2_op_flush_clients,
+    .op_dpp_announcement = wm2_dpp_op_announcement,
+    .op_dpp_conf_enrollee = wm2_dpp_op_conf_enrollee,
+    .op_dpp_conf_network = wm2_dpp_op_conf_network,
+    .op_dpp_conf_failed = wm2_dpp_op_conf_failed,
 };
 
 static void
@@ -1545,12 +1665,12 @@ wm2_radio_init_kickoff(void)
 {
     ovsdb_table_delete_where(&table_Wifi_Associated_Clients, json_array());
 
-    if (target_radio_config_need_reset()) {
+    if (wm2_target_radio_config_need_reset()) {
         ovsdb_table_delete_where(&table_Wifi_Radio_Config, json_array());
         ovsdb_table_delete_where(&table_Wifi_Radio_State, json_array());
         ovsdb_table_delete_where(&table_Wifi_VIF_Config, json_array());
         ovsdb_table_delete_where(&table_Wifi_VIF_State, json_array());
-        if (!target_radio_config_init2()) {
+        if (!wm2_target_radio_config_init2()) {
             LOGE("Failed to initialize radio");
             return -1;
         }
@@ -1571,6 +1691,35 @@ wm2_radio_init_kickoff(void)
     return 0;
 }
 
+bool
+wm2_radio_onboard_vifs(char *buf, size_t len)
+{
+    struct schema_Wifi_VIF_Config *vconfs;
+    struct schema_Wifi_VIF_Config *vconf;
+    int n_sta = 0;
+    int n_ap = 0;
+    int n_parent = 0;
+    int n;
+
+    vconfs = ovsdb_table_select_where(&table_Wifi_VIF_Config, NULL, &n);
+    for (vconf = vconfs; vconf && n; vconf++, n--) {
+        if (!strcmp(vconf->mode, SCHEMA_CONSTS_VIF_MODE_STA))
+            n_sta++;
+        if (!strcmp(vconf->mode, SCHEMA_CONSTS_VIF_MODE_AP))
+            n_ap++;
+        if (vconf->parent_exists && strlen(vconf->parent) > 0)
+            n_parent++;
+        if (wm2_vstate_sta_is_connected(vconf->if_name))
+            n_parent++;
+
+        if (!strcmp(vconf->mode, SCHEMA_CONSTS_VIF_MODE_STA))
+            csnprintf(&buf, &len, "%s ", vconf->if_name);
+    }
+    free(vconfs);
+
+    return n_ap == 0 && n_parent == 0 && n_sta > 0;
+}
+
 int
 wm2_radio_init(void)
 {
@@ -1586,7 +1735,9 @@ wm2_radio_init(void)
     OVSDB_TABLE_INIT(Wifi_Master_State, if_name);
     OVSDB_TABLE_INIT(Openflow_Tag, name);
 
-    if (WARN_ON(!target_radio_init(&rops)))
+    wm2_dpp_init();
+
+    if (WARN_ON(!wm2_target_radio_init(&rops)))
         return -1;
 
     wm2_radio_init_kickoff();

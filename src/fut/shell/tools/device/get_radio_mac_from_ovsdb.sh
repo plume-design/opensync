@@ -25,41 +25,43 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-source /tmp/fut-base/shell/config/default_shell.sh
-[ -e "/tmp/fut_set_env.sh" ] && source /tmp/fut_set_env.sh
-source ${FUT_TOPDIR}/shell/lib/unit_lib.sh
-source ${LIB_OVERRIDE_FILE}
+# FUT environment loading
+# Script echoes single line so we are redirecting source output to /dev/null
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh &> /dev/null
+source /tmp/fut-base/shell/config/default_shell.sh &> /dev/null
+source "${FUT_TOPDIR}/shell/lib/unit_lib.sh" &> /dev/null
+[ -n "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" &> /dev/null
 
-tc_name="tools/device/$(basename $0)"
-help()
+tc_name="tools/device/$(basename "$0")"
+usage()
 {
-cat << EOF
-${tc_name} [-h] where_clause
-
-This script gets radio physical (MAC) address from ovsdb
-
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - This script gets radio physical (MAC) address from ovsdb
 Arguments:
-    where_clause=$1: ovsdb "where" clause for Wifi_Radio_State table, that determines how we get the MAC address
-Examples of usage:
-    ${tc_name} "if_name==wifi1"
-    ${tc_name} "freq_band==5GL"
-    ${tc_name} "channel==44"
-EOF
-raise "Printed help and usage string" -l "$tc_name" -arg
+    -h  show this help message
+    \$1 (where_clause) : ovsdb "where" clause for Wifi_Radio_State table, that determines how we get the MAC address : (string)(required)
+Script usage example:
+    ./${tc_name} "if_name==wifi1"
+    ./${tc_name} "freq_band==5GL"
+    ./${tc_name} "channel==44"
+usage_string
 }
-
 while getopts h option; do
     case "$option" in
         h)
-            help
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
             ;;
     esac
 done
-
 NARGS=1
-[ $# -ne ${NARGS} ] && raise "Failure: requires exactly '${NARGS}' input argument(s)" -l "${tc_name}" -arg
-where_clause="${1}"
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 
+where_clause="${1}"
 # It is important that no logging is performed for functions that output values
 fnc_str="get_radio_mac_from_ovsdb ${where_clause}"
 wait_for_function_output "notempty" "${fnc_str}" 2>&1 >/dev/null

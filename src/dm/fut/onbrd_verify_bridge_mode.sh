@@ -25,46 +25,64 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
-source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
-usage="
-$(basename "$0") [-h] \$1
-
-where options are:
-    -h  show this help message
-
-this script is dependent on following:
-    - running DM manager
-
-example of usage:
-   /tmp/fut-base/shell/onbrd/$(basename "$0")
-"
-
+tc_name="onbrd/$(basename "$0")"
+manager_setup_file="onbrd/onbrd_setup.sh"
+wan_interface_default="br-wan"
+wan_ip_default="192.168.200.10"
+home_interface_default="br-home"
+patch_w2h_default="patch-w2h"
+patch_h2w_default="patch-h2w"
+usage()
+{
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Validate device bridge mode settings
+Arguments:
+    -h : show this help message
+    \$1 (wan_interface)  : Used to define WAN interface name  : (string)(optional) : (default:${wan_interface_default})
+    \$2 (wan_ip)         : Used to define WAN IP              : (string)(optional) : (default:${wan_ip_default})
+    \$3 (home_interface) : Used to define home interface name : (string)(optional) : (default:${home_interface_default})
+    \$4 (patch_w2h)      : Used to define w2h patch           : (string)(optional) : (default:${patch_w2h_default})
+    \$5 (patch_h2w)      : Used to define h2w patch           : (string)(optional) : (default:${patch_h2w_default})
+Testcase procedure:
+    - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
+                 Run: ./${tc_name} <WAN-INTERFACE> <WAN-IP> <HOME-INTERFACE> <PATCH-W2H> <PATCH-H2W>
+Script usage example:
+   ./${tc_name} ${wan_interface_default} ${wan_ip_default} ${home_interface_default} ${patch_w2h_default} ${patch_h2w_default}
+usage_string
+}
 while getopts h option; do
     case "$option" in
         h)
-            echo "$usage"
-            exit 1
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
             ;;
     esac
 done
+NARGS=5
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 
 # Fill variables with provided arguments or defaults.
-wan_interface=${1:-br-wan}
-wan_ip=${2:-192.168.200.10}
-home_interface=${3:-br-home}
-patch_w2h=${5:-patch-w2h}
-patch_h2w=${6:-patch-h2w}
+wan_interface=${1:-${wan_interface_default}}
+wan_ip=${2:-${wan_ip_default}}
+home_interface=${3:-${home_interface_default}}
+patch_w2h=${4:-${patch_w2h_default}}
+patch_h2w=${5:-${patch_h2w_default}}
 
-tc_name="onbrd/$(basename "$0")"
-log "$tc_name: ONBRD Verify bridge mode settings applied"
+log "$tc_name: Checking if WANO is enabled, if yes, skip..."
+check_kconfig_option "CONFIG_MANAGER_WANO" "y" &&
+    raise "Test of bridge mode is not compatible if WANO is present on system" -l "${tc_name}" -s
+
+log_title "$tc_name: ONBRD test - Verify Bridge Mode Settings"
 
 # br-wan section
 # Check if DHCP client is running on br-wan (wan bridge)

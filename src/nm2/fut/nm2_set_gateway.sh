@@ -24,15 +24,12 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-# Include basic environment config from default shell file and if any from FUT framework generated /tmp/fut_set_env.sh file
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
-source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
 trap '
     reset_inet_entry $if_name || true
@@ -41,40 +38,50 @@ trap '
 ' EXIT SIGINT SIGTERM
 
 tc_name="nm2/$(basename "$0")"
+manager_setup_file="nm2/nm2_setup.sh"
+create_radio_vif_file="tools/device/create_radio_vif_interface.sh"
+if_type_default="vif"
+gateway_default="10.10.10.200"
 usage()
 {
-cat << EOF
-${tc_name} [-h] if_name [if_type] [gateway]
-Options:
-    -h  show this help message
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Script configures interfaces gateway through Wifi_inet_Config 'gateway' field and checks if it is propagated
+      into Wifi_Inet_State table and to the system, fails otherwise
 Arguments:
-    if_name=$1 -- if_name field in Wifi_Inet_Config - (string)(required)
-    if_type=$2 -- if_type field in Wifi_Inet_Config - (string)(optional, default: vif)
-    gateway=$3 -- gateway field in Wifi_Inet_Config - (string)(optional, default: 10.10.10.200)
-Dependencies:
-    NM manager, WM manager
-Example:
-    ${tc_name} eth0 eth 10.10.10.50
-    ${tc_name} wifi0 vif
-EOF
-exit 1
+    -h  show this help message
+    \$1 (if_name) : if_name field in Wifi_Inet_Config : (string)(required)
+    \$2 (if_type) : if_type field in Wifi_Inet_Config : (string)(optional) : (default:${if_type_default})
+    \$3 (gateway) : gateway field in Wifi_Inet_Config : (string)(optional) : (default:${gateway_default})
+Testcase procedure:
+    - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
+          In case of if_type==vif:
+                 Create radio-vif interface (see ${create_radio_vif_file} -h)
+                 Run: ./${tc_name} <IF-NAME> <IF-TYPE> <GATEWAY>
+Script usage example:
+    ./${tc_name} eth0 eth 10.10.10.50
+    ./${tc_name} wifi0 vif
+usage_string
 }
-
 while getopts h option; do
     case "$option" in
         h)
-            usage
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
             ;;
     esac
 done
-
 NARGS=1
-[ $# -lt ${NARGS} ] && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
-if_name=$1
-if_type=${2:-"vif"}
-gateway=${3:-"10.10.10.200"}
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 
-log_title "${tc_name}: Testing table Wifi_Inet_Config field gateway"
+if_name=$1
+if_type=${2:-${if_type_default}}
+gateway=${3:-${gateway_default}}
+
+log_title "${tc_name}: NM2 test - Testing table Wifi_Inet_Config field gateway"
 
 log "${tc_name}: Creating Wifi_Inet_Config entries for $if_name"
 create_inet_entry \

@@ -780,6 +780,8 @@ start:
                 g_state.disconnects = 0;
             }
 
+            // Update boot_time in AWLAN_Node
+            cm2_ovsdb_set_AWLAN_Node_boot_time();
             break;
 
         case CM2_STATE_TRY_RESOLVE:

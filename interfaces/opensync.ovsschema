@@ -1,7 +1,7 @@
 {
   "name": "Open_vSwitch",
-  "version": "7.11.233",
-  "cksum": "2978226557 202173",
+  "version": "7.11.252",
+  "cksum": "538085933 218878",
   "tables": {
     "AWLAN_Node": {
       "columns": {
@@ -242,6 +242,17 @@
             "key": {
               "type": "string",
               "maxLength": 16
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "boot_time": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 1,
+              "maxInteger": 4294967295
             },
             "min": 0,
             "max": 1
@@ -744,6 +755,17 @@
             "max": "unlimited"
           }
         },
+        "dhcp_req": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 1,
+              "maxInteger": 255
+            },
+            "min": 0,
+            "max": 64
+          }
+        },
         "upnp_mode": {
           "type": {
             "key": {
@@ -753,7 +775,9 @@
                 [
                   "disabled",
                   "internal",
-                  "external"
+                  "external",
+                  "internal_iptv",
+                  "external_iptv"
                 ]
               ]
             },
@@ -774,8 +798,17 @@
           "type": {
             "key": {
               "type": "integer",
-              "minInteger": 1,
-              "maxInteger": 4096
+              "minInteger": 0,
+              "maxInteger": 4094
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "vlan_egress_qos_map": {
+          "type": {
+            "key": {
+              "type": "string"
             },
             "min": 0,
             "max": 1
@@ -906,6 +939,15 @@
           }
         },
         "no_flood": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "collect_stats": {
           "type": {
             "key": {
               "type": "boolean"
@@ -1125,7 +1167,9 @@
                 [
                   "disabled",
                   "internal",
-                  "external"
+                  "external",
+                  "internal_iptv",
+                  "external_iptv"
                 ]
               ]
             },
@@ -1137,13 +1181,22 @@
           "type": {
             "key": {
               "type": "integer",
-              "minInteger": 1,
-              "maxInteger": 4096
+              "minInteger": 0,
+              "maxInteger": 4094
             },
             "min": 0,
             "max": 1
           }
         },
+        "vlan_egress_qos_map": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },        
         "parent_ifname": {
           "type": {
             "key": {
@@ -1173,6 +1226,67 @@
       "isRoot": true,
       "maxRows": 256
     },
+
+    "Wifi_Route_Config": {
+      "columns": {
+        "dest_addr": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 7,
+              "maxLength": 15
+            },
+            "min": 1,
+            "max": 1
+          }
+        },
+        "dest_mask": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 7,
+              "maxLength": 15
+            },
+            "min": 1,
+            "max": 1
+          }
+        },
+        "gateway": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 7,
+              "maxLength": 15
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "metric": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "if_name": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 31
+            },
+            "min": 0,
+            "max": 1
+          }
+        }
+      },
+      "isRoot": true,
+      "maxRows": 256
+    },
+
     "Wifi_Route_State": {
       "columns": {
         "if_name": {
@@ -2192,6 +2306,116 @@
               "type": "string"
             }
           }
+        },
+        "wpa": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "wpa_key_mgmt": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "dpp",
+                  "wpa-psk",
+                  "wpa2-psk",
+                  "wpa2-eap",
+                  "sae"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 64
+          }
+        },
+        "wpa_psks": {
+          "type": {
+            "key": "string",
+            "value": "string",
+            "min": 0,
+            "max": 64
+          }
+        },
+        "wpa_oftags": {
+          "type": {
+            "key": "string",
+            "value": "string",
+            "min": 0,
+            "max": 64
+          }
+        },
+        "radius_srv_addr": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "radius_srv_port": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "radius_srv_secret": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "default_oftag": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "dpp_connector": {
+          "type": {
+            "key": {
+              "type": "string",
+              "maxLength": 1024
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "dpp_csign_hex": {
+          "type": {
+            "key": {
+              "type": "string",
+              "maxLength": 512
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "dpp_netaccesskey_hex": {
+          "type": {
+            "key": {
+              "type": "string",
+              "maxLength": 512
+            },
+            "min": 0,
+            "max": 1
+          }
         }
       },
       "isRoot": true,
@@ -2533,7 +2757,7 @@
               "type": "boolean"
             },
             "min": 0,
-             "max": 1
+            "max": 1
           }
         },
         "wps_pbc": {
@@ -2550,6 +2774,99 @@
             "key": {
               "type": "string"
             }
+          }
+        },
+        "wpa": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "wpa_key_mgmt": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "dpp",
+                  "wpa-psk",
+                  "wpa2-psk",
+                  "wpa2-eap",
+                  "sae"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 64
+          }
+        },
+        "wpa_psks": {
+          "type": {
+            "key": "string",
+            "value": "string",
+            "min": 0,
+            "max": 64
+          }
+        },
+        "radius_srv_addr": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "radius_srv_port": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "radius_srv_secret": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "dpp_connector": {
+          "type": {
+            "key": {
+              "type": "string",
+              "maxLength": 1024
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "dpp_csign_hex": {
+          "type": {
+            "key": {
+              "type": "string",
+              "maxLength": 512
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "dpp_netaccesskey_hex": {
+          "type": {
+            "key": {
+              "type": "string",
+              "maxLength": 512
+            },
+            "min": 0,
+            "max": 1
           }
         }
       },
@@ -2616,7 +2933,7 @@
             "type": {
               "key": {
                   "type": "string",
-                  "maxLength": 1,
+                  "minLength": 1,
                   "maxLength": 64
               },
               "min": 0,
@@ -2638,6 +2955,17 @@
             "value": "string",
             "min": 0,
             "max": 2
+          }
+        },
+        "dpp_netaccesskey_sha256_hex": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64
+            },
+            "min": 0,
+            "max": 1
           }
         }
       },
@@ -4653,7 +4981,8 @@
                   "quality",
                   "device",
                   "rssi",
-                  "steering"
+                  "steering",
+                  "client_auth_fails"
                 ]
               ]
             }
@@ -6224,7 +6553,8 @@
                                 "web_cat_provider",
                                 "dpi",
                                 "dpi_plugin",
-                                "dpi_dispatcher"
+                                "dpi_dispatcher",
+                                "dpi_client"
                             ]
                         ]
                     },
@@ -6466,7 +6796,8 @@
                 [
                   "allow",
                   "drop",
-                  "update_tag"
+                  "update_tag",
+                  "gatekeeper"
                 ]
               ]
             },
@@ -7862,6 +8193,107 @@
         ]
       ]
     },
+    "Netfilter_Ipset": {
+      "columns": {
+        "name": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            }
+          },
+          "mutable": false
+        },
+        "type": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "bitmap:ip",
+                  "bitmap:ip,mac",
+                  "bitmap:port",
+                  "hash:ip",
+                  "hash:mac",
+                  "hash:ip,mac",
+                  "hash:net",
+                  "hash:net,net",
+                  "hash:ip,port",
+                  "hash:net,port",
+                  "hash:ip,port,ip",
+                  "hash:ip,port,net",
+                  "hash:ip,mark",
+                  "hash:net,port,net",
+                  "hash:net,iface",
+                  "list:set",
+                  "local"
+                ]
+              ]
+            }
+          },
+          "mutable": false
+        },
+        "options": {
+          "type": {
+            "key": {
+              "minLength": 1,
+              "maxLength": 512,
+              "type": "string"
+            },
+            "min": 0,
+            "max": 1
+          },
+          "mutable": false
+        },
+        "values": {
+          "type": {
+            "key": {
+              "minLength": 1,
+              "maxLength": 128,
+              "type": "string"
+            },
+            "min": 0,
+            "max": 64
+          }
+        },
+        "origin": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "status": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "success",
+                  "error"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          },
+          "ephemeral": true
+        }
+      },
+      "isRoot": true,
+      "indexes": [
+        [
+          "name"
+        ]
+      ]
+    },
     "Routing": {
       "columns": {
         "enable": {
@@ -9035,6 +9467,340 @@
           "ephemeral": true
         }
       }
+    },
+    "DPP_Config": {
+      "columns": {
+        "configurator_key_hex": {
+          "type": {
+            "key": {
+              "type": "string",
+              "maxLength": 1024
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "configurator_key_curve": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "prime256v1",
+                  "secp384r1",
+                  "secp521r1",
+                  "brainpoolP256r1",
+                  "brainpoolP384r1",
+                  "brainpoolP512r1"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "configurator_conf_role": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "sta-psk",
+                  "sta-sae",
+                  "sta-psk-sae",
+                  "sta-dpp",
+                  "sta-dpp-sae",
+                  "sta-dpp-psk-sae",
+                  "ap-psk",
+                  "ap-sae",
+                  "ap-psk-sae",
+                  "ap-dpp",
+                  "ap-dpp-sae",
+                  "ap-dpp-psk-sae"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "configurator_conf_ssid_hex": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 64
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "configurator_conf_psk_hex": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 128
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "peer_bi_uri": {
+          "type": {
+            "key": {
+              "type": "string",
+              "maxLength": 1024
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "own_bi_key_hex": {
+          "type": {
+            "key": {
+              "type": "string",
+              "maxLength": 512
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "own_bi_key_curve": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "prime256v1",
+                  "secp384r1",
+                  "secp521r1",
+                  "brainpoolP256r1",
+                  "brainpoolP384r1",
+                  "brainpoolP512r1"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "timeout_seconds": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 1,
+            "max": 1
+          }
+        },
+        "auth": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "initiate_on_announce",
+                  "initiate_now",
+                  "respond_only",
+                  "chirp_and_respond"
+                ]
+              ]
+            },
+            "min": 1,
+            "max": 1
+          }
+        },
+        "ifnames": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "min": 1,
+            "max": 8
+          }
+        },
+        "status": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "requested",
+                  "in_progress",
+                  "succeeded",
+                  "timed_out",
+                  "failed"
+                ]
+              ]
+            },
+            "min": 1,
+            "max": 1
+          }
+        },
+        "sta_mac_addr": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 17,
+              "maxLength": 17
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "sta_netaccesskey_sha256_hex": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "akm": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "psk",
+                  "sae",
+                  "psk-sae",
+                  "dpp",
+                  "dpp-sae",
+                  "dpp-psk-sae"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "ssid_hex": {
+          "type": {
+            "key": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "psk_hex": {
+          "type": {
+            "key": {
+              "type": "string",
+              "maxLength": 128
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "pmk_hex": {
+          "type": {
+            "key": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "dpp_netaccesskey_hex": {
+          "type": {
+            "key": {
+              "type": "string",
+              "maxLength": 512
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "dpp_connector": {
+          "type": {
+            "key": {
+              "type": "string",
+              "maxLength": 1024
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "dpp_csign_hex": {
+          "type": {
+            "key": {
+              "type": "string",
+              "maxLength": 512
+            },
+            "min": 0,
+            "max": 1
+          }
+        }
+      },
+      "isRoot": true
+    },
+    "DPP_Announcement": {
+      "columns": {
+        "sta_mac_addr": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 17,
+              "maxLength": 17
+            },
+            "min": 1,
+            "max": 1
+          }
+        },
+        "chirp_sha256_hex": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64
+            },
+            "min": 1,
+            "max": 1
+          }
+        }
+      },
+      "isRoot": true
+    },
+    "DPP_Oftag": {
+      "columns": {
+        "sta_netaccesskey_sha256_hex": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64
+            },
+            "min": 1,
+            "max": 1
+          }
+        },
+        "oftag": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "min": 1,
+            "max": 1
+          }
+        }
+      },
+      "isRoot": true
     }
   }
 }

@@ -54,8 +54,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fsm.h"
 #include "network_metadata_report.h"
 #include "fsm_dpi_utils.h"
+#include "fsm_internal.h"
 #include "imc.h"
 #include "qm_conn.h"
+#include "nf_utils.h"
 
 static struct imc_context g_imc_client =
 {
@@ -272,6 +274,7 @@ fsm_init_dpi_plugin(struct fsm_session *session)
 {
     union fsm_dpi_context *dpi_context;
     struct fsm_dpi_plugin *dpi_plugin;
+    struct fsm_dpi_plugin_ops *ops;
     bool ret;
 
     dpi_context = session->dpi;
@@ -280,6 +283,7 @@ fsm_init_dpi_plugin(struct fsm_session *session)
     dpi_plugin = &dpi_context->plugin;
     dpi_plugin->session = session;
     dpi_plugin->bound = false;
+    dpi_plugin->clients_init = false;
 
     dpi_plugin->targets = fsm_get_other_config_val(session, "targeted_devices");
     dpi_plugin->excluded_targets = fsm_get_other_config_val(session,
@@ -287,6 +291,11 @@ fsm_init_dpi_plugin(struct fsm_session *session)
 
     ret = fsm_dpi_add_plugin_to_dispatcher(session);
     if (!ret) return ret;
+
+    ops = &session->p_ops->dpi_plugin_ops;
+    ops->notify_client = fsm_dpi_call_client;
+    ops->register_clients = fsm_dpi_register_clients;
+    ops->unregister_clients = fsm_dpi_unregister_clients;
 
     return true;
 }
@@ -520,7 +529,103 @@ fsm_free_dpi_plugin(struct fsm_session *session)
     if (aggr == NULL) return;
 
     fsm_dpi_del_plugin_from_flows(session, aggr);
+
+    fsm_dpi_unregister_clients(session);
+
     return;
+}
+
+
+/**
+ * @brief check if a mac address belongs to a given tag or matches a value
+ *
+ * @param the mac address to check
+ * @param val an opensync tag name or the string representation of a mac address
+ * @return true if the mac matches the value, false otherwise
+ */
+static bool
+fsm_dpi_find_mac_in_val(os_macaddr_t *mac, char *val)
+{
+    char mac_s[32] = { 0 };
+    bool rc;
+    int ret;
+
+    if (val == NULL) return false;
+
+    /* In case of NFQUEUE mac address may be null, hence the condition */
+    if (mac == NULL) return false;
+    snprintf(mac_s, sizeof(mac_s), PRI_os_macaddr_lower_t,
+             FMT_os_macaddr_pt(mac));
+
+    rc = om_tag_in(mac_s, val);
+    if (rc) return true;
+
+    ret = strncmp(mac_s, val, strlen(mac_s));
+    return (ret == 0);
+}
+
+
+/**
+ * @brief check if any mac of a ethernet header matches a given tag
+ *
+ * @param the mac address to check
+ * @param val an opensync tag name or the string representation of a mac address
+ * @return true if the mac matches the value, false otherwise
+ */
+static bool
+fsm_dpi_find_macs_in_val(struct eth_header *eth_hdr, char *val)
+{
+    bool rc;
+
+    if (val == NULL) return false;
+
+    rc = fsm_dpi_find_mac_in_val(eth_hdr->srcmac, val);
+    rc |= fsm_dpi_find_mac_in_val(eth_hdr->dstmac, val);
+
+    return rc;
+}
+
+
+/**
+ * @brief check if mac matches a given tag
+ *
+ * @param the mac address to check
+ * @param dispatch the core dispatcher to check in included & exclude devices
+ * @return true if the mac matches the value, false otherwise
+ */
+static bool
+fsm_dpi_find_mac(os_macaddr_t *mac, struct fsm_dpi_dispatcher *dispatch)
+{
+    bool excluded_devices;
+    bool included_devices;
+    bool rc;
+
+    if (mac == NULL) return false;
+    if (dispatch == NULL) return false;
+
+    if (dispatch->excluded_devices == NULL) excluded_devices = false;
+    else excluded_devices = true;
+    if (dispatch->included_devices == NULL) included_devices = false;
+    else included_devices = true;
+
+    if (!excluded_devices && !included_devices) return false;
+    if (!excluded_devices && included_devices)
+    {
+        rc = fsm_dpi_find_mac_in_val(mac, dispatch->included_devices);
+        return rc;
+    }
+    if (excluded_devices && !included_devices)
+    {
+        rc = fsm_dpi_find_mac_in_val(mac, dispatch->excluded_devices);
+        return (!rc);
+    }
+    if (excluded_devices && included_devices)
+    {
+        rc = fsm_dpi_find_mac_in_val(mac, dispatch->excluded_devices);
+        return (!rc);
+    }
+
+    return true;
 }
 
 
@@ -557,6 +662,214 @@ fsm_dpi_report_filter(struct net_md_stats_accumulator *acc)
 }
 
 
+#define  MAX_RESERVED_PORT_NUM       1023
+#define  NON_RESERVED_PORT_START_NUM MAX_RESERVED_PORT_NUM + 1
+/**
+ * @brief set accumulator flow direction based ports
+ *
+ * Sets the accumulator direction (outbound, inbound, undetermined)
+ * @param dispatch the core dispatcher
+ * @param the accumulator to be tagged with a direction
+ */
+void
+fsm_dpi_set_acc_direction_on_port(struct fsm_dpi_dispatcher *dispatch,
+                                  struct net_md_stats_accumulator *acc)
+{
+    struct net_md_flow_key *key;
+    bool smac_found;
+    bool dmac_found;
+    uint16_t sport;
+    uint16_t dport;
+
+    if (dispatch == NULL) return;
+    if (acc == NULL) return;
+
+    key = acc->key;
+    if (key == NULL) return;
+
+    smac_found = fsm_dpi_find_mac(key->smac, dispatch);
+    dmac_found = fsm_dpi_find_mac(key->dmac, dispatch);
+    sport = htons(key->sport);
+    dport = htons(key->dport);
+
+    if (!(smac_found || dmac_found)) return;
+
+    if (smac_found && dmac_found)
+    {
+        acc->direction = NET_MD_ACC_LAN2LAN_DIR;
+    }
+    else if ((sport > MAX_RESERVED_PORT_NUM) &&
+             (dport < NON_RESERVED_PORT_START_NUM))
+    {
+        acc->direction = (smac_found ? NET_MD_ACC_OUTBOUND_DIR :
+                          NET_MD_ACC_INBOUND_DIR);
+        acc->originator = (smac_found ? NET_MD_ACC_ORIGINATOR_SRC :
+                           NET_MD_ACC_ORIGINATOR_DST);
+    }
+    else if ((sport < NON_RESERVED_PORT_START_NUM) &&
+             (dport > MAX_RESERVED_PORT_NUM))
+    {
+        acc->direction = (dmac_found ? NET_MD_ACC_INBOUND_DIR :
+                          NET_MD_ACC_OUTBOUND_DIR);
+        acc->originator = (dmac_found ? NET_MD_ACC_ORIGINATOR_DST :
+                           NET_MD_ACC_ORIGINATOR_SRC);
+    }
+    else
+    {
+        /* Ports are non reserved, set direction based on smac */
+        acc->direction = (smac_found ? NET_MD_ACC_OUTBOUND_DIR :
+                          NET_MD_ACC_INBOUND_DIR);
+        acc->originator = NET_MD_ACC_ORIGINATOR_SRC;
+    }
+}
+
+
+/**
+ * @brief set TCP accumulator flow direction
+ *
+ * Sets the accumulator direction (outbound, inbound, undetermined)
+ * @param dispatch the core dispatcher
+ * @param the accumulator to be tagged with a direction
+ */
+bool
+fsm_dpi_set_tcp_acc_direction(struct fsm_dpi_dispatcher *dispatch,
+                              struct net_md_stats_accumulator *acc)
+{
+    struct net_md_flow_key *key;
+    bool smac_found;
+    bool dmac_found;
+
+    if (dispatch == NULL) return false;
+    if (acc == NULL) return false;
+
+    key = acc->key;
+    if (key == NULL) return false;
+
+    if (key->ipprotocol != IPPROTO_TCP) return false;
+
+    smac_found = fsm_dpi_find_mac(key->smac, dispatch);
+    dmac_found = fsm_dpi_find_mac(key->dmac, dispatch);
+
+    if (key->tcp_flags == FSM_TCP_SYN)
+    {
+        acc->originator = NET_MD_ACC_ORIGINATOR_SRC;
+        if (smac_found && dmac_found)
+        {
+            acc->direction = NET_MD_ACC_LAN2LAN_DIR;
+        }
+        else if (smac_found && !dmac_found)
+        {
+            acc->direction = NET_MD_ACC_OUTBOUND_DIR;
+        }
+        else if (!smac_found && dmac_found)
+        {
+            acc->direction = NET_MD_ACC_INBOUND_DIR;
+        }
+        else
+        {
+            acc->direction = NET_MD_ACC_UNSET_DIR;
+        }
+    }
+    else if (key->tcp_flags == (FSM_TCP_SYN | FSM_TCP_ACK))
+    {
+        acc->originator = NET_MD_ACC_ORIGINATOR_DST;
+        if (smac_found && dmac_found)
+        {
+            acc->direction = NET_MD_ACC_LAN2LAN_DIR;
+        }
+        else if (smac_found && !dmac_found)
+        {
+            acc->direction = NET_MD_ACC_INBOUND_DIR;
+        }
+        else if (!smac_found && dmac_found)
+        {
+            acc->direction = NET_MD_ACC_OUTBOUND_DIR;
+        }
+        else
+        {
+            acc->direction = NET_MD_ACC_UNSET_DIR;
+        }
+    }
+    else
+    {
+        fsm_dpi_set_acc_direction_on_port(dispatch, acc);
+    }
+
+    return (acc->direction != NET_MD_ACC_UNSET_DIR);
+}
+
+
+/**
+ * @brief set UDP accumulator flow direction
+ *
+ * Sets the accumulator direction (outbound, inbound, undetermined)
+ * @param aggr the aggregator the accumulator belongs
+ * @param the accumulator to be tagged with a direction
+ */
+bool
+fsm_dpi_set_udp_acc_direction(struct fsm_dpi_dispatcher *dispatch,
+                              struct net_md_stats_accumulator *acc)
+{
+    struct net_md_flow_key *key;
+
+    if (dispatch == NULL) return false;
+    if (acc == NULL) return false;
+
+    key = acc->key;
+    if (key == NULL) return false;
+
+    if (key->ipprotocol != IPPROTO_UDP) return false;
+
+    fsm_dpi_set_acc_direction_on_port(dispatch, acc);
+
+    return (acc->direction != NET_MD_ACC_UNSET_DIR);
+}
+
+
+/**
+ * @brief set the accumulator flow direction
+ *
+ * Sets the accumulator direction (outbound, inbound, undetermined)
+ * @param dispatch the core dispatcher
+ * @param the accumulator to be tagged with a direction
+ * @return true if the direction was detected, false otherwise
+ */
+bool
+fsm_dpi_set_acc_direction(struct fsm_dpi_dispatcher *dispatch,
+                          struct net_md_stats_accumulator *acc)
+{
+    bool rc;
+
+    rc = fsm_dpi_set_tcp_acc_direction(dispatch, acc);
+    if (rc) return rc;
+
+    rc = fsm_dpi_set_udp_acc_direction(dispatch, acc);
+
+    return rc;
+}
+
+
+/**
+ * @brief mark an accumulator for report
+ *
+ * @param acc the accumulator to mark for report
+ */
+static void
+fsm_dpi_mark_acc_for_report(struct net_md_aggregator *aggr,
+                            struct net_md_stats_accumulator *acc)
+{
+    if (acc->report) return;
+
+    /* Mark the accumulator for report */
+    acc->report = true;
+
+    /* Provision space for reporting */
+    if (acc->state != ACC_STATE_WINDOW_ACTIVE) aggr->active_accs++;
+
+    return;
+}
+
+
 /**
  * @brief callback from the accumulator creation
  *
@@ -568,7 +881,38 @@ void
 fsm_dpi_on_acc_creation(struct net_md_aggregator *aggr,
                         struct net_md_stats_accumulator *acc)
 {
-    /* Place holder */
+    struct net_md_stats_accumulator *rev_acc;
+    struct fsm_dpi_dispatcher *dispatch;
+    bool rc;
+
+    if (aggr == NULL) return;
+
+    dispatch = aggr->context;
+    if (acc->direction != NET_MD_ACC_UNSET_DIR) return;
+
+    rev_acc = net_md_lookup_reverse_acc(aggr, acc);
+    if ((rev_acc != NULL) && (rev_acc->direction != NET_MD_ACC_UNSET_DIR))
+    {
+        acc->direction = rev_acc->direction;
+        acc->originator = (rev_acc->originator == NET_MD_ACC_ORIGINATOR_SRC ?
+                           NET_MD_ACC_ORIGINATOR_DST : NET_MD_ACC_ORIGINATOR_SRC);
+        fsm_dpi_mark_acc_for_report(aggr, acc);
+        return;
+    }
+
+    rc = fsm_dpi_set_acc_direction(dispatch, acc);
+    if (!rc) return;
+
+    fsm_dpi_mark_acc_for_report(aggr, acc);
+
+    if ((rev_acc != NULL) && (rev_acc->direction == NET_MD_ACC_UNSET_DIR))
+    {
+        rev_acc->direction = acc->direction;
+        rev_acc->originator = (acc->originator == NET_MD_ACC_ORIGINATOR_SRC ?
+                               NET_MD_ACC_ORIGINATOR_DST : NET_MD_ACC_ORIGINATOR_SRC);
+        fsm_dpi_mark_acc_for_report(aggr, rev_acc);
+        return;
+    }
 }
 
 
@@ -635,6 +979,12 @@ fsm_init_dpi_dispatcher(struct fsm_session *session)
     dispatch = &dpi_context->dispatch;
     dispatch->periodic_ts = time(NULL);
 
+    dispatch->included_devices = fsm_get_other_config_val(session,
+                                                          "included_devices");
+    dispatch->excluded_devices = fsm_get_other_config_val(session,
+                                                          "excluded_devices");
+
+    memset(&aggr_set, 0, sizeof(aggr_set));
     mgr = fsm_get_mgr();
     node_info.location_id = mgr->location_id;
     node_info.node_id = mgr->node_id;
@@ -650,6 +1000,7 @@ fsm_init_dpi_dispatcher(struct fsm_session *session)
     if (aggr == NULL) return false;
 
     dispatch->aggr = aggr;
+    aggr->context = dispatch;
 
     dispatch->session = session;
     dpi_sessions = &dispatch->plugin_sessions;
@@ -816,6 +1167,29 @@ fsm_update_dpi_plugin(struct fsm_session *session)
 
 
 /**
+ * @brief update the configuration of dpi dispatcher
+ *
+ * Updates other_config info to dpi dispatcher
+ * @param session updated session
+ */
+static void
+fsm_update_dpi_dispatcher(struct fsm_session *session)
+{
+    struct fsm_dpi_dispatcher *dispatch;
+    union fsm_dpi_context *dpi_context;
+
+    dpi_context = session->dpi;
+    if (dpi_context == NULL) return;
+
+    dispatch = &dpi_context->dispatch;
+    dispatch->included_devices = fsm_get_other_config_val(session,
+                                                          "included_devices");
+    dispatch->excluded_devices = fsm_get_other_config_val(session,
+                                                          "excluded_devices");
+}
+
+
+/**
  * @brief initializes the dpi reources of a dpi session
  *
  * Calls either the dispatcher or the dpi init plugin routine for the session
@@ -837,6 +1211,10 @@ fsm_update_dpi_context(struct fsm_session *session)
         if (session->type == FSM_DPI_PLUGIN)
         {
             fsm_update_dpi_plugin(session);
+        }
+        else if (session->type == FSM_DPI_DISPATCH)
+        {
+            fsm_update_dpi_dispatcher(session);
         }
         return true;
     }
@@ -997,6 +1375,8 @@ fsm_net_parser_to_acc(struct net_header_parser *net_parser,
         tcphdr = net_parser->ip_pld.tcphdr;
         key.sport = tcphdr->source;
         key.dport = tcphdr->dest;
+        key.tcp_flags |= (tcphdr->syn ? FSM_TCP_SYN : 0);
+        key.tcp_flags |= (tcphdr->ack ? FSM_TCP_ACK : 0);
     }
 
     acc = net_md_lookup_acc(aggr, &key);
@@ -1015,63 +1395,7 @@ void
 fsm_dpi_mark_for_report(struct fsm_session *session,
                         struct net_md_stats_accumulator *acc)
 {
-    if (acc->report) return;
-
-    /* Mark the accumulator for report */
-    acc->report = true;
-
-    /* Provision space for reporting */
-    if (acc->state != ACC_STATE_WINDOW_ACTIVE) acc->aggr->active_accs++;
-
-    return;
-}
-
-
-/**
- * @brief check if a mac address belongs to a given tag or matches a value
- *
- * @param the mac address to check
- * @param val an opensync tag name or the string representation of a mac address
- * @return true if the mac matches the value, false otherwise
- */
-static bool
-fsm_dpi_find_mac_in_val(os_macaddr_t *mac, char *val)
-{
-    char mac_s[32] = { 0 };
-    bool rc;
-    int ret;
-
-    if (val == NULL) return false;
-
-    snprintf(mac_s, sizeof(mac_s), PRI_os_macaddr_lower_t,
-             FMT_os_macaddr_pt(mac));
-
-    rc = om_tag_in(mac_s, val);
-    if (rc) return true;
-
-    ret = strncmp(mac_s, val, strlen(mac_s));
-    return (ret == 0);
-}
-
-
-/**
- * @brief check if any mac of a ethernet header matches a given tag
- *
- * @param the mac address to check
- * @param val an opensync tag name or the string representation of a mac address
- * @return true if the mac matches the value, false otherwise
- */
-static bool
-fsm_dpi_find_macs_in_val(struct eth_header *eth_hdr, char *val)
-{
-    bool rc;
-
-    if (val == NULL) return false;
-
-    rc = fsm_dpi_find_mac_in_val(eth_hdr->srcmac, val);
-    rc |= fsm_dpi_find_mac_in_val(eth_hdr->dstmac, val);
-
-    return rc;
+    fsm_dpi_mark_acc_for_report(acc->aggr, acc);
 }
 
 
@@ -1084,11 +1408,12 @@ fsm_dpi_find_macs_in_val(struct eth_header *eth_hdr, char *val)
  * @param net_parser the parsed info for the current packet
  */
 static void
-fsm_dispatch_pkt(struct net_header_parser *net_parser)
+fsm_dispatch_pkt(struct fsm_session *session,
+                 struct net_header_parser *net_parser)
 {
     union fsm_dpi_context *plugin_dpi_context;
     struct net_md_stats_accumulator *acc;
-    struct fsm_parser_ops *parser_ops;
+    struct fsm_dpi_plugin_ops *dpi_plugin_ops;
     struct fsm_dpi_flow_info *info;
     struct fsm_session *dpi_plugin;
     struct fsm_dpi_plugin *plugin;
@@ -1170,13 +1495,13 @@ fsm_dispatch_pkt(struct net_header_parser *net_parser)
                 continue;
             }
 
-            parser_ops = &dpi_plugin->p_ops->parser_ops;
-            if (parser_ops->handler == NULL)
+            dpi_plugin_ops = &dpi_plugin->p_ops->dpi_plugin_ops;
+            if (dpi_plugin_ops->handler == NULL)
             {
                 info = ds_tree_next(tree, info);
                 continue;
             }
-            parser_ops->handler(dpi_plugin, net_parser);
+            dpi_plugin_ops->handler(dpi_plugin, net_parser);
         }
 
         drop = (info->decision == FSM_DPI_DROP);
@@ -1185,8 +1510,17 @@ fsm_dispatch_pkt(struct net_header_parser *net_parser)
         info = ds_tree_next(tree, info);
     }
 
-    if (drop) mgr->set_dpi_state(net_parser, FSM_DPI_DROP);
-    if (pass) mgr->set_dpi_state(net_parser, FSM_DPI_PASSTHRU);
+
+    if (session->tap_type == FSM_TAP_NFQ)
+    {
+        if (drop) nf_queue_set_verdict(net_parser->packet_id, NF_UTIL_NFQ_DROP);
+        if (pass) nf_queue_set_verdict(net_parser->packet_id, NF_UTIL_NFQ_ACCEPT);
+    }
+    else
+    {
+        if (drop) mgr->set_dpi_state(net_parser, FSM_DPI_DROP);
+        if (pass) mgr->set_dpi_state(net_parser, FSM_DPI_PASSTHRU);
+    }
 
     if (drop || pass) acc->dpi_done = 1;
 }
@@ -1252,7 +1586,7 @@ fsm_dpi_handler(struct fsm_session *session,
     filter = fsm_dpi_filter_packet(net_parser);
     if (!filter) return;
 
-    fsm_dispatch_pkt(net_parser);
+    fsm_dispatch_pkt(session, net_parser);
 }
 
 /**

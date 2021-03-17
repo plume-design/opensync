@@ -39,15 +39,45 @@
 # - if inteface cannot be created
 # - if NAT cannot be enabled or disabled on existing interface
 
-# Include basic environment config from default shell file and if any from FUT framework generated /tmp/fut_set_env.sh file
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
-source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+
+tc_name="nm2/$(basename "$0")"
+manager_setup_file="nm2/nm2_setup.sh"
+usage()
+{
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Script configures interfaces NAT through Wifi_inet_Config 'NAT' field and checks if it is propagated
+      into Wifi_Inet_State table and to the system, fails otherwise
+Arguments:
+    -h  show this help message
+    \$1 (if_name) : used as if_name in Wifi_Inet_Config table : (string)(required)
+    \$2 (if_type) : used as if_type in Wifi_Inet_Config table : (string)(required)
+    \$3 (NAT)     : used as NAT in Wifi_Inet_Config table     : (string)(required)
+Testcase procedure:
+    - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
+                 Run: ./${tc_name}
+Script usage example:
+   ./${tc_name} eth0 eth true
+usage_string
+}
+while getopts h option; do
+    case "$option" in
+        h)
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
+            ;;
+    esac
+done
+NARGS=3
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 
 trap '
     reset_inet_entry $if_name || true
@@ -55,47 +85,12 @@ trap '
     check_restore_management_access || true
 ' EXIT SIGINT SIGTERM
 
-usage="
-$(basename "$0") [-h] \$1 \$2 \$3
-
-where options are:
-    -h  show this help message
-
-where arguments are:
-    if_name=\$1 -- used as if_name in Wifi_Inet_Config table - (string)(required)
-    if_type=\$2 -- used as if_type in Wifi_Inet_Config table - default 'vif' - (string)(optional)
-    NAT=\$3 -- used as NAT in Wifi_Inet_Config table - default 'true' - (boolean)(optional)
-
-this script is dependent on following:
-    - running NM manager
-    - running WM manager
-
-example of usage:
-   /tmp/fut-base/shell/nm2/nm2_set_nat.sh eth0 eth true
-"
-
-while getopts h option; do
-    case "$option" in
-        h)
-            echo "$usage"
-            exit 1
-            ;;
-    esac
-done
-
-# Provide at least 1 argument(s).
-if [ $# -lt 1 ]; then
-    echo 1>&2 "$0: not enough arguments"
-    echo "$usage"
-    exit 2
-fi
-
 # Fill variables with provided arguments or defaults.
 if_name=$1
 if_type=$2
 NAT=$3
 
-tc_name="nm2/$(basename "$0")"
+log_title "$tc_name: NM2 test - Testing table Wifi_Inet_Config field nat"
 
 log "$tc_name: Creating Wifi_Inet_Config entries for $if_name (enabled=true, network=true, ip_assign_scheme=static)"
 create_inet_entry \

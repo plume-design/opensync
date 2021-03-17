@@ -25,37 +25,38 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-# Include basic environment config from default shell file and if any from FUT framework generated /tmp/fut_set_env.sh file
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
-source ${FUT_TOPDIR}/shell/lib/wm2_lib.sh
-source ${LIB_OVERRIDE_FILE}
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
+source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
-
-usage="$(basename "$0") [-h]
-
-Script is used to empty Wifi_VIF_Config table
-
-Script does following:
-    - delete whole Wifi_VIF_Config table
-
-Example of usage:
-    $(basename "$0") - delete/empty Wifi_VIF_Config table
-"
-
+tc_name="tools/device/$(basename "$0")"
+usage()
+{
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Script is used to empty Wifi_VIF_Config table and waits for the State table to be emptied
+Arguments:
+    -h  show this help message
+    - \$1 (timout) : time in seconds to wait for VIF to be cleaned : (int)(optional)
+Script usage example:
+   ./${tc_name}
+usage_string
+}
 while getopts h option; do
     case "$option" in
         h)
-            echo "$usage"
-            exit 1
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
             ;;
     esac
 done
 
-vif_clean ||
+vif_clean $1 ||
     raise "vif_clean - Failed" -l "tools/device/$(basename "$0")" -tc
 
 exit 0

@@ -44,6 +44,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb_update.h"
 #include "ovsdb_sync.h"
 #include "ovsdb_table.h"
+#include "nf_utils.h"
 #include "schema.h"
 #include "log.h"
 #include "ds.h"
@@ -52,10 +53,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "target_common.h"
 #include "fsm.h"
 #include "fsm_oms.h"
+#include "fsm_internal.h"
 #include "policy_tags.h"
 #include "qm_conn.h"
 #include "dppline.h"
 #include "fsm_dpi_utils.h"
+#include "policy_tags.h"
+#include "gatekeeper_cache.h"
 
 #define MODULE_ID LOG_MODULE_ID_OVSDB
 
@@ -123,6 +127,34 @@ fsm_sessions_cmp(void *a, void *b)
 #define FSM_NODE_STATE_MEM_KEY "max_mem"
 
 /**
+ * @brief callback function invoked when tag value is
+ *        changed.
+ */
+static bool
+fsm_tag_update_cb(om_tag_t *tag,
+                  struct ds_tree *removed,
+                  struct ds_tree *added,
+                  struct ds_tree *updated)
+{
+    fsm_process_tag_update(tag, removed, added, updated);
+    return true;
+}
+
+/**
+ * @brief register callback for receiving tag value updates
+ */
+bool
+fsm_tag_update_init(void)
+{
+    struct tag_mgr fsm_tagmgr;
+
+    memset(&fsm_tagmgr, 0, sizeof(fsm_tagmgr));
+    fsm_tagmgr.service_tag_update = fsm_tag_update_cb;
+    om_tag_init(&fsm_tagmgr);
+    return true;
+}
+
+/**
  * @brief fsm manager init routine
  */
 void
@@ -155,6 +187,13 @@ fsm_init_mgr(struct ev_loop *loop)
         LOGI("%s: fsm default max memory usage: %" PRIu64 " kB", __func__,
              mgr->max_mem);
     }
+
+    /* initialize tag tree */
+    ds_tree_init(&mgr->dpi_client_tags_tree, (ds_key_cmp_t *) strcmp,
+                 struct fsm_dpi_client_tags, tag_list);
+
+    /* register for tag update callback */
+    fsm_tag_update_init();
 }
 
 
@@ -299,26 +338,6 @@ exit:
 
     return rc;
 }
-
-static bool
-fsm_trigger_flood_mod(struct fsm_session *session)
-{
-    char shell_cmd[1024] = { 0 };
-
-    if (!fsm_plugin_has_intf(session)) return true;
-
-    LOGT("%s: session %s set tap_flood to %s", __func__,
-         session->name, session->flood_tap ? "true" : "false");
-
-    snprintf(shell_cmd, sizeof(shell_cmd),
-             "%s mod-port %s %s %s",
-             "ovs-ofctl",
-             session->bridge, session->conf->if_name,
-             session->flood_tap ? "flood" : "no-flood");
-    LOGT("%s: command %s", __func__, shell_cmd);
-    return !cmd_log(shell_cmd);
-}
-
 
 /**
  * @brief set the tx interface a plugin might use
@@ -507,6 +526,7 @@ fsm_session_update(struct fsm_session *session,
                  __func__, session->conf->if_name);
             goto err_free_fconf;
         }
+        session->p_ops->parser_ops.get_service = fsm_get_web_cat_service;
     }
 
     flood = fsm_get_other_config_val(session, "flood");
@@ -524,14 +544,6 @@ fsm_session_update(struct fsm_session *session,
                  __func__, conf->handler, flood);
             session->flood_tap = false;
         }
-    }
-
-    ret = mgr->flood_mod(session);
-    if (!ret)
-    {
-        LOGE("%s: flood settings for %s failed",
-             __func__, session->name);
-        goto err_free_fconf;
     }
 
     ret = fsm_get_web_cat_service(session);
@@ -555,7 +567,14 @@ fsm_session_update(struct fsm_session *session,
         if (!ret) goto err_free_fconf;
     }
 
-    ret = fsm_pcap_update(session);
+    ret = fsm_is_dpi_client(session);
+    if (ret)
+    {
+        ret = fsm_update_dpi_plugin_client(session);
+        if (!ret) goto err_free_fconf;
+    }
+
+    ret = mgr->update_session_tap(session);
     if (!ret) goto err_free_fconf;
 
     return true;
@@ -635,6 +654,7 @@ fsm_init_plugin(struct fsm_session *session)
     char *dso_init;
     char init_fn[256];
     char *error;
+    bool ret;
     int rc;
 
     if (session->type == FSM_DPI_DISPATCH) return true;
@@ -668,8 +688,12 @@ fsm_init_plugin(struct fsm_session *session)
         return false;
     }
     rc = init(session);
+    if (rc != 0) return false;
 
-    return (rc == 0);
+    /* Wrap up initialization now that the plugin itsef is fully initialized */
+    ret = fsm_wrap_init_plugin(session);
+
+    return ret;
 }
 
 #define FSM_QM_BACKOFF_INTERVAL 20
@@ -788,8 +812,6 @@ fsm_alloc_session(struct schema_Flow_Service_Manager_Config *conf)
 {
     struct fsm_session *session;
     union fsm_plugin_ops *plugin_ops;
-    struct bpf_program *bpf;
-    struct fsm_pcaps *pcaps;
     struct fsm_mgr *mgr;
     bool ret;
 
@@ -820,24 +842,10 @@ fsm_alloc_session(struct schema_Flow_Service_Manager_Config *conf)
     session->ops.state_cb = fsm_set_object_state;
     session->ops.latest_obj_cb = fsm_oms_get_highest_version;
     session->ops.last_active_obj_cb = fsm_oms_get_last_active_version;
-
-    pcaps = NULL;
-    bpf = NULL;
-    if (fsm_plugin_has_intf(session))
-    {
-        pcaps = calloc(1, sizeof(struct fsm_pcaps));
-        if (pcaps == NULL) goto err_free_plugin_ops;
-
-        bpf = calloc(1, sizeof(struct bpf_program));
-        if (bpf == NULL) goto err_free_pcaps;
-
-        pcaps->bpf = bpf;
-        session->pcaps = pcaps;
-        session->p_ops->parser_ops.get_service = fsm_get_web_cat_service;
-    }
+    session->ops.update_client = fsm_update_client;
 
     ret = fsm_session_update(session, conf);
-    if (!ret) goto err_free_bpf;
+    if (!ret) goto err_free_plugin_ops;
 
     ret = fsm_parse_dso(session);
     if (!ret) goto err_free_dso;
@@ -846,12 +854,6 @@ fsm_alloc_session(struct schema_Flow_Service_Manager_Config *conf)
 
 err_free_dso:
     free(session->dso);
-
-err_free_bpf:
-    free(bpf);
-
-err_free_pcaps:
-    free(pcaps);
 
 err_free_plugin_ops:
     free(plugin_ops);
@@ -874,18 +876,12 @@ err_free_session:
 void
 fsm_free_session(struct fsm_session *session)
 {
-    struct fsm_pcaps *pcaps;
     bool ret;
 
     if (session == NULL) return;
 
-    /* Free pcap resources */
-    pcaps = session->pcaps;
-    if (pcaps != NULL)
-    {
-        fsm_pcap_close(session);
-        free(pcaps);
-    }
+    /* free fsm tap resources */
+    fsm_free_tap_resources(session);
 
     /* Call the session exit routine */
     if (session->ops.exit != NULL) session->ops.exit(session);
@@ -893,6 +889,9 @@ fsm_free_session(struct fsm_session *session)
     /* Free optional dpi context */
     ret = fsm_is_dpi(session);
     if (ret) fsm_free_dpi_context(session);
+
+    ret = fsm_is_dpi_client(session);
+    if (ret) fsm_free_dpi_plugin_client(session);
 
     /* Close the dynamic library handler */
     if (session->handle != NULL) dlclose(session->handle);
@@ -1278,6 +1277,13 @@ fsm_get_node_config(struct schema_Node_Config *node_cfg)
     if (rc != 0) return;
 
     key = node_cfg->key;
+    rc = strcmp("clear_gatekeeper_cache", key);
+    if (rc == 0)
+    {
+        clear_gatekeeper_cache();
+        return;
+    }
+
     rc = strcmp("max_mem_percent", key);
     if (rc != 0) return;
 
@@ -1403,9 +1409,9 @@ fsm_ovsdb_init(void)
     // Initialize the plugin loader routine
     mgr = fsm_get_mgr();
     mgr->init_plugin = fsm_init_plugin;
-    mgr->flood_mod = fsm_trigger_flood_mod;
     mgr->get_br = get_home_bridge;
     mgr->set_dpi_state = fsm_set_dpi_state;
+    mgr->update_session_tap = fsm_update_session_tap;
     fsm_policy_init();
 
     // Advertize default memory limit usage

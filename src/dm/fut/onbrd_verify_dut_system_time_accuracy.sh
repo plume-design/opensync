@@ -28,50 +28,49 @@
 # It is important for this particular testcase, to capture current time ASAP
 time_now=$(date -u +"%s")
 
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
-source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
-usage="
-$(basename "$0") [-h] \$1
-
-where options are:
+tc_name="onbrd/$(basename "$0")"
+manager_setup_file="onbrd/onbrd_setup.sh"
+usage()
+{
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Validate device time is within real time threshold
+    - It is important to compare timestamps to the same time zone: UTC is used internally!
+Arguments:
     -h  show this help message
-arguments:
-    time_ref=\$1 -- format: seconds since epoch. Used to compare system time. (int)(required)
-    time_accuracy=\$2 -- format: seconds. Allowed time deviation from reference time. (int)(required)
-It is important to compare timestamps to the same time zone: UTC is used internally!
-
-example of usage:
-    accuracy=2
-    reference_time=\$(date --utc +\"%s\")
-   /tmp/fut-base/shell/onbrd/$(basename "$0") \$reference_time \$time_accuracy
-"
-
+    \$1 (time_ref)      : format: seconds since epoch. Used to compare system time.    : (int)(required)
+    \$2 (time_accuracy) : format: seconds. Allowed time deviation from reference time. : (int)(required)
+Testcase procedure:
+    - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
+                 Run: ./${tc_name} <ACCURACY> <REFERENCE-TIME>
+Script usage example:
+   ./${tc_name} 2 $(date --utc +\"%s\")
+usage_string
+}
 while getopts h option; do
     case "$option" in
         h)
-            echo "$usage"
-            exit 1
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
             ;;
     esac
 done
+NARGS=2
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 
-# Input parameters
-if [ $# -ne 2 ]; then
-    echo 1>&2 "$0: incorrect number of input arguments"
-    echo "$usage"
-    exit 2
-fi
+log_title "$tc_name: ONBRD test - Verify DUT system time is within threshold of the reference"
 
 time_ref=$1
 time_accuracy=$2
-tc_name="onbrd/$(basename "$0")"
 
 # Timestamps in human readable format
 time_ref_str=$(date -d @"${time_ref}")

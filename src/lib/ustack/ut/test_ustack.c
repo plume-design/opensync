@@ -438,6 +438,74 @@ void test_udp_ipv4_no_data(void)
 }
 
 
+/**
+ * @brief print net_header_parser with and without flow details
+ *
+ */
+void test_flow_details(void)
+{
+    struct net_md_stats_accumulator acc;
+    struct net_header_parser *parser;
+    size_t len;
+
+    /* IPv6 Packet parse */
+    PREPARE_UT(pkt16574);
+    parser = &g_parser;
+
+    /* Validate parsing success */
+    len = net_header_parse(parser);
+    TEST_ASSERT_TRUE(len != 0);
+
+    LOGI("%s: %s", __func__,
+         net_header_fill_info_buf(log_buf, NET_HDR_BUFF_SIZE, parser));
+
+    memset(&acc, 0, sizeof(acc));
+
+    /* add accumulator details */
+    acc.direction = NET_MD_ACC_OUTBOUND_DIR;
+    acc.originator = NET_MD_ACC_ORIGINATOR_SRC;
+    parser->acc = &acc;
+
+    LOGI("%s: %s", __func__,
+         net_header_fill_info_buf(log_buf, NET_HDR_BUFF_SIZE, parser));
+
+    /* IPv4 Packet parse */
+    memset(&g_parser, 0, sizeof(g_parser));
+    PREPARE_UT(pkt16608);
+    parser = &g_parser;
+
+    /* Validate parsing success */
+    len = net_header_parse(parser);
+    TEST_ASSERT_TRUE(len != 0);
+
+    LOGI("%s: %s", __func__,
+         net_header_fill_info_buf(log_buf, NET_HDR_BUFF_SIZE, parser));
+
+    /* add accumulator details */
+    parser->acc = &acc;
+
+    LOGI("%s: %s", __func__,
+         net_header_fill_info_buf(log_buf, NET_HDR_BUFF_SIZE, parser));
+
+    /* UDP Packet parse */
+    memset(&g_parser, 0, sizeof(g_parser));
+    parser = &g_parser;
+    PREPARE_UT(pkt_udp_no_data);
+
+    /* Validate parsing success */
+    len = net_header_parse(parser);
+    TEST_ASSERT_TRUE(len != 0);
+
+    LOGI("%s: %s", __func__,
+         net_header_fill_info_buf(log_buf, NET_HDR_BUFF_SIZE, parser));
+
+    /* add accumulator details */
+    parser->acc = &acc;
+
+    LOGI("%s: %s", __func__,
+         net_header_fill_info_buf(log_buf, NET_HDR_BUFF_SIZE, parser));
+}
+
 int main(int argc, char *argv[])
 {
     (void)argc;
@@ -455,6 +523,7 @@ int main(int argc, char *argv[])
     RUN_TEST(test_icmp4_request);
     RUN_TEST(test_icmp4_reply);
     RUN_TEST(test_udp_ipv4_no_data);
+    RUN_TEST(test_flow_details);
 
     return UNITY_END();
 }

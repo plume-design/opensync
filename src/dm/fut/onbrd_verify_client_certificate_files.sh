@@ -25,58 +25,53 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
-source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
-usage="
-$(basename "$0") [-h] \$1
-
-where options are:
+tc_name="onbrd/$(basename "$0")"
+manager_setup_file="onbrd/onbrd_setup.sh"
+usage()
+{
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Validate certificate files on devices
+Arguments:
     -h  show this help message
-
-where arguments are:
-    cert_file=\$1 -- used as file to check - (string)(required)
-
-this script is dependent on following:
-    - running DM manager
-
-example of usage:
-   /tmp/fut-base/shell/onbrd/$(basename "$0") ca_cert
-   /tmp/fut-base/shell/onbrd/$(basename "$0") certificate
-   /tmp/fut-base/shell/onbrd/$(basename "$0") private_key
-"
-
+    \$1 (cert_file) : Used to define specific cert file path from SSL table : (string)(required)
+Testcase procedure:
+    - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
+                 Run: ./${tc_name} <CERT-FILE>
+Script usage example:
+   ./${tc_name} ca_cert
+usage_string
+}
 while getopts h option; do
     case "$option" in
         h)
-            echo "$usage"
-            exit 1
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
             ;;
     esac
 done
-
-if [ $# -ne 1 ]; then
-    echo 1>&2 "$0: incorrect number of input arguments"
-    echo "$usage"
-    exit 2
-fi
+NARGS=1
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 
 cert_file=$1
-tc_name="onbrd/$(basename "$0")"
 cert_file_path=$(get_ovsdb_entry_value SSL "$cert_file")
 
-log "$tc_name: ONBRD Verify file exists"
+log_title "$tc_name: ONBRD test - Verify cert file '${cert_file}' exists"
+
 [ -e "$cert_file_path" ] &&
     log "$tc_name: SUCCESS: file is valid - $cert_file_path" ||
     raise "FAIL: file is missing - $cert_file_path" -l "$tc_name" -tc
 
-log "$tc_name: ONBRD Verify file is not empty"
+log "$tc_name: Verify file is not empty"
 [ -s "$cert_file_path" ] &&
     log "$tc_name: SUCCESS: file is not empty - $cert_file_path" ||
     raise "FAIL: file is empty - $cert_file_path" -l "$tc_name" -tc

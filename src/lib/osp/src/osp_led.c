@@ -56,6 +56,7 @@ static const char* led_state_str[OSP_LED_ST_LAST] =
     [OSP_LED_ST_UPGRADED]       = "upgraded",
     [OSP_LED_ST_UPGRADEFAIL]    = "upgradefail",
     [OSP_LED_ST_HWTEST]         = "hwtest",
+    [OSP_LED_ST_IOT_ALARM]      = "iotalarm",
 };
 
 

@@ -1,0 +1,13 @@
+#!/bin/sh
+
+# run parts pre-install scripts from pre-install.d
+
+PARTS_DIR="$0.d"
+ROOTFS="$1"
+
+for F in $(ls -d "$PARTS_DIR"/*); do
+    test -f "$F" -a -x "$F" || continue
+    echo "  hook $F"
+    "$F" "$ROOTFS" || { echo "ERROR: $F: $?" && exit 1; }
+done
+

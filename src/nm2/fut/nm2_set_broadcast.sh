@@ -24,15 +24,46 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-# Include basic environment config from default shell file and if any from FUT framework generated /tmp/fut_set_env.sh file
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
-source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+
+tc_name="nm2/$(basename "$0")"
+manager_setup_file="nm2/nm2_setup.sh"
+usage()
+{
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Script configures interfaces broadcast through Wifi_inet_Config 'broadcast' field and checks if it is propagated
+      into Wifi_Inet_State table and to the system, fails otherwise
+Arguments:
+    -h  show this help message
+    \$1 (if_name)   : used as if_name in Wifi_Inet_Config table   : (string)(required)
+    \$2 (if_type)   : used as if_type in Wifi_Inet_Config table   : (string)(required)
+    \$3 (broadcast) : used as broadcast in Wifi_Inet_Config table : (string)(required)
+Testcase procedure:
+    - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
+                 Run: ./${tc_name} <IF-NAME> <IF-TYPE> <BROADCAST>
+Script usage example:
+   ./${tc_name} wifi0 vif 10.0.0.10
+usage_string
+}
+while getopts h option; do
+    case "$option" in
+        h)
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
+            ;;
+    esac
+done
+NARGS=3
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 
 trap '
     reset_inet_entry $if_name || true
@@ -40,45 +71,11 @@ trap '
     check_restore_management_access || true
 ' EXIT SIGINT SIGTERM
 
-usage="
-$(basename "$0") [-h] \$1 \$2 \$3
-
-where options are:
-    -h  show this help message
-
-where arguments are:
-    if_name=\$1 -- used as if_name in Wifi_Inet_Config table - (string)(required)
-    if_type=\$2 -- used as if_type in Wifi_Inet_Config table - default 'vif'- (string)(optional)
-    broadcast=\$3 -- used as broadcast in Wifi_Inet_Config table - default '10.10.10.255' - (string)(optional)
-
-this script is dependent on following:
-    - running NM manager
-    - running WM manager
-
-example of usage:
-   /tmp/fut-base/shell/nm2/nm2_set_broadcast.sh wifi0
-"
-
-while getopts h option; do
-    case "$option" in
-        h)
-            echo "$usage"
-            exit 1
-            ;;
-    esac
-done
-
-if [ $# -lt 1 ]; then
-    echo 1>&2 "$0: not enough arguments"
-    echo "$usage"
-    exit 2
-fi
-
 if_name=$1
 if_type=$2
 broadcast=$3
 
-tc_name="nm2/$(basename "$0")"
+log_title "$tc_name: NM2 test - Testing table Wifi_Inet_Config field broadcast"
 
 log "$tc_name: Creating Wifi_Inet_Config entries for $if_name"
 create_inet_entry \

@@ -25,81 +25,71 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-if [ -e "/tmp/fut_set_env.sh" ]; then
-    source /tmp/fut_set_env.sh
-else
-    source /tmp/fut-base/shell/config/default_shell.sh
-fi
-source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
+# FUT environment loading
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh"
-source "${LIB_OVERRIDE_FILE}"
+[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
-usage="
-$(basename "$0") [-h] \$1 \$2
-
-where options are:
+tc_name="onbrd/$(basename "$0")"
+manager_setup_file="onbrd/onbrd_setup.sh"
+usage()
+{
+cat << usage_string
+${tc_name} [-h] arguments
+Description:
+    - Validate AWLAN_Node manager_addr being resolved in Manager target
+Arguments:
     -h  show this help message
-
-where arguments are:
-    manager_addr=\$1 -- used as manager address - (string)(required)
-    target=\$2 -- used to check manager address resolved - (string)(required)
-
-this script is dependent on following:
-    - running DM manager
-
-example of usage:
-   /tmp/fut-base/shell/onbrd/$(basename "$0") ssl:ec2-54-200-0-59.us-west-2.compute.amazonaws.com:443 ssl:54.200.0.59:443
-   /tmp/fut-base/shell/onbrd/$(basename "$0") ssl:54.200.0.59:443 ssl:54.200.0.59:443
-"
-
+Testcase procedure:
+    - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
+                 Run: ./${tc_name}
+Script usage example:
+   ./${tc_name}
+usage_string
+}
 while getopts h option; do
     case "$option" in
         h)
-            echo "$usage"
-            exit 1
+            usage && exit 1
+            ;;
+        *)
+            echo "Unknown argument" && exit 1
             ;;
     esac
 done
 
-if [ $# -lt 2 ]; then
-    echo 1>&2 "$0: not enough arguments"
-    echo "$usage"
-    exit 2
-fi
-
-manager_addr=$1
+log_title "$tc_name: ONBRD test - Verify if AWLAN_Node manager address hostname is resolved"
 
 # Restart managers to start every config resolution from the begining
 restart_managers
-
 # Give time to managers to bring up tables
 sleep 30
 
-tc_name="onbrd/$(basename "$0")"
+redirector_addr_none="ssl:none:443"
+wait_for_function_response 'notempty' "get_ovsdb_entry_value AWLAN_Node redirector_addr" &&
+    redirector_addr=$(get_ovsdb_entry_value AWLAN_Node redirector_addr) ||
+    raise "AWLAN_Node::redirector_addr is not set" -l "${tc_name}" -tc
 
-log "$tc_name: Setting AWLAN_Node manager_addr to '$manager_addr'"
-update_ovsdb_entry AWLAN_Node -u manager_addr "$manager_addr" &&
-    log "$tc_name: update_ovsdb_entry - AWLAN_Node table updated - manager_addr '$manager_addr'" ||
-    raise "update_ovsdb_entry - Failed to update AWLAN_Node table - manager_addr '$manager_addr'" -l "$tc_name" -tc
+log "$tc_name: Setting AWLAN_Node redirector_addr to ${redirector_addr_none}"
+update_ovsdb_entry AWLAN_Node -u redirector_addr "${redirector_addr_none}" &&
+    log "$tc_name: AWLAN_Node::redirector_addr updated" ||
+    raise "Could not update AWLAN_Node::redirector_addr" -l "$tc_name" -tc
 
-log "$tc_name: ONBRD Verify manager hostname resolved, waiting for Manager is_connected true"
-wait_ovsdb_entry Manager -is is_connected true &&
-    log "$tc_name: wait_ovsdb_entry - Manager is_connected is true" ||
-    raise "wait_ovsdb_entry - Manager is_connected is NOT true" -l "$tc_name" -tc
+log "${tc_name}: Wait Manager target to clear"
+wait_for_function_response 'empty' "get_ovsdb_entry_value Manager target" &&
+    log "${tc_name}: Manager::target is cleared" ||
+    raise "Manager::target is not cleared" -l "${tc_name}" -tc
 
-shift
-targets=$@
+log "$tc_name: Setting AWLAN_Node redirector_addr to ${redirector_addr}"
+update_ovsdb_entry AWLAN_Node -u redirector_addr "${redirector_addr}" &&
+    log "$tc_name: AWLAN_Node::redirector_addr updated" ||
+    raise "Could not update AWLAN_Node::redirector_addr" -l "$tc_name" -tc
 
-# shellcheck disable=SC2034
-for i in $(seq 1 $#); do
+log "${tc_name}: Wait Manager target to resolve to address"
+wait_for_function_response 'notempty' "get_ovsdb_entry_value Manager target" &&
+    log "${tc_name}: Manager::target is set" ||
+    raise "Manager::target is not set" -l "${tc_name}" -tc
 
-    target=$1
-    shift
-
-    wait_ovsdb_entry Manager -is target "$target" &&
-        { log "$tc_name: wait_ovsdb_entry - Manager target is '$target'"; pass; } ||
-        log "$tc_name: wait_ovsdb_entry - Manager target is NOT '$target'"
-
-done
-
-die "onbrd/$(basename "$0"): wait_ovsdb_entry - Manager target NOT resolved"
+print_tables Manager
+pass

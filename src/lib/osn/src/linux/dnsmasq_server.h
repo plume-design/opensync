@@ -42,6 +42,7 @@ typedef void dnsmasq_server_error_fn_t(dnsmasq_server_t *self);
 struct dnsmasq_server
 {
     char                            ds_ifname[C_IFNAME_LEN];
+    bool                            ds_enabled;
     struct osn_dhcp_server_cfg      ds_cfg;
     dnsmasq_server_status_fn_t     *ds_status_fn;
     dnsmasq_server_error_fn_t      *ds_error_fn;
@@ -55,6 +56,8 @@ struct dnsmasq_server
 bool dnsmasq_server_init(dnsmasq_server_t *self, const char *ifname);
 bool dnsmasq_server_fini(dnsmasq_server_t *self);
 void dnsmasq_server_apply(void);
+
+void dnsmasq_server_enable(dnsmasq_server_t *self, bool enable);
 
 bool dnsmasq_server_option_set(
         dnsmasq_server_t *self,

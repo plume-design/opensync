@@ -31,12 +31,15 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "util.h"
 #include "ovsdb.h"
+#include "module.h"
 
-#include "pm.h"
 #include "pm_tm.h"
 #include "osp_reboot.h"
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
+
+MODULE(pm_tm, pm_tm_init, pm_tm_fini);
+
 
 static struct osp_tm_ctx tm_ctx = { 0 };
 
@@ -414,13 +417,13 @@ static void pm_tm_reboot(struct osp_tm_ctx *ctx)
     osp_unit_reboot_ex(OSP_REBOOT_THERMAL, "Critical temperature, rebooting due to overheating", 0);
 }
 
-bool pm_tm_init(void)
+void pm_tm_init(void *data)
 {
     LOGN("Initializing TM");
 
     if (pm_tm_ovsdb_init(&tm_ctx) != 0) {
         LOGE("Initializing TM (failed to initialize TM OVSDB)");
-        return false;
+        return;
     }
 
     // init timer for main thermal loop
@@ -434,16 +437,14 @@ bool pm_tm_init(void)
             &tm_ctx.temp_src_cnt,
             &tm_ctx.tgt_priv) != 0) {
         LOGE("Initializing TM (failed to initialize OSP TM)");
-        return false;
+        return;
     }
 
     osp_tm_get_fan_rpm(tm_ctx.tgt_priv, &tm_ctx.prev_fan_rpm);
-
-    return true;
 }
 
-bool pm_tm_deinit(void)
+void pm_tm_fini(void *data)
 {
+    LOGN("Deinitializing TM");
     osp_tm_deinit(&tm_ctx.tgt_priv);
-    return true;
 }
