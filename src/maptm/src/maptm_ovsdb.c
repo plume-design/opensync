@@ -184,7 +184,7 @@ bool maptm_system_reboot(const char *reason)
     ret = osp_unit_reboot(reason, 10000);
     if (ret != true)
     {
-        LOGE("Failed to call osp_unit_reboot from %s", reason);
+        LOGE("Failed to call osp_unit_reboot for: %s", reason);
     }
 
     return ret;
