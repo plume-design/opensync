@@ -113,6 +113,33 @@ void callback_IPv6_Address(
             return;
     }
 
+    /*
+     * Check the changes other than valid_lifetime and/or preferred_lifetime.
+     * If there were no other changes, skip nm2_ipv6_address_update() that
+     * follows to avoid triggering a full-blown address provisioning, which
+     * causes a disruption (as much as 6-10 seconds) on LAN side.
+     *
+     * Note that skipping of nm2_ipv6_address_update() might come with
+     * the side effect of not having the correct stateful address lifetime on
+     * the LAN side, with the benefit of not causing a LAN side disruption.
+     * 
+     * Should revisit once a better or complementary solution is in place.
+     */
+    if (mon->mon_type == OVSDB_UPDATE_MODIFY)
+    {
+        if (   new->enable_changed
+            || new->address_status_changed
+            || new->prefix_changed
+            || new->address_changed
+            || new->origin_changed
+            || new->status_changed
+           )
+        {
+            LOG(DEBUG, "ipv6_addr: No need to modify IPv6 address.");
+            return;
+        }
+    }
+
     if (!nm2_ipv6_address_update(ip6, new))
     {
         LOG(ERR, "ipv6_addr: Unable to parse IPv6_Address schema.");
