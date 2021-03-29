@@ -35,6 +35,7 @@
 #include "ovsdb_sync.h"
 #include "ovsdb_table.h"
 #include "schema.h"
+#include "osp_reboot.h"
 
 #include "maptm.h"
 
@@ -175,6 +176,20 @@ bool maptm_get_supportValue(char *value)
     return false;
 }
 
+// Reboot system after switching MAP-T Dual-Stack mode
+bool maptm_system_reboot(const char *reason)
+{
+    bool ret = true;
+
+    ret = osp_unit_reboot(reason, 10000);
+    if (ret != true)
+    {
+        LOGE("Failed to call osp_unit_reboot for: %s", reason);
+    }
+
+    return ret;
+}
+
 // Node_Config callback
 void callback_Node_Config(
         ovsdb_update_monitor_t *mon,
@@ -191,19 +206,12 @@ void callback_Node_Config(
         {
             if (strucWanConfig.mapt_support != maptm_get_supportValue(conf->value))
             {
-                WanConfig = 0;
-                if (maptm_get_supportValue(conf->value))
-                {
-                    WanConfig |= MAPTM_ELIGIBILITY_ENABLE;
-                }
-                strucWanConfig.mapt_support = maptm_get_supportValue(conf->value);
-                maptm_dhcp_option_update_15_option(strucWanConfig.mapt_support);
-                maptm_dhcp_option_update_95_option(strucWanConfig.mapt_support);
-                maptm_eligibilityStart(WanConfig);
                 if (!(maptm_ps_set(MAPT_PS_KEY_NAME, maptm_get_supportValue(conf->value) ? "true" : "false")))
                 {
                     LOGE("Error saving new MAP-T support value");
                 }
+
+                maptm_system_reboot("New support value for MAP-T mode");
             }
         }
     }
@@ -232,31 +240,14 @@ void callback_Node_Config(
 
         if (!strcmp(conf->module, MAPT_MODULE_NAME))
         {
-            strucWanConfig.mapt_support = maptm_get_supportValue(conf->value);
             if (maptm_get_supportValue(conf->value) != maptm_get_supportValue(old_rec->value))
             {
-                maptm_dhcp_option_update_15_option(strucWanConfig.mapt_support);
-                maptm_dhcp_option_update_95_option(strucWanConfig.mapt_support);
-            }
-
-            if ((maptm_get_supportValue(conf->value)) && !maptm_get_supportValue(old_rec->value))
-            {
-                WanConfig |= MAPTM_ELIGIBILITY_ENABLE;
-            }
-            else if (!maptm_get_supportValue(conf->value) && (maptm_get_supportValue(old_rec->value)))
-            {
-                WanConfig &= MAPTM_IPV6_ENABLE;
-            }
-
-            if (maptm_get_supportValue(conf->value) != maptm_get_supportValue(old_rec->value))
-            {
-                // Restart the eligibility state machine
-                maptm_eligibilityStop();
-                maptm_eligibilityStart(WanConfig);
                 if (!(maptm_ps_set(MAPT_PS_KEY_NAME, maptm_get_supportValue(conf->value) ? "true" : "false")))
                 {
                     LOGE("Error saving new MAP-T support value");
                 }
+
+                maptm_system_reboot("Modify support value for MAP-T mode");
             }
         }
     }
@@ -289,8 +280,6 @@ static void callback_Interface(
             {
                 if (!strcmp(record->link_state, "up") && (strucWanConfig.link_up == false))
                 {
-                    // Restart the eligibility state machine
-                    maptm_eligibilityStop();
                     strucWanConfig.link_up = true;
                     maptm_eligibilityStart(WanConfig);
                 }
