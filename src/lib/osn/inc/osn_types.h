@@ -56,9 +56,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 /**
- * @defgroup OSN_COMMON Common API and Types
+ * @defgroup OSN_COMMON Common Networking Types and Utilities
  *
- * Common OpenSync Networking API and types
+ * Common OpenSync networking types and utilities
  *
  * @{
  */

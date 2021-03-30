@@ -33,16 +33,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /**
  * @file osn_routes.h
- *
  * @brief OpenSync Routes Interface Abstraction
  *
  * @addtogroup OSN
  * @{
  *
- * @defgroup OSN_ROUTEV4 ROUTEV4
- *
- * OpenSync API for managing routing configuration
- *
+ * @addtogroup OSN_IPV4
  * @{
  */
 
@@ -58,7 +54,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * OpenSync IPv4 Routing API
  *
  * @note The IPv4 routing API is subject to change and may be merged with the
- * osn_ip_t class in the future.
+ * @ref osn_ip_t class in the future.
  *
  * @{
  */
@@ -68,8 +64,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  * This is an opaque type. The actual structure implementation is hidden
  * and is platform dependent. A new instance of the object can be obtained by
- * calling @ref osn_route_new() and must be destroyed using @ref
- * osn_route_del().
+ * calling @ref osn_route_new() and must be destroyed using
+ * @ref osn_route_del().
  */
 typedef struct osn_route osn_route_t;
 
@@ -81,7 +77,7 @@ typedef struct osn_route4
     osn_ip_addr_t dest; //< destination addr with optional mask prefix
     bool gw_valid;      //< gateway validity flag
     osn_ip_addr_t gw;   //< gateway addr (optional)
-    int metric;         //< route metric or -1 when not specifed
+    int metric;         //< route metric or -1 when not specified
 
 } osn_route4_t;
 
@@ -102,7 +98,7 @@ typedef struct osn_route4
 
 /**
  * Structure passed to the route state notify callback, see @ref
- * osn_route_status_fn_t()
+ * osn_route_status_fn_t
  */
 struct osn_route_status
 {
@@ -210,7 +206,7 @@ typedef struct osn_route4_cfg osn_route4_cfg_t;
  * @brief Creates new IPv4 static route configuration object for
  * specified network interface device
  * 
- * @param if_name natwork interface name
+ * @param if_name network interface name
  * @return handle to created routes config or NULL on failure
  */
 osn_route4_cfg_t *osn_route4_cfg_new(const char *if_name);
@@ -221,7 +217,7 @@ osn_route4_cfg_t *osn_route4_cfg_new(const char *if_name);
  * destroying the manager
  * 
  * @param self handle to route config
- * @return true when manager destoyed w/o problems, false otherwise
+ * @return true when manager destroyed w/o problems, false otherwise
  */
 bool osn_route4_cfg_del(osn_route4_cfg_t *self);
 
@@ -272,6 +268,7 @@ bool osn_route_apply(osn_route4_cfg_t *self);
 bool osn_route_find_dev(osn_ip_addr_t addr, char *buf, size_t bufSize);
 
 /** @} OSN_ROUTEV4 */
+/** @} OSN_IPV4 */
 /** @} OSN */
 
 #endif /* OSN_ROUTES_H_INCLUDED */

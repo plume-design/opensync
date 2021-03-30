@@ -682,7 +682,7 @@ static void callback_Object_Store_Config(ovsdb_update_monitor_t *mon,
 static void oms_state_cb(struct oms_state_entry *entry, int event)
 {
     struct pm_objm_ctx_t d_ctx;
-    struct oms_config_entry c_entry;
+    struct oms_config_entry *c_entry;
     char mqtt_topic[128];
 
     LOG(DEBUG, "objm: (%s) event: %d name: %s version: %s state: %s",
@@ -704,11 +704,12 @@ static void oms_state_cb(struct oms_state_entry *entry, int event)
             }
             else if (strcmp(entry->state, PM_OBJS_LOAD_FAILED) == 0)
             {
+                c_entry = calloc(1, sizeof(struct oms_config_entry));
                 // Remove entry from OMS_Config so final user won't try to process it again
                 LOG(DEBUG, "objm: %s failed to load. Removing from OMS_Config", entry->object);
-                oms_state_to_oms_config(entry, &c_entry);
-                oms_delete_config_entry(&c_entry);
-                oms_free_config_entry(&c_entry);
+                oms_state_to_oms_config(entry, c_entry);
+                oms_delete_config_entry(c_entry);
+                oms_free_config_entry(c_entry);
             }
 
             break;

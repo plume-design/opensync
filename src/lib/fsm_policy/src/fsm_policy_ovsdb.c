@@ -43,6 +43,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fsm.h"
 #include "policy_tags.h"
 #include "fsm_policy.h"
+#include "dns_cache.h"
 
 ovsdb_table_t table_FSM_Policy;
 
@@ -825,6 +826,8 @@ void callback_FSM_Policy(ovsdb_update_monitor_t *mon,
     if (mon->mon_type == OVSDB_UPDATE_MODIFY) {
         fsm_update_policy(spolicy);
     }
+
+    dns_cache_cleanup();
 }
 
 struct policy_table * fsm_policy_find_table(char *name)

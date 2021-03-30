@@ -156,10 +156,12 @@ jencode_user_agent(struct fsm_session *session,
 
 static char *actions[FSM_NUM_ACTIONS] =
 {
-    "none",
-    "blocked",
-    "allowed",
-    "observed"
+    "none",        /* FSM_ACTION_NONE */
+    "blocked",     /* FSM_BLOCK */
+    "allowed",     /* FSM_ALLOW */
+    "observed",    /* FSM_OBSERVED */
+    "not matched", /* FSM_NO_MATCH */
+    "blocked",     /* FSM_REDIRECT */
 };
 
 static char *cache_lookup_failure = "cacheLookupFailed";

@@ -807,6 +807,7 @@ int nf_ct_set_flow_mark(struct net_header_parser *net_pkt, uint32_t mark, uint16
 int nf_ct_init(struct ev_loop *loop)
 {
     struct mnl_socket *nl = NULL;
+
     nl = mnl_socket_open(NETLINK_NETFILTER);
     if (nl == NULL)
     {
@@ -818,6 +819,7 @@ int nf_ct_init(struct ev_loop *loop)
         LOGE("%s: mnl_socket_bind", __func__);
         return -1;
     }
+
     nf_ct.mnl = nl;
     nf_ct.loop = loop;
     nf_ct.fd = mnl_socket_get_fd(nl);

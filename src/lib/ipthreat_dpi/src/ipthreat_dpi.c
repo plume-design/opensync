@@ -378,15 +378,18 @@ populate_gk_dns_cache_entry(struct ip2action_gk_info *i2a_cache_gk,
     }
 }
 
+
 static int
 ipthreat_dpi_policy_req(struct ipthreat_dpi_req *ip_req)
 {
     struct fsm_policy_req           policy_req;
     struct ip2action_req            cache_req;
+    struct ip2action_req            lkp_req;
     struct fsm_session              *session;
     struct fqdn_pending_req         fqdn_req;
     struct net_md_stats_accumulator *acc;
     struct net_md_flow_key          *key;
+    bool cache;
     size_t index;
     int  action;
     int  ttl;
@@ -398,6 +401,7 @@ ipthreat_dpi_policy_req(struct ipthreat_dpi_req *ip_req)
 
     memset(&fqdn_req, 0, sizeof(fqdn_req));
     memset(&policy_req, 0, sizeof(policy_req));
+    memset(&cache_req, 0, sizeof(cache_req));
 
     if (session->service)
         fqdn_req.provider = session->service->name;
@@ -465,11 +469,32 @@ ipthreat_dpi_policy_req(struct ipthreat_dpi_req *ip_req)
                IPTHREAT_DEFAULT_TTL);
     }
 
+    fqdn_req.to_report = true;
+
+    memset(&lkp_req, 0, sizeof(lkp_req));
+    lkp_req.device_mac = ip_req->dev_id;
+    lkp_req.ip_addr = ip_req->ip;
+    rc = dns_cache_ip2action_lookup(&lkp_req);
+    if (rc)
+    {
+        if (lkp_req.action != policy_req.reply.action)
+        {
+            policy_req.reply.action = lkp_req.action;
+            policy_req.fqdn_req->policy_idx = lkp_req.policy_idx;
+            fqdn_req.to_report = false;
+        }
+
+        if (lkp_req.service_id == IP2ACTION_GK_SVC) free(lkp_req.cache_gk.gk_policy);
+    }
+
     action = (policy_req.reply.action == FSM_BLOCK ?
               FSM_DPI_DROP : FSM_DPI_PASSTHRU);
 
     /* Add cache if entry not found */
-    if (!policy_req.fqdn_req->from_cache && fqdn_req.req_info->reply)
+    cache = (!policy_req.fqdn_req->from_cache && (fqdn_req.req_info->reply != NULL) &&
+             (fqdn_req.categorized == FSM_FQDN_CAT_SUCCESS));
+
+    if (cache)
     {
         cache_req.device_mac = ip_req->dev_id;
         cache_req.ip_addr = ip_req->ip;
@@ -512,7 +537,6 @@ ipthreat_dpi_policy_req(struct ipthreat_dpi_req *ip_req)
         }
     }
 
-    fqdn_req.to_report = true;
     /* Process reporting */
     if (policy_req.reply.log == FSM_REPORT_NONE)
     {

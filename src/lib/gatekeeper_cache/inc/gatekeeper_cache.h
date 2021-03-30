@@ -33,10 +33,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
-#include "ds_tree.h"
-#include "os.h"
 #include "os_types.h"
 #include "fsm_policy.h"
+#include "ds_tree.h"
+#include "util.h"
+#include "os.h"
 
 #define GK_MAX_CACHE_ENTRIES 100000
 #define GK_DEFAULT_TTL 300
@@ -78,6 +79,31 @@ enum gkc_flow_direction
 };
 
 /**
+ * @brief structure to store parameters
+ * required for checking and deleting
+ * entries with expired TTL values.
+ */
+struct gkc_del_info_s
+{
+    enum gk_cache_request_type attr_type;
+    struct per_device_cache *pdevice;
+    uint64_t attr_del_count;
+    uint64_t flow_del_count;
+    ds_tree_t *tree;
+};
+
+/**
+ * @brief structure to store fqdn
+ * redirect entries
+ */
+struct fqdn_redirect_s
+{
+    char redirect_ips[2][256];
+    int redirect_ttl;
+    bool redirect;
+};
+
+/**
  * @brief struct for storing attribute
  *
  */
@@ -92,6 +118,7 @@ struct attr_cache
     uint32_t confidence_level; /* risk/confidence level */
     uint64_t hit_count;        /* number of times lookup is performed */
     int categorized;           /* categorized */
+    struct fqdn_redirect_s *fqdn_redirect;
     ds_tree_node_t attr_tnode;
 };
 
@@ -181,6 +208,7 @@ struct gk_attr_cache_interface
     uint32_t category_id;      /* category plume id */
     uint32_t confidence_level; /* risk/confidence level */
     uint64_t hit_counter; /* hit count will be set when lookup is performed */
+    struct fqdn_redirect_s *fqdn_redirect;
     int categorized;
 };
 
@@ -445,14 +473,10 @@ gkc_is_input_valid(struct gkc_ip_flow_interface *req);
  * @brief delete the given flow from the flow
  *        tree if TTL is expired
  *
- * @params: tree attribute tree pointer
- * @params: pdevice per device pointer
- * @params: attr_type attribute type to check
+ * @params: gk_del_info cache delete info structure
  */
 void
-gkc_cleanup_ttl_flow_tree(ds_tree_t *flow_tree,
-                          struct per_device_cache *pdevice,
-                          enum gk_cache_request_type attr_type);
+gkc_cleanup_ttl_flow_tree(struct gkc_del_info_s *gk_del_info);
 
 unsigned long
 gk_get_cache_count(void);

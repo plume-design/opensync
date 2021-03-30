@@ -36,12 +36,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb_sync.h"
 #include "ovsdb_table.h"
 #include "ovsdb_update.h"
-#include "schema.h"
+#include "wc_telemetry.h"
 #include "gatekeeper.h"
 #include "ds_tree.h"
+#include "memutil.h"
+#include "schema.h"
 #include "const.h"
 #include "log.h"
-#include "wc_telemetry.h"
 
 static ovsdb_table_t table_SSL;
 
@@ -100,8 +101,13 @@ gatekeeper_log_health_stats(struct fsm_gk_session *fsm_gk_session,
          hs->avg_latency);
 }
 
-
-static void
+/**
+ * @brief computes health stats for gatekeeper
+ *
+ * @param fsm_gk_session pointer to gatekeeper session
+ * @param hs pointer to health stats
+ */
+void
 gatekeeper_report_compute_health_stats(struct fsm_gk_session *fsm_gk_session,
                                        struct wc_health_stats *hs)
 {
@@ -127,6 +133,7 @@ gatekeeper_report_compute_health_stats(struct fsm_gk_session *fsm_gk_session,
 
     /* Compute service_failures */
     count = (uint32_t)(stats->categorization_failures);
+    hs->service_failures = count;
 
     /* Compute uncategorized requests */
     count = (uint32_t)(stats->uncategorized);
@@ -154,10 +161,12 @@ gatekeeper_report_compute_health_stats(struct fsm_gk_session *fsm_gk_session,
     }
 
     /* Compute cached entries */
+    stats->cache_entries = gk_get_cache_count();
     count = (uint32_t)(stats->cache_entries);
     hs->cached_entries = count;
 
     /* Compute cache size */
+    stats->cache_size = GK_MAX_CACHE_ENTRIES;
     count = (uint32_t)(stats->cache_size);
     hs->cache_size = count;
 }
@@ -244,6 +253,27 @@ free_gk_verdict(struct fsm_gk_verdict *gk_verdict)
     free(gk_verdict);
 }
 
+void
+gk_update_redirect_from_cache(struct fsm_policy_req *req,
+                              struct gk_attr_cache_interface *entry)
+{
+    struct fqdn_pending_req *fqdn_req;
+
+    fqdn_req = req->fqdn_req;
+
+    /* update redirect entries only for attr type FQDN */
+    if (entry->attribute_type != GK_CACHE_REQ_TYPE_FQDN) return;
+
+    /* return if fqdn_redirect is not set */
+    if (entry->fqdn_redirect == NULL) return;
+
+    req->reply.redirect = entry->fqdn_redirect->redirect;
+    req->reply.rd_ttl   = entry->fqdn_redirect->redirect_ttl;
+
+    STRSCPY(fqdn_req->redirects[0], entry->fqdn_redirect->redirect_ips[0]);
+    STRSCPY(fqdn_req->redirects[1], entry->fqdn_redirect->redirect_ips[1]);
+}
+
 /**
  * @brief checks if the policy is present in attribute cache.
  *
@@ -263,17 +293,31 @@ gatekeeper_check_attr_cache(struct fsm_policy_req *req, int req_type)
     req_info = fqdn_req->req_info;
     url_reply = req_info->reply;
 
-    entry = calloc(sizeof(struct gk_attr_cache_interface), 1);
+    entry = CALLOC(1, sizeof(struct gk_attr_cache_interface));
     if (entry == NULL) return false;
+
+    entry->fqdn_redirect = CALLOC(1, sizeof(struct fqdn_redirect_s));
+    if (entry->fqdn_redirect == NULL)
+    {
+        free(entry);
+        return false;
+    }
 
     entry->device_mac = req->device_id;
     entry->attribute_type = req_type;
     entry->attr_name = strdup(req->url);
     ret = gkc_lookup_attribute_entry(entry, true);
-    LOGN("%s(): %s is %s in cache", __func__, req->url, ret ? "found" : "not found");
+    LOGN("%s(): %s of type %d, is %s in cache",
+         __func__,
+         req->url,
+         req_type,
+         ret ? "found" : "not found");
     if (ret)
     {
         req->reply.action = entry->action;
+
+        gk_update_redirect_from_cache(req, entry);
+
         fqdn_req->categorized = entry->categorized;
         url_reply->reply_info.gk_info.category_id = entry->category_id;
         url_reply->reply_info.gk_info.confidence_level = entry->confidence_level;
@@ -285,9 +329,10 @@ gatekeeper_check_attr_cache(struct fsm_policy_req *req, int req_type)
         req->fqdn_req->from_cache = true;
     }
 
-    free(entry->attr_name);
-    free(entry->gk_policy);
-    free(entry);
+    FREE(entry->attr_name);
+    FREE(entry->gk_policy);
+    FREE(entry->fqdn_redirect);
+    FREE(entry);
     return ret;
 }
 
@@ -368,6 +413,41 @@ gk_check_policy_in_cache(struct fsm_policy_req *req)
 }
 
 /**
+ * @brief Populates redirect entries for fqdn attribute cache.
+ *
+ * @param req: the request being processed
+ * @param entry: cache entry to be updated
+ * @return true if the success false otherwise
+ */
+static void
+gk_populate_redirect_entry(struct gk_attr_cache_interface *entry,
+                           struct fsm_policy_req *req)
+{
+    struct fqdn_redirect_s *redirect_entry;
+    struct fqdn_pending_req *fqdn_req;
+
+    if (req->reply.redirect == false) return;
+
+    entry->fqdn_redirect = CALLOC(1, sizeof(*redirect_entry));
+    if (entry->fqdn_redirect == NULL) return;
+    redirect_entry = entry->fqdn_redirect;
+
+    fqdn_req       = req->fqdn_req;
+
+    redirect_entry->redirect     = req->reply.redirect;
+    redirect_entry->redirect_ttl = req->reply.rd_ttl;
+    STRSCPY(redirect_entry->redirect_ips[0], fqdn_req->redirects[0]);
+    STRSCPY(redirect_entry->redirect_ips[1], fqdn_req->redirects[1]);
+
+    LOGN(
+        "%s(): populated redirect entries for gk cache, redirect flag %d, IPv4 %s, IPv6 %s",
+        __func__,
+        redirect_entry->redirect,
+        redirect_entry->redirect_ips[0],
+        redirect_entry->redirect_ips[1]);
+}
+
+/**
  * @brief Populates the entries and adds to attribute cache.
  *
  * @param req: the request being processed
@@ -407,6 +487,10 @@ gatekeeper_add_attr_cache(struct fsm_policy_req *req, int req_type)
     {
         entry->gk_policy = url_reply->reply_info.gk_info.gk_policy;
     }
+
+    /* check if fqdn redirect entries needs to be added. */
+    if (req_type == GK_CACHE_REQ_TYPE_FQDN) gk_populate_redirect_entry(entry, req);
+
     ret = gkc_add_attribute_entry(entry);
     LOGN("%s(): adding %s (attr type %d) to cache %s ",
          __func__,
@@ -414,8 +498,9 @@ gatekeeper_add_attr_cache(struct fsm_policy_req *req, int req_type)
          req_type,
          (ret == true) ? "success" : "failed");
 
-    free(entry->attr_name);
-    free(entry);
+    FREE(entry->fqdn_redirect);
+    FREE(entry->attr_name);
+    FREE(entry);
     return ret;
 }
 
@@ -525,7 +610,7 @@ gk_add_policy_to_cache(struct fsm_policy_req *req)
  * @param start the clock_t value before the categorization API call
  * @param end the clock_t value before the categorization API call
  */
-static void
+static long
 fsm_gk_update_latencies(struct fsm_gk_session *gk_session,
                         struct timespec *start, struct timespec *end)
 {
@@ -556,6 +641,8 @@ fsm_gk_update_latencies(struct fsm_gk_session *gk_session,
     {
         stats->max_lookup_latency = latency;
     }
+
+    return latency;
 }
 
 /**
@@ -573,6 +660,7 @@ gatekeeper_get_verdict(struct fsm_session *session,
 {
     struct fsm_gk_session *fsm_gk_session;
     struct gk_curl_easy_info *ecurl_info;
+    struct gatekeeper_offline *offline;
     struct fsm_policy_req *policy_req;
     struct fqdn_pending_req *fqdn_req;
     struct fsm_gk_verdict *gk_verdict;
@@ -581,7 +669,10 @@ gatekeeper_get_verdict(struct fsm_session *session,
     struct fsm_url_stats *stats;
     struct timespec start;
     struct timespec end;
-    bool ret = false;
+    long lookup_latency;
+    bool ret = true;
+    bool incache;
+    int gk_response;
 
     fqdn_req = req->fqdn_req;
     req_info = fqdn_req->req_info;
@@ -597,13 +688,28 @@ gatekeeper_get_verdict(struct fsm_session *session,
     if (fsm_gk_session ==  NULL) return false;
 
     stats = &fsm_gk_session->health_stats;
+    offline = &fsm_gk_session->gk_offline;
 
-    ret = gk_check_policy_in_cache(req);
-    if (ret == true)
+    incache = gk_check_policy_in_cache(req);
+    if (incache == true)
     {
         stats->cache_hits++;
-        LOGN("%s found in cache, return action %d from cache", req->url, req->reply.action);
+        LOGN("%s found in cache, returning action %d, redirect flag %d from cache",
+             req->url,
+             req->reply.action,
+             req->reply.redirect);
         return true;
+    }
+
+    if (offline->provider_offline)
+    {
+        time_t now = time(NULL);
+        bool backoff;
+
+        backoff = ((now - offline->offline_ts) < offline->check_offline);
+
+        if (backoff) return false;
+        offline->provider_offline = false;
     }
 
     ecurl_info = &fsm_gk_session->ecurl;
@@ -634,17 +740,27 @@ gatekeeper_get_verdict(struct fsm_session *session,
     memset(&end, 0, sizeof(end));
 
     clock_gettime(CLOCK_REALTIME, &start);
-    ret = gk_send_request(session, fsm_gk_session, gk_verdict);
-    if (ret == false)
+    gk_response = gk_send_request(session, fsm_gk_session, gk_verdict);
+    if (gk_response != GK_LOOKUP_SUCCESS)
     {
         fqdn_req->categorized = FSM_FQDN_CAT_FAILED;
+        /* if connection error, start the backoff timer */
+        if (gk_response == GK_CONNECTION_ERROR)
+        {
+            offline->provider_offline = true;
+            offline->offline_ts = time(NULL);
+            offline->connection_failures++;
+        }
+
         LOGN("%s() curl error not updating cache", __func__);
+        ret = false;
         goto error;
     }
     clock_gettime(CLOCK_REALTIME, &end);
 
     /* update stats for processing the request */
-    fsm_gk_update_latencies(fsm_gk_session, &start, &end);
+    lookup_latency = fsm_gk_update_latencies(fsm_gk_session, &start, &end);
+    LOGN("%s(): cloud lookup latency for '%s' is %ld ms", __func__, req->url, lookup_latency);
 #endif
 
     gk_add_policy_to_cache(req);

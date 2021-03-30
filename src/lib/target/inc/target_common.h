@@ -53,7 +53,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /**
  * @brief Used to report chirping in @ref
- * target_radio_ops.op_dpp_announcement
+ * target_radio_ops.op_dpp_announcement()
  */
 struct target_dpp_chirp_obj {
     const char *ifname;
@@ -63,17 +63,16 @@ struct target_dpp_chirp_obj {
 
 /**
  * @brief Used to report configuration completion in @ref
- * target_radio_ops.op_dpp_conf_enrollee
+ * target_radio_ops.op_dpp_conf_enrollee()
  */
 struct target_dpp_conf_enrollee {
     const char *ifname;
     const char *sta_mac_addr;
-    const char *sta_netaccesskey_sha256_hex; /**< public key hash */
+    const char *sta_netaccesskey_sha256_hex;  /**< public key hash */
 };
 
 /**
- * @brief Possible AKMs that can be reported in @ref
- * target_radio_ops.target_dpp_conf_network
+ * @brief Possible AKMs that can be reported in @ref target_dpp_conf_network
  */
 enum target_dpp_conf_akm {
     TARGET_DPP_CONF_UNKNOWN,
@@ -87,9 +86,9 @@ enum target_dpp_conf_akm {
 
 /**
  * @brief Used to report configuration completion in @ref
- * target_radio_ops.op_dpp_conf_network
+ * target_radio_ops.op_dpp_conf_network()
  *
- * Depending on the @ref target_dpp_conf_network.akm value other
+ * Depending on the @ref target_dpp_conf_network.akm value, other
  * fields are expected to be set accordingly.
  *
  * Whenever a PSK or SAE AKM is listed, then the following fields must
@@ -110,7 +109,7 @@ struct target_dpp_conf_network {
     const char *ssid_hex;
     const char *psk_hex;
     const char *pmk_hex;
-    const char *dpp_netaccesskey_hex; /**< private key part */
+    const char *dpp_netaccesskey_hex;  /**< private key part */
     const char *dpp_connector;
     const char *dpp_csign_hex;
 };
@@ -134,7 +133,7 @@ enum target_dpp_key_type {
 #define TARGET_DPP_KEY_LEN 512
 
 /**
- * @brief Used for extender onboarding, see @ref target_dpp_key_get
+ * @brief Used for extender onboarding, see @ref target_dpp_key_get()
  */
 struct target_dpp_key {
     enum target_dpp_key_type type;
@@ -184,23 +183,23 @@ struct target_radio_ops {
     void (*op_dpp_announcement)(const struct target_dpp_chirp_obj *c);
 
     /** target shall call this whenever DPP Enrollee is given out a
-     *  DPP Configuration. This marks completion of prior
-     *  @ref target_dpp_config_set call.
-     *  This shall not be called from within @ref target_dpp_config_set itself.
+     *  DPP Configuration. This marks completion of a prior
+     *  @ref target_dpp_config_set() call.
+     *  This shall not be called from within @ref target_dpp_config_set() itself.
      */
     void (*op_dpp_conf_enrollee)(const struct target_dpp_conf_enrollee *c);
 
     /** target shall call this whenever DPP Configurator gives us out
-     *  a configuration. This marks completion of prior
-     *  @ref target_dpp_config_set call.
-     *  This shall not be called from within @ref target_dpp_config_set itself.
+     *  a configuration. This marks completion of a prior
+     *  @ref target_dpp_config_set() call.
+     *  This shall not be called from within @ref target_dpp_config_set() itself.
      */
     void (*op_dpp_conf_network)(const struct target_dpp_conf_network *c);
 
     /** target shall call this whenever DPP Configurator failed at any
      *  stage (internal timeout, rejection, empty conf object, etc).
-     *  This marks completion of prior @ref target_dpp_config_set call.
-     *  This shall not be called from within @ref target_dpp_config_set itself.
+     *  This marks completion of a prior @ref target_dpp_config_set() call.
+     *  This shall not be called from within @ref target_dpp_config_set() itself.
      */
     void (*op_dpp_conf_failed)(void);
 };
@@ -297,7 +296,7 @@ bool target_radio_state_get(char *ifname, struct schema_Wifi_Radio_State *rstate
  *
  * If vconf.wpa_key_mgmt contains "dpp" then the interface shall capture DPP
  * Announcements (chirping) and report it through @ref
- * target_radio_ops.op_dpp_announcement.
+ * target_radio_ops.op_dpp_announcement().
  *
  * @param vconf complete desired vif config
  * @param rconf complete desired radio config
@@ -332,7 +331,7 @@ bool target_vif_state_get(char *ifname, struct schema_Wifi_VIF_State *vstate);
 
 /// @} LIB_TARGET_VIF
 
-/// @defgroup LIB_TARGET_DPP Related APIs
+/// @defgroup LIB_TARGET_DPP DPP API
 /// Definitions and API related to Device Provisioning Protocol.
 /// @{
 
@@ -350,30 +349,29 @@ bool target_dpp_supported(void);
 /**
  * @brief Start or stop DPP related actions
  *
- * When @config is NULL:
+ * When @p config is NULL:
  *  - any ongoing chirping, listening or authentication must be stopped
  *  - if any sta interfaces are present, they must resume roaming
  *  - any configurators, bootstraps shall be flushed
- *  - dpp announcements shall still be reported via @ref
- *    target_radio_ops.op_dpp_announcement as per @ref
- *    target_vif_config_set2 configuration
+ *  - DPP announcements shall still be reported via @ref
+ *    target_radio_ops.op_dpp_announcement() as per @ref
+ *    target_vif_config_set2() configuration
  *
- * When @config is not NULL:
+ * When @p config is not NULL:
  *  - if any other DPP was already programmed in target, it must be
  *    stopped and flushed
- *  - depending on @config.auth value the target shall start chirping,
+ *  - depending on @p config.auth value, the target shall start chirping,
  *    listening, initiate auth, or wait for chirping
  *  - if ifnames[] are station interfaces, then roaming on these
  *    interfaces must be stopped if config.auth is demanding chirping
  *    or listening
  *
  * Upon completion one of the @ref target_radio_ops must be called:
- *  - @ref target_radio_ops.op_dpp_conf_enrollee: when acting as Configurator
- *  - @ref target_radio_ops.op_dpp_conf_network: when acting as Enrollee
- *  - @ref target_radio_ops.op_dpp_conf_failed: either Enrollee or Configurator
+ *  - @ref target_radio_ops.op_dpp_conf_enrollee(): when acting as Configurator
+ *  - @ref target_radio_ops.op_dpp_conf_network(): when acting as Enrollee
+ *  - @ref target_radio_ops.op_dpp_conf_failed(): either Enrollee or Configurator
  *
  * The following fields need to be respected by the target implementation:
- * Fields description:
  *  - configurator_key_hex
  *  - configurator_key_curve
  *  - configurator_conf_role
@@ -390,8 +388,8 @@ bool target_dpp_supported(void);
  * The following fields need to be ignored by the target implementation. These
  * fields are used to expose given DPP_Config's results back to the cloud and
  * are managed by opensync core. These are essentially provided back explicitly
- * via @ref target_radio_ops.op_dpp_conf_enrollee or @ref
- * target_radio_ops.op_dpp_conf_network:
+ * via @ref target_radio_ops.op_dpp_conf_enrollee() or @ref
+ * target_radio_ops.op_dpp_conf_network():
  *  - sta_mac_addr
  *  - sta_netaccesskey_hex
  *  - akm
@@ -869,6 +867,11 @@ typedef bool target_mac_learning_cb_t(
 bool target_mac_learning_register(target_mac_learning_cb_t *omac_cb);
 
 /// @} LIB_TARGET_MAC_LEARNING
+
+/// @defgroup LIB_TARGET_MCPROXY Multicast Proxy API
+/// Definitions and API related to Multicast Proxy.
+/// @{
+
 /******************************************************************************
  *  IGMP/MLD Proxy definitions
  *****************************************************************************/
@@ -967,6 +970,8 @@ bool target_set_mcast_uplink(const char *ifname, bool enable, bool is_wan, const
  * @return true on success
  */
 bool target_set_igmp_snooping(const char *ifname, bool enable);
+
+/// @} LIB_TARGET_MCPROXY
 
 /******************************************************************************
  *  PLATFORM SPECIFIC definitions

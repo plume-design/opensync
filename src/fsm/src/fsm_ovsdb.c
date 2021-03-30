@@ -60,6 +60,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fsm_dpi_utils.h"
 #include "policy_tags.h"
 #include "gatekeeper_cache.h"
+#include "dns_cache.h"
 
 #define MODULE_ID LOG_MODULE_ID_OVSDB
 
@@ -1281,6 +1282,7 @@ fsm_get_node_config(struct schema_Node_Config *node_cfg)
     if (rc == 0)
     {
         clear_gatekeeper_cache();
+        dns_cache_cleanup();
         return;
     }
 

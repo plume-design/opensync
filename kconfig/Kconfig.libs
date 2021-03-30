@@ -5,6 +5,7 @@ source "src/lib/gatekeeper_msg/kconfig/Kconfig.libs"
 source "src/lib/inet/kconfig/Kconfig.libs"
 source "src/lib/log/kconfig/Kconfig.libs"
 source "src/lib/gatekeeper_cache/kconfig/Kconfig.libs"
+source "src/lib/gatekeeper_plugin/kconfig/Kconfig.libs"
 
 osource "platform/*/kconfig/Kconfig.libs"
 osource "vendor/*/kconfig/Kconfig.libs"

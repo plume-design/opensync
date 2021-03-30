@@ -370,14 +370,13 @@ bool
 dns_cache_set_gk_cache_entry(struct ip2action_gk_info *i2a_cache_gk,
                              struct ip2action_gk_info *to_add_cache_gk)
 {
-    if (!to_add_cache_gk->confidence_level) return false;
     i2a_cache_gk->confidence_level = to_add_cache_gk->confidence_level;
-
-    if (!to_add_cache_gk->category_id) return false;
     i2a_cache_gk->category_id = to_add_cache_gk->category_id;
 
-    if (!to_add_cache_gk->gk_policy) return false;
-    i2a_cache_gk->gk_policy = strdup(to_add_cache_gk->gk_policy);
+    if (to_add_cache_gk->gk_policy)
+    {
+        i2a_cache_gk->gk_policy = strdup(to_add_cache_gk->gk_policy);
+    }
 
     return true;
 }

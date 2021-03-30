@@ -91,6 +91,15 @@ if MANAGER_PM
                     issue a software reboot.
                     This option prevents some flukes in the temperature readings.
 
+            config PM_TM_DISABLE_NODE_CONFIG_OVERRIDE
+                bool "Disable override of thermal states table values via Node_Config"
+                default n
+                help
+                    Thermal states table(which is usually compiled into the Platform
+                    Manager) can be overriden by writing the fields into Node_Config
+                    OVSDB table. This option disables the ability to override the
+                    default configuration values.
+
         endif
 
 

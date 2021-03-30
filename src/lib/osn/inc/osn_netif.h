@@ -33,10 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /**
  * @file osn_netif.h
- *
  * @brief Network Interface L2 Abstraction
- *
- * This API provides management of L2 Ethernet-like interfaces.
  *
  * @addtogroup OSN
  * @{
@@ -44,6 +41,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * @defgroup OSN_L2 L2 Interface
  *
  * OpenSync L2 Interface Management API
+ *
+ * This API provides management of L2 Ethernet-like interfaces.
  *
  * @{
  */
@@ -74,7 +73,7 @@ typedef struct osn_netif osn_netif_t;
 /**
  * Network interface status structure. A structure of this type is used when
  * reporting the status of the network interface. See @ref
- * osn_netif_status_fn_t() and @ref osn_netif_status_notify() for more details.
+ * osn_netif_status_fn_t and @ref osn_netif_status_notify() for more details.
  *
  * @note
  * If the @ref ns_exists field is false, all subsequent fields should be

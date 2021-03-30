@@ -122,8 +122,6 @@ void callback_IPv6_Address(
      * Note that skipping of nm2_ipv6_address_update() might come with
      * the side effect of not having the correct stateful address lifetime on
      * the LAN side, with the benefit of not causing a LAN side disruption.
-     * 
-     * Should revisit once a better or complementary solution is in place.
      */
     if (mon->mon_type == OVSDB_UPDATE_MODIFY)
     {

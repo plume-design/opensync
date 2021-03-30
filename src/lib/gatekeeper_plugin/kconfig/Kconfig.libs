@@ -1,0 +1,7 @@
+menu "libgatekeeper_plugin Configuration"
+    config GATEKEEPER_ENDPOINT
+        bool "endpoints support based on attribute type"
+        default n
+        help
+            Enable support to enable URL endpoints based on attribute type
+endmenu

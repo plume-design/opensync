@@ -57,6 +57,7 @@ gatekeeper_allocate_req_header(struct gk_request_data *req_data)
 
     header->dev_id = req->device_id;
     header->location_id = session->location_id;
+    header->node_id = session->node_id;
 
     if (req->policy != NULL)
     {

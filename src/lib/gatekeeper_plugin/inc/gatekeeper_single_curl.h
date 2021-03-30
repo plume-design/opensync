@@ -60,11 +60,19 @@ gk_curl_easy_cleanup(struct fsm_gk_session *fsm_gk_session);
  *
  * @param gk_verdict structure containing gatekeeper server
  *        information, proto buffer and fsm_policy_req
- * @return true on success, false on failure
+ * @return gatekeeper response code.
  */
-bool
+int
 gk_send_request(struct fsm_session *session,
                 struct fsm_gk_session *fsm_gk_session,
                 struct fsm_gk_verdict *gk_verdict);
+
+/**
+ * @brief returns the attribute string value based on the request type.
+ *
+ * @param req_type attribute request type.
+ */
+const char *
+gk_request_str(int req_type);
 
 #endif /* GK_SINGLE_CURL_H_INCLUDED */

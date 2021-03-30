@@ -46,11 +46,14 @@ gen_fsmc_brightcloud_cmd() {
                "other_config":
                         ["map",[
                         ["bc_dbserver","${provider_server}"],
+                        ["mqtt_v","${mqtt_v}"],
                         ["bc_device","${device}"],
                         ["bc_oem","${oem}"],
                         ["bc_server","${provider_server}"],
                         ["bc_uid","${uid}"],
-                        ["dso_init","brightcloud_plugin_init"]
+                        ["dso_init","brightcloud_plugin_init"],
+                        ["wc_health_stats_topic","${mqtt_hs}"],
+                        ["wc_health_stats_interval_secs","10"]
                         ]]
          }
     }
@@ -73,7 +76,10 @@ gen_fsmc_webpulse_cmd() {
                "plugin": "/usr/plume/lib/libfsm_webpulse.so",
                "other_config":
                         ["map",[
-                        ["dso_init","webpulse_plugin_init"]
+                        ["dso_init","webpulse_plugin_init"],
+                        ["mqtt_v","${mqtt_v}"],
+                        ["wc_health_stats_topic","${mqtt_hs}"],
+                        ["wc_health_stats_interval_secs","10"]
                         ]]
         }
     }
@@ -99,6 +105,22 @@ check_credentials() {
     check_credential "uid" ${uid}
 }
 
+# get pod's location ID
+get_location_id() {
+    ovsh s AWLAN_Node mqtt_headers | \
+        awk -F'"' '{for (i=1;i<NF;i++) {if ($(i)=="locationId"){print $(i+2)}}}'
+}
+
+# get pod's node ID
+get_node_id() {
+    ovsh s AWLAN_Node mqtt_headers | \
+        awk -F'"' '{for (i=1;i<NF;i++) {if ($(i)=="nodeId"){print $(i+2)}}}'
+}
+
+location_id=$(get_location_id)
+node_id=$(get_node_id)
+mqtt_v="dev-test/DNS/Queries/futs/${node_id}/${location_id}"
+mqtt_hs="dev-test/WC/Stats/Health/futs/${node_id}/${location_id}"
 
 # h for help, long options otherwise
 optspec="h-:"

@@ -550,7 +550,6 @@ static bool fsm_ip_check(struct fsm_policy_req *req,
  */
 static void set_action(struct fsm_policy_req *req, struct fsm_policy *p)
 {
-    if (req->fqdn_req->from_cache) return;
     if (p->action == FSM_GATEKEEPER_REQ) return;
 
     if (p->action == FSM_ACTION_NONE)
@@ -758,6 +757,65 @@ void populate_gk_cache_entry(struct fsm_gk_info *fqdn_reply_gk,
     }
 }
 
+bool risk_level_compare(struct fsm_url_reply *reply,
+                        struct fsm_policy *policy)
+{
+    const char *risk_op = "<unknown>";
+    int risk_level = -1;
+    bool result;
+
+    if (reply->service_id == IP2ACTION_WP_SVC)
+    {
+        risk_level = reply->wb.risk_level;
+    }
+    else if (reply->service_id == IP2ACTION_BC_SVC)
+    {
+        risk_level = reply->bc.reputation;
+    }
+    else if (reply->service_id == IP2ACTION_GK_SVC)
+    {
+        risk_level = reply->gk.confidence_level;
+    }
+
+    switch (policy->rules.risk_op)
+    {
+        case RISK_OP_EQ:
+            risk_op = "=";
+            result = (risk_level == policy->rules.risk_level);
+            break;
+        case RISK_OP_GT:
+            risk_op = ">";
+            result = (risk_level > policy->rules.risk_level);
+            break;
+        case RISK_OP_GTE:
+            risk_op = ">=";
+            result = (risk_level >= policy->rules.risk_level);
+            break;
+        case RISK_OP_LT:
+            risk_op = "<";
+            result = (risk_level < policy->rules.risk_level);
+            break;
+        case RISK_OP_LTE:
+            risk_op = "<=";
+            result = (risk_level <= policy->rules.risk_level);
+            break;
+        case RISK_OP_NEQ:
+            risk_op = "!=";
+            result = (risk_level != policy->rules.risk_level);
+            break;
+        default:
+            LOGI("%s: Invalid risk operation %d", __func__,
+                 policy->rules.risk_op);
+            result = false;
+            break;
+    }
+
+    LOGD("%s: risk %d %s policy risk %d", __func__,
+         risk_level, risk_op, policy->rules.risk_level);
+
+    return result;
+}
+
 
 /**
  * @brief Look up for dns cache entry
@@ -792,8 +850,6 @@ bool fsm_dns_cache_lookup(struct fsm_policy_req *req)
     if (!rc) return false;
 
     req->fqdn_req->from_cache = true;
-    req->reply.action = lkp_req.action;
-    req->fqdn_req->policy_idx = lkp_req.policy_idx;
 
     reply = req->fqdn_req->req_info->reply;
     reply = calloc(1, sizeof(struct fsm_url_reply));
@@ -844,7 +900,6 @@ bool fsm_cat_check(struct fsm_session *session,
     bool rc;
 
     rc = fsm_dns_cache_lookup(req);
-    if (rc) return true;
 
     /* If no categorization request, return success */
     rules = &policy->rules;
@@ -898,10 +953,9 @@ bool fsm_risk_level_check(struct fsm_session *session,
                           struct fsm_policy *policy)
 {
     struct fsm_policy_rules *rules;
+    struct fsm_url_reply *reply;
     bool rc;
 
-    rc = fsm_dns_cache_lookup(req);
-    if (rc) return true;
 
     /* If no risk level request, return success */
     rules = &policy->rules;
@@ -912,6 +966,14 @@ bool fsm_risk_level_check(struct fsm_session *session,
      * Return failure.
      */
     if (req->fqdn_req->risk_level_check == NULL) return false;
+
+    rc = fsm_dns_cache_lookup(req);
+    if (rc)
+    {
+        reply = req->fqdn_req->req_info->reply;
+        rc = risk_level_compare(reply, policy);
+        return rc;
+    }
 
     /* Apply the risk rules */
     rc = req->fqdn_req->risk_level_check(session, req, policy);
@@ -928,8 +990,6 @@ bool fsm_gatekeeper_check(struct fsm_session *session,
 
     if (p->action != FSM_GATEKEEPER_REQ) return true;
 
-    rc = fsm_dns_cache_lookup(req);
-    if (rc) return true;
 
     /*
      * The policy requires gatekeeper checking, no gatekeeper provider.
@@ -960,6 +1020,7 @@ void fsm_apply_policies(struct fsm_session *session,
     struct policy_table *table;
     struct fsm_policy *p;
     int req_type;
+    bool report;
 
     int i;
     bool rc, matched = false;
@@ -976,6 +1037,7 @@ void fsm_apply_policies(struct fsm_session *session,
     LOGT("%s(): request type %d", __func__, req_type);
 
     last_match_policy = NULL;
+    req->report = false;
 
     for (i = 0; i < FSM_MAX_POLICIES; i++)
     {
@@ -1010,6 +1072,22 @@ void fsm_apply_policies(struct fsm_session *session,
          */
         matched = true;
         last_match_policy = p;
+
+        /* Explicit check for reporting is required for
+         * gatekeeper policy, since gatekeeper reports
+         * events only for BLOCK and REDIRECT actions.
+         */
+        if (p->action != FSM_GATEKEEPER_REQ)
+        {
+            /* check if reporting is required */
+            report = (p->report_type == FSM_REPORT_ALL);
+            req->report |= report;
+            req->rule_name = p->rule_name;
+            req->policy_index = p->idx;
+            req->action = (p->action == FSM_ACTION_NONE ? FSM_OBSERVED : p->action);
+
+            LOGN("%s(): report flag %d, rule name %s ", __func__, req->report, req->rule_name);
+        }
         if (p->action != FSM_ACTION_NONE) break;
     }
 

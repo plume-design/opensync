@@ -75,7 +75,9 @@ static log_severity_t  fsm_log_severity = LOG_SEVERITY_INFO;
 int main(int argc, char ** argv)
 {
     struct ev_loop *loop = EV_DEFAULT;
-    uint32_t neigh_table_lookup = 0;
+
+    /* Populate IPv4 and IPv6 Neighbour only */
+    uint32_t neigh_table_lookup = IPV4_NEIGHBORS | IPV6_NEIGHBORS;
 
     // Parse command-line arguments
     if (os_get_opt(argc, argv, &fsm_log_severity)) {
@@ -146,6 +148,8 @@ int main(int argc, char ** argv)
     ev_run(loop, 0);
 
     target_close(TARGET_INIT_MGR_FSM, loop);
+
+    neigh_table_cleanup();
 
     if (!ovsdb_stop_loop(loop)) {
         LOGE("Stopping FSM "

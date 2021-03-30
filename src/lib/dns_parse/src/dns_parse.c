@@ -642,6 +642,7 @@ process_response_ips(dns_info *dns, uint8_t *packet,
     int i = 0;
     void *ip;
     bool rc;
+    bool cache;
     bool add_entry;
 
     if (dns == NULL) return;
@@ -703,7 +704,10 @@ process_response_ips(dns_info *dns, uint8_t *packet,
                 }
             }
 
-            if (add_entry && (req->req_info->reply != NULL))
+            cache = (add_entry && (req->req_info->reply != NULL) &&
+                     (req->categorized == FSM_FQDN_CAT_SUCCESS));
+
+            if (cache)
             {
                 memset(&ip_cache_req, 0, sizeof(ip_cache_req));
                 ip_cache_req.device_mac = &req->dev_id;
@@ -2047,189 +2051,6 @@ dns_upsert_local_tag(struct schema_Openflow_Local_Tag *row, dns_ovsdb_updater up
     return false;
 }
 
-
-/* Local log interval */
-#define DNS_LOG_PERIODIC 120
-
-static void dns_log_stats(struct dns_session *dns_session,
-                          struct wc_health_stats *hs)
-{
-    struct fsm_session *session;
-
-    session = dns_session->fsm_context;
-    LOGI("DNS session %s (%s) activity report",
-         session->name,
-         session->service->name);
-
-    LOGI("dns: reported lookup failures: %d",
-         dns_session->reported_lookup_failures);
-    if (dns_session->remote_lookup_retries != 0)
-    {
-        LOGI("dns: reported lookup retries: %d",
-             dns_session->remote_lookup_retries);
-    }
-    LOGI("dns: total lookups: %u", hs->total_lookups);
-    LOGI("dns: total cache hits: %u", hs->cache_hits);
-    LOGI("dns: total remote lookups: %u", hs->remote_lookups);
-    LOGI("dns: cloud uncategorized responses: %u",
-         hs->uncategorized);
-    LOGI("dns: cache entries: [%u/%u]",
-         hs->cached_entries, hs->cache_size);
-    LOGI("dns: min lookup latency in ms: %u",
-         hs->min_latency);
-    LOGI("dns: max lookup latency in ms: %u",
-         hs->max_latency);
-    LOGI("dns: avg lookup latency in ms: %u",
-         hs->avg_latency);
-}
-
-
-static void
-dns_report_compute_health_stats(struct dns_session *dns_session,
-				struct fsm_url_stats *stats,
-				struct wc_health_stats *hs)
-{
-    struct fsm_url_stats *prev_stats;
-    uint32_t count;
-
-    prev_stats = &dns_session->health_stats;
-
-    /* Compute total lookups */
-    /* In the plugin, every dns transaction is first checked if present in
-     * the cache, and hence, every transaction is a cache lookup. Due to this,
-     * cache_lookups are not filled in by the plugin. Successful cache lookups
-     * result in cache_hits being incremented. Hence, use cache_hits in counting
-     * total_lookups */
-    count = (uint32_t)(stats->cloud_lookups + stats->cache_hits);
-    count -= (uint32_t)(prev_stats->cloud_lookups + prev_stats->cache_hits);
-
-    hs->total_lookups = count;
-    prev_stats->cache_lookups = stats->cache_lookups;
-
-    /* Compute cache hits */
-    count = (uint32_t)(stats->cache_hits - prev_stats->cache_hits);
-    hs->cache_hits = count;
-    prev_stats->cache_hits = stats->cache_hits;
-
-    /* Compute remote_lookups */
-    count = (uint32_t)(stats->cloud_lookups - prev_stats->cloud_lookups);
-    hs->remote_lookups = count;
-    prev_stats->cloud_lookups = stats->cloud_lookups;
-
-    /* Compute connectivity_failures */
-    hs->connectivity_failures = dns_session->cat_offline.connection_failures;
-    dns_session->cat_offline.connection_failures = 0;
-
-    /* Compute service_failures */
-    count = (uint32_t)(stats->categorization_failures -
-                       prev_stats->categorization_failures);
-    prev_stats->categorization_failures = stats->categorization_failures;
-
-    /* Compute uncategorized requests */
-    count = (uint32_t)(stats->uncategorized - prev_stats->uncategorized);
-    hs->uncategorized = count;
-    prev_stats->uncategorized = stats->uncategorized;
-
-    /* Compute min latency */
-    count = (uint32_t)(stats->min_lookup_latency);
-    hs->min_latency = count;
-
-    /* Compute max latency */
-    count = (uint32_t)(stats->max_lookup_latency);
-    hs->max_latency = count;
-
-    /* Compute average latency */
-    count = (uint32_t)(stats->avg_lookup_latency);
-    hs->avg_latency = count;
-
-    /* Compute cached entries */
-    count = (uint32_t)(stats->cache_entries);
-    hs->cached_entries = count;
-
-    /* Compute cache size */
-    count = (uint32_t)(stats->cache_size);
-    hs->cache_size = count;
-}
-
-
-static void
-dns_report_fill_health_stats(struct wc_health_stats *hs,
-			     struct fsm_url_report_stats *report_stats)
-{
-    hs->total_lookups = report_stats->total_lookups;
-    hs->cache_hits = report_stats->cache_hits;
-    hs->remote_lookups = report_stats->remote_lookups;
-    hs->connectivity_failures = report_stats->connectivity_failures;
-    hs->service_failures = report_stats->service_failures;
-    hs->uncategorized = report_stats->uncategorized;
-    hs->min_latency = report_stats->min_latency;
-    hs->max_latency = report_stats->max_latency;
-    hs->avg_latency = report_stats->avg_latency;
-    hs->cached_entries = report_stats->cached_entries;
-    hs->cache_size = report_stats->cache_size;
-}
-
-
-static void
-dns_report_health_stats(struct dns_session *dns_session,
-                        struct fsm_url_stats *stats,
-                        time_t now)
-{
-    struct fsm_url_report_stats report_stats;
-    struct wc_packed_buffer *serialized;
-    struct wc_observation_window ow;
-    struct wc_observation_point op;
-    struct wc_stats_report report;
-    struct fsm_session *session;
-    struct wc_health_stats hs;
-
-    memset(&report, 0, sizeof(report));
-    memset(&ow, 0, sizeof(ow));
-    memset(&op, 0, sizeof(op));
-    memset(&hs, 0, sizeof(hs));
-    memset(&report_stats, 0, sizeof(report_stats));
-    session = dns_session->fsm_context;
-
-    /* Set observation point */
-    op.location_id = session->location_id;
-    op.node_id = session->node_id;
-
-    /* set observation window */
-    ow.started_at = dns_session->stat_report_ts;
-    ow.ended_at = now;
-    dns_session->stat_report_ts = now;
-
-    if (session->provider_ops->report_stats != NULL)
-    {
-        session->provider_ops->report_stats(session, &report_stats);
-        dns_report_fill_health_stats(&hs, &report_stats);
-    }
-    else
-    {
-        dns_report_compute_health_stats(dns_session, stats, &hs);
-    }
-
-    /* Log locally */
-    dns_log_stats(dns_session, &hs);
-
-    /* Prepare report */
-    report.provider = session->provider;
-    report.op = &op;
-    report.ow = &ow;
-    report.health_stats = &hs;
-
-    /* Serialize report */
-    serialized = wc_serialize_wc_stats_report(&report);
-
-    /* Emit report */
-    session->ops.send_pb_report(session, dns_session->health_stats_report_topic,
-                                serialized->buf, serialized->len);
-
-    /* Free the serialized protobuf */
-    wc_free_packed_buffer(serialized);
-
-}
-
 void
 dns_retire_reqs(struct fsm_session *session)
 {
@@ -2285,10 +2106,6 @@ void
 dns_periodic(struct fsm_session *session)
 {
     struct dns_session *dns_session;
-    struct fsm_url_stats stats;
-    time_t now = time(NULL);
-    double cmp_report;
-    bool get_stats;
 
     dns_session = dns_lookup_session(session);
     if (dns_session == NULL) return;
@@ -2299,27 +2116,47 @@ dns_periodic(struct fsm_session *session)
 
     /* Retire unresolved old requests */
     dns_retire_reqs(session);
-
-    /* Check if web categorization stats are available */
-    if (session->service == NULL) return;
-    if (session->provider_ops == NULL) return;
-    if (session->provider_ops->get_stats == NULL) return;
-
-    /* Check if the time has come to report the stats through mqtt */
-    cmp_report = now - dns_session->stat_report_ts;
-    get_stats = (cmp_report >= dns_session->health_stats_report_interval);
-
-    /* No need to gather stats, bail */
-    if (!get_stats) return;
-
-    /* Get the stats */
-    memset(&stats, 0, sizeof(stats));
-    session->provider_ops->get_stats(session, &stats);
-
-    /* Report to mqtt */
-    dns_report_health_stats(dns_session, &stats, now);
 }
 
+/* @brief: In case of gatekeeper policy, check if event
+ * reporting is required. Gatekeeper policy triggers
+ * reporting only for BLOCKED and REDIRECT action.
+ * But if reporint is required for other action, then
+ * reporting flag is set and the policy name is updated.
+ */
+static void
+fsm_update_gk_reporting(struct fqdn_pending_req *req,
+                        struct fsm_policy_req *preq)
+{
+    struct fsm_policy *fsm_policy;
+
+    LOGN("checking if policy update is required for gatekeeper");
+    fsm_policy = preq->policy;
+    if (fsm_policy == NULL) return;
+
+    if (fsm_policy->action != FSM_GATEKEEPER_REQ) return;
+
+    LOGN("policy action is gatekeeper");
+    /* gk has already taken the action to report, no need to check
+     * further.
+     */
+    if (req->to_report == true) return;
+
+    /* if policy does not ask for logging, just return */
+    if (preq->report == false) return;
+
+    /* policy is set to log (example logMacs), we need
+     * to send the report, also overwrite policy name
+     * from gatekeeper policy (gk_all) to the policy that Requires
+     * logging
+     */
+    LOGN("setting reporting and updating policy name");
+    req->to_report = true;
+    FREE(req->rule_name);
+    req->rule_name = STRDUP(preq->rule_name);
+    req->action = preq->action;
+    req->policy_idx = preq->policy_index;
+}
 
 void
 fqdn_policy_check(struct dns_device *ds,
@@ -2367,8 +2204,9 @@ fqdn_policy_check(struct dns_device *ds,
         req->to_report = false;
     }
 
-    if ((preq.reply.log == FSM_REPORT_BLOCKED) &&
-        (preq.reply.action != FSM_BLOCK))
+    if ((preq.reply.log == FSM_REPORT_BLOCKED)
+        && (preq.reply.action != FSM_BLOCK)
+        && (preq.reply.action != FSM_REDIRECT))
     {
         req->to_report = false;
     }
@@ -2389,6 +2227,11 @@ fqdn_policy_check(struct dns_device *ds,
         offline->offline_ts = time(NULL);
         offline->connection_failures++;
     }
+
+    /* check and update reporting for gatekeeper */
+    fsm_update_gk_reporting(req, &preq);
+
+    LOGN("report value %d for rule: %s", req->to_report, req->rule_name);
 }
 
 void

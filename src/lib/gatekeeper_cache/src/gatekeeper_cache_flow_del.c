@@ -163,24 +163,24 @@ gkc_flow_ttl_expired(struct ip_flow_cache *flow_entry)
  * @brief delete the given flow from the flow
  *        tree if TTL is expired
  *
- * @params: tree attribute tree pointer
- * @params: pdevice per device pointer
- * @params: attr_type attribute type to check
+ * @params: gk_del_info cache delete info structure
  */
 void
-gkc_cleanup_ttl_flow_tree(ds_tree_t *flow_tree,
-                          struct per_device_cache *pdevice,
-                          enum gk_cache_request_type attr_type)
+gkc_cleanup_ttl_flow_tree(struct gkc_del_info_s *gk_del_info)
 {
     struct ip_flow_cache *flow_entry, *remove;
+    struct gk_cache_mgr *mgr;
     bool ttl_expired;
 
+    mgr = gk_cache_get_mgr();
+    if (!mgr->initialized) return;
+
     /* loop through all flows in the tree */
-    flow_entry = ds_tree_head(flow_tree);
+    flow_entry = ds_tree_head(gk_del_info->tree);
     while (flow_entry != NULL)
     {
         remove     = flow_entry;
-        flow_entry = ds_tree_next(flow_tree, flow_entry);
+        flow_entry = ds_tree_next(gk_del_info->tree, flow_entry);
 
         /* check if the TTL value is expired for this flow */
         ttl_expired = gkc_flow_ttl_expired(remove);
@@ -189,13 +189,18 @@ gkc_cleanup_ttl_flow_tree(ds_tree_t *flow_tree,
         LOGD("%s: deleting flow for device " PRI_os_macaddr_lower_t
              " with expired TTL",
              __func__,
-             FMT_os_macaddr_pt(pdevice->device_mac));
+             FMT_os_macaddr_pt(gk_del_info->pdevice->device_mac));
+
+        gk_del_info->flow_del_count++;
+
+        /* decrement the cache count */
+        mgr->count--;
 
         /* found the flow. Free memory used by the flow structure.*/
         free_flow_members(remove);
         if (remove->gk_policy) free(remove->gk_policy);
         /* remove it from the tree*/
-        ds_tree_remove(flow_tree, remove);
+        ds_tree_remove(gk_del_info->tree, remove);
         /* free the entry */
         free(remove);
     }

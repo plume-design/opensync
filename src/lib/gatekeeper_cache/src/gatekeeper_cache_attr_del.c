@@ -26,6 +26,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 #include "gatekeeper_cache.h"
+#include "memutil.h"
 
 /**
  * @brief frees memory used by attribute when it is deleted
@@ -39,31 +40,32 @@ free_attr_members(struct attr_cache *attr_entry,
     switch (attr_type)
     {
     case GK_CACHE_REQ_TYPE_FQDN:
-        free(attr_entry->attr.fqdn);
+        FREE(attr_entry->attr.fqdn);
+        FREE(attr_entry->fqdn_redirect);
         break;
 
     case GK_CACHE_REQ_TYPE_URL:
-        free(attr_entry->attr.url);
+        FREE(attr_entry->attr.url);
         break;
 
     case GK_CACHE_REQ_TYPE_HOST:
-        free(attr_entry->attr.host);
+        FREE(attr_entry->attr.host);
         break;
 
     case GK_CACHE_REQ_TYPE_SNI:
-        free(attr_entry->attr.sni);
+        FREE(attr_entry->attr.sni);
         break;
 
     case GK_CACHE_REQ_TYPE_IPV4:
-        free(attr_entry->attr.ipv4);
+        FREE(attr_entry->attr.ipv4);
         break;
 
     case GK_CACHE_REQ_TYPE_IPV6:
-        free(attr_entry->attr.ipv6);
+        FREE(attr_entry->attr.ipv6);
         break;
 
     case GK_CACHE_REQ_TYPE_APP:
-        free(attr_entry->attr.app_name);
+        FREE(attr_entry->attr.app_name);
         break;
 
     default:
@@ -180,6 +182,7 @@ gk_cache_cleanup(void)
 
     tree = &mgr->per_device_tree;
     gk_free_cache_tree(tree);
+    mgr->count = 0;
 }
 
 /**
@@ -202,36 +205,128 @@ gkc_attr_ttl_expired(struct attr_cache *attr_entry)
     return true;
 }
 
+static const char *
+gk_get_attribute_value(struct attr_cache *attr_entry,
+                       enum gk_cache_request_type attr_type)
+{
+    switch (attr_type)
+    {
+        case GK_CACHE_REQ_TYPE_FQDN:
+            return attr_entry->attr.fqdn;
+            break;
+
+        case GK_CACHE_REQ_TYPE_URL:
+            return attr_entry->attr.url;
+            break;
+
+        case GK_CACHE_REQ_TYPE_HOST:
+            return attr_entry->attr.host;
+            break;
+
+        case GK_CACHE_REQ_TYPE_SNI:
+            return attr_entry->attr.sni;
+            break;
+
+        case GK_CACHE_REQ_TYPE_IPV4:
+            return attr_entry->attr.ipv4;
+            break;
+
+        case GK_CACHE_REQ_TYPE_IPV6:
+            return attr_entry->attr.ipv6;
+            break;
+
+        case GK_CACHE_REQ_TYPE_APP:
+            return attr_entry->attr.app_name;
+            break;
+
+        default:
+            return "unknown";
+            break;
+    }
+}
+
+static ds_tree_t *
+gk_get_attribute_tree(struct per_device_cache *pdevice, int attr_type)
+{
+    ds_tree_t *attr_tree;
+
+    switch (attr_type)
+    {
+        case GK_CACHE_REQ_TYPE_FQDN:
+            attr_tree = &pdevice->fqdn_tree;
+            break;
+
+        case GK_CACHE_REQ_TYPE_URL:
+            attr_tree = &pdevice->url_tree;
+            break;
+
+        case GK_CACHE_REQ_TYPE_HOST:
+            attr_tree = &pdevice->host_tree;
+            break;
+
+        case GK_CACHE_REQ_TYPE_SNI:
+            attr_tree = &pdevice->sni_tree;
+            break;
+
+        case GK_CACHE_REQ_TYPE_IPV4:
+            attr_tree = &pdevice->ipv4_tree;
+            break;
+
+        case GK_CACHE_REQ_TYPE_IPV6:
+            attr_tree = &pdevice->ipv6_tree;
+            break;
+
+        case GK_CACHE_REQ_TYPE_APP:
+            attr_tree = &pdevice->app_tree;
+            break;
+
+        default:
+            attr_tree = NULL;
+            break;
+    }
+
+    return attr_tree;
+}
+
 /**
  * @brief delete the given attribute from the attr
  *        tree if TTL is expired
  *
- * @params: tree attribute tree pointer
- * @params: pdevice per device pointer
- * @params: attr_type attribute type to check
+ * @params: gk_del_info cache delete info structure
  */
+
 static void
-gkc_cleanup_ttl_attribute_tree(ds_tree_t *tree,
-                                    struct per_device_cache *pdevice,
-                                    enum gk_cache_request_type attr_type)
+gkc_cleanup_ttl_attribute_tree(struct gkc_del_info_s *gk_del_info)
 {
     struct attr_cache *attr_entry, *remove;
+    struct gk_cache_mgr *mgr;
     bool ttl_expired;
 
-    attr_entry = ds_tree_head(tree);
+    mgr = gk_cache_get_mgr();
+    if (!mgr->initialized) return;
+
+    attr_entry = ds_tree_head(gk_del_info->tree);
     while (attr_entry != NULL)
     {
         remove      = attr_entry;
-        attr_entry  = ds_tree_next(tree, attr_entry);
+        attr_entry  = ds_tree_next(gk_del_info->tree, attr_entry);
         ttl_expired = gkc_attr_ttl_expired(remove);
         if (ttl_expired == false) continue;
 
-        LOGN("%s: Removing device " PRI_os_macaddr_lower_t " with expired TTL",
+        LOGT("%s: Removing attribute '%s', for device " PRI_os_macaddr_lower_t
+             " due to expired TTL",
              __func__,
-             FMT_os_macaddr_pt(pdevice->device_mac));
-        free_attr_members(remove, attr_type);
+             gk_get_attribute_value(remove, gk_del_info->attr_type),
+             FMT_os_macaddr_pt(gk_del_info->pdevice->device_mac));
+
+        free_attr_members(remove, gk_del_info->attr_type);
+
+        gk_del_info->attr_del_count++;
+
+        /* decrement the cache entries counter */
+        mgr->count--;
         if (remove->gk_policy) free(remove->gk_policy);
-        ds_tree_remove(tree, remove);
+        ds_tree_remove(gk_del_info->tree, remove);
         free(remove);
     }
 }
@@ -244,24 +339,41 @@ gkc_cleanup_ttl_attribute_tree(ds_tree_t *tree,
 static void
 gk_cache_check_ttl_per_device(struct per_device_cache *pdevice)
 {
-    gkc_cleanup_ttl_attribute_tree(
-        &pdevice->fqdn_tree, pdevice, GK_CACHE_REQ_TYPE_FQDN);
-    gkc_cleanup_ttl_attribute_tree(
-        &pdevice->url_tree, pdevice, GK_CACHE_REQ_TYPE_URL);
-    gkc_cleanup_ttl_attribute_tree(
-        &pdevice->host_tree, pdevice, GK_CACHE_REQ_TYPE_HOST);
-    gkc_cleanup_ttl_attribute_tree(
-        &pdevice->sni_tree, pdevice, GK_CACHE_REQ_TYPE_SNI);
-    gkc_cleanup_ttl_attribute_tree(
-        &pdevice->ipv4_tree, pdevice, GK_CACHE_REQ_TYPE_IPV4);
-    gkc_cleanup_ttl_attribute_tree(
-        &pdevice->ipv6_tree, pdevice, GK_CACHE_REQ_TYPE_IPV6);
-    gkc_cleanup_ttl_attribute_tree(
-        &pdevice->app_tree, pdevice, GK_CACHE_REQ_TYPE_APP);
-    gkc_cleanup_ttl_flow_tree(
-        &pdevice->inbound_tree, pdevice, GK_CACHE_REQ_TYPE_INBOUND);
-    gkc_cleanup_ttl_flow_tree(
-        &pdevice->outbound_tree, pdevice, GK_CACHE_REQ_TYPE_OUTBOUDND);
+    struct gkc_del_info_s *gk_del_info;
+    int attr_type;
+
+    gk_del_info = calloc(1, sizeof(struct gkc_del_info_s));
+    if (gk_del_info == NULL) return;
+
+    gk_del_info->pdevice = pdevice;
+
+    /* loop through all the attributes and check for TTL expiry */
+    for (attr_type = GK_CACHE_REQ_TYPE_FQDN; attr_type <= GK_CACHE_REQ_TYPE_APP; attr_type++)
+    {
+        gk_del_info->attr_type = attr_type;
+        /* get the tree for this attribute type */
+        gk_del_info->tree = gk_get_attribute_tree(pdevice, attr_type);
+        gkc_cleanup_ttl_attribute_tree(gk_del_info);
+    }
+
+    /* check the flow inbound tree */
+    gk_del_info->attr_type = GK_CACHE_REQ_TYPE_INBOUND;
+    gk_del_info->tree = &pdevice->inbound_tree;
+    gkc_cleanup_ttl_flow_tree(gk_del_info);
+
+    /* check the flow outbound tree */
+    gk_del_info->attr_type = GK_CACHE_REQ_TYPE_OUTBOUDND;
+    gk_del_info->tree = &pdevice->outbound_tree;
+    gkc_cleanup_ttl_flow_tree(gk_del_info);
+
+    LOGT("%s: number of expired TTL entries for device: " PRI_os_macaddr_lower_t
+         " attribute type: %"PRIu64", flow type %"PRIu64,
+         __func__,
+         FMT_os_macaddr_pt(pdevice->device_mac),
+         gk_del_info->attr_del_count,
+         gk_del_info->flow_del_count);
+
+    free(gk_del_info);
 }
 
 /**
@@ -276,6 +388,8 @@ gk_cache_check_ttl_device_tree(ds_tree_t *tree)
 {
     struct per_device_cache *pdevice, *current;
 
+    LOGN("%s cache entries before flushing expired TTL entries: %lu", __func__, gk_get_cache_count());
+
     pdevice = ds_tree_head(tree);
     while (pdevice != NULL)
     {
@@ -283,6 +397,7 @@ gk_cache_check_ttl_device_tree(ds_tree_t *tree)
         pdevice = ds_tree_next(tree, pdevice);
         gk_cache_check_ttl_per_device(current);
     }
+    LOGN("%s cache entries after flushing expired TTL entries: %lu", __func__, gk_get_cache_count());
 }
 
 static bool

@@ -33,10 +33,20 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "fsm.h"
 #include "ds_tree.h"
+#include "wc_telemetry.h"
 
 #define GK_PERIODIC_INTERVAL 120
+#define GK_UNCATEGORIZED_ID 15
 #define GK_CURL_TIMEOUT      (2*60)
 #define MAX_PATH_LEN 256
+
+enum gk_response_code
+{
+    GK_LOOKUP_SUCCESS = 0,
+    GK_LOOKUP_FAILURE,
+    GK_CONNECTION_ERROR,
+    GK_SERVICE_ERROR
+};
 
 struct gk_req_ids
 {
@@ -236,5 +246,15 @@ gk_check_policy_in_cache(struct fsm_policy_req *req);
 
 bool
 gk_add_policy_to_cache(struct fsm_policy_req *req);
+
+/**
+ * @brief computes health stats for gatekeeper
+ *
+ * @param fsm_gk_session pointer to gatekeeper session
+ * @param hs pointer to health stats
+ */
+void
+gatekeeper_report_compute_health_stats(struct fsm_gk_session *fsm_gk_session,
+                                       struct wc_health_stats *hs);
 
 #endif /* GATEKEEPER_H_INCLUDED */

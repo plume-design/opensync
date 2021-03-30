@@ -908,6 +908,7 @@ void test_gk_dns_cache(void)
 {
     struct ip2action_req *entry = NULL;
     uint32_t v4udstip = htonl(0x04030208);
+    uint32_t v4ip = htonl(0x04030201);
     struct ip2action_req  key;
     struct sockaddr_storage ip;
     os_macaddr_t mac;
@@ -925,13 +926,13 @@ void test_gk_dns_cache(void)
     entry->service_id = 2;
 
     rc_add = dns_cache_add_entry(entry);
-    TEST_ASSERT_FALSE(rc_add);
+    TEST_ASSERT_TRUE(rc_add);
 
     nelem = dns_cache_get_size();
-    TEST_ASSERT_EQUAL_INT(nelem, 0);
+    TEST_ASSERT_EQUAL_INT(nelem, 1);
 
     memset(&key, 0, sizeof(struct ip2action_req));
-    util_populate_sockaddr(AF_INET, &v4udstip, &ip);
+    util_populate_sockaddr(AF_INET, &v4ip, &ip);
     key.ip_addr = &ip;
     mac.addr[0] = 0xaa;
     mac.addr[1] = 0xaa;
@@ -942,7 +943,7 @@ void test_gk_dns_cache(void)
     key.device_mac = &mac;
 
     rc_lookup = dns_cache_ip2action_lookup(&key);
-    TEST_ASSERT_FALSE(rc_lookup);
+    TEST_ASSERT_TRUE(rc_lookup);
 
     /* Case : available categorization details in gatekeeper service */
     entry = entry8;
@@ -950,7 +951,7 @@ void test_gk_dns_cache(void)
     TEST_ASSERT_TRUE(rc_add);
 
     nelem = dns_cache_get_size();
-    TEST_ASSERT_EQUAL_INT(nelem, 1);
+    TEST_ASSERT_EQUAL_INT(nelem, 2);
 
     memset(&key, 0, sizeof(struct ip2action_req));
     util_populate_sockaddr(AF_INET, &v4udstip, &ip);
@@ -987,7 +988,7 @@ void test_gk_dns_cache(void)
     rc = dns_cache_ttl_cleanup();
     TEST_ASSERT_TRUE(rc);
     nelem = dns_cache_get_size();
-    TEST_ASSERT_EQUAL_INT(nelem, 1);
+    TEST_ASSERT_EQUAL_INT(nelem, 2);
 
     /* Update TTL and action */
     entry = entry8;
@@ -999,7 +1000,7 @@ void test_gk_dns_cache(void)
     print_dns_cache();
 
     nelem = dns_cache_get_size();
-    TEST_ASSERT_EQUAL_INT(nelem, 1);
+    TEST_ASSERT_EQUAL_INT(nelem, 2);
 
     rc_lookup = dns_cache_ip2action_lookup(&key);
     /* Validate lookup to the dns_cache entry */
@@ -1031,7 +1032,7 @@ void test_gk_dns_cache(void)
     TEST_ASSERT_FALSE(rc_lookup);
 
     nelem = dns_cache_get_size();
-    TEST_ASSERT_EQUAL_INT(nelem, 0);
+    TEST_ASSERT_EQUAL_INT(nelem, 1);
     print_dns_cache();
     LOGI("\n******************** %s: completed ****************\n", __func__);
 }

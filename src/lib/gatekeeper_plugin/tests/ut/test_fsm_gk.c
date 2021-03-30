@@ -38,6 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fsm_dpi_sni.h"
 #include "gatekeeper_data.h"
 #include "gatekeeper.h"
+#include "wc_telemetry.h"
 #include "json_util.h"
 #include "json_mqtt.h"
 #include "schema.h"
@@ -159,8 +160,8 @@ struct schema_FSM_Policy spolicies[] =
         .idx = 10,
         .fqdn_op_exists = true,
         .fqdn_op = "in",
-        .fqdns_len = 4,
-        .fqdns = {"www.cnn.com", "www.google.com", "test_host", "signal"},
+        .fqdns_len = 6,
+        .fqdns = {"www.cnn.com", "www.google.com", "test_host", "signal", "localhost", "http://whitehouse.info"},
         .fqdncat_op_exists = false,
         .risk_op_exists = false,
         .ipaddr_op_exists = false,
@@ -279,6 +280,7 @@ void tearDown(void)
     struct fsm_session *session = &g_sessions[0];
 
     free_str_tree(session->conf->other_config);
+    gk_cache_cleanup();
 
     gatekeeper_exit(session);
     return;
@@ -290,12 +292,15 @@ dummy_gatekeeper_get_verdict(struct fsm_session *session,
 {
     struct fsm_gk_session *fsm_gk_session;
     struct gk_curl_easy_info *ecurl_info;
+    struct gatekeeper_offline *offline;
     struct fsm_policy_req *policy_req;
     struct fqdn_pending_req *fqdn_req;
     struct fsm_gk_verdict *gk_verdict;
     struct fsm_url_request *req_info;
     struct fsm_url_reply *url_reply;
+    struct fsm_url_stats *stats;
     bool ret = true;
+    int gk_response;
 
     fsm_gk_session = gatekeeper_lookup_session(session);
     if (!fsm_gk_session) return false;
@@ -315,18 +320,33 @@ dummy_gatekeeper_get_verdict(struct fsm_session *session,
 
     url_reply->service_id = URL_GK_SVC;
 
+    stats = &fsm_gk_session->health_stats;
+    offline = &fsm_gk_session->gk_offline;
+
     ret = gk_check_policy_in_cache(req);
     if (ret == true)
     {
+        stats->cache_hits++;
         LOGN("%s found in cache, return action %d from cache", req->url, req->reply.action);
         free(gk_verdict);
         return true;
     }
+    if (offline->provider_offline)
+    {
+        time_t now = time(NULL);
+        bool backoff;
 
+        backoff = ((now - offline->offline_ts) < offline->check_offline);
+
+        if (backoff)
+        {
+            free(gk_verdict);
+            return false;
+        }
+        offline->provider_offline = false;
+    }
     ecurl_info = &fsm_gk_session->ecurl;
     ecurl_info->cert_path = g_certs_file;
-
-
 
     LOGT("%s: url:%s path:%s", __func__, ecurl_info->server_url, ecurl_info->cert_path);
 
@@ -343,11 +363,19 @@ dummy_gatekeeper_get_verdict(struct fsm_session *session,
 #ifdef CURL_MULTI
     gk_new_conn(req->url);
 #else
-    ret = gk_send_request(session, fsm_gk_session, gk_verdict);
-    if (ret == false)
+    gk_response = gk_send_request(session, fsm_gk_session, gk_verdict);
+    if (gk_response != GK_LOOKUP_SUCCESS)
     {
         fqdn_req->categorized = FSM_FQDN_CAT_FAILED;
+        /* if connection error, start backoff timer */
+        if (gk_response == GK_CONNECTION_ERROR)
+        {
+            offline->provider_offline = true;
+            offline->offline_ts = time(NULL);
+            offline->connection_failures++;
+        }
         LOGN("%s() curl error not updating cache", __func__);
+        ret = false;
         goto error;
     }
 #endif
@@ -432,15 +460,90 @@ test_curl_fqdn(void)
     fsm_apply_policies(session, &req);
     reply = &req.reply;
 
-    /* Verify reply struct has been properly built */
-    TEST_ASSERT_EQUAL_STRING("my_v4_tag", reply->updatev4_tag);
-    TEST_ASSERT_EQUAL_STRING("my_v6_tag", reply->updatev6_tag);
 
     free(reply->rule_name);
     free(reply->policy);
     fsm_free_url_reply(fqdn_req.req_info->reply);
 
     LOGN("Finishing test %s()", __func__);
+}
+
+void
+run_fqdn_query(char *input_url)
+{
+    struct schema_FSM_Policy *spolicy;
+    struct fsm_policy *fpolicy;
+    struct fsm_policy_rules *rules;
+    struct fqdn_pending_req fqdn_req;
+    struct fsm_url_request req_info;
+    struct fsm_policy_req req;
+    os_macaddr_t dev_mac;
+    struct fsm_policy_reply *reply;
+    struct fsm_policy_session *mgr;
+    struct policy_table *table;
+    struct fsm_session *session;
+    struct str_set *macs_set;
+    struct str_set *fqdns_set;
+    size_t i;
+
+    session = &g_sessions[0];
+    if (g_is_connected == false) return;
+
+    /* Initialize local structures */
+    memset(&fqdn_req, 0, sizeof(fqdn_req));
+    memset(&req_info, 0, sizeof(req_info));
+    memset(&req, 0, sizeof(req));
+    memset(&dev_mac, 0, sizeof(dev_mac));
+
+    spolicy = &spolicies[1];
+
+    /* Validate access to the fsm policy */
+    fsm_add_policy(spolicy);
+    fpolicy = fsm_policy_lookup(spolicy);
+    TEST_ASSERT_NOT_NULL(fpolicy);
+
+    /* Validate rule name */
+    TEST_ASSERT_EQUAL_STRING(spolicy->name, fpolicy->rule_name);
+
+    /* Validate mac content */
+    rules    = &fpolicy->rules;
+    macs_set = rules->macs;
+    TEST_ASSERT_NOT_NULL(macs_set);
+    TEST_ASSERT_EQUAL_INT(spolicy->macs_len, macs_set->nelems);
+    for (i = 0; i < macs_set->nelems; i++)
+    {
+        TEST_ASSERT_EQUAL_STRING(spolicy->macs[i], macs_set->array[i]);
+    }
+
+    /* Validate FQDNs content */
+    fqdns_set = rules->fqdns;
+    TEST_ASSERT_NOT_NULL(fqdns_set);
+
+    mgr   = fsm_policy_get_mgr();
+    table = ds_tree_find(&mgr->policy_tables, spolicy->policy);
+    TEST_ASSERT_NOT_NULL(table);
+
+    /* Validate access to the fsm policy */
+    TEST_ASSERT_NOT_NULL(fpolicy);
+
+    req.device_id = &dev_mac;
+
+    /* Build the request elements */
+    STRSCPY(req_info.url, input_url);
+    req.url                   = input_url;
+    fqdn_req.req_info         = &req_info;
+    fqdn_req.numq             = 1;
+    fqdn_req.policy_table     = table;
+    fqdn_req.gatekeeper_req   = dummy_gatekeeper_get_verdict;
+    fqdn_req.req_type         = FSM_FQDN_REQ;
+    req.fqdn_req              = &fqdn_req;
+    fsm_apply_policies(session, &req);
+    reply = &req.reply;
+
+    free(reply->rule_name);
+    free(reply->policy);
+    fsm_free_url_reply(fqdn_req.req_info->reply);
+
 }
 
 void
@@ -950,6 +1053,256 @@ test_curl_ipv6_flow(void)
 }
 
 void
+test_health_stats_report(void)
+{
+    struct fsm_gk_session *fsm_gk_session;
+    struct gk_curl_easy_info *ecurl_info;
+    struct fsm_session *session;
+    struct fsm_url_stats *stats;
+    struct wc_health_stats hs;
+
+    LOGN("**** starting test %s ***** ", __func__);
+    memset(&hs, 0, sizeof(hs));
+    session        = &g_sessions[0];
+    fsm_gk_session = gatekeeper_lookup_session(session);
+    stats = &fsm_gk_session->health_stats;
+
+    /* check for attribute type app,
+     * since it is not present in the cache it should
+     * do remote lookup and add to cache.
+     */
+    test_curl_app();
+    gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
+    TEST_ASSERT_EQUAL_INT(1, hs.cached_entries);
+    TEST_ASSERT_EQUAL_INT(1, stats->cloud_lookups);
+    TEST_ASSERT_EQUAL_INT(0, stats->cache_hits);
+    TEST_ASSERT_EQUAL_INT(1, hs.total_lookups);
+    TEST_ASSERT_EQUAL_INT(1, hs.remote_lookups);
+    TEST_ASSERT_EQUAL_INT(0, hs.connectivity_failures);
+    TEST_ASSERT_EQUAL_INT(100000, hs.cache_size);
+
+    /* doing a lookup again should return the action
+     * from cache, the cache count should be the same
+     */
+    test_curl_app();
+    gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
+    TEST_ASSERT_EQUAL_INT(1, hs.cached_entries);
+    TEST_ASSERT_EQUAL_INT(1, stats->cloud_lookups);
+    TEST_ASSERT_EQUAL_INT(1, stats->cache_hits);
+    TEST_ASSERT_EQUAL_INT(2, hs.total_lookups);
+    TEST_ASSERT_EQUAL_INT(1, hs.remote_lookups);
+    TEST_ASSERT_EQUAL_INT(0, hs.connectivity_failures);
+
+    /* checking for new attribute type should
+     * trigger cloud lookup and add to cache.
+     * cache entry should be incremented by 1
+     */
+    test_curl_url();
+    gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
+    TEST_ASSERT_EQUAL_INT(2, hs.cached_entries);
+    TEST_ASSERT_EQUAL_INT(2, stats->cloud_lookups);
+    TEST_ASSERT_EQUAL_INT(1, stats->cache_hits);
+    TEST_ASSERT_EQUAL_INT(3, hs.total_lookups);
+    TEST_ASSERT_EQUAL_INT(2, hs.remote_lookups);
+    TEST_ASSERT_EQUAL_INT(0, hs.connectivity_failures);
+
+    /* doing a lookup again should return the action
+     * from cache, the cache count should be the same
+     */
+    test_curl_url();
+    gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
+    TEST_ASSERT_EQUAL_INT(2, hs.cached_entries);
+    TEST_ASSERT_EQUAL_INT(2, stats->cloud_lookups);
+    TEST_ASSERT_EQUAL_INT(2, stats->cache_hits);
+    TEST_ASSERT_EQUAL_INT(4, hs.total_lookups);
+    TEST_ASSERT_EQUAL_INT(2, hs.remote_lookups);
+    TEST_ASSERT_EQUAL_INT(0, hs.connectivity_failures);
+
+
+    ecurl_info = &fsm_gk_session->ecurl;
+    /* providing invalid endpoint will result in
+     * service failure
+     */
+    ecurl_info->server_url = "https://ovs_dev.plume.com:443/xyz";
+    test_curl_host();
+    gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
+    TEST_ASSERT_EQUAL_INT(0, hs.connectivity_failures);
+    TEST_ASSERT_EQUAL_INT(1, hs.service_failures);
+    /* other counters remain the same */
+    TEST_ASSERT_EQUAL_INT(2, hs.cached_entries);
+    TEST_ASSERT_EQUAL_INT(3, stats->cloud_lookups);
+    TEST_ASSERT_EQUAL_INT(2, stats->cache_hits);
+    TEST_ASSERT_EQUAL_INT(5, hs.total_lookups);
+    TEST_ASSERT_EQUAL_INT(3, hs.remote_lookups);
+
+    /* check failure condition, set server_url to invalid entry
+     * curl request should fail, and connectivity_failure count
+     * should be incremented.
+     */
+    ecurl_info->server_url = "1.2.3.4";
+    test_curl_host();
+    gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
+    TEST_ASSERT_EQUAL_INT(1, hs.connectivity_failures);
+    /* service counter should not be incremented */
+    TEST_ASSERT_EQUAL_INT(1, hs.service_failures);
+    /* other counters remain the same */
+    TEST_ASSERT_EQUAL_INT(2, hs.cached_entries);
+    TEST_ASSERT_EQUAL_INT(3, stats->cloud_lookups);
+    TEST_ASSERT_EQUAL_INT(2, stats->cache_hits);
+    TEST_ASSERT_EQUAL_INT(5, hs.total_lookups);
+    TEST_ASSERT_EQUAL_INT(3, hs.remote_lookups);
+
+    LOGN("**** Ending test %s ***** ", __func__);
+}
+
+void
+test_connection_timeout(void)
+{
+    struct fsm_gk_session *fsm_gk_session;
+    struct gk_curl_easy_info *ecurl_info;
+    struct fsm_session *session;
+    struct wc_health_stats hs;
+
+    LOGN("**** starting test %s ***** ", __func__);
+    memset(&hs, 0, sizeof(hs));
+    session        = &g_sessions[0];
+    fsm_gk_session = gatekeeper_lookup_session(session);
+
+    /* check failure condition, set server_url to invalid entry
+     * curl request should fail, and connectivity_failure count
+     * should be incremented.
+     */
+
+    ecurl_info = &fsm_gk_session->ecurl;
+    ecurl_info->server_url = "1.2.3.4";
+    time_t start = time(NULL);
+    test_curl_app();
+    time_t end = time(NULL);
+    double diff_time;
+
+    diff_time = difftime(end, start);
+    gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
+    /* connection timeout value is set to 2 seconds, it should
+     * not block for more than 2 secs.
+     */
+    TEST_ASSERT_LESS_THAN(3, diff_time);
+    TEST_ASSERT_EQUAL_INT(1, hs.connectivity_failures);
+
+    LOGN("**** Ending test %s ***** ", __func__);
+}
+
+void
+test_backoff_on_connection_failure(void)
+{
+    struct fsm_gk_session *fsm_gk_session;
+    struct gk_curl_easy_info *ecurl_info;
+    struct fsm_session *session;
+    struct fsm_url_stats *stats;
+    struct wc_health_stats hs;
+
+    LOGN("**** starting test %s ***** ", __func__);
+    memset(&hs, 0, sizeof(hs));
+    session        = &g_sessions[0];
+    fsm_gk_session = gatekeeper_lookup_session(session);
+    stats = &fsm_gk_session->health_stats;
+
+    /* check failure condition, set server_url to invalid entry
+     * curl request should fail, and connectivity_failure count
+     * should be incremented. Backoff logic should kick in.
+     * It should not try to connect to cloud for 30 secs
+     */
+
+    ecurl_info = &fsm_gk_session->ecurl;
+    ecurl_info->server_url = "1.2.3.4";
+    test_curl_app();
+    gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
+    /* connection fail counter should be set */
+    TEST_ASSERT_EQUAL_INT(1, hs.connectivity_failures);
+    TEST_ASSERT_EQUAL_INT(0, stats->cloud_lookups);
+
+    /* Set the correct server url, it should connect now */
+    ecurl_info->server_url = session->ops.get_config(session, "gk_url");
+    sleep(5);
+    test_curl_app();
+    gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
+    /* cloud lookup should still be 0, as still back-off logic is in place */
+    TEST_ASSERT_EQUAL_INT(0, stats->cloud_lookups);
+
+    sleep(30);
+    /* backoff time 30 secs is expired now. */
+    test_curl_app();
+    gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
+    TEST_ASSERT_EQUAL_INT(1, stats->cloud_lookups);
+
+    LOGN("**** Ending test %s ***** ", __func__);
+
+}
+
+void
+test_send_report(void)
+{
+    struct schema_FSM_Policy *spolicy;
+    struct fsm_policy *fpolicy;
+    struct fqdn_pending_req fqdn_req;
+    struct fsm_url_request req_info;
+    struct fsm_policy_req req;
+    os_macaddr_t dev_mac;
+    struct fsm_policy_reply *reply;
+    struct fsm_url_reply *url_reply;
+    struct fsm_policy_session *mgr;
+    struct policy_table *table;
+    struct fsm_session *session;
+    int len;
+
+    if (g_is_connected == false) return;
+    session = &g_sessions[0];
+    LOGN("Starting test %s()", __func__);
+
+    memset(&fqdn_req, 0, sizeof(fqdn_req));
+    memset(&req_info, 0, sizeof(req_info));
+    memset(&req, 0, sizeof(req));
+    memset(&dev_mac, 0, sizeof(dev_mac));
+
+    spolicy = &spolicies[1];
+
+    /* Validate access to the fsm policy */
+    fsm_add_policy(spolicy);
+    fpolicy = fsm_policy_lookup(spolicy);
+    TEST_ASSERT_NOT_NULL(fpolicy);
+
+    /* Validate rule name */
+    TEST_ASSERT_EQUAL_STRING(spolicy->name, fpolicy->rule_name);
+
+    mgr           = fsm_policy_get_mgr();
+    table         = ds_tree_find(&mgr->policy_tables, spolicy->policy);
+    req.device_id = &dev_mac;
+
+    /* Build the request elements */
+    STRSCPY(req_info.url, "www.google.com");
+    req.url                 = "www.google.com";
+    fqdn_req.req_info       = &req_info;
+    fqdn_req.numq           = 1;
+    fqdn_req.policy_table   = table;
+    fqdn_req.gatekeeper_req = dummy_gatekeeper_get_verdict;
+    fqdn_req.req_type       = FSM_URL_REQ;
+    req.fqdn_req            = &fqdn_req;
+    fsm_apply_policies(session, &req);
+    reply = &req.reply;
+
+    url_reply = req_info.reply;
+    len       = strlen(url_reply->reply_info.gk_info.gk_policy);
+    TEST_ASSERT_GREATER_THAN(0, url_reply->reply_info.gk_info.category_id);
+    TEST_ASSERT_GREATER_THAN(0, url_reply->reply_info.gk_info.confidence_level);
+    TEST_ASSERT_GREATER_THAN(0, len);
+
+    free(reply->rule_name);
+    free(reply->policy);
+    fsm_free_url_reply(fqdn_req.req_info->reply);
+
+    LOGN("Finishing test %s()", __func__);
+}
+
+void
 test_fqdn_cache(void)
 {
     test_curl_multi();
@@ -979,6 +1332,185 @@ test_app_cache(void)
     test_curl_app();
     test_curl_app();
     test_curl_app();
+}
+
+/**
+ * @brief test if gk cache is able to clear the
+ * cache entries and then it can add entries to the
+ * cache again.
+ */
+void
+test_cache_clear(void)
+{
+    struct fsm_gk_session *fsm_gk_session;
+    struct fsm_session *session;
+    struct wc_health_stats hs;
+
+    LOGN("**** starting test %s ***** ", __func__);
+    /* start from clean cache */
+    gk_cache_cleanup();
+    memset(&hs, 0, sizeof(hs));
+    session = &g_sessions[0];
+    fsm_gk_session = gatekeeper_lookup_session(session);
+
+    /* check for attribute type app,
+     * since it is not present in the cache it should
+     * do remote lookup and add to cache.
+     */
+    test_curl_app();
+    gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
+    TEST_ASSERT_EQUAL_INT(1, hs.cached_entries);
+
+    /* entry is present in the cache, no lookup will be performed */
+    test_curl_app();
+    gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
+    TEST_ASSERT_EQUAL_INT(1, hs.cached_entries);
+
+    /* on clearing the entries in the cache should be 0 */
+    clear_gatekeeper_cache();
+    gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
+    TEST_ASSERT_EQUAL_INT(0, hs.cached_entries);
+
+    /* lookup should be performed as cache is cleared */
+    test_curl_app();
+    gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
+    TEST_ASSERT_EQUAL_INT(1, hs.cached_entries);
+}
+
+void
+test_categorization_count(void)
+{
+    struct fsm_gk_session *fsm_gk_session;
+    struct gk_curl_easy_info *ecurl_info;
+    struct fsm_session *session;
+    struct wc_health_stats hs;
+
+    LOGN("**** starting test %s ***** ", __func__);
+    memset(&hs, 0, sizeof(hs));
+    session        = &g_sessions[0];
+    fsm_gk_session = gatekeeper_lookup_session(session);
+
+    ecurl_info = &fsm_gk_session->ecurl;
+    run_fqdn_query("www.google.com");
+    gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
+    TEST_ASSERT_EQUAL_INT(0, hs.service_failures);
+
+    /* check failure condition, set server_url to invalid end point
+     * curl will reply but reply cannot be processed.
+     */
+
+    ecurl_info = &fsm_gk_session->ecurl;
+    /* invalid end point */
+    ecurl_info->server_url = "https://ovs_dev.plume.com:443/xxxx";
+
+    test_curl_host();
+    gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
+    TEST_ASSERT_EQUAL_INT(1, hs.service_failures);
+}
+
+void
+test_uncategory_count(void)
+{
+    struct fsm_gk_session *fsm_gk_session;
+    struct fsm_session *session;
+    struct wc_health_stats hs;
+
+    LOGN("**** starting test %s ***** ", __func__);
+    /* start from clean cache */
+    gk_cache_cleanup();
+    memset(&hs, 0, sizeof(hs));
+    session = &g_sessions[0];
+    fsm_gk_session = gatekeeper_lookup_session(session);
+
+    gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
+    TEST_ASSERT_EQUAL_INT(0, hs.uncategorized);
+
+    run_fqdn_query("localhost");
+    gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
+    TEST_ASSERT_EQUAL_INT(1, hs.uncategorized);
+
+    run_fqdn_query("http://whitehouse.info");
+    gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
+    TEST_ASSERT_EQUAL_INT(2, hs.uncategorized);
+}
+
+void
+test_cache_entry_report(void)
+{
+    struct fsm_gk_session *fsm_gk_session;
+    struct fsm_session *session;
+    struct wc_health_stats hs;
+
+    LOGN("**** starting test %s ***** ", __func__);
+    /* start from clean cache */
+    gk_cache_cleanup();
+    memset(&hs, 0, sizeof(hs));
+    session        = &g_sessions[0];
+    fsm_gk_session = gatekeeper_lookup_session(session);
+
+    /* check for attribute type app,
+     * since it is not present in the cache it should
+     * do remote lookup and add to cache.
+     */
+    test_curl_app();
+    gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
+    TEST_ASSERT_EQUAL_INT(1, hs.cached_entries);
+    TEST_ASSERT_EQUAL_INT(100000, hs.cache_size);
+
+    /* doing a lookup again should return the action
+     * from cache, the cache count should be the same
+     */
+    test_curl_app();
+    gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
+    TEST_ASSERT_EQUAL_INT(1, hs.cached_entries);
+    TEST_ASSERT_EQUAL_INT(100000, hs.cache_size);
+
+    /* checking for new attribute type should
+     * trigger cloud lookup and add to cache.
+     * cache entry should be incremented by 1
+     */
+    test_curl_url();
+    gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
+    TEST_ASSERT_EQUAL_INT(2, hs.cached_entries);
+    TEST_ASSERT_EQUAL_INT(100000, hs.cache_size);
+
+    /* doing a lookup again should return the action
+     * from cache, the cache count should be the same
+     */
+    test_curl_url();
+    gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
+    TEST_ASSERT_EQUAL_INT(2, hs.cached_entries);
+    TEST_ASSERT_EQUAL_INT(100000, hs.cache_size);
+
+    LOGN("**** Ending test %s ***** ", __func__);
+}
+
+void
+test_endpoint_url(void)
+{
+    const char *endpoint_urls[] = { "https://gatekeeper.plume.com/fqdn",
+                                    "https://gatekeeper.plume.com/http_url",
+                                    "https://gatekeeper.plume.com/http_host",
+                                    "https://gatekeeper.plume.com/https_sni",
+                                    "https://gatekeeper.plume.com/ipv4",
+                                    "https://gatekeeper.plume.com/ipv6",
+                                    "https://gatekeeper.plume.com/app",
+                                    "https://gatekeeper.plume.com/ipv4_tuple",
+                                    "https://gatekeeper.plume.com/ipv6_tuple" };
+
+    const char *server_url = "https://gatekeeper.plume.com";
+    char url[1024];
+    int i;
+
+    LOGN("**** starting test %s ***** ", __func__);
+
+    for (i = FSM_FQDN_REQ; i <= FSM_IPV6_FLOW_REQ; i++)
+    {
+        snprintf(url, sizeof(url), "%s/%s", server_url, gk_request_str(i));
+        TEST_ASSERT_EQUAL_STRING(endpoint_urls[i], url);
+    }
+
+    LOGN("**** Ending test %s ***** ", __func__);
 }
 
 int
@@ -1014,7 +1546,16 @@ main(int argc, char *argv[])
     RUN_TEST(test_fqdn_cache);
     RUN_TEST(test_url_cache);
     RUN_TEST(test_host_cache);
+    RUN_TEST(test_health_stats_report);
+    RUN_TEST(test_connection_timeout);
+    RUN_TEST(test_backoff_on_connection_failure);
+    RUN_TEST(test_send_report);
     RUN_TEST(test_app_cache);
+    RUN_TEST(test_cache_entry_report);
+    RUN_TEST(test_cache_clear);
+    RUN_TEST(test_uncategory_count);
+    RUN_TEST(test_categorization_count);
+    RUN_TEST(test_endpoint_url);
 
     return UNITY_END();
 }

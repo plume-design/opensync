@@ -47,10 +47,18 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * @{
  */
 
+/**
+ * OSN IPSET object type
+ *
+ * This is an opaque type. The actual structure implementation is hidden
+ * and is platform dependent. A new instance of the object can be obtained by
+ * calling @ref osn_ipset_new() and must be destroyed using
+ * @ref osn_ipset_del().
+ */
 typedef struct osn_ipset osn_ipset_t;
 
 /**
- * Ipset type; refer to the ipset manual page for an explanation of these
+ * ipset type; refer to the ipset manual page for an explanation of these
  */
 enum osn_ipset_type
 {

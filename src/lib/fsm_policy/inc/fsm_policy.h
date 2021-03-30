@@ -275,6 +275,10 @@ struct fsm_policy_req
     struct fqdn_pending_req *fqdn_req;
     struct fsm_policy_reply reply;
     struct fsm_policy *policy;
+    char *rule_name;
+    int action;
+    int policy_index;
+    bool report;
 };
 
 

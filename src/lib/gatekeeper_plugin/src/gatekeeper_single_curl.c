@@ -33,6 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "gatekeeper_single_curl.h"
 #include "gatekeeper.pb-c.h"
+#include "gatekeeper.h"
 #include "fsm_policy.h"
 #include "log.h"
 #include "util.h"
@@ -69,18 +70,20 @@ gk_curl_callback(void *contents, size_t size, size_t nmemb, void *userp)
 }
 
 void
-gk_set_redirect(struct fqdn_pending_req *fqdn_req,
+gk_set_redirect(struct fsm_policy_req *policy_req,
                 Gatekeeper__Southbound__V1__GatekeeperFqdnReply *reply_fqdn)
 {
     Gatekeeper__Southbound__V1__GatekeeperFqdnRedirectReply *fqdn_redirect;
     Gatekeeper__Southbound__V1__GatekeeperCommonReply *header;
     Gatekeeper__Southbound__V1__GatekeeperAction gk_action;
+    struct fqdn_pending_req *fqdn_req;
     static char ipv6_str[INET6_ADDRSTRLEN] = { '\0' };
     char ipv4_str[INET_ADDRSTRLEN]         = { '\0' };
     char ipv4_redirect_s[256];
     char ipv6_redirect_s[256];
     const char *res;
 
+    fqdn_req      = policy_req->fqdn_req;
     header        = reply_fqdn->header;
     gk_action     = header->action;
     fqdn_redirect = reply_fqdn->redirect;
@@ -97,24 +100,28 @@ gk_set_redirect(struct fqdn_pending_req *fqdn_req,
         STRSCPY(fqdn_req->redirects[0], ipv4_redirect_s);
     }
 
-    res = inet_ntop(AF_INET6,
-                    fqdn_redirect->redirect_ipv6.data,
-                    ipv6_str,
-                    INET6_ADDRSTRLEN);
+    res = NULL;
+    if (fqdn_redirect->redirect_ipv6.data != NULL)
+    {
+        res = inet_ntop(AF_INET6,
+                        fqdn_redirect->redirect_ipv6.data,
+                        ipv6_str,
+                        INET6_ADDRSTRLEN);
+    }
 
     if (res != NULL)
     {
         snprintf(ipv6_redirect_s, sizeof(ipv6_redirect_s), "4A-%s", ipv6_str);
-        STRSCPY(fqdn_req->redirects[1], ipv6_str);
+        STRSCPY(fqdn_req->redirects[1], ipv6_redirect_s);
     }
 
-    fqdn_req->redirect = 1;
-    fqdn_req->rd_ttl = 10;
+    policy_req->reply.redirect = 1;
+    policy_req->reply.rd_ttl = 10;
 
     LOGN("%s(): redirect IPv4 IP: %s, IPv6 IP: %s",
          __func__,
-         ipv4_str,
-         ipv6_str);
+         ipv4_redirect_s,
+         ipv6_redirect_s);
 }
 
 static int
@@ -122,6 +129,8 @@ gk_get_fsm_action(Gatekeeper__Southbound__V1__GatekeeperCommonReply *header)
 {
     Gatekeeper__Southbound__V1__GatekeeperAction gk_action;
     int action;
+
+    LOGN("%s(): Received action from gatekeeper service '%d'", __func__, header->action);
 
     gk_action = header->action;
     switch(gk_action)
@@ -153,6 +162,12 @@ static void
 gk_set_report_info(struct fsm_url_reply *url_reply,
                    Gatekeeper__Southbound__V1__GatekeeperCommonReply *header)
 {
+    LOGN("%s() received category id: %d, confidence level %d policy '%s'",
+         __func__,
+         header->category_id,
+         header->confidence_level,
+         header->policy);
+
     url_reply->reply_info.gk_info.category_id = header->category_id;
     url_reply->reply_info.gk_info.confidence_level = header->confidence_level;
     if (header->policy == NULL) return;
@@ -197,7 +212,7 @@ gk_set_policy(Gatekeeper__Southbound__V1__GatekeeperReply *response,
             if (response->reply_fqdn != NULL)
             {
                 header = response->reply_fqdn->header;
-                gk_set_redirect(fqdn_req, response->reply_fqdn);
+                gk_set_redirect(policy_req, response->reply_fqdn);
             }
             else
             {
@@ -341,6 +356,48 @@ gk_process_curl_response(struct gk_curl_data *data, struct fsm_gk_verdict *gk_ve
 }
 
 /**
+ * @brief returns the attribute string value based on the request type.
+ *
+ * @param req_type attribute request type.
+ */
+const char *
+gk_request_str(int req_type)
+{
+    switch (req_type)
+    {
+        case FSM_FQDN_REQ:
+            return "fqdn";
+
+        case FSM_SNI_REQ:
+            return "https_sni";
+
+        case FSM_HOST_REQ:
+            return "http_host";
+
+        case FSM_URL_REQ:
+            return "http_url";
+
+        case FSM_APP_REQ:
+            return "app";
+
+        case FSM_IPV4_REQ:
+            return "ipv4";
+
+        case FSM_IPV6_REQ:
+            return "ipv6";
+
+        case FSM_IPV4_FLOW_REQ:
+            return "ipv4_tuple";
+
+        case FSM_IPV6_FLOW_REQ:
+            return "ipv6_tuple";
+
+        default:
+            return "";
+    }
+}
+
+/**
  * @brief clean up curl handler
  *
  * @param mgr the gate keeper session
@@ -385,6 +442,12 @@ gk_curl_easy_init(struct fsm_gk_session *fsm_gk_session, struct ev_loop *loop)
 
     curl_easy_setopt(curl_info->curl_handle, CURLOPT_WRITEFUNCTION, gk_curl_callback);
     curl_easy_setopt(curl_info->curl_handle, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2_0);
+
+    /* max. allowed time (2 secs) to establish the connection */
+    curl_easy_setopt(curl_info->curl_handle, CURLOPT_CONNECTTIMEOUT, 2L);
+
+    /* max allowed time (2 secs) to get the data after connection is established */
+    curl_easy_setopt(curl_info->curl_handle, CURLOPT_TIMEOUT, 2L);
     curl_easy_setopt(curl_info->curl_handle, CURLOPT_SSL_VERIFYPEER, 1L);
     curl_easy_setopt(curl_info->curl_handle, CURLOPT_SSL_VERIFYHOST, 1L);
 
@@ -412,17 +475,29 @@ static int
 gk_send_curl_request(struct gk_curl_easy_info *curl_info, struct gk_curl_data *chunk, struct fsm_gk_verdict *gk_verdict)
 {
     char errbuf[CURL_ERROR_SIZE];
+    char url[1024];
+    int req_type;
     CURLcode res;
 
     errbuf[0]='\0';
 
-    LOGN("%s(): sending request to  %s using handler %p, certs path: %s",
+    req_type = fsm_policy_get_req_type(gk_verdict->policy_req);
+
+#ifdef CONFIG_GATEKEEPER_ENDPOINT
+    /* populate the end point url */
+    snprintf(url, sizeof(url), "%s/%s", curl_info->server_url, gk_request_str(req_type));
+#else
+    strncpy(url, curl_info->server_url, sizeof(url));
+#endif
+
+    LOGN("%s(): sending request to %s (req type %d) using handler %p, certs path: %s",
          __func__,
-         curl_info->server_url,
+         url,
+         req_type,
          curl_info->curl_handle,
          curl_info->cert_path);
 
-    curl_easy_setopt(curl_info->curl_handle, CURLOPT_URL, curl_info->server_url);
+    curl_easy_setopt(curl_info->curl_handle, CURLOPT_URL, url);
     curl_easy_setopt(curl_info->curl_handle, CURLOPT_POSTFIELDS, gk_verdict->gk_pb->buf);
     curl_easy_setopt(curl_info->curl_handle, CURLOPT_POSTFIELDSIZE, (long)gk_verdict->gk_pb->len);
     curl_easy_setopt(curl_info->curl_handle, CURLOPT_WRITEFUNCTION, gk_curl_callback);
@@ -443,14 +518,62 @@ gk_send_curl_request(struct gk_curl_easy_info *curl_info, struct gk_curl_data *c
 }
 
 /**
+ * @brief checks if category id is set to uncategorized and
+ * increment the counter.
+ * @param header response header received from gatekeeper service
+ * @param fsm_gk_session gatekeeper session
+ * @return None
+ */
+static void
+gk_update_uncategorized_count(struct fsm_gk_session *fsm_gk_session,
+                              struct fsm_gk_verdict *gk_verdict)
+{
+    struct fqdn_pending_req *fqdn_req;
+    struct fsm_policy_req *policy_req;
+    struct fsm_url_request *req_info;
+    struct fsm_url_reply *url_reply;
+    struct fsm_url_stats *stats;
+
+    policy_req = gk_verdict->policy_req;
+    fqdn_req = policy_req->fqdn_req;
+    req_info = fqdn_req->req_info;
+
+    url_reply = req_info->reply;
+    if (url_reply == NULL) return;
+
+    /* return if the category id is not uncategorized (category_id 15) */
+    if (url_reply->reply_info.gk_info.category_id != GK_UNCATEGORIZED_ID)
+        return;
+
+    stats = &fsm_gk_session->health_stats;
+    stats->uncategorized++;
+}
+
+/**
+ * @brief increments categorization (service) failure count.
+ *
+ * @param fsm_gk_session gatekeeper session
+ *
+ * @return None
+ */
+static void
+gk_update_categorization_count(struct fsm_gk_session *fsm_gk_session)
+{
+    struct fsm_url_stats *stats;
+
+    stats = &fsm_gk_session->health_stats;
+    stats->categorization_failures++;
+}
+
+/**
  * @brief sends request to the gatekeeper services
  *        parses and updates the action.
  *
  * @param gk_verdict structure containing gatekeeper server
  *        information, proto buffer and fsm_policy_req
- * @return true on success, false on failure
+ * @return gatekeeper response code.
  */
-bool
+int
 gk_send_request(struct fsm_session *session,
                 struct fsm_gk_session *fsm_gk_session,
                 struct fsm_gk_verdict *gk_verdict)
@@ -463,8 +586,9 @@ gk_send_request(struct fsm_session *session,
     struct fsm_url_stats *stats;
     struct gk_curl_data chunk;
     long response_code;
+    int gk_response = GK_LOOKUP_SUCCESS;
     CURLcode res;
-    bool ret = true;
+    bool ret;
 
     policy_req = gk_verdict->policy_req;
     fqdn_req = policy_req->fqdn_req;
@@ -482,7 +606,7 @@ gk_send_request(struct fsm_session *session,
 
     /* will be increased as needed by the realloc */
     chunk.memory = malloc(1);
-    if (chunk.memory == NULL) return false;
+    if (chunk.memory == NULL) return GK_LOOKUP_FAILURE;
 
     /* no data at this point */
     chunk.size = 0;
@@ -499,7 +623,7 @@ gk_send_request(struct fsm_session *session,
         url_reply->connection_error = true;
         fqdn_req->to_report = false;
         url_reply->error = res;
-        ret = false;
+        gk_response = GK_CONNECTION_ERROR;
         goto error;
     }
 
@@ -509,13 +633,22 @@ gk_send_request(struct fsm_session *session,
     LOGN("%s(): %zu bytes retrieved", __func__, chunk.size);
     if (chunk.size == 0)
     {
-        ret = false;
+        gk_response = GK_CONNECTION_ERROR;
         goto error;
     }
 
     ret = gk_process_curl_response(&chunk, gk_verdict);
+    if (ret == false) gk_response = GK_SERVICE_ERROR;
+
+    /* if the curl reponse was successful and reply processing failed
+     * treate it as service failures.
+     */
+    if (gk_response == GK_SERVICE_ERROR) gk_update_categorization_count(fsm_gk_session);
+
+    /* update uncategorized counter (reply with category-id 15) */
+    gk_update_uncategorized_count(fsm_gk_session, gk_verdict);
 
 error:
     free(chunk.memory);
-    return ret;
+    return gk_response;
 }

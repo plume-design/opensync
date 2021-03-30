@@ -31,9 +31,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <errno.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
-#include "os.h"
-#include "os_types.h"
 #include "gatekeeper_cache.h"
+#include "os_types.h"
+#include "memutil.h"
+#include "os.h"
 
 static struct gk_cache_mgr mgr = {
     .initialized = false,
@@ -196,6 +197,37 @@ gk_cache_init_mgr(struct gk_cache_mgr *mgr)
 }
 
 /**
+ * @brief adds redirect entry details to cache
+ *
+ * @params: input: contains redirect entries to be added
+ *
+ * @params: new_entry pointer to cache entry
+ */
+void
+gk_add_new_redirect_entry(struct gk_attr_cache_interface *input,
+                          struct attr_cache *new_entry)
+{
+    struct fqdn_redirect_s *in_redirect;
+    struct fqdn_redirect_s *new_redirect;
+
+    if (input->fqdn_redirect == NULL) return;
+    in_redirect  = input->fqdn_redirect;
+
+    new_entry->fqdn_redirect = CALLOC(1, sizeof(*new_redirect));
+    if (new_entry->fqdn_redirect == NULL) return;
+
+    new_redirect = new_entry->fqdn_redirect;
+
+    /* return if redirection is not required */
+    if (in_redirect->redirect == false) return;
+
+    new_redirect->redirect     = in_redirect->redirect;
+    new_redirect->redirect_ttl = in_redirect->redirect_ttl;
+    STRSCPY(new_redirect->redirect_ips[0], in_redirect->redirect_ips[0]);
+    STRSCPY(new_redirect->redirect_ips[1], in_redirect->redirect_ips[1]);
+}
+
+/**
  * @brief create a new attribute entry fo the given
  *        attribute type.
  *
@@ -216,6 +248,7 @@ gkc_new_attr_entry(struct gk_attr_cache_interface *entry)
     {
     case GK_CACHE_REQ_TYPE_FQDN:
         new_attr->attr.fqdn = strdup(entry->attr_name);
+        gk_add_new_redirect_entry(entry, new_attr);
         break;
 
     case GK_CACHE_REQ_TYPE_URL:
@@ -580,6 +613,22 @@ gkc_cleanup_mgr(void)
     mgr->count = 0;
 }
 
+void
+gkc_lookup_redirect_entry(struct gk_attr_cache_interface *req,
+                          struct attr_cache *attr_entry)
+{
+    if (req->attribute_type != GK_CACHE_REQ_TYPE_FQDN) return;
+
+    if (req->fqdn_redirect == NULL || attr_entry->fqdn_redirect == NULL) return;
+
+    req->fqdn_redirect->redirect     = attr_entry->fqdn_redirect->redirect;
+    req->fqdn_redirect->redirect_ttl = attr_entry->fqdn_redirect->redirect_ttl;
+    STRSCPY(req->fqdn_redirect->redirect_ips[0],
+            attr_entry->fqdn_redirect->redirect_ips[0]);
+    STRSCPY(req->fqdn_redirect->redirect_ips[1],
+            attr_entry->fqdn_redirect->redirect_ips[1]);
+}
+
 /**
  * @brief check if the attribute is present in the attribute
  *        tree
@@ -611,12 +660,47 @@ gkc_lookup_attr_tree(ds_tree_t *tree, struct gk_attr_cache_interface *req, int u
     req->categorized = attr_entry->categorized;
     req->category_id = attr_entry->category_id;
     req->confidence_level = attr_entry->confidence_level;
+
+    gkc_lookup_redirect_entry(req, attr_entry);
+
     if (attr_entry->gk_policy != NULL)
     {
         req->gk_policy = strdup(attr_entry->gk_policy);
     }
 
     return true;
+}
+
+
+/**
+ * @brief check if the attribute is present in either of
+ *        FQDN, HOST or SNI cache.
+ *
+ * @params: req: attribute interface structure with the
+ *          attribute value to find
+ * @return: true if found false if not present
+ */
+static bool
+gkc_lookup_common_tree(struct per_device_cache *pdevice,
+                       struct gk_attr_cache_interface *req,
+                       int update_count)
+{
+    int ret = false;
+
+    /* Lookup in FQDN tree and return if found */
+    ret = gkc_lookup_attr_tree(&pdevice->fqdn_tree, req, update_count);
+    if (ret) return ret;
+
+    /* Lookup in Host tree and return if found */
+    ret = gkc_lookup_attr_tree(&pdevice->host_tree, req, update_count);
+    if (ret) return ret;
+
+    /* Lookup in SNI tree and return if found */
+    ret = gkc_lookup_attr_tree(&pdevice->sni_tree, req, update_count);
+    if (ret) return ret;
+
+    /* Not found in either FQDN, host or sni tree */
+    return false;
 }
 
 /**
@@ -637,7 +721,7 @@ gkc_lookup_attributes_tree(struct per_device_cache *pdevice,
     switch (req->attribute_type)
     {
     case GK_CACHE_REQ_TYPE_FQDN:
-        ret = gkc_lookup_attr_tree(&pdevice->fqdn_tree, req, update_count);
+        ret = gkc_lookup_common_tree(pdevice, req, update_count);
         break;
 
     case GK_CACHE_REQ_TYPE_URL:
@@ -645,11 +729,11 @@ gkc_lookup_attributes_tree(struct per_device_cache *pdevice,
         break;
 
     case GK_CACHE_REQ_TYPE_HOST:
-        ret = gkc_lookup_attr_tree(&pdevice->host_tree, req, update_count);
+        ret = gkc_lookup_common_tree(pdevice, req, update_count);
         break;
 
     case GK_CACHE_REQ_TYPE_SNI:
-        ret = gkc_lookup_attr_tree(&pdevice->sni_tree, req, update_count);
+        ret = gkc_lookup_common_tree(pdevice, req, update_count);
         break;
 
     case GK_CACHE_REQ_TYPE_IPV4:
@@ -994,5 +1078,5 @@ void
 clear_gatekeeper_cache(void)
 {
     LOGN("clearing gate keeper cache");
-    gkc_cleanup_mgr();
+    gk_cache_cleanup();
 }

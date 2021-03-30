@@ -43,8 +43,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "unity.h"
 #include "schema.h"
 #include "gatekeeper_cache.h"
-#include "ds_tree.h"
 #include "fsm_policy.h"
+#include "ds_tree.h"
+#include "memutil.h"
 
 const char *test_name = "gk_cache_tests";
 
@@ -323,9 +324,10 @@ free_cache_interface(struct gk_attr_cache_interface *entry)
 {
     if (!entry) return;
 
-    free(entry->device_mac);
-    free(entry->attr_name);
-    free(entry);
+    FREE(entry->device_mac);
+    FREE(entry->attr_name);
+    FREE(entry->fqdn_redirect);
+    FREE(entry);
 }
 
 void
@@ -514,6 +516,103 @@ test_host_name(void)
     TEST_ASSERT_EQUAL_INT(0, ret);
 
     LOGI("ending test: %s", __func__);
+}
+
+void
+test_host_entry_in_fqdn(void)
+{
+    struct gk_attr_cache_interface *entry;
+    int ret;
+
+    LOGN("starting test: %s ...", __func__);
+
+    entry = calloc(sizeof(struct gk_attr_cache_interface), 1);
+    entry->action = FSM_ALLOW;
+    entry->device_mac =gkc_str2os_mac("AA:AA:AA:AA:AA:01");
+    entry->attribute_type = GK_CACHE_REQ_TYPE_FQDN;
+    entry->cache_ttl = 1000;
+    entry->action = FSM_ALLOW;
+    entry->attr_name = strdup("www.entr2.com");
+    gkc_add_attribute_entry(entry);
+
+    ret = gkc_lookup_attribute_entry(entry, true);
+    TEST_ASSERT_EQUAL_INT(1, ret);
+
+    /* check SNI with same value as FQDN */
+    entry->attribute_type = GK_CACHE_REQ_TYPE_SNI;
+    ret = gkc_lookup_attribute_entry(entry, true);
+    TEST_ASSERT_EQUAL_INT(1, ret);
+
+    /* check HOST with same value as FQDN */
+    entry->attribute_type = GK_CACHE_REQ_TYPE_HOST;
+    ret = gkc_lookup_attribute_entry(entry, true);
+    TEST_ASSERT_EQUAL_INT(1, ret);
+
+    /* Delete entry in FQDN
+    *  HOST and SNI lookup should also fail.
+    */
+    entry->attribute_type = GK_CACHE_REQ_TYPE_FQDN;
+    /* del from fqdn tree */
+    gkc_del_attribute(entry);
+    ret = gkc_lookup_attribute_entry(entry, true);
+    /* check deletion success */
+    TEST_ASSERT_EQUAL_INT(0, ret);
+
+    /* check in SNI tree, should not find an entry */
+    entry->attribute_type = GK_CACHE_REQ_TYPE_SNI;
+    ret = gkc_lookup_attribute_entry(entry, true);
+    TEST_ASSERT_EQUAL_INT(0, ret);
+
+    /* check in HOST tree, should not find an entry */
+    entry->attribute_type = GK_CACHE_REQ_TYPE_HOST;
+    ret = gkc_lookup_attribute_entry(entry, true);
+    TEST_ASSERT_EQUAL_INT(0, ret);
+
+    /* Add entry to the HOST cache
+    *  Lookup with FQDN and SNI with same value as FQDN
+    *  should be successfull.
+    */
+    entry->attribute_type = GK_CACHE_REQ_TYPE_HOST;
+    ret = gkc_add_attribute_entry(entry);
+    TEST_ASSERT_EQUAL_INT(1, ret);
+
+    /* check SNI with same value as HOST */
+    entry->attribute_type = GK_CACHE_REQ_TYPE_SNI;
+    ret = gkc_lookup_attribute_entry(entry, true);
+    TEST_ASSERT_EQUAL_INT(1, ret);
+
+    /* check FQDN with same value as HOST */
+    entry->attribute_type = GK_CACHE_REQ_TYPE_FQDN;
+    ret = gkc_lookup_attribute_entry(entry, true);
+    TEST_ASSERT_EQUAL_INT(1, ret);
+
+    /* Delete entry from the HOST cache */
+    gkc_del_attribute(entry);
+
+    /* Add entry to the SNI cache
+    *  Lookup with FQDN and HOST with same value as SNI
+    *  should be successfull.
+    */
+    entry->attribute_type = GK_CACHE_REQ_TYPE_SNI;
+    gkc_add_attribute_entry(entry);
+    ret = gkc_lookup_attribute_entry(entry, true);
+    TEST_ASSERT_EQUAL_INT(1, ret);
+
+    /* check HOST with same value as SNI */
+    entry->attribute_type = GK_CACHE_REQ_TYPE_HOST;
+    ret = gkc_lookup_attribute_entry(entry, true);
+    TEST_ASSERT_EQUAL_INT(1, ret);
+
+    /* check FQDN with same value as SNI */
+    entry->attribute_type = GK_CACHE_REQ_TYPE_FQDN;
+    ret = gkc_lookup_attribute_entry(entry, true);
+    TEST_ASSERT_EQUAL_INT(1, ret);
+
+    free(entry->device_mac);
+    free(entry->attr_name);
+    free(entry);
+
+    LOGN("ending test: %s", __func__);
 }
 
 void
@@ -928,8 +1027,12 @@ test_max_attr_entries(void)
 {
     LOGI("starting test: %s ...", __func__);
     struct gk_attr_cache_interface *entry;
-    int i;
     int current_count;
+    int ret;
+    int i;
+
+    ret = access("/tmp/genmac.txt", F_OK);
+    if (ret != 0) return;
 
     entry = calloc(sizeof(struct gk_attr_cache_interface), 1);
     for (i = 0; i < MAX_CACHE_ENTRIES; ++i)
@@ -1017,6 +1120,44 @@ test_flow_ttl(void)
     LOGI("ending test: %s", __func__);
 }
 
+void
+test_fqdn_redirect_entry(void)
+{
+    struct gk_attr_cache_interface *entry;
+    int ret;
+
+    LOGN("starting test: %s ...", __func__);
+
+    entry = CALLOC(1, sizeof(struct gk_attr_cache_interface));
+    entry->action = FSM_ALLOW;
+    entry->device_mac =gkc_str2os_mac("AA:AA:AA:AA:AA:01");
+    entry->attribute_type = GK_CACHE_REQ_TYPE_FQDN;
+    entry->cache_ttl = 1000;
+    entry->action = FSM_ALLOW;
+    entry->attr_name = strdup("www.entr2.com");
+    entry->fqdn_redirect = CALLOC(1, sizeof(struct fqdn_redirect_s));
+    if (entry->fqdn_redirect == NULL) goto error;
+
+    entry->fqdn_redirect->redirect = 1;
+    entry->fqdn_redirect->redirect_ttl = 10;
+
+    STRSCPY(entry->fqdn_redirect->redirect_ips[0], "1.2.3.4");
+    STRSCPY(entry->fqdn_redirect->redirect_ips[1], "1.2.3.4");
+    gkc_add_attribute_entry(entry);
+
+    ret = gkc_lookup_attribute_entry(entry, true);
+    TEST_ASSERT_EQUAL_INT(1, ret);
+
+error:
+    FREE(entry->device_mac);
+    FREE(entry->attr_name);
+    FREE(entry->fqdn_redirect);
+    FREE(entry);
+
+    LOGN("ending test: %s", __func__);
+
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -1041,10 +1182,12 @@ main(int argc, char *argv[])
     RUN_TEST(test_flow_delete);
     RUN_TEST(test_flow_hit_counter);
     RUN_TEST(test_flow_ttl);
+    RUN_TEST(test_fqdn_redirect_entry);
 
     RUN_TEST(test_counters);
     RUN_TEST(test_duplicate_entries);
-    // RUN_TEST(test_max_attr_entries);
+    RUN_TEST(test_max_attr_entries);
     RUN_TEST(test_max_flow_entries);
+    RUN_TEST(test_host_entry_in_fqdn);
     return UNITY_END();
 }
