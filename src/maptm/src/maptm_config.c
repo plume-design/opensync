@@ -63,15 +63,6 @@
 
 #include "maptm.h"
 
-/* Firewall Rules */
-#define V4_CHCEK_FORWARD "v4_check_forward"
-#define V4_MAPT_CHCEK_FORWARD "v4_mapt_check_forward"
-#define V4_MAPT_TCP_CHCEK_1 "v4_mapt_tcp_check_1"
-#define V4_MAPT_TCP_CHCEK_2 "v4_mapt_tcp_check_2"
-#define V4_CT_CHECK "v4_ct_check"
-
-#define V6_MAPT_TCP_CHCEK_3 "v6_tcp_check_3"
-
 struct maptm_MAPT strucWanConfig;
 
 // Free MAP-T struct
@@ -389,53 +380,9 @@ struct mapt* maptm_getconfigure(char *option95, char *iapd, int iapd_len)
     return selected_rule;
 }
 
-// MAP-T Firewall configuration
-bool maptm_ovsdb_nfm_set_rule(const char *rule, bool enable)
-{
-    struct schema_Netfilter set;
-    json_t *where = NULL;
-    int rc = 0;
-
-    memset(&set, 0, sizeof(set));
-    set._partial_update = true;
-    SCHEMA_SET_INT(set.enable, enable);
-
-    where = ovsdb_where_simple(SCHEMA_COLUMN(Netfilter, name), rule);
-
-    if (!where)
-    {
-        LOGE("[%s] Set NAT Netfilter rule: create filter failed", rule);
-        return false;
-    }
-
-    rc = ovsdb_table_update_where(&table_Netfilter, where, &set);
-    if (rc != 1)
-    {
-        LOGE("[%s] Set NAT Netfilter rule: unexpected result count %d", rule, rc);
-        return false;
-    }
-    return true;
-}
-
-// Set MAP-T firewall rules
-bool maptm_ovsdb_nfm_rules(bool enable)
-{
-    LOGT("%s, MAP-T firewall configuration", __func__);
-
-    if (!maptm_ovsdb_nfm_set_rule(V4_CHCEK_FORWARD, !enable)) return false;
-    if (!maptm_ovsdb_nfm_set_rule(V4_MAPT_CHCEK_FORWARD, enable)) return false;
-    if (!maptm_ovsdb_nfm_set_rule(V4_MAPT_TCP_CHCEK_1, enable)) return false;
-    if (!maptm_ovsdb_nfm_set_rule(V4_MAPT_TCP_CHCEK_2, enable)) return false;
-    if (!maptm_ovsdb_nfm_set_rule(V6_MAPT_TCP_CHCEK_3, !enable)) return false;
-    if (!maptm_ovsdb_nfm_set_rule(V4_CT_CHECK, !enable)) return false;
-
-    return true;
-}
-
 // Stop MAP-T functionality
 bool stop_mapt(void)
 {
-    if (!maptm_ovsdb_nfm_rules(false)) LOGE("Could not disable Firewall");
     if (!osn_mapt_stop()) return false;
 
     LOGD("Stopped MAP-T");
@@ -523,14 +470,6 @@ bool config_mapt(void)
     char ipv4PublicAddress[100] = "";
     snprintf(ipv6prefix, sizeof(ipv6prefix), "%s/%d", MaptConf->ipv6prefix, MaptConf->prefix6len);
     snprintf(ipv4PublicAddress, sizeof(ipv4PublicAddress), "%s/%d", MaptConf->ipv4PublicAddress, MaptConf->prefix4len);
-
-    // Enable firewall
-    if (!maptm_ovsdb_nfm_rules(true))
-    {
-        LOGE("Unable to configure Firewall");
-        maptm_remove_maptStruct(MaptConf);
-        return false;
-    }
 
     bool result;
     result = osn_mapt_configure(

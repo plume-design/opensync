@@ -33,6 +33,9 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <errno.h>
+#include "ovsdb_update.h"
+#include "ovsdb_sync.h"
+#include "ovsdb_table.h"
 
 #include "log.h"
 #include "os.h"
@@ -40,6 +43,17 @@
 #include "osn_mapt.h"
 
 #define MAPTM_CMD_LEN               256
+
+/*
+* @brief Initialize Netfilter entry name
+*/
+#define V4_CHCEK_FORWARD             "v4_check_forward"
+#define V4_MAPT_CHCEK_FORWARD        "v4_mapt_check_forward"
+#define V4_MAPT_TCP_CHCEK_1          "v4_mapt_tcp_check_1"
+#define V4_MAPT_TCP_CHCEK_2          "v4_mapt_tcp_check_2"
+#define V4_CT_CHECK                  "v4_ct_check"
+#define V6_MAPT_TCP_CHCEK_3          "v6_tcp_check_3"
+ovsdb_table_t table_Netfilter;
 
 bool osn_mapt_configure(
         const char *brprefix,
@@ -87,9 +101,38 @@ bool osn_mapt_configure(
 bool osn_mapt_stop()
 {
     char cmd[MAPTM_CMD_LEN] = {0x0};
-
+    if (!maptm_ovsdb_nfm_rules(false)) LOGE("Could not disable Firewall");
     snprintf(cmd, sizeof(cmd), "ivictl -q");
     if (cmd_log(cmd)) return true;
 
     return false;
+}
+
+// MAP-T Firewall Set configuration Rule
+bool osn_mapt_nfm_set_rule(const char *rule, bool enable)
+{
+    struct schema_Netfilter set;
+    json_t *where = NULL;
+
+    memset(&set, 0, sizeof(set));
+    set._partial_update = true;
+    SCHEMA_SET_INT(set.enable, enable);
+
+    if ((where = ovsdb_where_simple(SCHEMA_COLUMN(Netfilter, name), rule)))
+        ovsdb_table_update_where(&table_Netfilter, where, &set);
+
+    return true;
+}
+
+// Set MAP-T firewall rules
+bool osn_mapt_nfm_rules(bool enable, uint16_t offset, uint16_t psid,uint16_t psidlen, const char* ipv4PublicAddress, const char* mapIntf)
+{
+    LOGD("%s : MAP-T firewall configuration", __func__);
+
+    if (!osn_mapt_nfm_set_rule(V4_CHCEK_FORWARD, !enable)) return false;
+    if (!osn_mapt_nfm_set_rule(V4_MAPT_CHCEK_FORWARD, enable)) return false;
+    if (!osn_mapt_nfm_set_rule(V4_MAPT_TCP_CHCEK_1, enable)) return false;
+    if (!osn_mapt_nfm_set_rule(V4_MAPT_TCP_CHCEK_2, enable)) return false;
+    if (!osn_mapt_nfm_set_rule(V6_MAPT_TCP_CHCEK_3, !enable)) return false;
+    return true;
 }
