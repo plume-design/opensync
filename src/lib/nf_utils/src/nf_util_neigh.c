@@ -533,15 +533,13 @@ nf_neigh_event_init(void)
 /**
  * @brief set max socket buffer size of netlink.
  *
- *
  * @param sock_buff_sz
- * @return true if setsockopt is successful, false otherwise
+ * @return 0 if the nfqueue initialization successful, -1 otherwise
  */
 bool
 nf_neigh_set_nlsockbuffsz(uint32_t sock_buff_sz)
 {
     struct nf_neigh_context *ctxt;
-    bool status = true;
     int ret;
 
     ctxt = nf_neigh_get_context();
@@ -551,22 +549,12 @@ nf_neigh_set_nlsockbuffsz(uint32_t sock_buff_sz)
                      sizeof(sock_buff_sz));
     if (ret == -1)
     {
-        LOGE("%s: Failed to set link socket buff size to %u: error[%s]",
+        LOGE("%s: Failed to set nfq socket buff size to %u: error[%s]",
               __func__, sock_buff_sz, strerror(errno));
-        status = false;
+        return false;
     }
 
-    ret = setsockopt(ctxt->neigh_fd, SOL_SOCKET,
-                     SO_RCVBUFFORCE, &sock_buff_sz,
-                     sizeof(sock_buff_sz));
-    if (ret == -1)
-    {
-        LOGE("%s: Failed to set neigh socket buff size to %u: error[%s]",
-              __func__, sock_buff_sz, strerror(errno));
-        status = false;
-    }
-
-    return status;
+    return true;
 }
 
 
@@ -574,7 +562,7 @@ int
 nf_neigh_init(struct nf_neigh_settings *neigh_settings)
 {
     struct nf_neigh_context *ctxt;
-    uint32_t nlbuf_sz = 3*(1024 * 1024); // 3M netlink packet buffer
+    uint32_t nlbuf_sz = 3*(1024 * 1024); // 3M netlink packet buffer.
     int ret;
 
     ctxt = nf_neigh_get_context();

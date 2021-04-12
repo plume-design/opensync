@@ -37,6 +37,8 @@
 #include "nfm_ovsdb.h"
 #include "nfm_ipset.h"
 #include "nfm_objm.h"
+#include "nfm_mqtt.h"
+#include "nfm_nflog.h"
 #include "os.h"
 #include "target.h"
 #include "os_backtrace.h"
@@ -89,9 +91,24 @@ int main(int argc, char **argv)
 		LOGE("Initializing Netfilter manager: failed to initialize OVS database");
 		return -1;
 	}
+
+	if (!nfm_nflog_init())
+	{
+		LOG(ALERT, "NFLOG failed to initialize.");
+		return 1;
+	}
+
+	if (!nfm_mqtt_init())
+	{
+		LOG(ALERT, "MQTT failed to initialize.");
+		return 1;
+	}
+
 	nfm_init(loop);
 
 	ev_run(loop, 0);
+
+	nfm_nflog_fini();
 
 	nfm_fini();
 	target_close(TARGET_INIT_MGR_NFM, loop);

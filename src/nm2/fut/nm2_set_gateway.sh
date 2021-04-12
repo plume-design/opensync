@@ -31,12 +31,6 @@ source /tmp/fut-base/shell/config/default_shell.sh
 source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
 [ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
 
-trap '
-    reset_inet_entry $if_name || true
-    run_setup_if_crashed nm || true
-    check_restore_management_access || true
-' EXIT SIGINT SIGTERM
-
 tc_name="nm2/$(basename "$0")"
 manager_setup_file="nm2/nm2_setup.sh"
 create_radio_vif_file="tools/device/create_radio_vif_interface.sh"
@@ -74,12 +68,21 @@ while getopts h option; do
             ;;
     esac
 done
+
 NARGS=1
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
-
 if_name=$1
 if_type=${2:-${if_type_default}}
 gateway=${3:-${gateway_default}}
+
+trap '
+    fut_info_dump_line
+    print_tables Wifi_Inet_Config Wifi_Inet_State
+    fut_info_dump_line
+    reset_inet_entry $if_name || true
+    run_setup_if_crashed nm || true
+    check_restore_management_access || true
+' EXIT SIGINT SIGTERM
 
 log_title "${tc_name}: NM2 test - Testing table Wifi_Inet_Config field gateway"
 

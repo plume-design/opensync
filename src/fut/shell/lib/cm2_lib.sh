@@ -67,10 +67,6 @@ cm_setup_test_environment()
         log -deb "$fn_name - Device initialized - Success" ||
         raise "FAIL: Could not initialize device: device_init" -l "$fn_name" -ds
 
-    cm_disable_fatal_state &&
-        log -deb "$fn_name - Fatal state disabled - Success" ||
-        raise "FAIL: Could not disable fatal state: cm_disable_fatal_state" -l "$fn_name" -ds
-
     start_openswitch &&
         log -deb "$fn_name - OpenvSwitch started - Success" ||
         raise "FAIL: Could not start OpenvSwitch: start_openswitch" -l "$fn_name" -ds
@@ -129,78 +125,6 @@ cm_setup_test_environment()
 }
 
 ####################### SETUP SECTION - STOP ##################################
-
-####################### CLOUD SECTION - START #################################
-
-###############################################################################
-# DESCRIPTION:
-#   Function waits for Cloud status in Manager table to become
-#   as provided in parameter.
-#   Cloud statuses are:
-#       ACTIVE          device is connected to Cloud.
-#       BACKOFF         device could not connect to Cloud, will retry.
-#       CONNECTING      connecting to Cloud in progress.
-#       DISCONNECTED    device is disconnected from Cloud.
-#   Raises an exception on fail.
-# INPUT PARAMETER(S):
-#   $1  desired cloud state (required)
-# RETURNS:
-#   None.
-#   See DESCRIPTION.
-# USAGE EXAMPLE(S):
-#   wait_cloud_state ACTIVE
-###############################################################################
-wait_cloud_state()
-{
-    fn_name="cm2_lib:wait_cloud_state"
-    local NARGS=1
-    [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
-    wait_for_cloud_state=$1
-
-    log -deb "$fn_name - Waiting for cloud state $wait_for_cloud_state"
-    wait_for_function_response 0 "${OVSH} s Manager status -r | grep -q \"$wait_for_cloud_state\"" &&
-        log -deb "$fn_name - Cloud state is $wait_for_cloud_state" ||
-        raise "FAIL: Manager::status is not $wait_for_cloud_state}" -l "$fn_name" -ow
-    print_tables Manager
-}
-
-###############################################################################
-# DESCRIPTION:
-#   Function waits for Cloud status in Manager table not to become
-#   as provided in parameter.
-#   Cloud statuses are:
-#       ACTIVE          device is connected to Cloud.
-#       BACKOFF         device could not connect to Cloud, will retry.
-#       CONNECTING      connecting to Cloud in progress.
-#       DISCONNECTED    device is disconnected from Cloud.
-#   Raises an exception on fail.
-# INPUT PARAMETER(S):
-#   $1  un-desired cloud state (required)
-# RETURNS:
-#   None.
-#   See DESCRIPTION.
-# USAGE EXAMPLE(S):
-#   wait_cloud_state_not ACTIVE
-###############################################################################
-wait_cloud_state_not()
-{
-    fn_name="cm2_lib:wait_cloud_state_not"
-    local NARGS=1
-    [ $# -lt ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
-    wait_for_cloud_state_not=${1}
-    wait_for_cloud_state_not_timeout=${2:-60}
-
-    log -deb "$fn_name - Waiting for cloud state not to be $wait_for_cloud_state_not"
-    wait_for_function_response 0 "${OVSH} s Manager status -r | grep -q \"$wait_for_cloud_state_not\"" "${wait_for_cloud_state_not_timeout}" &&
-        raise "FAIL: Manager::status is $wait_for_cloud_state_not}" -l "$fn_name" -ow ||
-        log -deb "$fn_name - Cloud state is $wait_for_cloud_state_not"
-
-    print_tables Manager
-}
-
-####################### CLOUD SECTION - STOP ##################################
 
 ####################### ROUTE SECTION - START #################################
 
@@ -296,6 +220,8 @@ manipulate_iptables_protocol()
     else
         log "$fn_name - Add failure: Rule already in chain"
     fi
+
+    return 0
 }
 
 ###############################################################################
@@ -345,6 +271,8 @@ manipulate_iptables_address()
     else
         log "$fn_name - Add failure: Rule already in chain"
     fi
+
+    return 0
 }
 
 ####################### TEST CASE SECTION - STOP ##############################

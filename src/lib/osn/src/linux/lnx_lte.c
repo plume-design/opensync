@@ -33,8 +33,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 bool lnx_lte_init(lnx_lte_t *self, const char *ifname)
 {
+    bool res;
+    bool started;
+
     memset(self, 0, sizeof(*self));
 
+    LOGI("%s: New LTE %s", __func__, ifname);
     if (strscpy(self->ll_ifname, ifname, sizeof(self->ll_ifname)) < 0)
     {
         LOG(ERR, "lte: %s: Interface name too long.", ifname);
@@ -42,30 +46,33 @@ bool lnx_lte_init(lnx_lte_t *self, const char *ifname)
     }
 
     /*
-     * Launch the LTE daemon to make an LTE 'call'
+     * Launch the quectel daemon to make an LTE 'call'
      */
-    if (!daemon_init(&self->ll_lted, "/usr/opensync/tools/quectel-CM", DAEMON_LOG_ALL))
+    res = daemon_init(&self->ll_lted, "/usr/opensync/tools/quectel-CM", DAEMON_LOG_ALL);
+    if (!res)
     {
         LOG(ERR, "lte: %s: Unable to initialize lte daemon object.", ifname);
         return false;
     }
 
-    daemon_arg_add(&self->ll_lted, "-4", (char *)ifname);
+    LOGI("%s: start LTE daemon", __func__);
+    if (!daemon_is_started(&self->ll_lted, &started) || started)
+    {
+        daemon_stop(&self->ll_lted);
+        LOGI("%s: stop LTE daemon", __func__);
+    }
 
-    return true;
+    self->ll_applied = true;
+
+    return daemon_start(&self->ll_lted);
 }
 
 bool lnx_lte_fini(lnx_lte_t *self)
 {
     if (!self->ll_applied) return true;
 
+    LOGI("%s: stop LTE daemon", __func__);
     daemon_fini(&self->ll_lted);
     return true;
 }
 
-bool lnx_lte_apply(lnx_lte_t *self)
-{
-    self->ll_applied = true;
-
-    return true;
-}

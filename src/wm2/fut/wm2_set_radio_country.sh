@@ -26,6 +26,7 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
@@ -38,26 +39,17 @@ usage()
 cat << usage_string
 ${tc_name} [-h] arguments
 Description:
-    - Script tries to set chosen COUNTRY. If interface is not UP it brings up the interface, and tries to set COUNTRY
-      to desired value.
+    - Script checks if 'country' in Wifi_Radio_State at given radio interface is set to the regulatory domain of the device.
 Arguments:
     -h  show this help message
-    \$1  (radio_idx)      : Wifi_VIF_Config::vif_radio_idx    : (int)(required)
-    \$2  (if_name)        : Wifi_Radio_Config::if_name        : (string)(required)
-    \$3  (ssid)           : Wifi_VIF_Config::ssid             : (string)(required)
-    \$4  (security)       : Wifi_VIF_Config::security         : (string)(required)
-    \$5  (channel)        : Wifi_Radio_Config::channel        : (int)(required)
-    \$6  (ht_mode)        : Wifi_Radio_Config::ht_mode        : (string)(required)
-    \$7  (hw_mode)        : Wifi_Radio_Config::hw_mode        : (string)(required)
-    \$8  (mode)           : Wifi_VIF_Config::mode             : (string)(required)
-    \$9  (country)        : Wifi_Radio_Config::country        : (string)(required)
-    \$10 (vif_if_name)    : Wifi_VIF_Config::if_name          : (string)(required)
-    \$11 (country_to_set) : Wifi_Radio_Config::country to set : (string)(required)
+    \$1  (if_name)          : Wifi_Radio_Config::if_name          : (string)(required)
+    \$2  (country_to_check) : Wifi_Radio_Config::country to check : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name} <RADIO-IDX> <IF-NAME> <SSID> <PASSWORD> <CHANNEL> <HT-MODE> <HW-MODE> <MODE> <VIF-IF-NAME> <COUNTRY>
+                 Run: ./${tc_name} <IF-NAME> <COUNTRY>
 Script usage example:
-   ./${tc_name} 2 wifi1 test_wifi_50L WifiPassword123 44 HT20 11ac ap US home-ap-l50 US
+   ./${tc_name} wifi1 US
+   ./${tc_name} wl1 E0
 usage_string
 }
 while getopts h option; do
@@ -70,63 +62,22 @@ while getopts h option; do
             ;;
     esac
 done
-NARGS=11
+
+NARGS=2
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+if_name=$1
+country_to_check=$2
 
-vif_radio_idx=$1
-if_name=$2
-ssid=$3
-security=$4
-channel=$5
-ht_mode=$6
-hw_mode=$7
-mode=$8
-country=$9
-vif_if_name=${10}
-country_to_set=${11}
+trap '
+    fut_info_dump_line
+    print_tables Wifi_Radio_State
+    fut_info_dump_line
+' EXIT SIGINT SIGTERM
 
-log_title "$tc_name: WM2 test - Testing Wifi_Radio_Config field country - '${country}'"
+log_title "$tc_name: WM2 test - Testing Wifi_Radio_State field country - '${country_to_check}'"
 
-log "$tc_name: Checking if Radio/VIF states are valid for test"
-check_radio_vif_state \
-    -if_name "$if_name" \
-    -vif_if_name "$vif_if_name" \
-    -vif_radio_idx "$vif_radio_idx" \
-    -ssid "$ssid" \
-    -channel "$channel" \
-    -security "$security" \
-    -hw_mode "$hw_mode" \
-    -mode "$mode" \
-    -country "$country" &&
-        log "$tc_name: Radio/VIF states are valid" ||
-            (
-                log "$tc_name: Cleaning VIF_Config"
-                vif_clean
-                log "$tc_name: Radio/VIF states are not valid, creating interface..."
-                create_radio_vif_interface \
-                    -vif_radio_idx "$vif_radio_idx" \
-                    -channel_mode manual \
-                    -if_name "$if_name" \
-                    -ssid "$ssid" \
-                    -security "$security" \
-                    -enabled true \
-                    -channel "$channel" \
-                    -ht_mode "$ht_mode" \
-                    -hw_mode "$hw_mode" \
-                    -mode "$mode" \
-                    -country "$country" \
-                    -vif_if_name "$vif_if_name" &&
-                        log "$tc_name: create_radio_vif_interface - Success"
-            ) ||
-        raise "create_radio_vif_interface - Failed" -l "$tc_name" -tc
-
-log "$tc_name: Changing country to $country_to_set"
-update_ovsdb_entry Wifi_Radio_Config -w if_name "$if_name" -u country "$country_to_set" &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Radio_Config table updated - country $country_to_set" ||
-    raise "update_ovsdb_entry - Failed to update Wifi_Radio_Config - country $country_to_set" -l "$tc_name" -tc
-
-wait_ovsdb_entry Wifi_Radio_State -w if_name "$if_name" -is country "$country_to_set" &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Radio_Config reflected to Wifi_Radio_State - country $country_to_set" ||
-    raise "wait_ovsdb_entry - Failed to reflect Wifi_Radio_Config to Wifi_Radio_State - country $country_to_set" -l "$tc_name" -tc
+check_ovsdb_entry Wifi_Radio_State -w if_name "$if_name" -w country "$country_to_check" &&
+    log "$tc_name: wait_ovsdb_entry - Wifi_Radio_State::country is $country_to_check" ||
+    raise "wait_ovsdb_entry - Failed Wifi_Radio_State::country is not $country_to_check" -l "$tc_name" -tc
 
 pass

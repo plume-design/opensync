@@ -1,0 +1,83 @@
+#!/bin/bash -ax
+export USER_MODE_LINUX=y
+
+mount -t proc proc /proc
+mount -t sysfs sys /sys
+mount -t tmpfs tmp /tmp
+mount -t tmpfs tmp /var
+mount -o rw,remount /
+mkdir -p /var/run
+ip link set lo up
+
+PATH=/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin
+dir=$(grep -o 'env_dir=[^ ]*' /proc/cmdline | cut -d= -f2)
+env=$(grep -o 'env=[^ ]*' /proc/cmdline | cut -d= -f2)
+wm=$(grep -o 'env_wm=[^ ]*' /proc/cmdline | cut -d= -f2)
+db=$(grep -o 'env_db=[^ ]*' /proc/cmdline | cut -d= -f2)
+cmd=$(grep -o 'env_cmd=.*' /proc/cmdline | cut -d= -f2-)
+PATH=$PATH:$(dirname "$wm")
+
+eval "$(echo "$env" | base64 -d)"
+
+iw dev wlan0 del || true
+iw dev wlan1 del || true
+iw phy phy0 interface add wlan0 type station
+iw phy phy0 interface add wlan0_1 type station
+iw phy phy1 interface add wlan1 type station
+iw phy phy1 interface add wlan1_1 type station
+
+mkdir -p /var/run/hostapd
+mkdir -p /var/run/wpa_supplicant
+rm -rf /var/run/hostapd
+rm -rf /var/run/wpa_supplicant
+
+hostapd -g /var/run/hostapd/global -B -f /tmp/hapd-glob.log -dd -t
+wpa_supplicant -g /var/run/wpa_supplicantglobal -B -f /tmp/wpas_glob.log -dd -t
+
+db1=/var/run/db1.sock
+db2=/var/run/db2.sock
+conf1=/var/lib/openvswitch/conf1.db
+conf2=/var/lib/openvswitch/conf2.db
+
+mkdir -p /var/lib/openvswitch
+mkdir -p /var/run/openvswitch
+cp -v "$db" "$conf1"
+cp -v "$db" "$conf2"
+
+dut="env PLUME_OVSDB_SOCK_PATH=$db1 sh -axe"
+dut_phy=phy0
+dut_vif=wlan0
+dut_vif2=wlan0_1
+dut_mac=$(cat /sys/class/net/$dut_vif/address)
+dut_mac2=$(cat /sys/class/net/$dut_vif2/address)
+
+ref="env PLUME_OVSDB_SOCK_PATH=$db2 sh -axe"
+ref_phy=phy1
+ref_vif=wlan1
+ref_vif2=wlan1_1
+ref_mac=$(cat /sys/class/net/$ref_vif/address)
+ref_mac2=$(cat /sys/class/net/$ref_vif2/address)
+
+ulimit -c unlimited
+cd "$dir"
+
+# This runs 2 WM instances, one nested in another, but
+# otherwise operating on 2 databases. The $dut and $ref take
+# care of wrapping things so that, eg. ovsh works with the
+# correct WM2 instance. Running them like that allows the
+# test flow to finish when the inner most test script
+# finishes, or if something crashes at any layer.
+WM2_TESTCMD="
+	env WM2_TESTCMD=\"$cmd\" ovsdb-server \
+		--remote=punix:$db2 \
+		--run \"env PLUME_OVSDB_SOCK_PATH=$db2 $wm\" \
+		\"$conf2\"
+"
+time ovsdb-server \
+	--remote=punix:$db1 \
+	--run "env PLUME_OVSDB_SOCK_PATH=$db1 $wm" \
+	"$conf1"
+
+cp /tmp/*.log "logs/$cmd/"
+
+halt -f -p

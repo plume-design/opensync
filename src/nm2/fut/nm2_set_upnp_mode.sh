@@ -61,18 +61,21 @@ while getopts h option; do
             ;;
     esac
 done
+
 NARGS=2
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+internal_if=$1
+external_if=$2
 
 trap '
+    fut_info_dump_line
+    print_tables Wifi_Inet_Config Wifi_Inet_State
+    fut_info_dump_line
     reset_inet_entry $internal_if
     reset_inet_entry $external_if
     run_setup_if_crashed nm || true
     check_restore_management_access || true
 ' EXIT SIGINT SIGTERM
-
-internal_if=$1
-external_if=$2
 
 log_title "$tc_name: NM2 test - Testing UPnP mode"
 
@@ -106,7 +109,7 @@ wait_ovsdb_entry Wifi_Inet_State -w if_name "$external_if" -is upnp_mode externa
     raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - upnp_mode=external" -l "$tc_name" -tc
 
 log "$tc_name: LEVEL 2 checks"
-wait_for_function_response 0 "check_upnp_conf $internal_if $external_if" &&
+wait_for_function_response 0 "check_upnp_configuration_valid $internal_if $external_if" &&
     log "$tc_name: LEVEL 2: UPNP applied to OS" ||
     raise "LEVEL 2: Failed to apply UPNP to OS" -l "$tc_name" -tc
 
@@ -129,7 +132,7 @@ wait_ovsdb_entry Wifi_Inet_State -w if_name "$external_if" -is upnp_mode "disabl
     raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - upnp_mode=disabled" -l "$tc_name" -tc
 
 log "$tc_name: LEVEL 2 checks"
-wait_for_function_response 1 "check_upnp_conf $internal_if $external_if" &&
+wait_for_function_response 1 "check_upnp_configuration_valid $internal_if $external_if" &&
     log "$tc_name: LEVEL 2: UPNP removed from OS" ||
     raise "LEVEL 2: Failed to remove UPNP remove OS" -l "$tc_name" -tc
 

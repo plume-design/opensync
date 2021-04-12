@@ -58,10 +58,6 @@ fsm_setup_test_environment()
         log -deb "$fn_name - Device initialized - Success" ||
         raise "FAIL: Could not initialize device: device_init" -l "$fn_name" -ds
 
-    cm_disable_fatal_state &&
-        log -deb "$fn_name - Fatal state disabled - Success"  ||
-        raise "FAIL: Could not disable fatal state: cm_disable_fatal_state" -l "$fn_name" -ds
-
     start_openswitch &&
         log -deb "$fn_name - OpenvSwitch started - Success"  ||
         raise "FAIL: Could not start OpenvSwitch: start_openswitch" -l "$fn_name" -ds

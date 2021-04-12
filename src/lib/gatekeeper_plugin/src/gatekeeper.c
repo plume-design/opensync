@@ -28,6 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stddef.h>
 #include <time.h>
 
+#include "dns_cache.h"
 #include "gatekeeper_multi_curl.h"
 #include "gatekeeper_single_curl.h"
 #include "gatekeeper_cache.h"
@@ -43,6 +44,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "schema.h"
 #include "const.h"
 #include "log.h"
+
+#define GK_NOT_RATED 100
+#define GK_UNRATED_TTL (60*60*24)
 
 static ovsdb_table_t table_SSL;
 
@@ -113,14 +117,16 @@ gatekeeper_report_compute_health_stats(struct fsm_gk_session *fsm_gk_session,
 {
     struct fsm_url_stats *stats;
     uint32_t count;
+    uint32_t dns_cache_hits;
 
     stats = &fsm_gk_session->health_stats;
+    dns_cache_hits = dns_cache_get_hit_count(IP2ACTION_GK_SVC);
 
-    count = (uint32_t)(stats->cloud_lookups + stats->cache_hits);
+    count = (uint32_t)(stats->cloud_lookups + stats->cache_hits + dns_cache_hits);
     hs->total_lookups = count;
 
     /* Compute cache hits */
-    count = (uint32_t)(stats->cache_hits);
+    count = (uint32_t)(stats->cache_hits) + dns_cache_hits;
     hs->cache_hits = count;
 
     /* Compute remote_lookups */
@@ -233,12 +239,34 @@ callback_SSL(ovsdb_update_monitor_t *mon,
              struct schema_SSL *ssl)
 {
     struct fsm_gk_mgr *mgr;
+    ds_tree_t *sessions;
+    struct fsm_gk_session *fsm_gk_session;
+    struct gk_curl_easy_info *ecurl;
+
+    if (!ssl->certificate_exists || !ssl->private_key_exists) return;
+
+    LOGD("%s(): reading SSL certs on update", __func__);
 
     mgr = gatekeeper_get_mgr();
     if (!mgr->initialized) return;
 
-    strncpy(mgr->ssl_cert_path, ssl->ca_cert, sizeof(mgr->ssl_cert_path));
-    LOGN("%s() read certs path: %s", __func__, mgr->ssl_cert_path);
+    sessions = &mgr->fsm_sessions;
+    fsm_gk_session = ds_tree_head(sessions);
+    while (fsm_gk_session != NULL)
+    {
+        ecurl = &fsm_gk_session->ecurl;
+        strncpy(ecurl->ssl_cert, ssl->certificate, sizeof(ecurl->ssl_cert));
+        strncpy(ecurl->ssl_key, ssl->private_key, sizeof(ecurl->ssl_key));
+        strncpy(ecurl->ca_path, ssl->ca_cert, sizeof(ecurl->ca_path));
+
+        LOGD("%s(): ssl cert %s, priv key %s, ca_path: %s",
+             __func__,
+             ecurl->ssl_cert,
+             ecurl->ssl_key,
+             ecurl->ca_path);
+
+        fsm_gk_session = ds_tree_next(sessions, fsm_gk_session);
+    }
 }
 
 /**
@@ -266,6 +294,11 @@ gk_update_redirect_from_cache(struct fsm_policy_req *req,
 
     /* return if fqdn_redirect is not set */
     if (entry->fqdn_redirect == NULL) return;
+
+    /* if redirect flag is not set, return
+     * without updating redirect entries
+     */
+    if (!entry->fqdn_redirect->redirect) return;
 
     req->reply.redirect = entry->fqdn_redirect->redirect;
     req->reply.rd_ttl   = entry->fqdn_redirect->redirect_ttl;
@@ -307,7 +340,7 @@ gatekeeper_check_attr_cache(struct fsm_policy_req *req, int req_type)
     entry->attribute_type = req_type;
     entry->attr_name = strdup(req->url);
     ret = gkc_lookup_attribute_entry(entry, true);
-    LOGN("%s(): %s of type %d, is %s in cache",
+    LOGT("%s(): %s of type %d, is %s in cache",
          __func__,
          req->url,
          req_type,
@@ -400,12 +433,12 @@ gk_check_policy_in_cache(struct fsm_policy_req *req)
     req_type = fsm_policy_get_req_type(req);
     if (req_type >=FSM_FQDN_REQ && req_type <= FSM_APP_REQ)
     {
-        LOGN("%s(): checking attribute cache", __func__);
+        LOGT("%s(): checking attribute cache", __func__);
         ret = gatekeeper_check_attr_cache(req, req_type);
     }
     else if (req_type >= FSM_IPV4_FLOW_REQ && req_type <= FSM_IPV6_FLOW_REQ)
     {
-        LOGN("%s(): checking IP Flow cache", __func__);
+        LOGT("%s(): checking IP Flow cache", __func__);
         ret = gatekeeper_check_ipflow_cache(req);
     }
 
@@ -439,12 +472,12 @@ gk_populate_redirect_entry(struct gk_attr_cache_interface *entry,
     STRSCPY(redirect_entry->redirect_ips[0], fqdn_req->redirects[0]);
     STRSCPY(redirect_entry->redirect_ips[1], fqdn_req->redirects[1]);
 
-    LOGN(
-        "%s(): populated redirect entries for gk cache, redirect flag %d, IPv4 %s, IPv6 %s",
-        __func__,
-        redirect_entry->redirect,
-        redirect_entry->redirect_ips[0],
-        redirect_entry->redirect_ips[1]);
+    LOGT("%s(): populated redirect entries for gk cache, redirect flag %d "
+         "IPv4 %s, IPv6 %s",
+         __func__,
+         redirect_entry->redirect,
+         redirect_entry->redirect_ips[0],
+         redirect_entry->redirect_ips[1]);
 }
 
 /**
@@ -468,7 +501,7 @@ gatekeeper_add_attr_cache(struct fsm_policy_req *req, int req_type)
 
     if (url_reply == NULL)
     {
-        LOGN("%s: url_reply is NULL, not adding to attr cache", __func__);
+        LOGD("%s: url_reply is NULL, not adding to attr cache", __func__);
         return false;
     }
 
@@ -492,7 +525,7 @@ gatekeeper_add_attr_cache(struct fsm_policy_req *req, int req_type)
     if (req_type == GK_CACHE_REQ_TYPE_FQDN) gk_populate_redirect_entry(entry, req);
 
     ret = gkc_add_attribute_entry(entry);
-    LOGN("%s(): adding %s (attr type %d) to cache %s ",
+    LOGT("%s(): adding %s (attr type %d) to cache %s ",
          __func__,
          req->url,
          req_type,
@@ -528,7 +561,7 @@ gatekeeper_add_ipflow_cache(struct fsm_policy_req *req)
 
     if (url_reply == NULL)
     {
-        LOGN("%s: url_reply is NULL, not adding to IP flow cache", __func__);
+        LOGD("%s: url_reply is NULL, not adding to IP flow cache", __func__);
         return false;
     }
 
@@ -540,7 +573,7 @@ gatekeeper_add_ipflow_cache(struct fsm_policy_req *req)
 
     fkey = acc->fkey;
 
-    LOGN("%s: adding flow src: %s, dst: %s, proto: %d, sport: %d, dport: %d to cache",
+    LOGT("%s: adding flow src: %s, dst: %s, proto: %d, sport: %d, dport: %d to cache",
          __func__,
          fkey->src_ip, fkey->dst_ip, fkey->protocol, fkey->sport, fkey->dport);
 
@@ -565,13 +598,37 @@ gatekeeper_add_ipflow_cache(struct fsm_policy_req *req)
     }
 
     ret = gkc_add_flow_entry(flow_entry);
-    LOGN("%s(): adding cache %s ",
+    LOGT("%s(): adding cache %s ",
          __func__,
          (ret == true) ? "success" : "failed");
 
     free(flow_entry);
 
     return ret;
+}
+
+void
+gk_fsm_adjust_ttl(struct fsm_policy_req *req)
+{
+    struct fqdn_pending_req *fqdn_req;
+    struct fsm_url_request *req_info;
+    struct fsm_url_reply *url_reply;
+    uint32_t category_id;
+
+    fqdn_req = req->fqdn_req;
+    req_info = fqdn_req->req_info;
+    url_reply = req_info->reply;
+
+    if (url_reply == NULL) return;
+
+    category_id = url_reply->reply_info.gk_info.category_id;
+    if (category_id != GK_NOT_RATED) return;
+
+    LOGD("%s: setting cache ttl for %s to %d seconds", __func__,
+         req->url, GK_UNRATED_TTL);
+
+    req->reply.cache_ttl = GK_UNRATED_TTL;
+    fqdn_req->cat_unknown_to_service = true;
 }
 
 /**
@@ -589,6 +646,9 @@ gk_add_policy_to_cache(struct fsm_policy_req *req)
 
     cache_mgr = gk_cache_get_mgr();
     if (!cache_mgr->initialized) return false;
+
+    /* Overwrite TTL to large value for local ip and set fqdn flag */
+    gk_fsm_adjust_ttl(req);
 
     req_type = fsm_policy_get_req_type(req);
     if (req_type >=FSM_FQDN_REQ && req_type <= FSM_APP_REQ)
@@ -694,7 +754,8 @@ gatekeeper_get_verdict(struct fsm_session *session,
     if (incache == true)
     {
         stats->cache_hits++;
-        LOGN("%s found in cache, returning action %d, redirect flag %d from cache",
+        LOGT("%s(): %s found in cache, returning action %d, redirect flag %d from cache",
+             __func__,
              req->url,
              req->reply.action,
              req->reply.redirect);
@@ -722,11 +783,11 @@ gatekeeper_get_verdict(struct fsm_session *session,
     policy_req = gk_verdict->policy_req;
     fqdn_req = policy_req->fqdn_req;
 
-    LOGT("%s: url:%s path:%s", __func__, ecurl_info->server_url, ecurl_info->cert_path);
+    LOGT("%s: url:%s path:%s", __func__, ecurl_info->server_url, ecurl_info->ca_path);
 
     gk_verdict->gk_pb = gatekeeper_get_req(session, req);
     if (gk_verdict->gk_pb == NULL) {
-        LOGN("%s() curl request serialization failed", __func__);
+        LOGD("%s() curl request serialization failed", __func__);
         ret = false;
         goto error;
     }
@@ -752,7 +813,7 @@ gatekeeper_get_verdict(struct fsm_session *session,
             offline->connection_failures++;
         }
 
-        LOGN("%s() curl error not updating cache", __func__);
+        LOGD("%s() curl error not updating cache", __func__);
         ret = false;
         goto error;
     }
@@ -760,13 +821,13 @@ gatekeeper_get_verdict(struct fsm_session *session,
 
     /* update stats for processing the request */
     lookup_latency = fsm_gk_update_latencies(fsm_gk_session, &start, &end);
-    LOGN("%s(): cloud lookup latency for '%s' is %ld ms", __func__, req->url, lookup_latency);
+    LOGT("%s(): cloud lookup latency for '%s' is %ld ms", __func__, req->url, lookup_latency);
 #endif
 
     gk_add_policy_to_cache(req);
 
 error:
-    LOGN("%s(): verdict for '%s' is %d", __func__, req->url, req->reply.action);
+    LOGT("%s(): verdict for '%s' is %d", __func__, req->url, req->reply.action);
     free_gk_verdict(gk_verdict);
     return ret;
 }
@@ -837,13 +898,6 @@ gatekeeper_init_curl(struct fsm_session *session)
 
     memset(ecurl_info, 0, sizeof(struct gk_curl_easy_info));
     ecurl_info->server_url = session->ops.get_config(session, "gk_url");
-    ecurl_info->cert_path = session->ops.get_config(session, "cacert");
-
-    /* if certs is present in other config use it, else read from SSL table */
-    if (ecurl_info->cert_path == NULL)
-    {
-        ecurl_info->cert_path = gk_mgr->ssl_cert_path;
-    }
 
 #ifdef MULTI_CURL
     gk_multi_curl_init(session->loop);
@@ -1016,7 +1070,7 @@ gk_curl_easy_timeout(struct fsm_gk_session *fsm_gk_session, time_t ctime)
 
     if (time_diff < GK_CURL_TIMEOUT) return;
 
-    LOGN("%s(): closing curl connection.", __func__);
+    LOGD("%s(): closing curl connection.", __func__);
     gk_curl_easy_cleanup(fsm_gk_session);
 }
 
@@ -1079,7 +1133,6 @@ gatekeeper_update(struct fsm_session *session)
     struct fsm_gk_session *fsm_gk_session;
     struct gk_curl_easy_info *ecurl_info;
     char *hs_report_interval;
-    const char *cert_path;
     char *hs_report_topic;
     long interval;
 
@@ -1089,12 +1142,6 @@ gatekeeper_update(struct fsm_session *session)
     ecurl_info = &fsm_gk_session->ecurl;
 
     ecurl_info->server_url = session->ops.get_config(session, "gk_url");
-
-    cert_path = session->ops.get_config(session, "cacert");
-    if (cert_path)
-    {
-        ecurl_info->cert_path = session->ops.get_config(session, "cacert");
-    }
 
     fsm_gk_session->health_stats_report_interval = (long)GATEKEEPER_REPORT_HEALTH_STATS_INTERVAL;
     hs_report_interval = session->ops.get_config(session,

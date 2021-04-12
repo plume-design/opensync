@@ -102,6 +102,7 @@ struct net_md_flow_info
     uint8_t *remote_ip;
     uint16_t local_port;
     uint16_t remote_port;
+    uint8_t ip_version;
 };
 
 

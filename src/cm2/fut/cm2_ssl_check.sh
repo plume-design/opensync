@@ -61,8 +61,13 @@ while getopts h option; do
 done
 
 trap '
+fut_info_dump_line
+print_tables SSL Manager Connection_Manager_Uplink
+ifconfig eth0
+fut_info_dump_line
 check_restore_management_access || true
-run_setup_if_crashed cm || true' EXIT SIGINT SIGTERM
+run_setup_if_crashed cm || true
+' EXIT SIGINT SIGTERM
 
 log_title "$tc_name: CM2 test - SSL Check"
 

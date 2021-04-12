@@ -146,7 +146,8 @@ stop_cloud_simulation()
 # USAGE EXAMPLE(S):
 #   start_fut_mqtt
 ###############################################################################
-start_fut_mqtt() {
+start_fut_mqtt()
+{
     local fn_name="rpi_lib:start_fut_mqtt"
     local cert_dir="/etc/mosquitto/certs/fut/"
     local mqtt_conf_file="${FUT_TOPDIR}/shell/tools/rpi/files/fut_mqtt.conf"
@@ -177,7 +178,8 @@ start_fut_mqtt() {
 # USAGE EXAMPLE(S):
 #   stop_fut_mqtt
 ###############################################################################
-stop_fut_mqtt() {
+stop_fut_mqtt()
+{
     fn_name="rpi_lib:stop_fut_mqtt"
     log "${fn_name} - Stopping MQTT daemon"
     # shellcheck disable=SC2046
@@ -348,7 +350,7 @@ address_internet_manipulation()
 # DESCRIPTION:
 #   Function checks if internet access is already blocked or unblocked
 #   for source IP.
-#   Dies if internet access is already blocked or unblocked.
+#   Raises exception if internet access is already blocked or unblocked.
 # INPUT PARAMETER(S):
 #   $1  ip address to be blocked or unblocked (required)
 #   $2  type of manipulation, supported block, unblock (required)
@@ -377,7 +379,6 @@ address_internet_check()
     fi
 
     check_ec=$(${sudo_cmd} ${iptables_cmd} -C FORWARD -s "$ip_address" -o eth0 -j DROP)
-
     if [ "$?" -eq "$exit_code" ]; then
         raise "FAIL: Internet already ${type}ed for address $ip_address" -l "$fn_name" -ec 0 -ds
     else
@@ -442,16 +443,16 @@ address_dns_manipulation()
     local cmd_tcp="${sudo_cmd} ${iptables_cmd} ${action_type} ${iptables_args_tcp}"
     local cmd_tcp_ssl="${sudo_cmd} ${iptables_cmd} ${action_type} ${iptables_args_tcp_ssl}"
 
-    wait_for_function_exitcode "${wait_exit_code}" "${cmd_udp}" "${retry_cnt}" &&
+    wait_for_function_exit_code "${wait_exit_code}" "${cmd_udp}" "${retry_cnt}" &&
         log -deb "${fn_name} - DNS traffic ${type}ed for ${ip_address}" ||
         raise "FAIL: Could not ${type} DNS traffic for ${ip_address}" -l "${fn_name}" -ds
-    wait_for_function_exitcode "${wait_exit_code}" "${cmd_tcp}" "${retry_cnt}" &&
+    wait_for_function_exit_code "${wait_exit_code}" "${cmd_tcp}" "${retry_cnt}" &&
         log -deb "${fn_name} - DNS traffic ${type}ed for ${ip_address}" ||
         raise "FAIL: Could not ${type} DNS traffic for ${ip_address}" -l "${fn_name}" -ds
-    wait_for_function_exitcode "${wait_exit_code}" "${cmd_udp_ssl}" "${retry_cnt}" &&
+    wait_for_function_exit_code "${wait_exit_code}" "${cmd_udp_ssl}" "${retry_cnt}" &&
         log -deb "${fn_name} - DNS traffic ${type}ed for ${ip_address}" ||
         raise "FAIL: Could not ${type} DNS traffic for ${ip_address}" -l "${fn_name}" -ds
-    wait_for_function_exitcode "${wait_exit_code}" "${cmd_tcp_ssl}" "${retry_cnt}" &&
+    wait_for_function_exit_code "${wait_exit_code}" "${cmd_tcp_ssl}" "${retry_cnt}" &&
         log -deb "${fn_name} - DNS traffic ${type}ed for ${ip_address}" ||
         raise "FAIL: Could not ${type} DNS traffic for ${ip_address}" -l "${fn_name}" -ds
     address_dns_check "${ip_address}" "${type}" &&

@@ -136,9 +136,6 @@ ctrl_dpp_listen(struct ctrl *ctrl,
     int err;
     int freq;
 
-    ok = ctrl_request_ok(ctrl, "SET dpp_configurator_connectivity 1");
-    if (!ok) return -1;
-
     /* This isn't perfect, but should be good enough to get
      * the freq. In fact, sometimes hostapd may not know the
      * radio works on another interfaces on proprietary
@@ -153,6 +150,13 @@ ctrl_dpp_listen(struct ctrl *ctrl,
     if (err) return -1;
 
     freq = atoi(ini_geta(reply, "freq") ?: "-1");
+
+    /* hostapd checks if dpp_listen freq is within AP oper channel.
+     * But some hostapd drivers don't report that at all,
+     * in which case passing any non-zero freq to dpp_listen
+     * will work.
+     */
+    if (freq == 0) freq = 1;
 
     cmd = strfmta("DPP_LISTEN %d", freq);
     ok = ctrl_request_ok(ctrl, cmd);
@@ -200,18 +204,6 @@ ctrl_dpp_chirp(struct ctrl *ctrl,
     return ctrl_request_ok(ctrl, cmd) ? 0 : -1;
 }
 
-static bool
-ctrl_dpp_config_match(struct ctrl *ctrl, const struct schema_DPP_Config *conf)
-{
-    int i;
-
-    for (i = 0; i < conf->ifnames_len; i++)
-        if (!strcmp(conf->ifnames[i], ctrl->bss))
-            return true;
-
-    return false;
-}
-
 static int
 ctrl_dpp_config_each(struct ctrl *ctrl, void *ptr)
 {
@@ -221,7 +213,7 @@ ctrl_dpp_config_each(struct ctrl *ctrl, void *ptr)
     int conf_idx;
     int err = 0;
 
-    if (!ctrl_dpp_config_match(ctrl, config))
+    if (!ctrl->wpa)
         return 0;
 
     own_bi_idx = ctrl_dpp_set_own_bi(ctrl, config);
@@ -247,6 +239,10 @@ static int
 ctrl_dpp_clear_each(struct ctrl *ctrl, void *ptr)
 {
     int err = 0;
+
+    if (!ctrl->wpa)
+        return 0;
+
     err |= WARN_ON(!ctrl_request_ok(ctrl, "DPP_CONFIGURATOR_REMOVE *"));
     err |= WARN_ON(!ctrl_request_ok(ctrl, "DPP_BOOTSTRAP_REMOVE *"));
     err |= WARN_ON(!ctrl_request_ok(ctrl, "DPP_STOP_LISTEN"));

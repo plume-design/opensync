@@ -63,19 +63,22 @@ while getopts h option; do
             ;;
     esac
 done
+
 NARGS=4
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
-
-trap '
-    reset_inet_entry $if_name || true
-    run_setup_if_crashed nm || true
-    check_restore_management_access || true
-' EXIT SIGINT SIGTERM
-
 if_name=$1
 if_type=$2
 primary_dns=$3
 secondary_dns=$4
+
+trap '
+    fut_info_dump_line
+    print_tables Wifi_Inet_Config Wifi_Inet_State
+    fut_info_dump_line
+    reset_inet_entry $if_name || true
+    run_setup_if_crashed nm || true
+    check_restore_management_access || true
+' EXIT SIGINT SIGTERM
 
 log_title "${tc_name}: NM2 test - Testing table Wifi_Inet_Config field dns"
 
@@ -92,7 +95,7 @@ create_inet_entry \
         raise "Failed to create interface" -l "$tc_name" -tc
 
 log "$tc_name: Setting DNS for $if_name to $primary_dns, $secondary_dns"
-enable_disable_custom_dns "$if_name" "$primary_dns" "$secondary_dns" ||
+configure_custom_dns_on_interface "$if_name" "$primary_dns" "$secondary_dns" ||
     raise "Failed to set custom DNS - interface $if_name" -l "$tc_name" -tc
 
 log "$tc_name: LEVEL 2 - Check if Primary DNS was properly applied to $if_name"

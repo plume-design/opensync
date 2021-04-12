@@ -1,0 +1,5 @@
+#!/bin/sh -axe
+echo "$dut_prepare" | $dut
+echo "$ref_prepare" | $ref
+
+for i in "$@"; do ./$i; done

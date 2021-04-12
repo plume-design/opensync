@@ -59,6 +59,15 @@ while getopts h option; do
     esac
 done
 
+trap '
+fut_info_dump_line
+print_tables AWLAN_Node Manager
+fut_info_dump_line
+' EXIT SIGINT SIGTERM
+
+check_kconfig_option "TARGET_CAP_EXTENDER" "y" ||
+    raise "TARGET_CAP_EXTENDER != y - Testcase applicable only for EXTENDER-s" -l "${tc_name}" -s
+
 log_title "$tc_name: ONBRD test - Verify if AWLAN_Node manager address hostname is resolved"
 
 # Restart managers to start every config resolution from the begining

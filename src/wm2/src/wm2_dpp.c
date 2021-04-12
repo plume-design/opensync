@@ -33,6 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb.h"
 #include "ovsdb_update.h"
 #include "ovsdb_table.h"
+#include "ovsdb_sync.h"
 #include "schema.h"
 #include "schema_consts.h"
 #include "log.h"
@@ -50,7 +51,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define WM2_DPP_RECALC_SECONDS atoi(getenv("WM2_DPP_RECALC_SECONDS") ?: "1")
 #define WM2_DPP_TRIES atoi(getenv("WM2_DPP_TRIES") ?: "3")
-#define WM2_DPP_ONBOARD_TIMEOUT_SECONDS atoi(getenv("WM2_DPP_ONBOARD_TIMEOUT_SECONDS") ?: "30")
+#define WM2_DPP_ONBOARD_TIMEOUT_SECONDS atoi(getenv("WM2_DPP_ONBOARD_TIMEOUT_SECONDS") ?: "60")
 #define WM2_DPP_SSID_LEN 32
 #define WM2_DPP_PSK_LEN 64
 
@@ -424,7 +425,9 @@ wm2_dpp_onboard_each(const char *ifname, const struct target_dpp_conf_network *c
 
     vconf._partial_update = true;
     vconf.security_len = 0;
+    vconf.security_present = true;
     vconf.wpa_psks_len = 0;
+    vconf.wpa_psks_present = true;
 
     SCHEMA_SET_STR(vconf.if_name, ifname);
     SCHEMA_SET_INT(vconf.wpa, true);
@@ -1011,6 +1014,50 @@ wm2_dpp_op_conf_failed(void)
     wm2_dpp_recalc_schedule();
 }
 
+static void
+callback_DPP_Oftag(ovsdb_update_monitor_t *mon,
+                   struct schema_DPP_Oftag *old,
+                   struct schema_DPP_Oftag *row)
+{
+    const struct schema_Wifi_Associated_Clients *client;
+    struct schema_Wifi_Associated_Clients *clients;
+    const char *column;
+    json_t *where;
+    int n;
+
+    if (!g_wm2_dpp_supported)
+        return;
+    if (mon->mon_type != OVSDB_UPDATE_NEW &&
+        mon->mon_type != OVSDB_UPDATE_MODIFY)
+        return;
+    if (WARN_ON(!row->sta_netaccesskey_sha256_hex_exists))
+        return;
+    if (WARN_ON(!row->oftag_exists))
+        return;
+
+    column = SCHEMA_COLUMN(Wifi_Associated_Clients, dpp_netaccesskey_sha256_hex);
+    where = ovsdb_where_simple(column, row->sta_netaccesskey_sha256_hex);
+
+    clients = ovsdb_table_select_where(&table_Wifi_Associated_Clients, where, &n);
+    if (!clients)
+        return;
+
+    for (client = clients; n; n--, client++) {
+        if (client->oftag_exists && !strcmp(client->oftag, row->oftag))
+            continue;
+
+        LOGI("dpp: %s: resyncing oftag '%s' -> '%s'",
+             client->mac, client->oftag, row->oftag);
+
+        if (client->oftag_exists)
+            wm2_clients_oftag_unset(client->mac, client->oftag);
+
+        wm2_clients_oftag_set(client->mac, row->oftag);
+    }
+
+    free(clients);
+}
+
 void
 wm2_dpp_init(void)
 {
@@ -1021,6 +1068,7 @@ wm2_dpp_init(void)
     OVSDB_TABLE_INIT(DPP_Oftag, sta_netaccesskey_sha256_hex);
     OVSDB_TABLE_MONITOR_F(DPP_Config, C_VPACK("-", "status"));
     OVSDB_TABLE_MONITOR(DPP_Announcement, false);
+    OVSDB_TABLE_MONITOR(DPP_Oftag, false);
 
     ev_init(&g_wm2_dpp_recalc_timer, wm2_dpp_recalc_cb);
     ev_init(&g_wm2_dpp_timeout_timer, wm2_dpp_timeout_cb);

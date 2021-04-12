@@ -1,0 +1,65 @@
+#!/bin/sh -e
+# {# jinja-parse #}
+INSTALL_PREFIX={{INSTALL_PREFIX}}
+
+START=961
+
+PID_FILE=/var/run/dm.pid
+BIN_DIR=${INSTALL_PREFIX}/bin
+
+opensync_service_enabled()
+{
+    true
+}
+
+opensync_post_start()
+{
+    true
+}
+
+opensync_post_stop()
+{
+    true
+}
+
+opensync_dm_running()
+{
+    start-stop-daemon -K -t -p $PID_FILE -x ${BIN_DIR}/dm
+}
+
+opensync_dm_start()
+{
+    start-stop-daemon -S -p $PID_FILE -x ${BIN_DIR}/dm -b -m
+}
+
+# include functions.sh after the above function definitions
+# so that they can be overrided with platform specifics
+
+. /lib/opensync_functions.sh
+
+start()
+{
+    if opensync_service_enabled
+    then
+        sh -x ${BIN_DIR}/start.sh 2>&1 | logger -t start.sh
+        opensync_dm_start
+    fi
+    opensync_post_start
+}
+
+stop()
+{
+    if opensync_service_enabled
+    then
+        sh -x ${BIN_DIR}/stop.sh 2>&1 | logger -t stop.sh
+    fi
+    opensync_post_stop
+}
+
+case "$1" in
+    boot) start ;;
+    start) opensync_dm_running || start ;;
+    stop) stop ;;
+    restart) "$0" stop && "$0" start ;;
+    *) exit 1 ;;
+esac

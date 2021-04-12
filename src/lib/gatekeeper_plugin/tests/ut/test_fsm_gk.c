@@ -56,6 +56,8 @@ char *g_node_id = "bar";
 const char *test_name           = "fsm_gk_tests";
 static const char *g_server_url = "https://ovs_dev.plume.com:443/";
 static char *g_certs_file = "/tmp/cacert.pem";
+static char *g_ssl_certs_file = "/tmp/client.pem";
+static char *g_ssl_key_file = "/tmp/client_dec.key";
 static bool g_is_connected;
 
 char *
@@ -346,9 +348,11 @@ dummy_gatekeeper_get_verdict(struct fsm_session *session,
         offline->provider_offline = false;
     }
     ecurl_info = &fsm_gk_session->ecurl;
-    ecurl_info->cert_path = g_certs_file;
+    strncpy(ecurl_info->ca_path, g_certs_file, sizeof(ecurl_info->ca_path));
+    strncpy(ecurl_info->ssl_cert, g_ssl_certs_file, sizeof(ecurl_info->ssl_cert));
+    strncpy(ecurl_info->ssl_key, g_ssl_key_file, sizeof(ecurl_info->ssl_key));
 
-    LOGT("%s: url:%s path:%s", __func__, ecurl_info->server_url, ecurl_info->cert_path);
+    LOGT("%s: url:%s path:%s", __func__, ecurl_info->server_url, ecurl_info->ca_path);
 
     gk_verdict->gk_pb = gatekeeper_get_req(session, req);
     if (gk_verdict->gk_pb == NULL)

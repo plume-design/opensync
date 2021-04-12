@@ -50,6 +50,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "util.h"
 #include "fsm_dpi_utils.h"
 #include "nf_utils.h"
+#include "kconfig.h"
 
 #include <netdb.h>
 #include <sys/stat.h>
@@ -74,6 +75,11 @@ static struct imc_context g_imc_server =
     .endpoint = "ipc:///tmp/imc_fsm2fcm",
 };
 
+static struct unix_context g_unix_server =
+{
+    .initialized = false,
+    .endpoint = "/tmp/unix_fsm2fcm",
+};
 
 /**
  * IMC server used for fsm -> fcm app list communication
@@ -286,10 +292,18 @@ ct_stats_init_server(struct imc_context *server, struct ev_loop *loop,
 void
 ct_stats_terminate_server(struct imc_context *server)
 {
-    if (g_imc_context.terminate_server == NULL) return;
+    if (kconfig_enabled(CONFIG_FCM_ZMQ_IMC))
+    {
+        if (g_imc_context.terminate_server == NULL) return;
 
-    g_imc_context.terminate_server(server);
+        g_imc_context.terminate_server(server);
+    }
+    else
+    {
+        if (g_imc_context.terminate_unix_server == NULL) return;
 
+        g_imc_context.terminate_unix_server(&g_unix_server);
+    }
 }
 
 
@@ -1856,7 +1870,6 @@ proto_recv_cb(void *data, size_t len)
 }
 
 
-
 /**
  * @brief imc callback processing the app name received from fsm
  *
@@ -1894,6 +1907,7 @@ app_recv_cb(void *data, size_t len)
 int
 ct_stats_imc_init(void)
 {
+    struct unix_context *unix_server;
     struct imc_context *server;
     struct ev_loop *loop;
     bool ret;
@@ -1902,15 +1916,29 @@ ct_stats_imc_init(void)
     ret = ct_stats_load_imc();
     if (!ret) goto err_init_imc;
 
-    server = &g_imc_server;
 
-    /* Start the server */
-    server->ztype = IMC_PULL;
-    loop = g_ct_stats.loop;
-    rc = ct_stats_init_server(server, loop, proto_recv_cb);
-    if (rc != 0) goto err_init_imc;
+    if (kconfig_enabled(CONFIG_FCM_ZMQ_IMC))
+    {
+        /* Start the server */
+        server = &g_imc_server;
+        loop = g_ct_stats.loop;
+        server->ztype = IMC_PULL;
+        rc = ct_stats_init_server(server, loop, proto_recv_cb);
+        if (rc != 0) goto err_init_imc;
 
-    server->initialized = true;
+        server->initialized = true;
+    }
+    else
+    {
+        unix_server = &g_unix_server;
+        loop = g_ct_stats.loop;
+        rc = g_imc_context.init_unix_server(unix_server, loop, proto_recv_cb);
+        if (rc != 0)
+        {
+            LOGE("%s : failed to init unix server", __func__);
+            goto err_init_imc;
+        }
+    }
 
     server = &g_imc_app_server;
 
@@ -1921,6 +1949,7 @@ ct_stats_imc_init(void)
     if (rc != 0) goto err_init_imc;
 
     server->initialized = true;
+
     return 0;
 
 err_init_imc:

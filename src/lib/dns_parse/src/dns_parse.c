@@ -560,7 +560,9 @@ dns_parse_populate_sockaddr(int af, void *ip_addr, struct sockaddr_storage *dst)
         memset(in4, 0, sizeof(struct sockaddr_in));
         in4->sin_family = af;
         memcpy(&in4->sin_addr, ip_addr, sizeof(in4->sin_addr));
-    } else if (af == AF_INET6) {
+    }
+    else if (af == AF_INET6)
+    {
         struct sockaddr_in6 *in6 = (struct sockaddr_in6 *)dst;
 
         memset(in6, 0, sizeof(struct sockaddr_in6));
@@ -718,6 +720,7 @@ process_response_ips(dns_info *dns, uint8_t *packet,
                 ip_cache_req.policy_idx = req->policy_idx;
                 ip_cache_req.service_id = req->req_info->reply->service_id;
                 ip_cache_req.nelems = req->req_info->reply->nelems;
+                ip_cache_req.cat_unknown_to_service = req->cat_unknown_to_service;
 
                 for (index = 0; index < req->req_info->reply->nelems; ++index)
                 {
@@ -1029,15 +1032,53 @@ check_redirect(char *redirect, int id)
     return NULL;
 }
 
+bool
+dns_cache_add_redirect_entry(struct fqdn_pending_req *req,
+                             struct sockaddr_storage *ipaddr)
+{
+    struct ip2action_req ip_cache_req;
+    int rc;
+
+    LOGD("%s(): adding redirect cache entry", __func__);
+
+    memset(&ip_cache_req, 0, sizeof(ip_cache_req));
+
+    ip_cache_req.device_mac = &req->dev_id;
+    ip_cache_req.ip_addr = ipaddr;
+    ip_cache_req.service_id = req->req_info->reply->service_id;
+    ip_cache_req.action = FSM_ALLOW;
+    ip_cache_req.redirect_flag = true;
+
+    /* set required values for adding to cache */
+    if (ip_cache_req.service_id == IP2ACTION_BC_SVC)
+    {
+        ip_cache_req.nelems = 1;
+        ip_cache_req.cache_info.bc_info.reputation = 3;
+        ip_cache_req.cache_info.bc_info.confidence_levels[0] = 1;
+    }
+    else if (ip_cache_req.service_id == IP2ACTION_WP_SVC)
+    {
+        ip_cache_req.cache_info.wb_info.risk_level = 5;
+    }
+
+    /* 96 hours TTL */
+    ip_cache_req.cache_ttl = DNS_REDIRECT_TTL;
+
+    rc = dns_cache_add_entry(&ip_cache_req);
+    return rc;
+}
 
 static bool
 update_a_rrs(dns_info *dns, uint8_t *packet,
              struct fqdn_pending_req *req)
 {
     dns_rr *answer = dns->answers;
+    struct sockaddr_storage ipaddr;
     bool updated = false;
     int qtype = -1;
     int i = 0;
+    void *ip;
+    bool rc;
 
     if (dns->queries == NULL)
     {
@@ -1073,9 +1114,18 @@ update_a_rrs(dns_info *dns, uint8_t *packet,
                 {
                     inet_pton(AF_INET, ipv4_addr,
                               packet + answer->type_pos + 10);
+                    ip = packet + answer->type_pos + 10;
                     if (req->rd_ttl != -1)
                     {
                         *(uint32_t *)(p_ttl) = htonl(req->rd_ttl);
+                    }
+                    /* Add the redirected IP to cache */
+                    LOGT("%s(): adding redirected IP %s to cache", __func__, ipv4_addr);
+                    dns_parse_populate_sockaddr(AF_INET, ip, &ipaddr);
+                    rc = dns_cache_add_redirect_entry(req, &ipaddr);
+                    if (rc == false)
+                    {
+                        LOGD("%s(): failed to add %s to cache", __func__, ipv4_addr);
                     }
                     updated |= true;
                 }
@@ -1095,11 +1145,21 @@ update_a_rrs(dns_info *dns, uint8_t *packet,
                 {
                     inet_pton(AF_INET6, ipv6_addr,
                               packet + answer->type_pos + 10);
+                    ip = packet + answer->type_pos + 10;
                     if (req->rd_ttl != -1)
                     {
                         *(uint32_t *)(p_ttl) = htonl(req->rd_ttl);
                     }
                     updated |= true;
+
+                    LOGT("%s(): adding redirected IPv6 %s to cache", __func__, ipv6_addr);
+                    dns_parse_populate_sockaddr(AF_INET6, ip, &ipaddr);
+                    rc = dns_cache_add_redirect_entry(req, &ipaddr);
+
+                    if (rc == false)
+                    {
+                        LOGD("%s(): failed to add IPv6 addr %s to cache", __func__, ipv6_addr);
+                    }
                 }
             }
         }
@@ -2112,13 +2172,15 @@ dns_periodic(struct fsm_session *session)
 
     /* Clean up expired ip2action entries */
     dns_cache_ttl_cleanup();
-    print_dns_cache_size();
+    print_dns_cache_details();
 
     /* Retire unresolved old requests */
     dns_retire_reqs(session);
 }
 
-/* @brief: In case of gatekeeper policy, check if event
+
+/**
+ * @brief: In case of gatekeeper policy, check if event
  * reporting is required. Gatekeeper policy triggers
  * reporting only for BLOCKED and REDIRECT action.
  * But if reporint is required for other action, then
@@ -2130,13 +2192,12 @@ fsm_update_gk_reporting(struct fqdn_pending_req *req,
 {
     struct fsm_policy *fsm_policy;
 
-    LOGN("checking if policy update is required for gatekeeper");
     fsm_policy = preq->policy;
     if (fsm_policy == NULL) return;
 
     if (fsm_policy->action != FSM_GATEKEEPER_REQ) return;
 
-    LOGN("policy action is gatekeeper");
+    LOGT("%s(): checking if policy reporting is required.", __func__);
     /* gk has already taken the action to report, no need to check
      * further.
      */
@@ -2150,13 +2211,14 @@ fsm_update_gk_reporting(struct fqdn_pending_req *req,
      * from gatekeeper policy (gk_all) to the policy that Requires
      * logging
      */
-    LOGN("setting reporting and updating policy name");
+    LOGT("%s(): setting reporting and updating policy name", __func__);
     req->to_report = true;
     FREE(req->rule_name);
     req->rule_name = STRDUP(preq->rule_name);
     req->action = preq->action;
     req->policy_idx = preq->policy_index;
 }
+
 
 void
 fqdn_policy_check(struct dns_device *ds,
@@ -2231,8 +2293,10 @@ fqdn_policy_check(struct dns_device *ds,
     /* check and update reporting for gatekeeper */
     fsm_update_gk_reporting(req, &preq);
 
-    LOGN("report value %d for rule: %s", req->to_report, req->rule_name);
+    LOGT("%s(): report value %d for rule: %s", __func__,
+         req->to_report, req->rule_name ? req->rule_name : "None");
 }
+
 
 void
 dns_policy_check(struct dns_device *ds,

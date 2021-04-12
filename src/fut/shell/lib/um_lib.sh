@@ -119,6 +119,8 @@ reset_um_triggers()
       -u upgrade_timer '0' &&
           log -deb "$fn_name - AWLAN_Node UM fields reset" ||
           raise "FAIL: Could not reset AWLAN_Node fields" -l "$fn_name" -oe
+
+    return 0
 }
 
 ####################### SETUP SECTION - STOP ##################################
@@ -223,12 +225,12 @@ get_um_code()
 #   0   On success.
 #   See DESCRIPTION.
 # USAGE EXAMPLE(S):
-#   fw_dl_timer_result 0 2020.08.31-13:32:51
-#   fw_dl_timer_result 1 2020.08.31-13:32:51
+#   get_firmware_download_timer_result 0 2020.08.31-13:32:51
+#   get_firmware_download_timer_result 1 2020.08.31-13:32:51
 ###############################################################################
-fw_dl_timer_result()
+get_firmware_download_timer_result()
 {
-    fn_name="um_lib:fw_dl_timer_result"
+    fn_name="um_lib:get_firmware_download_timer_result"
     exit_code=$1
     start_time=$2
 

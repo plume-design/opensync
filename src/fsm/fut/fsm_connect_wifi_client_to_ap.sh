@@ -73,6 +73,12 @@ while getopts h option; do
     esac
 done
 
+trap '
+fut_info_dump_line
+print_tables Wifi_Associated_Clients
+fut_info_dump_line
+' EXIT SIGINT SIGTERM
+
 log_title "$tc_name: FSM test - Connect associated client"
 
 log -deb "$tc_name - Print-out Wifi_Associated_Clients table"

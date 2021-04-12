@@ -34,7 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "cm2_stability.h"
 
 
-#define BLOCKING_LINK_THRESHOLD     5
+#define BLOCKING_LINK_THRESHOLD     3
 #define UNBLOCKING_LINK_THRESHOLD 100
 
 /* ev_child must be the first element of the structure
@@ -335,10 +335,10 @@ bool cm2_connection_req_stability_process(target_connectivity_check_option_t opt
     bridge = con.bridge_exists ? con.bridge : "none";
     LOGN("Connection status %d, main link: %s bridge: %s opts: = %x",
          status, if_name, bridge, opts);
-    LOGI("%s: Stability counters: [%d, %d, %d, %d]",if_name,
+    LOGD("%s: Stability counters: [%d, %d, %d, %d]",if_name,
          con.unreachable_link_counter, con.unreachable_router_counter,
          con.unreachable_internet_counter, con.unreachable_cloud_counter);
-    LOGI("%s: Stability states: [%d, %d, %d]", if_name,
+    LOGD("%s: Stability states: [%d, %d, %d]", if_name,
          cstate.link_state, cstate.router_ipv4_state | cstate.router_ipv6_state,
          cstate.internet_ipv4_state | cstate.internet_ipv6_state);
 
@@ -533,7 +533,7 @@ void cm2_util_req_stability_check_recalc(void)
     ev_child_init(&g_state.stability_child, cm2_util_req_stability_cb, pid, 0);
     ev_child_start(EV_DEFAULT_ &g_state.stability_child);
 
-    LOGI("stability: started 0x%02x %supdate pid %d",
+    LOGD("stability: started 0x%02x %supdate pid %d",
          opts, update ? "" : "no", pid);
 }
 
@@ -547,7 +547,7 @@ void cm2_util_req_stability_cb(EV_P_ ev_child *w, int revents)
     bool repeat = g_state.stability_repeat;
     int opts = g_state.stability_opts_now;
 
-    LOGI("stability: completed 0x%02x %supdate%s mask=0x%02x (%s) pid %d",
+    LOGD("stability: completed 0x%02x %supdate%s mask=0x%02x (%s) pid %d",
          opts,
          update ? "" : "no",
          repeat ? " recurring" : "",
@@ -581,7 +581,7 @@ void cm2_connection_req_stability_check_async(target_connectivity_check_option_t
     g_state.stability_update_next = db_update;
     g_state.stability_repeat = repeat;
 
-    LOGI("stability: scheduling 0x%02x %supdate%s",
+    LOGD("stability: scheduling 0x%02x %supdate%s",
          opts,
          db_update ? "" : "no",
          repeat ? " recurring" : "");

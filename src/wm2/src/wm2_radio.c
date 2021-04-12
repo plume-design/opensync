@@ -47,6 +47,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ds.h"
 #include "json_util.h"
 #include "wm2.h"
+#include "telog.h"
 
 #include "target.h"
 #include "wm2_dpp.h"
@@ -59,6 +60,18 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define REQUIRE(ctx, cond) if (!(cond)) { LOGW("%s: %s: failed check: %s", ctx, __func__, #cond); return; }
 #define OVERRIDE(ctx, lv, rv) if (lv != rv) { lv = rv; LOGW("%s: overriding '%s' - this is target impl bug", ctx, #lv); }
 #define bitcount __builtin_popcount
+
+#define TELOG_STA_STATE(vstate, status) \
+        TELOG_STEP("WIFI_LINK", (vstate)->if_name, status, "multi_ap=%s ssid=%s bssid=%s", \
+                   (vstate)->multi_ap, (vstate)->ssid, (vstate)->parent);
+
+#define TELOG_STA_ROAM(vconf, n_cconfs) \
+        TELOG_STEP("WIFI_LINK", (vconf)->if_name, "roaming", "multi_ap=%s ssid=%s bssid=%s cconfs=%d", \
+                   (vconf)->multi_ap, (vconf)->ssid, (vconf)->parent, n_cconfs)
+
+#define TELOG_WDS_STATE(vstate, status) \
+        TELOG_STEP("WDS_LINK", (vstate)->if_name, status, "sta=%s", \
+                   (vstate)->ap_vlan_sta_addr)
 
 struct wm2_delayed {
     ev_timer timer;
@@ -335,16 +348,23 @@ wm2_sta_print_status(const struct schema_Wifi_VIF_State *oldstate,
     if (!newstate)
         newstate = &empty;
 
-    if (wm2_sta_has_connected(oldstate, newstate))
+    if (wm2_sta_has_connected(oldstate, newstate)) {
+        TELOG_STA_STATE(newstate, "connected");
         LOGN("%s: sta: connected to %s on channel %d",
              newstate->if_name, newstate->parent, newstate->channel);
+    }
 
-    if (wm2_sta_has_reconnected(oldstate, newstate))
+    if (wm2_sta_has_reconnected(oldstate, newstate)) {
+        TELOG_STA_STATE(oldstate, "disconnected");
+        TELOG_STA_STATE(newstate, "connected");
         LOGN("%s: sta: re-connected from %s to %s on channel %d",
              oldstate->if_name, oldstate->parent, newstate->parent, newstate->channel);
+    }
 
-    if (wm2_sta_has_disconnected(oldstate, newstate))
+    if (wm2_sta_has_disconnected(oldstate, newstate)) {
+        TELOG_STA_STATE(oldstate, "disconnected");
         LOGN("%s: sta: disconnected from %s", oldstate->if_name, oldstate->parent);
+    }
 }
 
 void wm2_radio_update_port_state(const char *cloud_vif_ifname)
@@ -551,6 +571,7 @@ wm2_vconf_changed(const struct schema_Wifi_VIF_Config *conf,
     CMP(CHANGED_INT, btm);
     CMP(CHANGED_INT, dynamic_beacon);
     CMP(CHANGED_INT, mcast2ucast);
+    CMP(CHANGED_INT, dpp_cc);
     CMP(CHANGED_STR, multi_ap);
     CMP(CHANGED_STR, bridge);
     CMP(CHANGED_STR, mac_list_type);
@@ -809,17 +830,24 @@ wm2_vstate_sta_is_connected(const char *ifname)
 }
 
 static bool
-wm2_vconf_allows_dpp(const struct schema_Wifi_VIF_Config *vconf)
+wm2_vconf_is_sta_changing_parent(const struct schema_Wifi_VIF_Config *vconf,
+                                 const struct schema_Wifi_VIF_Config_flags *vchanged,
+                                 const struct schema_Wifi_VIF_State *vstate,
+                                 int n_cconfs)
 {
-    bool is_sta = !strcmp(vconf->mode, "sta");
-    bool has_parent = strlen(vconf->parent) > 0;
-    bool has_connector = strlen(vconf->dpp_connector);
-    bool is_onboarding = !has_parent && !has_connector;
-
-    if (is_sta && !is_onboarding)
+    if (strcmp(vconf->mode, "sta"))
         return false;
 
-    return vconf->enabled;
+    if (vchanged->parent)
+        return true;
+
+    if (vchanged->ssid && strlen(vconf->ssid))
+        return true;
+
+    if (n_cconfs > 0 && strlen(vstate->parent) == 0)
+        return true;
+
+    return false;
 }
 
 static void
@@ -959,13 +987,16 @@ wm2_vconf_recalc(const char *ifname, bool force)
     if (vchanged.ssid && strlen(vconf.ssid) > 0 && !strcmp(vconf.mode, "sta"))
         LOGN("%s: topology change: ssid '%s' -> '%s'", ifname, vstate.ssid, vconf.ssid);
 
+    if (wm2_vconf_is_sta_changing_parent(&vconf, &vchanged, &vstate, num_cconfs))
+        TELOG_STA_ROAM(&vconf, num_cconfs);
+
     if (!wm2_target_vif_config_set2(&vconf, &rconf, cconfs, &vchanged, num_cconfs)) {
         LOGW("%s: failed to configure, will retry later", ifname);
         wm2_delayed_recalc(wm2_vconf_recalc, ifname);
         return;
     }
 
-    wm2_dpp_ifname_set(ifname, wm2_vconf_allows_dpp(&vconf));
+    wm2_dpp_ifname_set(ifname, vconf.enabled);
     wm2_dpp_interrupt();
 
     if (!has) {
@@ -1223,6 +1254,12 @@ wm2_rconf_recalc(const char *ifname, bool force)
     if (want && !rconf.enabled && (!has || !rstate.enabled))
         return;
 
+    if (want && wm2_dpp_is_chirping()) {
+        LOGI("%s: skipping recalc, dpp onboarding attempt in progress", ifname);
+        wm2_delayed_recalc(wm2_rconf_recalc, ifname);
+        return;
+    }
+
     if (!wm2_rconf_changed(&rconf, &rstate, &changed) && !force)
         goto recalc;
 
@@ -1354,9 +1391,9 @@ wm2_vstate_wpa_psks_keys_fixup(const struct schema_Wifi_VIF_Config *vconf,
 {
     if (vconf->wpa_exists == false || vconf->wpa == false) return;
     if (strcmp(vconf->mode, "sta") != 0) return;
-    if (WARN_ON(vconf->wpa_psks_len != 1)) return;
-    if (WARN_ON(vstate->wpa_psks_len != 1)) return;
-    if (WARN_ON(strcmp(vconf->wpa_psks[0], vstate->wpa_psks[0]) != 0)) return;
+    if (vconf->wpa_psks_len != 1) return;
+    if (vstate->wpa_psks_len != 1) return;
+    if (strcmp(vconf->wpa_psks[0], vstate->wpa_psks[0]) != 0) return;
 
     STRSCPY(vstate->wpa_psks_keys[0], vconf->wpa_psks_keys[0]);
 }
@@ -1455,6 +1492,9 @@ wm2_op_vstate(const struct schema_Wifi_VIF_State *vstate, const char *phy)
         if (!rstate_exists)
             WARN_ON(!ovsdb_table_insert(&table_Wifi_Radio_State, &rstate));
 
+        if (!strcmp(state.mode, "ap_vlan") && oldstate.mode_exists == false)
+            TELOG_WDS_STATE(vstate, "created");
+
         REQUIRE(state.if_name, ovsdb_table_upsert_with_parent(&table_Wifi_VIF_State,
                                                               &state,
                                                               false, // uuid not needed
@@ -1464,6 +1504,9 @@ wm2_op_vstate(const struct schema_Wifi_VIF_State *vstate, const char *phy)
                                                               where,
                                                               SCHEMA_COLUMN(Wifi_Radio_State, vif_states)));
     } else {
+        if (!strcmp(state.mode, "ap_vlan"))
+            TELOG_WDS_STATE(vstate, "destroyed");
+
         ovsdb_table_delete_simple(&table_Wifi_VIF_State,
                                   SCHEMA_COLUMN(Wifi_VIF_State, if_name),
                                   state.if_name);

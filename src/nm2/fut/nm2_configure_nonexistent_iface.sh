@@ -86,16 +86,21 @@ while getopts h option; do
             ;;
     esac
 done
-NARGS=3
-[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
-
-# Execute on EXIT signal.
-trap 'run_setup_if_crashed nm || true' EXIT SIGINT SIGTERM
 
 # Fill variables with provided arguments or defaults.
+NARGS=3
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 if_name=$1
 if_type=$2
 ip_address=$3
+
+# Execute on EXIT signal.
+trap '
+fut_info_dump_line
+print_tables Wifi_Inet_Config Wifi_Inet_State
+fut_info_dump_line
+run_setup_if_crashed nm || true
+' EXIT SIGINT SIGTERM
 
 log_title "$tc_name: NM2 test - Configure non-existent interface"
 

@@ -100,7 +100,7 @@ if [ -n "$in_file"  ]; then
             continue
         fi
         # Use subprocess to not exit upon error
-        rv=$(onbrd_verify_fw_pattern "${line}")
+        rv=$(verify_fw_pattern "${line}")
         rc=$?
         [ $rc -eq 0 ] &&
             log -deb "${tc_name}: FW version string ${line} is valid" ||
@@ -108,7 +108,7 @@ if [ -n "$in_file"  ]; then
     done <"$in_file"
 elif [ -n "$fw_string" ]; then
     log "${tc_name}: Verifying FW version string '${fw_string}'."
-    rv=$(onbrd_verify_fw_pattern "${fw_string}")
+    rv=$(verify_fw_pattern "${fw_string}")
     [ $? -eq 0 ] &&
         log -deb "${tc_name}: FW version string ${fw_string} is valid" ||
         raise "FW version string ${fw_string} is not valid" -l "${tc_name}" -tc

@@ -273,7 +273,18 @@ void lnx_netlink_sock_fn(struct ev_loop *loop, ev_io *w, int revent)
 
     /* Read the data from the socket and place it into buf */
     rc = recv(lnx_netlink_sock, buf, sizeof(buf), 0);
-    if (rc < 0)
+    if (rc < 0 && errno == ENOBUFS)
+    {
+        /* The ENOBUFS error should be cleared by the next call to recv() */
+        LOG(INFO, "netlink: ENOBUFS received. Netlink sockets may be under stress.");
+        /*
+         * We lost an event, make sure to sync the state -- dispatch a global
+         * update event
+         */
+        lnx_netlink_dispatch(LNX_NETLINK_ALL, NULL);
+        return;
+    }
+    else if (rc < 0)
     {
         LOG(NOTICE, "netlink: Received error from netlink socket: %s (%d)", strerror(errno), errno);
         goto error;

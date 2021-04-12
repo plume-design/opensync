@@ -29,6 +29,7 @@
 export FUT_NM2_LIB_SRC=true
 [ "${FUT_WM2_LIB_SRC}" != true ] && source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
 echo "${FUT_TOPDIR}/shell/lib/nm2_lib.sh sourced"
+
 ####################### INFORMATION SECTION - START ###########################
 #
 #   Base library of common Network Manager functions
@@ -114,20 +115,22 @@ nm_setup_test_environment()
 #   It then waits for config to reflect in Wifi_Inet_State table.
 #   Raises exception on fail.
 # INPUT PARAMETER(S):
-#   See fields in table Wifi_Inet_Config
+#   See fields in table Wifi_Inet_Config.
+#   Mandatory parameter: if_name
 # RETURNS:
 #   See DESCRIPTION.
 # USAGE EXAMPLE(S):
-#   create_inet_entry2 -if_name "br-wan" -if_type "vif"
-#   create_inet_entry2 -if_name "eth1" -if_type "eth" -enabled "true"
+#   create_inet_entry -if_name "br-wan" -if_type "vif"
+#   create_inet_entry -if_name "eth1" -if_type "eth" -enabled "true"
 ###############################################################################
-create_inet_entry2()
+create_inet_entry()
 {
-    fn_name="nm2_lib:create_inet_entry2"
+    fn_name="nm2_lib:create_inet_entry"
     args=""
     add_cfg_args=""
     replace="func_arg"
 
+    # Parse parameters
     while [ -n "$1" ]; do
         option=${1}
         shift
@@ -185,9 +188,12 @@ create_inet_entry2()
         esac
     done
 
+    # Make sure if_name parameter is given
     [ -z "${nm2_if_name}" ] &&
         raise "FAIL: Interface name argument empty" -l "${fn_name}" -arg
+
     if [ -n "${broadcast_n}" ] && [ -n "${inet_addr_n}" ] && [ -n "${netmask}" ] && [ -n "${subnet}" ]; then
+        log -deb "$fn_name - Setting additional parameters from partial info: broadcast, dhcpd_start, dhcpd_stop, inet_addr"
         broadcast="${subnet}.${broadcast_n}"
         dhcpd_start="${subnet}.$((inet_addr_n + 1))"
         dhcpd_stop="${subnet}.$((broadcast_n - 1))"
@@ -198,13 +204,14 @@ create_inet_entry2()
         args="${args} ${replace} dhcpd ${dhcpd}"
     fi
 
+    # Check if entry for given interface already exists, and if exists perform update action instead of insert
     check_ovsdb_entry Wifi_Inet_Config -w if_name "${nm2_if_name}"
     if [ $? -eq 0 ]; then
-        log -deb "$fn_name - Updating existing inet interface"
+        log -deb "$fn_name - Updating existing Inet interface"
         function_to_call="update_ovsdb_entry"
         function_arg="-u"
     else
-        log -deb "$fn_name - Creating inet interface"
+        log -deb "$fn_name - Creating Inet interface"
         function_to_call="insert_ovsdb_entry"
         function_arg="-i"
     fi
@@ -223,142 +230,8 @@ create_inet_entry2()
     wait_ovsdb_entry Wifi_Inet_State -w if_name "$nm2_if_name" $func_params &&
         log -deb "$fn_name - Success wait_ovsdb_entry Wifi_Inet_State -w if_name $nm2_if_name $func_params" ||
         raise "FAIL: wait_ovsdb_entry Wifi_Inet_State -w if_name $nm2_if_name $func_params" -l "$fn_name" -ow
-}
 
-###############################################################################
-# DESCRIPTION:
-#   Function creates entry to Wifi_Inet_Config table.
-#   It then waits for config to reflect in Wifi_Inet_State table.
-#   Raises exception on fail.
-# INPUT PARAMETER(S):
-#   See fields in table Wifi_Inet_Config
-# RETURNS:
-#   See DESCRIPTION.
-# USAGE EXAMPLE(S):
-#   create_inet_entry -if_name "br-wan" -if_type "vif"
-#   create_inet_entry -if_name "eth1" -if_type "eth" -enabled "true"
-###############################################################################
-create_inet_entry()
-{
-    fn_name="nm2_lib:create_inet_entry"
-    args=""
-    nm2_if_name=false
-    replace="func_arg"
-
-    while [ -n "$1" ]; do
-        option=$1
-        shift
-        case "$option" in
-            -if_name)
-                args="$args $replace if_name $1"
-                nm2_if_name=$1
-                shift
-                ;;
-            -enabled)
-                args="$args $replace enabled $1"
-                shift
-                ;;
-            -network)
-                args="$args $replace network $1"
-                shift
-                ;;
-            -if_type)
-                args="$args $replace if_type $1"
-                shift
-                ;;
-            -inet_addr)
-                args="$args $replace inet_addr $1"
-                shift
-                ;;
-            -netmask)
-                args="$args $replace netmask $1"
-                shift
-                ;;
-            -dns)
-                args="$args $replace dns $1"
-                shift
-                ;;
-            -gateway)
-                args="$args $replace gateway $1"
-                shift
-                ;;
-            -broadcast)
-                args="$args $replace broadcast $1"
-                shift
-                ;;
-            -ip_assign_scheme)
-                args="$args $replace ip_assign_scheme $1"
-                shift
-                ;;
-            -mtu)
-                args="$args $replace mtu $1"
-                shift
-                ;;
-            -NAT)
-                args="$args $replace NAT $1"
-                shift
-                ;;
-            -upnp_mode)
-                args="$args $replace upnp_mode $1"
-                shift
-                ;;
-            -dhcpd)
-                args="$args $replace dhcpd $1"
-                shift
-                ;;
-            -vlan_id)
-                args="$args $replace vlan_id $1"
-                shift
-                ;;
-            -parent_ifname)
-                args="$args $replace parent_ifname $1"
-                shift
-                ;;
-            -gre_ifname)
-                args="$args $replace gre_ifname $1"
-                shift
-                ;;
-            -gre_remote_inet_addr)
-                args="$args $replace gre_remote_inet_addr $1"
-                shift
-                ;;
-            -gre_local_inet_addr)
-                args="$args $replace gre_local_inet_addr $1"
-                shift
-                ;;
-            *)
-                raise "FAIL: Wrong option provided: $option" -l "$fn_name" -arg
-                ;;
-        esac
-    done
-
-    log -deb "$fn_name - Creating Inet interface"
-
-    function_to_call="insert_ovsdb_entry"
-    function_arg="-i"
-
-      ${OVSH} s Wifi_Inet_Config -w if_name=="$nm2_if_name" && update=0 || update=1
-      if [ "$update" -eq 0 ]; then
-          log -deb "$fn_name - Inet entry exists, updating instead"
-          function_to_call="update_ovsdb_entry"
-          function_arg="-u"
-      fi
-
-    func_params=${args//$replace/$function_arg}
-
-    # shellcheck disable=SC2086
-    $function_to_call Wifi_Inet_Config -w if_name "$nm2_if_name" $func_params &&
-        log -deb "$fn_name - Success $function_to_call Wifi_Inet_Config -w if_name $nm2_if_name $func_params" ||
-        raise "FAIL: Wifi_Inet_Config: $function_to_call" -l "$fn_name" -oe
-
-    func_params=${args//$replace/-is}
-
-    # shellcheck disable=SC2086
-    wait_ovsdb_entry Wifi_Inet_State -w if_name "$nm2_if_name" $func_params &&
-        log -deb "$fn_name - Success wait_ovsdb_entry Wifi_Inet_State -w if_name $nm2_if_name $func_params" ||
-        raise "FAIL: Wifi_Inet_Config not reflected to Wifi_Inet_State" -l "$fn_name" -ow
-
-    log -deb "$fn_name - Inet interface created"
+    return 0
 }
 
 ###############################################################################
@@ -382,7 +255,7 @@ reset_inet_entry()
         raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
     nm2_if_name=$1
 
-    log -deb "$fn_name - Setting Inet_Config for $nm2_if_name to default values"
+    log -deb "$fn_name - Setting Wifi_Inet_Config for $nm2_if_name to default values"
     update_ovsdb_entry Wifi_Inet_Config -w if_name "$nm2_if_name" \
         -u NAT "false" \
         -u broadcast "[\"set\",[]]" \
@@ -405,6 +278,8 @@ reset_inet_entry()
         -u vlan_id "[\"set\",[]]" &&
             log -deb "$fn_name - Wifi_Inet_Config updated" ||
             raise "FAIL: Could not update Wifi_Inet_Config" -l "$fn_name" -oe
+
+    return 0
 }
 
 ###############################################################################
@@ -441,6 +316,8 @@ delete_inet_interface()
         interface_force_purge_die "$nm2_if_name"
 
     log -deb "$fn_name - Interface '$nm2_if_name' deleted"
+
+    return 0
 }
 
 ###############################################################################
@@ -465,6 +342,7 @@ interface_force_purge_die()
 
     log -deb "$fn_name - Interface force removal"
     ip link delete "$nm2_if_name" || true
+
     wait_for_function_response 1 "ip link show $nm2_if_name" &&
         raise "FAIL: Interface $nm2_if_name removed forcefully" -l "$fn_name" -tc ||
         raise "FAIL: Interface still present, could not delete interface $nm2_if_name" -l "$fn_name" -tc
@@ -472,35 +350,39 @@ interface_force_purge_die()
 
 ###############################################################################
 # DESCRIPTION:
-#   Function disables DHCP server on interface.
-#   Raises exception if DHCP server is not disabled.
+#   Function enables or disables DHCP server on interface.
+#   It waits for config to reflect in Wifi_Inet_State.
+#   Raises exception if DHCP server is not configured.
 # INPUT PARAMETER(S):
 #   $1  interface name (required)
-#   $2  IP address start pool (required)
-#   $3  IP address end pool (required)
+#   $2  IP address start pool (optional)
+#   $3  IP address end pool (optional)
 # RETURNS:
 #   None.
 #   See DESCRIPTION.
 # USAGE EXAMPLE(S):
-#   enable_disable_dhcp_server eth1 10.10.10.20 10.10.10.50
+#   configure_dhcp_server_on_interface eth1 10.10.10.20 10.10.10.50
+#   configure_dhcp_server_on_interface eth1
 ###############################################################################
-enable_disable_dhcp_server()
+configure_dhcp_server_on_interface()
 {
-    fn_name="nm2_lib:enable_disable_dhcp_server"
-    local NARGS=3
-    [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+    fn_name="nm2_lib:configure_dhcp_server_on_interface"
+    NARGS_MIN=1
+    NARGS_MAX=3
+    [ $# -eq ${NARGS_MIN} ] || [ $# -eq ${NARGS_MAX} ] ||
+        raise "${fn_name} requires ${NARGS_MIN} or ${NARGS_MAX} input arguments, $# given" -arg
     nm2_if_name=$1
     nm2_start_pool=$2
     nm2_end_pool=$3
 
-    nm2_dhcpd='["start","'$nm2_start_pool'"],["stop","'$nm2_end_pool'"]'
-
     if [ -z "$nm2_start_pool" ] && [ -z "$nm2_end_pool" ]; then
+        # One or both arguments are missing.
         nm2_dhcpd=''
+    else
+        nm2_dhcpd='["start","'$nm2_start_pool'"],["stop","'$nm2_end_pool'"]'
     fi
 
-    log -deb "$fn_name - Creating DHCP on $nm2_if_name"
+    log -deb "$fn_name - Configuring DHCP server on $nm2_if_name"
 
     update_ovsdb_entry Wifi_Inet_Config -w if_name "$nm2_if_name" \
         -u enabled true \
@@ -514,30 +396,34 @@ enable_disable_dhcp_server()
         -is dhcpd '["map",['$nm2_dhcpd']]' ||
             raise "FAIL: Wifi_Inet_State not reflected to Wifi_Inet_State" -l "$fn_name" -ow
 
-    log -deb "$fn_name - DHCP created on $nm2_if_name"
+    log -deb "$fn_name - DHCP server created on $nm2_if_name"
+
+    return 0
 }
 
 ###############################################################################
 # DESCRIPTION:
-#   Function populates DNS settings to Wifi_Inet_Config. It waits for
-#   config to reflect in Wifi_Inet_State.
+#   Function populates DNS settings for given interface to Wifi_Inet_Config.
+#   It waits for config to reflect in Wifi_Inet_State.
 #   Raises an exception on fail.
 # INPUT PARAMETER(S):
 #   $1  interface name (required)
-#   $2  primary DNS IP (required)
-#   $3  secondary DNS IP (required)
+#   $2  primary DNS IP (optional)
+#   $3  secondary DNS IP (optional)
 # RETURNS:
 #   None.
 #   See DESCRIPTION.
 # USAGE EXAMPLE(S):
-#   enable_disable_custom_dns eth0 16.17.18.19 20.21.22.23
+#   configure_custom_dns_on_interface eth0 16.17.18.19 20.21.22.23
+#   configure_custom_dns_on_interface eth0
 ###############################################################################
-enable_disable_custom_dns()
+configure_custom_dns_on_interface()
 {
-    fn_name="nm2_lib:enable_disable_custom_dns"
-    local NARGS=3
-    [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+    fn_name="nm2_lib:configure_custom_dns_on_interface"
+    NARGS_MIN=1
+    NARGS_MAX=3
+    [ $# -eq ${NARGS_MIN} ] || [ $# -eq ${NARGS_MAX} ] ||
+        raise "${fn_name} requires ${NARGS_MIN} or ${NARGS_MAX} input arguments, $# given" -arg
     nm2_if_name=$1
     nm2_primary_dns=$2
     nm2_secondary_dns=$3
@@ -563,6 +449,8 @@ enable_disable_custom_dns()
             raise "FAIL: Wifi_Inet_State not reflected to Wifi_Inet_State" -l "$fn_name" -ow
 
     log -deb "$fn_name - DNS created on $nm2_if_name"
+
+    return 0
 }
 
 ###############################################################################
@@ -604,6 +492,8 @@ set_ip_forward()
             raise "FAIL: Could not insert to IP_Port_Forward" -l "$fn_name" -oe
 
     log -deb "$fn_name - Port forward created on $nm2_src_ifname"
+
+    return 0
 }
 
 ###############################################################################
@@ -619,7 +509,7 @@ set_ip_forward()
 #   None.
 #   See DESCRIPTION.
 # USAGE EXAMPLE(S):
-#   set_ip_forward bhaul-sta-24 <tabletype> 10.10.10.123:80
+#   force_delete_ip_port_forward_die bhaul-sta-24 <tabletype> 10.10.10.123:80
 ###############################################################################
 force_delete_ip_port_forward_die()
 {
@@ -651,9 +541,9 @@ force_delete_ip_port_forward_die()
 # USAGE EXAMPLE(S):
 #   N/A
 ###############################################################################
-check_upnp_conf()
+check_upnp_configuration_valid()
 {
-    fn_name="nm2_lib:check_upnp_conf"
+    fn_name="nm2_lib:check_upnp_configuration_valid"
     local NARGS=2
     [ $# -ne ${NARGS} ] &&
         raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
@@ -687,16 +577,24 @@ check_upnp_conf()
 # RETURNS:
 #   None.
 # USAGE EXAMPLE(S):
-#   interface_nat_enabled eth0
+#   check_interface_nat_enabled eth0
 ###############################################################################
-interface_nat_enabled()
+check_interface_nat_enabled()
 {
-    fn_name="nm2_lib:interface_nat_enabled"
+    fn_name="nm2_lib:check_interface_nat_enabled"
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
         raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+    if_name=$1
 
-    iptables -t nat --list -v  | tr -s ' ' / | grep '/MASQUERADE/' | grep -q "$1"
+    iptables -t nat --list -v  | tr -s ' ' / | grep '/MASQUERADE/' | grep -q "$if_name"
+    if [ $? -eq 0 ]; then
+        log -deb "${fn_name} - interface ${if_name} NAT enabled"
+        return 0
+    else
+        log -deb "${fn_name} - interface ${if_name} NAT disabled"
+        return 1
+    fi
 }
 
 ###############################################################################
@@ -717,6 +615,13 @@ ip_port_forward()
     if_name=$1
 
     iptables -t nat --list -v  | tr -s ' ' / | grep '/DNAT/' | grep -q "$if_name"
+    if [ $? -eq 0 ]; then
+        log -deb "${fn_name} - IP port forward set for ${if_name}"
+        return 0
+    else
+        log -deb "${fn_name} - IP port forward not set for ${if_name}"
+        return 1
+    fi
 }
 
 ###############################################################################
@@ -727,17 +632,24 @@ ip_port_forward()
 # RETURNS:
 #   Broadcast address of interface.
 # USAGE EXAMPLE(S):
-#   interface_broadcast eth0
+#   get_interface_broadcast_from_system eth0
 ###############################################################################
-interface_broadcast()
+get_interface_broadcast_from_system()
 {
-    fn_name="nm2_lib:interface_broadcast"
+    fn_name="nm2_lib:get_interface_broadcast_from_system"
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
         raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
     if_name=$1
 
     ifconfig "$if_name" | tr -s ' :' '@' | grep -e '^@inet@' | cut -d '@' -f 6
+    if [ $? -eq 0 ]; then
+        log -deb "${fn_name} - Broadcast set for ${if_name}"
+        return 0
+    else
+        log -deb "${fn_name} - Broadcast not set for ${if_name}"
+        return 1
+    fi
 }
 
 ###############################################################################
@@ -748,17 +660,24 @@ interface_broadcast()
 # RETURNS:
 #   Netmask of interface.
 # USAGE EXAMPLE(S):
-#   interface_netmask eth0
+#   get_interface_netmask_from_system eth0
 ###############################################################################
-interface_netmask()
+get_interface_netmask_from_system()
 {
-    fn_name="nm2_lib:interface_netmask"
+    fn_name="nm2_lib:get_interface_netmask_from_system"
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
         raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
     if_name=$1
 
     ifconfig "$if_name" | tr -s ' :' '@' | grep -e '^@inet@' | cut -d '@' -f 8
+    if [ $? -eq 0 ]; then
+        log -deb "${fn_name} - Netmask set for ${if_name}"
+        return 0
+    else
+        log -deb "${fn_name} - Netmask not set for ${if_name}"
+        return 1
+    fi
 }
 
 ###############################################################################
@@ -769,17 +688,24 @@ interface_netmask()
 # RETURNS:
 #   MTU of interface.
 # USAGE EXAMPLE(S):
-#   interface_mtu eth0
+#   get_interface_mtu_from_system eth0
 ###############################################################################
-interface_mtu()
+get_interface_mtu_from_system()
 {
-    fn_name="nm2_lib:interface_mtu"
+    fn_name="nm2_lib:get_interface_mtu_from_system"
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
         raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
     if_name=$1
 
     ifconfig "$if_name" | tr -s ' ' | grep "MTU" | cut -d ":" -f2 | awk '{print $1}'
+    if [ $? -eq 0 ]; then
+        log -deb "${fn_name} - MTU set for ${if_name}"
+        return 0
+    else
+        log -deb "${fn_name} - MTU not set for ${if_name}"
+        return 1
+    fi
 }
 
 ###############################################################################
@@ -791,11 +717,11 @@ interface_mtu()
 # RETURNS:
 #   Exit status of last function.
 # USAGE EXAMPLE(S):
-#   wait_for_dnsmasq wifi0 10.10.10.16 10.10.10.32
+#   check_dhcp_from_dnsmasq_conf wifi0 10.10.10.16 10.10.10.32
 ###############################################################################
-wait_for_dnsmasq()
+check_dhcp_from_dnsmasq_conf()
 {
-    fn_name="nm2_lib:wait_for_dnsmasq"
+    fn_name="nm2_lib:check_dhcp_from_dnsmasq_conf"
     local NARGS=3
     [ $# -ne ${NARGS} ] &&
         raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
@@ -803,9 +729,9 @@ wait_for_dnsmasq()
     start_pool=$2
     end_pool=$3
 
-    $(grep -q "dhcp-range=$if_name,$start_pool,$end_pool" /var/etc/dnsmasq.conf) || $(return 1)
-
-    return $?
+    $(grep -q "dhcp-range=$if_name,$start_pool,$end_pool" /var/etc/dnsmasq.conf) &&
+        return 0 ||
+        return 1
 }
 
 ###############################################################################
@@ -825,9 +751,9 @@ check_resolv_conf()
         raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
     nm2_primary_dns=$1
 
-    $(cat /tmp/resolv.conf | grep -q "nameserver $nm2_primary_dns") || $(return 1)
-
-    return $?
+    $(cat /tmp/resolv.conf | grep -q "nameserver $nm2_primary_dns") &&
+        return 0 ||
+        return 1
 }
 
 ###############################################################################
@@ -851,41 +777,12 @@ check_interface_exists()
 
     log -deb "${fn_name} - Checking if interface ${if_name} exists on system"
 
-    $(ifconfig | grep -qwE "$if_name")
+    ifconfig | grep -qwE "$if_name"
     if [ "$?" -eq 0 ]; then
         log -deb "${fn_name} - interface ${if_name} exists on system"
         return 0
     else
         log -deb "${fn_name} - interface ${if_name} does NOT exist on system"
         return 1
-    fi
-}
-
-###############################################################################
-# DESCRIPTION:
-#   Function checks if manager is alive by checking its PID.
-# INPUT PARAMETER(S):
-#   $1  manager pid file (string) (required)
-# RETURNS:
-#   0   Manager is alive.
-#   1   Manager is not alive.
-# USAGE EXAMPLE(S):
-#   check_manager_alive <manager_pid_file>
-###############################################################################
-check_manager_alive()
-{
-    fn_name="nm2_lib:check_manager_alive"
-    local NARGS=1
-    [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
-    manager_pid_file=$1
-
-    pid_of_manager=$(get_pid "$manager_pid_file")
-    if [ -z "$pid_of_manager" ]; then
-        log "${fn_name} - $manager_pid_file PID not found"
-        return 1
-    else
-        log "${fn_name} - $manager_pid_file PID found"
-        return 0
     fi
 }

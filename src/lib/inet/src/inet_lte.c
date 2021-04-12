@@ -29,9 +29,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <net/if.h>
 #include <arpa/inet.h>
 #include <errno.h>
-
 #include <string.h>
 
+#include "memutil.h"
 #include "log.h"
 #include "util.h"
 
@@ -45,15 +45,15 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 inet_t *inet_lte_new(const char *ifname)
 {
+    int rc;
+
     inet_lte_t *self = NULL;
 
-    self = malloc(sizeof(*self));
-    if (self == NULL)
-    {
-        goto error;
-    }
+    self = CALLOC(1, sizeof(*self));
+    if (self == NULL) goto error;
 
-    if (!inet_lte_init(self, ifname))
+    rc = inet_lte_init(self, ifname);
+    if (!rc)
     {
         LOG(ERR, "inet_lte: %s: Failed to initialize interface instance.", ifname);
         goto error;
@@ -62,18 +62,22 @@ inet_t *inet_lte_new(const char *ifname)
     return (inet_t *)self;
 
  error:
-    if (self != NULL) free(self);
+    FREE(self);
     return NULL;
 }
 
 bool inet_lte_init(inet_lte_t *self, const char *ifname)
 {
-    if (!osn_lte_new(ifname)) {
+    int rc;
+
+    if (osn_lte_new(ifname) == NULL)
+    {
         LOG(ERR, "inet_lte: %s: Failed to instantiate class, osn_lte_new() failed.", ifname);
         return false;
     }
 
-    if (!inet_eth_init(&self->eth, ifname))
+    rc = inet_eth_init(&self->eth, ifname);
+    if (!rc)
     {
         LOG(ERR, "inet_lte: %s: Failed to instantiate class, inet_eth_init() failed.", ifname);
         return false;

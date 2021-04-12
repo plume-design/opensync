@@ -68,15 +68,25 @@ while getopts h option; do
             ;;
     esac
 done
+
+check_kconfig_option "TARGET_CAP_EXTENDER" "y" ||
+    raise "TARGET_CAP_EXTENDER != y - Testcase applicable only for EXTENDER-s" -l "${tc_name}" -s
+
 NARGS=5
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
-
 # Fill variables with provided arguments or defaults.
 wan_interface=${1:-${wan_interface_default}}
 wan_ip=${2:-${wan_ip_default}}
 home_interface=${3:-${home_interface_default}}
 patch_w2h=${4:-${patch_w2h_default}}
 patch_h2w=${5:-${patch_h2w_default}}
+
+trap '
+fut_info_dump_line
+print_tables Wifi_Inet_Config Wifi_Inet_State
+ovs-vsctl show
+fut_info_dump_line
+' EXIT SIGINT SIGTERM
 
 log "$tc_name: Checking if WANO is enabled, if yes, skip..."
 check_kconfig_option "CONFIG_MANAGER_WANO" "y" &&

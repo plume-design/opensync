@@ -47,6 +47,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "json_util.h"
 #include "target.h"
 #include "wm2.h"
+#include "timevt.h"
 
 /*****************************************************************************/
 
@@ -62,6 +63,39 @@ static log_severity_t wm2_log_severity = LOG_SEVERITY_INFO;
 /******************************************************************************
  *  PROTECTED definitions
  *****************************************************************************/
+static ev_child g_cmd_child;
+
+static void
+wm2_testcmd_cb(EV_P_ ev_child *c, int events)
+{
+    LOGI("testcmd: terminated: status %d", c->rstatus);
+    assert(c->rstatus == 0);
+    ev_break(EV_A_ EVBREAK_ALL);
+}
+
+static void
+wm2_testcmd_init(void)
+{
+    const char *cmd = getenv("WM2_TESTCMD");
+    const int trace = 0;
+    int pid;
+
+    if (!cmd) return;
+    if (strlen(cmd) == 0) return;
+
+    LOGI("testcmd: starting: %s", cmd);
+
+    pid = fork();
+    assert(pid >= 0);
+
+    if (pid == 0) {
+        exit(execlp("sh", "sh", "-c", cmd, NULL) == 0 ? 0 : 1);
+        assert(0); /* never reached */
+    }
+
+    ev_child_init(&g_cmd_child, wm2_testcmd_cb, pid, trace);
+    ev_child_start(EV_DEFAULT_ &g_cmd_child);
+}
 
 /******************************************************************************
  *  PUBLIC API definitions
@@ -80,6 +114,7 @@ main(int argc, char ** argv)
     target_log_open("WM", 0);
     LOGN("Starting wireless manager - WM");
     log_severity_set(wm2_log_severity);
+    te_client_init(argv[0], TESRV_SOCKET_ADDR);
 
     /* Enable runtime severity updates */
     log_register_dynamic_severity(loop);
@@ -99,6 +134,7 @@ main(int argc, char ** argv)
         return -1;
     }
 
+    wm2_testcmd_init();
     wm2_radio_init();
 
     ev_run(loop, 0);

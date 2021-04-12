@@ -196,7 +196,7 @@ mdns_records_copy_resource_details(const struct resource *src, struct resource *
             }
             else
             {
-                LOGN("Resource '%s' has rdlength 0, not storing", src->name);
+                LOGD("Resource '%s' has rdlength 0, not storing", src->name);
             }
             break;
 
@@ -702,7 +702,7 @@ mdns_records_clean_stale_records(void)
 
         if (client->num_records == 0)
         {
-            LOGN("%s: Client '%s' has no RR left, deleting client", __func__, client->mac_str);
+            LOGD("%s: Client '%s' has no RR left, deleting client", __func__, client->mac_str);
             ds_tree_iremove(&client_iter);
             free(client);
             client = NULL;

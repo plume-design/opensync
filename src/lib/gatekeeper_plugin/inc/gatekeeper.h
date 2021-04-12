@@ -67,7 +67,9 @@ struct gk_curl_easy_info
     bool connection_active;
     time_t connection_time;
     char *server_url;
-    char *cert_path;
+    char ca_path[MAX_PATH_LEN];
+    char ssl_cert[MAX_PATH_LEN];
+    char ssl_key[MAX_PATH_LEN];
 };
 
 /**
@@ -81,7 +83,6 @@ struct fsm_gk_mgr
     bool initialized;
     time_t gk_time;
     struct gk_req_ids req_ids;
-    char ssl_cert_path[MAX_PATH_LEN];
     ds_tree_t fsm_sessions;
 };
 

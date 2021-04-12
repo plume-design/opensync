@@ -134,6 +134,8 @@ int nf_neigh_exit(void);
 
 bool nf_util_dump_neighs(int af_family);
 
+bool nf_neigh_set_nlsockbuffsz(uint32_t sock_buff_sz);
+
 typedef void (*process_nfq_event_cb)(struct nfq_pkt_info *pkt_info, void *data);
 struct nfq_settings
 {

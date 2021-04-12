@@ -62,6 +62,14 @@ while getopts h option; do
             ;;
     esac
 done
+
+trap '
+fut_info_dump_line
+print_tables Wifi_VIF_Config Wifi_VIF_State
+ifconfig | grep -qwE "$if_name"
+fut_info_dump_line
+' EXIT SIGINT SIGTERM
+
 NARGS=1
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 interface_name=$1

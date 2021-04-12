@@ -66,9 +66,15 @@ while getopts h option; do
             ;;
     esac
 done
+
+trap '
+fut_info_dump_line
+print_tables AWLAN_Node
+fut_info_dump_line
+' EXIT SIGINT SIGTERM
+
 NARGS=1
 [ $# -ne ${NARGS} ] && raise "Requires exactly '${NARGS}' input argument(s)" -l "${tc_name}" -arg
-
 match_rule=${1:-"non_empty"}
 
 log_title "$tc_name: ONBRD test - Verify FW version string in AWLAN_Node '${match_rule}'"
@@ -84,7 +90,7 @@ if [ "${match_rule}" = "non_empty" ]; then
         raise "FW version string is empty" -l "$tc_name" -tc
 elif [ "${match_rule}" = "pattern_match" ]; then
     log -deb "$tc_name: FW version string must match parsing rules and regular expression"
-    onbrd_verify_fw_pattern "${fw_version_string}" &&
+    verify_fw_pattern "${fw_version_string}" &&
         log -deb "$tc_name: FW version string is valid" ||
         raise "FW version string is not valid" -l "$tc_name" -tc
 else

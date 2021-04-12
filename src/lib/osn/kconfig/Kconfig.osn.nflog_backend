@@ -1,0 +1,12 @@
+config OSN_BACKEND_NFLOG_NULL
+    bool "Null"
+
+    help
+        Use NFLOG dummy implementation
+
+config OSN_BACKEND_NFLOG_LINUX
+    bool "Linux"
+
+    help
+        Use the Linux NFLOG implementation that uses NETLINK sockets to capture
+        NFLOG packets

@@ -70,7 +70,7 @@ NARGS=1
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 
 log "tools/device/$(basename "$0"): Creating Inet entry"
-create_inet_entry2 "$@" &&
+create_inet_entry "$@" &&
     log "tools/device/$(basename "$0"): create_inet_entry - Success" ||
     raise "create_inet_entry - Failed" -l "tools/device/$(basename "$0")" -tc
 

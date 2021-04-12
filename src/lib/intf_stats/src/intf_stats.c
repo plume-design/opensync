@@ -420,18 +420,25 @@ intf_stats_inet_config_ovsdb_update_cb(ovsdb_update_monitor_t *self)
                 if (inet.collect_stats)
                 {
                     intf_stats_add_to_list(inet.if_name, inet.role);
+                    window_entry->num_intfs++;
                 }
 
                 break;
             }
 
-            if (!inet.collect_stats)
+            if (self->mon_type == OVSDB_UPDATE_MODIFY)
             {
-                /* The cloud does not want stats to be reported on this interface anymore */
-                ds_dlist_remove(&cloud_intf_list, intf);
-                intf_stats_intf_free(intf);
-                window_entry->num_intfs--;
-                break;
+                if (ovsdb_update_changed(self, SCHEMA_COLUMN(Wifi_Inet_Config, collect_stats)))
+                {
+                    if(!inet.collect_stats)
+                    {
+                        /* The cloud does not want stats to be reported on this interface anymore */
+                        ds_dlist_remove(&cloud_intf_list, intf);
+                        intf_stats_intf_free(intf);
+                        window_entry->num_intfs--;
+                        break;
+                    }
+                }
             }
 
             /* Just the role is updated, note the change */

@@ -57,7 +57,7 @@ gk_curl_callback(void *contents, size_t size, size_t nmemb, void *userp)
     if (ptr == NULL)
     {
         /* out of memory! */
-        LOGN("%s() realloc failed !!", __func__);
+        LOGD("%s() realloc failed !!", __func__);
         return 0;
     }
 
@@ -118,7 +118,7 @@ gk_set_redirect(struct fsm_policy_req *policy_req,
     policy_req->reply.redirect = 1;
     policy_req->reply.rd_ttl = 10;
 
-    LOGN("%s(): redirect IPv4 IP: %s, IPv6 IP: %s",
+    LOGT("%s(): redirect IPv4 IP: %s, IPv6 IP: %s",
          __func__,
          ipv4_redirect_s,
          ipv6_redirect_s);
@@ -130,7 +130,7 @@ gk_get_fsm_action(Gatekeeper__Southbound__V1__GatekeeperCommonReply *header)
     Gatekeeper__Southbound__V1__GatekeeperAction gk_action;
     int action;
 
-    LOGN("%s(): Received action from gatekeeper service '%d'", __func__, header->action);
+    LOGT("%s(): Received action from gatekeeper service '%d'", __func__, header->action);
 
     gk_action = header->action;
     switch(gk_action)
@@ -162,7 +162,7 @@ static void
 gk_set_report_info(struct fsm_url_reply *url_reply,
                    Gatekeeper__Southbound__V1__GatekeeperCommonReply *header)
 {
-    LOGN("%s() received category id: %d, confidence level %d policy '%s'",
+    LOGT("%s() received category id: %d, confidence level %d policy '%s'",
          __func__,
          header->category_id,
          header->confidence_level,
@@ -309,7 +309,7 @@ gk_set_policy(Gatekeeper__Southbound__V1__GatekeeperReply *response,
             break;
 
         default:
-            LOGN("%s() invalid request type %d", __func__, req_type);
+            LOGD("%s() invalid request type %d", __func__, req_type);
             break;
     }
 
@@ -344,7 +344,7 @@ gk_process_curl_response(struct gk_curl_data *data, struct fsm_gk_verdict *gk_ve
                                                                          buf);
     if (unpacked_data == NULL)
     {
-        LOGN("%s() failed to unpack response", __func__);
+        LOGD("%s() failed to unpack response", __func__);
         return false;
     }
 
@@ -413,7 +413,7 @@ gk_curl_easy_cleanup(struct fsm_gk_session *fsm_gk_session)
 
     if (curl_info->curl_handle == NULL) return;
 
-    LOGN("%s(): cleaning up curl connection %p ", __func__, curl_info->curl_handle);
+    LOGT("%s(): cleaning up curl connection %p ", __func__, curl_info->curl_handle);
     curl_easy_cleanup(curl_info->curl_handle);
     curl_global_cleanup();
     curl_info->connection_active = false;
@@ -429,7 +429,7 @@ bool
 gk_curl_easy_init(struct fsm_gk_session *fsm_gk_session, struct ev_loop *loop)
 {
     struct gk_curl_easy_info *curl_info;
-    LOGN("initializing curl_easy");
+    LOGT("%s(): initializing curl_easy", __func__);
 
     curl_info = &fsm_gk_session->ecurl;
 
@@ -454,11 +454,11 @@ gk_curl_easy_init(struct fsm_gk_session *fsm_gk_session, struct ev_loop *loop)
     curl_info->connection_active = true;
     curl_info->connection_time = time(NULL);
 
-    LOGN("%s() initialized curl handle %p ", __func__, curl_info->curl_handle);
+    LOGT("%s() initialized curl handle %p ", __func__, curl_info->curl_handle);
     return true;
 
 error:
-    LOGN("%s(): failed to initialize curl handler", __func__);
+    LOGD("%s(): failed to initialize curl handler", __func__);
     curl_global_cleanup();
     return false;
 }
@@ -490,25 +490,29 @@ gk_send_curl_request(struct gk_curl_easy_info *curl_info, struct gk_curl_data *c
     strncpy(url, curl_info->server_url, sizeof(url));
 #endif
 
-    LOGN("%s(): sending request to %s (req type %d) using handler %p, certs path: %s",
+    LOGT("%s(): sending request to %s (req type %d) using handler %p, certs path: %s, ssl cert %s, ssl key %s",
          __func__,
          url,
          req_type,
          curl_info->curl_handle,
-         curl_info->cert_path);
+         curl_info->ca_path,
+         curl_info->ssl_cert,
+         curl_info->ssl_key);
 
     curl_easy_setopt(curl_info->curl_handle, CURLOPT_URL, url);
     curl_easy_setopt(curl_info->curl_handle, CURLOPT_POSTFIELDS, gk_verdict->gk_pb->buf);
     curl_easy_setopt(curl_info->curl_handle, CURLOPT_POSTFIELDSIZE, (long)gk_verdict->gk_pb->len);
     curl_easy_setopt(curl_info->curl_handle, CURLOPT_WRITEFUNCTION, gk_curl_callback);
-    curl_easy_setopt(curl_info->curl_handle, CURLOPT_CAINFO, curl_info->cert_path);
+    curl_easy_setopt(curl_info->curl_handle, CURLOPT_CAINFO, curl_info->ca_path);
+    curl_easy_setopt(curl_info->curl_handle, CURLOPT_SSLCERT, curl_info->ssl_cert);
+    curl_easy_setopt(curl_info->curl_handle, CURLOPT_SSLKEY, curl_info->ssl_key);
     curl_easy_setopt(curl_info->curl_handle, CURLOPT_WRITEDATA, chunk);
     curl_easy_setopt(curl_info->curl_handle, CURLOPT_ERRORBUFFER, errbuf);
 
     res = curl_easy_perform(curl_info->curl_handle);
     if (res != CURLE_OK)
     {
-        LOGN("%s(): curl_easy_perform failed: ret code: %d (%s)",
+        LOGT("%s(): curl_easy_perform failed: ret code: %d (%s)",
              __func__,
              res,
              errbuf);
@@ -600,7 +604,7 @@ gk_send_request(struct fsm_session *session,
 
     if (curl_info->connection_active == false)
     {
-        LOGN("%s(): creating new curl handler", __func__);
+        LOGT("%s(): creating new curl handler", __func__);
         gk_curl_easy_init(fsm_gk_session, session->loop);
     }
 
@@ -619,7 +623,7 @@ gk_send_request(struct fsm_session *session,
     url_reply->lookup_status = response_code;
     if (res != CURLE_OK)
     {
-        LOGN("%s(): curl request failed!!", __func__);
+        LOGT("%s(): curl request failed!!", __func__);
         url_reply->connection_error = true;
         fqdn_req->to_report = false;
         url_reply->error = res;
@@ -630,7 +634,7 @@ gk_send_request(struct fsm_session *session,
     stats = &fsm_gk_session->health_stats;
     stats->cloud_lookups++;
 
-    LOGN("%s(): %zu bytes retrieved", __func__, chunk.size);
+    LOGT("%s(): %zu bytes retrieved", __func__, chunk.size);
     if (chunk.size == 0)
     {
         gk_response = GK_CONNECTION_ERROR;

@@ -39,26 +39,28 @@ cat << usage_string
 ${tc_name} [-h] arguments
 Description:
     - Script tries to set chosen THERMAL TX CHAINMASK. If interface is not UP it brings up the interface, and tries to set
-      THERMAL TX CHAINMASK to desired value.
+      THERMAL TX CHAINMASK to desired value. Recomended values: 1, 3, 7, 15. Choose non-default values.
+      THERMAL TX CHAINMASK is related to TX CHAINMASK - the device will combine the two chainmasks by performing
+      AND operation on each bit of the chainmask. Test will enforce thermal_tx_chainmask < tx_chainmask.
 Arguments:
     -h  show this help message
-    \$1  (radio_idx)            : Wifi_VIF_Config::vif_radio_idx                                                   : (int)(required)
-    \$2  (if_name)              : Wifi_Radio_Config::if_name                                                       : (string)(required)
-    \$3  (ssid)                 : Wifi_VIF_Config::ssid                                                            : (string)(required)
-    \$4  (password)             : Wifi_VIF_Config::security                                                        : (string)(required)
-    \$5  (channel)              : Wifi_Radio_Config::channel                                                       : (int)(required)
-    \$6  (ht_mode)              : Wifi_Radio_Config::ht_mode                                                       : (string)(required)
-    \$7  (hw_mode)              : Wifi_Radio_Config::hw_mode                                                       : (string)(required)
-    \$8  (mode)                 : Wifi_VIF_Config::mode                                                            : (string)(required)
-    \$9  (country)              : Wifi_Radio_Config::country                                                       : (string)(required)
-    \$10 (vif_if_name)          : Wifi_VIF_Config::if_name                                                         : (string)(required)
-    \$11 (tx_chainmask)         : used as tx_chainmask in Wifi_Radio_Config table (recomended 1, 3, 7, 15)         : (int)(required)
-    \$12 (thermal_tx_chainmask) : used as thermal_tx_chainmask in Wifi_Radio_Config table (recomended 1, 3, 7, 15) : (int)(required)
+    \$1  (if_name)              : Wifi_Radio_Config::if_name              : (string)(required)
+    \$2  (vif_if_name)          : Wifi_VIF_Config::if_name                : (string)(required)
+    \$3  (vif_radio_idx)        : Wifi_VIF_Config::vif_radio_idx          : (int)(required)
+    \$4  (ssid)                 : Wifi_VIF_Config::ssid                   : (string)(required)
+    \$5  (security)             : Wifi_VIF_Config::security               : (string)(required)
+    \$6  (channel)              : Wifi_Radio_Config::channel              : (int)(required)
+    \$7  (ht_mode)              : Wifi_Radio_Config::ht_mode              : (string)(required)
+    \$8  (hw_mode)              : Wifi_Radio_Config::hw_mode              : (string)(required)
+    \$9  (mode)                 : Wifi_VIF_Config::mode                   : (string)(required)
+    \$10 (tx_chainmask)         : Wifi_Radio_Config::tx_chainmask         : (int)(required)
+    \$11 (thermal_tx_chainmask) : Wifi_Radio_Config::thermal_tx_chainmask : (int)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name}
+                 Run: ./${tc_name} <IF-NAME> <VIF-IF-NAME> <VIF-RADIO-IDX> <SSID> <SECURITY> <CHANNEL> <HT-MODE> <HW-MODE> <MODE> <TX_CHAINMASK> <THERMAL_TX_CHAINMASK>
 Script usage example:
-   ./${tc_name} 2 wifi1 test_wifi_50L WifiPassword123 44 HT20 11ac ap US home-ap-l50 36 5
+    ./${tc_name} wifi1 home-ap-l50 2 FUTssid '["map",[["encryption","WPA-PSK"],["key","FUTpsk"],["mode","2"]]]' 36 HT20 11ac ap 15 7
+
 usage_string
 }
 while getopts h option; do
@@ -71,50 +73,68 @@ while getopts h option; do
             ;;
     esac
 done
-NARGS=12
+
+NARGS=11
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+if_name=${1}
+vif_if_name=${2}
+vif_radio_idx=${3}
+ssid=${4}
+security=${5}
+channel=${6}
+ht_mode=${7}
+hw_mode=${8}
+mode=${9}
+tx_chainmask=${10}
+thermal_tx_chainmask=${11}
 
-trap 'run_setup_if_crashed wm || true' EXIT SIGINT SIGTERM
-
-vif_radio_idx=$1
-if_name=$2
-ssid=$3
-security=$4
-channel=$5
-ht_mode=$6
-hw_mode=$7
-mode=$8
-country=$9
-vif_if_name=${10}
-tx_chainmask=${11}
-thermal_tx_chainmask=${12}
+trap '
+    fut_info_dump_line
+    print_tables Wifi_Radio_Config Wifi_Radio_State
+    print_tables Wifi_VIF_Config Wifi_VIF_State
+    fut_info_dump_line
+    run_setup_if_crashed wm || true
+' EXIT SIGINT SIGTERM
 
 log_title "$tc_name: WM2 test - Testing Wifi_Radio_Config field thermal_tx_chainmask"
 
-log "$tc_name: Determining minimal value THERMAL TX CHAINMASK ($thermal_tx_chainmask) vs TX CHAINMASK ($tx_chainmask)"
+log "$tc_name: Enforce thermal_tx_chainmask < tx_chainmask "
 if [ "$thermal_tx_chainmask" -gt "$tx_chainmask" ]; then
-    value_to_check=$tx_chainmask
+    raise "Value of thermal_tx_chainmask '$thermal_tx_chainmask' must be smaller than tx_chainmask '$tx_chainmask'" -l "$tc_name" -arg
 else
     value_to_check=$thermal_tx_chainmask
 fi
 
-log "$tc_name: Checking is interface UP and running"
-(interface_is_up "$if_name" && ${OVSH} s Wifi_VIF_State -w if_name=="$if_name") ||
-    create_radio_vif_interface \
-        -vif_radio_idx "$vif_radio_idx" \
-        -channel_mode manual \
-        -if_name "$if_name" \
-        -ssid "$ssid" \
-        -security "$security" \
-        -enabled true \
-        -channel "$channel" \
-        -ht_mode "$ht_mode" \
-        -hw_mode "$hw_mode" \
-        -mode "$mode" \
-        -country "$country" \
-        -vif_if_name "$vif_if_name" &&
-            log "$tc_name create_radio_vif_interface - Success" ||
-            raise "create_radio_vif_interface - Failed" -l "$tc_name" -tc
+log "$tc_name: Checking if Radio/VIF states are valid for test"
+check_radio_vif_state \
+    -if_name "$if_name" \
+    -vif_if_name "$vif_if_name" \
+    -vif_radio_idx "$vif_radio_idx" \
+    -ssid "$ssid" \
+    -channel "$channel" \
+    -security "$security" \
+    -hw_mode "$hw_mode" \
+    -mode "$mode" &&
+        log "$tc_name: Radio/VIF states are valid" ||
+            (
+                log "$tc_name: Cleaning VIF_Config"
+                vif_clean
+                log "$tc_name: Radio/VIF states are not valid, creating interface..."
+                create_radio_vif_interface \
+                    -vif_radio_idx "$vif_radio_idx" \
+                    -channel_mode manual \
+                    -if_name "$if_name" \
+                    -ssid "$ssid" \
+                    -security "$security" \
+                    -enabled true \
+                    -channel "$channel" \
+                    -ht_mode "$ht_mode" \
+                    -hw_mode "$hw_mode" \
+                    -mode "$mode" \
+                    -vif_if_name "$vif_if_name" &&
+                        log "$tc_name: create_radio_vif_interface - Success"
+            ) ||
+        raise "create_radio_vif_interface - Failed" -l "$tc_name" -tc
 
 log "$tc_name: Changing tx_chainmask to $tx_chainmask"
 update_ovsdb_entry Wifi_Radio_Config -w if_name "$if_name" -u tx_chainmask "$tx_chainmask" &&
@@ -127,8 +147,8 @@ wait_ovsdb_entry Wifi_Radio_State -w if_name "$if_name" -is tx_chainmask "$tx_ch
 
 log "$tc_name: LEVEL 2 - checking TX CHAINMASK $tx_chainmask at OS level"
 check_tx_chainmask_at_os_level "$tx_chainmask" "$if_name" &&
-    log "$tc_name: check_tx_chainmask_at_os_level - TX CHAINMASK $tx_chainmask is SET at OS level" ||
-    raise "check_tx_chainmask_at_os_level - TX CHAINMASK $tx_chainmask is NOT set at" -l "$tc_name" -tc
+    log "$tc_name: check_tx_chainmask_at_os_level - TX CHAINMASK set at OS level - tx_chainmask $tx_chainmask" ||
+    raise "check_tx_chainmask_at_os_level - TX CHAINMASK not set at OS level - tx_chainmask $tx_chainmask" -l "$tc_name" -tc
 
 log "$tc_name: Changing thermal_tx_chainmask to $thermal_tx_chainmask"
 update_ovsdb_entry Wifi_Radio_Config -w if_name "$if_name" -u thermal_tx_chainmask "$thermal_tx_chainmask" &&

@@ -84,6 +84,12 @@ while getopts h option; do
     esac
 done
 
+trap '
+fut_info_dump_line
+print_tables Wifi_Associated_Clients
+fut_info_dump_line
+' EXIT SIGINT SIGTERM
+
 # INPUT ARGUMENTS:
 NARGS=1
 [ $# -lt ${NARGS} ] && raise "Requires at least '${NARGS}' input argument(s)" -arg

@@ -29,6 +29,7 @@
 export FUT_PM_LED_LIB_SRC=true
 [ "${FUT_UNIT_LIB_SRC}" != true ] && source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
 echo "${FUT_TOPDIR}/shell/lib/pm_led_lib.sh sourced"
+
 ####################### INFORMATION SECTION - START ###########################
 #
 #   Base library of common LED Manager functions
@@ -99,6 +100,8 @@ test_pm_led_config()
     check_led_gpio_state off &&
         log -deb "$fn_name - check_led_gpio_state off - Success" ||
         raise "FAIL: LED not off: check_led_gpio_state off" -l "$fn_name" -tc
+
+    return 0
 }
 
 ###############################################################################

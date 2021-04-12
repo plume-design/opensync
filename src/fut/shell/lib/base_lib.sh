@@ -186,6 +186,7 @@ log_title()
 #   Echoes log message prefixed with time mark.
 #   Supported flags:
 #       -deb    mark log message as debug
+#       -wrn    mark log message as warning
 #       -err    mark log message as error
 # INPUT PARAMETER(S):
 #   $1  flag, setting debug or error message type
@@ -201,6 +202,9 @@ log()
     exit_code=0
     if [ "$1" = "-deb" ]; then
         msg_type="[DEBUG]"
+        shift
+    elif [ "$1" = "-wrn" ]; then
+        msg_type="[WARNING]"
         shift
     elif [ "$1" = "-err" ]; then
         msg_type="[ERROR]"

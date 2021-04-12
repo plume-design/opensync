@@ -49,7 +49,14 @@ echo "${FUT_TOPDIR}/shell/lib/unit_lib.sh sourced"
 ###############################################################################
 get_managers_script()
 {
-    echo "/etc/init.d/opensync"
+    fn_name="unit_lib:get_managers_script"
+    if [ -e /etc/init.d/opensync ]; then
+        echo "/etc/init.d/opensync"
+    elif [ -e /etc/init.d/manager ]; then
+        echo "/etc/init.d/manager"
+    else
+        raise "FAIL: Missing start OS managers script" -l "${fn_name}" -ds
+    fi
 }
 
 ###############################################################################
@@ -84,6 +91,25 @@ get_process_cmd()
 
 ###############################################################################
 # DESCRIPTION:
+#   Function echoes single quoted input argument. Used for ovsh tool.
+#   It is imperative that this function not log or echo anything, as its main
+#   functionality is to echo and the value being used upstream.
+# INPUT PARAMETER(S):
+#   arg: string containing double quotes, command or other special characters
+# PRINTS:
+#   Single quoted input argument.
+# RETURNS:
+#   returns exit code of printf operation: 0 for success, >0 for failure
+# USAGE EXAMPLE(S):
+#   single_quote_arg "[map,[[encryption,WPA-PSK],[key,FutTestPSK],[mode,2]]]"
+###############################################################################
+single_quote_arg()
+{
+    printf %s\\n "$1" | sed "s/'/'\\\\''/g;1s/^/'/;\$s/\$/'/" ;
+}
+
+###############################################################################
+# DESCRIPTION:
 #   Function gets MAC address of a provided interface.
 #   Function supports ':' delimiter only.
 # INPUT PARAMETER(S):
@@ -91,11 +117,11 @@ get_process_cmd()
 # RETURNS:
 #   HW address of interface.
 # USAGE EXAMPLE(S):
-#   mac_get eth0
+#   get_radio_mac_from_system eth0
 ###############################################################################
-mac_get()
+get_radio_mac_from_system()
 {
-    fn_name="unit_lib:mac_get"
+    fn_name="unit_lib:get_radio_mac_from_system"
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
         raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
@@ -129,6 +155,28 @@ get_radio_mac_from_ovsdb()
 
     # No logging, this function echoes the requested value to caller!
     ${OVSH} s Wifi_Radio_State -w ${where_clause} mac -r
+    return $?
+}
+
+
+###############################################################################
+# DESCRIPTION:
+#   Function echoes interface name used by CM for WAN uplink.
+#   No checks are made for number of echoed elements in case none, one or
+#   multiple interfaces are used.
+# INPUT PARAMETER(S):
+#   None
+# RETURNS:
+#   Used WAN interface
+# USAGE EXAMPLES(S):
+#   var=$(get_wan_uplink_if_name)
+###############################################################################
+get_wan_uplink_if_name()
+{
+    fn_name="unit_lib:get_used_if_name_from_ovsdb"
+
+    # No logging, this function echoes the requested value to caller!
+    ${OVSH} s Connection_Manager_Uplink -w is_used==true if_name -r
     return $?
 }
 
@@ -171,7 +219,7 @@ start_udhcpc()
     /sbin/udhcpc -i "$if_name" -f -p /var/run/udhcpc-"$if_name".pid -s ${OPENSYNC_ROOTDIR}/bin/udhcpc.sh -t 60 -T 1 -S --no-default-options &>/dev/null &
 
     if [ "$should_get_address" = "true" ]; then
-        wait_for_function_response 'notempty' "interface_ip_address $if_name" &&
+        wait_for_function_response 'notempty' "get_interface_ip_address_from_system $if_name" &&
             log "$fn_name - DHCPC provided address to $if_name" ||
             raise "FAIL: DHCPC didn't provide address to $if_name" -l "$fn_name" -ds
     fi
@@ -319,7 +367,9 @@ killall_process_by_name()
 ###############################################################################
 # DESCRIPTION:
 #   Function initializes device for use in FUT.
-#   It disables watchdog and stops all managers.
+#   It disables watchdog to prevent the device from rebooting.
+#   It calls a function that instructs CM to prevent the device from rebooting.
+#   It stops all managers.
 # INPUT PARAMETER(S):
 #   None.
 # RETURNS:
@@ -329,9 +379,37 @@ killall_process_by_name()
 ###############################################################################
 device_init()
 {
-    disable_watchdog
-    stop_managers
+    fn_name="unit_lib:device_init"
+    disable_watchdog &&
+        log -deb "$fn_name - Watchdog disabled - Success" ||
+        raise "FAIL: Could not disable watchdog" -l "$fn_name" -ds
+    stop_managers &&
+        log -deb "$fn_name - Managers stopped - Success" ||
+        raise "FAIL: Could not stop managers" -l "$fn_name" -ds
+    cm_disable_fatal_state &&
+        log -deb "$fn_name - CM fatal state disabled - Success" ||
+        raise "FAIL: Could not disable CM fatal state" -l "$fn_name" -ds
     return $?
+}
+
+###############################################################################
+# DESCRIPTION:
+#   Function stops device healthcheck service, so it does not interfere wtih
+#   FUT test execution.
+# INPUT PARAMETER(S):
+#   None.
+# RETURNS:
+#   0   Always.
+# NOTE:
+#   This is a stub function. Provide function for each device in overrides.
+# USAGE EXAMPLE(S):
+#   stop_healthcheck
+###############################################################################
+stop_healthcheck()
+{
+    local fn_name="unit_lib:stop_healthcheck"
+    log -deb "$fn_name - This is a stub function. Override implementation needed for each model."
+    return 0
 }
 
 ####################### SETUP SECTION - STOP ##################################
@@ -406,6 +484,32 @@ start_openswitch()
         raise "FAIL: Could not start ovsdb-server" -l "$fn_name" -ds
 
     sleep 1
+
+    return 0
+}
+
+###############################################################################
+# DESCRIPTION:
+#   Function stops openvswitch.
+# INPUT PARAMETER(S):
+#   None.
+# RETURNS:
+#   0   If openvswitch initially started.
+#   See DESCRIPTION.
+# USAGE EXAMPLE(S):
+#   stop_openswitch
+###############################################################################
+stop_openswitch()
+{
+    fn_name="unit_lib:stop_openswitch"
+
+    log -deb "$fn_name - Stopping Open vSwitch"
+    OPENVSWITCH_SCRIPT=$(get_openvswitch_script)
+    ${OPENVSWITCH_SCRIPT} stop &&
+        log -deb "$fn_name - Open vSwitch stopped" ||
+        raise "FAIL: Issue during Open vSwitch stop" -l "$fn_name" -ds
+
+    return 0
 }
 
 ####################### OpenSwitch SECTION - STOP #############################
@@ -507,8 +611,11 @@ stop_managers()
     fn_name="unit_lib:stop_managers"
     log -deb "$fn_name - Stopping OpenSync managers"
     MANAGER_SCRIPT=$(get_managers_script)
-    $MANAGER_SCRIPT stop ||
+    $MANAGER_SCRIPT stop &&
+        log -deb "$fn_name - OpenSync manager stopped" ||
         raise "FAIL: Issue during OpenSync manager stop" -l "$fn_name" -ds
+
+    return 0
 }
 
 ###############################################################################
@@ -632,6 +739,11 @@ cm_disable_fatal_state()
     fi
     # Create cm-disable-fatal file in /opt/tb/
     touch /opt/tb/cm-disable-fatal
+    if [ $? != 0 ]; then
+        log -deb "$fn_name - /opt/tb is not writable, mount a tmpfs over it"
+        mount -t tmpfs tmpfs /opt/tb
+        touch /opt/tb/cm-disable-fatal
+    fi
 }
 
 ###############################################################################
@@ -651,6 +763,35 @@ cm_enable_fatal_state()
     log -deb "$fn_name - Enabling CM manager restart procedure"
     # Delete cm-disable-fatal file in /opt/tb/
     rm -f /opt/tb/cm-disable-fatal
+}
+
+###############################################################################
+# DESCRIPTION:
+#   Function checks if manager is alive by checking its PID.
+# INPUT PARAMETER(S):
+#   $1  manager bin file (string) (required)
+# RETURNS:
+#   0   Manager is alive.
+#   1   Manager is not alive.
+# USAGE EXAMPLE(S):
+#   check_manager_alive <manager_bin_file>
+###############################################################################
+check_manager_alive()
+{
+    fn_name="nm2_lib:check_manager_alive"
+    local NARGS=1
+    [ $# -ne ${NARGS} ] &&
+        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+    manager_bin_file=$1
+
+    pid_of_manager=$(get_pid "$manager_bin_file")
+    if [ -z "$pid_of_manager" ]; then
+        log "${fn_name} - $manager_bin_file PID not found"
+        return 1
+    else
+        log "${fn_name} - $manager_bin_file PID found"
+        return 0
+    fi
 }
 
 ####################### MANAGERS SECTION - STOP ###############################
@@ -806,6 +947,43 @@ empty_ovsdb_table()
     log -deb "$fn_name - Clearing $ovsdb_table table"
     ${OVSH} d "$ovsdb_table" ||
         raise "FAIL: Could not delete table $ovsdb_table" -l "$fn_name" -oe
+}
+
+###############################################################################
+# DESCRIPTION:
+#   Function checks if the field exists in the specific table.
+#
+#   Returns 0 (true) if the field exists in the ovsdb table else 1 (false)
+#   is returned.
+#
+#   Logging of PASS/FAIL messages are not done. Only 0/1 value is returned
+#   based on the existence of ovsdb table field.
+#
+# INPUT PARAMETER(S):
+#   $1  ovsdb table name.
+#   $2  field name in the ovsdb table.
+# RETURNS:
+#   0 if the field exists in ovsdb table.
+#   1 if the field does not exist in ovsdb table.
+#   See DESCRIPTION.
+# USAGE EXAMPLE(S):
+#   check_ovsdb_table_field_exists AWLAN_Node device_mode
+###############################################################################
+check_ovsdb_table_field_exists()
+{
+    fn_name="unit_lib:check_ovsdb_table_field_exists"
+    local NARGS=2
+    [ $# -ne ${NARGS} ] &&
+        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+    ovsdb_table=$1
+    field_name=$2
+
+    $(${OVSH} s "$ovsdb_table" "$field_name" &> /dev/null)
+    if [ $? -eq 0 ]; then
+        return 0
+    else
+        return 1
+    fi
 }
 
 ###############################################################################
@@ -1193,8 +1371,11 @@ wait_ovsdb_entry()
     shift
     conditions_string=""
     where_is_string=""
+    where_is_not_string=""
     expected_ec=0
     ovsh_cmd=${OVSH}
+    wait_entry_not_equal_command=""
+    wait_entry_not_equal_command_ec="0"
 
     while [ -n "$1" ]; do
         option=$1
@@ -1213,7 +1394,8 @@ wait_ovsdb_entry()
                 shift 2
                 ;;
             -is_not)
-                where_is_string="$where_is_string -n $1:=$2"
+                # Due to ovsh limitation, in -n option, we need to seperatly wait for NOT equal part
+                where_is_not_string="$where_is_not_string -n $1:=$2"
                 shift 2
                 ;;
             -ec)
@@ -1230,28 +1412,37 @@ wait_ovsdb_entry()
         esac
     done
 
-    wait_entry_command="$ovsh_cmd wait $ovsdb_table $conditions_string $where_is_string"
-    wait_time=0
+    wait_entry_equal_command="$ovsh_cmd wait $ovsdb_table $conditions_string $where_is_string"
 
-    log -deb "$fn_name - Waiting for entry: \n$wait_entry_command"
+    if [ -n "${where_is_not_string}" ]; then
+        wait_entry_not_equal_command="$ovsh_cmd wait $ovsdb_table $conditions_string $where_is_not_string"
+    fi
 
-    ${wait_entry_command} 2>/dev/null
-    actual_ec="$?"
-    if [ "$actual_ec" -eq "$expected_ec" ]; then
-        log -deb "$fn_name - SUCCESS: $wait_entry_command"
+    log -deb "$fn_name - Waiting for entry: \n$wait_entry_equal_command"
+    ${wait_entry_equal_command}
+    wait_entry_equal_command_ec="$?"
+
+    if [ -n "${wait_entry_not_equal_command}" ]; then
+        log -deb "$fn_name - Waiting for entry: \n$wait_entry_not_equal_command"
+        ${wait_entry_not_equal_command}
+        wait_entry_not_equal_command_ec="$?"
+    fi
+
+    if [ "${wait_entry_equal_command_ec}" -eq "0" ] && [ "${wait_entry_not_equal_command_ec}" -eq "0" ]; then
+        wait_entry_final_ec="0"
+    else
+        wait_entry_final_ec="1"
+    fi
+
+    if [ "$wait_entry_final_ec" -eq "$expected_ec" ]; then
+        log -deb "$fn_name - SUCCESS: $wait_entry_equal_command"
         # shellcheck disable=SC2086
-        ${OVSH} s "$ovsdb_table" $conditions_string
-        return 0
-    # ovsh exit code 255 = ovsh wait timed-out
-    elif [ "$expected_ec" -eq "1" ] && [ "$actual_ec" -eq "255" ]; then
-        log -deb "$fn_name - SUCCESS: $wait_entry_command"
-        # shellcheck disable=SC2086
-        ${OVSH} s "$ovsdb_table" $conditions_string
+        ${OVSH} s "$ovsdb_table" $conditions_string || log -err "$fn_name: Failed to select entry: ${OVSH} s $ovsdb_table $conditions_string"
         return 0
     else
         log -deb "$fn_name - FAIL: Table $ovsdb_table"
-        ${OVSH} s "$ovsdb_table" || true
-        log -deb "$fn_name - FAIL: $wait_entry_command"
+        ${OVSH} s "$ovsdb_table" || log -err "$fn_name: Failed to print table: ${OVSH} s $ovsdb_table"
+        log -deb "$fn_name - FAIL: $wait_entry_equal_command"
         return 1
     fi
 }
@@ -1282,7 +1473,7 @@ wait_ovsdb_entry()
 #   1   Function did not return expected value within timeout.
 # USAGE EXAMPLE(S):
 #   wait_for_function_response 0 "check_number_of_radios 3"
-#   wait_for_function_response 1 "wait_for_dnsmasq wifi0 10.10.10.16 10.10.10.32"
+#   wait_for_function_response 1 "check_dhcp_from_dnsmasq_conf wifi0 10.10.10.16 10.10.10.32"
 ###############################################################################
 wait_for_function_response()
 {
@@ -1432,11 +1623,11 @@ wait_for_function_output()
 #   0   On success.
 #   See DESCRIPTION.
 # USAGE EXAMPLE(S):
-#   wait_for_function_exitcode 0 <function_to_wait_for> 30 1
+#   wait_for_function_exit_code 0 <function_to_wait_for> 30 1
 ###############################################################################
-wait_for_function_exitcode()
+wait_for_function_exit_code()
 {
-    local fn_name="unit_lib:wait_for_function_exitcode"
+    local fn_name="unit_lib:wait_for_function_exit_code"
     NARGS_MIN=2
     NARGS_MAX=4
     [ $# -ge ${NARGS_MIN} ] && [ $# -le ${NARGS_MAX} ] ||
@@ -1478,11 +1669,11 @@ wait_for_function_exitcode()
 # RETURNS:
 #   0   if interface state is UP, non zero otherwise.
 # USAGE EXAMPLE(S):
-#   interface_is_up eth0
+#   get_interface_is_up eth0
 ###############################################################################
-interface_is_up()
+get_interface_is_up()
 {
-    fn_name="unit_lib:interface_is_up"
+    fn_name="unit_lib:get_interface_is_up"
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
         raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
@@ -1554,17 +1745,40 @@ interface_bring_up()
 # RETURNS:
 #   IP address of an interface
 # USAGE EXAMPLE(S):
-#   interface_ip_address eth0
+#   get_interface_ip_address_from_system eth0
 ###############################################################################
-interface_ip_address()
+get_interface_ip_address_from_system()
 {
-    fn_name="unit_lib:interface_ip_address"
+    fn_name="unit_lib:get_interface_ip_address_from_system"
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
         raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
     if_name=$1
 
     ifconfig "$if_name" | tr -s ' :' '@' | grep -e '^@inet@' | cut -d '@' -f 4
+}
+
+###############################################################################
+# DESCRIPTION:
+#   Function returns IP address of leaf device based on LEAF MAC address.
+#
+#   Uses /tmp/dhcp.leases file as default for acquirement of leased LEAF IP address .
+#   Provide adequate function in overrides otherwise.
+#
+# INPUT PARAMETER(S):
+#   $1  leaf MAC address (required)
+# RETURNS:
+#   IP address of associated leaf device
+# USAGE EXAMPLE(S):
+#   get_associated_leaf_ip ff:ff:ff:ff:ff:ff
+###############################################################################
+get_associated_leaf_ip()
+{
+    fn_name="unit_lib:get_associated_leaf_ip"
+    local NARGS=1
+    [ $# -ne ${NARGS} ] &&
+        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+    cat /tmp/dhcp.leases | grep "${1}" | awk '{print $3}'
 }
 
 ###############################################################################
@@ -1576,15 +1790,13 @@ interface_ip_address()
 #   None.
 # USAGE EXAMPLE(S):
 #   check_restore_management_access
-# NOTE:
-#   Awaits removal.
 ###############################################################################
 check_restore_management_access()
 {
     fn_name="unit_lib:check_restore_management_access"
     log -deb "$fn_name - Checking and restoring needed management access"
     mng_iface=${MGMT_IFACE:-eth0}
-    interface_is_up "${mng_iface}"
+    get_interface_is_up "${mng_iface}"
     if [ "$?" = 0 ]; then
         log -deb "$fn_name - Interface ${mng_iface} is UP"
     else
@@ -1594,7 +1806,7 @@ check_restore_management_access()
             log -err "FAIL: Could not bring up interface ${mng_iface}" -l "$fn_name" -ds
     fi
 
-    interface_is_up "${mng_iface}.4"
+    get_interface_is_up "${mng_iface}.4"
     if [ "$?" = 0 ]; then
         log -deb "$fn_name - Interface ${mng_iface}.4 is UP"
     else
@@ -1604,7 +1816,7 @@ check_restore_management_access()
             log -deb "$fn_name - Failed to bring up interface ${mng_iface}.4, checking udhcpc"
     fi
 
-    eth_04_address=$(interface_ip_address "${mng_iface}.4")
+    eth_04_address=$(get_interface_ip_address_from_system "${mng_iface}.4")
     if [ -z "$eth_04_address" ]; then
         log -deb "$fn_name - Interface ${mng_iface}.4 has no address, setting udhcpc"
         log -deb "$fn_name - Running force address renew for ${mng_iface}.4"
@@ -1619,7 +1831,7 @@ check_restore_management_access()
             log -deb "$fn_name - Starting udhcpc on ${mng_iface}.4"
             /sbin/udhcpc -f -S -i "${mng_iface}.4" -C -o -O subnet &>/dev/null &
             log -deb "$fn_name - Waiting for ${mng_iface}.4 address"
-            wait_for_function_response notempty "interface_ip_address ${mng_iface}.4" "${MGMT_CONN_TIMEOUT}" &&
+            wait_for_function_response notempty "get_interface_ip_address_from_system ${mng_iface}.4" "${MGMT_CONN_TIMEOUT}" &&
                 log -deb "$fn_name - ${mng_iface}.4 address valid" && break ||
                 log -deb "$fn_name - Failed to set ${mng_iface}.4 address, repeating"
         done
@@ -1655,6 +1867,21 @@ print_tables()
     done
 
     return 0
+}
+
+###############################################################################
+# DESCRIPTION:
+#   Function prints a line used as a separator in allure report.
+# INPUT PARAMETER(S):
+#   None
+# RETURNS:
+#   None
+# USAGE EXAMPLE(S):
+#   fut_info_dump_line
+###############################################################################
+fut_info_dump_line()
+{
+    echo "************* FUT-INFO-DUMP *************"
 }
 
 ####################### OVSDB SECTION - STOP ##################################
@@ -1769,8 +1996,8 @@ add_bridge_interface()
     fi
 
     log -deb "$fn_name - Linking $br_name - $br_if_name - $br_mac"
-    mac_if=$(mac_get "$br_if_name") &&
-        log -deb "$fn_name - Success: mac_get $br_if_name" ||
+    mac_if=$(get_radio_mac_from_system "$br_if_name") &&
+        log -deb "$fn_name - Success: get_radio_mac_from_system $br_if_name" ||
         raise "FAIL: Could not get interface $br_if_name MAC address" -l "$fn_name" -ds
 
     if [ "$br_name" = "br-home" ]; then
@@ -2136,7 +2363,39 @@ wait_cloud_state()
     wait_for_function_response 0 "${OVSH} s Manager status -r | grep -q \"$wait_for_cloud_status\"" &&
         log -deb "$fn_name - FUT cloud status is $wait_for_cloud_status" ||
         raise "FAIL: FUT cloud status is not $wait_for_cloud_status" -l "$fn_name" -ow
-    print_tables Manager
+}
+
+###############################################################################
+# DESCRIPTION:
+#   Function waits for Cloud status in Manager table not to become
+#   as provided in parameter.
+#   Cloud statuses are:
+#       ACTIVE          device is connected to Cloud.
+#       BACKOFF         device could not connect to Cloud, will retry.
+#       CONNECTING      connecting to Cloud in progress.
+#       DISCONNECTED    device is disconnected from Cloud.
+#   Raises an exception on fail.
+# INPUT PARAMETER(S):
+#   $1  un-desired cloud state (required)
+# RETURNS:
+#   None.
+#   See DESCRIPTION.
+# USAGE EXAMPLE(S):
+#   wait_cloud_state_not ACTIVE
+###############################################################################
+wait_cloud_state_not()
+{
+    fn_name="unit_lib:wait_cloud_state_not"
+    local NARGS=1
+    [ $# -lt ${NARGS} ] &&
+        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+    wait_for_cloud_state_not=${1}
+    wait_for_cloud_state_not_timeout=${2:-60}
+
+    log -deb "$fn_name - Waiting for cloud state not to be $wait_for_cloud_state_not"
+    wait_for_function_response 0 "${OVSH} s Manager status -r | grep -q \"$wait_for_cloud_state_not\"" "${wait_for_cloud_state_not_timeout}" &&
+        raise "FAIL: Manager::status is $wait_for_cloud_state_not" -l "$fn_name" -ow ||
+        log -deb "$fn_name - Cloud state is not $wait_for_cloud_state_not"
 }
 
 ####################### FUT CLOUD SECTION - STOP ##############################
@@ -2201,4 +2460,46 @@ get_kconfig_option_value()
     cat "${kconfig_path}" | grep "${kconfig_option_name}" |  cut -d "=" -f2
 }
 
+###############################################################################
+# DESCRIPTION:
+#   Function ensures that "dir_path"is writable.
+#   Common usage is to ensure TARGET_PATH_LOG_STATE can be updated.
+#   Requires the path "/tmp" to be writable, executable, tmpfs
+# INPUT PARAMETER(S):
+#   $1  dir_path: absolute path to dir (string, required)
+# RETURNS:
+#   Last exit status.
+# USAGE EXAMPLE(S):
+#   writable_dir "/etc"
+###############################################################################
+writable_dir()
+{
+    fn_name="unit_lib:writable_dir"
+    local NARGS=1
+    [ $# -ne ${NARGS} ] &&
+        raise "${fn_name}: requires ${NARGS} input argument(s), $# given" -arg
+    [ -n "${1}" ] || raise "Input argument empty" -l "$fn_name"  -arg
+    [ -d "${1}" ] || raise "Input argument '${1}' is not a directory" -l "$fn_name"  -arg
+    dir_path="${1}"
+    subst_dir=${dir_path//\//_}
+
+    if touch ${dir_path}/.test_write 2>/dev/null; then
+        rm -f ${dir_path}/.test_write
+    else
+        mkdir -p /tmp/${subst_dir}-ro
+        mkdir -p /tmp/${subst_dir}-rw
+        mount --bind ${dir_path} /tmp/${subst_dir}-ro
+        ln -sf /tmp/${subst_dir}-ro/* /tmp/${subst_dir}-rw/
+        mount --bind /tmp/${subst_dir}-rw ${dir_path}
+    fi
+}
+
 ####################### FUT CMD SECTION - STOP ################################
+
+
+trigger_cloud_reboot()
+{
+    fn_name="unit_lib:trigger_cloud_reboot"
+    log -deb "$fn_name - This is a stub function. Override implementation needed for each model."
+    return 0
+}

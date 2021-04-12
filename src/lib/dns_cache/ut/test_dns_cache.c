@@ -57,6 +57,8 @@ struct ip2action_req *entry4;
 struct ip2action_req *entry6;
 struct ip2action_req *entry7;
 struct ip2action_req *entry8;
+struct ip2action_req *entry9;
+struct ip2action_req *entry10;
 
 struct test_timers
 {
@@ -143,6 +145,8 @@ void setUp(void)
     uint32_t v4dstip6 = htonl(0x04030206);
     uint32_t v4dstip7 = htonl(0x04030207);
     uint32_t v4dstip8 = htonl(0x04030208);
+    uint32_t v4dstip9 = htonl(0x04030209);
+    uint32_t v4dstip10 = htonl(0x04030210);
 
     uint32_t v6dstip1[4] = {0};
     uint32_t v6dstip2[4] = {0};
@@ -280,6 +284,46 @@ void setUp(void)
     entry8->cache_gk.confidence_level = 7;
     entry8->cache_gk.category_id = 7;
     entry8->cache_gk.gk_policy = strdup("gk_policy");
+
+    entry9 = calloc(sizeof(struct ip2action_req), 1);
+    entry9->ip_addr = calloc(sizeof(struct sockaddr_storage), 1);
+    entry9->device_mac = calloc(sizeof(os_macaddr_t), 1);
+    util_populate_sockaddr(AF_INET, &v4dstip9, entry9->ip_addr);
+    entry9->device_mac->addr[0] = 0xaa;
+    entry9->device_mac->addr[1] = 0xaa;
+    entry9->device_mac->addr[2] = 0xaa;
+    entry9->device_mac->addr[3] = 0xaa;
+    entry9->device_mac->addr[4] = 0xaa;
+    entry9->device_mac->addr[5] = 0x09;
+    entry9->action              = FSM_ALLOW;
+    entry9->cache_ttl           = 7;
+    entry9->policy_idx          = 7;
+    entry9->service_id          = 1;
+    entry9->nelems              = 1;
+    entry9->categories[0]       = 90;
+    entry9->cache_wb.risk_level = 5;
+    entry9->cat_unknown_to_service = true;
+
+    entry10 = calloc(sizeof(struct ip2action_req), 1);
+    entry10->ip_addr = calloc(sizeof(struct sockaddr_storage), 1);
+    entry10->device_mac = calloc(sizeof(os_macaddr_t), 1);
+    util_populate_sockaddr(AF_INET, &v4dstip10, entry10->ip_addr);
+    entry10->device_mac->addr[0] = 0xaa;
+    entry10->device_mac->addr[1] = 0xaa;
+    entry10->device_mac->addr[2] = 0xaa;
+    entry10->device_mac->addr[3] = 0xaa;
+    entry10->device_mac->addr[4] = 0xaa;
+    entry10->device_mac->addr[5] = 0x10;
+    entry10->action              = FSM_ALLOW;
+    entry10->cache_ttl           = 8;
+    entry10->policy_idx          = 8;
+    entry10->service_id          = 2;
+    entry10->nelems              = 1;
+    entry10->categories[0]       = 7;
+    entry10->cache_gk.confidence_level = 30;
+    entry10->cache_gk.category_id = 100;
+    entry10->cache_gk.gk_policy = strdup("gk_policy");
+    entry10->cat_unknown_to_service = true;
 }
 
 void free_dns_cache_entry(struct ip2action_req *req)
@@ -309,6 +353,8 @@ void tearDown(void)
     free_dns_cache_entry(entry6);
     free_dns_cache_entry(entry7);
     free_dns_cache_entry(entry8);
+    free_dns_cache_entry(entry9);
+    free_dns_cache_entry(entry10);
 }
 
 
@@ -1203,6 +1249,281 @@ void test_dns_cache_entries(void)
     LOGI("\n******************** %s: completed ****************\n", __func__);
 }
 
+void test_dns_cache_hit_count(void)
+{
+    struct ip2action_req *entry = NULL;
+    uint32_t v4udstip6 = htonl(0x04030206);
+    uint32_t v4udstip8 = htonl(0x04030208);
+    uint32_t v4udstip9 = htonl(0x04030209);
+    uint32_t v4udstip10 = htonl(0x04030210);
+    struct ip2action_req  key;
+    struct sockaddr_storage ip;
+    os_macaddr_t mac;
+    int cache_count;
+    bool rc_lookup;
+    bool rc_add;
+    bool rc;
+    int nelem;
+    int ret;
+
+    LOGI("\n******************** %s: starting ****************\n", __func__);
+
+    /* Add the ip2action entry */
+    entry = entry6;
+    rc_add = dns_cache_add_entry(entry);
+    TEST_ASSERT_TRUE(rc_add);
+
+    nelem = dns_cache_get_size();
+    TEST_ASSERT_EQUAL_INT(nelem, 1);
+
+    entry = entry7;
+    rc_add = dns_cache_add_entry(entry);
+    TEST_ASSERT_TRUE(rc_add);
+
+    nelem = dns_cache_get_size();
+    TEST_ASSERT_EQUAL_INT(nelem, 2);
+
+    entry = entry8;
+    rc_add = dns_cache_add_entry(entry);
+    TEST_ASSERT_TRUE(rc_add);
+
+    nelem = dns_cache_get_size();
+    TEST_ASSERT_EQUAL_INT(nelem, 3);
+
+    entry = entry9;
+    rc_add = dns_cache_add_entry(entry);
+    TEST_ASSERT_TRUE(rc_add);
+
+    entry = entry10;
+    rc_add = dns_cache_add_entry(entry);
+    TEST_ASSERT_TRUE(rc_add);
+
+    nelem = dns_cache_get_size();
+    TEST_ASSERT_EQUAL_INT(nelem, 5);
+    print_dns_cache();
+
+    cache_count = dns_cache_get_hit_count(IP2ACTION_BC_SVC);
+    TEST_ASSERT_EQUAL_INT(cache_count, 0);
+    cache_count = dns_cache_get_hit_count(IP2ACTION_WP_SVC);
+    TEST_ASSERT_EQUAL_INT(cache_count, 0);
+    cache_count = dns_cache_get_hit_count(IP2ACTION_GK_SVC);
+    TEST_ASSERT_EQUAL_INT(cache_count, 0);
+
+    entry = entry8;
+    memset(&key, 0, sizeof(struct ip2action_req));
+    util_populate_sockaddr(AF_INET, &v4udstip8, &ip);
+    key.ip_addr = &ip;
+    mac.addr[0] = 0xaa;
+    mac.addr[1] = 0xaa;
+    mac.addr[2] = 0xaa;
+    mac.addr[3] = 0xaa;
+    mac.addr[4] = 0xaa;
+    mac.addr[5] = 0x08;
+    key.device_mac = &mac;
+
+    rc_lookup = dns_cache_ip2action_lookup(&key);
+    /* Validate lookup to the dns_cache entry */
+    TEST_ASSERT_TRUE(rc_lookup);
+
+    TEST_ASSERT_EQUAL_INT(FSM_ALLOW, key.action);
+    TEST_ASSERT_EQUAL_INT(entry->cache_ttl, key.cache_ttl);
+    TEST_ASSERT_EQUAL_INT(entry->policy_idx, key.policy_idx);
+    TEST_ASSERT_EQUAL_INT(entry->service_id, key.service_id);
+    TEST_ASSERT_EQUAL_INT(entry->nelems, key.nelems);
+    for (nelem = 0; nelem < key.nelems; nelem++)
+    {
+        TEST_ASSERT_EQUAL_INT(entry->categories[nelem], key.categories[nelem]);
+    }
+    TEST_ASSERT_EQUAL_INT(entry->cache_gk.confidence_level, key.cache_gk.confidence_level);
+    TEST_ASSERT_EQUAL_INT(entry->cache_gk.category_id, key.cache_gk.category_id);
+    ret = strcmp(entry->cache_gk.gk_policy, key.cache_gk.gk_policy);
+    TEST_ASSERT_EQUAL_INT(ret, 0);
+    free(key.cache_gk.gk_policy);
+
+    cache_count = dns_cache_get_hit_count(IP2ACTION_BC_SVC);
+    TEST_ASSERT_EQUAL_INT(cache_count, 0);
+    cache_count = dns_cache_get_hit_count(IP2ACTION_WP_SVC);
+    TEST_ASSERT_EQUAL_INT(cache_count, 0);
+    cache_count = dns_cache_get_hit_count(IP2ACTION_GK_SVC);
+    TEST_ASSERT_EQUAL_INT(cache_count, 1);
+
+    memset(&key, 0, sizeof(struct ip2action_req));
+    util_populate_sockaddr(AF_INET, &v4udstip6, &ip);
+    key.ip_addr = &ip;
+    mac.addr[0] = 0xaa;
+    mac.addr[1] = 0xaa;
+    mac.addr[2] = 0xaa;
+    mac.addr[3] = 0xaa;
+    mac.addr[4] = 0xaa;
+    mac.addr[5] = 0x06;
+    key.device_mac = &mac;
+
+    rc_lookup = dns_cache_ip2action_lookup(&key);
+    /* Validate lookup to the dns_cache entry */
+    TEST_ASSERT_TRUE(rc_lookup);
+
+    cache_count = dns_cache_get_hit_count(IP2ACTION_BC_SVC);
+    TEST_ASSERT_EQUAL_INT(cache_count, 1);
+    cache_count = dns_cache_get_hit_count(IP2ACTION_WP_SVC);
+    TEST_ASSERT_EQUAL_INT(cache_count, 0);
+    cache_count = dns_cache_get_hit_count(IP2ACTION_GK_SVC);
+    TEST_ASSERT_EQUAL_INT(cache_count, 1);
+
+    /* Lookup for same element multiple times */
+    rc_lookup = dns_cache_ip2action_lookup(&key);
+    TEST_ASSERT_TRUE(rc_lookup);
+    rc_lookup = dns_cache_ip2action_lookup(&key);
+    rc_lookup = dns_cache_ip2action_lookup(&key);
+    cache_count = dns_cache_get_hit_count(IP2ACTION_BC_SVC);
+    TEST_ASSERT_EQUAL_INT(cache_count, 4);
+    cache_count = dns_cache_get_hit_count(IP2ACTION_WP_SVC);
+    TEST_ASSERT_EQUAL_INT(cache_count, 0);
+    cache_count = dns_cache_get_hit_count(IP2ACTION_GK_SVC);
+    TEST_ASSERT_EQUAL_INT(cache_count, 1);
+
+    /* Delete the entry */
+    entry = entry6;
+    dns_cache_del_entry(entry);
+    nelem = dns_cache_get_size();
+    TEST_ASSERT_EQUAL_INT(nelem, 4);
+    print_dns_cache();
+
+    /* validate cache count is same or not */
+    cache_count = dns_cache_get_hit_count(IP2ACTION_BC_SVC);
+    TEST_ASSERT_EQUAL_INT(cache_count, 4);
+    cache_count = dns_cache_get_hit_count(IP2ACTION_WP_SVC);
+    TEST_ASSERT_EQUAL_INT(cache_count, 0);
+    cache_count = dns_cache_get_hit_count(IP2ACTION_GK_SVC);
+    TEST_ASSERT_EQUAL_INT(cache_count, 1);
+
+    /* Update TTL and action */
+    entry = entry8;
+    entry->action = FSM_BLOCK;
+    entry->cache_ttl = 1;
+
+    rc_add = dns_cache_add_entry(entry);
+    TEST_ASSERT_TRUE(rc_add);
+    print_dns_cache();
+    nelem = dns_cache_get_size();
+    TEST_ASSERT_EQUAL_INT(nelem, 4);
+
+    memset(&key, 0, sizeof(struct ip2action_req));
+    util_populate_sockaddr(AF_INET, &v4udstip8, &ip);
+    key.ip_addr = &ip;
+    mac.addr[0] = 0xaa;
+    mac.addr[1] = 0xaa;
+    mac.addr[2] = 0xaa;
+    mac.addr[3] = 0xaa;
+    mac.addr[4] = 0xaa;
+    mac.addr[5] = 0x08;
+    key.device_mac = &mac;
+
+    rc_lookup = dns_cache_ip2action_lookup(&key);
+    /* Validate lookup to the dns_cache entry */
+    TEST_ASSERT_TRUE(rc_lookup);
+    free(key.cache_gk.gk_policy);
+    cache_count = dns_cache_get_hit_count(IP2ACTION_BC_SVC);
+    TEST_ASSERT_EQUAL_INT(cache_count, 4);
+    cache_count = dns_cache_get_hit_count(IP2ACTION_WP_SVC);
+    TEST_ASSERT_EQUAL_INT(cache_count, 0);
+    cache_count = dns_cache_get_hit_count(IP2ACTION_GK_SVC);
+    TEST_ASSERT_EQUAL_INT(cache_count, 2);
+    print_dns_cache_hit_count();
+
+    /* sleep for 1 seconds */
+    sleep(1);
+    rc = dns_cache_ttl_cleanup();
+    TEST_ASSERT_TRUE(rc);
+
+    rc_lookup = dns_cache_ip2action_lookup(&key);
+    /* Validate lookup to the dns_cache entry */
+    TEST_ASSERT_FALSE(rc_lookup);
+    cache_count = dns_cache_get_hit_count(IP2ACTION_BC_SVC);
+    TEST_ASSERT_EQUAL_INT(cache_count, 4);
+    cache_count = dns_cache_get_hit_count(IP2ACTION_WP_SVC);
+    TEST_ASSERT_EQUAL_INT(cache_count, 0);
+    cache_count = dns_cache_get_hit_count(IP2ACTION_GK_SVC);
+    TEST_ASSERT_EQUAL_INT(cache_count, 2);
+
+    nelem = dns_cache_get_size();
+    TEST_ASSERT_EQUAL_INT(nelem, 3);
+
+    entry = entry7;
+    dns_cache_del_entry(entry);
+    nelem = dns_cache_get_size();
+    TEST_ASSERT_EQUAL_INT(nelem, 2);
+    print_dns_cache();
+
+    /* check lookup count is incremented for uncategory ID */
+    memset(&key, 0, sizeof(struct ip2action_req));
+    util_populate_sockaddr(AF_INET, &v4udstip9, &ip);
+    key.ip_addr = &ip;
+    mac.addr[0] = 0xaa;
+    mac.addr[1] = 0xaa;
+    mac.addr[2] = 0xaa;
+    mac.addr[3] = 0xaa;
+    mac.addr[4] = 0xaa;
+    mac.addr[5] = 0x09;
+    key.device_mac = &mac;
+
+    rc_lookup = dns_cache_ip2action_lookup(&key);
+    /* Validate lookup to the dns_cache entry */
+    TEST_ASSERT_TRUE(rc_lookup);
+
+    /* Validate cache size is inc or not for local IP */
+    cache_count = dns_cache_get_hit_count(IP2ACTION_BC_SVC);
+    TEST_ASSERT_EQUAL_INT(cache_count, 4);
+    cache_count = dns_cache_get_hit_count(IP2ACTION_WP_SVC);
+    TEST_ASSERT_EQUAL_INT(cache_count, 0);
+    cache_count = dns_cache_get_hit_count(IP2ACTION_GK_SVC);
+    TEST_ASSERT_EQUAL_INT(cache_count, 2);
+
+    entry = entry10;
+    memset(&key, 0, sizeof(struct ip2action_req));
+    util_populate_sockaddr(AF_INET, &v4udstip10, &ip);
+    key.ip_addr = &ip;
+    mac.addr[0] = 0xaa;
+    mac.addr[1] = 0xaa;
+    mac.addr[2] = 0xaa;
+    mac.addr[3] = 0xaa;
+    mac.addr[4] = 0xaa;
+    mac.addr[5] = 0x10;
+    key.device_mac = &mac;
+    rc_lookup = dns_cache_ip2action_lookup(&key);
+    /* Validate lookup to the dns_cache entry */
+    TEST_ASSERT_TRUE(rc_lookup);
+    free(key.cache_gk.gk_policy);
+
+    /* Validate cache size is inc or not for local IP */
+    cache_count = dns_cache_get_hit_count(IP2ACTION_BC_SVC);
+    TEST_ASSERT_EQUAL_INT(cache_count, 4);
+    cache_count = dns_cache_get_hit_count(IP2ACTION_WP_SVC);
+    TEST_ASSERT_EQUAL_INT(cache_count, 0);
+    cache_count = dns_cache_get_hit_count(IP2ACTION_GK_SVC);
+    TEST_ASSERT_EQUAL_INT(cache_count, 2);
+
+    entry = entry9;
+    dns_cache_del_entry(entry);
+    nelem = dns_cache_get_size();
+    TEST_ASSERT_EQUAL_INT(nelem, 1);
+
+    entry = entry10;
+    dns_cache_del_entry(entry);
+    nelem = dns_cache_get_size();
+    TEST_ASSERT_EQUAL_INT(nelem, 0);
+    print_dns_cache();
+
+    cache_count = dns_cache_get_hit_count(IP2ACTION_BC_SVC);
+    TEST_ASSERT_EQUAL_INT(cache_count, 4);
+    cache_count = dns_cache_get_hit_count(IP2ACTION_WP_SVC);
+    TEST_ASSERT_EQUAL_INT(cache_count, 0);
+    cache_count = dns_cache_get_hit_count(IP2ACTION_GK_SVC);
+    TEST_ASSERT_EQUAL_INT(cache_count, 2);
+
+    LOGI("\n******************** %s: completed ****************\n", __func__);
+}
+
+
 void test_events(void)
 {
     /* Test overall test duration */
@@ -1223,6 +1544,7 @@ int main(int argc, char *argv[])
 
     dns_cache_global_test_setup();
 
+    RUN_TEST(test_dns_cache_hit_count);
     RUN_TEST(test_add_dns_cache);
     RUN_TEST(test_del_dns_cache);
     RUN_TEST(test_upd_dns_cache);

@@ -106,6 +106,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef DPP_EVENT_CONF_SENT
 #define DPP_EVENT_CONF_SENT DPP_CLI_UNSUPPORTED
 #endif
+#ifndef DPP_EVENT_AUTH_PK_HASH
+#define DPP_EVENT_AUTH_PK_HASH DPP_CLI_UNSUPPORTED
+#endif
 
 static struct hapd g_hapd[CONFIG_HAPD_MAX_BSS];
 
@@ -182,6 +185,7 @@ hapd_ctrl_cb(struct ctrl *ctrl, int level, const char *buf, size_t len)
     struct hapd *hapd = container_of(ctrl, struct hapd, ctrl);
     const char *keyid = NULL;
     const char *sha256_hash = NULL;
+    const char *pkhash = NULL;
     const char *event;
     const char *mac = NULL;
     const char *k;
@@ -204,10 +208,12 @@ hapd_ctrl_cb(struct ctrl *ctrl, int level, const char *buf, size_t len)
             if ((k = strsep(&kv, "=")) && (v = strsep(&kv, ""))) {
                 if (!strcmp(k, "keyid"))
                     keyid = v;
+                if (!strcmp(k, "dpp_pkhash"))
+                    pkhash = v;
             }
         }
 
-        LOGI("%s: %s: connected keyid=%s", hapd->ctrl.bss, mac, keyid ?: "");
+        LOGI("%s: %s: connected keyid=%s pkhash=%s", hapd->ctrl.bss, mac, keyid ?: "", pkhash ?: "");
         if (hapd->sta_connected)
             hapd->sta_connected(hapd, mac, keyid);
 
@@ -320,6 +326,13 @@ hapd_ctrl_cb(struct ctrl *ctrl, int level, const char *buf, size_t len)
         return;
     }
 
+    if (!strcmp(event, EV(DPP_EVENT_AUTH_PK_HASH))) {
+        v = strsep(&args, " ") ?: "";
+        LOGI("%s: dpp auth pk hash: %s", hapd->ctrl.bss, v);
+        STRSCPY_WARN(hapd->dpp_pending_conf_pk_hash, v);
+        return;
+    }
+
     if (!strcmp(event, EV(DPP_EVENT_CONF_SENT))) {
         LOGI("%s: dpp conf sent event received", hapd->ctrl.bss);
         //check for STA MAC that asked for the conf
@@ -327,13 +340,14 @@ hapd_ctrl_cb(struct ctrl *ctrl, int level, const char *buf, size_t len)
             const struct target_dpp_conf_enrollee enrollee = {
                 .ifname = hapd->ctrl.bss,
                 .sta_mac_addr = hapd->dpp_pending_conf_sta,
-                // dpp_netaccesskey_hex is missing for now. It will be added
-                // later
-                .sta_netaccesskey_sha256_hex = "1234567890123456789012345678901234567890123456789012345678901234"
+                .sta_netaccesskey_sha256_hex = strlen(hapd->dpp_pending_conf_pk_hash) > 0
+                                             ? hapd->dpp_pending_conf_pk_hash
+                                             : "0000000000000000000000000000000000000000000000000000000000000000"
             };
             hapd->dpp_conf_sent(&enrollee);
             LOGI("%s: dpp conf sent to: %s", hapd->ctrl.bss, hapd->dpp_pending_conf_sta);
             memset(hapd->dpp_pending_conf_sta, 0, sizeof(hapd->dpp_pending_conf_sta));
+            memset(hapd->dpp_pending_conf_pk_hash, 0, sizeof(hapd->dpp_pending_conf_pk_hash));
             hapd->dpp_pending_conf = 0;
         }
         return;
@@ -673,6 +687,15 @@ hapd_11ac_enabled(const struct schema_Wifi_Radio_Config *rconf)
     return 0;
 }
 
+static int
+hapd_11ax_enabled(const struct schema_Wifi_Radio_Config *rconf)
+{
+    if (!rconf->hw_mode_exists) return 0;
+    if (!strcmp(rconf->hw_mode, "11ax"))
+        return 1;
+    return 0;
+}
+
 static const char *
 hapd_ht_caps(const struct schema_Wifi_Radio_Config *rconf)
 {
@@ -745,9 +768,14 @@ static int
 hapd_vht_oper_centr_freq_idx(const struct schema_Wifi_Radio_Config *rconf)
 {
     const int width = atoi(strlen(rconf->ht_mode) > 2 ? rconf->ht_mode + 2 : "20");
-    const int *chans = unii_5g_chan2list(rconf->channel, width);
+    const int *chans;
     int sum = 0;
     int cnt = 0;
+
+    if (!strcmp(rconf->freq_band, SCHEMA_CONSTS_RADIO_TYPE_STR_6G))
+        chans = unii_6g_chan2list(rconf->channel, width);
+    else
+        chans = unii_5g_chan2list(rconf->channel, width);
 
     while (*chans) {
         sum += *chans;
@@ -1005,6 +1033,20 @@ hapd_conf_gen_security(struct hapd *hapd,
     return hapd_conf_gen_wpa_psks(hapd, vconf);
 }
 
+static const char *
+hapd_band2hwmode(const char *band)
+{
+    if (!strcmp(band, SCHEMA_CONSTS_RADIO_TYPE_STR_2G))
+        return "g";
+    else if (!strcmp(band, SCHEMA_CONSTS_RADIO_TYPE_STR_5G) ||
+             !strcmp(band, SCHEMA_CONSTS_RADIO_TYPE_STR_5GL) ||
+             !strcmp(band, SCHEMA_CONSTS_RADIO_TYPE_STR_5GU) ||
+             !strcmp(band, SCHEMA_CONSTS_RADIO_TYPE_STR_6G))
+        return "a";
+    else
+        return "?";
+}
+
 int
 hapd_conf_gen(struct hapd *hapd,
               const struct schema_Wifi_Radio_Config *rconf,
@@ -1029,7 +1071,7 @@ hapd_conf_gen(struct hapd *hapd,
     csnprintf(&buf, &len, "logger_syslog=-1\n");
     csnprintf(&buf, &len, "logger_syslog_level=3\n");
     csnprintf(&buf, &len, "ssid=%s\n", vconf->ssid);
-    csnprintf(&buf, &len, "hw_mode=%s\n", rconf->channel > 20 ? "a" : "g");
+    csnprintf(&buf, &len, "hw_mode=%s\n", hapd_band2hwmode(rconf->freq_band));
     csnprintf(&buf, &len, "channel=%d\n", rconf->channel);
     csnprintf(&buf, &len, "ignore_broadcast_ssid=%d\n", closed);
     csnprintf(&buf, &len, "wmm_enabled=1\n");
@@ -1040,6 +1082,10 @@ hapd_conf_gen(struct hapd *hapd,
     csnprintf(&buf, &len, "ieee80211n=%d\n", hapd_11n_enabled(rconf));
     csnprintf(&buf, &len, "%s", hapd->ieee80211ac ? "" : "#");
     csnprintf(&buf, &len, "ieee80211ac=%d\n", hapd_11ac_enabled(rconf));
+    csnprintf(&buf, &len, "%s", hapd->ieee80211ax ? "" : "#");
+    csnprintf(&buf, &len, "ieee80211ax=%d\n", hapd_11ax_enabled(rconf));
+    csnprintf(&buf, &len, "%s", vconf->dpp_cc_exists ? "" : "#");
+    csnprintf(&buf, &len, "dpp_configurator_connectivity=%d\n", vconf->dpp_cc ? 1 : 0);
 
     if (hapd->ieee80211ac && hapd_11ac_enabled(rconf)) {
         if (strcmp(rconf->freq_band, "2.4G")) {
@@ -1049,6 +1095,9 @@ hapd_conf_gen(struct hapd *hapd,
                       hapd_vht_oper_centr_freq_idx(rconf));
         }
     }
+
+    if (!strcmp(rconf->freq_band, SCHEMA_CONSTS_RADIO_TYPE_STR_6G))
+        csnprintf(&buf, &len, "op_class=131\n");
 
     if (hapd->ieee80211n)
         csnprintf(&buf, &len, "ht_capab=%s %s\n",
@@ -1153,7 +1202,7 @@ hapd_bss_get_security(struct schema_Wifi_VIF_State *vstate,
     if (dpp) SCHEMA_VAL_APPEND(vstate->wpa_key_mgmt, "dpp");
     if (conf_radius_srv_addr) SCHEMA_SET_STR(vstate->radius_srv_addr, conf_radius_srv_addr);
     if (conf_radius_srv_port) SCHEMA_SET_INT(vstate->radius_srv_port, atoi(conf_radius_srv_port));
-    if (conf_radius_srv_secret) SCHEMA_SET_STR(vstate->radius_srv_secret, conf_radius_srv_addr);
+    if (conf_radius_srv_secret) SCHEMA_SET_STR(vstate->radius_srv_secret, conf_radius_srv_secret);
     if ((p = ini_geta(conf, "dpp_connector"))) SCHEMA_SET_STR(vstate->dpp_connector, p);
     if ((p = ini_geta(conf, "dpp_csign"))) SCHEMA_SET_STR(vstate->dpp_csign_hex, p);
     if ((p = ini_geta(conf, "dpp_netaccesskey"))) SCHEMA_SET_STR(vstate->dpp_netaccesskey_hex, p);
@@ -1383,6 +1432,7 @@ hapd_bss_get(struct hapd *hapd,
         vstate->btm = atoi(p);
 
     SCHEMA_SET_STR(vstate->multi_ap, hapd_map_int2str(atoi(map ?: "0")));
+    SCHEMA_SET_INT(vstate->dpp_cc, atoi(ini_geta(conf, "dpp_configurator_connectivity") ?: "0"));
 
     if (status) {
         hapd_bss_get_security_legacy(vstate, conf, status);
@@ -1404,6 +1454,7 @@ hapd_sta_get(struct hapd *hapd,
 {
     const char *sta = HAPD_CLI(hapd, "sta", mac) ?: "";
     const char *keyid = NULL;
+    const char *dpp_pkhash = NULL;
     const char *k;
     const char *v;
     char *lines = strdupa(sta);
@@ -1411,13 +1462,17 @@ hapd_sta_get(struct hapd *hapd,
 
     while ((kv = strsep(&lines, "\r\n")))
         if ((k = strsep(&kv, "=")) &&
-            (v = strsep(&kv, "")))
+            (v = strsep(&kv, ""))) {
             if (!strcmp(k, "keyid"))
                 keyid = v;
+            else if (!strcmp(k, "dpp_pkhash"))
+                dpp_pkhash = v;
+        }
 
     SCHEMA_SET_STR(client->key_id, keyid ?: "");
     SCHEMA_SET_STR(client->mac, mac);
     SCHEMA_SET_STR(client->state, "active");
+    if (dpp_pkhash) SCHEMA_SET_STR(client->dpp_netaccesskey_sha256_hex, dpp_pkhash);
 
     if (!strcmp(sta, "FAIL"))
         return -1;

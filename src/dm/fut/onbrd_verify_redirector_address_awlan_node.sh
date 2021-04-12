@@ -59,6 +59,12 @@ while getopts h option; do
     esac
 done
 
+trap '
+fut_info_dump_line
+print_tables AWLAN_Node
+fut_info_dump_line
+' EXIT SIGINT SIGTERM
+
 log_title "$tc_name: ONBRD test - Verify redirector address"
 
 wait_for_function_response 'notempty' "get_ovsdb_entry_value AWLAN_Node redirector_addr" &&

@@ -58,11 +58,18 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "imc.h"
 #include "qm_conn.h"
 #include "nf_utils.h"
+#include "kconfig.h"
 
 static struct imc_context g_imc_client =
 {
     .initialized = false,
     .endpoint = "ipc:///tmp/imc_fsm2fcm",
+};
+
+static struct unix_context g_unix_client =
+{
+    .initialized = false,
+    .endpoint = "/tmp/unix_fsm2fcm",
 };
 
 static struct imc_dso g_imc_context = { 0 };
@@ -111,44 +118,62 @@ fsm_dpi_init_client(struct imc_context *client, imc_free_sndmsg free_cb,
     int opt_value;
     int ret;
 
-    if (g_imc_context.init_client == NULL)
+    if (kconfig_enabled(CONFIG_FSM_ZMQ_IMC))
     {
-        client->imc_free_sndmsg = free_cb;
-        return 0;
+        if (g_imc_context.init_client == NULL)
+        {
+            client->imc_free_sndmsg = free_cb;
+            return 0;
+        }
+
+        /* initialize context */
+        g_imc_context.init_context(client);
+
+        /* Set the send threshold option */
+        opt.option_name = IMC_SNDHWM;
+        opt_value = 10; /* Allow 10 pending messages */
+        opt.value = &opt_value;
+        opt.len = sizeof(opt_value);
+        ret = g_imc_context.add_sockopt(client, &opt);
+        if (ret)
+        {
+            LOGI("%s: setting ICM_SNDHWM option failed", __func__);
+            return -1;
+        }
+
+        /* Set the linger option */
+        opt.option_name = IMC_LINGER;
+        opt_value = 0; /* Free all pending messages immediately on close */
+        opt.value = &opt_value;
+        opt.len = sizeof(opt_value);
+        ret = g_imc_context.add_sockopt(client, &opt);
+        if (ret)
+        {
+            LOGD("%s: setting ICM_LINGER option failed", __func__);
+            return -1;
+        }
+
+        /* Start the client */
+        ret = g_imc_context.init_client(client, free_cb, hint);
+        if (ret)
+        {
+            LOGD("%s: init_client() failed", __func__);
+        }
     }
-
-    /* initialize context */
-    g_imc_context.init_context(client);
-
-    /* Set the send threshold option */
-    opt.option_name = IMC_SNDHWM;
-    opt_value = 10; /* Allow 10 pending messages */
-    opt.value = &opt_value;
-    opt.len = sizeof(opt_value);
-    ret = g_imc_context.add_sockopt(client, &opt);
-    if (ret)
+    else
     {
-        LOGI("%s: setting ICM_SNDHWM option failed", __func__);
-        return -1;
-    }
+        if (g_imc_context.init_unix_client == NULL)
+        {
+            return 0;
+        }
 
-    /* Set the linger option */
-    opt.option_name = IMC_LINGER;
-    opt_value = 0; /* Free all pending messages immediately on close */
-    opt.value = &opt_value;
-    opt.len = sizeof(opt_value);
-    ret = g_imc_context.add_sockopt(client, &opt);
-    if (ret)
-    {
-        LOGD("%s: setting ICM_LINGER option failed", __func__);
-        return -1;
-    }
-
-    /* Start the client */
-    ret = g_imc_context.init_client(client, free_cb, hint);
-    if (ret)
-    {
-        LOGD("%s: init_client() failed", __func__);
+        struct unix_context *unix_client;
+        unix_client = &g_unix_client;
+        ret = g_imc_context.init_unix_client(unix_client);
+        if (ret)
+        {
+            LOGD("%s: unix_init_client() failed", __func__);
+        }
     }
 
     return ret;
@@ -158,9 +183,17 @@ fsm_dpi_init_client(struct imc_context *client, imc_free_sndmsg free_cb,
 static void
 fsm_dpi_terminate_client(struct imc_context *client)
 {
-    if (g_imc_context.terminate_client == NULL) return;
-    g_imc_context.terminate_client(client);
-    g_imc_context.reset_context(client);
+    if (kconfig_enabled(CONFIG_FSM_ZMQ_IMC))
+    {
+        if (g_imc_context.terminate_client == NULL) return;
+        g_imc_context.terminate_client(client);
+        g_imc_context.reset_context(client);
+    }
+    else
+    {
+        if (g_imc_context.terminate_unix_client == NULL) return;
+        g_imc_context.terminate_unix_client(&g_unix_client);
+    }
 }
 
 
@@ -195,6 +228,7 @@ fsm_dpi_send_report(struct fsm_session *session)
 {
     struct fsm_dpi_dispatcher *dispatch;
     union fsm_dpi_context *dpi_context;
+    struct unix_context *unix_client;
     struct net_md_aggregator *aggr;
     struct imc_context *client;
     struct packed_buffer *pb;
@@ -204,8 +238,16 @@ fsm_dpi_send_report(struct fsm_session *session)
     dpi_context = session->dpi;
     if (dpi_context == NULL) return -1;
 
-    client = &g_imc_client;
-    if (!client->initialized) return -1;
+    if (kconfig_enabled(CONFIG_FSM_ZMQ_IMC))
+    {
+        client = &g_imc_client;
+        if (!client->initialized) return -1;
+    }
+    else
+    {
+        unix_client = &g_unix_client;
+        if (!unix_client->initialized) return -1;
+    }
 
     dispatch = &dpi_context->dispatch;
     aggr = dispatch->aggr;
@@ -228,16 +270,33 @@ fsm_dpi_send_report(struct fsm_session *session)
     mqtt_topic = session->ops.get_config(session, "mqtt_v");
     session->ops.send_pb_report(session, mqtt_topic, pb->buf, pb->len);
 
-    /* Beware, sending the pb through imc will schedule its freeing */
-    rc = fsm_dpi_client_send(client, pb->buf, pb->len, IMC_DONTWAIT);
-    if (rc != 0)
+    if (kconfig_enabled(CONFIG_FSM_ZMQ_IMC))
     {
-        LOGD("%s: could not send message", __func__);
-        client->io_failure_cnt++;
-        rc = -1;
-        goto err_send;
+        /* Beware, sending the pb through imc will schedule its freeing */
+        rc = fsm_dpi_client_send(client, pb->buf, pb->len, IMC_DONTWAIT);
+        if (rc != 0)
+        {
+            LOGD("%s: could not send message", __func__);
+            client->io_failure_cnt++;
+            rc = -1;
+            goto err_send;
+        }
+        client->io_success_cnt++;
     }
-    client->io_success_cnt++;
+    else
+    {
+        unix_client = &g_unix_client;
+        /* Beware, sending the pb through client will schedule its freeing */
+        rc = g_imc_context.client_unix_send(unix_client, pb->buf, pb->len, 0);
+        if (rc != 0)
+        {
+            LOGD("%s : unix socket send failure", __func__);
+            unix_client->io_failure_cnt++;
+            rc = -1;
+            goto err_send;
+        }
+        unix_client->io_success_cnt++;
+    }
 
 err_send:
     free(pb);
@@ -703,23 +762,29 @@ fsm_dpi_set_acc_direction_on_port(struct fsm_dpi_dispatcher *dispatch,
     {
         acc->direction = (smac_found ? NET_MD_ACC_OUTBOUND_DIR :
                           NET_MD_ACC_INBOUND_DIR);
-        acc->originator = (smac_found ? NET_MD_ACC_ORIGINATOR_SRC :
-                           NET_MD_ACC_ORIGINATOR_DST);
     }
     else if ((sport < NON_RESERVED_PORT_START_NUM) &&
              (dport > MAX_RESERVED_PORT_NUM))
     {
         acc->direction = (dmac_found ? NET_MD_ACC_INBOUND_DIR :
                           NET_MD_ACC_OUTBOUND_DIR);
-        acc->originator = (dmac_found ? NET_MD_ACC_ORIGINATOR_DST :
-                           NET_MD_ACC_ORIGINATOR_SRC);
     }
     else
     {
         /* Ports are non reserved, set direction based on smac */
         acc->direction = (smac_found ? NET_MD_ACC_OUTBOUND_DIR :
                           NET_MD_ACC_INBOUND_DIR);
-        acc->originator = NET_MD_ACC_ORIGINATOR_SRC;
+    }
+
+    if (acc->direction == NET_MD_ACC_INBOUND_DIR)
+    {
+        acc->originator = (smac_found ? NET_MD_ACC_ORIGINATOR_DST :
+                           NET_MD_ACC_ORIGINATOR_SRC);
+    }
+    else if (acc->direction == NET_MD_ACC_OUTBOUND_DIR)
+    {
+        acc->originator = (smac_found ? NET_MD_ACC_ORIGINATOR_SRC :
+                           NET_MD_ACC_ORIGINATOR_DST);
     }
 }
 
@@ -1706,9 +1771,19 @@ fsm_dpi_periodic(struct fsm_session *session)
         LOGI("%s: %s: total flows: %zu held flows: %zu, reported flows: %zu",
              __func__, session->name, aggr->total_flows, aggr->held_flows,
              window->num_stats);
-        LOGI("%s: imc: io successes: %" PRIu64
-             ", io failures: %" PRIu64, __func__,
-             g_imc_client.io_success_cnt, g_imc_client.io_failure_cnt);
+
+        if (kconfig_enabled(CONFIG_FSM_ZMQ_IMC))
+        {
+            LOGI("%s: imc: io successes: %" PRIu64
+                 ", io failures: %" PRIu64, __func__,
+                 g_imc_client.io_success_cnt, g_imc_client.io_failure_cnt);
+        }
+        else
+        {
+            LOGI("%s: unix_ipc: io successes: %" PRIu64
+                 ", io failures: %" PRIu64, __func__,
+                 g_unix_client.io_success_cnt, g_unix_client.io_failure_cnt);
+        }
         dispatch->periodic_ts = now;
     }
 

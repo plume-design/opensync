@@ -19,3 +19,11 @@ menuconfig MANAGER_FSM
             Set a custom snapshot length.
 
             If unsure, use 0 (use libpcap default - 65535).
+
+    config FSM_ZMQ_IMC
+        depends on MANAGER_FSM
+        bool "Use ZMQ as IMC"
+        default n
+        help
+            Default FSM to FCM communication through ZMQ, Disabling switches
+            to unix domain socket

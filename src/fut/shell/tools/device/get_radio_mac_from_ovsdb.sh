@@ -64,7 +64,7 @@ NARGS=1
 where_clause="${1}"
 # It is important that no logging is performed for functions that output values
 fnc_str="get_radio_mac_from_ovsdb ${where_clause}"
-wait_for_function_output "notempty" "${fnc_str}" 2>&1 >/dev/null
+wait_for_function_output "notempty" "${fnc_str}" >/dev/null 2>&1
 if [ $? -eq 0 ]; then
     iface_mac_raw=$($fnc_str) || raise "Failure: ${fnc_str}"  -l "$tc_name" -f
 else

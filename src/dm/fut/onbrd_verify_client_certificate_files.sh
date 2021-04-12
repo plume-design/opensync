@@ -59,9 +59,15 @@ while getopts h option; do
             ;;
     esac
 done
+
+trap '
+fut_info_dump_line
+print_tables SSL
+fut_info_dump_line
+' EXIT SIGINT SIGTERM
+
 NARGS=1
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
-
 cert_file=$1
 cert_file_path=$(get_ovsdb_entry_value SSL "$cert_file")
 

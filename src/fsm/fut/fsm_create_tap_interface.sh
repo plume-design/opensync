@@ -62,6 +62,12 @@ while getopts h option; do
     esac
 done
 
+trap '
+fut_info_dump_line
+ovs-vsctl show
+fut_info_dump_line
+' EXIT SIGINT SIGTERM
+
 # INPUT ARGUMENTS:
 NARGS=3
 [ $# -ne ${NARGS} ] && raise "Requires exactly '${NARGS}' input argument(s)" -arg

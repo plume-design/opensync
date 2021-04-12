@@ -43,6 +43,7 @@ struct hapd {
     int skip_probe_response;
     int ieee80211n;
     int ieee80211ac;
+    int ieee80211ax;
     char htcaps[256];
     char vhtcaps[512];
     void (*sta_connected)(struct hapd *hapd, const char *mac, const char *keyid);
@@ -65,6 +66,7 @@ struct hapd {
     char dpp_enrollee_conf_netaccesskey_hex[513];
     char dpp_enrollee_conf_akm[513];
     char dpp_pending_conf_sta[18];
+    char dpp_pending_conf_pk_hash[64+1];
     int dpp_pending_conf;
     int dpp_pending_auth_success;
 };

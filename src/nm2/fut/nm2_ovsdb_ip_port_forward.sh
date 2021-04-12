@@ -79,17 +79,22 @@ while getopts h option; do
             ;;
     esac
 done
+
 NARGS=5
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
-
-trap 'run_setup_if_crashed nm || true' EXIT SIGINT SIGTERM
-
 # No default values.
 src_ifname=$1
 src_port=$2
 dst_ipaddr=$3
 dst_port=$4
 protocol=$5
+
+trap '
+    fut_info_dump_line
+    print_tables IP_Port_Forward
+    fut_info_dump_line
+    run_setup_if_crashed nm || true
+' EXIT SIGINT SIGTERM
 
 log_title "$tc_name: NM2 test - Testing IP port forwarding"
 

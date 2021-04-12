@@ -61,6 +61,14 @@ while getopts h option; do
     esac
 done
 
+trap '
+fut_info_dump_line
+print_tables Openflow_Config Openflow_State
+print_tables Flow_Service_Manager_Config FSM_Policy
+print_tables Object_Store_State
+fut_info_dump_line
+' EXIT SIGINT SIGTERM
+
 # INPUT ARGUMENTS:
 NARGS=2
 [ $# -lt ${NARGS} ] && raise "Requires at least '${NARGS}' input argument(s)" -arg
@@ -83,7 +91,7 @@ log "$tc_name: Configuring TAP interfaces required for FSM testing"
 add_bridge_port "${lan_bridge_if}" "${tap_upnp_if}"
 set_ovs_vsctl_interface_option "${tap_upnp_if}" "type" "internal"
 set_ovs_vsctl_interface_option "${tap_upnp_if}" "ofport_request" "${of_port}"
-create_inet_entry2 \
+create_inet_entry \
     -if_name "${tap_upnp_if}" \
     -if_type "tap" \
     -ip_assign_scheme "none" \

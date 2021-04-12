@@ -76,19 +76,22 @@ while getopts h option; do
             ;;
     esac
 done
+
 NARGS=3
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
-
-trap '
-    reset_inet_entry $if_name || true
-    run_setup_if_crashed nm || true
-    check_restore_management_access || true
-' EXIT SIGINT SIGTERM
-
 # Fill variables with provided arguments or defaults.
 if_name=$1
 if_type=$2
 mtu=$3
+
+trap '
+    fut_info_dump_line
+    print_tables Wifi_Inet_Config Wifi_Inet_State
+    fut_info_dump_line
+    reset_inet_entry $if_name || true
+    run_setup_if_crashed nm || true
+    check_restore_management_access || true
+' EXIT SIGINT SIGTERM
 
 log_title "$tc_name: NM2 test - Testing table Wifi_Inet_Config field mtu"
 
@@ -112,7 +115,7 @@ wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is mtu "$mtu" &&
     raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - mtu $mtu" -l "$tc_name" -tc
 
 log "$tc_name: LEVEL 2 - Checking if MTU was properly applied to $if_name"
-wait_for_function_response 0 "interface_mtu $if_name | grep -q \"$mtu\"" &&
+wait_for_function_response 0 "get_interface_mtu_from_system $if_name | grep -q \"$mtu\"" &&
     log "$tc_name: MTU applied to ifconfig - interface $if_name" ||
     raise "Failed to apply MTU to ifconfig - interface $if_name" -l "$tc_name" -tc
 

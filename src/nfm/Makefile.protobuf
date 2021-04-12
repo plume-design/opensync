@@ -1,0 +1,12 @@
+#
+# Run the following command to regenrate protobuf files:
+# 	make -f Makefile.proto
+#
+# The output files willb e placed in the src folder:
+# 	src/opensync_nflog.pb-c.c
+# 	src/opensync_nflog.pb-c.h
+#
+PROTOBUF:=../../interfaces/opensync_nflog.proto
+
+all:
+	protoc-c --c_out=src/ --proto_path="$(dir $(PROTOBUF))" $(notdir $(PROTOBUF))

@@ -62,6 +62,12 @@ done
 NARGS=1
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 
+trap '
+fut_info_dump_line
+print_tables AWLAN_Node
+fut_info_dump_line
+' EXIT SIGINT SIGTERM
+
 expected_model=$1
 
 log_title "$tc_name: ONBRD test - Verify model in AWLAN_Node, waiting for '$expected_model' string"

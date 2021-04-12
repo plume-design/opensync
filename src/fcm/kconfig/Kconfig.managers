@@ -10,3 +10,11 @@ menuconfig MANAGER_FCM
         default "fcm;true;always_restart=true;restart_delay=-1"
         help
             Flow Collection Manager startup configuration
+
+    config FCM_ZMQ_IMC
+        depends on MANAGER_FCM
+        bool "Use ZMQ as IMC"
+        default n
+        help
+            Default FSM to FCM communication through ZMQ, Disabling switches
+            to unix domain socket

@@ -61,6 +61,13 @@ while getopts h option; do
     esac
 done
 
+trap '
+fut_info_dump_line
+print_tables Wifi_Associated_Clients Openflow_Config
+print_tables Flow_Service_Manager_Config FSM_Policy
+fut_info_dump_line
+' EXIT SIGINT SIGTERM
+
 # INPUT ARGUMENTS:
 NARGS=2
 [ $# -lt ${NARGS} ] && raise "Requires at least '${NARGS}' input argument(s)" -arg
@@ -83,15 +90,15 @@ log "$tc_name: Configuring TAP interfaces required for FSM testing"
 add_bridge_port "${lan_bridge_if}" "${tap_http_if}"
 set_ovs_vsctl_interface_option "${tap_http_if}" "type" "internal"
 set_ovs_vsctl_interface_option "${tap_http_if}" "ofport_request" "${of_port}"
-create_inet_entry2 \
+create_inet_entry \
     -if_name "${tap_http_if}" \
     -if_type "tap" \
     -ip_assign_scheme "none" \
     -dhcp_sniff "false" \
     -network true \
     -enabled true &&
-    log -deb "$tc_name: Interface ${tap_http_if} successfully created" ||
-    raise "Failed to create interface ${tap_http_if}" -l "$tc_name" -ds
+        log -deb "$tc_name: Interface ${tap_http_if} successfully created" ||
+        raise "Failed to create interface ${tap_http_if}" -l "$tc_name" -ds
 
 log "$tc_name: Cleaning FSM OVSDB Config tables"
 empty_ovsdb_table Openflow_Config
@@ -106,8 +113,8 @@ insert_ovsdb_entry Openflow_Config \
     -i priority 200 \
     -i bridge "${lan_bridge_if}" \
     -i action "normal,output:${of_port}" &&
-    log "$tc_name: Inserting ingress rule" ||
-    raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "$tc_name: Inserting ingress rule" ||
+        raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
 
 mqtt_value="dev-test/dev_http/$(get_node_id)/$(get_location_id)"
 insert_ovsdb_entry Flow_Service_Manager_Config \
@@ -116,5 +123,5 @@ insert_ovsdb_entry Flow_Service_Manager_Config \
     -i pkt_capt_filter 'tcp' \
     -i plugin "${fsm_plugin}" \
     -i other_config '["map",[["mqtt_v","'"${mqtt_value}"'"],["dso_init","http_plugin_init"]]]' &&
-    log "$tc_name: Flow_Service_Manager_Config entry added" ||
-    raise "Failed to insert Flow_Service_Manager_Config entry" -l "$tc_name" -oe
+        log "$tc_name: Flow_Service_Manager_Config entry added" ||
+        raise "Failed to insert Flow_Service_Manager_Config entry" -l "$tc_name" -oe

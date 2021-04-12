@@ -57,17 +57,9 @@ done
 
 log "${tc_name}: Device Default Setup"
 
-cm_disable_fatal_state &&
-    log -deb "${tc_name} Success: cm_disable_fatal_state" ||
-    raise "Failed: cm_disable_fatal_state" -l "${tc_name}" -ds
-
-disable_watchdog &&
-    log -deb "${tc_name} Success: disable_watchdog" ||
-    raise "Failed: disable_watchdog" -l "${tc_name}" -ds
-
-stop_healthcheck &&
-    log -deb "${tc_name} Success: stop_healthcheck" ||
-    raise "Failed: stop_healthcheck" -l "${tc_name}" -ds
+device_init &&
+    log -deb "${tc_name} Success: device_init" ||
+    raise "Failed: device_init" -l "${tc_name}" -ds
 
 restart_managers
 log -deb "${tc_name}: Executed restart_managers, exit code: $?"

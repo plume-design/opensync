@@ -63,6 +63,12 @@ while getopts h option; do
     esac
 done
 
+trap '
+fut_info_dump_line
+print_tables Openflow_Config Openflow_State
+fut_info_dump_line
+' EXIT SIGINT SIGTERM
+
 # INPUT ARGUMENTS:
 NARGS=4
 [ $# -lt ${NARGS} ] && raise "Requires exactly '${NARGS}' input argument(s)" -arg

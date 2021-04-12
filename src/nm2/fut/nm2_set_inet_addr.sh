@@ -62,18 +62,21 @@ while getopts h option; do
             ;;
     esac
 done
+
 NARGS=3
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+if_name=$1
+if_type=$2
+inet_addr=$3
 
 trap '
+    fut_info_dump_line
+    print_tables Wifi_Inet_Config Wifi_Inet_State
+    fut_info_dump_line
     reset_inet_entry $if_name || true
     run_setup_if_crashed nm || true
     check_restore_management_access || true
 ' EXIT SIGINT SIGTERM
-
-if_name=$1
-if_type=$2
-inet_addr=$3
 
 log_title "$tc_name: NM2 test - Testing table Wifi_Inet_Config field inet_addr"
 
@@ -99,7 +102,7 @@ wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is inet_addr "$inet_addr
     raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - inet_addr $inet_addr" -l "$tc_name" -tc
 
 log "$tc_name: LEVEL 2 - Checking if INET_ADDR was properly applied to $if_name"
-wait_for_function_response 0 "interface_ip_address $if_name | grep -q \"$inet_addr\"" &&
+wait_for_function_response 0 "get_interface_ip_address_from_system $if_name | grep -q \"$inet_addr\"" &&
     log "$tc_name: INET_ADDR applied to ifconfig - interface $if_name" ||
     raise "Failed to apply INET_ADDR to ifconfig - interface $if_name" -l "$tc_name" -tc
 
@@ -113,7 +116,7 @@ wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is inet_addr "0.0.0.0" &
     raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - inet_addr 0.0.0.0" -l "$tc_name" -tc
 
 log "$tc_name: LEVEL 2 - Checking if INET_ADDR was properly removed from $if_name"
-wait_for_function_response 1 "interface_ip_address $if_name | grep -q \"$inet_addr\"" &&
+wait_for_function_response 1 "get_interface_ip_address_from_system $if_name | grep -q \"$inet_addr\"" &&
     log "$tc_name: INET_ADDR removed from ifconfig - interface $if_name" ||
     raise "Failed to removed INET_ADDR from ifconfig - interface $if_name" -l "$tc_name" -tc
 

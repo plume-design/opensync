@@ -43,6 +43,10 @@ bool    wm2_radio_onboard_vifs(char *buf, size_t len);
 bool    wm2_clients_update(struct schema_Wifi_Associated_Clients *client,
                            char *vif,
                            bool associated);
+int     wm2_clients_oftag_set(const char *mac,
+                              const char *oftag);
+int     wm2_clients_oftag_unset(const char *mac,
+                                const char *oftag);
 
 void wm2_radio_update_port_state(const char *cloud_vif_ifname);
 

@@ -68,16 +68,19 @@ while getopts h option; do
             ;;
     esac
 done
+
 NARGS=3
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
-
 fw_path=$1
 fw_url=$2
 fw_dl_timer=$3
 
 trap '
-  reset_um_triggers $fw_path || true
-  run_setup_if_crashed um || true
+    fut_info_dump_line
+    print_tables AWLAN_Node
+    fut_info_dump_line
+    reset_um_triggers $fw_path || true
+    run_setup_if_crashed um || true
 ' EXIT SIGINT SIGTERM
 
 log_title "$tc_name: UM test - Download FW - upgrade_dl_timer - 2 seconds +/-"
@@ -99,7 +102,7 @@ wait_ovsdb_entry AWLAN_Node -is upgrade_status "$dl_start_code" &&
 
 log "$tc_name: Waiting for FW download finish"
 wait_ovsdb_entry AWLAN_Node -is upgrade_status "$(get_um_code "UPG_STS_FW_DL_END")" &&
-    fw_dl_timer_result 0 "$start_time" "$fw_dl_timer" ||
-    fw_dl_timer_result 1 "$start_time" "$fw_dl_timer"
+    get_firmware_download_timer_result 0 "$start_time" "$fw_dl_timer" ||
+    get_firmware_download_timer_result 1 "$start_time" "$fw_dl_timer"
 
 pass

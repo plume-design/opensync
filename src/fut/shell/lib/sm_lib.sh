@@ -152,10 +152,11 @@ insert_ws_config()
         -i survey_type "$sm_survey_type" \
         -i reporting_interval "$sm_reporting_interval" \
         -i sampling_interval "$sm_sampling_interval" \
-        -i report_type "$sm_report_type" ||
-        raise "FAIL: Could not insert to Wifi_Stats_Config: insert_ovsdb_entry" -l "$fn_name" -oe
+        -i report_type "$sm_report_type" &&
+            log -deb "$fn_name - Wifi_Stats_Config config inserted" ||
+            raise "FAIL: Could not insert to Wifi_Stats_Config: insert_ovsdb_entry" -l "$fn_name" -oe
 
-    log -deb "$fn_name - Wifi_Stats_Config config inserted"
+    return 0
 }
 
 ####################### SETUP SECTION - STOP ##################################
@@ -228,6 +229,8 @@ check_survey_report_log()
     wait_for_function_response 0 "${sm_log_grep}" &&
         log -deb "$fn_name - $sm_log_test_pass_msg" ||
         raise "FAIL: $die_msg" -l "$fn_name" -tc
+
+    return 0
 }
 
 ###############################################################################
@@ -276,7 +279,9 @@ inspect_survey_report()
         "$sm_survey_type" \
         "$sm_reporting_interval" \
         "$sm_sampling_interval" \
-        "$sm_report_type"
+        "$sm_report_type" &&
+            log "Success: Wifi_Stats_Config inserted" ||
+            raise "FAIL: Could not insert Wifi_Stats_Config: insert_ws_config" -l "$fn_name" -oe
 
     check_survey_report_log "$sm_radio_type" "$sm_channel" "$sm_survey_type" processing_survey
     check_survey_report_log "$sm_radio_type" "$sm_channel" "$sm_survey_type" scheduled_scan
@@ -358,11 +363,13 @@ check_neighbor_report_log()
     wait_for_function_response 0 "${sm_log_grep}" &&
         log -deb "$fn_name - $sm_log_test_pass_msg" ||
         raise "FAIL: $die_msg" -l "$fn_name" -tc
+
+    return 0
 }
 
 ###############################################################################
 # DESCRIPTION:
-#   Function checks existance of neigbor report messages.
+#   Function checks existance of neighbor report messages.
 #   Supported radio types: 2.4G, 5GL, 5GU
 #   Supported survey types: on-chan, off-chan
 #   Supported report type: raw
@@ -410,7 +417,9 @@ inspect_neighbor_report()
         "$sm_survey_type" \
         "$sm_reporting_interval" \
         "$sm_sampling_interval" \
-        "$sm_report_type"
+        "$sm_report_type" &&
+            log "Success: Wifi_Stats_Config inserted" ||
+            raise "FAIL: Could not insert Wifi_Stats_Config: insert_ws_config" -l "$fn_name" -oe
 
     insert_ws_config \
         "$sm_radio_type" \
@@ -419,7 +428,9 @@ inspect_neighbor_report()
         "$sm_survey_type" \
         "$sm_reporting_interval" \
         "$sm_sampling_interval" \
-        "$sm_report_type"
+        "$sm_report_type" &&
+            log "Success: Wifi_Stats_Config inserted" ||
+            raise "FAIL: Could not insert Wifi_Stats_Config: insert_ws_config" -l "$fn_name" -oe
 
     check_neighbor_report_log "$sm_radio_type" "$sm_channel" "$sm_survey_type" add_neighbor "$sm_neighbor_mac" "$sm_neighbor_ssid"
     check_neighbor_report_log "$sm_radio_type" "$sm_channel" "$sm_survey_type" parsed_neighbor_bssid "$sm_neighbor_mac" "$sm_neighbor_ssid"
@@ -496,6 +507,8 @@ check_leaf_report_log()
     wait_for_function_response 0 "${sm_log_grep}" &&
         log -deb "$fn_name - $sm_log_test_pass_msg" ||
         raise "FAIL: $die_msg" -l "$fn_name" -tc
+
+    return 0
 }
 
 ###############################################################################
@@ -538,7 +551,9 @@ inspect_leaf_report()
         "[\"set\",[]]" \
         "$sm_reporting_interval" \
         "$sm_sampling_interval" \
-        "$sm_report_type"
+        "$sm_report_type" &&
+            log "Success: Wifi_Stats_Config inserted" ||
+            raise "FAIL: Could not insert Wifi_Stats_Config: insert_ws_config" -l "$fn_name" -oe
 
     insert_ws_config \
         "$sm_radio_type" \
@@ -547,7 +562,9 @@ inspect_leaf_report()
         "[\"set\",[]]" \
         "$sm_reporting_interval" \
         "$sm_sampling_interval" \
-        "$sm_report_type"
+        "$sm_report_type" &&
+            log "Success: Wifi_Stats_Config inserted" ||
+            raise "FAIL: Could not insert Wifi_Stats_Config: insert_ws_config" -l "$fn_name" -oe
 
     check_leaf_report_log "$sm_radio_type" "$sm_leaf_mac" connected
     check_leaf_report_log "$sm_radio_type" "$sm_leaf_mac" client_parsing

@@ -59,6 +59,12 @@ while getopts h option; do
     esac
 done
 
+trap '
+fut_info_dump_line
+print_tables AWLAN_Node
+fut_info_dump_line
+' EXIT SIGINT SIGTERM
+
 log_title "$tc_name: ONBRD test - Verify id in AWLAN_Node, waiting for 'non-empty' string"
 
 log "$tc_name: Verify id, waiting for non-empty string"

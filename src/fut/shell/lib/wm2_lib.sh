@@ -29,6 +29,7 @@
 export FUT_WM2_LIB_SRC=true
 [ "${FUT_UNIT_LIB_SRC}" != true ] && source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
 echo "${FUT_TOPDIR}/shell/lib/wm2_lib.sh sourced"
+
 ####################### INFORMATION SECTION - START ###########################
 #
 #   Base library of common Wireless Manager functions
@@ -90,9 +91,11 @@ start_qca_wpa_supplicant()
 start_wireless_driver()
 {
     fn_name="wm2_lib:start_wireless_driver"
-    start_qca_hostapd ||
+    start_qca_hostapd &&
+        log -deb "$fn_name - start_qca_hostapd - Success" ||
         raise "FAIL: Could not start qca host: start_qca_hostapd" -l "$fn_name" -ds
-    start_qca_wpa_supplicant ||
+    start_qca_wpa_supplicant &&
+        log -deb "$fn_name - start_qca_wpa_supplicant - Success" ||
         raise "FAIL: Could not start wpa supplicant: start_qca_wpa_supplicant" -l "$fn_name" -ds
 }
 
@@ -170,7 +173,7 @@ wm_setup_test_environment()
 #   See DESCRIPTION.
 # USAGE EXAMPLE(S):
 #   vif_clean
-#   vif_clean -t 240
+#   vif_clean 240
 ###############################################################################
 vif_clean()
 {
@@ -188,92 +191,6 @@ vif_clean()
 ####################### VIF SECTION - STOP ####################################
 
 ###################### RADIO SECTION - START ##################################
-
-###############################################################################
-# DESCRIPTION:
-#   Function changes the channel and ht_mode in Wifi_VIF_Config table.
-#   The procedure accounts for DFS channels, that get reflected immediately in
-#   Wifi_VIF_State, but do not become usable until their state description
-#   becomes either "allowed" or "cac_completed". Only at this time are clients
-#   able to connect to the AP for which the channel was selected.
-# PROCEDURE:
-#   Assuming that the radio interface has one active AP configured:
-#   - Verify channel is valid and thewre was no radar event on channel
-#   - Change channel in Wifi_Radio_Config and verify in Wifi_Radio_State
-#   - Wait for "channel_wait_timeout" seconds for channel description to become
-#     "allowed" or "cac_completed"
-#   - If no timeout occurs, channel is usable after this
-# INPUT PARAMETER(S):
-#   $1 radio_if_name    Interface name of the radio (required)
-#   $2 channel          Desired channel (required)
-#   -ht_mode [ht_mode]  Desired ht_mode (optional)
-#   -timeout [timeout]  Time to wait for channel to become usable (optional)
-# RETURNS:
-#   0   Radio successfully configured
-#   1   Radio not configured successfully:
-#       - Radar event detected on channel
-#       - Wifi_Radio_Config not updated
-#       - Wifi_Radio_State not updated
-# USAGE EXAMPLE(S):
-#   change_radio_channel_ht_mode wifi1 64 -ht_mode HT80 -timeout 60
-###############################################################################
-change_radio_channel_ht_mode()
-{
-    fn_name="wm2_lib:change_radio_channel_ht_mode"
-    NARGS_MIN=2
-    [ $# -lt ${NARGS_MIN} ] &&
-        raise "${fn_name} requires at least ${NARGS_MIN} input argument(s), $# given" -arg
-    radio_if_name=$1
-    channel=$2
-    ht_mode_cfg=""
-    ht_mode""
-    shift 2
-
-    while [ -n "${1}" ]; do
-        option=${1}
-        shift
-        case "${option}" in
-            -ht_mode)
-                ht_mode="${1}"
-                ht_mode_cfg="-ht_mode"
-                shift
-                ;;
-            -timeout)
-                channel_wait_timeout="${1}"
-                shift
-                ;;
-            *)
-                raise "FAIL: Wrong option provided: $option" -l "$fn_name" -arg
-                ;;
-        esac
-    done
-
-    channel_change_timeout=60
-    # Add overhead to CAC_TIMEOUT time for function processing
-    channel_wait_timeout=${channel_wait_timeout:-$(( CAC_TIMEOUT + 5 ))}
-
-    log -deb "${fn_name} - Changing radio $radio_if_name to channel $channel and ht_mode $ht_mode"
-    # Verify channel is valid and thewre was no radar event on channel
-    check_radar_event_on_channel "$channel" "$radio_if_name" &&
-        log -deb "$fn_name - No radar event detected on channel $channel" ||
-        raise "FAIL: Radar event detected on channel $channel" -f "$fn_name" -ds
-
-    # Change channel in Wifi_Radio_Config and verify in Wifi_Radio_State
-    log "${fn_name} - Changing radio channel and ht_mode in Wifi_Radio_Config"
-    configure_radio_interface \
-        -if_name "${GW_RADIO_IF}" \
-        -channel "${GW_RADIO_CHANNEL}" \
-        "${ht_mode_cfg}" "${ht_mode}" \
-        -timeout "${channel_change_timeout}" &&
-            log -deb "$fn_name - Success configure_radio_interface" ||
-            raise "FAIL: Could not configure radio interface ${GW_RADIO_IF}: configure_radio_interface" -l "$fn_name" -ds
-
-    # Wait for "channel_wait_timeout" seconds for channel description to become "allowed" or "cac_completed"
-    channel_wait_fn="check_is_channel_ready_for_use $channel $radio_if_name"
-    wait_for_function_exitcode 0 "$channel_wait_fn" "$channel_wait_timeout" &&
-        log -deb "$fn_name - Success changing to channel $channel ht_mode $ht_mode on $radio_if_name" ||
-        raise "FAIL: Could not change to channel $channel ht_mode $ht_mode on $radio_if_name" -l "$fn_name" -df
-}
 
 ###############################################################################
 # DESCRIPTION:
@@ -373,6 +290,8 @@ configure_radio_interface()
     wait_ovsdb_entry Wifi_Radio_State -w if_name "$radio_if_name" $func_params ${timeout} &&
         log -deb "$fn_name - Success wait_ovsdb_entry Wifi_Radio_State -w if_name $radio_if_name $func_params" ||
         raise "FAIL: wait_ovsdb_entry Wifi_Radio_State -w if_name $radio_if_name $func_params" -l "$fn_name" -ow
+
+    return 0
 }
 
 ###############################################################################
@@ -420,8 +339,8 @@ create_vif_interface()
                 ;;
             -if_name)
                 vif_if_name=${1}
-                vif_args_c="${vif_args_c} ${replace} ${option#?} "${1}
-                vif_args_w="${vif_args_w} ${replace} ${option#?} "${1}
+                vif_args_c="${vif_args_c} ${replace} ${option#?} ${1}"
+                vif_args_w="${vif_args_w} ${replace} ${option#?} ${1}"
                 shift
                 ;;
             -ap_bridge | \
@@ -435,23 +354,27 @@ create_vif_interface()
             -vif_radio_idx | \
             -vlan_id | \
             -enabled)
-                vif_args_c="${vif_args_c} ${replace} ${option#?} "${1}
-                vif_args_w="${vif_args_w} ${replace} ${option#?} "${1}
+                vif_args_c="${vif_args_c} ${replace} ${option#?} ${1}"
+                vif_args_w="${vif_args_w} ${replace} ${option#?} ${1}"
                 shift
                 ;;
             -mode)
                 wm2_mode=${1}
-                vif_args_c="${vif_args_c} ${replace} ${option#?} "${1}
-                vif_args_w="${vif_args_w} ${replace} ${option#?} "${1}
+                vif_args_c="${vif_args_c} ${replace} ${option#?} ${1}"
+                vif_args_w="${vif_args_w} ${replace} ${option#?} ${1}"
                 shift
                 ;;
             -security)
-                vif_args_c="${vif_args_c} ${replace} ${option#?} "${1}
-                vif_args_w="${vif_args_w} -is_not ${option#?} [\"map\",[]]"
+                vif_args_c="${vif_args_c} ${replace} ${option#?} ${1}"
+                if [ "${1}" = '["map",[]]' ]; then
+                    vif_args_w="${vif_args_w} ${replace} ${option#?} [\"map\",[]]"
+                else
+                    vif_args_w="${vif_args_w} -is_not ${option#?} [\"map\",[]]"
+                fi
                 shift
                 ;;
             -credential_configs)
-                vif_args_c="${vif_args_c} ${replace} ${option#?} "${1}
+                vif_args_c="${vif_args_c} ${replace} ${option#?} ${1}"
                 shift
                 ;;
             *)
@@ -497,36 +420,8 @@ create_vif_interface()
     wait_ovsdb_entry Wifi_VIF_State -w if_name "$vif_if_name" $func_params &&
         log -deb "$fn_name - Success wait_ovsdb_entry Wifi_VIF_State -w if_name $vif_if_name $func_params" ||
         raise "FAIL: wait_ovsdb_entry Wifi_VIF_State -w if_name $vif_if_name $func_params" -l "$fn_name" -ow
-}
 
-###############################################################################
-# DESCRIPTION:
-# INPUT PARAMETER(S):
-# RETURNS:
-# USAGE EXAMPLE(S):
-###############################################################################
-check_sta_associated()
-{
-    local fn_name="wm2_lib:check_sta_associated"
-    local vif_if_name=${1}
-    local fnc_retry_count=${2:-"5"}
-    local fnc_retry_sleep=${3:-"3"}
-
-    log -deb "$fn_name - Checking if $vif_if_name is associated"
-    # Makes sense if VIF mode==sta, search for "parent" field
-    fnc_str="get_ovsdb_entry_value Wifi_VIF_State parent -w if_name $vif_if_name -raw"
-    wait_for_function_output "notempty" "${fnc_str}" "${fnc_retry_count}" "${fnc_retry_sleep}"
-    if [ $? -eq 0 ]; then
-        parent_mac="$($fnc_str)"
-        if false; then  # do not retrofit Wifi_VIF_Config with parent_mac
-            update_ovsdb_entry Wifi_VIF_Config -w if_name "$vif_if_name" -u parent "$parent_mac"
-        fi
-        log -deb "$fn_name - VIF ${vif_if_name} associated to parent MAC ${parent_mac}"
-        return 0
-    else
-        log -deb "$fn_name - VIF ${vif_if_name} not associated, no parent MAC"
-        return 1
-    fi
+    return 0
 }
 
 ###############################################################################
@@ -538,10 +433,11 @@ check_sta_associated()
 #   Configures radio interface.
 #   Creates (or makes an update if already exists) and configures VIF interface.
 #   Makes sure all relevant Config tables are reflected to State tables.
-#   Note: this function does not verify that the channel is ready for immediate
-#         use, only that the channel was set - this means that DFS channels are
-#         likely performing CAC, and a timeout and check needs to be done in
-#         the calling function. See function: check_is_channel_ready_for_use()
+# NOTE:
+#   This function does not verify that the channel is ready for immediate
+#   use, only that the channel was set, which means that DFS channels are
+#   likely performing CAC, and a timeout and check needs to be done in
+#   the calling function. See function: check_is_channel_ready_for_use()
 # INPUT PARAMETER(S):
 #   Parameters are fed into function as key-value pairs.
 #   Function supports the following keys for parameter values:
@@ -549,12 +445,16 @@ check_sta_associated()
 #       -channel_mode, -ht_mode, -hw_mode, -country, -enabled, -mode,
 #       -ssid, -ssid_broadcast, -security, -parent, -mac_list, -mac_list_type,
 #       -tx_chainmask, -tx_power, -fallback_parents,
-#       -ap_bridge, -ap_bridge, -dynamic_beacon, -vlan_id
+#       -ap_bridge, -ap_bridge, -dynamic_beacon, -vlan_id,
+#       -wpa, -wpa_key_mgmt, -wpa_psks, -wpa_oftags
 #   Where mandatory key-value pairs are:
 #       -if_name <if_name> (string, required)
 #       -vif_if_name <vif_if_name> (string, required)
 #       -channel <channel> (integer, required)
 #   Other parameters are optional. Order of key-value pairs can be random.
+#   Optional parameter pair:
+#       -timeout <timeout_seconds>: how long to wait for channel change. If
+#        empty, use default ovsh wait time.
 #   Refer to USAGE EXAMPLE(S) for details.
 # RETURNS:
 #   None.
@@ -580,11 +480,82 @@ create_radio_vif_interface()
     vif_args_w=""
     radio_args=""
     replace="func_arg"
+    channel_change_timeout=""
 
     while [ -n "$1" ]; do
         option=$1
         shift
         case "$option" in
+            -channel_mode | \
+            -ht_mode | \
+            -hw_mode | \
+            -fallback_parents | \
+            -tx_power | \
+            -tx_chainmask)
+                radio_args="$radio_args $replace ${option#?} ${1}"
+                shift
+                ;;
+            -credential_configs | \
+            -default_oftag | \
+            -wpa_oftags)
+                vif_args_c="${vif_args_c} ${replace} ${option#?} ${1}"
+                shift
+                ;;
+            -vif_radio_idx | \
+            -ssid | \
+            -ssid_broadcast | \
+            -parent | \
+            -mac_list | \
+            -mac_list_type | \
+            -dynamic_beacon | \
+            -bridge | \
+            -vlan_id | \
+            -radius_srv_secret | \
+            -radius_srv_addr | \
+            -wpa | \
+            -wpa_key_mgmt | \
+            -wpa_psks)
+                vif_args_c="${vif_args_c} ${replace} ${option#?} ${1}"
+                vif_args_w="${vif_args_w} ${replace} ${option#?} ${1}"
+                shift
+                ;;
+            -ap_bridge)
+                vif_args_c="$vif_args_c $replace ap_bridge $1"
+                vif_args_w="$vif_args_w $replace if_name $1"
+                shift
+                ;;
+            -security)
+                vif_args_c="$vif_args_c $replace security $1"
+                if [ "${1}" = '["map",[]]' ]; then
+                    vif_args_w="${vif_args_w} ${replace} ${option#?} [\"map\",[]]"
+                else
+                    vif_args_w="${vif_args_w} -is_not ${option#?} [\"map\",[]]"
+                fi
+                shift
+                ;;
+            -mode)
+                vif_args_c="$vif_args_c $replace mode $1"
+                vif_args_w="$vif_args_w $replace mode $1"
+                wm2_mode=$1
+                shift
+                ;;
+            -enabled)
+                radio_args="$radio_args $replace enabled $1"
+                vif_args_c="$vif_args_c $replace enabled $1"
+                vif_args_w="$vif_args_w $replace enabled $1"
+                shift
+                ;;
+            -country)
+                radio_args="$radio_args $replace country $1"
+                country_arg="$replace country $1"
+                shift
+                ;;
+            -channel)
+                radio_args="$radio_args $replace channel $1"
+                vif_args_w="$vif_args_w $replace channel $1"
+                channel=$1
+                shift
+                ;;
             -if_name)
                 radio_args="$radio_args $replace if_name $1"
                 wm2_if_name=$1
@@ -596,106 +567,8 @@ create_radio_vif_interface()
                 wm2_vif_if_name=$1
                 shift
                 ;;
-            -vif_radio_idx)
-                vif_args_c="$vif_args_c $replace vif_radio_idx $1"
-                vif_args_w="$vif_args_w $replace vif_radio_idx $1"
-                shift
-                ;;
-            -channel)
-                radio_args="$radio_args $replace channel $1"
-                vif_args_w="$vif_args_w $replace channel $1"
-                channel=$1
-                shift
-                ;;
-            -channel_mode)
-                radio_args="$radio_args $replace channel_mode $1"
-                shift
-                ;;
-            -ht_mode)
-                radio_args="$radio_args $replace ht_mode $1"
-                shift
-                ;;
-            -hw_mode)
-                radio_args="$radio_args $replace hw_mode $1"
-                shift
-                ;;
-            -country)
-                radio_args="$radio_args $replace country $1"
-                country_arg="$replace country $1"
-                shift
-                ;;
-            -enabled)
-                radio_args="$radio_args $replace enabled $1"
-                vif_args_c="$vif_args_c $replace enabled $1"
-                vif_args_w="$vif_args_w $replace enabled $1"
-                shift
-                ;;
-            -mode)
-                vif_args_c="$vif_args_c $replace mode $1"
-                vif_args_w="$vif_args_w $replace mode $1"
-                wm2_mode=$1
-                shift
-                ;;
-            -ssid)
-                vif_args_c="$vif_args_c $replace ssid $1"
-                vif_args_w="$vif_args_w $replace ssid $1"
-                shift
-                ;;
-            -ssid_broadcast)
-                vif_args_c="$vif_args_c $replace ssid_broadcast $1"
-                vif_args_w="$vif_args_w $replace ssid_broadcast $1"
-                shift
-                ;;
-            -security)
-                vif_args_c="$vif_args_c $replace security $1"
-                vif_args_w="$vif_args_w -is_not security [\"map\",[]]"
-                shift
-                ;;
-            -parent)
-                vif_args_c="$vif_args_c $replace parent $1"
-                vif_args_w="$vif_args_w $replace parent $1"
-                shift
-                ;;
-            -mac_list)
-                vif_args_c="$vif_args_c $replace mac_list $1"
-                vif_args_w="$vif_args_w $replace mac_list $1"
-                shift
-                ;;
-            -mac_list_type)
-                vif_args_c="$vif_args_c $replace mac_list_type $1"
-                vif_args_w="$vif_args_w $replace mac_list_type $1"
-                shift
-                ;;
-            -tx_chainmask)
-                radio_args="$radio_args $replace tx_chainmask $1"
-                shift
-                ;;
-            -tx_power)
-                radio_args="$radio_args $replace tx_power $1"
-                shift
-                ;;
-            -fallback_parents)
-                radio_args="$radio_args $replace fallback_parents $1"
-                shift
-                ;;
-            -ap_bridge)
-                vif_args_c="$vif_args_c $replace ap_bridge $1"
-                vif_args_w="$vif_args_w $replace if_name $1"
-                shift
-                ;;
-            -bridge)
-                vif_args_c="$vif_args_c $replace bridge $1"
-                vif_args_w="$vif_args_w $replace bridge $1"
-                shift
-                ;;
-            -dynamic_beacon)
-                vif_args_c="$vif_args_c $replace dynamic_beacon $1"
-                vif_args_w="$vif_args_w $replace dynamic_beacon $1"
-                shift
-                ;;
-            -vlan_id)
-                vif_args_c="$vif_args_c $replace vlan_id $1"
-                vif_args_w="$vif_args_w $replace vlan_id $1"
+            -timeout)
+                channel_change_timeout="-t ${1}"
                 shift
                 ;;
             *)
@@ -761,7 +634,7 @@ create_radio_vif_interface()
 
     # shellcheck disable=SC2086
     func_params=${vif_args_w//$replace/-is}
-    wait_ovsdb_entry Wifi_VIF_State -w if_name "$wm2_vif_if_name" $func_params &&
+    wait_ovsdb_entry Wifi_VIF_State -w if_name "$wm2_vif_if_name" $func_params ${channel_change_timeout} &&
         log -deb "$fn_name - Wifi_VIF_Config reflected to Wifi_VIF_State" ||
         raise "FAIL: Could not reflect Wifi_VIF_Config to Wifi_VIF_State" -l "$fn_name" -ow
 
@@ -773,7 +646,7 @@ create_radio_vif_interface()
     # necessarily available for immediate use if CAC is in progress.
     func_params=${radio_args//$replace/-is}
     # shellcheck disable=SC2086
-    wait_ovsdb_entry Wifi_Radio_State -w if_name "$wm2_if_name" $func_params &&
+    wait_ovsdb_entry Wifi_Radio_State -w if_name "$wm2_if_name" $func_params ${channel_change_timeout} &&
         log -deb "$fn_name - Wifi_Radio_Config reflected to Wifi_Radio_State" ||
         raise "FAIL: Could not reflect Wifi_Radio_Config to Wifi_Radio_State" -l "$fn_name" -ow
 
@@ -791,6 +664,8 @@ create_radio_vif_interface()
     fi
 
     log -deb "$fn_name - Wireless interface created"
+
+    return 0
 }
 
 ###############################################################################
@@ -806,8 +681,10 @@ check_radio_vif_state()
     vif_args_w=""
     radio_args=""
     replace="func_arg"
+    retval=0
 
-    interface_is_up "$if_name"
+    log -deb "$fn_name - Checking if interface $if_name is up"
+    get_interface_is_up "$if_name"
     if [ "$?" -eq 0 ]; then
         log -deb "$fn_name - Interface $if_name is up"
     else
@@ -854,7 +731,7 @@ check_radio_vif_state()
                 shift
                 ;;
             -security)
-                vif_args="$vif_args $replace security $1"
+                vif_args="$vif_args $replace security "$(single_quote_arg "$1")
                 shift
                 ;;
             -country)
@@ -871,18 +748,16 @@ check_radio_vif_state()
     # shellcheck disable=SC2086
     check_ovsdb_entry Wifi_Radio_State $func_params &&
         log -deb "$fn_name - Wifi_Radio_State is valid for given configuration" ||
-        (
-            log -deb "$fn_name - VIF_State does not exist" &&
-                return 1
-        )
+            log -deb "$fn_name - Entry with required radio arguments in Wifi_Radio_State does not exist" &&
+                retval=1
 
     func_params=${vif_args//$replace/-w}
     check_ovsdb_entry Wifi_VIF_State $func_params &&
-        log -deb "$fn_name - Wifi_Radio_State is valid for given configuration" ||
-        (
-            log -deb "$fn_name - VIF_State does not exist" &&
-                return 1
-        )
+        log -deb "$fn_name - Wifi_VIF_State is valid for given configuration" ||
+            log -deb "$fn_name - Entry with required VIF arguments in Wifi_VIF_State does not exist" &&
+                retval=1
+
+    return $retval
 }
 
 ###############################################################################
@@ -1024,6 +899,8 @@ check_radio_mimo_config()
             raise "FAIL: Wrong mimo provided: $mimo" -l "$fn_name" -arg
             ;;
     esac
+
+    return 0
 }
 
 ###############################################################################
@@ -1131,6 +1008,29 @@ check_country_at_os_level()
 
 ###############################################################################
 # DESCRIPTION:
+#   Function returns channel applied at OS level for vif interface provided
+#   If no interface is provided, function exits 1
+#   Uses iwlist to get channel info
+# INPUT PARAMETER(S):
+#   $1  vif interface name (required)
+# RETURNS:
+#   1   if number of arguments doesn't match, otherwise 0
+# NOTE:
+#   Provide library override function for each model.
+# USAGE EXAMPLE(S):
+#   get_channel_from_os home-ap-24
+###############################################################################
+get_channel_from_os()
+{
+    local NARGS=1
+    [ $# -ne ${NARGS} ] && exit 1
+    wm2_vif_if_name=$1
+    iwlist $wm2_vif_if_name channel | grep -F "Current" | cut -d ' ' -f15 | cut -d ')' -f1
+    return 0
+}
+
+###############################################################################
+# DESCRIPTION:
 #   Function echoes the radio channel state description in channels field of
 #   table Wifi_Radio_State.
 # INPUT PARAMETER(S):
@@ -1176,6 +1076,7 @@ get_radio_channel_state()
         echo "${state_raw##*state}" | tr -d '\":}'
         return 1
     fi
+
     return 0
 }
 
@@ -1216,6 +1117,8 @@ check_is_channel_allowed()
     echo "$allowed_channels" | grep -qF "$wm2_channel" &&
         log -deb "$fn_name - Channel $channel is allowed on radio $radio_if_name" ||
         raise "FAIL: Wifi_Radio_State::allowed_channels for $radio_if_name does not contain $channel" -l "$fn_name" -ds
+
+    return 0
 }
 
 ###############################################################################
@@ -1378,9 +1281,9 @@ check_is_nop_finished()
 # USAGE EXAMPLE(S):
 #   N/A
 ###############################################################################
-simulate_DFS_radar()
+simulate_dfs_radar()
 {
-    fn_name="wm2_lib:simulate_DFS_radar"
+    fn_name="wm2_lib:simulate_dfs_radar"
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
         raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
@@ -1414,10 +1317,13 @@ remove_sta_connections()
         raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
     wm2_sta_if_name=$1
 
-    log -deb "[DEPRECATED] - Function ${fn_name} is deprecated in favor of remove_sta_interfaces"
+    log -deb "[DEPRECATED] - Function ${fn_name} is deprecated in favor of remove_sta_interfaces_exclude"
     log -deb "$fn_name - Removing sta connections except $wm2_sta_if_name"
-    ${OVSH} d Wifi_VIF_Config -w if_name!="$wm2_sta_if_name" -w mode==sta ||
+    ${OVSH} d Wifi_VIF_Config -w if_name!="$wm2_sta_if_name" -w mode==sta &&
+        log -deb "$fn_name - sta connections except $wm2_sta_if_name removed" ||
         raise "FAIL: Could not remove STA interfaces" -l "$fn_name" -oe
+
+    return 0
 }
 
 ###############################################################################
@@ -1432,11 +1338,11 @@ remove_sta_connections()
 #   0   On success.
 #   See DESCRIPTION.
 # USAGE EXAMPLE(S):
-#   remove_sta_interfaces 60
+#   remove_sta_interfaces_exclude 60
 ###############################################################################
-remove_sta_interfaces()
+remove_sta_interfaces_exclude()
 {
-    local fn_name="wm2_lib:remove_sta_interfaces"
+    local fn_name="wm2_lib:remove_sta_interfaces_exclude"
     local wait_timeout=${1:-$DEFAULT_WAIT_TIME}
     local wm2_sta_if_name=$2
     local retval=1

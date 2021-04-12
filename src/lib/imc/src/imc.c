@@ -31,6 +31,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "imc.h"
 #include "log.h"
 
+#define MAX_BUFFER_SIZE 64000
 
 static void
 s_idle_cb(struct ev_loop *loop, ev_idle *w, int revents)
@@ -168,6 +169,7 @@ ev_imc_start(struct imc_context *context)
     ev_io_start(context->loop, &context->w_io);
 }
 
+
 /**
  * @brief ev callback for data reception
  *
@@ -208,6 +210,31 @@ err_recv:
     zmq_msg_close(&msg);
 }
 
+static void
+unix_ev_recv_cb(EV_P_ ev_io *ev, int revents)
+{
+    (void)loop;
+    (void)revents;
+
+    struct sockaddr_un server;
+    struct unix_context *context;
+    socklen_t serv_len;
+    char buf[MAX_BUFFER_SIZE];
+    int rc;
+
+    context = ev->data;
+    serv_len = sizeof(server);
+    rc = recvfrom(context->sock_fd, &buf, sizeof(buf), 0, (struct sockaddr *)&server, &serv_len);
+    if (rc == -1)
+    {
+        LOGE("%s: failed to receive data: %s", __func__,
+             strerror(errno));
+        return;
+    }
+
+    /* Call the user receive routine */
+    context->recv_fn(buf, rc);
+}
 
 /**
  * @brief initializes an imc context
@@ -313,6 +340,84 @@ imc_apply_options(struct imc_context *context)
     return 0;
 }
 
+/**
+ * @brief initiates a unix server
+ *
+ * @param server the server context
+ * @param loop the ev loop
+ * @param recv_cb user provided data processing routine
+ */
+int
+unix_init_server(struct unix_context *unix_server, struct ev_loop *loop,
+                 unix_recv recv_cb)
+{
+    struct sockaddr_un server;
+    int sock;
+
+    unix_server->recv_fn = recv_cb;
+
+    sock = socket(AF_UNIX, SOCK_DGRAM, 0);
+    if (sock < 0)
+    {
+        LOGE("%s : failed opening a unix socket", __func__);
+        return -1;
+    }
+
+    unix_server->sock_fd = sock;
+
+    server.sun_family = AF_UNIX;
+    strcpy(server.sun_path, unix_server->endpoint);
+
+    /* unlink socket */
+    unlink(unix_server->endpoint);
+
+    if (bind(sock, (struct sockaddr *) &server, sizeof(struct sockaddr_un)))
+    {
+        LOGE("%s : failed binding unix socket", __func__);
+        goto sock_err;
+    }
+
+    /* set socket to non blocking mode */
+    fcntl(sock, F_SETFL, O_NONBLOCK);
+
+    unix_server->events = EV_READ;
+    unix_server->loop = loop;
+
+    ev_io_init(&unix_server->w_io, unix_ev_recv_cb,
+               unix_server->sock_fd, EV_READ);
+
+    unix_server->w_io.data = (void *)unix_server;
+
+    ev_io_start(loop, &unix_server->w_io);
+
+    unix_server->initialized = true;
+
+    return 0;
+
+sock_err:
+    close(sock);
+    unlink(unix_server->endpoint);
+    return -1;
+}
+
+/**
+ * @brief terminates a unix server and frees its resources
+ *
+ * @param server the server to terminate
+ */
+void
+unix_terminate_server(struct unix_context *server)
+{
+    if (ev_is_active(&server->w_io))
+    {
+        ev_io_stop(server->loop, &server->w_io);
+    }
+
+    close(server->sock_fd);
+    unlink(server->endpoint);
+    server->initialized = false;
+    return;
+}
 
 /**
  * @brief initiates a imc server
@@ -416,6 +521,34 @@ imc_terminate_server(struct imc_context *server)
     return;
 }
 
+/**
+ * @brief initiates a unix client and connects to a server
+ *
+ * @param client the client context
+ *
+ */
+int
+unix_init_client(struct unix_context *client)
+{
+    struct sockaddr_un server;
+    int sock;
+
+    sock = socket(AF_UNIX, SOCK_DGRAM, 0);
+
+    if (sock < 0)
+    {
+        LOGE("%s : failed unix socket creation", __func__);
+        return -1;
+    }
+
+    client->sock_fd = sock;
+    server.sun_family = AF_UNIX;
+    strcpy(server.sun_path, client->endpoint);
+
+    client->initialized = true;
+
+    return 0;
+}
 
 /**
  * @brief initiates a imc client and connects to a server
@@ -491,6 +624,21 @@ err_free_zctx:
     return -1;
 }
 
+/**
+ * @brief terminates a unix client
+ *
+ * @param client the client context
+ */
+void
+unix_terminate_client(struct unix_context *client)
+{
+    if (client->initialized == false) return;
+
+    close(client->sock_fd);
+    client->initialized = false;
+
+    return;
+}
 
 /**
  * @brief terminates a imc client
@@ -544,17 +692,54 @@ imc_send(struct imc_context *client, void *buf, size_t buflen, int flags)
     return 0;
 }
 
+/**
+ * @brief send data to a unix server
+ *
+ * @param client the socket context
+ * @param buf the buffer to send
+ * @param len the buffer size
+ * @flags the transmit flags
+ */
+int
+unix_send(struct unix_context *client, void *buf, size_t buflen, int flags)
+{
+    struct sockaddr_un server;
+    socklen_t serv_len = sizeof(server);
+    int rc;
+
+    server.sun_family = AF_UNIX;
+    strcpy(server.sun_path, client->endpoint);
+
+    rc = sendto(client->sock_fd, buf, buflen, 0, (const struct sockaddr *)&server, serv_len);
+    if (buf) free(buf);
+
+    if (rc == -1)
+    {
+        rc = errno;
+        LOGD("%s: failed to send data to %s: %s", __func__,
+             client->endpoint, strerror(rc));
+        return -1;
+    }
+
+    return 0;
+}
+
 void
 imc_init_dso(struct imc_dso *dso)
 {
     dso->init_client = imc_init_client;
     dso->terminate_client = imc_terminate_client;
     dso->client_send = imc_send;
-    dso->add_sockopt = imc_add_sockopt;
     dso->init_server = imc_init_server;
     dso->terminate_server = imc_terminate_server;
     dso->add_sockopt = imc_add_sockopt;
     dso->init_context = imc_init_context;
     dso->reset_context = imc_reset_context;
+
+    dso->init_unix_client = unix_init_client;
+    dso->terminate_unix_client = unix_terminate_client;
+    dso->client_unix_send = unix_send;
+    dso->init_unix_server = unix_init_server;
+    dso->terminate_unix_server = unix_terminate_server;
 }
 

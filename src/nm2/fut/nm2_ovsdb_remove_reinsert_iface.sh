@@ -65,18 +65,21 @@ while getopts h option; do
             ;;
     esac
 done
+
 NARGS=2
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+if_name=$1
+if_type=$2
+inet_addr=${3:-${inet_addr_default}}
 
 trap '
+    fut_info_dump_line
+    print_tables Wifi_Inet_Config Wifi_Inet_State
+    fut_info_dump_line
     reset_inet_entry $if_name || true
     run_setup_if_crashed nm || true
     check_restore_management_access || true
 ' EXIT SIGINT SIGTERM
-
-if_name=$1
-if_type=$2
-inet_addr=${3:-${inet_addr_default}}
 
 log_title "$tc_name: NM2 test - Remove reinsert interface"
 
@@ -93,7 +96,7 @@ create_inet_entry \
         raise "Failed to create interface" -l "$tc_name" -tc
 
 log "$tc_name: LEVEL 2 - Check if IP ADDRESS: $inet_addr was properly applied to $if_name (ENABLED #1)"
-wait_for_function_response 0 "interface_ip_address $if_name | grep -q \"$inet_addr\"" &&
+wait_for_function_response 0 "get_interface_ip_address_from_system $if_name | grep -q \"$inet_addr\"" &&
     log "$tc_name: Settings applied to ifconfig (ENABLED #1) - $if_name" ||
     raise "Failed to apply settings to ifconfig (ENABLED #1) - $if_name" -l "$tc_name" -tc
 
@@ -107,7 +110,7 @@ wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is enabled false &&
     raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - enabled=false" -l "$tc_name" -tc
 
 log "$tc_name: LEVEL 2 - Check if IP ADDRESS: $inet_addr was properly removed from $if_name (DISABLED #1)"
-wait_for_function_response 1 "interface_ip_address $if_name | grep -q \"$inet_addr\"" &&
+wait_for_function_response 1 "get_interface_ip_address_from_system $if_name | grep -q \"$inet_addr\"" &&
     log "$tc_name: Settings removed from ifconfig (DISABLE #1) - $if_name" ||
     raise "Failed to remove settings from ifconfig (DISABLE #1) - $if_name" -l "$tc_name" -tc
 
@@ -121,7 +124,7 @@ wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is enabled true &&
     raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - enabled=true" -l "$tc_name" -tc
 
 log "$tc_name: LEVEL 2 - Check if IP ADDRESS: $inet_addr was properly applied to $if_name (ENABLED #1)"
-wait_for_function_response 0 "interface_ip_address $if_name | grep -q \"$inet_addr\"" &&
+wait_for_function_response 0 "get_interface_ip_address_from_system $if_name | grep -q \"$inet_addr\"" &&
     log "$tc_name: Settings applied to ifconfig (ENABLED #2) - $if_name" ||
     raise "Failed to apply settings to ifconfig (ENABLED #2) - $if_name" -l "$tc_name" -tc
 
@@ -135,7 +138,7 @@ wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is enabled false &&
     raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - enabled=false" -l "$tc_name" -tc
 
 log "$tc_name: LEVEL 2 - Check if IP ADDRESS: $inet_addr was properly removed from $if_name (DISABLED #1)"
-wait_for_function_response 1 "interface_ip_address $if_name | grep -q \"$inet_addr\"" &&
+wait_for_function_response 1 "get_interface_ip_address_from_system $if_name | grep -q \"$inet_addr\"" &&
     log "$tc_name: Settings removed from ifconfig (DISABLE #2) - $if_name" ||
     raise "Failed to remove settings from ifconfig (DISABLE #2) - $if_name" -l "$tc_name" -tc
 
@@ -149,7 +152,7 @@ wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is enabled true &&
     raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - enabled=true" -l "$tc_name" -tc
 
 log "$tc_name: LEVEL 2 - Check if IP ADDRESS was properly applied to $if_name (ENABLED #1)"
-wait_for_function_response 0 "interface_ip_address $if_name | grep -q \"$inet_addr\"" &&
+wait_for_function_response 0 "get_interface_ip_address_from_system $if_name | grep -q \"$inet_addr\"" &&
     log "$tc_name: Settings applied to ifconfig (ENABLED #3) - enabled=true" ||
     raise "Failed to apply settings to ifconfig (ENABLED #3) - enabled=true" -l "$tc_name" -tc
 

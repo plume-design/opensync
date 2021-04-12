@@ -34,10 +34,29 @@ UNIT_DIR := shell/tests/dm
 # BRV specific FUTs
 UNIT_FILE := brv_setup.sh
 UNIT_FILE += brv_busybox_builtins.sh
+UNIT_FILE += brv_is_script_on_system.sh
 UNIT_FILE += brv_is_tool_on_system.sh
 UNIT_FILE += brv_ovs_correct_version.sh
+
+# DM specific FUTs
+UNIT_FILE += dm_setup.sh
+UNIT_FILE += dm_verify_count_reboot_status.sh
+UNIT_FILE += dm_verify_enable_node_services.sh
+UNIT_FILE += dm_verify_sku_number_awlan_node.sh
+UNIT_FILE += dm_verify_revision_awlan_node.sh
+UNIT_FILE += dm_verify_vendor_name_awlan_node.sh
+UNIT_FILE += dm_verify_vendor_part_number_awlan_node.sh
+UNIT_FILE += dm_verify_vendor_manufacturer_awlan_node.sh
+UNIT_FILE += dm_verify_vendor_factory_awlan_node.sh
+UNIT_FILE += dm_verify_vendor_mfg_date_awlan_node.sh
+UNIT_FILE += dm_verify_node_services.sh
+UNIT_FILE += dm_verify_reboot_file_exists.sh
+UNIT_FILE += dm_verify_reboot_reason.sh
+UNIT_FILE += dm_reboot_dut_w_reason.sh
+
 # ONBRD specific FUTs
 UNIT_FILE += onbrd_setup.sh
+UNIT_FILE += onbrd_cleanup.sh
 UNIT_FILE += onbrd_verify_bridge_mode.sh
 UNIT_FILE += onbrd_verify_client_certificate_files.sh
 UNIT_FILE += onbrd_verify_client_tls_connection.sh
@@ -55,3 +74,8 @@ UNIT_FILE += onbrd_verify_onbrd_vaps_on_radios.sh
 UNIT_FILE += onbrd_verify_redirector_address_awlan_node.sh
 UNIT_FILE += onbrd_verify_router_mode.sh
 UNIT_FILE += onbrd_verify_wan_ip_address.sh
+UNIT_FILE += onbrd_configure_and_verify_gre_tunnel_gw.sh
+UNIT_FILE += onbrd_verify_gre_tunnel_leaf.sh
+UNIT_FILE += onbrd_verify_gre_tunnel_gw_cleanup.sh
+UNIT_FILE += onbrd_verify_wan_iface_mac_addr.sh
+UNIT_FILE += onbrd_connect_wifi_client_multi_psk.sh

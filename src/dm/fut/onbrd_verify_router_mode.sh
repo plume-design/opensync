@@ -68,6 +68,17 @@ while getopts h option; do
             ;;
     esac
 done
+
+trap '
+fut_info_dump_line
+check_pid_udhcp $br_wan
+print_tables Wifi_Inet_State
+fut_info_dump_line
+' EXIT SIGINT SIGTERM
+
+check_kconfig_option "TARGET_CAP_EXTENDER" "y" ||
+    raise "TARGET_CAP_EXTENDER != y - Testcase applicable only for EXTENDER-s" -l "${tc_name}" -s
+
 ########### End Options, Args, Usage and Util ################
 eth_wan=${1:-${eth_wan_default}}
 br_wan=${2:-${br_wan_default}}
@@ -88,7 +99,7 @@ log_title "$tc_name: ONBRD test - Verify router mode settings applied"
 
 # br-wan section
 log "$tc_name: Check if interface is UP - $br_wan"
-wait_for_function_response 0 "interface_is_up $br_wan" &&
+wait_for_function_response 0 "get_interface_is_up $br_wan" &&
     log "$tc_name: Interface is UP - $br_wan" ||
     raise "FAILED: Interface is DOWN, should be UP - $br_wan" -l "$tc_name" -tc
 
@@ -107,7 +118,7 @@ wait_ovsdb_entry Wifi_Inet_State -w if_name "$br_wan" -is NAT true &&
     raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - NAT=true" -l "$tc_name" -tc
 # br-home section
 log "$tc_name: Setting DHCP range on $br_home"
-enable_disable_dhcp_server "$br_home" "$start_pool" "$end_pool" ||
+configure_dhcp_server_on_interface "$br_home" "$start_pool" "$end_pool" ||
     raise "Cannot update DHCP settings inside CONFIG $br_wan" -l "$tc_name" -tc
 
 log "$tc_name: Setting NAT to false"

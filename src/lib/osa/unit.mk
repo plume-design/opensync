@@ -41,6 +41,7 @@ UNIT_SRC += src/os_file_ops.c
 UNIT_SRC += src/os_file.c
 UNIT_SRC += src/os_random.c
 UNIT_SRC += src/os_assert.c
+UNIT_SRC += src/os_uds_link.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 ifeq ($(BUILD_WITH_LIBGCC_BACKTRACE),y)
@@ -49,6 +50,7 @@ UNIT_CFLAGS += -DWITH_LIBGCC_BACKTRACE
 endif
 
 UNIT_LDFLAGS := -lpthread
+UNIT_LDFLAGS += -lev
 ifeq ($(BUILD_WITH_LIBGCC_BACKTRACE),y)
 UNIT_LDFLAGS += -lgcc_s
 endif

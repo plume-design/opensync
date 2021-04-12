@@ -194,4 +194,12 @@ config TARGET_IMC
     default n
     help
         Select this option if the platform enables zeromq
+
+config TARGET_HWSIM
+    bool "mac80211 hwsim target implementation"
+    default n
+    help
+        Intended for unit / function testing of WM2.
+
+        If unsure, leave as 'n'.
 endmenu

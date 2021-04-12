@@ -10,7 +10,7 @@ do
 		echo ok
 	else
 		echo failed
-		touch log.bad
+		touch $dir/log.bad
 	fi
 	echo "$buf" >> "$dir/log.txt"
 done

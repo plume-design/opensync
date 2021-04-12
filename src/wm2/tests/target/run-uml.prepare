@@ -1,0 +1,9 @@
+#!/bin/sh
+nice -n 19 make \
+	-C core \
+	TARGET=native \
+	IMAGE_DEPLOYMENT_PROFILE=dev-debug \
+	-j $(nproc) \
+	src/wm2 \
+	ovsdb-create \
+	src/tools/ovsh

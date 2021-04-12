@@ -33,13 +33,23 @@ source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
 
 tc_name="wm2/$(basename "$0")"
 manager_setup_file="wm2/wm2_setup.sh"
+# Wait for channel to change, not necessarily become usable (CAC for DFS)
+channel_change_timeout=60
+
 usage()
 {
 cat << usage_string
 ${tc_name} [-h] arguments
 Description:
-    - Script configures interface through Wifi_Radio_Config/Wifi_VIF_Config table and checks if it is reflected into Wifi_Radio_State/Wifi_VIF_State
-      Script fails if ht_mode fails to reflect to Wifi_Radio_State or channel fails to reflect to Wifi_VIF_State
+    - Script configures radio in Wifi_Radio_Config, creates interface in
+      Wifi_VIF_Config table and checks if settings are reflected in tables
+      Wifi_Radio_State and Wifi_VIF_State.
+      The script waits for the channel change for ${channel_change_timeout}s.
+      Even if the channel is set in Wifi_Radio_State, it is not necessarily
+      available for immediate use if CAC is in progress for DFS channels, but
+      this is not under test in this scipt.
+      Script fails if ht_mode fails to reflect to Wifi_Radio_State.
+      Script fails if channel fails to reflect to Wifi_VIF_State.
 Arguments:
     -h  show this help message
     \$1  (if_name)       : Wifi_Radio_Config::if_name     : (string)(required)
@@ -51,12 +61,11 @@ Arguments:
     \$7  (ht_mode)       : Wifi_Radio_Config::ht_mode     : (string)(required)
     \$8  (hw_mode)       : Wifi_Radio_Config::hw_mode     : (string)(required)
     \$9  (mode)          : Wifi_VIF_Config::mode          : (string)(required)
-    \$10 (country)       : Wifi_Radio_Config::country     : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name} <IF-NAME> <VIF-IF-NAME> <VIF-RADIO-IDX> <SSID> <SECURITY> <CHANNEL> <HT-MODE> <HW-MODE> <MODE> <COUNTRY>
+                 Run: ./${tc_name} <IF-NAME> <VIF-IF-NAME> <VIF-RADIO-IDX> <SSID> <SECURITY> <CHANNEL> <HT-MODE> <HW-MODE> <MODE>
 Script usage example:
-    ./${tc_name} wifi1 home-ap-l50 2 FUTssid '["map",[["encryption","WPA-PSK"],["key","FUTpsk"],["mode","2"]]]' 36 HT20 11ac ap US
+    ./${tc_name} wifi1 home-ap-l50 2 FUTssid '["map",[["encryption","WPA-PSK"],["key","FUTpsk"],["mode","2"]]]' 36 HT20 11ac ap
 usage_string
 }
 while getopts h option; do
@@ -69,9 +78,8 @@ while getopts h option; do
             ;;
     esac
 done
-NARGS=10
+NARGS=9
 [ $# -ne ${NARGS} ] && usage && raise "Requires '${NARGS}' input argument(s)" -l "${tc_name}" -arg
-
 if_name=${1}
 vif_if_name=${2}
 vif_radio_idx=${3}
@@ -81,46 +89,16 @@ channel=${6}
 ht_mode=${7}
 hw_mode=${8}
 mode=${9}
-country=${10}
 
-channel_change_timeout=60
-
-trap 'run_setup_if_crashed wm || true' EXIT SIGINT SIGTERM
+trap '
+    fut_info_dump_line
+    print_tables Wifi_Radio_Config Wifi_Radio_State
+    print_tables Wifi_VIF_Config Wifi_VIF_State
+    fut_info_dump_line
+    run_setup_if_crashed wm || true
+' EXIT SIGINT SIGTERM
 
 log_title "$tc_name: WM2 test - HT Mode and Channel Iteration - '${ht_mode}'-'${channel}'"
-
-log "$tc_name: Checking if Radio/VIF states are valid for test"
-# Most iterations of this test will only change channel and ht_mode, so this
-# state check will be OK for the same radio iface, since channel is not checked
-check_radio_vif_state \
-    -if_name "$if_name" \
-    -vif_if_name "$vif_if_name" \
-    -vif_radio_idx "$vif_radio_idx" \
-    -ssid "$ssid" \
-    -security "$security" \
-    -hw_mode "$hw_mode" \
-    -mode "$mode" \
-    -country "$country" &&
-        log "$tc_name: Radio/VIF states are valid" ||
-            (
-                log "$tc_name: Cleaning VIF_Config"
-                vif_clean
-                log "$tc_name: Wifi_Radio_State and Wifi_VIF_State are not valid, creating interface..."
-                # Do not set channel and ht_mode here yet, they will be set below as part of testcase
-                create_radio_vif_interface \
-                    -vif_radio_idx "$vif_radio_idx" \
-                    -channel_mode manual \
-                    -if_name "$if_name" \
-                    -ssid "$ssid" \
-                    -security "$security" \
-                    -enabled true \
-                    -hw_mode "$hw_mode" \
-                    -mode "$mode" \
-                    -country "$country" \
-                    -vif_if_name "$vif_if_name" &&
-                        log "$tc_name: create_radio_vif_interface - Success"
-            ) ||
-        raise "create_radio_vif_interface - Failed" -l "$tc_name" -tc
 
 # Sanity check - is channel even allowed on the radio
 check_is_channel_allowed "$channel" "$if_name" &&
@@ -128,18 +106,30 @@ check_is_channel_allowed "$channel" "$if_name" &&
     raise "channel $channel is not allowed on radio $if_name" -l "$tc_name" -ds
 
 # Testcase:
-log "$tc_name: Applying interface settings {ht_mode:$ht_mode, channel:$channel}"
-update_ovsdb_entry Wifi_Radio_Config -w if_name "$if_name" \
-    -u ht_mode "$ht_mode" \
-    -u channel "$channel" &&
-        log "$tc_name: Wifi_Radio_Config table updated - {ht_mode:$ht_mode, channel:$channel}" ||
-        raise "Failed to update Wifi_Radio_Config - {ht_mode:$ht_mode, channel:$channel}" -l "$tc_name" -tc
+# Configure radio, create VIF and apply ht_mode and channel
+# This needs to be done simultaneously for the driver to bring up an active AP
+log "$tc_name: Configuring Wifi_Radio_Config, creating interface in Wifi_VIF_Config."
+log "$tc_name: Waiting for ${channel_change_timeout}s for settings {ht_mode:$ht_mode, channel:$channel}"
+create_radio_vif_interface \
+    -channel "$channel" \
+    -channel_mode manual \
+    -enabled true \
+    -ht_mode "$ht_mode" \
+    -hw_mode "$hw_mode" \
+    -if_name "$if_name" \
+    -mode "$mode" \
+    -security "$security" \
+    -ssid "$ssid" \
+    -vif_if_name "$vif_if_name" \
+    -vif_radio_idx "$vif_radio_idx" \
+    -timeout ${channel_change_timeout} &&
+        log "$tc_name: create_radio_vif_interface {$if_name, $ht_mode, $channel} - Success" ||
+        raise "create_radio_vif_interface {$if_name, $ht_mode, $channel} - Failed" -l "$tc_name" -tc
 
 log "$tc_name: Waiting for settings to apply to Wifi_Radio_State {channel:$channel, ht_mode:$ht_mode}"
 wait_ovsdb_entry Wifi_Radio_State -w if_name "$if_name" \
     -is channel "$channel" \
-    -is ht_mode "$ht_mode" \
-    -t ${channel_change_timeout} &&
+    -is ht_mode "$ht_mode" &&
         log "$tc_name: Settings applied to Wifi_Radio_State {channel:$channel, ht_mode:$ht_mode}" ||
         raise "Failed to apply settings to Wifi_Radio_State {channel:$channel, ht_mode:$ht_mode}" -l "$tc_name" -tc
 

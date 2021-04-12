@@ -39,5 +39,3 @@ UNIT_FILE += cm2_dns_failure.sh
 UNIT_FILE += cm2_internet_lost.sh
 UNIT_FILE += cm2_link_lost.sh
 UNIT_FILE += cm2_ssl_check.sh
-UNIT_FILE += cm2_verify_gre_tunnel_dut_gw.sh
-UNIT_FILE += cm2_verify_gre_tunnel_ref_extender.sh

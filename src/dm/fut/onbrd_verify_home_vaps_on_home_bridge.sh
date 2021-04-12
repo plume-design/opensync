@@ -64,6 +64,12 @@ done
 NARGS=2
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 
+trap '
+fut_info_dump_line
+print_tables Wifi_VIF_Config Wifi_VIF_State
+fut_info_dump_line
+' EXIT SIGINT SIGTERM
+
 interface_name=$1
 bridge_home_interface=$2
 

@@ -90,6 +90,12 @@ menu "Common"
             endchoice
 
             choice
+                prompt "NFLOG"
+                default OSN_BACKEND_NFLOG_LINUX
+                source "kconfig/Kconfig.osn.nflog_backend"
+            endchoice
+
+            choice
                 prompt "LTE"
                 default OSN_BACKEND_LTE_LINUX
                 source "kconfig/Kconfig.osn.lte_backend"
@@ -157,6 +163,8 @@ menu "Common"
             endchoice
             source "kconfig/Kconfig.osp_objm"
 
+            comment "OSP Power"
+            source "kconfig/Kconfig.osp_power.backend"
 
         endmenu
     endmenu

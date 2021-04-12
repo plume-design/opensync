@@ -72,20 +72,23 @@ while getopts h option; do
             ;;
     esac
 done
+
 NARGS=1
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+if_name=$1
+if_type=${2:-${if_type_default}}
+start_pool=${3:-${start_pool_default}}
+end_pool=${4:-${end_pool_default}}
 
 trap '
+    fut_info_dump_line
+    print_tables Wifi_Inet_Config Wifi_Inet_State
+    fut_info_dump_line
     reset_inet_entry $if_name || true
     [ "$if_type" == "vif" ] && vif_clean
     run_setup_if_crashed nm || true
     check_restore_management_access || true
 ' EXIT SIGINT SIGTERM
-
-if_name=$1
-if_type=${2:-${if_type_default}}
-start_pool=${3:-${start_pool_default}}
-end_pool=${4:-${end_pool_default}}
 
 log_title "${tc_name}: NM2 test - Testing table Wifi_Inet_Config field dhcpd"
 
@@ -104,16 +107,16 @@ create_inet_entry \
         raise "Failed to create interface" -l "$tc_name" -tc
 
 log "$tc_name: Check if interface is UP - $if_name"
-wait_for_function_response 0 "interface_is_up $if_name " &&
+wait_for_function_response 0 "get_interface_is_up $if_name " &&
     log "$tc_name: Interface is UP - $if_name" ||
     raise "FAILED: Interface is DOWN, should be UP - $if_name" -l "$tc_name" -tc
 
 log "$tc_name: Setting DHCP range on $if_name"
-enable_disable_dhcp_server "$if_name" "$start_pool" "$end_pool" ||
+configure_dhcp_server_on_interface "$if_name" "$start_pool" "$end_pool" ||
     raise "Cannot update DHCP settings inside CONFIG $if_name" -l "$tc_name" -tc
 
 log "$tc_name: LEVEL 2 - Checking if settings were applied to the DHCP server #1"
-wait_for_function_response 0 "wait_for_dnsmasq $if_name $start_pool $end_pool" &&
+wait_for_function_response 0 "check_dhcp_from_dnsmasq_conf $if_name $start_pool $end_pool" &&
     log "$tc_name: DNSMASQ DHCP configuration VALID (present) - $if_name" ||
     raise "DNSMASQ DHCP configuration NOT VALID (not present) - $if_name" -l "$tc_name" -tc
 
@@ -127,7 +130,7 @@ wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is enabled false &&
     raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - $if_name" -l "$tc_name" -tc
 
 log "$tc_name: LEVEL 2 - Checking DHCP configuration"
-wait_for_function_response 1 "wait_for_dnsmasq $if_name $start_pool $end_pool" &&
+wait_for_function_response 1 "check_dhcp_from_dnsmasq_conf $if_name $start_pool $end_pool" &&
     log "$tc_name: DNSMASQ DHCP configuration VALID (not present) - $if_name" ||
     raise "DNSMASQ DHCP configuration NOT VALID (still present) - $if_name" -l "$tc_name" -tc
 
@@ -141,7 +144,7 @@ wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is enabled true &&
     raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - $if_name" -l "$tc_name" -tc
 
 log "$tc_name: LEVEL 2 - Checking DHCP configuration"
-wait_for_function_response 0 "wait_for_dnsmasq $if_name $start_pool $end_pool" &&
+wait_for_function_response 0 "check_dhcp_from_dnsmasq_conf $if_name $start_pool $end_pool" &&
     log "$tc_name: DNSMASQ DHCP configuration VALID (present) - $if_name" ||
     raise "DNSMASQ DHCP configuration NOT VALID (not present) - $if_name" -l "$tc_name" -tc
 
@@ -173,7 +176,7 @@ wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" \
         raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - $if_name" -l "$tc_name" -tc
 
 log "$tc_name: LEVEL 2 - Checking if settings were removed from the DHCP server - $if_name"
-wait_for_function_response 1 "wait_for_dnsmasq $if_name $start_pool $end_pool" &&
+wait_for_function_response 1 "check_dhcp_from_dnsmasq_conf $if_name $start_pool $end_pool" &&
     log "$tc_name: DNSMASQ DHCP configuration VALID (not present) #2 - $if_name" ||
     raise "DNSMASQ DHCP configuration NOT VALID (still present) #2 - $if_name" -l "$tc_name" -tc
 
@@ -183,4 +186,3 @@ wait_for_function_response 0 "check_pid_file dead \"/var/run/udhcpc-$if_name.pid
     raise "DHCP client process ACTIVE - $if_name" -l "$tc_name" -tc
 
 pass
-

@@ -1,0 +1,12 @@
+menuconfig MANAGER_LTEM
+    bool "LTE Manager (LTEM)"
+    default n
+    help
+        Enable LTE Manager (LTEM)
+
+    config MANAGER_LTEM_CFG
+        depends on MANAGER_LTEM
+        string "LTEM Startup configuration"
+        default "ltem;true;always_restart=true;restart_delay=-1"
+        help
+            LTE Manager startup configuration

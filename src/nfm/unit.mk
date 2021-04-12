@@ -40,6 +40,9 @@ UNIT_SRC += src/nfm_trule.c
 UNIT_SRC += src/nfm_osfw.c
 UNIT_SRC += src/nfm_ipset.c
 UNIT_SRC += src/nfm_objm.c
+UNIT_SRC += src/nfm_mqtt.c
+UNIT_SRC += src/nfm_nflog.c
+UNIT_SRC += src/opensync_nflog.pb-c.c
 
 UNIT_CFLAGS += -Isrc/lib/common/inc/
 

@@ -134,7 +134,7 @@ wm2_clients_oftag_from_key_id(const char *cloud_vif_ifname,
     }
 }
 
-static int
+int
 wm2_clients_oftag_set(const char *mac,
                       const char *oftag)
 {
@@ -192,7 +192,7 @@ wm2_clients_oftag_set(const char *mac,
     return cnt;
 }
 
-static int
+int
 wm2_clients_oftag_unset(const char *mac,
                         const char *oftag)
 {
@@ -413,6 +413,10 @@ wm2_clients_update(struct schema_Wifi_Associated_Clients *schema, char *ifname, 
         json_object_set_new(row, "state", json_string(schema->state));
         if (strlen(oftag) > 0)
             json_object_set_new(row, "oftag", json_string(oftag));
+        if (schema->dpp_netaccesskey_sha256_hex_exists) {
+            json_object_set_new(row, "dpp_netaccesskey_sha256_hex",
+                                json_string(schema->dpp_netaccesskey_sha256_hex));
+        }
 
         json_incref(row);
         n = ovsdb_sync_update_one_get_uuid(table, where, row, &uuid);

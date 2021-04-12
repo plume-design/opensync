@@ -62,18 +62,21 @@ while getopts h option; do
             ;;
     esac
 done
+
 NARGS=3
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+if_name=$1
+if_type=$2
+netmask=$3
 
 trap '
+    fut_info_dump_line
+    print_tables Wifi_Inet_Config Wifi_Inet_State
+    fut_info_dump_line
     reset_inet_entry $if_name || true
     run_setup_if_crashed nm || true
     check_restore_management_access || true
 ' EXIT SIGINT SIGTERM
-
-if_name=$1
-if_type=$2
-netmask=$3
 
 log_title "$tc_name: NM2 test - Testing table Wifi_Inet_Config field netmask"
 
@@ -99,7 +102,7 @@ wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is netmask "$netmask" &&
     raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - netmask $netmask" -l "$tc_name" -tc
 
 log "$tc_name: LEVEL 2 - Check if NETMASK was properly applied to $if_name"
-wait_for_function_response 0 "interface_netmask $if_name | grep -q \"$netmask\"" &&
+wait_for_function_response 0 "get_interface_netmask_from_system $if_name | grep -q \"$netmask\"" &&
     log "$tc_name: NETMASK applied to  ifconfig - interface $if_name" ||
     raise "Failed to apply NETMASK to ifconfig - interface $if_name" -l "$tc_name" -tc
 

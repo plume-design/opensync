@@ -52,14 +52,13 @@ Arguments:
     \$6  (ht_mode)     : Wifi_Radio_Config::ht_mode                 : (string)(required)
     \$7  (hw_mode)     : Wifi_Radio_Config::hw_mode                 : (string)(required)
     \$8  (mode)        : Wifi_VIF_Config::mode                      : (string)(required)
-    \$9  (country)     : Wifi_Radio_Config::country                 : (string)(required)
-    \$10 (vif_if_name) : Wifi_VIF_Config::if_name                   : (string)(required)
-    \$11 (enabled)     : used as enabled in Wifi_Radio_Config table : (string)(required)
+    \$9  (vif_if_name) : Wifi_VIF_Config::if_name                   : (string)(required)
+    \$10 (enabled)     : used as enabled in Wifi_Radio_Config table : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
                  Run: ./${tc_name}
 Script usage example:
-   ./${tc_name} 2 wifi1 test_wifi_50L WifiPassword123 44 HT20 11ac ap US home-ap-l50 false
+   ./${tc_name} 2 wifi1 test_wifi_50L WifiPassword123 44 HT20 11ac ap home-ap-l50 false
 usage_string
 }
 while getopts h option; do
@@ -72,11 +71,9 @@ while getopts h option; do
             ;;
     esac
 done
-NARGS=11
+
+NARGS=10
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
-
-trap 'run_setup_if_crashed wm || true' EXIT SIGINT SIGTERM
-
 vif_radio_idx=$1
 if_name=$2
 ssid=$3
@@ -85,9 +82,16 @@ channel=$5
 ht_mode=$6
 hw_mode=$7
 mode=$8
-country=$9
-vif_if_name=${10}
-enabled=${11}
+vif_if_name=$9
+enabled=${10}
+
+trap '
+    fut_info_dump_line
+    print_tables Wifi_Radio_Config Wifi_Radio_State
+    print_tables Wifi_VIF_Config Wifi_VIF_State
+    fut_info_dump_line
+    run_setup_if_crashed wm || true
+' EXIT SIGINT SIGTERM
 
 log_title "$tc_name: WM2 test - Testing Wifi_Radio_Config field enabled - '${enabled}'"
 
@@ -100,8 +104,7 @@ check_radio_vif_state \
     -channel "$channel" \
     -security "$security" \
     -hw_mode "$hw_mode" \
-    -mode "$mode" \
-    -country "$country" &&
+    -mode "$mode" &&
         log "$tc_name: Radio/VIF states are valid" ||
             (
                 log "$tc_name: Cleaning VIF_Config"
@@ -118,7 +121,6 @@ check_radio_vif_state \
                     -ht_mode "$ht_mode" \
                     -hw_mode "$hw_mode" \
                     -mode "$mode" \
-                    -country "$country" \
                     -vif_if_name "$vif_if_name" &&
                         log "$tc_name: create_radio_vif_interface - Success"
             ) ||
@@ -137,14 +139,14 @@ log "$tc_name: LEVEL 2 - checking ENABLED at OS level"
 
 case "$enabled" in
     "true")
-        interface_is_up "$if_name" ||
-            raise "interface_is_up true - Interface is DISABLED" -l "$tc_name" -tc &&
-            log "$tc_name: interface_is_up true - Interface is ENABLED at Level 2"
+        get_interface_is_up "$if_name" ||
+            raise "get_interface_is_up true - Interface is DISABLED" -l "$tc_name" -tc &&
+            log "$tc_name: get_interface_is_up true - Interface is ENABLED at Level 2"
         ;;
     "false")
-        interface_is_up "$if_name" &&
-            raise "interface_is_up false - Interface is ENABLED" -l "$tc_name" -tc ||
-            log "$tc_name: interface_is_up false - Interface is DISABLED at Level 2"
+        get_interface_is_up "$if_name" &&
+            raise "get_interface_is_up false - Interface is ENABLED" -l "$tc_name" -tc ||
+            log "$tc_name: get_interface_is_up false - Interface is DISABLED at Level 2"
         ;;
 esac
 

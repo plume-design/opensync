@@ -42,22 +42,21 @@ Description:
       BEACON INTERVAL to desired value.
 Arguments:
     -h  show this help message
-    \$1  (radio_idx)   : Wifi_VIF_Config::vif_radio_idx             : (int)(required)
-    \$2  (if_name)     : Wifi_Radio_Config::if_name                 : (string)(required)
-    \$3  (ssid)        : Wifi_VIF_Config::ssid                      : (string)(required)
-    \$4  (security)    : Wifi_VIF_Config::security                  : (string)(required)
-    \$5  (channel)     : Wifi_Radio_Config::channel                 : (int)(required)
-    \$6  (ht_mode)     : Wifi_Radio_Config::ht_mode                 : (string)(required)
-    \$7  (hw_mode)     : Wifi_Radio_Config::hw_mode                 : (string)(required)
-    \$8  (mode)        : Wifi_VIF_Config::mode                      : (string)(required)
-    \$9  (country)     : Wifi_Radio_Config::country                 : (string)(required)
-    \$10 (vif_if_name) : Wifi_VIF_Config::if_name                   : (string)(required)
-    \$11 (bcn_int)     : used as bcn_int in Wifi_Radio_Config table : (int)(required)
+    \$1  (if_name)       : Wifi_Radio_Config::if_name     : (string)(required)
+    \$2  (vif_if_name)   : Wifi_VIF_Config::if_name       : (string)(required)
+    \$3  (vif_radio_idx) : Wifi_VIF_Config::vif_radio_idx : (int)(required)
+    \$4  (ssid)          : Wifi_VIF_Config::ssid          : (string)(required)
+    \$5  (security)      : Wifi_VIF_Config::security      : (string)(required)
+    \$6  (channel)       : Wifi_Radio_Config::channel     : (int)(required)
+    \$7  (ht_mode)       : Wifi_Radio_Config::ht_mode     : (string)(required)
+    \$8  (hw_mode)       : Wifi_Radio_Config::hw_mode     : (string)(required)
+    \$9  (mode)          : Wifi_VIF_Config::mode          : (string)(required)
+    \$10 (bcn_int)       : Wifi_Radio_Config::bcn_int     : (int)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name}
+                 Run: ./${tc_name} <IF-NAME> <VIF-IF-NAME> <VIF-RADIO-IDX> <SSID> <SECURITY> <CHANNEL> <HT-MODE> <HW-MODE> <MODE> <BCN_INT>
 Script usage example:
-   ./${tc_name} 2 wifi1 test_wifi_50L WifiPassword123 44 HT20 11ac ap US home-ap-l50 36 200
+    ./${tc_name} wifi1 home-ap-l50 2 FUTssid '["map",[["encryption","WPA-PSK"],["key","FUTpsk"],["mode","2"]]]' 36 HT20 11ac ap 200
 usage_string
 }
 while getopts h option; do
@@ -70,22 +69,27 @@ while getopts h option; do
             ;;
     esac
 done
-NARGS=11
+
+NARGS=10
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+if_name=${1}
+vif_if_name=${2}
+vif_radio_idx=${3}
+ssid=${4}
+security=${5}
+channel=${6}
+ht_mode=${7}
+hw_mode=${8}
+mode=${9}
+bcn_int=${10}
 
-trap 'run_setup_if_crashed wm || true' EXIT SIGINT SIGTERM
-
-vif_radio_idx=$1
-if_name=$2
-ssid=$3
-security=$4
-channel=$5
-ht_mode=$6
-hw_mode=$7
-mode=$8
-country=$9
-vif_if_name=${10}
-bcn_int=${11}
+trap '
+    fut_info_dump_line
+    print_tables Wifi_Radio_Config Wifi_Radio_State
+    print_tables Wifi_VIF_Config Wifi_VIF_State
+    fut_info_dump_line
+    run_setup_if_crashed wm || true
+' EXIT SIGINT SIGTERM
 
 log_title "$tc_name: WM2 test - Testing Wifi_Radio_Config field bcn_int - '${bcn_int}'}"
 
@@ -98,8 +102,7 @@ check_radio_vif_state \
     -channel "$channel" \
     -security "$security" \
     -hw_mode "$hw_mode" \
-    -mode "$mode" \
-    -country "$country" &&
+    -mode "$mode" &&
         log "$tc_name: Radio/VIF states are valid" ||
             (
                 log "$tc_name: Cleaning VIF_Config"
@@ -116,7 +119,6 @@ check_radio_vif_state \
                     -ht_mode "$ht_mode" \
                     -hw_mode "$hw_mode" \
                     -mode "$mode" \
-                    -country "$country" \
                     -vif_if_name "$vif_if_name" &&
                         log "$tc_name: create_radio_vif_interface - Success"
             ) ||

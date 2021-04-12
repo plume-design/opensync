@@ -29,8 +29,58 @@
 export FUT_DM_LIB_SRC=true
 [ "${FUT_UNIT_LIB_SRC}" != true ] && source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
 echo "${FUT_TOPDIR}/shell/lib/dm_lib.sh sourced"
+
 ####################### INFORMATION SECTION - START ###########################
 #
 #   Base library of common Diagnostic Manager functions
 #
 ####################### INFORMATION SECTION - STOP ############################
+
+####################### SETUP SECTION - START #################################
+
+###############################################################################
+# DESCRIPTION:
+#   Function prepares device for DM tests.
+#   Raises exception on fail.
+# INPUT PARAMETER(S):
+#   None.
+# RETURNS:
+#   0   On success.
+#   See DESCRIPTION.
+# USAGE EXAMPLE(S):
+#   dm_setup_test_environment
+###############################################################################
+dm_setup_test_environment()
+{
+
+    fn_name="dm_lib:dm_setup_test_environment"
+
+    log "$fn_name - Running DM setup"
+
+    device_init &&
+        log -deb "$fn_name - Device initialized - Success" ||
+        raise "FAIL: Could not initialize device: device_init" -l "$fn_name" -ds
+
+    start_openswitch &&
+        log -deb "$fn_name - OpenvSwitch started - Success" ||
+        raise "FAIL: Could not start OpenvSwitch: start_openswitch" -l "$fn_name" -ds
+
+    start_specific_manager dm &&
+        log -deb "$fn_name - start_specific_manager dm - Success" ||
+        raise "FAIL: Could not start manager: start_specific_manager dm" -l "$fn_name" -ds
+
+    # Check if all radio interfaces are created
+    for if_name in "$@"
+    do
+        wait_ovsdb_entry Wifi_Radio_State -w if_name "$if_name" -is if_name "$if_name" &&
+            log -deb "$fn_name - Wifi_Radio_State::if_name '$if_name' present - Success" ||
+            raise "FAIL: Wifi_Radio_State::if_name for $if_name does not exist" -l "$fn_name" -ds
+    done
+
+    log "$fn_name - DM setup - end"
+
+    return 0
+}
+
+####################### SETUP SECTION - STOP ##################################
+

@@ -26,6 +26,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 #include "gatekeeper_cache.h"
+#include "log.h"
 #include "memutil.h"
 
 /**
@@ -388,7 +389,8 @@ gk_cache_check_ttl_device_tree(ds_tree_t *tree)
 {
     struct per_device_cache *pdevice, *current;
 
-    LOGN("%s cache entries before flushing expired TTL entries: %lu", __func__, gk_get_cache_count());
+    LOGT("%s cache entries before flushing expired TTL entries: %lu",
+         __func__, gk_get_cache_count());
 
     pdevice = ds_tree_head(tree);
     while (pdevice != NULL)
@@ -397,7 +399,8 @@ gk_cache_check_ttl_device_tree(ds_tree_t *tree)
         pdevice = ds_tree_next(tree, pdevice);
         gk_cache_check_ttl_per_device(current);
     }
-    LOGN("%s cache entries after flushing expired TTL entries: %lu", __func__, gk_get_cache_count());
+    LOGT("%s cache entries after flushing expired TTL entries: %lu",
+         __func__, gk_get_cache_count());
 }
 
 static bool
@@ -531,7 +534,7 @@ gkc_del_attr_from_dev(struct per_device_cache *pdevice,
         break;
 
     default:
-            LOGN("%s(): invalid attribute type %d",
+            LOGD("%s(): invalid attribute type %d",
                  __func__,
                  req->attribute_type);
         break;

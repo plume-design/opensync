@@ -290,6 +290,19 @@ bool fw_nat_start(inet_fw_t *self)
                 FW_RULE_IPV4, "nat", "NM_NAT",
                 "-o", self->fw_ifname, "-j", "MASQUERADE");
 
+        /* MSS clamping rules for both IPv4/6 */
+        retval &= fw_rule_add(self,
+                FW_RULE_ALL,
+                "filter",
+                "FORWARD",
+                "-o", self->fw_ifname,
+                "-p", "tcp",
+                "--tcp-flags", "SYN,RST", "SYN",
+                "-m", "tcpmss",
+                "--mss", "1400:1536",
+                "-j", "TCPMSS",
+                "--clamp-mss-to-pmtu");
+
         /* Plant miniupnpd rules for port forwarding via upnp */
         retval &= fw_rule_add(self,
                 FW_RULE_IPV4, "nat", "NM_PORT_FORWARD",
@@ -326,6 +339,19 @@ bool fw_nat_stop(inet_fw_t *self)
 
     retval &= fw_rule_del(self, FW_RULE_IPV4,
             "nat", "NM_PORT_FORWARD", "-i", self->fw_ifname, "-j", "MINIUPNPD");
+
+    /* Flush clamping rules */
+    retval &= fw_rule_del(self,
+            FW_RULE_ALL,
+            "filter",
+            "FORWARD",
+            "-o", self->fw_ifname,
+            "-p", "tcp",
+            "--tcp-flags", "SYN,RST", "SYN",
+            "-m", "tcpmss",
+            "--mss", "1400:1536",
+            "-j", "TCPMSS",
+            "--clamp-mss-to-pmtu");
 
     /* Flush out LAN rules */
     retval &= fw_rule_del(self, FW_RULE_ALL,

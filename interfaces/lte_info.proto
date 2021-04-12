@@ -1,0 +1,129 @@
+// Copyright (c) 2015, Plume Design Inc. All rights reserved.
+// 
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
+//    1. Redistributions of source code must retain the above copyright
+//       notice, this list of conditions and the following disclaimer.
+//    2. Redistributions in binary form must reproduce the above copyright
+//       notice, this list of conditions and the following disclaimer in the
+//       documentation and/or other materials provided with the distribution.
+//    3. Neither the name of the Plume Design Inc. nor the
+//       names of its contributors may be used to endorse or promote products
+//       derived from this software without specific prior written permission.
+// 
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+// ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+// WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL Plume Design Inc. BE LIABLE FOR ANY
+// DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+// (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+// LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+// ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+syntax = "proto3";
+
+package interfaces.lte_info;
+
+message LteInfo {
+  string prod_id_info = 1;
+  string chip_serial = 2;
+  string imei = 3;
+  string imsi = 4;
+  string iccid = 5;
+  string sim_status = 6;
+  string net_reg_status = 7;
+  string service_provider_name = 8;
+  string sim_slot = 9;
+}
+
+message LteSigQual {
+  string rssi = 1;
+  string ber = 2;
+}
+
+message LteNetServingCellInfo {
+  string cell_type = 1;
+  string state = 2;
+  string is_tdd = 3;
+  string mcc = 4;
+  string mnc = 5;
+  string cellid = 6;
+  string pcid = 7;
+  string uarfcn = 8;
+  string earfcn = 9;
+  string freq_band = 10;
+  string ul_bandwidth = 11;
+  string dl_bandwidth = 12;
+  string tac = 13;
+  string rsrp = 14;
+  string rsrq = 15;
+  string rssi = 16;
+  string sinr = 17;
+  string srxlev = 18;
+}
+
+// NeighborCell mode
+enum LteNeighborCellMode {
+    LTE_CELL_MODE_UNSPECIFIED = 0;
+    LTE_CELL_MODE_LTE = 1;
+    LTE_CELL_MODE_WCDMA = 2;
+}
+
+// NeighborCell freq mode
+enum LteNeighborFreqMode {
+    LTE_FREQ_MODE_UNSPECIFIED = 0;
+    LTE_FREQ_MODE_INTRA = 1;
+    LTE_FREQ_MODE_INTER = 2;
+    LTE_FREQ_MODE_WCDMA = 3;
+    LTE_FREQ_MODE_WCDMA_LTE = 4;
+}
+
+// [+QENG: "neighbourcell intra","LTE",<earfcn>,<pcid>,<rsrq>,<rsrp>,<rssi>,<sinr>,<srxlev>,<cell_resel_priority>,<s_non_intra_search>,<thresh_serving_low>,<s_intra_search>
+// [+QENG: "neighbourcell inter","LTE",<earfcn>,<pcid>,<rsrq>,<rsrp>,<rssi>,<sinr>,<srxlev>,<cell_resel_priority>,<threshX_low>,<threshX_high>
+// [+QENG:"neighbourcell","WCDMA",<uarfcn>,<cell_resel_priority>,<thresh_Xhigh>,<thresh_Xlow>,<psc>,<rscp><ecno>,<srxlev>
+// [+QENG: "neighbourcell","LTE",<earfcn>,<cellid>,<rsrp>,<rsrq>,<s_rxlev>
+message LteNetNeighborCellInfo {
+  LteNeighborCellMode mode = 1;
+  LteNeighborFreqMode freq_mode = 2;
+  string earfcn = 3;
+  string uarfcn = 4;
+  string pcid = 5;
+  string rsrq = 6;
+  string rsrp = 7;
+  string rssi = 8;
+  string sinr = 9;
+  string srxlev_base_station = 10;
+  string cell_resel_priority = 11;
+  string s_non_intra_search = 12;
+  string thresh_serving_low = 13;
+  string s_intra_search = 14;
+  string thresh_x_low = 15;
+  string thresh_x_high = 16;
+  string psc = 17;
+  string rscp = 18;
+  string ecno = 19;
+  string set = 20;
+  string rank = 21;
+  string cellid = 22;
+  string srxlev_inter_freq = 23;
+}
+
+// LTE info
+message LteInfoReport {
+
+  string if_name = 1;
+
+  // LTE info
+  LteInfo lte_info = 2;
+
+  // Signal quality
+  LteSigQual lte_sig_qual = 3;
+
+  // Serving cell info
+  LteNetServingCellInfo lte_srv_cell = 4;
+
+  // Neighbor cell info
+  repeated LteNetNeighborCellInfo lte_neigh_cell_info = 5;
+}

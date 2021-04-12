@@ -68,16 +68,19 @@ check_kconfig_option "CONFIG_OSN_LINUX_VLAN" "y" &&
 
 NARGS=2
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+# Fill variables with provided arguments or defaults.
+parent_ifname=$1
+vlan_id=$2
 
 trap '
+    fut_info_dump_line
+    print_tables Wifi_Inet_Config Wifi_Inet_State
+    fut_info_dump_line
     delete_inet_interface "$if_name"
     run_setup_if_crashed nm || true
     check_restore_management_access || true
 ' EXIT SIGINT SIGTERM
 
-# Fill variables with provided arguments or defaults.
-parent_ifname=$1
-vlan_id=$2
 # Construct if_name from parent_ifname and vlan_id (example: eth0.100).
 if_name="$parent_ifname.$vlan_id"
 
@@ -98,7 +101,7 @@ create_inet_entry \
         raise "create_vlan_inet_entry - Failed" -l "$tc_name" -tc
 
 log "$tc_name: LEVEL 2 - Check is interface up - $if_name"
-wait_for_function_response 0 "interface_is_up $if_name" &&
+wait_for_function_response 0 "get_interface_is_up $if_name" &&
     log "$tc_name: wait_for_function_response - Interface is UP - $if_name" ||
     raise "wait_for_function_response - Interface is DOWN - $if_name" -l "$tc_name" -tc
 

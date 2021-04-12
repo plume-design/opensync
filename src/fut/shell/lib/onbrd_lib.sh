@@ -29,6 +29,7 @@
 export FUT_ONBRD_LIB_SRC=true
 [ "${FUT_UNIT_LIB_SRC}" != true ] && source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
 echo "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh sourced"
+
 ####################### INFORMATION SECTION - START ###########################
 #
 #   Base library of common On-boarding functions
@@ -58,10 +59,6 @@ onbrd_setup_test_environment()
     device_init &&
         log -deb "$fn_name - Device initialized - Success" ||
         raise "FAIL: Could not initialize device: device_init" -l "$fn_name" -ds
-
-    cm_disable_fatal_state &&
-        log -deb "$fn_name - Fatal state disabled - Success" ||
-        raise "FAIL: Could not disable fatal state: cm_disable_fatal_state" -l "$fn_name" -ds
 
     start_openswitch &&
         log -deb "$fn_name - OpenvSwitch started - Success" ||
@@ -156,7 +153,6 @@ verify_wan_ip_l2()
 
     # LEVEL2
     inet_addr=$(ifconfig "$br_wan" | grep 'inet addr' | awk '/t addr:/{gsub(/.*:/,"",$2); print $2}')
-
     if [ -z "$inet_addr" ]; then
         log -deb "$fn_name - inet_addr is empty"
         return 1
@@ -167,6 +163,7 @@ verify_wan_ip_l2()
         return 0
     else
         log -deb "$fn_name - FAIL: OVSDB inet_addr '$inet_addr_in' not equal to LEVEL2 inet_addr '$inet_addr'"
+        return 1
     fi
 }
 
@@ -216,6 +213,8 @@ create_patch_interface()
     fi
 
     ovs-vsctl show
+
+    return 0
 }
 
 ###############################################################################
@@ -269,12 +268,12 @@ check_if_patch_exists()
 #   1   Firmware version string is not valid
 #   Function will send an exit singnal upon error, use subprocess to avoid this
 # USAGE EXAMPLE(S):
-#   onbrd_verify_fw_pattern 3.0.0-29-g100a068-dev-debug
-#   onbrd_verify_fw_pattern 2.0.2.0-70-gae540fd-dev-academy
+#   verify_fw_pattern 3.0.0-29-g100a068-dev-debug
+#   verify_fw_pattern 2.0.2.0-70-gae540fd-dev-academy
 ###############################################################################
-onbrd_verify_fw_pattern()
+verify_fw_pattern()
 {
-    fn_name="onbrd_lib:onbrd_verify_fw_pattern"
+    fn_name="onbrd_lib:verify_fw_pattern"
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
         raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg

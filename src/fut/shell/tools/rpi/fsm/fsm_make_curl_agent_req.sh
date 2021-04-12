@@ -66,7 +66,7 @@ namespace_enter_cmd=$1
 user_agent=$2
 url=$3
 
-${namespace_enter_cmd} -c "curl --silent --output /dev/null -A '${user_agent}' '${url}'" || $(exit 1)
+${namespace_enter_cmd} -c "curl -S -s --output /dev/null -A '${user_agent}' '${url}'" || $(exit 1)
 if [[ "$?" != 0 ]];then
     raise "Failed to make curl request to ${url} with user_agent ${user_agent}" -l "${tc_name}"
 else

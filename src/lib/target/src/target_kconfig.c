@@ -679,6 +679,8 @@ util_connectivity_internet_ipv4_check(void) {
                 LOGI("Internet IPv4 checking failed, dns1: %s, dns2: %s",
                      util_connectivity_check_inet_addrs[r1], util_connectivity_check_inet_ipv4_addrs[r2]);
         }
+        if (ret)
+            break;
     }
     return ret;
 }
@@ -715,6 +717,9 @@ util_connectivity_internet_ipv6_check(void) {
                 LOGI("Internet IPv6 checking failed, dns1: %s, dns2: %s",
                      util_connectivity_check_inet_addrs[r1], util_connectivity_check_inet_ipv6_addrs[r2]);
         }
+        if (ret)
+            break;
+
     }
     return ret;
 }

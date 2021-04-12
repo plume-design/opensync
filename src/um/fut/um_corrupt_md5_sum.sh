@@ -66,15 +66,18 @@ while getopts h option; do
             ;;
     esac
 done
+
 NARGS=2
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
-
 fw_path=$1
 fw_url=$2
 
 trap '
-  reset_um_triggers $fw_path || true
-  run_setup_if_crashed um || true
+    fut_info_dump_line
+    print_tables AWLAN_Node
+    fut_info_dump_line
+    reset_um_triggers $fw_path || true
+    run_setup_if_crashed um || true
 ' EXIT SIGINT SIGTERM
 
 log_title "$tc_name: UM test - Corrupt MD5 Sum"
@@ -95,6 +98,5 @@ log "$tc_name: Waiting for UPG_ERR_MD5_FAIL upgrade status $fw_err_code"
 wait_ovsdb_entry AWLAN_Node -is upgrade_status "$fw_err_code" &&
     log "$tc_name: wait_ovsdb_entry - AWLAN_Node upgrade_status is $fw_err_code" ||
     raise "wait_ovsdb_entry - Failed to set upgrade_status in AWLAN_Node to $fw_err_code" -l "$tc_name" -tc
-
 
 pass

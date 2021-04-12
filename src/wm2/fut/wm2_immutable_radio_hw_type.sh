@@ -50,14 +50,13 @@ Arguments:
     \$6  (ht_mode)     : Wifi_Radio_Config::ht_mode                 : (string)(required)
     \$7  (hw_mode)     : Wifi_Radio_Config::hw_mode                 : (string)(required)
     \$8  (mode)        : Wifi_VIF_Config::mode                      : (string)(required)
-    \$9  (country)     : Wifi_Radio_Config::country                 : (string)(required)
-    \$10 (vif_if_name) : Wifi_VIF_Config::if_name                   : (string)(required)
-    \$11 (hw_type)     : used as hw_type in Wifi_Radio_Config table : (string)(required)
+    \$9  (vif_if_name) : Wifi_VIF_Config::if_name                   : (string)(required)
+    \$10 (hw_type)     : used as hw_type in Wifi_Radio_Config table : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name} <RADIO-IDX> <IF-NAME> <SSID> <PASSWORD> <CHANNEL> <HT-MODE> <HW-MODE> <MODE> <COUNTRY> <VIF-IF-NAME> <HW-TYPE>
+                 Run: ./${tc_name} <RADIO-IDX> <IF-NAME> <SSID> <PASSWORD> <CHANNEL> <HT-MODE> <HW-MODE> <MODE> <VIF-IF-NAME> <HW-TYPE>
 Script usage example:
-   ./${tc_name} 2 wifi1 test_wifi_50L WifiPassword123 44 HT20 11ac US ap home-ap-l50 qca4219
+   ./${tc_name} 2 wifi1 test_wifi_50L WifiPassword123 44 HT20 11ac ap home-ap-l50 qca4219
 usage_string
 }
 while getopts h option; do
@@ -70,11 +69,8 @@ while getopts h option; do
             ;;
     esac
 done
-NARGS=11
+NARGS=10
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
-
-trap 'run_setup_if_crashed wm || true' EXIT SIGINT SIGTERM
-
 vif_radio_idx=$1
 if_name=$2
 ssid=$3
@@ -83,9 +79,16 @@ channel=$5
 ht_mode=$6
 hw_mode=$7
 mode=$8
-country=$9
-vif_if_name=${10}
-hw_type=${11}
+vif_if_name=$9
+hw_type=${10}
+
+trap '
+    fut_info_dump_line
+    print_tables Wifi_Radio_Config Wifi_Radio_State
+    print_tables Wifi_VIF_Config Wifi_VIF_State
+    fut_info_dump_line
+    run_setup_if_crashed wm || true
+' EXIT SIGINT SIGTERM
 
 log_title "$tc_name: WM2 test - Immutable radio hw type - '${hw_type}'"
 
@@ -98,8 +101,7 @@ check_radio_vif_state \
     -channel "$channel" \
     -security "$security" \
     -hw_mode "$hw_mode" \
-    -mode "$mode" \
-    -country "$country" &&
+    -mode "$mode" &&
         log "$tc_name: Radio/VIF states are valid" ||
             (
                 log "$tc_name: Cleaning VIF_Config"
@@ -116,7 +118,6 @@ check_radio_vif_state \
                     -ht_mode "$ht_mode" \
                     -hw_mode "$hw_mode" \
                     -mode "$mode" \
-                    -country "$country" \
                     -vif_if_name "$vif_if_name" &&
                         log "$tc_name: create_radio_vif_interface - Success"
             ) ||

@@ -41,6 +41,7 @@ UNIT_SRC += src/qm_ovsdb.c
 UNIT_SRC += src/qm_mqtt.c
 UNIT_SRC += src/qm_queue.c
 UNIT_SRC += src/qm_event.c
+UNIT_SRC += src/qm_teserver.c
 
 UNIT_CFLAGS += -I$(TOP_DIR)/src/lib/common/inc/
 
@@ -52,6 +53,7 @@ UNIT_DEPS += src/lib/pjs
 UNIT_DEPS += src/lib/schema
 UNIT_DEPS += src/lib/mosqev
 UNIT_DEPS += src/lib/datapipeline
+UNIT_DEPS += src/lib/timevt
 UNIT_DEPS += src/qm/qm_conn
 
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)

@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include "gatekeeper_cache.h"
+#include "log.h"
 #include "os_types.h"
 #include "memutil.h"
 #include "os.h"
@@ -1077,6 +1078,6 @@ gkc_cache_entries(void)
 void
 clear_gatekeeper_cache(void)
 {
-    LOGN("clearing gate keeper cache");
+    LOGN("%s(): clearing gate keeper cache", __func__);
     gk_cache_cleanup();
 }

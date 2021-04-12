@@ -1,0 +1,8 @@
+menuconfig OSP_POWER
+    bool "OSP Power"
+    default n
+    help
+        Select to enable OSP Power APIs.
+
+        OSP Power APIs give useful information
+        about power suplly types and its parameters.

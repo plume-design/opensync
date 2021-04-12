@@ -35,3 +35,4 @@ UNIT_DEPS := src/lib/common
 UNIT_DEPS += src/lib/osa
 UNIT_DEPS += src/lib/schema
 UNIT_DEPS += src/lib/ovsdb
+UNIT_DEPS += src/lib/timevt

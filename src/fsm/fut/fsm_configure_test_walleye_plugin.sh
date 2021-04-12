@@ -86,6 +86,14 @@ while getopts h option; do
     esac
 done
 
+trap '
+fut_info_dump_line
+print_tables Openflow_Config Openflow_State
+print_tables Flow_Service_Manager_Config FSM_Policy
+print_tables Object_Store_State
+fut_info_dump_line
+' EXIT SIGINT SIGTERM
+
 # INPUT ARGUMENTS:
 NARGS=2
 [ $# -lt ${NARGS} ] && raise "Requires at least '${NARGS}' input argument(s)" -arg
@@ -113,15 +121,15 @@ log "$tc_name: Configuring TAP interfaces required for FSM testing"
 add_bridge_port "${lan_bridge_if}" "${tap_dpi_if}"
 set_ovs_vsctl_interface_option "${tap_dpi_if}" "type" "internal"
 set_ovs_vsctl_interface_option "${tap_dpi_if}" "ofport_request" "${of_port}"
-create_inet_entry2 \
+create_inet_entry \
     -if_name "${tap_dpi_if}" \
     -if_type "tap" \
     -ip_assign_scheme "none" \
     -dhcp_sniff "false" \
     -network true \
     -enabled true &&
-    log -deb "$tc_name: Interface ${tap_dpi_if} successfully created" ||
-    raise "Failed to create interface ${tap_dpi_if}" -l "$tc_name" -ds
+        log -deb "$tc_name: Interface ${tap_dpi_if} successfully created" ||
+        raise "Failed to create interface ${tap_dpi_if}" -l "$tc_name" -ds
 
 log "$tc_name: Cleaning FSM OVSDB Config tables"
 empty_ovsdb_table Openflow_Config
@@ -135,8 +143,8 @@ insert_ovsdb_entry Openflow_Config \
     -i priority 0 \
     -i bridge "${lan_bridge_if}" \
     -i action "NORMAL" &&
-    log "$tc_name: Inserting ingress rule" ||
-    raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "$tc_name: Inserting ingress rule" ||
+        raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
 
 # Insert egress rule to Openflow_Config
 insert_ovsdb_entry Openflow_Config \
@@ -145,8 +153,8 @@ insert_ovsdb_entry Openflow_Config \
     -i priority 200 \
     -i bridge "${lan_bridge_if}" \
     -i action "resubmit(,7)" &&
-    log "$tc_name: Inserting ingress rule" ||
-    raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "$tc_name: Inserting ingress rule" ||
+        raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
 
 # Insert egress rule to Openflow_Config
 insert_ovsdb_entry Openflow_Config \
@@ -155,8 +163,8 @@ insert_ovsdb_entry Openflow_Config \
     -i priority 0 \
     -i bridge "${lan_bridge_if}" \
     -i action "NORMAL" &&
-    log "$tc_name: Inserting ingress rule" ||
-    raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "$tc_name: Inserting ingress rule" ||
+        raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
 
 # Insert egress rule to Openflow_Config
 insert_ovsdb_entry Openflow_Config \
@@ -166,8 +174,8 @@ insert_ovsdb_entry Openflow_Config \
      -i priority 200 \
      -i rule "${of_out_rule_ct}" \
      -i action "${of_out_action_ct}" &&
-    log "$tc_name: Inserting ingress rule" ||
-    raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "$tc_name: Inserting ingress rule" ||
+        raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
 
 # Insert egress rule to Openflow_Config
 insert_ovsdb_entry Openflow_Config \
@@ -177,8 +185,8 @@ insert_ovsdb_entry Openflow_Config \
     -i priority 200 \
     -i rule "${of_out_rule_ct_inspect_new_conn}" \
     -i action "${of_out_action_ct_inspect_new_conn}" &&
-    log "$tc_name: Inserting ingress rule" ||
-    raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "$tc_name: Inserting ingress rule" ||
+        raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
 
 # Insert egress rule to Openflow_Config
 insert_ovsdb_entry Openflow_Config \
@@ -188,8 +196,8 @@ insert_ovsdb_entry Openflow_Config \
     -i priority 200 \
     -i rule "${of_out_rule_ct_inspect}" \
     -i action "${of_out_action_ct_inspect}" &&
-    log "$tc_name: Inserting ingress rule" ||
-    raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "$tc_name: Inserting ingress rule" ||
+        raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
 
 # Insert egress rule to Openflow_Config
 insert_ovsdb_entry Openflow_Config \
@@ -199,8 +207,8 @@ insert_ovsdb_entry Openflow_Config \
     -i priority 200 \
     -i rule "${of_out_rule_ct_passthru}" \
     -i action "${of_out_action_ct_passthru}" &&
-    log "$tc_name: Inserting ingress rule" ||
-    raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "$tc_name: Inserting ingress rule" ||
+        raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
 
 # Insert egress rule to Openflow_Config
 insert_ovsdb_entry Openflow_Config \
@@ -210,8 +218,8 @@ insert_ovsdb_entry Openflow_Config \
     -i priority 200 \
     -i rule "${of_out_rule_ct_drop}" \
     -i action "${of_out_action_ct_drop}" &&
-    log "$tc_name: Inserting ingress rule" ||
-    raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "$tc_name: Inserting ingress rule" ||
+        raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
 
 mqtt_hero_value="dev-test/dev_dpi_walleye/$(get_node_id)/$(get_location_id)"
 insert_ovsdb_entry Flow_Service_Manager_Config \
@@ -219,8 +227,8 @@ insert_ovsdb_entry Flow_Service_Manager_Config \
     -i type "dpi_plugin" \
     -i plugin "${fsm_plugin}" \
     -i other_config '["map",[["mqtt_v","'"${mqtt_hero_value}"'"],["dso_init","walleye_dpi_plugin_init"],["dpi_dispatcher","core_dpi_dispatch"]]]' &&
-    log "$tc_name: Inserting ingress rule" ||
-    raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "$tc_name: Inserting ingress rule" ||
+        raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
 
 fsm_message_regex="$LOGREAD | tail -500 | grep walleye_signature_load | grep succeeded"
 wait_for_function_response 0 "${fsm_message_regex}" 5 &&
@@ -230,5 +238,5 @@ wait_for_function_response 0 "${fsm_message_regex}" 5 &&
 wait_ovsdb_entry Object_Store_State \
     -is name "app_signatures" \
     -is status "active" &&
-    log "$tc_name: walleye signature added" ||
-    raise "walleye signature not added" -l "$tc_name" -tc
+        log "$tc_name: walleye signature added" ||
+        raise "walleye signature not added" -l "$tc_name" -tc

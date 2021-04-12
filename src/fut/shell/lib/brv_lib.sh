@@ -173,6 +173,34 @@ is_tool_on_system()
 
 ###############################################################################
 # DESCRIPTION:
+#   Function checks if script is present in filesystem.
+# INPUT PARAMETER(S):
+#   $1  script path, can be relative or absolute (required)
+# RETURNS:
+#   0   Script found on system
+#   >0  Script NOT found on system or in PATH if relative path is provided
+# USAGE EXAMPLE(S):
+#   is_script_on_system /tmp/resolv.conf
+#   is_script_on_system /sbin/udhcpc
+#   is_script_on_system /etc/init.d/opensync
+#   is_script_on_system /dev/null
+###############################################################################
+is_script_on_system()
+{
+    local fn_name="brv_lib:is_script_on_system"
+    local NARGS=1
+    [ $# -ne ${NARGS} ] &&
+        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+    script_path=$1
+
+    log -deb "${fn_name} - Checking script ${script_path} presence"
+    test -e "${script_path}"
+    rc=$?
+    return ${rc}
+}
+
+###############################################################################
+# DESCRIPTION:
 #   Function checks if tool is built into busybox.
 # INPUT PARAMETER(S):
 #   $1 command/tool name (required)

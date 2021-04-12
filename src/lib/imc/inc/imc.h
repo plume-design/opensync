@@ -31,6 +31,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #include "ds_list.h"
 
@@ -44,10 +49,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  */
 typedef void (*imc_recv)(void *, size_t);
+typedef void (*unix_recv)(void *, size_t);
 
 struct imc_context;
 struct imc_dso;
 struct imc_sockoption;
+struct unix_context;
 
 typedef void (*imc_ev_cbfn)(struct ev_loop *, struct imc_context *, int);
 
@@ -63,6 +70,12 @@ typedef void (*terminate_server)(struct imc_context *);
 typedef int  (*add_sockopt)(struct imc_context *, struct imc_sockoption *);
 typedef void (*init_context)(struct imc_context *);
 typedef void (*reset_context)(struct imc_context *);
+
+typedef int (*init_unix_client)(struct unix_context *);
+typedef void (*terminate_unix_client)(struct unix_context *);
+typedef int (*client_unix_send)(struct unix_context *, void *, size_t , int);
+typedef int (*init_unix_server)(struct unix_context *, struct ev_loop *, unix_recv);
+typedef void (*terminate_unix_server)(struct unix_context *);
 
 typedef void (*init)(struct imc_dso *);
 
@@ -82,6 +95,13 @@ struct imc_dso
     init_context init_context;
     reset_context reset_context;
     add_sockopt add_sockopt;
+
+    init_unix_client init_unix_client;
+    client_unix_send client_unix_send;
+    terminate_unix_client terminate_unix_client;
+
+    init_unix_server init_unix_server;
+    terminate_unix_server terminate_unix_server;
 };
 
 
@@ -123,6 +143,20 @@ struct imc_context
     uint64_t io_failure_cnt;
 };
 
+
+struct unix_context
+{
+    struct ev_loop *loop;
+    void *data;
+    unix_recv recv_fn;
+    char *endpoint;
+    bool initialized;
+    int sock_fd;
+    uint64_t io_success_cnt;
+    uint64_t io_failure_cnt;
+    ev_io w_io;
+    int events;
+};
 
 #if defined(CONFIG_TARGET_IMC)
 
@@ -183,6 +217,16 @@ int
 imc_init_server(struct imc_context *server, struct ev_loop *loop,
                 imc_recv recv_cb);
 
+/**
+ * @brief initiates a unix server
+ *
+ * @param server the server context
+ * @param loop the ev loop
+ * @param recv_cb user provided data processing routine
+ */
+int
+unix_init_server(struct unix_context *server, struct ev_loop *loop,
+                unix_recv recv_cb);
 
 /**
  * @brief terminates a imc server
@@ -194,6 +238,14 @@ imc_terminate_server(struct imc_context *server);
 
 
 /**
+ * @brief terminates a unix server
+ *
+ * @param server the server to terminate
+ */
+void
+unix_terminate_server(struct unix_context *server);
+
+/**
  * @brief initiates a imc client and connects to a server
  *
  * @param endpoint the client context
@@ -201,6 +253,15 @@ imc_terminate_server(struct imc_context *server);
 int
 imc_init_client(struct imc_context *client, imc_free_sndmsg free_msg,
                 void *free_msg_hint);
+
+
+/**
+ * @brief initiates a unix client and connects to a server
+ *
+ * @param endpoint the client context
+ */
+int
+unix_init_client(struct unix_context *client);
 
 
 /**
@@ -217,6 +278,15 @@ imc_terminate_client(struct imc_context *client);
 
 
 /**
+ * @brief terminates a unix client and connected to a server
+ *
+ * @param endpoint the client context
+ */
+void
+unix_terminate_client(struct unix_context *client);
+
+
+/**
  * @brief send data to a imc server
  *
  * @param context the socket context
@@ -227,6 +297,17 @@ imc_terminate_client(struct imc_context *client);
 int
 imc_send(struct imc_context *context, void *buf, size_t buflen, int flags);
 
+
+/**
+ * @brief send data to a unix server
+ *
+ * @param context the socket context
+ * @param buf the buffer to send
+ * @param len the buffer size
+ * @flags the transmit flags
+ */
+int
+unix_send(struct unix_context *context, void *buf, size_t buflen, int flags);
 
 void
 imc_init_dso(struct imc_dso *dso);
@@ -266,8 +347,20 @@ imc_init_server(struct imc_context *server, struct ev_loop *loop,
 }
 
 
+static inline int
+unix_init_server(struct unix_context *server, struct ev_loop *loop,
+                 unix_recv recv_cb)
+{
+    return 0;
+}
+
+
 static inline void
 imc_terminate_server(struct imc_context *server) {}
+
+
+static inline void
+unix_terminate_server(struct unix_context *server) {}
 
 
 static inline int
@@ -278,8 +371,19 @@ imc_init_client(struct imc_context *client, imc_free_sndmsg free_snd_msg,
 }
 
 
+static inline int
+unix_init_client(struct unix_context *client)
+{
+    return 0;
+}
+
+
 static inline void
 imc_terminate_client(struct imc_context *client) {}
+
+
+static inline void
+unix_terminate_client(struct unix_context *client) {}
 
 
 static inline int
@@ -287,6 +391,14 @@ imc_send(struct imc_context *context, void *buf, size_t buflen, int flags)
 {
     return 0;
 }
+
+
+static inline int
+unix_send(struct unix_context *context, void *buf, size_t buflen, int flags)
+{
+    return 0;
+}
+
 
 static inline void
 imc_init_dso(struct imc_dso *dso) {}

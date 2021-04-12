@@ -92,4 +92,8 @@ bool qm_queue_get(qm_item_t **qitem);
 
 bool qm_event_init();
 
+// Time-event logs collector and report generator
+void mqtt_telog_init(struct ev_loop *ev);
+void mqtt_telog_fini(void);
+
 #endif /* QM_H_INCLUDED */

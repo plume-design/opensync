@@ -82,12 +82,22 @@ while getopts h option; do
     esac
 done
 
+trap '
+fut_info_dump_line
+print_tables Wifi_Associated_Clients
+print_tables Openflow_Config Openflow_State
+print_tables Flow_Service_Manager_Config FSM_Policy
+print_tables IPv6_Neighbors
+fut_info_dump_line
+' EXIT SIGINT SIGTERM
+
 # INPUT ARGUMENTS:
 NARGS=1
 [ $# -lt ${NARGS} ] && raise "Requires at least '${NARGS}' input argument(s)" -arg
 # Input arguments specific to GW, required:
 lan_bridge_if=${1}
 of_port=${2:-${of_port_default}}
+
 client_mac=$(get_ovsdb_entry_value Wifi_Associated_Clients mac)
 if [ -z "${client_mac}" ]; then
     raise "Couldn't acquire Client mac address from Wifi_Associated_Clients, is client connected?" -l "${tc_name}"
@@ -102,15 +112,15 @@ log "$tc_name: Configuring TAP interfaces required for FSM testing"
 add_bridge_port "${lan_bridge_if}" "${tap_ndp_if}"
 set_ovs_vsctl_interface_option "${tap_ndp_if}" "type" "internal"
 set_ovs_vsctl_interface_option "${tap_ndp_if}" "ofport_request" "${of_port}"
-create_inet_entry2 \
+create_inet_entry \
     -if_name "${tap_ndp_if}" \
     -if_type "tap" \
     -ip_assign_scheme "none" \
     -dhcp_sniff "false" \
     -network true \
     -enabled true &&
-    log -deb "$tc_name: Interface ${tap_ndp_if} successfully created" ||
-    raise "Failed to create interface ${tap_ndp_if}" -l "$tc_name" -ds
+        log -deb "$tc_name: Interface ${tap_ndp_if} successfully created" ||
+        raise "Failed to create interface ${tap_ndp_if}" -l "$tc_name" -ds
 
 log "$tc_name: Cleaning FSM OVSDB Config tables"
 empty_ovsdb_table Openflow_Config
@@ -136,25 +146,26 @@ insert_ovsdb_entry Openflow_Config \
     -i priority 200 \
     -i bridge "${lan_bridge_if}" \
     -i action "normal,output:${of_port}" &&
-    log "$tc_name: Inserting ingress rule" ||
-    raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "$tc_name: Inserting ingress rule" ||
+        raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
 
 insert_ovsdb_entry Flow_Service_Manager_Config \
     -i if_name "${tap_ndp_if}" \
     -i handler "dev_ndp" \
     -i plugin '/usr/opensync/lib/libfsm_ndp.so' \
     -i other_config '["map",[["dso_init","ndp_plugin_init"]]]' &&
-    log "$tc_name: Flow_Service_Manager_Config entry added" ||
-    raise "Failed to insert Flow_Service_Manager_Config entry" -l "$tc_name" -oe
+        log "$tc_name: Flow_Service_Manager_Config entry added" ||
+        raise "Failed to insert Flow_Service_Manager_Config entry" -l "$tc_name" -oe
 
 log "$tc_name: ping6 clients"
 wait_for_function_response 0 "ping6 -c2 -I ${tap_ndp_if} ff02::1" 5 &&
     log "$tc_name: ping6 clients - success" ||
-    raise "Failed to ping6 clients" -l "$tc_name" -ds
+    log -wrn "$tc_name: Failed to ping6 clients"
 
-wait_for_function_response 0 "${OVSH} s IPv6_Neighbors hwaddr | grep '${client_mac}'" &&
+wait_for_function_response 0 "${OVSH} s IPv6_Neighbors hwaddr | grep '${client_mac}'" 30 &&
     log "$tc_name: Client added into IPv6_Neighbors" ||
     raise "Client not added into IPv6_Neighbors" -l "$tc_name" -oe
 
 print_tables IPv6_Neighbors
+
 pass

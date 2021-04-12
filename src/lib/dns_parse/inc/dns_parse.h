@@ -21,6 +21,7 @@ struct web_cat_offline
     uint32_t connection_failures;
 };
 
+#define DNS_REDIRECT_TTL 345600
 #define MAX_TAG_VALUES_LEN 64
 #define MAX_TAG_NAME_LEN 64
 #define MAX_EXCLUDES 100
@@ -246,5 +247,8 @@ dns_get_mgr(void);
 
 void
 dns_mgr_init(void);
+
+bool
+dns_cache_add_redirect_entry(struct fqdn_pending_req *req, struct sockaddr_storage *ipaddr);
 
 #endif /* DNS_PARSE_H_INCLUDED */

@@ -85,7 +85,7 @@ patch_h2w=${5:-$patch_h2w_default}
 if [ "${is_wano}" == "false" ];then
     # Patch WAN and LAN bridges
     add_bridge_port "${wan_br}" "${wan_eth}"
-    create_inet_entry2 \
+    create_inet_entry \
         -if_name "${wan_br}" \
         -if_type "bridge" \
         -ip_assign_scheme "dhcp" \
@@ -101,7 +101,7 @@ if [ "${is_wano}" == "false" ];then
 else
     # Put WAN ETH interface into LAN bridge directly
     add_bridge_port "${lan_br}" "${wan_eth}"
-    create_inet_entry2 \
+    create_inet_entry \
         -if_name "${lan_br}" \
         -if_type "bridge" \
         -ip_assign_scheme "dhcp" \

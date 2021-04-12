@@ -1,7 +1,7 @@
 {
   "name": "Open_vSwitch",
-  "version": "7.11.252",
-  "cksum": "538085933 218878",
+  "version": "7.11.259",
+  "cksum": "3112869073 224400",
   "tables": {
     "AWLAN_Node": {
       "columns": {
@@ -311,7 +311,8 @@
                   "vlan",
                   "pppoe",
                   "softwds",
-                  "tap"
+                  "tap",
+                  "lte"
                 ]
               ]
             }
@@ -459,7 +460,8 @@
                   "pppoe",
                   "softwds",
                   "tap",
-                  "vlan"
+                  "vlan",
+                  "lte"
                 ]
               ]
             }
@@ -597,7 +599,8 @@
                   "vlan",
                   "pppoe",
                   "softwds",
-                  "tap"
+                  "tap",
+                  "lte"
                 ]
               ]
             }
@@ -994,7 +997,8 @@
                   "vlan",
                   "pppoe",
                   "softwds",
-                  "tap"
+                  "tap",
+                  "lte"
                 ]
               ]
             }
@@ -1196,7 +1200,7 @@
             "min": 0,
             "max": 1
           }
-        },        
+        },
         "parent_ifname": {
           "type": {
             "key": {
@@ -1369,7 +1373,8 @@
                   "2.4G",
                   "5G",
                   "5GL",
-                  "5GU"
+                  "5GU",
+                  "6G"
                 ]
               ]
             }
@@ -1424,7 +1429,7 @@
             "key": {
               "type": "integer",
               "minInteger": 1,
-              "maxInteger": 181
+              "maxInteger": 233
             },
             "min": 0,
             "max": 1
@@ -1660,7 +1665,8 @@
                   "2.4G",
                   "5G",
                   "5GL",
-                  "5GU"
+                  "5GU",
+                  "6G"
                 ]
               ]
             }
@@ -1731,7 +1737,7 @@
             "key": {
               "type": "integer",
               "minInteger": 1,
-              "maxInteger": 181
+              "maxInteger": 233
             },
             "min": 0,
             "max": 1
@@ -1911,7 +1917,7 @@
             "key": {
               "type": "integer",
               "minInteger": 1,
-              "maxInteger": 181
+              "maxInteger": 233
             },
             "min": 0,
             "max": 64
@@ -1934,7 +1940,7 @@
             "value": {
                  "type": "integer",
                  "minInteger": 1,
-                 "maxInteger": 181
+                 "maxInteger": 233
             },
             "min": 0,
             "max": 8
@@ -2416,6 +2422,15 @@
             "min": 0,
             "max": 1
           }
+        },
+        "dpp_cc": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
         }
       },
       "isRoot": true,
@@ -2482,7 +2497,7 @@
             "key": {
               "type": "integer",
               "minInteger": 1,
-              "maxInteger": 181
+              "maxInteger": 233
             },
             "min": 0,
             "max": 1
@@ -2864,6 +2879,15 @@
             "key": {
               "type": "string",
               "maxLength": 512
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "dpp_cc": {
+          "type": {
+            "key": {
+              "type": "boolean"
             },
             "min": 0,
             "max": 1
@@ -5017,7 +5041,8 @@
                   "2.4G",
                   "5G",
                   "5GL",
-                  "5GU"
+                  "5GU",
+                  "6G"
                 ]
               ]
             }
@@ -5075,7 +5100,7 @@
             "key": {
               "type": "integer",
               "minInteger": 1,
-              "maxInteger": 181
+              "maxInteger": 233
             },
             "min": 0,
             "max": 64
@@ -6871,11 +6896,28 @@
                     "key": {
                         "type": "integer",
                         "minInteger": 1,
-                        "maxInteger": 181
+                        "maxInteger": 233
                     },
                     "min": 0,
                     "max": 1
                 }
+            },
+            "freq_band": {
+              "type": {
+                "key": {
+                  "type": "string",
+                  "enum": [
+                    "set",
+                    [
+                      "2.4G",
+                      "5G",
+                      "6G"
+                    ]
+                  ]
+                },
+                "min": 0,
+                "max": 1
+              }
             },
             "ht_mode": {
                 "type": {
@@ -9801,6 +9843,221 @@
         }
       },
       "isRoot": true
+    },
+    "Lte_Config": {
+      "columns": {
+        "if_name": {
+          "type": {
+            "key": {
+              "type": "string"
+            }
+          }
+        },
+        "lte_failover": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "enable": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "v4_enable": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 1,
+            "max": 1
+          }
+        },
+        "v6_enable": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "force_use_lte": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "esim_download": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "esim_active": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "simcard_slot": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "slot0",
+                  "slot1"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "modem_enable": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 1,
+            "max": 1
+          }
+        }
+      },
+      "isRoot": true
+    },
+    "Lte_State": {
+      "columns": {
+        "if_name": {
+          "type": {
+            "key": {
+              "type": "string"
+            }
+          }
+        },
+        "lte_config": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "Lte_Config",
+              "refType": "weak"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "imei": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 64
+            }
+          }
+        },
+        "imsi": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 64
+            }
+          }
+        },
+        "net_info_state": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "SEARCH",
+                  "LIMSRV",
+                  "NOCONN",
+                  "CONNECT"
+                ]
+              ]
+            }
+          }
+        }
+      },
+      "isRoot": true
+    },
+    "TELOG_Config": {
+      "columns": {
+          "cfg_name": {
+              "type": {
+                  "key": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 32
+                  },
+                  "min": 1,
+                  "max": 1
+              }
+          },
+          "mqtt_topic": {
+            "type": {
+                "key": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                },
+                "min": 1,
+                "max": 1
+            }
+          },
+          "mqtt_qos": {
+            "type": {
+                "key": {
+                    "type": "integer",
+                    "minInteger": 0,
+                    "maxInteger": 2
+                },
+                "min": 0,
+                "max": 1
+            }
+          },
+          "report_interval": {
+              "type": {
+                  "key": {
+                      "type": "integer",
+                      "minInteger": 1,
+                      "maxInteger": 3600
+                  },
+                  "min": 1,
+                  "max": 1
+              }
+          },
+          "other_config": {
+              "type": {
+                  "key": "string",
+                  "value": "string",
+                  "min": 0,
+                  "max": 16
+              }
+          }
+      },
+      "isRoot": true
     }
   }
 }
+

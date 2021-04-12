@@ -305,6 +305,37 @@ bool fw_nat_start(inet_fw_t *self)
                 NFM_RULE("-o", self->fw_ifname),
                 "MASQUERADE");
 
+        retval &= nfm_rule_add(
+                NFM_ID(self->fw_ifname, "ipv4", "mssclamp"),
+                100,
+                "ipv4",
+                "filter",
+                "FORWARD",
+                NFM_RULE(
+                        "-o", self->fw_ifname,
+                        "-p", "tcp",
+                        "--tcp-flags", "SYN,RST", "SYN",
+                        "-m", "tcpmss",
+                        "--mss", "1400:1536",
+                        "--clamp-mss-to-pmtu"),
+                "TCPMSS");
+
+        retval &= nfm_rule_add(
+                NFM_ID(self->fw_ifname, "ipv6", "mssclamp"),
+                100,
+                "ipv6",
+                "filter",
+                "FORWARD",
+                NFM_RULE(
+                        "-o", self->fw_ifname,
+                        "-p", "tcp",
+                        "--tcp-flags", "SYN,RST", "SYN",
+                        "-m", "tcpmss",
+                        "--mss", "1400:1536",
+                        "--clamp-mss-to-pmtu"),
+                "TCPMSS");
+
+
         /* Plant miniupnpd rules for port forwarding via upnp */
         retval &= nfm_rule_add(
                 NFM_ID(self->fw_ifname, "ipv4", "miniupnpd"),
@@ -361,6 +392,9 @@ bool fw_nat_stop(inet_fw_t *self)
 
     /* Flush out NAT rules */
     retval &= nfm_rule_del(NFM_ID(self->fw_ifname, "ipv4", "nat"));
+
+    retval &= nfm_rule_del(NFM_ID(self->fw_ifname, "ipv4", "mssclamp"));
+    retval &= nfm_rule_del(NFM_ID(self->fw_ifname, "ipv6", "mssclamp"));
 
     retval &= nfm_rule_del(NFM_ID(self->fw_ifname, "ipv4", "miniupnpd"));
 

@@ -32,3 +32,7 @@ UNIT_TYPE := FUT
 UNIT_DIR := shell/tools/device/ovsdb
 
 UNIT_FILE := get_ovsdb_value.sh
+UNIT_FILE += insert_ovsdb_entry.sh
+UNIT_FILE += remove_ovsdb_entry.sh
+UNIT_FILE += update_ovsdb_entry.sh
+UNIT_FILE += wait_ovsdb_entry.sh

@@ -80,12 +80,20 @@ while getopts h option; do
             ;;
     esac
 done
+
+check_kconfig_option "TARGET_CAP_EXTENDER" "y" ||
+    raise "TARGET_CAP_EXTENDER != y - Testcase applicable only for EXTENDER-s" -l "${tc_name}" -s
+
 NARGS=1
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 
 trap '
+fut_info_dump_line
+print_tables Connection_Manager_Uplink
+fut_info_dump_line
 check_restore_management_access || true
-run_setup_if_crashed cm || true' EXIT SIGINT SIGTERM
+run_setup_if_crashed cm || true
+' EXIT SIGINT SIGTERM
 
 if_name=${1}
 unreachable_internet_counter=${2:-${counter_default}}

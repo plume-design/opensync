@@ -35,11 +35,11 @@
 # EXPECTED RESULTS
 # Test is passed:
 # - if interface is properly configured AND
-# - if interface is disabled and if its table is empty (interface_ip_address is checked) AND
-# - if interface is re-enabled and if its table is populated (interface_ip_address is checked)
+# - if interface is disabled and if its table is empty (checked by get_interface_ip_address_from_system) AND
+# - if interface is re-enabled and if its table is populated (checked by get_interface_ip_address_from_system)
 # Test fails:
 # - if inteface cannot be disabled OR
-# - if disabled interface table is not empty (interface_ip_address is checked)
+# - if disabled interface table is not empty (checked by get_interface_ip_address_from_system)
 
 # FUT environment loading
 source /tmp/fut-base/shell/config/default_shell.sh
@@ -77,18 +77,21 @@ while getopts h option; do
             ;;
     esac
 done
+
 NARGS=2
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+if_name=$1
+if_type=$2
+inet_addr=10.10.10.30
 
 trap '
+    fut_info_dump_line
+    print_tables Wifi_Inet_Config Wifi_Inet_State
+    fut_info_dump_line
     reset_inet_entry $if_name || true
     run_setup_if_crashed nm || true
     check_restore_management_access || true
 ' EXIT SIGINT SIGTERM
-
-if_name=$1
-if_type=$2
-inet_addr=10.10.10.30
 
 log_title "$tc_name: NM2 test - Enable disable interface"
 
@@ -105,7 +108,7 @@ create_inet_entry \
         raise "Failed to create interface" -l "$tc_name" -tc
 
 log "$tc_name: LEVEL 2 - Check if IP ADDRESS $inet_addr was properly applied to $if_name"
-wait_for_function_response 0 "interface_ip_address $if_name | grep -q \"$inet_addr\"" &&
+wait_for_function_response 0 "get_interface_ip_address_from_system $if_name | grep -q \"$inet_addr\"" &&
     log "$tc_name: Setting applied to ifconfig - IP: $inet_addr" ||
     raise "Failed to apply settings to ifconfig - IP: $inet_addr" -l "$tc_name" -tc
 
@@ -119,7 +122,7 @@ wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is network false &&
     raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - network=false" -l "$tc_name" -tc
 
 log "$tc_name: Checking if all network settings on interface are empty"
-wait_for_function_response 1 "interface_ip_address $if_name | grep -q \"$inet_addr\"" &&
+wait_for_function_response 1 "get_interface_ip_address_from_system $if_name | grep -q \"$inet_addr\"" &&
     log "$tc_name: Setting removed from ifconfig" ||
     raise "Failed to remove settings to ifconfig" -l "$tc_name" -tc
 
@@ -133,7 +136,7 @@ wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is network true &&
     raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - network=false" -l "$tc_name" -tc
 
 log "$tc_name: LEVEL 2 - Check if IP ADDRESS $inet_addr was properly applied to $if_name"
-wait_for_function_response 0 "interface_ip_address $if_name | grep -q \"$inet_addr\"" &&
+wait_for_function_response 0 "get_interface_ip_address_from_system $if_name | grep -q \"$inet_addr\"" &&
     log "$tc_name: Setting applied to ifconfig - IP: $inet_addr" ||
     raise "Failed to apply settings to ifconfig - IP: $inet_addr" -l "$tc_name" -tc
 

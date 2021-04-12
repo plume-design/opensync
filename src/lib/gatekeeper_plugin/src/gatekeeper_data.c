@@ -181,7 +181,7 @@ gatekeeper_get_header(struct gk_request *gk_req)
         }
 
         default:
-            LOGN("%s() invalid request type %d", __func__, gk_req->type);
+            LOGD("%s() invalid request type %d", __func__, gk_req->type);
             break;
     }
 
@@ -248,7 +248,7 @@ gatekeeper_set_req_id(struct gk_request *gk_req)
             break;
 
         default:
-            LOGN("%s() invalid request type %d", __func__, gk_req->type);
+            LOGD("%s() invalid request type %d", __func__, gk_req->type);
             return false;
     }
 
@@ -507,7 +507,7 @@ gatekeeper_get_req(struct fsm_session *session,
             break;
 
         default:
-            LOGN("%s() invalid request type %d", __func__, req_type);
+            LOGD("%s() invalid request type %d", __func__, req_type);
             rc = false;
             break;
     }

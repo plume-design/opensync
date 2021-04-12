@@ -61,6 +61,12 @@ while getopts h option; do
     esac
 done
 
+trap '
+fut_info_dump_line
+print_tables AWLAN_Node
+fut_info_dump_line
+' EXIT SIGINT SIGTERM
+
 device_mode=${1:-"${device_mode_default}"}
 
 log_title "$tc_name: ONBRD test - Verify device mode in AWLAN_Node"

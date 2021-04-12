@@ -1,0 +1,54 @@
+// Copyright (c) 2015, Plume Design Inc. All rights reserved.
+// 
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
+//    1. Redistributions of source code must retain the above copyright
+//       notice, this list of conditions and the following disclaimer.
+//    2. Redistributions in binary form must reproduce the above copyright
+//       notice, this list of conditions and the following disclaimer in the
+//       documentation and/or other materials provided with the distribution.
+//    3. Neither the name of the Plume Design Inc. nor the
+//       names of its contributors may be used to endorse or promote products
+//       derived from this software without specific prior written permission.
+// 
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+// ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+// WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL Plume Design Inc. BE LIABLE FOR ANY
+// DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+// (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+// LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+// ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+syntax = "proto2";
+
+package sts;
+
+// Definition of time_event message
+message TimeEvent
+{
+    required uint64 time = 1; // monotonic time in [ms]
+    required string cat = 3; // event category e.g DHCP_CLIENT, REDIRECTOR, CONTROLLER, GRE_LINK, WDS_LINK etc.
+    required string source = 4; // event source, origin - usually process/manager name
+    optional string subject = 5; // event subject name: interface, module name, feature name etc.
+    optional string seq = 6; // event sequence name : ONE, START, STOP etc
+    optional string msg = 7; // event message
+}
+
+message DeviceID
+{
+    required string node_id = 1;
+    required string firmware_version = 2;
+    required string location_id = 3;
+}
+
+message TimeEventsReport
+{
+    required DeviceID deviceID = 1; // device identification
+    required uint32 seqNo = 2; // report sequence number
+    required uint64 realTime = 3; // report generation real UNIX standard time in ms
+    required uint64 monoTime = 4; // report generation monotonic time in ms
+    repeated TimeEvent events = 5; // reported events
+}

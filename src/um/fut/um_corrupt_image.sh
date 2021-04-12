@@ -68,15 +68,18 @@ while getopts h option; do
             ;;
     esac
 done
+
 NARGS=2
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
-
 fw_path=$1
 fw_url=$2
 
 trap '
-  reset_um_triggers $fw_path || true
-  run_setup_if_crashed um || true
+    fut_info_dump_line
+    print_tables AWLAN_Node
+    fut_info_dump_line
+    reset_um_triggers $fw_path || true
+    run_setup_if_crashed um || true
 ' EXIT SIGINT SIGTERM
 
 log_title "$tc_name: UM test - Corrupt FW image"

@@ -41,7 +41,7 @@ Description:
     - Script checks if the specified tool is present on the system, fails otherwise
 Arguments:
     -h : show this help message
-    \$1 (builtin_tool) : name of the required busybox built-in tool : (string)(required)
+    \$1 (builtin_tool) : name of the required tool : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${brv_setup_file} (see ${brv_setup_file} -h)
                  Run: ./${tc_name} <TOOL-NAME>

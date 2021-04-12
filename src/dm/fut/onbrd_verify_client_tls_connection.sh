@@ -68,23 +68,50 @@ while getopts h option; do
     esac
 done
 
-log "$tc_name: Setting CM log level to TRACE"
+log_title "${tc_name}: ONBRD test - Verify client TLS connection"
+
+log "${tc_name}: Setting CM log level to TRACE"
 set_manager_log CM TRACE
 
-log_title "$tc_name: ONBRD test - Verify client TLS connection"
+log "${tc_name}: Saving current state of AWLAN_Node/SSL ovsdb tables for revert after"
+# connect_to_fut_cloud() updates only SSL::ca_cert, save original for later use
+ssl_ca_cert_org="$(get_ovsdb_entry_value SSL ca_cert)"
+# connect_to_fut_cloud() updates AWLAN_Node::redirector_addr and Manager::inactivity_probe::min_backoff::max_backoff, save original for later use
+an_redirector_addr_org="$(get_ovsdb_entry_value AWLAN_Node redirector_addr)"
+m_inactivity_probe_org="$(get_ovsdb_entry_value Manager inactivity_probe)"
+m_min_backoff_org="$(get_ovsdb_entry_value AWLAN_Node min_backoff)"
+m_max_backoff_org="$(get_ovsdb_entry_value AWLAN_Node max_backoff)"
+log -deb "${tc_name}: Backup values"
+log -deb "   SSL        :: ca_cert          := ${ssl_ca_cert_org}"
+log -deb "   AWLAN_Node :: redirector_addr  := ${an_redirector_addr_org}"
+log -deb "   Manager    :: inactivity_probe := ${m_inactivity_probe_org}"
+log -deb "   AWLAN_Node :: min_backoff      := ${m_min_backoff_org}"
+log -deb "   AWLAN_Node :: max_backoff      := ${m_max_backoff_org}"
+
+trap '
+    fut_info_dump_line
+    print_tables SSL Manager AWLAN_Node
+    fut_info_dump_line
+    [ -n "${ssl_ca_cert_org}" ] && update_ovsdb_entry SSL -u ca_cert "${ssl_ca_cert_org}" || true
+    [ -n "${an_redirector_addr_org}" ] && update_ovsdb_entry AWLAN_Node -u redirector_addr "${an_redirector_addr_org}" || true
+    [ -n "${m_inactivity_probe_org}" ] && update_ovsdb_entry Manager -u inactivity_probe "${m_inactivity_probe_org}" || true
+    [ -n "${m_min_backoff_org}" ] && update_ovsdb_entry AWLAN_Node -u min_backoff "${m_min_backoff_org}" || true
+    [ -n "${m_max_backoff_org}" ] && update_ovsdb_entry AWLAN_Node -u max_backoff "${m_max_backoff_org}" || true
+' EXIT SIGINT SIGTERM
 
 connect_to_fut_cloud &&
-    log "$tc_name: Device connected to FUT cloud. Start test case execution" ||
-    raise "Failed to connect device to FUT cloud. Terminate test" -l "$tc_name" -tc
+    log "${tc_name}: Device connected to FUT cloud. Start test case execution" ||
+    raise "Failed to connect device to FUT cloud. Terminate test" -l "${tc_name}" -tc
+
 # Check if connection is maintained for 60s
-log "$tc_name: Checking if connection is maintained and stable"
+log "${tc_name}: Checking if connection is maintained and stable"
 for interval in $(seq 1 3); do
-    log "$tc_name: Sleeping for 20 seconds"
+    log "${tc_name}: Sleeping for 20 seconds"
     sleep 20
-    log "$tc_name: Check connection status in Manager table is ACTIVE, check num: $interval"
+    log "${tc_name}: Check connection status in Manager table is ACTIVE, check num: $interval"
     ${OVSH} s Manager status -r | grep "ACTIVE" &&
-        log "$tc_name: wait_cloud_state - Connection state is ACTIVE, check num: $interval" ||
-        raise "wait_cloud_state - FAILED: Connection state is NOT ACTIVE, check num: $interval, connection should be maintained" -l "$tc_name" -tc
+        log "${tc_name}: wait_cloud_state - Connection state is ACTIVE, check num: $interval" ||
+        raise "wait_cloud_state - FAILED: Connection state is NOT ACTIVE, check num: $interval, connection should be maintained" -l "${tc_name}" -tc
 done
 
 pass

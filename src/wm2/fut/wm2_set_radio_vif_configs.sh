@@ -51,12 +51,11 @@ Arguments:
     \$6  (ht_mode)        : Wifi_Radio_Config::ht_mode                        : (string)(required)
     \$7  (hw_mode)        : Wifi_Radio_Config::hw_mode                        : (string)(required)
     \$8  (mode)           : Wifi_VIF_Config::mode                             : (string)(required)
-    \$9  (country)        : used as country in Wifi_VIF_Config table          : (string)(required)
-    \$10  (vif_if_name)   : Wifi_VIF_Config::if_name                          : (string)(required)
-    \$11 (custom_channel) : used as custom channel in Wifi_Radio_Config table : (string)(required)
+    \$9  (vif_if_name)    : Wifi_VIF_Config::if_name                          : (string)(required)
+    \$10 (custom_channel) : used as custom channel in Wifi_Radio_Config table : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name} 2 wifi1 test_wifi_50L WifiPassword123 44 HT20 11ac ap US home-ap-l50 48
+                 Run: ./${tc_name} 2 wifi1 test_wifi_50L WifiPassword123 44 HT20 11ac ap home-ap-l50 48
 Script usage example:
    ./${tc_name}
 usage_string
@@ -71,11 +70,9 @@ while getopts h option; do
             ;;
     esac
 done
-NARGS=11
+
+NARGS=10
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
-
-trap 'run_setup_if_crashed wm || true' EXIT SIGINT SIGTERM
-
 vif_radio_idx=$1
 if_name=$2
 ssid=$3
@@ -84,9 +81,16 @@ channel=$5
 ht_mode=$6
 hw_mode=$7
 mode=$8
-country=$9
-vif_if_name=${10}
-custom_channel=${11}
+vif_if_name=$9
+custom_channel=${10}
+
+trap '
+    fut_info_dump_line
+    print_tables Wifi_Radio_Config Wifi_Radio_State
+    print_tables Wifi_VIF_Config Wifi_VIF_State
+    fut_info_dump_line
+    run_setup_if_crashed wm || true
+' EXIT SIGINT SIGTERM
 
 log_title "$tc_name: WM2 test - Testing Wifi_Radio_Config vif_configs"
 
@@ -99,8 +103,7 @@ check_radio_vif_state \
     -channel "$channel" \
     -security "$security" \
     -hw_mode "$hw_mode" \
-    -mode "$mode" \
-    -country "$country" &&
+    -mode "$mode" &&
         log "$tc_name: Radio/VIF states are valid" ||
             (
                 log "$tc_name: Cleaning VIF_Config"
@@ -117,37 +120,36 @@ check_radio_vif_state \
                     -ht_mode "$ht_mode" \
                     -hw_mode "$hw_mode" \
                     -mode "$mode" \
-                    -country "$country" \
                     -vif_if_name "$vif_if_name" &&
                         log "$tc_name: create_radio_vif_interface - Success"
             ) ||
         raise "create_radio_vif_interface - Failed" -l "$tc_name" -tc
 
-log "$tc_name: Save VIF_CONFIGS field for later use"
+log "$tc_name: Save Wifi_Radio_Config::vif_configs field for later use"
 original_vif_configs=$(get_ovsdb_entry_value Wifi_Radio_Config vif_configs -w if_name "$if_name" -raw)
 
-log "$tc_name: Deleting VIF_CONFIGS"
+log "$tc_name: Deleting Wifi_Radio_Config::vif_configs"
 update_ovsdb_entry Wifi_Radio_Config -w if_name "$if_name" -u vif_configs "[\"set\",[]]" &&
-    log "$tc_name: VIF_CONFIGS deleted" ||
-    raise "Failed to update Wifi_Radio_Config for VIF_CONFIGS '[\"set\",[]]'" -l "$tc_name" -tc
+    log "$tc_name: Wifi_Radio_Config::vif_configs deleted" ||
+    raise "Failed to update Wifi_Radio_Config::vif_configs '[\"set\",[]]'" -l "$tc_name" -tc
 
-log "$tc_name: TEST 1 - Update CHANNEL $custom_channel - there should be no changes in Wifi_VIF_State"
+log "$tc_name: TEST 1 - Update Wifi_Radio_Config::channel $custom_channel - there should be no changes in Wifi_VIF_State"
 update_ovsdb_entry Wifi_Radio_Config -w if_name "$if_name" -u channel "$custom_channel" &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Radio_Config table updated - channel $custom_channel" ||
+    log "$tc_name: update_ovsdb_entry - Updated Wifi_Radio_Config::channel $custom_channel" ||
     raise "update_ovsdb_entry - Failed to update Wifi_Radio_Config - channel $custom_channel" -l "$tc_name" -tc
 
 wait_ovsdb_entry Wifi_VIF_State -w if_name "$vif_if_name" -is channel "$custom_channel" -ec &&
     log "$tc_name: PASS 1 - Wifi_VIF_State was not updated - channel $custom_channel" ||
-    log "$tc_name: FAIL 1 - Wifi_VIF_State was updated without VIF_CONFIGS relation - channel $custom_channel"
+    raise "FAIL 1 - Wifi_VIF_State was updated without Wifi_Radio_Config::vif_configs relation - channel $custom_channel" -l "${tc_name}" -tc
 
-log "$tc_name: TEST 2 - Insert VIF_CONFIGS $original_vif_configs back into Wifi_Radio_Config"
+log "$tc_name: TEST 2 - Insert Wifi_Radio_Config::vif_configs $original_vif_configs back into Wifi_Radio_Config"
 update_ovsdb_entry Wifi_Radio_Config -w if_name "$if_name" -u vif_configs "$original_vif_configs" &&
-    log "$tc_name: VIF_CONFIGS inserted - vif_configs $original_vif_configs" ||
-    raise "Failed to update Wifi_Radio_Config for VIF_CONFIGS - $original_vif_configs" -l "$tc_name" -tc
+    log "$tc_name: Wifi_Radio_Config::vif_configs inserted - vif_configs $original_vif_configs" ||
+    raise "Failed to update Wifi_Radio_Config for Wifi_Radio_Config::vif_configs - $original_vif_configs" -l "$tc_name" -tc
 
-log "$tc_name: TEST 2 - Checking is CHANNEL $custom_channel updated in Wifi_VIF_State"
+log "$tc_name: TEST 2 - Checking is Wifi_VIF_State::channel $custom_channel updated in Wifi_VIF_State"
 wait_ovsdb_entry Wifi_VIF_State -w if_name "$vif_if_name" -is channel "$custom_channel" &&
     log "$tc_name: Channel updated - $custom_channel" ||
-    raise "Failed to update Wifi_VIF_State for CHANNEL $custom_channel" -l "$tc_name" -tc
+    raise "Failed to update Wifi_VIF_State for channel $custom_channel" -l "$tc_name" -tc
 
 pass

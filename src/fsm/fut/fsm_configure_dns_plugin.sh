@@ -93,6 +93,13 @@ while getopts h option; do
     esac
 done
 
+trap '
+fut_info_dump_line
+print_tables Wifi_Associated_Clients Openflow_Config
+print_tables Flow_Service_Manager_Config FSM_Policy
+fut_info_dump_line
+' EXIT SIGINT SIGTERM
+
 # INPUT ARGUMENTS:
 NARGS=5
 [ $# -lt ${NARGS} ] && raise "Requires at least '${NARGS}' input argument(s)" -arg
@@ -120,27 +127,30 @@ log "$tc_name: Configuring TAP interfaces required for FSM testing"
 add_bridge_port "${lan_bridge_if}" "${tap_tdns_if}"
 set_ovs_vsctl_interface_option "${tap_tdns_if}" "type" "internal"
 set_ovs_vsctl_interface_option "${tap_tdns_if}" "ofport_request" "${of_port}"
-create_inet_entry2 \
+
+create_inet_entry \
     -if_name "${tap_tdns_if}" \
     -if_type "tap" \
     -ip_assign_scheme "none" \
     -dhcp_sniff "false" \
     -network true \
     -enabled true &&
-    log -deb "$tc_name: Interface ${tap_tdns_if} successfully created" ||
-    raise "Failed to create interface ${tap_tdns_if}" -l "$tc_name" -ds
+        log -deb "$tc_name: Interface ${tap_tdns_if} successfully created" ||
+        raise "Failed to create interface ${tap_tdns_if}" -l "$tc_name" -ds
+
 add_bridge_port "${lan_bridge_if}" "${tap_tx_if}"
 set_ovs_vsctl_interface_option "${tap_tx_if}" "type" "internal"
 set_ovs_vsctl_interface_option "${tap_tx_if}" "ofport_request" "${in_port}"
-create_inet_entry2 \
+
+create_inet_entry \
     -if_name "${tap_tx_if}" \
     -if_type "tap" \
     -ip_assign_scheme "none" \
     -dhcp_sniff "false" \
     -network true \
     -enabled true &&
-    log -deb "$tc_name: Interface ${tap_tx_if} successfully created" ||
-    raise "Failed to create interface ${tap_tx_if}" -l "$tc_name" -ds
+        log -deb "$tc_name: Interface ${tap_tx_if} successfully created" ||
+        raise "Failed to create interface ${tap_tx_if}" -l "$tc_name" -ds
 
 log "$tc_name: Cleaning FSM OVSDB Config tables"
 empty_ovsdb_table Openflow_Config
@@ -155,8 +165,8 @@ insert_ovsdb_entry Openflow_Config \
     -i priority 200 \
     -i bridge "${lan_bridge_if}" \
     -i action "normal,output:${of_port}" &&
-    log "$tc_name: Inserting ingress rule" ||
-    raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "$tc_name: Inserting ingress rule" ||
+        raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
 
 insert_ovsdb_entry Openflow_Config \
     -i token "dev_flow_dns_res" \
@@ -165,8 +175,9 @@ insert_ovsdb_entry Openflow_Config \
     -i priority 200 \
     -i bridge "${lan_bridge_if}" \
     -i action "output:${of_port}" &&
-    log "$tc_name: Inserting ingress rule" ||
-    raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "$tc_name: Inserting ingress rule" ||
+        raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+
 insert_ovsdb_entry Openflow_Config \
     -i action "normal" \
     -i bridge "${lan_bridge_if}" \
@@ -174,15 +185,16 @@ insert_ovsdb_entry Openflow_Config \
     -i rule "in_port=${in_port}" \
     -i table 0 \
     -i token "dev_flow_dns_tx" &&
-    log "$tc_name: Inserting ingress rule" ||
-    raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "$tc_name: Inserting ingress rule" ||
+        raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+
 insert_ovsdb_entry Flow_Service_Manager_Config \
     -i handler dev_wc_null \
     -i plugin "${wc_plugin}" \
     -i type web_cat_provider \
     -i other_config '["map",[["dso_init","fsm_wc_null_plugin_init"]]]' &&
-    log "$tc_name: Inserting ingress rule" ||
-    raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "$tc_name: Inserting ingress rule" ||
+        raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
 
 ${OVSH} i Flow_Service_Manager_Config \
     if_name:="${tap_tdns_if}" \
@@ -191,8 +203,8 @@ ${OVSH} i Flow_Service_Manager_Config \
     handler:=dev_dns \
     type:=parser \
     plugin:="${fsm_plugin}" &&
-    log "$tc_name: Flow_Service_Manager_Config entry added" ||
-    raise "Failed to insert Flow_Service_Manager_Config entry" -l "$tc_name" -oe
+        log "$tc_name: Flow_Service_Manager_Config entry added" ||
+        raise "Failed to insert Flow_Service_Manager_Config entry" -l "$tc_name" -oe
 
 insert_ovsdb_entry FSM_Policy \
     -i policy dev_dns_policy \
@@ -203,5 +215,5 @@ insert_ovsdb_entry FSM_Policy \
     -i redirect "A-${fsm_url_redirect}" \
     -i fqdns "${fsm_url_block}" \
     -i fqdn_op sfr_in &&
-    log "$tc_name: Inserting ingress rule" ||
-    raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "$tc_name: Inserting ingress rule" ||
+        raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe

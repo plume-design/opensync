@@ -73,12 +73,19 @@ done
 check_kconfig_option "CONFIG_MANAGER_BLEM" "y" ||
     raise "CONFIG_MANAGER_BLEM != y - BLE not present on device" -l "${tc_name}" -s
 
+check_kconfig_option "TARGET_CAP_EXTENDER" "y" ||
+    raise "TARGET_CAP_EXTENDER != y - Testcase applicable only for EXTENDER-s" -l "${tc_name}" -s
+
 NARGS=1
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 
 trap '
+fut_info_dump_line
+print_tables AW_Bluetooth_Config
+fut_info_dump_line
 check_restore_management_access || true
-run_setup_if_crashed cm || true' EXIT SIGINT SIGTERM
+run_setup_if_crashed cm || true
+' EXIT SIGINT SIGTERM
 
 test_step=${1}
 

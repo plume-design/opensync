@@ -46,6 +46,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     _a > _b ? _a : _b; })
 #endif
 
+int bin2hex(const unsigned char *in, size_t in_size, char *out, size_t out_size);
 bool ascii2hex(const char *input, char *output, size_t size);
 int csnprintf(char **str, size_t *size, const char *fmt, ...);
 #define append_snprintf csnprintf
@@ -143,5 +144,6 @@ int    file_put(const char *path, const char *buf);
 char  *file_get(const char *path);
 #define file_geta(path) strdupafree(file_get(path))
 const int *unii_5g_chan2list(int chan, int width);
+const int *unii_6g_chan2list(int chan, int width);
 
 #endif /* UTIL_H_INCLUDED */

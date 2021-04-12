@@ -163,6 +163,8 @@ bool qm_mqtt_config_valid(void)
 
 void qm_mqtt_stop(void)
 {
+    mqtt_telog_fini();
+    
     ev_timer_stop(EV_DEFAULT, &qm_mqtt_timer);
     qm_agg_stats_interval = STATS_MQTT_INTERVAL;
 
@@ -569,6 +571,7 @@ bool qm_mqtt_init(void)
     // log publish timer
     qm_mqtt_set_log_interval(qm_log_interval);
 
+    mqtt_telog_init(EV_DEFAULT);
     return true;
 
 error:

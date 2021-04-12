@@ -1,0 +1,67 @@
+#!/bin/sh -axe
+
+#
+# This is an example testbed that I set up for my SP 11ac +
+# laptop with ath9k driver instance trapped in a netns.
+#
+# This was intended to be used for DPP testing (hence
+# ath9k).
+#
+# Make sure to use most recent hostap code and have the
+# following patches included (they are pending in review at
+# the time of writing this comment):
+#
+#   https://patchwork.ozlabs.org/project/hostap/patch/20201215093455.51933-1-kazikcz@gmail.com/
+#   https://patchwork.ozlabs.org/project/hostap/patch/20201215093455.51933-2-kazikcz@gmail.com/
+#
+# When building hostap/supp make sure to use the
+# tests/hwsim/ example configs. You may want to remove some
+# options: TRACE, SQLITE, DBUS since they're not required
+# and can sometime pose a problem with dependencies and
+# transferring between systems.
+#
+
+dut="ssh pl-dev-sp-tj1 -- sh -axe"
+dut_phy=wifi0
+dut_vif=ath0
+dut_vif2=ath1
+dut_prepare="
+	pgrep wpd || /usr/opensync/bin/wpd -d
+	/usr/opensync/bin/wpd -a
+	/etc/init.d/manager stop
+	/etc/init.d/health* stop
+	/etc/init.d/openvswitch restart # to get db.bck unpacked
+	/etc/init.d/openvswitch stop    # but ovsdb is started manually below
+	wifi unload
+	wifi load
+	/etc/init.d/qca-hosta* boot
+	/etc/init.d/qca-wpa* boot
+	ln -sf /usr/opensync/tools/ovsh /bin/
+	iwpriv wifi0 set_fw_recovery 0
+	iwpriv wifi1 set_fw_recovery 0
+	iwpriv wifi2 set_fw_recovery 0
+	ovsdb-server \
+		--remote=punix:/var/run/db.sock \
+		--run \
+		\"
+			ovsh d Wifi_Radio_Config
+			ovsh d Wifi_VIF_Config
+			/usr/opensync/bin/wm
+		\" /tmp/etc/openvswitch/conf.db \
+		&
+	sleep 1
+"
+
+ref="ssh root@test2 -- ip netns exec client1 sh -axe"
+ref_phy=$(echo "ls /sys/class/ieee80211/ | sort -n | sed 1q" | $ref)
+ref_vif=$(echo "ls /sys/class/ieee80211/$ref_phy/device/net/ | sort -n | sed 1q" | $ref)
+ref_mac=$(echo "cat /sys/class/net/$ref_vif/address" | $ref)
+ref_prepare="
+	killall -9 wpa_supplicant || true
+	killall -9 hostapd || true
+	timeout 10 sh -c 'while pgrep wpa_supplicant; do sleep 1; done'
+	timeout 10 sh -c 'while pgrep hostapd; do sleep 1; done'
+	ls /sys/class/ieee80211/$ref_phy/device/net/ | xargs -n1 sh -c 'ip link set \$0 down'
+"
+
+exec "$@"

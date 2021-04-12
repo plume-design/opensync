@@ -824,6 +824,9 @@ wpas_bss_get_network(struct schema_Wifi_VIF_State *vstate,
     char *network = strdupa(conf);
     int n = atoi(id) + 1;
 
+    vstate->ssid_present = true;
+    vstate->parent_present = true;
+
     if (strcmp(state, "COMPLETED"))
         return;
 
