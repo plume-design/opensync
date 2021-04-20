@@ -36,3 +36,4 @@ UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/network_metadata
 UNIT_DEPS += src/lib/unity
 UNIT_DEPS += src/lib/target
+UNIT_DEPS += src/lib/dns_parse

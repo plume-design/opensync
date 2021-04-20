@@ -236,6 +236,7 @@ struct fqdn_pending_req
     char *provider;
     int req_type;
     bool from_cache;
+    bool cat_unknown_to_service;
     struct net_md_stats_accumulator *acc;
     bool (*categories_check)(struct fsm_session *session,
                              struct fsm_policy_req *req,

@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_types.h"
 #include "dns_cache.h"
 
+
 static struct dns_cache_mgr
 mgr =
 {
@@ -106,9 +107,10 @@ print_dns_cache_entry(struct ip2action *i2a)
 
     pmac = (i2a->device_mac != NULL) ? i2a->device_mac : &nullmac;
     LOGD("ip %s, mac "PRI_os_macaddr_lower_t
-         " action: %d ttl: %d policy_idx: %d service_id: %d",
-         ipstr, FMT_os_macaddr_pt(pmac),
-         i2a->action, i2a->cache_ttl, i2a->policy_idx, i2a->service_id);
+         " action: %d ttl: %d policy_idx: %d service_id: %d redirect flag: %d"
+         " unknown_cat: %d", ipstr, FMT_os_macaddr_pt(pmac),
+         i2a->action, i2a->cache_ttl, i2a->policy_idx,
+         i2a->service_id, i2a->redirect_flag, i2a->cat_unknown_to_service);
 
     if (i2a->service_id == IP2ACTION_WP_SVC)
     {
@@ -240,6 +242,7 @@ void
 dns_cache_cleanup_mgr(void)
 {
     struct dns_cache_mgr *mgr = dns_cache_get_mgr();
+    uint8_t service_id;
 
     if (!mgr->initialized) return;
     mgr->refcount--;
@@ -247,6 +250,10 @@ dns_cache_cleanup_mgr(void)
     if (mgr->refcount == 0)
     {
         dns_cache_cleanup();
+        for (service_id = 0; service_id < SERVICE_PROVIDER_MAX_ELEMS; service_id++)
+        {
+            mgr->cache_hit_count[service_id] = 0;
+        }
         mgr->initialized = false;
     }
 }
@@ -284,6 +291,7 @@ dns_cache_update_ip2action(struct ip2action *i2a, struct ip2action_req *to_upd)
     if (!i2a || !to_upd) return false;
 
     i2a->action = to_upd->action;
+    i2a->redirect_flag = to_upd->redirect_flag;
     i2a->cache_ttl = to_upd->cache_ttl;
     i2a->cache_ts  = time(NULL);
     return true;
@@ -381,6 +389,7 @@ dns_cache_set_gk_cache_entry(struct ip2action_gk_info *i2a_cache_gk,
     return true;
 }
 
+
 /**
  * @brief Lookup cached action for given ip address and mac.
  * Caller is responsible for freeing the memory as it uses strdup().
@@ -394,11 +403,13 @@ dns_cache_set_gk_cache_entry(struct ip2action_gk_info *i2a_cache_gk,
 bool
 dns_cache_ip2action_lookup(struct ip2action_req *req)
 {
+   struct dns_cache_mgr *mgr;
    struct ip2action *i2a;
    size_t index;
 
    if (!req) return false;
 
+   mgr = dns_cache_get_mgr();
    i2a = dns_cache_lookup_ip2action(req);
    if (i2a == NULL)
    {
@@ -410,6 +421,10 @@ dns_cache_ip2action_lookup(struct ip2action_req *req)
    req->policy_idx = i2a->policy_idx;
    req->service_id = i2a->service_id;
    req->nelems = i2a->nelems;
+   req->cat_unknown_to_service = i2a->cat_unknown_to_service;
+
+   if (!req->cat_unknown_to_service) mgr->cache_hit_count[req->service_id]++;
+   req->redirect_flag = i2a->redirect_flag;
 
    for (index = 0; index < i2a->nelems; ++index)
    {
@@ -465,7 +480,9 @@ dns_cache_alloc_ip2action(struct ip2action_req  *to_add)
     i2a->cache_ts  = time(NULL);
     i2a->policy_idx = to_add->policy_idx;
     i2a->service_id = to_add->service_id;
+    i2a->redirect_flag = to_add->redirect_flag;
     i2a->nelems = to_add->nelems;
+    i2a->cat_unknown_to_service = to_add->cat_unknown_to_service;
 
     for (index = 0; index < to_add->nelems; ++index)
     {
@@ -661,6 +678,13 @@ dns_cache_get_size(void)
     return no_of_elements;
 }
 
+/**
+ * @brief print cache size.
+ *
+ * @param None
+ *
+ * @return None
+ */
 void
 print_dns_cache_size(void)
 {
@@ -687,3 +711,61 @@ dns_cache_get_refcount(void)
     return mgr->refcount;
 }
 
+/**
+ * @brief returns cache hit count.
+ *
+ * @param None
+ *
+ * @return cache hit count
+ */
+uint32_t
+dns_cache_get_hit_count(uint8_t service_id)
+{
+    struct dns_cache_mgr *mgr;
+
+    mgr = dns_cache_get_mgr();
+    if (!mgr->initialized) return 0;
+    return mgr->cache_hit_count[service_id];
+}
+
+/**
+ * @brief print cache hit count.
+ *
+ * @param service_id
+ *
+ * @return None
+ */
+void
+print_dns_cache_hit_count(void)
+{
+    uint32_t hit_count;
+    uint8_t service_id;
+
+    for (service_id = 0; service_id < SERVICE_PROVIDER_MAX_ELEMS; service_id++)
+    {
+        hit_count = dns_cache_get_hit_count(service_id);
+        LOGT("%s: service_id: %u cache hit count: %u", __func__,
+             service_id, hit_count);
+    }
+    return;
+}
+
+/**
+ * @brief print dns_cache details.
+ *
+ * @param service_id
+ *
+ * @return None
+ */
+void
+print_dns_cache_details(void)
+{
+    struct dns_cache_mgr *mgr;
+
+    mgr = dns_cache_get_mgr();
+    if (!mgr->initialized) return;
+
+    print_dns_cache_size();
+    print_dns_cache_hit_count();
+    print_dns_cache();
+}

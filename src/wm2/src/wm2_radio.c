@@ -559,7 +559,8 @@ wm2_vconf_changed(const struct schema_Wifi_VIF_Config *conf,
     CMP(CHANGED_STR, ssid);
     CMP(CHANGED_STR, ssid_broadcast);
     CMP(CHANGED_STR, min_hw_mode);
-    CMP(CHANGED_SET_CASE, mac_list);
+    if (conf->mac_list_type_exists)
+        CMP(CHANGED_SET_CASE, mac_list);
     CMP(CHANGED_MAP_STRSTR, security);
     CMP(CHANGED_INT, wps);
     CMP(CHANGED_INT, wps_pbc);
@@ -1354,9 +1355,9 @@ wm2_vstate_wpa_psks_keys_fixup(const struct schema_Wifi_VIF_Config *vconf,
 {
     if (vconf->wpa_exists == false || vconf->wpa == false) return;
     if (strcmp(vconf->mode, "sta") != 0) return;
-    if (WARN_ON(vconf->wpa_psks_len != 1)) return;
-    if (WARN_ON(vstate->wpa_psks_len != 1)) return;
-    if (WARN_ON(strcmp(vconf->wpa_psks[0], vstate->wpa_psks[0]) != 0)) return;
+    if (vconf->wpa_psks_len != 1) return;
+    if (vstate->wpa_psks_len != 1) return;
+    if (strcmp(vconf->wpa_psks[0], vstate->wpa_psks[0]) != 0) return;
 
     STRSCPY(vstate->wpa_psks_keys[0], vconf->wpa_psks_keys[0]);
 }
@@ -1411,6 +1412,13 @@ wm2_op_vstate(const struct schema_Wifi_VIF_State *vstate, const char *phy)
         state.vif_config_exists = true;
         state.vif_config_present = true;
         memcpy(&state.vif_config, &vconf._uuid, sizeof(vconf._uuid));
+        /* This isn't functionally necessary but it does
+         * limit the amount of data being sent to the
+         * controller. This is tied to the condition on
+         * comparing mac_list in wm2_vconf_changed().
+         */
+        if (!vconf.mac_list_type_exists)
+            state.mac_list_len = 0;
     } else if (strcmp(state.mode, "ap_vlan")) {
         /* this will remove all non-wds related interfaces
          * from vif state if there's no corresponding vif

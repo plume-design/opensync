@@ -31,6 +31,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "util.h"
 #include "execsh.h"
+#include "memutil.h"
+#include "os_time.h"
 
 #include "lnx_ip6.h"
 
@@ -39,6 +41,31 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * require more space
  */
 #define LNX_IP6_REALLOC_GROW    16
+
+/*
+ * This value specifies the minimum time interval between calls to
+ * `ip -6 neigh show` and `ip -6 addr show`
+ */
+#define LNX_IP6_POLL_TIME 0.5
+
+/*
+ * structure used to cache IPv6 neighbors (ip -6 neigh show)
+ */
+struct lnx_ip6_neigh
+{
+    char                    ifname[C_IFNAME_LEN];       /* Interface name */
+    osn_mac_addr_t          macaddr;                    /* MAC address */
+    osn_ip6_addr_t          ip6addr;                    /* IPv6 address */
+};
+
+/*
+ * Structure used to cache IPv6 addresses (ip -6 addr show)
+ */
+struct lnx_ip6_addr
+{
+    char                    ifname[C_IFNAME_LEN];       /* Interface name */
+    osn_ip6_addr_t          ip6addr;                    /* IPv6 address */
+};
 
 struct lnx_ip6_addr_node
 {
@@ -54,6 +81,13 @@ static void lnx_ip6_status_ipaddr_update(lnx_ip6_t *self);
 static bool lnx_ip6_neigh_parse(void *_self, int type, const char *line);
 static void lnx_ip6_status_neigh_update(lnx_ip6_t *self);
 static lnx_netlink_fn_t lnx_ip6_nl_fn;
+
+static struct lnx_ip6_neigh *lnx_ip6_neigh_table = NULL;
+static struct lnx_ip6_neigh *lnx_ip6_neigh_table_e = NULL;
+
+static struct lnx_ip6_addr *lnx_ip6_addr_table = NULL;
+static struct lnx_ip6_addr *lnx_ip6_addr_table_e = NULL;
+
 
 /*
  * Initialize new Linux IPv6 object
@@ -305,11 +339,12 @@ bool lnx_ip6_dns_del(lnx_ip6_t *ip6, const osn_ip6_addr_t *addr)
  */
 bool lnx_ip6_ipaddr_parse(void *_self, int type, const char *line)
 {
-    char *svalid_lft;
-    char *spref_lft;
+    struct lnx_ip6_addr *paddr;
+    osn_ip6_addr_t ip6addr;
+    char *stok;
+    char *ifname;
     char buf[256];
     char *pbuf;
-    char *sip6;
     int lft;
 
     lnx_ip6_t *self = _self;
@@ -334,121 +369,146 @@ bool lnx_ip6_ipaddr_parse(void *_self, int type, const char *line)
     /* Skip interface index */
     strtok_r(buf, " ", &pbuf);
 
-    /* Skip interface name */
-    strtok_r(NULL, " ", &pbuf);
+    ifname = strtok_r(NULL, " ", &pbuf);
 
     /* Skip "inet6" */
-    strtok_r(NULL, " ", &pbuf);
+    stok = strtok_r(NULL, " ", &pbuf);
+    if (strcmp(stok, "inet6") != 0)
+    {
+        LOG(WARN, "ip6: Expected \"inet6\" token not found on line: %s", line);
+        return true;
+    }
 
     /* IPv6 address, includes the prefix */
-    sip6 = strtok_r(NULL, " ", &pbuf);
+    stok = strtok_r(NULL, " ", &pbuf);
+    if (stok == NULL || !osn_ip6_addr_from_str(&ip6addr, stok))
+    {
+        LOG(WARN, "ip6: Unable to parse ipv6 address on line: %s", line);
+        return true;
+    }
 
     /*
      * It seems that there's a variable amount of keywords after the IPv6 address
      * Skip all keywords until we encounter the "valid_lft" string
      */
-    while ((svalid_lft = strtok_r(NULL, " ", &pbuf)) != NULL)
+    while ((stok = strtok_r(NULL, " ", &pbuf)) != NULL)
     {
-        if (strcmp(svalid_lft, "valid_lft") == 0) break;
+        if (strcmp(stok, "valid_lft") == 0) break;
     }
 
-    /* Parse the vlaid_lft value */
-    svalid_lft = strtok_r(NULL, " ", &pbuf);
-
-    /* Skip "preferred_lft" */
-    strtok_r(NULL, " ", &pbuf);
-
-    /* Skip "preferred_lft" */
-    spref_lft = strtok_r(NULL, " ", &pbuf);
-
-    struct osn_ip6_status *is = &self->ip6_status;
-
-    /*
-     * Resize array in OSN_IP6_REALLOC_GROW increments
-     */
-    if ((is->is6_addr_len % LNX_IP6_REALLOC_GROW) == 0)
+    /* Parse the valid_lft value */
+    stok = strtok_r(NULL, " ", &pbuf);
+    if (stok == NULL)
     {
-        is->is6_addr = realloc(
-                is->is6_addr,
-                (is->is6_addr_len + LNX_IP6_REALLOC_GROW) * sizeof(is->is6_addr[0]));
+        LOG(WARN, "ip6: Unable to find valid_lft value on line: %s", line);
+        return true;
+    }
+    else if (strcmp(stok, "infinite") == 0)
+    {
+        ip6addr.ia6_valid_lft = -1;
+    }
+    else
+    {
+        lft = atol(stok);
+        if (lft == 0) lft = INT_MIN;
+        ip6addr.ia6_valid_lft = lft;
     }
 
-    if (!osn_ip6_addr_from_str(&is->is6_addr[is->is6_addr_len], sip6))
+    stok = strtok_r(NULL, " ", &pbuf);
+    if (stok == NULL || strcmp(stok, "preferred_lft") != 0)
     {
-        LOG(WARN, "ip6: %s: Error parsing IPv6 addresses -- invalid IPv6 address \"%s\" on line: %s",
-                self->ip6_ifname,
-                sip6,
-                line);
+        LOG(WARN, "ip6: Expected \"preferred_lft\" token not found: %s", line);
         return true;
     }
 
-    if (strcmp(svalid_lft, "infinite") == 0)
+    /* Skip "preferred_lft" */
+    stok = strtok_r(NULL, " ", &pbuf);
+    if (stok == NULL)
     {
-        is->is6_addr[is->is6_addr_len].ia6_valid_lft = -1;
+        LOG(WARN, "ip6: Unable to find preferred_lft value on line: %s", line);
+    }
+    else if (strcmp(stok, "infinite") == 0)
+    {
+        ip6addr.ia6_pref_lft = -1;
     }
     else
     {
-        lft = atol(svalid_lft);
+        lft = atol(stok);
         if (lft == 0) lft = INT_MIN;
-        is->is6_addr[is->is6_addr_len].ia6_valid_lft = lft;
+        ip6addr.ia6_pref_lft = lft;
     }
 
-    if (strcmp(spref_lft, "infinite") == 0)
-    {
-        is->is6_addr[is->is6_addr_len].ia6_pref_lft = -1;
-    }
-    else
-    {
-        lft = atol(spref_lft);
-        if (lft == 0) lft = INT_MIN;
-        is->is6_addr[is->is6_addr_len].ia6_pref_lft = lft;
-    }
-
-    LOG(DEBUG, "ip6: %s: IPv6 address = "PRI_osn_ip6_addr,
-            self->ip6_ifname,
-            FMT_osn_ip6_addr(is->is6_addr[is->is6_addr_len]));
-
-    is->is6_addr_len++;
+    paddr = MEM_APPEND(&lnx_ip6_addr_table, &lnx_ip6_addr_table_e, sizeof(struct lnx_ip6_addr));
+    STRSCPY(paddr->ifname, ifname);
+    paddr->ip6addr = ip6addr;
 
     return true;
 }
 
-void lnx_ip6_status_ipaddr_update(lnx_ip6_t *self)
+void lnx_ip6_addr_table_update(void)
 {
+    static double last_update = 0.0;
     int rc;
 
-    if (self->ip6_status.is6_addr != NULL)
+    if ((clock_mono_double() - last_update) < LNX_IP6_POLL_TIME)
     {
-        free(self->ip6_status.is6_addr);
+        return;
     }
-    self->ip6_status.is6_addr_len = 0;
-    self->ip6_status.is6_addr = NULL;
 
-    rc = execsh_fn(lnx_ip6_ipaddr_parse, self, _S(ip -6 -o addr show dev "$1"), self->ip6_ifname);
+    FREE(lnx_ip6_addr_table);
+    lnx_ip6_addr_table = NULL;
+    lnx_ip6_addr_table_e = NULL;
+
+    rc = execsh_fn(lnx_ip6_ipaddr_parse, NULL, _S(ip -6 -o addr show));
     if (rc != 0)
     {
-        LOG(DEBUG, "ip6: %s: Unable to acquire IPv6 address list. Exit code: %d",
-                self->ip6_ifname,
-                rc);
+        LOG(DEBUG, "ip6: \"ip -6 addr show\" returned error %d. IPv6 address list may be incomplete.", rc);
     }
+
+    last_update = clock_mono_double();
+}
+
+
+void lnx_ip6_status_ipaddr_update(lnx_ip6_t *self)
+{
+    struct lnx_ip6_addr *pa;
+    osn_ip6_addr_t *ip6_addr;
+
+    osn_ip6_addr_t *is6_addr_end = NULL;
+
+    FREE(self->ip6_status.is6_addr);
+    self->ip6_status.is6_addr = NULL;
+
+    lnx_ip6_addr_table_update();
+    for (pa = lnx_ip6_addr_table; pa < lnx_ip6_addr_table_e; pa++)
+    {
+        if (strcmp(self->ip6_ifname, pa->ifname) != 0) continue;
+
+        ip6_addr = MEM_APPEND(&self->ip6_status.is6_addr, &is6_addr_end, sizeof(*ip6_addr));
+        *ip6_addr = pa->ip6addr;
+    }
+
+    self->ip6_status.is6_addr_len = is6_addr_end - self->ip6_status.is6_addr;
 
     LOG(INFO, "ip6: %s: Found %zu IPv6 address(es).", self->ip6_ifname, self->ip6_status.is6_addr_len);
 }
+
 /**
  * Parse a single line of a "ip -6 neigh show" output.
  */
-bool lnx_ip6_neigh_parse(void *_self, int type, const char *line)
+bool lnx_ip6_neigh_parse(void *ctx, int type, const char *line)
 {
+    (void)ctx;
+
+    struct lnx_ip6_neigh *neigh;
+    osn_ip6_addr_t ip6addr;
+    osn_mac_addr_t mac;
     char buf[256];
+    char *sifname;
     char *pbuf;
-    char *saddr;
-    char *smac;
-    char *sll;
+    char *sp;
 
-    lnx_ip6_t *self = _self;
-
-    LOG(DEBUG, "ip6: %s: ip_neigh_show%s %s",
-            self->ip6_ifname,
+    LOG(DEBUG, "ip6: ip_neigh_show%s %s",
             type == EXECSH_PIPE_STDOUT ? ">" : "|",
             line);
 
@@ -459,91 +519,105 @@ bool lnx_ip6_neigh_parse(void *_self, int type, const char *line)
     /*
      * Example output:
      *
-     * fe80::ae1f:6bff:feb0:55ef lladdr ac:1f:6b:b0:55:ef router STALE
+     * fe80::ae1f:6bff:feb0:55ef dev eth0 lladdr ac:1f:6b:b0:55:ef router STALE
      */
-    saddr = strtok_r(buf, " ", &pbuf);
+    sp = strtok_r(buf, " ", &pbuf);
+    if (sp == NULL)
+    {
+        return true;
+    }
+    else if (!osn_ip6_addr_from_str(&ip6addr, sp))
+    {
+        LOG(WARN, "ip6: Error parsing ip6 neigh table, invalid ipv6 address %s: %s", sp, line);
+        return true;
+    }
+
+    sp = strtok_r(NULL, " ", &pbuf);
+    if (strcmp(sp, "dev") != 0)
+    {
+        /* Skip this entry */
+        LOG(WARN, "ip6: Error parsing ip6 neigh table, expecting \"dev\" keyword, but got %s: %s", sp, line);
+        return true;
+    }
+
+    sifname = strtok_r(NULL, " ", &pbuf);
 
     /*
      * The next string may contain "lladdr" or "FAILED" -- skip this whole line
      * if the next entry is not "lladdr"
      */
-    sll = strtok_r(NULL, " ", &pbuf);
-    if (strcmp(sll, "lladdr") != 0)
+    sp = strtok_r(NULL, " ", &pbuf);
+    if (strcmp(sp, "lladdr") != 0)
     {
-        /* Skip this entry */
+        /* lladdr is missing -- may be an invalid or stale entry, skip it */
         return true;
     }
 
     /* Parse the MAC */
-    smac = strtok_r(NULL, " ", &pbuf);
-
-    if (smac == NULL || saddr == NULL)
+    sp = strtok_r(NULL, " ", &pbuf);
+    if (strcmp(sp, "FAILED") == 0)
     {
-        LOG(WARN, "ip6: %s: Error parsing IPv6 neighbor output: %s",
-                self->ip6_ifname,
-                line);
+        /* ip -6 neigh flush may trigger this condition, skip this entry */
+        return true;
+    }
+    else if (!osn_mac_addr_from_str(&mac, sp))
+    {
+        LOG(WARN, "ip6: Error parsing ip6 neigh table, invalid MAC address: %s: %s", sp, line);
         return true;
     }
 
-    if (strcmp(smac, "FAILED") == 0)
-    {
-        /* ip -6 neigh flush may trigger this condition */
-        return true;
-    }
-
-    struct osn_ip6_status *is = &self->ip6_status;
-
-    /*
-     * Resize array in OSN_IP6_REALLOC_GROW increments
-     */
-    if ((is->is6_neigh_len % LNX_IP6_REALLOC_GROW) == 0)
-    {
-        is->is6_neigh = realloc(
-                is->is6_neigh,
-                (is->is6_neigh_len + LNX_IP6_REALLOC_GROW) * sizeof(is->is6_neigh[0]));
-    }
-
-    if (!osn_ip6_addr_from_str(&is->is6_neigh[is->is6_neigh_len].i6n_ipaddr, saddr))
-    {
-        LOG(WARN, "ip6: %s: Error parsing IPv6 neighbor report -- invalid IPv6 address \"%s\" on line: %s",
-                self->ip6_ifname,
-                saddr,
-                line);
-        return true;
-    }
-
-    if (!osn_mac_addr_from_str(&is->is6_neigh[is->is6_neigh_len].i6n_hwaddr, smac))
-    {
-        LOG(WARN, "ip6: %s: Error parsing IPv6 neighbor report -- invalid MAC \"%s\" on line: %s",
-                self->ip6_ifname,
-                smac,
-                line);
-        return true;
-    }
-
-    is->is6_neigh_len++;
+    neigh = MEM_APPEND(&lnx_ip6_neigh_table, &lnx_ip6_neigh_table_e, sizeof(struct lnx_ip6_neigh));
+    STRSCPY(neigh->ifname, sifname);
+    neigh->macaddr = mac;
+    neigh->ip6addr = ip6addr;
 
     return true;
 }
 
-void lnx_ip6_status_neigh_update(lnx_ip6_t *self)
+void lnx_ip6_neigh_table_update(void)
 {
+    static double last_update = 0.0;
     int rc;
 
-    if (self->ip6_status.is6_neigh != NULL)
+    if ((clock_mono_double() - last_update) < LNX_IP6_POLL_TIME)
     {
-        free(self->ip6_status.is6_neigh);
+        return;
     }
-    self->ip6_status.is6_neigh_len = 0;
-    self->ip6_status.is6_neigh = NULL;
 
-    rc = execsh_fn(lnx_ip6_neigh_parse, self, _S(ip -6 neigh show dev "$1"), self->ip6_ifname);
+    FREE(lnx_ip6_neigh_table);
+    lnx_ip6_neigh_table = NULL;
+    lnx_ip6_neigh_table_e = NULL;
+
+    rc = execsh_fn(lnx_ip6_neigh_parse, NULL, _S(ip -6 neigh show));
     if (rc != 0)
     {
-        LOG(DEBUG, "ip6: %s: \"ip -6 neigh show\" returned error %d. Neighbor report may be incomplete.",
-                self->ip6_ifname,
-                rc);
+        LOG(DEBUG, "ip6: \"ip -6 neigh show\" returned error %d. Neighbor report may be incomplete.", rc);
     }
+
+    last_update = clock_mono_double();
+}
+
+void lnx_ip6_status_neigh_update(lnx_ip6_t *self)
+{
+    struct lnx_ip6_neigh *np;
+    struct osn_ip6_neigh *ip6_neigh;
+
+    struct osn_ip6_neigh *is6_neigh_end = NULL;
+
+    FREE(self->ip6_status.is6_neigh);
+    self->ip6_status.is6_neigh = NULL;
+
+    lnx_ip6_neigh_table_update();
+    for (np = lnx_ip6_neigh_table; np < lnx_ip6_neigh_table_e; np++)
+    {
+        if (strcmp(self->ip6_ifname, np->ifname) != 0) continue;
+
+        ip6_neigh = MEM_APPEND(&self->ip6_status.is6_neigh, &is6_neigh_end, sizeof(*ip6_neigh));
+        ip6_neigh->i6n_hwaddr = np->macaddr;
+        ip6_neigh->i6n_ipaddr = np->ip6addr;
+    }
+
+    self->ip6_status.is6_neigh_len = is6_neigh_end - self->ip6_status.is6_neigh;
 
     LOG(INFO, "ip6: %s: Found %zu neighbor(s).", self->ip6_ifname, self->ip6_status.is6_neigh_len);
 }

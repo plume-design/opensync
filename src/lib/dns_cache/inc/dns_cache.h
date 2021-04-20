@@ -41,10 +41,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 * Struct Declarations
 *******************************************************************************/
 
+#define SERVICE_PROVIDER_MAX_ELEMS 3
+
 struct dns_cache_mgr
 {
     bool        initialized;
     uint8_t     refcount;
+    uint32_t    cache_hit_count[SERVICE_PROVIDER_MAX_ELEMS];
     ds_tree_t   ip2a_tree;
 };
 
@@ -86,7 +89,9 @@ struct ip2action
     uint8_t                     policy_idx;
     int                         service_id;
     uint8_t                     nelems;
+    bool                        redirect_flag;
     uint8_t                     categories[URL_REPORT_MAX_ELEMS];
+    bool                        cat_unknown_to_service;
     union
     {
         struct ip2action_bc_info bc_info;
@@ -109,7 +114,9 @@ struct ip2action_req
    uint8_t                  policy_idx;
    int                      service_id;
    uint8_t                  nelems;
+   bool                     redirect_flag;
    uint8_t                  categories[URL_REPORT_MAX_ELEMS];
+   bool                     cat_unknown_to_service;
    union
    {
         struct ip2action_bc_info bc_info;
@@ -210,10 +217,12 @@ print_dns_cache(void);
 int
 dns_cache_get_size(void);
 
-
 /**
- * @brief print cache size..
+ * @brief print cache size.
  *
+ * @param None
+ *
+ * @return None
  */
 void
 print_dns_cache_size(void);
@@ -227,5 +236,35 @@ print_dns_cache_size(void);
  */
 uint8_t
 dns_cache_get_refcount(void);
+
+/**
+ * @brief returns cache hit count.
+ *
+ * @param service_id
+ *
+ * @return cache hit count
+ */
+uint32_t
+dns_cache_get_hit_count(uint8_t service_id);
+
+/**
+ * @brief print cache hit count.
+ *
+ * @param None
+ *
+ * @return None
+ */
+void
+print_dns_cache_hit_count(void);
+
+/**
+ * @brief print dns_cache details.
+ *
+ * @param None
+ *
+ * @return None
+ */
+void
+print_dns_cache_details(void);
 
 #endif /* DNS_CACHE_H_INCLUDED */

@@ -151,4 +151,7 @@ int
 fsm_dpi_sni_process_attr(struct fsm_session *session, char *attr, char *value,
                          struct net_md_stats_accumulator *acc);
 
+bool
+is_redirected_flow(struct net_md_flow_info *info, const char *attr);
+
 #endif /* FSM_DPI_SNI_H_INCLUDED */

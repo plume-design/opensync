@@ -850,6 +850,7 @@ bool fsm_dns_cache_lookup(struct fsm_policy_req *req)
     if (!rc) return false;
 
     req->fqdn_req->from_cache = true;
+    req->fqdn_req->cat_unknown_to_service = lkp_req.cat_unknown_to_service;
 
     reply = req->fqdn_req->req_info->reply;
     reply = calloc(1, sizeof(struct fsm_url_reply));
@@ -1086,7 +1087,7 @@ void fsm_apply_policies(struct fsm_session *session,
             req->policy_index = p->idx;
             req->action = (p->action == FSM_ACTION_NONE ? FSM_OBSERVED : p->action);
 
-            LOGN("%s(): report flag %d, rule name %s ", __func__, req->report, req->rule_name);
+            LOGT("%s(): report flag %d, rule name %s ", __func__, req->report, req->rule_name);
         }
         if (p->action != FSM_ACTION_NONE) break;
     }

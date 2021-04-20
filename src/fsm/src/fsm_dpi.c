@@ -703,23 +703,29 @@ fsm_dpi_set_acc_direction_on_port(struct fsm_dpi_dispatcher *dispatch,
     {
         acc->direction = (smac_found ? NET_MD_ACC_OUTBOUND_DIR :
                           NET_MD_ACC_INBOUND_DIR);
-        acc->originator = (smac_found ? NET_MD_ACC_ORIGINATOR_SRC :
-                           NET_MD_ACC_ORIGINATOR_DST);
     }
     else if ((sport < NON_RESERVED_PORT_START_NUM) &&
              (dport > MAX_RESERVED_PORT_NUM))
     {
         acc->direction = (dmac_found ? NET_MD_ACC_INBOUND_DIR :
                           NET_MD_ACC_OUTBOUND_DIR);
-        acc->originator = (dmac_found ? NET_MD_ACC_ORIGINATOR_DST :
-                           NET_MD_ACC_ORIGINATOR_SRC);
     }
     else
     {
         /* Ports are non reserved, set direction based on smac */
         acc->direction = (smac_found ? NET_MD_ACC_OUTBOUND_DIR :
                           NET_MD_ACC_INBOUND_DIR);
-        acc->originator = NET_MD_ACC_ORIGINATOR_SRC;
+    }
+
+    if (acc->direction == NET_MD_ACC_INBOUND_DIR)
+    {
+        acc->originator = (smac_found ? NET_MD_ACC_ORIGINATOR_DST :
+                           NET_MD_ACC_ORIGINATOR_SRC);
+    }
+    else if (acc->direction == NET_MD_ACC_OUTBOUND_DIR)
+    {
+        acc->originator = (smac_found ? NET_MD_ACC_ORIGINATOR_SRC :
+                           NET_MD_ACC_ORIGINATOR_DST);
     }
 }
 

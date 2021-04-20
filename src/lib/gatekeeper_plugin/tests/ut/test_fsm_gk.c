@@ -56,6 +56,8 @@ char *g_node_id = "bar";
 const char *test_name           = "fsm_gk_tests";
 static const char *g_server_url = "https://ovs_dev.plume.com:443/";
 static char *g_certs_file = "/tmp/cacert.pem";
+static char *g_ssl_certs_file = "/tmp/client.pem";
+static char *g_ssl_key_file = "/tmp/client_dec.key";
 static bool g_is_connected;
 
 char *
@@ -133,10 +135,11 @@ struct schema_FSM_Policy spolicies[] =
         .risk_level = 7,
         .ipaddr_op_exists = true,
         .ipaddr_op = "in",
-        .ipaddrs_len = 2,
+        .ipaddrs_len = 3,
         .ipaddrs =
         {
             "1.2.3.5",
+            "192.168.20.1",
             "::1",
         },
         .action_exists = true,
@@ -346,9 +349,11 @@ dummy_gatekeeper_get_verdict(struct fsm_session *session,
         offline->provider_offline = false;
     }
     ecurl_info = &fsm_gk_session->ecurl;
-    ecurl_info->cert_path = g_certs_file;
+    strncpy(ecurl_info->ca_path, g_certs_file, sizeof(ecurl_info->ca_path));
+    strncpy(ecurl_info->ssl_cert, g_ssl_certs_file, sizeof(ecurl_info->ssl_cert));
+    strncpy(ecurl_info->ssl_key, g_ssl_key_file, sizeof(ecurl_info->ssl_key));
 
-    LOGT("%s: url:%s path:%s", __func__, ecurl_info->server_url, ecurl_info->cert_path);
+    LOGT("%s: url:%s path:%s", __func__, ecurl_info->server_url, ecurl_info->ca_path);
 
     gk_verdict->gk_pb = gatekeeper_get_req(session, req);
     if (gk_verdict->gk_pb == NULL)
@@ -948,6 +953,8 @@ test_curl_ipv4_flow(void)
     free(reply->rule_name);
     free(reply->policy);
     fsm_free_url_reply(fqdn_req.req_info->reply);
+    TEST_ASSERT_NOT_EQUAL(reply->cache_ttl, (60*60*24));
+    TEST_ASSERT_FALSE(fqdn_req.cat_unknown_to_service);
 
     LOGN("Finishing test %s()", __func__);
 }
@@ -1147,10 +1154,10 @@ test_health_stats_report(void)
     TEST_ASSERT_EQUAL_INT(1, hs.service_failures);
     /* other counters remain the same */
     TEST_ASSERT_EQUAL_INT(2, hs.cached_entries);
-    TEST_ASSERT_EQUAL_INT(3, stats->cloud_lookups);
+    TEST_ASSERT_EQUAL_INT(4, stats->cloud_lookups);
     TEST_ASSERT_EQUAL_INT(2, stats->cache_hits);
-    TEST_ASSERT_EQUAL_INT(5, hs.total_lookups);
-    TEST_ASSERT_EQUAL_INT(3, hs.remote_lookups);
+    TEST_ASSERT_EQUAL_INT(6, hs.total_lookups);
+    TEST_ASSERT_EQUAL_INT(4, hs.remote_lookups);
 
     LOGN("**** Ending test %s ***** ", __func__);
 }
@@ -1218,7 +1225,7 @@ test_backoff_on_connection_failure(void)
     gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
     /* connection fail counter should be set */
     TEST_ASSERT_EQUAL_INT(1, hs.connectivity_failures);
-    TEST_ASSERT_EQUAL_INT(0, stats->cloud_lookups);
+    TEST_ASSERT_EQUAL_INT(1, stats->cloud_lookups);
 
     /* Set the correct server url, it should connect now */
     ecurl_info->server_url = session->ops.get_config(session, "gk_url");
@@ -1226,13 +1233,13 @@ test_backoff_on_connection_failure(void)
     test_curl_app();
     gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
     /* cloud lookup should still be 0, as still back-off logic is in place */
-    TEST_ASSERT_EQUAL_INT(0, stats->cloud_lookups);
+    TEST_ASSERT_EQUAL_INT(1, stats->cloud_lookups);
 
     sleep(30);
     /* backoff time 30 secs is expired now. */
     test_curl_app();
     gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
-    TEST_ASSERT_EQUAL_INT(1, stats->cloud_lookups);
+    TEST_ASSERT_EQUAL_INT(2, stats->cloud_lookups);
 
     LOGN("**** Ending test %s ***** ", __func__);
 
@@ -1513,6 +1520,155 @@ test_endpoint_url(void)
     LOGN("**** Ending test %s ***** ", __func__);
 }
 
+void
+test_private_ip(void)
+{
+    bool ret;
+
+    LOGN("**** starting test %s ***** ", __func__);
+
+    ret = is_private_ip("1.2.3.4");
+    TEST_ASSERT_FALSE(ret);
+
+    ret = is_private_ip("10.2.3.1");
+    TEST_ASSERT_TRUE(ret);
+
+    ret = is_private_ip("192.168.2.1");
+    TEST_ASSERT_TRUE(ret);
+
+    ret = is_private_ip("172.16.20.2");
+    TEST_ASSERT_TRUE(ret);
+
+    ret = is_private_ip("");
+    TEST_ASSERT_FALSE(ret);
+
+    ret = is_private_ip("www.google.com");
+    TEST_ASSERT_FALSE(ret);
+
+    /* Unique local address */
+    ret = is_private_ip("fdf8:f53b:82e4::53");
+    TEST_ASSERT_TRUE(ret);
+
+    /* Unique local address */
+    ret = is_private_ip("fd12:3456:789a:1::1");
+    TEST_ASSERT_TRUE(ret);
+
+    /* link local address */
+    ret = is_private_ip("fe80::200:5aee:feaa:20a2");
+    TEST_ASSERT_TRUE(ret);
+
+    /* link local address */
+    ret = is_private_ip("fe80::200:5aee:feaa:20a2");
+    TEST_ASSERT_TRUE(ret);
+
+    /* Non Private IPV6 address */
+    ret = is_private_ip("2001:db8:3333:4444:5555:6666:7777:8888");
+    TEST_ASSERT_FALSE(ret);
+
+    ret = is_private_ip("::1234:5678");
+    TEST_ASSERT_FALSE(ret);
+
+    LOGN("**** Ending test %s ***** ", __func__);
+}
+
+void
+test_uncategorized_reply(void)
+{
+    struct net_md_stats_accumulator acc;
+    struct fsm_session *session;
+    struct schema_FSM_Policy *spolicy;
+    struct fqdn_pending_req fqdn_req;
+    struct fsm_url_request req_info;
+    struct fsm_policy_session *mgr;
+    struct fsm_policy_reply *reply;
+    struct sockaddr_storage ss_ip;
+    struct net_md_flow_key key;
+    struct policy_table *table;
+    struct fsm_policy *fpolicy;
+    struct fsm_policy_req req;
+    char *ip_str = "192.168.20.1";
+    struct sockaddr_in *in4;
+    os_macaddr_t dev_mac;
+    struct in_addr in_ip;
+    int rc;
+
+    if (g_is_connected == false) return;
+    LOGN("Starting test %s()", __func__);
+    session = &g_sessions[0];
+
+    /* Initialize local structures */
+    memset(&fqdn_req, 0, sizeof(fqdn_req));
+    memset(&req_info, 0, sizeof(req_info));
+    memset(&req, 0, sizeof(req));
+    memset(&dev_mac, 0, sizeof(dev_mac));
+    memset(&ss_ip, 0, sizeof(ss_ip));
+    memset(&acc, 0, sizeof(acc));
+    memset(&key, 0, sizeof(key));
+
+    /* Insert IP policy */
+    spolicy = &spolicies[0];
+    fsm_add_policy(spolicy);
+    fpolicy = fsm_policy_lookup(spolicy);
+
+    mgr   = fsm_policy_get_mgr();
+    table = ds_tree_find(&mgr->policy_tables, spolicy->policy);
+    TEST_ASSERT_NOT_NULL(table);
+
+    /* Validate access to the fsm policy */
+    TEST_ASSERT_NOT_NULL(fpolicy);
+
+    rc = inet_pton(AF_INET, ip_str, &in_ip);
+    TEST_ASSERT_EQUAL_INT(1, rc);
+
+    in4 = (struct sockaddr_in *)&ss_ip;
+
+    memset(in4, 0, sizeof(struct sockaddr_in));
+    in4->sin_family = AF_INET;
+    memcpy(&in4->sin_addr, &in_ip, sizeof(in4->sin_addr));
+
+    fqdn_req.req_info = &req_info;
+    rc = getnameinfo((struct sockaddr *)&ss_ip, sizeof(ss_ip),
+                     fqdn_req.req_info->url, sizeof(fqdn_req.req_info->url),
+                     0, 0, NI_NUMERICHOST);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    rc = strcmp(ip_str, fqdn_req.req_info->url);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    req.device_id = &dev_mac;
+    req.fqdn_req  = &fqdn_req;
+
+    key.src_ip     = (uint8_t *)&in_ip.s_addr;
+    key.dst_ip     = (uint8_t *)&in_ip.s_addr;
+    key.ip_version = 4;
+    acc.key        = &key;
+    acc.direction  = NET_MD_ACC_OUTBOUND_DIR;
+    acc.originator = NET_MD_ACC_ORIGINATOR_SRC;
+    /* Build the request elements */
+    fqdn_req.numq             = 1;
+    fqdn_req.policy_table     = table;
+    fqdn_req.gatekeeper_req   = dummy_gatekeeper_get_verdict;
+
+    fqdn_req.req_type = FSM_IPV4_REQ;
+    req.fqdn_req      = &fqdn_req;
+    req.device_id     = &dev_mac;
+    req.acc           = &acc;
+    req.url           = fqdn_req.req_info->url;
+    fsm_apply_policies(session, &req);
+    reply = &req.reply;
+    /* Since it is Private IP, cache_ttl will be modified,
+     * and cat_unknown_to_service will be set to true
+     */
+    TEST_ASSERT_EQUAL_INT(reply->cache_ttl, (60*60*24));
+    TEST_ASSERT_TRUE(fqdn_req.cat_unknown_to_service);
+    free(reply->rule_name);
+    free(reply->policy);
+    fsm_free_url_reply(fqdn_req.req_info->reply);
+
+    LOGN("Finishing test %s()", __func__);
+}
+
+
 int
 main(int argc, char *argv[])
 {
@@ -1556,6 +1712,8 @@ main(int argc, char *argv[])
     RUN_TEST(test_uncategory_count);
     RUN_TEST(test_categorization_count);
     RUN_TEST(test_endpoint_url);
+    RUN_TEST(test_private_ip);
+    RUN_TEST(test_uncategorized_reply);
 
     return UNITY_END();
 }

@@ -38,6 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fsm_dpi_sni.h"
 #include "network_metadata_report.h"
 #include "policy_tags.h"
+#include "dns_cache.h"
 
 static struct fsm_dpi_sni_cache
 cache_mgr =
@@ -387,6 +388,15 @@ fsm_dpi_sni_policy_req(struct fsm_session *session,
     policy_req.fqdn_req = &fqdn_req;
 
     fsm_apply_policies(session, &policy_req);
+    /* overwrite the redirect action to block, as established
+     * flows cannot be redirected.  This is required as the
+     * GK could have updated the FQDN cache, and if the request
+     * if made for attribute tls.sni, gk returns from FQDN cache
+     */
+    if (policy_req.reply.action == FSM_REDIRECT)
+    {
+        policy_req.reply.action = FSM_BLOCK;
+    }
     fqdn_req.action = policy_req.reply.action;
     fqdn_req.policy = policy_req.reply.policy;
     fqdn_req.policy_idx = policy_req.reply.policy_idx;
@@ -452,6 +462,58 @@ fsm_dpi_sni_find_mac_in_val(os_macaddr_t *mac, char *val)
     return (ret == 0);
 }
 
+static void
+dpi_parse_populate_sockaddr(int af, void *ip_addr, struct sockaddr_storage *dst)
+{
+    if (!ip_addr) return;
+
+    if (af == AF_INET)
+    {
+        struct sockaddr_in *in4 = (struct sockaddr_in *)dst;
+
+        memset(in4, 0, sizeof(struct sockaddr_in));
+        in4->sin_family = af;
+        memcpy(&in4->sin_addr, ip_addr, sizeof(in4->sin_addr));
+    } else if (af == AF_INET6) {
+        struct sockaddr_in6 *in6 = (struct sockaddr_in6 *)dst;
+
+        memset(in6, 0, sizeof(struct sockaddr_in6));
+        in6->sin6_family = af;
+        memcpy(&in6->sin6_addr, ip_addr, sizeof(in6->sin6_addr));
+    }
+    return;
+}
+
+bool
+is_redirected_flow(struct net_md_flow_info *info, const char *attr)
+{
+    struct ip2action_req lkp_req;
+    struct sockaddr_storage ip;
+    int af;
+    int rc;
+
+    LOGT("%s(): checking attribute %s", __func__, attr);
+
+
+    /* look up the dns cache */
+    memset(&lkp_req, 0, sizeof(lkp_req));
+    lkp_req.device_mac = info->local_mac;
+    af = info->ip_version == 4 ? AF_INET : AF_INET6;
+
+    dpi_parse_populate_sockaddr(af, info->remote_ip, &ip);
+    lkp_req.ip_addr = &ip;
+
+    rc = dns_cache_ip2action_lookup(&lkp_req);
+    LOGD("%s(): cache lookup returned %d, redirect flag: %d",
+         __func__,
+         rc,
+         lkp_req.redirect_flag);
+    if (rc == false) return false;
+
+    if (lkp_req.redirect_flag == false) return false;
+
+    return true;
+}
 
 /**
  * @brief process a flow attribute
@@ -473,6 +535,7 @@ fsm_dpi_sni_process_attr(struct fsm_session *session, char *attr, char *value,
     int action;
     bool act;
     bool ret;
+    bool rc;
 
     if (acc == NULL) return FSM_DPI_IGNORED;
     if (acc->originator == NET_MD_ACC_UNKNOWN_ORIGINATOR) return FSM_DPI_IGNORED;
@@ -516,6 +579,13 @@ fsm_dpi_sni_process_attr(struct fsm_session *session, char *attr, char *value,
     }
 
     if (session->service == NULL) return FSM_DPI_PASSTHRU;
+
+    rc = is_redirected_flow(&info, attr);
+    if (rc == true)
+    {
+        LOGD("%s(): redirected flow detected", __func__);
+        return FSM_DPI_IGNORED;
+    }
 
     action = fsm_dpi_sni_policy_req(session, info.local_mac, attr, value);
 

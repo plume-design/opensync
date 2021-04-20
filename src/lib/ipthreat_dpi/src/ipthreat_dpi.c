@@ -503,6 +503,7 @@ ipthreat_dpi_policy_req(struct ipthreat_dpi_req *ip_req)
         cache_req.policy_idx = fqdn_req.policy_idx;
         cache_req.service_id = fqdn_req.req_info->reply->service_id;
         cache_req.nelems = fqdn_req.req_info->reply->nelems;
+        cache_req.cat_unknown_to_service = fqdn_req.cat_unknown_to_service;
 
         for (index = 0; index < fqdn_req.req_info->reply->nelems; ++index)
         {
