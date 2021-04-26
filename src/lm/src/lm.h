@@ -38,7 +38,7 @@ typedef enum
 
 typedef struct
 {
-    char     upload_location[128];     /* To store the archived log/system status info. */
+    char     upload_location[512];     /* To store the archived log/system status info. */
     char     upload_token[64];         /* To store the archived log/system status info. */
     uint32_t periodicity;              /* Periodicity for the periodic logging function */
 } lm_config_t;
