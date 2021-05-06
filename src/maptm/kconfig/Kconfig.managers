@@ -22,3 +22,8 @@ menuconfig MANAGER_MAPTM
         string "MAPTM Eligibility mode"
         default "dualstack"
         
+    config MAPTM_DHCP_OPT_INIT_HOOK
+        depends on MANAGER_MAPTM
+        bool "Enable additional DHCP option init in MAPTM"
+        default n
+

@@ -60,6 +60,10 @@ extern int maptm_dhcp_option_init(void);
 extern bool maptm_dhcp_option_update_15_option(bool maptSupport);
 extern bool maptm_dhcp_option_update_95_option(bool maptSupport);
 int maptm_main(int argc, char **argv);
+#if defined(CONFIG_MAPTM_DHCP_OPT_INIT_HOOK)
+extern bool maptm_dhcp_option_init_hook(void);
+#endif
+
 #define MAPTM_NO_ELIGIBLE_NO_IPV6 0x00
 #define MAPTM_NO_ELIGIBLE_IPV6 0x01
 #define MAPTM_ELIGIBLE_NO_IPV6 0x10

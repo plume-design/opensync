@@ -493,6 +493,11 @@ int maptm_dhcp_option_init(void)
 
     OVSDB_TABLE_MONITOR(DHCP_Option, false);
     OVSDB_TABLE_MONITOR(IPv6_Address, false);
+
+#if defined(CONFIG_MAPTM_DHCP_OPT_INIT_HOOK)
+    maptm_dhcp_option_init_hook(); // If needed, define using the vendor override mechanism
+#endif
+
     return 0;
 }
 
