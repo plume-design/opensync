@@ -21,4 +21,14 @@ menuconfig MANAGER_MAPTM
         depends on MANAGER_MAPTM
         string "MAPTM Eligibility mode"
         default "dualstack"
-        
+
+    config TARGET_LAN_BRIDGE_NAME
+        depends on MANAGER_MAPTM
+        string "LAN bridge name"
+        default "BR_LAN"
+
+    config TARGET_WAN_BRIDGE_NAME
+        depends on MANAGER_MAPTM
+        string "WAN bridge name"
+        default "br-wan"
+

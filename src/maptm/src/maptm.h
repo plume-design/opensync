@@ -1,4 +1,4 @@
-/*
+	/*
 * Copyright (c) 2020, Sagemcom.
 * All rights reserved.
 *
@@ -43,8 +43,8 @@
 #define MAPT_PS_STORE_NAME  MAPT_MODULE_NAME  /**< store name == module name */
 #define MAPT_PS_KEY_NAME    "enabled"
 
-#define MAPT_IFC_WAN "br-wan"
-#define MAPT_IFC_LAN "BR_LAN"
+#define MAPT_IFC_WAN CONFIG_TARGET_WAN_BRIDGE_NAME
+#define MAPT_IFC_LAN CONFIG_TARGET_LAN_BRIDGE_NAME
 
 extern int maptm_ovsdb_init(void);
 extern bool maptm_ovsdb_nfm_add_rules(void);
@@ -55,7 +55,7 @@ extern bool config_mapt(void);
 extern bool stop_mapt(void);
 extern void Parse_95_option(void);
 extern void maptm_eligibilityStop(void);
-extern void maptm_wan_mode(void);
+extern void maptm_timer_callback(void);
 extern int maptm_dhcp_option_init(void);
 extern bool maptm_dhcp_option_update_15_option(bool maptSupport);
 extern bool maptm_dhcp_option_update_95_option(bool maptSupport);
