@@ -127,6 +127,8 @@ bool maptm_persistent(void)
         {
             LOGE("Failed when setting persistent storage value");
             strucWanConfig.mapt_support = true;
+            maptm_dhcp_option_update_15_option(strucWanConfig.mapt_support);
+            maptm_dhcp_option_update_95_option(strucWanConfig.mapt_support);
             goto out;
         }
     }
@@ -137,6 +139,8 @@ bool maptm_persistent(void)
     {
         strucWanConfig.mapt_support = false;
     }
+    maptm_dhcp_option_update_15_option(strucWanConfig.mapt_support);
+    maptm_dhcp_option_update_95_option(strucWanConfig.mapt_support);
     ret = true;
 
 out:
