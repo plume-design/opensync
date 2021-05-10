@@ -29,13 +29,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <time.h>
 #include <string.h>
 #include <ev.h>
+#include <errno.h>
 
 #include "os_types.h"
 #include "os.h"
 #include "log.h"
-#include "ds.h"
-#include "ds_dlist.h"
-#include "ds_tree.h"
 #include "network_metadata_report.h"
 #include "network_metadata.h"
 #include "fcm.h"
@@ -43,11 +41,107 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "lan_stats.h"
 #include "util.h"
 #include "policy_tags.h"
+#include "memutil.h"
 
 #define ETH_DEVICES_TAG "${@eth_devices}"
 
 static char *dflt_fltr_name = "none";
 static char *collect_cmd = OVS_DPCTL_DUMP_FLOWS;
+
+/**
+ * Singleton tracking the plugin state
+ */
+static lan_stats_mgr_t g_lan_stats =
+{
+    .initialized = false,
+};
+
+/**
+ * @brief compare sessions
+ *
+ * @param a session pointer
+ * @param b session pointer
+ * @return 0 if sessions matches
+ */
+static int
+lan_stats_session_cmp(void *a, void *b)
+{
+    uintptr_t p_a = (uintptr_t)a;
+    uintptr_t p_b = (uintptr_t)b;
+
+    if (p_a ==  p_b) return 0;
+    if (p_a < p_b) return -1;
+
+    return 1;
+}
+
+lan_stats_instance_t *
+lan_stats_lookup_session(fcm_collect_plugin_t *collector)
+{
+    lan_stats_instance_t *lan_stats_instance;
+    lan_stats_mgr_t *mgr;
+    ds_tree_t *sessions;
+
+    mgr = lan_stats_get_mgr();
+    if (!mgr->initialized) return NULL;
+
+    sessions = &mgr->lan_stats_sessions;
+    lan_stats_instance = ds_tree_find(sessions, collector);
+    return lan_stats_instance;
+}
+
+/**
+ * @brief look up or allocate a session
+ *
+ * Looks up a session, and allocates it if not found.
+ * @param session the session to lookup
+ * @return the found/allocated session, or NULL if the allocation failed
+ */
+lan_stats_instance_t *
+lan_stats_get_session(fcm_collect_plugin_t *collector)
+{
+    lan_stats_instance_t *lan_stats_instance;
+    lan_stats_mgr_t *mgr;
+    ds_tree_t *sessions;
+
+    mgr = lan_stats_get_mgr();
+    sessions = &mgr->lan_stats_sessions;
+
+    lan_stats_instance = ds_tree_find(sessions, collector);
+    if (lan_stats_instance != NULL) return lan_stats_instance;
+
+    LOGD("%s: Adding a new session", __func__);
+    lan_stats_instance = CALLOC(1, sizeof(*lan_stats_instance));
+    if (lan_stats_instance == NULL) return NULL;
+
+    lan_stats_instance->initialized = false;
+
+    ds_tree_insert(sessions, lan_stats_instance, collector);
+    return lan_stats_instance;
+}
+
+/**
+ * @brief returns the pointer to the plugin's global state tracker
+ */
+lan_stats_mgr_t *
+lan_stats_get_mgr(void)
+{
+    return &g_lan_stats;
+}
+
+/**
+ * @brief returns the pointer to the active plugin
+ */
+lan_stats_instance_t *
+lan_stats_get_active_instance(void)
+{
+    lan_stats_mgr_t *mgr;
+
+    mgr = lan_stats_get_mgr();
+    if (mgr == NULL) return NULL;
+
+    return mgr->active;
+}
 
 /* Copied from openvswitchd */
 /* Returns the value of 'c' as a hexadecimal digit. */
@@ -173,58 +267,6 @@ error:
     return false;
 }
 
-/**
- * @brief compare flows.
- *
- * @param a flow pointer
- * @param b flow pointer
- * @return 0 if flows match
- */
-static int
-flow_cmp (void *a, void *b)
-{
-    dp_ctl_stats_t  *l2_a = (dp_ctl_stats_t *)a;
-    dp_ctl_stats_t  *l2_b = (dp_ctl_stats_t *)b;
-    int ufid_cmp;
-    int mac_cmp;
-    int eth_type_cmp;
-    int vlan_cmp;
-    int vlan_eth_cmp;
-
-    /* compare ufid */
-    ufid_cmp = memcmp(&l2_a->ufid.id, &l2_b->ufid.id, sizeof(os_ufid_t));
-    if (ufid_cmp != 0) return ufid_cmp;
-
-    /* compare src mac-address */
-    mac_cmp = memcmp(&l2_a->smac_key, &l2_b->smac_key, sizeof(os_macaddr_t));
-    if (mac_cmp != 0) return mac_cmp;
-
-    /* compare dst mac-address */
-    mac_cmp = memcmp(&l2_a->dmac_key, &l2_b->dmac_key, sizeof(os_macaddr_t));
-    if (mac_cmp != 0) return mac_cmp;
-
-    /* compare eth type */
-    eth_type_cmp = l2_a->eth_val - l2_b->eth_val;
-    if (eth_type_cmp != 0) return eth_type_cmp;
-
-    /* compare vlanid */
-    vlan_cmp = l2_a->vlan_id - l2_b->vlan_id;
-    if (vlan_cmp != 0) return vlan_cmp;
-
-    /* compare vlan eth type */
-    vlan_eth_cmp = l2_a->vlan_eth_val - l2_b->vlan_eth_val;
-    if (vlan_eth_cmp != 0) return vlan_eth_cmp;
-
-    return 0;
-}
-
-
-/**
- * Temporary list to merge same flows stats.
- */
-ds_tree_t flow_tracker_list = DS_TREE_INIT(flow_cmp, dp_ctl_stats_t, dp_tnode);
-
-
 static unsigned int get_eth_type(char *eth)
 {
     unsigned int eth_val = 0;
@@ -237,15 +279,17 @@ static unsigned int get_eth_type(char *eth)
  * For speedy parsing did the hand-coded parser with the assumption the
  * output format of ovs-dpctl dump-flows  is consistent
  */
-static dp_ctl_stats_t *parse_lan_stats(char *buf[])
+void parse_lan_stats(char *buf[], lan_stats_instance_t *lan_stats_instance)
 {
+    dp_ctl_stats_t *stats;
     int i = 0;
     char *pos = NULL;
     int ret = 0;
     bool rc;
-    dp_ctl_stats_t *stats;
 
-    stats = calloc(1, sizeof(*stats));
+    if (lan_stats_instance == NULL) return;
+    stats = &lan_stats_instance->stats;
+
     while (buf[i] != NULL)
     {
         ret = strncmp(buf[i], OVS_DUMP_UFID_PREFIX, OVS_DUMP_UFID_PREFIX_LEN);
@@ -323,34 +367,15 @@ static dp_ctl_stats_t *parse_lan_stats(char *buf[])
         i++;
     }
     stats->stime = time(NULL); // sample time
-    return stats;
 }
 
-static void merge_flows(dp_ctl_stats_t *new)
+void
+lan_stats_parse_flows(lan_stats_instance_t *lan_stats_instance, char *buf)
 {
-    dp_ctl_stats_t *old = NULL;
-
-    // Check if the same flow exists.
-    old = ds_tree_find(&flow_tracker_list, new);
-    if (old)
-    {
-       old->pkts += new->pkts;
-       old->bytes += new->bytes;
-       free(new);
-    }
-    else
-    {
-        ds_tree_insert(&flow_tracker_list, new, new);
-    }
-}
-
-static void parse_flows(char *buf)
-{
-    char *sep = ",";
-    char *tok = NULL;
     char *tokens[MAX_TOKENS] = {0};
+    char *tok = NULL;
+    char *sep = ",";
     int i = 0;
-    dp_ctl_stats_t *new;
 
     tok = strtok(buf, sep);
     while (tok)
@@ -361,21 +386,23 @@ static void parse_flows(char *buf)
             break;
     }
     tokens[i] = NULL;
-    new = parse_lan_stats(tokens);
-    merge_flows(new);
+    parse_lan_stats(tokens, lan_stats_instance);
 }
 
 
-static void alloc_aggr(fcm_collect_plugin_t *collector)
+static int
+lan_stats_alloc_aggr(lan_stats_instance_t *lan_stats_instance)
 {
     struct net_md_aggregator_set aggr_set;
+    fcm_collect_plugin_t *collector;
     struct net_md_aggregator *aggr;
     struct node_info node_info;
     int report_type = 0;
 
+    collector = lan_stats_instance->collector;
     memset(&aggr_set, 0, sizeof(aggr_set));
-    node_info.node_id = fcm_get_mqtt_hdr_node_id();
-    node_info.location_id = fcm_get_mqtt_hdr_loc_id();
+    node_info.node_id = collector->get_mqtt_hdr_node_id();
+    node_info.location_id = collector->get_mqtt_hdr_loc_id();
     aggr_set.info = &node_info;
     if (collector->fmt == FCM_RPT_FMT_CUMUL)
         report_type = NET_MD_REPORT_ABSOLUTE;
@@ -389,67 +416,100 @@ static void alloc_aggr(fcm_collect_plugin_t *collector)
     if (aggr == NULL)
     {
         LOGD("Aggregator allocation failed\n");
-        return;
+        return -1;
     }
-   collector->plugin_ctx = aggr;
+    lan_stats_instance->aggr = aggr;
+    collector->plugin_ctx = lan_stats_instance;
+
+   return 0;
 }
 
-static void activate_window(fcm_collect_plugin_t *collector)
+static void
+lan_stats_activate_window(fcm_collect_plugin_t *collector)
 {
-    struct net_md_aggregator *aggr = NULL;
+    lan_stats_instance_t *lan_stats_instance;
+    struct net_md_aggregator *aggr;
     bool ret = false;
-    aggr = collector->plugin_ctx;
+
+    lan_stats_instance = collector->plugin_ctx;
+    aggr = lan_stats_instance->aggr;
     if (aggr == NULL)
     {
-        LOGD("Aggergator is empty\n");
+        LOGD("%s: Aggergator is empty", __func__);
         return;
     }
+
     ret = net_md_activate_window(aggr);
-    if (ret == false)
+    if (!ret)
     {
-        LOGD("Aggregator window activation failed\n");
+        LOGD("%s: Aggregator window activation failed", __func__);
         return;
     }
 }
 
-static void close_window(fcm_collect_plugin_t *collector)
+static void
+lan_stats_close_window(fcm_collect_plugin_t *collector)
 {
-    struct net_md_aggregator *aggr = NULL;
-    bool ret = false;
-    aggr = collector->plugin_ctx;
-    if (aggr == NULL)
-    {
-        LOGD("Aggergator is empty\n");
-        return;
-    }
+    lan_stats_instance_t *lan_stats_instance;
+    struct net_md_aggregator *aggr;
+    struct flow_window **windows;
+    struct flow_window *window;
+    struct flow_report *report;
+    bool ret;
+
+    if (collector == NULL) return;
+
+    lan_stats_instance = collector->plugin_ctx;
+    if (lan_stats_instance == NULL) return;
+
+    aggr = lan_stats_instance->aggr;
+    if (aggr == NULL) return;
+
     ret = net_md_close_active_window(aggr);
-    if (ret == false)
+    if (!ret)
     {
-        LOGD("Aggregator close window failed\n");
+        LOGD("%s: Aggregator close window failed", __func__);
         return;
     }
+
+    report = aggr->report;
+    if (report == NULL) return;
+
+    windows = report->flow_windows;
+    window = *windows;
+
+    LOGI("%s: %s: total flows: %zu, held flows: %zu, reported flows: %zu, eth pairs %zu",
+         __func__, collector->name, aggr->total_flows, aggr->held_flows,
+         window->num_stats, aggr->total_eth_pairs);
 }
 
-static void send_aggr_report(fcm_collect_plugin_t *collector)
+
+static void
+lan_stats_send_aggr_report(lan_stats_instance_t *lan_stats_instance)
 {
-    struct net_md_aggregator *aggr = NULL;
+    fcm_collect_plugin_t *collector;
+    struct net_md_aggregator *aggr;
     bool ret = false;
-    aggr = collector->plugin_ctx;
+
+    collector = lan_stats_instance->collector;
+    aggr = lan_stats_instance->aggr;
     if (aggr == NULL)
     {
         LOGD("Aggergator is empty\n");
         return;
     }
+
     if (net_md_get_total_flows(aggr) <= 0)
     {
         net_md_reset_aggregator(aggr);
         return;
     }
 
-    ret = net_md_send_report(aggr, collector->mqtt_topic);
+    LOGT("%s(): sending the report", __func__);
+    ret = aggr->send_report(aggr, collector->mqtt_topic);
     if (ret == false)
     {
-        LOGD("Aggregator send report failed\n");
+        LOGD("%s: Aggregator send report failed", __func__);
         return;
     }
 
@@ -459,9 +519,10 @@ static void send_aggr_report(fcm_collect_plugin_t *collector)
     }
 }
 
-static void set_filter_info(fcm_filter_l2_info_t *l2_filter_info,
-                            fcm_filter_stats_t *l2_filter_pkts,
-                            dp_ctl_stats_t *stats)
+static void
+set_filter_info(fcm_filter_l2_info_t *l2_filter_info,
+                fcm_filter_stats_t *l2_filter_pkts,
+                dp_ctl_stats_t *stats)
 {
     STRSCPY(l2_filter_info->src_mac, stats->smac_addr);
     STRSCPY(l2_filter_info->dst_mac, stats->dmac_addr);
@@ -484,17 +545,20 @@ lan_stats_is_mac_in_tag(char *tag, os_macaddr_t *mac)
 
 }
 
-static void aggr_add_sample(fcm_collect_plugin_t *collector, dp_ctl_stats_t *stats)
+static void
+lan_stats_aggr_add_sample(fcm_collect_plugin_t *collector, dp_ctl_stats_t *stats)
 {
-    struct net_md_aggregator *aggr = NULL;
-    struct net_md_flow_key key;
+    lan_stats_instance_t *lan_stats_instance;
+    struct net_md_aggregator *aggr;
     struct flow_counters pkts_ct;
+    struct net_md_flow_key key;
     bool ret = false;
 
-    aggr = collector->plugin_ctx;
+    lan_stats_instance = collector->plugin_ctx;
+    aggr = lan_stats_instance->aggr;
     if (aggr == NULL)
     {
-        LOGE("Aggr is NULL\n");
+        LOGE("%s: Aggr is NULL", __func__);
         return;
     }
 
@@ -517,25 +581,44 @@ static void aggr_add_sample(fcm_collect_plugin_t *collector, dp_ctl_stats_t *sta
     pkts_ct.bytes_count = stats->bytes;
 
     ret = net_md_add_sample(aggr, &key, &pkts_ct);
-    if (!ret)
-        LOGD("Add sample to aggregator failed\n");
+    if (!ret) LOGD("%s: Add sample to aggregator failed", __func__);
 }
 
-static void lan_stats_send_report_cb(fcm_collect_plugin_t *collector)
+static void
+lan_stats_send_report_cb(fcm_collect_plugin_t *collector)
 {
-    //struct packed_buffer *mqtt_report = NULL;
+    lan_stats_instance_t *lan_stats_instance;
 
-    //collector->plugin_fcm_ctx = mqtt_report;
-   close_window(collector);
-   send_aggr_report(collector);
-   activate_window(collector);
+    if (collector == NULL) return;
+
+    if (collector->mqtt_topic == NULL) return;
+
+    lan_stats_instance = lan_stats_get_active_instance();
+    if (lan_stats_instance != collector->plugin_ctx)
+    {
+      LOGT("%s(): Not an active instance, not sending report", __func__);
+      return;
+    }
+
+    lan_stats_close_window(collector);
+    lan_stats_send_aggr_report(lan_stats_instance);
+    lan_stats_activate_window(collector);
 }
 
 
-static void lan_stats_collect_flows(fcm_collect_plugin_t *collector)
+static void
+lan_stats_collect_flows(lan_stats_instance_t *lan_stats_instance)
 {
-    FILE *fp = NULL;
     char line_buf[LINE_BUFF_LEN] = {0,};
+    fcm_collect_plugin_t *collector;
+    dp_ctl_stats_t *stats;
+    FILE *fp = NULL;
+
+    if (lan_stats_instance == NULL) return;
+    stats = &lan_stats_instance->stats;
+
+    collector = lan_stats_instance->collector;
+    if (collector == NULL) return;
 
     collect_cmd  = collector->fcm_plugin_ctx;
     if (collect_cmd == NULL)
@@ -549,117 +632,235 @@ static void lan_stats_collect_flows(fcm_collect_plugin_t *collector)
 
     while (fgets(line_buf, LINE_BUFF_LEN, fp) != NULL)
     {
+        memset(stats, 0, sizeof(*stats));
         LOGD("ovs-dpctl dump line %s", line_buf);
-        parse_flows(line_buf);
+        lan_stats_parse_flows(lan_stats_instance, line_buf);
+        lan_stats_flows_filter(lan_stats_instance);
         memset(line_buf, 0, sizeof(line_buf));
     }
+
     pclose(fp);
     fp = NULL;
 }
 
-static void lan_stats_flows_filter(fcm_collect_plugin_t *collector, ds_tree_t *tree)
+
+void
+lan_stats_flows_filter(lan_stats_instance_t *lan_stats_instance)
 {
     fcm_filter_l2_info_t l2_filter_info;
     fcm_filter_stats_t   l2_filter_pkts;
-    bool allow = false;
-    dp_ctl_stats_t *stats, *next;
+    fcm_collect_plugin_t *collector;
+    dp_ctl_stats_t *stats;
+    bool allow;
 
-    stats = ds_tree_head(tree);
-    while (stats != NULL)
+    if (lan_stats_instance == NULL) return;
+    stats = &lan_stats_instance->stats;
+
+    collector = lan_stats_instance->collector;
+    if (collector == NULL) return;
+
+    set_filter_info(&l2_filter_info, &l2_filter_pkts, stats);
+    if (collector->filters.collect != NULL)
     {
-        set_filter_info(&l2_filter_info, &l2_filter_pkts, stats);
-        if (collector->filters.collect != NULL)
+        fcm_filter_layer2_apply(collector->filters.collect,
+                                &l2_filter_info, &l2_filter_pkts, &allow);
+        if (allow)
         {
-            fcm_filter_layer2_apply(collector->filters.collect,
-                                  &l2_filter_info, &l2_filter_pkts, &allow);
-            if (allow)
-            {
-                LOGD("Flow collect allowed: filter_name: %s, ufid: "PRI_os_ufid_t \
-                     " smac: %s, dmac: %s, vlan_id: %d, eth_type: %d, pks: %ld, " \
-                     "bytes: %ld\n",\
-                      collector->filters.collect ?
-                      collector->filters.collect : dflt_fltr_name,
-                      FMT_os_ufid_t_pt(&stats->ufid.id),
-                      stats->smac_addr,
-                      stats->dmac_addr, stats->vlan_id, stats->eth_val,
-                      stats->pkts, stats->bytes);
-                aggr_add_sample(collector, stats);
-            }
-            else
-                LOGD("Flow collect dropped: filter_name: %s, smac: %s, "\
-                     "dmac: %s, vlan_id: %d, eth_type: %d, pks: %ld, "\
-                     "bytes: %ld\n",\
-                      collector->filters.collect ?
-                      collector->filters.collect : dflt_fltr_name,
-                      stats->smac_addr, stats->dmac_addr,
-                      stats->vlan_id, stats->eth_val, stats->pkts, stats->bytes);
+            LOGD("%s: Flow collect allowed: filter_name: %s, ufid: "PRI_os_ufid_t \
+                    " smac: %s, dmac: %s, vlan_id: %d, eth_type: %d, pks: %ld, " \
+                    "bytes: %ld\n", __func__,
+                    collector->filters.collect ?
+                    collector->filters.collect : dflt_fltr_name,
+                    FMT_os_ufid_t_pt(&stats->ufid.id),
+                    stats->smac_addr,
+                    stats->dmac_addr, stats->vlan_id, stats->eth_val,
+                    stats->pkts, stats->bytes);
+            lan_stats_aggr_add_sample(collector, stats);
         }
         else
-        {
-            LOGD("Aggr add sample\n");
-            aggr_add_sample(collector, stats);
-        }
-
-        next = ds_tree_next(tree, stats);
-        stats = next;
+            LOGD("%s: Flow collect dropped: filter_name: %s, smac: %s, "\
+                    "dmac: %s, vlan_id: %d, eth_type: %d, pks: %ld, "\
+                    "bytes: %ld\n", __func__,
+                    collector->filters.collect ?
+                    collector->filters.collect : dflt_fltr_name,
+                    stats->smac_addr, stats->dmac_addr,
+                    stats->vlan_id, stats->eth_val, stats->pkts, stats->bytes);
+    }
+    else
+    {
+        LOGD("%s: aggr add sample", __func__);
+        lan_stats_aggr_add_sample(collector, stats);
     }
 }
 
-
-static void lan_stats_clean_flows(ds_tree_t *tree)
+void
+lan_stats_collect_cb(fcm_collect_plugin_t *collector)
 {
-    dp_ctl_stats_t *stats, *next;
-    int count = 0;
+    lan_stats_instance_t *lan_stats_instance;
+    lan_stats_mgr_t *mgr;
 
-    if (tree == NULL) return;
+    if (collector == NULL) return;
 
-    stats = ds_tree_head(tree);
-    while (stats != NULL)
+    mgr = lan_stats_get_mgr();
+    lan_stats_instance = collector->plugin_ctx;
+
+    /* collect stats only for active instance. */
+    if (lan_stats_instance != mgr->active) return;
+
+    lan_stats_instance->collect_flows(lan_stats_instance);
+}
+
+
+void lan_stats_plugin_exit(fcm_collect_plugin_t *collector)
+{
+    lan_stats_instance_t *lan_stats_instance;
+    struct net_md_aggregator *aggr;
+    lan_stats_mgr_t *mgr;
+
+    mgr = lan_stats_get_mgr();
+    if (!mgr->initialized) return;
+
+    if (mgr->num_sessions == 0) return;
+    mgr->num_sessions--;
+
+    lan_stats_instance = lan_stats_lookup_session(collector);
+    if (lan_stats_instance == NULL)
     {
-        next = ds_tree_next(tree, stats);
-        ds_tree_remove(tree, stats);
-        free(stats);
-        stats = next;
-        count++;
+        LOGI("%s(): could not find instance", __func__);
+        return;
     }
-    LOGT("%s: Total flows freed: %d\n",__func__,count);
+
+    /* free the aggregator */
+    aggr = lan_stats_instance->aggr;
+    if (aggr == NULL)
+    {
+        LOGD("%s(): Aggergator is empty", __func__);
+        return;
+    }
+    net_md_close_active_window(aggr);
+    net_md_free_aggregator(aggr);
+
+    /* delete the session */
+    ds_tree_remove(&mgr->lan_stats_sessions, lan_stats_instance);
+    FREE(lan_stats_instance);
+
+    /* mark the remaining session as active if any */
+    lan_stats_instance = ds_tree_head(&mgr->lan_stats_sessions);
+    if (lan_stats_instance != NULL) mgr->active = lan_stats_instance;
+
     return;
 }
 
-
-static void lan_stats_collect_cb(fcm_collect_plugin_t *collector)
+void
+lan_stats_plugin_close_cb(fcm_collect_plugin_t *collector)
 {
-    lan_stats_collect_flows(collector);
-    lan_stats_flows_filter(collector, &flow_tracker_list);
-    lan_stats_clean_flows(&flow_tracker_list);
-}
-
-
-void lan_stats_plugin_close_cb(fcm_collect_plugin_t *collector)
-{
-    struct net_md_aggregator *aggr = NULL;
-
-    aggr = collector->plugin_ctx;
-    if (aggr == NULL)
-    {
-        LOGD("Aggergator is empty\n");
-        return;
-    }
-    close_window(collector);
-    net_md_free_aggregator(aggr);
+    LOGD("%s: lan stats stats plugin stopped", __func__);
+    lan_stats_plugin_exit(collector);
 }
 
 
 /* Entry function for plugin */
 int lan_stats_plugin_init(fcm_collect_plugin_t *collector)
 {
+    lan_stats_instance_t *lan_stats_instance;
+    lan_stats_mgr_t *mgr;
+    char *active;
+    char *name;
+    int rc;
+
+    mgr = lan_stats_get_mgr();
+    if (!mgr->initialized)
+    {
+        LOGI("%s(): initializing lan stats manager", __func__);
+        lan_stats_init_mgr(collector->loop);
+    }
+
+    if (mgr->num_sessions == mgr->max_sessions)
+    {
+        LOGI("%s: max lan stats session %d reached. Exiting", __func__,
+             mgr->max_sessions);
+        return -1;
+    }
+
+    lan_stats_instance = lan_stats_get_session(collector);
+    if (lan_stats_instance == NULL)
+    {
+        LOGD("%s: could not add lan stats instance", __func__);
+        return -1;
+    }
+
+    if (lan_stats_instance->initialized) return 0;
+    lan_stats_instance->collector = collector;
+    lan_stats_instance->name = collector->name;
+
     collector->collect_periodic = lan_stats_collect_cb;
     collector->send_report = lan_stats_send_report_cb;
     collector->close_plugin = lan_stats_plugin_close_cb;
     collect_cmd  = collector->fcm_plugin_ctx;
     if (collect_cmd == NULL)
         collect_cmd = OVS_DPCTL_DUMP_FLOWS;
-    alloc_aggr(collector);
-    activate_window(collector);
+    rc = lan_stats_alloc_aggr(lan_stats_instance);
+    if (rc != 0)
+    {
+        LOGI("%s(): failed to allocate flow aggregator", __func__);
+        return -1;
+    }
+
+    lan_stats_activate_window(collector);
+
+    lan_stats_instance->collect_flows = lan_stats_collect_flows;
+    lan_stats_instance->initialized = true;
+
+    /* Check if the session has a name */
+    name = collector->name;
+    mgr->num_sessions++;
+
+    if (mgr->num_sessions == 1)
+    {
+        LOGI("%s: %s is the active session", __func__,
+             name ? name : "default");
+        mgr->active = lan_stats_instance;
+        return 0;
+    }
+
+    /* Check if the session has the active key set */
+    active = collector->get_other_config(collector,
+                                         "active");
+
+    if (active != NULL)
+    {
+        LOGI("%s: %s is now the active session", __func__,
+             name ? name : "default");
+        mgr->active = lan_stats_instance;
+    }
+
     return 0;
+}
+
+void
+lan_stats_init_mgr(struct ev_loop *loop)
+{
+    lan_stats_mgr_t *mgr;
+
+    mgr = lan_stats_get_mgr();
+    memset(mgr, 0, sizeof(*mgr));
+    mgr->loop = loop;
+    mgr->max_sessions = 2;
+    ds_tree_init(&mgr->lan_stats_sessions, lan_stats_session_cmp,
+                 lan_stats_instance_t, lan_stats_node);
+
+    mgr->debug = false;
+    mgr->initialized = true;
+
+    return;
+}
+
+void
+lan_stats_exit_mgr(void)
+{
+    lan_stats_mgr_t *mgr;
+
+    mgr = lan_stats_get_mgr();
+    memset(mgr, 0, sizeof(*mgr));
+    mgr->initialized = false;
 }

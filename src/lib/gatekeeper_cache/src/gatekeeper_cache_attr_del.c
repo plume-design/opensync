@@ -34,7 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * @params: tree pointer to attribute tree
  * @params: req_type: request type
  */
-static void
+void
 free_attr_members(struct attr_cache *attr_entry,
                   enum gk_cache_request_type attr_type)
 {
@@ -72,6 +72,7 @@ free_attr_members(struct attr_cache *attr_entry,
     default:
         break;
     }
+    FREE(attr_entry->gk_policy);
 }
 
 /**
@@ -90,9 +91,8 @@ gk_clean_attribute_tree(ds_tree_t *tree, enum gk_cache_request_type attr_type)
         remove     = attr_entry;
         attr_entry = ds_tree_next(tree, attr_entry);
         free_attr_members(remove, attr_type);
-        if (remove->gk_policy) free(remove->gk_policy);
         ds_tree_remove(tree, remove);
-        free(remove);
+        FREE(remove);
     }
 }
 
@@ -102,8 +102,9 @@ gk_clean_attribute_tree(ds_tree_t *tree, enum gk_cache_request_type attr_type)
 static void
 free_flow_entry_members(struct ip_flow_cache *flow_entry)
 {
-    free(flow_entry->src_ip_addr);
-    free(flow_entry->dst_ip_addr);
+    FREE(flow_entry->src_ip_addr);
+    FREE(flow_entry->dst_ip_addr);
+    FREE(flow_entry->gk_policy);
 }
 
 /**
@@ -122,9 +123,8 @@ gk_clean_flow_tree(ds_tree_t *tree, enum gk_cache_request_type req_type)
         remove     = flow_entry;
         flow_entry = ds_tree_next(tree, flow_entry);
         free_flow_entry_members(remove);
-        if (remove->gk_policy) free(remove->gk_policy);
         ds_tree_remove(tree, remove);
-        free(remove);
+        FREE(remove);
     }
 }
 
@@ -136,7 +136,7 @@ gk_clean_flow_tree(ds_tree_t *tree, enum gk_cache_request_type req_type)
 static void
 gk_clean_per_device_entry(struct per_device_cache *pd_cache)
 {
-    free(pd_cache->device_mac);
+    FREE(pd_cache->device_mac);
     gk_clean_attribute_tree(&pd_cache->fqdn_tree, GK_CACHE_REQ_TYPE_FQDN);
     gk_clean_attribute_tree(&pd_cache->url_tree, GK_CACHE_REQ_TYPE_URL);
     gk_clean_attribute_tree(&pd_cache->host_tree, GK_CACHE_REQ_TYPE_HOST);
@@ -165,7 +165,7 @@ gk_free_cache_tree(ds_tree_t *tree)
         pdevice = ds_tree_next(tree, pdevice);
         gk_clean_per_device_entry(remove);
         ds_tree_remove(tree, remove);
-        free(remove);
+        FREE(remove);
     }
 }
 
@@ -326,9 +326,8 @@ gkc_cleanup_ttl_attribute_tree(struct gkc_del_info_s *gk_del_info)
 
         /* decrement the cache entries counter */
         mgr->count--;
-        if (remove->gk_policy) free(remove->gk_policy);
         ds_tree_remove(gk_del_info->tree, remove);
-        free(remove);
+        FREE(remove);
     }
 }
 
@@ -343,7 +342,7 @@ gk_cache_check_ttl_per_device(struct per_device_cache *pdevice)
     struct gkc_del_info_s *gk_del_info;
     int attr_type;
 
-    gk_del_info = calloc(1, sizeof(struct gkc_del_info_s));
+    gk_del_info = CALLOC(1, sizeof(*gk_del_info));
     if (gk_del_info == NULL) return;
 
     gk_del_info->pdevice = pdevice;
@@ -374,7 +373,7 @@ gk_cache_check_ttl_per_device(struct per_device_cache *pdevice)
          gk_del_info->attr_del_count,
          gk_del_info->flow_del_count);
 
-    free(gk_del_info);
+    FREE(gk_del_info);
 }
 
 /**
@@ -477,9 +476,8 @@ gkc_del_attr(ds_tree_t *attr_tree, struct gk_attr_cache_interface *req)
              FMT_os_macaddr_pt(req->device_mac));
 
         free_attr_members(remove, req->attribute_type);
-        if (remove->gk_policy) free(remove->gk_policy);
         ds_tree_remove(attr_tree, remove);
-        free(remove);
+        FREE(remove);
         return true;
     }
 

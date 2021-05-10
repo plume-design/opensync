@@ -47,10 +47,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * ===========================================================================
  */
 
-#define MALLOC(sz)      memutil_inline_malloc(sz, __func__, __FILE__, __LINE__)
-#define CALLOC(n, sz)   memutil_inline_calloc(n, sz, __func__, __FILE__, __LINE__)
-#define REALLOC(sz)     memutil_inline_realloc(sz, __func__, __FILE__, __LINE__)
-#define STRDUP(sz)      memutil_inline_strdup(sz, __func__, __FILE__, __LINE__)
+#define MALLOC(sz)        memutil_inline_malloc(sz, __func__, __FILE__, __LINE__)
+#define CALLOC(n, sz)     memutil_inline_calloc(n, sz, __func__, __FILE__, __LINE__)
+#define REALLOC(ptr, sz)  memutil_inline_realloc(ptr, sz, __func__, __FILE__, __LINE__)
+#define STRDUP(sz)        memutil_inline_strdup(sz, __func__, __FILE__, __LINE__)
 
 /**
  * Perform a double free sanity check by setting the freed pointer value to

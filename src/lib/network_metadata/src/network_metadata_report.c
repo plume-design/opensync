@@ -211,6 +211,7 @@ bool net_md_close_active_window(struct net_md_aggregator *aggr)
     size_t provisioned_stats, i;
 
     window = net_md_active_window(aggr);
+    if (window == NULL) return false;
     window->ended_at = time(NULL);
 
     provisioned_stats = aggr->active_accs;

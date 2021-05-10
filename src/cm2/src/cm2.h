@@ -231,6 +231,7 @@ typedef struct
     bool              stability_repeat;
     ev_child          stability_child;
     cm2_main_link_t   link;
+    cm2_main_link_t   old_link;
     uint8_t           ble_status;
     bool              ntp_check;
     struct ev_loop    *loop;
@@ -320,6 +321,7 @@ int  cm2_update_main_link_ip(cm2_main_link_t *link);
 int  cm2_ovsdb_update_mac_reporting(char *ifname, bool state);
 void cm2_ovsdb_set_default_wan_bridge(char *if_name, char *if_type);
 bool cm2_ovsdb_set_Wifi_Inet_Config_interface_enabled(bool state, char *ifname);
+bool cm2_ovsdb_connection_update_bridge_state(char *if_name, const char *bridge);
 
 #ifdef CONFIG_CM2_USE_EXTRA_DEBUGS
 void cm2_ovsdb_dump_debug_data(void);

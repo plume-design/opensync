@@ -296,7 +296,7 @@ bool
 arp_parse_is_gratuitous(struct eth_arp *arp)
 {
     os_macaddr_t fmac = { { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff } };
-    os_macaddr_t zmac = { 0 };
+    os_macaddr_t zmac = {{ 0 }};
     os_macaddr_t *t_eth;
     int cmp;
 

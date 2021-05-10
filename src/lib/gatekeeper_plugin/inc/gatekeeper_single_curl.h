@@ -67,12 +67,4 @@ gk_send_request(struct fsm_session *session,
                 struct fsm_gk_session *fsm_gk_session,
                 struct fsm_gk_verdict *gk_verdict);
 
-/**
- * @brief returns the attribute string value based on the request type.
- *
- * @param req_type attribute request type.
- */
-const char *
-gk_request_str(int req_type);
-
 #endif /* GK_SINGLE_CURL_H_INCLUDED */

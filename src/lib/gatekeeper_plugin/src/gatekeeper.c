@@ -286,7 +286,7 @@ void
 free_gk_verdict(struct fsm_gk_verdict *gk_verdict)
 {
     gk_free_packed_buffer(gk_verdict->gk_pb);
-    free(gk_verdict);
+    FREE(gk_verdict);
 }
 
 void
@@ -328,19 +328,20 @@ gatekeeper_check_attr_cache(struct fsm_policy_req *req, int req_type)
     struct fqdn_pending_req *fqdn_req;
     struct fsm_url_request *req_info;
     struct fsm_url_reply *url_reply;
+    char *req_type_str;
     bool ret;
 
     fqdn_req = req->fqdn_req;
     req_info = fqdn_req->req_info;
     url_reply = req_info->reply;
 
-    entry = CALLOC(1, sizeof(struct gk_attr_cache_interface));
+    entry = CALLOC(1, sizeof(*entry));
     if (entry == NULL) return false;
 
-    entry->fqdn_redirect = CALLOC(1, sizeof(struct fqdn_redirect_s));
+    entry->fqdn_redirect = CALLOC(1, sizeof(*entry->fqdn_redirect));
     if (entry->fqdn_redirect == NULL)
     {
-        free(entry);
+        FREE(entry);
         return false;
     }
 
@@ -348,10 +349,11 @@ gatekeeper_check_attr_cache(struct fsm_policy_req *req, int req_type)
     entry->attribute_type = req_type;
     entry->attr_name = strdup(req->url);
     ret = gkc_lookup_attribute_entry(entry, true);
-    LOGT("%s(): %s of type %d, is %s in cache",
+    req_type_str = gatekeeper_req_type_to_str(req_type);
+    LOGT("%s(): %s of type %s, is %s in cache",
          __func__,
-         req->url,
-         req_type,
+         req->url ? req->url : "None",
+         req_type_str,
          ret ? "found" : "not found");
     if (ret)
     {
@@ -397,7 +399,7 @@ gatekeeper_check_ipflow_cache(struct fsm_policy_req *req)
     key = acc->key;
     if (key == NULL) return false;
 
-    flow_entry = calloc(sizeof(struct gkc_ip_flow_interface), 1);
+    flow_entry = CALLOC(1, sizeof(*flow_entry));
     if (flow_entry == NULL) return false;
 
     flow_entry->device_mac = req->device_id;
@@ -417,7 +419,7 @@ gatekeeper_check_ipflow_cache(struct fsm_policy_req *req)
         req->fqdn_req->from_cache = true;
     }
 
-    free(flow_entry);
+    FREE(flow_entry);
 
     return ret;
 }
@@ -460,7 +462,7 @@ gk_check_policy_in_cache(struct fsm_policy_req *req)
  * @param entry: cache entry to be updated
  * @return true if the success false otherwise
  */
-static void
+void
 gk_populate_redirect_entry(struct gk_attr_cache_interface *entry,
                            struct fsm_policy_req *req)
 {
@@ -469,7 +471,7 @@ gk_populate_redirect_entry(struct gk_attr_cache_interface *entry,
 
     if (req->reply.redirect == false) return;
 
-    entry->fqdn_redirect = CALLOC(1, sizeof(*redirect_entry));
+    entry->fqdn_redirect = CALLOC(1, sizeof(*entry->fqdn_redirect));
     if (entry->fqdn_redirect == NULL) return;
     redirect_entry = entry->fqdn_redirect;
 
@@ -513,7 +515,7 @@ gatekeeper_add_attr_cache(struct fsm_policy_req *req, int req_type)
         return false;
     }
 
-    entry = calloc(sizeof(struct gk_attr_cache_interface), 1);
+    entry = CALLOC(1, sizeof(*entry));
     if (entry == NULL) return false;
 
     entry->action = req->reply.action;
@@ -585,7 +587,7 @@ gatekeeper_add_ipflow_cache(struct fsm_policy_req *req)
          __func__,
          fkey->src_ip, fkey->dst_ip, fkey->protocol, fkey->sport, fkey->dport);
 
-    flow_entry = calloc(sizeof(struct gkc_ip_flow_interface), 1);
+    flow_entry = CALLOC(1, sizeof(*flow_entry));
     if (flow_entry == NULL) return false;
 
     flow_entry->device_mac = req->device_id;
@@ -610,7 +612,7 @@ gatekeeper_add_ipflow_cache(struct fsm_policy_req *req)
          __func__,
          (ret == true) ? "success" : "failed");
 
-    free(flow_entry);
+    FREE(flow_entry);
 
     return ret;
 }
@@ -750,7 +752,7 @@ gatekeeper_get_verdict(struct fsm_session *session,
     fqdn_req = req->fqdn_req;
     req_info = fqdn_req->req_info;
 
-    url_reply = calloc(1, sizeof(struct fsm_url_reply));
+    url_reply = CALLOC(1, sizeof(*url_reply));
     if (url_reply == NULL) return false;
 
     req_info->reply = url_reply;
@@ -789,7 +791,7 @@ gatekeeper_get_verdict(struct fsm_session *session,
     ecurl_info = &fsm_gk_session->ecurl;
     if (!ecurl_info->server_url) return false;
 
-    gk_verdict = calloc(1, sizeof(*gk_verdict));
+    gk_verdict = CALLOC(1, sizeof(*gk_verdict));
     if (gk_verdict == NULL) return false;
 
     gk_verdict->policy_req = req;
@@ -799,7 +801,8 @@ gatekeeper_get_verdict(struct fsm_session *session,
     LOGT("%s: url:%s path:%s", __func__, ecurl_info->server_url, ecurl_info->ca_path);
 
     gk_verdict->gk_pb = gatekeeper_get_req(session, req);
-    if (gk_verdict->gk_pb == NULL) {
+    if (gk_verdict->gk_pb == NULL)
+    {
         LOGD("%s() curl request serialization failed", __func__);
         ret = false;
         goto error;
@@ -908,8 +911,7 @@ gatekeeper_init_curl(struct fsm_session *session)
 
     ecurl_info = &fsm_gk_session->ecurl;
 
-
-    memset(ecurl_info, 0, sizeof(struct gk_curl_easy_info));
+    memset(ecurl_info, 0, sizeof(*ecurl_info));
     ecurl_info->server_url = session->ops.get_config(session, "gk_url");
 
 #ifdef MULTI_CURL
@@ -929,6 +931,15 @@ gatekeeper_monitor_ssl_table(void)
     OVSDB_TABLE_MONITOR_F(SSL, ((char*[]){"ca_cert", "certificate", "private_key", NULL}));
 }
 
+
+static const char pattern_fqdn[] =
+    "^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])\\.){1,}"
+    "([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\\-]*[A-Za-z0-9])$";
+
+static const char pattern_fqdn_lan[] =
+    "^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])\\.){1,}"
+    "(lan)$";
+
 /**
  * @brief initialized gatekeeper plugin module
  *
@@ -944,6 +955,7 @@ gatekeeper_module_init(struct fsm_session *session)
     struct fsm_web_cat_ops *cat_ops;
     struct fsm_gk_mgr *mgr;
     time_t now;
+    int rc;
 
     if (session == NULL) return -1;
 
@@ -965,7 +977,7 @@ gatekeeper_module_init(struct fsm_session *session)
         mgr->initialized = true;
     }
 
-    /* Look up the fsm bc session */
+    /* Look up the fsm gatekeeper session */
     fsm_gk_session = gatekeeper_lookup_session(session);
     if (fsm_gk_session == NULL)
     {
@@ -1001,6 +1013,40 @@ gatekeeper_module_init(struct fsm_session *session)
     /* initialize latency counter */
     fsm_gk_session->health_stats.min_lookup_latency = LONG_MAX;
 
+    /* Prepare the regular expressions used to validate domain names */
+    fsm_gk_session->re = CALLOC(1, sizeof(*fsm_gk_session->re));
+    if (fsm_gk_session->re == NULL)
+    {
+        LOGE("%s: could not allocate regular expression", __func__);
+        goto err;
+    }
+
+    rc = regcomp(fsm_gk_session->re, pattern_fqdn, REG_EXTENDED);
+    if (rc != 0)
+    {
+        LOGE("%s: regcomp(%s) failed, reason (%d)\n", __func__,
+             pattern_fqdn, rc);
+        goto err;
+    }
+
+    fsm_gk_session->pattern_fqdn = pattern_fqdn;
+
+    fsm_gk_session->re_lan = CALLOC(1, sizeof(*fsm_gk_session->re_lan));
+    if (fsm_gk_session->re_lan == NULL)
+    {
+        LOGE("%s: could not allocate regular expression", __func__);
+        goto err;
+    }
+
+    rc = regcomp(fsm_gk_session->re_lan, pattern_fqdn_lan, REG_EXTENDED);
+    if (rc != 0)
+    {
+        LOGE("%s: regcomp(%s) failed, reason (%d)\n", __func__,
+             pattern_fqdn_lan, rc);
+        goto err;
+    }
+
+    fsm_gk_session->pattern_fqdn_lan = pattern_fqdn_lan;
     /* Initialize dns cache hit count */
     fsm_gk_session->dns_cache_hit_count = 0;
 
@@ -1008,6 +1054,10 @@ gatekeeper_module_init(struct fsm_session *session)
     LOGD("%s: added session %s", __func__, session->name);
 
     return 0;
+
+err:
+    gatekeeper_exit(session);
+    return -1;
 }
 
 /**
@@ -1022,6 +1072,7 @@ int
 gatekeeper_plugin_init(struct fsm_session *session)
 {
     struct fsm_gk_mgr *mgr;
+    bool enable_monitor = false;
     int ret;
 
     if (session == NULL) return -1;
@@ -1030,10 +1081,20 @@ gatekeeper_plugin_init(struct fsm_session *session)
 
     if (!mgr->initialized)
     {
-        gatekeeper_monitor_ssl_table();
+        enable_monitor = true;
     }
 
     ret = gatekeeper_module_init(session);
+    if (ret == -1)
+    {
+        LOGI("%s(): failed to initialize gatekeeper module", __func__);
+        return ret;
+    }
+
+    if (enable_monitor)
+    {
+        gatekeeper_monitor_ssl_table();
+    }
 
     return ret;
 }
@@ -1050,12 +1111,23 @@ gatekeeper_exit(struct fsm_session *session)
 {
     struct fsm_gk_session *fsm_gk_session;
     struct fsm_gk_mgr *mgr;
-
     mgr = gatekeeper_get_mgr();
     if (!mgr->initialized) return;
 
     fsm_gk_session = (struct fsm_gk_session *)session->handler_ctxt;
     if (!fsm_gk_session) return;
+
+    if (fsm_gk_session->re)
+    {
+        regfree(fsm_gk_session->re);
+        FREE(fsm_gk_session->re);
+    }
+
+    if (fsm_gk_session->re_lan)
+    {
+        regfree(fsm_gk_session->re_lan);
+        FREE(fsm_gk_session->re_lan);
+    }
 
     gk_curl_easy_cleanup(fsm_gk_session);
     mgr->initialized = false;
@@ -1183,22 +1255,22 @@ struct fsm_gk_session *
 gatekeeper_lookup_session(struct fsm_session *session)
 {
     struct fsm_gk_mgr *mgr;
-    struct fsm_gk_session *wc_session;
+    struct fsm_gk_session *gk_session;
     ds_tree_t *sessions;
 
     mgr = gatekeeper_get_mgr();
     sessions = &mgr->fsm_sessions;
 
-    wc_session = ds_tree_find(sessions, session);
-    if (wc_session != NULL) return wc_session;
+    gk_session = ds_tree_find(sessions, session);
+    if (gk_session != NULL) return gk_session;
 
     LOGD("%s: Adding new session %s", __func__, session->name);
-    wc_session = calloc(1, sizeof(*wc_session));
-    if (wc_session == NULL) return NULL;
+    gk_session = CALLOC(1, sizeof(*gk_session));
+    if (gk_session == NULL) return NULL;
 
-    ds_tree_insert(sessions, wc_session, session);
+    ds_tree_insert(sessions, gk_session, session);
 
-    return wc_session;
+    return gk_session;
 }
 
 
@@ -1208,9 +1280,9 @@ gatekeeper_lookup_session(struct fsm_session *session)
  * @param wc_session the gate keeper session to delete
  */
 void
-gatekeeper_free_session(struct fsm_gk_session *wc_session)
+gatekeeper_free_session(struct fsm_gk_session *gk_session)
 {
-    free(wc_session);
+    FREE(gk_session);
 }
 
 
@@ -1223,18 +1295,18 @@ void
 gatekeeper_delete_session(struct fsm_session *session)
 {
     struct fsm_gk_mgr *mgr;
-    struct fsm_gk_session *wc_session;
+    struct fsm_gk_session *gk_session;
     ds_tree_t *sessions;
 
     mgr = gatekeeper_get_mgr();
     sessions = &mgr->fsm_sessions;
 
-    wc_session = ds_tree_find(sessions, session);
-    if (wc_session == NULL) return;
+    gk_session = ds_tree_find(sessions, session);
+    if (gk_session == NULL) return;
 
     LOGD("%s: removing session %s", __func__, session->name);
-    ds_tree_remove(sessions, wc_session);
-    gatekeeper_free_session(wc_session);
+    ds_tree_remove(sessions, gk_session);
+    gatekeeper_free_session(gk_session);
 
     return;
 }

@@ -33,6 +33,7 @@
 #include "ovsdb_sync.h"
 #include "wc_telemetry.h"
 
+#define IP2ACTION_MIN_TTL (6*60*60)
 
 void handler(uint8_t *, const struct pcap_pkthdr *, const uint8_t *);
 void dns_rr_free(dns_rr *);
@@ -636,6 +637,7 @@ process_response_ips(dns_info *dns, uint8_t *packet,
 {
     struct ip2action_req ip_cache_req;
     struct sockaddr_storage ipaddr;
+    int ip2action_cache_ttl;
     dns_rr *answer;
     const char *res;
     int qtype = -1;
@@ -707,6 +709,7 @@ process_response_ips(dns_info *dns, uint8_t *packet,
             }
 
             cache = (add_entry && (req->req_info->reply != NULL) &&
+                     (!req->req_info->reply->connection_error) &&
                      (req->categorized == FSM_FQDN_CAT_SUCCESS));
 
             if (cache)
@@ -714,8 +717,10 @@ process_response_ips(dns_info *dns, uint8_t *packet,
                 memset(&ip_cache_req, 0, sizeof(ip_cache_req));
                 ip_cache_req.device_mac = &req->dev_id;
                 ip_cache_req.ip_addr = &ipaddr;
+                ip2action_cache_ttl = ((ttl < IP2ACTION_MIN_TTL) ?
+                                       IP2ACTION_MIN_TTL : (int)ttl);
                 ip_cache_req.cache_ttl = ((req->rd_ttl != -1) ?
-                                          req->rd_ttl : (int)ttl);
+                                          req->rd_ttl : ip2action_cache_ttl);
                 ip_cache_req.action = req->action;
                 ip_cache_req.policy_idx = req->policy_idx;
                 ip_cache_req.service_id = req->req_info->reply->service_id;

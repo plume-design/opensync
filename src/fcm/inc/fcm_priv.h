@@ -138,4 +138,11 @@ void fcm_get_memory(struct mem_usage *mem);
 int fcm_ovsdb_init(void);
 void fcm_event_init(void);
 
+/**
+ * @brief Set the initial max memory threshold.
+ *
+ * It can be overriden through the ovsdb Node_Config entries
+ */
+void
+fcm_set_max_mem(void);
 #endif /* FCM_PRIV_H_INCLUDED */

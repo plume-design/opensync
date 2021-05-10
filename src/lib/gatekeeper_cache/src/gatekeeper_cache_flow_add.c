@@ -25,6 +25,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include "gatekeeper_cache.h"
+#include "memutil.h"
 
 /**
  * @brief create a new flow entry initializing with 5-tuple values
@@ -33,29 +34,31 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  * @return ip_flow_cache pointer on success or NULL on failure
  */
-static struct ip_flow_cache *
+struct ip_flow_cache *
 gkc_new_flow_entry(struct gkc_ip_flow_interface *req)
 {
     struct ip_flow_cache *flow_entry;
     size_t ip_len;
 
-    flow_entry = calloc(1, sizeof(struct ip_flow_cache));
+    if (req->src_ip_addr == NULL || req->dst_ip_addr == NULL) return NULL;
+
+    flow_entry = CALLOC(1, sizeof(*flow_entry));
     if (flow_entry == NULL) return NULL;
 
     /* set src ip address */
     ip_len = (req->ip_version == 4 ? 4 : 16);
     flow_entry->ip_version = req->ip_version;
 
-    flow_entry->src_ip_addr = calloc(1, sizeof(struct in6_addr));
+    flow_entry->src_ip_addr = CALLOC(ip_len, sizeof(*flow_entry->src_ip_addr));
     if (flow_entry->src_ip_addr == NULL) goto err_free_fentry;
 
-    memcpy(flow_entry->src_ip_addr, req->src_ip_addr, ip_len);
+    memcpy(flow_entry->src_ip_addr, req->src_ip_addr, ip_len*sizeof(*flow_entry->src_ip_addr));
 
     /* set dst ip address */
-    flow_entry->dst_ip_addr = calloc(1, sizeof(struct in6_addr));
+    flow_entry->dst_ip_addr = CALLOC(ip_len, sizeof(*flow_entry->dst_ip_addr));
     if (flow_entry->dst_ip_addr == NULL) goto err_free_sip;
 
-    memcpy(flow_entry->dst_ip_addr, req->dst_ip_addr, ip_len);
+    memcpy(flow_entry->dst_ip_addr, req->dst_ip_addr, ip_len*sizeof(*flow_entry->dst_ip_addr));
 
     flow_entry->cache_ts  = time(NULL);
     flow_entry->cache_ttl = req->cache_ttl;
@@ -68,10 +71,10 @@ gkc_new_flow_entry(struct gkc_ip_flow_interface *req)
     return flow_entry;
 
 err_free_sip:
-    free(flow_entry->src_ip_addr);
+    FREE(flow_entry->src_ip_addr);
 
 err_free_fentry:
-    free(flow_entry);
+    FREE(flow_entry);
 
     return NULL;
 }

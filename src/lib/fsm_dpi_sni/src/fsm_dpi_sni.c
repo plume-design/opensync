@@ -371,6 +371,13 @@ fsm_dpi_sni_policy_req(struct fsm_session *session,
     fqdn_req.to_report = false;
     fqdn_req.fsm_checked = false;
     fqdn_req.req_type = fsm_req_type(attr);
+    if (fqdn_req.req_type == FSM_UNKNOWN_REQ_TYPE)
+    {
+        LOGE("%s: unknown attribute %s", __func__, attr);
+        action = FSM_DPI_PASSTHRU;
+        return action;
+    }
+
     fqdn_req.policy_table = policy_client->table;
     fqdn_req.numq = 1;
     fqdn_req.req_info = calloc(sizeof(struct fsm_url_request), 1);
@@ -381,6 +388,7 @@ fsm_dpi_sni_policy_req(struct fsm_session *session,
     fqdn_req.risk_level_check = session->provider_ops->risk_level_check;
     fqdn_req.gatekeeper_req = session->provider_ops->gatekeeper_req;
 
+    LOGD("%s: attribute: %s, value %s", __func__, attr, attr_value);
     STRSCPY(fqdn_req.req_info->url, attr_value);
     memset(&policy_req, 0, sizeof(policy_req));
     policy_req.device_id = mac;

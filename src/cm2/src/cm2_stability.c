@@ -257,6 +257,9 @@ cm2_util_update_connectivity_failures(target_connectivity_check_option_t opts, t
             ipv6_i_fail++;
     }
 
+    if (!(g_state.link.ipv4.is_ip && g_state.link.ipv6.is_ip))
+        return;
+
     if ((opts & ROUTER_CHECK) && (opts & IPV4_CHECK))
         ipv4_r_fail = cstate->router_ipv4_state ? 0 : ipv4_r_fail + 1;
 

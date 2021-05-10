@@ -24,13 +24,151 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include <regex.h>
 #include <stdbool.h>
 
 #include "gatekeeper_data.h"
 #include "gatekeeper_msg.h"
 #include "gatekeeper.h"
 #include "fsm_policy.h"
+#include "memutil.h"
+#include "fsm.h"
 #include "log.h"
+
+/**
+ * @brief validates a FQDN/SNI/Hostname string
+ *
+ * @param site to attribute to validate
+ * @return true if it is a valid attribute, false otherwise
+ */
+bool
+gatekeeper_validate_fqdn(struct fsm_session *session, char *site)
+{
+
+    struct fsm_gk_session *gk_session;
+    size_t len;
+    int rc;
+
+    if (session == NULL) return false;
+
+    gk_session = session->handler_ctxt;
+    if (gk_session == NULL) return false;
+
+    /* returns false upon emptry string */
+    if (site == NULL)
+    {
+        LOGD("%s: string is NULL", __func__);
+        return false;
+    }
+
+    len = strlen(site);
+    if (len == 0)
+    {
+        LOGE("%s: string length is NULL", __func__);
+        return false;
+    }
+
+    /* check fqdn < 255, to abide by RFC 1032 defined size */
+    if (len > 255)
+    {
+        LOGD("%s: Invalid FQDN length: %zu, string exceeds 255 characters\n",
+             __func__, len);
+        return false;
+    }
+
+    /* generate regex match */
+    rc = regexec(gk_session->re, site, (size_t)0, NULL, 0);
+    if (rc != 0)
+    {
+        LOGD("%s: Invalid FQDN: (%d) Failed to match \"%s\"\n", __func__,
+             rc, gk_session->pattern_fqdn);
+        goto err;
+    }
+
+    /* generate regex match */
+    rc = regexec(gk_session->re_lan, site, (size_t)0, NULL, 0);
+    if (rc == 0)
+    {
+        LOGD("%s: Dropping lan FQDN: %s: matched \"%s\"\n", __func__,
+             site, gk_session->pattern_fqdn_lan);
+        goto err;
+    }
+
+    return true;
+
+err:
+    return false;
+}
+
+
+/**
+ * @brief maps a request type to a string
+ *
+ * @param req_type the request type
+ * @return a string representing the request type
+ */
+char *
+gatekeeper_req_type_to_str(int req_type)
+{
+    struct req_type_mapping
+    {
+        int req_type;
+        char *req_type_str;
+    } mapping[] =
+    {
+        {
+            .req_type = FSM_UNKNOWN_REQ_TYPE,
+            .req_type_str = "unknown type",
+        },
+        {
+            .req_type = FSM_FQDN_REQ,
+            .req_type_str = "fqdn",
+        },
+        {
+            .req_type = FSM_URL_REQ,
+            .req_type_str = "http_url",
+        },
+        {
+            .req_type = FSM_HOST_REQ,
+            .req_type_str = "http_host",
+        },
+        {
+            .req_type = FSM_SNI_REQ,
+            .req_type_str = "https_sni",
+        },
+        {
+            .req_type = FSM_IPV4_REQ,
+            .req_type_str = "ipv4",
+        },
+        {
+            .req_type = FSM_IPV6_REQ,
+            .req_type_str = "ipv6",
+        },
+        {
+            .req_type = FSM_APP_REQ,
+            .req_type_str = "app",
+        },
+        {
+            .req_type = FSM_IPV4_FLOW_REQ,
+            .req_type_str = "ipv4_tuple",
+        },
+        {
+            .req_type = FSM_IPV6_FLOW_REQ,
+            .req_type_str = "ipv6_tuple",
+        }
+    };
+
+    size_t len;
+    size_t i;
+
+    len = sizeof(mapping) / sizeof(mapping[0]);
+    for (i = 0; i < len; i++)
+    {
+        if (req_type == mapping[i].req_type) return mapping[i].req_type_str;
+    }
+
+    return NULL;
+}
 
 
 /**
@@ -52,7 +190,7 @@ gatekeeper_allocate_req_header(struct gk_request_data *req_data)
     req = req_data->req;
     if (req == NULL) return NULL;
 
-    header = calloc(1, sizeof(*header));
+    header = CALLOC(1, sizeof(*header));
     if (header == NULL) return NULL;
 
     header->dev_id = req->device_id;
@@ -264,13 +402,36 @@ gatekeeper_get_fqdn_req(struct gk_request_data *request_data)
     struct gk_fqdn_request *gk_fqdn_req;
     struct fsm_policy_req *policy_req;
     struct gk_req_header *header;
+    struct fsm_session *service;
+    struct fsm_session *session;
     union gk_data_req *req_data;
     struct gk_request *req;
+
+    bool rc;
 
     if (request_data == NULL) return false;
 
     policy_req = request_data->req;
     if (policy_req == NULL) return false;
+
+    if (policy_req->url == NULL)
+    {
+        LOGE("%s(): no fqdn provided", __func__);
+        return false;
+    }
+
+    session = request_data->session;
+    if (session == NULL) return false;
+
+    service = session->service;
+    if (service == NULL) return NULL;
+
+    rc = gatekeeper_validate_fqdn(service, policy_req->url);
+    if (!rc)
+    {
+        LOGD("%s: invalid fqdn %s", __func__, policy_req->url);
+        return false;
+    }
 
     req = request_data->gk_req;
     req_data = &req->req;
@@ -348,13 +509,35 @@ gatekeeper_get_http_host_req(struct gk_request_data *request_data)
     struct gk_host_request *gk_host_req;
     struct fsm_policy_req *policy_req;
     struct gk_req_header *header;
+    struct fsm_session *service;
+    struct fsm_session *session;
     union gk_data_req *req_data;
     struct gk_request *req;
+    bool rc;
 
     if (request_data == NULL) return false;
 
     policy_req = request_data->req;
     if (policy_req == NULL) return false;
+
+    if (policy_req->url == NULL)
+    {
+        LOGE("%s(): no http host provided", __func__);
+        return false;
+    }
+
+    session = request_data->session;
+    if (session == NULL) return false;
+
+    service = session->service;
+    if (service == NULL) return NULL;
+
+    rc = gatekeeper_validate_fqdn(service, policy_req->url);
+    if (!rc)
+    {
+        LOGD("%s: invalid http host %s", __func__, policy_req->url);
+        return false;
+    }
 
     req = request_data->gk_req;
     req->type = FSM_HOST_REQ;
@@ -377,13 +560,35 @@ gatekeeper_get_sni_req(struct gk_request_data *request_data)
     struct fsm_policy_req *policy_req;
     struct gk_sni_request *gk_sni_req;
     struct gk_req_header *header;
+    struct fsm_session *service;
+    struct fsm_session *session;
     union gk_data_req *req_data;
     struct gk_request *req;
+    bool rc;
 
     if (request_data == NULL) return false;
 
     policy_req = request_data->req;
     if (policy_req == NULL) return false;
+
+    if (policy_req->url == NULL)
+    {
+        LOGE("%s(): no sni provided", __func__);
+        return false;
+    }
+
+    session = request_data->session;
+    if (session == NULL) return false;
+
+    service = session->service;
+    if (service == NULL) return NULL;
+
+    rc = gatekeeper_validate_fqdn(service, policy_req->url);
+    if (!rc)
+    {
+        LOGD("%s: invalid sni %s", __func__, policy_req->url);
+        return false;
+    }
 
     req = request_data->gk_req;
     req->type = FSM_SNI_REQ;
@@ -414,6 +619,12 @@ gatekeeper_get_app_req(struct gk_request_data *request_data)
     policy_req = request_data->req;
     if (policy_req == NULL) return false;
 
+    if (policy_req->url == NULL)
+    {
+        LOGE("%s(): no app name provided", __func__);
+        return false;
+    }
+
     req = request_data->gk_req;
     req->type = FSM_APP_REQ;
     req_data = &req->req;
@@ -435,8 +646,8 @@ gatekeeper_free_req(struct gk_request *gk_req)
     struct gk_req_header *header;
 
     header = gatekeeper_get_header(gk_req);
-    free(header);
-    free(gk_req);
+    FREE(header);
+    FREE(gk_req);
 }
 
 
@@ -454,10 +665,11 @@ gatekeeper_get_req(struct fsm_session *session,
     struct gk_request_data request_data;
     struct gk_packed_buffer *pb = NULL;
     struct gk_request *gk_req;
+    char *req_type_str;
     int req_type;
     bool rc;
 
-    gk_req = calloc(1, sizeof(*gk_req));
+    gk_req = CALLOC(1, sizeof(*gk_req));
     if (gk_req == NULL) return NULL;
 
     request_data.session = session;
@@ -466,9 +678,13 @@ gatekeeper_get_req(struct fsm_session *session,
 
     rc = true;
     req_type = fsm_policy_get_req_type(req);
-    gk_req->type = req_type;
+    req_type_str = gatekeeper_req_type_to_str(req_type);
 
-    LOGT("%s(): request type %d, url %s", __func__, req_type, req->url);
+    LOGT("%s(): request type %s, request attribute: %s", __func__,
+         req_type_str != NULL ? req_type_str : "unknown",
+         req->url ? req->url : "url not set");
+
+    gk_req->type = req_type;
 
     switch (req_type)
     {

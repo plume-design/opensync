@@ -1437,7 +1437,19 @@ fsm_dispatch_pkt(struct fsm_session *session,
 
     if (acc == NULL) return;
 
-    if (acc->dpi_done == 1) return;
+    if (acc->dpi_done != 0)
+    {
+        if (session->tap_type == FSM_TAP_NFQ)
+        {
+            int verdict;
+
+            verdict = (acc->dpi_done == FSM_DPI_DROP) ?
+                      NF_UTIL_NFQ_DROP : NF_UTIL_NFQ_ACCEPT;
+            nf_queue_set_verdict(net_parser->packet_id, verdict);
+        }
+
+        return;
+    }
 
     tree = acc->dpi_plugins;
     if (tree == NULL) return;
@@ -1528,7 +1540,8 @@ fsm_dispatch_pkt(struct fsm_session *session,
         if (pass) mgr->set_dpi_state(net_parser, FSM_DPI_PASSTHRU);
     }
 
-    if (drop || pass) acc->dpi_done = 1;
+    if (drop) acc->dpi_done = FSM_DPI_DROP;
+    if (pass) acc->dpi_done = FSM_DPI_PASSTHRU;
 }
 
 /**

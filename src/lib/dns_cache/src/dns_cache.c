@@ -91,7 +91,7 @@ static void
 print_dns_cache_entry(struct ip2action *i2a)
 {
     char                   ipstr[INET6_ADDRSTRLEN] = { 0 };
-    os_macaddr_t           nullmac = { 0 };
+    os_macaddr_t           nullmac = {{ 0 }};
     os_macaddr_t           *pmac;
     const char             *ip;
     size_t                 index;
@@ -456,6 +456,36 @@ dns_cache_ip2action_lookup(struct ip2action_req *req)
    return true;
 }
 
+
+/**
+ * @brief Lookup cached action and policy idx for given ip address and mac.
+ *
+ * receive ipaddress and mac of device.
+ *
+ * output action and policy idx.
+ *
+ * @return true for success and false for failure.
+ */
+bool
+dns_cache_get_policy_action(struct ip2action_req *req)
+{
+   struct dns_cache_mgr *mgr;
+   struct ip2action *i2a;
+
+   if (!req) return false;
+
+   mgr = dns_cache_get_mgr();
+   if (!mgr->initialized) return false;
+
+   i2a = dns_cache_lookup_ip2action(req);
+   if (i2a == NULL) return false;
+
+   req->action = i2a->action;
+   req->policy_idx = i2a->policy_idx;
+   return true;
+}
+
+
 static struct ip2action *
 dns_cache_alloc_ip2action(struct ip2action_req  *to_add)
 {
@@ -469,7 +499,7 @@ dns_cache_alloc_ip2action(struct ip2action_req  *to_add)
         LOGE("%s: Couldn't allocate memory for ip2action entry.",__func__);
         return NULL;
     }
-    i2a->device_mac = calloc(1, sizeof(struct ip2action));
+    i2a->device_mac = calloc(1, sizeof(os_macaddr_t));
     memcpy(i2a->device_mac, to_add->device_mac, sizeof(os_macaddr_t));
 
     i2a->ip_addr = calloc(1, sizeof(struct sockaddr_storage));

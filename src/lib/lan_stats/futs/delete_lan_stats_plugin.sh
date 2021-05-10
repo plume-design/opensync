@@ -1,3 +1,5 @@
+#!/bin/sh
+
 # Copyright (c) 2015, Plume Design Inc. All rights reserved.
 # 
 # Redistribution and use in source and binary forms, with or without
@@ -22,21 +24,38 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM),n,y)
 
-UNIT_NAME := test_gatekeeper_plugin
+prog=$0
+this_dir=$(dirname "$0")
 
-UNIT_TYPE := TEST_BIN
+set -x
 
-UNIT_SRC := test_fsm_gk.c
-UNIT_SRC += test_fsm_gk_fct.c
+delete='/usr/opensync/tools/ovsh d'
 
-UNIT_DEPS := src/lib/log
-UNIT_DEPS += src/lib/common
-UNIT_DEPS += src/lib/json_util
-UNIT_DEPS += src/qm/qm_conn
-UNIT_DEPS += src/lib/gatekeeper_plugin
-UNIT_DEPS += src/lib/gatekeeper_cache
-UNIT_DEPS += src/lib/fsm_dpi_sni
-UNIT_DEPS += src/lib/unity
+# delete collector
+delete_dev_collector() {
+    cat << EOF
+${delete} FCM_Collector_Config -w name==dev_lanstats
+EOF
+}
 
+# delete collector filter
+delete_dev_collector_filter() {
+    cat <<EOF
+${delete} FCM_Filter -w name==dev_lan_stats
+EOF
+}
+
+# delete collector filter
+delete_dev_report_config() {
+    cat <<EOF
+${delete} FCM_Report_Config -w name==dev_lan_flow_report
+EOF
+}
+
+$(delete_dev_collector)
+$(delete_dev_collector_filter)
+$(delete_dev_report_config)
+
+# kill fcm. it will restart automatically
+killall fcm

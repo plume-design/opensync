@@ -25,6 +25,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include "gatekeeper_cache.h"
+#include "memutil.h"
 
 /**
  * @brief check if current flow is equal to the requested flow
@@ -64,11 +65,12 @@ gkc_is_flow_present(struct ip_flow_cache *cur_flow_entry,
  * @params: flow_tree: pointer to flow tree from which flow is to be
  *          freed
  */
-static void
+void
 free_flow_members(struct ip_flow_cache *flow_entry)
 {
-    free(flow_entry->dst_ip_addr);
-    free(flow_entry->src_ip_addr);
+    FREE(flow_entry->dst_ip_addr);
+    FREE(flow_entry->src_ip_addr);
+    FREE(flow_entry->gk_policy);
 }
 
 /**
@@ -102,11 +104,10 @@ gkc_del_flow_from_tree(ds_tree_t *flow_tree, struct gkc_ip_flow_interface *req)
 
         /* found the flow. Free memory used by the flow structure.*/
         free_flow_members(remove);
-        if (remove->gk_policy) free(remove->gk_policy);
         /* remove it from the tree*/
         ds_tree_remove(flow_tree, remove);
         /* free the entry */
-        free(remove);
+        FREE(remove);
         return true;
     }
 
@@ -198,10 +199,9 @@ gkc_cleanup_ttl_flow_tree(struct gkc_del_info_s *gk_del_info)
 
         /* found the flow. Free memory used by the flow structure.*/
         free_flow_members(remove);
-        if (remove->gk_policy) free(remove->gk_policy);
         /* remove it from the tree*/
         ds_tree_remove(gk_del_info->tree, remove);
         /* free the entry */
-        free(remove);
+        FREE(remove);
     }
 }

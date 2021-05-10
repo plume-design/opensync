@@ -156,13 +156,41 @@ fsm_tag_update_init(void)
 }
 
 /**
+ * @brief Set the initial max memory threshold.
+ *
+ * It can be overriden through the ovsdb Node_Config entries
+ */
+static void
+fsm_set_max_mem(void)
+{
+    struct fsm_mgr *mgr;
+    int rc;
+
+    mgr = fsm_get_mgr();
+
+    /* Stash the max amount of memory available */
+    rc = sysinfo(&mgr->sysinfo);
+    if (rc != 0)
+    {
+        rc = errno;
+        LOGE("%s: sysinfo failed: %s", __func__, strerror(rc));
+        memset(&mgr->sysinfo, 0, sizeof(mgr->sysinfo));
+    }
+
+    mgr->max_mem = CONFIG_FSM_MEM_MAX * 1024;
+
+    LOGI("%s: fsm default max memory usage: %" PRIu64 " kB", __func__,
+         mgr->max_mem);
+}
+
+
+/**
  * @brief fsm manager init routine
  */
 void
 fsm_init_mgr(struct ev_loop *loop)
 {
     struct fsm_mgr *mgr;
-    int rc;
 
     mgr = fsm_get_mgr();
     memset(mgr, 0, sizeof(*mgr));
@@ -171,23 +199,8 @@ fsm_init_mgr(struct ev_loop *loop)
     ds_tree_init(&mgr->fsm_sessions, fsm_sessions_cmp,
                  struct fsm_session, fsm_node);
 
-    /* Check the max amount of memory available */
-    rc = sysinfo(&mgr->sysinfo);
-    if (rc != 0)
-    {
-        rc = errno;
-        LOGE("%s: sysinfo failed: %s", __func__, strerror(rc));
-        memset(&mgr->sysinfo, 0, sizeof(mgr->sysinfo));
-        mgr->max_mem = INT_MAX;
-    }
-    else
-    {
-        /* Set default to 50% of the max mem available */
-        mgr->max_mem = (mgr->sysinfo.totalram * mgr->sysinfo.mem_unit) / 2;
-        mgr->max_mem /= 1000; /* kB */
-        LOGI("%s: fsm default max memory usage: %" PRIu64 " kB", __func__,
-             mgr->max_mem);
-    }
+    /* Set the initial max memory threshold */
+    fsm_set_max_mem();
 
     /* initialize tag tree */
     ds_tree_init(&mgr->dpi_client_tags_tree, (ds_key_cmp_t *) strcmp,
@@ -918,6 +931,25 @@ fsm_free_session(struct fsm_session *session)
 
 
 /**
+ * @brief get session name
+ *
+ * return then session name
+ */
+char *
+fsm_get_session_name(struct fsm_policy_client *client)
+{
+    struct fsm_session *session;
+
+    if (client == NULL) return NULL;
+
+    session = client->session;
+    if (session == NULL) return NULL;
+
+    return session->name;
+}
+
+
+/**
  * @brief add a fsm session
  *
  * @param conf the ovsdb Flow_Service_Manager_Config entry
@@ -964,6 +996,7 @@ fsm_add_session(struct schema_Flow_Service_Manager_Config *conf)
     client = &session->policy_client;
     client->session = session;
     client->update_client = fsm_update_client;
+    client->session_name = fsm_get_session_name;
     fsm_policy_register_client(&session->policy_client);
 
     fsm_walk_sessions_tree();
@@ -1332,14 +1365,10 @@ fsm_rm_node_config(struct schema_Node_Config *old_rec)
     rc = strcmp("fsm", module);
     if (rc != 0) return;
 
-    /* Get the manager */
-    mgr = fsm_get_mgr();
-    if (mgr->sysinfo.totalram == 0) return;
+    /* Reset the memory */
+    fsm_set_max_mem();
 
-    mgr->max_mem = (mgr->sysinfo.totalram * mgr->sysinfo.mem_unit) / 2;
-    mgr->max_mem /= 1000; /* kB */
-    LOGI("%s: fsm default max memory usage: %" PRIu64 " kB", __func__,
-         mgr->max_mem);
+    mgr = fsm_get_mgr();
 
     snprintf(str_value, sizeof(str_value), "%" PRIu64 " kB", mgr->max_mem);
     fsm_set_node_state(FSM_NODE_MODULE, FSM_NODE_STATE_MEM_KEY, str_value);

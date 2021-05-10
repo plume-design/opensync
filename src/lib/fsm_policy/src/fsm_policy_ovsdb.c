@@ -697,14 +697,16 @@ struct fsm_policy * fsm_policy_get(struct schema_FSM_Policy *spolicy)
                      struct fsm_policy, policy_node);
         ds_tree_insert(tree, table, table->name);
 
-        LOGN("%s: Loading policy table %s", __func__, name);
+        LOGI("%s: loading policy: %s, rule: %s: index: %d", __func__,
+             name, spolicy->name, spolicy->idx);
     }
 
     idx = spolicy->idx;
     fpolicy = &table->lookup_array[idx];
-    if (*fpolicy != NULL) return *fpolicy;
-
-    *fpolicy = fsm_policy_insert_schema_p(table, spolicy);
+    if (*fpolicy == NULL)
+    {
+        *fpolicy = fsm_policy_insert_schema_p(table, spolicy);
+    }
 
     /* Update policy clients */
     fsm_policy_update_clients(table);

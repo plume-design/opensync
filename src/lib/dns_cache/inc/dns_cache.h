@@ -172,6 +172,19 @@ dns_cache_cleanup(void);
 bool
 dns_cache_ip2action_lookup(struct ip2action_req *req);
 
+
+/**
+ * @brief Lookup cached action and policy idx for given ip address and mac.
+ *
+ * receive ipaddress and mac of device.
+ *
+ * output action and policy idx.
+ *
+ * @return true for success and false for failure.
+ */
+bool
+dns_cache_get_policy_action(struct ip2action_req *req);
+
 /**
  * @brief Add an fsm policy result.
  *

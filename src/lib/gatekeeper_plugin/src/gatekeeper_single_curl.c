@@ -35,6 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "gatekeeper.pb-c.h"
 #include "gatekeeper.h"
 #include "fsm_policy.h"
+#include "memutil.h"
 #include "log.h"
 #include "util.h"
 
@@ -52,7 +53,7 @@ gk_curl_callback(void *contents, size_t size, size_t nmemb, void *userp)
     struct gk_curl_data *mem = (struct gk_curl_data *)userp;
     size_t realsize = size * nmemb;
 
-    char *ptr = realloc(mem->memory, mem->size + realsize + 1);
+    char *ptr = REALLOC(mem->memory, mem->size + realsize + 1);
 
     if (ptr == NULL)
     {
@@ -77,8 +78,8 @@ gk_set_redirect(struct fsm_policy_req *policy_req,
     Gatekeeper__Southbound__V1__GatekeeperCommonReply *header;
     Gatekeeper__Southbound__V1__GatekeeperAction gk_action;
     struct fqdn_pending_req *fqdn_req;
-    static char ipv6_str[INET6_ADDRSTRLEN] = { '\0' };
-    char ipv4_str[INET_ADDRSTRLEN]         = { '\0' };
+    char ipv6_str[INET6_ADDRSTRLEN] = { '\0' };
+    char ipv4_str[INET_ADDRSTRLEN]  = { '\0' };
     char ipv4_redirect_s[256];
     char ipv6_redirect_s[256];
     const char *res;
@@ -355,47 +356,6 @@ gk_process_curl_response(struct gk_curl_data *data, struct fsm_gk_verdict *gk_ve
     return ret;
 }
 
-/**
- * @brief returns the attribute string value based on the request type.
- *
- * @param req_type attribute request type.
- */
-const char *
-gk_request_str(int req_type)
-{
-    switch (req_type)
-    {
-        case FSM_FQDN_REQ:
-            return "fqdn";
-
-        case FSM_SNI_REQ:
-            return "https_sni";
-
-        case FSM_HOST_REQ:
-            return "http_host";
-
-        case FSM_URL_REQ:
-            return "http_url";
-
-        case FSM_APP_REQ:
-            return "app";
-
-        case FSM_IPV4_REQ:
-            return "ipv4";
-
-        case FSM_IPV6_REQ:
-            return "ipv6";
-
-        case FSM_IPV4_FLOW_REQ:
-            return "ipv4_tuple";
-
-        case FSM_IPV6_FLOW_REQ:
-            return "ipv6_tuple";
-
-        default:
-            return "";
-    }
-}
 
 /**
  * @brief clean up curl handler
@@ -609,7 +569,7 @@ gk_send_request(struct fsm_session *session,
     }
 
     /* will be increased as needed by the realloc */
-    chunk.memory = malloc(1);
+    chunk.memory = (char *)MALLOC(1);
     if (chunk.memory == NULL) return GK_LOOKUP_FAILURE;
 
     /* no data at this point */
@@ -652,6 +612,6 @@ gk_send_request(struct fsm_session *session,
     gk_update_uncategorized_count(fsm_gk_session, gk_verdict);
 
 error:
-    free(chunk.memory);
+    FREE(chunk.memory);
     return gk_response;
 }

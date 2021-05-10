@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <curl/curl.h>
 #include <limits.h>
 #include <stdint.h>
+#include <regex.h>
 
 #include "fsm.h"
 #include "ds_tree.h"
@@ -127,6 +128,10 @@ struct fsm_gk_session
     struct fsm_url_stats health_stats;
     struct gatekeeper_offline gk_offline;
     uint32_t dns_cache_hit_count;
+    const char *pattern_fqdn_lan;
+    const char *pattern_fqdn;
+    regex_t *re_lan;
+    regex_t *re;
 };
 
 

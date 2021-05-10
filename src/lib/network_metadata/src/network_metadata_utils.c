@@ -75,10 +75,6 @@ int net_md_eth_cmp(void *a, void *b)
    cmp = (int)(key_a->vlan_id) - (int)(key_b->vlan_id);
    if (cmp != 0) return cmp;
 
-   /* Compare ufid */
-   if ((key_a->ufid != NULL) && (key_b->ufid != NULL))
-        cmp = memcmp(key_a->ufid, key_b->ufid, sizeof(os_ufid_t));
-
    return cmp;
 }
 
@@ -92,7 +88,7 @@ int net_md_eth_cmp(void *a, void *b)
  * @param a void pointer cast to a net_md_flow_key struct
  * @param a void pointer cast to a net_md_flow_key struct
  */
-int net_md_ethertype_cmp(void *a, void *b)
+int net_md_eth_flow_cmp(void *a, void *b)
 {
     struct net_md_flow_key *key_a = a;
     struct net_md_flow_key *key_b = b;
@@ -100,6 +96,11 @@ int net_md_ethertype_cmp(void *a, void *b)
 
     /* Compare vlan id */
    cmp = (int)(key_a->ethertype) - (int)(key_b->ethertype);
+   if (cmp != 0) return cmp;
+
+   /* Compare ufid */
+   if ((key_a->ufid != NULL) && (key_b->ufid != NULL))
+        cmp = memcmp(key_a->ufid, key_b->ufid, sizeof(os_ufid_t));
 
    return cmp;
 }
@@ -685,6 +686,7 @@ net_md_set_eth_pair(struct net_md_aggregator *aggr,
                     struct net_md_flow_key *key)
 {
     struct net_md_eth_pair *eth_pair;
+    os_ufid_t *ufid;
 
     if (key == NULL) return NULL;
     if (key->flags == NET_MD_ACC_LOOKUP_ONLY) return NULL;
@@ -692,15 +694,21 @@ net_md_set_eth_pair(struct net_md_aggregator *aggr,
     eth_pair = calloc(1, sizeof(*eth_pair));
     if (eth_pair == NULL) return NULL;
 
+    /* Do not stash the ufid for the eth_pair accumulator */
+    ufid = key->ufid;
+    key->ufid = NULL;
     eth_pair->mac_stats = net_md_set_acc(aggr, key);
+    key->ufid = ufid;
+
     if (eth_pair->mac_stats == NULL) goto err_free_eth_pair;
 
-    ds_tree_init(&eth_pair->ethertype_flows, net_md_ethertype_cmp,
+    ds_tree_init(&eth_pair->ethertype_flows, net_md_eth_flow_cmp,
                  struct net_md_flow, flow_node);
 
     ds_tree_init(&eth_pair->five_tuple_flows, net_md_5tuple_cmp,
                  struct net_md_flow, flow_node);
 
+    aggr->total_eth_pairs++;
     return eth_pair;
 
 err_free_eth_pair:
@@ -1100,11 +1108,6 @@ void net_md_report_eth_acc(struct net_md_aggregator *aggr,
         now = time(NULL);
         cmp = difftime(now, acc->last_updated);
         retire_flow = (cmp >= aggr->acc_ttl);
-        refd_flow = (acc->refcnt != 0);
-
-        /* Account for inactive yet referenced flows */
-        if (retire_flow && refd_flow) aggr->held_flows++;
-
         refd_flow = (acc->refcnt != 0);
 
         /* Account for inactive yet referenced flows */
@@ -1890,8 +1893,10 @@ net_md_log_acc(struct net_md_stats_accumulator *acc)
     struct flow_tags *ftag;
     os_macaddr_t null_mac;
     struct flow_key *fkey;
+    os_ufid_t null_ufid;
     os_macaddr_t *smac;
     os_macaddr_t *dmac;
+    os_ufid_t *ufid;
     size_t i, j;
     int af;
 
@@ -1904,7 +1909,7 @@ net_md_log_acc(struct net_md_stats_accumulator *acc)
     key = acc->key;
 
     memset(&null_mac, 0, sizeof(null_mac));
-
+    memset(&null_ufid, 0, sizeof(null_ufid));
     if (key->ip_version == 4 || key->ip_version == 6)
     {
         af = key->ip_version == 4 ? AF_INET : AF_INET6;
@@ -1914,12 +1919,15 @@ net_md_log_acc(struct net_md_stats_accumulator *acc)
 
     smac = (key->smac != NULL ? key->smac : &null_mac);
     dmac = (key->dmac != NULL ? key->dmac : &null_mac);
+    ufid = (key->ufid != NULL ? key->ufid : &null_ufid);
 
+    LOGD("%s: acc %p", __func__, acc);
     LOGD("%s: Printing key => net_md_flow_key :: fkey => flow_key",
          __func__);
     LOGD("------------");
-    LOGD(" smac:" PRI_os_macaddr_lower_t \
-         " dmac:" PRI_os_macaddr_lower_t \
+    LOGD(" smac: " PRI_os_macaddr_lower_t \
+         " dmac: " PRI_os_macaddr_lower_t \
+         " ufid:" PRI_os_ufid_t          \
          " isparent_of_smac: %s"         \
          " isparent_of_dmac: %s"         \
          " vlanid: %d"                   \
@@ -1932,6 +1940,7 @@ net_md_log_acc(struct net_md_stats_accumulator *acc)
          " dport: %d",
          FMT_os_macaddr_pt(smac),
          FMT_os_macaddr_pt(dmac),
+         FMT_os_ufid_t_pt(ufid),
          (key->isparent_of_smac ? "true" : "false"),
          (key->isparent_of_dmac ? "true" : "false"),
          key->vlan_id,
@@ -1945,7 +1954,6 @@ net_md_log_acc(struct net_md_stats_accumulator *acc)
     if (key->fstart) LOGD(" Flow Starts");
     if (key->fend) LOGD(" Flow Ends");
     LOGD("------------");
-
     LOGD(" smac: %s"      \
          " dmac: %s"      \
          " isparent_of_smac: %s"    \

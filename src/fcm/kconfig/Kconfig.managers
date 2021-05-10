@@ -10,3 +10,11 @@ menuconfig MANAGER_FCM
         default "fcm;true;always_restart=true;restart_delay=-1"
         help
             Flow Collection Manager startup configuration
+
+    config FCM_MEM_MAX
+        depends on MANAGER_FCM
+        int "High memory usage threshold in MB for FCM"
+        default 100
+        help
+            FCM will be restarted once this threshold is reached.
+            This value can be overwritten through the ovsdb Node_Config table.

@@ -1768,7 +1768,7 @@ void inet_base_dhcp_server_status(osn_dhcp_server_t *ds, struct osn_dhcp_server_
 
     inet_base_t *self = osn_dhcp_server_data_get(ds);
 
-    LOG(INFO, "inet_base: dhcpv4_server: %s: Number of leases %d.",
+    LOG(DEBUG, "inet_base: dhcpv4_server: %s: Number of leases %d.",
             self->inet.in_ifname,
             st->ds_leases_len);
 

@@ -735,7 +735,7 @@ void neigh_table_ttl_cleanup(int64_t ttl, uint32_t source_mask)
 void print_neigh_entry(struct neighbour_entry *entry)
 {
     char                   ipstr[INET6_ADDRSTRLEN] = { 0 };
-    os_macaddr_t           nullmac = { 0 };
+    os_macaddr_t           nullmac = {{ 0 }};
     os_macaddr_t           *pmac;
     char                   *source;
     const char             *ip;

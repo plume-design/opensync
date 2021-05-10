@@ -50,6 +50,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define OTHER_CONFIG_NELEMS 3
 #define OTHER_CONFIG_NELEM_SIZE 128
 
+/* external test "suite" */
+void test_fsm_gk_fct(void);
+
 char *g_location_id = "foo";
 char *g_node_id = "bar";
 
@@ -99,7 +102,7 @@ struct fsm_session_conf g_confs[1] =
     }
 };
 
-struct fsm_session g_sessions[1] =
+struct fsm_session g_sessions[] =
 {
     {
         .type = FSM_WEB_CAT,
@@ -164,7 +167,15 @@ struct schema_FSM_Policy spolicies[] =
         .fqdn_op_exists = true,
         .fqdn_op = "in",
         .fqdns_len = 6,
-        .fqdns = {"www.cnn.com", "www.google.com", "test_host", "signal", "localhost", "http://whitehouse.info"},
+        .fqdns =
+        {
+            "www.cnn.com",
+            "www.google.com",
+            "test-host.com",
+            "signal",
+            "localhost",
+            "www.whitehouse.info"
+        },
         .fqdncat_op_exists = false,
         .risk_op_exists = false,
         .ipaddr_op_exists = false,
@@ -191,7 +202,8 @@ check_connection(void)
     CURL *curl;
     CURLcode response;
 
-    LOGN("checking server connection..server url %s, certs path %s", g_server_url, g_certs_file);
+    LOGN("checking server connection..server url %s, certs path %s",
+         g_server_url, g_certs_file);
 
     curl_global_init(CURL_GLOBAL_ALL);
     curl = curl_easy_init();
@@ -246,8 +258,28 @@ gk_get_other_config_val(struct fsm_session *session, char *key)
     return pair->value;
 }
 
+/* Provide some configurability in the setUp()/tearDown()
+ * for individual tests.
+ */
+void (*g_setUp)(void)    = NULL;
+void (*g_tearDown)(void) = NULL;
+
 void
 setUp(void)
+{
+    if (g_setUp != NULL)
+        (*g_setUp)();
+}
+
+void
+tearDown(void)
+{
+    if (g_tearDown != NULL)
+        (*g_tearDown)();
+}
+
+void
+main_setUp(void)
 {
     struct fsm_session *session = &g_sessions[0];
     struct fsm_policy_session *mgr;
@@ -273,12 +305,12 @@ setUp(void)
     session->location_id = g_location_id;
     session->node_id = g_node_id;
     session->loop =  loop;
-
+    session->service = session;
     gatekeeper_module_init(session);
     ev_run(loop, 0);
 }
 
-void tearDown(void)
+void main_tearDown(void)
 {
     struct fsm_session *session = &g_sessions[0];
 
@@ -790,8 +822,8 @@ test_curl_host(void)
     req.device_id = &dev_mac;
 
     /* Build the request elements */
-    STRSCPY(req_info.url, "test_host");
-    req.url                   = "test_host";
+    STRSCPY(req_info.url, "test-host.com");
+    req.url                   = "test-host.com";
     fqdn_req.req_info         = &req_info;
     fqdn_req.numq             = 1;
     fqdn_req.policy_table     = table;
@@ -1147,6 +1179,7 @@ test_health_stats_report(void)
      * should be incremented.
      */
     ecurl_info->server_url = "1.2.3.4";
+    LOGI("Timing out after 2 seconds");  /* Test is not stalled. */
     test_curl_host();
     gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
     TEST_ASSERT_EQUAL_INT(1, hs.connectivity_failures);
@@ -1182,6 +1215,7 @@ test_connection_timeout(void)
 
     ecurl_info = &fsm_gk_session->ecurl;
     ecurl_info->server_url = "1.2.3.4";
+    LOGI("Timing out after 2 seconds");  /* Test is not stalled. */
     time_t start = time(NULL);
     test_curl_app();
     time_t end = time(NULL);
@@ -1206,6 +1240,7 @@ test_backoff_on_connection_failure(void)
     struct fsm_session *session;
     struct fsm_url_stats *stats;
     struct wc_health_stats hs;
+    int nap_time;
 
     LOGN("**** starting test %s ***** ", __func__);
     memset(&hs, 0, sizeof(hs));
@@ -1221,6 +1256,7 @@ test_backoff_on_connection_failure(void)
 
     ecurl_info = &fsm_gk_session->ecurl;
     ecurl_info->server_url = "1.2.3.4";
+    LOGI("Timing out after 2 seconds");  /* Test is not stalled. */
     test_curl_app();
     gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
     /* connection fail counter should be set */
@@ -1229,14 +1265,19 @@ test_backoff_on_connection_failure(void)
 
     /* Set the correct server url, it should connect now */
     ecurl_info->server_url = session->ops.get_config(session, "gk_url");
-    sleep(5);
+
+    nap_time = 5;
+    LOGI("Sleeping for %d seconds", nap_time);  /* Inform test is not stalled. */
+    sleep(nap_time);
     test_curl_app();
     gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
     /* cloud lookup should still be 0, as still back-off logic is in place */
     TEST_ASSERT_EQUAL_INT(1, stats->cloud_lookups);
 
-    sleep(30);
     /* backoff time 30 secs is expired now. */
+    nap_time = 30;
+    LOGI("Sleeping for %d seconds", nap_time);  /* Inform test is not stalled. */
+    sleep(nap_time);
     test_curl_app();
     gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
     TEST_ASSERT_EQUAL_INT(2, stats->cloud_lookups);
@@ -1432,11 +1473,11 @@ test_uncategory_count(void)
     gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
     TEST_ASSERT_EQUAL_INT(0, hs.uncategorized);
 
-    run_fqdn_query("localhost");
+    run_fqdn_query("localhost.lan.foobar");
     gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
     TEST_ASSERT_EQUAL_INT(1, hs.uncategorized);
 
-    run_fqdn_query("http://whitehouse.info");
+    run_fqdn_query("www.whitehouse.info");
     gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
     TEST_ASSERT_EQUAL_INT(2, hs.uncategorized);
 }
@@ -1513,7 +1554,7 @@ test_endpoint_url(void)
 
     for (i = FSM_FQDN_REQ; i <= FSM_IPV6_FLOW_REQ; i++)
     {
-        snprintf(url, sizeof(url), "%s/%s", server_url, gk_request_str(i));
+        snprintf(url, sizeof(url), "%s/%s", server_url, gatekeeper_req_type_to_str(i));
         TEST_ASSERT_EQUAL_STRING(endpoint_urls[i], url);
     }
 
@@ -1669,6 +1710,44 @@ test_uncategorized_reply(void)
 }
 
 
+void
+test_validate_fqdn(void)
+{
+    struct fsm_session *session;
+    size_t len;
+    size_t i;
+    bool rc;
+
+    struct test_fqdn
+    {
+        char *fqdn;
+        bool rc;
+    } test_fqdns[] =
+    {
+        {
+            .fqdn = "foo",
+            .rc = false,
+        },
+        {
+            .fqdn = "foo.lan",
+            .rc = false,
+        },
+        {
+            .fqdn = "foo.lan.com",
+            .rc = true,
+        },
+    };
+
+    session = &g_sessions[0];
+    len = sizeof(test_fqdns) / sizeof(test_fqdns[0]);
+    for (i = 0; i < len; i++)
+    {
+        LOGD("%s: validating fqdn %s", __func__, test_fqdns[i].fqdn);
+        rc = gatekeeper_validate_fqdn(session, test_fqdns[i].fqdn);
+        TEST_ASSERT_TRUE(test_fqdns[i].rc == rc);
+    }
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -1690,6 +1769,13 @@ main(int argc, char *argv[])
 
     ret = check_connection();
     if (ret == true) g_is_connected = true;
+
+    /* No initial setUp()/tearDown() required for these tests. */
+    test_fsm_gk_fct();
+
+    /* Following tests require the local setUp()/tearDown(). */
+    g_setUp = main_setUp;
+    g_tearDown = main_tearDown;
 
     RUN_TEST(test_curl_multi);
     RUN_TEST(test_curl_fqdn);
@@ -1714,6 +1800,7 @@ main(int argc, char *argv[])
     RUN_TEST(test_endpoint_url);
     RUN_TEST(test_private_ip);
     RUN_TEST(test_uncategorized_reply);
+    RUN_TEST(test_validate_fqdn);
 
     return UNITY_END();
 }

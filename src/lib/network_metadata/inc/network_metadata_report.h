@@ -170,6 +170,7 @@ struct net_md_aggregator
     size_t total_flows;           /* # of flows tracked by the aggregator */
     size_t held_flows;            /* # of inactive flows with a ref count > 0 */
     size_t max_reports;           /* Max # of flows to report per window */
+    size_t total_eth_pairs;       /* # of eth pairs tracked by the aggregator */
     bool (*report_filter)(struct net_md_stats_accumulator *);
     bool (*collect_filter)(struct net_md_aggregator *, struct net_md_flow_key *);
     bool (*send_report)(struct net_md_aggregator *, char *);

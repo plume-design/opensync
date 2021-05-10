@@ -301,7 +301,7 @@ static void iperf_on_st_completed_cb(pasync_ctx_t *ctx, void *buff, int buff_sz)
     struct st_context *st_ctx = (struct st_context *)ctx->data;
     int status = ST_STATUS_READ;
     pjs_errmsg_t err;
-    ovs_uuid_t uuid = { '\0' };
+    ovs_uuid_t uuid = {{ '\0' }};
 
     LOG(DEBUG, "ST_IPERF: %s: buff_size=%d", __func__, buff_sz);
     if (buff_sz > 0)

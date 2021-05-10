@@ -414,7 +414,7 @@ void lnx_ip_status_poll(lnx_ip_t *self)
                 rc);
     }
 
-    LOG(INFO, "ip: %s: Found %zu IPv4 address(es).", self->ip_ifname, self->ip_status.is_addr_len);
+    LOG(DEBUG, "ip: %s: Found %zu IPv4 address(es).", self->ip_ifname, self->ip_status.is_addr_len);
 
     if (self->ip_status_fn != NULL)
     {

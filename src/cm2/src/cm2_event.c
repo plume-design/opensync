@@ -574,6 +574,25 @@ static void cm2_disable_gw_offline_state(void)
     }
 }
 
+static void cm2_restore_bridge_config()
+{
+    if (g_state.dev_type != CM2_DEVICE_BRIDGE)
+        return;
+
+    if (!g_state.old_link.is_bridge ||
+        g_state.link.is_bridge)
+        return;
+
+    if (!cm2_is_eth_type(g_state.link.if_type))
+        return;
+
+    if (strcmp(g_state.old_link.if_name, g_state.link.if_name) != 0)
+        return;
+
+    LOGI("%s: Restore bridge [%s] configuration", g_state.old_link.if_name, g_state.old_link.bridge_name);
+    cm2_ovsdb_connection_update_bridge_state(g_state.old_link.if_name, g_state.old_link.bridge_name);
+}
+
 void cm2_update_state(cm2_reason_e reason)
 {
     int  ret;
@@ -603,6 +622,7 @@ start:
         case CM2_REASON_LINK_USED:
             WARN_ON(cm2_update_main_link_ip(&g_state.link) < 0);
             cm2_set_backhaul_update_ble_state();
+            cm2_restore_bridge_config();
 
             if (g_state.link.is_bridge) {
                 cm2_update_bridge_cfg(g_state.link.bridge_name, g_state.link.if_name, true,
@@ -808,6 +828,7 @@ start:
                     if (CONFIG_CM2_CLOUD_FATAL_THRESHOLD != 0)
                         g_state.cnts.ovs_resolve_fail++;
                     cm2_restart_ovs_connection(true);
+                    WARN_ON(!target_device_wdt_ping());
                     return;
                 }
             }

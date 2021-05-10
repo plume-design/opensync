@@ -125,13 +125,13 @@ gkc_init_per_dev(os_macaddr_t *device_mac)
     if (!device_mac) return NULL;
 
     /* initialize per device structure */
-    pdevice_cache = calloc(1, sizeof(struct per_device_cache));
+    pdevice_cache = CALLOC(1, sizeof(*pdevice_cache));
     if (pdevice_cache == NULL) return NULL;
 
-    pdevice_cache->device_mac = calloc(1, sizeof(os_macaddr_t));
+    pdevice_cache->device_mac = CALLOC(1, sizeof(*pdevice_cache->device_mac));
     if (pdevice_cache->device_mac == NULL) goto error;
 
-    memcpy(pdevice_cache->device_mac, device_mac, sizeof(os_macaddr_t));
+    memcpy(pdevice_cache->device_mac, device_mac, sizeof(*pdevice_cache->device_mac));
 
     ds_tree_init(&pdevice_cache->fqdn_tree,
                  ds_str_cmp,
@@ -173,7 +173,7 @@ gkc_init_per_dev(os_macaddr_t *device_mac)
     return pdevice_cache;
 
 error:
-    free(pdevice_cache);
+    FREE(pdevice_cache);
     return NULL;
 }
 
@@ -237,12 +237,12 @@ gk_add_new_redirect_entry(struct gk_attr_cache_interface *input,
  * @return return pointer to created attribute struct
  *         NULL on failure
  */
-static struct attr_cache*
+struct attr_cache*
 gkc_new_attr_entry(struct gk_attr_cache_interface *entry)
 {
     struct attr_cache *new_attr;
 
-    new_attr = calloc(1, sizeof(struct attr_cache));
+    new_attr = CALLOC(1, sizeof(*new_attr));
     if (new_attr == NULL) return NULL;
 
     switch (entry->attribute_type)
@@ -277,6 +277,7 @@ gkc_new_attr_entry(struct gk_attr_cache_interface *entry)
         break;
 
     default:
+        FREE(new_attr);
         return NULL;
         break;
     }

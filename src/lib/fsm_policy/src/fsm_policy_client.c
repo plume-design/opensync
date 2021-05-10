@@ -71,17 +71,60 @@ void fsm_policy_client_init(void)
     ds_tree_init(tree, client_cmp, struct fsm_policy_client, client_node);
 }
 
+
+/**
+ * @brief walks the tree of clients
+ *
+ * Debug function, logs each tree entry
+ */
+void
+fsm_walk_clients_tree(const char *caller)
+{
+    struct fsm_policy_client *client;
+    struct fsm_policy_session *mgr;
+    char *session_name;
+    char *table_name;
+    ds_tree_t *tree;
+
+    mgr = fsm_policy_get_mgr();
+    tree = &mgr->clients;
+
+    LOGD("%s: Walking client tree", caller);
+    client = ds_tree_head(tree);
+    while (client != NULL)
+    {
+        session_name = NULL;
+        if (client->session_name != NULL) session_name = client->session_name(client);
+
+        table_name = NULL;
+        if (client->table != NULL) table_name = client->table->name;
+        LOGD("%s: client: %s: session: %s, table: %s", __func__,
+             client->name != NULL ? client->name : "None",
+             session_name != NULL ? session_name : "None",
+             table_name != NULL ? table_name : "None");
+        client = ds_tree_next(tree, client);
+    }
+}
+
+
 void fsm_policy_register_client(struct fsm_policy_client *client)
 {
-    struct fsm_policy_session *mgr;
     struct fsm_policy_client *p_client;
+    struct fsm_policy_session *mgr;
     struct policy_table *table;
+    char *default_name;
+    char *session_name;
+    char *table_name;
     ds_tree_t *tree;
-    char *default_name = "default";
     char *name;
 
     if (client == NULL) return;
     if (client->session == NULL) return;
+
+    session_name = NULL;
+    if (client->session_name != NULL) session_name = client->session_name(client);
+    table_name = NULL;
+    default_name = "default";
 
     mgr = fsm_policy_get_mgr();
     tree = &mgr->clients;
@@ -93,9 +136,16 @@ void fsm_policy_register_client(struct fsm_policy_client *client)
 
         /* Update the internal client */
         p_client->update_client = client->update_client;
+        p_client->session_name = client->session_name;
 
         LOGI("%s: updating client %s", __func__, p_client->name);
+        if (client->table != NULL) table_name = client->table->name;
+        LOGD("%s: client: %s: session: %s, table: %s", __func__,
+             client->name ? client->name : "None",
+             session_name ? session_name : "None",
+             table_name ? table_name : "None");
 
+        fsm_walk_clients_tree(__func__);
         return;
     }
 
@@ -108,6 +158,7 @@ void fsm_policy_register_client(struct fsm_policy_client *client)
     if (p_client->name == NULL) goto err_free_client;
     p_client->session = client->session;
     p_client->update_client = client->update_client;
+    p_client->session_name = client->session_name;
     table = ds_tree_find(&mgr->policy_tables, name);
     p_client->table = table;
     client->table = table;
@@ -115,6 +166,12 @@ void fsm_policy_register_client(struct fsm_policy_client *client)
 
     LOGI("%s: registered client %s", __func__, p_client->name);
 
+    if (client->table != NULL) table_name = client->table->name;
+    LOGD("%s: client: %s: session: %s, table: %s", __func__,
+         client->name ? client->name : "None",
+         session_name ? session_name : "None",
+         table_name ? table_name : "None");
+    fsm_walk_clients_tree(__func__);
     return;
 
 err_free_client:
@@ -124,11 +181,23 @@ err_free_client:
 
 void fsm_policy_deregister_client(struct fsm_policy_client *client)
 {
-    struct fsm_policy_session *mgr;
     struct fsm_policy_client *p_client;
+    struct fsm_policy_session *mgr;
+    char *session_name;
+    char *table_name;
 
     if (client == NULL) return;
     if (client->session == NULL) return;
+
+    session_name = NULL;
+    if (client->session_name != NULL) session_name = client->session_name(client);
+
+    table_name = NULL;
+    if (client->table != NULL) table_name = client->table->name;
+    LOGD("%s: client: %s: session: %s, table: %s", __func__,
+         client->name ? client->name : "None",
+         session_name ? session_name : "None",
+         table_name ? table_name : "None");
 
     mgr = fsm_policy_get_mgr();
     p_client = ds_tree_find(&mgr->clients, client);
@@ -140,12 +209,13 @@ void fsm_policy_deregister_client(struct fsm_policy_client *client)
 
     client->table = NULL;
     client->session = NULL;
+    fsm_walk_clients_tree(__func__);
 }
 
 void fsm_policy_update_clients(struct policy_table *table)
 {
-    struct fsm_policy_session *mgr;
     struct fsm_policy_client *client;
+    struct fsm_policy_session *mgr;
     char *default_name = "default";
     ds_tree_t *tree;
 
@@ -158,8 +228,8 @@ void fsm_policy_update_clients(struct policy_table *table)
 
     while (client != NULL)
     {
-        char *name;
         bool update;
+        char *name;
         int cmp;
 
         name = (client->name == NULL ? default_name : client->name);
@@ -169,7 +239,9 @@ void fsm_policy_update_clients(struct policy_table *table)
         {
             LOGI("%s: updating client %s", __func__, client->name);
             client->update_client(client->session, table);
+            client->table = table;
         }
         client = ds_tree_next(tree, client);
     }
+    fsm_walk_clients_tree(__func__);
 }

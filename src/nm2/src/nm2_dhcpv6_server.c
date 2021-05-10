@@ -638,7 +638,7 @@ void nm2_dhcpv6_server_notify(inet_t *inet, struct osn_dhcpv6_server_status *sta
     struct nm2_iface *piface = inet->in_data;
     struct nm2_dhcpv6_server *ds6 = piface->if_dhcpv6_server;
 
-    LOG(INFO, "dhcpv6_server: Update: Number of leases: %d.", status->d6st_leases_len);
+    LOG(DEBUG, "dhcpv6_server: Update: Number of leases: %d.", status->d6st_leases_len);
 
     synclist_begin(&ds6->ds6_lease_list);
 

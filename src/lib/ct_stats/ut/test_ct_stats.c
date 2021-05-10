@@ -77,7 +77,6 @@ test_get_other_config_0(fcm_collect_plugin_t *plugin, char *key)
     return NULL;
 }
 
-
 char *
 test_get_other_config_1(fcm_collect_plugin_t *plugin, char *key)
 {

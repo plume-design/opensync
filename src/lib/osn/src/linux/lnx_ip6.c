@@ -490,7 +490,7 @@ void lnx_ip6_status_ipaddr_update(lnx_ip6_t *self)
 
     self->ip6_status.is6_addr_len = is6_addr_end - self->ip6_status.is6_addr;
 
-    LOG(INFO, "ip6: %s: Found %zu IPv6 address(es).", self->ip6_ifname, self->ip6_status.is6_addr_len);
+    LOG(DEBUG, "ip6: %s: Found %zu IPv6 address(es).", self->ip6_ifname, self->ip6_status.is6_addr_len);
 }
 
 /**
@@ -619,7 +619,7 @@ void lnx_ip6_status_neigh_update(lnx_ip6_t *self)
 
     self->ip6_status.is6_neigh_len = is6_neigh_end - self->ip6_status.is6_neigh;
 
-    LOG(INFO, "ip6: %s: Found %zu neighbor(s).", self->ip6_ifname, self->ip6_status.is6_neigh_len);
+    LOG(DEBUG, "ip6: %s: Found %zu neighbor(s).", self->ip6_ifname, self->ip6_status.is6_neigh_len);
 }
 
 /**

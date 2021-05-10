@@ -31,6 +31,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <mxml.h>
 
 #include "gatekeeper_multi_curl.h"
+#include "memutil.h"
 #include "log.h"
 
 static struct http2_curl curl_mgr;
@@ -117,8 +118,8 @@ gk_free_conn(struct gk_conn_info *conn)
         curl_easy_cleanup(conn->easy);
     }
 
-    free(conn->url);
-    free(conn);
+    FREE(conn->url);
+    FREE(conn);
 }
 
 
@@ -150,9 +151,9 @@ check_multi_info(struct http2_curl *mgr)
         curl_easy_getinfo(easy, CURLINFO_EFFECTIVE_URL, &eff_url);
         LOGT("%s(): DONE: %s => (%d) %s", __func__, eff_url, res, conn->error);
         curl_multi_remove_handle(mgr->multi, easy);
-        free(conn->url);
+        FREE(conn->url);
         curl_easy_cleanup(easy);
-        free(conn);
+        FREE(conn);
     }
 }
 
@@ -259,7 +260,7 @@ addsock(curl_socket_t s, CURL *easy, int action,
 
     LOGT("http2: %s %p, %d, %d, %p", __func__, easy, s, action, mgr);
 
-    fdp = calloc(1, sizeof(struct gk_sock_info));
+    fdp = CALLOC(1, sizeof(*fdp));
 
     fdp->global = mgr;
     setsock(fdp, s, easy, action, mgr);
@@ -377,7 +378,7 @@ gk_new_conn(char *url)
     LOGN("http2: %s() adding url %s", __func__, url);
     cmgr = get_curl_multi_mgr();
 
-    conn = calloc(1, sizeof(struct gk_conn_info));
+    conn = CALLOC(1, sizeof(*conn));
     if (conn == NULL) return false;
 
     conn->error[0]='\0';
@@ -436,7 +437,7 @@ gk_multi_curl_init(struct ev_loop *loop)
     rc = curl_global_init(CURL_GLOBAL_DEFAULT);
     if (rc != CURLE_OK) return false;
 
-    memset(cmgr, 0, sizeof(struct http2_curl));
+    memset(cmgr, 0, sizeof(*cmgr));
     cmgr->loop = loop;
 
     /* initialize multi curl handle*/

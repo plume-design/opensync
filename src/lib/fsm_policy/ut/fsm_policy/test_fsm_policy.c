@@ -843,6 +843,14 @@ static void test_update_client(struct fsm_session *session,
     client->table = table;
 }
 
+static char *
+test_session_name(struct fsm_policy_client *client)
+{
+    if (client->name != NULL) return client->name;
+
+    return "default_session_name";
+}
+
 void test_fsm_policy_client(void)
 {
     struct fsm_session *session;
@@ -864,6 +872,7 @@ void test_fsm_policy_client(void)
     session->handler_ctxt = client;
     client->session = session;
     client->update_client = test_update_client;
+    client->session_name = test_session_name;
 
     /* Register the client. Its table pointer should be set */
     fsm_policy_register_client(client);
@@ -929,6 +938,7 @@ void test_fsm_policy_clients_same_session(void)
     session->handler_ctxt = default_policy_client;
     default_policy_client->session = session;
     default_policy_client->update_client = test_update_client;
+    default_policy_client->session_name = test_session_name;
 
     /* Register the client. Its table pointer should be set */
     fsm_policy_register_client(default_policy_client);
@@ -941,6 +951,7 @@ void test_fsm_policy_clients_same_session(void)
     session->handler_ctxt = default_policy_client;
     dev_webpulse_client->session = session;
     dev_webpulse_client->update_client = test_update_client;
+    dev_webpulse_client->session_name = test_session_name;
 
     /* Register the client. Its table pointer should be set */
     fsm_policy_register_client(dev_webpulse_client);
@@ -957,11 +968,13 @@ void test_fsm_policy_clients_same_session(void)
 
     fsm_policy_deregister_client(default_policy_client);
     TEST_ASSERT_NULL(default_policy_client->table);
-    free(default_policy_client->name);
-    free(default_policy_client);
 
     fsm_policy_deregister_client(dev_webpulse_client);
     TEST_ASSERT_NULL(dev_webpulse_client->table);
+
+    free(default_policy_client->name);
+    free(default_policy_client);
+
     free(dev_webpulse_client->name);
     free(dev_webpulse_client);
 

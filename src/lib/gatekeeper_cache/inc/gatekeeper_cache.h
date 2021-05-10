@@ -484,4 +484,50 @@ gk_get_cache_count(void);
 void
 clear_gatekeeper_cache(void);
 
+/**
+ * @brief create a new flow entry initializing with 5-tuple values
+ *        from input.
+ *        (Exposed for testing)
+ * 
+ * @params: req: interface structure specifing the attribute request.
+ *
+ * @return ip_flow_cache pointer on success or NULL on failure.
+ */
+struct ip_flow_cache *
+gkc_new_flow_entry(struct gkc_ip_flow_interface *req);
+
+/**
+ * @brief free memory used by the flow entry.
+ *        (Exposed for testing)
+ *
+ * @params: flow_tree: pointer to flow tree from which flow is to be
+ *          freed.
+ */
+void
+free_flow_members(struct ip_flow_cache *flow_entry);
+
+/**
+ * @brief create a new attribute entry fo the given attribute type.
+ *        (Exposed for testing)
+ *
+ * @params: entry: specifing the attribute type
+ *
+ * @return return pointer to created attribute struct
+ *         NULL on failure
+ */
+struct attr_cache*
+gkc_new_attr_entry(struct gk_attr_cache_interface *entry);
+
+/**
+ * @brief frees memory used by attribute when it is deleted.
+ *        (Exposed for testing)
+ * 
+ * @params: tree pointer to attribute tree
+ * @params: req_type: request type
+ */
+void
+free_attr_members(struct attr_cache *attr_entry,
+                  enum gk_cache_request_type attr_type);
+
+
 #endif /* GK_CACHE_H_INCLUDED */

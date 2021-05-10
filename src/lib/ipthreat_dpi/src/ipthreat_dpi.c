@@ -48,6 +48,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "dns_cache.h"
 #include "fsm_dpi_utils.h"
 #include "json_mqtt.h"
+#include "memutil.h"
 
 #define IPTHREAT_CACHE_INTERVAL  120
 
@@ -177,6 +178,26 @@ ipthreat_dpi_plugin_update_client(struct fsm_session *session,
 
 
 /**
+ * @brief get session name
+ *
+ * return then session name
+ */
+char *
+ipthreat_get_session_name(struct fsm_policy_client *client)
+{
+    struct fsm_session *session;
+
+    if (client == NULL) return NULL;
+
+    session = client->session;
+    if (session == NULL) return NULL;
+
+    return session->name;
+}
+
+
+
+/**
  * @brief session initialization entry point
  *
  * Initializes the plugin specific fields of the session,
@@ -238,8 +259,9 @@ ipthreat_dpi_plugin_init(struct fsm_session *session)
     {
         client = &ipthreat_dpi_session->outbound;
         client->session = session;
-        client->name = outbound;
         client->update_client = ipthreat_dpi_plugin_update_client;
+        client->session_name = ipthreat_get_session_name;
+        client->name = STRDUP(outbound);
         fsm_policy_register_client(client);
     }
 
@@ -248,8 +270,9 @@ ipthreat_dpi_plugin_init(struct fsm_session *session)
     {
         client = &ipthreat_dpi_session->inbound;
         client->session = session;
-        client->name = inbound;
+        client->name = STRDUP(inbound);
         client->update_client = ipthreat_dpi_plugin_update_client;
+        client->session_name = ipthreat_get_session_name;
         fsm_policy_register_client(client);
     }
     ipthreat_dpi_session->initialized = true;
@@ -271,27 +294,20 @@ ipthreat_dpi_plugin_exit(struct fsm_session *session)
     struct ipthreat_dpi_session *ipthreat_dpi_session;
     struct fsm_policy_client *client;
     struct ipthreat_dpi_cache *mgr;
-    char *outbound;
-    char *inbound;
 
     mgr = ipthreat_dpi_get_mgr();
     if (!mgr->initialized) return;
 
     /* Deregister policy clients */
     ipthreat_dpi_session = session->handler_ctxt;
-    outbound = session->ops.get_config(session, "outbound_policy_table");
-    if (outbound != NULL)
-    {
-        client = &ipthreat_dpi_session->outbound;
-        fsm_policy_deregister_client(client);
-    }
 
-    inbound = session->ops.get_config(session, "inbound_policy_table");
-    if (inbound != NULL)
-    {
-        client = &ipthreat_dpi_session->inbound;
-        fsm_policy_deregister_client(client);
-    }
+    client = &ipthreat_dpi_session->outbound;
+    fsm_policy_deregister_client(client);
+    FREE(client->name);
+
+    client = &ipthreat_dpi_session->inbound;
+    fsm_policy_deregister_client(client);
+    FREE(client->name);
 
     dns_cache_cleanup_mgr();
     ipthreat_dpi_delete_session(session);
@@ -474,7 +490,7 @@ ipthreat_dpi_policy_req(struct ipthreat_dpi_req *ip_req)
     memset(&lkp_req, 0, sizeof(lkp_req));
     lkp_req.device_mac = ip_req->dev_id;
     lkp_req.ip_addr = ip_req->ip;
-    rc = dns_cache_ip2action_lookup(&lkp_req);
+    rc = dns_cache_get_policy_action(&lkp_req);
     if (rc)
     {
         if (lkp_req.action != policy_req.reply.action)
@@ -483,8 +499,6 @@ ipthreat_dpi_policy_req(struct ipthreat_dpi_req *ip_req)
             policy_req.fqdn_req->policy_idx = lkp_req.policy_idx;
             fqdn_req.to_report = false;
         }
-
-        if (lkp_req.service_id == IP2ACTION_GK_SVC) free(lkp_req.cache_gk.gk_policy);
     }
 
     action = (policy_req.reply.action == FSM_BLOCK ?
@@ -492,6 +506,7 @@ ipthreat_dpi_policy_req(struct ipthreat_dpi_req *ip_req)
 
     /* Add cache if entry not found */
     cache = (!policy_req.fqdn_req->from_cache && (fqdn_req.req_info->reply != NULL) &&
+             (!fqdn_req.req_info->reply->connection_error) &&
              (fqdn_req.categorized == FSM_FQDN_CAT_SUCCESS));
 
     if (cache)
