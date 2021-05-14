@@ -65,7 +65,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 typedef struct osn_qos osn_qos_t;
 
 /**
- * Key/Value pairs for @ref struct osn_qos_other_config
+ * Key/Value pairs for struct @ref osn_qos_other_config
  */
 struct osn_qos_oc_kv_pair
 {

@@ -33,7 +33,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /**
  * @file osn_pppoe.h
- *
  * @brief OpenSync PPPoE Interface Abstraction
  *
  * @addtogroup OSN

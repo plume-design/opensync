@@ -658,6 +658,11 @@ typedef bool target_mac_learning_cb_t(
 bool target_mac_learning_register(target_mac_learning_cb_t *omac_cb);
 
 /// @} LIB_TARGET_MAC_LEARNING
+
+/// @defgroup LIB_TARGET_MCPROXY Multicast Proxy API
+/// Definitions and API related to Multicast Proxy.
+/// @{
+
 /******************************************************************************
  *  IGMP/MLD Proxy definitions
  *****************************************************************************/
@@ -756,6 +761,8 @@ bool target_set_mcast_uplink(const char *ifname, bool enable, bool is_wan, const
  * @return true on success
  */
 bool target_set_igmp_snooping(const char *ifname, bool enable);
+
+/// @} LIB_TARGET_MCPROXY
 
 /******************************************************************************
  *  PLATFORM SPECIFIC definitions
