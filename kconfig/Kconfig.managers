@@ -28,5 +28,6 @@ source "src/ltem/kconfig/Kconfig.managers"
 #
 # Include platform/vendor managers
 #
+osource "service-provider/*/kconfig/Kconfig.managers"
 osource "platform/*/kconfig/Kconfig.managers"
 osource "vendor/*/kconfig/Kconfig.managers"

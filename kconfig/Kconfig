@@ -210,6 +210,10 @@ menu "Common"
 
 endmenu
 
+menu "Service Provider Configuration"
+    orsource "../service-provider/*/kconfig/Kconfig.service-provider"
+endmenu
+
 menu "Platform Configuration"
     orsource "Kconfig.platform"
     orsource "../platform/*/kconfig/Kconfig.platform"
