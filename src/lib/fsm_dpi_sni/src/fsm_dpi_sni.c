@@ -34,6 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "const.h"
 #include "ds_tree.h"
 #include "json_mqtt.h"
+#include "memutil.h"
 #include "log.h"
 #include "fsm_dpi_sni.h"
 #include "network_metadata_report.h"
@@ -230,7 +231,7 @@ fsm_dpi_sni_lookup_session(struct fsm_session *session)
     if (u_session != NULL) return u_session;
 
     LOGD("%s: Adding new session %s", __func__, session->name);
-    u_session = calloc(1, sizeof(*u_session));
+    u_session = CALLOC(1, sizeof(*u_session));
     if (u_session == NULL) return NULL;
 
     ds_tree_insert(sessions, u_session, session);
@@ -247,7 +248,7 @@ fsm_dpi_sni_lookup_session(struct fsm_session *session)
 void
 fsm_dpi_sni_free_session(struct fsm_dpi_sni_session *u_session)
 {
-    free(u_session);
+    FREE(u_session);
 }
 
 
@@ -380,7 +381,7 @@ fsm_dpi_sni_policy_req(struct fsm_session *session,
 
     fqdn_req.policy_table = policy_client->table;
     fqdn_req.numq = 1;
-    fqdn_req.req_info = calloc(sizeof(struct fsm_url_request), 1);
+    fqdn_req.req_info = CALLOC(1, sizeof(*fqdn_req.req_info));
     if (fqdn_req.req_info == NULL) return FSM_DPI_PASSTHRU;
 
     /* Set the backend provider ops */
@@ -434,10 +435,10 @@ fsm_dpi_sni_policy_req(struct fsm_session *session,
 
     fsm_dpi_sni_send_report(&fqdn_req);
 
-    free(fqdn_req.rule_name);
-    free(fqdn_req.policy);
+    FREE(fqdn_req.rule_name);
+    FREE(fqdn_req.policy);
     fsm_free_url_reply(fqdn_req.req_info->reply);
-    free(fqdn_req.req_info);
+    FREE(fqdn_req.req_info);
 
     return action;
 }
@@ -517,6 +518,11 @@ is_redirected_flow(struct net_md_flow_info *info, const char *attr)
          rc,
          lkp_req.redirect_flag);
     if (rc == false) return false;
+
+    if (lkp_req.service_id == IP2ACTION_GK_SVC)
+    {
+        FREE(lkp_req.cache_gk.gk_policy);
+    }
 
     if (lkp_req.redirect_flag == false) return false;
 

@@ -36,6 +36,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_types.h"
 
 #include "network_metadata.h"
+#include "network_metadata_report.h"
+
+#define MD_MAX_STRLEN (256)
 
 enum acc_state
 {
@@ -76,7 +79,6 @@ struct net_md_aggregator;
  */
 os_macaddr_t *str2os_mac(char *strmac);
 
-
 struct net_md_flow_key * set_net_md_flow_key(struct net_md_flow_key *lkey);
 void free_net_md_flow_key(struct net_md_flow_key *lkey);
 void free_flow_report(struct flow_report *report);
@@ -101,9 +103,11 @@ void net_md_free_eth_pair(struct net_md_eth_pair *pair);
 int net_md_eth_cmp(void *a, void *b);
 int net_md_5tuple_cmp(void *a, void *b);
 char * net_md_set_str(char *in_str);
+os_ufid_t *net_md_set_ufid(os_ufid_t *in_ufid);
 os_macaddr_t * net_md_set_os_macaddr(os_macaddr_t *in_mac);
 bool net_md_set_ip(uint8_t ipv, uint8_t *ip, uint8_t **ip_tgt);
 struct node_info * net_md_set_node_info(struct node_info *info);
+struct flow_key * net_md_set_flow_key(struct net_md_flow_key *key);
 void net_md_free_acc(struct net_md_stats_accumulator *acc);
 void net_md_free_flow_tree(ds_tree_t *tree);
 struct net_md_stats_accumulator * net_md_set_acc(struct net_md_aggregator *aggr,

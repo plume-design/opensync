@@ -157,6 +157,13 @@ void nm2_dhcpv6_server_release(struct nm2_dhcpv6_server *ds6)
         }
     }
 
+    struct nm2_iface *piface = nm2_ip_interface_iface_get(&ds6->ds6_ip_interface_uuid);
+    if (piface != NULL)
+    {
+        inet_dhcp6_server(piface->if_inet, false);
+        inet_dhcp6_server_notify(piface->if_inet, NULL);
+    }
+
     /* Invalidate this address so it gets removed, notify listeners */
     ds6->ds6_valid = false;
     reflink_signal(&ds6->ds6_reflink);
@@ -336,7 +343,7 @@ void nm2_dhcpv6_server_prefixes_update(uuidset_t *us, enum uuidset_event type, r
         return;
     }
 
-    inet_commit(piface->if_inet);
+    nm2_iface_apply(piface);
 }
 
 /*
@@ -476,7 +483,7 @@ void nm2_dhcpv6_server_lease_prefix_update(uuidset_t *us, enum uuidset_event typ
         return;
     }
 
-    inet_commit(piface->if_inet);
+    nm2_iface_apply(piface);
 }
 
 /*
@@ -627,7 +634,7 @@ void nm2_dhcpv6_server_set(struct nm2_dhcpv6_server *ds6, bool enable)
     }
 
     /* Commit configuration */
-    inet_commit(piface->if_inet);
+    nm2_iface_apply(piface);
 }
 
 /* DHCPv6 server status notification change callback */

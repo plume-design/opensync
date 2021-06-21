@@ -217,8 +217,8 @@ bm_event_action_frame(const char *ifname,
     }
 
     mgmt = (const struct ieee80211_mgmt *) data;
+    LOGT("[%s]: " PRI(os_macaddr_t) " mgmt len=%u", ifname, FMT(os_macaddr_t, *(os_macaddr_t *)mgmt->sa), data_len);
     if (!(client = bm_client_find_by_macaddr(*(os_macaddr_t *)mgmt->sa))) {
-        LOGI("[%s]: " PRI(os_macaddr_t) " !client, check frame format", ifname, FMT(os_macaddr_t, *(os_macaddr_t *)mgmt->sa));
         return;
     }
 

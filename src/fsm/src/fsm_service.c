@@ -26,6 +26,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "fsm.h"
 #include "log.h"
+#include "memutil.h"
+
 static const struct fsm_type types_map[] =
 {
     {
@@ -108,18 +110,18 @@ fsm_dup_conf(struct fsm_session *from, struct fsm_session *to)
     struct str_pair *to_pair;
 
     fconf = from->conf;
-    tconf = calloc(1, sizeof(*tconf));
+    tconf = CALLOC(1, sizeof(*tconf));
     if (tconf == NULL) return false;
     to->conf = tconf;
 
-    tconf->handler = strdup(to->name);
+    tconf->handler = STRDUP(to->name);
     if (tconf->handler == NULL) goto err_free_tconf;
 
     /* Duplicate other_config */
     from_other_config = fconf->other_config;
     if (from_other_config == NULL) return true;
 
-    to_other_config = calloc(1, sizeof(*to_other_config));
+    to_other_config = CALLOC(1, sizeof(*to_other_config));
     if (to_other_config == NULL) goto err_free_handler;
 
     ds_tree_init(to_other_config, str_tree_cmp, struct str_pair, pair_node);
@@ -148,10 +150,10 @@ err_free_other_config:
     free_str_tree(to_other_config);
 
 err_free_handler:
-    free(tconf->handler);
+    FREE(tconf->handler);
 
 err_free_tconf:
-    free(tconf);
+    FREE(tconf);
 
     return false;
 }
@@ -190,10 +192,10 @@ fsm_dup_web_cat_session(struct fsm_session *session)
         return true;
     }
 
-    service = calloc(1, sizeof(struct fsm_session));
+    service = CALLOC(1, sizeof(struct fsm_session));
     if (service == NULL) return NULL;
 
-    service->name = strdup(service_name);
+    service->name = STRDUP(service_name);
     if (service->name == NULL) goto err_free_session;
 
     service->type = FSM_WEB_CAT;
@@ -201,7 +203,7 @@ fsm_dup_web_cat_session(struct fsm_session *session)
     service->ops.send_report = fsm_send_report;
     service->ops.get_config = fsm_get_other_config_val;
 
-    plugin_ops = calloc(1, sizeof(*plugin_ops));
+    plugin_ops = CALLOC(1, sizeof(*plugin_ops));
     if (plugin_ops == NULL) goto err_free_name;
 
     ret = fsm_dup_conf(session, service);
@@ -230,19 +232,19 @@ fsm_dup_web_cat_session(struct fsm_session *session)
     return true;
 
 err_free_dso_path:
-    free(service->dso);
+    FREE(service->dso);
 
 err_free_conf:
     fsm_free_session_conf(service->conf);
 
 err_free_ops:
-    free(plugin_ops);
+    FREE(plugin_ops);
 
 err_free_name:
-    free(service->name);
+    FREE(service->name);
 
 err_free_session:
-    free(service);
+    FREE(service);
 
     return false;
 }

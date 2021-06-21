@@ -27,6 +27,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fsm.h"
 #include "fsm_internal.h"
 #include "policy_tags.h"
+#include "memutil.h"
 
 /**
  * @brief check if a fsm session is a dpi client session
@@ -195,9 +196,9 @@ fsm_tag_for_updates(char *tag_name, char *plugin_name)
     LOGN("%s(): adding tag %s (session: %s) to monitor list",
          __func__, tag_name, plugin_name);
 
-    dpi_tag = calloc(1, sizeof(struct fsm_dpi_client_tags));
-    dpi_tag->name = strdup(tag_name);
-    dpi_tag->client_plugin_name = strdup(plugin_name);
+    dpi_tag = CALLOC(1, sizeof(struct fsm_dpi_client_tags));
+    dpi_tag->name = STRDUP(tag_name);
+    dpi_tag->client_plugin_name = STRDUP(plugin_name);
     ds_tree_insert(&mgr->dpi_client_tags_tree, dpi_tag, dpi_tag->name);
 }
 
@@ -329,10 +330,10 @@ fsm_dpi_register_client(struct fsm_session *dpi_plugin_session,
     client = ds_tree_find(tree, attr);
     if (client != NULL) return;
 
-    to_add = calloc(1, sizeof(*to_add));
+    to_add = CALLOC(1, sizeof(*to_add));
     if (to_add == NULL) return;
 
-    to_add->attr = strdup(attr);
+    to_add->attr = STRDUP(attr);
     if (to_add->attr == NULL) goto err_free_attr_node;
 
     to_add->session = dpi_client_session;
@@ -344,7 +345,7 @@ fsm_dpi_register_client(struct fsm_session *dpi_plugin_session,
     return;
 
 err_free_attr_node:
-    free(to_add);
+    FREE(to_add);
 }
 
 
@@ -356,8 +357,8 @@ err_free_attr_node:
 static void
 fsm_free_dpi_client_node(struct dpi_client *dpi_client_node)
 {
-    free(dpi_client_node->attr);
-    free(dpi_client_node);
+    FREE(dpi_client_node->attr);
+    FREE(dpi_client_node);
 }
 
 /**
@@ -407,8 +408,8 @@ fsm_dpi_unregister_client(struct fsm_session *dpi_plugin_session,
 void
 fsm_free_plugin_tags(struct fsm_dpi_client_tags *dpi_tag)
 {
-    free(dpi_tag->client_plugin_name);
-    free(dpi_tag->name);
+    FREE(dpi_tag->client_plugin_name);
+    FREE(dpi_tag->name);
 }
 
 /**
@@ -487,7 +488,7 @@ fsm_dpi_unregister_clients(struct fsm_session *dpi_plugin_session)
 
     ds_tree_remove(&mgr->dpi_client_tags_tree, dpi_tag);
     fsm_free_plugin_tags(dpi_tag);
-    free(dpi_tag);
+    FREE(dpi_tag);
 }
 
 
@@ -616,5 +617,5 @@ fsm_free_dpi_plugin_client(struct fsm_session *session)
 
     ds_tree_remove(&mgr->dpi_client_tags_tree, dpi_tag);
     fsm_free_plugin_tags(dpi_tag);
-    free(dpi_tag);
+    FREE(dpi_tag);
 }

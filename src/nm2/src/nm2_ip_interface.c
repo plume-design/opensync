@@ -283,7 +283,7 @@ void nm2_ip_interface_ipv6_addr_update(uuidset_t *us, enum uuidset_event type, r
         return;
     }
 
-    inet_commit(ipi->ipi_iface->if_inet);
+    nm2_iface_apply(ipi->ipi_iface);
 }
 
 /*

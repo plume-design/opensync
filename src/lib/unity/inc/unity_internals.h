@@ -27,6 +27,11 @@
 #include <stdarg.h>
 #endif
 
+#ifdef UNITY_VERBOSE_FAILURES
+#include <string.h>
+#include <stdlib.h>
+#endif
+
 /* Unity Attempts to Auto-Detect Integer Types
  * Attempt 1: UINT_MAX, ULONG_MAX in <limits.h>, or default to 32 bits
  * Attempt 2: UINTPTR_MAX in <stdint.h>, or default to same size as long
@@ -372,6 +377,10 @@ typedef UNITY_FLOAT_TYPE UNITY_FLOAT;
 #define UNITY_COUNTER_TYPE UNITY_UINT
 #endif
 
+#ifndef UNITY_MAX_FAILED_TEST
+#define UNITY_MAX_FAILED_TEST 100
+#endif
+
 /*-------------------------------------------------------
  * Internal Structs Needed
  *-------------------------------------------------------*/
@@ -461,6 +470,9 @@ struct UNITY_STORAGE_T
     UNITY_COUNTER_TYPE TestIgnores;
     UNITY_COUNTER_TYPE CurrentTestFailed;
     UNITY_COUNTER_TYPE CurrentTestIgnored;
+#ifdef UNITY_VERBOSE_FAILURES
+    char** TestFailed;
+#endif
 #ifdef UNITY_INCLUDE_EXEC_TIME
     UNITY_TIME_TYPE CurrentTestStartTime;
     UNITY_TIME_TYPE CurrentTestStopTime;

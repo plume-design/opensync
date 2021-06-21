@@ -32,10 +32,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sys/socket.h>
 #include <arpa/inet.h>
 
+#include "log.h"
 #include "os.h"
 #include "os_types.h"
 #include "dns_cache.h"
-
+#include "memutil.h"
 
 static struct dns_cache_mgr
 mgr =
@@ -194,7 +195,7 @@ dns_cache_free_gk_cache_entry(struct ip2action *i2a)
 {
    if (i2a->service_id == IP2ACTION_GK_SVC)
    {
-       free(i2a->cache_gk.gk_policy);
+       FREE(i2a->cache_gk.gk_policy);
    }
 }
 
@@ -203,8 +204,8 @@ dns_cache_free_ip2action(struct ip2action *i2a)
 {
    if (!i2a) return;
 
-   free(i2a->device_mac);
-   free(i2a->ip_addr);
+   FREE(i2a->device_mac);
+   FREE(i2a->ip_addr);
    dns_cache_free_gk_cache_entry(i2a);
    return;
 }
@@ -225,7 +226,8 @@ dns_cache_cleanup(void)
         i2a_next = ds_tree_next(tree, i2a_entry);
         ds_tree_remove(tree, i2a_entry);
         dns_cache_free_ip2action(i2a_entry);
-        free(i2a_entry);
+        FREE(i2a_entry);
+        mgr->entries--;
         i2a_entry = i2a_next;
     }
     return;
@@ -383,7 +385,7 @@ dns_cache_set_gk_cache_entry(struct ip2action_gk_info *i2a_cache_gk,
 
     if (to_add_cache_gk->gk_policy)
     {
-        i2a_cache_gk->gk_policy = strdup(to_add_cache_gk->gk_policy);
+        i2a_cache_gk->gk_policy = STRDUP(to_add_cache_gk->gk_policy);
     }
 
     return true;
@@ -392,7 +394,7 @@ dns_cache_set_gk_cache_entry(struct ip2action_gk_info *i2a_cache_gk,
 
 /**
  * @brief Lookup cached action for given ip address and mac.
- * Caller is responsible for freeing the memory as it uses strdup().
+ * Caller is responsible for freeing the memory as it uses STRDUP().
  *
  * receive ipaddress and mac of device.
  *
@@ -451,7 +453,6 @@ dns_cache_ip2action_lookup(struct ip2action_req *req)
    }
 
    LOGD("%s: found entry:", __func__);
-   print_dns_cache_entry(i2a);
 
    return true;
 }
@@ -493,16 +494,16 @@ dns_cache_alloc_ip2action(struct ip2action_req  *to_add)
     size_t index;
     bool rc;
 
-    i2a = calloc(1, sizeof(struct ip2action));
+    i2a = CALLOC(1, sizeof(struct ip2action));
     if (i2a == NULL)
     {
         LOGE("%s: Couldn't allocate memory for ip2action entry.",__func__);
         return NULL;
     }
-    i2a->device_mac = calloc(1, sizeof(os_macaddr_t));
+    i2a->device_mac = CALLOC(1, sizeof(os_macaddr_t));
     memcpy(i2a->device_mac, to_add->device_mac, sizeof(os_macaddr_t));
 
-    i2a->ip_addr = calloc(1, sizeof(struct sockaddr_storage));
+    i2a->ip_addr = CALLOC(1, sizeof(struct sockaddr_storage));
     memcpy(i2a->ip_addr, to_add->ip_addr, sizeof(struct sockaddr_storage));
 
     i2a->action  = to_add->action;
@@ -544,9 +545,9 @@ dns_cache_alloc_ip2action(struct ip2action_req  *to_add)
     return i2a;
 
 err:
-    free(i2a->ip_addr);
-    free(i2a->device_mac);
-    free(i2a);
+    FREE(i2a->ip_addr);
+    FREE(i2a->device_mac);
+    FREE(i2a);
 
     return NULL;
 }
@@ -573,7 +574,6 @@ dns_cache_add_entry(struct ip2action_req *to_add)
         dns_cache_update_ip2action(i2a, to_add);
 
         LOGD("%s: ip2action_cache updated entry in cache:", __func__);
-        print_dns_cache_entry(i2a);
         return true;
     }
 
@@ -582,8 +582,8 @@ dns_cache_add_entry(struct ip2action_req *to_add)
     if (i2a == NULL) return false;
 
     LOGD("%s: ip2action_cache adding to cache:", __func__);
-    print_dns_cache_entry(i2a);
 
+    mgr->entries++;
     ds_tree_insert(&mgr->ip2a_tree, i2a, i2a);
 
     return true;
@@ -608,13 +608,13 @@ dns_cache_del_entry(struct ip2action_req *to_del)
     if (i2a == NULL) return true;
 
     LOGD("%s: ip2action_cache removing entry:", __func__);
-    print_dns_cache_entry(i2a);
 
     /* free ip2action entry  */
     dns_cache_free_ip2action(i2a);
     ds_tree_remove(&mgr->ip2a_tree, i2a);
-    free(i2a);
+    FREE(i2a);
 
+    mgr->entries--;
     return true;
 }
 
@@ -650,7 +650,8 @@ dns_cache_ttl_cleanup(void)
         next = ds_tree_next(tree, i2a);
         ds_tree_remove(tree, i2a);
         dns_cache_free_ip2action(i2a);
-        free(i2a);
+        FREE(i2a);
+        mgr->entries--;
         i2a = next;
     }
     return true;
@@ -692,20 +693,9 @@ int
 dns_cache_get_size(void)
 {
     struct dns_cache_mgr *mgr = dns_cache_get_mgr();
-    struct ip2action     *i2a;
-    ds_tree_t            *tree;
-    int no_of_elements;
 
     if (!mgr->initialized) return -1;
-
-    tree = &mgr->ip2a_tree;
-    no_of_elements = 0;
-
-    ds_tree_foreach(tree, i2a)
-    {
-        no_of_elements++;
-    }
-    return no_of_elements;
+    return mgr->entries;
 }
 
 /**
@@ -797,5 +787,5 @@ print_dns_cache_details(void)
 
     print_dns_cache_size();
     print_dns_cache_hit_count();
-    print_dns_cache();
 }
+

@@ -32,12 +32,16 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <time.h>
 
 #include "log.h"
+#include "net_header_parse.h"
 #include "target.h"
 #include "unity.h"
 
-#include "pcap.c"
-
 #include "test_mdns.h"
+
+#include "1035.h"
+
+#include "pcap.c"
+#include "pcap_map.c"
 
 #define OTHER_CONFIG_NELEMS 4
 #define OTHER_CONFIG_NELEM_SIZE 128
@@ -106,6 +110,7 @@ struct fsm_session_conf g_confs[] =
     /* entry 0 */
     {
         .handler = "mdns_plugin_session_0",
+        .if_name = "foo",
     }
 };
 
@@ -149,6 +154,7 @@ util_get_other_config_val(struct fsm_session *session, char *key)
     return pair->value;
 }
 
+
 struct fsm_session_ops g_ops =
 {
     .get_config = util_get_other_config_val,
@@ -157,6 +163,25 @@ struct fsm_session_ops g_ops =
 time_t timer_start;
 time_t timer_stop;
 struct ev_loop  *g_loop;
+
+
+void
+mdns_test_handler(struct fsm_session *session, struct net_header_parser *net_parser)
+{
+    LOGI("%s: here", __func__);
+    net_header_logi(net_parser);
+}
+
+
+union fsm_plugin_ops g_plugin_ops =
+{
+    .parser_ops =
+    {
+        .get_service = NULL,
+        .handler = mdns_test_handler,
+    },
+};
+
 
 void setUp(void)
 {
@@ -172,6 +197,7 @@ void setUp(void)
                                               g_other_configs[0][0],
                                               g_other_configs[0][1]);
     session->loop =  g_loop;
+    session->p_ops = &g_plugin_ops;
 
     /* Setup test_mgr for mdns records reporting */
     setup_mdns_records_report();
@@ -190,6 +216,67 @@ void tearDown(void)
 
     return;
 }
+
+
+/**
+ * @brief Converts a bytes array in a hex dump file wireshark can import.
+ *
+ * Dumps the array in a file that can then be imported by wireshark.
+ * The file can also be translated to a pcap file using the text2pcap command.
+ * Useful to visualize the packet content.
+ * @param fname the file recipient of the hex dump
+ * @param buf the buffer to dump
+ * @param length the length of the buffer to dump
+ */
+void
+create_hex_dump(const char *fname, const uint8_t *buf, size_t len)
+{
+    int line_number = 0;
+    bool new_line = true;
+    size_t i;
+    FILE *f;
+
+    f = fopen(fname, "w+");
+
+    if (f == NULL) return;
+
+    for (i = 0; i < len; i++)
+    {
+	 new_line = (i == 0 ? true : ((i % 8) == 0));
+	 if (new_line)
+	 {
+	      if (line_number) fprintf(f, "\n");
+	      fprintf(f, "%06x", line_number);
+	      line_number += 8;
+	 }
+         fprintf(f, " %02x", buf[i]);
+    }
+    fprintf(f, "\n");
+    fclose(f);
+
+    return;
+}
+
+
+/**
+ * @brief Convenient wrapper
+ *
+ * Dumps the packet content in /tmp/<tests_name>_<pkt name>.txtpcap
+ * for wireshark consumption and sets the given parser's data fields.
+ * @param pkt the C structure containing an exported packet capture
+ * @param parser theparser structure to set
+ */
+#define PREPARE_UT(entry, parser)                                 \
+    {                                                             \
+        char fname[128];                                          \
+                                                                  \
+        snprintf(fname, sizeof(fname), "/tmp/%s_%s.txtpcap",      \
+                 test_name, entry.name);                          \
+        create_hex_dump(fname, entry.pkt, entry.len);             \
+        parser->packet_len = entry.len;                           \
+        parser->data = (uint8_t *)entry.pkt;                      \
+    }
+
 
 /**
  * @brief test plugin init()/exit() sequence
@@ -439,6 +526,105 @@ void test_modify_mdnsd_service(void)
     mdns_plugin_exit(session);
 }
 
+
+static bool
+mdns_populate_sockaddr(struct net_header_parser *parser,
+                       struct sockaddr_storage *dst)
+{
+    const void *ip;
+    bool ret;
+
+    ip = NULL;
+    ret = false;
+    if (parser->ip_version == 4)
+    {
+        struct iphdr *hdr = net_header_get_ipv4_hdr(parser);
+        struct sockaddr_in *in4 = (struct sockaddr_in *)dst;
+
+        memset(in4, 0, sizeof(struct sockaddr_in));
+        in4->sin_family = AF_INET;
+        ip = &hdr->saddr;
+        memcpy(&in4->sin_addr, ip, sizeof(in4->sin_addr));
+        ret = true;
+    }
+    else if (parser->ip_version == 6)
+    {
+        struct sockaddr_in6 *in6 = (struct sockaddr_in6 *)dst;
+        struct ip6_hdr *hdr = net_header_get_ipv6_hdr(parser);
+
+        memset(in6, 0, sizeof(struct sockaddr_in6));
+        in6->sin6_family = AF_INET6;
+        ip = &hdr->ip6_src;
+        memcpy(&in6->sin6_addr, ip, sizeof(in6->sin6_addr));
+        ret = true;
+    }
+
+    return ret;
+}
+
+
+void
+test_mdns_parser(void)
+{
+    struct net_header_parser *net_parser;
+    struct fsm_session *session;
+    struct mdns_plugin_mgr *mgr;
+    struct mdnsd_context *pctxt;
+    struct sockaddr_storage ss;
+    unsigned char *data;
+    struct message m;
+    size_t nelems;
+    size_t len;
+    size_t i;
+    bool ret;
+    int rc;
+
+    /* Prepare the mdns manager */
+    mdns_mgr_init();
+    mgr = mdns_get_mgr();
+    mgr->ovsdb_init = ut_ovsdb_init;
+
+    /* Prepare the mdns fsm session */
+    session = &g_sessions[0];
+    mdns_plugin_init(session);
+
+    /* validate the existence of the mdnsd context */
+    pctxt = mgr->ctxt;
+    TEST_ASSERT_NOT_NULL(pctxt);
+
+    /* Allocate a net parser */
+    net_parser = calloc(1, sizeof(*net_parser));
+    TEST_ASSERT_NOT_NULL(net_parser);
+
+    nelems = sizeof(pmap) / sizeof(pmap[0]);
+    for (i = 0; i < nelems; i++)
+    {
+        LOGI("%s: processing packet %s", __func__, pmap[i].name);
+        PREPARE_UT(pmap[i], net_parser);
+        len = net_header_parse(net_parser);
+        TEST_ASSERT_TRUE(len != 0);
+        net_header_logi(net_parser);
+
+        memset(&ss, 0, sizeof(ss));
+        ret = mdns_populate_sockaddr(net_parser, &ss);
+        TEST_ASSERT_TRUE(ret);
+
+        memset(&m, 0, sizeof(m));
+
+        /* Access udp data */
+        data = net_parser->ip_pld.payload;
+        data += sizeof(struct udphdr);
+
+        /* Parse the message */
+        message_parse(&m, data);
+        rc = mdnsd_in(pctxt->dmn, &m, &ss);
+        TEST_ASSERT_EQUAL(0, rc);
+    }
+
+    free(net_parser);
+}
+
+
 int main(int argc, char *argv[])
 {
     (void)argc;
@@ -474,6 +660,9 @@ int main(int argc, char *argv[])
     RUN_TEST(test_add_mdnsd_service);
     RUN_TEST(test_del_mdnsd_service);
     RUN_TEST(test_modify_mdnsd_service);
+
+    /* Test parser */
+    RUN_TEST(test_mdns_parser);
 
     return UNITY_END();
 }

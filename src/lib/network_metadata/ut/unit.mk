@@ -29,6 +29,7 @@ UNIT_TYPE := TEST_BIN
 
 UNIT_SRC := test_network_metadata.c
 UNIT_SRC += test_network_metadata_report.c
+UNIT_SRC += test_network_metadata_utils.c
 
 # UNIT_CFLAGS += -I(UNIT_PATH)/.
 

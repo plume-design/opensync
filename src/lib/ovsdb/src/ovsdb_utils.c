@@ -27,7 +27,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ds_tree.h"
 #include "ovsdb_utils.h"
 #include "log.h"
-
+#include "memutil.h"
 /**
  * @brief : converts a static array of strings in a dynamically allocated array
  *
@@ -52,16 +52,16 @@ schema2str_set(size_t elem_size, size_t nelems,
 
     if (nelems == 0) return NULL;
 
-    array = calloc(nelems, sizeof(*array));
+    array = CALLOC(nelems, sizeof(*array));
     if (array == NULL) return NULL;
 
-    set = calloc(1, sizeof(*set));
+    set = CALLOC(1, sizeof(*set));
     if (set == NULL) goto err_free_array;
 
     i = 0;
     do {
         item = schema_set[i];
-        array[i] = strdup(item);
+        array[i] = STRDUP(item);
         loop = (array[i] != NULL);
         i++;
         loop &= (i < nelems);
@@ -75,11 +75,11 @@ schema2str_set(size_t elem_size, size_t nelems,
     return set;
 
 err_free_array_items:
-    for (i = 0; i < nelems; i++) free(array[i]);
-    free(set);
+    for (i = 0; i < nelems; i++) FREE(array[i]);
+    FREE(set);
 
 err_free_array:
-    free(array);
+    FREE(array);
 
     return NULL;
 }
@@ -103,9 +103,9 @@ free_str_set(struct str_set *set)
     nelems = set->nelems;
     array = set->array;
     array_iter = array;
-    for (i = 0; i < nelems; i++) free(*array_iter++);
-    free(array);
-    free(set);
+    for (i = 0; i < nelems; i++) FREE(*array_iter++);
+    FREE(array);
+    FREE(set);
 }
 
 /**
@@ -137,22 +137,22 @@ get_pair(const char *key, const char *value)
 {
     struct str_pair *pair;
 
-    pair = calloc(1, sizeof(*pair));
+    pair = CALLOC(1, sizeof(*pair));
     if (pair == NULL) return NULL;
 
-    pair->key = strdup(key);
+    pair->key = STRDUP(key);
     if (pair->key == NULL) goto err_free_pair;
 
-    pair->value = strdup(value);
+    pair->value = STRDUP(value);
     if (pair->value == NULL) goto err_free_key;
 
     return pair;
 
 err_free_key:
-    free(pair->key);
+    FREE(pair->key);
 
 err_free_pair:
-    free(pair);
+    FREE(pair);
 
     return NULL;
 }
@@ -184,7 +184,7 @@ schema2tree(size_t key_size, size_t value_size, size_t nelems,
 
     if (nelems == 0) return NULL;
 
-    tree = calloc(1, sizeof(*tree));
+    tree = CALLOC(1, sizeof(*tree));
     if (tree == NULL) return NULL;
 
     ds_tree_init(tree, str_tree_cmp, struct str_pair, pair_node);
@@ -221,9 +221,9 @@ free_str_pair(struct str_pair *pair)
 {
     if (pair == NULL) return;
 
-    free(pair->key);
-    free(pair->value);
-    free(pair);
+    FREE(pair->key);
+    FREE(pair->value);
+    FREE(pair);
 }
 
 
@@ -249,7 +249,7 @@ free_str_tree(ds_tree_t *tree)
         free_str_pair(to_remove);
     }
 
-    free(tree);
+    FREE(tree);
     return;
 }
 
@@ -272,10 +272,10 @@ schema2int_set(size_t nelems, int schema_set[])
     int *array;
     size_t i;
 
-    array = calloc(nelems, sizeof(*array));
+    array = CALLOC(nelems, sizeof(*array));
     if (array == NULL) return NULL;
 
-    set = calloc(1, sizeof(*set));
+    set = CALLOC(1, sizeof(*set));
     if (set == NULL) goto err_free_array;
 
     for (i = 0; i < nelems; i++) array[i] = schema_set[i];
@@ -286,7 +286,7 @@ schema2int_set(size_t nelems, int schema_set[])
     return set;
 
 err_free_array:
-    free(array);
+    FREE(array);
 
     return NULL;
 }
@@ -302,8 +302,8 @@ free_int_set(struct int_set *set)
 {
     if (set == NULL) return;
 
-    free(set->array);
-    free(set);
+    FREE(set->array);
+    FREE(set);
 }
 
 /**
@@ -318,10 +318,10 @@ get_ipair(const char *key, int value)
 {
     struct str_ipair *pair;
 
-    pair = calloc(1, sizeof(*pair));
+    pair = CALLOC(1, sizeof(*pair));
     if (pair == NULL) return NULL;
 
-    pair->key = strdup(key);
+    pair->key = STRDUP(key);
     if (pair->key == NULL) goto err_free_pair;
 
     pair->value = value;
@@ -329,7 +329,7 @@ get_ipair(const char *key, int value)
     return pair;
 
 err_free_pair:
-    free(pair);
+    FREE(pair);
 
     return NULL;
 }
@@ -361,7 +361,7 @@ schema2itree(size_t elem_size, size_t nelems,
 
     if (nelems == 0) return NULL;
 
-    tree = calloc(1, sizeof(*tree));
+    tree = CALLOC(1, sizeof(*tree));
     if (tree == NULL) return NULL;
 
     ds_tree_init(tree, str_tree_cmp, struct str_ipair, pair_node);
@@ -398,8 +398,8 @@ free_str_ipair(struct str_ipair *pair)
 {
     if (pair == NULL) return;
 
-    free(pair->key);
-    free(pair);
+    FREE(pair->key);
+    FREE(pair);
 }
 
 
@@ -425,7 +425,7 @@ free_str_itree(ds_tree_t *tree)
         free_str_ipair(to_remove);
     }
 
-    free(tree);
+    FREE(tree);
     return;
 }
 

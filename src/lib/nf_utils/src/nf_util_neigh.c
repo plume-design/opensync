@@ -373,7 +373,7 @@ util_link_cb(const struct nlmsghdr *nlh, void *data)
     /* Check if the interface went down */
     if ((msg->ifi_change & IFF_UP) && !(msg->ifi_flags & IFF_UP))
     {
-        LOGI("%s: ifindex: %d, ifname: %s went down", __func__,
+        LOGD("%s: ifindex: %d, ifname: %s went down", __func__,
              ifindex, ifn ? ifn : "None");
         act = true;
     }
@@ -381,7 +381,7 @@ util_link_cb(const struct nlmsghdr *nlh, void *data)
     /* Check if the interface was deleted */
     if (msgtype == RTM_DELLINK)
     {
-        LOGI("%s: interface ifindex %d, ifname: %s deleted", __func__,
+        LOGD("%s: interface ifindex %d, ifname: %s deleted", __func__,
              ifindex, ifn ? ifn : "None");
         act |= true;
     }

@@ -109,6 +109,19 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 static struct hapd g_hapd[CONFIG_HAPD_MAX_BSS];
 
+struct hapd_sae_keyid_fixup_ctx
+{
+    char key_id[128];
+    unsigned int psks_num;
+};
+
+typedef void (*hapd_wpa_psk_handler_fn) (const char *key_id,
+                                         const char *psk,
+                                         const char *oftag_key,
+                                         const char *oftag,
+                                         bool is_wps,
+                                         void *arg);
+
 struct hapd *
 hapd_lookup(const char *bss)
 {
@@ -595,6 +608,134 @@ hapd_map_int2str(int i)
     return "none";
 }
 
+static void
+hapd_vstate_add_wpa_psk_legacy(const char *key_id,
+                               const char *psk,
+                               const char *oftag_key,
+                               const char *oftag,
+                               bool is_wps,
+                               void *arg)
+{
+    struct schema_Wifi_VIF_State *vstate = arg;
+
+    SCHEMA_KEY_VAL_APPEND(vstate->security, key_id, psk);
+    if (oftag_key)
+        SCHEMA_KEY_VAL_APPEND(vstate->security, oftag_key, oftag);
+    if (is_wps)
+        SCHEMA_SET_STR(vstate->wps_pbc_key_id, key_id);
+}
+
+static void
+hapd_vstate_add_wpa_psk(const char *key_id,
+                        const char *psk,
+                        const char *oftag_key,
+                        const char *oftag,
+                        bool is_wps,
+                        void *arg)
+{
+    struct schema_Wifi_VIF_State *vstate = arg;
+
+    SCHEMA_KEY_VAL_APPEND(vstate->wpa_psks, key_id, psk);
+    if (is_wps)
+        SCHEMA_SET_STR(vstate->wps_pbc_key_id, key_id);
+}
+
+static void
+hapd_parse_wpa_psks_file_buf(const char *psks,
+                             const char *if_name,
+                             hapd_wpa_psk_handler_fn psk_handler,
+                             void *psk_handler_arg)
+{
+    const char *oftag;
+    const char *key_id;
+    const char *wps;
+    const char *psk;
+    const char *mac;
+    const char *k;
+    const char *v;
+    char *oftagline;
+    char *pskline;
+    char *ptr;
+    char *param;
+
+    if (WARN_ON(!psk_handler))
+        return;
+
+    ptr = strdupa(psks);
+    if (WARN_ON(!ptr))
+        return;
+
+    LOGT("%s: parsing psk entries", if_name);
+
+    for (;;) {
+        const char *oftag_key;
+        bool is_wps;
+
+        if (!(oftagline = strsep(&ptr, "\n")))
+            break;
+        if (!(pskline = strsep(&ptr, "\n")))
+            break;
+
+        LOGT("%s: parsing pskfile: raw: oftagline='%s' pskline='%s'",
+             if_name, oftagline, pskline);
+
+        if (WARN_ON(!(oftag = strsep(&oftagline, "="))))
+            continue;
+        if (WARN_ON(strcmp(oftag, "#oftag")))
+            continue;
+        if (WARN_ON(!(oftag = strsep(&oftagline, ""))))
+            continue;
+
+        key_id = NULL;
+        wps = NULL;
+        while ((param = strsep(&pskline, " "))) {
+            if (!strstr(param, "="))
+                break;
+            if (!(k = strsep(&param, "=")))
+                continue;
+            if (!(v = strsep(&param, "")))
+                continue;
+
+            if (!strcmp(k, "keyid"))
+                key_id = v;
+            else if (!strcmp(k, "wps"))
+                wps = v;
+        }
+
+        if (WARN_ON(!(mac = param)))
+            continue;
+        if (WARN_ON(strcmp(mac, "00:00:00:00:00:00")))
+            continue;
+        if (WARN_ON(!(psk = strsep(&pskline, ""))))
+            continue;
+
+        if (WARN_ON(!key_id))
+            continue;
+
+        LOGT("%s: parsing pskfile: stripped: key_id='%s' wps='%s' oftag='%s' psk='%s'",
+             if_name, key_id, wps, oftag, psk);
+
+        oftag_key = NULL;
+        if (strlen(oftag) > 0) {
+            if (strcmp(key_id, "key") == 0)
+                oftag_key = strfmta("oftag");
+            else
+                oftag_key = strfmta("oftag-%s", key_id);
+        }
+
+        is_wps = false;
+        if (wps && strcmp(wps, "1") == 0) {
+            if (!key_id)
+                LOGW("%s: PSK in pskfile with 'wps=1' is required to have valid `keyid` tag",
+                     if_name);
+            else
+                is_wps = true;
+        }
+
+        psk_handler(key_id, psk, oftag_key, oftag, is_wps, psk_handler_arg);
+    }
+}
+
 static int
 hapd_conf_gen_psk(struct hapd *hapd,
                   const struct schema_Wifi_VIF_Config *vconf)
@@ -768,7 +909,6 @@ hapd_conf_gen_wpa_psks(struct hapd *hapd,
     char *buf = hapd->psks;
     int i;
     int wps;
-    int j;
 
     memset(buf, 0, len);
 
@@ -777,19 +917,20 @@ hapd_conf_gen_wpa_psks(struct hapd *hapd,
 
         LOGT("%s: parsing vconf: key '%s'", vconf->if_name, keyid);
 
-        sscanf(keyid, "key-%d", &j);
-
         oftag = hapd_util_get_wpa_psk_oftag_by_keyid(vconf, keyid);
         psk = vconf->wpa_psks[i];
         wps = strcmp(keyid, vconf->wps_pbc_key_id) == 0 ? 1 : 0;
+
+        if (!oftag)
+            oftag = vconf->default_oftag_exists ? vconf->default_oftag : NULL;
 
         if (!oftag) {
             LOGW("%s: No oftag found for keyid='%s'", vconf->if_name, keyid);
             continue;
         }
 
-        LOGT("%s: parsing vconf: key '%s': key=%d oftag='%s' psk='%s' wps='%d'",
-             vconf->if_name, keyid, j, oftag, psk, wps);
+        LOGT("%s: parsing vconf: key '%s': oftag='%s' psk='%s' wps='%d'",
+             vconf->if_name, keyid, oftag, psk, wps);
 
         if (strlen(psk) == 0)
             continue;
@@ -906,7 +1047,6 @@ hapd_conf_gen_security(struct hapd *hapd,
                        size_t *len,
                        const struct schema_Wifi_VIF_Config *vconf)
 {
-    const char *main_psk_key_id = "key";
     const char *sae_psk = "";
     const char *sae_opt_present = "#";
     const char *ft_opt_present = "#";
@@ -925,16 +1065,12 @@ hapd_conf_gen_security(struct hapd *hapd,
      * Set main WPA password as default SAE password.
      */
     if (util_vif_wpa_key_mgmt_match(vconf, "sae")) {
-        sae_psk = SCHEMA_KEY_VAL(vconf->wpa_psks, main_psk_key_id);
-        if (strlen(sae_psk) == 0) {
-            LOGW("%s: Failed to set SAE psk, no psk with keid: '%s' was found "
-                 "in wpa_psks", vconf->if_name, main_psk_key_id);
+        if (vconf->wpa_psks_len != 1) {
+            LOGE("%s: SAE requires wpa_psks to contain exactly one psk", vconf->if_name);
+            return -1;
         }
 
-        if (vconf->wpa_psks_len > 1) {
-            LOGD("%s: wpa_psks contains multiple psks, password with keyid: '%s' "
-                 "is set as SAE psk", vconf->if_name, main_psk_key_id);
-        }
+        sae_psk = vconf->wpa_psks[0];
     }
 
     /*
@@ -1163,165 +1299,14 @@ static void
 hapd_bss_get_psks_legacy(struct schema_Wifi_VIF_State *vstate,
                          const char *conf)
 {
-    const char *oftag;
-    const char *key_id;
-    const char *wps;
-    const char *psk;
-    const char *mac;
-    const char *k;
-    const char *v;
-    char *oftagline;
-    char *pskline;
-    char *ptr;
-    char *param;
-
-    ptr = strdupa(conf);
-    if (WARN_ON(!ptr))
-        return;
-
-    LOGT("%s: (legacy) parsing psk entries", vstate->if_name);
-
-    for (;;) {
-        const char *oftag_key;
-
-        if (!(oftagline = strsep(&ptr, "\n")))
-            break;
-        if (!(pskline = strsep(&ptr, "\n")))
-            break;
-
-        LOGT("%s: (legacy) parsing pskfile: raw: oftagline='%s' pskline='%s'",
-             vstate->if_name, oftagline, pskline);
-
-        if (WARN_ON(!(oftag = strsep(&oftagline, "="))))
-            continue;
-        if (WARN_ON(strcmp(oftag, "#oftag")))
-            continue;
-        if (WARN_ON(!(oftag = strsep(&oftagline, ""))))
-            continue;
-
-        key_id = NULL;
-        wps = NULL;
-        while ((param = strsep(&pskline, " "))) {
-            if (!strstr(param, "="))
-                break;
-            if (!(k = strsep(&param, "=")))
-                continue;
-            if (!(v = strsep(&param, "")))
-                continue;
-
-            if (!strcmp(k, "keyid"))
-                key_id = v;
-            else if (!strcmp(k, "wps"))
-                wps = v;
-        }
-
-        if (WARN_ON(!(mac = param)))
-            continue;
-        if (WARN_ON(strcmp(mac, "00:00:00:00:00:00")))
-            continue;
-        if (WARN_ON(!(psk = strsep(&pskline, ""))))
-            continue;
-
-        if (WARN_ON(!key_id))
-            continue;
-
-        LOGT("%s: (legacy) parsing pskfile: stripped: key_id='%s' wps='%s' oftag='%s' psk='%s'",
-             vstate->if_name, key_id, wps, oftag, psk);
-
-        SCHEMA_KEY_VAL_APPEND(vstate->security, key_id, psk);
-
-        if (strlen(oftag) > 0) {
-            if (strcmp(key_id, "key") == 0)
-                oftag_key = strfmta("oftag");
-            else
-                oftag_key = strfmta("oftag-%s", key_id);
-
-            SCHEMA_KEY_VAL_APPEND(vstate->security, oftag_key, oftag);
-        }
-
-        if (wps && strcmp(wps, "1") == 0) {
-            if (!key_id) {
-                LOGW("%s: (legacy) PSK in pskfile with 'wps=1' is required to have valid `keyid` tag", vstate->if_name);
-                continue;
-            }
-
-            SCHEMA_SET_STR(vstate->wps_pbc_key_id, key_id);
-        }
-    }
+    hapd_parse_wpa_psks_file_buf(conf, vstate->if_name, hapd_vstate_add_wpa_psk_legacy, vstate);
 }
 
 static void
 hapd_bss_get_psks(struct schema_Wifi_VIF_State *vstate,
                   const char *conf)
 {
-    const char *key_id;
-    const char *wps;
-    const char *psk;
-    const char *mac;
-    const char *k;
-    const char *v;
-    char *pskline;
-    char *ptr;
-    char *param;
-
-    ptr = strdupa(conf);
-    if (WARN_ON(!ptr))
-        return;
-
-    LOGT("%s: parsing psk entries", vstate->if_name);
-
-    for (;;) {
-        if (!(pskline = strsep(&ptr, "\n")))
-            break;
-
-        if (strlen(pskline) == 0)
-            break;
-
-        if (strstr(pskline, "#") == pskline)
-            continue;
-
-        LOGT("%s: parsing pskfile: raw: pskline='%s'", vstate->if_name, pskline);
-
-        key_id = NULL;
-        wps = NULL;
-        while ((param = strsep(&pskline, " "))) {
-            if (!strstr(param, "="))
-                break;
-            if (!(k = strsep(&param, "=")))
-                continue;
-            if (!(v = strsep(&param, "")))
-                continue;
-
-            if (!strcmp(k, "keyid"))
-                key_id = v;
-            else if (!strcmp(k, "wps"))
-                wps = v;
-        }
-
-        if (WARN_ON(!(mac = param)))
-            continue;
-        if (WARN_ON(strcmp(mac, "00:00:00:00:00:00")))
-            continue;
-        if (WARN_ON(!(psk = strsep(&pskline, ""))))
-            continue;
-
-        if (WARN_ON(!key_id))
-            continue;
-
-        LOGT("%s: parsing pskfile: stripped: key_id='%s' wps='%s' psk='%s'",
-             vstate->if_name, key_id, wps, psk);
-
-        SCHEMA_KEY_VAL_APPEND(vstate->wpa_psks, key_id, psk);
-
-        if (wps && strcmp(wps, "1") == 0) {
-            if (!key_id) {
-                LOGW("%s: PSK in pskfile with 'wps=1' is required to have valid `keyid` tag", vstate->if_name);
-                continue;
-            }
-
-            SCHEMA_SET_STR(vstate->wps_pbc_key_id, key_id);
-        }
-    }
+    hapd_parse_wpa_psks_file_buf(conf, vstate->if_name, hapd_vstate_add_wpa_psk, vstate);
 }
 
 static void
@@ -1354,6 +1339,83 @@ hapd_bss_get_wps(struct hapd *hapd,
     vstate->wps = strcmp(wps_state, "configured") == 0 ? 1 : 0;
     vstate->wps_pbc_exists = true;
     vstate->wps_pbc = strcmp(pbc_status, "Active") == 0 ? 1 : 0;
+}
+
+static void
+hapd_sae_keyid_fixup_handle_wpa_psk(const char *key_id,
+                                    const char *psk,
+                                    const char *oftag_key,
+                                    const char *oftag,
+                                    bool is_wps,
+                                    void *arg)
+{
+    struct hapd_sae_keyid_fixup_ctx *ctx = arg;
+    STRSCPY_WARN(ctx->key_id, key_id);
+    ctx->psks_num++;
+}
+
+static void
+hapd_sae_keyid_fixup(const struct hapd *hapd,
+                     const char *hapd_sta_cmd_output,
+                     struct schema_Wifi_Associated_Clients *client)
+{
+    static const char *sae_akms[] = {
+        "00-0f-ac-8", /* SAE */
+        "00-0f-ac-9", /* FT-SAE */
+        NULL
+    };
+
+    struct hapd_sae_keyid_fixup_ctx ctx;
+    unsigned int i;
+    const char *if_name = hapd->ctrl.bss;
+    const char *sta_akm;
+    const char *k;
+    const char *v;
+    char *lines;
+    char *kv;
+    bool is_sae_akm;
+
+    if (strlen(client->key_id) > 0)
+        return; /* key_id is set, skipping */
+
+    sta_akm = NULL;
+    lines = strdupa(hapd_sta_cmd_output);
+    while ((kv = strsep(&lines, "\r\n"))) {
+        if ((k = strsep(&kv, "=")) && (v = strsep(&kv, ""))) {
+            if (!strcmp(k, "AKMSuiteSelector"))
+                sta_akm = v;
+        }
+    }
+
+    if (!sta_akm)
+        return; /* OPEN security mode, skipping */
+
+    is_sae_akm = false;
+    for (i = 0; sae_akms[i]; i++) {
+        if (strcmp(sta_akm, sae_akms[i]) != 0)
+            is_sae_akm = true;
+    }
+
+    if (!is_sae_akm)
+        return; /* None-SAE AKM, skipping */
+
+    memset(&ctx, 0, sizeof(ctx));
+    hapd_parse_wpa_psks_file_buf(hapd->psks, if_name, hapd_sae_keyid_fixup_handle_wpa_psk, &ctx);
+
+    if (ctx.psks_num > 1) {
+        LOGW("%s: keyid cannot be fixed for AP with SAE AKM using multiple PSKs", if_name);
+        return;
+    }
+
+    if (ctx.psks_num == 0) {
+        LOGW("%s: AP with SAE AKM cannot be configured with none PSKs", if_name);
+        return;
+    }
+
+    SCHEMA_SET_STR(client->key_id, ctx.key_id);
+
+    LOGD("%s: STA %s connected with SAE but failed to lookup keyid, setting keyid to '%s'",
+         if_name, client->mac, client->key_id);
 }
 
 int
@@ -1423,6 +1485,8 @@ hapd_sta_get(struct hapd *hapd,
         return -1;
     if (!strstr(sta, "flags=[AUTH][ASSOC][AUTHORIZED]"))
         return -1;
+
+    hapd_sae_keyid_fixup(hapd, sta, client);
 
     return 0;
 }

@@ -31,6 +31,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdint.h>
 #include <stdlib.h>
 
+#include "memutil.h"
 #include "log.h"
 #include "network_metadata_report.h"
 #include "network_metadata_utils.h"
@@ -48,6 +49,7 @@ void net_md_free_aggregator(struct net_md_aggregator *aggr)
     if (aggr == NULL) return;
 
     net_md_free_flow_report(aggr->report);
+    FREE(aggr->report);
 
     pair = ds_tree_head(&aggr->eth_pairs);
     while (pair != NULL)
@@ -57,12 +59,11 @@ void net_md_free_aggregator(struct net_md_aggregator *aggr)
         next = ds_tree_next(&aggr->eth_pairs, pair);
         ds_tree_remove(&aggr->eth_pairs, pair);
         net_md_free_eth_pair(pair);
+        FREE(pair);
         pair = next;
     }
 
     net_md_free_flow_tree(&aggr->five_tuple_flows);
-
-    free(aggr);
 }
 
 /**
@@ -85,11 +86,11 @@ net_md_allocate_aggregator(struct net_md_aggregator_set *aggr_set)
     struct flow_window **windows_array;
 
     /* Allocate aggregator memory */
-    aggr = calloc(1, sizeof(*aggr));
+    aggr = CALLOC(1, sizeof(*aggr));
     if (aggr == NULL) return NULL;
 
     /* Allocate aggregator's report memory */
-    report = calloc(1, sizeof(*report));
+    report = CALLOC(1, sizeof(*report));
     if (report == NULL) goto err_free_aggr;
 
     aggr->report = report;
@@ -101,7 +102,7 @@ net_md_allocate_aggregator(struct net_md_aggregator_set *aggr_set)
     report->node_info = node;
 
     /* Allocate aggregator's report's windows */
-    windows_array = calloc(aggr_set->num_windows, sizeof(*windows_array));
+    windows_array = CALLOC(aggr_set->num_windows, sizeof(*windows_array));
     if (windows_array == NULL) goto err_free_node;
 
     report->flow_windows = windows_array;
@@ -129,12 +130,13 @@ net_md_allocate_aggregator(struct net_md_aggregator_set *aggr_set)
 
 err_free_node:
     free_node_info(node);
+    FREE(node);
 
 err_free_report:
-    free(report);
+    FREE(report);
 
 err_free_aggr:
-    free(aggr);
+    FREE(aggr);
 
     return NULL;
 }
@@ -224,12 +226,12 @@ bool net_md_close_active_window(struct net_md_aggregator *aggr)
             provisioned_stats = (provisioned_stats < aggr->max_reports ?
                                  provisioned_stats : aggr->max_reports);
         }
-        stats_array = calloc(provisioned_stats, sizeof(*stats_array));
+        stats_array = CALLOC(provisioned_stats, sizeof(*stats_array));
         if (stats_array == NULL) return false;
 
         window->flow_stats = stats_array;
 
-        stats = calloc(provisioned_stats, sizeof(*stats));
+        stats = CALLOC(provisioned_stats, sizeof(*stats));
         if (stats == NULL) goto err_free_stats_array;
 
         window->provisioned_stats = provisioned_stats;
@@ -251,7 +253,7 @@ bool net_md_close_active_window(struct net_md_aggregator *aggr)
     return true;
 
 err_free_stats_array:
-    free(window->flow_stats);
+    FREE(window->flow_stats);
 
     return false;
 }
@@ -295,6 +297,7 @@ bool net_md_send_report(struct net_md_aggregator *aggr, char *mqtt_topic)
 
     /* Free the serialized container */
     free_packed_buffer(pb);
+    FREE(pb);
 
     /* Reset the aggregator */
     net_md_reset_aggregator(aggr);

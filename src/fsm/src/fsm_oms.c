@@ -28,6 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "oms.h"
 #include "oms_ps.h"
 #include "ovsdb_update.h"
+#include "memutil.h"
 
 
 /**
@@ -226,7 +227,7 @@ fsm_oms_get_highest_version(struct fsm_session *session, char *name,
                                     session->ops.version_cmp_cb);
     if (entry ==  NULL) return NULL;
 
-    object = calloc(1, sizeof(*object));
+    object = CALLOC(1, sizeof(*object));
     if (object == NULL) return NULL;
 
     object->object = name;
@@ -254,7 +255,7 @@ fsm_oms_get_last_active_version(struct fsm_session *session, char *name)
     entry = oms_ps_get_last_active_version(name);
     if (entry ==  NULL) return NULL;
 
-    object = calloc(1, sizeof(*object));
+    object = CALLOC(1, sizeof(*object));
     if (object == NULL) return NULL;
 
     object->object = name;

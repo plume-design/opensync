@@ -124,7 +124,7 @@ void populate_sample_flow_entries(void)
         test_flow_entries[i].direction = GKC_FLOW_DIRECTION_INBOUND;
         test_flow_entries[i].action = FSM_ALLOW;
     }
-    
+
 }
 
 struct gk_attr_cache_interface *entry1, *entry2, *entry3, *entry4, *entry5;

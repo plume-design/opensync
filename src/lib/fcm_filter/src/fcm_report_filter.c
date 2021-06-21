@@ -73,7 +73,7 @@ static void print_md_acc_key(struct net_md_stats_accumulator *md_acc)
     LOGT("net_md_stats_accumulator=%p key=%p fkey=%p",
             md_acc, md_acc->key, md_acc->fkey);
 
-    net_md_log_acc(md_acc);
+    net_md_log_acc(md_acc, __func__);
 }
 
 
@@ -90,9 +90,9 @@ static bool apply_filter(struct net_md_flow_key *key,
                          struct flow_key *fkey,
                          char *filter_name)
 {
-    bool seven_tuple_action;
     fcm_filter_l2_info_t mac_filter;
     fcm_filter_l3_info_t filter;
+    bool seven_tuple_action;
     os_macaddr_t null_mac;
     os_macaddr_t *smac;
     os_macaddr_t *dmac;

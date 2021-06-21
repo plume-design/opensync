@@ -42,6 +42,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "target.h"
 #include "policy_tags.h"
+#include "memutil.h"
 
 /*****************************************************************************/
 
@@ -66,12 +67,12 @@ om_tag_list_entry_alloc(char *value, uint8_t flags) {
     // are dynamically allocated.
 
     // Tag List Entry itself
-    if (!(tle = calloc(1, sizeof(*tle)))) {
+    if (!(tle = CALLOC(1, sizeof(*tle)))) {
         goto alloc_err;
     }
 
     // Tag List Entry Value
-    if (!(tle->value = strdup(value))) {
+    if (!(tle->value = STRDUP(value))) {
         goto alloc_err;
     }
     tle->flags = flags;
@@ -98,11 +99,11 @@ om_tag_list_entry_free(om_tag_list_entry_t *tle) {
     if (tle) {
         // Value
         if (tle->value) {
-            free(tle->value);
+            FREE(tle->value);
         }
 
         // List entry itself
-        free(tle);
+        FREE(tle);
     }
 
     return;

@@ -30,7 +30,7 @@ LOG_MODULE="DNS"
 RESOLV_CONF="/etc/resolv.conf"
 LOOKUP_HOST={{CONTROLLER_ADDR.split(':')[1]}}
 DNS_SERVERS="209.244.0.3 64.6.64.6 84.200.69.80"
-PLOOKUP=$CONFIG_INSTALL_PREFIX/tools/plookup
+NSLOOKUP=$(which nslookup)
 OVSH=$CONFIG_INSTALL_PREFIX/tools/ovsh
 timeout=$(timeout -t 0 true && echo timeout -t || echo timeout)
 
@@ -76,7 +76,7 @@ check_dns_servers()
     testCnt=0
 
     for dns in $servers; do
-        $timeout 10 $PLOOKUP $LOOKUP_HOST $dns > /dev/null 2>&1
+        $timeout 10 $NSLOOKUP $LOOKUP_HOST $dns > /dev/null 2>&1
         if [ $? -ne 0 ]; then
             log_err "$dns failed"
         else
@@ -124,7 +124,7 @@ if [ $? -ne 0 ]; then
 fi
 
 # Check default DNS server configuration
-$timeout 10 $PLOOKUP $LOOKUP_HOST > /dev/null 2>&1
+$timeout 10 $NSLOOKUP $LOOKUP_HOST > /dev/null 2>&1
 if [ $? -ne 0 ]; then
     log_err "Default DNS failed"
 else

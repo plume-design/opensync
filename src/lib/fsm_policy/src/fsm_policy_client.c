@@ -27,6 +27,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ds_tree.h"
 #include "fsm_policy.h"
 #include "log.h"
+#include "memutil.h"
 
 /**
  * @brief compare sessions
@@ -150,11 +151,11 @@ void fsm_policy_register_client(struct fsm_policy_client *client)
     }
 
     /* Allocate a client, add it to the tree */
-    p_client = calloc(1, sizeof(*p_client));
+    p_client = CALLOC(1, sizeof(*p_client));
     if (p_client == NULL) return;
 
     name = (client->name == NULL ? default_name : client->name);
-    p_client->name = strdup(name);
+    p_client->name = STRDUP(name);
     if (p_client->name == NULL) goto err_free_client;
     p_client->session = client->session;
     p_client->update_client = client->update_client;
@@ -175,7 +176,7 @@ void fsm_policy_register_client(struct fsm_policy_client *client)
     return;
 
 err_free_client:
-    free(p_client);
+    FREE(p_client);
 }
 
 
@@ -204,8 +205,8 @@ void fsm_policy_deregister_client(struct fsm_policy_client *client)
     if (p_client == NULL) return;
 
     ds_tree_remove(&mgr->clients, p_client);
-    free(p_client->name);
-    free(p_client);
+    FREE(p_client->name);
+    FREE(p_client);
 
     client->table = NULL;
     client->session = NULL;

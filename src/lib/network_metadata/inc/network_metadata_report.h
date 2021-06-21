@@ -65,6 +65,8 @@ struct net_md_flow_key
     bool fstart;          /* Flow start */
     bool fend;            /* Flow end */
     uint32_t flags;       /* key flags */
+    uint16_t direction;   /* flow direction */
+    uint16_t originator;  /* flow originator */
 };
 
 
@@ -172,7 +174,7 @@ struct net_md_aggregator
     size_t max_reports;           /* Max # of flows to report per window */
     size_t total_eth_pairs;       /* # of eth pairs tracked by the aggregator */
     bool (*report_filter)(struct net_md_stats_accumulator *);
-    bool (*collect_filter)(struct net_md_aggregator *, struct net_md_flow_key *);
+    bool (*collect_filter)(struct net_md_aggregator *, struct net_md_flow_key *, char *);
     bool (*send_report)(struct net_md_aggregator *, char *);
     bool (*neigh_lookup)(struct sockaddr_storage *, os_macaddr_t *);
     bool (*process)(struct net_md_stats_accumulator *);
@@ -198,7 +200,7 @@ struct net_md_aggregator_set
 
     /* a collector filter routine */
     bool (*collect_filter)(struct net_md_aggregator *aggr,
-                           struct net_md_flow_key *);
+                           struct net_md_flow_key *, char *);
 
     /* a report filter routine */
     bool (*report_filter)(struct net_md_stats_accumulator *);
@@ -293,9 +295,10 @@ size_t net_md_get_total_flows(struct net_md_aggregator *aggr);
  * @brief logs the content of an accumulator
  *
  * @param acc the accumulator to log
+ * @param caller the calling function
  */
 void
-net_md_log_acc(struct net_md_stats_accumulator *acc);
+net_md_log_acc(struct net_md_stats_accumulator *acc, const char *caller);
 
 /**
  * @brief logs the content of an aggregator
@@ -337,5 +340,35 @@ net_md_process_aggr(struct net_md_aggregator *aggr);
 bool
 net_md_get_flow_info(struct net_md_stats_accumulator *acc,
                      struct net_md_flow_info *info);
+
+/**
+ * @brief logs the content of a network_metadata key
+ *
+ * @param key the network_metadata key to log
+ * @param caller the calling function
+ */
+void
+net_md_log_key(struct net_md_flow_key *key, const char *caller);
+
+/**
+ * @brief logs the content of a flow key
+ *
+ * @param fkey the flow key to log
+ * @param caller the calling function
+ */
+void
+net_md_log_fkey(struct flow_key *fkey, const char *caller);
+
+/**
+ * @brief provides local and remote info
+ *
+ * @param key the network metadata key
+ * @param info the returning info
+ *
+ * @return true if filled, false otherwise
+ */
+bool
+net_md_get_key_info(struct net_md_flow_key *key,
+                    struct net_md_flow_info *info);
 
 #endif /* NETWORK_METADATA_REPORT_H_INCLUDED */

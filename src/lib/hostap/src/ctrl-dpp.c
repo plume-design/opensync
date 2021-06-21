@@ -154,6 +154,13 @@ ctrl_dpp_listen(struct ctrl *ctrl,
 
     freq = atoi(ini_geta(reply, "freq") ?: "-1");
 
+    /* hostapd checks if dpp_listen freq is within AP oper channel.
+     * But some hostapd drivers don't report that at all,
+     * in which case passing any non-zero freq to dpp_listen
+     * will work.
+     */
+    if (freq == 0) freq = 1;
+
     cmd = strfmta("DPP_LISTEN %d", freq);
     ok = ctrl_request_ok(ctrl, cmd);
     if (!ok) return -1;

@@ -131,10 +131,16 @@ send_report(struct fsm_session *session, char *report)
     return;
 }
 
+char *
+get_other_config_val(struct fsm_session *session, char *key)
+{
+    return NULL;
+}
 
 struct fsm_session_ops g_ops =
 {
     .send_report = send_report,
+    .get_config = get_other_config_val,
 };
 
 

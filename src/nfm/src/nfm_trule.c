@@ -345,7 +345,17 @@ static bool nfm_trule_apply_tag(struct nfm_trule *self, om_action_t type,
 		filter = tdata->filter;
 	} else {
 		tag = om_tag_find_by_name(ttle->value, (ttle->flags & OM_TLE_FLAG_GROUP) ? true : false);
-		if (!tag) {
+		if (tag == NULL && type == DELETE)
+		{
+			/*
+			 * Remove a non-existing tag should result in success -- this can
+			 * happen if the Openflow_Tag entry is removed before the Netfilter
+			 * entry
+			 */
+			return true;
+		}
+		else if (tag == NULL)
+		{
 			LOGW("[%s] Apply tag for Netfilter template rule: %stag '%s' not found",
 					self->conf.name,
 					(ttle->flags & OM_TLE_FLAG_GROUP) ? "group " : "",

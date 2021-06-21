@@ -84,6 +84,8 @@ struct flow_key
     struct flow_state state; /*!< Flow state */
     uint16_t direction;      /*!< flow direction */
     uint16_t originator;     /*!< flow originator */
+    struct net_md_stats_accumulator *acc;
+    int log;
 };
 
 /**

@@ -40,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "unity.h"
 #include "log.h"
 #include "fcm.h"
+#include "memutil.h"
 
 const char *test_name = "fcm_lan_stats_tests";
 
@@ -201,6 +202,7 @@ test_emit_report(struct net_md_aggregator *aggr, char *topic)
 
     /* Free the serialized container */
     free_packed_buffer(pb);
+    FREE(pb);
     net_md_reset_aggregator(aggr);
 #endif
 

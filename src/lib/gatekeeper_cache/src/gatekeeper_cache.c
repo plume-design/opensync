@@ -248,32 +248,32 @@ gkc_new_attr_entry(struct gk_attr_cache_interface *entry)
     switch (entry->attribute_type)
     {
     case GK_CACHE_REQ_TYPE_FQDN:
-        new_attr->attr.fqdn = strdup(entry->attr_name);
+        new_attr->attr.fqdn = STRDUP(entry->attr_name);
         gk_add_new_redirect_entry(entry, new_attr);
         break;
 
     case GK_CACHE_REQ_TYPE_URL:
-        new_attr->attr.url = strdup(entry->attr_name);
+        new_attr->attr.url = STRDUP(entry->attr_name);
         break;
 
     case GK_CACHE_REQ_TYPE_HOST:
-        new_attr->attr.host = strdup(entry->attr_name);
+        new_attr->attr.host = STRDUP(entry->attr_name);
         break;
 
     case GK_CACHE_REQ_TYPE_SNI:
-        new_attr->attr.sni = strdup(entry->attr_name);
+        new_attr->attr.sni = STRDUP(entry->attr_name);
         break;
 
     case GK_CACHE_REQ_TYPE_IPV4:
-        new_attr->attr.ipv4 = strdup(entry->attr_name);
+        new_attr->attr.ipv4 = STRDUP(entry->attr_name);
         break;
 
     case GK_CACHE_REQ_TYPE_IPV6:
-        new_attr->attr.ipv6 = strdup(entry->attr_name);
+        new_attr->attr.ipv6 = STRDUP(entry->attr_name);
         break;
 
     case GK_CACHE_REQ_TYPE_APP:
-        new_attr->attr.app_name = strdup(entry->attr_name);
+        new_attr->attr.app_name = STRDUP(entry->attr_name);
         break;
 
     default:
@@ -293,7 +293,7 @@ gkc_new_attr_entry(struct gk_attr_cache_interface *entry)
     new_attr->confidence_level = entry->confidence_level;
     if (entry->gk_policy)
     {
-        new_attr->gk_policy = strdup(entry->gk_policy);
+        new_attr->gk_policy = STRDUP(entry->gk_policy);
     }
 
     return new_attr;
@@ -667,7 +667,7 @@ gkc_lookup_attr_tree(ds_tree_t *tree, struct gk_attr_cache_interface *req, int u
 
     if (attr_entry->gk_policy != NULL)
     {
-        req->gk_policy = strdup(attr_entry->gk_policy);
+        req->gk_policy = STRDUP(attr_entry->gk_policy);
     }
 
     return true;

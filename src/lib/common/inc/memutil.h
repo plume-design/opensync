@@ -51,6 +51,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define CALLOC(n, sz)     memutil_inline_calloc(n, sz, __func__, __FILE__, __LINE__)
 #define REALLOC(ptr, sz)  memutil_inline_realloc(ptr, sz, __func__, __FILE__, __LINE__)
 #define STRDUP(sz)        memutil_inline_strdup(sz, __func__, __FILE__, __LINE__)
+#define STRNDUP(sz, n)    memutil_inline_strndup(sz, n, __func__, __FILE__, __LINE__)
 
 /**
  * Perform a double free sanity check by setting the freed pointer value to
@@ -64,22 +65,36 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * - Preventing a double expansion
  * - Making sure FREE() is used on l-values
  *   (For example, this is invalid: `FREE(get_alloc_ptr())`)
- *
  */
+#define ASSERT_DOUBLE_FREE()                    \
+do                                              \
+{                                               \
+    osa_assert_dump(                            \
+            "double free()",                    \
+            __func__,                           \
+            __FILE__,                           \
+            __LINE__,                           \
+            "Double free detected.");           \
+}                                               \
+while (0)
+
+#define CHECK_DOUBLE_FREE(ptr)                  \
+do                                              \
+{                                               \
+    if (ptr == (void *)MEMUTIL_MAGIC)           \
+    {                                           \
+        ASSERT_DOUBLE_FREE();                   \
+    }                                           \
+}                                               \
+while (0)
+
 #define FREE(ptr)                               \
 do                                              \
 {                                               \
     void **cptr = (void **)&(ptr);              \
     if (*cptr == NULL) break;                   \
-    if (*cptr == (void *)MEMUTIL_MAGIC)         \
-    {                                           \
-        osa_assert_dump(                        \
-                "double free()",                \
-                __func__,                       \
-                __FILE__,                       \
-                __LINE__,                       \
-                "Double free detected.");       \
-    }                                           \
+                                                \
+    CHECK_DOUBLE_FREE(*cptr);                   \
                                                 \
     free(*cptr);                                \
     *cptr = (void *)MEMUTIL_MAGIC;              \

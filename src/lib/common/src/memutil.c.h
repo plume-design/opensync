@@ -80,11 +80,42 @@ static inline void* memutil_inline_strdup(
         const char *file,
         const int line)
 {
-    char *ptr = strdup(str);
+    char *ptr;
+
+    if (str == NULL)
+    {
+        osa_assert_dump("strdup() ", func, file, line, "NULL parameter");
+        return NULL;
+    }
+
+    ptr = strdup(str);
     if (ptr == NULL)
     {
         osa_assert_dump("strdup() returned NULL", func, file, line, "Out of memory.");
     }
 
+    return ptr;
+}
+
+static inline void* memutil_inline_strndup(
+        const char *str,
+        size_t n,
+        const char *func,
+        const char *file,
+        const int line)
+{
+    char *ptr;
+
+    if (str == NULL)
+    {
+        osa_assert_dump("strndup() ", func, file, line, "NULL parameter");
+        return NULL;
+    }
+
+    ptr = strndup(str, n);
+    if (ptr == NULL)
+    {
+        osa_assert_dump("strndup() returned NULL", func, file, line, "Out of memory.");
+    }
     return ptr;
 }

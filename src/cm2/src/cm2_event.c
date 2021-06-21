@@ -966,6 +966,7 @@ start:
                     g_state.cnts.skip_restart = 0;
                     g_state.cnts.ovs_con = 0;
                     g_state.run_stability = true;
+                    cm2_stability_update_interval(g_state.loop, false);
                     cm2_ovsdb_connection_update_unreachable_cloud_counter(g_state.link.if_name, 0);
                     cm2_disable_gw_offline_state();
                 }
@@ -1002,6 +1003,7 @@ start:
             if (cm2_state_changed())
             {
                 // quiesce ovsdb-server, wait for timeout
+                cm2_stability_update_interval(g_state.loop, true);
                 cm2_ovsdb_set_Manager_target("");
                 g_state.disconnects += 1;
                 cm2_set_ble_state(false, BLE_ONBOARDING_STATUS_CLOUD_OK);
@@ -1009,7 +1011,6 @@ start:
                 if (cm2_is_extender()) {
                     cm2_ovsdb_connection_update_unreachable_cloud_counter(g_state.link.if_name,
                                                                           g_state.disconnects);
-                    g_state.run_stability = false;
                 }
                 // Update timeouts based on AWLAN_Node contents
                 cm2_compute_backoff();

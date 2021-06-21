@@ -25,6 +25,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 
+#include <string.h>
+
 #include "log.h"
 #include "osn_inet.h"
 
@@ -66,4 +68,48 @@ void osn_route_data_set(osn_route_t *self, void *data)
 void* osn_route_data_get(osn_route_t *self)
 {
     return self->rt_data;
+}
+
+osn_route4_cfg_t *osn_route4_cfg_new(const char *if_name)
+{
+    return (osn_route4_cfg_t *)strdup(if_name);
+}
+
+bool osn_route4_cfg_del(osn_route4_cfg_t *self)
+{
+    free(self);
+    return true;
+}
+
+const char* osn_route4_cfg_name(const osn_route4_cfg_t *self)
+{
+    return (const char *)self;
+}
+
+bool osn_route_add(osn_route4_cfg_t *self, const osn_route4_t *route)
+{
+    (void)self;
+    (void)route;
+    return false;
+}
+
+bool osn_route_remove(osn_route4_cfg_t *self, const osn_route4_t *route)
+{
+    (void)self;
+    (void)route;
+    return false;
+}
+
+bool osn_route_apply(osn_route4_cfg_t *self)
+{
+    (void)self;
+    return true;
+}
+
+bool osn_route_find_dev(osn_ip_addr_t addr, char *buf, size_t bufSize)
+{
+    (void)addr;
+    (void)buf;
+    (void)bufSize;
+    return false;
 }

@@ -44,6 +44,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "policy_tags.h"
 #include "fsm_policy.h"
 #include "dns_cache.h"
+#include "memutil.h"
 
 ovsdb_table_t table_FSM_Policy;
 
@@ -486,7 +487,7 @@ void fsm_policy_set_next(struct fsm_policy * fpolicy)
     table = ds_tree_find(tree, pair->key);
     if (!table)
     {
-        table = calloc(1, sizeof(*table));
+        table = CALLOC(1, sizeof(*table));
         if (table == NULL) return;
 
         STRSCPY(table->name, pair->key);
@@ -577,13 +578,13 @@ struct fsm_policy *fsm_policy_insert_schema_p(struct policy_table *table,
     size_t idx;
     bool check;
 
-    fpolicy = calloc(1, sizeof(*fpolicy));
+    fpolicy = CALLOC(1, sizeof(*fpolicy));
     if (fpolicy == NULL) return NULL;
 
     fpolicy->table_name = table->name;
     idx = (size_t)spolicy->idx;
     fpolicy->idx = idx;
-    fpolicy->rule_name = strdup(spolicy->name);
+    fpolicy->rule_name = STRDUP(spolicy->name);
     if (fpolicy->rule_name == NULL) goto err_free_fpolicy;
 
     fpolicy->redirects = schema2str_set(sizeof(spolicy->redirect[0]),
@@ -689,7 +690,7 @@ struct fsm_policy * fsm_policy_get(struct schema_FSM_Policy *spolicy)
     table = ds_tree_find(tree, name);
     if (!table)
     {
-        table = calloc(1, sizeof(*table));
+        table = CALLOC(1, sizeof(*table));
         if (table == NULL) return NULL;
 
         STRSCPY(table->name, name);
@@ -756,7 +757,7 @@ void fsm_free_policy(struct fsm_policy *fpolicy)
     if (fpolicy == NULL) return;
 
     /* Free allocated resources */
-    free(fpolicy->rule_name);
+    FREE(fpolicy->rule_name);
     free_str_set(fpolicy->redirects);
     free_str_itree(fpolicy->next);
     free_str_tree(fpolicy->other_config);
@@ -768,7 +769,7 @@ void fsm_free_policy(struct fsm_policy *fpolicy)
     ds_tree_remove(&table->policies, fpolicy);
     idx = fpolicy->idx;
     table->lookup_array[idx] = NULL;
-    free(fpolicy);
+    FREE(fpolicy);
 }
 
 

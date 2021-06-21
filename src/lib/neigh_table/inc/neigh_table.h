@@ -73,6 +73,7 @@ struct neigh_table_mgr
     bool initialized;
     ds_tree_t neigh_table;
     ds_tree_t interfaces;
+    int count;
     bool (*update_ovsdb_tables)(struct neighbour_entry *key, bool remove);
 };
 
@@ -236,5 +237,8 @@ neigh_src_init(uint32_t ovsdb_event);
 
 void neigh_table_init_monitor(struct ev_loop *loop,
                               bool system_event, uint32_t ovsdb_event);
+
+int
+neigh_table_get_cache_size(void);
 
 #endif /* NEIGH_TABLE_H_INCLUDED */

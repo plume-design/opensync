@@ -56,7 +56,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "policy_tags.h"
 #include "fsm_policy.h"
 #include "dns_cache.h"
-
+#include "memutil.h"
 
 static char tag_marker[2] = "${";
 static char gtag_marker[2] = "$[";
@@ -156,9 +156,9 @@ void fsm_free_url_reply(struct fsm_url_reply *reply)
 
     if (reply->service_id == URL_GK_SVC)
     {
-        free(reply->reply_info.gk_info.gk_policy);
+        FREE(reply->reply_info.gk_info.gk_policy);
     }
-    free(reply);
+    FREE(reply);
 }
 
 
@@ -266,7 +266,7 @@ bool wildmatch(char *pattern, char *domain)
     int ret;
     int j;
 
-   for (j = 1, str1 = strdup(pattern), str2 = strdup(domain); ;
+   for (j = 1, str1 = STRDUP(pattern), str2 = STRDUP(domain); ;
         j++, str1 = NULL, str2 = NULL)
    {
         sub1 = strtok_r(str1, delim, &saveptr1);
@@ -277,8 +277,8 @@ bool wildmatch(char *pattern, char *domain)
          */
         if (sub1 == NULL && sub2 == NULL)
         {
-            free(str1);
-            free(str2);
+            FREE(str1);
+            FREE(str2);
 
             return true;
         }
@@ -289,8 +289,8 @@ bool wildmatch(char *pattern, char *domain)
          */
         if (sub1 == NULL || sub2 == NULL)
         {
-            free(str1);
-            free(str2);
+            FREE(str1);
+            FREE(str2);
 
             return false;
         }
@@ -299,14 +299,14 @@ bool wildmatch(char *pattern, char *domain)
         ret = fnmatch(sub1, sub2, 0);
         if (ret)
         {
-            free(str1);
-            free(str2);
+            FREE(str1);
+            FREE(str2);
 
             return false;
         }
 
-        free(str1);
-        free(str2);
+        FREE(str1);
+        FREE(str2);
    }
 
    return false;
@@ -636,14 +636,14 @@ void set_reporting(struct fsm_policy_req *req, struct fsm_policy *p)
  */
 void set_policy_record(struct fsm_policy_req *req, struct fsm_policy *p)
 {
-    req->reply.policy = strdup(p->table_name);
+    req->reply.policy = STRDUP(p->table_name);
     if (req->reply.policy == NULL)
     {
         LOGE("%s: could not duplicate %s", __func__,
              p->table_name);
     }
     req->reply.policy_idx = p->idx;
-    req->reply.rule_name = strdup(p->rule_name);
+    req->reply.rule_name = STRDUP(p->rule_name);
     if (req->reply.rule_name == NULL)
     {
         LOGE("%s: could not duplicate %s", __func__,
@@ -753,7 +753,7 @@ void populate_gk_cache_entry(struct fsm_gk_info *fqdn_reply_gk,
     fqdn_reply_gk->category_id = i2a_cache_gk->category_id;
     if (i2a_cache_gk->gk_policy)
     {
-        fqdn_reply_gk->gk_policy = strdup(i2a_cache_gk->gk_policy);
+        fqdn_reply_gk->gk_policy = STRDUP(i2a_cache_gk->gk_policy);
     }
 }
 
@@ -853,7 +853,7 @@ bool fsm_dns_cache_lookup(struct fsm_policy_req *req)
     req->fqdn_req->cat_unknown_to_service = lkp_req.cat_unknown_to_service;
 
     reply = req->fqdn_req->req_info->reply;
-    reply = calloc(1, sizeof(struct fsm_url_reply));
+    reply = CALLOC(1, sizeof(struct fsm_url_reply));
     if (reply == NULL) return false;
 
     reply->service_id = lkp_req.service_id;
@@ -876,7 +876,7 @@ bool fsm_dns_cache_lookup(struct fsm_policy_req *req)
     else if (lkp_req.service_id == IP2ACTION_GK_SVC)
     {
         populate_gk_cache_entry(&reply->gk, &lkp_req.cache_gk);
-        free(lkp_req.cache_gk.gk_policy);
+        FREE(lkp_req.cache_gk.gk_policy);
     }
 
     req->fqdn_req->categorized = FSM_FQDN_CAT_SUCCESS;

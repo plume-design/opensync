@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "memutil.h"
+
 char *
 escape_data(const uint8_t * packet, uint32_t start, uint32_t end)
 {
@@ -20,8 +22,8 @@ escape_data(const uint8_t * packet, uint32_t start, uint32_t end)
         else length += 1;
     }
 
-    outstr = (char *)malloc(sizeof(char)*length);
-    /* If the malloc failed then fail. */
+    outstr = (char *)MALLOC(sizeof(char)*length);
+    /* If the MALLOC failed then fail. */
     if (outstr == 0) return (char *)0;
 
     o = 0;
@@ -115,7 +117,7 @@ read_rr_name(const uint8_t * packet, uint32_t * packet_p,
 
     name_len++;
 
-    name = (char *)malloc(sizeof(char) * name_len);
+    name = (char *)MALLOC(sizeof(char) * name_len);
     pos = *packet_p;
 
     /*
@@ -188,7 +190,7 @@ char * b64encode(const uint8_t * data, uint32_t pos, uint16_t length) {
      * We allocate a little extra here sometimes, but in this application
      * these strings are almost immediately de-allocated anyway.
      */
-    out = malloc(sizeof(char) * ((length/3 + 1)*4 + 1));
+    out = MALLOC(sizeof(char) * ((length/3 + 1)*4 + 1));
 
     while (pos + 2 < end_pos)
     {

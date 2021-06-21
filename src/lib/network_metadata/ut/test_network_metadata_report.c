@@ -32,7 +32,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdbool.h>
 #include <string.h>
 #include <unistd.h>
+#include <libgen.h>
 
+#include "memutil.h"
 #include "log.h"
 #include "network_metadata_report.h"
 #include "target.h"
@@ -237,7 +239,7 @@ static struct net_md_flow_key * in_key2net_md_key(struct in_key *in_key)
     int domain, version, ret;
     bool err;
 
-    key = calloc(1, sizeof(*key));
+    key = CALLOC(1, sizeof(*key));
     if (key == NULL) return NULL;
 
     key->smac = str2os_mac(in_key->smac);
@@ -257,13 +259,13 @@ static struct net_md_flow_key * in_key2net_md_key(struct in_key *in_key)
 
     domain = ((version == 4) ? AF_INET : AF_INET6);
 
-    key->src_ip = calloc(1, sizeof(struct in6_addr));
+    key->src_ip = CALLOC(1, sizeof(struct in6_addr));
     if (key->src_ip == NULL) goto err_free_dmac;
 
     ret = inet_pton(domain, in_key->src_ip, key->src_ip);
     if (ret != 1) goto err_free_src_ip;
 
-    key->dst_ip = calloc(1, sizeof(struct in6_addr));
+    key->dst_ip = CALLOC(1, sizeof(struct in6_addr));
     if (key->dst_ip == NULL) goto err_free_src_ip;
 
     ret = inet_pton(domain, in_key->dst_ip, key->dst_ip);
@@ -276,19 +278,19 @@ static struct net_md_flow_key * in_key2net_md_key(struct in_key *in_key)
     return key;
 
 err_free_dst_ip:
-    free(key->dst_ip);
+    FREE(key->dst_ip);
 
 err_free_src_ip:
-    free(key->src_ip);
+    FREE(key->src_ip);
 
 err_free_dmac:
-    free(key->dmac);
+    FREE(key->dmac);
 
 err_free_smac:
-    free(key->smac);
+    FREE(key->smac);
 
 err_free_key:
-    free(key);
+    FREE(key);
 
     return NULL;
 }
@@ -313,7 +315,7 @@ void test_net_md_report_setup(void)
     g_nd_test.nelems = 0;
 
     nelems = sizeof(in_keys) / sizeof(struct in_key);
-    g_nd_test.net_md_keys = calloc(nelems, sizeof(*key));
+    g_nd_test.net_md_keys = CALLOC(nelems, sizeof(*key));
     if (g_nd_test.net_md_keys == NULL) return;
 
     allocated = 0;
@@ -352,11 +354,11 @@ err_free_keys:
     for (i = 0; i < allocated; i++)
     {
         iter_key = *key;
-        free(iter_key->smac);
-        free(iter_key->dmac);
-        free(iter_key->src_ip);
-        free(iter_key->dst_ip);
-        free(iter_key);
+        FREE(iter_key->smac);
+        FREE(iter_key->dmac);
+        FREE(iter_key->src_ip);
+        FREE(iter_key->dst_ip);
+        FREE(iter_key);
         key++;
     }
 
@@ -382,67 +384,16 @@ void test_net_md_report_teardown(void)
     for (i = 0; i < g_nd_test.nelems; i++)
     {
         iter_key = *key;
-        free(iter_key->smac);
-        free(iter_key->dmac);
-        free(iter_key->src_ip);
-        free(iter_key->dst_ip);
-        free(iter_key);
+        FREE(iter_key->smac);
+        FREE(iter_key->dmac);
+        FREE(iter_key->src_ip);
+        FREE(iter_key->dst_ip);
+        FREE(iter_key);
         key++;
     }
-    free(g_nd_test.net_md_keys);
+    FREE(g_nd_test.net_md_keys);
     memset(&g_nd_test, 0, sizeof(g_nd_test));
     g_nd_test.initialized = false;
-}
-
-/**
- * @brief tests the str2os_mac() utility
- */
-void test_str2mac(void)
-{
-    char *mac1 = "fe:dc:ba:01:23:45";
-    char *mac2 = "FE:DC:BA:01:23:45";
-    char *mac3 = "fe:dc:ba";
-    char *mac4 = "ze:dc:ba:01:23:45";
-    char *mac5 = "fe:dc:ba:01:23:4:";
-    char *mac6 = "fe:dc:ba:01:23:456";
-    os_macaddr_t *mac;
-    char check_mac[32] = { 0 };
-    int cmp;
-
-    /* Validate correct mac in lower case */
-    mac = str2os_mac(mac1);
-    TEST_ASSERT_NOT_NULL(mac);
-    snprintf(check_mac, sizeof(check_mac), PRI_os_macaddr_lower_t,
-             FMT_os_macaddr_pt(mac));
-    cmp = strncmp(check_mac, mac1, sizeof(check_mac));
-    TEST_ASSERT_EQUAL_INT(0, cmp);
-    free(mac);
-
-    /* Validate correct mac in upper case */
-    mac = str2os_mac(mac2);
-    TEST_ASSERT_NOT_NULL(mac);
-    memset(check_mac, 0, sizeof(check_mac));
-    snprintf(check_mac, sizeof(check_mac), PRI_os_macaddr_t,
-             FMT_os_macaddr_pt(mac));
-    cmp = strncmp(check_mac, mac2, sizeof(check_mac));
-    TEST_ASSERT_EQUAL_INT(0, cmp);
-    free(mac);
-
-    /* Validate too short of a string */
-    mac = str2os_mac(mac3);
-    TEST_ASSERT_NULL(mac);
-
-    /* Validate wrong string (contains a 'z') */
-    mac = str2os_mac(mac4);
-    TEST_ASSERT_NULL(mac);
-
-    /* Validate wrong string (last character is ':') */
-    mac = str2os_mac(mac5);
-    TEST_ASSERT_NULL(mac);
-
-    /* Validate too long of a string */
-    mac = str2os_mac(mac6);
-    TEST_ASSERT_NULL(mac);
 }
 
 
@@ -467,6 +418,7 @@ static void test_emit_report(struct net_md_aggregator *aggr)
 
     /* Free the serialized container */
     free_packed_buffer(pb);
+    FREE(pb);
     net_md_reset_aggregator(aggr);
 #endif
 }
@@ -490,6 +442,7 @@ void test_net_md_allocate_aggregator(void)
     TEST_ASSERT_EQUAL_STRING(g_nd_test.location_id,
                              report->node_info->location_id);
     net_md_free_aggregator(aggr);
+    FREE(aggr);
 }
 
 /**
@@ -678,6 +631,7 @@ void activate_add_samples_close_send_report(int report_type)
 
     /* Free the aggregator */
     net_md_free_aggregator(aggr);
+    FREE(aggr);
 }
 
 
@@ -755,6 +709,7 @@ void test_add_2_samples_all_keys(void)
     test_emit_report(aggr);
 
     net_md_free_aggregator(aggr);
+    FREE(aggr);
 }
 
 /**
@@ -850,7 +805,9 @@ void test_ethernet_aggregate_one_key(void)
     validate_aggregate_one_key(relative_aggr, key_idx, counters, &counters[2]);
 
     net_md_free_aggregator(relative_aggr);
+    FREE(relative_aggr);
     net_md_free_aggregator(absolute_aggr);
+    FREE(absolute_aggr);
 }
 
 
@@ -1011,7 +968,9 @@ void test_ethernet_aggregate_two_keys(void)
     validate_aggregate_two_keys(relative_aggr, counters, &counters[5]);
 
     net_md_free_aggregator(relative_aggr);
+    FREE(relative_aggr);
     net_md_free_aggregator(absolute_aggr);
+    FREE(absolute_aggr);
 }
 
 
@@ -1071,6 +1030,7 @@ void test_large_loop(void)
 
     /* Free aggregator */
     net_md_free_aggregator(aggr);
+    FREE(aggr);
 }
 
 
@@ -1151,6 +1111,7 @@ void test_add_remove_flows(void)
 
     /* Free aggregator */
     net_md_free_aggregator(aggr);
+    FREE(aggr);
 }
 
 
@@ -1209,6 +1170,7 @@ void test_multiple_windows(void)
 
     /* Free aggregator */
     net_md_free_aggregator(aggr);
+    FREE(aggr);
 }
 
 /**
@@ -1301,6 +1263,7 @@ void test_report_filter(void)
 
     /* Free aggregator */
     net_md_free_aggregator(aggr);
+    FREE(aggr);
 }
 
 
@@ -1324,6 +1287,7 @@ void test_activate_and_free_aggr(void)
 
     /* Free aggregator */
     net_md_free_aggregator(aggr);
+    FREE(aggr);
 }
 
 /**
@@ -1378,6 +1342,7 @@ void test_bogus_ttl(void)
 
     /* Free aggregator */
     net_md_free_aggregator(aggr);
+    FREE(aggr);
 }
 
 /**
@@ -1423,10 +1388,10 @@ test_flow_tags_one_key(void)
 
     /* Add a flow tag to the key */
     fkey->num_tags = 1;
-    fkey->tags = calloc(fkey->num_tags, sizeof(*fkey->tags));
+    fkey->tags = CALLOC(fkey->num_tags, sizeof(*fkey->tags));
     TEST_ASSERT_NOT_NULL(fkey->tags);
 
-    tag = calloc(1, sizeof(*tag));
+    tag = CALLOC(1, sizeof(*tag));
     TEST_ASSERT_NOT_NULL(tag);
 
     tag->vendor = strdup("Plume");
@@ -1436,7 +1401,7 @@ test_flow_tags_one_key(void)
     TEST_ASSERT_NOT_NULL(tag->app_name);
 
     tag->nelems = 2;
-    tag->tags = calloc(tag->nelems, sizeof(tags));
+    tag->tags = CALLOC(tag->nelems, sizeof(tags));
     TEST_ASSERT_NOT_NULL(tag->tags);
 
     tag->tags[0] = strdup("Plume Tag0");
@@ -1456,6 +1421,7 @@ test_flow_tags_one_key(void)
 
     /* Free aggregator */
     net_md_free_aggregator(aggr);
+    FREE(aggr);
 }
 
 
@@ -1543,17 +1509,17 @@ test_vendor_data_one_key(void)
 
     /* Add vendor data to the key */
     fkey->num_vendor_data = 2;
-    fkey->vdr_data = calloc(fkey->num_vendor_data,
+    fkey->vdr_data = CALLOC(fkey->num_vendor_data,
                             sizeof(*fkey->vdr_data));
     TEST_ASSERT_NOT_NULL(fkey->vdr_data);
 
     nelems = 3;
 
-    kvps1 = calloc(nelems, sizeof(struct vendor_data_kv_pair *));
+    kvps1 = CALLOC(nelems, sizeof(struct vendor_data_kv_pair *));
     TEST_ASSERT_NOT_NULL(kvps1);
     for (i = 0; i < nelems; i++)
     {
-        kvps1[i] = calloc(1, sizeof(struct vendor_data_kv_pair));
+        kvps1[i] = CALLOC(1, sizeof(struct vendor_data_kv_pair));
         kvp = kvps1[i];
         TEST_ASSERT_NOT_NULL(kvp);
         kvp->key = strdup(vd1_kps[i].key);
@@ -1575,17 +1541,17 @@ test_vendor_data_one_key(void)
         }
         kvp++;
     }
-    vd1 = calloc(1, sizeof(struct flow_vendor_data));
+    vd1 = CALLOC(1, sizeof(struct flow_vendor_data));
     vd1->vendor = strdup("vendor1");
     TEST_ASSERT_NOT_NULL(vd1->vendor);
     vd1->nelems = 3;
     vd1->kv_pairs = kvps1;
 
-    kvps2 = calloc(nelems, sizeof(struct vendor_data_kv_pair *));
+    kvps2 = CALLOC(nelems, sizeof(struct vendor_data_kv_pair *));
     TEST_ASSERT_NOT_NULL(kvps2);
     for (i = 0; i < nelems; i++)
     {
-        kvps2[i] = calloc(1, sizeof(struct vendor_data_kv_pair));
+        kvps2[i] = CALLOC(1, sizeof(struct vendor_data_kv_pair));
         kvp = kvps2[i];
         TEST_ASSERT_NOT_NULL(kvp);
         kvp->key = strdup(vd2_kps[i].key);
@@ -1606,7 +1572,7 @@ test_vendor_data_one_key(void)
         }
         kvp++;
     }
-    vd2 = calloc(1, sizeof(struct flow_vendor_data));
+    vd2 = CALLOC(1, sizeof(struct flow_vendor_data));
     vd2->vendor = strdup("vendor2");
     TEST_ASSERT_NOT_NULL(vd2->vendor);
     vd2->nelems = 3;
@@ -1625,6 +1591,7 @@ test_vendor_data_one_key(void)
 
     /* Free aggregator */
     net_md_free_aggregator(aggr);
+    FREE(aggr);
 }
 
 void
@@ -1702,6 +1669,7 @@ test_flow_key_to_net_md_key(void)
     TEST_ASSERT_EQUAL_INT(0, rc);
 
     free_net_md_flow_key(key);
+    FREE(key);
 
     /* Validate key 1 translation */
     pb_key = &pb_keys[1];
@@ -1715,6 +1683,7 @@ test_flow_key_to_net_md_key(void)
     TEST_ASSERT_EQUAL_UINT(pb_key->ethertype, key->ethertype);
 
     free_net_md_flow_key(key);
+    FREE(key);
 
     /* Validate key 2 translation */
     pb_key = &pb_keys[2];
@@ -1728,6 +1697,7 @@ test_flow_key_to_net_md_key(void)
     TEST_ASSERT_EQUAL_UINT(pb_key->ethertype, key->ethertype);
 
     free_net_md_flow_key(key);
+    FREE(key);
 
     /* Validate key 3 translation */
     pb_key = &pb_keys[3];
@@ -1763,6 +1733,7 @@ test_flow_key_to_net_md_key(void)
     TEST_ASSERT_EQUAL_INT(pb_key->ipprotocol, key->ipprotocol);
 
     free_net_md_flow_key(key);
+    FREE(key);
 
     /* Validate key 4 translation */
     pb_key = &pb_keys[4];
@@ -1782,6 +1753,7 @@ test_flow_key_to_net_md_key(void)
     TEST_ASSERT_EQUAL_UINT(pb_key->tptdstport, ntohs(key->dport));
 
     free_net_md_flow_key(key);
+    FREE(key);
 
     /* Validate key 5 translation */
     pb_key = &pb_keys[5];
@@ -1811,6 +1783,7 @@ test_flow_key_to_net_md_key(void)
     TEST_ASSERT_EQUAL_INT(pb_key->ipprotocol, key->ipprotocol);
 
     free_net_md_flow_key(key);
+    FREE(key);
 }
 
 
@@ -1902,17 +1875,17 @@ test_vendor_data_serialize_deserialize(void)
 
     /* Add vendor data to the key */
     fkey->num_vendor_data = 2;
-    fkey->vdr_data = calloc(fkey->num_vendor_data,
+    fkey->vdr_data = CALLOC(fkey->num_vendor_data,
                             sizeof(*fkey->vdr_data));
     TEST_ASSERT_NOT_NULL(fkey->vdr_data);
 
     nelems = 3;
 
-    kvps1 = calloc(nelems, sizeof(struct vendor_data_kv_pair *));
+    kvps1 = CALLOC(nelems, sizeof(struct vendor_data_kv_pair *));
     TEST_ASSERT_NOT_NULL(kvps1);
     for (i = 0; i < nelems; i++)
     {
-        kvps1[i] = calloc(1, sizeof(struct vendor_data_kv_pair));
+        kvps1[i] = CALLOC(1, sizeof(struct vendor_data_kv_pair));
         kvp = kvps1[i];
         TEST_ASSERT_NOT_NULL(kvp);
         kvp->key = strdup(vd1_kps[i].key);
@@ -1934,17 +1907,17 @@ test_vendor_data_serialize_deserialize(void)
         }
         kvp++;
     }
-    vd1 = calloc(1, sizeof(struct flow_vendor_data));
+    vd1 = CALLOC(1, sizeof(struct flow_vendor_data));
     vd1->vendor = strdup("vendor1");
     TEST_ASSERT_NOT_NULL(vd1->vendor);
     vd1->nelems = 3;
     vd1->kv_pairs = kvps1;
 
-    kvps2 = calloc(nelems, sizeof(struct vendor_data_kv_pair *));
+    kvps2 = CALLOC(nelems, sizeof(struct vendor_data_kv_pair *));
     TEST_ASSERT_NOT_NULL(kvps2);
     for (i = 0; i < nelems; i++)
     {
-        kvps2[i] = calloc(1, sizeof(struct vendor_data_kv_pair));
+        kvps2[i] = CALLOC(1, sizeof(struct vendor_data_kv_pair));
         kvp = kvps2[i];
         TEST_ASSERT_NOT_NULL(kvp);
         kvp->key = strdup(vd2_kps[i].key);
@@ -1965,7 +1938,7 @@ test_vendor_data_serialize_deserialize(void)
         }
         kvp++;
     }
-    vd2 = calloc(1, sizeof(struct flow_vendor_data));
+    vd2 = CALLOC(1, sizeof(struct flow_vendor_data));
     vd2->vendor = strdup("vendor2");
     TEST_ASSERT_NOT_NULL(vd2->vendor);
     vd2->nelems = 3;
@@ -1977,10 +1950,10 @@ test_vendor_data_serialize_deserialize(void)
 
     /* Add a flow tag to the key */
     fkey->num_tags = 1;
-    fkey->tags = calloc(fkey->num_tags, sizeof(*fkey->tags));
+    fkey->tags = CALLOC(fkey->num_tags, sizeof(*fkey->tags));
     TEST_ASSERT_NOT_NULL(fkey->tags);
 
-    tag = calloc(1, sizeof(*tag));
+    tag = CALLOC(1, sizeof(*tag));
     TEST_ASSERT_NOT_NULL(tag);
 
     tag->vendor = strdup("Plume");
@@ -1990,7 +1963,7 @@ test_vendor_data_serialize_deserialize(void)
     TEST_ASSERT_NOT_NULL(tag->app_name);
 
     tag->nelems = 2;
-    tag->tags = calloc(tag->nelems, sizeof(tags));
+    tag->tags = CALLOC(tag->nelems, sizeof(tags));
     TEST_ASSERT_NOT_NULL(tag->tags);
 
     tag->tags[0] = strdup("Plume Tag0");
@@ -2026,12 +1999,16 @@ test_vendor_data_serialize_deserialize(void)
 
     /* Free the serialized container */
     free_packed_buffer(pb);
+    FREE(pb);
     ret = net_md_close_active_window(aggr_out);
 
     test_emit_report(aggr_out);
+
     /* Free aggregators */
     net_md_free_aggregator(aggr_in);
+    FREE(aggr_in);
     net_md_free_aggregator(aggr_out);
+    FREE(aggr_out);
 }
 
 
@@ -2080,10 +2057,10 @@ test_update_flow_tags(void)
 
     /* Add a flow tag to the key */
     fkey->num_tags = 1;
-    fkey->tags = calloc(fkey->num_tags, sizeof(*fkey->tags));
+    fkey->tags = CALLOC(fkey->num_tags, sizeof(*fkey->tags));
     TEST_ASSERT_NOT_NULL(fkey->tags);
 
-    tag = calloc(1, sizeof(*tag));
+    tag = CALLOC(1, sizeof(*tag));
     TEST_ASSERT_NOT_NULL(tag);
 
     tag->vendor = strdup("Plume");
@@ -2093,7 +2070,7 @@ test_update_flow_tags(void)
     TEST_ASSERT_NOT_NULL(tag->app_name);
 
     tag->nelems = 2;
-    tag->tags = calloc(tag->nelems, sizeof(tags));
+    tag->tags = CALLOC(tag->nelems, sizeof(tags));
     TEST_ASSERT_NOT_NULL(tag->tags);
 
     tag->tags[0] = strdup("Plume Tag0");
@@ -2116,6 +2093,7 @@ test_update_flow_tags(void)
 
     /* Free the serialized container */
     free_packed_buffer(pb);
+    FREE(pb);
 
     /* Validate the state of the accumulator bound to the key */
     acc = net_md_lookup_acc(aggr, key);
@@ -2152,10 +2130,10 @@ test_update_flow_tags(void)
 
     /* Add a flow tag to the key */
     fkey->num_tags = 1;
-    fkey->tags = calloc(fkey->num_tags, sizeof(*fkey->tags));
+    fkey->tags = CALLOC(fkey->num_tags, sizeof(*fkey->tags));
     TEST_ASSERT_NOT_NULL(fkey->tags);
 
-    tag = calloc(1, sizeof(*tag));
+    tag = CALLOC(1, sizeof(*tag));
     TEST_ASSERT_NOT_NULL(tag);
 
     tag->vendor = strdup("NotPlume");
@@ -2165,7 +2143,7 @@ test_update_flow_tags(void)
     TEST_ASSERT_NOT_NULL(tag->app_name);
 
     tag->nelems = 2;
-    tag->tags = calloc(tag->nelems, sizeof(tags));
+    tag->tags = CALLOC(tag->nelems, sizeof(tags));
     TEST_ASSERT_NOT_NULL(tag->tags);
 
     tag->tags[0] = strdup("NotPlume Tag0");
@@ -2189,6 +2167,7 @@ test_update_flow_tags(void)
 
     /* Free the serialized container */
     free_packed_buffer(pb);
+    FREE(pb);
 
     /* Validate the state of the accumulator bound to the key */
     acc = net_md_lookup_acc(aggr, key);
@@ -2201,7 +2180,9 @@ test_update_flow_tags(void)
 
     /* Free aggregators */
     net_md_free_aggregator(alt_aggr);
+    FREE(alt_aggr);
     net_md_free_aggregator(aggr);
+    FREE(aggr);
 }
 
 
@@ -2293,17 +2274,17 @@ test_update_vendor_data(void)
 
     /* Add vendor data to the key */
     fkey->num_vendor_data = 2;
-    fkey->vdr_data = calloc(fkey->num_vendor_data,
+    fkey->vdr_data = CALLOC(fkey->num_vendor_data,
                             sizeof(*fkey->vdr_data));
     TEST_ASSERT_NOT_NULL(fkey->vdr_data);
 
     nelems = 3;
 
-    kvps1 = calloc(nelems, sizeof(struct vendor_data_kv_pair *));
+    kvps1 = CALLOC(nelems, sizeof(struct vendor_data_kv_pair *));
     TEST_ASSERT_NOT_NULL(kvps1);
     for (i = 0; i < nelems; i++)
     {
-        kvps1[i] = calloc(1, sizeof(struct vendor_data_kv_pair));
+        kvps1[i] = CALLOC(1, sizeof(struct vendor_data_kv_pair));
         kvp = kvps1[i];
         TEST_ASSERT_NOT_NULL(kvp);
         kvp->key = strdup(vd1_kps[i].key);
@@ -2325,17 +2306,17 @@ test_update_vendor_data(void)
         }
         kvp++;
     }
-    vd1 = calloc(1, sizeof(struct flow_vendor_data));
+    vd1 = CALLOC(1, sizeof(struct flow_vendor_data));
     vd1->vendor = strdup("vendor1");
     TEST_ASSERT_NOT_NULL(vd1->vendor);
     vd1->nelems = 3;
     vd1->kv_pairs = kvps1;
 
-    kvps2 = calloc(nelems, sizeof(struct vendor_data_kv_pair *));
+    kvps2 = CALLOC(nelems, sizeof(struct vendor_data_kv_pair *));
     TEST_ASSERT_NOT_NULL(kvps2);
     for (i = 0; i < nelems; i++)
     {
-        kvps2[i] = calloc(1, sizeof(struct vendor_data_kv_pair));
+        kvps2[i] = CALLOC(1, sizeof(struct vendor_data_kv_pair));
         kvp = kvps2[i];
         TEST_ASSERT_NOT_NULL(kvp);
         kvp->key = strdup(vd2_kps[i].key);
@@ -2356,7 +2337,7 @@ test_update_vendor_data(void)
         }
         kvp++;
     }
-    vd2 = calloc(1, sizeof(struct flow_vendor_data));
+    vd2 = CALLOC(1, sizeof(struct flow_vendor_data));
     vd2->vendor = strdup("vendor2");
     TEST_ASSERT_NOT_NULL(vd2->vendor);
     vd2->nelems = 3;
@@ -2368,10 +2349,10 @@ test_update_vendor_data(void)
 
     /* Add a flow tag to the key */
     fkey->num_tags = 1;
-    fkey->tags = calloc(fkey->num_tags, sizeof(*fkey->tags));
+    fkey->tags = CALLOC(fkey->num_tags, sizeof(*fkey->tags));
     TEST_ASSERT_NOT_NULL(fkey->tags);
 
-    tag = calloc(1, sizeof(*tag));
+    tag = CALLOC(1, sizeof(*tag));
     TEST_ASSERT_NOT_NULL(tag);
 
     tag->vendor = strdup("Plume");
@@ -2381,7 +2362,7 @@ test_update_vendor_data(void)
     TEST_ASSERT_NOT_NULL(tag->app_name);
 
     tag->nelems = 2;
-    tag->tags = calloc(tag->nelems, sizeof(tags));
+    tag->tags = CALLOC(tag->nelems, sizeof(tags));
     TEST_ASSERT_NOT_NULL(tag->tags);
 
     tag->tags[0] = strdup("Plume Tag0");
@@ -2436,12 +2417,15 @@ test_update_vendor_data(void)
 
     /* Free the serialized container */
     free_packed_buffer(pb);
+    FREE(pb);
     ret = net_md_close_active_window(aggr_out);
 
     test_emit_report(aggr_out);
     /* Free aggregators */
     net_md_free_aggregator(aggr_in);
+    FREE(aggr_in);
     net_md_free_aggregator(aggr_out);
+    FREE(aggr_out);
 }
 
 /**
@@ -2449,7 +2433,7 @@ test_update_vendor_data(void)
  */
 static bool
 test_collect_filter_flow(struct net_md_aggregator *aggr,
-                         struct net_md_flow_key *key)
+                         struct net_md_flow_key *key, char *appname)
 {
     return false;
 }
@@ -2500,10 +2484,10 @@ test_update_filter_flow_tags(void)
 
     /* Add a flow tag to the key */
     fkey->num_tags = 1;
-    fkey->tags = calloc(fkey->num_tags, sizeof(*fkey->tags));
+    fkey->tags = CALLOC(fkey->num_tags, sizeof(*fkey->tags));
     TEST_ASSERT_NOT_NULL(fkey->tags);
 
-    tag = calloc(1, sizeof(*tag));
+    tag = CALLOC(1, sizeof(*tag));
     TEST_ASSERT_NOT_NULL(tag);
 
     tag->vendor = strdup("Plume");
@@ -2513,7 +2497,7 @@ test_update_filter_flow_tags(void)
     TEST_ASSERT_NOT_NULL(tag->app_name);
 
     tag->nelems = 2;
-    tag->tags = calloc(tag->nelems, sizeof(tags));
+    tag->tags = CALLOC(tag->nelems, sizeof(tags));
     TEST_ASSERT_NOT_NULL(tag->tags);
 
     tag->tags[0] = strdup("Plume Tag0");
@@ -2536,6 +2520,7 @@ test_update_filter_flow_tags(void)
 
     /* Free the serialized container */
     free_packed_buffer(pb);
+    FREE(pb);
 
     /* Validate the state of the accumulator bound to the key */
     acc = net_md_lookup_acc(aggr, key);
@@ -2572,10 +2557,10 @@ test_update_filter_flow_tags(void)
 
     /* Add a flow tag to the key */
     fkey->num_tags = 1;
-    fkey->tags = calloc(fkey->num_tags, sizeof(*fkey->tags));
+    fkey->tags = CALLOC(fkey->num_tags, sizeof(*fkey->tags));
     TEST_ASSERT_NOT_NULL(fkey->tags);
 
-    tag = calloc(1, sizeof(*tag));
+    tag = CALLOC(1, sizeof(*tag));
     TEST_ASSERT_NOT_NULL(tag);
 
     tag->vendor = strdup("NotPlume");
@@ -2585,7 +2570,7 @@ test_update_filter_flow_tags(void)
     TEST_ASSERT_NOT_NULL(tag->app_name);
 
     tag->nelems = 2;
-    tag->tags = calloc(tag->nelems, sizeof(tags));
+    tag->tags = CALLOC(tag->nelems, sizeof(tags));
     TEST_ASSERT_NOT_NULL(tag->tags);
 
     tag->tags[0] = strdup("NotPlume Tag0");
@@ -2612,6 +2597,7 @@ test_update_filter_flow_tags(void)
 
     /* Free the serialized container */
     free_packed_buffer(pb);
+    FREE(pb);
 
     /* Validate the state of the accumulator bound to the key */
     acc = net_md_lookup_acc(aggr, key);
@@ -2624,7 +2610,9 @@ test_update_filter_flow_tags(void)
 
     /* Free aggregators */
     net_md_free_aggregator(alt_aggr);
+    FREE(alt_aggr);
     net_md_free_aggregator(aggr);
+    FREE(aggr);
 }
 
 
@@ -2692,6 +2680,7 @@ test_reverse_lookup_acc(void)
     TEST_ASSERT_NOT_NULL(fkey);
 
     net_md_free_aggregator(aggr);
+    FREE(aggr);
 }
 
 
@@ -2768,6 +2757,7 @@ test_direction_originator_data_serialize_deserialize(void)
 
     /* Free the serialized container */
     free_packed_buffer(pb);
+    FREE(pb);
     ret = net_md_close_active_window(aggr_out);
 
     /* Validate the state of the accumulator bound to the key */
@@ -2782,7 +2772,9 @@ test_direction_originator_data_serialize_deserialize(void)
 
     /* Free aggregators */
     net_md_free_aggregator(aggr_in);
+    FREE(aggr_in);
     net_md_free_aggregator(aggr_out);
+    FREE(aggr_out);
 }
 
 
@@ -2839,6 +2831,7 @@ test_acc_flow_info_report(void)
     TEST_ASSERT_EQUAL(acc_key->src_ip, info.local_ip);
 
     net_md_free_aggregator(aggr);
+    FREE(aggr);
 }
 
 /**
@@ -2970,4 +2963,40 @@ test_net_md_ufid(void)
     eth_acc = eth_pair->mac_stats;
     validate_counters(&counters[1], &eth_acc->report_counters);
     net_md_free_aggregator(aggr);
+    FREE(aggr);
+}
+
+
+void
+test_network_metadata_reports(void)
+{
+    const char *this_filename = basename(__FILE__);
+    const char *old_filename = Unity.TestFile;
+    UnitySetTestFile(this_filename);
+
+    /* Sampling and reporting testing */
+    RUN_TEST(test_net_md_allocate_aggregator);
+    RUN_TEST(test_activate_add_samples_close_send_report);
+    // RUN_TEST(test_add_2_samples_all_keys);
+    RUN_TEST(test_ethernet_aggregate_one_key);
+    RUN_TEST(test_ethernet_aggregate_two_keys);
+    RUN_TEST(test_large_loop);
+    RUN_TEST(test_add_remove_flows);
+    RUN_TEST(test_multiple_windows);
+    RUN_TEST(test_report_filter);
+    RUN_TEST(test_activate_and_free_aggr);
+    RUN_TEST(test_bogus_ttl);
+    RUN_TEST(test_flow_tags_one_key);
+    RUN_TEST(test_vendor_data_one_key);
+    RUN_TEST(test_flow_key_to_net_md_key);
+    RUN_TEST(test_vendor_data_serialize_deserialize);
+    RUN_TEST(test_update_flow_tags);
+    RUN_TEST(test_update_vendor_data);
+    RUN_TEST(test_update_filter_flow_tags);
+    RUN_TEST(test_reverse_lookup_acc);
+    RUN_TEST(test_direction_originator_data_serialize_deserialize);
+    RUN_TEST(test_acc_flow_info_report);
+    RUN_TEST(test_net_md_ufid);
+
+    UnitySetTestFile(old_filename);
 }

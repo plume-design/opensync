@@ -43,6 +43,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "network_metadata_report.h"
 #include "qm_conn.h"
 #include "fsm_dpi_utils.h"
+#include "memutil.h"
 
 static struct fsm_demo_plugin_cache
 cache_mgr =
@@ -694,6 +695,7 @@ fsm_demo_free_session(struct fsm_demo_session *f_session)
     }
 
     net_md_free_aggregator(f_session->aggr);
+    FREE(f_session->aggr);
     free(f_session);
 }
 

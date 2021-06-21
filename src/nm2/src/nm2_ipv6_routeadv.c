@@ -350,7 +350,7 @@ void nm2_ipv6_routeadv_prefixes_update(uuidset_t *us, enum uuidset_event type, r
         return;
     }
 
-    inet_commit(ipi->ipi_iface->if_inet);
+    nm2_iface_apply(ipi->ipi_iface);
 }
 
 /*
@@ -423,7 +423,7 @@ void nm2_ipv6_routeadv_rdnss_update(uuidset_t *us, enum uuidset_event type, refl
         return;
     }
 
-    inet_commit(ipi->ipi_iface->if_inet);
+    nm2_iface_apply(ipi->ipi_iface);
 }
 
 
@@ -604,5 +604,5 @@ void nm2_ipv6_routeadv_set(struct nm2_ipv6_routeadv *ra, bool enable)
     if (!ra->ra_valid) return;
 
     inet_radv(piface->if_inet, enable, &ra->ra_opts);
-    inet_commit(piface->if_inet);
+    nm2_iface_apply(piface);
 }

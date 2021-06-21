@@ -173,8 +173,8 @@ gk_set_report_info(struct fsm_url_reply *url_reply,
     url_reply->reply_info.gk_info.confidence_level = header->confidence_level;
     if (header->policy == NULL) return;
 
-    /* No action taken if strdup() fails */
-    url_reply->reply_info.gk_info.gk_policy = strdup(header->policy);
+    /* No action taken if STRDUP() fails */
+    url_reply->reply_info.gk_info.gk_policy = STRDUP(header->policy);
 }
 
 /**

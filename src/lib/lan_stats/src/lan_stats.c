@@ -734,11 +734,12 @@ void lan_stats_plugin_exit(fcm_collect_plugin_t *collector)
     aggr = lan_stats_instance->aggr;
     if (aggr == NULL)
     {
-        LOGD("%s(): Aggergator is empty", __func__);
+        LOGD("%s(): Aggregator is empty", __func__);
         return;
     }
     net_md_close_active_window(aggr);
     net_md_free_aggregator(aggr);
+    FREE(aggr);
 
     /* delete the session */
     ds_tree_remove(&mgr->lan_stats_sessions, lan_stats_instance);

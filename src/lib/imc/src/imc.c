@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "imc.h"
 #include "log.h"
+#include "memutil.h"
 
 
 static void
@@ -238,8 +239,8 @@ imc_reset_context(struct imc_context *context)
     while (!ds_list_is_empty(list))
     {
         node = ds_list_remove_head(list);
-        free(node->option.value);
-        free(node);
+        FREE(node->option.value);
+        FREE(node);
     }
 }
 
@@ -267,13 +268,13 @@ imc_add_sockopt(struct imc_context *context, struct imc_sockoption *option)
     if (option->len == 0) return -1;
     if (option->value == NULL) return -1;
 
-    node = calloc(1, sizeof(*node));
+    node = CALLOC(1, sizeof(*node));
     if (node == NULL) return -1;
 
     node_option = &node->option;
 
     node_option->option_name = option->option_name;
-    node_option->value = calloc(1, option->len);
+    node_option->value = CALLOC(1, option->len);
     if (node_option == NULL) goto err_opt;
     node_option->len = option->len;
     memcpy(node_option->value, option->value, node_option->len);
@@ -283,7 +284,7 @@ imc_add_sockopt(struct imc_context *context, struct imc_sockoption *option)
     return 0;
 
 err_opt:
-    free(node);
+    FREE(node);
     return -1;
 }
 

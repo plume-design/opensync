@@ -857,6 +857,8 @@ tearDown(void)
     ret = om_tag_group_remove_from_schema(&g_tag_group);
     TEST_ASSERT_TRUE(ret);
 
+    fsm_reset_mgr();
+
     /* Clean up policies */
     tables_tree = &policy_mgr->policy_tables;
     table = ds_tree_head(tables_tree);
@@ -876,7 +878,6 @@ tearDown(void)
         free(t_to_remove);
     }
 
-    fsm_reset_mgr();
     g_mgr->init_plugin = NULL;
 
     return;

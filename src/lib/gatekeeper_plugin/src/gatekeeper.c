@@ -347,7 +347,7 @@ gatekeeper_check_attr_cache(struct fsm_policy_req *req, int req_type)
 
     entry->device_mac = req->device_id;
     entry->attribute_type = req_type;
-    entry->attr_name = strdup(req->url);
+    entry->attr_name = STRDUP(req->url);
     ret = gkc_lookup_attribute_entry(entry, true);
     req_type_str = gatekeeper_req_type_to_str(req_type);
     LOGT("%s(): %s of type %s, is %s in cache",
@@ -367,7 +367,7 @@ gatekeeper_check_attr_cache(struct fsm_policy_req *req, int req_type)
         url_reply->service_id = URL_GK_SVC;
         if (entry->gk_policy != NULL)
         {
-            url_reply->reply_info.gk_info.gk_policy = strdup(entry->gk_policy);
+            url_reply->reply_info.gk_info.gk_policy = STRDUP(entry->gk_policy);
         }
         req->fqdn_req->from_cache = true;
     }
@@ -490,6 +490,7 @@ gk_populate_redirect_entry(struct gk_attr_cache_interface *entry,
          redirect_entry->redirect_ips[1]);
 }
 
+
 /**
  * @brief Populates the entries and adds to attribute cache.
  *
@@ -523,7 +524,7 @@ gatekeeper_add_attr_cache(struct fsm_policy_req *req, int req_type)
     entry->attribute_type = req_type;
     entry->cache_ttl = req->reply.cache_ttl;
     entry->categorized = fqdn_req->categorized;
-    entry->attr_name = strdup(req->url);
+    entry->attr_name = STRDUP(req->url);
     entry->category_id = url_reply->reply_info.gk_info.category_id;
     entry->confidence_level = url_reply->reply_info.gk_info.confidence_level;
     if (url_reply->reply_info.gk_info.gk_policy)

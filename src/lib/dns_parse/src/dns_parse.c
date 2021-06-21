@@ -244,7 +244,7 @@ dns_get_session(struct fsm_session *session)
     if (d_session != NULL) return d_session;
 
     LOGD("%s: Adding new session %s", __func__, session->name);
-    d_session = calloc(1, sizeof(struct dns_session));
+    d_session = CALLOC(1, sizeof(struct dns_session));
     if (d_session == NULL) return NULL;
 
     d_session->initialized = false;
@@ -256,7 +256,7 @@ dns_get_session(struct fsm_session *session)
 void
 dns_free_device(struct dns_device *ddev)
 {
-    free(ddev);
+    FREE(ddev);
 }
 
 
@@ -280,7 +280,7 @@ dns_free_session(struct dns_session *d_session)
         ds_tree_remove(tree, remove);
         dns_free_device(remove);
     }
-    free(d_session);
+    FREE(d_session);
 }
 
 
@@ -535,7 +535,7 @@ process_response_ip(struct fqdn_pending_req *req,
     {
         if (req->ipv4_cnt == MAX_RESOLVED_ADDRS) return;
 
-        req->ipv4_addrs[req->ipv4_cnt] = strdup(ip);
+        req->ipv4_addrs[req->ipv4_cnt] = STRDUP(ip);
         req->ipv4_cnt++;
     }
 
@@ -543,7 +543,7 @@ process_response_ip(struct fqdn_pending_req *req,
     {
         if (req->ipv6_cnt == MAX_RESOLVED_ADDRS) return;
 
-        req->ipv6_addrs[req->ipv6_cnt] = strdup(ip);
+        req->ipv6_addrs[req->ipv6_cnt] = STRDUP(ip);
         req->ipv6_cnt++;
     }
 }
@@ -627,9 +627,10 @@ populate_dns_gk_cache_entry(struct ip2action_gk_info *i2a_cache_gk,
     i2a_cache_gk->category_id = fqdn_reply_gk->category_id;
     if (fqdn_reply_gk->gk_policy)
     {
-        i2a_cache_gk->gk_policy = strdup(fqdn_reply_gk->gk_policy);
+        i2a_cache_gk->gk_policy = fqdn_reply_gk->gk_policy;
     }
 }
+
 
 static void
 process_response_ips(dns_info *dns, uint8_t *packet,
@@ -726,7 +727,6 @@ process_response_ips(dns_info *dns, uint8_t *packet,
                 ip_cache_req.service_id = req->req_info->reply->service_id;
                 ip_cache_req.nelems = req->req_info->reply->nelems;
                 ip_cache_req.cat_unknown_to_service = req->cat_unknown_to_service;
-
                 for (index = 0; index < req->req_info->reply->nelems; ++index)
                 {
                     ip_cache_req.categories[index] =
@@ -760,7 +760,7 @@ process_response_ips(dns_info *dns, uint8_t *packet,
                 {
                     LOGW("%s: Couldn't add ip2action entry to cache.", __func__);
                 }
-           }
+            }
         }
         answer = answer->next;
     }
@@ -1306,7 +1306,7 @@ dns_handle_reply(struct dns_session *dns_session, dns_info *dns,
     else
     {
         LOGD("%s: stashing dns reply %u", __func__, req->req_id);
-        req->response = calloc(1, header->caplen);
+        req->response = CALLOC(1, header->caplen);
         if (req->response == NULL)
         {
             LOGE("Could not allocate memory for dns response %d",
@@ -1461,7 +1461,7 @@ dns_handler(struct fsm_session *session, struct net_header_parser *net_header)
     /* Look for the device in the device tree */
     if (ds == NULL)
     {
-        ds = calloc(sizeof(*ds), 1);
+        ds = CALLOC(sizeof(*ds), 1);
         memcpy(ds->device_mac.addr, eth->srcmac.addr,
                sizeof(ds->device_mac.addr));
         ds_tree_init(&ds->fqdn_pending_reqs, dns_req_id_cmp,
@@ -1483,13 +1483,13 @@ dns_handler(struct fsm_session *session, struct net_header_parser *net_header)
     }
 
     /* Insert the pending request */
-    req = calloc(sizeof(*req), 1);
+    req = CALLOC(sizeof(*req), 1);
     memcpy(req->dev_id.addr, eth->srcmac.addr,
            sizeof(req->dev_id.addr));
     req->req_id = dns.id;
     req->dedup = 1;
     req->timestamp = time(NULL);
-    req->req_info = calloc(sizeof(struct fsm_url_request),
+    req->req_info = CALLOC(sizeof(struct fsm_url_request),
                            dns.qdcount);
     req->fsm_context = dns_session->fsm_context;
     req->send_report = dns_session->fsm_context->ops.send_report;
@@ -1544,10 +1544,10 @@ void
 dns_rr_free(dns_rr * rr)
 {
     if (rr == NULL) return;
-    if (rr->name != NULL) free(rr->name);
-    if (rr->data != NULL) free(rr->data);
+    if (rr->name != NULL) FREE(rr->name);
+    if (rr->data != NULL) FREE(rr->data);
     dns_rr_free(rr->next);
-    free(rr);
+    FREE(rr);
 }
 
 
@@ -1557,9 +1557,9 @@ dns_question_free(dns_question * question)
 {
     if (question == NULL) return;
 
-    if (question->name != NULL) free(question->name);
+    if (question->name != NULL) FREE(question->name);
     dns_question_free(question->next);
-    free(question);
+    FREE(question);
 }
 
 
@@ -1586,7 +1586,7 @@ parse_questions(uint32_t pos, uint32_t id_pos,
 
     for (i = 0; i < count; i++)
     {
-        current = malloc(sizeof(dns_question));
+        current = MALLOC(sizeof(dns_question));
         current->next = NULL; current->name = NULL;
 
         current->name = read_rr_name(packet, &pos, id_pos, header->len);
@@ -1596,10 +1596,10 @@ parse_questions(uint32_t pos, uint32_t id_pos,
             LOGD("DNS question error");
             char * buffer = escape_data(packet, start_pos, header->len);
             const char * msg = "Bad DNS question: ";
-            current->name = malloc(sizeof(char) * (strlen(buffer) +
+            current->name = MALLOC(sizeof(char) * (strlen(buffer) +
                                                    strlen(msg) + 1));
             sprintf(current->name, "%s%s", msg, buffer);
-            free(buffer);
+            FREE(buffer);
             current->type = 0;
             current->cls = 0;
             if (last == NULL) *root = current;
@@ -1647,7 +1647,7 @@ parse_rr(uint32_t pos, uint32_t id_pos, struct pcap_pkthdr *header,
     {
         const char * msg = "Bad rr name: ";
 
-        rr->name = malloc(sizeof(char) * (strlen(msg) + 1));
+        rr->name = MALLOC(sizeof(char) * (strlen(msg) + 1));
         sprintf(rr->name, "%s", "Bad rr name");
         rr->type = 0;
         rr->rr_name = NULL;
@@ -1699,9 +1699,9 @@ parse_rr(uint32_t pos, uint32_t id_pos, struct pcap_pkthdr *header,
         char * buffer;
         const char * msg = "Truncated rr: ";
         rr->data = escape_data(packet, rr_start, header->len);
-        buffer = malloc(sizeof(char) * (strlen(rr->data) + strlen(msg) + 1));
+        buffer = MALLOC(sizeof(char) * (strlen(rr->data) + strlen(msg) + 1));
         sprintf(buffer, "%s%s", msg, rr->data);
-        free(rr->data);
+        FREE(rr->data);
         rr->data = buffer;
         return 0;
     }
@@ -1733,7 +1733,7 @@ parse_rr_set(uint32_t pos, uint32_t id_pos,
     for (i = 0; i < count; i++)
     {
         /* Create and clear the data in a new dns_rr object. */
-        current = malloc(sizeof(dns_rr));
+        current = MALLOC(sizeof(dns_rr));
         current->next = NULL; current->name = NULL; current->data = NULL;
 
         pos = parse_rr(pos, id_pos, header, packet, current);
@@ -1883,13 +1883,13 @@ dns_free_req(struct fqdn_pending_req *req)
     struct fsm_url_request *req_info;
     int i;
 
-    if (req->response != NULL) free(req->response);
-    if (req->rule_name != NULL) free(req->rule_name);
-    if (req->policy != NULL) free(req->policy);
+    if (req->response != NULL) FREE(req->response);
+    if (req->rule_name != NULL) FREE(req->rule_name);
+    if (req->policy != NULL) FREE(req->policy);
 
-    for (i = 0; i < req->ipv4_cnt; i++) free(req->ipv4_addrs[i]);
+    for (i = 0; i < req->ipv4_cnt; i++) FREE(req->ipv4_addrs[i]);
 
-    for (i = 0; i < req->ipv6_cnt; i++) free(req->ipv6_addrs[i]);
+    for (i = 0; i < req->ipv6_cnt; i++) FREE(req->ipv6_addrs[i]);
 
     req_info = req->req_info;
     for (i = 0; i < req->numq; i++)
@@ -1897,8 +1897,8 @@ dns_free_req(struct fqdn_pending_req *req)
         fsm_free_url_reply(req_info->reply);
         req_info++;
     }
-    free(req->req_info);
-    free(req);
+    FREE(req->req_info);
+    FREE(req);
 }
 
 
@@ -2322,7 +2322,7 @@ dns_policy_check(struct dns_device *ds,
         {
             mgr->forward(dns_session, NULL, req->response, req->response_len);
         }
-        free(req->response);
+        FREE(req->response);
     }
 
     LOGT("%s: redirect = %s", __func__, req->redirect ? "true" : "false");

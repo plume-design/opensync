@@ -34,6 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "wc_telemetry.h"
 #include "ip_dns_telemetry.pb-c.h"
+#include "memutil.h"
 
 #define MAX_STRLEN 256
 
@@ -51,8 +52,8 @@ wc_free_packed_buffer(struct wc_packed_buffer *pb)
 {
      if (pb == NULL) return;
 
-     free(pb->buf);
-     free(pb);
+     FREE(pb->buf);
+     FREE(pb);
 }
 
 
@@ -75,7 +76,7 @@ wc_str_duplicate(char *src, char **dst)
         return true;
     }
 
-    *dst = strndup(src, MAX_STRLEN);
+    *dst = STRNDUP(src, MAX_STRLEN);
     if (*dst == NULL)
     {
         LOGE("%s: could not duplicate %s", __func__, src);
@@ -104,7 +105,7 @@ wc_set_node_info(struct wc_observation_point *op)
     bool ret;
 
     /* Allocate the protobuf structure */
-    pb = calloc(1, sizeof(*pb));
+    pb = CALLOC(1, sizeof(*pb));
     if (pb == NULL) return NULL;
 
     /* Initialize the protobuf structure */
@@ -120,10 +121,10 @@ wc_set_node_info(struct wc_observation_point *op)
     return pb;
 
 err_free_node_id:
-    free(pb->nodeid);
+    FREE(pb->nodeid);
 
 err_free_pb:
-    free(pb);
+    FREE(pb);
 
     return NULL;
 }
@@ -142,9 +143,9 @@ wc_free_pb_op(Wc__Stats__ObservationPoint *pb)
 {
     if (pb == NULL) return;
 
-    free(pb->nodeid);
-    free(pb->locationid);
-    free(pb);
+    FREE(pb->nodeid);
+    FREE(pb->locationid);
+    FREE(pb);
 }
 
 
@@ -170,7 +171,7 @@ wc_serialize_observation_point(struct wc_observation_point *op)
     if (op == NULL) return NULL;
 
     /* Allocate serialization output container */
-    serialized = calloc(1, sizeof(*serialized));
+    serialized = CALLOC(1, sizeof(*serialized));
     if (serialized == NULL) return NULL;
 
     /* Allocate and set observation point protobuf */
@@ -182,7 +183,7 @@ wc_serialize_observation_point(struct wc_observation_point *op)
     if (len == 0) goto err_free_pb;
 
     /* Allocate space for the serialized buffer */
-    buf = malloc(len);
+    buf = MALLOC(len);
     if (buf == NULL) goto err_free_pb;
 
     /* Serialize protobuf */
@@ -199,7 +200,7 @@ err_free_pb:
     wc_free_pb_op(pb);
 
 err_free_serialized:
-    free(serialized);
+    FREE(serialized);
 
     return NULL;
 }
@@ -221,7 +222,7 @@ wc_set_ow(struct wc_observation_window *ow)
     Wc__Stats__ObservationWindow *pb;
 
     /* Allocate the protobuf structure */
-    pb = calloc(1, sizeof(*pb));
+    pb = CALLOC(1, sizeof(*pb));
     if (pb == NULL) return NULL;
 
     /* Initialize the protobuf structure */
@@ -249,7 +250,7 @@ wc_set_ow(struct wc_observation_window *ow)
 static void
 wc_free_pb_ow(Wc__Stats__ObservationWindow *pb)
 {
-    free(pb);
+    FREE(pb);
 }
 
 
@@ -275,7 +276,7 @@ wc_serialize_observation_window(struct wc_observation_window *ow)
     if (ow == NULL) return NULL;
 
     /* Allocate serialization output container */
-    serialized = calloc(1, sizeof(*serialized));
+    serialized = CALLOC(1, sizeof(*serialized));
     if (serialized == NULL) return NULL;
 
     /* Allocate and set observation point protobuf */
@@ -287,7 +288,7 @@ wc_serialize_observation_window(struct wc_observation_window *ow)
     if (len == 0) goto err_free_pb;
 
     /* Allocate space for the serialized buffer */
-    buf = malloc(len);
+    buf = MALLOC(len);
     if (buf == NULL) goto err_free_pb;
 
     /* Serialize protobuf */
@@ -304,7 +305,7 @@ err_free_pb:
     wc_free_pb_ow(pb);
 
 err_free_serialized:
-    free(serialized);
+    FREE(serialized);
 
     return NULL;
 }
@@ -327,7 +328,7 @@ wc_set_health_stats(struct wc_health_stats *hs)
     Wc__Stats__WCHealthStats *pb;
 
     /* Allocate the protobuf structure */
-    pb = calloc(1, sizeof(*pb));
+    pb = CALLOC(1, sizeof(*pb));
     if (pb == NULL) return NULL;
 
     /* Initialize the protobuf structure */
@@ -382,7 +383,7 @@ wc_set_health_stats(struct wc_health_stats *hs)
 static void
 wc_free_pb_health_stats(Wc__Stats__WCHealthStats *pb)
 {
-    free(pb);
+    FREE(pb);
 }
 
 
@@ -408,7 +409,7 @@ wc_serialize_health_stats(struct wc_health_stats *hs)
     if (hs == NULL) return NULL;
 
     /* Allocate serialization output container */
-    serialized = calloc(1, sizeof(*serialized));
+    serialized = CALLOC(1, sizeof(*serialized));
     if (serialized == NULL) return NULL;
 
     /* Allocate and set a health stats counters protobuf */
@@ -420,7 +421,7 @@ wc_serialize_health_stats(struct wc_health_stats *hs)
     if (len == 0) goto err_free_pb;
 
     /* Allocate space for the serialized buffer */
-    buf = malloc(len);
+    buf = MALLOC(len);
     if (buf == NULL) goto err_free_pb;
 
     /* Serialize protobuf */
@@ -437,7 +438,7 @@ err_free_pb:
     wc_free_pb_health_stats(pb);
 
 err_free_serialized:
-    free(serialized);
+    FREE(serialized);
 
     return NULL;
 }
@@ -460,7 +461,7 @@ wc_set_pb_report(struct wc_stats_report *report)
     Wc__Stats__WCStatsReport *pb;
 
     /* Allocate protobuf */
-    pb  = calloc(1, sizeof(*pb));
+    pb  = CALLOC(1, sizeof(*pb));
     if (pb == NULL) return NULL;
 
     /* Initialize protobuf */
@@ -491,7 +492,7 @@ err_free_pb_op:
     wc_free_pb_op(pb->observationpoint);
 
 err_free_pb_report:
-    free(pb);
+    FREE(pb);
 
     return NULL;
 }
@@ -513,7 +514,7 @@ wc_free_pb_report(Wc__Stats__WCStatsReport *pb)
     wc_free_pb_op(pb->observationpoint);
     wc_free_pb_ow(pb->observationwindow);
     wc_free_pb_health_stats(pb->wchealthstats);
-    free(pb);
+    FREE(pb);
 }
 
 /**
@@ -538,7 +539,7 @@ wc_serialize_wc_stats_report(struct wc_stats_report *report)
     if (report == NULL) return NULL;
 
     /* Allocate serialization output structure */
-    serialized = calloc(1, sizeof(*serialized));
+    serialized = CALLOC(1, sizeof(*serialized));
     if (serialized == NULL) return NULL;
 
     /* Allocate and set web classification report protobuf */
@@ -550,7 +551,7 @@ wc_serialize_wc_stats_report(struct wc_stats_report *report)
     if (len == 0) goto err_free_pb;
 
     /* Allocate space for the serialized buffer */
-    buf = malloc(len);
+    buf = MALLOC(len);
     if (buf == NULL) goto err_free_pb;
 
     serialized->len = wc__stats__wcstats_report__pack(pb, buf);
@@ -562,10 +563,10 @@ wc_serialize_wc_stats_report(struct wc_stats_report *report)
     return serialized;
 
 err_free_pb:
-    free(pb);
+    FREE(pb);
 
 err_free_serialized:
-    free(serialized);
+    FREE(serialized);
 
     return NULL;
 }

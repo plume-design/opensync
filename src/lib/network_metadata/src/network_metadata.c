@@ -31,27 +31,28 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 #include <time.h>
 
+#include "memutil.h"
 #include "log.h"
 #include "network_metadata.h"
+#include "network_metadata_report.h"
 #include "network_metadata.pb-c.h"
 
 #define MAX_STRLEN 256
 
 /**
- * @brief Frees the pointer to serialized data and container
+ * @brief Frees the pointer to serialized data
  *
- * Frees the dynamically allocated pointer to serialized data (pb->buf)
- * and the container (pb).
+ * Frees the dynamically allocated pointer to serialized data (pb->buf).
  *
  * @param pb a pointer to a serialized data container
  * @return none
  */
 void free_packed_buffer(struct packed_buffer *pb)
 {
-     if (pb == NULL) return;
+    if (pb == NULL) return;
+    CHECK_DOUBLE_FREE(pb);
 
-     free(pb->buf);
-     free(pb);
+    FREE(pb->buf);
 }
 
 
@@ -73,7 +74,7 @@ static bool str_duplicate(char *src, char **dst)
         return true;
     }
 
-    *dst = strndup(src, MAX_STRLEN);
+    *dst = STRNDUP(src, MAX_STRLEN);
     if (*dst == NULL)
     {
         LOGE("%s: could not duplicate %s", __func__, src);
@@ -125,7 +126,7 @@ static Traffic__ObservationPoint * set_node_info(struct node_info *node)
     bool ret;
 
     /* Allocate the protobuf structure */
-    pb = calloc(sizeof(Traffic__ObservationPoint), 1);
+    pb = CALLOC(1, sizeof(*pb));
     if (pb == NULL) return NULL;
 
     /* Initialize the protobuf structure */
@@ -141,10 +142,10 @@ static Traffic__ObservationPoint * set_node_info(struct node_info *node)
     return pb;
 
 err_free_node_id:
-    free(pb->nodeid);
+    FREE(pb->nodeid);
 
 err_free_pb:
-    free(pb);
+    FREE(pb);
 
     return NULL;
 }
@@ -153,7 +154,7 @@ err_free_pb:
 /**
  * @brief Free an observation point protobuf structure.
  *
- * Free dynamically allocated fields and the protobuf structure.
+ * Free dynamically allocated fields.
  *
  * @param pb observation point structure to free
  * @return none
@@ -161,10 +162,10 @@ err_free_pb:
 static void free_pb_op(Traffic__ObservationPoint *pb)
 {
     if (pb == NULL) return;
+    CHECK_DOUBLE_FREE(pb);
 
-    free(pb->nodeid);
-    free(pb->locationid);
-    free(pb);
+    FREE(pb->nodeid);
+    FREE(pb->locationid);
 }
 
 
@@ -189,7 +190,7 @@ struct packed_buffer * serialize_node_info(struct node_info *node)
     if (node == NULL) return NULL;
 
     /* Allocate serialization output container */
-    serialized = calloc(sizeof(struct packed_buffer), 1);
+    serialized = CALLOC(1, sizeof(*serialized));
     if (serialized == NULL) return NULL;
 
     /* Allocate and set observation point protobuf */
@@ -201,7 +202,7 @@ struct packed_buffer * serialize_node_info(struct node_info *node)
     if (len == 0) goto err_free_pb;
 
     /* Allocate space for the serialized buffer */
-    buf = malloc(len);
+    buf = MALLOC(len);
     if (buf == NULL) goto err_free_pb;
 
     /* Serialize protobuf */
@@ -210,15 +211,17 @@ struct packed_buffer * serialize_node_info(struct node_info *node)
 
     /* Free the protobuf structure */
     free_pb_op(pb);
+    FREE(pb);
 
     /* Return serialized content */
     return serialized;
 
 err_free_pb:
     free_pb_op(pb);
+    FREE(pb);
 
 err_free_serialized:
-    free(serialized);
+    FREE(serialized);
 
     return NULL;
 }
@@ -246,7 +249,7 @@ serialize_flow_tags(struct flow_tags *flow_tags)
     if (flow_tags == NULL) return NULL;
 
     /* Allocate serialization output container */
-    serialized = calloc(1, sizeof(struct packed_buffer));
+    serialized = CALLOC(1, sizeof(*serialized));
     if (serialized == NULL) return NULL;
 
     /* Allocate and set flow stats protobuf */
@@ -258,7 +261,7 @@ serialize_flow_tags(struct flow_tags *flow_tags)
     if (len == 0) goto err_free_pb;
 
     /* Allocate space for the serialized buffer */
-    buf = malloc(len);
+    buf = MALLOC(len);
     if (buf == NULL) goto err_free_pb;
 
     /* Serialize protobuf */
@@ -267,15 +270,17 @@ serialize_flow_tags(struct flow_tags *flow_tags)
 
     /* Free the protobuf structure */
     free_pb_flow_tags(pb);
+    FREE(pb);
 
     /* Return serialized content */
     return serialized;
 
 err_free_pb:
     free_pb_flow_tags(pb);
+    FREE(pb);
 
 err_free_serialized:
-    free(serialized);
+    FREE(serialized);
 
     return NULL;
 }
@@ -307,7 +312,7 @@ set_flow_tags(struct flow_tags *flow_tags)
     if (flow_tags == NULL) return NULL;
 
     /* Allocate the protobuf structure */
-    pb = calloc(1, sizeof(Traffic__FlowTags));
+    pb = CALLOC(1, sizeof(*pb));
     if (pb == NULL) return NULL;
 
     /* Initialize the protobuf structure */
@@ -324,7 +329,7 @@ set_flow_tags(struct flow_tags *flow_tags)
     nelems = flow_tags->nelems;
     if (nelems == 0) return pb;
 
-    tags = calloc(nelems, sizeof(*tags));
+    tags = CALLOC(nelems, sizeof(*tags));
     if (tags == NULL) goto err_free_app;
 
     pb->apptags = tags;
@@ -348,19 +353,19 @@ err_free_tags:
     pb_tag = pb->apptags;
     for (i = 0; i < allocated; i++)
     {
-        free(*pb_tag);
+        FREE(*pb_tag);
         pb_tag++;
     }
-    free(tags);
+    FREE(tags);
 
 err_free_app:
-    free(pb->appname);
+    FREE(pb->appname);
 
 err_free_vendor:
-    free(pb->vendor);
+    FREE(pb->vendor);
 
 err_free_pb:
-    free(pb);
+    FREE(pb);
 
     return NULL;
 }
@@ -369,7 +374,7 @@ err_free_pb:
 /**
  * @brief Free a flow tag protobuf structure.
  *
- * Free dynamically allocated fields and the protobuf structure.
+ * Free dynamically allocated fields.
  *
  * @param pb flow tag structure to free
  * @return none
@@ -380,18 +385,18 @@ void free_pb_flow_tags(Traffic__FlowTags *pb)
     size_t i;
 
     if (pb == NULL) return;
+    CHECK_DOUBLE_FREE(pb);
 
-    free(pb->vendor);
-    free(pb->appname);
+    FREE(pb->vendor);
+    FREE(pb->appname);
 
     pb_tag = pb->apptags;
     for (i = 0; i < pb->n_apptags; i++)
     {
-        free(*pb_tag);
+        FREE(*pb_tag);
         pb_tag++;
     }
-    free(pb->apptags);
-    free(pb);
+    FREE(pb->apptags);
 }
 
 /**
@@ -417,7 +422,7 @@ Traffic__FlowTags
     if (key->num_tags == 0) return NULL;
 
     /* Allocate the array of flow stats */
-    tags_pb_tbl = calloc(key->num_tags, sizeof(Traffic__FlowTags *));
+    tags_pb_tbl = CALLOC(key->num_tags, sizeof(*tags_pb_tbl));
     if (tags_pb_tbl == NULL) return NULL;
 
     /* Set each of the stats protobuf */
@@ -441,9 +446,10 @@ err_free_pb_tags:
     for (i = 0; i < allocated; i++)
     {
         free_pb_flow_tags(*tags_pb);
+        FREE(*tags_pb);
         tags_pb++;
     }
-    free(tags_pb_tbl);
+    FREE(tags_pb_tbl);
 
     return NULL;
 }
@@ -469,7 +475,7 @@ set_vendor_kv(struct vendor_data_kv_pair *kv_pair)
     if (kv_pair == NULL) return NULL;
 
     /* Allocate the protobuf structure */
-    pb = calloc(1, sizeof(Traffic__VendorDataKVPair));
+    pb = CALLOC(1, sizeof(*pb));
     if (pb == NULL) return NULL;
 
     /* Initialize the protobuf structure */
@@ -499,13 +505,13 @@ set_vendor_kv(struct vendor_data_kv_pair *kv_pair)
     return pb;
 
 err_free_str_val:
-    free(pb->val_str);
+    FREE(pb->val_str);
 
 err_free_key:
-    free(pb->key);
+    FREE(pb->key);
 
 err_free_pb:
-    free(pb);
+    FREE(pb);
 
     return NULL;
 }
@@ -514,7 +520,7 @@ err_free_pb:
 /**
  * @brief Free a flow tag protobuf structure.
  *
- * Free dynamically allocated fields and the protobuf structure.
+ * Free dynamically allocated fields.
  *
  * @param pb flow tag structure to free
  * @return none
@@ -522,9 +528,10 @@ err_free_pb:
 void
 free_pb_vendor_kv(Traffic__VendorDataKVPair *pb)
 {
-    free(pb->key);
-    free(pb->val_str);
-    free(pb);
+    CHECK_DOUBLE_FREE(pb);
+
+    FREE(pb->key);
+    FREE(pb->val_str);
 
     return;
 }
@@ -553,8 +560,8 @@ set_pb_vendor_kv_pairs(struct flow_vendor_data *vdr_data)
     if (vdr_data->nelems == 0) return NULL;
 
     /* Allocate the array of flow stats */
-    kv_pair_pb_tbl = calloc(vdr_data->nelems,
-                            sizeof(Traffic__VendorDataKVPair *));
+    kv_pair_pb_tbl = CALLOC(vdr_data->nelems,
+                            sizeof(*kv_pair_pb_tbl));
     if (kv_pair_pb_tbl == NULL) return NULL;
 
     /* Set each of the stats protobuf */
@@ -578,9 +585,10 @@ err_free_pb_kv_pairs:
     for (i = 0; i < allocated; i++)
     {
         free_pb_vendor_kv(*kv_pairs_pb);
+        FREE(*kv_pairs_pb);
         kv_pairs_pb++;
     }
-    free(kv_pair_pb_tbl);
+    FREE(kv_pair_pb_tbl);
 
     return NULL;
 }
@@ -608,7 +616,7 @@ serialize_vdr_kvpair(struct vendor_data_kv_pair *vendor_kvpair)
     if (vendor_kvpair == NULL) return NULL;
 
     /* Allocate serialization output container */
-    serialized = calloc(1, sizeof(struct packed_buffer));
+    serialized = CALLOC(1, sizeof(*serialized));
     if (serialized == NULL) return NULL;
 
     /* Allocate and set flow stats protobuf */
@@ -620,7 +628,7 @@ serialize_vdr_kvpair(struct vendor_data_kv_pair *vendor_kvpair)
     if (len == 0) goto err_free_pb;
 
     /* Allocate space for the serialized buffer */
-    buf = malloc(len);
+    buf = MALLOC(len);
     if (buf == NULL) goto err_free_pb;
 
     /* Serialize protobuf */
@@ -629,15 +637,17 @@ serialize_vdr_kvpair(struct vendor_data_kv_pair *vendor_kvpair)
 
     /* Free the protobuf structure */
     free_pb_vendor_kv(pb);
+    FREE(pb);
 
     /* Return serialized content */
     return serialized;
 
 err_free_pb:
     free_pb_vendor_kv(pb);
+    FREE(pb);
 
 err_free_serialized:
-    free(serialized);
+    FREE(serialized);
 
     return NULL;
 }
@@ -661,7 +671,7 @@ set_vendor_data(struct flow_vendor_data *vendor_data)
     bool ret;
 
     /* Allocate the protobuf structure */
-    pb = calloc(1, sizeof(Traffic__VendorData));
+    pb = CALLOC(1, sizeof(*pb));
     if (pb == NULL) return NULL;
 
     /* Initialize the protobuf structure */
@@ -681,10 +691,10 @@ set_vendor_data(struct flow_vendor_data *vendor_data)
     return pb;
 
 err_free_vendor:
-    free(pb->vendor);
+    FREE(pb->vendor);
 
 err_free_pb:
-    free(pb);
+    FREE(pb);
 
     return NULL;
 }
@@ -693,7 +703,7 @@ err_free_pb:
 /**
  * @brief Free a flow tag protobuf structure.
  *
- * Free dynamically allocated fields and the protobuf structure.
+ * Free dynamically allocated fields.
  *
  * @param pb flow tag structure to free
  * @return none
@@ -704,14 +714,15 @@ free_pb_vendor_data(Traffic__VendorData *pb)
     size_t i;
 
     if (pb == NULL) return;
+    CHECK_DOUBLE_FREE(pb);
 
     for (i = 0; i < pb->n_vendorkvpair; i++)
     {
         free_pb_vendor_kv(pb->vendorkvpair[i]);
+        FREE(pb->vendorkvpair[i]);
     }
-    free(pb->vendorkvpair);
-    free(pb->vendor);
-    free(pb);
+    FREE(pb->vendorkvpair);
+    FREE(pb->vendor);
 
     return;
 }
@@ -740,7 +751,7 @@ set_pb_vendor_data(struct flow_key *key)
     if (key->num_vendor_data == 0) return NULL;
 
     /* Allocate the array of flow stats */
-    vd_pb_tbl = calloc(key->num_vendor_data, sizeof(Traffic__VendorData *));
+    vd_pb_tbl = CALLOC(key->num_vendor_data, sizeof(*vd_pb_tbl));
     if (vd_pb_tbl == NULL) return NULL;
 
     /* Set each of the stats protobuf */
@@ -764,9 +775,10 @@ err_free_pb_tags:
     for (i = 0; i < allocated; i++)
     {
         free_pb_vendor_data(*vd_pb);
+        FREE(*vd_pb);
         vd_pb++;
     }
-    free(vd_pb_tbl);
+    FREE(vd_pb_tbl);
 
     return NULL;
 }
@@ -778,7 +790,7 @@ set_pb_flowstate(struct flow_state *key)
 
     if (key == NULL) return NULL;
 
-    pb = calloc(1, sizeof(Traffic__FlowState));
+    pb = CALLOC(1, sizeof(*pb));
 
     if (pb == NULL) return NULL;
 
@@ -788,28 +800,28 @@ set_pb_flowstate(struct flow_state *key)
     {
         pb->has_flowstart = true;
         pb->flowstart = true;
-        LOGD("Setting flow state start");
+        LOGT("Setting flow state start");
     }
 
     if (key->fend)
     {
         pb->has_flowend = true;
         pb->flowend = true;
-        LOGD("Setting flow state end");
+        LOGT("Setting flow state end");
     }
 
     if (key->first_obs > 0)
     {
         pb->has_firstobservedat = true;
         pb->firstobservedat = key->first_obs;
-        LOGD("Setting flow state first_obs");
+        LOGT("Setting flow state first_obs");
     }
 
     if (key->last_obs > 0)
     {
         pb->has_lastobservedat = true;
         pb->lastobservedat = key->last_obs;
-        LOGD("Setting flow state last_obs");
+        LOGT("Setting flow state last_obs");
     }
 
     return pb;
@@ -838,7 +850,7 @@ serialize_vendor_data(struct flow_vendor_data *vendor_data)
     if (vendor_data == NULL) return NULL;
 
     /* Allocate serialization output container */
-    serialized = calloc(1, sizeof(struct packed_buffer));
+    serialized = CALLOC(1, sizeof(*pb));
     if (serialized == NULL) return NULL;
 
     /* Allocate and set flow key protobuf */
@@ -850,7 +862,7 @@ serialize_vendor_data(struct flow_vendor_data *vendor_data)
     if (len == 0) goto err_free_pb;;
 
     /* Allocate space for the serialized buffer */
-    buf = malloc(len);
+    buf = MALLOC(len);
     if (buf == NULL) goto err_free_pb;
 
     serialized->len = traffic__vendor_data__pack(pb, buf);
@@ -858,15 +870,17 @@ serialize_vendor_data(struct flow_vendor_data *vendor_data)
 
     /* Free the protobuf structure */
     free_pb_vendor_data(pb);
+    FREE(pb);
 
     /* Return serialized content */
     return serialized;
 
 err_free_pb:
     free_pb_vendor_data(pb);
+    FREE(pb);
 
 err_free_serialized:
-    free(serialized);
+    FREE(serialized);
 
     return NULL;
 }
@@ -893,7 +907,7 @@ serialize_flow_state(struct flow_state *flow_state)
     if (flow_state ==  NULL) return NULL;
 
     /* Allocate serialization output container */
-    serialized = calloc(1, sizeof(struct packed_buffer));
+    serialized = CALLOC(1, sizeof(struct packed_buffer));
     if (serialized == NULL) return NULL;
 
     /* Allocate and set flow key protobuf */
@@ -905,23 +919,23 @@ serialize_flow_state(struct flow_state *flow_state)
     if (len == 0) goto err_free_pb;;
 
     /* Allocate space for the serialized buffer */
-    buf = malloc(len);
+    buf = MALLOC(len);
     if (buf == NULL) goto err_free_pb;
 
     serialized->len = traffic__flow_state__pack(pb, buf);
     serialized->buf = buf;
 
     /* Free the protobuf structure */
-    free(pb);
+    FREE(pb);
 
     /* Return serialized content */
     return serialized;
 
 err_free_pb:
-    free(pb);
+    FREE(pb);
 
 err_free_serialized:
-    free(serialized);
+    FREE(serialized);
 
     return NULL;
 }
@@ -946,8 +960,13 @@ static Traffic__FlowKey *set_flow_key(struct flow_key *key)
 
     if (key == NULL) return NULL;
 
+    if (key->log && key->acc != NULL)
+    {
+        LOGD("%s: preparing report for acc", __func__);
+        net_md_log_acc(key->acc, __func__);
+    }
     /* Allocate the protobuf structure */
-    pb = calloc(1, sizeof(Traffic__FlowKey));
+    pb = CALLOC(1, sizeof(*pb));
     if (pb == NULL) return NULL;
 
     /* Initialize the protobuf structure */
@@ -995,6 +1014,7 @@ static Traffic__FlowKey *set_flow_key(struct flow_key *key)
     {
         /* Add the flow tags */
         pb->flowtags = set_pb_flow_tags(key);
+        net_md_log_acc(key->acc, __func__);
         if (pb->flowtags == NULL) goto err_free_dstip;
 
         pb->n_flowtags = key->num_tags;
@@ -1010,29 +1030,35 @@ static Traffic__FlowKey *set_flow_key(struct flow_key *key)
         key->state.report_attrs = false;
     }
 
+    if (key->log && key->acc != NULL)
+    {
+        LOGD("%s: report for acc prepared ", __func__);
+        net_md_log_acc(key->acc, __func__);
+    }
     return pb;
 
 err_free_flow_tags:
     for (i = 0; i < pb->n_flowtags; i++)
     {
         free_pb_flow_tags(pb->flowtags[i]);
+        FREE(pb->flowtags[i]);
     }
-    free(pb->flowtags);
+    FREE(pb->flowtags);
 
 err_free_dstip:
-    free(pb->dstip);
+    FREE(pb->dstip);
 
 err_free_srcip:
-    free(pb->srcip);
+    FREE(pb->srcip);
 
 err_free_dstmac:
-    free(pb->dstmac);
+    FREE(pb->dstmac);
 
 err_free_srcmac:
-    free(pb->srcmac);
+    FREE(pb->srcmac);
 
 err_free_pb:
-    free(pb);
+    FREE(pb);
 
     return NULL;
 }
@@ -1041,7 +1067,7 @@ err_free_pb:
 /**
  * @brief Free a flow key protobuf structure.
  *
- * Free dynamically allocated fields and the protobuf structure.
+ * Free dynamically allocated fields.
  *
  * @param pb flow key structure to free
  * @return none
@@ -1049,28 +1075,30 @@ err_free_pb:
 static void free_pb_flowkey(Traffic__FlowKey *pb)
 {
     size_t i;
-    if (pb == NULL) return;
 
-    free(pb->srcmac);
-    free(pb->dstmac);
-    free(pb->srcip);
-    free(pb->dstip);
+    if (pb == NULL) return;
+    CHECK_DOUBLE_FREE(pb);
+
+    FREE(pb->srcmac);
+    FREE(pb->dstmac);
+    FREE(pb->srcip);
+    FREE(pb->dstip);
 
     for (i = 0; i < pb->n_flowtags; i++)
     {
         free_pb_flow_tags(pb->flowtags[i]);
+        FREE(pb->flowtags[i]);
     }
-    free(pb->flowtags);
+    FREE(pb->flowtags);
 
     for (i = 0; i < pb->n_vendordata; i++)
     {
         free_pb_vendor_data(pb->vendordata[i]);
+        FREE(pb->vendordata[i]);
     }
-    free(pb->vendordata);
+    FREE(pb->vendordata);
 
-    free(pb->flowstate);
-
-    free(pb);
+    FREE(pb->flowstate);
 }
 
 
@@ -1095,7 +1123,7 @@ struct packed_buffer * serialize_flow_key(struct flow_key *key)
     if (key == NULL) return NULL;
 
     /* Allocate serialization output container */
-    serialized = calloc(sizeof(struct packed_buffer), 1);
+    serialized = CALLOC(1, sizeof(*serialized));
     if (serialized == NULL) return NULL;
 
     /* Allocate and set flow key protobuf */
@@ -1107,7 +1135,7 @@ struct packed_buffer * serialize_flow_key(struct flow_key *key)
     if (len == 0) goto err_free_pb;
 
     /* Allocate space for the serialized buffer */
-    buf = malloc(len);
+    buf = MALLOC(len);
     if (buf == NULL) goto err_free_pb;
 
     serialized->len = traffic__flow_key__pack(pb, buf);
@@ -1115,15 +1143,17 @@ struct packed_buffer * serialize_flow_key(struct flow_key *key)
 
     /* Free the protobuf structure */
     free_pb_flowkey(pb);
+    FREE(pb);
 
     /* Return serialized content */
     return serialized;
 
 err_free_pb:
     free_pb_flowkey(pb);
+    FREE(pb);
 
 err_free_serialized:
-    free(serialized);
+    FREE(serialized);
 
     return NULL;
 }
@@ -1146,7 +1176,7 @@ set_flow_counters(struct flow_counters *counters)
     Traffic__FlowCounters *pb;
 
     /* Allocate the protobuf structure */
-    pb = calloc(sizeof(Traffic__FlowCounters), 1);
+    pb = CALLOC(1, sizeof(*pb));
     if (pb == NULL) return NULL;
 
     /* Initialize the protobuf structure */
@@ -1166,14 +1196,14 @@ set_flow_counters(struct flow_counters *counters)
 /**
  * @brief Free a flow counters protobuf structure.
  *
- * Free dynamically allocated fields and the protobuf structure.
+ * Free dynamically allocated fields.
  *
  * @param pb flow counters structure to free
  * @return none
  */
 static void free_pb_flowcount(Traffic__FlowCounters *pb)
 {
-    free(pb);
+    CHECK_DOUBLE_FREE(pb);
 }
 
 
@@ -1199,7 +1229,7 @@ serialize_flow_counters(struct flow_counters *counters)
     if (counters == NULL) return NULL;
 
     /* Allocate serialization output container */
-    serialized = calloc(sizeof(struct packed_buffer), 1);
+    serialized = CALLOC(1, sizeof(struct packed_buffer));
     if (serialized == NULL) return NULL;
 
     /* Allocate and set a flow counters protobuf */
@@ -1211,7 +1241,7 @@ serialize_flow_counters(struct flow_counters *counters)
     if (len == 0) goto err_free_pb;
 
     /* Allocate space for the serialized buffer */
-    buf = malloc(len);
+    buf = MALLOC(len);
     if (buf == NULL) goto err_free_pb;
 
     /* Serialize protobuf */
@@ -1220,15 +1250,17 @@ serialize_flow_counters(struct flow_counters *counters)
 
     /* Free the protobuf structure */
     free_pb_flowcount(pb);
+    FREE(pb);
 
     /* Return serialized content */
     return serialized;
 
 err_free_pb:
     free_pb_flowcount(pb);
+    FREE(pb);
 
 err_free_serialized:
-    free(serialized);
+    FREE(serialized);
 
     return NULL;
 }
@@ -1250,7 +1282,7 @@ static Traffic__FlowStats *set_flow_stats(struct flow_stats *stats)
     Traffic__FlowStats *pb;
 
     /* Allocate the protobuf structure */
-    pb = calloc(1, sizeof(Traffic__FlowStats));
+    pb = CALLOC(1, sizeof(*pb));
     if (pb == NULL) return NULL;
 
     /* Initialize the protobuf structure */
@@ -1267,9 +1299,10 @@ static Traffic__FlowStats *set_flow_stats(struct flow_stats *stats)
 
 err_free_flow_key:
     free_pb_flowkey(pb->flowkey);
+    FREE(pb->flowkey);
 
 err_free_pb:
-    free(pb);
+    FREE(pb);
 
     return NULL;
 }
@@ -1278,7 +1311,7 @@ err_free_pb:
 /**
  * @brief Free a flow stats protobuf structure.
  *
- * Free dynamically allocated fields and the protobuf structure.
+ * Free dynamically allocated fields.
  *
  * @param pb flow stats structure to free
  * @return none
@@ -1286,10 +1319,12 @@ err_free_pb:
 void free_pb_flowstats(Traffic__FlowStats *pb)
 {
     if (pb == NULL) return;
+    CHECK_DOUBLE_FREE(pb);
 
     free_pb_flowkey(pb->flowkey);
+    FREE(pb->flowkey);
     free_pb_flowcount(pb->flowcount);
-    free(pb);
+    FREE(pb->flowcount);
 }
 
 
@@ -1314,7 +1349,7 @@ struct packed_buffer * serialize_flow_stats(struct flow_stats *stats)
     if (stats == NULL) return NULL;
 
     /* Allocate serialization output container */
-    serialized = calloc(1, sizeof(struct packed_buffer));
+    serialized = CALLOC(1, sizeof(struct packed_buffer));
     if (serialized == NULL) return NULL;
 
     /* Allocate and set flow stats protobuf */
@@ -1326,7 +1361,7 @@ struct packed_buffer * serialize_flow_stats(struct flow_stats *stats)
     if (len == 0) goto err_free_pb;
 
     /* Allocate space for the serialized buffer */
-    buf = malloc(len);
+    buf = MALLOC(len);
     if (buf == NULL) goto err_free_pb;
 
     /* Serialize protobuf */
@@ -1335,15 +1370,17 @@ struct packed_buffer * serialize_flow_stats(struct flow_stats *stats)
 
     /* Free the protobuf structure */
     free_pb_flowstats(pb);
+    FREE(pb);
 
     /* Return serialized content */
     return serialized;
 
 err_free_pb:
     free_pb_flowstats(pb);
+    FREE(pb);
 
 err_free_serialized:
-    free(serialized);
+    FREE(serialized);
 
     return NULL;
 }
@@ -1371,8 +1408,7 @@ Traffic__FlowStats **set_pb_flow_stats(struct flow_window *window)
     if (window->num_stats == 0) return NULL;
 
     /* Allocate the array of flow stats */
-    stats_pb_tbl = calloc(sizeof(Traffic__FlowStats *),
-                          window->num_stats);
+    stats_pb_tbl = CALLOC(window->num_stats, sizeof(*stats_pb_tbl));
     if (stats_pb_tbl == NULL) return NULL;
 
     /* Set each of the stats protobuf */
@@ -1396,9 +1432,10 @@ err_free_pb_stats:
     for (i = 0; i < allocated; i++)
     {
         free_pb_flowstats(*stats_pb);
+        FREE(*stats_pb);
         stats_pb++;
     }
-    free(stats_pb_tbl);
+    FREE(stats_pb_tbl);
 
     return NULL;
 }
@@ -1420,7 +1457,7 @@ static Traffic__ObservationWindow * set_pb_window(struct flow_window *window)
     Traffic__ObservationWindow *pb;
 
     /* Allocate protobuf */
-    pb  = calloc(1, sizeof(Traffic__ObservationWindow));
+    pb  = CALLOC(1, sizeof(*pb));
     if (pb == NULL) return NULL;
 
     /* Initialize protobuf */
@@ -1451,7 +1488,7 @@ static Traffic__ObservationWindow * set_pb_window(struct flow_window *window)
     return pb;
 
 err_free_pb_window:
-    free(pb);
+    FREE(pb);
 
     return NULL;
 }
@@ -1460,7 +1497,7 @@ err_free_pb_window:
 /**
  * @brief Free an observation window protobuf structure.
  *
- * Free dynamically allocated fields and the protobuf structure.
+ * Free dynamically allocated fields.
  *
  * @param pb flows window structure to free
  * @return none
@@ -1474,9 +1511,9 @@ void free_pb_window(Traffic__ObservationWindow *pb)
     for (i = 0; i < pb->n_flowstats; i++)
     {
         free_pb_flowstats(pb->flowstats[i]);
+        FREE(pb->flowstats[i]);
     }
-    free(pb->flowstats);
-    free(pb);
+    FREE(pb->flowstats);
 }
 
 
@@ -1501,7 +1538,7 @@ struct packed_buffer * serialize_flow_window(struct flow_window *window)
     if (window == NULL) return NULL;
 
     /* Allocate serialization output container */
-    serialized = calloc(sizeof(struct packed_buffer), 1);
+    serialized = CALLOC(1, sizeof(*serialized));
     if (serialized == NULL) return NULL;
 
     /* Allocate and set flow stats protobuf */
@@ -1513,7 +1550,7 @@ struct packed_buffer * serialize_flow_window(struct flow_window *window)
     if (len == 0) goto err_free_pb;
 
     /* Allocate space for the serialized buffer */
-    buf = malloc(len);
+    buf = MALLOC(len);
     if (buf == NULL) goto err_free_pb;
 
     /* Serialize protobuf */
@@ -1522,15 +1559,17 @@ struct packed_buffer * serialize_flow_window(struct flow_window *window)
 
     /* Free the protobuf structure */
     free_pb_window(pb);
+    FREE(pb);
 
     /* Return serialized content */
     return serialized;
 
 err_free_pb:
     free_pb_window(pb);
+    FREE(pb);
 
 err_free_serialized:
-    free(serialized);
+    FREE(serialized);
 
     return NULL;
 }
@@ -1557,8 +1596,7 @@ Traffic__ObservationWindow ** set_pb_windows(struct flow_report *report)
 
     if (report->num_windows == 0) return NULL;
 
-    windows_pb_tbl = calloc(report->num_windows,
-                            sizeof(Traffic__ObservationWindow *));
+    windows_pb_tbl = CALLOC(report->num_windows, sizeof(*windows_pb_tbl));
     if (windows_pb_tbl == NULL) return NULL;
 
     window = report->flow_windows;
@@ -1580,8 +1618,9 @@ err_free_pb_windows:
     for (i = 0; i < allocated; i++)
     {
         free_pb_window(windows_pb_tbl[i]);
+        FREE(windows_pb_tbl[i]);
     }
-    free(windows_pb_tbl);
+    FREE(windows_pb_tbl);
 
     return NULL;
 }
@@ -1603,7 +1642,7 @@ static Traffic__FlowReport * set_pb_report(struct flow_report *report)
     Traffic__FlowReport *pb;
 
     /* Allocate protobuf */
-    pb  = calloc(sizeof(Traffic__FlowReport), 1);
+    pb  = CALLOC(1, sizeof(*pb));
     if (pb == NULL) return NULL;
 
     /* Initialize protobuf */
@@ -1632,9 +1671,10 @@ static Traffic__FlowReport * set_pb_report(struct flow_report *report)
 
 err_free_pb_op:
     free_pb_op(pb->observationpoint);
+    FREE(pb->observationpoint);
 
 err_free_pb_report:
-    free(pb);
+    FREE(pb);
 
     return NULL;
 }
@@ -1643,7 +1683,7 @@ err_free_pb_report:
 /**
  * @brief Free a flow report protobuf structure.
  *
- * Free dynamically allocated fields and the protobuf structure.
+ * Free dynamically allocated fields.
  *
  * @param pb flow report structure to free
  * @return none
@@ -1653,16 +1693,18 @@ static void free_pb_report(Traffic__FlowReport *pb)
     size_t i;
 
     if (pb == NULL) return;
+    CHECK_DOUBLE_FREE(pb);
 
     free_pb_op(pb->observationpoint);
+    FREE(pb->observationpoint);
 
     for (i = 0; i < pb->n_observationwindow; i++)
     {
         free_pb_window(pb->observationwindow[i]);
+        FREE(pb->observationwindow[i]);
     }
 
-    free(pb->observationwindow);
-    free(pb);
+    FREE(pb->observationwindow);
 }
 
 /**
@@ -1686,7 +1728,7 @@ struct packed_buffer * serialize_flow_report(struct flow_report *report)
     if (report == NULL) return NULL;
 
     /* Allocate serialization output structure */
-    serialized = calloc(sizeof(struct packed_buffer), 1);
+    serialized = CALLOC(1, sizeof(*serialized));
     if (serialized == NULL) return NULL;
 
     /* Allocate and set flow report protobuf */
@@ -1698,7 +1740,7 @@ struct packed_buffer * serialize_flow_report(struct flow_report *report)
     if (len == 0) goto err_free_pb;
 
     /* Allocate space for the serialized buffer */
-    buf = malloc(len);
+    buf = MALLOC(len);
     if (buf == NULL) goto err_free_pb;
 
     serialized->len = traffic__flow_report__pack(pb, buf);
@@ -1706,14 +1748,15 @@ struct packed_buffer * serialize_flow_report(struct flow_report *report)
 
     /* Free the protobuf structure */
     free_pb_report(pb);
+    FREE(pb);
 
     return serialized;
 
 err_free_pb:
-    free(pb);
+    FREE(pb);
 
 err_free_serialized:
-    free(serialized);
+    FREE(serialized);
 
     return NULL;
 }

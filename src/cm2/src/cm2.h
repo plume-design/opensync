@@ -357,6 +357,7 @@ target_connectivity_check_option_t cm2_util_add_ip_opts(target_connectivity_chec
 bool cm2_connection_req_stability_check(target_connectivity_check_option_t opts, bool db_update);
 void cm2_connection_req_stability_check_async(target_connectivity_check_option_t opts, bool db_update, bool repeat);
 void cm2_stability_init(struct ev_loop *loop);
+void cm2_stability_update_interval(struct ev_loop *loop, bool short_int);
 void cm2_stability_close(struct ev_loop *loop);
 #ifdef CONFIG_CM2_USE_TCPDUMP
 void cm2_tcpdump_start(char* ifname);
@@ -375,6 +376,9 @@ static inline bool cm2_vtag_stability_check(void)
     return true;
 }
 static inline void cm2_stability_init(struct ev_loop *loop)
+{
+}
+static void cm2_stability_update_interval(struct ev_loop *loop, bool short_int)
 {
 }
 static inline void cm2_stability_close(struct ev_loop *loop)

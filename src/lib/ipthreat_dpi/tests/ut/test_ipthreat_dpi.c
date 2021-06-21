@@ -174,6 +174,22 @@ struct schema_FSM_Policy spolicies[] =
         .action = "allow",
         .log_exists = true,
         .log = "all",
+    },
+    { /* entry 4 */
+        .policy_exists = true,
+        .policy = "outbound_ipthreat",
+        .name = "outbound_ipthreat",
+        .mac_op_exists = false,
+        .fqdn_op_exists = false,
+        .fqdncat_op_exists = false,
+        .risk_op = "lte",
+        .risk_level = 7,
+        .ipaddr_op_exists = false,
+        .idx = 5,
+        .action_exists = true,
+        .action = "gatekeeper",
+        .log_exists = true,
+        .log = "all",
     }
 };
 
@@ -308,6 +324,32 @@ send_report(struct fsm_session *session, char *report)
     return;
 }
 
+bool
+dummy_gatekeeper_get_verdict(struct fsm_session *session,
+                             struct fsm_policy_req *req)
+{
+    struct fqdn_pending_req *fqdn_req;
+    struct fsm_url_request *req_info;
+    struct fsm_url_reply *url_reply;
+
+    fqdn_req = req->fqdn_req;
+    req_info = fqdn_req->req_info;
+
+    url_reply = calloc(1, sizeof(*url_reply));
+    if (url_reply == NULL) return false;
+
+    req_info->reply = url_reply;
+
+    url_reply->service_id = URL_GK_SVC;
+
+    fqdn_req->categorized = FSM_FQDN_CAT_SUCCESS;
+    req_info->reply->gk.gk_policy = strdup("gk_policy");
+    req_info->reply->gk.confidence_level = 90;
+    req_info->reply->gk.category_id = 2;
+
+   return true;
+}
+
 union fsm_plugin_ops p_ops;
 
 struct fsm_web_cat_ops g_plugin_ops =
@@ -317,7 +359,7 @@ struct fsm_web_cat_ops g_plugin_ops =
     .cat2str = NULL,
     .get_stats = NULL,
     .dns_response = NULL,
-    .gatekeeper_req = NULL,
+    .gatekeeper_req = dummy_gatekeeper_get_verdict,
 };
 
 struct fsm_session_ops g_ops =
@@ -1175,6 +1217,92 @@ void test_ipthreat_lan2lan_traffic(void)
     LOGI("\n******************** %s: completed ****************\n", __func__);
 }
 
+/**
+ * @brief validate gk dns cache
+ */
+void test_ipthreat_gk_dns_cache(void)
+{
+    struct ipthreat_dpi_session *ds_session;
+    struct net_header_parser *net_parser;
+    struct ipthreat_dpi_parser  *parser;
+    struct schema_FSM_Policy *spolicy;
+    struct ipthreat_dpi_cache *mgr;
+    struct fsm_session *session;
+    struct fsm_policy *fpolicy;
+    struct ip6_hdr ip6hdr;
+    struct udphdr udphdr;
+    ds_tree_t *sessions;
+    struct iphdr iphdr;
+    int ret;
+
+    LOGI("\n******************** %s: starting ****************\n", __func__);
+
+    mgr = ipthreat_dpi_get_mgr();
+    sessions = &mgr->ipt_sessions;
+
+    /* add ipthreat session */
+    session = &g_sessions[0];
+    ret = ipthreat_dpi_plugin_init(session);
+    TEST_ASSERT_TRUE(ret == 0);
+    ds_session = ds_tree_find(sessions, session);
+    TEST_ASSERT_NOT_NULL(ds_session);
+
+    /* add fsm policy */
+    spolicy = &spolicies[4];
+    fsm_add_policy(spolicy);
+    fpolicy = fsm_policy_lookup(spolicy);
+    TEST_ASSERT_NOT_NULL(fpolicy);
+
+    /* Validate rule name */
+    TEST_ASSERT_EQUAL_STRING(spolicy->name, fpolicy->rule_name);
+
+    /* populate net_parser */
+    net_parser = calloc(1, sizeof(struct net_header_parser));
+    net_parser->eth_header = outbound_eth_header;
+    net_parser->ip_version = 4;
+    net_parser->ip_protocol = IPPROTO_UDP;
+    memcpy(&iphdr.saddr, g_v4_outbound_key.src_ip, 4);
+    memcpy(&iphdr.daddr, g_v4_outbound_key.dst_ip, 4);
+    udphdr.source = g_v4_outbound_key.sport;
+    udphdr.dest = g_v4_outbound_key.dport;
+    net_parser->eth_pld.ip.iphdr = &iphdr;
+    net_parser->ip_pld.udphdr = &udphdr;
+    net_parser->acc = &g_v4_outbound_acc;
+    parser = &ds_session->parser;
+    parser->net_parser = net_parser;
+
+    ipthreat_dpi_process_message(ds_session);
+    free(net_parser);
+
+    /* populate v6 net_parser */
+    net_parser = calloc(1, sizeof(struct net_header_parser));
+    net_parser->eth_header = outbound_eth6_header;
+    net_parser->ip_version = 6;
+    net_parser->ip_protocol = IPPROTO_UDP;
+    memcpy(&ip6hdr.ip6_src, g_v6_outbound_key.src_ip, 16);
+    memcpy(&ip6hdr.ip6_dst, g_v6_outbound_key.dst_ip, 16);
+    udphdr.source = g_v6_outbound_key.sport;
+    udphdr.dest = g_v6_outbound_key.dport;
+    net_parser->eth_pld.ip.ipv6hdr = &ip6hdr;
+    net_parser->ip_pld.udphdr = &udphdr;
+    net_parser->acc = &g_v6_outbound_acc;
+    parser = &ds_session->parser;
+    parser->net_parser = net_parser;
+
+    ipthreat_dpi_process_message(ds_session);
+    free(net_parser);
+
+    /* delete fsm policy */
+    fsm_delete_policy(spolicy);
+
+    /* free ipthreat session */
+    ipthreat_dpi_plugin_exit(session);
+    ds_session = ds_tree_find(sessions, session);
+    TEST_ASSERT_NULL(ds_session);
+
+    LOGI("\n******************** %s: completed ****************\n", __func__);
+}
+
 int main(int argc, char *argv[])
 {
     /* Set the logs to stdout */
@@ -1195,6 +1323,7 @@ int main(int argc, char *argv[])
     RUN_TEST(test_ipthreat_inbound_allow);
     RUN_TEST(test_ipthreat_outbound_allow);
     RUN_TEST(test_ipthreat_lan2lan_traffic);
+    RUN_TEST(test_ipthreat_gk_dns_cache);
 
     global_test_exit();
 

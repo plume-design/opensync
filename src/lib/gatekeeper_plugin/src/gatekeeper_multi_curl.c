@@ -386,7 +386,7 @@ gk_new_conn(char *url)
     if (!conn->easy) goto err_free_conn;
 
     conn->global = cmgr;
-    conn->url = strdup(url);
+    conn->url = STRDUP(url);
 
     curl_easy_setopt(conn->easy, CURLOPT_URL, conn->url);
     curl_easy_setopt(conn->easy, CURLOPT_WRITEFUNCTION, curl_write_cb);

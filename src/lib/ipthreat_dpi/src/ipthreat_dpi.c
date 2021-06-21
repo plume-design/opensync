@@ -24,7 +24,6 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-
 #include <stdlib.h>
 #include <stddef.h>
 #include <time.h>
@@ -390,7 +389,7 @@ populate_gk_dns_cache_entry(struct ip2action_gk_info *i2a_cache_gk,
     i2a_cache_gk->category_id = fqdn_reply_gk->category_id;
     if (fqdn_reply_gk->gk_policy)
     {
-        i2a_cache_gk->gk_policy = strdup(fqdn_reply_gk->gk_policy);
+        i2a_cache_gk->gk_policy = fqdn_reply_gk->gk_policy;
     }
 }
 
@@ -446,7 +445,7 @@ ipthreat_dpi_policy_req(struct ipthreat_dpi_req *ip_req)
     fqdn_req.numq = 1;
     fqdn_req.acc = ip_req->acc;
     fqdn_req.rd_ttl = IPTHREAT_DEFAULT_TTL;
-    fqdn_req.req_info = calloc(1, sizeof(struct fsm_url_request));
+    fqdn_req.req_info = CALLOC(1, sizeof(struct fsm_url_request));
     if (fqdn_req.req_info == NULL) return FSM_DPI_PASSTHRU;
     ret = getnameinfo((struct sockaddr *)(ip_req->ip),
                       sizeof(struct sockaddr_storage),
@@ -455,7 +454,7 @@ ipthreat_dpi_policy_req(struct ipthreat_dpi_req *ip_req)
     if (ret)
     {
         LOGE("%s: failure: %s", __func__, strerror(errno));
-        free(fqdn_req.req_info);
+        FREE(fqdn_req.req_info);
         return FSM_ACTION_NONE;
     }
 
@@ -574,10 +573,10 @@ ipthreat_dpi_policy_req(struct ipthreat_dpi_req *ip_req)
 
     ipthreat_dpi_send_report(&policy_req);
 
-    free(fqdn_req.policy);
-    free(fqdn_req.rule_name);
+    FREE(fqdn_req.policy);
+    FREE(fqdn_req.rule_name);
     fsm_free_url_reply(fqdn_req.req_info->reply);
-    free(fqdn_req.req_info);
+    FREE(fqdn_req.req_info);
 
     return action;
 }
@@ -828,7 +827,7 @@ ipthreat_dpi_lookup_session(struct fsm_session *session)
     if (ds_session != NULL) return ds_session;
 
     LOGD("%s: Adding new session %s", __func__, session->name);
-    ds_session = calloc(1, sizeof(struct ipthreat_dpi_session));
+    ds_session = CALLOC(1, sizeof(struct ipthreat_dpi_session));
     if (ds_session == NULL) return NULL;
 
     ds_tree_insert(sessions, ds_session, session);
@@ -845,7 +844,7 @@ ipthreat_dpi_lookup_session(struct fsm_session *session)
 void
 ipthreat_dpi_free_session(struct ipthreat_dpi_session *ds_session)
 {
-    free(ds_session);
+    FREE(ds_session);
 }
 
 

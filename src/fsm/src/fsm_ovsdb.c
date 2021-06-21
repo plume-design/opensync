@@ -61,6 +61,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "policy_tags.h"
 #include "gatekeeper_cache.h"
 #include "dns_cache.h"
+#include "memutil.h"
 
 #define MODULE_ID LOG_MODULE_ID_OVSDB
 
@@ -231,6 +232,7 @@ fsm_reset_mgr(void)
         next = ds_tree_next(sessions, session);
         remove = session;
         ds_tree_remove(sessions, remove);
+        fsm_policy_deregister_client(&remove->policy_client);
         fsm_free_session(remove);
         session = next;
     }
@@ -404,7 +406,7 @@ fsm_process_provider(struct fsm_session *session)
         session->provider_plugin = service;
         if (service != NULL)
         {
-            session->provider = strdup(service->name);
+            session->provider = STRDUP(service->name);
             session->provider_ops = &service->p_ops->web_cat_ops;
         }
         return;
@@ -490,30 +492,30 @@ fsm_session_update(struct fsm_session *session,
     fsm_free_session_conf(fconf);
     session->conf = NULL;
 
-    fconf = calloc(1, sizeof(*fconf));
+    fconf = CALLOC(1, sizeof(*fconf));
     if (fconf == NULL) return false;
     session->conf = fconf;
 
     if (strlen(conf->handler) == 0) goto err_free_fconf;
 
-    fconf->handler = strdup(conf->handler);
+    fconf->handler = STRDUP(conf->handler);
     if (fconf->handler == NULL) goto err_free_fconf;
 
     if (strlen(conf->if_name) != 0)
     {
-        fconf->if_name = strdup(conf->if_name);
+        fconf->if_name = STRDUP(conf->if_name);
         if (fconf->if_name == NULL) goto err_free_fconf;
     }
 
     if (strlen(conf->pkt_capt_filter) != 0)
     {
-        fconf->pkt_capt_filter = strdup(conf->pkt_capt_filter);
+        fconf->pkt_capt_filter = STRDUP(conf->pkt_capt_filter);
         if (fconf->pkt_capt_filter == NULL) goto err_free_fconf;
     }
 
     if (strlen(conf->plugin) != 0)
     {
-        fconf->plugin = strdup(conf->plugin);
+        fconf->plugin = STRDUP(conf->plugin);
         if (fconf->plugin == NULL) goto err_free_fconf;
     }
 
@@ -613,12 +615,12 @@ fsm_free_session_conf(struct fsm_session_conf *conf)
 {
     if (conf == NULL) return;
 
-    free(conf->handler);
-    free(conf->if_name);
-    free(conf->pkt_capt_filter);
-    free(conf->plugin);
+    FREE(conf->handler);
+    FREE(conf->if_name);
+    FREE(conf->pkt_capt_filter);
+    FREE(conf->plugin);
     free_str_tree(conf->other_config);
-    free(conf);
+    FREE(conf);
 }
 
 
@@ -637,7 +639,7 @@ fsm_parse_dso(struct fsm_session *session)
     if (plugin != NULL)
     {
         LOGI("%s: plugin: %s", __func__, plugin);
-        session->dso = strdup(plugin);
+        session->dso = STRDUP(plugin);
     }
     else
     {
@@ -646,7 +648,7 @@ fsm_parse_dso(struct fsm_session *session)
 
         memset(dso, 0, sizeof(dso));
         snprintf(dso, sizeof(dso), "%s/libfsm_%s.so", dir, session->name);
-        session->dso = strdup(dso);
+        session->dso = STRDUP(dso);
     }
 
     LOGT("%s: session %s set dso path to %s", __func__,
@@ -831,16 +833,16 @@ fsm_alloc_session(struct schema_Flow_Service_Manager_Config *conf)
 
     mgr = fsm_get_mgr();
 
-    session = calloc(1, sizeof(struct fsm_session));
+    session = CALLOC(1, sizeof(struct fsm_session));
     if (session == NULL) return NULL;
 
-    session->name = strdup(conf->handler);
+    session->name = STRDUP(conf->handler);
     if (session->name == NULL) goto err_free_session;
 
     session->type = fsm_service_type(conf);
     if (session->type == FSM_UNKNOWN_SERVICE) goto err_free_name;
 
-    plugin_ops = calloc(1, sizeof(*plugin_ops));
+    plugin_ops = CALLOC(1, sizeof(*plugin_ops));
     if (plugin_ops == NULL) goto err_free_name;
 
     session->p_ops = plugin_ops;
@@ -867,16 +869,16 @@ fsm_alloc_session(struct schema_Flow_Service_Manager_Config *conf)
     return session;
 
 err_free_dso:
-    free(session->dso);
+    FREE(session->dso);
 
 err_free_plugin_ops:
-    free(plugin_ops);
+    FREE(plugin_ops);
 
 err_free_name:
-    free(session->name);
+    FREE(session->name);
 
 err_free_session:
-    free(session);
+    FREE(session);
 
     return NULL;
 }
@@ -914,19 +916,19 @@ fsm_free_session(struct fsm_session *session)
     fsm_free_session_conf(session->conf);
 
     /* Free the dso path string */
-    free(session->dso);
+    FREE(session->dso);
 
     /* Free the plugin ops */
-    free(session->p_ops);
+    FREE(session->p_ops);
 
     /* Free the session name */
-    free(session->name);
+    FREE(session->name);
 
     /* Free the session provider */
-    free(session->provider);
+    FREE(session->provider);
 
     /* Finally free the session */
-    free(session);
+    FREE(session);
 }
 
 
