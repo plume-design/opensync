@@ -153,7 +153,8 @@ typedef enum log_sink_e
     ENTRY(CTRL)                             \
     ENTRY(HAPD)                             \
     ENTRY(WPAS)                             \
-    ENTRY(NEIGHBORS)
+    ENTRY(NEIGHBORS)                        \
+    ENTRY(TELOG)
 
 #ifndef LOG_MODULE_TABLE_TARGET
 #define LOG_MODULE_TABLE(ENTRY) \

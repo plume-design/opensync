@@ -59,6 +59,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "qm_conn.h"
 #include "nf_utils.h"
 #include "kconfig.h"
+#include "memutil.h"
 
 static struct imc_context g_imc_client =
 {
@@ -219,7 +220,7 @@ fsm_dpi_client_send(struct imc_context *client, void *data,
 static void
 free_send_msg(void *data, void *hint)
 {
-    free(data);
+    FREE(data);
 }
 
 
@@ -299,7 +300,7 @@ fsm_dpi_send_report(struct fsm_session *session)
     }
 
 err_send:
-    free(pb);
+    FREE(pb);
 
     return rc;
 }
@@ -468,7 +469,7 @@ fsm_dpi_add_plugin_to_tree(struct fsm_session *session,
             continue;
         }
 
-        dpi_flow_info = calloc(1, sizeof(*dpi_flow_info));
+        dpi_flow_info = CALLOC(1, sizeof(*dpi_flow_info));
         if (dpi_flow_info == NULL)
         {
             flow = ds_tree_next(tree, flow);
@@ -526,7 +527,7 @@ fsm_dpi_del_plugin_from_tree(struct fsm_session *session,
         if (dpi_flow_info != NULL)
         {
             ds_tree_remove(acc->dpi_plugins, dpi_flow_info);
-            free(dpi_flow_info);
+            FREE(dpi_flow_info);
         }
         flow = ds_tree_next(tree, flow);
     }
@@ -721,6 +722,21 @@ fsm_dpi_report_filter(struct net_md_stats_accumulator *acc)
 }
 
 
+static void
+fsm_dpi_update_acc_key(struct net_md_stats_accumulator *acc)
+{
+    struct net_md_flow_key *key;
+
+    if (acc == NULL) return;
+
+    key = acc->key;
+    if (key == NULL) return;
+
+    key->direction = acc->direction;
+    key->originator = acc->originator;
+}
+
+
 #define  MAX_RESERVED_PORT_NUM       1023
 #define  NON_RESERVED_PORT_START_NUM MAX_RESERVED_PORT_NUM + 1
 /**
@@ -860,6 +876,8 @@ fsm_dpi_set_tcp_acc_direction(struct fsm_dpi_dispatcher *dispatch,
         fsm_dpi_set_acc_direction_on_port(dispatch, acc);
     }
 
+    fsm_dpi_update_acc_key(acc);
+
     return (acc->direction != NET_MD_ACC_UNSET_DIR);
 }
 
@@ -886,6 +904,7 @@ fsm_dpi_set_udp_acc_direction(struct fsm_dpi_dispatcher *dispatch,
     if (key->ipprotocol != IPPROTO_UDP) return false;
 
     fsm_dpi_set_acc_direction_on_port(dispatch, acc);
+    fsm_dpi_update_acc_key(acc);
 
     return (acc->direction != NET_MD_ACC_UNSET_DIR);
 }
@@ -999,7 +1018,7 @@ fsm_dpi_check_udp_no_data(struct net_md_stats_accumulator *acc)
     if (key->ipprotocol != IPPROTO_UDP) return;
     LOGI("%s: destroying UDP flow with no payload", __func__);
 
-    net_md_log_acc(acc);
+    net_md_log_acc(acc, __func__);
 }
 
 
@@ -1098,6 +1117,7 @@ fsm_init_dpi_dispatcher(struct fsm_session *session)
 
 error:
     net_md_free_aggregator(dispatch->aggr);
+    FREE(dispatch->aggr);
     return false;
 }
 
@@ -1131,6 +1151,7 @@ fsm_free_dpi_dispatcher(struct fsm_session *session)
         dpi_plugin = next;
     }
     net_md_free_aggregator(dispatch->aggr);
+    FREE(dispatch->aggr);
 
     fsm_dpi_terminate_client(&g_imc_client);
 }
@@ -1285,7 +1306,7 @@ fsm_update_dpi_context(struct fsm_session *session)
     }
 
     /* Allocate a new context */
-    dpi_context = calloc(1, sizeof(*dpi_context));
+    dpi_context = CALLOC(1, sizeof(*dpi_context));
     if (dpi_context == NULL) return false;
 
     session->dpi = dpi_context;
@@ -1332,7 +1353,7 @@ fsm_free_dpi_context(struct fsm_session *session)
         fsm_free_dpi_plugin(session);
     }
 
-    free(session->dpi);
+    FREE(session->dpi);
     session->dpi = NULL;
 }
 
@@ -1496,7 +1517,19 @@ fsm_dispatch_pkt(struct fsm_session *session,
 
     if (acc == NULL) return;
 
-    if (acc->dpi_done == 1) return;
+    if (acc->dpi_done != 0)
+    {
+        if (session->tap_type == FSM_TAP_NFQ)
+        {
+            int verdict;
+
+            verdict = (acc->dpi_done == FSM_DPI_DROP) ?
+                      NF_UTIL_NFQ_DROP : NF_UTIL_NFQ_ACCEPT;
+            nf_queue_set_verdict(net_parser->packet_id, verdict);
+        }
+
+        return;
+    }
 
     tree = acc->dpi_plugins;
     if (tree == NULL) return;
@@ -1587,7 +1620,8 @@ fsm_dispatch_pkt(struct fsm_session *session,
         if (pass) mgr->set_dpi_state(net_parser, FSM_DPI_PASSTHRU);
     }
 
-    if (drop || pass) acc->dpi_done = 1;
+    if (drop) acc->dpi_done = FSM_DPI_DROP;
+    if (pass) acc->dpi_done = FSM_DPI_PASSTHRU;
 }
 
 /**
@@ -1628,6 +1662,7 @@ fsm_dpi_handler(struct fsm_session *session,
     struct fsm_dpi_dispatcher *dispatch;
     union fsm_dpi_context *dpi_context;
     struct flow_counters counters;
+    struct eth_header *eth_hdr;
     size_t payload_len;
     bool filter;
 
@@ -1635,6 +1670,16 @@ fsm_dpi_handler(struct fsm_session *session,
     if (dpi_context == NULL) return;
 
     dispatch = &dpi_context->dispatch;
+
+    if (session->tap_type == FSM_TAP_NFQ)
+    {
+        eth_hdr = &net_parser->eth_header;
+        if ((eth_hdr->srcmac) && (eth_hdr->dstmac))
+        {
+            /* nullify the src mac for Inbound packets */
+            eth_hdr->srcmac = NULL;
+        }
+    }
 
     acc = fsm_net_parser_to_acc(net_parser, dispatch->aggr);
     if (acc == NULL) return;
@@ -1677,9 +1722,9 @@ fsm_dpi_free_flow_context(struct net_md_stats_accumulator *acc)
         remove = dpi_flow_info;
         dpi_flow_info = ds_tree_next(dpi_sessions, dpi_flow_info);
         ds_tree_remove(dpi_sessions, remove);
-        free(remove);
+        FREE(remove);
     }
-    free(dpi_sessions);
+    FREE(dpi_sessions);
 }
 
 
@@ -1704,7 +1749,7 @@ fsm_dpi_alloc_flow_context(struct fsm_session *session,
     if (acc->dpi_plugins != NULL) return;
 
     acc->free_plugins = fsm_dpi_free_flow_context;
-    acc->dpi_plugins = calloc(1, sizeof(ds_tree_t));
+    acc->dpi_plugins = CALLOC(1, sizeof(ds_tree_t));
     if (acc->dpi_plugins == NULL) return;
 
     ds_tree_init(acc->dpi_plugins, fsm_dpi_session_cmp,
@@ -1716,7 +1761,7 @@ fsm_dpi_alloc_flow_context(struct fsm_session *session,
     dpi_plugin = ds_tree_head(dpi_sessions);
     while (dpi_plugin != NULL)
     {
-        dpi_flow_info = calloc(1, sizeof(*dpi_flow_info));
+        dpi_flow_info = CALLOC(1, sizeof(*dpi_flow_info));
         if (dpi_flow_info == NULL)
         {
             dpi_plugin = ds_tree_next(dpi_sessions, dpi_plugin);

@@ -31,6 +31,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fsm_policy.h"
 #include "gatekeeper_msg.h"
 #include "gatekeeper.pb-c.h"
+#include "memutil.h"
 #include "log.h"
 #include "network_metadata_report.h"
 #include "os_types.h"
@@ -46,7 +47,7 @@ gk_free_req_header(Gatekeeper__Southbound__V1__GatekeeperCommonRequest *header)
 {
     if (header == NULL) return;
 
-    free(header);
+    FREE(header);
 
     return;
 }
@@ -68,7 +69,7 @@ gk_free_fqdn_req(Gatekeeper__Southbound__V1__GatekeeperReq *pb)
 
     gk_free_req_header(fqdn_req->header);
     fqdn_req->header = NULL;
-    free(fqdn_req);
+    FREE(fqdn_req);
 
     pb->req_fqdn = NULL;
 
@@ -92,7 +93,7 @@ gk_free_https_sni_req(Gatekeeper__Southbound__V1__GatekeeperReq *pb)
 
     gk_free_req_header(sni_req->header);
     sni_req->header = NULL;
-    free(sni_req);
+    FREE(sni_req);
 
     pb->req_https_sni = NULL;
 
@@ -116,7 +117,7 @@ gk_free_http_host_req(Gatekeeper__Southbound__V1__GatekeeperReq *pb)
 
     gk_free_req_header(host_req->header);
     host_req->header = NULL;
-    free(host_req);
+    FREE(host_req);
 
     pb->req_http_host = NULL;
 
@@ -140,7 +141,7 @@ gk_free_http_url_req(Gatekeeper__Southbound__V1__GatekeeperReq *pb)
 
     gk_free_req_header(url_req->header);
     url_req->header = NULL;
-    free(url_req);
+    FREE(url_req);
 
     pb->req_http_url = NULL;
 
@@ -164,7 +165,7 @@ gk_free_app_req(Gatekeeper__Southbound__V1__GatekeeperReq *pb)
 
     gk_free_req_header(app_req->header);
     app_req->header = NULL;
-    free(app_req);
+    FREE(app_req);
 
     pb->req_app = NULL;
 
@@ -188,10 +189,10 @@ gk_free_ipv4_req(Gatekeeper__Southbound__V1__GatekeeperReq *pb)
 
     gk_free_req_header(ipv4_req->header);
     ipv4_req->header = NULL;
-    free(ipv4_req->flow_ipv4);
+    FREE(ipv4_req->flow_ipv4);
     ipv4_req->flow_ipv4 = NULL;
 
-    free(ipv4_req);
+    FREE(ipv4_req);
 
     pb->req_ipv4 = NULL;
 
@@ -215,10 +216,10 @@ gk_free_ipv6_req(Gatekeeper__Southbound__V1__GatekeeperReq *pb)
 
     gk_free_req_header(ipv6_req->header);
     ipv6_req->header = NULL;
-    free(ipv6_req->flow_ipv6);
+    FREE(ipv6_req->flow_ipv6);
     ipv6_req->flow_ipv6 = NULL;
 
-    free(ipv6_req);
+    FREE(ipv6_req);
 
     pb->req_ipv6 = NULL;
 
@@ -236,10 +237,10 @@ gk_free_ipv4_tuple_req(Gatekeeper__Southbound__V1__GatekeeperReq *pb)
 
     gk_free_req_header(tuple_req->header);
     tuple_req->header = NULL;
-    free(tuple_req->flow_ipv4);
+    FREE(tuple_req->flow_ipv4);
     tuple_req->flow_ipv4 = NULL;
 
-    free(tuple_req);
+    FREE(tuple_req);
 
     pb->req_ipv4_tuple = NULL;
 
@@ -257,10 +258,10 @@ gk_free_ipv6_tuple_req(Gatekeeper__Southbound__V1__GatekeeperReq *pb)
 
     gk_free_req_header(tuple_req->header);
     tuple_req->header = NULL;
-    free(tuple_req->flow_ipv6);
+    FREE(tuple_req->flow_ipv6);
     tuple_req->flow_ipv6 = NULL;
 
-    free(tuple_req);
+    FREE(tuple_req);
 
     pb->req_ipv6_tuple = NULL;
     return;
@@ -279,7 +280,7 @@ gk_free_pb_request(Gatekeeper__Southbound__V1__GatekeeperReq *pb)
     gk_free_ipv6_req(pb);
     gk_free_ipv4_tuple_req(pb);
     gk_free_ipv6_tuple_req(pb);
-    free(pb);
+    FREE(pb);
 }
 
 
@@ -288,8 +289,8 @@ gk_free_packed_buffer(struct gk_packed_buffer *buffer)
 {
     if (buffer == NULL) return;
 
-    free(buffer->buf);
-    free(buffer);
+    FREE(buffer->buf);
+    FREE(buffer);
 }
 
 
@@ -298,7 +299,7 @@ gk_set_pb_common_req(struct gk_req_header *header)
 {
     Gatekeeper__Southbound__V1__GatekeeperCommonRequest *pb;
 
-    pb = calloc(1, sizeof(*pb));
+    pb = CALLOC(1, sizeof(*pb));
     if (pb == NULL) return NULL;
 
     /* Initialize the protobuf structure */
@@ -326,7 +327,7 @@ gk_set_pb_fqdn_req(struct gk_fqdn_request *fqdn_req)
 {
     Gatekeeper__Southbound__V1__GatekeeperFqdnReq *pb;
 
-    pb = calloc(1, sizeof(*pb));
+    pb = CALLOC(1, sizeof(*pb));
     if (pb == NULL) return NULL;
 
     /* Initialize the protobuf structure */
@@ -352,7 +353,7 @@ gk_set_pb_sni_req(struct gk_sni_request *sni_req)
 {
     Gatekeeper__Southbound__V1__GatekeeperHttpsSniReq *pb;
 
-    pb = calloc(1, sizeof(*pb));
+    pb = CALLOC(1, sizeof(*pb));
     if (pb == NULL) return NULL;
 
     /* Initialize the protobuf structure */
@@ -378,7 +379,7 @@ gk_set_pb_host_req(struct gk_host_request *host_req)
 {
     Gatekeeper__Southbound__V1__GatekeeperHttpHostReq *pb;
 
-    pb = calloc(1, sizeof(*pb));
+    pb = CALLOC(1, sizeof(*pb));
     if (pb == NULL) return NULL;
 
     /* Initialize the protobuf structure */
@@ -404,7 +405,7 @@ gk_set_pb_url_req(struct gk_url_request *url_req)
 {
     Gatekeeper__Southbound__V1__GatekeeperHttpUrlReq *pb;
 
-    pb = calloc(1, sizeof(*pb));
+    pb = CALLOC(1, sizeof(*pb));
     if (pb == NULL) return NULL;
 
     /* Initialize the protobuf structure */
@@ -430,7 +431,7 @@ gk_set_pb_app_req(struct gk_app_request *app_req)
 {
     Gatekeeper__Southbound__V1__GatekeeperAppReq *pb;
 
-    pb = calloc(1, sizeof(*pb));
+    pb = CALLOC(1, sizeof(*pb));
     if (pb == NULL) return NULL;
 
     /* Initialize the protobuf structure */
@@ -496,7 +497,7 @@ gk_set_pb_ipv4_flow(struct net_md_stats_accumulator *acc)
     key = acc->key;
     if (key == NULL) return NULL;
 
-    pb = calloc(1, sizeof(*pb));
+    pb = CALLOC(1, sizeof(*pb));
     if (pb == NULL) return NULL;
 
     /* Initialize the protobuf structure */
@@ -604,7 +605,7 @@ gk_set_pb_ipv6_flow(struct net_md_stats_accumulator *acc)
     key = acc->key;
     if (key == NULL) return NULL;
 
-    pb = calloc(1, sizeof(*pb));
+    pb = CALLOC(1, sizeof(*pb));
     if (pb == NULL) return NULL;
 
     /* Initialize the protobuf structure */
@@ -714,7 +715,7 @@ gk_set_pb_ipv4_req(struct gk_ip_request *ip_req)
     acc = ip_req->acc;
     if (acc == NULL) return NULL;
 
-    pb = calloc(1, sizeof(*pb));
+    pb = CALLOC(1, sizeof(*pb));
     if (pb == NULL) return NULL;
 
     /* Initialize the protobuf structure */
@@ -743,9 +744,9 @@ gk_set_pb_ipv4_req(struct gk_ip_request *ip_req)
     return pb;
 
 out_err:
-    free(pb->flow_ipv4);
+    FREE(pb->flow_ipv4);
     gk_free_req_header(pb->header);
-    free(pb);
+    FREE(pb);
     return NULL;
 }
 
@@ -769,7 +770,7 @@ gk_set_pb_ipv6_req(struct gk_ip_request *ip_req)
     acc = ip_req->acc;
     if (acc == NULL) return NULL;
 
-    pb = calloc(1, sizeof(*pb));
+    pb = CALLOC(1, sizeof(*pb));
     if (pb == NULL) return NULL;
 
     /* Initialize the protobuf structure */
@@ -796,9 +797,9 @@ gk_set_pb_ipv6_req(struct gk_ip_request *ip_req)
     return pb;
 
 out_err:
-    free(pb->flow_ipv6);
+    FREE(pb->flow_ipv6);
     gk_free_req_header(pb->header);
-    free(pb);
+    FREE(pb);
     return NULL;
 }
 
@@ -862,7 +863,7 @@ gk_set_pb_ipv4_flow_req(struct gk_ip_flow_request *gk_ip_flow_req)
     acc = gk_ip_flow_req->acc;
     if (acc == NULL) return NULL;
 
-    pb = calloc(1, sizeof(*pb));
+    pb = CALLOC(1, sizeof(*pb));
     if (pb == NULL) return NULL;
 
     /* Initialize the protobuf structure */
@@ -883,9 +884,9 @@ gk_set_pb_ipv4_flow_req(struct gk_ip_flow_request *gk_ip_flow_req)
     return pb;
 
 out_err:
-    free(pb->flow_ipv4);
+    FREE(pb->flow_ipv4);
     gk_free_req_header(pb->header);
-    free(pb);
+    FREE(pb);
     return NULL;
 }
 
@@ -902,7 +903,7 @@ gk_set_pb_ipv6_flow_req(struct gk_ip_flow_request *gk_ip_flow_req)
     acc = gk_ip_flow_req->acc;
     if (acc == NULL) return NULL;
 
-    pb = calloc(1, sizeof(*pb));
+    pb = CALLOC(1, sizeof(*pb));
     if (pb == NULL) return NULL;
 
     /* Initialize the protobuf structure */
@@ -923,9 +924,9 @@ gk_set_pb_ipv6_flow_req(struct gk_ip_flow_request *gk_ip_flow_req)
     return pb;
 
 out_err:
-    free(pb->flow_ipv6);
+    FREE(pb->flow_ipv6);
     gk_free_req_header(pb->header);
-    free(pb);
+    FREE(pb);
     return NULL;
 }
 
@@ -992,7 +993,7 @@ gk_set_pb_request(struct gk_request *request)
     union gk_data_req *req_data;
     bool rc;
 
-    pb = calloc(1, sizeof(*pb));
+    pb = CALLOC(1, sizeof(*pb));
     if (pb == NULL) return NULL;
 
     /* Initialize the protobuf structure */
@@ -1076,7 +1077,7 @@ gk_serialize_request(struct gk_request *request)
     if (request == NULL) return NULL;
 
     /* Allocate serialization output structure */
-    serialized = calloc(1, sizeof(*serialized));
+    serialized = CALLOC(1, sizeof(*serialized));
     if (serialized == NULL) return NULL;
 
     /* Allocate and set flow report protobuf */
@@ -1088,7 +1089,7 @@ gk_serialize_request(struct gk_request *request)
     if (len == 0) goto out_err;
 
     /* Allocate space for the serialized buffer */
-    buf = malloc(len);
+    buf = MALLOC(len);
     if (buf == NULL) goto out_err;
 
     serialized->len = gatekeeper__southbound__v1__gatekeeper_req__pack(pb, buf);

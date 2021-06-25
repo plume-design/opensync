@@ -44,12 +44,11 @@ Description:
     - Make sure all radio interfaces for this device are up and have valid
       configuration. If not create new interface with configuration parameters
       from test case configuration.
-    - Set channel to requested "channel" value first.
-    - Check for mismatch_channel is not allowed on the radio.
-    - Change channel to mismatch_channel. Update Wifi_Radio_Config table.
-    - Check if channel setting is applied to Wifi_Radio_State table. If applied
+    - Set ht_mode to requested valid "ht_mode" for creating interface.
+    - Change ht_mode to mismatch_ht_mode. Update Wifi_Radio_Config table.
+    - Check if mismatch_ht_mode is applied to Wifi_Radio_State table. If applied
       test fails.
-    - Check if channel setting is applied to system. If applied test fails.
+    - Check if mismatch_ht_mode is applied to system. If applied test fails.
     - Check if WIRELESS MANAGER is still running.
 Arguments:
     -h  show this help message
@@ -62,14 +61,14 @@ Arguments:
     \$7  (ht_mode)         : Wifi_Radio_Config::ht_mode        : (string)(required)
     \$8  (hw_mode)         : Wifi_Radio_Config::hw_mode        : (string)(required)
     \$9  (mode)            : Wifi_VIF_Config::mode             : (string)(required)
-    \$10 (mismatch_channel): mismatch channel to verify        : (int)(required)
+    \$10 (mismatch_ht_mode): mismatch ht_mode to verify        : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name} <IF_NAME> <VIF_IF_NAME> <VIF-RADIO-IDX> <SSID> <SECURITY> <CHANNEL> <HT_MODE> <HW_MODE> <MODE> <MISMATCH_CHANNEL>
+                 Run: ./${tc_name} <IF_NAME> <VIF_IF_NAME> <VIF-RADIO-IDX> <SSID> <SECURITY> <CHANNEL> <HT_MODE> <HW_MODE> <MODE> <MISMATCH_HT_MODE>
 Script usage example:
-    ./${tc_name} wifi2 home-ap-u50 2 FUTssid '["map",[["encryption","WPA-PSK"],["key","FUTpsk"],["mode","2"]]]' 108 HT40 11ac ap 180
-    ./${tc_name} wifi1 home-ap-l50 2 FUTssid '["map",[["encryption","WPA-PSK"],["key","FUTpsk"],["mode","2"]]]' 36 HT20 11ac ap 134
-    ./${tc_name} wifi0 home-ap-24 2 FUTssid '["map",[["encryption","WPA-PSK"],["key","FUTpsk"],["mode","2"]]]' 1 HT20 11n ap 36
+    ./${tc_name} wifi2 home-ap-u50 2 FUTssid '["map",[["encryption","WPA-PSK"],["key","FUTpsk"],["mode","2"]]]' 108 HT40 11ac ap HT160
+    ./${tc_name} wifi1 home-ap-l50 2 FUTssid '["map",[["encryption","WPA-PSK"],["key","FUTpsk"],["mode","2"]]]' 36 HT20	11ac ap HT160
+    ./${tc_name} wifi0 home-ap-24 2 FUTssid	'["map",[["encryption","WPA-PSK"],["key","FUTpsk"],["mode","2"]]]' 1 HT20 11n ap HT160
 usage_string
 }
 while getopts h option; do
@@ -82,9 +81,9 @@ while getopts h option; do
             ;;
     esac
 done
+
 NARGS=10
 [ $# -ne ${NARGS} ] && usage && raise "Requires '${NARGS}' input argument(s)" -l "${tc_name}" -arg
-
 if_name=${1}
 vif_if_name=${2}
 vif_radio_idx=${3}
@@ -94,7 +93,7 @@ channel=${6}
 ht_mode=${7}
 hw_mode=${8}
 mode=${9}
-mismatch_channel=${10}
+mismatch_ht_mode=${10}
 
 trap '
     fut_info_dump_line
@@ -104,7 +103,7 @@ trap '
     run_setup_if_crashed wm || true
 ' EXIT SIGINT SIGTERM
 
-log_title "$tc_name: WM2 test - Verify mismatching channels cannot be set - '${mismatch_channel}'"
+log_title "$tc_name: WM2 test - Verify mismatch ht_mode cannot be set - '${mismatch_ht_mode}'"
 
 log "$tc_name: Checking if Radio/VIF states are valid for test"
 check_radio_vif_state \
@@ -114,6 +113,7 @@ check_radio_vif_state \
     -ssid "$ssid" \
     -channel "$channel" \
     -security "$security" \
+    -ht_mode "$ht_mode" \
     -hw_mode "$hw_mode" \
     -mode "$mode" &&
         log "$tc_name: Radio/VIF states are valid" ||
@@ -136,37 +136,32 @@ check_radio_vif_state \
             ) ||
         raise "create_radio_vif_interface - Failed" -l "$tc_name" -tc
 
-wait_for_function_response 'notempty' "get_ovsdb_entry_value Wifi_Radio_State allowed_channels -w if_name ${if_name}" &&
-allowed_channels=$(get_ovsdb_entry_value Wifi_Radio_State allowed_channels -w if_name "$if_name" -raw)
-echo "$allowed_channels" | grep -qwF "$mismatch_channel" &&
-    raise "FAIL:  Radio $if_name supports channel $mismatch_channel" -l $tc_name -tc ||
-    log "$tc_name: Radio $if_name not supports channel $mismatch_channel - SUCCESS"
+# Update Wifi_Radio_Config with mismatched ht_mode
+update_ovsdb_entry Wifi_Radio_Config -w if_name $if_name -u ht_mode $mismatch_ht_mode &&
+    log "$tc_name: wait_ovsdb_entry - Updated ht_mode $mismatch_ht_mode to Wifi_Radio_Config" ||
+    raise "FAIL: wait_ovsdb_entry - Could not update ht_mode $mismatch_ht_mode to Wifi_Radio_Config" -l "$tc_name" -tc
 
-update_ovsdb_entry Wifi_Radio_Config -w if_name $if_name -u channel $mismatch_channel &&
-    log "$tc_name: wait_ovsdb_entry - Updated channel $mismatch_channel to Wifi_Radio_Config" ||
-    raise "FAIL: wait_ovsdb_entry - Could not channel $mismatch_channel to Wifi_Radio_Config" -l "$tc_name" -tc
+wait_ovsdb_entry Wifi_Radio_State -w if_name "$if_name" -is ht_mode "$mismatch_ht_mode" -t ${channel_change_timeout} &&
+    raise "FAIL: wait_ovsdb_entry - Reflected Wifi_Radio_Config to Wifi_Radio_State - ht_mode $mismatch_ht_mode" -l "$tc_name" -tc ||
+    log "$tc_name: wait_ovsdb_entry - Wifi_Radio_Config is not reflected to Wifi_Radio_State - ht_mode $mismatch_ht_mode - SUCCESS"
 
-wait_ovsdb_entry Wifi_Radio_State -w if_name "$if_name" -is channel "$mismatch_channel" -t ${channel_change_timeout} &&
-    raise "FAIL: wait_ovsdb_entry - Reflected Wifi_Radio_Config to Wifi_Radio_State - channel $mismatch_channel" -l "$tc_name" -tc ||
-    log "$tc_name: wait_ovsdb_entry - Wifi_Radio_Config is not reflected to Wifi_Radio_State - channel $mismatch_channel - SUCCESS"
-
-channel_from_os=$(get_channel_from_os $vif_if_name)
-if [ $? -eq 1 ]; then
-    raise "FAIL: Requires one input parameter" -l $tc_name -tc
-elif [ "$channel_from_os" == "" ]; then
-        raise "FAIL: Error while fetching channel from os" -l $tc_name -tc
+# LEVEL2 check. Passes if OS reports original ht_mode is still set.
+ht_mode_from_os=$(get_ht_mode_from_os $vif_if_name $channel) ||
+    raise "FAIL: Error while fetching ht_mode from os" -l $tc_name -fc
+if [ "$ht_mode_from_os" = "" ]; then
+    raise "FAIL: Error while fetching ht_mode from os" -l $tc_name -fc
 else
-    if [ "$channel_from_os" != "$mismatch_channel" ]; then
-        log "$tc_name: get_channel_from_os - Channel $mismatch_channel not applied to system - SUCCESS"
+    if [ "$ht_mode_from_os" != "$mismatch_ht_mode" ]; then
+        log "$tc_name: ht_mode '$mismatch_ht_mode' not applied to system. OS reports current ht_mode '$ht_mode_from_os' - SUCCESS"
     else
-        raise "FAIL: get_channel_from_os - Channel $mismatch_channel applied to system" -l "$tc_name" -tc
+        raise "FAIL: ht_mode '$mismatch_ht_mode' applied to system. OS reports current ht_mode '$ht_mode_from_os'" -l "$tc_name" -tc
     fi
 fi
 
 # Check if manager survived.
 manager_bin_file="${OPENSYNC_ROOTDIR}/bin/wm"
 wait_for_function_response 0 "check_manager_alive $manager_bin_file" &&
-    log "$tc_name: SUCCESS: WIRELESS MANAGER is running" ||
+    log "$tc_name: Success: WIRELESS MANAGER is running" ||
     raise "FAIL: WIRELESS MANAGER not running/crashed" -l "$tc_name" -tc
 
 pass

@@ -156,7 +156,15 @@ is_addr4_assigned()
     ip -4 -o addr show dev "$interface" | grep -q "$1"
 }
 
-setup_interface() 
+log_dhcp_time_event()
+{
+    logger="${INSTALL_PREFIX}"/tools/telog
+    if [ -x "$logger" ]; then
+        $logger -n "telog" -c "DHCP4_CLIENT" -s "$interface" -t "$1" "addr=${ip:-null}, subnet=${subnet:-null}"
+    fi
+}
+
+setup_interface()
 {
     # Calculate the prefix from the subnet, for example 255.255.255.0 -> 24
     prefix=$(subnet2prefix "${subnet:-255.255.255.0}")
@@ -213,9 +221,11 @@ setup_interface()
 }
 
 applied=
+log_dhcp_time_event "$1"
+
 case "$1" in
         deconfig)
-                # Moved add flush to setup_interface
+                # Moved addr flush to setup_interface
                 [ -n "$OPTS_FILE" ] && rm -f "$OPTS_FILE"
         ;;
         renew)

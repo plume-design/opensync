@@ -38,6 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdarg.h>
 
 #include "log.h"
+#include "telog.h"
 #include "util.h"
 #include "ds.h"
 
@@ -1741,6 +1742,8 @@ bool inet_base_scheme_static_commit(inet_base_t *self, bool start)
  */
 bool inet_base_dhcp_client_commit(inet_base_t *self, bool start)
 {
+    TELOG_STEP("DHCP4_CLIENT", self->inet.in_ifname, start ? "start" : "stop", NULL);
+
     /* Start service */
     if (start && !osn_dhcp_client_start(self->in_dhcpc))
     {
@@ -1768,7 +1771,7 @@ void inet_base_dhcp_server_status(osn_dhcp_server_t *ds, struct osn_dhcp_server_
 
     inet_base_t *self = osn_dhcp_server_data_get(ds);
 
-    LOG(INFO, "inet_base: dhcpv4_server: %s: Number of leases %d.",
+    LOG(DEBUG, "inet_base: dhcpv4_server: %s: Number of leases %d.",
             self->inet.in_ifname,
             st->ds_leases_len);
 
@@ -1785,6 +1788,19 @@ void inet_base_dhcp_server_status(osn_dhcp_server_t *ds, struct osn_dhcp_server_
     synclist_end(&self->in_dhcps_lease_list);
 }
 
+enum lease_state { LEASE_NEW, LEASE_MODIFY, LEASE_DEL };
+static void inet_base_dhcp_server_lease_notify(inet_base_t *self, enum lease_state ls,
+                                                struct osn_dhcp_server_lease *lease)
+{
+    static const char *LeaseState[] = { "lease-new", "lease-modify", "lease-delete" };
+    TELOG_STEP("DHCP4_SERVER", self->inet.in_ifname, LeaseState[ls], "addr=%s", FMT_osn_ip_addr(lease->dl_ipaddr));
+
+    if (self->in_dhcps_lease_fn != NULL)
+    {
+        self->in_dhcps_lease_fn(NULL, ls == LEASE_DEL, lease);
+    }
+}
+
 /*
  * Callback for handling a synchronized list of DHCPv4 leases
  */
@@ -1796,12 +1812,12 @@ void *inet_base_dhcp_server_lease_sync(synclist_t *list, void *_old, void *_new)
     struct dhcp_lease_node *dl_new = _new;
 
     /* Insert */
-    if (dl_old == NULL)
+    if (dl_old == NULL && dl_new != NULL)
     {
         /* Allocate a new lease node and return it */
         dl_old = calloc(1, sizeof(struct dhcp_lease_node));
         dl_old->dl_lease = dl_new->dl_lease;
-        super->in_dhcps_lease_fn(NULL, false, &dl_old->dl_lease);
+        inet_base_dhcp_server_lease_notify(super, LEASE_NEW, &dl_old->dl_lease);
     }
     /* Update */
     else if (dl_old != NULL && _new != NULL)
@@ -1817,13 +1833,13 @@ void *inet_base_dhcp_server_lease_sync(synclist_t *list, void *_old, void *_new)
         {
             /* Copy data to old element */
             dl_old->dl_lease = dl_new->dl_lease;
-            super->in_dhcps_lease_fn(NULL, false, &dl_old->dl_lease);
+            inet_base_dhcp_server_lease_notify(super, LEASE_MODIFY, &dl_old->dl_lease);
         }
     }
     /* Remove */
     else if (dl_new == NULL)
     {
-        super->in_dhcps_lease_fn(NULL, true, &dl_old->dl_lease);
+        inet_base_dhcp_server_lease_notify(super, LEASE_DEL, &dl_old->dl_lease);
         free(dl_old);
         return NULL;
     }
@@ -1842,8 +1858,17 @@ bool inet_base_dhcp_server_commit(inet_base_t *self, bool start)
     /*
      * Destroy any currently active objects
      */
-    if (self->in_dhcps != NULL) osn_dhcp_server_del(self->in_dhcps);
-    self->in_dhcps = NULL;
+    if (self->in_dhcps != NULL)
+    {
+        osn_dhcp_server_del(self->in_dhcps);
+        self->in_dhcps = NULL;
+    }
+
+    if (!start)
+    {
+        TELOG_STEP("DHCP4_SERVER", self->inet.in_ifname, "stop", NULL);
+        return true;
+    }
 
     /*
      * Create new DHCPv4 object
@@ -1908,8 +1933,6 @@ bool inet_base_dhcp_server_commit(inet_base_t *self, bool start)
         }
     }
 
-    if (!start) return true;
-
     /* Apply configuration */
     if (!osn_dhcp_server_apply(self->in_dhcps))
     {
@@ -1917,6 +1940,7 @@ bool inet_base_dhcp_server_commit(inet_base_t *self, bool start)
         return false;
     }
 
+    TELOG_STEP("DHCP4_SERVER", self->inet.in_ifname, "start", NULL);
     return true;
 }
 

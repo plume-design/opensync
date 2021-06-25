@@ -37,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "unity.h"
 #include "network_metadata_report.h"
 #include "pcap.c"
+#include "memutil.h"
 
 const char *test_name = "fsm_demo_plugin_tests";
 
@@ -308,6 +309,7 @@ static void test_emit_report(struct fsm_session *session,
 
     /* Free the serialized container */
     free_packed_buffer(pb);
+    FREE(pb);
     net_md_reset_aggregator(aggr);
 #endif
 }

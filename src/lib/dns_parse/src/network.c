@@ -4,7 +4,7 @@
 #include <string.h>
 #include "network.h"
 #include "log.h"
-
+#include "memutil.h"
 /*
  * Convert an ip struct into a str. Like NTOA, this uses a single
  * buffer, so freeing it need not be freed, but it can only be used once
@@ -87,7 +87,7 @@ ipv4_parse(uint32_t pos, struct pcap_pkthdr *header,
 
     if (frag_mf == 1 || frag_offset != 0)
     {
-        frag = malloc(sizeof(ip_fragment));
+        frag = MALLOC(sizeof(ip_fragment));
         if (frag == NULL)
         {
             *p_packet = NULL;
@@ -104,7 +104,7 @@ ipv4_parse(uint32_t pos, struct pcap_pkthdr *header,
         frag->src = ip->src;
         frag->dst = ip->dst;
         frag->end = frag->start + ip->length;
-        frag->data = malloc(sizeof(uint8_t) * ip->length);
+        frag->data = MALLOC(sizeof(uint8_t) * ip->length);
         frag->next = frag->child = NULL;
         memcpy(frag->data, packet + pos + 4*h_len, ip->length);
         /*
@@ -237,7 +237,7 @@ ipv6_parse(uint32_t pos, struct pcap_pkthdr *header,
         case IPPROTO_FRAGMENT:
             /* IP fragment. */
             next_hdr = packet[pos];
-            frag = malloc(sizeof(ip_fragment));
+            frag = MALLOC(sizeof(ip_fragment));
             /* Get the offset of the data for this fragment. */
             frag->start = (packet[pos+2] << 8) + (packet[pos+3] & 0xf4);
             frag->islast = !(packet[pos+3] & 0x01);
@@ -279,7 +279,7 @@ ipv6_parse(uint32_t pos, struct pcap_pkthdr *header,
         frag->dst = ip->dst;
         frag->end = frag->start + ip->length;
         frag->next = frag->child = NULL;
-        frag->data = malloc(sizeof(uint8_t) * ip->length);
+        frag->data = MALLOC(sizeof(uint8_t) * ip->length);
         memcpy(frag->data, packet+pos, ip->length);
         /*
          * Add the fragment to the list.
@@ -387,7 +387,7 @@ ip_frag_add(ip_fragment * this, ip_config * conf)
         {
             uint32_t child_len = child->end - child->start;
             uint32_t fnd_len = (*found)->end - (*found)->start;
-            uint8_t * buff = malloc(sizeof(uint8_t) * (fnd_len + child_len));
+            uint8_t * buff = MALLOC(sizeof(uint8_t) * (fnd_len + child_len));
             memcpy(buff, (*found)->data, fnd_len);
             memcpy(buff + fnd_len, child->data, child_len);
             (*found)->end = (*found)->end + child_len;
@@ -397,9 +397,9 @@ ip_frag_add(ip_fragment * this, ip_config * conf)
              * Free the old data and the child, and make the combined buffer
              * the new data for the merged fragment.
              */
-            free((*found)->data);
-            free(child->data);
-            free(child);
+            FREE((*found)->data);
+            FREE(child->data);
+            FREE(child);
             (*found)->data = buff;
         }
         else
@@ -438,8 +438,8 @@ ip_frag_free(ip_config *conf)
         while (curr != NULL)
         {
             child = curr->child;
-            free(curr->data);
-            free(curr);
+            FREE(curr->data);
+            FREE(curr);
             curr = child;
         }
     }

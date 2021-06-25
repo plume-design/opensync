@@ -78,7 +78,7 @@ bool osp_power_get_power_supply_type(enum osp_power_ps_type *type);
  * @brief Get power consumption
  *
  * This function provides information about power
- * conspution of the unit.
+ * consumption of the unit.
  *
  * @param milliwatts  Power consumption in milliwatts
  *

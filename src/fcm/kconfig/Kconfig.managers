@@ -17,4 +17,12 @@ menuconfig MANAGER_FCM
         default n
         help
             Default FSM to FCM communication through ZMQ, Disabling switches
-            to unix domain socket
+            to Unix domain socket
+
+    config FCM_MEM_MAX
+        depends on MANAGER_FCM
+        int "High memory usage threshold in MB for FCM"
+        default 100
+        help
+            FCM will be restarted once this threshold is reached.
+            This value can be overridden through the ovsdb Node_Config table.

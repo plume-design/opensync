@@ -181,6 +181,19 @@ void nm2_dhcpv6_client_release(struct nm2_dhcpv6_client *dc6)
         }
     }
 
+    struct nm2_iface *piface = nm2_ip_interface_iface_get(&dc6->dc6_ip_interface_uuid);
+    if (piface != NULL)
+    {
+        inet_dhcp6_client(
+                piface->if_inet,
+                false,
+                false,
+                false,
+                false);
+
+        inet_dhcp6_client_notify(piface->if_inet, NULL);
+    }
+
     /* Invalidate this address so it gets removed, notify listeners */
     dc6->dc6_valid = false;
     reflink_signal(&dc6->dc6_reflink);
@@ -335,7 +348,7 @@ void nm2_dhcpv6_client_send_opts_update(uuidset_t *us, enum uuidset_event type, 
         return;
     }
 
-    inet_commit(piface->if_inet);
+    nm2_iface_apply(piface);
 }
 
 /*
@@ -476,7 +489,7 @@ void nm2_dhcpv6_client_set(struct nm2_dhcpv6_client *dc6, bool enable)
     inet_dhcp6_client_notify(piface->if_inet, nm2_dhcpv6_client_notify);
 
     /* Commit configuration */
-    inet_commit(piface->if_inet);
+    nm2_iface_apply(piface);
 }
 
 void nm2_dhcpv6_client_notify(inet_t *inet, struct osn_dhcpv6_client_status *status)

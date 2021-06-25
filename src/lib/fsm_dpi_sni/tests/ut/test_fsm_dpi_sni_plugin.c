@@ -222,8 +222,7 @@ test_redirect_cache(void)
     TEST_ASSERT_TRUE(rc);
     dns_cache_cleanup();
 
-    free(cache_ipv4);
-
+    FREE(cache_ipv4);
 }
 
 void
@@ -269,6 +268,7 @@ test_redirected_flow(void)
     ip_cache_req.action = FSM_REDIRECT;
     ip_cache_req.redirect_flag = true;
     ip_cache_req.cache_ttl = 1000;
+    ip_cache_req.cache_info.gk_info.gk_policy = "test";
     rc = dns_cache_add_entry(&ip_cache_req);
     TEST_ASSERT_EQUAL_INT(1, rc);
     attr = "http.host";

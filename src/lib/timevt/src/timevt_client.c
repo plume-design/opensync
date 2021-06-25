@@ -27,22 +27,22 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <string.h>
 #include <errno.h>
 #include <time.h>
 
 #include <zlib.h> // crc32
 
-// getpid()
-#include <unistd.h>
+#include <unistd.h> // getpid()
 
 #include <sys/socket.h> // AF_UNIX
 
-// open-sync libs
-#define MODULE_NAME "te-client"
-#include <log.h>
-#include <os_uds_link.h>
-#include <os_time.h>
+#define MODULE_NAME "TELOG"
+#define MODULE_ID LOG_MODULE_ID_TELOG
+#include "log.h"
+#include "os_uds_link.h"
+#include "os_time.h"
 
 #include "timevt_client.h"
 
@@ -137,7 +137,7 @@ static void time_event_init(Sts__TimeEvent *pte, const char *cat, const char *so
     pte->msg = (char *)msg;
 }
 
-bool tecli_log_event(te_client_handle h, const char *cat, 
+bool tecli_log_event(te_client_handle h, const char *cat,
         const char *subject, const char *step, const char *fmt, va_list args)
 {
     char msg[TIMEVT_MAX_MSG_LEN] = { 0 };

@@ -239,7 +239,7 @@ void lnx_netif_status_poll(lnx_netif_t *self)
     unsigned int if_idx;
     struct ifreq ifr;
 
-    LOG(INFO, "netif: %s: Interface status update.", self->ni_ifname);
+    LOG(DEBUG, "netif: %s: Interface status update.", self->ni_ifname);
 
     memset(&self->ni_status, 0, sizeof(self->ni_status));
 

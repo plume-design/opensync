@@ -50,6 +50,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define OTHER_CONFIG_NELEMS 3
 #define OTHER_CONFIG_NELEM_SIZE 128
 
+/* external test "suite" */
+void test_fsm_gk_fct(void);
+
 char *g_location_id = "foo";
 char *g_node_id = "bar";
 
@@ -99,7 +102,7 @@ struct fsm_session_conf g_confs[1] =
     }
 };
 
-struct fsm_session g_sessions[1] =
+struct fsm_session g_sessions[] =
 {
     {
         .type = FSM_WEB_CAT,
@@ -135,10 +138,11 @@ struct schema_FSM_Policy spolicies[] =
         .risk_level = 7,
         .ipaddr_op_exists = true,
         .ipaddr_op = "in",
-        .ipaddrs_len = 2,
+        .ipaddrs_len = 3,
         .ipaddrs =
         {
             "1.2.3.5",
+            "192.168.20.1",
             "::1",
         },
         .action_exists = true,
@@ -163,7 +167,15 @@ struct schema_FSM_Policy spolicies[] =
         .fqdn_op_exists = true,
         .fqdn_op = "in",
         .fqdns_len = 6,
-        .fqdns = {"www.cnn.com", "www.google.com", "test_host", "signal", "localhost", "http://whitehouse.info"},
+        .fqdns =
+        {
+            "www.cnn.com",
+            "www.google.com",
+            "test-host.com",
+            "signal",
+            "localhost",
+            "www.whitehouse.info"
+        },
         .fqdncat_op_exists = false,
         .risk_op_exists = false,
         .ipaddr_op_exists = false,
@@ -190,7 +202,8 @@ check_connection(void)
     CURL *curl;
     CURLcode response;
 
-    LOGN("checking server connection..server url %s, certs path %s", g_server_url, g_certs_file);
+    LOGN("checking server connection..server url %s, certs path %s",
+         g_server_url, g_certs_file);
 
     curl_global_init(CURL_GLOBAL_ALL);
     curl = curl_easy_init();
@@ -245,8 +258,28 @@ gk_get_other_config_val(struct fsm_session *session, char *key)
     return pair->value;
 }
 
+/* Provide some configurability in the setUp()/tearDown()
+ * for individual tests.
+ */
+void (*g_setUp)(void)    = NULL;
+void (*g_tearDown)(void) = NULL;
+
 void
 setUp(void)
+{
+    if (g_setUp != NULL)
+        (*g_setUp)();
+}
+
+void
+tearDown(void)
+{
+    if (g_tearDown != NULL)
+        (*g_tearDown)();
+}
+
+void
+main_setUp(void)
 {
     struct fsm_session *session = &g_sessions[0];
     struct fsm_policy_session *mgr;
@@ -272,12 +305,12 @@ setUp(void)
     session->location_id = g_location_id;
     session->node_id = g_node_id;
     session->loop =  loop;
-
+    session->service = session;
     gatekeeper_module_init(session);
     ev_run(loop, 0);
 }
 
-void tearDown(void)
+void main_tearDown(void)
 {
     struct fsm_session *session = &g_sessions[0];
 
@@ -789,8 +822,8 @@ test_curl_host(void)
     req.device_id = &dev_mac;
 
     /* Build the request elements */
-    STRSCPY(req_info.url, "test_host");
-    req.url                   = "test_host";
+    STRSCPY(req_info.url, "test-host.com");
+    req.url                   = "test-host.com";
     fqdn_req.req_info         = &req_info;
     fqdn_req.numq             = 1;
     fqdn_req.policy_table     = table;
@@ -952,6 +985,8 @@ test_curl_ipv4_flow(void)
     free(reply->rule_name);
     free(reply->policy);
     fsm_free_url_reply(fqdn_req.req_info->reply);
+    TEST_ASSERT_NOT_EQUAL(reply->cache_ttl, (60*60*24));
+    TEST_ASSERT_FALSE(fqdn_req.cat_unknown_to_service);
 
     LOGN("Finishing test %s()", __func__);
 }
@@ -1144,6 +1179,7 @@ test_health_stats_report(void)
      * should be incremented.
      */
     ecurl_info->server_url = "1.2.3.4";
+    LOGI("Timing out after 2 seconds");  /* Test is not stalled. */
     test_curl_host();
     gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
     TEST_ASSERT_EQUAL_INT(1, hs.connectivity_failures);
@@ -1151,10 +1187,10 @@ test_health_stats_report(void)
     TEST_ASSERT_EQUAL_INT(1, hs.service_failures);
     /* other counters remain the same */
     TEST_ASSERT_EQUAL_INT(2, hs.cached_entries);
-    TEST_ASSERT_EQUAL_INT(3, stats->cloud_lookups);
+    TEST_ASSERT_EQUAL_INT(4, stats->cloud_lookups);
     TEST_ASSERT_EQUAL_INT(2, stats->cache_hits);
-    TEST_ASSERT_EQUAL_INT(5, hs.total_lookups);
-    TEST_ASSERT_EQUAL_INT(3, hs.remote_lookups);
+    TEST_ASSERT_EQUAL_INT(6, hs.total_lookups);
+    TEST_ASSERT_EQUAL_INT(4, hs.remote_lookups);
 
     LOGN("**** Ending test %s ***** ", __func__);
 }
@@ -1179,6 +1215,7 @@ test_connection_timeout(void)
 
     ecurl_info = &fsm_gk_session->ecurl;
     ecurl_info->server_url = "1.2.3.4";
+    LOGI("Timing out after 2 seconds");  /* Test is not stalled. */
     time_t start = time(NULL);
     test_curl_app();
     time_t end = time(NULL);
@@ -1203,6 +1240,7 @@ test_backoff_on_connection_failure(void)
     struct fsm_session *session;
     struct fsm_url_stats *stats;
     struct wc_health_stats hs;
+    int nap_time;
 
     LOGN("**** starting test %s ***** ", __func__);
     memset(&hs, 0, sizeof(hs));
@@ -1218,25 +1256,31 @@ test_backoff_on_connection_failure(void)
 
     ecurl_info = &fsm_gk_session->ecurl;
     ecurl_info->server_url = "1.2.3.4";
+    LOGI("Timing out after 2 seconds");  /* Test is not stalled. */
     test_curl_app();
     gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
     /* connection fail counter should be set */
     TEST_ASSERT_EQUAL_INT(1, hs.connectivity_failures);
-    TEST_ASSERT_EQUAL_INT(0, stats->cloud_lookups);
+    TEST_ASSERT_EQUAL_INT(1, stats->cloud_lookups);
 
     /* Set the correct server url, it should connect now */
     ecurl_info->server_url = session->ops.get_config(session, "gk_url");
-    sleep(5);
+
+    nap_time = 5;
+    LOGI("Sleeping for %d seconds", nap_time);  /* Inform test is not stalled. */
+    sleep(nap_time);
     test_curl_app();
     gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
     /* cloud lookup should still be 0, as still back-off logic is in place */
-    TEST_ASSERT_EQUAL_INT(0, stats->cloud_lookups);
+    TEST_ASSERT_EQUAL_INT(1, stats->cloud_lookups);
 
-    sleep(30);
     /* backoff time 30 secs is expired now. */
+    nap_time = 30;
+    LOGI("Sleeping for %d seconds", nap_time);  /* Inform test is not stalled. */
+    sleep(nap_time);
     test_curl_app();
     gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
-    TEST_ASSERT_EQUAL_INT(1, stats->cloud_lookups);
+    TEST_ASSERT_EQUAL_INT(2, stats->cloud_lookups);
 
     LOGN("**** Ending test %s ***** ", __func__);
 
@@ -1429,11 +1473,11 @@ test_uncategory_count(void)
     gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
     TEST_ASSERT_EQUAL_INT(0, hs.uncategorized);
 
-    run_fqdn_query("localhost");
+    run_fqdn_query("localhost.lan.foobar");
     gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
     TEST_ASSERT_EQUAL_INT(1, hs.uncategorized);
 
-    run_fqdn_query("http://whitehouse.info");
+    run_fqdn_query("www.whitehouse.info");
     gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
     TEST_ASSERT_EQUAL_INT(2, hs.uncategorized);
 }
@@ -1510,11 +1554,198 @@ test_endpoint_url(void)
 
     for (i = FSM_FQDN_REQ; i <= FSM_IPV6_FLOW_REQ; i++)
     {
-        snprintf(url, sizeof(url), "%s/%s", server_url, gk_request_str(i));
+        snprintf(url, sizeof(url), "%s/%s", server_url, gatekeeper_req_type_to_str(i));
         TEST_ASSERT_EQUAL_STRING(endpoint_urls[i], url);
     }
 
     LOGN("**** Ending test %s ***** ", __func__);
+}
+
+void
+test_private_ip(void)
+{
+    bool ret;
+
+    LOGN("**** starting test %s ***** ", __func__);
+
+    ret = is_private_ip("1.2.3.4");
+    TEST_ASSERT_FALSE(ret);
+
+    ret = is_private_ip("10.2.3.1");
+    TEST_ASSERT_TRUE(ret);
+
+    ret = is_private_ip("192.168.2.1");
+    TEST_ASSERT_TRUE(ret);
+
+    ret = is_private_ip("172.16.20.2");
+    TEST_ASSERT_TRUE(ret);
+
+    ret = is_private_ip("");
+    TEST_ASSERT_FALSE(ret);
+
+    ret = is_private_ip("www.google.com");
+    TEST_ASSERT_FALSE(ret);
+
+    /* Unique local address */
+    ret = is_private_ip("fdf8:f53b:82e4::53");
+    TEST_ASSERT_TRUE(ret);
+
+    /* Unique local address */
+    ret = is_private_ip("fd12:3456:789a:1::1");
+    TEST_ASSERT_TRUE(ret);
+
+    /* link local address */
+    ret = is_private_ip("fe80::200:5aee:feaa:20a2");
+    TEST_ASSERT_TRUE(ret);
+
+    /* link local address */
+    ret = is_private_ip("fe80::200:5aee:feaa:20a2");
+    TEST_ASSERT_TRUE(ret);
+
+    /* Non Private IPV6 address */
+    ret = is_private_ip("2001:db8:3333:4444:5555:6666:7777:8888");
+    TEST_ASSERT_FALSE(ret);
+
+    ret = is_private_ip("::1234:5678");
+    TEST_ASSERT_FALSE(ret);
+
+    LOGN("**** Ending test %s ***** ", __func__);
+}
+
+void
+test_uncategorized_reply(void)
+{
+    struct net_md_stats_accumulator acc;
+    struct fsm_session *session;
+    struct schema_FSM_Policy *spolicy;
+    struct fqdn_pending_req fqdn_req;
+    struct fsm_url_request req_info;
+    struct fsm_policy_session *mgr;
+    struct fsm_policy_reply *reply;
+    struct sockaddr_storage ss_ip;
+    struct net_md_flow_key key;
+    struct policy_table *table;
+    struct fsm_policy *fpolicy;
+    struct fsm_policy_req req;
+    char *ip_str = "192.168.20.1";
+    struct sockaddr_in *in4;
+    os_macaddr_t dev_mac;
+    struct in_addr in_ip;
+    int rc;
+
+    if (g_is_connected == false) return;
+    LOGN("Starting test %s()", __func__);
+    session = &g_sessions[0];
+
+    /* Initialize local structures */
+    memset(&fqdn_req, 0, sizeof(fqdn_req));
+    memset(&req_info, 0, sizeof(req_info));
+    memset(&req, 0, sizeof(req));
+    memset(&dev_mac, 0, sizeof(dev_mac));
+    memset(&ss_ip, 0, sizeof(ss_ip));
+    memset(&acc, 0, sizeof(acc));
+    memset(&key, 0, sizeof(key));
+
+    /* Insert IP policy */
+    spolicy = &spolicies[0];
+    fsm_add_policy(spolicy);
+    fpolicy = fsm_policy_lookup(spolicy);
+
+    mgr   = fsm_policy_get_mgr();
+    table = ds_tree_find(&mgr->policy_tables, spolicy->policy);
+    TEST_ASSERT_NOT_NULL(table);
+
+    /* Validate access to the fsm policy */
+    TEST_ASSERT_NOT_NULL(fpolicy);
+
+    rc = inet_pton(AF_INET, ip_str, &in_ip);
+    TEST_ASSERT_EQUAL_INT(1, rc);
+
+    in4 = (struct sockaddr_in *)&ss_ip;
+
+    memset(in4, 0, sizeof(struct sockaddr_in));
+    in4->sin_family = AF_INET;
+    memcpy(&in4->sin_addr, &in_ip, sizeof(in4->sin_addr));
+
+    fqdn_req.req_info = &req_info;
+    rc = getnameinfo((struct sockaddr *)&ss_ip, sizeof(ss_ip),
+                     fqdn_req.req_info->url, sizeof(fqdn_req.req_info->url),
+                     0, 0, NI_NUMERICHOST);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    rc = strcmp(ip_str, fqdn_req.req_info->url);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    req.device_id = &dev_mac;
+    req.fqdn_req  = &fqdn_req;
+
+    key.src_ip     = (uint8_t *)&in_ip.s_addr;
+    key.dst_ip     = (uint8_t *)&in_ip.s_addr;
+    key.ip_version = 4;
+    acc.key        = &key;
+    acc.direction  = NET_MD_ACC_OUTBOUND_DIR;
+    acc.originator = NET_MD_ACC_ORIGINATOR_SRC;
+    /* Build the request elements */
+    fqdn_req.numq             = 1;
+    fqdn_req.policy_table     = table;
+    fqdn_req.gatekeeper_req   = dummy_gatekeeper_get_verdict;
+
+    fqdn_req.req_type = FSM_IPV4_REQ;
+    req.fqdn_req      = &fqdn_req;
+    req.device_id     = &dev_mac;
+    req.acc           = &acc;
+    req.url           = fqdn_req.req_info->url;
+    fsm_apply_policies(session, &req);
+    reply = &req.reply;
+    /* Since it is Private IP, cache_ttl will be modified,
+     * and cat_unknown_to_service will be set to true
+     */
+    TEST_ASSERT_EQUAL_INT(reply->cache_ttl, (60*60*24));
+    TEST_ASSERT_TRUE(fqdn_req.cat_unknown_to_service);
+    free(reply->rule_name);
+    free(reply->policy);
+    fsm_free_url_reply(fqdn_req.req_info->reply);
+
+    LOGN("Finishing test %s()", __func__);
+}
+
+
+void
+test_validate_fqdn(void)
+{
+    struct fsm_session *session;
+    size_t len;
+    size_t i;
+    bool rc;
+
+    struct test_fqdn
+    {
+        char *fqdn;
+        bool rc;
+    } test_fqdns[] =
+    {
+        {
+            .fqdn = "foo",
+            .rc = false,
+        },
+        {
+            .fqdn = "foo.lan",
+            .rc = false,
+        },
+        {
+            .fqdn = "foo.lan.com",
+            .rc = true,
+        },
+    };
+
+    session = &g_sessions[0];
+    len = sizeof(test_fqdns) / sizeof(test_fqdns[0]);
+    for (i = 0; i < len; i++)
+    {
+        LOGD("%s: validating fqdn %s", __func__, test_fqdns[i].fqdn);
+        rc = gatekeeper_validate_fqdn(session, test_fqdns[i].fqdn);
+        TEST_ASSERT_TRUE(test_fqdns[i].rc == rc);
+    }
 }
 
 int
@@ -1539,6 +1770,13 @@ main(int argc, char *argv[])
     ret = check_connection();
     if (ret == true) g_is_connected = true;
 
+    /* No initial setUp()/tearDown() required for these tests. */
+    test_fsm_gk_fct();
+
+    /* Following tests require the local setUp()/tearDown(). */
+    g_setUp = main_setUp;
+    g_tearDown = main_tearDown;
+
     RUN_TEST(test_curl_multi);
     RUN_TEST(test_curl_fqdn);
     RUN_TEST(test_curl_url);
@@ -1560,6 +1798,9 @@ main(int argc, char *argv[])
     RUN_TEST(test_uncategory_count);
     RUN_TEST(test_categorization_count);
     RUN_TEST(test_endpoint_url);
+    RUN_TEST(test_private_ip);
+    RUN_TEST(test_uncategorized_reply);
+    RUN_TEST(test_validate_fqdn);
 
     return UNITY_END();
 }

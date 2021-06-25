@@ -89,6 +89,7 @@ enum BSEventType {
     CLIENT_SPECULATIVE_KICK                 = 24;
     CLIENT_DIRECTED_KICK                    = 25;
     CLIENT_GHOST_DEVICE_KICK                = 26;
+    CLIENT_BTM_STATUS                       = 27;
 }
 
 enum DisconnectSrc {

@@ -58,6 +58,113 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define UTIL_URI_MAX_LENG           512
 
+static bool
+is_private_10(uint32_t addr)
+{
+    return (addr & htonl(0xff000000)) == htonl(0x0a000000);
+}
+
+static bool
+is_private_172(uint32_t addr)
+{
+    return (addr & htonl(0xfff00000)) == htonl(0xac100000);
+}
+
+static bool
+is_private_192(uint32_t addr)
+{
+    return (addr & htonl(0xffff0000)) == htonl(0xc0a80000);
+}
+
+/**
+ * @brief Check if the given IPv4 address is a local IP
+ *
+ * @param ip_str: IP address to check
+ * @return true if private IP false otherwise
+ */
+static bool
+is_private_ipv4(char *ip_str)
+{
+  struct sockaddr_in sa;
+  uint32_t addr;
+  bool is_local;
+  int rc;
+
+  rc = inet_pton(AF_INET, ip_str, &(sa.sin_addr));
+  /* if inet_pton fails return false, as ip_str
+   * is not a valid IPv4 address
+   */
+  if (rc != 1) return false;
+
+  addr = *(uint32_t *)&sa.sin_addr;
+
+  is_local = is_private_10(addr) || is_private_172(addr) ||
+             is_private_192(addr);
+
+  return is_local;
+}
+
+static bool
+is_ipv6_addr_ULA(uint8_t *ipv6_addr)
+{
+    return ((((uint32_t *) (ipv6_addr))[0] & htonl (0xff000000)) == htonl (0xfd000000));
+}
+
+static bool
+is_ipv6_link_local(uint8_t *ipv6_addr)
+{
+    return ((ipv6_addr[0] == 0xfe) && ((ipv6_addr[1] & 0xc0) == 0x80));
+}
+
+static bool
+is_ipv6_addr_sitelocal(uint8_t *ipv6_addr)
+{
+    return ((ipv6_addr[0] == 0xfe) && ((ipv6_addr[1] & 0xc0) == 0xc0));
+}
+
+static bool
+is_private_ipv6(char *ip_str)
+{
+    struct in6_addr ip_addr;
+    int is_local;
+    int rc;
+
+    rc = inet_pton(AF_INET6, ip_str, &ip_addr);
+    if (rc != 1)
+    {
+        return false;
+    }
+
+    is_local = is_ipv6_addr_sitelocal(ip_addr.s6_addr) || is_ipv6_addr_ULA(ip_addr.s6_addr) ||
+               is_ipv6_link_local(ip_addr.s6_addr);
+
+    return is_local;
+}
+
+/**
+ * @brief Check if the given IP address is a local IP
+ *
+ * @param ip_str: IP address to check
+ * @return true if private IP false otherwise
+ */
+bool
+is_private_ip(char *ip_str)
+{
+    struct sockaddr_in sa;
+    struct in6_addr addr;
+    int rc;
+
+    if (ip_str == NULL) return false;
+
+    rc = inet_pton(AF_INET, ip_str, &(sa.sin_addr));
+    if (rc == 1) return is_private_ipv4(ip_str);
+
+    rc = inet_pton(AF_INET6, ip_str, &addr);
+    if (rc == 1) return is_private_ipv6(ip_str);
+
+    return false;
+}
+
 /**
  * Similar to snprintf(), except it appends (concatenates) the resulting string to str.
  * @p str is updated to point to the end of the string while @p size is decreased to

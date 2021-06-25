@@ -486,8 +486,11 @@ create_radio_vif_interface()
         option=$1
         shift
         case "$option" in
+            -ht_mode)
+                radio_ht_mode="$replace ${option#?} ${1}"
+                shift
+                ;;
             -channel_mode | \
-            -ht_mode | \
             -hw_mode | \
             -fallback_parents | \
             -tx_power | \
@@ -591,7 +594,7 @@ create_radio_vif_interface()
 
     log -deb "$fn_name - Bringing up radio/vif interface"
 
-    func_params=${radio_args//$replace/-u}
+    func_params="${radio_args//$replace/-u} ${radio_ht_mode//$replace/-u}"
     # shellcheck disable=SC2086
     update_ovsdb_entry Wifi_Radio_Config -w if_name "$wm2_if_name" $func_params &&
         log -deb "$fn_name - Table Wifi_Radio_Config updated" ||
@@ -644,7 +647,13 @@ create_radio_vif_interface()
 
     # Even if the channel is set in Wifi_Radio_State, it is not
     # necessarily available for immediate use if CAC is in progress.
-    func_params=${radio_args//$replace/-is}
+
+    func_params="${radio_args//$replace/-is} ${radio_ht_mode//$replace/-is}"
+
+    if [ "$wm2_mode" = "sta" ]; then
+        func_params="${radio_args//$replace/-is}"
+    fi
+
     # shellcheck disable=SC2086
     wait_ovsdb_entry Wifi_Radio_State -w if_name "$wm2_if_name" $func_params ${channel_change_timeout} &&
         log -deb "$fn_name - Wifi_Radio_Config reflected to Wifi_Radio_State" ||
@@ -771,7 +780,7 @@ check_radio_vif_state()
 #   0   Channel is as expected.
 #   See DESCRIPTION.
 # USAGE EXAMPLE(S):
-#   check_channel_at_os_level ...
+#   check_channel_at_os_level 1 home-ap-24
 ###############################################################################
 check_channel_at_os_level()
 {
@@ -784,12 +793,35 @@ check_channel_at_os_level()
 
     log -deb "$fn_name - Checking channel at OS - LEVEL2"
     wait_for_function_response 0 "iwlist $wm2_vif_if_name channel | grep -F \"Current\" | grep -qF \"(Channel $wm2_channel)\""
-    if [ $? = 0 ]; then
+    ret_val=$?
+    if [ $ret_val -eq 0 ]; then
         log -deb "$fn_name - Channel is set to $wm2_channel at OS - LEVEL2"
-        return 0
+    else
+        log -err "$fn_name - Channel is not set to $wm2_channel at OS - LEVEL2"
     fi
+    return $ret_val
+}
 
-    raise "FAIL: Could not set channel to $wm2_channel at OS - LEVEL2" -l "$fn_name" -tc
+###############################################################################
+# DESCRIPTION:
+#   Function returns channel set at OS level - LEVEL2.
+# INPUT PARAMETER(S):
+#   $1  vif interface name (required)
+# RETURNS:
+#   0   on successful channel retrieval, fails otherwise
+# ECHOES:
+#   Channel from OS
+# USAGE EXAMPLE(S):
+#   get_channel_from_os home-ap-24
+###############################################################################
+get_channel_from_os()
+{
+    fn_name="wm2_lib:get_channel_from_os"
+    local NARGS=1
+    [ $# -ne ${NARGS} ] &&
+        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+    wm2_vif_if_name=$1
+    iwlist $wm2_vif_if_name channel | grep -F "Current" | grep -F "Channel" | sed 's/)//g' | awk '{ print $5 }'
 }
 
 ###############################################################################
@@ -1008,25 +1040,26 @@ check_country_at_os_level()
 
 ###############################################################################
 # DESCRIPTION:
-#   Function returns channel applied at OS level for vif interface provided
-#   If no interface is provided, function exits 1
-#   Uses iwlist to get channel info
+#   Function returns HT mode set at OS level - LEVEL2.
 # INPUT PARAMETER(S):
-#   $1  vif interface name (required)
+#   $1  vif_if_name (required)
+#   $2  channel (not used, but still required, do not optimize)
 # RETURNS:
-#   1   if number of arguments doesn't match, otherwise 0
-# NOTE:
-#   Provide library override function for each model.
+#   0   on successful channel retrieval, fails otherwise
+# ECHOES:
+#   HT mode from OS in format: HT20, HT40 (examples)
 # USAGE EXAMPLE(S):
-#   get_channel_from_os home-ap-24
+#   get_ht_mode_from_os home-ap-24 1
 ###############################################################################
-get_channel_from_os()
+get_ht_mode_from_os()
 {
-    local NARGS=1
-    [ $# -ne ${NARGS} ] && exit 1
+    fn_name="wm2_lib:get_ht_mode_from_os"
+    local NARGS=2
+    [ $# -ne ${NARGS} ] &&
+        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
     wm2_vif_if_name=$1
-    iwlist $wm2_vif_if_name channel | grep -F "Current" | cut -d ' ' -f15 | cut -d ')' -f1
-    return 0
+    wm2_channel=$2
+    iwpriv $wm2_vif_if_name get_mode | sed 's/HT/ HT/g' | sed 's/PLUS$//' | awk '{ print $3 }'
 }
 
 ###############################################################################

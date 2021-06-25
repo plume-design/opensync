@@ -1321,6 +1321,20 @@ void test_dns_cache_hit_count(void)
     mac.addr[5] = 0x08;
     key.device_mac = &mac;
 
+    rc_lookup = dns_cache_get_policy_action(&key);
+    /* Validate action & policy idx of dns_cache entry */
+    TEST_ASSERT_TRUE(rc_lookup);
+    TEST_ASSERT_EQUAL_INT(FSM_ALLOW, key.action);
+    TEST_ASSERT_EQUAL_INT(entry->policy_idx, key.policy_idx);
+
+    /* Check lookup is incremented for policy action */
+    cache_count = dns_cache_get_hit_count(IP2ACTION_BC_SVC);
+    TEST_ASSERT_EQUAL_INT(cache_count, 0);
+    cache_count = dns_cache_get_hit_count(IP2ACTION_WP_SVC);
+    TEST_ASSERT_EQUAL_INT(cache_count, 0);
+    cache_count = dns_cache_get_hit_count(IP2ACTION_GK_SVC);
+    TEST_ASSERT_EQUAL_INT(cache_count, 0);
+
     rc_lookup = dns_cache_ip2action_lookup(&key);
     /* Validate lookup to the dns_cache entry */
     TEST_ASSERT_TRUE(rc_lookup);
@@ -1357,6 +1371,20 @@ void test_dns_cache_hit_count(void)
     mac.addr[4] = 0xaa;
     mac.addr[5] = 0x06;
     key.device_mac = &mac;
+
+    rc_lookup = dns_cache_get_policy_action(&key);
+    /* Validate action & policy idx of dns_cache entry */
+    TEST_ASSERT_TRUE(rc_lookup);
+    TEST_ASSERT_EQUAL_INT(FSM_BLOCK, key.action);
+    TEST_ASSERT_EQUAL_INT(entry6->policy_idx, key.policy_idx);
+
+    /* Validate lookup to the dns_cache entry */
+    cache_count = dns_cache_get_hit_count(IP2ACTION_BC_SVC);
+    TEST_ASSERT_EQUAL_INT(cache_count, 0);
+    cache_count = dns_cache_get_hit_count(IP2ACTION_WP_SVC);
+    TEST_ASSERT_EQUAL_INT(cache_count, 0);
+    cache_count = dns_cache_get_hit_count(IP2ACTION_GK_SVC);
+    TEST_ASSERT_EQUAL_INT(cache_count, 1);
 
     rc_lookup = dns_cache_ip2action_lookup(&key);
     /* Validate lookup to the dns_cache entry */

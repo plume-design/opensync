@@ -34,6 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 
 #include "log.h"
+#include "telog.h"
 #include "util.h"
 #include "execsh.h"
 
@@ -549,6 +550,12 @@ void inet_eth_ip4_status_fn(osn_ip_t *ip, struct osn_ip_status *status)
         self->base.in_state.in_ipaddr = OSN_IP_ADDR_INIT;
         self->base.in_state.in_netmask = OSN_IP_ADDR_INIT;
         self->base.in_state.in_bcaddr = OSN_IP_ADDR_INIT;
+    }
+
+    if (0 != memcmp(&self->base.in_state_prev.in_ipaddr, &self->base.in_state.in_ipaddr, sizeof(self->base.in_state.in_ipaddr)))
+    {
+        TELOG_ONE("ADDR_IPV4", self->inet.in_ifname, "change %s -> %s",
+            FMT_osn_ip_addr(self->base.in_state_prev.in_ipaddr), FMT_osn_ip_addr(self->base.in_state.in_ipaddr));
     }
 
     inet_base_state_update(&self->base);

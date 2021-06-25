@@ -58,6 +58,7 @@ UNIT_DEPS += src/lib/osn
 UNIT_DEPS += src/lib/osp
 UNIT_DEPS += src/lib/synclist
 UNIT_DEPS += src/lib/log
+UNIT_DEPS += src/lib/timevt
 UNIT_DEPS_CFLAGS += src/lib/version
 
 #

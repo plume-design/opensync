@@ -221,7 +221,7 @@ fsm_dpi_register_clients(struct fsm_session *dpi_plugin_session);
 /**
  * @brief call back registered client to process a flow attribute and its value
  *
- * @param dpi_plugin_session the dpi plgin session
+ * @param dpi_plugin_session the dpi plugin session
  * @param attr the attribute to trigger the report
  * @param value the value of the attribute
  * @return the action to take
@@ -234,7 +234,7 @@ int
 fsm_nfq_set_verdict(struct fsm_session *session, int action);
 
 /**
- * @brief build vedict for nfqueue recieved packets
+ * @brief build verdict for nfqueue received packets
  *
  * @param buf netlink header buffer
  * @param id nfqueue packet id

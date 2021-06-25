@@ -51,8 +51,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fsm_dpi_utils.h"
 #include "nf_utils.h"
 #include "kconfig.h"
+#include "memutil.h"
 
 #include <netdb.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <libmnl/libmnl.h>
@@ -285,27 +287,50 @@ ct_stats_init_server(struct imc_context *server, struct ev_loop *loop,
 
 
 /**
- * @brief stops the fsm -> fcm IMC server
+ * @brief starts the fsm -> fcm Unix socket IMC server
+ *
+ * @param server the imc context of the server
+ * @param loop the FCM manager's ev loop
+ * @param recv_cb the ct_stats handler for the data received from fsm
+ */
+static int
+ct_stats_unix_server(struct unix_context *server, struct ev_loop *loop,
+                     imc_recv recv_cb)
+{
+    int ret;
+
+    if (g_imc_context.init_unix_server == NULL) return 0;
+
+    ret = g_imc_context.init_unix_server(server, loop, recv_cb);
+
+    return ret;
+}
+
+/**
+ * @brief stops imc_server
  *
  * @param server the imc context of the server
  */
 void
 ct_stats_terminate_server(struct imc_context *server)
 {
-    if (kconfig_enabled(CONFIG_FCM_ZMQ_IMC))
-    {
-        if (g_imc_context.terminate_server == NULL) return;
+    if (g_imc_context.terminate_server == NULL) return;
 
-        g_imc_context.terminate_server(server);
-    }
-    else
-    {
-        if (g_imc_context.terminate_unix_server == NULL) return;
-
-        g_imc_context.terminate_unix_server(&g_unix_server);
-    }
+    g_imc_context.terminate_server(server);
 }
 
+/**
+ * @brief stops the fsm -> fcm Unix socket IMC server
+ *
+ * @param server the imc context of the server
+ */
+void
+ct_stats_terminate_unix_server(struct unix_context *server)
+{
+    if (g_imc_context.terminate_unix_server == NULL) return;
+
+    g_imc_context.terminate_unix_server(server);
+}
 
 /**
  * Singleton tracking the plugin state
@@ -414,7 +439,7 @@ ct_stats_get_active_instance(void)
 }
 
 /**
- * @brief popludates a sockaddr_storage structure from ip parameters
+ * @brief populates a sockaddr_storage structure from ip parameters
  *
  * @param af the the inet family
  * @param ip a pointer to the ip address buffer
@@ -443,16 +468,16 @@ ct_stats_populate_sockaddr(int af, void *ip, struct sockaddr_storage *dst)
     return;
 }
 
+
 /**
  * @brief checks if an ipv4 or ipv6 address represents
- *        a brodacast or multicast ip.
+ *        a broadcast or multicast ip.
  *        ipv4 multicast starts 0xE.
  *        ipv4 broadcast starts 0xF.
  *        ipv6 multicast starts 0XFF.
  * @param af the the inet family
  * @param ip a pointer to the ip address buffer
  * @return true if broadcast/multicast false otherwise.
-
  */
 static bool
 ct_stats_filter_ip(int af, void *ip)
@@ -493,6 +518,7 @@ ct_stats_filter_ip(int af, void *ip)
     }
     return false;
 }
+
 
 /**
  * @brief validates and stores conntrack counters
@@ -908,7 +934,7 @@ get_protoinfo(const struct nlattr *nest, ct_flow_t *flow)
 
 
 /**
- * @brief validates conntrack atttributes
+ * @brief validates conntrack attributes
  *
  * @param attr the netlink attribute
  * @param data the table of <attribute, value>
@@ -1505,31 +1531,43 @@ ct_stats_process_acc(struct net_md_stats_accumulator *acc)
 /**
  * @brief collector filter callback processing flows pushed from fsm
  *
+ * This routine applies the collector filter on flows provided by FSM.
+ *
  * @param aggr the aggregator processed in the network_metadata library
  * @key the flow key pushed by fsm
- * This routine applies the collector filter on flows provided by FSM.
  */
-static bool
+bool
 ct_stats_collect_filter_cb(struct net_md_aggregator *aggr,
-                           struct net_md_flow_key *key)
+                           struct net_md_flow_key *key, char *app_name)
 {
     fcm_collect_plugin_t *collector;
+    struct sockaddr_storage dst_ip;
     flow_stats_t *ct_stats;
     bool rc;
+    int af;
+
+    if (app_name != NULL)
+    {
+        LOGD("%s: processing fsm tag %s", __func__, app_name);
+    }
+
+    net_md_log_key(key, __func__);
 
     ct_stats = ct_stats_get_active_instance();
     if (ct_stats == NULL)
     {
-        LOGD("%s: noactive instance", __func__);
+        LOGD("%s: no active instance", __func__);
         return false;
     }
 
     collector = ct_stats->collector;
     fcm_filter_context_init(collector);
-    if (key->ip_version == 4 ||
-        key->ip_version == 6)
+    if (key->ip_version == 4 || key->ip_version == 6)
     {
-        if (ct_stats_filter_ip((key->ip_version == 4 ? AF_INET : AF_INET6), key->dst_ip))
+        af = (key->ip_version == 4 ? AF_INET : AF_INET6);
+        ct_stats_populate_sockaddr(af, key->dst_ip, &dst_ip);
+        rc = ct_stats_filter_ip(af, &dst_ip);
+        if (rc)
         {
             LOGD("%s: Dropping  v4/v6 broadcast/multicast flows.", __func__);
             return false;
@@ -1537,6 +1575,7 @@ ct_stats_collect_filter_cb(struct net_md_aggregator *aggr,
     }
 
     rc = fcm_collect_filter_nmd_callback(key);
+    LOGD("%s: flow %s", __func__, rc ? "included" : "filtered out");
 
     return rc;
 }
@@ -1902,7 +1941,7 @@ app_recv_cb(void *data, size_t len)
 
 
 /**
- * @brief starts the imc server receivng flow info from fsm
+ * @brief starts the imc server receiving flow info from fsm
  */
 int
 ct_stats_imc_init(void)
@@ -1932,12 +1971,13 @@ ct_stats_imc_init(void)
     {
         unix_server = &g_unix_server;
         loop = g_ct_stats.loop;
-        rc = g_imc_context.init_unix_server(unix_server, loop, proto_recv_cb);
+        rc = ct_stats_unix_server(unix_server, loop, proto_recv_cb);
         if (rc != 0)
         {
             LOGE("%s : failed to init unix server", __func__);
             goto err_init_imc;
         }
+        unix_server->initialized = true;
     }
 
     server = &g_imc_app_server;
@@ -1956,6 +1996,35 @@ err_init_imc:
     return -1;
 }
 
+
+/**
+ * @brief stops the imc server receiving flow info from fsm and app time
+ */
+void
+ct_stats_imc_exit(void)
+{
+    struct unix_context *unix_server;
+    struct imc_context *server;
+
+    /* stop fsm -> fcm IMC server */
+    if (kconfig_enabled(CONFIG_FCM_ZMQ_IMC))
+    {
+        server = &g_imc_server;
+        ct_stats_terminate_server(server);
+        server->initialized = false;
+    }
+    else
+    {
+        unix_server = &g_unix_server;
+        ct_stats_terminate_unix_server(unix_server);
+        unix_server->initialized = false;
+    }
+
+    /* stop app server */
+    server = &g_imc_app_server;
+    ct_stats_terminate_server(server);
+    server->initialized = false;
+}
 
 /**
  * @brief initializes a ct_stats collector session
@@ -2065,6 +2134,7 @@ ct_stats_plugin_init(fcm_collect_plugin_t *collector)
 
 err:
     net_md_free_aggregator(ct_stats->aggr);
+    FREE(ct_stats->aggr);
     collector->plugin_ctx = NULL;
     ct_stats->aggr = NULL;
 
@@ -2101,6 +2171,7 @@ ct_stats_plugin_exit(fcm_collect_plugin_t *collector)
     aggr = ct_stats->aggr;
     net_md_close_active_window(aggr);
     net_md_free_aggregator(aggr);
+    FREE(aggr);
 
     /* delete the session */
     ds_tree_remove(&mgr->ct_stats_sessions, ct_stats);
@@ -2109,6 +2180,8 @@ ct_stats_plugin_exit(fcm_collect_plugin_t *collector)
     /* mark the remaining session as active if any */
     ct_stats = ds_tree_head(&mgr->ct_stats_sessions);
     if (ct_stats != NULL) mgr->active = ct_stats;
+
+    if (mgr->num_sessions == 0) ct_stats_exit_mgr();
 
     return;
 }
@@ -2127,7 +2200,7 @@ ct_stats_init_mgr(struct ev_loop *loop)
                  flow_stats_t, ct_stats_node);
 
     rc = ct_stats_imc_init();
-    if (rc != 0) goto err;
+    if (rc != 0) return;
 
     rc = nf_ct_init(loop);
     if (rc != 0) goto err;
@@ -2136,8 +2209,8 @@ ct_stats_init_mgr(struct ev_loop *loop)
     mgr->initialized = true;
 
     return;
-
 err:
+    ct_stats_imc_exit();
     mgr->initialized = false;
 }
 
@@ -2146,6 +2219,7 @@ ct_stats_exit_mgr(void)
 {
     flow_stats_mgr_t *mgr;
 
+    ct_stats_imc_exit();
     nf_ct_exit();
 
     mgr = ct_stats_get_mgr();

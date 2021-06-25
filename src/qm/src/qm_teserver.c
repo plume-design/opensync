@@ -27,11 +27,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdlib.h>
 #include <string.h>
 
-#include <ovsdb_table.h>
-#include <schema.h>
-#include <log.h>
-#include <osp_unit.h>
-#include <timevt_server.h>
+#include "ovsdb_table.h"
+#include "schema.h"
+#include "log.h"
+#include "osp_unit.h"
+
+#include "timevt_server.h"
 
 #include "qm.h"
 
@@ -100,8 +101,11 @@ static void callback_AWLAN_Node(
     }
 }
 
-static bool eh_on_new_report_prepared(void *subscriber, te_server_handle srv, 
-                                        const uint8_t *report, size_t length)
+static bool eh_on_new_report_prepared(
+        void *subscriber,
+        te_server_handle srv,
+        const uint8_t *report,
+        size_t length)
 {
     struct s_mqtt_telogger *obj = (struct s_mqtt_telogger *)subscriber;
     // no remote config received? drop report
@@ -227,9 +231,11 @@ void mqtt_telog_init(struct ev_loop *ev)
     (void)osp_unit_sw_version_get(g_tesrv.swver, sizeof(g_tesrv));
     g_tesrv.loop = ev ? ev : EV_DEFAULT;
 
-    /* At the beginning allow collecting events for 10 minutes, which is assumed the longest
-     * startup time before TELOG config will arrive from the cloud. After this time just try
-     * to send the report via mqtt and forget it */
+    /*
+     * At the beginning allow collecting events for 10 minutes, which is assumed
+     * the longest startup time before TELOG config will arrive from the cloud.
+     * After this time just try to send the report via mqtt and forget it
+     */
     if (!open_server(10*60 /*=10 minutes*/)) return;
 
     static char *filter[] =

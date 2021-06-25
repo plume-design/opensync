@@ -31,6 +31,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdlib.h>
 #include <string.h>
 #include <libmnl/libmnl.h>
+#include <arpa/inet.h>
 
 #include "ct_stats.h"
 #include "os_types.h"
@@ -40,6 +41,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fcm_filter.h"
 #include "fcm.h"
 #include "neigh_table.h"
+#include "memutil.h"
+#include "network_metadata_report.h"
 
 struct mnl_buf
 {
@@ -76,7 +79,6 @@ test_get_other_config_0(fcm_collect_plugin_t *plugin, char *key)
 
     return NULL;
 }
-
 
 char *
 test_get_other_config_1(fcm_collect_plugin_t *plugin, char *key)
@@ -123,6 +125,7 @@ test_send_report(struct net_md_aggregator *aggr, char *mqtt_topic)
 
     /* Free the serialized container */
     free_packed_buffer(pb);
+    FREE(pb);
     net_md_reset_aggregator(aggr);
 
     return true;
@@ -490,6 +493,107 @@ test_ct_stat_v6(void)
     collector->send_report(collector);
 }
 
+void
+test_ct_stats_collect_filter_cb(void)
+{
+    uint8_t src_buf[sizeof(struct in6_addr)];
+    uint8_t dst_buf[sizeof(struct in6_addr)];
+    fcm_collect_plugin_t *collector;
+    struct net_md_flow_key key;
+    flow_stats_t *ct_stats;
+    flow_stats_mgr_t *mgr;
+    size_t len;
+    size_t i;
+    bool rc;
+    int s;
+
+    struct test_ip
+    {
+        char *src_ip;
+        char *dst_ip;
+        int ip_version;
+        int af;
+        bool expect;
+    } test_ips[] =
+    {
+        {
+            .src_ip = "192.168.40.2",
+            .dst_ip = "1.2.3.4",
+            .ip_version = 4,
+            .af = AF_INET,
+            .expect = true,
+        },
+        {
+            .src_ip = "192.168.40.2",
+            .dst_ip = "224.0.0.1",
+            .ip_version = 4,
+            .af = AF_INET,
+            .expect = false,
+        },
+        {
+            .src_ip = "192.168.40.2",
+            .dst_ip = "255.255.1.1",
+            .ip_version = 4,
+            .af = AF_INET,
+            .expect = false,
+        },
+        {
+            .src_ip = "2601:646:8a00:9c4::6746:8e26",
+            .dst_ip = "2a03:2880:f031:13:face:b00c:0:1823",
+            .ip_version = 6,
+            .af = AF_INET6,
+            .expect = true,
+        },
+        {
+            .src_ip = "2601:646:8a00:9c4::6746:8e26",
+            .dst_ip = "fe80::225:90ff:fe87:175d",
+            .ip_version = 6,
+            .af = AF_INET6,
+            .expect = false,
+        },
+        {
+            .src_ip = "2601:646:8a00:9c4::6746:8e26",
+            .dst_ip = "ff02::1",
+            .ip_version = 6,
+            .af = AF_INET6,
+            .expect = false,
+        }
+    };
+
+    mgr = ct_stats_get_mgr();
+    TEST_ASSERT_NOT_NULL(mgr);
+
+    ct_stats = ct_stats_get_active_instance();
+    TEST_ASSERT_NOT_NULL(ct_stats);
+
+    collector = ct_stats->collector;
+    TEST_ASSERT_NOT_NULL(collector);
+
+    memset(&key, 0, sizeof(key));
+    len = sizeof(test_ips) / sizeof(test_ips[0]);
+    for (i = 0; i < len; i++)
+    {
+        struct test_ip *t_ip;
+
+        t_ip = &test_ips[i];
+
+        /* Set key */
+        key.ip_version = t_ip->ip_version;
+
+        s = inet_pton(t_ip->af, t_ip->src_ip, src_buf);
+        TEST_ASSERT_GREATER_OR_EQUAL(1, s);
+        key.src_ip = src_buf;
+
+        s = inet_pton(t_ip->af, t_ip->dst_ip, dst_buf);
+        TEST_ASSERT_GREATER_OR_EQUAL(1, s);
+        key.dst_ip = dst_buf;
+
+        rc = ct_stats_collect_filter_cb(NULL, &key, "foo");
+        TEST_ASSERT_EQUAL(t_ip->expect, rc);
+    }
+}
+
+
 int
 main(int argc, char *argv[])
 {
@@ -497,10 +601,9 @@ main(int argc, char *argv[])
     (void)argv;
 
     target_log_open("TEST", LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_INFO);
+    log_severity_set(LOG_SEVERITY_DEBUG);
 
     UnityBegin(test_name);
-
     RUN_TEST(test_process_v4);
     RUN_TEST(test_process_v6);
     RUN_TEST(test_process_v4_zones);
@@ -509,6 +612,7 @@ main(int argc, char *argv[])
     RUN_TEST(test_ct_stat_v4);
     RUN_TEST(test_ct_stat_v6);
 #endif
+    RUN_TEST(test_ct_stats_collect_filter_cb);
 
     ct_stats_exit_mgr();
 

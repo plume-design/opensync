@@ -43,3 +43,4 @@ UNIT_FILE += fut_configure_mqtt.sh
 UNIT_FILE += check_kconfig_option.sh
 UNIT_FILE += check_wan_connectivity.sh
 UNIT_FILE += create_vif_interface.sh
+UNIT_FILE += check_channel_is_ready.sh

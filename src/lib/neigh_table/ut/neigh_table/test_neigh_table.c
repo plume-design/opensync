@@ -43,6 +43,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ds_tree.h"
 
 #include "nf_utils.h"
+#include "memutil.h"
 
 const char *test_name = "neigh_table_tests";
 
@@ -252,6 +253,7 @@ void setUp(void)
     entry1 = calloc(sizeof(struct neighbour_entry ), 1);
     entry1->ipaddr = calloc(sizeof(struct sockaddr_storage), 1);
     entry1->mac = calloc(sizeof(os_macaddr_t), 1);
+    entry1->ifname = STRDUP("intf1");
     util_populate_sockaddr(AF_INET, &v4dstip1, entry1->ipaddr);
     entry1->mac->addr[0] = 0xaa;
     entry1->mac->addr[1] = 0xaa;
@@ -482,9 +484,10 @@ void test_upd_neigh_entry(void)
     rc_add = neigh_table_add(entry);
     TEST_ASSERT_TRUE(rc_add);
 
-    /* Upd the neighbour entry */
     entry = entry1;
-    entry->mac->addr[3] = 0x33;
+    FREE(entry->ifname);
+    entry->ifname = NULL;
+
     rc_cache = neigh_table_cache_update(entry);
     TEST_ASSERT_TRUE(rc_cache);
 

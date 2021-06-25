@@ -28,18 +28,39 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
+#include <libgen.h>
 
 #include "network_metadata.h"
 #include "network_metadata.pb-c.h"
 #include "unity.h"
+#include "memutil.h"
 #include "log.h"
 #include "target.h"
 #include "qm_conn.h"
 
 #include "test_network_metadata.h"
 
+/*
+ * Allow for different kinds of setups from one RUN_TEST() to another.
+ * This avoids creating things that may not be used all the time.
+ */
+void (*g_setUp)(void)    = NULL;
+void (*g_tearDown)(void) = NULL;
+
+void setUp(void)
+{
+    if (g_setUp != NULL)
+        (*g_setUp)();
+}
+
+void tearDown()
+{
+    if (g_tearDown != NULL)
+        (*g_tearDown)();
+}
+
 /**
- * brief global variable initialized in @see setUp()
+ * brief global variable initialized in @see main_setUp()
  */
 struct test_network_data g_test;
 
@@ -96,7 +117,7 @@ static struct node_info *set_node_info(void)
 {
     struct node_info *node;
 
-    node = calloc(1, sizeof(*node));
+    node = CALLOC(1, sizeof(*node));
     if (node == NULL) return NULL;
 
     node->node_id = strdup("4C71000027");
@@ -108,10 +129,10 @@ static struct node_info *set_node_info(void)
     return node;
 
 err_free_node_id:
-    free(node->node_id);
+    FREE(node->node_id);
 
 err_free_node:
-    free(node);
+    FREE(node);
 
     return NULL;
 }
@@ -135,7 +156,7 @@ static struct flow_key * set_flow_key(int id)
     struct flow_key *key;
     struct flow_tags *tag;
 
-    key = calloc(1, sizeof(*key));
+    key = CALLOC(1, sizeof(*key));
     if (key == NULL) return NULL;
 
     snprintf(smac, sizeof(smac), "aa:bb:cc:dd:e%d", id);
@@ -167,10 +188,10 @@ static struct flow_key * set_flow_key(int id)
     key->dport = (id == 1 ? 0 : (2000 + id));
 
     key->num_tags = 1;
-    key->tags = calloc(key->num_tags, sizeof(*key->tags));
+    key->tags = CALLOC(key->num_tags, sizeof(*key->tags));
     if (key->tags == NULL) goto err_free_dst_ip;
 
-    tag = calloc(1, sizeof(*tag));
+    tag = CALLOC(1, sizeof(*tag));
     if (tag == NULL) goto err_free_key_tags;
 
     tag->vendor = strdup("Plume");
@@ -180,7 +201,7 @@ static struct flow_key * set_flow_key(int id)
     if (tag->vendor == NULL) goto err_free_vendor;
 
     tag->nelems = 2;
-    tag->tags = calloc(tag->nelems, sizeof(tag->tags));
+    tag->tags = CALLOC(tag->nelems, sizeof(tag->tags));
     if (tag->tags == NULL) goto err_free_app_name;
     tag->tags[0] = strdup("Plume Tag0");
     if (tag->tags[0] == NULL) goto err_free_tag_tags;
@@ -193,37 +214,37 @@ static struct flow_key * set_flow_key(int id)
     return key;
 
 err_free_tag_tags_0:
-    free(tag->tags[0]);
+    FREE(tag->tags[0]);
 
 err_free_tag_tags:
-    free(tag->tags);
+    FREE(tag->tags);
 
 err_free_app_name:
-    free(tag->app_name);
+    FREE(tag->app_name);
 
 err_free_vendor:
-    free(tag->vendor);
+    FREE(tag->vendor);
 
 err_free_tag:
-    free(tag);
+    FREE(tag);
 
 err_free_key_tags:
-    free(key->tags);
+    FREE(key->tags);
 
 err_free_dst_ip:
-    free(key->src_ip);
+    FREE(key->src_ip);
 
 err_free_src_ip:
-    free(key->src_ip);
+    FREE(key->src_ip);
 
 err_free_dmac:
-    free(key->smac);
+    FREE(key->smac);
 
 err_free_smac:
-    free(key->smac);
+    FREE(key->smac);
 
 err_free_key:
-    free(key);
+    FREE(key);
 
     return NULL;
 }
@@ -240,7 +261,7 @@ static struct flow_counters* set_flow_counters(int id)
 {
     struct flow_counters *counters;
 
-    counters = calloc(1, sizeof(*counters));
+    counters = CALLOC(1, sizeof(*counters));
     if (counters== NULL) return NULL;
 
     counters->packets_count = (id == 1 ? 0: (500 + id));
@@ -259,10 +280,10 @@ static struct flow_stats * set_flow_stats(int id)
     key = set_flow_key(id);
     if (key == NULL) return NULL;
 
-    counters =  set_flow_counters(1);
+    counters =  set_flow_counters(id);
     if (counters == NULL) goto err_free_key;
 
-    stats = calloc(1, sizeof(struct flow_stats));
+    stats = CALLOC(1, sizeof(*stats));
     if (stats == NULL) goto err_free_counters;
 
     stats->owns_key = true;
@@ -273,9 +294,11 @@ static struct flow_stats * set_flow_stats(int id)
 
 err_free_counters:
     free_flow_counters(counters);
+    FREE(counters);
 
 err_free_key:
     free_flow_key(key);
+    FREE(key);
 
     return NULL;
 }
@@ -286,10 +309,10 @@ static struct flow_window * set_flow_window(uint64_t start, uint64_t end,
 {
     struct flow_window *window;
 
-    window = calloc(1, sizeof(*window));
+    window = CALLOC(1, sizeof(*window));
     if (window == NULL) return NULL;
 
-    window->flow_stats = calloc(num_stats, sizeof(struct flow_stats *));
+    window->flow_stats = CALLOC(num_stats, sizeof(*window->flow_stats));
     if(window->flow_stats == NULL) goto err_free_window;
 
     window->num_stats = num_stats;
@@ -299,7 +322,7 @@ static struct flow_window * set_flow_window(uint64_t start, uint64_t end,
     return window;
 
 err_free_window:
-    free(window);
+    FREE(window);
 
     return NULL;
 }
@@ -308,13 +331,13 @@ static struct flow_report * set_flow_report(size_t num_windows)
 {
     struct flow_report *report;
 
-    report = calloc(1, sizeof(*report));
+    report = CALLOC(1, sizeof(*report));
     if (report == NULL) return NULL;
 
     report->node_info = set_node_info();
     if (report->node_info == NULL) goto err_free_report;
 
-    report->flow_windows = calloc(num_windows, sizeof(struct flow_window *));
+    report->flow_windows = CALLOC(num_windows, sizeof(*report->flow_windows));
     if (report->flow_windows == NULL) goto err_free_node_info;
 
     report->num_windows = num_windows;
@@ -324,9 +347,10 @@ static struct flow_report * set_flow_report(size_t num_windows)
 
 err_free_node_info:
     free_node_info(report->node_info);
+    FREE(report->node_info);
 
 err_free_report:
-    free(report);
+    FREE(report);
 
     return NULL;
 }
@@ -335,7 +359,7 @@ err_free_report:
 /**
  * @brief See unity documentation/exmaples
  */
-void setUp(void)
+void main_setUp(void)
 {
     struct flow_window **report_windows;
     struct flow_stats **window_stats;
@@ -389,6 +413,7 @@ void setUp(void)
 
 err_free_window2:
     free_report_window(g_test.window2);
+    FREE(g_test.window2);
     /* Stats pointers have been freed, set them to NULL */
     g_test.stats2 = NULL;
     g_test.stats3 = NULL;
@@ -396,23 +421,28 @@ err_free_window2:
 
 err_free_window1:
     free_report_window(g_test.window1);
+    FREE(g_test.window1);
     /* Stats pointers have been freed, set them to NULL */
     g_test.stats1 = NULL;
 
 err_free_stats4:
     free_window_stats(g_test.stats4);
+    FREE(g_test.stats4);
 
 err_free_stats3:
     free_window_stats(g_test.stats3);
+    FREE(g_test.stats3);
 
 err_free_stats2:
     free_window_stats(g_test.stats2);
+    FREE(g_test.stats2);
 
 err_free_stats1:
     free_window_stats(g_test.stats1);
+    FREE(g_test.stats1);
 
 err_free_f_name:
-    free(g_test.f_name);
+    FREE(g_test.f_name);
 
 err:
     return;
@@ -422,12 +452,13 @@ err:
 /**
  * @brief See unity documentation/exmaples
  */
-void tearDown(void)
+void main_tearDown(void)
 {
     free_flow_report(g_test.report);
+    FREE(g_test.report);
     g_test.report = NULL;
     g_test.initialized = false;
-    free(g_test.f_name);
+    FREE(g_test.f_name);
     test_net_md_report_teardown();
 }
 
@@ -628,8 +659,9 @@ static void validate_flow_windows(struct flow_report *report,
     for (i = 0; i < report->num_windows; i++)
     {
         free_pb_window(windows_pb_tbl[i]);
+        FREE(windows_pb_tbl[i]);
     }
-    free(windows_pb_tbl);
+    FREE(windows_pb_tbl);
 }
 
 
@@ -707,6 +739,7 @@ void test_serialize_node_info(void)
 
     /* Free the serialized container */
     free_packed_buffer(pb);
+    FREE(pb);
 
     /* Read back the serialized protobuf */
     pb_r.buf = rbuf;
@@ -751,6 +784,7 @@ void test_serialize_flow_counters(void)
 
     /* Free the serialized container */
     free_packed_buffer(pb);
+    FREE(pb);
 
     /* Read back the serialized protobuf */
     pb_r.buf = rbuf;
@@ -792,6 +826,7 @@ void test_serialize_flow_key(void)
 
     /* Free the serialized container */
     free_packed_buffer(pb);
+    FREE(pb);
 
     /* Read back the serialized protobuf */
     pb_r.buf = rbuf;
@@ -844,6 +879,7 @@ void test_serialize_flow_key_with_optional_fields(void)
 
     /* Free the serialized container */
     free_packed_buffer(pb);
+    FREE(pb);
 
     /* Read back the serialized protobuf */
     pb_r.buf = rbuf;
@@ -925,6 +961,7 @@ void test_serialize_flow_key_with_tags(void)
 
     /* Free the serialized container */
     free_packed_buffer(pb);
+    FREE(pb);
 
     /* Read back the serialized protobuf */
     pb_r.buf = rbuf;
@@ -964,6 +1001,7 @@ void test_flow_stats(struct flow_stats *stats)
 
     /* Free the serialized container */
     free_packed_buffer(pb);
+    FREE(pb);
 
     /* Read back the serialized protobuf */
     pb_r.buf = rbuf;
@@ -1017,13 +1055,14 @@ void test_set_flow_stats(void)
 
         /* Free current stats entry */
         free_pb_flowstats(*stats_pb);
+        FREE(*stats_pb);
 
         stats++;
         stats_pb++;
     }
 
     /* Free the pointers table */
-    free(stats_pb_tbl);
+    FREE(stats_pb_tbl);
 }
 
 
@@ -1050,6 +1089,7 @@ void test_observation_window(struct flow_window *window)
 
     /* Free the serialized container */
     free_packed_buffer(pb);
+    FREE(pb);
 
     /* Read back the serialized protobuf */
     pb_r.buf = rbuf;
@@ -1103,13 +1143,14 @@ void test_set_serialization_windows(void)
 
         /* Free current window entry */
         free_pb_window(*window_pb);
+        FREE(*window_pb);
 
         window++;
         window_pb++;
     }
 
     /* Free the pointers table */
-    free(windows_pb_tbl);
+    FREE(windows_pb_tbl);
 }
 
 
@@ -1147,6 +1188,7 @@ test_serialize_flow_tags(void)
 
     /* Free the serialized container */
     free_packed_buffer(pb);
+    FREE(pb);
 
     /* Read back the serialized protobuf */
     pb_r.buf = rbuf;
@@ -1187,7 +1229,7 @@ test_serialize_vendor_data(void)
 
     nelems = 3;
 
-    kvps = calloc(nelems, sizeof(struct vendor_data_kv_pair *));
+    kvps = CALLOC(nelems, sizeof(*kvps));
     TEST_ASSERT_NOT_NULL(kvps);
     kvp = kvps;
     for (i = 0; i < nelems; i++)
@@ -1207,6 +1249,7 @@ test_serialize_vendor_data(void)
 
     /* Free the serialized container */
     free_packed_buffer(pb);
+    FREE(pb);
 
     /* Read back the serialized protobuf */
     pb_r.buf = rbuf;
@@ -1220,7 +1263,7 @@ test_serialize_vendor_data(void)
 
     /* Free the deserialized content */
     traffic__vendor_data__free_unpacked(pb_vd, NULL);
-    free(kvps);
+    FREE(kvps);
 }
 
 /**
@@ -1269,7 +1312,7 @@ void test_serialize_flow_key_with_vendor_data(void)
 
     nelems = 3;
 
-    kvps1 = calloc(nelems, sizeof(struct vendor_data_kv_pair *));
+    kvps1 = CALLOC(nelems, sizeof(*kvps1));
     TEST_ASSERT_NOT_NULL(kvps1);
     kvp = kvps1;
     for (i = 0; i < nelems; i++)
@@ -1279,7 +1322,7 @@ void test_serialize_flow_key_with_vendor_data(void)
     }
     vd1.kv_pairs = kvps1;
 
-    kvps2 = calloc(nelems, sizeof(struct vendor_data_kv_pair *));
+    kvps2 = CALLOC(nelems, sizeof(*kvps2));
     TEST_ASSERT_NOT_NULL(kvps2);
     kvp = kvps2;
     for (i = 0; i < nelems; i++)
@@ -1289,7 +1332,7 @@ void test_serialize_flow_key_with_vendor_data(void)
     }
     vd2.kv_pairs = kvps2;
 
-    vds = calloc(2, sizeof(struct flow_vendor_data *));
+    vds = CALLOC(2, sizeof(*vds));
     TEST_ASSERT_NOT_NULL(vds);
 
     vds[0] = &vd1;
@@ -1309,6 +1352,7 @@ void test_serialize_flow_key_with_vendor_data(void)
 
     /* Free the serialized container */
     free_packed_buffer(pb);
+    FREE(pb);
 
     /* Read back the serialized protobuf */
     pb_r.buf = rbuf;
@@ -1323,9 +1367,9 @@ void test_serialize_flow_key_with_vendor_data(void)
     /* Free the deserialized content */
     traffic__flow_key__free_unpacked(key_pb, NULL);
 
-    free(kvps1);
-    free(kvps2);
-    free(vds);
+    FREE(kvps1);
+    FREE(kvps2);
+    FREE(vds);
 }
 
 /**
@@ -1359,6 +1403,7 @@ void  test_serialize_flow_state(void)
 
     /* Free the serialized container */
     free_packed_buffer(pb);
+    FREE(pb);
 
     /* Read back the serialized protobuf */
     pb_r.buf = rbuf;
@@ -1422,6 +1467,7 @@ void test_serialize_flow_key_with_flow_state(void)
 
     /* Free the serialized container */
     free_packed_buffer(pb);
+    FREE(pb);
 
     /* Read back the serialized protobuf */
     pb_r.buf = rbuf;
@@ -1493,6 +1539,7 @@ void test_serialize_flow_key_with_originator_direction(void)
 
     /* Free the serialized container */
     free_packed_buffer(pb);
+    FREE(pb);
 
     /* Read back the serialized protobuf */
     pb_r.buf = rbuf;
@@ -1546,6 +1593,7 @@ void test_serialize_flow_report(void)
 
     /* Free the serialized container */
     free_packed_buffer(pb);
+    FREE(pb);
 
     /* Read back the serialized protobuf */
     pb_r.buf = rbuf;
@@ -1561,17 +1609,9 @@ void test_serialize_flow_report(void)
     traffic__flow_report__free_unpacked(pb_report, NULL);
 }
 
-int main(int argc, char *argv[])
+void
+test_network_metadata(void)
 {
-    (void)argc;
-    (void)argv;
-
-    target_log_open("TEST", LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_INFO);
-
-    UnityBegin("network_metadata");
-    /* Protobuf serialization testing */
-
     RUN_TEST(test_serialize_node_info_null_ptr);
     RUN_TEST(test_serialize_node_info_no_field_set);
     RUN_TEST(test_serialize_node_info);
@@ -1590,31 +1630,32 @@ int main(int argc, char *argv[])
     RUN_TEST(test_serialize_flow_state);
     RUN_TEST(test_serialize_flow_key_with_flow_state);
     RUN_TEST(test_serialize_flow_key_with_originator_direction);
+}
 
-    /* Sampling and reporting testing */
-    RUN_TEST(test_str2mac);
-    RUN_TEST(test_net_md_allocate_aggregator);
-    RUN_TEST(test_activate_add_samples_close_send_report);
-    // RUN_TEST(test_add_2_samples_all_keys);
-    RUN_TEST(test_ethernet_aggregate_one_key);
-    RUN_TEST(test_ethernet_aggregate_two_keys);
-    RUN_TEST(test_large_loop);
-    RUN_TEST(test_add_remove_flows);
-    RUN_TEST(test_multiple_windows);
-    RUN_TEST(test_report_filter);
-    RUN_TEST(test_activate_and_free_aggr);
-    RUN_TEST(test_bogus_ttl);
-    RUN_TEST(test_flow_tags_one_key);
-    RUN_TEST(test_vendor_data_one_key);
-    RUN_TEST(test_flow_key_to_net_md_key);
-    RUN_TEST(test_vendor_data_serialize_deserialize);
-    RUN_TEST(test_update_flow_tags);
-    RUN_TEST(test_update_vendor_data);
-    RUN_TEST(test_update_filter_flow_tags);
-    RUN_TEST(test_reverse_lookup_acc);
-    RUN_TEST(test_direction_originator_data_serialize_deserialize);
-    RUN_TEST(test_acc_flow_info_report);
-    RUN_TEST(test_net_md_ufid);
+int main(int argc, char *argv[])
+{
+    (void)argc;
+    (void)argv;
+
+    target_log_open("network_metadata", LOG_OPEN_STDOUT);
+    log_severity_set(LOG_SEVERITY_DEBUG);
+
+    UnityBegin(basename(__FILE__));
+
+    /* Testing net_md_utils @see test_network_metadata_utils.c
+     * No global setUp()/tearDown() required for this.
+     */
+    test_network_metadata_utils();
+
+    /* Enable setUp()/tearDown() for the rest of the tests */
+    g_setUp = main_setUp;
+    g_tearDown = main_tearDown;
+
+    /* Protobuf serialization testing @see above */
+    test_network_metadata();
+
+    /* Testing reports @see test_network_metadata_report.c */
+    test_network_metadata_reports();
 
     return UNITY_END();
 }

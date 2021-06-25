@@ -145,5 +145,6 @@ char  *file_get(const char *path);
 #define file_geta(path) strdupafree(file_get(path))
 const int *unii_5g_chan2list(int chan, int width);
 const int *unii_6g_chan2list(int chan, int width);
+bool is_private_ip(char *ip_str);
 
 #endif /* UTIL_H_INCLUDED */

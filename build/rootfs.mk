@@ -175,6 +175,11 @@ rootfs-make: build_all rootfs-prepare ovsdb-create
 
 rootfs: rootfs-clean
 	$(MAKE) rootfs-make
+ifeq ($(BUILD_ROOTFS_PACK),y)
+	@# optional include rootfs-pack in rootfs
+	$(MAKE) rootfs-pack-only
+endif
+
 
 # empty targets -prepend and -append allow inserting additional commands
 rootfs-prepare-prepend: workdirs
@@ -193,7 +198,8 @@ rootfs-prepare-append: rootfs-prepare-main
 rootfs-prepare: rootfs-prepare-prepend rootfs-prepare-main rootfs-prepare-append
 
 # rootfs-pack = opensync-only part of rootfs (work/target/rootfs)
-rootfs-pack: rootfs rootfs-pack-only
+rootfs-pack: rootfs
+	$(MAKE) rootfs-pack-only
 
 ifeq ($(ROOTFS_PACK_VERSION),)
 ROOTFS_PACK_VERSION := $(shell $(call version-gen,make,$(ROOTFS_PACK_VER_OPT)))
@@ -204,11 +210,6 @@ ROOTFS_PACK_PATHNAME ?= $(IMAGEDIR)/$(ROOTFS_PACK_FILENAME)
 rootfs-pack-only: workdirs
 	$(NQ) "$(call color_install,pack) rootfs $(call color_profile,$(BUILD_ROOTFS_DIR) => $(ROOTFS_PACK_PATHNAME))"
 	$(Q)tar czf $(ROOTFS_PACK_PATHNAME) -C $(BUILD_ROOTFS_DIR) .
-
-# optional include rootfs-pack in rootfs:
-ifeq ($(BUILD_ROOTFS_PACK),y)
-rootfs: rootfs-pack-only
-endif
 
 # rootfs-install:
 #   - copy work-area rootfs to INSTALL_ROOTFS_DIR (can be SDK_ROOTFS)

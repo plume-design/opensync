@@ -124,7 +124,7 @@ void populate_sample_flow_entries(void)
         test_flow_entries[i].direction = GKC_FLOW_DIRECTION_INBOUND;
         test_flow_entries[i].action = FSM_ALLOW;
     }
-    
+
 }
 
 struct gk_attr_cache_interface *entry1, *entry2, *entry3, *entry4, *entry5;
@@ -143,7 +143,7 @@ gkc_str2os_mac(char *strmac)
     len = strlen(strmac);
     if (len != 17) return NULL;
 
-    mac = calloc(1, sizeof(*mac));
+    mac = CALLOC(1, sizeof(*mac));
     if (mac == NULL) return NULL;
 
     i = 0;
@@ -170,7 +170,7 @@ gkc_str2os_mac(char *strmac)
     return mac;
 
 err_free_mac:
-    free(mac);
+    FREE(mac);
 
     return NULL;
 }
@@ -178,7 +178,7 @@ err_free_mac:
 static void
 create_default_attr_entries(void)
 {
-    entry1 = calloc(sizeof(struct gk_attr_cache_interface), 1);
+    entry1 = CALLOC(1, sizeof(*entry1));
     entry1->action = 1;
     entry1->device_mac =gkc_str2os_mac("AA:AA:AA:AA:AA:01");
     entry1->attribute_type = GK_CACHE_REQ_TYPE_FQDN;
@@ -187,7 +187,7 @@ create_default_attr_entries(void)
     entry1->attr_name = strdup("www.test.com");
 
 
-    entry2 = calloc(sizeof(struct gk_attr_cache_interface), 1);
+    entry2 = CALLOC(1, sizeof(*entry2));
     entry2->action = 1;
     entry2->device_mac =gkc_str2os_mac("AA:AA:AA:AA:AA:02");
     entry2->attribute_type = GK_CACHE_REQ_TYPE_FQDN;
@@ -196,7 +196,7 @@ create_default_attr_entries(void)
     entry2->attr_name = strdup("www.entr2.com");
 
 
-    entry3 = calloc(sizeof(struct gk_attr_cache_interface), 1);
+    entry3 = CALLOC(1, sizeof(*entry3));
     entry3->action = 1;
     entry3->device_mac =gkc_str2os_mac("AA:AA:AA:AA:AA:03");
     entry3->attribute_type = GK_CACHE_REQ_TYPE_FQDN;
@@ -205,7 +205,7 @@ create_default_attr_entries(void)
     entry3->attr_name = strdup("www.entr3.com");
 
 
-    entry4 = calloc(sizeof(struct gk_attr_cache_interface), 1);
+    entry4 = CALLOC(1, sizeof(*entry4));
     entry4->action = 1;
     entry4->device_mac =gkc_str2os_mac("AA:AA:AA:AA:AA:04");
     entry4->attribute_type = GK_CACHE_REQ_TYPE_URL;
@@ -213,7 +213,7 @@ create_default_attr_entries(void)
     entry4->action = FSM_BLOCK;
     entry4->attr_name = strdup("https://www.google.com");
 
-    entry5 = calloc(sizeof(struct gk_attr_cache_interface), 1);
+    entry5 = CALLOC(1, sizeof(*entry5));
     entry5->action = 1;
     entry5->device_mac =gkc_str2os_mac("AA:AA:AA:AA:AA:04");
     entry5->attribute_type = GK_CACHE_REQ_TYPE_APP;
@@ -225,7 +225,7 @@ create_default_attr_entries(void)
 static void
 create_default_flow_entries(void)
 {
-    flow_entry1 = calloc(sizeof(struct gkc_ip_flow_interface), 1);
+    flow_entry1 = CALLOC(1, sizeof(*flow_entry1));
     flow_entry1->device_mac =gkc_str2os_mac("AA:AA:AA:AA:AA:01");
     flow_entry1->direction = GKC_FLOW_DIRECTION_INBOUND;
     flow_entry1->src_port = 80;
@@ -235,13 +235,13 @@ create_default_flow_entries(void)
     flow_entry1->protocol = 16;
     flow_entry1->cache_ttl = 1000;
     flow_entry1->action = FSM_BLOCK;
-    flow_entry1->src_ip_addr = calloc(1, sizeof(struct in6_addr));
+    flow_entry1->src_ip_addr = CALLOC(1, sizeof(struct in6_addr));
     inet_pton(AF_INET, "1.1.1.1", flow_entry1->src_ip_addr);
 
-    flow_entry1->dst_ip_addr = calloc(1, sizeof(struct in6_addr));
+    flow_entry1->dst_ip_addr = CALLOC(1, sizeof(struct in6_addr));
     inet_pton(AF_INET, "10.2.4.3", flow_entry1->dst_ip_addr);
 
-    flow_entry2 = calloc(sizeof(struct gkc_ip_flow_interface), 1);
+    flow_entry2 = CALLOC(1, sizeof(*flow_entry2));
     flow_entry2->device_mac =gkc_str2os_mac("AA:AA:AA:AA:AA:02");
     flow_entry2->direction = GKC_FLOW_DIRECTION_INBOUND;
     flow_entry2->src_port = 443;
@@ -250,13 +250,13 @@ create_default_flow_entries(void)
     flow_entry2->protocol = 16;
     flow_entry2->cache_ttl = 1000;
     flow_entry2->action = FSM_BLOCK;
-    flow_entry2->src_ip_addr = calloc(1, sizeof(struct in6_addr));
+    flow_entry2->src_ip_addr = CALLOC(1, sizeof(struct in6_addr));
     inet_pton(AF_INET, "2.2.2.2", flow_entry2->src_ip_addr);
 
-    flow_entry2->dst_ip_addr = calloc(1, sizeof(struct in6_addr));
+    flow_entry2->dst_ip_addr = CALLOC(1, sizeof(struct in6_addr));
     inet_pton(AF_INET, "10.2.2.2", flow_entry2->dst_ip_addr);
 
-    flow_entry3 = calloc(sizeof(struct gkc_ip_flow_interface), 1);
+    flow_entry3 = CALLOC(1, sizeof(*flow_entry3));
     flow_entry3->device_mac =gkc_str2os_mac("AA:AA:AA:AA:AA:02");
     flow_entry3->direction = GKC_FLOW_DIRECTION_INBOUND;
     flow_entry3->src_port = 22;
@@ -264,14 +264,14 @@ create_default_flow_entries(void)
     flow_entry3->ip_version = 6;
     flow_entry3->protocol = 16;
     flow_entry3->cache_ttl = 1000;
-    flow_entry3->src_ip_addr = calloc(1, sizeof(struct in6_addr));
+    flow_entry3->src_ip_addr = CALLOC(1, sizeof(struct in6_addr));
     inet_pton(
         AF_INET6, "0:0:0:0:0:FFFF:204.152.189.116", flow_entry3->src_ip_addr);
-    flow_entry3->dst_ip_addr = calloc(1, sizeof(struct in6_addr));
+    flow_entry3->dst_ip_addr = CALLOC(1, sizeof(struct in6_addr));
     inet_pton(AF_INET6, "1:0:0:0:0:0:0:8", flow_entry3->dst_ip_addr);
 
-    flow_entry4 = calloc(sizeof(struct gkc_ip_flow_interface), 1);
-    flow_entry4->device_mac = calloc(sizeof(os_macaddr_t), 1);
+    flow_entry4 = CALLOC(1, sizeof(*flow_entry4));
+    flow_entry4->device_mac = CALLOC(1, sizeof(*flow_entry4->device_mac));
     flow_entry4->device_mac->addr[0] = 0xaa;
     flow_entry4->device_mac->addr[1] = 0xaa;
     flow_entry4->device_mac->addr[2] = 0xaa;
@@ -282,10 +282,10 @@ create_default_flow_entries(void)
     flow_entry4->src_port = 16;
     flow_entry4->dst_port = 444;
     flow_entry4->action = FSM_BLOCK;
-    flow_entry4->src_ip_addr = calloc(1, sizeof(struct in6_addr));
+    flow_entry4->src_ip_addr = CALLOC(1, sizeof(struct in6_addr));
     inet_pton(AF_INET, "1.1.1.1", flow_entry4->src_ip_addr);
 
-    flow_entry4->dst_ip_addr = calloc(1, sizeof(struct in6_addr));
+    flow_entry4->dst_ip_addr = CALLOC(1, sizeof(struct in6_addr));
     inet_pton(AF_INET, "10.2.4.3", flow_entry4->dst_ip_addr);
 }
 
@@ -304,10 +304,10 @@ free_flow_interface(struct gkc_ip_flow_interface *entry)
 {
     if (!entry) return;
 
-    free(entry->device_mac);
-    free(entry->src_ip_addr);
-    free(entry->dst_ip_addr);
-    free(entry);
+    FREE(entry->device_mac);
+    FREE(entry->src_ip_addr);
+    FREE(entry->dst_ip_addr);
+    FREE(entry);
 }
 
 void
@@ -462,11 +462,11 @@ test_delete_attr(void)
     TEST_ASSERT_EQUAL_INT(false, ret);
 
     struct gk_attr_cache_interface *new_entry;
-    new_entry = calloc(sizeof(struct gk_attr_cache_interface), 1);
+    new_entry = CALLOC(1, sizeof(*new_entry));
     /* remove empty attribute */
     ret = gkc_del_attribute(new_entry);
     TEST_ASSERT_EQUAL_INT(false, ret);
-    free(new_entry);
+    FREE(new_entry);
 }
 
 void
@@ -526,7 +526,7 @@ test_host_entry_in_fqdn(void)
 
     LOGN("starting test: %s ...", __func__);
 
-    entry = calloc(sizeof(struct gk_attr_cache_interface), 1);
+    entry = CALLOC(1, sizeof(*entry));
     entry->action = FSM_ALLOW;
     entry->device_mac =gkc_str2os_mac("AA:AA:AA:AA:AA:01");
     entry->attribute_type = GK_CACHE_REQ_TYPE_FQDN;
@@ -608,9 +608,9 @@ test_host_entry_in_fqdn(void)
     ret = gkc_lookup_attribute_entry(entry, true);
     TEST_ASSERT_EQUAL_INT(1, ret);
 
-    free(entry->device_mac);
-    free(entry->attr_name);
-    free(entry);
+    FREE(entry->device_mac);
+    FREE(entry->attr_name);
+    FREE(entry);
 
     LOGN("ending test: %s", __func__);
 }
@@ -620,7 +620,7 @@ test_ipv4_attr(void)
 {
     struct gk_attr_cache_interface *entry;
 
-    entry = calloc(sizeof(struct gk_attr_cache_interface), 1);
+    entry = CALLOC(1, sizeof(*entry));
     entry->action = 1;
     entry->device_mac =gkc_str2os_mac("AA:AA:AA:AA:AA:01");
     entry->attribute_type = GK_CACHE_REQ_TYPE_IPV4;
@@ -634,7 +634,7 @@ test_ipv4_attr(void)
 
     gkc_cache_entries();
 
-    free(entry->attr_name);
+    FREE(entry->attr_name);
     entry->attr_name = strdup("2.2.2.2");
     gkc_add_attribute_entry(entry);
     gkc_cache_entries();
@@ -649,9 +649,9 @@ test_ipv4_attr(void)
     ret = gkc_lookup_attribute_entry(entry, true);
     TEST_ASSERT_EQUAL_INT(0, ret);
 
-    free(entry->device_mac);
-    free(entry->attr_name);
-    free(entry);
+    FREE(entry->device_mac);
+    FREE(entry->attr_name);
+    FREE(entry);
 
     LOGI("ending test: %s", __func__);
 }
@@ -661,7 +661,7 @@ test_ipv6_attr(void)
 {
     struct gk_attr_cache_interface *entry;
 
-    entry = calloc(sizeof(struct gk_attr_cache_interface), 1);
+    entry = CALLOC(1, sizeof(*entry));
     entry->action = 1;
     entry->device_mac =gkc_str2os_mac("AA:AA:AA:AA:AA:01");
     entry->attribute_type = GK_CACHE_REQ_TYPE_IPV6;
@@ -675,7 +675,7 @@ test_ipv6_attr(void)
 
     gkc_cache_entries();
 
-    free(entry->attr_name);
+    FREE(entry->attr_name);
     entry->attr_name = strdup("2001:0000:3238:DFE1:0063:0000:0000:FEFA");
     gkc_add_attribute_entry(entry);
     gkc_cache_entries();
@@ -690,9 +690,9 @@ test_ipv6_attr(void)
     ret = gkc_lookup_attribute_entry(entry, true);
     TEST_ASSERT_EQUAL_INT(0, ret);
 
-    free(entry->device_mac);
-    free(entry->attr_name);
-    free(entry);
+    FREE(entry->device_mac);
+    FREE(entry->attr_name);
+    FREE(entry);
 
     LOGI("ending test: %s", __func__);
 }
@@ -751,32 +751,32 @@ test_add_gk_cache(void)
 
     LOGI("starting test: %s ...", __func__);
 
-    entry1 = calloc(sizeof(struct gk_attr_cache_interface), 1);
+    entry1 = CALLOC(1, sizeof(*entry1));
     entry1->action = 1;
-    entry1->device_mac =gkc_str2os_mac("AA:AA:AA:AA:AA:01");
+    entry1->device_mac = gkc_str2os_mac("AA:AA:AA:AA:AA:01");
     entry1->attribute_type = GK_CACHE_REQ_TYPE_FQDN;
     entry1->attr_name = strdup("www.test.com");
 
     gkc_add_attribute_entry(entry1);
 
-    entry2 = calloc(sizeof(struct gk_attr_cache_interface), 1);
+    entry2 = CALLOC(1, sizeof(*entry2));
     entry2->action = 1;
-    entry2->device_mac =gkc_str2os_mac("AA:AA:AA:AA:AA:02");
+    entry2->device_mac = gkc_str2os_mac("AA:AA:AA:AA:AA:02");
     entry2->attribute_type = GK_CACHE_REQ_TYPE_FQDN;
     entry2->attr_name = strdup("www.entr2.com");
 
     gkc_add_attribute_entry(entry2);
 
-    entry3 = calloc(sizeof(struct gk_attr_cache_interface), 1);
+    entry3 = CALLOC(1, sizeof(*entry3));
     entry3->action = 1;
-    entry3->device_mac =gkc_str2os_mac("AA:AA:AA:AA:AA:02");
+    entry3->device_mac = gkc_str2os_mac("AA:AA:AA:AA:AA:02");
     entry3->attribute_type = GK_CACHE_REQ_TYPE_FQDN;
     entry3->attr_name = strdup("www.entr3.com");
 
     gkc_add_attribute_entry(entry3);
 
 
-    entry4 = calloc(sizeof(struct gk_attr_cache_interface), 1);
+    entry4 = CALLOC(1, sizeof(*entry4));
     entry4->action = 1;
     entry4->device_mac =gkc_str2os_mac("AA:AA:AA:AA:AA:02");
     entry4->attribute_type = GK_CACHE_REQ_TYPE_URL;
@@ -801,7 +801,7 @@ test_add_flow(void)
     struct gkc_ip_flow_interface *flow_entry;
 
     LOGI("starting test: %s ...", __func__);
-    // flow_entry = calloc(sizeof(struct gkc_ip_flow_interface), 1);
+
     flow_entry = flow_entry1;
     gkc_add_flow_entry(flow_entry);
 
@@ -944,7 +944,7 @@ test_counters(void)
     TEST_ASSERT_EQUAL_INT(0, count);
 
     /* add entry to the same device. */
-    entry2 = calloc(sizeof(struct gk_attr_cache_interface), 1);
+    entry2 = CALLOC(1, sizeof(*entry2));
     entry2->action = FSM_ALLOW;
     entry2->device_mac =gkc_str2os_mac("AA:AA:AA:AA:AA:01");
     entry2->attribute_type = GK_CACHE_REQ_TYPE_FQDN;
@@ -957,9 +957,9 @@ test_counters(void)
     count = gkc_get_blocked_counter(entry2->device_mac, GK_CACHE_REQ_TYPE_FQDN);
     TEST_ASSERT_EQUAL_INT(0, count);
 
-    free(entry2->device_mac);
-    free(entry2->attr_name);
-    free(entry2);
+    FREE(entry2->device_mac);
+    FREE(entry2->attr_name);
+    FREE(entry2);
 
     LOGI("ending test: %s", __func__);
 }
@@ -990,7 +990,7 @@ test_max_flow_entries(void)
     int i;
     struct gkc_ip_flow_interface *flow_entry;
 
-    flow_entry = calloc(sizeof(struct gkc_ip_flow_interface), 1);
+    flow_entry = CALLOC(1, sizeof(*flow_entry));
     LOGI("starting test: %s ...", __func__);
     for (i = 0; i < MAX_CACHE_ENTRIES; i++)
     // for (i = 0; i < 20000; i++)
@@ -1002,22 +1002,22 @@ test_max_flow_entries(void)
         flow_entry->ip_version = test_flow_entries[i].ip_version;
         flow_entry->protocol = test_flow_entries[i].protocol;
         flow_entry->action = test_flow_entries[i].action;
-        flow_entry->src_ip_addr = calloc(1, sizeof(struct in6_addr));
+        flow_entry->src_ip_addr = CALLOC(1, sizeof(struct in6_addr));
         // flow_entry->hit_counter = 0;
         inet_pton(AF_INET, test_flow_entries[i].src_ip_addr, flow_entry->src_ip_addr);
 
-        flow_entry->dst_ip_addr = calloc(1, sizeof(struct in6_addr));
+        flow_entry->dst_ip_addr = CALLOC(1, sizeof(struct in6_addr));
         inet_pton(AF_INET, test_flow_entries[i].dst_ip_addr, flow_entry->dst_ip_addr);
 
         gkc_add_flow_entry(flow_entry);
 
-        free(flow_entry->device_mac);
-        free(flow_entry->src_ip_addr);
-        free(flow_entry->dst_ip_addr);
+        FREE(flow_entry->device_mac);
+        FREE(flow_entry->src_ip_addr);
+        FREE(flow_entry->dst_ip_addr);
     }
     LOGN("number of entries %lu \n", gk_get_cache_count());
 
-    free(flow_entry);
+    FREE(flow_entry);
     // clear_gatekeeper_cache();
     LOGI("ending test: %s", __func__);
 }
@@ -1034,7 +1034,7 @@ test_max_attr_entries(void)
     ret = access("/tmp/genmac.txt", F_OK);
     if (ret != 0) return;
 
-    entry = calloc(sizeof(struct gk_attr_cache_interface), 1);
+    entry = CALLOC(1, sizeof(*entry));
     for (i = 0; i < MAX_CACHE_ENTRIES; ++i)
     {
         entry->action         = 1;
@@ -1045,8 +1045,8 @@ test_max_attr_entries(void)
         entry->attr_name      = strdup(test_attr_entries[i].attr_name);
         gkc_add_attribute_entry(entry);
 
-        free(entry->device_mac);
-        free(entry->attr_name);
+        FREE(entry->device_mac);
+        FREE(entry->attr_name);
     }
 
     current_count = gk_get_cache_count();
@@ -1061,14 +1061,14 @@ test_max_attr_entries(void)
         entry->attr_name      = strdup(test_attr_entries[i].attr_name);
         gkc_del_attribute(entry);
 
-        free(entry->device_mac);
-        free(entry->attr_name);
+        FREE(entry->device_mac);
+        FREE(entry->attr_name);
     }
 
     LOGN("number of entries %lu \n", gk_get_cache_count());
     TEST_ASSERT_EQUAL_INT(current_count - 10, gk_get_cache_count());
 
-    free(entry);
+    FREE(entry);
     // clear_gatekeeper_cache();
 
     LOGI("ending test: %s", __func__);
@@ -1128,14 +1128,14 @@ test_fqdn_redirect_entry(void)
 
     LOGN("starting test: %s ...", __func__);
 
-    entry = CALLOC(1, sizeof(struct gk_attr_cache_interface));
+    entry = CALLOC(1, sizeof(*entry));
     entry->action = FSM_ALLOW;
     entry->device_mac =gkc_str2os_mac("AA:AA:AA:AA:AA:01");
     entry->attribute_type = GK_CACHE_REQ_TYPE_FQDN;
     entry->cache_ttl = 1000;
     entry->action = FSM_ALLOW;
     entry->attr_name = strdup("www.entr2.com");
-    entry->fqdn_redirect = CALLOC(1, sizeof(struct fqdn_redirect_s));
+    entry->fqdn_redirect = CALLOC(1, sizeof(*entry->fqdn_redirect));
     if (entry->fqdn_redirect == NULL) goto error;
 
     entry->fqdn_redirect->redirect = 1;
@@ -1158,6 +1158,81 @@ error:
 
 }
 
+void
+test_gkc_new_flow_entry(void)
+{
+    struct gkc_ip_flow_interface *in;
+    struct ip_flow_cache *out;
+
+    uint8_t src_ipv4[] = { 127,   0, 0, 1 };
+    uint8_t dst_ipv4[] = { 192, 168, 0, 1 };
+
+    in = CALLOC(1, sizeof(*in));
+
+    out = gkc_new_flow_entry(in);
+    TEST_ASSERT_NULL(out);
+
+    /* IPV4 */
+    in->ip_version = 4;
+    in->src_ip_addr = CALLOC(4, sizeof(*in->src_ip_addr));
+    memcpy(in->src_ip_addr, src_ipv4, 4);
+    out = gkc_new_flow_entry(in);
+    TEST_ASSERT_NULL(out);
+
+    in->dst_ip_addr = CALLOC(4, sizeof(*in->dst_ip_addr));
+    memcpy(in->dst_ip_addr, dst_ipv4, 4);
+    out = gkc_new_flow_entry(in);
+    TEST_ASSERT_NOT_NULL(out);
+    TEST_ASSERT_EQUAL(4, out->ip_version);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(src_ipv4, out->src_ip_addr, 4);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(dst_ipv4, out->dst_ip_addr, 4);
+    free_flow_members(out);
+    FREE(out);
+
+    /* IPv6 */
+    in->ip_version = 6;
+    FREE(in->src_ip_addr);
+    in->src_ip_addr = CALLOC(16, sizeof(*in->src_ip_addr));
+    in->src_ip_addr[0] = 1;
+    FREE(in->dst_ip_addr);
+    in->dst_ip_addr = CALLOC(16, sizeof(*in->dst_ip_addr));
+    in->dst_ip_addr[0] = 2;
+    out = gkc_new_flow_entry(in);
+    TEST_ASSERT_NOT_NULL(out);
+    TEST_ASSERT_EQUAL(6, out->ip_version);
+    TEST_ASSERT_EQUAL(1, out->src_ip_addr[0]);
+    TEST_ASSERT_EQUAL(2, out->dst_ip_addr[0]);
+    free_flow_members(out);
+    FREE(out);
+
+    free_flow_interface(in);
+}
+
+void
+test_gkc_new_attr_entry(void)
+{
+    struct gk_attr_cache_interface *in;
+    struct attr_cache              *out;
+
+    in = CALLOC(1, sizeof(*in));
+    memset(in, 0, sizeof(*in));
+    in->attr_name = strdup("SOME ATTR NAME");
+
+    in->attribute_type = GK_CACHE_REQ_TYPE_FQDN;
+    out = gkc_new_attr_entry(in);
+    TEST_ASSERT_NOT_NULL(out);
+    free_attr_members(out, GK_CACHE_REQ_TYPE_FQDN);
+    FREE(out->gk_policy);
+    FREE(out);
+
+    in->attribute_type = GK_CACHE_REQ_TYPE_INBOUND;
+    out = gkc_new_attr_entry(in);
+    TEST_ASSERT_NULL(out);
+
+    FREE(in->attr_name);
+    FREE(in);
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -1167,6 +1242,9 @@ main(int argc, char *argv[])
     target_log_open("TEST", LOG_OPEN_STDOUT);
     log_severity_set(LOG_SEVERITY_TRACE);
     UnityBegin(test_name);
+
+    RUN_TEST(test_gkc_new_flow_entry);
+    RUN_TEST(test_gkc_new_attr_entry);
 
     RUN_TEST(test_add_gk_cache);
     RUN_TEST(test_check_ttl);

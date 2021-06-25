@@ -34,3 +34,4 @@ UNIT_DIR := shell/tools/rpi
 UNIT_FILE := connect_to_wpa2.sh
 UNIT_FILE += start_cloud_simulation.sh
 UNIT_FILE += start_mqtt.sh
+UNIT_FILE += get_rpi_client_mac.sh

@@ -47,6 +47,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "json_util.h"
 #include "nm2.h"
 #include "target.h"
+#include "timevt.h"
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
@@ -76,6 +77,9 @@ int main(int argc, char ** argv)
     LOGN("Starting network manager - NM");
     log_severity_set(nm2_log_severity);
     log_register_dynamic_severity(loop);
+
+    te_client_init(argv[0], TESRV_SOCKET_ADDR);
+    TELOG_STEP("MANAGER", argv[0], "start", NULL);
 
     backtrace_init();
 
@@ -122,6 +126,9 @@ int main(int argc, char ** argv)
     }
 
     ev_default_destroy();
+
+    TELOG_STEP("MANAGER", argv[0], "stop", NULL);
+    te_client_deinit();
 
     LOGN("Exiting NM");
 

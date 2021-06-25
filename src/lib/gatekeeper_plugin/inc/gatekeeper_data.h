@@ -43,4 +43,22 @@ struct gk_packed_buffer *
 gatekeeper_get_req(struct fsm_session *session,
                    struct fsm_policy_req *req);
 
+/**
+ * @brief validates a FQDN/SNI/Hostname string
+ *
+ * @param site to attribute to validate
+ * @return true if it is a valid attribute, false otherwise
+ */
+bool
+gatekeeper_validate_fqdn(struct fsm_session *session, char *site);
+
+/**
+ * @brief maps a request type to a string
+ *
+ * @param req_type the request type
+ * @return a string representing the request type
+ */
+char *
+gatekeeper_req_type_to_str(int req_type);
+
 #endif /* GATEKEEPER_MSG_DATA_INCLUDED */

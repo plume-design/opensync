@@ -45,6 +45,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb_update.h"
 #include "schema.h"
 #include "policy_tags.h"
+#include "memutil.h"
 
 /*****************************************************************************/
 
@@ -193,10 +194,10 @@ om_tag_free(om_tag_t *tag)
         }
 
         // Name
-        free(tag->name);
+        FREE(tag->name);
 
         // Tag itself
-        free(tag);
+        FREE(tag);
     }
 
     return;
@@ -212,7 +213,7 @@ om_tag_alloc(const char *name, bool group)
     // are dynamically allocated.
 
     // Tag itself
-    if (!(tag = calloc(1, sizeof(*tag)))) {
+    if (!(tag = CALLOC(1, sizeof(*tag)))) {
         goto alloc_err;
     }
 
@@ -220,7 +221,7 @@ om_tag_alloc(const char *name, bool group)
     om_tag_list_init(&tag->values);
 
     // Tag name
-    if (!(tag->name = strdup(name))) {
+    if (!(tag->name = STRDUP(name))) {
         goto alloc_err;
     }
 

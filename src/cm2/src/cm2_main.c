@@ -39,6 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "ds_tree.h"
 #include "log.h"
+#include "timevt.h"
 #include "os.h"
 #include "os_socket.h"
 #include "ovsdb.h"
@@ -97,6 +98,9 @@ int main(int argc, char ** argv)
     /* Register to dynamic severity updates */
     log_register_dynamic_severity(loop);
 
+    (void)te_client_init(argv[0], TESRV_SOCKET_ADDR);
+    TELOG_STEP("MANAGER", argv[0], "start", NULL);
+
     backtrace_init();
 
     json_memdbg_init(loop);
@@ -151,6 +155,9 @@ int main(int argc, char ** argv)
     ev_default_destroy();
 
     LOGN("Exiting CM");
+
+    TELOG_STEP("MANAGER", argv[0], "stop", NULL);
+    te_client_deinit();
 
     return 0;
 }

@@ -33,6 +33,36 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "const.h"
 
 /**
+ * @file osn_nflog.h
+ * @brief OpenSync NFLOG Interface Abstraction
+ *
+ * @addtogroup OSN
+ * @{
+ * 
+ * @defgroup OSN_NFLOG NFLOG
+ *
+ * OpenSync NFLOG Interface
+ *
+ * @{
+ */
+
+
+/*
+ * ===========================================================================
+ *  NFLOG Interface API
+ * ===========================================================================
+ */
+
+/**
+ * OSN NFLOG object type
+ *
+ * This is an opaque type. The actual structure implementation is hidden and is
+ * platform dependent. A new instance of the object can be obtained by calling
+ * @ref osn_nflog_new() and must be destroyed using @ref osn_nflog_del().
+ */
+typedef struct osn_nflog osn_nflog_t;
+
+/**
  * Structure representing a NFLOG packet
  *
  * Each time a firewall rule matches a NFLOG target, a NFULNL_MSG_PACKET is
@@ -42,7 +72,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 struct osn_nflog_packet
 {
     uint16_t        nfp_group_id;                   /**< NFLOG group id */
-    uint16_t        nfp_hwproto;                    /**< hw protocol, net order */
+    uint16_t        nfp_hwproto;                    /**< Hardware protocol, net order */
     uint32_t        nfp_fwmark;                     /**< Firewall mark */
     double          nfp_timestamp;                  /**< Packet time stamp (as received from the kernel) */
     char            nfp_indev[IF_NAMESIZE];         /**< Input interface */
@@ -55,8 +85,8 @@ struct osn_nflog_packet
     char           *nfp_prefix;                     /**< The prefix value (--nflog-prefix) */
     uint16_t        nfp_hwtype;                     /**< Hardware header type */
     uint16_t        nfp_hwlen;                      /**< Hardware header length */
-    uint8_t        *nfp_hwheader;                   /**< Hardware headet data */
-    size_t          nfp_hwheader_len;               /**< Hardware header data len */
+    uint8_t        *nfp_hwheader;                   /**< Hardware header data */
+    size_t          nfp_hwheader_len;               /**< Hardware header data length */
 };
 
 /**
@@ -67,7 +97,9 @@ struct osn_nflog_packet
     .nfp_timestamp = -1.0,                                  \
 }
 
-typedef struct osn_nflog osn_nflog_t;
+/**
+ * Event notification callback function type
+ */
 typedef void osn_nflog_fn_t(osn_nflog_t *self, struct osn_nflog_packet *np);
 
 /**
@@ -111,5 +143,8 @@ void osn_nflog_stop(osn_nflog_t *self);
  * Destroy a osn_nflog_t object that was previously created with @ref osn_nflog_new()
  */
 void osn_nflog_del(osn_nflog_t *self);
+
+/** @} OSN_NFLOG */
+/** @} OSN */
 
 #endif /* OSN_NFLOG_H_INCLUDED */

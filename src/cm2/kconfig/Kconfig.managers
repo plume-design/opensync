@@ -154,11 +154,17 @@ if MANAGER_CM
         if CM2_USE_STABILITY_CHECK
             comment "Stability configuration"
 
-        config CM2_STABILITY_INTERVAL
-            int "Interval of stability check trigger"
+        config CM2_STABILITY_SHORT_INTERVAL
+            int "Short interval of stability check trigger"
             default 10
             help
-                Define interval in sec to trigger stability check process
+                Define interval in sec to trigger stability check process when connection to the Controller is lost
+
+        config CM2_STABILITY_INTERVAL
+            int "Interval of stability check trigger"
+            default 40
+            help
+                Define interval in sec to trigger stability check process when connection to the Controller is established
 
         config CM2_STABILITY_THRESH_LINK
             int "Threshold of link restart"

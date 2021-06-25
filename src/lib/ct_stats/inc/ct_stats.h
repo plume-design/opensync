@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fcm.h"
 #include "ds_dlist.h"
 #include "ds_tree.h"
+#include "network_metadata_report.h"
 
 #define MAX_CT_STATS        (256)
 #define MAX_IPV4_IPV6_LEN    (46)
@@ -157,5 +158,18 @@ ct_stats_plugin_exit(fcm_collect_plugin_t *collector);
 
 void
 ct_stats_exit_mgr(void);
+
+
+/**
+ * @brief collector filter callback processing flows pushed from fsm
+ *
+ * This routine applies the collector filter on flows provided by FSM.
+ *
+ * @param aggr the aggregator processed in the network_metadata library
+ * @key the flow key pushed by fsm
+ */
+bool
+ct_stats_collect_filter_cb(struct net_md_aggregator *aggr,
+                           struct net_md_flow_key *key, char *app_name);
 
 #endif /* CT_STATS_H_INCLUDED */

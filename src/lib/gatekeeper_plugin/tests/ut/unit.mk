@@ -24,11 +24,12 @@
 
 UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM),n,y)
 
-UNIT_NAME := test_fsm_gk
+UNIT_NAME := test_gatekeeper_plugin
 
 UNIT_TYPE := TEST_BIN
 
 UNIT_SRC := test_fsm_gk.c
+UNIT_SRC += test_fsm_gk_fct.c
 
 UNIT_DEPS := src/lib/log
 UNIT_DEPS += src/lib/common

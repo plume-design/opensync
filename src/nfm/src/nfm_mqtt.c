@@ -98,26 +98,26 @@ void callback_AWLAN_Node(
     nfm_mqtt_location_id[0] = '\0';
     for (mi = 0; mi < new->mqtt_headers_len; mi++)
     {
-        if (strcmp(new->mqtt_headers_keys[mi], "location_id") == 0)
+        if (strcmp(new->mqtt_headers_keys[mi], "locationId") == 0)
         {
-            if (STRSCPY(nfm_mqtt_topic, new->mqtt_topics[mi]) < 0)
+            if (STRSCPY(nfm_mqtt_location_id, new->mqtt_headers[mi]) < 0)
             {
-                LOG(WARN, "nfm: MQTT topic name too long, please increase the buffer size.");
+                LOG(WARN, "nfm: MQTT locationId too long, please increase the buffer size.");
             }
         }
 
-        if (strcmp(new->mqtt_headers_keys[mi], "node_id") == 0)
+        if (strcmp(new->mqtt_headers_keys[mi], "nodeId") == 0)
         {
-            if (STRSCPY(nfm_mqtt_topic, new->mqtt_topics[mi]) < 0)
+            if (STRSCPY(nfm_mqtt_node_id, new->mqtt_headers[mi]) < 0)
             {
-                LOG(WARN, "nfm: MQTT topic name too long, please increase the buffer size.");
+                LOG(WARN, "nfm: MQTT nodeId too long, please increase the buffer size.");
             }
         }
     }
 
     LOG(INFO, "nfm: MQTT topic set: %s", nfm_mqtt_topic[0] == '\0' ? "(empty)" : nfm_mqtt_topic);
-    LOG(INFO, "nfm: MQTT location_id set: %s", nfm_mqtt_location_id[0] == '\0' ? "(empty)" : nfm_mqtt_location_id);
-    LOG(INFO, "nfm: MQTT node_id set: %s", nfm_mqtt_node_id[0] == '\0' ? "(empty)" : nfm_mqtt_node_id);
+    LOG(INFO, "nfm: MQTT locationId set: %s", nfm_mqtt_location_id[0] == '\0' ? "(empty)" : nfm_mqtt_location_id);
+    LOG(INFO, "nfm: MQTT nodeId set: %s", nfm_mqtt_node_id[0] == '\0' ? "(empty)" : nfm_mqtt_node_id);
 
     /* Start/stop NFLOG monitoring */
     if (nfm_mqtt_topic[0] != '\0')

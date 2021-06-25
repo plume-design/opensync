@@ -38,10 +38,10 @@ typedef struct inet_routes inet_routes_t;
  * @brief Creates 'static routes' inet object which keeps
  * and applies static routes to given network interface.
  * Object is created in 'disabled' state
- * 
+ *
  * @param if_name name of the network interface (dev in linux),
  * the routes will be applied to
- * @return ptr to created object or NULL when mem alloc fails
+ * @return ptr to created object
  */
 inet_routes_t *inet_routes_new(const char * if_name);
 
@@ -49,7 +49,7 @@ inet_routes_t *inet_routes_new(const char * if_name);
  * @brief Deletes 'static routes' object and releases allocated
  * memory. All added routes are removed from the system before
  * object is destroyed.
- * 
+ *
  * @param self ptr to inet routes object
  */
 void inet_routes_del(inet_routes_t * self);
@@ -58,22 +58,22 @@ void inet_routes_del(inet_routes_t * self);
  * @brief Adds new static route to the object. When object is enabled
  * the route is immediately applied to the network interface, otherwise
  * it is collected and will be applied when enabled
- * 
+ *
  * @param self ptr to inet routes object
  * @param route IPv4 route to be added
- * @return 'true' when route added, 'false' when route cannot be added
- * because it was rejected by network interface or memory allocation failed
+ * @return true when route added; false when route cannot be added
+ * because it was rejected by network interface
  */
 bool inet_routes_add(inet_routes_t * self, const osn_route4_t *route);
 
 /**
  * @brief Removes specified route from the object and from the network
  * interface when object is enabled.
- * 
+ *
  * @param self ptr to inet routes object
  * @param route route to be removed, all route params must match the
  * route already stored in the object
- * @return 'true' when route found and removed; 'false' otherwise
+ * @return true when route found and removed; false otherwise
  */
 bool inet_routes_remove(inet_routes_t * self, const osn_route4_t *route);
 
@@ -81,14 +81,14 @@ bool inet_routes_remove(inet_routes_t * self, const osn_route4_t *route);
  * @brief Enables/disables the object. When enabled, all added routes are
  * applied to the network interface, when disabled all added routes are
  * deleted from network interface, but remain stored in the object.
- * 
+ *
  * Repeated enable/disable requests are ignored, 'true' is returned
- * 
- * New enable state is always set, no matter if underlaying linux layer
+ *
+ * New enable state is always set, no matter if underlying Linux layer
  * returned error or not. Therefore if this function returns error, recovery
  * sequence should be to wait for network interface to be ready, then toggle
  * 'enable' state until routes are properly applied / deleted in network interface.
- * 
+ *
  * @param self ptr to inet routes object
  * @param enable requested object state
  * @return true request executed w/o errors, false otherwise
@@ -97,7 +97,7 @@ bool inet_routes_enable(inet_routes_t * self, bool enable);
 
 /**
  * @brief Returns current enable state of the object
- * 
+ *
  * @param self ptr to inet routes object
  * @return object enable state
  */
@@ -107,10 +107,10 @@ bool inet_routes_is_enabled(const inet_routes_t * self);
  * @brief This function reapplies already added route in the routing table.
  * This is needed if kernel automatically flushes the route and we need to
  * resynchronize routing table with inet_routes
- * 
+ *
  * @param self ptr to inet routes object
  * @param route route to be reapplied
- * @return false when inet routes object is disabled or route desn't exist
+ * @return false when inet routes object is disabled or route doesn't exist
  * @return true when route reapplied
  */
 bool inet_routes_reapply(inet_routes_t *self, const osn_route4_t *route);

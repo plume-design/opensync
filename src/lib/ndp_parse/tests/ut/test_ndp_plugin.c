@@ -131,10 +131,16 @@ send_report(struct fsm_session *session, char *report)
     return;
 }
 
+char *
+get_other_config_val(struct fsm_session *session, char *key)
+{
+    return NULL;
+}
 
 struct fsm_session_ops g_ops =
 {
     .send_report = send_report,
+    .get_config = get_other_config_val,
 };
 
 
@@ -164,14 +170,14 @@ create_hex_dump(const char *fname, const uint8_t *buf, size_t len)
 
     for (i = 0; i < len; i++)
     {
-	 new_line = (i == 0 ? true : ((i % 8) == 0));
-	 if (new_line)
-	 {
-	      if (line_number) fprintf(f, "\n");
-	      fprintf(f, "%06x", line_number);
-	      line_number += 8;
-	 }
-         fprintf(f, " %02x", buf[i]);
+        new_line = (i == 0 ? true : ((i % 8) == 0));
+        if (new_line)
+        {
+            if (line_number) fprintf(f, "\n");
+            fprintf(f, "%06x", line_number);
+            line_number += 8;
+        }
+        fprintf(f, " %02x", buf[i]);
     }
     fprintf(f, "\n");
     fclose(f);
@@ -189,7 +195,7 @@ char *g_node_id = "bar";
  * Dumps the packet content in /tmp/<tests_name>_<pkt name>.txtpcap
  * for wireshark consumption and sets the given parser's data fields.
  * @param pkt the C structure containing an exported packet capture
- * @param parser theparser structure to set
+ * @param parser the parser structure to set
  */
 #define PREPARE_UT(pkt, parser)                                 \
     {                                                           \

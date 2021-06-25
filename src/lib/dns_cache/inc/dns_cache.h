@@ -49,6 +49,7 @@ struct dns_cache_mgr
     uint8_t     refcount;
     uint32_t    cache_hit_count[SERVICE_PROVIDER_MAX_ELEMS];
     ds_tree_t   ip2a_tree;
+    int         entries;
 };
 
 #define URL_REPORT_MAX_ELEMS 8
@@ -106,23 +107,24 @@ struct ip2action
 
 struct ip2action_req
 {
-   os_macaddr_t             *device_mac;
-   struct sockaddr_storage  *ip_addr;
+    os_macaddr_t             *device_mac;
+    struct sockaddr_storage  *ip_addr;
 
-   int                      cache_ttl;
-   int                      action;
-   uint8_t                  policy_idx;
-   int                      service_id;
-   uint8_t                  nelems;
-   bool                     redirect_flag;
-   uint8_t                  categories[URL_REPORT_MAX_ELEMS];
-   bool                     cat_unknown_to_service;
-   union
-   {
+    int                      cache_ttl;
+    int                      action;
+    uint8_t                  policy_idx;
+    int                      service_id;
+    uint8_t                  nelems;
+    bool                     redirect_flag;
+    uint8_t                  categories[URL_REPORT_MAX_ELEMS];
+    bool                     cat_unknown_to_service;
+    int                      (*set_ttl)(void);
+    union
+    {
         struct ip2action_bc_info bc_info;
         struct ip2action_wb_info wb_info;
         struct ip2action_gk_info gk_info;
-   } cache_info;
+    } cache_info;
 #define cache_bc cache_info.bc_info
 #define cache_wb cache_info.wb_info
 #define cache_gk cache_info.gk_info
@@ -171,6 +173,19 @@ dns_cache_cleanup(void);
  */
 bool
 dns_cache_ip2action_lookup(struct ip2action_req *req);
+
+
+/**
+ * @brief Lookup cached action and policy idx for given ip address and mac.
+ *
+ * receive ipaddress and mac of device.
+ *
+ * output action and policy idx.
+ *
+ * @return true for success and false for failure.
+ */
+bool
+dns_cache_get_policy_action(struct ip2action_req *req);
 
 /**
  * @brief Add an fsm policy result.

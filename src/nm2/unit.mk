@@ -79,4 +79,5 @@ UNIT_DEPS += src/lib/pjs
 UNIT_DEPS += src/lib/reflink
 UNIT_DEPS += src/lib/schema
 UNIT_DEPS += src/lib/synclist
+UNIT_DEPS += src/lib/timevt
 UNIT_DEPS_CFLAGS += src/lib/version

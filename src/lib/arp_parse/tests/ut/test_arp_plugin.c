@@ -321,7 +321,7 @@ void
 log_ip_mac_mapping(struct arp_parser *parser)
 {
     char ipstr[INET6_ADDRSTRLEN];
-    os_macaddr_t null_mac = { 0 };
+    os_macaddr_t null_mac = {{ 0 }};
     os_macaddr_t *mac;
 
     mac = parser->sender.mac;

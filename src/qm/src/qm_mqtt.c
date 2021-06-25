@@ -164,7 +164,7 @@ bool qm_mqtt_config_valid(void)
 void qm_mqtt_stop(void)
 {
     mqtt_telog_fini();
-    
+
     ev_timer_stop(EV_DEFAULT, &qm_mqtt_timer);
     qm_agg_stats_interval = STATS_MQTT_INTERVAL;
 
@@ -387,6 +387,7 @@ void qm_mqtt_publish_queue()
 void qm_mqtt_reconnect()
 {
     mosqev_t *mqtt = &qm_mqtt;
+    bool result;
 
     /*
      * Reconnect handler
@@ -397,10 +398,10 @@ void qm_mqtt_reconnect()
         {
             if (qm_mqtt_reconnect_ts < ticks())
             {
-                qm_mqtt_reconnect_ts = ticks() + TICKS_S(STATS_MQTT_RECONNECT);
-
                 LOG(DEBUG, "Connecting to %s ...\n", qm_mqtt_broker);
-                if (!mosqev_connect(&qm_mqtt, qm_mqtt_broker, qm_mqtt_port))
+                result = mosqev_connect(&qm_mqtt, qm_mqtt_broker, qm_mqtt_port);
+                qm_mqtt_reconnect_ts = ticks() + TICKS_S(STATS_MQTT_RECONNECT);
+                if (!result)
                 {
                     LOGE("Connecting.\n");
                     return;

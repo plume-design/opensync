@@ -81,13 +81,13 @@ log_title "$tc_name: ONBRD test - Verify FW version string in AWLAN_Node '${matc
 
 # TESTCASE:
 fw_version_string=$(get_ovsdb_entry_value AWLAN_Node firmware_version -r)
-log "$tc_name: Verifying FW version string '${fw_version_string}'"
+log "$tc_name: Verifying FW version string '${fw_version_string}' for rule: '${match_rule}'"
 
 if [ "${match_rule}" = "non_empty" ]; then
     log -deb "$tc_name: FW version string must not be empty"
-    [ "${fw_version_string}" = "non_empty" ] &&
-        log -deb "$tc_name: FW version string is not empty" ||
-        raise "FW version string is empty" -l "$tc_name" -tc
+    [ "${fw_version_string}" = "" ] &&
+        raise "FAIL: FW version string is empty" -l "$tc_name" -tc ||
+        log -deb "$tc_name: FW version string is not empty - Success"
 elif [ "${match_rule}" = "pattern_match" ]; then
     log -deb "$tc_name: FW version string must match parsing rules and regular expression"
     verify_fw_pattern "${fw_version_string}" &&

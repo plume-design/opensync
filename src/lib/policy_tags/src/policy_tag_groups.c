@@ -41,6 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "target.h"
 #include "policy_tags.h"
+#include "memutil.h"
 
 /*****************************************************************************/
 #define MODULE_ID LOG_MODULE_ID_MAIN
@@ -74,10 +75,10 @@ om_tag_group_free(om_tag_group_t *group)
         }
 
         // Name
-        free(group->name);
+        FREE(group->name);
 
         // Group itself
-        free(group);
+        FREE(group);
     }
 
     return;
@@ -134,7 +135,7 @@ om_tag_group_alloc_from_schema(struct schema_Openflow_Tag_Group *sgroup)
     // groups are dynamically allocated.
 
     // Group itself
-    if (!(group = calloc(1, sizeof(*group)))) {
+    if (!(group = CALLOC(1, sizeof(*group)))) {
         goto alloc_err;
     }
 
@@ -144,7 +145,7 @@ om_tag_group_alloc_from_schema(struct schema_Openflow_Tag_Group *sgroup)
     }
 
     // Group name
-    if (!(group->name = strdup(sgroup->name))) {
+    if (!(group->name = STRDUP(sgroup->name))) {
         goto alloc_err;
     }
 

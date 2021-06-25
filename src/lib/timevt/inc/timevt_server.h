@@ -46,14 +46,16 @@ typedef struct te_server *te_server_handle;
 
 /**
  * @brief Opens time-event server for receiving of time-event messages from
- * time-event clients and creating aggregated reports in protobuf serialized format
- * 
+ * time-event clients and creating aggregated reports in protobuf serialized
+ * format
+ *
  * @param ev event loop to work with
  * @param sock_name server socket name in abstract namespace or NULL to use default one defined in TESRV_SOCKET_ADDR
  * @param sw_version software version to be included in the time-event reports
- * @param aggregation_period how long messages are aggregated before creating report or 0 to use TIMEVT_AGGR_PERIOD
- * @param max_events maximal number of time-events collected for single report
- * @return handle to the server object or NULL on failure
+ * @param aggregation_period how long messages are aggregated before creating
+ * report or 0 to use TIMEVT_AGGR_PERIOD
+ * @param max_events maximum number of time-events collected for single report
+ * @return handle to the server object, or NULL on failure
  */
 te_server_handle tesrv_open(struct ev_loop *ev, const char *sock_name,
     const char *sw_version, ev_tstamp aggregation_period, size_t max_events);
@@ -66,7 +68,7 @@ void tesrv_close(te_server_handle h);
 
 /**
  * @brief Gets server socket name / path
- * 
+ *
  * @param h handle to time-event server
  * @return server socket address (Unix datagram)
  */
@@ -74,7 +76,7 @@ const char *tesrv_get_name(te_server_handle h);
 
 /**
  * @brief Sets new report aggregation period in the server
- * 
+ *
  * @param h handle to time-event server
  * @param period new aggr period in seconds
  */
@@ -82,7 +84,7 @@ void tesrv_set_aggregation_period(te_server_handle h, ev_tstamp period);
 
 /**
  * @brief Sets target identity data to be used in time-event reports
- * 
+ *
  * @param h handle to time-event server
  * @param location_id POD location id string or NULL
  * @param node_id node ID string or NULL
@@ -104,14 +106,17 @@ const char *tesrv_get_location_id(te_server_handle h);
 const char *tesrv_get_node_id(te_server_handle h);
 
 /**
- * @brief Pointer to time-event new report created handler function, invoked each time server
- * creates new report. Buffer contains protobuf packed structure of Sts__TimeEventsReport type
+ * @brief Notifies creation of a new time-event report
+ *
+ * Invoked each time the server creates a new report. Buffer contains protobuf
+ * packed structure of Sts__TimeEventsReport type.
+ *
  * @param subscriber ptr to subscriber object
  * @param srv handle to server which created this report
  * @param buffer ptr to byte buffer containing protobuf packed Sts__TimeEventsReport structure
  * @param length length of the contents in the buffer in bytes
- * @return handler shall return 'true' to inform the server, that report was consumed OR 'false'
- * no inform the server, that report was rejected - for statistical purposes
+ * @return handler shall return true to inform the server that the report was consumed,
+ * or false to inform the server that the report was rejected (for statistical purposes)
  */
 typedef bool (*tesrv_new_report_fp_t)(void *subscriber, te_server_handle srv, const uint8_t *buffer, size_t length);
 
@@ -124,7 +129,7 @@ typedef bool (*tesrv_new_report_fp_t)(void *subscriber, te_server_handle srv, co
 void tesrv_subscribe_new_report(te_server_handle h, void *subscriber, tesrv_new_report_fp_t pfn);
 
 /**
- * @brief Gets number of messages succesfully published to subscriber
+ * @brief Gets number of messages successfully published to subscriber
  * @param h handle to server object
  * @return number of published time-event messages
  */
@@ -145,7 +150,7 @@ size_t tesrv_get_msg_received(te_server_handle h);
 size_t tesrv_get_msg_lost(te_server_handle h);
 
 /**
- * @brief Gets number of reports succesfully published to subscriber
+ * @brief Gets number of reports successfully published to subscriber
  * @param h handle to server object
  * @return number of published reports
  */

@@ -50,10 +50,10 @@ ltem_check_dns(char *server, char *hostname)
     int save_nscount;
     struct in_addr save_addrs[MAXNS];
     struct sockaddr_in addr;
-	struct addrinfo *result = NULL;
-	struct addrinfo hint;
+    struct addrinfo *result = NULL;
+    struct addrinfo hint;
 
-	memset(&hint, 0 , sizeof(hint));
+    memset(&hint, 0 , sizeof(hint));
 
     save_nscount = _res.nscount;
     for (i = 0; i < MAXNS; i++)

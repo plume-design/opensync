@@ -54,6 +54,11 @@ static int  ipv6_i_fail = 0;
 static int  ipv4_r_fail = 0;
 static int  ipv6_r_fail = 0;
 
+static const char* cm2_util_bool2str(bool v)
+{
+   return v ? "yes" : "no";
+}
+
 bool cm2_vtag_stability_check(void) {
     cm2_vtag_t *vtag = &g_state.link.vtag;
 
@@ -231,13 +236,15 @@ cm2_util_add_ip_opts(target_connectivity_check_option_t opts)
 static void
 cm2_util_update_connectivity_failures(target_connectivity_check_option_t opts, target_connectivity_check_t *cstate)
 {
-    if (!g_state.link.ipv4.is_ip) {
+    if (!g_state.link.ipv4.is_ip ||
+        (g_state.link.ipv4.blocked && !g_state.link.ipv6.is_ip)) {
         ipv4_r_fail = 0;
         ipv4_i_fail = 0;
         g_state.link.ipv4.blocked = false;
     }
 
-    if (!g_state.link.ipv6.is_ip) {
+    if (!g_state.link.ipv6.is_ip ||
+        (g_state.link.ipv6.blocked && !g_state.link.ipv4.is_ip)) {
         ipv6_r_fail = 0;
         ipv6_i_fail = 0;
         g_state.link.ipv6.blocked = false;
@@ -256,6 +263,9 @@ cm2_util_update_connectivity_failures(target_connectivity_check_option_t opts, t
         if (ipv6_i_fail > 0)
             ipv6_i_fail++;
     }
+
+    if (!(g_state.link.ipv4.is_ip && g_state.link.ipv6.is_ip))
+        return;
 
     if ((opts & ROUTER_CHECK) && (opts & IPV4_CHECK))
         ipv4_r_fail = cstate->router_ipv4_state ? 0 : ipv4_r_fail + 1;
@@ -278,6 +288,14 @@ cm2_util_update_connectivity_failures(target_connectivity_check_option_t opts, t
         LOGI("Blocking invalid ipv6 link");
         g_state.link.ipv6.blocked = true;
     }
+
+    if (g_state.link.ipv4.blocked)
+        LOGI("IPv4 link blocked, left to unblock: router %d/%d Internet: %d/%d",
+             ipv4_r_fail, UNBLOCKING_LINK_THRESHOLD, ipv4_i_fail, UNBLOCKING_LINK_THRESHOLD);
+
+    if (g_state.link.ipv6.blocked)
+        LOGI("IPv6 link blocked, left to unblock: router %d/%d Internet: %d/%d",
+             ipv6_r_fail, UNBLOCKING_LINK_THRESHOLD, ipv6_i_fail, UNBLOCKING_LINK_THRESHOLD);
 
     if (g_state.link.ipv4.blocked && g_state.link.ipv6.blocked) {
         LOGI("IPv4 and IPv6 blocked, connectivity issue on both uplinks, unblocking...");
@@ -333,8 +351,14 @@ bool cm2_connection_req_stability_process(target_connectivity_check_option_t opt
     }
 
     bridge = con.bridge_exists ? con.bridge : "none";
-    LOGN("Connection status %d, main link: %s bridge: %s opts: = %x",
-         status, if_name, bridge, opts);
+    LOGI("Params to check: link: %s router: %s internet: %s ntp: %s ipv4: %s ipv6: %s",
+         cm2_util_bool2str(opts & LINK_CHECK), cm2_util_bool2str(opts & ROUTER_CHECK),
+         cm2_util_bool2str(opts & INTERNET_CHECK), cm2_util_bool2str(opts & NTP_CHECK),
+         cm2_util_bool2str(opts & IPV4_CHECK), cm2_util_bool2str(opts & IPV6_CHECK));
+
+    LOGN("Connection status %d, main link: %s bridge: %s",
+         status, if_name, bridge);
+
     LOGD("%s: Stability counters: [%d, %d, %d, %d]",if_name,
          con.unreachable_link_counter, con.unreachable_router_counter,
          con.unreachable_internet_counter, con.unreachable_cloud_counter);
@@ -593,7 +617,9 @@ static void cm2_connection_stability_check(void)
 {
     target_connectivity_check_option_t opts;
 
-    if (g_state.connected && !cm2_cpu_is_low_loadavg())
+    if (g_state.connected &&
+        (!g_state.link.ipv4.blocked && !g_state.link.ipv6.blocked) &&
+        !cm2_cpu_is_low_loadavg())
         return;
 
     opts = LINK_CHECK | ROUTER_CHECK | NTP_CHECK;
@@ -622,6 +648,17 @@ void cm2_stability_init(struct ev_loop *loop)
                   CONFIG_CM2_STABILITY_INTERVAL);
     g_state.stability_timer.data = NULL;
     ev_timer_start(g_state.loop, &g_state.stability_timer);
+}
+
+void cm2_stability_update_interval(struct ev_loop *loop, bool short_int)
+{
+    int t;
+
+    t = short_int ? CONFIG_CM2_STABILITY_SHORT_INTERVAL : CONFIG_CM2_STABILITY_INTERVAL;
+
+    ev_timer_stop (loop, &g_state.stability_timer);
+    ev_timer_set (&g_state.stability_timer, t, t);
+    ev_timer_start (loop, &g_state.stability_timer);
 }
 
 void cm2_stability_close(struct ev_loop *loop)

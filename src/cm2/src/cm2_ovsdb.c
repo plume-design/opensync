@@ -1310,7 +1310,7 @@ cm2_ovsdb_connection_update_used_state(char *if_name, bool state)
     return ret;
 }
 
-static bool
+bool
 cm2_ovsdb_connection_update_bridge_state(char *if_name, const char *bridge)
 {
     struct schema_Connection_Manager_Uplink con;
@@ -1545,6 +1545,12 @@ static void cm2_connection_clear_used(void)
 
     if (g_state.link.is_used) {
         LOGN("%s: Remove old used link.", g_state.link.if_name);
+
+        if (g_state.dev_type == CM2_DEVICE_BRIDGE && cm2_is_eth_type(g_state.link.if_type)) {
+            MEMZERO(g_state.old_link);
+            memcpy(&g_state.old_link, &g_state.link, sizeof(g_state.old_link));
+        }
+
         if (g_state.link.is_bridge) {
             cm2_ovsdb_set_dhcpv6_client(g_state.link.bridge_name, false);
             macrep = cm2_is_eth_type(g_state.link.if_type) ? CM2_PAR_TRUE : CM2_PAR_NOT_SET;

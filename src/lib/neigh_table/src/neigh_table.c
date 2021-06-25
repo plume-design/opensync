@@ -45,6 +45,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ds_tree.h"
 #include "neigh_table.h"
 #include "nf_utils.h"
+#include "memutil.h"
 
 static struct neigh_table_mgr
 mgr =
@@ -196,6 +197,7 @@ void process_link_event(struct nf_neigh_info *neigh_info)
             print_neigh_entry(remove_node);
             ds_tree_remove(tree, remove_node);
             free_neigh_entry(remove_node);
+            mgr->count--;
         }
     }
 
@@ -241,7 +243,7 @@ struct neigh_interface * neigh_table_get_intf(int ifindex)
     intf = neigh_table_lookup_intf(ifindex);
     if (intf != NULL) return intf;
 
-    intf = calloc(1, sizeof(*intf));
+    intf = CALLOC(1, sizeof(*intf));
     if (intf == NULL) return NULL;
 
     intf->ifindex = ifindex;
@@ -313,10 +315,10 @@ void free_neigh_entry(struct neighbour_entry *entry)
 {
     if (!entry) return;
 
-    free(entry->ipaddr);
-    free(entry->mac);
-    free(entry->ifname);
-    free(entry);
+    FREE(entry->ipaddr);
+    FREE(entry->mac);
+    FREE(entry->ifname);
+    FREE(entry);
 }
 
 
@@ -346,6 +348,7 @@ void neigh_table_cache_cleanup(void)
         entry_node = ds_tree_next(tree, entry_node);
         ds_tree_remove(tree, remove_node);
         free_neigh_entry(remove_node);
+        mgr->count--;
     }
 
     tree = &mgr->interfaces;
@@ -355,7 +358,7 @@ void neigh_table_cache_cleanup(void)
         remove_intf = intf_node;
         intf_node = ds_tree_next(tree, intf_node);
         ds_tree_remove(tree, remove_intf);
-        free(intf_node);
+        FREE(intf_node);
     }
     return;
 }
@@ -465,18 +468,18 @@ neigh_table_add_to_cache(struct neighbour_entry *to_add)
         return NULL;
     }
 
-    entry = calloc(1, sizeof(struct neighbour_entry));
+    entry = CALLOC(1, sizeof(struct neighbour_entry));
     if (!entry) return false;
 
-    entry->ipaddr = calloc(1, sizeof(struct sockaddr_storage));
+    entry->ipaddr = CALLOC(1, sizeof(struct sockaddr_storage));
     if (entry->ipaddr == NULL) goto err_free_entry;
 
-    entry->mac = calloc(1, sizeof(os_macaddr_t));
+    entry->mac = CALLOC(1, sizeof(os_macaddr_t));
     if (entry->mac == NULL) goto err_free_ipaddr;
 
     if (to_add->ifname != NULL)
     {
-        entry->ifname = strdup(to_add->ifname);
+        entry->ifname = STRDUP(to_add->ifname);
         if (entry->ifname == NULL) goto err_free_mac;
     }
 
@@ -490,18 +493,19 @@ neigh_table_add_to_cache(struct neighbour_entry *to_add)
     LOGT("%s: adding to cache: ", __func__);
     print_neigh_entry(entry);
 
+    mgr->count++;
     ds_tree_insert(&mgr->neigh_table, entry, entry);
 
     return entry;
 
 err_free_mac:
-    free(entry->mac);
+    FREE(entry->mac);
 
 err_free_ipaddr:
-    free(entry->ipaddr);
+    FREE(entry->ipaddr);
 
 err_free_entry:
-    free(entry);
+    FREE(entry);
 
     return NULL;
 }
@@ -551,6 +555,7 @@ void neigh_table_delete_from_cache(struct neighbour_entry *to_del)
 
     ds_tree_remove(&mgr->neigh_table, lookup);
     free_neigh_entry(lookup);
+    mgr->count--;
 }
 
 void neigh_table_delete(struct neighbour_entry *to_del)
@@ -578,6 +583,7 @@ void neigh_table_delete(struct neighbour_entry *to_del)
         return;
     }
     free_neigh_entry(lookup);
+    mgr->count--;
 
     return;
 }
@@ -606,10 +612,12 @@ bool neigh_table_cache_update(struct neighbour_entry *entry)
 
     memcpy(lookup->mac, entry->mac, sizeof(os_macaddr_t));
 
-    free(lookup->ifname);
+    FREE(lookup->ifname);
+    lookup->ifname = NULL;
+
     if (entry->ifname != NULL)
     {
-        lookup->ifname = strdup(entry->ifname);
+        lookup->ifname = STRDUP(entry->ifname);
         if (lookup->ifname == NULL) return false;
     }
     lookup->source = entry->source;
@@ -728,6 +736,7 @@ void neigh_table_ttl_cleanup(int64_t ttl, uint32_t source_mask)
         entry_node = ds_tree_next(tree, entry_node);
         ds_tree_remove(tree, remove_node);
         free_neigh_entry(remove_node);
+        mgr->count--;
     }
 }
 
@@ -735,7 +744,7 @@ void neigh_table_ttl_cleanup(int64_t ttl, uint32_t source_mask)
 void print_neigh_entry(struct neighbour_entry *entry)
 {
     char                   ipstr[INET6_ADDRSTRLEN] = { 0 };
-    os_macaddr_t           nullmac = { 0 };
+    os_macaddr_t           nullmac = {{ 0 }};
     os_macaddr_t           *pmac;
     char                   *source;
     const char             *ip;
@@ -768,4 +777,13 @@ void print_neigh_table(void)
         print_neigh_entry(entry_node);
     }
     LOGT("=====END=====");
+}
+
+
+int
+neigh_table_get_cache_size(void)
+{
+    struct neigh_table_mgr *mgr = neigh_table_get_mgr();
+
+    return mgr->count;
 }

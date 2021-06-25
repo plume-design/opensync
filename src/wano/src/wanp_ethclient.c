@@ -156,7 +156,7 @@ void wanp_ethclient_run(wano_plugin_handle_t *wh)
         LOG(ERR, "ethclient: %s: Error acquiring pipeline object.", wh->wh_ifname);
     }
 
-    /* Detach the plug-in immediately, if succesfull */
+    /* Detach the plug-in immediately, if successful */
     if (wanp_ethclient_pcap_open(self))
     {
         self->ec_status_fn(&self->ec_handle, &WANO_PLUGIN_STATUS(WANP_DETACH));
@@ -457,7 +457,7 @@ void wanp_ethclient_dhcp_process(
 
     /*
      * Check MAC address of the DHCP packet. If there's another client on the
-     * network, we're assuming it's a LAN netowrk
+     * network, we're assuming it's a LAN network
      */
     if (osn_mac_addr_cmp(&self->ec_client_mac, client_mac) != 0)
     {

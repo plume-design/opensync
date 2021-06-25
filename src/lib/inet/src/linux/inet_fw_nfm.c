@@ -315,8 +315,6 @@ bool fw_nat_start(inet_fw_t *self)
                         "-o", self->fw_ifname,
                         "-p", "tcp",
                         "--tcp-flags", "SYN,RST", "SYN",
-                        "-m", "tcpmss",
-                        "--mss", "1400:1536",
                         "--clamp-mss-to-pmtu"),
                 "TCPMSS");
 
@@ -330,8 +328,6 @@ bool fw_nat_start(inet_fw_t *self)
                         "-o", self->fw_ifname,
                         "-p", "tcp",
                         "--tcp-flags", "SYN,RST", "SYN",
-                        "-m", "tcpmss",
-                        "--mss", "1400:1536",
                         "--clamp-mss-to-pmtu"),
                 "TCPMSS");
 

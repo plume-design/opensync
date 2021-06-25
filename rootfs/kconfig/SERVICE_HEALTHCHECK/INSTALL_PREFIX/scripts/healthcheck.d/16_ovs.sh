@@ -148,6 +148,9 @@ ovs_vswitchd_check()
         check_pass
     fi
 
+    # send top offenders to syslog for logpull analysis
+    top -n 1 -b | head -n 20 | logger
+
     # service warning OR error
     if [ $blocktime -lt $RCU_BLOCK_ERR_THR ]; then
         # warning timeout still acceptable, but check should fail with warning

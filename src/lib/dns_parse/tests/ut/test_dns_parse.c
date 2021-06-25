@@ -138,6 +138,19 @@ struct schema_FSM_Policy g_spolicies[] =
         .other_config_len = 2,
         .other_config_keys = { "tagv4_name", "tagv6_name",},
         .other_config = { "${*upd_v4_tag}", "${*upd_v6_tag}"},
+    },
+    { /* entry 3*/
+        .policy_exists = true,
+        .policy = "test_policy",
+        .name = "test_policy_allow",
+        .idx = 3,
+        .mac_op_exists = false,
+        .fqdn_op_exists = false,
+        .fqdncat_op_exists = false,
+        .action_exists = true,
+        .action = "gatekeeper",
+        .log_exists = true,
+        .log = "all",
     }
 };
 
@@ -212,19 +225,44 @@ test_send_report(struct fsm_session *session, char *report)
     return;
 }
 
-
-union fsm_plugin_ops g_plugin_ops =
+bool
+dummy_gatekeeper_get_verdict(struct fsm_session *session,
+                             struct fsm_policy_req *req)
 {
-    .web_cat_ops =
-    {
-        .categories_check = NULL,
-        .risk_level_check = NULL,
-        .cat2str = NULL,
-        .get_stats = NULL,
-        .dns_response = NULL,
-    },
-};
+    struct fqdn_pending_req *fqdn_req;
+    struct fsm_url_request *req_info;
+    struct fsm_url_reply *url_reply;
 
+    fqdn_req = req->fqdn_req;
+    req_info = fqdn_req->req_info;
+
+    url_reply = calloc(1, sizeof(*url_reply));
+    if (url_reply == NULL) return false;
+
+    req_info->reply = url_reply;
+
+    url_reply->service_id = URL_GK_SVC;
+
+    fqdn_req->categorized = FSM_FQDN_CAT_SUCCESS;
+    req_info->reply->gk.gk_policy = strdup("gk_policy");
+    req_info->reply->gk.confidence_level = 90;
+    req_info->reply->gk.category_id = 2;
+
+   return true;
+}
+
+
+union fsm_plugin_ops p_ops;
+
+struct fsm_web_cat_ops g_plugin_ops =
+{
+    .categories_check = NULL,
+    .risk_level_check = NULL,
+    .cat2str = NULL,
+    .get_stats = NULL,
+    .dns_response = NULL,
+    .gatekeeper_req = dummy_gatekeeper_get_verdict,
+};
 
 int g_ipv4_cnt;
 
@@ -376,6 +414,7 @@ void setUp(void)
     fsm_add_session(conf);
     sessions = fsm_get_sessions();
     g_fsm_parser = ds_tree_find(sessions, conf->handler);
+    g_fsm_parser->provider_ops = &g_plugin_ops;
     g_fsm_parser->ops.send_report = test_send_report;
     TEST_ASSERT_NOT_NULL(g_fsm_parser);
 
@@ -397,7 +436,6 @@ void setUp(void)
 void tearDown(void)
 {
     struct fsm_policy_session *policy_mgr = fsm_policy_get_mgr();
-    struct schema_Flow_Service_Manager_Config *conf;
     struct policy_table *table, *t_to_remove;
     struct fsm_policy *fpolicy, *p_to_remove;
     ds_tree_t *tables_tree, *policies_tree;
@@ -421,6 +459,8 @@ void tearDown(void)
         TEST_ASSERT_TRUE(ret);
     }
 
+    fsm_reset_mgr();
+
     /* Clean up policies */
     tables_tree = &policy_mgr->policy_tables;
     table = ds_tree_head(tables_tree);
@@ -440,11 +480,8 @@ void tearDown(void)
         free(t_to_remove);
     }
 
-    conf = &g_confs[0];
-    fsm_delete_session(conf);
     g_dns_mgr = NULL;
 
-    fsm_reset_mgr();
     g_fsm_mgr->init_plugin = NULL;
     return;
 }
@@ -1185,6 +1222,63 @@ test_update_v6_tag_generation_ip_expiration(void)
     FREE(local_tag);
 }
 
+/**
+ * @brief test gk cache entry
+ */
+void
+test_gk_dns_cache(void)
+{
+    struct net_header_parser *net_parser;
+    struct schema_FSM_Policy *spolicy;
+    struct dns_session *dns_session;
+    size_t nelems;
+    size_t len;
+    size_t i;
+
+    /* Delete all policies */
+    nelems = (sizeof(g_spolicies) / sizeof(g_spolicies[0]));
+    for (i = 0; i < nelems; i++)
+    {
+        spolicy = &g_spolicies[i];
+
+        fsm_delete_policy(spolicy);
+    }
+
+    /* Add the update_tag policy */
+    spolicy = &g_spolicies[3];
+    fsm_add_policy(spolicy);
+    dns_session = dns_lookup_session(g_fsm_parser);
+    TEST_ASSERT_NOT_NULL(dns_session);
+
+    net_parser = calloc(1, sizeof(*net_parser));
+    TEST_ASSERT_NOT_NULL(net_parser);
+
+    /* Process query */
+    PREPARE_UT(pkt46, net_parser);
+    len = net_header_parse(net_parser);
+    TEST_ASSERT_TRUE(len != 0);
+    dns_handler(g_fsm_parser, net_parser);
+
+    /*
+     * The captured dns answer has 8 resolved IP addresses.
+     * Set validation expectations
+     */
+    g_ipv4_cnt = 8;
+
+    /* Process response */
+    memset(net_parser, 0, sizeof(*net_parser));
+    PREPARE_UT(pkt47, net_parser);
+    len = net_header_parse(net_parser);
+    TEST_ASSERT_TRUE(len != 0);
+    dns_handler(g_fsm_parser, net_parser);
+
+    g_dns_mgr->req_cache_ttl = 0;
+    dns_retire_reqs(g_fsm_parser);
+
+    free(net_parser);
+}
+
+
 
 int main(int argc, char *argv[])
 {
@@ -1211,6 +1305,7 @@ int main(int argc, char *argv[])
     RUN_TEST(test_type_A_duplicate_query_duplicate_response);
     RUN_TEST(test_update_v4_tag_generation_ip_expiration);
     RUN_TEST(test_update_v6_tag_generation_ip_expiration);
+    RUN_TEST(test_gk_dns_cache);
 
     return UNITY_END();
 }

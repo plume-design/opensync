@@ -27,15 +27,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef __TEST_NETWORK_METADATA_H__
 #define __TEST_NETWORK_METADATA_H__
 
-#include "unity.h"
-
 #include "network_metadata.h"
 #include "network_metadata_report.h"
 
 /**
  * @brief defines structure passed to network data tests
  *
- * @see setUp() instanciates global object based on this structure
+ * @see main_setUp() instanciates global object based on this structure
  */
 struct test_network_data
 {
@@ -80,27 +78,7 @@ struct test_network_data_report
 void test_net_md_report_setup(void);
 void test_net_md_report_teardown(void);
 
-void test_str2mac(void);
-void test_net_md_allocate_aggregator(void);
-void test_activate_add_samples_close_send_report(void);
-void test_add_2_samples_all_keys(void);
-void test_ethernet_aggregate_one_key(void);
-void test_ethernet_aggregate_two_keys(void);
-void test_large_loop(void);
-void test_add_remove_flows(void);
-void test_multiple_windows(void);
-void test_report_filter(void);
-void test_activate_and_free_aggr(void);
-void test_bogus_ttl(void);
-void test_flow_tags_one_key(void);
-void test_vendor_data_one_key(void);
-void test_flow_key_to_net_md_key(void);
-void test_vendor_data_serialize_deserialize(void);
-void test_update_flow_tags(void);
-void test_update_vendor_data(void);
-void test_update_filter_flow_tags(void);
-void test_reverse_lookup_acc(void);
-void test_direction_originator_data_serialize_deserialize(void);
-void test_acc_flow_info_report(void);
-void test_net_md_ufid(void);
+void test_network_metadata_utils(void);
+void test_network_metadata_reports(void);
+
 #endif // __TEST_NETWORK_METADATA_H__

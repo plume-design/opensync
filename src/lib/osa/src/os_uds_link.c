@@ -35,12 +35,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sys/socket.h>
 #include <unistd.h> // unlink(), close()
 
-#include <log.h>
-#include <ds.h>
+#include "log.h"
+#include "ds.h"
 
 #include "os_uds_link.h"
 
-// opens unix datagram socket
+// opens Unix datagram socket
 static int open_unix_socket(const char *path, /*out*/struct sockaddr_un *p_addr)
 {
     struct sockaddr_un addr = { 0 };
@@ -98,7 +98,7 @@ static int open_unix_socket(const char *path, /*out*/struct sockaddr_un *p_addr)
     int sfd = socket(AF_UNIX, SOCK_DGRAM, 0);
     if (sfd == -1)
     {
-        LOG(ERR, "Cannot open unix datagram socket : %s", strerror(errno));
+        LOG(ERR, "Cannot open Unix datagram socket : %s", strerror(errno));
         return -1;
     }
 
@@ -137,8 +137,7 @@ static void eh_on_datagram_received(struct ev_loop *loop, ev_io *w, int revents)
     do
     {
         socklen_t salen = sizeof(msg.addr);
-        ssize_t len = recvfrom(self->socket_fd, rxbuf, sizeof(rxbuf), MSG_DONTWAIT, 
-            (struct sockaddr *) &msg.addr, &salen);
+        ssize_t len = recvfrom(self->socket_fd, rxbuf, sizeof(rxbuf), MSG_DONTWAIT, (struct sockaddr *)&msg.addr, &salen);
 
         if (len > 0)
         {
@@ -157,7 +156,7 @@ static void eh_on_datagram_received(struct ev_loop *loop, ev_io *w, int revents)
             if (len < 0)
             {
                 int err = errno;
-                if(err != EAGAIN && err != EWOULDBLOCK)
+                if (err != EAGAIN && err != EWOULDBLOCK)
                 {
                     LOG(ERR, "Socket %s receive error : %s", self->sname, strerror(err));
                 }
@@ -179,7 +178,7 @@ bool uds_link_init(uds_link_t *self, const char *path, struct ev_loop *ev)
         free(self);
         return false;
     }
-    
+
     self->abstract = (self->socket_addr.sun_path[0] == '\0');
     self->sname = &self->socket_addr.sun_path[self->abstract ? 1 : 0];
     self->socket_fd = sfd;
@@ -201,7 +200,7 @@ void uds_link_fini(uds_link_t *self)
     if (0 != close(self->socket_fd))
     {
         LOG(ERR, "Socket %s closed with error : %s", self->sname, strerror(errno));
-    }    
+    }
     self->socket_fd = -1;
 
     if (!self->abstract)
@@ -217,9 +216,9 @@ void uds_link_subscribe_datagram_read(uds_link_t *self, dgram_read_fp_t pfn)
 
 bool uds_link_sendto(uds_link_t *self, const udgram_t *dg)
 {
-	socklen_t slen = offsetof(struct sockaddr_un, sun_path) + 1 + strlen(&dg->addr.sun_path[1]);
+    socklen_t slen = offsetof(struct sockaddr_un, sun_path) + 1 + strlen(&dg->addr.sun_path[1]);
     ssize_t rv = sendto(self->socket_fd, dg->data, dg->size, 0, (struct sockaddr *)&dg->addr, slen);
-    
+
     if (rv < 0)
     {
         LOG(DEBUG, "Socket %s dgram sendto() failed : %s", self->sname, strerror(errno));

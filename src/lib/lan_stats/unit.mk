@@ -32,8 +32,13 @@ UNIT_NAME := fcm_lanstats
 UNIT_DISABLE := $(if $(CONFIG_MANAGER_FCM),n,y)
 
 # Template type:
-UNIT_TYPE := SHLIB
-UNIT_DIR := lib
+# Template type:
+ifneq (,$(findstring clang,$(CC)))
+	UNIT_TYPE := LIB
+else
+	UNIT_TYPE := SHLIB
+	UNIT_DIR := lib
+endif
 
 UNIT_SRC := src/lan_stats.c
 

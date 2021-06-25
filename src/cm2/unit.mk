@@ -77,3 +77,4 @@ UNIT_DEPS += src/lib/osn
 ifeq ($(BUILD_HAVE_LIBCARES),y)
 UNIT_DEPS += src/lib/evx
 endif
+UNIT_DEPS += src/lib/timevt

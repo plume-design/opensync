@@ -33,7 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "timevt.h"
 
 /**
- * @brief time-event client object 
+ * @brief time-event client object
  */
 struct te_client;
 
@@ -43,19 +43,21 @@ struct te_client;
 typedef struct te_client *te_client_handle;
 
 /**
- * @brief Opens time-event client for events generation. By default client is
- * not enabled - sent events are only logged locally. You need to enable the client
- * to begin remote transmission of events to the server.
- * 
- * @param server_sock_name server socket name to sent event messages to or NULL to use default addr
+ * @brief Opens time-event client for events generation
+ *
+ * By default client is not enabled - sent events are only logged locally.
+ * You need to enable the client to begin remote transmission of events to
+ * the server.
+ *
+ * @param server_sock_name server socket name to sent event messages to, or NULL to use default addr
  * @param procname process name this client belongs to, if NULL then process ID will be used instead
- * @return te_client_handle or NULL in case of failure
+ * @return te_client_handle, or NULL in case of failure
  */
 te_client_handle tecli_open(const char *server_sock_name, const char *procname);
 
 /**
  * @brief Closes time-event client, releases all used resources
- * 
+ *
  * @param h handle to open time-event client
  */
 void tecli_close(te_client_handle h);
@@ -63,17 +65,22 @@ void tecli_close(te_client_handle h);
 /**
  * @brief Logs time-event in the log and sends the event to the local
  * server when client is enabled
- * 
+ *
  * @param h handle to time-event client
  * @param cat event category
  * @param subject event subject (module / interface) or NULL when undefined
  * @param step step for category (start, stop, other) or NULL for single events
  * @param msg_fmt printf() like event message format or NULL when message not provided
  * @param ap list of message parameters
- * @return true when event logged succesfully, false otherwise
+ * @return true when event logged successfully, false otherwise
  */
-bool tecli_log_event(te_client_handle h, const char *cat, 
-                    const char *subject, const char *step, const char *msg_fmt, va_list ap);
+bool tecli_log_event(
+        te_client_handle h,
+        const char *cat,
+        const char *subject,
+        const char *step,
+        const char *msg_fmt,
+        va_list ap);
 
 /**
  * @brief Enables / disables remote event logging on the server. When disabled (by default)

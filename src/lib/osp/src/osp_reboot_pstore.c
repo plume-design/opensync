@@ -298,6 +298,9 @@ static os_reg_list_t dmesg_sig_pattern[] =
     OS_REG_LIST_ENTRY(7, "detected wmi/htc/ce stall"),
     OS_REG_LIST_ENTRY(8, "Temperature over thermal shutdown limit"),
 
+    /* ATOM __show_regs */
+    OS_REG_LIST_ENTRY(9, "EIP is at"),
+
     OS_REG_LIST_END(0)
 };
 

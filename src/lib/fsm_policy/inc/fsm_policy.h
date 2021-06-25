@@ -384,6 +384,7 @@ struct fsm_policy_client
     char *name;
     struct policy_table *table;
     void (*update_client)(struct fsm_session *, struct policy_table *);
+    char *(*session_name)(struct fsm_policy_client *);
     ds_tree_node_t client_node;
 };
 
@@ -419,4 +420,6 @@ void fsm_policy_update_clients(struct policy_table *table);
 bool find_mac_in_set(os_macaddr_t *mac, struct str_set *macs_set);
 void fsm_free_url_reply(struct fsm_url_reply *reply);
 int fsm_policy_get_req_type(struct fsm_policy_req *req);
+void fsm_walk_clients_tree(const char *caller);
+
 #endif /* FSM_POLICY_H_INCLUDED */

@@ -31,11 +31,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <time.h>
 
 #define MODULE_NAME "te-server"
-#include <log.h>
-#include <ds_dlist.h>
-#include <ds.h>
-#include <os_uds_link.h>
-#include <os_time.h>
+#include "log.h"
+#include "ds_dlist.h"
+#include "ds.h"
+#include "os_uds_link.h"
+#include "os_time.h"
 
 #include "timevt_server.h"
 
@@ -85,7 +85,7 @@ static bool send_report(te_server_handle h)
 
     Sts__DeviceID dev_id;
     sts__device_id__init(&dev_id);
-    
+
     dev_id.node_id = h->nodeid ? h->nodeid : "(null)";
     dev_id.firmware_version = h->swver ? h->swver : "(null)";
     dev_id.location_id = h->locid ? h->locid : "(null)";
@@ -96,7 +96,7 @@ static bool send_report(te_server_handle h)
     report.seqno = h->reportNo;
     report.realtime = clock_real_ms();
     report.monotime = clock_mono_ms();
-    
+
     /* deserialize received messages and add it to the report
      * one after another */
 
@@ -198,7 +198,7 @@ static bool process_dgram(te_server_handle h, const udgram_t *dg)
     {
         return false;
     }
-    
+
     crc = te_crc32_compute(dg->data, dg->size - sizeof(crc));
     rxcrc = te_crc32_read(dg->data + dg->size - sizeof(crc));
     if (crc != rxcrc)

@@ -451,7 +451,7 @@ void dhcpc_opt_read(struct ev_loop *loop, ev_debounce *w, int revent)
     FILE *fopt;
     char buf[256];
 
-    LOG(INFO, "dhcp_client: %s: Debounced: %s", self->uc_ifname, self->uc_opt_path);
+    LOG(DEBUG, "dhcp_client: %s: Debounced: %s", self->uc_ifname, self->uc_opt_path);
 
     fopt = fopen(self->uc_opt_path, "r");
     if (fopt == NULL)
@@ -506,7 +506,7 @@ void dhcpc_opt_watcher(struct ev_loop *loop, ev_stat *w, int revent)
 
     udhcp_client_t *self = w->data;
 
-    LOG(INFO, "dhcp_client: %s: File changed: %s", self->uc_ifname, self->uc_opt_path);
+    LOG(DEBUG, "dhcp_client: %s: File changed: %s", self->uc_ifname, self->uc_opt_path);
     ev_debounce_start(loop, &self->uc_opt_debounce);
 }
 

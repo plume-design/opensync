@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "log.h"
 #include "net_header_parse.h"
+#include "memutil.h"
 
 /**
  * @brief parses the network header parts of a message
@@ -509,7 +510,7 @@ net_header_log(int log_level, struct net_header_parser *parser)
     }
 
     len = 128 + (2 * INET6_ADDRSTRLEN + 128) + 256;
-    buf = calloc(1, len);
+    buf = CALLOC(1, len);
     if (buf == NULL)
     {
         LOG_SEVERITY(log_level, "%s: could not allocate string", __func__);
@@ -518,7 +519,7 @@ net_header_log(int log_level, struct net_header_parser *parser)
 
     LOG_SEVERITY(log_level, "%s: %s", __func__,
                  net_header_fill_buf(buf, len, parser));
-    free(buf);
+    FREE(buf);
 }
 
 

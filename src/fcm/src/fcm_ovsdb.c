@@ -104,6 +104,35 @@ fcm_set_node_state(const char *module, const char *key, const char *value)
     return;
 }
 
+
+/**
+ * @brief Set the initial memory usage threshold.
+ *
+ * It can be overridden through the ovsdb Node_Config entries
+ */
+void
+fcm_set_max_mem(void)
+{
+    fcm_mgr_t *mgr;
+    int rc;
+
+    mgr = fcm_get_mgr();
+
+    /* Stash the max amount of memory available */
+    rc = sysinfo(&mgr->sysinfo);
+    if (rc != 0)
+    {
+        rc = errno;
+        LOGE("%s: sysinfo failed: %s", __func__, strerror(rc));
+        memset(&mgr->sysinfo, 0, sizeof(mgr->sysinfo));
+    }
+
+    mgr->max_mem = CONFIG_FCM_MEM_MAX * 1024;
+
+    LOGI("%s: fcm default max memory usage: %" PRIu64 " kB", __func__,
+         mgr->max_mem);
+}
+
 /**
  * @brief processes the removal of an entry in Node_Config
  */
@@ -119,14 +148,10 @@ fcm_rm_node_config(struct schema_Node_Config *old_rec)
     rc = strcmp("fcm", module);
     if (rc != 0) return;
 
-    /* Get the manager */
-    mgr = fcm_get_mgr();
-    if (mgr->sysinfo.totalram == 0) return;
+    /* Reset the memory */
+    fcm_set_max_mem();
 
-    mgr->max_mem = (mgr->sysinfo.totalram * mgr->sysinfo.mem_unit) / 2;
-    mgr->max_mem /= 1000; /* kB */
-    LOGI("%s: fcm default max memory usage: %" PRIu64 " kB", __func__,
-         mgr->max_mem);
+    mgr = fcm_get_mgr();
 
     snprintf(str_value, sizeof(str_value), "%" PRIu64 " kB", mgr->max_mem);
     fcm_set_node_state(FCM_NODE_MODULE, FCM_NODE_STATE_MEM_KEY, str_value);

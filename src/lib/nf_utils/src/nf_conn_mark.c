@@ -35,6 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_types.h"
 #include "log.h"
 #include "nf_utils.h"
+#include "memutil.h"
 
 #define IPV4_ADDR_LEN     (4)
 #define IPV6_ADDR_LEN     (16)
@@ -473,7 +474,7 @@ static void nf_ct_timeout_cbk(EV_P_ ev_timer *timer, int revents)
     ctx->mark = 0;
     nf_ct_set_mark(ctx);
     ev_timer_stop(EV_A_ &ctx->timeout);
-    free(ctx);
+    FREE(ctx);
 }
 
 
@@ -536,7 +537,7 @@ int nf_ct_set_mark_timeout(nf_flow_t *flow, uint32_t timeout)
 {
     nf_flow_t *timer_ctx = NULL;
 
-    timer_ctx = calloc(1, sizeof(nf_flow_t));
+    timer_ctx = CALLOC(1, sizeof(nf_flow_t));
     if (timer_ctx == NULL)
     {
         LOGE("%s: Memory allocation failure", __func__);
@@ -554,7 +555,7 @@ int nf_ct_set_mark_timeout(nf_flow_t *flow, uint32_t timeout)
     return 0;
 
 err_set_mark:
-    free(timer_ctx);
+    FREE(timer_ctx);
     return -1;
 }
 
@@ -816,7 +817,7 @@ int nf_ct_init(struct ev_loop *loop)
     if (mnl_socket_bind(nl, 0, MNL_SOCKET_AUTOPID) < 0)
     {
         LOGE("%s: mnl_socket_bind", __func__);
-        return -1;
+        goto err;
     }
     nf_ct.mnl = nl;
     nf_ct.loop = loop;
@@ -825,10 +826,24 @@ int nf_ct_init(struct ev_loop *loop)
     ev_io_start(loop, &nf_ct.wmnl);
     LOGD("%s: nf_ct initialized", __func__);
     return 0;
+
+err:
+    mnl_socket_close(nl);
+    return -1;
 }
 
 int nf_ct_exit(void)
 {
-    mnl_socket_close(nf_ct.mnl);
+    if (ev_is_active(&nf_ct.wmnl))
+    {
+        ev_io_stop(nf_ct.loop, &nf_ct.wmnl);
+    }
+
+    if (nf_ct.mnl != NULL)
+    {
+        mnl_socket_close(nf_ct.mnl);
+        nf_ct.mnl = NULL;
+    }
+
     return 0;
 }

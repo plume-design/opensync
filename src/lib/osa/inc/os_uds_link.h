@@ -24,8 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef OS_UDS_LINK_INCLUDED
-#define OS_UDS_LINK_INCLUDED
+#ifndef OS_UDS_LINK_H_INCLUDED
+#define OS_UDS_LINK_H_INCLUDED
 
 // Unix datagram socket link API (connectionless)
 
@@ -48,7 +48,7 @@ typedef struct udgram
 /**
  * @brief Read datagram function handler called every time new datagram is received
  * @param self ptr to uds link object invoking this handler
- * @param dg ptr to the structure containing read datagram with sender address 
+ * @param dg ptr to the structure containing read datagram with sender address
  */
 typedef void (*dgram_read_fp_t)(uds_link_t *self, const udgram_t *dg);
 
@@ -77,23 +77,23 @@ typedef struct uds_link
  * @brief Inits Unix datagram socket link for datagram transfer. On failure
  * prints error messages in the log system.
  * @param self ptr to uds_link_t object to be initialized
- * @param name socket name (file path) with leading @ for abstract namespace socket
- * @param ev ptr to event loop to watch for receving datagrams, or NULL to use
+ * @param name socket name (file path), use leading @ for abstract namespace
+ * @param ev ptr to event loop to watch for receiving datagrams, or NULL to use
  *           blocking uds_link_receive() for reception
- * @return true when link succesfully initialized; false otherwise (reason in log)
+ * @return true when link successfully initialized; false otherwise
  */
 bool uds_link_init(uds_link_t *self, const char *name, struct ev_loop *ev);
 
 /**
- * @brief Destructs open unix datagram socket link
- * 
+ * @brief Destructs open Unix datagram socket link
+ *
  * @param self ptr to uds link object
  */
 void uds_link_fini(uds_link_t *self);
 
 /**
  * @brief Gets configured socket name of this link
- * 
+ *
  * @param self ptr to uds link object
  * @return ptr to this link address structure 
  */
@@ -101,34 +101,36 @@ const char *uds_link_socket_name(uds_link_t *self);
 
 /**
  * @brief (Un)Subscribes to read datagram received by this link
- * 
+ *
  * @param self ptr to uds link object
  * @param pfn ptr to read datagram function callback
  */
 void uds_link_subscribe_datagram_read(uds_link_t *self, dgram_read_fp_t pfn);
 
 /**
- * @brief Sends dgram to specified destination. Function may block when
- * there is no buffer for new dgram in the underlaying socket driver
- * 
+ * @brief Sends dgram to specified destination.
+ *
+ * Function may block when there is no buffer for new dgram in the underlying
+ * socket driver.
+ *
  * @param self ptr to uds link object
  * @param dg ptr to filled structure with data and destination socket addr
- * @return true 'true' when dgram succesfully sent; 'false' otherwise
+ * @return true when dgram successfully sent; false otherwise
  */
 bool uds_link_sendto(uds_link_t *self, const udgram_t *dg);
 
 /**
- * @brief Blocking reception of new datagram. Allowed, only when event driven
+ * @brief Blocking reception of new datagram. Allowed only when event driven
  * reception was not set with ev param in uds_link_open().
- * 
+ *
  * Dgram structure shall contain ptr to buffer for receiving datagram and
- * size shall be set to max size of this buffer. On succesfull reception
+ * size shall be set to max size of this buffer. On successful reception
  * buffer contains the message and dg size is updated to contain real length
  * of received datagram
- * 
+ *
  * @param self ptr to uds link object
  * @param dg ptr to datagram in & out
- * @return true when datagram succefully read; false on error
+ * @return true when datagram successfully read; false on error
  */
 bool uds_link_receive(uds_link_t *self, udgram_t *dg);
 
@@ -141,4 +143,4 @@ uint32_t uds_link_sent_dgrams(uds_link_t *self);
 // Gets number of sent bytes
 uint32_t uds_link_sent_bytes(uds_link_t *self);
 
-#endif
+#endif /* OS_UDS_LINK_H_INCLUDED */

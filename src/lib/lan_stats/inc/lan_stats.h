@@ -27,6 +27,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef LAN_STATS_H_INCLUDED
 #define LAN_STATS_H_INCLUDED
 
+#include "ds.h"
+#include "ds_dlist.h"
+#include "ds_tree.h"
+#include "os_types.h"
+#include "fcm.h"
+
 #define MAC_ADDR_STR_LEN     (18)
 #define OVS_DPCTL_DUMP_FLOWS "ovs-dpctl dump-flows -m"
 #define LINE_BUFF_LEN        (2048)
@@ -58,6 +64,11 @@ typedef union ovs_u128 {
     } u64;
 } ovs_u128;
 
+
+struct lan_stats_instance;
+
+typedef void (*collect_flows_fn)(struct lan_stats_instance *);
+
 typedef struct dp_ctl_stats_
 {
     ovs_u128        ufid;
@@ -77,5 +88,50 @@ typedef struct dp_ctl_stats_
     ds_tree_node_t  dp_tnode;
 } dp_ctl_stats_t;
 
+typedef struct lan_stats_instance
+{
+    fcm_collect_plugin_t *collector;
+    bool            initialized;
+    char            *name;
+    struct net_md_aggregator *aggr;
+    collect_flows_fn collect_flows;
+    ds_tree_node_t  lan_stats_node;
+    dp_ctl_stats_t stats;
+} lan_stats_instance_t;
+
+typedef struct lan_stats_mgr_
+{
+    bool initialized;
+    struct ev_loop *loop;
+    ds_tree_t lan_stats_sessions;
+    int num_sessions;
+    int max_sessions;
+    lan_stats_instance_t *active;
+    bool debug;
+} lan_stats_mgr_t;
+
+void
+lan_stats_init_mgr(struct ev_loop *loop);
+
+lan_stats_mgr_t *
+lan_stats_get_mgr(void);
+
+lan_stats_instance_t *
+lan_stats_get_active_instance(void);
+
+void
+lan_stats_parse_flows(lan_stats_instance_t *lan_stats_instance, char *buf);
+
+int
+lan_stats_plugin_init(fcm_collect_plugin_t *collector);
+
+void
+lan_stats_plugin_exit(fcm_collect_plugin_t *collector);
+
+void
+lan_stats_exit_mgr(void);
+
+void
+lan_stats_flows_filter(lan_stats_instance_t *lan_stats_instance);
 
 #endif /* LAN_STATS_H_INCLUDED */

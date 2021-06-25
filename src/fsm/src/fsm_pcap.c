@@ -39,6 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "qm_conn.h"
 #include "os_types.h"
 #include "dppline.h"
+#include "memutil.h"
 
 /* Set of default values for pcaps settings */
 static int g_buf_size = 0;
@@ -253,18 +254,18 @@ fsm_pcap_update(struct fsm_session *session)
     if (session->tap_type != FSM_TAP_PCAP) return false;
 
     ret = fsm_get_pcap_options(session);
-    if (ret) fsm_pcap_close(session);
+    if (session->pcaps != NULL) fsm_pcap_close(session);
 
     if (session->pcaps == NULL)
     {
         struct bpf_program *bpf;
         struct fsm_pcaps *pcaps;
 
-        pcaps = calloc(1, sizeof(struct fsm_pcaps));
+        pcaps = CALLOC(1, sizeof(struct fsm_pcaps));
         if (pcaps == NULL) return false;
         session->pcaps = pcaps;
 
-        bpf = calloc(1, sizeof(struct bpf_program));
+        bpf = CALLOC(1, sizeof(struct bpf_program));
         if (bpf == NULL) goto err_free_pcaps;
 
         session->pcaps->bpf = bpf;
@@ -282,11 +283,11 @@ fsm_pcap_update(struct fsm_session *session)
     return true;
 
 err_free_bpf:
-    free(session->pcaps->bpf);
+    FREE(session->pcaps->bpf);
     session->pcaps->bpf = NULL;
 
 err_free_pcaps:
-    free(session->pcaps);
+    FREE(session->pcaps);
     session->pcaps = NULL;
 
     return false;
@@ -417,7 +418,7 @@ void fsm_pcap_close(struct fsm_session *session) {
 
     if (pcaps->bpf != NULL) {
         pcap_freecode(pcaps->bpf);
-        free(pcaps->bpf);
+        FREE(pcaps->bpf);
         pcaps->bpf = NULL;
     }
 
@@ -425,6 +426,6 @@ void fsm_pcap_close(struct fsm_session *session) {
         pcap_close(pcap);
         pcaps->pcap = NULL;
     }
-    free(pcaps);
+    FREE(pcaps);
     session->pcaps = NULL;
 }

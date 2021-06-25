@@ -94,7 +94,7 @@ osn_nflog_t *osn_nflog_new(int nl_group, osn_nflog_fn_t *fn)
 /*
  * Start processing NFLOG messages:
  *  - create the netlink socket
- *  - registser to the NFLOG events
+ *  - register to the NFLOG events
  *  - start libev watchers on the socket file descriptor
  */
 bool osn_nflog_start(osn_nflog_t *self)
@@ -238,7 +238,7 @@ void osn_nflog_sock_fn(struct ev_loop *loop, ev_io *w, int revent)
     }
     if (rc < 0)
     {
-        LOG(ERR, "osn_nflog: Error receivng NFLOG packet.");
+        LOG(ERR, "osn_nflog: Error receiving NFLOG packet.");
         osn_nflog_close(self);
     }
 
@@ -351,7 +351,7 @@ bool osn_nflog_subscribe_send(int sock, int group)
  * interpretable code where 0 signifies success.
  *
  * @return
- * Return the error code or <0 if an unrecoverable error ocurred
+ * Return the error code or <0 if an unrecoverable error occurred
  */
 int osn_nflog_err_recv(int sock)
 {
@@ -431,7 +431,7 @@ int osn_nflog_packet_recv(int sock, struct osn_nflog_packet *np)
     }
     else if (nr == 0)
     {
-        LOG(ERR, "osn_nflog: Recevied EOF on socket. Closing.");
+        LOG(ERR, "osn_nflog: Received EOF on socket. Closing.");
         return -1;
     }
 

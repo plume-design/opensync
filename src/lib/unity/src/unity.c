@@ -550,6 +550,10 @@ void UnityConcludeTest(void)
     }
     else
     {
+#ifdef UNITY_VERBOSE_FAILURES
+        if (Unity.TestFailures < UNITY_MAX_FAILED_TEST)
+            Unity.TestFailed[Unity.TestFailures] = strdup(Unity.CurrentTestName);
+#endif
         Unity.TestFailures++;
     }
 
@@ -1861,6 +1865,9 @@ void UnityBegin(const char* filename)
     Unity.TestIgnores = 0;
     Unity.CurrentTestFailed = 0;
     Unity.CurrentTestIgnored = 0;
+#ifdef UNITY_VERBOSE_FAILURES
+    Unity.TestFailed = (char **)calloc(UNITY_MAX_FAILED_TEST, sizeof(*Unity.TestFailed));
+#endif
 
     UNITY_CLR_DETAILS();
     UNITY_OUTPUT_START();
@@ -1869,6 +1876,10 @@ void UnityBegin(const char* filename)
 /*-----------------------------------------------*/
 int UnityEnd(void)
 {
+#ifdef UNITY_VERBOSE_FAILURES
+    UNITY_UINT32 i;
+#endif
+
     UNITY_PRINT_EOL();
     UnityPrint(UnityStrBreaker);
     UNITY_PRINT_EOL();
@@ -1885,6 +1896,27 @@ int UnityEnd(void)
     }
     else
     {
+#ifdef UNITY_VERBOSE_FAILURES
+        UnityPrint(UnityStrBreaker);
+        UNITY_PRINT_EOL();
+        for (i = 0; i < Unity.TestFailures && i < UNITY_MAX_FAILED_TEST; i++)
+        {
+            UnityPrintNumber(i+1);
+            UnityPrint(":    Failed in ");
+            UnityPrint(Unity.TestFailed[i]);
+            UNITY_PRINT_EOL();
+        }
+        if (Unity.TestFailures >= UNITY_MAX_FAILED_TEST)
+        {
+            UnityPrint("  Failures beyond ");
+            UnityPrintNumber(UNITY_MAX_FAILED_TEST);
+            UnityPrint(" are not reported");
+            UNITY_PRINT_EOL();
+        }
+
+        UnityPrint(UnityStrBreaker);
+        UNITY_PRINT_EOL();
+#endif
         UnityPrint(UnityStrFail);
 #ifdef UNITY_DIFFERENTIATE_FINAL_FAIL
         UNITY_OUTPUT_CHAR('E'); UNITY_OUTPUT_CHAR('D');
@@ -1893,6 +1925,13 @@ int UnityEnd(void)
     UNITY_PRINT_EOL();
     UNITY_FLUSH_CALL();
     UNITY_OUTPUT_COMPLETE();
+
+#ifdef UNITY_VERBOSE_FAILURES
+    for (i = 0; i < Unity.TestFailures && i < UNITY_MAX_FAILED_TEST; i++)
+        free(Unity.TestFailed[i]);
+    free(Unity.TestFailed);
+#endif
+
     return (int)(Unity.TestFailures);
 }
 

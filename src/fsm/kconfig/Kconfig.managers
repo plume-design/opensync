@@ -26,4 +26,12 @@ menuconfig MANAGER_FSM
         default n
         help
             Default FSM to FCM communication through ZMQ, Disabling switches
-            to unix domain socket
+            to Unix domain socket
+
+    config FSM_MEM_MAX
+        depends on MANAGER_FSM
+        int "High memory usage threshold in MB for FSM"
+        default 160
+        help
+            FSM will be restarted once this threshold is reached.
+            This value can be overridden through the ovsdb Node_Config table.
