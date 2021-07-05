@@ -43,8 +43,7 @@ void ev_debounce_init2(
         double timeout,
         double timeout_max)
 {
-    ev->timeout = timeout;
-    ev->timeout_max = timeout_max;
+    ev_debounce_set2(ev, timeout, timeout_max);
     ev->fn = fn;
     ev_timer_init(&ev->timer, (void *)ev_debounce_fn, timeout, 0.0);
 }
@@ -93,5 +92,16 @@ void ev_debounce_start(struct ev_loop *loop, ev_debounce *w)
 void ev_debounce_stop(struct ev_loop *loop, ev_debounce *w)
 {
     ev_timer_stop(loop, &w->timer);
+}
+
+void ev_debounce_set2(ev_debounce *w, double timeout, double timeout_max)
+{
+    w->timeout = timeout;
+    w->timeout_max = timeout_max;
+}
+
+void ev_debounce_set(ev_debounce *w, double timeout)
+{
+    ev_debounce_set2(w, timeout, -1.0);
 }
 

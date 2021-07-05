@@ -24,6 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include "memutil.h"
+
 #include "gatekeeper_cache.h"
 #include "memutil.h"
 
@@ -37,7 +39,7 @@ gkc_is_flow_present(struct ip_flow_cache *cur_flow_entry,
                     struct gkc_ip_flow_interface *req)
 {
     struct ip_flow_cache flow_entry;
-    int ret = false;
+    bool ret = false;
     int rc;
 
     flow_entry.ip_version  = req->ip_version;
@@ -66,11 +68,11 @@ gkc_is_flow_present(struct ip_flow_cache *cur_flow_entry,
  *          freed
  */
 void
-free_flow_members(struct ip_flow_cache *flow_entry)
+gkc_free_flow_members(struct ip_flow_cache *flow_entry)
 {
+    FREE(flow_entry->gk_policy);
     FREE(flow_entry->dst_ip_addr);
     FREE(flow_entry->src_ip_addr);
-    FREE(flow_entry->gk_policy);
 }
 
 /**
@@ -85,7 +87,7 @@ static bool
 gkc_del_flow_from_tree(ds_tree_t *flow_tree, struct gkc_ip_flow_interface *req)
 {
     struct ip_flow_cache *flow_entry, *remove;
-    int rc;
+    bool rc;
 
     /* loop through all flows in the tree */
     flow_entry = ds_tree_head(flow_tree);
@@ -98,13 +100,13 @@ gkc_del_flow_from_tree(ds_tree_t *flow_tree, struct gkc_ip_flow_interface *req)
         rc = gkc_is_flow_present(remove, req);
         if (rc == false) continue;
 
-        LOGT("%s: deleting flow for device " PRI_os_macaddr_lower_t " ",
+        LOGT("%s(): deleting flow for device " PRI_os_macaddr_lower_t " ",
              __func__,
              FMT_os_macaddr_pt(req->device_mac));
 
-        /* found the flow. Free memory used by the flow structure.*/
-        free_flow_members(remove);
-        /* remove it from the tree*/
+        /* found the flow. Free memory used by the flow structure. */
+        gkc_free_flow_members(remove);
+        /* remove it from the tree */
         ds_tree_remove(flow_tree, remove);
         /* free the entry */
         FREE(remove);
@@ -126,23 +128,23 @@ bool
 gkc_del_flow_from_dev(struct per_device_cache *pdevice,
                       struct gkc_ip_flow_interface *req)
 {
-    int ret;
+    bool ret;
 
     switch (req->direction)
     {
-    case GKC_FLOW_DIRECTION_INBOUND:
-        /* delete flow entry from inbound tree */
-        ret = gkc_del_flow_from_tree(&pdevice->inbound_tree, req);
-        break;
+        case GKC_FLOW_DIRECTION_INBOUND:
+            /* delete flow entry from inbound tree */
+            ret = gkc_del_flow_from_tree(&pdevice->inbound_tree, req);
+            break;
 
-    case GKC_FLOW_DIRECTION_OUTBOUND:
-        /* delete flow entry from outbound tree */
-        ret = gkc_del_flow_from_tree(&pdevice->outbound_tree, req);
-        break;
+        case GKC_FLOW_DIRECTION_OUTBOUND:
+            /* delete flow entry from outbound tree */
+            ret = gkc_del_flow_from_tree(&pdevice->outbound_tree, req);
+            break;
 
-    default:
-        ret = false;
-        break;
+        default:
+            ret = false;
+            break;
     }
 
     return ret;
@@ -187,7 +189,7 @@ gkc_cleanup_ttl_flow_tree(struct gkc_del_info_s *gk_del_info)
         ttl_expired = gkc_flow_ttl_expired(remove);
         if (ttl_expired == false) continue;
 
-        LOGD("%s: deleting flow for device " PRI_os_macaddr_lower_t
+        LOGT("%s(): deleting flow for device " PRI_os_macaddr_lower_t
              " with expired TTL",
              __func__,
              FMT_os_macaddr_pt(gk_del_info->pdevice->device_mac));
@@ -195,11 +197,11 @@ gkc_cleanup_ttl_flow_tree(struct gkc_del_info_s *gk_del_info)
         gk_del_info->flow_del_count++;
 
         /* decrement the cache count */
-        mgr->count--;
+        mgr->total_entry_count--;
 
-        /* found the flow. Free memory used by the flow structure.*/
-        free_flow_members(remove);
-        /* remove it from the tree*/
+        /* found the flow. Free memory used by the flow structure. */
+        gkc_free_flow_members(remove);
+        /* remove it from the tree */
         ds_tree_remove(gk_del_info->tree, remove);
         /* free the entry */
         FREE(remove);

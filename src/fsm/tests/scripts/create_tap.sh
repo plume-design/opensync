@@ -25,7 +25,8 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-default_bridge='br-home'
+. /usr/opensync/etc/kconfig # TODO: This should point to {INSTALL_PREFIX}/etc/kconfig
+default_bridge=${CONFIG_TARGET_LAN_BRIDGE_NAME}
 bridge=${1:-${default_bridge}}
 tap_intf=${bridge}.tx
 
@@ -92,7 +93,7 @@ gen_json_tap_rules() {
          "table": 0,
          "priority": 20,
          "rule": "udp,tp_src=53",
-         "action": "output:br-home.dns"
+         "action": "output:"${CONFIG_TARGET_LAN_BRIDGE_NAME}".dns"
       }
    },
    {

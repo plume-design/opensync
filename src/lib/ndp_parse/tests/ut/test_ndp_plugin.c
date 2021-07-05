@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ndp_parse.h"
 #include "json_util.h"
 #include "log.h"
+#include "memutil.h"
 #include "qm_conn.h"
 #include "target.h"
 #include "unity.h"
@@ -321,10 +322,44 @@ void
 log_ip_mac_mapping(struct ndp_parser *parser)
 {
     char ipstr[INET6_ADDRSTRLEN];
+    os_macaddr_t null_mac = {{ 0 }};
+    os_macaddr_t *mac;
 
-    if (parser->entry.mac == NULL)
+    mac = parser->sender.mac;
+    if (mac == NULL)
+    {
+        LOGI("%s: sender: no IP mac mapping available", __func__);
+        mac = &null_mac;
+    }
+
+    memset(ipstr, 0, sizeof(ipstr));
+    getnameinfo((struct sockaddr *)(parser->sender.ipaddr),
+                sizeof(struct sockaddr_storage), ipstr, sizeof(ipstr),
+                0, 0, NI_NUMERICHOST);
+
+    LOGI("%s: sender ip: %s, sender mac: "PRI_os_macaddr_lower_t,
+         __func__, ipstr, FMT_os_macaddr_pt(mac));
+
+    mac = parser->target.mac;
+    if (mac == NULL)
+    {
+        LOGI("%s: target: no IP mac mapping available", __func__);
+        mac = &null_mac;
+    }
+
+    memset(ipstr, 0, sizeof(ipstr));
+    getnameinfo((struct sockaddr *)(parser->target.ipaddr),
+                sizeof(struct sockaddr_storage), ipstr, sizeof(ipstr),
+                0, 0, NI_NUMERICHOST);
+
+    LOGI("%s: target ip: %s, target mac: "PRI_os_macaddr_lower_t,
+         __func__, ipstr, FMT_os_macaddr_pt(mac));
+
+    mac = parser->entry.mac;
+    if (mac == NULL)
     {
         LOGI("%s: no IP mac mapping available", __func__);
+        mac = &null_mac;
     }
 
     memset(ipstr, 0, sizeof(ipstr));
@@ -333,7 +368,7 @@ log_ip_mac_mapping(struct ndp_parser *parser)
                 0, 0, NI_NUMERICHOST);
 
     LOGI("%s: ip: %s, mac: "PRI_os_macaddr_lower_t,
-         __func__, ipstr, FMT_os_macaddr_pt(parser->entry.mac));
+         __func__, ipstr, FMT_os_macaddr_pt(mac));
 
 }
 
@@ -368,6 +403,207 @@ void test_load_unload_plugin(void)
      */
 }
 
+void util_populate_sockaddr(int af, void *ip, struct sockaddr_storage *dst)
+{
+    if (af == AF_INET)
+    {
+        struct sockaddr_in *in4 = (struct sockaddr_in *)dst;
+
+        memset(in4, 0, sizeof(struct sockaddr_in));
+        in4->sin_family = af;
+        memcpy(&in4->sin_addr, ip, sizeof(in4->sin_addr));
+    }
+    else if (af == AF_INET6)
+    {
+        struct sockaddr_in6 *in6 = (struct sockaddr_in6 *)dst;
+
+        memset(in6, 0, sizeof(struct sockaddr_in6));
+        in6->sin6_family = af;
+        memcpy(&in6->sin6_addr, ip, sizeof(in6->sin6_addr));
+    }
+    return;
+}
+
+/**
+ * @brief test arp request parsing
+ *
+ */
+void test_arp_req(void)
+{
+    struct net_header_parser *net_parser;
+    struct ndp_session *n_session;
+    struct fsm_session *session;
+    struct ndp_parser *parser;
+
+    size_t len;
+    bool ret;
+
+    /* Select the first active session */
+    session = &g_sessions[0];
+    n_session = ndp_lookup_session(session);
+    TEST_ASSERT_NOT_NULL(n_session);
+
+    parser = &n_session->parser;
+    net_parser = CALLOC(1, sizeof(*net_parser));
+    TEST_ASSERT_NOT_NULL(net_parser);
+    parser->net_parser = net_parser;
+    PREPARE_UT(pkt134, net_parser);
+    len = net_header_parse(net_parser);
+    TEST_ASSERT_TRUE(len != 0);
+
+    len = ndp_parse_message(parser);
+    TEST_ASSERT_TRUE(len != 0);
+    TEST_ASSERT_TRUE(parser->type == NEIGH_ARP);
+
+    ret = arp_parse_is_gratuitous(&parser->arp);
+    TEST_ASSERT_FALSE(ret);
+
+    arp_process_message(n_session);
+    log_ip_mac_mapping(parser);
+
+    FREE(net_parser);
+}
+
+
+/**
+ * @brief test arp reply parsing
+ *
+ */
+void test_arp_reply(void)
+{
+    struct net_header_parser *net_parser;
+    struct ndp_session *n_session;
+    struct fsm_session *session;
+    struct ndp_parser *parser;
+    size_t len;
+    bool ret;
+
+    /* Select the first active session */
+    session = &g_sessions[0];
+    n_session = ndp_lookup_session(session);
+    TEST_ASSERT_NOT_NULL(n_session);
+
+    parser = &n_session->parser;
+    net_parser = CALLOC(1, sizeof(*net_parser));
+    TEST_ASSERT_NOT_NULL(net_parser);
+    parser->net_parser = net_parser;
+    PREPARE_UT(pkt135, net_parser);
+    len = net_header_parse(net_parser);
+    TEST_ASSERT_TRUE(len != 0);
+
+    len = ndp_parse_message(parser);
+    TEST_ASSERT_TRUE(len != 0);
+    TEST_ASSERT_TRUE(parser->type == NEIGH_ARP);
+
+    ret = arp_parse_is_gratuitous(&parser->arp);
+    TEST_ASSERT_FALSE(ret);
+
+    arp_process_message(n_session);
+    log_ip_mac_mapping(parser);
+
+    FREE(net_parser);
+}
+
+
+/**
+ * @brief test arp request parsing
+ *
+ */
+void test_gratuitous_arp_reply(void)
+{
+    struct net_header_parser *net_parser;
+    struct ndp_session *n_session;
+    struct fsm_session *session;
+    struct ndp_parser *parser;
+    size_t len;
+    bool ret;
+
+    /* Select the first active session */
+    session = &g_sessions[0];
+    n_session = ndp_lookup_session(session);
+    TEST_ASSERT_NOT_NULL(n_session);
+
+    parser = &n_session->parser;
+    net_parser = CALLOC(1, sizeof(*net_parser));
+    TEST_ASSERT_NOT_NULL(net_parser);
+    parser->net_parser = net_parser;
+    PREPARE_UT(pkt42, net_parser);
+    len = net_header_parse(net_parser);
+    TEST_ASSERT_TRUE(len != 0);
+
+    len = ndp_parse_message(parser);
+    TEST_ASSERT_TRUE(len != 0);
+    len = net_header_parse(net_parser);
+    TEST_ASSERT_TRUE(len != 0);
+    TEST_ASSERT_TRUE(parser->type == NEIGH_ARP);
+
+    ret = arp_parse_is_gratuitous(&parser->arp);
+    TEST_ASSERT_TRUE(ret);
+
+    arp_process_message(n_session);
+    log_ip_mac_mapping(parser);
+
+    FREE(net_parser);
+}
+
+/**
+ * @brief test ip to mac mapping
+ *
+ */
+void test_ip_mac_mapping(void)
+{
+    struct net_header_parser *net_parser;
+    struct ndp_session *n_session;
+    struct fsm_session *session;
+    struct sockaddr_storage key;
+    struct ndp_parser *parser;
+    os_macaddr_t mac_out;
+    uint32_t ip_addr;
+    bool rc_lookup;
+    size_t len;
+    bool ret;
+    int cmp;
+
+    /* Select the first active session */
+    session = &g_sessions[0];
+    n_session = ndp_lookup_session(session);
+    TEST_ASSERT_NOT_NULL(n_session);
+
+    parser = &n_session->parser;
+    net_parser = CALLOC(1, sizeof(*net_parser));
+    TEST_ASSERT_NOT_NULL(net_parser);
+    parser->net_parser = net_parser;
+    PREPARE_UT(pkt134, net_parser);
+    len = net_header_parse(net_parser);
+    TEST_ASSERT_TRUE(len != 0);
+
+    len = ndp_parse_message(parser);
+    TEST_ASSERT_TRUE(len != 0);
+    TEST_ASSERT_TRUE(parser->type == NEIGH_ARP);
+
+    ret = arp_parse_is_gratuitous(&parser->arp);
+    TEST_ASSERT_FALSE(ret);
+
+    arp_process_message(n_session);
+
+    /* fill sockaddr */
+    ip_addr = parser->arp.s_ip;
+    memset(&key, 0, sizeof(struct sockaddr_storage));
+    util_populate_sockaddr(AF_INET, &ip_addr, &key);
+    rc_lookup = neigh_table_lookup(&key, &mac_out);
+
+    /* Validate lookup to the neighbour entry */
+    TEST_ASSERT_TRUE(rc_lookup);
+
+    /* Validate mac content */
+    cmp = memcmp(&mac_out, parser->arp.s_eth, sizeof(os_macaddr_t));
+    TEST_ASSERT_EQUAL_INT(0, cmp);
+    log_ip_mac_mapping(parser);
+
+    FREE(net_parser);
+}
+
+
 
 /**
  * @brief validate neighbour solicitation message parsing
@@ -389,7 +625,7 @@ test_solicitation_msg(void)
     TEST_ASSERT_NOT_NULL(n_session);
 
     parser = &n_session->parser;
-    net_parser = calloc(1, sizeof(*net_parser));
+    net_parser = CALLOC(1, sizeof(*net_parser));
     TEST_ASSERT_NOT_NULL(net_parser);
     parser->net_parser = net_parser;
     PREPARE_UT(pkt3, net_parser);
@@ -398,6 +634,7 @@ test_solicitation_msg(void)
 
     len = ndp_parse_message(parser);
     TEST_ASSERT_TRUE(len != 0);
+    TEST_ASSERT_TRUE(parser->type == NEIGH_ICMPv6);
 
     ethertype = net_header_get_ethertype(net_parser);
     TEST_ASSERT_EQUAL_INT(ETH_P_IPV6, ethertype);
@@ -407,9 +644,9 @@ test_solicitation_msg(void)
     TEST_ASSERT_EQUAL_INT(IPPROTO_ICMPV6, net_parser->ip_protocol);
 
     log_ip_mac_mapping(parser);
-    ndp_process_message(n_session);
+    icmpv6_process_message(n_session);
 
-    free(net_parser);
+    FREE(net_parser);
 }
 
 
@@ -433,7 +670,7 @@ test_advertizment_msg(void)
     TEST_ASSERT_NOT_NULL(n_session);
 
     parser = &n_session->parser;
-    net_parser = calloc(1, sizeof(*net_parser));
+    net_parser = CALLOC(1, sizeof(*net_parser));
     TEST_ASSERT_NOT_NULL(net_parser);
     parser->net_parser = net_parser;
     PREPARE_UT(pkt4, net_parser);
@@ -441,6 +678,7 @@ test_advertizment_msg(void)
     TEST_ASSERT_TRUE(len != 0);
     len = ndp_parse_message(parser);
     TEST_ASSERT_TRUE(len != 0);
+    TEST_ASSERT_TRUE(parser->type == NEIGH_ICMPv6);
 
     ethertype = net_header_get_ethertype(net_parser);
     TEST_ASSERT_EQUAL_INT(ETH_P_IPV6, ethertype);
@@ -450,9 +688,9 @@ test_advertizment_msg(void)
     TEST_ASSERT_EQUAL_INT(IPPROTO_ICMPV6, net_parser->ip_protocol);
 
     log_ip_mac_mapping(parser);
-    ndp_process_message(n_session);
+    icmpv6_process_message(n_session);
 
-    free(net_parser);
+    FREE(net_parser);
 }
 
 
@@ -478,7 +716,7 @@ test_advertizment_msg_v2(void)
     TEST_ASSERT_NOT_NULL(n_session);
 
     parser = &n_session->parser;
-    net_parser = calloc(1, sizeof(*net_parser));
+    net_parser = CALLOC(1, sizeof(*net_parser));
     TEST_ASSERT_NOT_NULL(net_parser);
     parser->net_parser = net_parser;
     PREPARE_UT(pkt6578, net_parser);
@@ -486,6 +724,7 @@ test_advertizment_msg_v2(void)
     TEST_ASSERT_TRUE(len != 0);
     len = ndp_parse_message(parser);
     TEST_ASSERT_TRUE(len != 0);
+    TEST_ASSERT_TRUE(parser->type == NEIGH_ICMPv6);
 
     ethertype = net_header_get_ethertype(net_parser);
     TEST_ASSERT_EQUAL_INT(ETH_P_IPV6, ethertype);
@@ -495,9 +734,9 @@ test_advertizment_msg_v2(void)
     TEST_ASSERT_EQUAL_INT(IPPROTO_ICMPV6, net_parser->ip_protocol);
 
     log_ip_mac_mapping(parser);
-    ndp_process_message(n_session);
+    icmpv6_process_message(n_session);
 
-    free(net_parser);
+    FREE(net_parser);
 }
 
 
@@ -514,6 +753,10 @@ main(int argc, char *argv[])
 
     RUN_TEST(test_no_session);
     RUN_TEST(test_load_unload_plugin);
+    RUN_TEST(test_arp_req);
+    RUN_TEST(test_arp_reply);
+    RUN_TEST(test_gratuitous_arp_reply);
+    RUN_TEST(test_ip_mac_mapping);
     RUN_TEST(test_solicitation_msg);
     RUN_TEST(test_advertizment_msg);
     RUN_TEST(test_advertizment_msg_v2);

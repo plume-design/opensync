@@ -29,6 +29,7 @@
 # Usage : ./nfq_script.sh  pod_wan_ip pod_lan_ip
 #-------------------------------------------------------------------------------------
 
+. /usr/opensync/etc/kconfig # TODO: This should point to {INSTALL_PREFIX}/etc/kconfig
 if [ $# -lt 2 ]
 then
     echo "Usage: ./nfq_script.sh pod_wan_ip pod_lan_ip"
@@ -43,13 +44,13 @@ ovsh U Flow_Service_Manager_Config -w handler==core_dpi_dispatch other_config:='
 
 # mark zone 0 conntrack entries in table 9
 echo "Adding Openflow rules to mark and check for zone 0 conntrack entries"
-ovsh i Openflow_Config table:=9 token:=dev_ct_ipv4_bypass_untrkd rule:="ip,ct_state=-trk" priority:=150 bridge:=br-home action:="ct(zone=0,table=9)"
-ovsh i Openflow_Config table:=9 token:=dev_ct_ipv4_mrk_dns_to_pod rule:="ip,ct_state=+trk,ct_mark=0,ct_zone=0,ip,nw_dst=$lan_ip" priority:=140 bridge:=br-home action:="resubmit(,8),ct(zone=0,commit,exec(load:0x1->NXM_NX_CT_MARK[])"
-ovsh i Openflow_Config table:=9 token:=dev_ct_ipv4_mrk_dns_from_pod rule:="ip,ct_state=+trk,ct_mark=0,ct_zone=0,ip,nw_src=$lan_ip" priority:=140 bridge:=br-home action:="resubmit(,8),ct(zone=0,commit,exec(load:0x1->NXM_NX_CT_MARK[])"
-ovsh i Openflow_Config table:=9 token:=dev_ct_ipv4_dpi_inspect_mrk0 rule:="ip,ct_state=+trk,ct_mark=0,ct_zone=0" priority:=140 bridge:=br-home action:="resubmit(,8),ct(zone=0,nat(src=$wan_ip),commit,exec(load:0x1->NXM_NX_CT_MARK[]))"
-ovsh i Openflow_Config table:=9 token:=dev_ct_ipv4_dpi_inspect_mrk1 rule:="ip,ct_state=+trk,ct_mark=1,ct_zone=0" priority:=135 bridge:=br-home action:="resubmit(,8)"
-ovsh i Openflow_Config table:=9 token:=dev_ct_ipv4_dpi_passthrough rule:="ip,ct_state=+trk,ct_mark=2,ct_zone=0" priority:=135 bridge:=br-home action:="resubmit(,8)"
-ovsh i Openflow_Config table:=9 token:=dev_ct_ipv4_not_allowed rule:="ct_state=+trk,ct_mark=3,ct_zone=0" priority:=135 bridge:=br-home action:=drop
+ovsh i Openflow_Config table:=9 token:=dev_ct_ipv4_bypass_untrkd rule:="ip,ct_state=-trk" priority:=150 bridge:=${CONFIG_TARGET_LAN_BRIDGE_NAME} action:="ct(zone=0,table=9)"
+ovsh i Openflow_Config table:=9 token:=dev_ct_ipv4_mrk_dns_to_pod rule:="ip,ct_state=+trk,ct_mark=0,ct_zone=0,ip,nw_dst=$lan_ip" priority:=140 bridge:=${CONFIG_TARGET_LAN_BRIDGE_NAME} action:="resubmit(,8),ct(zone=0,commit,exec(load:0x1->NXM_NX_CT_MARK[])"
+ovsh i Openflow_Config table:=9 token:=dev_ct_ipv4_mrk_dns_from_pod rule:="ip,ct_state=+trk,ct_mark=0,ct_zone=0,ip,nw_src=$lan_ip" priority:=140 bridge:=${CONFIG_TARGET_LAN_BRIDGE_NAME} action:="resubmit(,8),ct(zone=0,commit,exec(load:0x1->NXM_NX_CT_MARK[])"
+ovsh i Openflow_Config table:=9 token:=dev_ct_ipv4_dpi_inspect_mrk0 rule:="ip,ct_state=+trk,ct_mark=0,ct_zone=0" priority:=140 bridge:=${CONFIG_TARGET_LAN_BRIDGE_NAME} action:="resubmit(,8),ct(zone=0,nat(src=$wan_ip),commit,exec(load:0x1->NXM_NX_CT_MARK[]))"
+ovsh i Openflow_Config table:=9 token:=dev_ct_ipv4_dpi_inspect_mrk1 rule:="ip,ct_state=+trk,ct_mark=1,ct_zone=0" priority:=135 bridge:=${CONFIG_TARGET_LAN_BRIDGE_NAME} action:="resubmit(,8)"
+ovsh i Openflow_Config table:=9 token:=dev_ct_ipv4_dpi_passthrough rule:="ip,ct_state=+trk,ct_mark=2,ct_zone=0" priority:=135 bridge:=${CONFIG_TARGET_LAN_BRIDGE_NAME} action:="resubmit(,8)"
+ovsh i Openflow_Config table:=9 token:=dev_ct_ipv4_not_allowed rule:="ct_state=+trk,ct_mark=3,ct_zone=0" priority:=135 bridge:=${CONFIG_TARGET_LAN_BRIDGE_NAME} action:=drop
 
 
 # iptables rules to mark and zone the packets

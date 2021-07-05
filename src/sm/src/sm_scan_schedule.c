@@ -40,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <limits.h>
 
 #include "sm.h"
+#include "memutil.h"
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
@@ -62,11 +63,8 @@ sm_scan_ctx_t * sm_scan_ctx_alloc()
 {
     sm_scan_ctx_t *scan_ctx = NULL;
 
-    scan_ctx = malloc(sizeof(sm_scan_ctx_t));
-    if (scan_ctx)
-    {
-        memset(scan_ctx, 0, sizeof(sm_scan_ctx_t));
-    }
+    scan_ctx = MALLOC(sizeof(sm_scan_ctx_t));
+    memset(scan_ctx, 0, sizeof(sm_scan_ctx_t));
 
     return scan_ctx;
 }
@@ -76,7 +74,7 @@ void sm_scan_ctx_free(sm_scan_ctx_t *scan_ctx)
 {
     if (NULL != scan_ctx)
     {
-        free(scan_ctx);
+        FREE(scan_ctx);
     }
 }
 

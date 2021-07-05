@@ -29,6 +29,7 @@
 #include "xht.h"
 #include <string.h>
 #include <stdlib.h>
+#include "memutil.h"
 
 typedef struct xhn {
     char flag;
@@ -80,9 +81,9 @@ xht_t *xht_new(int prime)
 {
     xht_t *xnew;
 
-    xnew = malloc(sizeof(struct xht));
+    xnew = MALLOC(sizeof(struct xht));
     xnew->prime = prime;
-    xnew->zen = calloc(1, sizeof(struct xhn) * prime);  /* array of xhn_t size of prime */
+    xnew->zen = CALLOC(1, sizeof(struct xhn) * prime);  /* array of xhn_t size of prime */
 
     return xnew;
 }
@@ -107,15 +108,15 @@ static xhn_t *_xht_set(xht_t *h, const char *key, void *val, char flag)
 
     /* if none, make a new one, link into this index */
     if (n == NULL) {
-        n = malloc(sizeof(struct xhn));
+        n = MALLOC(sizeof(struct xhn));
         n->next = h->zen[i].next;
         h->zen[i].next = n;
     }
 
     /* When flag is set, we manage their mem and free em first */
     if (n->flag) {
-        free(n->u.key);
-        free(n->val);
+        FREE(n->u.key);
+        FREE(n->val);
     }
 
     n->flag = flag;
@@ -139,10 +140,10 @@ void xht_store(xht_t *h, const char *key, int klen, void *val, int vlen)
     if (h == NULL || key == NULL || klen == 0)
         return;
 
-    ckey = malloc(klen + 1);
+    ckey = MALLOC(klen + 1);
     memcpy(ckey, key, klen);
     ckey[klen] = '\0';
-    cval = malloc(vlen + 1);
+    cval = MALLOC(vlen + 1);
     memcpy(cval, val, vlen);
     cval[vlen] = '\0';  /* convenience, in case it was a string too */
     _xht_set(h, ckey, cval, 1);
@@ -176,22 +177,22 @@ void xht_free(xht_t *h)
         if ((n = (&h->zen[i])) == NULL)
             continue;
         if (n->flag) {
-            free(n->u.key);
-            free(n->val);
+            FREE(n->u.key);
+            FREE(n->val);
         }
         for (n = (&h->zen[i])->next; n != 0;) {
             f = n->next;
             if (n->flag) {
-                free(n->u.key);
-                free(n->val);
+                FREE(n->u.key);
+                FREE(n->val);
             }
-            free(n);
+            FREE(n);
             n = f;
         }
     }
 
-    free(h->zen);
-    free(h);
+    FREE(h->zen);
+    FREE(h);
 }
 
 void xht_walk(xht_t *h, xht_walker w, void *arg)

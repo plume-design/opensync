@@ -99,6 +99,9 @@ typedef struct flow_stats_
     ds_tree_node_t ct_stats_node;
     bool initialized;
     char *name;
+    struct fcm_session *session;
+    struct fcm_filter_client *c_client;
+    struct fcm_filter_client *r_client;
 } flow_stats_t;
 
 

@@ -40,6 +40,9 @@ UNIT_SRC  += src/timevt_client.c
 UNIT_SRC  += src/timevt.c
 UNIT_SRC  += src/timevt_print.c
 UNIT_SRC  += src/time_event.pb-c.c
+UNIT_SRC  += src/mque_link.c
+UNIT_SRC  += src/udsock_link.c
+UNIT_SRC  += src/timevt_msg_link.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 

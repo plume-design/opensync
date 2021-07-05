@@ -109,7 +109,8 @@ int nf_ct_set_mark(nf_flow_t *flow);
 
 int nf_ct_set_mark_timeout(nf_flow_t *flow, uint32_t timeout);
 
-int nf_ct_set_flow_mark(struct net_header_parser *net_pkt, uint32_t mark, uint16_t zone);
+int nf_ct_set_flow_mark(struct net_header_parser *net_pkt,
+                        uint32_t mark, uint16_t zone);
 
 enum
 {
@@ -118,6 +119,7 @@ enum
 };
 
 typedef void (*process_nl_event_cb)(struct nf_neigh_info *neigh_info);
+
 struct nf_neigh_settings
 {
     struct ev_loop *loop;
@@ -137,12 +139,32 @@ bool nf_util_dump_neighs(int af_family);
 bool nf_neigh_set_nlsockbuffsz(uint32_t sock_buff_sz);
 
 typedef void (*process_nfq_event_cb)(struct nfq_pkt_info *pkt_info, void *data);
+
 struct nfq_settings
 {
     struct ev_loop *loop;
     process_nfq_event_cb nfq_cb;
     int queue_num;
     void *data;
+};
+
+struct nf_queue_context
+{
+    bool initialized;
+    ds_tree_t nfq_tree;
+};
+
+struct nfqueue_ctxt
+{
+    uint32_t queue_num;
+    struct ev_loop *loop;
+    struct ev_io nfq_io_mnl;
+    struct mnl_socket *nfq_mnl;
+    struct nfq_pkt_info pkt_info;
+    process_nfq_event_cb nfq_cb;
+    int nfq_fd;
+    void *user_data;
+    ds_tree_node_t  nfq_tnode;
 };
 
 enum
@@ -152,13 +174,17 @@ enum
     NF_UTIL_NFQ_ACCEPT,
 };
 
-bool nf_queue_init(struct nfq_settings *nfqs);
+bool nf_queue_init();
+
+bool nf_queue_open(struct nfq_settings *nfqs);
+
+void nf_queue_close(uint32_t queue_num);
 
 void nf_queue_exit(void);
 
-bool nf_queue_set_verdict(uint32_t packet_id, int action);
+bool nf_queue_set_verdict(uint32_t packet_id, int action, uint32_t queue_num);
 
-bool nf_queue_set_nlsock_buffsz(uint32_t sock_buff_sz);
+bool nf_queue_set_nlsock_buffsz(uint32_t queue_num, uint32_t sock_buff_sz);
 
-bool nf_queue_set_queue_maxlen(uint32_t queue_maxlen);
+bool nf_queue_set_queue_maxlen(uint32_t queue_num, uint32_t queue_maxlen);
 #endif /* NF_UTILS_H_INCLUDED */

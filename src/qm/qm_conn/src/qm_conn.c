@@ -37,9 +37,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os.h"
 #include "os_time.h"
 #include "util.h"
+#include "memutil.h"
 #include "qm_conn.h"
 
-#define QM_SOCK_DIR "/tmp/plume/"
+#define QM_SOCK_DIR "/tmp/opensync/"
 #define QM_SOCK_FILENAME QM_SOCK_DIR"qm.sock"
 #define QM_SOCK_MAX_PENDING 10
 #define QM_COMPACT_SEND_SIZE (64*1024)
@@ -209,12 +210,8 @@ bool qm_conn_write_req(int fd, qm_request_t *req, char *topic, void *data, int d
     if (total <= QM_COMPACT_SEND_SIZE)
     {
         // merge small messages (<64k) into a single send
-        void *msgbuf = malloc(total);
+        void *msgbuf = MALLOC(total);
         void *p = msgbuf;
-        if (!msgbuf) {
-            LOG(ERROR, "%s: out of mem (size:%d)", __FUNCTION__, total);
-            return false;
-        }
         memcpy(p, req, sizeof(*req));
         p += sizeof(*req);
         if (req->topic_len) {
@@ -227,7 +224,7 @@ bool qm_conn_write_req(int fd, qm_request_t *req, char *topic, void *data, int d
         }
         size = total;
         ret = send(fd, msgbuf, total, MSG_NOSIGNAL);
-        free(msgbuf);
+        FREE(msgbuf);
         if (ret != total) goto write_err;
     } else {
         size = sizeof(*req);
@@ -279,8 +276,7 @@ bool qm_conn_read_req(int fd, qm_request_t *req, char **topic, void **data)
     // read topic
     size = req->topic_len;
     if (size) {
-        *topic = calloc(size + 1, 1);
-        if (!*topic) goto alloc_err;
+        *topic = CALLOC(size + 1, 1);
         ret = read(fd, *topic, size);
         if (ret != size) goto read_err;
     }
@@ -289,8 +285,7 @@ bool qm_conn_read_req(int fd, qm_request_t *req, char **topic, void **data)
     // read buf
     size = req->data_size;
     if (size) {
-        *data = malloc(size);
-        if (!*data) goto alloc_err;
+        *data = MALLOC(size);
         ret = read(fd, *data, size);
         if (ret != size) goto read_err;
     }
@@ -306,8 +301,8 @@ alloc_err:
 read_err:
     LOG(ERR, "%s: read error %d / %d / %d %s", __FUNCTION__, size, ret, errno, strerror(errno));
 error:
-    free(*topic);
-    free(*data);
+    FREE(*topic);
+    FREE(*data);
     *topic = NULL;
     *data = NULL;
     return false;
@@ -341,8 +336,7 @@ bool qm_conn_parse_req(void *buf, int buf_size, qm_request_t *req, char **topic,
     // read topic
     size = req->topic_len;
     if (size) {
-        *topic = calloc(size + 1, 1);
-        if (!*topic) goto error;
+        *topic = CALLOC(size + 1, 1);
         //ret = read(fd, *topic, size);
         memcpy(*topic, buf + sizeof(*req), size);
     }
@@ -350,8 +344,7 @@ bool qm_conn_parse_req(void *buf, int buf_size, qm_request_t *req, char **topic,
     // read buf
     size = req->data_size;
     if (size) {
-        *data = malloc(size);
-        if (!*data) goto error;
+        *data = MALLOC(size);
         //ret = read(fd, *data, size);
         memcpy(*data, buf + sizeof(*req) + req->topic_len, size);
     }
@@ -363,8 +356,8 @@ bool qm_conn_parse_req(void *buf, int buf_size, qm_request_t *req, char **topic,
 
 error:
     LOG(ERR, "%s: alloc %d", __FUNCTION__, size);
-    free(*topic);
-    free(*data);
+    FREE(*topic);
+    FREE(*data);
     *topic = NULL;
     *data = NULL;
     return false;

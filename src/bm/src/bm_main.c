@@ -52,6 +52,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "target.h"
 #include "bm.h"
+#include "kconfig.h"
 
 /*****************************************************************************/
 #define MODULE_ID LOG_MODULE_ID_MAIN
@@ -67,9 +68,42 @@ static log_severity_t   bm_log_severity = LOG_SEVERITY_INFO;
 
 static ev_timer _sta_info_watcher;
 
+static ev_child g_cmd_child;
+
 /******************************************************************************
  *  PROTECTED definitions
  *****************************************************************************/
+static void
+bm_testcmd_cb(EV_P_ ev_child *c, int events)
+{
+    LOGI("testcmd: terminated: status %d", c->rstatus);
+    assert(c->rstatus == 0);
+    ev_break(EV_A_ EVBREAK_ALL);
+}
+
+static void
+bm_testcmd_init(void)
+{
+    const char *cmd = getenv("BM_TEST_CMD");
+    const int trace = 0;
+    int pid;
+
+    if (!cmd) return;
+    if (strlen(cmd) == 0) return;
+
+    LOGI("testcmd: starting: %s", cmd);
+
+    pid = fork();
+    assert(pid >= 0);
+
+    if (pid == 0) {
+        exit(execlp("sh", "sh", "-c", cmd, NULL) == 0 ? 0 : 1);
+        assert(0); /* never reached */
+    }
+
+    ev_child_init(&g_cmd_child, bm_testcmd_cb, pid, trace);
+    ev_child_start(EV_DEFAULT_ &g_cmd_child);
+}
 
 static void sta_info_update_callback(
         struct ev_loop *loop,
@@ -192,6 +226,11 @@ main(int argc, char **argv)
 
     /* Register to dynamic severity updates */
     log_register_dynamic_severity(_ev_loop);
+
+    /* UTs */
+    if (kconfig_enabled(CONFIG_TARGET_BSAL_SIM)) {
+        bm_testcmd_init();
+    }
 
     // Run main loop
     ev_run(_ev_loop, 0);

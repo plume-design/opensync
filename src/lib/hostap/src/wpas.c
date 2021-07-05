@@ -43,6 +43,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <const.h>
 #include <log.h>
 #include <kconfig.h>
+#include <target.h>
 #include <opensync-ctrl.h>
 #include <opensync-wpas.h>
 
@@ -70,30 +71,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define EV(x) strchomp(strdupa(x), " ")
 
 #define MODULE_ID LOG_MODULE_ID_WPAS
-#ifndef DPP_CLI_UNSUPPORTED
-#define DPP_CLI_UNSUPPORTED "not supported"
-#ifndef DPP_EVENT_AUTH_SUCCESS
-#define DPP_EVENT_AUTH_SUCCESS DPP_CLI_UNSUPPORTED
-#endif
-#endif
-#ifndef DPP_EVENT_CONFOBJ_SSID
-#define DPP_EVENT_CONFOBJ_SSID DPP_CLI_UNSUPPORTED
-#endif
-#ifndef DPP_EVENT_CONNECTOR
-#define DPP_EVENT_CONNECTOR DPP_CLI_UNSUPPORTED
-#endif
-#ifndef DPP_EVENT_C_SIGN_KEY
-#define DPP_EVENT_C_SIGN_KEY DPP_CLI_UNSUPPORTED
-#endif
-#ifndef DPP_EVENT_NET_ACCESS_KEY
-#define DPP_EVENT_NET_ACCESS_KEY DPP_CLI_UNSUPPORTED
-#endif
-#ifndef DPP_EVENT_CONF_REQ_RX
-#define DPP_EVENT_CONF_REQ_RX DPP_CLI_UNSUPPORTED
-#endif
-#ifndef DPP_EVENT_CONF_RECEIVED
-#define DPP_EVENT_CONF_RECEIVED DPP_CLI_UNSUPPORTED
-#endif
 
 static struct wpas g_wpas[CONFIG_WPAS_MAX_BSS];
 
@@ -123,51 +100,6 @@ wpas_lookup_unused(void)
     LOGE("out of memory");
     assert(0);
     return NULL;
-}
-
-static enum target_dpp_conf_akm
-wpas_dpp_akm_str2enum(const char *s)
-{
-    if (!strcmp(s, "dpp")) return TARGET_DPP_CONF_DPP;
-    if (!strcmp(s, "psk")) return TARGET_DPP_CONF_PSK;
-    if (!strcmp(s, "sae")) return TARGET_DPP_CONF_SAE;
-    if (!strcmp(s, "psk+sae")) return TARGET_DPP_CONF_PSK_SAE;
-    if (!strcmp(s, "dpp+sae")) return TARGET_DPP_CONF_DPP_SAE;
-    if (!strcmp(s, "dpp+psk+sae")) return TARGET_DPP_CONF_DPP_PSK_SAE;
-    if (!strcmp(s, "dot1x")) return TARGET_DPP_CONF_UNKNOWN;
-    if (!strcmp(s, "??")) return TARGET_DPP_CONF_UNKNOWN;
-    return TARGET_DPP_CONF_UNKNOWN;
-}
-
-void wpas_dpp_conf_received_callback(struct wpas *wpas)
-{
-    if (wpas->dpp_conf_received)
-        // Aggregate multiple CLI Messages here
-        if (strlen(wpas->dpp_enrollee_conf_ssid_hex) > 1
-            && strlen(wpas->dpp_enrollee_conf_connector) > 1
-            && strlen(wpas->dpp_enrollee_conf_netaccesskey_hex) > 1
-            && strlen(wpas->dpp_enrollee_conf_csign_hex) > 1)
-            {
-                struct target_dpp_conf_network dpp_enrollee_conf = {
-                    .ifname = wpas->ctrl.bss,
-                    .ssid_hex = wpas->dpp_enrollee_conf_ssid_hex,
-                    .dpp_connector = wpas->dpp_enrollee_conf_connector,
-                    .dpp_netaccesskey_hex = wpas->dpp_enrollee_conf_netaccesskey_hex,
-                    .dpp_csign_hex = wpas->dpp_enrollee_conf_csign_hex,
-                    .akm = wpas_dpp_akm_str2enum(wpas->dpp_enrollee_conf_akm),
-                    .psk_hex = wpas->dpp_enrollee_conf_psk_hex,
-                };
-                wpas->dpp_conf_received(&dpp_enrollee_conf);
-
-                // Clear out wpas buffers
-                memset(wpas->dpp_enrollee_conf_ssid_hex, 0, sizeof(wpas->dpp_enrollee_conf_ssid_hex));
-                memset(wpas->dpp_enrollee_conf_connector, 0, sizeof(wpas->dpp_enrollee_conf_connector));
-                memset(wpas->dpp_enrollee_conf_netaccesskey_hex, 0, sizeof(wpas->dpp_enrollee_conf_netaccesskey_hex));
-                memset(wpas->dpp_enrollee_conf_csign_hex, 0, sizeof(wpas->dpp_enrollee_conf_csign_hex));
-                memset(wpas->dpp_enrollee_conf_psk_hex, 0, sizeof(wpas->dpp_enrollee_conf_psk_hex));
-                memset(wpas->dpp_enrollee_conf_akm, 0, sizeof(wpas->dpp_enrollee_conf_akm));
-                return;
-        }
 }
 
 static void
@@ -273,70 +205,6 @@ wpas_ctrl_cb(struct ctrl *ctrl, int level, const char *buf, size_t len)
         return;
     }
 
-    //DPP Events for Enrollee
-    if (!strcmp(event, EV(DPP_EVENT_CONFOBJ_SSID))) {
-        if (ascii2hex(str, wpas->dpp_enrollee_conf_ssid_hex, sizeof(wpas->dpp_enrollee_conf_ssid_hex))) {
-            LOGI("%s: dpp conf received ssid: %s, hex: %s", wpas->ctrl.bss, str, wpas->dpp_enrollee_conf_ssid_hex);
-            wpas_dpp_conf_received_callback(wpas);
-        }
-        return;
-    }
-
-    if (!strcmp(event, EV(DPP_EVENT_CONNECTOR))) {
-        LOGI("%s: dpp connector received: %s", wpas->ctrl.bss, str);
-        STRSCPY_WARN(wpas->dpp_enrollee_conf_connector, str);
-        wpas_dpp_conf_received_callback(wpas);
-
-        return;
-    }
-
-    if (!strcmp(event, EV(DPP_EVENT_C_SIGN_KEY))) {
-        LOGI("%s: dpp c-sign key recieved: %s", wpas->ctrl.bss, str);
-        STRSCPY_WARN(wpas->dpp_enrollee_conf_csign_hex, str);
-        wpas_dpp_conf_received_callback(wpas);
-
-        return;
-    }
-
-    if (!strcmp(event, EV(DPP_EVENT_NET_ACCESS_KEY))) {
-        LOGI("%s: dpp net access key recieved: %s", wpas->ctrl.bss, str);
-        STRSCPY_WARN(wpas->dpp_enrollee_conf_netaccesskey_hex, str);
-        wpas_dpp_conf_received_callback(wpas);
-
-        return;
-    }
-
-    if (!strcmp(event, EV(DPP_EVENT_CONFOBJ_PASS))) {
-        LOGI("%s: dpp pass recieved: %s", wpas->ctrl.bss, str);
-        STRSCPY_WARN(wpas->dpp_enrollee_conf_psk_hex, str);
-        wpas_dpp_conf_received_callback(wpas);
-
-        return;
-    }
-
-    if (!strcmp(event, EV(DPP_EVENT_CONFOBJ_AKM))) {
-        LOGI("%s: dpp akm recieved: %s", wpas->ctrl.bss, str);
-        STRSCPY_WARN(wpas->dpp_enrollee_conf_akm, str);
-        wpas_dpp_conf_received_callback(wpas);
-
-        return;
-    }
-
-    if (!strcmp(event, EV(DPP_EVENT_CONF_RECEIVED))) {
-        LOGI("%s: dpp conf received", wpas->ctrl.bss);
-        if (wpas->dpp_pending_auth_success && wpas->dpp_conf_received)
-            wpas->dpp_pending_auth_success = 0;
-
-        return;
-    }
-
-    if (!strcmp(event, EV(DPP_EVENT_AUTH_SUCCESS))) {
-        LOGI("%s: dpp auth success received", wpas->ctrl.bss);
-        wpas->dpp_pending_auth_success = 1;
-
-        return;
-    }
-
     LOGI("%s: event: <%d> %s", ctrl->bss, level, buf);
 }
 
@@ -352,6 +220,7 @@ wpas_init(struct wpas *wpas, const char *phy, const char *bss)
     STRSCPY_WARN(wpas->confpath, WPAS_CONF_PATH(bss));
     STRSCPY_WARN(wpas->phy, phy);
     wpas->ctrl.cb = wpas_ctrl_cb;
+    wpas->ctrl.wpas = wpas;
     return wpas;
 }
 

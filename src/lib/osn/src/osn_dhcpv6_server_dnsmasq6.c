@@ -25,6 +25,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include "log.h"
+#include "memutil.h"
 
 #include "dnsmasq6_server.h"
 
@@ -39,7 +40,7 @@ static dnsmasq6_server_status_fn_t osn_dhcpv6_server_status_dnsmasq6;
 
 osn_dhcpv6_server_t* osn_dhcpv6_server_new(const char *iface)
 {
-    osn_dhcpv6_server_t *self = calloc(1, sizeof(*self));
+    osn_dhcpv6_server_t *self = CALLOC(1, sizeof(*self));
 
     if (!dnsmasq6_server_init(&self->d6s_dnsmasq, iface))
     {
@@ -50,7 +51,7 @@ osn_dhcpv6_server_t* osn_dhcpv6_server_new(const char *iface)
     return self;
 
 error:
-    if (self != NULL) free(self);
+    if (self != NULL) FREE(self);
     return NULL;
 }
 
@@ -64,7 +65,7 @@ bool osn_dhcpv6_server_del(osn_dhcpv6_server_t *self)
         retval = false;
     }
 
-    free(self);
+    FREE(self);
 
     return retval;
 }

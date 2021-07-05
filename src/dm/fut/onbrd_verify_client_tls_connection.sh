@@ -26,15 +26,17 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="onbrd/$(basename "$0")"
 manager_setup_file="onbrd/onbrd_setup.sh"
-haproxy_cfg_path="tools/rpi/files/haproxy.cfg"
-fut_cloud_start_path="tools/rpi/start_cloud_simulation.sh"
+haproxy_cfg_path="tools/server/files/haproxy.cfg"
+fut_cloud_start_path="tools/server/start_cloud_simulation.sh"
 usage()
 {
 cat << usage_string
@@ -57,16 +59,17 @@ Script usage example:
    ./${tc_name}
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 
 log_title "${tc_name}: ONBRD test - Verify client TLS connection"
 
@@ -100,8 +103,8 @@ trap '
 ' EXIT SIGINT SIGTERM
 
 connect_to_fut_cloud &&
-    log "${tc_name}: Device connected to FUT cloud. Start test case execution" ||
-    raise "Failed to connect device to FUT cloud. Terminate test" -l "${tc_name}" -tc
+    log "${tc_name}: Device connected to FUT cloud. Start test case execution - Success" ||
+    raise "FAIL: Failed to connect device to FUT cloud. Terminate test" -l "${tc_name}" -tc
 
 # Check if connection is maintained for 60s
 log "${tc_name}: Checking if connection is maintained and stable"
@@ -110,8 +113,8 @@ for interval in $(seq 1 3); do
     sleep 20
     log "${tc_name}: Check connection status in Manager table is ACTIVE, check num: $interval"
     ${OVSH} s Manager status -r | grep "ACTIVE" &&
-        log "${tc_name}: wait_cloud_state - Connection state is ACTIVE, check num: $interval" ||
-        raise "wait_cloud_state - FAILED: Connection state is NOT ACTIVE, check num: $interval, connection should be maintained" -l "${tc_name}" -tc
+        log "${tc_name}: wait_cloud_state - Connection state is ACTIVE, check num: $interval - Success" ||
+        raise "FAIL: wait_cloud_state - Connection state is NOT ACTIVE, check num: $interval, connection should be maintained" -l "${tc_name}" -tc
 done
 
 pass

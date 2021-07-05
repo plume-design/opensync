@@ -35,6 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "const.h"
 #include "log.h"
 #include "util.h"
+#include "memutil.h"
 #include "execsh.h"
 
 #include "inet_dns.h"
@@ -73,12 +74,11 @@ static bool __inet_dns_global_init = false;
  */
 inet_dns_t *inet_dns_new(const char *ifname)
 {
-    inet_dns_t *self = malloc(sizeof(inet_dns_t));
-    if (self == NULL) return NULL;
+    inet_dns_t *self = MALLOC(sizeof(inet_dns_t));
 
     if (!inet_dns_init(self, ifname))
     {
-        free(self);
+        FREE(self);
         return NULL;
     }
 
@@ -92,7 +92,7 @@ bool inet_dns_del(inet_dns_t *self)
 {
     bool retval = inet_dns_fini(self);
 
-    free(self);
+    FREE(self);
 
     return retval;
 }

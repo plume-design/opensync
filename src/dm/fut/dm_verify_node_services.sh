@@ -26,10 +26,12 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/dm_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="dm/$(basename "$0")"
 manager_setup_file="dm/dm_setup.sh"
@@ -54,16 +56,17 @@ Script usage example:
     ./${tc_name} blem CONFIG_MANAGER_BLEM
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 
 NARGS=2
 [ $# -ne ${NARGS} ] && usage && raise "Requires exactly '${NARGS}' input arguments" -l "${tc_name}" -arg
@@ -79,22 +82,22 @@ fut_info_dump_line
 log_title "$tc_name: DM test - Verify Node_Services table contains given service, respective enable field is set to true and is running"
 
 check_kconfig_option "$kconfig_val" "y" &&
-    log "$tc_name: $kconfig_val = y - KCONFIG exists on the device" ||
-    raise "$kconfig_val - KCONFIG is not supported on the device" -l "$tc_name" -s
+    log "$tc_name: $kconfig_val = y - KCONFIG exists on the device - Success" ||
+    raise "FAIL: $kconfig_val - KCONFIG is not supported on the device" -l "$tc_name" -s
 
 check_ovsdb_entry Node_Services -w service "$service_name" &&
-    log "$tc_name: Node_Services table contains $service_name" ||
+    log "$tc_name: Node_Services table contains $service_name - Success" ||
     raise "FAIL: Node_Services table does not contain $service_name" -l "$tc_name" -tc
 
 if [ $(get_ovsdb_entry_value Node_Services enable -w service $service_name) == "true" ]; then
-    log "$tc_name:  $service_name from Node_Services table that have enable field set to true"
+    log "$tc_name: $service_name from Node_Services table that have enable field set to true"
     if [ -n $($(get_process_cmd) | grep /usr/opensync/bin/$service_name | grep -v 'grep' | wc -l) ]; then
-        log "$tc_name: $service_name from Node_Services table is running"
+        log "$tc_name: $service_name from Node_Services table is running - Success"
     else
         raise "FAIL: $service_name from Node_Services table is not running" -l "$tc_name" -tc
     fi
 else
-    raise "FAIL:  $service_name from Node_Services table that have enable field not set to true"
+    raise "FAIL: $service_name from Node_Services table that have enable field not set to true"
 fi
 
 pass

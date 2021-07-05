@@ -38,6 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "osp_ps.h"
 #include "const.h"
 #include "util.h"
+#include "memutil.h"
 #include "evx.h"
 #include "json_util.h"
 #include "ovsdb_table.h"
@@ -229,7 +230,7 @@ bool dm_reboot_load(struct dm_reboot *dr)
     }
 
     /* Fetch the "reboot" data */
-    rstr = malloc((size_t)rstrsz);
+    rstr = MALLOC((size_t)rstrsz);
     if (osp_ps_get(ps, DM_REBOOT_KEY, rstr, (size_t)rstrsz) != rstrsz)
     {
         LOG(ERR, "dm_reboot: Error retrieving persistent \"%s\" key.",
@@ -256,7 +257,7 @@ bool dm_reboot_load(struct dm_reboot *dr)
     retval = true;
 
 exit:
-    if (rstr != NULL) free(rstr);
+    if (rstr != NULL) FREE(rstr);
     if (rjson != NULL) json_decref(rjson);
     if (ps != NULL) osp_ps_close(ps);
 

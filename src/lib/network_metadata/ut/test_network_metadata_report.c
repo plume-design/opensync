@@ -2846,7 +2846,7 @@ test_net_md_ufid(void)
     struct net_md_flow_key *key, *lookup_key;
     struct net_md_aggregator_set *aggr_set;
     struct net_md_eth_pair *eth_pair;
-    struct flow_counters counters[2];
+    struct flow_counters counters[3];
     struct net_md_aggregator *aggr;
     size_t index;
     bool ret;
@@ -2856,6 +2856,8 @@ test_net_md_ufid(void)
     counters[0].packets_count = 100;
     counters[1].bytes_count = 20000; /* Second flow counters */
     counters[1].packets_count = 200;
+    counters[2].bytes_count = 30000; /* Aggregated flow counters */
+    counters[2].packets_count = 300;
 
     /* Allocate aggregator */
     aggr_set = &g_nd_test.aggr_set;
@@ -2953,7 +2955,7 @@ test_net_md_ufid(void)
     eth_pair = net_md_lookup_eth_pair(aggr, key);
     TEST_ASSERT_NOT_NULL(eth_pair);
     eth_acc = eth_pair->mac_stats;
-    validate_counters(&counters[0], &eth_acc->report_counters);
+    validate_counters(&counters[2], &eth_acc->report_counters);
 
    /* Validate second report counters */
     key1 = g_nd_test.net_md_keys[0];
@@ -2961,7 +2963,7 @@ test_net_md_ufid(void)
     eth_pair = net_md_lookup_eth_pair(aggr, key1);
     TEST_ASSERT_NOT_NULL(eth_pair);
     eth_acc = eth_pair->mac_stats;
-    validate_counters(&counters[1], &eth_acc->report_counters);
+    validate_counters(&counters[2], &eth_acc->report_counters);
     net_md_free_aggregator(aggr);
     FREE(aggr);
 }

@@ -26,10 +26,12 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="wm2/$(basename "$0")"
 manager_setup_file="wm2/wm2_setup.sh"
@@ -52,16 +54,17 @@ Script usage example:
 usage_string
 }
 
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 
 trap '
     fut_info_dump_line
@@ -77,13 +80,13 @@ client_mac=${1}
 log_title "$tc_name: WM2 test - Verify Wifi_Associated_Clients table is populated with client MAC"
 
 check_ovsdb_entry Wifi_Associated_Clients -w mac "$client_mac" &&
-    log "$tc_name: Valid client mac $client_mac is populated in the Wifi_Associated_Clients table." ||
+    log "$tc_name: Valid client mac $client_mac is populated in the Wifi_Associated_Clients table - Success" ||
     raise "FAIL: Client mac address is not present in the Wifi_Associated_Clients table." -l "$tc_name" -tc
 
 # Make sure state in Wifi_Associated_Clients is 'active' for connected client
 get_state=$(get_ovsdb_entry_value Wifi_Associated_Clients state -w mac "$client_mac" -r)
 [ "$get_state" == "active" ] &&
-    log "$tc_name: Wifi_Associated_Clients::state is '$get_state' for $client_mac" ||
-    raise "FAIL: Wifi_Associated_Clients::state is NOT 'active' for $client_mac" -l "$tc_name" -tc
+    log "$tc_name: Wifi_Associated_Clients::state is '$get_state' for $client_mac - Success" ||
+    raise "FAIL: Wifi_Associated_Clients::state is not 'active' for $client_mac" -l "$tc_name" -tc
 
 pass

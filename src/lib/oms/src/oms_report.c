@@ -33,6 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "oms.h"
 #include "oms_report.h"
 #include "object_manager.pb-c.h"
+#include "memutil.h"
 
 #define MAX_STRLEN 256
 
@@ -87,13 +88,7 @@ oms_report_set_node_info(void)
     mgr = oms_get_mgr();
 
     /* Allocate the protobuf structure */
-    pb = calloc(1, sizeof(*pb));
-    if (pb == NULL)
-    {
-        LOGE("%s: ObservationPoint protobuf struct allocation"
-             " failed", __func__);
-        return NULL;
-    }
+    pb = CALLOC(1, sizeof(*pb));
 
     /* Initialize the protobuf structure */
     object_manager__status__observation_point__init(pb);
@@ -108,10 +103,10 @@ oms_report_set_node_info(void)
     return pb;
 
 err_free_node_id:
-    free(pb->nodeid);
+    FREE(pb->nodeid);
 
 err_free_pb:
-    free(pb);
+    FREE(pb);
 
     return NULL;
 }
@@ -130,10 +125,10 @@ oms_report_free_pb_op(ObjectManager__Status__ObservationPoint *pb)
 {
     if (pb == NULL) return;
 
-    free(pb->nodeid);
-    free(pb->locationid);
+    FREE(pb->nodeid);
+    FREE(pb->locationid);
 
-    free(pb);
+    FREE(pb);
 
     return;
 }
@@ -159,8 +154,7 @@ oms_report_serialize_node_info(void)
     void *buf;
 
     /* Allocate serialization output container */
-    serialized = calloc(1, sizeof(*serialized));
-    if (!serialized) return NULL;
+    serialized = CALLOC(1, sizeof(*serialized));
 
     /* Allocate and set observation point protobuf */
     pb = oms_report_set_node_info();
@@ -171,8 +165,7 @@ oms_report_serialize_node_info(void)
     if (len == 0) goto err_free_pb;
 
     /* Allocate space for the serialized buffer */
-    buf = malloc(len);
-    if (buf == NULL) goto err_free_pb;
+    buf = MALLOC(len);
 
     /* Serialize protobuf */
     serialized->len = object_manager__status__observation_point__pack(pb, buf);
@@ -187,7 +180,7 @@ err_free_pb:
     oms_report_free_pb_op(pb);
 
 err_free_serialized:
-    free(serialized);
+    FREE(serialized);
 
     return NULL;
 }
@@ -219,12 +212,7 @@ oms_report_set_report_status(struct oms_state_entry *state)
     if (!report) return NULL;
 
     /* Allocate the protobuf structure */
-    pb = calloc(1, sizeof(*pb));
-    if (pb == NULL)
-    {
-        LOGE("%s: memory allocation failure", __func__);
-        return NULL;
-    }
+    pb = CALLOC(1, sizeof(*pb));
 
     /* Initialize the protobuf structure */
     object_manager__status__object_status__init(pb);
@@ -240,13 +228,13 @@ oms_report_set_report_status(struct oms_state_entry *state)
     return pb;
 
 err_free_state:
-    free(pb->status);
+    FREE(pb->status);
 
 err_free_object:
-    free(pb->objectname);
+    FREE(pb->objectname);
 
 err_free_pb:
-    free(pb);
+    FREE(pb);
 
     return NULL;
 }
@@ -265,11 +253,11 @@ oms_report_free_pb_report_status(ObjectManager__Status__ObjectStatus *pb)
 {
     if (pb == NULL) return;
 
-    free(pb->objectname);
-    free(pb->status);
-    free(pb->version);
+    FREE(pb->objectname);
+    FREE(pb->status);
+    FREE(pb->version);
 
-    free(pb);
+    FREE(pb);
 }
 
 
@@ -295,8 +283,7 @@ oms_report_serialize_status(struct oms_state_entry *state)
     if (state == NULL) return NULL;
 
     /* Allocate serialization output container */
-    serialized = calloc(1, sizeof(*serialized));
-    if (!serialized) return NULL;
+    serialized = CALLOC(1, sizeof(*serialized));
 
     /* Allocate and set the i container */
     pb = oms_report_set_report_status(state);
@@ -307,8 +294,7 @@ oms_report_serialize_status(struct oms_state_entry *state)
     if (len == 0) goto err_free_pb;
 
     /* Allocate space for the serialized buffer */
-    buf = malloc(len);
-    if (!buf) goto err_free_pb;
+    buf = MALLOC(len);
 
     /* Serialize protobuf */
     serialized->len = object_manager__status__object_status__pack(pb, buf);
@@ -324,7 +310,7 @@ err_free_pb:
     oms_report_free_pb_report_status(pb);
 
 err_free_serialized:
-    free(serialized);
+    FREE(serialized);
 
     return NULL;
 }
@@ -357,12 +343,7 @@ oms_report_set_object_status(void)
     tree = &mgr->state;
 
     /* Allocate the array of interfaces */
-    status_pb_tbl = calloc(mgr->num_states, sizeof(*status_pb_tbl));
-    if (status_pb_tbl == NULL)
-    {
-        LOGE("%s: allocation failure", __func__);
-        return NULL;
-    }
+    status_pb_tbl = CALLOC(mgr->num_states, sizeof(*status_pb_tbl));
 
     allocated = 0;
     state = ds_tree_head(tree);
@@ -392,7 +373,7 @@ err_free_pb_status_tbl:
         status_pb++;
     }
 
-    free(status_pb_tbl);
+    FREE(status_pb_tbl);
 
     return NULL;
 }
@@ -415,12 +396,7 @@ oms_report_set_pb_report(void)
 
     mgr = oms_get_mgr();
 
-    pb = calloc(1, sizeof(*pb));
-    if (pb == NULL)
-    {
-        LOGE("%s: allocation failure", __func__);
-        return NULL;
-    }
+    pb = CALLOC(1, sizeof(*pb));
 
     /* Initialize protobuf */
     object_manager__status__object_status_report__init(pb);
@@ -442,7 +418,7 @@ err_free_pb_os:
     oms_report_free_pb_op(pb->observationpoint);
 
 err_free_pb_report:
-    free(pb);
+    FREE(pb);
 
     return NULL;
 }
@@ -470,8 +446,8 @@ oms_report_free_pb_report(ObjectManager__Status__ObjectStatusReport *pb)
         oms_report_free_pb_report_status(pb->objectstatus[i]);
     }
 
-    free(pb->objectstatus);
-    free(pb);
+    FREE(pb->objectstatus);
+    FREE(pb);
 
     return;
 }
@@ -501,12 +477,7 @@ oms_report_serialize_report(void)
     mgr->num_reports = 0;
 
     /* Allocate serialization output structure */
-    serialized = calloc(1,sizeof(*serialized));
-    if (serialized == NULL)
-    {
-        LOGE("%s: packed_buffer memory allocation failed", __func__);
-        return NULL;
-    }
+    serialized = CALLOC(1,sizeof(*serialized));
 
     /* Allocate and set the object status report protobuf */
     pb = oms_report_set_pb_report();
@@ -521,12 +492,7 @@ oms_report_serialize_report(void)
     }
 
     /* Allocate space for the serialized buffer */
-    buf = malloc(len);
-    if (buf == NULL)
-    {
-        LOGE("%s: failed to allocate serialized buf", __func__);
-        goto err_free_pb;
-    }
+    buf = MALLOC(len);
 
     len = object_manager__status__object_status_report__pack(pb, buf);
     serialized->len = len;
@@ -538,10 +504,10 @@ oms_report_serialize_report(void)
     return serialized;
 
 err_free_pb:
-    free(pb);
+    FREE(pb);
 
 err_free_serialized:
-    free(serialized);
+    FREE(serialized);
 
     return NULL;
 }
@@ -561,8 +527,8 @@ oms_report_free_packed_buffer(struct packed_buffer *pb)
 {
     if (pb == NULL) return;
 
-    free(pb->buf);
-    free(pb);
+    FREE(pb->buf);
+    FREE(pb);
 }
 
 

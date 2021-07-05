@@ -26,10 +26,12 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="nm2/$(basename "$0")"
 manager_setup_file="nm2/nm2_setup.sh"
@@ -52,16 +54,17 @@ Script usage example:
    ./${tc_name} eth0 eth 10.0.0.35
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 
 NARGS=3
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
@@ -89,35 +92,35 @@ create_inet_entry \
     -ip_assign_scheme static \
     -if_type "$if_type" \
     -inet_addr "$inet_addr" &&
-        log "$tc_name: Interface successfully created" ||
-        raise "Failed to create interface" -l "$tc_name" -tc
+        log "$tc_name: Interface $if_name created - Success" ||
+        raise "FAIL: Failed to create $if_name interface" -l "$tc_name" -ds
 
-log "$tc_name: Setting INET_ADDR to $inet_addr"
+log "$tc_name: Setting Wifi_Inet_Config::inet_addr to $inet_addr"
 update_ovsdb_entry Wifi_Inet_Config -w if_name "$if_name" -u inet_addr "$inet_addr" &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config table updated - inet_addr $inet_addr" ||
-    raise "update_ovsdb_entry - Failed to update Wifi_Inet_Config - inet_addr $inet_addr" -l "$tc_name" -tc
+    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config::inet_addr is $inet_addr - Success" ||
+    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config::inet_addr is not $inet_addr" -l "$tc_name" -oe
 
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is inet_addr "$inet_addr" &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State - inet_addr $inet_addr" ||
-    raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - inet_addr $inet_addr" -l "$tc_name" -tc
+    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::inet_addr is $inet_addr - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::inet_addr is not $inet_addr" -l "$tc_name" -tc
 
-log "$tc_name: LEVEL 2 - Checking if INET_ADDR was properly applied to $if_name"
+log "$tc_name: Checking if INET_ADDR was properly applied to $if_name - LEVEL2"
 wait_for_function_response 0 "get_interface_ip_address_from_system $if_name | grep -q \"$inet_addr\"" &&
     log "$tc_name: INET_ADDR applied to ifconfig - interface $if_name" ||
-    raise "Failed to apply INET_ADDR to ifconfig - interface $if_name" -l "$tc_name" -tc
+    raise "FAIL: Failed to apply INET_ADDR to ifconfig - interface $if_name" -l "$tc_name" -tc
 
-log "$tc_name: Removing INET_ADDR to $inet_addr"
+log "$tc_name: Removing INET_ADDR for $if_name"
 update_ovsdb_entry Wifi_Inet_Config -w if_name "$if_name" -u inet_addr "[\"set\",[]]" &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config table updated - inet_addr [\"set\",[]]" ||
-    raise "update_ovsdb_entry - Failed to update Wifi_Inet_Config - inet_addr [\"set\",[]]" -l "$tc_name" -tc
+    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config::inet_addr is [\"set\",[]] - Success" ||
+    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config::inet_addr is not [\"set\",[]]" -l "$tc_name" -oe
 
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is inet_addr "0.0.0.0" &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State - inet_addr 0.0.0.0" ||
-    raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - inet_addr 0.0.0.0" -l "$tc_name" -tc
+    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::inet_addr is '0.0.0.0' - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::inet_addr is not '0.0.0.0'" -l "$tc_name" -tc
 
-log "$tc_name: LEVEL 2 - Checking if INET_ADDR was properly removed from $if_name"
+log "$tc_name: Checking if INET_ADDR was properly removed for $if_name - LEVEL2"
 wait_for_function_response 1 "get_interface_ip_address_from_system $if_name | grep -q \"$inet_addr\"" &&
-    log "$tc_name: INET_ADDR removed from ifconfig - interface $if_name" ||
-    raise "Failed to removed INET_ADDR from ifconfig - interface $if_name" -l "$tc_name" -tc
+    log "$tc_name: INET_ADDR removed from ifconfig for interface $if_name - Success" ||
+    raise "FAIL: Failed to remove INET_ADDR from ifconfig for interface $if_name" -l "$tc_name" -tc
 
 pass

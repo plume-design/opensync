@@ -35,38 +35,42 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * @params: req_type: request type
  */
 void
-free_attr_members(struct attr_cache *attr_entry,
-                  enum gk_cache_request_type attr_type)
+gkc_free_attr_entry(struct attr_cache *attr_entry, enum gk_cache_request_type attr_type)
 {
+    union attribute_type *attr;
+
+    attr = &attr_entry->attr;
     switch (attr_type)
     {
+    /* the 3 entries are now folded into the 'internal' type */
+    case GK_CACHE_INTERNAL_TYPE_HOSTNAME:
     case GK_CACHE_REQ_TYPE_FQDN:
-        FREE(attr_entry->attr.fqdn);
         FREE(attr_entry->fqdn_redirect);
+        /* fallthru */
+    case GK_CACHE_REQ_TYPE_HOST:
+    case GK_CACHE_REQ_TYPE_SNI:
+        FREE(attr->host_name->name);
+        FREE(attr->host_name);
         break;
 
     case GK_CACHE_REQ_TYPE_URL:
-        FREE(attr_entry->attr.url);
-        break;
-
-    case GK_CACHE_REQ_TYPE_HOST:
-        FREE(attr_entry->attr.host);
-        break;
-
-    case GK_CACHE_REQ_TYPE_SNI:
-        FREE(attr_entry->attr.sni);
+        FREE(attr->url->name);
+        FREE(attr->url);
         break;
 
     case GK_CACHE_REQ_TYPE_IPV4:
-        FREE(attr_entry->attr.ipv4);
+        FREE(attr->ipv4->name);
+        FREE(attr->ipv4);
         break;
 
     case GK_CACHE_REQ_TYPE_IPV6:
-        FREE(attr_entry->attr.ipv6);
+        FREE(attr->ipv6->name);
+        FREE(attr->ipv6);
         break;
 
     case GK_CACHE_REQ_TYPE_APP:
-        FREE(attr_entry->attr.app_name);
+        FREE(attr->app_name->name);
+        FREE(attr->app_name);
         break;
 
     default:
@@ -84,15 +88,21 @@ static void
 gk_clean_attribute_tree(ds_tree_t *tree, enum gk_cache_request_type attr_type)
 {
     struct attr_cache *attr_entry, *remove;
+    struct gk_cache_mgr *mgr;
+
+    mgr = gk_cache_get_mgr();
 
     attr_entry = ds_tree_head(tree);
     while (attr_entry != NULL)
     {
-        remove     = attr_entry;
+        remove = attr_entry;
         attr_entry = ds_tree_next(tree, attr_entry);
-        free_attr_members(remove, attr_type);
+        gkc_free_attr_entry(remove, attr_type);
         ds_tree_remove(tree, remove);
         FREE(remove);
+
+        /* Update cache counter accordingly */
+        mgr->total_entry_count--;
     }
 }
 
@@ -116,15 +126,21 @@ static void
 gk_clean_flow_tree(ds_tree_t *tree, enum gk_cache_request_type req_type)
 {
     struct ip_flow_cache *flow_entry, *remove;
+    struct gk_cache_mgr *mgr;
+
+    mgr = gk_cache_get_mgr();
 
     flow_entry = ds_tree_head(tree);
     while (flow_entry != NULL)
     {
-        remove     = flow_entry;
+        remove = flow_entry;
         flow_entry = ds_tree_next(tree, flow_entry);
         free_flow_entry_members(remove);
         ds_tree_remove(tree, remove);
         FREE(remove);
+
+        /* Update cache counter accordingly */
+        mgr->total_entry_count--;
     }
 }
 
@@ -133,19 +149,25 @@ gk_clean_flow_tree(ds_tree_t *tree, enum gk_cache_request_type req_type)
  *        given device
  * @params: pd_cache pointer to per device tree
  */
-static void
+int
 gk_clean_per_device_entry(struct per_device_cache *pd_cache)
 {
-    FREE(pd_cache->device_mac);
-    gk_clean_attribute_tree(&pd_cache->fqdn_tree, GK_CACHE_REQ_TYPE_FQDN);
+    int pdevice_count;
+
+    pdevice_count = gk_get_cache_count();
+
+    gk_clean_attribute_tree(&pd_cache->hostname_tree, GK_CACHE_INTERNAL_TYPE_HOSTNAME);
     gk_clean_attribute_tree(&pd_cache->url_tree, GK_CACHE_REQ_TYPE_URL);
-    gk_clean_attribute_tree(&pd_cache->host_tree, GK_CACHE_REQ_TYPE_HOST);
-    gk_clean_attribute_tree(&pd_cache->sni_tree, GK_CACHE_REQ_TYPE_SNI);
     gk_clean_attribute_tree(&pd_cache->ipv4_tree, GK_CACHE_REQ_TYPE_IPV4);
     gk_clean_attribute_tree(&pd_cache->ipv6_tree, GK_CACHE_REQ_TYPE_IPV6);
     gk_clean_attribute_tree(&pd_cache->app_tree, GK_CACHE_REQ_TYPE_APP);
     gk_clean_flow_tree(&pd_cache->inbound_tree, GK_CACHE_REQ_TYPE_INBOUND);
-    gk_clean_flow_tree(&pd_cache->outbound_tree, GK_CACHE_REQ_TYPE_OUTBOUDND);
+    gk_clean_flow_tree(&pd_cache->outbound_tree, GK_CACHE_REQ_TYPE_OUTBOUND);
+    FREE(pd_cache->device_mac);
+
+    pdevice_count -= gk_get_cache_count();
+
+    return pdevice_count;
 }
 
 /**
@@ -161,7 +183,7 @@ gk_free_cache_tree(ds_tree_t *tree)
     pdevice = ds_tree_head(tree);
     while (pdevice != NULL)
     {
-        remove  = pdevice;
+        remove = pdevice;
         pdevice = ds_tree_next(tree, pdevice);
         gk_clean_per_device_entry(remove);
         ds_tree_remove(tree, remove);
@@ -183,7 +205,7 @@ gk_cache_cleanup(void)
 
     tree = &mgr->per_device_tree;
     gk_free_cache_tree(tree);
-    mgr->count = 0;
+    mgr->total_entry_count = 0;
 }
 
 /**
@@ -198,7 +220,7 @@ gkc_attr_ttl_expired(struct attr_cache *attr_entry)
     time_t now;
     now = time(NULL);
 
-    /* check if TTL is expired*/
+    /* check if TTL is expired */
     if ((now - attr_entry->cache_ts) < attr_entry->cache_ttl)
     {
         return false;
@@ -207,42 +229,36 @@ gkc_attr_ttl_expired(struct attr_cache *attr_entry)
 }
 
 static const char *
-gk_get_attribute_value(struct attr_cache *attr_entry,
-                       enum gk_cache_request_type attr_type)
+gk_get_attribute_value(struct attr_cache *attr_entry, enum gk_cache_request_type attr_type)
 {
+    union attribute_type *attr;
+
+    attr = &attr_entry->attr;
+
     switch (attr_type)
     {
+        case GK_CACHE_INTERNAL_TYPE_HOSTNAME:
+            LOGD("%s(): Fetching attr value using GK_CACHE_INTERNAL_TYPE_HOSTNAME", __func__);
+            /* fallthru */
         case GK_CACHE_REQ_TYPE_FQDN:
-            return attr_entry->attr.fqdn;
-            break;
+        case GK_CACHE_REQ_TYPE_HOST:
+        case GK_CACHE_REQ_TYPE_SNI:
+            return attr->host_name->name;
 
         case GK_CACHE_REQ_TYPE_URL:
-            return attr_entry->attr.url;
-            break;
-
-        case GK_CACHE_REQ_TYPE_HOST:
-            return attr_entry->attr.host;
-            break;
-
-        case GK_CACHE_REQ_TYPE_SNI:
-            return attr_entry->attr.sni;
-            break;
+            return attr->url->name;
 
         case GK_CACHE_REQ_TYPE_IPV4:
-            return attr_entry->attr.ipv4;
-            break;
+            return attr->ipv4->name;
 
         case GK_CACHE_REQ_TYPE_IPV6:
-            return attr_entry->attr.ipv6;
-            break;
+            return attr->ipv6->name;
 
         case GK_CACHE_REQ_TYPE_APP:
-            return attr_entry->attr.app_name;
-            break;
+            return attr->app_name->name;
 
         default:
             return "unknown";
-            break;
     }
 }
 
@@ -253,20 +269,17 @@ gk_get_attribute_tree(struct per_device_cache *pdevice, int attr_type)
 
     switch (attr_type)
     {
+        case GK_CACHE_INTERNAL_TYPE_HOSTNAME:
+            LOGD("%s(): Fetching tree for attr using GK_CACHE_INTERNAL_TYPE_HOSTNAME", __func__);
+            /* fallthru */
         case GK_CACHE_REQ_TYPE_FQDN:
-            attr_tree = &pdevice->fqdn_tree;
+        case GK_CACHE_REQ_TYPE_HOST:
+        case GK_CACHE_REQ_TYPE_SNI:
+            attr_tree = &pdevice->hostname_tree;
             break;
 
         case GK_CACHE_REQ_TYPE_URL:
             attr_tree = &pdevice->url_tree;
-            break;
-
-        case GK_CACHE_REQ_TYPE_HOST:
-            attr_tree = &pdevice->host_tree;
-            break;
-
-        case GK_CACHE_REQ_TYPE_SNI:
-            attr_tree = &pdevice->sni_tree;
             break;
 
         case GK_CACHE_REQ_TYPE_IPV4:
@@ -283,7 +296,6 @@ gk_get_attribute_tree(struct per_device_cache *pdevice, int attr_type)
 
         default:
             attr_tree = NULL;
-            break;
     }
 
     return attr_tree;
@@ -309,23 +321,22 @@ gkc_cleanup_ttl_attribute_tree(struct gkc_del_info_s *gk_del_info)
     attr_entry = ds_tree_head(gk_del_info->tree);
     while (attr_entry != NULL)
     {
-        remove      = attr_entry;
-        attr_entry  = ds_tree_next(gk_del_info->tree, attr_entry);
+        remove = attr_entry;
+        attr_entry = ds_tree_next(gk_del_info->tree, attr_entry);
         ttl_expired = gkc_attr_ttl_expired(remove);
         if (ttl_expired == false) continue;
 
-        LOGT("%s: Removing attribute '%s', for device " PRI_os_macaddr_lower_t
-             " due to expired TTL",
+        LOGT("%s(): Removing attribute '%s', for device " PRI_os_macaddr_lower_t " due to expired TTL",
              __func__,
              gk_get_attribute_value(remove, gk_del_info->attr_type),
              FMT_os_macaddr_pt(gk_del_info->pdevice->device_mac));
 
-        free_attr_members(remove, gk_del_info->attr_type);
+        gkc_free_attr_entry(remove, gk_del_info->attr_type);
 
         gk_del_info->attr_del_count++;
 
         /* decrement the cache entries counter */
-        mgr->count--;
+        mgr->total_entry_count--;
         ds_tree_remove(gk_del_info->tree, remove);
         FREE(remove);
     }
@@ -340,7 +351,10 @@ static void
 gk_cache_check_ttl_per_device(struct per_device_cache *pdevice)
 {
     struct gkc_del_info_s *gk_del_info;
-    int attr_type;
+    int attr_types[] = { GK_CACHE_INTERNAL_TYPE_HOSTNAME, GK_CACHE_REQ_TYPE_URL,
+                         GK_CACHE_REQ_TYPE_IPV4, GK_CACHE_REQ_TYPE_IPV6,
+                         GK_CACHE_REQ_TYPE_APP };
+    size_t i;
 
     gk_del_info = CALLOC(1, sizeof(*gk_del_info));
     if (gk_del_info == NULL) return;
@@ -348,11 +362,12 @@ gk_cache_check_ttl_per_device(struct per_device_cache *pdevice)
     gk_del_info->pdevice = pdevice;
 
     /* loop through all the attributes and check for TTL expiry */
-    for (attr_type = GK_CACHE_REQ_TYPE_FQDN; attr_type <= GK_CACHE_REQ_TYPE_APP; attr_type++)
+    /* Note: HOST, FQDN and SNI are wrapped in one single tree */
+    for (i = 0; i < sizeof(attr_types) / sizeof(attr_types[0]); i++)
     {
-        gk_del_info->attr_type = attr_type;
+        gk_del_info->attr_type = attr_types[i];
         /* get the tree for this attribute type */
-        gk_del_info->tree = gk_get_attribute_tree(pdevice, attr_type);
+        gk_del_info->tree = gk_get_attribute_tree(pdevice, attr_types[i]);
         gkc_cleanup_ttl_attribute_tree(gk_del_info);
     }
 
@@ -362,12 +377,12 @@ gk_cache_check_ttl_per_device(struct per_device_cache *pdevice)
     gkc_cleanup_ttl_flow_tree(gk_del_info);
 
     /* check the flow outbound tree */
-    gk_del_info->attr_type = GK_CACHE_REQ_TYPE_OUTBOUDND;
+    gk_del_info->attr_type = GK_CACHE_REQ_TYPE_OUTBOUND;
     gk_del_info->tree = &pdevice->outbound_tree;
     gkc_cleanup_ttl_flow_tree(gk_del_info);
 
-    LOGT("%s: number of expired TTL entries for device: " PRI_os_macaddr_lower_t
-         " attribute type: %"PRIu64", flow type %"PRIu64,
+    LOGT("%s(): number of expired TTL entries for device: " PRI_os_macaddr_lower_t " attribute type: %" PRIu64
+         ", flow type %" PRIu64,
          __func__,
          FMT_os_macaddr_pt(pdevice->device_mac),
          gk_del_info->attr_del_count,
@@ -388,8 +403,7 @@ gk_cache_check_ttl_device_tree(ds_tree_t *tree)
 {
     struct per_device_cache *pdevice, *current;
 
-    LOGT("%s cache entries before flushing expired TTL entries: %lu",
-         __func__, gk_get_cache_count());
+    LOGT("%s(): cache entries before flushing expired TTL entries: %lu", __func__, gk_get_cache_count());
 
     pdevice = ds_tree_head(tree);
     while (pdevice != NULL)
@@ -398,49 +412,46 @@ gk_cache_check_ttl_device_tree(ds_tree_t *tree)
         pdevice = ds_tree_next(tree, pdevice);
         gk_cache_check_ttl_per_device(current);
     }
-    LOGT("%s cache entries after flushing expired TTL entries: %lu",
-         __func__, gk_get_cache_count());
+    LOGT("%s(): cache entries after flushing expired TTL entries: %lu", __func__, gk_get_cache_count());
 }
 
 static bool
-gkc_is_attr_present(struct attr_cache *attr_entry,
-                    struct gk_attr_cache_interface *req)
+gkc_is_attr_present(struct attr_cache *attr_entry, struct gk_attr_cache_interface *req)
 {
+    union attribute_type *attr;
     int rc;
+
+    attr = &attr_entry->attr;
 
     switch (req->attribute_type)
     {
-    case GK_CACHE_REQ_TYPE_FQDN:
-        rc = strcmp(attr_entry->attr.fqdn, req->attr_name);
-        break;
+        case GK_CACHE_INTERNAL_TYPE_HOSTNAME:
+            LOGD("%s(): Checking attr using GK_CACHE_INTERNAL_TYPE_HOSTNAME", __func__);
+            /* fallthru */
+        case GK_CACHE_REQ_TYPE_FQDN:
+        case GK_CACHE_REQ_TYPE_HOST:
+        case GK_CACHE_REQ_TYPE_SNI:
+            rc = strcmp(attr->host_name->name, req->attr_name);
+            break;
 
-    case GK_CACHE_REQ_TYPE_URL:
-        rc = strcmp(attr_entry->attr.url, req->attr_name);
-        break;
+        case GK_CACHE_REQ_TYPE_URL:
+            rc = strcmp(attr->url->name, req->attr_name);
+            break;
 
-    case GK_CACHE_REQ_TYPE_HOST:
-        rc = strcmp(attr_entry->attr.host, req->attr_name);
-        break;
+        case GK_CACHE_REQ_TYPE_IPV4:
+            rc = strcmp(attr->ipv4->name, req->attr_name);
+            break;
 
-    case GK_CACHE_REQ_TYPE_SNI:
-        rc = strcmp(attr_entry->attr.sni, req->attr_name);
-        break;
+        case GK_CACHE_REQ_TYPE_IPV6:
+            rc = strcmp(attr->ipv6->name, req->attr_name);
+            break;
 
-    case GK_CACHE_REQ_TYPE_IPV4:
-        rc = strcmp(attr_entry->attr.ipv4, req->attr_name);
-        break;
+        case GK_CACHE_REQ_TYPE_APP:
+            rc = strcmp(attr->app_name->name, req->attr_name);
+            break;
 
-    case GK_CACHE_REQ_TYPE_IPV6:
-        rc = strcmp(attr_entry->attr.ipv6, req->attr_name);
-        break;
-
-    case GK_CACHE_REQ_TYPE_APP:
-        rc = strcmp(attr_entry->attr.app_name, req->attr_name);
-        break;
-
-    default:
-        return false;
-        break;
+        default:
+            return false;
     }
 
     return (rc == 0);
@@ -464,18 +475,18 @@ gkc_del_attr(ds_tree_t *attr_tree, struct gk_attr_cache_interface *req)
     attr_entry = ds_tree_head(attr_tree);
     while (attr_entry != NULL)
     {
-        remove     = attr_entry;
+        remove = attr_entry;
         attr_entry = ds_tree_next(attr_tree, attr_entry);
 
         rc = gkc_is_attr_present(remove, req);
         if (rc == false) continue;
 
-        LOGD("%s: deleting attribute %s for device " PRI_os_macaddr_lower_t " ",
+        LOGT("%s(): deleting attribute %s for device " PRI_os_macaddr_lower_t " ",
              __func__,
              req->attr_name,
              FMT_os_macaddr_pt(req->device_mac));
 
-        free_attr_members(remove, req->attribute_type);
+        gkc_free_attr_entry(remove, req->attribute_type);
         ds_tree_remove(attr_tree, remove);
         FREE(remove);
         return true;
@@ -494,8 +505,7 @@ gkc_del_attr(ds_tree_t *attr_tree, struct gk_attr_cache_interface *req)
  * @return: true if success false if failed
  */
 bool
-gkc_del_attr_from_dev(struct per_device_cache *pdevice,
-                      struct gk_attr_cache_interface *req)
+gkc_del_attr_from_dev(struct per_device_cache *pdevice, struct gk_attr_cache_interface *req)
 {
     bool ret = false;
 
@@ -503,39 +513,34 @@ gkc_del_attr_from_dev(struct per_device_cache *pdevice,
 
     switch (req->attribute_type)
     {
-    case GK_CACHE_REQ_TYPE_FQDN:
-        ret = gkc_del_attr(&pdevice->fqdn_tree, req);
-        break;
+        case GK_CACHE_INTERNAL_TYPE_HOSTNAME:
+            LOGI("%s(): Delete attr using GK_CACHE_INTERNAL_TYPE_HOSTNAME", __func__);
+            /* fallthru */
+        case GK_CACHE_REQ_TYPE_FQDN:
+        case GK_CACHE_REQ_TYPE_HOST:
+        case GK_CACHE_REQ_TYPE_SNI:
+            ret = gkc_del_attr(&pdevice->hostname_tree, req);
+            break;
 
-    case GK_CACHE_REQ_TYPE_URL:
-        ret = gkc_del_attr(&pdevice->url_tree, req);
-        break;
+        case GK_CACHE_REQ_TYPE_URL:
+            ret = gkc_del_attr(&pdevice->url_tree, req);
+            break;
 
-    case GK_CACHE_REQ_TYPE_HOST:
-        ret = gkc_del_attr(&pdevice->host_tree, req);
-        break;
+        case GK_CACHE_REQ_TYPE_IPV4:
+            ret = gkc_del_attr(&pdevice->ipv4_tree, req);
+            break;
 
-    case GK_CACHE_REQ_TYPE_SNI:
-        ret = gkc_del_attr(&pdevice->sni_tree, req);
-        break;
+        case GK_CACHE_REQ_TYPE_IPV6:
+            ret = gkc_del_attr(&pdevice->ipv6_tree, req);
+            break;
 
-    case GK_CACHE_REQ_TYPE_IPV4:
-        ret = gkc_del_attr(&pdevice->ipv4_tree, req);
-        break;
+        case GK_CACHE_REQ_TYPE_APP:
+            ret = gkc_del_attr(&pdevice->app_tree, req);
+            break;
 
-    case GK_CACHE_REQ_TYPE_IPV6:
-        ret = gkc_del_attr(&pdevice->ipv6_tree, req);
-        break;
-
-    case GK_CACHE_REQ_TYPE_APP:
-        ret = gkc_del_attr(&pdevice->app_tree, req);
-        break;
-
-    default:
-            LOGD("%s(): invalid attribute type %d",
-                 __func__,
-                 req->attribute_type);
-        break;
+        default:
+            LOGD("%s(): invalid attribute type %d", __func__, req->attribute_type);
+            break;
     }
 
     return ret;

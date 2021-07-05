@@ -28,6 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define FCM_H_INCLUDED
 
 #include <ev.h>
+
 typedef enum
 {
     FCM_RPT_NO_FMT     = -1,
@@ -63,8 +64,20 @@ typedef struct fcm_collect_plugin_
     char * (*get_mqtt_hdr_loc_id)(void);
     char * (*get_other_config)(struct fcm_collect_plugin_ *, char *);
     struct ev_loop *loop;
+    struct fcm_session *session;
+    struct fcm_filter_client *collect_client;
+    struct fcm_filter_client *report_client;
 } fcm_collect_plugin_t;
 
+/**
+ * @brief session container.
+ *
+ * The session is the main structure exchanged with the service plugins.
+ */
+struct fcm_session
+{
+    void *handler_ctxt;              /* session private context */
+};
 char* fcm_get_mqtt_hdr_node_id(void);
 char* fcm_get_mqtt_hdr_loc_id(void);
 

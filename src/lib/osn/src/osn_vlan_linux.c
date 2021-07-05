@@ -25,6 +25,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include "log.h"
+#include "memutil.h"
 
 #include "linux/lnx_vlan.h"
 
@@ -37,18 +38,12 @@ struct osn_vlan
 
 osn_vlan_t *osn_vlan_new(const char *ifname)
 {
-    osn_vlan_t *self = calloc(1, sizeof(osn_vlan_t));
-
-    if (self == NULL)
-    {
-        LOG(ERR, "osn_vlan: %s: Error allocating the VLAN object.", ifname);
-        return NULL;
-    }
+    osn_vlan_t *self = CALLOC(1, sizeof(osn_vlan_t));
 
     if (!lnx_vlan_init(&self->ov_vlan, ifname))
     {
         LOG(ERR, "osn_vlan: %s: Error initializing the VLAN object.", ifname);
-        free(self);
+        FREE(self);
         return NULL;
     }
 
@@ -65,7 +60,7 @@ bool osn_vlan_del(osn_vlan_t *self)
         retval = false;
     }
 
-    free(self);
+    FREE(self);
 
     return retval;
 }

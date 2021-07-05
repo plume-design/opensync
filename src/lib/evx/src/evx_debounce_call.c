@@ -31,6 +31,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <ds_dlist.h>
 #include <const.h>
 
+#include "memutil.h"
+
 #define EVX_DEBOUNCE_SEC 1.0
 
 #define EVX_DEBOUNCE_MIN_MSEC 1000
@@ -74,8 +76,8 @@ evx_debounce_fn(EV_P_ ev_debounce *ev, int revents)
 	ds_dlist_remove(&g_evx_debounce_call_list, i);
 	i->func(i->arg);
 	if (i->arg)
-		free(i->arg);
-	free(i);
+		FREE(i->arg);
+	FREE(i);
 }
 
 void
@@ -83,8 +85,7 @@ evx_debounce_call(void (*func)(const char *arg), const char *arg)
 {
 	struct evx_debounce_call *i;
 	if (!(i = evx_debounce_call_lookup(func, arg))) {
-		if (!(i = calloc(1, sizeof(*i))))
-			return;
+		i = CALLOC(1, sizeof(*i));
 		i->func = func;
 		if (arg)
 			i->arg = strdup(arg);
@@ -100,8 +101,7 @@ evx_debounce_rn_call(void (*func)(const char *arg), const char *arg)
 	static unsigned int seed = 1;
 	struct evx_debounce_call *i;
 	if (!(i = evx_debounce_call_lookup(func, arg))) {
-		if (!(i = calloc(1, sizeof(*i))))
-			return;
+		i = CALLOC(1, sizeof(*i));
 		i->func = func;
 		if (arg)
 			i->arg = strdup(arg);

@@ -26,11 +26,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <stdbool.h>
 
-#include "gatekeeper.h"
-#include "gatekeeper_cache.h"
 #include "fsm_policy.h"
 #include "unity.h"
 #include "memutil.h"
+
+#include "gatekeeper.h"
+#include "gatekeeper_cache.h"
+
+#include "test_gatekeeper_plugin.h"
 
 void
 test_gatekeeper_get_mgr(void)
@@ -72,30 +75,32 @@ test_gatekeeper_init(void)
 
 void
 gk_populate_redirect_entry(struct gk_attr_cache_interface *entry,
-                           struct fsm_policy_req *req);
+                           struct fsm_policy_req *req,
+                           struct fsm_policy_reply *policy_reply);
 
-void 
+void
 test_gk_populate_redirect_entry(void)
 {
     struct gk_attr_cache_interface entry;
+    struct fsm_policy_reply policy_reply;
     struct fsm_policy_req req;
 
     /* Set up the req struct. */
     memset(&entry, 0, sizeof(entry));
 
     req.fqdn_req = CALLOC(1, sizeof(*req.fqdn_req));
-    strcpy(req.fqdn_req->redirects[0], "1.2.3.4");
-    strcpy(req.fqdn_req->redirects[1], "6.7.8.9");
-    req.reply.rd_ttl = 123;
+    strcpy(policy_reply.redirects[0], "1.2.3.4");
+    strcpy(policy_reply.redirects[1], "6.7.8.9");
+    policy_reply.rd_ttl = 123;
 
     /* No redirect. */
-    req.reply.redirect = false;
-    gk_populate_redirect_entry(&entry, &req);
+    policy_reply.redirect = false;
+    gk_populate_redirect_entry(&entry, &req, &policy_reply);
     TEST_ASSERT_NULL(entry.fqdn_redirect);
-    
+
     /* Redirect. */
-    req.reply.redirect = true;
-    gk_populate_redirect_entry(&entry, &req);
+    policy_reply.redirect = true;
+    gk_populate_redirect_entry(&entry, &req, &policy_reply);
     TEST_ASSERT_NOT_NULL(entry.fqdn_redirect);
     TEST_ASSERT_TRUE(entry.fqdn_redirect->redirect);
     TEST_ASSERT_EQUAL_INT(entry.fqdn_redirect->redirect_ttl, 123);
@@ -109,7 +114,7 @@ test_gk_populate_redirect_entry(void)
 }
 
 void
-test_fsm_gk_fct(void)
+run_test_fsm_gk_fct(void)
 {
     RUN_TEST(test_gatekeeper_get_mgr);
     RUN_TEST(test_gatekeeper_init);

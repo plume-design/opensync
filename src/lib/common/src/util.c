@@ -52,6 +52,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdarg.h>
 
 #include "util.h"
+#include "memutil.h"
 #include "log.h"
 #include "os.h"
 
@@ -896,7 +897,7 @@ char *strfmt(const char *fmt, ...)
     va_start(ap, fmt);
     n = vsnprintf(&c, 1, fmt, ap);
     va_end(ap);
-    if (n >= 0 && (p = malloc(++n))) {
+    if (n >= 0 && (p = MALLOC(++n))) {
         va_start(ap, fmt);
         vsnprintf(p, n, fmt, ap);
         va_end(ap);
@@ -914,8 +915,7 @@ char *argvstr(const char *const*argv)
         return NULL;
     for (n=1, i=0; argv[i]; i++)
         n += strlen(argv[i]) + sizeof(',');
-    if (!(q = calloc(1, n)))
-        return NULL;
+    q = CALLOC(1, n);
     for (i=0; argv[i]; i++)
         if (strscat(q, argv[i], n) >= 0 && argv[i+1])
             strscat(q, ",", n);
@@ -950,7 +950,7 @@ char *strexread(const char *prog, const char *const*argv)
             close(fd[0]);
             close(fd[1]);
             for (n=0; argv[n]; n++);
-            args = calloc(++n, sizeof(args[0]));
+            args = CALLOC(++n, sizeof(args[0]));
             for (n=0; argv[n]; n++) args[n] = strdup(argv[n]);
             args[n] = 0;
             execvp(prog, args);
@@ -960,7 +960,7 @@ char *strexread(const char *prog, const char *const*argv)
             close(fd[1]);
             for (n=0,i=0,p=0;;) {
                 if (i+1 >= n) {
-                    if ((q = realloc(p, (n+=4096))))
+                    if ((q = REALLOC(p, (n+=4096))))
                         p = q;
                     else
                         break;
@@ -976,7 +976,7 @@ char *strexread(const char *prog, const char *const*argv)
             LOGT("%s: status=%d output='%s'", ctx, status, p);
             if ((errno = (WIFEXITED(status) ? WEXITSTATUS(status) : -1)) == 0)
                 return p;
-            free(p);
+            FREE(p);
             return NULL;
     }
     LOGW("%s: unreachable", ctx);
@@ -994,6 +994,34 @@ char *strdel(char *heystack, const char *needle, int (*strcmp_fun) (const char*,
             q = strfmta("%s %s", i, q);
     strscpy(heystack, strchomp(q, " "), heystack_size);
     return heystack;
+}
+
+/*
+ * This is printf-like helper appending text to dynamically growing buffer.
+ * 'buf' has to be non NULL and '*buf' has to point to either valid
+ * dynamically allocated string or NULL.
+ */
+__attribute__ ((format(printf, 2, 3)))
+char *strgrow(char **buf, const char *fmt, ...)
+{
+    va_list ap;
+    size_t old_len;
+    size_t new_len;
+
+    if (!buf) return NULL;
+
+    va_start(ap, fmt);
+    new_len = vsnprintf(NULL, 0, fmt, ap) + 1;
+    va_end(ap);
+
+    old_len = *buf ? strlen(*buf) : 0;
+    *buf = REALLOC(*buf, old_len + new_len);
+
+    va_start(ap, fmt);
+    vsnprintf(*buf + old_len, new_len, fmt, ap);
+    va_end(ap);
+
+    return *buf;
 }
 
 int str_count_lines(char *s)
@@ -1037,8 +1065,7 @@ char** str_split_lines(char *s, int *count)
     *count = 0;
     int num = str_count_lines(s);
     if (!num) return NULL;
-    char **lines = calloc(num, sizeof(char*));
-    if (!lines) return NULL;
+    char **lines = CALLOC(num, sizeof(char*));
     str_split_lines_to(s, lines, num, count);
     return lines;
 }
@@ -1133,8 +1160,7 @@ char *file_get(const char *path)
     if ((fd = open(path, O_RDONLY)) < 0)
         goto err;
     while ((n = read(fd, hunk, sizeof(hunk))) > 0) {
-        if (!(nbuf = realloc(buf, (size += n) + 1)))
-            goto err_free;
+        nbuf = REALLOC(buf, (size += n) + 1);
         buf = nbuf;
         memcpy(buf + len, hunk, n);
         len += n;
@@ -1146,7 +1172,7 @@ char *file_get(const char *path)
     LOGT("%s: read %-100s", path, (const char *)buf);
     return buf;
 err_free:
-    free(buf);
+    FREE(buf);
 err_close:
     close(fd);
 err:
@@ -1359,6 +1385,29 @@ int bin2hex(const unsigned char *in, size_t in_size, char *out, size_t out_size)
         ptr += sprintf(ptr, "%02hhx", in[i]);
 
     return 0;
+}
+
+ssize_t hex2bin(const char *in, size_t in_size, unsigned char *out, size_t out_size)
+{
+    size_t i = 0;
+    size_t j = 0;
+
+    if (in_size & 1)
+        return -1;
+
+    if ((out_size * 2) < in_size)
+        return -1;
+
+    memset(out, 0, out_size);
+
+    for (i = 0; i < in_size; i += 2) {
+        if (sscanf(in + i, "%02hhx", &out[j]) != 1)
+            return -1;
+
+        j++;
+    }
+
+    return j;
 }
 
 bool ascii2hex(const char *input, char *output, size_t size)

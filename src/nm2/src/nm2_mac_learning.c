@@ -47,6 +47,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ds_tree.h"
 #include "synclist.h"
 #include "target.h"
+#include "memutil.h"
 
 #include "nm2_iface.h"
 
@@ -115,7 +116,7 @@ void nm2_mac_reporting_set(const char *ifname, bool enable)
     if (enable && mi == NULL)
     {
         /* Insert interface to the list of interface eligible for MAC reporting */
-        mi = calloc(1, sizeof(struct nm2_mac_iface));
+        mi = CALLOC(1, sizeof(struct nm2_mac_iface));
         STRSCPY(mi->mi_iface, ifname);
         ds_tree_insert(&nm2_mac_iface_list, mi, mi->mi_iface);
         nm2_mac_refresh();
@@ -124,7 +125,7 @@ void nm2_mac_reporting_set(const char *ifname, bool enable)
     {
         /* Remove interface from MAC reporting list */
         ds_tree_remove(&nm2_mac_iface_list, mi);
-        free(mi);
+        FREE(mi);
         nm2_mac_refresh();
     }
 }
@@ -267,7 +268,7 @@ bool nm2_mac_update(struct schema_OVS_MAC_Learning *mac, bool add)
             return true;
         }
 
-        pme = calloc(1, sizeof(struct nm2_mac_entry));
+        pme = CALLOC(1, sizeof(struct nm2_mac_entry));
         memcpy(pme, &kme, sizeof(*pme));
         ds_tree_insert(&nm2_mac_list, pme, pme);
         nm2_mac_refresh();
@@ -288,7 +289,7 @@ bool nm2_mac_update(struct schema_OVS_MAC_Learning *mac, bool add)
     }
 
     ds_tree_remove(&nm2_mac_list, pme);
-    free(pme);
+    FREE(pme);
 
     return true;
 }

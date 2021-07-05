@@ -86,7 +86,7 @@ ovsdb_status
 #echo "============================================================"
 #restart upgrade process
 echo "Restarting upgrade process"
-/usr/plume/bin/upgrade > /tmp/upgrade.log 2>&1 &
+${INSTALL_PREFIX}/bin/upgrade > /tmp/upgrade.log 2>&1 &
 
 #echo "============================================================"
 #read -n 1 -p "Unplug network cable now !!! <press enter>" test

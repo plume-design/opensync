@@ -33,94 +33,139 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endif
 
 #include "lte_info.pb-c.h"
-void   interfaces__lte_info__lte_info__init
-                     (Interfaces__LteInfo__LteInfo         *message)
+void   interfaces__lte_info__lte_common_header__init
+                     (Interfaces__LteInfo__LteCommonHeader         *message)
 {
-  static const Interfaces__LteInfo__LteInfo init_value = INTERFACES__LTE_INFO__LTE_INFO__INIT;
+  static const Interfaces__LteInfo__LteCommonHeader init_value = INTERFACES__LTE_INFO__LTE_COMMON_HEADER__INIT;
   *message = init_value;
 }
-size_t interfaces__lte_info__lte_info__get_packed_size
-                     (const Interfaces__LteInfo__LteInfo *message)
+size_t interfaces__lte_info__lte_common_header__get_packed_size
+                     (const Interfaces__LteInfo__LteCommonHeader *message)
 {
-  assert(message->base.descriptor == &interfaces__lte_info__lte_info__descriptor);
+  assert(message->base.descriptor == &interfaces__lte_info__lte_common_header__descriptor);
   return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
 }
-size_t interfaces__lte_info__lte_info__pack
-                     (const Interfaces__LteInfo__LteInfo *message,
+size_t interfaces__lte_info__lte_common_header__pack
+                     (const Interfaces__LteInfo__LteCommonHeader *message,
                       uint8_t       *out)
 {
-  assert(message->base.descriptor == &interfaces__lte_info__lte_info__descriptor);
+  assert(message->base.descriptor == &interfaces__lte_info__lte_common_header__descriptor);
   return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
 }
-size_t interfaces__lte_info__lte_info__pack_to_buffer
-                     (const Interfaces__LteInfo__LteInfo *message,
+size_t interfaces__lte_info__lte_common_header__pack_to_buffer
+                     (const Interfaces__LteInfo__LteCommonHeader *message,
                       ProtobufCBuffer *buffer)
 {
-  assert(message->base.descriptor == &interfaces__lte_info__lte_info__descriptor);
+  assert(message->base.descriptor == &interfaces__lte_info__lte_common_header__descriptor);
   return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
 }
-Interfaces__LteInfo__LteInfo *
-       interfaces__lte_info__lte_info__unpack
+Interfaces__LteInfo__LteCommonHeader *
+       interfaces__lte_info__lte_common_header__unpack
                      (ProtobufCAllocator  *allocator,
                       size_t               len,
                       const uint8_t       *data)
 {
-  return (Interfaces__LteInfo__LteInfo *)
-     protobuf_c_message_unpack (&interfaces__lte_info__lte_info__descriptor,
+  return (Interfaces__LteInfo__LteCommonHeader *)
+     protobuf_c_message_unpack (&interfaces__lte_info__lte_common_header__descriptor,
                                 allocator, len, data);
 }
-void   interfaces__lte_info__lte_info__free_unpacked
-                     (Interfaces__LteInfo__LteInfo *message,
+void   interfaces__lte_info__lte_common_header__free_unpacked
+                     (Interfaces__LteInfo__LteCommonHeader *message,
                       ProtobufCAllocator *allocator)
 {
   if(!message)
     return;
-  assert(message->base.descriptor == &interfaces__lte_info__lte_info__descriptor);
+  assert(message->base.descriptor == &interfaces__lte_info__lte_common_header__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
-void   interfaces__lte_info__lte_sig_qual__init
-                     (Interfaces__LteInfo__LteSigQual         *message)
+void   interfaces__lte_info__lte_net_info__init
+                     (Interfaces__LteInfo__LteNetInfo         *message)
 {
-  static const Interfaces__LteInfo__LteSigQual init_value = INTERFACES__LTE_INFO__LTE_SIG_QUAL__INIT;
+  static const Interfaces__LteInfo__LteNetInfo init_value = INTERFACES__LTE_INFO__LTE_NET_INFO__INIT;
   *message = init_value;
 }
-size_t interfaces__lte_info__lte_sig_qual__get_packed_size
-                     (const Interfaces__LteInfo__LteSigQual *message)
+size_t interfaces__lte_info__lte_net_info__get_packed_size
+                     (const Interfaces__LteInfo__LteNetInfo *message)
 {
-  assert(message->base.descriptor == &interfaces__lte_info__lte_sig_qual__descriptor);
+  assert(message->base.descriptor == &interfaces__lte_info__lte_net_info__descriptor);
   return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
 }
-size_t interfaces__lte_info__lte_sig_qual__pack
-                     (const Interfaces__LteInfo__LteSigQual *message,
+size_t interfaces__lte_info__lte_net_info__pack
+                     (const Interfaces__LteInfo__LteNetInfo *message,
                       uint8_t       *out)
 {
-  assert(message->base.descriptor == &interfaces__lte_info__lte_sig_qual__descriptor);
+  assert(message->base.descriptor == &interfaces__lte_info__lte_net_info__descriptor);
   return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
 }
-size_t interfaces__lte_info__lte_sig_qual__pack_to_buffer
-                     (const Interfaces__LteInfo__LteSigQual *message,
+size_t interfaces__lte_info__lte_net_info__pack_to_buffer
+                     (const Interfaces__LteInfo__LteNetInfo *message,
                       ProtobufCBuffer *buffer)
 {
-  assert(message->base.descriptor == &interfaces__lte_info__lte_sig_qual__descriptor);
+  assert(message->base.descriptor == &interfaces__lte_info__lte_net_info__descriptor);
   return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
 }
-Interfaces__LteInfo__LteSigQual *
-       interfaces__lte_info__lte_sig_qual__unpack
+Interfaces__LteInfo__LteNetInfo *
+       interfaces__lte_info__lte_net_info__unpack
                      (ProtobufCAllocator  *allocator,
                       size_t               len,
                       const uint8_t       *data)
 {
-  return (Interfaces__LteInfo__LteSigQual *)
-     protobuf_c_message_unpack (&interfaces__lte_info__lte_sig_qual__descriptor,
+  return (Interfaces__LteInfo__LteNetInfo *)
+     protobuf_c_message_unpack (&interfaces__lte_info__lte_net_info__descriptor,
                                 allocator, len, data);
 }
-void   interfaces__lte_info__lte_sig_qual__free_unpacked
-                     (Interfaces__LteInfo__LteSigQual *message,
+void   interfaces__lte_info__lte_net_info__free_unpacked
+                     (Interfaces__LteInfo__LteNetInfo *message,
                       ProtobufCAllocator *allocator)
 {
   if(!message)
     return;
-  assert(message->base.descriptor == &interfaces__lte_info__lte_sig_qual__descriptor);
+  assert(message->base.descriptor == &interfaces__lte_info__lte_net_info__descriptor);
+  protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
+}
+void   interfaces__lte_info__lte_data_usage__init
+                     (Interfaces__LteInfo__LteDataUsage         *message)
+{
+  static const Interfaces__LteInfo__LteDataUsage init_value = INTERFACES__LTE_INFO__LTE_DATA_USAGE__INIT;
+  *message = init_value;
+}
+size_t interfaces__lte_info__lte_data_usage__get_packed_size
+                     (const Interfaces__LteInfo__LteDataUsage *message)
+{
+  assert(message->base.descriptor == &interfaces__lte_info__lte_data_usage__descriptor);
+  return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
+}
+size_t interfaces__lte_info__lte_data_usage__pack
+                     (const Interfaces__LteInfo__LteDataUsage *message,
+                      uint8_t       *out)
+{
+  assert(message->base.descriptor == &interfaces__lte_info__lte_data_usage__descriptor);
+  return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
+}
+size_t interfaces__lte_info__lte_data_usage__pack_to_buffer
+                     (const Interfaces__LteInfo__LteDataUsage *message,
+                      ProtobufCBuffer *buffer)
+{
+  assert(message->base.descriptor == &interfaces__lte_info__lte_data_usage__descriptor);
+  return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
+}
+Interfaces__LteInfo__LteDataUsage *
+       interfaces__lte_info__lte_data_usage__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data)
+{
+  return (Interfaces__LteInfo__LteDataUsage *)
+     protobuf_c_message_unpack (&interfaces__lte_info__lte_data_usage__descriptor,
+                                allocator, len, data);
+}
+void   interfaces__lte_info__lte_data_usage__free_unpacked
+                     (Interfaces__LteInfo__LteDataUsage *message,
+                      ProtobufCAllocator *allocator)
+{
+  if(!message)
+    return;
+  assert(message->base.descriptor == &interfaces__lte_info__lte_data_usage__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
 void   interfaces__lte_info__lte_net_serving_cell_info__init
@@ -258,27 +303,51 @@ void   interfaces__lte_info__lte_info_report__free_unpacked
   assert(message->base.descriptor == &interfaces__lte_info__lte_info_report__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
-static const ProtobufCFieldDescriptor interfaces__lte_info__lte_info__field_descriptors[9] =
+static const ProtobufCFieldDescriptor interfaces__lte_info__lte_common_header__field_descriptors[7] =
 {
   {
-    "prod_id_info",
+    "request_id",
     1,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_UINT32,
+    0,   /* quantifier_offset */
+    offsetof(Interfaces__LteInfo__LteCommonHeader, request_id),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "if_name",
+    2,
     PROTOBUF_C_LABEL_NONE,
     PROTOBUF_C_TYPE_STRING,
     0,   /* quantifier_offset */
-    offsetof(Interfaces__LteInfo__LteInfo, prod_id_info),
+    offsetof(Interfaces__LteInfo__LteCommonHeader, if_name),
     NULL,
     &protobuf_c_empty_string,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
-    "chip_serial",
-    2,
+    "node_id",
+    3,
     PROTOBUF_C_LABEL_NONE,
     PROTOBUF_C_TYPE_STRING,
     0,   /* quantifier_offset */
-    offsetof(Interfaces__LteInfo__LteInfo, chip_serial),
+    offsetof(Interfaces__LteInfo__LteCommonHeader, node_id),
+    NULL,
+    &protobuf_c_empty_string,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "location_id",
+    4,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_STRING,
+    0,   /* quantifier_offset */
+    offsetof(Interfaces__LteInfo__LteCommonHeader, location_id),
     NULL,
     &protobuf_c_empty_string,
     0,             /* flags */
@@ -286,11 +355,11 @@ static const ProtobufCFieldDescriptor interfaces__lte_info__lte_info__field_desc
   },
   {
     "imei",
-    3,
+    5,
     PROTOBUF_C_LABEL_NONE,
     PROTOBUF_C_TYPE_STRING,
     0,   /* quantifier_offset */
-    offsetof(Interfaces__LteInfo__LteInfo, imei),
+    offsetof(Interfaces__LteInfo__LteCommonHeader, imei),
     NULL,
     &protobuf_c_empty_string,
     0,             /* flags */
@@ -298,402 +367,429 @@ static const ProtobufCFieldDescriptor interfaces__lte_info__lte_info__field_desc
   },
   {
     "imsi",
-    4,
-    PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
-    0,   /* quantifier_offset */
-    offsetof(Interfaces__LteInfo__LteInfo, imsi),
-    NULL,
-    &protobuf_c_empty_string,
-    0,             /* flags */
-    0,NULL,NULL    /* reserved1,reserved2, etc */
-  },
-  {
-    "iccid",
-    5,
-    PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
-    0,   /* quantifier_offset */
-    offsetof(Interfaces__LteInfo__LteInfo, iccid),
-    NULL,
-    &protobuf_c_empty_string,
-    0,             /* flags */
-    0,NULL,NULL    /* reserved1,reserved2, etc */
-  },
-  {
-    "sim_status",
     6,
     PROTOBUF_C_LABEL_NONE,
     PROTOBUF_C_TYPE_STRING,
     0,   /* quantifier_offset */
-    offsetof(Interfaces__LteInfo__LteInfo, sim_status),
+    offsetof(Interfaces__LteInfo__LteCommonHeader, imsi),
     NULL,
     &protobuf_c_empty_string,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
-    "net_reg_status",
+    "reported_at",
     7,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_UINT64,
     0,   /* quantifier_offset */
-    offsetof(Interfaces__LteInfo__LteInfo, net_reg_status),
+    offsetof(Interfaces__LteInfo__LteCommonHeader, reported_at),
     NULL,
-    &protobuf_c_empty_string,
-    0,             /* flags */
-    0,NULL,NULL    /* reserved1,reserved2, etc */
-  },
-  {
-    "service_provider_name",
-    8,
-    PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
-    0,   /* quantifier_offset */
-    offsetof(Interfaces__LteInfo__LteInfo, service_provider_name),
     NULL,
-    &protobuf_c_empty_string,
-    0,             /* flags */
-    0,NULL,NULL    /* reserved1,reserved2, etc */
-  },
-  {
-    "sim_slot",
-    9,
-    PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
-    0,   /* quantifier_offset */
-    offsetof(Interfaces__LteInfo__LteInfo, sim_slot),
-    NULL,
-    &protobuf_c_empty_string,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
 };
-static const unsigned interfaces__lte_info__lte_info__field_indices_by_name[] = {
-  1,   /* field[1] = chip_serial */
-  4,   /* field[4] = iccid */
-  2,   /* field[2] = imei */
-  3,   /* field[3] = imsi */
-  6,   /* field[6] = net_reg_status */
-  0,   /* field[0] = prod_id_info */
-  7,   /* field[7] = service_provider_name */
-  8,   /* field[8] = sim_slot */
-  5,   /* field[5] = sim_status */
+static const unsigned interfaces__lte_info__lte_common_header__field_indices_by_name[] = {
+  1,   /* field[1] = if_name */
+  4,   /* field[4] = imei */
+  5,   /* field[5] = imsi */
+  3,   /* field[3] = location_id */
+  2,   /* field[2] = node_id */
+  6,   /* field[6] = reported_at */
+  0,   /* field[0] = request_id */
 };
-static const ProtobufCIntRange interfaces__lte_info__lte_info__number_ranges[1 + 1] =
+static const ProtobufCIntRange interfaces__lte_info__lte_common_header__number_ranges[1 + 1] =
 {
   { 1, 0 },
-  { 0, 9 }
+  { 0, 7 }
 };
-const ProtobufCMessageDescriptor interfaces__lte_info__lte_info__descriptor =
+const ProtobufCMessageDescriptor interfaces__lte_info__lte_common_header__descriptor =
 {
   PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
-  "interfaces.lte_info.LteInfo",
-  "LteInfo",
-  "Interfaces__LteInfo__LteInfo",
+  "interfaces.lte_info.LteCommonHeader",
+  "LteCommonHeader",
+  "Interfaces__LteInfo__LteCommonHeader",
   "interfaces.lte_info",
-  sizeof(Interfaces__LteInfo__LteInfo),
-  9,
-  interfaces__lte_info__lte_info__field_descriptors,
-  interfaces__lte_info__lte_info__field_indices_by_name,
-  1,  interfaces__lte_info__lte_info__number_ranges,
-  (ProtobufCMessageInit) interfaces__lte_info__lte_info__init,
+  sizeof(Interfaces__LteInfo__LteCommonHeader),
+  7,
+  interfaces__lte_info__lte_common_header__field_descriptors,
+  interfaces__lte_info__lte_common_header__field_indices_by_name,
+  1,  interfaces__lte_info__lte_common_header__number_ranges,
+  (ProtobufCMessageInit) interfaces__lte_info__lte_common_header__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
-static const ProtobufCFieldDescriptor interfaces__lte_info__lte_sig_qual__field_descriptors[2] =
+static const ProtobufCFieldDescriptor interfaces__lte_info__lte_net_info__field_descriptors[3] =
 {
   {
-    "rssi",
+    "net_status",
     1,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_ENUM,
     0,   /* quantifier_offset */
-    offsetof(Interfaces__LteInfo__LteSigQual, rssi),
+    offsetof(Interfaces__LteInfo__LteNetInfo, net_status),
+    &interfaces__lte_info__lte_net_reg_status__descriptor,
     NULL,
-    &protobuf_c_empty_string,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "rssi",
+    2,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_INT32,
+    0,   /* quantifier_offset */
+    offsetof(Interfaces__LteInfo__LteNetInfo, rssi),
+    NULL,
+    NULL,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
     "ber",
-    2,
-    PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
-    0,   /* quantifier_offset */
-    offsetof(Interfaces__LteInfo__LteSigQual, ber),
-    NULL,
-    &protobuf_c_empty_string,
-    0,             /* flags */
-    0,NULL,NULL    /* reserved1,reserved2, etc */
-  },
-};
-static const unsigned interfaces__lte_info__lte_sig_qual__field_indices_by_name[] = {
-  1,   /* field[1] = ber */
-  0,   /* field[0] = rssi */
-};
-static const ProtobufCIntRange interfaces__lte_info__lte_sig_qual__number_ranges[1 + 1] =
-{
-  { 1, 0 },
-  { 0, 2 }
-};
-const ProtobufCMessageDescriptor interfaces__lte_info__lte_sig_qual__descriptor =
-{
-  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
-  "interfaces.lte_info.LteSigQual",
-  "LteSigQual",
-  "Interfaces__LteInfo__LteSigQual",
-  "interfaces.lte_info",
-  sizeof(Interfaces__LteInfo__LteSigQual),
-  2,
-  interfaces__lte_info__lte_sig_qual__field_descriptors,
-  interfaces__lte_info__lte_sig_qual__field_indices_by_name,
-  1,  interfaces__lte_info__lte_sig_qual__number_ranges,
-  (ProtobufCMessageInit) interfaces__lte_info__lte_sig_qual__init,
-  NULL,NULL,NULL    /* reserved[123] */
-};
-static const ProtobufCFieldDescriptor interfaces__lte_info__lte_net_serving_cell_info__field_descriptors[18] =
-{
-  {
-    "cell_type",
-    1,
-    PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
-    0,   /* quantifier_offset */
-    offsetof(Interfaces__LteInfo__LteNetServingCellInfo, cell_type),
-    NULL,
-    &protobuf_c_empty_string,
-    0,             /* flags */
-    0,NULL,NULL    /* reserved1,reserved2, etc */
-  },
-  {
-    "state",
-    2,
-    PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
-    0,   /* quantifier_offset */
-    offsetof(Interfaces__LteInfo__LteNetServingCellInfo, state),
-    NULL,
-    &protobuf_c_empty_string,
-    0,             /* flags */
-    0,NULL,NULL    /* reserved1,reserved2, etc */
-  },
-  {
-    "is_tdd",
     3,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_INT32,
     0,   /* quantifier_offset */
-    offsetof(Interfaces__LteInfo__LteNetServingCellInfo, is_tdd),
+    offsetof(Interfaces__LteInfo__LteNetInfo, ber),
     NULL,
-    &protobuf_c_empty_string,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned interfaces__lte_info__lte_net_info__field_indices_by_name[] = {
+  2,   /* field[2] = ber */
+  0,   /* field[0] = net_status */
+  1,   /* field[1] = rssi */
+};
+static const ProtobufCIntRange interfaces__lte_info__lte_net_info__number_ranges[1 + 1] =
+{
+  { 1, 0 },
+  { 0, 3 }
+};
+const ProtobufCMessageDescriptor interfaces__lte_info__lte_net_info__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "interfaces.lte_info.LteNetInfo",
+  "LteNetInfo",
+  "Interfaces__LteInfo__LteNetInfo",
+  "interfaces.lte_info",
+  sizeof(Interfaces__LteInfo__LteNetInfo),
+  3,
+  interfaces__lte_info__lte_net_info__field_descriptors,
+  interfaces__lte_info__lte_net_info__field_indices_by_name,
+  1,  interfaces__lte_info__lte_net_info__number_ranges,
+  (ProtobufCMessageInit) interfaces__lte_info__lte_net_info__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCFieldDescriptor interfaces__lte_info__lte_data_usage__field_descriptors[5] =
+{
+  {
+    "rx_bytes",
+    1,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_UINT64,
+    0,   /* quantifier_offset */
+    offsetof(Interfaces__LteInfo__LteDataUsage, rx_bytes),
+    NULL,
+    NULL,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
-    "mcc",
+    "tx_bytes",
+    2,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_UINT64,
+    0,   /* quantifier_offset */
+    offsetof(Interfaces__LteInfo__LteDataUsage, tx_bytes),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "failover_start",
+    3,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_UINT64,
+    0,   /* quantifier_offset */
+    offsetof(Interfaces__LteInfo__LteDataUsage, failover_start),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "failover_end",
     4,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_UINT64,
     0,   /* quantifier_offset */
-    offsetof(Interfaces__LteInfo__LteNetServingCellInfo, mcc),
+    offsetof(Interfaces__LteInfo__LteDataUsage, failover_end),
     NULL,
-    &protobuf_c_empty_string,
+    NULL,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
-    "mnc",
+    "failover_count",
     5,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_UINT32,
     0,   /* quantifier_offset */
-    offsetof(Interfaces__LteInfo__LteNetServingCellInfo, mnc),
+    offsetof(Interfaces__LteInfo__LteDataUsage, failover_count),
     NULL,
-    &protobuf_c_empty_string,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned interfaces__lte_info__lte_data_usage__field_indices_by_name[] = {
+  4,   /* field[4] = failover_count */
+  3,   /* field[3] = failover_end */
+  2,   /* field[2] = failover_start */
+  0,   /* field[0] = rx_bytes */
+  1,   /* field[1] = tx_bytes */
+};
+static const ProtobufCIntRange interfaces__lte_info__lte_data_usage__number_ranges[1 + 1] =
+{
+  { 1, 0 },
+  { 0, 5 }
+};
+const ProtobufCMessageDescriptor interfaces__lte_info__lte_data_usage__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "interfaces.lte_info.LteDataUsage",
+  "LteDataUsage",
+  "Interfaces__LteInfo__LteDataUsage",
+  "interfaces.lte_info",
+  sizeof(Interfaces__LteInfo__LteDataUsage),
+  5,
+  interfaces__lte_info__lte_data_usage__field_descriptors,
+  interfaces__lte_info__lte_data_usage__field_indices_by_name,
+  1,  interfaces__lte_info__lte_data_usage__number_ranges,
+  (ProtobufCMessageInit) interfaces__lte_info__lte_data_usage__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCFieldDescriptor interfaces__lte_info__lte_net_serving_cell_info__field_descriptors[16] =
+{
+  {
+    "state",
+    1,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_ENUM,
+    0,   /* quantifier_offset */
+    offsetof(Interfaces__LteInfo__LteNetServingCellInfo, state),
+    &interfaces__lte_info__lte_serving_cell_state__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "mode",
+    2,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_ENUM,
+    0,   /* quantifier_offset */
+    offsetof(Interfaces__LteInfo__LteNetServingCellInfo, mode),
+    &interfaces__lte_info__lte_cell_mode__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "fdd_tdd_mode",
+    3,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_ENUM,
+    0,   /* quantifier_offset */
+    offsetof(Interfaces__LteInfo__LteNetServingCellInfo, fdd_tdd_mode),
+    &interfaces__lte_info__lte_fdd_tdd_mode__descriptor,
+    NULL,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
     "cellid",
-    6,
+    4,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_UINT32,
     0,   /* quantifier_offset */
     offsetof(Interfaces__LteInfo__LteNetServingCellInfo, cellid),
     NULL,
-    &protobuf_c_empty_string,
+    NULL,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
     "pcid",
-    7,
+    5,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_UINT32,
     0,   /* quantifier_offset */
     offsetof(Interfaces__LteInfo__LteNetServingCellInfo, pcid),
     NULL,
-    &protobuf_c_empty_string,
+    NULL,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
     "uarfcn",
-    8,
+    6,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_UINT32,
     0,   /* quantifier_offset */
     offsetof(Interfaces__LteInfo__LteNetServingCellInfo, uarfcn),
     NULL,
-    &protobuf_c_empty_string,
+    NULL,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
     "earfcn",
-    9,
+    7,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_UINT32,
     0,   /* quantifier_offset */
     offsetof(Interfaces__LteInfo__LteNetServingCellInfo, earfcn),
     NULL,
-    &protobuf_c_empty_string,
+    NULL,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
     "freq_band",
-    10,
+    8,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_UINT32,
     0,   /* quantifier_offset */
     offsetof(Interfaces__LteInfo__LteNetServingCellInfo, freq_band),
     NULL,
-    &protobuf_c_empty_string,
+    NULL,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
     "ul_bandwidth",
-    11,
+    9,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_ENUM,
     0,   /* quantifier_offset */
     offsetof(Interfaces__LteInfo__LteNetServingCellInfo, ul_bandwidth),
+    &interfaces__lte_info__lte_bandwidth__descriptor,
     NULL,
-    &protobuf_c_empty_string,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
     "dl_bandwidth",
-    12,
+    10,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_ENUM,
     0,   /* quantifier_offset */
     offsetof(Interfaces__LteInfo__LteNetServingCellInfo, dl_bandwidth),
+    &interfaces__lte_info__lte_bandwidth__descriptor,
     NULL,
-    &protobuf_c_empty_string,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
     "tac",
-    13,
+    11,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_UINT32,
     0,   /* quantifier_offset */
     offsetof(Interfaces__LteInfo__LteNetServingCellInfo, tac),
     NULL,
-    &protobuf_c_empty_string,
+    NULL,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
     "rsrp",
-    14,
+    12,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_INT32,
     0,   /* quantifier_offset */
     offsetof(Interfaces__LteInfo__LteNetServingCellInfo, rsrp),
     NULL,
-    &protobuf_c_empty_string,
+    NULL,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
     "rsrq",
-    15,
+    13,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_INT32,
     0,   /* quantifier_offset */
     offsetof(Interfaces__LteInfo__LteNetServingCellInfo, rsrq),
     NULL,
-    &protobuf_c_empty_string,
+    NULL,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
     "rssi",
-    16,
+    14,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_INT32,
     0,   /* quantifier_offset */
     offsetof(Interfaces__LteInfo__LteNetServingCellInfo, rssi),
     NULL,
-    &protobuf_c_empty_string,
+    NULL,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
     "sinr",
-    17,
+    15,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_UINT32,
     0,   /* quantifier_offset */
     offsetof(Interfaces__LteInfo__LteNetServingCellInfo, sinr),
     NULL,
-    &protobuf_c_empty_string,
+    NULL,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
     "srxlev",
-    18,
+    16,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_UINT32,
     0,   /* quantifier_offset */
     offsetof(Interfaces__LteInfo__LteNetServingCellInfo, srxlev),
     NULL,
-    &protobuf_c_empty_string,
+    NULL,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
 };
 static const unsigned interfaces__lte_info__lte_net_serving_cell_info__field_indices_by_name[] = {
-  0,   /* field[0] = cell_type */
-  5,   /* field[5] = cellid */
-  11,   /* field[11] = dl_bandwidth */
-  8,   /* field[8] = earfcn */
-  9,   /* field[9] = freq_band */
-  2,   /* field[2] = is_tdd */
-  3,   /* field[3] = mcc */
-  4,   /* field[4] = mnc */
-  6,   /* field[6] = pcid */
-  13,   /* field[13] = rsrp */
-  14,   /* field[14] = rsrq */
-  15,   /* field[15] = rssi */
-  16,   /* field[16] = sinr */
-  17,   /* field[17] = srxlev */
-  1,   /* field[1] = state */
-  12,   /* field[12] = tac */
-  7,   /* field[7] = uarfcn */
-  10,   /* field[10] = ul_bandwidth */
+  3,   /* field[3] = cellid */
+  9,   /* field[9] = dl_bandwidth */
+  6,   /* field[6] = earfcn */
+  2,   /* field[2] = fdd_tdd_mode */
+  7,   /* field[7] = freq_band */
+  1,   /* field[1] = mode */
+  4,   /* field[4] = pcid */
+  11,   /* field[11] = rsrp */
+  12,   /* field[12] = rsrq */
+  13,   /* field[13] = rssi */
+  14,   /* field[14] = sinr */
+  15,   /* field[15] = srxlev */
+  0,   /* field[0] = state */
+  10,   /* field[10] = tac */
+  5,   /* field[5] = uarfcn */
+  8,   /* field[8] = ul_bandwidth */
 };
 static const ProtobufCIntRange interfaces__lte_info__lte_net_serving_cell_info__number_ranges[1 + 1] =
 {
   { 1, 0 },
-  { 0, 18 }
+  { 0, 16 }
 };
 const ProtobufCMessageDescriptor interfaces__lte_info__lte_net_serving_cell_info__descriptor =
 {
@@ -703,7 +799,7 @@ const ProtobufCMessageDescriptor interfaces__lte_info__lte_net_serving_cell_info
   "Interfaces__LteInfo__LteNetServingCellInfo",
   "interfaces.lte_info",
   sizeof(Interfaces__LteInfo__LteNetServingCellInfo),
-  18,
+  16,
   interfaces__lte_info__lte_net_serving_cell_info__field_descriptors,
   interfaces__lte_info__lte_net_serving_cell_info__field_indices_by_name,
   1,  interfaces__lte_info__lte_net_serving_cell_info__number_ranges,
@@ -719,7 +815,7 @@ static const ProtobufCFieldDescriptor interfaces__lte_info__lte_net_neighbor_cel
     PROTOBUF_C_TYPE_ENUM,
     0,   /* quantifier_offset */
     offsetof(Interfaces__LteInfo__LteNetNeighborCellInfo, mode),
-    &interfaces__lte_info__lte_neighbor_cell_mode__descriptor,
+    &interfaces__lte_info__lte_cell_mode__descriptor,
     NULL,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
@@ -740,11 +836,11 @@ static const ProtobufCFieldDescriptor interfaces__lte_info__lte_net_neighbor_cel
     "earfcn",
     3,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_UINT32,
     0,   /* quantifier_offset */
     offsetof(Interfaces__LteInfo__LteNetNeighborCellInfo, earfcn),
     NULL,
-    &protobuf_c_empty_string,
+    NULL,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
@@ -752,11 +848,11 @@ static const ProtobufCFieldDescriptor interfaces__lte_info__lte_net_neighbor_cel
     "uarfcn",
     4,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_UINT32,
     0,   /* quantifier_offset */
     offsetof(Interfaces__LteInfo__LteNetNeighborCellInfo, uarfcn),
     NULL,
-    &protobuf_c_empty_string,
+    NULL,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
@@ -764,11 +860,11 @@ static const ProtobufCFieldDescriptor interfaces__lte_info__lte_net_neighbor_cel
     "pcid",
     5,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_UINT32,
     0,   /* quantifier_offset */
     offsetof(Interfaces__LteInfo__LteNetNeighborCellInfo, pcid),
     NULL,
-    &protobuf_c_empty_string,
+    NULL,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
@@ -776,11 +872,11 @@ static const ProtobufCFieldDescriptor interfaces__lte_info__lte_net_neighbor_cel
     "rsrq",
     6,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_INT32,
     0,   /* quantifier_offset */
     offsetof(Interfaces__LteInfo__LteNetNeighborCellInfo, rsrq),
     NULL,
-    &protobuf_c_empty_string,
+    NULL,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
@@ -788,11 +884,11 @@ static const ProtobufCFieldDescriptor interfaces__lte_info__lte_net_neighbor_cel
     "rsrp",
     7,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_INT32,
     0,   /* quantifier_offset */
     offsetof(Interfaces__LteInfo__LteNetNeighborCellInfo, rsrp),
     NULL,
-    &protobuf_c_empty_string,
+    NULL,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
@@ -800,11 +896,11 @@ static const ProtobufCFieldDescriptor interfaces__lte_info__lte_net_neighbor_cel
     "rssi",
     8,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_INT32,
     0,   /* quantifier_offset */
     offsetof(Interfaces__LteInfo__LteNetNeighborCellInfo, rssi),
     NULL,
-    &protobuf_c_empty_string,
+    NULL,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
@@ -812,23 +908,23 @@ static const ProtobufCFieldDescriptor interfaces__lte_info__lte_net_neighbor_cel
     "sinr",
     9,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_UINT32,
     0,   /* quantifier_offset */
     offsetof(Interfaces__LteInfo__LteNetNeighborCellInfo, sinr),
     NULL,
-    &protobuf_c_empty_string,
+    NULL,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
-    "srxlev_base_station",
+    "srxlev",
     10,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_UINT32,
     0,   /* quantifier_offset */
-    offsetof(Interfaces__LteInfo__LteNetNeighborCellInfo, srxlev_base_station),
+    offsetof(Interfaces__LteInfo__LteNetNeighborCellInfo, srxlev),
     NULL,
-    &protobuf_c_empty_string,
+    NULL,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
@@ -836,11 +932,11 @@ static const ProtobufCFieldDescriptor interfaces__lte_info__lte_net_neighbor_cel
     "cell_resel_priority",
     11,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_UINT32,
     0,   /* quantifier_offset */
     offsetof(Interfaces__LteInfo__LteNetNeighborCellInfo, cell_resel_priority),
     NULL,
-    &protobuf_c_empty_string,
+    NULL,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
@@ -848,11 +944,11 @@ static const ProtobufCFieldDescriptor interfaces__lte_info__lte_net_neighbor_cel
     "s_non_intra_search",
     12,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_UINT32,
     0,   /* quantifier_offset */
     offsetof(Interfaces__LteInfo__LteNetNeighborCellInfo, s_non_intra_search),
     NULL,
-    &protobuf_c_empty_string,
+    NULL,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
@@ -860,11 +956,11 @@ static const ProtobufCFieldDescriptor interfaces__lte_info__lte_net_neighbor_cel
     "thresh_serving_low",
     13,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_UINT32,
     0,   /* quantifier_offset */
     offsetof(Interfaces__LteInfo__LteNetNeighborCellInfo, thresh_serving_low),
     NULL,
-    &protobuf_c_empty_string,
+    NULL,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
@@ -872,11 +968,11 @@ static const ProtobufCFieldDescriptor interfaces__lte_info__lte_net_neighbor_cel
     "s_intra_search",
     14,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_UINT32,
     0,   /* quantifier_offset */
     offsetof(Interfaces__LteInfo__LteNetNeighborCellInfo, s_intra_search),
     NULL,
-    &protobuf_c_empty_string,
+    NULL,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
@@ -884,11 +980,11 @@ static const ProtobufCFieldDescriptor interfaces__lte_info__lte_net_neighbor_cel
     "thresh_x_low",
     15,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_UINT32,
     0,   /* quantifier_offset */
     offsetof(Interfaces__LteInfo__LteNetNeighborCellInfo, thresh_x_low),
     NULL,
-    &protobuf_c_empty_string,
+    NULL,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
@@ -896,11 +992,11 @@ static const ProtobufCFieldDescriptor interfaces__lte_info__lte_net_neighbor_cel
     "thresh_x_high",
     16,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_UINT32,
     0,   /* quantifier_offset */
     offsetof(Interfaces__LteInfo__LteNetNeighborCellInfo, thresh_x_high),
     NULL,
-    &protobuf_c_empty_string,
+    NULL,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
@@ -908,11 +1004,11 @@ static const ProtobufCFieldDescriptor interfaces__lte_info__lte_net_neighbor_cel
     "psc",
     17,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_UINT32,
     0,   /* quantifier_offset */
     offsetof(Interfaces__LteInfo__LteNetNeighborCellInfo, psc),
     NULL,
-    &protobuf_c_empty_string,
+    NULL,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
@@ -920,11 +1016,11 @@ static const ProtobufCFieldDescriptor interfaces__lte_info__lte_net_neighbor_cel
     "rscp",
     18,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_INT32,
     0,   /* quantifier_offset */
     offsetof(Interfaces__LteInfo__LteNetNeighborCellInfo, rscp),
     NULL,
-    &protobuf_c_empty_string,
+    NULL,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
@@ -932,23 +1028,23 @@ static const ProtobufCFieldDescriptor interfaces__lte_info__lte_net_neighbor_cel
     "ecno",
     19,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_INT32,
     0,   /* quantifier_offset */
     offsetof(Interfaces__LteInfo__LteNetNeighborCellInfo, ecno),
     NULL,
-    &protobuf_c_empty_string,
+    NULL,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
-    "set",
+    "cell_set",
     20,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_ENUM,
     0,   /* quantifier_offset */
-    offsetof(Interfaces__LteInfo__LteNetNeighborCellInfo, set),
+    offsetof(Interfaces__LteInfo__LteNetNeighborCellInfo, cell_set),
+    &interfaces__lte_info__lte_neighbor_cell_set__descriptor,
     NULL,
-    &protobuf_c_empty_string,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
@@ -956,11 +1052,11 @@ static const ProtobufCFieldDescriptor interfaces__lte_info__lte_net_neighbor_cel
     "rank",
     21,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_INT32,
     0,   /* quantifier_offset */
     offsetof(Interfaces__LteInfo__LteNetNeighborCellInfo, rank),
     NULL,
-    &protobuf_c_empty_string,
+    NULL,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
@@ -968,33 +1064,35 @@ static const ProtobufCFieldDescriptor interfaces__lte_info__lte_net_neighbor_cel
     "cellid",
     22,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_UINT32,
     0,   /* quantifier_offset */
     offsetof(Interfaces__LteInfo__LteNetNeighborCellInfo, cellid),
     NULL,
-    &protobuf_c_empty_string,
+    NULL,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
-    "srxlev_inter_freq",
+    "inter_freq_srxlev",
     23,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_INT32,
     0,   /* quantifier_offset */
-    offsetof(Interfaces__LteInfo__LteNetNeighborCellInfo, srxlev_inter_freq),
+    offsetof(Interfaces__LteInfo__LteNetNeighborCellInfo, inter_freq_srxlev),
     NULL,
-    &protobuf_c_empty_string,
+    NULL,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
 };
 static const unsigned interfaces__lte_info__lte_net_neighbor_cell_info__field_indices_by_name[] = {
   10,   /* field[10] = cell_resel_priority */
+  19,   /* field[19] = cell_set */
   21,   /* field[21] = cellid */
   2,   /* field[2] = earfcn */
   18,   /* field[18] = ecno */
   1,   /* field[1] = freq_mode */
+  22,   /* field[22] = inter_freq_srxlev */
   0,   /* field[0] = mode */
   4,   /* field[4] = pcid */
   16,   /* field[16] = psc */
@@ -1005,10 +1103,8 @@ static const unsigned interfaces__lte_info__lte_net_neighbor_cell_info__field_in
   7,   /* field[7] = rssi */
   13,   /* field[13] = s_intra_search */
   11,   /* field[11] = s_non_intra_search */
-  19,   /* field[19] = set */
   8,   /* field[8] = sinr */
-  9,   /* field[9] = srxlev_base_station */
-  22,   /* field[22] = srxlev_inter_freq */
+  9,   /* field[9] = srxlev */
   12,   /* field[12] = thresh_serving_low */
   15,   /* field[15] = thresh_x_high */
   14,   /* field[14] = thresh_x_low */
@@ -1037,37 +1133,37 @@ const ProtobufCMessageDescriptor interfaces__lte_info__lte_net_neighbor_cell_inf
 static const ProtobufCFieldDescriptor interfaces__lte_info__lte_info_report__field_descriptors[5] =
 {
   {
-    "if_name",
+    "header",
     1,
     PROTOBUF_C_LABEL_NONE,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_MESSAGE,
     0,   /* quantifier_offset */
-    offsetof(Interfaces__LteInfo__LteInfoReport, if_name),
+    offsetof(Interfaces__LteInfo__LteInfoReport, header),
+    &interfaces__lte_info__lte_common_header__descriptor,
     NULL,
-    &protobuf_c_empty_string,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
-    "lte_info",
+    "lte_net_info",
     2,
     PROTOBUF_C_LABEL_NONE,
     PROTOBUF_C_TYPE_MESSAGE,
     0,   /* quantifier_offset */
-    offsetof(Interfaces__LteInfo__LteInfoReport, lte_info),
-    &interfaces__lte_info__lte_info__descriptor,
+    offsetof(Interfaces__LteInfo__LteInfoReport, lte_net_info),
+    &interfaces__lte_info__lte_net_info__descriptor,
     NULL,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
-    "lte_sig_qual",
+    "lte_data_usage",
     3,
     PROTOBUF_C_LABEL_NONE,
     PROTOBUF_C_TYPE_MESSAGE,
     0,   /* quantifier_offset */
-    offsetof(Interfaces__LteInfo__LteInfoReport, lte_sig_qual),
-    &interfaces__lte_info__lte_sig_qual__descriptor,
+    offsetof(Interfaces__LteInfo__LteInfoReport, lte_data_usage),
+    &interfaces__lte_info__lte_data_usage__descriptor,
     NULL,
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
@@ -1098,10 +1194,10 @@ static const ProtobufCFieldDescriptor interfaces__lte_info__lte_info_report__fie
   },
 };
 static const unsigned interfaces__lte_info__lte_info_report__field_indices_by_name[] = {
-  0,   /* field[0] = if_name */
-  1,   /* field[1] = lte_info */
+  0,   /* field[0] = header */
+  2,   /* field[2] = lte_data_usage */
   4,   /* field[4] = lte_neigh_cell_info */
-  2,   /* field[2] = lte_sig_qual */
+  1,   /* field[1] = lte_net_info */
   3,   /* field[3] = lte_srv_cell */
 };
 static const ProtobufCIntRange interfaces__lte_info__lte_info_report__number_ranges[1 + 1] =
@@ -1124,34 +1220,174 @@ const ProtobufCMessageDescriptor interfaces__lte_info__lte_info_report__descript
   (ProtobufCMessageInit) interfaces__lte_info__lte_info_report__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
-static const ProtobufCEnumValue interfaces__lte_info__lte_neighbor_cell_mode__enum_values_by_number[3] =
+static const ProtobufCEnumValue interfaces__lte_info__lte_net_reg_status__enum_values_by_number[7] =
 {
-  { "LTE_CELL_MODE_UNSPECIFIED", "INTERFACES__LTE_INFO__LTE_NEIGHBOR_CELL_MODE__LTE_CELL_MODE_UNSPECIFIED", 0 },
-  { "LTE_CELL_MODE_LTE", "INTERFACES__LTE_INFO__LTE_NEIGHBOR_CELL_MODE__LTE_CELL_MODE_LTE", 1 },
-  { "LTE_CELL_MODE_WCDMA", "INTERFACES__LTE_INFO__LTE_NEIGHBOR_CELL_MODE__LTE_CELL_MODE_WCDMA", 2 },
+  { "LTE_NET_REG_STAT_UNSPECIFIED", "INTERFACES__LTE_INFO__LTE_NET_REG_STATUS__LTE_NET_REG_STAT_UNSPECIFIED", 0 },
+  { "LTE_NET_REG_STAT_NOTREG", "INTERFACES__LTE_INFO__LTE_NET_REG_STATUS__LTE_NET_REG_STAT_NOTREG", 1 },
+  { "LTE_NET_REG_STAT_REG", "INTERFACES__LTE_INFO__LTE_NET_REG_STATUS__LTE_NET_REG_STAT_REG", 2 },
+  { "LTE_NET_REG_STAT_SEARCH", "INTERFACES__LTE_INFO__LTE_NET_REG_STATUS__LTE_NET_REG_STAT_SEARCH", 3 },
+  { "LTE_NET_REG_STAT_DENIED", "INTERFACES__LTE_INFO__LTE_NET_REG_STATUS__LTE_NET_REG_STAT_DENIED", 4 },
+  { "LTE_NET_REG_STAT_UNKNOWN", "INTERFACES__LTE_INFO__LTE_NET_REG_STATUS__LTE_NET_REG_STAT_UNKNOWN", 5 },
+  { "LTE_NET_REG_STAT_ROAMING", "INTERFACES__LTE_INFO__LTE_NET_REG_STATUS__LTE_NET_REG_STAT_ROAMING", 6 },
 };
-static const ProtobufCIntRange interfaces__lte_info__lte_neighbor_cell_mode__value_ranges[] = {
+static const ProtobufCIntRange interfaces__lte_info__lte_net_reg_status__value_ranges[] = {
+{0, 0},{0, 7}
+};
+static const ProtobufCEnumValueIndex interfaces__lte_info__lte_net_reg_status__enum_values_by_name[7] =
+{
+  { "LTE_NET_REG_STAT_DENIED", 4 },
+  { "LTE_NET_REG_STAT_NOTREG", 1 },
+  { "LTE_NET_REG_STAT_REG", 2 },
+  { "LTE_NET_REG_STAT_ROAMING", 6 },
+  { "LTE_NET_REG_STAT_SEARCH", 3 },
+  { "LTE_NET_REG_STAT_UNKNOWN", 5 },
+  { "LTE_NET_REG_STAT_UNSPECIFIED", 0 },
+};
+const ProtobufCEnumDescriptor interfaces__lte_info__lte_net_reg_status__descriptor =
+{
+  PROTOBUF_C__ENUM_DESCRIPTOR_MAGIC,
+  "interfaces.lte_info.LteNetRegStatus",
+  "LteNetRegStatus",
+  "Interfaces__LteInfo__LteNetRegStatus",
+  "interfaces.lte_info",
+  7,
+  interfaces__lte_info__lte_net_reg_status__enum_values_by_number,
+  7,
+  interfaces__lte_info__lte_net_reg_status__enum_values_by_name,
+  1,
+  interfaces__lte_info__lte_net_reg_status__value_ranges,
+  NULL,NULL,NULL,NULL   /* reserved[1234] */
+};
+static const ProtobufCEnumValue interfaces__lte_info__lte_serving_cell_state__enum_values_by_number[5] =
+{
+  { "LTE_SERVING_CELL_UNSPECIFIED", "INTERFACES__LTE_INFO__LTE_SERVING_CELL_STATE__LTE_SERVING_CELL_UNSPECIFIED", 0 },
+  { "LTE_SERVING_CELL_SEARCH", "INTERFACES__LTE_INFO__LTE_SERVING_CELL_STATE__LTE_SERVING_CELL_SEARCH", 1 },
+  { "LTE_SERVING_CELL_LIMSERV", "INTERFACES__LTE_INFO__LTE_SERVING_CELL_STATE__LTE_SERVING_CELL_LIMSERV", 2 },
+  { "LTE_SERVING_CELL_NOCONN", "INTERFACES__LTE_INFO__LTE_SERVING_CELL_STATE__LTE_SERVING_CELL_NOCONN", 3 },
+  { "LTE_SERVING_CELL_CONNECT", "INTERFACES__LTE_INFO__LTE_SERVING_CELL_STATE__LTE_SERVING_CELL_CONNECT", 4 },
+};
+static const ProtobufCIntRange interfaces__lte_info__lte_serving_cell_state__value_ranges[] = {
+{0, 0},{0, 5}
+};
+static const ProtobufCEnumValueIndex interfaces__lte_info__lte_serving_cell_state__enum_values_by_name[5] =
+{
+  { "LTE_SERVING_CELL_CONNECT", 4 },
+  { "LTE_SERVING_CELL_LIMSERV", 2 },
+  { "LTE_SERVING_CELL_NOCONN", 3 },
+  { "LTE_SERVING_CELL_SEARCH", 1 },
+  { "LTE_SERVING_CELL_UNSPECIFIED", 0 },
+};
+const ProtobufCEnumDescriptor interfaces__lte_info__lte_serving_cell_state__descriptor =
+{
+  PROTOBUF_C__ENUM_DESCRIPTOR_MAGIC,
+  "interfaces.lte_info.LteServingCellState",
+  "LteServingCellState",
+  "Interfaces__LteInfo__LteServingCellState",
+  "interfaces.lte_info",
+  5,
+  interfaces__lte_info__lte_serving_cell_state__enum_values_by_number,
+  5,
+  interfaces__lte_info__lte_serving_cell_state__enum_values_by_name,
+  1,
+  interfaces__lte_info__lte_serving_cell_state__value_ranges,
+  NULL,NULL,NULL,NULL   /* reserved[1234] */
+};
+static const ProtobufCEnumValue interfaces__lte_info__lte_cell_mode__enum_values_by_number[3] =
+{
+  { "LTE_CELL_MODE_UNSPECIFIED", "INTERFACES__LTE_INFO__LTE_CELL_MODE__LTE_CELL_MODE_UNSPECIFIED", 0 },
+  { "LTE_CELL_MODE_LTE", "INTERFACES__LTE_INFO__LTE_CELL_MODE__LTE_CELL_MODE_LTE", 1 },
+  { "LTE_CELL_MODE_WCDMA", "INTERFACES__LTE_INFO__LTE_CELL_MODE__LTE_CELL_MODE_WCDMA", 2 },
+};
+static const ProtobufCIntRange interfaces__lte_info__lte_cell_mode__value_ranges[] = {
 {0, 0},{0, 3}
 };
-static const ProtobufCEnumValueIndex interfaces__lte_info__lte_neighbor_cell_mode__enum_values_by_name[3] =
+static const ProtobufCEnumValueIndex interfaces__lte_info__lte_cell_mode__enum_values_by_name[3] =
 {
   { "LTE_CELL_MODE_LTE", 1 },
   { "LTE_CELL_MODE_UNSPECIFIED", 0 },
   { "LTE_CELL_MODE_WCDMA", 2 },
 };
-const ProtobufCEnumDescriptor interfaces__lte_info__lte_neighbor_cell_mode__descriptor =
+const ProtobufCEnumDescriptor interfaces__lte_info__lte_cell_mode__descriptor =
 {
   PROTOBUF_C__ENUM_DESCRIPTOR_MAGIC,
-  "interfaces.lte_info.LteNeighborCellMode",
-  "LteNeighborCellMode",
-  "Interfaces__LteInfo__LteNeighborCellMode",
+  "interfaces.lte_info.LteCellMode",
+  "LteCellMode",
+  "Interfaces__LteInfo__LteCellMode",
   "interfaces.lte_info",
   3,
-  interfaces__lte_info__lte_neighbor_cell_mode__enum_values_by_number,
+  interfaces__lte_info__lte_cell_mode__enum_values_by_number,
   3,
-  interfaces__lte_info__lte_neighbor_cell_mode__enum_values_by_name,
+  interfaces__lte_info__lte_cell_mode__enum_values_by_name,
   1,
-  interfaces__lte_info__lte_neighbor_cell_mode__value_ranges,
+  interfaces__lte_info__lte_cell_mode__value_ranges,
+  NULL,NULL,NULL,NULL   /* reserved[1234] */
+};
+static const ProtobufCEnumValue interfaces__lte_info__lte_fdd_tdd_mode__enum_values_by_number[3] =
+{
+  { "LTE_MODE_UNSPECIFIED", "INTERFACES__LTE_INFO__LTE_FDD_TDD_MODE__LTE_MODE_UNSPECIFIED", 0 },
+  { "LTE_MODE_FDD", "INTERFACES__LTE_INFO__LTE_FDD_TDD_MODE__LTE_MODE_FDD", 1 },
+  { "LTE_MODE_TDD", "INTERFACES__LTE_INFO__LTE_FDD_TDD_MODE__LTE_MODE_TDD", 2 },
+};
+static const ProtobufCIntRange interfaces__lte_info__lte_fdd_tdd_mode__value_ranges[] = {
+{0, 0},{0, 3}
+};
+static const ProtobufCEnumValueIndex interfaces__lte_info__lte_fdd_tdd_mode__enum_values_by_name[3] =
+{
+  { "LTE_MODE_FDD", 1 },
+  { "LTE_MODE_TDD", 2 },
+  { "LTE_MODE_UNSPECIFIED", 0 },
+};
+const ProtobufCEnumDescriptor interfaces__lte_info__lte_fdd_tdd_mode__descriptor =
+{
+  PROTOBUF_C__ENUM_DESCRIPTOR_MAGIC,
+  "interfaces.lte_info.LteFddTddMode",
+  "LteFddTddMode",
+  "Interfaces__LteInfo__LteFddTddMode",
+  "interfaces.lte_info",
+  3,
+  interfaces__lte_info__lte_fdd_tdd_mode__enum_values_by_number,
+  3,
+  interfaces__lte_info__lte_fdd_tdd_mode__enum_values_by_name,
+  1,
+  interfaces__lte_info__lte_fdd_tdd_mode__value_ranges,
+  NULL,NULL,NULL,NULL   /* reserved[1234] */
+};
+static const ProtobufCEnumValue interfaces__lte_info__lte_bandwidth__enum_values_by_number[7] =
+{
+  { "LTE_BANDWIDTH_UNSPECIFIED", "INTERFACES__LTE_INFO__LTE_BANDWIDTH__LTE_BANDWIDTH_UNSPECIFIED", 0 },
+  { "LTE_BANDWIDTH_1P4_MHZ", "INTERFACES__LTE_INFO__LTE_BANDWIDTH__LTE_BANDWIDTH_1P4_MHZ", 1 },
+  { "LTE_BANDWIDTH_3_MHZ", "INTERFACES__LTE_INFO__LTE_BANDWIDTH__LTE_BANDWIDTH_3_MHZ", 2 },
+  { "LTE_BANDWIDTH_5_MHZ", "INTERFACES__LTE_INFO__LTE_BANDWIDTH__LTE_BANDWIDTH_5_MHZ", 3 },
+  { "LTE_BANDWIDTH_10_MHZ", "INTERFACES__LTE_INFO__LTE_BANDWIDTH__LTE_BANDWIDTH_10_MHZ", 4 },
+  { "LTE_BANDWIDTH_15_MHZ", "INTERFACES__LTE_INFO__LTE_BANDWIDTH__LTE_BANDWIDTH_15_MHZ", 5 },
+  { "LTE_BANDWIDTH_20_MHZ", "INTERFACES__LTE_INFO__LTE_BANDWIDTH__LTE_BANDWIDTH_20_MHZ", 6 },
+};
+static const ProtobufCIntRange interfaces__lte_info__lte_bandwidth__value_ranges[] = {
+{0, 0},{0, 7}
+};
+static const ProtobufCEnumValueIndex interfaces__lte_info__lte_bandwidth__enum_values_by_name[7] =
+{
+  { "LTE_BANDWIDTH_10_MHZ", 4 },
+  { "LTE_BANDWIDTH_15_MHZ", 5 },
+  { "LTE_BANDWIDTH_1P4_MHZ", 1 },
+  { "LTE_BANDWIDTH_20_MHZ", 6 },
+  { "LTE_BANDWIDTH_3_MHZ", 2 },
+  { "LTE_BANDWIDTH_5_MHZ", 3 },
+  { "LTE_BANDWIDTH_UNSPECIFIED", 0 },
+};
+const ProtobufCEnumDescriptor interfaces__lte_info__lte_bandwidth__descriptor =
+{
+  PROTOBUF_C__ENUM_DESCRIPTOR_MAGIC,
+  "interfaces.lte_info.LteBandwidth",
+  "LteBandwidth",
+  "Interfaces__LteInfo__LteBandwidth",
+  "interfaces.lte_info",
+  7,
+  interfaces__lte_info__lte_bandwidth__enum_values_by_number,
+  7,
+  interfaces__lte_info__lte_bandwidth__enum_values_by_name,
+  1,
+  interfaces__lte_info__lte_bandwidth__value_ranges,
   NULL,NULL,NULL,NULL   /* reserved[1234] */
 };
 static const ProtobufCEnumValue interfaces__lte_info__lte_neighbor_freq_mode__enum_values_by_number[5] =
@@ -1186,5 +1422,37 @@ const ProtobufCEnumDescriptor interfaces__lte_info__lte_neighbor_freq_mode__desc
   interfaces__lte_info__lte_neighbor_freq_mode__enum_values_by_name,
   1,
   interfaces__lte_info__lte_neighbor_freq_mode__value_ranges,
+  NULL,NULL,NULL,NULL   /* reserved[1234] */
+};
+static const ProtobufCEnumValue interfaces__lte_info__lte_neighbor_cell_set__enum_values_by_number[4] =
+{
+  { "LTE_NEIGHBOR_CELL_SET_UNSPECIFIED", "INTERFACES__LTE_INFO__LTE_NEIGHBOR_CELL_SET__LTE_NEIGHBOR_CELL_SET_UNSPECIFIED", 0 },
+  { "LTE_NEIGHBOR_CELL_SET_ACTIVE_SET", "INTERFACES__LTE_INFO__LTE_NEIGHBOR_CELL_SET__LTE_NEIGHBOR_CELL_SET_ACTIVE_SET", 1 },
+  { "LTE_NEIGHBOR_CELL_SET_SYNC_NEIGHBOR", "INTERFACES__LTE_INFO__LTE_NEIGHBOR_CELL_SET__LTE_NEIGHBOR_CELL_SET_SYNC_NEIGHBOR", 2 },
+  { "LTE_NEIGHBOR_CELL_SET_ASYNC_NEIGHBOR", "INTERFACES__LTE_INFO__LTE_NEIGHBOR_CELL_SET__LTE_NEIGHBOR_CELL_SET_ASYNC_NEIGHBOR", 3 },
+};
+static const ProtobufCIntRange interfaces__lte_info__lte_neighbor_cell_set__value_ranges[] = {
+{0, 0},{0, 4}
+};
+static const ProtobufCEnumValueIndex interfaces__lte_info__lte_neighbor_cell_set__enum_values_by_name[4] =
+{
+  { "LTE_NEIGHBOR_CELL_SET_ACTIVE_SET", 1 },
+  { "LTE_NEIGHBOR_CELL_SET_ASYNC_NEIGHBOR", 3 },
+  { "LTE_NEIGHBOR_CELL_SET_SYNC_NEIGHBOR", 2 },
+  { "LTE_NEIGHBOR_CELL_SET_UNSPECIFIED", 0 },
+};
+const ProtobufCEnumDescriptor interfaces__lte_info__lte_neighbor_cell_set__descriptor =
+{
+  PROTOBUF_C__ENUM_DESCRIPTOR_MAGIC,
+  "interfaces.lte_info.LteNeighborCellSet",
+  "LteNeighborCellSet",
+  "Interfaces__LteInfo__LteNeighborCellSet",
+  "interfaces.lte_info",
+  4,
+  interfaces__lte_info__lte_neighbor_cell_set__enum_values_by_number,
+  4,
+  interfaces__lte_info__lte_neighbor_cell_set__enum_values_by_name,
+  1,
+  interfaces__lte_info__lte_neighbor_cell_set__value_ranges,
   NULL,NULL,NULL,NULL   /* reserved[1234] */
 };

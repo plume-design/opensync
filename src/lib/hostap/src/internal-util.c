@@ -26,17 +26,32 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "log.h"
 #include "schema.h"
+#include "schema_consts.h"
 #include "internal-util.h"
 
 
 bool
-util_vif_wpa_key_mgmt_match(const struct schema_Wifi_VIF_Config *vconf,
-                            const char *key_mgmt)
+util_vif_wpa_key_mgmt_partial_match(const struct schema_Wifi_VIF_Config *vconf,
+                                    const char *key_mgmt)
 {
     int i = 0;
 
     for (i = 0; i < vconf->wpa_key_mgmt_len; i++) {
         if (strstr(vconf->wpa_key_mgmt[i], key_mgmt))
+            return true;
+    }
+
+    return false;
+}
+
+bool
+util_vif_wpa_key_mgmt_exact_match(const struct schema_Wifi_VIF_Config *vconf,
+                                          const char *key_mgmt)
+{
+    int i = 0;
+
+    for (i = 0; i < vconf->wpa_key_mgmt_len; i++) {
+        if (strcmp(vconf->wpa_key_mgmt[i], key_mgmt) == 0)
             return true;
     }
 
@@ -53,11 +68,11 @@ util_vif_get_wpa_pairwise(const struct schema_Wifi_VIF_Config *vconf,
     if (!vconf->wpa)
         return;
 
-    if (util_vif_wpa_key_mgmt_match(vconf, "wpa-"))
+    if (util_vif_wpa_key_mgmt_partial_match(vconf, "wpa-"))
         csnprintf(&buf, &len, "TKIP ");
-    if (util_vif_wpa_key_mgmt_match(vconf, "wpa2-") ||
-        util_vif_wpa_key_mgmt_match(vconf, "sae") ||
-        util_vif_wpa_key_mgmt_match(vconf, "dpp"))
+    if (util_vif_wpa_key_mgmt_partial_match(vconf, "wpa2-") ||
+        util_vif_wpa_key_mgmt_partial_match(vconf, "sae") ||
+        util_vif_wpa_key_mgmt_partial_match(vconf, "dpp"))
         csnprintf(&buf, &len, "CCMP ");
 
     WARN_ON(len == 1); /* likely buf was truncated */
@@ -74,12 +89,13 @@ util_vif_get_wpa_key_mgmt(const struct schema_Wifi_VIF_Config *vconf,
         return;
 
     /* Both WPA-PSK and WPA2-PSK */
-    if (util_vif_wpa_key_mgmt_match(vconf, "-psk")) csnprintf(&buf, &len, "WPA-PSK ");
+    if (util_vif_wpa_key_mgmt_partial_match(vconf, "-psk")) csnprintf(&buf, &len, "WPA-PSK ");
 
-    if (util_vif_wpa_key_mgmt_match(vconf, "wpa2-eap")) csnprintf(&buf, &len, "WPA-EAP ");
-    if (util_vif_wpa_key_mgmt_match(vconf, "sae")) csnprintf(&buf, &len, "SAE ");
-    if (util_vif_wpa_key_mgmt_match(vconf, "ft-wpa2-psk")) csnprintf(&buf, &len, "FT-PSK ");
-    if (util_vif_wpa_key_mgmt_match(vconf, "dpp")) csnprintf(&buf, &len, "DPP ");
+    if (util_vif_wpa_key_mgmt_partial_match(vconf, "wpa2-eap")) csnprintf(&buf, &len, "WPA-EAP ");
+    if (util_vif_wpa_key_mgmt_exact_match(vconf, "sae")) csnprintf(&buf, &len, "SAE ");
+    if (util_vif_wpa_key_mgmt_partial_match(vconf, SCHEMA_CONSTS_KEY_FT_WPA2_PSK)) csnprintf(&buf, &len, "FT-PSK ");
+    if (util_vif_wpa_key_mgmt_partial_match(vconf, SCHEMA_CONSTS_KEY_FT_SAE)) csnprintf(&buf, &len, "FT-SAE ");
+    if (util_vif_wpa_key_mgmt_partial_match(vconf, "dpp")) csnprintf(&buf, &len, "DPP ");
 
     WARN_ON(len == 1); /* likely buf was truncated */
 }
@@ -89,10 +105,10 @@ util_vif_get_ieee80211w(const struct schema_Wifi_VIF_Config *vconf,
                         char *buf,
                         size_t len)
 {
-    bool need_11w = util_vif_wpa_key_mgmt_match(vconf, "sae")
-                 || util_vif_wpa_key_mgmt_match(vconf, "dpp");
-    bool non_11w = util_vif_wpa_key_mgmt_match(vconf, "ft-wpa2-")
-                || util_vif_wpa_key_mgmt_match(vconf, "wpa2-");
+    bool need_11w = util_vif_wpa_key_mgmt_partial_match(vconf, "sae")
+                 || util_vif_wpa_key_mgmt_partial_match(vconf, "dpp");
+    bool non_11w = util_vif_wpa_key_mgmt_partial_match(vconf, "ft-wpa2-")
+                || util_vif_wpa_key_mgmt_partial_match(vconf, "wpa2-");
 
     memset(buf, 0, len);
 

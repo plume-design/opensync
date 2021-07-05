@@ -42,6 +42,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os.h"
 #include "os_time.h"
 #include "util.h"
+#include "memutil.h"
 
 #include "sm.h"
 
@@ -112,10 +113,8 @@ static inline sm_survey_ctx_t * sm_survey_ctx_alloc()
 {
     sm_survey_ctx_t *survey_ctx = NULL;
 
-    survey_ctx = malloc(sizeof(sm_survey_ctx_t));
-    if (survey_ctx) {
-        memset(survey_ctx, 0, sizeof(sm_survey_ctx_t));
-    }
+    survey_ctx = MALLOC(sizeof(sm_survey_ctx_t));
+    memset(survey_ctx, 0, sizeof(sm_survey_ctx_t));
 
     return survey_ctx;
 }
@@ -123,7 +122,7 @@ static inline sm_survey_ctx_t * sm_survey_ctx_alloc()
 static inline void sm_survey_ctx_free(sm_survey_ctx_t *survey_ctx)
 {
     if (NULL != survey_ctx) {
-        free(survey_ctx);
+        FREE(survey_ctx);
     }
 }
 
@@ -318,7 +317,7 @@ bool sm_survey_report_clear(
                 survey = ds_dlist_inext(&survey_iter))
         {
             ds_dlist_iremove(&survey_iter);
-            free(survey);
+            FREE(survey);
             survey = NULL;
         }
     }
@@ -420,6 +419,9 @@ bool sm_survey_report_calculate_average (
                     radio_cfg_ctx->type,
                     record_entry->info.chan);
 
+        if (WARN_ON(chan_index >= ARRAY_SIZE(avg_record)))
+            continue;
+
         avg_record[chan_index].info.chan = record_entry->info.chan;
 
         /* Sum all and derive average later */
@@ -449,14 +451,7 @@ bool sm_survey_report_calculate_average (
     {
         /* Skip non averaged channels */
         if (avg_record[chan_index].info.chan) {
-            report_entry = calloc(1, sizeof(*report_entry));
-            if (NULL == report_entry) {
-                LOGE("Sending %s %s survey report"
-                     "(Failed to allocate memory)",
-                     radio_get_name_from_cfg(radio_cfg_ctx),
-                     radio_get_scan_name_from_type(scan_type));
-                return false;
-            }
+            report_entry = CALLOC(1, sizeof(*report_entry));
 
             memcpy(report_entry, &avg_record[chan_index], sizeof(*report_entry));
 
@@ -682,6 +677,9 @@ bool sm_survey_update_list_cb (
             radio_get_chan_index(
                     radio_cfg_ctx->type,
                     survey_entry->info.chan);
+
+        if (WARN_ON(chan_index >= ARRAY_SIZE(survey_ctx->records)))
+            continue;
 
         record_entry = &survey_ctx->records[chan_index];
 
@@ -1372,6 +1370,9 @@ bool sm_survey_init_cb (
             radio_get_chan_index(
                     radio_cfg_ctx->type,
                     survey_entry->info.chan);
+
+        if (WARN_ON(chan_index >= ARRAY_SIZE(survey_ctx->records)))
+            continue;
 
         record_entry = &survey_ctx->records[chan_index];
 

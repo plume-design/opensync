@@ -140,6 +140,7 @@ typedef enum
     MT_ECHO,
     MT_MONITOR,
     MT_TRANS,
+    MT_GET_SCHEMA
 }ovsdb_mt_t;
 
 

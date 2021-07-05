@@ -6,6 +6,7 @@
 
 #include "unity.h"
 #include <stddef.h>
+#include "memutil.h"
 
 #ifdef AVR
 #include <avr/pgmspace.h>
@@ -1866,7 +1867,7 @@ void UnityBegin(const char* filename)
     Unity.CurrentTestFailed = 0;
     Unity.CurrentTestIgnored = 0;
 #ifdef UNITY_VERBOSE_FAILURES
-    Unity.TestFailed = (char **)calloc(UNITY_MAX_FAILED_TEST, sizeof(*Unity.TestFailed));
+    Unity.TestFailed = (char **)CALLOC(UNITY_MAX_FAILED_TEST, sizeof(*Unity.TestFailed));
 #endif
 
     UNITY_CLR_DETAILS();
@@ -1928,8 +1929,8 @@ int UnityEnd(void)
 
 #ifdef UNITY_VERBOSE_FAILURES
     for (i = 0; i < Unity.TestFailures && i < UNITY_MAX_FAILED_TEST; i++)
-        free(Unity.TestFailed[i]);
-    free(Unity.TestFailed);
+        FREE(Unity.TestFailed[i]);
+    FREE(Unity.TestFailed);
 #endif
 
     return (int)(Unity.TestFailures);

@@ -40,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb_update.h"
 #include "inet.h"
 #include "nm2.h"
+#include "memutil.h"
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
@@ -166,7 +167,7 @@ bool nm2_portfw_add(struct schema_IP_Port_Forward *pschema)
     if (pfw == NULL)
     {
         /* Allocate new entry and insert it into the cache */
-        pfw = calloc(1, sizeof(struct portfw_entry));
+        pfw = CALLOC(1, sizeof(struct portfw_entry));
         STRSCPY(pfw->pfw_uuid.uuid, pschema->_uuid.uuid);
         ds_tree_insert(&portfw_list, pfw, pfw->pfw_uuid.uuid);
     }
@@ -234,7 +235,7 @@ bool nm2_portfw_del(struct schema_IP_Port_Forward *pschema)
 
     /* Remove from cache */
     ds_tree_remove(&portfw_list, pfw);
-    free(pfw);
+    FREE(pfw);
 
     /* Schedule a configuration apply */
     nm2_iface_apply(piface);

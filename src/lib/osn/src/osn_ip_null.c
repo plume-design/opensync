@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "log.h"
 #include "osn_inet.h"
+#include "memutil.h"
 
 struct osn_ip
 {
@@ -42,14 +43,13 @@ osn_ip_t *osn_ip_new(const char *ifname)
 {
     (void)ifname;
 
-    osn_ip_t *self = calloc(1, sizeof(*self));
-
+    osn_ip_t *self = CALLOC(1, sizeof(*self));
     return self;
 }
 
 bool osn_ip_del(osn_ip_t *self)
 {
-    free(self);
+    FREE(self);
 
     return true;
 }

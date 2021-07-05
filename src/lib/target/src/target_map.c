@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ds.h"
 #include "ds_tree.h"
 #include "util.h"
+#include "memutil.h"
 
 #define MODULE_ID LOG_MODULE_ID_TARGET
 
@@ -86,7 +87,7 @@ bool target_map_close(void)
             map != NULL;
             map = ds_tree_inext(&iter)) {
         ds_tree_iremove(&iter);
-        free(map);
+        FREE(map);
         map = NULL;
     }
 
@@ -102,9 +103,7 @@ bool target_map_insert(char *if_name, char *map_name)
 
     target_map_t *map;
 
-    if (!(map = calloc(1, sizeof(*map)))) {
-        return false;
-    }
+    map = CALLOC(1, sizeof(*map));
 
     STRSCPY(map->if_name, if_name);
     STRSCPY(map->map_name, map_name);

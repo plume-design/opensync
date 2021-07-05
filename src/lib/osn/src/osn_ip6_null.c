@@ -26,6 +26,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "log.h"
 #include "osn_inet6.h"
+#include "memutil.h"
 
 struct osn_ip6
 {
@@ -36,14 +37,13 @@ osn_ip6_t *osn_ip6_new(const char *ifname)
 {
     (void)ifname;
 
-    osn_ip6_t *self = calloc(1, sizeof(*self));
-
+    osn_ip6_t *self = CALLOC(1, sizeof(*self));
     return self;
 }
 
 bool osn_ip6_del(osn_ip6_t *self)
 {
-    free(self);
+    FREE(self);
 
     return true;
 }

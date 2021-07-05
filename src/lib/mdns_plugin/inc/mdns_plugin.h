@@ -74,24 +74,14 @@ struct mdnsd_context
     bool                  enabled;
     mdns_daemon_t        *dmn;
     int                   ipv4_mcast_fd;
-    int                   ipv6_mcast_fd;
     char                 *srcip;
     char                 *txintf;
     char                 *tapintf;
     struct timeval        sleep_tv;
-    ev_io                 ipv4_read;
-    ev_io                 ipv6_read;
     ev_timer              timer;
     ds_tree_t             services;
 
     int  (*dmn_get_mcast_ipv4_sock)();
-    void (*dmn_ev_io_ipv4_init)();
-
-    int  (*dmn_get_mcast_ipv6_sock)();
-    void (*dmn_ev_io_ipv6_init)();
-
-    void (*dmn_ipv4_rcvcb)(EV_P_ ev_io *r, int revents);
-    void (*dmn_ipv6_rcvcb)(EV_P_ ev_io *r, int revents);
 
     void (*dmn_ev_timer_init)();
     void (*dmn_timercb)(EV_P_ struct ev_timer *w, int revents);

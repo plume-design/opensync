@@ -39,6 +39,7 @@
 #include "policy_tags.h"
 #include <string.h>
 #include <stdio.h>
+#include "memutil.h"
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
@@ -153,7 +154,7 @@ static bool nfm_trule_detect_vars(struct nfm_trule *self, char *what, char var_c
 	}
 
 out:
-	free(mrule);
+	FREE(mrule);
 	if (!errcode) {
 		om_tag_list_free(&self->tags);
 	}
@@ -219,10 +220,7 @@ static char *nfm_trule_expand(struct nfm_trule *self, struct nfm_tdata *tdata)
 
 	/* Determine new length, and allocate memory for expanded rule */
 	nlen = nfm_trule_calculate_len(self, tdata);
-	if (!(erule = calloc(1, nlen))) {
-		LOGE("[%s] Expand Netfilter template rule: memory allocation failed", self->conf.name);
-		goto error;
-	}
+	erule = CALLOC(1, nlen);
 
 	/* Copy rule, replacing tags */
 	p = mrule;
@@ -265,12 +263,12 @@ static char *nfm_trule_expand(struct nfm_trule *self, struct nfm_tdata *tdata)
 	if (*p != '\0') {
 		strcat(erule, p);
 	}
-	free(mrule);
+	FREE(mrule);
 	return erule;
 
 error:
-	free(mrule);
-	free(erule);
+	FREE(mrule);
+	FREE(erule);
 	return NULL;
 }
 
@@ -312,7 +310,7 @@ static bool nfm_trule_apply(struct nfm_trule *self, om_action_t type, struct nfm
 
 	}
 
-	free(rule);
+	FREE(rule);
 	return errcode;
 }
 
@@ -406,15 +404,11 @@ static bool nfm_trule_apply_tag(struct nfm_trule *self, om_action_t type,
 				LOGE("[%s] Apply tag for Netfilter template rule: too many tags", self->conf.name);
 				return false;
 			}
-			if (!(niter = malloc(sizeof(*niter)))) {
-				LOGE("[%s] Apply tag for Netfilter template rule: memory allocation failed",
-						self->conf.name);
-				return false;
-			}
+			niter = MALLOC(sizeof(*niter));
 			memcpy(niter, iter, sizeof(*niter));
 
 			errcode = nfm_trule_apply_tag(self, type, ntle, niter, tdata, tdn + 1);
-			free(niter);
+			FREE(niter);
 			if (!errcode) {
 				break;
 			}
@@ -638,7 +632,7 @@ static bool nfm_trule_destroy(struct nfm_trule *self)
 		LOGE("[%s] Destroy Netfilter template rule: unset rule failed", self->conf.name);
 		return false;
 	}
-	free(self);
+	FREE(self);
 	return true;
 }
 
@@ -647,11 +641,7 @@ static struct nfm_trule *nfm_trule_create(const struct schema_Netfilter *conf)
 	struct nfm_trule *self = NULL;
 	bool errcode = true;
 
-	self = malloc(sizeof(*self));
-	if (!self) {
-		LOGE("[%s] Create Netfilter template rule: memory allocation failed", conf->name);
-		return NULL;
-	}
+	self = MALLOC(sizeof(*self));
 
 	errcode = nfm_trule_set(self, conf);
 	if (!errcode) {

@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "log.h"
 #include "cm2.h"
+#include "memutil.h"
 
 static int
 cm2_start_ares_resolve(struct evx_ares *eares_p)
@@ -57,11 +58,11 @@ cm2_util_free_addr_list(cm2_addr_list *list)
     {
         for (i = 0; !list->h_addr_list[i]; i++) {
             if (!list->h_addr_list[i]) {
-                free(list->h_addr_list[i]);
+                FREE(list->h_addr_list[i]);
                 list->h_addr_list[i] = NULL;
             }
         }
-        free(list->h_addr_list);
+        FREE(list->h_addr_list);
         list->h_addr_list = NULL;
     }
 }
@@ -100,11 +101,11 @@ cm2_ares_host_cb(void *arg, int status, int timeouts, struct hostent *hostent)
             }
 
             cnt = i;
-            addr->h_addr_list = (char **) malloc(sizeof(char*) * (cnt + 1));
+            addr->h_addr_list = (char **) MALLOC(sizeof(char*) * (cnt + 1));
 
             for (i = 0; i < cnt; i++)
             {
-                addr->h_addr_list[i] = (char *) malloc(sizeof(char) * hostent->h_length);
+                addr->h_addr_list[i] = (char *) MALLOC(sizeof(char) * hostent->h_length);
                 memcpy(addr->h_addr_list[i], hostent->h_addr_list[i], hostent->h_length);
             }
             addr->h_addr_list[i] = NULL;

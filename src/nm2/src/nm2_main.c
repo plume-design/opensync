@@ -78,7 +78,7 @@ int main(int argc, char ** argv)
     log_severity_set(nm2_log_severity);
     log_register_dynamic_severity(loop);
 
-    te_client_init(argv[0], TESRV_SOCKET_ADDR);
+    te_client_init(NULL);
     TELOG_STEP("MANAGER", argv[0], "start", NULL);
 
     backtrace_init();

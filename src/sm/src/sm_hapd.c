@@ -31,6 +31,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <netinet/if_ether.h>
 #include <stdbool.h>
 
+#include "target.h"
 #include "opensync-ctrl.h"
 #include "opensync-hapd.h"
 #include "module.h"
@@ -38,6 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb_update.h"
 #include "ovsdb_table.h"
 #include "sm.h"
+#include "memutil.h"
 
 #define CLIENT_SIZE_LIMIT CONFIG_SM_BACKEND_HAPD_CLIENTS_AUTH_FAILS_PER_VAP_LIMIT
 
@@ -138,12 +140,7 @@ sm_hapd_bss_create(const struct schema_Wifi_Radio_State *rstate,
     struct sm_hapd_bss *bss = NULL;
     struct hapd *hapd = NULL;
 
-    bss = calloc(1, sizeof(struct sm_hapd_bss));
-    if (!bss) {
-        LOGD("%s: Failed to alloc context for client auth fails reporting for if_name: %s",
-             backend_name, vstate->if_name);
-        return NULL;
-    }
+    bss = CALLOC(1, sizeof(struct sm_hapd_bss));
 
     STRSCPY_WARN(bss->report.if_name, vstate->if_name);
     memcpy(&bss->uuid, &vstate->_uuid, sizeof(bss->uuid));
@@ -219,14 +216,14 @@ sm_hapd_bss_free(struct sm_hapd_bss *bss)
     if (bss->hapd)
         ctrl_disable(&bss->hapd->ctrl);
 
-    free(bss->report.clients);
-    free(bss);
+    FREE(bss->report.clients);
+    FREE(bss);
 }
 
 static void
 sm_hapd_bss_clear_clients(struct sm_hapd_bss *bss)
 {
-    free(bss->report.clients);
+    FREE(bss->report.clients);
     bss->report.clients = NULL;
     bss->report.clients_len = 0;
 }
@@ -251,15 +248,8 @@ sm_hapd_bss_lookup_client(struct sm_hapd_bss *bss,
         return NULL;
     }
 
-    bss->report.clients = (sm_client_auth_fails_client_t *)realloc(bss->report.clients,
+    bss->report.clients = (sm_client_auth_fails_client_t *)REALLOC(bss->report.clients,
                                                                    new_size * sizeof(*bss->report.clients));
-    if (!bss->report.clients) {
-        LOGD("%s: Failed to alloc clients array for client auth fails reporting on if_name: %s",
-             backend_name, bss->report.if_name);
-
-        sm_hapd_bss_clear_clients(bss);
-        return NULL;
-    }
 
     client = &bss->report.clients[bss->report.clients_len];
     memset(client, 0, sizeof(*client));
@@ -323,13 +313,7 @@ sm_hapd_band_report_timer_cb(EV_P_ ev_timer *timer,
             continue;
 
         bsses_size = (report.bsses_len + 1) * sizeof(*report.bsses);
-        report.bsses = (sm_client_auth_fails_bss_t *)realloc(report.bsses, bsses_size);
-        if (!report.bsses) {
-            LOGD("%s: Skipping client auth fails report on if_name: %s (%s) clients_len: %d due to memory alloc failure",
-                 backend_name, bss->report.if_name, radio_get_name_from_type(bss->radio_type),
-                 bss->report.clients_len);
-            continue;
-        }
+        report.bsses = (sm_client_auth_fails_bss_t *)REALLOC(report.bsses, bsses_size);
 
         report_bss = &report.bsses[report.bsses_len];
         memcpy(report_bss, &bss->report, sizeof(*report_bss));
@@ -350,7 +334,7 @@ sm_hapd_band_report_timer_cb(EV_P_ ev_timer *timer,
         sm_hapd_bss_clear_clients(bss);
     }
 
-    free(report.bsses);
+    FREE(report.bsses);
 }
 
 static struct sm_hapd_band *
@@ -369,12 +353,7 @@ sm_hapd_band_create(const sm_stats_request_t *request)
 {
     struct sm_hapd_band *band;
 
-    band = calloc(1, sizeof(struct sm_hapd_band));
-    if (!band) {
-        LOGD("%s: Failed to alloc context client auth fails reporting on %s band",
-             backend_name, radio_get_name_from_type(request->radio_type));
-        return NULL;
-    }
+    band = CALLOC(1, sizeof(struct sm_hapd_band));
 
     band->radio_type = request->radio_type;
     ev_timer_init(&band->report_timer, sm_hapd_band_report_timer_cb,
@@ -388,7 +367,7 @@ static void
 sm_hapd_band_free(struct sm_hapd_band *band)
 {
     ev_timer_stop(EV_DEFAULT_ &band->report_timer);
-    free(band);
+    FREE(band);
 }
 
 static bool

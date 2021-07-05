@@ -47,7 +47,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <math.h>
 
 #include "bm.h"
+#include "const.h"
 #include "util.h"
+#include "memutil.h"
 
 
 /*****************************************************************************/
@@ -64,7 +66,8 @@ static c_item_t map_bsal_bands[] = {
     C_ITEM_STR(RADIO_TYPE_2G,                        "2.4G"),
     C_ITEM_STR(RADIO_TYPE_5G,                        "5G"),
     C_ITEM_STR(RADIO_TYPE_5GL,                       "5GL"),
-    C_ITEM_STR(RADIO_TYPE_5GU,                       "5GU")
+    C_ITEM_STR(RADIO_TYPE_5GU,                       "5GU"),
+    C_ITEM_STR(RADIO_TYPE_6G,                        "6G")
 };
 
 static c_item_t map_state_names[] = {
@@ -145,6 +148,10 @@ static void     bm_client_task_backoff(void *arg);
 static void     bm_client_state_change(bm_client_t *client,
                                                  bm_client_state_t state, bool force);
 static void     bm_client_activity_action(bm_client_t *client, bool is_active);
+static void     bm_client_rejected_timer(bm_client_t *client, bsal_event_t *event);
+static void     bm_client_rejected_counter(bm_client_t *client, bsal_event_t *event);
+static void     bm_client_pref_5g_reject_pre_assoc_block_timer_cb(EV_P_ ev_timer *w, int revents);
+static void     bm_client_toggle_backoff(bm_client_t *client, bm_client_stats_t *stats);
 
 
 /*****************************************************************************/
@@ -898,6 +905,8 @@ bm_client_remove(bm_client_t *client)
         LOGW("Client '%s' failed to remove from one or more groups", client->mac_addr);
     }
 
+    ev_timer_stop(EV_DEFAULT_ &client->pref_5g_pre_assoc_block_timer.timer);
+
     while (evsched_task_cancel_by_find(NULL, client, EVSCHED_FIND_BY_ARG))
         ;
 
@@ -905,7 +914,7 @@ bm_client_remove(bm_client_t *client)
         evsched_task_cancel(client->rrm_req[i].rrm_task);
 
     bm_kick_cleanup_by_client(client);
-    free(client);
+    FREE(client);
 
     return;
 }
@@ -1500,9 +1509,32 @@ bm_client_from_ovsdb(struct schema_Band_Steering_Clients *bscli, bm_client_t *cl
     client->hwm                         = bscli->hwm;
     client->lwm                         = bscli->lwm;
 
-    client->max_rejects                 = bscli->max_rejects;
-    client->max_rejects_period          = bscli->rejects_tmout_secs;
-    client->backoff_period              = bscli->backoff_secs;
+    client->pref_5g_pre_assoc_block_policy = BM_CLIENT_PREF_5G_PRE_ASSOC_BLOCK_POLICY_UNDEFINED;
+    client->max_rejects = -1;
+    client->max_rejects_period = -1;
+    client->pref_5g_pre_assoc_block_timeout_msecs = -1;
+
+    if (bscli->max_rejects > 0 &&
+        bscli->rejects_tmout_secs > 0 &&
+        (!bscli->pref_5g_pre_assoc_block_timeout_msecs_exists || bscli->pref_5g_pre_assoc_block_timeout_msecs == 0))
+    {
+        client->pref_5g_pre_assoc_block_policy = BM_CLIENT_PREF_5G_PRE_ASSOC_BLOCK_POLICY_COUNTER;
+        client->max_rejects = bscli->max_rejects;
+        client->max_rejects_period = bscli->rejects_tmout_secs;
+    }
+    else if (bscli->max_rejects == 0 &&
+             bscli->rejects_tmout_secs == 0 &&
+             bscli->pref_5g_pre_assoc_block_timeout_msecs > 0)
+    {
+        client->pref_5g_pre_assoc_block_policy = BM_CLIENT_PREF_5G_PRE_ASSOC_BLOCK_POLICY_TIMER;
+        client->pref_5g_pre_assoc_block_timeout_msecs = bscli->pref_5g_pre_assoc_block_timeout_msecs;
+    }
+    else {
+        LOGE("Client %s - invalid pre-assoc pref_5g reject configuration", client->mac_addr);
+        return false;
+    }
+
+    client->backoff_period = bscli->backoff_secs;
 
     if (!bscli->backoff_exp_base_exists) {
         client->backoff_exp_base = BM_CLIENT_DEFAULT_BACKOFF_EXP_BASE;
@@ -1739,12 +1771,14 @@ bm_client_ovsdb_update_cb(ovsdb_update_monitor_t *self)
             return;
         }
 
-        client = calloc(1, sizeof(*client));
+        client = CALLOC(1, sizeof(*client));
         STRSCPY(client->uuid, bscli._uuid.uuid);
+
+        ev_timer_init(&client->pref_5g_pre_assoc_block_timer.timer, bm_client_pref_5g_reject_pre_assoc_block_timer_cb, 0., 0.);
 
         if (!bm_client_from_ovsdb(&bscli, client)) {
             LOGE("Failed to convert row to client (uuid=%s)", client->uuid);
-            free(client);
+            FREE(client);
             return;
         }
 
@@ -1925,6 +1959,7 @@ bm_client_backoff(bm_client_t *client, bool enable)
         client->backoff_connect_calculated = false;
         evsched_task_cancel(client->backoff_task);
         bm_client_update_all_groups(client);
+        ev_timer_stop(EV_DEFAULT_ &client->pref_5g_pre_assoc_block_timer.timer);
     } else {
         LOGI("%s pre-assoc backoff(%d) num_rejects %d", client->mac_addr, enable, client->num_rejects);
     }
@@ -2149,6 +2184,167 @@ bm_client_cs_task_rssi_xing( void *arg )
     return;
 }
 
+static void
+bm_client_rejected_counter(bm_client_t *client, bsal_event_t *event)
+{
+    bm_client_stats_t       *stats;
+    bm_client_times_t       *times              = &client->times;
+    int                     max_rejects         = client->max_rejects;
+    int                     max_rejects_period  = client->max_rejects_period;
+    time_t                  now                 = time(NULL);
+
+    bsal_event_t            stats_event;
+    unsigned int            i;
+
+    stats = bm_client_get_stats(client, event->ifname);
+    if (WARN_ON(!stats))
+        return;
+
+    if (client->cs_state == BM_CLIENT_CS_STATE_STEERING) {
+        max_rejects         = client->cs_max_rejects;
+        max_rejects_period  = client->cs_max_rejects_period;
+    }
+
+    if (client->num_rejects > 0) {
+        if ((now - times->reject.counting_first) > max_rejects_period) {
+            client->num_rejects = 0;
+        }
+    }
+
+    stats->rejects++;
+    client->num_rejects++;
+    client->num_rejects_copy++;
+
+    if (event->type == BSAL_EVENT_AUTH_FAIL) {
+        LOGD("'%s' auth reject %d/%d detected within %u seconds",
+                                client->mac_addr, client->num_rejects,
+                                max_rejects, max_rejects_period);
+    } else {
+        LOGD("'%s' reject %d/%d detected within %u seconds",
+                                client->mac_addr, client->num_rejects,
+                                max_rejects, max_rejects_period);
+    }
+
+    times->reject.counting_last = now;
+    if (client->num_rejects == 1) {
+        times->reject.counting_first = now;
+
+        // If client is under CS_STATE_STEERING, this is the first probe request
+        // that is blocked. Inform the cloud of the CS ATTEMPT
+        if (client->cs_state == BM_CLIENT_CS_STATE_STEERING ) {
+            bm_stats_add_event_to_report(client, event, CLIENT_STEERING_ATTEMPT, false);
+        }
+    }
+
+    if (client->num_rejects == max_rejects) {
+        stats->steering_fail_cnt++;
+
+        if (client->steering_state == BM_CLIENT_CLIENT_STEERING) {
+            LOGW("'%s' failed to client steer, disabling client steering ", client->mac_addr);
+
+            client->num_rejects = 0;
+
+            // Update the cs_state to OVSDB
+            client->cs_state = BM_CLIENT_CS_STATE_FAILED;
+            bm_client_disable_client_steering(client);
+
+            memset(&stats_event, 0, sizeof(stats_event) );
+            if (client->cs_mode == BM_CLIENT_CS_MODE_AWAY) {
+                for (i = 0; i < client->ifcfg_num; i++) {
+                    STRSCPY(stats_event.ifname, client->ifcfg[i].ifname);
+                    bm_stats_add_event_to_report(client, &stats_event, CLIENT_STEERING_FAILED, false);
+                }
+            } else if (client->cs_mode == BM_CLIENT_CS_MODE_HOME) {
+                 for (i = 0; i < client->ifcfg_num; i++) {
+                     if (client->ifcfg[i].radio_type != client->cs_radio_type)
+                         continue;
+
+                     STRSCPY(stats_event.ifname, client->ifcfg[i].ifname);
+                     bm_stats_add_event_to_report(client, &stats_event, CLIENT_STEERING_FAILED, false);
+                }
+            }
+        } else {
+            bm_client_toggle_backoff(client, stats);
+        }
+    }
+
+    return;
+}
+
+static void
+bm_client_rejected_timer(bm_client_t *client, bsal_event_t *event)
+{
+    const ev_tstamp timeout_sec = client->pref_5g_pre_assoc_block_timeout_msecs / 1000.;
+    bm_client_stats_t *stats;
+
+    stats = bm_client_get_stats(client, event->ifname);
+    if (WARN_ON(!stats))
+        return;
+
+    stats->rejects++;
+    client->num_rejects++;
+
+    if (!ev_is_active(&client->pref_5g_pre_assoc_block_timer.timer)) {
+        LOGD("'%s' - starting pref 5g pre-assock block timer with %lfs timeout",
+             client->mac_addr, timeout_sec);
+
+        STRSCPY_WARN(client->pref_5g_pre_assoc_block_timer.ifname, event->ifname);
+
+        ev_timer_set(&client->pref_5g_pre_assoc_block_timer.timer, timeout_sec, 0.);
+        ev_timer_start(EV_DEFAULT_ &client->pref_5g_pre_assoc_block_timer.timer);
+    }
+
+    if( event->type == BSAL_EVENT_AUTH_FAIL ) {
+        LOGD("'%s' auth reject %d detected within %lf seconds", client->mac_addr,
+             client->num_rejects, timeout_sec);
+    } else {
+        LOGD("'%s' reject %d detected within %lf seconds",client->mac_addr,
+             client->num_rejects, timeout_sec);
+    }
+}
+
+static void
+bm_client_pref_5g_reject_pre_assoc_block_timer_cb(EV_P_ ev_timer *w, int revents)
+{
+    bm_client_pref_5g_pre_assoc_block_timer_t *timer = (bm_client_pref_5g_pre_assoc_block_timer_t*) w;
+    bm_client_stats_t *stats;
+    bm_client_t *client = container_of(timer, bm_client_t, pref_5g_pre_assoc_block_timer);
+
+    stats = bm_client_get_stats(client, timer->ifname);
+    if (WARN_ON(!stats))
+        return;
+
+    stats->steering_fail_cnt++;
+
+    bm_client_toggle_backoff(client, stats);
+}
+
+static void
+bm_client_toggle_backoff(bm_client_t *client, bm_client_stats_t *stats)
+{
+    size_t i;
+
+    LOGN("'%s' (total: %u times), %s...", client->mac_addr, stats->steering_fail_cnt,
+         client->backoff_period ? "backing off" : "disabling");
+
+    if (client->backoff_period) {
+        bm_client_backoff(client, true);
+        for (i = 0; i < client->ifcfg_num; i++) {
+            bsal_event_t stats_event;
+
+            if (client->ifcfg[i].bs_allowed)
+                continue;
+
+            memset(&stats_event, 0, sizeof(stats_event));
+            STRSCPY(stats_event.ifname, client->ifcfg[i].ifname);
+            bm_stats_add_event_to_report(client, &stats_event, BACKOFF, true);
+        }
+    }
+    else {
+        bm_client_disable_steering(client);
+    }
+}
+
 /*****************************************************************************/
 bool
 bm_client_init(void)
@@ -2257,109 +2453,21 @@ bm_client_disconnected(bm_client_t *client)
 void
 bm_client_rejected(bm_client_t *client, bsal_event_t *event)
 {
-    bm_client_stats_t       *stats;
-    bm_client_times_t       *times              = &client->times;
-    int                     max_rejects         = client->max_rejects;
-    int                     max_rejects_period  = client->max_rejects_period;
-    time_t                  now                 = time(NULL);
-
-    bsal_event_t            stats_event;
-    unsigned int            i;
-
-    stats = bm_client_get_stats(client, event->ifname);
-    if (WARN_ON(!stats))
+    if (client->cs_state == BM_CLIENT_CS_STATE_STEERING) {
+        bm_client_rejected_counter(client, event);
         return;
-
-    if( client->cs_state == BM_CLIENT_CS_STATE_STEERING ) {
-        max_rejects         = client->cs_max_rejects;
-        max_rejects_period  = client->cs_max_rejects_period;
     }
 
-    if (client->num_rejects > 0) {
-        if ((now - times->reject.first) > max_rejects_period) {
-            client->num_rejects = 0;
-        }
+    switch (client->pref_5g_pre_assoc_block_policy) {
+        case BM_CLIENT_PREF_5G_PRE_ASSOC_BLOCK_POLICY_TIMER:
+            bm_client_rejected_timer(client, event);
+            break;
+        case BM_CLIENT_PREF_5G_PRE_ASSOC_BLOCK_POLICY_COUNTER:
+            bm_client_rejected_counter(client, event);
+            break;
+        case BM_CLIENT_PREF_5G_PRE_ASSOC_BLOCK_POLICY_UNDEFINED:
+            LOGE("Client %s - undefined pre-assoc pref 5g pre-assoc block policy", client->mac_addr);
     }
-
-    stats->rejects++;
-    client->num_rejects++;
-    client->num_rejects_copy++;
-
-    if( event->type == BSAL_EVENT_AUTH_FAIL ) {
-        LOGD("'%s' auth reject %d/%d detected within %u seconds",
-                                client->mac_addr, client->num_rejects,
-                                max_rejects, max_rejects_period);
-    } else {
-        LOGD("'%s' reject %d/%d detected within %u seconds",
-                                client->mac_addr, client->num_rejects,
-                                max_rejects, max_rejects_period);
-    }
-
-    times->reject.last = now;
-    if (client->num_rejects == 1) {
-        times->reject.first = now;
-
-        // If client is under CS_STATE_STEERING, this is the first probe request
-        // that is blocked. Inform the cloud of the CS ATTEMPT
-        if( client->cs_state == BM_CLIENT_CS_STATE_STEERING ) {
-            bm_stats_add_event_to_report( client, event, CLIENT_STEERING_ATTEMPT, false );
-        }
-    }
-
-    if (client->num_rejects == max_rejects) {
-        stats->steering_fail_cnt++;
-
-        if( client->steering_state == BM_CLIENT_CLIENT_STEERING ) {
-            LOGW( "'%s' failed to client steer, disabling client steering ",
-                            client->mac_addr );
-
-            client->num_rejects = 0;
-
-            // Update the cs_state to OVSDB
-            client->cs_state = BM_CLIENT_CS_STATE_FAILED;
-            bm_client_disable_client_steering( client );
-
-            memset( &stats_event, 0, sizeof( stats_event ) );
-            if( client->cs_mode == BM_CLIENT_CS_MODE_AWAY ) {
-                for (i = 0; i < client->ifcfg_num; i++) {
-                    STRSCPY(stats_event.ifname, client->ifcfg[i].ifname);
-                    bm_stats_add_event_to_report( client, &stats_event, CLIENT_STEERING_FAILED, false );
-                }
-            } else if( client->cs_mode == BM_CLIENT_CS_MODE_HOME ) {
-                 for (i = 0; i < client->ifcfg_num; i++) {
-                     if (client->ifcfg[i].radio_type != client->cs_radio_type)
-                         continue;
-
-                     STRSCPY(stats_event.ifname, client->ifcfg[i].ifname);
-                     bm_stats_add_event_to_report( client, &stats_event, CLIENT_STEERING_FAILED, false );
-                }
-            }
-        } else {
-            LOGN("'%s' (total: %u times), %s...",
-                    client->mac_addr,
-                    stats->steering_fail_cnt,
-                    client->backoff_period ?
-                    "backing off" : "disabling");
-
-            if (client->backoff_period) {
-                bm_client_backoff(client, true);
-                for (i = 0; i < client->ifcfg_num; i++) {
-                    if (client->ifcfg[i].bs_allowed)
-                        continue;
-
-                    memset( &stats_event, 0, sizeof( stats_event ) );
-                    STRSCPY(stats_event.ifname, client->ifcfg[i].ifname);
-                    bm_stats_add_event_to_report(client, &stats_event, BACKOFF, true);
-                }
-            }
-            else {
-                bm_client_disable_steering(client);
-            }
-
-        }
-    }
-
-    return;
 }
 
 void
@@ -2714,11 +2822,11 @@ bm_client_find_or_add_by_macaddr(os_macaddr_t *mac_addr)
     // add new
     char mac_str[MAC_STR_LEN];
     sprintf(mac_str, PRI(os_macaddr_lower_t), FMT(os_macaddr_t, *mac_addr));
-    client = calloc(1, sizeof(*client));
+    client = CALLOC(1, sizeof(*client));
     STRSCPY(client->mac_addr, mac_str);
     if (!os_nif_macaddr_from_str(&client->macaddr, mac_str)) {
         LOGE("%s Failed to parse mac address '%s'", __func__, mac_str);
-        free(client);
+        FREE(client);
         return NULL;
     }
     ds_tree_insert(&bm_clients, client, client->mac_addr);

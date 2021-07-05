@@ -140,7 +140,7 @@ static int multicast_socket(struct in_addr ina, unsigned char ttl)
 
     inet_aton("192.168.1.90", &mreqn.imr_address);
     uint32_t ifindex;
-    ifindex = if_nametoindex("br-home.tx");
+    ifindex = if_nametoindex(CONFIG_TARGET_LAN_BRIDGE_NAME".tx");
     mreqn.imr_ifindex = ifindex;
 	/* Set interface for outbound multicast */
 	if (setsockopt(sd, IPPROTO_IP, IP_MULTICAST_IF, &mreqn, sizeof(mreqn)))

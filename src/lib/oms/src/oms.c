@@ -29,6 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "oms.h"
 #include "ovsdb_utils.h"
 #include "log.h"
+#include "memutil.h"
 
 static struct oms_mgr mgr =
 {
@@ -100,10 +101,10 @@ oms_free_config_entry(struct oms_config_entry *entry)
 {
     if (entry == NULL) return;
 
-    free(entry->object);
-    free(entry->version);
+    FREE(entry->object);
+    FREE(entry->version);
     free_str_tree(entry->other_config);
-    free(entry);
+    FREE(entry);
 }
 
 
@@ -142,12 +143,12 @@ oms_free_state_entry(struct oms_state_entry *entry)
 {
     if (entry == NULL) return;
 
-    free(entry->object);
-    free(entry->version);
-    free(entry->state);
-    free(entry->prev_state);
+    FREE(entry->object);
+    FREE(entry->version);
+    FREE(entry->state);
+    FREE(entry->prev_state);
     free_str_tree(entry->other_state);
-    free(entry);
+    FREE(entry);
 }
 
 /**

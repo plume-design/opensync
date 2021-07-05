@@ -25,26 +25,13 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-# TEST DESCRIPTION
-# Redirect source interface, port 8080 (Web Services) to destination IP, port 80 (Web Services), protocol TCP.
-#
-# TEST PROCEDURE
-# Set port forwarding.
-# Delete port forwarding.
-#
-# EXPECTED RESULTS
-# Test is passed:
-# - if port forwarding can be configured
-# - if port forwarding can be deleted
-#
-# Test is failed:
-# - otherwise
-
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="nm2/$(basename "$0")"
 manager_setup_file="nm2/nm2_setup.sh"
@@ -54,7 +41,7 @@ cat << usage_string
 ${tc_name} [-h] arguments
 Description:
     - Script checks if IP port forward rule is created on the system when configured through IP_Port_Forward table
-        Script fails if IP port is not forwarded on the system
+      Script fails if IP port is not forwarded on the system
 Arguments:
     -h  show this help message
     \$1 (src_ifname) : used as src_ifname in IP_Port_Forward table : (string)(required)
@@ -69,16 +56,17 @@ Script usage example:
    ./${tc_name} wifi0 8080 10.10.10.200 80 tcp
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 
 NARGS=5
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
@@ -100,27 +88,26 @@ log_title "$tc_name: NM2 test - Testing IP port forwarding"
 
 log "$tc_name: Set IP FORWARD in OVSDB"
 set_ip_forward "$src_ifname" "$src_port" "$dst_ipaddr" "$dst_port" "$protocol" &&
-    log "$tc_name: Failed to set ip port forward - $src_ifname" ||
-    raise "Failed to set ip port forward - $src_ifname" -l "$tc_name" -tc
+    log "$tc_name: Set IP port forward for $src_ifname - Success" ||
+    raise "FAIL: Failed to set IP port forward - $src_ifname" -l "$tc_name" -tc
 
-log "$tc_name: LEVEL 2 - Check for IP FORWARD record in iptables"
-
+log "$tc_name: Check for IP FORWARD record in iptables - LEVEL2"
 wait_for_function_response 0 "ip_port_forward $dst_ipaddr:$dst_port" &&
-    log "$tc_name: LEVEL2: Ip port forward propagated to iptables" ||
-    raise "LEVEL2: Failed to propagate record into iptables" -l "$tc_name" -tc
+    log "$tc_name: LEVEL2 - IP port forward record propagated to iptables" ||
+    raise "FAIL: LEVEL2 - Failed to propagate record into iptables" -l "$tc_name" -tc
 
 log "$tc_name: Delete IP FORWARD from OVSDB"
 ${OVSH} d IP_Port_Forward -w dst_ipaddr=="$dst_ipaddr" -w src_ifname=="$src_ifname" &&
-    log "$tc_name: Success to delete IP Port forward - $src_ifname" ||
-    raise "Failed to delete IP Port forward - $src_ifname" -l "$tc_name" -tc
+    log "$tc_name: Deleted IP FORWARD for $src_ifname from IP_Port_Forward" ||
+    raise "FAIL: Failed to delete IP FORWARD for $src_ifname from IP_Port_Forward" -l "$tc_name" -tc
 
 wait_ovsdb_entry_remove IP_Port_Forward -w dst_ipaddr "$dst_ipaddr" -w src_ifname "$src_ifname" &&
-    log "$tc_name: Success to remove entry - $src_ifname" ||
-    raise "Failed to remove entry - $src_ifname" -l "$tc_name" -tc
+    log "$tc_name: Removed entry from IP_Port_Forward for $src_ifname - Success" ||
+    raise "FAIL: Failed to remove entry from IP_Port_Forward for $src_ifname" -l "$tc_name" -tc
 
-log "$tc_name: LEVEL 2 - Check is IP FORWARD record deleted from iptables"
+log "$tc_name: Check is IP FORWARD record is deleted from iptables - LEVEL2"
 wait_for_function_response 1 "ip_port_forward $dst_ipaddr:$dst_port" &&
-    log "$tc_name: LEVEL2: Ip port forward deleted from iptables" ||
+    log "$tc_name: LEVEL2 - IP FORWARD record deleted from iptables - Success" ||
     force_delete_ip_port_forward_die "$src_ifname" "NM_PORT_FORWARD" "$dst_ipaddr:$dst_port"
 
 pass

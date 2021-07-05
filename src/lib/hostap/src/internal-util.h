@@ -28,8 +28,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define INTERNAL_UTIL_H_INCLUDED
 
 bool
-util_vif_wpa_key_mgmt_match(const struct schema_Wifi_VIF_Config *vconf,
-                            const char *key_mgmt);
+util_vif_wpa_key_mgmt_partial_match(const struct schema_Wifi_VIF_Config *vconf,
+                                    const char *key_mgmt);
+
+bool
+util_vif_wpa_key_mgmt_exact_match(const struct schema_Wifi_VIF_Config *vconf,
+                                  const char *key_mgmt);
 
 void
 util_vif_get_wpa_pairwise(const struct schema_Wifi_VIF_Config *vconf,

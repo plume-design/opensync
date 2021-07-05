@@ -26,20 +26,18 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/fsm_lib.sh"
 source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="fsm/$(basename "$0")"
 manager_setup_file="fsm/fsm_setup.sh"
-create_rad_vif_if_file="tools/device/create_radio_vif_interface.sh"
-create_inet_file="tools/device/create_inet_interface.sh"
-add_bridge_port_file="tools/device/add_bridge_port.sh"
-configure_lan_bridge_for_wan_connectivity_file="tools/device/configure_lan_bridge_for_wan_connectivity.sh"
-client_connect_file="tools/rpi/connect_to_wpa2.sh"
-fsm_dig_url_file="tools/rpi/fsm/fsm_dig_url.sh"
+server_start_mqtt='tools/server/start_mqtt'
+device_connect_mqtt='tools/device/fut_configure_mqtt'
 # Default of_port must be unique between fsm tests for valid testing
 of_port=30002
 
@@ -50,41 +48,29 @@ Description:
     - Script configures interfaces FSM settings for WallEye Plugin rules
 Arguments:
     -h  show this help message
-    \$1 (lan_bridge_if)    : Interface name used for LAN bridge        : (string)(required)
-    \$2 (fsm_plugin)       : Path to FSM plugin under test             : (string)(required)
+    \$1 (lan_bridge_if)  : Interface name used for LAN bridge  : (string)(required)
+    \$2 (fsm_plugin)     : Path to FSM plugin under test       : (string)(required)
 Testcase procedure:
-    - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-            Create Radio/VIF interface
-                Run: ./${create_rad_vif_if_file} (see ${create_rad_vif_if_file} -h)
-            Create Inet entry for VIF interface
-                Run: ./${create_inet_file} (see ${create_inet_file} -h)
-            Create Inet entry for home bridge interface (br-home)
-                Run: ./${create_inet_file} (see ${create_inet_file} -h)
-            Add bridge port to VIF interface onto home bridge
-                Run: ./${add_bridge_port_file} (see ${add_bridge_port_file} -h)
-            Configure WAN bridge settings
-                Run: ./${configure_lan_bridge_for_wan_connectivity_file} (see ${configure_lan_bridge_for_wan_connectivity_file} -h)
-            Update Inet entry for home bridge interface for dhcpd (br-home)
-                Run: ./${create_inet_file} (see ${create_inet_file} -h)
-            Configure FSM for DNS plugin test
-                Run: ./${tc_name} <LAN-BRIDGE-IF> <FSM-URL-BLOCK> <FSM-URL-REDIRECT>
-   - On RPI Client:
-                 Run: /.${client_connect_file} (see ${client_connect_file} -h)
-                 Run: /.${fsm_dig_url_file} (see ${fsm_dig_url_file} -h)
+    - On Server: Configure MQTT on server
+            Run: ./${server_start_mqtt} --start (see ${create_rad_vif_if_file} -h)
+    - On DEVICE: Connect DUT to MQTT server on RPI server
+            Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
+            Run: ./${device_connect_mqtt} (see ${create_rad_vif_if_file} -h)
 Script usage example:
-    ./${tc_name} br-home /usr/plume/lib/libfsm_walleye_dpi.so
+    ./${tc_name} br-home /usr/opensync/lib/libfsm_walleye_dpi.so
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-    h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+    help | \
+    --help | \
+    -h)
         usage && exit 1
         ;;
     *)
-        echo "Unknown argument" && exit 1
         ;;
     esac
-done
+fi
 
 trap '
 fut_info_dump_line
@@ -128,8 +114,8 @@ create_inet_entry \
     -dhcp_sniff "false" \
     -network true \
     -enabled true &&
-        log -deb "$tc_name: Interface ${tap_dpi_if} successfully created" ||
-        raise "Failed to create interface ${tap_dpi_if}" -l "$tc_name" -ds
+        log "$tc_name: Interface ${tap_dpi_if} created - Success" ||
+        raise "FAIL: Failed to create interface ${tap_dpi_if}" -l "$tc_name" -ds
 
 log "$tc_name: Cleaning FSM OVSDB Config tables"
 empty_ovsdb_table Openflow_Config
@@ -143,8 +129,8 @@ insert_ovsdb_entry Openflow_Config \
     -i priority 0 \
     -i bridge "${lan_bridge_if}" \
     -i action "NORMAL" &&
-        log "$tc_name: Inserting ingress rule" ||
-        raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "$tc_name: Ingress rule inserted - Success" ||
+        raise "FAIL: Failed to insert_ovsdb_entry" -l "$tc_name" -oe
 
 # Insert egress rule to Openflow_Config
 insert_ovsdb_entry Openflow_Config \
@@ -152,9 +138,9 @@ insert_ovsdb_entry Openflow_Config \
     -i table 0 \
     -i priority 200 \
     -i bridge "${lan_bridge_if}" \
-    -i action "resubmit(,7)" &&
-        log "$tc_name: Inserting ingress rule" ||
-        raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+    -i action "resubmit\(,7\)" &&
+        log "$tc_name: Ingress rule inserted - Success" ||
+        raise "FAIL: Failed to insert_ovsdb_entry" -l "$tc_name" -oe
 
 # Insert egress rule to Openflow_Config
 insert_ovsdb_entry Openflow_Config \
@@ -163,8 +149,8 @@ insert_ovsdb_entry Openflow_Config \
     -i priority 0 \
     -i bridge "${lan_bridge_if}" \
     -i action "NORMAL" &&
-        log "$tc_name: Inserting ingress rule" ||
-        raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "$tc_name: Ingress rule inserted - Success" ||
+        raise "FAIL: Failed to insert_ovsdb_entry" -l "$tc_name" -oe
 
 # Insert egress rule to Openflow_Config
 insert_ovsdb_entry Openflow_Config \
@@ -174,8 +160,8 @@ insert_ovsdb_entry Openflow_Config \
      -i priority 200 \
      -i rule "${of_out_rule_ct}" \
      -i action "${of_out_action_ct}" &&
-        log "$tc_name: Inserting ingress rule" ||
-        raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "$tc_name: Ingress rule inserted - Success" ||
+        raise "FAIL: Failed to insert_ovsdb_entry" -l "$tc_name" -oe
 
 # Insert egress rule to Openflow_Config
 insert_ovsdb_entry Openflow_Config \
@@ -185,8 +171,8 @@ insert_ovsdb_entry Openflow_Config \
     -i priority 200 \
     -i rule "${of_out_rule_ct_inspect_new_conn}" \
     -i action "${of_out_action_ct_inspect_new_conn}" &&
-        log "$tc_name: Inserting ingress rule" ||
-        raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "$tc_name: Ingress rule inserted - Success" ||
+        raise "FAIL: Failed to insert_ovsdb_entry" -l "$tc_name" -oe
 
 # Insert egress rule to Openflow_Config
 insert_ovsdb_entry Openflow_Config \
@@ -196,8 +182,8 @@ insert_ovsdb_entry Openflow_Config \
     -i priority 200 \
     -i rule "${of_out_rule_ct_inspect}" \
     -i action "${of_out_action_ct_inspect}" &&
-        log "$tc_name: Inserting ingress rule" ||
-        raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "$tc_name: Ingress rule inserted - Success" ||
+        raise "FAIL: Failed to insert_ovsdb_entry" -l "$tc_name" -oe
 
 # Insert egress rule to Openflow_Config
 insert_ovsdb_entry Openflow_Config \
@@ -207,8 +193,8 @@ insert_ovsdb_entry Openflow_Config \
     -i priority 200 \
     -i rule "${of_out_rule_ct_passthru}" \
     -i action "${of_out_action_ct_passthru}" &&
-        log "$tc_name: Inserting ingress rule" ||
-        raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "$tc_name: Ingress rule inserted - Success" ||
+        raise "FAIL: Failed to insert_ovsdb_entry" -l "$tc_name" -oe
 
 # Insert egress rule to Openflow_Config
 insert_ovsdb_entry Openflow_Config \
@@ -218,8 +204,8 @@ insert_ovsdb_entry Openflow_Config \
     -i priority 200 \
     -i rule "${of_out_rule_ct_drop}" \
     -i action "${of_out_action_ct_drop}" &&
-        log "$tc_name: Inserting ingress rule" ||
-        raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "$tc_name: Ingress rule inserted - Success" ||
+        raise "FAIL: Failed to insert_ovsdb_entry" -l "$tc_name" -oe
 
 mqtt_hero_value="dev-test/dev_dpi_walleye/$(get_node_id)/$(get_location_id)"
 insert_ovsdb_entry Flow_Service_Manager_Config \
@@ -227,16 +213,16 @@ insert_ovsdb_entry Flow_Service_Manager_Config \
     -i type "dpi_plugin" \
     -i plugin "${fsm_plugin}" \
     -i other_config '["map",[["mqtt_v","'"${mqtt_hero_value}"'"],["dso_init","walleye_dpi_plugin_init"],["dpi_dispatcher","core_dpi_dispatch"]]]' &&
-        log "$tc_name: Inserting ingress rule" ||
-        raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "$tc_name: Ingress rule inserted - Success" ||
+        raise "FAIL: Failed to insert_ovsdb_entry" -l "$tc_name" -oe
 
 fsm_message_regex="$LOGREAD | tail -500 | grep walleye_signature_load | grep succeeded"
 wait_for_function_response 0 "${fsm_message_regex}" 5 &&
-    log -deb "$tc_name: walleye signature loaded" ||
-    raise "walleye signature not loaded" -l "$tc_name" -tc
+    log "$tc_name: walleye signature loaded - Success" ||
+    raise "FAIL: walleye signature not loaded" -l "$tc_name" -tc
 
 wait_ovsdb_entry Object_Store_State \
     -is name "app_signatures" \
     -is status "active" &&
-        log "$tc_name: walleye signature added" ||
-        raise "walleye signature not added" -l "$tc_name" -tc
+        log "$tc_name: walleye signature added - Success" ||
+        raise "FAIL: walleye signature not added" -l "$tc_name" -tc

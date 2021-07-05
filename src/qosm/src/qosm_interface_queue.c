@@ -26,6 +26,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "osa_assert.h"
 #include "qosm_internal.h"
+#include "memutil.h"
 
 static void callback_Interface_Queue(
         ovsdb_update_monitor_t *mon,
@@ -62,8 +63,7 @@ struct qosm_interface_queue *qosm_interface_queue_get(ovs_uuid_t *uuid)
     }
 
     /* Allocate a new empty structure */
-    que = calloc(1, sizeof(struct qosm_interface_queue));
-    ASSERT(que != NULL, "Error allocating qosm_interface_queue");
+    que = CALLOC(1, sizeof(struct qosm_interface_queue));
 
     que->que_uuid = *uuid;
     reflink_init(&que->que_reflink, "Interface_Queue");
@@ -95,7 +95,7 @@ void qosm_interface_queue_reflink_fn(reflink_t *ref, reflink_t *sender)
 
     ds_tree_remove(&qosm_interface_queue_list, que);
 
-    free(que);
+    FREE(que);
 }
 
 void qosm_interface_queue_free_other_config(struct qosm_interface_queue *que)
@@ -105,10 +105,10 @@ void qosm_interface_queue_free_other_config(struct qosm_interface_queue *que)
     /* Free other config */
     for (ci = 0; ci < que->que_other_config.oc_len; ci++)
     {
-        free(que->que_other_config.oc_config[ci].ov_key);
-        free(que->que_other_config.oc_config[ci].ov_value);
+        FREE(que->que_other_config.oc_config[ci].ov_key);
+        FREE(que->que_other_config.oc_config[ci].ov_value);
     }
-    free(que->que_other_config.oc_config);
+    FREE(que->que_other_config.oc_config);
     que->que_other_config.oc_len = 0;
     que->que_other_config.oc_config = NULL;
 }
@@ -163,8 +163,7 @@ void callback_Interface_Queue(
     qosm_interface_queue_free_other_config(que);
 
     /* Rebuild other_config */
-    que->que_other_config.oc_config = calloc(new->other_config_len, sizeof(struct osn_qos_oc_kv_pair));
-    ASSERT(que->que_other_config.oc_config != NULL, "Error allocating queue other_config");
+    que->que_other_config.oc_config = CALLOC(new->other_config_len, sizeof(struct osn_qos_oc_kv_pair));
 
     que->que_other_config.oc_len = new->other_config_len;
     for (ci = 0; ci < new->other_config_len; ci++)

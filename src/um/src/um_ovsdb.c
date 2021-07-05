@@ -24,7 +24,6 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-
 #include <stdarg.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -42,6 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb_update.h"
 #include "log.h"
 #include "util.h"
+#include "memutil.h"
 #include "json_util.h"
 #include "schema.h"
 #include "os_proc.h"
@@ -223,8 +223,7 @@ exit:
     /* Clear timer data */
     if (w->data)
     {
-         free(w->data);
-         w->data = NULL;
+         FREE(w->data);
     }
 
     if (false == um_status_update(status))
@@ -255,8 +254,7 @@ static void cb_upg(const osp_upg_op_t op,
             {
                 if(upg_url)
                 {
-                    free(upg_url);
-                    upg_url = NULL;
+                    FREE(upg_url);
                 }
                 LOG(ERR, "Error in downloading. Errno: %d", osp_upg_errno());
                 ret_status = um_map_errno_osp_to_cloud(osp_upg_errno());
@@ -331,8 +329,7 @@ static void callback_AWLAN_Node(
                     if(upg_url == NULL || strncmp(upg_url, awlan_node->firmware_url, sizeof(awlan_node->firmware_url))){
                         if(upg_url)
                         {
-                           free(upg_url);
-                           upg_url = NULL;
+                           FREE(upg_url);
                         }
                         upg_url = strdup(awlan_node->firmware_url);
                         um_start_download(upg_url, awlan_node->upgrade_dl_timer);
@@ -346,8 +343,7 @@ static void callback_AWLAN_Node(
                 {
                     if(upg_url)
                     {
-                        free(upg_url);
-                        upg_url = NULL;
+                        FREE(upg_url);
                     }
                     LOG(NOTICE, "URL is empty");
                 }
@@ -373,8 +369,7 @@ static void callback_AWLAN_Node(
 
                     if (utimer.data)
                     {
-                        free(utimer.data);
-                        utimer.data = NULL;
+                        FREE(utimer.data);
                     }
 
                     /* check for firmware password */

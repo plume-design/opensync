@@ -31,6 +31,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ds_dlist.h"
 
 #include "dpp_types.h"
+#include "memutil.h"
 
 /* MCS/NSS/BW rate table and indexes that should be used for supported rates
    ----------------------------------------------
@@ -88,10 +89,8 @@ static inline dpp_client_stats_rx_t * dpp_client_stats_rx_record_alloc()
 {
     dpp_client_stats_rx_t *record = NULL;
 
-    record = malloc(sizeof(dpp_client_stats_rx_t));
-    if (record) {
-        memset(record, 0, sizeof(dpp_client_stats_rx_t));
-    }
+    record = MALLOC(sizeof(dpp_client_stats_rx_t));
+    memset(record, 0, sizeof(dpp_client_stats_rx_t));
 
     return record;
 }
@@ -99,7 +98,7 @@ static inline dpp_client_stats_rx_t * dpp_client_stats_rx_record_alloc()
 static inline void dpp_client_stats_rx_record_free(dpp_client_stats_rx_t *record)
 {
     if (NULL != record) {
-        free(record);
+        FREE(record);
     }
 }
 
@@ -108,10 +107,8 @@ static inline dpp_client_stats_tx_t * dpp_client_stats_tx_record_alloc()
 {
     dpp_client_stats_tx_t *record = NULL;
 
-    record = malloc(sizeof(dpp_client_stats_tx_t));
-    if (record) {
-        memset(record, 0, sizeof(dpp_client_stats_tx_t));
-    }
+    record = MALLOC(sizeof(dpp_client_stats_tx_t));
+    memset(record, 0, sizeof(dpp_client_stats_tx_t));
 
     return record;
 }
@@ -119,7 +116,7 @@ static inline dpp_client_stats_tx_t * dpp_client_stats_tx_record_alloc()
 static inline void dpp_client_stats_tx_record_free(dpp_client_stats_tx_t *record)
 {
     if (NULL != record) {
-        free(record);
+        FREE(record);
     }
 }
 
@@ -158,10 +155,8 @@ static inline dpp_client_tid_record_list_t * dpp_client_tid_record_alloc()
 {
     dpp_client_tid_record_list_t *record = NULL;
 
-    record = malloc(sizeof(dpp_client_tid_record_list_t));
-    if (record) {
-        memset(record, 0, sizeof(dpp_client_tid_record_list_t));
-    }
+    record = MALLOC(sizeof(dpp_client_tid_record_list_t));
+    memset(record, 0, sizeof(dpp_client_tid_record_list_t));
 
     return record;
 }
@@ -169,7 +164,7 @@ static inline dpp_client_tid_record_list_t * dpp_client_tid_record_alloc()
 static inline void dpp_client_tid_record_free(dpp_client_tid_record_list_t *record)
 {
     if (NULL != record) {
-        free(record);
+        FREE(record);
     }
 }
 
@@ -236,7 +231,7 @@ dpp_client_record_t * dpp_client_record_alloc();
 static inline void dpp_client_record_free(dpp_client_record_t *record)
 {
     if (NULL != record) {
-        free(record);
+        FREE(record);
     }
 }
 

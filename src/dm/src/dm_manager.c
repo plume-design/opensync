@@ -47,6 +47,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "target.h"
 #include "ds_tree.h"
 #include "ovsdb_table.h"
+#include "memutil.h"
 
 #include "dm.h"
 
@@ -162,7 +163,7 @@ bool init_managers()
      */
     for (i = 0; i < (int)target_managers_num; i++)
     {
-        struct dm_manager *dm = calloc(1, sizeof(*dm));
+        struct dm_manager *dm = CALLOC(1, sizeof(*dm));
 
         /*
          * Add manager to global list of managers
@@ -244,7 +245,7 @@ bool dm_manager_register(
         return false;
     }
 
-    dm = calloc(1, sizeof(*dm));
+    dm = CALLOC(1, sizeof(*dm));
     *dm = DM_MANAGER_INIT;
 
     STRSCPY(dm->dm_name, name);

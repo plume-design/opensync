@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "target.h"
 #include "unity.h"
 #include "pcap.c"
+#include "memutil.h"
 
 const char *test_name = "l2uf_plugin_tests";
 
@@ -334,8 +335,7 @@ void test_process_msg(void)
     TEST_ASSERT_NOT_NULL(l_session);
 
     parser = &l_session->parser;
-    net_parser = calloc(1, sizeof(*net_parser));
-    TEST_ASSERT_NOT_NULL(net_parser);
+    net_parser = CALLOC(1, sizeof(*net_parser));
     parser->net_parser = net_parser;
     PREPARE_UT(pkt45, net_parser);
     len = net_header_parse(net_parser);
@@ -346,7 +346,7 @@ void test_process_msg(void)
     ethertype = net_header_get_ethertype(net_parser);
     TEST_ASSERT_EQUAL_INT(8, ethertype);
     l2uf_process_message(l_session);
-    free(net_parser);
+    FREE(net_parser);
 }
 
 int main(int argc, char *argv[])

@@ -26,10 +26,12 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="nm2/$(basename "$0")"
 manager_setup_file="nm2/nm2_setup.sh"
@@ -52,16 +54,17 @@ Script usage example:
    ./${tc_name} eth0 eth 255.255.0.0
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 
 NARGS=3
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
@@ -78,7 +81,7 @@ trap '
     check_restore_management_access || true
 ' EXIT SIGINT SIGTERM
 
-log_title "$tc_name: NM2 test - Testing table Wifi_Inet_Config field netmask"
+log_title "$tc_name: NM2 test - Testing table Wifi_Inet_Config field netmask - $netmask"
 
 log "$tc_name: Creating Wifi_Inet_Config entries for $if_name"
 create_inet_entry \
@@ -89,21 +92,21 @@ create_inet_entry \
     -netmask 255.255.255.0 \
     -inet_addr 10.10.10.30 \
     -if_type "$if_type" &&
-        log "$tc_name: Interface successfully created" ||
-        raise "Failed to create interface" -l "$tc_name" -tc
+        log "$tc_name: Interface $if_name created - Success" ||
+        raise "FAIL: Failed to create $if_name interface" -l "$tc_name" -ds
 
 log "$tc_name: Setting NETMASK for $if_name to $netmask"
 update_ovsdb_entry Wifi_Inet_Config -w if_name "$if_name" -u netmask "$netmask" &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config table updated - netmask $netmask" ||
-    raise "update_ovsdb_entry - Failed to update Wifi_Inet_Config - netmask $netmask" -l "$tc_name" -tc
+    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config table::netmask is $netmask - Success" ||
+    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config::netmask is not $netmask" -l "$tc_name" -oe
 
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is netmask "$netmask" &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State - netmask $netmask" ||
-    raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - netmask $netmask" -l "$tc_name" -tc
+    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::netmask is $netmask - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::netmask is not $netmask" -l "$tc_name" -tc
 
-log "$tc_name: LEVEL 2 - Check if NETMASK was properly applied to $if_name"
+log "$tc_name: Check if NETMASK was properly applied to $if_name - LEVEL2"
 wait_for_function_response 0 "get_interface_netmask_from_system $if_name | grep -q \"$netmask\"" &&
-    log "$tc_name: NETMASK applied to  ifconfig - interface $if_name" ||
-    raise "Failed to apply NETMASK to ifconfig - interface $if_name" -l "$tc_name" -tc
+    log "$tc_name: LEVEL2 - NETMASK applied to ifconfig for interface $if_name - Success" ||
+    raise "FAIL: LEVEL2 - Failed to apply NETMASK to ifconfig for interface $if_name" -l "$tc_name" -tc
 
 pass

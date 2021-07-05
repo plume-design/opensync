@@ -44,7 +44,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <const.h>
 #include <log.h>
 #include <util.h>
+#include <target.h>
 #include <opensync-ctrl.h>
+#include <opensync-ctrl-dpp.h>
 
 /* local */
 #define WPA_CTRL_LEVEL_WARNING 4
@@ -79,6 +81,7 @@ ctrl_process(struct ctrl *ctrl)
     const char *str;
     size_t len;
     int level;
+    bool skip;
 
     /* Example events:
      *
@@ -98,7 +101,11 @@ ctrl_process(struct ctrl *ctrl)
     len = ctrl->reply_len;
     len -= str - ctrl->reply;
     str++;
-    ctrl->cb(ctrl, level, str, len);
+
+    skip = false;
+    skip |= ctrl_dpp_cb(ctrl, level, str, len) == 0;
+    if (!skip)
+        ctrl->cb(ctrl, level, str, len);
 
     switch (level) {
         case WPA_CTRL_LEVEL_WARNING:

@@ -35,91 +35,56 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "lte_info.pb-c.h"
 
 /**
- * @brief add the lte info to a report
+ * @brief add the lte net info to a report
  *
- * @param source the lte info to add
+ * @param source the lte net info to add
  * @param report the report to update
  * @return true if the cell info was added, false otherwise
  */
 bool
-lte_info_set_info(struct lte_info *source, struct lte_info_report *report)
+lte_info_set_net_info(struct lte_net_info *source, struct lte_info_report *report)
 {
-    struct lte_info *lte_info;
-    bool ret;
+    struct lte_net_info *lte_net_info;
 
     if (source == NULL) return false;
     if (report == NULL) return false;
 
     /* Bail if the lte info structure was already allocated */
-    if (report->lte_info != NULL) return false;
+    if (report->lte_net_info != NULL) return false;
 
-    report->lte_info = CALLOC(1, sizeof(*lte_info));
-    if (report->lte_info == NULL) return false;
+    report->lte_net_info = CALLOC(1, sizeof(*lte_net_info));
+    if (report->lte_net_info == NULL) goto error;
 
-    lte_info = report->lte_info;
-
-    ret = lte_info_set_string(source->prod_id_info, &lte_info->prod_id_info);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->chip_serial, &lte_info->chip_serial);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->imei, &lte_info->imei);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->imsi, &lte_info->imsi);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->iccid, &lte_info->iccid);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->sim_status, &lte_info->sim_status);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->net_reg_status, &lte_info->net_reg_status);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->service_provider_name, &lte_info->service_provider_name);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->sim_slot, &lte_info->sim_slot);
-    if (!ret) goto error;
+    lte_net_info = report->lte_net_info;
+    lte_net_info->net_status = source->net_status;
+    lte_net_info->rssi = source->rssi;
+    lte_net_info->ber = source->ber;
 
     return true;
 
 error:
-    lte_info_free_info(report);
+    lte_info_free_report(report);
     return false;
 }
 
 
 /**
- * @brief free the lte_info field contained in a report
+ * @brief free the lte_net_info field contained in a report
  *
  * @param report the report
  */
 void
-lte_info_free_info(struct lte_info_report *report)
+lte_info_free_net_info(struct lte_info_report *report)
 {
-    struct lte_info *lte_info;
+    struct lte_net_info *lte_net_info;
 
     if (report == NULL) return;
 
-    lte_info = report->lte_info;
-    if (lte_info == NULL) return;
+    lte_net_info = report->lte_net_info;
+    if (lte_net_info == NULL) return;
 
-    FREE(lte_info->prod_id_info);
-    FREE(lte_info->chip_serial);
-    FREE(lte_info->imei);
-    FREE(lte_info->imsi);
-    FREE(lte_info->iccid);
-    FREE(lte_info->sim_status);
-    FREE(lte_info->net_reg_status);
-    FREE(lte_info->service_provider_name);
-    FREE(lte_info->sim_slot);
-
-    FREE(lte_info);
-    report->lte_info = NULL;
+    FREE(lte_net_info);
+    report->lte_net_info = NULL;
 }
 
 
@@ -163,10 +128,10 @@ lte_info_free_report(struct lte_info_report *report)
 
     if (report == NULL) return;
 
-    FREE(report->if_name);
-    lte_info_free_info(report);
-    lte_info_free_lte_sig_qual(report);
+    lte_info_free_common_header(report);
+    lte_info_free_net_info(report);
     lte_info_free_serving_cell(report);
+    lte_info_free_data_usage(report);
 
     for (i = 0; i < report->n_neigh_cells; i++)
     {
@@ -179,6 +144,134 @@ lte_info_free_report(struct lte_info_report *report)
     FREE(report);
 }
 
+/**
+ * @brief set the common header of a report
+ *
+ * @param source the common header to copy
+ * @param report the report to update
+ * @return true if the info was set, false otherwise
+ */
+bool
+lte_info_set_common_header(struct lte_common_header *source,
+                          struct lte_info_report *report)
+{
+    struct lte_common_header *header;
+    bool ret;
+
+    if (source == NULL) return false;
+    if (report == NULL) return false;
+
+    /* Bail if the header was already set */
+    if (report->header != NULL) return false;
+
+    report->header = CALLOC(1, sizeof(*header));
+    if (report->header == NULL) return false;
+
+    header = report->header;
+    header->request_id = source->request_id;
+
+    ret = lte_info_set_string(source->if_name, &header->if_name);
+    if (!ret) goto error;
+
+    ret = lte_info_set_string(source->node_id, &header->node_id);
+    if (!ret) goto error;
+
+    ret = lte_info_set_string(source->location_id, &header->location_id);
+    if (!ret) goto error;
+
+    ret = lte_info_set_string(source->imei, &header->imei);
+    if (!ret) goto error;
+
+    ret = lte_info_set_string(source->imsi, &header->imsi);
+    if (!ret) goto error;
+
+    header->reported_at = time(NULL);
+    
+    return true;
+
+error:
+    lte_info_free_report(report);
+    return false;
+}
+
+/**
+ * @brief free the common header contained in a report
+ *
+ * @param report the report
+ */
+void
+lte_info_free_common_header(struct lte_info_report *report)
+{
+    struct lte_common_header *header;
+
+    if (report == NULL) return;
+
+    header = report->header;
+    if (header == NULL) return;
+
+    FREE(header->if_name);
+    FREE(header->node_id);
+    FREE(header->location_id);
+    FREE(header->imei);
+    FREE(header->imsi);
+    FREE(header);
+    report->header = NULL;
+}
+
+/**
+ * @brief set the lte data usage of a report
+ *
+ * @param source the lte data usage to copy
+ * @param report the report to update
+ * @return true if the info was set, false otherwise
+ */
+bool
+lte_info_set_data_usage(struct lte_data_usage *source,
+                        struct lte_info_report *report)
+{
+    struct lte_data_usage *data_usage;
+
+    if (source == NULL) return false;
+    if (report == NULL) return false;
+
+    /* Bail if the header was already set */
+    if (report->lte_data_usage != NULL) return false;
+
+    report->lte_data_usage = CALLOC(1, sizeof(*data_usage));
+    if (report->lte_data_usage == NULL) goto error;
+
+    data_usage = report->lte_data_usage;
+    data_usage->rx_bytes = source->rx_bytes;
+    data_usage->tx_bytes = source->tx_bytes;
+    data_usage->failover_start = source->failover_start;
+    data_usage->failover_end = source->failover_end;
+    data_usage->failover_count = source->failover_count;
+
+    return true;
+
+error:
+    lte_info_free_report(report);
+    return false;
+}
+
+/**
+ * @brief free the lte data usage contained in a report
+ *
+ * @param report the report
+ */
+void
+lte_info_free_data_usage(struct lte_info_report *report)
+{
+    struct lte_data_usage *lte_data_usage;
+
+    if (report == NULL) return;
+
+    lte_data_usage = report->lte_data_usage;
+    if (lte_data_usage == NULL) return;
+
+    FREE(lte_data_usage);
+    report->lte_data_usage = NULL;
+}
 
 /**
  * @brief add a neighbor cell info to a report
@@ -206,12 +299,16 @@ lte_info_add_neigh_cell_info(struct lte_net_neighbor_cell_info *cell_info,
     if (cell == NULL) return false;
 
     ret = lte_info_set_neigh_cell_info(cell_info, cell);
-    if (!ret) return false; /* the cell is freed on error */
+    if (!ret) goto error;
 
     report->lte_neigh_cell_info[idx] = cell;
     report->cur_neigh_cell_idx++;
 
     return true;
+
+error:
+    lte_info_free_report(report);
+    return false;
 }
 
 
@@ -228,78 +325,36 @@ bool
 lte_info_set_neigh_cell_info(struct lte_net_neighbor_cell_info *source,
                              struct lte_net_neighbor_cell_info *dest)
 {
-    bool ret;
 
     if (source == NULL) return false;
     if (dest == NULL) return false;
 
     dest->mode = source->mode;
     dest->freq_mode = source->freq_mode;
+    dest->earfcn = source->earfcn;
+    dest->uarfcn = source->uarfcn;
+    dest->pcid = source->pcid;
+    dest->rsrq = source->rsrq;
+    dest->rsrp = source->rsrp;
+    dest->rssi = source->rssi;
+    dest->sinr = source->sinr;
+    dest->srxlev = source->srxlev;
+    dest->cell_resel_priority = source->cell_resel_priority;
+    dest->s_non_intra_search = source->s_non_intra_search;
+    dest->thresh_serving_low = source->thresh_serving_low;
+    dest->s_intra_search = source->s_intra_search;
+    dest->thresh_x_low = source->thresh_x_low;
+    dest->thresh_x_high = source->thresh_x_high;
+    dest->psc = source->psc;
+    dest->rscp = source->rscp;
+    dest->ecno = source->ecno;
+    dest->cell_set = source->cell_set;
+    dest->rank = source->rank;
+    dest->cellid = source->cellid;
+    dest->inter_freq_srxlev = source->inter_freq_srxlev;
 
-    ret = lte_info_set_string(source->earfcn, &dest->earfcn);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->uarfcn, &dest->uarfcn);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->pcid, &dest->pcid);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->rsrq, &dest->rsrq);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->rsrp, &dest->rsrp);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->sinr, &dest->sinr);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->srxlev_base_station, &dest->srxlev_base_station);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->cell_resel_priority, &dest->cell_resel_priority);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->s_non_intra_search, &dest->s_non_intra_search);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->thresh_serving_low, &dest->thresh_serving_low);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->s_intra_search, &dest->s_intra_search);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->thresh_x_low, &dest->thresh_x_low);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->thresh_x_high, &dest->thresh_x_high);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->psc, &dest->psc);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->rscp, &dest->rscp);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->ecno, &dest->ecno);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->set, &dest->set);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->rank, &dest->rank);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->cellid, &dest->cellid);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->srxlev_inter_freq, &dest->srxlev_inter_freq);
-    if (!ret) goto error;
     return true;
 
-error:
-    lte_info_free_neigh_cell_info(dest);
-    return false;
 }
 
 
@@ -313,90 +368,8 @@ lte_info_free_neigh_cell_info(struct lte_net_neighbor_cell_info *cell)
 {
     if (cell == NULL) return;
 
-    FREE(cell->earfcn);
-    FREE(cell->uarfcn);
-    FREE(cell->pcid);
-    FREE(cell->rsrq);
-    FREE(cell->rsrp);
-    FREE(cell->sinr);
-    FREE(cell->srxlev_base_station);
-    FREE(cell->cell_resel_priority);
-    FREE(cell->s_non_intra_search);
-    FREE(cell->thresh_serving_low);
-    FREE(cell->s_intra_search);
-    FREE(cell->thresh_x_low);
-    FREE(cell->thresh_x_high);
-    FREE(cell->psc);
-    FREE(cell->rscp);
-    FREE(cell->ecno);
-    FREE(cell->set);
-    FREE(cell->rank);
-    FREE(cell->cellid);
-    FREE(cell->srxlev_inter_freq);
-
     FREE(cell);
     return;
-}
-
-
-/**
- * @brief set the signal quality info of a report
- *
- * @param source the signal quality info to copy
- * @param report the report to update
- * @return true if the info was set, false otherwise
- */
-bool
-lte_info_set_lte_sig_qual(struct lte_sig_qual *source,
-                          struct lte_info_report *report)
-{
-    struct lte_sig_qual *sig_qual;
-    bool ret;
-
-    if (source == NULL) return false;
-    if (report == NULL) return false;
-
-    /* Bail if the signal quality structure was already allocated */
-    if (report->lte_sig_qual != NULL) return false;
-
-    report->lte_sig_qual = CALLOC(1, sizeof(*sig_qual));
-    if (report->lte_sig_qual == NULL) return false;
-
-    sig_qual = report->lte_sig_qual;
-
-    ret = lte_info_set_string(source->rssi, &sig_qual->rssi);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->ber, &sig_qual->ber);
-    if (!ret) goto error;
-
-    return true;
-
-error:
-    lte_info_free_lte_sig_qual(report);
-    return false;
-}
-
-
-/**
- * @brief free the lte_sig_qal field contained in a report
- *
- * @param report the report
- */
-void
-lte_info_free_lte_sig_qual(struct lte_info_report *report)
-{
-    struct lte_sig_qual *sig_qual;
-
-    if (report == NULL) return;
-
-    sig_qual = report->lte_sig_qual;
-    if (sig_qual == NULL) return;
-
-    FREE(sig_qual->rssi);
-    FREE(sig_qual->ber);
-    FREE(sig_qual);
-    report->lte_sig_qual = NULL;
 }
 
 
@@ -414,7 +387,6 @@ lte_info_set_serving_cell(struct lte_net_serving_cell_info *source,
                           struct lte_info_report *report)
 {
     struct lte_net_serving_cell_info *cell;
-    bool ret;
 
     if (source == NULL) return false;
     if (report == NULL) return false;
@@ -423,65 +395,30 @@ lte_info_set_serving_cell(struct lte_net_serving_cell_info *source,
     if (report->lte_srv_cell != NULL) return false;
 
     report->lte_srv_cell = CALLOC(1, sizeof(*cell));
-    if (report->lte_srv_cell == NULL) return false;
+    if (report->lte_srv_cell == NULL) goto error;
 
     cell = report->lte_srv_cell;
 
-    ret = lte_info_set_string(source->cell_type, &cell->cell_type);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->state, &cell->state);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->is_tdd, &cell->is_tdd);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->mcc, &cell->mcc);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->mnc, &cell->mnc);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->cellid, &cell->cellid);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->pcid, &cell->pcid);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->uarfcn, &cell->uarfcn);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->earfcn, &cell->earfcn);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->freq_band, &cell->freq_band);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->ul_bandwidth, &cell->ul_bandwidth);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->tac, &cell->tac);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->rsrp, &cell->rsrp);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->rsrp, &cell->rsrq);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->rssi, &cell->rssi);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->sinr, &cell->sinr);
-    if (!ret) goto error;
-
-    ret = lte_info_set_string(source->srxlev, &cell->srxlev);
-    if (!ret) goto error;
+    cell->state = source->state;
+    cell->mode = source->mode;
+    cell->fdd_tdd_mode = source->fdd_tdd_mode;
+    cell->cellid = source->cellid;
+    cell->pcid = source->pcid;
+    cell->uarfcn = source->uarfcn;
+    cell->freq_band = source->freq_band;
+    cell->ul_bandwidth = source->ul_bandwidth;
+    cell->dl_bandwidth = source->dl_bandwidth;
+    cell->tac = source->tac;
+    cell->rsrp = source->rsrp;
+    cell->rsrq = source->rsrp;
+    cell->rssi = source->rssi;
+    cell->sinr = source->sinr;
+    cell->srxlev = source->srxlev;
 
     return true;
 
 error:
-    lte_info_free_serving_cell(report);
+    lte_info_free_report(report);
     return false;
 }
 
@@ -501,89 +438,114 @@ lte_info_free_serving_cell(struct lte_info_report *report)
     srv_cell = report->lte_srv_cell;
     if (srv_cell == NULL) return;
 
-    FREE(srv_cell->cell_type);
-    FREE(srv_cell->state);
-    FREE(srv_cell->is_tdd);
-    FREE(srv_cell->mcc);
-    FREE(srv_cell->mnc);
-    FREE(srv_cell->cellid);
-    FREE(srv_cell->pcid);
-    FREE(srv_cell->uarfcn);
-    FREE(srv_cell->earfcn);
-    FREE(srv_cell->freq_band);
-    FREE(srv_cell->ul_bandwidth);
-    FREE(srv_cell->dl_bandwidth);
-    FREE(srv_cell->tac);
-    FREE(srv_cell->rsrp);
-    FREE(srv_cell->rsrq);
-    FREE(srv_cell->rssi);
-    FREE(srv_cell->sinr);
-    FREE(srv_cell->srxlev);
-
     FREE(srv_cell);
     report->lte_srv_cell = NULL;
 }
 
-
 /**
- * @brief set the interface name of a report
+ * @brief set the common header of a report
  *
- * @param if_name the interface name to set
  * @param report the report to update
- * @return true if the interface name was set, false otherwise
+ * @return LteCommonHeader
  *
  * Note: the destination is freed on error
  */
-bool
-lte_info_set_if_name(char *if_name,
-                     struct lte_info_report *report)
+static Interfaces__LteInfo__LteCommonHeader *
+lte_info_set_pb_common_header(struct lte_info_report *report)
 {
-    bool ret;
+    Interfaces__LteInfo__LteCommonHeader *pb;
+    struct lte_common_header *header;
 
-    ret = lte_info_set_string(if_name, &report->if_name);
-    return ret;
+    if (report == NULL) return NULL;
+
+    header = report->header;
+    if (header == NULL) return NULL;
+
+    pb = CALLOC(1, sizeof(*pb));
+    if (pb == NULL) return NULL;
+
+    /* Initialize the protobuf structure */
+    interfaces__lte_info__lte_common_header__init(pb);
+
+    pb->request_id = header->request_id;
+    pb->if_name = header->if_name;
+    pb->node_id = header->node_id;
+    pb->location_id = header->location_id;
+
+    return pb;
 }
 
-
-static Interfaces__LteInfo__LteInfo *
-lte_info_set_lte_info(struct lte_info_report *report)
+static void
+lte_info_free_pb_common_header(Interfaces__LteInfo__LteCommonHeader *pb)
 {
-    Interfaces__LteInfo__LteInfo *pb;
-    struct lte_info *lte_info;
+    FREE(pb);
+}
+
+static Interfaces__LteInfo__LteNetInfo *
+lte_info_set_lte_net_info(struct lte_info_report *report)
+{
+    Interfaces__LteInfo__LteNetInfo *pb;
+    struct lte_net_info *lte_net_info;
 
    if (report == NULL) return NULL;
 
-    lte_info = report->lte_info;
-    if (lte_info == NULL) return NULL;
+    lte_net_info = report->lte_net_info;
+    if (lte_net_info == NULL) return NULL;
 
     /* Allocate the signal quality mesage */
     pb = CALLOC(1, sizeof(*pb));
     if (pb == NULL) return NULL;
 
     /* Initialize the message */
-    interfaces__lte_info__lte_info__init(pb);
+    interfaces__lte_info__lte_net_info__init(pb);
 
     /* Assign the message fields */
-    pb->prod_id_info = lte_info->prod_id_info;
-    pb->chip_serial = lte_info->chip_serial;
-    pb->imei = lte_info->imei;
-    pb->imsi = lte_info->imsi;
-    pb->iccid = lte_info->iccid;
-    pb->sim_status = lte_info->sim_status;
-    pb->net_reg_status = lte_info->net_reg_status;
-    pb->service_provider_name = lte_info->service_provider_name;
-    pb->sim_slot = lte_info->sim_slot;
+    pb->net_status = (Interfaces__LteInfo__LteNetRegStatus)lte_net_info->net_status;
+    pb->rssi = lte_net_info->rssi;
+    pb->ber = lte_net_info->ber;
 
     return pb;
 }
 
-
 static void
-lte_info_free_pb_lte_info(Interfaces__LteInfo__LteInfo *pb)
+lte_info_free_pb_lte_net_info(Interfaces__LteInfo__LteNetInfo *pb)
 {
     FREE(pb);
 }
 
+static Interfaces__LteInfo__LteDataUsage *
+lte_info_set_lte_data_usage(struct lte_info_report *report)
+{
+    Interfaces__LteInfo__LteDataUsage *pb;
+    struct lte_data_usage *lte_data_usage;
+
+   if (report == NULL) return NULL;
+
+    lte_data_usage = report->lte_data_usage;
+    if (lte_data_usage == NULL) return NULL;
+
+    /* Allocate the signal quality mesage */
+    pb = CALLOC(1, sizeof(*pb));
+    if (pb == NULL) return NULL;
+
+    /* Initialize the message */
+    interfaces__lte_info__lte_data_usage__init(pb);
+
+    /* Assign the message fields */
+    pb->rx_bytes = lte_data_usage->rx_bytes;
+    pb->tx_bytes = lte_data_usage->tx_bytes;
+    pb->failover_start = lte_data_usage->failover_start;
+    pb->failover_end = lte_data_usage->failover_end;
+    pb->failover_count = lte_data_usage->failover_count;
+
+    return pb;
+}
+
+static void
+lte_info_free_pb_lte_data_usage(Interfaces__LteInfo__LteDataUsage *pb)
+{
+    FREE(pb);
+}
 
 static Interfaces__LteInfo__LteNetServingCellInfo *
 lte_info_set_srv_cell(struct lte_info_report *report)
@@ -604,18 +566,16 @@ lte_info_set_srv_cell(struct lte_info_report *report)
     interfaces__lte_info__lte_net_serving_cell_info__init(pb);
 
     /* Assign the message fields */
-    pb->cell_type = cell->cell_type;
-    pb->state = cell->state;
-    pb->is_tdd = cell->is_tdd;
-    pb->mcc = cell->mcc;
-    pb->mnc = cell->mnc;
+    pb->state = (Interfaces__LteInfo__LteServingCellState)cell->state;
+    pb->mode = (Interfaces__LteInfo__LteCellMode)cell->mode;
+    pb->fdd_tdd_mode = (Interfaces__LteInfo__LteFddTddMode)cell->fdd_tdd_mode;
     pb->cellid = pb->cellid;
     pb->pcid = cell->pcid;
     pb->uarfcn = cell->uarfcn;
     pb->earfcn = cell->earfcn;
     pb->freq_band = cell->freq_band;
-    pb->ul_bandwidth = cell->ul_bandwidth;
-    pb->dl_bandwidth = cell->dl_bandwidth;
+    pb->ul_bandwidth = (Interfaces__LteInfo__LteBandwidth)cell->ul_bandwidth;
+    pb->dl_bandwidth = (Interfaces__LteInfo__LteBandwidth)cell->dl_bandwidth;
     pb->tac = cell->tac;
     pb->rsrp = cell->rsrp;
     pb->rsrq = cell->rsrq;
@@ -632,70 +592,6 @@ lte_info_free_pb_srv_cell(Interfaces__LteInfo__LteNetServingCellInfo *pb)
 {
     FREE(pb);
 }
-
-
-static Interfaces__LteInfo__LteSigQual *
-lte_info_set_pb_sig_qual(struct lte_info_report *report)
-{
-    static Interfaces__LteInfo__LteSigQual *pb;
-    struct lte_sig_qual *sig_qual;
-
-    if (report == NULL) return NULL;
-
-    sig_qual = report->lte_sig_qual;
-    if (sig_qual == NULL) return NULL;
-
-    /* Allocate the signal quality mesage */
-    pb = CALLOC(1, sizeof(*pb));
-    if (pb == NULL) return NULL;
-
-    /* Initialize the message */
-    interfaces__lte_info__lte_sig_qual__init(pb);
-
-    /* Assign the message fields */
-    pb->rssi = sig_qual->rssi;
-    pb->ber = sig_qual->ber;
-
-    return pb;
-}
-
-
-static void
-lte_info_free_pb_sig_qual(Interfaces__LteInfo__LteSigQual *pb)
-{
-    FREE(pb);
-}
-
-
-/**
- * brief map a neighbor mode value to the corresponding message value
- *
- * @param mode the neighbor mode
- * @return the message mode value
- */
-static Interfaces__LteInfo__LteNeighborCellMode
-lte_info_set_neighbor_mode(enum lte_neighbor_cell_mode mode)
-{
-    Interfaces__LteInfo__LteNeighborCellMode ret;
-
-    switch(mode)
-    {
-        case LTE_CELL_MODE_LTE:
-            ret = INTERFACES__LTE_INFO__LTE_NEIGHBOR_CELL_MODE__LTE_CELL_MODE_LTE;
-            break;
-
-        case LTE_CELL_MODE_WCDMA:
-            ret = INTERFACES__LTE_INFO__LTE_NEIGHBOR_CELL_MODE__LTE_CELL_MODE_WCDMA;
-            break;
-
-        default:
-            ret = INTERFACES__LTE_INFO__LTE_NEIGHBOR_CELL_MODE__LTE_CELL_MODE_UNSPECIFIED;
-            break;
-    }
-
-    return ret;
-}
-
 
 /**
  * brief map a neighbor frequency mode value to the corresponding message value
@@ -748,7 +644,7 @@ lte_info_set_pb_neighbor(struct lte_net_neighbor_cell_info *neighbor)
     interfaces__lte_info__lte_net_neighbor_cell_info__init(pb);
 
     /* Set the message fieldss */
-    pb->mode = lte_info_set_neighbor_mode(neighbor->mode);
+    pb->mode = (Interfaces__LteInfo__LteCellMode)neighbor->mode;
     pb->freq_mode = lte_info_set_neighbor_freq_mode(neighbor->freq_mode);
     pb->earfcn = neighbor->earfcn;
     pb->uarfcn = neighbor->uarfcn;
@@ -756,7 +652,7 @@ lte_info_set_pb_neighbor(struct lte_net_neighbor_cell_info *neighbor)
     pb->rsrp = neighbor->rsrp;
     pb->rssi = neighbor->rssi;
     pb->sinr = neighbor->sinr;
-    pb->srxlev_base_station = neighbor->srxlev_base_station;
+    pb->srxlev = neighbor->srxlev;
     pb->cell_resel_priority = neighbor->cell_resel_priority;
     pb->s_non_intra_search = neighbor->s_non_intra_search;
     pb->thresh_serving_low = neighbor->thresh_serving_low;
@@ -766,10 +662,10 @@ lte_info_set_pb_neighbor(struct lte_net_neighbor_cell_info *neighbor)
     pb->psc = neighbor->psc;
     pb->rscp = neighbor->rscp;
     pb->ecno = neighbor->ecno;
-    pb->set = neighbor->set;
+    pb->cell_set = (Interfaces__LteInfo__LteNeighborCellSet)neighbor->cell_set;
     pb->rank = neighbor->rank;
     pb->cellid = neighbor->cellid;
-    pb->srxlev_inter_freq = neighbor->srxlev_inter_freq;
+    pb->inter_freq_srxlev = neighbor->inter_freq_srxlev;
 
     return pb;
 }
@@ -847,11 +743,14 @@ lte_info_free_pb_report(Interfaces__LteInfo__LteInfoReport *pb)
 {
     size_t i;
 
-    /* Fre the lte info */
-    lte_info_free_pb_lte_info(pb->lte_info);
+    /* Free the common header */
+    lte_info_free_pb_common_header(pb->header);
 
-    /* Free the signal quality info */
-    lte_info_free_pb_sig_qual(pb->lte_sig_qual);
+    /* Free the lte net info */
+    lte_info_free_pb_lte_net_info(pb->lte_net_info);
+
+    /* Free the lte data usage */
+    lte_info_free_pb_lte_data_usage(pb->lte_data_usage);
 
     /* Free the serving cell info */
     lte_info_free_pb_srv_cell(pb->lte_srv_cell);
@@ -866,7 +765,6 @@ lte_info_free_pb_report(Interfaces__LteInfo__LteInfoReport *pb)
     FREE(pb);
 }
 
-
 static Interfaces__LteInfo__LteInfoReport *
 lte_info_set_pb_report(struct lte_info_report *report)
 {
@@ -879,14 +777,14 @@ lte_info_set_pb_report(struct lte_info_report *report)
     /* Initialize the protobuf structure */
     interfaces__lte_info__lte_info_report__init(pb);
 
-    /* Add the interface name */
-    pb->if_name = report->if_name;
+    /* Add the common header */
+    pb->header = lte_info_set_pb_common_header(report);
 
-    /* Add the lte info */
-    pb->lte_info = lte_info_set_lte_info(report);
+    /* Add the lte net info */
+    pb->lte_net_info = lte_info_set_lte_net_info(report);
 
-    /* Add the signal quality info */
-    pb->lte_sig_qual = lte_info_set_pb_sig_qual(report);
+    /* Add the lte data usage */
+    pb->lte_data_usage = lte_info_set_lte_data_usage(report);
 
     /* Add the service cell info */
     pb->lte_srv_cell = lte_info_set_srv_cell(report);
@@ -940,7 +838,7 @@ serialize_lte_info(struct lte_info_report *report)
     if (len == 0) goto error;
 
     /* Allocate space for the serialized buffer */
-    buf = malloc(len);
+    buf = MALLOC(len);
     if (buf == NULL) goto error;
 
     serialized->len = interfaces__lte_info__lte_info_report__pack(pb, buf);

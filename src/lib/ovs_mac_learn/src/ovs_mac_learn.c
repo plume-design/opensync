@@ -39,6 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb_update.h"
 #include "ovsdb_sync.h"
 #include "ovs_mac_learn.h"
+#include "memutil.h"
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
@@ -181,7 +182,7 @@ bool ovsmac_init(void)
     brlist = target_ethclient_brlist_get();
     for (ii=0; brlist[ii]; ii++)
     {
-        bf = calloc(1, sizeof(struct bridge_flt_node));
+        bf = CALLOC(1, sizeof(struct bridge_flt_node));
         STRSCPY(bf->bridge, brlist[ii]);
         ds_tree_insert(&bridge_flt_list, bf, bf->bridge);
         LOG(INFO, "OVSMAC: * %s (bridge)", brlist[ii]);
@@ -190,7 +191,7 @@ bool ovsmac_init(void)
     iflist = target_ethclient_iflist_get();
     for (ii=0; iflist[ii]; ii++)
     {
-        iff = calloc(1, sizeof(struct iface_flt_node));
+        iff = CALLOC(1, sizeof(struct iface_flt_node));
         STRSCPY(iff->if_iface, iflist[ii]);
         ds_tree_insert(&iface_flt_list, iff, iff->if_iface);
         LOG(INFO, "OVSMAC: * %s (interface)", iflist[ii]);
@@ -422,12 +423,7 @@ void ovsmac_node_update(char *brname, char *ifname, int vlan, os_macaddr_t macad
     /* This is a new entry */
     if (on == NULL)
     {
-        on = calloc(1, sizeof(*on));
-        if (on == NULL)
-        {
-            LOG(ERR, "OVSMAC: Unable to create new OVSMAC entry. Out of memory.");
-            return;
-        }
+        on = CALLOC(1, sizeof(*on));
 
         /* Populate the new entry */
         key.vlan = vlan;
@@ -459,7 +455,7 @@ void ovsmac_node_flush(void)
             ds_tree_iremove(&iter);
             /* Remove FROM OVSDB */
             g_mac_learning_cb_t(&(on->mac), false);
-            free(on);
+            FREE(on);
         }
     }
 }
@@ -528,12 +524,7 @@ void bridge_mon_fn(ovsdb_update_monitor_t *self)
     {
         case OVSDB_UPDATE_NEW:
             /* Bridge was added */
-            bn = calloc(1, sizeof(struct bridge_node));
-            if (bn == NULL)
-            {
-                LOG(ERR, "OVSMAC: Error allocating bridge_node structure.");
-                return;
-            }
+            bn = CALLOC(1, sizeof(struct bridge_node));
 
             if (!schema_Bridge_from_json(
                     &btmp,
@@ -542,7 +533,7 @@ void bridge_mon_fn(ovsdb_update_monitor_t *self)
                     pjerr))
             {
                 LOG(ERR, "OVSMAC: Error parsing new bridge entry: %s", pjerr);
-                free(bn);
+                FREE(bn);
                 return;
             }
 
@@ -593,7 +584,7 @@ void bridge_mon_fn(ovsdb_update_monitor_t *self)
             LOG(DEBUG, "OVSMAC: Deleted bridge interface: %s", bn->br_bridge.name);
 
             ds_tree_remove(&bridge_list, bn);
-            free(bn);
+            FREE(bn);
 
             break;
 
@@ -647,12 +638,7 @@ void port_mon_fn(ovsdb_update_monitor_t *self)
     switch (self->mon_type)
     {
         case OVSDB_UPDATE_NEW:
-            pr = calloc(1, sizeof(*pr));
-            if (pr == NULL)
-            {
-                LOG(ERR, "OVSMAC: Error allocating port_node structure.");
-                return;
-            }
+            pr = CALLOC(1, sizeof(*pr));
 
             if (!schema_Port_from_json(
                     &prtmp,
@@ -660,7 +646,7 @@ void port_mon_fn(ovsdb_update_monitor_t *self)
                     false,
                     pjerr))
             {
-                free(pr);
+                FREE(pr);
                 LOG(ERR, "OVSMAC: Error parsing new port entry: %s", pjerr);
                 return;
             }
@@ -714,7 +700,7 @@ void port_mon_fn(ovsdb_update_monitor_t *self)
 
             ds_tree_remove(&port_list, pr);
 
-            free(pr);
+            FREE(pr);
 
             break;
 
@@ -748,12 +734,7 @@ void iface_mon_fn(ovsdb_update_monitor_t *self)
     switch (self->mon_type)
     {
         case OVSDB_UPDATE_NEW:
-            ifn = calloc(1, sizeof(*ifn));
-            if (ifn == NULL)
-            {
-                LOG(ERR, "OVSMAC: Error allocating iface_node structure.");
-                return;
-            }
+            ifn = CALLOC(1, sizeof(*ifn));
 
             if (!schema_Interface_from_json(
                     &iftmp,
@@ -812,7 +793,7 @@ void iface_mon_fn(ovsdb_update_monitor_t *self)
             LOG(DEBUG, "OVSMAC: Deleted interface: %s", ifn->if_iface.name);
 
             ds_tree_remove(&iface_list, ifn);
-            free(ifn);
+            FREE(ifn);
 
             break;
 

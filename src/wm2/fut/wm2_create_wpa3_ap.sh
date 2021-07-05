@@ -26,10 +26,12 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="wm2/$(basename "$0")"
 manager_setup_file="wm2/wm2_setup.sh"
@@ -59,18 +61,31 @@ Script usage example:
    ./${tc_name} 2 wl1 fut-wpa3-ssid enabled '["map",[["key-0","fut-wpa3-psk"]]]' '["map",[["key-0","home--1"]]]' 1 HT20 11ax wl1.2
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
+
 NARGS=10
 [ $# -ne ${NARGS} ] && usage && raise "Requires exactly '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+vif_radio_idx=${1}
+radio_if_name=${2}
+ssid=${3}
+ssid_broadcast=${4}
+wpa_psks=${5}
+wpa_oftags=${6}
+channel=${7}
+ht_mode=${8}
+hw_mode=${9}
+vif_if_name=${10}
+
 trap '
     fut_info_dump_line
     print_tables Wifi_Radio_Config Wifi_Radio_State
@@ -79,18 +94,7 @@ trap '
     run_setup_if_crashed wm || true
 ' EXIT SIGINT SIGTERM
 
-vif_radio_idx=$1
-radio_if_name=$2
-ssid=$3
-ssid_broadcast=$4
-wpa_psks=$5
-wpa_oftags=$6
-channel=$7
-ht_mode=$8
-hw_mode=$9
-vif_if_name=$10
-
-log_title "$tc_name: WM2 test - Testing WPA3 AP creation"
+log_title "$tc_name: WM2 test - Testing WPA3 AP creation - interface $radio_if_name - channel $channel"
 
 log "$tc_name: Cleaning VIF_Config"
 vif_clean
@@ -112,7 +116,7 @@ create_radio_vif_interface \
     -enabled "true" \
     -ht_mode "$ht_mode" \
     -channel_mode "manual" &&
-log "$tc_name: create_radio_vif_interface - Success" ||    
-raise "create_radio_vif_interface - Failed" -l "$tc_name" -tc
+        log "$tc_name: create_radio_vif_interface - Interface $radio_if_name created - Success" ||
+        raise "FAIL: create_radio_vif_interface - Interface $radio_if_name not created" -l "$tc_name" -tc
 
 pass

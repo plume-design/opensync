@@ -37,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_time.h"
 #include "dppline.h"
 #include "util.h"
+#include "memutil.h"
 
 #define FIX_SIZE
 
@@ -319,11 +320,7 @@ void getSurveyReport(dpp_survey_report_data_t *r, radio_type_t radio_type, radio
         } else {
             dpp_survey_record_avg_t        *sr;
 
-            sr= calloc(1, sizeof(*sr));
-            if (NULL == sr) {
-                return;
-            }
-
+            sr= CALLOC(1, sizeof(*sr));
             sr->info.chan = ((RADIO_TYPE_2G == radio_type) ? 1 : 36);
             if (s_type == RADIO_SCAN_TYPE_OFFCHAN) sr->info.chan += i;
 
@@ -543,7 +540,7 @@ void getRssiReport(dpp_rssi_report_data_t *r, radio_type_t radio_type)
             dpp_rssi_raw_t *raw;
             for (j = 0; j < 4; j++)
             {
-                raw = calloc(1, sizeof(*raw));
+                raw = CALLOC(1, sizeof(*raw));
 
                 raw->rssi = 50 - rand() % 30;
                 raw->timestamp_ms = r->timestamp_ms + (10 * (3 - i));

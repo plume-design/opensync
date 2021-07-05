@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * ===========================================================================
  */
 #include "log.h"
+#include "memutil.h"
 
 #include "odhcp6_client.h"
 
@@ -44,7 +45,7 @@ static odhcp6_client_status_fn_t osn_dhcpv6_client_status_odhcp6;
 
 osn_dhcpv6_client_t *osn_dhcpv6_client_new(const char *ifname)
 {
-    osn_dhcpv6_client_t *self = calloc(1, sizeof(*self));
+    osn_dhcpv6_client_t *self = CALLOC(1, sizeof(*self));
 
     if (!odhcp6_client_init(&self->dc_odhcp6, ifname))
     {
@@ -55,7 +56,7 @@ osn_dhcpv6_client_t *osn_dhcpv6_client_new(const char *ifname)
     return self;
 
 error:
-    if (self != NULL) free(self);
+    if (self != NULL) FREE(self);
     return NULL;
 }
 
@@ -70,7 +71,7 @@ bool osn_dhcpv6_client_del(osn_dhcpv6_client_t *self)
         retval = false;
     }
 
-    free(self);
+    FREE(self);
 
     return retval;
 }

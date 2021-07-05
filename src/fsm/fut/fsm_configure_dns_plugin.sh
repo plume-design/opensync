@@ -26,11 +26,13 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/fsm_lib.sh"
 source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="fsm/$(basename "$0")"
 manager_setup_file="fsm/fsm_setup.sh"
@@ -38,8 +40,8 @@ create_rad_vif_if_file="tools/device/create_radio_vif_interface.sh"
 create_inet_file="tools/device/create_inet_interface.sh"
 add_bridge_port_file="tools/device/add_bridge_port.sh"
 configure_lan_bridge_for_wan_connectivity_file="tools/device/configure_lan_bridge_for_wan_connectivity.sh"
-client_connect_file="tools/rpi/connect_to_wpa2.sh"
-fsm_test_dns_file="tools/rpi/fsm/fsm_test_dns_plugin.sh"
+client_connect_file="tools/client/rpi/connect_to_wpa2.sh"
+fsm_test_dns_file="tools/client/rpi/fsm/fsm_test_dns_plugin.sh"
 # Default of_port must be unique between fsm tests for valid testing
 of_port_default=30003
 in_port_default=40001
@@ -73,25 +75,26 @@ Testcase procedure:
                 Run: ./${create_inet_file} (see ${create_inet_file} -h)
             Configure FSM for DNS plugin test
                 Run: ./${tc_name} <LAN-BRIDGE-IF> <FSM-URL-BLOCK> <FSM-URL-REDIRECT>
-   - On RPI Client:
+   - On Client:
                  Run: /.${client_connect_file} (see ${client_connect_file} -h)
                  Run: /.${fsm_test_dns_file} (see ${fsm_test_dns_file} -h)
 Script usage example:
-    ./${tc_name} br-home google.com 1.2.3.4 /usr/plume/opensync/libfsm_dns.so /usr/opensync/lib/libfsm_wcnull.so
-    ./${tc_name} br-home playboy.com 4.5.6.7 /usr/plume/plume/libfsm_dns.so /usr/plume/lib/libfsm_wcnull.so 3002
-    ./${tc_name} br-home playboy.com 4.5.6.7 /usr/plume/plume/libfsm_dns.so /usr/plume/lib/libfsm_wcnull.so 3002 406
+    ./${tc_name} br-home google.com 1.2.3.4 /usr/opensync/lib/libfsm_dns.so /usr/opensync/lib/libfsm_wcnull.so
+    ./${tc_name} br-home playboy.com 4.5.6.7 /usr/opensync/lib/libfsm_dns.so /usr/opensync/lib/libfsm_wcnull.so 3002
+    ./${tc_name} br-home playboy.com 4.5.6.7 /usr/opensync/lib/libfsm_dns.so /usr/opensync/lib/libfsm_wcnull.so 3002 406
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-    h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+    help | \
+    --help | \
+    -h)
         usage && exit 1
         ;;
     *)
-        echo "Unknown argument" && exit 1
         ;;
     esac
-done
+fi
 
 trap '
 fut_info_dump_line
@@ -114,7 +117,7 @@ in_port=${7:-${in_port_default}}
 
 client_mac=$(get_ovsdb_entry_value Wifi_Associated_Clients mac)
 if [ -z "${client_mac}" ]; then
-    raise "Could not acquire Client mac address from Wifi_Associated_Clients, is client connected?" -l "${tc_name}"
+    raise "FAIL: Could not acquire Client MAC address from Wifi_Associated_Clients, is client connected?" -l "${tc_name}"
 fi
 # Use first MAC from Wifi_Associated_Clients
 client_mac="${client_mac%%,*}"
@@ -135,8 +138,8 @@ create_inet_entry \
     -dhcp_sniff "false" \
     -network true \
     -enabled true &&
-        log -deb "$tc_name: Interface ${tap_tdns_if} successfully created" ||
-        raise "Failed to create interface ${tap_tdns_if}" -l "$tc_name" -ds
+        log "$tc_name: Interface ${tap_tdns_if} created - Success" ||
+        raise "FAIL: Failed to create interface ${tap_tdns_if}" -l "$tc_name" -ds
 
 add_bridge_port "${lan_bridge_if}" "${tap_tx_if}"
 set_ovs_vsctl_interface_option "${tap_tx_if}" "type" "internal"
@@ -149,8 +152,8 @@ create_inet_entry \
     -dhcp_sniff "false" \
     -network true \
     -enabled true &&
-        log -deb "$tc_name: Interface ${tap_tx_if} successfully created" ||
-        raise "Failed to create interface ${tap_tx_if}" -l "$tc_name" -ds
+        log "$tc_name: Interface ${tap_tx_if} created - Success" ||
+        raise "FAIL: Failed to create interface ${tap_tx_if}" -l "$tc_name" -ds
 
 log "$tc_name: Cleaning FSM OVSDB Config tables"
 empty_ovsdb_table Openflow_Config
@@ -165,8 +168,8 @@ insert_ovsdb_entry Openflow_Config \
     -i priority 200 \
     -i bridge "${lan_bridge_if}" \
     -i action "normal,output:${of_port}" &&
-        log "$tc_name: Inserting ingress rule" ||
-        raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "$tc_name: Ingress rule inserted - Success" ||
+        raise "FAIL: Failed to insert_ovsdb_entry" -l "$tc_name" -oe
 
 insert_ovsdb_entry Openflow_Config \
     -i token "dev_flow_dns_res" \
@@ -175,8 +178,8 @@ insert_ovsdb_entry Openflow_Config \
     -i priority 200 \
     -i bridge "${lan_bridge_if}" \
     -i action "output:${of_port}" &&
-        log "$tc_name: Inserting ingress rule" ||
-        raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "$tc_name: Ingress rule inserted - Success" ||
+        raise "FAIL: Failed to insert_ovsdb_entry" -l "$tc_name" -oe
 
 insert_ovsdb_entry Openflow_Config \
     -i action "normal" \
@@ -185,16 +188,16 @@ insert_ovsdb_entry Openflow_Config \
     -i rule "in_port=${in_port}" \
     -i table 0 \
     -i token "dev_flow_dns_tx" &&
-        log "$tc_name: Inserting ingress rule" ||
-        raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "$tc_name: Ingress rule inserted - Success" ||
+        raise "FAIL: Failed to insert_ovsdb_entry" -l "$tc_name" -oe
 
 insert_ovsdb_entry Flow_Service_Manager_Config \
     -i handler dev_wc_null \
     -i plugin "${wc_plugin}" \
     -i type web_cat_provider \
     -i other_config '["map",[["dso_init","fsm_wc_null_plugin_init"]]]' &&
-        log "$tc_name: Inserting ingress rule" ||
-        raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "$tc_name: Ingress rule inserted - Success" ||
+        raise "FAIL: Failed to insert_ovsdb_entry" -l "$tc_name" -oe
 
 ${OVSH} i Flow_Service_Manager_Config \
     if_name:="${tap_tdns_if}" \
@@ -203,8 +206,8 @@ ${OVSH} i Flow_Service_Manager_Config \
     handler:=dev_dns \
     type:=parser \
     plugin:="${fsm_plugin}" &&
-        log "$tc_name: Flow_Service_Manager_Config entry added" ||
-        raise "Failed to insert Flow_Service_Manager_Config entry" -l "$tc_name" -oe
+        log "$tc_name: Flow_Service_Manager_Config entry added - Success" ||
+        raise "FAIL: Failed to insert Flow_Service_Manager_Config entry" -l "$tc_name" -oe
 
 insert_ovsdb_entry FSM_Policy \
     -i policy dev_dns_policy \
@@ -215,5 +218,5 @@ insert_ovsdb_entry FSM_Policy \
     -i redirect "A-${fsm_url_redirect}" \
     -i fqdns "${fsm_url_block}" \
     -i fqdn_op sfr_in &&
-        log "$tc_name: Inserting ingress rule" ||
-        raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "$tc_name: Ingress rule inserted - Success" ||
+        raise "FAIL: Failed to insert_ovsdb_entry" -l "$tc_name" -oe

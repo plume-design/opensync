@@ -43,6 +43,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb_sync.h"
 #include "os_util.h"
 #include "util.h"
+#include "memutil.h"
 
 #include "target.h"
 #include "pasync.h"
@@ -391,7 +392,7 @@ st_end:
     dm_st_in_progress_set(false);
 
     /* free pasync user data context: */
-    free(st_ctx);
+    FREE(st_ctx);
 }
 
 static void iperf_on_timeout(struct ev_loop *loop, ev_timer *watcher, int revent)
@@ -539,7 +540,7 @@ bool iperf_run_speedtest(struct schema_Wifi_Speedtest_Config *st_config)
     }
 
     /* Speedtest context: must be freed in pasync (on_st_completed_cb) callback. */
-    st_ctx = calloc(1, sizeof(*st_ctx));
+    st_ctx = CALLOC(1, sizeof(*st_ctx));
     st_ctx->st_config = *st_config;
     st_ctx->run_cnt_max = RUN_CNT_MAX;
 
@@ -557,7 +558,7 @@ bool iperf_run_speedtest(struct schema_Wifi_Speedtest_Config *st_config)
 
     if (!iperf_run_async(st_ctx, reverse_mode))
     {
-        free(st_ctx);
+        FREE(st_ctx);
         return false;
     }
 

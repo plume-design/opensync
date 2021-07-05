@@ -619,3 +619,51 @@ $(TESTBINDIR)/clean:
 unit-all: workdirs $(UNIT_ALL)
 unit-install: $(UNIT_ALL_INSTALL)
 unit-clean: $(UNIT_ALL_CLEAN) $(TESTBINDIR)/clean
+
+##########################################################
+# Targets to allow for code coverage calculation
+##########################################################
+
+# Simply running the UT doesn't require a specific compiler.
+# All unset options are properly ignored.
+# Note: if make is interrupted, FAILURE.log will not be deleted.
+unit-run: unit-all
+	$(Q)UNIT_TESTS=`find ${TESTBINDIR} -name unit`; \
+	export ASAN_SYMBOLIZER_PATH=${ASAN_SYMBOLIZER_PATH}; \
+	export ASAN_OPTIONS=${ASAN_OPTIONS}; \
+	for unit in $$UNIT_TESTS; do \
+	    LLVM_PROFILE_FILE="$$unit.profraw" LD_LIBRARY_PATH=${LIBDIR} $$unit; \
+	    ERR_CODE=$$?; \
+	    if [ $$ERR_CODE != 0 ]; then \
+	        echo $$unit FAILED $$ERR_CODE >> FAILURE.log; \
+	    fi \
+	done
+	$(Q)if [ -f FAILURE.log ]; then cat FAILURE.log; $(RM) FAILURE.log; exit 1; fi
+
+unit-coverage-prerequisite:
+	$(Q)if [ -z "${CLANG_VERSION}" ]; then \
+	    echo ; \
+	    echo "$(call COLOR_RED,ERROR: CC=clang-<version> is required)"; \
+	    echo "  Command line should look like:"; \
+	    echo "$(call COLOR_BOLD,       CC=clang-6.0 make TARGET=native unit-coverage)"; \
+	    echo ; \
+	    exit 1; \
+	fi
+	$(Q)llvm-profdata${CLANG_VERSION} show -help > /dev/null; \
+	if [ ! $$? -eq 0 ]; then \
+	    echo ; \
+	    echo "$(call COLOR_RED,ERROR: Missing llvm-profdata${CLANG_VERSION} for CLANG)"; \
+	    echo ; \
+ 	    exit 1; \
+	fi
+
+unit-coverage: CFLAGS += -fprofile-instr-generate -fcoverage-mapping
+unit-coverage: LDFLAGS += -fprofile-instr-generate -fcoverage-mapping
+unit-coverage: unit-coverage-prerequisite unit-run 
+	$(Q)llvm-profdata${CLANG_VERSION} merge -sparse ${TESTBINDIR}/*/*profraw -o ${TESTBINDIR}/all.profdata
+	$(Q)SRC_FILES=`find ./src \( -not -path "*/ut/*" -and -name "*.[ch]" -and -not -name "*pb-c*" \) | sort`; \
+	UNIT_TESTS=`find ${TESTBINDIR} -name unit`; \
+	BIN_UT=`echo $$UNIT_TESTS | tr ' ' ','`; \
+	FIRST_BIN=`echo $$UNIT_TESTS | sed 's/ .*//'`; \
+	llvm-cov${CLANG_VERSION} show -instr-profile=${TESTBINDIR}/all.profdata $$FIRST_BIN -object $$BIN_UT -format=html -use-color -output-dir=${TESTBINDIR} $$SRC_FILES
+	$(NQ) "\n       Visualize report by opening :  $(call COLOR_BOLD,file://$$PWD/${TESTBINDIR}/index.html)"

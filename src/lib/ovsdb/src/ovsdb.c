@@ -42,6 +42,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_socket.h"
 #include "ovsdb.h"
 #include "json_util.h"
+#include "memutil.h"
 
 /*****************************************************************************/
 
@@ -110,11 +111,7 @@ static void cb_ovsdb_read(struct ev_loop *loop, struct ev_io *watcher, int reven
     // resize buffer if neccesary
     if (!ovs_buffer || (free_size < CHUNK_SIZE && ovs_buffer_size < MAX_BUFFER_SIZE)) {
         new_size = ovs_buffer_size + CHUNK_SIZE;
-        new_buf = realloc(ovs_buffer, new_size);
-        if (!new_buf) {
-            LOG(ERR,"cb_ovsdb_read: realloc(%p, %d -> %d)", ovs_buffer, (int)ovs_buffer_size, (int)new_size);
-            goto error;
-        }
+        new_buf = REALLOC(ovs_buffer, new_size);
         if (ovs_buffer_size > 0) {
             // only log trace when increasing size, skip initial allocs
             LOG(TRACE,"cb_ovsdb_read: realloc(%p, %d -> %d) = %p",
@@ -164,7 +161,7 @@ static void cb_ovsdb_read(struct ev_loop *loop, struct ev_io *watcher, int reven
     // free buffer if the contents were fully consumed
     used_size = strlen(ovs_buffer);
     if (used_size == 0) {
-        free(ovs_buffer);
+        FREE(ovs_buffer);
         ovs_buffer_size = 0;
         ovs_buffer = NULL;
     }
@@ -174,7 +171,7 @@ error:
     /*
      * Restart the connection and clear the buffer on errors
      */
-    free(ovs_buffer);
+    FREE(ovs_buffer);
     ovs_buffer = NULL;
     ovs_buffer_size = 0;
 
@@ -375,13 +372,7 @@ int ovsdb_register_update_cb(ovsdb_update_process_t *fn, void *data)
 {
     struct rpc_update_handler *rh;
 
-    rh = malloc(sizeof(struct rpc_update_handler));
-
-    if (rh == NULL)
-    {
-        LOG(ERR, "JSON RPC: Unable to allocate update handler!");
-        return -1;
-    }
+    rh = MALLOC(sizeof(struct rpc_update_handler));
 
     ++json_update_monitor_id;
 
@@ -458,7 +449,7 @@ bool ovsdb_rpc_callback(int id, bool is_error, json_t *jsmsg)
 
     /* Remove callback from the tree */
     ds_tree_remove(&json_rpc_handler_list, rh);
-    free(rh);
+    FREE(rh);
 
     return true;
 }

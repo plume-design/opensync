@@ -39,6 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "osa_assert.h"
 #include "osn_types.h"
 #include "util.h"
+#include "memutil.h"
 
 #include "lnx_pppoe.h"
 #include "lnx_netlink.h"
@@ -240,8 +241,7 @@ bool lnx_pppoe_secret_set(lnx_pppoe_t *self, const char *username, const char *p
     ps = ds_tree_find(&lnx_pppoe_secrets, self->lp_ifname);
     if (ps == NULL)
     {
-        ps = calloc(1, sizeof(struct lnx_pppoe_secret));
-        ASSERT(ps != NULL, "pppoe: Error allocating PPPoE secret.")
+        ps = CALLOC(1, sizeof(struct lnx_pppoe_secret));
         ps->ps_remote = self->lp_ifname;
         ds_tree_insert(&lnx_pppoe_secrets, ps, ps->ps_remote);
     }
@@ -285,7 +285,7 @@ void lnx_pppoe_secret_del(lnx_pppoe_t *self)
 
     ds_tree_remove(&lnx_pppoe_secrets, ps);
     memset(ps, 0x0, sizeof(*ps));
-    free(ps);
+    FREE(ps);
     lnx_pppoe_secret_update();
 }
 

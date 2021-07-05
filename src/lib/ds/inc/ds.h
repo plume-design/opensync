@@ -54,8 +54,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define TYPE_CHECK(a, type, member) \
     (true ? a : &((type *)NULL)->member)
 
+#ifndef CONTAINER_OF
 #define CONTAINER_OF(ptr, type, member) \
     ((type *)((uintptr_t)TYPE_CHECK(ptr, type, member) - offsetof(type, member)))
+#endif 
 
 /** Calculate container address from node */
 #define NODE_TO_CONT(node, offset)    ( (node) == NULL ? NULL : (void *)((char *)(node) - (offset)) )

@@ -101,7 +101,7 @@ test_linked_list_operations(void)
 
     struct schema_Openflow_Config conf = {
             .table = 0,
-            .bridge = "br-home",
+            .bridge = CONFIG_TARGET_LAN_BRIDGE_NAME,
             .priority = 100,
             .action = "normal",
             .token = "12345",
@@ -110,7 +110,7 @@ test_linked_list_operations(void)
     
     struct schema_Openflow_Config second = {
             .table = 0,
-            .bridge = "br-home",
+            .bridge = CONFIG_TARGET_LAN_BRIDGE_NAME,
             .priority = 100,
             .action = "normal",
             .token = "45678",
@@ -139,7 +139,7 @@ test_generate_port_range_rules(void)
 
     struct schema_Openflow_Config conf = {
             .table = 0,
-            .bridge = "br-home",
+            .bridge = CONFIG_TARGET_LAN_BRIDGE_NAME,
             .priority = 100,
             .action = "normal",
             .token = "12345",
@@ -171,7 +171,7 @@ test_generate_ipv4_range_rules(void)
 
     struct schema_Openflow_Config conf = {
             .table = 0,
-            .bridge = "br-home",
+            .bridge = CONFIG_TARGET_LAN_BRIDGE_NAME,
             .priority = 100,
             .action = "normal",
             .token = "12345",
@@ -213,7 +213,7 @@ test_generate_ipv6_range_rules(void)
 
     struct schema_Openflow_Config conf = {
             .table = 0,
-            .bridge = "br-home",
+            .bridge = CONFIG_TARGET_LAN_BRIDGE_NAME,
             .priority = 100,
             .action = "normal",
             .token = "12345",

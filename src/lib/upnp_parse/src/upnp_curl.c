@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "json_mqtt.h"
 #include "upnp_parse.h"
+#include "memutil.h"
 
 static struct upnp_curl conn_mgr;
 
@@ -233,13 +234,13 @@ upnp_free_conn(struct conn_info *conn)
     struct upnp_curl *mgr = get_curl_mgr();
     struct upnp_curl_buffer *data = &conn->data;
 
-    free(data->buf);
+    FREE(data->buf);
     if (conn->easy)
     {
         curl_multi_remove_handle(mgr->multi, conn->easy);
         curl_easy_cleanup(conn->easy);
     }
-    free(conn);
+    FREE(conn);
 }
 
 void
@@ -317,7 +318,7 @@ remsock(struct sock_info *f, struct upnp_curl *mgr)
 
     if (f->evset) ev_io_stop(mgr->loop, &f->ev);
 
-    free(f);
+    FREE(f);
 }
 
 
@@ -344,7 +345,7 @@ void
 addsock(curl_socket_t s, CURL *easy, int action,
         struct upnp_curl *mgr)
 {
-    struct sock_info *fdp = calloc(sizeof(struct sock_info), 1);
+    struct sock_info *fdp = CALLOC(sizeof(struct sock_info), 1);
 
     fdp->global = mgr;
     setsock(fdp, s, easy, action, mgr);
@@ -379,8 +380,7 @@ size_t write_cb(void *ptr, size_t size, size_t nmemb, void *data)
     upnp_data = &conn->data;
     if (upnp_data->buf == NULL) goto out;
 
-    upnp_data->buf = realloc(upnp_data->buf, upnp_data->size + realsize + 1);
-    if (upnp_data->buf == NULL) goto out;
+    upnp_data->buf = REALLOC(upnp_data->buf, upnp_data->size + realsize + 1);
 
     memcpy(&upnp_data->buf[upnp_data->size], ptr, realsize);
     upnp_data->size += realsize;
@@ -398,12 +398,9 @@ new_conn(struct upnp_device_url *url)
     struct conn_info *conn;
     CURLMcode rc;
 
-    conn = calloc(1, sizeof(struct conn_info));
-    if (conn == NULL) return;
+    conn = CALLOC(1, sizeof(struct conn_info));
 
-    conn->data.buf = malloc(1);
-    if (conn->data.buf == NULL) goto err_free_conn;
-
+    conn->data.buf = MALLOC(1);
     conn->data.size = 0;
     conn->error[0]='\0';
     conn->easy = curl_easy_init();

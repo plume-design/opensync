@@ -28,7 +28,10 @@ UNIT_NAME := test_gatekeeper_cache
 
 UNIT_TYPE := TEST_BIN
 
-UNIT_SRC := test_gatekeeper_cache.c
+UNIT_SRC := test_gatekeeper_cache_main.c
+UNIT_SRC += test_gatekeeper_cache.c
+UNIT_SRC += test_gatekeeper_cache_flush.c
+UNIT_SRC += test_gatekeeper_cache_cmp.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/../inc
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
@@ -44,3 +47,11 @@ UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/unity
 UNIT_DEPS += src/lib/gatekeeper_cache
 UNIT_DEPS += src/lib/fsm_policy
+UNIT_DEPS += src/lib/network_metadata
+
+# Ensure the required file is copied in its correct location
+$(UNIT_BUILD)/.target: /tmp/genmac.txt
+/tmp/genmac.txt: $(UNIT_PATH)/genmac.txt FORCE_GENMACK
+	${NQ} " $(call color_copy,copy)    [$(call COLOR_BOLD,genmac.txt)] -> $@"
+	${Q} cp $< $@
+FORCE_GENMACK:

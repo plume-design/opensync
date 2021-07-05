@@ -57,10 +57,10 @@ typedef char radio_essid_t[RADIO_ESSID_LEN + 1];
 #define RADIO_NAME_LEN                  32
 
 
-#define RADIO_MAX_CHANNELS              32+1 // only till 165 !!!
+#define RADIO_MAX_CHANNELS              64
 
 #define radio_get_chan_index(type, chan) \
-    ((RADIO_TYPE_2G == type) ? (chan - 1) : ((chan - 36)/4))
+    ((RADIO_TYPE_2G == type) ? (chan - 1) : ((RADIO_TYPE_5G == type) ? ((chan - 36)/4) : (chan/4) ))
 
 typedef struct
 {
@@ -142,13 +142,15 @@ typedef enum
     RADIO_TYPE_2G,
     RADIO_TYPE_5G,
     RADIO_TYPE_5GL,
-    RADIO_TYPE_5GU
+    RADIO_TYPE_5GU,
+    RADIO_TYPE_6G
 } radio_type_t;
 
 #define RADIO_TYPE_STR_2G       SCHEMA_CONSTS_RADIO_TYPE_STR_2G
 #define RADIO_TYPE_STR_5G       SCHEMA_CONSTS_RADIO_TYPE_STR_5G
 #define RADIO_TYPE_STR_5GL      SCHEMA_CONSTS_RADIO_TYPE_STR_5GL
 #define RADIO_TYPE_STR_5GU      SCHEMA_CONSTS_RADIO_TYPE_STR_5GU
+#define RADIO_TYPE_STR_6G       SCHEMA_CONSTS_RADIO_TYPE_STR_6G
 
 typedef enum
 {
@@ -237,6 +239,9 @@ static inline char * radio_get_name_from_type(
         case RADIO_TYPE_5GU:
             return RADIO_TYPE_STR_5GU;
             break;
+        case RADIO_TYPE_6G:
+            return RADIO_TYPE_STR_6G;
+            break;
         default:
             break;
     }
@@ -284,6 +289,10 @@ static inline radio_type_t  radio_get_type_from_name(
         return RADIO_TYPE_5GU;
     }
 
+    if (!strcmp(radio_name, RADIO_TYPE_STR_6G)) {
+        return RADIO_TYPE_6G;
+    }
+
     return RADIO_TYPE_NONE;
 }
 
@@ -308,6 +317,10 @@ static inline radio_type_t  radio_get_type_from_str(
 
     if (strstr(radio_name, RADIO_TYPE_STR_5G)) {
         return RADIO_TYPE_5G;
+    }
+
+    if (strstr(radio_name, RADIO_TYPE_STR_6G)) {
+        return RADIO_TYPE_6G;
     }
 
     return RADIO_TYPE_NONE;

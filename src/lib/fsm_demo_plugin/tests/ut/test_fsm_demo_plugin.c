@@ -382,8 +382,7 @@ void test_process_msg(void)
     TEST_ASSERT_NOT_NULL(f_session);
 
     parser = &f_session->parser;
-    net_parser = calloc(1, sizeof(*net_parser));
-    TEST_ASSERT_NOT_NULL(net_parser);
+    net_parser = CALLOC(1, sizeof(*net_parser));
     parser->net_parser = net_parser;
     PREPARE_UT(pkt9568, net_parser);
     len = net_header_parse(net_parser);
@@ -393,7 +392,7 @@ void test_process_msg(void)
     fsm_demo_process_message(f_session);
     net_md_close_active_window(f_session->aggr);
     test_emit_report(session, f_session->aggr);
-    free(net_parser);
+    FREE(net_parser);
 }
 
 int main(int argc, char *argv[])

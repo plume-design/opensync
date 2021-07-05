@@ -39,6 +39,8 @@ UNIT_SRC += src/gatekeeper_cache_attr_del.c
 UNIT_SRC += src/gatekeeper_cache_flow_add.c
 UNIT_SRC += src/gatekeeper_cache_flow_lookup.c
 UNIT_SRC += src/gatekeeper_cache_flow_del.c
+UNIT_SRC += src/gatekeeper_cache_flush.c
+UNIT_SRC += src/gatekeeper_cache_cmp.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -I$(TOP_DIR)/src/lib/common/inc

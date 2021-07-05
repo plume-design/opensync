@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "execsh.h"
 #include "log.h"
 #include "util.h"
+#include "memutil.h"
 
 #include "osn_ipset.h"
 
@@ -52,7 +53,7 @@ osn_ipset_t* osn_ipset_new(
 
     osn_ipset_t *self;
 
-    self = calloc(1, sizeof(*self));
+    self = CALLOC(1, sizeof(*self));
     STRSCPY(self->ips_name, name);
 
     return self;
@@ -63,7 +64,7 @@ osn_ipset_t* osn_ipset_new(
  */
 void osn_ipset_del(osn_ipset_t *self)
 {
-    free(self);
+    FREE(self);
 }
 
 /**

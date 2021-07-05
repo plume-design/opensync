@@ -163,9 +163,9 @@ fsm_wc_null_report_cat(struct fsm_session *session,
  *
  */
 bool
-fsm_wc_null_cat_check(struct fsm_session *session,
-                      struct fsm_policy_req *req,
-                      struct fsm_policy *policy);
+fsm_wc_null_cat_check(struct fsm_policy_req *req,
+                      struct fsm_policy *policy,
+                      struct fsm_policy_reply *policy_reply);
 
 
 /**

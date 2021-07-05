@@ -27,6 +27,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb_table.h"
 #include "os_util.h"
 #include "reflink.h"
+#include "memutil.h"
 
 #include "nm2.h"
 
@@ -127,7 +128,7 @@ void nm2_dhcp_option_release(struct nm2_dhcp_option *dco)
 
     ds_tree_remove(&nm2_dhcp_option_list, dco);
 
-    free(dco);
+    FREE(dco);
 }
 
 /*
@@ -159,7 +160,7 @@ struct nm2_dhcp_option *nm2_dhcp_option_get(const ovs_uuid_t *uuid)
     if (dco == NULL)
     {
         /* Allocate a new dummy structure and insert it into the cache */
-        dco = calloc(1, sizeof(struct nm2_dhcp_option));
+        dco = CALLOC(1, sizeof(struct nm2_dhcp_option));
         dco->dco_uuid = *uuid;
 
         reflink_init(&dco->dco_reflink, "DHCP_Option");

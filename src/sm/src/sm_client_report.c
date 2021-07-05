@@ -38,6 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <limits.h>
 
 #include "sm.h"
+#include "memutil.h"
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
@@ -58,10 +59,8 @@ static inline sm_client_record_t * sm_client_record_alloc()
 {
     sm_client_record_t *record = NULL;
 
-    record = malloc(sizeof(sm_client_record_t));
-    if (record) {
-        memset(record, 0, sizeof(sm_client_record_t));
-    }
+    record = MALLOC(sizeof(sm_client_record_t));
+    memset(record, 0, sizeof(sm_client_record_t));
 
     return record;
 }
@@ -69,7 +68,7 @@ static inline sm_client_record_t * sm_client_record_alloc()
 static inline void sm_client_record_free(sm_client_record_t *record)
 {
     if (NULL != record) {
-        free(record);
+        FREE(record);
     }
 }
 
@@ -118,10 +117,8 @@ static inline sm_client_ctx_t * sm_client_ctx_alloc()
 {
     sm_client_ctx_t *client_ctx = NULL;
 
-    client_ctx = malloc(sizeof(sm_client_ctx_t));
-    if (client_ctx) {
-        memset(client_ctx, 0, sizeof(sm_client_ctx_t));
-    }
+    client_ctx = MALLOC(sizeof(sm_client_ctx_t));
+    memset(client_ctx, 0, sizeof(sm_client_ctx_t));
 
     return client_ctx;
 }
@@ -129,7 +126,7 @@ static inline sm_client_ctx_t * sm_client_ctx_alloc()
 static inline void sm_client_ctx_free(sm_client_ctx_t *client_ctx)
 {
     if (NULL != client_ctx) {
-        free(client_ctx);
+        FREE(client_ctx);
     }
 }
 

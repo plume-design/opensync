@@ -26,10 +26,12 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="nm2/$(basename "$0")"
 manager_setup_file="nm2/nm2_setup.sh"
@@ -53,16 +55,17 @@ Script usage example:
    ./${tc_name} wifi0 vif 1.2.3.4 4.5.6.7
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 
 NARGS=4
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
@@ -82,7 +85,7 @@ trap '
 
 log_title "${tc_name}: NM2 test - Testing table Wifi_Inet_Config field dns"
 
-log "${tc_name}: Creating Wifi_Inet_Config entries for $if_name"
+log "${tc_name}: Creating Wifi_Inet_Config entries for interface '$if_name'"
 create_inet_entry \
     -if_name "$if_name" \
     -enabled true \
@@ -91,21 +94,22 @@ create_inet_entry \
     -inet_addr 10.10.10.30 \
     -netmask "255.255.255.0" \
     -if_type "$if_type" &&
-        log "$tc_name: Interface successfully created" ||
-        raise "Failed to create interface" -l "$tc_name" -tc
+        log "$tc_name: Interface $if_name created - Success" ||
+        raise "FAIL: Failed to create $if_name interface" -l "$tc_name" -ds
 
-log "$tc_name: Setting DNS for $if_name to $primary_dns, $secondary_dns"
-configure_custom_dns_on_interface "$if_name" "$primary_dns" "$secondary_dns" ||
-    raise "Failed to set custom DNS - interface $if_name" -l "$tc_name" -tc
+log "$tc_name: Setting DNS for '$if_name' to $primary_dns, $secondary_dns"
+configure_custom_dns_on_interface "$if_name" "$primary_dns" "$secondary_dns" &&
+    log "$tc_name: Custom DNS set on interface '$if_name' - Success" ||
+    raise "FAIL: Failed to set custom DNS for interface '$if_name'" -l "$tc_name" -tc
 
-log "$tc_name: LEVEL 2 - Check if Primary DNS was properly applied to $if_name"
+log "$tc_name: Checking if primary DNS was properly applied to interface '$if_name' - LEVEL2"
 wait_for_function_response 0 "check_resolv_conf $primary_dns" &&
-    log "$tc_name: LEVEL2: Primary dns set on /etc/resolv.conf - interface $if_name" ||
-    raise "Primary DNS configuration NOT VALID - interface $if_name" -l "$tc_name" -tc
+    log "$tc_name: LEVEL2 - Primary DNS set in /tmp/resolv.conf - interface '$if_name' - Success" ||
+    raise "FAIL: LEVEL2 - Primary DNS configuration NOT valid - interface '$if_name'" -l "$tc_name" -tc
 
-log "$tc_name: LEVEL 2 - Check if Secondary DNS was properly applied to $if_name"
+log "$tc_name: Checking if secondary DNS was properly applied to interface '$if_name' - LEVEL2"
 wait_for_function_response 0 "check_resolv_conf $secondary_dns" &&
-    log "$tc_name: LEVEL2: Secondary dns set on /etc/resolv.conf - interface $if_name" ||
-    raise "Secondary DNS configuration NOT VALID - interface $if_name" -l "$tc_name" -tc
+    log "$tc_name: LEVEL2 - Secondary DNS set in /tmp/resolv.conf - interface '$if_name' - Success" ||
+    raise "FAIL: LEVEL2 - Secondary DNS configuration NOT valid - interface '$if_name'" -l "$tc_name" -tc
 
 pass

@@ -46,6 +46,8 @@ enum {
     FSM_FORWARD,
     FSM_UPDATE_TAG,
     FSM_GATEKEEPER_REQ,
+    FSM_FLUSH_CACHE,
+    FSM_FLUSH_ALL_CACHE,
     FSM_NUM_ACTIONS, /* always last */
 };
 
@@ -95,11 +97,19 @@ enum {
     FQDN_OP_SFR_OUT,
     FQDN_OP_SFL_OUT,
     FQDN_OP_WILD_OUT,
+    FQDN_OP_TRUE,
 };
 
 enum {
     CAT_OP_OUT = 0,
     CAT_OP_IN,
+    CAT_OP_TRUE,
+};
+
+enum {
+    APP_OP_OUT = 0,
+    APP_OP_IN,
+    APP_OP_TRUE,
 };
 
 enum {
@@ -109,17 +119,25 @@ enum {
     RISK_OP_LT,
     RISK_OP_GTE,
     RISK_OP_LTE,
+    RISK_OP_TRUE,
 };
 
 enum {
     IP_OP_OUT = 0,
     IP_OP_IN,
+    IP_OP_TRUE,
+};
+
+enum {
+    FSM_INLINE_REPLY = 0,
+    FSM_ASYNC_REPLY,
 };
 
 struct dns_device
 {
     os_macaddr_t device_mac;
     ds_tree_t fqdn_pending_reqs;
+    ds_tree_t dns_policy_replies_tree; /* stores the policy replies for dns request */
     ds_tree_node_t device_node;
 };
 
@@ -197,63 +215,40 @@ enum
 struct fsm_policy_req;
 struct fsm_policy;
 
+struct dns_response_s
+{
+    int num_replies;    /* number of dns replies */
+    int ipv4_cnt;       /* number of IPv4 resolved address */
+    int ipv6_cnt;       /* number of IPv6 resolved address */
+    char *ipv4_addrs[MAX_RESOLVED_ADDRS];   /* resolved IPv4 address */
+    char *ipv6_addrs[MAX_RESOLVED_ADDRS];   /* resolved IPv6 address */
+};
+
 struct fqdn_pending_req
 {
-    os_macaddr_t dev_id;
-    uint16_t req_id;                   // DNS message ID
-    int dedup;
-    int numq;                          // Number of questions in the request
-    uint8_t *dns_reply;                // reply messages
-    struct fsm_url_request *req_info;  // FQDN questions
-    struct fsm_session *fsm_context;
-    int categorized;
-    int cat_match;
-    int risk_level;
-    int action;
-    char *updatev4_tag;
-    char *updatev6_tag;
-    char *excluded_devices;
-    bool redirect;
-    int rd_ttl;
-    char *policy;
-    int policy_idx;
-    char *rule_name;
-    uint8_t *response;
-    int response_len;
-    int num_replies;
-    struct dns_device *dev_session;
-    time_t timestamp;
-    bool to_report;
-    bool fsm_checked;
-    char redirects[2][256];
-    void (*send_report)(struct fsm_session *, char *);
-    char *report;
-    int ipv4_cnt;
-    int ipv6_cnt;
-    char *ipv4_addrs[MAX_RESOLVED_ADDRS];
-    char *ipv6_addrs[MAX_RESOLVED_ADDRS];
-    struct policy_table *policy_table;
-    char *provider;
-    int req_type;
-    bool from_cache;
-    bool cat_unknown_to_service;
-    struct net_md_stats_accumulator *acc;
-    bool (*categories_check)(struct fsm_session *session,
-                             struct fsm_policy_req *req,
-                             struct fsm_policy *policy);
-    bool (*risk_level_check)(struct fsm_session *session,
-                             struct fsm_policy_req *req,
-                             struct fsm_policy *policy);
-    bool (*gatekeeper_req)(struct fsm_session *session,
-                           struct fsm_policy_req *req);
-    ds_tree_node_t req_node;           // DS tree node
+    os_macaddr_t dev_id;                  /* device mac address */
+    uint16_t req_id;                      /* DNS message ID  */
+    int dedup;                            /* duplicate dns request counter */
+    int numq;                             /* Number of questions in the request */
+    struct fsm_url_request *req_info;     /* FQDN questions */
+    struct fsm_session *fsm_context;      /* FSM session */
+    int rd_ttl;                           /* TTL */
+    uint8_t *dns_reply_pkt;               /* DNS reply packet */
+    int dns_reply_pkt_len;                /* DNS reply packet length */
+    struct dns_response_s dns_response;   /* DNS response */
+    struct dns_device *dev_session;       /* DNS session */
+    time_t timestamp;                     /* timestamp used for purging old requests */
+    struct net_md_stats_accumulator *acc; /* accumulator */
+    ds_tree_node_t req_node;              /* DS tree request node */
 };
 
 struct fsm_policy_reply
 {
+    int req_id;          /* request id, used for mapping request */
+    int req_type;        /* fsm request type, same as in policy request */
     int cat_match;       /* category match */
+    int reply_type;      /* is policy check processed using blocking or aysnc*/
     int action;          /* action to take */
-    bool redirect;       /* Redirect dns reply */
     int rd_ttl;          /* redirected response's ttl */
     int cache_ttl;       /* ttl value for cache */
     int categorized;     /* categorization status */
@@ -264,17 +259,41 @@ struct fsm_policy_reply
     char *updatev4_tag;  /* Tag to store ipv4 dns results with if any */
     char *updatev6_tag;  /* Tag to store ipv6 dns results with if any */
     char *excluded_devices; /* Tag containing list of excludede devices */
-};
+    bool redirect;       /* Redirect dns reply */
+    char redirects[2][256]; /* Redirect IP addresses, in case of redirect */
+    int risk_level;         /* Risk level determined by the security provider */
+    bool fsm_checked;       /* flag to indicate if fsm policy check is performed */
+    bool from_cache;        /* indicates if the reply was read from cache */
+    bool cat_unknown_to_service; /* category unknown to the provider */
+    struct policy_table *policy_table; /* policy table to check */
+    char *provider;         /* security provider */
+    bool to_report;         /* if report needs to sent */
+    void (*send_report)(struct fsm_session *, char *);
+    bool (*categories_check)(struct fsm_policy_req *req,
+                             struct fsm_policy *policy,
+                             struct fsm_policy_reply *policy_reply);
+    bool (*risk_level_check)(struct fsm_policy_req *req,
+                             struct fsm_policy *policy,
+                             struct fsm_policy_reply *policy_reply);
+    bool (*gatekeeper_req)(struct fsm_policy_req *req,
+                           struct fsm_policy_reply *policy_reply);
+    int (*policy_response)(struct fsm_policy_req *policy_request,
+                           struct fsm_policy_reply *policy_reply);
+    void (*gatekeeper_response)(struct fsm_policy_req *policy_request,
+                              struct fsm_policy_reply *policy_reply);
 
+    ds_tree_node_t reply_node;         // DS tree reply node
+};
 
 struct fsm_policy_req
 {
     os_macaddr_t *device_id;
+    struct fsm_session *session;
+    int req_type;
     char *url;
     struct sockaddr_storage *ip_addr;
     struct net_md_stats_accumulator *acc;
     struct fqdn_pending_req *fqdn_req;
-    struct fsm_policy_reply reply;
     struct fsm_policy *policy;
     char *rule_name;
     int action;
@@ -304,18 +323,26 @@ struct fsm_policy_rules
     bool mac_rule_present;
     int mac_op;
     struct str_set *macs;
+
     bool fqdn_rule_present;
     int fqdn_op;
     struct str_set *fqdns;
+
     bool cat_rule_present;
     int cat_op;
     struct int_set *categories;
+
     bool risk_rule_present;
     int risk_op;
     int risk_level;
+
     bool ip_rule_present;
     int ip_op;
     struct str_set *ipaddrs;
+
+    bool app_rule_present;
+    int app_op;
+    struct str_set *apps;
 };
 
 
@@ -385,6 +412,7 @@ struct fsm_policy_client
     struct policy_table *table;
     void (*update_client)(struct fsm_session *, struct policy_table *);
     char *(*session_name)(struct fsm_policy_client *);
+    int (*flush_cache)(struct fsm_session *, struct fsm_policy *);
     ds_tree_node_t client_node;
 };
 
@@ -393,6 +421,15 @@ struct fsm_policy_session
     bool initialized;
     ds_tree_t policy_tables;
     ds_tree_t clients;
+};
+
+struct fsm_request_args
+{
+    os_macaddr_t *device_id;
+    int request_type;
+    struct fsm_session *session;
+    struct fqdn_pending_req *fqdn_req;
+    struct net_md_stats_accumulator *acc;
 };
 
 void fsm_init_manager(void);
@@ -409,9 +446,11 @@ void fsm_delete_policy(struct schema_FSM_Policy *spolicy);
 void fsm_update_policy(struct schema_FSM_Policy *spolicy);
 void fsm_free_policy(struct fsm_policy *fpolicy);
 struct policy_table *fsm_policy_find_table(char *name);
-void fsm_apply_policies(struct fsm_session *session,
-                        struct fsm_policy_req *req);
-bool fsm_fqdncats_in_set(struct fsm_policy_req *req, struct fsm_policy *p);
+int fsm_apply_policies(struct fsm_policy_req *req,
+                        struct fsm_policy_reply *policy_reply);
+bool fsm_fqdncats_in_set(struct fsm_policy_req *req,
+                         struct fsm_policy *p,
+                         struct fsm_policy_reply *policy_reply);
 bool fsm_device_in_set(struct fsm_policy_req *req, struct fsm_policy *p);
 void fsm_policy_client_init(void);
 void fsm_policy_register_client(struct fsm_policy_client *client);
@@ -421,5 +460,17 @@ bool find_mac_in_set(os_macaddr_t *mac, struct str_set *macs_set);
 void fsm_free_url_reply(struct fsm_url_reply *reply);
 int fsm_policy_get_req_type(struct fsm_policy_req *req);
 void fsm_walk_clients_tree(const char *caller);
+void fsm_policy_flush_cache(struct fsm_policy *policy);
+bool fsm_policy_wildmatch(char *pattern, char *domain);
+struct fsm_policy_req *
+fsm_policy_initialize_request(struct fsm_request_args *request_args);
+void fsm_policy_free_request(struct fsm_policy_req *policy_request);
+struct fsm_policy_reply*
+fsm_policy_initialize_reply(struct fsm_session *session);
+void fsm_policy_free_reply(struct fsm_policy_reply *policy_reply);
+void fsm_policy_free_url(struct fqdn_pending_req* pending_req);
+int gk_reply_type(struct fsm_policy_req *policy_request);
+void process_gk_response_cb(struct fsm_policy_req *policy_request,
+                       struct fsm_policy_reply *policy_reply);
 
 #endif /* FSM_POLICY_H_INCLUDED */

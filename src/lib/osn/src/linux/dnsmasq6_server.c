@@ -37,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ds.h"
 #include "log.h"
 #include "util.h"
+#include "memutil.h"
 #include "daemon.h"
 #include "evx.h"
 #include "kconfig.h"
@@ -160,13 +161,13 @@ bool dnsmasq6_server_fini(dnsmasq6_server_t *self)
     ds_tree_foreach_iter(&self->d6s_prefixes, prefix, &iter)
     {
         ds_tree_iremove(&iter);
-        free(prefix);
+        FREE(prefix);
     }
 
     /* Clear options */
     for (tag = 0; tag < OSN_DHCP_OPTIONS_MAX; tag++)
     {
-        free(self->d6s_options[tag]);
+        FREE(self->d6s_options[tag]);
         self->d6s_options[tag] = NULL;
     }
 
@@ -174,13 +175,13 @@ bool dnsmasq6_server_fini(dnsmasq6_server_t *self)
     ds_tree_foreach_iter(&self->d6s_leases, lease, &iter)
     {
         ds_tree_iremove(&iter);
-        free(lease);
+        FREE(lease);
     }
 
     /* Clear status structure */
     if (self->d6s_status.d6st_leases != NULL)
     {
-        free(self->d6s_status.d6st_leases);
+        FREE(self->d6s_status.d6st_leases);
     }
 
     /* Schedule a reconfiguration so the current config is removed from the system settings */
@@ -209,7 +210,7 @@ bool dnsmasq6_server_prefix_add(dnsmasq6_server_t *self, struct osn_dhcpv6_serve
     node = ds_tree_find(&self->d6s_prefixes, &prefix->d6s_prefix);
     if (node == NULL)
     {
-        node = calloc(1, sizeof(*node));
+        node = CALLOC(1, sizeof(*node));
         node->dp_prefix = *prefix;
         ds_tree_insert(&self->d6s_prefixes, node, &node->dp_prefix.d6s_prefix);
     }
@@ -238,7 +239,7 @@ bool dnsmasq6_server_prefix_del(dnsmasq6_server_t *self, struct osn_dhcpv6_serve
     }
 
     ds_tree_remove(&self->d6s_prefixes, node);
-    free(node);
+    FREE(node);
 
     return true;
 }
@@ -259,7 +260,7 @@ bool dnsmasq6_server_option_send(dnsmasq6_server_t *self, int tag, const char *d
 
     if (self->d6s_options[tag] != NULL)
     {
-        free(self->d6s_options[tag]);
+        FREE(self->d6s_options[tag]);
         self->d6s_options[tag] = NULL;
     }
 
@@ -278,7 +279,7 @@ bool dnsmasq6_server_lease_add(dnsmasq6_server_t *self, struct osn_dhcpv6_server
     node = ds_tree_find(&self->d6s_leases, lease);
     if (node == NULL)
     {
-        node = calloc(1, sizeof(*node));
+        node = CALLOC(1, sizeof(*node));
         node->dl_lease = *lease;
         ds_tree_insert(&self->d6s_leases, node, &node->dl_lease);
     }
@@ -307,7 +308,7 @@ bool dnsmasq6_server_lease_del(dnsmasq6_server_t *self, struct osn_dhcpv6_server
     }
 
     ds_tree_remove(&self->d6s_leases, node);
-    free(node);
+    FREE(node);
 
     return true;
 }
@@ -379,21 +380,21 @@ bool dnsmasq6_radv_fini(dnsmasq6_radv_t *self)
     ds_dlist_foreach_iter(&self->ra_prefixes, node, iter)
     {
         ds_dlist_iremove(&iter);
-        free(node);
+        FREE(node);
     }
 
     /* Clear the RDNSS list */
     ds_dlist_foreach_iter(&self->ra_rdnss, node, iter)
     {
         ds_dlist_iremove(&iter);
-        free(node);
+        FREE(node);
     }
 
     /* Clear the DNSSL list */
     ds_dlist_foreach_iter(&self->ra_dnssl, node, iter)
     {
         ds_dlist_iremove(&iter);
-        free(node);
+        FREE(node);
     }
 
     ds_tree_remove(&ra_server_list, self);
@@ -432,7 +433,7 @@ bool dnsmasq6_radv_add_prefix(
         bool autonomous,
         bool onlink)
 {
-    struct dnsmasq6_radv_prefix *node = calloc(1, sizeof(*node));
+    struct dnsmasq6_radv_prefix *node = CALLOC(1, sizeof(*node));
 
     node->rp_prefix = *prefix;
     node->rp_autonomous = autonomous;
@@ -445,7 +446,7 @@ bool dnsmasq6_radv_add_prefix(
 
 bool dnsmasq6_radv_add_rdnss(dnsmasq6_radv_t *self, const osn_ip6_addr_t *rdnss)
 {
-    struct dnsmasq6_radv_rdnss *node = calloc(1, sizeof(*node));
+    struct dnsmasq6_radv_rdnss *node = CALLOC(1, sizeof(*node));
 
     node->rd_rdnss = *rdnss;
     ds_dlist_insert_tail(&self->ra_rdnss, node);
@@ -455,12 +456,12 @@ bool dnsmasq6_radv_add_rdnss(dnsmasq6_radv_t *self, const osn_ip6_addr_t *rdnss)
 
 bool dnsmasq6_radv_add_dnssl(dnsmasq6_radv_t *self, char *dnssl)
 {
-    struct dnsmasq6_radv_dnssl *node = calloc(1, sizeof(*node));
+    struct dnsmasq6_radv_dnssl *node = CALLOC(1, sizeof(*node));
 
     if (strscpy(node->rd_dnssl, dnssl, sizeof(node->rd_dnssl)) < 0)
     {
         LOG(ERR, "ip6_radv: Error adding DNSSL, string too long: %s", dnssl);
-        free(node);
+        FREE(node);
         return false;
     }
 
@@ -910,7 +911,7 @@ void dnsmasq6_server_lease_debounce_fn(struct ev_loop *loop, ev_debounce *w, int
     {
         if (d6s->d6s_status.d6st_leases != NULL)
         {
-            free(d6s->d6s_status.d6st_leases);
+            FREE(d6s->d6s_status.d6st_leases);
         }
 
         d6s->d6s_status.d6st_leases = NULL;
@@ -1106,7 +1107,7 @@ void dnsmasq6_server_status_lease_add(
     if ((status->d6st_leases_len % DNSMASQ6_REALLOC_ADD) == 0)
     {
         /* Reallocate buffer */
-        status->d6st_leases = realloc(
+        status->d6st_leases = REALLOC(
                 status->d6st_leases,
                 (status->d6st_leases_len + DNSMASQ6_REALLOC_ADD) * sizeof(struct osn_dhcpv6_server_lease));
     }

@@ -32,16 +32,15 @@ UNIT_DISABLE := $(if $(CONFIG_MANAGER_FCM),n,y)
 UNIT_TYPE := LIB
 UNIT_DIR := lib
 UNIT_SRC := src/fcm_filter.c
+UNIT_SRC += src/fcm_filter_ovsdb.c
+UNIT_SRC += src/fcm_filter_client.c
 UNIT_SRC += src/fcm_report_filter.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -Isrc/fcm/inc
 UNIT_CFLAGS += -I$(TOP_DIR)/src/lib/common/inc
 
-UNIT_LDFLAGS :=
-
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
-UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 
 UNIT_DEPS := src/lib/common
 UNIT_DEPS += src/lib/const

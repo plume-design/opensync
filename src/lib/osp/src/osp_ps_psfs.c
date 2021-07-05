@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "psfs.h"
 #include "log.h"
 #include "kconfig.h"
+#include "memutil.h"
 
 struct osp_ps
 {
@@ -46,7 +47,7 @@ osp_ps_t* osp_ps_open(
         const char *store,
         int flags)
 {
-    osp_ps_t *ps = calloc(1, sizeof(*ps));
+    osp_ps_t *ps = CALLOC(1, sizeof(*ps));
 
     if (!psfs_open(&ps->ps_psfs, store, flags))
     {
@@ -64,7 +65,7 @@ osp_ps_t* osp_ps_open(
     return ps;
 
 error:
-    if (ps != NULL) free(ps);
+    if (ps != NULL) FREE(ps);
     return NULL;
 }
 
@@ -99,4 +100,14 @@ bool osp_ps_erase(osp_ps_t *ps)
 bool osp_ps_sync(osp_ps_t *ps)
 {
     return psfs_sync(&ps->ps_psfs, false);
+}
+
+void osp_ps_rewind(osp_ps_t *ps)
+{
+    return psfs_rewind(&ps->ps_psfs);
+}
+
+const char *osp_ps_next(osp_ps_t *ps)
+{
+    return psfs_next(&ps->ps_psfs);
 }

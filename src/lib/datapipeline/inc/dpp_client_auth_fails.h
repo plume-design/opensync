@@ -27,6 +27,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef DPP_CLIENT_AUTH_FAILS_H
 #define DPP_CLIENT_AUTH_FAILS_H
 
+#include "memutil.h"
+
 typedef struct {
     mac_address_str_t mac;
     uint32_t auth_fails;
@@ -50,19 +52,19 @@ typedef struct {
 static inline dpp_client_auth_fails_client_t *
 dpp_client_auth_fails_client_alloc(void)
 {
-    return calloc(1, sizeof(dpp_client_auth_fails_client_t));
+    return CALLOC(1, sizeof(dpp_client_auth_fails_client_t));
 }
 
 static inline void
 dpp_client_auth_fails_client_free(dpp_client_auth_fails_client_t *client)
 {
-    free(client);
+    FREE(client);
 }
 
 static inline dpp_client_auth_fails_bss_t *
 dpp_client_auth_fails_bss_alloc(void)
 {
-    return calloc(1, sizeof(dpp_client_auth_fails_bss_t));
+    return CALLOC(1, sizeof(dpp_client_auth_fails_bss_t));
 }
 
 static inline void
@@ -77,13 +79,13 @@ dpp_client_auth_fails_bss_free(dpp_client_auth_fails_bss_t *bss)
         dpp_client_auth_fails_client_free(client);
     }
 
-    free(bss);
+    FREE(bss);
 }
 
 static inline dpp_client_auth_fails_report_data_t *
 dpp_client_auth_fails_report_data_alloc(void)
 {
-    return calloc(1, sizeof(dpp_client_auth_fails_report_data_t));
+    return CALLOC(1, sizeof(dpp_client_auth_fails_report_data_t));
 }
 
 static inline void
@@ -98,7 +100,7 @@ dpp_client_auth_fails_report_data_free(dpp_client_auth_fails_report_data_t *repo
         dpp_client_auth_fails_bss_free(bss);
     }
 
-    free(report);
+    FREE(report);
 }
 
 #endif /* DPP_CLIENT_AUTH_FAILS_H */

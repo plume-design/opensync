@@ -88,7 +88,7 @@ wm2_target_dpp_supported(void)
 }
 
 bool
-wm2_target_dpp_config_set(const struct schema_DPP_Config *config)
+wm2_target_dpp_config_set(const struct schema_DPP_Config **config)
 {
     if (wm2_dummy_target_desired())
         return wm2_dummy_target_dpp_config_set(config);

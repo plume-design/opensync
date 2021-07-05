@@ -124,7 +124,7 @@ Note-1: the wait for re-connect back to same manager addr because
 #define CM2_GW_SKIP_RESTART_THRESHOLD   360
 
 // state info
-#define CM2_STATE_DIR  "/tmp/plume/"
+#define CM2_STATE_DIR  "/tmp/opensync/"
 #define CM2_STATE_FILE CM2_STATE_DIR"cm.state"
 #define CM2_STATE_TMP  CM2_STATE_DIR"cm.state.tmp"
 
@@ -409,11 +409,6 @@ bool cm2_enable_gw_offline()
 
     if (cm2_is_connected_to(CM2_DEST_MANAGER))
         return false;
-
-    if (g_state.dev_type == CM2_DEVICE_ROUTER) {
-        LOGI("GW offline, skipped for active Router mode");
-        return false;
-    }
 
     if (!cm2_ovsdb_is_gw_offline_enabled())
         return false;

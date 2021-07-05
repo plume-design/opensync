@@ -33,52 +33,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fsm_dpi_sni.h"
 #include "dns_cache.h"
 #include "dns_parse.h"
-#include "log.h"
 #include "memutil.h"
-#include "target.h"
 #include "unity.h"
-
-const char *test_name = "fsm_dpi_sni_plugin_tests";
 
 os_macaddr_t g_src_mac =
 {
     .addr = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06 },
 };
-
-struct fsm_dpi_sni_cache *g_mgr;
-
-/**
- * @brief called by the Unity framework before every single test
- */
-void
-setUp(void)
-{
-    dns_cache_init();
-    return;
-}
-
-/**
- * @brief called by the Unity framework after every single test
- */
-void
-tearDown(void)
-{
-    dns_cache_cleanup_mgr();
-    return;
-}
-
-
-/**
- * @brief validate that no session provided is handled correctly
- */
-void
-test_no_session(void)
-{
-    int ret;
-
-    ret = dpi_sni_plugin_init(NULL);
-    TEST_ASSERT_TRUE(ret == -1);
-}
 
 static void
 dpi_parse_populate_sockaddr(int af, void *ip_addr, struct sockaddr_storage *dst)
@@ -101,13 +62,13 @@ dpi_parse_populate_sockaddr(int af, void *ip_addr, struct sockaddr_storage *dst)
         in6->sin6_family = af;
         memcpy(&in6->sin6_addr, ip_addr, sizeof(in6->sin6_addr));
     }
-    return;
 }
 
 void
 test_redirected_flow_v6(void)
 {
     struct ip2action_req *ip_cache_req;
+    struct net_md_flow_info brk_info;
     struct net_md_flow_info info;
     uint32_t cache_v6_ip[4] = { 0 };
     char *attr;
@@ -140,6 +101,20 @@ test_redirected_flow_v6(void)
     rc = dns_cache_add_entry(ip_cache_req);
     TEST_ASSERT_TRUE(rc);
 
+    /* Test corner cases */
+    attr = NULL;
+    rc = is_redirected_flow(NULL, attr);
+    TEST_ASSERT_FALSE(rc);
+    brk_info.local_mac = NULL;
+    brk_info.remote_ip = NULL;
+    rc = is_redirected_flow(&brk_info, attr);
+    TEST_ASSERT_FALSE(rc);
+
+    brk_info.local_mac = &g_src_mac;
+    rc = is_redirected_flow(&brk_info, attr);
+    TEST_ASSERT_FALSE(rc);
+
+    /* Now try with the real thing */
     info.local_mac = &g_src_mac;
     info.remote_ip = CALLOC(1, 16);
     TEST_ASSERT_NOT_NULL(info.remote_ip);
@@ -280,19 +255,10 @@ test_redirected_flow(void)
 }
 
 
-int
-main(int argc, char *argv[])
+void
+run_test_plugin(void)
 {
-    /* Set the logs to stdout */
-    target_log_open("TEST", LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_TRACE);
-
-    UnityBegin(test_name);
-
-    RUN_TEST(test_no_session);
     RUN_TEST(test_redirect_cache);
     RUN_TEST(test_redirected_flow);
     RUN_TEST(test_redirected_flow_v6);
-
-    return UNITY_END();
 }

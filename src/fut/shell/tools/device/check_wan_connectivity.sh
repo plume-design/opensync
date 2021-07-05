@@ -29,7 +29,8 @@
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" &> /dev/null
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" &> /dev/null
 
 tc_name="tools/device/check_wan_connectivity.sh"
 def_n_ping=2
@@ -50,15 +51,17 @@ Script usage example:
    ./${tc_name}
 usage_string
 }
-while getopts h option > /dev/null 2>&1; do
-    case "$option" in
-        h)
+if [ -n "${1}" ] > /dev/null 2>&1; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
             ;;
     esac
-done
+fi
 
 n_ping=${1:-$def_n_ping}
 internet_check_ip=${2:-$def_ip}

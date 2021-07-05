@@ -749,7 +749,7 @@ int nf_ct_set_flow_mark(struct net_header_parser *net_pkt, uint32_t mark, uint16
 
         case IPPROTO_ICMP:
             // icmpv4 hdr present in payload of ip
-            icmpv4hdr = (struct icmphdr *)(net_pkt->data);
+            icmpv4hdr = (struct icmphdr *)(net_pkt->ip_pld.icmphdr);
             id = icmpv4hdr->un.echo.id;
             type = icmpv4hdr->type;
             code = icmpv4hdr->code;
@@ -758,7 +758,7 @@ int nf_ct_set_flow_mark(struct net_header_parser *net_pkt, uint32_t mark, uint16
         break;
         case IPPROTO_ICMPV6:
             // icmpv6 hdr present in payload of ipv6
-            icmpv6hdr = (struct icmp6_hdr *)(net_pkt->data);
+            icmpv6hdr = (struct icmp6_hdr *)(net_pkt->ip_pld.icmp6hdr);
             id = ICMP6_ECHO_REQUEST;
             type = icmpv6hdr->icmp6_type;
             code = icmpv6hdr->icmp6_code;

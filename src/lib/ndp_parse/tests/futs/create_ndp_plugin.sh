@@ -25,6 +25,7 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
+. /usr/opensync/etc/kconfig # TODO: This should point to {INSTALL_PREFIX}/etc/kconfig
 # Series of generic routines updating ovsdb tables.
 # TBD: It would make sense to commonize them all.
 
@@ -68,13 +69,31 @@ ovs-ofctl mod-port ${bridge} ${intf} no-flood
 EOF
 }
 
+# of_token: openflow_config rule name. Must start with 'dev' so the
+# controller leaves it alone
+of_token=dev_flow_ndp
+of_rule="arp"
+
+# Create the openflow rule for the egress traffic
+gen_oflow_cmd() {
+    cat << EOF
+ovsh i Openflow_Config \
+     token:=${of_token} \
+     bridge:=${bridge} \
+     table:=8 \
+     priority:=${priority} \
+     rule:=${of_rule} \
+     action:="normal,output:${ofport}"
+EOF
+}
+
 # Create the openflow rule for the egress traffic
 gen_oflow_egress_cmd() {
     cat << EOF
 ovsh i Openflow_Config \
      token:=${of_out_token} \
      bridge:=${bridge} \
-     table:=0 \
+     table:=8 \
      priority:=${priority} \
      rule:=${of_out_rule} \
      action:="normal,output:${ofport}"
@@ -87,7 +106,7 @@ gen_oflow_ingress_cmd() {
 ovsh i Openflow_Config \
      token:=${of_in_token} \
      bridge:=${bridge} \
-     table:=0 \
+     table:=8 \
      priority:=${priority} \
      rule:=${of_in_rule} \
      action:="normal,output:${ofport}"
@@ -128,16 +147,16 @@ get_node_id() {
 }
 
 # Let's start
-bridge=${2:-br-home}
-intf=${3:-br-home.tndp}
+bridge=${2:-${CONFIG_TARGET_LAN_BRIDGE_NAME}}
+intf=${3:-${CONFIG_TARGET_LAN_BRIDGE_NAME}.tndp}
 ofport=${4:-40004} # must be unique to the bridge
 
 # of_token: openflow_config rule name. Must start with 'dev' so the
 # controller leaves it alone
-of_out_token=dev_flow_ndp_out
-of_out_rule="dl_dst=\$[dev_all_connected_devices],ipv6,nw_proto=58"
-of_in_token=dev_flow_ndp_in
-of_in_rule="dl_src=\$[dev_all_connected_devices],ipv6,nw_proto=58"
+of_out_token=dev_flow_ndp
+of_out_rule="icmp6,icmp_type=136"
+of_in_token=dev_flow_ndp
+of_in_rule="icmp6,icmp_type=135"
 
 # Flow_Service_Manager_Config parameters
 plugin=/usr/opensync/lib/libfsm_ndp.so
@@ -166,4 +185,5 @@ $(tap_up_cmd)
 $(gen_no_flood_cmd)
 $(gen_oflow_egress_cmd)
 $(gen_oflow_ingress_cmd)
+$(gen_oflow_cmd)
 eval ovsdb-client transact \'$(gen_fsmc_cmd)\'

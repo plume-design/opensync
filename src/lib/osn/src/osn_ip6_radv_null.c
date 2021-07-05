@@ -25,6 +25,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include "log.h"
+#include "memutil.h"
 #include "osn_dhcpv6.h"
 
 struct osn_ip6_radv
@@ -36,14 +37,13 @@ osn_ip6_radv_t *osn_ip6_radv_new(const char *ifname)
 {
     (void)ifname;
 
-    osn_ip6_radv_t *self = calloc(1, sizeof(*self));
-
+    osn_ip6_radv_t *self = CALLOC(1, sizeof(*self));
     return self;
 }
 
 bool osn_ip6_radv_del(osn_ip6_radv_t *self)
 {
-    free(self);
+    FREE(self);
 
     return true;
 }

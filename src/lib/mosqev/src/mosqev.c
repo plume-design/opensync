@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "mosqev.h"
 #include "util.h"
+#include "memutil.h"
 
 #include <resolv.h>
 /*
@@ -241,7 +242,7 @@ bool mosqev_tls_set(mosqev_t *self,
     rc = mosquitto_tls_set(self->me_mosq, cafile, capath,
             certfile, keyfile, (void *)pw_callback);
 
-#define SETSTR(l, r) do { if (l) free(l); l = NULL; if (r) l = strdup(r); } while (0)
+#define SETSTR(l, r) do { if (l) FREE(l); l = NULL; if (r) l = strdup(r); } while (0)
     SETSTR(self->me_cafile, cafile);
     SETSTR(self->me_capath, capath);
     SETSTR(self->me_certfile, certfile);
@@ -271,7 +272,7 @@ bool mosqev_tls_opts_set(mosqev_t   *self,
     rc = mosquitto_tls_opts_set(self->me_mosq, cert_reqs,
             tls_version, ciphers);
 
-#define SETSTR(l, r) do { if (l) free(l); l = NULL; if (r) l = strdup(r); } while (0)
+#define SETSTR(l, r) do { if (l) FREE(l); l = NULL; if (r) l = strdup(r); } while (0)
     self->me_cert_reqs = cert_reqs;
     SETSTR(self->me_tls_version, tls_version);
     SETSTR(self->me_ciphers, ciphers);

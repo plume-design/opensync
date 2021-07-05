@@ -29,6 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "reflink.h"
 #include "synclist.h"
 #include "ovsdb_sync.h"
+#include "memutil.h"
 
 #include "nm2.h"
 
@@ -207,7 +208,7 @@ void nm2_dhcpv6_client_release(struct nm2_dhcpv6_client *dc6)
 
     ds_tree_remove(&nm2_dhcpv6_client_list, dc6);
 
-    free(dc6);
+    FREE(dc6);
 }
 
 /*
@@ -263,7 +264,7 @@ struct nm2_dhcpv6_client *nm2_dhcpv6_client_get(ovs_uuid_t *uuid)
     if (dc6 != NULL) return dc6;
 
     /* Allocate a new dummy structure and insert it into the cache */
-    dc6 = calloc(1, sizeof(struct nm2_dhcpv6_client));
+    dc6 = CALLOC(1, sizeof(struct nm2_dhcpv6_client));
     dc6->dc6_uuid = *uuid;
 
     reflink_init(&dc6->dc6_reflink, "DHCPv6_Client");
@@ -556,8 +557,8 @@ void *dhcpv6_client_recv_opt_sync(synclist_t *list, void *_old, void *_new)
                 item->ropt_uuid.uuid);
 
         /* Delete the option */
-        free(item->ropt_data);
-        free(item);
+        FREE(item->ropt_data);
+        FREE(item);
         return NULL;
     }
 
@@ -568,7 +569,7 @@ void *dhcpv6_client_recv_opt_sync(synclist_t *list, void *_old, void *_new)
         return NULL;
     }
 
-    ropt = calloc(1, sizeof(*ropt));
+    ropt = CALLOC(1, sizeof(*ropt));
     ropt->ropt_tag = item->ropt_tag;
     ropt->ropt_data = strdup(item->ropt_data);
 
@@ -606,8 +607,8 @@ void *dhcpv6_client_recv_opt_sync(synclist_t *list, void *_old, void *_new)
 exit:
     if (ropt != NULL)
     {
-        free(ropt->ropt_data);
-        free(ropt);
+        FREE(ropt->ropt_data);
+        FREE(ropt);
     }
 
     return NULL;

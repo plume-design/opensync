@@ -26,10 +26,12 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="nm2/$(basename "$0")"
 manager_setup_file="nm2/nm2_setup.sh"
@@ -58,16 +60,17 @@ Script usage example:
     ./${tc_name} wifi0 vif
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 
 NARGS=1
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
@@ -95,47 +98,47 @@ create_inet_entry \
     -inet_addr 10.10.10.30 \
     -netmask "255.255.255.0" \
     -if_type "$if_type" &&
-        log "$tc_name: Interface successfully created" ||
-        raise "Failed to create interface" -l "$tc_name" -tc
+        log "$tc_name: Interface $if_name created - Success" ||
+        raise "FAIL: Failed to create $if_name interface" -l "$tc_name" -ds
 
 log "$tc_name: Setting GATEWAY for $if_name to $gateway"
 update_ovsdb_entry Wifi_Inet_Config -w if_name "$if_name" -u gateway "$gateway" &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config table updated - gateway $gateway" ||
-    raise "update_ovsdb_entry - Failed to update Wifi_Inet_Config - gateway $gateway" -l "$tc_name" -tc
+    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config::gateway is $gateway - Success" ||
+    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config::gateway is not $gateway" -l "$tc_name" -oe
 
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is gateway "$gateway" &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State - gateway $gateway" ||
-    raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - gateway $gateway" -l "$tc_name" -tc
+    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::gateway is $gateway - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::gateway is $gateway" -l "$tc_name" -tc
 
 gateway_check_cmd="ip route show default | grep -q $gateway' .* '$if_name"
-log "$tc_name: LEVEL 2: Checking ifconfig for applied gateway - interface $if_name"
+log "$tc_name: Checking ifconfig for applied gateway for interface $if_name - LEVEL2"
 wait_for_function_response 0 "$gateway_check_cmd" &&
-    log "$tc_name: LEVEL 2: Gateway $gateway applied to OS - interface $if_name" ||
-    raise "LEVEL 2: Failed to apply gateway $gateway to OS - interface $if_name" -l "$tc_name" -tc
+    log "$tc_name: LEVEL2 - Gateway $gateway applied to system for interface $if_name - Success" ||
+    raise "FAIL: LEVEL2 - Failed to apply gateway $gateway to System for interface $if_name" -l "$tc_name" -tc
 
 log "$tc_name: Removing GATEWAY $gateway for $if_name"
 update_ovsdb_entry Wifi_Inet_Config -w if_name "$if_name" -u gateway "[\"set\",[]]" -u ip_assign_scheme none &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config table updated - gateway [\"set\",[]]" ||
-    raise "update_ovsdb_entry - Failed to update Wifi_Inet_Config - gateway [\"set\",[]]" -l "$tc_name" -tc
+    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config::gateway is [\"set\",[]] - Success" ||
+    raise "FAIL: update_ovsdb_entry - Wifi_Inet_Config::gateway is not [\"set\",[]]" -l "$tc_name" -oe
 
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is ip_assign_scheme none &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State - ip_assign_scheme none" ||
-    raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - ip_assign_scheme none" -l "$tc_name" -tc
+    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::ip_assign_scheme is 'none' - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::ip_assign_scheme is not 'none'" -l "$tc_name" -tc
 
-# gateway field can either be empty or "0.0.0.0"
+# Wifi_Inet_State::gateway field can either be empty or "0.0.0.0"
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is gateway "0.0.0.0"
 if [ $? -eq 0 ]; then
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State - gateway 0.0.0.0"
+    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::gateway is '0.0.0.0' - Success"
 else
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_State::gateway is not 0.0.0.0"
+    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_State::gateway is not '0.0.0.0'"
     wait_for_function_response 'empty' "get_ovsdb_entry_value Wifi_Inet_State gateway -w if_name $if_name" &&
-        log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State - gateway empty" ||
-        raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - gateway empty" -l "$tc_name" -tc
+        log "$tc_name: wait_for_function_response - Wifi_Inet_Config reflected to Wifi_Inet_State::gateway is 'empty' - Success" ||
+        raise "FAIL: wait_for_function_response - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::gateway is not 'empty'" -l "$tc_name" -tc
 fi
 
-log "$tc_name: LEVEL 2: Checking ifconfig for removed gateway"
+log "$tc_name: Checking ifconfig for removed gateway - LEVEL2"
 wait_for_function_response 1 "$gateway_check_cmd" &&
-    log "$tc_name: LEVEL 2: Gateway $gateway removed from OS - interface $if_name" ||
-    raise "LEVEL 2: Failed to remove gateway $gateway from OS - interface $if_name" -l "$tc_name" -tc
+    log "$tc_name: LEVEL2 - Gateway $gateway removed from system for interface $if_name - Success" ||
+    raise "FAIL: LEVEL2 - Failed to remove gateway $gateway from system for interface $if_name" -l "$tc_name" -tc
 
 pass

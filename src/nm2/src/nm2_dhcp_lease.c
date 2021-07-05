@@ -43,6 +43,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "nm2.h"
 #include "ovsdb.h"
 #include "ovsdb_sync.h"
+#include "memutil.h"
 
 /*
  * WAR: Never populate DHCP_leased_IP with duplicate MAC entries, even if they
@@ -196,11 +197,11 @@ bool nm2_dhcp_lease_notify(
             synclist_del(&dhcp_lease_synclist, node);
         }
 
-        free(node);
+        FREE(node);
     }
     else if (node == NULL)
     {
-        node = calloc(1, sizeof(struct dhcp_lease_node));
+        node = CALLOC(1, sizeof(struct dhcp_lease_node));
         node->dl_lease = *dl;
         ds_tree_insert(&dhcp_lease_list, node, &node->dl_lease);
     }

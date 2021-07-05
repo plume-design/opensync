@@ -1,9 +1,12 @@
 #!/bin/sh
 
+. /usr/opensync/etc/kconfig # TODO: This should point to {INSTALL_PREFIX}/etc/kconfig
 # Series of generic routines updating ovsdb tables.
 # TBD: It would make sense to commonize them all.
 
 prog=$0
+
+. /usr/opensync/etc/kconfig # TODO: This should point to {INSTALL_PREFIX}/etc/kconfig
 
 # Check if a specific command is in the path. Bail if not found.
 check_cmd() {
@@ -226,7 +229,7 @@ get_node_id() {
 
 # create br-home.tx if it does not exist
 set_br_home_tx() {
-    ip link show dev br-home.tx
+    ip link show dev ${CONFIG_TARGET_LAN_BRIDGE_NAME}.tx
     ret=$?
     if [ ${ret} -eq 0 ]; then # br-home.tx exists
         return
@@ -321,12 +324,12 @@ while getopts "$optspec" optchar; do
 done
 
 client_mac=${MAC}
-bridge=${BRIDGE:-br-home}
+bridge=${BRIDGE:-${CONFIG_TARGET_LAN_BRIDGE_NAME}}
 provider=${PROVIDER:-brightcloud}
 provider_plugin=${PROVIDER_PLUGIN:-brightcloud}
 policy_table=${POLICY_TABLE:-brightcloud}
-intf=${INTF:-br-home.tdns}
-tx_intf=${TX_INTF:-br-home.tx}
+intf=${INTF:-${CONFIG_TARGET_LAN_BRIDGE_NAME}.tdns}
+tx_intf=${TX_INTF:-${CONFIG_TARGET_LAN_BRIDGE_NAME}.tx}
 ofport=${OF_PORT:-3001}
 
 
@@ -346,7 +349,7 @@ tag_name=dev_tag_dns
 
 # Flow_Service_Manager_Config parameters
 filter="udp port 53"
-plugin=/usr/plume/lib/libfsm_dns.so
+plugin=${CONFIG_INSTALL_PREFIX}/lib/libfsm_dns.so
 dso_init=dns_plugin_init
 fsm_handler=dev_dns # must start with 'dev' so the controller leaves it alone
 

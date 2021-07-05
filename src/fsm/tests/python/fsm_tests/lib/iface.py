@@ -30,19 +30,19 @@ class TapEntry(utils.ConfEntry):
         self.gen_delete_cmd()
 
     def gen_delete_cmd(self):
-        cmd = '/usr/bin/ovs-vsctl del-port {} {}'.format(self.bridge,
+        cmd = '$OVS_VSCTL_PATH del-port {} {}'.format(self.bridge,
                                                          self.if_name)
         self.delete_cmd.append(cmd)
 
     def gen_insert_cmd(self):
-        cmd = '/usr/bin/ovs-vsctl add-port {} {} '.format(self.bridge,
+        cmd = '$OVS_VSCTL_PATH add-port {} {} '.format(self.bridge,
                                                           self.if_name)
         cmd += ' -- set interface {} '.format(self.if_name)
         cmd += ' type=internal '
         cmd += '-- set interface {} '.format(self.if_name)
         cmd += ' ofport_request={}'.format(self.of_port)
         self.insert_cmd.append(cmd)
-        cmd = '/usr/sbin/ip link set {} up'.format(self.if_name)
+        cmd = '$IP_PATH link set {} up'.format(self.if_name)
         self.insert_cmd.append(cmd)
 
 class TapConfEntry(utils.ConfEntry):

@@ -44,9 +44,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fcm_filter.h"
 #include "network_metadata_report.h"
 #include "fcm_report_filter.h"
+#include "memutil.h"
 
 static fcm_plugin_filter_t filtername;
-
+static struct fcm_session *session = NULL;
+static struct fcm_filter_client *c_client = NULL;
+static struct fcm_filter_client *r_client = NULL;
 
 /**
  * @brief initialization function filter name.
@@ -59,6 +62,9 @@ void fcm_filter_context_init(fcm_collect_plugin_t *collector)
     filtername.collect = collector->filters.collect;
     filtername.hist = collector->filters.hist;
     filtername.report = collector->filters.report;
+    session = collector->session;
+    c_client = collector->collect_client;
+    r_client = collector->report_client;
 }
 
 /**
@@ -69,9 +75,8 @@ void fcm_filter_context_init(fcm_collect_plugin_t *collector)
  */
 static void print_md_acc_key(struct net_md_stats_accumulator *md_acc)
 {
-
     LOGT("net_md_stats_accumulator=%p key=%p fkey=%p",
-            md_acc, md_acc->key, md_acc->fkey);
+         md_acc, md_acc->key, md_acc->fkey);
 
     net_md_log_acc(md_acc, __func__);
 }
@@ -88,21 +93,19 @@ static void print_md_acc_key(struct net_md_stats_accumulator *md_acc)
 static bool apply_filter(struct net_md_flow_key *key,
                          fcm_filter_stats_t *pkt,
                          struct flow_key *fkey,
-                         char *filter_name)
+                         struct fcm_filter_client *client)
 {
     fcm_filter_l2_info_t mac_filter;
     fcm_filter_l3_info_t filter;
+    struct fcm_filter_req *req;
     bool seven_tuple_action;
     os_macaddr_t null_mac;
     os_macaddr_t *smac;
     os_macaddr_t *dmac;
 
     memset(&null_mac, 0, sizeof(null_mac));
-    if (filter_name == NULL)
-    {
-        /* no filter name default included */
-        return true;
-    }
+
+    if (client == NULL) return true;
 
     smac = (key->smac != NULL ? key->smac : &null_mac);
     dmac = (key->dmac != NULL ? key->dmac : &null_mac);
@@ -139,12 +142,19 @@ static bool apply_filter(struct net_md_flow_key *key,
     /* key->ip_version No ip (0), ipv4 (4), ipv6 (6) */
     filter.ip_type = (key->ip_version <= 4)? AF_INET: AF_INET6;
 
-    fcm_filter_7tuple_apply(filter_name,
-                             &mac_filter,
-                             &filter,
-                             pkt,
-                             fkey,
-                             &seven_tuple_action);
+    req = CALLOC(1, sizeof(struct fcm_filter));
+    if (req == NULL) return true;
+
+    req->l2_info = &mac_filter;
+    req->l3_info = &filter;
+    req->pkts = pkt;
+    req->table = client->table;
+    req->fkey = fkey;
+
+    fcm_apply_filter(session, req);
+    seven_tuple_action = req->action;
+    FREE(req);
+
     return seven_tuple_action;
 }
 
@@ -159,7 +169,7 @@ static bool apply_filter(struct net_md_flow_key *key,
  */
 static bool apply_collect_filter(struct net_md_flow_key *key)
 {
-    return apply_filter(key, NULL, NULL, filtername.collect);
+    return apply_filter(key, NULL, NULL, c_client);
 }
 
 
@@ -184,7 +194,7 @@ static bool apply_report_filter(struct net_md_stats_accumulator *md_acc)
     pkt.pkt_cnt = md_acc->report_counters.packets_count;
     pkt.bytes = md_acc->report_counters.bytes_count;
 
-    return apply_filter(key, &pkt, md_acc->fkey, filtername.report);
+    return apply_filter(key, &pkt, md_acc->fkey, r_client);
 }
 
 

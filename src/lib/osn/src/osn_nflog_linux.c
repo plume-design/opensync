@@ -82,7 +82,7 @@ static size_t nlbuf_sz(struct nlbuf *nlb);
  */
 osn_nflog_t *osn_nflog_new(int nl_group, osn_nflog_fn_t *fn)
 {
-    osn_nflog_t *self = calloc(1, sizeof(*self));
+    osn_nflog_t *self = CALLOC(1, sizeof(*self));
 
     self->nf_sock = -1;
     self->nf_nflog_group = nl_group;

@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "osp_objm.h"
 #include "ovsdb_table.h"
 #include "schema.h"
+#include "memutil.h"
 
 #include "nfm_ipset.h"
 
@@ -173,7 +174,7 @@ struct nfm_objm *nfm_objm_get(const char *version)
     no = ds_tree_find(&nfm_objm_list, (char *)version);
     if (no == NULL)
     {
-        no = calloc(1, sizeof(*no));
+        no = CALLOC(1, sizeof(*no));
         STRSCPY(no->no_version, version);
         no->no_pending = true;
         ds_tree_insert(&nfm_objm_list, no, no->no_version);
@@ -194,7 +195,7 @@ void nfm_objm_drop(const char *version)
     }
 
     ds_tree_remove(&nfm_objm_list, no);
-    free(no);
+    FREE(no);
 }
 
 

@@ -42,9 +42,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "cm2.h"
 #include "kconfig.h"
 #include "osn_types.h"
+#include "memutil.h"
 
 #define CM2_VAR_RUN_PATH               "/var/run"
-#define CM2_VAR_PLUME_PATH             "/var/plume"
+#define CM2_VAR_PLUME_PATH             "/var/opensync"
 
 #define CM2_UDHCPC_DRYRUN_PREFIX_FILE  "udhcpc-cmdryrun"
 #define CM2_TCPDUMP_PREFIX_FILE        "tcpdump"
@@ -201,7 +202,7 @@ static void cm2_tcpdump_cb(struct ev_loop *loop, ev_child *w, int revents)
 
     LOGD("%s: Command: %s", __func__, cmd);
     target_device_execute(cmd);
-    free(tcpdump);
+    FREE(tcpdump);
 }
 
 void cm2_tcpdump_start(char* ifname)
@@ -256,11 +257,7 @@ void cm2_tcpdump_start(char* ifname)
              ifname, errno, strerror(errno));
         exit(1);
     } else {
-        cm2_tcpdump_t *tcpdump = (cm2_tcpdump_t *) malloc(sizeof(cm2_tcpdump_t));
-        if (!tcpdump) {
-            LOGW("%s: tcpdump: memory allocation failure", ifname);
-            return;
-        }
+        cm2_tcpdump_t *tcpdump = (cm2_tcpdump_t *) MALLOC(sizeof(cm2_tcpdump_t));
         memset(tcpdump, 0, sizeof(cm2_tcpdump_t));
         STRSCPY(tcpdump->if_name, ifname);
         STRSCPY(tcpdump->pckfile, pckfile);
@@ -303,7 +300,7 @@ cm2_delayed_eth_update_cb(struct ev_loop *loop, ev_timer *timer, int revents)
     LOGI("%s: delayed eth update cb", p->if_name);
     ev_timer_stop(EV_DEFAULT, &p->timer);
     cm2_ovsdb_connection_update_loop_state(p->if_name, false);
-    free(p);
+    FREE(p);
 }
 
 void cm2_delayed_eth_update(char *if_name, int timeout)
@@ -316,11 +313,7 @@ void cm2_delayed_eth_update(char *if_name, int timeout)
         return;
     }
 
-    if (!(p = malloc(sizeof(*p)))) {
-        LOGW("%s: eth_update: memory allocation failed", if_name);
-        return;
-    }
-
+    p = MALLOC(sizeof(*p));
     cm2_ovsdb_connection_update_loop_state(if_name, true);
     STRSCPY(p->if_name, if_name);
     ev_timer_init(&p->timer, cm2_delayed_eth_update_cb, timeout, 0);
@@ -389,7 +382,7 @@ release:
     if (!ret)
         LOGW("%s: %s: Update L3 state failed status = %d ret = %d",
              __func__, dhcp_dryrun->if_name, status, ret);
-    free(dhcp_dryrun);
+    FREE(dhcp_dryrun);
 }
 
 void cm2_dhcpc_start_dryrun(char* ifname, char *iftype, int cnt)
@@ -466,7 +459,7 @@ void cm2_dhcpc_start_dryrun(char* ifname, char *iftype, int cnt)
              __func__, ifname, errno, strerror(errno));
         exit(1);
     } else {
-        dhcp_dryrun_t *dhcp_dryrun = (dhcp_dryrun_t *) malloc(sizeof(dhcp_dryrun_t));
+        dhcp_dryrun_t *dhcp_dryrun = (dhcp_dryrun_t *) MALLOC(sizeof(dhcp_dryrun_t));
 
         memset(dhcp_dryrun, 0, sizeof(dhcp_dryrun_t));
         STRSCPY(dhcp_dryrun->if_name, ifname);

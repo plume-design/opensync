@@ -26,10 +26,12 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="wm2/$(basename "$0")"
 manager_setup_file="wm2/wm2_setup.sh"
@@ -71,16 +73,18 @@ Script usage example:
     ./${tc_name} wifi0 home-ap-24 2 FUTssid	'["map",[["encryption","WPA-PSK"],["key","FUTpsk"],["mode","2"]]]' 1 HT20 11n ap HT160
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 
 NARGS=10
 [ $# -ne ${NARGS} ] && usage && raise "Requires '${NARGS}' input argument(s)" -l "${tc_name}" -arg
@@ -132,37 +136,37 @@ check_radio_vif_state \
                     -mode "$mode" \
                     -vif_if_name "$vif_if_name" \
                     -timeout ${channel_change_timeout} &&
-                        log "$tc_name: create_radio_vif_interface - Success"
+                        log "$tc_name: create_radio_vif_interface - Interface $if_name created - Success"
             ) ||
-        raise "create_radio_vif_interface - Failed" -l "$tc_name" -tc
+        raise "FAIL: create_radio_vif_interface {$if_name, $channel} - Interface not created" -l "$tc_name" -ds
 
 # Update Wifi_Radio_Config with mismatched ht_mode
-update_ovsdb_entry Wifi_Radio_Config -w if_name $if_name -u ht_mode $mismatch_ht_mode &&
-    log "$tc_name: wait_ovsdb_entry - Updated ht_mode $mismatch_ht_mode to Wifi_Radio_Config" ||
-    raise "FAIL: wait_ovsdb_entry - Could not update ht_mode $mismatch_ht_mode to Wifi_Radio_Config" -l "$tc_name" -tc
+update_ovsdb_entry Wifi_Radio_Config -w if_name "$if_name" -u ht_mode $mismatch_ht_mode &&
+    log "$tc_name: update_ovsdb_entry - Wifi_Radio_Config::ht_mode is $mismatch_ht_mode - Success" ||
+    raise "FAIL: update_ovsdb_entry - Wifi_Radio_Config::ht_mode is not $mismatch_ht_mode" -l "$tc_name" -oe
 
 wait_ovsdb_entry Wifi_Radio_State -w if_name "$if_name" -is ht_mode "$mismatch_ht_mode" -t ${channel_change_timeout} &&
-    raise "FAIL: wait_ovsdb_entry - Reflected Wifi_Radio_Config to Wifi_Radio_State - ht_mode $mismatch_ht_mode" -l "$tc_name" -tc ||
-    log "$tc_name: wait_ovsdb_entry - Wifi_Radio_Config is not reflected to Wifi_Radio_State - ht_mode $mismatch_ht_mode - SUCCESS"
+    raise "FAIL: wait_ovsdb_entry - Reflected Wifi_Radio_Config to Wifi_Radio_State::ht_mode is $mismatch_ht_mode" -l "$tc_name" -tc ||
+    log "$tc_name: wait_ovsdb_entry - Wifi_Radio_Config is not reflected to Wifi_Radio_State::ht_mode is not $mismatch_ht_mode - Success"
 
-# LEVEL2 check. Passes if OS reports original ht_mode is still set.
-ht_mode_from_os=$(get_ht_mode_from_os $vif_if_name $channel) ||
-    raise "FAIL: Error while fetching ht_mode from os" -l $tc_name -fc
+# LEVEL2 check. Passes if system reports original ht_mode is still set.
+ht_mode_from_os=$(get_ht_mode_from_os "$vif_if_name" "$channel") ||
+    raise "FAIL: Error while fetching ht_mode from system" -l "$tc_name" -fc
+
 if [ "$ht_mode_from_os" = "" ]; then
-    raise "FAIL: Error while fetching ht_mode from os" -l $tc_name -fc
+    raise "FAIL: Error while fetching ht_mode from system" -l "$tc_name" -fc
 else
     if [ "$ht_mode_from_os" != "$mismatch_ht_mode" ]; then
-        log "$tc_name: ht_mode '$mismatch_ht_mode' not applied to system. OS reports current ht_mode '$ht_mode_from_os' - SUCCESS"
+        log "$tc_name: ht_mode '$mismatch_ht_mode' not applied to system. System reports current ht_mode '$ht_mode_from_os' - Success"
     else
-        raise "FAIL: ht_mode '$mismatch_ht_mode' applied to system. OS reports current ht_mode '$ht_mode_from_os'" -l "$tc_name" -tc
+        raise "FAIL: ht_mode '$mismatch_ht_mode' applied to system. System reports current ht_mode '$ht_mode_from_os'" -l "$tc_name" -tc
     fi
 fi
 
 # Check if manager survived.
 manager_bin_file="${OPENSYNC_ROOTDIR}/bin/wm"
 wait_for_function_response 0 "check_manager_alive $manager_bin_file" &&
-    log "$tc_name: Success: WIRELESS MANAGER is running" ||
+    log "$tc_name: WIRELESS MANAGER is running - Success" ||
     raise "FAIL: WIRELESS MANAGER not running/crashed" -l "$tc_name" -tc
 
 pass
-

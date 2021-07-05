@@ -34,6 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os.h"
 #include "target.h"
 #include "unity.h"
+#include "memutil.h"
 
 const char *test_name = "icm_tests";
 
@@ -125,7 +126,7 @@ void tearDown(void)
  */
 static void free_send_msg(void *data, void *hint)
 {
-    free(data);
+    FREE(data);
 }
 
 
@@ -139,8 +140,7 @@ allocate_sender_and_receiver(void)
     struct imc_context *server;
 
     /* Initialize the server */
-    server = calloc(1, sizeof(*server));
-    TEST_ASSERT_NOT_NULL(server);
+    server = CALLOC(1, sizeof(*server));
 
     server->ztype = ZMQ_PULL;
     server->endpoint = strdup(g_test_mgr.endpoint);
@@ -150,8 +150,7 @@ allocate_sender_and_receiver(void)
     imc_init_context(server);
 
     /* Start the client */
-    client = calloc(1, sizeof(*client));
-    TEST_ASSERT_NOT_NULL(client);
+    client = CALLOC(1, sizeof(*client));
 
     client->ztype = ZMQ_PUSH;
     client->endpoint = strdup(g_test_mgr.endpoint);
@@ -173,17 +172,17 @@ free_sender_and_receiver(void)
 
     client = g_test_mgr.client;
     imc_reset_context(client);
-    free(client->endpoint);
-    free(client);
+    FREE(client->endpoint);
+    FREE(client);
     g_test_mgr.client = NULL;
 
     server = g_test_mgr.server;
     imc_reset_context(server);
-    free(server->endpoint);
-    free(server);
+    FREE(server->endpoint);
+    FREE(server);
     g_test_mgr.server = NULL;
 
-    free(g_test_mgr.endpoint);
+    FREE(g_test_mgr.endpoint);
     g_test_mgr.endpoint = NULL;
 }
 
@@ -240,7 +239,7 @@ basic_send_timeout_cb(EV_P_ ev_timer *w, int revents)
     int rc;
 
     LOGI("\n\n\n\n ***** %s: entering\n", __func__);
-    data = malloc(sizeof(*data));
+    data = MALLOC(sizeof(*data));
     *(int64_t *)data = g_test_mgr.val;
 
     rc = imc_send(g_test_mgr.client, data, sizeof(data), IMC_DONTWAIT);
@@ -358,12 +357,12 @@ repeated_send_timeout_cb(EV_P_ ev_timer *w, int revents)
 
     expected = (g_test_mgr.repeat < g_test_mgr.sndhwm) ? 0 : -1;
 
-    buf = calloc(1, size);
+    buf = CALLOC(1, size);
     memset(buf, 1, size);
     rc = imc_send(g_test_mgr.client, buf, size, IMC_DONTWAIT);
     TEST_ASSERT_EQUAL_INT(expected, rc);
 
-    // if (rc != 0) free(buf);
+    // if (rc != 0) FREE(buf);
 
     g_test_mgr.repeat++;
     if (g_test_mgr.repeat_cnt < g_test_mgr.repeat_limit)

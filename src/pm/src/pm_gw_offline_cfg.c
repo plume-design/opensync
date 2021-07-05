@@ -40,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "osp_ps.h"
 #include "os.h"
+#include "memutil.h"
 
 
 #define KEY_OFFLINE_CFG             "gw_offline_cfg"
@@ -103,6 +104,7 @@ static ovsdb_table_t table_Wifi_VIF_Config;
 static ovsdb_table_t table_Wifi_Inet_Config;
 static ovsdb_table_t table_Wifi_Radio_Config;
 static ovsdb_table_t table_DHCP_reserved_IP;
+static ovsdb_table_t table_Connection_Manager_Uplink;
 
 static ev_timer timeout_no_cfg_change;
 
@@ -290,6 +292,72 @@ static bool gw_offline_enable_cfg_mon()
     return true;
 }
 
+static bool is_eth_type(const char *if_type)
+{
+    return (strcmp(if_type, "eth") == 0);
+}
+
+static bool insert_port_into_bridge(char *bridge, char *port)
+{
+    char command[512];
+
+    snprintf(command, sizeof(command),
+             "ovs-vsctl list-ports %s | grep %s || ovs-vsctl add-port %s %s",
+             LAN_BRIDGE, port, LAN_BRIDGE, port);
+
+    LOG(DEBUG, "offline_cfg: Insert port into bridge, running cmd: %s", command);
+    return (cmd_log(command) == 0);
+}
+
+static void callback_Connection_Manager_Uplink(
+        ovsdb_update_monitor_t *mon,
+        struct schema_Connection_Manager_Uplink *old_rec,
+        struct schema_Connection_Manager_Uplink *link)
+{
+    if (gw_offline_stat != status_active)  // Ignore if not in active gw_offline mode
+        return;
+    if (link->is_used)                     // Ignore if this is a known uplink
+        return;
+    if (!is_eth_type(link->if_type))       // Ignore if this is not eth interface
+        return;
+
+
+    if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Connection_Manager_Uplink, has_L2))
+            || ovsdb_update_changed(mon, SCHEMA_COLUMN(Connection_Manager_Uplink, has_L3))
+            || ovsdb_update_changed(mon, SCHEMA_COLUMN(Connection_Manager_Uplink, loop))
+            || ovsdb_update_changed(mon, SCHEMA_COLUMN(Connection_Manager_Uplink, eth_client)))
+
+    {
+        /* For non-uplink in the active gw_offline mode handle an
+         * ethernet client (add port to bridge): */
+        if (is_eth_type(link->if_type)
+                && link->has_L2_exists && link->has_L2
+                && link->has_L3_exists && !link->has_L3
+                && link->loop_exists && !link->loop
+                && link->eth_client_exists && link->eth_client)
+        {
+            LOG(NOTICE, "offline_cfg: eth-client detected. Inserting port %s into lan bridge %s",
+                    link->if_name, LAN_BRIDGE);
+
+            if (!insert_port_into_bridge(LAN_BRIDGE, link->if_name))
+                LOG(ERR, "offline_cfg: Error inserting port into bridge");
+        }
+    }
+}
+
+static bool gw_offline_enable_eth_clients_handling()
+{
+    static bool inited;
+
+    if (inited)
+        return true;
+
+    OVSDB_TABLE_MONITOR(Connection_Manager_Uplink, false);
+
+    inited = true;
+    return true;
+}
+
 static void callback_Node_Config(
         ovsdb_update_monitor_t *mon,
         struct schema_Node_Config *old_rec,
@@ -384,11 +452,6 @@ static void callback_Node_Config(
             /* Enabled by CM when no Cloud/Internet connectivity and other
              * conditions are met for certain amount of time. */
 
-            if (gw_offline_mon)
-            {
-                LOG(WARN, "offline_cfg: Offline config mode triggered, but config monitoring is enabled. Ignoring.");
-                return;
-            }
             if (gw_offline_stat != status_ready)
             {
                 LOG(WARN, "offline_cfg: Offline config mode triggered, but gw_offline_status "\
@@ -397,14 +460,39 @@ static void callback_Node_Config(
             }
 
             gw_offline = true;
-            LOG(INFO, "offline_cfg: Offline config mode enabled. Load && apply persistent config triggered.");
-            pm_gw_offline_load_and_apply_config();
+            LOG(NOTICE, "offline_cfg: gw_offline mode activated");
+
+            if (gw_offline_mon)
+            {
+                /* if gw_offline_mon==true --> device is already configured by Cloud
+                 * only enter state=active here, no need to configure device
+                 * from stored config, but PM may be responsible for some offline
+                 * tasks in this state.
+                 */
+                pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_ACTIVE);
+            }
+            else
+            {
+                LOG(NOTICE, "offline_cfg: Load && apply persistent config triggered.");
+                pm_gw_offline_load_and_apply_config();
+            }
+
+            if (gw_offline_stat == status_active)
+            {
+                /* If active gw_offline mode successfuly entered, enable
+                 * eth clients handling:  */
+                gw_offline_enable_eth_clients_handling();
+            }
+            else
+            {
+                gw_offline = false;
+            }
         }
         else
         {
             if (!gw_offline)
             {
-                LOG(WARN, "offline_cfg: Not in offline config mode and exit triggered. Ignoring.");
+                LOG(INFO, "offline_cfg: Not in offline config mode and exit triggered. Ignoring.");
                 return;
             }
 
@@ -415,8 +503,14 @@ static void callback_Node_Config(
              * If not, then restart of managers will be required.
              */
             gw_offline = false;
-            pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_DISABLED);
-            LOG(INFO, "offline_cfg: Offline config mode disabled.");
+
+            // Set state accordingly:
+            if (pm_gw_offline_cfg_is_available())
+                pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_READY);
+            else
+                pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_ENABLED);
+
+            LOG(NOTICE, "offline_cfg: gw_offline mode exited");
         }
     }
 }
@@ -544,6 +638,7 @@ void pm_gw_offline_init(void *data)
     OVSDB_TABLE_INIT(Wifi_Inet_Config, if_name);
     OVSDB_TABLE_INIT(Wifi_Radio_Config, if_name);
     OVSDB_TABLE_INIT(DHCP_reserved_IP, hw_addr);
+    OVSDB_TABLE_INIT(Connection_Manager_Uplink, if_name);
 
     // Check feature enable flag (persistent):
     if (gw_offline_ps_load(PS_KEY_OFFLINE_CFG, &json_en) && json_en != NULL)
@@ -719,7 +814,7 @@ static bool gw_offline_ps_load(const char *ps_key, json_t **config)
     }
 
     /* Fetch the "config" data */
-    config_str = malloc((size_t)str_size);
+    config_str = MALLOC((size_t)str_size);
     if (osp_ps_get(ps, ps_key, config_str, (size_t)str_size) != str_size)
     {
         LOG(ERR, "offline_cfg: Error retrieving persistent %s key.", ps_key);
@@ -739,7 +834,7 @@ static bool gw_offline_ps_load(const char *ps_key, json_t **config)
     *config = config_json;
     rv = true;
 exit:
-    if (config_str != NULL) free(config_str);
+    if (config_str != NULL) FREE(config_str);
     if (ps != NULL) osp_ps_close(ps);
 
     return rv;
@@ -1096,6 +1191,12 @@ bool pm_gw_offline_read_and_store_config()
                 __func__, gw_offline_cfg, gw_offline_mon);
         return false;
     }
+    if (gw_offline_stat == status_active)
+    {
+        LOG(DEBUG, "offline_cfg: %s(): active gw_offline mode. Ignoring.", __func__);
+        return true;
+    }
+
 
     /* Read subset of current ovsdb config: */
     if (!gw_offline_cfg_ovsdb_read(&gw_cfg))

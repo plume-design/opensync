@@ -114,7 +114,8 @@ main(int argc, char ** argv)
     target_log_open("WM", 0);
     LOGN("Starting wireless manager - WM");
     log_severity_set(wm2_log_severity);
-    te_client_init(argv[0], TESRV_SOCKET_ADDR);
+    te_client_init(NULL);
+    TELOG_STEP("MANAGER", argv[0], "start", NULL);
 
     /* Enable runtime severity updates */
     log_register_dynamic_severity(loop);
@@ -150,6 +151,7 @@ main(int argc, char ** argv)
 
     ev_default_destroy();
 
+    TELOG_STEP("MANAGER", argv[0], "stop", NULL);
     LOGN("Exiting WM");
 
     return 0;

@@ -26,10 +26,12 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/um_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 manager_setup_file="um/um_setup.sh"
 um_resource_path="resource/um/"
@@ -79,17 +81,17 @@ Script usage example:
    ${tc_name} "http://url_to_image image_name_1.img image_name_2.img 10"
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
-
+fi
 NARGS=4
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 fw_path=$1
@@ -112,15 +114,15 @@ update_ovsdb_entry AWLAN_Node \
     -u upgrade_dl_timer "$fw_dl_timer" \
     -u firmware_url "$fw_url" &&
         log "$tc_name: update_ovsdb_entry - Success to update" ||
-        raise "update_ovsdb_entry - Failed to update" -l "$tc_name" -tc
+        raise "update_ovsdb_entry - Failed to update" -l "$tc_name" -oe
 
 start_time=$(date -D "%H:%M:%S"  +"%Y.%m.%d-%H:%M:%S")
 
-log "$tc_name: Waiting for FW download start"
+log "$tc_name: Waiting for FW download to start"
 dl_start_code=$(get_um_code "UPG_STS_FW_DL_START")
 wait_ovsdb_entry AWLAN_Node -is upgrade_status "$dl_start_code" &&
-    log "$tc_name: wait_ovsdb_entry - AWLAN_Node upgrade_status is $dl_start_code" ||
-    raise "wait_ovsdb_entry - Failed to set upgrade_status in AWLAN_Node to $dl_start_code" -l "$tc_name" -tc
+    log "$tc_name: wait_ovsdb_entry - AWLAN_Node::upgrade_status is $dl_start_code - Success" ||
+    raise "FAIL: wait_ovsdb_entry - AWLAN_Node::upgrade_status is not $dl_start_code" -l "$tc_name" -tc
 log "$tc_name: Download of 1st FW image started and in progress!"
 
 # Download of first image started...
@@ -129,8 +131,8 @@ log "$tc_name: Starting another fw image download '$fw_url_2' while first one is
 update_ovsdb_entry AWLAN_Node \
     -u upgrade_dl_timer "$fw_dl_timer" \
     -u firmware_url "$fw_url_2" &&
-        log "$tc_name: update_ovsdb_entry - Success to update" ||
-        raise "update_ovsdb_entry - Failed to update" -l "$tc_name" -tc
+        log "$tc_name: update_ovsdb_entry - AWLAN_Node table updated - Success" ||
+        raise "FAIL: update_ovsdb_entry - AWLAN_Node table not updated" -l "$tc_name" -oe
 
 log "$tc_name: Waiting for FW download to finish"
 dl_end_code=$(get_um_code "UPG_STS_FW_DL_END")

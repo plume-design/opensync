@@ -35,6 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "net_header_parse.h"
 #include "target.h"
 #include "unity.h"
+#include "memutil.h"
 
 #include "test_mdns.h"
 
@@ -98,7 +99,7 @@ char g_other_configs[][2][OTHER_CONFIG_NELEMS][OTHER_CONFIG_NELEM_SIZE] =
         },
         {
             "192.168.1.90",
-            "br-home.tx",
+            CONFIG_TARGET_LAN_BRIDGE_NAME".tx",
             "60",
             "true",
         },
@@ -593,8 +594,7 @@ test_mdns_parser(void)
     TEST_ASSERT_NOT_NULL(pctxt);
 
     /* Allocate a net parser */
-    net_parser = calloc(1, sizeof(*net_parser));
-    TEST_ASSERT_NOT_NULL(net_parser);
+    net_parser = CALLOC(1, sizeof(*net_parser));
 
     nelems = sizeof(pmap) / sizeof(pmap[0]);
     for (i = 0; i < nelems; i++)
@@ -621,7 +621,7 @@ test_mdns_parser(void)
         TEST_ASSERT_EQUAL(0, rc);
     }
 
-    free(net_parser);
+    FREE(net_parser);
 }
 
 

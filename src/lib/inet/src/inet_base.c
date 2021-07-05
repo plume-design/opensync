@@ -40,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "telog.h"
 #include "util.h"
+#include "memutil.h"
 #include "ds.h"
 
 #include "inet.h"
@@ -533,7 +534,7 @@ bool inet_base_fini(inet_base_t *self)
     {
         if (self->in_dhcps_opts[ii] != NULL)
         {
-            free(self->in_dhcps_opts[ii]);
+            FREE(self->in_dhcps_opts[ii]);
             self->in_dhcps_opts[ii] = NULL;
         }
     }
@@ -543,8 +544,8 @@ bool inet_base_fini(inet_base_t *self)
     ds_tree_foreach_iter(&self->in_dhcps_reservation_list, rn, &iter)
     {
         ds_tree_iremove(&iter);
-        if (rn->rn_hostname != NULL) free(rn->rn_hostname);
-        free(rn);
+        if (rn->rn_hostname != NULL) FREE(rn->rn_hostname);
+        FREE(rn);
     }
 
     /* Remove cached DHCP lease entries */
@@ -628,13 +629,13 @@ bool inet_base_fini(inet_base_t *self)
     ds_tree_foreach_iter(&self->in_ip6addr_list, ip6addr, &iter)
     {
         ds_tree_iremove(&iter);
-        free(ip6addr);
+        FREE(ip6addr);
     }
 
     ds_tree_foreach_iter(&self->in_ip6dns_list, ip6addr, &iter)
     {
         ds_tree_iremove(&iter);
-        free(ip6addr);
+        FREE(ip6addr);
     }
 
     /* Remove IPv6 neighbors */
@@ -646,7 +647,7 @@ bool inet_base_fini(inet_base_t *self)
     {
         if (self->in_dhcp6_client_send[ii] != NULL)
         {
-            free(self->in_dhcp6_client_send[ii]);
+            FREE(self->in_dhcp6_client_send[ii]);
             self->in_dhcp6_client_send[ii] = NULL;
         }
     }
@@ -660,7 +661,7 @@ bool inet_base_fini(inet_base_t *self)
     ds_tree_foreach_iter(&self->in_dhcp6_server_prefix_list, sp, &iter)
     {
         ds_tree_iremove(&iter);
-        free(sp);
+        FREE(sp);
     }
 
     /* Cleanup the send options list */
@@ -668,8 +669,8 @@ bool inet_base_fini(inet_base_t *self)
     ds_tree_foreach_iter(&self->in_dhcp6_server_optsend_list, so, &iter)
     {
         ds_tree_iremove(&iter);
-        free(so->so_data);
-        free(so);
+        FREE(so->so_data);
+        FREE(so);
     }
 
     /* Cleanup the lease list */
@@ -677,7 +678,7 @@ bool inet_base_fini(inet_base_t *self)
     ds_tree_foreach_iter(&self->in_dhcp6_server_optsend_list, sl, &iter)
     {
         ds_tree_iremove(&iter);
-        free(sl);
+        FREE(sl);
     }
 
     /* Cleanup IPv6 RouteAdv prefixes */
@@ -685,7 +686,7 @@ bool inet_base_fini(inet_base_t *self)
     ds_tree_foreach_iter(&self->in_radv_prefix_list, prefix, &iter)
     {
         ds_tree_iremove(&iter);
-        free(prefix);
+        FREE(prefix);
     }
 
     /* Cleanup IPv6 RouteAdv RDNSS configuration */
@@ -693,7 +694,7 @@ bool inet_base_fini(inet_base_t *self)
     ds_tree_foreach_iter(&self->in_radv_rdnss_list, rdnss, &iter)
     {
         ds_tree_iremove(&iter);
-        free(rdnss);
+        FREE(rdnss);
     }
 
     /* Cleanup IPv6 RouteAdv  DNSSL configuration */
@@ -701,7 +702,7 @@ bool inet_base_fini(inet_base_t *self)
     ds_tree_foreach_iter(&self->in_radv_dnssl_list, dnssl, &iter)
     {
         ds_tree_iremove(&iter);
-        free(dnssl);
+        FREE(dnssl);
     }
 
     memset(self, 0, sizeof(*self));
@@ -714,11 +715,11 @@ bool inet_base_fini(inet_base_t *self)
  */
 inet_base_t *inet_base_new(const char *ifname)
 {
-    inet_base_t *self = malloc(sizeof(inet_base_t));
+    inet_base_t *self = MALLOC(sizeof(inet_base_t));
 
     if (!inet_base_init(self, ifname))
     {
-        free(self);
+        FREE(self);
         return NULL;
     }
 
@@ -1270,7 +1271,7 @@ bool inet_base_dhcps_option_set(inet_t *super, enum osn_dhcp_option opt, const c
 
     if (self->in_dhcps_opts[opt] != NULL)
     {
-        free(self->in_dhcps_opts[opt]);
+        FREE(self->in_dhcps_opts[opt]);
         self->in_dhcps_opts[opt] = NULL;
     }
 
@@ -1314,7 +1315,7 @@ bool inet_base_dhcps_rip_set(
     /* Allocate a new entry */
     if (rn == NULL)
     {
-        rn = calloc(1, sizeof(struct dhcp_reservation_node));
+        rn = CALLOC(1, sizeof(struct dhcp_reservation_node));
         rn->rn_macaddr = macaddr;
         rn->rn_ipaddr = OSN_IP_ADDR_INIT;
 
@@ -1349,7 +1350,7 @@ bool inet_base_dhcps_rip_set(
      */
     if (rn->rn_hostname != NULL)
     {
-        free(rn->rn_hostname);
+        FREE(rn->rn_hostname);
         rn->rn_hostname = NULL;
     }
 
@@ -1383,8 +1384,8 @@ bool inet_base_dhcps_rip_del(inet_t *super, osn_mac_addr_t macaddr)
 
     /* Remove DHCP reservation entry */
     ds_tree_remove(&self->in_dhcps_reservation_list, rn);
-    if (rn->rn_hostname != NULL) free(rn->rn_hostname);
-    free(rn);
+    if (rn->rn_hostname != NULL) FREE(rn->rn_hostname);
+    FREE(rn);
 
     /* Schedule a DHCPv4 server restart */
     if (!inet_unit_restart(self->in_units, INET_BASE_DHCP_SERVER, false))
@@ -1815,7 +1816,7 @@ void *inet_base_dhcp_server_lease_sync(synclist_t *list, void *_old, void *_new)
     if (dl_old == NULL && dl_new != NULL)
     {
         /* Allocate a new lease node and return it */
-        dl_old = calloc(1, sizeof(struct dhcp_lease_node));
+        dl_old = CALLOC(1, sizeof(struct dhcp_lease_node));
         dl_old->dl_lease = dl_new->dl_lease;
         inet_base_dhcp_server_lease_notify(super, LEASE_NEW, &dl_old->dl_lease);
     }
@@ -1840,7 +1841,7 @@ void *inet_base_dhcp_server_lease_sync(synclist_t *list, void *_old, void *_new)
     else if (dl_new == NULL)
     {
         inet_base_dhcp_server_lease_notify(super, LEASE_DEL, &dl_old->dl_lease);
-        free(dl_old);
+        FREE(dl_old);
         return NULL;
     }
 
@@ -2081,7 +2082,7 @@ bool inet_base_ip6_addr(inet_t *super, bool add, osn_ip6_addr_t *addr)
     if (add && node == NULL)
     {
         /* New entry */
-        node = calloc(1, sizeof(*node));
+        node = CALLOC(1, sizeof(*node));
         node->in_addr = *addr;
         ds_tree_insert(&self->in_ip6addr_list, node, &node->in_addr);
     }
@@ -2089,7 +2090,7 @@ bool inet_base_ip6_addr(inet_t *super, bool add, osn_ip6_addr_t *addr)
     {
         /* Remove entry */
         ds_tree_remove(&self->in_ip6addr_list, node);
-        free(node);
+        FREE(node);
         node = NULL;
     }
 
@@ -2127,7 +2128,7 @@ bool inet_base_ip6_dns(inet_t *super, bool add, osn_ip6_addr_t *addr)
             return false;
         }
 
-        node = calloc(1, sizeof(*node));
+        node = CALLOC(1, sizeof(*node));
 
         node->in_addr = *addr;
         ds_tree_insert(&self->in_ip6dns_list, node, &node->in_addr);
@@ -2141,7 +2142,7 @@ bool inet_base_ip6_dns(inet_t *super, bool add, osn_ip6_addr_t *addr)
         }
 
         ds_tree_remove(&self->in_ip6dns_list, node);
-        free(node);
+        FREE(node);
     }
 
     /* Flag the INET_BASE_INET6 service for restart */
@@ -2284,7 +2285,7 @@ void *ip6_addr_status_node_sync(synclist_t *sync, void *_sold, void *_snew)
 
     if (aold == NULL) /* Insert */
     {
-        aold = calloc(1, sizeof(struct ip6_addr_status_node));
+        aold = CALLOC(1, sizeof(struct ip6_addr_status_node));
         aold->as_addr = anew->as_addr;
 
         if (self->in_ip6_addr_status_fn != NULL)
@@ -2301,7 +2302,7 @@ void *ip6_addr_status_node_sync(synclist_t *sync, void *_sold, void *_snew)
             self->in_ip6_addr_status_fn(&self->inet, &aold->as_addr, true);
         }
 
-        free(aold);
+        FREE(aold);
         return NULL;
     }
 
@@ -2363,7 +2364,7 @@ void *ip6_neigh_status_node_sync(synclist_t *sync, void *_sold, void *_snew)
 
     if (sold == NULL) /* Insert */
     {
-        sold = calloc(1, sizeof(struct ip6_neigh_status_node));
+        sold = CALLOC(1, sizeof(struct ip6_neigh_status_node));
         sold->ns_neigh = snew->ns_neigh;
 
         if (self->in_ip6_neigh_status_fn != NULL)
@@ -2380,7 +2381,7 @@ void *ip6_neigh_status_node_sync(synclist_t *sync, void *_sold, void *_snew)
             self->in_ip6_neigh_status_fn(&self->inet, &sold->ns_neigh, true);
         }
 
-        free(sold);
+        FREE(sold);
         return NULL;
     }
 
@@ -2503,7 +2504,7 @@ bool inet_base_dhcp6_client_option_send(inet_t *super, int tag, char *value)
         if (strcmp(self->in_dhcp6_client_send[tag], value) == 0) return true;
     }
 
-    free(self->in_dhcp6_client_send[tag]);
+    FREE(self->in_dhcp6_client_send[tag]);
     self->in_dhcp6_client_send[tag] = (value != NULL) ? strdup(value) : NULL;
 
     inet_unit_restart(self->in_units, INET_BASE_DHCP6_CLIENT, false);
@@ -2647,7 +2648,7 @@ bool inet_base_radv_prefix(
         if (node == NULL) return true;
 
         ds_tree_remove(&self->in_radv_prefix_list, node);
-        free(node);
+        FREE(node);
 
         inet_unit_restart(self->in_units, INET_BASE_RADV, false);
         return true;
@@ -2658,7 +2659,7 @@ bool inet_base_radv_prefix(
      */
     if (node == NULL)
     {
-        node = calloc(1, sizeof(*node));
+        node = CALLOC(1, sizeof(*node));
         node->pr_addr = *prefix;
         node->pr_autonomous = autonomous;
         node->pr_onlink = onlink;
@@ -2690,7 +2691,7 @@ bool inet_base_radv_rdnss(inet_t *super, bool add, osn_ip6_addr_t *addr)
     {
         if (node != NULL) return true;
 
-        node = calloc(1, sizeof(*node));
+        node = CALLOC(1, sizeof(*node));
         node->in_addr = *addr;
         ds_tree_insert(&self->in_radv_rdnss_list, node, &node->in_addr);
     }
@@ -2699,7 +2700,7 @@ bool inet_base_radv_rdnss(inet_t *super, bool add, osn_ip6_addr_t *addr)
         if (node == NULL) return true;
 
         ds_tree_remove(&self->in_radv_rdnss_list, node);
-        free(node);
+        FREE(node);
     }
 
     inet_unit_restart(self->in_units, INET_BASE_RADV, false);
@@ -2719,13 +2720,13 @@ bool inet_base_radv_dnssl(inet_t *super, bool add, char *sl)
     {
         if (node != NULL) return true;
 
-        node = calloc(1, sizeof(*node));
+        node = CALLOC(1, sizeof(*node));
         if (strscpy(node->dn_dnssl, sl, sizeof(node->dn_dnssl)) < 0)
         {
             LOG(ERR, "inet_base: %s: Error adding DNSSL entry %s. String too long.",
                     super->in_ifname,
                     sl);
-            free(node);
+            FREE(node);
             return false;
         }
 
@@ -2736,7 +2737,7 @@ bool inet_base_radv_dnssl(inet_t *super, bool add, char *sl)
         if (node == NULL) return true;
 
         ds_tree_remove(&self->in_radv_dnssl_list, node);
-        free(node);
+        FREE(node);
     }
 
     inet_unit_restart(self->in_units, INET_BASE_RADV, false);
@@ -2863,7 +2864,7 @@ bool inet_base_dhcp6_server_prefix(inet_t *super, bool add, struct osn_dhcpv6_se
     {
         if (node != NULL) return true;
 
-        node = calloc(1, sizeof(*node));
+        node = CALLOC(1, sizeof(*node));
         memcpy(&node->sp_prefix, prefix, sizeof(node->sp_prefix));
         ds_tree_insert(&self->in_dhcp6_server_prefix_list, node, &node->sp_prefix);
     }
@@ -2872,7 +2873,7 @@ bool inet_base_dhcp6_server_prefix(inet_t *super, bool add, struct osn_dhcpv6_se
         if (node == NULL) return true;
 
         ds_tree_remove(&self->in_dhcp6_server_prefix_list, node);
-        free(node);
+        FREE(node);
     }
 
     inet_unit_restart(self->in_units, INET_BASE_DHCP6_SERVER, false);
@@ -2895,15 +2896,15 @@ bool inet_base_dhcp6_server_option_send(inet_t *super, int tag, char *data)
         if (node == NULL) return true;
 
         ds_tree_remove(&self->in_dhcp6_server_optsend_list, node);
-        free(node->so_data);
-        free(node);
+        FREE(node->so_data);
+        FREE(node);
     }
     else
     {
         /* Add tag to the list of options */
         if (node == NULL)
         {
-            node = calloc(1, sizeof(struct osn_dhcpv6_server_optsend_node));
+            node = CALLOC(1, sizeof(struct osn_dhcpv6_server_optsend_node));
             node->so_tag = tag;
             ds_tree_insert(&self->in_dhcp6_server_optsend_list, node, &node->so_tag);
         }
@@ -2915,7 +2916,7 @@ bool inet_base_dhcp6_server_option_send(inet_t *super, int tag, char *data)
         }
 
         /* Replace old with new data */
-        free(node->so_data);
+        FREE(node->so_data);
         node->so_data = strdup(data);
     }
 
@@ -2938,7 +2939,7 @@ bool inet_base_dhcp6_server_lease(inet_t *super, bool add, struct osn_dhcpv6_ser
     {
         if (node != NULL) return true;
 
-        node = calloc(1, sizeof(*node));
+        node = CALLOC(1, sizeof(*node));
         memcpy(&node->sl_lease, lease, sizeof(node->sl_lease));
         ds_tree_insert(&self->in_dhcp6_server_lease_list, node, &node->sl_lease);
     }
@@ -2947,7 +2948,7 @@ bool inet_base_dhcp6_server_lease(inet_t *super, bool add, struct osn_dhcpv6_ser
         if (node == NULL) return true;
 
         ds_tree_remove(&self->in_dhcp6_server_lease_list, node);
-        free(node);
+        FREE(node);
     }
 
     inet_unit_restart(self->in_units, INET_BASE_DHCP6_SERVER, false);

@@ -25,8 +25,11 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
+. /usr/opensync/etc/kconfig # TODO: This should point to {INSTALL_PREFIX}/etc/kconfig
 # Series of generic routines updating ovsdb tables.
 # TBD: It would make sense to commonize them all.
+
+. /usr/opensync/etc/kconfig # TODO: This should point to {INSTALL_PREFIX}/etc/kconfig
 
 # Check if a specific command is in the path. Bail if not found.
 check_cmd() {
@@ -155,8 +158,8 @@ get_node_id() {
 
 # Let's start
 client_mac=$1
-bridge=${2:-br-home}
-intf=${3:-br-home.tmdns}
+bridge=${2:-${CONFIG_TARGET_LAN_BRIDGE_NAME}}
+intf=${3:-${CONFIG_TARGET_LAN_BRIDGE_NAME}.tmdns}
 ofport=${4:-6123} # must be unique to the bridge
 
 # of_out_token: openflow_config egress rule name. Must start with 'dev' so the
@@ -175,10 +178,10 @@ tag_name=dev_tag_mdns
 
 # Flow_Service_Manager_Config parameters
 filter="udp port 67"
-plugin=/usr/plume/lib/libfsm_mdns.so
+plugin=${CONFIG_INSTALL_PREFIX}/lib/libfsm_mdns.so
 dso_init=mdns_plugin_init
 fsm_handler=dev_mdns # must start with 'dev' so the controller leaves it alone
-mdns_sip="$(ifconfig | grep -A 1 'br-home' | sed -n '2 p' | cut -d ":" -f 2 | cut -d ' ' -f 1)"
+mdns_sip="$(ifconfig | grep -A 1 "${CONFIG_TARGET_LAN_BRIDGE_NAME}" | sed -n '2 p' | cut -d ":" -f 2 | cut -d ' ' -f 1)"
 
 priority=200 # must be higher than controller pushed rules
 

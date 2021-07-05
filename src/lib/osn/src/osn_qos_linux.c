@@ -27,6 +27,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdlib.h>
 
 #include "log.h"
+#include "memutil.h"
 
 #include "lnx_qos.h"
 
@@ -37,11 +38,11 @@ struct osn_qos
 
 osn_qos_t* osn_qos_new(const char *ifname)
 {
-    osn_qos_t *self = calloc(1, sizeof(*self));
+    osn_qos_t *self = CALLOC(1, sizeof(*self));
 
     if (!lnx_qos_init(&self->oq_lnx, ifname))
     {
-        free(self);
+        FREE(self);
         return NULL;
     }
 
@@ -51,7 +52,7 @@ osn_qos_t* osn_qos_new(const char *ifname)
 void osn_qos_del(osn_qos_t *self)
 {
     lnx_qos_fini(&self->oq_lnx);
-    free(self);
+    FREE(self);
 }
 
 bool osn_qos_apply(osn_qos_t *self)

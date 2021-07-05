@@ -1,0 +1,13 @@
+menuconfig MANAGER_PSM
+    bool "Persistent Storage Manager (PSM)"
+    default y
+    help
+        Enable Persistent Storage Manager (PSM)
+
+if MANAGER_PSM
+    config MANAGER_PSM_CFG
+        string "PSM Startup configuration"
+        default "psm;true"
+        help
+            Persistent Storage Manager configuration
+endif

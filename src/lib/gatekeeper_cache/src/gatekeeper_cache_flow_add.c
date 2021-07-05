@@ -24,6 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include "memutil.h"
+
 #include "gatekeeper_cache.h"
 #include "memutil.h"
 
@@ -46,19 +48,20 @@ gkc_new_flow_entry(struct gkc_ip_flow_interface *req)
     if (flow_entry == NULL) return NULL;
 
     /* set src ip address */
-    ip_len = (req->ip_version == 4 ? 4 : 16);
     flow_entry->ip_version = req->ip_version;
 
-    flow_entry->src_ip_addr = CALLOC(ip_len, sizeof(*flow_entry->src_ip_addr));
+    ip_len = (req->ip_version == 4 ? 4 : 16);
+
+    flow_entry->src_ip_addr = CALLOC(1, ip_len);
     if (flow_entry->src_ip_addr == NULL) goto err_free_fentry;
 
-    memcpy(flow_entry->src_ip_addr, req->src_ip_addr, ip_len*sizeof(*flow_entry->src_ip_addr));
+    memcpy(flow_entry->src_ip_addr, req->src_ip_addr, ip_len);
 
     /* set dst ip address */
-    flow_entry->dst_ip_addr = CALLOC(ip_len, sizeof(*flow_entry->dst_ip_addr));
+    flow_entry->dst_ip_addr = CALLOC(1, ip_len);
     if (flow_entry->dst_ip_addr == NULL) goto err_free_sip;
 
-    memcpy(flow_entry->dst_ip_addr, req->dst_ip_addr, ip_len*sizeof(*flow_entry->dst_ip_addr));
+    memcpy(flow_entry->dst_ip_addr, req->dst_ip_addr, ip_len);
 
     flow_entry->cache_ts  = time(NULL);
     flow_entry->cache_ttl = req->cache_ttl;
@@ -67,6 +70,13 @@ gkc_new_flow_entry(struct gkc_ip_flow_interface *req)
     flow_entry->protocol  = req->protocol;
     flow_entry->cache_ttl = req->cache_ttl;
     flow_entry->action    = req->action;
+
+    if (req->gk_policy)
+    {
+        flow_entry->gk_policy = STRDUP(req->gk_policy);
+    }
+
+    flow_entry->hit_count.total = 1;  /* We count the insertion as a hit */
 
     return flow_entry;
 
@@ -86,7 +96,7 @@ err_free_fentry:
  * @return true for success and false for failure.
  */
 bool
-gkc_is_input_valid(struct gkc_ip_flow_interface *req)
+gkc_is_flow_valid(struct gkc_ip_flow_interface *req)
 {
     if (!req || !req->device_mac) return false;
 
@@ -121,7 +131,7 @@ gkc_add_flow_tree(struct per_device_cache *pdevice,
     mgr = gk_cache_get_mgr();
     if (!mgr->initialized) return false;
 
-    ret = gkc_is_input_valid(req);
+    ret = gkc_is_flow_valid(req);
     if (ret == false) return false;
 
     flow_entry = gkc_new_flow_entry(req);

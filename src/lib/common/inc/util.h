@@ -32,6 +32,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdio.h>
 #include <assert.h>
 
+#include "memutil.h"
+
 #ifndef MIN
 #define MIN(a,b) \
     ({ __typeof__ (a) _a = (a); \
@@ -47,6 +49,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endif
 
 int bin2hex(const unsigned char *in, size_t in_size, char *out, size_t out_size);
+ssize_t hex2bin(const char *in, size_t in_size, unsigned char *out, size_t out_size);
 bool ascii2hex(const char *input, char *output, size_t size);
 int csnprintf(char **str, size_t *size, const char *fmt, ...);
 #define append_snprintf csnprintf
@@ -118,7 +121,7 @@ ssize_t strscpy_len(char *dest, const char *src, size_t size, ssize_t src_len);
 ssize_t strscat(char *dest, const char *src, size_t size);
 char *strschr(const char *s, int c, size_t n);
 char *strsrchr(const char *s, int c, size_t n);
-#define strdupafree(s) ({ char *__p = s, *__q = __p ? strdupa(__p) : NULL; free(__p); __q; })
+#define strdupafree(s) ({ char *__p = s, *__q = __p ? strdupa(__p) : NULL; FREE(__p); __q; })
 char *strfmt(const char *fmt, ...) __attribute__ ((format(printf, 1, 2)));
 #define strfmta(fmt, ...) strdupafree(strfmt(fmt, ##__VA_ARGS__))
 char *argvstr(const char *const*argv);
@@ -129,6 +132,7 @@ char *strexread(const char *prog, const char *const*argv);
 #define strexa(...) strdupafree(strchomp(strexread(__strexa_arg1(__VA_ARGS__), (const char *[]){ __VA_ARGS__, NULL }), " \t\r\n"))
 #define strexpect(str, prog, ...) ({ char *__p = strexa(prog, ##__VA_ARGS__); __p && !strcmp(__p, str); })
 char *strdel(char *heystack, const char *needle, int (*strcmp_fun) (const char*, const char*));
+char *strgrow(char **buf, const char *fmt, ...) __attribute__ ((format(printf, 2, 3)));
 
 int    str_count_lines(char *s);
 bool   str_split_lines_to(char *s, char **lines, int size, int *count);

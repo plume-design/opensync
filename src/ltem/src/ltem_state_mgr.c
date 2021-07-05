@@ -99,29 +99,34 @@ static void
 ltem_handle_wan_state_change(ltem_mgr_t *mgr)
 {
     int res = 0;
+
     switch (mgr->wan_state) {
     case LTEM_WAN_STATE_UNKNOWN:
         break;
     case LTEM_WAN_STATE_DOWN:
-        if (mgr->lte_state == LTEM_LTE_STATE_UP && (mgr->lte_config_info->lte_failover || mgr->lte_config_info->force_use_lte))
+        if (mgr->lte_state == LTEM_LTE_STATE_UP && (mgr->lte_config_info->lte_failover_enable || mgr->lte_config_info->force_use_lte))
         {
             if (!ltem_add_lte_route(mgr))
             {
-                mgr->lte_state_info->lte_failover = true;
+                mgr->lte_state_info->lte_failover_active = true;
+                mgr->lte_state_info->lte_failover_start = time(NULL);
+                mgr->lte_state_info->lte_failover_end = 0;
+                mgr->lte_state_info->lte_failover_count++;
             }
             else
             {
-                mgr->lte_state_info->lte_failover = false;
+                mgr->lte_state_info->lte_failover_active = false;
                 res = ltem_ovsdb_cmu_disable_lte(mgr);
             }
         }
         break;
     case LTEM_WAN_STATE_UP:
-        if (mgr->lte_state == LTEM_LTE_STATE_UP && mgr->lte_state_info->lte_failover && !mgr->lte_config_info->force_use_lte)
+        if (mgr->lte_state == LTEM_LTE_STATE_UP && mgr->lte_state_info->lte_failover_active && !mgr->lte_config_info->force_use_lte)
         {
             ltem_restore_default_route(mgr);
             ltem_ovsdb_cmu_disable_lte(mgr);
-            mgr->lte_state_info->lte_failover = false;
+            mgr->lte_state_info->lte_failover_active = false;
+            mgr->lte_state_info->lte_failover_end = time(NULL);
         }
         break;
     default:
@@ -166,13 +171,6 @@ ltem_handle_lte_state_change(ltem_mgr_t *mgr)
     case LTEM_LTE_STATE_INIT:
         break;
     case LTEM_LTE_STATE_UP:
-        res = ltem_create_lte_route_table(mgr);
-        if (res)
-        {
-            LOGI("%s: ltem_create_lte_route_table() failed", __func__);
-            break;
-        }
-
         res = ltem_ovsdb_cmu_create_lte(mgr);
         if (res)
         {
@@ -181,11 +179,11 @@ ltem_handle_lte_state_change(ltem_mgr_t *mgr)
         }
         break;
     case LTEM_LTE_STATE_DOWN:
-        if (mgr->lte_state_info->lte_failover)
+        if (mgr->lte_state_info->lte_failover_active)
         {
             ltem_restore_default_route(mgr);
             ltem_ovsdb_cmu_disable_lte(mgr);
-            mgr->lte_state_info->lte_failover = false;
+            mgr->lte_state_info->lte_failover_active = false;
         }
         break;
     default:

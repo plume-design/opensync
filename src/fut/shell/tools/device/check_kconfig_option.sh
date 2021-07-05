@@ -30,7 +30,8 @@
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="tools/device/$(basename "$0")"
 usage()
@@ -50,15 +51,17 @@ Script usage example:
 usage_string
 }
 
-while getopts h option > /dev/null 2>&1; do
-    case "$option" in
-        h)
+if [ -n "${1}" ] > /dev/null 2>&1; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
             ;;
     esac
-done
+fi
 
 # INPUT ARGUMENTS:
 NARGS=2

@@ -29,6 +29,7 @@ enum RadioBandType {
     BAND5G                                  = 1;
     BAND5GL                                 = 2;
     BAND5GU                                 = 3;
+    BAND6G                                  = 4;
 }
 
 enum SurveyType {
@@ -138,6 +139,14 @@ enum DiffType {
     REMOVED                                 = 1;
 }
 
+enum PowerSupplyType {
+    PS_TYPE_UNKNOWN                         = 0;
+    PS_TYPE_AC                              = 1;
+    PS_TYPE_BATTERY                         = 2;
+    PS_TYPE_POE                             = 3;
+    PS_TYPE_POE_PLUS                        = 4;
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 // Neighbor report: Report contains OBSS neighbor nodes/beacons retreived from
@@ -243,6 +252,8 @@ message Client {
     repeated TxStats    tx_stats            = 11;
     repeated TidStats   tid_stats           = 12;
     optional uint32     uapsd               = 13;
+    optional string     uplink_type         = 14;
+    optional bool       uplink_changed      = 15;
 }
 
 message ClientReport {
@@ -397,6 +408,13 @@ message Device {
     // top / most CPU/MEM consuming processes:
     repeated PerProcessUtil ps_cpu_util   = 9;
     repeated PerProcessUtil ps_mem_util   = 10;
+    
+    message PowerInfo {
+        optional PowerSupplyType ps_type           = 1;
+        optional uint32          p_consumption     = 2;
+        optional uint32          batt_level        = 3;
+    }
+    optional PowerInfo powerInfo                   = 11;
 
 }
 
@@ -441,6 +459,7 @@ message BSClient {
         optional uint32         backoff_period              = 30;
         optional bytes          assoc_ies                   = 31;
         optional uint32         btm_status                  = 32;
+        optional bool           band_cap_6G                 = 33;
     }
     message BSBandReport {
         required RadioBandType  band                        = 1;

@@ -25,6 +25,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include "qosm_internal.h"
+#include "memutil.h"
 
 static void callback_IP_Interface(
         ovsdb_update_monitor_t *mon,
@@ -59,8 +60,7 @@ struct qosm_ip_interface *qosm_ip_interface_get(ovs_uuid_t *uuid)
     }
 
     /* Allocate a new empty structure */
-    ipi = calloc(1, sizeof(struct qosm_ip_interface));
-    ASSERT(ipi != NULL, "Error allocating qosm_ip_interface");
+    ipi = CALLOC(1, sizeof(struct qosm_ip_interface));
 
     ipi->ipi_uuid = *uuid;
     reflink_init(&ipi->ipi_reflink, "IP_Interface");
@@ -111,7 +111,7 @@ void qosm_ip_interface_reflink_fn(reflink_t *ref, reflink_t *sender)
 
     ds_tree_remove(&qosm_ip_interface_list, ipi);
 
-    free(ipi);
+    FREE(ipi);
 }
 
 void qosm_ip_interface_qos_reflink_fn(reflink_t *ref, reflink_t *sender)

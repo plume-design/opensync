@@ -30,11 +30,11 @@
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/dm_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="dm/$(basename "$0")"
 dm_setup_file="dm/dm_setup.sh"
-
 usage()
 {
 cat << usage_string
@@ -51,38 +51,39 @@ Script usage example:
 usage_string
 }
 
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 
 check_kconfig_option "CONFIG_OSP_REBOOT_PSTORE" "y" ||
     raise "CONFIG_OSP_REBOOT_PSTORE != y - Testcase not applicable REBOOT PERSISTENT STORAGE not supported" -l "${tc_name}" -s
 
-log_title "$tc_name: DM test - Verify reboot file exists"
-
 reboot_file_path="/var/run/osp_reboot_reason"
 
+log_title "$tc_name: DM test - Verify reboot file '$reboot_file_path' exists"
+
 [ -e "$reboot_file_path" ] &&
-    log "$tc_name: reboot file exists in $reboot_file_path" ||
-    raise "reboot file is missing - $reboot_file_path" -l "$tc_name" -tc
+    log "$tc_name: reboot file exists in $reboot_file_path - Success" ||
+    raise "FAIL: reboot file is missing - $reboot_file_path" -l "$tc_name" -tc
 [ -s "$reboot_file_path" ] &&
-    log "$tc_name: reboot file is not empty - $reboot_file_path" ||
-    raise "reboot file is empty - $reboot_file_path" -l "$tc_name" -tc
+    log "$tc_name: reboot file is not empty - $reboot_file_path - Success" ||
+    raise "FAIL: reboot file is empty - $reboot_file_path" -l "$tc_name" -tc
 
 cat $reboot_file_path | grep -q "REBOOT"
 if [ $? = 0 ]; then
-    log "$tc_name: REBOOT string found in file - $reboot_file_path"
+    log "$tc_name: 'REBOOT' string found in file $reboot_file_path"
     reason=$(cat $reboot_file_path | awk '{print $2}')
     log "$tc_name: Found reason: $reason"
 else
-    raise "FAIL: Could not find REBOOT string in file - $reboot_file_path" -l "$tc_name" -tc
+    raise "FAIL: Could not find REBOOT string in file $reboot_file_path" -l "$tc_name" -tc
 fi
 
 pass

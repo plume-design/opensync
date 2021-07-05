@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ds.h"
 #include "ds_dlist.h"
 #include "dpp_types.h"
+#include "memutil.h"
 
 
 #define DPP_MAX_BS_EVENT_RECORDS    60
@@ -164,11 +165,8 @@ static inline dpp_bs_client_record_list_t *dpp_bs_client_record_alloc()
 {
     dpp_bs_client_record_list_t *record = NULL;
 
-    record = malloc( sizeof( dpp_bs_client_record_list_t ) );
-    if( record )
-    {
-        memset( record, 0, sizeof( dpp_bs_client_record_t ) );
-    }
+    record = MALLOC( sizeof( dpp_bs_client_record_list_t ) );
+    memset( record, 0, sizeof( dpp_bs_client_record_t ) );
 
     return record;
 }
@@ -177,7 +175,7 @@ static inline void dpp_bs_client_record_free( dpp_bs_client_record_list_t *recor
 {
     if( record != NULL )
     {
-        free( record );
+        FREE( record );
     }
 }
 

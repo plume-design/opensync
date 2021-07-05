@@ -1,0 +1,54 @@
+// Copyright (c) 2015, Plume Design Inc. All rights reserved.
+// 
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
+//    1. Redistributions of source code must retain the above copyright
+//       notice, this list of conditions and the following disclaimer.
+//    2. Redistributions in binary form must reproduce the above copyright
+//       notice, this list of conditions and the following disclaimer in the
+//       documentation and/or other materials provided with the distribution.
+//    3. Neither the name of the Plume Design Inc. nor the
+//       names of its contributors may be used to endorse or promote products
+//       derived from this software without specific prior written permission.
+// 
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+// ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+// WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL Plume Design Inc. BE LIABLE FOR ANY
+// DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+// (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+// LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+// ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+syntax = "proto3";
+
+package interfaces.dpi_stats;
+
+message DpiStatsObservationPoint {
+  string node_id = 3;
+  string location_id = 4;
+}
+
+message DpiStatsCounters {
+  uint32 curr_alloc = 1;
+  uint32 peak_alloc = 2;
+  uint32 fail_alloc = 3;
+  uint32 mpmc_events = 4;
+  uint32 scan_started = 5;
+  uint32 scan_stopped = 6;
+  uint32 scan_bytes = 7;
+  uint32 err_incomplete = 8;
+  uint32 err_length = 9;
+  uint32 err_create = 10;
+  uint32 err_scan = 11;
+  uint32 connections = 12;
+  uint32 streams = 13;
+}
+
+message DpiStatsReport {
+  DpiStatsObservationPoint observation_point = 1;
+  string plugin = 2;
+  DpiStatsCounters counters = 3;
+}

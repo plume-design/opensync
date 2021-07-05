@@ -26,6 +26,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "const.h"
 #include "nm2_util.h"
+#include "memutil.h"
 
 /*
  * ===========================================================================
@@ -146,7 +147,7 @@ void *uuid_synclist_fn(synclist_t *list, void *_old, void *_new)
 
     if (insert) /* Add element */
     {
-        struct uuidset_node *new_node = calloc(1, sizeof(*new_node));
+        struct uuidset_node *new_node = CALLOC(1, sizeof(*new_node));
 
         new_node->un_uuid = node->un_uuid;
         node = new_node;
@@ -165,7 +166,7 @@ void *uuid_synclist_fn(synclist_t *list, void *_old, void *_new)
         /* Disconnect root and element reflinks */
         reflink_disconnect(&us->us_reflink, ref);
 
-        free(node);
+        FREE(node);
         node = NULL;
     }
 

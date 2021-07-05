@@ -24,13 +24,17 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-/usr/bin/ovs-vsctl add-port br-home br-home.foo  -- set interface br-home.foo  type=internal -- set interface br-home.foo  ofport_request=1001
-/usr/sbin/ip link set br-home.foo up
-/usr/bin/ovs-vsctl add-port br-home br-home.bar  -- set interface br-home.bar  type=internal -- set interface br-home.bar  ofport_request=1002
-/usr/sbin/ip link set br-home.bar up
-/usr/plume/tools/ovsh i Openflow_Config token:="dev_flow_foo" bridge:="br-home" table:="0" priority:="200" rule:="dl_src=\${dev_tag_foo},udp,tp_dst=12345" action:="normal,output:1001"
-/usr/plume/tools/ovsh i Openflow_Config token:="dev_flow_bar" bridge:="br-home" table:="0" priority:="250" rule:="dl_src=\${dev_tag_bar},tcp,tp_dst=54321" action:="normal,output:1002"
-/usr/plume/tools/ovsh i Openflow_Tag name:="dev_tag_bar" device_value:="[\"set\",[\"de:ad:be:ef:00:11\",\"66:55:44:33:22:11\"]]"
-/usr/plume/tools/ovsh i Openflow_Tag name:="dev_tag_foo" cloud_value:="[\"set\",[\"aa:bb:cc:dd:ee:ff\",\"11:22:33:44:55:66\"]]"
-/usr/plume/tools/ovsh i Flow_Service_Manager_Config handler:="dev_foo" if_name:="br-home.foo" pkt_capt_filter:="udp port 12345" plugin:="/tmp/libfsm_foo.so" other_config:="[\"map\",[[\"dso_init\",\"fsm_foo_init\"],[\"mqtt_v\",\"foo_mqtt_v\"]]]"
-/usr/plume/tools/ovsh i Flow_Service_Manager_Config handler:="dev_bar" if_name:="br-home.bar" pkt_capt_filter:="tcp port 54321" plugin:="/tmp/libfsm_bar.so" other_config:="[\"map\",[[\"dso_init\",\"fsm_bar_init\"],[\"mqtt_v\",\"bar_mqtt_v\"]]]"
+. /usr/opensync/etc/kconfig # TODO: This should point to {INSTALL_PREFIX}/etc/kconfig
+OVS_VSCTL_PATH=$(which ovs-vsctl)
+IP_PATH=$(which ip)
+OVSH_PATH=$(which ovsh)
+$OVS_VSCTL_PATH add-port $CONFIG_TARGET_LAN_BRIDGE_NAME $CONFIG_TARGET_LAN_BRIDGE_NAME.foo  -- set interface $CONFIG_TARGET_LAN_BRIDGE_NAME.foo  type=internal -- set interface $CONFIG_TARGET_LAN_BRIDGE_NAME.foo  ofport_request=1001
+$IP_PATH link set $CONFIG_TARGET_LAN_BRIDGE_NAME.foo up
+$OVS_VSCTL_PATH add-port $CONFIG_TARGET_LAN_BRIDGE_NAME $CONFIG_TARGET_LAN_BRIDGE_NAME.bar  -- set interface $CONFIG_TARGET_LAN_BRIDGE_NAME.bar  type=internal -- set interface $CONFIG_TARGET_LAN_BRIDGE_NAME.bar  ofport_request=1002
+$IP_PATH link set $CONFIG_TARGET_LAN_BRIDGE_NAME.bar up
+$OVSH_PATH i Openflow_Config token:="dev_flow_foo" bridge:="$CONFIG_TARGET_LAN_BRIDGE_NAME" table:="0" priority:="200" rule:="dl_src=\${dev_tag_foo},udp,tp_dst=12345" action:="normal,output:1001"
+$OVSH_PATH i Openflow_Config token:="dev_flow_bar" bridge:="$CONFIG_TARGET_LAN_BRIDGE_NAME" table:="0" priority:="250" rule:="dl_src=\${dev_tag_bar},tcp,tp_dst=54321" action:="normal,output:1002"
+$OVSH_PATH i Openflow_Tag name:="dev_tag_bar" device_value:="[\"set\",[\"de:ad:be:ef:00:11\",\"66:55:44:33:22:11\"]]"
+$OVSH_PATH i Openflow_Tag name:="dev_tag_foo" cloud_value:="[\"set\",[\"aa:bb:cc:dd:ee:ff\",\"11:22:33:44:55:66\"]]"
+$OVSH_PATH i Flow_Service_Manager_Config handler:="dev_foo" if_name:="$CONFIG_TARGET_LAN_BRIDGE_NAME.foo" pkt_capt_filter:="udp port 12345" plugin:="/tmp/libfsm_foo.so" other_config:="[\"map\",[[\"mqtt_v\",\"foo_mqtt_v\"],[\"dso_init\",\"fsm_foo_init\"]]]"
+$OVSH_PATH i Flow_Service_Manager_Config handler:="dev_bar" if_name:="$CONFIG_TARGET_LAN_BRIDGE_NAME.bar" pkt_capt_filter:="tcp port 54321" plugin:="/tmp/libfsm_bar.so" other_config:="[\"map\",[[\"mqtt_v\",\"bar_mqtt_v\"],[\"dso_init\",\"fsm_bar_init\"]]]"

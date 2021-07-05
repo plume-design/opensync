@@ -216,21 +216,24 @@ hwsim_update_vif_and_phy(const char *vif)
 }
 
 static void
-hwsim_op_dpp_chirp_received(const struct target_dpp_chirp_obj *chirp)
+hwsim_op_dpp_chirp_received(struct ctrl *ctrl,
+                            const struct target_dpp_chirp_obj *chirp)
 {
     if (WARN_ON(!g_ops->op_dpp_announcement)) return;
     g_ops->op_dpp_announcement(chirp);
 }
 
 static void
-hwsim_op_dpp_conf_sent(const struct target_dpp_conf_enrollee *enrollee)
+hwsim_op_dpp_conf_sent(struct ctrl *ctrl,
+                       const struct target_dpp_conf_enrollee *enrollee)
 {
     if (WARN_ON(!g_ops->op_dpp_conf_enrollee)) return;
     g_ops->op_dpp_conf_enrollee(enrollee);
 }
 
 static void
-hwsim_op_dpp_conf_received(const struct target_dpp_conf_network *conf)
+hwsim_op_dpp_conf_received(struct ctrl *ctrl,
+                           const struct target_dpp_conf_network *conf)
 {
     if (WARN_ON(!g_ops->op_dpp_conf_network)) return;
     g_ops->op_dpp_conf_network(conf);
@@ -300,9 +303,9 @@ hwsim_register_hapd(const char *vif)
     STRSCPY_WARN(hapd->driver, "nl80211");
     hapd->ctrl.opened = hwsim_op_ctrl_opened;
     hapd->ctrl.closed = hwsim_op_ctrl_closed;
-    hapd->dpp_chirp_received = hwsim_op_dpp_chirp_received;
-    hapd->dpp_conf_sent = hwsim_op_dpp_conf_sent;
-    hapd->dpp_conf_received = hwsim_op_dpp_conf_received;
+    hapd->ctrl.dpp_conf_sent = hwsim_op_dpp_conf_sent;
+    hapd->ctrl.dpp_conf_received = hwsim_op_dpp_conf_received;
+    hapd->ctrl.dpp_chirp_received = hwsim_op_dpp_chirp_received;
     hapd->sta_connected = hwsim_op_hapd_sta_connected;
     hapd->sta_disconnected = hwsim_op_hapd_sta_disconnected;
     hapd->ap_enabled = hwsim_op_hapd_ap_enabled;
@@ -325,7 +328,9 @@ hwsim_register_wpas(const char *vif)
     STRSCPY_WARN(wpas->driver, "nl80211");
     wpas->ctrl.opened = hwsim_op_ctrl_opened;
     wpas->ctrl.closed = hwsim_op_ctrl_closed;
-    wpas->dpp_conf_received = hwsim_op_dpp_conf_received;
+    wpas->ctrl.dpp_conf_sent = hwsim_op_dpp_conf_sent;
+    wpas->ctrl.dpp_conf_received = hwsim_op_dpp_conf_received;
+    wpas->ctrl.dpp_chirp_received = hwsim_op_dpp_chirp_received;
     wpas->connected = hwsim_op_wpas_connected;
     wpas->disconnected = hwsim_op_wpas_disconnected;
     ctrl_enable(&wpas->ctrl);
@@ -352,14 +357,40 @@ bool target_radio_config_need_reset(void)
 bool target_radio_config_set2(const struct schema_Wifi_Radio_Config *rconf,
                               const struct schema_Wifi_Radio_Config_flags *changed)
 {
+    struct hapd *hapd;
+    struct wpas *wpas;
     const char *phy = rconf->if_name;
+    const char *vif;
+    char *vifs;
 
     LOGI("phy: %s: configuring", phy);
 
-    /* TODO: Nothing is actually changed now. CSA
-     * not supported yet. Anything else is static
-     * anyway.
+    /* Channel switching isn't really implemented
+     * and needs more work. To make some of the
+     * tests more reliable when channels are
+     * reprogrammed (lib/hostap helper ignores
+     * channel changes) force vifs down so
+     * config!=state on vifs is noticed and
+     * hostapd is restarted there from scratch so
+     * it doesn't ignore the channel.
      */
+    if (changed->channel || changed->ht_mode) {
+        vifs = VIFS(phy);
+        while ((vif = strsep(&vifs, " "))) {
+            if (strlen(vif) > 0) {
+                hapd = hapd_lookup(vif);
+                wpas = wpas_lookup(vif);
+                if (hapd)
+                    hapd_destroy(hapd);
+                if (wpas)
+                    wpas_destroy(wpas);
+
+                E("ip", "link", "set", "dev", vif, "down");
+                LOGI("%s: %s: stopping for channel reprogramming (%p, %p)",
+                     phy, vif, hapd, wpas);
+            }
+        }
+    }
 
     hwsim_update_phy(phy);
     return true;
@@ -417,7 +448,7 @@ bool target_dpp_supported(void)
     return atoi(file_geta(F("dpp_supported")) ?: "1");
 }
 
-bool target_dpp_config_set(const struct schema_DPP_Config *config)
+bool target_dpp_config_set(const struct schema_DPP_Config **config)
 {
     return ctrl_dpp_config(config);
 }

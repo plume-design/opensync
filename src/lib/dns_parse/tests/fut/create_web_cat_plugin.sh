@@ -5,6 +5,8 @@
 
 prog=$0
 
+. /usr/opensync/etc/kconfig # TODO: This should point to {INSTALL_PREFIX}/etc/kconfig
+
 # Check if a specific command is in the path. Bail if not found.
 check_cmd() {
     cmd=$1
@@ -42,7 +44,7 @@ gen_fsmc_brightcloud_cmd() {
         "row": {
                "handler": "${provider_plugin}",
                "type": "web_cat_provider",
-               "plugin": "/usr/plume/lib/libfsm_brightcloud.so",
+               "plugin": "${CONFIG_INSTALL_PREFIX}/lib/libfsm_brightcloud.so",
                "other_config":
                         ["map",[
                         ["bc_dbserver","${provider_server}"],
@@ -73,7 +75,7 @@ gen_fsmc_webpulse_cmd() {
         "row": {
                "handler": "${provider_plugin}",
                "type": "web_cat_provider",
-               "plugin": "/usr/plume/lib/libfsm_webpulse.so",
+               "plugin": "${INSTALL_PREFIX}/lib/libfsm_webpulse.so",
                "other_config":
                         ["map",[
                         ["dso_init","webpulse_plugin_init"],

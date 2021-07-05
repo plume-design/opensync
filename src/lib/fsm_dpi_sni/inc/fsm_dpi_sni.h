@@ -27,13 +27,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef FSM_DPI_SNI_H_INCLUDED
 #define FSM_DPI_SNI_H_INCLUDED
 
-#include <jansson.h>
-#include <stdint.h>
+#include <stdbool.h>
 #include <time.h>
 
 #include "fsm.h"
+#include "fsm_policy.h"
+#include "ds_tree.h"
 #include "network_metadata_report.h"
-#include "os_types.h"
 
 /**
  * @brief a session, instance of processing state and routines.
@@ -135,10 +135,6 @@ fsm_dpi_sni_free_session(struct fsm_dpi_sni_session *u_session);
 void
 fsm_dpi_sni_delete_session(struct fsm_session *session);
 
-
-struct fsm_dpi_sni_cache *
-fsm_dpi_sni_get_mgr(void);
-
 /**
  * @brief process a flow attribute
  *
@@ -151,7 +147,19 @@ int
 fsm_dpi_sni_process_attr(struct fsm_session *session, char *attr, char *value,
                          struct net_md_stats_accumulator *acc);
 
+struct fsm_dpi_sni_cache *
+fsm_dpi_sni_get_mgr(void);
+
+void
+fsm_dpi_sni_set_ttl(time_t t);
+
 bool
 is_redirected_flow(struct net_md_flow_info *info, const char *attr);
+
+struct fsm_policy_reply *
+fsm_dpi_sni_create_reply(struct fsm_request_args *request_args);
+
+struct fsm_policy_req *
+fsm_dpi_sni_create_request(struct fsm_request_args *request_args, char *attr_value);
 
 #endif /* FSM_DPI_SNI_H_INCLUDED */

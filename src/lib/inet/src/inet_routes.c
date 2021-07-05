@@ -31,6 +31,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "osn_inet.h"
 #include "ds_dlist.h"
 #include "log.h"
+#include "memutil.h"
 
 // route element for list collection
 typedef struct route_elem
@@ -50,7 +51,7 @@ struct inet_routes
 static inline void prv_route_remove(inet_routes_t *self, route_elem_t *re)
 {
     ds_dlist_remove(&self->routes, re);
-    free(re);
+    FREE(re);
 }
 
 static bool prv_route_delete(inet_routes_t *self, route_elem_t *re, bool remove)
@@ -67,8 +68,7 @@ static bool prv_route_delete(inet_routes_t *self, route_elem_t *re, bool remove)
 
 static bool prv_route_insert(inet_routes_t *self, const osn_route4_t *route)
 {
-    route_elem_t *re = (route_elem_t *)malloc(sizeof(*re));
-    if (NULL == re) return false;
+    route_elem_t *re = (route_elem_t *)MALLOC(sizeof(*re));
 
     re->route = *route;
     ds_dlist_insert_tail(&self->routes, re);
@@ -102,12 +102,7 @@ inet_routes_t *inet_routes_new(const char * if_name)
     osn_route4_cfg_t *rcfg = osn_route4_cfg_new(if_name);
     if (NULL == rcfg) return NULL;
 
-    inet_routes_t * self = (inet_routes_t *)malloc(sizeof(*self));
-    if (NULL == self)
-    {
-        (void)osn_route4_cfg_del(rcfg);
-        return NULL;
-    }
+    inet_routes_t * self = (inet_routes_t *)MALLOC(sizeof(*self));
 
     self->osn_rc = rcfg;
     self->enabled = false;
@@ -130,7 +125,7 @@ void inet_routes_del(inet_routes_t * self)
     }
 
     osn_route4_cfg_del(self->osn_rc);
-    free(self);
+    FREE(self);
 }
 
 bool inet_routes_add(inet_routes_t *self, const osn_route4_t *route)

@@ -26,10 +26,12 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="onbrd/$(basename "$0")"
 manager_setup_file="onbrd/onbrd_setup.sh"
@@ -49,16 +51,17 @@ Script usage example:
    ./${tc_name} ca_cert
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 
 trap '
 fut_info_dump_line
@@ -71,15 +74,15 @@ NARGS=1
 cert_file=$1
 cert_file_path=$(get_ovsdb_entry_value SSL "$cert_file")
 
-log_title "$tc_name: ONBRD test - Verify cert file '${cert_file}' exists"
+log_title "$tc_name: ONBRD test - Verify cert file '${cert_file}' is valid"
 
 [ -e "$cert_file_path" ] &&
-    log "$tc_name: SUCCESS: file is valid - $cert_file_path" ||
-    raise "FAIL: file is missing - $cert_file_path" -l "$tc_name" -tc
+    log "$tc_name: file '$cert_file_path' exists - Success" ||
+    raise "FAIL: file '$cert_file_path' is missing" -l "$tc_name" -tc
 
 log "$tc_name: Verify file is not empty"
 [ -s "$cert_file_path" ] &&
-    log "$tc_name: SUCCESS: file is not empty - $cert_file_path" ||
-    raise "FAIL: file is empty - $cert_file_path" -l "$tc_name" -tc
+    log "$tc_name: file '$cert_file_path' is not empty - Success" ||
+    raise "FAIL: file '$cert_file_path' is empty" -l "$tc_name" -tc
 
 pass

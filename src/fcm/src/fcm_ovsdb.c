@@ -43,6 +43,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fcm.h"
 #include "fcm_priv.h"
 #include "fcm_mgr.h"
+#include "memutil.h"
 
 /* Log entries from this file will contain "OVSDB" */
 #define MODULE_ID LOG_MODULE_ID_OVSDB
@@ -248,12 +249,7 @@ static void fcm_get_awlan_headers(struct schema_AWLAN_Node *awlan)
             continue;
         }
 
-        mgr->mqtt_headers[id] = calloc(1, sizeof(awlan->mqtt_headers[0]));
-        if (mgr->mqtt_headers[id] == NULL)
-        {
-            LOGE("Could not allocate memory for mqtt header %s:%s",
-                 key, val);
-        }
+        mgr->mqtt_headers[id] = CALLOC(1, sizeof(awlan->mqtt_headers[0]));
         memcpy(mgr->mqtt_headers[id], val, sizeof(awlan->mqtt_headers[0]));
     }
 }

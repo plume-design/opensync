@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <ev.h>
 #include <sys/un.h>
 
+#include "log.h"
 #include "timevt.h"
 
 struct te_server;
@@ -50,14 +51,14 @@ typedef struct te_server *te_server_handle;
  * format
  *
  * @param ev event loop to work with
- * @param sock_name server socket name in abstract namespace or NULL to use default one defined in TESRV_SOCKET_ADDR
+ * @param addr server address (e.g. socket file path) or NULL to use default one
  * @param sw_version software version to be included in the time-event reports
  * @param aggregation_period how long messages are aggregated before creating
  * report or 0 to use TIMEVT_AGGR_PERIOD
  * @param max_events maximum number of time-events collected for single report
  * @return handle to the server object, or NULL on failure
  */
-te_server_handle tesrv_open(struct ev_loop *ev, const char *sock_name,
+te_server_handle tesrv_open(struct ev_loop *ev, const char *addr,
     const char *sw_version, ev_tstamp aggregation_period, size_t max_events);
 
 /**
@@ -67,10 +68,10 @@ te_server_handle tesrv_open(struct ev_loop *ev, const char *sock_name,
 void tesrv_close(te_server_handle h);
 
 /**
- * @brief Gets server socket name / path
+ * @brief Gets server addr / name
  *
  * @param h handle to time-event server
- * @return server socket address (Unix datagram)
+ * @return server address / name
  */
 const char *tesrv_get_name(te_server_handle h);
 
@@ -81,6 +82,16 @@ const char *tesrv_get_name(te_server_handle h);
  * @param period new aggr period in seconds
  */
 void tesrv_set_aggregation_period(te_server_handle h, ev_tstamp period);
+
+/**
+ * @brief Sets log severity for local te-logs. LOG_SEVERITY_DISABLED
+ * disables local logging.
+ *
+ * @param h handle to time-event server
+ * @param lsev new log severity to be used
+ * @return true if setting applied; false otherwise
+ */
+bool tesrv_set_log_severity(te_server_handle h, log_severity_t lsev);
 
 /**
  * @brief Sets target identity data to be used in time-event reports

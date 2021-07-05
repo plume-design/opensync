@@ -40,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "target.h"
 #include "unity.h"
 #include "pcap.c"
+#include "memutil.h"
 
 const char *test_name = "arp_plugin_tests";
 
@@ -427,8 +428,7 @@ void test_arp_req(void)
     TEST_ASSERT_NOT_NULL(a_session);
 
     parser = &a_session->parser;
-    net_parser = calloc(1, sizeof(*net_parser));
-    TEST_ASSERT_NOT_NULL(net_parser);
+    net_parser = CALLOC(1, sizeof(*net_parser));
     parser->net_parser = net_parser;
     PREPARE_UT(pkt134, net_parser);
     len = net_header_parse(net_parser);
@@ -443,7 +443,7 @@ void test_arp_req(void)
     arp_process_message(a_session);
     log_ip_mac_mapping(parser);
 
-    free(net_parser);
+    FREE(net_parser);
 }
 
 
@@ -466,8 +466,7 @@ void test_arp_reply(void)
     TEST_ASSERT_NOT_NULL(a_session);
 
     parser = &a_session->parser;
-    net_parser = calloc(1, sizeof(*net_parser));
-    TEST_ASSERT_NOT_NULL(net_parser);
+    net_parser = CALLOC(1, sizeof(*net_parser));
     parser->net_parser = net_parser;
     PREPARE_UT(pkt135, net_parser);
     len = net_header_parse(net_parser);
@@ -482,7 +481,7 @@ void test_arp_reply(void)
     arp_process_message(a_session);
     log_ip_mac_mapping(parser);
 
-    free(net_parser);
+    FREE(net_parser);
 }
 
 
@@ -505,8 +504,7 @@ void test_gratuitous_arp_reply(void)
     TEST_ASSERT_NOT_NULL(a_session);
 
     parser = &a_session->parser;
-    net_parser = calloc(1, sizeof(*net_parser));
-    TEST_ASSERT_NOT_NULL(net_parser);
+    net_parser = CALLOC(1, sizeof(*net_parser));
     parser->net_parser = net_parser;
     PREPARE_UT(pkt42, net_parser);
     len = net_header_parse(net_parser);
@@ -521,7 +519,7 @@ void test_gratuitous_arp_reply(void)
     arp_process_message(a_session);
     log_ip_mac_mapping(parser);
 
-    free(net_parser);
+    FREE(net_parser);
 }
 
 /**
@@ -548,8 +546,7 @@ void test_ip_mac_mapping(void)
     TEST_ASSERT_NOT_NULL(a_session);
 
     parser = &a_session->parser;
-    net_parser = calloc(1, sizeof(*net_parser));
-    TEST_ASSERT_NOT_NULL(net_parser);
+    net_parser = CALLOC(1, sizeof(*net_parser));
     parser->net_parser = net_parser;
     PREPARE_UT(pkt134, net_parser);
     len = net_header_parse(net_parser);
@@ -577,7 +574,7 @@ void test_ip_mac_mapping(void)
     TEST_ASSERT_EQUAL_INT(0, cmp);
     log_ip_mac_mapping(parser);
 
-    free(net_parser);
+    FREE(net_parser);
 }
 
 int

@@ -37,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "qm.h"
 #include "qm_conn.h"
 #include "os.h"
+#include "memutil.h"
 
 
 static int g_qm_sock = -1;
@@ -122,7 +123,7 @@ int qm_ctx_idx(qm_async_ctx_t *ctx)
 
 void qm_ctx_freebuf(qm_async_ctx_t *ctx)
 {
-    if (ctx->buf) free(ctx->buf);
+    if (ctx->buf) FREE(ctx->buf);
     ctx->buf = NULL;
     ctx->allocated = 0;
     ctx->size = 0;
@@ -160,8 +161,7 @@ bool qm_async_handle_req(qm_async_ctx_t *ctx)
 
     for (;;) {
         complete = false;
-        qi = calloc(sizeof(*qi), 1);
-        if (!qi) return false;
+        qi = CALLOC(sizeof(*qi), 1);
 
         ret = qm_conn_parse_req(ctx->buf, ctx->size, &qi->req, &qi->topic, &qi->buf, &complete);
         if (ret && complete) {
@@ -193,11 +193,7 @@ void qm_async_callback(struct ev_loop *ev, struct ev_io *io, int event)
 
     if (free < QM_BUF_CHUNK) {
         new_size = ctx->allocated + QM_BUF_CHUNK;
-        new_buf = realloc(ctx->buf, new_size);
-        if (!new_buf) {
-            LOG(ERR, "%s alloc %d", __FUNCTION__, new_size);
-            goto release;
-        }
+        new_buf = REALLOC(ctx->buf, new_size);
         ctx->buf = new_buf;
         ctx->allocated = new_size;
     }

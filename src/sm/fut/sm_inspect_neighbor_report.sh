@@ -26,10 +26,12 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/sm_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="sm/$(basename "$0")"
 manager_setup_file="sm/sm_setup.sh"
@@ -61,21 +63,19 @@ Script usage example:
    ./${tc_name} 2.4G 6 on-chan 10 5 raw neighbor_ssid_name 3c:7b:96:4d:11:5c
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 NARGS=8
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
-
-trap 'run_setup_if_crashed sm' EXIT SIGINT SIGTERM
-
 sm_radio_type=$1
 sm_channel=$2
 sm_survey_type=$3
@@ -85,7 +85,9 @@ sm_report_type=$6
 sm_neighbor_ssid=$7
 sm_neighbor_mac=$8
 
-log_title "$tc_name: SM test - Inspect neigbor report"
+trap 'run_setup_if_crashed sm' EXIT SIGINT SIGTERM
+
+log_title "$tc_name: SM test - Inspect neighbor report for $sm_radio_type"
 
 log "$tc_name: Inspecting neighbor report on $sm_radio_type $sm_survey_type for $sm_neighbor_mac $sm_neighbor_ssid"
 inspect_neighbor_report \
@@ -97,5 +99,6 @@ inspect_neighbor_report \
     "$sm_report_type" \
     "$sm_neighbor_ssid" \
     "$sm_neighbor_mac" ||
-        raise "Failed: inspect_neighbor_report" -l "$tc_name" -tc
+        raise "FAIL: inspect_neighbor_report - $sm_report_type logs for NEIGHBOR $sm_neighbor_mac not found for radio $sm_radio_type" -l "$tc_name" -tc
+
 pass

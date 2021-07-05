@@ -29,6 +29,7 @@
 #include "sdtxt.h"
 #include <stdlib.h>
 #include <string.h>
+#include "memutil.h"
 
 static int _sd2txt_len(const char *key, char *val)
 {
@@ -81,7 +82,7 @@ unsigned char *sd2txt(xht_t *h, int *len)
         return (unsigned char *)strdup("");
     }
 
-    raw = buf = malloc(*len);
+    raw = buf = MALLOC(*len);
     xht_walk(h, _sd2txt_write, &buf);
 
     return raw;

@@ -34,29 +34,18 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /* This file is a common part of time-event management system used by server and clients */
 #include "time_event.pb-c.h"
 
-// Default server socket name in abstract namespace
-#define TESRV_SOCKET_ADDR "@timevt-server"
-
-// Default client socket name in abstract namespace
-#define TECLI_SOCKET_ADDR "@timevt-client"
-
 // Default client step name
 #define TECLI_DEFAULT_STEP "SINGLE"
-
-// Maximal supported message size transmitted from client(s) to server in bytes
-#define TIMEVT_MAX_MSG_LEN 2048
 
 // Log message header string
 #define TIMEVT_HEADER "$TEL"
 
 /**
  * @brief global time-event client init - one for process
- * @param procname process name this client belongs to
- * @param server_addr addr of the server collecting all events for remote logging (mqtt, other)
- * or NULL when events are to be logged locally only
+ * @param name client name, if NULL then registered log process name with [pid] will be used
  * @return initialization result
  */
-bool te_client_init(const char *procname, const char *server_addr);
+bool te_client_init(const char *name);
 
 /**
  * @brief Destructs global time event-client and releases used resources 

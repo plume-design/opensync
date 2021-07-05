@@ -40,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb_table.h"
 #include "schema.h"
 #include "net_header_parse.h"
+#include "memutil.h"
 
 static struct l2uf_cache
 cache_mgr =
@@ -266,8 +267,7 @@ l2uf_lookup_session(struct fsm_session *session)
     if (l_session != NULL) return l_session;
 
     LOGD("%s: Adding new session %s", __func__, session->name);
-    l_session = calloc(1, sizeof(struct l2uf_session));
-    if (l_session == NULL) return NULL;
+    l_session = CALLOC(1, sizeof(struct l2uf_session));
 
     ds_tree_insert(sessions, l_session, session);
 
@@ -283,7 +283,7 @@ l2uf_lookup_session(struct fsm_session *session)
 void
 l2uf_free_session(struct l2uf_session *l_session)
 {
-    free(l_session);
+    FREE(l_session);
 }
 
 

@@ -26,10 +26,12 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="nm2/$(basename "$0")"
 manager_setup_file="nm2/nm2_setup.sh"
@@ -55,16 +57,17 @@ Script usage example:
    ./${tc_name} eth0.100 vlan
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 
 NARGS=2
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
@@ -92,68 +95,68 @@ create_inet_entry \
     -if_type "$if_type" \
     -netmask "255.255.255.0" \
     -inet_addr "$inet_addr" &&
-        log "$tc_name: Interface successfully created" ||
-        raise "Failed to create interface" -l "$tc_name" -tc
+        log "$tc_name: Interface $if_name created - Success" ||
+        raise "FAIL: Failed to create $if_name interface" -l "$tc_name" -ds
 
-log "$tc_name: LEVEL 2 - Check if IP ADDRESS: $inet_addr was properly applied to $if_name (ENABLED #1)"
+log "$tc_name: Check if IP ADDRESS: $inet_addr was properly applied to $if_name (ENABLED #1) - LEVEL2"
 wait_for_function_response 0 "get_interface_ip_address_from_system $if_name | grep -q \"$inet_addr\"" &&
-    log "$tc_name: Settings applied to ifconfig (ENABLED #1) - $if_name" ||
-    raise "Failed to apply settings to ifconfig (ENABLED #1) - $if_name" -l "$tc_name" -tc
+    log "$tc_name: Settings applied to ifconfig (ENABLED #1) for $if_name - Success" ||
+    raise "FAIL: Failed to apply settings to ifconfig (ENABLED #1) for $if_name" -l "$tc_name" -tc
 
 log "$tc_name: Setting ENABLED to false"
 update_ovsdb_entry Wifi_Inet_Config -w if_name "$if_name" -u enabled false &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config table updated - enabled=false" ||
-    raise "update_ovsdb_entry - Failed to update Wifi_Inet_Config - enabled=false" -l "$tc_name" -tc
+    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config::enabled is 'false' - Success" ||
+    raise "FAIL: update_ovsdb_entry - Wifi_Inet_Config::enabled is not 'false'" -l "$tc_name" -oe
 
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is enabled false &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State - enabled=false" ||
-    raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - enabled=false" -l "$tc_name" -tc
+    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::enabled is 'false' - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::enabled is not 'false'" -l "$tc_name" -tc
 
-log "$tc_name: LEVEL 2 - Check if IP ADDRESS: $inet_addr was properly removed from $if_name (DISABLED #1)"
+log "$tc_name: Check if IP ADDRESS: $inet_addr was properly removed from $if_name (DISABLED #1) - LEVEL2"
 wait_for_function_response 1 "get_interface_ip_address_from_system $if_name | grep -q \"$inet_addr\"" &&
-    log "$tc_name: Settings removed from ifconfig (DISABLE #1) - $if_name" ||
-    raise "Failed to remove settings from ifconfig (DISABLE #1) - $if_name" -l "$tc_name" -tc
+    log "$tc_name: Settings removed from ifconfig (DISABLED #1) for $if_name - Success" ||
+    raise "FAIL: Failed to remove settings from ifconfig (DISABLED #1) for $if_name" -l "$tc_name" -tc
 
 log "$tc_name: Setting ENABLED to true"
 update_ovsdb_entry Wifi_Inet_Config -w if_name "$if_name" -u enabled true &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config table updated - enabled=true" ||
-    raise "update_ovsdb_entry - Failed to update Wifi_Inet_Config - enabled=true" -l "$tc_name" -tc
+    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config table updated - enabled=true - Success" ||
+    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config - enabled=true" -l "$tc_name" -oe
 
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is enabled true &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State - enabled=true" ||
-    raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - enabled=true" -l "$tc_name" -tc
+    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State - enabled=true - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - enabled=true" -l "$tc_name" -tc
 
-log "$tc_name: LEVEL 2 - Check if IP ADDRESS: $inet_addr was properly applied to $if_name (ENABLED #1)"
+log "$tc_name: LEVEL 2 - Check if IP ADDRESS: $inet_addr was properly applied to $if_name (ENABLED #2)"
 wait_for_function_response 0 "get_interface_ip_address_from_system $if_name | grep -q \"$inet_addr\"" &&
-    log "$tc_name: Settings applied to ifconfig (ENABLED #2) - $if_name" ||
-    raise "Failed to apply settings to ifconfig (ENABLED #2) - $if_name" -l "$tc_name" -tc
+    log "$tc_name: Settings applied to ifconfig (ENABLED #2) - $if_name - Success" ||
+    raise "FAIL: Failed to apply settings to ifconfig (ENABLED #2) - $if_name" -l "$tc_name" -tc
 
 log "$tc_name: Setting ENABLED to false"
 update_ovsdb_entry Wifi_Inet_Config -w if_name "$if_name" -u enabled false &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config table updated - enabled=false" ||
-    raise "update_ovsdb_entry - Failed to update Wifi_Inet_Config - enabled=false" -l "$tc_name" -tc
+    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config table updated - enabled=false - Success" ||
+    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config - enabled=false" -l "$tc_name" -oe
 
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is enabled false &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State - enabled=false" ||
-    raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - enabled=false" -l "$tc_name" -tc
+    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State - enabled=false - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - enabled=false" -l "$tc_name" -tc
 
-log "$tc_name: LEVEL 2 - Check if IP ADDRESS: $inet_addr was properly removed from $if_name (DISABLED #1)"
+log "$tc_name: Check if IP address: $inet_addr was properly removed from $if_name (DISABLED #2) - LEVEL2"
 wait_for_function_response 1 "get_interface_ip_address_from_system $if_name | grep -q \"$inet_addr\"" &&
-    log "$tc_name: Settings removed from ifconfig (DISABLE #2) - $if_name" ||
-    raise "Failed to remove settings from ifconfig (DISABLE #2) - $if_name" -l "$tc_name" -tc
+    log "$tc_name: Settings removed from ifconfig (DISABLED #2) for $if_name - Success" ||
+    raise "FAIL: Failed to remove settings from ifconfig (DISABLED #2) for $if_name" -l "$tc_name" -tc
 
 log "$tc_name: Setting ENABLED to true"
 update_ovsdb_entry Wifi_Inet_Config -w if_name "$if_name" -u enabled true &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config table updated - enabled=true" ||
-    raise "update_ovsdb_entry - Failed to update Wifi_Inet_Config - enabled=true" -l "$tc_name" -tc
+    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config::enabled is 'true' - Success" ||
+    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config::enabled is not 'true'" -l "$tc_name" -oe
 
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is enabled true &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State - enabled=true" ||
-    raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - enabled=true" -l "$tc_name" -tc
+    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::enabled is 'true' - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::enabled is not true" -l "$tc_name" -tc
 
-log "$tc_name: LEVEL 2 - Check if IP ADDRESS was properly applied to $if_name (ENABLED #1)"
+log "$tc_name: Check if IP address was properly applied to $if_name (ENABLED #1) - LEVEL2"
 wait_for_function_response 0 "get_interface_ip_address_from_system $if_name | grep -q \"$inet_addr\"" &&
-    log "$tc_name: Settings applied to ifconfig (ENABLED #3) - enabled=true" ||
-    raise "Failed to apply settings to ifconfig (ENABLED #3) - enabled=true" -l "$tc_name" -tc
+    log "$tc_name: LEVEL2 - Settings applied to ifconfig (ENABLED #3) - enabled is 'true' - Success" ||
+    raise "FAIL: Failed to apply settings to ifconfig (ENABLED #3) - enabled is not 'true'" -l "$tc_name" -tc
 
 pass

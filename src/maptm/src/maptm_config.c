@@ -60,6 +60,7 @@
 #include "schema.h"
 #include "osn_mapt.h"
 #include "osn_types.h"
+#include "memutil.h"
 
 #include "maptm.h"
 
@@ -78,10 +79,10 @@ struct maptm_MAPT strucWanConfig;
 void maptm_remove_maptStruct(struct mapt *mapt_rule)
 {
     if (mapt_rule == NULL) return;
-    free(mapt_rule->dmr);
-    free(mapt_rule->ipv6prefix);
-    free(mapt_rule->ipv4prefix);
-    free(mapt_rule);
+    FREE(mapt_rule->dmr);
+    FREE(mapt_rule->ipv6prefix);
+    FREE(mapt_rule->ipv4prefix);
+    FREE(mapt_rule);
 }
 
 // Free list node
@@ -95,8 +96,8 @@ bool maptm_remove_list(ds_dlist_t rules)
             node = ds_dlist_inext(&iter))
     {
         ds_dlist_iremove(&iter);
-        free(node->value);
-        free(node);
+        FREE(node->value);
+        FREE(node);
     }
     return true;
 }
@@ -109,12 +110,7 @@ struct mapt* parse_option_rule(char *rule)
         LOGE("MAP-T Rule is NULL");
         return NULL;
     }
-    struct mapt *mapt_rule = malloc(sizeof(struct mapt));
-    if (mapt_rule == NULL)
-    {
-        LOGE("Unable to allocate update handler!");
-        return NULL;
-    }
+    struct mapt *mapt_rule = MALLOC(sizeof(struct mapt));
     char *p = strtok(rule, ",");
     while (p != NULL)
     {
@@ -267,22 +263,15 @@ struct mapt* get_Mapt_Rule(char *option95, char *iapd)
     while (rule != NULL)
     {
         struct list_rules *l_node;
-        l_node = malloc(sizeof(struct list_rules));
-        if (l_node == NULL)
-        {
-            LOGE("Unable to allocate update handler!");
-            free(l_node);
-            free(mapt_option95);
-            return NULL;
-        }
+        l_node = MALLOC(sizeof(struct list_rules));
 
         l_node->value = strdup(rule);
         if ((l_node->value) == NULL)
         {
             LOGE("Unable to allocate update handler!");
-            free(l_node);
+            FREE(l_node);
             maptm_remove_list(l_rules);
-            free(mapt_option95);
+            FREE(mapt_option95);
             return NULL;
         }
 
@@ -314,7 +303,7 @@ struct mapt* get_Mapt_Rule(char *option95, char *iapd)
         }
     }
 
-    free(mapt_option95);
+    FREE(mapt_option95);
     maptm_remove_list(l_rules);
     if (!ret)
     {

@@ -9,6 +9,8 @@ setchan() {
 	dppfreq_ap=$(expr $chan_ap '*' 5 + 2407)
 	dppchan="C:81/$chan_sta;"
 	uri="DPP:${dppchan}V:2;K:MDkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDIgACFVVCZpHvxLF2iPc5zaojZjpz6HXniq4OR5+NDktOa28=;;"
+	uri2="DPP:${dppchan}V:2;K:MDkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDIgACE1t/9tJlX1V5TThphtuquoco1JcMNIw+XxTA/8/Mlvk=;;"
+	uri3="DPP:${dppchan}V:2;K:MDkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDIgAC7XvQVOqQ/HPQB8DbutskXz7oTaD4Wb5WkVsn0oI2CJ0=;;"
 }
 
 ssid=test-ssid
@@ -22,6 +24,14 @@ confhex="307702010104202d8961acd594a13ce84028f97e5c0d652f784d70b5d6fe216ef06b5aa
 urikeyhex="30770201010420835bb02c1319ed97efff01a3db2c8da14603becd7b4c08d7423beecb4657f2cea00a06082a8648ce3d030107a144034200041555426691efc4b17688f739cdaa23663a73e875e78aae0e479f8d0e4b4e6b6f01aba682ce0997c0e9242515cb6b4326daa5caccfcd5a629e6641c1c0b1bfa3e"
 urikeypk="95a7c4aa285f8fb0dff4c7de0cb6c7d1a00f9a2300f5a2954c9e8ec591001dbc"
 urikeychirp="479af679f6e9e14926d0b357be084d3348ff54c23b8d9c28ba75905491c152dc"
+
+urikey2hex="3077020101042017578fd98e92ecf7f9765c7b1eb25c1ae1661fa4f7bff36245657db6a38b5e9ea00a06082a8648ce3d030107a14403420004135b7ff6d2655f55794d386986dbaaba8728d4970c348c3e5f14c0ffcfcc96f901f03f6c3fbb189012ce17bf522a189ae77a64b6ea53285b185b146f4e8cc56e"
+urikey2pk="35515e923ba25873e1aefc79fdaa610dee9f2c86d9992980e4712329149b0a7c"
+urikey2chirp="e9849511cb519fbac35952283bc9b438b5960de3c6809842830646e768f2c1b9"
+
+urikey3hex="30770201010420dba178fa14a87a9d509cfeed51865a2efc08bd2994147880b86437285d993ec5a00a06082a8648ce3d030107a14403420004ed7bd054ea90fc73d007c0dbbadb245f3ee84da0f859be56915b27d28236089d50cd4d453f4a7578e4c77682e4a0d00fdd3fa8d9e78e232123d56c276cec6ff2"
+urikey3pk="b516e034be5ff66977aa854f11b8310c165efa85ce9303484f538df5a941cc54"
+urikey3chirp="bdc43132013d89715a4f76e62b7a919da3955568d560138202218df3eeebb808"
 
 dppconn="eyJ0eXAiOiJkcHBDb24iLCJraWQiOiJfNURkaUZVZ3dYZXJWTlktaHlDY2hqZmg3Si1nakN0R0RVZE9PMm1na1lZIiwiYWxnIjoiRVMyNTYifQ.eyJncm91cHMiOlt7Imdyb3VwSWQiOiIqIiwibmV0Um9sZSI6ImFwIn1dLCJuZXRBY2Nlc3NLZXkiOnsia3R5IjoiRUMiLCJjcnYiOiJQLTI1NiIsIngiOiJzOEZOTVJDVi02QWhWTDV6RVRIMlloeklreHUyRFdpelFVWXdnandCMHJjIiwieSI6InBDT0ZvMjllZ3lnSmZNMzBESlFqa3lLMUF2UFdBUGtQLUlvQ284Q3cwaGMifX0._VVcNqEE-GONeAmqrtc-7jsVrVHSZprlLklMJBFb6R7-SOXtleqryCQxQbQkLWZ9sL8qeZvnA2z1NIHQmio5jw"
 dppcsign="3059301306072a8648ce3d020106082a8648ce3d030107034200048467341d13849741f9fdb2ce7b843ee72bb8ee284c696a228e00fec9b6ea37c48ca5fe2f021ee73081078a6805477430442c14efb85ae24461cfc3aaafcd6ee2"
@@ -45,6 +55,7 @@ prepare_dut() {
 			dpp_csign_hex~=$dppcsign \
 			dpp_netaccesskey_hex~=$dppnet \
 			dpp_cc:=true \
+			mac_list_type:=none \
 			ssid:=$ssid \
 			wpa:=true \
 			'wpa_key_mgmt::["set", ["wpa2-psk", "dpp"]]' \
@@ -61,6 +72,7 @@ prepare_dut() {
 			dpp_csign_hex~=$dppcsign \
 			dpp_netaccesskey_hex~=$dppnet \
 			dpp_cc:=true \
+			mac_list_type:=none \
 			ssid:=$ssid2 \
 			wpa:=true \
 			'wpa_key_mgmt::["set", ["wpa2-psk", "dpp"]]' \
@@ -99,6 +111,8 @@ prepare_dut() {
 		#ovsh w Wifi_VIF_State -w if_name==$dut_vif wpa:=true
 		#ovsh w Wifi_VIF_State -w if_name==$dut_vif mode:=ap
 		# todo check maps?
+
+		sleep 3 # extra settle time..
 .
 }
 
@@ -200,6 +214,8 @@ announcement_ageout() {
 .
 
 	$dut <<. || return $?
+		ovsh d DPP_Announcement
+		ovsh d DPP_Config
 		ovsh w DPP_Announcement sta_mac_addr:=$ref_mac -w chirp_sha256_hex=="$urikeychirp"
 		sleep 60
 		ovsh s DPP_Announcement | grep .
@@ -350,6 +366,376 @@ pair_respond() {
 .
 }
 
+pair_respond_multi() {
+	$ref <<. || return $?
+		wpa_cli -i $ref_vif disconnect
+		wpa_cli -i $ref_vif reconfigure
+		wpa_cli -i $ref_vif dpp_bootstrap_remove '*'
+		wpa_cli -i $ref_vif dpp_configurator_remove '*'
+.
+
+	$dut <<. || return $?
+		ovsh d DPP_Announcement
+		ovsh d DPP_Config
+
+		ovsh i DPP_Config \
+			'ifnames::["set", ["$dut_vif"]]' \
+			configurator_key_hex~=$confhex \
+			configurator_key_curve~=prime256v1 \
+			configurator_conf_role~=sta-$1 \
+			configurator_conf_psk_hex~=$pskhex \
+			configurator_conf_ssid_hex~=$ssidhex \
+			timeout_seconds:=120 \
+			auth:=respond_only \
+			status:=requested \
+			own_bi_key_curve~=prime256v1 \
+			own_bi_key_hex~=$urikeyhex
+
+		ovsh i DPP_Config \
+			'ifnames::["set", ["$dut_vif"]]' \
+			configurator_key_hex~=$confhex \
+			configurator_key_curve~=prime256v1 \
+			configurator_conf_role~=sta-$1 \
+			configurator_conf_psk_hex~=$pskhex \
+			configurator_conf_ssid_hex~=$ssidhex \
+			timeout_seconds:=120 \
+			auth:=respond_only \
+			status:=requested \
+			own_bi_key_curve~=prime256v1 \
+			own_bi_key_hex~=$urikey2hex
+
+		ovsh i DPP_Config \
+			'ifnames::["set", ["$dut_vif"]]' \
+			configurator_key_hex~=$confhex \
+			configurator_key_curve~=prime256v1 \
+			configurator_conf_role~=sta-$1 \
+			configurator_conf_psk_hex~=$pskhex \
+			configurator_conf_ssid_hex~=$ssidhex \
+			timeout_seconds:=120 \
+			auth:=respond_only \
+			status:=requested \
+			own_bi_key_curve~=prime256v1 \
+			own_bi_key_hex~=$urikey3hex
+
+		ovsh w DPP_Config -t 10000 -w own_bi_key_hex==$urikeyhex status:=in_progress
+		ovsh w DPP_Config -t 10000 -w own_bi_key_hex==$urikey2hex status:=in_progress
+		ovsh w DPP_Config -t 10000 -w own_bi_key_hex==$urikey3hex status:=in_progress
+
+		ovsh s DPP_Config -c >&2
+.
+
+	sleep 3
+	$ref <<. || return $?
+		wpa_cli -i $ref_vif disconnect
+		wpa_cli -i $ref_vif reconfigure
+		wpa_cli -i $ref_vif dpp_bootstrap_remove '*'
+		wpa_cli -i $ref_vif dpp_configurator_remove '*'
+		wpa_cli -i $ref_vif dpp_qr_code "$uri"
+		wpa_cli -i $ref_vif dpp_auth_init peer=1 role=enrollee
+.
+
+	$dut <<. || return $?
+		ovsh w DPP_Config -w own_bi_key_hex==$urikeyhex status:=succeeded
+		ovsh s DPP_Config -c >&2
+		ovsh w Wifi_Associated_Clients -w mac==$ref_mac mac:=$ref_mac
+.
+
+	sleep 3
+	$ref <<. || return $?
+		wpa_cli -i $ref_vif disconnect
+		wpa_cli -i $ref_vif reconfigure
+		wpa_cli -i $ref_vif dpp_bootstrap_remove '*'
+		wpa_cli -i $ref_vif dpp_configurator_remove '*'
+		wpa_cli -i $ref_vif dpp_qr_code "$uri2"
+		wpa_cli -i $ref_vif dpp_auth_init peer=1 role=enrollee
+.
+
+	$dut <<. || return $?
+		ovsh w DPP_Config -w status==succeeded status:=succeeded
+		ovsh s DPP_Config -c >&2
+		ovsh w DPP_Config -w own_bi_key_hex==$urikey2hex status:=succeeded
+.
+
+	sleep 3
+	$ref <<. || return $?
+		wpa_cli -i $ref_vif disconnect
+		wpa_cli -i $ref_vif reconfigure
+		wpa_cli -i $ref_vif dpp_bootstrap_remove '*'
+		wpa_cli -i $ref_vif dpp_configurator_remove '*'
+		wpa_cli -i $ref_vif dpp_qr_code "$uri3"
+		wpa_cli -i $ref_vif dpp_auth_init peer=1 role=enrollee
+.
+
+	$dut <<. || return $?
+		ovsh w DPP_Config -w status==succeeded status:=succeeded
+		ovsh s DPP_Config -c >&2
+		ovsh w DPP_Config -w own_bi_key_hex==$urikey3hex status:=succeeded
+.
+}
+
+pair_respond_renew() {
+	$ref <<. || return $?
+		wpa_cli -i $ref_vif disconnect
+		wpa_cli -i $ref_vif reconfigure
+		wpa_cli -i $ref_vif dpp_bootstrap_remove '*'
+		wpa_cli -i $ref_vif dpp_configurator_remove '*'
+.
+
+	$dut <<. || return $?
+		ovsh d DPP_Announcement
+		ovsh d DPP_Config
+		ovsh i DPP_Config \
+			'ifnames::["set", ["$dut_vif"]]' \
+			configurator_key_hex~=$confhex \
+			configurator_key_curve~=prime256v1 \
+			configurator_conf_role~=sta-$1 \
+			configurator_conf_psk_hex~=$pskhex \
+			configurator_conf_ssid_hex~=$ssidhex \
+			timeout_seconds:=120 \
+			auth:=respond_only \
+			status:=requested \
+			renew:=true \
+			own_bi_key_curve~=prime256v1 \
+			own_bi_key_hex~=$urikeyhex
+
+		ovsh w DPP_Config -t 130000 -w status==in_progress status:=in_progress
+		ovsh s DPP_Config -c >&2
+.
+
+	$ref <<. || return $?
+		wpa_cli -i $ref_vif dpp_qr_code "$uri"
+		wpa_cli -i $ref_vif dpp_auth_init peer=1 role=enrollee
+.
+
+	$dut <<. || return $?
+		uuid=\$(ovsh -rU s DPP_Config _uuid -w own_bi_key_hex==$urikeyhex)
+		ovsh w DPP_Config -w own_bi_key_hex==$urikeyhex status:=in_progress
+		ovsh w DPP_Config -w "config_uuid==\$uuid" status:=succeeded
+		ovsh s DPP_Config -c >&2
+		ovsh w Wifi_Associated_Clients -w mac==$ref_mac mac:=$ref_mac
+.
+}
+
+pair_respond_multi_renew() {
+	$ref <<. || return $?
+		wpa_cli -i $ref_vif disconnect
+		wpa_cli -i $ref_vif reconfigure
+		wpa_cli -i $ref_vif dpp_bootstrap_remove '*'
+		wpa_cli -i $ref_vif dpp_configurator_remove '*'
+.
+
+	$dut <<. || return $?
+		ovsh d DPP_Announcement
+		ovsh d DPP_Config
+
+		ovsh i DPP_Config \
+			'ifnames::["set", ["$dut_vif"]]' \
+			configurator_key_hex~=$confhex \
+			configurator_key_curve~=prime256v1 \
+			configurator_conf_role~=sta-$1 \
+			configurator_conf_psk_hex~=$pskhex \
+			configurator_conf_ssid_hex~=$ssidhex \
+			timeout_seconds:=120 \
+			auth:=respond_only \
+			renew:=true \
+			status:=requested \
+			own_bi_key_curve~=prime256v1 \
+			own_bi_key_hex~=$urikeyhex
+
+		ovsh i DPP_Config \
+			'ifnames::["set", ["$dut_vif"]]' \
+			configurator_key_hex~=$confhex \
+			configurator_key_curve~=prime256v1 \
+			configurator_conf_role~=sta-$1 \
+			configurator_conf_psk_hex~=$pskhex \
+			configurator_conf_ssid_hex~=$ssidhex \
+			timeout_seconds:=120 \
+			auth:=respond_only \
+			renew:=true \
+			status:=requested \
+			own_bi_key_curve~=prime256v1 \
+			own_bi_key_hex~=$urikey2hex
+
+		ovsh w DPP_Config -t 10000 -w own_bi_key_hex==$urikeyhex status:=in_progress
+		ovsh w DPP_Config -t 10000 -w own_bi_key_hex==$urikey2hex status:=in_progress
+
+		ovsh s DPP_Config -c >&2
+.
+
+	$ref <<. || return $?
+		wpa_cli -i $ref_vif disconnect
+		wpa_cli -i $ref_vif reconfigure
+		wpa_cli -i $ref_vif dpp_bootstrap_remove '*'
+		wpa_cli -i $ref_vif dpp_configurator_remove '*'
+		wpa_cli -i $ref_vif dpp_qr_code "$uri"
+		wpa_cli -i $ref_vif dpp_auth_init peer=1 role=enrollee
+.
+
+	$dut <<. || return $?
+		uuid=\$(ovsh -rU s DPP_Config _uuid -w own_bi_key_hex==$urikeyhex)
+		ovsh w DPP_Config -w own_bi_key_hex==$urikeyhex status:=in_progress
+		ovsh w DPP_Config -w "config_uuid==\$uuid" status:=succeeded
+		ovsh s DPP_Config -c >&2
+		ovsh w Wifi_Associated_Clients -w mac==$ref_mac mac:=$ref_mac
+		ovsh d DPP_Config -w status==succeeded
+.
+
+	$ref <<. || return $?
+		wpa_cli -i $ref_vif disconnect
+		wpa_cli -i $ref_vif reconfigure
+		wpa_cli -i $ref_vif dpp_bootstrap_remove '*'
+		wpa_cli -i $ref_vif dpp_configurator_remove '*'
+		wpa_cli -i $ref_vif dpp_qr_code "$uri"
+		wpa_cli -i $ref_vif dpp_auth_init peer=1 role=enrollee
+.
+
+	$dut <<. || return $?
+		uuid=\$(ovsh -rU s DPP_Config _uuid -w own_bi_key_hex==$urikeyhex)
+		ovsh w DPP_Config -w own_bi_key_hex==$urikeyhex status:=in_progress
+		ovsh w DPP_Config -w "config_uuid==\$uuid" status:=succeeded
+		ovsh s DPP_Config -c >&2
+		ovsh w Wifi_Associated_Clients -w mac==$ref_mac mac:=$ref_mac
+		ovsh d DPP_Config -w status==succeeded
+.
+
+	$ref <<. || return $?
+		wpa_cli -i $ref_vif disconnect
+		wpa_cli -i $ref_vif reconfigure
+		wpa_cli -i $ref_vif dpp_bootstrap_remove '*'
+		wpa_cli -i $ref_vif dpp_configurator_remove '*'
+		wpa_cli -i $ref_vif dpp_qr_code "$uri2"
+		wpa_cli -i $ref_vif dpp_auth_init peer=1 role=enrollee
+.
+
+	$dut <<. || return $?
+		uuid=\$(ovsh -rU s DPP_Config _uuid -w own_bi_key_hex==$urikey2hex)
+		ovsh w DPP_Config -w own_bi_key_hex==$urikey2hex status:=in_progress
+		ovsh w DPP_Config -w "config_uuid==\$uuid" status:=succeeded
+		ovsh s DPP_Config -c >&2
+		ovsh w Wifi_Associated_Clients -w mac==$ref_mac mac:=$ref_mac
+		ovsh d DPP_Config -w status==succeeded
+.
+}
+
+pair_respond_multi_renew_auth_preempt() {
+	$ref <<. || return $?
+		wpa_cli -i $ref_vif disconnect
+		wpa_cli -i $ref_vif reconfigure
+		wpa_cli -i $ref_vif dpp_bootstrap_remove '*'
+		wpa_cli -i $ref_vif dpp_configurator_remove '*'
+.
+
+	$dut <<. || return $?
+		ovsh d DPP_Announcement
+		ovsh d DPP_Config
+
+		ovsh i DPP_Config \
+			'ifnames::["set", ["$dut_vif"]]' \
+			configurator_key_hex~=$confhex \
+			configurator_key_curve~=prime256v1 \
+			configurator_conf_role~=sta-$1 \
+			configurator_conf_psk_hex~=$pskhex \
+			configurator_conf_ssid_hex~=$ssidhex \
+			timeout_seconds:=300 \
+			auth:=respond_only \
+			renew:=true \
+			status:=requested \
+			own_bi_key_curve~=prime256v1 \
+			own_bi_key_hex~=$urikeyhex
+
+		ovsh i DPP_Config \
+			'ifnames::["set", ["$dut_vif"]]' \
+			configurator_key_hex~=$confhex \
+			configurator_key_curve~=prime256v1 \
+			configurator_conf_role~=sta-$1 \
+			configurator_conf_psk_hex~=$pskhex \
+			configurator_conf_ssid_hex~=$ssidhex \
+			timeout_seconds:=300 \
+			auth:=respond_only \
+			renew:=true \
+			status:=requested \
+			own_bi_key_curve~=prime256v1 \
+			own_bi_key_hex~=$urikey2hex
+
+		ovsh w DPP_Config -t 10000 -w own_bi_key_hex==$urikeyhex status:=in_progress
+		ovsh w DPP_Config -t 10000 -w own_bi_key_hex==$urikey2hex status:=in_progress
+
+		ovsh s DPP_Config -c >&2
+.
+
+	$ref <<. || return $?
+		wpa_cli -i $ref_vif disconnect
+		wpa_cli -i $ref_vif reconfigure
+		wpa_cli -i $ref_vif dpp_bootstrap_remove '*'
+		wpa_cli -i $ref_vif dpp_configurator_remove '*'
+		wpa_cli -i $ref_vif dpp_qr_code "$uri"
+		wpa_cli -i $ref_vif dpp_auth_init peer=1 role=enrollee
+.
+
+	$dut <<. || return $?
+		uuid=\$(ovsh -rU s DPP_Config _uuid -w own_bi_key_hex==$urikeyhex)
+		ovsh w DPP_Config -w own_bi_key_hex==$urikeyhex status:=in_progress
+		ovsh w DPP_Config -w "config_uuid==\$uuid" status:=succeeded
+		ovsh s DPP_Config -c >&2
+		ovsh w Wifi_Associated_Clients -w mac==$ref_mac mac:=$ref_mac
+		ovsh d DPP_Config -w status==succeeded
+.
+
+	$dut <<. || return $?
+		ovsh i DPP_Config \
+			'ifnames::["set", ["$dut_vif"]]' \
+			configurator_key_hex~=$confhex \
+			configurator_key_curve~=prime256v1 \
+			configurator_conf_role~=sta-$1 \
+			configurator_conf_psk_hex~=$pskhex \
+			configurator_conf_ssid_hex~=$ssidhex \
+			timeout_seconds:=120 \
+			auth:=initiate_now \
+			status:=requested \
+			peer_bi_uri~="$uri3"
+
+		ovsh w DPP_Config -t 10000 -w own_bi_key_hex==$urikeyhex status:=requested
+		ovsh w DPP_Config -t 10000 -w own_bi_key_hex==$urikey2hex status:=requested
+		ovsh w DPP_Config -t 10000 -w peer_bi_uri=="$uri3" status:=in_progress
+.
+
+	$ref <<. || return $?
+		wpa_cli -i $ref_vif disconnect
+		wpa_cli -i $ref_vif reconfigure
+		wpa_cli -i $ref_vif dpp_bootstrap_remove '*'
+		wpa_cli -i $ref_vif dpp_configurator_remove '*'
+		wpa_cli -i $ref_vif dpp_bootstrap_gen type=qrcode key="$urikey3hex"
+		wpa_cli -i $ref_vif dpp_listen $dppfreq_sta
+.
+
+	$dut <<. || return $?
+		ovsh w DPP_Config -w peer_bi_uri=="$uri3" status:=succeeded
+		ovsh s DPP_Config -c >&2
+		ovsh w DPP_Config -t 10000 -w own_bi_key_hex==$urikeyhex status:=in_progress
+		ovsh w DPP_Config -t 10000 -w own_bi_key_hex==$urikey2hex status:=in_progress
+		ovsh d DPP_Config -w status==succeeded
+.
+
+	$ref <<. || return $?
+		wpa_cli -i $ref_vif disconnect
+		wpa_cli -i $ref_vif reconfigure
+		wpa_cli -i $ref_vif dpp_bootstrap_remove '*'
+		wpa_cli -i $ref_vif dpp_configurator_remove '*'
+		wpa_cli -i $ref_vif dpp_qr_code "$uri"
+		wpa_cli -i $ref_vif dpp_auth_init peer=1 role=enrollee
+.
+
+	$dut <<. || return $?
+		uuid=\$(ovsh -rU s DPP_Config _uuid -w own_bi_key_hex==$urikeyhex)
+		ovsh w DPP_Config -w own_bi_key_hex==$urikeyhex status:=in_progress
+		ovsh w DPP_Config -w "config_uuid==\$uuid" status:=succeeded
+		ovsh s DPP_Config -c >&2
+		ovsh w Wifi_Associated_Clients -w mac==$ref_mac mac:=$ref_mac
+		ovsh d DPP_Config -w status==succeeded
+.
+}
+
+
 pair_chirp_rx() {
 	$ref <<. || return $?
 		wpa_cli -i $ref_vif disconnect
@@ -364,6 +750,7 @@ pair_chirp_rx() {
 .
 
 	$ref <<. || return $?
+		wpa_cli -i $ref_vif flush
 		wpa_cli -i $ref_vif dpp_bootstrap_gen type=qrcode key="$urikeyhex"
 		wpa_cli -i $ref_vif dpp_chirp own=1 iter=10
 .
@@ -559,10 +946,21 @@ nonstdchan_chirp_rx() {
 	step pair_chirp_rx psk nonstdchan
 }
 
+multijob() {
+	setchan 6 6
+	step prepare_dut
+	step prepare_ref_sta
+	step pair_respond_multi psk
+	step pair_respond_renew psk
+	step pair_respond_multi_renew psk
+	step pair_respond_multi_renew_auth_preempt psk
+}
+
 base
 offchan_auth
 nonstdchan_chirp_tx
 nonstdchan_chirp_rx
+multijob
 
 timeout 1 wpa_cli -p /var/run/wpa_supplicant -i $ref_vif raw TERMINATE || true
 timeout 1 wpa_cli -p /var/run/hostapd -i $ref_vif raw TERMINATE || true

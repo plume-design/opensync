@@ -39,6 +39,9 @@ extern struct ovsdb_table table_Netfilter;
 extern struct ovsdb_table table_Openflow_Tag;
 extern struct ovsdb_table table_Openflow_Tag_Group;
 
+/* Return interface role as specified in Wifi_Inet_Config */
+extern const char *nfm_interface_role(const char *ifname);
+
 bool nfm_ovsdb_init(void);
 
 #endif /* NFM_OVSDB_H_INCLUDED */

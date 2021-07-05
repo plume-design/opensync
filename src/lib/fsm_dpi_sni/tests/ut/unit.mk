@@ -24,11 +24,13 @@
 
 UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM),n,y)
 
-UNIT_NAME := test_fsm_dpi_sni_plugin
+UNIT_NAME := test_fsm_dpi_sni
 
 UNIT_TYPE := TEST_BIN
 
-UNIT_SRC := test_fsm_dpi_sni_plugin.c
+UNIT_SRC := test_fsm_dpi_sni_main.c
+UNIT_SRC += test_fsm_dpi_sni_plugin.c
+UNIT_SRC += test_fsm_dpi_sni_functions.c
 
 UNIT_DEPS := src/lib/fsm_dpi_sni
 UNIT_DEPS += src/lib/log

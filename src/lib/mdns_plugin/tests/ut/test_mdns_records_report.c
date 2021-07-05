@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "target.h"
 #include "unity.h"
 #include "qm_conn.h"
+#include "memutil.h"
 
 #include "test_mdns.h"
 
@@ -260,7 +261,7 @@ validate_clients(mdns_records_report_data_t *report, Interfaces__MdnsRecordsTele
         mdns_records_free_pb_client(clients_pb_tbl[i]);
     }
 
-    free(clients_pb_tbl);
+    FREE(clients_pb_tbl);
 }
 
 /**
@@ -549,7 +550,7 @@ test_set_records(void)
     }
 
     /* Free the pointers table */
-    free(records_pb_tbl);
+    FREE(records_pb_tbl);
 }
 
 //---------------------------------------------------------------------------------------------------------------------
@@ -650,7 +651,7 @@ test_set_serialization_clients(void)
     }
 
     /* Free the clients pointers tbl */
-    free(clients_pb_tbl);
+    FREE(clients_pb_tbl);
 }
 
 //---------------------------------------------------------------------------------------------------------------------
@@ -726,19 +727,16 @@ test_Mdns_Records_Report(void)
     void    *buf;
 
     /* Allocate serialization output structure */
-    serialized = calloc(sizeof(packed_buffer_t), 1);
-    TEST_ASSERT_NOT_NULL(serialized);
+    serialized = CALLOC(sizeof(packed_buffer_t), 1);
 
     /* Allocate protobuf */
-    report = calloc(1, sizeof(*report));
-    TEST_ASSERT_NOT_NULL(report);
+    report = CALLOC(1, sizeof(*report));
 
     /* Initialize protobuf */
     interfaces__mdns_records_telemetry__mdns_records_report__init(report);
 
     /* Set observation point */
-    obs_p = calloc(1, sizeof(*obs_p));
-    TEST_ASSERT_NOT_NULL(obs_p);
+    obs_p = CALLOC(1, sizeof(*obs_p));
 
     /* Initialize the observation point */
     interfaces__mdns_records_telemetry__observation_point__init(obs_p);
@@ -754,8 +752,7 @@ test_Mdns_Records_Report(void)
     report->observation_point = obs_p;
 
     /* Set observation window */
-    obs_w = calloc(1, sizeof(*obs_w));
-    TEST_ASSERT_NOT_NULL(obs_w);
+    obs_w = CALLOC(1, sizeof(*obs_w));
 
     /* Initialize the observation window */
     interfaces__mdns_records_telemetry__observation_window__init(obs_w);
@@ -772,13 +769,11 @@ test_Mdns_Records_Report(void)
     /* Allocate the clients table, it will carry one entry */
     num_clients = 1;
     report->n_clients = num_clients;
-    clients_pb_tbl = calloc(num_clients, sizeof(*clients_pb_tbl));
-    TEST_ASSERT_NOT_NULL(clients_pb_tbl);
+    clients_pb_tbl = CALLOC(num_clients, sizeof(*clients_pb_tbl));
     report->clients = clients_pb_tbl;
 
     /* Allocate the unique entry of the clients table */
-    clients_pb = calloc(1, sizeof(*clients_pb));
-    TEST_ASSERT_NOT_NULL(clients_pb);
+    clients_pb = CALLOC(1, sizeof(*clients_pb));
 
     /* Initialize the client */
     interfaces__mdns_records_telemetry__mdns_client__init(clients_pb);
@@ -791,15 +786,13 @@ test_Mdns_Records_Report(void)
     /* Allocate the mdns records table with 2 entries */
     num_records = 2;
     clients_pb->n_mdns_records = num_records;
-    records_pb_tbl = calloc(num_records, sizeof(*records_pb_tbl));
-    TEST_ASSERT_NOT_NULL(records_pb_tbl);
+    records_pb_tbl = CALLOC(num_records, sizeof(*records_pb_tbl));
 
     /* Assign the records table to the client */
     clients_pb->mdns_records = records_pb_tbl;
 
     /* Allocate the first records entry */
-    records_pb = calloc(1, sizeof(*records_pb));
-    TEST_ASSERT_NOT_NULL(records_pb);
+    records_pb = CALLOC(1, sizeof(*records_pb));
 
     /* Initialize the first records entry */
     interfaces__mdns_records_telemetry__mdns_record__init(records_pb);
@@ -816,8 +809,7 @@ test_Mdns_Records_Report(void)
     records_pb_tbl[0] = records_pb;
 
     /* Allocate the second records entry */
-    records_pb = calloc(1, sizeof(*records_pb));
-    TEST_ASSERT_NOT_NULL(records_pb);
+    records_pb = CALLOC(1, sizeof(*records_pb));
 
     /* Initialize the seconds records entry */
     interfaces__mdns_records_telemetry__mdns_record__init(records_pb);
@@ -827,8 +819,7 @@ test_Mdns_Records_Report(void)
     records_pb->has_type = true;
     records_pb->owner_name = strdup("bw.plume._http._tcp");
     TEST_ASSERT_NOT_NULL(records_pb->owner_name);
-    records_pb->res_desc.data = malloc(strlen(txt));
-    TEST_ASSERT_NOT_NULL(records_pb->res_desc.data);
+    records_pb->res_desc.data = MALLOC(strlen(txt));
     memcpy(records_pb->res_desc.data, txt, strlen(txt));
     records_pb->has_res_desc = true;
 
@@ -840,8 +831,7 @@ test_Mdns_Records_Report(void)
     TEST_ASSERT_TRUE(len != 0);
 
     /* Allocate space for the serialized buffer */
-    buf = malloc(len);
-    TEST_ASSERT_NOT_NULL(buf);
+    buf = MALLOC(len);
 
     serialized->len = interfaces__mdns_records_telemetry__mdns_records_report__pack(report, buf);
     serialized->buf = buf;
@@ -856,39 +846,39 @@ test_Mdns_Records_Report(void)
 
     /* free first record resources */
     records_pb = records_pb_tbl[0];
-    free(records_pb->owner_name);
-    free(records_pb->domain_name);
-    free(records_pb);
+    FREE(records_pb->owner_name);
+    FREE(records_pb->domain_name);
+    FREE(records_pb);
 
     /* free second record resources */
     records_pb = records_pb_tbl[1];
-    free(records_pb->owner_name);
-    free(records_pb->res_desc.data);
-    free(records_pb);
+    FREE(records_pb->owner_name);
+    FREE(records_pb->res_desc.data);
+    FREE(records_pb);
 
     /* free records table */
-    free(records_pb_tbl);
+    FREE(records_pb_tbl);
 
     /* free client resources */
     clients_pb = clients_pb_tbl[0];
 
-    free(clients_pb->mac);
-    free(clients_pb->ip);
-    free(clients_pb);
+    FREE(clients_pb->mac);
+    FREE(clients_pb->ip);
+    FREE(clients_pb);
 
     /* free clients table */
-    free(clients_pb_tbl);
+    FREE(clients_pb_tbl);
 
     /* free observation point */
-    free(obs_p->location_id);
-    free(obs_p->node_id);
-    free(obs_p);
+    FREE(obs_p->location_id);
+    FREE(obs_p->node_id);
+    FREE(obs_p);
 
     /* free observation window */
-    free(obs_w);
+    FREE(obs_w);
 
     /* free the report */
-    free(report);
+    FREE(report);
 
 }
 
@@ -914,8 +904,7 @@ setup_mdns_report_clients(void)
     clients = &report->staged_clients;
 
     /* Allocate the first client */
-    client = calloc(1, sizeof(mdns_client_t));
-    if (!client) return;
+    client = CALLOC(1, sizeof(mdns_client_t));
 
     STRSCPY(client->mac_str, "aa:bb:cc:dd:ee:ff");
     STRSCPY(client->ip_str, "10.0.0.100");
@@ -956,8 +945,7 @@ setup_mdns_report_clients(void)
     ds_dlist_insert_tail(records_list, rec);
 
     /* Allocate the second client */
-    client = calloc(1, sizeof(mdns_client_t));
-    if (!client) return;
+    client = CALLOC(1, sizeof(mdns_client_t));
 
     STRSCPY(client->mac_str, "11:22:33:44:55:66");
     STRSCPY(client->ip_str, "10.0.0.50");
@@ -1088,9 +1076,9 @@ teardown_mdns_records_report(void)
 
     teardown_mdns_report_clients();
 
-    free(node_info->node_id);
-    free(node_info->location_id);
-    free(g_test_mgr.f_name);
+    FREE(node_info->node_id);
+    FREE(node_info->location_id);
+    FREE(g_test_mgr.f_name);
 
     g_test_mgr.initialized = false;
 

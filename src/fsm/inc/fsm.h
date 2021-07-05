@@ -124,18 +124,18 @@ struct fsm_parser_ops
  */
 struct fsm_web_cat_ops
 {
-    bool (*categories_check)(struct fsm_session *,
-                             struct fsm_policy_req *,
-                             struct fsm_policy *);
-    bool (*risk_level_check)(struct fsm_session *,
-                             struct fsm_policy_req *,
-                             struct fsm_policy *);
+    bool (*categories_check)(struct fsm_policy_req *,
+                             struct fsm_policy *,
+                             struct fsm_policy_reply *);
+    bool (*risk_level_check)(struct fsm_policy_req *,
+                             struct fsm_policy *,
+                             struct fsm_policy_reply *);
     char * (*cat2str)(struct fsm_session *, int id);
     void (*get_stats)(struct fsm_session *, struct fsm_url_stats *);
     void (*report_stats)(struct fsm_session *,
                          struct fsm_url_report_stats *);
     void (*dns_response)(struct fsm_session *, struct fqdn_pending_req *);
-    bool (*gatekeeper_req)(struct fsm_session *, struct fsm_policy_req *);
+    bool (*gatekeeper_req)(struct fsm_policy_req *, struct fsm_policy_reply *);
 };
 
 

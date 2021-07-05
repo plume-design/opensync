@@ -29,6 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "log.h"
 #include "osn_inet.h"
+#include "memutil.h"
 
 struct osn_route
 {
@@ -39,7 +40,7 @@ osn_route_t* osn_route_new(const char *ifname)
 {
     (void)ifname;
 
-    osn_route_t *self = calloc(1, sizeof(*self));
+    osn_route_t *self = CALLOC(1, sizeof(*self));
 
     return self;
 }
@@ -47,7 +48,7 @@ osn_route_t* osn_route_new(const char *ifname)
 
 bool osn_route_del(osn_route_t *self)
 {
-    free(self);
+    FREE(self);
 
     return true;
 }
@@ -77,7 +78,7 @@ osn_route4_cfg_t *osn_route4_cfg_new(const char *if_name)
 
 bool osn_route4_cfg_del(osn_route4_cfg_t *self)
 {
-    free(self);
+    FREE(self);
     return true;
 }
 

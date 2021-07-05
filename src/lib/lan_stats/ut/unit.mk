@@ -31,6 +31,11 @@ UNIT_SRC := test_lan_stats.c
 
 UNIT_CFLAGS := -Isrc/fcm/inc
 
+ifneq ($(CONFIG_FCM_OVS_CMD),y)
+UNIT_LDFLAGS := -lopenvswitch
+endif
+UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
+
 UNIT_DEPS := src/lib/lan_stats
 UNIT_DEPS += src/lib/const
 UNIT_DEPS += src/lib/log
@@ -39,3 +44,12 @@ UNIT_DEPS += src/lib/network_metadata
 UNIT_DEPS += src/lib/fcm_filter
 UNIT_DEPS += src/lib/unity
 
+# Ensure the required files are copied in its correct location
+$(UNIT_BUILD)/.target: /tmp/stats.txt /tmp/stats_2.txt
+/tmp/stats.txt: $(UNIT_PATH)/stats.txt FORCE_LANSTATS
+	${NQ} " $(call color_copy,copy)    [$(call COLOR_BOLD,$<)] -> $@"
+	${Q} cp $< $@
+/tmp/stats_2.txt: $(UNIT_PATH)/stats_2.txt FORCE_LANSTATS
+	${NQ} " $(call color_copy,copy)    [$(call COLOR_BOLD,$<)] -> $@"
+	${Q} cp $< $@
+FORCE_LANSTATS:

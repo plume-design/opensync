@@ -27,6 +27,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdlib.h>
 
 #include "log.h"
+#include "memutil.h"
 
 #include "osn_qos.h"
 
@@ -44,14 +45,13 @@ osn_qos_t* osn_qos_new(const char *ifname)
 {
     (void)ifname;
 
-    osn_qos_t *self = calloc(1, sizeof(osn_qos_t));
-
+    osn_qos_t *self = CALLOC(1, sizeof(osn_qos_t));
     return self;
 }
 
 void osn_qos_del(osn_qos_t *self)
 {
-    free(self);
+    FREE(self);
 }
 
 bool osn_qos_apply(osn_qos_t *self)

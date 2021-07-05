@@ -30,11 +30,31 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <jansson.h>
 #include <stdint.h>
 #include <time.h>
+#include <net/if_arp.h>
 
 #include "fsm.h"
 #include "neigh_table.h"
 #include "net_header_parse.h"
 #include "os_types.h"
+
+/**
+ * @brief ehternet ARP
+ */
+struct eth_arp
+{
+    os_macaddr_t *s_eth;                  /* Sender ethernet address */
+    uint32_t s_ip;                        /* Sender IP address */
+    os_macaddr_t *t_eth;                  /* Target ethernet address */
+    uint32_t t_ip;                        /* Target IP address */
+};
+
+
+enum neigh_type
+{
+    NEIGH_ARP = 0,
+    NEIGH_ICMPv6 = 1,
+};
+
 
 /**
  * @brief neighbour discovery protocol parser
@@ -51,9 +71,15 @@ struct ndp_parser
     size_t data_len;                      /* Non-network related data length */
     uint8_t *data;                        /* Non-network data pointer */
     size_t parsed;                        /* Parsed bytes */
-    size_t icmpv6_len;                    /* Parsed bytes */
+    size_t neigh_len;
+    int op;
+    bool gratuitous;
+    struct eth_arp arp;
+    struct neighbour_entry sender;
+    struct neighbour_entry target;
     struct neighbour_entry entry;
     os_macaddr_t *opt_mac;
+    enum neigh_type type;
 };
 
 
@@ -160,7 +186,28 @@ ndp_parse_message(struct ndp_parser *parser);
  * @return the size of the parsed message content, or 0 on parsing error.
  */
 size_t
-ndp_parse_content(struct ndp_parser *parser);
+icmpv6_parse_content(struct ndp_parser *parser);
+
+
+/**
+ * @brief parses the received message content
+ *
+ * @param parser the parsed data container
+ * @return the size of the parsed message content, or 0 on parsing error.
+ */
+size_t
+arp_parse_content(struct ndp_parser *parser);
+
+
+/**
+ * @brief process the parsed message
+ *
+ * arp message content processingg
+ * @param n_session the l2uf session pointing to the parsed message
+ */
+void
+arp_process_message(struct ndp_session *n_session);
+
 
 
 /**
@@ -170,7 +217,7 @@ ndp_parse_content(struct ndp_parser *parser);
  * @param n_session the l2uf session pointing to the parsed message
  */
 void
-ndp_process_message(struct ndp_session *n_session);
+icmpv6_process_message(struct ndp_session *n_session);
 
 
 /**
@@ -205,5 +252,13 @@ ndp_delete_session(struct fsm_session *session);
 struct ndp_cache *
 ndp_get_mgr(void);
 
+/**
+ * @brief checks if an arp packet gratuitous arp
+ *
+ * @param arp the arp parsed packet
+ * @return true if the arp packet is a gratuitous arp, false otherwise
+ */
+bool
+arp_parse_is_gratuitous(struct eth_arp *arp);
 
 #endif /* NDP_PARSE_H_INCLUDED */

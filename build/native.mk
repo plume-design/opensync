@@ -35,9 +35,11 @@ CXX            ?= g++
 AR             ?= ar
 STRIP          ?= strip -g
 
-
 # Includes
 CFLAGS += -I/usr/include/protobuf-c
+CFLAGS += -I/$(OVS_SOURCE)
+CFLAGS += -I/$(OVS_SOURCE)/include
+
 # Flags
 CFLAGS += -fno-strict-aliasing
 CFLAGS += -fasynchronous-unwind-tables
@@ -52,21 +54,26 @@ ifneq (,$(findstring gcc,$(CC)))
 	CFLAGS += -fno-caller-saves
 endif
 
-# clang specific flags. Enable address sanitizer.
+# clang specific flags. Enable address sanitizer and coverage
+# instrumentation if requested
 ifneq (,$(findstring clang,$(CC)))
 	CFLAGS += -O0 -pipe
 	CFLAGS += -fno-omit-frame-pointer
 	CFLAGS += -fno-optimize-sibling-calls
 	CFLAGS += -fsanitize=address
+	LDFLAGS += -fsanitize=address
+	CLANG_VERSION = $(subst clang,,${CC})
+	ASAN_SYMBOLIZER_PATH = /usr/lib/llvm${CLANG_VERSION}/bin/llvm-symbolizer
+	ASAN_OPTIONS = symbolized=1
+ifneq (,$(findstring yes,$(COVERAGE)))
+	CFLAGS += -fprofile-instr-generate -fcoverage-mapping
+	LDFLAGS += -fprofile-instr-generate -fcoverage-mapping
+endif
 endif
 
 # Defines
 CFLAGS += -D_U_="__attribute__((unused))"
 CFLAGS += -DARCH_X86
-
-ifneq (,$(findstring clang,$(CC)))
-	LDFLAGS += -fsanitize=address
-endif
 
 LDFLAGS += -lssl -lcrypto -lpcap
 

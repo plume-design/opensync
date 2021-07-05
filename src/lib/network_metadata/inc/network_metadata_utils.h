@@ -79,6 +79,14 @@ struct net_md_aggregator;
  */
 os_macaddr_t *str2os_mac(char *strmac);
 
+/**
+ * @brief helper function: string to os_macaddr_t
+ * @param strmac: ethernet mac in string representation
+ * @param mac: pre allocated variable to receive the MAC address
+ * @return true is success
+ */
+bool str2os_mac_ref(char *strmac, os_macaddr_t *mac);
+
 struct net_md_flow_key * set_net_md_flow_key(struct net_md_flow_key *lkey);
 void free_net_md_flow_key(struct net_md_flow_key *lkey);
 void free_flow_report(struct flow_report *report);

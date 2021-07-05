@@ -40,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <limits.h>
 
 #include "sm.h"
+#include "memutil.h"
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
@@ -76,11 +77,8 @@ static inline sm_capacity_ctx_t * sm_capacity_ctx_alloc()
 {
     sm_capacity_ctx_t *capacity_ctx = NULL;
 
-    capacity_ctx = malloc(sizeof(sm_capacity_ctx_t));
-    if (capacity_ctx)
-    {
-        memset(capacity_ctx, 0, sizeof(sm_capacity_ctx_t));
-    }
+    capacity_ctx = MALLOC(sizeof(sm_capacity_ctx_t));
+    memset(capacity_ctx, 0, sizeof(sm_capacity_ctx_t));
 
     return capacity_ctx;
 }
@@ -88,7 +86,7 @@ static inline sm_capacity_ctx_t * sm_capacity_ctx_alloc()
 static inline void sm_capacity_ctx_free(sm_capacity_ctx_t *capacity_ctx)
 {
     if (NULL != capacity_ctx) {
-        free(capacity_ctx);
+        FREE(capacity_ctx);
     }
 }
 

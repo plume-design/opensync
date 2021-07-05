@@ -29,8 +29,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "ds.h"
 #include "ds_dlist.h"
+#include "memutil.h"
 
 #include "dpp_types.h"
+
+#include "opensync_stats.pb-c.h"
 
 #define DPP_DEVICE_TX_CHAINMASK_MAX      3
 #define DPP_DEVICE_TOP_MAX               10
@@ -88,6 +91,17 @@ typedef struct
 } dpp_device_ps_util_t;
 
 
+typedef Sts__PowerSupplyType dpp_device_psupply_type_t;
+
+
+/* Power Supply Info  */
+typedef struct
+{
+    dpp_device_psupply_type_t  ps_type;
+    uint32_t                   p_consumption;
+    uint8_t                    batt_level;
+} dpp_device_powerinfo_t;
+
 
 typedef struct
 {
@@ -97,6 +111,7 @@ typedef struct
     dpp_device_memutil_t            mem_util;
     dpp_device_cpuutil_t            cpu_util;
     dpp_device_fsutil_t             fs_util[DPP_DEVICE_FS_TYPE_QTY];
+    dpp_device_powerinfo_t          power_info;
 
 
     dpp_device_ps_util_t            top_cpu[DPP_DEVICE_TOP_MAX];
@@ -131,11 +146,8 @@ static inline dpp_device_temp_t * dpp_device_temp_record_alloc()
 {
     dpp_device_temp_t *record = NULL;
 
-    record = malloc(sizeof(dpp_device_temp_t));
-    if (record)
-    {
-        memset(record, 0, sizeof(dpp_device_temp_t));
-    }
+    record = MALLOC(sizeof(dpp_device_temp_t));
+    memset(record, 0, sizeof(dpp_device_temp_t));
 
     return record;
 }
@@ -144,7 +156,7 @@ static inline void dpp_device_temp_record_free(dpp_device_temp_t *record)
 {
     if (NULL != record)
     {
-        free(record);
+        FREE(record);
     }
 }
 
@@ -152,11 +164,8 @@ static inline dpp_device_thermal_record_t * dpp_device_thermal_record_alloc()
 {
     dpp_device_thermal_record_t *record = NULL;
 
-    record = malloc(sizeof(dpp_device_thermal_record_t));
-    if (record)
-    {
-        memset(record, 0, sizeof(dpp_device_thermal_record_t));
-    }
+    record = MALLOC(sizeof(dpp_device_thermal_record_t));
+    memset(record, 0, sizeof(dpp_device_thermal_record_t));
 
     return record;
 }
@@ -165,7 +174,7 @@ static inline void dpp_device_thermal_record_free(dpp_device_thermal_record_t *r
 {
     if (NULL != record)
     {
-        free(record);
+        FREE(record);
     }
 }
 

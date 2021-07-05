@@ -34,6 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os.h"
 #include "const.h"
 #include "util.h"
+#include "memutil.h"
 #include "log.h"
 #include "os_util.h"
 
@@ -165,7 +166,7 @@ cportal_proxy_parse_url(struct cportal *self)
     if (!proto)
     {
         LOG(ERR, "%s: Error parsing protocol field from", __func__);
-        free(org_url);
+        FREE(org_url);
         return false;
     }
 
@@ -195,7 +196,7 @@ cportal_proxy_parse_url(struct cportal *self)
     LOG(INFO, "%s: parsed url vales: protocol:%d domain:%s, port:%s", __func__,
                 url_ptr->proto, url_ptr->domain_name, url_ptr->port);
 
-    free(org_url);
+    FREE(org_url);
     return true;
 }
 

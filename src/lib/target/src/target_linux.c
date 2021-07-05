@@ -40,8 +40,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "target_common.h"  // interface
 
 #include "log.h"
+#include "kconfig.h"
 #include "dpp_device.h"
-
+#include "osp_power.h"
+#include "memutil.h"
 
 
 #define MODULE_ID LOG_MODULE_ID_TARGET
@@ -117,6 +119,7 @@ static bool linux_device_cpuutil_get(dpp_device_cpuutil_t *cpuutil);
 static bool linux_device_memutil_get(dpp_device_memutil_t *memutil);
 static bool linux_device_fsutil_get(dpp_device_fsutil_t *fsutil);
 static bool linux_device_top(dpp_device_record_t *device_record);
+static bool linux_device_powerinfo_get(dpp_device_powerinfo_t *powerinfo);
 
 static int proc_parse_uptime(uint64_t *uptime);
 static int proc_parse_meminfo(system_util_t *system_util);
@@ -192,6 +195,61 @@ static bool linux_device_uptime_get(dpp_device_record_t *record)
     }
 
     LOG(TRACE, "Parsed device uptime %u", record->uptime);
+
+    return true;
+}
+
+
+static bool linux_device_powerinfo_get(dpp_device_powerinfo_t *powerinfo)
+{
+    if (kconfig_enabled(CONFIG_OSP_POWER))
+    {
+        enum osp_power_ps_type supply_type;
+        uint32_t milliwatts;
+        uint8_t  batt_level;
+
+        if (osp_power_get_power_supply_type(&supply_type))
+        {
+            switch (supply_type)
+            {
+                case OSP_POWER_PS_TYPE_UNKNOWN:
+                    LOG(TRACE, "Power Supply type: 'Unknown'");
+                    powerinfo->ps_type = STS__POWER_SUPPLY_TYPE__PS_TYPE_UNKNOWN;
+                    break;
+                case OSP_POWER_PS_TYPE_AC:
+                    LOG(TRACE, "Power Supply type: 'AC'");
+                    powerinfo->ps_type = STS__POWER_SUPPLY_TYPE__PS_TYPE_AC;
+                    break;
+                case OSP_POWER_PS_TYPE_BATTERY:
+                    LOG(TRACE, "Power Supply type: 'Battery'");
+                    powerinfo->ps_type = STS__POWER_SUPPLY_TYPE__PS_TYPE_BATTERY;
+                    break;
+                case OSP_POWER_PS_TYPE_POE:
+                    LOG(TRACE, "Power Supply type: 'PoE'");
+                    powerinfo->ps_type = STS__POWER_SUPPLY_TYPE__PS_TYPE_POE;
+                    break;
+                case OSP_POWER_PS_TYPE_POE_PLUS:
+                    LOG(TRACE, "Power Supply type: 'PoE_PLUS'");
+                    powerinfo->ps_type = STS__POWER_SUPPLY_TYPE__PS_TYPE_POE_PLUS;
+                    break;
+                default:
+                    LOG(ERROR, "Could not parse Power Supply type");
+                    return false;
+            }
+        }
+
+        if (osp_power_get_power_consumption(&milliwatts))
+        {
+            powerinfo->p_consumption = milliwatts;
+            LOG(TRACE, "Power consumption: '%umW'", powerinfo->p_consumption);
+        }
+
+        if (osp_power_get_battery_level(&batt_level))
+        {
+            powerinfo->batt_level = (uint32_t)batt_level;
+            LOG(TRACE, "Battery level: '%u%%'", powerinfo->batt_level);
+        }
+    }
 
     return true;
 }
@@ -452,7 +510,7 @@ static int get_all_pids(uint32_t **pid_list, unsigned *pid_num)
     }
 
     num_allocated = PID_BUF_NUM;
-    pids = malloc(num_allocated * sizeof(*pids));
+    pids = MALLOC(num_allocated * sizeof(*pids));
     num = 0;
     while ((dire = readdir(proc_dir)) != NULL)
     {
@@ -464,7 +522,7 @@ static int get_all_pids(uint32_t **pid_list, unsigned *pid_num)
         if (num == num_allocated)
         {
             num_allocated += PID_BUF_NUM;
-            pids = realloc(pids, num_allocated * sizeof(*pids));
+            pids = REALLOC(pids, num_allocated * sizeof(*pids));
         }
     }
     closedir(proc_dir);
@@ -630,7 +688,7 @@ static int get_pid_util_list(const uint32_t *pid_list, unsigned pid_num,
     int rc;
 
 
-    pid_util = calloc(pid_num, sizeof(*pid_util));
+    pid_util = CALLOC(pid_num, sizeof(*pid_util));
     for (i = 0; i < pid_num; i++)
     {
         pid_util[i].pid = pid_list[i];
@@ -678,7 +736,7 @@ static int get_pid_util_list(const uint32_t *pid_list, unsigned pid_num,
 
 error:
     // should be already logged, just free allocated memory
-    if (pid_util != NULL) free(pid_util);
+    if (pid_util != NULL) FREE(pid_util);
     return -1;
 }
 
@@ -837,12 +895,12 @@ err_out:
     /* Discard previous sysutil measurements */
     if (g_sysutil_prev.pid_util != NULL)
     {
-        free(g_sysutil_prev.pid_util);
+        FREE(g_sysutil_prev.pid_util);
         g_sysutil_prev.pid_util = NULL;
     }
     if (pid_list != NULL)
     {
-        free(pid_list);
+        FREE(pid_list);
     }
 
     if (sysutil.pid_util == NULL) sysutil.n_pid_util = 0;
@@ -904,6 +962,12 @@ bool target_stats_device_get(dpp_device_record_t  *device_entry)
             LOG(ERR, "Failed to retrieve device filesystem utilization.");
             return false;
         }
+    }
+
+    if (!linux_device_powerinfo_get(&device_entry->power_info))
+    {
+        LOG(ERR, "Failed to retrieve device power info.");
+        return false;
     }
 
     if (!linux_device_top(device_entry))

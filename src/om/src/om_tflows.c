@@ -42,6 +42,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "schema.h"
 #include "om.h"
+#include "memutil.h"
 
 /*****************************************************************************/
 #define MODULE_ID LOG_MODULE_ID_MAIN
@@ -70,20 +71,20 @@ om_tflow_free(om_tflow_t *tflow)
 {
     if (tflow) {
         if (tflow->token) {
-            free(tflow->token);
+            FREE(tflow->token);
         }
         if (tflow->bridge) {
-            free(tflow->bridge);
+            FREE(tflow->bridge);
         }
         if (tflow->rule) {
-            free(tflow->rule);
+            FREE(tflow->rule);
         }
         if (tflow->action) {
-            free(tflow->action);
+            FREE(tflow->action);
         }
 
         om_tag_list_free(&tflow->tags);
-        free(tflow);
+        FREE(tflow);
     }
     return;
 }
@@ -147,7 +148,7 @@ om_tflow_detect_vars(const char *token, const char *rule, char *what, char var_c
     }
 
 exit:
-    free(mrule);
+    FREE(mrule);
     if (ret == false) {
         om_tag_list_free(list);
     }
@@ -191,9 +192,7 @@ om_tflow_alloc_from_schema(struct schema_Openflow_Config *sflow)
     // For memory optimization, all string variables within the template flow
     // are dynamically allocated.
 
-    if (!(tflow = calloc(1, sizeof(*tflow)))) {
-        goto alloc_err;
-    }
+    tflow = CALLOC(1, sizeof(*tflow));
 
     om_tag_list_init(&tflow->tags);
     if (!om_tflow_detect_tags(sflow->token, sflow->rule, &tflow->tags)) {

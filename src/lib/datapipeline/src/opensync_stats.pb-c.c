@@ -36,7 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 void   sts__avg_type__init
                      (Sts__AvgType         *message)
 {
-  static Sts__AvgType init_value = STS__AVG_TYPE__INIT;
+  static const Sts__AvgType init_value = STS__AVG_TYPE__INIT;
   *message = init_value;
 }
 size_t sts__avg_type__get_packed_size
@@ -73,13 +73,15 @@ void   sts__avg_type__free_unpacked
                      (Sts__AvgType *message,
                       ProtobufCAllocator *allocator)
 {
+  if(!message)
+    return;
   assert(message->base.descriptor == &sts__avg_type__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
 void   sts__avg_type_signed__init
                      (Sts__AvgTypeSigned         *message)
 {
-  static Sts__AvgTypeSigned init_value = STS__AVG_TYPE_SIGNED__INIT;
+  static const Sts__AvgTypeSigned init_value = STS__AVG_TYPE_SIGNED__INIT;
   *message = init_value;
 }
 size_t sts__avg_type_signed__get_packed_size
@@ -116,19 +118,21 @@ void   sts__avg_type_signed__free_unpacked
                      (Sts__AvgTypeSigned *message,
                       ProtobufCAllocator *allocator)
 {
+  if(!message)
+    return;
   assert(message->base.descriptor == &sts__avg_type_signed__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
 void   sts__neighbor__neighbor_bss__init
                      (Sts__Neighbor__NeighborBss         *message)
 {
-  static Sts__Neighbor__NeighborBss init_value = STS__NEIGHBOR__NEIGHBOR_BSS__INIT;
+  static const Sts__Neighbor__NeighborBss init_value = STS__NEIGHBOR__NEIGHBOR_BSS__INIT;
   *message = init_value;
 }
 void   sts__neighbor__init
                      (Sts__Neighbor         *message)
 {
-  static Sts__Neighbor init_value = STS__NEIGHBOR__INIT;
+  static const Sts__Neighbor init_value = STS__NEIGHBOR__INIT;
   *message = init_value;
 }
 size_t sts__neighbor__get_packed_size
@@ -165,49 +169,51 @@ void   sts__neighbor__free_unpacked
                      (Sts__Neighbor *message,
                       ProtobufCAllocator *allocator)
 {
+  if(!message)
+    return;
   assert(message->base.descriptor == &sts__neighbor__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
 void   sts__client__stats__init
                      (Sts__Client__Stats         *message)
 {
-  static Sts__Client__Stats init_value = STS__CLIENT__STATS__INIT;
+  static const Sts__Client__Stats init_value = STS__CLIENT__STATS__INIT;
   *message = init_value;
 }
 void   sts__client__rx_stats__chain_rssi__init
                      (Sts__Client__RxStats__ChainRSSI         *message)
 {
-  static Sts__Client__RxStats__ChainRSSI init_value = STS__CLIENT__RX_STATS__CHAIN_RSSI__INIT;
+  static const Sts__Client__RxStats__ChainRSSI init_value = STS__CLIENT__RX_STATS__CHAIN_RSSI__INIT;
   *message = init_value;
 }
 void   sts__client__rx_stats__init
                      (Sts__Client__RxStats         *message)
 {
-  static Sts__Client__RxStats init_value = STS__CLIENT__RX_STATS__INIT;
+  static const Sts__Client__RxStats init_value = STS__CLIENT__RX_STATS__INIT;
   *message = init_value;
 }
 void   sts__client__tx_stats__init
                      (Sts__Client__TxStats         *message)
 {
-  static Sts__Client__TxStats init_value = STS__CLIENT__TX_STATS__INIT;
+  static const Sts__Client__TxStats init_value = STS__CLIENT__TX_STATS__INIT;
   *message = init_value;
 }
 void   sts__client__tid_stats__sojourn__init
                      (Sts__Client__TidStats__Sojourn         *message)
 {
-  static Sts__Client__TidStats__Sojourn init_value = STS__CLIENT__TID_STATS__SOJOURN__INIT;
+  static const Sts__Client__TidStats__Sojourn init_value = STS__CLIENT__TID_STATS__SOJOURN__INIT;
   *message = init_value;
 }
 void   sts__client__tid_stats__init
                      (Sts__Client__TidStats         *message)
 {
-  static Sts__Client__TidStats init_value = STS__CLIENT__TID_STATS__INIT;
+  static const Sts__Client__TidStats init_value = STS__CLIENT__TID_STATS__INIT;
   *message = init_value;
 }
 void   sts__client__init
                      (Sts__Client         *message)
 {
-  static Sts__Client init_value = STS__CLIENT__INIT;
+  static const Sts__Client init_value = STS__CLIENT__INIT;
   *message = init_value;
 }
 size_t sts__client__get_packed_size
@@ -244,13 +250,15 @@ void   sts__client__free_unpacked
                      (Sts__Client *message,
                       ProtobufCAllocator *allocator)
 {
+  if(!message)
+    return;
   assert(message->base.descriptor == &sts__client__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
 void   sts__client_report__init
                      (Sts__ClientReport         *message)
 {
-  static Sts__ClientReport init_value = STS__CLIENT_REPORT__INIT;
+  static const Sts__ClientReport init_value = STS__CLIENT_REPORT__INIT;
   *message = init_value;
 }
 size_t sts__client_report__get_packed_size
@@ -287,25 +295,27 @@ void   sts__client_report__free_unpacked
                      (Sts__ClientReport *message,
                       ProtobufCAllocator *allocator)
 {
+  if(!message)
+    return;
   assert(message->base.descriptor == &sts__client_report__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
 void   sts__client_auth_fails_report__bss__client__init
                      (Sts__ClientAuthFailsReport__BSS__Client         *message)
 {
-  static Sts__ClientAuthFailsReport__BSS__Client init_value = STS__CLIENT_AUTH_FAILS_REPORT__BSS__CLIENT__INIT;
+  static const Sts__ClientAuthFailsReport__BSS__Client init_value = STS__CLIENT_AUTH_FAILS_REPORT__BSS__CLIENT__INIT;
   *message = init_value;
 }
 void   sts__client_auth_fails_report__bss__init
                      (Sts__ClientAuthFailsReport__BSS         *message)
 {
-  static Sts__ClientAuthFailsReport__BSS init_value = STS__CLIENT_AUTH_FAILS_REPORT__BSS__INIT;
+  static const Sts__ClientAuthFailsReport__BSS init_value = STS__CLIENT_AUTH_FAILS_REPORT__BSS__INIT;
   *message = init_value;
 }
 void   sts__client_auth_fails_report__init
                      (Sts__ClientAuthFailsReport         *message)
 {
-  static Sts__ClientAuthFailsReport init_value = STS__CLIENT_AUTH_FAILS_REPORT__INIT;
+  static const Sts__ClientAuthFailsReport init_value = STS__CLIENT_AUTH_FAILS_REPORT__INIT;
   *message = init_value;
 }
 size_t sts__client_auth_fails_report__get_packed_size
@@ -342,25 +352,27 @@ void   sts__client_auth_fails_report__free_unpacked
                      (Sts__ClientAuthFailsReport *message,
                       ProtobufCAllocator *allocator)
 {
+  if(!message)
+    return;
   assert(message->base.descriptor == &sts__client_auth_fails_report__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
 void   sts__survey__survey_sample__init
                      (Sts__Survey__SurveySample         *message)
 {
-  static Sts__Survey__SurveySample init_value = STS__SURVEY__SURVEY_SAMPLE__INIT;
+  static const Sts__Survey__SurveySample init_value = STS__SURVEY__SURVEY_SAMPLE__INIT;
   *message = init_value;
 }
 void   sts__survey__survey_avg__init
                      (Sts__Survey__SurveyAvg         *message)
 {
-  static Sts__Survey__SurveyAvg init_value = STS__SURVEY__SURVEY_AVG__INIT;
+  static const Sts__Survey__SurveyAvg init_value = STS__SURVEY__SURVEY_AVG__INIT;
   *message = init_value;
 }
 void   sts__survey__init
                      (Sts__Survey         *message)
 {
-  static Sts__Survey init_value = STS__SURVEY__INIT;
+  static const Sts__Survey init_value = STS__SURVEY__INIT;
   *message = init_value;
 }
 size_t sts__survey__get_packed_size
@@ -397,19 +409,21 @@ void   sts__survey__free_unpacked
                      (Sts__Survey *message,
                       ProtobufCAllocator *allocator)
 {
+  if(!message)
+    return;
   assert(message->base.descriptor == &sts__survey__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
 void   sts__capacity__queue_sample__init
                      (Sts__Capacity__QueueSample         *message)
 {
-  static Sts__Capacity__QueueSample init_value = STS__CAPACITY__QUEUE_SAMPLE__INIT;
+  static const Sts__Capacity__QueueSample init_value = STS__CAPACITY__QUEUE_SAMPLE__INIT;
   *message = init_value;
 }
 void   sts__capacity__init
                      (Sts__Capacity         *message)
 {
-  static Sts__Capacity init_value = STS__CAPACITY__INIT;
+  static const Sts__Capacity init_value = STS__CAPACITY__INIT;
   *message = init_value;
 }
 size_t sts__capacity__get_packed_size
@@ -446,61 +460,69 @@ void   sts__capacity__free_unpacked
                      (Sts__Capacity *message,
                       ProtobufCAllocator *allocator)
 {
+  if(!message)
+    return;
   assert(message->base.descriptor == &sts__capacity__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
 void   sts__device__load_avg__init
                      (Sts__Device__LoadAvg         *message)
 {
-  static Sts__Device__LoadAvg init_value = STS__DEVICE__LOAD_AVG__INIT;
+  static const Sts__Device__LoadAvg init_value = STS__DEVICE__LOAD_AVG__INIT;
   *message = init_value;
 }
 void   sts__device__radio_temp__init
                      (Sts__Device__RadioTemp         *message)
 {
-  static Sts__Device__RadioTemp init_value = STS__DEVICE__RADIO_TEMP__INIT;
+  static const Sts__Device__RadioTemp init_value = STS__DEVICE__RADIO_TEMP__INIT;
   *message = init_value;
 }
 void   sts__device__thermal__radio_tx_chain_mask__init
                      (Sts__Device__Thermal__RadioTxChainMask         *message)
 {
-  static Sts__Device__Thermal__RadioTxChainMask init_value = STS__DEVICE__THERMAL__RADIO_TX_CHAIN_MASK__INIT;
+  static const Sts__Device__Thermal__RadioTxChainMask init_value = STS__DEVICE__THERMAL__RADIO_TX_CHAIN_MASK__INIT;
   *message = init_value;
 }
 void   sts__device__thermal__init
                      (Sts__Device__Thermal         *message)
 {
-  static Sts__Device__Thermal init_value = STS__DEVICE__THERMAL__INIT;
+  static const Sts__Device__Thermal init_value = STS__DEVICE__THERMAL__INIT;
   *message = init_value;
 }
 void   sts__device__mem_util__init
                      (Sts__Device__MemUtil         *message)
 {
-  static Sts__Device__MemUtil init_value = STS__DEVICE__MEM_UTIL__INIT;
+  static const Sts__Device__MemUtil init_value = STS__DEVICE__MEM_UTIL__INIT;
   *message = init_value;
 }
 void   sts__device__fs_util__init
                      (Sts__Device__FsUtil         *message)
 {
-  static Sts__Device__FsUtil init_value = STS__DEVICE__FS_UTIL__INIT;
+  static const Sts__Device__FsUtil init_value = STS__DEVICE__FS_UTIL__INIT;
   *message = init_value;
 }
 void   sts__device__cpu_util__init
                      (Sts__Device__CpuUtil         *message)
 {
-  static Sts__Device__CpuUtil init_value = STS__DEVICE__CPU_UTIL__INIT;
+  static const Sts__Device__CpuUtil init_value = STS__DEVICE__CPU_UTIL__INIT;
   *message = init_value;
 }
 void   sts__device__per_process_util__init
                      (Sts__Device__PerProcessUtil         *message)
 {
-  static Sts__Device__PerProcessUtil init_value = STS__DEVICE__PER_PROCESS_UTIL__INIT;
+  static const Sts__Device__PerProcessUtil init_value = STS__DEVICE__PER_PROCESS_UTIL__INIT;
+  *message = init_value;
+}
+void   sts__device__power_info__init
+                     (Sts__Device__PowerInfo         *message)
+{
+  static const Sts__Device__PowerInfo init_value = STS__DEVICE__POWER_INFO__INIT;
   *message = init_value;
 }
 void   sts__device__init
                      (Sts__Device         *message)
 {
-  static Sts__Device init_value = STS__DEVICE__INIT;
+  static const Sts__Device init_value = STS__DEVICE__INIT;
   *message = init_value;
 }
 size_t sts__device__get_packed_size
@@ -537,25 +559,27 @@ void   sts__device__free_unpacked
                      (Sts__Device *message,
                       ProtobufCAllocator *allocator)
 {
+  if(!message)
+    return;
   assert(message->base.descriptor == &sts__device__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
 void   sts__bsclient__bsevent__init
                      (Sts__BSClient__BSEvent         *message)
 {
-  static Sts__BSClient__BSEvent init_value = STS__BSCLIENT__BSEVENT__INIT;
+  static const Sts__BSClient__BSEvent init_value = STS__BSCLIENT__BSEVENT__INIT;
   *message = init_value;
 }
 void   sts__bsclient__bsband_report__init
                      (Sts__BSClient__BSBandReport         *message)
 {
-  static Sts__BSClient__BSBandReport init_value = STS__BSCLIENT__BSBAND_REPORT__INIT;
+  static const Sts__BSClient__BSBandReport init_value = STS__BSCLIENT__BSBAND_REPORT__INIT;
   *message = init_value;
 }
 void   sts__bsclient__init
                      (Sts__BSClient         *message)
 {
-  static Sts__BSClient init_value = STS__BSCLIENT__INIT;
+  static const Sts__BSClient init_value = STS__BSCLIENT__INIT;
   *message = init_value;
 }
 size_t sts__bsclient__get_packed_size
@@ -592,13 +616,15 @@ void   sts__bsclient__free_unpacked
                      (Sts__BSClient *message,
                       ProtobufCAllocator *allocator)
 {
+  if(!message)
+    return;
   assert(message->base.descriptor == &sts__bsclient__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
 void   sts__bsreport__init
                      (Sts__BSReport         *message)
 {
-  static Sts__BSReport init_value = STS__BSREPORT__INIT;
+  static const Sts__BSReport init_value = STS__BSREPORT__INIT;
   *message = init_value;
 }
 size_t sts__bsreport__get_packed_size
@@ -635,19 +661,21 @@ void   sts__bsreport__free_unpacked
                      (Sts__BSReport *message,
                       ProtobufCAllocator *allocator)
 {
+  if(!message)
+    return;
   assert(message->base.descriptor == &sts__bsreport__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
 void   sts__rssi_peer__rssi_sample__init
                      (Sts__RssiPeer__RssiSample         *message)
 {
-  static Sts__RssiPeer__RssiSample init_value = STS__RSSI_PEER__RSSI_SAMPLE__INIT;
+  static const Sts__RssiPeer__RssiSample init_value = STS__RSSI_PEER__RSSI_SAMPLE__INIT;
   *message = init_value;
 }
 void   sts__rssi_peer__init
                      (Sts__RssiPeer         *message)
 {
-  static Sts__RssiPeer init_value = STS__RSSI_PEER__INIT;
+  static const Sts__RssiPeer init_value = STS__RSSI_PEER__INIT;
   *message = init_value;
 }
 size_t sts__rssi_peer__get_packed_size
@@ -684,13 +712,15 @@ void   sts__rssi_peer__free_unpacked
                      (Sts__RssiPeer *message,
                       ProtobufCAllocator *allocator)
 {
+  if(!message)
+    return;
   assert(message->base.descriptor == &sts__rssi_peer__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
 void   sts__rssi_report__init
                      (Sts__RssiReport         *message)
 {
-  static Sts__RssiReport init_value = STS__RSSI_REPORT__INIT;
+  static const Sts__RssiReport init_value = STS__RSSI_REPORT__INIT;
   *message = init_value;
 }
 size_t sts__rssi_report__get_packed_size
@@ -727,13 +757,15 @@ void   sts__rssi_report__free_unpacked
                      (Sts__RssiReport *message,
                       ProtobufCAllocator *allocator)
 {
+  if(!message)
+    return;
   assert(message->base.descriptor == &sts__rssi_report__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
 void   sts__report__init
                      (Sts__Report         *message)
 {
-  static Sts__Report init_value = STS__REPORT__INIT;
+  static const Sts__Report init_value = STS__REPORT__INIT;
   *message = init_value;
 }
 size_t sts__report__get_packed_size
@@ -770,6 +802,8 @@ void   sts__report__free_unpacked
                      (Sts__Report *message,
                       ProtobufCAllocator *allocator)
 {
+  if(!message)
+    return;
   assert(message->base.descriptor == &sts__report__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
@@ -1842,7 +1876,7 @@ const ProtobufCMessageDescriptor sts__client__tid_stats__descriptor =
   (ProtobufCMessageInit) sts__client__tid_stats__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
-static const ProtobufCFieldDescriptor sts__client__field_descriptors[13] =
+static const ProtobufCFieldDescriptor sts__client__field_descriptors[15] =
 {
   {
     "mac_address",
@@ -2000,6 +2034,30 @@ static const ProtobufCFieldDescriptor sts__client__field_descriptors[13] =
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
+  {
+    "uplink_type",
+    14,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_STRING,
+    0,   /* quantifier_offset */
+    offsetof(Sts__Client, uplink_type),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "uplink_changed",
+    15,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_BOOL,
+    offsetof(Sts__Client, has_uplink_changed),
+    offsetof(Sts__Client, uplink_changed),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
 };
 static const unsigned sts__client__field_indices_by_name[] = {
   3,   /* field[3] = connect_count */
@@ -2015,11 +2073,13 @@ static const unsigned sts__client__field_indices_by_name[] = {
   11,   /* field[11] = tid_stats */
   10,   /* field[10] = tx_stats */
   12,   /* field[12] = uapsd */
+  14,   /* field[14] = uplink_changed */
+  13,   /* field[13] = uplink_type */
 };
 static const ProtobufCIntRange sts__client__number_ranges[1 + 1] =
 {
   { 1, 0 },
-  { 0, 13 }
+  { 0, 15 }
 };
 const ProtobufCMessageDescriptor sts__client__descriptor =
 {
@@ -2029,7 +2089,7 @@ const ProtobufCMessageDescriptor sts__client__descriptor =
   "Sts__Client",
   "sts",
   sizeof(Sts__Client),
-  13,
+  15,
   sts__client__field_descriptors,
   sts__client__field_indices_by_name,
   1,  sts__client__number_ranges,
@@ -3358,7 +3418,71 @@ const ProtobufCMessageDescriptor sts__device__per_process_util__descriptor =
   (ProtobufCMessageInit) sts__device__per_process_util__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
-static const ProtobufCFieldDescriptor sts__device__field_descriptors[10] =
+static const ProtobufCFieldDescriptor sts__device__power_info__field_descriptors[3] =
+{
+  {
+    "ps_type",
+    1,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_ENUM,
+    offsetof(Sts__Device__PowerInfo, has_ps_type),
+    offsetof(Sts__Device__PowerInfo, ps_type),
+    &sts__power_supply_type__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "p_consumption",
+    2,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_UINT32,
+    offsetof(Sts__Device__PowerInfo, has_p_consumption),
+    offsetof(Sts__Device__PowerInfo, p_consumption),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "batt_level",
+    3,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_UINT32,
+    offsetof(Sts__Device__PowerInfo, has_batt_level),
+    offsetof(Sts__Device__PowerInfo, batt_level),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned sts__device__power_info__field_indices_by_name[] = {
+  2,   /* field[2] = batt_level */
+  1,   /* field[1] = p_consumption */
+  0,   /* field[0] = ps_type */
+};
+static const ProtobufCIntRange sts__device__power_info__number_ranges[1 + 1] =
+{
+  { 1, 0 },
+  { 0, 3 }
+};
+const ProtobufCMessageDescriptor sts__device__power_info__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "sts.Device.PowerInfo",
+  "PowerInfo",
+  "Sts__Device__PowerInfo",
+  "sts",
+  sizeof(Sts__Device__PowerInfo),
+  3,
+  sts__device__power_info__field_descriptors,
+  sts__device__power_info__field_indices_by_name,
+  1,  sts__device__power_info__number_ranges,
+  (ProtobufCMessageInit) sts__device__power_info__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCFieldDescriptor sts__device__field_descriptors[11] =
 {
   {
     "load",
@@ -3480,12 +3604,25 @@ static const ProtobufCFieldDescriptor sts__device__field_descriptors[10] =
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
+  {
+    "powerInfo",
+    11,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_MESSAGE,
+    0,   /* quantifier_offset */
+    offsetof(Sts__Device, powerinfo),
+    &sts__device__power_info__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
 };
 static const unsigned sts__device__field_indices_by_name[] = {
   7,   /* field[7] = cpuUtil */
   6,   /* field[6] = fs_util */
   0,   /* field[0] = load */
   5,   /* field[5] = mem_util */
+  10,   /* field[10] = powerInfo */
   8,   /* field[8] = ps_cpu_util */
   9,   /* field[9] = ps_mem_util */
   1,   /* field[1] = radio_temp */
@@ -3496,7 +3633,7 @@ static const unsigned sts__device__field_indices_by_name[] = {
 static const ProtobufCIntRange sts__device__number_ranges[1 + 1] =
 {
   { 1, 0 },
-  { 0, 10 }
+  { 0, 11 }
 };
 const ProtobufCMessageDescriptor sts__device__descriptor =
 {
@@ -3506,14 +3643,14 @@ const ProtobufCMessageDescriptor sts__device__descriptor =
   "Sts__Device",
   "sts",
   sizeof(Sts__Device),
-  10,
+  11,
   sts__device__field_descriptors,
   sts__device__field_indices_by_name,
   1,  sts__device__number_ranges,
   (ProtobufCMessageInit) sts__device__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
-static const ProtobufCFieldDescriptor sts__bsclient__bsevent__field_descriptors[32] =
+static const ProtobufCFieldDescriptor sts__bsclient__bsevent__field_descriptors[33] =
 {
   {
     "type",
@@ -3899,6 +4036,18 @@ static const ProtobufCFieldDescriptor sts__bsclient__bsevent__field_descriptors[
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
+  {
+    "band_cap_6G",
+    33,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_BOOL,
+    offsetof(Sts__BSClient__BSEvent, has_band_cap_6g),
+    offsetof(Sts__BSClient__BSEvent, band_cap_6g),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
 };
 static const unsigned sts__bsclient__bsevent__field_indices_by_name[] = {
   9,   /* field[9] = active */
@@ -3907,6 +4056,7 @@ static const unsigned sts__bsclient__bsevent__field_indices_by_name[] = {
   29,   /* field[29] = backoff_period */
   20,   /* field[20] = band_cap_2G */
   21,   /* field[21] = band_cap_5G */
+  32,   /* field[32] = band_cap_6G */
   31,   /* field[31] = btm_status */
   7,   /* field[7] = disconnect_reason */
   5,   /* field[5] = disconnect_src */
@@ -3937,7 +4087,7 @@ static const unsigned sts__bsclient__bsevent__field_indices_by_name[] = {
 static const ProtobufCIntRange sts__bsclient__bsevent__number_ranges[1 + 1] =
 {
   { 1, 0 },
-  { 0, 32 }
+  { 0, 33 }
 };
 const ProtobufCMessageDescriptor sts__bsclient__bsevent__descriptor =
 {
@@ -3947,7 +4097,7 @@ const ProtobufCMessageDescriptor sts__bsclient__bsevent__descriptor =
   "Sts__BSClient__BSEvent",
   "sts",
   sizeof(Sts__BSClient__BSEvent),
-  32,
+  33,
   sts__bsclient__bsevent__field_descriptors,
   sts__bsclient__bsevent__field_indices_by_name,
   1,  sts__bsclient__bsevent__number_ranges,
@@ -4692,22 +4842,24 @@ const ProtobufCMessageDescriptor sts__report__descriptor =
   (ProtobufCMessageInit) sts__report__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
-static const ProtobufCEnumValue sts__radio_band_type__enum_values_by_number[4] =
+static const ProtobufCEnumValue sts__radio_band_type__enum_values_by_number[5] =
 {
   { "BAND2G", "STS__RADIO_BAND_TYPE__BAND2G", 0 },
   { "BAND5G", "STS__RADIO_BAND_TYPE__BAND5G", 1 },
   { "BAND5GL", "STS__RADIO_BAND_TYPE__BAND5GL", 2 },
   { "BAND5GU", "STS__RADIO_BAND_TYPE__BAND5GU", 3 },
+  { "BAND6G", "STS__RADIO_BAND_TYPE__BAND6G", 4 },
 };
 static const ProtobufCIntRange sts__radio_band_type__value_ranges[] = {
-{0, 0},{0, 4}
+{0, 0},{0, 5}
 };
-static const ProtobufCEnumValueIndex sts__radio_band_type__enum_values_by_name[4] =
+static const ProtobufCEnumValueIndex sts__radio_band_type__enum_values_by_name[5] =
 {
   { "BAND2G", 0 },
   { "BAND5G", 1 },
   { "BAND5GL", 2 },
   { "BAND5GU", 3 },
+  { "BAND6G", 4 },
 };
 const ProtobufCEnumDescriptor sts__radio_band_type__descriptor =
 {
@@ -4716,9 +4868,9 @@ const ProtobufCEnumDescriptor sts__radio_band_type__descriptor =
   "RadioBandType",
   "Sts__RadioBandType",
   "sts",
-  4,
+  5,
   sts__radio_band_type__enum_values_by_number,
-  4,
+  5,
   sts__radio_band_type__enum_values_by_name,
   1,
   sts__radio_band_type__value_ranges,
@@ -5080,5 +5232,39 @@ const ProtobufCEnumDescriptor sts__diff_type__descriptor =
   sts__diff_type__enum_values_by_name,
   1,
   sts__diff_type__value_ranges,
+  NULL,NULL,NULL,NULL   /* reserved[1234] */
+};
+static const ProtobufCEnumValue sts__power_supply_type__enum_values_by_number[5] =
+{
+  { "PS_TYPE_UNKNOWN", "STS__POWER_SUPPLY_TYPE__PS_TYPE_UNKNOWN", 0 },
+  { "PS_TYPE_AC", "STS__POWER_SUPPLY_TYPE__PS_TYPE_AC", 1 },
+  { "PS_TYPE_BATTERY", "STS__POWER_SUPPLY_TYPE__PS_TYPE_BATTERY", 2 },
+  { "PS_TYPE_POE", "STS__POWER_SUPPLY_TYPE__PS_TYPE_POE", 3 },
+  { "PS_TYPE_POE_PLUS", "STS__POWER_SUPPLY_TYPE__PS_TYPE_POE_PLUS", 4 },
+};
+static const ProtobufCIntRange sts__power_supply_type__value_ranges[] = {
+{0, 0},{0, 5}
+};
+static const ProtobufCEnumValueIndex sts__power_supply_type__enum_values_by_name[5] =
+{
+  { "PS_TYPE_AC", 1 },
+  { "PS_TYPE_BATTERY", 2 },
+  { "PS_TYPE_POE", 3 },
+  { "PS_TYPE_POE_PLUS", 4 },
+  { "PS_TYPE_UNKNOWN", 0 },
+};
+const ProtobufCEnumDescriptor sts__power_supply_type__descriptor =
+{
+  PROTOBUF_C__ENUM_DESCRIPTOR_MAGIC,
+  "sts.PowerSupplyType",
+  "PowerSupplyType",
+  "Sts__PowerSupplyType",
+  "sts",
+  5,
+  sts__power_supply_type__enum_values_by_number,
+  5,
+  sts__power_supply_type__enum_values_by_name,
+  1,
+  sts__power_supply_type__value_ranges,
   NULL,NULL,NULL,NULL   /* reserved[1234] */
 };

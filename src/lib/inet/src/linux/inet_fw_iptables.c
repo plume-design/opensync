@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "const.h"
 #include "util.h"
+#include "memutil.h"
 #include "execsh.h"
 #include "ds_tree.h"
 
@@ -113,11 +114,11 @@ bool inet_fw_fini(inet_fw_t *self)
 
 inet_fw_t *inet_fw_new(const char *ifname)
 {
-    inet_fw_t *self = malloc(sizeof(inet_fw_t));
+    inet_fw_t *self = MALLOC(sizeof(inet_fw_t));
 
     if (!inet_fw_init(self, ifname))
     {
-        free(self);
+        FREE(self);
         return NULL;
     }
 
@@ -132,7 +133,7 @@ bool inet_fw_del(inet_fw_t *self)
         LOG(WARN, "nat: Error stopping FW on interface: %s", self->fw_ifname);
     }
 
-    free(self);
+    FREE(self);
 
     return retval;
 }
@@ -226,12 +227,7 @@ bool inet_fw_portforward_set(inet_fw_t *self, const struct inet_portforward *pf)
         return true;
     }
 
-    pe = calloc(1, sizeof(struct fw_portfw_entry));
-    if (pe == NULL)
-    {
-        LOG(ERR, "fw: %s: Unable to allocate port forwarding entry.", self->fw_ifname);
-        return false;
-    }
+    pe = CALLOC(1, sizeof(struct fw_portfw_entry));
 
     memcpy(&pe->pf_data, pf, sizeof(pe->pf_data));
 
@@ -465,7 +461,7 @@ bool fw_portforward_stop(inet_fw_t *self)
         {
             ds_tree_iremove(&iter);
             memset(pe, 0, sizeof(*pe));
-            free(pe);
+            FREE(pe);
         }
     }
 

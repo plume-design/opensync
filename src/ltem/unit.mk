@@ -27,12 +27,15 @@
 # LTE Manager
 #
 ##############################################################################
-UNIT_NAME := ltem
-
 UNIT_DISABLE := y
 ifneq ($(filter ZEUS_BCM52, $(TARGET)),)
 UNIT_DISABLE := n
 endif
+ifneq ($(filter native, $(TARGET)),)
+UNIT_DISABLE := n
+endif
+
+UNIT_NAME := ltem
 
 UNIT_TYPE := BIN
 
@@ -42,8 +45,12 @@ UNIT_SRC += src/ltem_event.c
 UNIT_SRC += src/ltem_state_mgr.c
 UNIT_SRC += src/ltem_route.c
 UNIT_SRC += src/ltem_res.c
+UNIT_SRC += src/ltem_lte.c
+UNIT_SRC += src/ltem_lte_hw.c
+UNIT_SRC += src/ltem_mqtt.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
+UNIT_CFLAGS += -Isrc/lib/lte_info/inc
 
 UNIT_LDFLAGS := -lev -ljansson
 
@@ -63,3 +70,7 @@ UNIT_DEPS += src/lib/policy_tags
 UNIT_DEPS += src/lib/fcm_filter
 UNIT_DEPS += src/lib/nf_utils
 UNIT_DEPS += src/lib/neigh_table
+UNIT_DEPS += src/lib/lte_info
+ifneq ($(filter ZEUS_BCM52, $(TARGET)),)
+UNIT_DEPS += vendor/plume/src/lib/prov
+endif

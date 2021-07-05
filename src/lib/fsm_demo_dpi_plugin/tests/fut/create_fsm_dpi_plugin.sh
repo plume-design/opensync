@@ -25,8 +25,11 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
+. /usr/opensync/etc/kconfig # TODO: This should point to {INSTALL_PREFIX}/etc/kconfig
 # Series of generic routines updating ovsdb tables.
 # TBD: It would make sense to commonize them all.
+
+. /usr/opensync/etc/kconfig # TODO: This should point to {INSTALL_PREFIX}/etc/kconfig
 
 # Check if a specific command is in the path. Bail if not found.
 check_cmd() {
@@ -47,7 +50,7 @@ usage() {
 # Delete all flows in br-home for testing purpose
 del_flows_br_home_cmd() {
     cat << EOF
-ovs-ofctl del-flows br-home
+ovs-ofctl del-flows ${CONFIG_TARGET_LAN_BRIDGE_NAME}
 EOF
 }
 # Create tap interface
@@ -205,8 +208,8 @@ get_node_id() {
 
 # Let's start
 client_mac=$1
-bridge=${2:-br-home}
-intf=${3:-br-home.dpidemo}
+bridge=${2:-${CONFIG_TARGET_LAN_BRIDGE_NAME}}
+intf=${3:-${CONFIG_TARGET_LAN_BRIDGE_NAME}.dpidemo}
 ofport=${4:-2001} # must be unique to the bridge
 
 # of_out_token: openflow_config egress rule name. Must start with 'dev' so the
@@ -229,7 +232,7 @@ tag_name=dev_tag_demo_dpi
 
 # Flow_Service_Manager_Config parameters
 filter=ip
-plugin=/usr/plume/lib/libfsm_demo_dpi.so
+plugin=${CONFIG_INSTALL_PREFIX}/lib/libfsm_demo_dpi.so
 dso_init=fsm_demo_dpi_plugin_init
 fsm_handler=dev_demo_dpi # must start with 'dev' so the controller leaves it alone
 

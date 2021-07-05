@@ -66,6 +66,15 @@ typedef struct osp_ps osp_ps_t;
 #define OSP_PS_RDWR     (OSP_PS_READ | OSP_PS_WRITE)
 
 /**
+ * Use the @ref osp_ps_rewind() and @ref osp_ps_next() function to
+ * iterate over persistent storage keys
+ */
+#define osp_ps_foreach(ps, ptr)                             \
+    for ((ptr) = (osp_ps_rewind(ps), osp_ps_next(ps));      \
+            (ptr) != NULL;                                  \
+            (ptr) = osp_ps_next(ps))
+
+/**
  * Open store @p store
  *
  * @param[in]   store   Store name
@@ -188,6 +197,24 @@ bool osp_ps_erase(osp_ps_t *ps);
  */
 bool osp_ps_sync(osp_ps_t *ps);
 
+/**
+ * Move the cursor forward and return the key of the element under it. The first
+ * call to this function after initialization or after a call of @ref
+ * osp_ps_rewind() will return the first element in the store.
+ *
+ * @param[in]       ps          Store -- valid object returned by
+ *                              @ref osp_ps_open()
+ */
+const char *osp_ps_next(osp_ps_t *ps);
+
+/**
+ * Reset the current cursor position and set it to "-1" so the next call to @ref
+ * osp_ps_next() will return the first key in the store
+ *
+ * @param[in]       ps          Store -- valid object returned by
+ *                              @ref osp_ps_open()
+ */
+void osp_ps_rewind(osp_ps_t *ps);
 
 /// @} OSP_PS
 /// @} OSP

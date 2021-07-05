@@ -34,6 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb_table.h"
 #include "json_util.h"
 #include "module.h"
+#include "memutil.h"
 
 #include "oms.h"
 #include "oms_report.h"
@@ -115,7 +116,7 @@ static bool pm_objm_ps_load(struct pm_objm_store *st)
     }
 
     // Fetch the "store" data
-    str = malloc((size_t)strsz);
+    str = MALLOC((size_t)strsz);
     if (osp_ps_get(ps, PM_OBJM_KEY, str, (size_t)strsz) != strsz)
     {
         LOG(ERR, "objm: Error retrieving persistent \"%s\" key.",
@@ -142,7 +143,7 @@ static bool pm_objm_ps_load(struct pm_objm_store *st)
     retval = true;
 
 exit:
-    if (str != NULL) free(str);
+    if (str != NULL) FREE(str);
     if (json != NULL) json_decref(json);
     if (ps != NULL) osp_ps_close(ps);
 
@@ -369,7 +370,7 @@ static bool pm_objm_get_mqtt_topic(char *buf, size_t bufsize)
         }
     }
 cleanup:
-    if (aw_node_p) free(aw_node_p);
+    if (aw_node_p) FREE(aw_node_p);
     return ret;
 }
 
@@ -434,7 +435,7 @@ static void install_async(EV_P_ ev_async *w, int revents)
     d_ctx->timeout = 0;
 
     install(d_ctx);
-    free(d_ctx);
+    FREE(d_ctx);
 }
 
 static int install_integrated_objects(char *path)
@@ -472,7 +473,7 @@ static int install_integrated_objects(char *path)
 
                 // Open info file of the package
                 sprintf(info_path, "%s/%s", path, name_buf);
-                free(name_buf);
+                FREE(name_buf);
                 LOG(DEBUG, "objm: Reading info file %s", info_path);
                 fd = fopen(info_path, "r");
                 if (fd == NULL)
@@ -567,7 +568,7 @@ static void cb_dl(const enum osp_dl_status status, void *ctx)
         pm_ctx_to_oms_state(&s_entry, d_ctx);
         oms_update_state_entry(&s_entry);
 
-        free(d_ctx);
+        FREE(d_ctx);
         return;
     }
     STRSCPY_WARN(d_ctx->status, PM_OBJS_DOWNLOAD_DONE);
@@ -588,7 +589,7 @@ static void start_download(struct schema_Object_Store_Config *new)
     struct oms_state_entry s_entry;
     // Fill ctx struct
     struct pm_objm_ctx_t *d_ctx;
-    d_ctx = malloc(sizeof(struct pm_objm_ctx_t));
+    d_ctx = MALLOC(sizeof(struct pm_objm_ctx_t));
 
     d_ctx->fw_integrated = false;
     d_ctx->timeout = new->dl_timeout;
@@ -704,7 +705,7 @@ static void oms_state_cb(struct oms_state_entry *entry, int event)
             }
             else if (strcmp(entry->state, PM_OBJS_LOAD_FAILED) == 0)
             {
-                c_entry = calloc(1, sizeof(struct oms_config_entry));
+                c_entry = CALLOC(1, sizeof(struct oms_config_entry));
                 // Remove entry from OMS_Config so final user won't try to process it again
                 LOG(DEBUG, "objm: %s failed to load. Removing from OMS_Config", entry->object);
                 oms_state_to_oms_config(entry, c_entry);

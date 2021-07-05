@@ -24,9 +24,9 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-
 #include "log.h"
 #include "osn_inet.h"
+#include "memutil.h"
 
 #include "lnx_route.h"
 
@@ -41,14 +41,14 @@ static lnx_route_status_fn_t osn_route_status_lnx;
 
 osn_route_t* osn_route_new(const char *ifname)
 {
-    osn_route_t *self = calloc(1, sizeof(*self));
+    osn_route_t *self = CALLOC(1, sizeof(*self));
 
     memset(self, 0, sizeof(*self));
 
     if (!lnx_route_init(&self->rt_lnx, ifname))
     {
         LOG(ERR, "route: Error initializing Linux route object.");
-        free(self);
+        FREE(self);
         return NULL;
     }
 
@@ -66,7 +66,7 @@ bool osn_route_del(osn_route_t *self)
         retval = false;
     }
 
-    free(self);
+    FREE(self);
 
     return retval;
 }

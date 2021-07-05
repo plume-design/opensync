@@ -65,6 +65,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define C_PID_LEN       C_INT64_LEN
 #define C_QOS_MAP_LEN \
         sizeof("0:0 1:0 2:0 3:0 4:0 5:0 6:0 7:0")           /**< Maximum length of VLAN QOS map string */
+#define C_USERNAME_LEN  256                                 /**< Length of usernames */
+#define C_PASSWORD_LEN  256                                 /**< Length of passwords */
 
 /*
  * ===========================================================================

@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "osa_assert.h"
 #include "util.h"
+#include "memutil.h"
 
 #define MODULE_ID LOG_MODULE_ID_OSA
 
@@ -88,7 +89,7 @@ void* task_create_fn(void *ctx)
     }
 
     /* This was allocated by task_create(), free it here */
-    free(targs);
+    FREE(targs);
 
     return NULL;
 }
@@ -103,11 +104,7 @@ task_create (task_id_t          *id,
 
     //ASSERT_ARG(id);
 
-    struct task_args *targs = malloc(sizeof(struct task_args));
-    if (targs == NULL)
-    {
-        return false;
-    }
+    struct task_args *targs = MALLOC(sizeof(struct task_args));
 
     STRSCPY(targs->name, name);
     targs->ep   = ep;

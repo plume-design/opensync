@@ -29,6 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "ds.h"
 #include "ds_dlist.h"
+#include "memutil.h"
 
 #include "dpp_types.h"
 
@@ -56,10 +57,8 @@ static inline dpp_rssi_record_t * dpp_rssi_record_alloc()
 {
     dpp_rssi_record_t *record = NULL;
 
-    record = malloc(sizeof(dpp_rssi_record_t));
-    if (record) {
-        memset(record, 0, sizeof(dpp_rssi_record_t));
-    }
+    record = MALLOC(sizeof(dpp_rssi_record_t));
+    memset(record, 0, sizeof(dpp_rssi_record_t));
 
     return record;
 }
@@ -67,7 +66,7 @@ static inline dpp_rssi_record_t * dpp_rssi_record_alloc()
 static inline void dpp_rssi_record_free(dpp_rssi_record_t *record)
 {
     if (NULL != record) {
-        free(record);
+        FREE(record);
     }
 }
 

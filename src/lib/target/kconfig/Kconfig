@@ -34,7 +34,7 @@ menu "Target paths"
 
     config TARGET_PATH_PERSISTENT
         string "Path to persistent storage"
-        default "/etc/plume"
+        default "/etc/opensync"
 
     config TARGET_PATH_LOG_STATE
         string "Path to the log state config file"
@@ -202,4 +202,13 @@ config TARGET_HWSIM
         Intended for unit / function testing of WM2.
 
         If unsure, leave as 'n'.
+
+config TARGET_BSAL_SIM
+    bool "BSAL target simulator implementation"
+    default n
+    help
+        Intended for unit / function testing of BM.
+
+        If unsure, leave as 'n'.
+
 endmenu

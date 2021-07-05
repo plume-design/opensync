@@ -47,6 +47,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <linux/types.h>
 
 #include "bm.h"
+#include "memutil.h"
 
 /*****************************************************************************/
 
@@ -321,12 +322,12 @@ bm_neighbor_ovsdb_update_cb( ovsdb_update_monitor_t *self )
                 return;
             }
 
-            neigh = calloc( 1, sizeof( *neigh ) );
+            neigh = CALLOC( 1, sizeof( *neigh ) );
             STRSCPY(neigh->uuid, nconf._uuid.uuid);
 
             if( !bm_neighbor_from_ovsdb( &nconf, neigh ) ) {
                 LOGE( "Failed to convert row to neighbor info (uuid=%s)", neigh->uuid );
-                free( neigh );
+                FREE( neigh );
                 return;
             }
 
@@ -374,7 +375,7 @@ bm_neighbor_ovsdb_update_cb( ovsdb_update_monitor_t *self )
             LOGN( "Removing neighbor %s", neigh->bssid );
             bm_neighbor_remove_neighbor(&neigh->neigh_report);
             ds_tree_remove( &bm_neighbors, neigh );
-            free( neigh );
+            FREE( neigh );
 
             break;
         }
@@ -455,7 +456,7 @@ bm_neighbor_cleanup( void )
     while( neigh ) {
         ds_tree_iremove( &iter );
 
-        free( neigh );
+        FREE( neigh );
 
         neigh = ds_tree_inext( &iter );
     }

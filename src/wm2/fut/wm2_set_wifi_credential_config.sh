@@ -26,10 +26,12 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="wm2/$(basename "$0")"
 manager_setup_file="wm2/wm2_setup.sh"
@@ -52,16 +54,17 @@ Script usage example:
     ./${tc_name} FUTssid '["map",[["encryption","WPA-PSK"],["key","FUTpsk"]]]' gre
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 NARGS=3
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 ssid=${1}
@@ -75,18 +78,18 @@ trap '
     run_setup_if_crashed wm || true
 ' EXIT SIGINT SIGTERM
 
-log_title "$tc_name: WM2 test - sets valid field values to Wifi_Credential_Config and verify fields are applied"
+log_title "$tc_name: WM2 test - Set valid field values to Wifi_Credential_Config and verify fields are applied"
 
 check_kconfig_option "CONFIG_MANAGER_WM" "y" ||
     raise "FAIL: CONFIG_MANAGER_WM != y - WM is not present on the device" -l "$tc_name" -tc
 
-log "$tc_name: Inserting values into Wifi_Credential_Config"
+log "$tc_name: Inserting ssid, security and onboard_type values into Wifi_Credential_Config"
 ${OVSH} i Wifi_Credential_Config ssid:="$ssid" security:="$security" onboard_type:="$onboard_type" &&
-    log "$tc_name: insert_ovsdb_entry - field values inserted into Wifi_Credential_Config table" ||
-    raise "FAIL: insert_ovsdb_entry - Failed to insert field values Wifi_Credential_Config" -l "$tc_name" -tc
+    log "$tc_name: insert_ovsdb_entry - Values inserted into Wifi_Credential_Config table - Success" ||
+    raise "FAIL: insert_ovsdb_entry - Failed to insert values into Wifi_Credential_Config" -l "$tc_name" -oe
 
 wait_ovsdb_entry Wifi_Credential_Config -w ssid $ssid -is security $security -is onboard_type $onboard_type &&
-    log "$tc_name - Field values are applied to Wifi_Credential_Config" ||
-    raise "FAIL: Could not apply field values to Wifi_Credential_Config" -l "$fn_name" -tc
+    log "$tc_name: Values applied into Wifi_Credential_Config - Success" ||
+    raise "FAIL: Could not apply values into Wifi_Credential_Config" -l "$tc_name" -tc
 
 pass

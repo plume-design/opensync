@@ -165,6 +165,12 @@ typedef enum {
     BM_CLIENT_RRM_OWN_BAND_ONLY
 } bm_client_rrm_req_type_t;
 
+typedef enum {
+    BM_CLIENT_PREF_5G_PRE_ASSOC_BLOCK_POLICY_UNDEFINED = 0,
+    BM_CLIENT_PREF_5G_PRE_ASSOC_BLOCK_POLICY_COUNTER,
+    BM_CLIENT_PREF_5G_PRE_ASSOC_BLOCK_POLICY_TIMER,
+} bm_client_pref_5g_pre_assoc_block_policy_t;
+
 /*
  * Used to store kick information:
  *   - To kick client upon idle
@@ -223,8 +229,8 @@ typedef struct {
     time_t                      last_steering_kick;
 
     struct {
-        time_t                  first;
-        time_t                  last;
+        time_t                  counting_first;
+        time_t                  counting_last;
     } reject;
 } bm_client_times_t;
 
@@ -269,6 +275,11 @@ typedef struct {
 } bm_rrm_req_t;
 
 typedef struct {
+    ev_timer timer;
+    char ifname[BSAL_IFNAME_LEN];
+} bm_client_pref_5g_pre_assoc_block_timer_t;
+
+typedef struct {
     char                        mac_addr[MAC_STR_LEN];
     os_macaddr_t                macaddr;
 
@@ -297,8 +308,10 @@ typedef struct {
 
     uint8_t                     prev_xing_snr;
 
+    bm_client_pref_5g_pre_assoc_block_policy_t pref_5g_pre_assoc_block_policy;
     int                         max_rejects;
     int                         max_rejects_period;
+    int                         pref_5g_pre_assoc_block_timeout_msecs;
 
     int                         backoff_period;
     int                         backoff_exp_base;
@@ -356,6 +369,7 @@ typedef struct {
     bool                        enable_ch_scan;
     uint8_t                     ch_scan_interval;
 
+    bm_client_pref_5g_pre_assoc_block_timer_t pref_5g_pre_assoc_block_timer;
     evsched_task_t              backoff_task;
     evsched_task_t              cs_task;
     evsched_task_t              rssi_xing_task;

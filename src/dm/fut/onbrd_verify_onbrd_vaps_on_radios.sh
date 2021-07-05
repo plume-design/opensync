@@ -26,10 +26,12 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="onbrd/$(basename "$0")"
 manager_setup_file="onbrd/onbrd_setup.sh"
@@ -51,16 +53,17 @@ Script usage example:
    ./${tc_name} onboard-ap-u50
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 
 trap '
 fut_info_dump_line
@@ -70,14 +73,15 @@ fut_info_dump_line
 
 NARGS=1
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+interface_name=$1
 
 log_title "$tc_name: ONBRD test - Verify onboarding VAPs on all radios"
 
-interface_name=$1
 log "$tc_name: Verify onboarding VAPs on all radios, check interface $interface_name"
 wait_for_function_response 0 "check_ovsdb_entry Wifi_VIF_State -w if_name $interface_name" &&
-    log "$tc_name: SUCCESS: interface $interface_name exists" ||
+    log "$tc_name: Interface $interface_name exists - Success" ||
     raise "FAIL: interface $interface_name does not exist" -l "$tc_name" -tc
+
 log "$tc_name: Clean created interfaces after test"
 vif_clean
 

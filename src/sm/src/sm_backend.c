@@ -27,6 +27,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <ds.h>
 
 #include "sm.h"
+#include "memutil.h"
 
 struct backend
 {
@@ -50,11 +51,7 @@ void sm_backend_register(const char *name,
         }
     }
 
-    backend = (struct backend *)calloc(1, sizeof(struct backend));
-    if (!backend) {
-        LOGE("%s: Failed to register (mem alloc failed)", name);
-        goto free_backend;
-    }
+    backend = (struct backend *)CALLOC(1, sizeof(struct backend));
 
     backend->name = strdup(name);
     if (!backend->name) {
@@ -76,9 +73,9 @@ void sm_backend_register(const char *name,
 
 free_backend:
     if (backend)
-        free(backend->name);
+        FREE(backend->name);
 
-    free(backend);
+    FREE(backend);
 }
 
 void sm_backend_unregister(const char *name)
@@ -97,8 +94,8 @@ void sm_backend_unregister(const char *name)
 
     ds_dlist_remove(&backends, backend);
 
-    free(backend->name);
-    free(backend);
+    FREE(backend->name);
+    FREE(backend);
 
     LOGI("%s: Backend unregistered", name);
 }

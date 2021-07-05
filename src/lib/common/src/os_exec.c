@@ -29,6 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os.h"
 #include "os_util.h"
 #include "log.h"
+#include "memutil.h"
 
 #define MODULE_ID LOG_MODULE_ID_EXEC
 
@@ -104,10 +105,7 @@ bool os_cmd_exec_xv(char **buffer, int *len, int *exit_code, int flags, char *fm
     {
         // always have chunk size and zero term ready to read
         bufsize = buflen + OS_CMD_BUF_CHUNK + 1;
-        tmp = realloc(buf, bufsize);
-        if (!tmp) {
-            goto error;
-        }
+        tmp = REALLOC(buf, bufsize);
         buf = tmp;
         // read, reserve 1 for zero term
         errno = 0;
@@ -137,7 +135,7 @@ bool os_cmd_exec_xv(char **buffer, int *len, int *exit_code, int flags, char *fm
         LOG(TRACE, ": %*s", buflen - loglen, buf + loglen);
     }
     // reduce alloc size
-    buf = realloc(buf, buflen + 1);
+    buf = REALLOC(buf, buflen + 1);
     // close
     errno = 0;
     xcode = pclose(fp);
@@ -158,7 +156,7 @@ error:
         errlevel = LOG_SEVERITY_DEBUG;
     }
     LOG_SEVERITY(errlevel, "exit=%d err=%d(%s) '%s'", xcode, errno, strerror(errno), command);
-    if (buf) free(buf);
+    if (buf) FREE(buf);
     return false;
 }
 

@@ -31,6 +31,7 @@
 
 #include "log.h"
 #include "util.h"
+#include "memutil.h"
 #include "nfm_chain.h"
 #include "nfm_osfw.h"
 #include <string.h>
@@ -92,7 +93,7 @@ static bool nfm_chain_destroy(struct nfm_chain *self)
 		return false;
 	}
 
-	free(self);
+	FREE(self);
 	return true;
 }
 
@@ -101,11 +102,7 @@ static struct nfm_chain *nfm_chain_create(int family, const char *table, const c
 	struct nfm_chain *self = NULL;
 	bool errcode = true;
 
-	self = malloc(sizeof(*self));
-	if (!self) {
-		LOGE("Create Netfilter chain: memory allocation failed");
-		return NULL;
-	}
+	self = MALLOC(sizeof(*self));
 
 	errcode = nfm_chain_set(self, family, table, chain);
 	if (!errcode) {

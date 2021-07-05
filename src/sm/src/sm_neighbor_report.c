@@ -40,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <limits.h>
 
 #include "sm.h"
+#include "memutil.h"
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
@@ -84,10 +85,8 @@ static inline sm_neighbor_ctx_t * sm_neighbor_ctx_alloc()
 {
     sm_neighbor_ctx_t *neighbor_ctx = NULL;
 
-    neighbor_ctx = malloc(sizeof(sm_neighbor_ctx_t));
-    if (neighbor_ctx) {
-        memset(neighbor_ctx, 0, sizeof(sm_neighbor_ctx_t));
-    }
+    neighbor_ctx = MALLOC(sizeof(sm_neighbor_ctx_t));
+    memset(neighbor_ctx, 0, sizeof(sm_neighbor_ctx_t));
 
     return neighbor_ctx;
 }
@@ -95,7 +94,7 @@ static inline sm_neighbor_ctx_t * sm_neighbor_ctx_alloc()
 static inline void sm_neighbor_ctx_free(sm_neighbor_ctx_t *neighbor_ctx)
 {
     if (NULL != neighbor_ctx) {
-        free(neighbor_ctx);
+        FREE(neighbor_ctx);
     }
 }
 

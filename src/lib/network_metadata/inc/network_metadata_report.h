@@ -67,6 +67,7 @@ struct net_md_flow_key
     uint32_t flags;       /* key flags */
     uint16_t direction;   /* flow direction */
     uint16_t originator;  /* flow originator */
+    uint8_t icmp_type;
 };
 
 

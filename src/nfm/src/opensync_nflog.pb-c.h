@@ -119,10 +119,17 @@ struct  _Nflog
    */
   protobuf_c_boolean has_hwheader;
   ProtobufCBinaryData hwheader;
+  /*
+   * Interface roles as found in Wifi_Inet_Config
+   */
+  char *ingress_ifrole;
+  char *egress_ifrole;
+  char *ingress_phyifrole;
+  char *egress_phyifrole;
 };
 #define NFLOG__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&nflog__descriptor) \
-    , NULL, NULL, 0, 0, NULL, 0, 0, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, {0,NULL}, 0, 0, 0, 0, 0, {0,NULL} }
+    , NULL, NULL, 0, 0, NULL, 0, 0, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, {0,NULL}, 0, 0, 0, 0, 0, {0,NULL}, NULL, NULL, NULL, NULL }
 
 
 /* Nflog methods */

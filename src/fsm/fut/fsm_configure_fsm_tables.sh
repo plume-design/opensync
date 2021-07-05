@@ -26,10 +26,12 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/fsm_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="fsm/$(basename "$0")"
 
@@ -45,21 +47,22 @@ Arguments:
     \$3 (handler)       : used as handler at fsm tables         : (string)(required)
     \$4 (plugin)        : used as plugin at fsm tables          : (string)(required)
 Script usage example:
-    ./${tc_name} br-home tdns dev_dns /usr/plume/lib/libfsm_dns.so
+    ./${tc_name} br-home tdns dev_dns /usr/opensync/lib/libfsm_dns.so
     ./${tc_name} br-home thttp dev_http /usr/opensync/lib/libfsm_http.so
 usage_string
 }
 
-while getopts h option; do
-    case "$option" in
-    h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+    help | \
+    --help | \
+    -h)
         usage && exit 1
         ;;
     *)
-        echo "Unknown argument" && exit 1
         ;;
     esac
-done
+fi
 
 trap '
 fut_info_dump_line
@@ -90,7 +93,7 @@ insert_ovsdb_entry Flow_Service_Manager_Config \
     -i if_name "${tap_if}" \
     -i handler "$handler" \
     -i plugin "$plugin" &&
-        log "$tc_name: Flow_Service_Manager_Config entry added" ||
-        raise "Failed to insert Flow_Service_Manager_Config entry" -l "$tc_name" -oe
+        log "$tc_name: Flow_Service_Manager_Config entry added - Success" ||
+        raise "FAIL: insert_ovsdb_entry - Failed to insert Flow_Service_Manager_Config entry" -l "$tc_name" -oe
 
 pass

@@ -41,6 +41,8 @@ static struct gk_cache_mgr mgr = {
     .initialized = false,
 };
 
+size_t GK_MAX_CACHE_ENTRIES = 100000;
+
 struct gk_cache_mgr *
 gk_cache_get_mgr(void)
 {
@@ -48,12 +50,46 @@ gk_cache_get_mgr(void)
 }
 
 /**
+ * @brief setter for the number of entries in the cache
+ *        (only if the cache is not yet being used)
+ *
+ * @param n maximum number of records in the cache.
+ */
+void
+gk_cache_set_size(size_t n)
+{
+    size_t current_usage;
+
+    current_usage = gk_get_cache_count();
+    if (current_usage == 0)
+    {
+        GK_MAX_CACHE_ENTRIES = n;
+    }
+    else
+    {
+        LOGD("%s(): Cache already in use. Will not change its size to %zu", __func__, n);
+    }
+}
+
+/**
+ * @brief getter for the number of entries in the cache
+ *
+ * @return max number of records allowed in the cache.
+ */
+size_t
+gk_cache_get_size(void)
+{
+    return GK_MAX_CACHE_ENTRIES;
+}
+
+/**
  * @brief comparator function for comparing mac adress
  *
  * @params: _a: first MAC address to compare
- * @params: -b: second MAC address to compare
+ * @params: _b: second MAC address to compare
  *
- * @return true for success and false for failure.
+ * @return 0 if identical, positive or negative value if different
+ *         (implying the "order" between the entries)
  */
 static int
 gkc_mac_addr_cmp(void *_a, void *_b)
@@ -65,12 +101,62 @@ gkc_mac_addr_cmp(void *_a, void *_b)
 }
 
 /**
+ * @brief comparator function for attribute synthetic keys
+ *
+ * @param _a uint64_t representing a key
+ * @param _b uint64_t representing a key
+ *
+ * @return 0 if identical, positive or negative value if different
+ *         (implying the "order" between the entries)
+ */
+static int
+gkc_uint64_cmp(void *_a, void *_b)
+{
+    uint64_t *a = (uint64_t *)_a;
+    uint64_t *b = (uint64_t *)_b;
+
+    if (*a < *b) return -1;
+    else if (*a > *b) return 1;
+    else return 0;
+}
+
+/* Fast hashing function. */
+static uint64_t
+MurmurOAAT64(const char *key)
+{
+    uint64_t h = 0x749E3E6989DF617;
+
+    while (*key != '\0')
+    {
+        h ^= *key;
+        h *= 0x5bd1e9955bd1e995;
+        h ^= h >> 47;
+        key++;
+    }
+    return h;
+}
+
+static uint64_t
+get_attr_key(char *name, uint8_t direction)
+{
+    const size_t buf_len = 4096;
+    char str_key[buf_len];
+
+    /* if the name is too long, having the direction first will
+     * still differentiate between inbound and outbound
+     */
+    snprintf(str_key, buf_len, "%u_%s", direction, name);
+    return MurmurOAAT64(str_key);
+}
+
+/**
  * @brief comparator function for 5-tuple
  *
  * @params: _a: first 5-tuple structure to compare
- * @params: -b: second 5-tuple structure to compare
+ * @params: _b: second 5-tuple structure to compare
  *
- * @return 0 if equal
+ * @return 0 if identical, positive or negative value if different
+ *         (implying the "order" between the entries)
  */
 int
 gkc_flow_entry_cmp(void *_a, void *_b)
@@ -80,13 +166,12 @@ gkc_flow_entry_cmp(void *_a, void *_b)
     int ipl;
     int cmp;
 
-    /* compare IP address */
+    /* Compare IP address length */
     cmp = (int)(key_a->ip_version) - (int)(key_b->ip_version);
     if (cmp != 0) return cmp;
 
-    /* get ip version compare len */
-    ipl = (key_a->ip_version == 4 ? 4 : 16);
-    if (cmp != 0) return cmp;
+    /* Get ip version comparison len. Default with the shortest. */
+    ipl = (key_a->ip_version == 16 ? 16 : 4);
 
     /* Compare source IP addresses */
     cmp = memcmp(key_a->src_ip_addr, key_b->src_ip_addr, ipl);
@@ -122,6 +207,7 @@ static struct per_device_cache *
 gkc_init_per_dev(os_macaddr_t *device_mac)
 {
     struct per_device_cache *pdevice_cache;
+
     if (!device_mac) return NULL;
 
     /* initialize per device structure */
@@ -133,42 +219,13 @@ gkc_init_per_dev(os_macaddr_t *device_mac)
 
     memcpy(pdevice_cache->device_mac, device_mac, sizeof(*pdevice_cache->device_mac));
 
-    ds_tree_init(&pdevice_cache->fqdn_tree,
-                 ds_str_cmp,
-                 struct attr_cache,
-                 attr_tnode);
-    ds_tree_init(&pdevice_cache->url_tree,
-                 ds_str_cmp,
-                 struct attr_cache,
-                 attr_tnode);
-    ds_tree_init(&pdevice_cache->host_tree,
-                 ds_str_cmp,
-                 struct attr_cache,
-                 attr_tnode);
-    ds_tree_init(&pdevice_cache->sni_tree,
-                 ds_str_cmp,
-                 struct attr_cache,
-                 attr_tnode);
-    ds_tree_init(&pdevice_cache->ipv4_tree,
-                 ds_str_cmp,
-                 struct attr_cache,
-                 attr_tnode);
-    ds_tree_init(&pdevice_cache->ipv6_tree,
-                 ds_str_cmp,
-                 struct attr_cache,
-                 attr_tnode);
-    ds_tree_init(&pdevice_cache->app_tree,
-                 ds_str_cmp,
-                 struct attr_cache,
-                 attr_tnode);
-    ds_tree_init(&pdevice_cache->outbound_tree,
-                 gkc_flow_entry_cmp,
-                 struct ip_flow_cache,
-                 ipflow_tnode);
-    ds_tree_init(&pdevice_cache->inbound_tree,
-                 gkc_flow_entry_cmp,
-                 struct ip_flow_cache,
-                 ipflow_tnode);
+    ds_tree_init(&pdevice_cache->hostname_tree, gkc_uint64_cmp, struct attr_cache, attr_tnode);
+    ds_tree_init(&pdevice_cache->url_tree, gkc_uint64_cmp, struct attr_cache, attr_tnode);
+    ds_tree_init(&pdevice_cache->ipv4_tree, gkc_uint64_cmp, struct attr_cache, attr_tnode);
+    ds_tree_init(&pdevice_cache->ipv6_tree, gkc_uint64_cmp, struct attr_cache, attr_tnode);
+    ds_tree_init(&pdevice_cache->app_tree, gkc_uint64_cmp, struct attr_cache, attr_tnode);
+    ds_tree_init(&pdevice_cache->outbound_tree, gkc_flow_entry_cmp, struct ip_flow_cache, ipflow_tnode);
+    ds_tree_init(&pdevice_cache->inbound_tree, gkc_flow_entry_cmp, struct ip_flow_cache, ipflow_tnode);
 
     return pdevice_cache;
 
@@ -187,10 +244,7 @@ gk_cache_init_mgr(struct gk_cache_mgr *mgr)
     if (mgr->initialized) return;
 
     /* initialize per device tree */
-    ds_tree_init(&mgr->per_device_tree,
-                 gkc_mac_addr_cmp,
-                 struct per_device_cache,
-                 perdevice_tnode);
+    ds_tree_init(&mgr->per_device_tree, gkc_mac_addr_cmp, struct per_device_cache, perdevice_tnode);
 
     mgr->initialized = true;
 
@@ -205,14 +259,13 @@ gk_cache_init_mgr(struct gk_cache_mgr *mgr)
  * @params: new_entry pointer to cache entry
  */
 void
-gk_add_new_redirect_entry(struct gk_attr_cache_interface *input,
-                          struct attr_cache *new_entry)
+gk_add_new_redirect_entry(struct gk_attr_cache_interface *input, struct attr_cache *new_entry)
 {
-    struct fqdn_redirect_s *in_redirect;
     struct fqdn_redirect_s *new_redirect;
+    struct fqdn_redirect_s *in_redirect;
 
     if (input->fqdn_redirect == NULL) return;
-    in_redirect  = input->fqdn_redirect;
+    in_redirect = input->fqdn_redirect;
 
     new_entry->fqdn_redirect = CALLOC(1, sizeof(*new_redirect));
     if (new_entry->fqdn_redirect == NULL) return;
@@ -222,81 +275,216 @@ gk_add_new_redirect_entry(struct gk_attr_cache_interface *input,
     /* return if redirection is not required */
     if (in_redirect->redirect == false) return;
 
-    new_redirect->redirect     = in_redirect->redirect;
+    new_redirect->redirect = in_redirect->redirect;
     new_redirect->redirect_ttl = in_redirect->redirect_ttl;
     STRSCPY(new_redirect->redirect_ips[0], in_redirect->redirect_ips[0]);
     STRSCPY(new_redirect->redirect_ips[1], in_redirect->redirect_ips[1]);
 }
 
 /**
- * @brief create a new attribute entry fo the given
- *        attribute type.
+ * @brief create a new attribute entry fo the given attribute type.
+ *        We have previously ensured the manager is initialized.
  *
  * @params: entry: specifing the attribute type
  *
  * @return return pointer to created attribute struct
  *         NULL on failure
  */
-struct attr_cache*
+struct attr_cache *
 gkc_new_attr_entry(struct gk_attr_cache_interface *entry)
 {
-    struct attr_cache *new_attr;
+    struct attr_cache *new_attr_cache;
+    union attribute_type *attr;
+    time_t now;
 
-    new_attr = CALLOC(1, sizeof(*new_attr));
-    if (new_attr == NULL) return NULL;
+    new_attr_cache = CALLOC(1, sizeof(*new_attr_cache));
+    if (new_attr_cache == NULL) return NULL;
+
+    attr = &new_attr_cache->attr;
+    now = time(NULL);
 
     switch (entry->attribute_type)
     {
-    case GK_CACHE_REQ_TYPE_FQDN:
-        new_attr->attr.fqdn = STRDUP(entry->attr_name);
-        gk_add_new_redirect_entry(entry, new_attr);
-        break;
+        case GK_CACHE_REQ_TYPE_FQDN:
+            attr->host_name = CALLOC(1, sizeof(*attr->host_name));
+            if (attr->host_name == NULL) goto cleanup_new_attr;
+            attr->host_name->name = STRDUP(entry->attr_name);
+            attr->host_name->count_fqdn.total = 1;
 
-    case GK_CACHE_REQ_TYPE_URL:
-        new_attr->attr.url = STRDUP(entry->attr_name);
-        break;
+            gk_add_new_redirect_entry(entry, new_attr_cache);
+            break;
 
-    case GK_CACHE_REQ_TYPE_HOST:
-        new_attr->attr.host = STRDUP(entry->attr_name);
-        break;
+        case GK_CACHE_REQ_TYPE_HOST:
+            attr->host_name = CALLOC(1, sizeof(*attr->host_name));
+            if (attr->host_name == NULL) goto cleanup_new_attr;
+            attr->host_name->name = STRDUP(entry->attr_name);
+            attr->host_name->count_host.total = 1;
+            break;
 
-    case GK_CACHE_REQ_TYPE_SNI:
-        new_attr->attr.sni = STRDUP(entry->attr_name);
-        break;
+        case GK_CACHE_REQ_TYPE_SNI:
+            attr->host_name = CALLOC(1, sizeof(*attr->host_name));
+            if (attr->host_name == NULL) goto cleanup_new_attr;
+            attr->host_name->name = STRDUP(entry->attr_name);
+            attr->host_name->count_sni.total = 1;
+            break;
 
-    case GK_CACHE_REQ_TYPE_IPV4:
-        new_attr->attr.ipv4 = STRDUP(entry->attr_name);
-        break;
+        case GK_CACHE_REQ_TYPE_URL:
+            attr->url = CALLOC(1, sizeof(*attr->url));
+            if (attr->url == NULL) goto cleanup_new_attr;
+            attr->url->name = STRDUP(entry->attr_name);
+            attr->url->hit_count.total = 1;
+            break;
 
-    case GK_CACHE_REQ_TYPE_IPV6:
-        new_attr->attr.ipv6 = STRDUP(entry->attr_name);
-        break;
+        case GK_CACHE_REQ_TYPE_IPV4:
+            attr->ipv4 = CALLOC(1, sizeof(*attr->ipv4));
+            if (attr->ipv4 == NULL) goto cleanup_new_attr;
+            attr->ipv4->name = STRDUP(entry->attr_name);
+            attr->ipv4->hit_count.total = 1;
+            break;
 
-    case GK_CACHE_REQ_TYPE_APP:
-        new_attr->attr.app_name = STRDUP(entry->attr_name);
-        break;
+        case GK_CACHE_REQ_TYPE_IPV6:
+            attr->ipv6 = CALLOC(1, sizeof(*attr->ipv6));
+            if (attr->ipv6 == NULL) goto cleanup_new_attr;
+            attr->ipv6->name = STRDUP(entry->attr_name);
+            attr->ipv6->hit_count.total = 1;
+            break;
 
-    default:
-        FREE(new_attr);
-        return NULL;
-        break;
+        case GK_CACHE_REQ_TYPE_APP:
+            attr->app_name = CALLOC(1, sizeof(*attr->app_name));
+            if (attr->app_name == NULL) goto cleanup_new_attr;
+            attr->app_name->name = STRDUP(entry->attr_name);
+            attr->app_name->hit_count.total = 1;
+            break;
+
+        default:
+            goto cleanup_new_attr;
     }
 
     /* add entry creation time and provided TTL value */
-    new_attr->cache_ts  = time(NULL);
-    new_attr->cache_ttl = entry->cache_ttl;
+    new_attr_cache->cache_ts = now;
+    new_attr_cache->cache_ttl = entry->cache_ttl;
+
+    /* add the direction and the key */
+    new_attr_cache->direction = entry->direction;
+    new_attr_cache->key = get_attr_key(entry->attr_name, entry->direction);
 
     /* set action value: allow or block */
-    new_attr->action = entry->action;
-    new_attr->categorized = entry->categorized;
-    new_attr->category_id = entry->category_id;
-    new_attr->confidence_level = entry->confidence_level;
+    new_attr_cache->action = entry->action;
+    new_attr_cache->categorized = entry->categorized;
+    new_attr_cache->category_id = entry->category_id;
+    new_attr_cache->confidence_level = entry->confidence_level;
     if (entry->gk_policy)
     {
-        new_attr->gk_policy = STRDUP(entry->gk_policy);
+        new_attr_cache->gk_policy = STRDUP(entry->gk_policy);
     }
 
-    return new_attr;
+    return new_attr_cache;
+
+cleanup_new_attr:
+    FREE(new_attr_cache);
+    return NULL;
+}
+
+/**
+ * @brief effectively add the attribute to the per device 'host_name' tree.
+ *        We have ensured that the manager is initialized.
+ *
+ * @params: cache: tree structure for the attribute type
+ * @params: entry: interface structure with input values
+ *
+ * @return true if new_attr_entry was inserted for the first time,
+ *         false otherwise (we updated the cache)
+ */
+static bool
+gkc_insert_host_name(ds_tree_t *cache, struct gk_attr_cache_interface *entry)
+{
+    struct attr_cache *cached_attr_entry;
+    struct attr_cache *new_attr_cache;
+    struct attr_hostname_s *attr;
+    time_t now;
+
+    /* Perform the lookup before right before the actual insert.
+     * In the present case, we can have more than one 'add' for each
+     * entry (e.g., FQDN, then HOST): we need to update the matching
+     * hit count.
+     */
+
+    cached_attr_entry = gkc_fetch_attribute_entry(entry);
+    if (cached_attr_entry)
+    {
+        /* we don't need to test for validity as we just looked it up */
+        attr = cached_attr_entry->attr.host_name;
+
+        /* Since we found the entry in the cache, update what's needed
+         * in that entry
+         */
+        switch (entry->attribute_type)
+        {
+            case GK_CACHE_REQ_TYPE_FQDN:
+                attr->count_fqdn.total++;
+                break;
+
+            case GK_CACHE_REQ_TYPE_HOST:
+                attr->count_host.total++;
+                break;
+
+            case GK_CACHE_REQ_TYPE_SNI:
+                attr->count_sni.total++;
+                break;
+
+            default:
+                /* Never reached by construction */
+                LOGD("%s(): Unexpected attribute type: %d", __func__, entry->attribute_type);
+                return false;
+        }
+
+        now = time(NULL);
+        cached_attr_entry->cache_ts = now;
+
+        return false;
+    }
+
+    /* We didn't have this entry, so we insert it now. */
+    new_attr_cache = gkc_new_attr_entry(entry);
+    if (new_attr_cache == NULL) return false;
+
+    ds_tree_insert(cache, new_attr_cache, &new_attr_cache->key);
+
+    return true;
+}
+
+/**
+ * @brief effectively add the attribute to a per device 'cache' tree.
+ *
+ * @params: cache: tree structure for the attribute type
+ * @params: entry: interface structure with input values
+ *
+ * @return true if new_attr_entry was inserted for the first time,
+ *         false otherwise (we updated the cache)
+ */
+static bool
+gkc_insert_generic(ds_tree_t *cache, struct gk_attr_cache_interface *entry)
+{
+    struct attr_cache *new_attr_cache;
+    bool was_inserted;
+
+    /* Perform the lookup just before the insert. Here, we don't need to update
+     * anything as there should never be 2 inserts for 'generic' entries.
+     */
+    was_inserted = gkc_lookup_attribute_entry(entry, false);
+    if (was_inserted)
+    {
+        LOGT("%s(): attribute entry " PRI_os_macaddr_lower_t " already present",
+            __func__, FMT_os_macaddr_pt(entry->device_mac));
+        return false;
+    }
+
+    new_attr_cache = gkc_new_attr_entry(entry);
+    if (new_attr_cache == NULL) return false;
+
+    ds_tree_insert(cache, new_attr_cache, &new_attr_cache->key);
+
+    return true;
 }
 
 /**
@@ -305,64 +493,42 @@ gkc_new_attr_entry(struct gk_attr_cache_interface *entry)
  * @params: pdevice_cache: device tree structure
  * @params: entry: interface structure with input values
  *
+ * @return true if the entry was properly inserted/updated in the cache
  */
 static bool
-gkc_add_attr_tree(struct per_device_cache *pdevice_cache,
-                  struct gk_attr_cache_interface *entry)
+gkc_add_attr_tree(struct per_device_cache *pdevice_cache, struct gk_attr_cache_interface *entry)
 {
-    struct attr_cache *new_attr_cache;
-    struct gk_cache_mgr *mgr;
-    bool ret = true;
-
-    mgr = gk_cache_get_mgr();
-    if (!mgr->initialized) return false;
-
-    new_attr_cache = gkc_new_attr_entry(entry);
-    if (new_attr_cache == NULL) return false;
+    bool was_inserted = false;
 
     switch (entry->attribute_type)
     {
-    case GK_CACHE_REQ_TYPE_FQDN:
-            ds_tree_insert(
-                &pdevice_cache->fqdn_tree, new_attr_cache, new_attr_cache->attr.fqdn);
-        break;
+        case GK_CACHE_REQ_TYPE_FQDN:
+        case GK_CACHE_REQ_TYPE_HOST:
+        case GK_CACHE_REQ_TYPE_SNI:
+            was_inserted = gkc_insert_host_name(&pdevice_cache->hostname_tree, entry);
+            break;
 
-    case GK_CACHE_REQ_TYPE_URL:
-            ds_tree_insert(
-                &pdevice_cache->url_tree, new_attr_cache, new_attr_cache->attr.url);
-        break;
+        case GK_CACHE_REQ_TYPE_URL:
+            was_inserted = gkc_insert_generic(&pdevice_cache->url_tree, entry);
+            break;
 
-    case GK_CACHE_REQ_TYPE_HOST:
-            ds_tree_insert(
-                &pdevice_cache->host_tree, new_attr_cache, new_attr_cache->attr.host);
-        break;
+        case GK_CACHE_REQ_TYPE_IPV4:
+            was_inserted = gkc_insert_generic(&pdevice_cache->ipv4_tree, entry);
+            break;
 
-    case GK_CACHE_REQ_TYPE_SNI:
-            ds_tree_insert(
-                &pdevice_cache->sni_tree, new_attr_cache, new_attr_cache->attr.sni);
-        break;
+        case GK_CACHE_REQ_TYPE_IPV6:
+            was_inserted = gkc_insert_generic(&pdevice_cache->ipv6_tree, entry);
+            break;
 
-    case GK_CACHE_REQ_TYPE_IPV4:
-            ds_tree_insert(
-                &pdevice_cache->ipv4_tree, new_attr_cache, new_attr_cache->attr.ipv4);
-        break;
+        case GK_CACHE_REQ_TYPE_APP:
+            was_inserted = gkc_insert_generic(&pdevice_cache->app_tree, entry);
+            break;
 
-    case GK_CACHE_REQ_TYPE_IPV6:
-            ds_tree_insert(
-                &pdevice_cache->ipv6_tree, new_attr_cache, new_attr_cache->attr.ipv6);
-        break;
-
-    case GK_CACHE_REQ_TYPE_APP:
-            ds_tree_insert(
-                &pdevice_cache->app_tree, new_attr_cache, new_attr_cache->attr.app_name);
-        break;
-
-    default:
-        ret = false;
-        break;
+        default:
+            LOGD("%s(): Not inserted on type = %d", __func__, entry->attribute_type);
+            break;
     }
-
-    return ret;
+    return was_inserted;
 }
 
 /**
@@ -375,32 +541,22 @@ gkc_add_attr_tree(struct per_device_cache *pdevice_cache,
 bool
 gkc_add_attribute_entry(struct gk_attr_cache_interface *entry)
 {
-    struct gk_cache_mgr *mgr;
     struct per_device_cache *pdevice_cache;
+    struct gk_cache_mgr *mgr;
     int ret;
 
     mgr = gk_cache_get_mgr();
     if (!mgr->initialized) return false;
 
-    ret = gkc_lookup_attribute_entry(entry, false);
-    if (ret)
+    if (mgr->total_entry_count >= GK_MAX_CACHE_ENTRIES)
     {
-        LOGT("%s(): attribute entry " PRI_os_macaddr_lower_t " already present",
-             __func__, FMT_os_macaddr_pt(entry->device_mac));
-        return false;
-    }
-
-    if (mgr->count >= GK_MAX_CACHE_ENTRIES)
-    {
-        LOGN("%s() max cache entries %" PRIu64 " reached, cannot add entry to GK cache",
-             __func__, mgr->count);
+        LOGD("%s(): max cache entries %" PRIu64 " reached, cannot add entry to GK cache",
+             __func__, mgr->total_entry_count);
         return false;
     }
 
     /* return if attribute type is not valid */
-    if (entry->attribute_type < GK_CACHE_REQ_TYPE_FQDN
-        || entry->attribute_type > GK_CACHE_REQ_TYPE_APP)
-        return false;
+    if (entry->attribute_type < GK_CACHE_REQ_TYPE_FQDN  || entry->attribute_type > GK_CACHE_REQ_TYPE_APP) return false;
 
     pdevice_cache = ds_tree_find(&mgr->per_device_tree, entry->device_mac);
     if (pdevice_cache == NULL)
@@ -409,15 +565,18 @@ gkc_add_attribute_entry(struct gk_attr_cache_interface *entry)
         pdevice_cache = gkc_init_per_dev(entry->device_mac);
         if (pdevice_cache == NULL) return false;
 
-        ds_tree_insert(
-            &mgr->per_device_tree, pdevice_cache, pdevice_cache->device_mac);
+        ds_tree_insert(&mgr->per_device_tree, pdevice_cache, pdevice_cache->device_mac);
     }
+
+    /* Delay lookup until later, as we need different accounting.
+     * See respective add functions.
+     */
 
     ret = gkc_add_attr_tree(pdevice_cache, entry);
     if (ret == false) return false;
 
-     /* increment cache entries counter */
-    mgr->count++;
+    /* increment cache entries counter */
+    mgr->total_entry_count++;
 
     if (entry->action == FSM_ALLOW)
     {
@@ -441,8 +600,8 @@ gkc_add_attribute_entry(struct gk_attr_cache_interface *entry)
 bool
 gkc_add_flow_entry(struct gkc_ip_flow_interface *entry)
 {
-    struct per_device_cache *pdevice;
     enum gk_cache_request_type attr_type;
+    struct per_device_cache *pdevice;
     struct gk_cache_mgr *mgr;
     int ret;
 
@@ -451,6 +610,7 @@ gkc_add_flow_entry(struct gkc_ip_flow_interface *entry)
 
     if (!entry->device_mac) return false;
 
+    /* For the flows, we can lookup early as there are no corner cases */
     ret = gkc_lookup_flow(entry, false);
     if (ret)
     {
@@ -459,10 +619,10 @@ gkc_add_flow_entry(struct gkc_ip_flow_interface *entry)
         return false;
     }
 
-    if (mgr->count >= GK_MAX_CACHE_ENTRIES)
+    if (mgr->total_entry_count >= GK_MAX_CACHE_ENTRIES)
     {
-        LOGN("%s() max cache entries of %" PRIu64 " reached, cannot add entry to GK cache",
-             __func__, mgr->count);
+        LOGD("%s(): max cache entries of %" PRIu64 " reached, cannot add entry to GK cache",
+             __func__, mgr->total_entry_count);
         return false;
     }
 
@@ -480,12 +640,11 @@ gkc_add_flow_entry(struct gkc_ip_flow_interface *entry)
     if (ret == false) return false;
 
     /* increment cache entries counter */
-    mgr->count++;
+    mgr->total_entry_count++;
 
     /* set the attribute type */
-    attr_type = (entry->direction == GKC_FLOW_DIRECTION_INBOUND
-                 ? GK_CACHE_REQ_TYPE_INBOUND
-                 : GK_CACHE_REQ_TYPE_OUTBOUDND);
+    attr_type =
+        (entry->direction == GKC_FLOW_DIRECTION_INBOUND ? GK_CACHE_REQ_TYPE_INBOUND : GK_CACHE_REQ_TYPE_OUTBOUND);
 
     if (entry->action == FSM_ALLOW)
     {
@@ -529,13 +688,13 @@ gkc_lookup_device_tree(os_macaddr_t *device_mac)
  * @return: true if found false if not present
  */
 bool
-gkc_lookup_flow(struct gkc_ip_flow_interface *req, int update_count)
+gkc_lookup_flow(struct gkc_ip_flow_interface *req, bool update_count)
 {
     struct per_device_cache *pdevice;
     int ret;
 
     if (!req) return false;
-    ret = gkc_is_input_valid(req);
+    ret = gkc_is_flow_valid(req);
     if (ret == false) return false;
 
     /* look up the per device tree first */
@@ -565,7 +724,7 @@ gkc_del_flow(struct gkc_ip_flow_interface *req)
     mgr = gk_cache_get_mgr();
     if (!mgr->initialized) return false;
 
-    ret = gkc_is_input_valid(req);
+    ret = gkc_is_flow_valid(req);
     if (ret == false) return false;
 
     /* first check if the device is present */
@@ -575,7 +734,7 @@ gkc_del_flow(struct gkc_ip_flow_interface *req)
     ret = gkc_del_flow_from_dev(pdevice, req);
     if (ret == false) return false;
 
-    mgr->count--;
+    mgr->total_entry_count--;
     return ret;
 }
 
@@ -612,23 +771,20 @@ gkc_cleanup_mgr(void)
     if (!mgr->initialized) return;
     gk_cache_cleanup();
     mgr->initialized = false;
-    mgr->count = 0;
+    mgr->total_entry_count = 0;
 }
 
 void
-gkc_lookup_redirect_entry(struct gk_attr_cache_interface *req,
-                          struct attr_cache *attr_entry)
+gkc_lookup_redirect_entry(struct gk_attr_cache_interface *req, struct attr_cache *attr_entry)
 {
     if (req->attribute_type != GK_CACHE_REQ_TYPE_FQDN) return;
 
     if (req->fqdn_redirect == NULL || attr_entry->fqdn_redirect == NULL) return;
 
-    req->fqdn_redirect->redirect     = attr_entry->fqdn_redirect->redirect;
+    req->fqdn_redirect->redirect = attr_entry->fqdn_redirect->redirect;
     req->fqdn_redirect->redirect_ttl = attr_entry->fqdn_redirect->redirect_ttl;
-    STRSCPY(req->fqdn_redirect->redirect_ips[0],
-            attr_entry->fqdn_redirect->redirect_ips[0]);
-    STRSCPY(req->fqdn_redirect->redirect_ips[1],
-            attr_entry->fqdn_redirect->redirect_ips[1]);
+    STRSCPY(req->fqdn_redirect->redirect_ips[0], attr_entry->fqdn_redirect->redirect_ips[0]);
+    STRSCPY(req->fqdn_redirect->redirect_ips[1], attr_entry->fqdn_redirect->redirect_ips[1]);
 }
 
 /**
@@ -640,23 +796,70 @@ gkc_lookup_redirect_entry(struct gk_attr_cache_interface *req,
  * @return: true if found false if not present
  */
 static bool
-gkc_lookup_attr_tree(ds_tree_t *tree, struct gk_attr_cache_interface *req, int update_count)
+gkc_lookup_attr_tree(ds_tree_t *tree, struct gk_attr_cache_interface *req, bool update_count)
 {
     struct attr_cache *attr_entry;
+    union attribute_type *attr;
+    int hit_count;
+    uint64_t key;
 
     if (!req->attr_name) return false;
 
-    attr_entry = ds_tree_find(tree, req->attr_name);
+    key = get_attr_key(req->attr_name, req->direction);
+
+    attr_entry = ds_tree_find(tree, &key);
     if (attr_entry == NULL) return false;
+    attr = &attr_entry->attr;
+
+    hit_count = req->hit_counter;
 
     /* increment the hit counter for this attribute */
     if (update_count)
     {
-        attr_entry->hit_count++;
+        switch (req->attribute_type)
+        {
+            case GK_CACHE_REQ_TYPE_FQDN:
+                attr->host_name->count_fqdn.total++;
+                hit_count = attr->host_name->count_fqdn.total;
+                break;
+
+            case GK_CACHE_REQ_TYPE_URL:
+                attr->url->hit_count.total++;
+                hit_count = attr->url->hit_count.total;
+                break;
+
+            case GK_CACHE_REQ_TYPE_HOST:
+                attr->host_name->count_host.total++;
+                hit_count = attr->host_name->count_host.total;
+                break;
+
+            case GK_CACHE_REQ_TYPE_SNI:
+                attr->host_name->count_sni.total++;
+                hit_count = attr->host_name->count_sni.total;
+                break;
+
+            case GK_CACHE_REQ_TYPE_IPV4:
+                attr->ipv4->hit_count.total++;
+                hit_count = attr->ipv4->hit_count.total;
+                break;
+
+            case GK_CACHE_REQ_TYPE_IPV6:
+                attr->ipv6->hit_count.total++;
+                hit_count = attr->ipv6->hit_count.total;
+                break;
+
+            case GK_CACHE_REQ_TYPE_APP:
+                attr->app_name->hit_count.total++;
+                hit_count = attr->app_name->hit_count.total;
+                break;
+
+            default:
+                LOGD("%s(): unknown attr_type=%d", __func__, req->attribute_type);
+        }
     }
 
     /* update the request with hit counter */
-    req->hit_counter = attr_entry->hit_count;
+    req->hit_counter = hit_count;
 
     req->action = attr_entry->action;
     req->categorized = attr_entry->categorized;
@@ -673,38 +876,6 @@ gkc_lookup_attr_tree(ds_tree_t *tree, struct gk_attr_cache_interface *req, int u
     return true;
 }
 
-
-/**
- * @brief check if the attribute is present in either of
- *        FQDN, HOST or SNI cache.
- *
- * @params: req: attribute interface structure with the
- *          attribute value to find
- * @return: true if found false if not present
- */
-static bool
-gkc_lookup_common_tree(struct per_device_cache *pdevice,
-                       struct gk_attr_cache_interface *req,
-                       int update_count)
-{
-    int ret = false;
-
-    /* Lookup in FQDN tree and return if found */
-    ret = gkc_lookup_attr_tree(&pdevice->fqdn_tree, req, update_count);
-    if (ret) return ret;
-
-    /* Lookup in Host tree and return if found */
-    ret = gkc_lookup_attr_tree(&pdevice->host_tree, req, update_count);
-    if (ret) return ret;
-
-    /* Lookup in SNI tree and return if found */
-    ret = gkc_lookup_attr_tree(&pdevice->sni_tree, req, update_count);
-    if (ret) return ret;
-
-    /* Not found in either FQDN, host or sni tree */
-    return false;
-}
-
 /**
  * @brief check if the attribute is present in the device
  *        tree
@@ -714,44 +885,36 @@ gkc_lookup_common_tree(struct per_device_cache *pdevice,
  * @return: true if found false if not present
  */
 static bool
-gkc_lookup_attributes_tree(struct per_device_cache *pdevice,
-                           struct gk_attr_cache_interface *req,
-                           int update_count)
+gkc_lookup_attributes_tree(struct per_device_cache *pdevice, struct gk_attr_cache_interface *req, bool update_count)
 {
     int ret = false;
 
     switch (req->attribute_type)
     {
-    case GK_CACHE_REQ_TYPE_FQDN:
-        ret = gkc_lookup_common_tree(pdevice, req, update_count);
-        break;
+        case GK_CACHE_REQ_TYPE_FQDN:
+        case GK_CACHE_REQ_TYPE_HOST:
+        case GK_CACHE_REQ_TYPE_SNI:
+            ret = gkc_lookup_attr_tree(&pdevice->hostname_tree, req, update_count);
+            break;
 
-    case GK_CACHE_REQ_TYPE_URL:
-        ret = gkc_lookup_attr_tree(&pdevice->url_tree, req, update_count);
-        break;
+        case GK_CACHE_REQ_TYPE_URL:
+            ret = gkc_lookup_attr_tree(&pdevice->url_tree, req, update_count);
+            break;
 
-    case GK_CACHE_REQ_TYPE_HOST:
-        ret = gkc_lookup_common_tree(pdevice, req, update_count);
-        break;
+        case GK_CACHE_REQ_TYPE_IPV4:
+            ret = gkc_lookup_attr_tree(&pdevice->ipv4_tree, req, update_count);
+            break;
 
-    case GK_CACHE_REQ_TYPE_SNI:
-        ret = gkc_lookup_common_tree(pdevice, req, update_count);
-        break;
+        case GK_CACHE_REQ_TYPE_IPV6:
+            ret = gkc_lookup_attr_tree(&pdevice->ipv6_tree, req, update_count);
+            break;
 
-    case GK_CACHE_REQ_TYPE_IPV4:
-        ret = gkc_lookup_attr_tree(&pdevice->ipv4_tree, req, update_count);
-        break;
+        case GK_CACHE_REQ_TYPE_APP:
+            ret = gkc_lookup_attr_tree(&pdevice->app_tree, req, update_count);
+            break;
 
-    case GK_CACHE_REQ_TYPE_IPV6:
-        ret = gkc_lookup_attr_tree(&pdevice->ipv6_tree, req, update_count);
-        break;
-
-    case GK_CACHE_REQ_TYPE_APP:
-        ret = gkc_lookup_attr_tree(&pdevice->app_tree, req, update_count);
-        break;
-
-    default:
-        break;
+        default:
+            break;
     }
 
     return ret;
@@ -774,9 +937,7 @@ gkc_lookup_attribute_entry(struct gk_attr_cache_interface *req, bool update_coun
 
     if (!req || !req->device_mac) return false;
 
-    if (req->attribute_type < GK_CACHE_REQ_TYPE_FQDN
-        || req->attribute_type >= GK_CACHE_MAX_REQ_TYPES)
-        return false;
+    if (req->attribute_type < GK_CACHE_REQ_TYPE_FQDN || req->attribute_type >= GK_CACHE_MAX_REQ_TYPES) return false;
 
     /* look up the per device tree first */
     pdevice = gkc_lookup_device_tree(req->device_mac);
@@ -790,6 +951,58 @@ gkc_lookup_attribute_entry(struct gk_attr_cache_interface *req, bool update_coun
     pdevice->req_counter[req->attribute_type] += 1;
 
     return ret;
+}
+
+struct attr_cache *
+gkc_fetch_attribute_entry(struct gk_attr_cache_interface *req)
+{
+    struct per_device_cache *pdevice;
+    struct attr_cache *cache_entry;
+    uint64_t key;
+
+    if (!req || !req->device_mac) return NULL;
+
+    if (req->attribute_type < GK_CACHE_REQ_TYPE_FQDN || req->attribute_type >= GK_CACHE_MAX_REQ_TYPES)
+        return NULL;
+
+    /* look up the per device tree first */
+    pdevice = gkc_lookup_device_tree(req->device_mac);
+    if (pdevice == NULL) return NULL;
+
+    /* Build the key to look for */
+    key = get_attr_key(req->attr_name, req->direction);
+
+    /* lookup the attributes tree */
+    switch (req->attribute_type)
+    {
+        case GK_CACHE_REQ_TYPE_FQDN:
+        case GK_CACHE_REQ_TYPE_HOST:
+        case GK_CACHE_REQ_TYPE_SNI:
+            cache_entry = ds_tree_find(&pdevice->hostname_tree, &key);
+            break;
+
+        case GK_CACHE_REQ_TYPE_URL:
+            cache_entry = ds_tree_find(&pdevice->url_tree, &key);
+            break;
+
+        case GK_CACHE_REQ_TYPE_IPV4:
+            cache_entry = ds_tree_find(&pdevice->ipv4_tree, &key);
+            break;
+
+        case GK_CACHE_REQ_TYPE_IPV6:
+            cache_entry = ds_tree_find(&pdevice->ipv6_tree, &key);
+            break;
+
+        case GK_CACHE_REQ_TYPE_APP:
+            cache_entry = ds_tree_find(&pdevice->app_tree, &key);
+            break;
+
+        default:
+            cache_entry = NULL;
+            break;
+    }
+
+    return cache_entry;
 }
 
 /**
@@ -818,7 +1031,7 @@ gkc_del_attribute(struct gk_attr_cache_interface *req)
     ret = gkc_del_attr_from_dev(pdevice, req);
     if (ret == false) return false;
 
-    mgr->count--;
+    mgr->total_entry_count--;
 
     return ret;
 }
@@ -854,7 +1067,7 @@ gk_get_cache_count(void)
     mgr = gk_cache_get_mgr();
     if (!mgr->initialized) return 0;
 
-    return mgr->count;
+    return mgr->total_entry_count;
 }
 
 /**
@@ -868,10 +1081,10 @@ gk_get_device_count(void)
     struct per_device_cache *pdevice;
     struct gk_cache_mgr *mgr;
     ds_tree_t *tree;
-
     int count = 0;
-    mgr       = gk_cache_get_mgr();
-    tree      = &mgr->per_device_tree;
+
+    mgr = gk_cache_get_mgr();
+    tree = &mgr->per_device_tree;
 
     if (!mgr->initialized) return count;
 
@@ -891,16 +1104,13 @@ gk_get_device_count(void)
  * @return counter value of the device.
  */
 uint64_t
-gkc_get_allowed_counter(os_macaddr_t *device_mac,
-                        enum gk_cache_request_type attr_type)
+gkc_get_allowed_counter(os_macaddr_t *device_mac, enum gk_cache_request_type attr_type)
 {
     struct per_device_cache *pdevice;
 
     if (!device_mac) return 0;
 
-    if (attr_type < GK_CACHE_REQ_TYPE_FQDN
-        || attr_type >= GK_CACHE_MAX_REQ_TYPES)
-        return 0;
+    if (attr_type < GK_CACHE_REQ_TYPE_FQDN || attr_type >= GK_CACHE_MAX_REQ_TYPES) return 0;
 
     /* look up the per device tree first */
     pdevice = gkc_lookup_device_tree(device_mac);
@@ -918,16 +1128,13 @@ gkc_get_allowed_counter(os_macaddr_t *device_mac,
  * @return void.
  */
 uint64_t
-gkc_get_blocked_counter(os_macaddr_t *device_mac,
-                        enum gk_cache_request_type attr_type)
+gkc_get_blocked_counter(os_macaddr_t *device_mac, enum gk_cache_request_type attr_type)
 {
     struct per_device_cache *pdevice;
 
     if (!device_mac) return 0;
 
-    if (attr_type < GK_CACHE_REQ_TYPE_FQDN
-        || attr_type >= GK_CACHE_MAX_REQ_TYPES)
-        return 0;
+    if (attr_type < GK_CACHE_REQ_TYPE_FQDN || attr_type >= GK_CACHE_MAX_REQ_TYPES) return 0;
 
     /* look up the per device tree first */
     pdevice = gkc_lookup_device_tree(device_mac);
@@ -936,47 +1143,80 @@ gkc_get_blocked_counter(os_macaddr_t *device_mac,
     return pdevice->blocked[attr_type];
 }
 
+/**
+ * @brief pretty print the direction
+ *
+ * @param direction as presented in the enum
+ *
+ * @return matching string description
+ */
+static const char *
+dir2str(uint8_t direction)
+{
+    switch (direction)
+    {
+        case GKC_FLOW_DIRECTION_INBOUND     : return "inbound";
+        case GKC_FLOW_DIRECTION_OUTBOUND    : return "outbound";
+        case GKC_FLOW_DIRECTION_LAN2LAN     : return "lan2lan";
+        case GKC_FLOW_DIRECTION_UNSPECIFIED :
+        default:                              return "unset";
+    }
+    /* never reached */
+}
+
 static void
 dump_attr_tree(ds_tree_t *tree, enum gk_cache_request_type req_type)
 {
+    union attribute_type *attr;
     struct attr_cache *entry;
 
     if (tree == NULL) return;
 
     ds_tree_foreach(tree, entry)
     {
+        attr = &entry->attr;
         switch (req_type)
         {
-        case GK_CACHE_REQ_TYPE_FQDN:
-            LOGT("\t\t\t %s", entry->attr.fqdn);
-            break;
+            case GK_CACHE_INTERNAL_TYPE_HOSTNAME:
+                LOGT("\t\t\t %s, %s, %" PRId64 " , %" PRId64 " , %" PRId64 "",
+                     attr->host_name->name,
+                     dir2str(entry->direction),
+                     attr->host_name->count_fqdn.total,
+                     attr->host_name->count_host.total,
+                     attr->host_name->count_sni.total
+                    );
+                break;
 
-        case GK_CACHE_REQ_TYPE_URL:
-            LOGT("\t\t\t %s", entry->attr.url);
-            break;
+            case GK_CACHE_REQ_TYPE_URL:
+                LOGT("\t\t\t %s, %s, %" PRId64 "",
+                     attr->url->name,
+                     dir2str(entry->direction),
+                     attr->url->hit_count.total);
+                break;
 
-        case GK_CACHE_REQ_TYPE_HOST:
-            LOGT("\t\t\t %s", entry->attr.host);
-            break;
+            case GK_CACHE_REQ_TYPE_IPV4:
+                LOGT("\t\t\t %s, %s, %" PRId64 "",
+                     attr->ipv4->name,
+                     dir2str(entry->direction),
+                     attr->ipv4->hit_count.total);
+                break;
 
-        case GK_CACHE_REQ_TYPE_SNI:
-            LOGT("\t\t\t %s", entry->attr.sni);
-            break;
+            case GK_CACHE_REQ_TYPE_IPV6:
+                LOGT("\t\t\t %s, %s, %" PRId64 "",
+                     attr->ipv6->name,
+                     dir2str(entry->direction),
+                     attr->ipv6->hit_count.total);
+                break;
 
-        case GK_CACHE_REQ_TYPE_IPV4:
-            LOGT("\t\t\t %s", entry->attr.ipv4);
-            break;
+            case GK_CACHE_REQ_TYPE_APP:
+                LOGT("\t\t\t %s, %s, %" PRId64 "",
+                     attr->app_name->name,
+                     dir2str(entry->direction),
+                     attr->app_name->hit_count.total);
+                break;
 
-        case GK_CACHE_REQ_TYPE_IPV6:
-            LOGT("\t\t\t %s", entry->attr.ipv6);
-            break;
-
-        case GK_CACHE_REQ_TYPE_APP:
-            LOGT("\t\t\t %s", entry->attr.app_name);
-            break;
-
-        default:
-            break;
+            default:
+                break;
         }
     }
 }
@@ -1012,12 +1252,12 @@ dump_flow_tree(ds_tree_t *tree)
  *
  */
 void
-gkc_cache_entries(void)
+gkc_print_cache_entries(void)
 {
-    struct gk_cache_mgr *mgr;
     struct per_device_cache *entry;
+    struct gk_cache_mgr *mgr;
+    ds_tree_t *subtree;
     ds_tree_t *tree;
-    ds_tree_t *subtree = NULL;
 
     mgr = gk_cache_get_mgr();
     if (!mgr->initialized) return;
@@ -1029,28 +1269,19 @@ gkc_cache_entries(void)
 
     ds_tree_foreach(tree, entry)
     {
-        LOGT(
-            "--------------------------------------------------------------------------------------------------");
+        LOGT("--------------------------------------------------------------------------------------------------");
         LOGT("\t \t Printing cache entries for device " PRI_os_macaddr_lower_t
              " ",
              FMT_os_macaddr_pt(entry->device_mac));
-        LOGT(
-            "--------------------------------------------------------------------------------------------------");
-        subtree = &entry->fqdn_tree;
-        LOGT("\t FQDN Entries : \n");
-        dump_attr_tree(subtree, GK_CACHE_REQ_TYPE_FQDN);
+        LOGT("--------------------------------------------------------------------------------------------------");
+
+        subtree = &entry->hostname_tree;
+        LOGT("\t COMBINED Entries : \n");
+        dump_attr_tree(subtree, GK_CACHE_INTERNAL_TYPE_HOSTNAME);
 
         subtree = &entry->url_tree;
         LOGT("\t URL Entries : \n");
         dump_attr_tree(subtree, GK_CACHE_REQ_TYPE_URL);
-
-        subtree = &entry->host_tree;
-        LOGT("\t HOST Entries : \n");
-        dump_attr_tree(subtree, GK_CACHE_REQ_TYPE_HOST);
-
-        subtree = &entry->sni_tree;
-        LOGT("\t SNI Entries : \n");
-        dump_attr_tree(subtree, GK_CACHE_REQ_TYPE_SNI);
 
         subtree = &entry->ipv4_tree;
         LOGT("\t IPv4 Entries : \n");
@@ -1079,6 +1310,6 @@ gkc_cache_entries(void)
 void
 clear_gatekeeper_cache(void)
 {
-    LOGN("%s(): clearing gate keeper cache", __func__);
+    LOGD("%s(): clearing gate keeper cache", __func__);
     gk_cache_cleanup();
 }

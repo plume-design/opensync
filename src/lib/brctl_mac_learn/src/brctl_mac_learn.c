@@ -38,6 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "schema.h"
 #include "schema_consts.h"
+#include "memutil.h"
 
 #include "brctl_mac_learn.h"
 
@@ -159,12 +160,7 @@ static bool mac_learning_flt_get(const char *brname)
         }
         else
         {
-            flt = calloc(1, sizeof(*flt));
-            if (flt == NULL)
-            {
-                LOGE("BRCTLMAC: Unable to allocate mac learning entry! :: brname=%s", brname);
-                return false;
-            }
+            flt = CALLOC(1, sizeof(*flt));
         }
 
         snprintf(flt->ifname, sizeof(flt->ifname), "eth%d", eth);
@@ -239,12 +235,7 @@ static bool mac_learning_parse(const char *brname)
         ml = ds_tree_find(&g_mac_learning, &oml);
         if (ml == NULL)
         {
-            ml = calloc(1, sizeof(*ml));
-            if (ml == NULL)
-            {
-                LOGE("BRCTLMAC: Error allocating struct mac_learning!");
-                continue;
-            }
+            ml = CALLOC(1, sizeof(*ml));
 
             memcpy(&ml->oml, &oml, sizeof(ml->oml));
             ds_tree_insert(&g_mac_learning, ml, &ml->oml);
@@ -303,7 +294,7 @@ static void mac_learning_flush(void)
         // Remove our entry
         ds_tree_iremove(&iter);
         memset(ml, 0, sizeof(*ml));
-        free(ml);
+        FREE(ml);
     }
 }
 

@@ -38,6 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "ds.h"
 
+#include "memutil.h"
 #include "os_uds_link.h"
 
 // opens Unix datagram socket
@@ -117,6 +118,46 @@ static int open_unix_socket(const char *path, /*out*/struct sockaddr_un *p_addr)
     return sfd;
 }
 
+/**
+ * @brief Set size limits for sent and received datagrams
+ *
+ * Default limits are often very high (e.g. 128 kB), so there is unnecessary
+ * memory allocation in the kernel buffer if real datagrams are significantly
+ * smaller than the system level limit.
+ * Send and receive limits are separate, but we assume that both should have
+ * the same limits, to simplify configuration.
+ * In case system limits are below requested limits, that value is returned.
+ * If getsockopt / setsockopt call fails, zero is returned
+ *
+ * @param sfd socket file descriptor
+ * @param max_size requested new max size or 0 to use default system limit
+ * @return applied new size, or zero (0) on error
+ */
+static size_t set_max_dgram_size(int sfd, size_t max_size)
+{
+    int snd_max;
+    int rcv_max;
+    socklen_t opt_len = (socklen_t)sizeof(snd_max);
+    if (0 != getsockopt(sfd, SOL_SOCKET, SO_SNDBUF, &snd_max, &opt_len)) return 0;
+    if (0 != getsockopt(sfd, SOL_SOCKET, SO_RCVBUF, &rcv_max, &opt_len)) return 0;
+
+    // correct kernel doubled values
+    snd_max >>= 1;
+    rcv_max >>= 1;
+
+    // git lower bound limit of rcv and snd parts
+    int all_max = snd_max < rcv_max ? snd_max : rcv_max;
+
+    // convert to int for sys API
+    int new_size = (int)max_size;
+    // if req size if greater than limit, leave current limit
+    if (0 == new_size || new_size > all_max) return (size_t)all_max;
+
+    if (0 != setsockopt(sfd, SOL_SOCKET, SO_SNDBUF, &new_size, opt_len)) return 0;
+    if (0 != setsockopt(sfd, SOL_SOCKET, SO_RCVBUF, &new_size, opt_len)) return 0;
+    return (size_t)new_size;
+}
+
 static void eh_on_datagram_received(struct ev_loop *loop, ev_io *w, int revents)
 {
     (void)loop;
@@ -131,7 +172,7 @@ static void eh_on_datagram_received(struct ev_loop *loop, ev_io *w, int revents)
 
     if (!(revents & EV_READ)) return;
 
-    uint8_t rxbuf[getpagesize()];
+    uint8_t rxbuf[self->max_dgsize];
     udgram_t msg;
 
     do
@@ -148,6 +189,11 @@ static void eh_on_datagram_received(struct ev_loop *loop, ev_io *w, int revents)
             {
                 msg.data = rxbuf;
                 msg.size = (size_t)len;
+                // support for abstract ns socket addr
+                if (msg.addr.sun_path[0] == 0)
+                {
+                    msg.addr.sun_path[0] = '@';
+                }
                 self->dg_read_fp(self, &msg);
             }
         }
@@ -167,7 +213,7 @@ static void eh_on_datagram_received(struct ev_loop *loop, ev_io *w, int revents)
     } while (true);
 }
 
-bool uds_link_init(uds_link_t *self, const char *path, struct ev_loop *ev)
+bool uds_link_init(uds_link_t *self, const char *path, struct ev_loop *ev, size_t max_dgsize)
 {
     memset(self, 0, sizeof(*self));
     self->socket_fd = -1;
@@ -175,12 +221,19 @@ bool uds_link_init(uds_link_t *self, const char *path, struct ev_loop *ev)
     int sfd = open_unix_socket(path, &self->socket_addr);
     if (sfd < 0)
     {
-        free(self);
+        return false;
+    }
+
+    self->max_dgsize = set_max_dgram_size(sfd, max_dgsize);
+    if (self->max_dgsize == 0)
+    {
+        LOG(ERR, "Socket max buffer size=%zu setting failed : %s", max_dgsize, strerror(errno));
+        close(sfd);
         return false;
     }
 
     self->abstract = (self->socket_addr.sun_path[0] == '\0');
-    self->sname = &self->socket_addr.sun_path[self->abstract ? 1 : 0];
+    self->sname = strdup(path);
     self->socket_fd = sfd;
     self->ev_loop = ev;
 
@@ -196,7 +249,10 @@ void uds_link_fini(uds_link_t *self)
 {
     if (self == NULL || self->socket_fd < 0) return;
 
-    ev_io_stop(self->ev_loop, &self->socket_watcher);
+    if (self->ev_loop)
+    {
+        ev_io_stop(self->ev_loop, &self->socket_watcher);
+    }
     if (0 != close(self->socket_fd))
     {
         LOG(ERR, "Socket %s closed with error : %s", self->sname, strerror(errno));
@@ -207,17 +263,19 @@ void uds_link_fini(uds_link_t *self)
     {
         (void)unlink(self->sname);
     }
+    FREE(self->sname);
 }
 
-void uds_link_subscribe_datagram_read(uds_link_t *self, dgram_read_fp_t pfn)
+void uds_link_subscribe_datagram_read(uds_link_t *self, dgram_read_func_t *pfn)
 {
     self->dg_read_fp = pfn;
 }
 
-bool uds_link_sendto(uds_link_t *self, const udgram_t *dg)
+bool uds_link_sendto(uds_link_t *self, const udgram_t *dg, bool wait)
 {
     socklen_t slen = offsetof(struct sockaddr_un, sun_path) + 1 + strlen(&dg->addr.sun_path[1]);
-    ssize_t rv = sendto(self->socket_fd, dg->data, dg->size, 0, (struct sockaddr *)&dg->addr, slen);
+    ssize_t rv = sendto(self->socket_fd, dg->data, dg->size, wait ? 0 : MSG_DONTWAIT,
+                        (struct sockaddr *)&dg->addr, slen);
 
     if (rv < 0)
     {
@@ -255,38 +313,47 @@ bool uds_link_receive(uds_link_t *self, udgram_t *dg)
     }
     // update size, sender addr already in dg message
     dg->size = (size_t)len;
+    // support abstract namespace sockets
+    if (dg->addr.sun_path[0] == 0) dg->addr.sun_path[0] = '@';
+    // terminate addr string
+    dg->addr.sun_path[salen - offsetof(struct sockaddr_un, sun_path)] = 0;
 
     self->cnt_rdg++;
     self->cnt_rb += dg->size;
     return true;
 }
 
-uint32_t uds_link_received_dgrams(uds_link_t *self)
+uint32_t uds_link_received_dgrams(const uds_link_t *self)
 {
     return self->cnt_rdg;
 }
 
-uint32_t uds_link_received_bytes(uds_link_t *self)
+uint32_t uds_link_received_bytes(const uds_link_t *self)
 {
     return self->cnt_rb;
 }
 
-uint32_t uds_link_sent_dgrams(uds_link_t *self)
+uint32_t uds_link_sent_dgrams(const uds_link_t *self)
 {
     return self->cnt_tdg;
 }
 
-uint32_t uds_link_sent_bytes(uds_link_t *self)
+uint32_t uds_link_sent_bytes(const uds_link_t *self)
 {
     return self->cnt_tb;
 }
 
-const struct sockaddr_un *uds_link_get_addr(uds_link_t *self)
+const struct sockaddr_un *uds_link_get_addr(const uds_link_t *self)
 {
     return &self->socket_addr;
 }
 
-const char *uds_link_socket_name(uds_link_t *self)
+const char *uds_link_socket_name(const uds_link_t *self)
 {
     return self->sname;
+}
+
+size_t uds_link_get_max_dgsize(const uds_link_t *self)
+{
+    return self->max_dgsize;
 }

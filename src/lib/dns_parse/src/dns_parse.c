@@ -533,18 +533,18 @@ process_response_ip(struct fqdn_pending_req *req,
 {
     if (len == INET_ADDRSTRLEN)
     {
-        if (req->ipv4_cnt == MAX_RESOLVED_ADDRS) return;
+        if (req->dns_response.ipv4_cnt == MAX_RESOLVED_ADDRS) return;
 
-        req->ipv4_addrs[req->ipv4_cnt] = STRDUP(ip);
-        req->ipv4_cnt++;
+        req->dns_response.ipv4_addrs[req->dns_response.ipv4_cnt] = STRDUP(ip);
+        req->dns_response.ipv4_cnt++;
     }
 
     if (len == INET6_ADDRSTRLEN)
     {
-        if (req->ipv6_cnt == MAX_RESOLVED_ADDRS) return;
+        if (req->dns_response.ipv6_cnt == MAX_RESOLVED_ADDRS) return;
 
-        req->ipv6_addrs[req->ipv6_cnt] = STRDUP(ip);
-        req->ipv6_cnt++;
+        req->dns_response.ipv6_addrs[req->dns_response.ipv6_cnt] = STRDUP(ip);
+        req->dns_response.ipv6_cnt++;
     }
 }
 
@@ -634,7 +634,8 @@ populate_dns_gk_cache_entry(struct ip2action_gk_info *i2a_cache_gk,
 
 static void
 process_response_ips(dns_info *dns, uint8_t *packet,
-                     struct fqdn_pending_req *req)
+                     struct fqdn_pending_req *req,
+                     struct fsm_policy_reply *policy_reply)
 {
     struct ip2action_req ip_cache_req;
     struct sockaddr_storage ipaddr;
@@ -651,7 +652,7 @@ process_response_ips(dns_info *dns, uint8_t *packet,
     bool add_entry;
 
     if (dns == NULL) return;
-    if (req->num_replies > 1) return;
+    if (req->dns_response.num_replies > 1) return;
 
     if (dns->queries == NULL) LOGT("%s: no queries", __func__);
 
@@ -711,7 +712,7 @@ process_response_ips(dns_info *dns, uint8_t *packet,
 
             cache = (add_entry && (req->req_info->reply != NULL) &&
                      (!req->req_info->reply->connection_error) &&
-                     (req->categorized == FSM_FQDN_CAT_SUCCESS));
+                     (policy_reply->categorized == FSM_FQDN_CAT_SUCCESS));
 
             if (cache)
             {
@@ -722,11 +723,11 @@ process_response_ips(dns_info *dns, uint8_t *packet,
                                        IP2ACTION_MIN_TTL : (int)ttl);
                 ip_cache_req.cache_ttl = ((req->rd_ttl != -1) ?
                                           req->rd_ttl : ip2action_cache_ttl);
-                ip_cache_req.action = req->action;
-                ip_cache_req.policy_idx = req->policy_idx;
+                ip_cache_req.action = policy_reply->action;
+                ip_cache_req.policy_idx = policy_reply->policy_idx;
                 ip_cache_req.service_id = req->req_info->reply->service_id;
                 ip_cache_req.nelems = req->req_info->reply->nelems;
-                ip_cache_req.cat_unknown_to_service = req->cat_unknown_to_service;
+                ip_cache_req.cat_unknown_to_service = policy_reply->cat_unknown_to_service;
                 for (index = 0; index < req->req_info->reply->nelems; ++index)
                 {
                     ip_cache_req.categories[index] =
@@ -784,8 +785,8 @@ dns_forward(struct dns_session *dns_session, dns_info *dns,
 }
 
 
-bool
-dns_updatev4_tag(struct fqdn_pending_req *req)
+static bool
+dns_updatev4_tag(struct fqdn_pending_req *req, struct fsm_policy_reply *policy_reply)
 {
     struct schema_Openflow_Local_Tag *local_tag;
     struct schema_Openflow_Tag *regular_tag;
@@ -802,9 +803,9 @@ dns_updatev4_tag(struct fqdn_pending_req *req)
     result = false;
     len = 0;
 
-    if (req->action != FSM_UPDATE_TAG) return false;
+    if (policy_reply->action != FSM_UPDATE_TAG) return false;
 
-    tle_flag = om_get_type_of_tag(req->updatev4_tag);
+    tle_flag = om_get_type_of_tag(policy_reply->updatev4_tag);
 
     if (tle_flag == OM_TLE_FLAG_DEVICE ||
         tle_flag == OM_TLE_FLAG_CLOUD)
@@ -816,12 +817,12 @@ dns_updatev4_tag(struct fqdn_pending_req *req)
         elem_len = sizeof(regular_tag->device_value[0]);
         max_capacity = value_len / elem_len;
 
-        len = strlen(req->updatev4_tag);
-        os_util_strncpy(regular_tag->name, &req->updatev4_tag[3], len - 3);
+        len = strlen(policy_reply->updatev4_tag);
+        os_util_strncpy(regular_tag->name, &policy_reply->updatev4_tag[3], len - 3);
         regular_tag->name_exists = true;
         regular_tag->name_present = true;
 
-        result = dns_generate_update_tag(req, regular_tag->device_value,
+        result = dns_generate_update_tag(req, policy_reply, regular_tag->device_value,
                                          &regular_tag->device_value_len,
                                          max_capacity, 4);
         if (result)
@@ -846,12 +847,12 @@ dns_updatev4_tag(struct fqdn_pending_req *req)
         elem_len = sizeof(regular_tag->device_value[0]);
         max_capacity = value_len / elem_len;
 
-        len = strlen(req->updatev4_tag);
-        os_util_strncpy(local_tag->name, &req->updatev4_tag[3], len - 3);
+        len = strlen(policy_reply->updatev4_tag);
+        os_util_strncpy(local_tag->name, &policy_reply->updatev4_tag[3], len - 3);
         local_tag->name_exists = true;
         local_tag->name_present = true;
 
-        result = dns_generate_update_tag(req, local_tag->values,
+        result = dns_generate_update_tag(req, policy_reply, local_tag->values,
                                          &local_tag->values_len,
                                          max_capacity, 4);
         if (result)
@@ -877,7 +878,7 @@ out:
 
 
 bool
-dns_updatev6_tag(struct fqdn_pending_req *req)
+dns_updatev6_tag(struct fqdn_pending_req *req, struct fsm_policy_reply *policy_reply)
 {
     struct schema_Openflow_Local_Tag *local_tag;
     struct schema_Openflow_Tag *regular_tag;
@@ -894,9 +895,9 @@ dns_updatev6_tag(struct fqdn_pending_req *req)
     result = false;
     len = 0;
 
-    if (req->action != FSM_UPDATE_TAG) return false;
+    if (policy_reply->action != FSM_UPDATE_TAG) return false;
 
-    tle_flag = om_get_type_of_tag(req->updatev6_tag);
+    tle_flag = om_get_type_of_tag(policy_reply->updatev6_tag);
 
     if (tle_flag == OM_TLE_FLAG_DEVICE ||
         tle_flag == OM_TLE_FLAG_CLOUD)
@@ -908,12 +909,12 @@ dns_updatev6_tag(struct fqdn_pending_req *req)
         elem_len = sizeof(regular_tag->device_value[0]);
         max_capacity = value_len / elem_len;
 
-        len = strlen(req->updatev6_tag);
-        os_util_strncpy(regular_tag->name, &req->updatev6_tag[3], len - 3);
+        len = strlen(policy_reply->updatev6_tag);
+        os_util_strncpy(regular_tag->name, &policy_reply->updatev6_tag[3], len - 3);
         regular_tag->name_exists = true;
         regular_tag->name_present = true;
 
-        result = dns_generate_update_tag(req, regular_tag->device_value,
+        result = dns_generate_update_tag(req, policy_reply, regular_tag->device_value,
                                          &regular_tag->device_value_len,
                                          max_capacity, 6);
         if (result)
@@ -938,12 +939,12 @@ dns_updatev6_tag(struct fqdn_pending_req *req)
         elem_len = sizeof(regular_tag->device_value[0]);
         max_capacity = value_len / elem_len;
 
-        len = strlen(req->updatev6_tag);
-        os_util_strncpy(local_tag->name, &req->updatev6_tag[3], len - 3);
+        len = strlen(policy_reply->updatev6_tag);
+        os_util_strncpy(local_tag->name, &policy_reply->updatev6_tag[3], len - 3);
         local_tag->name_exists = true;
         local_tag->name_present = true;
 
-        result = dns_generate_update_tag(req, local_tag->values,
+        result = dns_generate_update_tag(req, policy_reply, local_tag->values,
                                          &local_tag->values_len,
                                          max_capacity, 6);
         if (result)
@@ -981,13 +982,13 @@ is_device_excluded(char *tag, os_macaddr_t *mac)
 
 
 void
-dns_update_tag(struct fqdn_pending_req *req)
+dns_update_tag(struct fqdn_pending_req *req, struct fsm_policy_reply *policy_reply)
 {
     bool rc = false;
 
     if (!req) return;
 
-    rc = is_device_excluded(req->excluded_devices, &req->dev_id);
+    rc = is_device_excluded(policy_reply->excluded_devices, &req->dev_id);
     if (rc)
     {
         LOGD("%s: mac " PRI_os_macaddr_lower_t " is excluded from tag updates."
@@ -995,20 +996,19 @@ dns_update_tag(struct fqdn_pending_req *req)
         return;
     }
 
-    if (req->updatev4_tag &&
-        req->ipv4_cnt != 0)
+    if (policy_reply->updatev4_tag && req->dns_response.ipv4_cnt != 0)
     {
-        rc = dns_updatev4_tag(req);
+        rc = dns_updatev4_tag(req, policy_reply);
         if (!rc)
         {
-            LOGT("%s: Failed to update ipv4 OpenFlow tags.",__func__);
+            LOGT("%s: Failed to update ipv4 OpenFlow tags.", __func__);
         }
     }
 
-    if (req->updatev6_tag &&
-        req->ipv6_cnt != 0)
+    if (policy_reply->updatev6_tag &&
+        req->dns_response.ipv6_cnt != 0)
     {
-        rc = dns_updatev6_tag(req);
+        rc = dns_updatev6_tag(req, policy_reply);
         if (!rc)
         {
             LOGT("%s: Failed to update ipv6 OpenFlow tags.",__func__);
@@ -1077,7 +1077,8 @@ dns_cache_add_redirect_entry(struct fqdn_pending_req *req,
 
 static bool
 update_a_rrs(dns_info *dns, uint8_t *packet,
-             struct fqdn_pending_req *req)
+             struct fqdn_pending_req *req,
+             struct fsm_policy_reply *policy_reply)
 {
     dns_rr *answer = dns->answers;
     struct sockaddr_storage ipaddr;
@@ -1093,7 +1094,7 @@ update_a_rrs(dns_info *dns, uint8_t *packet,
         return false;
     }
 
-    if (req->redirect == false) return false;
+    if (policy_reply->redirect == false) return false;
 
     qtype = dns->queries->type;
     LOGT("%s: query type: %d",
@@ -1110,11 +1111,11 @@ update_a_rrs(dns_info *dns, uint8_t *packet,
                  __func__, qtype, answer->data);
             if (qtype == 1)  /* IPv4 redirect */
             {
-                char *ipv4_addr = check_redirect(req->redirects[0],
+                char *ipv4_addr = check_redirect(policy_reply->redirects[0],
                                                  IPv4_REDIRECT);
                 if (ipv4_addr == NULL)
                 {
-                    ipv4_addr = check_redirect(req->redirects[1],
+                    ipv4_addr = check_redirect(policy_reply->redirects[1],
                                                IPv4_REDIRECT);
                 }
                 if (ipv4_addr != NULL)
@@ -1141,11 +1142,11 @@ update_a_rrs(dns_info *dns, uint8_t *packet,
             {
                 LOGT("%s: IPv6 record, rdlength == %d",
                      __func__, answer->rdlength);
-                char *ipv6_addr = check_redirect(req->redirects[0],
+                char *ipv6_addr = check_redirect(policy_reply->redirects[0],
                                                  IPv6_REDIRECT);
                 if (ipv6_addr == NULL)
                 {
-                    ipv6_addr = check_redirect(req->redirects[1],
+                    ipv6_addr = check_redirect(policy_reply->redirects[1],
                                                IPv6_REDIRECT);
                 }
                 if (ipv6_addr != NULL)
@@ -1184,6 +1185,7 @@ dns_handle_reply(struct dns_session *dns_session, dns_info *dns,
     struct dns_device *ds = NULL;
     struct fqdn_pending_req *req = NULL;
     struct fsm_session *session;
+    struct fsm_policy_reply *policy_reply;
     struct dns_cache *mgr;
 
     mgr = dns_get_mgr();
@@ -1210,17 +1212,25 @@ dns_handle_reply(struct dns_session *dns_session, dns_info *dns,
         goto free_out;
     }
 
-    req->num_replies++;
-    dns_session->req = req;
-    process_response_ips(dns, packet, req);
+    policy_reply = ds_tree_find(&ds->dns_policy_replies_tree, &dns->id);
+    if (policy_reply == NULL)
+    {
+        LOGD("%s(): could not retrieve policy response for request %u",
+             __func__, dns->id);
+        goto free_out;
+    }
 
-    if (req->action == FSM_UPDATE_TAG)
+    req->dns_response.num_replies++;
+    dns_session->req = req;
+    process_response_ips(dns, packet, req, policy_reply);
+
+    if (policy_reply->action == FSM_UPDATE_TAG)
     {
        /*
         * Update Tag if we are interested
         * in the IPs returned.
         */
-        mgr->update_tag(req);
+        mgr->update_tag(req, policy_reply);
     }
 
     /* forward the DNS response if the session has no categorization provider */
@@ -1241,7 +1251,7 @@ dns_handle_reply(struct dns_session *dns_session, dns_info *dns,
         session->provider_ops->dns_response(session, req);
     }
 
-    if (req->action == FSM_FORWARD)
+    if (policy_reply->action == FSM_FORWARD)
     {
         mgr->forward(dns_session, dns, packet, header->caplen);
         dns_remove_req(dns_session, &eth->dstmac, req->req_id);
@@ -1255,25 +1265,25 @@ dns_handle_reply(struct dns_session *dns_session, dns_info *dns,
         mgr->forward(dns_session, dns, packet, header->caplen);
         dns_remove_req(dns_session, &eth->dstmac, req->req_id);
     }
-    else if (req->action == FSM_BLOCK)
+    else if (policy_reply->action == FSM_BLOCK)
     {
         char reason[128] = { 0 };
         char risk[128] = { 0 };
 
-        if (req->categorized == FSM_FQDN_CAT_SUCCESS) {
-            if (session->provider_ops->cat2str && (req->cat_match != -1))
+        if (policy_reply->categorized == FSM_FQDN_CAT_SUCCESS) {
+            if (session->provider_ops->cat2str && (policy_reply->cat_match != -1))
             {
                 snprintf(reason, sizeof(reason), "categorized as %s",
                          session->provider_ops->cat2str(session,
-                                                        req->cat_match));
+                                                        policy_reply->cat_match));
             }
-            if (req->risk_level != -1)
+            if (policy_reply->risk_level != -1)
             {
                 snprintf(risk, sizeof(risk), "risk level %d",
-                         req->risk_level);
+                         policy_reply->risk_level);
             }
         }
-        else if (req->categorized == FSM_FQDN_CAT_NOP)
+        else if (policy_reply->categorized == FSM_FQDN_CAT_NOP)
         {
             snprintf(reason, sizeof(reason), "(blacklisted)");
         }
@@ -1286,19 +1296,19 @@ dns_handle_reply(struct dns_session *dns_session, dns_info *dns,
              FMT(os_macaddr_t, eth->dstmac),
              req->req_info->url,
              reason, risk);
-        if (update_a_rrs(dns, packet, req) == true)
+        if (update_a_rrs(dns, packet, req, policy_reply) == true)
         {
             mgr->forward(dns_session, dns, packet, header->caplen);
         }
         dns_remove_req(dns_session, &eth->dstmac, req->req_id);
     }
-    else if (req->redirect == true)
+    else if (policy_reply->redirect == true)
     {
-        update_a_rrs(dns, packet, req);
+        update_a_rrs(dns, packet, req, policy_reply);
         mgr->forward(dns_session, dns, packet, header->caplen);
         dns_remove_req(dns_session, &eth->dstmac, req->req_id);
     }
-    else if (req->fsm_checked == true)
+    else if (policy_reply->fsm_checked == true)
     {
         mgr->forward(dns_session, dns, packet, header->caplen);
         dns_remove_req(dns_session, &eth->dstmac, req->req_id);
@@ -1306,8 +1316,8 @@ dns_handle_reply(struct dns_session *dns_session, dns_info *dns,
     else
     {
         LOGD("%s: stashing dns reply %u", __func__, req->req_id);
-        req->response = CALLOC(1, header->caplen);
-        if (req->response == NULL)
+        req->dns_reply_pkt = CALLOC(1, header->caplen);
+        if (req->dns_reply_pkt == NULL)
         {
             LOGE("Could not allocate memory for dns response %d",
                  req->req_id);
@@ -1315,8 +1325,8 @@ dns_handle_reply(struct dns_session *dns_session, dns_info *dns,
         }
         else
         {
-            memcpy(req->response, packet, header->caplen);
-            req->response_len = header->caplen;
+            memcpy(req->dns_reply_pkt, packet, header->caplen);
+            req->dns_reply_pkt_len = header->caplen;
         }
     }
 
@@ -1335,11 +1345,11 @@ dns_handle_reply(struct dns_session *dns_session, dns_info *dns,
  * - no web categorization backend was provided
  * - the categorization is offline
  * @param dns_session the session container
- * @param req the request to be processed by the policy engine
+ * @param policy_reply the reply received from the provider
  */
 void
 set_provider_ops(struct dns_session *dns_session,
-                 struct fqdn_pending_req *req)
+                 struct fsm_policy_reply *policy_reply)
 {
     struct web_cat_offline *offline;
     struct fsm_session *session;
@@ -1366,9 +1376,9 @@ set_provider_ops(struct dns_session *dns_session,
     }
 
     /* Set the backend provider ops */
-    req->categories_check = session->provider_ops->categories_check;
-    req->risk_level_check = session->provider_ops->risk_level_check;
-    req->gatekeeper_req = session->provider_ops->gatekeeper_req;
+    policy_reply->categories_check = session->provider_ops->categories_check;
+    policy_reply->risk_level_check = session->provider_ops->risk_level_check;
+    policy_reply->gatekeeper_req = session->provider_ops->gatekeeper_req;
 }
 
 
@@ -1385,6 +1395,7 @@ dns_handler(struct fsm_session *session, struct net_header_parser *net_header)
     dns_info dns = { 0 };
     struct dns_device *ds = NULL;
     struct fqdn_pending_req *req = NULL;
+    struct fsm_policy_reply *policy_reply;
     struct pcap_pkthdr header;
     uint8_t * packet;
 
@@ -1466,6 +1477,8 @@ dns_handler(struct fsm_session *session, struct net_header_parser *net_header)
                sizeof(ds->device_mac.addr));
         ds_tree_init(&ds->fqdn_pending_reqs, dns_req_id_cmp,
                      struct fqdn_pending_req, req_node);
+        ds_tree_init(&ds->dns_policy_replies_tree, dns_req_id_cmp,
+                     struct fsm_policy_reply, reply_node);
         ds_tree_insert(&dns_session->session_devices, ds,
                        &ds->device_mac);
     }
@@ -1482,8 +1495,19 @@ dns_handler(struct fsm_session *session, struct net_header_parser *net_header)
         return;
     }
 
+    policy_reply = fsm_policy_initialize_reply(session);
+    if (policy_reply == NULL)
+    {
+        LOGN("%s(): failed to initialize policy reply", __func__);
+        return;
+    }
+
+    policy_reply->send_report = dns_session->fsm_context->ops.send_report;
+    policy_reply->policy_table = session->policy_client.table;
+    policy_reply->provider = session->provider;
     /* Insert the pending request */
     req = CALLOC(sizeof(*req), 1);
+
     memcpy(req->dev_id.addr, eth->srcmac.addr,
            sizeof(req->dev_id.addr));
     req->req_id = dns.id;
@@ -1492,17 +1516,9 @@ dns_handler(struct fsm_session *session, struct net_header_parser *net_header)
     req->req_info = CALLOC(sizeof(struct fsm_url_request),
                            dns.qdcount);
     req->fsm_context = dns_session->fsm_context;
-    req->send_report = dns_session->fsm_context->ops.send_report;
+
     req->dev_session = ds;
-    req->redirect = false;
-    req->to_report = false;
-    req->fsm_checked = false;
-    req->risk_level = -1;
-    req->cat_match = -1;
-    req->policy_table = session->policy_client.table;
-    req->req_type = FSM_FQDN_REQ;
-    set_provider_ops(dns_session, req);
-    req->provider = session->provider;
+    set_provider_ops(dns_session, policy_reply);
     req_info = req->req_info;
     qnext = dns.queries;
     for (i = 0; i < dns.qdcount; i++)
@@ -1522,7 +1538,7 @@ dns_handler(struct fsm_session *session, struct net_header_parser *net_header)
 
     dns_session->req = req;
     req->numq = cnt;
-    dns_policy_check(ds, req);
+    dns_policy_check(ds, req, policy_reply);
     free_rrs(&dns_session->ip, &dns_session->udp, &dns, &header);
 }
 
@@ -1855,23 +1871,29 @@ dns_parse(uint32_t pos, struct pcap_pkthdr *header,
 
 
 static void
-dns_send_report(struct fqdn_pending_req *req)
+dns_send_report(struct fqdn_pending_req *req, struct fsm_policy_reply *policy_reply)
 {
     struct fsm_session *session = req->fsm_context;
     char *report;
     char *topic = session->topic;
     struct dns_session *context = session->handler_ctxt;
 
-    if (req->to_report != true) return;
-    if (req->num_replies > 1) return;
+    if (policy_reply == NULL)
+    {
+        LOGN("%s(): policy reply is empty not sending dns report", __func__);
+        return;
+    }
 
-    if (req->action == FSM_BLOCK &&
+    if (policy_reply->to_report != true) return;
+    if (req->dns_response.num_replies > 1) return;
+
+    if (policy_reply->action == FSM_BLOCK &&
         context->blocker_topic != NULL)
     {
         LOGT("%s: Switching topic to %s", __func__, context->blocker_topic);
         session->topic = context->blocker_topic;
     }
-    report = jencode_url_report(session, req);
+    report = jencode_url_report(session, req, policy_reply);
     session->ops.send_report(session, report);
     session->topic = topic;
 }
@@ -1883,13 +1905,11 @@ dns_free_req(struct fqdn_pending_req *req)
     struct fsm_url_request *req_info;
     int i;
 
-    if (req->response != NULL) FREE(req->response);
-    if (req->rule_name != NULL) FREE(req->rule_name);
-    if (req->policy != NULL) FREE(req->policy);
+    if (req->dns_reply_pkt != NULL) FREE(req->dns_reply_pkt);
 
-    for (i = 0; i < req->ipv4_cnt; i++) FREE(req->ipv4_addrs[i]);
+    for (i = 0; i < req->dns_response.ipv4_cnt; i++) FREE(req->dns_response.ipv4_addrs[i]);
 
-    for (i = 0; i < req->ipv6_cnt; i++) FREE(req->ipv6_addrs[i]);
+    for (i = 0; i < req->dns_response.ipv6_cnt; i++) FREE(req->dns_response.ipv6_addrs[i]);
 
     req_info = req->req_info;
     for (i = 0; i < req->numq; i++)
@@ -1901,6 +1921,46 @@ dns_free_req(struct fqdn_pending_req *req)
     FREE(req);
 }
 
+void
+dns_free_policy_reply(struct fsm_policy_reply *policy_reply)
+{
+    FREE(policy_reply->rule_name);
+    FREE(policy_reply->policy);
+    FREE(policy_reply);
+}
+
+void
+dns_remove_policy_reply(struct dns_device *ds, uint16_t req_id)
+{
+    struct fsm_policy_reply *policy_reply;
+
+    policy_reply = ds_tree_find(&ds->dns_policy_replies_tree, &req_id);
+    if (policy_reply == NULL)
+    {
+        LOGD("%s(): could not retrieve policy reply %d",
+             __func__, req_id);
+        return;
+    }
+
+    ds_tree_remove(&ds->dns_policy_replies_tree, policy_reply);
+    dns_free_policy_reply(policy_reply);
+}
+
+static void
+dns_update_failure_count(struct dns_session *dns_session,
+                         struct fsm_policy_reply *policy_reply,
+                         struct fqdn_pending_req *req)
+{
+    if (dns_session == NULL) return;
+    if (policy_reply == NULL) return;
+    if (req == NULL) return;
+
+    if (policy_reply->categorized == FSM_FQDN_CAT_FAILED
+        && req->req_info->reply->lookup_status != -1)
+    {
+        dns_session->reported_lookup_failures++;
+    }
+}
 
 void
 dns_remove_req(struct dns_session *dns_session, os_macaddr_t *mac,
@@ -1908,6 +1968,7 @@ dns_remove_req(struct dns_session *dns_session, os_macaddr_t *mac,
 {
     struct dns_device *ds = NULL;
     struct fqdn_pending_req *req = NULL;
+    struct fsm_policy_reply *policy_reply;
 
     ds = ds_tree_find(&dns_session->session_devices, mac);
     if (ds == NULL)
@@ -1925,7 +1986,14 @@ dns_remove_req(struct dns_session *dns_session, os_macaddr_t *mac,
         return;
     }
 
-    if (req->num_replies == 1) dns_send_report(req);
+    policy_reply = ds_tree_find(&ds->dns_policy_replies_tree, &req_id);
+    if (policy_reply == NULL)
+    {
+        LOGD("%s: could not retrieve policy reply for request %d",
+             __func__, req_id);
+    }
+
+    if (req->dns_response.num_replies == 1 && policy_reply != NULL) dns_send_report(req, policy_reply);
 
     if (--req->dedup != 0)
     {
@@ -1934,17 +2002,15 @@ dns_remove_req(struct dns_session *dns_session, os_macaddr_t *mac,
         return;
     }
 
-    if ((req->categorized == FSM_FQDN_CAT_FAILED) &&
-        (req->req_info->reply->lookup_status != -1))
-    {
-        dns_session->reported_lookup_failures++;
-    }
+    dns_update_failure_count(dns_session, policy_reply, req);
 
     LOGD("Removing req id %u for device " PRI_os_macaddr_lower_t,
          req_id, FMT_os_macaddr_pt(mac));
 
     ds_tree_remove(&ds->fqdn_pending_reqs, req);
     dns_free_req(req);
+
+    dns_remove_policy_reply(ds, req_id);
 }
 
 
@@ -1965,6 +2031,7 @@ is_in_device_set(char values[][MAX_TAG_VALUES_LEN], int values_len, char *checki
 
 bool
 dns_generate_update_tag(struct fqdn_pending_req *req,
+                        struct fsm_policy_reply *policy_reply,
                         char values[][MAX_TAG_VALUES_LEN],
                         int *values_len, size_t max_capacity,
                         int ip_ver)
@@ -1977,20 +2044,20 @@ dns_generate_update_tag(struct fqdn_pending_req *req,
     bool rc;
     int i;
 
-    if (req->action != FSM_UPDATE_TAG) return false;
+    if (policy_reply->action != FSM_UPDATE_TAG) return false;
 
     added_information = false;
 
     if (ip_ver == 4)
     {
-      name_len = strlen(req->updatev4_tag);
-      os_util_strncpy(name, &req->updatev4_tag[3], name_len - 3);
+      name_len = strlen(policy_reply->updatev4_tag);
+      os_util_strncpy(name, &policy_reply->updatev4_tag[3], name_len - 3);
       tag = om_tag_find_by_name(name, false);
     }
     else if (ip_ver == 6)
     {
-      name_len = strlen(req->updatev6_tag);
-      os_util_strncpy(name, &req->updatev6_tag[3], name_len - 3);
+      name_len = strlen(policy_reply->updatev6_tag);
+      os_util_strncpy(name, &policy_reply->updatev6_tag[3], name_len - 3);
       tag = om_tag_find_by_name(name, false);
     }
     else
@@ -2016,9 +2083,9 @@ dns_generate_update_tag(struct fqdn_pending_req *req,
 
     if (ip_ver == 4)
     {
-        for (i = 0; i < req->ipv4_cnt; i++)
+        for (i = 0; i < req->dns_response.ipv4_cnt; i++)
         {
-            adding = req->ipv4_addrs[i];
+            adding = req->dns_response.ipv4_addrs[i];
             rc = is_in_device_set(values, *values_len, adding);
             if (rc) continue;
 
@@ -2036,9 +2103,9 @@ dns_generate_update_tag(struct fqdn_pending_req *req,
     }
     else if (ip_ver == 6)
     {
-        for (i = 0; i < req->ipv6_cnt; i++)
+        for (i = 0; i < req->dns_response.ipv6_cnt; i++)
         {
-            adding = req->ipv6_addrs[i];
+            adding = req->dns_response.ipv6_addrs[i];
             rc = is_in_device_set(values, *values_len, adding);
             if (rc) continue;
 
@@ -2122,6 +2189,7 @@ void
 dns_retire_reqs(struct fsm_session *session)
 {
     struct dns_session *dns_session;
+    struct fsm_policy_reply *policy_reply;
     struct dns_device *ds;
     struct dns_cache *mgr;
     double cmp;
@@ -2157,11 +2225,19 @@ dns_retire_reqs(struct fsm_session *session)
 
             LOGT("%s: " PRI_os_macaddr_lower_t ": removing dns req id %d",
                  __func__, FMT_os_macaddr_t(req->dev_id), req->req_id);
+
+            policy_reply = ds_tree_find(&ds->dns_policy_replies_tree, &req->req_id);
+            if (policy_reply == NULL)
+            {
+                LOGD("%s(): could not find policy reply for request id %d", __func__, req->req_id);
+            }
             remove = req;
             req = next;
             ds_tree_remove(&ds->fqdn_pending_reqs, remove);
-            if (remove->num_replies == 0) dns_send_report(remove);
 
+            if (remove->dns_response.num_replies == 0 && policy_reply != NULL) dns_send_report(remove, policy_reply);
+
+            dns_remove_policy_reply(ds, remove->req_id);
             dns_free_req(remove);
         }
         ds = ds_tree_next(&dns_session->session_devices, ds);
@@ -2195,7 +2271,8 @@ dns_periodic(struct fsm_session *session)
  */
 static void
 fsm_update_gk_reporting(struct fqdn_pending_req *req,
-                        struct fsm_policy_req *preq)
+                        struct fsm_policy_req *preq,
+                        struct fsm_policy_reply *policy_reply)
 {
     struct fsm_policy *fsm_policy;
 
@@ -2208,7 +2285,7 @@ fsm_update_gk_reporting(struct fqdn_pending_req *req,
     /* gk has already taken the action to report, no need to check
      * further.
      */
-    if (req->to_report == true) return;
+    if (policy_reply->to_report == true) return;
 
     /* if policy does not ask for logging, just return */
     if (preq->report == false) return;
@@ -2219,17 +2296,18 @@ fsm_update_gk_reporting(struct fqdn_pending_req *req,
      * logging
      */
     LOGT("%s(): setting reporting and updating policy name", __func__);
-    req->to_report = true;
-    FREE(req->rule_name);
-    req->rule_name = STRDUP(preq->rule_name);
-    req->action = preq->action;
-    req->policy_idx = preq->policy_index;
+    policy_reply->to_report = true;
+    FREE(policy_reply->rule_name);
+    policy_reply->rule_name = STRDUP(preq->rule_name);
+    policy_reply->action = preq->action;
+    policy_reply->policy_idx = preq->policy_index;
 }
 
 
 void
 fqdn_policy_check(struct dns_device *ds,
-                  struct fqdn_pending_req *req)
+                  struct fqdn_pending_req *req,
+                  struct fsm_policy_reply *policy_reply)
 {
     struct fsm_url_request *req_info = req->req_info;
     struct fsm_policy_req preq;
@@ -2240,7 +2318,7 @@ fqdn_policy_check(struct dns_device *ds,
 
     if (req->numq == 0)
     {
-        req->action = FSM_FORWARD;
+        policy_reply->action = FSM_FORWARD;
         return;
     }
 
@@ -2251,40 +2329,34 @@ fqdn_policy_check(struct dns_device *ds,
     memset(&preq, 0, sizeof(preq));
     preq.device_id = &req->dev_id;
     preq.url = req_info->url;
-    preq.reply.rd_ttl = -1;
     preq.fqdn_req = req;
-    req->fsm_checked = false;
-    fsm_apply_policies(session, &preq);
-    req->action = preq.reply.action;
-    req->updatev4_tag = preq.reply.updatev4_tag;
-    req->updatev6_tag = preq.reply.updatev6_tag;
-    req->excluded_devices = preq.reply.excluded_devices;
-    req->policy = preq.reply.policy;
-    req->policy_idx = preq.reply.policy_idx;
-    req->rule_name = preq.reply.rule_name;
-    req->redirect = preq.reply.redirect;
-    req->rd_ttl = preq.reply.rd_ttl;
-    req->to_report = true;
-    req->fsm_checked = true;
+    preq.req_type = FSM_FQDN_REQ;
+    policy_reply->req_type = FSM_FQDN_REQ;
+    preq.session = session;
+    fsm_apply_policies(&preq, policy_reply);
+
+    req->rd_ttl = policy_reply->rd_ttl;
+    policy_reply->to_report = true;
+    policy_reply->fsm_checked = true;
 
     /* Process reporting */
-    if (preq.reply.log == FSM_REPORT_NONE)
+    if (policy_reply->log == FSM_REPORT_NONE)
     {
-        req->to_report = false;
+        policy_reply->to_report = false;
     }
 
-    if ((preq.reply.log == FSM_REPORT_BLOCKED)
-        && (preq.reply.action != FSM_BLOCK)
-        && (preq.reply.action != FSM_REDIRECT))
+    if ((policy_reply->log == FSM_REPORT_BLOCKED)
+        && (policy_reply->action != FSM_BLOCK)
+        && (policy_reply->action != FSM_REDIRECT))
     {
-        req->to_report = false;
+        policy_reply->to_report = false;
     }
 
     /* Overwrite logging and policy if categorization failed */
-    if (req->categorized == FSM_FQDN_CAT_FAILED)
+    if (policy_reply->categorized == FSM_FQDN_CAT_FAILED)
     {
-        req->action = FSM_ALLOW;
-        req->to_report = true;
+        policy_reply->action = FSM_ALLOW;
+        policy_reply->to_report = true;
     }
 
     /* Process web categorization provider connection failures */
@@ -2298,34 +2370,37 @@ fqdn_policy_check(struct dns_device *ds,
     }
 
     /* check and update reporting for gatekeeper */
-    fsm_update_gk_reporting(req, &preq);
+    fsm_update_gk_reporting(req, &preq, policy_reply);
 
     LOGT("%s(): report value %d for rule: %s", __func__,
-         req->to_report, req->rule_name ? req->rule_name : "None");
+         policy_reply->to_report, policy_reply->rule_name ? policy_reply->rule_name : "None");
 }
-
 
 void
 dns_policy_check(struct dns_device *ds,
-                 struct fqdn_pending_req *req)
+                 struct fqdn_pending_req *req,
+                 struct fsm_policy_reply *policy_reply)
 {
     struct dns_cache *mgr;
 
     mgr = dns_get_mgr();
-    mgr->policy_check(ds, req);
+    mgr->policy_check(ds, req, policy_reply);
+    /* policy_reply and req is mapped by req_id */
+    policy_reply->req_id = req->req_id;
 
     /* Process the DNS reply if it was pending policy checking */
-    if (req->response != NULL)
+    if (req->dns_reply_pkt != NULL)
     {
         struct dns_session *dns_session = req->fsm_context->handler_ctxt;
-        if (req->action != FSM_BLOCK)
+        if (policy_reply->action != FSM_BLOCK)
         {
-            mgr->forward(dns_session, NULL, req->response, req->response_len);
+            mgr->forward(dns_session, NULL, req->dns_reply_pkt, req->dns_reply_pkt_len);
         }
-        FREE(req->response);
+        FREE(req->dns_reply_pkt);
     }
 
-    LOGT("%s: redirect = %s", __func__, req->redirect ? "true" : "false");
+    LOGT("%s: redirect = %s", __func__, policy_reply->redirect ? "true" : "false");
     ds_tree_insert(&ds->fqdn_pending_reqs, req, &req->req_id);
+    ds_tree_insert(&ds->dns_policy_replies_tree, policy_reply, &policy_reply->req_id);
     return;
 }

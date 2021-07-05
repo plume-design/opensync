@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <ev.h>
 
 #include "util.h"
+#include "memutil.h"
 #include "os_util.h"
 
 #include "const.h"
@@ -119,7 +120,7 @@ bool odhcp6_client_fini(odhcp6_client_t *self)
     {
         if (self->oc_status.d6c_recv_options[ii] == NULL) continue;
 
-        free(self->oc_status.d6c_recv_options[ii]);
+        FREE(self->oc_status.d6c_recv_options[ii]);
         self->oc_status.d6c_recv_options[ii] = NULL;
     }
 
@@ -137,7 +138,7 @@ bool odhcp6_client_fini(odhcp6_client_t *self)
     {
         if (self->oc_option_send[ii] == NULL) continue;
 
-        free(self->oc_option_send[ii]);
+        FREE(self->oc_option_send[ii]);
         self->oc_option_send[ii] = NULL;
     }
 
@@ -267,7 +268,7 @@ bool odhcp6_client_option_send(odhcp6_client_t *self, int tag, const char *value
 
     if (self->oc_option_send[tag] != NULL)
     {
-        free((void *)self->oc_option_send[tag]);
+        FREE(self->oc_option_send[tag]);
         self->oc_option_send[tag] = NULL;
     }
 
@@ -326,7 +327,7 @@ void odhcp6_client_debounce_fn(struct ev_loop *loop, ev_debounce *w, int revent)
     {
         if (self->oc_status.d6c_recv_options[ii] == NULL) continue;
 
-        free(self->oc_status.d6c_recv_options[ii]);
+        FREE(self->oc_status.d6c_recv_options[ii]);
         self->oc_status.d6c_recv_options[ii] = NULL;
     }
 
@@ -382,7 +383,7 @@ void odhcp6_client_debounce_fn(struct ev_loop *loop, ev_debounce *w, int revent)
         /* Free old value, if any */
         if (self->oc_status.d6c_recv_options[optidx] != NULL)
         {
-            free(self->oc_status.d6c_recv_options[optidx]);
+            FREE(self->oc_status.d6c_recv_options[optidx]);
             self->oc_status.d6c_recv_options[optidx] = NULL;
         }
 
@@ -472,14 +473,14 @@ char *odhcp6_client_process_value(int optidx, const char *value)
                 if (out_pos > out_len)
                 {
                     LOG(DEBUG, "dhcpv6_client: Error reconstructing option 5, string too long. Line: %s", value);
-                    free(pvalue);
-                    free(out);
+                    FREE(pvalue);
+                    FREE(out);
                     break;
                 }
             }
 
             strchomp(out, " ");
-            free(pvalue);
+            FREE(pvalue);
             return out;
         }
 #endif

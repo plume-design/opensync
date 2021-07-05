@@ -57,9 +57,9 @@ gkc_lookup_flows_tree(ds_tree_t *tree, struct gkc_ip_flow_interface *req, int up
         ret = true;
         if (update_count)
         {
-            target_entry->hit_count++;
+            target_entry->hit_count.total++;
         }
-        req->hit_counter = target_entry->hit_count;
+        req->hit_counter = target_entry->hit_count.total;
     }
 
     return ret;
@@ -77,11 +77,11 @@ gkc_lookup_flows_tree(ds_tree_t *tree, struct gkc_ip_flow_interface *req, int up
 bool
 gkc_lookup_flows_for_device(struct per_device_cache *pdevice,
                             struct gkc_ip_flow_interface *req,
-                            int update_count)
+                            bool update_count)
 {
     int ret;
 
-    ret = gkc_is_input_valid(req);
+    ret = gkc_is_flow_valid(req);
     if (ret == false) return false;
 
     switch (req->direction)

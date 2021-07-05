@@ -124,9 +124,9 @@ struct dns_cache
     int req_cache_ttl;
     int (*set_forward_context)(struct fsm_session *);
     void (*forward)(struct dns_session *, dns_info *, uint8_t *, int);
-    void (*update_tag)(struct fqdn_pending_req *);
+    void (*update_tag)(struct fqdn_pending_req *, struct fsm_policy_reply *);
     void (*policy_init)(void);
-    void (*policy_check)(struct dns_device *, struct fqdn_pending_req *);
+    void (*policy_check)(struct dns_device *, struct fqdn_pending_req *, struct fsm_policy_reply *);
 };
 
 
@@ -182,6 +182,7 @@ dns_remove_req(struct dns_session *dns_session, os_macaddr_t *mac,
  */
 bool
 dns_generate_update_tag(struct fqdn_pending_req *req,
+                        struct fsm_policy_reply *policy_reply,
                         char values[][MAX_TAG_VALUES_LEN],
                         int *values_len, size_t max_capacity,
                         int ip_ver);
@@ -217,7 +218,7 @@ dns_forward(struct dns_session *dns_session, dns_info *dns,
             uint8_t *packet, int len);
 
 void
-dns_update_tag(struct fqdn_pending_req *req);
+dns_update_tag(struct fqdn_pending_req *req, struct fsm_policy_reply *policy_reply);
 
 void
 dns_periodic(struct fsm_session  *session);
@@ -227,11 +228,13 @@ dns_report_cat(int category);
 
 void
 fqdn_policy_check(struct dns_device *ds,
-                  struct fqdn_pending_req *req);
+                  struct fqdn_pending_req *req,
+                  struct fsm_policy_reply *policy_reply);
 
 void
 dns_policy_check(struct dns_device *ds,
-                 struct fqdn_pending_req *req);
+                 struct fqdn_pending_req *req,
+                 struct fsm_policy_reply *policy_reply);
 
 void
 dns_retire_reqs(struct fsm_session *session);

@@ -25,8 +25,9 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-intf=${1:-br-home.tdhcp}
-bridge=${2:-br-home}
+. /usr/opensync/etc/kconfig # TODO: This should point to {INSTALL_PREFIX}/etc/kconfig
+intf=${1:-${CONFIG_TARGET_LAN_BRIDGE_NAME}.tdhcp}
+bridge=${2:-${CONFIG_TARGET_LAN_BRIDGE_NAME}}
 fsm_handler=dev_dhcp # must start with 'dev' so the controller leaves it alone
 of_out_token=dev_flow_dhcp_out
 of_in_token=dev_flow_dhcp_in

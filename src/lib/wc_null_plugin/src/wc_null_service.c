@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "const.h"
 #include "ds_tree.h"
 #include "log.h"
+#include "memutil.h"
 
 
 static struct fsm_wc_null_mgr cache_mgr =
@@ -188,8 +189,7 @@ fsm_wc_null_lookup_session(struct fsm_session *session)
     if (wc_session != NULL) return wc_session;
 
     LOGD("%s: Adding new session %s", __func__, session->name);
-    wc_session = calloc(1, sizeof(*wc_session));
-    if (wc_session == NULL) return NULL;
+    wc_session = CALLOC(1, sizeof(*wc_session));
 
     ds_tree_insert(sessions, wc_session, session);
 
@@ -205,7 +205,7 @@ fsm_wc_null_lookup_session(struct fsm_session *session)
 void
 fsm_wc_null_free_session(struct fsm_wc_null_session *wc_session)
 {
-    free(wc_session);
+    FREE(wc_session);
 }
 
 

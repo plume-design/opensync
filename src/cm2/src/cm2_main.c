@@ -98,7 +98,7 @@ int main(int argc, char ** argv)
     /* Register to dynamic severity updates */
     log_register_dynamic_severity(loop);
 
-    (void)te_client_init(argv[0], TESRV_SOCKET_ADDR);
+    (void)te_client_init(NULL);
     TELOG_STEP("MANAGER", argv[0], "start", NULL);
 
     backtrace_init();

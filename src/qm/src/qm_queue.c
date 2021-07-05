@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_time.h"
 #include "log.h"
 #include "qm.h"
+#include "memutil.h"
 
 qm_queue_t g_qm_queue;
 
@@ -43,11 +44,11 @@ void qm_queue_item_free_buf(qm_item_t *qi)
     if (qi) {
         // cleanup
         if (qi->topic) {
-            free(qi->topic);
+            FREE(qi->topic);
             qi->topic = NULL;
         }
         if (qi->buf) {
-            free(qi->buf);
+            FREE(qi->buf);
             qi->buf = NULL;
         }
     }
@@ -57,7 +58,7 @@ void qm_queue_item_free(qm_item_t *qi)
 {
     qm_queue_item_free_buf(qi);
     if (qi) {
-        free(qi);
+        FREE(qi);
     }
 }
 
@@ -182,7 +183,7 @@ bool qm_queue_append_log(qm_item_t **qitem, qm_response_t *res)
         if (g_qm_log_drop_count) {
             snprintf(drop_str, sizeof(drop_str), "--- DROPPED %d LINES ---", g_qm_log_drop_count);
         }
-        free(g_qm_log_buf);
+        FREE(g_qm_log_buf);
         g_qm_log_buf = NULL;
         g_qm_log_buf_size = 0;
     }
@@ -192,8 +193,7 @@ bool qm_queue_append_log(qm_item_t **qitem, qm_response_t *res)
         new_size += strlen(drop_str) + 1;
     }
     // resize buf
-    g_qm_log_buf = realloc(g_qm_log_buf, new_size + 1); // +1 for nul term
-    assert(g_qm_log_buf);
+    g_qm_log_buf = REALLOC(g_qm_log_buf, new_size + 1); // +1 for nul term
     // copy drop count
     if (*drop_str) {
         strscpy(g_qm_log_buf, drop_str, new_size);

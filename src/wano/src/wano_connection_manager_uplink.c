@@ -28,6 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb_table.h"
 
 #include "wano.h"
+#include "memutil.h"
 
 struct wano_connmgr_uplink
 {
@@ -93,7 +94,7 @@ struct wano_connmgr_uplink *wano_connmgr_uplink_get(const char *ifname)
         return cmu;
     }
 
-    cmu = calloc(1, sizeof(struct wano_connmgr_uplink));
+    cmu = CALLOC(1, sizeof(struct wano_connmgr_uplink));
     STRSCPY(cmu->cmu_ifname, ifname);
 
     reflink_init(&cmu->cmu_reflink, "wano_connmgr_uplink.cmu_reflink");
@@ -122,7 +123,7 @@ void wano_connmgr_uplink_reflink_fn(reflink_t *obj, reflink_t *sender)
     LOG(DEBUG, "connmgr_uplink: Reached 0 refcount: %s", self->cmu_state.if_name);
     ds_tree_remove(&wano_connmgr_uplink_list, self);
     reflink_fini(&self->cmu_reflink);
-    free(self);
+    FREE(self);
 }
 
 
@@ -372,6 +373,15 @@ bool wano_connmgr_uplink_update(
     else if (args->loop == WANO_TRI_FALSE)
     {
         SCHEMA_SET_INT(conn_up.loop, false);
+    }
+
+    if (args->eth_client == WANO_TRI_TRUE)
+    {
+        SCHEMA_SET_INT(conn_up.eth_client, true);
+    }
+    else if (args->eth_client == WANO_TRI_FALSE)
+    {
+        SCHEMA_SET_INT(conn_up.eth_client, false);
     }
 
     OVSDB_TABLE_INIT(Connection_Manager_Uplink, if_name);

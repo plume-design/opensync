@@ -62,15 +62,41 @@ struct gk_req_ids
     uint32_t req_http_url_id;
 };
 
+/**
+ * @brief required info for connecting to the
+ * gatekeeper server
+ */
+struct gk_server_info
+{
+    char *server_url;
+    char ca_path[MAX_PATH_LEN];
+    char ssl_cert[MAX_PATH_LEN];
+    char ssl_key[MAX_PATH_LEN];
+    char *cert_path;
+};
+
 struct gk_curl_easy_info
 {
     CURL *curl_handle;
     bool connection_active;
     time_t connection_time;
-    char *server_url;
-    char ca_path[MAX_PATH_LEN];
-    char ssl_cert[MAX_PATH_LEN];
-    char ssl_key[MAX_PATH_LEN];
+};
+
+struct gk_curl_multi_info
+{
+    struct ev_timer timer_event;
+    struct ev_loop *loop;
+    CURLM *mcurl_handle;
+    int still_running;
+};
+
+struct gk_mcurl_data
+{
+    int req_type;
+    int req_id;
+    time_t timestamp;
+    struct fsm_gk_verdict *gk_verdict;
+    ds_tree_node_t mcurl_req_node;
 };
 
 /**
@@ -90,6 +116,7 @@ struct fsm_gk_mgr
 struct fsm_gk_verdict
 {
     struct fsm_policy_req *policy_req;
+    struct fsm_policy_reply *policy_reply;
     struct gk_packed_buffer *gk_pb;
 };
 
@@ -117,12 +144,16 @@ struct gatekeeper_offline
 struct fsm_gk_session
 {
     struct fsm_session *session;
+    struct gk_server_info gk_server_info;
+    struct gk_curl_multi_info mcurl;
     struct gk_curl_easy_info ecurl;
+    bool enable_multi_curl;
     bool initialized;
     time_t stat_report_ts;
     int32_t reported_lookup_failures;
     int32_t remote_lookup_retries;
     ds_tree_node_t session_node;
+    ds_tree_t mcurl_data_tree;          /* tree for storing gk_mcurl_data */
     long health_stats_report_interval;
     char *health_stats_report_topic;
     struct fsm_url_stats health_stats;
@@ -132,6 +163,7 @@ struct fsm_gk_session
     const char *pattern_fqdn;
     regex_t *re_lan;
     regex_t *re;
+    struct fsm_policy_client cache_flush_client;
 };
 
 
@@ -249,10 +281,10 @@ void
 free_gk_verdict(struct fsm_gk_verdict *gk_verdict);
 
 bool
-gk_check_policy_in_cache(struct fsm_policy_req *req);
+gk_check_policy_in_cache(struct fsm_policy_req *req, struct fsm_policy_reply *policy_reply);
 
 bool
-gk_add_policy_to_cache(struct fsm_policy_req *req);
+gk_add_policy_to_cache(struct fsm_policy_req *req, struct fsm_policy_reply *policy_reply);
 
 /**
  * @brief computes health stats for gatekeeper
@@ -263,5 +295,17 @@ gk_add_policy_to_cache(struct fsm_policy_req *req);
 void
 gatekeeper_report_compute_health_stats(struct fsm_gk_session *fsm_gk_session,
                                        struct wc_health_stats *hs);
+
+bool
+gk_process_using_multi_curl(struct fsm_policy_req *req, struct fsm_policy_reply *policy_reply);
+
+void
+free_mcurl_data(struct gk_mcurl_data *mcurl_request);
+
+bool
+gk_process_using_multi_curl(struct fsm_policy_req *policy_req,
+                            struct fsm_policy_reply *policy_reply);
+bool
+gk_lookup_using_multi_curl(struct fsm_policy_req* req);
 
 #endif /* GATEKEEPER_H_INCLUDED */

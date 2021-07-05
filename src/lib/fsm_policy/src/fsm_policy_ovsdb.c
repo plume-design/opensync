@@ -533,6 +533,20 @@ void fsm_policy_set_action(struct fsm_policy *fpolicy,
         fpolicy->action = FSM_GATEKEEPER_REQ;
         return;
     }
+
+    cmp = strcmp(spolicy->action, "flush");
+    if (cmp == 0)
+    {
+        fpolicy->action = FSM_FLUSH_CACHE;
+        return;
+    }
+
+    cmp= strcmp(spolicy->action, "flush_all");
+    if (cmp == 0)
+    {
+        fpolicy->action = FSM_FLUSH_ALL_CACHE;
+        return;
+    }
 }
 
 
@@ -640,10 +654,10 @@ err_free_redirects:
     free_str_set(fpolicy->redirects);
 
 err_free_rule_name:
-    free(fpolicy->rule_name);
+    FREE(fpolicy->rule_name);
 
 err_free_fpolicy:
-    free(fpolicy);
+    FREE(fpolicy);
 
     LOGE("%s: Failed to load policy %s into table %s",
         __func__, spolicy->name, table->name);
@@ -673,6 +687,78 @@ struct fsm_policy * fsm_policy_lookup(struct schema_FSM_Policy *spolicy)
     return fpolicy;
 }
 
+static void
+fsm_policy_request_flush(struct schema_FSM_Policy *spolicy)
+{
+    struct fsm_policy *fpolicy;
+    struct fsm_policy_rules *rules;
+    size_t idx;
+    bool check;
+
+    /* Translate the ovsdb structure */
+    fpolicy = CALLOC(1, sizeof(*fpolicy));
+    if (fpolicy == NULL) return;
+
+    idx = (size_t)spolicy->idx;
+    fpolicy->idx = idx;
+
+    if (spolicy->name_present)
+    {
+        fpolicy->rule_name = STRDUP(spolicy->name);
+        if (fpolicy->rule_name == NULL) goto err_free_fpolicy;
+    }
+
+    fpolicy->other_config = schema2tree(sizeof(spolicy->other_config_keys[0]),
+                                        sizeof(spolicy->other_config[0]),
+                                        spolicy->other_config_len,
+                                        spolicy->other_config_keys,
+                                        spolicy->other_config);
+    check = fsm_check_conversion(fpolicy->other_config,
+                                 spolicy->other_config_len);
+    if (!check) goto err_free_rule_name;
+
+    fsm_policy_set_action(fpolicy, spolicy);
+    fsm_policy_set_log(fpolicy, spolicy);
+
+    rules = &fpolicy->rules;
+    check = fsm_set_rules(rules, spolicy);
+    if (!check) goto err_free_other_config;
+
+    /* Broadcast the flushing request */
+    fsm_policy_flush_cache(fpolicy);
+
+    fsm_free_rules(rules);
+
+err_free_other_config:
+    free_str_tree(fpolicy->other_config);
+
+err_free_rule_name:
+    FREE(fpolicy->rule_name);
+
+err_free_fpolicy:
+    FREE(fpolicy);
+
+    return;
+}
+
+
+static bool
+fsm_policy_is_flush_request(struct schema_FSM_Policy *spolicy)
+{
+    bool flush;
+    int rc;
+
+    if (!spolicy->action_exists) return false;
+
+    rc = strcmp(spolicy->action, "flush");
+    flush = (rc == 0);
+
+    rc = strcmp(spolicy->action, "flush_all");
+    flush |= (rc == 0);
+
+    return flush;
+}
+
 
 struct fsm_policy * fsm_policy_get(struct schema_FSM_Policy *spolicy)
 {
@@ -681,7 +767,6 @@ struct fsm_policy * fsm_policy_get(struct schema_FSM_Policy *spolicy)
     struct fsm_policy **fpolicy;
     ds_tree_t *tree;
     char *name;
-
     int idx;
 
     mgr = fsm_policy_get_mgr();
@@ -725,21 +810,32 @@ void fsm_add_policy(struct schema_FSM_Policy *spolicy)
     struct fsm_policy *fpolicy;
     char *name = "default";
     bool no_name;
-    int idx = spolicy->idx;
+    bool flush;
+    int idx;
 
+    idx = spolicy->idx;
     if ((idx < 0) || (idx >= FSM_MAX_POLICIES))
     {
-        LOGE("Invalid policy index %d", spolicy->idx);
+        LOGE("%s(): Invalid policy index %d", __func__, spolicy->idx);
         return;
     }
 
     no_name = !spolicy->policy_exists;
     if (no_name) STRSCPY(spolicy->policy, name);
 
+    /* Check if it is a flushing request */
+    flush = fsm_policy_is_flush_request(spolicy);
+    if (flush)
+    {
+        fsm_policy_request_flush(spolicy);
+        LOGT("%s(): flush policy not added", __func__);
+        return;
+    }
+
     fpolicy = fsm_policy_get(spolicy);
     if (fpolicy == NULL)
     {
-        LOGE("%s: addition of policy %s:%s failed", __func__,
+        LOGE("%s(): addition of policy %s:%s failed", __func__,
              spolicy->policy, spolicy->name);
         return;
     }

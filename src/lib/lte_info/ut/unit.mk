@@ -37,4 +37,4 @@ UNIT_DEPS += src/qm/qm_conn
 UNIT_DEPS += src/lib/unity
 UNIT_DEPS += src/lib/target
 UNIT_DEPS += src/lib/osa
-
+UNIT_DEPS += src/qm/qm_conn

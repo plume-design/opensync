@@ -26,10 +26,12 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="nm2/$(basename "$0")"
 manager_setup_file="nm2/nm2_setup.sh"
@@ -52,16 +54,17 @@ Script usage example:
    ./${tc_name} wifi0 vif 10.0.0.10
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 NARGS=3
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 if_name=$1
@@ -88,39 +91,39 @@ create_inet_entry \
     -inet_addr 10.10.10.30 \
     -netmask "255.255.255.0" \
     -if_type "$if_type" &&
-        log "$tc_name: Interface successfully created" ||
-        raise "Failed to create interface" -l "$tc_name" -tc
+        log "$tc_name: Interface $if_name created - Success" ||
+        raise "FAIL: Failed to create $if_name interface" -l "$tc_name" -ds
 
 log "$tc_name: Setting BROADCAST for $if_name to $broadcast"
 update_ovsdb_entry Wifi_Inet_Config -w if_name "$if_name" -u broadcast "$broadcast" &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config table updated - broadcast $broadcast" ||
-    raise "update_ovsdb_entry - Failed to update Wifi_Inet_Config - broadcast $broadcast" -l "$tc_name" -tc
+    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config::broadcast is '$broadcast' - Success" ||
+    raise "FAIL: update_ovsdb_entry - Wifi_Inet_Config::broadcast is not '$broadcast'" -l "$tc_name" -oe
 
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is broadcast "$broadcast" &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State - broadcast $broadcast" ||
-    raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - broadcast $broadcast" -l "$tc_name" -tc
+    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::broadcast is '$broadcast' - Success" ||
+    raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::broadcast is not '$broadcast'" -l "$tc_name" -tc
 
-log "$tc_name: LEVEL 2 - Check if BROADCAST was properly applied to $if_name"
+log "$tc_name: Check if BROADCAST was properly applied to $if_name - LEVEL2"
 wait_for_function_response 0 "get_interface_broadcast_from_system $if_name | grep -q \"$broadcast\"" &&
-    log "$tc_name: LEVEL2: BROADCAST applied to ifconfig - broadcast $broadcast" ||
-    raise "LEVEL2: Failed to apply BROADCAST to ifconfig - broadcast $broadcast" -l "$tc_name" -tc
+    log "$tc_name: LEVEL2 - BROADCAST applied to ifconfig - broadcast is $broadcast - Success" ||
+    raise "FAIL: LEVEL2 - Failed to apply BROADCAST to ifconfig - broadcast is not $broadcast" -l "$tc_name" -tc
 
-log "$tc_name: Removing broadcast from Wifi_Inet_Config"
+log "$tc_name: Removing broadcast from Wifi_Inet_Config for $if_name"
 update_ovsdb_entry Wifi_Inet_Config -w if_name "$if_name" \
     -u broadcast 0.0.0.0 \
     -u ip_assign_scheme none &&
-        log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config table updated - broadcast 0.0.0.0" ||
-        raise "update_ovsdb_entry - Failed to update Wifi_Inet_Config - broadcast 0.0.0.0" -l "$tc_name" -tc
+        log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config::broadcast is '0.0.0.0' - Success" ||
+        raise "FAIL: update_ovsdb_entry - Wifi_Inet_Config::broadcast is not '0.0.0.0'" -l "$tc_name" -oe
 
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" \
     -is broadcast 0.0.0.0 \
     -is ip_assign_scheme none &&
-        log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State - broadcast 0.0.0.0" ||
-        raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - broadcast 0.0.0.0" -l "$tc_name" -tc
+        log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::broadcast is '0.0.0.0' - Success" ||
+        raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::broadcast is not '0.0.0.0'" -l "$tc_name" -tc
 
-log "$tc_name: LEVEL 2 - Check if BROADCAST was properly removed from $if_name"
+log "$tc_name: Checking if BROADCAST was properly removed for $if_name - LEVEL2"
 wait_for_function_response 1 "get_interface_broadcast_from_system $if_name | grep -q \"$broadcast\"" &&
-    log "$tc_name: LEVEL2: BROADCAST removed from ifconfig - interface $if_name" ||
-    raise "LEVEL2: Failed to remove BROADCAST to ifconfig - interface $if_name" -l "$tc_name" -tc
+    log "$tc_name: LEVEL2 - BROADCAST removed from ifconfig for interface $if_name - Success" ||
+    raise "FAIL: LEVEL2 - Failed to remove BROADCAST from ifconfig for interface $if_name" -l "$tc_name" -tc
 
 pass

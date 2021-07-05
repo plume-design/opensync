@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "os.h"
 #include "util.h"
+#include "memutil.h"
 #include "ovsdb.h"
 #include "ovsdb_update.h"
 #include "schema.h"
@@ -211,12 +212,12 @@ void ovsdb_cache_update_cb(ovsdb_update_monitor_t *self)
                     table->table_name, typestr, mon_uuid);
                 return;
             }
-            row = calloc(1, table->row_size);
+            row = CALLOC(1, table->row_size);
             ret = table->from_json(row->record, self->mon_json_new,
                     table->partial_update, perr);
             if (!ret)
             {
-                free(row);
+                FREE(row);
                 LOG(ERR, "Table %s %s parsing %s error: %s",
                     table->table_name, typestr, mon_uuid, perr);
                 return;
@@ -316,7 +317,7 @@ void ovsdb_cache_update_cb(ovsdb_update_monitor_t *self)
             // callback
             if (table->cache_callback) table->cache_callback(self, old_record, row->record, row);
             // free row
-            free(row);
+            FREE(row);
             return;
 
         default:
@@ -475,7 +476,7 @@ int ovsdb_cache_upsert(ovsdb_table_t *table, void *record)
     {
         // add new
         ovsdb_cache_row_t *new_row;
-        new_row = calloc(1, table->row_size);
+        new_row = CALLOC(1, table->row_size);
         strscpy(record + table->uuid_offset, uuid.uuid, sizeof(ovs_uuid_t));
         memcpy(new_row->record, record, table->schema_size);
         LOG(INFO, "upsert %s %s: uuid: %s", table->table_name, key, uuid.uuid);
@@ -545,12 +546,12 @@ int ovsdb_cache_pre_fetch(ovsdb_table_t *table, char *key)
         return -1;
     }
 
-    row = calloc(1, table->row_size);
+    row = CALLOC(1, table->row_size);
     ret = table->from_json(row->record, jrow, false, perr);
     json_decref(result);
     if (!ret)
     {
-        free(row);
+        FREE(row);
         LOG(ERR, "Table %s parsing %s error: %s",
                 table->table_name, uuid, perr);
         return -1;

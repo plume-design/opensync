@@ -38,7 +38,7 @@ bool wm2_dummy_target_vif_config_set2(const struct schema_Wifi_VIF_Config *vconf
                                       const struct schema_Wifi_VIF_Config_flags *changed,
                                       int num_cconfs);
 bool wm2_dummy_target_dpp_supported(void);
-bool wm2_dummy_target_dpp_config_set(const struct schema_DPP_Config *config);
+bool wm2_dummy_target_dpp_config_set(const struct schema_DPP_Config **config);
 bool wm2_dummy_target_dpp_key_get(struct target_dpp_key *key);
 bool wm2_dummy_target_desired(void);
 

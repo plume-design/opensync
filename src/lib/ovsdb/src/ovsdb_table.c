@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "ds.h"
 #include "util.h"
+#include "memutil.h"
 #include "log.h"
 #include "json_util.h"
 #include "ovsdb.h"
@@ -184,8 +185,7 @@ void* ovsdb_table_select_where(ovsdb_table_t *table, json_t *where, int *count)
     if (!jrows) return NULL;
     cnt = json_array_size(jrows);
     if (!cnt) goto out;
-    records_array = calloc(1, cnt * table->schema_size);
-    if (!records_array) goto out;
+    records_array = CALLOC(1, cnt * table->schema_size);
     for (i = 0; i < cnt; i++)
     {
         jrow = json_array_get(jrows, i);
@@ -198,7 +198,7 @@ void* ovsdb_table_select_where(ovsdb_table_t *table, json_t *where, int *count)
 
 out:
     if (!retval && records_array)
-        free(records_array);
+        FREE(records_array);
     json_decref(jrows);
     return retval;
 }

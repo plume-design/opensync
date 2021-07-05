@@ -44,6 +44,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_types.h"
 #include "os_time.h"
 #include "util.h"
+#include "memutil.h"
 #include "ds_list.h"
 #include "os_util.h"
 #include "os_regex.h"
@@ -607,12 +608,7 @@ bool os_nif_list_get(ds_list_t *list)
         switch (match)
         {
             case 1:
-                n = malloc(sizeof(struct os_nif_list_entry));
-                if (n == NULL)
-                {
-                    LOG(ERR, "Error allocating space for new nif entry.");
-                    goto error;
-                }
+                n = MALLOC(sizeof(struct os_nif_list_entry));
 
                 os_reg_match_cpy(n->le_ifname, sizeof(n->le_ifname), buf, rm[1]);
 
@@ -654,7 +650,7 @@ void os_nif_list_free(ds_list_t* list)
          n = ds_list_inext(&iter))
     {
         ds_list_iremove(&iter);
-        free(n);
+        FREE(n);
     }
 }
 

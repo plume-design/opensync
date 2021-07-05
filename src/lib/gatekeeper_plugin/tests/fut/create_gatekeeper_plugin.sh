@@ -31,6 +31,8 @@
 #  /tmp/create_gatekeeper_plugin.sh --server_url=https://ovs_dev.plume.com:443 --certs=/tmp/cacert.pem
 prog=$0
 
+. /usr/opensync/etc/kconfig # TODO: This should point to {INSTALL_PREFIX}/etc/kconfig
+
 # Check if a specific command is in the path. Bail if not found.
 check_cmd() {
     cmd=$1
@@ -72,7 +74,7 @@ gen_gk_plugin_cmd() {
         "row": {
                "handler": "${provider_plugin}",
                "type": "web_cat_provider",
-               "plugin": "/usr/plume/lib/libfsm_gk.so",
+               "plugin": "${CONFIG_INSTALL_PREFIX}/lib/libfsm_gk.so",
                "other_config":
                         ["map",[
                         ["dso_init","gatekeeper_plugin_init"],

@@ -48,6 +48,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fsm_dpi_utils.h"
 #include "json_mqtt.h"
 #include "memutil.h"
+#include "fsm_policy.h"
 
 #define IPTHREAT_CACHE_INTERVAL  120
 
@@ -313,25 +314,25 @@ ipthreat_dpi_plugin_exit(struct fsm_session *session)
     return;
 }
 
-
 /**
  * @brief send an event report
  *
  * @param req the request triggering the report
  */
 static void
-ipthreat_dpi_send_report(struct fsm_policy_req *policy_req)
+ipthreat_dpi_send_report(struct fsm_policy_req *policy_req,
+                         struct fsm_policy_reply *policy_reply)
 {
     struct fqdn_pending_req *req;
     struct fsm_session *session;
     char *report;
 
-    req = policy_req->fqdn_req;
-    if (req->to_report != true) return;
-    if (req->num_replies > 1) return;
+    if (policy_reply->to_report != true) return;
 
+    req = policy_req->fqdn_req;
     session = req->fsm_context;
-    report = jencode_url_report(session, req);
+
+    report = jencode_url_report(session, req, policy_reply);
     session->ops.send_report(session, report);
 }
 
@@ -391,194 +392,6 @@ populate_gk_dns_cache_entry(struct ip2action_gk_info *i2a_cache_gk,
     {
         i2a_cache_gk->gk_policy = fqdn_reply_gk->gk_policy;
     }
-}
-
-
-static int
-ipthreat_dpi_policy_req(struct ipthreat_dpi_req *ip_req)
-{
-    struct fsm_policy_req           policy_req;
-    struct ip2action_req            cache_req;
-    struct ip2action_req            lkp_req;
-    struct fsm_session              *session;
-    struct fqdn_pending_req         fqdn_req;
-    struct net_md_stats_accumulator *acc;
-    struct net_md_flow_key          *key;
-    bool cache;
-    size_t index;
-    int  action;
-    int  ttl;
-    int  ret;
-    bool rc;
-
-    session = ip_req->session;
-    if (session->provider_ops == NULL) return FSM_DPI_PASSTHRU;
-
-    memset(&fqdn_req, 0, sizeof(fqdn_req));
-    memset(&policy_req, 0, sizeof(policy_req));
-    memset(&cache_req, 0, sizeof(cache_req));
-
-    if (session->service)
-        fqdn_req.provider = session->service->name;
-    else
-        fqdn_req.provider = session->name;
-
-    if (!fqdn_req.provider) return FSM_ACTION_NONE;
-
-    acc = ip_req->acc;
-    if (acc == NULL) return FSM_DPI_PASSTHRU;
-
-    key = acc->key;
-    if (key == NULL) return FSM_DPI_PASSTHRU;
-
-    if (key->ip_version == 0) return FSM_DPI_PASSTHRU;
-
-    fqdn_req.fsm_context = session;
-    fqdn_req.send_report = session->ops.send_report;
-    memcpy(fqdn_req.dev_id.addr, ip_req->dev_id,
-           sizeof(fqdn_req.dev_id.addr));
-    fqdn_req.redirect = false;
-    fqdn_req.to_report = false;
-    fqdn_req.fsm_checked = false;
-    fqdn_req.req_type = (key->ip_version == 4 ? FSM_IPV4_REQ : FSM_IPV6_REQ);
-    fqdn_req.policy_table = ip_req->table;
-    fqdn_req.numq = 1;
-    fqdn_req.acc = ip_req->acc;
-    fqdn_req.rd_ttl = IPTHREAT_DEFAULT_TTL;
-    fqdn_req.req_info = CALLOC(1, sizeof(struct fsm_url_request));
-    if (fqdn_req.req_info == NULL) return FSM_DPI_PASSTHRU;
-    ret = getnameinfo((struct sockaddr *)(ip_req->ip),
-                      sizeof(struct sockaddr_storage),
-                      fqdn_req.req_info->url, sizeof(fqdn_req.req_info->url),
-                      0, 0, NI_NUMERICHOST);
-    if (ret)
-    {
-        LOGE("%s: failure: %s", __func__, strerror(errno));
-        FREE(fqdn_req.req_info);
-        return FSM_ACTION_NONE;
-    }
-
-    fqdn_req.categories_check = session->provider_ops->categories_check;
-    fqdn_req.risk_level_check = session->provider_ops->risk_level_check;
-    fqdn_req.gatekeeper_req = session->provider_ops->gatekeeper_req;
-
-    policy_req.device_id = ip_req->dev_id;
-    policy_req.reply.rd_ttl = -1;
-    policy_req.reply.cache_ttl = 0;
-    policy_req.fqdn_req = &fqdn_req;
-    policy_req.ip_addr = ip_req->ip;
-    policy_req.url = fqdn_req.req_info->url;
-    policy_req.acc = ip_req->acc;
-    fsm_apply_policies(session, &policy_req);
-
-    fqdn_req.action = policy_req.reply.action;
-    fqdn_req.policy = policy_req.reply.policy;
-    fqdn_req.policy_idx = policy_req.reply.policy_idx;
-    fqdn_req.rule_name = policy_req.reply.rule_name;
-
-    ttl = (fqdn_req.rd_ttl < policy_req.reply.rd_ttl ?
-                       fqdn_req.rd_ttl : policy_req.reply.rd_ttl);
-    if (ttl == -1)
-    {
-        ttl = ((policy_req.reply.cache_ttl != 0) ? policy_req.reply.cache_ttl :
-               IPTHREAT_DEFAULT_TTL);
-    }
-
-    fqdn_req.to_report = true;
-
-    memset(&lkp_req, 0, sizeof(lkp_req));
-    lkp_req.device_mac = ip_req->dev_id;
-    lkp_req.ip_addr = ip_req->ip;
-    rc = dns_cache_get_policy_action(&lkp_req);
-    if (rc)
-    {
-        if (lkp_req.action != policy_req.reply.action)
-        {
-            policy_req.reply.action = lkp_req.action;
-            policy_req.fqdn_req->policy_idx = lkp_req.policy_idx;
-            fqdn_req.to_report = false;
-        }
-    }
-
-    action = (policy_req.reply.action == FSM_BLOCK ?
-              FSM_DPI_DROP : FSM_DPI_PASSTHRU);
-
-    /* Add cache if entry not found */
-    cache = (!policy_req.fqdn_req->from_cache && (fqdn_req.req_info->reply != NULL) &&
-             (!fqdn_req.req_info->reply->connection_error) &&
-             (fqdn_req.categorized == FSM_FQDN_CAT_SUCCESS));
-
-    if (cache)
-    {
-        cache_req.device_mac = ip_req->dev_id;
-        cache_req.ip_addr = ip_req->ip;
-        cache_req.cache_ttl = ttl;
-        cache_req.action = policy_req.reply.action;
-        cache_req.policy_idx = fqdn_req.policy_idx;
-        cache_req.service_id = fqdn_req.req_info->reply->service_id;
-        cache_req.nelems = fqdn_req.req_info->reply->nelems;
-        cache_req.cat_unknown_to_service = fqdn_req.cat_unknown_to_service;
-
-        for (index = 0; index < fqdn_req.req_info->reply->nelems; ++index)
-        {
-            cache_req.categories[index] = fqdn_req.req_info->reply->categories[index];
-        }
-
-        if (cache_req.service_id == IP2ACTION_BC_SVC)
-        {
-            populate_bc_dns_cache_entry(&cache_req.cache_bc,
-                                        &fqdn_req.req_info->reply->bc,
-                                        fqdn_req.req_info->reply->nelems);
-        }
-        else if (cache_req.service_id == IP2ACTION_WP_SVC)
-        {
-            populate_wb_dns_cache_entry(&cache_req.cache_wb,
-                                        &fqdn_req.req_info->reply->wb);
-        }
-        else if (cache_req.service_id == IP2ACTION_GK_SVC)
-        {
-            populate_gk_dns_cache_entry(&cache_req.cache_gk,
-                                        &fqdn_req.req_info->reply->gk);
-        }
-        else
-        {
-            LOGD("%s : service id %d no recognized", __func__, fqdn_req.req_info->reply->service_id);
-        }
-
-        rc = dns_cache_add_entry(&cache_req);
-        if (!rc)
-        {
-            LOGW("%s: Couldn't add ip2action entry to cache.",__func__);
-        }
-    }
-
-    /* Process reporting */
-    if (policy_req.reply.log == FSM_REPORT_NONE)
-    {
-        fqdn_req.to_report = false;
-    }
-
-    if ((policy_req.reply.log == FSM_REPORT_BLOCKED) &&
-        (policy_req.reply.action != FSM_BLOCK))
-    {
-        fqdn_req.to_report = false;
-    }
-
-    /* Overwrite logging and policy if categorization failed */
-    if (fqdn_req.categorized == FSM_FQDN_CAT_FAILED)
-    {
-        fqdn_req.action = FSM_ALLOW;
-        fqdn_req.to_report = true;
-    }
-
-    ipthreat_dpi_send_report(&policy_req);
-
-    FREE(fqdn_req.policy);
-    FREE(fqdn_req.rule_name);
-    fsm_free_url_reply(fqdn_req.req_info->reply);
-    FREE(fqdn_req.req_info);
-
-    return action;
 }
 
 
@@ -663,6 +476,367 @@ ipthreat_dpi_get_policy_table(struct ipthreat_dpi_session *ipthreat_dpi_session,
     return policy_client->table;
 }
 
+static int
+init_ipthreat_specific_request(struct fsm_policy_req *policy_request,
+                               struct fsm_request_args *request_args,
+                               struct sockaddr_storage *ip)
+{
+    struct fqdn_pending_req *pending_req;
+    struct net_md_flow_key *key;
+    struct sockaddr_storage *ip_addr;
+    int result;
+
+    key = request_args->acc->key;
+    pending_req = policy_request->fqdn_req;
+
+    policy_request->req_type = (key->ip_version == 4 ? FSM_IPV4_REQ : FSM_IPV6_REQ);
+    pending_req->numq = 1;
+    pending_req->rd_ttl = IPTHREAT_DEFAULT_TTL;
+
+    result = getnameinfo((struct sockaddr *) (ip),
+                         sizeof(struct sockaddr_storage),
+                         pending_req->req_info->url,
+                         sizeof(pending_req->req_info->url),
+                         0,
+                         0,
+                         NI_NUMERICHOST);
+
+    if (result)
+    {
+        LOGD("%s: failure: %s", __func__, strerror(errno));
+        return -1;
+    }
+
+    ip_addr = policy_request->ip_addr;
+    memcpy(ip_addr, ip, sizeof(*ip_addr));
+
+    policy_request->url = pending_req->req_info->url;
+
+    return 0;
+}
+
+/**
+ * @brief creates ipthreat request structure
+ *
+ * Prepare a key to lookup the flow stats info, and update the flow stats.
+ * @param request_args fsm request Arguments
+ * @param ip_addr ip address for which policy check needs to be performed
+ * @param table policy table.
+ */
+static struct fsm_policy_req *
+ipthreat_create_request(struct fsm_request_args *request_args,
+                        struct sockaddr_storage *ip_addr)
+{
+    struct fsm_policy_req *policy_request;
+    int ret;
+
+    /* initialize fsm policy request structure */
+    policy_request = fsm_policy_initialize_request(request_args);
+    if (policy_request == NULL)
+    {
+        LOGD("%s(): fsm policy request initialization failed for ipthreat", __func__);
+        return NULL;
+    }
+
+    ret = init_ipthreat_specific_request(policy_request, request_args, ip_addr);
+    if (ret == -1)
+    {
+        LOGT("%s(): failed to initialize ipthreat related request", __func__);
+        goto free_policy_req;
+    }
+
+    return policy_request;
+
+free_policy_req:
+    fsm_policy_free_request(policy_request);
+    return NULL;
+}
+
+bool
+ipthreat_validate_reply(struct fsm_policy_req *policy_request,
+                        struct fsm_policy_reply *policy_reply)
+{
+    struct fqdn_pending_req *pending_req;
+
+    pending_req = policy_request->fqdn_req;
+
+    /* if the result was from the provider cache, it should already be present in dns
+     * cache */
+    if (policy_reply->from_cache)
+    {
+        LOGT("%s(): ipthreat reply is from cache", __func__);
+        return false;
+    }
+
+    /* return if the reply is empty */
+    if (pending_req->req_info->reply == NULL)
+    {
+        LOGT("%s(): reply is NULL", __func__);
+        return false;
+    }
+
+    /* nothing to add in case of connection error */
+    if (pending_req->req_info->reply->connection_error)
+    {
+        LOGT("%s(): connection error when processing ipthreat reply", __func__);
+        return false;
+    }
+
+    /* return if the cloud lookup failed */
+    if (policy_reply->categorized != FSM_FQDN_CAT_SUCCESS)
+    {
+        LOGT("%s(): ipthreat reply lookup fail", __func__);
+        return false;
+    }
+    return true;
+}
+
+int
+ipthreat_get_ttl(struct fsm_policy_req *policy_request,
+                 struct fsm_policy_reply *policy_reply)
+{
+    struct fqdn_pending_req *pending_req;
+    int ttl;
+
+    pending_req = policy_request->fqdn_req;
+
+    ttl = (pending_req->rd_ttl < policy_reply->rd_ttl)
+              ? pending_req->rd_ttl
+              : policy_reply->rd_ttl;
+
+    if (ttl != -1) return ttl;
+
+    ttl = (policy_reply->cache_ttl != 0) ? policy_reply->cache_ttl
+                                                 : IPTHREAT_DEFAULT_TTL;
+
+    return ttl;
+}
+
+void
+ipthreat_update_cache(struct fsm_policy_req *policy_request,
+                      struct fsm_policy_reply *policy_reply)
+{
+    struct fqdn_pending_req *pending_req;
+    struct ip2action_req cache_req;
+    size_t index;
+    bool ret;
+    int rc;
+
+    memset(&cache_req, 0, sizeof(cache_req));
+    pending_req = policy_request->fqdn_req;
+
+    /* check if the reply is valid */
+    ret = ipthreat_validate_reply(policy_request, policy_reply);
+    if (ret == false) return;
+
+    LOGT("%s(): updating cache for %s", __func__, policy_request->url);
+
+    cache_req.device_mac = policy_request->device_id;
+    cache_req.ip_addr = policy_request->ip_addr;
+    cache_req.cache_ttl = ipthreat_get_ttl(policy_request, policy_reply);
+    cache_req.action = policy_reply->action;
+    cache_req.policy_idx = policy_reply->policy_idx;
+    cache_req.service_id = pending_req->req_info->reply->service_id;
+    cache_req.nelems = pending_req->req_info->reply->nelems;
+    cache_req.cat_unknown_to_service = policy_reply->cat_unknown_to_service;
+
+    for (index = 0; index < pending_req->req_info->reply->nelems; ++index)
+    {
+        cache_req.categories[index] = pending_req->req_info->reply->categories[index];
+    }
+
+    if (cache_req.service_id == IP2ACTION_BC_SVC)
+    {
+        populate_bc_dns_cache_entry(&cache_req.cache_bc,
+                                    &pending_req->req_info->reply->bc,
+                                    pending_req->req_info->reply->nelems);
+    }
+    else if (cache_req.service_id == IP2ACTION_WP_SVC)
+    {
+        populate_wb_dns_cache_entry(&cache_req.cache_wb,
+                                    &pending_req->req_info->reply->wb);
+    }
+    else if (cache_req.service_id == IP2ACTION_GK_SVC)
+    {
+        populate_gk_dns_cache_entry(&cache_req.cache_gk,
+                                    &pending_req->req_info->reply->gk);
+    }
+    else
+    {
+        LOGD("%s : service id %d no recognized", __func__, pending_req->req_info->reply->service_id);
+    }
+
+    rc = dns_cache_add_entry(&cache_req);
+    if (!rc)
+    {
+        LOGW("%s: Couldn't add ip2action entry to cache.",__func__);
+    }
+
+}
+
+void
+ipthreat_process_report(struct fsm_policy_req* policy_request, struct fsm_policy_reply *policy_reply)
+{
+    policy_reply->to_report = true;
+
+    if (policy_reply->log == FSM_REPORT_NONE)
+    {
+        policy_reply->to_report = false;
+    }
+
+    if (policy_reply->log == FSM_REPORT_BLOCKED &&
+        policy_reply->action != FSM_BLOCK)
+    {
+        policy_reply->to_report = false;
+    }
+
+    /* Overwrite logging and policy if categorization failed */
+    if (policy_reply->categorized == FSM_FQDN_CAT_FAILED)
+    {
+        policy_reply->action = FSM_ALLOW;
+        policy_reply->to_report = true;
+    }
+
+    ipthreat_dpi_send_report(policy_request, policy_reply);
+}
+
+static void
+ipthreat_process_async_action(struct fsm_policy_req *policy_request,
+                              struct fsm_policy_reply *policy_reply)
+{
+    struct net_md_stats_accumulator *acc;
+
+    acc = policy_request->acc;
+    if (acc == NULL)
+    {
+        LOGT("%s(): acc is NULL, not setting action", __func__);
+        return;
+    }
+
+    LOGT("%s(): setting async action ", __func__);
+    if (policy_reply->action == FSM_DPI_DROP)
+    {
+        fsm_dpi_block_flow(acc);
+    }
+    else
+    {
+        fsm_dpi_allow_flow(acc);
+    }
+}
+
+void
+ipthreat_process_action(struct fsm_policy_req *policy_request,
+                        struct net_header_parser *net_parser,
+                        struct fsm_policy_reply *policy_reply)
+{
+    char *direction;
+
+    LOGT("%s(): ipthreat policy received action %d",
+         __func__, policy_reply->action);
+    policy_reply->action = (policy_reply->action == FSM_BLOCK ?
+                            FSM_DPI_DROP : FSM_DPI_PASSTHRU);
+
+    if (policy_reply->action == FSM_DPI_DROP)
+    {
+        direction = (policy_request->acc->direction == NET_MD_ACC_OUTBOUND_DIR) ?
+                        "outbound" :
+                        "inbound";
+        LOGI("%s: blocking access to: %s connection %s",
+             __func__,
+             direction,
+             policy_request->url);
+        net_header_logi(net_parser);
+    }
+
+    if (policy_reply->reply_type == FSM_ASYNC_REPLY)
+    {
+        LOGD("%s(): setting the async verdict using as %d",
+             __func__, policy_reply->action);
+        ipthreat_process_async_action(policy_request, policy_reply);
+    }
+    else
+    {
+        fsm_dpi_set_acc_state(policy_request->session, net_parser,
+                              policy_reply->action);
+    }
+}
+
+int
+ipthreat_process_verdict(struct fsm_policy_req *policy_request,
+                         struct net_header_parser *net_parser,
+                         struct fsm_policy_reply *policy_reply)
+{
+    LOGT("%s(): processing ipthreat verdict for policy req == %p",
+         __func__,
+         policy_request);
+
+    ipthreat_update_cache(policy_request, policy_reply);
+
+    ipthreat_process_report(policy_request, policy_reply);
+
+    ipthreat_process_action(policy_request, net_parser, policy_reply);
+
+    fsm_policy_free_request(policy_request);
+
+    fsm_policy_free_reply(policy_reply);
+
+    return 0;
+}
+
+static int
+ipthreat_process_request(struct fsm_policy_req *policy_request,
+                         struct fsm_policy_reply *policy_reply)
+{
+    LOGT("%s(): invoked", __func__);
+
+    return fsm_apply_policies(policy_request, policy_reply);
+
+}
+
+static char *
+ipthreat_get_provider(struct fsm_session *session)
+{
+    char *provider;
+
+    if (session->service)
+        provider = session->service->name;
+    else
+        provider = session->name;
+
+    return provider;
+}
+
+static void
+init_ipthreat_specific_reply(struct fsm_request_args *request_args,
+                             struct fsm_policy_reply *policy_reply)
+{
+    struct fsm_session *session;
+
+    session = request_args->session;
+
+    policy_reply->provider = ipthreat_get_provider(session);;
+    policy_reply->send_report = session->ops.send_report;
+    policy_reply->categories_check = session->provider_ops->categories_check;
+    policy_reply->risk_level_check = session->provider_ops->risk_level_check;
+    policy_reply->gatekeeper_req = session->provider_ops->gatekeeper_req;
+}
+
+struct fsm_policy_reply *
+fsm_ipthreat_create_reply(struct fsm_request_args *request_args)
+{
+    struct fsm_policy_reply *policy_reply;
+
+    policy_reply = fsm_policy_initialize_reply(request_args->session);
+    if (policy_reply == NULL)
+    {
+        LOGD("%s(): failed to initialize policy reply for dpi sni", __func__);
+        return NULL;
+    }
+
+    init_ipthreat_specific_reply(request_args, policy_reply);
+
+    return policy_reply;
+}
 
 /**
  * @brief process the parsed message
@@ -676,6 +850,7 @@ ipthreat_dpi_process_message(struct ipthreat_dpi_session *ds_session)
     struct net_md_stats_accumulator *acc;
     struct net_header_parser *net_parser;
     struct ipthreat_dpi_parser *parser;
+    struct fsm_policy_req *policy_request;
     struct fsm_session *session;
     struct policy_table *table;
     struct eth_header *eth_hdr;
@@ -684,9 +859,11 @@ ipthreat_dpi_process_message(struct ipthreat_dpi_session *ds_session)
     struct ip6_hdr *ip6hdr;
     struct sockaddr_storage  ip_addr;
     os_macaddr_t             *dev_mac;
-    struct ipthreat_dpi_req  ip_req;
-    int action = 0;
+    struct fsm_request_args request_args;
+    struct fsm_policy_reply *policy_reply;
     uint8_t *ip = NULL;
+    int request_type;
+    char *provider;
 
     session = ds_session->session;
     parser = &ds_session->parser;
@@ -695,8 +872,13 @@ ipthreat_dpi_process_message(struct ipthreat_dpi_session *ds_session)
     acc = net_parser->acc;
 
     table = ipthreat_dpi_get_policy_table(ds_session, acc);
-    if (table == NULL) return;
+    if (table == NULL)
+    {
+        LOGD("%s: Ignoring unknown/lan2lan direction packets : returning",__func__);
+        return;
+    }
 
+    memset(&request_args, 0, sizeof(request_args));
     memset(&key, 0, sizeof(key));
     if (eth_hdr->srcmac)
     {
@@ -742,23 +924,60 @@ ipthreat_dpi_process_message(struct ipthreat_dpi_session *ds_session)
 
     util_populate_sockaddr(key.ip_version == 4 ? AF_INET : AF_INET6, ip, &ip_addr);
 
-    memset(&ip_req, 0, sizeof(ip_req));
-    ip_req.session = session;
-    ip_req.dev_id = dev_mac;
-    ip_req.ip = &ip_addr;
-    ip_req.acc = acc;
-    ip_req.table = table;
-    action = ipthreat_dpi_policy_req(&ip_req);
-
-    if (action == FSM_DPI_DROP)
+    provider = ipthreat_get_provider(session);
+    if (provider == NULL)
     {
-        char *direction = (acc->direction == NET_MD_ACC_OUTBOUND_DIR) ?
-                           "outbound" : "inbound";
-        LOGI("%s: blocking access to: %s connection ", __func__, direction);
-        net_header_logi(net_parser);
+        LOGD("%s(): ipthreat provider is NULL", __func__);
+        goto error;
     }
 
-    fsm_dpi_set_acc_state(session, net_parser, action);
+    /* set the action as pass-through in case on invalid acc value */
+    if (acc == NULL || acc->key == NULL || acc->key->ip_version == 0)
+    {
+        LOGD("%s(): invalid accumulator value", __func__);
+        goto error;
+    }
+
+    request_args.session = session;
+    request_args.device_id = dev_mac;
+    request_args.acc = acc;
+    request_type = (acc->key->ip_version == 4 ? FSM_IPV4_REQ : FSM_IPV6_REQ);
+    request_args.request_type = request_type;
+
+    policy_request = ipthreat_create_request(&request_args, &ip_addr);
+    if (policy_request == NULL)
+    {
+        LOGD("%s(): failed to create ipthreat policy request", __func__);
+        goto error;
+    }
+
+    policy_reply = fsm_ipthreat_create_reply(&request_args);
+    if (policy_reply == NULL)
+    {
+        LOGD("%s(): failed to initialize ipthreat reply", __func__);
+        goto clean_policy_req;
+    }
+
+    policy_reply->policy_table = table;
+    policy_reply->req_type = policy_request->req_type;
+
+    LOGT("%s(): allocated policy_request == %p, policy_reply == %p",
+         __func__,
+         policy_request,
+         policy_reply);
+
+    /* process the input request */
+    ipthreat_process_request(policy_request, policy_reply);
+
+
+    return;
+
+
+clean_policy_req:
+    fsm_policy_free_request(policy_request);
+
+error:
+    fsm_dpi_set_acc_state(session, net_parser, FSM_DPI_PASSTHRU);
 }
 
 
@@ -872,3 +1091,4 @@ ipthreat_dpi_delete_session(struct fsm_session *session)
 
     return;
 }
+

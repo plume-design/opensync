@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ds_tree.h"
 #include "log.h"
 #include "util.h"
+#include "memutil.h"
 #include "os_time.h"
 
 #include "inet.h"
@@ -80,12 +81,7 @@ inet_dhsnif_t *inet_dhsnif_new(const char *ifname)
 {
     inet_dhsnif_t *self = NULL;
 
-    self = malloc(sizeof(inet_dhsnif_t));
-    if (self == NULL)
-    {
-        LOG(ERR, "inet_dhsnif: %s: Error allocating object.", ifname);
-        goto error;
-    }
+    self = MALLOC(sizeof(inet_dhsnif_t));
 
     if (!inet_dhsnif_init(self, ifname))
     {
@@ -95,7 +91,7 @@ inet_dhsnif_t *inet_dhsnif_new(const char *ifname)
     return self;
 
 error:
-    if (self != NULL) free(self);
+    if (self != NULL) FREE(self);
     return NULL;
 }
 
@@ -106,7 +102,7 @@ bool inet_dhsnif_del(inet_dhsnif_t *self)
 {
     bool retval = inet_dhsnif_fini(self);
 
-    free(self);
+    FREE(self);
 
     return retval;
 }
@@ -658,7 +654,7 @@ void __inet_dhsnif_process_dhcp(
     if (lease == NULL)
     {
         /* Allocate new lease */
-        lease = calloc(1, sizeof(struct inet_dhsnif_lease));
+        lease = CALLOC(1, sizeof(struct inet_dhsnif_lease));
         lease->le_info.dl_hwaddr = OSN_MAC_ADDR_INIT;
         lease->le_info.dl_ipaddr = OSN_IP_ADDR_INIT;
         memcpy(lease->le_info.dl_hwaddr.ma_addr, dhcp->dhcp_chaddr, sizeof(lease->le_info.dl_hwaddr.ma_addr));
@@ -914,7 +910,7 @@ void __inet_dhsnif_process_dhcp(
 
             /* Remove from the list */
             ds_tree_remove(&self->ds_lease_list, lease);
-            free(lease);
+            FREE(lease);
 
             break;
     }

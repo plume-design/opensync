@@ -27,6 +27,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdlib.h>
 #include <stddef.h>
 #include <time.h>
+#include <errno.h>
+#include <ctype.h>
 
 #include "const.h"
 #include "ds_tree.h"
@@ -36,6 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb_cache.h"
 #include "ovsdb_table.h"
 #include "schema.h"
+#include "memutil.h"
 
 #include "mdns_plugin.h"
 #include "mdns_records.h"
@@ -91,8 +94,7 @@ mdns_get_session(struct fsm_session *session)
     if (md_session != NULL) return md_session;
 
     LOGD("%s: Adding new session %s", __func__, session->name);
-    md_session = calloc(1, sizeof(struct mdns_session));
-    if (md_session == NULL) return NULL;
+    md_session = CALLOC(1, sizeof(struct mdns_session));
 
     md_session->initialized = false;
     ds_tree_insert(sessions, md_session, session);
@@ -125,7 +127,7 @@ mdns_mgr_init(void)
 void
 mdns_free_session(struct mdns_session *md_session)
 {
-    free(md_session);
+    FREE(md_session);
 }
 
 
@@ -178,6 +180,191 @@ mdns_plugin_exit(struct fsm_session *session)
     return;
 }
 
+static void
+create_hex_dump(const char *fname, const uint8_t *buf, size_t len)
+{
+    int line_number = 0;
+    bool new_line = true;
+    size_t i;
+    FILE *f;
+
+    if (!LOG_SEVERITY_ENABLED(LOG_SEVERITY_TRACE))  return;
+
+    f = fopen(fname, "w+");
+    if (f == NULL) return;
+
+    for (i = 0; i < len; i++)
+    {
+        new_line = (i == 0 ? true : ((i % 8) == 0));
+        if (new_line)
+        {
+            if (line_number) fprintf(f, "\n");
+            fprintf(f, "%06x", line_number);
+            line_number += 8;
+        }
+
+        fprintf(f, " %02x", buf[i]);
+    }
+
+    fprintf(f, "\n");
+    fclose(f);
+
+    return;
+}
+
+static void
+mdns_plugin_send_mdns_response(struct mdns_session *m_session)
+{
+    struct mdns_plugin_mgr      *mgr;
+    struct mdnsd_context        *pctxt;
+
+    unsigned short int          port;
+    struct sockaddr_in          to;
+    struct in_addr              ip;
+    struct message              m;
+
+    if (!m_session) return;
+
+    mgr = mdns_get_mgr();
+    pctxt = mgr->ctxt;
+    if (!pctxt) return;
+
+    while (mdnsd_out(pctxt->dmn, &m, (long unsigned int *)&ip, &port))
+    {
+        unsigned char *buf;
+        ssize_t len;
+
+        memset(&to, 0, sizeof(to));
+        to.sin_family = AF_INET;
+        to.sin_port = htons(5353);
+        to.sin_addr = ip;
+
+        len = message_packet_len(&m);
+        buf = message_packet(&m);
+
+        create_hex_dump("/tmp/mdns_response.txtpcap", buf, len);
+
+        if (sendto(pctxt->ipv4_mcast_fd, buf, len, 0, (struct sockaddr *)&to,
+               sizeof(struct sockaddr_in)) != len)
+        {
+            LOGN("%s: sending failed, error: '%s'", __func__, strerror(errno));
+            return ;
+        }
+    }
+
+    return;
+}
+
+
+static bool
+mdns_populate_sockaddr(struct net_header_parser *parser,
+                       struct sockaddr_storage *dst)
+{
+    const void *ip;
+    bool ret;
+
+    ip = NULL;
+    ret = false;
+    if (parser->ip_version == 4)
+    {
+        struct iphdr *hdr = net_header_get_ipv4_hdr(parser);
+        struct sockaddr_in *in4 = (struct sockaddr_in *)dst;
+
+        memset(in4, 0, sizeof(struct sockaddr_in));
+        in4->sin_family = AF_INET;
+        ip = &hdr->saddr;
+        memcpy(&in4->sin_addr, ip, sizeof(in4->sin_addr));
+        ret = true;
+    }
+    else if (parser->ip_version == 6)
+    {
+        struct sockaddr_in6 *in6 = (struct sockaddr_in6 *)dst;
+        struct ip6_hdr *hdr = net_header_get_ipv6_hdr(parser);
+
+        memset(in6, 0, sizeof(struct sockaddr_in6));
+        in6->sin6_family = AF_INET6;
+        ip = &hdr->ip6_src;
+        memcpy(&in6->sin6_addr, ip, sizeof(in6->sin6_addr));
+        ret = true;
+    }
+
+    return ret;
+}
+
+static void
+mdns_plugin_process_message(struct mdns_session *m_session)
+{
+    struct mdns_plugin_mgr      *mgr;
+    struct mdnsd_context        *pctxt;
+    struct mdns_parser          *mdns_parser;
+    struct net_header_parser    *net_parser;
+    uint16_t                    ethertype;
+    int                         ip_protocol;
+    struct udphdr               *hdr;
+
+    struct sockaddr_storage ss;
+    unsigned char *data;
+    struct message m;
+    bool ret;
+    int rc = 0;
+
+    if (!m_session) return;
+
+    mdns_parser = &m_session->parser;
+    net_parser = mdns_parser->net_parser;
+
+    mgr = mdns_get_mgr();
+    pctxt = mgr->ctxt;
+    if (!pctxt) return;
+
+    /* Some basic validation */
+    // Check ethertype
+    ethertype = net_header_get_ethertype(net_parser);
+    if (ethertype != ETH_P_IP) return;
+
+    // Check for UDP protocol
+    ip_protocol = net_parser->ip_protocol;
+    if (ip_protocol != IPPROTO_UDP) return;
+
+    // Check the UDP src and dst ports
+    hdr = net_parser->ip_pld.udphdr;
+    if ((ntohs(hdr->source) != 5353 || ntohs(hdr->dest) != 5353))
+    {
+        LOGT("%s: UDP src/dst port mismatch, src port: %d, dst port: %d",
+                            __func__, ntohs(hdr->source), ntohs(hdr->dest));
+        return;
+    }
+
+    mdns_parser->parsed = net_parser->parsed;
+    mdns_parser->data = net_parser->data;
+
+    memset(&ss, 0, sizeof(ss));
+    ret = mdns_populate_sockaddr(net_parser, &ss);
+    if (!ret)
+    {
+        LOGE("%s: populate sockaddr failed", __func__);
+        return;
+    }
+
+    memset(&m, 0, sizeof(m));
+
+    /* Access udp data */
+    data = net_parser->ip_pld.payload;
+    data += sizeof(struct udphdr);
+
+    /* Parse the message */
+    message_parse(&m, data);
+    rc = mdnsd_in(pctxt->dmn, &m, &ss);
+    if (!rc)
+    {
+        LOGT("%s: Sending back the MDNS response", __func__);
+        // Send back a response
+        mdns_plugin_send_mdns_response(m_session);
+    }
+
+    return;
+}
+
 /**
  * @brief session packet processing entry point
  *
@@ -190,11 +377,20 @@ void
 mdns_plugin_handler(struct fsm_session *session,
                     struct net_header_parser *net_parser)
 {
-    (void)session;
-    (void)net_parser;
+    struct mdns_session     *m_session;
+    struct mdns_parser      *mdns_parser;
 
-    /* mdns parsing is not done here, this is handled by
-       exclusively by libmdnsd library(mdnsd_in()) */
+    if (!session || !net_parser)    return;
+
+    m_session = (struct mdns_session *)session->handler_ctxt;
+
+    mdns_parser = &m_session->parser;
+    mdns_parser->caplen = net_parser->caplen;
+
+    mdns_parser->net_parser = net_parser;
+
+    mdns_plugin_process_message(m_session);
+
     return;
 }
 
@@ -241,6 +437,9 @@ mdns_plugin_update(struct fsm_session *session)
     f_session->targeted_devices = session->ops.get_config(session, "targeted_devices");
     f_session->excluded_devices = session->ops.get_config(session, "excluded_devices");
 
+    // Update mdnsd ctxt.
+    mdnsd_ctxt_update(f_session);
+
     return;
 }
 
@@ -265,9 +464,6 @@ mdns_plugin_periodic(struct fsm_session *session)
     if (session->topic == NULL || !pctxt) return;
 
     f_session = session->handler_ctxt;
-
-    // Update mdnsd ctxt.
-    mdnsd_ctxt_update(f_session);
 
     /* Report records only if enabled */
     if (f_session->report_records)
@@ -389,6 +585,6 @@ mdns_plugin_init(struct fsm_session *session)
     return 0;
 
 err_plugin:
-    free(md_session);
+    FREE(md_session);
     return -1;
 }

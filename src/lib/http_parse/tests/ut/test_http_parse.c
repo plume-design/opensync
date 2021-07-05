@@ -9,6 +9,7 @@
 #include "qm_conn.h"
 #include "target.h"
 #include "unity.h"
+#include "memutil.h"
 
 #include "pcap.c"
 
@@ -247,8 +248,7 @@ void test_http_get_user_agent(void)
     TEST_ASSERT_NOT_NULL(h_session);
 
     parser = &h_session->parser;
-    net_parser = calloc(1, sizeof(*net_parser));
-    TEST_ASSERT_NOT_NULL(net_parser);
+    net_parser = CALLOC(1, sizeof(*net_parser));
     parser->net_parser = net_parser;
     PREPARE_UT(pkt372, net_parser);
     len = net_header_parse(net_parser);
@@ -263,7 +263,7 @@ void test_http_get_user_agent(void)
     TEST_ASSERT_NOT_NULL(hdev);
     http_report = http_lookup_report(hdev, expected_user_agent);
     TEST_ASSERT_NOT_NULL(http_report);
-    free(net_parser);
+    FREE(net_parser);
 }
 
 

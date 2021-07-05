@@ -29,7 +29,8 @@
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" &> /dev/null
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" &> /dev/null
 
 trap 'run_setup_if_crashed wm || true' EXIT SIGINT SIGTERM
 tc_name="tools/device/$(basename "$0")"
@@ -43,8 +44,8 @@ Arguments:
     -h  show this help message
     -if_name          : Wifi_Radio_Config::if_name                 : (string)(optional)
     -vif_if_name      : Wifi_VIF_Config::if_name                   : (string)(optional)
-    -vif_radio_idx    : Wifi_VIF_Config::vif_radio_idx             : (string)(optional)
-    -channel          : Wifi_Radio_Config/Wifi_VIF_Config::channel : (string)(optional)
+    -vif_radio_idx    : Wifi_VIF_Config::vif_radio_idx             : (int)(optional)
+    -channel          : Wifi_Radio_Config/Wifi_VIF_Config::channel : (int)(optional)
     -channel_mode     : Wifi_Radio_Config::channel_mode            : (string)(optional)
     -ht_mode          : Wifi_Radio_Config::ht_mode                 : (string)(optional)
     -hw_mode          : Wifi_Radio_Config::hw_mode                 : (string)(optional)
@@ -64,6 +65,13 @@ Arguments:
     -bridge           : Wifi_VIF_Config::bridge                    : (string)(optional)
     -dynamic_beacon   : Wifi_VIF_Config::dynamic_beacon            : (string)(optional)
     -vlan_id          : Wifi_VIF_Config::vlan_id                   : (string)(optional)
+    -wpa              : Wifi_VIF_Config::wpa                       : (string)(optional)
+    -wpa_key_mgmt     : Wifi_VIF_Config::wpa_key_mgmt              : (string)(optional)
+    -wpa_psks         : Wifi_VIF_Config::wpa_psks                  : (string)(optional)
+    -wpa_oftags       : Wifi_VIF_Config::wpa_oftags                : (string)(optional)
+    -default_oftag    : Wifi_VIF_Config::default_oftag             : (string)(optional)
+    -radius_srv_addr  : Wifi_VIF_Config::radius_srv_addr           : (string)(optional)
+    -radius_srv_secret: Wifi_VIF_Config::radius_srv_secret         : (string)(optional)
 Script usage example:
    ./${tc_name} -if_name wifi0 -enabled false -network false
    ./${tc_name} -if_name wifi0 -vif_if_name home-ap-24 -enabled true -network true -ht_mode HT40 -channel 6 -ssid test_ssid_name

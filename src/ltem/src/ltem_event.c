@@ -39,45 +39,19 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // Intervals and timeouts in seconds
 #define LTEM_TIMER_INTERVAL   1
-#define LTEM_MGR_INTERVAL     30
+#define LTEM_MGR_INTERVAL     60
 
 static void
-ltem_wan_fail( ltem_mgr_t *mgr, const char *lookup)
+ltem_mqtt_periodic(time_t now, ltem_mgr_t *mgr)
 {
-    mgr->lte_route->wan_dns_reachable = false;
-    ltem_set_wan_state(LTEM_WAN_STATE_DOWN);
-    if (mgr->lte_route->wan_dns2[0])
-    {
-        LOGI("%s: Can't resolve host:%s from servers:%s %s",
-             __func__, lookup, mgr->lte_route->wan_dns1, mgr->lte_route->wan_dns2);
-    }
-    else
-    {
-        LOGI("%s: Can't resolve host:%s from server:%s",
-             __func__, lookup, mgr->lte_route->wan_dns1);
-    }
-}
+    int res;
 
-/**
- * @brief Check wan state
- */
-static void
-ltem_wan_check(ltem_mgr_t *mgr)
-{
-    char *lookup = "google.com";
-    mgr = ltem_get_mgr();
+    if ((now - mgr->mqtt_periodic_ts) < mgr->mqtt_interval) return;
 
-    /* Check dns reachability */
-    if (!mgr->lte_route->wan_dns1[0]) return;
+    res = ltem_build_mqtt_report(now);
+    LOGI("%s: ltem_build_mqtt_report, res=%d", __func__, res);
 
-    mgr->lte_route->wan_dns_reachable = true;
-
-    if (!ltem_check_dns(mgr->lte_route->wan_dns1, lookup)) return;
-
-    if (mgr->lte_route->wan_dns2[0] &&
-        !ltem_check_dns(mgr->lte_route->wan_dns2, lookup)) return;
-
-    ltem_wan_fail(mgr, lookup);
+    mgr->mqtt_periodic_ts = now;
 }
 
 /**
@@ -97,12 +71,15 @@ ltem_event_cb(struct ev_loop *loop, ev_timer *watcher, int revents)
 
     now = time(NULL);
 
+    if (!mgr->lte_config_info->manager_enable || !mgr->lte_config_info->modem_enable) return;
+
     if ((now - mgr->periodic_ts) < LTEM_TIMER_INTERVAL) return;
+
+    ltem_mqtt_periodic(now, mgr);
 
     if (mgr->wan_state != LTEM_WAN_STATE_UNKNOWN && mgr->lte_state == LTEM_LTE_STATE_UP)
     {
-        ltem_wan_check(mgr);
-        if (mgr->lte_state_info->lte_failover)
+        if (mgr->lte_state_info->lte_failover_active)
         {
             ltem_ovsdb_cmu_check_lte(mgr);
         }
@@ -124,6 +101,8 @@ ltem_event_init()
                   LTEM_TIMER_INTERVAL, LTEM_TIMER_INTERVAL);
     mgr->timer.data = NULL;
     mgr->periodic_ts = time(NULL);
+    mgr->mqtt_periodic_ts = time(NULL);
     mgr->init_time = time(NULL);
+    mgr->mqtt_interval = LTEM_MGR_INTERVAL;
     ev_timer_start(mgr->loop, &mgr->timer);
 }

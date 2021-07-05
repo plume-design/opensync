@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * ===========================================================================
  */
 #include "log.h"
+#include "memutil.h"
 
 #include "dnsmasq6_server.h"
 
@@ -41,7 +42,7 @@ struct osn_ip6_radv
 
 osn_ip6_radv_t *osn_ip6_radv_new(const char *ifname)
 {
-    osn_ip6_radv_t *self = calloc(1, sizeof(*self));
+    osn_ip6_radv_t *self = CALLOC(1, sizeof(*self));
 
     if (!dnsmasq6_radv_init(&self->ra_dnsmasq, ifname))
     {
@@ -52,7 +53,7 @@ osn_ip6_radv_t *osn_ip6_radv_new(const char *ifname)
     return self;
 
 error:
-    if (self != NULL) free(self);
+    if (self != NULL) FREE(self);
     return NULL;
 }
 
@@ -66,7 +67,7 @@ bool osn_ip6_radv_del(osn_ip6_radv_t *self)
         retval = false;
     }
 
-    free(self);
+    FREE(self);
 
     return retval;
 }

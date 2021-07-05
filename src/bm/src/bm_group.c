@@ -48,6 +48,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "target.h"
 #include "bm.h"
+#include "memutil.h"
 
 /*****************************************************************************/
 
@@ -214,6 +215,8 @@ bm_ifconfigs_from_ovsdb_old(struct schema_Band_Steering_Config *bsconf, bm_group
         radio_type = RADIO_TYPE_5GU;
     else if (strcmp(rconf.freq_band, SCHEMA_CONSTS_RADIO_TYPE_STR_5GL) == 0)
         radio_type = RADIO_TYPE_5GL;
+    else if (strcmp(rconf.freq_band, SCHEMA_CONSTS_RADIO_TYPE_STR_6G) == 0)
+        radio_type = RADIO_TYPE_6G;
     else
         radio_type = RADIO_TYPE_5G;
 
@@ -235,6 +238,10 @@ bm_group_from_ovsdb(struct schema_Band_Steering_Config *bsconf, bm_group_t *grou
 
     /* setup group->ifcfg[] */
     if (bsconf->ifnames_len) {
+        if (bsconf->if_name_2g_exists || bsconf->if_name_5g_exists) {
+            LOGW("Ignoring Band_Steering_Config:if_name_2g/5g, using Band_Steering_Config:ifnames instead!");
+        }
+
         if (!bm_ifconfigs_from_ovsdb(bsconf, group))
             return false;
     } else {
@@ -307,12 +314,12 @@ bm_group_ovsdb_update_cb(ovsdb_update_monitor_t *self)
             return;
         }
 
-        group = calloc(1, sizeof(*group));
+        group = CALLOC(1, sizeof(*group));
         STRSCPY(group->uuid, bsconf._uuid.uuid);
 
         if (!bm_group_from_ovsdb(&bsconf, group)) {
             LOGE("Failed to convert row to if-config (uuid=%s)", group->uuid);
-            free(group);
+            FREE(group);
             return;
         }
 
@@ -327,7 +334,7 @@ bm_group_ovsdb_update_cb(ovsdb_update_monitor_t *self)
                      group->ifcfg[i].bsal.ifname,
                      radio_get_name_from_type(group->ifcfg[i].radio_type),
                      group->uuid);
-                free(group);
+                FREE(group);
                 return;
 	    }
 
@@ -414,7 +421,7 @@ bm_group_ovsdb_update_cb(ovsdb_update_monitor_t *self)
         LOGN("Removed if-group (uuid=%s)", group->uuid);
 
         ds_tree_remove(&bm_groups, group);
-        free(group);
+        FREE(group);
         break;
 
     default:
@@ -464,7 +471,7 @@ bm_group_cleanup(void)
                 }
             }
         }
-        free(group);
+        FREE(group);
 
         group = ds_tree_inext(&iter);
     }

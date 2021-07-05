@@ -43,6 +43,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "const.h"
 #include "log.h"
 #include "kconfig.h"
+#include "target.h"
 #include "opensync-ctrl.h"
 #include "opensync-hapd.h"
 
@@ -72,43 +73,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define EV(x) strchomp(strdupa(x), " ")
 
 #define MODULE_ID LOG_MODULE_ID_HAPD
-
-#ifndef DPP_CLI_UNSUPPORTED
-#define DPP_CLI_UNSUPPORTED "not supported"
-#endif
-#ifndef DPP_EVENT_CHIRP_RX
-#define DPP_EVENT_CHIRP_RX DPP_CLI_UNSUPPORTED
-#endif
-#ifndef DPP_EVENT_AUTH_SUCCESS
-#define DPP_EVENT_AUTH_SUCCESS DPP_CLI_UNSUPPORTED
-#endif
-#ifndef DPP_EVENT_CONFOBJ_SSID
-#define DPP_EVENT_CONFOBJ_SSID DPP_CLI_UNSUPPORTED
-#endif
-#ifndef DPP_EVENT_CONNECTOR
-#define DPP_EVENT_CONNECTOR DPP_CLI_UNSUPPORTED
-#endif
-#ifndef DPP_EVENT_C_SIGN_KEY
-#define DPP_EVENT_C_SIGN_KEY DPP_CLI_UNSUPPORTED
-#endif
-#ifndef DPP_EVENT_NET_ACCESS_KEY
-#define DPP_EVENT_NET_ACCESS_KEY DPP_CLI_UNSUPPORTED
-#endif
-#ifndef DPP_EVENT_CONF_REQ_RX
-#define DPP_EVENT_CONF_REQ_RX DPP_CLI_UNSUPPORTED
-#endif
-#ifndef DPP_EVENT_CONF_RECEIVED
-#define DPP_EVENT_CONF_RECEIVED DPP_CLI_UNSUPPORTED
-#endif
-#ifndef DPP_EVENT_REQ_RX
-#define DPP_EVENT_REQ_RX DPP_CLI_UNSUPPORTED
-#endif
-#ifndef DPP_EVENT_CONF_SENT
-#define DPP_EVENT_CONF_SENT DPP_CLI_UNSUPPORTED
-#endif
-#ifndef DPP_EVENT_AUTH_PK_HASH
-#define DPP_EVENT_AUTH_PK_HASH DPP_CLI_UNSUPPORTED
-#endif
 
 static struct hapd g_hapd[CONFIG_HAPD_MAX_BSS];
 
@@ -147,57 +111,11 @@ hapd_lookup_unused(void)
     return NULL;
 }
 
-static enum target_dpp_conf_akm
-wpas_dpp_akm_str2enum(const char *s)
-{
-    if (!strcmp(s, "dpp")) return TARGET_DPP_CONF_DPP;
-    if (!strcmp(s, "psk")) return TARGET_DPP_CONF_PSK;
-    if (!strcmp(s, "sae")) return TARGET_DPP_CONF_SAE;
-    if (!strcmp(s, "psk+sae")) return TARGET_DPP_CONF_PSK_SAE;
-    if (!strcmp(s, "dpp+sae")) return TARGET_DPP_CONF_DPP_SAE;
-    if (!strcmp(s, "dpp+psk+sae")) return TARGET_DPP_CONF_DPP_PSK_SAE;
-    if (!strcmp(s, "dot1x")) return TARGET_DPP_CONF_UNKNOWN;
-    if (!strcmp(s, "??")) return TARGET_DPP_CONF_UNKNOWN;
-    return TARGET_DPP_CONF_UNKNOWN;
-}
-
-void hapd_dpp_conf_received_callback(struct hapd *hapd)
-{
-    if (hapd->dpp_conf_received)
-        // Aggregate multiple CLI messages here
-        if (strlen(hapd->dpp_enrollee_conf_ssid_hex) > 1
-            && strlen(hapd->dpp_enrollee_conf_connector) > 1
-            && strlen(hapd->dpp_enrollee_conf_netaccesskey_hex) > 1
-            && strlen(hapd->dpp_enrollee_conf_csign_hex) > 1)
-            {
-                struct target_dpp_conf_network dpp_enrollee_conf = {
-                    .ifname = hapd->ctrl.bss,
-                    .ssid_hex = hapd->dpp_enrollee_conf_ssid_hex,
-                    .dpp_connector = hapd->dpp_enrollee_conf_connector,
-                    .dpp_netaccesskey_hex = hapd->dpp_enrollee_conf_netaccesskey_hex,
-                    .dpp_csign_hex = hapd->dpp_enrollee_conf_csign_hex,
-                    .akm = wpas_dpp_akm_str2enum(hapd->dpp_enrollee_conf_akm),
-                    .psk_hex = hapd->dpp_enrollee_conf_psk_hex,
-                };
-                hapd->dpp_conf_received(&dpp_enrollee_conf);
-
-                // Clear out hapd buffers
-                memset(hapd->dpp_enrollee_conf_ssid_hex, 0, sizeof(hapd->dpp_enrollee_conf_ssid_hex));
-                memset(hapd->dpp_enrollee_conf_connector, 0, sizeof(hapd->dpp_enrollee_conf_connector));
-                memset(hapd->dpp_enrollee_conf_netaccesskey_hex, 0, sizeof(hapd->dpp_enrollee_conf_netaccesskey_hex));
-                memset(hapd->dpp_enrollee_conf_csign_hex, 0, sizeof(hapd->dpp_enrollee_conf_csign_hex));
-                memset(hapd->dpp_enrollee_conf_psk_hex, 0, sizeof(hapd->dpp_enrollee_conf_psk_hex));
-                memset(hapd->dpp_enrollee_conf_akm, 0, sizeof(hapd->dpp_enrollee_conf_akm));
-                return;
-        }
-}
-
 static void
 hapd_ctrl_cb(struct ctrl *ctrl, int level, const char *buf, size_t len)
 {
     struct hapd *hapd = container_of(ctrl, struct hapd, ctrl);
     const char *keyid = NULL;
-    const char *sha256_hash = NULL;
     const char *pkhash = NULL;
     const char *event;
     const char *mac = NULL;
@@ -230,139 +148,6 @@ hapd_ctrl_cb(struct ctrl *ctrl, int level, const char *buf, size_t len)
         if (hapd->sta_connected)
             hapd->sta_connected(hapd, mac, keyid);
 
-        return;
-    }
-
-    //DPP Events for Configurator/Responder
-    if (!strcmp(event, EV(DPP_EVENT_CHIRP_RX))) {
-        while ((kv = strsep(&args, " "))) {
-            if ((k = strsep(&kv, "=")) && (v = strsep(&kv, ""))) {
-                if (!strcmp(k, "src"))
-                    mac = v;
-                if (!strcmp(k, "hash"))
-                    sha256_hash = v;
-            }
-        }
-
-        LOGI("%s: dpp chirp received from: %s, hash: %s", hapd->ctrl.bss, mac, sha256_hash ?: "");
-        if (hapd->dpp_chirp_received) {
-            const struct target_dpp_chirp_obj chirp = {
-                .ifname = hapd->ctrl.bss,
-                .mac_addr = mac,
-                .sha256_hex = sha256_hash
-            };
-            hapd->dpp_chirp_received(&chirp);
-        }
-        return;
-    }
-
-    if (!strcmp(event, EV(DPP_EVENT_AUTH_SUCCESS))) {
-        LOGI("%s: dpp auth success received", hapd->ctrl.bss);
-        hapd->dpp_pending_auth_success = 1;
-
-        return;
-    }
-
-    //DPP Events for Enrollee
-    if (!strcmp(event, EV(DPP_EVENT_CONFOBJ_SSID))) {
-        if (ascii2hex(args, hapd->dpp_enrollee_conf_ssid_hex, sizeof(hapd->dpp_enrollee_conf_ssid_hex))) {
-            LOGI("%s: dpp conf received ssid: %s, hex: %s", hapd->ctrl.bss, args, hapd->dpp_enrollee_conf_ssid_hex);
-            hapd_dpp_conf_received_callback(hapd);
-        }
-        return;
-    }
-
-    if (!strcmp(event, EV(DPP_EVENT_CONNECTOR))) {
-        LOGI("%s: dpp connector received: %s", hapd->ctrl.bss, args);
-        STRSCPY_WARN(hapd->dpp_enrollee_conf_connector, args);
-        hapd_dpp_conf_received_callback(hapd);
-
-        return;
-    }
-
-    if (!strcmp(event, EV(DPP_EVENT_C_SIGN_KEY))) {
-        LOGI("%s: dpp c-sign key recieved: %s", hapd->ctrl.bss, args);
-        STRSCPY_WARN(hapd->dpp_enrollee_conf_csign_hex, args);
-        hapd_dpp_conf_received_callback(hapd);
-
-        return;
-    }
-
-    if (!strcmp(event, EV(DPP_EVENT_NET_ACCESS_KEY))) {
-        LOGI("%s: dpp net access key recieved: %s", hapd->ctrl.bss, args);
-        STRSCPY_WARN(hapd->dpp_enrollee_conf_netaccesskey_hex, args);
-        hapd_dpp_conf_received_callback(hapd);
-
-        return;
-    }
-
-    if (!strcmp(event, EV(DPP_EVENT_CONFOBJ_PASS))) {
-        LOGI("%s: dpp pass recieved: %s", hapd->ctrl.bss, args);
-        STRSCPY_WARN(hapd->dpp_enrollee_conf_psk_hex, args);
-        hapd_dpp_conf_received_callback(hapd);
-
-        return;
-    }
-
-    if (!strcmp(event, EV(DPP_EVENT_CONFOBJ_AKM))) {
-        LOGI("%s: dpp akm recieved: %s", hapd->ctrl.bss, args);
-        STRSCPY_WARN(hapd->dpp_enrollee_conf_akm, args);
-        hapd_dpp_conf_received_callback(hapd);
-
-        return;
-    }
-
-    if (!strcmp(event, EV(DPP_EVENT_CONF_RECEIVED))) {
-        LOGI("%s: dpp conf received", hapd->ctrl.bss);
-        if (hapd->dpp_pending_auth_success && hapd->dpp_conf_received)
-            hapd->dpp_pending_auth_success = 0;
-
-        return;
-    }
-
-    if (!strcmp(event, EV(DPP_EVENT_CONF_REQ_RX))) {
-        LOGI("%s: dpp conf request recieved", hapd->ctrl.bss);
-        if (!hapd->dpp_pending_conf) {
-            hapd->dpp_pending_conf = 1;
-            while ((kv = strsep(&args, " "))) {
-                if ((k = strsep(&kv, "=")) && (v = strsep(&kv, ""))) {
-                    if (!strcmp(k, "src"))
-                        mac = v;
-                }
-            }
-            STRSCPY_WARN(hapd->dpp_pending_conf_sta, mac);
-            LOGI("%s: dpp conf request recieved from: %s", hapd->ctrl.bss, hapd->dpp_pending_conf_sta);
-        }
-        else {
-            LOGW("%s: dpp conf already in progress, igorning", hapd->ctrl.bss);
-        }
-        return;
-    }
-
-    if (!strcmp(event, EV(DPP_EVENT_AUTH_PK_HASH))) {
-        v = strsep(&args, " ") ?: "";
-        LOGI("%s: dpp auth pk hash: %s", hapd->ctrl.bss, v);
-        STRSCPY_WARN(hapd->dpp_pending_conf_pk_hash, v);
-        return;
-    }
-
-    if (!strcmp(event, EV(DPP_EVENT_CONF_SENT))) {
-        LOGI("%s: dpp conf sent event received", hapd->ctrl.bss);
-        //check for STA MAC that asked for the conf
-        if (hapd->dpp_conf_sent && hapd->dpp_pending_conf) {
-            const struct target_dpp_conf_enrollee enrollee = {
-                .ifname = hapd->ctrl.bss,
-                .sta_mac_addr = hapd->dpp_pending_conf_sta,
-                .sta_netaccesskey_sha256_hex = strlen(hapd->dpp_pending_conf_pk_hash) > 0
-                                             ? hapd->dpp_pending_conf_pk_hash
-                                             : "0000000000000000000000000000000000000000000000000000000000000000"
-            };
-            hapd->dpp_conf_sent(&enrollee);
-            LOGI("%s: dpp conf sent to: %s", hapd->ctrl.bss, hapd->dpp_pending_conf_sta);
-            memset(hapd->dpp_pending_conf_sta, 0, sizeof(hapd->dpp_pending_conf_sta));
-            memset(hapd->dpp_pending_conf_pk_hash, 0, sizeof(hapd->dpp_pending_conf_pk_hash));
-            hapd->dpp_pending_conf = 0;
-        }
         return;
     }
 
@@ -455,6 +240,7 @@ hapd_init(struct hapd *hapd, const char *phy, const char *bss)
     STRSCPY_WARN(hapd->pskspath, HAPD_PSKS_PATH(bss));
     STRSCPY_WARN(hapd->phy, phy);
     hapd->ctrl.cb = hapd_ctrl_cb;
+    hapd->ctrl.hapd = hapd;
     return hapd;
 }
 
@@ -554,9 +340,9 @@ hapd_util_get_wpa(const struct schema_Wifi_VIF_Config *vconf)
     if (!vconf->wpa)
         return 0;
 
-    if (util_vif_wpa_key_mgmt_match(vconf, "wpa-"))
+    if (util_vif_wpa_key_mgmt_partial_match(vconf, "wpa-"))
         wpa |= 1;
-    if (util_vif_wpa_key_mgmt_match(vconf, "wpa2-") || util_vif_wpa_key_mgmt_match(vconf, "sae"))
+    if (util_vif_wpa_key_mgmt_partial_match(vconf, "wpa2-") || util_vif_wpa_key_mgmt_partial_match(vconf, "sae"))
         wpa |= 2;
 
     return wpa;
@@ -568,7 +354,7 @@ hapd_util_get_sae_require_mfp(const struct schema_Wifi_VIF_Config *vconf)
     if (!vconf->wpa)
         return 0;
 
-    return util_vif_wpa_key_mgmt_match(vconf, "sae") ? 1 : 0;
+    return util_vif_wpa_key_mgmt_partial_match(vconf, "sae") ? 1 : 0;
 }
 
 static int
@@ -577,7 +363,7 @@ hapd_util_get_ieee8021x(const struct schema_Wifi_VIF_Config *vconf)
     if (!vconf->wpa)
         return 0;
 
-    return util_vif_wpa_key_mgmt_match(vconf, "wpa2-eap") ? 1 : 0;
+    return util_vif_wpa_key_mgmt_partial_match(vconf, "wpa2-eap") ? 1 : 0;
 }
 
 static const char*
@@ -1092,7 +878,7 @@ hapd_conf_gen_security(struct hapd *hapd,
     /*
      * Set main WPA password as default SAE password.
      */
-    if (util_vif_wpa_key_mgmt_match(vconf, "sae")) {
+    if (util_vif_wpa_key_mgmt_partial_match(vconf, "sae")) {
         if (vconf->wpa_psks_len != 1) {
             LOGE("%s: SAE requires wpa_psks to contain exactly one psk", vconf->if_name);
             return -1;
@@ -1105,7 +891,7 @@ hapd_conf_gen_security(struct hapd *hapd,
      * WPA-EAP + remote RADIUS excludes WPS on single VAP (hostapd doesn't support
      * such configuration).
      */
-    if (util_vif_wpa_key_mgmt_match(vconf, "eap") && vconf->wps) {
+    if (util_vif_wpa_key_mgmt_partial_match(vconf, "eap") && vconf->wps) {
         suppress_wps |= true;
         LOGW("%s: Disabling WPS because WPA-EAP is enabled", vconf->if_name);
     }
@@ -1118,9 +904,9 @@ hapd_conf_gen_security(struct hapd *hapd,
         LOGW("%s: Disabling WPS because OPEN mode is enabled", vconf->if_name);
     }
 
-    sae_opt_present = util_vif_wpa_key_mgmt_match(vconf, "sae") ? "" : "#";
+    sae_opt_present = util_vif_wpa_key_mgmt_partial_match(vconf, "sae") ? "" : "#";
     wps_opt_present = kconfig_enabled(CONFIG_HOSTAP_PSK_FILE_WPS) && !suppress_wps ? "" : "#";
-    ft_opt_present = util_vif_wpa_key_mgmt_match(vconf, "ft-") ? "" : "#";
+    ft_opt_present = util_vif_wpa_key_mgmt_partial_match(vconf, "ft-") ? "" : "#";
     ieee80211w_present = strlen(ieee80211w) != 0 ? "" : "#";
 
     csnprintf(&buf, len, "wpa=%d\n", hapd_util_get_wpa(vconf));
@@ -1132,7 +918,7 @@ hapd_conf_gen_security(struct hapd *hapd,
     csnprintf(&buf, len, "wpa_pairwise=%s\n", strlen(wpa_pairwise) > 0 ? wpa_pairwise : "");
     csnprintf(&buf, len, "%s", strlen(hapd->pskspath) ? "" : "#");
     csnprintf(&buf, len, "wpa_psk_file=%s\n", strlen(hapd->pskspath) ? hapd->pskspath : "");
-    csnprintf(&buf, len, "%s", util_vif_wpa_key_mgmt_match(vconf, "eap") ? "" : "#");
+    csnprintf(&buf, len, "%s", util_vif_wpa_key_mgmt_partial_match(vconf, "eap") ? "" : "#");
     csnprintf(&buf, len, "own_ip_addr=127.0.0.1\n");
     csnprintf(&buf, len, "%s", vconf->radius_srv_addr_exists ? "" : "#");
     csnprintf(&buf, len, "auth_server_addr=%s\n",
@@ -1309,32 +1095,59 @@ hapd_bss_get_security(struct schema_Wifi_VIF_State *vstate,
                       const char *conf,
                       const char *status)
 {
-    const char *conf_keys = ini_geta(status, "key_mgmt") ?: "";
+    char *conf_keys = ini_geta(status, "key_mgmt") ?: "";
     const char *conf_radius_srv_addr = ini_geta(status, "auth_server_addr");
     const char *conf_radius_srv_port = ini_geta(status, "auth_server_port");
     const char *conf_radius_srv_secret = ini_geta(status, "auth_server_shared_secret");
     const int conf_wpa = atoi(ini_geta(status, "wpa") ?: "0");
+    const char *conf_key;
     const char *p;
-    bool wpa_psk;
-    bool wpa2_psk;
-    bool wpa2_eap;
-    bool sae;
-    bool ft_wpa2_psk;
-    bool dpp;
+    bool wpa_psk = false;
+    bool wpa2_psk = false;
+    bool wpa2_eap = false;
+    bool sae = false;
+    bool ft_wpa2_psk = false;
+    bool ft_sae = false;
+    bool dpp = false;
 
-    wpa_psk = (strstr(conf_keys, "WPA-PSK") && (conf_wpa & 1));
-    wpa2_psk = (strstr(conf_keys, "WPA-PSK") && (conf_wpa & 2));
-    wpa2_eap = (strstr(conf_keys, "WPA-EAP"));
-    sae = (strstr(conf_keys, "SAE"));
-    ft_wpa2_psk = (strstr(conf_keys, "FT-PSK") && (conf_wpa & 2));
-    dpp = (strstr(conf_keys, "DPP"));
+    while ((conf_key = strsep(&conf_keys, " "))) {
+        if (strcmp(conf_key, "WPA-PSK") == 0 && (conf_wpa & 1)) {
+            wpa_psk = true;
+            continue;
+        }
+        if (strcmp(conf_key, "WPA-PSK") == 0 && (conf_wpa & 2)) {
+            wpa2_psk = true;
+            continue;
+        }
+        if (strcmp(conf_key, "WPA-EAP") == 0) {
+            wpa2_eap = true;
+            continue;
+        }
+        if (strcmp(conf_key, "SAE") == 0) {
+            sae = true;
+            continue;
+        }
+        if (strcmp(conf_key, "FT-PSK") == 0 && (conf_wpa & 2)) {
+            ft_wpa2_psk = true;
+            continue;
+        }
+        if (strcmp(conf_key, "FT-SAE") == 0) {
+            ft_sae = true;
+            continue;
+        }
+        if (strcmp(conf_key, "DPP") == 0) {
+            dpp = true;
+            continue;
+        }
+    }
 
     SCHEMA_SET_INT(vstate->wpa, wpa_psk || wpa2_psk || wpa2_eap || sae || ft_wpa2_psk);
     if (wpa_psk) SCHEMA_VAL_APPEND(vstate->wpa_key_mgmt, "wpa-psk");
     if (wpa2_psk) SCHEMA_VAL_APPEND(vstate->wpa_key_mgmt, "wpa2-psk");
     if (wpa2_eap) SCHEMA_VAL_APPEND(vstate->wpa_key_mgmt, "wpa2-eap");
     if (sae) SCHEMA_VAL_APPEND(vstate->wpa_key_mgmt, "sae");
-    if (ft_wpa2_psk) SCHEMA_VAL_APPEND(vstate->wpa_key_mgmt, "ft-wpa2-psk");
+    if (ft_wpa2_psk) SCHEMA_VAL_APPEND(vstate->wpa_key_mgmt, SCHEMA_CONSTS_KEY_FT_WPA2_PSK);
+    if (ft_sae) SCHEMA_VAL_APPEND(vstate->wpa_key_mgmt, SCHEMA_CONSTS_KEY_FT_SAE);
     if (dpp) SCHEMA_VAL_APPEND(vstate->wpa_key_mgmt, "dpp");
     if (conf_radius_srv_addr) SCHEMA_SET_STR(vstate->radius_srv_addr, conf_radius_srv_addr);
     if (conf_radius_srv_port) SCHEMA_SET_INT(vstate->radius_srv_port, atoi(conf_radius_srv_port));

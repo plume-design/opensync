@@ -34,6 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "timevt_server.h"
 
+#include "memutil.h"
 #include "qm.h"
 
 // Max number of events collected for single report
@@ -49,7 +50,6 @@ static struct s_mqtt_telogger
     te_server_handle sh; // server handle
     char *nodeId;
     char *locationId;
-    char *name; // config name
     char *topic; // mqtt topic
     int qos; // mqtt qos or -1 when undefined
     int interval; // aggr interval
@@ -61,7 +61,14 @@ static struct s_mqtt_telogger
 
 static char *alloc_string(char *oldstr, const char *newstr)
 {
-    char *str = (char *)((newstr != NULL) ? realloc(oldstr, strlen(newstr) + 1) : (free(oldstr), NULL));
+    char *str = NULL;
+
+    if (newstr != NULL) {
+        str = (char *)REALLOC(oldstr, strlen(newstr) + 1);
+    } else {
+        FREE(oldstr);
+        str = NULL;
+    }
     if (str) strcpy(str, newstr);
     return str;
 }
@@ -78,10 +85,7 @@ static void update_identity(const struct schema_AWLAN_Node *new)
         if (pval && *pval != '\0') g_tesrv.nodeId = alloc_string(g_tesrv.nodeId, pval);
     }
 
-    if (g_tesrv.sh != NULL)
-    {
-        tesrv_set_identity(g_tesrv.sh, g_tesrv.locationId, g_tesrv.nodeId);
-    }
+    tesrv_set_identity(g_tesrv.sh, g_tesrv.locationId, g_tesrv.nodeId);
 }
 
 static void callback_AWLAN_Node(
@@ -109,9 +113,9 @@ static bool eh_on_new_report_prepared(
 {
     struct s_mqtt_telogger *obj = (struct s_mqtt_telogger *)subscriber;
     // no remote config received? drop report
-    if (obj->topic == NULL)
+    if (obj->topic == NULL || *obj->topic == '\0')
     {
-        LOG(INFO, "te-server: report of %zu bytes dropped due to missing TELOG_Config", length);
+        LOG(INFO, "te-server: report of %zu bytes dropped due to missing mqtt topic", length);
         return false;
     }
 
@@ -146,16 +150,10 @@ static bool open_server(int report_interval)
     return true;
 }
 
-static void close_server(void)
+static bool set_log_severity(char *new_sev)
 {
-    if (g_tesrv.sh == NULL) return;
-
-    tesrv_close(g_tesrv.sh); g_tesrv.sh = NULL;
-    free(g_tesrv.name); g_tesrv.name = NULL;
-    free(g_tesrv.topic); g_tesrv.topic = NULL;
-    free(g_tesrv.nodeId); g_tesrv.nodeId = NULL;
-    free(g_tesrv.locationId); g_tesrv.locationId = NULL;
-    LOG(INFO, "te-server: stopped");
+    if (new_sev == NULL || *new_sev == '\0') return false;
+    return tesrv_set_log_severity(g_tesrv.sh, log_severity_fromstr(new_sev));
 }
 
 static void callback_TELOG_Config(
@@ -166,47 +164,41 @@ static void callback_TELOG_Config(
     switch(mon->mon_type)
     {
     case OVSDB_UPDATE_DEL:
-        if (g_tesrv.name && 0 == strcmp(old->cfg_name, g_tesrv.name))
-        {
-            close_server();
-        }
+        // stop generating mqtt reports
+        FREE(g_tesrv.topic);
+        g_tesrv.topic = NULL;
         break;
 
     case OVSDB_UPDATE_NEW:
-        if (g_tesrv.sh == NULL)
-        {
-            if (!open_server(new->report_interval)) return;
-        }
-        else
+        if (new->report_interval_exists)
         {
             tesrv_set_aggregation_period(g_tesrv.sh, new->report_interval);
         }
-        g_tesrv.name = alloc_string(g_tesrv.name, new->cfg_name);
-        g_tesrv.topic = alloc_string(g_tesrv.topic, new->mqtt_topic);
-        if (new->mqtt_qos_exists) g_tesrv.qos = new->mqtt_qos;
+        g_tesrv.topic = alloc_string(g_tesrv.topic, new->mqtt_topic_exists ? new->mqtt_topic : NULL);
+        g_tesrv.qos = new->mqtt_qos_exists ? new->mqtt_qos : -1;
+        if (new->log_severity_exists) (void)set_log_severity(new->log_severity);
         update_identity(NULL);
         break;
 
     case OVSDB_UPDATE_MODIFY:
-        if (g_tesrv.sh != NULL)
+        if (new->mqtt_topic_changed)
         {
-            if (0 == strcmp(new->cfg_name, g_tesrv.name))
-            {
-                if (new->mqtt_topic_changed)
-                {
-                    g_tesrv.topic = alloc_string(g_tesrv.topic, new->mqtt_topic);
-                }
+            g_tesrv.topic = alloc_string(g_tesrv.topic, new->mqtt_topic);
+        }
 
-                if (new->report_interval_changed)
-                {
-                    tesrv_set_aggregation_period(g_tesrv.sh, new->report_interval);
-                }
+        if (new->report_interval_changed)
+        {
+            tesrv_set_aggregation_period(g_tesrv.sh, new->report_interval);
+        }
 
-                if (new->mqtt_qos_exists)
-                {
-                    g_tesrv.qos = new->mqtt_qos;
-                }
-            }
+        if (new->log_severity_changed)
+        {
+            (void)set_log_severity(new->log_severity);
+        }
+
+        if (new->mqtt_qos_exists)
+        {
+            g_tesrv.qos = new->mqtt_qos;
         }
         break;
 
@@ -217,7 +209,15 @@ static void callback_TELOG_Config(
 
 void mqtt_telog_fini(void)
 {
-    close_server();
+    if (g_tesrv.sh == NULL) return;
+
+    tesrv_close(g_tesrv.sh);
+    g_tesrv.sh = NULL;
+    FREE(g_tesrv.topic);
+    FREE(g_tesrv.nodeId);
+    FREE(g_tesrv.locationId);
+    LOG(INFO, "te-server: stopped");
+
     // missing d-tor for monitoring
     table_AWLAN_Node.table_callback = NULL;
     table_TELOG_Config.table_callback = NULL;

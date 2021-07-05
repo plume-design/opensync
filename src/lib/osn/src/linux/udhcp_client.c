@@ -37,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "const.h"
 #include "os.h"
 #include "log.h"
+#include "memutil.h"
 
 #include "udhcp_client.h"
 
@@ -103,7 +104,7 @@ bool udhcp_client_fini(udhcp_client_t *self)
     {
         if (self->uc_option_set[ii] != NULL)
         {
-            free(self->uc_option_set[ii]);
+            FREE(self->uc_option_set[ii]);
             self->uc_option_set[ii] = NULL;
         }
     }
@@ -324,7 +325,7 @@ bool udhcp_client_stop(udhcp_client_t *self)
     {
         if (NULL != self->uc_option_set[n] && C_IS_SET(self->uc_option_req, n))
         {
-            free(self->uc_option_set[n]);
+            FREE(self->uc_option_set[n]);
             self->uc_option_set[n] = NULL;
             option_notify(self, (enum osn_dhcp_option)n, NULL);
         }
@@ -356,7 +357,7 @@ bool udhcp_client_opt_request(udhcp_client_t *self, enum osn_dhcp_option opt, bo
         /* release data buffer when no more requested */
         if (!request && self->uc_option_set[opt] != NULL)
         {
-            free(self->uc_option_set[opt]);
+            FREE(self->uc_option_set[opt]);
             self->uc_option_set[opt] = NULL;
         }
         return true;
@@ -374,7 +375,7 @@ bool udhcp_client_opt_set(udhcp_client_t *self, enum osn_dhcp_option opt, const 
     /* First, unset the old option */
     if (self->uc_option_set[opt] != NULL)
     {
-        free(self->uc_option_set[opt]);
+        FREE(self->uc_option_set[opt]);
         self->uc_option_set[opt] = NULL;
     }
 

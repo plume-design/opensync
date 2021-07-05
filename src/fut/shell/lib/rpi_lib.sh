@@ -89,9 +89,9 @@ start_cloud_simulation()
     sudo mkdir -p "${cert_dir}" ||
         raise "FAIL: Could not create cert dir!" -l "$fn_name" -ds
     log "$fn_name - Copy haproxy configuration file and certificates"
-    sudo cp "${FUT_TOPDIR}/shell/tools/rpi/files"/haproxy.cfg /etc/haproxy/haproxy.cfg ||
+    sudo cp "${FUT_TOPDIR}/shell/tools/server/files"/haproxy.cfg /etc/haproxy/haproxy.cfg ||
         raise "FAIL: Config file not present!" -l "$fn_name" -ds
-    sudo cp "${FUT_TOPDIR}/shell/tools/rpi/files"/{fut_controller.pem,plume_ca_chain.pem} "${cert_dir}" ||
+    sudo cp "${FUT_TOPDIR}/shell/tools/server/files"/{fut_controller.pem,plume_ca_chain.pem} "${cert_dir}" ||
         raise "FAIL: Certificates not present!" -l "$fn_name" -ds
 
     log "$fn_name - Restart haproxy service"
@@ -150,14 +150,14 @@ start_fut_mqtt()
 {
     local fn_name="rpi_lib:start_fut_mqtt"
     local cert_dir="/etc/mosquitto/certs/fut/"
-    local mqtt_conf_file="${FUT_TOPDIR}/shell/tools/rpi/files/fut_mqtt.conf"
+    local mqtt_conf_file="${FUT_TOPDIR}/shell/tools/server/files/fut_mqtt.conf"
 
     log "$fn_name - Creating cert dir: ${cert_dir}"
     sudo mkdir -p "${cert_dir}" ||
         raise "Failed to create cert dir!" -l "$fn_name" -ds
 
     log "Copy mosquitto certificates"
-    sudo cp "${FUT_TOPDIR}/shell/tools/rpi/files"/{fut_controller.pem,plume_ca_chain.pem} "${cert_dir}" ||
+    sudo cp "${FUT_TOPDIR}/shell/tools/server/files"/{fut_controller.pem,plume_ca_chain.pem} "${cert_dir}" ||
         raise "Certificates not present!" -l "$fn_name" -ds
 
     log "Start mosquitto service"
@@ -292,9 +292,9 @@ um_create_corrupt_image()
     [ -f "$um_corrupt_fw_path" ] && rm "$um_corrupt_fw_path"
 
     log "$fn_name - Corrupting image $um_fw_path"
-    dd if="$um_fw_path" of="$um_corrupt_fw_path" bs=1 count="$um_corrupt_size" &&
-        log "$fn_name - Image corrupted Step #1" ||
-        raise "FAIL: Could not corrupt image Step #1" -l "$fn_name" -ds
+    cp "$um_fw_path" "$um_corrupt_fw_path" &&
+        log "$fn_name - Image copied Step #1" ||
+        raise "FAIL: Could not copy image Step #1" -l "$fn_name" -ds
 
     dd if=/dev/urandom of="$um_corrupt_fw_path" bs=1 count=100 seek=1000 conv=notrunc &&
         log "$fn_name - Image corrupted Step #2" ||
@@ -384,6 +384,46 @@ address_internet_check()
     else
         return 1
     fi
+}
+
+###############################################################################
+# DESCRIPTION:
+#   Function manipulates port number on the destination IP by adding or removing
+#   DROP rule. Traffic can be blocked or unblocked on that specific port.
+#   Dies if cannot manipulate traffic.
+# INPUT PARAMETER(S):
+#   $1  ip address of device on which port number needs to be blocked (required)
+#   $2  port number to manipulate (required)
+#   $3  action, supported block, unblock (required)
+#   $4  sudo command (defaults to sudo) (optional)
+# RETURNS:
+#   0   On success.
+#   See DESCRIPTION.
+# USAGE EXAMPLE(S):
+#   port_number_manipulation 192.168.200.10 443 block
+#   port_number_manipulation 192.168.200.10 443 unblock
+###############################################################################
+port_number_manipulation()
+{
+    local fn_name="rpi_lib:port_number_manipulation"
+    NARGS_MIN=3
+    NARGS_MAX=4
+    [ $# -ge ${NARGS_MIN} ] && [ $# -le ${NARGS_MAX} ] ||
+        raise "${fn_name} requires ${NARGS_MIN}-${NARGS_MAX} input arguments, $# given" -arg
+    local ip_address=${1}
+    local port_num=${2}
+    local action=${3}
+    local sudo_cmd=${4:-"sudo"}
+
+
+    [ $action == "block" ] && type_arg="-I" || type_arg="-D"
+    [ $action == "block" ] && type_ec=0 || type_ec=1
+
+    wait_for_function_response "$type_ec" "${sudo_cmd} ${iptables_cmd} $type_arg FORWARD -p tcp -d ${ip_address} --sport ${port_num} -j DROP" &&
+        log -deb "$fn_name - Port number $port_num ${action}ed on IP ${ip_address} successfully" ||
+        raise "FAIL: Could not ${action} port number $port_num" -l "$fn_name" -tc
+
+    return 0
 }
 
 ###############################################################################

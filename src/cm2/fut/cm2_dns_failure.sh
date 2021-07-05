@@ -26,14 +26,16 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/cm2_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="cm2/$(basename "$0")"
 cm_setup_file="cm2/cm2_setup.sh"
-adr_internet_man_file="tools/rpi/cm/address_internet_man.sh"
+adr_internet_man_file="tools/server/cm/address_internet_man.sh"
 step_1_name="dns_blocked"
 step_2_name="dns_recovered"
 usage()
@@ -62,22 +64,24 @@ Script usage example:
     ./${tc_name} ${step_2_name}
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 
 check_kconfig_option "TARGET_CAP_EXTENDER" "y" ||
     raise "TARGET_CAP_EXTENDER != y - Testcase applicable only for EXTENDER-s" -l "${tc_name}" -s
 
 NARGS=1
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+test_step=${1}
 
 trap '
 fut_info_dump_line
@@ -87,37 +91,43 @@ check_restore_management_access || true
 run_setup_if_crashed cm || true
 ' EXIT SIGINT SIGTERM
 
-test_step=${1}
-
-log_title "$tc_name: CM2 test - DNS Failure"
+log_title "$tc_name: CM2 test - DNS Failure - $test_step"
 
 if [ "$test_step" = "${step_1_name}" ]; then
     redirector_addr=$(get_ovsdb_entry_value AWLAN_Node redirector_addr)
     none_redirector_addr='ssl:none:443'
-    log "$tc_name: Re-setting AWLAN_Node::redirector_addr to initiate CM reconnection (resolving)"
+
+    log "$tc_name: Setting AWLAN_Node::redirector_addr to $none_redirector_addr to initiate CM reconnection (resolving)"
     update_ovsdb_entry AWLAN_Node -u redirector_addr "${none_redirector_addr}"
-        log -deb "$tc_name - AWLAN_Node redirector_addr set to ${none_redirector_addr}" ||
-        raise "FAIL: AWLAN_Node::redirector_addr not set to ${none_redirector_addr}" -l "$tc_name" -ds
-    wait_cloud_state BACKOFF &&
-        log "$tc_name: wait_cloud_state - Cloud set to BACKOFF" ||
-        raise "Failed to set cloud to BACKOFF" -l "$tc_name" -tc
-    update_ovsdb_entry AWLAN_Node -u redirector_addr "${redirector_addr}"
-        log -deb "$tc_name - AWLAN_Node redirector_addr set to ${redirector_addr}" ||
-        raise "FAIL: AWLAN_Node::redirector_addr not set to ${redirector_addr}" -l "$tc_name" -ds
+        log "$tc_name - AWLAN_Node::redirector_addr set to ${none_redirector_addr} - Success" ||
+        raise "FAIL: AWLAN_Node::redirector_addr not set to ${none_redirector_addr}" -l "$tc_name" -oe
+
     log "$tc_name: Waiting for Cloud status to go to BACKOFF"
     wait_cloud_state BACKOFF &&
-        log "$tc_name: wait_cloud_state - Cloud set to BACKOFF" ||
-        raise "Failed to set cloud to BACKOFF" -l "$tc_name" -tc
-    log "$tc_name: Waiting for Cloud status not to become ACTIVE"
+        log "$tc_name: wait_cloud_state - Detected Cloud status BACKOFF - Success" ||
+        raise "FAIL: wait_cloud_state - Failed to detect Cloud status BACKOFF" -l "$tc_name" -tc
+
+    log "$tc_name: Setting AWLAN_Node::redirector_addr to $redirector_addr to initiate CM reconnection (resolving)"
+    update_ovsdb_entry AWLAN_Node -u redirector_addr "${redirector_addr}"
+        log "$tc_name - AWLAN_Node::redirector_addr set to ${redirector_addr} - Success" ||
+        raise "FAIL: AWLAN_Node::redirector_addr not set to ${redirector_addr}" -l "$tc_name" -oe
+
+    log "$tc_name: Waiting for Cloud status to stay BACKOFF"
+    wait_cloud_state BACKOFF &&
+        log "$tc_name: wait_cloud_state - Detected Cloud status BACKOFF - Success" ||
+        raise "FAIL: wait_cloud_state - Failed to detect Cloud status BACKOFF" -l "$tc_name" -tc
+
+    log "$tc_name: Making sure Cloud status does not become ACTIVE"
     wait_cloud_state_not ACTIVE 120 &&
-        log "$tc_name: wait_cloud_state - Cloud stayed in BACKOFF" ||
-        raise "Cloud set to ACTIVE - but it should not be" -l "$tc_name" -tc
+        log "$tc_name: wait_cloud_state - Cloud stayed in BACKOFF - Success" ||
+        raise "FAIL: Cloud set to ACTIVE - but it should not be" -l "$tc_name" -tc
 elif [ "$test_step" = "${step_2_name}" ]; then
     log "$tc_name: Waiting for Cloud status to go to ACTIVE"
     wait_cloud_state ACTIVE &&
-        log "$tc_name: wait_cloud_state - Cloud set to ACTIVE" ||
-        raise "Failed to set cloud to ACTIVE" -l "$tc_name" -tc
+        log "$tc_name: wait_cloud_state - Detected Cloud status ACTIVE - Success" ||
+        raise "FAIL: wait_cloud_state - Failed to detect Cloud status ACTIVE" -l "$tc_name" -tc
 else
-    raise "Wrong test type option" -l "$tc_name" -arg
+    raise "FAIL: Wrong test type option" -l "$tc_name" -arg
 fi
+
 pass

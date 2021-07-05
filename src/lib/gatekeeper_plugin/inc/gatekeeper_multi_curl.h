@@ -30,23 +30,31 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <curl/curl.h>
 #include <ev.h>
 
+#include "gatekeeper_msg.h"
+#include "gatekeeper.h"
 #include "ds_tree.h"
 #include "os_types.h"
 
-struct http2_curl
+struct gk_mcurl_buffer
 {
-    struct ev_loop *loop;
-    struct ev_io fifo_event;
-    struct ev_timer timer_event;
-    CURLM *multi;
-    int still_running;
+    int size;
+    char *buf;
+};
+
+struct gk_mcurl_req_key
+{
+    int req_type;
+    int req_id;
 };
 
 struct gk_conn_info
 {
     CURL *easy;
     char *url;
-    struct http2_curl *global;
+    struct gk_mcurl_req_key req_key;
+    struct gk_curl_multi_info *global;
+    struct gk_mcurl_buffer data;
+    struct fsm_gk_session *context;
     char error[CURL_ERROR_SIZE];
 };
 
@@ -58,7 +66,7 @@ struct gk_sock_info
     long timeout;
     struct ev_io ev;
     int evset;
-    struct http2_curl *global;
+    struct gk_curl_multi_info *global;
 };
 
 /**
@@ -68,7 +76,7 @@ struct gk_sock_info
  *         false otherwise
  */
 bool
-gk_new_conn(char *url);
+gk_send_mcurl_request(struct fsm_gk_session *fsm_gk_session, struct gk_mcurl_data *mcurl_data);
 
 
 /**
@@ -76,17 +84,18 @@ gk_new_conn(char *url);
  *
  */
 bool
-gk_curl_exit(void);
+gk_curl_multi_cleanup(struct fsm_gk_session *fsm_gk_session);
 
 
 /**
  * @brief initialize curl library
+ * @param fsm_gk_session pointer to gatekeeper session
  * @param loop pointer to ev_loop structure
  * @return true if the initialization succeeded,
  *         false otherwise
  */
 bool
-gk_multi_curl_init(struct ev_loop *loop);
+gk_multi_curl_init(struct fsm_gk_session *fsm_gk_session, struct ev_loop *loop);
 
 
 #endif /* GK_CURL_H_INCLUDED */

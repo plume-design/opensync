@@ -30,7 +30,8 @@
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/dm_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="dm/$(basename "$0")"
 manager_setup_file="dm/dm_setup.sh"
@@ -49,16 +50,17 @@ Script usage example:
    ./${tc_name}
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 
 trap '
 fut_info_dump_line
@@ -71,7 +73,7 @@ log_title "$tc_name: DM test - Verify sku_number is populated in AWLAN_Node tabl
 print_tables AWLAN_Node
 
 wait_for_function_response 'notempty' "get_ovsdb_entry_value AWLAN_Node sku_number" 5 &&
-    log "$tc_name: Valid sku_number is populated in the AWLAN_Node table" ||
-    raise "FAIL: sku_number is empty in the AWLAN_Node table" -l "$tc_name" -tc
+    log "$tc_name: AWLAN_Node::sku_number is populated - Success" ||
+    raise "FAIL: AWLAN_Node::sku_number is empty" -l "$tc_name" -tc
 
 pass

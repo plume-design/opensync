@@ -46,6 +46,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "util.h"
 #include "daemon.h"
 #include "read_until.h"
+#include "memutil.h"
 
 #define DAEMON_DEFAULT_RESTART_DELAY      1.0   /* Default delay between daemon restarts in secods */
 #define DAEMON_DEFAULT_RESTART_MAX        5     /* Number of retries before giving up */
@@ -86,7 +87,7 @@ bool daemon_init(daemon_t *self, const char *exe_path, int flags)
     if (!daemon_arg_reset(self))
     {
         LOG(ERR, "daemon: Error initializing arguments.");
-        free(self->dn_exec);
+        FREE(self->dn_exec);
         return false;
     }
 
@@ -120,8 +121,8 @@ void daemon_fini(daemon_t *self)
 
     __daemon_arg_reset(self);
 
-    if (self->dn_pidfile_path != NULL) free(self->dn_pidfile_path);
-    if (self->dn_exec != NULL) free(self->dn_exec);
+    if (self->dn_pidfile_path != NULL) FREE(self->dn_pidfile_path);
+    if (self->dn_exec != NULL) FREE(self->dn_exec);
 }
 
 /**
@@ -142,11 +143,11 @@ void __daemon_arg_reset(daemon_t *self)
     /* Free the argument list */
     for (ii = 0; ii < self->dn_argc; ii++)
     {
-        if (self->dn_argv[ii] != NULL) free(self->dn_argv[ii]);
+        if (self->dn_argv[ii] != NULL) FREE(self->dn_argv[ii]);
     }
 
     self->dn_argc = 0;
-    if (self->dn_argv != NULL) free(self->dn_argv);
+    if (self->dn_argv != NULL) FREE(self->dn_argv);
     self->dn_argv = NULL;
 }
 
@@ -169,15 +170,9 @@ bool daemon_arg_add_v(daemon_t *self, const char *arg, ...)
     va_end(va);
 
     /* Reallocate argument list */
-    self->dn_argv = realloc(
+    self->dn_argv = REALLOC(
             self->dn_argv,
             sizeof(self->dn_argv[0]) * (self->dn_argc + nargc + 1));
-
-    if (self->dn_argv == NULL)
-    {
-        self->dn_argc = 0;
-        return false;
-    }
 
     va_start(va, arg);
     for (pa = arg; pa != NULL; pa = va_arg(va, const char *))
@@ -208,15 +203,9 @@ bool daemon_arg_add_a(daemon_t *self, char *argv[])
     }
 
     /* Reallocate argument list */
-    self->dn_argv = realloc(
+    self->dn_argv = REALLOC(
             self->dn_argv,
             sizeof(self->dn_argv[0]) * (self->dn_argc + nargc + 1));
-
-    if (self->dn_argv == NULL)
-    {
-        self->dn_argc = 0;
-        return false;
-    }
 
     for (parg = argv; *parg != NULL; parg++)
     {

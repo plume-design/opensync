@@ -47,6 +47,18 @@ typedef struct
 #endif
 
 /*
+ *Compare IP header length with Packet size
+ *if IP header length is greather than Packet size
+ *then we have recieved malformed packet
+ */
+#define HEADER_LEN_CHECK(h_len, p_len, p_packet)                        \
+    if (h_len > p_len) {                                                \
+        LOGD("%s: %s: recieved Malformed packet ", __FILE__, __func__); \
+        p_packet = NULL;                                                \
+        return 0;                                                       \
+    }
+
+/*
  * IP address container that is IP version agnostic.
  * The IPvX_MOVE macros handle filling these with packet data correctly.
  */

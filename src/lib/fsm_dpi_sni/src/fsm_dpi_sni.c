@@ -40,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "network_metadata_report.h"
 #include "policy_tags.h"
 #include "dns_cache.h"
+#include "fsm_dpi_utils.h"
 
 static struct fsm_dpi_sni_cache
 cache_mgr =
@@ -53,7 +54,6 @@ fsm_dpi_sni_get_mgr(void)
 {
     return &cache_mgr;
 }
-
 
 static const struct fsm_req_type
 {
@@ -79,6 +79,10 @@ static const struct fsm_req_type
     }
 };
 
+/* Forward definition */
+static int
+fsm_dpi_sni_process_verdict(struct fsm_policy_req *policy_request,
+                            struct fsm_policy_reply *policy_reply);
 
 /**
  * @brief sets the request type based on the flow attribute
@@ -86,7 +90,7 @@ static const struct fsm_req_type
  * @param the ovsdb configuration
  * @return an integer representing the type of service
  */
-static int
+int
 fsm_req_type(char *attr)
 {
     const struct fsm_req_type *map;
@@ -94,12 +98,14 @@ fsm_req_type(char *attr)
     size_t i;
     int cmp;
 
+    if (attr == NULL) return FSM_UNKNOWN_REQ_TYPE;
+
     /* Walk the known types */
     nelems = (sizeof(req_map) / sizeof(req_map[0]));
     map = req_map;
     for (i = 0; i < nelems; i++)
     {
-        cmp = strcmp(attr, map->req_str_type);
+        cmp = strcmp(map->req_str_type, attr);
         if (!cmp) return map->req_type;
 
         map++;
@@ -108,7 +114,6 @@ fsm_req_type(char *attr)
     return FSM_UNKNOWN_REQ_TYPE;
 }
 
-
 /**
  * @brief compare sessions
  *
@@ -116,18 +121,16 @@ fsm_req_type(char *attr)
  * @param b session pointer
  * @return 0 if sessions matches
  */
-static int
+int
 fsm_session_cmp(void *a, void *b)
 {
     uintptr_t p_a = (uintptr_t)a;
     uintptr_t p_b = (uintptr_t)b;
 
-    if (p_a ==  p_b) return 0;
+    if (p_a == p_b) return 0;
     if (p_a < p_b) return -1;
     return 1;
 }
-
-
 
 /**
  * @brief session initialization entry point
@@ -145,7 +148,7 @@ dpi_sni_plugin_init(struct fsm_session *session)
     struct fsm_dpi_sni_session *fsm_dpi_sni_session;
     struct fsm_dpi_sni_cache *mgr;
 
-    if (session == NULL) return -1;
+    if (session == NULL || session->p_ops == NULL) return -1;
 
     mgr = fsm_dpi_sni_get_mgr();
 
@@ -190,7 +193,6 @@ dpi_sni_plugin_init(struct fsm_session *session)
     return 0;
 }
 
-
 /**
  * @brief session exit point
  *
@@ -206,9 +208,7 @@ fsm_dpi_sni_plugin_exit(struct fsm_session *session)
     if (!mgr->initialized) return;
 
     fsm_dpi_sni_delete_session(session);
-    return;
 }
-
 
 /**
  * @brief looks up a session
@@ -239,7 +239,6 @@ fsm_dpi_sni_lookup_session(struct fsm_session *session)
     return u_session;
 }
 
-
 /**
  * @brief Frees a fsm url session
  *
@@ -250,7 +249,6 @@ fsm_dpi_sni_free_session(struct fsm_dpi_sni_session *u_session)
 {
     FREE(u_session);
 }
-
 
 /**
  * @brief deletes a session
@@ -273,12 +271,19 @@ fsm_dpi_sni_delete_session(struct fsm_session *session)
     LOGD("%s: removing session %s", __func__, session->name);
     ds_tree_remove(sessions, u_session);
     fsm_dpi_sni_free_session(u_session);
-
-    return;
 }
 
+/**
+ * @brief make the TTL configurable
+ */
+time_t FSM_DPI_SNI_CHECK_TTL = (2 * 60);
 
-#define FSM_DPI_SNI_CHECK_TTL (2*60)
+void
+fsm_dpi_sni_set_ttl(time_t t)
+{
+    FSM_DPI_SNI_CHECK_TTL = t;
+}
+
 /**
  * @brief periodic routine
  *
@@ -288,7 +293,7 @@ void
 fsm_dpi_sni_plugin_periodic(struct fsm_session *session)
 {
     struct fsm_dpi_sni_session *u_session;
-    double cmp_clean;
+    time_t cmp_clean;
     time_t now;
 
     u_session = session->handler_ctxt;
@@ -300,7 +305,6 @@ fsm_dpi_sni_plugin_periodic(struct fsm_session *session)
 
     u_session->timestamp = now;
 }
-
 
 /**
  * @brief update routine
@@ -315,134 +319,282 @@ fsm_dpi_sni_plugin_update(struct fsm_session *session)
     u_session = session->handler_ctxt;
     if (u_session == NULL) return;
 
-    u_session->included_devices = session->ops.get_config(session,
-                                                          "included_devices");
-    u_session->excluded_devices = session->ops.get_config(session,
-                                                          "excluded_devices");
-
-    return;
+    u_session->included_devices = session->ops.get_config(session, "included_devices");
+    u_session->excluded_devices = session->ops.get_config(session, "excluded_devices");
 }
 
-
 static void
-fsm_dpi_sni_send_report(struct fqdn_pending_req *req)
+fsm_dpi_sni_send_report(struct fsm_policy_req *policy_request,
+                        struct fsm_policy_reply *policy_reply)
 {
-    struct fsm_session *session = req->fsm_context;
+    struct fqdn_pending_req *pending_req;
+    struct fsm_session *session;
     char *report;
 
-    if (req->to_report != true) return;
-    if (req->num_replies > 1) return;
+    if (policy_reply->to_report != true) return;
 
-    report = jencode_url_report(session, req);
+    pending_req = policy_request->fqdn_req;
+    session = pending_req->fsm_context;
+
+    report = jencode_url_report(session, pending_req, policy_reply);
 
     session->ops.send_report(session, report);
 }
 
-
-/**
- * @brief request an action from the policy engine
- *
- * @param session the fsm session
- * @param mac the device mac addresss
- * @param attr the attribute flow
- * @param attr_value the attribute flow value
- * @return the action to take
- */
 static int
-fsm_dpi_sni_policy_req(struct fsm_session *session,
-                       os_macaddr_t *mac,
-                       char *attr,
-                       char *attr_value)
+init_dpi_sni_specific_request(struct fsm_policy_req *policy_request,
+                              struct fsm_request_args *request_args,
+                              char *attr_value)
 {
-    struct fsm_policy_client *policy_client;
-    struct fqdn_pending_req fqdn_req;
-    struct fsm_policy_req policy_req;
-    int action;
+    struct fqdn_pending_req *pending_req;
 
-    memset(&policy_req, 0, sizeof(policy_req));
-    memset(&fqdn_req, 0, sizeof(fqdn_req));
-    policy_client = &session->policy_client;
+    pending_req = policy_request->fqdn_req;
+    policy_request->url = STRDUP(attr_value);
+    policy_request->req_type = request_args->request_type;
 
-    fqdn_req.provider = session->service->name;
-    fqdn_req.fsm_context = session;
-    fqdn_req.send_report = session->ops.send_report;
-    memcpy(fqdn_req.dev_id.addr, mac->addr,
-           sizeof(fqdn_req.dev_id.addr));
-    fqdn_req.redirect = false;
-    fqdn_req.to_report = false;
-    fqdn_req.fsm_checked = false;
-    fqdn_req.req_type = fsm_req_type(attr);
-    if (fqdn_req.req_type == FSM_UNKNOWN_REQ_TYPE)
+    STRSCPY(pending_req->req_info->url, attr_value);
+    pending_req->numq = 1;
+
+    return 0;
+}
+
+struct fsm_policy_req *
+fsm_dpi_sni_create_request(struct fsm_request_args *request_args, char *attr_value)
+{
+    struct fsm_policy_req *policy_request;
+    int ret;
+
+    if (request_args == NULL || attr_value == NULL) return NULL;
+
+    /* initialize fsm policy request structure */
+    policy_request = fsm_policy_initialize_request(request_args);
+    if (policy_request == NULL)
     {
-        LOGE("%s: unknown attribute %s", __func__, attr);
-        action = FSM_DPI_PASSTHRU;
-        return action;
+        LOGD("%s(): fsm policy request initialization failed for dpi sni", __func__);
+        return NULL;
     }
 
-    fqdn_req.policy_table = policy_client->table;
-    fqdn_req.numq = 1;
-    fqdn_req.req_info = CALLOC(1, sizeof(*fqdn_req.req_info));
-    if (fqdn_req.req_info == NULL) return FSM_DPI_PASSTHRU;
+    ret = init_dpi_sni_specific_request(policy_request, request_args, attr_value);
+    if (ret == -1)
+    {
+        LOGT("%s(): failed to initialize dpi sni related request", __func__);
+        goto free_policy_req;
+    }
+    return policy_request;
 
-    /* Set the backend provider ops */
-    fqdn_req.categories_check = session->provider_ops->categories_check;
-    fqdn_req.risk_level_check = session->provider_ops->risk_level_check;
-    fqdn_req.gatekeeper_req = session->provider_ops->gatekeeper_req;
+free_policy_req:
+    fsm_policy_free_request(policy_request);
+    return NULL;
+}
 
-    LOGD("%s: attribute: %s, value %s", __func__, attr, attr_value);
-    STRSCPY(fqdn_req.req_info->url, attr_value);
-    memset(&policy_req, 0, sizeof(policy_req));
-    policy_req.device_id = mac;
-    policy_req.url = attr_value;
-    policy_req.fqdn_req = &fqdn_req;
+static void
+init_dpi_sni_specific_reply(struct fsm_request_args *request_args,
+                            struct fsm_policy_reply *policy_reply)
+{
+    struct fsm_policy_client *policy_client;
+    struct fsm_session *session;
 
-    fsm_apply_policies(session, &policy_req);
+    session = request_args->session;
+    policy_client = &session->policy_client;
+
+    policy_reply->provider = session->service->name;
+    policy_reply->policy_table = policy_client->table;
+    policy_reply->send_report = session->ops.send_report;
+    policy_reply->categories_check = session->provider_ops->categories_check;
+    policy_reply->risk_level_check = session->provider_ops->risk_level_check;
+    policy_reply->gatekeeper_req = session->provider_ops->gatekeeper_req;
+    policy_reply->req_type = request_args->request_type;
+    policy_reply->policy_response = fsm_dpi_sni_process_verdict;
+}
+
+struct fsm_policy_reply *
+fsm_dpi_sni_create_reply(struct fsm_request_args *request_args)
+{
+    struct fsm_policy_reply *policy_reply;
+    struct fsm_session *session;
+
+    if (request_args == NULL) return NULL;
+
+    session = request_args->session;
+    if (session == NULL) return NULL;
+
+    policy_reply = fsm_policy_initialize_reply(session);
+    if (policy_reply == NULL)
+    {
+        LOGD("%s(): failed to initialize policy reply for dpi sni", __func__);
+        return NULL;
+    }
+
+    init_dpi_sni_specific_reply(request_args, policy_reply);
+
+    return policy_reply;
+}
+
+static int
+fsm_dpi_sni_process_request(struct fsm_policy_req *policy_request,
+                            struct fsm_policy_reply *policy_reply)
+{
+    LOGT("%s(): processing dpi sni request", __func__);
+
+    return fsm_apply_policies(policy_request, policy_reply);
+}
+
+static void
+fsm_dpi_sni_process_action(struct fsm_policy_req *policy_request,
+                           struct fsm_policy_reply *policy_reply)
+{
+    struct fqdn_pending_req *pending_req;
+
+    pending_req = policy_request->fqdn_req;
+
     /* overwrite the redirect action to block, as established
      * flows cannot be redirected.  This is required as the
      * GK could have updated the FQDN cache, and if the request
      * if made for attribute tls.sni, gk returns from FQDN cache
      */
-    if (policy_req.reply.action == FSM_REDIRECT)
+    if (policy_reply->action == FSM_REDIRECT)
     {
-        policy_req.reply.action = FSM_BLOCK;
-    }
-    fqdn_req.action = policy_req.reply.action;
-    fqdn_req.policy = policy_req.reply.policy;
-    fqdn_req.policy_idx = policy_req.reply.policy_idx;
-    fqdn_req.rule_name = policy_req.reply.rule_name;
-    fqdn_req.rd_ttl = policy_req.reply.rd_ttl;
-    action = (policy_req.reply.action == FSM_BLOCK ?
-              FSM_DPI_DROP : FSM_DPI_PASSTHRU);
-    fqdn_req.to_report = true;
-    /* Process reporting */
-    if (policy_req.reply.log == FSM_REPORT_NONE)
-    {
-        fqdn_req.to_report = false;
+        policy_reply->action = FSM_BLOCK;
     }
 
-    if ((policy_req.reply.log == FSM_REPORT_BLOCKED) &&
-        (policy_req.reply.action != FSM_BLOCK))
+    pending_req->rd_ttl = policy_reply->rd_ttl;
+
+    policy_reply->to_report = true;
+    /* Process reporting */
+    if (policy_reply->log == FSM_REPORT_NONE)
     {
-        fqdn_req.to_report = false;
+        policy_reply->to_report = false;
     }
+
+    if (policy_reply->log == FSM_REPORT_BLOCKED && policy_reply->action != FSM_BLOCK)
+    {
+        policy_reply->to_report = false;
+    }
+
+    policy_reply->action = (policy_reply->action == FSM_BLOCK ? FSM_DPI_DROP : FSM_DPI_PASSTHRU);
 
     /* Overwrite logging and policy if categorization failed */
-    if (fqdn_req.categorized == FSM_FQDN_CAT_FAILED)
+    if (policy_reply->categorized == FSM_FQDN_CAT_FAILED)
     {
-        fqdn_req.action = FSM_ALLOW;
-        fqdn_req.to_report = true;
+        policy_reply->action = FSM_ALLOW;
+        policy_reply->to_report = true;
+    }
+}
+
+static int
+fsm_dpi_sni_process_report(struct fsm_policy_req *policy_request,
+                           struct fsm_policy_reply *policy_reply)
+{
+    LOGT("%s(): processing report for dpi sni", __func__);
+
+    fsm_dpi_sni_send_report(policy_request, policy_reply);
+
+    return 0;
+}
+
+static void
+fsm_dpi_sni_process_apply_action(struct fsm_policy_req *policy_request,
+                                 struct fsm_policy_reply *policy_reply)
+{
+    struct net_md_stats_accumulator *acc;
+
+    acc = policy_request->acc;
+    if (acc == NULL)
+    {
+        LOGT("%s(): acc is NULL, cannot set action", __func__);
+        return;
     }
 
-    fsm_dpi_sni_send_report(&fqdn_req);
+    if (policy_reply->action == FSM_DPI_DROP)
+    {
+        LOGT("%s(): setting block action", __func__);
+        fsm_dpi_block_flow(acc);
+    }
+    else
+    {
+        LOGT("%s(): setting allow action", __func__);
+        fsm_dpi_allow_flow(acc);
+    }
+}
 
-    FREE(fqdn_req.rule_name);
-    FREE(fqdn_req.policy);
-    fsm_free_url_reply(fqdn_req.req_info->reply);
-    FREE(fqdn_req.req_info);
+static void
+dpi_sni_free_memory(struct fsm_policy_req *policy_request,
+                    struct fsm_policy_reply *policy_reply)
+{
+    FREE(policy_request->url);
+    fsm_policy_free_request(policy_request);
+    fsm_policy_free_reply(policy_reply);
+}
+
+static int
+fsm_dpi_sni_process_verdict(struct fsm_policy_req *policy_request,
+                            struct fsm_policy_reply *policy_reply)
+{
+    int action;
+
+    LOGT("%s(): processing dpi sni verdict with action %d", __func__, policy_reply->action);
+
+    fsm_dpi_sni_process_action(policy_request, policy_reply);
+
+    fsm_dpi_sni_process_apply_action(policy_request, policy_reply);
+
+    action = policy_reply->action;
+
+    fsm_dpi_sni_process_report(policy_request, policy_reply);
+
+    dpi_sni_free_memory(policy_request, policy_reply);
 
     return action;
 }
 
+/**
+ * @brief request an action from the policy engine
+ *
+ * @param request_args request parameter values
+ * @param attr_value the attribute flow value
+ * @return the action to take
+ */
+static int
+fsm_dpi_sni_policy_req(struct fsm_request_args *request_args,
+                       char *attr_value)
+{
+    struct fsm_policy_reply *policy_reply;
+    struct fsm_policy_req *policy_request;
+    int action;
+
+    LOGD("%s: attribute: %d, value %s", __func__, request_args->request_type, attr_value);
+
+    policy_request = fsm_dpi_sni_create_request(request_args, attr_value);
+    if (policy_request == NULL)
+    {
+        LOGD("%s(): failed to create dpi sni policy request", __func__);
+        goto error;
+    }
+
+    policy_reply = fsm_dpi_sni_create_reply(request_args);
+    if (policy_reply == NULL)
+    {
+        LOGD("%s(): failed to initialize dpi sni reply", __func__);
+        goto clean_policy_req;
+    }
+
+    LOGT("%s(): allocated policy_request == %p, policy_reply == %p",
+         __func__,
+         policy_request,
+         policy_reply);
+
+    /* process the input request */
+    action = fsm_dpi_sni_process_request(policy_request, policy_reply);
+
+    action = (action == FSM_BLOCK ? FSM_DPI_DROP : FSM_DPI_PASSTHRU);
+
+    return action;
+
+clean_policy_req:
+    fsm_policy_free_request(policy_request);
+error:
+    return FSM_DPI_PASSTHRU;
+}
 
 /**
  * @brief check if a mac address belongs to a given tag or matches a value
@@ -461,8 +613,7 @@ fsm_dpi_sni_find_mac_in_val(os_macaddr_t *mac, char *val)
     if (val == NULL) return false;
     if (mac == NULL) return false;
 
-    snprintf(mac_s, sizeof(mac_s), PRI_os_macaddr_lower_t,
-             FMT_os_macaddr_pt(mac));
+    snprintf(mac_s, sizeof(mac_s), PRI_os_macaddr_lower_t, FMT_os_macaddr_pt(mac));
 
     rc = om_tag_in(mac_s, val);
     if (rc) return true;
@@ -483,14 +634,15 @@ dpi_parse_populate_sockaddr(int af, void *ip_addr, struct sockaddr_storage *dst)
         memset(in4, 0, sizeof(struct sockaddr_in));
         in4->sin_family = af;
         memcpy(&in4->sin_addr, ip_addr, sizeof(in4->sin_addr));
-    } else if (af == AF_INET6) {
+    }
+    else if (af == AF_INET6)
+    {
         struct sockaddr_in6 *in6 = (struct sockaddr_in6 *)dst;
 
         memset(in6, 0, sizeof(struct sockaddr_in6));
         in6->sin6_family = af;
         memcpy(&in6->sin6_addr, ip_addr, sizeof(in6->sin6_addr));
     }
-    return;
 }
 
 bool
@@ -503,6 +655,10 @@ is_redirected_flow(struct net_md_flow_info *info, const char *attr)
 
     LOGT("%s(): checking attribute %s", __func__, attr);
 
+    if (info == NULL || info->local_mac == NULL || info->remote_ip == NULL)
+    {
+        return false;
+    }
 
     /* look up the dns cache */
     memset(&lkp_req, 0, sizeof(lkp_req));
@@ -542,8 +698,10 @@ fsm_dpi_sni_process_attr(struct fsm_session *session, char *attr, char *value,
                          struct net_md_stats_accumulator *acc)
 {
     struct fsm_dpi_sni_session *u_session;
+    struct fsm_request_args request_args;
     struct net_md_flow_info info;
     struct net_md_flow_key *key;
+    int request_type;
     bool excluded;
     bool included;
     int action;
@@ -551,14 +709,17 @@ fsm_dpi_sni_process_attr(struct fsm_session *session, char *attr, char *value,
     bool ret;
     bool rc;
 
-    if (acc == NULL) return FSM_DPI_IGNORED;
-    if (acc->originator == NET_MD_ACC_UNKNOWN_ORIGINATOR) return FSM_DPI_IGNORED;
+    action = FSM_DPI_IGNORED;
+
+    if (acc == NULL) goto out;
+    if (acc->originator == NET_MD_ACC_UNKNOWN_ORIGINATOR) goto out;
 
     key = acc->key;
-    if (key == NULL) return FSM_DPI_IGNORED;
+    if (key == NULL) goto out;
 
+    if (session == NULL) goto out;
     u_session = session->handler_ctxt;
-    if (u_session == NULL) return FSM_DPI_IGNORED;
+    if (u_session == NULL) goto out;
 
     LOGT("%s: %s: attribute: %s, value %s", __func__,
          session->name, attr, value);
@@ -567,9 +728,6 @@ fsm_dpi_sni_process_attr(struct fsm_session *session, char *attr, char *value,
 
     excluded = (u_session->excluded_devices != NULL);
     included = (u_session->included_devices != NULL);
-
-    act = false;
-    action = FSM_DPI_IGNORED;
 
     memset(&info, 0, sizeof(info));
     ret = net_md_get_flow_info(acc, &info);
@@ -587,7 +745,7 @@ fsm_dpi_sni_process_attr(struct fsm_session *session, char *attr, char *value,
         if (included)
         {
             act = fsm_dpi_sni_find_mac_in_val(info.local_mac,
-                                              u_session->excluded_devices);
+                                              u_session->included_devices);
             if (!act) goto out;
         }
     }
@@ -598,10 +756,23 @@ fsm_dpi_sni_process_attr(struct fsm_session *session, char *attr, char *value,
     if (rc == true)
     {
         LOGD("%s(): redirected flow detected", __func__);
-        return FSM_DPI_IGNORED;
+        goto out;
     }
 
-    action = fsm_dpi_sni_policy_req(session, info.local_mac, attr, value);
+    request_type = fsm_req_type(attr);
+    if (request_type == FSM_UNKNOWN_REQ_TYPE)
+    {
+        LOGE("%s: unknown attribute %s", __func__, attr);
+        return FSM_DPI_PASSTHRU;
+    }
+
+    memset(&request_args, 0, sizeof(request_args));
+    request_args.session = session;
+    request_args.device_id = info.local_mac;
+    request_args.acc = acc;
+    request_args.request_type = request_type;
+
+    action = fsm_dpi_sni_policy_req(&request_args, value);
 
 out:
     return action;

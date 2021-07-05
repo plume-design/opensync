@@ -31,6 +31,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "log.h"
 #include "pasync.h"
+#include "memutil.h"
 
 #define MODULE_ID LOG_MODULE_ID_PASYNC
 
@@ -60,15 +61,12 @@ req_pasync_t * pasync_init_req()
 {
     req_pasync_t * req = NULL;
 
-    req = malloc(sizeof(req_pasync_t));
-    if (NULL != req)
-    {
-        memset(req, 0, sizeof(req_pasync_t));
-        req->buff = malloc(PASYNC_BUFF);
-        memset(req->buff, 0, PASYNC_BUFF);
-        req->buff_sz = PASYNC_BUFF;
-        req->isinit = false;
-    }
+    req = MALLOC(sizeof(req_pasync_t));
+    memset(req, 0, sizeof(req_pasync_t));
+    req->buff = MALLOC(PASYNC_BUFF);
+    memset(req->buff, 0, PASYNC_BUFF);
+    req->buff_sz = PASYNC_BUFF;
+    req->isinit = false;
 
     return req;
 }
@@ -83,9 +81,9 @@ void pasync_deinit_req(req_pasync_t * req)
     if (NULL != req)
     {
         if (req->buff)
-            free(req->buff);
+            FREE(req->buff);
 
-        free(req);
+        FREE(req);
     }
 }
 
@@ -117,19 +115,10 @@ void pasync_watcher_cb(EV_P_ ev_io *w, int revents)
         if (req->msg_sz == req->buff_sz)
         {
             /* increase buffer size for one buffer quantum */
-            tmpbuff = realloc(req->buff, req->buff_sz + PASYNC_BUFF);
+            tmpbuff = REALLOC(req->buff, req->buff_sz + PASYNC_BUFF);
 
-            if (tmpbuff != NULL)
-            {
-                req->buff = tmpbuff;
-                req->buff_sz += PASYNC_BUFF;
-            }
-            else
-            {
-                /* this is to signal error and trigger
-                 * stop watching for the io event */
-                rbytes = -1;
-            }
+            req->buff = tmpbuff;
+            req->buff_sz += PASYNC_BUFF;
         }
     }
 

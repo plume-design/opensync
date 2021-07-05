@@ -10,3 +10,10 @@ menuconfig MANAGER_NM
         default "nm;true;needs_plan_b=true"
         help
             Network Manager startup configuration
+
+    config MANAGER_NM_MCAST_EXCEPTIONS
+        depends on MANAGER_NM
+        bool "NM Configure OVS mcast exceptions"
+        default n
+        help
+            Network Manager configures OVS multicast exceptions when Snooping enabled

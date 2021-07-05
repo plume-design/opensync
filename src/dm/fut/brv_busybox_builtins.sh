@@ -26,10 +26,12 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/brv_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="brv/$(basename "$0")"
 brv_setup_file="brv/brv_setup.sh"
@@ -49,16 +51,17 @@ Script usage example:
    ./${tc_name} "tail"
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 NARGS=1
 [ $# -ne ${NARGS} ] && usage && raise "Requires exactly '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 
@@ -69,14 +72,14 @@ log_title "${tc_name}: BRV test - Verify '${builtin_tool}' is built into busybox
 is_tool_on_system "busybox"
 rc=$?
 if [ $rc != 0 ]; then
-    raise "Refusing tool search, busybox is not present on system" -l "${tc_name}" -nf
+    raise "FAIL: Refusing tool search, busybox is not present on system" -l "${tc_name}" -nf
 fi
 is_busybox_builtin "${builtin_tool}"
 rc=$?
 if [ $rc == 0 ]; then
-    log -deb "${tc_name}: '${builtin_tool}' is built into busybox"
+    log "${tc_name}: '${builtin_tool}' is built into busybox - Success"
 else
-    raise "'${builtin_tool}' is not built into busybox" -l "${tc_name}" -tc
+    raise "FAIL: '${builtin_tool}' is not built into busybox" -l "${tc_name}" -tc
 fi
 
 pass

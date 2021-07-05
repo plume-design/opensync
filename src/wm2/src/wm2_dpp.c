@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /* opensync */
 #include "os.h"
 #include "util.h"
+#include "memutil.h"
 #include "ovsdb.h"
 #include "ovsdb_update.h"
 #include "ovsdb_table.h"
@@ -52,6 +53,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define WM2_DPP_RECALC_SECONDS atoi(getenv("WM2_DPP_RECALC_SECONDS") ?: "1")
 #define WM2_DPP_TRIES atoi(getenv("WM2_DPP_TRIES") ?: "3")
 #define WM2_DPP_ONBOARD_TIMEOUT_SECONDS atoi(getenv("WM2_DPP_ONBOARD_TIMEOUT_SECONDS") ?: "60")
+#define WM2_DPP_JOB_NO_TIMEOUT -1
 #define WM2_DPP_SSID_LEN 32
 #define WM2_DPP_PSK_LEN 64
 
@@ -62,10 +64,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 struct wm2_dpp_job {
     struct ds_dlist_node list;
+    struct wm2_dpp_job *next;
     struct schema_DPP_Config config;
     bool gone;
     bool interrupted;
+    bool submitted;
     int tries_left;
+    ev_timer expiry;
 };
 
 struct wm2_dpp_announcement {
@@ -92,12 +97,47 @@ struct wm2_dpp_ifname {
 static ovsdb_table_t table_DPP_Config;
 static ovsdb_table_t table_DPP_Announcement;
 static ovsdb_table_t table_DPP_Oftag;
-static ev_timer g_wm2_dpp_timeout_timer;
 static ev_timer g_wm2_dpp_recalc_timer;
 static struct ds_dlist g_wm2_dpp_ifnames = DS_DLIST_INIT(struct wm2_dpp_ifname, list);
 static struct ds_dlist g_wm2_dpp_jobs = DS_DLIST_INIT(struct wm2_dpp_job, list);
 static struct ds_dlist g_wm2_dpp_announcements = DS_DLIST_INIT(struct wm2_dpp_announcement, list);
 static bool g_wm2_dpp_supported;
+
+static void
+wm2_dpp_jobs_mark_timed_out(struct wm2_dpp_job *job)
+{
+    LOGI("dpp: %s: job timed out", job->config._uuid.uuid);
+    SCHEMA_SET_STR(job->config.status, SCHEMA_CONSTS_DPP_TIMED_OUT);
+    WARN_ON(!ovsdb_table_update(&table_DPP_Config, &job->config));
+}
+
+static void
+wm2_dpp_jobs_mark_failed(struct wm2_dpp_job *job)
+{
+    LOGE("dpp: %s: job failed too many times, giving up", job->config._uuid.uuid);
+    SCHEMA_SET_STR(job->config.status, SCHEMA_CONSTS_DPP_FAILED);
+    WARN_ON(!ovsdb_table_update(&table_DPP_Config, &job->config));
+}
+
+static void
+wm2_dpp_jobs_mark_preempted(struct wm2_dpp_job *job)
+{
+    LOGI("dpp: %s: job preempted", job->config._uuid.uuid);
+    SCHEMA_SET_STR(job->config.status, SCHEMA_CONSTS_DPP_REQUESTED); // TODO: is this fine for controller?
+    WARN_ON(!ovsdb_table_update(&table_DPP_Config, &job->config));
+}
+
+static void
+wm2_dpp_jobs_mark_in_progress(struct wm2_dpp_job *job)
+{
+    LOGI("dpp: %s: job: %s %sstarted, timeout in %d seconds",
+         job->config._uuid.uuid,
+         job->config.auth,
+         job->submitted ? "re" : "",
+         job->config.timeout_seconds);
+    SCHEMA_SET_STR(job->config.status, SCHEMA_CONSTS_DPP_IN_PROGRESS);
+    WARN_ON(!ovsdb_table_update(&table_DPP_Config, &job->config));
+}
 
 static struct wm2_dpp_ifname *
 wm2_dpp_ifname_get(const char *ifname)
@@ -118,9 +158,7 @@ wm2_dpp_ifname_add(const char *ifname)
 
     LOGD("dpp: %s: adding", ifname);
 
-    i = calloc(1, sizeof(*i));
-    if (!i)
-        return NULL;
+    i = CALLOC(1, sizeof(*i));
 
     STRSCPY_WARN(i->ifname, ifname);
     ds_dlist_insert_tail(&g_wm2_dpp_ifnames, i);
@@ -133,7 +171,7 @@ wm2_dpp_ifname_del(struct wm2_dpp_ifname *i)
     LOGD("dpp: %s: removing", i->ifname);
 
     ds_dlist_remove(&g_wm2_dpp_ifnames, i);
-    free(i);
+    FREE(i);
 }
 
 static void
@@ -147,12 +185,22 @@ wm2_dpp_recalc_schedule(void)
 }
 
 static void
+wm2_dpp_jobs_timeout_cb(EV_P_ ev_timer *timer, int revents)
+{
+    struct wm2_dpp_job *job = container_of(timer, struct wm2_dpp_job, expiry);
+
+    wm2_dpp_jobs_mark_timed_out(job);
+    wm2_dpp_recalc_schedule();
+}
+
+static void
 wm2_dpp_jobs_del(struct wm2_dpp_job *job)
 {
     LOGD("dpp: %s: removing", job->config._uuid.uuid);
 
+    WARN_ON(ev_is_active(&job->expiry));
     ds_dlist_remove(&g_wm2_dpp_jobs, job);
-    free(job);
+    FREE(job);
 }
 
 static struct wm2_dpp_job *
@@ -162,12 +210,11 @@ wm2_dpp_jobs_add(const struct schema_DPP_Config *config)
 
     LOGD("dpp: %s: adding", config->_uuid.uuid);
 
-    job = calloc(1, sizeof(*job));
-    if (!job)
-        return NULL;
+    job = CALLOC(1, sizeof(*job));
 
     job->tries_left = WM2_DPP_TRIES;
     memcpy(&job->config, config, sizeof(job->config));
+    ev_init(&job->expiry, wm2_dpp_jobs_timeout_cb);
     ds_dlist_insert_tail(&g_wm2_dpp_jobs, job);
     return job;
 }
@@ -185,15 +232,19 @@ wm2_dpp_jobs_get(const char *uuid)
 }
 
 static struct wm2_dpp_job *
-wm2_dpp_jobs_get_current(void)
+wm2_dpp_jobs_get_running(void)
 {
+    struct wm2_dpp_job *found = NULL;
     struct wm2_dpp_job *job;
 
-    ds_dlist_foreach(&g_wm2_dpp_jobs, job)
-        if (!strcmp(job->config.status, SCHEMA_CONSTS_DPP_IN_PROGRESS))
-            return job;
+    ds_dlist_foreach(&g_wm2_dpp_jobs, job) {
+        if (job->submitted) {
+            job->next = found;
+            found = job;
+        }
+    }
 
-    return NULL;
+    return found;
 }
 
 static void
@@ -219,14 +270,11 @@ wm2_dpp_jobs_flush_gone(void)
      */
     for (;;) {
         ds_dlist_foreach(&g_wm2_dpp_jobs, job)
-            if (job->gone)
+            if (job->gone && !job->submitted)
                 break;
 
         if (!job)
             break;
-
-        if (!strcmp(job->config.status, SCHEMA_CONSTS_DPP_IN_PROGRESS))
-            LOGI("dpp: %s: cancelling due to removal", job->config._uuid.uuid);
 
         wm2_dpp_jobs_del(job);
     }
@@ -246,6 +294,9 @@ wm2_dpp_jobs_pull(void)
     for (config = configs; config && n; config++, n--) {
         LOGD("dpp: %s: processing", config->_uuid.uuid);
 
+        if (config->config_uuid_exists)
+            continue;
+
         job = wm2_dpp_jobs_get(config->_uuid.uuid);
         if (!job) job = wm2_dpp_jobs_add(config);
         if (job) job->gone = false;
@@ -253,7 +304,7 @@ wm2_dpp_jobs_pull(void)
         WARN_ON(!job);
     }
 
-    free(configs);
+    FREE(configs);
     wm2_dpp_jobs_flush_gone();
 }
 
@@ -272,46 +323,37 @@ wm2_dpp_jobs_ifnames_ready(const struct wm2_dpp_job *job)
     return true;
 }
 
-static bool
-wm2_dpp_jobs_allowed(void)
+static size_t
+wm2_dpp_jobs_list_count(struct wm2_dpp_job *jobs)
 {
-    /* This could be extended to wait, eg. for
-     * config/state to get in sync before DPP
-     * proceeds with anything.
-     */
-    return true;
-}
-
-static struct wm2_dpp_job *
-wm2_dpp_jobs_get_next(void)
-{
-    struct wm2_dpp_job *job;
-
-    if (!wm2_dpp_jobs_allowed())
-        return NULL;
-
-    ds_dlist_foreach(&g_wm2_dpp_jobs, job)
-        if (!strcmp(job->config.status, SCHEMA_CONSTS_DPP_REQUESTED))
-            if (wm2_dpp_jobs_ifnames_ready(job))
-                return job;
-
-    return NULL;
+    size_t n = 0;
+    for (; jobs; jobs = jobs->next)
+        n++;
+    return n;
 }
 
 static void
 wm2_dpp_jobs_interrupt(void)
 {
+    struct wm2_dpp_job *jobs;
     struct wm2_dpp_job *job;
+    size_t n;
 
-    job = wm2_dpp_jobs_get_current();
-    if (!job)
-        return;
+    jobs = wm2_dpp_jobs_get_running();
+    n = wm2_dpp_jobs_list_count(jobs);
+    if (n > 0)
+        LOGI("dpp: interrupting %zd jobs, will recalc soon", n);
 
-    LOGI("dpp: %s: interrupting, will restart soon", job->config._uuid.uuid);
+    for (job = jobs; job; job = job->next) {
+        LOGD("dpp: %s: interrupting, will restart soon", job->config._uuid.uuid);
 
-    ev_timer_stop(EV_DEFAULT_ &g_wm2_dpp_timeout_timer);
-    job->interrupted = true;
-    ovsdb_table_update(&table_DPP_Config, &job->config);
+        job->interrupted = true;
+        if (ev_is_active(&job->expiry)) {
+            ev_timer_stop(EV_DEFAULT_ &job->expiry);
+            job->config.timeout_seconds = ev_timer_remaining(EV_DEFAULT_ &job->expiry);
+        }
+        ovsdb_table_update(&table_DPP_Config, &job->config);
+    }
 }
 
 static const char *
@@ -480,7 +522,7 @@ wm2_dpp_get_vif_num_non_sta(void)
     column = SCHEMA_COLUMN(Wifi_VIF_Config, mode);
     where = ovsdb_tran_cond(OCLM_STR, column, OFUNC_NEQ, "sta");
     vconfs = ovsdb_table_select_where(&table_Wifi_VIF_Config, where, &n);
-    free(vconfs);
+    FREE(vconfs);
 
     return n;
 }
@@ -602,95 +644,210 @@ wm2_dpp_recalc_onboard(void)
     WARN_ON(!ok);
 }
 
+static struct wm2_dpp_job *
+wm2_dpp_jobs_get_runnable_type(const char *type, struct wm2_dpp_job *head)
+{
+    struct wm2_dpp_job *job;
+    bool runnable;
+
+    ds_dlist_foreach(&g_wm2_dpp_jobs, job) {
+        runnable = false;
+        runnable |= !strcmp(job->config.status, SCHEMA_CONSTS_DPP_REQUESTED);
+        runnable |= !strcmp(job->config.status, SCHEMA_CONSTS_DPP_IN_PROGRESS);
+        runnable &= wm2_dpp_jobs_ifnames_ready(job);
+        runnable &= !job->gone;
+
+        if (runnable && !strcmp(job->config.auth, type)) {
+            job->next = head;
+            head = job;
+        }
+    }
+    return head;
+}
+
+static struct wm2_dpp_job *
+wm2_dpp_jobs_get_runnable_priority(void)
+{
+    struct wm2_dpp_job *jobs;
+
+    jobs = wm2_dpp_jobs_get_runnable_type(SCHEMA_CONSTS_DPP_CHIRP, NULL);
+    if (wm2_dpp_jobs_list_count(jobs) > 0)
+        return jobs;
+
+    jobs = wm2_dpp_jobs_get_runnable_type(SCHEMA_CONSTS_DPP_INIT_NOW, NULL);
+    if (wm2_dpp_jobs_list_count(jobs) > 0)
+        return jobs;
+
+    jobs = NULL;
+    jobs = wm2_dpp_jobs_get_runnable_type(SCHEMA_CONSTS_DPP_INIT_ON_ANNOUNCE, jobs);
+    jobs = wm2_dpp_jobs_get_runnable_type(SCHEMA_CONSTS_DPP_RESPOND_ONLY, jobs);
+    if (wm2_dpp_jobs_list_count(jobs) > 0)
+        return jobs;
+
+    return NULL;
+}
+
+static bool
+wm2_dpp_jobs_list_contains(struct wm2_dpp_job *jobs, struct wm2_dpp_job *job)
+{
+    for (; jobs; jobs = jobs->next)
+        if (jobs == job)
+            return true;
+    return false;
+}
+
+static bool
+wm2_dpp_jobs_submit(struct wm2_dpp_job *jobs)
+{
+    struct wm2_dpp_job *job;
+    size_t n = wm2_dpp_jobs_list_count(jobs);
+    struct schema_DPP_Config *configs[n + 1];
+    struct schema_DPP_Config **config;
+    bool ok;
+
+    for (job = jobs, config = configs; job; job = job->next, config++)
+        *config = &job->config;
+
+    *config = NULL;
+    LOGI("dpp: submitting %zd jobs", n);
+
+    ok = wm2_target_dpp_config_set((const struct schema_DPP_Config **)configs);
+    if (!ok) {
+        for (job = jobs, config = configs; job; job = job->next, config++)
+            if (--job->tries_left == 0)
+                wm2_dpp_jobs_mark_failed(job);
+
+        return false;
+    }
+
+    for (job = jobs, config = configs; job; job = job->next, config++) {
+        if (job->config.timeout_seconds != WM2_DPP_JOB_NO_TIMEOUT) {
+            if (ev_is_active(&job->expiry))
+                ev_timer_stop(EV_DEFAULT_ &job->expiry);
+            ev_timer_set(&job->expiry, job->config.timeout_seconds, 0);
+            ev_timer_start(EV_DEFAULT_ &job->expiry);
+        }
+        wm2_dpp_jobs_mark_in_progress(job);
+        job->submitted = true;
+    }
+
+    ds_dlist_foreach(&g_wm2_dpp_jobs, job) {
+        job->interrupted = false;
+
+        if (!wm2_dpp_jobs_list_contains(jobs, job)) {
+            if (ev_is_active(&job->expiry))
+                ev_timer_stop(EV_DEFAULT_ &job->expiry);
+            if (!job->gone &&
+                !strcmp(job->config.status, SCHEMA_CONSTS_DPP_IN_PROGRESS))
+                wm2_dpp_jobs_mark_preempted(job);
+            job->submitted = false;
+        }
+    }
+
+    return true;
+}
+
+static bool
+wm2_dpp_jobs_synced(struct wm2_dpp_job *jobs)
+{
+    struct wm2_dpp_job *job;
+
+    if (!jobs)
+        return false;
+
+    for (job = jobs; job; job = job->next) {
+        if (job->interrupted)
+            return false;
+        if (!job->submitted)
+            return false;
+    }
+
+    ds_dlist_foreach(&g_wm2_dpp_jobs, job)
+        if (job->submitted)
+            if (!wm2_dpp_jobs_list_contains(jobs, job))
+                return false;
+
+    return true;
+}
+
+static struct wm2_dpp_job *
+wm2_dpp_jobs_lookup_by_uuid(const char *uuid)
+{
+    struct wm2_dpp_job *job;
+    const size_t uuid_len = sizeof(job->config._uuid.uuid) - 1;
+
+    if (!uuid)
+        return NULL;
+
+    if (WARN_ON(strlen(uuid) != uuid_len))
+        return NULL;
+
+    ds_dlist_foreach(&g_wm2_dpp_jobs, job)
+        if (!strcmp(job->config._uuid.uuid, uuid))
+            return job;
+
+    return NULL;
+}
+
+static struct wm2_dpp_job *
+wm2_dpp_jobs_lookup_by_uuid_or_one_running(const char *uuid)
+{
+    struct wm2_dpp_job *job;
+
+    job = wm2_dpp_jobs_lookup_by_uuid(uuid);
+    if (job)
+        return job;
+
+    job = wm2_dpp_jobs_get_running();
+    if (WARN_ON(!job))
+        return NULL;
+
+    if (WARN_ON(job->next))
+        return NULL;
+
+    return job;
+}
+
 static void
 wm2_dpp_recalc(void)
 {
-    struct wm2_dpp_job *job;
+    struct wm2_dpp_job *jobs;
+    size_t runnable;
+    size_t running;
     bool ok;
 
     LOGD("dpp: recalculating");
     wm2_dpp_jobs_pull();
     wm2_dpp_recalc_onboard();
 
-    job = wm2_dpp_jobs_get_current();
+    jobs = wm2_dpp_jobs_get_running();
+    running = wm2_dpp_jobs_list_count(jobs);
 
-    if (job && job->interrupted) {
-        SCHEMA_SET_STR(job->config.status, SCHEMA_CONSTS_DPP_REQUESTED);
-        job->interrupted = false;
-        job = NULL; /* force new job selection */
-    }
+    jobs = wm2_dpp_jobs_get_runnable_priority();
+    runnable = wm2_dpp_jobs_list_count(jobs);
 
-    if (job) {
-        WARN_ON(!ev_is_active(&g_wm2_dpp_timeout_timer));
-        LOGI("dpp: %s: still running (timeout in %.2lf seconds)",
-             job->config._uuid.uuid,
-             ev_timer_remaining(EV_DEFAULT_ &g_wm2_dpp_timeout_timer));
+    if (running == 0 && runnable == 0) {
+        LOGD("dpp: recalc: nothing to do, jobs present but interfaces not ready yet?");
         return;
     }
 
-    ev_timer_stop(EV_DEFAULT_ &g_wm2_dpp_timeout_timer);
+    if (wm2_dpp_jobs_synced(jobs)) {
+        LOGD("dpp: jobs in sync (%zd/%zd), perhaps more lower priority jobs were added, or some were removed",
+            running, runnable);
+        return;
+    }
 
-    job = wm2_dpp_jobs_get_next();
-    if (job)
-        LOGD("dpp: %s: starting", job->config._uuid.uuid);
-    else
-        LOGD("dpp: stopping");
-
-    ok = wm2_target_dpp_config_set(job ? &job->config : NULL);
-    if (WARN_ON(!ok)) {
-        if (job && job->tries_left > 0) {
-            LOGI("dpp: %s: failed to start, will retry", job->config._uuid.uuid);
-            job->tries_left--;
-        } else if (job) {
-            LOGE("dpp: %s: failed to start too many times, giving up", job->config._uuid.uuid);
-            SCHEMA_SET_STR(job->config.status, SCHEMA_CONSTS_DPP_FAILED);
-            ok = ovsdb_table_update(&table_DPP_Config, &job->config);
-            WARN_ON(!ok);
-        } else {
-            LOGE("dpp: failed to stop, will retry");
-        }
+    ok = wm2_dpp_jobs_submit(jobs);
+    if (!ok) {
+        LOGI("dpp: failed to submit jobs, will retry soon");
         wm2_dpp_recalc_schedule();
-        return;
     }
-
-    if (!job)
-        return;
-
-    ev_timer_set(&g_wm2_dpp_timeout_timer, job->config.timeout_seconds, 0);
-    ev_timer_start(EV_DEFAULT_ &g_wm2_dpp_timeout_timer);
-
-    LOGI("dpp: %s: started %s (timeout in %.2lf seconds)",
-         job->config._uuid.uuid,
-         job->config.auth,
-         ev_timer_remaining(EV_DEFAULT_ &g_wm2_dpp_timeout_timer));
-
-    SCHEMA_SET_STR(job->config.status, SCHEMA_CONSTS_DPP_IN_PROGRESS);
-    ok = ovsdb_table_update(&table_DPP_Config, &job->config);
-    WARN_ON(!ok);
 }
 
 static void
 wm2_dpp_recalc_cb(EV_P_ ev_timer *t, int revents)
 {
     wm2_dpp_recalc();
-}
-
-static void
-wm2_dpp_timeout_cb(EV_P_ ev_timer *timer, int revents)
-{
-    struct wm2_dpp_job *job;
-    bool ok;
-
-    job = wm2_dpp_jobs_get_current();
-    if (WARN_ON(!job))
-        return;
-
-    LOGI("dpp: %s: timed out", job->config._uuid.uuid);
-
-    SCHEMA_SET_STR(job->config.status, SCHEMA_CONSTS_DPP_TIMED_OUT);
-    ok = ovsdb_table_update(&table_DPP_Config, &job->config);
-    WARN_ON(!ok);
-    wm2_dpp_recalc_schedule();
 }
 
 static void
@@ -710,16 +867,14 @@ wm2_dpp_in_progress(const char *ifname)
     struct wm2_dpp_job *job;
     int i;
 
-    job = wm2_dpp_jobs_get_current();
-    if (!job)
-        return false;
-
     if (ifname == NULL)
         return true;
 
-    for (i = 0; i < job->config.ifnames_len; i++)
-        if (!strcmp(job->config.ifnames[i], ifname))
-            return true;
+    for (job = wm2_dpp_jobs_get_running(); job; job = job->next) {
+        for (i = 0; i < job->config.ifnames_len; i++)
+            if (!strcmp(job->config.ifnames[i], ifname))
+                return true;
+    }
 
     return false;
 }
@@ -729,8 +884,11 @@ wm2_dpp_is_chirping(void)
 {
     struct wm2_dpp_job *job;
 
-    job = wm2_dpp_jobs_get_current();
-    return job && !strcmp(job->config.auth, SCHEMA_CONSTS_DPP_CHIRP);
+    for (job = wm2_dpp_jobs_get_running(); job; job = job->next)
+        if (!strcmp(job->config.auth, SCHEMA_CONSTS_DPP_CHIRP))
+            return true;
+
+    return false;
 }
 
 void
@@ -783,7 +941,7 @@ wm2_dpp_announcement_del(struct wm2_dpp_announcement *a)
     LOGI("dpp: announcement: %s: aging out", a->row._uuid.uuid);
     ovsdb_table_delete(&table_DPP_Announcement, &a->row);
     ds_dlist_remove(&g_wm2_dpp_announcements, a);
-    free(a);
+    FREE(a);
 }
 
 static void
@@ -813,8 +971,7 @@ wm2_dpp_announcement_new(const struct schema_DPP_Announcement *row)
     struct wm2_dpp_announcement *a;
     float sec = WM2_DPP_ANNOUNCEMENT_CLEANUP_SECONDS;
 
-    a = malloc(sizeof(*a));
-    if (!a) return NULL;
+    a = MALLOC(sizeof(*a));
 
     ds_dlist_insert_tail(&g_wm2_dpp_announcements, a);
     memcpy(&a->row, row, sizeof(*row));
@@ -846,7 +1003,7 @@ wm2_dpp_announcement_pull(void)
         memcpy(&a->row, row, sizeof(*row));
     }
 
-    free(rows);
+    FREE(rows);
 
     return n == 0;
 }
@@ -900,13 +1057,13 @@ void
 wm2_dpp_op_conf_enrollee(const struct target_dpp_conf_enrollee *c)
 {
     struct wm2_dpp_job *job;
-    bool ok;
+    const char *status;
     int err = 0;
 
     if (WARN_ON(!g_wm2_dpp_supported))
         return;
 
-    job = wm2_dpp_jobs_get_current();
+    job = wm2_dpp_jobs_lookup_by_uuid_or_one_running(c->config_uuid);
     if (WARN_ON(!job))
         return;
 
@@ -916,19 +1073,35 @@ wm2_dpp_op_conf_enrollee(const struct target_dpp_conf_enrollee *c)
     LOGI("dpp: %s: %s: enrollee configuration handed out", c->ifname, c->sta_mac_addr);
 
     if (err)
-        SCHEMA_SET_STR(job->config.status, SCHEMA_CONSTS_DPP_FAILED);
+        status = SCHEMA_CONSTS_DPP_FAILED;
     else
-        SCHEMA_SET_STR(job->config.status, SCHEMA_CONSTS_DPP_SUCCEEDED);
+        status = SCHEMA_CONSTS_DPP_SUCCEEDED;
 
-    if (c->sta_mac_addr)
-        SCHEMA_SET_STR(job->config.sta_mac_addr, c->sta_mac_addr);
-    if (c->sta_netaccesskey_sha256_hex)
-        SCHEMA_SET_STR(job->config.sta_netaccesskey_sha256_hex, c->sta_netaccesskey_sha256_hex);
+    if (job->config.renew) {
+        struct schema_DPP_Config result = {0};
 
-    str_tolower(job->config.sta_mac_addr);
+        result._partial_update = true;
+        SCHEMA_SET_UUID(result.config_uuid, job->config._uuid.uuid);
+        SCHEMA_SET_STR(result.status, status);
 
-    ok = ovsdb_table_update(&table_DPP_Config, &job->config);
-    WARN_ON(!ok);
+        if (c->sta_mac_addr)
+            SCHEMA_SET_STR(result.sta_mac_addr, c->sta_mac_addr);
+        if (c->sta_netaccesskey_sha256_hex)
+            SCHEMA_SET_STR(result.sta_netaccesskey_sha256_hex, c->sta_netaccesskey_sha256_hex);
+
+        str_tolower(result.sta_mac_addr);
+        WARN_ON(!ovsdb_table_insert(&table_DPP_Config, &result));
+    }
+    else {
+        SCHEMA_SET_STR(job->config.status, status);
+        if (c->sta_mac_addr)
+            SCHEMA_SET_STR(job->config.sta_mac_addr, c->sta_mac_addr);
+        if (c->sta_netaccesskey_sha256_hex)
+            SCHEMA_SET_STR(job->config.sta_netaccesskey_sha256_hex, c->sta_netaccesskey_sha256_hex);
+
+        str_tolower(job->config.sta_mac_addr);
+        WARN_ON(!ovsdb_table_update(&table_DPP_Config, &job->config));
+    }
 
     wm2_dpp_recalc_schedule();
 }
@@ -943,8 +1116,11 @@ wm2_dpp_op_conf_network(const struct target_dpp_conf_network *c)
     if (WARN_ON(!g_wm2_dpp_supported))
         return;
 
-    job = wm2_dpp_jobs_get_current();
+    job = wm2_dpp_jobs_lookup_by_uuid_or_one_running(c->config_uuid);
     if (WARN_ON(!job))
+        return;
+
+    if (WARN_ON(job->config.renew))
         return;
 
     LOGI("dpp: %s: network configuration obtained", c->ifname);
@@ -994,24 +1170,8 @@ wm2_dpp_op_conf_network(const struct target_dpp_conf_network *c)
 void
 wm2_dpp_op_conf_failed(void)
 {
-    struct wm2_dpp_job *job;
-    bool ok;
-
-    if (WARN_ON(!g_wm2_dpp_supported))
-        return;
-
-    job = wm2_dpp_jobs_get_current();
-    if (WARN_ON(!job))
-        return;
-
-    LOGI("dpp: configuration failed");
-
-    SCHEMA_SET_STR(job->config.status, SCHEMA_CONSTS_DPP_FAILED);
-
-    ok = ovsdb_table_update(&table_DPP_Config, &job->config);
-    WARN_ON(!ok);
-
-    wm2_dpp_recalc_schedule();
+    LOGI("dpp: configuration failed, recalcing");
+    wm2_dpp_interrupt();
 }
 
 static void
@@ -1055,7 +1215,7 @@ callback_DPP_Oftag(ovsdb_update_monitor_t *mon,
         wm2_clients_oftag_set(client->mac, row->oftag);
     }
 
-    free(clients);
+    FREE(clients);
 }
 
 void
@@ -1071,7 +1231,6 @@ wm2_dpp_init(void)
     OVSDB_TABLE_MONITOR(DPP_Oftag, false);
 
     ev_init(&g_wm2_dpp_recalc_timer, wm2_dpp_recalc_cb);
-    ev_init(&g_wm2_dpp_timeout_timer, wm2_dpp_timeout_cb);
 
     g_wm2_dpp_supported = wm2_target_dpp_supported();
 

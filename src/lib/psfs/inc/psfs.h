@@ -33,13 +33,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 struct psfs
 {
-    char            psfs_name[64];      /* Store name */
-    int             psfs_fd;            /* Store file descriptor */
-    int             psfs_dirfd;         /* Store folder descriptor */
-    int             psfs_flags;         /* Flags */
-    ds_tree_t       psfs_root;          /* Key/Value cache */
-    ssize_t         psfs_used;          /* Number of bytes used by "good" records
-                                           in this store */
+    char                psfs_name[64];      /* Store name */
+    int                 psfs_fd;            /* Store file descriptor */
+    int                 psfs_dirfd;         /* Store folder descriptor */
+    int                 psfs_flags;         /* Flags */
+    ds_tree_t           psfs_root;          /* Key/Value cache */
+    struct psfs_record *psfs_next;          /* Next element to return with psfs_next() */
+    ssize_t             psfs_used;          /* Number of bytes used by "good" records in this store */
 };
 
 typedef struct psfs psfs_t;
@@ -62,5 +62,7 @@ bool psfs_sync(psfs_t *ps, bool force_prune);
 bool psfs_erase(psfs_t *ps);
 ssize_t psfs_set(psfs_t *ps, const char *key, const void *value, size_t value_sz);
 ssize_t psfs_get(psfs_t *ps, const char *key, void *value, size_t value_sz);
+void psfs_rewind(psfs_t *ps);
+const char *psfs_next(psfs_t *ps);
 
 #endif /* PSFS_H_INCLUDED */

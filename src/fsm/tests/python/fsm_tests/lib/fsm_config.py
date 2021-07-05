@@ -40,12 +40,12 @@ class FsmPluginEntry(utils.ConfEntry):
         self.gen_delete_cmd()
 
     def gen_delete_cmd(self):
-        cmd = "/usr/plume/tools/ovsh d {} -w ".format(self.table)
+        cmd = "$OVSH_PATH d {} -w ".format(self.table)
         cmd += "handler=={}".format(self.handler)
         self.delete_cmd.append(cmd)
 
     def gen_insert_cmd(self):
-        cmd = "/usr/plume/tools/ovsh i {}".format(self.table)
+        cmd = "$OVSH_PATH i {}".format(self.table)
         for c in self.components:
             if c == 'other_config':
                 cmd += ' {}:={}'.format(c,

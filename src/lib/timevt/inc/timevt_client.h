@@ -43,17 +43,13 @@ struct te_client;
 typedef struct te_client *te_client_handle;
 
 /**
- * @brief Opens time-event client for events generation
+ * @brief Opens time-event client for events generation.
  *
- * By default client is not enabled - sent events are only logged locally.
- * You need to enable the client to begin remote transmission of events to
- * the server.
- *
- * @param server_sock_name server socket name to sent event messages to, or NULL to use default addr
- * @param procname process name this client belongs to, if NULL then process ID will be used instead
+ * @param name name of this client; usually process name this client belongs to
+ * @param addr client address (e.g. socket file path) or NULL to use default one
  * @return te_client_handle, or NULL in case of failure
  */
-te_client_handle tecli_open(const char *server_sock_name, const char *procname);
+te_client_handle tecli_open(const char *name, const char *addr);
 
 /**
  * @brief Closes time-event client, releases all used resources
@@ -81,14 +77,5 @@ bool tecli_log_event(
         const char *step,
         const char *msg_fmt,
         va_list ap);
-
-/**
- * @brief Enables / disables remote event logging on the server. When disabled (by default)
- * events are only logged in the default syslog
- * 
- * @param h handle to time-event client
- * @param enable remote logging on/off flag
- */
-void tecli_enable(te_client_handle h, bool enable);
 
 #endif

@@ -34,6 +34,7 @@ endif
 
 ifneq ($(findstring $(PLATFORM),$(ALL_PLATFORMS)),)
 PLATFORM_DIR ?= platform/$(PLATFORM)
+PLATFORM_OVSDB_HOOKS ?= $(PLATFORM_DIR)/ovsdb
 endif
 
 ifeq ($(TARGET),)

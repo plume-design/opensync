@@ -32,6 +32,7 @@ UNIT_TYPE := FUT
 UNIT_DIR := shell/lib
 
 UNIT_FILE := base_lib.sh
+UNIT_FILE += brix_lib.sh
 UNIT_FILE += brv_lib.sh
 UNIT_FILE += cm2_lib.sh
 UNIT_FILE += dm_lib.sh
@@ -39,6 +40,7 @@ UNIT_FILE += fsm_lib.sh
 UNIT_FILE += lm_lib.sh
 UNIT_FILE += nm2_lib.sh
 UNIT_FILE += onbrd_lib.sh
+UNIT_FILE += othr_lib.sh
 UNIT_FILE += pm_led_lib.sh
 UNIT_FILE += qm_lib.sh
 UNIT_FILE += rpi_lib.sh

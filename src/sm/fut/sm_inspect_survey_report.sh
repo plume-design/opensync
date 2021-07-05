@@ -26,10 +26,12 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/sm_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="sm/$(basename "$0")"
 manager_setup_file="sm/sm_setup.sh"
@@ -56,21 +58,19 @@ Script usage example:
    ./${tc_name} 2.4G 6 on-chan 10 5 raw
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 NARGS=6
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
-
-trap 'run_setup_if_crashed sm' EXIT SIGINT SIGTERM
-
 sm_radio_type=$1
 sm_channel=$2
 sm_survey_type=$3
@@ -78,7 +78,9 @@ sm_reporting_interval=$4
 sm_sampling_interval=$5
 sm_report_type=$6
 
-log_title "$tc_name: SM test - Inspect survey report"
+trap 'run_setup_if_crashed sm' EXIT SIGINT SIGTERM
+
+log_title "$tc_name: SM test - Inspect survey report for $sm_radio_type"
 
 log "$tc_name: Inspecting survey report on $sm_radio_type $sm_survey_type channel $sm_channel"
 inspect_survey_report \
@@ -88,5 +90,6 @@ inspect_survey_report \
     "$sm_reporting_interval" \
     "$sm_sampling_interval" \
     "$sm_report_type" ||
-        raise "Failed: inspect_survey_report" -l "$tc_name" -tc
+        raise "FAIL: inspect_survey_report - $sm_survey_type logs not found for radio $sm_radio_type" -l "$tc_name" -tc
+
 pass

@@ -38,6 +38,7 @@
 #include "ovsdb_sync.h"
 #include <string.h>
 #include <stdio.h>
+#include "memutil.h"
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
@@ -243,7 +244,7 @@ static bool nfm_rule_destroy(struct nfm_rule *self)
 		LOGE("[%s] Delete Netfilter rule: unset rule failed", self->conf.name);
 		return false;
 	}
-	free(self);
+	FREE(self);
 	return true;
 }
 
@@ -252,11 +253,7 @@ static struct nfm_rule *nfm_rule_create(const struct schema_Netfilter *conf)
 	struct nfm_rule *self = NULL;
 	bool errcode = true;
 
-	self = malloc(sizeof(*self));
-	if (!self) {
-		LOGE("[%s] Create Netfilter rule: memory allocation failed", conf->name);
-		return NULL;
-	}
+	self = MALLOC(sizeof(*self));
 
 	errcode = nfm_rule_set(self, conf);
 	if (!errcode) {

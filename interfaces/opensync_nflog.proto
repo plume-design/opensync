@@ -56,4 +56,9 @@ message nflog
     optional uint32 hwlen = 14;
     // Hawrdware header data
     optional bytes hwheader = 15;
+    // Interface roles as found in Wifi_Inet_Config
+    optional string ingress_ifrole = 16;
+    optional string egress_ifrole = 17;
+    optional string ingress_phyifrole = 18;
+    optional string egress_phyifrole = 19;
 }

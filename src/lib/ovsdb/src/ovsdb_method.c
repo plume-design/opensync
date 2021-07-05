@@ -38,6 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "os_util.h"
 #include "util.h"
+#include "memutil.h"
 #include "json_util.h"
 #include "const.h"
 
@@ -206,12 +207,7 @@ static bool ovsdb_write(json_rpc_response_t *callback, void * data, json_t * js)
         /*
          * Create the JSON RPC message response handler
          */
-        rh = malloc(sizeof(struct rpc_response_handler));
-        if (rh == NULL)
-        {
-            LOG(ERR, "JSON RPC: Unable to allocate rpc_response_handler");
-            goto error;
-        }
+        rh = MALLOC(sizeof(struct rpc_response_handler));
 
         json_t *jid = json_object_get(js, "id");
         if (jid == NULL || !json_is_integer(jid))
@@ -233,7 +229,7 @@ error:
     if (!retval)
     {
         /* On errors, free the rh structure */
-        if (rh != NULL) free(rh);
+        if (rh != NULL) FREE(rh);
     }
 
     return retval;
@@ -294,6 +290,10 @@ bool ovsdb_method_send(json_rpc_response_t *callback,
 
         case MT_TRANS:
             method = "transact";
+            break;
+
+        case MT_GET_SCHEMA:
+            method = "get_schema";
             break;
 
         default:

@@ -29,6 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "reflink.h"
 
 #include "nm2.h"
+#include "memutil.h"
 
 /*
  * ===========================================================================
@@ -127,7 +128,7 @@ void nm2_dhcpv6_lease_release(struct nm2_dhcpv6_lease *d6l)
 
     ds_tree_remove(&nm2_dhcpv6_lease_list, d6l);
 
-    free(d6l);
+    FREE(d6l);
 }
 
 /*
@@ -159,7 +160,7 @@ struct nm2_dhcpv6_lease *nm2_dhcpv6_lease_get(const ovs_uuid_t *uuid)
     if (d6l == NULL)
     {
         /* Allocate a new dummy structure and insert it into the cache */
-        d6l = calloc(1, sizeof(struct nm2_dhcpv6_lease));
+        d6l = CALLOC(1, sizeof(struct nm2_dhcpv6_lease));
         d6l->d6l_hwaddr = OSN_MAC_ADDR_INIT;
         d6l->d6l_uuid = *uuid;
 

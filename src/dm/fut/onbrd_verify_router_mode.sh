@@ -26,18 +26,16 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="onbrd/$(basename "$0")"
 manager_setup_file="onbrd/onbrd_setup.sh"
-eth_wan_default="eth0"
-br_wan_default="br-wan"
-br_home_default="br-home"
-start_pool_default="10.10.10.20"
-end_pool_default="10.10.10.50"
+
 usage()
 {
 cat << usage_string
@@ -46,105 +44,99 @@ Description:
     - Validate device router mode settings
 Arguments:
     -h  show this help message
-    \$1 (eth_wan)    : Used to define eth_wan    : (string)(optional) : (default:${eth_wan_default})
-    \$2 (br_wan)     : Used to define br_wan     : (string)(optional) : (default:${br_wan_default})
-    \$3 (br_home)    : Used to define br_home    : (string)(optional) : (default:${br_home_default})
-    \$4 (start_pool) : Used to define start_pool : (string)(optional) : (default:${start_pool_default})
-    \$5 (end_pool)   : Used to define end_pool   : (string)(optional) : (default:${end_pool_default})
+    \$1 (wan_iface)       : Interface used for WAN uplink (WAN bridge or eth WAN) : (string)(required)
+    \$2 (lan_bridge)      : Interface name of LAN bridge                          : (string)(required)
+    \$3 (dhcp_start_pool) : Start of DHCP pool in Wifi_Inet_Config                : (string)(required)
+    \$4 (dhcp_end_pool)   : End of DHCP pool in Wifi_Inet_Config                  : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
                  Run: ./${tc_name} <BR-WAN> <BR-HOME> <START-POOL> <END-POOL>
 Script usage example:
-   ./${tc_name} ${eth_wan_default} ${br_wan_default} ${br_home_default} ${start_pool_default} ${end_pool_default}
+   ./${tc_name} eth0 br-home 10.10.10.20 10.10.10.50
+   ./${tc_name} br-wan br-home 10.10.10.20 10.10.10.50
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 
-trap '
-fut_info_dump_line
-check_pid_udhcp $br_wan
-print_tables Wifi_Inet_State
-fut_info_dump_line
-' EXIT SIGINT SIGTERM
 
 check_kconfig_option "TARGET_CAP_EXTENDER" "y" ||
     raise "TARGET_CAP_EXTENDER != y - Testcase applicable only for EXTENDER-s" -l "${tc_name}" -s
 
-########### End Options, Args, Usage and Util ################
-eth_wan=${1:-${eth_wan_default}}
-br_wan=${2:-${br_wan_default}}
-br_home=${3:-${br_home_default}}
-start_pool=${4:-${start_pool_default}}
-end_pool=${5:-${end_pool_default}}
+NARGS=4
+[ $# -ne ${NARGS} ] && usage && raise "Requires exactly '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+wan_iface=${1}
+lan_bridge=${2}
+dhcp_start_pool=${3}
+dhcp_end_pool=${4}
 
-log "$tc_name: Checking if WANO is enabled"
-check_kconfig_option "CONFIG_MANAGER_WANO" "y"
-if [ "$?" -eq 0 ]; then
-    log "$tc_name: WANO is enabled, using ETH-WAN interface (${eth_wan}) as BR-WAN"
-    br_wan="${eth_wan}"
-else
-    log "$tc_name: WANO is disabled, using BR-WAN interface (${br_wan})"
-fi
+trap '
+fut_info_dump_line
+check_pid_udhcp $wan_iface
+print_tables Wifi_Inet_State
+fut_info_dump_line
+' EXIT SIGINT SIGTERM
 
 log_title "$tc_name: ONBRD test - Verify router mode settings applied"
 
-# br-wan section
-log "$tc_name: Check if interface is UP - $br_wan"
-wait_for_function_response 0 "get_interface_is_up $br_wan" &&
-    log "$tc_name: Interface is UP - $br_wan" ||
-    raise "FAILED: Interface is DOWN, should be UP - $br_wan" -l "$tc_name" -tc
+# WAN bridge section
+log "$tc_name: Check if interface '$wan_iface' is UP"
+wait_for_function_response 0 "get_eth_interface_is_up $wan_iface" &&
+    log "$tc_name: Interface '$wan_iface' is UP - Success" ||
+    raise "FAIL: Interface '$wan_iface' is DOWN, should be UP" -l "$tc_name" -ds
 
-# Check if DHCP client is running on br-wan (wan bridge)
-wait_for_function_response 0 "check_pid_udhcp $br_wan" &&
-    log "lib/unit_lib: check_pid_udhcp - PID found, DHCP client running" ||
-    raise "nit_lib: check_pid_udhcp - PID not found, , DHCP client NOT running" -l "$tc_name" -tc
+# Check if DHCP client is running on WAN bridge
+log "$tc_name: Check if DHCP client is running on WAN bridge - '$wan_iface'"
+wait_for_function_response 0 "check_pid_udhcp $wan_iface" &&
+    log "$tc_name: check_pid_udhcp '$wan_iface' - PID found, DHCP client running - Success" ||
+    raise "FAIL: check_pid_udhcp '$wan_iface' - PID not found, DHCP client is not running" -l "$tc_name" -tc
 
-log "$tc_name: Setting NAT to true"
-update_ovsdb_entry Wifi_Inet_Config -w if_name "$br_wan" -u NAT true &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config table updated - NAT true" ||
-    raise "update_ovsdb_entry - Failed to update Wifi_Inet_Config - - NAT true" -l "$tc_name" -tc
+log "$tc_name: Setting Wifi_Inet_Config::NAT to true on '$wan_iface'"
+update_ovsdb_entry Wifi_Inet_Config -w if_name "$wan_iface" -u NAT true &&
+    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config::NAT is 'true' - Success" ||
+    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config::NAT is not 'true'" -l "$tc_name" -oe
 
-wait_ovsdb_entry Wifi_Inet_State -w if_name "$br_wan" -is NAT true &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State - NAT=true" ||
-    raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - NAT=true" -l "$tc_name" -tc
-# br-home section
-log "$tc_name: Setting DHCP range on $br_home"
-configure_dhcp_server_on_interface "$br_home" "$start_pool" "$end_pool" ||
-    raise "Cannot update DHCP settings inside CONFIG $br_wan" -l "$tc_name" -tc
+wait_ovsdb_entry Wifi_Inet_State -w if_name "$wan_iface" -is NAT true &&
+    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::NAT is 'true' - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::NAT is not 'true'" -l "$tc_name" -tc
 
-log "$tc_name: Setting NAT to false"
-update_ovsdb_entry Wifi_Inet_Config -w if_name "$br_home" -u NAT false &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config table updated - NAT false" ||
-    raise "update_ovsdb_entry - Failed to update Wifi_Inet_Config - - NAT false" -l "$tc_name" -tc
+# LAN bridge section
+log "$tc_name: Setting DHCP range on $lan_bridge to '$dhcp_start_pool' '$dhcp_end_pool'"
+configure_dhcp_server_on_interface "$lan_bridge" "$dhcp_start_pool" "$dhcp_end_pool" &&
+    log "$tc_name: configure_dhcp_server_on_interface - DHCP settings updated - Success" ||
+    raise "FAIL: Cannot update DHCP settings inside CONFIG $wan_iface" -l "$tc_name" -tc
 
-wait_ovsdb_entry Wifi_Inet_State -w if_name "$br_home" -is NAT false &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State - NAT=false" ||
-    raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - NAT=false" -l "$tc_name" -tc
+log "$tc_name: Setting Wifi_Inet_Config::NAT to false"
+update_ovsdb_entry Wifi_Inet_Config -w if_name "$lan_bridge" -u NAT false &&
+    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config::NAT is 'false' - Success" ||
+    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config::NAT is not 'false'" -l "$tc_name" -oe
 
-update_ovsdb_entry Wifi_Inet_Config -w if_name "$br_home" -u ip_assign_scheme static &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State - ip_assign_scheme=static" ||
-    raise "update_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - ip_assign_scheme=static" -l "$tc_name" -tc
+wait_ovsdb_entry Wifi_Inet_State -w if_name "$lan_bridge" -is NAT false &&
+    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::NAT is 'false' - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::NAT is not 'false'" -l "$tc_name" -tc
 
-wait_ovsdb_entry Wifi_Inet_State -w if_name "$br_home" -is ip_assign_scheme static &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State - ip_assign_scheme=static" ||
-    raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - ip_assign_scheme=static" -l "$tc_name" -tc
+update_ovsdb_entry Wifi_Inet_Config -w if_name "$lan_bridge" -u ip_assign_scheme static &&
+    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config::ip_assign_scheme is 'static' - Success" ||
+    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config::ip_assign_scheme is not 'static'" -l "$tc_name" -oe
 
-wait_ovsdb_entry Wifi_Inet_State -w if_name "$br_home" -is "dhcpc" "[\"map\",[]]" &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State - dhcpc [\"map\",[]]" ||
-    raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - dhcpc [\"map\",[]]" -l "$tc_name" -tc
+wait_ovsdb_entry Wifi_Inet_State -w if_name "$lan_bridge" -is ip_assign_scheme static &&
+    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::ip_assign_scheme is 'static' - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::ip_assign_scheme is not 'static'" -l "$tc_name" -tc
 
-wait_ovsdb_entry Wifi_Inet_State -w if_name "$br_home" -is "netmask" 0.0.0.0 &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State - netmask 0.0.0.0" ||
-    raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - netmask 0.0.0.0" -l "$tc_name" -tc
+wait_ovsdb_entry Wifi_Inet_State -w if_name "$lan_bridge" -is "netmask" 0.0.0.0 &&
+    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::netmask is 0.0.0.0  - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::netmask is not 0.0.0.0" -l "$tc_name" -tc
+
+print_tables Wifi_Inet_Config Wifi_Inet_State
 
 # Restart managers to tidy up config
 restart_managers

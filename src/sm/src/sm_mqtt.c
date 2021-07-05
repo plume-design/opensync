@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "log.h"
 #include "util.h"
+#include "memutil.h"
 #include "os_time.h"
 #include "os_nif.h"
 #include "mosqev.h"
@@ -300,12 +301,7 @@ bool sm_mqtt_publish(mosqev_t *mqtt, long mlen, void *mbuf)
         {
             // allocate 1/4 more than needed
             buflen = len + len / 4;
-            buf = realloc(buf, buflen);
-            if (!buf)
-            {
-                LOGE("DPP: allocate compress buf (%d): out of mem.", buflen);
-                return false;
-            }
+            buf = REALLOC(buf, buflen);
         }
         len = buflen;
         ret = compress(buf, (unsigned long*)&len, mbuf, mlen);

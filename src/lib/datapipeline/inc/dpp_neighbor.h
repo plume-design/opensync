@@ -29,6 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "ds.h"
 #include "ds_dlist.h"
+#include "memutil.h"
 
 #include "dpp_types.h"
 
@@ -56,11 +57,8 @@ static inline dpp_neighbor_record_list_t * dpp_neighbor_record_alloc()
 {
     dpp_neighbor_record_list_t *record = NULL;
 
-    record = malloc(sizeof(dpp_neighbor_record_list_t));
-    if (record)
-    {
-        memset(record, 0, sizeof(dpp_neighbor_record_list_t));
-    }
+    record = MALLOC(sizeof(dpp_neighbor_record_list_t));
+    memset(record, 0, sizeof(dpp_neighbor_record_list_t));
 
     return record;
 }
@@ -69,7 +67,7 @@ static inline void dpp_neighbor_record_free(dpp_neighbor_record_list_t *record)
 {
     if (NULL != record)
     {
-        free(record);
+        FREE(record);
     }
 }
 

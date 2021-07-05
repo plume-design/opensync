@@ -26,10 +26,12 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/brv_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="brv/$(basename "$0")"
 brv_setup_file="brv/brv_setup.sh"
@@ -49,16 +51,17 @@ Usage:
    ./${tc_name} "2.8.7"
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 NARGS=1
 [ $# -ne ${NARGS} ] && usage && raise "Requires exactly '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 
@@ -68,7 +71,7 @@ log_title "${tc_name}: BRV test - Verify OVS version is '${expected_ovs_ver}'"
 
 actual_ovs_ver="$(get_ovs_version)"
 check_ovs_version "${expected_ovs_ver}" "${actual_ovs_ver}" &&
-    log -deb "${tc_name}: Actual on device OVS version: ${actual_ovs_ver} is as expected: ${expected_ovs_ver}" ||
-    raise "Actual on device OVS version: ${actual_ovs_ver} is NOT as expected: ${expected_ovs_ver}" -l "${tc_name}" -tc
+    log "${tc_name}: Actual on device OVS version: ${actual_ovs_ver} is as expected: ${expected_ovs_ver} - Success" ||
+    raise "FAIL: Actual on device OVS version: ${actual_ovs_ver} is NOT as expected: ${expected_ovs_ver}" -l "${tc_name}" -tc
 
 pass

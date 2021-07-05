@@ -33,6 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "osp_ps.h"
 #include "ds_dlist.h"
+#include "memutil.h"
 
 #include "osps.h"
 #include "module.h"
@@ -52,6 +53,7 @@ static int osps_help(int argc, char *argv[]);
 static int osps_get(int argc, char *argv[]);
 static int osps_set(int argc, char *argv[]);
 static int osps_del(int argc, char *argv[]);
+static int osps_list(int argc, char *argv[]);
 static int osps_erase(int argc, char *argv[]);
 
 void osps_command_register(struct osps_command *oc)
@@ -178,7 +180,7 @@ static int osps_get(int argc, char *argv[])
         goto error;
     }
 
-    pdata = malloc(datasz);
+    pdata = MALLOC(datasz);
 
     datasz = osp_ps_get(ps, argv[2], pdata, datasz);
     if (datasz <= 0)
@@ -202,7 +204,7 @@ error:
         fprintf(stderr, "Warning: Error closing store: %s\n", argv[1]);
     }
 
-    if (pdata != NULL) free(pdata);
+    if (pdata != NULL) FREE(pdata);
 
     return retval;
 }
@@ -248,7 +250,7 @@ static int osps_set(int argc, char *argv[])
 
         do
         {
-            buf = realloc(buf, bufsz + 4096);
+            buf = REALLOC(buf, bufsz + 4096);
             rc = read(0, buf + bufsz, 4096);
             if (rc < 0) break;
             bufsz += rc;
@@ -282,7 +284,7 @@ static int osps_set(int argc, char *argv[])
 
 error:
     if (ps != NULL) osp_ps_close(ps);
-    if (buf != NULL) free(buf);
+    if (buf != NULL) FREE(buf);
 
     return retval;
 }
@@ -358,6 +360,56 @@ static int osps_del(int argc, char *argv[])
     if (!osp_ps_close(ps))
     {
         fprintf(stderr, "Warning: Error closing store: %s\n", argv[1]);
+        return 1;
+    }
+
+    return 0;
+}
+
+/*
+ * ===========================================================================
+ *  List command
+ * ===========================================================================
+ */
+static struct osps_command osps_list_cmd = OSPS_COMMAND_INIT(
+        "list",
+        osps_list,
+        "list STORE ; List keys available in store",
+        "Arguments:\n"
+        "\n"
+        "   STORE   - The persistent store name\n");
+
+
+int osps_list(int argc, char *argv[])
+{
+    osp_ps_t *ps;
+    const char *key;
+
+    int flags = OSP_PS_READ;
+
+    if (argc != 2)
+    {
+        osps_usage("list", "Invalid number of arguments.");
+        return OSPS_CLI_ERROR;
+    }
+
+    if (osps_preserve) flags |= OSP_PS_PRESERVE;
+
+    ps = osp_ps_open(argv[1], flags);
+    if (ps == NULL)
+    {
+        fprintf(stderr, "Error opening store %s.\n", argv[1]);
+        return 1;
+    }
+
+    osp_ps_foreach(ps, key)
+    {
+        printf("%s\n", key);
+    }
+
+    if (!osp_ps_close(ps))
+    {
+        fprintf(stderr, "Warning: Error closing store %s.\n", argv[1]);
         return 1;
     }
 
@@ -453,6 +505,7 @@ int main(int argc, char *argv[])
     osps_command_register(&osps_get_cmd);
     osps_command_register(&osps_set_cmd);
     osps_command_register(&osps_del_cmd);
+    osps_command_register(&osps_list_cmd);
     osps_command_register(&osps_erase_cmd);
 
     /*

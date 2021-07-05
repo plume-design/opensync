@@ -34,6 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "ds_tree.h"
 #include "module.h"
+#include "memutil.h"
 
 /*
  * Information about dynamically loaded modules
@@ -139,7 +140,7 @@ bool module_load(const char *path)
     }
 
     /* Allocate new object */
-    ml = calloc(1, sizeof(*ml));
+    ml = CALLOC(1, sizeof(*ml));
     if (ml == NULL)
     {
         LOG(ERR, "module: Failed to allocate object for module: %s", path);
@@ -175,8 +176,8 @@ error:
     if (ml != NULL)
     {
         if (ml->ml_dlhandle != NULL) dlclose(ml->ml_dlhandle);
-        if (ml->ml_path != NULL) free(ml->ml_path);
-        free(ml);
+        if (ml->ml_path != NULL) FREE(ml->ml_path);
+        FREE(ml);
     }
 
     return false;
@@ -220,8 +221,8 @@ bool module_unload(const char *path)
     __module_unload(ml);
 
     ds_tree_remove(&module_load_list, ml);
-    free(ml->ml_path);
-    free(ml);
+    FREE(ml->ml_path);
+    FREE(ml);
 
     return true;
 }
@@ -308,8 +309,8 @@ bool module_unload_all(const char *pattern)
         }
 
         ds_tree_iremove(&iter);
-        free(ml->ml_path);
-        free(ml);
+        FREE(ml->ml_path);
+        FREE(ml);
 
         nml++;
     }

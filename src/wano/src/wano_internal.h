@@ -54,4 +54,11 @@ bool wano_connmgr_uplink_init(void);
  */
 bool wano_ovs_port_init(void);
 
+/*
+ * ===========================================================================
+ *  WAN Configuration
+ * ===========================================================================
+ */
+bool wano_wan_config_init();
+
 #endif /* WANO_INTERNAL_H_INCLUDED */

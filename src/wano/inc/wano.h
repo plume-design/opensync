@@ -37,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdint.h>
 
 #include "const.h"
+#include "ds_dlist.h"
 #include "ds_tree.h"
 #include "osn_types.h"
 #include "reflink.h"
@@ -418,6 +419,7 @@ struct wano_connmgr_uplink_args
     wano_tri_t      has_L2;
     wano_tri_t      has_L3;
     wano_tri_t      loop;
+    wano_tri_t      eth_client;
 };
 
 /**
@@ -572,6 +574,7 @@ struct wano_ppline
     double                      wpl_immediate_timeout;      /**< Immedate timeout */
     ds_dlist_t                  wpl_event_list;             /**< List of event callbacks */
     bool                        wpl_has_l3;                 /**< True if the has_L3 column was set */
+    ds_dlist_node_t             wpl_dnode;                  /**< dlist node for the ppline list */
 };
 
 typedef struct wano_ppline_event wano_ppline_event_t;
@@ -618,6 +621,12 @@ bool wano_ppline_init(
  * Terminate the plug-in pipeline and stop all currently active plug-ins.
  */
 void wano_ppline_fini(wano_ppline_t *self);
+
+/**
+ * Restart WAN management on all interfaces. This is necessary, for example,
+ * when the WAN configuration changes.
+ */
+void wano_ppline_restart_all(void);
 
 /**
  * Utility function for retrieving the pipeline instance from a plug-in

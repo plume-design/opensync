@@ -26,10 +26,12 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="wm2/$(basename "$0")"
 manager_setup_file="wm2/wm2_setup.sh"
@@ -59,16 +61,17 @@ Script usage example:
    ./${tc_name} 2 wifi1 test_wifi_50L WifiPassword123 44 HT20 11ac ap home-ap-l50 23
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 
 NARGS=10
 [ $# -ne ${NARGS} ] && usage && raise "Requires exactly '${NARGS}' input argument(s)" -l "${tc_name}" -arg
@@ -120,22 +123,22 @@ check_radio_vif_state \
                     -hw_mode "$hw_mode" \
                     -mode "$mode" \
                     -vif_if_name "$vif_if_name" &&
-                        log "$tc_name: create_radio_vif_interface - Success"
+                        log "$tc_name: create_radio_vif_interface - Interface $if_name created - Success"
             ) ||
-        raise "create_radio_vif_interface - Failed" -l "$tc_name" -tc
+        raise "FAIL: create_radio_vif_interface - Interface $if_name not created" -l "$tc_name" -ds
 
 log "$tc_name: Changing tx_power to $tx_power"
 update_ovsdb_entry Wifi_Radio_Config -w if_name "$if_name" -u tx_power "$tx_power" &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Radio_Config table updated - tx_power $tx_power" ||
-    raise "update_ovsdb_entry - Failed to update Wifi_Radio_Config - tx_power $tx_power" -l "$tc_name" -tc
+    log "$tc_name: update_ovsdb_entry - Wifi_Radio_Config::tx_power is $tx_power - Success" ||
+    raise "FAIL: update_ovsdb_entry - Wifi_Radio_Config::tx_power is not $tx_power" -l "$tc_name" -oe
 
 wait_ovsdb_entry Wifi_Radio_State -w if_name "$if_name" -is tx_power "$tx_power" &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Radio_Config reflected to Wifi_Radio_State - tx_power $tx_power" ||
-    raise "wait_ovsdb_entry - Failed to reflect Wifi_Radio_Config to Wifi_Radio_State - tx_power $tx_power" -l "$tc_name" -ow
+    log "$tc_name: wait_ovsdb_entry - Wifi_Radio_Config reflected to Wifi_Radio_State::tx_power is $tx_power - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Radio_Config to Wifi_Radio_State::tx_power is not $tx_power" -l "$tc_name" -ow
 
-log "$tc_name: LEVEL 2 - checking tx_power $tx_power at OS level"
+log "$tc_name: Checking tx_power $tx_power at system level - LEVEL2"
 check_tx_power_at_os_level "$tx_power" "$vif_if_name" "$if_name" &&
-    log "$tc_name: check_tx_power_at_os_level - tx_power $tx_power set at OS level" ||
-    raise "check_tx_power_at_os_level - tx_power $tx_power not set at OS level" -l "$tc_name" -tc
+    log "$tc_name: LEVEL2 - check_tx_power_at_os_level - tx_power $tx_power set at system level - Success" ||
+    raise "FAIL: LEVEL2 - check_tx_power_at_os_level - tx_power $tx_power not set at system level" -l "$tc_name" -tc
 
 pass

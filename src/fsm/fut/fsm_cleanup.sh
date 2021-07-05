@@ -28,10 +28,12 @@
 # Clean up after tests for FSM.
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/fsm_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="fsm/$(basename "$0")"
 
@@ -46,28 +48,28 @@ empty_ovsdb_table FSM_Policy
 if [ "${fsm_vif_name}" != false ]; then
     log "${tc_name}: Removing Wifi_VIF_Config '${fsm_vif_name}' entry"
     remove_ovsdb_entry Wifi_VIF_Config -w if_name "${fsm_vif_name}" &&
-        log "${tc_name}: VIF entry removed" ||
-        log -err "${tc_name}: Failed to remove VIF entry"
+        log "${tc_name}: Wifi_VIF_Config::if_name = ${fsm_vif_name} entry removed - Success" ||
+        log -err "${tc_name}: Failed to remove Wifi_VIF_Config::if_name = ${fsm_vif_name} entry"
     wait_ovsdb_entry_remove Wifi_VIF_State -w if_name "${fsm_vif_name}"  &&
-        log "${tc_name}: VIF entry removed from State" ||
-        log -err "${tc_name}: Failed to remove VIF entry from State"
+        log "${tc_name}: Wifi_VIF_State::if_name = ${fsm_vif_name} entry removed - Success" ||
+        log -err "${tc_name}: Failed to remove Wifi_VIF_State::if_name = ${fsm_vif_name} entry"
 
     log "${tc_name}: Removing Wifi_Inet_Config '${fsm_vif_name}' entry"
     remove_ovsdb_entry Wifi_Inet_Config -w if_name "${fsm_vif_name}" &&
-        log "${tc_name}: INET entry removed" ||
-        log -err "${tc_name}: Failed to remove INET entry"
+        log "${tc_name}: Wifi_Inet_Config::if_name = ${fsm_vif_name} entry removed - Success" ||
+        log -err "${tc_name}: Failed to remove Wifi_Inet_Config::if_name = ${fsm_vif_name} entry"
     wait_ovsdb_entry_remove Wifi_Inet_State -w if_name "${fsm_vif_name}"  &&
-        log "${tc_name}: INET entry removed from State" ||
-        log -err "${tc_name}: Failed to remove INET entry from State"
+        log "${tc_name}: Wifi_Inet_State::if_name = ${fsm_vif_name} entry removed - Success" ||
+        log -err "${tc_name}: Failed to remove Wifi_Inet_State::if_name = ${fsm_vif_name} entry"
 fi
 
 for fsm_inet_if_name in "$@"
     do
         log "${tc_name}: Removing Wifi_Inet_Config '${fsm_inet_if_name}' entry"
         remove_ovsdb_entry Wifi_Inet_Config -w if_name "${fsm_inet_if_name}" &&
-            log "${tc_name}: INET entry removed" ||
-            log -err "${tc_name}: Failed to remove INET entry"
-        wait_ovsdb_entry_remove Wifi_Inet_State -w if_name "${fsm_inet_if_name}"  &&
-            log "${tc_name}: INET entry removed from State" ||
-            log -err "${tc_name}: Failed to remove INET entry from State"
+            log "${tc_name}: Wifi_Inet_Config::if_name = ${fsm_inet_if_name} entry removed - Success" ||
+            log -err "${tc_name}: Failed to remove Wifi_Inet_Config::if_name = ${fsm_inet_if_name} entry"
+        wait_ovsdb_entry_remove Wifi_Inet_State -w if_name "${fsm_inet_if_name}" &&
+            log "${tc_name}: Wifi_Inet_State::if_name = ${fsm_inet_if_name} entry removed - Success" ||
+            log -err "${tc_name}: Failed to remove Wifi_Inet_State::if_name = ${fsm_inet_if_name} entry"
     done

@@ -60,6 +60,7 @@ onboard() {
 			ssid:=$ssid \
 			wpa:=true \
 			dpp_cc:=true \
+			mac_list_type:=none \
 			'wpa_key_mgmt::["set", ["wpa2-psk", "dpp", "sae"]]' \
 			'wpa_oftags::["map", [["key", "home--1"]]]' \
 			'wpa_psks::["map", [["key", "'"$psk"'"]]]' \
@@ -86,6 +87,7 @@ onboard() {
 			enabled:=true \
 			if_name:=$ref_vif \
 			ssid:=we.onboard \
+			mac_list_type:=none \
 			'security::["map",[["key","12345678"],["encryption","WPA-PSK"]]]' \
 			vif_radio_idx:=0 \
 			mode:=sta

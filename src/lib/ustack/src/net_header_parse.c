@@ -68,6 +68,8 @@ size_t net_header_parse(struct net_header_parser *parser)
     ip_protocol = parser->ip_protocol;
     if (ip_protocol == IPPROTO_TCP) return net_header_parse_tcp(parser);
     if (ip_protocol == IPPROTO_UDP) return net_header_parse_udp(parser);
+    if (ip_protocol == IPPROTO_ICMP) return net_header_parse_icmp(parser);
+    if (ip_protocol == IPPROTO_ICMPV6) return net_header_parse_icmp6(parser);
 
     /* If not TCP or UDP, leave the ip payload parsing to the packet owner */
     return len;
@@ -488,6 +490,58 @@ size_t net_header_parse_udp(struct net_header_parser *parser)
 
 
 /**
+ * @brief parse the icmp header of a pcap capture
+ *
+ * @param parser the parsed data container
+ * @return the buffer offset passed the udp header if successful,
+ *         0 otherwise
+ */
+size_t net_header_parse_icmp(struct net_header_parser *parser)
+{
+    struct icmphdr *hdr;
+    size_t len, icmp_hlen;
+
+    len = parser->packet_len - parser->parsed;
+    icmp_hlen = sizeof(*hdr);
+    if (len < icmp_hlen) return 0;
+
+    hdr = (struct icmphdr *)(parser->data);
+    parser->ip_pld.icmphdr = hdr;
+
+    parser->parsed += icmp_hlen;
+    parser->data += icmp_hlen;
+
+    return icmp_hlen;
+}
+
+
+/**
+ * @brief parse the icmp6 header of a pcap capture
+ *
+ * @param parser the parsed data container
+ * @return the buffer offset passed the udp header if successful,
+ *         0 otherwise
+ */
+size_t net_header_parse_icmp6(struct net_header_parser *parser)
+{
+    struct icmp6_hdr *hdr;
+    size_t len, icmp6_hlen;
+
+    len = parser->packet_len - parser->parsed;
+    icmp6_hlen = sizeof(*hdr);
+    if (len < icmp6_hlen) return 0;
+
+    hdr = (struct icmp6_hdr *)(parser->data);
+    parser->ip_pld.icmp6hdr = hdr;
+
+    parser->parsed += icmp6_hlen;
+    parser->data += icmp6_hlen;
+
+    return icmp6_hlen;
+}
+
+
+/**
  * @brief logs the network header info
  *
  * @param log_level the requested log level
@@ -601,6 +655,20 @@ net_header_fill_buf(char *buf, size_t len, struct net_header_parser *parser)
         snprintf(tpt_pres, sizeof(tpt_pres),
                  ", UDP: sport %u, dport %u",
                  ntohs(udph->source), ntohs(udph->dest));
+    }
+    else if (parser->ip_protocol == IPPROTO_ICMP)
+    {
+        struct icmphdr *icmph;
+        icmph = parser->ip_pld.icmphdr;
+        snprintf(tpt_pres, sizeof(tpt_pres),
+                 ", ICMP: type %u", icmph->type);
+    }
+    else if (parser->ip_protocol == IPPROTO_ICMPV6)
+    {
+        struct icmp6_hdr *icmp6h;
+        icmp6h = parser->ip_pld.icmp6hdr;
+        snprintf(tpt_pres, sizeof(tpt_pres),
+                 ", ICMP: type %u", icmp6h->icmp6_type);
     }
 
     /* Prepare flow presentation */

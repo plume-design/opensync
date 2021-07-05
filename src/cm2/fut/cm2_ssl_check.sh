@@ -26,10 +26,12 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/cm2_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="cm2/$(basename "$0")"
 cm_setup_file="cm2/cm2_setup.sh"
@@ -39,7 +41,7 @@ cat << usage_string
 ${tc_name} [-h]
 Description:
     - Script checks for required SSL verification files used by CM contained in SSL table
-      Test fails if only one of the file is not present in given path or it is empty
+      Test fails if any of the files is not present in given path or it is empty
 Options:
     -h  show this help message
 Testcase procedure:
@@ -49,16 +51,17 @@ Script usage example:
     ./${tc_name}
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 
 trap '
 fut_info_dump_line
@@ -74,22 +77,25 @@ log_title "$tc_name: CM2 test - SSL Check"
 ca_cert_path=$(get_ovsdb_entry_value SSL ca_cert)
 certificate_path=$(get_ovsdb_entry_value SSL certificate)
 private_key_path=$(get_ovsdb_entry_value SSL private_key)
+
 [ -e "$ca_cert_path" ] &&
-    log "$tc_name: ca_cert file is valid - $ca_cert_path" ||
-    raise "ca_cert file is missing - $ca_cert_path" -l "$tc_name" -tc
+    log "$tc_name: ca_cert file is valid - $ca_cert_path - Success" ||
+    raise "FAIL: ca_cert file is missing - $ca_cert_path" -l "$tc_name" -tc
 [ -e "$certificate_path" ] &&
-    log "$tc_name: certificate file is valid - $certificate_path" ||
-    raise "certificate file is missing - $certificate_path" -l "$tc_name" -tc
+    log "$tc_name: certificate file is valid - $certificate_path - Success" ||
+    raise "FAIL: certificate file is missing - $certificate_path" -l "$tc_name" -tc
 [ -e "$private_key_path" ] &&
-    log "$tc_name: private_key file is valid - $private_key_path" ||
-    raise "private_key file is missing - $private_key_path" -l "$tc_name" -tc
+    log "$tc_name: private_key file is valid - $private_key_path - Success" ||
+    raise "FAIL: private_key file is missing - $private_key_path" -l "$tc_name" -tc
+
 [ -s "$ca_cert_path" ] &&
-    log "$tc_name: ca_cert file is not empty - $ca_cert_path" ||
-    raise "ca_cert file is empty - $ca_cert_path" -l "$tc_name" -tc
+    log "$tc_name: ca_cert file is not empty - $ca_cert_path - Success" ||
+    raise "FAIL: ca_cert file is empty - $ca_cert_path" -l "$tc_name" -tc
 [ -s "$certificate_path" ] &&
-    log "$tc_name: certificate file is not empty - $certificate_path" ||
-    raise "certificate file is empty - $certificate_path" -l "$tc_name" -tc
+    log "$tc_name: certificate file is not empty - $certificate_path - Success" ||
+    raise "FAIL: certificate file is empty - $certificate_path" -l "$tc_name" -tc
 [ -s "$private_key_path" ] &&
-    log "$tc_name: private_key file is not empty - $private_key_path" ||
-    raise "private_key file is empty - $private_key_path" -l "$tc_name" -tc
+    log "$tc_name: private_key file is not empty - $private_key_path - Success" ||
+    raise "FAIL: private_key file is empty - $private_key_path" -l "$tc_name" -tc
+
 pass

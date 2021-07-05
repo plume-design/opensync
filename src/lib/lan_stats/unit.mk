@@ -32,20 +32,35 @@ UNIT_NAME := fcm_lanstats
 UNIT_DISABLE := $(if $(CONFIG_MANAGER_FCM),n,y)
 
 # Template type:
-# Template type:
 ifneq (,$(findstring clang,$(CC)))
-	UNIT_TYPE := LIB
+    UNIT_TYPE := LIB
 else
-	UNIT_TYPE := SHLIB
-	UNIT_DIR := lib
+    UNIT_TYPE := SHLIB
+    UNIT_DIR := lib
 endif
 
 UNIT_SRC := src/lan_stats.c
+ifeq ($(CONFIG_FCM_OVS_CMD),y)
+UNIT_SRC += src/lan_cmd_flows.c
+else
+UNIT_SRC += src/lan_dpctl.c
+endif
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -Isrc/fcm/inc
 UNIT_CFLAGS += -I3rdparty/plume/src/lib/fcm_filter/inc
+
+UNIT_CFLAGS += -I$(OVS_INTERNAL_PATH)/
+UNIT_CFLAGS += -I$(OVS_INTERNAL_PATH)/include
+
+UNIT_CFLAGS += --std=gnu99 -Wno-sign-compare
+
+ifneq ($(CONFIG_FCM_OVS_CMD),y)
+UNIT_LDFLAGS += -lopenvswitch
+endif
+
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
+UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 
 UNIT_DEPS := src/lib/const
 UNIT_DEPS += src/lib/log

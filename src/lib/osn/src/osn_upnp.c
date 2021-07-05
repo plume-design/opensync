@@ -40,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "const.h"
 #include "log.h"
 #include "util.h"
+#include "memutil.h"
 
 static struct upnp_servers
 {
@@ -97,8 +98,7 @@ osn_upnp_t* osn_upnp_new(const char *ifname)
     if (!upnp_servers_init()) return NULL;
 
     upnp_ifc_t *self;
-    self = (upnp_ifc_t *)malloc(sizeof(*self));
-    if (NULL == self) return NULL;
+    self = (upnp_ifc_t *)MALLOC(sizeof(*self));
 
     STRSCPY_WARN(self->if_name, ifname);
     self->server = NULL;
@@ -114,7 +114,7 @@ bool osn_upnp_del(osn_upnp_t *self)
     if (self == NULL) return false;
 
     (void)osn_upnp_stop(self);
-    free(self);
+    FREE(self);
     g_srv.ifc_count--;
     upnp_servers_fini();
     return true;

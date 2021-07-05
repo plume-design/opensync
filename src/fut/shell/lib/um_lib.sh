@@ -169,7 +169,7 @@ get_um_code()
             echo  "-8"
             ;;
         "UPG_ERR_FL_WRITE")
-            echo  "-9"
+            echo  "-7"
             ;;
         "UPG_ERR_FL_CHECK")
             echo  "-10"

@@ -35,6 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "qm_conn.h"
 #include "target.h"
 #include "unity.h"
+#include "memutil.h"
 
 #include "pcap.c"
 
@@ -277,8 +278,7 @@ void test_upnp_get_url(void)
     TEST_ASSERT_NOT_NULL(u_session);
 
     parser = &u_session->parser;
-    net_parser = calloc(1, sizeof(*net_parser));
-    TEST_ASSERT_NOT_NULL(net_parser);
+    net_parser = CALLOC(1, sizeof(*net_parser));
     parser->net_parser = net_parser;
     PREPARE_UT(pkt322, net_parser);
     len = net_header_parse(net_parser);
@@ -290,7 +290,7 @@ void test_upnp_get_url(void)
     url = upnp_get_url(u_session);
     TEST_ASSERT_NOT_NULL(url);
     TEST_ASSERT_EQUAL_STRING(expected_url, url->url);
-    free(net_parser);
+    FREE(net_parser);
 }
 
 

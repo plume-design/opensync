@@ -37,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "ds_dlist.h"
 #include "opensync_stats.pb-c.h"
+#include "memutil.h"
 
 #include "qm.h"
 
@@ -210,11 +211,7 @@ bool qm_mqtt_publish(mosqev_t *mqtt, qm_item_t *qi)
         len = compressBound(mlen);
         // allocate 1/4 more than needed
         len += len / 4;
-        buf = malloc(len);
-        if (!buf) {
-            LOGE("DPP: allocate compress buf (%lu): out of mem.", len);
-            return false;
-        }
+        buf = MALLOC(len);
         ret = compress(buf, (unsigned long*)&len, mbuf, mlen);
         if (ret != Z_OK)
         {
@@ -229,7 +226,7 @@ bool qm_mqtt_publish(mosqev_t *mqtt, qm_item_t *qi)
     LOGI("MQTT: Publishing %ld bytes", mlen);
     ret = mosqev_publish(mqtt, NULL, topic, mlen, mbuf, qos, false);
 exit:
-    if (buf) free(buf);
+    if (buf) FREE(buf);
     return ret;
 }
 
@@ -278,7 +275,7 @@ void qm_append_report(qm_item_t *qi, qm_item_t *rep)
         num = rpt->n_##_name;  \
         rpt->n_##_name += rqi->n_##_name; \
         rpt->_name = \
-            realloc(rpt->_name, \
+            REALLOC(rpt->_name, \
                     rpt->n_##_name * sizeof(Sts__##_type*)); \
         memcpy (&rpt->_name[num], \
                 rqi->_name, \
@@ -316,13 +313,12 @@ first:
     {
         // pack new message
         int size = sts__report__get_packed_size(rpt);
-        void *buf = malloc(size);
-        if (!buf) goto out;
+        void *buf = MALLOC(size);
         size = sts__report__pack(rpt, buf);
         LOGI("merged reports stats %zd + %zd = %d", rep->size, qi->size, size);
 
         // replace message
-        if(rep->buf) free(rep->buf);
+        if(rep->buf) FREE(rep->buf);
         rep->buf = buf;
         rep->size = size;
     }
@@ -467,7 +463,7 @@ void qm_mqtt_timer_handler_log(struct ev_loop *loop, ev_timer *timer, int revent
     // publish log
     LOGT("MQTT: Publishing log %d bytes", g_qm_log_buf_size);
     result = mosqev_publish(mqtt, NULL, qm_log_topic, g_qm_log_buf_size, g_qm_log_buf, 0, false);
-    free(g_qm_log_buf);
+    FREE(g_qm_log_buf);
     g_qm_log_buf = NULL;
     g_qm_log_buf_size = 0;
     if (!result) {

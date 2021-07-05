@@ -35,6 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "unity.h"
 #include "json_util.h"
 #include "qm_conn.h"
+#include "memutil.h"
 
 #include "pcap.c"
 
@@ -297,8 +298,7 @@ void test_dhcp_parse_pkt(void)
     TEST_ASSERT_NOT_NULL(d_session);
 
     parser = &d_session->parser;
-    net_parser = calloc(1, sizeof(*net_parser));
-    TEST_ASSERT_NOT_NULL(net_parser);
+    net_parser = CALLOC(1, sizeof(*net_parser));
     parser->net_parser = net_parser;
     // DHCP DISCOVER
     PREPARE_UT(pkt120, net_parser);
@@ -404,7 +404,7 @@ void test_dhcp_parse_pkt(void)
     TEST_ASSERT_EQUAL_UINT(sizeof(pkt353), net_parser->packet_len);
 
     dhcp_process_message(d_session);
-    free(net_parser);
+    FREE(net_parser);
 }
 
 int main(int argc, char *argv[])

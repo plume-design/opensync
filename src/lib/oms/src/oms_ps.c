@@ -28,6 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "oms_ps.h"
 #include "osp_ps.h"
 #include "log.h"
+#include "memutil.h"
 
 
 bool oms_ps_save_last_active_version(struct oms_state_entry *entry)
@@ -88,7 +89,7 @@ struct oms_config_entry *oms_ps_get_last_active_version(char *object)
     }
 
     // Fetch the "store" data
-    str = malloc((size_t)strsz);
+    str = MALLOC((size_t)strsz);
     if (osp_ps_get(ps, object, str, (size_t)strsz) != strsz)
     {
         LOG(ERR, "oms: (%s) Error retrieving persistent \"%s\" key.", __func__, object);
@@ -109,7 +110,7 @@ struct oms_config_entry *oms_ps_get_last_active_version(char *object)
     }
 
 exit:
-    if (str != NULL) free(str);
+    if (str != NULL) FREE(str);
     if (ps != NULL) osp_ps_close(ps);
 
     return entry;

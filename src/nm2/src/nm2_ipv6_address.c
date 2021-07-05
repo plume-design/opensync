@@ -28,6 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_util.h"
 #include "reflink.h"
 #include "ovsdb_sync.h"
+#include "memutil.h"
 
 #include "nm2.h"
 
@@ -158,7 +159,7 @@ void nm2_ipv6_address_release(struct nm2_ipv6_address *ip6)
 
     ds_tree_remove(&nm2_ipv6_address_list, ip6);
 
-    free(ip6);
+    FREE(ip6);
 }
 
 /*
@@ -190,7 +191,7 @@ struct nm2_ipv6_address *nm2_ipv6_address_get(const ovs_uuid_t *uuid)
     if (ip6 != NULL) return ip6;
 
     /* Allocate a new dummy structure and insert it into the cache */
-    ip6 = calloc(1, sizeof(struct nm2_ipv6_address));
+    ip6 = CALLOC(1, sizeof(struct nm2_ipv6_address));
     ip6->ip6_uuid = *uuid;
     reflink_init(&ip6->ip6_reflink, "IPv6_Address");
     reflink_set_fn(&ip6->ip6_reflink, nm2_ipv6_address_ref_fn);

@@ -117,6 +117,12 @@ if OSN_LINUX_ENABLED
                    Specify port to listen for DNS requests on (defaults to 53). Setting
                    this to 0 disables DNS function, leaving only DHCP and/or TFTP.
 
+            config OSN_DNSMASQ_RESOLV_CONF_PATH
+                string "Location of the resolv.conf file"
+                default "/tmp/resolv.conf"
+                help
+                    Location of the resolv.conf file.
+
             config OSN_DNSMASQ_USER
                 string "dnsmasq user"
                 default "nobody"

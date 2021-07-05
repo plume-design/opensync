@@ -39,6 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 
 #include "osp_reboot.h"
+#include "memutil.h"
 #if 1
 #include "util.h"
 #include "const.h"
@@ -64,7 +65,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * Helper macro for dynamic realloc()
  */
 #define PREBOOT_REALLOC(ptr, sz, n) \
-    if ((n % 16) == 0) (ptr) = realloc((ptr), (sz) * ((n) + 16))
+    if ((n % 16) == 0) (ptr) = REALLOC((ptr), (sz) * ((n) + 16))
 
 /*
  * Default actions

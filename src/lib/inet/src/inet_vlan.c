@@ -38,6 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "osp_l2switch.h"
 #include "util.h"
+#include "memutil.h"
 
 #include "inet.h"
 #include "inet_base.h"
@@ -62,11 +63,7 @@ inet_t *inet_vlan_new(const char *ifname)
 {
     inet_vlan_t *self = NULL;
 
-    self = malloc(sizeof(*self));
-    if (self == NULL)
-    {
-        goto error;
-    }
+    self = MALLOC(sizeof(*self));
 
     if (!inet_vlan_init(self, ifname))
     {
@@ -79,7 +76,7 @@ inet_t *inet_vlan_new(const char *ifname)
 error:
     if (self != NULL)
     {
-        free(self);
+        FREE(self);
     }
 
     return NULL;

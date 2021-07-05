@@ -50,6 +50,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb.h"
 #include "ovsdb_sync.h"
 #include "ovsdb_table.h"
+#include "memutil.h"
 
 // Defines
 #define MODULE_ID LOG_MODULE_ID_MAIN
@@ -326,10 +327,12 @@ wm2_clients_get_refcount(const char *uuid)
     const char *column;
     json_t *where;
     int count;
+    void *temp = NULL;
 
     column = SCHEMA_COLUMN(Wifi_VIF_State, associated_clients),
     where = ovsdb_tran_cond(OCLM_UUID, column, OFUNC_INC, uuid);
-    free(ovsdb_table_select_where(&table_Wifi_VIF_State, where, &count));
+    temp = ovsdb_table_select_where(&table_Wifi_VIF_State, where, &count);
+    FREE(temp);
 
     return count;
 }

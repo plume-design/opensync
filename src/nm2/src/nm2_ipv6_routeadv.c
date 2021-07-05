@@ -27,6 +27,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb_table.h"
 #include "os_util.h"
 #include "reflink.h"
+#include "memutil.h"
 
 #include "nm2.h"
 
@@ -172,7 +173,7 @@ void nm2_ipv6_routeadv_release(struct nm2_ipv6_routeadv *ra)
     reflink_fini(&ra->ra_reflink);
     ds_tree_remove(&nm2_ipv6_routeadv_list, ra);
 
-    free(ra);
+    FREE(ra);
 }
 
 /*
@@ -246,7 +247,7 @@ struct nm2_ipv6_routeadv *nm2_ipv6_routeadv_get(ovs_uuid_t *uuid)
     if (ra == NULL)
     {
         /* Allocate a new dummy structure and insert it into the cache */
-        ra = calloc(1, sizeof(struct nm2_ipv6_routeadv));
+        ra = CALLOC(1, sizeof(struct nm2_ipv6_routeadv));
         ra->ra_uuid = *uuid;
 
         reflink_init(&ra->ra_reflink, "IPv6_RouteAdv");
@@ -561,7 +562,7 @@ void *ipv6_routeadv_dnssl_sync(synclist_t *list, void *_old, void *_new)
     if (pold == NULL)
     {
         /* Add entry */
-        pold = calloc(1, sizeof(struct ipv6_routeadv_dnssl));
+        pold = CALLOC(1, sizeof(struct ipv6_routeadv_dnssl));
         pold->ds_dnssl = strdup(pnew->ds_dnssl);
 
         if (ipi != NULL)
@@ -583,8 +584,8 @@ void *ipv6_routeadv_dnssl_sync(synclist_t *list, void *_old, void *_new)
         }
 
         /* Free entry */
-        free(pold->ds_dnssl);
-        free(pold);
+        FREE(pold->ds_dnssl);
+        FREE(pold);
         pold = NULL;
     }
 

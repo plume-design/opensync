@@ -36,6 +36,7 @@
 
 #include "test_mdnsd.h"
 #include "util.h"
+#include "memutil.h"
 
 struct conf_srec {
 	char   *type;
@@ -173,7 +174,7 @@ static int load(mdns_daemon_t *d, char *path, char *hostname)
 	packet = sd2txt(h, &len);
 	xht_free(h);
 	mdnsd_set_raw(d, r, (char *)packet, len);
-	free(packet);
+	FREE(packet);
 
 	return 0;
 }

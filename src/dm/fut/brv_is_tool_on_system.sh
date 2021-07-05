@@ -26,10 +26,12 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/brv_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="brv/$(basename "$0")"
 brv_setup_file="brv/brv_setup.sh"
@@ -49,16 +51,17 @@ Script usage example:
    ./${tc_name} "tail"
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 NARGS=1
 [ $# -ne ${NARGS} ] && usage && raise "Requires exactly '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 
@@ -69,11 +72,11 @@ log_title "${tc_name}: BRV test - Verify tool '${tool_path}' is present on devic
 is_tool_on_system "${tool_path}"
 rc=$?
 if [ $rc == 0 ]; then
-    log -deb "${tc_name}: tool '${tool_path}' found on device"
+    log "${tc_name}: tool '${tool_path}' found on device - Success"
 elif [ $rc == 126 ]; then
-    raise "Tool '${tool_path}' found on device but could not be invoked" -l "${tc_name}" -ec ${rc} -tc
+    raise "Tool '${tool_path}' found on device but could not be invoked - Success" -l "${tc_name}" -ec ${rc} -tc
 else
-    raise "Tool '${tool_path}' could not be found on device" -l "${tc_name}" -ec ${rc} -tc
+    raise "FAIL: Tool '${tool_path}' could not be found on device" -l "${tc_name}" -ec ${rc} -tc
 fi
 
 pass

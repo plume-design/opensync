@@ -47,6 +47,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_time.h"
 #include "os_regex.h"
 #include "util.h"
+#include "memutil.h"
 
 /** Pattern for matching the dmesg file */
 #define PSTORE_DMESG        "dmesg-ramoops-*"
@@ -269,7 +270,7 @@ exit:
                 reason == NULL ? "" : reason);
     }
 
-    free(pmsg);
+    FREE(pmsg);
 
     if (psd != NULL && closedir(psd) != 0)
     {

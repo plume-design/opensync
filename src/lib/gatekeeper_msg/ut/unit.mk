@@ -28,7 +28,9 @@ UNIT_NAME := test_gatekeeper_msg
 
 UNIT_TYPE := TEST_BIN
 
-UNIT_SRC := test_gatekeeper.c
+UNIT_SRC := test_gatekeeper_msg_main.c
+UNIT_SRC += test_gatekeeper_msg.c
+UNIT_SRC += test_gatekeeper_hero_stats.c
 UNIT_LDFLAGS := -lprotobuf-c
 
 UNIT_DEPS := src/lib/common
@@ -39,3 +41,4 @@ UNIT_DEPS += src/lib/target
 UNIT_DEPS += src/lib/unity
 UNIT_DEPS += src/lib/network_metadata
 UNIT_DEPS += src/lib/fsm_policy
+UNIT_DEPS += src/qm/qm_conn

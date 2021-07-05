@@ -68,6 +68,7 @@ struct target_dpp_conf_enrollee {
     const char *ifname;
     const char *sta_mac_addr;
     const char *sta_netaccesskey_sha256_hex;  /**< public key hash */
+    const char *config_uuid;
 };
 
 /**
@@ -112,6 +113,7 @@ struct target_dpp_conf_network {
     const char *dpp_netaccesskey_hex;  /**< private key part */
     const char *dpp_connector;
     const char *dpp_csign_hex;
+    const char *config_uuid;
 };
 
 /**
@@ -348,7 +350,16 @@ bool target_dpp_supported(void);
 /**
  * @brief Start or stop DPP related actions
  *
- * When @p config is NULL:
+ * The @p config is always non-NULL. It points to a list of pointers and
+ * uses a NULL pointer guard to denote list end. One can iterate over it
+ * like so:
+ *
+ *   for (; *config; config++) { ... }
+ *
+ * If @p config[0] is NULL, it means there are no DPP_Config jobs for the
+ * target to execute. This is equivalent to target_dpp_config_set(NULL).
+ *
+ * When @p config[0] is NULL:
  *  - any ongoing chirping, listening or authentication must be stopped
  *  - if any sta interfaces are present, they must resume roaming
  *  - any configurators, bootstraps shall be flushed
@@ -356,16 +367,13 @@ bool target_dpp_supported(void);
  *    target_radio_ops.op_dpp_announcement() as per
  *    target_vif_config_set2() configuration
  *
- * When @p config is not NULL:
+ * Otherwise:
  *  - if any other DPP action was already programmed in the target, it must
  *    be stopped and flushed
- *  - depending on @p config.auth value, the target shall start chirping,
+ *  - depending on @p config[].auth value, the target shall start chirping,
  *    listening, initiate auth, or wait for chirping
- *  - if ifnames[] are station interfaces, then roaming on these
- *    interfaces must be stopped if config.auth is demanding chirping
- *    or listening
  *
- * Upon completion, one of the target_radio_ops must be called:
+ * Upon completion of a job, one of the target_radio_ops must be called:
  *  - target_radio_ops.op_dpp_conf_enrollee(): when acting as Configurator
  *  - target_radio_ops.op_dpp_conf_network(): when acting as Enrollee
  *  - target_radio_ops.op_dpp_conf_failed(): either Enrollee or Configurator
@@ -398,11 +406,13 @@ bool target_dpp_supported(void);
  *  - dpp_netaccesskey_hex
  *  - dpp_connector
  *  - dpp_csign_hex
+ *  - config_uuid
+ *  - renew
  *
  * @param config DPP action specification, or NULL
  * @return true on success
  */
-bool target_dpp_config_set(const struct schema_DPP_Config *config);
+bool target_dpp_config_set(const struct schema_DPP_Config **config);
 
 /**
  * @brief Fetch a key to be used for DPP Onboarding
@@ -961,6 +971,14 @@ bool target_get_mld_mcproxy_sys_params(struct schema_MLD_Config *iccfg);
  * @return true on success
  */
 bool target_set_mcast_uplink(const char *ifname, bool enable, bool is_wan, const char *bridge);
+
+/**
+ * @brief Flag interface as IPTV for multicast daemon
+ * @param ifname IPTV interface name
+ * @param enable true to flag, false to unflag
+ * @return true on success
+ */
+bool target_set_mcast_iptv(const char *ifname, bool enable);
 
 /**
  * @brief Set IGMP snooping for multicast deamon

@@ -29,6 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "reflink.h"
 #include "const.h"
+#include "memutil.h"
 
 /* reflink connection structure */
 struct reflink_connection
@@ -88,7 +89,7 @@ bool reflink_connect(reflink_t *src, reflink_t *dst)
 {
     struct reflink_connection *prc;
 
-    prc = calloc(1, sizeof(struct reflink_connection));
+    prc = CALLOC(1, sizeof(struct reflink_connection));
 
     prc->rc_dst = src;
 
@@ -130,7 +131,7 @@ bool reflink_disconnect(reflink_t *src, reflink_t *dst)
 
     /* Sever the connection */
     ds_tree_remove(&dst->rl_connections, prc);
-    free(prc);
+    FREE(prc);
 
     /* Decrease reference counters */
     reflink_ref(dst, -1);

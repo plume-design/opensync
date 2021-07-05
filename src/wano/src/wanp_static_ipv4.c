@@ -31,15 +31,17 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sys/stat.h>
 #include <fcntl.h>
 
+#include "const.h"
 #include "log.h"
 #include "module.h"
+#include "osa_assert.h"
+#include "osn_types.h"
 #include "ovsdb_table.h"
 #include "schema.h"
 #include "wano.h"
-#include "osa_assert.h"
-#include "osp_ps.h"
+#include "memutil.h"
 
-#include "wano_localconfig.h"
+#include "wano_wan_config.h"
 #include "wanp_static_ipv4_stam.h"
 
 typedef struct
@@ -58,14 +60,7 @@ typedef struct
     char     ping_buf[20148];
     size_t   ping_buf_offset;
 
-    /* Local config */
-    struct wano_localconfig localconfig;
-
-    osn_ip_addr_t ip_addr;
-    osn_ip_addr_t netmask;
-    osn_ip_addr_t gateway;
-    osn_ip_addr_t dns1;
-    osn_ip_addr_t dns2;
+    struct wano_wan_config  wan_config;
 
     /** True if this plug-in detected a working WAN configuration */
     bool plugin_has_wan;
@@ -203,35 +198,61 @@ enum wanp_static_ipv4_state wanp_static_ipv4_state_CONFIGURE_IP(
         enum wanp_static_ipv4_action action,
         void *data)
 {
+    char ipaddr[C_IP4ADDR_LEN];
+    char netmask[C_IP4ADDR_LEN];
+    char gateway[C_IP4ADDR_LEN];
+    char dns1[C_IP4ADDR_LEN];
+    char dns2[C_IP4ADDR_LEN];
+
     wanp_static_ipv4_handle_t *h = CONTAINER_OF(state, wanp_static_ipv4_handle_t, state);
     struct wano_inet_state *is = data;
-
-    const char *dns2 = NULL;
+    struct wano_wan_config_static_ipv4 *pwc = &h->wan_config.wc_type_static_ipv4;
 
     switch (action)
     {
         case wanp_static_ipv4_do_STATE_INIT:
-            LOG(INFO, "wanp_static_ipv4: %s: Setting ip_addr=%s netmask=%s gateway=%s",
-                    h->handle.wh_ifname,
-                    h->localconfig.staticIPv4.ip,
-                    h->localconfig.staticIPv4.subnet,
-                    h->localconfig.staticIPv4.gateway);
+            snprintf(ipaddr, sizeof(ipaddr),
+                    PRI(osn_ip_addr),
+                    FMT(osn_ip_addr, pwc->wc_ipaddr));
 
-            if (h->localconfig.staticIPv4.secondaryDns[0] != '\0')
+            snprintf(netmask, sizeof(netmask),
+                    PRI(osn_ip_addr),
+                    FMT(osn_ip_addr, pwc->wc_netmask));
+
+            snprintf(gateway, sizeof(gateway),
+                    PRI(osn_ip_addr),
+                    FMT(osn_ip_addr, pwc->wc_gateway));
+
+            snprintf(dns1, sizeof(gateway),
+                    PRI(osn_ip_addr),
+                    FMT(osn_ip_addr, pwc->wc_primary_dns));
+
+            dns2[0] = '\0';
+            if (osn_ip_addr_cmp(&pwc->wc_secondary_dns, &OSN_IP_ADDR_INIT) != 0)
             {
-                dns2 = h->localconfig.staticIPv4.secondaryDns;
+                snprintf(dns2, sizeof(gateway),
+                        PRI(osn_ip_addr),
+                        FMT(osn_ip_addr, pwc->wc_secondary_dns));
             }
+
+            LOG(INFO, "wanp_static_ipv4: %s: Setting ip_addr=%s netmask=%s gateway=%s dns1=%s dns2=%s",
+                    h->handle.wh_ifname,
+                    ipaddr,
+                    netmask,
+                    gateway,
+                    dns1,
+                    dns2[0] == '\0' ?"(none)" : dns2);
 
             WANO_INET_CONFIG_UPDATE(
                     h->handle.wh_ifname,
                     .enabled = WANO_TRI_TRUE,
                     .network = WANO_TRI_TRUE,
                     .ip_assign_scheme = "static",
-                    .inet_addr = h->localconfig.staticIPv4.ip,
-                    .netmask = h->localconfig.staticIPv4.subnet,
-                    .gateway = h->localconfig.staticIPv4.gateway,
-                    .dns1 = h->localconfig.staticIPv4.primaryDns,
-                    .dns2 = dns2);
+                    .inet_addr = ipaddr,
+                    .netmask = netmask,
+                    .gateway = gateway,
+                    .dns1 = dns1,
+                    .dns2 = dns2[0] == '\0' ? NULL : dns2);
 
             wano_inet_state_event_refresh(&h->inet_state_watcher);
             break;
@@ -255,11 +276,11 @@ enum wanp_static_ipv4_state wanp_static_ipv4_state_CONFIGURE_IP(
             if (is->is_enabled != true) break;
             if (is->is_network != true) break;
             if (strcmp(is->is_ip_assign_scheme, "static") != 0) break;
-            if (memcmp(&is->is_ipaddr, &h->ip_addr, sizeof(h->ip_addr)) != 0) break;
-            if (memcmp(&is->is_netmask, &h->netmask, sizeof(h->netmask)) != 0) break;
-            if (memcmp(&is->is_gateway, &h->gateway, sizeof(h->gateway)) != 0) break;
-            if (memcmp(&is->is_dns1, &h->dns1, sizeof(h->dns1)) != 0) break;
-            if (memcmp(&is->is_dns2, &h->dns2, sizeof(h->dns2)) != 0) break;
+            if (memcmp(&is->is_ipaddr, &pwc->wc_ipaddr, sizeof(is->is_ipaddr)) != 0) break;
+            if (memcmp(&is->is_netmask, &pwc->wc_netmask, sizeof(is->is_netmask)) != 0) break;
+            if (memcmp(&is->is_gateway, &pwc->wc_gateway, sizeof(is->is_gateway)) != 0) break;
+            if (memcmp(&is->is_dns1, &pwc->wc_primary_dns, sizeof(is->is_dns1)) != 0) break;
+            if (memcmp(&is->is_dns2, &pwc->wc_secondary_dns, sizeof(is->is_dns2)) != 0) break;
 
             wano_inet_state_event_fini(&h->inet_state_watcher);
             return wanp_static_ipv4_PROBE;
@@ -287,8 +308,14 @@ enum wanp_static_ipv4_state wanp_static_ipv4_state_PROBE(
         case wanp_static_ipv4_do_STATE_INIT:
         case wanp_static_ipv4_do_PING_FAILED:
             {
-                LOG(INFO, "wanp_static_ipv4: %s: Pinging %s", h->handle.wh_ifname, h->localconfig.staticIPv4.gateway);
-                if (ping_async(h, h->localconfig.staticIPv4.gateway) == false)
+                char sgateway[C_IP4ADDR_LEN];
+
+                snprintf(sgateway, sizeof(sgateway),
+                        PRI(osn_ip_addr),
+                        FMT(osn_ip_addr, h->wan_config.wc_type_static_ipv4.wc_gateway));
+
+                LOG(INFO, "wanp_static_ipv4: %s: Pinging %s", h->handle.wh_ifname, sgateway);
+                if (ping_async(h, sgateway) == false)
                 {
                     /* Ping failed, inform upper layers */
                     h->status_fn(&h->handle, &WANO_PLUGIN_STATUS(WANP_ERROR));
@@ -319,6 +346,8 @@ enum wanp_static_ipv4_state wanp_static_ipv4_state_RUNNING(
     if (action == wanp_static_ipv4_do_STATE_INIT)
     {
         struct wano_plugin_status ws = WANO_PLUGIN_STATUS(WANP_OK);
+
+        wano_wan_config_status_set(h->handle.wh_ifname, WC_TYPE_STATIC_IPV4, WC_STATUS_SUCCESS);
 
         h->plugin_has_wan = true;
         wanp_static_ipv4_wan_lock = true;
@@ -352,6 +381,7 @@ wano_plugin_handle_t *wanp_static_ipv4_init(
         const char *ifname,
         wano_plugin_status_fn_t *status_fn)
 {
+    struct wano_wan_config wc;
     wanp_static_ipv4_handle_t *h;
 
     if (wanp_static_ipv4_wan_lock)
@@ -361,8 +391,7 @@ wano_plugin_handle_t *wanp_static_ipv4_init(
         return NULL;
     }
 
-    h = calloc(1, sizeof(wanp_static_ipv4_handle_t));
-    ASSERT(h != NULL, "Error allocating static_ipv4 object")
+    h = CALLOC(1, sizeof(wanp_static_ipv4_handle_t));
 
     h->handle.wh_plugin = wp;
     STRSCPY(h->handle.wh_ifname, ifname);
@@ -371,59 +400,19 @@ wano_plugin_handle_t *wanp_static_ipv4_init(
     h->ping_fd[0] = -1;
     h->ping_fd[1] = -1;
 
-    h->ip_addr = OSN_IP_ADDR_INIT;
-    h->netmask = OSN_IP_ADDR_INIT;
-    h->gateway = OSN_IP_ADDR_INIT;
-    h->dns1 = OSN_IP_ADDR_INIT;
-    h->dns2 = OSN_IP_ADDR_INIT;
-
     /*
      * Load static configration
      */
-    if (!wano_localconfig_load(&h->localconfig) || !h->localconfig.staticIPv4_exists)
+    if (!wano_wan_config_get(&wc, WC_TYPE_STATIC_IPV4))
     {
         LOG(NOTICE, "static_ipv4: No static IPv4 configuration present, skipping.");
         goto error;
     }
 
-    /*
-     * Verify that the IPs are valid
-     */
-    if (!osn_ip_addr_from_str(&h->gateway, h->localconfig.staticIPv4.gateway))
-    {
-        LOG(ERR, "static_ipv4: Invalid gateway configuration: %s", h->localconfig.staticIPv4.gateway);
-        goto error;
-    }
-
-    if (!osn_ip_addr_from_str(&h->ip_addr, h->localconfig.staticIPv4.ip))
-    {
-        LOG(ERR, "static_ipv4: Invalid IP address configuration: %s", h->localconfig.staticIPv4.ip);
-        goto error;
-    }
-
-    if (!osn_ip_addr_from_str(&h->netmask, h->localconfig.staticIPv4.subnet))
-    {
-        LOG(ERR, "static_ipv4: Invalid IP subnet configuration: %s", h->localconfig.staticIPv4.subnet);
-        goto error;
-    }
-
-    if (!osn_ip_addr_from_str(&h->dns1, h->localconfig.staticIPv4.primaryDns))
-    {
-        LOG(ERR, "static_ipv4: Invalid DNS configuration: %s", h->localconfig.staticIPv4.primaryDns);
-        goto error;
-    }
-
-    /* secondaryDNS is optional, do not abort if it cannot be parsed */
-    if (h->localconfig.staticIPv4.secondaryDns[0] != '\0' &&
-            !osn_ip_addr_from_str(&h->dns2, h->localconfig.staticIPv4.secondaryDns))
-    {
-        LOG(WARN, "static_ipv4: Invalid secondary DNS configuration: %s", h->localconfig.staticIPv4.secondaryDns);
-    }
-
     return &h->handle;
 
 error:
-    if (h != NULL) free(h);
+    if (h != NULL) FREE(h);
     return NULL;
 }
 
@@ -461,7 +450,7 @@ void wanp_static_ipv4_fini(wano_plugin_handle_t *wh)
     close(wsh->ping_fd[0]);
     close(wsh->ping_fd[1]);
 
-    free(wh);
+    FREE(wh);
 }
 
 /*
@@ -490,11 +479,13 @@ void wanp_static_ipv4_inet_state_event_fn(
  */
 void wanp_static_ipv4_module_start(void *data)
 {
+    (void)data;
     wano_plugin_register(&wanp_static_ipv4);
 }
 
 void wanp_static_ipv4_module_stop(void *data)
 {
+    (void)data;
     wano_plugin_unregister(&wanp_static_ipv4);
 }
 

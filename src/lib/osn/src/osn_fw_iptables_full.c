@@ -34,6 +34,7 @@
 #include "os.h"
 #include "const.h"
 #include "util.h"
+#include "memutil.h"
 #include <string.h>
 #include <stdio.h>
 #include <errno.h>
@@ -253,7 +254,7 @@ static bool osfw_nfchain_del(struct osfw_nfchain *self)
 		return false;
 	}
 
-	free(self);
+	FREE(self);
 	return true;
 }
 
@@ -267,11 +268,7 @@ static struct osfw_nfchain *osfw_nfchain_add(struct ds_dlist *parent, const char
 		return NULL;
 	}
 
-	self = malloc(sizeof(*self));
-	if (!self) {
-		LOGE("Add OSFW chain: memory allocation failed");
-		return NULL;
-	}
+	self = MALLOC(sizeof(*self));
 
 	errcode = osfw_nfchain_set(self, parent, chain);
 	if (!errcode) {
@@ -341,7 +338,7 @@ static bool osfw_nfrule_del(struct osfw_nfrule *self)
 		return false;
 	}
 
-	free(self);
+	FREE(self);
 	return true;
 }
 
@@ -356,11 +353,7 @@ static struct osfw_nfrule *osfw_nfrule_add(struct ds_dlist *parent, const char *
 		return NULL;
 	}
 
-	self = malloc(sizeof(*self));
-	if (!self) {
-		LOGE("Add OSFW rule: memory allocation failed");
-		return NULL;
-	}
+	self = MALLOC(sizeof(*self));
 
 	errcode = osfw_nfrule_set(self, parent, chain, prio, match, target);
 	if (!errcode) {

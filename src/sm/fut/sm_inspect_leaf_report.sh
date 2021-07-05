@@ -26,10 +26,12 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/sm_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="sm/$(basename "$0")"
 manager_setup_file="sm/sm_setup.sh"
@@ -58,35 +60,36 @@ Script usage example:
    ./${tc_name} 2.4G 10 5 raw 3c:7b:96:4d:11:5c
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 NARGS=5
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
-
-trap 'run_setup_if_crashed sm' EXIT SIGINT SIGTERM
-
 sm_radio_type=$1
 sm_reporting_interval=$2
 sm_sampling_interval=$3
 sm_report_type=$4
 sm_leaf_mac=$5
 
-log_title "$tc_name: SM test - Inspect leaf report"
+trap 'run_setup_if_crashed sm' EXIT SIGINT SIGTERM
 
-log "$tc_name: Inspecting leaf report on $sm_radio_type for leaf $sm_leaf_mac"
+log_title "$tc_name: SM test - Inspect leaf report for $sm_radio_type"
+
+log "$tc_name: Inspecting leaf report type $sm_report_type for leaf $sm_leaf_mac radio $sm_radio_type "
 inspect_leaf_report \
     "$sm_radio_type" \
     "$sm_reporting_interval" \
     "$sm_sampling_interval" \
     "$sm_report_type" \
     "$sm_leaf_mac" ||
-        raise "Failed: inspect_leaf_report" -l "$tc_name" -tc
+        raise "FAIL: inspect_leaf_report - $sm_report_type logs for LEAF $sm_leaf_mac not found for radio $sm_radio_type" -l "$tc_name" -tc
+
 pass

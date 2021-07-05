@@ -250,9 +250,9 @@ void setUp(void)
     // No ovsdb support
     mgr->update_ovsdb_tables = NULL;
 
-    entry1 = calloc(sizeof(struct neighbour_entry ), 1);
-    entry1->ipaddr = calloc(sizeof(struct sockaddr_storage), 1);
-    entry1->mac = calloc(sizeof(os_macaddr_t), 1);
+    entry1 = CALLOC(sizeof(struct neighbour_entry ), 1);
+    entry1->ipaddr = CALLOC(sizeof(struct sockaddr_storage), 1);
+    entry1->mac = CALLOC(sizeof(os_macaddr_t), 1);
     entry1->ifname = STRDUP("intf1");
     util_populate_sockaddr(AF_INET, &v4dstip1, entry1->ipaddr);
     entry1->mac->addr[0] = 0xaa;
@@ -263,9 +263,9 @@ void setUp(void)
     entry1->mac->addr[5] = 0x01;
     entry1->source = NEIGH_SRC_NOT_SET;
 
-    entry2 = calloc(sizeof(struct neighbour_entry ), 1);
-    entry2->ipaddr = calloc(1, sizeof(struct sockaddr_storage));
-    entry2->mac = calloc(1, sizeof(os_macaddr_t));
+    entry2 = CALLOC(sizeof(struct neighbour_entry ), 1);
+    entry2->ipaddr = CALLOC(1, sizeof(struct sockaddr_storage));
+    entry2->mac = CALLOC(1, sizeof(os_macaddr_t));
     util_populate_sockaddr(AF_INET, &v4dstip2, entry2->ipaddr);
     entry2->mac->addr[0] = 0xaa;
     entry2->mac->addr[1] = 0xaa;
@@ -275,9 +275,9 @@ void setUp(void)
     entry2->mac->addr[5] = 0x02;
     entry2->source = NEIGH_SRC_NOT_SET;
 
-    entry3 = calloc(sizeof(struct neighbour_entry ), 1);
-    entry3->ipaddr = calloc(1, sizeof(struct sockaddr_storage));
-    entry3->mac = calloc(1, sizeof(os_macaddr_t));
+    entry3 = CALLOC(sizeof(struct neighbour_entry ), 1);
+    entry3->ipaddr = CALLOC(1, sizeof(struct sockaddr_storage));
+    entry3->mac = CALLOC(1, sizeof(os_macaddr_t));
     util_populate_sockaddr(AF_INET6, &v6dstip1, entry3->ipaddr);
     entry3->mac->addr[0] = 0x66;
     entry3->mac->addr[1] = 0x66;
@@ -287,9 +287,9 @@ void setUp(void)
     entry3->mac->addr[5] = 0x01;
     entry3->source = NEIGH_SRC_NOT_SET;
 
-    entry4 = calloc(sizeof(struct neighbour_entry ), 1);
-    entry4->ipaddr = calloc(1, sizeof(struct sockaddr_storage));
-    entry4->mac = calloc(1, sizeof(os_macaddr_t));
+    entry4 = CALLOC(sizeof(struct neighbour_entry ), 1);
+    entry4->ipaddr = CALLOC(1, sizeof(struct sockaddr_storage));
+    entry4->mac = CALLOC(1, sizeof(os_macaddr_t));
     util_populate_sockaddr(AF_INET6, &v6dstip2, entry4->ipaddr);
     entry4->mac->addr[0] = 0x77;
     entry4->mac->addr[1] = 0x77;
@@ -299,9 +299,9 @@ void setUp(void)
     entry4->mac->addr[5] = 0x02;
     entry4->source = NEIGH_SRC_NOT_SET;
 
-    entry5 = calloc(sizeof(struct neighbour_entry ), 1);
-    entry5->ipaddr = calloc(sizeof(struct sockaddr_storage), 1);
-    entry5->mac = calloc(sizeof(os_macaddr_t), 1);
+    entry5 = CALLOC(sizeof(struct neighbour_entry ), 1);
+    entry5->ipaddr = CALLOC(sizeof(struct sockaddr_storage), 1);
+    entry5->mac = CALLOC(sizeof(os_macaddr_t), 1);
     util_populate_sockaddr(AF_INET, &v4dstip5, entry5->ipaddr);
     entry5->mac->addr[0] = 0xaa;
     entry5->mac->addr[1] = 0xaa;
@@ -779,14 +779,12 @@ void test_neigh_table_cache_update(void)
 
     memset(&key, 0, sizeof(struct neighbour_entry));
 
-    key.ipaddr = calloc(sizeof(struct sockaddr_storage), 1);
-    TEST_ASSERT_NOT_NULL(key.ipaddr);
+    key.ipaddr = CALLOC(sizeof(struct sockaddr_storage), 1);
 
     /* fill sockaddr */
     util_populate_sockaddr(AF_INET6, &v6udstip, key.ipaddr);
 
-    key.mac = calloc(sizeof(os_macaddr_t), 1);
-    TEST_ASSERT_NOT_NULL(key.mac);
+    key.mac = CALLOC(sizeof(os_macaddr_t), 1);
 
     key.mac->addr[3] = 0x66;
 
@@ -806,9 +804,9 @@ void test_neigh_table_cache_update(void)
     /* Delete the key */
     neigh_table_delete(&key);
 
-    free(key.ifname);
-    free(key.ipaddr);
-    free(key.mac);
+    FREE(key.ifname);
+    FREE(key.ipaddr);
+    FREE(key.mac);
 }
 
 
@@ -966,8 +964,8 @@ void delete_dhcp_entry_into_ovsdb_cb(EV_P_ ev_timer *w, int revents)
     mgr->update_ovsdb_tables = update_ip_in_ovsdb_table;
     memset(&olookup, 0, sizeof(struct neighbour_entry));
 
-    olookup.ipaddr = calloc(sizeof(struct sockaddr_storage), 1);
-    olookup.mac = calloc(sizeof(os_macaddr_t), 1);
+    olookup.ipaddr = CALLOC(sizeof(struct sockaddr_storage), 1);
+    olookup.mac = CALLOC(sizeof(os_macaddr_t), 1);
 
     /* Add entry in ovsdb */
     entry = entry1;

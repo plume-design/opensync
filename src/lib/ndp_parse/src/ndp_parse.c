@@ -30,12 +30,16 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stddef.h>
 #include <time.h>
 
+#include <netinet/if_ether.h>
+#include <net/if_arp.h>
+
 #include <sys/socket.h>
 #include "netdb.h"
 
 #include "const.h"
 #include "ds_tree.h"
 #include "log.h"
+#include "memutil.h"
 #include "neigh_table.h"
 #include "ndp_parse.h"
 #include "assert.h"
@@ -120,13 +124,25 @@ ndp_plugin_init(struct fsm_session *session)
     if (ndp_session->initialized) return 0;
 
     parser = &ndp_session->parser;
-    parser->entry.ipaddr = calloc(1, sizeof(*parser->entry.ipaddr));
+    parser->sender.ipaddr = CALLOC(1, sizeof(*parser->sender.ipaddr));
+    if (parser->sender.ipaddr == NULL)
+    {
+        LOGE("%s: could not allocate sender ip storage", __func__);
+        goto exit_on_error;
+    }
+
+    parser->target.ipaddr = CALLOC(1, sizeof(*parser->target.ipaddr));
+    if (parser->target.ipaddr == NULL)
+    {
+        LOGE("%s: could not allocate sender ip storage", __func__);
+        goto exit_on_error;
+    }
+
+    parser->entry.ipaddr = CALLOC(1, sizeof(*parser->entry.ipaddr));
     if (parser->entry.ipaddr == NULL)
     {
-        LOGE("%s: could not allocate ip storage", __func__);
-        ndp_delete_session(session);
-
-        return -1;
+        LOGE("%s: could not allocate sender ip storage", __func__);
+        goto exit_on_error;
     }
 
     /* Set the fsm session */
@@ -148,6 +164,10 @@ ndp_plugin_init(struct fsm_session *session)
     LOGD("%s: added session %s", __func__, session->name);
 
     return 0;
+
+exit_on_error:
+    ndp_delete_session(session);
+    return -1;
 }
 
 
@@ -192,9 +212,152 @@ ndp_plugin_handler(struct fsm_session *session,
     len = ndp_parse_message(parser);
     if (len == 0) return;
 
-    ndp_process_message(n_session);
+    if (parser->type == NEIGH_ICMPv6)
+    {
+        icmpv6_process_message(n_session);
+    }
+    else if (parser->type == NEIGH_ARP)
+    {
+        arp_process_message(n_session);
+        parser->arp.s_eth = NULL;
+        parser->arp.t_eth = NULL;
+        parser->gratuitous = false;
+    }
 
     return;
+}
+
+
+/**
+ * @brief populate neigh entries in parser
+ *
+ * @param session neigh_session
+ */
+void
+arp_populate_neigh_entries(struct ndp_session *n_session)
+{
+    struct fsm_session_conf *conf;
+    struct sockaddr_storage *dst;
+    struct ndp_parser *parser;
+    struct sockaddr_in *in;
+    struct eth_arp *arp;
+
+    parser = &n_session->parser;
+    arp = &parser->arp;
+    conf = n_session->session->conf;
+
+    dst = parser->sender.ipaddr;
+    in = (struct sockaddr_in *)dst;
+
+    memset(in, 0, sizeof(struct sockaddr_in));
+    in->sin_family = AF_INET;
+    memcpy(&in->sin_addr, &arp->s_ip, sizeof(in->sin_addr));
+
+    parser->sender.mac = arp->s_eth;
+    parser->sender.ifname = conf->if_name;
+    parser->sender.source = FSM_ARP;
+    if (arp->t_eth == NULL) return;
+
+    dst = parser->target.ipaddr;
+    in = (struct sockaddr_in *)dst;
+
+    memset(in, 0, sizeof(struct sockaddr_in));
+    in->sin_family = AF_INET;
+    memcpy(&in->sin_addr, &arp->t_ip, sizeof(in->sin_addr));
+
+    parser->target.mac = arp->t_eth;
+    parser->target.ifname = conf->if_name;
+    parser->target.source = FSM_ARP;
+
+    return;
+}
+
+
+/**
+ * @brief checks if an arp packet gratuitous arp
+ *
+ * @param arp the arp parsed packet
+ * @return true if the arp packet is a gratuitous arp, false otherwise
+ */
+bool
+arp_parse_is_gratuitous(struct eth_arp *arp)
+{
+    os_macaddr_t fmac = { { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff } };
+    os_macaddr_t zmac = { 0 };
+    os_macaddr_t *t_eth;
+    int cmp;
+
+    t_eth = arp->t_eth;
+    if (t_eth == NULL) return false;
+
+    cmp = memcmp(t_eth, &zmac, sizeof(zmac));
+    if (cmp == 0) return true;
+
+    cmp = memcmp(t_eth, &fmac, sizeof(fmac));
+    if (cmp == 0) return true;
+
+    return false;
+}
+
+
+/**
+ * @brief parses the received message content
+ *
+ * @param parser the parsed data container
+ * @return the size of the parsed message content, or 0 on parsing error.
+ */
+size_t
+arp_parse_content(struct ndp_parser *parser)
+{
+    struct net_header_parser *net_parser;
+    struct eth_arp *arp;
+    struct arphdr *arph;
+    uint16_t ar_hrd;
+    uint16_t ar_pro;
+    uint16_t ar_op;
+    size_t len;
+
+    /* basic validation */
+    net_parser = parser->net_parser;
+    arp = &parser->arp;
+
+    arph = (struct arphdr *)(net_parser->data);
+    len = parser->neigh_len;
+    if (len < sizeof(*arph)) return 0;
+
+    ar_hrd = ntohs(arph->ar_hrd);
+    if (ar_hrd != ARPHRD_ETHER) return 0;
+
+    ar_pro = ntohs(arph->ar_pro);
+    if (ar_pro != ETH_P_IP) return 0;
+
+    if (arph->ar_hln != ETH_ALEN) return 0;
+    if (arph->ar_pln != 4) return 0;
+
+    ar_op = ntohs(arph->ar_op);
+    if ((ar_op != ARPOP_REQUEST) && (ar_op != ARPOP_REPLY)) return 0;
+    parser->op = ar_op;
+
+    /* Access HW/network mapping info */
+    net_parser->data += sizeof(*arph);
+    net_parser->parsed += sizeof(*arph);
+
+    arp->s_eth = (os_macaddr_t *)(net_parser->data);
+    net_parser->data += ETH_ALEN;
+    net_parser->parsed += ETH_ALEN;
+
+    arp->s_ip = *(uint32_t *)(net_parser->data);
+    net_parser->data += 4;
+    net_parser->parsed += 4;
+
+    if (ar_op == ARPOP_REPLY)
+    {
+        arp->t_eth = (os_macaddr_t *)(net_parser->data);
+        parser->gratuitous = arp_parse_is_gratuitous(arp);
+        net_parser->data += ETH_ALEN;
+        arp->t_ip = *(uint32_t *)(net_parser->data);
+    }
+    return len;
 }
 
 
@@ -208,6 +371,7 @@ size_t
 ndp_parse_message(struct ndp_parser *parser)
 {
     struct net_header_parser *net_parser;
+    uint16_t ethertype;
     int ip_protocol;
     size_t len;
 
@@ -216,17 +380,29 @@ ndp_parse_message(struct ndp_parser *parser)
     /* Some basic validation */
     net_parser = parser->net_parser;
     ip_protocol = net_parser->ip_protocol;
-    if (ip_protocol != IPPROTO_ICMPV6) return 0;
+    ethertype = net_header_get_ethertype(net_parser);
 
     /* Parse network header */
     parser->parsed = net_parser->parsed;
     parser->data = net_parser->data;
 
     /* Adjust payload length to remove potential ethernet padding */
-    parser->icmpv6_len = net_parser->packet_len - net_parser->parsed;
+    parser->neigh_len = net_parser->packet_len - net_parser->parsed;
 
-    /* Parse the message content */
-    len = ndp_parse_content(parser);
+    if (ip_protocol == IPPROTO_ICMPV6)
+    {
+        /* Parse the icmpv6 message content */
+        len = icmpv6_parse_content(parser);
+        parser->type = NEIGH_ICMPv6;
+    }
+    else if (ethertype == ETH_P_ARP)
+    {
+        /* Parse the arp message content */
+        len = arp_parse_content(parser);
+        parser->type = NEIGH_ARP;
+    }
+    else return 0;
+
     return len;
 }
 
@@ -263,8 +439,9 @@ size_t
 ndp_parse_solicit(struct ndp_parser *parser)
 {
     struct net_header_parser *net_parser;
-    struct nd_neighbor_solicit *ns;
+    struct nd_neighbor_solicit ns;
     struct nd_opt_hdr *opt_hdr;
+    struct in6_addr *addr;
     os_macaddr_t *opt_mac;
     uint8_t opt_type;
     size_t opt_len;
@@ -272,15 +449,22 @@ ndp_parse_solicit(struct ndp_parser *parser)
     bool ret;
 
     net_parser = parser->net_parser;
-    len = parser->icmpv6_len;
-    if (len < sizeof(*ns)) return 0;
+    len = parser->neigh_len;
+    if (len < sizeof(ns.nd_ns_target)) return 0;
 
-    ns = (struct nd_neighbor_solicit *)(net_parser->data);
+    memset(&ns, 0, sizeof(struct nd_neighbor_solicit));
+
+    /* ICMPv6 hdr */
+    memcpy(&ns.nd_ns_hdr, &net_parser->ip_pld.icmp6hdr, sizeof(struct icmp6_hdr));
+
+    /* target address */
+    addr = (struct in6_addr *)(parser->data);
+    memcpy(&ns.nd_ns_target, addr, sizeof(struct in6_addr));
 
     /* Check for option */
-    len -= sizeof(*ns);
-    net_parser->data += sizeof(*ns);
-    net_parser->parsed += sizeof(*ns);
+    len -= sizeof(struct in6_addr);
+    net_parser->data += sizeof(struct in6_addr);
+    net_parser->parsed += sizeof(struct in6_addr);
 
     opt_mac = NULL;
     if (len > 0)
@@ -297,7 +481,7 @@ ndp_parse_solicit(struct ndp_parser *parser)
         net_parser->data += 2;
         net_parser->parsed += 2;
 
-        opt_mac = calloc(1, sizeof(*opt_mac));
+        opt_mac = CALLOC(1, sizeof(*opt_mac));
         if (opt_mac == NULL) return 0;
         memcpy(opt_mac, net_parser->data, sizeof(*opt_mac));
         parser->opt_mac = opt_mac;
@@ -322,11 +506,12 @@ size_t
 ndp_parse_advert(struct ndp_parser *parser)
 {
     struct net_header_parser *net_parser;
-    struct nd_neighbor_advert *na;
+    struct nd_neighbor_advert na;
     struct sockaddr_storage *dst;
     struct nd_opt_hdr *opt_hdr;
     struct eth_header *eth_hdr;
     struct sockaddr_in6 *in6;
+    struct in6_addr *addr;
     os_macaddr_t *opt_mac;
     uint8_t opt_type;
     size_t opt_len;
@@ -336,15 +521,22 @@ ndp_parse_advert(struct ndp_parser *parser)
     struct neighbour_entry *entry;
 
     net_parser = parser->net_parser;
-    len = parser->icmpv6_len;
-    if (len < sizeof(*na)) return 0;
+    len = parser->neigh_len;
+    if (len < sizeof(na.nd_na_target)) return 0;
 
-    na = (struct nd_neighbor_advert *)(net_parser->data);
+    memset(&na, 0, sizeof(struct nd_neighbor_advert));
+
+    /* ICMPv6 hdr */
+    memcpy(&na.nd_na_hdr, &net_parser->ip_pld.icmp6hdr, sizeof(struct icmp6_hdr));
+
+    /* target address */
+    addr = (struct in6_addr *)(parser->data);
+    memcpy(&na.nd_na_target, addr, sizeof(struct in6_addr));
 
     /* Check for option */
-    len -= sizeof(*na);
-    net_parser->data += sizeof(*na);
-    net_parser->parsed += sizeof(*na);
+    len -= sizeof(struct in6_addr);
+    net_parser->data += sizeof(struct in6_addr);
+    net_parser->parsed += sizeof(struct in6_addr);
 
     if (len > 0)
     {
@@ -360,7 +552,7 @@ ndp_parse_advert(struct ndp_parser *parser)
         net_parser->data += 2;
         net_parser->parsed += 2;
 
-        opt_mac = calloc(1, sizeof(*opt_mac));
+        opt_mac = CALLOC(1, sizeof(*opt_mac));
         if (opt_mac == NULL) return 0;
         memcpy(opt_mac, net_parser->data, sizeof(*opt_mac));
         parser->opt_mac = opt_mac;
@@ -372,7 +564,7 @@ ndp_parse_advert(struct ndp_parser *parser)
 
     memset(in6, 0, sizeof(struct sockaddr_in6));
     in6->sin6_family = AF_INET6;
-    memcpy(&in6->sin6_addr, &na->nd_na_target, sizeof(in6->sin6_addr));
+    memcpy(&in6->sin6_addr, &na.nd_na_target, sizeof(in6->sin6_addr));
 
     if (parser->opt_mac)
     {
@@ -405,7 +597,7 @@ ndp_parse_advert(struct ndp_parser *parser)
  * @return the size of the parsed message content, or 0 on parsing error.
  */
 size_t
-ndp_parse_content(struct ndp_parser *parser)
+icmpv6_parse_content(struct ndp_parser *parser)
 {
     struct net_header_parser *net_parser;
     struct icmp6_hdr *icmphdr;
@@ -415,9 +607,7 @@ ndp_parse_content(struct ndp_parser *parser)
 
     /* basic validation */
     net_parser = parser->net_parser;
-    len = parser->icmpv6_len;
-    if (len < sizeof(*icmphdr)) return 0;
-    icmphdr = (struct icmp6_hdr *)(net_parser->data);
+    icmphdr = net_parser->ip_pld.icmp6hdr;
     code = icmphdr->icmp6_code;
     if (code != 0) return 0;
 
@@ -437,7 +627,7 @@ ndp_parse_content(struct ndp_parser *parser)
  * @param n_session the ndp session pointing to the parsed message
  */
 void
-ndp_process_message(struct ndp_session *n_session)
+icmpv6_process_message(struct ndp_session *n_session)
 {
     struct fsm_session_conf *conf;
     struct ndp_parser *parser;
@@ -456,13 +646,40 @@ ndp_process_message(struct ndp_session *n_session)
     /* Record the IP mac mapping */
     neigh_table_add(&parser->entry);
 
-    free(parser->opt_mac);
+    FREE(parser->opt_mac);
     parser->opt_mac = NULL;
     parser->entry.mac = NULL;
-
-    if (LOG_SEVERITY_ENABLED(LOG_SEVERITY_TRACE)) print_neigh_table();
 }
 
+/**
+ * @brief process the parsed message
+ *
+ * Prepare a key to lookup the flow stats info, and update the flow stats.
+ * @param a_session the arp session pointing to the parsed message
+ */
+void
+arp_process_message(struct ndp_session *n_session)
+{
+    struct ndp_parser *parser;
+
+    /* basic validation */
+    parser = &n_session->parser;
+
+    arp_populate_neigh_entries(n_session);
+    parser->sender.cache_valid_ts = n_session->timestamp;
+    neigh_table_add(&parser->sender);
+
+    if (parser->op == ARPOP_REQUEST) return;
+
+    if (parser->gratuitous) return;
+
+    /* Record the target IP mac mapping if available */
+    if (parser->arp.t_eth != NULL)
+    {
+        parser->target.cache_valid_ts = n_session->timestamp;
+        neigh_table_add(&parser->target);
+    }
+}
 
 /**
  * @brief looks up a session
@@ -485,7 +702,7 @@ ndp_lookup_session(struct fsm_session *session)
     if (n_session != NULL) return n_session;
 
     LOGD("%s: Adding new session %s", __func__, session->name);
-    n_session = calloc(1, sizeof(struct ndp_session));
+    n_session = CALLOC(1, sizeof(struct ndp_session));
     if (n_session == NULL) return NULL;
 
     ds_tree_insert(sessions, n_session, session);
@@ -505,8 +722,10 @@ ndp_free_session(struct ndp_session *n_session)
     struct ndp_parser *parser;
 
     parser = &n_session->parser;
-    free(parser->entry.ipaddr);
-    free(n_session);
+    FREE(parser->sender.ipaddr);
+    FREE(parser->target.ipaddr);
+    FREE(parser->entry.ipaddr);
+    FREE(n_session);
 }
 
 
@@ -560,8 +779,11 @@ ndp_plugin_periodic(struct fsm_session *session)
     cmp_clean = now - n_session->timestamp;
     if (cmp_clean < FSM_NDP_CHECK_TTL) return;
 
+    neigh_table_ttl_cleanup(n_session->ttl, OVSDB_ARP);
     neigh_table_ttl_cleanup(n_session->ttl, OVSDB_NDP);
     n_session->timestamp = now;
+
+    if (LOG_SEVERITY_ENABLED(LOG_SEVERITY_TRACE)) print_neigh_table();
 }
 
 

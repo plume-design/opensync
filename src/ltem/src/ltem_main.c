@@ -38,6 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "network_metadata.h"
 
 #include "ltem_mgr.h"
+#include "ltem_lte_hw.h"
 
 /* Default log severity */
 static log_severity_t  log_severity = LOG_SEVERITY_INFO;
@@ -60,6 +61,22 @@ ltem_get_mgr(void)
     return &ltem_mgr;
 }
 
+static void
+ltem_setup_handlers(ltem_mgr_t *mgr)
+{
+    ltem_handlers_t *handlers;
+
+    handlers = &mgr->handlers;
+
+    handlers->ltem_mgr_init = ltem_init_mgr;
+    handlers->system_call = system;
+    handlers->lte_modem_open = lte_modem_open;
+    handlers->lte_modem_write = lte_modem_write;
+    handlers->lte_modem_read = lte_modem_read;
+    handlers->lte_modem_close = lte_modem_close;
+    handlers->lte_run_microcom_cmd = lte_run_microcom_cmd;
+}
+
 bool
 ltem_init_mgr(struct ev_loop *loop)
 {
@@ -69,17 +86,23 @@ ltem_init_mgr(struct ev_loop *loop)
 
     ltem_mgr_t *mgr = ltem_get_mgr();
 
-    memset(mgr, 0, sizeof(ltem_mgr_t));
-
     mgr->loop = loop;
 
     lte_config = CALLOC(1, sizeof(lte_config_info_t));
+    if (lte_config == NULL) return false;
     lte_state = CALLOC(1, sizeof(lte_state_info_t));
+    if (lte_state == NULL) return false;
     lte_route = CALLOC(1, sizeof(lte_route_info_t));
+    if (lte_route == NULL) return false;
 
     mgr->lte_config_info = lte_config;
     mgr->lte_state_info = lte_state;
+    mgr->lte_state_info->lte_config = lte_config;
     mgr->lte_route = lte_route;
+
+    ltem_evt_switch_slot();
+    ltem_set_qmi_mode();
+    ltem_set_kore_apn();
 
     return true;
 }
@@ -89,10 +112,11 @@ ltem_init_mgr(struct ev_loop *loop)
  *
  * Note: Command line arguments allow overriding the log severity
  */
-int main(int argc, char ** argv)
+int main(int argc, char **argv)
 {
     struct ev_loop *loop = EV_DEFAULT;
     ltem_mgr_t *mgr;
+    ltem_handlers_t *handlers;
 
     // Parse command-line arguments
     if (os_get_opt(argc, argv, &log_severity))
@@ -121,17 +145,25 @@ int main(int argc, char ** argv)
 
     ltem_set_lte_state(LTEM_LTE_STATE_INIT);
 
+    mgr = ltem_get_mgr();
+    memset(mgr, 0, sizeof(ltem_mgr_t));
+
+    handlers = &mgr->handlers;
+    ltem_setup_handlers(mgr);
     // Initialize the manager
-    if (!ltem_init_mgr(loop))
+    LOGI("ltem_mgr_init");
+    if (!handlers->ltem_mgr_init(loop))
     {
         LOGE("Initializing LTEM "
               "(Failed to initialize manager)");
         return -1;
     }
 
+    LOGI("ltem_event_init");
     ltem_event_init();
 
     // Connect to OVSDB
+    LOGI("ovsdb_init_loop");
     if (!ovsdb_init_loop(loop, "LTEM"))
     {
         LOGE("Initializing LTEM "
@@ -140,6 +172,7 @@ int main(int argc, char ** argv)
     }
 
     // Register to relevant OVSDB tables events
+    LOGI("ovsdb_init_loop");
     if (ltem_ovsdb_init())
     {
         LOGE("Initializing LTEM "
@@ -148,7 +181,7 @@ int main(int argc, char ** argv)
     }
 
     // Create client table
-    mgr = ltem_get_mgr();
+    LOGI("ltem_create_client_table");
     ltem_create_client_table(mgr);
 
     LOGI("%s: state=%s", __func__, ltem_get_lte_state_name(mgr->lte_state));

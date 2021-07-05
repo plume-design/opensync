@@ -78,7 +78,7 @@ void   nflog__free_unpacked
   assert(message->base.descriptor == &nflog__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
-static const ProtobufCFieldDescriptor nflog__field_descriptors[15] =
+static const ProtobufCFieldDescriptor nflog__field_descriptors[19] =
 {
   {
     "node_id",
@@ -260,17 +260,69 @@ static const ProtobufCFieldDescriptor nflog__field_descriptors[15] =
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
+  {
+    "ingress_ifrole",
+    16,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_STRING,
+    0,   /* quantifier_offset */
+    offsetof(Nflog, ingress_ifrole),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "egress_ifrole",
+    17,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_STRING,
+    0,   /* quantifier_offset */
+    offsetof(Nflog, egress_ifrole),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "ingress_phyifrole",
+    18,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_STRING,
+    0,   /* quantifier_offset */
+    offsetof(Nflog, ingress_phyifrole),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "egress_phyifrole",
+    19,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_STRING,
+    0,   /* quantifier_offset */
+    offsetof(Nflog, egress_phyifrole),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
 };
 static const unsigned nflog__field_indices_by_name[] = {
   6,   /* field[6] = egress_ifname */
+  16,   /* field[16] = egress_ifrole */
   8,   /* field[8] = egress_phyifname */
+  18,   /* field[18] = egress_phyifrole */
   4,   /* field[4] = fw_mark */
   3,   /* field[3] = hw_addr */
   14,   /* field[14] = hwheader */
   13,   /* field[13] = hwlen */
   12,   /* field[12] = hwtype */
   5,   /* field[5] = ingress_ifname */
+  15,   /* field[15] = ingress_ifrole */
   7,   /* field[7] = ingress_phyifname */
+  17,   /* field[17] = ingress_phyifrole */
   1,   /* field[1] = location_id */
   10,   /* field[10] = nl_group_id */
   0,   /* field[0] = node_id */
@@ -281,7 +333,7 @@ static const unsigned nflog__field_indices_by_name[] = {
 static const ProtobufCIntRange nflog__number_ranges[1 + 1] =
 {
   { 1, 0 },
-  { 0, 15 }
+  { 0, 19 }
 };
 const ProtobufCMessageDescriptor nflog__descriptor =
 {
@@ -291,7 +343,7 @@ const ProtobufCMessageDescriptor nflog__descriptor =
   "Nflog",
   "",
   sizeof(Nflog),
-  15,
+  19,
   nflog__field_descriptors,
   nflog__field_indices_by_name,
   1,  nflog__number_ranges,

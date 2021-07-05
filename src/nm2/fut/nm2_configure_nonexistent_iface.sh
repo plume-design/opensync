@@ -25,32 +25,13 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-
-# TEST DEFINITION DESCRIPTION
-# Try to configure non existing interface.
-# Non existing interface should not be created/configured.
-# Also NM should not crash if non existing interface tries to be created/configured.
-#
-# TEST PROCEDURE
-# Test inserts interface to Wifi_Inet_Config by calling insert_ovsdb_entry.
-# It checks Wifi_Inet_State table for interface with wait_ovsdb_entry.
-# Checks if interface is created in system.
-# Checks if NM is running.
-# If it cannot find NM PID, it crashed. Test fails.
-#
-# EXPECTED RESULTS
-# Test is passed:
-# - if interface is not created
-# - NM survived, did not crash
-# Test fails:
-# - if nonexisting interface was created but it shouldn't be
-# - NM crashed (PID is no longer available)
-
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="nm2/$(basename "$0")"
 manager_setup_file="nm2/nm2_setup.sh"
@@ -60,10 +41,10 @@ cat << usage_string
 ${tc_name} [-h] arguments
 Description:
     - Script creates undefined interface through Wifi_Inet_Config table
-        Script fails if:
-          Undefined interface is not present in Wifi_Inet_State
-          Undefined interface is present on system
-          NM crashes during creation of undefined interface
+      Script fails if:
+        - Undefined interface is not present in Wifi_Inet_State
+        - Undefined interface is present on system
+        - NM crashes during creation of undefined interface
 Arguments:
     -h  show this help message
     \$1 (if_name)   : used as if_name in Wifi_Inet_Config table   : (string)(required)
@@ -76,16 +57,17 @@ Script usage example:
    ./${tc_name} test1 eth 10.10.10.15
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 
 # Fill variables with provided arguments or defaults.
 NARGS=3
@@ -117,24 +99,24 @@ insert_ovsdb_entry Wifi_Inet_Config \
     -i ip_assign_scheme static \
     -i parent_ifname eth1 \
     -i mtu 1500 &&
-        log "$tc_name: Creating NONEXISTENT interface - Failed to insert_ovsdb_entry" ||
-        raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "$tc_name: NONEXISTENT interface $if_name created - Success" ||
+        raise "FAIL: Failed to insert_ovsdb_entry for $if_name" -l "$tc_name" -oe
 
-log "$tc_name: Checking if NONEXISTENT interface $if_name was CREATED"
+log "$tc_name: Checking if NONEXISTENT interface $if_name was created"
 # Interface must be present in Wifi_Inet_State table...
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is if_type "$if_type" &&
-    log "$tc_name: NONEXISTENT interface present in Wifi_Inet_State table - if_name $if_name" ||
-    raise "Wifi_Inet_State - {if_name:=$if_name}" -l "$tc_name" -ow
+    log "$tc_name: NONEXISTENT interface present in Wifi_Inet_State::if_name = $if_name - Success" ||
+    raise "FAIL: Wifi_Inet_State::if_name = $if_name not present" -l "$tc_name" -ow
 
-# ...but not in system.
+# ...but not on system.
 wait_for_function_response 1 "check_interface_exists $if_name" &&
-    log "$tc_name: SUCCESS: Interface $if_name of type $if_type does NOT exist on system" ||
+    log "$tc_name: Interface $if_name of type $if_type does not exist on system - Success" ||
     raise "FAIL: Interface $if_name of type $if_type exists on system, but should NOT" -l "$tc_name" -tc
 
 # Check if manager survived.
 manager_pid_file="${OPENSYNC_ROOTDIR}/bin/nm"
 wait_for_function_response 0 "check_manager_alive $manager_pid_file" &&
-    log "$tc_name: SUCCESS: NETWORK MANAGER is running" ||
-    raise "FAILED: NETWORK MANAGER not running/crashed" -l "$tc_name" -tc
+    log "$tc_name: NETWORK MANAGER is running - Success" ||
+    raise "FAIL: NETWORK MANAGER not running/crashed" -l "$tc_name" -tc
 
 pass

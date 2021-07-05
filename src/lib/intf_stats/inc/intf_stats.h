@@ -34,6 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ds.h"
 #include "ds_dlist.h"
 #include "interface_stats.pb-c.h"
+#include "memutil.h"
 
 /**
  * @brief container of information needed to set Intf Stats protobuf
@@ -126,14 +127,14 @@ intf_stats_t *intf_stats_intf_alloc(void)
 {
     intf_stats_t *intf = NULL;
 
-    intf = calloc(1, sizeof(intf_stats_t));
+    intf = CALLOC(1, sizeof(intf_stats_t));
     return intf;
 }
 
 static inline
 void intf_stats_intf_free(intf_stats_t *intf)
 {
-    if (intf) free(intf);
+    if (intf) FREE(intf);
 }
 
 static inline
@@ -141,14 +142,14 @@ intf_stats_window_list_t *intf_stats_window_alloc(void)
 {
     intf_stats_window_list_t *window = NULL;
 
-    window = calloc( 1, sizeof(intf_stats_window_list_t));
+    window = CALLOC( 1, sizeof(intf_stats_window_list_t));
     return window;
 }
 
 static inline
 void intf_stats_window_free(intf_stats_window_list_t *window)
 {
-    if (window) free(window);
+    if (window) FREE(window);
 }
 
 /******************************************************************************/

@@ -86,6 +86,18 @@ void ev_debounce_start(struct ev_loop *loop, ev_debounce *w);
  */
 void ev_debounce_stop(struct ev_loop *loop, ev_debounce *w);
 
+/**
+ * Reset debounce timer values (timeout and max timeout). If the timer is
+ * active, the new settings will take effect only after it is re-armed
+ */
+void ev_debounce_set2(ev_debounce *w, double timeout, double timeout_max);
+
+/**
+ * Reset debounce timer value. If the timer is active, the new settings will
+ * take effect only after it is re-armed
+ */
+void ev_debounce_set(ev_debounce *w, double timeout);
+
 #ifdef BUILD_HAVE_LIBCARES
 struct evx_ares {
     struct ares_ctx {

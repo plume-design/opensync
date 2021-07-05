@@ -25,6 +25,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include "log.h"
+#include "memutil.h"
 
 #include "osn_dhcp.h"
 
@@ -36,13 +37,13 @@ struct osn_dhcp_client
 osn_dhcp_client_t *osn_dhcp_client_new(const char *ifname)
 {
     (void)ifname;
-    osn_dhcp_client_t *self = calloc(1, sizeof(osn_dhcp_client_t));
+    osn_dhcp_client_t *self = CALLOC(1, sizeof(osn_dhcp_client_t));
     return self;
 }
 
 bool osn_dhcp_client_del(osn_dhcp_client_t *self)
 {
-    free(self);
+    FREE(self);
     return true;
 }
 
@@ -81,7 +82,7 @@ bool osn_dhcp_client_opt_get(osn_dhcp_client_t *self, enum osn_dhcp_option opt, 
     (void)self;
     (void)opt;
     (void)request;
-    (void)value;
+    *value = NULL;
 
     return true;
 }

@@ -29,6 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "ds.h"
 #include "ds_dlist.h"
+#include "memutil.h"
 
 #include "dpp_types.h"
 
@@ -53,7 +54,7 @@ static inline dpp_capacity_record_list_t * dpp_capacity_record_alloc()
 {
     dpp_capacity_record_list_t *record = NULL;
 
-    record = malloc(sizeof(dpp_capacity_record_list_t));
+    record = MALLOC(sizeof(dpp_capacity_record_list_t));
     if (record)
     {
         memset(record, 0, sizeof(dpp_capacity_record_list_t));
@@ -66,7 +67,7 @@ static inline void dpp_capacity_record_free(dpp_capacity_record_list_t *record)
 {
     if (NULL != record)
     {
-        free(record);
+        FREE(record);
     }
 }
 

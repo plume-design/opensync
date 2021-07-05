@@ -26,11 +26,13 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/fsm_lib.sh"
 source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="fsm/$(basename "$0")"
 # Default of_port must be unique between fsm tests for valid testing
@@ -46,26 +48,33 @@ Arguments:
     \$2 (fsm_plugin)       : Path to FSM plugin under test             : (string)(required)
     \$3 (of_port)          : FSM out/of port                           : (int)(optional)     : (default:${of_port_default})
 Script usage example:
-    ./${tc_name} br-home /usr/plume/opensync/libfsm_upnp.so
-    ./${tc_name} br-home /usr/plume/lib/libfsm_upnp.so 5002
+    ./${tc_name} br-home /usr/opensync/lib/libfsm_upnp.so
+    ./${tc_name} br-home /usr/opensync/lib/libfsm_upnp.so 5002
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-    h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+    help | \
+    --help | \
+    -h)
         usage && exit 1
         ;;
     *)
-        echo "Unknown argument" && exit 1
         ;;
     esac
-done
+fi
 
 trap '
 fut_info_dump_line
+print_tables Wifi_Inet_Config Wifi_Inet_State
+print_tables Wifi_VIF_Config Wifi_VIF_State
+print_tables Wifi_Radio_Config Wifi_Radio_State
 print_tables Openflow_Config Openflow_State
-print_tables Flow_Service_Manager_Config FSM_Policy
+print_tables Flow_Service_Manager_Config
+print_tables FSM_Policy
+print_tables Wifi_Master_State
 print_tables Object_Store_State
+ovs-vsctl show
 fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 
@@ -79,13 +88,13 @@ of_port=${3:-${of_port_default}}
 
 client_mac=$(get_ovsdb_entry_value Wifi_Associated_Clients mac)
 if [ -z "${client_mac}" ]; then
-    raise "Could not acquire Client mac address from Wifi_Associated_Clients, is client connected?" -l "${tc_name}"
+    raise "FAIL: Could not acquire Client MAC address from Wifi_Associated_Clients, is client connected?" -l "${tc_name}"
 fi
 # Use first MAC from Wifi_Associated_Clients
 client_mac="${client_mac%%,*}"
 tap_upnp_if="${lan_bridge_if}.tupnp"
 
-log_title "$tc_name: FSM test - Configure uPnP plugin"
+log_title "$tc_name: FSM test - Configure UPnP plugin"
 
 log "$tc_name: Configuring TAP interfaces required for FSM testing"
 add_bridge_port "${lan_bridge_if}" "${tap_upnp_if}"
@@ -98,15 +107,15 @@ create_inet_entry \
     -dhcp_sniff "false" \
     -network true \
     -enabled true &&
-    log -deb "$tc_name: Interface ${tap_upnp_if} successfully created" ||
-    raise "Failed to create interface ${tap_upnp_if}" -l "$tc_name" -ds
+        log "$tc_name: Interface ${tap_upnp_if} created - Success" ||
+        raise "FAIL: Failed to create interface ${tap_upnp_if}" -l "$tc_name" -ds
 
 log "$tc_name: Cleaning FSM OVSDB Config tables"
 empty_ovsdb_table Openflow_Config
 empty_ovsdb_table Flow_Service_Manager_Config
 empty_ovsdb_table FSM_Policy
 
-# Insert egress rule to Openflow_Config
+# Insert rule to Openflow_Config
 insert_ovsdb_entry Openflow_Config \
     -i token "dev_flow_upnp_out" \
     -i table 0 \
@@ -114,8 +123,8 @@ insert_ovsdb_entry Openflow_Config \
     -i priority 200 \
     -i bridge "${lan_bridge_if}" \
     -i action "normal,output:${of_port}" &&
-    log "$tc_name: Inserting ingress rule" ||
-    raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "$tc_name: insert_ovsdb_entry - Ingress rule inserted to Openflow_Config - Success" ||
+        raise "FAIL: insert_ovsdb_entry - Failed to insert ingress rule to Openflow_Config" -l "$tc_name" -oe
 
 mqtt_value="dev-test/dev_upnp/$(get_node_id)/$(get_location_id)"
 insert_ovsdb_entry Flow_Service_Manager_Config \
@@ -124,5 +133,5 @@ insert_ovsdb_entry Flow_Service_Manager_Config \
     -i pkt_capt_filter 'udp' \
     -i plugin "${fsm_plugin}" \
     -i other_config '["map",[["mqtt_v","'"${mqtt_value}"'"],["dso_init","upnp_plugin_init"]]]' &&
-    log "$tc_name: Flow_Service_Manager_Config entry added" ||
-    raise "Failed to insert Flow_Service_Manager_Config entry" -l "$tc_name" -oe
+        log "$tc_name: insert_ovsdb_entry - MQTT config inserted to Flow_Service_Manager_Config - Success" ||
+        raise "FAIL: insert_ovsdb_entry - Failed to insert MQTT config to Flow_Service_Manager_Config" -l "$tc_name" -oe

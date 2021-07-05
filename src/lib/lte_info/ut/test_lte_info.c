@@ -34,55 +34,62 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "unity.h"
 #include "target.h"
+#include "qm_conn.h"
 
 const char *test_name = "lte_info_tests";
 
 struct lte_net_neighbor_cell_info *g_neigh_cell = NULL;
 struct lte_info_packed_buffer *g_serialized = NULL;
 struct lte_info_report *g_report = NULL;
-char *g_ifname = "lte_ut_ifname";
 
-struct lte_info g_lte_info =
+char *g_deployment = "dog1";
+char g_mqtt_topic[256];
+
+struct lte_common_header g_common_header =
 {
-    .prod_id_info = "lte_ut_id",
-    .chip_serial = "lte_ut_12345",
-    .imei = "lte_ut_IMEI12345",
-    .imsi = "lte_ut_IMSI12345",
-    .iccid = "lte_ut_iccid",
-    .sim_status = "lte_ut_sim_enabled",
-    .net_reg_status = "lte_ut_reg_enabled",
-    .service_provider_name = "lte_ut_lte_plume",
-    .sim_slot = "lte_ut_sim_slot_1",
+    .request_id = 1,
+    .if_name = "wwan0",
+    .node_id = "HC83C0005B",
+    .location_id = "59f39f5acbb22513f0ae5e17",
+    .imei = "861364040104042",
+    .imsi = "222013410161198",
+    .reported_at = 0,
 };
 
-
-struct lte_sig_qual g_sig_qual_info =
+struct lte_net_info g_lte_net_info =
 {
-    .rssi = "lte_ut_rssi",
-    .ber = "lte_ut_ber",
+    .net_status = LTE_NET_REG_STAT_REG,
+    .rssi = -71,
+    .ber = 5,
 };
 
+struct lte_data_usage g_lte_data_usage =
+{
+    .rx_bytes = 123456789,
+    .tx_bytes = 0xABCDEF123,
+    .failover_start = 0,
+    .failover_end = 90,
+    .failover_count = 1,
+};
 
 struct lte_net_serving_cell_info g_srv_cell_info =
 {
-    .cell_type = "lte_ut_cell_type",
-    .state = "lte_ut_state",
-    .is_tdd = "lte_ut_is_tdd",
-    .mcc = "lte_ut_mcc",
-    .mnc = "lte_ut_mnc",
-    .cellid = "lte_ut_cellid",
-    .pcid = "lte_ut_pcid",
-    .uarfcn = "lte_ut_uarfcn",
-    .earfcn = "lte_ut_earfcn",
-    .freq_band = "lte_ut_freq_band",
-    .ul_bandwidth = "lte_ut_ul_bandwidth",
-    .dl_bandwidth = "lte_ut_dl_bandwidth",
-    .tac = "lte_ut_tac",
-    .rsrp = "lte_ut_rsrp",
-    .rsrq = "lte_ut_rsrq",
-    .rssi = "lte_ut_rssi",
-    .sinr = "lte_ut_sinr",
-    .srxlev = "lte_ut_srxlev",
+    .state = LTE_SERVING_CELL_NOCONN,
+    .mode = LTE_CELL_MODE_LTE,
+    .fdd_tdd_mode = LTE_MODE_TDD,
+    .cellid = 0xA1FBF11,
+    .pcid = 218,
+    .uarfcn = 0,
+    .earfcn = 5110,
+    .freq_band = 12,
+    .ul_bandwidth = LTE_BANDWIDTH_10_MHZ,
+    .dl_bandwidth = LTE_BANDWIDTH_10_MHZ,
+    .tac = 0x8B1E,
+    .rsrp = -101,
+    .rsrq = -15,
+    .rssi = -69,
+    .sinr = 10,
+    .srxlev = 22,
 };
 
 
@@ -91,57 +98,80 @@ struct lte_net_neighbor_cell_info g_neigh_cells[] =
     {
         .mode = LTE_CELL_MODE_LTE,
         .freq_mode = LTE_FREQ_MODE_INTRA,
-        .earfcn = "lte_ut_earfcn_0",
-        .uarfcn = "lte_ut_uarfcn_0",
-        .pcid = "lte_ut_pcid_0",
-        .rsrq = "lte_ut_rsrq_0",
-        .rsrp = "lte_ut_rsrp_0",
-        .rssi = "lte_ut_rssi_0",
-        .sinr = "lte_ut_sinr_0",
-        .srxlev_base_station = "lte_ut_srxlev_base_station_0",
-        .cell_resel_priority = "lte_ut_cell_resel_priority_0",
-        .s_non_intra_search = "lte_ut_s_non_intra_search_0",
-        .thresh_serving_low = "lte_ut_thresh_serving_low_0",
-        .s_intra_search = "lte_ut_s_intra_search_0",
-        .thresh_x_low = "lte_ut_thresh_x_low_0",
-        .thresh_x_high = "lte_ut_thresh_x_high_0",
-        .psc = "lte_ut_psc",
-        .rscp = "lte_ut_rscp_0",
-        .ecno = "lte_ut_ecno_0",
-        .set = "lte_ut_set_0",
-        .rank = "lte_ut_rank_0",
-        .cellid = "lte_ut_cellid_0",
-        .srxlev_inter_freq = "lte_ut_srxlev_inter_freq_0",
+        .earfcn = 5035,
+        .uarfcn = 0,
+        .pcid = 159,
+        .rsrq = -15,
+        .rsrp = -111,
+        .rssi = -81,
+        .sinr = 0,
+        .srxlev = 13,
+        .cell_resel_priority = 1,
+        .s_non_intra_search = 8,
+        .thresh_serving_low = 0,
+        .s_intra_search = 46,
+        .thresh_x_low = 0,
+        .thresh_x_high = 0,
+        .psc = 0,
+        .rscp = 0,
+        .ecno = 0,
+        .cell_set = LTE_NEIGHBOR_CELL_SET_ACTIVE_SET,
+        .rank = -190,
+        .cellid = 0,
+        .inter_freq_srxlev = -90,
     },
     {
         .mode = LTE_CELL_MODE_WCDMA,
         .freq_mode = LTE_FREQ_MODE_INTER,
-        .earfcn = "lte_ut_earfcn_1",
-        .uarfcn = "lte_ut_uarfcn_1",
-        .pcid = "lte_ut_pcid_1",
-        .rsrq = "lte_ut_rsrq_1",
-        .rsrp = "lte_ut_rsrp_1",
-        .rssi = "lte_ut_rssi_1",
-        .sinr = "lte_ut_sinr_1",
-        .srxlev_base_station = "lte_ut_srxlev_base_station_1",
-        .cell_resel_priority = "lte_ut_cell_resel_priority_1",
-        .s_non_intra_search = "lte_ut_s_non_intra_search_1",
-        .thresh_serving_low = "lte_ut_thresh_serving_low_1",
-        .s_intra_search = "lte_ut_s_intra_search_1",
-        .thresh_x_low = "lte_ut_thresh_x_low_1",
-        .thresh_x_high = "lte_ut_thresh_x_high_1",
-        .psc = "lte_ut_psc",
-        .rscp = "lte_ut_rscp_1",
-        .ecno = "lte_ut_ecno_1",
-        .set = "lte_ut_set_1",
-        .rank = "lte_ut_rank_1",
-        .cellid = "lte_ut_cellid_1",
-        .srxlev_inter_freq = "lte_ut_srxlev_inter_freq_1",
+        .earfcn = 5035,
+        .uarfcn = 0,
+        .pcid = 159,
+        .rsrq = -15,
+        .rsrp = -111,
+        .rssi = -81,
+        .sinr = 0,
+        .srxlev = 13,
+        .cell_resel_priority = 1,
+        .s_non_intra_search = 8,
+        .thresh_serving_low = 0,
+        .s_intra_search = 46,
+        .thresh_x_low = 0,
+        .thresh_x_high = 0,
+        .psc = 0,
+        .rscp = 0,
+        .ecno = 0,
+        .cell_set = LTE_NEIGHBOR_CELL_SET_ASYNC_NEIGHBOR,
+        .rank = -190,
+        .cellid = 0,
+        .inter_freq_srxlev = -90,
     }
 };
 
-char *pb_file = "lte_ut_proto.bin";
+char *pb_file = "/tmp/lte_ut_proto.bin";
 
+static void
+test_lte_send_report(char *topic, struct lte_info_packed_buffer *pb)
+{
+#ifndef ARCH_X86
+    qm_response_t res;
+    bool ret = false;
+#endif
+
+    TEST_ASSERT_NOT_NULL(topic);
+    TEST_ASSERT_NOT_NULL(pb);
+    TEST_ASSERT_NOT_NULL(pb->buf);
+
+    LOGD("%s: msg len: %zu, topic: %s",
+         __func__, pb->len, topic);
+
+#ifndef ARCH_X86
+    ret = qm_conn_send_direct(QM_REQ_COMPRESS_IF_CFG, topic,
+                              pb->buf, pb->len, &res);
+    if (!ret) LOGE("error sending mqtt with topic %s", topic);
+#endif
+
+    return;
+}
 
 /**
  * @brief writes the contents of a serialized buffer in a file
@@ -192,20 +222,54 @@ tearDown(void)
 
 
 /**
- * @brief test setting the lte_info field of a report
+ * @brief test setting the common header of a report
  */
 void
-test_lte_set_info(void)
+test_lte_set_common_header(void)
+{
+    bool ret;
+    time_t now = time(NULL);
+
+    g_report = CALLOC(1, sizeof(*g_report));
+    TEST_ASSERT_NOT_NULL(g_report);
+
+    g_common_header.reported_at = now;
+    ret = lte_info_set_common_header (&g_common_header, g_report);
+    TEST_ASSERT_TRUE(ret);
+}
+
+/**
+ * @brief test setting the lte_net_info field of a report
+ */
+void
+test_lte_set_net_info(void)
 {
     bool ret;
 
     g_report = CALLOC(1, sizeof(*g_report));
     TEST_ASSERT_NOT_NULL(g_report);
 
-    ret = lte_info_set_info(&g_lte_info, g_report);
+    ret = lte_info_set_net_info(&g_lte_net_info, g_report);
     TEST_ASSERT_TRUE(ret);
 }
 
+/**
+ * @brief test setting the lte_data_usage field of a report
+ */
+void
+test_lte_set_data_usage(void)
+{
+    bool ret;
+    time_t now = time(NULL);
+
+    g_report = CALLOC(1, sizeof(*g_report));
+    TEST_ASSERT_NOT_NULL(g_report);
+
+    g_lte_data_usage.failover_start += now;
+    g_lte_data_usage.failover_end += now;
+    ret = lte_info_set_data_usage(&g_lte_data_usage, g_report);
+    TEST_ASSERT_TRUE(ret);
+}
 
 /**
  * @brief test setting a neighbor cell info
@@ -219,22 +283,6 @@ test_lte_set_neigh_cell_info(void)
     TEST_ASSERT_NOT_NULL(g_neigh_cell);
 
     ret = lte_info_set_neigh_cell_info(&g_neigh_cells[0], g_neigh_cell);
-    TEST_ASSERT_TRUE(ret);
-}
-
-
-/**
- * @brief test setting a signal quality info
- */
-void
-test_lte_set_sig_qual(void)
-{
-    bool ret;
-
-    g_report = CALLOC(1, sizeof(*g_report));
-    TEST_ASSERT_NOT_NULL(g_report);
-
-    ret = lte_info_set_lte_sig_qual(&g_sig_qual_info, g_report);
     TEST_ASSERT_TRUE(ret);
 }
 
@@ -283,19 +331,29 @@ lte_ut_set_report(void)
     TEST_ASSERT_NOT_NULL(g_report->lte_neigh_cell_info[1]);
     TEST_ASSERT_EQUAL_UINT(2, g_report->cur_neigh_cell_idx);
 
-    /* Add the interface name */
-    ret = lte_info_set_if_name(g_ifname, g_report);
+    /* Validate the addition of the common header */
+    ret = lte_info_set_common_header(&g_common_header, g_report);
 
-    /* Validate the addition of the interface name */
+    /* Validate the addition of the common header */
     TEST_ASSERT_TRUE(ret);
-    TEST_ASSERT_NOT_NULL(g_report->if_name);
+    TEST_ASSERT_NOT_NULL(g_report->header);
 
-    /* Add the signal quality info */
-    ret = lte_info_set_lte_sig_qual(&g_sig_qual_info, g_report);
+    /* Add the lte net info */
+    ret = lte_info_set_net_info(&g_lte_net_info, g_report);
 
-    /* Validate the addition of the signal quality info */
+    /* Validate the addition of the lte net info */
     TEST_ASSERT_TRUE(ret);
-    TEST_ASSERT_NOT_NULL(g_report->lte_sig_qual);
+    TEST_ASSERT_NOT_NULL(g_report->lte_net_info);
+
+    /* Add the lte data usage */
+    time_t now = time(NULL);
+    g_lte_data_usage.failover_start += now;
+    g_lte_data_usage.failover_end += now;
+    ret = lte_info_set_data_usage(&g_lte_data_usage, g_report);
+
+    /* Validate the addition of the lte data usage */
+    TEST_ASSERT_TRUE(ret);
+    TEST_ASSERT_NOT_NULL(g_report->lte_data_usage);
 
     /* Add the serving cell info */
     ret = lte_info_set_serving_cell(&g_srv_cell_info, g_report);
@@ -327,6 +385,22 @@ test_lte_serialize_report(void)
 
     /* Save the serialized protobuf in a file */
     pb2file(g_serialized, pb_file);
+    test_lte_send_report(g_mqtt_topic, g_serialized);
+}
+
+
+/**
+ * @brief create mqtt topic
+ */
+void
+test_lte_set_mqtt_topic(void)
+{
+    int rc;
+
+    rc = snprintf(g_mqtt_topic, sizeof(g_mqtt_topic), "dev-test/LteStats/%s/%s/%s",
+                  g_deployment, g_common_header.node_id,
+                  g_common_header.location_id);
+    TEST_ASSERT_NOT_EQUAL_INT(0, rc);
 }
 
 
@@ -339,9 +413,11 @@ main(int argc, char *argv[])
 
     UnityBegin(test_name);
 
-    RUN_TEST(test_lte_set_info);
+    RUN_TEST(test_lte_set_mqtt_topic);
+    RUN_TEST(test_lte_set_common_header);
+    RUN_TEST(test_lte_set_net_info);
+    RUN_TEST(test_lte_set_data_usage);
     RUN_TEST(test_lte_set_neigh_cell_info);
-    RUN_TEST(test_lte_set_sig_qual);
     RUN_TEST(test_lte_set_srv_cell);
     RUN_TEST(test_lte_set_report);
     RUN_TEST(test_lte_serialize_report);

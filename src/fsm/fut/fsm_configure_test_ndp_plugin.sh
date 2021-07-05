@@ -26,11 +26,13 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/fsm_lib.sh"
 source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="fsm/$(basename "$0")"
 manager_setup_file="fsm/fsm_setup.sh"
@@ -71,16 +73,17 @@ Script usage example:
     ./${tc_name} br-home 3002
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-    h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+    help | \
+    --help | \
+    -h)
         usage && exit 1
         ;;
     *)
-        echo "Unknown argument" && exit 1
         ;;
     esac
-done
+fi
 
 trap '
 fut_info_dump_line
@@ -119,8 +122,8 @@ create_inet_entry \
     -dhcp_sniff "false" \
     -network true \
     -enabled true &&
-        log -deb "$tc_name: Interface ${tap_ndp_if} successfully created" ||
-        raise "Failed to create interface ${tap_ndp_if}" -l "$tc_name" -ds
+        log "$tc_name: Interface ${tap_ndp_if} created - Success" ||
+        raise "FAIL: Failed to create interface ${tap_ndp_if}" -l "$tc_name" -ds
 
 log "$tc_name: Cleaning FSM OVSDB Config tables"
 empty_ovsdb_table Openflow_Config
@@ -135,8 +138,8 @@ insert_ovsdb_entry Openflow_Config \
     -i priority 200 \
     -i bridge "${lan_bridge_if}" \
     -i action "normal,output:${of_port}" &&
-    log "$tc_name: Inserting egress rule" ||
-    raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "$tc_name: Egress rule inserted - Success" ||
+        raise "FAIL: Failed to insert_ovsdb_entry" -l "$tc_name" -oe
 
 # Insert ingress rule to Openflow_Config
 insert_ovsdb_entry Openflow_Config \
@@ -146,25 +149,25 @@ insert_ovsdb_entry Openflow_Config \
     -i priority 200 \
     -i bridge "${lan_bridge_if}" \
     -i action "normal,output:${of_port}" &&
-        log "$tc_name: Inserting ingress rule" ||
-        raise "Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "$tc_name: Ingress rule inserted - Success" ||
+        raise "FAIL: Failed to insert_ovsdb_entry" -l "$tc_name" -oe
 
 insert_ovsdb_entry Flow_Service_Manager_Config \
     -i if_name "${tap_ndp_if}" \
     -i handler "dev_ndp" \
     -i plugin '/usr/opensync/lib/libfsm_ndp.so' \
     -i other_config '["map",[["dso_init","ndp_plugin_init"]]]' &&
-        log "$tc_name: Flow_Service_Manager_Config entry added" ||
-        raise "Failed to insert Flow_Service_Manager_Config entry" -l "$tc_name" -oe
+        log "$tc_name: Flow_Service_Manager_Config entry added - Success" ||
+        raise "FAIL: Failed to insert Flow_Service_Manager_Config entry" -l "$tc_name" -oe
 
 log "$tc_name: ping6 clients"
 wait_for_function_response 0 "ping6 -c2 -I ${tap_ndp_if} ff02::1" 5 &&
-    log "$tc_name: ping6 clients - success" ||
+    log "$tc_name: ping6 clients - Success" ||
     log -wrn "$tc_name: Failed to ping6 clients"
 
 wait_for_function_response 0 "${OVSH} s IPv6_Neighbors hwaddr | grep '${client_mac}'" 30 &&
-    log "$tc_name: Client added into IPv6_Neighbors" ||
-    raise "Client not added into IPv6_Neighbors" -l "$tc_name" -oe
+    log "$tc_name: Client added into IPv6_Neighbors table - Success" ||
+    raise "FAIL: Client not added into IPv6_Neighbors table" -l "$tc_name" -oe
 
 print_tables IPv6_Neighbors
 

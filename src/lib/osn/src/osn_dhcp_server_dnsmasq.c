@@ -25,6 +25,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include "log.h"
+#include "memutil.h"
 
 #include "osn_dhcp.h"
 #include "dnsmasq_server.h"
@@ -42,12 +43,12 @@ struct osn_dhcp_server
 
 osn_dhcp_server_t *osn_dhcp_server_new(const char *ifname)
 {
-    osn_dhcp_server_t *self = calloc(1, sizeof(osn_dhcp_server_t));
+    osn_dhcp_server_t *self = CALLOC(1, sizeof(osn_dhcp_server_t));
 
     if (!dnsmasq_server_init(&self->ds_dnsmasq, ifname))
     {
         LOG(ERR, "dhcpv4_server: Error creating dnsmasq server object.");
-        free(self);
+        FREE(self);
         return NULL;
     }
 
@@ -64,7 +65,7 @@ bool osn_dhcp_server_del(osn_dhcp_server_t *self)
         retval = false;
     }
 
-    free(self);
+    FREE(self);
 
     return retval;
 }

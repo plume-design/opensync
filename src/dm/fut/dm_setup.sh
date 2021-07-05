@@ -32,7 +32,8 @@
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/dm_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="dm/$(basename "$0")"
 usage()
@@ -49,22 +50,23 @@ Script usage example:
     ./${tc_name} wifi0 wifi1
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 
 check_kconfig_option "CONFIG_MANAGER_DM" "y" ||
     raise "CONFIG_MANAGER_DM != y - DM is not present on the device" -l "${tc_name}" -s
 
 dm_setup_test_environment "$@" &&
     log "$tc_name: dm_setup_test_environment - Success " ||
-    raise "dm_setup_test_environment - Failed" -l "$tc_name" -ds
+    raise "FAIL: dm_setup_test_environment" -l "$tc_name" -ds
 
 exit 0

@@ -35,11 +35,11 @@ UNIT_TYPE := BIN
 UNIT_SRC += src/wano_connection_manager_uplink.c
 UNIT_SRC += src/wano_inet_config.c
 UNIT_SRC += src/wano_inet_state.c
-UNIT_SRC += src/wano_localconfig.c
 UNIT_SRC += src/wano_main.c
 UNIT_SRC += src/wano_ovs_port.c
 UNIT_SRC += src/wano_plugin.c
 UNIT_SRC += src/wano_ppline.c
+UNIT_SRC += src/wano_wan_config.c
 
 UNIT_CFLAGS += -I$(UNIT_PATH)/src
 UNIT_CFLAGS += -I$(UNIT_PATH)/inc

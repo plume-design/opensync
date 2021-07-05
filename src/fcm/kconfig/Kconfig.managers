@@ -26,3 +26,10 @@ menuconfig MANAGER_FCM
         help
             FCM will be restarted once this threshold is reached.
             This value can be overridden through the ovsdb Node_Config table.
+
+    config FCM_OVS_CMD
+        depends on MANAGER_FCM
+        bool "Flow collection using OVS"
+        default n
+        help
+            Enable Lan stats collection using cmd

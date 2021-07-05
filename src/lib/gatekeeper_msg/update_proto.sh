@@ -1,3 +1,4 @@
+#!/bin/bash
 
 # Copyright (c) 2015, Plume Design Inc. All rights reserved.
 # 
@@ -23,6 +24,7 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+
 ###############################################################################
 # update protobuf c files based on network_metadata protobuf description
 ###############################################################################
@@ -31,23 +33,29 @@ RELDIR=$(basename $(dirname $PWD))/$(basename $PWD)
 
 if [ $RELDIR != "lib/gatekeeper_msg" ]
 then
-    echo "Please cd to src/lib/gatekeeper folder"
+    echo "Please cd to src/lib/gatekeeper_msg folder"
     exit 1
 fi
+
 PROTOC_C=$(which protoc-c)
 if [ -z ${PROTOC_C} ]; then
     echo "protoc-c not found in ${PATH}"
     exit 1
 fi
 
-FNAME=gatekeeper
-${PROTOC_C} --c_out=. --proto_path=../../../interfaces ../../../interfaces/${FNAME}.proto
-mv "${FNAME}.pb-c.c" src/
-mv "${FNAME}.pb-c.h" inc/
+PROTOBUF_FILES=("gatekeeper")
+PROTOBUF_FILES+=("gatekeeper_hero_stats")
 
-if [ $? -ne 0 ]
-then
-    echo "Error generating protobuf c files"
-else
-    echo "protobuf update successfully completed"
-fi
+for FNAME in "${PROTOBUF_FILES[@]}"; do
+    ${PROTOC_C} --c_out=. --proto_path=../../../interfaces ../../../interfaces/${FNAME}.proto
+    mv "${FNAME}.pb-c.c" src/
+    mv "${FNAME}.pb-c.h" inc/
+
+    if [ $? -ne 0 ]
+    then
+        echo "Error generating protobuf c files for ${FNAME}"
+	    exit 1
+    else
+        echo "protobuf update successfully completed for ${FNAME}"
+    fi
+done

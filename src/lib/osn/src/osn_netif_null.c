@@ -25,6 +25,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include "log.h"
+#include "memutil.h"
 
 #include "osn_netif.h"
 
@@ -37,14 +38,14 @@ osn_netif_t* osn_netif_new(const char *ifname)
 {
     (void)ifname;
 
-    osn_netif_t *self = calloc(1, sizeof(*self));
+    osn_netif_t *self = CALLOC(1, sizeof(*self));
 
     return self;
 }
 
 bool osn_netif_del(osn_netif_t *self)
 {
-    free(self);
+    FREE(self);
     return true;
 }
 

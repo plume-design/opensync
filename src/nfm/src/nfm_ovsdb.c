@@ -30,17 +30,28 @@
 */
 
 #include "log.h"
+#include "memutil.h"
 #include "nfm_ovsdb.h"
 #include "nfm_rule.h"
 #include "nfm_trule.h"
-#include "schema.h"
 #include "policy_tags.h"
+#include "schema.h"
 
 #define MODULE_ID LOG_MODULE_ID_OVSDB
+
+struct nfm_interface_role
+{
+	char 			*ir_name;		/* Interface name */
+	char 			*ir_role;		/* Interface role  */
+    ds_tree_node_t	 ir_tnode;		/* Tree node */
+};
 
 struct ovsdb_table table_Openflow_Tag;
 struct ovsdb_table table_Openflow_Tag_Group;
 struct ovsdb_table table_Netfilter;
+struct ovsdb_table table_Wifi_Inet_Config;
+
+static ds_tree_t nfm_interface_role_list = DS_TREE_INIT(ds_str_cmp, struct nfm_interface_role, ir_tnode);
 
 static void callback_Openflow_Tag(ovsdb_update_monitor_t *mon, struct schema_Openflow_Tag *old,
 		struct schema_Openflow_Tag *record)
@@ -183,15 +194,88 @@ static void callback_Netfilter(ovsdb_update_monitor_t *mon, struct schema_Netfil
 	}
 }
 
+static void callback_Wifi_Inet_Config(
+		ovsdb_update_monitor_t *mon,
+		struct schema_Wifi_Inet_Config *old,
+		struct schema_Wifi_Inet_Config *new)
+{
+	struct nfm_interface_role *ir;
+
+	/*
+	 * The ovsdb_update_ API uses empty records in case of the two events below.
+	 * The logic to handle interface role becomes much simpler if they are
+	 * actually NULL instead
+	 */
+	switch (mon->mon_type)
+	{
+		case OVSDB_UPDATE_NEW:
+			old = NULL;
+			break;
+
+		case OVSDB_UPDATE_MODIFY:
+			break;
+
+		case OVSDB_UPDATE_DEL:
+			new = NULL;
+			break;
+
+		default:
+			LOG(ERR, "Wifi_Inet_Config OVSDB event: unknown type %d", mon->mon_type);
+			break;
+	}
+
+	if (old != NULL)
+	{
+		ir = ds_tree_find(&nfm_interface_role_list, old->if_name);
+		if (ir != NULL && (new == NULL || strcmp(old->if_name, new->if_name) != 0))
+		{
+			ds_tree_remove(&nfm_interface_role_list, ir);
+			FREE(ir->ir_name);
+			FREE(ir->ir_role);
+			FREE(ir);
+		}
+	}
+
+	if (new != NULL)
+	{
+		ir = ds_tree_find(&nfm_interface_role_list, new->if_name);
+		if (ir == NULL)
+		{
+			ir = CALLOC(sizeof(struct nfm_interface_role), 1);
+			ir->ir_name = STRDUP(new->if_name);
+			ds_tree_insert(&nfm_interface_role_list, ir, ir->ir_name);
+		}
+
+		/* Update the rule */
+		if (ir->ir_role != NULL) FREE(ir->ir_role);
+		ir->ir_role = STRDUP(new->role);
+	}
+}
+
+/*
+ * Return the interface `role` field as present in Wifi_Inet_Config
+ */
+const char *nfm_interface_role(const char *ifname)
+{
+	struct nfm_interface_role *ir;
+
+	ir = ds_tree_find(&nfm_interface_role_list, (char *)ifname);
+	if (ir == NULL) return NULL;
+
+	return ir->ir_role;
+}
+
 bool nfm_ovsdb_init(void)
 {
     LOGD("Initializing Netfilter OVSDB tables");
     OVSDB_TABLE_INIT(Openflow_Tag, name);
     OVSDB_TABLE_INIT(Openflow_Tag_Group, name);
     OVSDB_TABLE_INIT(Netfilter, name);
+    OVSDB_TABLE_INIT(Wifi_Inet_Config, if_name);
     OVSDB_TABLE_MONITOR(Openflow_Tag, false);
     OVSDB_TABLE_MONITOR(Openflow_Tag_Group, false);
     OVSDB_TABLE_MONITOR(Netfilter, false);
+    OVSDB_TABLE_MONITOR(Wifi_Inet_Config, false);
     return true;
 }
 

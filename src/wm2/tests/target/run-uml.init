@@ -59,6 +59,7 @@ ref_mac=$(cat /sys/class/net/$ref_vif/address)
 ref_mac2=$(cat /sys/class/net/$ref_vif2/address)
 
 ulimit -c unlimited
+echo /tmp/core > /proc/sys/kernel/core_pattern
 cd "$dir"
 
 # This runs 2 WM instances, one nested in another, but
@@ -79,5 +80,6 @@ time ovsdb-server \
 	"$conf1"
 
 cp /tmp/*.log "logs/$cmd/"
+cp /tmp/core "logs/$cmd/"
 
 halt -f -p

@@ -42,11 +42,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "util.h"
 #include "policy_tags.h"
 #include "memutil.h"
+#include "kconfig.h"
 
 #define ETH_DEVICES_TAG "${@eth_devices}"
 
 static char *dflt_fltr_name = "none";
-static char *collect_cmd = OVS_DPCTL_DUMP_FLOWS;
 
 /**
  * Singleton tracking the plugin state
@@ -146,7 +146,7 @@ lan_stats_get_active_instance(void)
 /* Copied from openvswitchd */
 /* Returns the value of 'c' as a hexadecimal digit. */
 int
-hexit_value(int c)
+lan_hexit_value(int c)
 {
     switch (c)
     {
@@ -177,16 +177,15 @@ hexit_value(int c)
     }
 }
 
-
 /* An initializer or expression for an all-zero UFID. */
-#define UFID_ZERO ((ovs_u128) { .id.u32 = { 0, 0, 0, 0 } })
+#define UFID_ZERO ((ovs_u128_) { .id.u32 = { 0, 0, 0, 0 } })
 
 /* Returns the integer value of the 'n' hexadecimal digits starting at 's', or
  * UINTMAX_MAX if one of those "digits" is not really a hex digit.  Sets '*ok'
  * to true if the conversion succeeds or to false if a non-hex digit is
  * detected. */
 uintmax_t
-hexits_value(const char *s, size_t n, bool *ok)
+lan_hexits_value(const char *s, size_t n, bool *ok)
 {
     uintmax_t value;
     size_t i;
@@ -194,7 +193,7 @@ hexits_value(const char *s, size_t n, bool *ok)
     value = 0;
     for (i = 0; i < n; i++)
     {
-        int hexit = hexit_value(s[i]);
+        int hexit = lan_hexit_value(s[i]);
         if (hexit < 0)
         {
             *ok = false;
@@ -206,17 +205,15 @@ hexits_value(const char *s, size_t n, bool *ok)
     return value;
 }
 
-
 /* Sets 'ufid' to all-zero-bits. */
 void
-ufid_zero(ovs_u128 *ufid)
+ufid_zero(ovs_u128_ *ufid)
 {
     *ufid = UFID_ZERO;
 }
 
-
 bool
-ufid_from_string_prefix(ovs_u128 *ufid, const char *s)
+ufid_from_string_prefix(ovs_u128_ *ufid, const char *s)
 {
     /* 0         1         2         3      */
     /* 012345678901234567890123456789012345 */
@@ -225,37 +222,37 @@ ufid_from_string_prefix(ovs_u128 *ufid, const char *s)
 
     bool ok;
 
-    ufid->id.u32[0] = hexits_value(s, 8, &ok);
+    ufid->id.u32[0] = lan_hexits_value(s, 8, &ok);
     if (!ok || s[8] != '-')
     {
         goto error;
     }
 
-    ufid->id.u32[1] = hexits_value(s + 9, 4, &ok) << 16;
+    ufid->id.u32[1] = lan_hexits_value(s + 9, 4, &ok) << 16;
     if (!ok || s[13] != '-')
     {
         goto error;
     }
 
-    ufid->id.u32[1] += hexits_value(s + 14, 4, &ok);
+    ufid->id.u32[1] += lan_hexits_value(s + 14, 4, &ok);
     if (!ok || s[18] != '-')
     {
         goto error;
     }
 
-    ufid->id.u32[2] = hexits_value(s + 19, 4, &ok) << 16;
+    ufid->id.u32[2] = lan_hexits_value(s + 19, 4, &ok) << 16;
     if (!ok || s[23] != '-')
     {
         goto error;
     }
 
-    ufid->id.u32[2] += hexits_value(s + 24, 4, &ok);
+    ufid->id.u32[2] += lan_hexits_value(s + 24, 4, &ok);
     if (!ok)
     {
         goto error;
     }
 
-    ufid->id.u32[3] = hexits_value(s + 28, 8, &ok);
+    ufid->id.u32[3] = lan_hexits_value(s + 28, 8, &ok);
     if (!ok)
     {
         goto error;
@@ -389,7 +386,6 @@ lan_stats_parse_flows(lan_stats_instance_t *lan_stats_instance, char *buf)
     parse_lan_stats(tokens, lan_stats_instance);
 }
 
-
 static int
 lan_stats_alloc_aggr(lan_stats_instance_t *lan_stats_instance)
 {
@@ -483,7 +479,6 @@ lan_stats_close_window(fcm_collect_plugin_t *collector)
          window->num_stats, aggr->total_eth_pairs);
 }
 
-
 static void
 lan_stats_send_aggr_report(lan_stats_instance_t *lan_stats_instance)
 {
@@ -552,6 +547,7 @@ lan_stats_aggr_add_sample(fcm_collect_plugin_t *collector, dp_ctl_stats_t *stats
     struct net_md_aggregator *aggr;
     struct flow_counters pkts_ct;
     struct net_md_flow_key key;
+    char *device_tag;
     bool ret = false;
 
     lan_stats_instance = collector->plugin_ctx;
@@ -562,13 +558,15 @@ lan_stats_aggr_add_sample(fcm_collect_plugin_t *collector, dp_ctl_stats_t *stats
         return;
     }
 
+    device_tag = (lan_stats_instance->parent_tag != NULL) ?
+                  lan_stats_instance->parent_tag : ETH_DEVICES_TAG;
     memset(&key, 0, sizeof(struct net_md_flow_key));
     memset(&pkts_ct, 0, sizeof(struct flow_counters));
     key.ufid = &stats->ufid.id;
     key.smac = &stats->smac_key;
-    key.isparent_of_smac = lan_stats_is_mac_in_tag(ETH_DEVICES_TAG, key.smac);
+    key.isparent_of_smac = lan_stats_is_mac_in_tag(device_tag, key.smac);
     key.dmac = &stats->dmac_key;
-    key.isparent_of_dmac = lan_stats_is_mac_in_tag(ETH_DEVICES_TAG, key.dmac);
+    key.isparent_of_dmac = lan_stats_is_mac_in_tag(device_tag, key.dmac);
     key.ethertype = stats->eth_val;
 
     if (stats->vlan_id > 0)
@@ -605,51 +603,15 @@ lan_stats_send_report_cb(fcm_collect_plugin_t *collector)
     lan_stats_activate_window(collector);
 }
 
-
-static void
-lan_stats_collect_flows(lan_stats_instance_t *lan_stats_instance)
-{
-    char line_buf[LINE_BUFF_LEN] = {0,};
-    fcm_collect_plugin_t *collector;
-    dp_ctl_stats_t *stats;
-    FILE *fp = NULL;
-
-    if (lan_stats_instance == NULL) return;
-    stats = &lan_stats_instance->stats;
-
-    collector = lan_stats_instance->collector;
-    if (collector == NULL) return;
-
-    collect_cmd  = collector->fcm_plugin_ctx;
-    if (collect_cmd == NULL)
-        collect_cmd = OVS_DPCTL_DUMP_FLOWS;
-
-    if ((fp = popen(collect_cmd, "r")) == NULL)
-    {
-        LOGE("popen error");
-        return;
-    }
-
-    while (fgets(line_buf, LINE_BUFF_LEN, fp) != NULL)
-    {
-        memset(stats, 0, sizeof(*stats));
-        LOGD("ovs-dpctl dump line %s", line_buf);
-        lan_stats_parse_flows(lan_stats_instance, line_buf);
-        lan_stats_flows_filter(lan_stats_instance);
-        memset(line_buf, 0, sizeof(line_buf));
-    }
-
-    pclose(fp);
-    fp = NULL;
-}
-
-
 void
 lan_stats_flows_filter(lan_stats_instance_t *lan_stats_instance)
 {
     fcm_filter_l2_info_t l2_filter_info;
     fcm_filter_stats_t   l2_filter_pkts;
+    struct fcm_filter_client *client;
     fcm_collect_plugin_t *collector;
+    struct fcm_session *session;
+    struct fcm_filter_req *req;
     dp_ctl_stats_t *stats;
     bool allow;
 
@@ -659,11 +621,26 @@ lan_stats_flows_filter(lan_stats_instance_t *lan_stats_instance)
     collector = lan_stats_instance->collector;
     if (collector == NULL) return;
 
+    session = lan_stats_instance->session;
+    if (session == NULL) return;
+
     set_filter_info(&l2_filter_info, &l2_filter_pkts, stats);
+
+    client = lan_stats_instance->c_client;
+    if (client == NULL) return;
+
+    req = CALLOC(1, sizeof(struct fcm_filter));
+    if (req == NULL) return;
+
+    req->pkts =  &l2_filter_pkts;
+    req->l2_info = &l2_filter_info;
+    req->table = client->table;
+
     if (collector->filters.collect != NULL)
     {
-        fcm_filter_layer2_apply(collector->filters.collect,
-                                &l2_filter_info, &l2_filter_pkts, &allow);
+        fcm_apply_filter(session, req);
+        allow = req->action;
+
         if (allow)
         {
             LOGD("%s: Flow collect allowed: filter_name: %s, ufid: "PRI_os_ufid_t \
@@ -691,6 +668,7 @@ lan_stats_flows_filter(lan_stats_instance_t *lan_stats_instance)
         LOGD("%s: aggr add sample", __func__);
         lan_stats_aggr_add_sample(collector, stats);
     }
+    FREE(req);
 }
 
 void
@@ -730,6 +708,9 @@ void lan_stats_plugin_exit(fcm_collect_plugin_t *collector)
         return;
     }
 
+    /* free the parent tag */
+    FREE(lan_stats_instance->parent_tag);
+
     /* free the aggregator */
     aggr = lan_stats_instance->aggr;
     if (aggr == NULL)
@@ -759,12 +740,12 @@ lan_stats_plugin_close_cb(fcm_collect_plugin_t *collector)
     lan_stats_plugin_exit(collector);
 }
 
-
 /* Entry function for plugin */
 int lan_stats_plugin_init(fcm_collect_plugin_t *collector)
 {
     lan_stats_instance_t *lan_stats_instance;
     lan_stats_mgr_t *mgr;
+    char *parent_tag;
     char *active;
     char *name;
     int rc;
@@ -794,12 +775,22 @@ int lan_stats_plugin_init(fcm_collect_plugin_t *collector)
     lan_stats_instance->collector = collector;
     lan_stats_instance->name = collector->name;
 
+    lan_stats_instance->session = collector->session;
+
+    if (collector->collect_client != NULL)
+    {
+        lan_stats_instance->c_client = collector->collect_client;
+    }
+
+    if (collector->report_client != NULL)
+    {
+        lan_stats_instance->r_client = collector->report_client;
+    }
+
     collector->collect_periodic = lan_stats_collect_cb;
     collector->send_report = lan_stats_send_report_cb;
     collector->close_plugin = lan_stats_plugin_close_cb;
-    collect_cmd  = collector->fcm_plugin_ctx;
-    if (collect_cmd == NULL)
-        collect_cmd = OVS_DPCTL_DUMP_FLOWS;
+    
     rc = lan_stats_alloc_aggr(lan_stats_instance);
     if (rc != 0)
     {
@@ -815,6 +806,15 @@ int lan_stats_plugin_init(fcm_collect_plugin_t *collector)
     /* Check if the session has a name */
     name = collector->name;
     mgr->num_sessions++;
+
+    /* Check if the session has the active key set */
+    parent_tag = collector->get_other_config(collector,
+                                             "parent_tag");
+
+    if (parent_tag != NULL)
+    {
+        lan_stats_instance->parent_tag = STRDUP(parent_tag);
+    }
 
     if (mgr->num_sessions == 1)
     {

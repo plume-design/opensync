@@ -29,6 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb_table.h"
 #include "ovsdb_utils.h"
 #include "schema.h"
+#include "memutil.h"
 
 #include "captive_portal.h"
 
@@ -219,15 +220,15 @@ cportal_free_cportal(struct cportal *inst)
 
     if (!inst) return;
 
-    free(inst->name);
-    free(inst->uam_url);
-    free(inst->url->port);
-    free(inst->url->domain_name);
-    free(inst->url);
+    FREE(inst->name);
+    FREE(inst->uam_url);
+    FREE(inst->url->port);
+    FREE(inst->url->domain_name);
+    FREE(inst->url);
 
     free_str_tree(inst->other_config);
     free_str_tree(inst->additional_headers);
-    free(inst);
+    FREE(inst);
     return;
 }
 
@@ -238,12 +239,7 @@ cportal_alloc_inst(struct schema_Captive_Portal *new)
 
     if (!new) return NULL;
 
-    inst = calloc(1, sizeof(struct cportal));
-    if (!inst)
-    {
-        LOG(ERR, "%s: Memory allocation failure\n", __func__);
-        return NULL;
-    }
+    inst = CALLOC(1, sizeof(struct cportal));
 
     if (!strcmp(new->proxy_method, "forward"))
     {
@@ -272,13 +268,7 @@ cportal_alloc_inst(struct schema_Captive_Portal *new)
         goto err_uam;
     }
 
-    inst->url = calloc(1, sizeof(struct url_s));
-    if (!inst->url)
-    {
-        LOG(ERR, "%s: Couldn't allocate memory for url", __func__);
-        goto err_url;
-    }
-
+    inst->url = CALLOC(1, sizeof(struct url_s));
 
     cportal_parse_other_config(inst, new);
 
@@ -287,11 +277,11 @@ cportal_alloc_inst(struct schema_Captive_Portal *new)
     return inst;
 
 err_url:
-    free(inst->uam_url);
+    FREE(inst->uam_url);
 err_uam:
-    free(inst->name);
+    FREE(inst->name);
 err_name:
-    free(inst);
+    FREE(inst);
 
     return NULL;
 }

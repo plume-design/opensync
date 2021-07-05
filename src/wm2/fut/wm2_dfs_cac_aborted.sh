@@ -26,10 +26,12 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="wm2/$(basename "$0")"
 manager_setup_file="wm2/wm2_setup.sh"
@@ -77,16 +79,18 @@ Script usage example:
     ./${tc_name} wifi2 home-ap-u50 2 FUTssid '["map",[["encryption","WPA-PSK"],["key","FUTpsk"],["mode","2"]]]' 120 104 HT20 11ac ap
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
+
 NARGS=10
 [ $# -lt ${NARGS} ] && usage && raise "Requires '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 if_name=${1}
@@ -111,11 +115,11 @@ log_title "$tc_name: WM2 test - DFC CAC Aborted '${channel_a}'->'${channel_b}'"
 
 # Sanity check - are channels even allowed on the radio
 check_is_channel_allowed "$channel_a" "$if_name" &&
-    log -deb "$tc_name:check_is_channel_allowed - channel $channel_a is allowed on radio $if_name" ||
-    raise "channel $channel_a is not allowed on radio $if_name" -l "$tc_name" -ds
+    log "$tc_name:check_is_channel_allowed - channel $channel_a is allowed on radio $if_name" ||
+    raise "Channel $channel_a is not allowed on radio $if_name" -l "$tc_name" -ds
 check_is_channel_allowed "$channel_b" "$if_name" &&
-    log -deb "$tc_name:check_is_channel_allowed - channel $channel_b is allowed on radio $if_name" ||
-    raise "channel $channel_b is not allowed on radio $if_name" -l "$tc_name" -ds
+    log "$tc_name:check_is_channel_allowed - channel $channel_b is allowed on radio $if_name" ||
+    raise "Channel $channel_b is not allowed on radio $if_name" -l "$tc_name" -ds
 
 # Testcase:
 # Configure radio, create VIF and apply channel
@@ -138,31 +142,31 @@ create_radio_vif_interface \
     -vif_radio_idx "$vif_radio_idx" \
     -timeout ${channel_change_timeout} &&
         log "$tc_name: create_radio_vif_interface {$if_name, $channel_a} - Success" ||
-        raise "create_radio_vif_interface {$if_name, $channel_a} - Failed" -l "$tc_name" -tc
+        raise "FAIL: create_radio_vif_interface {$if_name, $channel_a} - Interface not created" -l "$tc_name" -tc
 
 wait_ovsdb_entry Wifi_Radio_State -w if_name "$if_name" -is channel "$channel_a" &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Radio_Config reflected to Wifi_Radio_State - channel $channel_a" ||
-    raise "$tc_name: wait_ovsdb_entry - Failed to reflect Wifi_Radio_Config to Wifi_Radio_State - channel $channel_a" -l "$tc_name" -tc
+    log "$tc_name: wait_ovsdb_entry - Wifi_Radio_Config reflected to Wifi_Radio_State::channel is $channel_a - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Radio_Config to Wifi_Radio_State::channel is not $channel_a" -l "$tc_name" -tc
 
 wait_for_function_response 0 "check_is_cac_started $channel_a $if_name" &&
-    log "$tc_name - wait_for_function_response - channel $channel_a - CAC STARTED" ||
-    raise "$tc_name - wait_for_function_response - channel $channel_a - CAC NOT STARTED" -l "$tc_name" -tc
+    log "$tc_name: wait_for_function_response - channel $channel_a - CAC STARTED - Success" ||
+    raise "FAIL: wait_for_function_response - channel $channel_a - CAC NOT STARTED" -l "$tc_name" -tc
 
-log "$tc_name: Do not wait for cac to finish, changing channel to $channel_b"
+log "$tc_name: Do not wait for CAC to finish, changing channel to $channel_b"
 update_ovsdb_entry Wifi_Radio_Config -w if_name "$if_name" -u channel "$channel_b" &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Radio_Config table updated - channel $channel_b" ||
-    raise "$tc_name: update_ovsdb_entry - Failed to update Wifi_Radio_Config - channel $channel_b" -l "$tc_name" -tc
+    log "$tc_name: update_ovsdb_entry - Wifi_Radio_Config::channel is $channel_b - Success" ||
+    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Radio_Config::channel is not $channel_b" -l "$tc_name" -tc
 
 wait_ovsdb_entry Wifi_Radio_State -w if_name "$if_name" -is channel "$channel_b" &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Radio_Config reflected to Wifi_Radio_State - channel $channel_b" ||
-    raise "$tc_name: wait_ovsdb_entry - Failed to reflect Wifi_Radio_Config to Wifi_Radio_State - channel $channel_b" -l "$tc_name" -tc
+    log "$tc_name: wait_ovsdb_entry - Wifi_Radio_Config reflected to Wifi_Radio_State::channel is $channel_b - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Radio_Config to Wifi_Radio_State::channel is not $channel_b" -l "$tc_name" -tc
 
 wait_for_function_response 0 "check_is_nop_finished $channel_a $if_name" &&
-    log "$tc_name - wait_for_function_response - channel $channel_a - NOP FINISHED" ||
-    raise "$tc_name - wait_for_function_response - channel $channel_a - NOP NOT FINISHED" -l "$tc_name" -tc
+    log "$tc_name: wait_for_function_response - channel $channel_a - NOP FINISHED - Success" ||
+    raise "FAIL: wait_for_function_response - channel $channel_a - NOP NOT FINISHED" -l "$tc_name" -tc
 
 wait_for_function_response 0 "check_is_cac_started $channel_b $if_name" &&
-    log "$tc_name - wait_for_function_response - channel $channel_b - CAC STARTED" ||
-    raise "$tc_name - wait_for_function_response - channel $channel_b - CAC NOT STARTED" -l "$tc_name" -tc
+    log "$tc_name: wait_for_function_response - channel $channel_b - CAC STARTED - Success" ||
+    raise "FAIL: wait_for_function_response - channel $channel_b - CAC NOT STARTED" -l "$tc_name" -tc
 
 pass

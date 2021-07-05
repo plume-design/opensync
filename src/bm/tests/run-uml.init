@@ -1,0 +1,56 @@
+#!/bin/bash -ax
+export USER_MODE_LINUX=y
+
+mount -t proc proc /proc
+mount -t sysfs sys /sys
+mount -t tmpfs tmp /tmp
+mount -t tmpfs tmp /var
+mount -o rw,remount /
+mkdir -p /var/run
+ip link set lo up
+
+PATH=/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin
+dir=$(grep -o 'env_dir=[^ ]*' /proc/cmdline | cut -d= -f2)
+env=$(grep -o 'env=[^ ]*' /proc/cmdline | cut -d= -f2)
+bm=$(grep -o 'env_bm=[^ ]*' /proc/cmdline | cut -d= -f2)
+db=$(grep -o 'env_db=[^ ]*' /proc/cmdline | cut -d= -f2)
+cmd=$(grep -o 'env_cmd=.*' /proc/cmdline | cut -d= -f2-)
+PATH=$PATH:$(dirname "$bm")
+
+eval "$(echo "$env" | base64 -d)"
+
+dut_ap_a_prefix=/dut_ap_a
+dut_ap_b_prefix=/dut_ap_b
+
+db_ap_a=/var/run/db_ap_a.sock
+db_ap_b=/var/run/db_ap_b.sock
+conf_ap_a=/var/lib/openvswitch/conf_ap_a.db
+conf_ap_b=/var/lib/openvswitch/conf_ap_b.db
+
+mkdir -p /var/lib/openvswitch
+mkdir -p /var/run/openvswitch
+cp -v "$db" "$conf_ap_a"
+cp -v "$db" "$conf_ap_b"
+
+dut_ap_a="env PLUME_OVSDB_SOCK_PATH=$db_ap_a sh -axe"
+dut_ap_b="env PLUME_OVSDB_SOCK_PATH=$db_ap_b sh -axe"
+sta="sh -axe"
+
+ulimit -c unlimited
+echo /tmp/core > /proc/sys/kernel/core_pattern
+cd "$dir"
+
+BM_TEST_PREFIX="$dut_ap_a_prefix"
+BM_TEST_CMD="
+	env BM_TEST_PREFIX=\"$dut_ap_b_prefix\" BM_TEST_CMD=\"$cmd\" ovsdb-server --remote=punix:$db_ap_b --run \"env PLUME_OVSDB_SOCK_PATH=$db_ap_b $bm\" \"$conf_ap_b\"
+"
+time ovsdb-server --remote=punix:$db_ap_a --run "env PLUME_OVSDB_SOCK_PATH=$db_ap_a $bm" "$conf_ap_a"
+
+if test $? -eq 0
+then
+    echo "SUCCESS" > $dir/logs/$(basename $cmd)/result
+else
+    echo "FAIL" > $dir/logs/$(basename $cmd)/result
+fi
+
+halt -f -p

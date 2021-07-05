@@ -908,7 +908,9 @@ check_ovsdb_entry()
         shift
         case "$option" in
             -w)
-                conditions_string="$conditions_string -w $1==$2"
+                echo ${2} | grep -qe "[ \"]" -e '\\' &&
+                    conditions_string="$conditions_string -w $1==$(single_quote_arg "${2}")" ||
+                    conditions_string="$conditions_string -w $1==$2"
                 shift 2
                 ;;
             *)
@@ -1161,7 +1163,9 @@ update_ovsdb_entry()
                 shift 2
                 ;;
             -u)
-                update_string="$update_string $1$update_method$2"
+                echo ${2} | grep -qe "[ \"]" -e '\\' &&
+                    update_string="${update_string} ${1}${update_method}$(single_quote_arg "${2}")" ||
+                    update_string="${update_string} ${1}${update_method}${2}"
                 shift 2
                 update_method=":="
                 ;;
@@ -1177,7 +1181,7 @@ update_ovsdb_entry()
     entry_command="${OVSH} u $ovsdb_table $conditions_string $update_string"
     log -deb "$fn_name - Executing update command\n$entry_command"
 
-    ${entry_command}
+    eval ${entry_command}
     # shellcheck disable=SC2181
     if [ "$?" -eq 0 ]; then
         log -deb "$fn_name - Entry updated"
@@ -1297,7 +1301,9 @@ insert_ovsdb_entry()
         shift
         case "$option" in
             -i)
-                insert_string="${insert_string} "${1}":="${2}
+                echo ${2} | grep -qe "[ \"]" -e '\\' &&
+                    insert_string="${insert_string} "${1}":="$(single_quote_arg "${2}") ||
+                    insert_string="${insert_string} "${1}":="${2}
                 shift 2
                 ;;
             -w)
@@ -1312,7 +1318,7 @@ insert_ovsdb_entry()
 
     entry_command="${OVSH} i $ovsdb_table $insert_string $conditions_string"
     log -deb "$fn_name - Executing ${entry_command}"
-    ${entry_command}
+    eval ${entry_command}
     if [ $? -eq 0 ]; then
         log -deb "$fn_name - Success: entry inserted to $ovsdb_table"
         ${OVSH} s "$ovsdb_table"
@@ -1382,20 +1388,28 @@ wait_ovsdb_entry()
         shift
         case "$option" in
             -w)
-                conditions_string="$conditions_string -w $1==$2"
+                echo ${2} | grep -qe "[ \"]" -e '\\' &&
+                    conditions_string="$conditions_string -w $1==$(single_quote_arg "${2}")" ||
+                    conditions_string="$conditions_string -w $1==$2"
                 shift 2
                 ;;
             -wn)
-                conditions_string="$conditions_string -w $1!=$2"
+                echo ${2} | grep -qe "[ \"]" -e '\\' &&
+                    conditions_string="$conditions_string -w $1!=$(single_quote_arg "${2}")" ||
+                    conditions_string="$conditions_string -w $1!=$2"
                 shift 2
                 ;;
             -is)
-                where_is_string="$where_is_string $1:=$2"
+                echo ${2} | grep -qe "[ \"]" -e '\\' &&
+                    where_is_string="$where_is_string $1:=$(single_quote_arg "${2}")" ||
+                    where_is_string="$where_is_string $1:=$2"
                 shift 2
                 ;;
             -is_not)
                 # Due to ovsh limitation, in -n option, we need to seperatly wait for NOT equal part
-                where_is_not_string="$where_is_not_string -n $1:=$2"
+                echo ${2} | grep -qe "[ \"]" -e '\\' &&
+                    where_is_not_string="$where_is_not_string -n $1:=$(single_quote_arg "${2}")" ||
+                    where_is_not_string="$where_is_not_string -n $1:=$2"
                 shift 2
                 ;;
             -ec)
@@ -1419,7 +1433,7 @@ wait_ovsdb_entry()
     fi
 
     log -deb "$fn_name - Waiting for entry: \n$wait_entry_equal_command"
-    ${wait_entry_equal_command}
+    eval ${wait_entry_equal_command}
     wait_entry_equal_command_ec="$?"
 
     if [ -n "${wait_entry_not_equal_command}" ]; then
@@ -1659,21 +1673,21 @@ wait_for_function_exit_code()
 
 ###############################################################################
 # DESCRIPTION:
-#   Function returns state of the interface provided in parameter.
+#   Function returns state of the ethernet interface provided in parameter.
 #
 #   Uses and required ifconfig tool to be installed on device.
 #   Provide adequate function in overrides otherwise.
 #
 # INPUT PARAMETER(S):
-#   $1  interface name (required)
+#   $1  ethernet interface name (required)
 # RETURNS:
-#   0   if interface state is UP, non zero otherwise.
+#   0   if ethernet interface state is UP, non zero otherwise.
 # USAGE EXAMPLE(S):
-#   get_interface_is_up eth0
+#   get_eth_interface_is_up eth0
 ###############################################################################
-get_interface_is_up()
+get_eth_interface_is_up()
 {
-    fn_name="unit_lib:get_interface_is_up"
+    fn_name="unit_lib:get_eth_interface_is_up"
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
         raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
@@ -1681,6 +1695,25 @@ get_interface_is_up()
 
     ifconfig "$if_name" 2>/dev/null | grep Metric | grep -q UP
     return $?
+}
+
+###############################################################################
+# DESCRIPTION:
+#   Function returns state of the wireless interface provided in parameter.
+#
+#   Uses and required ifconfig tool to be installed on device.
+#   Provide adequate function in overrides otherwise.
+#
+# INPUT PARAMETER(S):
+#   $1  wireless interface name (required)
+# RETURNS:
+#   0   if wireless interface state is UP, non zero otherwise.
+# USAGE EXAMPLE(S):
+#   get_vif_interface_is_up home-ap-24
+###############################################################################
+get_vif_interface_is_up()
+{
+    get_eth_interface_is_up $@
 }
 
 ###############################################################################
@@ -1796,7 +1829,7 @@ check_restore_management_access()
     fn_name="unit_lib:check_restore_management_access"
     log -deb "$fn_name - Checking and restoring needed management access"
     mng_iface=${MGMT_IFACE:-eth0}
-    get_interface_is_up "${mng_iface}"
+    get_eth_interface_is_up "${mng_iface}"
     if [ "$?" = 0 ]; then
         log -deb "$fn_name - Interface ${mng_iface} is UP"
     else
@@ -1806,7 +1839,7 @@ check_restore_management_access()
             log -err "FAIL: Could not bring up interface ${mng_iface}" -l "$fn_name" -ds
     fi
 
-    get_interface_is_up "${mng_iface}.4"
+    get_eth_interface_is_up "${mng_iface}.4"
     if [ "$?" = 0 ]; then
         log -deb "$fn_name - Interface ${mng_iface}.4 is UP"
     else
@@ -1881,7 +1914,7 @@ print_tables()
 ###############################################################################
 fut_info_dump_line()
 {
-    echo "************* FUT-INFO-DUMP *************"
+    echo "************* FUT-INFO-DUMP: $(basename $0) *************"
 }
 
 ####################### OVSDB SECTION - STOP ##################################
@@ -1995,16 +2028,9 @@ add_bridge_interface()
         return 0
     fi
 
-    log -deb "$fn_name - Linking $br_name - $br_if_name - $br_mac"
-    mac_if=$(get_radio_mac_from_system "$br_if_name") &&
+    br_mac=$(get_radio_mac_from_system "$br_if_name") &&
         log -deb "$fn_name - Success: get_radio_mac_from_system $br_if_name" ||
         raise "FAIL: Could not get interface $br_if_name MAC address" -l "$fn_name" -ds
-
-    if [ "$br_name" = "br-home" ]; then
-        br_mac=$(printf "%02X:%s" $(( 0x${mac_if%%:*} | 0x2 )) "${mac_if#*:}")
-    else
-        br_mac=$mac_if
-    fi
 
     ovs-vsctl set bridge "$br_name" other-config:hwaddr="$br_mac" &&
         log -deb "$fn_name - Success: ovs-vsctl set bridge $br_name other-config:hwaddr=$br_mac" ||

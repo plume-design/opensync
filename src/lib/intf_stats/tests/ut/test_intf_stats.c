@@ -34,6 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "target.h"
 #include "qm_conn.h"
+#include "memutil.h"
 
 struct intf_stats_test_mgr
 {
@@ -124,12 +125,10 @@ test_Intf__Stats__Report(void)
     void   *buf;
 
     /* Allocate serialization output structure */
-    serialized = calloc(sizeof(packed_buffer_t), 1);
-    TEST_ASSERT_NOT_NULL(serialized);
+    serialized = CALLOC(sizeof(packed_buffer_t), 1);
 
     /* Allocate protobuf */
-    report = calloc(1, sizeof(*report));
-    TEST_ASSERT_NOT_NULL(report);
+    report = CALLOC(1, sizeof(*report));
 
     /* Initialize protobuf */
     interfaces__intf_stats__intf_report__init(report);
@@ -139,8 +138,7 @@ test_Intf__Stats__Report(void)
     report->reported_at = 10;
 
     /* Set observation point */
-    obs_p = calloc(1, sizeof(*obs_p));
-    TEST_ASSERT_NOT_NULL(obs_p);
+    obs_p = CALLOC(1, sizeof(*obs_p));
 
     /* Initialize the observation point */
     interfaces__intf_stats__observation_point__init(obs_p);
@@ -158,13 +156,11 @@ test_Intf__Stats__Report(void)
     /* Allocate the observation windows table, it will carry one entry */
     num_w = 1;
     report->n_observation_windows = num_w;
-    obs_pb_tbl = calloc(num_w, sizeof(*obs_pb_tbl));
-    TEST_ASSERT_NOT_NULL(obs_pb_tbl);
+    obs_pb_tbl = CALLOC(num_w, sizeof(*obs_pb_tbl));
     report->observation_windows = obs_pb_tbl;
 
     /* Allocate the unique entry of the observation windows table */
-    obs_pb = calloc(1, sizeof(*obs_pb));
-    TEST_ASSERT_NOT_NULL(obs_pb);
+    obs_pb = CALLOC(1, sizeof(*obs_pb));
 
     /* Initialize the observation window */
     interfaces__intf_stats__observation_window__init(obs_pb);
@@ -173,15 +169,13 @@ test_Intf__Stats__Report(void)
     /* Allocate the interface stats table with 2 entries */
     num_intfs_w0 = 2;
     obs_pb->n_intf_stats = num_intfs_w0;
-    stats_pb_tbl = calloc(num_intfs_w0, sizeof(*stats_pb_tbl));
-    TEST_ASSERT_NOT_NULL(stats_pb_tbl);
+    stats_pb_tbl = CALLOC(num_intfs_w0, sizeof(*stats_pb_tbl));
 
     /* Assign the stats table to the observation window */
     obs_pb->intf_stats = stats_pb_tbl;
 
     /* Allocate the first stats entry */
-    stats_pb = calloc(1, sizeof(*stats_pb));
-    TEST_ASSERT_NOT_NULL(stats_pb);
+    stats_pb = CALLOC(1, sizeof(*stats_pb));
 
     /* Initialize the first stats entry */
     interfaces__intf_stats__intf_stats__init(stats_pb);
@@ -204,8 +198,7 @@ test_Intf__Stats__Report(void)
     stats_pb_tbl[0] = stats_pb;
 
     /* Allocate the second stats entry */
-    stats_pb = calloc(1, sizeof(*stats_pb));
-    TEST_ASSERT_NOT_NULL(stats_pb);
+    stats_pb = CALLOC(1, sizeof(*stats_pb));
 
     /* Initialize the second stats entry */
     interfaces__intf_stats__intf_stats__init(stats_pb);
@@ -232,8 +225,7 @@ test_Intf__Stats__Report(void)
     TEST_ASSERT_TRUE(len != 0);
 
     /* Allocate space for the serialized buffer */
-    buf = malloc(len);
-    TEST_ASSERT_NOT_NULL(buf);
+    buf = MALLOC(len);
 
     serialized->len = interfaces__intf_stats__intf_report__pack(report, buf);
     serialized->buf = buf;
@@ -247,33 +239,33 @@ test_Intf__Stats__Report(void)
 
     /* free first stats resources */
     stats_pb = stats_pb_tbl[0];
-    free(stats_pb->if_name);
-    free(stats_pb->role);
-    free(stats_pb);
+    FREE(stats_pb->if_name);
+    FREE(stats_pb->role);
+    FREE(stats_pb);
 
     /* free second stats resources */
     stats_pb = stats_pb_tbl[1];
-    free(stats_pb->if_name);
-    free(stats_pb->role);
-    free(stats_pb);
+    FREE(stats_pb->if_name);
+    FREE(stats_pb->role);
+    FREE(stats_pb);
 
     /* free stats table */
-    free(stats_pb_tbl);
+    FREE(stats_pb_tbl);
 
     /* free the observation window */
     obs_pb = obs_pb_tbl[0];
-    free(obs_pb);
+    FREE(obs_pb);
 
     /* free the observation window table */
-    free(obs_pb_tbl);
+    FREE(obs_pb_tbl);
 
     /* free the observation point */
-    free(obs_p->location_id);
-    free(obs_p->node_id);
-    free(obs_p);
+    FREE(obs_p->location_id);
+    FREE(obs_p->node_id);
+    FREE(obs_p);
 
     /* free the report */
-    free(report);
+    FREE(report);
 }
 
 /**
@@ -362,7 +354,7 @@ validate_windows(intf_stats_report_data_t *report, Interfaces__IntfStats__IntfRe
         intf_stats_free_pb_window(windows_pb_tbl[i]);
     }
 
-    free(windows_pb_tbl);
+    FREE(windows_pb_tbl);
 }
 
 /**
@@ -560,7 +552,7 @@ test_set_intf_stats(void)
     }
 
     /* Free the pointers table */
-    free(stats_pb_tbl);
+    FREE(stats_pb_tbl);
 }
 
 /**
@@ -662,7 +654,7 @@ test_set_serialization_windows(void)
     }
 
     /* Free the windows pointers tbl */
-    free(windows_pb_tbl);
+    FREE(windows_pb_tbl);
 }
 
 /**
@@ -828,10 +820,10 @@ tearDown(void)
     LOGI("%s: tearing down the test", __func__);
 
     intf_stats_reset_report(&g_test_mgr.report);
-    if (g_test_mgr.f_name) free(g_test_mgr.f_name);
+    if (g_test_mgr.f_name) FREE(g_test_mgr.f_name);
 
-    free(node_info->node_id);
-    free(node_info->location_id);
+    FREE(node_info->node_id);
+    FREE(node_info->location_id);
 
     g_test_mgr.initialized = false;
 }

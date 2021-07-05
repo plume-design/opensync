@@ -80,6 +80,9 @@ ltem_route_exec_cmd(char *cmd)
     return res;
 }
 
+/*
+ * This is for Phase II when we route individual clients
+ */
 int
 ltem_create_lte_route_table(ltem_mgr_t *mgr)
 {
@@ -108,7 +111,7 @@ ltem_client_table_update(ltem_mgr_t *mgr, struct schema_DHCP_leased_IP *dhcp_lea
         LOGE("%s: CALLOC failed", __func__);
         return;
     }
-    if (dhcp_lease->hostname != NULL && dhcp_lease->inet_addr != NULL)
+    if (dhcp_lease->hostname_present && dhcp_lease->inet_addr_present)
     {
         strncpy(new_entry->client_name, dhcp_lease->hostname, sizeof(new_entry->client_name));
         strncpy(new_entry->client_addr, dhcp_lease->inet_addr, sizeof(new_entry->client_addr));
@@ -133,7 +136,7 @@ ltem_client_table_delete(ltem_mgr_t *mgr, struct schema_DHCP_leased_IP *dhcp_lea
     struct client_entry to_del;
     struct client_entry *entry;
 
-    if (dhcp_lease->hostname != NULL && dhcp_lease->inet_addr != NULL)
+    if (dhcp_lease->hostname_present && dhcp_lease->inet_addr_present)
     {
         strncpy(to_del.client_name, dhcp_lease->hostname, sizeof(to_del.client_name));
         strncpy(to_del.client_addr, dhcp_lease->inet_addr, sizeof(to_del.client_addr));
@@ -161,17 +164,19 @@ ltem_update_lte_subnet(ltem_mgr_t *mgr, char *lte_subnet)
 }
 
 void
-ltem_update_wan_subnet(ltem_mgr_t *mgr, char *wan_subnet)
-{
-    strncpy(mgr->lte_route->wan_subnet, wan_subnet,
-            sizeof(mgr->lte_route->wan_subnet));
-}
-
-void
 ltem_update_lte_netmask(ltem_mgr_t *mgr, char *lte_netmask)
 {
     strncpy(mgr->lte_route->lte_netmask, lte_netmask,
             sizeof(mgr->lte_route->lte_netmask));
+}
+
+void
+ltem_update_wan_subnet(ltem_mgr_t *mgr, char *if_name, char *wan_subnet, char *wan_gw)
+{
+    LOGI("%s: wan_if_name[%s], wan_subnet[%s], wan_gw[%s]", __func__, if_name, wan_subnet, wan_gw);
+    strncpy(mgr->lte_route->wan_if_name, if_name, strlen(if_name));
+    strncpy(mgr->lte_route->wan_subnet, wan_subnet, strlen(wan_subnet));
+    strncpy(mgr->lte_route->wan_gw, wan_gw, strlen(wan_gw));
 }
 
 void
@@ -181,87 +186,9 @@ ltem_update_wan_netmask(ltem_mgr_t *mgr, char *wan_netmask)
             sizeof(mgr->lte_route->wan_netmask));
 }
 
-int
-ltem_restore_resolv_conf(ltem_mgr_t *mgr)
-{
-    char *wwan0_dns_path = "/var/tmp/dns/wwan0.resolv";
-    char *resolv_path = "/var/tmp/resolv.conf";
-    char *resolv_backup = "/var/tmp/resolv.bak";
-    char cmd[1024];
-    int res;
-
-    /*
-     * Check to see if the .bak exists
-     */
-    if (!fopen(resolv_backup, "r"))
-    {
-        LOGI("%s: %s doesn't exist yet", __func__, resolv_backup);
-        return 0;
-    }
-    /*
-     * Restore the original resolv.conf
-     */
-    snprintf(cmd, sizeof(cmd), "cp %s %s", resolv_backup, resolv_path);
-    res = ltem_route_exec_cmd(cmd);
-    if (res)
-    {
-        LOGE("%s: cmd %s failed", __func__, cmd);
-        return res;
-    }
-    snprintf(cmd, sizeof(cmd), "rm %s", wwan0_dns_path);
-    res = ltem_route_exec_cmd(cmd);
-    if (res)
-    {
-        LOGE("%s: cmd %s failed", __func__, cmd);
-    }
-
-    return res;
-}
-
-int
-ltem_update_resolv_conf(ltem_mgr_t *mgr)
-{
-    char *wwan0_resolv_path = "/var/tmp/wwan0.resolv";
-    char *wwan0_dns_path = "/var/tmp/dns/wwan0.resolv";
-    char *resolv_path = "/var/tmp/resolv.conf";
-    char *resolv_backup = "/var/tmp/resolv.bak";
-    char cmd[1024];
-    int res;
-
-    /*
-     * This is really an ugly hack. We can't have the wwan0 dns in resolv.conf before switchover
-     * because we don't want any traffic on the LTE interface before switchover.
-     * So we store the wwan0 dns address in a tmp file. Once switchover happens we write to
-     * resolv.conf (saving the old resolv.conf). Since dns_sub.sh runs periodically and it puts the wwan0
-     * dns address at the top of resolv.conf, we also write /var/tmp/dns/wwan0.resolv. Once we switch back to eth0,
-     * we unwind all that was done.
-     */
-    snprintf(cmd, sizeof(cmd), "cp %s %s", resolv_path, resolv_backup);
-    res = ltem_route_exec_cmd(cmd);
-    if (res)
-    {
-        LOGE("%s: cmd %s failed", __func__, cmd);
-        return res;
-    }
-    snprintf(cmd, sizeof(cmd), "cat %s > %s", wwan0_resolv_path, resolv_path);
-    res = ltem_route_exec_cmd(cmd);
-    if (res)
-    {
-        LOGE("%s: cmd %s failed", __func__, cmd);
-        return res;
-    }
-    snprintf(cmd, sizeof(cmd), "cp %s %s", wwan0_resolv_path, wwan0_dns_path);
-    res = ltem_route_exec_cmd(cmd);
-    if (res)
-    {
-        LOGE("%s: cmd %s failed", __func__, cmd);
-        return res;
-    }
-
-    return res;
-}
-
-
+/*
+ * This is for Phase II when we selectively route clients over LTE
+ */
 int
 ltem_add_lte_client_routes(ltem_mgr_t *mgr)
 {
@@ -269,7 +196,7 @@ ltem_add_lte_client_routes(ltem_mgr_t *mgr)
     int res = 0;
     char cmd[1024];
 
-    LOGI("%s: failover:%d", __func__, mgr->lte_state_info->lte_failover);
+    LOGI("%s: failover:%d", __func__, mgr->lte_state_info->lte_failover_active);
     entry = ds_tree_head(&mgr->client_table);
     while (entry)
     {
@@ -278,13 +205,13 @@ ltem_add_lte_client_routes(ltem_mgr_t *mgr)
         res = ltem_route_exec_cmd(cmd);
         entry = ds_tree_next(&mgr->client_table, entry);
     }
-    if (!res)
-    {
-        res = ltem_update_resolv_conf(mgr);
-    }
     return res;
 }
 
+/*
+ * This will be used in Phase II when we selectively route clients over LTE
+ * during failover.
+ */
 int
 ltem_restore_default_client_routes(ltem_mgr_t *mgr)
 {
@@ -292,7 +219,7 @@ ltem_restore_default_client_routes(ltem_mgr_t *mgr)
     int res = 0;
     char cmd[1024];
 
-    LOGI("%s: failover:%d", __func__, mgr->lte_state_info->lte_failover);
+    LOGI("%s: failover:%d", __func__, mgr->lte_state_info->lte_failover_active);
 
     entry = ds_tree_head(&mgr->client_table);
     while (entry)
@@ -302,7 +229,6 @@ ltem_restore_default_client_routes(ltem_mgr_t *mgr)
         res = ltem_route_exec_cmd(cmd);
         entry = ds_tree_next(&mgr->client_table, entry);
     }
-    res = ltem_restore_resolv_conf(mgr);
 
     return res;
 }
@@ -313,14 +239,10 @@ ltem_add_lte_route(ltem_mgr_t *mgr)
     int res = 0;
     char cmd[1024];
 
-    LOGI("%s: failover:%d", __func__, mgr->lte_state_info->lte_failover);
-    /* route add default dev wwan0 metric 1*/
-    snprintf(cmd, sizeof(cmd), "route add default dev wwan0 metric 1");
+    LOGI("%s: failover:%d", __func__, mgr->lte_state_info->lte_failover_active);
+    /* route add default dev wwan0 */
+    snprintf(cmd, sizeof(cmd), "route add default dev wwan0");
     res = ltem_route_exec_cmd(cmd);
-    if (!res)
-    {
-        res = ltem_update_resolv_conf(mgr);
-    }
     return res;
 }
 
@@ -330,10 +252,10 @@ ltem_restore_default_route(ltem_mgr_t *mgr)
     int res = 0;
     char cmd[1024];
 
-    LOGI("%s: failover:%d", __func__, mgr->lte_state_info->lte_failover);
+    LOGI("%s: failover:%d", __func__, mgr->lte_state_info->lte_failover_active);
 
-    /* route delete default dev wwan0 metric 1*/
-    snprintf(cmd, sizeof(cmd), "route delete default dev wwan0 metric 1");
+    /* route delete default dev wwan0 */
+    snprintf(cmd, sizeof(cmd), "route delete default dev wwan0");
     res = ltem_route_exec_cmd(cmd);
     if (res)
     {
@@ -341,12 +263,11 @@ ltem_restore_default_route(ltem_mgr_t *mgr)
         return res;
     }
 
-    res = ltem_restore_resolv_conf(mgr);
-
     if (mgr->lte_route->wan_gw[0])
     {
-        /* route add default gw [gw] dev eth0 */
-        snprintf(cmd, sizeof(cmd), "route add default gw %s dev eth0", mgr->lte_route->wan_gw);
+        /* route add default gw [gw] dev eth0/eth1 */
+        snprintf(cmd, sizeof(cmd), "route add default gw %s dev %s",
+                 mgr->lte_route->wan_gw, mgr->lte_route->wan_if_name);
         res = ltem_route_exec_cmd(cmd);
         if (res)
         {

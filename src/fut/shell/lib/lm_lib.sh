@@ -43,7 +43,7 @@ echo "${FUT_TOPDIR}/shell/lib/lm_lib.sh sourced"
 #   Function prepares device for LM tests. Executes device_init to prevent
 #   the device from rebooting unintentionally and to stop managers. Executes
 #   start_openswitch to manually start OVS and OVSDB. Starts either LM or PM_LM
-#   depending on Kconfig value CONFIG_MANAGER_LM or CONFIG_PM_ENABLE_LM.
+#   depending on Kconfig value CONFIG_PM_ENABLE_LM.
 #   Raises exception on fail.
 # INPUT PARAMETER(S):
 #   None.
@@ -67,22 +67,14 @@ lm_setup_test_environment()
         log -deb "$fn_name - OpenvSwitch started - Success" ||
         raise "FAIL: Could not start OpenvSwitch: start_openswitch" -l "$fn_name" -ds
 
-    check_kconfig_option "CONFIG_MANAGER_LM" "y"
+    check_kconfig_option "CONFIG_PM_ENABLE_LM" "y"
     if [ $? -eq 0 ]; then
-        log -deb "$fn_name - Log Manager is standalone - lm"
-        start_specific_manager lm &&
-            log -deb "$fn_name - start_specific_manager lm - Success" ||
-            raise "FAIL: Could not start manager: start_if_specific_manager lm" -l "$fn_name" -ds
+        log -deb "$fn_name - Log Manager is a module of Platform Manager - pm"
+        start_specific_manager pm &&
+            log -deb "$fn_name - start_specific_manager pm - Success" ||
+            raise "FAIL: Could not start manager: start_if_specific_manager pm" -l "$fn_name" -ds
     else
-        check_kconfig_option "CONFIG_PM_ENABLE_LM" "y"
-        if [ $? -eq 0 ]; then
-            log -deb "$fn_name - Log Manager is a module of Platform Manager - pm"
-            start_specific_manager pm &&
-                log -deb "$fn_name - start_specific_manager pm - Success" ||
-                raise "FAIL: Could not start manager: start_if_specific_manager pm" -l "$fn_name" -ds
-        else
-            raise "FAIL: Log Manager is not supported" -l "$fn_name" -ds
-        fi
+        raise "FAIL: Log Manager is not supported" -l "$fn_name" -ds -s
     fi
 
     log "$fn_name - LM setup - end"

@@ -53,6 +53,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "om.h"
 #include "util.h"
+#include "memutil.h"
 #include "ovsdb_sync.h"
 #include "ovsdb_update.h"
 #include "ovsdb_sync.h"
@@ -178,7 +179,7 @@ om_range_add_range_rule(struct schema_Openflow_Config *rule)
 {
     struct om_rule_node *add_rule = NULL;
 
-    add_rule = calloc(1, sizeof(*add_rule));
+    add_rule = CALLOC(1, sizeof(*add_rule));
 
     memcpy(&add_rule->rule, rule, sizeof(*rule));
     ds_list_insert_head(&range_rules, add_rule);
@@ -196,7 +197,7 @@ om_range_clear_range_rules(void)
          data != NULL; data = ds_list_inext(&iter))
     {
         ds_list_iremove(&iter);
-        free(data);
+        FREE(data);
     }
 
     return true;
@@ -259,7 +260,7 @@ static char*
 om_range_long_to_dot_ip(uint32_t ipnum)
 {
     uint8_t bytes[4];
-    char* buf = malloc (sizeof (char) * 16);
+    char* buf = MALLOC (sizeof (char) * 16);
     bytes[0] = (ipnum >> 24) & 0xFF;
     bytes[1] = (ipnum >> 16) & 0xFF;
     bytes[2] = (ipnum >> 8) & 0xFF;
@@ -319,7 +320,7 @@ om_range_extract(struct schema_Openflow_Config *sflow, char *pattern,
         rc = true;
     }
 err:
-    if (orig_str) free(orig_str);
+    if (orig_str) FREE(orig_str);
     return rc;
 }
 
@@ -409,7 +410,7 @@ om_range_generate_ipv4_rules( char *start, char *end,
             sprintf(rule, "%s,nw_dst=%s", sflow->rule, ipv4buff);
         }
 
-        free(ipv4buff);
+        FREE(ipv4buff);
 
         STRSCPY(out.rule, rule);
         ret = ret && om_range_recurse_parse(&out);

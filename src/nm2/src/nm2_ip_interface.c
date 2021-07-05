@@ -29,6 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb_table.h"
 #include "inet.h"
 #include "osn_types.h"
+#include "memutil.h"
 
 #include "nm2.h"
 #include "nm2_iface.h"
@@ -163,8 +164,7 @@ struct nm2_ip_interface *nm2_ip_interface_get(const ovs_uuid_t *uuid)
     if (ipi != NULL) return ipi;
 
     /* Allocate a new empty structure */
-    ipi = calloc(1, sizeof(struct nm2_ip_interface));
-    if (ipi == NULL) return NULL;
+    ipi = CALLOC(1, sizeof(struct nm2_ip_interface));
 
     ipi->ipi_uuid = *uuid;
     reflink_init(&ipi->ipi_reflink, "IP_Interface");
@@ -224,7 +224,7 @@ void nm2_ip_interface_release(struct nm2_ip_interface *ipi)
 
     ds_tree_remove(&nm2_ip_interface_list, ipi);
 
-    free(ipi);
+    FREE(ipi);
 }
 
 /*

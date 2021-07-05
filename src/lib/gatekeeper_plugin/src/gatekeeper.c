@@ -41,12 +41,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "gatekeeper.h"
 #include "ds_tree.h"
 #include "memutil.h"
+#include "kconfig.h"
 #include "schema.h"
 #include "const.h"
 #include "log.h"
 
 #define GK_NOT_RATED 100
 #define GK_UNRATED_TTL (60*60*24)
+#define GK_MULTI_CURL_REQ_TIMEOUT 120
 
 static ovsdb_table_t table_SSL;
 
@@ -104,6 +106,8 @@ gatekeeper_log_health_stats(struct fsm_gk_session *fsm_gk_session,
          hs->max_latency);
     LOGI("%s: avg lookup latency in ms: %u", __func__,
          hs->avg_latency);
+    LOGI("%s: dns cache hit count: %u", __func__,
+         fsm_gk_session->dns_cache_hit_count);
 }
 
 /**
@@ -117,17 +121,22 @@ gatekeeper_report_compute_health_stats(struct fsm_gk_session *fsm_gk_session,
                                        struct wc_health_stats *hs)
 {
     struct fsm_url_stats *stats;
-    uint32_t count;
     uint32_t dns_cache_hits;
+    uint32_t dns_cache_previous_hit_count;
+    uint32_t delta_count;
+    uint32_t count;
 
     stats = &fsm_gk_session->health_stats;
+    dns_cache_previous_hit_count = fsm_gk_session->dns_cache_hit_count;
     dns_cache_hits = dns_cache_get_hit_count(IP2ACTION_GK_SVC);
+    delta_count = dns_cache_hits - dns_cache_previous_hit_count;
+    fsm_gk_session->dns_cache_hit_count = dns_cache_hits;
 
-    count = (uint32_t)(stats->cloud_lookups + stats->cache_hits + dns_cache_hits);
+    count = (uint32_t)(stats->cloud_lookups + stats->cache_hits + delta_count);
     hs->total_lookups = count;
 
     /* Compute cache hits */
-    count = (uint32_t)(stats->cache_hits) + dns_cache_hits;
+    count = (uint32_t)(stats->cache_hits) + delta_count;
     hs->cache_hits = count;
 
     /* Compute remote_lookups */
@@ -173,7 +182,7 @@ gatekeeper_report_compute_health_stats(struct fsm_gk_session *fsm_gk_session,
     hs->cached_entries = count;
 
     /* Compute cache size */
-    stats->cache_size = GK_MAX_CACHE_ENTRIES;
+    stats->cache_size = gk_cache_get_size();
     count = (uint32_t)(stats->cache_size);
     hs->cache_size = count;
 }
@@ -242,7 +251,7 @@ callback_SSL(ovsdb_update_monitor_t *mon,
     struct fsm_gk_mgr *mgr;
     ds_tree_t *sessions;
     struct fsm_gk_session *fsm_gk_session;
-    struct gk_curl_easy_info *ecurl;
+    struct gk_server_info *server_info;
 
     if (!ssl->certificate_exists || !ssl->private_key_exists) return;
 
@@ -255,16 +264,16 @@ callback_SSL(ovsdb_update_monitor_t *mon,
     fsm_gk_session = ds_tree_head(sessions);
     while (fsm_gk_session != NULL)
     {
-        ecurl = &fsm_gk_session->ecurl;
-        strncpy(ecurl->ssl_cert, ssl->certificate, sizeof(ecurl->ssl_cert));
-        strncpy(ecurl->ssl_key, ssl->private_key, sizeof(ecurl->ssl_key));
-        strncpy(ecurl->ca_path, ssl->ca_cert, sizeof(ecurl->ca_path));
+        server_info = &fsm_gk_session->gk_server_info;
+        strncpy(server_info->ssl_cert, ssl->certificate, sizeof(server_info->ssl_cert));
+        strncpy(server_info->ssl_key, ssl->private_key, sizeof(server_info->ssl_key));
+        strncpy(server_info->ca_path, ssl->ca_cert, sizeof(server_info->ca_path));
 
         LOGD("%s(): ssl cert %s, priv key %s, ca_path: %s",
              __func__,
-             ecurl->ssl_cert,
-             ecurl->ssl_key,
-             ecurl->ca_path);
+             server_info->ssl_cert,
+             server_info->ssl_key,
+             server_info->ca_path);
 
         fsm_gk_session = ds_tree_next(sessions, fsm_gk_session);
     }
@@ -284,12 +293,9 @@ free_gk_verdict(struct fsm_gk_verdict *gk_verdict)
 
 void
 gk_update_redirect_from_cache(struct fsm_policy_req *req,
-                              struct gk_attr_cache_interface *entry)
+                              struct gk_attr_cache_interface *entry,
+                              struct fsm_policy_reply *policy_reply)
 {
-    struct fqdn_pending_req *fqdn_req;
-
-    fqdn_req = req->fqdn_req;
-
     /* update redirect entries only for attr type FQDN */
     if (entry->attribute_type != GK_CACHE_REQ_TYPE_FQDN) return;
 
@@ -301,11 +307,11 @@ gk_update_redirect_from_cache(struct fsm_policy_req *req,
      */
     if (!entry->fqdn_redirect->redirect) return;
 
-    req->reply.redirect = entry->fqdn_redirect->redirect;
-    req->reply.rd_ttl   = entry->fqdn_redirect->redirect_ttl;
+    policy_reply->redirect = entry->fqdn_redirect->redirect;
+    policy_reply->rd_ttl   = entry->fqdn_redirect->redirect_ttl;
 
-    STRSCPY(fqdn_req->redirects[0], entry->fqdn_redirect->redirect_ips[0]);
-    STRSCPY(fqdn_req->redirects[1], entry->fqdn_redirect->redirect_ips[1]);
+    STRSCPY(policy_reply->redirects[0], entry->fqdn_redirect->redirect_ips[0]);
+    STRSCPY(policy_reply->redirects[1], entry->fqdn_redirect->redirect_ips[1]);
 }
 
 /**
@@ -315,18 +321,21 @@ gk_update_redirect_from_cache(struct fsm_policy_req *req,
  * @return true if present false otherwise
  */
 static bool
-gatekeeper_check_attr_cache(struct fsm_policy_req *req, int req_type)
+gatekeeper_check_attr_cache(struct fsm_policy_req *req,
+                            struct fsm_policy_reply *policy_reply)
 {
     struct gk_attr_cache_interface *entry;
     struct fqdn_pending_req *fqdn_req;
     struct fsm_url_request *req_info;
     struct fsm_url_reply *url_reply;
     char *req_type_str;
+    int req_type;
     bool ret;
 
     fqdn_req = req->fqdn_req;
     req_info = fqdn_req->req_info;
     url_reply = req_info->reply;
+    req_type = req->req_type;
 
     entry = CALLOC(1, sizeof(*entry));
     if (entry == NULL) return false;
@@ -350,11 +359,11 @@ gatekeeper_check_attr_cache(struct fsm_policy_req *req, int req_type)
          ret ? "found" : "not found");
     if (ret)
     {
-        req->reply.action = entry->action;
+        policy_reply->action = entry->action;
 
-        gk_update_redirect_from_cache(req, entry);
+        gk_update_redirect_from_cache(req, entry, policy_reply);
 
-        fqdn_req->categorized = entry->categorized;
+        policy_reply->categorized = entry->categorized;
         url_reply->reply_info.gk_info.category_id = entry->category_id;
         url_reply->reply_info.gk_info.confidence_level = entry->confidence_level;
         url_reply->service_id = URL_GK_SVC;
@@ -362,7 +371,7 @@ gatekeeper_check_attr_cache(struct fsm_policy_req *req, int req_type)
         {
             url_reply->reply_info.gk_info.gk_policy = STRDUP(entry->gk_policy);
         }
-        req->fqdn_req->from_cache = true;
+        policy_reply->from_cache = true;
     }
 
     FREE(entry->attr_name);
@@ -379,7 +388,8 @@ gatekeeper_check_attr_cache(struct fsm_policy_req *req, int req_type)
  * @return true if present false otherwise
  */
 static bool
-gatekeeper_check_ipflow_cache(struct fsm_policy_req *req)
+gatekeeper_check_ipflow_cache(struct fsm_policy_req *req,
+                              struct fsm_policy_reply *policy_reply)
 {
     struct gkc_ip_flow_interface *flow_entry;
     struct net_md_stats_accumulator *acc;
@@ -408,8 +418,8 @@ gatekeeper_check_ipflow_cache(struct fsm_policy_req *req)
     if (ret == true)
     {
         /* value found in cache update reply */
-        req->reply.action = flow_entry->action;
-        req->fqdn_req->from_cache = true;
+        policy_reply->action = flow_entry->action;
+        policy_reply->from_cache = true;
     }
 
     FREE(flow_entry);
@@ -424,7 +434,8 @@ gatekeeper_check_ipflow_cache(struct fsm_policy_req *req)
  * @return true if present false otherwise
  */
 bool
-gk_check_policy_in_cache(struct fsm_policy_req *req)
+gk_check_policy_in_cache(struct fsm_policy_req *req,
+                         struct fsm_policy_reply *policy_reply)
 {
     struct gk_cache_mgr *cache_mgr;
     int req_type;
@@ -437,12 +448,12 @@ gk_check_policy_in_cache(struct fsm_policy_req *req)
     if (req_type >=FSM_FQDN_REQ && req_type <= FSM_APP_REQ)
     {
         LOGT("%s(): checking attribute cache", __func__);
-        ret = gatekeeper_check_attr_cache(req, req_type);
+        ret = gatekeeper_check_attr_cache(req, policy_reply);
     }
     else if (req_type >= FSM_IPV4_FLOW_REQ && req_type <= FSM_IPV6_FLOW_REQ)
     {
         LOGT("%s(): checking IP Flow cache", __func__);
-        ret = gatekeeper_check_ipflow_cache(req);
+        ret = gatekeeper_check_ipflow_cache(req, policy_reply);
     }
 
     return ret;
@@ -457,23 +468,21 @@ gk_check_policy_in_cache(struct fsm_policy_req *req)
  */
 void
 gk_populate_redirect_entry(struct gk_attr_cache_interface *entry,
-                           struct fsm_policy_req *req)
+                           struct fsm_policy_req *req,
+                           struct fsm_policy_reply *policy_reply)
 {
     struct fqdn_redirect_s *redirect_entry;
-    struct fqdn_pending_req *fqdn_req;
 
-    if (req->reply.redirect == false) return;
+    if (policy_reply->redirect == false) return;
 
     entry->fqdn_redirect = CALLOC(1, sizeof(*entry->fqdn_redirect));
     if (entry->fqdn_redirect == NULL) return;
     redirect_entry = entry->fqdn_redirect;
 
-    fqdn_req       = req->fqdn_req;
-
-    redirect_entry->redirect     = req->reply.redirect;
-    redirect_entry->redirect_ttl = req->reply.rd_ttl;
-    STRSCPY(redirect_entry->redirect_ips[0], fqdn_req->redirects[0]);
-    STRSCPY(redirect_entry->redirect_ips[1], fqdn_req->redirects[1]);
+    redirect_entry->redirect     = policy_reply->redirect;
+    redirect_entry->redirect_ttl = policy_reply->rd_ttl;
+    STRSCPY(redirect_entry->redirect_ips[0], policy_reply->redirects[0]);
+    STRSCPY(redirect_entry->redirect_ips[1], policy_reply->redirects[1]);
 
     LOGT("%s(): populated redirect entries for gk cache, redirect flag %d "
          "IPv4 %s, IPv6 %s",
@@ -491,17 +500,20 @@ gk_populate_redirect_entry(struct gk_attr_cache_interface *entry,
  * @return true if the success false otherwise
  */
 static bool
-gatekeeper_add_attr_cache(struct fsm_policy_req *req, int req_type)
+gatekeeper_add_attr_cache(struct fsm_policy_req *req,
+                          struct fsm_policy_reply *policy_reply)
 {
     struct gk_attr_cache_interface *entry;
     struct fqdn_pending_req *fqdn_req;
     struct fsm_url_request *req_info;
     struct fsm_url_reply *url_reply;
+    int req_type;
     bool ret;
 
     fqdn_req = req->fqdn_req;
     req_info = fqdn_req->req_info;
     url_reply = req_info->reply;
+    req_type = req->req_type;
 
     if (url_reply == NULL)
     {
@@ -512,11 +524,11 @@ gatekeeper_add_attr_cache(struct fsm_policy_req *req, int req_type)
     entry = CALLOC(1, sizeof(*entry));
     if (entry == NULL) return false;
 
-    entry->action = req->reply.action;
+    entry->action = policy_reply->action;
     entry->device_mac = req->device_id;
     entry->attribute_type = req_type;
-    entry->cache_ttl = req->reply.cache_ttl;
-    entry->categorized = fqdn_req->categorized;
+    entry->cache_ttl = policy_reply->cache_ttl;
+    entry->categorized = policy_reply->categorized;
     entry->attr_name = STRDUP(req->url);
     entry->category_id = url_reply->reply_info.gk_info.category_id;
     entry->confidence_level = url_reply->reply_info.gk_info.confidence_level;
@@ -526,7 +538,7 @@ gatekeeper_add_attr_cache(struct fsm_policy_req *req, int req_type)
     }
 
     /* check if fqdn redirect entries needs to be added. */
-    if (req_type == GK_CACHE_REQ_TYPE_FQDN) gk_populate_redirect_entry(entry, req);
+    if (req_type == GK_CACHE_REQ_TYPE_FQDN) gk_populate_redirect_entry(entry, req, policy_reply);
 
     ret = gkc_add_attribute_entry(entry);
     LOGT("%s(): adding %s (attr type %d) to cache %s ",
@@ -548,7 +560,8 @@ gatekeeper_add_attr_cache(struct fsm_policy_req *req, int req_type)
  * @return true if the success false otherwise
  */
 static bool
-gatekeeper_add_ipflow_cache(struct fsm_policy_req *req)
+gatekeeper_add_ipflow_cache(struct fsm_policy_req *req,
+                            struct fsm_policy_reply *policy_reply)
 {
     struct gkc_ip_flow_interface *flow_entry;
     struct fqdn_pending_req *fqdn_req;
@@ -588,8 +601,8 @@ gatekeeper_add_ipflow_cache(struct fsm_policy_req *req)
     flow_entry->direction = acc->direction;
     flow_entry->ip_version = key->ip_version;
     flow_entry->protocol = key->ipprotocol;
-    flow_entry->cache_ttl = req->reply.cache_ttl;
-    flow_entry->action = req->reply.action;
+    flow_entry->cache_ttl = policy_reply->cache_ttl;
+    flow_entry->action = policy_reply->action;
     flow_entry->src_ip_addr = key->src_ip;
     flow_entry->dst_ip_addr = key->dst_ip;
     flow_entry->src_port = key->sport;
@@ -612,7 +625,7 @@ gatekeeper_add_ipflow_cache(struct fsm_policy_req *req)
 }
 
 void
-gk_fsm_adjust_ttl(struct fsm_policy_req *req)
+gk_fsm_adjust_ttl(struct fsm_policy_req *req, struct fsm_policy_reply *policy_reply)
 {
     struct fqdn_pending_req *fqdn_req;
     struct fsm_url_request *req_info;
@@ -636,8 +649,8 @@ gk_fsm_adjust_ttl(struct fsm_policy_req *req)
     ret = is_private_ip(req->url);
     if (ret == false) return;
 
-    req->reply.cache_ttl = GK_UNRATED_TTL;
-    fqdn_req->cat_unknown_to_service = true;
+    policy_reply->cache_ttl = GK_UNRATED_TTL;
+    policy_reply->cat_unknown_to_service = true;
 }
 
 /**
@@ -647,7 +660,7 @@ gk_fsm_adjust_ttl(struct fsm_policy_req *req)
  * @return true if the success false otherwise
  */
 bool
-gk_add_policy_to_cache(struct fsm_policy_req *req)
+gk_add_policy_to_cache(struct fsm_policy_req *req, struct fsm_policy_reply *policy_reply)
 {
     struct gk_cache_mgr *cache_mgr;
     int req_type;
@@ -657,16 +670,16 @@ gk_add_policy_to_cache(struct fsm_policy_req *req)
     if (!cache_mgr->initialized) return false;
 
     /* Overwrite TTL to large value for local ip and set fqdn flag */
-    gk_fsm_adjust_ttl(req);
+    gk_fsm_adjust_ttl(req, policy_reply);
 
     req_type = fsm_policy_get_req_type(req);
     if (req_type >=FSM_FQDN_REQ && req_type <= FSM_APP_REQ)
     {
-        ret = gatekeeper_add_attr_cache(req, req_type);
+        ret = gatekeeper_add_attr_cache(req, policy_reply);
     }
     else if (req_type >= FSM_IPV4_FLOW_REQ && req_type <= FSM_IPV6_FLOW_REQ)
     {
-        ret = gatekeeper_add_ipflow_cache(req);
+        ret = gatekeeper_add_ipflow_cache(req, policy_reply);
     }
 
     return ret;
@@ -714,6 +727,146 @@ fsm_gk_update_latencies(struct fsm_gk_session *gk_session,
     return latency;
 }
 
+void
+gk_purge_mcurl_data(struct fsm_gk_session* gk_session)
+{
+    struct gk_mcurl_data* mcurl_data;
+    struct gk_mcurl_data* to_remove;
+    time_t now;
+    double cmp;
+
+    LOGT("%s(): removing expired mcurl data", __func__);
+
+    now = time(NULL);
+    mcurl_data = ds_tree_head(&gk_session->mcurl_data_tree);
+    while (mcurl_data)
+    {
+        /* get the time difference */
+        cmp = difftime(now, mcurl_data->timestamp);
+
+        /* continue if current request is not yet timed out */
+        if (cmp < GK_MULTI_CURL_REQ_TIMEOUT)
+        {
+            mcurl_data = ds_tree_next(&gk_session->mcurl_data_tree, mcurl_data);
+            continue;
+        }
+
+        /* request is timed out, need to be removed */
+        LOGN("%s() removing request from tree: type %d, id %d policy_req == %p",
+             __func__,
+             mcurl_data->req_type,
+             mcurl_data->req_id,
+             mcurl_data->gk_verdict->policy_req);
+        to_remove = mcurl_data;
+        mcurl_data = ds_tree_next(&gk_session->mcurl_data_tree, mcurl_data);
+
+        /* remove current node from the tree */
+        ds_tree_remove(&gk_session->mcurl_data_tree, to_remove);
+        /* free up the memory */
+        free_mcurl_data(to_remove);
+    }
+}
+
+/**
+ * @brief adds the request details to mcurl_data_tree
+ *
+ * @param session fsm_session pointer
+ * @param req pointer to fsm policy request
+ *        information, proto buffer and fsm_policy_req
+ * returns the added object if successful else returns NULL
+ */
+static struct gk_mcurl_data *
+gk_add_mcurl_data(struct fsm_session *session,
+                  struct fsm_policy_req *policy_req,
+                  struct fsm_policy_reply *policy_reply)
+{
+    struct fsm_gk_session *fsm_gk_session;
+    struct fsm_gk_verdict *gk_verdict;
+    struct gk_mcurl_data *mcurl_data;
+
+    fsm_gk_session = gatekeeper_lookup_session(session->service);
+    if (fsm_gk_session == NULL) return NULL;
+
+    mcurl_data = CALLOC(1, sizeof(*mcurl_data));
+    if (mcurl_data == NULL) return NULL;
+
+    gk_verdict = CALLOC(1, sizeof(*gk_verdict));
+    if (gk_verdict == NULL) goto error;
+
+    gk_verdict->policy_req = policy_req;
+    gk_verdict->policy_reply = policy_reply;
+    gk_verdict->gk_pb = gatekeeper_get_req(session, policy_req, mcurl_data);
+    if (gk_verdict->gk_pb == NULL)
+    {
+        LOGN("%s(): failed to serialize curl data", __func__);
+        goto error;
+    }
+
+    mcurl_data->timestamp = time(NULL);
+    mcurl_data->req_type   = policy_req->req_type;
+    mcurl_data->gk_verdict = gk_verdict;
+    LOGN("%s(): added curl data for request type: %d, with id %d, gk_verdict: %p, policy_req: %p, policy reply:%p",
+         __func__,
+         mcurl_data->req_type,
+         mcurl_data->req_id,
+         mcurl_data->gk_verdict,
+         gk_verdict->policy_req,
+         gk_verdict->policy_reply);
+
+    ds_tree_insert(&fsm_gk_session->mcurl_data_tree, mcurl_data, mcurl_data);
+    return mcurl_data;
+
+error:
+    FREE(mcurl_data);
+    FREE(gk_verdict);
+    return NULL;
+}
+
+bool
+gk_process_using_multi_curl(struct fsm_policy_req *policy_req,
+                            struct fsm_policy_reply *policy_reply)
+{
+    struct fsm_gk_session *fsm_gk_session;
+    struct gk_mcurl_data *mcurl_data;
+    struct fsm_session *session;
+
+    session = policy_req->session;
+
+    fsm_gk_session = gatekeeper_lookup_session(session->service);
+    if (fsm_gk_session == NULL) return false;
+
+    mcurl_data = gk_add_mcurl_data(session, policy_req, policy_reply);
+    if (mcurl_data == NULL) return false;
+
+    gk_send_mcurl_request(fsm_gk_session, mcurl_data);
+    return true;
+}
+
+bool
+gk_lookup_using_multi_curl(struct fsm_policy_req *req)
+{
+    struct fsm_gk_session *fsm_gk_session;
+    struct fsm_session *session;
+
+    int req_type;
+    session = req->session;
+
+    fsm_gk_session = gatekeeper_lookup_session(session->service);
+    if (fsm_gk_session ==  NULL)
+    {
+        LOGD("%s(): gatekeeper session lookup failed", __func__);
+        return false;
+    }
+
+    if (fsm_gk_session->enable_multi_curl == false) return false;
+
+    req_type = fsm_policy_get_req_type(req);
+    /* do not perform mcurl request for fqdns */
+    if (req_type == FSM_FQDN_REQ) return false;
+
+    return true;
+}
+
 /**
  * @brief performs check whether to allow or block this packet.
  *        by connecting ot the guard server.
@@ -724,11 +877,11 @@ fsm_gk_update_latencies(struct fsm_gk_session *gk_session,
  * @return true if the success false otherwise
  */
 bool
-gatekeeper_get_verdict(struct fsm_session *session,
-                       struct fsm_policy_req *req)
+gatekeeper_get_verdict(struct fsm_policy_req *req,
+                       struct fsm_policy_reply *policy_reply)
 {
     struct fsm_gk_session *fsm_gk_session;
-    struct gk_curl_easy_info *ecurl_info;
+    struct gk_server_info *server_info;
     struct gatekeeper_offline *offline;
     struct fsm_policy_req *policy_req;
     struct fqdn_pending_req *fqdn_req;
@@ -736,15 +889,20 @@ gatekeeper_get_verdict(struct fsm_session *session,
     struct fsm_url_request *req_info;
     struct fsm_url_reply *url_reply;
     struct fsm_url_stats *stats;
+    struct fsm_session *session;
     struct timespec start;
     struct timespec end;
     long lookup_latency;
+    bool use_mcurl;
     bool ret = true;
     bool incache;
     int gk_response;
 
     fqdn_req = req->fqdn_req;
     req_info = fqdn_req->req_info;
+    session = req->session;
+
+    LOGT("%s(): performing gatekeeper policy check", __func__);
 
     url_reply = CALLOC(1, sizeof(*url_reply));
     if (url_reply == NULL) return false;
@@ -754,20 +912,24 @@ gatekeeper_get_verdict(struct fsm_session *session,
     url_reply->service_id = URL_GK_SVC;
 
     fsm_gk_session = gatekeeper_lookup_session(session->service);
-    if (fsm_gk_session ==  NULL) return false;
+    if (fsm_gk_session ==  NULL)
+    {
+        LOGD("%s(): gatekeeper session lookup failed", __func__);
+        return false;
+    }
 
     stats = &fsm_gk_session->health_stats;
     offline = &fsm_gk_session->gk_offline;
 
-    incache = gk_check_policy_in_cache(req);
+    incache = gk_check_policy_in_cache(req, policy_reply);
     if (incache == true)
     {
         stats->cache_hits++;
         LOGT("%s(): %s found in cache, returning action %d, redirect flag %d from cache",
              __func__,
              req->url,
-             req->reply.action,
-             req->reply.redirect);
+             policy_reply->action,
+             policy_reply->redirect);
         return true;
     }
 
@@ -782,19 +944,20 @@ gatekeeper_get_verdict(struct fsm_session *session,
         offline->provider_offline = false;
     }
 
-    ecurl_info = &fsm_gk_session->ecurl;
-    if (!ecurl_info->server_url) return false;
+    server_info = &fsm_gk_session->gk_server_info;
+    if (!server_info->server_url) return false;
 
     gk_verdict = CALLOC(1, sizeof(*gk_verdict));
     if (gk_verdict == NULL) return false;
 
     gk_verdict->policy_req = req;
+    gk_verdict->policy_reply = policy_reply;
     policy_req = gk_verdict->policy_req;
     fqdn_req = policy_req->fqdn_req;
 
-    LOGT("%s: url:%s path:%s", __func__, ecurl_info->server_url, ecurl_info->ca_path);
+    LOGT("%s: url:%s path:%s", __func__, server_info->server_url, server_info->ca_path);
 
-    gk_verdict->gk_pb = gatekeeper_get_req(session, req);
+    gk_verdict->gk_pb = gatekeeper_get_req(session, req, NULL);
     if (gk_verdict->gk_pb == NULL)
     {
         LOGD("%s() curl request serialization failed", __func__);
@@ -802,43 +965,56 @@ gatekeeper_get_verdict(struct fsm_session *session,
         goto error;
     }
 
-    fqdn_req->categorized = FSM_FQDN_CAT_SUCCESS;
+    policy_reply->categorized = FSM_FQDN_CAT_SUCCESS;
+    use_mcurl = gk_lookup_using_multi_curl(req);
 
-#ifdef CURL_MULTI
-    gk_new_conn(req->url);
-#else
-    memset(&start, 0, sizeof(start));
-    memset(&end, 0, sizeof(end));
-
-    clock_gettime(CLOCK_REALTIME, &start);
-    gk_response = gk_send_request(session, fsm_gk_session, gk_verdict);
-    if (gk_response != GK_LOOKUP_SUCCESS)
+    if (use_mcurl == true)
     {
-        fqdn_req->categorized = FSM_FQDN_CAT_FAILED;
-        /* if connection error, start the backoff timer */
-        if (gk_response == GK_CONNECTION_ERROR)
-        {
-            offline->provider_offline = true;
-            offline->offline_ts = time(NULL);
-            offline->connection_failures++;
-        }
-
-        LOGD("%s() curl error not updating cache", __func__);
-        ret = false;
+        LOGN("%s(): processing request using multi curl", __func__);
+        gk_process_using_multi_curl(req, policy_reply);
+        /* set reply type to async, as request is processed using multi curl */
+        policy_reply->reply_type = FSM_ASYNC_REPLY;
+        ret = true;
         goto error;
     }
-    clock_gettime(CLOCK_REALTIME, &end);
+    else
+    {
+        LOGT("%s(): processing request using easy curl", __func__);
+        memset(&start, 0, sizeof(start));
+        memset(&end, 0, sizeof(end));
 
-    /* update stats for processing the request */
-    lookup_latency = fsm_gk_update_latencies(fsm_gk_session, &start, &end);
-    LOGT("%s(): cloud lookup latency for '%s' is %ld ms", __func__, req->url, lookup_latency);
-#endif
+        clock_gettime(CLOCK_REALTIME, &start);
+        policy_reply->reply_type = FSM_INLINE_REPLY;
+        gk_response = gk_send_ecurl_request(session, fsm_gk_session, gk_verdict, policy_reply);
+        if (gk_response != GK_LOOKUP_SUCCESS)
+        {
+            policy_reply->categorized = FSM_FQDN_CAT_FAILED;
+            /* if connection error, start the backoff timer */
+            if (gk_response == GK_CONNECTION_ERROR)
+            {
+                offline->provider_offline = true;
+                offline->offline_ts = time(NULL);
+                offline->connection_failures++;
+            }
 
-    gk_add_policy_to_cache(req);
+            LOGD("%s() curl error not updating cache", __func__);
+            ret = false;
+            goto error;
+        }
+        clock_gettime(CLOCK_REALTIME, &end);
+
+        /* update stats for processing the request */
+        lookup_latency = fsm_gk_update_latencies(fsm_gk_session, &start, &end);
+        LOGT("%s(): cloud lookup latency for '%s' is %ld ms", __func__, req->url, lookup_latency);
+    }
+
+    gk_add_policy_to_cache(req, policy_reply);
 
 error:
-    LOGT("%s(): verdict for '%s' is %d", __func__, req->url, req->reply.action);
+    LOGT("%s(): verdict for '%s' is %d", __func__, req->url, policy_reply->action);
     free_gk_verdict(gk_verdict);
+
+
     return ret;
 }
 
@@ -861,6 +1037,18 @@ fsm_gk_session_cmp(void *a, void *b)
     return 1;
 }
 
+static int
+gk_mcurl_cmp(void *a, void *b)
+{
+    struct gk_mcurl_data *ta = a;
+    struct gk_mcurl_data *tb = b;
+
+    int cmp = ta->req_id - tb->req_id;
+    if (cmp) return cmp;
+
+    cmp = ta->req_type - tb->req_type;
+    return cmp;
+}
 
 /**
  * @brief initializes gate keeper plugin
@@ -892,8 +1080,9 @@ bool
 gatekeeper_init_curl(struct fsm_session *session)
 {
     struct fsm_gk_session *fsm_gk_session;
-    struct gk_curl_easy_info *ecurl_info;
+    struct gk_server_info *server_info;
     struct fsm_gk_mgr *gk_mgr;
+    const char *cert_path;
 
     fsm_gk_session = (struct fsm_gk_session *)session->handler_ctxt;
     if (!fsm_gk_session) return false;
@@ -903,16 +1092,30 @@ gatekeeper_init_curl(struct fsm_session *session)
 
     LOGN("%s(): initializing curl", __func__);
 
-    ecurl_info = &fsm_gk_session->ecurl;
+    server_info = &fsm_gk_session->gk_server_info;
 
-    memset(ecurl_info, 0, sizeof(*ecurl_info));
-    ecurl_info->server_url = session->ops.get_config(session, "gk_url");
+    memset(server_info, 0, sizeof(*server_info));
+    server_info->server_url = session->ops.get_config(session, "gk_url");
 
-#ifdef MULTI_CURL
-    gk_multi_curl_init(session->loop);
-#else
-    gk_curl_easy_init(fsm_gk_session, session->loop);
-#endif
+    cert_path = session->ops.get_config(session, "cacert");
+    if (cert_path)
+    {
+        server_info->cert_path = session->ops.get_config(session, "cacert");
+    }
+
+    if (fsm_gk_session->enable_multi_curl)
+    {
+        LOGN("%s(): initializing multi curl", __func__);
+        gk_multi_curl_init(fsm_gk_session, session->loop);
+        ds_tree_init(&fsm_gk_session->mcurl_data_tree,
+                     gk_mcurl_cmp,
+                     struct gk_mcurl_data,
+                     mcurl_req_node);
+    }
+    else
+    {
+        gk_curl_easy_init(fsm_gk_session, session->loop);
+    }
 
     return true;
 }
@@ -946,6 +1149,7 @@ int
 gatekeeper_module_init(struct fsm_session *session)
 {
     struct fsm_gk_session *fsm_gk_session;
+    struct fsm_policy_client *fsm_client;
     struct fsm_web_cat_ops *cat_ops;
     struct fsm_gk_mgr *mgr;
     time_t now;
@@ -976,12 +1180,15 @@ gatekeeper_module_init(struct fsm_session *session)
     if (fsm_gk_session == NULL)
     {
         LOGE("%s: could not allocate gate keeper plugin", __func__);
-        gk_curl_exit();
         return -1;
     }
 
     /* Bail if the session is already initialized */
     if (fsm_gk_session->initialized) return 0;
+
+    /* enable or disable multi curl support */
+    fsm_gk_session->enable_multi_curl = 0;
+    fsm_gk_session->enable_multi_curl = kconfig_enabled(CONFIG_GATEKEEPER_MULTI_CURL);
 
     /* Set the fsm session */
     session->ops.periodic = gatekeeper_periodic;
@@ -1039,14 +1246,22 @@ gatekeeper_module_init(struct fsm_session *session)
              pattern_fqdn_lan, rc);
         goto err;
     }
-
     fsm_gk_session->pattern_fqdn_lan = pattern_fqdn_lan;
+
     /* Initialize dns cache hit count */
     fsm_gk_session->dns_cache_hit_count = 0;
 
+    /* register our cache flush client */
+    fsm_client = &fsm_gk_session->cache_flush_client;
+    fsm_client->session = session;
+    fsm_client->name = STRDUP("clear_gatekeeper_cache");
+    fsm_client->flush_cache = gkc_flush_client;
+    fsm_policy_register_client(fsm_client);
+
     fsm_gk_session->initialized = true;
     LOGD("%s: added session %s", __func__, session->name);
-
+    LOGT("%s: session %s is multi-curl %s", __func__, session->name,
+         fsm_gk_session->enable_multi_curl ? "enabled" : "disabled");
     return 0;
 
 err:
@@ -1104,12 +1319,18 @@ void
 gatekeeper_exit(struct fsm_session *session)
 {
     struct fsm_gk_session *fsm_gk_session;
+    struct fsm_policy_client *fsm_client;
     struct fsm_gk_mgr *mgr;
+
     mgr = gatekeeper_get_mgr();
     if (!mgr->initialized) return;
 
     fsm_gk_session = (struct fsm_gk_session *)session->handler_ctxt;
     if (!fsm_gk_session) return;
+
+    fsm_client = &fsm_gk_session->cache_flush_client;
+    fsm_policy_deregister_client(fsm_client);
+    FREE(fsm_client->name);
 
     if (fsm_gk_session->re)
     {
@@ -1124,6 +1345,7 @@ gatekeeper_exit(struct fsm_session *session)
     }
 
     gk_curl_easy_cleanup(fsm_gk_session);
+    gk_curl_multi_cleanup(fsm_gk_session);
     mgr->initialized = false;
 
     gatekeeper_delete_session(session);
@@ -1205,6 +1427,9 @@ gatekeeper_periodic(struct fsm_session *session)
 
     /* remove expired entries from cache */
     gkc_ttl_cleanup();
+
+    /* remove timed-out curl requests */
+    gk_purge_mcurl_data(fsm_gk_session);
 }
 
 #define GATEKEEPER_REPORT_HEALTH_STATS_INTERVAL (60*10)
@@ -1213,17 +1438,49 @@ void
 gatekeeper_update(struct fsm_session *session)
 {
     struct fsm_gk_session *fsm_gk_session;
-    struct gk_curl_easy_info *ecurl_info;
+    struct gk_server_info *server_info;
     char *hs_report_interval;
     char *hs_report_topic;
+    char *mcurl_config;
     long interval;
+    int val;
 
     fsm_gk_session = (struct fsm_gk_session *)session->handler_ctxt;
     if (!fsm_gk_session) return;
 
-    ecurl_info = &fsm_gk_session->ecurl;
+    server_info = &fsm_gk_session->gk_server_info;
 
-    ecurl_info->server_url = session->ops.get_config(session, "gk_url");
+    mcurl_config = session->ops.get_config(session, "multi_curl");
+
+    if (mcurl_config != NULL)
+    {
+        LOGT("%s(): session %p: multi_curl key value: %s",
+             __func__, session, mcurl_config);
+        val = strcmp(mcurl_config, "enable");
+        if (val == 0)
+        {
+            fsm_gk_session->enable_multi_curl = true;
+        }
+        else
+        {
+            val = strcmp(mcurl_config, "disable");
+            if (val == 0)
+            {
+                fsm_gk_session->enable_multi_curl = false;
+            }
+        }
+    }
+    else
+    {
+        LOGT("%s(): session %p could not find multi_curl key in other_config",
+             __func__, session);
+        fsm_gk_session->enable_multi_curl = false;
+    }
+
+    /* currently overwritting ovsdb config with kconfig value */
+    fsm_gk_session->enable_multi_curl = kconfig_enabled(CONFIG_GATEKEEPER_MULTI_CURL);
+
+    server_info->server_url = session->ops.get_config(session, "gk_url");
 
     fsm_gk_session->health_stats_report_interval = (long)GATEKEEPER_REPORT_HEALTH_STATS_INTERVAL;
     hs_report_interval = session->ops.get_config(session,
@@ -1236,6 +1493,61 @@ gatekeeper_update(struct fsm_session *session)
     hs_report_topic = session->ops.get_config(session,
                                               "wc_health_stats_topic");
     fsm_gk_session->health_stats_report_topic = hs_report_topic;
+
+    /* As long as the GK cache is not persisted, there are no chance a flush
+     * rule will have any impact at startup.
+     */
+    LOGT("%s: session %s is multi-curl %s", __func__, session->name,
+         fsm_gk_session->enable_multi_curl ? "enabled" : "disabled");
+}
+
+/**
+ * @brief frees memory used by mcurl data
+ *
+ * @param mcurl_request pointer to mcurl_request
+ */
+void
+free_mcurl_data(struct gk_mcurl_data *mcurl_request)
+{
+    struct fsm_gk_verdict *gk_verdict;
+
+    if (mcurl_request == NULL) return;
+
+    if (mcurl_request->gk_verdict)
+    {
+        gk_verdict = mcurl_request->gk_verdict;
+
+        if (gk_verdict->gk_pb) gk_free_packed_buffer(gk_verdict->gk_pb);
+
+        FREE(gk_verdict);
+    }
+
+    FREE(mcurl_request);
+}
+
+/**
+ * @brief frees memory used by mcurl_data_tree
+ *
+ * @param tree pointer to mcurl_data_tree
+ */
+void
+gk_clean_mcurl_tree(ds_tree_t *tree)
+{
+    struct gk_mcurl_data *to_remove;
+    struct gk_mcurl_data *current;
+
+    if (tree == NULL) return;
+
+    current = ds_tree_head(tree);
+    while (current != NULL)
+    {
+        to_remove = current;
+        current = ds_tree_next(tree, current);
+        ds_tree_remove(tree, to_remove);
+        free_mcurl_data(to_remove);
+    }
+
+    return;
 }
 
 /**
@@ -1300,6 +1612,7 @@ gatekeeper_delete_session(struct fsm_session *session)
 
     LOGD("%s: removing session %s", __func__, session->name);
     ds_tree_remove(sessions, gk_session);
+    gk_clean_mcurl_tree(&gk_session->mcurl_data_tree);
     gatekeeper_free_session(gk_session);
 
     return;

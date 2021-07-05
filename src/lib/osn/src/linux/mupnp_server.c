@@ -31,6 +31,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "mupnp_server.h"
 #include "const.h"
 #include "util.h"
+#include "memutil.h"
 #include "log.h"
 #include "daemon.h"
 #include "execsh.h"
@@ -113,7 +114,7 @@ static bool service_init(mupnp_server_t *self, const mupnp_config_t *cfg)
     path_lease = file_path(cfg->config_dir_path, cfg->name, ".leases");
     if (NULL == path_lease) goto oom_err;
 
-    free(path_pid);
+    FREE(path_pid);
 
     self->config = cfg;
     self->ext_ifc4 = EMPTY_IFC;
@@ -127,9 +128,9 @@ oom_err:
     LOG(ERR, "miniupnp: Error allocating memory for object.");
 
 init_err:
-    free(path_pid);
-    free(path_cfg);
-    free(path_lease);
+    FREE(path_pid);
+    FREE(path_cfg);
+    FREE(path_lease);
     return false;
 }
 
@@ -138,12 +139,11 @@ mupnp_server_t *mupnp_server_new(const mupnp_config_t *cfg)
     if (cfg == NULL) return NULL;
     if (cfg->name == NULL || strlen(cfg->name) == 0) return NULL;
 
-    mupnp_server_t *self = calloc(1, sizeof(*self));
-    if (self == NULL) return NULL;
+    mupnp_server_t *self = CALLOC(1, sizeof(*self));
 
     if (!service_init(self, cfg))
     {
-        free(self);
+        FREE(self);
         self = NULL;
     }
     return self;
@@ -154,9 +154,9 @@ void mupnp_server_del(mupnp_server_t *self)
     if (self == NULL) return;
     (void)mupnp_server_stop(self);
     daemon_fini(&self->server_process);
-    free(self->path_cfg);
-    free(self->path_lease);
-    free(self);
+    FREE(self->path_cfg);
+    FREE(self->path_lease);
+    FREE(self);
 }
 
 static bool can_attach_detach(const mupnp_server_t *self, const char *ifname)

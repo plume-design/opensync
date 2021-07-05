@@ -28,7 +28,8 @@ UNIT_NAME := test_gatekeeper_plugin
 
 UNIT_TYPE := TEST_BIN
 
-UNIT_SRC := test_fsm_gk.c
+UNIT_SRC := test_fsm_gk_main.c
+UNIT_SRC += test_fsm_gk.c
 UNIT_SRC += test_fsm_gk_fct.c
 
 UNIT_DEPS := src/lib/log
@@ -40,3 +41,9 @@ UNIT_DEPS += src/lib/gatekeeper_cache
 UNIT_DEPS += src/lib/fsm_dpi_sni
 UNIT_DEPS += src/lib/unity
 
+# Ensure the required file is copied in its correct location
+$(UNIT_BUILD)/.target: /tmp/cacert.pem
+/tmp/cacert.pem: $(UNIT_PATH)/cacert.pem FORCE_CACERT_PEM
+	${NQ} " $(call color_copy,copy)    [$(call COLOR_BOLD,genmac.txt)] -> $@"
+	${Q} cp $< $@
+FORCE_CACERT_PEM:

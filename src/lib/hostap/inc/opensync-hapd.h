@@ -28,8 +28,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define OPENSYNC_HAPD_H_INCLUDED
 
 #include "schema.h"
-#include "target.h"
-#include "target_common.h"
 
 struct hapd {
     char phy[IFNAMSIZ];
@@ -48,9 +46,6 @@ struct hapd {
     char vhtcaps[512];
     void (*sta_connected)(struct hapd *hapd, const char *mac, const char *keyid);
     void (*sta_disconnected)(struct hapd *hapd, const char *mac);
-    void (*dpp_chirp_received)(const struct target_dpp_chirp_obj *chirp);
-    void (*dpp_conf_sent)(const struct target_dpp_conf_enrollee *enrollee);
-    void (*dpp_conf_received)(const struct target_dpp_conf_network *conf);
     void (*ap_enabled)(struct hapd *hapd);
     void (*ap_disabled)(struct hapd *hapd);
     void (*wps_active)(struct hapd *hapd);
@@ -59,16 +54,6 @@ struct hapd {
     void (*wps_disable)(struct hapd *hapd);
     void (*wpa_key_mismatch)(struct hapd *hapd, const char *mac);
     struct ctrl ctrl;
-    char dpp_enrollee_conf_ssid_hex[65];
-    char dpp_enrollee_conf_connector[1025];
-    char dpp_enrollee_conf_psk_hex[65];
-    char dpp_enrollee_conf_csign_hex[513];
-    char dpp_enrollee_conf_netaccesskey_hex[513];
-    char dpp_enrollee_conf_akm[513];
-    char dpp_pending_conf_sta[18];
-    char dpp_pending_conf_pk_hash[64+1];
-    int dpp_pending_conf;
-    int dpp_pending_auth_success;
 };
 
 struct hapd *hapd_lookup(const char *bss);

@@ -25,6 +25,7 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
+. /usr/opensync/etc/kconfig # TODO: This should point to {INSTALL_PREFIX}/etc/kconfig
 prog=$0
 this_dir=$(dirname "$0")
 source ${this_dir}/dpi_utils.sh
@@ -105,7 +106,7 @@ done
 
 
 # Let's start
-intf=${INTF:-br-home.devdpi}
+intf=${INTF:-${CONFIG_TARGET_LAN_BRIDGE_NAME}.devdpi}
 ofport=${OF_PORT:-20001} # must be unique to the bridge
 gcmd=${CMD}
 plugin=${PLUGIN}

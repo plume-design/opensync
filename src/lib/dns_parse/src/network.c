@@ -76,6 +76,7 @@ ipv4_parse(uint32_t pos, struct pcap_pkthdr *header,
     ip->ip_header_pos = pos;
     h_len = packet[pos] & 0x0f;
     ip->length = (packet[pos+2] << 8) + packet[pos+3] - h_len*4;
+    HEADER_LEN_CHECK(h_len*4, ip->length, *p_packet);
     ip->proto = packet[pos+9];
     IPv4_MOVE(ip->src, packet + pos + 12);
     IPv4_MOVE(ip->dst, packet + pos + 16);
@@ -88,11 +89,6 @@ ipv4_parse(uint32_t pos, struct pcap_pkthdr *header,
     if (frag_mf == 1 || frag_offset != 0)
     {
         frag = MALLOC(sizeof(ip_fragment));
-        if (frag == NULL)
-        {
-            *p_packet = NULL;
-            return 0;
-        }
 
         frag->start = frag_offset;
         /*
@@ -117,7 +113,7 @@ ipv4_parse(uint32_t pos, struct pcap_pkthdr *header,
             /* Update the IP info on the reassembled data. */
             header->len = ip->length = frag->end - frag->start;
             *p_packet = frag->data;
-            free(frag);
+            FREE(frag);
 
             return 0;
         }
@@ -217,7 +213,7 @@ ipv6_parse(uint32_t pos, struct pcap_pkthdr *header,
         case 50: /* ESP Protocol. See RFC4303. */
             /* We don't support ESP. */
             LOGD("Unsupported protocol: IPv6 ESP");
-            if (frag != NULL) free(frag);
+            if (frag != NULL) FREE(frag);
             *p_packet = NULL; return 0;
         case 135: /* IPv6 Mobility See RFC 6275 */
             if (header->len < (pos + 2))
@@ -261,14 +257,7 @@ ipv6_parse(uint32_t pos, struct pcap_pkthdr *header,
     }
 
     /* check for int overflow */
-    if (header_len > ip->length)
-    {
-        LOGD("Malformed packet(ipv6)");
-      *p_packet = NULL;
-
-      return 0;
-    }
-
+    HEADER_LEN_CHECK(header_len, ip->length, *p_packet);
     ip->proto = next_hdr;
     ip->length = ip->length - header_len;
 
@@ -290,7 +279,7 @@ ipv6_parse(uint32_t pos, struct pcap_pkthdr *header,
         {
             header->len = ip->length = frag->end - frag->start;
             *p_packet = frag->data;
-            free(frag);
+            FREE(frag);
 
             return 0;
         }
@@ -373,7 +362,7 @@ ip_frag_add(ip_fragment * this, ip_config * conf)
      */
     if (*found == NULL)
     {
-        free(this);
+        FREE(this);
 
         return NULL;
     }

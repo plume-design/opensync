@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ds.h"
 #include "ds_dlist.h"
 #include "opensync_stats.pb-c.h"
+#include "memutil.h"
 
 #include "dpp_client.h"
 #include "dpp_survey.h"
@@ -198,7 +199,7 @@ ds_dlist_t  g_dppline_list; /* double linked list used to hold stats queue */
 /* private functions    */
 static dppline_stats_t * dpp_alloc_stat()
 {
-    return calloc(1, sizeof(dppline_stats_t));
+    return CALLOC(1, sizeof(dppline_stats_t));
 }
 
 static void dppline_free_stat_bs_client(dppline_stats_t * s)
@@ -217,12 +218,12 @@ static void dppline_free_stat_bs_client(dppline_stats_t * s)
             events = band->num_event_records;
             event = &band->event_record[0];
             for (; events; events--, event++) {
-                free(event->assoc_ies);
+                FREE(event->assoc_ies);
             }
         }
     }
 
-    free(s->u.bs_client.list);
+    FREE(s->u.bs_client.list);
 }
 
 /* free allocated memory for single stat */
@@ -234,27 +235,27 @@ static void dppline_free_stat(dppline_stats_t * s)
         switch (s->type)
         {
             case DPP_T_SURVEY:
-                free(s->u.survey.list);
-                free(s->u.survey.avg);
+                FREE(s->u.survey.list);
+                FREE(s->u.survey.avg);
                 break;
             case DPP_T_NEIGHBOR:
-                free(s->u.neighbor.list);
+                FREE(s->u.neighbor.list);
                 break;
             case DPP_T_CLIENT:
                 for (i=0; i<s->u.client.qty; i++)
                 {
-                    free(s->u.client.list[i].rx);
-                    free(s->u.client.list[i].tx);
-                    free(s->u.client.list[i].tid);
+                    FREE(s->u.client.list[i].rx);
+                    FREE(s->u.client.list[i].tx);
+                    FREE(s->u.client.list[i].tid);
                 }
-                free(s->u.client.list);
+                FREE(s->u.client.list);
                 break;
             case DPP_T_DEVICE:
-                free(s->u.device.list);
-                free(s->u.device.thermal_list);
+                FREE(s->u.device.list);
+                FREE(s->u.device.thermal_list);
                 break;
             case DPP_T_CAPACITY:
-                free(s->u.capacity.list);
+                FREE(s->u.capacity.list);
                 break;
             case DPP_T_BS_CLIENT:
                 dppline_free_stat_bs_client(s);
@@ -262,21 +263,21 @@ static void dppline_free_stat(dppline_stats_t * s)
             case DPP_T_RSSI:
                 for (i=0; i<s->u.rssi.qty; i++)
                 {
-                    free(s->u.rssi.list[i].raw);
+                    FREE(s->u.rssi.list[i].raw);
                 }
-                free(s->u.rssi.list);
+                FREE(s->u.rssi.list);
                 break;
             case DPP_T_CLIENT_AUTH_FAILS:
                 for (i=0; i < s->u.client_auth_fails.qty; i++)
                 {
-                    free(s->u.client_auth_fails.list[i].list);
+                    FREE(s->u.client_auth_fails.list[i].list);
                 }
-                free(s->u.client_auth_fails.list);
+                FREE(s->u.client_auth_fails.list);
                 break;
             default:;
         }
 
-        free(s);
+        FREE(s);
     }
 }
 
@@ -295,8 +296,7 @@ static void dppline_unshare_assoc_ies(dpp_bs_client_record_t *c)
         event = &band->event_record[0];
         for (; events; events--, event++) {
             if (event->assoc_ies) {
-                assoc_ies = calloc(1, event->assoc_ies_len);
-                WARN_ON(!assoc_ies);
+                assoc_ies = CALLOC(1, event->assoc_ies_len);
 
                 if (assoc_ies)
                     memcpy(assoc_ies, event->assoc_ies, event->assoc_ies_len);
@@ -334,10 +334,10 @@ static bool dppline_copysts(dppline_stats_t * dst, void * sts)
                     if (REPORT_TYPE_AVERAGE == report_data->report_type) {
                         size = (dst->u.survey.qty + 1) * sizeof(dpp_survey_record_avg_t);
                         if (!dst->u.survey.qty) {
-                            dst->u.survey.avg = calloc(1, size);
+                            dst->u.survey.avg = CALLOC(1, size);
                         }
                         else {
-                            dst->u.survey.avg = realloc(dst->u.survey.avg, size);
+                            dst->u.survey.avg = REALLOC(dst->u.survey.avg, size);
                             memset(&dst->u.survey.avg[dst->u.survey.qty],
                                     0,
                                     sizeof(dpp_survey_record_avg_t));
@@ -350,10 +350,10 @@ static bool dppline_copysts(dppline_stats_t * dst, void * sts)
                     else {
                         size = (dst->u.survey.qty + 1) * sizeof(dpp_survey_record_t);
                         if (!dst->u.survey.qty) {
-                            dst->u.survey.list = calloc(1, size);
+                            dst->u.survey.list = CALLOC(1, size);
                         }
                         else {
-                            dst->u.survey.list = realloc(dst->u.survey.list, size);
+                            dst->u.survey.list = REALLOC(dst->u.survey.list, size);
                             memset(&dst->u.survey.list[dst->u.survey.qty],
                                     0,
                                     sizeof(dpp_survey_record_t));
@@ -386,10 +386,10 @@ static bool dppline_copysts(dppline_stats_t * dst, void * sts)
 
                     size = (dst->u.capacity.qty + 1) * sizeof(dpp_capacity_record_t);
                     if (!dst->u.capacity.qty) {
-                        dst->u.capacity.list = calloc(1, size);
+                        dst->u.capacity.list = CALLOC(1, size);
                     }
                     else {
-                        dst->u.capacity.list = realloc(dst->u.capacity.list, size);
+                        dst->u.capacity.list = REALLOC(dst->u.capacity.list, size);
                         memset(&dst->u.capacity.list[dst->u.capacity.qty],
                                0,
                                sizeof(dpp_capacity_record_t));
@@ -422,10 +422,10 @@ static bool dppline_copysts(dppline_stats_t * dst, void * sts)
 
                     size = (dst->u.neighbor.qty + 1) * sizeof(dpp_neighbor_record_t);
                     if (!dst->u.neighbor.qty) {
-                        dst->u.neighbor.list = calloc(1, size);
+                        dst->u.neighbor.list = CALLOC(1, size);
                     }
                     else {
-                        dst->u.neighbor.list = realloc(dst->u.neighbor.list, size);
+                        dst->u.neighbor.list = REALLOC(dst->u.neighbor.list, size);
                         memset(&dst->u.neighbor.list[dst->u.neighbor.qty],
                                0,
                                sizeof(dpp_neighbor_record_t));
@@ -461,10 +461,10 @@ static bool dppline_copysts(dppline_stats_t * dst, void * sts)
                 {
                     size = (dst->u.client.qty + 1) * sizeof(dppline_client_rec_t);
                     if (!dst->u.client.qty) {
-                        dst->u.client.list = calloc(1, size);
+                        dst->u.client.list = CALLOC(1, size);
                     }
                     else {
-                        dst->u.client.list = realloc(dst->u.client.list, size);
+                        dst->u.client.list = REALLOC(dst->u.client.list, size);
                         memset(&dst->u.client.list[dst->u.client.qty],
                                0,
                                sizeof(dppline_client_rec_t));
@@ -480,11 +480,11 @@ static bool dppline_copysts(dppline_stats_t * dst, void * sts)
                     {
                         size = (dst->u.client.list[dst->u.client.qty].rx_qty + 1) * sizeof(dpp_client_stats_rx_t);
                         if (!dst->u.client.list[dst->u.client.qty].rx_qty) {
-                            dst->u.client.list[dst->u.client.qty].rx = calloc(1, size);
+                            dst->u.client.list[dst->u.client.qty].rx = CALLOC(1, size);
                         }
                         else {
                             dst->u.client.list[dst->u.client.qty].rx =
-                                realloc(dst->u.client.list[dst->u.client.qty].rx, size);
+                                REALLOC(dst->u.client.list[dst->u.client.qty].rx, size);
                             memset(&dst->u.client.list[dst->u.client.qty].rx[dst->u.client.list[dst->u.client.qty].rx_qty],
                                     0,
                                     sizeof(dpp_client_stats_rx_t));
@@ -503,11 +503,11 @@ static bool dppline_copysts(dppline_stats_t * dst, void * sts)
                     {
                         size = (dst->u.client.list[dst->u.client.qty].tx_qty + 1) * sizeof(dpp_client_stats_tx_t);
                         if (!dst->u.client.list[dst->u.client.qty].tx_qty) {
-                            dst->u.client.list[dst->u.client.qty].tx = calloc(1, size);
+                            dst->u.client.list[dst->u.client.qty].tx = CALLOC(1, size);
                         }
                         else {
                             dst->u.client.list[dst->u.client.qty].tx =
-                                realloc(dst->u.client.list[dst->u.client.qty].tx, size);
+                                REALLOC(dst->u.client.list[dst->u.client.qty].tx, size);
                             memset(&dst->u.client.list[dst->u.client.qty].tx[dst->u.client.list[dst->u.client.qty].tx_qty],
                                     0,
                                     sizeof(dpp_client_stats_tx_t));
@@ -526,11 +526,11 @@ static bool dppline_copysts(dppline_stats_t * dst, void * sts)
                     {
                         size = (dst->u.client.list[dst->u.client.qty].tid_qty + 1) * sizeof(dpp_client_tid_record_list_t);
                         if (!dst->u.client.list[dst->u.client.qty].tid_qty) {
-                            dst->u.client.list[dst->u.client.qty].tid = calloc(1, size);
+                            dst->u.client.list[dst->u.client.qty].tid = CALLOC(1, size);
                         }
                         else {
                             dst->u.client.list[dst->u.client.qty].tid =
-                                realloc(dst->u.client.list[dst->u.client.qty].tid, size);
+                                REALLOC(dst->u.client.list[dst->u.client.qty].tid, size);
                             memset(&dst->u.client.list[dst->u.client.qty].tid[dst->u.client.list[dst->u.client.qty].tid_qty],
                                     0,
                                     sizeof(dpp_client_tid_record_list_t));
@@ -566,11 +566,11 @@ static bool dppline_copysts(dppline_stats_t * dst, void * sts)
                     size = (dst->u.device.qty + 1) * sizeof(dpp_device_temp_t);
                     if (!dst->u.device.qty)
                     {
-                        dst->u.device.list = calloc(1, size);
+                        dst->u.device.list = CALLOC(1, size);
                     }
                     else
                     {
-                        dst->u.device.list = realloc(dst->u.device.list, size);
+                        dst->u.device.list = REALLOC(dst->u.device.list, size);
                         memset(&dst->u.device.list[dst->u.device.qty],
                                0,
                                sizeof(dpp_device_temp_t));
@@ -588,11 +588,11 @@ static bool dppline_copysts(dppline_stats_t * dst, void * sts)
                     thermal_size += (dst->u.device.thermal_qty + 1) * sizeof(dpp_device_thermal_record_t);
                     if (!dst->u.device.thermal_qty)
                     {
-                        dst->u.device.thermal_list = calloc(1, thermal_size);
+                        dst->u.device.thermal_list = CALLOC(1, thermal_size);
                     }
                     else
                     {
-                        dst->u.device.thermal_list = realloc(dst->u.device.thermal_list, thermal_size);
+                        dst->u.device.thermal_list = REALLOC(dst->u.device.thermal_list, thermal_size);
                         memset(&dst->u.device.thermal_list[dst->u.device.thermal_qty],
                                0,
                                sizeof(dpp_device_thermal_record_t));
@@ -615,7 +615,7 @@ static bool dppline_copysts(dppline_stats_t * dst, void * sts)
                 // Loop through linked list of results and copy results
                 ds_dlist_foreach(&report_data->list, result) { dst->u.bs_client.qty++; }
                 size = dst->u.bs_client.qty * sizeof(dpp_bs_client_record_t);
-                dst->u.bs_client.list = calloc(1, size);
+                dst->u.bs_client.list = CALLOC(1, size);
                 int count = 0;
                 ds_dlist_foreach(&report_data->list, result)
                 {
@@ -649,10 +649,10 @@ static bool dppline_copysts(dppline_stats_t * dst, void * sts)
                 {
                     size = (dst->u.rssi.qty + 1) * sizeof(dppline_rssi_rec_t);
                     if (!dst->u.rssi.qty) {
-                        dst->u.rssi.list = calloc(1, size);
+                        dst->u.rssi.list = CALLOC(1, size);
                     }
                     else {
-                        dst->u.rssi.list = realloc(dst->u.rssi.list, size);
+                        dst->u.rssi.list = REALLOC(dst->u.rssi.list, size);
                         memset(&dst->u.rssi.list[dst->u.rssi.qty],
                                0,
                                sizeof(dppline_rssi_rec_t));
@@ -668,11 +668,11 @@ static bool dppline_copysts(dppline_stats_t * dst, void * sts)
                         {
                             size = (dst->u.rssi.list[dst->u.rssi.qty].raw_qty + 1) * sizeof(dpp_rssi_raw_t);
                             if (!dst->u.rssi.list[dst->u.rssi.qty].raw_qty) {
-                                dst->u.rssi.list[dst->u.rssi.qty].raw = calloc(1, size);
+                                dst->u.rssi.list[dst->u.rssi.qty].raw = CALLOC(1, size);
                             }
                             else {
                                 dst->u.rssi.list[dst->u.rssi.qty].raw =
-                                    realloc(dst->u.rssi.list[dst->u.rssi.qty].raw, size);
+                                    REALLOC(dst->u.rssi.list[dst->u.rssi.qty].raw, size);
                                 memset(&dst->u.rssi.list[dst->u.rssi.qty].raw[dst->u.rssi.list[dst->u.rssi.qty].raw_qty],
                                         0,
                                         sizeof(dpp_rssi_raw_t));
@@ -702,10 +702,10 @@ static bool dppline_copysts(dppline_stats_t * dst, void * sts)
                 ds_dlist_iforeach(&report_data->bsses, bss_entry, bss_iter) {
                     const size_t bss_size = (dst->u.client_auth_fails.qty + 1) * sizeof(dpp_client_auth_fails_bss_t);
                     if (!dst->u.client_auth_fails.qty) {
-                        dst->u.client_auth_fails.list = calloc(1, bss_size);
+                        dst->u.client_auth_fails.list = CALLOC(1, bss_size);
                     }
                     else {
-                        dst->u.client_auth_fails.list = realloc(dst->u.client_auth_fails.list, bss_size);
+                        dst->u.client_auth_fails.list = REALLOC(dst->u.client_auth_fails.list, bss_size);
                         if (!dst->u.client_auth_fails.list)
                             continue;
 
@@ -717,10 +717,10 @@ static bool dppline_copysts(dppline_stats_t * dst, void * sts)
                         dppline_client_auth_fails_bss_rec_t *dst_bss = &dst->u.client_auth_fails.list[dst->u.client_auth_fails.qty];
                         const size_t client_size = (dst_bss->qty + 1) * sizeof(dpp_client_auth_fails_client_t);
                         if (!dst_bss->qty) {
-                            dst_bss->list = calloc(1, client_size);
+                            dst_bss->list = CALLOC(1, client_size);
                         }
                         else {
-                            dst_bss->list = realloc(dst_bss->list, client_size);
+                            dst_bss->list = REALLOC(dst_bss->list, client_size);
                             if (!dst_bss->list)
                                 continue;
 
@@ -754,17 +754,12 @@ static char * getNodeid()
 {
     char * buff = NULL;
 
-    buff = malloc(TARGET_ID_SZ);
-    if (buff == NULL)
-    {
-        LOG(ERR, "Unable to allocate memory for node id.");
-        return NULL;
-    }
+    buff = MALLOC(TARGET_ID_SZ);
 
     if (!osp_unit_id_get(buff, TARGET_ID_SZ))
     {
         LOG(ERR, "Error acquiring node id.");
-        free(buff);
+        FREE(buff);
         return NULL;
     }
 
@@ -787,6 +782,9 @@ Sts__RadioBandType dppline_to_proto_radio(radio_type_t radio_type)
 
         case RADIO_TYPE_5GU:
             return STS__RADIO_BAND_TYPE__BAND5GU;
+
+        case RADIO_TYPE_6G:
+            return STS__RADIO_BAND_TYPE__BAND6G;
 
         default:
             assert(0);
@@ -848,12 +846,11 @@ static void dppline_add_stat_survey(Sts__Report *r, dppline_stats_t *s)
     r->n_survey++;
 
     // allocate or extend the size of surveys
-    r->survey = realloc(r->survey,
+    r->survey = REALLOC(r->survey,
             r->n_survey * sizeof(Sts__Survey*));
 
     // allocate new buffer Sts__Survey
-    sr = malloc(sizeof(Sts__Survey));
-    assert(sr);
+    sr = MALLOC(sizeof(Sts__Survey));
     r->survey[r->n_survey - 1] = sr;
 
     sts__survey__init(sr);
@@ -864,15 +861,13 @@ static void dppline_add_stat_survey(Sts__Report *r, dppline_stats_t *s)
     sr->timestamp_ms = survey->timestamp_ms;
     sr->has_timestamp_ms = true;
     if (REPORT_TYPE_AVERAGE == survey->report_type) {
-        sr->survey_avg = malloc(survey->qty * sizeof(*sr->survey_avg));
-        assert(sr->survey_avg);
+        sr->survey_avg = MALLOC(survey->qty * sizeof(*sr->survey_avg));
         sr->n_survey_avg = survey->qty;
         for (i = 0; i < survey->qty; i++)
         {
             dpp_survey_record_avg_t *rec = &survey->avg[i];
             Sts__Survey__SurveyAvg *dr; // dest rec
-            dr = sr->survey_avg[i] = malloc(sizeof(**sr->survey_avg));
-            assert(dr);
+            dr = sr->survey_avg[i] = MALLOC(sizeof(**sr->survey_avg));
             sts__survey__survey_avg__init(dr);
 
             dr->channel = rec->info.chan;
@@ -881,7 +876,7 @@ static void dppline_add_stat_survey(Sts__Report *r, dppline_stats_t *s)
             Sts__AvgTypeSigned   *davgs;
 #define CP_AVG(_name, _name1) do { \
         if (rec->_name1.avg) { \
-            davg = dr->_name = malloc(sizeof(*dr->_name)); \
+            davg = dr->_name = MALLOC(sizeof(*dr->_name)); \
             sts__avg_type__init(davg); \
             davg->avg = rec->_name1.avg; \
             if(rec->_name1.min) { \
@@ -901,7 +896,7 @@ static void dppline_add_stat_survey(Sts__Report *r, dppline_stats_t *s)
 
 #define CP_AVG_SIGNED(_name, _name1) do { \
         if (rec->_name1.avg) { \
-            davgs = dr->_name = malloc(sizeof(*dr->_name)); \
+            davgs = dr->_name = MALLOC(sizeof(*dr->_name)); \
             sts__avg_type_signed__init(davgs); \
             davgs->avg = rec->_name1.avg; \
             if(rec->_name1.min) { \
@@ -938,15 +933,13 @@ static void dppline_add_stat_survey(Sts__Report *r, dppline_stats_t *s)
            s->u.survey.numrec * (sizeof(Sts__AvgType)*5)); */
     } else {
         /* RAW only due to legacy (revisit once PERCENTILE AND HISTOGRAM)*/
-        sr->survey_list = malloc(survey->qty * sizeof(*sr->survey_list));
-        assert(sr->survey_list);
+        sr->survey_list = MALLOC(survey->qty * sizeof(*sr->survey_list));
         sr->n_survey_list = survey->qty;
         for (i = 0; i < survey->qty; i++)
         {
             dpp_survey_record_t *rec = &survey->list[i];
             Sts__Survey__SurveySample *dr; // dest rec
-            dr = sr->survey_list[i] = malloc(sizeof(**sr->survey_list));
-            assert(dr);
+            dr = sr->survey_list[i] = MALLOC(sizeof(**sr->survey_list));
             sts__survey__survey_sample__init(dr);
 
             dr->channel = rec->info.chan;
@@ -1011,14 +1004,13 @@ static void dppline_add_stat_neighbor(Sts__Report *r, dppline_stats_t *s)
     r->n_neighbors++;
 
     // allocate or extend the size of neighbors
-    r->neighbors = realloc(r->neighbors,
+    r->neighbors = REALLOC(r->neighbors,
             r->n_neighbors * sizeof(Sts__Neighbor*));
     size += sizeof(Sts__Neighbor*);
 
     // allocate new buffer Sts__Neighbor
-    sr = malloc(sizeof(Sts__Neighbor));
+    sr = MALLOC(sizeof(Sts__Neighbor));
     size += sizeof(Sts__Neighbor);
-    assert(sr);
     r->neighbors[r->n_neighbors - 1] = sr;
 
     sts__neighbor__init(sr);
@@ -1028,17 +1020,15 @@ static void dppline_add_stat_neighbor(Sts__Report *r, dppline_stats_t *s)
     sr->has_report_type = true;
     sr->timestamp_ms = neighbor->timestamp_ms;
     sr->has_timestamp_ms = true;
-    sr->bss_list = malloc(neighbor->qty * sizeof(*sr->bss_list));
+    sr->bss_list = MALLOC(neighbor->qty * sizeof(*sr->bss_list));
     size += neighbor->qty * sizeof(*sr->bss_list);
-    assert(sr->bss_list);
     sr->n_bss_list = neighbor->qty;
     for (i = 0; i < neighbor->qty; i++)
     {
         dpp_neighbor_record_t *rec = &neighbor->list[i];
         Sts__Neighbor__NeighborBss *dr; // dest rec
-        dr = sr->bss_list[i] = malloc(sizeof(**sr->bss_list));
+        dr = sr->bss_list[i] = MALLOC(sizeof(**sr->bss_list));
         size += sizeof(**sr->bss_list);
-        assert(dr);
         sts__neighbor__neighbor_bss__init(dr);
 
         dr->bssid = strdup(rec->bssid);
@@ -1133,13 +1123,12 @@ static void dppline_add_stat_client(Sts__Report *r, dppline_stats_t *s)
     r->n_clients++;
 
     // allocate or extend the size of clients
-    r->clients = realloc(r->clients,
+    r->clients = REALLOC(r->clients,
             r->n_clients * sizeof(Sts__ClientReport*));
 
     // allocate new buffer
-    sr = malloc(sizeof(Sts__ClientReport));
+    sr = MALLOC(sizeof(Sts__ClientReport));
     size += sizeof(Sts__ClientReport);
-    assert(sr);
     r->clients[r->n_clients - 1] = sr;
 
     sts__client_report__init(sr);
@@ -1147,19 +1136,17 @@ static void dppline_add_stat_client(Sts__Report *r, dppline_stats_t *s)
     sr->timestamp_ms = client->timestamp_ms;
     sr->has_timestamp_ms = true;
     sr->channel = client->channel;
-    sr->client_list = malloc(client->qty * sizeof(*sr->client_list));
+    sr->client_list = MALLOC(client->qty * sizeof(*sr->client_list));
     size += client->qty * sizeof(*sr->client_list);
-    assert(sr->client_list);
     sr->n_client_list = client->qty;
     for (i = 0; i < client->qty; i++)
     {
         dpp_client_record_t *rec = &client->list[i].rec;
-        dr = sr->client_list[i] = malloc(sizeof(**sr->client_list));
+        dr = sr->client_list[i] = MALLOC(sizeof(**sr->client_list));
         size += sizeof(**sr->client_list);
-        assert(dr);
         sts__client__init(dr);
 
-        dr->mac_address = malloc(MACADDR_STR_LEN);
+        dr->mac_address = MALLOC(MACADDR_STR_LEN);
         dpp_mac_to_str(rec->info.mac, dr->mac_address);
         size += MACADDR_STR_LEN;
 
@@ -1192,7 +1179,7 @@ static void dppline_add_stat_client(Sts__Report *r, dppline_stats_t *s)
         dr->has_disconnect_count = true;
         dr->has_duration_ms = true;
 
-        dr->stats = malloc(sizeof(*dr->stats));
+        dr->stats = MALLOC(sizeof(*dr->stats));
         size += sizeof(*dr->stats);
         sts__client__stats__init(dr->stats);
 
@@ -1249,16 +1236,15 @@ static void dppline_add_stat_client(Sts__Report *r, dppline_stats_t *s)
             dr->stats->has_tx_rate_perceived = true;
         }
 
-        dr->rx_stats = malloc(client->list[i].rx_qty * sizeof(*dr->rx_stats));
+        dr->rx_stats = MALLOC(client->list[i].rx_qty * sizeof(*dr->rx_stats));
         size += client->list[i].rx_qty * sizeof(*dr->rx_stats);
-        assert(dr->rx_stats);
         dr->n_rx_stats = client->list[i].rx_qty;
         for (j = 0; j < client->list[i].rx_qty; j++)
         {
             Sts__Client__RxStats   *drx;
             dpp_client_stats_rx_t  *srx = &client->list[i].rx[j];
 
-            drx = dr->rx_stats[j] = malloc(sizeof(**dr->rx_stats));
+            drx = dr->rx_stats[j] = MALLOC(sizeof(**dr->rx_stats));
             sts__client__rx_stats__init(drx);
 
             drx->mcs        = srx->mcs;
@@ -1295,16 +1281,15 @@ static void dppline_add_stat_client(Sts__Report *r, dppline_stats_t *s)
             }
         }
 
-        dr->tx_stats = malloc(client->list[i].tx_qty * sizeof(*dr->tx_stats));
+        dr->tx_stats = MALLOC(client->list[i].tx_qty * sizeof(*dr->tx_stats));
         size += client->list[i].tx_qty * sizeof(*dr->tx_stats);
-        assert(dr->tx_stats);
         dr->n_tx_stats = client->list[i].tx_qty;
         for (j = 0; j < client->list[i].tx_qty; j++)
         {
             Sts__Client__TxStats *dtx;
             dpp_client_stats_tx_t *stx = &client->list[i].tx[j];
 
-            dtx = dr->tx_stats[j] = malloc(sizeof(**dr->tx_stats));
+            dtx = dr->tx_stats[j] = MALLOC(sizeof(**dr->tx_stats));
             sts__client__tx_stats__init(dtx);
 
             dtx->mcs     = stx->mcs;
@@ -1337,28 +1322,27 @@ static void dppline_add_stat_client(Sts__Report *r, dppline_stats_t *s)
             }
         }
 
-        dr->tid_stats = malloc(client->list[i].tid_qty * sizeof(*dr->tid_stats));
+        dr->tid_stats = MALLOC(client->list[i].tid_qty * sizeof(*dr->tid_stats));
         size += client->list[i].tid_qty * sizeof(*dr->tid_stats);
-        assert(dr->tid_stats);
         dr->n_tid_stats = client->list[i].tid_qty;
         for (j = 0; j < client->list[i].tid_qty; j++)
         {
             Sts__Client__TidStats *dtid;
             dpp_client_tid_record_list_t *stid = &client->list[i].tid[j];
-            dtid = dr->tid_stats[j] = malloc(sizeof(**dr->tid_stats));
+            dtid = dr->tid_stats[j] = MALLOC(sizeof(**dr->tid_stats));
             sts__client__tid_stats__init(dtid);
 
             dtid->offset_ms =
                 sr->timestamp_ms - stid->timestamp_ms;
             dtid->has_offset_ms = true;
 
-            dtid->sojourn = malloc(CLIENT_MAX_TID_RECORDS * sizeof(*dtid->sojourn));
+            dtid->sojourn = MALLOC(CLIENT_MAX_TID_RECORDS * sizeof(*dtid->sojourn));
             for (n = 0, j1 = 0; j1 < CLIENT_MAX_TID_RECORDS; j1++)
             {
                 Sts__Client__TidStats__Sojourn *drr;
                 dpp_client_stats_tid_t *srr = &stid->entry[n];
                 if (!(srr->num_msdus)) continue;
-                drr = dtid->sojourn[n] = malloc(sizeof(**dtid->sojourn));
+                drr = dtid->sojourn[n] = MALLOC(sizeof(**dtid->sojourn));
                 sts__client__tid_stats__sojourn__init(drr);
                 drr->ac = dppline_to_proto_wmm_ac_type(srr->ac);
                 drr->tid = srr->tid;
@@ -1378,7 +1362,7 @@ static void dppline_add_stat_client(Sts__Report *r, dppline_stats_t *s)
                 n++;
             }
             dtid->n_sojourn = n;
-            dtid->sojourn = realloc(dtid->sojourn, n * sizeof(*dtid->sojourn));
+            dtid->sojourn = REALLOC(dtid->sojourn, n * sizeof(*dtid->sojourn));
             size += n * sizeof(*dtid->sojourn);
         }
     }
@@ -1397,23 +1381,21 @@ static void dppline_add_stat_device(Sts__Report *r, dppline_stats_t *s)
     r->n_device++;
 
     // allocate or extend the size of devices
-    r->device = realloc(r->device,
+    r->device = REALLOC(r->device,
             r->n_device * sizeof(Sts__Device*));
     size += sizeof(Sts__Device*);
 
     // allocate new buffer Sts__Device
-    sr = malloc(sizeof(Sts__Device));
+    sr = MALLOC(sizeof(Sts__Device));
     size += sizeof(Sts__Device);
-    assert(sr);
     r->device[r->n_device - 1] = sr;
 
     sts__device__init(sr);
     sr->timestamp_ms = device->timestamp_ms;
     sr->has_timestamp_ms = true;
 
-    sr->load = malloc(sizeof(*sr->load));
+    sr->load = MALLOC(sizeof(*sr->load));
     size += sizeof(*sr->load);
-    assert(sr->load);
     sts__device__load_avg__init(sr->load);
     sr->load->one = device->record.load[DPP_DEVICE_LOAD_AVG_ONE];
     sr->load->has_one = true;
@@ -1425,9 +1407,8 @@ static void dppline_add_stat_device(Sts__Report *r, dppline_stats_t *s)
     sr->uptime = device->record.uptime;
     sr->has_uptime = true;
 
-    sr->mem_util = malloc(sizeof(*sr->mem_util));
+    sr->mem_util = MALLOC(sizeof(*sr->mem_util));
     size += sizeof(*sr->mem_util);
-    assert(sr->mem_util);
     sts__device__mem_util__init(sr->mem_util);
     sr->mem_util->mem_total = device->record.mem_util.mem_total;
     sr->mem_util->mem_used = device->record.mem_util.mem_used;
@@ -1436,15 +1417,13 @@ static void dppline_add_stat_device(Sts__Report *r, dppline_stats_t *s)
     sr->mem_util->swap_used = device->record.mem_util.swap_used;
     sr->mem_util->has_swap_used = true;
 
-    sr->fs_util = malloc(DPP_DEVICE_FS_TYPE_QTY * sizeof(*sr->fs_util));
+    sr->fs_util = MALLOC(DPP_DEVICE_FS_TYPE_QTY * sizeof(*sr->fs_util));
     size += DPP_DEVICE_FS_TYPE_QTY * sizeof(*sr->fs_util);
-    assert(sr->fs_util);
     sr->n_fs_util = DPP_DEVICE_FS_TYPE_QTY;
     for (i = 0; i < sr->n_fs_util; i++)
     {
-        sr->fs_util[i] = malloc(sizeof(**sr->fs_util));
+        sr->fs_util[i] = MALLOC(sizeof(**sr->fs_util));
         size += sizeof(**sr->fs_util);
-        assert(sr->fs_util[i]);
         sts__device__fs_util__init(sr->fs_util[i]);
 
         sr->fs_util[i]->fs_total = device->record.fs_util[i].fs_total;
@@ -1452,9 +1431,8 @@ static void dppline_add_stat_device(Sts__Report *r, dppline_stats_t *s)
         sr->fs_util[i]->fs_type = (Sts__FsType)device->record.fs_util[i].fs_type;
     }
 
-    sr->cpuutil = malloc(sizeof(*sr->cpuutil));
+    sr->cpuutil = MALLOC(sizeof(*sr->cpuutil));
     size += sizeof(*sr->cpuutil);
-    assert(sr->cpuutil);
     sts__device__cpu_util__init(sr->cpuutil);
     sr->cpuutil->cpu_util = device->record.cpu_util.cpu_util;
     sr->cpuutil->has_cpu_util = true;
@@ -1463,13 +1441,11 @@ static void dppline_add_stat_device(Sts__Report *r, dppline_stats_t *s)
     sr->n_ps_cpu_util = device->record.n_top_cpu;
     if (sr->n_ps_cpu_util > 0)
     {
-        sr->ps_cpu_util = malloc(sr->n_ps_cpu_util * sizeof(*sr->ps_cpu_util));
-        assert(sr->ps_cpu_util);
+        sr->ps_cpu_util = MALLOC(sr->n_ps_cpu_util * sizeof(*sr->ps_cpu_util));
         size += sizeof(*sr->ps_cpu_util);
         for (i = 0; i < sr->n_ps_cpu_util; i++)
         {
-            sr->ps_cpu_util[i] = malloc(sizeof(**sr->ps_cpu_util));
-            assert(sr->ps_cpu_util[i]);
+            sr->ps_cpu_util[i] = MALLOC(sizeof(**sr->ps_cpu_util));
             size += sizeof(**sr->ps_cpu_util);
             sts__device__per_process_util__init(sr->ps_cpu_util[i]);
             sr->ps_cpu_util[i]->pid = device->record.top_cpu[i].pid;
@@ -1482,13 +1458,11 @@ static void dppline_add_stat_device(Sts__Report *r, dppline_stats_t *s)
     sr->n_ps_mem_util = device->record.n_top_mem;
     if (sr->n_ps_mem_util > 0)
     {
-        sr->ps_mem_util = malloc(sr->n_ps_mem_util * sizeof(*sr->ps_mem_util));
-        assert(sr->ps_mem_util);
+        sr->ps_mem_util = MALLOC(sr->n_ps_mem_util * sizeof(*sr->ps_mem_util));
         size += sizeof(*sr->ps_mem_util);
         for (i = 0; i < sr->n_ps_mem_util; i++)
         {
-            sr->ps_mem_util[i] = malloc(sizeof(**sr->ps_mem_util));
-            assert(sr->ps_mem_util[i]);
+            sr->ps_mem_util[i] = MALLOC(sizeof(**sr->ps_mem_util));
             size += sizeof(**sr->ps_mem_util);
             sts__device__per_process_util__init(sr->ps_mem_util[i]);
             sr->ps_mem_util[i]->pid = device->record.top_mem[i].pid;
@@ -1499,16 +1473,14 @@ static void dppline_add_stat_device(Sts__Report *r, dppline_stats_t *s)
 
     if (device->qty > 0)
     {
-        sr->radio_temp = malloc(device->qty * sizeof(*sr->radio_temp));
+        sr->radio_temp = MALLOC(device->qty * sizeof(*sr->radio_temp));
         size += device->qty * sizeof(*sr->radio_temp);
-        assert(sr->radio_temp);
     }
     sr->n_radio_temp = device->qty;
     for (i = 0; i < device->qty; i++)
     {
-        sr->radio_temp[i] = malloc(sizeof(**sr->radio_temp));
+        sr->radio_temp[i] = MALLOC(sizeof(**sr->radio_temp));
         size += sizeof(**sr->radio_temp);
-        assert(sr->radio_temp[i]);
         sts__device__radio_temp__init(sr->radio_temp[i]);
 
         sr->radio_temp[i]->band = dppline_to_proto_radio(device->list[i].type);
@@ -1519,17 +1491,15 @@ static void dppline_add_stat_device(Sts__Report *r, dppline_stats_t *s)
 
     if (device->thermal_qty > 0)
     {
-        sr->thermal_stats = malloc(device->thermal_qty * sizeof(*sr->thermal_stats));
+        sr->thermal_stats = MALLOC(device->thermal_qty * sizeof(*sr->thermal_stats));
         size += device->thermal_qty * sizeof(*sr->thermal_stats);
-        assert(sr->thermal_stats);
     }
     sr->n_thermal_stats = device->thermal_qty;
     for (i = 0; i < device->thermal_qty; i++)
     {
         Sts__Device__Thermal *dts; 
-        dts = sr->thermal_stats[i] = malloc(sizeof(**sr->thermal_stats));
+        dts = sr->thermal_stats[i] = MALLOC(sizeof(**sr->thermal_stats));
         size += sizeof(**sr->thermal_stats);
-        assert(sr->thermal_stats[i]);
         sts__device__thermal__init(sr->thermal_stats[i]);
 
         if(device->thermal_list[i].fan_rpm >= 0)
@@ -1541,7 +1511,7 @@ static void dppline_add_stat_device(Sts__Report *r, dppline_stats_t *s)
         sr->thermal_stats[i]->timestamp_ms = device->thermal_list[i].timestamp_ms;
         sr->thermal_stats[i]->has_timestamp_ms = true;
 
-        sr->thermal_stats[i]->txchainmask = malloc(DPP_DEVICE_TX_CHAINMASK_MAX * sizeof(*dts->txchainmask));
+        sr->thermal_stats[i]->txchainmask = MALLOC(DPP_DEVICE_TX_CHAINMASK_MAX * sizeof(*dts->txchainmask));
         size += DPP_DEVICE_TX_CHAINMASK_MAX * sizeof(*dts->txchainmask);
         sr->thermal_stats[i]->n_txchainmask = 0; 
 
@@ -1551,7 +1521,7 @@ static void dppline_add_stat_device(Sts__Report *r, dppline_stats_t *s)
             Sts__Device__Thermal__RadioTxChainMask  *txchainmask;
             if (device->thermal_list[i].radio_txchainmasks[j].type != RADIO_TYPE_NONE)
             {
-                txchainmask = sr->thermal_stats[i]->txchainmask[j] = malloc(sizeof(**sr->thermal_stats[i]->txchainmask));
+                txchainmask = sr->thermal_stats[i]->txchainmask[j] = MALLOC(sizeof(**sr->thermal_stats[i]->txchainmask));
                 sts__device__thermal__radio_tx_chain_mask__init(txchainmask);
                 size += sizeof(**sr->thermal_stats[i]->txchainmask);
                 txchainmask->band =  dppline_to_proto_radio(device->thermal_list[i].radio_txchainmasks[j].type);
@@ -1562,6 +1532,27 @@ static void dppline_add_stat_device(Sts__Report *r, dppline_stats_t *s)
                 sr->thermal_stats[i]->n_txchainmask++; 
             }
         }
+    }
+
+    sr->powerinfo = MALLOC(sizeof(*sr->powerinfo));
+    size += sizeof(*sr->powerinfo);
+    sts__device__power_info__init(sr->powerinfo);
+    if (device->record.power_info.ps_type)
+    {
+        sr->powerinfo->ps_type = device->record.power_info.ps_type;
+        sr->powerinfo->has_ps_type = true;
+    }
+
+    if (device->record.power_info.p_consumption)
+    {
+        sr->powerinfo->p_consumption = device->record.power_info.p_consumption;
+        sr->powerinfo->has_p_consumption = true;
+    }
+
+    if (device->record.power_info.batt_level)
+    {
+        sr->powerinfo->batt_level = device->record.power_info.batt_level;
+        sr->powerinfo->has_batt_level = true;
     }
 }
 
@@ -1575,28 +1566,25 @@ static void dppline_add_stat_capacity(Sts__Report *r, dppline_stats_t *s)
     r->n_capacity++;
 
     // allocate or extend the size of capacities
-    r->capacity = realloc(r->capacity,
+    r->capacity = REALLOC(r->capacity,
             r->n_capacity * sizeof(Sts__Capacity*));
 
     // allocate new buffer Sts__Capacity
-    sr = malloc(sizeof(Sts__Capacity));
-    assert(sr);
+    sr = MALLOC(sizeof(Sts__Capacity));
     r->capacity[r->n_capacity - 1] = sr;
 
     sts__capacity__init(sr);
     sr->band = dppline_to_proto_radio(capacity->radio_type);
     sr->timestamp_ms = capacity->timestamp_ms;
     sr->has_timestamp_ms = true;
-    sr->queue_list = malloc(capacity->qty * sizeof(*sr->queue_list));
-    assert(sr->queue_list);
+    sr->queue_list = MALLOC(capacity->qty * sizeof(*sr->queue_list));
     sr->n_queue_list = capacity->qty;
     for (i = 0; i < capacity->qty; i++)
     {
         dpp_capacity_record_t *rec = &capacity->list[i];
 
         Sts__Capacity__QueueSample *dr; // dest rec
-        dr = sr->queue_list[i] = malloc(sizeof(**sr->queue_list));
-        assert(dr);
+        dr = sr->queue_list[i] = MALLOC(sizeof(**sr->queue_list));
         sts__capacity__queue_sample__init(dr);
 
         dr->bytes_tx = rec->bytes_tx;
@@ -1668,13 +1656,12 @@ static void dppline_add_stat_bs_client(Sts__Report * r, dppline_stats_t * s)
     r->n_bs_report++;
 
     // allocate or extend the size of bs_report array
-    r->bs_report = realloc(r->bs_report,
+    r->bs_report = REALLOC(r->bs_report,
             r->n_bs_report * sizeof(Sts__BSReport*));
     assert(r->bs_report);
 
     // allocate new buffer Sts__BSReport
-    sr = malloc(sizeof(Sts__BSReport));
-    assert(sr);
+    sr = MALLOC(sizeof(Sts__BSReport));
 
     // append report
     r->bs_report[r->n_bs_report - 1] = sr;
@@ -1684,7 +1671,7 @@ static void dppline_add_stat_bs_client(Sts__Report * r, dppline_stats_t * s)
     sr->timestamp_ms = bs_client->timestamp_ms;
 
     // Append clients, so client array needs to be resided
-    sr->clients = realloc(sr->clients,
+    sr->clients = REALLOC(sr->clients,
             (sr->n_clients + bs_client->qty) * sizeof(*sr->clients));
     assert(sr->clients);
 
@@ -1704,12 +1691,11 @@ static void dppline_add_stat_bs_client(Sts__Report * r, dppline_stats_t * s)
         dpp_bs_client_record_t *c_rec = &bs_client->list[client];
 
         // Allocate memory for the BS Client
-        cr = sr->clients[sr->n_clients] = malloc(sizeof(**sr->clients));
+        cr = sr->clients[sr->n_clients] = MALLOC(sizeof(**sr->clients));
         sr->n_clients++;
-        assert(cr);
         sts__bsclient__init(cr);
 
-        cr->mac_address = malloc(MACADDR_STR_LEN);
+        cr->mac_address = MALLOC(MACADDR_STR_LEN);
         dpp_mac_to_str(c_rec->mac, cr->mac_address);
 
         // alloc band list
@@ -1727,8 +1713,7 @@ static void dppline_add_stat_bs_client(Sts__Report * r, dppline_stats_t * s)
             cr->n_bs_band_report++;
         }
 
-        cr->bs_band_report = calloc(cr->n_bs_band_report, sizeof(*cr->bs_band_report));
-        assert(cr->bs_band_report);
+        cr->bs_band_report = CALLOC(cr->n_bs_band_report, sizeof(*cr->bs_band_report));
 
         // For each band per client
         for (band = 0, band_report = 0; band < c_rec->num_band_records; band++)
@@ -1740,9 +1725,8 @@ static void dppline_add_stat_bs_client(Sts__Report * r, dppline_stats_t * s)
             }
 
             // Allocate memory for the band report
-            br = cr->bs_band_report[band_report] = malloc(sizeof(Sts__BSClient__BSBandReport));
+            br = cr->bs_band_report[band_report] = MALLOC(sizeof(Sts__BSClient__BSBandReport));
             band_report++;
-            assert(br);
             sts__bsclient__bsband_report__init(br);
 
             // Copy all band specific information
@@ -1781,8 +1765,7 @@ static void dppline_add_stat_bs_client(Sts__Report * r, dppline_stats_t * s)
             br->ifname = strdup(b_rec->ifname);
 
             // alloc event list
-            br->event_list = calloc(b_rec->num_event_records, sizeof(*br->event_list));
-            assert(br->event_list);
+            br->event_list = CALLOC(b_rec->num_event_records, sizeof(*br->event_list));
             br->n_event_list = b_rec->num_event_records;
 
             // copy each event
@@ -1791,8 +1774,7 @@ static void dppline_add_stat_bs_client(Sts__Report * r, dppline_stats_t * s)
                 dpp_bs_client_event_record_t *e_rec = &b_rec->event_record[event];
 
                 // alloc event
-                er = br->event_list[event] = malloc(sizeof(Sts__BSClient__BSEvent));
-                assert(er);
+                er = br->event_list[event] = MALLOC(sizeof(Sts__BSClient__BSEvent));
                 sts__bsclient__bsevent__init(er);
 
                 er->type = (Sts__BSEventType)e_rec->type;
@@ -1883,7 +1865,7 @@ static void dppline_add_stat_bs_client(Sts__Report * r, dppline_stats_t * s)
                 er->has_rrm_caps_ftm_range_rpt = true;
 
                 if (e_rec->assoc_ies_len) {
-                    er->assoc_ies.data = malloc(e_rec->assoc_ies_len);
+                    er->assoc_ies.data = MALLOC(e_rec->assoc_ies_len);
                     if (er->assoc_ies.data) {
                         memcpy(er->assoc_ies.data, e_rec->assoc_ies, e_rec->assoc_ies_len);
                         er->assoc_ies.len = e_rec->assoc_ies_len;
@@ -1930,13 +1912,12 @@ static void dppline_add_stat_rssi(Sts__Report *r, dppline_stats_t *s)
     r->n_rssi_report++;
 
     // allocate or extend the size of rssi_report
-    r->rssi_report = realloc(r->rssi_report,
+    r->rssi_report = REALLOC(r->rssi_report,
             r->n_rssi_report * sizeof(Sts__RssiReport*));
 
     // allocate new buffer
-    sr = malloc(sizeof(Sts__RssiReport));
+    sr = MALLOC(sizeof(Sts__RssiReport));
     size += sizeof(Sts__RssiReport);
-    assert(sr);
     r->rssi_report[r->n_rssi_report - 1] = sr;
 
     sts__rssi_report__init(sr);
@@ -1944,19 +1925,17 @@ static void dppline_add_stat_rssi(Sts__Report *r, dppline_stats_t *s)
     sr->report_type = dppline_to_proto_report_type(rssi->report_type);
     sr->timestamp_ms = rssi->timestamp_ms;
     sr->has_timestamp_ms = true;
-    sr->peer_list = malloc(rssi->qty * sizeof(*sr->peer_list));
+    sr->peer_list = MALLOC(rssi->qty * sizeof(*sr->peer_list));
     size += rssi->qty * sizeof(*sr->peer_list);
-    assert(sr->peer_list);
     sr->n_peer_list = rssi->qty;
     for (i = 0; i < rssi->qty; i++)
     {
         dpp_rssi_record_t *rec = &rssi->list[i].rec;
-        dr = sr->peer_list[i] = malloc(sizeof(**sr->peer_list));
+        dr = sr->peer_list[i] = MALLOC(sizeof(**sr->peer_list));
         size += sizeof(**sr->peer_list);
-        assert(dr);
         sts__rssi_peer__init(dr);
 
-        dr->mac_address = malloc(MACADDR_STR_LEN);
+        dr->mac_address = MALLOC(MACADDR_STR_LEN);
         dpp_mac_to_str(rec->mac, dr->mac_address);
         size += MACADDR_STR_LEN;
 
@@ -1966,16 +1945,15 @@ static void dppline_add_stat_rssi(Sts__Report *r, dppline_stats_t *s)
         }
 
         if (REPORT_TYPE_RAW == rssi->report_type) {
-            dr->rssi_list = malloc(rssi->list[i].raw_qty * sizeof(*dr->rssi_list));
+            dr->rssi_list = MALLOC(rssi->list[i].raw_qty * sizeof(*dr->rssi_list));
             size += rssi->list[i].raw_qty * sizeof(*dr->rssi_list);
-            assert(dr->rssi_list);
             dr->n_rssi_list = rssi->list[i].raw_qty;
             for (j = 0; j < rssi->list[i].raw_qty; j++)
             {
                 Sts__RssiPeer__RssiSample   *draw;
                 dpp_rssi_raw_t  *sraw = &rssi->list[i].raw[j];
 
-                draw = dr->rssi_list[j] = malloc(sizeof(**dr->rssi_list));
+                draw = dr->rssi_list[j] = MALLOC(sizeof(**dr->rssi_list));
                 sts__rssi_peer__rssi_sample__init(draw);
 
                 draw->rssi = sraw->rssi;
@@ -1989,7 +1967,7 @@ static void dppline_add_stat_rssi(Sts__Report *r, dppline_stats_t *s)
             Sts__AvgType   *davg;
             dpp_avg_t      *savg = &rssi->list[i].rec.rssi.avg;
 
-            davg = dr->rssi_avg = malloc(sizeof(*dr->rssi_avg));
+            davg = dr->rssi_avg = MALLOC(sizeof(*dr->rssi_avg));
             sts__avg_type__init(davg);
 
             if (savg->avg) {
@@ -2032,17 +2010,15 @@ static void dppline_add_stat_client_auth_fails(Sts__Report *r, dppline_stats_t *
     r->n_client_auth_fails_report++;
 
     // allocate or extend the size of rssi_report
-    r->client_auth_fails_report = realloc(r->client_auth_fails_report, r->n_client_auth_fails_report * sizeof(Sts__ClientAuthFailsReport*));
+    r->client_auth_fails_report = REALLOC(r->client_auth_fails_report, r->n_client_auth_fails_report * sizeof(Sts__ClientAuthFailsReport*));
 
     // allocate new buffer
-    sr = malloc(sizeof(Sts__ClientAuthFailsReport));
-    assert(sr);
+    sr = MALLOC(sizeof(Sts__ClientAuthFailsReport));
     r->client_auth_fails_report[r->n_client_auth_fails_report - 1] = sr;
 
     sts__client_auth_fails_report__init(sr);
     sr->band = dppline_to_proto_radio(client_auth_fails->radio_type);
-    sr->bss_list = malloc(client_auth_fails->qty * sizeof(*sr->bss_list));
-    assert(sr->bss_list);
+    sr->bss_list = MALLOC(client_auth_fails->qty * sizeof(*sr->bss_list));
     sr->n_bss_list = client_auth_fails->qty;
     for (i = 0; i < client_auth_fails->qty; i++)
     {
@@ -2050,14 +2026,12 @@ static void dppline_add_stat_client_auth_fails(Sts__Report *r, dppline_stats_t *
         Sts__ClientAuthFailsReport__BSS *br;
 
         bss = &client_auth_fails->list[i];
-        br = sr->bss_list[i] = malloc(sizeof(Sts__ClientAuthFailsReport__BSS));
-        assert(br);
+        br = sr->bss_list[i] = MALLOC(sizeof(Sts__ClientAuthFailsReport__BSS));
 
         sts__client_auth_fails_report__bss__init(br);
         br->ifname = strdup(bss->if_name);
 
-        br->client_list = malloc(bss->qty * sizeof(*br->client_list));
-        assert(br->client_list);
+        br->client_list = MALLOC(bss->qty * sizeof(*br->client_list));
         br->n_client_list = bss->qty;
 
         for (j = 0; j < bss->qty; j++)
@@ -2066,8 +2040,7 @@ static void dppline_add_stat_client_auth_fails(Sts__Report *r, dppline_stats_t *
             Sts__ClientAuthFailsReport__BSS__Client *cr;
 
             client = &bss->list[j];
-            cr = br->client_list[j] = malloc(sizeof(Sts__ClientAuthFailsReport__BSS__Client));
-            assert(cr);
+            cr = br->client_list[j] = MALLOC(sizeof(Sts__ClientAuthFailsReport__BSS__Client));
 
             sts__client_auth_fails_report__bss__client__init(cr);
             cr->mac_address = strdup(client->mac);
@@ -2301,7 +2274,7 @@ bool dpp_get_report(uint8_t * buff, size_t sz, uint32_t * packed_sz)
     /* initialize report structure. Note - it has to be on heap,
      * otherwise __free_unpacked function fails
      */
-    Sts__Report * report = malloc(sizeof(Sts__Report));
+    Sts__Report * report = MALLOC(sizeof(Sts__Report));
     sts__report__init(report);
     report->nodeid = getNodeid();
 
@@ -2382,16 +2355,12 @@ bool dpp_get_report2(uint8_t **pbuff, size_t suggest_sz, uint32_t *packed_sz)
         return false;
     }
 
-    buff = malloc(suggest_sz);
-    if (NULL == buff)
-    {
-        return false;
-    }
+    buff = MALLOC(suggest_sz);
 
     /* initialize report structure. Note - it has to be on heap,
      * otherwise __free_unpacked function fails
      */
-    Sts__Report * report = malloc(sizeof(Sts__Report));
+    Sts__Report * report = MALLOC(sizeof(Sts__Report));
     sts__report__init(report);
     report->nodeid = getNodeid();
 
@@ -2446,7 +2415,7 @@ bool dpp_get_report2(uint8_t **pbuff, size_t suggest_sz, uint32_t *packed_sz)
         L_resize:
         LOG(DEBUG, "increasing buffer size %d to packed size: %5d",
                 (int)suggest_sz, (int)packed_size);
-        buff = realloc(buff, packed_size);
+        buff = REALLOC(buff, packed_size);
     }
 
     *pbuff = buff;
@@ -2493,10 +2462,8 @@ dpp_client_record_t* dpp_client_record_alloc()
 {
     dpp_client_record_t *record = NULL;
 
-    record = malloc(sizeof(dpp_client_record_t));
-    if (record) {
-        memset(record, 0, sizeof(dpp_client_record_t));
-    }
+    record = MALLOC(sizeof(dpp_client_record_t));
+    memset(record, 0, sizeof(dpp_client_record_t));
 
     // init stats_rx dlist
     ds_dlist_init(&record->stats_rx, dpp_client_stats_rx_t, node);

@@ -25,8 +25,9 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-intf=${1:-br-home.dpidemo}
-bridge=${2:-br-home}
+. /usr/opensync/etc/kconfig # TODO: This should point to {INSTALL_PREFIX}/etc/kconfig
+intf=${1:-${CONFIG_TARGET_LAN_BRIDGE_NAME}.dpidemo}
+bridge=${2:-${CONFIG_TARGET_LAN_BRIDGE_NAME}}
 fsm_handler=dev_demo_dpi # must start with 'dev' so the controller leaves it alone
 of_out_token=dev_flow_demo_dpi_out
 tag_name=dev_tag_demo_dpi
@@ -45,7 +46,7 @@ check_cmd() {
 add_default_flow_rule() {
      cat << EOF
 ovsh i Openflow_Config token:=${of_out_token} \
-                       bridge:="br-home" \
+                       bridge:="${CONFIG_TARGET_LAN_BRIDGE_NAME}"\
                        table:=0 \
                        priority:=0 \
                        action:="NORMAL"

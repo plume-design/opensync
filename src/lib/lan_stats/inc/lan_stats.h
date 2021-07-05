@@ -34,7 +34,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fcm.h"
 
 #define MAC_ADDR_STR_LEN     (18)
-#define OVS_DPCTL_DUMP_FLOWS "ovs-dpctl dump-flows -m"
 #define LINE_BUFF_LEN        (2048)
 #define MAX_TOKENS           (30)
 
@@ -62,8 +61,7 @@ typedef union ovs_u128 {
     struct {
         uint64_t lo, hi;
     } u64;
-} ovs_u128;
-
+} ovs_u128_;
 
 struct lan_stats_instance;
 
@@ -71,7 +69,7 @@ typedef void (*collect_flows_fn)(struct lan_stats_instance *);
 
 typedef struct dp_ctl_stats_
 {
-    ovs_u128        ufid;
+    ovs_u128_       ufid;
     char            smac_addr[MAC_ADDR_STR_LEN];
     char            dmac_addr[MAC_ADDR_STR_LEN];
     os_macaddr_t    smac_key;
@@ -93,10 +91,14 @@ typedef struct lan_stats_instance
     fcm_collect_plugin_t *collector;
     bool            initialized;
     char            *name;
+    char            *parent_tag;
     struct net_md_aggregator *aggr;
     collect_flows_fn collect_flows;
     ds_tree_node_t  lan_stats_node;
     dp_ctl_stats_t stats;
+    struct fcm_session *session;
+    struct fcm_filter_client *c_client;
+    struct fcm_filter_client *r_client;
 } lan_stats_instance_t;
 
 typedef struct lan_stats_mgr_
@@ -133,5 +135,7 @@ lan_stats_exit_mgr(void);
 
 void
 lan_stats_flows_filter(lan_stats_instance_t *lan_stats_instance);
+
+void lan_stats_collect_flows(lan_stats_instance_t *lan_stats_instance);
 
 #endif /* LAN_STATS_H_INCLUDED */

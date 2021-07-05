@@ -41,6 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb.h"
 #include "ovsdb_table.h"
 #include "pjs_undef.h"
+#include "memutil.h"
 
 #define PROG_NAME "schema_tt"
 
@@ -164,7 +165,7 @@ void parse_opt(int argc, char *argv[])
                 break;
 
             case 'I':
-                opt_ignore = realloc(opt_ignore, (opt_ignore_num+1)*sizeof(char*));
+                opt_ignore = REALLOC(opt_ignore, (opt_ignore_num+1)*sizeof(char*));
                 opt_ignore[opt_ignore_num] = optarg;
                 opt_ignore_num++;
                 break;
@@ -176,7 +177,7 @@ void parse_opt(int argc, char *argv[])
                 opt_changed = true;
                 opt_present = true;
                 opt_required = true;
-                opt_ignore = realloc(opt_ignore, (opt_ignore_num+2)*sizeof(char*));
+                opt_ignore = REALLOC(opt_ignore, (opt_ignore_num+2)*sizeof(char*));
                 opt_ignore[opt_ignore_num++] = "._version";
                 opt_ignore[opt_ignore_num++] = "Manager.status";
                 break;
@@ -362,7 +363,7 @@ void print_##TABLE(struct schema_##TABLE *rec, bool hdr, int i, int count) \
                 print_##TABLE(&p_##TABLE[i], true, i, count); \
             } \
             printf("\n"); \
-            free(list); \
+            FREE(list); \
         } \
     }
 

@@ -37,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "os.h"
 #include "util.h"
+#include "memutil.h"
 #include "ovsdb.h"
 #include "ovsdb_update.h"
 #include "ovsdb_sync.h"
@@ -119,7 +120,7 @@ wm2_delayed_cancel(void (*fn)(const char *ifname, bool force),
     LOGD("%s: cancelling scheduled work %s", ifname, i->workname);
     ds_dlist_remove(&delayed_list, i);
     ev_timer_stop(EV_DEFAULT, &i->timer);
-    free(i);
+    FREE(i);
 }
 
 static void
@@ -132,7 +133,7 @@ wm2_delayed_cb(struct ev_loop *loop, ev_timer *timer, int revents)
     LOGD("%s: running scheduled work %s", i->ifname, i->workname);
     ds_dlist_remove(&delayed_list, i);
     ev_timer_stop(EV_DEFAULT, &i->timer);
-    free(i);
+    FREE(i);
     j.fn(j.ifname, false);
 }
 
@@ -144,8 +145,7 @@ wm2_delayed(void (*fn)(const char *ifname, bool force),
     struct wm2_delayed *i;
     if ((i = wm2_delayed_lookup(fn, ifname)))
         return;
-    if (!(i = malloc(sizeof(*i))))
-        return;
+    i = MALLOC(sizeof(*i));
     STRSCPY(i->ifname, ifname);
     STRSCPY(i->workname, workname);
     i->fn = fn;
@@ -239,7 +239,7 @@ wm2_get_fallback_parents(struct wm2_fallback_parent *parents,
         }
     }
 
-    free(buf);
+    FREE(buf);
 
     return parent_num;
 }
@@ -599,6 +599,8 @@ wm2_vconf_changed(const struct schema_Wifi_VIF_Config *conf,
     CMP(CHANGED_STR, dpp_connector);
     CMP(CHANGED_STR, dpp_netaccesskey_hex);
     CMP(CHANGED_STR, dpp_csign_hex);
+    CMP(CHANGED_INT, min_rssi);
+    CMP(CHANGED_INT, max_sta);
     if (changed)
         LOGD("%s: changed (forced=%d)", conf->if_name, changedf->_uuid);
 
@@ -717,13 +719,13 @@ wm2_lookup_rconf_by_vif_ifname(struct schema_Wifi_Radio_Config *rconf,
                 for (i = 0; i < rc->vif_configs_len; i++) {
                     if (!strcmp(rc->vif_configs[i].uuid, vconf._uuid.uuid)) {
                         memcpy(rconf, rc, sizeof(*rc));
-                        free(buf);
+                        FREE(buf);
                         LOGD("%s: found radio %s via vif config", ifname, rconf->if_name);
                         return true;
                     }
                 }
             }
-            free(buf);
+            FREE(buf);
         }
     }
 
@@ -738,14 +740,14 @@ wm2_lookup_rconf_by_vif_ifname(struct schema_Wifi_Radio_Config *rconf,
                         if (!(where = ovsdb_where_simple(SCHEMA_COLUMN(Wifi_Radio_Config, if_name), rs->if_name)))
                             continue;
                         if (ovsdb_table_select_one_where(&table_Wifi_Radio_Config, where, rconf)) {
-                            free(buf);
+                            FREE(buf);
                             LOGD("%s: found radio %s via vif state", ifname, rconf->if_name);
                             return true;
                         }
                     }
                 }
             }
-            free(buf);
+            FREE(buf);
         }
     }
 
@@ -1088,7 +1090,7 @@ wm2_rconf_lookup_sta(struct schema_Wifi_VIF_State *vstate,
             for (i = 0; i < rstate->vif_states_len; i++)
                 if (!strcmp(rstate->vif_states[i].uuid, vstates[n]._uuid.uuid))
                     memcpy(vstate, &vstates[n], sizeof(*vstate));
-    free(vstates);
+    FREE(vstates);
     return strlen(vstate->if_name) > 0;
 }
 
@@ -1383,6 +1385,7 @@ wm2_vstate_security_fixup(const struct schema_Wifi_VIF_Config *vconf,
     }
     else {
         SCHEMA_UNSET_MAP(vstate->security);
+        SCHEMA_UNSET_FIELD(vstate->ft_psk);
     }
 }
 
@@ -1593,8 +1596,7 @@ wm2_op_clients(const struct schema_Wifi_Associated_Clients *clients,
         return;
     if (!ovsdb_table_select_one_where(&table_Wifi_VIF_State, where, &vstate))
         return;
-    if (WARN_ON(!(ovs_clients = calloc(vstate.associated_clients_len, sizeof(*ovs_clients)))))
-        return;
+    ovs_clients = CALLOC(vstate.associated_clients_len, sizeof(*ovs_clients));
 
     for (i = 0; i < vstate.associated_clients_len; i++) {
         if (WARN_ON(!(where = ovsdb_where_uuid("_uuid", vstate.associated_clients[i].uuid))))
@@ -1632,7 +1634,7 @@ wm2_op_clients(const struct schema_Wifi_Associated_Clients *clients,
     }
 
 free:
-    free(ovs_clients);
+    FREE(ovs_clients);
 }
 
 static void
@@ -1709,7 +1711,7 @@ wm2_radio_config_bump(void)
             LOGI("%s: bumping", rconf->if_name);
             wm2_rconf_recalc(rconf->if_name, true);
         }
-        free(buf);
+        FREE(buf);
     }
 
     if ((buf = ovsdb_table_select_where(&table_Wifi_VIF_Config, NULL, &n))) {
@@ -1718,7 +1720,7 @@ wm2_radio_config_bump(void)
             LOGI("%s: bumping", vconf->if_name);
             wm2_vconf_recalc(vconf->if_name, true);
         }
-        free(buf);
+        FREE(buf);
     }
 }
 
@@ -1780,7 +1782,7 @@ wm2_radio_onboard_vifs(char *buf, size_t len)
         if (!strcmp(vconf->mode, SCHEMA_CONSTS_VIF_MODE_STA))
             csnprintf(&buf, &len, "%s ", vconf->if_name);
     }
-    free(vconfs);
+    FREE(vconfs);
 
     return n_ap == 0 && n_parent == 0 && n_sta > 0;
 }

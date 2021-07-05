@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb_update.h"
 #include "ovsdb_sync.h"
 #include "ovsdb_table.h"
+#include "memutil.h"
 
 #include "mdns_plugin.h"
 
@@ -135,9 +136,9 @@ mdnsd_free_service(struct mdnsd_service *service)
 
     ds_tree_remove(services, service);
     free_str_tree(service->txt);
-    free(service->name);
-    free(service->type);
-    free(service);
+    FREE(service->name);
+    FREE(service->type);
+    FREE(service);
     return;
 }
 
@@ -168,8 +169,7 @@ struct mdnsd_service
 {
     struct mdnsd_service *service;
 
-    service = calloc(1, sizeof(struct mdnsd_service));
-    if (!service) return NULL;
+    service = CALLOC(1, sizeof(struct mdnsd_service));
 
     service->name = strdup(conf->name);
     if (!service->name) goto err_free_service;
@@ -191,10 +191,10 @@ struct mdnsd_service
     return service;
 
 err_free_name:
-    free(service->name);
+    FREE(service->name);
 
 err_free_service:
-    free(service);
+    FREE(service);
     return NULL;
 }
 

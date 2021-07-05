@@ -32,7 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "qm_conn.h"
 #include "mdns_records.h"
-
+#include "memutil.h"
 
 /*****************************************************************************
  * Observation Point(Node Info)
@@ -56,12 +56,7 @@ mdns_records_set_node_info(node_info_t *node)
     bool                                                ret;
 
     /* Allocate the protobuf structure */
-    pb = calloc(1, sizeof(Interfaces__MdnsRecordsTelemetry__ObservationPoint));
-    if (!pb)
-    {
-        LOGE("%s: Observation point protobuf struct allocation failed", __func__);
-        return NULL;
-    }
+    pb = CALLOC(1, sizeof(Interfaces__MdnsRecordsTelemetry__ObservationPoint));
 
     /* Initialize the protobuf structure */
     interfaces__mdns_records_telemetry__observation_point__init(pb);
@@ -76,10 +71,10 @@ mdns_records_set_node_info(node_info_t *node)
     return pb;
 
 err_free_node_id:
-    free(pb->node_id);
+    FREE(pb->node_id);
 
 err_free_pb:
-    free(pb);
+    FREE(pb);
 
     return NULL;
 }
@@ -97,10 +92,10 @@ mdns_records_free_pb_op(Interfaces__MdnsRecordsTelemetry__ObservationPoint *pb)
 {
     if (!pb) return;
 
-    free(pb->node_id);
-    free(pb->location_id);
+    FREE(pb->node_id);
+    FREE(pb->location_id);
 
-    free(pb);
+    FREE(pb);
 
     return;
 }
@@ -127,8 +122,7 @@ mdns_records_serialize_node_info(node_info_t *node)
     if (!node) return NULL;
 
     /* Allocate serialization output container */
-    serialized = calloc(1, sizeof(packed_buffer_t));
-    if (!serialized) return NULL;
+    serialized = CALLOC(1, sizeof(packed_buffer_t));
 
     /* Allocate and set observation point protobuf */
     pb = mdns_records_set_node_info(node);
@@ -139,8 +133,7 @@ mdns_records_serialize_node_info(node_info_t *node)
     if (len == 0) goto err_free_pb;
 
     /* Allocate space for the serialized buffer */
-    buf = malloc(len);
-    if (!buf) goto err_free_pb;
+    buf = MALLOC(len);
 
     /* Serialize protobuf */
     serialized->len = interfaces__mdns_records_telemetry__observation_point__pack(pb, buf);
@@ -155,7 +148,7 @@ err_free_pb:
     mdns_records_free_pb_op(pb);
 
 err_free_serialized:
-    free(serialized);
+    FREE(serialized);
 
     return NULL;
 }
@@ -186,12 +179,7 @@ mdns_records_set_pb_window(observation_window_t *window)
     if ((window->started_at == 0) || (window->ended_at == 0)) return NULL;
 
     /* Allocate protobuf */
-    pb = calloc(1, sizeof(Interfaces__MdnsRecordsTelemetry__ObservationWindow));
-    if (!pb)
-    {
-        LOGE("%s: observation window allocation failed", __func__);
-        return NULL;
-    }
+    pb = CALLOC(1, sizeof(Interfaces__MdnsRecordsTelemetry__ObservationWindow));
 
     /* Initialize the observation window */
     interfaces__mdns_records_telemetry__observation_window__init(pb);
@@ -219,7 +207,7 @@ mdns_records_free_pb_window(Interfaces__MdnsRecordsTelemetry__ObservationWindow 
 {
     if (!pb) return;
 
-    free(pb);
+    FREE(pb);
 }
 
 /**
@@ -244,8 +232,7 @@ mdns_records_serialize_window(observation_window_t *window)
     if (!window) return NULL;
 
     /* Allocate serialization output container */
-    serialized = calloc(1, sizeof(packed_buffer_t));
-    if (!serialized) return NULL;
+    serialized = CALLOC(1, sizeof(packed_buffer_t));
 
     /* Allocate and set the protobuf */
     pb = mdns_records_set_pb_window(window);
@@ -256,8 +243,7 @@ mdns_records_serialize_window(observation_window_t *window)
     if (len == 0) goto err_free_pb;
 
     /* Allocate space for the serialized buffer */
-    buf = malloc(len);
-    if (!buf) goto err_free_pb;
+    buf = MALLOC(len);
 
     /* Serialized protobuf */
     serialized->len = interfaces__mdns_records_telemetry__observation_window__pack(pb, buf);
@@ -273,7 +259,7 @@ err_free_pb:
     mdns_records_free_pb_window(pb);
 
 err_free_serialized:
-    free(serialized);
+    FREE(serialized);
 
     return NULL;
 }
@@ -303,12 +289,7 @@ mdns_records_set_pb_record(mdns_records_t *rec)
     if (!rec) return NULL;
 
     /* Allocate the protobuf structure */
-    pb = calloc(1, sizeof(Interfaces__MdnsRecordsTelemetry__MdnsRecord));
-    if (!pb)
-    {
-        LOGE("%s: mdns record allocation failed", __func__);
-        return NULL;
-    }
+    pb = CALLOC(1, sizeof(Interfaces__MdnsRecordsTelemetry__MdnsRecord));
 
     /* Initialize the protobuf structure */
     interfaces__mdns_records_telemetry__mdns_record__init(pb);
@@ -376,8 +357,7 @@ mdns_records_set_pb_record(mdns_records_t *rec)
         {
             if (!res->rdlength)     break;
 
-            pb->res_desc.data = malloc(res->rdlength);
-            if (!pb->res_desc.data)  goto err_free_owner_name;
+            pb->res_desc.data = MALLOC(res->rdlength);
 
             memcpy(pb->res_desc.data, res->rdata, res->rdlength);
             pb->res_desc.len = res->rdlength;
@@ -422,13 +402,13 @@ mdns_records_set_pb_record(mdns_records_t *rec)
     return pb;
 
 err_free_domain_name:
-    free(pb->domain_name);
+    FREE(pb->domain_name);
 
 err_free_owner_name:
-    free(pb->owner_name);
+    FREE(pb->owner_name);
 
 err_free_pb:
-    free(pb);
+    FREE(pb);
 
     return NULL;
 }
@@ -446,13 +426,13 @@ mdns_records_free_pb_record(Interfaces__MdnsRecordsTelemetry__MdnsRecord *pb)
 {
     if (!pb) return;
 
-    free(pb->owner_name);
+    FREE(pb->owner_name);
 
-    if (pb->domain_name)    free(pb->domain_name);
-    if (pb->res_desc.data)  free(pb->res_desc.data);
-    if (pb->ip)             free(pb->ip);
+    if (pb->domain_name)    FREE(pb->domain_name);
+    if (pb->res_desc.data)  FREE(pb->res_desc.data);
+    if (pb->ip)             FREE(pb->ip);
 
-    free(pb);
+    FREE(pb);
 }
 
 /**
@@ -477,8 +457,7 @@ mdns_records_serialize_record(mdns_records_t *rec)
     if (!rec) return NULL;
 
     /* Allocate serialization output container */
-    serialized = calloc(1, sizeof(packed_buffer_t));
-    if (!serialized) return NULL;
+    serialized = CALLOC(1, sizeof(packed_buffer_t));
 
     /* Allocate and set the mdns record container */
     pb = mdns_records_set_pb_record(rec);
@@ -489,8 +468,7 @@ mdns_records_serialize_record(mdns_records_t *rec)
     if (len == 0) goto err_free_pb;
 
     /* Allocate space for the serialized buffer */
-    buf = malloc(len);
-    if (!buf) goto err_free_pb;
+    buf = MALLOC(len);
 
     /* Serialize protobuf */
     serialized->len = interfaces__mdns_records_telemetry__mdns_record__pack(pb, buf);
@@ -506,7 +484,7 @@ err_free_pb:
     mdns_records_free_pb_record(pb);
 
 err_free_serialized:
-    free(serialized);
+    FREE(serialized);
 
     return NULL;
 }
@@ -534,12 +512,7 @@ mdns_records_set_pb_mdns_records(mdns_client_t *client)
     if (client->num_records == 0) return NULL;
 
     /* Allocate the mdns records table */
-    records_pb_tbl = calloc(client->num_records, sizeof(Interfaces__MdnsRecordsTelemetry__MdnsRecord *));
-    if (!records_pb_tbl)
-    {
-        LOGE("%s: records_pb_tbl allocation failed", __func__);
-        return NULL;
-    }
+    records_pb_tbl = CALLOC(client->num_records, sizeof(Interfaces__MdnsRecordsTelemetry__MdnsRecord *));
 
     for ( rec = ds_dlist_ifirst(&rec_iter, records_list);
           rec != NULL;
@@ -559,7 +532,7 @@ err_free_pb_records:
         mdns_records_free_pb_record(records_pb_tbl[i]);
     }
 
-    free(records_pb_tbl);
+    FREE(records_pb_tbl);
 
     return NULL;
 }
@@ -589,12 +562,7 @@ mdns_records_set_pb_client(mdns_client_t *client)
     if (!client) return NULL;
 
     /* Allocate protobuf */
-    pb = calloc(1, sizeof(Interfaces__MdnsRecordsTelemetry__MdnsClient));
-    if (!pb)
-    {
-        LOGE("%s: client allocation failed", __func__);
-        return NULL;
-    }
+    pb = CALLOC(1, sizeof(Interfaces__MdnsRecordsTelemetry__MdnsClient));
 
     /* Initialize the client */
     interfaces__mdns_records_telemetry__mdns_client__init(pb);
@@ -617,13 +585,13 @@ mdns_records_set_pb_client(mdns_client_t *client)
     return pb;
 
 err_free_ip:
-    free(pb->ip);
+    FREE(pb->ip);
 
 err_free_mac:
-    free(pb->mac);
+    FREE(pb->mac);
 
 err_free_pb:
-    free(pb);
+    FREE(pb);
 
     return NULL;
 }
@@ -648,11 +616,11 @@ mdns_records_free_pb_client(Interfaces__MdnsRecordsTelemetry__MdnsClient *pb)
         mdns_records_free_pb_record(pb->mdns_records[i]);
     }
 
-    free(pb->mdns_records);
-    free(pb->mac);
-    free(pb->ip);
+    FREE(pb->mdns_records);
+    FREE(pb->mac);
+    FREE(pb->ip);
 
-    free(pb);
+    FREE(pb);
 
     return;
 }
@@ -679,8 +647,7 @@ mdns_records_serialize_client(mdns_client_t *client)
     if (!client) return NULL;
 
     /* Allocate serialization output container */
-    serialized = calloc(1, sizeof(packed_buffer_t));
-    if (!serialized) return NULL;
+    serialized = CALLOC(1, sizeof(packed_buffer_t));
 
     /* Allocate and set the client protobuf */
     pb = mdns_records_set_pb_client(client);
@@ -691,8 +658,7 @@ mdns_records_serialize_client(mdns_client_t *client)
     if (len == 0) goto err_free_pb;
 
     /* Allocate space for the serialized buffer */
-    buf = malloc(len);
-    if (!buf) goto err_free_pb;
+    buf = MALLOC(len);
 
     /* Serialize protobuf */
     serialized->len = interfaces__mdns_records_telemetry__mdns_client__pack(pb, buf);
@@ -708,7 +674,7 @@ err_free_pb:
     mdns_records_free_pb_client(pb);
 
 err_free_serialized:
-    free(serialized);
+    FREE(serialized);
 
     return NULL;
 }
@@ -737,12 +703,7 @@ mdns_records_set_pb_clients(mdns_records_report_data_t *report)
     num_clients = mdns_records_get_num_clients(clients);
     if (num_clients == 0) return NULL;
 
-    clients_pb_tbl = calloc(num_clients, sizeof(Interfaces__MdnsRecordsTelemetry__MdnsClient *));
-    if (!clients_pb_tbl)
-    {
-        LOGE("%s: clients_pb_tbl allocation failed", __func__);
-        return NULL;
-    }
+    clients_pb_tbl = CALLOC(num_clients, sizeof(Interfaces__MdnsRecordsTelemetry__MdnsClient *));
 
     ds_tree_foreach(clients, client)
     {
@@ -760,7 +721,7 @@ err_free_pb_clients:
         mdns_records_free_pb_client(clients_pb_tbl[i]);
     }
 
-    free(clients_pb_tbl);
+    FREE(clients_pb_tbl);
 
     return NULL;
 }
@@ -785,12 +746,7 @@ mdns_records_set_pb_report(mdns_records_report_data_t *report)
 {
     Interfaces__MdnsRecordsTelemetry__MdnsRecordsReport *pb = NULL;
 
-    pb = calloc(1, sizeof(Interfaces__MdnsRecordsTelemetry__MdnsRecordsReport));
-    if (!pb)
-    {
-        LOGE("%s: Interfaces__MdnsRecordsTelemetry__MdnsRecordsReport alloc failled", __func__);
-        return NULL;
-    }
+    pb = CALLOC(1, sizeof(Interfaces__MdnsRecordsTelemetry__MdnsRecordsReport));
 
     /* Initialize protobuf */
     interfaces__mdns_records_telemetry__mdns_records_report__init(pb);
@@ -831,7 +787,7 @@ err_free_pb_op:
     mdns_records_free_pb_op(pb->observation_point);
 
 err_free_pb_report:
-    free(pb);
+    FREE(pb);
 
     return NULL;
 }
@@ -859,8 +815,8 @@ mdns_records_free_pb_report(Interfaces__MdnsRecordsTelemetry__MdnsRecordsReport 
         mdns_records_free_pb_client(pb->clients[i]);
     }
 
-    free(pb->clients);
-    free(pb);
+    FREE(pb->clients);
+    FREE(pb);
 
     return;
 }
@@ -895,12 +851,7 @@ mdns_records_serialize_report(mdns_records_report_data_t *report)
     }
 
     /* Allocate serialization output structure */
-    serialized = calloc(1, sizeof(packed_buffer_t));
-    if (!serialized)
-    {
-        LOGE("%s: packed buffer memory allocation failed", __func__);
-        return NULL;
-    }
+    serialized = CALLOC(1, sizeof(packed_buffer_t));
 
     /* Allocate and set the MdnsRecordsReport protobuf */
     pb = mdns_records_set_pb_report(report);
@@ -919,12 +870,7 @@ mdns_records_serialize_report(mdns_records_report_data_t *report)
     }
 
     /* Allocate space for the serialized buffer */
-    buf = malloc(len);
-    if (!buf)
-    {
-        LOGE("%s: failed to allocate serialized buf", __func__);
-        goto err_free_pb;
-    }
+    buf = MALLOC(len);
 
     serialized->len = interfaces__mdns_records_telemetry__mdns_records_report__pack(pb, buf);
     serialized->buf = buf;
@@ -935,10 +881,10 @@ mdns_records_serialize_report(mdns_records_report_data_t *report)
     return serialized;
 
 err_free_pb:
-    free(pb);
+    FREE(pb);
 
 err_free_serialized:
-    free(serialized);
+    FREE(serialized);
 
     return NULL;
 }
@@ -957,9 +903,9 @@ mdns_records_free_packed_buffer(packed_buffer_t *pb)
 {
     if (!pb) return;
 
-    if (pb->buf) free(pb->buf);
+    if (pb->buf) FREE(pb->buf);
 
-    free(pb);
+    FREE(pb);
 }
 
 /**

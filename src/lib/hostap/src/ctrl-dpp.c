@@ -36,13 +36,113 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /* other */
 #include <ev.h>
+#include <wpa_ctrl.h>
 
 /* opensync */
 #include <util.h>
 #include <schema.h>
+#include <target.h>
 #include <opensync-ctrl.h>
 #include <opensync-wpas.h>
 #include <opensync-hapd.h>
+
+#include "memutil.h"
+
+#define MODULE_ID LOG_MODULE_ID_CTRL
+
+#define EV(x) strchomp(strdupa(x), " ")
+
+#ifndef DPP_CLI_UNSUPPORTED
+#define DPP_CLI_UNSUPPORTED "not supported"
+#endif
+#ifndef DPP_EVENT_CHIRP_RX
+#define DPP_EVENT_CHIRP_RX DPP_CLI_UNSUPPORTED
+#endif
+#ifndef DPP_EVENT_AUTH_SUCCESS
+#define DPP_EVENT_AUTH_SUCCESS DPP_CLI_UNSUPPORTED
+#endif
+#ifndef DPP_EVENT_CONFOBJ_SSID
+#define DPP_EVENT_CONFOBJ_SSID DPP_CLI_UNSUPPORTED
+#endif
+#ifndef DPP_EVENT_CONNECTOR
+#define DPP_EVENT_CONNECTOR DPP_CLI_UNSUPPORTED
+#endif
+#ifndef DPP_EVENT_C_SIGN_KEY
+#define DPP_EVENT_C_SIGN_KEY DPP_CLI_UNSUPPORTED
+#endif
+#ifndef DPP_EVENT_NET_ACCESS_KEY
+#define DPP_EVENT_NET_ACCESS_KEY DPP_CLI_UNSUPPORTED
+#endif
+#ifndef DPP_EVENT_CONF_REQ_RX
+#define DPP_EVENT_CONF_REQ_RX DPP_CLI_UNSUPPORTED
+#endif
+#ifndef DPP_EVENT_CONF_RECEIVED
+#define DPP_EVENT_CONF_RECEIVED DPP_CLI_UNSUPPORTED
+#endif
+#ifndef DPP_EVENT_REQ_RX
+#define DPP_EVENT_REQ_RX DPP_CLI_UNSUPPORTED
+#endif
+#ifndef DPP_EVENT_CONF_SENT
+#define DPP_EVENT_CONF_SENT DPP_CLI_UNSUPPORTED
+#endif
+
+struct ctrl_dpp_bi {
+    struct ctrl_dpp_bi *next;
+    int peer;
+    int own;
+    char uuid[36 + 1];
+};
+
+static struct ctrl_dpp_bi *g_ctrl_dpp_bi;
+
+static struct ctrl_dpp_bi *
+ctrl_dpp_bi_lookup(int peer, int own)
+{
+    struct ctrl_dpp_bi *i;
+    if (peer == -1 && own == -1)
+        return NULL;
+    for (i = g_ctrl_dpp_bi; i; i = i->next)
+        if ((peer == -1 || peer == i->peer) &&
+            (own == -1 || own == i->own))
+            return i;
+    return NULL;
+}
+
+static void
+ctrl_dpp_bi_set(int peer, int own, const char *uuid)
+{
+    struct ctrl_dpp_bi *bi = ctrl_dpp_bi_lookup(peer, own);
+    LOGD("bi cache: peer=%d own=%d uuid=%s bi=%p", peer, own, uuid, bi);
+    if (!bi) {
+        bi = MALLOC(sizeof(*bi));
+        bi->peer = peer;
+        bi->own = own;
+        bi->next = g_ctrl_dpp_bi;
+        g_ctrl_dpp_bi = bi;
+        STRSCPY_WARN(bi->uuid, uuid);
+    }
+    WARN_ON(strcmp(bi->uuid, uuid));
+}
+
+static const char *
+ctrl_dpp_bi_get_uuid(int peer, int own)
+{
+    struct ctrl_dpp_bi *bi = ctrl_dpp_bi_lookup(peer, own);
+    return bi ? bi->uuid : NULL;
+}
+
+static void
+ctrl_dpp_bi_flush(void)
+{
+    struct ctrl_dpp_bi *next;
+    struct ctrl_dpp_bi *i;
+    LOGD("bi cache: flush");
+    for (i = g_ctrl_dpp_bi; i; i = next) {
+        next = i->next;
+        FREE(i);
+    }
+    g_ctrl_dpp_bi = NULL;
+}
 
 static const char *
 ctrl_dpp_conf(const char *schema)
@@ -204,6 +304,16 @@ ctrl_dpp_chirp(struct ctrl *ctrl,
     return ctrl_request_ok(ctrl, cmd) ? 0 : -1;
 }
 
+static bool
+ctrl_dpp_conf_has_ifname(struct ctrl *ctrl, const struct schema_DPP_Config *config)
+{
+    int i;
+    for (i = 0; i < config->ifnames_len; i++)
+        if (!strcmp(ctrl->bss, config->ifnames[i]))
+            return true;
+    return false;
+}
+
 static int
 ctrl_dpp_config_each(struct ctrl *ctrl, void *ptr)
 {
@@ -219,12 +329,14 @@ ctrl_dpp_config_each(struct ctrl *ctrl, void *ptr)
     own_bi_idx = ctrl_dpp_set_own_bi(ctrl, config);
     peer_uri_idx = ctrl_dpp_set_peer_uri(ctrl, config);
     conf_idx = ctrl_dpp_set_configurator(ctrl, config, own_bi_idx, peer_uri_idx);
+    ctrl_dpp_bi_set(peer_uri_idx, own_bi_idx, config->_uuid.uuid);
 
     if (!strcmp(config->auth, SCHEMA_CONSTS_DPP_INIT_ON_ANNOUNCE))
         err |= WARN_ON(ctrl_dpp_listen(ctrl, config));
 
     if (!strcmp(config->auth, SCHEMA_CONSTS_DPP_INIT_NOW))
-        err |= WARN_ON(ctrl_dpp_auth_init(ctrl, config, conf_idx, own_bi_idx, peer_uri_idx));
+        if (ctrl_dpp_conf_has_ifname(ctrl, config))
+            err |= WARN_ON(ctrl_dpp_auth_init(ctrl, config, conf_idx, own_bi_idx, peer_uri_idx));
 
     if (!strcmp(config->auth, SCHEMA_CONSTS_DPP_RESPOND_ONLY))
         err |= WARN_ON(ctrl_dpp_listen(ctrl, config));
@@ -250,26 +362,228 @@ ctrl_dpp_clear_each(struct ctrl *ctrl, void *ptr)
     return err;
 }
 
+void
+ctrl_dpp_init(struct ctrl_dpp *dpp)
+{
+    memset(dpp, 0, sizeof(*dpp));
+    STRSCPY_WARN(dpp->conf_tx_pkhash, "0000000000000000000000000000000000000000000000000000000000000000");
+}
+
+static enum target_dpp_conf_akm
+ctrl_dpp_akm_str2enum(const char *s)
+{
+    if (!strcmp(s, "dpp")) return TARGET_DPP_CONF_DPP;
+    if (!strcmp(s, "psk")) return TARGET_DPP_CONF_PSK;
+    if (!strcmp(s, "sae")) return TARGET_DPP_CONF_SAE;
+    if (!strcmp(s, "psk+sae")) return TARGET_DPP_CONF_PSK_SAE;
+    if (!strcmp(s, "dpp+sae")) return TARGET_DPP_CONF_DPP_SAE;
+    if (!strcmp(s, "dpp+psk+sae")) return TARGET_DPP_CONF_DPP_PSK_SAE;
+    if (!strcmp(s, "dot1x")) return TARGET_DPP_CONF_UNKNOWN;
+    if (!strcmp(s, "??")) return TARGET_DPP_CONF_UNKNOWN;
+    return TARGET_DPP_CONF_UNKNOWN;
+}
+
+static bool
+ctrl_dpp_conf_rx_ready(struct ctrl *ctrl)
+{
+    struct ctrl_dpp *dpp = &ctrl->dpp;
+    return strlen(dpp->conf_rx_ssid_hex) > 1 &&
+           strlen(dpp->conf_rx_connector) > 1 &&
+           strlen(dpp->conf_rx_netaccesskey_hex) > 1 &&
+           strlen(dpp->conf_rx_csign_hex) > 1;
+}
+
+static void
+ctrl_dpp_conf_rx_cb(struct ctrl *ctrl)
+{
+    struct ctrl_dpp *dpp = &ctrl->dpp;
+    struct target_dpp_conf_network arg = {
+        .ifname = ctrl->bss,
+        .ssid_hex = dpp->conf_rx_ssid_hex,
+        .dpp_connector = dpp->conf_rx_connector,
+        .dpp_netaccesskey_hex = dpp->conf_rx_netaccesskey_hex,
+        .dpp_csign_hex = dpp->conf_rx_csign_hex,
+        .akm = ctrl_dpp_akm_str2enum(dpp->conf_rx_akm),
+        .psk_hex = dpp->conf_rx_psk_hex,
+        .config_uuid = dpp->conf_uuid,
+    };
+
+    if (!ctrl->dpp_conf_received)
+        return;
+
+    if (!ctrl_dpp_conf_rx_ready(ctrl))
+        return;
+
+    ctrl->dpp_conf_received(ctrl, &arg);
+    ctrl_dpp_init(dpp);
+}
+
+int
+ctrl_dpp_cb(struct ctrl *ctrl, int level, const char *buf, size_t len)
+{
+    struct ctrl_dpp *dpp = &ctrl->dpp;
+    char *args = strdupa(buf);
+    char *kv;
+    const char *sha256_hash = NULL;
+    const char *mac = NULL;
+    const char *uuid;
+    const char *k;
+    const char *v;
+    const char *event = strsep(&args, " ") ?: "_nope_";
+    int bi_peer = -1;
+    int bi_own = -1;
+
+    if (!strcmp(event, EV(DPP_EVENT_CHIRP_RX))) {
+        while ((kv = strsep(&args, " "))) {
+            if ((k = strsep(&kv, "=")) && (v = strsep(&kv, ""))) {
+                if (!strcmp(k, "src"))
+                    mac = v;
+                if (!strcmp(k, "hash"))
+                    sha256_hash = v;
+            }
+        }
+
+        LOGI("%s: dpp: chirp received: sta=%s hash=%s", ctrl->bss, mac, sha256_hash ?: "");
+        if (ctrl->dpp_chirp_received) {
+            const struct target_dpp_chirp_obj chirp = {
+                .ifname = ctrl->bss,
+                .mac_addr = mac,
+                .sha256_hex = sha256_hash
+            };
+            ctrl->dpp_chirp_received(ctrl, &chirp);
+        }
+        return 0;
+    }
+
+    if (!strcmp(event, EV(DPP_EVENT_AUTH_SUCCESS))) {
+        while ((kv = strsep(&args, " "))) {
+            if ((k = strsep(&kv, "=")) && (v = strsep(&kv, ""))) {
+                if (!strcmp(k, "own"))
+                    bi_own = atoi(v);
+                if (!strcmp(k, "peer"))
+                    bi_peer = atoi(v);
+                if (!strcmp(k, "pkhash"))
+                    sha256_hash = v;
+            }
+        }
+
+        if (sha256_hash)
+            STRSCPY_WARN(dpp->conf_tx_pkhash, sha256_hash);
+
+        uuid = ctrl_dpp_bi_get_uuid(bi_peer, bi_own);
+        if (uuid)
+            STRSCPY_WARN(dpp->conf_uuid, uuid);
+
+        LOGI("%s: dpp: auth success received: peer=%d own=%d uuid=%s pkhash=%s",
+             ctrl->bss, bi_peer, bi_own, uuid ?: "", sha256_hash);
+        dpp->auth_success = 1;
+        return 0;
+    }
+
+    if (!strcmp(event, EV(DPP_EVENT_CONF_RECEIVED))) {
+        LOGI("%s: dpp: conf received", ctrl->bss);
+        if (dpp->auth_success && ctrl->dpp_conf_received)
+            dpp->auth_success = 0;
+        return 0;
+    }
+
+    if (!strcmp(event, EV(DPP_EVENT_CONFOBJ_SSID))) {
+        if (ascii2hex(args, dpp->conf_rx_ssid_hex, sizeof(dpp->conf_rx_ssid_hex))) {
+            LOGI("%s: dpp: conf received: ssid=%s hex=%s", ctrl->bss, args, dpp->conf_rx_ssid_hex);
+            ctrl_dpp_conf_rx_cb(ctrl);
+        }
+        return 0;
+    }
+
+    if (!strcmp(event, EV(DPP_EVENT_CONFOBJ_PASS))) {
+        LOGI("%s: dpp: conf received: pass=%s", ctrl->bss, args);
+        STRSCPY_WARN(dpp->conf_rx_psk_hex, args);
+        ctrl_dpp_conf_rx_cb(ctrl);
+        return 0;
+    }
+
+    if (!strcmp(event, EV(DPP_EVENT_CONFOBJ_AKM))) {
+        LOGI("%s: dpp: conf recieved: akm=%s", ctrl->bss, args);
+        STRSCPY_WARN(dpp->conf_rx_akm, args);
+        ctrl_dpp_conf_rx_cb(ctrl);
+        return 0;
+    }
+
+    if (!strcmp(event, EV(DPP_EVENT_CONNECTOR))) {
+        LOGI("%s: dpp: conf received: connector=%s", ctrl->bss, args);
+        STRSCPY_WARN(dpp->conf_rx_connector, args);
+        ctrl_dpp_conf_rx_cb(ctrl);
+        return 0;
+    }
+
+    if (!strcmp(event, EV(DPP_EVENT_C_SIGN_KEY))) {
+        LOGI("%s: dpp: conf recieved: csignkey=%s", ctrl->bss, args);
+        STRSCPY_WARN(dpp->conf_rx_csign_hex, args);
+        ctrl_dpp_conf_rx_cb(ctrl);
+        return 0;
+    }
+
+    if (!strcmp(event, EV(DPP_EVENT_NET_ACCESS_KEY))) {
+        LOGI("%s: dpp: conf recieved: netaccesskey=%s", ctrl->bss, args);
+        STRSCPY_WARN(dpp->conf_rx_netaccesskey_hex, args);
+        ctrl_dpp_conf_rx_cb(ctrl);
+        return 0;
+    }
+
+    if (!strcmp(event, EV(DPP_EVENT_CONF_REQ_RX))) {
+        LOGI("%s: dpp conf request recieved", ctrl->bss);
+        if (!dpp->conf_req_rx) {
+            dpp->conf_req_rx = 1;
+            while ((kv = strsep(&args, " "))) {
+                if ((k = strsep(&kv, "=")) && (v = strsep(&kv, ""))) {
+                    if (!strcmp(k, "src"))
+                        mac = v;
+                }
+            }
+            STRSCPY_WARN(dpp->conf_tx_sta, mac);
+            LOGI("%s: dpp conf request recieved from: %s", ctrl->bss, dpp->conf_tx_sta);
+        }
+        else {
+            LOGW("%s: dpp conf already in progress, igorning", ctrl->bss);
+        }
+        return 0;
+    }
+
+    if (!strcmp(event, EV(DPP_EVENT_CONF_SENT))) {
+        LOGI("%s: dpp conf sent event received", ctrl->bss);
+        if (ctrl->dpp_conf_sent && dpp->conf_req_rx) {
+            const struct target_dpp_conf_enrollee enrollee = {
+                .ifname = ctrl->bss,
+                .sta_mac_addr = dpp->conf_tx_sta,
+                .sta_netaccesskey_sha256_hex = dpp->conf_tx_pkhash,
+                .config_uuid = dpp->conf_uuid,
+            };
+            ctrl->dpp_conf_sent(ctrl, &enrollee);
+            LOGI("%s: dpp conf sent to: %s", ctrl->bss, dpp->conf_tx_sta);
+            ctrl_dpp_init(dpp);
+        }
+        return 0;
+    }
+
+    return -1;
+}
+
 bool
-ctrl_dpp_config(const struct schema_DPP_Config *config)
+ctrl_dpp_config(const struct schema_DPP_Config **config)
 {
     int err = 0;
 
     wpas_each(ctrl_dpp_clear_each, NULL);
     hapd_each(ctrl_dpp_clear_each, NULL);
+    ctrl_dpp_bi_flush();
 
-    /* TODO: This might actually require a dpp_listen even
-     * without any config because we want to receive chirps
-     * *always*, and for that to work hw rx filters need to
-     * be adjusted. As such dpp_listen would be relative
-     * nice way to relay that to the driver through
-     * hostap/wpas.
-     */
-    if (!config)
+    if (!*config)
         return true;
 
-    err |= wpas_each(ctrl_dpp_config_each, (void *)config);
-    err |= hapd_each(ctrl_dpp_config_each, (void *)config);
+    for (; *config; config++) {
+        err |= wpas_each(ctrl_dpp_config_each, (void *)*config);
+        err |= hapd_each(ctrl_dpp_config_each, (void *)*config);
+    }
 
     if (err) {
         wpas_each(ctrl_dpp_clear_each, NULL);

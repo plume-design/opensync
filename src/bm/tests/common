@@ -1,0 +1,153 @@
+#!/bin/sh -axe
+
+. ./common_vars
+
+rm -f "logs/$self/ret"
+
+step() {
+	name=${self}_$(echo "$*" | tr ' ' '_' | tr -dc a-z0-9_)
+
+	if "$@"
+	then
+		echo "$name PASS" | tee -a "logs/$self/ret"
+	else
+		echo "$name FAIL" | tee -a "logs/$self/ret"
+		return 1
+	fi
+}
+
+diff_vars() {
+	a=$(mktemp /tmp/bm.test.fifo.XXXXX -u)
+	mkfifo $a || return 1
+
+	b=$(mktemp /tmp/bm.test.fifo.XXXXX -u)
+	mkfifo $b || return 1
+
+	echo "$1" > $a &
+	echo "$2" > $b &
+
+	diff -y $a $b || return 1
+}
+
+prepare_dut() {
+	eval dut=\$$1
+
+	$dut <<. || return $?
+		ovsh d Wifi_VIF_Config
+		ovsh d Wifi_VIF_State
+		ovsh d Wifi_Radio_Config
+		ovsh d Band_Steering_Clients
+		ovsh d Band_Steering_Config
+
+		vif1=\$(ovsh -Ur i Wifi_VIF_Config \
+			if_name:=wlan0 \
+			vif_radio_idx:=0 \
+			mode:=ap
+		)
+		vif2=\$(ovsh -Ur i Wifi_VIF_Config \
+			if_name:=wlan1 \
+			vif_radio_idx:=1 \
+			mode:=ap
+		)
+		
+		ovsh i Wifi_VIF_State \
+			if_name:=wlan0 \
+			mac:=10:00:00:00:00:00 \
+			channel:=6
+		
+		ovsh i Wifi_VIF_State \
+			if_name:=wlan1 \
+			mac:=10:00:00:00:00:01 \
+			channel:=36
+		
+		ovsh i Wifi_Radio_Config \
+			enabled:=true \
+			if_name:=phy0 \
+			ht_mode:=HT20 \
+			hw_mode:=11n \
+			freq_band:=2.4G \
+			channel:=6 \
+			"vif_configs::[\"set\",[[\"uuid\",\"\$vif1\"]]]"
+		
+		ovsh i Wifi_Radio_Config \
+			enabled:=true \
+			if_name:=phy1 \
+			ht_mode:=HT80 \
+			hw_mode:=11ax \
+			freq_band:=5GL \
+			channel:=36 \
+			"vif_configs::[\"set\",[[\"uuid\",\"\$vif2\"]]]"
+
+		ovsh i Band_Steering_Config \
+			chan_util_avg_count:=0  \
+			chan_util_check_sec:=0  \
+			chan_util_hwm:=80  \
+			chan_util_lwm:=50  \
+			dbg_2g_raw_chan_util:=false  \
+			dbg_2g_raw_rssi:=false  \
+			dbg_5g_raw_chan_util:=false  \
+			dbg_5g_raw_rssi:=false  \
+			debug_level:=0  \
+			def_rssi_inact_xing:=0  \
+			def_rssi_low_xing:=0  \
+			def_rssi_xing:=0  \
+			gw_only:=false  \
+			'if_name_2g:=["set", []]'  \
+			'if_name_5g:=["set", []]'  \
+			'ifnames::["map",[["wlan0", "2.4G"],["wlan1", "5GL bs_allow"]]]' \
+			inact_check_sec:=10  \
+			inact_tmout_sec_normal:=60  \
+			inact_tmout_sec_overload:=30  \
+			kick_debounce_period:=0  \
+			kick_debounce_thresh:=0  \
+			stats_report_interval:=1  \
+			success_threshold_secs:=15
+.
+
+	diff_vars "$ref_iface_wlan0" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_iface_wlan1" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+}
+
+add_sta() {
+	eval dut=\$$1
+
+	$dut <<. || return $?
+		ovsh i Band_Steering_Clients \
+			backoff_exp_base:=3  \
+			backoff_secs:=120  \
+			hwm:=35  \
+			kick_debounce_period:=60  \
+			kick_reason:=1  \
+			kick_type:=btm_deauth  \
+			kick_upon_idle:=true  \
+			lwm:=20  \
+			mac:=20:00:00:00:00:00  \
+			max_rejects:=7  \
+			pre_assoc_auth_block:=true  \
+			pref_5g:=always  \
+			reject_detection:=probe_all  \
+			rejects_tmout_secs:=120  \
+			sc_kick_debounce_period:=0  \
+			sc_kick_reason:=0  \
+			steer_during_backoff:=true  \
+			'steering_btm_params:=["map",[["abridged","1"],["bss_term","0"],["btm_max_retries","3"],["btm_retry_interval","10"],["disassoc_imminent","0"],["pref","1"],["valid_interval","255"]]]'  \
+			steering_fail_cnt:=0  \
+			steering_kick_backoff_time:=1800  \
+			steering_kick_cnt:=0  \
+			steering_kick_guard_time:=10  \
+			steering_success_cnt:=0  \
+			'sticky_btm_params:=["map",[["abridged","1"],["bss_term","0"],["btm_max_retries","3"],["btm_retry_interval","10"],["disassoc_imminent","0"],["inc_neigh","true"],["pref","1"],["valid_interval","255"]]]'  \
+			sticky_kick_backoff_time:=0  \
+			sticky_kick_cnt:=0  \
+			sticky_kick_debounce_period:=60  \
+			sticky_kick_guard_time:=0  \
+			sticky_kick_reason:=1  \
+			sticky_kick_type:=btm_deauth
+.
+
+	diff_vars "$ref_set_neighbor_wlan0_0" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan0_1" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan1_0" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_sta_24" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_sta_5" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+}

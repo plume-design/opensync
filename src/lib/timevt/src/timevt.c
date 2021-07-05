@@ -24,23 +24,28 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include <stdio.h>
+#include <unistd.h> // getpid()
+
+#include "log.h"
 
 #include "timevt_client.h"
 
 static te_client_handle g_client = NULL;
 
-bool te_client_init(const char *procname, const char *server_addr)
+bool te_client_init(const char *name)
 {
     if (NULL == g_client)
     {
-        g_client = tecli_open(server_addr, procname);
+        char clname[512];
+        if (name == NULL)
+        {
+            (void)snprintf(clname, sizeof(clname), "%s[%d]", log_get_name(), getpid());
+            name = clname;
+        }
+        g_client = tecli_open(name, NULL);
     }
-    if (g_client != NULL)
-    {
-        tecli_enable(g_client, server_addr != NULL);
-        return true;
-    }
-    return false;
+    return g_client != NULL;
 }
 
 void te_client_deinit(void)
@@ -52,13 +57,13 @@ void te_client_deinit(void)
     }
 }
 
-bool te_client_log(const char *cat, const char *source, const char *step, const char *fmt, ... )
+bool te_client_log(const char *cat, const char *subject, const char *step, const char *fmt, ... )
 {
     if (g_client == NULL) return false;
 
     va_list args;
     va_start(args, fmt);
-    bool rv = tecli_log_event(g_client, cat, source, step, fmt, args);
+    bool rv = tecli_log_event(g_client, cat, subject, step, fmt, args);
     va_end(args);
     return rv;
 }

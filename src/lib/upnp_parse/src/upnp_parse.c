@@ -39,6 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb_cache.h"
 #include "ovsdb_table.h"
 #include "schema.h"
+#include "memutil.h"
 
 static struct upnp_cache cache_mgr =
 {
@@ -165,8 +166,7 @@ upnp_get_device(struct upnp_session *u_session)
     eth = upnp_get_eth(u_session);
     if (eth == NULL) return NULL;
 
-    udev = calloc(1, sizeof(*udev));
-    if (udev == NULL) return NULL;
+    udev = CALLOC(1, sizeof(*udev));
 
     memcpy(&udev->device_mac, eth->srcmac, sizeof(os_macaddr_t));
     tree = &udev->urls;
@@ -206,8 +206,7 @@ upnp_get_url(struct upnp_session *u_session)
     url = ds_tree_find(tree, parser->location);
     if (url != NULL) return url;
 
-    url = calloc(sizeof(*url), 1);
-    if (url == NULL) return NULL;
+    url = CALLOC(sizeof(*url), 1);
 
     STRSCPY(url->url, parser->location);
     url->udev = udev;
@@ -460,8 +459,7 @@ upnp_lookup_session(struct fsm_session *session)
     if (u_session != NULL) return u_session;
 
     LOGD("%s: Adding new session %s", __func__, session->name);
-    u_session = calloc(1, sizeof(struct upnp_session));
-    if (u_session == NULL) return NULL;
+    u_session = CALLOC(1, sizeof(struct upnp_session));
 
     ds_tree_insert(sessions, u_session, session);
 
@@ -488,10 +486,10 @@ upnp_free_device(struct upnp_device *udev)
         remove = url;
         url = ds_tree_next(tree, url);
         ds_tree_remove(tree, remove);
-        free(remove);
+        FREE(remove);
     }
 
-    free(udev);
+    FREE(udev);
 }
 
 
@@ -517,7 +515,7 @@ upnp_free_session(struct upnp_session *u_session)
         upnp_free_device(remove);
     }
 
-    free(u_session);
+    FREE(u_session);
 }
 
 

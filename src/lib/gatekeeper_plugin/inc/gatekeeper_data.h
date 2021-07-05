@@ -29,6 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "fsm.h"
 #include "fsm_policy.h"
+#include "gatekeeper.h"
 #include "gatekeeper_msg.h"
 
 struct gk_request_data
@@ -41,7 +42,8 @@ struct gk_request_data
 
 struct gk_packed_buffer *
 gatekeeper_get_req(struct fsm_session *session,
-                   struct fsm_policy_req *req);
+                   struct fsm_policy_req *req,
+                   struct gk_mcurl_data *mcurl_data);
 
 /**
  * @brief validates a FQDN/SNI/Hostname string
@@ -60,5 +62,9 @@ gatekeeper_validate_fqdn(struct fsm_session *session, char *site);
  */
 char *
 gatekeeper_req_type_to_str(int req_type);
+
+bool
+gk_process_using_multi_curl(struct fsm_policy_req *policy_req,
+                            struct fsm_policy_reply *policy_reply);
 
 #endif /* GATEKEEPER_MSG_DATA_INCLUDED */

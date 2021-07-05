@@ -27,6 +27,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "const.h"
 #include "ds_tree.h"
 #include "ovsdb_table.h"
+#include "memutil.h"
 
 #include "nm2.h"
 
@@ -105,7 +106,7 @@ void callback_Connection_Manager_Uplink(
             }
 
             ds_tree_remove(&nm2_cmu_uplink_list, cu);
-            free(cu);
+            FREE(cu);
             return;
 
         default:
@@ -115,7 +116,7 @@ void callback_Connection_Manager_Uplink(
 
     if (cu == NULL)
     {
-        cu = calloc(1, sizeof(struct nm2_cmu_uplink));
+        cu = CALLOC(1, sizeof(struct nm2_cmu_uplink));
         STRSCPY(cu->cu_ifname, new->if_name);
         ds_tree_insert(&nm2_cmu_uplink_list, cu, cu->cu_ifname);
     }

@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "json_util.h"
 #include "os_backtrace.h"
 #include "ds_tree.h"
+#include "memutil.h"
 
 #if defined(JSON_MEMDBG)
 
@@ -123,7 +124,7 @@ void *json_memdbg_malloc(size_t sz)
     json_memdbg_total += sz;
     json_memdbg_count++;
 
-    md = malloc(sz + sizeof(struct json_memdbg));
+    md = MALLOC(sz + sizeof(struct json_memdbg));
     if (!md)
     {
         LOG(ERR, "MEMDBG: Failed to allocate %zu bytes", (sz + sizeof(struct json_memdbg)));
@@ -168,7 +169,7 @@ void json_memdbg_free(void *p)
     json_memdbg_ptr_del(md);
 #endif
 
-    free(md);
+    FREE(md);
 }
 
 void json_memdbg_get_stats(size_t *total, size_t *count)

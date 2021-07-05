@@ -26,6 +26,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "osa_assert.h"
 #include "qosm_internal.h"
+#include "memutil.h"
 
 static void callback_Interface_QoS(
         ovsdb_update_monitor_t *mon,
@@ -59,8 +60,7 @@ struct qosm_interface_qos *qosm_interface_qos_get(ovs_uuid_t *uuid)
     }
 
     /* Allocate a new empty structure */
-    qos = calloc(1, sizeof(struct qosm_interface_qos));
-    ASSERT(qos != NULL, "Error allocating qosm_interface_qos");
+    qos = CALLOC(1, sizeof(struct qosm_interface_qos));
 
     qos->qos_uuid = *uuid;
     reflink_init(&qos->qos_reflink, "Interface_QoS");
@@ -86,7 +86,7 @@ void qosm_interface_qos_queue_free(struct qosm_interface_qos *qos)
                 &qos->qos_interface_queue[qi]->que_reflink);
     }
 
-    free(qos->qos_interface_queue);
+    FREE(qos->qos_interface_queue);
     qos->qos_interface_queue_len = 0;
     qos->qos_interface_queue = NULL;
 }
@@ -106,7 +106,7 @@ void qosm_interface_qos_reflink_fn(reflink_t *ref, reflink_t *sender)
 
     ds_tree_remove(&qosm_interface_qos_list, qos);
 
-    free(qos);
+    FREE(qos);
 }
 
 void qosm_interface_qos_queue_reflink_fn(reflink_t *ref, reflink_t *sender)
@@ -162,8 +162,7 @@ void callback_Interface_QoS(
 
     qosm_interface_qos_queue_free(qos);
 
-    qos->qos_interface_queue = calloc(new->queues_len, sizeof(struct qosm_interface_queue *));
-    ASSERT(qos->qos_interface_queue != NULL, "Error allocating qos_interface_queue");
+    qos->qos_interface_queue = CALLOC(new->queues_len, sizeof(struct qosm_interface_queue *));
 
     /* Rebuild the queues array */
     for (qi = 0; qi < new->queues_len; qi++)

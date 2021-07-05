@@ -41,6 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define VIF_TYPE_NAME    "vif"
 #define ETH_TYPE_NAME    "eth"
 #define VLAN_TYPE_NAME   "vlan"
+#define LTE_TYPE_NAME    "lte"
 #define PPPOE_TYPE_NAME  "pppoe"
 #define GRE_TYPE_NAME    "gre"
 #define BRIDGE_TYPE_NAME "bridge"

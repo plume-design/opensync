@@ -31,6 +31,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include "ovsdb_table.h"
 #include "schema.h"
+#include "memutil.h"
 
 #include "wano.h"
 #include "wano_internal.h"
@@ -99,7 +100,7 @@ void wano_inet_state_reflink_fn(reflink_t *obj, reflink_t *sender)
     LOG(DEBUG, "inet_state: Reached 0 count: %s", is->is_ifname);
     ds_tree_remove(&wano_inet_state_list, is);
     reflink_fini(&is->is_reflink);
-    free(is);
+    FREE(is);
 }
 
 struct wano_inet_state *wano_inet_state_get(const char *ifname)
@@ -112,7 +113,7 @@ struct wano_inet_state *wano_inet_state_get(const char *ifname)
         return is;
     }
 
-    is = calloc(1, sizeof(struct wano_inet_state));
+    is = CALLOC(1, sizeof(struct wano_inet_state));
     STRSCPY(is->is_ifname, ifname);
 
     reflink_init(&is->is_reflink, "wano_inet_state");

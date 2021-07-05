@@ -35,6 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "const.h"
 #include "log.h"
 #include "util.h"
+#include "memutil.h"
 #include "execsh.h"
 #include "inet_igmp.h"
 
@@ -49,6 +50,12 @@ struct __inet_igmp
 static char set_igmp_snooping[] = _S(ovs-vsctl set Bridge "$1" mcast_snooping_enable="$2");
 static char set_igmp_age[] = _S(ovs-vsctl set Bridge "$1" other_config:mcast-snooping-aging-time="$2");
 static char set_igmp_tsize[] = _S(ovs-vsctl set Bridge "$1" other_config:mcast-snooping-table-size="$2");
+#if defined(CONFIG_MANAGER_NM_MCAST_EXCEPTIONS)
+static char set_igmp_exceptions[] = _S(ovs-vsctl set Bridge "$1" other_config:mcast-ipv4-exceptions="239.255.255.250/32");
+static char set_mld_exceptions[] = _S(ovs-vsctl set Bridge "$1" other_config:mcast-ipv6-exceptions="ff02::/16,ff05::c/128");
+static char remove_igmp_exceptions[] = _S(ovs-vsctl remove Bridge "$1" other_config mcast-ipv4-exceptions);
+static char remove_mld_exceptions[] = _S(ovs-vsctl remove Bridge "$1" other_config mcast-ipv6-exceptions);
+#endif /* defined(CONFIG_MANAGER_NM_MCAST_EXCEPTIONS) */
 
 bool inet_config_igmp_snooping(inet_igmp_t *self)
 {
@@ -94,6 +101,50 @@ bool inet_config_igmp_snooping(inet_igmp_t *self)
             return false;
         }
     }
+
+#if defined(CONFIG_MANAGER_NM_MCAST_EXCEPTIONS)
+
+    /* Multicast exceptions */
+    if (self->igmp)
+    {
+        status = execsh_log(LOG_SEVERITY_DEBUG, set_igmp_exceptions,
+                            self->igmp_ifname);
+        if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
+        {
+            LOG(ERR, "Error setting multicast exceptions, command failed for %s",
+                    self->igmp_ifname);
+            return false;
+        }
+
+        status = execsh_log(LOG_SEVERITY_DEBUG, set_mld_exceptions,
+                            self->igmp_ifname);
+        if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
+        {
+            LOG(ERR, "Error setting multicast exceptions, command failed for %s",
+                    self->igmp_ifname);
+            return false;
+        }
+    } else {
+        status = execsh_log(LOG_SEVERITY_DEBUG, remove_igmp_exceptions,
+                            self->igmp_ifname);
+        if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
+        {
+            LOG(ERR, "Error removing multicast exceptions, command failed for %s",
+                    self->igmp_ifname);
+            return false;
+        }
+
+        status = execsh_log(LOG_SEVERITY_DEBUG, remove_mld_exceptions,
+                            self->igmp_ifname);
+        if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
+        {
+            LOG(ERR, "Error removing multicast exceptions, command failed for %s",
+                    self->igmp_ifname);
+            return false;
+        }
+    }
+
+#endif /* defined(CONFIG_MANAGER_NM_MCAST_EXCEPTIONS) */
 
     return true;
 }
@@ -159,12 +210,11 @@ bool inet_igmp_get(inet_igmp_t *self, bool *igmp_enabled)
  */
 inet_igmp_t *inet_igmp_new(const char *ifname)
 {
-    inet_igmp_t *self = malloc(sizeof(inet_igmp_t));
-    if (self == NULL) return NULL;
+    inet_igmp_t *self = MALLOC(sizeof(inet_igmp_t));
 
     if (!inet_igmp_init(self, ifname))
     {
-        free(self);
+        FREE(self);
         return NULL;
     }
 
@@ -183,7 +233,7 @@ bool inet_igmp_del(inet_igmp_t *self)
         retval = inet_igmp_stop(self);
     }
 
-    free(self);
+    FREE(self);
 
     return retval;
 }

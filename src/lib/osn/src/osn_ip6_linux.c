@@ -26,6 +26,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "log.h"
 #include "lnx_ip6.h"
+#include "memutil.h"
 
 struct osn_ip6
 {
@@ -38,7 +39,7 @@ static void osn_ip6_status_lnx(lnx_ip6_t *lnx, struct osn_ip6_status *status);
 
 osn_ip6_t *osn_ip6_new(const char *ifname)
 {
-    osn_ip6_t *self = calloc(1, sizeof(*self));
+    osn_ip6_t *self = CALLOC(1, sizeof(*self));
 
     if (!lnx_ip6_init(&self->ip6_lnx, ifname))
     {
@@ -50,7 +51,7 @@ osn_ip6_t *osn_ip6_new(const char *ifname)
     return self;
 
 error:
-    if (self != NULL) free(self);
+    if (self != NULL) FREE(self);
     return NULL;
 }
 
@@ -65,7 +66,7 @@ bool osn_ip6_del(osn_ip6_t *self)
         retval = false;
     }
 
-    free(self);
+    FREE(self);
 
     return retval;
 }

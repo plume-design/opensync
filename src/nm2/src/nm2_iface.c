@@ -27,11 +27,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "osa_assert.h"
 #include "log.h"
 #include "util.h"
+#include "memutil.h"
 #include "build_version.h"
 #include "inet.h"
 #include "evx.h"
 #include "schema.h"
 #include "osp_unit.h"
+#include "target.h"
 
 #include "nm2.h"
 #include "nm2_iface.h"
@@ -167,7 +169,7 @@ struct nm2_iface *nm2_iface_new(const char *_ifname, enum nm2_iftype if_type)
 
     struct nm2_iface *piface;
 
-    piface = calloc(1, sizeof(struct nm2_iface));
+    piface = CALLOC(1, sizeof(struct nm2_iface));
     piface->if_type = if_type;
 
     if (strscpy(piface->if_name, ifname, sizeof(piface->if_name)) < 0)
@@ -175,12 +177,12 @@ struct nm2_iface *nm2_iface_new(const char *_ifname, enum nm2_iftype if_type)
         LOG(ERR, "nm2_iface_new: %s (%s): Error creating interface, name too long.",
                 ifname,
                 nm2_iftype_tostr(if_type));
-        free(piface);
+        FREE(piface);
         return NULL;
     }
 
     /* Dynamically initialize the DHCP client options */
-    dhcp_options_t *opts = calloc(1, sizeof(*opts) + sizeof(dhcp_default_req_options));
+    dhcp_options_t *opts = CALLOC(1, sizeof(*opts) + sizeof(dhcp_default_req_options));
     memcpy(opts->option_id, dhcp_default_req_options, sizeof(dhcp_default_req_options));
     opts->length = ARRAY_SIZE(dhcp_default_req_options);
     piface->if_dhcp_req_options = opts;
@@ -195,7 +197,7 @@ struct nm2_iface *nm2_iface_new(const char *_ifname, enum nm2_iftype if_type)
                 ifname,
                 nm2_iftype_tostr(if_type));
 
-        free(piface);
+        FREE(piface);
         return NULL;
     }
 
@@ -224,6 +226,9 @@ bool nm2_iface_del(struct nm2_iface *piface)
         ds_dlist_remove(&nm2_iface_commit_list, piface);
     }
 
+    /* Unflag interface as IPTV, if flagged */
+    target_set_mcast_iptv(piface->if_name, false);
+
     /* Destroy the inet object */
     if (!inet_del(piface->if_inet))
     {
@@ -235,12 +240,12 @@ bool nm2_iface_del(struct nm2_iface *piface)
 
     /* Destroy DHCP options list */
     ev_debounce_stop(EV_DEFAULT, &piface->if_opt_debounce);
-    free(piface->if_dhcp_req_options);
+    FREE(piface->if_dhcp_req_options);
 
     /* Remove interface from global interface list */
     ds_tree_remove(&nm2_iface_list, piface);
 
-    free(piface);
+    FREE(piface);
     return retval;
 }
 

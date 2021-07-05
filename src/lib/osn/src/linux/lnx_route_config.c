@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "osn_inet.h"
 #include "os.h"
+#include "memutil.h"
 
 struct osn_route4_cfg
 {
@@ -39,17 +40,14 @@ struct osn_route4_cfg
 
 osn_route4_cfg_t *osn_route4_cfg_new(const char *if_name)
 {
-    struct osn_route4_cfg *self = malloc(sizeof(*self) + strlen(if_name) + 1/*null*/);
-    if (self != NULL)
-    {
-        strcpy(self->if_name, if_name);
-    }
+    struct osn_route4_cfg *self = MALLOC(sizeof(*self) + strlen(if_name) + 1/*null*/);
+    strcpy(self->if_name, if_name);
     return self;
 }
 
 bool osn_route4_cfg_del(osn_route4_cfg_t *self)
 {
-    free(self);
+    FREE(self);
     return true;
 }
 

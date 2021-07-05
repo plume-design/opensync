@@ -27,9 +27,21 @@ TARGET ?= $(DEFAULT_TARGET)
 
 # append list of all supported targets
 OS_TARGETS += native
+OS_TARGETS += bsal_sim
 OS_TARGETS += alltargets
 
 ifeq ($(TARGET),native)
+ARCH = native
+ARCH_MK = build/$(ARCH).mk
+KCONFIG_TARGET := kconfig/targets/config_$(TARGET)
+CPU_TYPE    := $(shell uname -m)
+DIST_NAME   := $(shell if [ -e /etc/os-release ]; then . /etc/os-release; echo $$ID$$VERSION_ID; fi)
+ifneq ($(DIST_NAME),)
+WORKDIR  = work/$(TARGET)-$(DIST_NAME)-$(CPU_TYPE)
+endif
+endif
+
+ifeq ($(TARGET),bsal_sim)
 ARCH = native
 ARCH_MK = build/$(ARCH).mk
 KCONFIG_TARGET := kconfig/targets/config_$(TARGET)

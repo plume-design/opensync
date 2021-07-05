@@ -37,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "const.h"
 #include "log.h"
 #include "util.h"
+#include "memutil.h"
 
 #include "procfs.h"
 
@@ -127,15 +128,15 @@ void procfs_entry_fini(procfs_entry_t *self)
 void procfs_entry_del(procfs_entry_t *self)
 {
     procfs_entry_fini(self);
-    free(self);
+    FREE(self);
 }
 
 void __procfs_entry_free_cmdline(procfs_entry_t *self)
 {
-    if (self->pe_cmdline != NULL) free(self->pe_cmdline);
+    if (self->pe_cmdline != NULL) FREE(self->pe_cmdline);
     self->pe_cmdline = NULL;
 
-    if (self->pe_cmdbuf != NULL) free(self->pe_cmdbuf);
+    if (self->pe_cmdbuf != NULL) FREE(self->pe_cmdbuf);
     self->pe_cmdbuf = NULL;
 }
 
@@ -143,12 +144,11 @@ procfs_entry_t *procfs_entry_getpid(pid_t pid)
 {
     procfs_entry_t *pe;
 
-    pe = malloc(sizeof(*pe));
-    if (pe == NULL) return NULL;
+    pe = MALLOC(sizeof(*pe));
 
     if (!procfs_entry_init(pe))
     {
-        free(pe);
+        FREE(pe);
         return NULL;
     }
 
@@ -315,14 +315,14 @@ bool __procfs_entry_read_cmdline(procfs_entry_t *self, const char *path)
     }
 
     nalloc = 256;
-    self->pe_cmdbuf = malloc(nalloc);
+    self->pe_cmdbuf = MALLOC(nalloc);
     nrd = 0;
     do
     {
         if (nalloc <= nrd)
         {
             nalloc <<= 1;
-            self->pe_cmdbuf = realloc(self->pe_cmdbuf, nalloc);
+            self->pe_cmdbuf = REALLOC(self->pe_cmdbuf, nalloc);
         }
 
         nrd += fread(self->pe_cmdbuf + nrd, 1, nalloc - nrd, f);
@@ -336,7 +336,7 @@ bool __procfs_entry_read_cmdline(procfs_entry_t *self, const char *path)
 
     /* Parse cmdlines */
     nalloc = 16;
-    self->pe_cmdline = malloc(nalloc * sizeof(char *));
+    self->pe_cmdline = MALLOC(nalloc * sizeof(char *));
     argc = 0;
     parg = self->pe_cmdbuf;
 
@@ -346,7 +346,7 @@ bool __procfs_entry_read_cmdline(procfs_entry_t *self, const char *path)
         {
             nalloc <<= 1;
             /* Make sure to allocate room for the terminating NULL */
-            self->pe_cmdline = realloc(self->pe_cmdline, nalloc * sizeof(char *));
+            self->pe_cmdline = REALLOC(self->pe_cmdline, nalloc * sizeof(char *));
         }
 
         self->pe_cmdline[argc++] = parg;

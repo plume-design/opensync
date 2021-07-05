@@ -26,10 +26,12 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="wm2/$(basename "$0")"
 manager_setup_file="wm2/wm2_setup.sh"
@@ -60,16 +62,17 @@ Script usage example:
     ./${tc_name} wifi1 home-ap-l50 2 FUTssid '["map",[["encryption","WPA-PSK"],["key","FUTpsk"],["mode","2"]]]' 36 HT20 11ac ap
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 
 NARGS=9
 [ $# -ne ${NARGS} ] && usage && raise "Requires '${NARGS}' input argument(s)" -l "${tc_name}" -arg
@@ -111,16 +114,16 @@ create_radio_vif_interface \
     -vif_if_name "$vif_if_name" \
     -vif_radio_idx "$vif_radio_idx" \
     -timeout ${channel_change_timeout} &&
-        log "$tc_name: create_radio_vif_interface {$if_name, $ht_mode} - Success" ||
-        raise "create_radio_vif_interface {$if_name, $ht_mode} - Failed" -l "$tc_name" -tc
+        log "$tc_name: create_radio_vif_interface {$if_name, $ht_mode} - Interface created - Success" ||
+        raise "FAIL: create_radio_vif_interface {$if_name, $ht_mode} - Failed to create interface" -l "$tc_name" -ds
 
 wait_ovsdb_entry Wifi_Radio_State -w if_name "$if_name" -is ht_mode "$ht_mode" &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Radio_Config reflected to Wifi_Radio_State - ht_mode $ht_mode" ||
-    raise "wait_ovsdb_entry - Failed to reflect Wifi_Radio_Config to Wifi_Radio_State - ht_mode $ht_mode" -l "$tc_name" -tc
+    log "$tc_name: wait_ovsdb_entry - Wifi_Radio_Config reflected to Wifi_Radio_State::ht_mode is $ht_mode - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Radio_Config to Wifi_Radio_State::ht_mode is not $ht_mode" -l "$tc_name" -tc
 
-log "$tc_name: LEVEL 2 - checking ht_mode at OS level"
+log "$tc_name: Checking ht_mode at system level - LEVEL2"
 check_ht_mode_at_os_level "$ht_mode" "$vif_if_name" "$channel" &&
-    log "$tc_name: check_ht_mode_at_os_level - ht_mode set at OS level - ht_mode $ht_mode" ||
-    raise "check_ht_mode_at_os_level - ht_mode not set at OS level - ht_mode $ht_mode" -l "$tc_name" -tc
+    log "$tc_name: LEVEL2 - check_ht_mode_at_os_level - ht_mode $ht_mode set at system level - Success" ||
+    raise "FAIL: LEVEL2 - check_ht_mode_at_os_level - ht_mode  $ht_mode not set at system level" -l "$tc_name" -tc
 
 pass

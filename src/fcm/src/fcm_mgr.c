@@ -46,6 +46,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fcm.h"         /* our api */
 #include "fcm_priv.h"
 #include "fcm_mgr.h"
+#include "fcm_filter.h"
+#include "memutil.h"
 
 static fcm_mgr_t fcm_mgr;
 
@@ -253,7 +255,10 @@ static void collector_evinit(fcm_collector_t *collector,
 void init_collector_plugin(fcm_collector_t *collector)
 {
     void (*plugin_init)(fcm_collect_plugin_t *collector_plugin);
+    struct fcm_filter_client *c_client = NULL;
+    struct fcm_filter_client *r_client = NULL;
     fcm_collect_conf_t *collect_conf = NULL;
+    struct fcm_session *session;
     fcm_mgr_t *mgr;
 
     mgr = fcm_get_mgr();
@@ -266,6 +271,47 @@ void init_collector_plugin(fcm_collector_t *collector)
     collector->plugin.get_mqtt_hdr_loc_id = fcm_get_mqtt_hdr_loc_id;
     collector->plugin.get_other_config = fcm_plugin_get_other_config;
     collector->plugin.name = collector->collect_conf.name;
+
+    session = CALLOC(1, sizeof(*session));
+    if (session == NULL) return;
+
+    /** collect client */
+    if (collector->plugin.filters.collect != NULL)
+    {
+        c_client = CALLOC(1, sizeof(*c_client));
+        if (c_client == NULL)
+        {
+            FREE(session);
+            return;
+        }
+
+        c_client->session = session;
+        c_client->name = STRDUP(collector->plugin.filters.collect);
+        fcm_filter_register_client(c_client);
+        collector->plugin.collect_client = c_client;
+    }
+
+    /** report client */
+    if (collector->plugin.filters.report != NULL)
+    {
+        r_client = CALLOC(1, sizeof(*r_client));
+        if (r_client == NULL)
+        {
+            fcm_filter_deregister_client(c_client);
+            FREE(c_client->name);
+            FREE(c_client);
+            FREE(session);
+            return;
+        }
+
+        r_client->session = session;
+        r_client->name = STRDUP(collector->plugin.filters.report);
+        fcm_filter_register_client(r_client);
+        collector->plugin.report_client = r_client;
+    }
+
+    collector->plugin.session = session;
+
     /* call the init function of plugin */
     plugin_init(&collector->plugin);
     fcm_reset_collect_interval(&collector->sample_timer,
@@ -347,12 +393,7 @@ static fcm_collector_t *lookup_collect_config(ds_tree_t *collect_tree,
     collector = ds_tree_find(collect_tree, name);
     if (collector) return collector;
 
-    collector = calloc(1, sizeof(*collector));
-    if (collector == NULL)
-    {
-        LOGE("Memory allocation failure\n");
-        return NULL;
-    }
+    collector = CALLOC(1, sizeof(*collector));
     STRSCPY(collector->collect_conf.name, name);
     ds_tree_insert(collect_tree, collector, collector->collect_conf.name);
     LOGD("%s: New collector plugin added %s", __func__, collector->collect_conf.name);
@@ -366,12 +407,7 @@ static fcm_report_conf_t *lookup_report_config(ds_tree_t *conf_tree, char *name)
     conf = fcm_get_report_config(name);
     if (conf) return conf;
 
-    conf = calloc(1, sizeof(*conf));
-    if (conf == NULL)
-    {
-        LOGE("Memory allocation failure\n");
-        return NULL;
-    }
+    conf = CALLOC(1, sizeof(*conf));
     STRSCPY(conf->name, name);
     ds_tree_insert(conf_tree, conf, conf->name);
     LOGD("%s: New report config added %s", __func__, conf->name);
@@ -500,7 +536,7 @@ void delete_report_config(struct schema_FCM_Report_Config *conf)
     report_conf_node = ds_tree_find(report_conf_tree, conf->name);
     if (report_conf_node == NULL) return;
     ds_tree_remove(report_conf_tree, report_conf_node);
-    free(report_conf_node);
+    FREE(report_conf_node);
 }
 
 bool init_collect_config(struct schema_FCM_Collector_Config *conf)
@@ -571,9 +607,12 @@ void update_collect_config(struct schema_FCM_Collector_Config *conf)
 
 void delete_collect_config(struct schema_FCM_Collector_Config *conf)
 {
-    fcm_mgr_t *mgr = NULL;
+    struct fcm_filter_client *c_client, *r_client;
     fcm_collector_t *collector = NULL;
     ds_tree_t *collect_tree = NULL;
+    struct fcm_session *session;
+    fcm_mgr_t *mgr = NULL;
+
 
     mgr = fcm_get_mgr();
     collect_tree = &mgr->collect_tree;
@@ -589,8 +628,28 @@ void delete_collect_config(struct schema_FCM_Collector_Config *conf)
         LOGD("%s: Plugin %s is closed\n", __func__, conf->name);
     }
     dlclose(collector->handle);
+
+    session = collector->plugin.session;
+    c_client = collector->plugin.collect_client;
+    if (c_client != NULL)
+    {
+        fcm_filter_deregister_client(c_client);
+        FREE(c_client->name);
+        FREE(c_client);
+    }
+
+    r_client = collector->plugin.report_client;
+    if (r_client != NULL)
+    {
+        fcm_filter_deregister_client(r_client);
+        FREE(r_client->name);
+        FREE(r_client);
+    }
+
+    FREE(session);
+
     ds_tree_remove(collect_tree, collector);
-    free(collector);
+    FREE(collector);
 }
 
 

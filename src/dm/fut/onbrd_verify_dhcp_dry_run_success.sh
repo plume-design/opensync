@@ -26,10 +26,12 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="onbrd/$(basename "$0")"
 manager_setup_file="onbrd/onbrd_setup.sh"
@@ -38,7 +40,8 @@ usage()
 cat << usage_string
 ${tc_name} [-h] arguments
 Description:
-    - Validate dhcp dry run
+    - Validate dhcp dry run was successful.
+    - Connection_Manager_Uplink::has_L3 is true indicating the OFFER message from DHCP server was received.
 Arguments:
     -h  show this help message
     \$1 (if_name) : Used to define WAN interface : (string)(required)
@@ -49,21 +52,25 @@ Script usage example:
    ./${tc_name} eth0
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 
 trap '
 fut_info_dump_line
 print_tables Connection_Manager_Uplink
 fut_info_dump_line
+interface_bring_up "$if_name" || true
+check_restore_management_access || true
+run_setup_if_crashed cm || true
 ' EXIT SIGINT SIGTERM
 
 check_kconfig_option "TARGET_CAP_EXTENDER" "y" ||
@@ -79,28 +86,30 @@ log "$tc_name: Checking if WANO is enabled, if yes, skip..."
 check_kconfig_option "CONFIG_MANAGER_WANO" "y" &&
     raise "WANO manager is enabled, skipping test!" -l "${tc_name}" -s
 
-update_ovsdb_entry Connection_Manager_Uplink -w if_name "$if_name" -u has_L2 false &&
-    log "$tc_name: update_ovsdb_entry - Connection_Manager_Uplink table updated - has_L2 false" ||
-    raise "update_ovsdb_entry - Failed to update WifConnection_Manager_Uplinki_Inet_Config - has_L2 false" -l "$tc_name" -tc
+# Toggling the uplink interface DOWN/UP
+log "$tc_name: Dropping interface $if_name"
+interface_bring_down "$if_name" &&
+    log "$tc_name: Interface $if_name is down - Success" ||
+    raise "FAIL: Could not bring down interface $if_name" -l "$tc_name" -ds
 
+log "$tc_name: Waiting for Connection_Manager_Uplink::has_L2 is false on $if_name"
 wait_ovsdb_entry Connection_Manager_Uplink -w if_name "$if_name" -is has_L2 false &&
-    log "$tc_name: wait_ovsdb_entry - Connection_Manager_Uplink - has_L2 is false" ||
-    raise "wait_ovsdb_entry - Failed to reflect has_L2 to Connection_Manager_Uplink has_L2 is not false" -l "$tc_name" -tc
+    log "$tc_name: wait_ovsdb_entry - Interface $if_name has_L2 is false - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Connection_Manager_Uplink::has_L2 is not false" -l "$tc_name" -tc
 
-wait_ovsdb_entry Connection_Manager_Uplink -w if_name "$if_name" -is has_L3 false &&
-    log "$tc_name: wait_ovsdb_entry - Connection_Manager_Uplink - has_L3 is false" ||
-    raise "wait_ovsdb_entry - Failed to reflect has_L3 to Connection_Manager_Uplink has_L3 is not false" -l "$tc_name" -tc
+log "$tc_name: Bringing up interface $if_name"
+interface_bring_up "$if_name" &&
+    log "$tc_name: Interface $if_name is up - Success" ||
+    raise "FAIL: Could not bring up interface $if_name" -l "$tc_name" -ds
 
-update_ovsdb_entry Connection_Manager_Uplink -w if_name "$if_name" -u has_L2 true &&
-    log "$tc_name: update_ovsdb_entry - Connection_Manager_Uplink table updated - has_L2 false" ||
-    raise "update_ovsdb_entry - Failed to update WifConnection_Manager_Uplinki_Inet_Config - has_L2 false" -l "$tc_name" -tc
-
+log "$tc_name: Waiting for Connection_Manager_Uplink::has_L2 is true on $if_name"
 wait_ovsdb_entry Connection_Manager_Uplink -w if_name "$if_name" -is has_L2 true &&
-    log "$tc_name: wait_ovsdb_entry - Connection_Manager_Uplink - has_L2 is true" ||
-    raise "wait_ovsdb_entry - Failed to reflect has_L2 to Connection_Manager_Uplink has_L2 is not true" -l "$tc_name" -tc
+    log "$tc_name: wait_ovsdb_entry - Connection_Manager_Uplink::has_L2 is 'true' - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Connection_Manager_Uplink::has_L2 is not 'true'" -l "$tc_name" -tc
 
+log "$tc_name: Waiting for Connection_Manager_Uplink::has_L3 is true on $if_name"
 wait_ovsdb_entry Connection_Manager_Uplink -w if_name "$if_name" -is has_L3 true &&
-    log "$tc_name: wait_ovsdb_entry - Connection_Manager_Uplink - has_L3 is true" ||
-    raise "wait_ovsdb_entry - Failed to reflect has_L3 to Connection_Manager_Uplink has_L3 is not true" -l "$tc_name" -tc
+    log "$tc_name: wait_ovsdb_entry - Connection_Manager_Uplink::has_L3 is 'true' - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Connection_Manager_Uplink::has_L3 is not 'true'" -l "$tc_name" -tc
 
 pass

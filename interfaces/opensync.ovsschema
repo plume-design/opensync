@@ -1,7 +1,7 @@
 {
   "name": "Open_vSwitch",
-  "version": "7.11.259",
-  "cksum": "3112869073 224400",
+  "version": "7.11.288",
+  "cksum": "2340255440 244890",
   "tables": {
     "AWLAN_Node": {
       "columns": {
@@ -308,6 +308,7 @@
                   "eth",
                   "vif",
                   "gre",
+                  "gre6",
                   "vlan",
                   "pppoe",
                   "softwds",
@@ -457,6 +458,7 @@
                   "eth",
                   "vif",
                   "gre",
+                  "gre6",
                   "pppoe",
                   "softwds",
                   "tap",
@@ -572,6 +574,62 @@
             "min": 0,
             "max": 1
           }
+        },
+        "eth_client": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "ipv4": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "ready",
+                  "active",
+                  "inactive",
+                  "blocked",
+                  "unblocking"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "ipv6": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "ready",
+                  "active",
+                  "inactive",
+                  "blocked",
+                  "unblocking"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "unblock_ts": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": 1
+          }
         }
       },
       "isRoot": true
@@ -596,6 +654,7 @@
                   "eth",
                   "vif",
                   "gre",
+                  "gre6",
                   "vlan",
                   "pppoe",
                   "softwds",
@@ -994,6 +1053,7 @@
                   "eth",
                   "vif",
                   "gre",
+                  "gre6",
                   "vlan",
                   "pppoe",
                   "softwds",
@@ -2333,7 +2393,9 @@
                   "wpa-psk",
                   "wpa2-psk",
                   "wpa2-eap",
-                  "sae"
+                  "sae",
+                  "ft-wpa2-psk",
+                  "ft-sae"
                 ]
               ]
             },
@@ -2427,6 +2489,37 @@
           "type": {
             "key": {
               "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "min_rssi": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": -127,
+              "maxInteger": 127
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "max_sta": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "passpoint_hessid": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 17,
+              "maxLength": 31
             },
             "min": 0,
             "max": 1
@@ -2811,7 +2904,9 @@
                   "wpa-psk",
                   "wpa2-psk",
                   "wpa2-eap",
-                  "sae"
+                  "sae",
+                  "ft-wpa2-psk",
+                  "ft-sae"
                 ]
               ]
             },
@@ -2888,6 +2983,26 @@
           "type": {
             "key": {
               "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "min_rssi": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": -127,
+              "maxInteger": 127
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "max_sta": {
+          "type": {
+            "key": {
+              "type": "integer"
             },
             "min": 0,
             "max": 1
@@ -5647,7 +5762,9 @@
                         "type": "string",
                         "minLength": 1,
                         "maxLength": 16
-                    }
+                    },
+                    "min": 0,
+                    "max": 1
                 }
             },
             "if_name_5g": {
@@ -5656,7 +5773,9 @@
                         "type": "string",
                         "minLength": 1,
                         "maxLength": 16
-                    }
+                    },
+                    "min": 0,
+                    "max": 1
                 }
             },
             "chan_util_check_sec": {
@@ -5824,6 +5943,14 @@
             },
             "rejects_tmout_secs": {
                 "type": "integer"
+            },
+            "pref_5g_pre_assoc_block_timeout_msecs": {
+                "type": {
+                    "key": {
+                        "type": "integer",
+                        "minInteger": 0
+                     }
+                }
             },
             "backoff_secs": {
                 "type": "integer"
@@ -6214,6 +6341,29 @@
                      },
                      "min": 0,
                      "max": 1
+                }
+            },
+            "pref_6g": {
+                "type": {
+                    "key": {
+                        "type": "string",
+                        "enum": [
+                            "set", [
+                                "never",
+                                "always"
+                            ]
+                        ]
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
+            "pref_6g_pre_assoc_block_timeout_msecs": {
+                "type": {
+                    "key": {
+                        "type": "integer",
+                        "minInteger": 0
+                     }
                 }
             }
         },
@@ -6795,6 +6945,33 @@
             "max": 1
           }
         },
+        "app_op": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "in",
+                  "out"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "apps": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "min": 0,
+            "max": "unlimited"
+          }
+        },
         "log": {
           "type": {
             "key": {
@@ -6822,7 +6999,9 @@
                   "allow",
                   "drop",
                   "update_tag",
-                  "gatekeeper"
+                  "gatekeeper",
+                  "flush",
+                  "flush_all"
                 ]
               ]
             },
@@ -8973,6 +9152,120 @@
     },
     "IGMP_Config": {
       "columns": {
+        "igmp_version": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "IGMPv1",
+                  "IGMPv2",
+                  "IGMPv3"
+                ]
+              ]
+            }
+          }
+        },
+        "snooping_enabled": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "snooping_bridge": {
+          "type": "string"
+        },
+        "static_mrouter_port": {
+          "type": "string"
+        },
+        "mcast_group_exceptions": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": 255
+          }
+        },
+        "unknown_mcast_group_behavior": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "FLOOD",
+                  "DROP"
+                ]
+              ]
+            }
+          }
+        },
+        "query_robustness_value": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 2,
+              "maxInteger": 10
+            }
+          }
+        },
+        "maximum_groups": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 2,
+              "maxInteger": 5000
+            }
+          }
+        },
+        "fast_leave_enable": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "proxy_enabled": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "proxy_upstream_if": {
+          "type": "string"
+        },
+        "proxy_dowstream_if": {
+          "type": "string"
+        },
+        "proxy_group_exceptions": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": 255
+          }
+        },
+        "proxy_allowed_subnets": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": 255
+          }
+        },
+        "querier_enabled": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
         "query_interval": {
           "type": {
             "key": {
@@ -9000,37 +9293,18 @@
             }
           }
         },
-        "query_robustness_value": {
+        "maximum_sources": {
+          "type": "integer"
+        },
+        "other_config": {
           "type": {
-            "key": {
-              "type": "integer",
-              "minInteger": 2,
-              "maxInteger": 10
-            }
-          }
-        },
-        "maximum_groups": {
-          "type": {
-            "key": {
-              "type": "integer",
-              "minInteger": 2,
-              "maxInteger": 5000
-            }
-          }
-        },
-        "maximum_sources":
-        {
-            "type": "integer"
-        },
-        "maximum_members":
-        {
-            "type": "integer"
-        },
-        "fast_leave_enable": {
-          "type": {
-            "key": {
-              "type": "boolean"
-            }
+            "key": "string",
+            "value": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "min": 0,
+            "max": 32
           }
         }
       },
@@ -9038,6 +9312,119 @@
     },
     "MLD_Config": {
       "columns": {
+        "mld_version": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "MLDv1",
+                  "MLDv2"
+                ]
+              ]
+            }
+          }
+        },
+        "snooping_enabled": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "snooping_bridge": {
+          "type": "string"
+        },
+        "static_mrouter_port": {
+          "type": "string"
+        },
+        "mcast_group_exceptions": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": 255
+          }
+        },
+        "unknown_mcast_group_behavior": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "FLOOD",
+                  "DROP"
+                ]
+              ]
+            }
+          }
+        },
+        "query_robustness_value": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 2,
+              "maxInteger": 10
+            }
+          }
+        },
+        "maximum_groups": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 2,
+              "maxInteger": 5000
+            }
+          }
+        },
+        "fast_leave_enable": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "proxy_enabled": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "proxy_upstream_if": {
+          "type": "string"
+        },
+        "proxy_dowstream_if": {
+          "type": "string"
+        },
+        "proxy_group_exceptions": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": 255
+          }
+        },
+        "proxy_allowed_subnets": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": 255
+          }
+        },
+        "querier_enabled": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
         "query_interval": {
           "type": {
             "key": {
@@ -9065,37 +9452,18 @@
             }
           }
         },
-        "query_robustness_value": {
+        "maximum_sources": {
+          "type": "integer"
+        },
+        "other_config": {
           "type": {
-            "key": {
-              "type": "integer",
-              "minInteger": 2,
-              "maxInteger": 10
-            }
-          }
-        },
-        "maximum_groups": {
-          "type": {
-            "key": {
-              "type": "integer",
-              "minInteger": 2,
-              "maxInteger": 5000
-            }
-          }
-        },
-        "maximum_sources":
-        {
-            "type": "integer"
-        },
-        "maximum_members":
-        {
-            "type": "integer"
-        },
-        "fast_leave_enable": {
-          "type": {
-            "key": {
-              "type": "boolean"
-            }
+            "key": "string",
+            "value": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "min": 0,
+            "max": 32
           }
         }
       },
@@ -9653,7 +10021,7 @@
                 ]
               ]
             },
-            "min": 1,
+            "min": 0,
             "max": 1
           }
         },
@@ -9662,8 +10030,28 @@
             "key": {
               "type": "string"
             },
-            "min": 1,
+            "min": 0,
             "max": 8
+          }
+        },
+        "config_uuid": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "DPP_Config",
+              "refType": "weak"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "renew": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
           }
         },
         "status": {
@@ -9844,6 +10232,166 @@
       },
       "isRoot": true
     },
+    "Public_Wifi_Config": {
+      "columns": {
+        "enabled": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "vlan_id": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 1,
+              "maxInteger": 4096
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "gre_endpoint": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 256
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "keepalive_interval": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 0,
+              "maxInteger": 1200
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "vif_ifnames": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 64
+            },
+            "min": 0,
+            "max": 8
+          }
+        },
+        "tunnel_ifname": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 64
+            },
+            "min": 0,
+            "max": 1
+          }
+        }
+      },
+      "isRoot": true,
+      "maxRows": 1
+    },
+    "Public_Wifi_State" : {
+      "columns": {
+        "gre_tunnel_status": {
+          "type": {
+            "key": {
+              "type" : "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "gre_tunnel_status_msg": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 256
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "gre_endpoint": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 256
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "vlan_id": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 1,
+              "maxInteger": 4096
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "keepalive_interval": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 1,
+              "maxInteger": 1200
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "enabled": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "vif_ifnames": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 64
+            },
+            "min": 0,
+            "max": 8
+          }
+        },
+        "tunnel_ifname": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 64
+            },
+            "min": 0,
+            "max": 1
+          }
+        }
+      },
+      "isRoot": true,
+      "maxRows": 1
+    },
     "Lte_Config": {
       "columns": {
         "if_name": {
@@ -9853,7 +10401,7 @@
             }
           }
         },
-        "lte_failover": {
+        "lte_failover_enable": {
           "type": {
             "key": {
               "type": "boolean"
@@ -9862,7 +10410,7 @@
             "max": 1
           }
         },
-        "enable": {
+        "manager_enable": {
           "type": {
             "key": {
               "type": "boolean"
@@ -9871,16 +10419,16 @@
             "max": 1
           }
         },
-        "v4_enable": {
+        "ipv4_enable": {
           "type": {
             "key": {
               "type": "boolean"
             },
-            "min": 1,
+            "min": 0,
             "max": 1
           }
         },
-        "v6_enable": {
+        "ipv6_enable": {
           "type": {
             "key": {
               "type": "boolean"
@@ -9898,35 +10446,12 @@
             "max": 1
           }
         },
-        "esim_download": {
+        "active_simcard_slot": {
           "type": {
             "key": {
-              "type": "string"
-            },
-            "min": 0,
-            "max": 1
-          }
-        },
-        "esim_active": {
-          "type": {
-            "key": {
-              "type": "string"
-            },
-            "min": 0,
-            "max": 1
-          }
-        },
-        "simcard_slot": {
-          "type": {
-            "key": {
-              "type": "string",
-              "enum": [
-                "set",
-                [
-                  "slot0",
-                  "slot1"
-                ]
-              ]
+              "type": "integer",
+              "minInteger": 0,
+              "maxInteger": 1
             },
             "min": 0,
             "max": 1
@@ -9937,8 +10462,28 @@
             "key": {
               "type": "boolean"
             },
-            "min": 1,
+            "min": 0,
             "max": 1
+          }
+        },
+        "report_interval": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 1,
+              "maxInteger": 86400
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "apn": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 255
+            }
           }
         }
       },
@@ -9953,15 +10498,105 @@
             }
           }
         },
-        "lte_config": {
+        "lte_failover_enable": {
           "type": {
             "key": {
-              "type": "uuid",
-              "refTable": "Lte_Config",
-              "refType": "weak"
+              "type": "boolean"
             },
             "min": 0,
             "max": 1
+          }
+        },
+        "manager_enable": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "ipv4_enable": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "ipv6_enable": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "force_use_lte": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "active_simcard_slot": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 0,
+              "maxInteger": 1
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "modem_enable": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "report_interval": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 1,
+              "maxInteger": 86400
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "apn": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 255
+            }
+          }
+        },
+        "modem_present": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "iccid": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 64
+            }
           }
         },
         "imei": {
@@ -9982,17 +10617,82 @@
             }
           }
         },
-        "net_info_state": {
+        "chip_serial": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 64
+            }
+          }
+        },
+        "active_sim_slot": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 64
+            }
+          }
+        },
+        "sim_status": {
           "type": {
             "key": {
               "type": "string",
               "enum": [
                 "set",
                 [
-                  "SEARCH",
-                  "LIMSRV",
-                  "NOCONN",
-                  "CONNECT"
+                  "Removed",
+                  "Inserted",
+                  "Unknown"
+                ]
+              ]
+            }
+          }
+        },
+        "service_provider_name": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 64
+            }
+          }
+        },
+        "mcc": {
+          "type": {
+            "key": {
+              "type": "integer"
+            }
+          }
+        },
+        "mnc": {
+          "type": {
+            "key": {
+              "type": "integer"
+            }
+          }
+        },
+        "tac": {
+          "type": {
+            "key": {
+              "type": "integer"
+            }
+          }
+        },
+        "lte_net_state": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "not_registered_not_searching",
+                  "registered_home_network",
+                  "not_registered_searching",
+                  "registration_denied",
+                  "unknown",
+                  "registered_roaming"
                 ]
               ]
             }
@@ -10003,17 +10703,6 @@
     },
     "TELOG_Config": {
       "columns": {
-          "cfg_name": {
-              "type": {
-                  "key": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 32
-                  },
-                  "min": 1,
-                  "max": 1
-              }
-          },
           "mqtt_topic": {
             "type": {
                 "key": {
@@ -10021,7 +10710,7 @@
                     "minLength": 1,
                     "maxLength": 256
                 },
-                "min": 1,
+                "min": 0,
                 "max": 1
             }
           },
@@ -10043,21 +10732,280 @@
                       "minInteger": 1,
                       "maxInteger": 3600
                   },
-                  "min": 1,
+                  "min": 0,
                   "max": 1
               }
           },
+          "log_severity" : {
+            "type": {
+              "key": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "min": 0,
+              "max": 1
+            }
+          },
           "other_config": {
-              "type": {
-                  "key": "string",
-                  "value": "string",
-                  "min": 0,
-                  "max": 16
-              }
+            "type": {
+                "key": "string",
+                "value": "string",
+                "min": 0,
+                "max": 16
+            }
           }
+      },
+      "isRoot": true,
+      "maxRows": 1
+    },
+    "Passpoint_Config": {
+      "columns": {
+        "enabled": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "hessid": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 17,
+              "maxLength": 31
+            },
+            "min": 1,
+            "max": 1
+          }
+        },
+        "list_3gpp": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 15
+            },
+            "min": 0,
+            "max": 64
+          }
+        },
+        "roaming_consortium": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 31
+            },
+            "min": 0,
+            "max": 8
+          }
+        },
+        "domain_name": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 255
+            }
+          }
+        },
+        "nairealm_list": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 64
+            },
+            "min": 0,
+            "max": 64
+          }
+        },
+        "adv_wan_status": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "adv_wan_symmetric": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "adv_wan_at_capacity": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "other_config": {
+          "type": {
+            "key": "string",
+               "value": {
+                  "type": "string",
+                  "maxLength": 64
+               },
+               "min": 0,
+               "max": 8
+            }
+         }
+      },
+      "isRoot": true
+    },
+    "Passpoint_State": {
+      "columns": {
+        "service_state": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "enabled": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "hessid": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 17,
+              "maxLength": 31
+            },
+            "min": 1,
+            "max": 1
+          }
+        },
+        "roaming_consortium": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 31
+            },
+            "min": 0,
+            "max": 8
+          }
+        },
+        "domain_name": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 255
+            }
+          }
+        },
+        "adv_wan_status": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "adv_wan_symmetric": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "adv_wan_at_capacity": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "other_config": {
+          "type": {
+            "key": "string",
+               "value": {
+                  "type": "string",
+                  "maxLength": 64
+               },
+               "min": 0,
+               "max": 8
+            }
+         }
+      },
+      "isRoot": true
+    },
+    "WAN_Config": {
+      "columns": {
+        "enable": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "type": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "pppoe",
+                  "vlan",
+                  "static_ipv4"
+                ]
+              ]
+            },
+            "min": 1,
+            "max": 1
+          }
+        },
+        "priority": {
+          "type": {
+            "key": {
+              "type": "integer"
+            }
+          }
+        },
+        "other_config": {
+          "type": {
+            "key": "string",
+            "value": "string",
+            "min": 0,
+            "max": "unlimited"
+          }
+        },
+        "os_persist": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "status": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "success",
+                  "error"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          },
+          "ephemeral": true
+        }
       },
       "isRoot": true
     }
   }
 }
-

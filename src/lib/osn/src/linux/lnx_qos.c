@@ -166,10 +166,10 @@ void lnx_qos_fini(lnx_qos_t *self)
     for (qp = self->lq_queue; qp < self->lq_queue_e; qp++)
     {
         lnx_qos_id_put(qp->qq_id);
-        free(qp->qq_shared);
+        FREE(qp->qq_shared);
     }
 
-    free(self->lq_queue);
+    FREE(self->lq_queue);
 }
 
 bool lnx_qos_apply(lnx_qos_t *self)
@@ -363,7 +363,7 @@ int lnx_qos_id_get(const char *tag)
         }
     }
 
-    qi = calloc(1, sizeof(*qi) + ((tag == NULL) ? 0 : strlen(tag) + 1));
+    qi = CALLOC(1, sizeof(*qi) + ((tag == NULL) ? 0 : strlen(tag) + 1));
 
     /* Remember the tag, if present */
     if (tag != NULL)
@@ -383,7 +383,7 @@ int lnx_qos_id_get(const char *tag)
 
     if (qid >= LNX_QOS_ID_MAX)
     {
-        free(qi);
+        FREE(qi);
         return -1;
     }
 
@@ -429,7 +429,7 @@ void lnx_qos_id_put(int qid)
 
     lnx_qos_qid_free[qi->qi_id >> 3] &= ~(1 << (qi->qi_id & 7));
 
-    free(qi);
+    FREE(qi);
 }
 
 void lnx_qos_netlink_fn(lnx_netlink_t *nl, uint64_t event, const char *ifname)

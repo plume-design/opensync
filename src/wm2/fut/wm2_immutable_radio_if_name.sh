@@ -26,10 +26,12 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="wm2/$(basename "$0")"
 manager_setup_file="wm2/wm2_setup.sh"
@@ -59,16 +61,18 @@ Script usage example:
    ./${tc_name} 2 wifi1 test_wifi_50L WifiPassword123 44 HT20 11ac ap home-ap-l50 wifi22
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 
 NARGS=10
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
@@ -124,27 +128,27 @@ check_radio_vif_state \
                     -hw_mode "$hw_mode" \
                     -mode "$mode" \
                     -vif_if_name "$vif_if_name" &&
-                        log "$tc_name: create_radio_vif_interface - Success"
+                        log "$tc_name: create_radio_vif_interface - Interface $if_name created - Success"
             ) ||
-        raise "create_radio_vif_interface - Failed" -l "$tc_name" -tc
+        raise "FAIL: create_radio_vif_interface - Interface $if_name not created" -l "$tc_name" -ds
 
 log "$tc_name: Trying to change immutable field if_name from $if_name to $custom_if_name"
 update_ovsdb_entry Wifi_Radio_Config -w if_name "$if_name" -u if_name "$custom_if_name" &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Radio_Config table updated" ||
-    raise "update_ovsdb_entry - Failed to update Wifi_Radio_Config" -l "$tc_name" -tc
+    log "$tc_name: update_ovsdb_entry - Wifi_Radio_Config::if_name is $if_name - Success" ||
+    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Radio_Config::if_name is not $if_name" -l "$tc_name" -oe
 
 log "$tc_name: Checking Wifi_Radio_State, should not contain $custom_if_name"
 wait_ovsdb_entry Wifi_Radio_State -w if_name "$custom_if_name" -is if_name "$custom_if_name" &&
-    raise "wait_ovsdb_entry - Wifi_Radio_State contains if_name==$custom_if_name" -l "$tc_name" -tc ||
-    log "$tc_name: wait_ovsdb_entry - Wifi_Radio_State does not contain if_name==$custom_if_name"
+    raise "FAIL: wait_ovsdb_entry - Wifi_Radio_State::ifname is $custom_if_name entry exists, but it should not" -l "$tc_name" -tc ||
+    log "$tc_name: wait_ovsdb_entry - Wifi_Radio_State::ifname is $custom_if_name does not exist - Success"
 
 log "$tc_name: Reversing changes in Wifi_Radio_Config to $if_name"
 update_ovsdb_entry Wifi_Radio_Config -w if_name "$custom_if_name" -u if_name "$if_name" &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Radio_Config table updated" ||
-    raise "update_ovsdb_entry - Failed to update Wifi_Radio_Config" -l "$tc_name" -tc
+    log "$tc_name: update_ovsdb_entry - Wifi_Radio_Config::if_name is $if_name - Success" ||
+    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Radio_Config::ifname is not $if_name" -l "$tc_name" -oe
 
 wait_ovsdb_entry Wifi_Radio_State -w if_name "$if_name" -is if_name "$if_name" &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Radio_Config reflected to Wifi_Radio_State" ||
-    raise "wait_ovsdb_entry - Failed to reflect Wifi_Radio_Config to Wifi_Radio_State" -l "$tc_name" -tc
+    log "$tc_name: wait_ovsdb_entry - Wifi_Radio_Config reflected to Wifi_Radio_State for $if_name - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Radio_Config to Wifi_Radio_State for $if_name" -l "$tc_name" -tc
 
 pass

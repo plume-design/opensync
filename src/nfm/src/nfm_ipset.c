@@ -31,6 +31,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb_table.h"
 #include "schema.h"
 #include "osn_ipset.h"
+#include "memutil.h"
 
 /*
  * Mapping between the Netfilter_Ipset:type and osn_ipset_type enums
@@ -189,7 +190,7 @@ struct nfm_ipset *nfm_ipset_get(
     ips = ds_tree_find(&nfm_ipset_list, (void *)uuid->uuid);
     if (ips != NULL) return ips;
 
-    ips = calloc(1, sizeof(*ips));
+    ips = CALLOC(1, sizeof(*ips));
     ips->ni_uuid = *uuid;
     STRSCPY(ips->ni_name, name);
 
@@ -214,8 +215,8 @@ struct nfm_ipset *nfm_ipset_get(
     return ips;
 
 error:
-    if (ips->ni_options != NULL) free((void *)ips->ni_options);
-    if (ips != NULL) free(ips);
+    if (ips->ni_options != NULL) FREE(ips->ni_options);
+    if (ips != NULL) FREE(ips);
     return NULL;
 }
 
@@ -234,8 +235,8 @@ void nfm_ipset_release(const ovs_uuid_t *uuid)
 
     ds_tree_remove(&nfm_ipset_list, ips);
     nfm_ipset_local_values_free(ips);
-    if (ips->ni_options != NULL) free((void *)ips->ni_options);
-    free(ips);
+    if (ips->ni_options != NULL) FREE(ips->ni_options);
+    FREE(ips);
 }
 
 bool nfm_ipset_values_set(struct nfm_ipset *ips, const char *values[], int values_len)
@@ -293,10 +294,10 @@ void nfm_ipset_local_values_free(struct nfm_ipset *ips)
 
     for (ii = 0; ii < ips->ni_local_values_len; ii++)
     {
-        free((char *)ips->ni_local_values[ii]);
+        FREE(ips->ni_local_values[ii]);
     }
 
-    free(ips->ni_local_values);
+    FREE(ips->ni_local_values);
 }
 
 bool nfm_ipset_local_values_set(struct nfm_ipset *ips, const char *values[], int values_len)
@@ -312,7 +313,7 @@ bool nfm_ipset_local_values_set(struct nfm_ipset *ips, const char *values[], int
     nfm_ipset_local_values_free(ips);
 
     ips->ni_local_values_len = values_len;
-    ips->ni_local_values = calloc(values_len, sizeof(ips->ni_local_values[0]));
+    ips->ni_local_values = CALLOC(values_len, sizeof(ips->ni_local_values[0]));
     for (ii = 0; ii < values_len; ii++)
     {
         ips->ni_local_values[ii] = strdup(values[ii]);
@@ -361,7 +362,7 @@ bool nfm_ipset_objm_apply(struct nfm_ipset *ips)
         osn_ipset_del(ips->ni_ipset);
         ips->ni_ipset = NULL;
         /* The options will be read from the JSON file, free them */
-        if (ips->ni_options != NULL) free((char *)ips->ni_options);
+        if (ips->ni_options != NULL) FREE(ips->ni_options);
         ips->ni_options = NULL;
     }
 

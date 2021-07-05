@@ -45,6 +45,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "os.h"
 #include "os_socket.h"
+#include "memutil.h"
 
 #define OVSH_COL_NUM    256
 #define OVSH_COL_STR   1024
@@ -185,7 +186,7 @@ int main(int argc, char *argv[])
 
             case 'o':
                 ovsh_opt_format = OVSH_FORMAT_CUSTOM;
-                if (ovsh_opt_format_output != NULL) free(ovsh_opt_format_output);
+                if (ovsh_opt_format_output != NULL) FREE(ovsh_opt_format_output);
                 ovsh_opt_format_output = strdup(optarg);
                 break;
 
@@ -1107,7 +1108,7 @@ bool json_stringify(json_t *jval, char *dst, size_t dst_sz)
         }
         char *str = json_dumps(jval, JSON_COMPACT);
         snprintf(dst, dst_sz, "%s", str);
-        free(str);
+        FREE(str);
     }
     else
     {
@@ -1258,8 +1259,7 @@ static bool ovsh_parse_where(json_t *where, char *_str, bool is_parent_where)
     if (!is_parent_where)
     {
         ovsh_where_num++;
-        ovsh_where_expr = (char**)realloc(ovsh_where_expr, sizeof(char**) * ovsh_where_num);
-        assert(ovsh_where_expr);
+        ovsh_where_expr = (char**)REALLOC(ovsh_where_expr, sizeof(char**) * ovsh_where_num);
         ovsh_where_expr[ovsh_where_num-1] = strdup(_str);
     }
 
@@ -1563,7 +1563,7 @@ json_t *ovsdb_json_exec(char *method, json_t *params)
     jres = json_loads(buf, JSON_PRESERVE_ORDER, NULL);
 
 error:
-    if (str != NULL) free(str);
+    if (str != NULL) FREE(str);
     if (db > 0) ovsdb_close(db);
 
     return jres;
@@ -1645,7 +1645,7 @@ bool ovsdb_json_show_count(json_t *jobj)
 
         printf("%s\n", str);
 
-        free(str);
+        FREE(str);
     }
     else
     {
@@ -1720,7 +1720,7 @@ bool ovsdb_json_show_uuid(json_t *jobj, json_t **a_juuid)
 
         printf("%s\n", str);
 
-        free(str);
+        FREE(str);
     }
     else
     {
@@ -1881,7 +1881,7 @@ bool ovsdb_json_show_result_json(json_t *jrows)
 {
     char *str = json_dumps(jrows, JSON_INDENT(4) | JSON_PRESERVE_ORDER);
     printf("%s\n", str);
-    free(str);
+    FREE(str);
 
     return true;
 }

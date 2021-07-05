@@ -26,16 +26,18 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/um_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="um/$(basename "$0")"
 manager_setup_file="um/um_setup.sh"
 um_resource_path="resource/um/"
 um_image_name_default="um_incorrect_fw_pass_fw"
-um_create_md5_file_path="tools/rpi/um/um_create_md5_file.sh"
+um_create_md5_file_path="tools/server/um/um_create_md5_file.sh"
 usage()
 {
 cat << usage_string
@@ -57,17 +59,17 @@ Script usage example:
    ./${tc_name} /tmp/pfirmware http://192.168.4.1:8000/fut-base/resource/um/${um_image_name_default}.img incorrect_fw_pass
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
-
+fi
 NARGS=3
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 fw_path=$1
@@ -82,33 +84,36 @@ trap '
     run_setup_if_crashed um || true
 ' EXIT SIGINT SIGTERM
 
-log_title "$tc_name: UM test - Invalid FW pass"
+log_title "$tc_name: UM test - Invalid FW password"
 
 log "$tc_name: Setting firmware_url to $fw_url and firmware_pass to $fw_pass"
 update_ovsdb_entry AWLAN_Node \
     -u firmware_pass "$fw_pass" \
     -u firmware_url "$fw_url" &&
-        log "$tc_name: update_ovsdb_entry - Success to update" ||
-        raise "$tc_name: update_ovsdb_entry - Failed to update" -l "$tc_name" -tc
+        log "$tc_name: update_ovsdb_entry - AWLAN_Node::firmware_pass and AWLAN_Node::firmware_url updated - Success" ||
+        raise "FAIL: update_ovsdb_entry - Failed to update AWLAN_Node::firmware_pass and AWLAN_Node::firmware_url" -l "$tc_name" -oe
 
-log "$tc_name: Waiting for FW download start"
-wait_ovsdb_entry AWLAN_Node -is upgrade_status "$(get_um_code "UPG_STS_FW_DL_START")" &&
-    log "$tc_name: wait_ovsdb_entry - Success to wait" ||
-    raise "$tc_name: wait_ovsdb_entry - Failed to wait" -l "$tc_name" -tc
+fw_start_code=$(get_um_code "UPG_STS_FW_DL_START")
+log "$tc_name: Waiting for FW download to start"
+wait_ovsdb_entry AWLAN_Node -is upgrade_status "$fw_start_code" &&
+    log "$tc_name: wait_ovsdb_entry - AWLAN_Node::upgrade_status is $fw_start_code - Success" ||
+    raise "FAIL: wait_ovsdb_entry - AWLAN_Node::upgrade_status is not $fw_start_code" -l "$tc_name" -tc
 
-log "$tc_name: Waiting for FW download finish"
-wait_ovsdb_entry AWLAN_Node -is upgrade_status "$(get_um_code "UPG_STS_FW_DL_END")" &&
-    log "$tc_name: wait_ovsdb_entry - Success to wait" ||
-    raise "$tc_name: wait_ovsdb_entry - Failed to wait" -l "$tc_name" -tc
+fw_stop_code=$(get_um_code "UPG_STS_FW_DL_END")
+log "$tc_name: Waiting for FW download to finish"
+wait_ovsdb_entry AWLAN_Node -is upgrade_status "$fw_stop_code" &&
+    log "$tc_name: wait_ovsdb_entry - AWLAN_Node::upgrade_status is $fw_stop_code - Success" ||
+    raise "FAIL: wait_ovsdb_entry - AWLAN_Node::upgrade_status is not $fw_stop_code" -l "$tc_name" -tc
 
-log "$tc_name: Setting AWLAN_Node upgrade_timer to 1 and "
+log "$tc_name: Setting AWLAN_Node::upgrade_timer to '1' to start FW upgrade"
 update_ovsdb_entry AWLAN_Node -u upgrade_timer 1 &&
-    log "$tc_name: update_ovsdb_entry - Success to update" ||
-    raise "$tc_name: update_ovsdb_entry - Failed to update" -l "$tc_name" -tc
+    log "$tc_name: update_ovsdb_entry - AWLAN_Node::upgrade_timer updated - Success" ||
+    raise "FAIL: update_ovsdb_entry - Failed to update AWLAN_Node::upgrade_timer" -l "$tc_name" -oe
 
-log "$tc_name: Waiting for FW corrupt image code UPG_ERR_IMG_FAIL - $(get_um_code "UPG_ERR_IMG_FAIL")"
-wait_ovsdb_entry AWLAN_Node -is upgrade_status "$(get_um_code "UPG_ERR_IMG_FAIL")" &&
-    log "$tc_name: wait_ovsdb_entry - Success to wait" ||
-    raise "$tc_name: wait_ovsdb_entry - Failed to wait" -l "$tc_name" -tc
+fw_fail_code=$(get_um_code "UPG_ERR_IMG_FAIL")
+log "$tc_name: Waiting for AWLAN_Node::upgrade_status to become UPG_ERR_IMG_FAIL ($fw_fail_code)"
+wait_ovsdb_entry AWLAN_Node -is upgrade_status "$fw_fail_code" &&
+    log "$tc_name: wait_ovsdb_entry - AWLAN_Node::upgrade_status is $fw_fail_code - Success" ||
+    raise "FAIL: wait_ovsdb_entry - AWLAN_Node::upgrade_status is not $fw_fail_code" -l "$tc_name" -tc
 
 pass

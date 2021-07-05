@@ -31,6 +31,7 @@
 #include <time.h>
 #include <errno.h>
 #include <arpa/inet.h>
+#include "memutil.h"
 
 #define SPRIME 108      /* Size of query/publish hashes */
 #define LPRIME 1009     /* Size of cache hash */
@@ -313,9 +314,7 @@ static void _u_push(mdns_daemon_t *d, mdns_record_t *r, int id, unsigned long in
 {
     struct unicast *u;
 
-    u = calloc(1, sizeof(struct unicast));
-    if (!u)
-        return;
+    u = CALLOC(1, sizeof(struct unicast));
 
     u->r = r;
     u->id = id;
@@ -367,8 +366,8 @@ static void _q_done(mdns_daemon_t *d, struct query *q)
         cur->next = q->next;
     }
 
-    free(q->name);
-    free(q);
+    FREE(q->name);
+    FREE(q);
 }
 
 static void _free_cached(struct cached *c)
@@ -377,12 +376,12 @@ static void _free_cached(struct cached *c)
         return;
 
     if (c->rr.name)
-        free(c->rr.name);
+        FREE(c->rr.name);
     if (c->rr.rdata)
-        free(c->rr.rdata);
+        FREE(c->rr.rdata);
     if (c->rr.rdname)
-        free(c->rr.rdname);
-    free(c);
+        FREE(c->rr.rdname);
+    FREE(c);
 }
 
 static void _free_record(mdns_record_t *r)
@@ -391,12 +390,12 @@ static void _free_record(mdns_record_t *r)
         return;
 
     if (r->rr.name)
-        free(r->rr.name);
+        FREE(r->rr.name);
     if (r->rr.rdata)
-        free(r->rr.rdata);
+        FREE(r->rr.rdata);
     if (r->rr.rdname)
-        free(r->rr.rdname);
-    free(r);
+        FREE(r->rr.rdname);
+    FREE(r);
 }
 
 /* buh-bye, remove from hash and free */
@@ -507,13 +506,11 @@ static int _cache(mdns_daemon_t *d, struct resource *r)
      * XXX: The c->rr.ttl is a hack for now, BAD SPEC, start
      *      retrying just after half-waypoint, then expire
      */
-    c = calloc(1, sizeof(struct cached));
-    if (!c)
-        return 1;
+    c = CALLOC(1, sizeof(struct cached));
 
     c->rr.name = strdup(r->name);
     if (!c->rr.name) {
-        free(c);
+        FREE(c);
         return 1;
     }
     c->rr.type = r->type;
@@ -521,12 +518,12 @@ static int _cache(mdns_daemon_t *d, struct resource *r)
     c->rr.rdlen = r->rdlength;
     if (r->rdlength && !r->rdata) {
         //ERR("rdlength is %d but rdata is NULL for domain name %s, type: %d, ttl: %ld", r->rdlength, r->name, r->type, r->ttl);
-        free(c->rr.name);
-        free(c);
+        FREE(c->rr.name);
+        FREE(c);
         return 1;
     }
     if (r->rdlength) {
-        c->rr.rdata = malloc(r->rdlength);
+        c->rr.rdata = MALLOC(r->rdlength);
         memcpy(c->rr.rdata, r->rdata, r->rdlength);
     } else {
         c->rr.rdata = NULL;
@@ -627,9 +624,7 @@ mdns_daemon_t *mdnsd_new(int class, int frame)
 {
     mdns_daemon_t *d;
 
-    d = calloc(1, sizeof(struct mdns_daemon));
-    if (!d)
-        return NULL;
+    d = CALLOC(1, sizeof(struct mdns_daemon));
 
     gettimeofday(&d->now, 0);
     d->expireall = (unsigned long)d->now.tv_sec + GC;
@@ -730,8 +725,8 @@ void mdnsd_free(mdns_daemon_t *d)
         while (curq) {
             struct query *next = curq->next;
 
-            free(curq->name);
-            free(curq);
+            FREE(curq->name);
+            FREE(curq);
             curq = next;
         }
     }
@@ -740,11 +735,11 @@ void mdnsd_free(mdns_daemon_t *d)
     while (u) {
         struct unicast *next = u->next;
 
-        free(u);
+        FREE(u);
         u = next;
     }
 
-    free(d);
+    FREE(d);
 }
 
 
@@ -900,7 +895,7 @@ int mdnsd_out(mdns_daemon_t *d, struct message *m, unsigned long int *ip, unsign
         message_an(m, u->r->rr.name, u->r->rr.type, d->class, u->r->rr.ttl);
         u->r->last_sent = d->now;
         _a_copy(m, &u->r->rr);
-        free(u);
+        FREE(u);
 
         return 1;
     }
@@ -1161,7 +1156,7 @@ void mdnsd_query(mdns_daemon_t *d, const char *host, int type, int (*answer)(mdn
         if (!answer)
             return;
 
-        q = calloc(1, sizeof(struct query));
+        q = CALLOC(1, sizeof(struct query));
         q->name = strdup(host);
         q->type = type;
         q->next = d->queries[i];
@@ -1207,7 +1202,7 @@ mdns_record_t *mdnsd_shared(mdns_daemon_t *d, const char *host, unsigned short t
     int i = _namehash(host) % SPRIME;
     mdns_record_t *r;
 
-    r = calloc(1, sizeof(struct mdns_record));
+    r = CALLOC(1, sizeof(struct mdns_record));
     r->rr.name = strdup(host);
     r->rr.type = type;
     r->rr.ttl = ttl;
@@ -1290,20 +1285,18 @@ void mdnsd_done(mdns_daemon_t *d, mdns_record_t *r)
 void mdnsd_set_raw(mdns_daemon_t *d, mdns_record_t *r, const char *data, unsigned short len)
 {
     if (r->rr.rdata)
-        free(r->rr.rdata);
+        FREE(r->rr.rdata);
 
-    r->rr.rdata = malloc(len);
-    if (r->rr.rdata) {
-        memcpy(r->rr.rdata, data, len);
-        r->rr.rdlen = len;
-    }
+    r->rr.rdata = MALLOC(len);
+    memcpy(r->rr.rdata, data, len);
+    r->rr.rdlen = len;
     _r_publish(d, r);
 }
 
 void mdnsd_set_host(mdns_daemon_t *d, mdns_record_t *r, const char *name)
 {
     if (r->rr.rdname)
-        free(r->rr.rdname);
+        FREE(r->rr.rdname);
     r->rr.rdname = strdup(name);
     _r_publish(d, r);
 }

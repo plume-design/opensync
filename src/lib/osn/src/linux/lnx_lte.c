@@ -62,6 +62,11 @@ bool lnx_lte_init(lnx_lte_t *self, const char *ifname)
         LOGI("%s: stop LTE daemon", __func__);
     }
 
+    if (!daemon_restart_set(&self->ll_lted, true, 3.0, 10))
+    {
+        LOG(WARN, "lte %s: Error enabling daemon auto-restart", ifname);
+    }
+
     self->ll_applied = true;
 
     return daemon_start(&self->ll_lted);

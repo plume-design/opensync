@@ -39,6 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "const.h"
 #include "read_until.h"
 #include "execsh.h"
+#include "memutil.h"
 
 static void execsh_closefrom(int fd);
 static bool execsh_set_nonblock(int fd, bool enable);
@@ -81,12 +82,7 @@ int execsh_fn_v(execsh_fn_t *fn, void *ctx, const char *script, va_list __argv)
     int argm = 16;
     char *parg;
 
-    argv = malloc(argm * sizeof(char *));
-    if (argv == NULL)
-    {
-        LOG(ERR, "execsh_fn_v: Error allocating argv buffer");
-        goto exit;
-    }
+    argv = MALLOC(argm * sizeof(char *));
 
     /* Add variable arguments */
     while ((parg = va_arg(__argv, char *)) != NULL)
@@ -94,12 +90,7 @@ int execsh_fn_v(execsh_fn_t *fn, void *ctx, const char *script, va_list __argv)
         if (argc + 1 > argm)
         {
             argm <<= 1;
-            argv = realloc(argv, argm * sizeof(char *));
-            if (argv == NULL)
-            {
-                LOG(ERR, "execsh_fn_v: Error re-allocating argv buffer");
-                goto exit;
-            }
+            argv = REALLOC(argv, argm * sizeof(char *));
         }
 
         argv[argc++] = parg;
@@ -111,7 +102,7 @@ int execsh_fn_v(execsh_fn_t *fn, void *ctx, const char *script, va_list __argv)
     retval = execsh_fn_a(fn, ctx, script, argv);
 
 exit:
-    if (argv != NULL) free(argv);
+    if (argv != NULL) FREE(argv);
 
     return retval;
 }
@@ -158,12 +149,7 @@ int execsh_fn_a(execsh_fn_t *fn, void *ctx, const char *script, char *__argv[])
     int argm = 16;
     char **parg;
 
-    argv = malloc(argm * sizeof(char *));
-    if (argv == NULL)
-    {
-        LOG(ERR, "execsh: Error allocating argv buffer");
-        goto exit;
-    }
+    argv = MALLOC(argm * sizeof(char *));
 
     argv[argc++] = EXECSH_SHELL_PATH;
     argv[argc++] = "-e";                /* Abort on error */
@@ -177,12 +163,7 @@ int execsh_fn_a(execsh_fn_t *fn, void *ctx, const char *script, char *__argv[])
         if (argc + 1 > argm)
         {
             argm <<= 1;
-            argv = realloc(argv, argm * sizeof(char *));
-            if (argv == NULL)
-            {
-                LOG(ERR, "execsh: Error re-allocating argv buffer");
-                goto exit;
-            }
+            argv = REALLOC(argv, argm * sizeof(char *));
         }
 
         argv[argc++] = *parg;
@@ -286,7 +267,7 @@ int execsh_fn_a(execsh_fn_t *fn, void *ctx, const char *script, char *__argv[])
 exit:
     if (loop != NULL) ev_loop_destroy(loop);
 
-    if (argv != NULL) free(argv);
+    if (argv != NULL) FREE(argv);
 
     int ii;
     for (ii = 0; ii < 2; ii++)

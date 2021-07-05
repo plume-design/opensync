@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ds.h"
 #include "ds_tree.h"
 #include "ds_dlist.h"
+#include "memutil.h"
 
 #include "1035.h"
 #include "ovsdb_table.h"
@@ -131,14 +132,14 @@ mdns_records_t *mdns_records_alloc_record(void)
 {
     mdns_records_t   *rec;
 
-    rec = calloc(1, sizeof(mdns_records_t));
+    rec = CALLOC(1, sizeof(mdns_records_t));
     return rec;
 }
 
 static inline
 void mdns_records_free_record(mdns_records_t *rec)
 {
-    free(rec);
+    FREE(rec);
 } 
 
 static inline
@@ -146,8 +147,7 @@ mdns_client_t *mdns_records_alloc_client(char *ip)
 {
     mdns_client_t *client;
 
-    client = calloc(1, sizeof(mdns_client_t));
-    if (!client) return NULL;
+    client = CALLOC(1, sizeof(mdns_client_t));
 
     /* Copy the IP address */
     STRSCPY(client->ip_str, ip);

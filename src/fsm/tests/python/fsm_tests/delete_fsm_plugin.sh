@@ -24,7 +24,11 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-/usr/plume/tools/ovsh d Flow_Service_Manager_Config -w handler==dev_demo
-/usr/plume/tools/ovsh d Openflow_Tag -w name==dev_tag_demo
-/usr/plume/tools/ovsh d Openflow_Config -w token==dev_flow_demo
-/usr/bin/ovs-vsctl del-port br-home br-home.demo
+. /usr/opensync/etc/kconfig # TODO: This should point to {INSTALL_PREFIX}/etc/kconfig
+OVS_VSCTL_PATH=$(which ovs-vsctl)
+IP_PATH=$(which ip)
+OVSH_PATH=$(which ovsh)
+$OVSH_PATH d Flow_Service_Manager_Config -w handler==dev_demo
+$OVSH_PATH d Openflow_Tag -w name==dev_tag_demo
+$OVSH_PATH d Openflow_Config -w token==dev_flow_demo
+$OVS_VSCTL_PATH del-port $CONFIG_TARGET_LAN_BRIDGE_NAME $CONFIG_TARGET_LAN_BRIDGE_NAME.demo

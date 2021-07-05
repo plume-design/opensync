@@ -27,8 +27,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef OPENSYNC_CTRL_DPP_H_INCLUDED
 #define OPENSYNC_CTRL_DPP_H_INCLUDED
 
-void ctrl_dpp_clear_each(struct ctrl *ctrl);
-int ctrl_dpp_config_each(struct ctrl *ctrl, const struct schema_DPP_Config *config);
-bool ctrl_dpp_config(const struct schema_DPP_Config *config);
+void ctrl_dpp_init(struct ctrl_dpp *dpp);
+int ctrl_dpp_cb(struct ctrl *ctrl, int level, const char *buf, size_t len);
+bool ctrl_dpp_config(const struct schema_DPP_Config **config);
 
 #endif /* OPENSYNC_CTRL_DPP_H_INCLUDED */

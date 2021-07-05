@@ -325,8 +325,8 @@ send_report(struct fsm_session *session, char *report)
 }
 
 bool
-dummy_gatekeeper_get_verdict(struct fsm_session *session,
-                             struct fsm_policy_req *req)
+dummy_gatekeeper_get_verdict(struct fsm_policy_req *req,
+                             struct fsm_policy_reply *policy_reply)
 {
     struct fqdn_pending_req *fqdn_req;
     struct fsm_url_request *req_info;
@@ -335,14 +335,13 @@ dummy_gatekeeper_get_verdict(struct fsm_session *session,
     fqdn_req = req->fqdn_req;
     req_info = fqdn_req->req_info;
 
-    url_reply = calloc(1, sizeof(*url_reply));
-    if (url_reply == NULL) return false;
+    url_reply = CALLOC(1, sizeof(*url_reply));
 
     req_info->reply = url_reply;
 
     url_reply->service_id = URL_GK_SVC;
 
-    fqdn_req->categorized = FSM_FQDN_CAT_SUCCESS;
+    policy_reply->categorized = FSM_FQDN_CAT_SUCCESS;
     req_info->reply->gk.gk_policy = strdup("gk_policy");
     req_info->reply->gk.confidence_level = 90;
     req_info->reply->gk.category_id = 2;
@@ -439,13 +438,11 @@ void setUp(void)
     outbound_eth_header.srcmac = &g_src_mac;
     outbound_eth_header.dstmac = &g_dst_mac;
     outbound_eth_header.ethertype = 0x0800;
-    g_v4_outbound_key.src_ip = calloc(1, 4);
-    TEST_ASSERT_NOT_NULL(g_v4_outbound_key.src_ip);
+    g_v4_outbound_key.src_ip = CALLOC(1, 4);
     rc = inet_pton(AF_INET, g_v4_tuple.src_ip, g_v4_outbound_key.src_ip);
     TEST_ASSERT_EQUAL_INT(1, rc);
 
-    g_v4_outbound_key.dst_ip = calloc(1, 4);
-    TEST_ASSERT_NOT_NULL(g_v4_outbound_key.dst_ip);
+    g_v4_outbound_key.dst_ip = CALLOC(1, 4);
     rc = inet_pton(AF_INET, g_v4_tuple.dst_ip, g_v4_outbound_key.dst_ip);
     TEST_ASSERT_EQUAL_INT(1, rc);
 
@@ -466,13 +463,11 @@ void setUp(void)
     inbound_eth_header.srcmac = &g_dst_mac;
     inbound_eth_header.dstmac = &g_src_mac;
     inbound_eth_header.ethertype = 0x0800;
-    g_v4_inbound_key.src_ip = calloc(1, 4);
-    TEST_ASSERT_NOT_NULL(g_v4_inbound_key.src_ip);
+    g_v4_inbound_key.src_ip = CALLOC(1, 4);
     rc = inet_pton(AF_INET, g_v4_inbound_tuple.src_ip, g_v4_inbound_key.src_ip);
     TEST_ASSERT_EQUAL_INT(1, rc);
 
-    g_v4_inbound_key.dst_ip = calloc(1, 4);
-    TEST_ASSERT_NOT_NULL(g_v4_inbound_key.dst_ip);
+    g_v4_inbound_key.dst_ip = CALLOC(1, 4);
     rc = inet_pton(AF_INET, g_v4_inbound_tuple.dst_ip, g_v4_inbound_key.dst_ip);
     TEST_ASSERT_EQUAL_INT(1, rc);
 
@@ -493,13 +488,11 @@ void setUp(void)
     outbound_eth6_header.srcmac = &g_src_mac;
     outbound_eth6_header.dstmac = &g_dst_mac;
     outbound_eth6_header.ethertype = 0x086DD;
-    g_v6_outbound_key.src_ip = calloc(1, 16);
-    TEST_ASSERT_NOT_NULL(g_v6_outbound_key.src_ip);
+    g_v6_outbound_key.src_ip = CALLOC(1, 16);
     rc = inet_pton(AF_INET6, g_v6_tuple.src_ip, g_v6_outbound_key.src_ip);
     TEST_ASSERT_EQUAL_INT(1, rc);
 
-    g_v6_outbound_key.dst_ip = calloc(1, 16);
-    TEST_ASSERT_NOT_NULL(g_v6_outbound_key.dst_ip);
+    g_v6_outbound_key.dst_ip = CALLOC(1, 16);
     rc = inet_pton(AF_INET6, g_v6_tuple.dst_ip, g_v6_outbound_key.dst_ip);
     TEST_ASSERT_EQUAL_INT(1, rc);
 
@@ -520,13 +513,11 @@ void setUp(void)
     inbound_eth6_header.srcmac = &g_dst_mac;
     inbound_eth6_header.dstmac = &g_src_mac;
     inbound_eth6_header.ethertype = 0x086DD;
-    g_v6_inbound_key.src_ip = calloc(1, 16);
-    TEST_ASSERT_NOT_NULL(g_v6_inbound_key.src_ip);
+    g_v6_inbound_key.src_ip = CALLOC(1, 16);
     rc = inet_pton(AF_INET6, g_v6_inbound_tuple.src_ip, g_v6_inbound_key.src_ip);
     TEST_ASSERT_EQUAL_INT(1, rc);
 
-    g_v6_inbound_key.dst_ip = calloc(1, 16);
-    TEST_ASSERT_NOT_NULL(g_v6_inbound_key.dst_ip);
+    g_v6_inbound_key.dst_ip = CALLOC(1, 16);
     rc = inet_pton(AF_INET6, g_v6_inbound_tuple.dst_ip, g_v6_inbound_key.dst_ip);
     TEST_ASSERT_EQUAL_INT(1, rc);
 
@@ -550,24 +541,24 @@ void setUp(void)
 void tearDown(void)
 {
     /* free v4 accumulator */
-    free(g_v4_outbound_key.src_ip);
-    free(g_v4_outbound_key.dst_ip);
+    FREE(g_v4_outbound_key.src_ip);
+    FREE(g_v4_outbound_key.dst_ip);
     memset(&g_v4_outbound_key, 0, sizeof(g_v4_outbound_key));
     memset(&g_v4_outbound_acc, 0, sizeof(g_v4_outbound_acc));
 
-    free(g_v4_inbound_key.src_ip);
-    free(g_v4_inbound_key.dst_ip);
+    FREE(g_v4_inbound_key.src_ip);
+    FREE(g_v4_inbound_key.dst_ip);
     memset(&g_v4_inbound_key, 0, sizeof(g_v4_inbound_key));
     memset(&g_v4_inbound_acc, 0, sizeof(g_v4_inbound_acc));
 
     /* free v6 accumulator */
-    free(g_v6_outbound_key.src_ip);
-    free(g_v6_outbound_key.dst_ip);
+    FREE(g_v6_outbound_key.src_ip);
+    FREE(g_v6_outbound_key.dst_ip);
     memset(&g_v6_outbound_key, 0, sizeof(g_v6_outbound_key));
     memset(&g_v6_outbound_acc, 0, sizeof(g_v6_outbound_acc));
 
-    free(g_v6_inbound_key.src_ip);
-    free(g_v6_inbound_key.dst_ip);
+    FREE(g_v6_inbound_key.src_ip);
+    FREE(g_v6_inbound_key.dst_ip);
     memset(&g_v6_inbound_key, 0, sizeof(g_v6_inbound_key));
     memset(&g_v6_inbound_acc, 0, sizeof(g_v6_inbound_acc));
 
@@ -693,7 +684,7 @@ void test_ipthreat_no_policy(void)
     TEST_ASSERT_NOT_NULL(ds_session);
 
     /* populate net_parser */
-    net_parser = calloc(1, sizeof(struct net_header_parser));
+    net_parser = CALLOC(1, sizeof(struct net_header_parser));
     net_parser->eth_header = outbound_eth_header;
     net_parser->ip_version = 4;
     net_parser->ip_protocol = IPPROTO_UDP;
@@ -708,7 +699,7 @@ void test_ipthreat_no_policy(void)
     parser->net_parser = net_parser;
 
     ipthreat_dpi_process_message(ds_session);
-    free(net_parser);
+    FREE(net_parser);
 
     /* free ipthreat session */
     ipthreat_dpi_plugin_exit(session);
@@ -757,7 +748,7 @@ void test_ipthreat_no_policy_table(void)
     TEST_ASSERT_EQUAL_STRING(spolicy->name, fpolicy->rule_name);
 
     /* populate net_parser */
-    net_parser = calloc(1, sizeof(struct net_header_parser));
+    net_parser = CALLOC(1, sizeof(struct net_header_parser));
     net_parser->eth_header = outbound_eth_header;
     net_parser->ip_version = 4;
     net_parser->ip_protocol = IPPROTO_UDP;
@@ -772,7 +763,7 @@ void test_ipthreat_no_policy_table(void)
     parser->net_parser = net_parser;
 
     ipthreat_dpi_process_message(ds_session);
-    free(net_parser);
+    FREE(net_parser);
 
     /* delete fsm policy */
     fsm_delete_policy(spolicy);
@@ -825,7 +816,7 @@ void test_ipthreat_inbound_block(void)
     TEST_ASSERT_EQUAL_STRING(spolicy->name, fpolicy->rule_name);
 
     /* populate net_parser */
-    net_parser = calloc(1, sizeof(struct net_header_parser));
+    net_parser = CALLOC(1, sizeof(struct net_header_parser));
     net_parser->eth_header = inbound_eth_header;
     net_parser->ip_version = 4;
     net_parser->ip_protocol = IPPROTO_UDP;
@@ -840,10 +831,10 @@ void test_ipthreat_inbound_block(void)
     parser->net_parser = net_parser;
 
     ipthreat_dpi_process_message(ds_session);
-    free(net_parser);
+    FREE(net_parser);
 
     /* populate v6 net_parser */
-    net_parser = calloc(1, sizeof(struct net_header_parser));
+    net_parser = CALLOC(1, sizeof(struct net_header_parser));
     net_parser->eth_header = inbound_eth6_header;
     net_parser->ip_version = 6;
     net_parser->ip_protocol = IPPROTO_UDP;
@@ -858,7 +849,7 @@ void test_ipthreat_inbound_block(void)
     parser->net_parser = net_parser;
 
     ipthreat_dpi_process_message(ds_session);
-    free(net_parser);
+    FREE(net_parser);
 
     /* delete fsm policy */
     fsm_delete_policy(spolicy);
@@ -911,7 +902,7 @@ void test_ipthreat_outbound_block(void)
     TEST_ASSERT_EQUAL_STRING(spolicy->name, fpolicy->rule_name);
 
     /* populate v4 net_parser */
-    net_parser = calloc(1, sizeof(struct net_header_parser));
+    net_parser = CALLOC(1, sizeof(struct net_header_parser));
     net_parser->eth_header = outbound_eth_header;
     net_parser->ip_version = 4;
     net_parser->ip_protocol = IPPROTO_UDP;
@@ -926,10 +917,10 @@ void test_ipthreat_outbound_block(void)
     parser->net_parser = net_parser;
 
     ipthreat_dpi_process_message(ds_session);
-    free(net_parser);
+    FREE(net_parser);
 
     /* populate v6 net_parser */
-    net_parser = calloc(1, sizeof(struct net_header_parser));
+    net_parser = CALLOC(1, sizeof(struct net_header_parser));
     net_parser->eth_header = outbound_eth6_header;
     net_parser->ip_version = 6;
     net_parser->ip_protocol = IPPROTO_UDP;
@@ -944,7 +935,7 @@ void test_ipthreat_outbound_block(void)
     parser->net_parser = net_parser;
 
     ipthreat_dpi_process_message(ds_session);
-    free(net_parser);
+    FREE(net_parser);
 
     /* delete fsm policy */
     fsm_delete_policy(spolicy);
@@ -997,7 +988,7 @@ void test_ipthreat_inbound_allow(void)
     TEST_ASSERT_EQUAL_STRING(spolicy->name, fpolicy->rule_name);
 
     /* populate net_parser */
-    net_parser = calloc(1, sizeof(struct net_header_parser));
+    net_parser = CALLOC(1, sizeof(struct net_header_parser));
     net_parser->eth_header = inbound_eth_header;
     net_parser->ip_version = 4;
     net_parser->ip_protocol = IPPROTO_UDP;
@@ -1012,10 +1003,10 @@ void test_ipthreat_inbound_allow(void)
     parser->net_parser = net_parser;
 
     ipthreat_dpi_process_message(ds_session);
-    free(net_parser);
+    FREE(net_parser);
 
     /* populate v6 net_parser */
-    net_parser = calloc(1, sizeof(struct net_header_parser));
+    net_parser = CALLOC(1, sizeof(struct net_header_parser));
     net_parser->eth_header = inbound_eth6_header;
     net_parser->ip_version = 6;
     net_parser->ip_protocol = IPPROTO_UDP;
@@ -1030,7 +1021,7 @@ void test_ipthreat_inbound_allow(void)
     parser->net_parser = net_parser;
 
     ipthreat_dpi_process_message(ds_session);
-    free(net_parser);
+    FREE(net_parser);
 
     /* delete fsm policy */
     fsm_delete_policy(spolicy);
@@ -1083,7 +1074,7 @@ void test_ipthreat_outbound_allow(void)
     TEST_ASSERT_EQUAL_STRING(spolicy->name, fpolicy->rule_name);
 
     /* populate net_parser */
-    net_parser = calloc(1, sizeof(struct net_header_parser));
+    net_parser = CALLOC(1, sizeof(struct net_header_parser));
     net_parser->eth_header = outbound_eth_header;
     net_parser->ip_version = 4;
     net_parser->ip_protocol = IPPROTO_UDP;
@@ -1098,10 +1089,10 @@ void test_ipthreat_outbound_allow(void)
     parser->net_parser = net_parser;
 
     ipthreat_dpi_process_message(ds_session);
-    free(net_parser);
+    FREE(net_parser);
 
     /* populate v6 net_parser */
-    net_parser = calloc(1, sizeof(struct net_header_parser));
+    net_parser = CALLOC(1, sizeof(struct net_header_parser));
     net_parser->eth_header = outbound_eth6_header;
     net_parser->ip_version = 6;
     net_parser->ip_protocol = IPPROTO_UDP;
@@ -1116,7 +1107,7 @@ void test_ipthreat_outbound_allow(void)
     parser->net_parser = net_parser;
 
     ipthreat_dpi_process_message(ds_session);
-    free(net_parser);
+    FREE(net_parser);
 
     /* delete fsm policy */
     fsm_delete_policy(spolicy);
@@ -1169,7 +1160,7 @@ void test_ipthreat_lan2lan_traffic(void)
     TEST_ASSERT_EQUAL_STRING(spolicy->name, fpolicy->rule_name);
 
     /* populate net_parser */
-    net_parser = calloc(1, sizeof(struct net_header_parser));
+    net_parser = CALLOC(1, sizeof(struct net_header_parser));
     net_parser->eth_header = outbound_eth_header;
     net_parser->ip_version = 4;
     net_parser->ip_protocol = IPPROTO_UDP;
@@ -1185,10 +1176,10 @@ void test_ipthreat_lan2lan_traffic(void)
     parser->net_parser = net_parser;
 
     ipthreat_dpi_process_message(ds_session);
-    free(net_parser);
+    FREE(net_parser);
 
     /* populate v6 net_parser */
-    net_parser = calloc(1, sizeof(struct net_header_parser));
+    net_parser = CALLOC(1, sizeof(struct net_header_parser));
     net_parser->eth_header = outbound_eth6_header;
     net_parser->ip_version = 6;
     net_parser->ip_protocol = IPPROTO_UDP;
@@ -1204,7 +1195,7 @@ void test_ipthreat_lan2lan_traffic(void)
     parser->net_parser = net_parser;
 
     ipthreat_dpi_process_message(ds_session);
-    free(net_parser);
+    FREE(net_parser);
 
     /* delete fsm policy */
     fsm_delete_policy(spolicy);
@@ -1257,7 +1248,7 @@ void test_ipthreat_gk_dns_cache(void)
     TEST_ASSERT_EQUAL_STRING(spolicy->name, fpolicy->rule_name);
 
     /* populate net_parser */
-    net_parser = calloc(1, sizeof(struct net_header_parser));
+    net_parser = CALLOC(1, sizeof(struct net_header_parser));
     net_parser->eth_header = outbound_eth_header;
     net_parser->ip_version = 4;
     net_parser->ip_protocol = IPPROTO_UDP;
@@ -1272,10 +1263,10 @@ void test_ipthreat_gk_dns_cache(void)
     parser->net_parser = net_parser;
 
     ipthreat_dpi_process_message(ds_session);
-    free(net_parser);
+    FREE(net_parser);
 
     /* populate v6 net_parser */
-    net_parser = calloc(1, sizeof(struct net_header_parser));
+    net_parser = CALLOC(1, sizeof(struct net_header_parser));
     net_parser->eth_header = outbound_eth6_header;
     net_parser->ip_version = 6;
     net_parser->ip_protocol = IPPROTO_UDP;
@@ -1290,7 +1281,7 @@ void test_ipthreat_gk_dns_cache(void)
     parser->net_parser = net_parser;
 
     ipthreat_dpi_process_message(ds_session);
-    free(net_parser);
+    FREE(net_parser);
 
     /* delete fsm policy */
     fsm_delete_policy(spolicy);

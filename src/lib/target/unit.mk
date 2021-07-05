@@ -37,6 +37,7 @@ TARGET_COMMON_SRC += src/target_map.c
 TARGET_COMMON_SRC += src/target_linux.c
 TARGET_COMMON_SRC += src/target_mac_learn.c
 TARGET_COMMON_SRC += $(if $(CONFIG_TARGET_HWSIM),src/target_hwsim.c,)
+TARGET_COMMON_SRC += $(if $(CONFIG_TARGET_BSAL_SIM),src/target_bsal_sim.c,)
 
 UNIT_SRC += $(TARGET_COMMON_SRC)
 ifeq ($(filter-out native,$(TARGET)),)

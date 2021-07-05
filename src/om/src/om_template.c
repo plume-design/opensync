@@ -41,6 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "policy_tags.h"
 #include "om.h"
+#include "memutil.h"
 
 /*****************************************************************************/
 
@@ -127,10 +128,7 @@ om_template_rule_expand(om_tflow_t *tflow, om_tdata_t *tdata)
 
     // Determine new length, and allocate memory for expanded rule
     nlen = om_template_rule_len(tflow, tdata);
-    if (!(erule = calloc(1, nlen))) {
-        LOGE("[%s] Error expanding tags, memory alloc failed", tflow->token);
-        goto err;
-    }
+    erule = CALLOC(1, nlen);
 
     // Copy rule, replacing tags
     p = mrule;
@@ -174,15 +172,15 @@ om_template_rule_expand(om_tflow_t *tflow, om_tdata_t *tdata)
         strcat(erule, p);
     }
 
-    free(mrule);
+    FREE(mrule);
     return erule;
 
 err:
     if (mrule) {
-        free(mrule);
+        FREE(mrule);
     }
     if (erule) {
-        free(erule);
+        FREE(erule);
     }
 
     return NULL;
@@ -224,7 +222,7 @@ om_template_apply(om_action_t type, om_tflow_t *tflow, om_tdata_t *tdata)
 
     }
 
-    free(erule);
+    FREE(erule);
     return ret;
 }
 
@@ -307,14 +305,14 @@ om_template_apply_tag(om_action_t type, om_tflow_t *tflow,
                 LOGE("[%s] Template flow not applied, too many tags", tflow->token);
                 return false;
             }
-            if (!(niter = malloc(sizeof(*niter)))) {
+            if (!(niter = MALLOC(sizeof(*niter)))) {
                 LOGE("[%s] Template flow not applied, memory alloc failed", tflow->token);
                 return false;
             }
             memcpy(niter, iter, sizeof(*niter));
 
             ret = om_template_apply_tag(type, tflow, ntle, niter, tdata, tdn+1);
-            free(niter);
+            FREE(niter);
             if (!ret) {
                 break;
             }

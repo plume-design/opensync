@@ -26,10 +26,12 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="nm2/$(basename "$0")"
 manager_setup_file="nm2/nm2_setup.sh"
@@ -51,16 +53,17 @@ Script usage example:
    ./${tc_name} eth0 br-wan
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 
 NARGS=2
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
@@ -79,7 +82,7 @@ trap '
 
 log_title "$tc_name: NM2 test - Testing UPnP mode"
 
-log "$tc_name: Creating Wifi_Inet_Config entries for $internal_if"
+log "$tc_name: Creating Wifi_Inet_Config entry for interface $internal_if"
 create_inet_entry \
     -if_name "$internal_if" \
     -enabled true \
@@ -87,53 +90,53 @@ create_inet_entry \
     -ip_assign_scheme static \
     -netmask 255.255.255.0 \
     -inet_addr 10.10.10.30 &&
-        log "$tc_name: Interface successfully created" ||
-        raise "Failed to create interface" -l "$tc_name" -tc
+        log "$tc_name: Interface $internal_if created - Success" ||
+        raise "FAIL: Failed to create $internal_if interface" -l "$tc_name" -ds
 
 log "$tc_name: Setting UPNP_MODE internal on $internal_if"
 update_ovsdb_entry Wifi_Inet_Config -w if_name "$internal_if" -u upnp_mode internal &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config table updated - upnp_mode=internal" ||
-    raise "update_ovsdb_entry - Failed to update Wifi_Inet_Config - upnp_mode=internal" -l "$tc_name" -tc
+    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config::upnp_mode is 'internal' - Success" ||
+    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config::upnp_mode is not 'internal'" -l "$tc_name" -oe
 
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$internal_if" -is upnp_mode internal &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State - upnp_mode=internal" ||
-    raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - upnp_mode=internal" -l "$tc_name" -tc
+    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::upnp_mode is 'internal' - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::upnp_mode is not 'internal'" -l "$tc_name" -tc
 
 log "$tc_name: Setting UPNP_MODE external on $external_if"
 update_ovsdb_entry Wifi_Inet_Config -w if_name "$external_if" -u upnp_mode external &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config table updated - upnp_mode=external" ||
-    raise "update_ovsdb_entry - Failed to update Wifi_Inet_Config - upnp_mode=external" -l "$tc_name" -tc
+    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config::upnp_mode is 'external' - Success" ||
+    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config::upnp_mode is not 'external'" -l "$tc_name" -oe
 
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$external_if" -is upnp_mode external &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State - upnp_mode=external" ||
-    raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - upnp_mode=external" -l "$tc_name" -tc
+    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::upnp_mode is 'external' - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::upnp_mode is not 'external'" -l "$tc_name" -tc
 
-log "$tc_name: LEVEL 2 checks"
+log "$tc_name: Checking UPnP configuration is valid - LEVEL2"
 wait_for_function_response 0 "check_upnp_configuration_valid $internal_if $external_if" &&
-    log "$tc_name: LEVEL 2: UPNP applied to OS" ||
-    raise "LEVEL 2: Failed to apply UPNP to OS" -l "$tc_name" -tc
+    log "$tc_name: LEVEL2 - UPNP applied to system - Success" ||
+    raise "FAIL: LEVEL2 - Failed to apply UPNP to system" -l "$tc_name" -tc
 
 log "$tc_name: Disabling UPNP_MODE on $internal_if"
 update_ovsdb_entry Wifi_Inet_Config -w if_name "$internal_if" -u upnp_mode "[\"set\",[]]" &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config table updated - upnp_mode=[\"set\",[]]" ||
-    raise "update_ovsdb_entry - Failed to update Wifi_Inet_Config - upnp_mode=[\"set\",[]]" -l "$tc_name" -tc
+    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config table::upnp_mode is [\"set\",[]]" ||
+    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config::upnp_mode is not [\"set\",[]]" -l "$tc_name" -oe
 
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$internal_if" -is upnp_mode "disabled" &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State - upnp_mode=disabled" ||
-    raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - upnp_mode=disabled" -l "$tc_name" -tc
+    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::upnp_mode is 'disabled' - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::upnp_mode is not 'disabled'" -l "$tc_name" -tc
 
 log "$tc_name: Disabling UPNP_MODE on $external_if"
 update_ovsdb_entry Wifi_Inet_Config -w if_name "$external_if" -u upnp_mode "[\"set\",[]]" &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config table updated - upnp_mode=[\"set\",[]]" ||
-    raise "update_ovsdb_entry - Failed to update Wifi_Inet_Config - upnp_mode=[\"set\",[]]" -l "$tc_name" -tc
+    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config table updated::upnp_mode is [\"set\",[]] - Success" ||
+    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config::upnp_mode is not [\"set\",[]]" -l "$tc_name" -oe
 
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$external_if" -is upnp_mode "disabled" &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State - upnp_mode=disabled" ||
-    raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - upnp_mode=disabled" -l "$tc_name" -tc
+    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::upnp_mode is 'disabled' - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::upnp_mode is not 'disabled'" -l "$tc_name" -tc
 
-log "$tc_name: LEVEL 2 checks"
+log "$tc_name: Checking UPnP configuration is valid - LEVEL2"
 wait_for_function_response 1 "check_upnp_configuration_valid $internal_if $external_if" &&
-    log "$tc_name: LEVEL 2: UPNP removed from OS" ||
-    raise "LEVEL 2: Failed to remove UPNP remove OS" -l "$tc_name" -tc
+    log "$tc_name: LEVEL2 - UPNP removed from system - Success" ||
+    raise "FAIL: LEVEL2 - Failed to remove UPNP from system" -l "$tc_name" -tc
 
 pass

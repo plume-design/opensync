@@ -26,10 +26,12 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="wm2/$(basename "$0")"
 manager_setup_file="wm2/wm2_setup.sh"
@@ -59,16 +61,17 @@ Script usage example:
    ./${tc_name} 2 wifi1 test_wifi_50L WifiPassword123 44 HT20 11ac ap home-ap-l50 5GU
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 
 NARGS=10
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
@@ -119,34 +122,34 @@ check_radio_vif_state \
                     -hw_mode "$hw_mode" \
                     -mode "$mode" \
                     -vif_if_name "$vif_if_name" &&
-                        log "$tc_name: create_radio_vif_interface - Success"
+                        log "$tc_name: create_radio_vif_interface - Interface $if_name created - Success"
             ) ||
-        raise "create_radio_vif_interface - Failed" -l "$tc_name" -tc
+        raise "FAIL: create_radio_vif_interface - Interface $if_name not created" -l "$tc_name" -ds
 
 original_band=$(get_ovsdb_entry_value Wifi_Radio_State freq_band -w if_name "$if_name")
 
 if [ "$freq_band" = "$original_band" ]; then
-    raise "Chosen FREQ BAND ($freq_band) needs to be DIFFERENT from default FREQ BAND ($original_band) - ['2.4G', '5G', '5GL', '5GU']" -l "$tc_name" -tc
+    raise "FAIL: Chosen FREQ BAND ($freq_band) needs to be DIFFERENT from default FREQ BAND ($original_band) - ['2.4G', '5G', '5GL', '5GU']" -l "$tc_name" -arg
 fi
 
 log "$tc_name: Changing FREQ BAND to $freq_band"
 update_ovsdb_entry Wifi_Radio_Config -w if_name "$if_name" -u freq_band "$freq_band" &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Radio_Config table updated - freq_band $freq_band" ||
-    raise "update_ovsdb_entry - Failed to update Wifi_Radio_Config - freq_band $freq_band" -l "$tc_name" -tc
+    log "$tc_name: update_ovsdb_entry - Wifi_Radio_Config::freq_band is $freq_band - Success" ||
+    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Radio_Config::freq_band is not $freq_band" -l "$tc_name" -oe
 
 res=$(wait_ovsdb_entry Wifi_Radio_State -w if_name "$if_name" -is freq_band "$freq_band" -ec)
 
 log "$tc_name: Reversing FREQ BAND to normal value"
 update_ovsdb_entry Wifi_Radio_Config -w if_name "$if_name" -u freq_band "$original_band" &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Radio_Config table updated - freq_band $original_band" ||
-    raise "update_ovsdb_entry - Failed to update Wifi_Radio_Config - freq_band $original_band" -l "$tc_name" -tc
+    log "$tc_name: update_ovsdb_entry - Wifi_Radio_Config table::freq_band is $original_band - Success" ||
+    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Radio_Config::freq_band is not $original_band" -l "$tc_name" -oe
 
 wait_ovsdb_entry Wifi_Radio_State -w if_name "$if_name" -is freq_band "$original_band" &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Radio_Config reflected to Wifi_Radio_State - freq_band $original_band" ||
-    raise "wait_ovsdb_entry - Failed to reflect Wifi_Radio_Config to Wifi_Radio_State - freq_band $original_band" -l "$tc_name" -tc
+    log "$tc_name: wait_ovsdb_entry - Wifi_Radio_Config reflected to Wifi_Radio_State::freq_band is $original_band - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Radio_Config to Wifi_Radio_State::freq_band is not $original_band" -l "$tc_name" -tc
 
 if [ "$res" -eq 0 ]; then
-  raise "FAIL: Immutable field freq_band was changed to $freq_band" -l "$tc_name" -tc
+    raise "FAIL: Immutable field freq_band was changed to $freq_band" -l "$tc_name" -tc
 fi
 
 pass

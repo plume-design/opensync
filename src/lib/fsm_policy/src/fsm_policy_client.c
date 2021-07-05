@@ -138,6 +138,7 @@ void fsm_policy_register_client(struct fsm_policy_client *client)
         /* Update the internal client */
         p_client->update_client = client->update_client;
         p_client->session_name = client->session_name;
+        p_client->flush_cache = client->flush_cache;
 
         LOGI("%s: updating client %s", __func__, p_client->name);
         if (client->table != NULL) table_name = client->table->name;
@@ -160,6 +161,8 @@ void fsm_policy_register_client(struct fsm_policy_client *client)
     p_client->session = client->session;
     p_client->update_client = client->update_client;
     p_client->session_name = client->session_name;
+    p_client->flush_cache = client->flush_cache;
+
     table = ds_tree_find(&mgr->policy_tables, name);
     p_client->table = table;
     client->table = table;
@@ -245,4 +248,26 @@ void fsm_policy_update_clients(struct policy_table *table)
         client = ds_tree_next(tree, client);
     }
     fsm_walk_clients_tree(__func__);
+}
+
+void
+fsm_policy_flush_cache(struct fsm_policy *policy)
+{
+    struct fsm_policy_client *client;
+    struct fsm_policy_session *mgr;
+    ds_tree_t *tree;
+
+    LOGI("%s: Cache flush request", __func__);
+    mgr = fsm_policy_get_mgr();
+    tree = &mgr->clients;
+
+    client = ds_tree_head(tree);
+    while (client != NULL)
+    {
+        if (client->flush_cache != NULL)
+        {
+            client->flush_cache(client->session, policy);
+        }
+        client = ds_tree_next(tree, client);
+    }
 }

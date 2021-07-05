@@ -26,10 +26,12 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="wm2/$(basename "$0")"
 manager_setup_file="wm2/wm2_setup.sh"
@@ -59,16 +61,19 @@ Script usage example:
    ./${tc_name} 2 wifi1 test_wifi_50L WifiPassword123 44 HT20 11ac ap home-ap-l50 qca4219
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
+
 NARGS=10
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 vif_radio_idx=$1
@@ -119,9 +124,9 @@ check_radio_vif_state \
                     -hw_mode "$hw_mode" \
                     -mode "$mode" \
                     -vif_if_name "$vif_if_name" &&
-                        log "$tc_name: create_radio_vif_interface - Success"
+                        log "$tc_name: create_radio_vif_interface - Interface $if_name created - Success"
             ) ||
-        raise "create_radio_vif_interface - Failed" -l "$tc_name" -tc
+        raise "FAIL: create_radio_vif_interface - Interface $if_name not created" -l "$tc_name" -ds
 
 original_hw_type=$(get_ovsdb_entry_value Wifi_Radio_State hw_type -w if_name "$if_name")
 
@@ -131,22 +136,22 @@ fi
 
 log "$tc_name: Changing HW TYPE to $hw_type"
 update_ovsdb_entry Wifi_Radio_Config -w if_name "$if_name" -u hw_type "$hw_type" &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Radio_Config table updated - hw_type $hw_type" ||
-    raise "update_ovsdb_entry - Failed to update Wifi_Radio_Config - hw_type $hw_type" -l "$tc_name" -tc
+    log "$tc_name: update_ovsdb_entry - Wifi_Radio_Config::hw_type is $hw_type - Success" ||
+    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Radio_Config::hw_type is not $hw_type" -l "$tc_name" -oe
 
 res=$(wait_ovsdb_entry Wifi_Radio_State -w if_name "$if_name" -is hw_type "$hw_type" -ec)
 
-log "$tc_name: Reversing HW TYPE to normal value"
+log "$tc_name: Reversing HW TYPE to original value"
 update_ovsdb_entry Wifi_Radio_Config -w if_name "$if_name" -u hw_type "$original_hw_type" &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Radio_Config table updated - hw_type $original_hw_type" ||
-    raise "update_ovsdb_entry - Failed to update Wifi_Radio_Config - hw_type $original_hw_type" -l "$tc_name" -tc
+    log "$tc_name: update_ovsdb_entry - Wifi_Radio_Config::hw_type is $original_hw_type - Success" ||
+    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Radio_Config::hw_type is not $original_hw_type" -l "$tc_name" -oe
 
 wait_ovsdb_entry Wifi_Radio_State -w if_name "$if_name" -is hw_type "$original_hw_type" &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Radio_Config reflected to Wifi_Radio_State - hw_type $original_hw_type" ||
-    raise "wait_ovsdb_entry - Failed to reflect Wifi_Radio_Config to Wifi_Radio_State - hw_type $original_hw_type" -l "$tc_name" -tc
+    log "$tc_name: wait_ovsdb_entry - Wifi_Radio_Config reflected to Wifi_Radio_State::hw_type is $original_hw_type - Success" ||
+    raise "wait_ovsdb_entry - Failed to reflect Wifi_Radio_Config to Wifi_Radio_State::hw_type is not $original_hw_type" -l "$tc_name" -tc
 
 if [ "$res" -eq 0 ]; then
-  raise "HW TYPE was changed in Wifi_Radio_State $hw_type" -l "$tc_name" -tc
+    raise "FAIL: HW TYPE was changed in Wifi_Radio_State to $hw_type" -l "$tc_name" -tc
 fi
 
 pass

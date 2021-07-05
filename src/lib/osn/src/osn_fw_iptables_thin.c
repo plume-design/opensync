@@ -27,12 +27,15 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <regex.h>
 
 #include "const.h"
+#include "ds_tree.h"
+#include "evx.h"
 #include "execsh.h"
 #include "kconfig.h"
 #include "log.h"
+#include "memutil.h"
 #include "osn_fw_pri.h"
 #include "util.h"
-#include "ds_tree.h"
+#include "memutil.h"
 
 #define MODULE_ID LOG_MODULE_ID_TARGET
 
@@ -63,6 +66,18 @@ struct osfw_rule
     ds_tree_node_t      fr_tnode;
 };
 
+/*
+ * Chain definition
+ */
+struct osfw_chain
+{
+    int                 fc_family;      /**< Chain family */
+    enum osfw_table     fc_table;       /**< Chain table */
+    char               *fc_chain;       /**< Chain name */
+    bool                fc_active;      /**< True if active, false if pending for deletion */
+    ds_tree_node_t      fc_tnode;
+};
+
 static bool osfw_iptables_chain_add(int family, enum osfw_table table, const char *chain);
 static bool osfw_iptables_chain_del(int family, enum osfw_table table, const char *chain);
 
@@ -77,9 +92,13 @@ bool osfw_iptables_rule_add(
 static struct osfw_table_def *osfw_table_get(enum osfw_table table);
 static const char *osfw_table_str(enum osfw_table table);
 static bool osfw_target_is_builtin(const char *target);
+static void osfw_debounce_fn(struct ev_loop *loop, ev_debounce *w, int revent);
 static ds_key_cmp_t osfw_rule_cmp;
+static ds_key_cmp_t osfw_chain_cmp;
 
+static ev_debounce osfw_debounce_timer;
 static ds_tree_t osfw_rule_list = DS_TREE_INIT(osfw_rule_cmp, struct osfw_rule, fr_tnode);
+static ds_tree_t osfw_chain_list = DS_TREE_INIT(osfw_chain_cmp, struct osfw_chain, fc_tnode);
 
 static char *osfw_target_builtin[] =
 {
@@ -146,7 +165,7 @@ static const char osfw_iptables_chain_add_cmd[] = _S(
         cmd="$1";
         table="$2";
         chain="$3";
-        result=$("$cmd" -w -t "$table" -N "$chain" 2>&1) || [ "$result" == "iptables: Chain already exists." ]);
+        result=$("$cmd" -w -t "$table" -N "$chain" 2>&1) || echo "$result"  | grep -q "Chain already exists.");
 
 /* Built-in script for removing a chain */
 static const char osfw_iptables_chain_del_cmd[] = _S(
@@ -179,6 +198,14 @@ static const char osfw_iptables_rule_add_cmd[] = _S(
  */
 bool osfw_init(void)
 {
+    /*
+     * The default debounce timer is 0.3ms with a maximum timeout of 2 seconds
+     */
+    ev_debounce_init2(
+            &osfw_debounce_timer,
+            osfw_debounce_fn,
+            0.3, 2.0);
+
     return true;
 }
 
@@ -188,8 +215,8 @@ bool osfw_fini(void)
 }
 
 /*
- * This is a no-op as chain adding is handled in osfw_apply(). Just do basic
- * error checking instead.
+ * This is a no-op -- chains are created/deleted from rules during the apply
+ * phase
  */
 bool osfw_chain_add(
         int family,
@@ -197,39 +224,26 @@ bool osfw_chain_add(
         const char *chain)
 {
     (void)family;
+    (void)table;
     (void)chain;
-
-    struct osfw_table_def *tbl = osfw_table_get(table);
-    if (tbl == NULL)
-    {
-        LOG(ERR, "osfw: Unknown table %d during chain add.", table);
-        return false;
-    }
 
     return true;
 }
 
+/*
+ * This is a no-op -- chains are created/deleted from rules during the apply
+ * phase
+ */
 bool osfw_chain_del(
         int family,
         enum osfw_table table,
         const char *chain)
 {
-    struct osfw_rule *prule;
+    (void)family;
+    (void)table;
+    (void)chain;
 
-    /* Check if all rules in the chain were deleted */
-    ds_tree_foreach(&osfw_rule_list, prule)
-    {
-        if (prule->fr_family != family) continue;
-        if (prule->fr_table != table) continue;
-        if (strcmp(prule->fr_chain, chain) != 0) continue;
-
-        LOG(ERR, "osfw: %s.%s.%s: Unable to delete chain as it still contains rules: %s",
-                OSFW_FAMILY_STR(family), osfw_table_str(table), prule->fr_chain, prule->fr_rule);
-        return false;
-    }
-
-    return osfw_iptables_chain_del(family, table, chain);
-
+    return true;
 }
 
 bool osfw_rule_add(
@@ -258,7 +272,7 @@ bool osfw_rule_add(
      * with a lower ranking. This makes it very difficult to translate fixed
      * priorities to rule numbers (positions).
      */
-    prule = calloc(1, sizeof(struct osfw_rule));
+    prule = CALLOC(1, sizeof(struct osfw_rule));
     prule->fr_enabled = true;
     prule->fr_family = family;
     prule->fr_table = table;
@@ -307,57 +321,96 @@ bool osfw_rule_del(
 
     ds_tree_remove(&osfw_rule_list, rule);
 
-    free(rule->fr_chain);
-    free(rule->fr_rule);
-    free(rule->fr_target);
+    FREE(rule->fr_chain);
+    FREE(rule->fr_rule);
+    FREE(rule->fr_target);
 
-    free(rule);
+    FREE(rule);
 
     return true;
 }
 
 bool osfw_apply(void)
 {
+    ev_debounce_start(EV_DEFAULT, &osfw_debounce_timer);
+    return true;
+}
+
+void osfw_debounce_fn(struct ev_loop *loop, ev_debounce *w, int revent)
+{
+    (void)loop;
+    (void)w;
+    (void)revent;
+
+    struct osfw_chain *pchain;
     struct osfw_rule *prule;
+    ds_tree_iter_t iter;
 
     /*
-     * Scan the rule list -- the rules are sorted in the following order:
-     *  * family
-     *  * table name
-     *  * chain name
-     *  * priority
-     *
-     * It is guaranteed that rules with the same chan/table are clustered
-     * together.
+     * Clear the chain status
      */
+    ds_tree_foreach(&osfw_chain_list, pchain)
+    {
+        pchain->fc_active = false;
+    }
 
-    int cfamily = -1;   /* Current family */
-    const char *ctable = "";  /* Current table */
-    const char *cchain = "";  /* Current chain */
-
+    /*
+     * Scan the rule list and figure out what chains need to be created.
+     */
     ds_tree_foreach(&osfw_rule_list, prule)
     {
-        const char *table = osfw_table_str(prule->fr_table);
-
-        if ((cfamily != prule->fr_family) ||
-                (strcmp(ctable, osfw_table_str(prule->fr_table)) != 0) ||
-                (strcmp(cchain, prule->fr_chain) != 0))
+        /* Lookup the chain */
+        struct osfw_chain kchain =
         {
-            /* Table or chain was changed, add/flush the current chain */
-            if (!osfw_iptables_chain_add(
-                    prule->fr_family,
-                    prule->fr_table,
-                    prule->fr_chain))
-            {
-                return false;
-            }
+            .fc_family = prule->fr_family,
+            .fc_table = prule->fr_table,
+            .fc_chain = prule->fr_chain,
+        };
+
+        pchain = ds_tree_find(&osfw_chain_list, &kchain);
+        if (pchain == NULL)
+        {
+            pchain = CALLOC(1, sizeof(*pchain));
+            pchain->fc_family = prule->fr_family;
+            pchain->fc_table = prule->fr_table;
+            pchain->fc_chain = STRDUP(prule->fr_chain);
+            ds_tree_insert(&osfw_chain_list, pchain, pchain);
         }
 
-        cfamily = prule->fr_family;
-        ctable = table;
-        cchain = prule->fr_chain;
+        if (!pchain->fc_active)
+        {
+            pchain->fc_active = true;
+            /* osfw_iptables_chain_add() flushes or adds the chain */
+            if (!osfw_iptables_chain_add(pchain->fc_family, pchain->fc_table, pchain->fc_chain))
+            {
+                continue;
+            }
+        }
+    }
 
-        /* Add the chain */
+    /* Scan the rule list again and remove unused chains (fc_active == false) */
+    ds_tree_foreach_iter(&osfw_chain_list, pchain, &iter)
+    {
+        if (pchain->fc_active) continue;
+
+        if (!osfw_iptables_chain_del(pchain->fc_family, pchain->fc_table, pchain->fc_chain))
+        {
+            LOG(WARN, "osfw: %s.%s.%s: Error deleting chain.",
+                    OSFW_FAMILY_STR(pchain->fc_family),
+                    osfw_table_str(pchain->fc_table),
+                    pchain->fc_chain);
+        }
+        ds_tree_iremove(&iter);
+        FREE(pchain->fc_chain);
+        FREE(pchain);
+    }
+
+    /*
+     * The chains should be fully created by now, so scan the rule list and apply them.
+     */
+    ds_tree_foreach(&osfw_rule_list, prule)
+    {
+        /* Add the rule */
         if (!osfw_iptables_rule_add(
                 prule->fr_family,
                 prule->fr_table,
@@ -366,11 +419,9 @@ bool osfw_apply(void)
                 prule->fr_rule,
                 prule->fr_target))
         {
-            return false;
+            continue;
         }
     }
-
-    return true;
 }
 
 
@@ -411,6 +462,7 @@ bool osfw_iptables_chain_add(
         if (strcmp(chain, *pchain) == 0)
         {
             chain_builtin = true;
+            break;
         }
     }
 
@@ -641,6 +693,25 @@ int osfw_rule_cmp(void *_a, void *_b)
 
     /* Sort by rule */
     rc = strcmp(a->fr_rule, b->fr_rule);
+    if (rc != 0) return rc;
+
+    return 0;
+}
+
+int osfw_chain_cmp(void *_a, void *_b)
+{
+    int rc;
+
+    struct osfw_chain *a = _a;
+    struct osfw_chain *b = _b;
+
+    rc = a->fc_family - b->fc_family;
+    if (rc != 0) return rc;
+
+    rc = a->fc_table - b->fc_table;
+    if (rc != 0) return rc;
+
+    rc = strcmp(a->fc_chain, b->fc_chain);
     if (rc != 0) return rc;
 
     return 0;

@@ -306,12 +306,10 @@ fsm_demo_alloc_flow_tag(void)
 
     /* Allocate the key tags container */
     num_key_tags = 1;
-    key_tags = calloc(num_key_tags, sizeof(*key_tags));
-    if (key_tags == NULL) return NULL;
+    key_tags = CALLOC(num_key_tags, sizeof(*key_tags));
 
     /* Allocate the one flow tag container the key will carry */
-    tag = calloc(1, sizeof(*tag));
-    if (tag == NULL) goto err_free_key_tags;
+    tag = CALLOC(1, sizeof(*tag));
 
     tag->vendor = strdup("Plume");
     if (tag->vendor == NULL) goto err_free_tag;
@@ -320,8 +318,7 @@ fsm_demo_alloc_flow_tag(void)
     if (tag->vendor == NULL) goto err_free_vendor;
 
     tag->nelems = 2;
-    tag->tags = calloc(tag->nelems, sizeof(tag->tags));
-    if (tag->tags == NULL) goto err_free_app_name;
+    tag->tags = CALLOC(tag->nelems, sizeof(tag->tags));
     tag->tags[0] = strdup("Plume Tag0");
     if (tag->tags[0] == NULL) goto err_free_tag_tags;
 
@@ -333,22 +330,22 @@ fsm_demo_alloc_flow_tag(void)
     return key_tags;
 
 err_free_tag_tags_0:
-    free(tag->tags[0]);
+    FREE(tag->tags[0]);
 
 err_free_tag_tags:
-    free(tag->tags);
+    FREE(tag->tags);
 
 err_free_app_name:
-    free(tag->app_name);
+    FREE(tag->app_name);
 
 err_free_vendor:
-    free(tag->vendor);
+    FREE(tag->vendor);
 
 err_free_tag:
-    free(tag);
+    FREE(tag);
 
 err_free_key_tags:
-    free(key_tags);
+    FREE(key_tags);
 
     return NULL;
 }
@@ -492,8 +489,7 @@ fsm_demo_lookup_session(struct fsm_session *session)
     if (f_session != NULL) return f_session;
 
     LOGD("%s: Adding new session %s", __func__, session->name);
-    f_session = calloc(1, sizeof(struct fsm_demo_session));
-    if (f_session == NULL) return NULL;
+    f_session = CALLOC(1, sizeof(struct fsm_demo_session));
 
     ds_tree_insert(sessions, f_session, session);
 
@@ -551,8 +547,7 @@ fsm_demo_get_device(struct fsm_demo_session *f_session)
     parser = &f_session->parser;
     net_parser = parser->net_parser;
     eth = &net_parser->eth_header;
-    fdev = calloc(1, sizeof(*fdev));
-    if (fdev == NULL) return NULL;
+    fdev = CALLOC(1, sizeof(*fdev));
 
     memcpy(&fdev->device_mac, eth->srcmac, sizeof(os_macaddr_t));
 
@@ -571,7 +566,7 @@ fsm_demo_get_device(struct fsm_demo_session *f_session)
 void
 fsm_demo_free_device(struct fsm_demo_device *fdev)
 {
-    free(fdev);
+    FREE(fdev);
 }
 
 
@@ -598,7 +593,7 @@ fsm_demo_free_session(struct fsm_demo_session *f_session)
 
     net_md_free_aggregator(f_session->aggr);
     FREE(f_session->aggr);
-    free(f_session);
+    FREE(f_session);
 }
 
 

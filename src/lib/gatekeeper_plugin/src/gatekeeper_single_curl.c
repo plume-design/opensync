@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "gatekeeper.h"
 #include "fsm_policy.h"
 #include "memutil.h"
+#include "kconfig.h"
 #include "log.h"
 #include "util.h"
 
@@ -72,19 +73,18 @@ gk_curl_callback(void *contents, size_t size, size_t nmemb, void *userp)
 
 void
 gk_set_redirect(struct fsm_policy_req *policy_req,
-                Gatekeeper__Southbound__V1__GatekeeperFqdnReply *reply_fqdn)
+                Gatekeeper__Southbound__V1__GatekeeperFqdnReply *reply_fqdn,
+                struct fsm_policy_reply *policy_reply)
 {
     Gatekeeper__Southbound__V1__GatekeeperFqdnRedirectReply *fqdn_redirect;
     Gatekeeper__Southbound__V1__GatekeeperCommonReply *header;
     Gatekeeper__Southbound__V1__GatekeeperAction gk_action;
-    struct fqdn_pending_req *fqdn_req;
     char ipv6_str[INET6_ADDRSTRLEN] = { '\0' };
     char ipv4_str[INET_ADDRSTRLEN]  = { '\0' };
     char ipv4_redirect_s[256];
     char ipv6_redirect_s[256];
     const char *res;
 
-    fqdn_req      = policy_req->fqdn_req;
     header        = reply_fqdn->header;
     gk_action     = header->action;
     fqdn_redirect = reply_fqdn->redirect;
@@ -98,7 +98,7 @@ gk_set_redirect(struct fsm_policy_req *policy_req,
     if (res != NULL)
     {
         snprintf(ipv4_redirect_s, sizeof(ipv4_redirect_s), "A-%s", ipv4_str);
-        STRSCPY(fqdn_req->redirects[0], ipv4_redirect_s);
+        STRSCPY(policy_reply->redirects[0], ipv4_redirect_s);
     }
 
     res = NULL;
@@ -113,11 +113,11 @@ gk_set_redirect(struct fsm_policy_req *policy_req,
     if (res != NULL)
     {
         snprintf(ipv6_redirect_s, sizeof(ipv6_redirect_s), "4A-%s", ipv6_str);
-        STRSCPY(fqdn_req->redirects[1], ipv6_redirect_s);
+        STRSCPY(policy_reply->redirects[1], ipv6_redirect_s);
     }
 
-    policy_req->reply.redirect = 1;
-    policy_req->reply.rd_ttl = 10;
+    policy_reply->redirect = 1;
+    policy_reply->rd_ttl = 10;
 
     LOGT("%s(): redirect IPv4 IP: %s, IPv6 IP: %s",
          __func__,
@@ -186,17 +186,19 @@ gk_set_report_info(struct fsm_url_reply *url_reply,
  * @param response unpacked curl response
  * @return None
  */
-static bool
+bool
 gk_set_policy(Gatekeeper__Southbound__V1__GatekeeperReply *response,
               struct fsm_gk_verdict *gk_verdict)
 {
     Gatekeeper__Southbound__V1__GatekeeperCommonReply *header;
+    struct fsm_policy_reply *policy_reply;
     struct fqdn_pending_req *fqdn_req;
     struct fsm_policy_req *policy_req;
     struct fsm_url_request *req_info;
     struct fsm_url_reply *url_reply;
     int req_type;
 
+    policy_reply = gk_verdict->policy_reply;
     policy_req = gk_verdict->policy_req;
     fqdn_req = policy_req->fqdn_req;
     req_info = fqdn_req->req_info;
@@ -213,7 +215,7 @@ gk_set_policy(Gatekeeper__Southbound__V1__GatekeeperReply *response,
             if (response->reply_fqdn != NULL)
             {
                 header = response->reply_fqdn->header;
-                gk_set_redirect(policy_req, response->reply_fqdn);
+                gk_set_redirect(policy_req, response->reply_fqdn, policy_reply);
             }
             else
             {
@@ -316,8 +318,8 @@ gk_set_policy(Gatekeeper__Southbound__V1__GatekeeperReply *response,
 
     if (header == NULL) return false;
 
-    policy_req->reply.action = gk_get_fsm_action(header);
-    policy_req->reply.cache_ttl = header->ttl;
+    policy_reply->action = gk_get_fsm_action(header);
+    policy_reply->cache_ttl = header->ttl;
     gk_set_report_info(url_reply, header);
 
     return true;
@@ -333,7 +335,9 @@ gk_set_policy(Gatekeeper__Southbound__V1__GatekeeperReply *response,
  * @return true on success, false on failure
  */
 static bool
-gk_process_curl_response(struct gk_curl_data *data, struct fsm_gk_verdict *gk_verdict)
+gk_process_curl_response(struct gk_curl_data *data,
+                         struct fsm_gk_verdict *gk_verdict,
+                         struct fsm_policy_reply *policy_reply)
 {
     Gatekeeper__Southbound__V1__GatekeeperReply *unpacked_data;
     const uint8_t *buf;
@@ -432,40 +436,56 @@ error:
  * @return true on success, false on failure
  */
 static int
-gk_send_curl_request(struct gk_curl_easy_info *curl_info, struct gk_curl_data *chunk, struct fsm_gk_verdict *gk_verdict)
+gk_send_curl_request(struct fsm_gk_session *fsm_gk_session,
+                     struct gk_curl_data *chunk,
+                     struct fsm_gk_verdict *gk_verdict)
 {
+    struct gk_server_info *server_info;
+    struct gk_curl_easy_info *curl_info;
     char errbuf[CURL_ERROR_SIZE];
     char url[1024];
     int req_type;
     CURLcode res;
 
     errbuf[0]='\0';
+    server_info = &fsm_gk_session->gk_server_info;
+    curl_info = &fsm_gk_session->ecurl;
 
     req_type = fsm_policy_get_req_type(gk_verdict->policy_req);
 
-#ifdef CONFIG_GATEKEEPER_ENDPOINT
-    /* populate the end point url */
-    snprintf(url, sizeof(url), "%s/%s", curl_info->server_url, gk_request_str(req_type));
-#else
-    strncpy(url, curl_info->server_url, sizeof(url));
-#endif
+    if (kconfig_enabled(CONFIG_GATEKEEPER_ENDPOINT))
+    {
+        /* populate the end point url */
+        snprintf(url, sizeof(url), "%s/%d", server_info->server_url, req_type);
+    }
+    else
+    {
+        strncpy(url, server_info->server_url, sizeof(url));
+    }
 
     LOGT("%s(): sending request to %s (req type %d) using handler %p, certs path: %s, ssl cert %s, ssl key %s",
          __func__,
          url,
          req_type,
          curl_info->curl_handle,
-         curl_info->ca_path,
-         curl_info->ssl_cert,
-         curl_info->ssl_key);
+         server_info->cert_path != NULL ? server_info->cert_path : server_info->ca_path,
+         server_info->cert_path != NULL ? "None" : server_info->ssl_cert,
+         server_info->cert_path != NULL ? "None" : server_info->ssl_key);
 
     curl_easy_setopt(curl_info->curl_handle, CURLOPT_URL, url);
     curl_easy_setopt(curl_info->curl_handle, CURLOPT_POSTFIELDS, gk_verdict->gk_pb->buf);
     curl_easy_setopt(curl_info->curl_handle, CURLOPT_POSTFIELDSIZE, (long)gk_verdict->gk_pb->len);
     curl_easy_setopt(curl_info->curl_handle, CURLOPT_WRITEFUNCTION, gk_curl_callback);
-    curl_easy_setopt(curl_info->curl_handle, CURLOPT_CAINFO, curl_info->ca_path);
-    curl_easy_setopt(curl_info->curl_handle, CURLOPT_SSLCERT, curl_info->ssl_cert);
-    curl_easy_setopt(curl_info->curl_handle, CURLOPT_SSLKEY, curl_info->ssl_key);
+    if (server_info->cert_path != NULL)
+    {
+        curl_easy_setopt(curl_info->curl_handle, CURLOPT_CAINFO, server_info->cert_path);
+    }
+    else
+    {
+        curl_easy_setopt(curl_info->curl_handle, CURLOPT_CAINFO, server_info->ca_path);
+        curl_easy_setopt(curl_info->curl_handle, CURLOPT_SSLCERT, server_info->ssl_cert);
+        curl_easy_setopt(curl_info->curl_handle, CURLOPT_SSLKEY, server_info->ssl_key);
+    }
     curl_easy_setopt(curl_info->curl_handle, CURLOPT_WRITEDATA, chunk);
     curl_easy_setopt(curl_info->curl_handle, CURLOPT_ERRORBUFFER, errbuf);
 
@@ -538,9 +558,10 @@ gk_update_categorization_count(struct fsm_gk_session *fsm_gk_session)
  * @return gatekeeper response code.
  */
 int
-gk_send_request(struct fsm_session *session,
-                struct fsm_gk_session *fsm_gk_session,
-                struct fsm_gk_verdict *gk_verdict)
+gk_send_ecurl_request(struct fsm_session *session,
+                      struct fsm_gk_session *fsm_gk_session,
+                      struct fsm_gk_verdict *gk_verdict,
+                      struct fsm_policy_reply *policy_reply)
 {
     struct gk_curl_easy_info *curl_info;
     struct fsm_policy_req *policy_req;
@@ -556,7 +577,7 @@ gk_send_request(struct fsm_session *session,
 
     policy_req = gk_verdict->policy_req;
     fqdn_req = policy_req->fqdn_req;
-    fqdn_req->provider = session->provider;
+    policy_reply->provider = session->provider;
     req_info = fqdn_req->req_info;
 
     url_reply = req_info->reply;
@@ -577,7 +598,7 @@ gk_send_request(struct fsm_session *session,
 
     /* update connection time */
     curl_info->connection_time = time(NULL);
-    res = gk_send_curl_request(curl_info, &chunk, gk_verdict);
+    res = gk_send_curl_request(fsm_gk_session, &chunk, gk_verdict);
     stats = &fsm_gk_session->health_stats;
     stats->cloud_lookups++;
 
@@ -587,7 +608,7 @@ gk_send_request(struct fsm_session *session,
     {
         LOGT("%s(): curl request failed!!", __func__);
         url_reply->connection_error = true;
-        fqdn_req->to_report = false;
+        policy_reply->to_report = false;
         url_reply->error = res;
         gk_response = GK_CONNECTION_ERROR;
         goto error;
@@ -600,7 +621,7 @@ gk_send_request(struct fsm_session *session,
         goto error;
     }
 
-    ret = gk_process_curl_response(&chunk, gk_verdict);
+    ret = gk_process_curl_response(&chunk, gk_verdict, policy_reply);
     if (ret == false) gk_response = GK_SERVICE_ERROR;
 
     /* if the curl reponse was successful and reply processing failed

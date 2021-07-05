@@ -1,5 +1,6 @@
 #!/bin/sh
 
+. /usr/opesnync/etc/kconfig # TODO: This should point to {INSTALL_PREFIX}/etc/kconfig
 prog=$0
 
 # usage
@@ -50,8 +51,8 @@ while getopts "$optspec" optchar; do
     esac
 done
 
-intf=${INTF:-br-home.tdns}
-bridge=${BRIDGE:-br-home}
+intf=${INTF:-${CONFIG_LAN_BRIDGE_NAME}.tdns}
+bridge=${BRIDGE:-${CONFIG_LAN_BRIDGE_NAME}}
 fsm_handler=dev_dns
 of_out_token=dev_flow_dns_out
 of_in_token=dev_flow_dns_in

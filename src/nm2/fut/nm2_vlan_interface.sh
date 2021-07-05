@@ -26,10 +26,12 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="nm2/$(basename "$0")"
 manager_setup_file="nm2/nm2_setup.sh"
@@ -42,8 +44,8 @@ Description:
       system, fails otherwise
 Arguments:
     -h  show this help message
-    \$1 (parent_ifname)        : used as parent_ifname in Wifi_Inet_Config table           : (string)(required)
-    \$2 (vlan_id) : used as vlan_id for virtual interface '100' in 'eth0.100' : (integer)(required)
+    \$1 (parent_ifname)  : used as parent_ifname in Wifi_Inet_Config table           : (string)(required)
+    \$2 (vlan_id)        : used as vlan_id for virtual interface '100' in 'eth0.100' : (integer)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
                  Run: ./${tc_name} <parent_ifname> <vlan_id>
@@ -51,16 +53,17 @@ Script usage example:
    ./${tc_name} eth0 100
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 
 check_kconfig_option "CONFIG_OSN_LINUX_VLAN" "y" &&
     log "${tc_name}: CONFIG_OSN_LINUX_VLAN==y - VLAN is enabled on this device" ||
@@ -97,36 +100,36 @@ create_inet_entry \
     -if_type vlan \
     -vlan_id "$vlan_id" \
     -parent_ifname "$parent_ifname" &&
-        log "$tc_name: create_vlan_inet_entry - Success" ||
-        raise "create_vlan_inet_entry - Failed" -l "$tc_name" -tc
+        log "$tc_name: Interface $if_name created - Success" ||
+        raise "FAIL: Failed to create $if_name interface" -l "$tc_name" -ds
 
-log "$tc_name: LEVEL 2 - Check is interface up - $if_name"
-wait_for_function_response 0 "get_interface_is_up $if_name" &&
-    log "$tc_name: wait_for_function_response - Interface is UP - $if_name" ||
-    raise "wait_for_function_response - Interface is DOWN - $if_name" -l "$tc_name" -tc
+log "$tc_name: Check is interface $if_name up - LEVEL2"
+wait_for_function_response 0 "get_eth_interface_is_up $if_name" &&
+    log "$tc_name: wait_for_function_response - Interface $if_name is UP - Success" ||
+    raise "FAIL: wait_for_function_response - Interface $if_name is DOWN" -l "$tc_name" -ds
 
 vlan_pid="/proc/net/vlan/${if_name}"
-log "$tc_name: LEVEL 2 - Check ${vlan_pid} existence"
+log "$tc_name: Checking for  ${vlan_pid} existence - LEVEL2"
 wait_for_function_response 0 "[ -f ${vlan_pid} ]" &&
-    log "$tc_name: PID ${vlan_pid} is runinng" ||
-    raise "PID ${vlan_pid} is NOT running" -l "$tc_name" -tc
+    log "$tc_name: LEVEL2 - PID ${vlan_pid} is runinng - Success" ||
+    raise "FAIL: LEVEL2 - PID ${vlan_pid} is NOT running" -l "$tc_name" -tc
 
 log "$tc_name: Output PID ${vlan_pid} info:"
 cat "${vlan_pid}"
 
-log "$tc_name: LEVEL 2 - Validate PID VLAN config - vlan_id == ${vlan_id}"
+log "$tc_name: Validating PID VLAN config - vlan_id == ${vlan_id} - LEVEL2"
 wait_for_function_response 0 "cat "${vlan_pid}" | grep 'VID: ${vlan_id}'" &&
-    log "$tc_name: VID is set to 100" ||
-    raise "VID is not set" -l "$tc_name" -tc
+    log "$tc_name: LEVEL2 - VID is set to 100 - Success" ||
+    raise "FAIL: LEVEL2 - VID is not set" -l "$tc_name" -tc
 
-log "$tc_name: LEVEL 2 - Check parent device for VLAN"
+log "$tc_name: Check parent device for VLAN - LEVEL2"
 wait_for_function_response 0 "cat "${vlan_pid}" | grep 'Device: ${parent_ifname}'" &&
-    log "$tc_name: Device is set to ${parent_ifname}" ||
-    raise "Device is not set to ${parent_ifname}" -l "$tc_name" -tc
+    log "$tc_name: LEVEL2 - Device is set to ${parent_ifname} - Success" ||
+    raise "FAIL: LEVEL2 - Device is not set to ${parent_ifname}" -l "$tc_name" -tc
 
 log "$tc_name: Remove VLAN interface"
 delete_inet_interface "$if_name" &&
-    log "$tc_name: VLAN interface removed from device" ||
-    raise "VLAN interface not removed from device" -l "$tc_name" -tc
+    log "$tc_name: VLAN interface $if_name removed from device - Success" ||
+    raise "FAIL: VLAN interface $if_name not removed from device" -l "$tc_name" -tc
 
 pass

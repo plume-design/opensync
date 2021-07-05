@@ -40,26 +40,23 @@ echo "${FUT_TOPDIR}/shell/lib/cm2_lib.sh sourced"
 ###############################################################################
 # DESCRIPTION:
 #   Function prepares device for CM tests.
-#   Can be used with parameter to wait for bluetooth payload from CM.
-#   Can be used with parameter to make device a gateway, adding WAN interface
-#   to bridge.
 #   Raises an exception on fail.
 # INPUT PARAMETER(S):
-#   $1  interface name (optional, default: eth0)
-#   $2  is gateway (optional, default: true)
+#   $1  wan_eth_if_name: uplink ethernet interface name (string)(optional)
+#   $2  wan_bridge_if_name: WAN bridge interface name (string)(optional)
 # RETURNS:
 #   0   On success.
 #   See description.
 # USAGE EXAMPLE(S):
 #   cm_setup_test_environment
-#   cm_setup_test_environment eth0 true
-#   cm_setup_test_environment eth0 false
+#   cm_setup_test_environment eth0 br-wan
 ###############################################################################
 cm_setup_test_environment()
 {
     fn_name="cm2_lib:cm_setup_test_environment"
-    cm2_if_name=${1:-eth0}
-    cm2_is_gw=${2:-true}
+    wan_eth_if_name=${1}
+    wan_bridge_if_name=${2}
+    check_kconfig_option "CONFIG_MANAGER_WANO" "y" && is_wano=true || is_wano=false
 
     log "$fn_name - Running CM2 setup"
 
@@ -79,9 +76,9 @@ cm_setup_test_environment()
         log -deb "$fn_name - iptables unblock SSL - Success" ||
         raise "FAIL: Could not unblock SSL traffic: manipulate_iptables_protocol unblock SSL" -l "$fn_name" -ds
 
-    # This needs to execute before we start the managers. Flow is essential.
-    if [ "$cm2_is_gw" == "true" ]; then
-        add_bridge_interface br-wan "$cm2_if_name" &&
+    # Legacy procedure requires manual adding of WAN ethernet interface into WAN bridge
+    if [ -n ${wan_eth_if_name} ] && [ -n ${wan_bridge_if_name} ] && [ $is_wano == false ] ; then
+        add_bridge_interface "${wan_bridge_if_name}" "${wan_eth_if_name}" &&
             log -deb "$fn_name - interface '$cm2_if_name' added to bridge 'br-wan' - Success" ||
             raise "FAIL: Could not add interface to br-wan bridge: add_bridge_interface br-wan $cm2_if_name" -l "$fn_name" -ds
     fi
@@ -94,8 +91,7 @@ cm_setup_test_environment()
         log -deb "$fn_name - start_specific_manager nm - Success" ||
         raise "FAIL: Could not start manager: start_specific_manager nm" -l "$fn_name" -ds
 
-    check_kconfig_option "CONFIG_MANAGER_WANO" "y"
-    if [ $? -eq 0 ]; then
+    if [ $is_wano == true ]; then
         start_specific_manager wano &&
             log -deb "$fn_name - start_specific_manager wano - Success" ||
             raise "FAIL: Could not start manager: start_if_specific_manager wano" -l "$fn_name" -ds
@@ -113,11 +109,9 @@ cm_setup_test_environment()
         log -deb "$fn_name - Manager log for NM set to TRACE - Success" ||
         raise "FAIL: Could not set manager log severity: set_manager_log NM TRACE" -l "$fn_name" -ds
 
-    if [ "$cm2_is_gw" == "true" ]; then
-        wait_for_function_response 0 "check_default_route_gw" &&
-            log -deb "$fn_name - Default GW added to routes - Success" ||
-            raise "FAIL: Default GW not added to routes" -l "$fn_name" -ds
-    fi
+    wait_for_function_response 0 "check_default_route_gw" &&
+        log -deb "$fn_name - Default GW added to routes - Success" ||
+        raise "FAIL: Default GW not added to routes" -l "$fn_name" -ds
 
     log "$fn_name - CM setup - end"
 

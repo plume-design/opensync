@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "telog.h"
 #include "util.h"
+#include "memutil.h"
 #include "execsh.h"
 
 #include "osn_netif.h"
@@ -83,11 +84,7 @@ inet_t *inet_eth_new(const char *ifname)
 {
     inet_eth_t *self;
 
-    self = malloc(sizeof(*self));
-    if (self == NULL)
-    {
-        goto error;
-    }
+    self = MALLOC(sizeof(*self));
 
     if (!inet_eth_init(self, ifname))
     {
@@ -98,7 +95,7 @@ inet_t *inet_eth_new(const char *ifname)
     return (inet_t *)self;
 
  error:
-    if (self != NULL) free(self);
+    if (self != NULL) FREE(self);
     return NULL;
 }
 

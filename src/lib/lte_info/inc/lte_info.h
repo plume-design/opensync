@@ -31,65 +31,120 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdbool.h>
 
 #include "memutil.h"
+#include "os_types.h"
+
+#include "lte_info.pb-c.h"
 
 /**
- * LteInfo representation
+ * LteCommonHeader representation
  */
-struct lte_info
+struct lte_common_header
 {
-    char *prod_id_info;
-    char *chip_serial;
+    uint32_t request_id;
+    char *if_name;
+    char *node_id;
+    char *location_id;
     char *imei;
     char *imsi;
-    char *iccid;
-    char *sim_status;
-    char *net_reg_status;
-    char *service_provider_name;
-    char *sim_slot;
+    uint64_t reported_at; // Unix time in seconds
 };
-
 
 /**
- * LteSigQual representation
+ * Network Registration Status
  */
-struct lte_sig_qual
+enum lte_net_reg_status
 {
-  char *rssi;
-  char *ber;
+    LTE_NET_REG_STAT_UNSPECIFIED = INTERFACES__LTE_INFO__LTE_NET_REG_STATUS__LTE_NET_REG_STAT_UNSPECIFIED,
+    LTE_NET_REG_STAT_NOTREG = INTERFACES__LTE_INFO__LTE_NET_REG_STATUS__LTE_NET_REG_STAT_NOTREG,
+    LTE_NET_REG_STAT_REG = INTERFACES__LTE_INFO__LTE_NET_REG_STATUS__LTE_NET_REG_STAT_REG,
+    LTE_NET_REG_STAT_SEARCH = INTERFACES__LTE_INFO__LTE_NET_REG_STATUS__LTE_NET_REG_STAT_SEARCH,
+    LTE_NET_REG_STAT_DENIED = INTERFACES__LTE_INFO__LTE_NET_REG_STATUS__LTE_NET_REG_STAT_DENIED,
+    LTE_NET_REG_STAT_UNKNOWN = INTERFACES__LTE_INFO__LTE_NET_REG_STATUS__LTE_NET_REG_STAT_UNKNOWN,
+    LTE_NET_REG_STAT_ROAMING = INTERFACES__LTE_INFO__LTE_NET_REG_STATUS__LTE_NET_REG_STAT_ROAMING,
 };
 
+/**
+ * LteNetInfo representation
+ */
+struct lte_net_info
+{
+    enum lte_net_reg_status net_status;
+    int32_t rssi;
+    int32_t ber;
+};
+
+/**
+ * LteDataUsage
+ */
+struct lte_data_usage
+{
+    uint64_t rx_bytes;
+    uint64_t tx_bytes;
+    uint64_t failover_start; // Unix time in seconds
+    uint64_t failover_end; // Unix time in seconds
+    uint32_t failover_count;
+};
+
+/**
+ * Serving Cell State
+ */
+enum lte_serving_cell_state {
+    LTE_SERVING_CELL_UNSPECIFIED = INTERFACES__LTE_INFO__LTE_SERVING_CELL_STATE__LTE_SERVING_CELL_UNSPECIFIED,
+    LTE_SERVING_CELL_SEARCH = INTERFACES__LTE_INFO__LTE_SERVING_CELL_STATE__LTE_SERVING_CELL_SEARCH,
+    LTE_SERVING_CELL_LIMSERV = INTERFACES__LTE_INFO__LTE_SERVING_CELL_STATE__LTE_SERVING_CELL_LIMSERV,
+    LTE_SERVING_CELL_NOCONN = INTERFACES__LTE_INFO__LTE_SERVING_CELL_STATE__LTE_SERVING_CELL_NOCONN,
+    LTE_SERVING_CELL_CONNECT = INTERFACES__LTE_INFO__LTE_SERVING_CELL_STATE__LTE_SERVING_CELL_CONNECT,
+};
+
+/**
+ * Cell mode
+ */
+enum lte_cell_mode {
+    LTE_CELL_MODE_UNSPECIFIED = INTERFACES__LTE_INFO__LTE_CELL_MODE__LTE_CELL_MODE_UNSPECIFIED,
+    LTE_CELL_MODE_LTE = INTERFACES__LTE_INFO__LTE_CELL_MODE__LTE_CELL_MODE_LTE,
+    LTE_CELL_MODE_WCDMA = INTERFACES__LTE_INFO__LTE_CELL_MODE__LTE_CELL_MODE_WCDMA,
+};
+
+/**
+ * fdd_tdd_mode
+ */
+enum lte_fdd_tdd_mode {
+    LTE_MODE_UNSPECIFIED = INTERFACES__LTE_INFO__LTE_FDD_TDD_MODE__LTE_MODE_UNSPECIFIED,
+    LTE_MODE_FDD = INTERFACES__LTE_INFO__LTE_FDD_TDD_MODE__LTE_MODE_FDD,
+    LTE_MODE_TDD = INTERFACES__LTE_INFO__LTE_FDD_TDD_MODE__LTE_MODE_TDD,
+};
+
+/**
+ * Uplink/Downlink Bandwidth in MHz
+ */
+enum lte_bandwidth {
+    LTE_BANDWIDTH_UNSPECIFIED = INTERFACES__LTE_INFO__LTE_BANDWIDTH__LTE_BANDWIDTH_UNSPECIFIED,
+    LTE_BANDWIDTH_1P4_MHZ = INTERFACES__LTE_INFO__LTE_BANDWIDTH__LTE_BANDWIDTH_1P4_MHZ,
+    LTE_BANDWIDTH_3_MHZ = INTERFACES__LTE_INFO__LTE_BANDWIDTH__LTE_BANDWIDTH_3_MHZ,
+    LTE_BANDWIDTH_5_MHZ = INTERFACES__LTE_INFO__LTE_BANDWIDTH__LTE_BANDWIDTH_5_MHZ,
+    LTE_BANDWIDTH_10_MHZ = INTERFACES__LTE_INFO__LTE_BANDWIDTH__LTE_BANDWIDTH_10_MHZ,
+    LTE_BANDWIDTH_15_MHZ = INTERFACES__LTE_INFO__LTE_BANDWIDTH__LTE_BANDWIDTH_15_MHZ,
+    LTE_BANDWIDTH_20_MHZ = INTERFACES__LTE_INFO__LTE_BANDWIDTH__LTE_BANDWIDTH_20_MHZ,
+};
 
 struct lte_net_serving_cell_info
 {
-    char *cell_type;
-    char *state;
-    char *is_tdd;
-    char *mcc;
-    char *mnc;
-    char *cellid;
-    char *pcid;
-    char *uarfcn;
-    char *earfcn;
-    char *freq_band;
-    char *ul_bandwidth;
-    char *dl_bandwidth;
-    char *tac;
-    char *rsrp;
-    char *rsrq;
-    char *rssi;
-    char *sinr;
-    char *srxlev;
-};
-
-
-/**
- * NeighborCell freq mode
- */
-enum lte_neighbor_cell_mode
-{
-    LTE_CELL_MODE_UNSPECIFIED,
-    LTE_CELL_MODE_LTE,
-    LTE_CELL_MODE_WCDMA,
+    enum lte_serving_cell_state state;
+    enum lte_cell_mode mode;
+    enum lte_fdd_tdd_mode fdd_tdd_mode;
+    uint32_t cellid;
+    uint32_t pcid;
+    uint32_t uarfcn;
+    uint32_t earfcn;
+    uint32_t freq_band;
+    enum lte_bandwidth ul_bandwidth;
+    enum lte_bandwidth dl_bandwidth;
+    uint32_t tac;
+    int32_t rsrp;
+    int32_t rsrq;
+    int32_t rssi;
+    uint32_t sinr;
+    uint32_t srxlev;
 };
 
 
@@ -98,39 +153,48 @@ enum lte_neighbor_cell_mode
  */
 enum lte_neighbor_freq_mode
 {
-    LTE_FREQ_MODE_UNSPECIFIED,
-    LTE_FREQ_MODE_INTRA,
-    LTE_FREQ_MODE_INTER,
-    LTE_FREQ_MODE_WCDMA,
-    LTE_FREQ_MODE_WCDMA_LTE,
+    LTE_FREQ_MODE_UNSPECIFIED = INTERFACES__LTE_INFO__LTE_NEIGHBOR_FREQ_MODE__LTE_FREQ_MODE_UNSPECIFIED,
+    LTE_FREQ_MODE_INTRA = INTERFACES__LTE_INFO__LTE_NEIGHBOR_FREQ_MODE__LTE_FREQ_MODE_INTRA,
+    LTE_FREQ_MODE_INTER = INTERFACES__LTE_INFO__LTE_NEIGHBOR_FREQ_MODE__LTE_FREQ_MODE_INTER,
+    LTE_FREQ_MODE_WCDMA = INTERFACES__LTE_INFO__LTE_NEIGHBOR_FREQ_MODE__LTE_FREQ_MODE_WCDMA,
+    LTE_FREQ_MODE_WCDMA_LTE = INTERFACES__LTE_INFO__LTE_NEIGHBOR_FREQ_MODE__LTE_FREQ_MODE_WCDMA_LTE,
 };
 
+/**
+ * Cell Set
+ */
+enum lte_neighbor_cell_set {
+    LTE_NEIGHBOR_CELL_SET_UNSPECIFIED = INTERFACES__LTE_INFO__LTE_NEIGHBOR_CELL_SET__LTE_NEIGHBOR_CELL_SET_UNSPECIFIED,
+    LTE_NEIGHBOR_CELL_SET_ACTIVE_SET = INTERFACES__LTE_INFO__LTE_NEIGHBOR_CELL_SET__LTE_NEIGHBOR_CELL_SET_ACTIVE_SET,
+    LTE_NEIGHBOR_CELL_SET_SYNC_NEIGHBOR = INTERFACES__LTE_INFO__LTE_NEIGHBOR_CELL_SET__LTE_NEIGHBOR_CELL_SET_SYNC_NEIGHBOR,
+    LTE_NEIGHBOR_CELL_SET_ASYNC_NEIGHBOR = INTERFACES__LTE_INFO__LTE_NEIGHBOR_CELL_SET__LTE_NEIGHBOR_CELL_SET_ASYNC_NEIGHBOR,
+};
 
 struct lte_net_neighbor_cell_info
 {
-    enum lte_neighbor_cell_mode mode;
+    enum lte_cell_mode mode;
     enum lte_neighbor_freq_mode freq_mode;
-    char *earfcn;
-    char *uarfcn;
-    char *pcid;
-    char *rsrq;
-    char *rsrp;
-    char *rssi;
-    char *sinr;
-    char *srxlev_base_station;
-    char *cell_resel_priority;
-    char *s_non_intra_search;
-    char *thresh_serving_low;
-    char *s_intra_search;
-    char *thresh_x_low;
-    char *thresh_x_high;
-    char *psc;
-    char *rscp;
-    char *ecno;
-    char *set;
-    char *rank;
-    char *cellid;
-    char *srxlev_inter_freq;
+    uint32_t earfcn;
+    uint32_t uarfcn;
+    uint32_t pcid;
+    int32_t rsrq;
+    int32_t rsrp;
+    int32_t rssi;
+    uint32_t sinr;
+    uint32_t srxlev;
+    uint32_t cell_resel_priority;
+    uint32_t s_non_intra_search;
+    uint32_t thresh_serving_low;
+    uint32_t s_intra_search;
+    uint32_t thresh_x_low;
+    uint32_t thresh_x_high;
+    uint32_t psc;
+    int32_t rscp;
+    int32_t ecno;
+    enum lte_neighbor_cell_set cell_set;
+    int32_t rank;
+    uint32_t cellid;
+    int32_t inter_freq_srxlev;
 };
 
 
@@ -139,9 +203,9 @@ struct lte_net_neighbor_cell_info
  */
 struct lte_info_report
 {
-    char *if_name;
-    struct lte_info *lte_info;
-    struct lte_sig_qual *lte_sig_qual;
+    struct lte_common_header *header;
+    struct lte_net_info *lte_net_info;
+    struct lte_data_usage *lte_data_usage;
     struct lte_net_serving_cell_info *lte_srv_cell;
     size_t n_neigh_cells;
     size_t cur_neigh_cell_idx;
@@ -172,24 +236,42 @@ lte_info_set_string(char *source, char **dest)
 
 
 /**
- * @brief add the lte info to a report
+ * @brief add the lte net info to a report
  *
- * @param source the lte info to add
+ * @param source the lte net info to add
  * @param report the report to update
  * @return true if the cell info was added, false otherwise
  */
 bool
-lte_info_set_info(struct lte_info *source, struct lte_info_report *report);
+lte_info_set_net_info(struct lte_net_info *source, struct lte_info_report *report);
 
 
 /**
- * @brief free the lte_info field contained in a report
+ * @brief free the lte_net_info field contained in a report
  *
  * @param report the report
  */
 void
-lte_info_free_info(struct lte_info_report *report);
+lte_info_free_net_info(struct lte_info_report *report);
 
+
+/**
+ * @brief set the lte data usage of a report
+ *
+ * @param source the lte data usage to copy
+ * @param report the report to update
+ * @return true if the info was set, false otherwise
+ */
+bool
+lte_info_set_data_usage(struct lte_data_usage *source, struct lte_info_report *report);
+
+/**
+ * @brief free the lte data usage contained in a report
+ *
+ * @param report the report
+ */
+void
+lte_info_free_data_usage(struct lte_info_report *report);
 
 /**
  * @brief: Allocate a report structure
@@ -206,6 +288,25 @@ lte_info_allocate_report(size_t n_neighbors);
  */
 void
 lte_info_free_report(struct lte_info_report *report);
+
+/**
+ * @brief set the common header of a report
+ *
+ * @param source the common header to copy
+ * @param report the report to update
+ * @return true if the header was set, false otherwise
+ */
+bool
+lte_info_set_common_header(struct lte_common_header *source,
+                           struct lte_info_report *report);
+
+/**
+ * @brief free the common header contained in a report
+ *
+ * @param report the report
+ */
+void
+lte_info_free_common_header(struct lte_info_report *report);
 
 /**
  * @brief add a neighbor cell info to a report
@@ -243,27 +344,6 @@ lte_info_free_neigh_cell_info(struct lte_net_neighbor_cell_info *cell);
 
 
 /**
- * @brief set the signal quality info of a report
- *
- * @param source the signal quality info to copy
- * @param report the report to update
- * @return true if the info was set, false otherwise
- */
-bool
-lte_info_set_lte_sig_qual(struct lte_sig_qual *source,
-                          struct lte_info_report *report);
-
-
-/**
- * @brief free the lte_sig_qal field contained in a report
- *
- * @param report the report
- */
-void
-lte_info_free_lte_sig_qual(struct lte_info_report *report);
-
-
-/**
  * @brief set a serving cell info
  *
  * @param source the serving cell info to copy
@@ -284,20 +364,6 @@ lte_info_set_serving_cell(struct lte_net_serving_cell_info *source,
  */
 void
 lte_info_free_serving_cell(struct lte_info_report *report);
-
-
-/**
- * @brief set the interface name of a report
- *
- * @param if_name the interface name to set
- * @param report the report to update
- * @return true if the interface name was set, false otherwise
- *
- * Note: the destination is freed on error
- */
-bool
-lte_info_set_if_name(char *if_name,
-                     struct lte_info_report *report);
 
 
 /**

@@ -29,8 +29,54 @@
 export FUT_QM_LIB_SRC=true
 [ "${FUT_UNIT_LIB_SRC}" != true ] && source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
 echo "${FUT_TOPDIR}/shell/lib/qm_lib.sh sourced"
+
 ####################### INFORMATION SECTION - START ###########################
 #
 #   Base library of common Queue Manager functions
 #
 ####################### INFORMATION SECTION - STOP ############################
+
+####################### SETUP SECTION - START #################################
+
+###############################################################################
+# DESCRIPTION:
+#   Function prepares device for QM tests.
+#   Raises exception on fail.
+# INPUT PARAMETER(S):
+#   None.
+# RETURNS:
+#   0   On success.
+#   See DESCRIPTION.
+# USAGE EXAMPLE(S):
+#   qm_setup_test_environment
+###############################################################################
+qm_setup_test_environment()
+{
+
+    fn_name="qm_lib:qm_setup_test_environment"
+
+    log "$fn_name - Running QM setup"
+
+    device_init &&
+        log -deb "$fn_name - Device initialized - Success" ||
+        raise "FAIL: Could not initialize device: device_init" -l "$fn_name" -ds
+
+    start_openswitch &&
+        log -deb "$fn_name - OpenvSwitch started - Success" ||
+        raise "FAIL: Could not start OpenvSwitch: start_openswitch" -l "$fn_name" -ds
+
+    start_specific_manager qm &&
+        log -deb "$fn_name - start_specific_manager qm - Success" ||
+        raise "FAIL: Could not start manager: start_specific_manager qm" -l "$fn_name" -ds
+
+    check_manager_alive "${OPENSYNC_ROOTDIR}/bin/qm" &&
+        log -deb "$fn_name - QUEUE MANAGER is running - Success" ||
+        raise "FAIL: QUEUE MANAGER not running/crashed" -l "$fn_name" -ds
+
+    log "$fn_name - QM setup - end"
+
+    return 0
+}
+
+####################### SETUP SECTION - STOP ##################################
+

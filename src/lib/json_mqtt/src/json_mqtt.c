@@ -39,6 +39,8 @@ char *version = "1.0.0";
  * @param session the fsm session storing the header information
  * @return true if the mqtt topics and location/node ids have been set,
  *         false otherwise
+ *
+ * @remark Caller must ensure parameter is not NULL
  */
 static bool
 jcheck_header_info(struct fsm_session *session)
@@ -63,9 +65,9 @@ jcheck_header_info(struct fsm_session *session)
 static void
 json_mqtt_curtime(char *time_str, size_t size)
 {
+    char tstr[128] = { 0 };
     struct timeval tv;
     struct tm *tm ;
-    char tstr[50];
 
     gettimeofday(&tv, NULL);
     tm = gmtime(&tv.tv_sec);
@@ -81,6 +83,8 @@ json_mqtt_curtime(char *time_str, size_t size)
  * @param json_report json object getting filled
  *
  * Fills up the header section of a json formatted mqtt report
+ *
+ * @remark Caller is responsible for ensuring parameters are not NULL
  */
 void
 jencode_header(struct fsm_session *session, json_t *json_report)
@@ -110,22 +114,18 @@ jencode_header(struct fsm_session *session, json_t *json_report)
  * @param to_report http user agent information to report
  * @return a string containing the json encoded information.
  *
- * The caller needs to free the string pointer through a json_free() call.
+ * @remark Caller is responsible for ensuring parameters are not NULL
+ * @remark Caller needs to free the string pointer through a json_free() call.
  */
-char *
-jencode_user_agent(struct fsm_session *session,
-                   struct http_parse_report *to_report)
+json_t *
+json_user_agent(struct fsm_session *session,
+                struct http_parse_report *to_report)
 {
     char str_mac[128] = { 0 };
     json_t *body_envelope;
     json_t *json_report;
-    char *json_msg;
     json_t *body;
-    bool ready;
     char *str;
-
-    ready = jcheck_header_info(session);
-    if (ready == false) return NULL;
 
     json_report  = json_object();
     body_envelope = json_array();
@@ -145,6 +145,34 @@ jencode_user_agent(struct fsm_session *session,
     /* Encode body envelope */
     json_array_append_new(body_envelope, body);
     json_object_set_new(json_report, "httpRequests", body_envelope);
+
+    return json_report;
+}
+
+/**
+ * @brief encodes a user agent report into its serialized json
+ *
+ * @param session fsm session storing the header information
+ * @param to_report http user agent information to report
+ * @return a string containing the serialized json encoded information.
+ *
+ * @remark Caller needs to free the string pointer through a json_free() call.
+ */
+char *
+jencode_user_agent(struct fsm_session *session,
+                   struct http_parse_report *to_report)
+{
+    json_t *json_report;
+    char *json_msg;
+    bool ready;
+
+    if (session == NULL) return NULL;
+    if (to_report == NULL) return NULL;
+
+    ready = jcheck_header_info(session);
+    if (ready == false) return NULL;
+
+    json_report = json_user_agent(session, to_report);
 
     /* Convert json object in a compact string */
     json_msg = json_dumps(json_report, JSON_COMPACT);
@@ -175,14 +203,14 @@ static char *remote_lookup_failure = "remoteLookupFailed";
  * @return the action string
  */
 static inline char *
-get_action_str(struct fqdn_pending_req *to_report)
+get_action_str(struct fqdn_pending_req *to_report, struct fsm_policy_reply *policy_reply)
 {
     struct fsm_url_request *url_info;
     struct fsm_url_reply *cat_reply;
 
-    if (to_report->categorized != FSM_FQDN_CAT_FAILED)
+    if (policy_reply->categorized != FSM_FQDN_CAT_FAILED)
     {
-        return actions[to_report->action];
+        return actions[policy_reply->action];
     }
 
     url_info = to_report->req_info;
@@ -256,7 +284,6 @@ jencode_wb_report(struct fsm_url_reply *reply)
     return categorization;
 }
 
-
 static json_t *
 jencode_bc_report(struct fsm_url_reply *reply)
 {
@@ -301,7 +328,6 @@ jencode_bc_report(struct fsm_url_reply *reply)
     return categorization;
 }
 
-
 static json_t *
 jencode_flow_dir(struct net_md_stats_accumulator *acc)
 {
@@ -322,11 +348,12 @@ jencode_flow_dir(struct net_md_stats_accumulator *acc)
     return json_string(dir);
 }
 
-
 /**
  * @brief encodes IP flow information
  *
  * @param acc the ip flow info to report
+ *
+ * @remark Caller is responsible to ensure parameter is not NULL
  */
 static json_t *
 jencode_ip_flow_report(struct net_md_stats_accumulator *acc)
@@ -342,8 +369,6 @@ jencode_ip_flow_report(struct net_md_stats_accumulator *acc)
     char *ip_label;
     int af_family;
     bool matters;
-
-    if (acc == NULL) return NULL;
 
     key = acc->key;
     if (key == NULL) return NULL;
@@ -410,10 +435,11 @@ jencode_ip_flow_report(struct net_md_stats_accumulator *acc)
                             json_integer(dport));
     }
 
+    memset(ip_buf, 0, sizeof(ip_buf));
+    af_family = (key->ip_version == 4) ? AF_INET : AF_INET6;
+
     if (my_ip != NULL)
     {
-        memset(ip_buf, 0, sizeof(ip_buf));
-        af_family = (key->ip_version == 4) ? AF_INET : AF_INET6;
         str_ip = inet_ntop(af_family, my_ip, ip_buf, sizeof(ip_buf));
         if (str_ip == NULL) goto out;
 
@@ -424,8 +450,6 @@ jencode_ip_flow_report(struct net_md_stats_accumulator *acc)
 
     if (remote_ip != NULL)
     {
-        memset(ip_buf, 0, sizeof(ip_buf));
-        af_family = (key->ip_version == 4) ? AF_INET : AF_INET6;
         str_ip = inet_ntop(af_family, remote_ip, ip_buf, sizeof(ip_buf));
         if (str_ip == NULL) goto out;
 
@@ -439,9 +463,10 @@ out:
 }
 
 
-static char *
-jencode_ipthreat_report(struct fsm_session *session,
-                        struct fqdn_pending_req *to_report)
+static json_t *
+json_ipthreat_report(struct fsm_session *session,
+                        struct fqdn_pending_req *to_report,
+                        struct fsm_policy_reply *policy_reply)
 {
     struct fsm_url_request *url_info;
     struct fsm_url_reply *reply;
@@ -450,12 +475,7 @@ jencode_ipthreat_report(struct fsm_session *session,
     json_t *categorization;
     json_t *json_report;
     os_macaddr_t *mac;
-    char *json_msg;
-    bool ready;
     char *str;
-
-    ready = jcheck_header_info(session);
-    if (ready == false) return NULL;
 
     url_info = to_report->req_info;
     json_report = json_object();
@@ -474,18 +494,18 @@ jencode_ipthreat_report(struct fsm_session *session,
     json_object_set_new(json_report, "classifiedBy", json_string("ip"));
     json_object_set_new(json_report, "ipAddr", json_string(str));
 
-    str = get_action_str(to_report);
+    str = get_action_str(to_report, policy_reply);
     json_object_set_new(json_report, "action", json_string(str));
-    str = to_report->policy;
+    str = policy_reply->policy;
     json_object_set_new(json_report, "policy", json_string(str));
     json_object_set_new(json_report, "policyIndex",
-                        json_integer(to_report->policy_idx));
-    str = to_report->rule_name;
+                        json_integer(policy_reply->policy_idx));
+    str = policy_reply->rule_name;
     json_object_set_new(json_report, "ruleName", json_string(str));
 
     /* Report categories if a categorization query was done and successful */
-    report_categories = ((to_report->categorized != FSM_FQDN_CAT_NOP) &&
-                         (to_report->categorized != FSM_FQDN_CAT_FAILED));
+    report_categories = ((policy_reply->categorized != FSM_FQDN_CAT_NOP) &&
+                         (policy_reply->categorized != FSM_FQDN_CAT_FAILED));
 
     reply = url_info->reply;
 
@@ -501,7 +521,7 @@ jencode_ipthreat_report(struct fsm_session *session,
         if (service_id == URL_GK_SVC) categorization = jencode_gk_report(reply);
 
         /* Add categorization source */
-        str = (to_report->provider != NULL ? to_report->provider : no_provider);
+        str = (policy_reply->provider != NULL ? policy_reply->provider : no_provider);
         json_object_set_new(categorization, "source",
                             json_string(str));
 
@@ -509,7 +529,7 @@ jencode_ipthreat_report(struct fsm_session *session,
     }
 
     /* Report error failures */
-    if (to_report->categorized == FSM_FQDN_CAT_FAILED)
+    if (policy_reply->categorized == FSM_FQDN_CAT_FAILED)
     {
         json_object_set_new(json_report, "lookupError",
                             json_integer(reply->error));
@@ -531,11 +551,7 @@ jencode_ipthreat_report(struct fsm_session *session,
         if (ip_info != NULL) json_object_set_new(json_report, "direction", ip_info);
     }
 
-    /* Convert json object in a compact string */
-    json_msg = json_dumps(json_report, JSON_COMPACT);
-    json_decref(json_report);
-
-    return json_msg;
+    return json_report;
 }
 
 
@@ -546,11 +562,13 @@ jencode_ipthreat_report(struct fsm_session *session,
  * @param to_report URL information to report
  * @return a string containing the json encoded information
  *
- * The caller needs to free the string pointer through a json_free() call.
+ * @remark Caller is responsible for ensuring parameters are not NULL
+ * @remark Caller needs to free the string pointer through a json_free() call.
  */
-char *
-jencode_url_report(struct fsm_session *session,
-                   struct fqdn_pending_req *to_report)
+json_t *
+json_url_report(struct fsm_session *session,
+                   struct fqdn_pending_req *to_report,
+                   struct fsm_policy_reply *policy_reply)
 {
     struct fsm_url_request *url_info;
     struct fsm_url_reply *reply;
@@ -562,22 +580,23 @@ jencode_url_report(struct fsm_session *session,
     json_t *ipv4_addrs;
     json_t *ipv6_addrs;
     os_macaddr_t *mac;
-    bool is_ip_report;
-    char *json_msg;
     json_t *body;
-    bool ready;
     char *str;
     int i;
 
-    is_ip_report = false;
-    is_ip_report |= (to_report->req_type == FSM_IPV4_REQ);
-    is_ip_report |= (to_report->req_type == FSM_IPV6_REQ);
-    if (is_ip_report) return jencode_ipthreat_report(session, to_report);
-
-    ready = jcheck_header_info(session);
-    if (ready == false) return NULL;
+    /* handle ip reports with separate function */
+    switch (policy_reply->req_type)
+    {
+        case FSM_IPV4_REQ:
+        case FSM_IPV6_REQ:
+            return json_ipthreat_report(session, to_report, policy_reply);
+        default:
+            /* Proceed */
+            break;
+    }
 
     url_info = to_report->req_info;
+
     json_report = json_object();
     body_envelope = json_array();
     body = json_object();
@@ -592,7 +611,7 @@ jencode_url_report(struct fsm_session *session,
     str = str_mac;
     json_object_set_new(body, "deviceMac", json_string(str));
     str = url_info->url;
-    switch(to_report->req_type)
+    switch(policy_reply->req_type)
     {
         case FSM_FQDN_REQ:
             json_object_set_new(body, "dnsAddress", json_string(str));
@@ -610,12 +629,6 @@ jencode_url_report(struct fsm_session *session,
             json_object_set_new(body, "httpsSni", json_string(str));
             break;
 
-        case FSM_IPV4_REQ:
-        case FSM_IPV6_REQ:
-            json_object_set_new(body, "classifiedBy", json_string("ip"));
-            json_object_set_new(body, "ipAddr", json_string(str));
-            break;
-
         case FSM_APP_REQ:
             json_object_set_new(body, "classifiedBy", json_string("ip"));
             json_object_set_new(body, "appName", json_string(str));
@@ -626,18 +639,18 @@ jencode_url_report(struct fsm_session *session,
             break;
     }
 
-    str = get_action_str(to_report);
+    str = get_action_str(to_report, policy_reply);
     json_object_set_new(body, "action", json_string(str));
-    str = to_report->policy;
+    str = policy_reply->policy;
     json_object_set_new(body, "policy", json_string(str));
     json_object_set_new(body, "policyIndex",
-                        json_integer(to_report->policy_idx));
-    str = to_report->rule_name;
+                        json_integer(policy_reply->policy_idx));
+    str = policy_reply->rule_name;
     json_object_set_new(body, "ruleName", json_string(str));
 
     /* Report categories if a categorization query was done and successful */
-    report_categories = ((to_report->categorized != FSM_FQDN_CAT_NOP) &&
-                         (to_report->categorized != FSM_FQDN_CAT_FAILED));
+    report_categories = ((policy_reply->categorized != FSM_FQDN_CAT_NOP) &&
+                         (policy_reply->categorized != FSM_FQDN_CAT_FAILED));
 
 
     reply = url_info->reply;
@@ -654,12 +667,12 @@ jencode_url_report(struct fsm_session *session,
         if (service_id == URL_GK_SVC) categorization = jencode_gk_report(reply);
 
         /* Add categorization source */
-        str = (to_report->provider != NULL ? to_report->provider : no_provider);
+        str = (policy_reply->provider != NULL ? policy_reply->provider : no_provider);
         json_object_set_new(categorization, "source",
                             json_string(str));
 
         /* Add categorization to the body */
-        switch(to_report->req_type)
+        switch(policy_reply->req_type)
         {
             case FSM_FQDN_REQ:
                 json_object_set_new(body, "dnsCategorization", categorization);
@@ -677,40 +690,35 @@ jencode_url_report(struct fsm_session *session,
                 json_object_set_new(body, "httpsSniCategorization", categorization);
                 break;
 
-            case FSM_IPV4_REQ:
-            case FSM_IPV6_REQ:
-                json_object_set_new(body, "ipCategorization", categorization);
-                break;
-
             default:
                 json_object_set_new(body, "unknownTypeCategorization", categorization);
                 break;
         }
     }
 
-    if (to_report->ipv4_cnt != 0)
+    if (to_report->dns_response.ipv4_cnt != 0)
     {
         ipv4_addrs = json_array();
-        for (i = 0; i < to_report->ipv4_cnt; i++)
+        for (i = 0; i < to_report->dns_response.ipv4_cnt; i++)
         {
-            str = to_report->ipv4_addrs[i];
+            str = to_report->dns_response.ipv4_addrs[i];
             json_array_append_new(ipv4_addrs, json_string(str));
         }
         json_object_set_new(body, "resolvedIPv4", ipv4_addrs);
     }
-    if (to_report->ipv6_cnt != 0)
+    if (to_report->dns_response.ipv6_cnt != 0)
     {
         ipv6_addrs = json_array();
-        for (i = 0; i < to_report->ipv6_cnt; i++)
+        for (i = 0; i < to_report->dns_response.ipv6_cnt; i++)
         {
-            str = to_report->ipv6_addrs[i];
+            str = to_report->dns_response.ipv6_addrs[i];
             json_array_append_new(ipv6_addrs, json_string(str));
         }
         json_object_set_new(body, "resolvedIPv6", ipv6_addrs);
     }
 
     /* Report error failures */
-    if (to_report->categorized == FSM_FQDN_CAT_FAILED)
+    if (policy_reply->categorized == FSM_FQDN_CAT_FAILED)
     {
         json_object_set_new(body, "lookupError",
                             json_integer(reply->error));
@@ -734,7 +742,7 @@ jencode_url_report(struct fsm_session *session,
 
     /* Encode body envelope */
     json_array_append_new(body_envelope, body);
-    switch(to_report->req_type)
+    switch(policy_reply->req_type)
     {
         case FSM_FQDN_REQ:
             json_object_set_new(json_report, "dnsQueries", body_envelope);
@@ -761,6 +769,36 @@ jencode_url_report(struct fsm_session *session,
             break;
     }
 
+    return json_report;
+}
+
+/**
+ * @brief encodes a FQDN report in json format
+ *
+ * @param session fsm session storing the header information
+ * @param to_report URL information to report
+ * @return a string containing the json encoded information
+ *
+ * @remark Caller needs to free the string pointer through a json_free() call.
+ */
+char *
+jencode_url_report(struct fsm_session *session,
+                   struct fqdn_pending_req *to_report,
+                   struct fsm_policy_reply *policy_reply)
+{
+    json_t *json_report;
+    char *json_msg;
+    bool ready;
+
+    if (session == NULL) return NULL;
+    if (to_report == NULL) return NULL;
+    if (policy_reply == NULL) return NULL;
+
+    ready = jcheck_header_info(session);
+    if (ready == false) return NULL;
+
+    json_report = json_url_report(session, to_report, policy_reply);
+
     /* Convert json object in a compact string */
     json_msg = json_dumps(json_report, JSON_COMPACT);
     json_decref(json_report);
@@ -770,32 +808,28 @@ jencode_url_report(struct fsm_session *session,
 
 
 /**
- * @brief encodes a upnp report in json format
+ * @brief encodes a upnp report into a json object
  *
  * @param session fsm session storing the header information
  * @param to_report upnp information to report
- * @return a string containing the json encoded information
+ * @return the json encoded information
  *
- * The caller needs to free the string pointer through a json_free() call.
+ * @remark Caller is responsible for ensuring parameters are not NULL
+ * @remark Caller needs to free the JSON object through a json_decref() call.
  */
-char *
-jencode_upnp_report(struct fsm_session *session,
-                    struct upnp_report *to_report)
+json_t *
+json_upnp_report(struct fsm_session *session,
+                 struct upnp_report *to_report)
 {
     struct upnp_key_val *elem;
     char str_mac[128] = { 0 };
     json_t *body_envelope;
     json_t *json_report;
     os_macaddr_t *mac;
-    char *json_msg;
     json_t *body;
     int nelems;
-    bool ready;
     char *str;
     int i;
-
-    ready = jcheck_header_info(session);
-    if (ready == false) return NULL;
 
     json_report  = json_object();
     body_envelope = json_array();
@@ -828,6 +862,34 @@ jencode_upnp_report(struct fsm_session *session,
     json_array_append_new(body_envelope, body);
     json_object_set_new(json_report, "upnpInfo", body_envelope);
 
+    return json_report;
+}
+
+/**
+ * @brief encodes a upnp report in json format
+ *
+ * @param session fsm session storing the header information
+ * @param to_report upnp information to report
+ * @return a string containing the json encoded information
+ *
+ * @remark Caller needs to free the string pointer through a json_free() call.
+ */
+char *
+jencode_upnp_report(struct fsm_session *session,
+                    struct upnp_report *to_report)
+{
+    json_t *json_report;
+    char *json_msg;
+    bool ready;
+
+    if (session == NULL) return NULL;
+    if (to_report == NULL) return NULL;
+
+    ready = jcheck_header_info(session);
+    if (ready == false) return NULL;
+
+    json_report = json_upnp_report(session, to_report);
+
     /* Convert json object in a compact string */
     json_msg = json_dumps(json_report, JSON_COMPACT);
     json_decref(json_report);
@@ -837,30 +899,26 @@ jencode_upnp_report(struct fsm_session *session,
 
 
 /**
- * @brief encodes a dhcp report in json format
+ * @brief encodes a dhcp report into a json object
  *
  * @param session fsm session storing the header information
  * @param to_report dhcp information to report
- * @return a string containing the json encoded information
+ * @return the json encoded information
  *
- * The caller needs to free the string pointer through a json_free() call.
+ * @remark Caller is responsible for ensuring parameters are not NULL
+ * @remark Caller needs to free the JSON object through a json_decref() call.
  */
-char *
-jencode_dhcp_report(struct fsm_session *session,
-                    struct dhcp_report *to_report)
+json_t *
+json_dhcp_report(struct fsm_session *session,
+                 struct dhcp_report *to_report)
 {
     struct dhcp_local_domain *domain;
     json_t *body_envelope;
     json_t *json_report;
     json_t *domains;
     ds_tree_t *tree;
-    char *json_msg;
     json_t *body;
-    bool ready;
     char *str;
-
-    ready = jcheck_header_info(session);
-    if (ready == false) return NULL;
 
     json_report = json_object();
     body_envelope = json_array();
@@ -880,7 +938,36 @@ jencode_dhcp_report(struct fsm_session *session,
     json_object_set_new(body, "localDomainNames", domains);
     json_array_append_new(body_envelope, body);
     json_object_set_new(json_report, "dhcpInfo", body_envelope);
-    /* Convert json object in a compact string */
+
+    return json_report;
+}
+
+/**
+ * @brief encodes a dhcp report in json format
+ *
+ * @param session fsm session storing the header information
+ * @param to_report dhcp information to report
+ * @return a string containing the json encoded information
+ *
+ * @remark Caller needs to free the string pointer through a json_free() call.
+ */
+char *
+jencode_dhcp_report(struct fsm_session *session,
+                    struct dhcp_report *to_report)
+{
+    json_t *json_report;
+    char *json_msg;
+    bool ready;
+
+    if (session == NULL) return NULL;
+    if (to_report == NULL) return NULL;
+
+    ready = jcheck_header_info(session);
+    if (ready == false) return NULL;
+
+    json_report = json_dhcp_report(session, to_report);
+
+        /* Convert json object in a compact string */
     json_msg = json_dumps(json_report, JSON_COMPACT);
     json_decref(json_report);
 

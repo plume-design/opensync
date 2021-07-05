@@ -28,6 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define GK_SINGLE_CURL_H_INCLUDED
 
 #include <curl/curl.h>
+#include "gatekeeper.pb-c.h"
 #include "gatekeeper_msg.h"
 #include "gatekeeper.h"
 
@@ -62,9 +63,12 @@ gk_curl_easy_cleanup(struct fsm_gk_session *fsm_gk_session);
  *        information, proto buffer and fsm_policy_req
  * @return gatekeeper response code.
  */
-int
-gk_send_request(struct fsm_session *session,
-                struct fsm_gk_session *fsm_gk_session,
-                struct fsm_gk_verdict *gk_verdict);
+int gk_send_ecurl_request(struct fsm_session *session,
+                          struct fsm_gk_session *fsm_gk_session,
+                          struct fsm_gk_verdict *gk_verdict,
+                          struct fsm_policy_reply *policy_reply);
 
+bool
+gk_set_policy(Gatekeeper__Southbound__V1__GatekeeperReply *response,
+              struct fsm_gk_verdict *gk_verdict);
 #endif /* GK_SINGLE_CURL_H_INCLUDED */

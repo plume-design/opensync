@@ -43,6 +43,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "schema.h"
 #include "mdnsd.h"
 #include "sdtxt.h"
+#include "memutil.h"
 
 #include "mdns_plugin.h"
 #include "mdns_records.h"
@@ -94,30 +95,20 @@ mdnsd_ctxt_update(struct mdns_session *md_session)
 {
     struct mdns_plugin_mgr *mgr = mdns_get_mgr();
     struct mdnsd_context   *pctxt  = mgr->ctxt;
-    bool rc = false;
+    bool ip_changed = false;
+    bool tx_intf_changed = false;
 
     if (!md_session || !pctxt) return;
 
-    // Check for loglevel changes to update daemon.
-    if (LOG_SEVERITY_ENABLED(LOG_SEVERITY_DEBUG))
-    {
-        LOGD("mdns_plugin: Setting daemon's log level to Debug");
-        mdnsd_log_level("debug");
-    } else {
-        LOGD("mdns_plugin: Setting daemon's log level to Notice");
-        mdnsd_log_level("notice");
-    }
-
     // Get the latest mdns sip.
-    rc = mdnsd_ctxt_set_srcip(md_session);
-    // Get the latest mdns tx and tap intfs.
-    rc |= mdnsd_ctxt_set_intf(md_session);
+    ip_changed = mdnsd_ctxt_set_srcip(md_session);
+    if (ip_changed) LOGT("%s: mdns_src_ip changed to '%s'", __func__, pctxt->srcip);
 
-    if (!rc)
-    {
-        LOGD("mdns_plugin: No change in the ip/intfs");
-        return;
-    }
+    // Get the latest mdns tx and tap intfs.
+    tx_intf_changed = mdnsd_ctxt_set_intf(md_session);
+    if (tx_intf_changed) LOGT("%s: mdns tx intf changed to '%s'", __func__, pctxt->txintf);
+
+    if (!ip_changed && !tx_intf_changed)    return;
 
     // Close the current socket and open another one.
     close(pctxt->ipv4_mcast_fd);
@@ -158,14 +149,9 @@ mdnsd_ctxt_start(struct mdnsd_context *pctxt)
 
     //create the socket fd.
     if ((pctxt->ipv4_mcast_fd = pctxt->dmn_get_mcast_ipv4_sock()) < 0) return false;
-    if ((pctxt->ipv6_mcast_fd = pctxt->dmn_get_mcast_ipv6_sock()) < 0) return false;
 
     // Initialize the evtimer.
     pctxt->dmn_ev_timer_init();
-
-    //Initlaize the ev io.
-    pctxt->dmn_ev_io_ipv4_init();
-    pctxt->dmn_ev_io_ipv6_init();
 
     /**
       * create the handle for dmn, with internet class
@@ -173,6 +159,7 @@ mdnsd_ctxt_start(struct mdnsd_context *pctxt)
       */
     pctxt->dmn = mdnsd_new(QCLASS_IN, 1400);
     if (!pctxt->dmn) return false;
+
     // Register callback to read the rcvd records.
     mdnsd_register_receive_callback(pctxt->dmn, mdnsd_record_received, NULL);
 
@@ -188,14 +175,9 @@ mdnsd_ctxt_stop(struct mdnsd_context *pctxt)
 
     // close the mcast fd
     close(pctxt->ipv4_mcast_fd);
-    close(pctxt->ipv6_mcast_fd);
 
     // stop the ev timer.
     ev_timer_stop(mgr->loop, &pctxt->timer);
-
-    // stop the ev io.
-    ev_io_stop(mgr->loop, &pctxt->ipv4_read);
-    ev_io_stop(mgr->loop, &pctxt->ipv6_read);
 
     // shutdown mdns daemon.
     mdnsd_shutdown(pctxt->dmn);
@@ -256,42 +238,8 @@ mdnsd_update_record(struct mdnsd_service *service)
     packet = sd2txt(h, &len);
     xht_free(h);
     mdnsd_set_raw(pctxt->dmn, r, (char *)packet, len);
-    free(packet);
+    FREE(packet);
     return true;
-}
-
-void
-mdnsd_ipv4_recv_cb(EV_P_ ev_io *r, int revents)
-{
-    struct mdns_plugin_mgr *mgr = mdns_get_mgr();
-    struct mdnsd_context *pctxt = mgr->ctxt;
-    struct timeval       *tv = &pctxt->sleep_tv;
-    int    rc;
-
-    rc = mdnsd_step(pctxt->dmn, pctxt->ipv4_mcast_fd, true, true, tv);
-
-    if (rc == 2)
-    {
-        LOGE("%s: mdns_daemon: Failed to read from the ipv4 socket: %s", __func__, strerror(errno));
-    }
-    return;
-}
-
-void
-mdnsd_ipv6_recv_cb(EV_P_ ev_io *r, int events)
-{
-    struct mdns_plugin_mgr *mgr   = mdns_get_mgr();
-    struct mdnsd_context   *pctxt = mgr->ctxt;
-    struct timeval         *tv    = &pctxt->sleep_tv;
-    int                     rc;
-
-    rc = mdnsd_step(pctxt->dmn, pctxt->ipv6_mcast_fd, true, true, tv);
-    if (rc == 2)
-    {
-        LOGE("%s: mdns_daemon: Failed to read from ipv6 socket: %s", __func__, strerror(errno));
-    }
-
-    return;
 }
 
 void
@@ -314,39 +262,6 @@ mdnsd_timer_cb(EV_P_ struct ev_timer *w, int revents)
     ev_timer_stop(loop, &pctxt->timer);
     ev_timer_set(&pctxt->timer, tv->tv_sec, 0.);
     ev_timer_start(loop, &pctxt->timer);
-
-    return;
-}
-
-
-void
-mdnsd_ev_io_ipv4_init(void)
-{
-    struct mdnsd_context *pctxt = NULL;
-    struct mdns_plugin_mgr *mgr = mdns_get_mgr();
-    struct ev_loop *loop;
-
-    pctxt = mgr->ctxt;
-
-    loop = mgr->loop;
-
-    ev_io_init(&pctxt->ipv4_read, pctxt->dmn_ipv4_rcvcb, pctxt->ipv4_mcast_fd, EV_READ);
-    ev_io_start(loop, &pctxt->ipv4_read);
-    return;
-}
-
-void
-mdnsd_ev_io_ipv6_init(void)
-{
-    struct mdnsd_context *pctxt = NULL;
-    struct mdns_plugin_mgr *mgr = mdns_get_mgr();
-    struct ev_loop *loop;
-
-    pctxt = mgr->ctxt;
-    loop  = mgr->loop;
-
-    ev_io_init(&pctxt->ipv6_read, pctxt->dmn_ipv6_rcvcb, pctxt->ipv6_mcast_fd, EV_READ);
-    ev_io_start(loop, &pctxt->ipv6_read);
 
     return;
 }
@@ -393,7 +308,7 @@ mdnsd_create_mcastv4_socket(void)
     memset(&mreqn, 0, sizeof(mreqn));
 
     inet_aton(pctxt->srcip, &mreqn.imr_address);
-    ifindex = if_nametoindex(pctxt->tapintf);
+    ifindex = if_nametoindex(pctxt->txintf);
     mreqn.imr_ifindex = ifindex;
     /* Set interface for outbound multicast */
     if (setsockopt(sd, IPPROTO_IP, IP_MULTICAST_IF, &mreqn, sizeof(mreqn)))
@@ -429,88 +344,6 @@ err_socket:
     return -1;
 }
 
-/* Create Ipv6 multicast ff02::fb socket */
-static int
-mdnsd_create_mcastv6_socket(void)
-{
-    struct sockaddr_in6     sin;
-    struct ipv6_mreq        imr;
-    socklen_t               len;
-    int                     loopback = 0, ret;
-    int                     sd, bufsiz, flag = 1;
-    uint32_t                ifindex              = -1;
-
-    struct                  mdns_plugin_mgr *mgr = mdns_get_mgr();
-    struct                  mdnsd_context *pctxt =  mgr->ctxt;
-
-    if (!pctxt) return -1;
-
-    sd = socket(AF_INET6, SOCK_DGRAM | SOCK_NONBLOCK, 0);
-    if (sd < 0)
-    {
-        LOGE("%s: AF_INET6 socket creation failed", __func__);
-        return -1;
-    }
-
-    setsockopt(sd, SOL_SOCKET, SO_REUSEPORT, &flag, sizeof(flag));
-    setsockopt(sd, SOL_SOCKET, SO_REUSEADDR, &flag, sizeof(flag));
-
-    /* Double the size of the receive buffer (getsockopt() returns the double) */
-    len = sizeof(bufsiz);
-    ret = getsockopt(sd, SOL_SOCKET, SO_RCVBUF, &bufsiz, &len);
-    if (!ret)
-    {
-        ret = setsockopt(sd, SOL_SOCKET, SO_RCVBUF, &bufsiz, sizeof(bufsiz));
-        if (ret)
-        {
-            LOGE("%s: Failed doubling the size of the receive buffer: %s", __func__, strerror(errno));
-            goto err_socket;
-        }
-    }
-
-    /* Set interface for outbound multicast */
-    ret = setsockopt(sd, IPPROTO_IPV6, IPV6_MULTICAST_LOOP, &loopback, sizeof(loopback));
-    if (ret)
-    {
-        LOGE("%s: Failed setting IPV6_MULTICAST_LOOP to : %s", __func__, strerror(errno));
-        goto err_socket;
-    }
-
-    ifindex = if_nametoindex(pctxt->tapintf);
-    ret = setsockopt(sd, IPPROTO_IPV6, IPV6_MULTICAST_IF, &ifindex, sizeof(ifindex));
-    if (ret)
-    {
-        LOGE("%s: Failed setting IPV6_MULTICAST_IF: %s", __func__, strerror(errno));
-        goto err_socket;
-    }
-
-    memset(&sin, 0, sizeof(sin));
-    sin.sin6_family = AF_INET6;
-    sin.sin6_port = htons(5353);
-    ret = bind(sd, (struct sockaddr *)&sin, sizeof(sin));
-    if (ret)
-    {
-        LOGE("%s: bind ipv6 failed: %s", __func__, strerror(errno));
-        goto err_socket;
-    }
-
-    /* Join the mDNS ipv6 multicast group */
-    imr.ipv6mr_interface = ifindex;
-    inet_pton(AF_INET6, "ff02::fb", &imr.ipv6mr_multiaddr);
-    ret = setsockopt(sd, IPPROTO_IPV6, IPV6_ADD_MEMBERSHIP, &imr, sizeof(imr));
-    if (ret)
-    {
-        LOGE("%s: Failed joining MDNS group ff02::fb %s", __func__, strerror(errno));
-        goto err_socket;
-    }
-
-    return sd;
-
-err_socket:
-    close(sd);
-    return -1;
-}
-
 bool
 mdnsd_ctxt_set_intf(struct mdns_session *md_session)
 {
@@ -527,7 +360,7 @@ mdnsd_ctxt_set_intf(struct mdns_session *md_session)
 
     if (pctxt->txintf && !strcmp(pctxt->txintf, session->tx_intf))
     {
-        LOGD("mdns_daemon: No change in the tx interface.");
+        LOGT("mdns_daemon: No change in the tx interface.");
         tx_change = false;
     }
     else
@@ -538,7 +371,7 @@ mdnsd_ctxt_set_intf(struct mdns_session *md_session)
 
     if (pctxt->tapintf && !strcmp(pctxt->tapintf, session->conf->if_name))
     {
-        LOGD("mdns_daemon: No change in tap interface");
+        LOGT("mdns_daemon: No change in tap interface");
         tap_change = false;
     }
     else
@@ -571,7 +404,7 @@ mdnsd_ctxt_set_srcip(struct mdns_session *md_session)
 
     if (pctxt->srcip && !strcmp(pctxt->srcip, srcip))
     {
-        LOGD("mdns_daemon: No change in the sip.");
+        LOGT("mdns_daemon: No change in the sip.");
         return false;
     }
     pctxt->srcip = srcip;
@@ -584,11 +417,6 @@ mdnsd_ctxt_get_mcast_ipv4_fd(void)
     return mdnsd_create_mcastv4_socket();
 }
 
-int mdnsd_ctxt_get_mcast_ipv6_fd(void)
-{
-    return mdnsd_create_mcastv6_socket();
-}
-
 bool
 mdnsd_ctxt_init(struct mdns_session *md_session)
 {
@@ -597,23 +425,12 @@ mdnsd_ctxt_init(struct mdns_session *md_session)
 
     if (pctxt) return true;
 
-    pctxt = calloc(1, sizeof(struct mdnsd_context));
-    if (!pctxt)
-    {
-        LOGE("%s: mdns_plugin: Couldn't allocate mdnsd context", __func__);
-        return false;
-    }
+    pctxt = CALLOC(1, sizeof(struct mdnsd_context));
 
     mgr->ctxt = pctxt;
 
     // Set callbacks.
-    pctxt->dmn_ev_io_ipv4_init = mdnsd_ev_io_ipv4_init;
-    pctxt->dmn_ipv4_rcvcb = mdnsd_ipv4_recv_cb;
     pctxt->dmn_get_mcast_ipv4_sock = mdnsd_ctxt_get_mcast_ipv4_fd;
-
-    pctxt->dmn_ev_io_ipv6_init = mdnsd_ev_io_ipv6_init;
-    pctxt->dmn_ipv6_rcvcb = mdnsd_ipv6_recv_cb;
-    pctxt->dmn_get_mcast_ipv6_sock = mdnsd_ctxt_get_mcast_ipv6_fd;
 
     pctxt->dmn_ev_timer_init = mdnsd_ev_timer_init;
     pctxt->dmn_timercb = mdnsd_timer_cb;
@@ -642,9 +459,9 @@ mdnsd_ctxt_exit(void)
 
     mdnsd_ctxt_stop(pctxt);
     mdnsd_free_services();
-    free(pctxt->txintf);
-    free(pctxt->tapintf);
-    free(pctxt);
+    FREE(pctxt->txintf);
+    FREE(pctxt->tapintf);
+    FREE(pctxt);
     mgr->ctxt = NULL;
     return;
 }

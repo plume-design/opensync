@@ -79,6 +79,7 @@ fsm_nfq_net_header_parse(struct nfq_pkt_info *pkt_info, void *data)
 
     memset(&net_parser, 0, sizeof(net_parser));
     net_parser.packet_id = pkt_info->packet_id;
+    net_parser.nfq_queue_num = pkt_info->queue_num;
     net_parser.packet_len = pkt_info->payload_len;
     net_parser.caplen = pkt_info->payload_len;
     net_parser.data = (uint8_t *)pkt_info->payload;
@@ -149,6 +150,19 @@ fsm_nfq_net_header_parse(struct nfq_pkt_info *pkt_info, void *data)
         if (len == 0) return;
     }
 
+    if (ip_protocol == IPPROTO_ICMP)
+    {
+        len = net_header_parse_icmp(&net_parser);
+        if (len == 0) return;
+    }
+
+    if (ip_protocol == IPPROTO_ICMPV6)
+    {
+        len = net_header_parse_icmp6(&net_parser);
+        if (len == 0) return;
+    }
+
+
     session = (struct fsm_session *)data;
     parser_ops = &session->p_ops->parser_ops;
     parser_ops->handler(session, &net_parser);
@@ -166,27 +180,62 @@ fsm_nfq_net_header_parse(struct nfq_pkt_info *pkt_info, void *data)
 bool
 fsm_nfq_tap_update(struct fsm_session *session)
 {
-    bool ret;
     struct nfq_settings nfqs;
     struct fsm_mgr *mgr;
     char   *buf_size_str;
     char   *queue_len_str;
+    char   *queue_num_str;
+    char   buf[10];
     uint32_t nlbuf_sz = 3*(1024 * 1024); // 3M netlink packet buffer.
-    uint32_t queue_len = 10240;  // number of packets in queue.
+    uint32_t queue_len = 10240; // number of packets in queue.
+    uint32_t queue_num = 0; // Default 0 queue for all traffic
+    uint32_t num_of_queues = 1; // Default number of nfqueues
+    uint32_t start_queue_num = 0;
+    uint32_t end_queue_num = 0;
+    size_t index;
+    int ret_val;
+    bool ret;
 
     if (session->tap_type != FSM_TAP_NFQ) return false;
 
-    mgr = fsm_get_mgr();
-    nfqs.loop = mgr->loop;
-    nfqs.nfq_cb = fsm_nfq_net_header_parse;
-    nfqs.queue_num = 0;
-    nfqs.data = session;
-
-    ret = nf_queue_init(&nfqs);
+    ret = nf_queue_init();
     if (ret == false)
     {
         LOGE("%s : nfqs init failed", __func__);
         return false;
+    }
+
+    /**
+     * queue_num format :
+     * default is 0
+     * a single queue is represented as 'M'
+     * multiple queues are represented as 'M-N'
+     */
+    queue_num_str = fsm_get_other_config_val(session, "queue_num");
+    if (queue_num_str != NULL)
+    {
+        strcpy(buf, queue_num_str);
+        ret_val = sscanf(buf, "%d-%d", &start_queue_num, &end_queue_num);
+        if (ret_val == 2)
+        {
+            num_of_queues = end_queue_num - start_queue_num + 1;
+        }
+        queue_num = start_queue_num;
+    }
+
+    mgr = fsm_get_mgr();
+    nfqs.loop = mgr->loop;
+    nfqs.nfq_cb = fsm_nfq_net_header_parse;
+    nfqs.data = session;
+
+    for (index = 0; index < num_of_queues ; index++)
+    {
+        nfqs.queue_num = queue_num + index;
+        ret = nf_queue_open(&nfqs);
+        if (ret == false)
+        {
+            LOGE("%s : nfqs open failed to open queue %d", __func__, nfqs.queue_num);
+        }
     }
 
     buf_size_str = fsm_get_other_config_val(session, "nfqueue_buff_size");
@@ -201,7 +250,7 @@ fsm_nfq_tap_update(struct fsm_session *session)
         }
     }
 
-    ret = nf_queue_set_nlsock_buffsz(nlbuf_sz);
+    ret = nf_queue_set_nlsock_buffsz(queue_num, nlbuf_sz);
     if (ret == false)
     {
         LOGE("%s: Failed to set netlink sock buf size[%u].",__func__, nlbuf_sz);
@@ -219,7 +268,7 @@ fsm_nfq_tap_update(struct fsm_session *session)
         }
     }
 
-    ret = nf_queue_set_queue_maxlen(queue_len);
+    ret = nf_queue_set_queue_maxlen(queue_num, queue_len);
     if (ret == false)
     {
         LOGE("%s: Failed to set default nfueue length[%u].",__func__,queue_len);

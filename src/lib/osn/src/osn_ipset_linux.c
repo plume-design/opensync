@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "execsh.h"
 #include "log.h"
 #include "util.h"
+#include "memutil.h"
 
 #include "osn_ipset.h"
 
@@ -122,7 +123,7 @@ osn_ipset_t* osn_ipset_new(
         return NULL;
     }
 
-    self = calloc(1, sizeof(*self));
+    self = CALLOC(1, sizeof(*self));
     STRSCPY(self->ips_name, name);
     self->ips_type = type;
     self->ips_options = strdup(options);
@@ -140,8 +141,8 @@ void osn_ipset_del(osn_ipset_t *self)
         LOG(ERR, "ipset: %s: Error destroying ipset.", self->ips_name);
     }
 
-    free(self->ips_options);
-    free(self);
+    FREE(self->ips_options);
+    FREE(self);
 }
 
 /**

@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "wano.h"
 
 #include "wanp_dhcpv6_stam.h"
+#include "memutil.h"
 
 /*
  * Structure representing a single DHCPv6 plug-in instance
@@ -87,8 +88,7 @@ wano_plugin_handle_t *wanp_dhcpv6_init(
 {
     struct wanp_dhcpv6 *self;
 
-    self = calloc(1, sizeof(struct wanp_dhcpv6));
-    ASSERT(self != NULL, "Error allocating DHCPv6 object");
+    self = CALLOC(1, sizeof(struct wanp_dhcpv6));
 
     self->wd6_handle.wh_plugin = wp;
     STRSCPY(self->wd6_handle.wh_ifname, ifname);
@@ -116,7 +116,7 @@ void wanp_dhcpv6_fini(wano_plugin_handle_t *wh)
 
     wanp_dhcpv6_ovsdb_reset(self);
 
-    free(self);
+    FREE(self);
 }
 
 /*

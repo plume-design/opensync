@@ -42,16 +42,21 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <ev.h>
 
+#include "evx.h"
 #include "os_time.h"
 #include "osa_assert.h"
 #include "ovsdb_sync.h"
 #include "ovsdb_table.h"
+#include "memutil.h"
 
 #include "wano.h"
 #include "wano_internal.h"
+#include "wano_wan_config.h"
 
 #define WANO_PPLINE_RETRY_TIME      3       /* Retry time increment in seconds */
 #define WANO_PPLINE_RETRY_MAX       5       /* Maximum values of retries (for calculations) */
+#define WANO_PPLINE_RESTART_MIN     1.0     /* Pipeline restart debounce timer */
+#define WANO_PPLINE_RESTART_MAX     5.0     /* Pipeline restart maximum debounce timeout */
 
 /*
  * Structure describing a single plug-in running on the pipeline
@@ -78,6 +83,9 @@ struct wano_ppline_plugin
     ds_dlist_t                  wpp_dnode;
 };
 
+static ds_dlist_t g_wano_ppline_list = DS_DLIST_INIT(struct wano_ppline, wpl_dnode);
+
+static ev_debounce_fn_t wano_ppline_restart_debounce_fn;
 static void wano_ppline_start_queues(wano_ppline_t *self);
 static void wano_ppline_stop_queues(wano_ppline_t *self);
 static void wano_ppline_schedule(wano_ppline_t *self);
@@ -139,6 +147,8 @@ bool wano_ppline_init(
 
     self->wpl_init = true;
 
+    ds_dlist_insert_tail(&g_wano_ppline_list, self);
+
     LOG(NOTICE, "wano: %s: Created WAN pipeline on interface.", ifname);
 
     return true;
@@ -155,6 +165,7 @@ void wano_ppline_fini(wano_ppline_t *self)
     }
 
     self->wpl_init = false;
+    ds_dlist_remove(&g_wano_ppline_list, self);
 
     wano_ovs_port_event_stop(&self->wpl_ovs_port_event);
     wano_connmgr_uplink_event_stop(&self->wpl_cmu_event);
@@ -162,11 +173,51 @@ void wano_ppline_fini(wano_ppline_t *self)
 
     wano_ppline_stop_queues(self);
 
+    wano_wan_config_status_del(self->wpl_ifname);
+
     /*
      * Remove any entries that this interface might have in the
      * Connection_Manager_Uplink table
      */
     (void)wano_connmgr_uplink_delete(self->wpl_ifname);
+}
+
+void wano_ppline_restart_debounce_fn(struct ev_loop *loop, ev_debounce *w, int revent)
+{
+    (void)loop;
+    (void)w;
+    (void)revent;
+
+    struct wano_ppline *wpl;
+
+    LOG(NOTICE, "wano: Commencing general pipeline restart.");
+
+    ds_dlist_foreach(&g_wano_ppline_list, wpl)
+    {
+        wano_ppline_state_do(
+                &wpl->wpl_state,
+                wano_ppline_exception_PPLINE_RESTART,
+                NULL);
+    }
+}
+
+void wano_ppline_restart_all(void)
+{
+    static ev_debounce restart_debounce;
+    static bool restart_init = false;
+
+    if (!restart_init)
+    {
+        ev_debounce_init2(
+                &restart_debounce,
+                wano_ppline_restart_debounce_fn,
+                WANO_PPLINE_RESTART_MIN,
+                WANO_PPLINE_RESTART_MAX);
+
+        restart_init = true;
+    }
+
+    ev_debounce_start(EV_DEFAULT, &restart_debounce);
 }
 
 wano_ppline_t *wano_ppline_from_plugin_handle(wano_plugin_handle_t *plugin)
@@ -240,8 +291,7 @@ void wano_ppline_start_queues(wano_ppline_t *self)
         /* Skip all plug-ins in the exclusion mask */
         if (wp->wanp_mask & self->wpl_plugin_emask) continue;
 
-        wpp = calloc(1, sizeof(struct wano_ppline_plugin));
-        ASSERT(wpp != NULL, "failed to allocate wano_ppline_plugin");
+        wpp = CALLOC(1, sizeof(struct wano_ppline_plugin));
 
         wpp->wpp_ppline = self;
         wpp->wpp_plugin = wp;
@@ -267,7 +317,7 @@ void wano_ppline_stop_queues(wano_ppline_t *self)
     ds_dlist_foreach_iter(&self->wpl_plugin_waitq, wpp, iter)
     {
         ds_dlist_iremove(&iter);
-        free(wpp);
+        FREE(wpp);
     }
 
     /*
@@ -309,7 +359,7 @@ void wano_ppline_schedule(wano_ppline_t *self)
         if (!wano_ppline_runq_add(self, wpp))
         {
             /* Plug-in was unable to start, continue */
-            free(wpp);
+            FREE(wpp);
             continue;
         }
 
@@ -453,7 +503,7 @@ static void wano_ppline_runq_flush(wano_ppline_t *self, bool flush_detached)
 
         ds_dlist_iremove(&iter);
         __wano_ppline_runq_stop(self, wpp);
-        free(wpp);
+        FREE(wpp);
     }
 }
 
@@ -540,7 +590,7 @@ void wano_ppline_status_async_fn(struct ev_loop *loop, ev_async *ev, int revent)
         case WANP_SKIP:
             LOG(INFO, "wano: %s: Plug-in requested skip: %s", self->wpl_ifname, wano_plugin_name(wpp->wpp_handle));
             wano_ppline_runq_del(self, wpp);
-            free(wpp);
+            FREE(wpp);
             wano_ppline_state_do(&self->wpl_state, wano_ppline_do_PLUGIN_UPDATE, NULL);
             break;
 
@@ -556,7 +606,7 @@ void wano_ppline_status_async_fn(struct ev_loop *loop, ev_async *ev, int revent)
                     self->wpl_ifname, wano_plugin_name(wpp->wpp_handle));
 
             wano_ppline_runq_del(self, wpp);
-            free(wpp);
+            FREE(wpp);
             wano_ppline_state_do(&self->wpl_state, wano_ppline_do_PLUGIN_UPDATE, NULL);
             break;
 
@@ -594,7 +644,7 @@ void wano_ppline_plugin_timeout_fn(struct ev_loop *loop, ev_timer *w, int revent
             self->wpl_ifname, wano_plugin_name(wpp->wpp_handle));
 
     wano_ppline_runq_del(self, wpp);
-    free(wpp);
+    FREE(wpp);
 
     wano_ppline_state_do(&self->wpl_state, wano_ppline_do_PLUGIN_UPDATE, NULL);
 }
@@ -767,6 +817,7 @@ enum wano_ppline_state wano_ppline_state_IF_ENABLE(
                 LOG(WARN, "wano: %s: Error writing Wifi_Inet_Config in IF_ENABLE.", self->wpl_ifname);
             }
             wano_inet_state_event_refresh(&self->wpl_inet_state_event);
+            wano_wan_config_status_del(self->wpl_ifname);
             return 0;
 
         case wano_ppline_do_INET_STATE_UPDATE:
@@ -817,6 +868,9 @@ enum wano_ppline_state wano_ppline_state_IF_CARRIER(
             }
 
             LOG(INFO, "wano: %s: Carrier detected.", self->wpl_ifname);
+
+            wano_wan_config_status_add(self->wpl_ifname);
+
             return wano_ppline_PLUGIN_SCHED;
 
         default:

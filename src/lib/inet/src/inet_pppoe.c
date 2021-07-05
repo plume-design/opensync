@@ -26,6 +26,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "log.h"
 #include "util.h"
+#include "memutil.h"
 
 #include "inet.h"
 #include "inet_base.h"
@@ -46,17 +47,12 @@ inet_t *inet_pppoe_new(const char *ifname)
 {
     inet_pppoe_t *self;
 
-    self = calloc(1, sizeof(*self));
-    if (self == NULL)
-    {
-        LOG(ERR, "inet_pppoe: %s: Unable to allocate inet_pppoe object.", ifname);
-        return NULL;
-    }
+    self = CALLOC(1, sizeof(*self));
 
     if (!inet_pppoe_init(self, ifname))
     {
         LOG(ERR, "inet_pppoe: %s: Failed to initialize inet_pppoe instance.", ifname);
-        free(self);
+        FREE(self);
         return NULL;
     }
 

@@ -71,7 +71,7 @@ if MANAGER_CM
         int "Short OVS backoff"
         default 8
         help
-           Deafult short backoff time for the next OVS connection to be established
+           Default short backoff time for the next OVS connection to be established
 
     menuconfig CM2_USE_WDT
         bool "Use WDT module"

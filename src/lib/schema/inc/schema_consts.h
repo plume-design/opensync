@@ -43,6 +43,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define SCHEMA_CONSTS_RADIO_PHY_NAME_5G     "wifi1"
 #define SCHEMA_CONSTS_RADIO_PHY_NAME_5GL    "wifi1"
 #define SCHEMA_CONSTS_RADIO_PHY_NAME_5GU    "wifi2"
+#define SCHEMA_CONSTS_RADIO_PHY_NAME_6G     "wifi2"
 
 /* Cloud VIF ifname's */
 #define SCHEMA_CONSTS_IF_NAME_POSTFIX_2G    "-ap-24"
@@ -146,6 +147,8 @@ typedef enum {
 #define SCHEMA_CONSTS_KEY_DPP "dpp"
 #define SCHEMA_CONSTS_KEY_SAE "sae"
 #define SCHEMA_CONSTS_KEY_WPA2_PSK "wpa2-psk"
+#define SCHEMA_CONSTS_KEY_FT_WPA2_PSK "ft-wpa2-psk"
+#define SCHEMA_CONSTS_KEY_FT_SAE "ft-sae"
 
 #define SCHEMA_CONSTS_DPP_INIT_ON_ANNOUNCE "initiate_on_announce"
 #define SCHEMA_CONSTS_DPP_INIT_NOW         "initiate_now"

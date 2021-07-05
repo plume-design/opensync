@@ -32,12 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <curl/curl.h>
 #include <netdb.h>
 
-#include "gatekeeper_multi_curl.h"
-#include "gatekeeper_single_curl.h"
-#include "gatekeeper_cache.h"
 #include "fsm_dpi_sni.h"
-#include "gatekeeper_data.h"
-#include "gatekeeper.h"
 #include "wc_telemetry.h"
 #include "json_util.h"
 #include "json_mqtt.h"
@@ -46,19 +41,23 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "unity.h"
 #include "fsm.h"
 #include "log.h"
+#include "memutil.h"
+
+#include "gatekeeper.h"
+#include "gatekeeper_cache.h"
+#include "gatekeeper_multi_curl.h"
+#include "gatekeeper_single_curl.h"
+#include "gatekeeper_data.h"
+
+#include "test_gatekeeper_plugin.h"
 
 #define OTHER_CONFIG_NELEMS 3
 #define OTHER_CONFIG_NELEM_SIZE 128
 
-/* external test "suite" */
-void test_fsm_gk_fct(void);
-
 char *g_location_id = "foo";
 char *g_node_id = "bar";
 
-const char *test_name           = "fsm_gk_tests";
 static const char *g_server_url = "https://ovs_dev.plume.com:443/";
-static char *g_certs_file = "/tmp/cacert.pem";
 static char *g_ssl_certs_file = "/tmp/client.pem";
 static char *g_ssl_key_file = "/tmp/client_dec.key";
 static bool g_is_connected;
@@ -188,13 +187,6 @@ struct schema_FSM_Policy spolicies[] =
     }
 };
 
-static bool
-file_present(const char *filename)
-{
-    struct stat buffer;
-
-    return (stat(filename, &buffer) == 0);
-}
 
 static bool
 check_connection(void)
@@ -258,26 +250,6 @@ gk_get_other_config_val(struct fsm_session *session, char *key)
     return pair->value;
 }
 
-/* Provide some configurability in the setUp()/tearDown()
- * for individual tests.
- */
-void (*g_setUp)(void)    = NULL;
-void (*g_tearDown)(void) = NULL;
-
-void
-setUp(void)
-{
-    if (g_setUp != NULL)
-        (*g_setUp)();
-}
-
-void
-tearDown(void)
-{
-    if (g_tearDown != NULL)
-        (*g_tearDown)();
-}
-
 void
 main_setUp(void)
 {
@@ -321,35 +293,47 @@ void main_tearDown(void)
     return;
 }
 
+int
+test_policy_response(struct fsm_policy_req *policy_request, struct fsm_policy_reply *policy_reply)
+{
+    fsm_policy_free_reply(policy_reply);
+    fsm_free_url_reply(policy_request->fqdn_req->req_info->reply);
+    return 0;
+}
+
 bool
-dummy_gatekeeper_get_verdict(struct fsm_session *session,
-                             struct fsm_policy_req *req)
+dummy_gatekeeper_get_verdict(struct fsm_policy_req *req,
+                             struct fsm_policy_reply *policy_reply)
 {
     struct fsm_gk_session *fsm_gk_session;
-    struct gk_curl_easy_info *ecurl_info;
+    struct gk_server_info *server_info;
     struct gatekeeper_offline *offline;
     struct fsm_policy_req *policy_req;
     struct fqdn_pending_req *fqdn_req;
     struct fsm_gk_verdict *gk_verdict;
     struct fsm_url_request *req_info;
     struct fsm_url_reply *url_reply;
+    struct fsm_session *session;
     struct fsm_url_stats *stats;
     bool ret = true;
+    struct ev_loop *loop;
     int gk_response;
+    loop = ev_default_loop(0);
+    bool use_mcurl;
 
+    session = req->session;
     fsm_gk_session = gatekeeper_lookup_session(session);
     if (!fsm_gk_session) return false;
 
-    gk_verdict = calloc(1, sizeof(*gk_verdict));
-    if (gk_verdict == NULL) return false;
+    gk_verdict = CALLOC(1, sizeof(*gk_verdict));
 
     gk_verdict->policy_req = req;
+    gk_verdict->policy_reply = policy_reply;
     policy_req = gk_verdict->policy_req;
     fqdn_req = policy_req->fqdn_req;
     req_info = fqdn_req->req_info;
 
-    url_reply = calloc(1, sizeof(struct fsm_url_reply));
-    if (url_reply == NULL) return false;
+    url_reply = CALLOC(1, sizeof(struct fsm_url_reply));
 
     req_info->reply = url_reply;
 
@@ -358,12 +342,12 @@ dummy_gatekeeper_get_verdict(struct fsm_session *session,
     stats = &fsm_gk_session->health_stats;
     offline = &fsm_gk_session->gk_offline;
 
-    ret = gk_check_policy_in_cache(req);
+    ret = gk_check_policy_in_cache(req, policy_reply);
     if (ret == true)
     {
         stats->cache_hits++;
-        LOGN("%s found in cache, return action %d from cache", req->url, req->reply.action);
-        free(gk_verdict);
+        LOGN("%s found in cache, return action %d from cache", req->url, policy_reply->action);
+        FREE(gk_verdict);
         return true;
     }
     if (offline->provider_offline)
@@ -375,19 +359,19 @@ dummy_gatekeeper_get_verdict(struct fsm_session *session,
 
         if (backoff)
         {
-            free(gk_verdict);
+            FREE(gk_verdict);
             return false;
         }
         offline->provider_offline = false;
     }
-    ecurl_info = &fsm_gk_session->ecurl;
-    strncpy(ecurl_info->ca_path, g_certs_file, sizeof(ecurl_info->ca_path));
-    strncpy(ecurl_info->ssl_cert, g_ssl_certs_file, sizeof(ecurl_info->ssl_cert));
-    strncpy(ecurl_info->ssl_key, g_ssl_key_file, sizeof(ecurl_info->ssl_key));
+    server_info = &fsm_gk_session->gk_server_info;
+    strncpy(server_info->ca_path, g_certs_file, sizeof(server_info->ca_path));
+    strncpy(server_info->ssl_cert, g_ssl_certs_file, sizeof(server_info->ssl_cert));
+    strncpy(server_info->ssl_key, g_ssl_key_file, sizeof(server_info->ssl_key));
 
-    LOGT("%s: url:%s path:%s", __func__, ecurl_info->server_url, ecurl_info->ca_path);
+    LOGT("%s: url:%s path:%s", __func__, server_info->server_url, server_info->ca_path);
 
-    gk_verdict->gk_pb = gatekeeper_get_req(session, req);
+    gk_verdict->gk_pb = gatekeeper_get_req(session, req, NULL);
     if (gk_verdict->gk_pb == NULL)
     {
         LOGN("%s() curl request serialization failed", __func__);
@@ -395,29 +379,39 @@ dummy_gatekeeper_get_verdict(struct fsm_session *session,
         goto error;
     }
 
-    fqdn_req->categorized = FSM_FQDN_CAT_SUCCESS;
+    policy_reply->categorized = FSM_FQDN_CAT_SUCCESS;
+    use_mcurl = gk_lookup_using_multi_curl(req);
 
-#ifdef CURL_MULTI
-    gk_new_conn(req->url);
-#else
-    gk_response = gk_send_request(session, fsm_gk_session, gk_verdict);
-    if (gk_response != GK_LOOKUP_SUCCESS)
+    if (use_mcurl == true)
     {
-        fqdn_req->categorized = FSM_FQDN_CAT_FAILED;
-        /* if connection error, start backoff timer */
-        if (gk_response == GK_CONNECTION_ERROR)
-        {
-            offline->provider_offline = true;
-            offline->offline_ts = time(NULL);
-            offline->connection_failures++;
-        }
-        LOGN("%s() curl error not updating cache", __func__);
-        ret = false;
-        goto error;
+        LOGN("%s(): process request using multi curl", __func__);
+        gk_process_using_multi_curl(req, policy_reply);
+        policy_reply->reply_type = FSM_ASYNC_REPLY;
+        ret = true;
+        // goto error;
     }
-#endif
+    else
+    {
+        LOGT("%s(): processing using easy curl", __func__);
+        gk_response = gk_send_ecurl_request(session, fsm_gk_session, gk_verdict, policy_reply);
+        if (gk_response != GK_LOOKUP_SUCCESS)
+        {
+            policy_reply->categorized = FSM_FQDN_CAT_FAILED;
+            /* if connection error, start backoff timer */
+            if (gk_response == GK_CONNECTION_ERROR)
+            {
+                offline->provider_offline = true;
+                offline->offline_ts = time(NULL);
+                offline->connection_failures++;
+            }
+            LOGN("%s() curl error not updating cache", __func__);
+            ret = false;
+            goto error;
+        }
+    }
 
-    gk_add_policy_to_cache(req);
+    gk_add_policy_to_cache(req, policy_reply);
+    ev_run(loop, 0);
 
 error:
     free_gk_verdict(gk_verdict);
@@ -434,7 +428,7 @@ test_curl_fqdn(void)
     struct fsm_url_request req_info;
     struct fsm_policy_req req;
     os_macaddr_t dev_mac;
-    struct fsm_policy_reply *reply;
+    struct fsm_policy_reply *policy_reply;
     struct fsm_policy_session *mgr;
     struct policy_table *table;
     struct fsm_session *session;
@@ -490,16 +484,21 @@ test_curl_fqdn(void)
     req.url                   = "www.google.com";
     fqdn_req.req_info         = &req_info;
     fqdn_req.numq             = 1;
-    fqdn_req.policy_table     = table;
-    fqdn_req.gatekeeper_req   = dummy_gatekeeper_get_verdict;
-    fqdn_req.req_type         = FSM_SNI_REQ;
+    req.req_type         = FSM_SNI_REQ;
     req.fqdn_req              = &fqdn_req;
-    fsm_apply_policies(session, &req);
-    reply = &req.reply;
+    req.session = session;
 
+    policy_reply = fsm_policy_initialize_reply(session);
+    if (policy_reply == NULL)
+    {
+        LOGD("%s(): failed to initialize policy reply", __func__);
+        return;
+    }
+    policy_reply->policy_table = table;
+    policy_reply->gatekeeper_req = dummy_gatekeeper_get_verdict;
+    fsm_apply_policies(&req, policy_reply);
 
-    free(reply->rule_name);
-    free(reply->policy);
+    fsm_policy_free_reply(policy_reply);
     fsm_free_url_reply(fqdn_req.req_info->reply);
 
     LOGN("Finishing test %s()", __func__);
@@ -515,7 +514,7 @@ run_fqdn_query(char *input_url)
     struct fsm_url_request req_info;
     struct fsm_policy_req req;
     os_macaddr_t dev_mac;
-    struct fsm_policy_reply *reply;
+    struct fsm_policy_reply *policy_reply;
     struct fsm_policy_session *mgr;
     struct policy_table *table;
     struct fsm_session *session;
@@ -570,29 +569,36 @@ run_fqdn_query(char *input_url)
     req.url                   = input_url;
     fqdn_req.req_info         = &req_info;
     fqdn_req.numq             = 1;
-    fqdn_req.policy_table     = table;
-    fqdn_req.gatekeeper_req   = dummy_gatekeeper_get_verdict;
-    fqdn_req.req_type         = FSM_FQDN_REQ;
+    req.req_type         = FSM_FQDN_REQ;
     req.fqdn_req              = &fqdn_req;
-    fsm_apply_policies(session, &req);
-    reply = &req.reply;
+    req.session = session;
 
-    free(reply->rule_name);
-    free(reply->policy);
+    policy_reply = fsm_policy_initialize_reply(session);
+    if (policy_reply == NULL)
+    {
+        LOGD("%s(): failed to initialize policy reply", __func__);
+        return;
+    }
+    policy_reply->policy_table = table;
+    policy_reply->gatekeeper_req = dummy_gatekeeper_get_verdict;
+
+    fsm_apply_policies(&req, policy_reply);
+
+    fsm_policy_free_reply(policy_reply);
     fsm_free_url_reply(fqdn_req.req_info->reply);
-
 }
 
 void
 test_curl_multi(void)
 {
     struct net_md_stats_accumulator acc;
+    struct fsm_gk_session *fsm_gk_session;
     struct fsm_session *session;
     struct schema_FSM_Policy *spolicy;
     struct fqdn_pending_req fqdn_req;
     struct fsm_url_request req_info;
     struct fsm_policy_session *mgr;
-    struct fsm_policy_reply *reply;
+    struct fsm_policy_reply *policy_reply;
     struct sockaddr_storage ss_ip;
     struct net_md_flow_key key;
     struct policy_table *table;
@@ -605,6 +611,16 @@ test_curl_multi(void)
     int rc;
 
     if (g_is_connected == false) return;
+
+    session = &g_sessions[0];
+
+    fsm_gk_session = gatekeeper_lookup_session(session);
+
+    if (fsm_gk_session->enable_multi_curl == false)
+    {
+        return;
+    }
+
 
     /* Initialize local structures */
     memset(&fqdn_req, 0, sizeof(fqdn_req));
@@ -622,8 +638,6 @@ test_curl_multi(void)
     mgr     = fsm_policy_get_mgr();
     table   = ds_tree_find(&mgr->policy_tables, spolicy->policy);
     TEST_ASSERT_NOT_NULL(table);
-
-    session = &g_sessions[0];
 
     /* Validate access to the fsm policy */
     TEST_ASSERT_NOT_NULL(fpolicy);
@@ -647,6 +661,7 @@ test_curl_multi(void)
 
     req.device_id = &dev_mac;
     req.fqdn_req  = &fqdn_req;
+    req.session = session;
 
     key.src_ip     = (uint8_t *)&in_ip.s_addr;
     key.ip_version = 4;
@@ -655,18 +670,23 @@ test_curl_multi(void)
     acc.originator = NET_MD_ACC_ORIGINATOR_SRC;
     /* Build the request elements */
     fqdn_req.numq             = 1;
-    fqdn_req.policy_table     = table;
-    fqdn_req.gatekeeper_req   = dummy_gatekeeper_get_verdict;
     req.fqdn_req              = &fqdn_req;
     req.device_id             = &dev_mac;
     req.ip_addr               = &ss_ip;
     req.acc                   = &acc;
     req.url                   = fqdn_req.req_info->url;
-    fsm_apply_policies(session, &req);
-    reply = &req.reply;
+    policy_reply = fsm_policy_initialize_reply(session);
+    if (policy_reply == NULL)
+    {
+        LOGD("%s(): failed to initialize policy reply", __func__);
+        return;
+    }
+    policy_reply->policy_table = table;
+    policy_reply->gatekeeper_req = dummy_gatekeeper_get_verdict;
+    policy_reply->policy_response = test_policy_response;
+    fsm_apply_policies(&req, policy_reply);
 
-    free(reply->rule_name);
-    free(reply->policy);
+    fsm_policy_free_reply(policy_reply);
     fsm_free_url_reply(fqdn_req.req_info->reply);
 }
 
@@ -679,7 +699,7 @@ test_curl_sni(void)
     struct fsm_url_request req_info;
     struct fsm_policy_req req;
     os_macaddr_t dev_mac;
-    struct fsm_policy_reply *reply;
+    struct fsm_policy_reply *policy_reply;
     struct fsm_policy_session *mgr;
     struct policy_table *table;
     struct fsm_session *session;
@@ -713,15 +733,21 @@ test_curl_sni(void)
     req.url                   = "www.google.com";
     fqdn_req.req_info         = &req_info;
     fqdn_req.numq             = 1;
-    fqdn_req.policy_table     = table;
-    fqdn_req.gatekeeper_req   = dummy_gatekeeper_get_verdict;
-    fqdn_req.req_type         = FSM_SNI_REQ;
+    req.req_type         = FSM_SNI_REQ;
     req.fqdn_req              = &fqdn_req;
-    fsm_apply_policies(session, &req);
-    reply = &req.reply;
+    req.session = session;
 
-    free(reply->rule_name);
-    free(reply->policy);
+    policy_reply = fsm_policy_initialize_reply(session);
+    if (policy_reply == NULL)
+    {
+        LOGD("%s(): failed to initialize policy reply", __func__);
+        return;
+    }
+    policy_reply->policy_table = table;
+    policy_reply->gatekeeper_req = dummy_gatekeeper_get_verdict;
+    fsm_apply_policies(&req, policy_reply);
+
+    fsm_policy_free_reply(policy_reply);
     fsm_free_url_reply(fqdn_req.req_info->reply);
 
     LOGN("Finishing test %s()", __func__);
@@ -736,7 +762,7 @@ test_curl_url(void)
     struct fsm_url_request req_info;
     struct fsm_policy_req req;
     os_macaddr_t dev_mac;
-    struct fsm_policy_reply *reply;
+    struct fsm_policy_reply *policy_reply;
     struct fsm_policy_session *mgr;
     struct policy_table *table;
     struct fsm_session *session;
@@ -769,15 +795,20 @@ test_curl_url(void)
     req.url                   = "www.google.com";
     fqdn_req.req_info         = &req_info;
     fqdn_req.numq             = 1;
-    fqdn_req.policy_table     = table;
-    fqdn_req.gatekeeper_req   = dummy_gatekeeper_get_verdict;
-    fqdn_req.req_type         = FSM_URL_REQ;
+    req.req_type         = FSM_URL_REQ;
     req.fqdn_req              = &fqdn_req;
-    fsm_apply_policies(session, &req);
-    reply = &req.reply;
+    req.session = session;
+    policy_reply = fsm_policy_initialize_reply(session);
+    if (policy_reply == NULL)
+    {
+        LOGD("%s(): failed to initialize policy reply", __func__);
+        return;
+    }
+    policy_reply->policy_table = table;
+    policy_reply->gatekeeper_req = dummy_gatekeeper_get_verdict;
+    fsm_apply_policies(&req, policy_reply);
 
-    free(reply->rule_name);
-    free(reply->policy);
+    fsm_policy_free_reply(policy_reply);
     fsm_free_url_reply(fqdn_req.req_info->reply);
 
 
@@ -793,7 +824,7 @@ test_curl_host(void)
     struct fsm_url_request req_info;
     struct fsm_policy_req req;
     os_macaddr_t dev_mac;
-    struct fsm_policy_reply *reply;
+    struct fsm_policy_reply *policy_reply;
     struct fsm_policy_session *mgr;
     struct policy_table *table;
     struct fsm_session *session;
@@ -826,15 +857,20 @@ test_curl_host(void)
     req.url                   = "test-host.com";
     fqdn_req.req_info         = &req_info;
     fqdn_req.numq             = 1;
-    fqdn_req.policy_table     = table;
-    fqdn_req.gatekeeper_req   = dummy_gatekeeper_get_verdict;
-    fqdn_req.req_type         = FSM_HOST_REQ;
+    req.req_type         = FSM_HOST_REQ;
     req.fqdn_req              = &fqdn_req;
-    fsm_apply_policies(session, &req);
-    reply = &req.reply;
+    req.session = session;
+    policy_reply = fsm_policy_initialize_reply(session);
+    if (policy_reply == NULL)
+    {
+        LOGD("%s(): failed to initialize policy reply", __func__);
+        return;
+    }
+    policy_reply->policy_table = table;
+    policy_reply->gatekeeper_req = dummy_gatekeeper_get_verdict;
+    fsm_apply_policies(&req, policy_reply);
 
-    free(reply->rule_name);
-    free(reply->policy);
+    fsm_policy_free_reply(policy_reply);
     fsm_free_url_reply(req_info.reply);
 
     LOGN("Finishing test %s()", __func__);
@@ -849,7 +885,7 @@ test_curl_app(void)
     struct fsm_url_request req_info;
     struct fsm_policy_req req;
     os_macaddr_t dev_mac;
-    struct fsm_policy_reply *reply;
+    struct fsm_policy_reply *policy_reply;
     struct fsm_policy_session *mgr;
     struct policy_table *table;
     struct fsm_session *session;
@@ -882,15 +918,21 @@ test_curl_app(void)
     req.url                   = "signal";
     fqdn_req.req_info         = &req_info;
     fqdn_req.numq             = 1;
-    fqdn_req.policy_table     = table;
-    fqdn_req.gatekeeper_req   = dummy_gatekeeper_get_verdict;
-    fqdn_req.req_type         = FSM_APP_REQ;
+    req.req_type         = FSM_APP_REQ;
     req.fqdn_req              = &fqdn_req;
-    fsm_apply_policies(session, &req);
-    reply = &req.reply;
+    req.session = session;
 
-    free(reply->rule_name);
-    free(reply->policy);
+    policy_reply = fsm_policy_initialize_reply(session);
+    if (policy_reply == NULL)
+    {
+        LOGD("%s(): failed to initialize policy reply", __func__);
+        return;
+    }
+    policy_reply->policy_table = table;
+    policy_reply->gatekeeper_req = dummy_gatekeeper_get_verdict;
+    fsm_apply_policies(&req, policy_reply);
+
+    fsm_policy_free_reply(policy_reply);
     fsm_free_url_reply(fqdn_req.req_info->reply);
 
     LOGN("Finishing test %s()", __func__);
@@ -905,7 +947,7 @@ test_curl_ipv4_flow(void)
     struct fqdn_pending_req fqdn_req;
     struct fsm_url_request req_info;
     struct fsm_policy_session *mgr;
-    struct fsm_policy_reply *reply;
+    struct fsm_policy_reply *policy_reply;
     struct sockaddr_storage ss_ip;
     struct net_md_flow_key key;
     struct policy_table *table;
@@ -971,22 +1013,29 @@ test_curl_ipv4_flow(void)
     acc.originator = NET_MD_ACC_ORIGINATOR_SRC;
     /* Build the request elements */
     fqdn_req.numq             = 1;
-    fqdn_req.policy_table     = table;
-    fqdn_req.gatekeeper_req   = dummy_gatekeeper_get_verdict;
 
-    fqdn_req.req_type = FSM_IPV4_REQ;
+    req.req_type = FSM_IPV4_REQ;
     req.fqdn_req      = &fqdn_req;
     req.device_id     = &dev_mac;
     req.acc           = &acc;
     req.url           = fqdn_req.req_info->url;
-    fsm_apply_policies(session, &req);
-    reply = &req.reply;
+    req.session = session;
 
-    free(reply->rule_name);
-    free(reply->policy);
+    policy_reply = fsm_policy_initialize_reply(session);
+    if (policy_reply == NULL)
+    {
+        LOGD("%s(): failed to initialize policy reply", __func__);
+        return;
+    }
+    policy_reply->policy_table = table;
+    policy_reply->gatekeeper_req = dummy_gatekeeper_get_verdict;
+    fsm_apply_policies(&req, policy_reply);
+
+    TEST_ASSERT_NOT_EQUAL(policy_reply->cache_ttl, (60*60*24));
+    TEST_ASSERT_FALSE(policy_reply->cat_unknown_to_service);
+    fsm_policy_free_reply(policy_reply);
     fsm_free_url_reply(fqdn_req.req_info->reply);
-    TEST_ASSERT_NOT_EQUAL(reply->cache_ttl, (60*60*24));
-    TEST_ASSERT_FALSE(fqdn_req.cat_unknown_to_service);
+
 
     LOGN("Finishing test %s()", __func__);
 }
@@ -1000,7 +1049,7 @@ test_curl_ipv6_flow(void)
     struct fqdn_pending_req fqdn_req;
     struct fsm_url_request req_info;
     struct fsm_policy_session *mgr;
-    struct fsm_policy_reply *reply;
+    struct fsm_policy_reply *policy_reply;
     struct sockaddr_storage ss_ip;
     struct net_md_flow_key v6_key;
     struct policy_table *table;
@@ -1053,12 +1102,11 @@ test_curl_ipv6_flow(void)
     req.fqdn_req  = &fqdn_req;
 
     /* check for IPv6 */
-    v6_key.src_ip = calloc(1, 16);
+    v6_key.src_ip = CALLOC(1, 16);
     rc            = inet_pton(AF_INET6, "1:2::3", v6_key.src_ip);
     TEST_ASSERT_EQUAL_INT(1, rc);
 
-    v6_key.dst_ip = calloc(1, 16);
-    TEST_ASSERT_NOT_NULL(v6_key.dst_ip);
+    v6_key.dst_ip = CALLOC(1, 16);
     rc = inet_pton(AF_INET6, "2:2::2", v6_key.dst_ip);
     TEST_ASSERT_EQUAL_INT(1, rc);
     v6_key.ip_version = 6;
@@ -1068,25 +1116,32 @@ test_curl_ipv6_flow(void)
     acc.originator = NET_MD_ACC_ORIGINATOR_SRC;
 
     fqdn_req.numq           = 1;
-    fqdn_req.policy_table   = table;
-    fqdn_req.gatekeeper_req = dummy_gatekeeper_get_verdict;
 
-    fqdn_req.req_type = FSM_IPV6_REQ;
+    req.req_type = FSM_IPV6_REQ;
 
     req.fqdn_req  = &fqdn_req;
     req.device_id = &dev_mac;
     req.ip_addr   = &ss_ip;
     req.acc       = &acc;
     req.url       = fqdn_req.req_info->url;
-    fsm_apply_policies(session, &req);
-    reply = &req.reply;
+    req.session = session;
+
+    policy_reply = fsm_policy_initialize_reply(session);
+    if (policy_reply == NULL)
+    {
+        LOGD("%s(): failed to initialize policy reply", __func__);
+        return;
+    }
+    policy_reply->policy_table = table;
+    policy_reply->gatekeeper_req = dummy_gatekeeper_get_verdict;
+    fsm_apply_policies(&req, policy_reply);
+
+    fsm_policy_free_reply(policy_reply);
     // TEST_ASSERT_EQUAL_INT(FSM_ALLOW, reply->action);
 
-    free(reply->rule_name);
-    free(reply->policy);
     fsm_free_url_reply(fqdn_req.req_info->reply);
-    free(v6_key.src_ip);
-    free(v6_key.dst_ip);
+    FREE(v6_key.src_ip);
+    FREE(v6_key.dst_ip);
 
     LOGN("Finishing test %s()", __func__);
 }
@@ -1095,7 +1150,7 @@ void
 test_health_stats_report(void)
 {
     struct fsm_gk_session *fsm_gk_session;
-    struct gk_curl_easy_info *ecurl_info;
+    struct gk_server_info *server_info;
     struct fsm_session *session;
     struct fsm_url_stats *stats;
     struct wc_health_stats hs;
@@ -1158,11 +1213,11 @@ test_health_stats_report(void)
     TEST_ASSERT_EQUAL_INT(0, hs.connectivity_failures);
 
 
-    ecurl_info = &fsm_gk_session->ecurl;
+    server_info = &fsm_gk_session->gk_server_info;;
     /* providing invalid endpoint will result in
      * service failure
      */
-    ecurl_info->server_url = "https://ovs_dev.plume.com:443/xyz";
+    server_info->server_url = "https://ovs_dev.plume.com:443/xyz";
     test_curl_host();
     gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
     TEST_ASSERT_EQUAL_INT(0, hs.connectivity_failures);
@@ -1178,7 +1233,7 @@ test_health_stats_report(void)
      * curl request should fail, and connectivity_failure count
      * should be incremented.
      */
-    ecurl_info->server_url = "1.2.3.4";
+    server_info->server_url = "1.2.3.4";
     LOGI("Timing out after 2 seconds");  /* Test is not stalled. */
     test_curl_host();
     gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
@@ -1199,7 +1254,7 @@ void
 test_connection_timeout(void)
 {
     struct fsm_gk_session *fsm_gk_session;
-    struct gk_curl_easy_info *ecurl_info;
+    struct gk_server_info *server_info;
     struct fsm_session *session;
     struct wc_health_stats hs;
 
@@ -1213,8 +1268,8 @@ test_connection_timeout(void)
      * should be incremented.
      */
 
-    ecurl_info = &fsm_gk_session->ecurl;
-    ecurl_info->server_url = "1.2.3.4";
+    server_info = &fsm_gk_session->gk_server_info;
+    server_info->server_url = "1.2.3.4";
     LOGI("Timing out after 2 seconds");  /* Test is not stalled. */
     time_t start = time(NULL);
     test_curl_app();
@@ -1236,7 +1291,7 @@ void
 test_backoff_on_connection_failure(void)
 {
     struct fsm_gk_session *fsm_gk_session;
-    struct gk_curl_easy_info *ecurl_info;
+    struct gk_server_info *server_info;
     struct fsm_session *session;
     struct fsm_url_stats *stats;
     struct wc_health_stats hs;
@@ -1254,8 +1309,8 @@ test_backoff_on_connection_failure(void)
      * It should not try to connect to cloud for 30 secs
      */
 
-    ecurl_info = &fsm_gk_session->ecurl;
-    ecurl_info->server_url = "1.2.3.4";
+    server_info = &fsm_gk_session->gk_server_info;
+    server_info->server_url = "1.2.3.4";
     LOGI("Timing out after 2 seconds");  /* Test is not stalled. */
     test_curl_app();
     gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
@@ -1264,7 +1319,7 @@ test_backoff_on_connection_failure(void)
     TEST_ASSERT_EQUAL_INT(1, stats->cloud_lookups);
 
     /* Set the correct server url, it should connect now */
-    ecurl_info->server_url = session->ops.get_config(session, "gk_url");
+    server_info->server_url = session->ops.get_config(session, "gk_url");
 
     nap_time = 5;
     LOGI("Sleeping for %d seconds", nap_time);  /* Inform test is not stalled. */
@@ -1295,7 +1350,7 @@ test_send_report(void)
     struct fsm_url_request req_info;
     struct fsm_policy_req req;
     os_macaddr_t dev_mac;
-    struct fsm_policy_reply *reply;
+    struct fsm_policy_reply *policy_reply;
     struct fsm_url_reply *url_reply;
     struct fsm_policy_session *mgr;
     struct policy_table *table;
@@ -1330,12 +1385,19 @@ test_send_report(void)
     req.url                 = "www.google.com";
     fqdn_req.req_info       = &req_info;
     fqdn_req.numq           = 1;
-    fqdn_req.policy_table   = table;
-    fqdn_req.gatekeeper_req = dummy_gatekeeper_get_verdict;
-    fqdn_req.req_type       = FSM_URL_REQ;
+    req.req_type       = FSM_URL_REQ;
     req.fqdn_req            = &fqdn_req;
-    fsm_apply_policies(session, &req);
-    reply = &req.reply;
+    req.session = session;
+
+    policy_reply = fsm_policy_initialize_reply(session);
+    if (policy_reply == NULL)
+    {
+        LOGD("%s(): failed to initialize policy reply", __func__);
+        return;
+    }
+    policy_reply->policy_table = table;
+    policy_reply->gatekeeper_req = dummy_gatekeeper_get_verdict;
+    fsm_apply_policies(&req, policy_reply);
 
     url_reply = req_info.reply;
     len       = strlen(url_reply->reply_info.gk_info.gk_policy);
@@ -1343,8 +1405,7 @@ test_send_report(void)
     TEST_ASSERT_GREATER_THAN(0, url_reply->reply_info.gk_info.confidence_level);
     TEST_ASSERT_GREATER_THAN(0, len);
 
-    free(reply->rule_name);
-    free(reply->policy);
+    fsm_policy_free_reply(policy_reply);
     fsm_free_url_reply(fqdn_req.req_info->reply);
 
     LOGN("Finishing test %s()", __func__);
@@ -1429,7 +1490,7 @@ void
 test_categorization_count(void)
 {
     struct fsm_gk_session *fsm_gk_session;
-    struct gk_curl_easy_info *ecurl_info;
+    struct gk_server_info *server_info;
     struct fsm_session *session;
     struct wc_health_stats hs;
 
@@ -1438,7 +1499,7 @@ test_categorization_count(void)
     session        = &g_sessions[0];
     fsm_gk_session = gatekeeper_lookup_session(session);
 
-    ecurl_info = &fsm_gk_session->ecurl;
+    server_info = &fsm_gk_session->gk_server_info;
     run_fqdn_query("www.google.com");
     gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
     TEST_ASSERT_EQUAL_INT(0, hs.service_failures);
@@ -1447,9 +1508,9 @@ test_categorization_count(void)
      * curl will reply but reply cannot be processed.
      */
 
-    ecurl_info = &fsm_gk_session->ecurl;
+    server_info = &fsm_gk_session->gk_server_info;
     /* invalid end point */
-    ecurl_info->server_url = "https://ovs_dev.plume.com:443/xxxx";
+    server_info->server_url = "https://ovs_dev.plume.com:443/xxxx";
 
     test_curl_host();
     gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
@@ -1621,7 +1682,7 @@ test_uncategorized_reply(void)
     struct fqdn_pending_req fqdn_req;
     struct fsm_url_request req_info;
     struct fsm_policy_session *mgr;
-    struct fsm_policy_reply *reply;
+    struct fsm_policy_reply *policy_reply;
     struct sockaddr_storage ss_ip;
     struct net_md_flow_key key;
     struct policy_table *table;
@@ -1687,28 +1748,33 @@ test_uncategorized_reply(void)
     acc.originator = NET_MD_ACC_ORIGINATOR_SRC;
     /* Build the request elements */
     fqdn_req.numq             = 1;
-    fqdn_req.policy_table     = table;
-    fqdn_req.gatekeeper_req   = dummy_gatekeeper_get_verdict;
 
-    fqdn_req.req_type = FSM_IPV4_REQ;
+    req.req_type = FSM_IPV4_REQ;
     req.fqdn_req      = &fqdn_req;
     req.device_id     = &dev_mac;
     req.acc           = &acc;
     req.url           = fqdn_req.req_info->url;
-    fsm_apply_policies(session, &req);
-    reply = &req.reply;
+    req.session = session;
+    req.session = session;
+    policy_reply = fsm_policy_initialize_reply(session);
+    if (policy_reply == NULL)
+    {
+        LOGD("%s(): failed to initialize policy reply", __func__);
+        return;
+    }
+    policy_reply->policy_table = table;
+    policy_reply->gatekeeper_req = dummy_gatekeeper_get_verdict;
+    fsm_apply_policies(&req, policy_reply);
     /* Since it is Private IP, cache_ttl will be modified,
      * and cat_unknown_to_service will be set to true
      */
-    TEST_ASSERT_EQUAL_INT(reply->cache_ttl, (60*60*24));
-    TEST_ASSERT_TRUE(fqdn_req.cat_unknown_to_service);
-    free(reply->rule_name);
-    free(reply->policy);
+    TEST_ASSERT_EQUAL_INT(policy_reply->cache_ttl, (60*60*24));
+    TEST_ASSERT_TRUE(policy_reply->cat_unknown_to_service);
+    fsm_policy_free_reply(policy_reply);
     fsm_free_url_reply(fqdn_req.req_info->reply);
 
     LOGN("Finishing test %s()", __func__);
 }
-
 
 void
 test_validate_fqdn(void)
@@ -1748,34 +1814,108 @@ test_validate_fqdn(void)
     }
 }
 
-int
-main(int argc, char *argv[])
+void
+test_mcurl_config(void)
 {
-    (void)argc;
-    (void)argv;
-    bool ret;
+    struct fsm_gk_session *fsm_gk_session;
+    struct fsm_session *session;
+    ds_tree_t *other_config;
 
-    target_log_open("TEST", LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_TRACE);
-
-    UnityBegin(test_name);
-
-    ret = file_present(g_certs_file);
-    if (ret == false)
+    char new_other_configs[][3][2][OTHER_CONFIG_NELEM_SIZE] =
     {
-        LOGN("%s() certs not present at %s", __func__, g_certs_file);
-        return 0;
+        {
+            {
+                "multi_curl",
+                "mqtt_v"
+            },
+            {
+                "enable",
+                "dev-test/gk_ut_topic",
+            },
+        },
+        {
+            {
+                "multi_curl",
+                "mqtt_v"
+            },
+            {
+                "disable",
+                "dev-test/gk_ut_topic",
+            },
+        },
+        {
+            {
+                "gk_url",
+                "mqtt_v"
+            },
+            {
+                "https://ovs_dev.plume.com:443/",
+                "dev-test/gk_ut_topic",
+            },
+        },
+    };
+
+    session  = &g_sessions[0];
+    fsm_gk_session = gatekeeper_lookup_session(session);
+    if (fsm_gk_session->enable_multi_curl == false)
+    {
+        return;
     }
+
+
+    /* remove existing other config values */
+    free_str_tree(session->conf->other_config);
+
+    /* set new other config with mulit_curl = enable */
+    other_config = schema2tree(OTHER_CONFIG_NELEM_SIZE,
+                                2,
+                                OTHER_CONFIG_NELEMS,
+                                new_other_configs[0][0],
+                                new_other_configs[0][1]);
+    session->conf->other_config = other_config;
+
+    gatekeeper_update(session);
+    TEST_ASSERT_EQUAL_INT(1,fsm_gk_session->enable_multi_curl);
+
+    /* set new other config with mulit_curl = disable */
+    free_str_tree(session->conf->other_config);
+    other_config = schema2tree(OTHER_CONFIG_NELEM_SIZE,
+                                2,
+                                OTHER_CONFIG_NELEMS,
+                                new_other_configs[1][0],
+                                new_other_configs[1][1]);
+    session->conf->other_config = other_config;
+    gatekeeper_update(session);
+    TEST_ASSERT_EQUAL_INT(0, fsm_gk_session->enable_multi_curl);
+
+    /* set new other config without multi_curl key */
+    free_str_tree(session->conf->other_config);
+    other_config = schema2tree(OTHER_CONFIG_NELEM_SIZE,
+                                2,
+                                OTHER_CONFIG_NELEMS,
+                                new_other_configs[1][0],
+                                new_other_configs[1][1]);
+    session->conf->other_config = other_config;
+    gatekeeper_update(session);
+    TEST_ASSERT_EQUAL_INT(0, fsm_gk_session->enable_multi_curl);
+
+}
+
+void
+run_test_fsm_gk(void)
+{
+    void (*prev_setUp)(void);
+    void (*prev_tearDown)(void);
+    bool ret;
 
     ret = check_connection();
     if (ret == true) g_is_connected = true;
 
-    /* No initial setUp()/tearDown() required for these tests. */
-    test_fsm_gk_fct();
-
-    /* Following tests require the local setUp()/tearDown(). */
-    g_setUp = main_setUp;
-    g_tearDown = main_tearDown;
+    /* swap the setup/teardown routines */
+    prev_setUp    = g_setUp;
+    prev_tearDown = g_tearDown;
+    g_setUp       = main_setUp;
+    g_tearDown    = main_tearDown;
 
     RUN_TEST(test_curl_multi);
     RUN_TEST(test_curl_fqdn);
@@ -1801,6 +1941,9 @@ main(int argc, char *argv[])
     RUN_TEST(test_private_ip);
     RUN_TEST(test_uncategorized_reply);
     RUN_TEST(test_validate_fqdn);
+    RUN_TEST(test_mcurl_config);
 
-    return UNITY_END();
+    /* restore the setup/teardown routines */
+    g_setUp    = prev_setUp;
+    g_tearDown = prev_tearDown;
 }

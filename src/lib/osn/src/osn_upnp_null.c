@@ -26,6 +26,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "log.h"
 #include "osn_upnp.h"
+#include "memutil.h"
 
 struct osn_upnp
 {
@@ -36,14 +37,14 @@ osn_upnp_t *osn_upnp_new(const char *ifname)
 {
     (void)ifname;
 
-    osn_upnp_t *self = malloc(sizeof(*self));
+    osn_upnp_t *self = MALLOC(sizeof(*self));
 
     return self;
 }
 
 bool osn_upnp_del(osn_upnp_t *self)
 {
-    free(self);
+    FREE(self);
 
     return true;
 }

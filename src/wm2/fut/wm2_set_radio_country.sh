@@ -30,7 +30,8 @@
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="wm2/$(basename "$0")"
 manager_setup_file="wm2/wm2_setup.sh"
@@ -52,16 +53,17 @@ Script usage example:
    ./${tc_name} wl1 E0
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 
 NARGS=2
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
@@ -77,7 +79,7 @@ trap '
 log_title "$tc_name: WM2 test - Testing Wifi_Radio_State field country - '${country_to_check}'"
 
 check_ovsdb_entry Wifi_Radio_State -w if_name "$if_name" -w country "$country_to_check" &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Radio_State::country is $country_to_check" ||
-    raise "wait_ovsdb_entry - Failed Wifi_Radio_State::country is not $country_to_check" -l "$tc_name" -tc
+    log "$tc_name: wait_ovsdb_entry - Wifi_Radio_State::country is $country_to_check - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Wifi_Radio_State::country is not $country_to_check" -l "$tc_name" -tc
 
 pass

@@ -33,66 +33,41 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <time.h>
 
 #include <zlib.h> // crc32
+#include <ev.h>
 
 #include <unistd.h> // getpid()
 
 #include <sys/socket.h> // AF_UNIX
 
 #define MODULE_NAME "TELOG"
-#define MODULE_ID LOG_MODULE_ID_TELOG
 #include "log.h"
-#include "os_uds_link.h"
 #include "os_time.h"
+#include "memutil.h"
 
 #include "timevt_client.h"
+#include "timevt_msg_link.h"
 
 struct te_client
 {
-    bool enabled;
-    uds_link_t socklink; // unix datagram socket link
-    udgram_t srvdg; // datagram for server
-    char *proc_name;
+    ipc_msg_link_t *msglink; // IPC message link
+    char *name;
 };
 
-te_client_handle tecli_open(const char *srv_name, const char *procname)
+te_client_handle tecli_open(const char *name, const char *addr)
 {
-    te_client_handle h = NULL;
+    if (!name) return false;
 
-    if (srv_name == NULL) srv_name = TESRV_SOCKET_ADDR;
-    if (strlen(srv_name) >= sizeof(h->srvdg.addr.sun_path) - 1)
-    {
-        LOG(ERR, "Too long server socket name: %s", srv_name);
-        return NULL;
-    }
+    ipc_msg_link_t *ml = ipc_msg_link_open(addr, EV_DEFAULT, TELOG_CLIENT_MSG_LINK_ID);
 
-    h = (te_client_handle)malloc(sizeof(*h));
-    if (h == NULL)
-    {
-        LOG(ERR, "Cannot allocate memory for client object");
-        return NULL;
-    }
+    if (ml == NULL) return NULL;
+
+    te_client_handle h = (te_client_handle)MALLOC(sizeof(*h));
 
     // reset object before use
     memset(h, 0, sizeof(*h));
 
-    // create client addr path by appending its process ID at the end
-    int pidpos = -1;
-    char sockname[sizeof(h->srvdg.addr.sun_path)];
-    int slen = snprintf(sockname, sizeof(sockname), "%s.%n%d", TECLI_SOCKET_ADDR, &pidpos, getpid());
-    // check socket name before init socket link
-    if (slen <= 0 || !uds_link_init(&h->socklink, sockname, NULL))
-    {
-        free(h);
-        return NULL;
-    }
-
-    h->proc_name = strdup(procname ? procname : sockname + pidpos);
-
-    strcpy(h->srvdg.addr.sun_path, srv_name);
-    // support abstract namespace socket
-    if (srv_name[0] == '@') h->srvdg.addr.sun_path[0] = 0;
-    h->srvdg.addr.sun_family = AF_UNIX;
-    h->enabled = false;
+    h->name = strdup(name);
+    h->msglink = ml;
 
     return h;
 }
@@ -100,28 +75,9 @@ te_client_handle tecli_open(const char *srv_name, const char *procname)
 void tecli_close(te_client_handle h)
 {
     if (h == NULL) return;
-    uds_link_fini(&h->socklink);
-    free(h->proc_name);
-    free(h);
-}
-
-void tecli_enable(te_client_handle h, bool enable)
-{
-    h->enabled = enable;
-}
-
-static void log_event_local(const Sts__TimeEvent *pte)
-{
-    const char *cat_str = pte->cat;
-    const char *subject = pte->subject ? pte->subject : "time-event";
-    const char *seq = pte->seq ? pte->seq : "UNI";
-    const char *msg = pte->msg ? pte->msg : "";
-
-    char monotime[256];
-    (void)print_mono_time(monotime, sizeof(monotime), pte->time);
-
-    // time and source skipped because provided by logging engine
-    LOG(INFO, "[%s] %s: %s: [%s] %s", monotime, cat_str, subject, seq, msg);
+    ipc_msg_link_close(h->msglink);
+    FREE(h->name);
+    FREE(h);
 }
 
 static void time_event_init(Sts__TimeEvent *pte, const char *cat, const char *source,
@@ -140,7 +96,7 @@ static void time_event_init(Sts__TimeEvent *pte, const char *cat, const char *so
 bool tecli_log_event(te_client_handle h, const char *cat,
         const char *subject, const char *step, const char *fmt, va_list args)
 {
-    char msg[TIMEVT_MAX_MSG_LEN] = { 0 };
+    char msg[ipc_msg_link_max_msize(h->msglink)];
     int slen = 0;
 
     if (step == NULL) step = TECLI_DEFAULT_STEP;
@@ -151,11 +107,7 @@ bool tecli_log_event(te_client_handle h, const char *cat,
     }
 
     Sts__TimeEvent timevt;
-    time_event_init(&timevt, cat, h->proc_name, subject, step, slen > 0 ? msg : NULL);
-
-    log_event_local(&timevt);
-
-    if (!h->enabled) return true;
+    time_event_init(&timevt, cat, h->name, subject, step, slen > 0 ? msg : NULL);
 
     size_t proto_size = sts__time_event__get_packed_size(&timevt);
     size_t hdrlen = strlen(TIMEVT_HEADER);
@@ -165,10 +117,10 @@ bool tecli_log_event(te_client_handle h, const char *cat,
     (void)sts__time_event__pack(&timevt, &outbuf[hdrlen]);
     (void)te_crc32_append(outbuf, hdrlen + proto_size);
 
-    h->srvdg.data = outbuf;
-    h->srvdg.size = sizeof(outbuf);
+    ipc_msg_t ipc_msg = { .addr = NULL, .data = outbuf, .size = sizeof(outbuf) };
+
     // no log on failure : server may be offline, it'sOK
-    return uds_link_sendto(&h->socklink, &h->srvdg);
+    return ipc_msg_link_sendto(h->msglink, &ipc_msg);
 }
 
 uint32_t te_crc32_compute(uint8_t *src, size_t length)

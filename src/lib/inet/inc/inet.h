@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdlib.h>
 
 #include "os_types.h"
+#include "memutil.h"
 
 #include "osn_inet.h"
 #include "osn_dhcpv6.h"
@@ -413,7 +414,7 @@ static inline bool inet_del(inet_t *self)
 {
     bool retval = inet_fini(self);
 
-    free(self);
+    FREE(self);
 
     return retval;
 }

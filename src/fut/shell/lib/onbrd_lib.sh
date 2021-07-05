@@ -323,16 +323,16 @@ verify_fw_pattern()
         raise "FAIL: Firmware version ${fw_segment_0} has too many segments (2-4), overflow: '${ver_overflow}'" -l "${fn_name}"
     # Non-empty segments must have 1-4 numerals
     [ ${#ver_major} -ge 1 ] && [ ${#ver_major} -le 3 ] ||
-        raise "FAIL: Major version '${ver_major}' must contain 1-4 numerals, not ${#ver_major}" -l "${fn_name}"
+        raise "FAIL: Major version '${ver_major}' must contain 1-3 numerals, not ${#ver_major}" -l "${fn_name}"
     [ ${#ver_minor} -ge 1 ] && [ ${#ver_minor} -le 3 ] ||
-        raise "FAIL: Minor version '${ver_minor}' must contain 1-4 numerals, not ${#ver_minor}" -l "${fn_name}"
+        raise "FAIL: Minor version '${ver_minor}' must contain 1-3 numerals, not ${#ver_minor}" -l "${fn_name}"
     if [ -n "${ver_micro}" ]; then
         [ ${#ver_micro} -ge 1 ] && [ ${#ver_micro} -le 3 ] ||
-            raise "FAIL: Micro version '${ver_micro}' must contain 1-4 numerals, not ${#ver_micro}" -l "${fn_name}"
+            raise "FAIL: Micro version '${ver_micro}' must contain 1-3 numerals, not ${#ver_micro}" -l "${fn_name}"
     fi
     if [ -n "${ver_nano}" ]; then
         [ ${#ver_nano} -ge 1 ] && [ ${#ver_nano} -le 3 ] ||
-            raise "FAIL: Nano version '${ver_nano}' must contain 1-4 numerals, not ${#ver_nano}" -l "${fn_name}"
+            raise "FAIL: Nano version '${ver_nano}' must contain 1-3 numerals, not ${#ver_nano}" -l "${fn_name}"
     fi
 
     return 0

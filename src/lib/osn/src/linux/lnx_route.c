@@ -34,6 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "log.h"
 #include "util.h"
+#include "memutil.h"
 #include "os_util.h"
 #include "os_regex.h"
 #include "evx.h"
@@ -392,7 +393,7 @@ void lnx_route_cache_update(const char *ifname, struct osn_route_status *rts)
     rsc = ds_tree_find(&rt->rt_cache, rts);
     if (rsc == NULL)
     {
-        rsc = calloc(1, sizeof(struct lnx_route_state_cache));
+        rsc = CALLOC(1, sizeof(struct lnx_route_state_cache));
         memcpy(&rsc->rsc_state, rts, sizeof(rsc->rsc_state));
         ds_tree_insert(&rt->rt_cache, rsc, &rsc->rsc_state);
 
@@ -455,7 +456,7 @@ static void lnx_route_cache_free(lnx_route_t *rt, struct lnx_route_state_cache *
         rt->rt_fn(rt, &rsc->rsc_state, true);
     }
 
-    free(rsc);
+    FREE(rsc);
 }
 
 /*
@@ -498,7 +499,7 @@ void lnx_route_arp_refresh(void)
     ds_tree_foreach_iter(&lnx_route_arp_cache, arp, &iter)
     {
         ds_tree_iremove(&iter);
-        free(arp);
+        FREE(arp);
     }
 
     /*
@@ -577,13 +578,13 @@ void lnx_route_arp_refresh(void)
             continue;
         }
 
-        arp = malloc(sizeof(struct lnx_route_arp_cache));
+        arp = MALLOC(sizeof(struct lnx_route_arp_cache));
         *arp = LNX_ROUTE_ARP_CACHE_INIT;
 
         if (strscpy(arp->arp_ifname, r_ifname, sizeof(arp->arp_ifname)) < 0)
         {
             LOG(ERR, "route: Interface name too long: %s", r_ifname);
-            free(arp);
+            FREE(arp);
             continue;
         }
 

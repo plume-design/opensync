@@ -200,25 +200,25 @@ check_survey_report_log()
         log_msg="Checking logs for survey $sm_radio_type channel $sm_channel reporting processing survey"
         die_msg="No survey processing done on $sm_radio_type $sm_survey_type on channel $sm_channel"
         sm_log_test_pass_msg="Survey processing done on $sm_radio_type $sm_survey_type on channel $sm_channel"
-        sm_log_grep="$LOGREAD | tail -500 | grep -i 'Processing $sm_radio_type' | grep -i '$sm_survey_type $sm_channel'"
+        sm_log_grep="$LOGREAD | tail -1000 | grep -i 'Processing $sm_radio_type' | grep -i '$sm_survey_type $sm_channel'"
         ;;
     *scheduled_scan*)
         log_msg="Checking logs for survey $sm_radio_type channel $sm_channel reporting scheduling survey"
         die_msg="No survey scheduling done on $sm_radio_type $sm_survey_type on channel $sm_channel"
         sm_log_test_pass_msg="Survey scheduling done on $sm_radio_type $sm_survey_type on channel $sm_channel"
-        sm_log_grep="$LOGREAD | tail -500 | grep -i 'Scheduled $sm_radio_type $sm_survey_type $sm_channel scan'"
+        sm_log_grep="$LOGREAD | tail -1000 | grep -i 'Scheduled $sm_radio_type $sm_survey_type $sm_channel scan'"
         ;;
     *fetched_survey*)
         log_msg="Checking logs for survey $sm_radio_type channel $sm_channel reporting fetched survey"
         die_msg="No survey fetching done on $sm_radio_type $sm_survey_type on channel $sm_channel"
         sm_log_test_pass_msg="Survey fetching done on $sm_radio_type $sm_survey_type on channel $sm_channel"
-        sm_log_grep="$LOGREAD | tail -500 | grep -i 'Fetched $sm_radio_type $sm_survey_type $sm_channel survey'"
+        sm_log_grep="$LOGREAD | tail -1000 | grep -i 'Fetched $sm_radio_type $sm_survey_type $sm_channel survey'"
         ;;
     *sending_survey_report*)
         log_msg="Checking logs for survey $sm_radio_type channel $sm_channel reporting sending survey"
         die_msg="No survey sending done on $sm_radio_type $sm_survey_type on channel $sm_channel"
         sm_log_test_pass_msg="Survey sending done on $sm_radio_type $sm_survey_type on channel $sm_channel"
-        sm_log_grep="$LOGREAD | tail -500 | grep -i 'Sending $sm_radio_type' | grep -i '$sm_survey_type $sm_channel survey report'"
+        sm_log_grep="$LOGREAD | tail -1000 | grep -i 'Sending $sm_radio_type' | grep -i '$sm_survey_type $sm_channel survey report'"
         ;;
     *)
         raise "FAIL: Incorrect log type provided" -l "$fn_name" -arg
@@ -334,25 +334,25 @@ check_neighbor_report_log()
         log_msg="Checking for $sm_radio_type neighbor adding for $sm_neighbor_mac"
         die_msg="No neighbor $sm_neighbor_mac was added"
         sm_log_test_pass_msg="Neighbor $sm_neighbor_mac was added"
-        sm_log_grep="$LOGREAD | tail -500 | grep -i 'Adding $sm_radio_type' | grep -i \"$sm_survey_type neighbor {bssid='$sm_neighbor_mac' ssid='$sm_neighbor_ssid'\" | grep -i 'chan=$sm_channel'"
+        sm_log_grep="$LOGREAD | tail -1000 | grep -i 'Adding $sm_radio_type' | grep -i \"$sm_survey_type neighbor {bssid='$sm_neighbor_mac' ssid='$sm_neighbor_ssid'\" | grep -i 'chan=$sm_channel'"
         ;;
     *parsed_neighbor_bssid*)
         log_msg="Checking for $sm_radio_type neighbor parsing of bssid $sm_neighbor_mac"
         die_msg="No neighbor $sm_neighbor_mac was parsed"
         sm_log_test_pass_msg="Neighbor $sm_neighbor_mac was parsed"
-        sm_log_grep="$LOGREAD | tail -500 | grep -i 'Parsed $sm_radio_type' | grep -i 'BSSID $sm_neighbor_mac'"
+        sm_log_grep="$LOGREAD | tail -1000 | grep -i 'Parsed $sm_radio_type' | grep -i 'BSSID $sm_neighbor_mac'"
         ;;
     *parsed_neighbor_ssid*)
         log_msg="Checking for $sm_radio_type neighbor parsing of ssid $sm_neighbor_ssid"
         die_msg="No neighbor $sm_neighbor_ssid was parsed"
         sm_log_test_pass_msg="Neighbor $sm_neighbor_ssid was parsed"
-        sm_log_grep="$LOGREAD | tail -500 | grep -i 'Parsed $sm_radio_type' | grep -i 'SSID $sm_neighbor_ssid'"
+        sm_log_grep="$LOGREAD | tail -1000 | grep -i 'Parsed $sm_radio_type' | grep -i 'SSID $sm_neighbor_ssid'"
         ;;
     *sending_neighbor*)
         log_msg="Checking for $sm_radio_type neighbor sending of $sm_neighbor_mac"
-        die_msg="No neighbor $sm_neighbor_mac was added"
-        sm_log_test_pass_msg="Neighbor $sm_neighbor_mac was added"
-        sm_log_grep="$LOGREAD | tail -500 | grep -i 'Sending $sm_radio_type' | grep -i \"$sm_survey_type neighbors {bssid='$sm_neighbor_mac' ssid='$sm_neighbor_ssid'\" | grep -i 'chan=$sm_channel'"
+        die_msg="No neighbor $sm_neighbor_mac was sent"
+        sm_log_test_pass_msg="Neighbor $sm_neighbor_mac was sent"
+        sm_log_grep="$LOGREAD | tail -1000 | grep -i 'Sending $sm_radio_type' | grep -i \"$sm_survey_type neighbors {bssid='$sm_neighbor_mac' ssid='$sm_neighbor_ssid'\" | grep -i 'chan=$sm_channel'"
         ;;
     *)
         raise "FAIL: Incorrect log type provided" -l "$fn_name" -arg
@@ -478,25 +478,25 @@ check_leaf_report_log()
         log_msg="Checking logs for leaf reporting radio $sm_radio_type connection established"
         die_msg="No client $sm_client_mac_address connected for reporting"
         sm_log_test_pass_msg="Client $sm_client_mac_address connected for reporting"
-        sm_log_grep="$LOGREAD | tail -500 | grep -i 'Marked $sm_radio_type' | grep -i 'client $sm_client_mac_address connected'"
+        sm_log_grep="$LOGREAD | tail -1000 | grep -i 'Marked $sm_radio_type' | grep -i 'client $sm_client_mac_address connected'"
         ;;
     *client_parsing*)
         log_msg="Checking logs for leaf parsing $sm_client_mac_address"
         die_msg="No client $sm_client_mac_address parsed"
         sm_log_test_pass_msg="Client $sm_client_mac_address parsed"
-        sm_log_grep="$LOGREAD | tail -500 | grep -i 'Parsed $sm_radio_type client MAC $sm_client_mac_address'"
+        sm_log_grep="$LOGREAD | tail -1000 | grep -i 'Parsed $sm_radio_type client MAC $sm_client_mac_address'"
         ;;
     *client_update*)
         log_msg="Checking logs for leaf entry update $sm_client_mac_address"
         die_msg="No client $sm_client_mac_address updated"
         sm_log_test_pass_msg="Client $sm_client_mac_address updated"
-        sm_log_grep="$LOGREAD | tail -500 | grep -i 'Updating $sm_radio_type' | grep -i 'client $sm_client_mac_address entry'"
+        sm_log_grep="$LOGREAD | tail -1000 | grep -i 'Updating $sm_radio_type' | grep -i 'client $sm_client_mac_address entry'"
         ;;
     *sending*)
         log_msg="Checking logs for leaf $sm_client_mac_address $sm_radio_type sample sending"
         die_msg="No client $sm_client_mac_address $sm_radio_type sample sending initiated"
         sm_log_test_pass_msg="client $sm_client_mac_address $sm_radio_type sample sending initiated"
-        sm_log_grep="$LOGREAD | tail -500 | grep -i 'Sending $sm_radio_type' | grep -i 'client $sm_client_mac_address stats'"
+        sm_log_grep="$LOGREAD | tail -1000 | grep -i 'Sending $sm_radio_type' | grep -i 'client $sm_client_mac_address stats'"
         ;;
     *)
         raise "FAIL: Incorrect log type provided" -l "$fn_name" -arg

@@ -46,11 +46,11 @@ typedef struct udgram
 } udgram_t;
 
 /**
- * @brief Read datagram function handler called every time new datagram is received
+ * @brief Read datagram function type called every time new datagram is received
  * @param self ptr to uds link object invoking this handler
  * @param dg ptr to the structure containing read datagram with sender address
  */
-typedef void (*dgram_read_fp_t)(uds_link_t *self, const udgram_t *dg);
+typedef void dgram_read_func_t(uds_link_t *self, const udgram_t *dg);
 
 // Unix Datagram Socket link
 typedef struct uds_link
@@ -60,10 +60,11 @@ typedef struct uds_link
 
     int socket_fd;
     struct sockaddr_un socket_addr;
+    size_t max_dgsize;
 
-    dgram_read_fp_t dg_read_fp;
+    dgram_read_func_t *dg_read_fp;
 
-    const char *sname; // socket name = path
+    char *sname; // socket name = path
     bool abstract; // abstract namespace socket
 
     uint32_t cnt_tb; // transmitted bytes
@@ -80,9 +81,11 @@ typedef struct uds_link
  * @param name socket name (file path), use leading @ for abstract namespace
  * @param ev ptr to event loop to watch for receiving datagrams, or NULL to use
  *           blocking uds_link_receive() for reception
+ * @param max_dgsize maximum size of datagram to be supported or 0 to use
+ *        default system setting
  * @return true when link successfully initialized; false otherwise
  */
-bool uds_link_init(uds_link_t *self, const char *name, struct ev_loop *ev);
+bool uds_link_init(uds_link_t *self, const char *name, struct ev_loop *ev, size_t max_dgsize);
 
 /**
  * @brief Destructs open Unix datagram socket link
@@ -93,11 +96,20 @@ void uds_link_fini(uds_link_t *self);
 
 /**
  * @brief Gets configured socket name of this link
+ * Abstract ns socket name is preceded with '@'
  *
  * @param self ptr to uds link object
- * @return ptr to this link address structure 
+ * @return ptr to socket name string
  */
-const char *uds_link_socket_name(uds_link_t *self);
+const char *uds_link_socket_name(const uds_link_t *self);
+
+/**
+ * @brief Gets socket addr of this uds link
+ *
+ * @param self ptr to uds link object
+ * @return ptr to underlying socket addr structure
+ */
+const struct sockaddr_un *uds_link_get_addr(const uds_link_t *self);
 
 /**
  * @brief (Un)Subscribes to read datagram received by this link
@@ -105,19 +117,20 @@ const char *uds_link_socket_name(uds_link_t *self);
  * @param self ptr to uds link object
  * @param pfn ptr to read datagram function callback
  */
-void uds_link_subscribe_datagram_read(uds_link_t *self, dgram_read_fp_t pfn);
+void uds_link_subscribe_datagram_read(uds_link_t *self, dgram_read_func_t *pfn);
 
 /**
- * @brief Sends dgram to specified destination.
+ * @brief Sends dgram to specified destination
  *
  * Function may block when there is no buffer for new dgram in the underlying
- * socket driver.
+ * socket driver and parameter @p wait is set to true.
  *
  * @param self ptr to uds link object
  * @param dg ptr to filled structure with data and destination socket addr
+ * @param wait true to send in blocking mode
  * @return true when dgram successfully sent; false otherwise
  */
-bool uds_link_sendto(uds_link_t *self, const udgram_t *dg);
+bool uds_link_sendto(uds_link_t *self, const udgram_t *dg, bool wait);
 
 /**
  * @brief Blocking reception of new datagram. Allowed only when event driven
@@ -135,12 +148,15 @@ bool uds_link_sendto(uds_link_t *self, const udgram_t *dg);
 bool uds_link_receive(uds_link_t *self, udgram_t *dg);
 
 // Gets number of received datagrams
-uint32_t uds_link_received_dgrams(uds_link_t *self);
+uint32_t uds_link_received_dgrams(const uds_link_t *self);
 // Gets number of received bytes
-uint32_t uds_link_received_bytes(uds_link_t *self);
+uint32_t uds_link_received_bytes(const uds_link_t *self);
 // Gets number of sent datagrams
-uint32_t uds_link_sent_dgrams(uds_link_t *self);
+uint32_t uds_link_sent_dgrams(const uds_link_t *self);
 // Gets number of sent bytes
-uint32_t uds_link_sent_bytes(uds_link_t *self);
+uint32_t uds_link_sent_bytes(const uds_link_t *self);
+
+// Gets max size of sent & received datagrams in bytes
+size_t uds_link_get_max_dgsize(const uds_link_t *self);
 
 #endif /* OS_UDS_LINK_H_INCLUDED */

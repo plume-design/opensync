@@ -26,10 +26,12 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/um_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="um/$(basename "$0")"
 manager_setup_file="um/um_setup.sh"
@@ -54,17 +56,17 @@ Script usage example:
    ./${tc_name} /tmp/pfirmware http://192.168.4.1:8000/fut-base/resource/um/${um_image_name_default}.img
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
-
+fi
 NARGS=2
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 fw_path=$1
@@ -82,20 +84,19 @@ log_title "$tc_name: UM test - Missing MD5 Sum"
 
 log "$tc_name: Setting firmware_url to $fw_url"
 update_ovsdb_entry AWLAN_Node -u firmware_url "$fw_url" &&
-    log "$tc_name: update_ovsdb_entry - AWLAN_Node firmware_url set to $fw_url" ||
-    raise "update_ovsdb_entry - Failed to set firmware_url to $fw_url in AWLAN_Node" -l "$tc_name" -tc
+    log "$tc_name: update_ovsdb_entry - AWLAN_Node::firmware_url is $fw_url - Success" ||
+    raise "FAIL: update_ovsdb_entry - AWLAN_Node::firmware_url is not $fw_url" -l "$tc_name" -oe
 
 fw_start_code=$(get_um_code "UPG_STS_FW_DL_START")
 log "$tc_name: Waiting for FW download start"
 wait_ovsdb_entry AWLAN_Node -is upgrade_status "$fw_start_code" &&
-    log "$tc_name: wait_ovsdb_entry - AWLAN_Node upgrade_status is $fw_start_code" ||
-    raise "wait_ovsdb_entry - Failed to set upgrade_status in AWLAN_Node to $fw_start_code" -l "$tc_name" -tc
+    log "$tc_name: wait_ovsdb_entry - AWLAN_Node::upgrade_status is $fw_start_code - Success" ||
+    raise "FAIL: wait_ovsdb_entry - AWLAN_Node::upgrade_status is not $fw_start_code" -l "$tc_name" -tc
 
 fw_err_code=$(get_um_code "UPG_ERR_DL_MD5")
 log "$tc_name: Waiting for UPG_ERR_DL_MD5 upgrade status $fw_err_code"
 wait_ovsdb_entry AWLAN_Node -is upgrade_status "$fw_err_code" &&
-    log "$tc_name: wait_ovsdb_entry - AWLAN_Node upgrade_status is $fw_err_code" ||
-    raise "wait_ovsdb_entry - Failed to set upgrade_status in AWLAN_Node to $fw_err_code" -l "$tc_name" -tc
-
+    log "$tc_name: wait_ovsdb_entry - AWLAN_Node::upgrade_status is $fw_err_code - Success" ||
+    raise "FAIL: wait_ovsdb_entry - AWLAN_Node::upgrade_status is not $fw_err_code" -l "$tc_name" -tc
 
 pass

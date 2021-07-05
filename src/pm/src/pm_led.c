@@ -40,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "module.h"
 
 #include "osp_led.h"
+#include "kconfig.h"
 
 
 #define PM_LED_TS_FILE          "/tmp/pm.led.ts"
@@ -53,7 +54,36 @@ static ovsdb_table_t table_Manager;
 static ev_timer led_tmr_connecting;
 static ev_timer led_tmr_connectfail;
 
+#if CONFIG_LEGACY_LED_STATE_MAPPING
+static enum osp_led_state led_translate_mode = OSP_LED_ST_LAST;
 
+
+
+static enum osp_led_state pm_led_translate_led_config(struct schema_AWLAN_Node *awlan_node)
+{
+    const char *mode;
+
+    mode = SCHEMA_KEY_VAL_NULL(awlan_node->led_config, "mode");
+    if (mode != NULL) {
+        if (!strcmp(mode, "off")) {
+            return OSP_LED_ST_CONNECTED;
+        }
+        else if (!strcmp(mode, "breathe")) {
+            return OSP_LED_ST_CONNECTING;
+        }
+        else if (!strcmp(mode, "pattern")) {
+            return OSP_LED_ST_OPTIMIZE;
+        }
+        else {
+            LOGE("LEDM: Could not translate from mode %s to state", mode);
+            return OSP_LED_ST_IDLE;
+        }
+    }
+
+    LOGE("LEDM: Could not translate from mode to state");
+    return OSP_LED_ST_IDLE;
+}
+#endif
 
 static int pm_write_tmp(const char *file, const char *data)
 {
@@ -171,6 +201,22 @@ static int pm_led_update_led_config(struct schema_AWLAN_Node *awlan_node)
         if ((val != NULL) && (!strcmp(val, "true"))) {
             clear = true;
         }
+    }
+    else if (kconfig_enabled(CONFIG_LEGACY_LED_STATE_MAPPING))
+    {
+        state = pm_led_translate_led_config(awlan_node);
+        if (state == OSP_LED_ST_IDLE) {
+            return -1;
+        }
+
+        LOGN("LEDM: Translated state: %s", osp_led_state_to_str(state));
+        if (led_translate_mode != OSP_LED_ST_LAST) {
+            rv = osp_led_clear_state(led_translate_mode);
+            if (rv != 0) {
+                LOGE("LEDM: Could not clear transition LED state: %d", led_translate_mode);
+            }
+        }
+        led_translate_mode = state;
     }
 
     if (state == OSP_LED_ST_LAST) {

@@ -22,7 +22,7 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-UNIT_NAME := fut_device_tools
+UNIT_NAME := fut_tools_device
 
 UNIT_DISABLE := n
 
@@ -31,16 +31,20 @@ UNIT_TYPE := FUT
 # Output directory
 UNIT_DIR := shell/tools/device
 
-UNIT_FILE := create_inet_interface.sh
-UNIT_FILE += create_radio_vif_interface.sh
-UNIT_FILE += add_bridge_port.sh
+UNIT_FILE := add_bridge_port.sh
+UNIT_FILE += check_channel_is_ready.sh
+UNIT_FILE += check_device_in_bridge_mode.sh
+UNIT_FILE += check_kconfig_option.sh
+UNIT_FILE += check_reboot_file_exists.sh
+UNIT_FILE += check_wan_connectivity.sh
+UNIT_FILE += check_wifi_client_associated.sh
 UNIT_FILE += configure_lan_bridge_for_wan_connectivity.sh
+UNIT_FILE += create_inet_interface.sh
+UNIT_FILE += create_radio_vif_interface.sh
+UNIT_FILE += create_vif_interface.sh
 UNIT_FILE += default_setup.sh
+UNIT_FILE += fut_configure_mqtt.sh
+UNIT_FILE += get_cloud_conn_port.sh
 UNIT_FILE += get_radio_mac_from_ovsdb.sh
 UNIT_FILE += vif_clean.sh
 UNIT_FILE += wm2_setup.sh
-UNIT_FILE += fut_configure_mqtt.sh
-UNIT_FILE += check_kconfig_option.sh
-UNIT_FILE += check_wan_connectivity.sh
-UNIT_FILE += create_vif_interface.sh
-UNIT_FILE += check_channel_is_ready.sh

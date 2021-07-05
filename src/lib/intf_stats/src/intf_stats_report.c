@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "qm_conn.h"
 #include "intf_stats.h"
+#include "memutil.h"
 
 /*****************************************************************************
  * Helper functions
@@ -88,13 +89,7 @@ intf_stats_set_node_info(node_info_t *node)
     bool ret;
 
     // Allocate the protobuf structure
-    pb = calloc(1, sizeof(Interfaces__IntfStats__ObservationPoint));
-    if (!pb)
-    {
-        LOGE("%s: ObservationPoint protobuf struct allocation"
-             " failed", __func__);
-        return NULL;
-    }
+    pb = CALLOC(1, sizeof(Interfaces__IntfStats__ObservationPoint));
 
     /* Initialize the protobuf structure */
     interfaces__intf_stats__observation_point__init(pb);
@@ -109,10 +104,10 @@ intf_stats_set_node_info(node_info_t *node)
     return pb;
 
 err_free_node_id:
-    free(pb->node_id);
+    FREE(pb->node_id);
 
 err_free_pb:
-    free(pb);
+    FREE(pb);
 
     return NULL;
 }
@@ -130,10 +125,10 @@ intf_stats_free_pb_op(Interfaces__IntfStats__ObservationPoint *pb)
 {
     if (!pb) return;
 
-    free(pb->node_id);
-    free(pb->location_id);
+    FREE(pb->node_id);
+    FREE(pb->location_id);
 
-    free(pb);
+    FREE(pb);
 
     return;
 }
@@ -160,8 +155,7 @@ intf_stats_serialize_node_info(node_info_t *node)
     if (!node) return NULL;
 
     /* Allocate serialization output container */
-    serialized = calloc(1, sizeof(packed_buffer_t));
-    if (!serialized) return NULL;
+    serialized = CALLOC(1, sizeof(packed_buffer_t));
 
     /* Allocate and set observation point protobuf */
     pb = intf_stats_set_node_info(node);
@@ -172,8 +166,7 @@ intf_stats_serialize_node_info(node_info_t *node)
     if (len == 0) goto err_free_pb;
 
     /* Allocate space for the serialized buffer */
-    buf = malloc(len);
-    if (!buf) goto err_free_pb;
+    buf = MALLOC(len);
 
     /* Serialize protobuf */
     serialized->len = interfaces__intf_stats__observation_point__pack(pb, buf);
@@ -188,7 +181,7 @@ err_free_pb:
     intf_stats_free_pb_op(pb);
 
 err_free_serialized:
-    free(serialized);
+    FREE(serialized);
 
     return NULL;
 }
@@ -214,12 +207,7 @@ intf_stats_set_intf_stats(intf_stats_t *intf)
     bool ret = false;
 
     // Allocate the protobuf structure
-    pb = calloc(1, sizeof(Interfaces__IntfStats__IntfStats));
-    if (!pb)
-    {
-        LOGE("%s:intferface struct allocation failed", __func__);
-        return NULL;
-    }
+    pb = CALLOC(1, sizeof(Interfaces__IntfStats__IntfStats));
 
     // Initialize the protobuf structure
     interfaces__intf_stats__intf_stats__init(pb);
@@ -246,10 +234,10 @@ intf_stats_set_intf_stats(intf_stats_t *intf)
     return pb;
 
 err_free_ifname:
-    free(pb->if_name);
+    FREE(pb->if_name);
 
 err_free_pb:
-    free(pb);
+    FREE(pb);
 
     return NULL;
 }
@@ -267,9 +255,9 @@ intf_stats_free_pb_intf_stats(Interfaces__IntfStats__IntfStats *pb)
 {
     if (!pb) return;
 
-    free(pb->if_name);
-    free(pb->role);
-    free(pb);
+    FREE(pb->if_name);
+    FREE(pb->role);
+    FREE(pb);
 }
 
 /**
@@ -294,8 +282,7 @@ intf_stats_serialize_intf_stats(intf_stats_t *intf)
     if (!intf) return NULL;
 
     /* Allocate serialization output container */
-    serialized = calloc(1, sizeof(packed_buffer_t));
-    if (!serialized) return NULL;
+    serialized = CALLOC(1, sizeof(packed_buffer_t));
 
     /* Allocate and set the intf stats container */
     pb = intf_stats_set_intf_stats(intf);
@@ -306,8 +293,7 @@ intf_stats_serialize_intf_stats(intf_stats_t *intf)
     if (len == 0) goto err_free_pb;
 
     /* Allocate space for the serialized buffer */
-    buf = malloc(len);
-    if (!buf) goto err_free_pb;
+    buf = MALLOC(len);
 
     /* Serialize protobuf */
     serialized->len = interfaces__intf_stats__intf_stats__pack(pb, buf);
@@ -323,7 +309,7 @@ err_free_pb:
     intf_stats_free_pb_intf_stats(pb);
 
 err_free_serialized:
-    free(serialized);
+    FREE(serialized);
 
     return NULL;
 }
@@ -353,12 +339,7 @@ intf_stats_set_pb_intf_stats(intf_stats_window_t *window)
     if (window->num_intfs == 0) return NULL;
 
     // Allocate the array of interfaces
-    intfs_pb_tbl = calloc(window->num_intfs, sizeof(Interfaces__IntfStats__IntfStats *));
-    if (!intfs_pb_tbl)
-    {
-        LOGE("%s:intfs_pb_tbl allocation failed", __func__);
-        return NULL;
-    }
+    intfs_pb_tbl = CALLOC(window->num_intfs, sizeof(Interfaces__IntfStats__IntfStats *));
 
     for ( intf = ds_dlist_ifirst(&intf_iter, window_intf_list);
           intf != NULL;
@@ -385,7 +366,7 @@ err_free_pb_intfs:
         intf_stats_free_pb_intf_stats(intfs_pb_tbl[i]);
     }
 
-    free(intfs_pb_tbl);
+    FREE(intfs_pb_tbl);
 
     return NULL;
 }
@@ -411,12 +392,7 @@ intf_stats_set_pb_window(intf_stats_window_t *window)
     Interfaces__IntfStats__ObservationWindow *pb = NULL;
 
     // Allocate protobuf
-    pb = calloc(1, sizeof(Interfaces__IntfStats__ObservationWindow));
-    if (!pb)
-    {
-        LOGE("%s: observation window allocation failed", __func__);
-        return NULL;
-    }
+    pb = CALLOC(1, sizeof(Interfaces__IntfStats__ObservationWindow));
 
     interfaces__intf_stats__observation_window__init(pb);
 
@@ -439,7 +415,7 @@ intf_stats_set_pb_window(intf_stats_window_t *window)
     return pb;
 
 err_free_pb_window:
-    free(pb);
+    FREE(pb);
 
     return NULL;
 }
@@ -464,8 +440,8 @@ intf_stats_free_pb_window(Interfaces__IntfStats__ObservationWindow *pb)
         intf_stats_free_pb_intf_stats(pb->intf_stats[i]);
     }
 
-    free(pb->intf_stats);
-    free(pb);
+    FREE(pb->intf_stats);
+    FREE(pb);
 
     return;
 }
@@ -492,8 +468,7 @@ intf_stats_serialize_window(intf_stats_window_t *window)
     if (!window) return NULL;
 
     /* Allocate serialization output container */
-    serialized = calloc(1, sizeof(packed_buffer_t));
-    if (!serialized) return NULL;
+    serialized = CALLOC(1, sizeof(packed_buffer_t));
 
     /* Allocate and set the intf stats protobuf */
     pb = intf_stats_set_pb_window(window);
@@ -504,8 +479,7 @@ intf_stats_serialize_window(intf_stats_window_t *window)
     if (len == 0) goto err_free_pb;
 
     /* Allocate space for the serialized buffer */
-    buf = malloc(len);
-    if (!buf) goto err_free_pb;
+    buf = MALLOC(len);
 
     /* Serialize protobuf */
     serialized->len = interfaces__intf_stats__observation_window__pack(pb, buf);
@@ -521,7 +495,7 @@ err_free_pb:
     intf_stats_free_pb_window(pb);
 
 err_free_serialized:
-    free(serialized);
+    FREE(serialized);
 
     return NULL;
 }
@@ -553,13 +527,8 @@ intf_stats_set_pb_windows(intf_stats_report_data_t *report)
     if (report->num_windows == 0) return NULL;
 
 
-    windows_pb_tbl = calloc(report->num_windows,
+    windows_pb_tbl = CALLOC(report->num_windows,
                             sizeof(Interfaces__IntfStats__ObservationWindow *));
-    if (!windows_pb_tbl)
-    {
-        LOGE("%s: windows_pb_tbl allocation failed", __func__);
-        return NULL;
-    }
 
     for ( window = ds_dlist_ifirst(&win_iter, window_list);
           window != NULL;
@@ -588,7 +557,7 @@ err_free_pb_windows:
         intf_stats_free_pb_window(windows_pb_tbl[i]);
     }
 
-    free(windows_pb_tbl);
+    FREE(windows_pb_tbl);
 
     return NULL;
 }
@@ -613,12 +582,7 @@ intf_stats_set_pb_report(intf_stats_report_data_t *report)
 {
     Interfaces__IntfStats__IntfReport *pb = NULL;
 
-    pb = calloc(1, sizeof(Interfaces__IntfStats__IntfReport));
-    if (!pb)
-    {
-        LOGE("%s: Interfaces__IntfStats__IntfReport alloc failed", __func__);
-        return NULL;
-    }
+    pb = CALLOC(1, sizeof(Interfaces__IntfStats__IntfReport));
 
     // Initialize protobuf
     interfaces__intf_stats__intf_report__init(pb);
@@ -653,7 +617,7 @@ err_free_pb_op:
     intf_stats_free_pb_op(pb->observation_point);
 
 err_free_pb_report:
-    free(pb);
+    FREE(pb);
 
     return NULL;
 }
@@ -680,8 +644,8 @@ intf_stats_free_pb_report(Interfaces__IntfStats__IntfReport *pb)
         intf_stats_free_pb_window(pb->observation_windows[i]);
     }
 
-    free(pb->observation_windows);
-    free(pb);
+    FREE(pb->observation_windows);
+    FREE(pb);
 
     return;
 }
@@ -716,12 +680,7 @@ intf_stats_serialize_report(intf_stats_report_data_t *report)
     }
 
     // Allocate serialization output structure
-    serialized = calloc(1,sizeof(packed_buffer_t));
-    if (!serialized)
-    {
-        LOGE("%s: packed_buffer memory allocation failed", __func__);
-        return NULL;
-    }
+    serialized = CALLOC(1,sizeof(packed_buffer_t));
 
     // Allocate and set the IntfReport protobuf
     pb = intf_stats_set_pb_report(report);
@@ -740,12 +699,7 @@ intf_stats_serialize_report(intf_stats_report_data_t *report)
     }
 
     // Allocate space for the serialized buffer
-    buf = malloc(len);
-    if (!buf)
-    {
-        LOGE("%s: failed to allocate serialized buf", __func__);
-        goto err_free_pb;
-    }
+    buf = MALLOC(len);
 
     serialized->len = interfaces__intf_stats__intf_report__pack(pb, buf);
     serialized->buf = buf;
@@ -756,10 +710,10 @@ intf_stats_serialize_report(intf_stats_report_data_t *report)
     return serialized;
 
 err_free_pb:
-    free(pb);
+    FREE(pb);
 
 err_free_serialized:
-    free(serialized);
+    FREE(serialized);
 
     return NULL;
 }
@@ -778,9 +732,9 @@ intf_stats_free_packed_buffer(packed_buffer_t *pb)
 {
     if (!pb) return;
 
-    if (pb->buf) free(pb->buf);
+    if (pb->buf) FREE(pb->buf);
 
-    free(pb);
+    FREE(pb);
 }
 
 /**

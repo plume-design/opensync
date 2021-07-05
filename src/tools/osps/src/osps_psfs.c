@@ -39,67 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "osps.h"
 
 
-static int osps_list(int argc, char *argv[]);
 static int osps_prune(int argc, char *argv[]);
-
-/*
- * ===========================================================================
- *  List command
- * ===========================================================================
- */
-static struct osps_command osps_list_cmd = OSPS_COMMAND_INIT(
-        "list",
-        osps_list,
-        "list STORE ; List keys available in store [PSFS extension]",
-        "Arguments:\n"
-        "\n"
-        "   STORE   - The persistent store name\n");
-
-
-int osps_list(int argc, char *argv[])
-{
-    struct psfs_record *pr;
-    psfs_t ps;
-
-    int flags = OSP_PS_READ;
-    int retval = 1;
-
-    if (argc != 2)
-    {
-        osps_usage("list", "Invalid number of arguments.");
-        return OSPS_CLI_ERROR;
-    }
-
-    if (osps_preserve) flags |= OSP_PS_PRESERVE;
-
-    if (!psfs_open(&ps, argv[1], flags))
-    {
-        fprintf(stderr, "Error opening store %s.\n", argv[1]);
-        return 1;
-    }
-
-    if (!psfs_load(&ps))
-    {
-        fprintf(stderr, "Error loading data from store %s.\n", argv[1]);
-        goto error;
-    }
-
-    ds_tree_foreach(&ps.psfs_root, pr)
-    {
-        printf("%s\n", pr->pr_key);
-    }
-
-    retval = 0;
-
-error:
-    if (!psfs_close(&ps))
-    {
-        fprintf(stderr, "Warning: Error closing store %s.\n", argv[1]);
-        retval = 1;
-    }
-
-    return retval;
-}
 
 /*
  * ===========================================================================
@@ -124,7 +64,7 @@ int osps_prune(int argc, char *argv[])
 
     if (argc != 2)
     {
-        osps_usage("list", "Invalid number of arguments.");
+        osps_usage("prune", "Invalid number of arguments.");
         return OSPS_CLI_ERROR;
     }
 
@@ -194,7 +134,6 @@ MODULE(osps_psfs, osps_psfs_init, osps_psfs_fini)
 
 void osps_psfs_init(void *data)
 {
-    osps_command_register(&osps_list_cmd);
     osps_command_register(&osps_prune_cmd);
 }
 

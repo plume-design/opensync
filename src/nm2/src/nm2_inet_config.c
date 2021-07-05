@@ -37,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "os.h"
 #include "util.h"
+#include "memutil.h"
 #include "ovsdb.h"
 #include "ovsdb_update.h"
 #include "ovsdb_sync.h"
@@ -199,7 +200,7 @@ bool nm2_inet_util_get_snooping_intfs(target_mcproxy_params_t *proxy_params)
         return false;
     }
 
-   proxy_params->dwnstrm_ifs = (ifname *)calloc(cnt, sizeof(proxy_params->dwnstrm_ifs[0]));
+   proxy_params->dwnstrm_ifs = (ifname *)CALLOC(cnt, sizeof(proxy_params->dwnstrm_ifs[0]));
 
     for (i = 0; i < cnt; i++)
     {
@@ -328,6 +329,31 @@ bool nm2_inet_igmp_set(
         struct nm2_iface *piface,
         const struct schema_Wifi_Inet_Config *iconf)
 {
+    char *pr;
+
+    bool is_role_nw_iptv = false;
+    bool is_role_type_eth = false;
+    char role[strlen(iconf->role) + 1];
+    char *prole = role;
+
+    STRSCPY(role, iconf->role);
+    while ((pr = strsep(&prole, ",")) != NULL)
+    {
+        if (strcmp(pr, "nw=iptv") == 0)
+        {
+            is_role_nw_iptv = true;
+            continue;
+        }
+
+        if (strcmp(pr, "if_type=eth") == 0)
+        {
+            is_role_type_eth = true;
+            continue;
+        }
+    }
+
+    target_set_mcast_iptv(piface->if_name, is_role_type_eth && is_role_nw_iptv);
+
     if (piface->if_type != NM2_IFTYPE_BRIDGE)
     {
         return true;
@@ -410,7 +436,7 @@ static bool nm2_inet_igmp_proxy_set(
         goto err;
     rc = true;
 err:
-    if (proxy_params.num_dwnstrifs) free(proxy_params.dwnstrm_ifs);
+    if (proxy_params.num_dwnstrifs) FREE(proxy_params.dwnstrm_ifs);
     return rc;
 }
 
@@ -459,7 +485,7 @@ static bool nm2_inet_mld_proxy_set(
         goto err;
     rc = true;
 err:
-    if (proxy_params.num_dwnstrifs) free(proxy_params.dwnstrm_ifs);
+    if (proxy_params.num_dwnstrifs) FREE(proxy_params.dwnstrm_ifs);
     return rc;
 }
 
@@ -479,10 +505,10 @@ static void nm2_inet_dhcp_req_options_set(
 
     if (iconf->dhcp_req_len > 0)
     {
-        free(piface->if_dhcp_req_options);
+        FREE(piface->if_dhcp_req_options);
         piface->if_dhcp_req_options = NULL;
 
-        opts = calloc(1, sizeof(*opts) + 
+        opts = CALLOC(1, sizeof(*opts) +
             iconf->dhcp_req_len * sizeof(opts->option_id[0]));
         
         opts->length = (size_t)iconf->dhcp_req_len;
@@ -919,7 +945,7 @@ bool nm2_inet_dhcps_options_set(struct nm2_iface *piface, const char *opts)
         }
     }
 
-    if (topts != NULL) free(topts);
+    if (topts != NULL) FREE(topts);
 
     return true;
 }

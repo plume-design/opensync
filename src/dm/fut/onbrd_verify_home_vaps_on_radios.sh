@@ -26,11 +26,13 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh"
 source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="onbrd/$(basename "$0")"
 manager_setup_file="onbrd/onbrd_setup.sh"
@@ -52,16 +54,17 @@ Script usage example:
    ./${tc_name} home-ap-u50
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 
 trap '
 fut_info_dump_line
@@ -72,17 +75,17 @@ fut_info_dump_line
 
 NARGS=1
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
-interface_name=$1
+if_name=$1
 
-log_title "$tc_name: ONBRD test - Verify home VAPs on all radios, check interface '${interface_name}'"
+log_title "$tc_name: ONBRD test - Verify home VAPs on all radios, check interface '${if_name}'"
 
-wait_for_function_response 0 "check_ovsdb_entry Wifi_VIF_State -w if_name $interface_name" &&
-    log "SUCCESS: interface $interface_name exists" ||
-    raise "FAIL: interface $interface_name does not exist" -l "$tc_name" -tc
+wait_for_function_response 0 "check_ovsdb_entry Wifi_VIF_State -w if_name $if_name" &&
+    log "$tc_name: Interface $if_name exists - Success" ||
+    raise "FAIL: Interface $if_name does not exist" -l "$tc_name" -tc
 
-wait_for_function_response 0 "check_interface_exists $interface_name" &&
-    log "$tc_name: SUCCESS: Interface $interface_name exists on system" ||
-    raise "FAIL: Interface $interface_name does not exist on system" -l "$tc_name" -tc
+wait_for_function_response 0 "check_interface_exists $if_name" &&
+    log "$tc_name: Interface $if_name exists on system - Success" ||
+    raise "FAIL: Interface $if_name does not exist on system" -l "$tc_name" -tc
 
 log "$tc_name: Clean created interfaces after test"
 vif_clean

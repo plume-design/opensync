@@ -59,7 +59,8 @@ jencode_user_agent(struct fsm_session *session,
  */
 char *
 jencode_url_report(struct fsm_session *session,
-                   struct fqdn_pending_req *to_report);
+                   struct fqdn_pending_req *to_report,
+                   struct fsm_policy_reply *policy_reply);
 
 
 

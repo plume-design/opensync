@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "memutil.h"
 #include "nfm_mqtt.h"
 #include "nfm_nflog.h"
+#include "nfm_ovsdb.h"
 #include "osn_nflog.h"
 
 #include "opensync_nflog.pb-c.h"
@@ -116,10 +117,34 @@ void nfm_nflog_packet_to_protobuf(Nflog *nm, struct osn_nflog_packet *np)
     nm->node_id = nfm_mqtt_node_id[0] == '\0' ? NULL : nfm_mqtt_node_id;
     nm->node_id = nfm_mqtt_location_id[0] == '\0' ? NULL : nfm_mqtt_location_id;
 
-    nm->ingress_ifname = np->nfp_indev[0] == '\0' ? NULL : np->nfp_indev;
-    nm->egress_ifname = np->nfp_outdev[0] == '\0' ? NULL : np->nfp_outdev;
-    nm->ingress_phyifname = np->nfp_physindev[0] == '\0' ? NULL : np->nfp_physindev;
-    nm->egress_phyifname = np->nfp_physoutdev[0] == '\0' ? NULL : np->nfp_physoutdev;
+    nm->ingress_ifname = nm->ingress_ifrole = NULL;
+    nm->egress_ifname = nm->egress_ifrole = NULL;
+    nm->ingress_phyifname = nm->ingress_phyifrole = NULL;
+    nm->egress_phyifname = nm->egress_phyifrole = NULL;
+
+    if (np->nfp_indev[0] != '\0')
+    {
+        nm->ingress_ifname = np->nfp_indev;
+        nm->ingress_ifrole = (char *)nfm_interface_role(np->nfp_indev);
+    }
+
+    if (np->nfp_outdev[0] != '\0')
+    {
+        nm->egress_ifname = np->nfp_outdev;
+        nm->egress_ifrole = (char *)nfm_interface_role(np->nfp_outdev);
+    }
+
+    if (np->nfp_physindev[0] != '\0')
+    {
+        nm->ingress_phyifname = np->nfp_physindev;
+        nm->ingress_phyifrole = (char *)nfm_interface_role(np->nfp_physindev);
+    }
+
+    if (np->nfp_physoutdev[0] != '\0')
+    {
+        nm->egress_phyifname = np->nfp_physoutdev;
+        nm->egress_phyifrole = (char *)nfm_interface_role(np->nfp_physoutdev);
+    }
 
     if (np->nfp_timestamp > 0)
     {

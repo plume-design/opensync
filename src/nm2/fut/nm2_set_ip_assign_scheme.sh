@@ -26,10 +26,12 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="nm2/$(basename "$0")"
 manager_setup_file="nm2/nm2_setup.sh"
@@ -55,16 +57,17 @@ Script usage example:
    ./${tc_name} wifi0 vif dhcp
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 
 NARGS=3
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
@@ -97,63 +100,63 @@ create_inet_entry \
     -inet_addr "$inet_addr" \
     -ip_assign_scheme static \
     -if_type "$if_type" &&
-        log "$tc_name: Interface successfully created" ||
-        raise "Failed to create interface" -l "$tc_name" -tc
+        log "$tc_name: Interface $if_name created - Success" ||
+        raise "FAIL: Failed to create $if_name interface" -l "$tc_name" -ds
 
 if [ "$ip_assign_scheme" = "dhcp" ]; then
     log "$tc_name: Setting dhcp for $if_name to dhcp"
     update_ovsdb_entry Wifi_Inet_Config -w if_name "$if_name" -u ip_assign_scheme dhcp &&
-        log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config table updated - ip_assign_scheme=dhcp" ||
-        raise "update_ovsdb_entry - Failed to update Wifi_Inet_Config - ip_assign_scheme=dhcp" -l "$tc_name" -tc
+        log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config::ip_assign_scheme is 'dhcp' - Success" ||
+        raise "FAIL: update_ovsdb_entry - Wifi_Inet_Config::ip_assign_scheme is not 'dhcp'" -l "$tc_name" -oe
 
     wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is ip_assign_scheme dhcp &&
-        log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State - ip_assign_scheme=dhcp" ||
-        raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - ip_assign_scheme=dhcp" -l "$tc_name" -tc
+        log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::ip_assign_scheme is 'dhcp' - Success" ||
+        raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::ip_assign_scheme is not 'dhcp'" -l "$tc_name" -tc
 
-    log "$tc_name: LEVEL 2 - Checking if DHCP client is alive"
+    log "$tc_name: Checking if DHCP client is alive - LEVEL2"
     wait_for_function_response 0 "check_pid_file alive \"/var/run/udhcpc-$if_name.pid\"" &&
-        log "$tc_name: DHCP client process ACTIVE - interface $if_name" ||
-        raise "DHCP client process NOT ACTIVE - interface $if_name" -l "$tc_name" -tc
+        log "$tc_name: LEVEL2 - DHCP client process ACTIVE for interface $if_name - Success" ||
+        raise "FAIL: LEVEL2 - DHCP client process NOT ACTIVE for interface $if_name" -l "$tc_name" -tc
 
     log "$tc_name: Setting dhcp for $if_name to none"
     update_ovsdb_entry Wifi_Inet_Config -w if_name "$if_name" -u ip_assign_scheme none &&
-        log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config table updated - ip_assign_scheme=none" ||
-        raise "update_ovsdb_entry - Failed to update Wifi_Inet_Config - ip_assign_scheme=none" -l "$tc_name" -tc
+        log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config::ip_assign_scheme is 'none' - Success" ||
+        raise "FAIL: update_ovsdb_entry - Wifi_Inet_Config::ip_assign_scheme is not 'none'" -l "$tc_name" -oe
 
     wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is ip_assign_scheme none &&
-        log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State" ||
-        raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State" -l "$tc_name" -tc
+        log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::ip_assign_scheme is 'none' - Success" ||
+        raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::ip_assign_scheme is not 'none'" -l "$tc_name" -tc
 
-    log "$tc_name: LEVEL 2 - Checking if DHCP client is dead"
+    log "$tc_name: Checking if DHCP client is dead - LEVEL2"
     wait_for_function_response 0 "check_pid_file dead \"/var/run/udhcpc-$if_name.pid\"" &&
-        log "$tc_name: DHCP client process NOT ACTIVE" ||
-        raise "DHCP client process ACTIVE" -l "$tc_name" -tc
+        log "$tc_name: LEVEL2 - DHCP client process NOT ACTIVE - Success" ||
+        raise "FAIL: LEVEL2 - DHCP client process ACTIVE" -l "$tc_name" -tc
 
 elif [ "$ip_assign_scheme" = "static" ]; then
     log "$tc_name: Setting ip_assign_scheme for $if_name to static"
     update_ovsdb_entry Wifi_Inet_Config -w if_name "$if_name" \
         -u ip_assign_scheme static \
         -u inet_addr "$inet_addr" &&
-            log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config table updated - ip_assign_scheme=static" ||
-            raise "update_ovsdb_entry - Failed to update Wifi_Inet_Config - ip_assign_scheme=static" -l "$tc_name" -tc
+            log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config::ip_assign_scheme, Wifi_Inet_Config::inet_addr - Success" ||
+            raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config::ip_assign_scheme, Wifi_Inet_Config::inet_addr" -l "$tc_name" -oe
 
     wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" \
         -is ip_assign_scheme static \
         -is inet_addr "$inet_addr" &&
-            log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State - ip_assign_scheme=static" ||
-            raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - ip_assign_scheme=static" -l "$tc_name" -tc
+            log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::ip_assign_scheme is 'static' - Success" ||
+            raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::ip_assign_scheme is not 'static'" -l "$tc_name" -tc
 
-    log "$tc_name: LEVEL 2: Checking if settings are applied to ifconfig"
+    log "$tc_name: Checking if settings are applied to ifconfig - LEVEL2"
     wait_for_function_response 0 "get_interface_ip_address_from_system $if_name | grep -q \"$inet_addr\"" &&
-        log "$tc_name: Settings applied to ifconfig - interface $if_name" ||
-        raise "Failed to apply settings to ifconfig - interface $if_name" -l "$tc_name" -tc
+        log "$tc_name: LEVEL2 - Settings applied to ifconfig for interface $if_name - Success" ||
+        raise "FAIL: LEVEL2 - Failed to apply settings to ifconfig for interface $if_name" -l "$tc_name" -tc
 
-    log "$tc_name: LEVEL 2 - Checking if DHCP client is DEAD"
+    log "$tc_name: Checking if DHCP client is DEAD - LEVEL2"
     wait_for_function_response 0 "check_pid_file dead \"/var/run/udhcpc-$if_name.pid\"" &&
-        log "$tc_name: DHCP client process is DEAD - interface $if_name" ||
-        raise "DHCP client process is NOT DEAD - interface $if_name" -l "$tc_name" -tc
+        log "$tc_name: LEVEL2 - DHCP client process is DEAD for interface $if_name - Success" ||
+        raise "FAIL: LEVEL2 - DHCP client process is NOT DEAD for interface $if_name" -l "$tc_name" -tc
 else
-    raise "Wrong IP_ASSIGN_SCHEME parameter - $ip_assign_scheme" -l "$tc_name" -tc
+    raise "Wrong IP_ASSIGN_SCHEME parameter - $ip_assign_scheme" -l "$tc_name" -arg
 fi
 
 pass

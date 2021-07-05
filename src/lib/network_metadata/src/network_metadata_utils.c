@@ -156,48 +156,77 @@ int net_md_5tuple_cmp(void *a, void *b)
  *
  * @param strmac: ethernet mac in string representation
  * @return a os_macaddr_t pointer
+ *
+ * @remark called is responsible for freeing the allocated MAC
  */
-os_macaddr_t *str2os_mac(char *strmac)
+os_macaddr_t *
+str2os_mac(char *strmac)
 {
     os_macaddr_t *mac;
-    size_t len, i, j;
-
-    if (strmac == NULL) return NULL;
-
-    /* Validate the input string */
-    len = strlen(strmac);
-    if (len != 17) return NULL;
+    bool ret;
 
     mac = CALLOC(1, sizeof(*mac));
     if (mac == NULL) return NULL;
 
-    i = 0;
-    j = 0;
-    do {
-        char a = strmac[i++];
-        char b = strmac[i++];
-        uint8_t v;
-
-        if (!isxdigit(a)) goto err_free_mac;
-        if (!isxdigit(b)) goto err_free_mac;
-
-        v = (isdigit(a) ? (a - '0') : (toupper(a) - 'A' + 10));
-        v *= 16;
-        v += (isdigit(b) ? (b - '0') : (toupper(b) - 'A' + 10));
-        mac->addr[j] = v;
-
-        if (i == len) break;
-        if (strmac[i++] != ':') goto err_free_mac;
-        j++;
-    } while (i < len);
+    ret = str2os_mac_ref(strmac, mac);
+    if (!ret) goto err_free_mac;
 
     return mac;
 
 err_free_mac:
     FREE(mac);
-
     return NULL;
 }
+
+/**
+ * @brief helper function: string to os_macaddr_t
+ *
+ * @param strmac: ethernet mac in string representation
+ * @param mac: pre allocated variable to receive the MAC address
+ * @return true is success
+ *
+ * @remark caller is resposnible for allocating MAC
+ */
+bool
+str2os_mac_ref(char* strmac, os_macaddr_t *mac)
+{
+    size_t len, i, j;
+
+    if (mac == NULL) return false;
+    if (strmac == NULL) goto err_reset_mac;
+
+    /* Validate the input string */
+    len = strlen(strmac);
+    if (len != 17) goto err_reset_mac;
+
+    i = 0;
+    j = 0;
+    do
+    {
+        char a = strmac[i++];
+        char b = strmac[i++];
+        uint8_t v;
+
+        if (!isxdigit(a)) goto err_reset_mac;
+        if (!isxdigit(b)) goto err_reset_mac;
+
+        v = (isdigit(a) ? (a - '0') : (toupper(a) - 'A' + 10));
+        v <<= 4;
+        v += (isdigit(b) ? (b - '0') : (toupper(b) - 'A' + 10));
+        mac->addr[j] = v;
+
+        if (i == len) break;
+        if (strmac[i++] != ':') goto err_reset_mac;
+        j++;
+    } while (i < len);
+
+    return true;
+
+err_reset_mac:
+    memset(mac->addr, 0, sizeof(mac->addr));
+    return false;
+}
+
 
 
 char *net_md_set_str(char *in_str)
@@ -492,6 +521,7 @@ struct net_md_flow_key * set_net_md_flow_key(struct net_md_flow_key *lkey)
     key->fstart = lkey->fstart;
     key->fend = lkey->fend;
     key->tcp_flags = lkey->tcp_flags;
+    key->icmp_type = lkey->icmp_type;
     return key;
 
 err_free_src_ip:

@@ -383,3 +383,58 @@ void fsm_dpi_set_acc_state(
     info->decision = state;
 }
 
+void
+fsm_dpi_block_flow(struct net_md_stats_accumulator *acc)
+{
+    struct net_md_flow_key *key;
+    struct flow_key *fkey;
+    int af = 0;
+
+    fkey = acc->fkey;
+    key = acc->key;
+    if (key == NULL) return;
+
+    if (key->ip_version == 4) af = AF_INET;
+    if (key->ip_version == 6) af = AF_INET6;
+    if (af == 0) return;
+
+    LOGI("%s(): blocking flow %s:%d -> %s:%d, proto: %d",
+         __func__,
+         fkey->src_ip, fkey->sport, fkey->dst_ip, fkey->dport, fkey->protocol);
+
+    fsm_set_ip_dpi_state(NULL, key->src_ip, key->dst_ip,
+                         key->sport, key->dport,
+                         key->ipprotocol, af, FSM_DPI_DROP);
+    fsm_set_ip_dpi_state(NULL, key->dst_ip, key->src_ip,
+                         key->dport, key->sport,
+                         key->ipprotocol, af, FSM_DPI_DROP);
+}
+
+
+void
+fsm_dpi_allow_flow(struct net_md_stats_accumulator *acc)
+{
+    struct net_md_flow_key *key;
+    struct flow_key *fkey;
+    int af = 0;
+
+    fkey = acc->fkey;
+    key = acc->key;
+    if (key == NULL) return;
+
+    if (key->ip_version == 4) af = AF_INET;
+    if (key->ip_version == 6) af = AF_INET6;
+    if (af == 0) return;
+
+    LOGI("%s(): Allowing flow %s:%d -> %s:%d, proto: %d",
+         __func__,
+         fkey->src_ip, fkey->sport, fkey->dst_ip, fkey->dport, fkey->protocol);
+
+    fsm_set_ip_dpi_state(NULL, key->src_ip, key->dst_ip,
+                         key->sport, key->dport,
+                         key->ipprotocol, af, FSM_DPI_PASSTHRU);
+    fsm_set_ip_dpi_state(NULL, key->dst_ip, key->src_ip,
+                         key->dport, key->sport,
+                         key->ipprotocol, af, FSM_DPI_PASSTHRU);
+}
+

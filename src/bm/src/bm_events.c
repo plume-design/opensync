@@ -46,6 +46,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <linux/types.h>
 
 #include "bm.h"
+#include "memutil.h"
 
 
 /*****************************************************************************/
@@ -131,10 +132,7 @@ bm_events_bsal_event_cb(bsal_event_t *event)
         goto exit;
     }
 
-    if( !(cb_entry = calloc( 1, sizeof( *cb_entry ))) ) {
-        LOGE( "Failed to allocate memory for BM CB queue object" );
-        goto exit;
-    }
+    cb_entry = CALLOC( 1, sizeof( *cb_entry ));
 
     memcpy( &cb_entry->event, event, sizeof( cb_entry->event ) );
 
@@ -181,7 +179,7 @@ bm_events_async_cb( EV_P_ ev_async *w, int revents )
 
         bm_events_handle_event(event);
 
-        free( cb_entry );
+        FREE( cb_entry );
     }
 
     return;

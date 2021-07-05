@@ -1,0 +1,23 @@
+#!/bin/sh
+set -axe
+
+wd=$(readlink -f "$(dirname "$0")")
+test_case=$1
+
+$wd/run-uml.prepare
+$wd/run-uml $test_case
+
+set +x
+
+printf "================================================================================\n"
+printf "    SUMMARY\n"
+printf "================================================================================\n"
+
+if test "$(cat $wd/logs/$test_case/result)" = "SUCCESS"
+then
+    echo "SUCCESS   $test_case"
+    passed=$(($passed + 1))
+else
+    echo "FAIL      $test_case"
+fi
+total=$(($total + 1))

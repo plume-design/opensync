@@ -41,6 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_time.h"
 #include "osn_types.h"
 #include "osn_dhcp.h"
+#include "memutil.h"
 
 #include "wano.h"
 #include "module.h"
@@ -97,6 +98,7 @@ static bool wanp_ethclient_pcap_open(struct wanp_ethclient *self);
 static bool wanp_ethclient_pcap_close(struct wanp_ethclient *self);
 static void wanp_ethclient_pcap_evio_fn(struct ev_loop *loop, ev_io *w, int revent);
 static void wanp_ethclient_pcap_fn(u_char *data, const struct pcap_pkthdr *h, const u_char *pkt);
+static void wanp_ethclient_handle_detected(const char *ifname, osn_mac_addr_t *client_mac);
 
 static void wanp_ethclient_dhcp_process(
         struct wanp_ethclient *self,
@@ -121,8 +123,7 @@ wano_plugin_handle_t *wanp_ethclient_init(
 {
     struct wanp_ethclient *self;
 
-    self = calloc(1, sizeof(struct wanp_ethclient));
-    ASSERT(self != NULL, "Error allocating ethclient object")
+    self = CALLOC(1, sizeof(struct wanp_ethclient));
 
     self->ec_client_mac = OSN_MAC_ADDR_INIT;
     self->ec_handle.wh_plugin = wp;
@@ -176,7 +177,7 @@ void wanp_ethclient_fini(wano_plugin_handle_t *wh)
     wanp_ethclient_pcap_close(self);
     wano_ppline_event_stop(&self->ec_ppline_event);
 
-    free(wh);
+    FREE(wh);
 }
 
 void wanp_ethclient_ppline_event_fn(wano_ppline_event_t *wpe, enum wano_ppline_status status)
@@ -438,6 +439,19 @@ void wanp_ethclient_pcap_fn(u_char *data, const struct pcap_pkthdr *h, const u_c
     }
 }
 
+void wanp_ethclient_handle_detected(const char *ifname, osn_mac_addr_t *client_mac)
+{
+    LOG(NOTICE, "wano: %s: Mark ethernet client DETECTED", ifname);
+
+    if (!WANO_CONNMGR_UPLINK_UPDATE(
+                ifname,
+                .eth_client = WANO_TRI_TRUE))
+    {
+        LOG(WARN, "wano: %s: Error updating Connection_Manager_Uplink table",
+                ifname);
+    }
+}
+
 void wanp_ethclient_dhcp_process(
         struct wanp_ethclient *self,
         bool is_discover,
@@ -486,6 +500,8 @@ void wanp_ethclient_dhcp_process(
     LOG(NOTICE, "ethclient: %s: Ethernet client detected: "PRI_osn_mac_addr,
             self->ec_handle.wh_ifname, FMT_osn_mac_addr(self->ec_client_mac));
 
+    wanp_ethclient_handle_detected(self->ec_handle.wh_ifname, &self->ec_client_mac);
+
     self->ec_status_fn(&self->ec_handle, &WANO_PLUGIN_STATUS(WANP_ABORT));
     return;
 
@@ -504,6 +520,8 @@ void wanp_ethclient_dhcp_timeout(struct ev_loop *loop, ev_timer *ev, int revent)
 
     LOG(NOTICE, "ethclient: %s: Ethernet client detected via timeout: "PRI_osn_mac_addr,
             self->ec_handle.wh_ifname, FMT_osn_mac_addr(self->ec_client_mac));
+
+    wanp_ethclient_handle_detected(self->ec_handle.wh_ifname, &self->ec_client_mac);
 
     self->ec_status_fn(&self->ec_handle, &WANO_PLUGIN_STATUS(WANP_ABORT));
 }

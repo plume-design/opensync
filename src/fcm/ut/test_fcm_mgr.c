@@ -36,10 +36,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ds_tree.h"
 #include "fcm_priv.h"
 #include "fcm_mgr.h"
+#include "fcm_filter.h"
 
+#define FCM_MAX_MEM   CONFIG_FCM_MEM_MAX * 1024
 
 extern fcm_collect_plugin_t *test_plugin;
-
 static const char *test_name = "fcm_mgr_ut";
 
 static struct schema_FCM_Collector_Config test_collect[] =
@@ -55,7 +56,33 @@ static struct schema_FCM_Collector_Config test_collect[] =
         .other_config_keys[0] = "testplugin",
         .other_config[1] = "dso_init",
         .other_config_keys[1] = "test_plugin_init",
-   }
+    },
+    {
+        .name = "test_FCM_collector_1",
+        .interval_present = true,
+        .interval = 0,
+        .report_name_present = true,
+        .report_name = "test_report",
+        .other_config_present = true,
+        .other_config[0] = "dso_path",
+        .other_config_keys[0] = "testplugin",
+        .other_config[1] = "dso_init",
+        .other_config_keys[1] = "test_plugin_init",
+        .filter_name_present = true,
+        .filter_name = "test_collect_filter",
+    },
+    {
+        .name = "test_FCM_collector",
+        .interval_present = true,
+        .interval = 0,
+        .report_name_present = true,
+        .report_name = "test_report_1",
+        .other_config_present = true,
+        .other_config[0] = "dso_path",
+        .other_config_keys[0] = "testplugin",
+        .other_config[1] = "dso_init",
+        .other_config_keys[1] = "test_plugin_init",
+    }
 };
 
 static struct schema_Node_Config test_nodecfg[] =
@@ -84,6 +111,28 @@ static struct schema_FCM_Report_Config test_report[] =
         .format = "delta",
         .mqtt_topic_present = true,
         .mqtt_topic = "test_fcm_mqtt_topic",
+    },
+    {
+        .name = "test_report_1",
+        .interval_present = true,
+        .interval = 30,
+        .format_present = true,
+        .format = "delta",
+        .mqtt_topic_present = true,
+        .mqtt_topic = "test_fcm_mqtt_topic",
+        .report_filter_present = true,
+        .report_filter = "test_report_filter_1",
+    },
+    {
+        .name = "test_report",
+        .interval_present = true,
+        .interval = 30,
+        .format_present = true,
+        .format = "delta",
+        .mqtt_topic_present = true,
+        .mqtt_topic = "test_fcm_mqtt_topic",
+        .report_filter_present = true,
+        .report_filter = "test_report_filter",
     }
 };
 
@@ -96,6 +145,7 @@ void fcm_test_init(void)
     fcm_init_mgr(loop);
     fcm_event_init();
     fcm_ovsdb_init();
+    fcm_filter_init();
 }
 
 void test_add_collect_config(void)
@@ -139,7 +189,7 @@ void test_get_default_mem(void)
    fcm_mgr_t *mgr;
 
    mgr = fcm_get_mgr();
-   TEST_ASSERT_GREATER_THAN_UINT(250000, mgr->max_mem);
+   TEST_ASSERT_EQUAL_INT(FCM_MAX_MEM, mgr->max_mem);
 }
 
 void test_add_node_cfg(void)
@@ -155,7 +205,7 @@ void test_del_node_cfg(void)
    fcm_mgr_t *mgr;
    mgr = fcm_get_mgr();
    fcm_rm_node_config(&test_nodecfg[0]);
-   TEST_ASSERT_GREATER_THAN_UINT(250000, mgr->max_mem);
+   TEST_ASSERT_EQUAL_INT(FCM_MAX_MEM, mgr->max_mem);
 }
 
 void test_update_node_cfg(void)
@@ -168,6 +218,46 @@ void test_update_node_cfg(void)
    TEST_ASSERT_GREATER_THAN_UINT(200000, mgr->max_mem);
 }
 
+void test_null_collect_report_filter_client(void)
+{
+    bool ret;
+    init_report_config(&test_report[0]);
+    ret = init_collect_config(&test_collect[0]);
+    TEST_ASSERT_EQUAL_INT(1, ret);
+    delete_report_config(&test_report[0]);
+    delete_collect_config(&test_collect[0]);
+}
+
+void test_null_collect_filter_client(void)
+{
+    bool ret;
+    init_report_config(&test_report[1]);
+    ret = init_collect_config(&test_collect[2]);
+    TEST_ASSERT_EQUAL_INT(1, ret);
+    delete_report_config(&test_report[1]);
+    delete_collect_config(&test_collect[2]);
+}
+
+void test_null_report_filter_client(void)
+{
+    bool ret;
+    init_report_config(&test_report[0]);
+    ret = init_collect_config(&test_collect[1]);
+    TEST_ASSERT_EQUAL_INT(1, ret);
+    delete_report_config(&test_report[0]);
+    delete_collect_config(&test_collect[1]);
+}
+
+void test_collect_report_filter_client(void)
+{
+    bool ret;
+    init_report_config(&test_report[2]);
+    ret = init_collect_config(&test_collect[1]);
+    TEST_ASSERT_EQUAL_INT(1, ret);
+    delete_report_config(&test_report[2]);
+    delete_collect_config(&test_collect[1]);
+}
+
 int main(int argc, char *argv[])
 {
     (void)argc;
@@ -177,6 +267,7 @@ int main(int argc, char *argv[])
     log_severity_set(LOG_SEVERITY_DEBUG);
 
     UnityBegin(test_name);
+
     fcm_test_init();
     RUN_TEST(test_add_collect_config);
     RUN_TEST(test_add_report_config);
@@ -186,5 +277,10 @@ int main(int argc, char *argv[])
     RUN_TEST(test_add_node_cfg);
     RUN_TEST(test_del_node_cfg);
     RUN_TEST(test_update_node_cfg);
+    RUN_TEST(test_null_collect_report_filter_client);
+    RUN_TEST(test_null_collect_filter_client);
+    RUN_TEST(test_null_report_filter_client);
+    RUN_TEST(test_collect_report_filter_client);
+
     return UNITY_END();
 }

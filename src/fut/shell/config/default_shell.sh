@@ -47,7 +47,8 @@ export FUT_WM2_LIB_SRC=false
 [ -z "$DEFAULT_WAIT_TIME" ] && export DEFAULT_WAIT_TIME=30
 [ -z "$OVSH" ] && export OVSH="${OPENSYNC_ROOTDIR}/tools/ovsh --quiet --timeout=180000"
 [ -z "$CAC_TIMEOUT" ] && export CAC_TIMEOUT=60
-[ -z "$LIB_OVERRIDE_FILE" ] && export LIB_OVERRIDE_FILE=
+[ -z "$PLATFORM_OVERRIDE_FILE" ] && export PLATFORM_OVERRIDE_FILE=
+[ -z "$MODEL_OVERRIDE_FILE" ] && export MODEL_OVERRIDE_FILE=
 [ -z "$PATH" ] && export PATH="/bin:/sbin:/usr/bin:/usr/sbin:${OPENSYNC_ROOTDIR}/tools:${OPENSYNC_ROOTDIR}/bin"
 [ -z "$MGMT_IFACE" ] && export MGMT_IFACE=eth0
 [ -z "$MGMT_IFACE_UP_TIMEOUT" ] && export MGMT_IFACE_UP_TIMEOUT=10

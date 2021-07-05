@@ -1,6 +1,6 @@
 menuconfig MANAGER_LTEM
     bool "LTE Manager (LTEM)"
-    default n
+    default y
     help
         Enable LTE Manager (LTEM)
 

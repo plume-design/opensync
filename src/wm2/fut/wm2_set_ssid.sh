@@ -26,10 +26,12 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="wm2/$(basename "$0")"
 manager_setup_file="wm2/wm2_setup.sh"
@@ -42,6 +44,7 @@ Description:
       such as '|', '{', '*' etc., are valid ssid characters.
       If interface is not UP it brings up the interface.
       Verifies ssid is set to desired value.
+      Checks if ssid legth allowed, if not skips the testcase
 Arguments:
     -h  show this help message
     \$1  (radio_idx)     : Wifi_VIF_Config::vif_radio_idx            : (int)(required)
@@ -63,16 +66,17 @@ Script usage example:
 
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 
 NARGS=9
 [ $# -ne ${NARGS} ] && usage && raise "Requires exactly '${NARGS}' input argument(s)" -l "${tc_name}" -arg
@@ -85,6 +89,10 @@ ht_mode=$6
 hw_mode=$7
 mode=$8
 vif_if_name=$9
+
+ssid_len=$(echo -n $ssid | wc -c)
+[ $ssid_len -ge 1 ] && [ $ssid_len -le 32 ] ||
+    raise "FAIL: allowed ssid character length is between 1 and 32" -l "$tc_name" -s
 
 trap '
     fut_info_dump_line
@@ -123,12 +131,12 @@ check_radio_vif_state \
                     -hw_mode "$hw_mode" \
                     -mode "$mode" \
                     -vif_if_name "$vif_if_name" &&
-                        log "$tc_name: create_radio_vif_interface - Success"
+                        log "$tc_name: create_radio_vif_interface - Interface $if_name created - Success"
             ) ||
-        raise "create_radio_vif_interface - Failed" -l "$tc_name" -tc
+                raise "FAIL: create_radio_vif_interface - Interface $if_name not created" -l "$tc_name" -ds
 
 wait_ovsdb_entry Wifi_VIF_State -w if_name "$vif_if_name" -is ssid "'$ssid'" &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_VIF_Config reflected to Wifi_VIF_State - ssid $ssid" ||
-    raise "wait_ovsdb_entry - Failed to reflect Wifi_VIF_Config to Wifi_VIF_State - ssid $ssid" -l "$tc_name" -tc
+    log "$tc_name: wait_ovsdb_entry - Wifi_VIF_Config reflected to Wifi_VIF_State::ssid is $ssid - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_VIF_Config to Wifi_VIF_State::ssid is not $ssid" -l "$tc_name" -tc
 
 pass

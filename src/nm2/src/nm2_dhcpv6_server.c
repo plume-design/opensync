@@ -28,6 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_util.h"
 #include "reflink.h"
 #include "ovsdb_sync.h"
+#include "memutil.h"
 
 #include "nm2.h"
 
@@ -179,7 +180,7 @@ void nm2_dhcpv6_server_release(struct nm2_dhcpv6_server *ds6)
 
     ds_tree_remove(&nm2_dhcpv6_server_list, ds6);
 
-    free(ds6);
+    FREE(ds6);
 }
 
 /*
@@ -240,7 +241,7 @@ struct nm2_dhcpv6_server *nm2_dhcpv6_server_get(ovs_uuid_t *uuid)
     if (ds6 == NULL)
     {
         /* Allocate a new dummy structure and insert it into the cache */
-        ds6 = calloc(1, sizeof(struct nm2_dhcpv6_server));
+        ds6 = CALLOC(1, sizeof(struct nm2_dhcpv6_server));
         ds6->ds6_uuid = *uuid;
 
         reflink_init(&ds6->ds6_reflink, "DHCPv6_Server");
@@ -721,14 +722,14 @@ void *dhcpv6_server_lease_list_fn(synclist_t *list, void *_old, void *_new)
                 OTR_DELETE,
                 elem->d6l_uuid.uuid);
 
-        free(elem);
+        FREE(elem);
         return NULL;
     }
 
     /* Insert case */
     struct dhcpv6_server_lease_node *dl;
 
-    dl = calloc(1, sizeof(struct dhcpv6_server_lease_node));
+    dl = CALLOC(1, sizeof(struct dhcpv6_server_lease_node));
     *dl = *elem;
 
     struct schema_DHCPv6_Lease schema_dl;

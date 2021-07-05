@@ -42,7 +42,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "dns_cache.h"
 #include "ds_tree.h"
 #include "fsm_policy.h"
-
+#include "memutil.h"
 
 const char *test_name = "dns_cache_tests";
 
@@ -162,9 +162,9 @@ void setUp(void)
     v6dstip2[2] = 0x07070707;
     v6dstip2[3] = 0x07070707;
 
-    entry1 = calloc(sizeof(struct ip2action_req), 1);
-    entry1->ip_addr = calloc(sizeof(struct sockaddr_storage), 1);
-    entry1->device_mac = calloc(sizeof(os_macaddr_t), 1);
+    entry1 = CALLOC(sizeof(struct ip2action_req), 1);
+    entry1->ip_addr = CALLOC(sizeof(struct sockaddr_storage), 1);
+    entry1->device_mac = CALLOC(sizeof(os_macaddr_t), 1);
     util_populate_sockaddr(AF_INET, &v4dstip1, entry1->ip_addr);
     entry1->device_mac->addr[0] = 0xaa;
     entry1->device_mac->addr[1] = 0xaa;
@@ -176,9 +176,9 @@ void setUp(void)
     entry1->cache_ttl           = 600;
     entry1->policy_idx          = 2;
 
-    entry2 = calloc(sizeof(struct ip2action_req), 1);
-    entry2->ip_addr = calloc(1, sizeof(struct sockaddr_storage));
-    entry2->device_mac = calloc(1, sizeof(os_macaddr_t));
+    entry2 = CALLOC(sizeof(struct ip2action_req), 1);
+    entry2->ip_addr = CALLOC(1, sizeof(struct sockaddr_storage));
+    entry2->device_mac = CALLOC(1, sizeof(os_macaddr_t));
     util_populate_sockaddr(AF_INET, &v4dstip2, entry2->ip_addr);
     entry2->device_mac->addr[0] = 0xaa;
     entry2->device_mac->addr[1] = 0xaa;
@@ -189,9 +189,9 @@ void setUp(void)
     entry2->action              = FSM_ALLOW;
     entry2->cache_ttl           = 550;
 
-    entry3 = calloc(sizeof(struct ip2action_req), 1);
-    entry3->ip_addr = calloc(1, sizeof(struct sockaddr_storage));
-    entry3->device_mac = calloc(1, sizeof(os_macaddr_t));
+    entry3 = CALLOC(sizeof(struct ip2action_req), 1);
+    entry3->ip_addr = CALLOC(1, sizeof(struct sockaddr_storage));
+    entry3->device_mac = CALLOC(1, sizeof(os_macaddr_t));
     util_populate_sockaddr(AF_INET6, &v6dstip1, entry3->ip_addr);
     entry3->device_mac->addr[0] = 0x66;
     entry3->device_mac->addr[1] = 0x66;
@@ -202,9 +202,9 @@ void setUp(void)
     entry3->action              = FSM_OBSERVED;
     entry3->cache_ttl           = 500;
 
-    entry4 = calloc(sizeof(struct ip2action_req), 1);
-    entry4->ip_addr = calloc(1, sizeof(struct sockaddr_storage));
-    entry4->device_mac = calloc(1, sizeof(os_macaddr_t));
+    entry4 = CALLOC(sizeof(struct ip2action_req), 1);
+    entry4->ip_addr = CALLOC(1, sizeof(struct sockaddr_storage));
+    entry4->device_mac = CALLOC(1, sizeof(os_macaddr_t));
     util_populate_sockaddr(AF_INET6, &v6dstip2, entry4->ip_addr);
     entry4->device_mac->addr[0] = 0x77;
     entry4->device_mac->addr[1] = 0x77;
@@ -215,9 +215,9 @@ void setUp(void)
     entry4->action              = FSM_REDIRECT;
     entry4->cache_ttl           = 400;
 
-    entry5 = calloc(sizeof(struct ip2action_req), 1);
-    entry5->ip_addr = calloc(sizeof(struct sockaddr_storage), 1);
-    entry5->device_mac = calloc(sizeof(os_macaddr_t), 1);
+    entry5 = CALLOC(sizeof(struct ip2action_req), 1);
+    entry5->ip_addr = CALLOC(sizeof(struct sockaddr_storage), 1);
+    entry5->device_mac = CALLOC(sizeof(os_macaddr_t), 1);
     util_populate_sockaddr(AF_INET, &v4dstip5, entry5->ip_addr);
     entry5->device_mac->addr[0] = 0xaa;
     entry5->device_mac->addr[1] = 0xaa;
@@ -228,9 +228,9 @@ void setUp(void)
     entry5->action              = FSM_FORWARD;
     entry4->cache_ttl           = 800;
 
-    entry6 = calloc(sizeof(struct ip2action_req), 1);
-    entry6->ip_addr = calloc(sizeof(struct sockaddr_storage), 1);
-    entry6->device_mac = calloc(sizeof(os_macaddr_t), 1);
+    entry6 = CALLOC(sizeof(struct ip2action_req), 1);
+    entry6->ip_addr = CALLOC(sizeof(struct sockaddr_storage), 1);
+    entry6->device_mac = CALLOC(sizeof(os_macaddr_t), 1);
     util_populate_sockaddr(AF_INET, &v4dstip6, entry6->ip_addr);
     entry6->device_mac->addr[0] = 0xaa;
     entry6->device_mac->addr[1] = 0xaa;
@@ -247,9 +247,9 @@ void setUp(void)
     entry6->cache_bc.confidence_levels[0]    = 6;
     entry6->cache_bc.reputation              = 6;
 
-    entry7 = calloc(sizeof(struct ip2action_req), 1);
-    entry7->ip_addr = calloc(sizeof(struct sockaddr_storage), 1);
-    entry7->device_mac = calloc(sizeof(os_macaddr_t), 1);
+    entry7 = CALLOC(sizeof(struct ip2action_req), 1);
+    entry7->ip_addr = CALLOC(sizeof(struct sockaddr_storage), 1);
+    entry7->device_mac = CALLOC(sizeof(os_macaddr_t), 1);
     util_populate_sockaddr(AF_INET, &v4dstip7, entry7->ip_addr);
     entry7->device_mac->addr[0] = 0xaa;
     entry7->device_mac->addr[1] = 0xaa;
@@ -265,9 +265,9 @@ void setUp(void)
     entry7->categories[0]       = 7;
     entry7->cache_wb.risk_level = 7;
 
-    entry8 = calloc(sizeof(struct ip2action_req), 1);
-    entry8->ip_addr = calloc(sizeof(struct sockaddr_storage), 1);
-    entry8->device_mac = calloc(sizeof(os_macaddr_t), 1);
+    entry8 = CALLOC(sizeof(struct ip2action_req), 1);
+    entry8->ip_addr = CALLOC(sizeof(struct sockaddr_storage), 1);
+    entry8->device_mac = CALLOC(sizeof(os_macaddr_t), 1);
     util_populate_sockaddr(AF_INET, &v4dstip8, entry8->ip_addr);
     entry8->device_mac->addr[0] = 0xaa;
     entry8->device_mac->addr[1] = 0xaa;
@@ -285,9 +285,9 @@ void setUp(void)
     entry8->cache_gk.category_id = 7;
     entry8->cache_gk.gk_policy = strdup("gk_policy");
 
-    entry9 = calloc(sizeof(struct ip2action_req), 1);
-    entry9->ip_addr = calloc(sizeof(struct sockaddr_storage), 1);
-    entry9->device_mac = calloc(sizeof(os_macaddr_t), 1);
+    entry9 = CALLOC(sizeof(struct ip2action_req), 1);
+    entry9->ip_addr = CALLOC(sizeof(struct sockaddr_storage), 1);
+    entry9->device_mac = CALLOC(sizeof(os_macaddr_t), 1);
     util_populate_sockaddr(AF_INET, &v4dstip9, entry9->ip_addr);
     entry9->device_mac->addr[0] = 0xaa;
     entry9->device_mac->addr[1] = 0xaa;
@@ -304,9 +304,9 @@ void setUp(void)
     entry9->cache_wb.risk_level = 5;
     entry9->cat_unknown_to_service = true;
 
-    entry10 = calloc(sizeof(struct ip2action_req), 1);
-    entry10->ip_addr = calloc(sizeof(struct sockaddr_storage), 1);
-    entry10->device_mac = calloc(sizeof(os_macaddr_t), 1);
+    entry10 = CALLOC(sizeof(struct ip2action_req), 1);
+    entry10->ip_addr = CALLOC(sizeof(struct sockaddr_storage), 1);
+    entry10->device_mac = CALLOC(sizeof(os_macaddr_t), 1);
     util_populate_sockaddr(AF_INET, &v4dstip10, entry10->ip_addr);
     entry10->device_mac->addr[0] = 0xaa;
     entry10->device_mac->addr[1] = 0xaa;
@@ -330,13 +330,13 @@ void free_dns_cache_entry(struct ip2action_req *req)
 {
     if (!req) return;
 
-    free(req->ip_addr);
-    free(req->device_mac);
+    FREE(req->ip_addr);
+    FREE(req->device_mac);
     if (req->service_id == IP2ACTION_GK_SVC)
     {
-        free(req->cache_gk.gk_policy);
+        FREE(req->cache_gk.gk_policy);
     }
-    free(req);
+    FREE(req);
 }
 
 void tearDown(void)
@@ -1027,7 +1027,7 @@ void test_gk_dns_cache(void)
     TEST_ASSERT_EQUAL_INT(entry->cache_gk.category_id, key.cache_gk.category_id);
     ret = strcmp(entry->cache_gk.gk_policy, key.cache_gk.gk_policy);
     TEST_ASSERT_EQUAL_INT(ret, 0);
-    free(key.cache_gk.gk_policy);
+    FREE(key.cache_gk.gk_policy);
 
     /* sleep for 1 seconds */
     sleep(1);
@@ -1066,7 +1066,7 @@ void test_gk_dns_cache(void)
     ret = strcmp(entry->cache_gk.gk_policy, key.cache_gk.gk_policy);
     TEST_ASSERT_EQUAL_INT(ret, 0);
 
-    free(key.cache_gk.gk_policy);
+    FREE(key.cache_gk.gk_policy);
 
     /* sleep for 1 seconds */
     sleep(1);
@@ -1151,7 +1151,7 @@ void test_dns_cache_entries(void)
     TEST_ASSERT_EQUAL_INT(entry->cache_gk.category_id, key.cache_gk.category_id);
     ret = strcmp(entry->cache_gk.gk_policy, key.cache_gk.gk_policy);
     TEST_ASSERT_EQUAL_INT(ret, 0);
-    free(key.cache_gk.gk_policy);
+    FREE(key.cache_gk.gk_policy);
 
     /* sleep for 1 seconds */
     sleep(1);
@@ -1189,7 +1189,7 @@ void test_dns_cache_entries(void)
     TEST_ASSERT_EQUAL_INT(entry->cache_gk.category_id, key.cache_gk.category_id);
     ret = strcmp(entry->cache_gk.gk_policy, key.cache_gk.gk_policy);
     TEST_ASSERT_EQUAL_INT(ret, 0);
-    free(key.cache_gk.gk_policy);
+    FREE(key.cache_gk.gk_policy);
 
     /* sleep for 1 seconds */
     sleep(1);
@@ -1352,7 +1352,7 @@ void test_dns_cache_hit_count(void)
     TEST_ASSERT_EQUAL_INT(entry->cache_gk.category_id, key.cache_gk.category_id);
     ret = strcmp(entry->cache_gk.gk_policy, key.cache_gk.gk_policy);
     TEST_ASSERT_EQUAL_INT(ret, 0);
-    free(key.cache_gk.gk_policy);
+    FREE(key.cache_gk.gk_policy);
 
     cache_count = dns_cache_get_hit_count(IP2ACTION_BC_SVC);
     TEST_ASSERT_EQUAL_INT(cache_count, 0);
@@ -1449,7 +1449,7 @@ void test_dns_cache_hit_count(void)
     rc_lookup = dns_cache_ip2action_lookup(&key);
     /* Validate lookup to the dns_cache entry */
     TEST_ASSERT_TRUE(rc_lookup);
-    free(key.cache_gk.gk_policy);
+    FREE(key.cache_gk.gk_policy);
     cache_count = dns_cache_get_hit_count(IP2ACTION_BC_SVC);
     TEST_ASSERT_EQUAL_INT(cache_count, 4);
     cache_count = dns_cache_get_hit_count(IP2ACTION_WP_SVC);
@@ -1520,7 +1520,7 @@ void test_dns_cache_hit_count(void)
     rc_lookup = dns_cache_ip2action_lookup(&key);
     /* Validate lookup to the dns_cache entry */
     TEST_ASSERT_TRUE(rc_lookup);
-    free(key.cache_gk.gk_policy);
+    FREE(key.cache_gk.gk_policy);
 
     /* Validate cache size is inc or not for local IP */
     cache_count = dns_cache_get_hit_count(IP2ACTION_BC_SVC);

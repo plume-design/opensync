@@ -24,14 +24,16 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include <libmnl/libmnl.h>
 #include <stdbool.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <libgen.h>
+#include <libmnl/libmnl.h>
 #include <ev.h>
 
+#include "ovsdb_utils.h"
 #include "network_metadata_report.h"
 #include "network_metadata.h"
 #include "lan_stats.h"
@@ -40,14 +42,22 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "unity.h"
 #include "log.h"
 #include "fcm.h"
+#include "fcm_filter.h"
 #include "memutil.h"
+#include "fcm_priv.h"
+#include "fcm_mgr.h"
+#include "policy_tags.h"
 
 const char *test_name = "fcm_lan_stats_tests";
 
 char *g_node_id = "4C7770146A";
 char *g_loc_id = "5f93600e05bf767503dbbfe1";
 char *g_mqtt_topic = "lan/dog1/5f93600e05bf767503dbbfe1/07";
-char *g_default_dpctl_f = "/tmp/stats.txt";
+char *g_default_dpctl_f[] = { "/tmp/stats.txt",  "/tmp/stats_2.txt" };
+
+struct fcm_session *session = NULL;
+struct fcm_filter_client *c_client = NULL;
+struct fcm_filter_client *r_client = NULL;
 
 struct test_timers
 {
@@ -65,6 +75,59 @@ struct test_mgr
     struct test_timers flow_timers;
     char *dpctl_file;
 } g_test_mgr;
+
+struct schema_Openflow_Tag g_tags[] =
+{
+    {
+        .name_exists = true,
+        .name = "eth_clients",
+        .device_value_len = 3,
+        .device_value =
+        {
+            "00:25:90:87:17:5c",
+            "00:25:90:87:17:5b",
+            "44:32:c8:80:00:7c",
+        },
+        .cloud_value_len = 3,
+        .cloud_value =
+        {
+            "13:13:13:13:13:13",
+            "14:14:14:14:14:14",
+            "15:15:15:15:15:15",
+        },
+    },
+    {
+        .name_exists = true,
+        .name = "clients",
+        .device_value_len = 2,
+        .device_value =
+        {
+            "21:21:21:21:21:21",
+            "22:22:22:22:22:22",
+        },
+        .cloud_value_len = 3,
+        .cloud_value =
+        {
+            "23:23:23:23:23:23",
+            "24:24:24:24:24:24",
+            "25:25:25:25:25:25",
+        },
+    },
+};
+
+
+struct schema_Openflow_Tag_Group g_tag_group =
+{
+    .name_exists = true,
+    .name = "group_tag",
+    .tags_len = 2,
+    .tags =
+    {
+        "eth_clients",
+        "clients",
+    }
+};
+
 
 
 /**
@@ -95,47 +158,89 @@ test_lan_stats_global_setup(void)
 {
     g_test_mgr.loop = EV_DEFAULT;
     g_test_mgr.g_timeout = 1.0;
-    g_test_mgr.dpctl_file = g_default_dpctl_f;
+    g_test_mgr.dpctl_file = g_default_dpctl_f[0];
 }
 
 
 char *
-test_get_other_config_0(fcm_collect_plugin_t *plugin, char *key)
+test_get_other_config(fcm_collect_plugin_t *plugin, char *key)
 {
-    return NULL;
+    fcm_collector_t *collector = NULL;
+    struct str_pair *pair;
+
+    collector = plugin->fcm;
+    if ((collector == NULL) || (key == NULL)) return NULL;
+    if (collector->collect_conf.other_config == NULL) return NULL;
+
+    pair = ds_tree_find(collector->collect_conf.other_config, key);
+
+    if (pair == NULL) return NULL;
+
+    return pair->value;
 }
 
-char *
-test_get_other_config_1(fcm_collect_plugin_t *plugin, char *key)
+#define OTHER_CONFIG_NELEM_SIZE 128
+char g_other_configs[][2][4][OTHER_CONFIG_NELEM_SIZE] =
 {
-    if (!strcmp(key, "active")) return "true";
+    {
+        {
+            "parent_tag",
+        },
+        {
+            "$[group_tag]",
+        }
+    },
+    {
+        {
+            "parent_tag",
+            "active"
+        },
+        {
+            "${eth_clients}",
+            "true"
+        },
+    },
+    {
+        {
+            "parent_tag",
+        },
+        {
+            "${@eth_clients}",
+        }
+    },
+    {
+        {
+            "parent_tag",
+        },
+        {
+            "${#eth_clients}",
+        },
+    }
+};
 
-    return NULL;
-}
-
-char *
-test_get_other_config_2(fcm_collect_plugin_t *plugin, char *key)
-{
-    return NULL;
-}
-
-fcm_collect_plugin_t g_collector_tbl[3] =
+fcm_collect_plugin_t g_collector_tbl[4] =
 {
     {
         .name = "lan_stats_0",
-        .get_other_config = test_get_other_config_0,
+        .get_other_config = test_get_other_config,
         .sample_interval = 1,
         .report_interval = 5,
     },
     {
         .name = "lan_stats_1",
-        .get_other_config = test_get_other_config_1,
+        .get_other_config = test_get_other_config,
         .sample_interval = 1,
         .report_interval = 5,
     },
     {
         .name = "lan_stats_2",
-        .get_other_config = test_get_other_config_2,
+        .get_other_config = test_get_other_config,
+        .sample_interval = 1,
+        .report_interval = 5,
+    },
+    {
+        .name = "lan_stats_3",
+        .get_other_config = test_get_other_config,
         .sample_interval = 1,
         .report_interval = 5,
     },
@@ -157,6 +262,9 @@ test_get_mqtt_hdr_loc_id(void)
 static void
 test_lan_stats_collect_flows(lan_stats_instance_t *lan_stats_instance)
 {
+#ifndef ARCH_X86
+    lan_stats_collect_flows(lan_stats_instance);
+#else
     FILE *fp = NULL;
     char line_buf[LINE_BUFF_LEN] = {0,};
     char *file_path;
@@ -176,6 +284,7 @@ test_lan_stats_collect_flows(lan_stats_instance_t *lan_stats_instance)
     }
 
     fclose(fp);
+#endif
 }
 
 
@@ -213,9 +322,12 @@ test_emit_report(struct net_md_aggregator *aggr, char *topic)
 void
 setUp(void)
 {
+    ds_tree_t *other_config = NULL;
+    fcm_collector_t *collector;
     lan_stats_mgr_t *mgr;
     size_t num_c;
     size_t i;
+    bool ret;
 
     mgr = lan_stats_get_mgr();
     TEST_ASSERT_NOT_NULL(mgr);
@@ -223,24 +335,60 @@ setUp(void)
     num_c = sizeof(g_collector_tbl) / sizeof(g_collector_tbl[0]);
     for (i = 0; i < num_c; i++)
     {
+        collector = calloc(1, sizeof(*collector));
         g_collector_tbl[i].mqtt_topic = g_mqtt_topic;
         g_collector_tbl[i].loop = EV_DEFAULT;
         g_collector_tbl[i].get_mqtt_hdr_node_id = test_get_mqtt_hdr_node_id;
         g_collector_tbl[i].get_mqtt_hdr_loc_id = test_get_mqtt_hdr_loc_id;
+        other_config = schema2tree(OTHER_CONFIG_NELEM_SIZE,
+                                   OTHER_CONFIG_NELEM_SIZE,
+                                   4,
+                                   g_other_configs[i][0],
+                                   g_other_configs[i][1]);
+        collector->collect_conf.other_config = other_config;
+        g_collector_tbl[i].fcm = collector;
     }
+
+    num_c = sizeof(g_tags) / sizeof(*g_tags);
+    for (i = 0; i < num_c; i++)
+    {
+        ret = om_tag_add_from_schema(&g_tags[i]);
+        TEST_ASSERT_TRUE(ret);
+    }
+
+    ret = om_tag_group_add_from_schema(&g_tag_group);
+    TEST_ASSERT_TRUE(ret);
+
+
 }
 
 void
 tearDown(void)
 {
+    fcm_collector_t *collector = NULL;
+    ds_tree_t *other_config;
     size_t num_c;
     size_t i;
+    bool ret;
 
     num_c = sizeof(g_collector_tbl) / sizeof(g_collector_tbl[0]);
     for (i = 0; i < num_c; i++)
     {
         lan_stats_plugin_exit(&g_collector_tbl[i]);
+        collector = g_collector_tbl[i].fcm;
+        other_config = collector->collect_conf.other_config;
+        free_str_tree(other_config);
+        free(collector);
     }
+
+    num_c = sizeof(g_tags) / sizeof(*g_tags);
+    for (i = 0; i < num_c; i++)
+    {
+        ret = om_tag_remove_from_schema(&g_tags[i]);
+        TEST_ASSERT_TRUE(ret);
+    }
+    ret = om_tag_group_remove_from_schema(&g_tag_group);
+    TEST_ASSERT_TRUE(ret);
 }
 
 void
@@ -331,6 +479,21 @@ test_data_collection(void)
 
     lan_stats_instance = lan_stats_get_active_instance();
 
+    session = calloc(1, sizeof(*session));
+    TEST_ASSERT_NOT_NULL(session);
+
+    c_client = calloc(1, sizeof(*c_client));
+    TEST_ASSERT_NOT_NULL(c_client);
+    session->handler_ctxt = c_client;
+
+    r_client = calloc(1, sizeof(*r_client));
+    TEST_ASSERT_NOT_NULL(r_client);
+    session->handler_ctxt = r_client;
+
+    lan_stats_instance->session = session;
+    lan_stats_instance->r_client =  r_client;
+    lan_stats_instance->c_client = c_client;
+
     /* Update the flow collector routine */
     lan_stats_instance->collect_flows = test_lan_stats_collect_flows;
 
@@ -342,6 +505,10 @@ test_data_collection(void)
     /* collect LAN stats and report it */
     collector->collect_periodic(collector);
     collector->send_report(collector);
+
+    FREE(session);
+    FREE(c_client);
+    FREE(r_client);
 }
 
 
@@ -363,6 +530,11 @@ add_flow_stats_cb(EV_P_ ev_timer *w, int revents)
     aggr = lan_stats_instance->aggr;
     TEST_ASSERT_NOT_NULL(aggr);
 
+    c_client = calloc(1, sizeof(*c_client));
+    TEST_ASSERT_NOT_NULL(c_client);
+
+    lan_stats_instance->c_client = c_client;
+
     /* collect LAN stats */
     collector->collect_periodic(collector);
     LOGI("%s: total flows: %zu, flows to report: %zu", __func__,
@@ -371,6 +543,8 @@ add_flow_stats_cb(EV_P_ ev_timer *w, int revents)
     net_md_log_aggr(aggr);
 
     LOGI("****** %s: exiting\n", __func__);
+
+    FREE(c_client);
 }
 
 
@@ -412,13 +586,28 @@ setup_add_and_let_age_flows(void)
 
     collector = &g_collector_tbl[0];
 
-    g_test_mgr.dpctl_file = "/tmp/stats_2.txt";
+    g_test_mgr.dpctl_file = g_default_dpctl_f[1];
 
     /* add 1st instance */
     rc = lan_stats_plugin_init(collector);
     TEST_ASSERT_EQUAL_INT(0, rc);
 
     lan_stats_instance = lan_stats_get_active_instance();
+
+    session = calloc(1, sizeof(*session));
+    TEST_ASSERT_NOT_NULL(session);
+
+    c_client = calloc(1, sizeof(*c_client));
+    TEST_ASSERT_NOT_NULL(c_client);
+    session->handler_ctxt = c_client;
+
+    r_client = calloc(1, sizeof(*r_client));
+    TEST_ASSERT_NOT_NULL(r_client);
+    session->handler_ctxt = r_client;
+
+    lan_stats_instance->session = session;
+    lan_stats_instance->r_client =  r_client;
+    lan_stats_instance->c_client = c_client;
 
     /* Update the flow collector routine */
     lan_stats_instance->collect_flows = test_lan_stats_collect_flows;
@@ -460,6 +649,10 @@ setup_add_and_let_age_flows(void)
     ev_timer_start(loop, &t->timeout_flow_parse_again);
     ev_timer_start(loop, &t->timeout_flow_report);
     ev_timer_start(loop, &t->timeout_flow_report_again);
+
+    FREE(session);
+    FREE(c_client);
+    FREE(r_client);
 }
 
 
@@ -475,6 +668,155 @@ test_events(void)
     ev_run(g_test_mgr.loop, 0);
 }
 
+void
+test_parent_group_tag(void)
+{
+    lan_stats_instance_t *lan_stats_instance;
+    struct schema_Openflow_Tag *ovsdb_tag;
+    fcm_collect_plugin_t *collector;
+    lan_stats_mgr_t *mgr;
+    char *value;
+    int rc;
+
+    collector = &g_collector_tbl[0];
+
+    mgr = lan_stats_get_mgr();
+    TEST_ASSERT_NOT_NULL(mgr);
+
+    /* add instance */
+    rc = lan_stats_plugin_init(collector);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    lan_stats_instance = lan_stats_get_active_instance();
+    TEST_ASSERT_NOT_NULL(lan_stats_instance);
+
+    TEST_ASSERT_EQUAL_STRING(g_other_configs[0][1], lan_stats_instance->parent_tag);
+    TEST_ASSERT_EQUAL_STRING(g_collector_tbl[0].name, lan_stats_instance->name);
+
+    ovsdb_tag = &g_tags[1];
+
+    value = ovsdb_tag->device_value[1];
+
+    rc = om_tag_in(value, lan_stats_instance->parent_tag);
+    TEST_ASSERT_TRUE(rc);
+
+    value = ovsdb_tag->cloud_value[1];
+    rc = om_tag_in(value, lan_stats_instance->parent_tag);
+    TEST_ASSERT_TRUE(rc);
+}
+
+void
+test_parent_tag(void)
+{
+    lan_stats_instance_t *lan_stats_instance;
+    struct schema_Openflow_Tag *ovsdb_tag;
+    fcm_collect_plugin_t *collector;
+    lan_stats_mgr_t *mgr;
+    char *value;
+    int rc;
+
+    collector = &g_collector_tbl[1];
+
+    mgr = lan_stats_get_mgr();
+    TEST_ASSERT_NOT_NULL(mgr);
+
+    /* add instance */
+    rc = lan_stats_plugin_init(collector);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    lan_stats_instance = lan_stats_get_active_instance();
+    TEST_ASSERT_NOT_NULL(lan_stats_instance);
+
+    TEST_ASSERT_EQUAL_STRING(g_other_configs[1][1], lan_stats_instance->parent_tag);
+    TEST_ASSERT_EQUAL_STRING(g_collector_tbl[1].name, lan_stats_instance->name);
+
+    ovsdb_tag = &g_tags[0];
+
+    value = ovsdb_tag->device_value[1];
+
+    rc = om_tag_in(value, lan_stats_instance->parent_tag);
+    TEST_ASSERT_TRUE(rc);
+
+    value = ovsdb_tag->cloud_value[1];
+    rc = om_tag_in(value, lan_stats_instance->parent_tag);
+    TEST_ASSERT_TRUE(rc);
+}
+
+void
+test_parent_device_tag(void)
+{
+    lan_stats_instance_t *lan_stats_instance;
+    struct schema_Openflow_Tag *ovsdb_tag;
+    fcm_collect_plugin_t *collector;
+    lan_stats_mgr_t *mgr;
+    char *value;
+    int rc;
+
+    collector = &g_collector_tbl[2];
+
+    mgr = lan_stats_get_mgr();
+    TEST_ASSERT_NOT_NULL(mgr);
+
+    /* add instance */
+    rc = lan_stats_plugin_init(collector);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    lan_stats_instance = lan_stats_get_active_instance();
+    TEST_ASSERT_NOT_NULL(lan_stats_instance);
+
+    TEST_ASSERT_EQUAL_STRING(g_other_configs[2][1], lan_stats_instance->parent_tag);
+    TEST_ASSERT_EQUAL_STRING(g_collector_tbl[2].name, lan_stats_instance->name);
+
+    ovsdb_tag = &g_tags[0];
+
+    value = ovsdb_tag->device_value[1];
+
+    rc = om_tag_in(value, lan_stats_instance->parent_tag);
+    TEST_ASSERT_TRUE(rc);
+
+    value = ovsdb_tag->cloud_value[1];
+    rc = om_tag_in(value, lan_stats_instance->parent_tag);
+    TEST_ASSERT_FALSE(rc);
+}
+
+void
+test_parent_cloud_tag(void)
+{
+    lan_stats_instance_t *lan_stats_instance;
+    struct schema_Openflow_Tag *ovsdb_tag;
+    fcm_collect_plugin_t *collector;
+    lan_stats_mgr_t *mgr;
+    char *value;
+    int rc;
+
+    collector = &g_collector_tbl[3];
+
+    mgr = lan_stats_get_mgr();
+    TEST_ASSERT_NOT_NULL(mgr);
+
+    /* add instance */
+    rc = lan_stats_plugin_init(collector);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    lan_stats_instance = lan_stats_get_active_instance();
+    TEST_ASSERT_NOT_NULL(lan_stats_instance);
+
+    TEST_ASSERT_EQUAL_STRING(g_other_configs[3][1], lan_stats_instance->parent_tag);
+    TEST_ASSERT_EQUAL_STRING(g_collector_tbl[3].name, lan_stats_instance->name);
+
+    ovsdb_tag = &g_tags[0];
+
+    value = ovsdb_tag->device_value[1];
+
+    rc = om_tag_in(value, lan_stats_instance->parent_tag);
+    TEST_ASSERT_FALSE(rc);
+
+    value = ovsdb_tag->cloud_value[1];
+    rc = om_tag_in(value, lan_stats_instance->parent_tag);
+    TEST_ASSERT_TRUE(rc);
+}
+
+
 int
 main(int argc, char *argv[])
 {
@@ -486,12 +828,36 @@ main(int argc, char *argv[])
 
     UnityBegin(test_name);
 
+#ifdef ARCH_X86
+    size_t i;
+    int ret;
+    /*
+     * This is a requirement: Do NOT proceed if the file is missing.
+     * File presence will not be tested any further.
+     */
+    for (i = 0; i < 2; i++)
+    {
+        ret = access(g_default_dpctl_f[i], F_OK);
+        if (ret != 0)
+        {
+            LOGW("In %s requires %s", basename(__FILE__), g_default_dpctl_f[i]);
+            return UNITY_END();
+        }
+    }
+#endif
+
     test_lan_stats_global_setup();
 
     RUN_TEST(test_active_session);
     RUN_TEST(test_max_session);
     RUN_TEST(test_data_collection);
+#ifdef ARCH_X86
     RUN_TEST(test_events);
+#endif
+    RUN_TEST(test_parent_group_tag);
+    RUN_TEST(test_parent_tag);
+    RUN_TEST(test_parent_device_tag);
+    RUN_TEST(test_parent_cloud_tag);
 
     lan_stats_exit_mgr();
 

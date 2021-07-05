@@ -27,6 +27,23 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef OPENSYNC_CTRL_H_INCLUDED
 #define OPENSYNC_CTRL_H_INCLUDED
 
+struct hapd;
+struct wpas;
+
+struct ctrl_dpp {
+    char conf_rx_ssid_hex[65];
+    char conf_rx_connector[1025];
+    char conf_rx_psk_hex[65];
+    char conf_rx_csign_hex[513];
+    char conf_rx_netaccesskey_hex[513];
+    char conf_rx_akm[513];
+    char conf_tx_sta[18];
+    char conf_tx_pkhash[64+1];
+    char conf_uuid[36+1];
+    int conf_req_rx;
+    int auth_success;
+};
+
 struct ctrl {
     char sockpath[UNIX_PATH_MAX];
     char sockdir[UNIX_PATH_MAX];
@@ -36,7 +53,13 @@ struct ctrl {
     void (*opened)(struct ctrl *ctrl);
     void (*closed)(struct ctrl *ctrl);
     void (*overrun)(struct ctrl *ctrl);
+    void (*dpp_conf_sent)(struct ctrl *ctrl, const struct target_dpp_conf_enrollee *enrollee);
+    void (*dpp_conf_received)(struct ctrl *ctrl, const struct target_dpp_conf_network *conf);
+    void (*dpp_chirp_received)(struct ctrl *ctrl, const struct target_dpp_chirp_obj *chirp);
+    struct hapd *hapd;
+    struct wpas *wpas;
     struct wpa_ctrl *wpa;
+    struct ctrl_dpp dpp;
     unsigned int ovfl;
     size_t reply_len;
     ev_timer watchdog;
@@ -45,8 +68,6 @@ struct ctrl {
     ev_io io;
 };
 
-struct ctrl *ctrl_new(void);
-struct ctrl *ctrl_lookup(const char *bss);
 int ctrl_enable(struct ctrl *ctrl);
 int ctrl_disable(struct ctrl *ctrl);
 int ctrl_running(struct ctrl *ctrl);

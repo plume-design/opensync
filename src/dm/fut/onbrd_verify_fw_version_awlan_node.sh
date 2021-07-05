@@ -26,10 +26,12 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="onbrd/$(basename "$0")"
 manager_setup_file="onbrd/onbrd_setup.sh"
@@ -56,16 +58,17 @@ Script usage example:
 usage_string
 exit 1
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage
             ;;
         *)
-            raise "Unknown argument" -l "${tc_name}" -arg
             ;;
     esac
-done
+fi
 
 trap '
 fut_info_dump_line
@@ -84,17 +87,17 @@ fw_version_string=$(get_ovsdb_entry_value AWLAN_Node firmware_version -r)
 log "$tc_name: Verifying FW version string '${fw_version_string}' for rule: '${match_rule}'"
 
 if [ "${match_rule}" = "non_empty" ]; then
-    log -deb "$tc_name: FW version string must not be empty"
+    log "$tc_name: FW version string must not be empty"
     [ "${fw_version_string}" = "" ] &&
         raise "FAIL: FW version string is empty" -l "$tc_name" -tc ||
-        log -deb "$tc_name: FW version string is not empty - Success"
+        log "$tc_name: FW version string is not empty - Success"
 elif [ "${match_rule}" = "pattern_match" ]; then
-    log -deb "$tc_name: FW version string must match parsing rules and regular expression"
+    log "$tc_name: FW version string must match parsing rules and regular expression"
     verify_fw_pattern "${fw_version_string}" &&
-        log -deb "$tc_name: FW version string is valid" ||
-        raise "FW version string is not valid" -l "$tc_name" -tc
+        log "$tc_name: FW version string is valid - Success" ||
+        raise "FAIL: FW version string is not valid" -l "$tc_name" -tc
 else
-    raise "Invalid match_rule '${match_rule}', must be 'non_empty' or 'pattern_match'" -l "$tc_name" -arg
+    raise "FAIL: Invalid match_rule '${match_rule}', must be 'non_empty' or 'pattern_match'" -l "$tc_name" -arg
 fi
 
 pass

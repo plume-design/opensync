@@ -38,6 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "target.h"
 #include "json_util.h"
 #include "json_mqtt.h"
+#include "memutil.h"
 
 #include "dhcp_parse.h"
 
@@ -129,13 +130,7 @@ static int dhcp_local_domain_option_processing(struct dhcp_session *d_session,
       if (domain == NULL)
       {
           // Allocate for new domain
-          domain = calloc(1, sizeof(struct dhcp_local_domain));
-          if (domain == NULL)
-          {
-              LOGE("%s: Unable to allocate memory for DHCP local domain"
-                                                  " structure", __func__);
-              return false;
-          }
+          domain = CALLOC(1, sizeof(struct dhcp_local_domain));
 
           memcpy(&domain->name, &fqdn, sizeof(fqdn));
 
@@ -293,13 +288,7 @@ void dhcp_process_message(struct dhcp_session *d_session)
     if (lease == NULL)
     {
         // Allocate for new lease
-        lease = calloc(1, sizeof(struct dhcp_lease));
-        if (lease == NULL)
-        {
-            LOGE("%s: Unable to allocate memory for DHCP lease"
-                 " structure", __func__);
-            return;
-        }
+        lease = CALLOC(1, sizeof(struct dhcp_lease));
 
         memset(&lease->dlip, 0, sizeof(lease->dlip));
 
@@ -545,7 +534,7 @@ void dhcp_process_message(struct dhcp_session *d_session)
 
             // Remove from the list
             ds_tree_remove(&d_session->dhcp_leases, lease);
-            free(lease);
+            FREE(lease);
 
             break;
         }
@@ -726,8 +715,7 @@ struct dhcp_session * dhcp_lookup_session(struct fsm_session *session)
 
     LOGD("%s: Adding new session %s", __func__, session->name);
 
-    d_session = calloc(1, sizeof(struct dhcp_session));
-    if (d_session == NULL) return NULL;
+    d_session = CALLOC(1, sizeof(struct dhcp_session));
 
     ds_tree_insert(sessions, d_session, session);
 
@@ -752,7 +740,7 @@ void dhcp_free_session(struct dhcp_session *d_session)
         remove = lease;
         lease = ds_tree_next(tree, lease);
         ds_tree_remove(tree, remove);
-        free(remove);
+        FREE(remove);
     }
 
     tree = &d_session->dhcp_local_domains;
@@ -762,9 +750,9 @@ void dhcp_free_session(struct dhcp_session *d_session)
         remove_ld = domain;
         domain = ds_tree_next(tree, domain);
         ds_tree_remove(tree, remove_ld);
-        free(remove_ld);
+        FREE(remove_ld);
     }
-    free(d_session);
+    FREE(d_session);
 }
 
 /**

@@ -14,6 +14,7 @@
 #include "policy_tags.h"
 #include "pcap.c"
 
+
 /**
  * @brief a set of sessions as delivered by the ovsdb API
  */
@@ -226,8 +227,8 @@ test_send_report(struct fsm_session *session, char *report)
 }
 
 bool
-dummy_gatekeeper_get_verdict(struct fsm_session *session,
-                             struct fsm_policy_req *req)
+dummy_gatekeeper_get_verdict(struct fsm_policy_req *req,
+                             struct fsm_policy_reply *policy_reply)
 {
     struct fqdn_pending_req *fqdn_req;
     struct fsm_url_request *req_info;
@@ -236,14 +237,13 @@ dummy_gatekeeper_get_verdict(struct fsm_session *session,
     fqdn_req = req->fqdn_req;
     req_info = fqdn_req->req_info;
 
-    url_reply = calloc(1, sizeof(*url_reply));
-    if (url_reply == NULL) return false;
+    url_reply = CALLOC(1, sizeof(*url_reply));
 
     req_info->reply = url_reply;
 
     url_reply->service_id = URL_GK_SVC;
 
-    fqdn_req->categorized = FSM_FQDN_CAT_SUCCESS;
+    policy_reply->categorized = FSM_FQDN_CAT_SUCCESS;
     req_info->reply->gk.gk_policy = strdup("gk_policy");
     req_info->reply->gk.confidence_level = 90;
     req_info->reply->gk.category_id = 2;
@@ -333,15 +333,15 @@ test_dns_forward(struct dns_session *dns_session, dns_info *dns_info,
                  uint8_t *buf, int len)
 {
     LOGI("%s: here", __func__);
-    TEST_ASSERT_EQUAL_INT(g_ipv4_cnt, dns_session->req->ipv4_cnt);
+    TEST_ASSERT_EQUAL_INT(g_ipv4_cnt, dns_session->req->dns_response.ipv4_cnt);
 }
 
 
 void
-test_dns_update_tag(struct fqdn_pending_req *req)
+test_dns_update_tag(struct fqdn_pending_req *req, struct fsm_policy_reply *policy_reply)
 {
     LOGI("%s: here", __func__);
-    TEST_ASSERT_EQUAL_STRING(req->updatev4_tag, "upd_v4_tag");
+    TEST_ASSERT_EQUAL_STRING(policy_reply->updatev4_tag, "upd_v4_tag");
 }
 
 
@@ -477,7 +477,7 @@ void tearDown(void)
         t_to_remove = table;
         table = ds_tree_next(tables_tree, table);
         ds_tree_remove(tables_tree, t_to_remove);
-        free(t_to_remove);
+        FREE(t_to_remove);
     }
 
     g_dns_mgr = NULL;
@@ -513,8 +513,7 @@ test_type_A_query(void)
     dns_session = dns_lookup_session(g_fsm_parser);
     TEST_ASSERT_NOT_NULL(dns_session);
 
-    net_parser = calloc(1, sizeof(*net_parser));
-    TEST_ASSERT_NOT_NULL(net_parser);
+    net_parser = CALLOC(1, sizeof(*net_parser));
     PREPARE_UT(pkt46, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
@@ -523,7 +522,7 @@ test_type_A_query(void)
     g_dns_mgr->req_cache_ttl = 0;
     dns_retire_reqs(g_fsm_parser);
 
-    free(net_parser);
+    FREE(net_parser);
 }
 
 
@@ -537,8 +536,7 @@ test_type_PTR_query(void)
     dns_session = dns_lookup_session(g_fsm_parser);
     TEST_ASSERT_NOT_NULL(dns_session);
 
-    net_parser = calloc(1, sizeof(*net_parser));
-    TEST_ASSERT_NOT_NULL(net_parser);
+    net_parser = CALLOC(1, sizeof(*net_parser));
     PREPARE_UT(pkt806, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
@@ -547,7 +545,7 @@ test_type_PTR_query(void)
     g_dns_mgr->req_cache_ttl = 0;
     dns_retire_reqs(g_fsm_parser);
 
-    free(net_parser);
+    FREE(net_parser);
 }
 
 /**
@@ -563,8 +561,7 @@ test_type_A_query_response(void)
     dns_session = dns_lookup_session(g_fsm_parser);
     TEST_ASSERT_NOT_NULL(dns_session);
 
-    net_parser = calloc(1, sizeof(*net_parser));
-    TEST_ASSERT_NOT_NULL(net_parser);
+    net_parser = CALLOC(1, sizeof(*net_parser));
 
     /* Process query */
     PREPARE_UT(pkt46, net_parser);
@@ -588,7 +585,7 @@ test_type_A_query_response(void)
     g_dns_mgr->req_cache_ttl = 0;
     dns_retire_reqs(g_fsm_parser);
 
-    free(net_parser);
+    FREE(net_parser);
 }
 
 /**
@@ -619,8 +616,7 @@ test_type_A_query_response_update_tag(void)
     dns_session = dns_lookup_session(g_fsm_parser);
     TEST_ASSERT_NOT_NULL(dns_session);
 
-    net_parser = calloc(1, sizeof(*net_parser));
-    TEST_ASSERT_NOT_NULL(net_parser);
+    net_parser = CALLOC(1, sizeof(*net_parser));
 
     /* Process query */
     PREPARE_UT(pkt46, net_parser);
@@ -644,7 +640,7 @@ test_type_A_query_response_update_tag(void)
     g_dns_mgr->req_cache_ttl = 0;
     dns_retire_reqs(g_fsm_parser);
 
-    free(net_parser);
+    FREE(net_parser);
 }
 
 /**
@@ -660,8 +656,7 @@ test_type_A_duplicate_query_response(void)
     dns_session = dns_lookup_session(g_fsm_parser);
     TEST_ASSERT_NOT_NULL(dns_session);
 
-    net_parser = calloc(1, sizeof(*net_parser));
-    TEST_ASSERT_NOT_NULL(net_parser);
+    net_parser = CALLOC(1, sizeof(*net_parser));
 
     /* Process query */
     PREPARE_UT(pkt46, net_parser);
@@ -692,7 +687,7 @@ test_type_A_duplicate_query_response(void)
     g_dns_mgr->req_cache_ttl = 0;
     dns_retire_reqs(g_fsm_parser);
 
-    free(net_parser);
+    FREE(net_parser);
 }
 
 
@@ -709,8 +704,7 @@ test_type_A_duplicate_query_duplicate_response(void)
     dns_session = dns_lookup_session(g_fsm_parser);
     TEST_ASSERT_NOT_NULL(dns_session);
 
-    net_parser = calloc(1, sizeof(*net_parser));
-    TEST_ASSERT_NOT_NULL(net_parser);
+    net_parser = CALLOC(1, sizeof(*net_parser));
 
     /* Process query */
     PREPARE_UT(pkt46, net_parser);
@@ -737,7 +731,7 @@ test_type_A_duplicate_query_duplicate_response(void)
     /* Duplicate query */
     dns_handler(g_fsm_parser, net_parser);
 
-    free(net_parser);
+    FREE(net_parser);
 }
 
 
@@ -750,6 +744,7 @@ test_update_v4_tag_generation(void)
     struct schema_Openflow_Local_Tag *local_tag;
     struct schema_Openflow_Tag *regular_tag;
     struct fqdn_pending_req req;
+    struct fsm_policy_reply policy_reply;
     char regular_tag_name[64];
     char local_tag_name[64];
     size_t max_capacity;
@@ -758,15 +753,14 @@ test_update_v4_tag_generation(void)
     int i;
 
     regular_tag = CALLOC(1, sizeof(*regular_tag));
-    TEST_ASSERT_NOT_NULL(regular_tag);
     local_tag = CALLOC(1, sizeof(*local_tag));
-    TEST_ASSERT_NOT_NULL(local_tag);
 
     /* Prepare a request */
     memset(&req, 0, sizeof(req));
-    req.action = FSM_UPDATE_TAG;
-    req.ipv4_cnt = 8;
-    for (i = 0; i < req.ipv4_cnt; i++)
+    memset(&policy_reply, 0, sizeof(policy_reply));
+    policy_reply.action = FSM_UPDATE_TAG;
+    req.dns_response.ipv4_cnt = 8;
+    for (i = 0; i < req.dns_response.ipv4_cnt; i++)
     {
         char ipv4_addr[INET_ADDRSTRLEN];
         uint32_t addr;
@@ -774,14 +768,14 @@ test_update_v4_tag_generation(void)
         addr = htonl(i);
         res = inet_ntop(AF_INET, &addr, ipv4_addr, INET_ADDRSTRLEN);
         TEST_ASSERT_NOT_NULL(res);
-        req.ipv4_addrs[i] = strdup(ipv4_addr);
+        req.dns_response.ipv4_addrs[i] = strdup(ipv4_addr);
     }
 
     max_capacity = 2;
     memset(regular_tag_name, 0, sizeof(regular_tag_name));
     snprintf(regular_tag_name, sizeof(regular_tag_name), "${@%s}", g_tags[0].name);
-    req.updatev4_tag = regular_tag_name;
-    rc = dns_generate_update_tag(&req, regular_tag->device_value,
+    policy_reply.updatev4_tag = regular_tag_name;
+    rc = dns_generate_update_tag(&req, &policy_reply, regular_tag->device_value,
                                  &regular_tag->device_value_len,
                                  max_capacity, 4);
     TEST_ASSERT_TRUE(rc);
@@ -789,15 +783,18 @@ test_update_v4_tag_generation(void)
 
     memset(local_tag_name, 0, sizeof(local_tag_name));
     snprintf(local_tag_name, sizeof(local_tag_name), "${*%s}", g_ltags[0].name);
-    req.updatev4_tag = local_tag_name;
-    rc = dns_generate_update_tag(&req, local_tag->values,
+    policy_reply.updatev4_tag = local_tag_name;
+    rc = dns_generate_update_tag(&req, &policy_reply, local_tag->values,
                                  &local_tag->values_len,
                                  max_capacity, 4);
     TEST_ASSERT_TRUE(rc);
     TEST_ASSERT_EQUAL(max_capacity, local_tag->values_len);
 
     /* Free allocated resources */
-    for (i = 0; i < req.ipv4_cnt; i++) free(req.ipv4_addrs[i]);
+    for (i = 0; i < req.dns_response.ipv4_cnt; i++)
+    {
+        FREE(req.dns_response.ipv4_addrs[i]);
+    }
     FREE(regular_tag);
     FREE(local_tag);
 }
@@ -812,6 +809,7 @@ test_update_v6_tag_generation(void)
     struct schema_Openflow_Local_Tag *local_tag;
     struct schema_Openflow_Tag *regular_tag;
     struct fqdn_pending_req req;
+    struct fsm_policy_reply policy_reply;
     char regular_tag_name[64];
     char local_tag_name[64];
     size_t max_capacity;
@@ -820,15 +818,14 @@ test_update_v6_tag_generation(void)
     int i;
 
     regular_tag = CALLOC(1, sizeof(*regular_tag));
-    TEST_ASSERT_NOT_NULL(regular_tag);
     local_tag = CALLOC(1, sizeof(*local_tag));
-    TEST_ASSERT_NOT_NULL(local_tag);
 
     /* Prepare a request */
     memset(&req, 0, sizeof(req));
-    req.action = FSM_UPDATE_TAG;
-    req.ipv6_cnt = 8;
-    for (i = 0; i < req.ipv6_cnt; i++)
+    memset(&policy_reply, 0, sizeof(policy_reply));
+    policy_reply.action = FSM_UPDATE_TAG;
+    req.dns_response.ipv6_cnt = 8;
+    for (i = 0; i < req.dns_response.ipv6_cnt; i++)
     {
         char ipv6_addr[INET6_ADDRSTRLEN];
         uint32_t addr[4];
@@ -836,14 +833,14 @@ test_update_v6_tag_generation(void)
         addr[3] = i;
         res = inet_ntop(AF_INET6, &addr, ipv6_addr, INET6_ADDRSTRLEN);
         TEST_ASSERT_NOT_NULL(res);
-        req.ipv6_addrs[i] = strdup(ipv6_addr);
+        req.dns_response.ipv6_addrs[i] = strdup(ipv6_addr);
     }
 
     max_capacity = 2;
     memset(regular_tag_name, 0, sizeof(regular_tag_name));
     snprintf(regular_tag_name, sizeof(regular_tag_name), "${@%s}", g_tags[0].name);
-    req.updatev6_tag = regular_tag_name;
-    rc = dns_generate_update_tag(&req, regular_tag->device_value,
+    policy_reply.updatev6_tag = regular_tag_name;
+    rc = dns_generate_update_tag(&req, &policy_reply, regular_tag->device_value,
                                  &regular_tag->device_value_len,
                                  max_capacity, 6);
     TEST_ASSERT_TRUE(rc);
@@ -851,15 +848,15 @@ test_update_v6_tag_generation(void)
 
     memset(local_tag_name, 0, sizeof(local_tag_name));
     snprintf(local_tag_name, sizeof(local_tag_name), "${*%s}", g_ltags[1].name);
-    req.updatev6_tag = local_tag_name;
-    rc = dns_generate_update_tag(&req, local_tag->values,
+    policy_reply.updatev6_tag = local_tag_name;
+    rc = dns_generate_update_tag(&req, &policy_reply, local_tag->values,
                                  &local_tag->values_len,
                                  max_capacity, 6);
     TEST_ASSERT_TRUE(rc);
     TEST_ASSERT_EQUAL(max_capacity, local_tag->values_len);
 
     /* Free allocated resources */
-    for (i = 0; i < req.ipv6_cnt; i++) free(req.ipv6_addrs[i]);
+    for (i = 0; i < req.dns_response.ipv6_cnt; i++) FREE(req.dns_response.ipv6_addrs[i]);
     FREE(regular_tag);
     FREE(local_tag);
 }
@@ -873,6 +870,7 @@ test_update_v4_tag_generation_with_duplicates(void)
 {
     struct schema_Openflow_Local_Tag *local_tag;
     struct fqdn_pending_req req;
+    struct fsm_policy_reply policy_reply;
     char local_tag_name[64];
     size_t max_capacity;
     const char *res;
@@ -880,15 +878,15 @@ test_update_v4_tag_generation_with_duplicates(void)
     int i;
 
     local_tag = CALLOC(1, sizeof(*local_tag));
-    TEST_ASSERT_NOT_NULL(local_tag);
 
     /* Prepare a request */
     memset(&req, 0, sizeof(req));
-    req.action = FSM_UPDATE_TAG;
-    req.ipv4_cnt = 8;
+    memset(&policy_reply, 0, sizeof(policy_reply));
+    policy_reply.action = FSM_UPDATE_TAG;
+    req.dns_response.ipv4_cnt = 8;
 
     /* Duplicate the addresses */
-    for (i = 0; i < req.ipv4_cnt; i++)
+    for (i = 0; i < req.dns_response.ipv4_cnt; i++)
     {
         char ipv4_addr[INET_ADDRSTRLEN];
         uint32_t addr;
@@ -896,14 +894,14 @@ test_update_v4_tag_generation_with_duplicates(void)
         addr = htonl(0x12345);
         res = inet_ntop(AF_INET, &addr, ipv4_addr, INET_ADDRSTRLEN);
         TEST_ASSERT_NOT_NULL(res);
-        req.ipv4_addrs[i] = strdup(ipv4_addr);
+        req.dns_response.ipv4_addrs[i] = strdup(ipv4_addr);
     }
 
     max_capacity = 16;
     memset(local_tag_name, 0, sizeof(local_tag_name));
     snprintf(local_tag_name, sizeof(local_tag_name), "${*%s}", g_ltags[0].name);
-    req.updatev4_tag = local_tag_name;
-    rc = dns_generate_update_tag(&req, local_tag->values,
+    policy_reply.updatev4_tag = local_tag_name;
+    rc = dns_generate_update_tag(&req, &policy_reply, local_tag->values,
                                  &local_tag->values_len,
                                  max_capacity, 4);
     TEST_ASSERT_TRUE(rc);
@@ -912,7 +910,10 @@ test_update_v4_tag_generation_with_duplicates(void)
     TEST_ASSERT_EQUAL(1, local_tag->values_len);
 
     /* Free allocated resources */
-    for (i = 0; i < req.ipv4_cnt; i++) free(req.ipv4_addrs[i]);
+    for (i = 0; i < req.dns_response.ipv4_cnt; i++)
+    {
+        FREE(req.dns_response.ipv4_addrs[i]);
+    }
     FREE(local_tag);
 }
 
@@ -925,6 +926,7 @@ test_update_v6_tag_generation_with_duplicates(void)
 {
     struct schema_Openflow_Local_Tag *local_tag;
     struct fqdn_pending_req req;
+    struct fsm_policy_reply policy_reply;
     char local_tag_name[64];
     size_t max_capacity;
     const char *res;
@@ -932,13 +934,13 @@ test_update_v6_tag_generation_with_duplicates(void)
     int i;
 
     local_tag = CALLOC(1, sizeof(*local_tag));
-    TEST_ASSERT_NOT_NULL(local_tag);
 
     /* Prepare a request */
     memset(&req, 0, sizeof(req));
-    req.action = FSM_UPDATE_TAG;
-    req.ipv6_cnt = 8;
-    for (i = 0; i < req.ipv6_cnt; i++)
+    memset(&policy_reply, 0, sizeof(policy_reply));
+    policy_reply.action = FSM_UPDATE_TAG;
+    req.dns_response.ipv6_cnt = 8;
+    for (i = 0; i < req.dns_response.ipv6_cnt; i++)
     {
         char ipv6_addr[INET6_ADDRSTRLEN];
         uint32_t addr[4];
@@ -946,14 +948,14 @@ test_update_v6_tag_generation_with_duplicates(void)
         addr[3] = 0x5678;
         res = inet_ntop(AF_INET6, &addr, ipv6_addr, INET6_ADDRSTRLEN);
         TEST_ASSERT_NOT_NULL(res);
-        req.ipv6_addrs[i] = strdup(ipv6_addr);
+        req.dns_response.ipv6_addrs[i] = strdup(ipv6_addr);
     }
 
     max_capacity = 16;
     memset(local_tag_name, 0, sizeof(local_tag_name));
     snprintf(local_tag_name, sizeof(local_tag_name), "${*%s}", g_ltags[1].name);
-    req.updatev6_tag = local_tag_name;
-    rc = dns_generate_update_tag(&req, local_tag->values,
+    policy_reply.updatev6_tag = local_tag_name;
+    rc = dns_generate_update_tag(&req, &policy_reply, local_tag->values,
                                  &local_tag->values_len,
                                  max_capacity, 6);
     TEST_ASSERT_TRUE(rc);
@@ -962,7 +964,7 @@ test_update_v6_tag_generation_with_duplicates(void)
     TEST_ASSERT_EQUAL(1, local_tag->values_len);
 
     /* Free allocated resources */
-    for (i = 0; i < req.ipv6_cnt; i++) free(req.ipv6_addrs[i]);
+    for (i = 0; i < req.dns_response.ipv6_cnt; i++) FREE(req.dns_response.ipv6_addrs[i]);
     FREE(local_tag);
 }
 
@@ -975,6 +977,7 @@ test_update_v4_tag_generation_ip_expiration(void)
 {
     struct schema_Openflow_Local_Tag *local_tag;
     struct fqdn_pending_req req;
+    struct fsm_policy_reply policy_reply;
     char local_tag_name[64];
     size_t max_capacity;
     const char *res;
@@ -984,15 +987,15 @@ test_update_v4_tag_generation_ip_expiration(void)
 
     /* First case where number of ip address are less than max capacity */
     local_tag = CALLOC(1, sizeof(*local_tag));
-    TEST_ASSERT_NOT_NULL(local_tag);
 
     /* Prepare a request */
     memset(&req, 0, sizeof(req));
-    req.action = FSM_UPDATE_TAG;
-    req.ipv4_cnt = 8;
+    memset(&policy_reply, 0, sizeof(policy_reply));
+    policy_reply.action = FSM_UPDATE_TAG;
+    req.dns_response.ipv4_cnt = 8;
 
     /* Duplicate the addresses */
-    for (i = 0; i < req.ipv4_cnt; i++)
+    for (i = 0; i < req.dns_response.ipv4_cnt; i++)
     {
         char ipv4_addr[INET_ADDRSTRLEN];
         uint32_t addr;
@@ -1000,14 +1003,14 @@ test_update_v4_tag_generation_ip_expiration(void)
         addr = htonl(i);
         res = inet_ntop(AF_INET, &addr, ipv4_addr, INET_ADDRSTRLEN);
         TEST_ASSERT_NOT_NULL(res);
-        req.ipv4_addrs[i] = strdup(ipv4_addr);
+        req.dns_response.ipv4_addrs[i] = strdup(ipv4_addr);
     }
 
     max_capacity = 16;
     memset(local_tag_name, 0, sizeof(local_tag_name));
     snprintf(local_tag_name, sizeof(local_tag_name), "${*%s}", g_ltags[0].name);
-    req.updatev4_tag = local_tag_name;
-    rc = dns_generate_update_tag(&req, local_tag->values,
+    policy_reply.updatev4_tag = local_tag_name;
+    rc = dns_generate_update_tag(&req, &policy_reply, local_tag->values,
                                  &local_tag->values_len,
                                  max_capacity, 4);
     TEST_ASSERT_TRUE(rc);
@@ -1016,21 +1019,23 @@ test_update_v4_tag_generation_ip_expiration(void)
     TEST_ASSERT_EQUAL(8, local_tag->values_len);
 
     /* Free allocated resources */
-    for (i = 0; i < req.ipv4_cnt; i++) free(req.ipv4_addrs[i]);
+    for (i = 0; i < req.dns_response.ipv4_cnt; i++)
+    {
+        FREE(req.dns_response.ipv4_addrs[i]);
+    }
 
     FREE(local_tag);
 
     /* Second case where number of ip address are equal to max capacity */
     local_tag = CALLOC(1, sizeof(*local_tag));
-    TEST_ASSERT_NOT_NULL(local_tag);
 
     /* Prepare a request */
     memset(&req, 0, sizeof(req));
-    req.action = FSM_UPDATE_TAG;
-    req.ipv4_cnt = 16;
+    policy_reply.action = FSM_UPDATE_TAG;
+    req.dns_response.ipv4_cnt = 16;
 
     /* Duplicate the addresses */
-    for (i = 0; i < req.ipv4_cnt; i++)
+    for (i = 0; i < req.dns_response.ipv4_cnt; i++)
     {
         char ipv4_addr[INET_ADDRSTRLEN];
         uint32_t addr;
@@ -1038,14 +1043,14 @@ test_update_v4_tag_generation_ip_expiration(void)
         addr = htonl(i);
         res = inet_ntop(AF_INET, &addr, ipv4_addr, INET_ADDRSTRLEN);
         TEST_ASSERT_NOT_NULL(res);
-        req.ipv4_addrs[i] = strdup(ipv4_addr);
+        req.dns_response.ipv4_addrs[i] = strdup(ipv4_addr);
     }
 
     max_capacity = 16;
     memset(local_tag_name, 0, sizeof(local_tag_name));
     snprintf(local_tag_name, sizeof(local_tag_name), "${*%s}", g_ltags[0].name);
-    req.updatev4_tag = local_tag_name;
-    rc = dns_generate_update_tag(&req, local_tag->values,
+    policy_reply.updatev4_tag = local_tag_name;
+    rc = dns_generate_update_tag(&req, &policy_reply, local_tag->values,
                                  &local_tag->values_len,
                                  max_capacity, 4);
     TEST_ASSERT_TRUE(rc);
@@ -1054,21 +1059,23 @@ test_update_v4_tag_generation_ip_expiration(void)
     TEST_ASSERT_EQUAL(16, local_tag->values_len);
 
     /* Free allocated resources */
-    for (i = 0; i < req.ipv4_cnt; i++) free(req.ipv4_addrs[i]);
+    for (i = 0; i < req.dns_response.ipv4_cnt; i++)
+    {
+        FREE(req.dns_response.ipv4_addrs[i]);
+    }
 
     FREE(local_tag);
 
     /* Third case where number of ip address are greater than max capacity */
     local_tag = CALLOC(1, sizeof(*local_tag));
-    TEST_ASSERT_NOT_NULL(local_tag);
 
     /* Prepare a request */
     memset(&req, 0, sizeof(req));
-    req.action = FSM_UPDATE_TAG;
-    req.ipv4_cnt = 20;
+    policy_reply.action = FSM_UPDATE_TAG;
+    req.dns_response.ipv4_cnt = 20;
 
     /* Duplicate the addresses */
-    for (i = 0; i < req.ipv4_cnt; i++)
+    for (i = 0; i < req.dns_response.ipv4_cnt; i++)
     {
         char ipv4_addr[INET_ADDRSTRLEN];
         uint32_t addr;
@@ -1076,14 +1083,14 @@ test_update_v4_tag_generation_ip_expiration(void)
         addr = htonl(i);
         res = inet_ntop(AF_INET, &addr, ipv4_addr, INET_ADDRSTRLEN);
         TEST_ASSERT_NOT_NULL(res);
-        req.ipv4_addrs[i] = strdup(ipv4_addr);
+        req.dns_response.ipv4_addrs[i] = strdup(ipv4_addr);
     }
 
     max_capacity = 16;
     memset(local_tag_name, 0, sizeof(local_tag_name));
     snprintf(local_tag_name, sizeof(local_tag_name), "${*%s}", g_ltags[0].name);
-    req.updatev4_tag = local_tag_name;
-    rc = dns_generate_update_tag(&req, local_tag->values,
+    policy_reply.updatev4_tag = local_tag_name;
+    rc = dns_generate_update_tag(&req, &policy_reply, local_tag->values,
                                  &local_tag->values_len,
                                  max_capacity, 4);
     TEST_ASSERT_TRUE(rc);
@@ -1092,7 +1099,10 @@ test_update_v4_tag_generation_ip_expiration(void)
     TEST_ASSERT_EQUAL(4, local_tag->values_len);
 
     /* Free allocated resources */
-    for (i = 0; i < req.ipv4_cnt; i++) free(req.ipv4_addrs[i]);
+    for (i = 0; i < req.dns_response.ipv4_cnt; i++)
+    {
+        FREE(req.dns_response.ipv4_addrs[i]);
+    }
 
     FREE(local_tag);
 
@@ -1107,6 +1117,7 @@ test_update_v6_tag_generation_ip_expiration(void)
 {
     struct schema_Openflow_Local_Tag *local_tag;
     struct fqdn_pending_req req;
+    struct fsm_policy_reply policy_reply;
     char local_tag_name[64];
     size_t max_capacity;
     const char *res;
@@ -1115,13 +1126,13 @@ test_update_v6_tag_generation_ip_expiration(void)
 
     /* First case where number of ip address are less than max capacity */
     local_tag = CALLOC(1, sizeof(*local_tag));
-    TEST_ASSERT_NOT_NULL(local_tag);
 
     /* Prepare a request */
     memset(&req, 0, sizeof(req));
-    req.action = FSM_UPDATE_TAG;
-    req.ipv6_cnt = 8;
-    for (i = 0; i < req.ipv6_cnt; i++)
+    memset(&policy_reply, 0, sizeof(policy_reply));
+    policy_reply.action = FSM_UPDATE_TAG;
+    req.dns_response.ipv6_cnt = 8;
+    for (i = 0; i < req.dns_response.ipv6_cnt; i++)
     {
         char ipv6_addr[INET6_ADDRSTRLEN];
         uint32_t addr[4];
@@ -1129,14 +1140,14 @@ test_update_v6_tag_generation_ip_expiration(void)
         addr[3] = i;
         res = inet_ntop(AF_INET6, &addr, ipv6_addr, INET6_ADDRSTRLEN);
         TEST_ASSERT_NOT_NULL(res);
-        req.ipv6_addrs[i] = strdup(ipv6_addr);
+        req.dns_response.ipv6_addrs[i] = strdup(ipv6_addr);
     }
 
     max_capacity = 16;
     memset(local_tag_name, 0, sizeof(local_tag_name));
     snprintf(local_tag_name, sizeof(local_tag_name), "${*%s}", g_ltags[1].name);
-    req.updatev6_tag = local_tag_name;
-    rc = dns_generate_update_tag(&req, local_tag->values,
+    policy_reply.updatev6_tag = local_tag_name;
+    rc = dns_generate_update_tag(&req, &policy_reply, local_tag->values,
                                  &local_tag->values_len,
                                  max_capacity, 6);
     TEST_ASSERT_TRUE(rc);
@@ -1145,18 +1156,17 @@ test_update_v6_tag_generation_ip_expiration(void)
     TEST_ASSERT_EQUAL(8, local_tag->values_len);
 
     /* Free allocated resources */
-    for (i = 0; i < req.ipv6_cnt; i++) free(req.ipv6_addrs[i]);
+    for (i = 0; i < req.dns_response.ipv6_cnt; i++) FREE(req.dns_response.ipv6_addrs[i]);
     FREE(local_tag);
 
     /* Second case where number of ip address are equal to max capacity */
     local_tag = CALLOC(1, sizeof(*local_tag));
-    TEST_ASSERT_NOT_NULL(local_tag);
 
     /* Prepare a request */
     memset(&req, 0, sizeof(req));
-    req.action = FSM_UPDATE_TAG;
-    req.ipv6_cnt = 16;
-    for (i = 0; i < req.ipv6_cnt; i++)
+    policy_reply.action = FSM_UPDATE_TAG;
+    req.dns_response.ipv6_cnt = 16;
+    for (i = 0; i < req.dns_response.ipv6_cnt; i++)
     {
         char ipv6_addr[INET6_ADDRSTRLEN];
         uint32_t addr[4];
@@ -1164,14 +1174,14 @@ test_update_v6_tag_generation_ip_expiration(void)
         addr[3] = i;
         res = inet_ntop(AF_INET6, &addr, ipv6_addr, INET6_ADDRSTRLEN);
         TEST_ASSERT_NOT_NULL(res);
-        req.ipv6_addrs[i] = strdup(ipv6_addr);
+        req.dns_response.ipv6_addrs[i] = strdup(ipv6_addr);
     }
 
     max_capacity = 16;
     memset(local_tag_name, 0, sizeof(local_tag_name));
     snprintf(local_tag_name, sizeof(local_tag_name), "${*%s}", g_ltags[1].name);
-    req.updatev6_tag = local_tag_name;
-    rc = dns_generate_update_tag(&req, local_tag->values,
+    policy_reply.updatev6_tag = local_tag_name;
+    rc = dns_generate_update_tag(&req, &policy_reply, local_tag->values,
                                  &local_tag->values_len,
                                  max_capacity, 6);
 
@@ -1181,18 +1191,17 @@ test_update_v6_tag_generation_ip_expiration(void)
     TEST_ASSERT_EQUAL(16, local_tag->values_len);
 
     /* Free allocated resources */
-    for (i = 0; i < req.ipv6_cnt; i++) free(req.ipv6_addrs[i]);
+    for (i = 0; i < req.dns_response.ipv6_cnt; i++) FREE(req.dns_response.ipv6_addrs[i]);
     FREE(local_tag);
 
     /* Third case where number of ip address are greater than max capacity */
     local_tag = CALLOC(1, sizeof(*local_tag));
-    TEST_ASSERT_NOT_NULL(local_tag);
 
     /* Prepare a request */
     memset(&req, 0, sizeof(req));
-    req.action = FSM_UPDATE_TAG;
-    req.ipv6_cnt = 20;
-    for (i = 0; i < req.ipv6_cnt; i++)
+    policy_reply.action = FSM_UPDATE_TAG;
+    req.dns_response.ipv6_cnt = 20;
+    for (i = 0; i < req.dns_response.ipv6_cnt; i++)
     {
         char ipv6_addr[INET6_ADDRSTRLEN];
         uint32_t addr[4];
@@ -1200,14 +1209,14 @@ test_update_v6_tag_generation_ip_expiration(void)
         addr[3] = i;
         res = inet_ntop(AF_INET6, &addr, ipv6_addr, INET6_ADDRSTRLEN);
         TEST_ASSERT_NOT_NULL(res);
-        req.ipv6_addrs[i] = strdup(ipv6_addr);
+        req.dns_response.ipv6_addrs[i] = strdup(ipv6_addr);
     }
 
     max_capacity = 16;
     memset(local_tag_name, 0, sizeof(local_tag_name));
     snprintf(local_tag_name, sizeof(local_tag_name), "${*%s}", g_ltags[1].name);
-    req.updatev6_tag = local_tag_name;
-    rc = dns_generate_update_tag(&req, local_tag->values,
+    policy_reply.updatev6_tag = local_tag_name;
+    rc = dns_generate_update_tag(&req, &policy_reply, local_tag->values,
                                  &local_tag->values_len,
                                  max_capacity, 6);
 
@@ -1217,7 +1226,7 @@ test_update_v6_tag_generation_ip_expiration(void)
     TEST_ASSERT_EQUAL(4, local_tag->values_len);
 
     /* Free allocated resources */
-    for (i = 0; i < req.ipv6_cnt; i++) free(req.ipv6_addrs[i]);
+    for (i = 0; i < req.dns_response.ipv6_cnt; i++) FREE(req.dns_response.ipv6_addrs[i]);
 
     FREE(local_tag);
 }
@@ -1250,8 +1259,7 @@ test_gk_dns_cache(void)
     dns_session = dns_lookup_session(g_fsm_parser);
     TEST_ASSERT_NOT_NULL(dns_session);
 
-    net_parser = calloc(1, sizeof(*net_parser));
-    TEST_ASSERT_NOT_NULL(net_parser);
+    net_parser = CALLOC(1, sizeof(*net_parser));
 
     /* Process query */
     PREPARE_UT(pkt46, net_parser);
@@ -1275,7 +1283,7 @@ test_gk_dns_cache(void)
     g_dns_mgr->req_cache_ttl = 0;
     dns_retire_reqs(g_fsm_parser);
 
-    free(net_parser);
+    FREE(net_parser);
 }
 
 

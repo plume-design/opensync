@@ -25,6 +25,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include "log.h"
+#include "memutil.h"
 
 #include "osn_dhcp.h"
 
@@ -37,14 +38,14 @@ osn_dhcp_server_t *osn_dhcp_server_new(const char *ifname)
 {
     (void)ifname;
 
-    osn_dhcp_server_t *self = calloc(1, sizeof(osn_dhcp_server_t));
+    osn_dhcp_server_t *self = CALLOC(1, sizeof(osn_dhcp_server_t));
 
     return self;
 }
 
 bool osn_dhcp_server_del(osn_dhcp_server_t *self)
 {
-    free(self);
+    FREE(self);
 
     return true;
 }

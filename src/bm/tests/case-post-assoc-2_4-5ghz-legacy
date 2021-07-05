@@ -1,0 +1,50 @@
+#!/bin/sh -axe
+
+. ./common
+
+update_sta() {
+	eval dut=\$$1
+
+	$dut <<. || return $?
+		ovsh u Band_Steering_Clients \
+			-w mac==20:00:00:00:00:00  \
+			pref_5g:=never
+.
+
+	diff_vars "$ref_sta_update_24" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_sta_update_5" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+}
+
+upsteer_legacy() {
+	. ./case-post-assoc-2_4-5ghz_vars || return 1
+
+	prepare_dut dut_ap_a || return 1
+	add_sta dut_ap_a || return 1
+	update_sta dut_ap_a || return 1
+
+	# First send few 5 GHz probes
+	bsal_sim write /dut_ap_a_bsal_in "PROBE mac=20:00:00:00:00:00 if_name=wlan1 snr=25 ssid=true blocked=false" || return 1
+	sleep 1
+	bsal_sim write /dut_ap_a_bsal_in "PROBE mac=20:00:00:00:00:00 if_name=wlan1 snr=25 ssid=true blocked=false" || return 1
+	sleep 1
+	
+	# Send 2.4 GHz probes until backoff
+	bsal_sim write /dut_ap_a_bsal_in "PROBE mac=20:00:00:00:00:00 if_name=wlan0 snr=25 ssid=true blocked=false" || return 1
+	sleep 1
+	bsal_sim write /dut_ap_a_bsal_in "PROBE mac=20:00:00:00:00:00 if_name=wlan0 snr=25 ssid=true blocked=false" || return 1
+	sleep 1
+
+	# Connect at 2.4 GHz and set legacy capabilities
+	bsal_sim write /dut_ap_a_bsal_in "UPDATE_CLIENT mac=20:00:00:00:00:00 \
+									  assoc_ies=000e6a616e75737a2d66742d74657374010802040b160c12182432043048606c2102001430140100000fac040100000fac040100000fac0200007f0b04004a0201000040000020460570000000003b155151525354737475767778797a7b7c7d7e7f808182dd070050f202000100" || return 1
+	bsal_sim write /dut_ap_a_bsal_in "CONNECT mac=20:00:00:00:00:00 if_name=wlan0" || return 1
+	sleep 1
+	bsal_sim write /dut_ap_a_bsal_in "RSSI_XING mac=20:00:00:00:00:00 if_name=wlan0 snr=25" || return 1
+	diff_vars "$legacy_ref_dpp_client_before_kick" "$(timeout 60 bsal_sim read /dut_ap_a_dpp_out)" || return 1
+
+	# Trigger >hwm SNR xing and wait until STA became inactive and eventually disconnected by BM
+	bsal_sim write /dut_ap_a_bsal_in "RSSI_XING mac=20:00:00:00:00:00 if_name=wlan0 snr=40 high_xing=higher" || return 1
+	diff_vars "$legacy_ref_dpp_client_kick" "$(timeout 70 bsal_sim read /dut_ap_a_dpp_out)" || return 1
+}
+
+step upsteer_legacy

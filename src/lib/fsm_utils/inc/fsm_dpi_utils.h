@@ -98,4 +98,10 @@ void fsm_dpi_set_acc_state(
         struct net_header_parser *net_parser,
         enum fsm_dpi_state state);
 
+void
+fsm_dpi_allow_flow(struct net_md_stats_accumulator *acc);
+
+void
+fsm_dpi_block_flow(struct net_md_stats_accumulator *acc);
+
 #endif /* FSM_DPI_UTILS_H_INCLUDED */

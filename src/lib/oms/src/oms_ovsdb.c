@@ -37,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "schema.h"
 #include "log.h"
 #include "util.h"
+#include "memutil.h"
 
 static ovsdb_table_t table_OMS_Config;
 static ovsdb_table_t table_Object_Store_State;
@@ -283,8 +284,7 @@ oms_ovsdb_add_config_entry(struct schema_OMS_Config *config)
     if (entry != NULL) return;
 
     /* Allocate and initialize the entry */
-    entry = calloc(1, sizeof(*entry));
-    if (entry == NULL) return;
+    entry = CALLOC(1, sizeof(*entry));
 
     entry->object = strdup(config->object_name);
     if (entry->object == NULL) goto err_free_entry;
@@ -312,13 +312,13 @@ oms_ovsdb_add_config_entry(struct schema_OMS_Config *config)
     return;
 
 err_free_version:
-    free(entry->version);
+    FREE(entry->version);
 
 err_free_object:
-    free(entry->object);
+    FREE(entry->object);
 
 err_free_entry:
-    free(entry);
+    FREE(entry);
 
     LOGE("%s: entry creation failed", __func__);
     return;
@@ -458,8 +458,7 @@ oms_ovsdb_add_state_entry(struct schema_Object_Store_State *state)
     if (entry != NULL) return;
 
     /* Allocate and initialize the entry */
-    entry = calloc(1, sizeof(*entry));
-    if (entry == NULL) return;
+    entry = CALLOC(1, sizeof(*entry));
 
     entry->object = strdup(state->name);
     if (entry->object == NULL) goto err_free_entry;
@@ -481,13 +480,13 @@ oms_ovsdb_add_state_entry(struct schema_Object_Store_State *state)
     return;
 
 err_free_version:
-    free(entry->version);
+    FREE(entry->version);
 
 err_free_object:
-    free(entry->object);
+    FREE(entry->object);
 
 err_free_entry:
-    free(entry);
+    FREE(entry);
 
     LOGE("%s: entry creation failed", __func__);
     return;
@@ -568,10 +567,10 @@ oms_ovsdb_update_state(struct schema_Object_Store_State *old_rec,
         new_state = strdup(oms_state->status);
         if (new_state == NULL) return;
 
-        free(entry->prev_state);
+        FREE(entry->prev_state);
         entry->prev_state = previous_state;
 
-        free(entry->state);
+        FREE(entry->state);
         entry->state = new_state;
     }
 

@@ -50,6 +50,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "bm.h"
 #include "qm_conn.h"
 #include "osa_assert.h"
+#include "memutil.h"
 
 #include "bm_stats.h"
 
@@ -576,7 +577,7 @@ bm_stats_steering_clear_all_event_records()
                     continue;
                 }
 
-                free(event_rec->assoc_ies);
+                FREE(event_rec->assoc_ies);
                 memset( event_rec, 0, sizeof( dpp_bs_client_event_record_t ) );
             }
 
@@ -886,8 +887,7 @@ bm_stats_steering_parse_event(
                 event_rec->assoc_ies_len = ARRAY_SIZE(event->data.connect.assoc_ies);
 
             if (event_rec->assoc_ies_len > 0) {
-                event_rec->assoc_ies = malloc(event_rec->assoc_ies_len);
-                WARN_ON(!event_rec->assoc_ies);
+                event_rec->assoc_ies = MALLOC(event_rec->assoc_ies_len);
 
                 if (event_rec->assoc_ies) {
                     memcpy(event_rec->assoc_ies,
@@ -959,7 +959,7 @@ bm_stats_steering_parse_event(
     band_rec->num_event_records++;
 
     if( band_rec->num_event_records == DPP_MAX_BS_EVENT_RECORDS ) {
-        free(event_rec->assoc_ies);
+        FREE(event_rec->assoc_ies);
         memset(event_rec, 0, sizeof(*event_rec));
 
         event_rec->type = OVERRUN;
@@ -1111,6 +1111,7 @@ bm_stats_enumerate(
         return false;
     }
 
+    /* FIXME: Why is this hardcoding wifiX names? */
     if (strcmp(schema->radio_type, RADIO_TYPE_STR_2G) == 0) {
         request->radio_type = RADIO_TYPE_2G;
         STRSCPY(request->radio_cfg.phy_name, SCHEMA_CONSTS_RADIO_PHY_NAME_2G);
@@ -1126,6 +1127,10 @@ bm_stats_enumerate(
     else if (strcmp(schema->radio_type, RADIO_TYPE_STR_5GU) == 0) {
         request->radio_type = RADIO_TYPE_5GU;
         STRSCPY(request->radio_cfg.phy_name, SCHEMA_CONSTS_RADIO_PHY_NAME_5GU);
+    }
+    else if (strcmp(schema->radio_type, RADIO_TYPE_STR_6G) == 0) {
+        request->radio_type = RADIO_TYPE_6G;
+        STRSCPY(request->radio_cfg.phy_name, SCHEMA_CONSTS_RADIO_PHY_NAME_6G);
     }
     else {
         LOGE("Steering stats update (unknown radio type %s)",
@@ -1195,15 +1200,11 @@ bm_stats_ovsdb_update_cb(ovsdb_update_monitor_t *self)
             LOGE("Failed to parse new Wifi_Stats_Config row: %s", perr);
             return;
         }
-        request = calloc(1, sizeof(bm_stats_request_t));
-        if (NULL == request) {
-            LOGE("OVSDB Steering stats config new (Failed to allocate memory)");
-            return;
-        }
+        request = CALLOC(1, sizeof(bm_stats_request_t));
 
         ret = bm_stats_enumerate(&schema, request);
         if (!ret) {
-            free(request);
+            FREE(request);
             return;
         }
 
@@ -1262,7 +1263,7 @@ bm_stats_ovsdb_update_cb(ovsdb_update_monitor_t *self)
         bm_stats_set_report(request);
 
         ds_tree_remove(&bm_stats_table, request);
-        free(request);
+        FREE(request);
         break;
 
     default:
@@ -1356,7 +1357,7 @@ bm_stats_cleanup( void )
             request != NULL;
             request = ds_tree_inext(&iter)) {
         ev_timer_stop(g_bm_stats_evloop, &request->timer);
-        free(request);
+        FREE(request);
         request = NULL;
     }
 

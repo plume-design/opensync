@@ -18,6 +18,10 @@ logger = logging.getLogger(__file__)
 def generate_script(cmds, file_path):
     with open(file_path, 'w') as f:
         f.write("#!/bin/sh\n")
+        f.write(". /usr/opensync/etc/kconfig # TODO: This should point to {INSTALL_PREFIX}/etc/kconfig\n")
+        f.write("OVS_VSCTL_PATH=$(which ovs-vsctl)\n")
+        f.write("IP_PATH=$(which ip)\n")
+        f.write("OVSH_PATH=$(which ovsh)\n")
         for cmd in cmds:
             f.write("{}\n".format(cmd.strip()))
     os.chmod(file_path, stat.S_IXUSR | stat.S_IRUSR | stat.S_IWUSR)

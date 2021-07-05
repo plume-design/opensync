@@ -24,10 +24,11 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include <unistd.h>
 #include <ev.h>
+#include <signal.h>
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "const.h"
 #include "json_util.h"
@@ -37,6 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_backtrace.h"
 #include "ovsdb.h"
 #include "target.h"
+#include "memutil.h"
 
 #include "wano.h"
 #include "wano_internal.h"
@@ -70,7 +72,7 @@ void wano_start_builtin_ifaces(void)
         wano_builtin_pplines_len++;
     }
 
-    wano_builtin_pplines = calloc(wano_builtin_pplines_len, sizeof(wano_builtin_pplines[0]));
+    wano_builtin_pplines = CALLOC(wano_builtin_pplines_len, sizeof(wano_builtin_pplines[0]));
 
     pif = iflist;
     for (ii = 0; ii < wano_builtin_pplines_len; ii++)
@@ -98,6 +100,12 @@ void wano_stop_builtin_ifaces(void)
     {
         wano_ppline_fini(&wano_builtin_pplines[ii]);
     }
+}
+
+void wano_sig_usr(int signum)
+{
+    (void)signum;
+    wano_ppline_restart_all();
 }
 
 int main(int argc, char *argv[])
@@ -148,6 +156,13 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    // Initialize WAN configuration
+    if (!wano_wan_config_init())
+    {
+        LOG(EMERG, "Error initializing WAN_Config table monitor.");
+        return 1;
+    }
+
     // Initialize WAN plug-ins
     module_init();
 
@@ -159,6 +174,16 @@ int main(int argc, char *argv[])
 
     // Scan built-in list of WAN interfaces and start each one
     wano_start_builtin_ifaces();
+
+    // Install signal handler
+    struct sigaction sa;
+    sa.sa_handler = wano_sig_usr;
+    sa.sa_flags = SA_RESTART;
+    sigemptyset(&sa.sa_mask);
+    if (sigaction(SIGUSR1, &sa, NULL) != 0)
+    {
+        LOG(WARN, "wano: Error installing SIGUSR1 handler.");
+    }
 
     ev_run(EV_DEFAULT, 0);
 

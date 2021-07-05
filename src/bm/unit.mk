@@ -52,6 +52,7 @@ UNIT_DEPS += src/lib/schema
 UNIT_DEPS += src/lib/datapipeline
 UNIT_DEPS += src/lib/evsched
 UNIT_DEPS += src/lib/target
+UNIT_DEPS += src/lib/kconfig
 UNIT_DEPS += src/qm/qm_conn
 
 UNIT_LDFLAGS := -lev -ljansson -lm

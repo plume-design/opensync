@@ -26,10 +26,12 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="wm2/$(basename "$0")"
 manager_setup_file="wm2/wm2_setup.sh"
@@ -68,16 +70,19 @@ Script usage example:
     ./${tc_name} wifi1 home-ap-l50 2 FUTssid '["map",[["encryption","WPA-PSK"],["key","FUTpsk"],["mode","2"]]]' 36 HT20 11ac ap
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
+
 NARGS=9
 [ $# -ne ${NARGS} ] && usage && raise "Requires '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 if_name=${1}
@@ -102,8 +107,8 @@ log_title "$tc_name: WM2 test - HT Mode and Channel Iteration - '${ht_mode}'-'${
 
 # Sanity check - is channel even allowed on the radio
 check_is_channel_allowed "$channel" "$if_name" &&
-    log -deb "$tc_name:check_is_channel_allowed - channel $channel is allowed on radio $if_name" ||
-    raise "channel $channel is not allowed on radio $if_name" -l "$tc_name" -ds
+    log "$tc_name:check_is_channel_allowed - channel $channel is allowed on radio $if_name" ||
+    raise "Channel $channel is not allowed on radio $if_name" -l "$tc_name" -ds
 
 # Testcase:
 # Configure radio, create VIF and apply ht_mode and channel
@@ -123,20 +128,20 @@ create_radio_vif_interface \
     -vif_if_name "$vif_if_name" \
     -vif_radio_idx "$vif_radio_idx" \
     -timeout ${channel_change_timeout} &&
-        log "$tc_name: create_radio_vif_interface {$if_name, $ht_mode, $channel} - Success" ||
-        raise "create_radio_vif_interface {$if_name, $ht_mode, $channel} - Failed" -l "$tc_name" -tc
+        log "$tc_name: create_radio_vif_interface {$if_name, $ht_mode, $channel} - Interface $if_name created - Success" ||
+        raise "FAIL: create_radio_vif_interface {$if_name, $ht_mode, $channel} - Interface $if_name not created" -l "$tc_name" -tc
 
 log "$tc_name: Waiting for settings to apply to Wifi_Radio_State {channel:$channel, ht_mode:$ht_mode}"
 wait_ovsdb_entry Wifi_Radio_State -w if_name "$if_name" \
     -is channel "$channel" \
     -is ht_mode "$ht_mode" &&
-        log "$tc_name: Settings applied to Wifi_Radio_State {channel:$channel, ht_mode:$ht_mode}" ||
-        raise "Failed to apply settings to Wifi_Radio_State {channel:$channel, ht_mode:$ht_mode}" -l "$tc_name" -tc
+        log "$tc_name: Settings applied to Wifi_Radio_State {channel:$channel, ht_mode:$ht_mode} - Success" ||
+        raise "FAIL: Failed to apply settings to Wifi_Radio_State {channel:$channel, ht_mode:$ht_mode}" -l "$tc_name" -tc
 
 log "$tc_name: Waiting for channel to apply to Wifi_VIF_State {channel:$channel}"
 wait_ovsdb_entry Wifi_VIF_State -w if_name "$vif_if_name" \
     -is channel "$channel" &&
-        log "$tc_name: Settings applied to Wifi_VIF_State {channel:$channel}" ||
-        raise "Failed to apply settings to Wifi_VIF_State {channel:$channel}" -l "$tc_name" -tc
+        log "$tc_name: Settings applied to Wifi_VIF_State {channel:$channel} - Success" ||
+        raise "FAIL: Failed to apply settings to Wifi_VIF_State {channel:$channel}" -l "$tc_name" -tc
 
 pass

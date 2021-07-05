@@ -25,6 +25,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include "log.h"
+#include "memutil.h"
 
 #include "osn_netif.h"
 #include "lnx_netif.h"
@@ -40,12 +41,12 @@ static void osn_netif_status_lnx(lnx_netif_t *lnx, struct osn_netif_status *stat
 
 osn_netif_t* osn_netif_new(const char *ifname)
 {
-    osn_netif_t *self = calloc(1, sizeof(*self));
+    osn_netif_t *self = CALLOC(1, sizeof(*self));
 
     if (!lnx_netif_init(&self->ni_lnx, ifname))
     {
         LOG(ERR, "netif: Error initializing Linux netif object.");
-        free(self);
+        FREE(self);
         return NULL;
     }
 
@@ -62,7 +63,7 @@ bool osn_netif_del(osn_netif_t *self)
         retval = false;
     }
 
-    free(self);
+    FREE(self);
     return retval;
 }
 

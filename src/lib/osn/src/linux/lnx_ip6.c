@@ -123,7 +123,7 @@ bool lnx_ip6_init(lnx_ip6_t *self, const char *ifname)
     return self;
 
 error:
-    if (self != NULL) free(self);
+    if (self != NULL) FREE(self);
 
     return NULL;
 }
@@ -142,17 +142,17 @@ bool lnx_ip6_fini(lnx_ip6_t *self)
     /* Free status structure */
     if (self->ip6_status.is6_addr != NULL)
     {
-        free(self->ip6_status.is6_addr);
+        FREE(self->ip6_status.is6_addr);
     }
 
     if (self->ip6_status.is6_neigh != NULL)
     {
-        free(self->ip6_status.is6_neigh);
+        FREE(self->ip6_status.is6_neigh);
     }
 
     if (self->ip6_status.is6_dns != NULL)
     {
-        free(self->ip6_status.is6_dns);
+        FREE(self->ip6_status.is6_dns);
     }
 
     /* Remove all active addresses */
@@ -162,14 +162,14 @@ bool lnx_ip6_fini(lnx_ip6_t *self)
     ds_tree_foreach_iter(&self->ip6_addr_list, node, &iter)
     {
         ds_tree_iremove(&iter);
-        free(node);
+        FREE(node);
     }
 
     /* Free list of DNSv6 addresses */
     ds_tree_foreach_iter(&self->ip6_dns_list, node, &iter)
     {
         ds_tree_iremove(&iter);
-        free(node);
+        FREE(node);
     }
 
     return true;
@@ -229,7 +229,7 @@ bool lnx_ip6_addr_flush(lnx_ip6_t *self)
         if (!node->enabled)
         {
             ds_tree_iremove(&iter);
-            free(node);
+            FREE(node);
         }
     }
 
@@ -280,7 +280,7 @@ bool lnx_ip6_addr_add(lnx_ip6_t *self, const osn_ip6_addr_t *addr)
     node = ds_tree_find(&self->ip6_addr_list, (void *)&addr->ia6_addr);
     if (node == NULL)
     {
-        node = calloc(1, sizeof(*node));
+        node = CALLOC(1, sizeof(*node));
         node->addr = *addr;
         ds_tree_insert(&self->ip6_addr_list, node, &node->addr.ia6_addr);
     }

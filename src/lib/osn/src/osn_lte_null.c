@@ -25,6 +25,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include "log.h"
+#include "memutil.h"
 
 #include "lnx_lte.h"
 
@@ -37,19 +38,13 @@ struct osn_lte
 
 osn_lte_t *osn_lte_new(const char *ifname)
 {
-    osn_lte_t *self = calloc(1, sizeof(osn_lte_t));
-    if (self == NULL)
-    {
-        LOG(ERR, "osn_lte: %s: Error allocating the LTE object.", ifname);
-        return NULL;
-    }
-
+    osn_lte_t *self = CALLOC(1, sizeof(osn_lte_t));
     return self;
 }
 
 bool osn_lte_del(osn_lte_t *self)
 {
-    free(self);
+    FREE(self);
     return false;
 }
 

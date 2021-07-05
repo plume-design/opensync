@@ -38,6 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "os.h"
 #include "util.h"
+#include "memutil.h"
 #include "ovsdb.h"
 #include "ovsdb_update.h"
 #include "ovsdb_sync.h"
@@ -262,8 +263,12 @@ static int cm2_util_set_defined_priority(char *if_type) {
     int priority;
 
     if (!strcmp(if_type, VLAN_TYPE_NAME))
-        priority = 3;
+        priority = 5;
     else if (!strcmp(if_type, ETH_TYPE_NAME))
+        priority = 4;
+    else if (cm2_is_wifi_type(if_type))
+        priority = 3;
+    else if (!strcmp(if_type, LTE_TYPE_NAME))
         priority = 2;
     else
         priority = 1;
@@ -804,7 +809,7 @@ void cm2_ovsdb_remove_unused_gre_interfaces(void) {
 
             cm2_ovsdb_remove_Wifi_Inet_Config(uplink->if_name, true);
         }
-        free(uplink_p);
+        FREE(uplink_p);
     }
 }
 
@@ -973,6 +978,7 @@ static bool
 cm2_util_is_supported_main_link(const char *if_name, const char *if_type)
 {
     return  cm2_is_eth_type(if_type) ||
+            !strcmp(if_type, LTE_TYPE_NAME) ||
             (cm2_is_wifi_type(if_type) &&
             (cm2_util_is_gre_station(if_name) || cm2_util_is_wds_station(if_name)));
 }
@@ -1377,7 +1383,7 @@ void cm2_ovsdb_connection_update_ble_phy_link(void) {
             else
                 wifi_cnt++;
         }
-        free(uplink_p);
+        FREE(uplink_p);
     }
 
     state = eth_cnt > 0 ? true : false;
@@ -1648,7 +1654,7 @@ void cm2_check_master_state_links(void) {
                LOGW("%s: %s Failed to insert GRE", __func__, link->if_name);
         }
     }
-    free(link_p);
+    FREE(link_p);
 }
 
 void cm2_connection_recalculate_used_link(void) {
@@ -1679,7 +1685,7 @@ void cm2_connection_recalculate_used_link(void) {
         }
         uplink = (struct schema_Connection_Manager_Uplink *) (uplink_p + table_Connection_Manager_Uplink.schema_size * index);
         cm2_connection_set_is_used(uplink);
-        free(uplink_p);
+        FREE(uplink_p);
         check_master = false;
     }
 
@@ -1976,7 +1982,8 @@ cm2_util_update_bridge_handle(
 static bool
 cm2_uplink_skip_L2_handle(struct schema_Connection_Manager_Uplink *uplink)
 {
-    if (!cm2_is_wan_link_management() && cm2_is_eth_type(uplink->if_type)) {
+    if ((!cm2_is_wan_link_management() && cm2_is_eth_type(uplink->if_type)) ||
+         !strcmp(uplink->if_type, LTE_TYPE_NAME)) {
         LOGI("%s Uplink skipped", uplink->if_name);
         return true;
     }
@@ -2379,7 +2386,7 @@ static void cm2_reconfigure_ethernet_states(bool blocked)
             cm2_delayed_eth_update(uplink->if_name, CONFIG_CM2_ETHERNET_LONG_DELAY);
         }
     }
-    free(uplink_p);
+    FREE(uplink_p);
 }
 
 bool cm2_ovsdb_validate_bridge_port_conf(char *bname, char *pname)
@@ -2752,7 +2759,11 @@ static
 bool cm2_util_is_dump_master_links(const char *iftype,
                                    const char *ifname)
 {
-    char stypes[] = "eth vif gre br-wan";
+#ifdef CONFIG_TARGET_WAN_BRIDGE_NAME
+    char stypes[] = "eth vif gre "CONFIG_TARGET_WAN_BRIDGE_NAME;
+#else
+    char stypes[] = "eth vif gre";
+#endif
 
     if (strstr(stypes, iftype) == NULL)
         return false;
@@ -2787,7 +2798,7 @@ void cm2_ovsdb_dump_debug_data(void)
              uplink->if_name, uplink->has_L2, uplink->has_L3, uplink->is_used);
     }
     if (link_p)
-        free(link_p);
+        FREE(link_p);
 
 
     link_p = ovsdb_table_select_where(&table_Wifi_Master_State,
@@ -2803,7 +2814,7 @@ void cm2_ovsdb_dump_debug_data(void)
              link->if_name, link->port_state, link->network_state, link->inet_addr, link->netmask);
     }
     if (link_p)
-        free(link_p);
+        FREE(link_p);
 
     link_p = ovsdb_table_select_where(&table_Wifi_Inet_Config,
                                       NULL,
@@ -2819,7 +2830,7 @@ void cm2_ovsdb_dump_debug_data(void)
     }
 
     if (link_p)
-        free(link_p);
+        FREE(link_p);
 
     link_p = ovsdb_table_select_where(&table_Wifi_Inet_State,
                                       NULL,
@@ -2834,7 +2845,7 @@ void cm2_ovsdb_dump_debug_data(void)
              sinet->if_name, sinet->enabled, sinet->network, sinet->mtu, sinet->inet_addr, sinet->netmask, sinet->gre_ifname, sinet->gre_local_inet_addr, sinet->gre_remote_inet_addr);
     }
     if (link_p)
-        free(link_p);
+        FREE(link_p);
 
     link_p = ovsdb_table_select(&table_Wifi_VIF_Config,
                                 SCHEMA_COLUMN(Wifi_VIF_Config, mode),
@@ -2846,7 +2857,7 @@ void cm2_ovsdb_dump_debug_data(void)
     }
 
     if (link_p)
-        free(link_p);
+        FREE(link_p);
 
     link_p = ovsdb_table_select(&table_Wifi_VIF_State,
                                 SCHEMA_COLUMN(Wifi_VIF_State, mode),
@@ -2858,7 +2869,7 @@ void cm2_ovsdb_dump_debug_data(void)
     }
 
     if (link_p)
-        free(link_p);
+        FREE(link_p);
 }
 
 // Initialize Open_vSwitch, SSL and Manager tables

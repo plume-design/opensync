@@ -26,17 +26,19 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/fsm_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="nm2/$(basename "$0")"
 manager_setup_file="fsm/fsm_setup.sh"
 create_rad_vif_if_file="tools/device/create_radio_vif_interface.sh"
 create_inet_file="tools/device/create_inet_interface.sh"
 add_bridge_port_file="tools/device/add_bridge_port.sh"
-client_connect_file="tools/rpi/connect_to_wpa2.sh"
+client_connect_file="tools/client/rpi/connect_to_wpa2.sh"
 usage() {
     cat <<usage_string
 ${tc_name} [-h] arguments
@@ -56,22 +58,23 @@ Testcase procedure:
                 Run: ./${add_bridge_port_file} (see ${add_bridge_port_file} -h)
             Update Inet entry for home bridge interface for dhcpd (br-home)
                 Run: ./${create_inet_file} (see ${create_inet_file} -h)
-   - On RPI Client:
+   - On Client:
                  Run: /.${client_connect_file} (see ${client_connect_file} -h)
 Script usage example:
     ./${tc_name}
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-    h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+    help | \
+    --help | \
+    -h)
         usage && exit 1
         ;;
     *)
-        echo "Unknown argument" && exit 1
         ;;
     esac
-done
+fi
 
 trap '
 fut_info_dump_line
@@ -81,15 +84,15 @@ fut_info_dump_line
 
 log_title "$tc_name: FSM test - Connect associated client"
 
-log -deb "$tc_name - Print-out Wifi_Associated_Clients table"
+log "$tc_name - Print-out Wifi_Associated_Clients table"
 print_tables Wifi_Associated_Clients
 
 client_mac=$(get_ovsdb_entry_value Wifi_Associated_Clients mac)
 if [ -z "${client_mac}" ]; then
-    raise "FAIL: Could not acquire Client mac address from Wifi_Associated_Clients, is client connected?" -l "${tc_name}"
+    raise "FAIL: Could not acquire Client MAC address from Wifi_Associated_Clients, is client connected?" -l "${tc_name}"
 else
     client_mac="${client_mac%%,*}"
-    log -deb "$tc_name - Client ${client_mac} successfully connected"
+    log "$tc_name - Client ${client_mac} connected - Success"
 fi
 
 pass

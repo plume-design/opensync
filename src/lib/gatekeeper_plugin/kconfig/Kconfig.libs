@@ -4,4 +4,10 @@ menu "libgatekeeper_plugin Configuration"
         default n
         help
             Enable support to enable URL endpoints based on attribute type
+
+    config GATEKEEPER_MULTI_CURL
+        bool "enable multi curl support for Gatekeeper"
+        default n
+        help
+            Enable multi curl support for Gatekeeper to send non blocking requests
 endmenu

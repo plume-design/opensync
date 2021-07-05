@@ -48,8 +48,6 @@ gk_free_req_header(Gatekeeper__Southbound__V1__GatekeeperCommonRequest *header)
     if (header == NULL) return;
 
     FREE(header);
-
-    return;
 }
 
 
@@ -72,8 +70,6 @@ gk_free_fqdn_req(Gatekeeper__Southbound__V1__GatekeeperReq *pb)
     FREE(fqdn_req);
 
     pb->req_fqdn = NULL;
-
-    return;
 }
 
 
@@ -96,8 +92,6 @@ gk_free_https_sni_req(Gatekeeper__Southbound__V1__GatekeeperReq *pb)
     FREE(sni_req);
 
     pb->req_https_sni = NULL;
-
-    return;
 }
 
 
@@ -120,8 +114,6 @@ gk_free_http_host_req(Gatekeeper__Southbound__V1__GatekeeperReq *pb)
     FREE(host_req);
 
     pb->req_http_host = NULL;
-
-    return;
 }
 
 
@@ -144,8 +136,6 @@ gk_free_http_url_req(Gatekeeper__Southbound__V1__GatekeeperReq *pb)
     FREE(url_req);
 
     pb->req_http_url = NULL;
-
-    return;
 }
 
 
@@ -168,8 +158,6 @@ gk_free_app_req(Gatekeeper__Southbound__V1__GatekeeperReq *pb)
     FREE(app_req);
 
     pb->req_app = NULL;
-
-    return;
 }
 
 
@@ -195,8 +183,6 @@ gk_free_ipv4_req(Gatekeeper__Southbound__V1__GatekeeperReq *pb)
     FREE(ipv4_req);
 
     pb->req_ipv4 = NULL;
-
-    return;
 }
 
 
@@ -222,8 +208,6 @@ gk_free_ipv6_req(Gatekeeper__Southbound__V1__GatekeeperReq *pb)
     FREE(ipv6_req);
 
     pb->req_ipv6 = NULL;
-
-    return;
 }
 
 
@@ -243,8 +227,6 @@ gk_free_ipv4_tuple_req(Gatekeeper__Southbound__V1__GatekeeperReq *pb)
     FREE(tuple_req);
 
     pb->req_ipv4_tuple = NULL;
-
-    return;
 }
 
 
@@ -264,7 +246,6 @@ gk_free_ipv6_tuple_req(Gatekeeper__Southbound__V1__GatekeeperReq *pb)
     FREE(tuple_req);
 
     pb->req_ipv6_tuple = NULL;
-    return;
 }
 
 

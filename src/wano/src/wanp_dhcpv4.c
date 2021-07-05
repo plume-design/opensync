@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "osa_assert.h"
 
 #include "wanp_dhcpv4_stam.h"
+#include "memutil.h"
 
 struct wanp_dhcpv4_handle
 {
@@ -182,8 +183,7 @@ wano_plugin_handle_t *wanp_dhcpv4_init(
 {
     struct wanp_dhcpv4_handle *wd4;
 
-    wd4 = calloc(1, sizeof(struct wanp_dhcpv4_handle));
-    ASSERT(wd4 != NULL, "Error allocating DHCPv4 object")
+    wd4 = CALLOC(1, sizeof(struct wanp_dhcpv4_handle));
 
     wd4->wd4_handle.wh_plugin = wp;
     STRSCPY(wd4->wd4_handle.wh_ifname, ifname);
@@ -212,7 +212,7 @@ void wanp_dhcpv4_fini(wano_plugin_handle_t *wh)
 
     wano_inet_state_event_fini(&wdh->wd4_inet_state_watcher);
 
-    free(wh);
+    FREE(wh);
 }
 
 /*

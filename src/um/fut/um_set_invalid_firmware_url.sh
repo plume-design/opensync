@@ -26,10 +26,12 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/um_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="um/$(basename "$0")"
 manager_setup_file="um/um_setup.sh"
@@ -51,16 +53,17 @@ Script usage example:
    ./${tc_name} /tmp/pfirmware http://some_random_url_without_fw_image/fw.img
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 
 NARGS=2
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
@@ -79,12 +82,13 @@ log_title "$tc_name: UM test - Download FW - invalid firmware_url"
 
 log "$tc_name: Setting firmware_url to $fw_url"
 update_ovsdb_entry AWLAN_Node -u firmware_url "$fw_url" &&
-    log "$tc_name: update_ovsdb_entry - Success to update" ||
-    raise "update_ovsdb_entry - Failed to update" -l "$tc_name" -tc
+    log "$tc_name: update_ovsdb_entry - AWLAN_Node::firmware_url is $fw_url - Success" ||
+    raise "FAIL: update_ovsdb_entry - AWLAN_Node::firmware_url is not $fw_url" -l "$tc_name" -oe
 
-log "$tc_name: Waiting for UM DL of FW image failed"
-wait_ovsdb_entry AWLAN_Node -is upgrade_status "$(get_um_code "UPG_ERR_DL_FW")" &&
-    log "$tc_name: wait_ovsdb_entry - Success to wait" ||
-    raise "wait_ovsdb_entry - Failed to wait" -l "$tc_name" -tc
+fw_fail_code=$(get_um_code "UPG_ERR_DL_FW")
+log "$tc_name: Waiting for AWLAN_Node::upgrade_status to become UPG_ERR_IMG_FAIL ($fw_fail_code)"
+wait_ovsdb_entry AWLAN_Node -is upgrade_status "$fw_fail_code" &&
+    log "$tc_name: wait_ovsdb_entry - AWLAN_Node::upgrade_status is $fw_fail_code - Success" ||
+    raise "FAIL: wait_ovsdb_entry - AWLAN_Node::upgrade_status is not $fw_fail_code" -l "$tc_name" -tc
 
 pass

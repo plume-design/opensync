@@ -26,10 +26,12 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/fsm_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="fsm/$(basename "$0")"
 usage()
@@ -52,16 +54,17 @@ Script usage example:
    ./${tc_name} br-home output:5001 udp,tp_dst=53 dev_flow_upnp_out
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 
 trap '
 fut_info_dump_line
@@ -95,13 +98,13 @@ insert_ovsdb_entry Openflow_Config \
     -i table 0 \
     -i rule "$of_req_rule" \
     -i token "$token" &&
-        log "$tc_name: Openflow rule inserted" ||
-        raise "Failed to insert Openflow rule" -l "$tc_name" -oe
+        log "$tc_name: Openflow rule inserted - Success" ||
+        raise "FAIL: Failed to insert Openflow rule" -l "$tc_name" -oe
 
 # Check if rule is applied
 log "$tc_name: Checking if rule is set for $of_req_rule"
 wait_ovsdb_entry Openflow_State -w token "$token" -is success true &&
-    log "$tc_name: wait_ovsdb_entry - Openflow_State - 'success' is 'true' - SUCCESS" ||
-    raise "wait_ovsdb_entry - Failed to set rule to Openflow_State for '$token' - 'success' is NOT 'true'" -l "$tc_name" -tc
+    log "$tc_name: wait_ovsdb_entry - Rule is set - Openflow_State::success is 'true' - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to set rule - Openflow_State::success for '$token' is not 'true'" -l "$tc_name" -tc
 
 pass

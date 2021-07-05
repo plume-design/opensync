@@ -26,58 +26,111 @@ syntax = "proto3";
 
 package interfaces.lte_info;
 
-message LteInfo {
-  string prod_id_info = 1;
-  string chip_serial = 2;
-  string imei = 3;
-  string imsi = 4;
-  string iccid = 5;
-  string sim_status = 6;
-  string net_reg_status = 7;
-  string service_provider_name = 8;
-  string sim_slot = 9;
+// LTE common fields
+message LteCommonHeader {
+  uint32 request_id = 1;
+  string if_name = 2; //wwan0
+  string node_id = 3;
+  string location_id = 4;
+  string imei = 5;
+  string imsi = 6;
+  uint64 reported_at = 7; // Unix time in seconds
 }
 
-message LteSigQual {
-  string rssi = 1;
-  string ber = 2;
+// Network Registration Status
+enum LteNetRegStatus {
+  LTE_NET_REG_STAT_UNSPECIFIED = 0;
+  LTE_NET_REG_STAT_NOTREG = 1; // Not registered. ME is not currently searching a new operator to register to
+  LTE_NET_REG_STAT_REG = 2; // Registered, home network
+  LTE_NET_REG_STAT_SEARCH = 3; // Not registered, but ME is currently searching a new operator to register to
+  LTE_NET_REG_STAT_DENIED = 4; // Registration denied
+  LTE_NET_REG_STAT_UNKNOWN = 5; // Unknown
+  LTE_NET_REG_STAT_ROAMING = 6; // Registered, roaming
+}
+
+message LteNetInfo {
+  LteNetRegStatus net_status = 1;
+  int32 rssi = 2;
+  int32 ber = 3;
+}
+
+// LTE data usage
+message LteDataUsage {
+  uint64 rx_bytes = 1;
+  uint64 tx_bytes = 2;
+  uint64 failover_start = 3; // Unix time in seconds
+  uint64 failover_end = 4; // Unix time in seconds
+  uint32 failover_count = 5;
+}
+
+// Serving Cell State
+enum LteServingCellState {
+  LTE_SERVING_CELL_UNSPECIFIED = 0;
+  LTE_SERVING_CELL_SEARCH = 1; // UE is searching but could not (yet) find a suitable 3G/4G cell.
+  LTE_SERVING_CELL_LIMSERV = 2; // UE is camping on a cell but has not registered on the network.
+  LTE_SERVING_CELL_NOCONN = 3; // UE is camping on a cell and has registered on the network, and it is in idle mode.
+  LTE_SERVING_CELL_CONNECT = 4; // UE is camping on a cell and has registered on the network, and a call is in progress.
+}
+
+// cell mode
+enum LteCellMode {
+  LTE_CELL_MODE_UNSPECIFIED = 0;
+  LTE_CELL_MODE_LTE = 1;
+  LTE_CELL_MODE_WCDMA = 2;
+}
+
+// is_tdd
+enum LteFddTddMode {
+  LTE_MODE_UNSPECIFIED = 0;
+  LTE_MODE_FDD = 1;
+  LTE_MODE_TDD = 2;
+}
+
+// Uplink/Downlink Bandwidth in MHz
+enum LteBandwidth {
+  LTE_BANDWIDTH_UNSPECIFIED = 0;
+  LTE_BANDWIDTH_1P4_MHZ = 1;
+  LTE_BANDWIDTH_3_MHZ = 2;
+  LTE_BANDWIDTH_5_MHZ = 3;
+  LTE_BANDWIDTH_10_MHZ = 4;
+  LTE_BANDWIDTH_15_MHZ = 5;
+  LTE_BANDWIDTH_20_MHZ = 6;
 }
 
 message LteNetServingCellInfo {
-  string cell_type = 1;
-  string state = 2;
-  string is_tdd = 3;
-  string mcc = 4;
-  string mnc = 5;
-  string cellid = 6;
-  string pcid = 7;
-  string uarfcn = 8;
-  string earfcn = 9;
-  string freq_band = 10;
-  string ul_bandwidth = 11;
-  string dl_bandwidth = 12;
-  string tac = 13;
-  string rsrp = 14;
-  string rsrq = 15;
-  string rssi = 16;
-  string sinr = 17;
-  string srxlev = 18;
-}
-
-// NeighborCell mode
-enum LteNeighborCellMode {
-    LTE_CELL_MODE_UNSPECIFIED = 0;
-    LTE_CELL_MODE_LTE = 1;
-    LTE_CELL_MODE_WCDMA = 2;
+  LteServingCellState state = 1;
+  LteCellMode mode = 2;
+  LteFddTddMode fdd_tdd_mode = 3;
+  uint32 cellid = 4; // Hexadecimal format. Cell ID. The parameter determines the 16-bit (GSM) or 28-bit (UMTS) cell ID. Range: 0-0xFFFFFFF.
+  uint32 pcid = 5; // Physical cell ID
+  uint32 uarfcn = 6; // Number format. The parameter determines the UTRA-ARFCN of the cell that was scanned
+  uint32 earfcn = 7; // Number format. The parameter determines the E-UTRA-ARFCN of the cell that was scanned
+  uint32 freq_band = 8; // E-UTRA frequency band (see 3GPP 36.101)
+  LteBandwidth ul_bandwidth = 9;
+  LteBandwidth dl_bandwidth = 10;
+  uint32 tac = 11; // Tracking Area Code (see 3GPP 23.003 Section 19.4.2.3)
+  int32 rsrp = 12; // Reference Signal Received Power (see 3GPP 36.214 Section 5.1.1)
+  int32 rsrq = 13; // Reference Signal Received Quality (see 3GPP 36.214 Section 5.1.2)
+  int32 rssi = 14; // The parameter shows the Received Signal Strength Indication
+  uint32 sinr = 15; // Logarithmic value of SINR, Values are in 1/5th of a dB. Range: 0-250 which translates to -20dB - +30dB
+  uint32 srxlev = 16; // Select receive level value for base station in dB (see 3GPP25.304).
 }
 
 // NeighborCell freq mode
 enum LteNeighborFreqMode {
-    LTE_FREQ_MODE_UNSPECIFIED = 0;
-    LTE_FREQ_MODE_INTRA = 1;
-    LTE_FREQ_MODE_INTER = 2;
-    LTE_FREQ_MODE_WCDMA = 3;
-    LTE_FREQ_MODE_WCDMA_LTE = 4;
+  LTE_FREQ_MODE_UNSPECIFIED = 0;
+  LTE_FREQ_MODE_INTRA = 1;
+  LTE_FREQ_MODE_INTER = 2;
+  LTE_FREQ_MODE_WCDMA = 3;
+  LTE_FREQ_MODE_WCDMA_LTE = 4;
+}
+
+// Set
+enum LteNeighborCellSet {
+  LTE_NEIGHBOR_CELL_SET_UNSPECIFIED = 0;
+  LTE_NEIGHBOR_CELL_SET_ACTIVE_SET = 1;
+  LTE_NEIGHBOR_CELL_SET_SYNC_NEIGHBOR = 2;
+  LTE_NEIGHBOR_CELL_SET_ASYNC_NEIGHBOR = 3;
 }
 
 // [+QENG: "neighbourcell intra","LTE",<earfcn>,<pcid>,<rsrq>,<rsrp>,<rssi>,<sinr>,<srxlev>,<cell_resel_priority>,<s_non_intra_search>,<thresh_serving_low>,<s_intra_search>
@@ -85,41 +138,41 @@ enum LteNeighborFreqMode {
 // [+QENG:"neighbourcell","WCDMA",<uarfcn>,<cell_resel_priority>,<thresh_Xhigh>,<thresh_Xlow>,<psc>,<rscp><ecno>,<srxlev>
 // [+QENG: "neighbourcell","LTE",<earfcn>,<cellid>,<rsrp>,<rsrq>,<s_rxlev>
 message LteNetNeighborCellInfo {
-  LteNeighborCellMode mode = 1;
+  LteCellMode mode = 1;
   LteNeighborFreqMode freq_mode = 2;
-  string earfcn = 3;
-  string uarfcn = 4;
-  string pcid = 5;
-  string rsrq = 6;
-  string rsrp = 7;
-  string rssi = 8;
-  string sinr = 9;
-  string srxlev_base_station = 10;
-  string cell_resel_priority = 11;
-  string s_non_intra_search = 12;
-  string thresh_serving_low = 13;
-  string s_intra_search = 14;
-  string thresh_x_low = 15;
-  string thresh_x_high = 16;
-  string psc = 17;
-  string rscp = 18;
-  string ecno = 19;
-  string set = 20;
-  string rank = 21;
-  string cellid = 22;
-  string srxlev_inter_freq = 23;
+  uint32 earfcn = 3;
+  uint32 uarfcn = 4;
+  uint32 pcid = 5;
+  int32 rsrq = 6;
+  int32 rsrp = 7;
+  int32 rssi = 8;
+  uint32 sinr = 9;
+  uint32 srxlev = 10;
+  uint32 cell_resel_priority = 11; // Cell reselection priority. Range: 0-7
+  uint32 s_non_intra_search = 12; // Threshold to control non-intra frequency searches.
+  uint32 thresh_serving_low = 13; //Specifies the suitable receive level threshold (in dB) used by the UE on the serving cell when reselecting towards a lower priority RAT/frequency.
+  uint32 s_intra_search = 14; // Cell selection parameter for the intra frequency cell.
+  uint32 thresh_x_low = 15; // The suitable receive level value of an evaluated lower priority cell must be greater than this value.
+  uint32 thresh_x_high = 16; // The suitable receive level value of an evaluated higher priority cell must be greater than this value.
+  uint32 psc = 17; //The parameter determines the primary scrambling code of the cell that was scanned
+  int32 rscp = 18; // The parameter determines the Received Signal Code Power level of the cell that was scanned
+  int32 ecno = 19; // Carrier to noise ratio in dB = measured Ec/Io value in dB.
+  LteNeighborCellSet cell_set = 20; // 3G neighbour cell set
+  int32 rank = 21; // Rank of this cell as neighbour for inter-RAT cell reselection
+  uint32 cellid = 22; // Hexadecimal format. Cell ID. The parameter determines the 16-bit (GSM) or 28-bit (UMTS) cell ID. Range: 0-0xFFFFFFF.
+  int32 inter_freq_srxlev = 23; // Suitable receive level for inter frequency cell
 }
 
 // LTE info
 message LteInfoReport {
 
-  string if_name = 1;
+  LteCommonHeader header = 1;
 
   // LTE info
-  LteInfo lte_info = 2;
+  LteNetInfo lte_net_info = 2;
 
-  // Signal quality
-  LteSigQual lte_sig_qual = 3;
+  // Data usage
+  LteDataUsage lte_data_usage = 3;
 
   // Serving cell info
   LteNetServingCellInfo lte_srv_cell = 4;

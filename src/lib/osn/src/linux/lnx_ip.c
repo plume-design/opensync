@@ -31,6 +31,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "log.h"
 #include "util.h"
+#include "memutil.h"
 #include "execsh.h"
 
 #include "lnx_ip.h"
@@ -134,24 +135,24 @@ bool lnx_ip_fini(lnx_ip_t *self)
     ds_tree_foreach_iter(&self->ip_addr_list, node, &iter)
     {
         ds_tree_iremove(&iter);
-        free(node);
+        FREE(node);
     }
 
     /* Free list of DNSv4 addresses */
     ds_tree_foreach_iter(&self->ip_dns_list, node, &iter)
     {
         ds_tree_iremove(&iter);
-        free(node);
+        FREE(node);
     }
 
     /* Free list of gateway routes */
     ds_tree_foreach_iter(&self->ip_route_gw_list, rnode, &iter)
     {
         ds_tree_iremove(&iter);
-        free(rnode);
+        FREE(rnode);
     }
 
-    free(self->ip_status.is_addr);
+    FREE(self->ip_status.is_addr);
 
     return retval;
 }
@@ -269,7 +270,7 @@ bool lnx_ip_addr_add(lnx_ip_t *self, const osn_ip_addr_t *addr)
     node = ds_tree_find(&self->ip_addr_list, (void *)addr);
     if (node == NULL)
     {
-        node = calloc(1, sizeof(*node));
+        node = CALLOC(1, sizeof(*node));
         node->addr = *addr;
         ds_tree_insert(&self->ip_addr_list, node, &node->addr);
     }
@@ -296,7 +297,7 @@ bool lnx_ip_addr_del(lnx_ip_t *ip, const osn_ip_addr_t *dns)
 
     ds_tree_remove(&ip->ip_addr_list, node);
 
-    free(node);
+    FREE(node);
 
     return true;
 }
@@ -308,7 +309,7 @@ bool lnx_ip_route_gw_add(lnx_ip_t *ip, const osn_ip_addr_t *src, const osn_ip_ad
     rnode = ds_tree_find(&ip->ip_route_gw_list, (void *)src);
     if (rnode == NULL)
     {
-        rnode = malloc(sizeof(struct lnx_ip_route_gw_node));
+        rnode = MALLOC(sizeof(struct lnx_ip_route_gw_node));
         rnode->src = *src;
         rnode->gw = *gw;
 
@@ -340,7 +341,7 @@ bool lnx_ip_route_gw_del(lnx_ip_t *ip, const osn_ip_addr_t *src, const osn_ip_ad
 
     ds_tree_remove(&ip->ip_route_gw_list, rnode);
 
-    free(rnode);
+    FREE(rnode);
 
     return true;
 }
@@ -396,7 +397,7 @@ void lnx_ip_status_poll(lnx_ip_t *self)
 
     if (self->ip_status.is_addr != NULL)
     {
-        free(self->ip_status.is_addr);
+        FREE(self->ip_status.is_addr);
     }
 
     self->ip_status.is_addr = NULL;
@@ -469,7 +470,7 @@ bool lnx_ip_addr_parse(void *data, int type, const char *line)
      */
     if ((is->is_addr_len % LNX_IP_REALLOC_GROW) == 0)
     {
-        is->is_addr = realloc(
+        is->is_addr = REALLOC(
                 is->is_addr,
                 (is->is_addr_len + LNX_IP_REALLOC_GROW) * sizeof(is->is_addr[0]));
     }

@@ -44,6 +44,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb_update.h"
 #include "schema.h"
 #include "schema_consts.h"
+#include "memutil.h"
 
 #include "sm.h"
 
@@ -213,6 +214,9 @@ bool sm_enumerate_stats_config(sm_stats_config_t *stats)
     }
     else if (strcmp(schema->radio_type, RADIO_TYPE_STR_5GU) == 0) {
         stats->radio_type = RADIO_TYPE_5GU;
+    }
+    else if (strcmp(schema->radio_type, RADIO_TYPE_STR_6G) == 0) {
+        stats->radio_type = RADIO_TYPE_6G;
     }
     else {
         stats->radio_type = RADIO_TYPE_NONE;
@@ -411,16 +415,12 @@ void sm_update_wifi_stats_config_cb(ovsdb_update_monitor_t *self)
     switch (self->mon_type)
     {
         case OVSDB_UPDATE_NEW:
-            stats = calloc(1, sizeof(sm_stats_config_t));
-            if (NULL == stats) {
-                LOG(ERR, "NEW: Radio State: Parsing Wifi_Radio_State: Failed to allocate memory");
-                return;
-            }
+            stats = CALLOC(1, sizeof(sm_stats_config_t));
 
             ret = schema_Wifi_Stats_Config_from_json(&stats->schema, self->mon_json_new, false, perr);
             if (ret) ret = sm_enumerate_stats_config(stats);
             if (!ret) {
-                free(stats);
+                FREE(stats);
                 LOG(ERR, "Parsing Wifi_Stats_Config NEW request: %s", perr);
                 return;
             }
@@ -457,7 +457,7 @@ void sm_update_wifi_stats_config_cb(ovsdb_update_monitor_t *self)
             stats->schema.reporting_count = 0;
             sm_update_stats_config(stats, self->mon_type);
             ds_tree_remove(&stats_config_table, stats);
-            free(stats);
+            FREE(stats);
             break;
 
         default:
@@ -535,6 +535,9 @@ void sm_radio_cfg_update(void)
         }
         else if (strcmp(radio->schema.freq_band, RADIO_TYPE_STR_5GU) == 0) {
             radio_cfg.type = RADIO_TYPE_5GU;
+        }
+        else if (strcmp(radio->schema.freq_band, RADIO_TYPE_STR_6G) == 0) {
+            radio_cfg.type = RADIO_TYPE_6G;
         }
         else {
             LOG(ERR,
@@ -720,16 +723,12 @@ static void sm_update_wifi_radio_state_cb(ovsdb_update_monitor_t *self)
             /*
              * New row update notification -- create new row, parse it and insert it into the table
              */
-            radio = calloc(1, sizeof(sm_radio_state_t));
-            if (NULL == radio) {
-                LOG(ERR, "NEW: Radio State: Parsing Wifi_Radio_State: Failed to allocate memory");
-                return;
-            }
+            radio = CALLOC(1, sizeof(sm_radio_state_t));
 
             if (!schema_Wifi_Radio_State_from_json(&radio->schema, self->mon_json_new, false, perr))
             {
                 LOG(ERR, "NEW: Radio State: Parsing Wifi_Radio_State: %s", perr);
-                free(radio);
+                FREE(radio);
                 return;
             }
 
@@ -762,7 +761,7 @@ static void sm_update_wifi_radio_state_cb(ovsdb_update_monitor_t *self)
             }
 
             ds_tree_remove(&sm_radio_list, radio);
-            free(radio);
+            FREE(radio);
             return;
 
         default:
@@ -789,11 +788,7 @@ void sm_update_wifi_vif_state_cb(ovsdb_update_monitor_t *self)
             /*
              * New row update notification -- create new row, parse it and insert it into the table
              */
-            vif = calloc(1, sizeof(sm_vif_state_t));
-            if (NULL == vif) {
-                LOG(ERR, "NEW: Radio State: Parsing Wifi_Radio_State: Failed to allocate memory");
-                return;
-            }
+            vif = CALLOC(1, sizeof(sm_vif_state_t));
 
             if (!schema_Wifi_VIF_State_from_json(&vif->schema, self->mon_json_new, false, perr))
             {
@@ -832,7 +827,7 @@ void sm_update_wifi_vif_state_cb(ovsdb_update_monitor_t *self)
 
             ds_tree_remove(&sm_vif_list, vif);
 
-            free(vif);
+            FREE(vif);
 
             return;
 

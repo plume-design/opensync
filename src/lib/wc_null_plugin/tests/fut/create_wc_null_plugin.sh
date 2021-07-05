@@ -30,6 +30,8 @@
 
 prog=$0
 
+. /usr/opensync/etc/kconfig # TODO: This should point to {INSTALL_PREFIX}/etc/kconfig
+
 # Check if a specific command is in the path. Bail if not found.
 check_cmd() {
     cmd=$1
@@ -63,7 +65,7 @@ gen_fsmc_wc_null_cmd() {
         "row": {
                "handler": "${provider_plugin}",
                "type": "web_cat_provider",
-               "plugin": "/usr/plume/lib/libfsm_wcnull.so",
+               "plugin": "${CONFIG_INSTALL_PREFIX}/lib/libfsm_wcnull.so",
                "other_config":
                         ["map",[
                         ["dso_init","fsm_wc_null_plugin_init"]

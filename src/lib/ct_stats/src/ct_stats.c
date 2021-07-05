@@ -68,6 +68,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <linux/netfilter/nf_conntrack_tcp.h>
 
+#define ZONE_2      (USHRT_MAX -1)
+
 /**
  * IMC server used for fsm -> fcm flow tags communication
  */
@@ -143,7 +145,7 @@ process_merged_multi_zonestats(ds_dlist_t *list, ds_tree_t *tree)
         count++;
         if (ft->zone_id == 1) {
             ds_dlist_remove(list, ft->flowptr);
-            free(ft->flowptr);
+            FREE(ft->flowptr);
             ct_stats->node_count--;
         }
         next = ds_tree_next(tree, ft);
@@ -166,7 +168,7 @@ flow_free_merged_multi_zonestats(ds_tree_t *tree)
     {
         next = ds_tree_next(tree, ft);
         ds_tree_remove(tree, ft);
-        free(ft);
+        FREE(ft);
         ft = next;
         count++;
     }
@@ -193,13 +195,7 @@ flow_merge_multi_zonestats(ctflow_info_t *flow, uint16_t zone_id)
     if (ft == NULL)
     {
       // Allocate for the flow.
-      ft = calloc(1, sizeof(struct flow_tracker));
-      if (ft == NULL)
-      {
-          LOGE("%s: Unable to allocate memory for flow tracker.", __func__);
-          return false;
-      }
-
+      ft = CALLOC(1, sizeof(struct flow_tracker));
       ft->flowptr = flow;
       ft->zone_id = zone_id;
       ds_tree_insert(&flow_tracker_list, ft, &flow->flow.layer3_info);
@@ -404,8 +400,7 @@ ct_stats_get_session(fcm_collect_plugin_t *collector)
     if (ct_stats != NULL) return ct_stats;
 
     LOGD("%s: Adding a new session", __func__);
-    ct_stats = calloc(1, sizeof(*ct_stats));
-    if (ct_stats == NULL) return NULL;
+    ct_stats = CALLOC(1, sizeof(*ct_stats));
 
     ct_stats->initialized = false;
 
@@ -1068,18 +1063,16 @@ data_cb(const struct nlmsghdr *nlh, void *data)
     LOGT("%s: Lookup IP flow for ct_zone: %d, retrieved: %d", __func__,
          ct_stats->ct_zone, ct_zone);
 
-    if (ct_stats->ct_zone != USHRT_MAX &&
+    if (ct_stats->ct_zone != USHRT_MAX && (ct_stats->ct_zone != ZONE_2) &&
         ct_stats->ct_zone != ct_zone) return MNL_CB_OK;
 
     LOGT("%s: Included IP flow for ct_zone: %d", __func__,
           ct_zone);
 
-    flow_info = calloc(1, sizeof(struct ctflow_info));
-    if(flow_info == NULL) return MNL_CB_OK;
+    flow_info = CALLOC(1, sizeof(struct ctflow_info));
     flow =  &flow_info->flow;
 
-    flow_info_1 = calloc(1, sizeof(struct ctflow_info));
-    if(flow_info_1 == NULL) goto flow_info_free;
+    flow_info_1 = CALLOC(1, sizeof(struct ctflow_info));
     flow_1 =  &flow_info_1->flow;
 
     if (tb[CTA_TUPLE_ORIG] == NULL) goto flow_info_1_free;
@@ -1125,8 +1118,8 @@ data_cb(const struct nlmsghdr *nlh, void *data)
     rc = get_counter(tb[CTA_COUNTERS_ORIG], flow);
     if (rc < 0) goto flow_info_1_free;
 
-    if (ct_stats->ct_zone == USHRT_MAX) flow_merge_multi_zonestats(flow_info, ct_zone);
-
+    if ((ct_stats->ct_zone == USHRT_MAX) || (ct_stats->ct_zone == ZONE_2))
+        flow_merge_multi_zonestats(flow_info, ct_zone);
 
     ds_dlist_insert_tail(&ct_stats->ctflow_list, flow_info);
     ct_stats->node_count++;
@@ -1136,20 +1129,21 @@ data_cb(const struct nlmsghdr *nlh, void *data)
     rc = get_counter(tb[CTA_COUNTERS_REPLY], flow_1);
     if (rc < 0) goto reply_dir_free;
 
-    if (ct_stats->ct_zone == USHRT_MAX) flow_merge_multi_zonestats(flow_info_1, ct_zone);
+    if ((ct_stats->ct_zone == USHRT_MAX)  || (ct_stats->ct_zone == ZONE_2))
+        flow_merge_multi_zonestats(flow_info_1, ct_zone);
 
     ds_dlist_insert_tail(&ct_stats->ctflow_list, flow_info_1);
     ct_stats->node_count++;
     return MNL_CB_OK;
 
 flow_info_1_free:
-    free(flow_info_1);
+    FREE(flow_info_1);
 flow_info_free:
-    free(flow_info);
+    FREE(flow_info);
     return MNL_CB_OK;
 
 reply_dir_free:
-    free(flow_info_1);
+    FREE(flow_info_1);
     return MNL_CB_OK;
 }
 
@@ -1269,7 +1263,7 @@ free_ct_flow_list(flow_stats_t *ct_stats)
     while (!ds_dlist_is_empty(&ct_stats->ctflow_list))
     {
         flow = ds_dlist_remove_tail(&ct_stats->ctflow_list);
-        free(flow);
+        FREE(flow);
         ct_stats->node_count--;
         del_count++;
     }
@@ -1324,15 +1318,21 @@ ct_stats_print_contrack(ct_flow_t *flow)
  * @param flow the flow to filter
  */
 static bool
-apply_filter(char *filter_name, fcm_filter_l2_info_t *mac_filter,
+apply_filter(flow_stats_t *ct_stats, fcm_filter_l2_info_t *mac_filter,
              ct_flow_t *flow)
 {
+    struct fcm_filter_client *client;
+    struct fcm_session *session;
     fcm_filter_l3_info_t filter;
+    struct fcm_filter_req *req;
     fcm_filter_stats_t pkt;
     bool action;
     int rc;
 
-    if (filter_name == NULL) return true;
+    if (ct_stats == NULL) return true;
+
+    session = ct_stats->session;
+    if (session == NULL) return true;
 
     rc = getnameinfo((struct sockaddr *)&flow->layer3_info.src_ip,
                      sizeof(struct sockaddr_storage),
@@ -1354,7 +1354,20 @@ apply_filter(char *filter_name, fcm_filter_l2_info_t *mac_filter,
     pkt.pkt_cnt = flow->pkt_info.pkt_cnt;
     pkt.bytes = flow->pkt_info.bytes;
 
-    fcm_filter_7tuple_apply(filter_name, mac_filter, &filter, &pkt, NULL, &action);
+    client = ct_stats->c_client;
+    if (client == NULL) return true;
+
+    req = CALLOC(1, sizeof(struct fcm_filter));
+    if (req == NULL) return true;
+
+    req->pkts = &pkt;
+    req->l3_info = &filter;
+    req->l2_info = mac_filter;
+    req->table = client->table;
+
+    fcm_apply_filter(session, req);
+    action = req->action;
+    FREE(req);
 
     return action;
 }
@@ -1424,7 +1437,7 @@ ct_flow_add_sample(flow_stats_t *ct_stats)
                  dmac.addr[2], dmac.addr[3],
                  dmac.addr[4], dmac.addr[5]);
 
-        if (apply_filter(ct_stats->collect_filter, &mac_filter, flow))
+        if (apply_filter(ct_stats, &mac_filter, flow))
         {
             memset(&key, 0, sizeof(struct net_md_flow_key));
             memset(&pkts_ct, 0, sizeof(struct flow_counters));
@@ -1928,15 +1941,14 @@ app_recv_cb(void *data, size_t len)
         return;
     }
 
-    str = calloc(1, len + 1);
-    if (str == NULL) return;
+    str = CALLOC(1, len + 1);
 
     strscpy(str, (char *)data, len + 1);
     LOGI("%s: received app name %s", __func__, str);
     g_appname = str;
     net_md_process_aggr(ct_stats->aggr);
     g_appname = NULL;
-    free(str);
+    FREE(str);
 }
 
 
@@ -2070,6 +2082,18 @@ ct_stats_plugin_init(fcm_collect_plugin_t *collector)
     collector->send_report = ct_stats_report_cb;
     collector->close_plugin = ct_stats_plugin_close_cb;
 
+    ct_stats->session = collector->session;
+
+    if (collector->collect_client != NULL)
+    {
+        ct_stats->c_client = collector->collect_client;
+    }
+
+    if (collector->report_client != NULL)
+    {
+        ct_stats->r_client = collector->report_client;
+    }
+
     fcm_filter_context_init(collector);
 
     ds_dlist_init(&ct_stats->ctflow_list, ctflow_info_t, dl_node);
@@ -2175,7 +2199,7 @@ ct_stats_plugin_exit(fcm_collect_plugin_t *collector)
 
     /* delete the session */
     ds_tree_remove(&mgr->ct_stats_sessions, ct_stats);
-    free(ct_stats);
+    FREE(ct_stats);
 
     /* mark the remaining session as active if any */
     ct_stats = ds_tree_head(&mgr->ct_stats_sessions);

@@ -8,7 +8,7 @@ ARG PKGINSTALL="eval apt-get update && DEBIAN_FRONTEND=noninteractive apt-get -y
 # Python
 RUN $PKGINSTALL python python3 python3-pip python3-dev python3-pexpect python3-tabulate \
                 python3-termcolor python3-paramiko python3-pydot
-RUN pip3 install kconfiglib Jinja2
+RUN pip3 install kconfiglib 'MarkupSafe<2.0.0' 'Jinja2<3.0.0'
 
 # Development packages
 RUN $PKGINSTALL build-essential gcc g++ gdb lldb-6.0 clang-6.0 flex bison gettext texinfo patch \

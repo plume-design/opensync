@@ -42,6 +42,7 @@ UNIT_SRC += src/os_file.c
 UNIT_SRC += src/os_random.c
 UNIT_SRC += src/os_assert.c
 UNIT_SRC += src/os_uds_link.c
+UNIT_SRC += src/os_mq_link.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 ifeq ($(BUILD_WITH_LIBGCC_BACKTRACE),y)
@@ -54,6 +55,7 @@ UNIT_LDFLAGS += -lev
 ifeq ($(BUILD_WITH_LIBGCC_BACKTRACE),y)
 UNIT_LDFLAGS += -lgcc_s
 endif
+UNIT_LDFLAGS += -lrt
 
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
 UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
@@ -66,3 +68,4 @@ UNIT_DEPS += src/lib/ds
 UNIT_DEPS += src/lib/target
 UNIT_DEPS += src/lib/log
 UNIT_DEPS_CFLAGS += src/lib/version
+

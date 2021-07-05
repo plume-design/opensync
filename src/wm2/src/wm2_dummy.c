@@ -340,7 +340,7 @@ bool wm2_dummy_target_dpp_supported(void)
     return atoi(file_geta(F("dpp_supported")) ?: "1");
 }
 
-bool wm2_dummy_target_dpp_config_set(const struct schema_DPP_Config *config)
+bool wm2_dummy_target_dpp_config_set(const struct schema_DPP_Config **config)
 {
     return atoi(file_geta(F("dpp_config")) ?: "1");
 }

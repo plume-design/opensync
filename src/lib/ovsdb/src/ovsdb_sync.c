@@ -180,6 +180,10 @@ json_t *ovsdb_method_send_s(
             method = "transact";
             break;
 
+        case MT_GET_SCHEMA:
+            method = "get_schema";
+            break;
+
         default:
             LOG(ERR, "unknown method");
             json_decref(jparams);

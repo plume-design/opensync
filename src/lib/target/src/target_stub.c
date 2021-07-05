@@ -261,7 +261,7 @@ bool target_dpp_supported(void)
 #endif
 
 #ifndef IMPL_target_dpp_config_set
-bool target_dpp_config_set(const struct schema_DPP_Config *config)
+bool target_dpp_config_set(const struct schema_DPP_Config **config)
 {
     return false;
 }
@@ -281,7 +281,7 @@ bool target_dpp_key_get(struct target_dpp_key *key)
 #ifndef IMPL_target_ethclient_brlist_get
 const char **target_ethclient_brlist_get()
 {
-    static const char *brlist[] = { "br-home", NULL };
+    static const char *brlist[] = { CONFIG_TARGET_LAN_BRIDGE_NAME, NULL };
     return brlist;
 }
 #endif
@@ -743,6 +743,15 @@ bool target_set_mcast_uplink(const char *ifname, bool enable, bool is_wan, const
     (void)enable;
     (void)is_wan;
     (void)bridge;
+    return true;
+}
+#endif
+
+#ifndef IMPL_target_set_mcast_iptv
+bool target_set_mcast_iptv(const char *ifname, bool enable)
+{
+    (void)ifname;
+    (void)enable;
     return true;
 }
 #endif

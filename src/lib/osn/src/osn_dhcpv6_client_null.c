@@ -26,6 +26,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "log.h"
 #include "osn_dhcpv6.h"
+#include "memutil.h"
 
 struct osn_dhcpv6_client
 {
@@ -36,14 +37,14 @@ osn_dhcpv6_client_t *osn_dhcpv6_client_new(const char *ifname)
 {
     (void)ifname;
 
-    osn_dhcpv6_client_t *self = calloc(1, sizeof(*self));
+    osn_dhcpv6_client_t *self = CALLOC(1, sizeof(*self));
 
     return self;
 }
 
 bool osn_dhcpv6_client_del(osn_dhcpv6_client_t *self)
 {
-    free(self);
+    FREE(self);
 
     return true;
 }

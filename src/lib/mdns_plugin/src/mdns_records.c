@@ -45,6 +45,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "neigh_table.h"
 #include "os_nif.h"
 #include "policy_tags.h"
+#include "memutil.h"
 
 #include "mdns_records.h"
 
@@ -187,12 +188,9 @@ mdns_records_copy_resource_details(const struct resource *src, struct resource *
         case QTYPE_TXT:
             if (src->rdlength)
             {
-                dst->rdata = malloc(src->rdlength);
-                if (dst->rdata)
-                {
-                    memcpy(dst->rdata, src->rdata, src->rdlength);
-                    dst->rdlength = src->rdlength;
-                }
+                dst->rdata = MALLOC(src->rdlength);
+                memcpy(dst->rdata, src->rdata, src->rdlength);
+                dst->rdlength = src->rdlength;
             }
             else
             {
@@ -572,38 +570,38 @@ mdns_records_free_resource(struct resource *res)
     switch (res->type)
     {
         case QTYPE_A:
-            free(res->known.a.name);
+            FREE(res->known.a.name);
             break;
 
         case QTYPE_NS:
-            free(res->known.ns.name);
+            FREE(res->known.ns.name);
             break;
 
         case QTYPE_CNAME:
-            free(res->known.cname.name);
+            FREE(res->known.cname.name);
             break;
 
         case QTYPE_PTR:
-            free(res->known.ptr.name);
+            FREE(res->known.ptr.name);
             break;
 
         case QTYPE_TXT:
             if (res->rdlength)
             {
-                free(res->rdata);
+                FREE(res->rdata);
                 res->rdlength = 0;
             }
             break;
 
         case QTYPE_SRV:
-            free(res->known.srv.name);
+            FREE(res->known.srv.name);
             break;
 
         default:
             break;
     }
 
-    free(res->name);
+    FREE(res->name);
 
     return;
 }
@@ -640,7 +638,7 @@ mdns_records_clear_clients(ds_tree_t *clients)
         }
 
         ds_tree_iremove(&client_iter);
-        free(client);
+        FREE(client);
         client = NULL;
 
         client = ds_tree_inext(&client_iter);
@@ -704,7 +702,7 @@ mdns_records_clean_stale_records(void)
         {
             LOGD("%s: Client '%s' has no RR left, deleting client", __func__, client->mac_str);
             ds_tree_iremove(&client_iter);
-            free(client);
+            FREE(client);
             client = NULL;
         }
 
@@ -936,8 +934,8 @@ mdns_records_exit(void)
 
     /* Free the node info */
     obs_p = &report.node_info;
-    if (obs_p->node_id)     free(obs_p->node_id);
-    if (obs_p->location_id) free(obs_p->location_id);
+    if (obs_p->node_id)     FREE(obs_p->node_id);
+    if (obs_p->location_id) FREE(obs_p->location_id);
 
     /* Free the stored and staged client trees */
     mdns_records_clear_clients(&report.stored_clients);

@@ -25,6 +25,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include "log.h"
+#include "memutil.h"
 
 #include "udhcp_client.h"
 
@@ -41,12 +42,12 @@ static udhcp_client_error_fn_t osn_dhcp_client_error_udhcp;
 
 osn_dhcp_client_t *osn_dhcp_client_new(const char *ifname)
 {
-    osn_dhcp_client_t *self = calloc(1, sizeof(osn_dhcp_client_t));
+    osn_dhcp_client_t *self = CALLOC(1, sizeof(osn_dhcp_client_t));
 
     if (!udhcp_client_init(&self->dc_udhcp, ifname))
     {
         LOG(ERR, "dhcp_client: %s: Error creating udhcp client object.", ifname);
-        free(self);
+        FREE(self);
         return NULL;
     }
 
@@ -64,7 +65,7 @@ bool osn_dhcp_client_del(osn_dhcp_client_t *self)
         retval = false;
     }
 
-    free(self);
+    FREE(self);
 
     return retval;
 }

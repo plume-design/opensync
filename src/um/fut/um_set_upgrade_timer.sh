@@ -26,16 +26,18 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/um_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="um/$(basename "$0")"
 manager_setup_file="um/um_setup.sh"
 um_resource_path="resource/um/"
 um_image_name_default="um_set_upg_timer_fw"
-um_create_md5_file_path="tools/rpi/um/um_create_md5_file.sh"
+um_create_md5_file_path="tools/server/um/um_create_md5_file.sh"
 usage()
 {
 cat << usage_string
@@ -59,17 +61,17 @@ Script usage example:
    ./${tc_name} /tmp/pfirmware http://192.168.4.1:8000/fut-base/resource/um/${um_image_name_default}.img
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
-
+fi
 NARGS=4
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 fw_path=${1}
@@ -89,25 +91,25 @@ log_title "$tc_name: UM test - Download FW - upgrade_timer - 2 seconds +/-"
 
 log "$tc_name: Setting firmware_url to $fw_url"
 update_ovsdb_entry AWLAN_Node -u firmware_url "$fw_url" &&
-    log "$tc_name: update_ovsdb_entry - AWLAN_Node firmware_url set to $fw_url" ||
-    raise "update_ovsdb_entry - Failed to set firmware_url to $fw_url in AWLAN_Node" -l "$tc_name" -tc
+    log "$tc_name: update_ovsdb_entry - AWLAN_Node::firmware_url is $fw_url - Success" ||
+    raise "FAIL: update_ovsdb_entry - AWLAN_Node::firmware_url is not $fw_url" -l "$tc_name" -oe
 
-dl_start_code=$(get_um_code "UPG_STS_FW_DL_START")
-log "$tc_name: Waiting for FW download start"
-wait_ovsdb_entry AWLAN_Node -is upgrade_status "$dl_start_code" &&
-    log "$tc_name: wait_ovsdb_entry - AWLAN_Node upgrade_status is $dl_start_code" ||
-    raise "wait_ovsdb_entry - Failed to set upgrade_status in AWLAN_Node to $dl_start_code" -l "$tc_name" -tc
+fw_start_code=$(get_um_code "UPG_STS_FW_DL_START")
+log "$tc_name: Waiting for FW download to start, AWLAN_Node::upgrade_status to become UPG_STS_FW_DL_START ('$dl_start_code')"
+wait_ovsdb_entry AWLAN_Node -is upgrade_status "$fw_start_code" &&
+    log "$tc_name: wait_ovsdb_entry - AWLAN_Node::upgrade_status is $fw_start_code - Success" ||
+    raise "FAIL: wait_ovsdb_entry - AWLAN_Node::upgrade_status is not $fw_start_code" -l "$tc_name" -tc
 
-dl_finish_code=$(get_um_code "UPG_STS_FW_DL_END")
-log "$tc_name: Waiting for FW download finish"
-wait_ovsdb_entry AWLAN_Node -is upgrade_status "$dl_finish_code" &&
-    log "$tc_name: wait_ovsdb_entry - AWLAN_Node upgrade_status is $dl_finish_code" ||
-    raise "wait_ovsdb_entry - Failed to set upgrade_status in AWLAN_Node to $dl_finish_code" -l "$tc_name" -tc
+fw_stop_code=$(get_um_code "UPG_STS_FW_DL_END")
+log "$tc_name: Waiting for FW download to finish"
+wait_ovsdb_entry AWLAN_Node -is upgrade_status "$fw_stop_code" &&
+    log "$tc_name: wait_ovsdb_entry - AWLAN_Node::upgrade_status is $fw_stop_code - Success" ||
+    raise "FAIL: wait_ovsdb_entry - AWLAN_Node::upgrade_status is not $fw_stop_code" -l "$tc_name" -tc
 
-log "$tc_name: Setting AWLAN_Node upgrade_timer to $fw_up_timer"
+log "$tc_name: Setting AWLAN_Node::upgrade_timer to $fw_up_timer"
 update_ovsdb_entry AWLAN_Node -u upgrade_timer "$fw_up_timer" &&
-    log "$tc_name: update_ovsdb_entry - AWLAN_Node upgrade_timer set to $fw_up_timer" ||
-    raise "update_ovsdb_entry - Failed to set upgrade_timer to $fw_up_timer in AWLAN_Node" -l "$tc_name" -tc
+    log "$tc_name: update_ovsdb_entry - AWLAN_Node::upgrade_timer is $fw_up_timer - Success" ||
+    raise "FAIL: update_ovsdb_entry - AWLAN_Node::upgrade_timer is not $fw_up_timer" -l "$tc_name" -oe
 
 # Delete image file on device to skip upgrade process
 if [ -n "$fw_path" ] && [ -n "$fw_name" ]; then
@@ -119,8 +121,8 @@ start_time=$(date -D "%H:%M:%S"  +"%Y.%m.%d-%H:%M:%S")
 upg_start_code=$(get_um_code "UPG_STS_FW_WR_START")
 log "$tc_name: Waiting for UM upgrade start"
 wait_ovsdb_entry AWLAN_Node -is upgrade_status "$upg_start_code" &&
-    log "$tc_name: wait_ovsdb_entry - AWLAN_Node upgrade_status is $upg_start_code" ||
-    raise "wait_ovsdb_entry - Failed to set upgrade_status in AWLAN_Node to $upg_start_code" -l "$tc_name" -tc
+    log "$tc_name: wait_ovsdb_entry - AWLAN_Node::upgrade_status is $upg_start_code - Success" ||
+    raise "FAIL: wait_ovsdb_entry - AWLAN_Node::upgrade_status is not $upg_start_code" -l "$tc_name" -tc
 
 end_time=$(date -D "%H:%M:%S"  +"%Y.%m.%d-%H:%M:%S")
 
@@ -131,10 +133,10 @@ upgrade_time=$(( t2 - t1 ))
 upgrade_time_lower=$(( $upgrade_time - 2 ))
 upgrade_time_upper=$(( $upgrade_time + 2 ))
 
-if [ "$upgrade_time_lower" -le "$fw_up_timer" ] && [ "$upgrade_time_upper" -ge "$fw_up_timer" ];then
+if [ "$upgrade_time_lower" -le "$fw_up_timer" ] && [ "$upgrade_time_upper" -ge "$fw_up_timer" ]; then
     log "$tc_name: Upgrade started in given upgrade_timer - given $fw_up_timer - resulted in $upgrade_time"
 else
-    raise "Upgrade DID NOT start in given upgrade_timer - given $fw_up_timer - resulted in $upgrade_time" -l "$tc_name" -tc
+    raise "FAIL Upgrade DID NOT start in given upgrade_timer - given $fw_up_timer - resulted in $upgrade_time" -l "$tc_name" -tc
 fi
 
 pass

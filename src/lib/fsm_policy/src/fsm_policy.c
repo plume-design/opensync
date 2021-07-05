@@ -77,14 +77,9 @@ struct fsm_policy_session * fsm_policy_get_mgr(void)
 int
 fsm_policy_get_req_type(struct fsm_policy_req *req)
 {
-    struct fqdn_pending_req *fqdn_req;
-
     if (req == NULL) return FSM_UNKNOWN_REQ_TYPE;
 
-    fqdn_req = req->fqdn_req;
-    if (fqdn_req == NULL) return FSM_UNKNOWN_REQ_TYPE;
-
-    return fqdn_req->req_type;
+    return req->req_type;
 }
 
 
@@ -254,7 +249,8 @@ static bool fsm_mac_check(struct fsm_policy_req *req,
 }
 
 
-bool wildmatch(char *pattern, char *domain)
+bool
+fsm_policy_wildmatch(char *pattern, char *domain)
 {
     char *delim = ".";
     char *saveptr1;
@@ -266,9 +262,9 @@ bool wildmatch(char *pattern, char *domain)
     int ret;
     int j;
 
-   for (j = 1, str1 = STRDUP(pattern), str2 = STRDUP(domain); ;
-        j++, str1 = NULL, str2 = NULL)
-   {
+    for (j = 1, str1 = STRDUP(pattern), str2 = STRDUP(domain); ;
+         j++, str1 = NULL, str2 = NULL)
+    {
         sub1 = strtok_r(str1, delim, &saveptr1);
         sub2 = strtok_r(str2, delim, &saveptr2);
         /*
@@ -307,9 +303,9 @@ bool wildmatch(char *pattern, char *domain)
 
         FREE(str1);
         FREE(str2);
-   }
+    }
 
-   return false;
+    return false;
 }
 
 
@@ -341,7 +337,7 @@ static bool fsm_fqdn_in_set(struct fsm_policy_req *req, struct fsm_policy *p,
 
         if (entry_set_len > fqdn_req_len) continue;
 
-        if (op == FSM_FQDN_OP_WILD) return wildmatch(entry_set, fqdn_req);
+        if (op == FSM_FQDN_OP_WILD) return fsm_policy_wildmatch(entry_set, fqdn_req);
 
         if (op == FSM_FQDN_OP_SFR) fqdn_req += (fqdn_req_len - entry_set_len);
 
@@ -358,7 +354,7 @@ static bool fsm_fqdn_in_set(struct fsm_policy_req *req, struct fsm_policy *p,
  *
  */
 static bool fsm_fqdn_check(struct fsm_policy_req *req,
-                          struct fsm_policy *policy)
+                           struct fsm_policy *policy)
 {
     struct fsm_policy_rules *rules;
     bool rc = false;
@@ -439,7 +435,10 @@ static inline bool cat_search(int val, struct fsm_policy *p)
  * Looks up fqdn categories in the policy fqdn categories value set.
  * Returns true if found, false otherwise.
  */
-bool fsm_fqdncats_in_set(struct fsm_policy_req *req, struct fsm_policy *p)
+bool
+fsm_fqdncats_in_set(struct fsm_policy_req *req,
+                    struct fsm_policy *p,
+                    struct fsm_policy_reply *policy_reply)
 {
     struct fqdn_pending_req *fqdn_req;
     struct fsm_url_request *req_info;
@@ -456,7 +455,7 @@ bool fsm_fqdncats_in_set(struct fsm_policy_req *req, struct fsm_policy *p)
         rc = cat_search(reply->categories[i], p);
         if (!rc) continue;
 
-        fqdn_req->cat_match = reply->categories[i];
+        policy_reply->cat_match = reply->categories[i];
         return true;
     }
     return false;
@@ -548,17 +547,20 @@ static bool fsm_ip_check(struct fsm_policy_req *req,
  * @req: the request being processed
  * @p: the matched policy
  */
-static void set_action(struct fsm_policy_req *req, struct fsm_policy *p)
+static void
+set_action(struct fsm_policy_req *req,
+           struct fsm_policy *p,
+           struct fsm_policy_reply *policy_reply)
 {
     if (p->action == FSM_GATEKEEPER_REQ) return;
 
     if (p->action == FSM_ACTION_NONE)
     {
-        req->reply.action = FSM_OBSERVED;
+        policy_reply->action = FSM_OBSERVED;
         return;
     }
 
-    req->reply.action = p->action;
+    policy_reply->action = p->action;
 }
 
 #define UPDATEv4_TAG "tagv4_name"
@@ -569,8 +571,12 @@ static void set_action(struct fsm_policy_req *req, struct fsm_policy *p)
  *
  * @req: the request being processed
  * @p: the matched policy
+ * @policy_reply: policy reply
  */
-void set_excluded_devices_tag(struct fsm_policy_req *req, struct fsm_policy *p)
+void
+set_excluded_devices_tag(struct fsm_policy_req *req,
+                         struct fsm_policy *p,
+                         struct fsm_policy_reply *policy_reply)
 {
     struct str_pair *pair;
     ds_tree_t *tree;
@@ -583,7 +589,7 @@ void set_excluded_devices_tag(struct fsm_policy_req *req, struct fsm_policy *p)
     pair = ds_tree_find(tree, "excluded_devices");
     if (pair == NULL) return;
 
-    req->reply.excluded_devices = pair->value;
+    policy_reply->excluded_devices = pair->value;
 }
 
 
@@ -592,8 +598,12 @@ void set_excluded_devices_tag(struct fsm_policy_req *req, struct fsm_policy *p)
  *
  * @req: the request being processed
  * @p: the matched policy
+ * @policy_reply: policy reply
  */
-void set_tag_update(struct fsm_policy_req *req, struct fsm_policy *p)
+void
+set_tag_update(struct fsm_policy_req *req,
+               struct fsm_policy *p,
+               struct fsm_policy_reply *policy_reply)
 {
     struct str_pair *pair;
     ds_tree_t *tree;
@@ -605,28 +615,32 @@ void set_tag_update(struct fsm_policy_req *req, struct fsm_policy *p)
     pair = ds_tree_find(tree, UPDATEv4_TAG);
     if (pair == NULL) return;
 
-    req->reply.updatev4_tag = pair->value;
+    policy_reply->updatev4_tag = pair->value;
 
     pair = ds_tree_find(tree, UPDATEv6_TAG);
     if (pair == NULL) return;
 
-    req->reply.updatev6_tag = pair->value;
+    policy_reply->updatev6_tag = pair->value;
 }
 
 /**
  * set_reporting: set the request's reporting according to the policy
  * @req: the request being processed
  * @p: the matched policy
+ * @policy_reply: policy reply
  *
  */
-void set_reporting(struct fsm_policy_req *req, struct fsm_policy *p)
+void
+set_reporting(struct fsm_policy_req *req,
+              struct fsm_policy *p,
+              struct fsm_policy_reply *policy_reply)
 {
     int reporting;
 
     reporting = p->report_type;
 
     // Return the highest policy reporting policy
-    req->reply.log = reporting > req->reply.log ? reporting : req->reply.log;
+    policy_reply->log = reporting > policy_reply->log ? reporting : policy_reply->log;
 }
 
 /**
@@ -634,17 +648,20 @@ void set_reporting(struct fsm_policy_req *req, struct fsm_policy *p)
  * @req: the request being processed
  * @p: the matched policy
  */
-void set_policy_record(struct fsm_policy_req *req, struct fsm_policy *p)
+void
+set_policy_record(struct fsm_policy_req *req,
+                  struct fsm_policy *p,
+                  struct fsm_policy_reply *policy_reply)
 {
-    req->reply.policy = STRDUP(p->table_name);
-    if (req->reply.policy == NULL)
+    policy_reply->policy = STRDUP(p->table_name);
+    if (policy_reply->policy == NULL)
     {
         LOGE("%s: could not duplicate %s", __func__,
              p->table_name);
     }
-    req->reply.policy_idx = p->idx;
-    req->reply.rule_name = STRDUP(p->rule_name);
-    if (req->reply.rule_name == NULL)
+    policy_reply->policy_idx = p->idx;
+    policy_reply->rule_name = STRDUP(p->rule_name);
+    if (policy_reply->rule_name == NULL)
     {
         LOGE("%s: could not duplicate %s", __func__,
              p->rule_name);
@@ -655,9 +672,11 @@ void set_policy_record(struct fsm_policy_req *req, struct fsm_policy *p)
  * set_policy_redirects: set the request redirects
  * @req: the request being processed
  * @p: the matched policy
+ * @policy_reply: policy reply
  */
 void set_policy_redirects(struct fsm_policy_req *req,
-                          struct fsm_policy *p)
+                          struct fsm_policy *p,
+                          struct fsm_policy_reply *policy_reply)
 {
     ds_tree_t *tree;
     struct str_set *redirects;
@@ -667,8 +686,8 @@ void set_policy_redirects(struct fsm_policy_req *req,
 
     if (p->action == FSM_GATEKEEPER_REQ) return;
 
-    req->reply.redirect = false;
-    req->reply.rd_ttl = -1;
+    policy_reply->redirect = false;
+    policy_reply->rd_ttl = -1;
     rd_ttl = -1;
 
     /* Check if the policy's other_config map was set */
@@ -695,11 +714,11 @@ void set_policy_redirects(struct fsm_policy_req *req,
     {
         LOGT("%s: Policy %s: redirect to %s (ttl %d seconds)",
              __func__, p->table_name, redirects->array[i], rd_ttl);
-        STRSCPY(req->fqdn_req->redirects[i], redirects->array[i]);
+        STRSCPY(policy_reply->redirects[i], redirects->array[i]);
     }
 
-    req->reply.redirect = true;
-    req->reply.rd_ttl = rd_ttl;
+    policy_reply->redirect = true;
+    policy_reply->rd_ttl = rd_ttl;
 }
 
 /**
@@ -822,7 +841,8 @@ bool risk_level_compare(struct fsm_url_reply *reply,
  *
  * @param req the request
  */
-bool fsm_dns_cache_lookup(struct fsm_policy_req *req)
+bool
+fsm_dns_cache_lookup(struct fsm_policy_req *req, struct fsm_policy_reply *policy_reply)
 {
     struct ip2action_req  lkp_req;
     struct fsm_url_reply *reply;
@@ -832,13 +852,13 @@ bool fsm_dns_cache_lookup(struct fsm_policy_req *req)
     bool rc;
 
     /* Bail if the reuqest of no interest */
-    req_type = req->fqdn_req->req_type;
+    req_type = req->req_type;
     process = (req_type == FSM_IPV4_REQ);
     process |= (req_type == FSM_IPV6_REQ);
     if (!process) return false;
 
     /* Bail if the request is already from the cache */
-    if (req->fqdn_req->from_cache) return true;
+    if (policy_reply->from_cache) return true;
 
     /* look up the dns cache */
     memset(&lkp_req, 0, sizeof(lkp_req));
@@ -849,8 +869,8 @@ bool fsm_dns_cache_lookup(struct fsm_policy_req *req)
     /* bail if the dns cache lookup failed */
     if (!rc) return false;
 
-    req->fqdn_req->from_cache = true;
-    req->fqdn_req->cat_unknown_to_service = lkp_req.cat_unknown_to_service;
+    policy_reply->from_cache = true;
+    policy_reply->cat_unknown_to_service = lkp_req.cat_unknown_to_service;
 
     reply = req->fqdn_req->req_info->reply;
     reply = CALLOC(1, sizeof(struct fsm_url_reply));
@@ -879,7 +899,7 @@ bool fsm_dns_cache_lookup(struct fsm_policy_req *req)
         FREE(lkp_req.cache_gk.gk_policy);
     }
 
-    req->fqdn_req->categorized = FSM_FQDN_CAT_SUCCESS;
+    policy_reply->categorized = FSM_FQDN_CAT_SUCCESS;
     req->fqdn_req->req_info->reply = reply;
 
     return true;
@@ -893,14 +913,14 @@ bool fsm_dns_cache_lookup(struct fsm_policy_req *req)
  * @param req the request
  */
 
-bool fsm_cat_check(struct fsm_session *session,
-                   struct fsm_policy_req *req,
-                   struct fsm_policy *policy)
+bool fsm_cat_check(struct fsm_policy_req *req,
+                   struct fsm_policy *policy,
+                   struct fsm_policy_reply *policy_reply)
 {
     struct fsm_policy_rules *rules;
     bool rc;
 
-    rc = fsm_dns_cache_lookup(req);
+    rc = fsm_dns_cache_lookup(req, policy_reply);
 
     /* If no categorization request, return success */
     rules = &policy->rules;
@@ -910,15 +930,15 @@ bool fsm_cat_check(struct fsm_session *session,
      * The policy requires categorization, no web_cat provider.
      * Return failure.
      */
-    if (req->fqdn_req->categories_check == NULL) return false;
+    if (policy_reply->categories_check == NULL) return false;
 
     /*
      * If the FQDN is already categorized, don't check it again.
      * This optimizes to do only one categorization lookup per fqdn request
      */
-    if (req->fqdn_req->categorized != FSM_FQDN_CAT_NOP)
+    if (policy_reply->categorized != FSM_FQDN_CAT_NOP)
     {
-        rc = fsm_fqdncats_in_set(req, policy);
+        rc = fsm_fqdncats_in_set(req, policy, policy_reply);
 
         /*
          * If category in set and policy applies to categories out of the set,
@@ -936,7 +956,7 @@ bool fsm_cat_check(struct fsm_session *session,
     }
 
     /* Apply the web_cat rules */
-    rc = req->fqdn_req->categories_check(session, req, policy);
+    rc = policy_reply->categories_check(req, policy, policy_reply);
 
     return rc;
 }
@@ -949,14 +969,13 @@ bool fsm_cat_check(struct fsm_session *session,
  * @param req the request
  */
 
-bool fsm_risk_level_check(struct fsm_session *session,
-                          struct fsm_policy_req *req,
-                          struct fsm_policy *policy)
+bool fsm_risk_level_check(struct fsm_policy_req *req,
+                          struct fsm_policy *policy,
+                          struct fsm_policy_reply *policy_reply)
 {
     struct fsm_policy_rules *rules;
     struct fsm_url_reply *reply;
     bool rc;
-
 
     /* If no risk level request, return success */
     rules = &policy->rules;
@@ -966,9 +985,9 @@ bool fsm_risk_level_check(struct fsm_session *session,
      * The policy requires risk checking, no web_risk provider.
      * Return failure.
      */
-    if (req->fqdn_req->risk_level_check == NULL) return false;
+    if (policy_reply->risk_level_check == NULL) return false;
 
-    rc = fsm_dns_cache_lookup(req);
+    rc = fsm_dns_cache_lookup(req, policy_reply);
     if (rc)
     {
         reply = req->fqdn_req->req_info->reply;
@@ -977,35 +996,233 @@ bool fsm_risk_level_check(struct fsm_session *session,
     }
 
     /* Apply the risk rules */
-    rc = req->fqdn_req->risk_level_check(session, req, policy);
+    rc = policy_reply->risk_level_check(req, policy, policy_reply);
 
     return rc;
 }
 
 
-bool fsm_gatekeeper_check(struct fsm_session *session,
-                          struct fsm_policy_req *req,
-                          struct fsm_policy *p)
+bool fsm_gatekeeper_check(struct fsm_policy_req *req,
+                          struct fsm_policy *p,
+                          struct fsm_policy_reply *policy_reply)
 {
     bool rc;
 
     if (p->action != FSM_GATEKEEPER_REQ) return true;
 
-
+    LOGT("%s(): invoking gatekeeper for policy check", __func__);
     /*
      * The policy requires gatekeeper checking, no gatekeeper provider.
      * Return failure.
      */
-    if (req->fqdn_req->gatekeeper_req == NULL) return false;
+    if (policy_reply->gatekeeper_req == NULL)
+    {
+        LOGD("%s(): gatekeeper not configured, not performing policy check", __func__);
+        return false;
+    }
 
     /* Save the policy */
     req->policy = p;
 
     /* Apply the gatekeeper rules */
-    rc = req->fqdn_req->gatekeeper_req(session, req);
+    rc = policy_reply->gatekeeper_req(req, policy_reply);
+    if (!rc)
+    {
+        LOGT("%s(): gatekeeper policy check failed", __func__);
+        policy_reply->action = FSM_NO_MATCH;
+        policy_reply->log = FSM_REPORT_NONE;
+    }
+
     return rc;
 }
 
+int
+fsm_policy_initialize_pending_req(struct fqdn_pending_req *pending_req,
+                                  struct fsm_request_args *request_args)
+{
+    pending_req->fsm_context = request_args->session;
+    memcpy(&pending_req->dev_id, request_args->device_id, sizeof(pending_req->dev_id));
+    pending_req->acc = request_args->acc;
+
+    pending_req->req_info = CALLOC(1, sizeof(struct fsm_url_request));
+    if (pending_req->req_info == NULL) return -1;
+
+    return 0;
+}
+
+struct fsm_policy_req *
+fsm_policy_initialize_request(struct fsm_request_args *request_args)
+{
+    struct fsm_policy_req *policy_request;
+    struct fqdn_pending_req *pending_req;
+    struct sockaddr_storage *ip_addr;
+    os_macaddr_t *device_id;
+    int ret;
+
+    if (request_args == NULL) return NULL;
+
+
+    policy_request = CALLOC(1, sizeof(*policy_request));
+    if (policy_request == NULL) return NULL;
+
+    pending_req = CALLOC(1, sizeof(*pending_req));
+    if (pending_req == NULL) goto free_policy_request;
+
+    ret = fsm_policy_initialize_pending_req(pending_req, request_args);
+    if (ret == -1)
+    {
+        LOGD("%s(): failed to initialize pending request", __func__);
+        goto free_pending_req;
+    }
+    policy_request->fqdn_req = pending_req;
+
+    /* store the device id */
+    device_id = CALLOC(1, sizeof(*device_id));
+    if (device_id == NULL) goto free_req_info;
+    MEM_CPY(device_id, request_args->device_id, sizeof(*device_id));
+    policy_request->device_id = device_id;
+
+    ip_addr = CALLOC(1, sizeof(*ip_addr));
+    if (ip_addr == NULL) goto free_device_id;
+    policy_request->ip_addr = ip_addr;
+
+    policy_request->session = request_args->session;
+
+    policy_request->acc = request_args->acc;
+
+
+    return policy_request;
+
+free_ip_addr:
+    FREE(policy_request->ip_addr);
+free_device_id:
+    FREE(policy_request->device_id);
+free_req_info:
+    FREE(pending_req->req_info);
+free_pending_req:
+    FREE(pending_req);
+free_policy_request:
+    FREE(policy_request);
+
+    return NULL;
+}
+
+void
+fsm_policy_free_reply(struct fsm_policy_reply *policy_reply)
+{
+    LOGT("%s(): freeing policy reply == %p", __func__, policy_reply);
+    FREE(policy_reply->policy);
+    FREE(policy_reply->rule_name);
+    FREE(policy_reply);
+}
+
+struct fsm_policy_reply*
+fsm_policy_initialize_reply(struct fsm_session *session)
+{
+    struct fsm_policy_reply *policy_reply;
+
+    policy_reply = CALLOC(1, sizeof(*policy_reply));
+    if (policy_reply == NULL) return NULL;
+
+    policy_reply->rd_ttl = -1;
+    policy_reply->cache_ttl = 0;
+    policy_reply->risk_level = -1;
+    policy_reply->cat_match = -1;
+    policy_reply->redirect = -1;
+    policy_reply->to_report = false;
+    policy_reply->fsm_checked = false;
+    policy_reply->reply_type = FSM_INLINE_REPLY;
+    policy_reply->gatekeeper_response = process_gk_response_cb;
+
+    return policy_reply;
+}
+
+void
+fsm_policy_free_url(struct fqdn_pending_req* pending_req)
+{
+    fsm_free_url_reply(pending_req->req_info->reply);
+    FREE(pending_req->req_info);
+}
+
+void
+fsm_policy_free_request(struct fsm_policy_req *policy_request)
+{
+    struct fqdn_pending_req *pending_req;
+    LOGT("%s(): freeing policy request == %p", __func__, policy_request);
+
+    pending_req = policy_request->fqdn_req;
+    if (pending_req) fsm_policy_free_url(pending_req);
+
+    FREE(policy_request->ip_addr);
+    FREE(policy_request->device_id);
+    FREE(policy_request->fqdn_req);
+    FREE(policy_request);
+
+}
+
+static void
+fsm_gk_reply_updates(struct fsm_policy_req *policy_request,
+                     struct fsm_policy_reply *policy_reply)
+{
+    struct fsm_policy *policy;
+
+    if (policy_request == NULL) return;
+    if (policy_reply == NULL) return;
+
+    policy = policy_request->policy;
+    if (policy == NULL)
+    {
+        LOGD("%s(): fsm policy is NULL", __func__);
+        return;
+    }
+
+    LOGT("%s(): performing fsm updates on gk policy reply", __func__);
+
+    set_reporting(policy_request, policy, policy_reply);
+    set_tag_update(policy_request, policy, policy_reply);
+    set_excluded_devices_tag(policy_request, policy, policy_reply);
+    set_action(policy_request, policy, policy_reply);
+    set_policy_record(policy_request, policy, policy_reply);
+    set_policy_redirects(policy_request, policy, policy_reply);
+
+}
+
+void
+process_gk_response_cb(struct fsm_policy_req *policy_request,
+                       struct fsm_policy_reply *policy_reply)
+{
+    LOGT("%s(): processing response received from gatekeeper", __func__);
+
+    if (policy_reply->categorized == FSM_FQDN_CAT_SUCCESS)
+    {
+        LOGT("%s(): gatekeeper response succeeded", __func__);
+        fsm_gk_reply_updates(policy_request, policy_reply);
+    }
+
+    if (policy_reply->policy_response == NULL)
+    {
+        LOGT("%s(): policy response cb is NULL", __func__);
+        return;
+    }
+    LOGT("%s(): calling policy response callback", __func__);
+    policy_reply->policy_response(policy_request, policy_reply);
+
+}
+
+static bool
+fsm_gk_check_required(struct fsm_policy *policy,
+                      struct fsm_policy_reply *policy_reply)
+{
+    if (policy->action != FSM_GATEKEEPER_REQ) return false;
+
+    if (policy_reply->gatekeeper_req == NULL)
+    {
+        LOGT("%s(): gatekeeper is not configured", __func__);
+        return false;
+    }
+
+    return true;
+}
 
 /**
  * fsm_apply_policies: check a request against stored policies
@@ -1014,28 +1231,35 @@ bool fsm_gatekeeper_check(struct fsm_session *session,
  * Walks through the policies table looking for a match,
  * combines the action and report to apply
  */
-void fsm_apply_policies(struct fsm_session *session,
-                        struct fsm_policy_req *req)
+int fsm_apply_policies(struct fsm_policy_req *req,
+                       struct fsm_policy_reply *policy_reply)
 {
     struct fsm_policy *last_match_policy;
     struct policy_table *table;
+    int action = FSM_NO_MATCH;
     struct fsm_policy *p;
     int req_type;
     bool report;
+    bool gk_req;
 
     int i;
     bool rc, matched = false;
 
-    table = req->fqdn_req->policy_table;
+    table = policy_reply->policy_table;
     if (table == NULL)
     {
-        req->reply.action = FSM_NO_MATCH;
-        req->reply.log = FSM_REPORT_NONE;
-        return;
+        policy_reply->action = FSM_NO_MATCH;
+        policy_reply->log = FSM_REPORT_NONE;
+        return policy_reply->action;
     }
 
     req_type = fsm_policy_get_req_type(req);
-    LOGT("%s(): request type %d", __func__, req_type);
+    LOGT("%s(): request type %d, policy_request == %p, policy_reply == %p, fqdn == %p",
+         __func__,
+         req_type,
+         req,
+         policy_reply,
+         req->fqdn_req);
 
     last_match_policy = NULL;
     req->report = false;
@@ -1058,11 +1282,11 @@ void fsm_apply_policies(struct fsm_session *session,
         if (!rc) continue;
 
         /* fqdn rule passed. Check categories */
-        rc = fsm_cat_check(session, req, p);
+        rc = fsm_cat_check(req, p, policy_reply);
         if (!rc) continue;
 
         /* categories rules passed. Check risk level */
-        rc = fsm_risk_level_check(session, req, p);
+        rc = fsm_risk_level_check(req, p, policy_reply);
         if (!rc) continue;
 
         LOGT("%s: %s:%s succeeded", __func__, p->table_name, p->rule_name);
@@ -1095,25 +1319,34 @@ void fsm_apply_policies(struct fsm_session *session,
     if (matched)
     {
         p = last_match_policy;
-        rc = fsm_gatekeeper_check(session, req, p);
-        if (!rc)
+        gk_req = fsm_gk_check_required(p, policy_reply);
+        if (gk_req == true)
         {
-            req->reply.action = FSM_NO_MATCH;
-            req->reply.log = FSM_REPORT_NONE;
-            return;
+            LOGT("%s(): performing gatekeeper check for policy request == %p", __func__, req);
+            fsm_gatekeeper_check(req, p, policy_reply);
         }
-        set_reporting(req, p);
-        set_tag_update(req, p);
-        set_excluded_devices_tag(req, p);
-        set_action(req, p);
-        set_policy_record(req, p);
-        set_policy_redirects(req, p);
+
+        set_reporting(req, p, policy_reply);
+        set_tag_update(req, p, policy_reply);
+        set_excluded_devices_tag(req, p, policy_reply);
+        set_action(req, p, policy_reply);
+        set_policy_record(req, p, policy_reply);
+        set_policy_redirects(req, p, policy_reply);
     }
     else
     {
         // No match. Report accordingly
-        req->reply.action = FSM_NO_MATCH;
-        req->reply.log = FSM_REPORT_NONE;
+        policy_reply->action = FSM_NO_MATCH;
+        policy_reply->log = FSM_REPORT_NONE;
     }
-    return;
+    /* policy reply struct will be freed if policy_reply->policy_response is invoked
+     * so copying to local variable for returning */
+    action = policy_reply->action;
+    if (policy_reply->policy_response != NULL)
+    {
+        LOGT("%s(): calling policy response", __func__);
+        policy_reply->policy_response(req, policy_reply);;
+    }
+
+    return action;
 }

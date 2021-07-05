@@ -26,6 +26,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "schema.h"
 #include "ovsdb_table.h"
+#include "memutil.h"
 
 #include "wano.h"
 
@@ -93,8 +94,7 @@ struct wano_ovs_port *wano_ovs_port_get(const char *ifname)
         return op;
     }
 
-    op = calloc(1, sizeof(struct wano_ovs_port));
-    ASSERT(op != NULL, "Error allocating wano_ovs_port");
+    op = CALLOC(1, sizeof(struct wano_ovs_port));
 
     STRSCPY(op->op_state.ps_name, ifname);
 
@@ -124,7 +124,7 @@ void wano_ovs_port_reflink_fn(reflink_t *obj, reflink_t *sender)
     LOG(DEBUG, "ovs_port: %s: Reached 0 refcount.", self->op_state.ps_name);
     ds_tree_remove(&wano_ovs_port_list, self);
     reflink_fini(&self->op_reflink);
-    free(self);
+    FREE(self);
 }
 
 /*

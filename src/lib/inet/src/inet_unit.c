@@ -28,6 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 
 #include "log.h"
+#include "memutil.h"
 
 #include "inet_unit.h"
 
@@ -53,7 +54,7 @@ inet_unit_t *__inet_unit(intptr_t unit_id, bool started, inet_unit_t *dep, va_li
     inet_unit_t *ru;
     inet_unit_t *pu;
 
-    ru = calloc(1, sizeof(inet_unit_t));
+    ru = CALLOC(1, sizeof(inet_unit_t));
     ru->un_id = unit_id;
 
     ru->un_status = started;
@@ -78,7 +79,7 @@ inet_unit_t *__inet_unit(intptr_t unit_id, bool started, inet_unit_t *dep, va_li
     }
     else
     {
-        ru->un_deps = calloc(ru->un_ndeps, sizeof(inet_unit_t *));
+        ru->un_deps = CALLOC(ru->un_ndeps, sizeof(inet_unit_t *));
     }
 
     /* Build and return the list of dependencies */
@@ -163,10 +164,10 @@ bool __inet_unit_free(inet_unit_t *unit, void *ctx, bool descend)
     if (!descend)
     {
         memset(unit->un_deps, 0, sizeof(unit->un_deps[0]) * unit->un_ndeps);
-        free(unit->un_deps);
+        FREE(unit->un_deps);
 
         memset(unit, 0, sizeof(*unit));
-        free(unit);
+        FREE(unit);
     }
 
     return true;

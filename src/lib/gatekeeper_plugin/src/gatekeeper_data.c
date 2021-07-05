@@ -330,9 +330,10 @@ gatekeeper_get_header(struct gk_request *gk_req)
 /**
  * @brief set a gatekeeper request' unique id
  * @param gk_req the gatekeeper request
+ * @mcurl_data mcurl data, will be NULL if using easy curl
  */
 static bool
-gatekeeper_set_req_id(struct gk_request *gk_req)
+gatekeeper_set_req_id(struct gk_request *gk_req, struct gk_mcurl_data *mcurl_data)
 {
     struct gk_req_header *header;
     struct fsm_gk_mgr *mgr;
@@ -391,6 +392,15 @@ gatekeeper_set_req_id(struct gk_request *gk_req)
     }
 
     header->req_id = gatekeeper_update_counter(id);
+
+    LOGT("%s(): request id set to %d for request type %d",
+         __func__,
+         header->req_id,
+         gk_req->type);
+
+    if (mcurl_data) {
+        mcurl_data->req_id = header->req_id;
+    }
 
     return true;
 }
@@ -660,7 +670,8 @@ gatekeeper_free_pb(struct gk_packed_buffer *pb)
 
 struct gk_packed_buffer *
 gatekeeper_get_req(struct fsm_session *session,
-                   struct fsm_policy_req *req)
+                   struct fsm_policy_req *req,
+                   struct gk_mcurl_data *mcurl_data)
 {
     struct gk_request_data request_data;
     struct gk_packed_buffer *pb = NULL;
@@ -730,7 +741,7 @@ gatekeeper_get_req(struct fsm_session *session,
 
     if (!rc) goto err;
 
-    rc = gatekeeper_set_req_id(gk_req);
+    rc = gatekeeper_set_req_id(gk_req, mcurl_data);
     if (!rc) goto err;
 
     pb = gk_serialize_request(gk_req);

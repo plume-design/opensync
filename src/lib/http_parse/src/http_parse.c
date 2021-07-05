@@ -13,6 +13,7 @@
 #include "ovsdb_cache.h"
 #include "ovsdb_table.h"
 #include "schema.h"
+#include "memutil.h"
 
 static struct http_cache cache_mgr =
 {
@@ -369,8 +370,7 @@ http_get_device(struct http_session *h_session)
     parser = &h_session->parser;
     net_parser = parser->net_parser;
     eth = &net_parser->eth_header;
-    hdev = calloc(1, sizeof(*hdev));
-    if (hdev == NULL) return NULL;
+    hdev = CALLOC(1, sizeof(*hdev));
 
     memcpy(&hdev->device_mac, eth->srcmac, sizeof(os_macaddr_t));
     ds_tree_init(&hdev->reports, http_ua_cmp,
@@ -421,8 +421,7 @@ http_get_report(struct http_device *hdev,
     if (report != NULL) return report;
 
     tree = &hdev->reports;
-    report = calloc(1, sizeof(struct http_parse_report));
-    if (report == NULL) return NULL;
+    report = CALLOC(1, sizeof(struct http_parse_report));
 
     memcpy(report->user_agent, user_agent, MAX_ELEMENT_SIZE);
     memcpy(&report->src_mac, &hdev->device_mac, sizeof(os_macaddr_t));
@@ -451,7 +450,7 @@ http_lru_remove_report(struct http_device *hdev)
         report = ds_tree_next(&hdev->reports, report);
     }
     ds_tree_remove(&hdev->reports, candidate);
-    free(candidate);
+    FREE(candidate);
     hdev->cached_entries--;
 }
 
@@ -521,8 +520,7 @@ http_lookup_session(struct fsm_session *session)
     if (h_session != NULL) return h_session;
 
     LOGD("%s: Adding new session %s", __func__, session->name);
-    h_session = calloc(1, sizeof(struct http_session));
-    if (h_session == NULL) return NULL;
+    h_session = CALLOC(1, sizeof(struct http_session));
 
     ds_tree_insert(sessions, h_session, session);
 
@@ -547,10 +545,10 @@ http_free_device(struct http_device *hdev)
         remove = hreport;
         hreport = ds_tree_next(tree, hreport);
         ds_tree_remove(tree, remove);
-        free(remove);
+        FREE(remove);
     }
 
-    free(hdev);
+    FREE(hdev);
 }
 
 
@@ -576,7 +574,7 @@ http_free_session(struct http_session *h_session)
         http_free_device(remove);
     }
 
-    free(h_session);
+    FREE(h_session);
 }
 
 

@@ -30,7 +30,8 @@
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh &> /dev/null
 source /tmp/fut-base/shell/config/default_shell.sh &> /dev/null
 source "${FUT_TOPDIR}/shell/lib/unit_lib.sh" &> /dev/null
-[ -n "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" &> /dev/null
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" &> /dev/null
+[ -n "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" &> /dev/null
 
 
 tc_name="device/ovsdb/$(basename "$0")"
@@ -52,16 +53,17 @@ Script usage example:
    ./${tc_name} Wifi_Radio_State channel if_name wifi0 true
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 NARGS=4
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
 

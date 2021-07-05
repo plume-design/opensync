@@ -30,12 +30,12 @@ class OpenflowEntry(utils.ConfEntry):
         self.gen_delete_cmd()
 
     def gen_delete_cmd(self):
-        cmd = "/usr/plume/tools/ovsh d {} -w ".format(self.ovs_table)
+        cmd = "$OVSH_PATH d {} -w ".format(self.ovs_table)
         cmd += "token=={}".format(self.token)
         self.delete_cmd.append(cmd)
 
     def gen_insert_cmd(self):
-        cmd = "/usr/plume/tools/ovsh i {}".format(self.ovs_table)
+        cmd = "$OVSH_PATH i {}".format(self.ovs_table)
         for c in self.components:
             cmd += ' {}:="{}"'.format(c,self.__dict__[c])
         self.insert_cmd.append(cmd)

@@ -31,13 +31,18 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <time.h>
 
 #define MODULE_NAME "te-server"
-#include "log.h"
 #include "ds_dlist.h"
 #include "ds.h"
-#include "os_uds_link.h"
 #include "os_time.h"
+#include "memutil.h"
 
 #include "timevt_server.h"
+#include "timevt_msg_link.h"
+
+// default te local logs severity
+#ifndef TELOG_SEVERITY
+#define TELOG_SEVERITY LOG_SEVERITY_INFO
+#endif
 
 typedef struct timevt_msg
 {
@@ -48,7 +53,7 @@ typedef struct timevt_msg
 
 struct te_server
 {
-    uds_link_t socklink;
+    ipc_msg_link_t *msglink;
     struct ev_loop *ev_loop;
     size_t max_msges; // max allowed number of messages in rx buffer
     ev_timer aggr_timer; // aggregation timer
@@ -57,6 +62,7 @@ struct te_server
     uint32_t reportNo; // current report number
     tesrv_new_report_fp_t new_report_fp;
     void *subscriber;
+    log_severity_t log_sev;
 
     char *locid;
     char *swver;
@@ -69,6 +75,28 @@ struct te_server
     /* stats for reports */
     size_t cnt_reports;
 };
+
+static void log_event_local(log_severity_t sev, const uint8_t *mbuf, size_t mlen)
+{
+    if (sev == LOG_SEVERITY_DISABLED) return;
+
+    Sts__TimeEvent *pte = sts__time_event__unpack(NULL, mlen, mbuf);
+    if (pte == NULL) return;
+
+    const char *source = pte->source;
+    const char *cat_str = pte->cat;
+    const char *subject = pte->subject ? pte->subject : "time-event";
+    const char *seq = pte->seq ? pte->seq : "UNI";
+    const char *msg = pte->msg ? pte->msg : "";
+
+    char monotime[256];
+    (void)print_mono_time(monotime, sizeof(monotime), pte->time);
+
+    // time skipped because provided by logging engine
+    mlog(sev, LOG_MODULE_ID_TELOG, "%s [%s] %s: %s: [%s] %s", source, monotime, cat_str, subject, seq, msg);
+
+    sts__time_event__free_unpacked(pte, NULL);
+}
 
 void tesrv_subscribe_new_report(te_server_handle h, void *subscriber, tesrv_new_report_fp_t pfn)
 {
@@ -122,7 +150,7 @@ static bool send_report(te_server_handle h)
         }
 
         ds_dlist_remove(&h->messages, tmp);
-        free(tmp);
+        FREE(tmp);
     }
 
     size_t report_len = sts__time_events_report__get_packed_size(&report);
@@ -163,90 +191,88 @@ static void eh_on_aggr_time_expired(struct ev_loop *loop, ev_timer *w, int reven
 
 static void on_message_received(te_server_handle h, const uint8_t *mbuf, size_t mlen)
 {
-    size_t msize = sizeof(timevt_msg_t) + mlen;
-    timevt_msg_t *msg = (timevt_msg_t *)malloc(msize);
-    if (msg == NULL)
-    {
-        LOG(ERR, "Cannot allocate %zu bytes for received message, message lost", msize);
-        h->cnt_msg_lost++;
-    }
-    else
-    {
-        // storage limit reached ? remove oldest
-        if (h->messages_cnt >= h->max_msges)
-        {
-            free(ds_dlist_remove_head(&h->messages));
-            h->messages_cnt--;
-            h->cnt_msg_lost++;
-            h->cnt_msg_recv--;
-        }
-        // add new
-        msg->length = mlen;
-        memcpy(msg->buffer, mbuf, mlen);
+    void *temp = NULL;
 
-        ds_dlist_insert_tail(&h->messages, msg);
-        h->messages_cnt++;
-        h->cnt_msg_recv++;
+    log_event_local(h->log_sev, mbuf, mlen);
+
+    size_t msize = sizeof(timevt_msg_t) + mlen;
+    timevt_msg_t *msg = (timevt_msg_t *)MALLOC(msize);
+    // storage limit reached ? remove oldest
+    if (h->messages_cnt >= h->max_msges)
+    {
+        temp = ds_dlist_remove_head(&h->messages);
+        FREE(temp);
+        h->messages_cnt--;
+        h->cnt_msg_lost++;
+        h->cnt_msg_recv--;
     }
+    // add new
+    msg->length = mlen;
+    memcpy(msg->buffer, mbuf, mlen);
+
+    ds_dlist_insert_tail(&h->messages, msg);
+    h->messages_cnt++;
+    h->cnt_msg_recv++;
 }
 
-static bool process_dgram(te_server_handle h, const udgram_t *dg)
+static bool process_read_msg(te_server_handle h, const ipc_msg_t *msg)
 {
     uint32_t crc, rxcrc;
     size_t hdrlen = strlen(TIMEVT_HEADER);
-    if (dg->size < hdrlen + sizeof(crc) || 0 != strncmp(TIMEVT_HEADER, (char *)dg->data, hdrlen))
+    if (msg->size < hdrlen + sizeof(crc) || 0 != strncmp(TIMEVT_HEADER, (char *)msg->data, hdrlen))
     {
         return false;
     }
 
-    crc = te_crc32_compute(dg->data, dg->size - sizeof(crc));
-    rxcrc = te_crc32_read(dg->data + dg->size - sizeof(crc));
+    crc = te_crc32_compute(msg->data, msg->size - sizeof(crc));
+    rxcrc = te_crc32_read(msg->data + msg->size - sizeof(crc));
     if (crc != rxcrc)
     {
         return false;
     }
 
-    on_message_received(h, dg->data + hdrlen, dg->size - hdrlen - sizeof(crc));
+    on_message_received(h, msg->data + hdrlen, msg->size - hdrlen - sizeof(crc));
     return true;
 }
 
-static void eh_on_dgram_received(uds_link_t *self, const udgram_t *dg)
+static void eh_on_msg_received(ipc_msg_link_t *link, void *subscr, const ipc_msg_t *msg)
 {
-    te_server_handle h = CONTAINER_OF(self, struct te_server, socklink);
-    (void)process_dgram(h, dg);
+    (void)link;
+    te_server_handle h = (te_server_handle)subscr;
+    (void)process_read_msg(h, msg);
 }
 
 static char *alloc_string(char *oldstr, const char *newstr)
 {
-    char *str = (char *)((newstr != NULL) ? realloc(oldstr, strlen(newstr) + 1) : (free(oldstr), NULL));
+    char *str = NULL;
+
+    if (newstr != NULL) {
+        REALLOC(oldstr, strlen(newstr) + 1);
+    } else {
+        FREE(oldstr);
+        str = NULL;
+    }
     if (str) strcpy(str, newstr);
     return str;
 }
 
-te_server_handle tesrv_open(struct ev_loop *ev, const char *sock_name, const char *sw_version,
+te_server_handle tesrv_open(struct ev_loop *ev, const char *addr, const char *sw_version,
                             ev_tstamp aggregation_period, size_t max_events)
 {
     // server must use event loop
     if (ev == NULL) return NULL;
     if (max_events == 0) return NULL;
 
-    te_server_handle h = (te_server_handle)malloc(sizeof(*h));
-    if (h == NULL)
-    {
-        LOG(ERR, "malloc(%zu) failed in %s", sizeof(*h), __FUNCTION__);
-        return NULL;
-    }
+    te_server_handle h = (te_server_handle)MALLOC(sizeof(*h));
+
+    ipc_msg_link_t *ml = ipc_msg_link_open(addr, ev, TELOG_SERVER_MSG_LINK_ID);
+    if (ml == NULL) return NULL;
 
     memset(h, 0, sizeof(*h));
     ds_dlist_init(&h->messages, timevt_msg_t, node);
-
-    if (!uds_link_init(&h->socklink, sock_name ? sock_name : TESRV_SOCKET_ADDR, ev))
-    {
-        free(h);
-        return NULL;
-    }
-
-    uds_link_subscribe_datagram_read(&h->socklink, &eh_on_dgram_received);
+    h->msglink = ml;
+    h->log_sev = TELOG_SEVERITY;
+    ipc_msg_link_subscribe_receive(h->msglink, h, &eh_on_msg_received);
     h->ev_loop = ev;
     h->max_msges = max_events;
     h->swver = alloc_string(h->swver, sw_version);
@@ -262,7 +288,7 @@ void tesrv_close(te_server_handle h)
     if (h == NULL || h->ev_loop == NULL) return;
 
     ev_timer_stop(h->ev_loop, &h->aggr_timer);
-    uds_link_fini(&h->socklink);
+    ipc_msg_link_close(h->msglink);
     h->ev_loop = NULL;
 
     timevt_msg_t *msg;
@@ -272,20 +298,27 @@ void tesrv_close(te_server_handle h)
         msg = ds_dlist_next(&h->messages, msg);
 
         ds_dlist_remove(&h->messages, tmp);
-        free(tmp);
+        FREE(tmp);
     }
 
-    free(h->nodeid);
-    free(h->swver);
-    free(h->locid);
+    FREE(h->nodeid);
+    FREE(h->swver);
+    FREE(h->locid);
 
-    free(h);
+    FREE(h);
 }
 
 void tesrv_set_aggregation_period(te_server_handle h, ev_tstamp period)
 {
     h->aggr_timer.repeat = period;
     ev_timer_again(h->ev_loop, &h->aggr_timer);
+}
+
+bool tesrv_set_log_severity(te_server_handle h, log_severity_t lsev)
+{
+    if ((int)lsev < 0 || lsev >= LOG_SEVERITY_LAST) return false;
+    h->log_sev = lsev;
+    return true;
 }
 
 void tesrv_set_identity(te_server_handle h, const char *location_id, const char *node_id)
@@ -306,7 +339,7 @@ const char *tesrv_get_node_id(te_server_handle h)
 
 const char *tesrv_get_name(te_server_handle h)
 {
-    return uds_link_socket_name(&h->socklink);
+    return ipc_msg_link_addr(h->msglink);
 }
 
 size_t tesrv_get_msg_ack(te_server_handle h)

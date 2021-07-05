@@ -26,11 +26,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "module.h"
 #include "osa_assert.h"
+#include "memutil.h"
 
 #include "wano.h"
 
 #include "wanp_vlan_stam.h"
-#include "wano_localconfig.h"
+#include "wano_wan_config.h"
 
 /*
  * Structure representing a single VLAN plug-in instance
@@ -39,7 +40,7 @@ struct wanp_vlan
 {
     wano_plugin_handle_t        wvl_handle;
     char                        wvl_ifvlan[C_IFNAME_LEN];
-    int                         wvl_vlanid;
+    struct wano_wan_config      wvl_wan_config;
     bool                        wvl_if_created;
     wano_plugin_status_fn_t    *wvl_status_fn;
     wanp_vlan_state_t           wvl_state;
@@ -74,43 +75,33 @@ wano_plugin_handle_t *wanp_vlan_init(
         const char *ifname,
         wano_plugin_status_fn_t *status_fn)
 {
-    struct wano_localconfig wlc;
+    struct wano_wan_config wc;
     struct wanp_vlan *self;
 
     /* Load the persistent VLAN configuration and verify that it is valid */
-    if (!wano_localconfig_load(&wlc))
+    if (!wano_wan_config_get(&wc, WC_TYPE_VLAN))
     {
         LOG(INFO, "wanp_vlan: No persistent configuration present.");
         return NULL;
     }
 
-    if (!wlc.DataService_exists)
-    {
-        LOG(INFO, "wanp_vlan: No persistent VLAN configuration exists.");
-        return NULL;
-    }
-
-    if (wlc.DataService.VLAN < C_VLAN_MIN || wlc.DataService.VLAN > C_VLAN_MAX)
-    {
-        LOG(INFO, "wanp_vlan: Invalid VLAN ID: %d", wlc.DataService.VLAN);
-        return NULL;
-    }
-
-    self = calloc(1, sizeof(struct wanp_vlan));
-    ASSERT(self != NULL, "Error allocating VLAN plug-in object")
+    self = CALLOC(1, sizeof(struct wanp_vlan));
 
     STRSCPY(self->wvl_handle.wh_ifname, ifname);
     self->wvl_handle.wh_plugin = wp;
     self->wvl_status_fn = status_fn;
 
-    self->wvl_vlanid = wlc.DataService.VLAN;
-
     /* Generate the interface name */
-    snprintf(self->wvl_ifvlan, sizeof(self->wvl_ifvlan), "%s.%d", self->wvl_handle.wh_ifname, self->wvl_vlanid);
+    snprintf(self->wvl_ifvlan, sizeof(self->wvl_ifvlan),
+            "%s.%d",
+            self->wvl_handle.wh_ifname,
+            self->wvl_wan_config.wc_type_vlan.wc_vlanid);
 
     wano_ppline_event_init(&self->wvl_ppe, wanp_vlan_ppline_event_fn);
 
-    LOG(INFO, "wanp_vlan: Creating interface %s with VLAN ID %d.", self->wvl_ifvlan, self->wvl_vlanid);
+    LOG(INFO, "wanp_vlan: Creating interface %s with VLAN ID %d.",
+            self->wvl_ifvlan,
+            self->wvl_wan_config.wc_type_vlan.wc_vlanid);
 
     return &self->wvl_handle;
 }
@@ -132,6 +123,8 @@ void wanp_vlan_fini(wano_plugin_handle_t *wh)
 
     wano_ppline_fini(&self->wvl_ppl);
 
+    wano_wan_config_status_set(wh->wh_ifname, WC_TYPE_VLAN, WC_STATUS_ERROR);
+
     /* If the VLAN interface was created, disable it */
     if (self->wvl_if_created)
     {
@@ -145,7 +138,7 @@ void wanp_vlan_fini(wano_plugin_handle_t *wh)
         }
     }
 
-    free(self);
+    FREE(self);
 }
 
 void wanp_vlan_inet_state_event_fn(wano_inet_state_event_t *ise, struct wano_inet_state *is)
@@ -216,7 +209,7 @@ enum wanp_vlan_state wanp_vlan_state_IF_CREATE(
                     self->wvl_ifvlan,
                     .if_type = "vlan",
                     .parent_ifname = self->wvl_handle.wh_ifname,
-                    .vlan_id = self->wvl_vlanid,
+                    .vlan_id = self->wvl_wan_config.wc_type_vlan.wc_vlanid,
                     .network = WANO_TRI_TRUE,
                     .enabled = WANO_TRI_TRUE,
                     .ip_assign_scheme = "none"))
@@ -322,6 +315,7 @@ enum wanp_vlan_state wanp_vlan_state_IDLE(
         {
             struct wano_plugin_status ws = WANO_PLUGIN_STATUS(WANP_BUSY);
             self->wvl_status_fn(&self->wvl_handle, &ws);
+            wano_wan_config_status_set(self->wvl_handle.wh_ifname, WC_TYPE_VLAN, WC_STATUS_SUCCESS);
             break;
         }
 
@@ -368,6 +362,7 @@ enum wanp_vlan_state wanp_vlan_state_ERROR(
         {
             struct wano_plugin_status ws = WANO_PLUGIN_STATUS(WANP_ERROR);
             self->wvl_status_fn(&self->wvl_handle, &ws);
+            wano_wan_config_status_set(self->wvl_handle.wh_ifname, WC_TYPE_VLAN, WC_STATUS_ERROR);
             break;
         }
 
@@ -385,11 +380,13 @@ enum wanp_vlan_state wanp_vlan_state_ERROR(
  */
 void wanp_vlan_module_start(void *data)
 {
+    (void)data;
     wano_plugin_register(&wanp_vlan);
 }
 
 void wanp_vlan_module_stop(void *data)
 {
+    (void)data;
     wano_plugin_unregister(&wanp_vlan);
 }
 

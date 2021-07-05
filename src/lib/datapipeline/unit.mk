@@ -33,7 +33,7 @@ UNIT_NAME := datapipeline
 UNIT_TYPE := LIB
 
 UNIT_SRC := src/opensync_stats.pb-c.c
-UNIT_SRC += src/dppline.c
+UNIT_SRC += $(if $(CONFIG_TARGET_BSAL_SIM),src/dppline_bsal_sim.c,src/dppline.c)
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 

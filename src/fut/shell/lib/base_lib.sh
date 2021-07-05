@@ -125,10 +125,10 @@ raise()
                 exception_type="FAIL"
                 ;;
             # Use for testcase failures
-            -olfm)
-                exception_name="OverrideLibFileMissing"
+            -ofm)
+                exception_name="OverrideFileMissing"
                 exception_type="FAIL"
-                exception_msg="Missing LIB_OVERRIDE_FILE=${LIB_OVERRIDE_FILE} file. Check LIB_OVERRIDE_FILE and file existence"
+                exception_msg="Missing *_OVERRIDE_FILE=${exception_msg} file. Check *_OVERRIDE_FILE and file existence"
                 ;;
             # Use when error occurred due to invalid or missing argument
             -arg)

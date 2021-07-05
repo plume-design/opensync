@@ -48,6 +48,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb_table.h"
 #include "schema.h"
 #include "net_header_parse.h"
+#include "memutil.h"
 
 static struct arp_cache
 cache_mgr =
@@ -123,19 +124,8 @@ arp_plugin_init(struct fsm_session *session)
     if (arp_session->initialized) return 0;
 
     parser = &arp_session->parser;
-    parser->sender.ipaddr = calloc(1, sizeof(*parser->sender.ipaddr));
-    if (parser->sender.ipaddr == NULL)
-    {
-        LOGE("%s: could not allocate sender ip storage", __func__);
-        goto exit_on_error;
-    }
-
-    parser->target.ipaddr = calloc(1, sizeof(*parser->sender.ipaddr));
-    if (parser->target.ipaddr == NULL)
-    {
-        LOGE("%s: could not allocate sender ip storage", __func__);
-        goto exit_on_error;
-    }
+    parser->sender.ipaddr = CALLOC(1, sizeof(*parser->sender.ipaddr));
+    parser->target.ipaddr = CALLOC(1, sizeof(*parser->sender.ipaddr));
 
     /* Set the fsm session */
     session->ops.update = arp_plugin_update;
@@ -426,9 +416,7 @@ arp_lookup_session(struct fsm_session *session)
     if (a_session != NULL) return a_session;
 
     LOGD("%s: Adding new session %s", __func__, session->name);
-    a_session = calloc(1, sizeof(struct arp_session));
-    if (a_session == NULL) return NULL;
-
+    a_session = CALLOC(1, sizeof(struct arp_session));
     ds_tree_insert(sessions, a_session, session);
 
     return a_session;
@@ -446,9 +434,9 @@ arp_free_session(struct arp_session *a_session)
     struct arp_parser *parser;
 
     parser = &a_session->parser;
-    free(parser->sender.ipaddr);
-    free(parser->target.ipaddr);
-    free(a_session);
+    FREE(parser->sender.ipaddr);
+    FREE(parser->target.ipaddr);
+    FREE(a_session);
 }
 
 

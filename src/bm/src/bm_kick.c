@@ -46,6 +46,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <linux/types.h>
 
 #include "bm.h"
+#include "memutil.h"
 
 
 /*****************************************************************************/
@@ -261,7 +262,7 @@ static void
 bm_kick_free(bm_kick_t *kick)
 {
     evsched_task_cancel_by_find(NULL, kick, EVSCHED_FIND_BY_ARG);
-    free(kick);
+    FREE(kick);
     return;
 }
 
@@ -1132,10 +1133,7 @@ bm_kick(bm_client_t *client, bm_kick_type_t type, uint8_t rssi)
         return true;
     }
 
-    if (!(kick = (bm_kick_t *)calloc(1, sizeof(*kick)))) {
-        LOGE("Failed to allocate memory for kick queue entry");
-        return false;
-    }
+    kick = (bm_kick_t *)CALLOC(1, sizeof(*kick));
 
     memcpy(&kick->macaddr, &client->macaddr, sizeof(kick->macaddr));
     kick->type = type;

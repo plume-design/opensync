@@ -34,6 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "log.h"
 #include "util.h"
+#include "memutil.h"
 
 #include "inet.h"
 #include "inet_base.h"
@@ -46,11 +47,7 @@ inet_t *inet_vif_new(const char *ifname)
 {
     inet_vif_t *self = NULL;
 
-    self = malloc(sizeof(*self));
-    if (self == NULL)
-    {
-        goto error;
-    }
+    self = MALLOC(sizeof(*self));
 
     if (!inet_vif_init(self, ifname))
     {
@@ -61,7 +58,7 @@ inet_t *inet_vif_new(const char *ifname)
     return (inet_t *)self;
 
  error:
-    if (self != NULL) free(self);
+    if (self != NULL) FREE(self);
     return NULL;
 }
 

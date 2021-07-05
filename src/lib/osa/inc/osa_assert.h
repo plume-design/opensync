@@ -33,25 +33,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <signal.h>
 #include <stdio.h>
 
-#include "os_backtrace.h"
-
-#define ASSERT_EXIT_RESTART     64
-
-#define ASSERT_RET(cond, ret, fmt...)                                              \
-   if (!(cond))                                                                    \
-{                                                                                  \
-   osa_assert_dump(#cond, __FUNCTION__, __FILE__, __LINE__, fmt);                  \
-   backtrace_dump();                                                               \
-   exit(ret); /* Exit with errors .... */                                          \
+#define ASSERT(cond, fmt...)                                            \
+if (!(cond))                                                            \
+{                                                                       \
+   osa_assert_dump(#cond, __FUNCTION__, __FILE__, __LINE__, fmt);       \
 }
-
-/** Asserts restart the agent, while errors shut it down */
-#define ASSERT(cond, fmt...)   ASSERT_RET(cond, ASSERT_EXIT_RESTART, fmt)
-#define FAIL(cond, fmt...)     ASSERT_RET(cond, 1, fmt)
-
-#define ASSERT_INVALID_ARG "invalid argument"
-
-#define ASSERT_ARG(cond) ASSERT(cond, ASSERT_INVALID_ARG)
 
 extern void osa_assert_dump(
         const char *cond,

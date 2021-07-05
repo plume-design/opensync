@@ -27,6 +27,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <libgen.h>
 
 #include "log.h"
 
@@ -36,7 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 enum e_opt_id
 {
-    OPT_ADDR, OPT_NAME, OPT_CAT, OPT_SUB, OPT_STEP, OPT_HELP, OPT_VER, OPT_LOCAL, OPT_STDOUT
+    OPT_NAME, OPT_CAT, OPT_SUB, OPT_STEP, OPT_HELP, OPT_VER
 };
 
 typedef struct sOption
@@ -50,16 +51,12 @@ typedef struct sOption
 
 static const tOption Options[] =
 {
-    { .id = OPT_ADDR, .params = 1, .opt_short = "-a", .opt_long = "--addr <addr>", .name = "Server address path, default is "TESRV_SOCKET_ADDR },
     { .id = OPT_NAME, .params = 1, .opt_short = "-n", .opt_long = "--name <name>", .name = "Client name, default is process name" },
     { .id = OPT_CAT,  .params = 1, .opt_short = "-c", .opt_long = "--category <cat>", .name = "Event category, default is "ECAT_DEFAULT },
     { .id = OPT_SUB,  .params = 1, .opt_short = "-s", .opt_long = "--subject <sub>", .name = "Event subject name, optional" },
     { .id = OPT_STEP, .params = 1, .opt_short = "-t", .opt_long = "--step <step>", .name = "Event step name, default is "TECLI_DEFAULT_STEP },
-    { .id = OPT_LOCAL,.params = 0, .opt_short = "-l", .opt_long = "--local", .name = "Only local logging w/o server connection" },
-    {.id = OPT_STDOUT,.params = 0, .opt_short = "-o", .opt_long = "--stdout", .name = "Log to stdout instead of default syslog" },
     { .id = OPT_HELP, .params = 0, .opt_short = "-h", .opt_long = "--help", .name = "Prints help message for logger usage and exits" },
     { .id = OPT_VER,  .params = 0, .opt_short = "-v", .opt_long = "--version", .name = "Prints time-event logger version and exits" },
-
 };
 
 static const tOption *find_opt(const char *opt_str)
@@ -78,8 +75,8 @@ static const tOption *find_opt(const char *opt_str)
 
 static void print_logger_version()
 {
-    puts("PLUME time-event logger utility, version 1.0");
-    puts("Enter time-events to the logging server and locally\n");
+    puts("PLUME time-event logger utility, version 1.1");
+    puts("Enter time-events to the logging server\n");
 }
 
 static void print_help(const char *appname)
@@ -100,14 +97,11 @@ int main(int argc, char *argv[])
     int rv = EXIT_FAILURE;
 
     const char *cat = ECAT_DEFAULT;
-    const char *addr = TESRV_SOCKET_ADDR;
-    char *name = argv[0];
+    char *name = basename(argv[0]);
 
     const char *subject = NULL;
     const char *step = NULL;
     const char *msg = NULL;
-    int local_log = 0;
-    int stdout_log = 0;
 
     int n;
     for (n = 1; n < argc; n++)
@@ -123,14 +117,10 @@ int main(int argc, char *argv[])
             {
                 switch(opt->id)
                 {
-                case OPT_ADDR: addr = argv[++n]; break;
                 case OPT_NAME: name = argv[++n]; break;
                 case OPT_CAT:  cat = argv[++n]; break;
                 case OPT_SUB:  subject = argv[++n]; break;
                 case OPT_STEP: step = argv[++n]; break;
-
-                case OPT_LOCAL: local_log = 1; break;
-                case OPT_STDOUT: stdout_log = 1; break;
 
                 case OPT_VER:
                     print_logger_version();
@@ -149,9 +139,9 @@ int main(int argc, char *argv[])
         }
     }
 
-    log_open(name, stdout_log ? LOG_OPEN_STDOUT : LOG_OPEN_SYSLOG);
+    log_open(name, LOG_OPEN_DEFAULT);
 
-    if (te_client_init(name, local_log ? NULL : addr))
+    if (te_client_init(NULL))
     {
         if (te_client_log(cat, subject, step, msg ? "%s" : NULL, msg))
         {

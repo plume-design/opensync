@@ -40,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <limits.h>
 
 #include "util.h"
+#include "memutil.h"
 #include "sm.h"
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
@@ -75,10 +76,8 @@ static inline sm_rssi_ctx_t * sm_rssi_ctx_alloc()
 {
     sm_rssi_ctx_t *rssi_ctx = NULL;
 
-    rssi_ctx = malloc(sizeof(sm_rssi_ctx_t));
-    if (rssi_ctx) {
-        memset(rssi_ctx, 0, sizeof(sm_rssi_ctx_t));
-    }
+    rssi_ctx = MALLOC(sizeof(sm_rssi_ctx_t));
+    memset(rssi_ctx, 0, sizeof(sm_rssi_ctx_t));
 
     return rssi_ctx;
 }
@@ -86,7 +85,7 @@ static inline sm_rssi_ctx_t * sm_rssi_ctx_alloc()
 static inline void sm_rssi_ctx_free(sm_rssi_ctx_t *rssi_ctx)
 {
     if (NULL != rssi_ctx) {
-        free(rssi_ctx);
+        FREE(rssi_ctx);
     }
 }
 
@@ -202,7 +201,7 @@ bool sm_rssi_raw_clear(
             rssi = ds_dlist_inext(&rssi_iter))
     {
         ds_dlist_iremove(&rssi_iter);
-        free(rssi);
+        FREE(rssi);
         rssi = NULL;
     }
 
@@ -325,10 +324,7 @@ bool sm_rssi_report_calculate_raw(
             rssi_entry != NULL;
             rssi_entry = ds_dlist_inext(&rssi_iter))
     {
-        if (!(rssi = calloc(1, sizeof(*rssi)))) {
-            LOGEM("Failed to allocate memory for new rssi data");
-            return false;
-        }
+        rssi = CALLOC(1, sizeof(*rssi));
 
         rssi->rssi = rssi_entry->rssi;
 
@@ -820,14 +816,7 @@ bool sm_rssi_stats_results_update(
     }
 
     /* Add RSSI to the cache for later processing */
-    if (!(rssi_entry = calloc(1, sizeof(*rssi_entry)))) {
-        LOGEM("Updating %s rssi %d for "MAC_ADDRESS_FORMAT
-              " (Failed to allocate memory for new rssi data)",
-             radio_get_name_from_cfg(radio_cfg),
-             rssi,
-             MAC_ADDRESS_PRINT(mac));
-        return false;
-    }
+    rssi_entry = CALLOC(1, sizeof(*rssi_entry));
 
     rssi_entry->rssi = rssi;
     rssi_entry->timestamp_ms = get_timestamp();

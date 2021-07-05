@@ -25,25 +25,13 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-# TEST DESCRIPTION
-# Try to configure MTU to existing interface.
-#
-# TEST PROCEDURE
-# - Configure interface with selected parameters
-#
-# EXPECTED RESULTS
-# Test is passed:
-# - if interface is properly configured AND
-# - if mtu is applied to State table
-# Test fails:
-# - if inteface cannot be configured OR
-# - if mtu is not applied to State table
-
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="nm2/$(basename "$0")"
 manager_setup_file="nm2/nm2_setup.sh"
@@ -66,16 +54,17 @@ Script usage example:
    ./${tc_name} eth0 eth 1500
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
 
 NARGS=3
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
@@ -93,7 +82,7 @@ trap '
     check_restore_management_access || true
 ' EXIT SIGINT SIGTERM
 
-log_title "$tc_name: NM2 test - Testing table Wifi_Inet_Config field mtu"
+log_title "$tc_name: NM2 test - Testing table Wifi_Inet_Config field mtu - $mtu"
 
 log "$tc_name: Creating Wifi_Inet_Config entries for $if_name (enabled=true, network=true, ip_assign_scheme=static)"
 create_inet_entry \
@@ -102,21 +91,21 @@ create_inet_entry \
     -network true \
     -ip_assign_scheme static \
     -if_type "$if_type" &&
-        log "$tc_name: Interface successfully created" ||
-        raise "Failed to create interface" -l "$tc_name" -tc
+        log "$tc_name: Interface $if_name created - Success" ||
+        raise "FAIL: Failed to create $if_name interface" -l "$tc_name" -ds
 
 log "$tc_name: Setting MTU to $mtu"
 update_ovsdb_entry Wifi_Inet_Config -w if_name "$if_name" -u mtu "$mtu" &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config table updated - mtu $mtu" ||
-    raise "update_ovsdb_entry - Failed to update Wifi_Inet_Config - mtu $mtu" -l "$tc_name" -tc
+    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config::mtu is $mtu - Success" ||
+    raise "FAIL: update_ovsdb_entry - Wifi_Inet_Config::mtu is not $mtu" -l "$tc_name" -oe
 
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is mtu "$mtu" &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State - mtu $mtu" ||
-    raise "wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - mtu $mtu" -l "$tc_name" -tc
+    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::mtu is $mtu - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::mtu is not $mtu" -l "$tc_name" -tc
 
-log "$tc_name: LEVEL 2 - Checking if MTU was properly applied to $if_name"
+log "$tc_name: Checking if MTU was properly applied for $if_name - LEVEL2"
 wait_for_function_response 0 "get_interface_mtu_from_system $if_name | grep -q \"$mtu\"" &&
-    log "$tc_name: MTU applied to ifconfig - interface $if_name" ||
-    raise "Failed to apply MTU to ifconfig - interface $if_name" -l "$tc_name" -tc
+    log "$tc_name: LEVEL2 - MTU applied to ifconfig for interface $if_name - Success" ||
+    raise "FAIL: LEVEL2 - Failed to apply MTU to ifconfig for interface $if_name" -l "$tc_name" -tc
 
 pass

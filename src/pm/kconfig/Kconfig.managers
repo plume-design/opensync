@@ -40,10 +40,13 @@ if MANAGER_PM
             config PM_LED_CONNECT_FAIL_TIMEOUT
                 int "Timeout in seconds to change from connecting to connect failed state"
                 default 0
+
+            config LEGACY_LED_STATE_MAPPING
+                bool "Enable support for LED state mapping"
+                default y
         endif
 
     menuconfig PM_ENABLE_TM
-        depends on !MANAGER_TM
         bool "Enable support for Thermal Management"
         default n
         help
@@ -104,7 +107,6 @@ if MANAGER_PM
 
 
     config PM_ENABLE_LM
-        depends on !MANAGER_LM
         bool "Enable support for Log Management"
         default y
         help

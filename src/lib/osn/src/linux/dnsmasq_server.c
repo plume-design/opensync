@@ -39,6 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "evx.h"
 #include "util.h"
+#include "memutil.h"
 #include "daemon.h"
 #include "os_file.h"
 #include "os_regex.h"
@@ -73,7 +74,7 @@ static char dnsmasq_server_conf_header[] =
     "domain=lan\n"
     "server=/lan/\n"
     "dhcp-leasefile="CONFIG_OSN_DNSMASQ_LEASE_PATH"\n"
-    "resolv-file=/tmp/resolv.conf\n"
+    "resolv-file="CONFIG_OSN_DNSMASQ_RESOLV_CONF_PATH"\n"
     "no-dhcp-interface=br-wan,eth0,eth1\n"
     "address=/osync.lan/192.168.1.1\n"
     "ptr-record=1.1.168.192.in-addr.arpa,osync.lan\n"
@@ -269,7 +270,7 @@ bool dnsmasq_server_fini(dnsmasq_server_t *self)
     {
         if (self->ds_opts[ii] != NULL)
         {
-            free(self->ds_opts[ii]);
+            FREE(self->ds_opts[ii]);
             self->ds_opts[ii] = NULL;
         }
     }
@@ -278,15 +279,15 @@ bool dnsmasq_server_fini(dnsmasq_server_t *self)
     ds_tree_foreach_iter(&self->ds_range_list, dr, &iter)
     {
         ds_tree_iremove(&iter);
-        free(dr);
+        FREE(dr);
     }
 
     /* Free DHCP reservations list */
     ds_tree_foreach_iter(&self->ds_reservation_list, rip, &iter)
     {
         ds_tree_iremove(&iter);
-        if (rip->ds_hostname != NULL) free(rip->ds_hostname);
-        free(rip);
+        if (rip->ds_hostname != NULL) FREE(rip->ds_hostname);
+        FREE(rip);
     }
 
     return retval;
@@ -368,7 +369,7 @@ bool dnsmasq_server_option_set(
 
     if (self->ds_opts[opt] != NULL)
     {
-        free(self->ds_opts[opt]);
+        FREE(self->ds_opts[opt]);
         self->ds_opts[opt] = NULL;
     }
 
@@ -399,7 +400,7 @@ bool dnsmasq_server_range_add(dnsmasq_server_t *self, osn_ip_addr_t start, osn_i
         return true;
     }
 
-    dr = calloc(1, sizeof(struct dnsmasq_range));
+    dr = CALLOC(1, sizeof(struct dnsmasq_range));
     dr->dr_range_start = start;
     dr->dr_range_stop = stop;
     ds_tree_insert(&self->ds_range_list, dr, dr);
@@ -418,7 +419,7 @@ bool dnsmasq_server_range_del(dnsmasq_server_t *self, osn_ip_addr_t start, osn_i
 
     ds_tree_remove(&self->ds_range_list, dr);
 
-    free(dr);
+    FREE(dr);
 
     return true;
 }
@@ -439,7 +440,7 @@ bool dnsmasq_server_reservation_add(
     if (rip == NULL)
     {
         /* New reservation, add it */
-        rip = calloc(1, sizeof(struct dnsmasq_reservation));
+        rip = CALLOC(1, sizeof(struct dnsmasq_reservation));
         *rip = DNSMASQ_RESERVATION_INIT;
         rip->ds_macaddr = macaddr;
         ds_tree_insert(&self->ds_reservation_list, rip, &rip->ds_macaddr);
@@ -450,7 +451,7 @@ bool dnsmasq_server_reservation_add(
     /* Update the hostname */
     if (rip->ds_hostname != NULL)
     {
-        free(rip->ds_hostname);
+        FREE(rip->ds_hostname);
         rip->ds_hostname = NULL;
     }
 
@@ -468,8 +469,8 @@ bool dnsmasq_server_reservation_del(dnsmasq_server_t *self, osn_mac_addr_t macad
 
     ds_tree_remove(&self->ds_reservation_list, rip);
 
-    if (rip->ds_hostname != NULL) free(rip->ds_hostname);
-    free(rip);
+    if (rip->ds_hostname != NULL) FREE(rip->ds_hostname);
+    FREE(rip);
 
     return true;
 }
@@ -661,7 +662,7 @@ void dnsmasq_lease_clear(dnsmasq_server_t *self)
 {
     if (self->ds_status.ds_leases != NULL)
     {
-        free(self->ds_status.ds_leases);
+        FREE(self->ds_status.ds_leases);
         self->ds_status.ds_leases = NULL;
     }
 
@@ -680,7 +681,7 @@ void dnsmasq_lease_add(dnsmasq_server_t *self, struct osn_dhcp_server_lease *dl)
     if ((st->ds_leases_len % DNSMASQ_LEASE_RE_GROW) == 0)
     {
         /* Reallocate buffer */
-        st->ds_leases = realloc(
+        st->ds_leases = REALLOC(
                 st->ds_leases,
                 (st->ds_leases_len + DNSMASQ_LEASE_RE_GROW) * sizeof(struct osn_dhcp_server_lease));
     }

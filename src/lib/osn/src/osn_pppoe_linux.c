@@ -29,6 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "osn_pppoe.h"
 #include "lnx_pppoe.h"
+#include "memutil.h"
 
 struct osn_pppoe
 {
@@ -43,17 +44,11 @@ osn_pppoe_t *osn_pppoe_new(const char *ifname)
 {
     osn_pppoe_t *self;
 
-    self = calloc(1, sizeof(osn_pppoe_t));
-    if (self == NULL)
-    {
-        LOG(ERR, "osn_pppoe: %s: Error allocating PPPoE object.", ifname);
-        return NULL;
-    }
-
+    self = CALLOC(1, sizeof(osn_pppoe_t));
     if (!lnx_pppoe_init(&self->op_pppoe, ifname))
     {
         LOG(ERR, "osn_pppoe: %s: Error initializing PPPoE object.", ifname);
-        free(self);
+        FREE(self);
         return NULL;
     }
 
@@ -70,7 +65,7 @@ bool osn_pppoe_del(osn_pppoe_t *self)
         retval = false;
     }
 
-    free(self);
+    FREE(self);
 
     return retval;
 }

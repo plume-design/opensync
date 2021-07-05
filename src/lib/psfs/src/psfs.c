@@ -38,6 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "osp_ps.h"
 #include "util.h"
+#include "memutil.h"
 #include "const.h"
 
 #include "psfs.h"
@@ -130,6 +131,7 @@ bool psfs_open(psfs_t *ps, const char *name, int flags)
     STRSCPY(ps->psfs_name, name);
     ps->psfs_flags = flags;
     ds_tree_init(&ps->psfs_root, ds_str_cmp, struct psfs_record, pr_tnode);
+    ps->psfs_next = NULL;
 
     /* Open the store folder */
     ps->psfs_dirfd = psfs_dir_open(flags & OSP_PS_PRESERVE);
@@ -355,12 +357,12 @@ bool psfs_load(psfs_t *ps)
      */
     do
     {
-        pr = calloc(1, sizeof(*pr));
+        pr = CALLOC(1, sizeof(*pr));
 
         rc = psfs_record_read(ps->psfs_fd, pr);
         if (rc <= 0)
         {
-            free(pr);
+            FREE(pr);
             continue;
         }
 
@@ -377,7 +379,7 @@ bool psfs_load(psfs_t *ps)
         if (pr->pr_datasz == 0)
         {
             psfs_record_fini(pr);
-            free(pr);
+            FREE(pr);
             continue;
         }
 
@@ -386,6 +388,8 @@ bool psfs_load(psfs_t *ps)
         ps->psfs_used += pr->pr_used;
     }
     while (rc != 0);
+
+    psfs_rewind(ps);
 
     return true;
 }
@@ -484,7 +488,7 @@ ssize_t psfs_set(psfs_t *ps, const char *key, const void *value, size_t value_sz
         return 0;
     }
 
-    pr = calloc(1, sizeof(*pr));
+    pr = CALLOC(1, sizeof(*pr));
     psfs_record_init(pr, key, value, value_sz);
 
     /* Flag this record as dirty */
@@ -744,6 +748,12 @@ bool psfs_file_unlock(int fd)
  */
 void psfs_drop_record(psfs_t *ps, struct psfs_record *pr, ds_tree_iter_t *iter)
 {
+    /* Make sure psfs_next never points to an invalid object */
+    if (ps->psfs_next == pr)
+    {
+        ps->psfs_next = ds_tree_next(&ps->psfs_root, pr);
+    }
+
     if (iter != NULL)
     {
         ds_tree_iremove(iter);
@@ -755,7 +765,7 @@ void psfs_drop_record(psfs_t *ps, struct psfs_record *pr, ds_tree_iter_t *iter)
 
     ps->psfs_used -= pr->pr_used;
     psfs_record_fini(pr);
-    free(pr);
+    FREE(pr);
 }
 
 /**
@@ -779,7 +789,7 @@ void psfs_record_init(
 
     if (data == NULL) datasz = 0;
 
-    pr->pr_key = malloc(ksz + datasz);
+    pr->pr_key = MALLOC(ksz + datasz);
     pr->pr_data = (void *)(pr->pr_key + ksz);
 
     memcpy(pr->pr_key, key, ksz);
@@ -804,7 +814,7 @@ void psfs_record_fini(struct psfs_record *pr)
      * No need to free pr->pr_data as it is allocated in the same buffer as
      * pr_key -- see psfs_record_init()
      */
-    if (pr->pr_key != NULL) free(pr->pr_key);
+    if (pr->pr_key != NULL) FREE(pr->pr_key);
 }
 
 /*
@@ -1061,7 +1071,7 @@ ssize_t psfs_record_read(int fd, struct psfs_record *pr)
      */
 
     /* Allocate buffer space for data and read it */
-    pr->pr_key = malloc(pr_size);
+    pr->pr_key = MALLOC(pr_size);
     rc = read(fd, pr->pr_key, pr_size);
     if (rc < (ssize_t)pr_size)
     {
@@ -1109,7 +1119,7 @@ ssize_t psfs_record_read(int fd, struct psfs_record *pr)
     return retval;
 
 seek_on_error:
-    if (pr->pr_key != NULL) free(pr->pr_key);
+    if (pr->pr_key != NULL) FREE(pr->pr_key);
 
     if (!lseek(fd, coff + (off_t)sizeof(pr_magic), SEEK_SET))
     {
@@ -1268,6 +1278,32 @@ bool psfs_sync_prune(psfs_t *ps)
 
 error:
     if (tfd >= 0) close(tfd);
+
+    return retval;
+}
+
+void psfs_rewind(psfs_t *ps)
+{
+    ps->psfs_next = ds_tree_head(&ps->psfs_root);
+}
+
+const char *psfs_next(psfs_t *ps)
+{
+    const char *retval;
+
+    if (ps->psfs_next == NULL)
+    {
+        return NULL;
+    }
+
+    retval = ps->psfs_next->pr_key;
+
+    /* Filter out elements with size == 0, these are scheduled to be deleted */
+    do
+    {
+        ps->psfs_next = ds_tree_next(&ps->psfs_root, ps->psfs_next);
+    }
+    while (ps->psfs_next != NULL && ps->psfs_next->pr_datasz == 0);
 
     return retval;
 }

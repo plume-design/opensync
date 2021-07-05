@@ -24,366 +24,75 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include <stdlib.h>
-#include <stdio.h>
 #include <stdbool.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <netdb.h>
-#include <net/if.h>
-#include <arpa/inet.h>
-#include <linux/random.h>
-#include <ctype.h>
+#include <stdint.h>
 
-#include "log.h"
-#include "ovsdb.h"
-#include "os.h"
-#include "os_types.h"
-#include "target.h"
-#include "unity.h"
-#include "schema.h"
 #include "gatekeeper_cache.h"
-#include "fsm_policy.h"
-#include "ds_tree.h"
+#include "log.h"
 #include "memutil.h"
+#include "unity.h"
 
-const char *test_name = "gk_cache_tests";
-
-#ifndef IP_STR_LEN
-#define IP_STR_LEN          INET6_ADDRSTRLEN
-#endif /* IP_STR_LEN */
-
-#define MAX_CACHE_ENTRIES 100001
-
-struct sample_attribute_entries
-{
-    char mac_str[18];
-    int attribute_type;                        /* request type */
-    char attr_name[256];                           /* attribute name */
-    uint64_t cache_ttl;   /* TTL value that should be set */
-    uint8_t action;       /* action req when adding will be set when lookup is
-                            performed */
-};
-
-struct sample_flow_entries
-{
-    char mac_str[18];
-    char src_ip_addr[IP_STR_LEN];     /* src ip in Network byte order */
-    char dst_ip_addr[IP_STR_LEN];     /* dst ip in Network byte order */
-    uint8_t ip_version;       /* ipv4 (4), ipv6 (6) */
-    uint16_t src_port;        /* source port value */
-    uint16_t dst_port;        /* dst port value */
-    uint8_t protocol;         /* protocol value  */
-    uint8_t direction;        /* used to check inbound/outbound cache */
-    uint64_t cache_ttl;       /* TTL value that should be set */
-    uint8_t action;           /* action req when adding will be set when lookup is
-                                 performed */
-    uint64_t hit_counter;     /* will be updated when lookup is performed */
-};
-
-struct sample_attribute_entries test_attr_entries[MAX_CACHE_ENTRIES];
-struct sample_flow_entries test_flow_entries[MAX_CACHE_ENTRIES];
-
-void
-populate_sample_attribute_entries(void)
-{
-    FILE *fp;
-    char line[1024];
-    int i = 0;
-
-    /* move genmac.txt file to /tmp/ */
-    fp = fopen("/tmp/genmac.txt", "r");
-    if (fp == NULL)
-    {
-        printf("fopen failed !!\n");
-        return;
-    }
-
-    while (fgets(line, 100, fp))
-    {
-        if (i >= MAX_CACHE_ENTRIES) return;
-
-        sscanf(line, "%s %d %s ", test_attr_entries[i].mac_str, &test_attr_entries[i].attribute_type, test_attr_entries[i].attr_name);
-        i++;
-    }
-}
-
-void populate_sample_flow_entries(void)
-{
-    int i;
-
-    for (i = 0; i < MAX_CACHE_ENTRIES; i++)
-    {
-        strcpy(test_flow_entries[i].mac_str, test_attr_entries[i].mac_str);
-        strcpy(test_flow_entries[i].src_ip_addr, "1.1.1.1");
-        strcpy(test_flow_entries[i].dst_ip_addr, "2.2.2.2");
-        test_flow_entries[i].ip_version = 4;
-        test_flow_entries[i].src_port = 443;
-        test_flow_entries[i].dst_port = 8888;
-        test_flow_entries[i].protocol = 16;
-        test_flow_entries[i].direction = GKC_FLOW_DIRECTION_INBOUND;
-        test_flow_entries[i].action = FSM_ALLOW;
-    }
-
-}
-
-struct gk_attr_cache_interface *entry1, *entry2, *entry3, *entry4, *entry5;
-struct gkc_ip_flow_interface *flow_entry1, *flow_entry2, *flow_entry3,
-    *flow_entry4;
-
-static os_macaddr_t *
-gkc_str2os_mac(char *strmac)
-{
-    os_macaddr_t *mac;
-    size_t len, i, j;
-
-    if (strmac == NULL) return NULL;
-
-    /* Validate the input string */
-    len = strlen(strmac);
-    if (len != 17) return NULL;
-
-    mac = CALLOC(1, sizeof(*mac));
-    if (mac == NULL) return NULL;
-
-    i = 0;
-    j = 0;
-    do
-    {
-        char a = strmac[i++];
-        char b = strmac[i++];
-        uint8_t v;
-
-        if (!isxdigit(a)) goto err_free_mac;
-        if (!isxdigit(b)) goto err_free_mac;
-
-        v = (isdigit(a) ? (a - '0') : (toupper(a) - 'A' + 10));
-        v *= 16;
-        v += (isdigit(b) ? (b - '0') : (toupper(b) - 'A' + 10));
-        mac->addr[j] = v;
-
-        if (i == len) break;
-        if (strmac[i++] != ':') goto err_free_mac;
-        j++;
-    } while (i < len);
-
-    return mac;
-
-err_free_mac:
-    FREE(mac);
-
-    return NULL;
-}
-
-static void
-create_default_attr_entries(void)
-{
-    entry1 = CALLOC(1, sizeof(*entry1));
-    entry1->action = 1;
-    entry1->device_mac =gkc_str2os_mac("AA:AA:AA:AA:AA:01");
-    entry1->attribute_type = GK_CACHE_REQ_TYPE_FQDN;
-    entry1->cache_ttl = 1000;
-    entry1->action = FSM_BLOCK;
-    entry1->attr_name = strdup("www.test.com");
-
-
-    entry2 = CALLOC(1, sizeof(*entry2));
-    entry2->action = 1;
-    entry2->device_mac =gkc_str2os_mac("AA:AA:AA:AA:AA:02");
-    entry2->attribute_type = GK_CACHE_REQ_TYPE_FQDN;
-    entry2->cache_ttl = 1000;
-    entry2->action = FSM_ALLOW;
-    entry2->attr_name = strdup("www.entr2.com");
-
-
-    entry3 = CALLOC(1, sizeof(*entry3));
-    entry3->action = 1;
-    entry3->device_mac =gkc_str2os_mac("AA:AA:AA:AA:AA:03");
-    entry3->attribute_type = GK_CACHE_REQ_TYPE_FQDN;
-    entry3->cache_ttl = 1000;
-    entry3->action = FSM_ALLOW;
-    entry3->attr_name = strdup("www.entr3.com");
-
-
-    entry4 = CALLOC(1, sizeof(*entry4));
-    entry4->action = 1;
-    entry4->device_mac =gkc_str2os_mac("AA:AA:AA:AA:AA:04");
-    entry4->attribute_type = GK_CACHE_REQ_TYPE_URL;
-    entry4->cache_ttl = 1000;
-    entry4->action = FSM_BLOCK;
-    entry4->attr_name = strdup("https://www.google.com");
-
-    entry5 = CALLOC(1, sizeof(*entry5));
-    entry5->action = 1;
-    entry5->device_mac =gkc_str2os_mac("AA:AA:AA:AA:AA:04");
-    entry5->attribute_type = GK_CACHE_REQ_TYPE_APP;
-    entry5->cache_ttl = 1000;
-    entry5->action = FSM_BLOCK;
-    entry5->attr_name = strdup("testapp");
-}
-
-static void
-create_default_flow_entries(void)
-{
-    flow_entry1 = CALLOC(1, sizeof(*flow_entry1));
-    flow_entry1->device_mac =gkc_str2os_mac("AA:AA:AA:AA:AA:01");
-    flow_entry1->direction = GKC_FLOW_DIRECTION_INBOUND;
-    flow_entry1->src_port = 80;
-    flow_entry1->dst_port = 8002;
-
-    flow_entry1->ip_version = 4;
-    flow_entry1->protocol = 16;
-    flow_entry1->cache_ttl = 1000;
-    flow_entry1->action = FSM_BLOCK;
-    flow_entry1->src_ip_addr = CALLOC(1, sizeof(struct in6_addr));
-    inet_pton(AF_INET, "1.1.1.1", flow_entry1->src_ip_addr);
-
-    flow_entry1->dst_ip_addr = CALLOC(1, sizeof(struct in6_addr));
-    inet_pton(AF_INET, "10.2.4.3", flow_entry1->dst_ip_addr);
-
-    flow_entry2 = CALLOC(1, sizeof(*flow_entry2));
-    flow_entry2->device_mac =gkc_str2os_mac("AA:AA:AA:AA:AA:02");
-    flow_entry2->direction = GKC_FLOW_DIRECTION_INBOUND;
-    flow_entry2->src_port = 443;
-    flow_entry2->dst_port = 8888;
-    flow_entry2->ip_version = 4;
-    flow_entry2->protocol = 16;
-    flow_entry2->cache_ttl = 1000;
-    flow_entry2->action = FSM_BLOCK;
-    flow_entry2->src_ip_addr = CALLOC(1, sizeof(struct in6_addr));
-    inet_pton(AF_INET, "2.2.2.2", flow_entry2->src_ip_addr);
-
-    flow_entry2->dst_ip_addr = CALLOC(1, sizeof(struct in6_addr));
-    inet_pton(AF_INET, "10.2.2.2", flow_entry2->dst_ip_addr);
-
-    flow_entry3 = CALLOC(1, sizeof(*flow_entry3));
-    flow_entry3->device_mac =gkc_str2os_mac("AA:AA:AA:AA:AA:02");
-    flow_entry3->direction = GKC_FLOW_DIRECTION_INBOUND;
-    flow_entry3->src_port = 22;
-    flow_entry3->dst_port = 3333;
-    flow_entry3->ip_version = 6;
-    flow_entry3->protocol = 16;
-    flow_entry3->cache_ttl = 1000;
-    flow_entry3->src_ip_addr = CALLOC(1, sizeof(struct in6_addr));
-    inet_pton(
-        AF_INET6, "0:0:0:0:0:FFFF:204.152.189.116", flow_entry3->src_ip_addr);
-    flow_entry3->dst_ip_addr = CALLOC(1, sizeof(struct in6_addr));
-    inet_pton(AF_INET6, "1:0:0:0:0:0:0:8", flow_entry3->dst_ip_addr);
-
-    flow_entry4 = CALLOC(1, sizeof(*flow_entry4));
-    flow_entry4->device_mac = CALLOC(1, sizeof(*flow_entry4->device_mac));
-    flow_entry4->device_mac->addr[0] = 0xaa;
-    flow_entry4->device_mac->addr[1] = 0xaa;
-    flow_entry4->device_mac->addr[2] = 0xaa;
-    flow_entry4->device_mac->addr[3] = 0xaa;
-    flow_entry4->device_mac->addr[4] = 0xaa;
-    flow_entry4->device_mac->addr[5] = 0x03;
-    flow_entry4->direction = GKC_FLOW_DIRECTION_OUTBOUND;
-    flow_entry4->src_port = 16;
-    flow_entry4->dst_port = 444;
-    flow_entry4->action = FSM_BLOCK;
-    flow_entry4->src_ip_addr = CALLOC(1, sizeof(struct in6_addr));
-    inet_pton(AF_INET, "1.1.1.1", flow_entry4->src_ip_addr);
-
-    flow_entry4->dst_ip_addr = CALLOC(1, sizeof(struct in6_addr));
-    inet_pton(AF_INET, "10.2.4.3", flow_entry4->dst_ip_addr);
-}
-
-void
-setUp(void)
-{
-    create_default_attr_entries();
-    create_default_flow_entries();
-    gk_cache_init();
-    populate_sample_attribute_entries();
-    populate_sample_flow_entries();
-}
-
-void
-free_flow_interface(struct gkc_ip_flow_interface *entry)
-{
-    if (!entry) return;
-
-    FREE(entry->device_mac);
-    FREE(entry->src_ip_addr);
-    FREE(entry->dst_ip_addr);
-    FREE(entry);
-}
-
-void
-del_default_flow_entries(void)
-{
-    free_flow_interface(flow_entry1);
-    free_flow_interface(flow_entry2);
-    free_flow_interface(flow_entry3);
-    free_flow_interface(flow_entry4);
-}
-
-void
-free_cache_interface(struct gk_attr_cache_interface *entry)
-{
-    if (!entry) return;
-
-    FREE(entry->device_mac);
-    FREE(entry->attr_name);
-    FREE(entry->fqdn_redirect);
-    FREE(entry);
-}
-
-void
-del_default_attr_entries(void)
-{
-    free_cache_interface(entry1);
-    free_cache_interface(entry2);
-    free_cache_interface(entry3);
-    free_cache_interface(entry4);
-    free_cache_interface(entry5);
-}
-
-void
-tearDown(void)
-{
-    gk_cache_cleanup();
-    del_default_attr_entries();
-    del_default_flow_entries();
-}
+#include "test_gatekeeper_cache.h"
 
 void
 test_lookup(void)
 {
     struct gk_attr_cache_interface *entry;
-    int ret;
+    struct attr_cache *cached_entry;
+    bool ret;
 
     LOGI("starting test: %s ...", __func__);
 
     /* check for attribute present */
-    entry            = entry1;
+    entry = entry1;
     entry->cache_ttl = 10000;
-    LOGN("adding attribute %s", entry->attr_name);
     gkc_add_attribute_entry(entry);
-    LOGN("checking if attribute %s is present", entry->attr_name);
     ret = gkc_lookup_attribute_entry(entry, true);
-    TEST_ASSERT_EQUAL_INT(1, ret);
+    TEST_ASSERT_TRUE(ret);
     ret = gkc_lookup_attribute_entry(entry, true);
-    TEST_ASSERT_EQUAL_INT(1, ret);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Lookup again and check the counter has the correct value !!! */
+    cached_entry = gkc_fetch_attribute_entry(entry);
+    TEST_ASSERT_NOT_NULL(cached_entry); /* Make sure to use the variable */
+
+    /* entry1 is a FQDN... short circuit the union */
+    TEST_ASSERT_EQUAL_UINT64(3, cached_entry->attr.host_name->count_fqdn.total);
+    TEST_ASSERT_EQUAL_UINT64(0, cached_entry->attr.host_name->count_sni.total);
+    TEST_ASSERT_EQUAL_UINT64(0, cached_entry->attr.host_name->count_host.total);
+
+    /* Test the other 2 types that are aggregated */
+    entry->attribute_type = GK_CACHE_REQ_TYPE_SNI;
+    ret = gkc_lookup_attribute_entry(entry, true);
+    TEST_ASSERT_TRUE(ret);
+    cached_entry = gkc_fetch_attribute_entry(entry);
+    TEST_ASSERT_EQUAL_UINT64(3, cached_entry->attr.host_name->count_fqdn.total);
+    TEST_ASSERT_EQUAL_UINT64(1, cached_entry->attr.host_name->count_sni.total);
+    TEST_ASSERT_EQUAL_UINT64(0, cached_entry->attr.host_name->count_host.total);
+
+    entry->attribute_type = GK_CACHE_REQ_TYPE_HOST;
+    ret = gkc_lookup_attribute_entry(entry, true);
+    TEST_ASSERT_TRUE(ret);
+    TEST_ASSERT_EQUAL_UINT64(3, cached_entry->attr.host_name->count_fqdn.total);
+    TEST_ASSERT_EQUAL_UINT64(1, cached_entry->attr.host_name->count_sni.total);
+    TEST_ASSERT_EQUAL_UINT64(1, cached_entry->attr.host_name->count_host.total);
 
     /* check for attribute not present */
     entry = entry2;
-    LOGN("checking if attribute %s is present", entry->attr_name);
     /* should not be found, as the entry is not added */
+    ret = gkc_lookup_attribute_entry(entry, true);
+    TEST_ASSERT_FALSE(ret);
+
+    /* check for attribute present by attribute type is different */
+    entry = entry1;
+    entry->attribute_type = GK_CACHE_REQ_TYPE_URL;
     ret = gkc_lookup_attribute_entry(entry, true);
     TEST_ASSERT_EQUAL_INT(0, ret);
 
-    /* check for attribute present by attribute type is different */
-    entry                 = entry1;
-    entry->attribute_type = GK_CACHE_REQ_TYPE_URL;
-    ret                   = gkc_lookup_attribute_entry(entry, true);
-    TEST_ASSERT_EQUAL_INT(0, ret);
-
     /* check for invalid attribute type */
-    entry                 = entry1;
+    entry = entry1;
     entry->attribute_type = GK_CACHE_MAX_REQ_TYPES;
-    ret                   = gkc_lookup_attribute_entry(entry, true);
+    ret = gkc_lookup_attribute_entry(entry, true);
     TEST_ASSERT_EQUAL_INT(0, ret);
 
     LOGI("ending test: %s", __func__);
@@ -393,23 +102,24 @@ void
 test_hit_counter(void)
 {
     struct gk_attr_cache_interface *entry;
-    entry = entry1;
-    int ret;
+    bool ret;
 
     LOGI("starting test: %s ...", __func__);
 
-    gkc_add_attribute_entry(entry);
+    entry = entry1;
+    ret = gkc_add_attribute_entry(entry);
+    TEST_ASSERT_TRUE(ret);
     ret = gkc_lookup_attribute_entry(entry, true);
-    TEST_ASSERT_EQUAL_INT(1, ret);
-    TEST_ASSERT_EQUAL_INT(1, entry->hit_counter);
-
-    ret = gkc_lookup_attribute_entry(entry, true);
-    TEST_ASSERT_EQUAL_INT(1, ret);
+    TEST_ASSERT_TRUE(ret);
     TEST_ASSERT_EQUAL_INT(2, entry->hit_counter);
 
     ret = gkc_lookup_attribute_entry(entry, true);
-    TEST_ASSERT_EQUAL_INT(1, ret);
+    TEST_ASSERT_TRUE(ret);
     TEST_ASSERT_EQUAL_INT(3, entry->hit_counter);
+
+    ret = gkc_lookup_attribute_entry(entry, true);
+    TEST_ASSERT_TRUE(ret);
+    TEST_ASSERT_EQUAL_INT(4, entry->hit_counter);
 
     LOGI("ending test: %s", __func__);
 }
@@ -418,7 +128,7 @@ void
 test_delete_attr(void)
 {
     struct gk_attr_cache_interface *entry;
-    int ret;
+    bool ret;
 
     LOGI("starting test: %s ...", __func__);
 
@@ -427,27 +137,26 @@ test_delete_attr(void)
      * Try to del entry without adding.
      */
     ret = gkc_del_attribute(entry);
-    TEST_ASSERT_EQUAL_INT(false, ret);
+    TEST_ASSERT_FALSE(ret);
 
     /*
      * Add and delete entry
      */
 
     /* add attribute entry */
-    gkc_add_attribute_entry(entry);
+    ret = gkc_add_attribute_entry(entry);
+    TEST_ASSERT_TRUE(ret);
     /* check if attribute is present */
     ret = gkc_lookup_attribute_entry(entry, true);
     /* entry should be present */
-    TEST_ASSERT_EQUAL_INT(1, ret);
+    TEST_ASSERT_TRUE(ret);
 
     /* remove the entry */
     gkc_del_attribute(entry);
     /* check if attribute is present */
     ret = gkc_lookup_attribute_entry(entry, true);
     /* entry should not be present */
-    TEST_ASSERT_EQUAL_INT(0, ret);
-
-    LOGI("ending test: %s", __func__);
+    TEST_ASSERT_FALSE(ret);
 
     /*
      * Add and try to remove invalid entry
@@ -455,40 +164,51 @@ test_delete_attr(void)
     entry = entry2;
     gkc_add_attribute_entry(entry);
     ret = gkc_lookup_attribute_entry(entry, true);
-    TEST_ASSERT_EQUAL_INT(1, ret);
+    TEST_ASSERT_TRUE(ret);
 
     entry->attribute_type = GK_CACHE_MAX_REQ_TYPES;
     ret = gkc_del_attribute(entry);
-    TEST_ASSERT_EQUAL_INT(false, ret);
+    TEST_ASSERT_FALSE(ret);
 
     struct gk_attr_cache_interface *new_entry;
     new_entry = CALLOC(1, sizeof(*new_entry));
     /* remove empty attribute */
     ret = gkc_del_attribute(new_entry);
-    TEST_ASSERT_EQUAL_INT(false, ret);
+    TEST_ASSERT_FALSE(ret);
     FREE(new_entry);
+
+    LOGI("ending test: %s", __func__);
 }
 
 void
 test_app_name(void)
 {
     struct gk_attr_cache_interface *entry;
-    int ret;
+    struct attr_cache *cached_entry;
+    bool ret;
 
     LOGI("starting test: %s ...", __func__);
+
     entry = entry5;
-    gkc_add_attribute_entry(entry);
-
-    gkc_cache_entries();
-    ret = gkc_lookup_attribute_entry(entry, true);
-    TEST_ASSERT_EQUAL_INT(1, ret);
+    ret = gkc_add_attribute_entry(entry);
+    TEST_ASSERT_TRUE(ret);
 
     ret = gkc_lookup_attribute_entry(entry, true);
-    TEST_ASSERT_EQUAL_INT(1, ret);
+    TEST_ASSERT_TRUE(ret);
+    ret = gkc_lookup_attribute_entry(entry, true);
+    TEST_ASSERT_TRUE(ret);
+
+    cached_entry = gkc_fetch_attribute_entry(entry);
+    TEST_ASSERT_NOT_NULL(cached_entry); /* Make sure to use the variable */
+    TEST_ASSERT_EQUAL_UINT64(3, cached_entry->attr.app_name->hit_count.total);
+
+    TEST_ASSERT_EQUAL_size_t(1, gk_get_cache_count());
 
     gkc_del_attribute(entry);
     ret = gkc_lookup_attribute_entry(entry, true);
-    TEST_ASSERT_EQUAL_INT(0, ret);
+    TEST_ASSERT_FALSE(ret);
+
+    TEST_ASSERT_EQUAL_size_t(0, gk_get_cache_count());
 
     LOGI("ending test: %s", __func__);
 }
@@ -497,23 +217,22 @@ void
 test_host_name(void)
 {
     struct gk_attr_cache_interface *entry;
-    int ret;
+    bool ret;
 
     LOGI("starting test: %s ...", __func__);
-    entry = entry5;
+    entry = entry3;
     entry->attribute_type = GK_CACHE_REQ_TYPE_HOST;
     gkc_add_attribute_entry(entry);
 
-    gkc_cache_entries();
     ret = gkc_lookup_attribute_entry(entry, true);
-    TEST_ASSERT_EQUAL_INT(1, ret);
+    TEST_ASSERT_TRUE(ret);
 
     ret = gkc_lookup_attribute_entry(entry, true);
-    TEST_ASSERT_EQUAL_INT(1, ret);
+    TEST_ASSERT_TRUE(ret);
 
     gkc_del_attribute(entry);
     ret = gkc_lookup_attribute_entry(entry, true);
-    TEST_ASSERT_EQUAL_INT(0, ret);
+    TEST_ASSERT_FALSE(ret);
 
     LOGI("ending test: %s", __func__);
 }
@@ -528,7 +247,7 @@ test_host_entry_in_fqdn(void)
 
     entry = CALLOC(1, sizeof(*entry));
     entry->action = FSM_ALLOW;
-    entry->device_mac =gkc_str2os_mac("AA:AA:AA:AA:AA:01");
+    entry->device_mac = str2os_mac("AA:AA:AA:AA:AA:01");
     entry->attribute_type = GK_CACHE_REQ_TYPE_FQDN;
     entry->cache_ttl = 1000;
     entry->action = FSM_ALLOW;
@@ -619,35 +338,40 @@ void
 test_ipv4_attr(void)
 {
     struct gk_attr_cache_interface *entry;
+    struct attr_cache *out;
+    bool ret;
+
+    LOGI("starting test: %s ...", __func__);
 
     entry = CALLOC(1, sizeof(*entry));
     entry->action = 1;
-    entry->device_mac =gkc_str2os_mac("AA:AA:AA:AA:AA:01");
+    entry->device_mac = str2os_mac("AA:AA:AA:AA:AA:01");
     entry->attribute_type = GK_CACHE_REQ_TYPE_IPV4;
     entry->cache_ttl = 1000;
     entry->action = FSM_BLOCK;
     entry->attr_name = strdup("1.1.1.1");
-    int ret;
 
-    LOGI("starting test: %s ...", __func__);
-    gkc_add_attribute_entry(entry);
-
-    gkc_cache_entries();
+    ret = gkc_add_attribute_entry(entry);
+    TEST_ASSERT_TRUE(ret);
 
     FREE(entry->attr_name);
     entry->attr_name = strdup("2.2.2.2");
     gkc_add_attribute_entry(entry);
-    gkc_cache_entries();
+    gkc_print_cache_entries();
 
     ret = gkc_lookup_attribute_entry(entry, true);
-    TEST_ASSERT_EQUAL_INT(1, ret);
+    TEST_ASSERT_TRUE(ret);
 
     ret = gkc_lookup_attribute_entry(entry, true);
-    TEST_ASSERT_EQUAL_INT(1, ret);
+    TEST_ASSERT_TRUE(ret);
+
+    out = gkc_fetch_attribute_entry(entry);
+    TEST_ASSERT_NOT_NULL(out);
+    TEST_ASSERT_EQUAL_STRING(out->attr.ipv4->name, entry->attr_name);
 
     gkc_del_attribute(entry);
     ret = gkc_lookup_attribute_entry(entry, true);
-    TEST_ASSERT_EQUAL_INT(0, ret);
+    TEST_ASSERT_FALSE(ret);
 
     FREE(entry->device_mac);
     FREE(entry->attr_name);
@@ -660,35 +384,39 @@ void
 test_ipv6_attr(void)
 {
     struct gk_attr_cache_interface *entry;
+    struct attr_cache *out;
+    bool ret;
 
     entry = CALLOC(1, sizeof(*entry));
     entry->action = 1;
-    entry->device_mac =gkc_str2os_mac("AA:AA:AA:AA:AA:01");
+    entry->device_mac = str2os_mac("AA:AA:AA:AA:AA:01");
     entry->attribute_type = GK_CACHE_REQ_TYPE_IPV6;
     entry->cache_ttl = 1000;
     entry->action = FSM_BLOCK;
     entry->attr_name = strdup("2001:0000:3238:DFE1:0063:0000:0000:FEFB");
-    int ret;
 
     LOGI("starting test: %s ...", __func__);
-    gkc_add_attribute_entry(entry);
-
-    gkc_cache_entries();
+    ret = gkc_add_attribute_entry(entry);
+    TEST_ASSERT_TRUE(ret);
 
     FREE(entry->attr_name);
     entry->attr_name = strdup("2001:0000:3238:DFE1:0063:0000:0000:FEFA");
     gkc_add_attribute_entry(entry);
-    gkc_cache_entries();
+    gkc_print_cache_entries();
 
     ret = gkc_lookup_attribute_entry(entry, true);
-    TEST_ASSERT_EQUAL_INT(1, ret);
+    TEST_ASSERT_TRUE(ret);
 
     ret = gkc_lookup_attribute_entry(entry, true);
-    TEST_ASSERT_EQUAL_INT(1, ret);
+    TEST_ASSERT_TRUE(ret);
+
+    out = gkc_fetch_attribute_entry(entry);
+    TEST_ASSERT_NOT_NULL(out);
+    TEST_ASSERT_EQUAL_STRING(out->attr.ipv6->name, entry->attr_name);
 
     gkc_del_attribute(entry);
     ret = gkc_lookup_attribute_entry(entry, true);
-    TEST_ASSERT_EQUAL_INT(0, ret);
+    TEST_ASSERT_FALSE(ret);
 
     FREE(entry->device_mac);
     FREE(entry->attr_name);
@@ -747,49 +475,123 @@ test_check_ttl(void)
 void
 test_add_gk_cache(void)
 {
-    struct gk_attr_cache_interface *entry1, *entry2, *entry3, *entry4;
+    struct gk_attr_cache_interface *entry;
+    struct attr_cache *from_cache;
+    struct attr_cache *lookup_out;
+    bool ret;
 
     LOGI("starting test: %s ...", __func__);
 
-    entry1 = CALLOC(1, sizeof(*entry1));
-    entry1->action = 1;
-    entry1->device_mac = gkc_str2os_mac("AA:AA:AA:AA:AA:01");
-    entry1->attribute_type = GK_CACHE_REQ_TYPE_FQDN;
-    entry1->attr_name = strdup("www.test.com");
+    entry = entry1;
+    entry->direction = GKC_FLOW_DIRECTION_OUTBOUND;
+    ret = gkc_add_attribute_entry(entry);
+    TEST_ASSERT_TRUE(ret);
 
-    gkc_add_attribute_entry(entry1);
+    entry->direction = GKC_FLOW_DIRECTION_INBOUND;
+    ret = gkc_add_attribute_entry(entry);
+    TEST_ASSERT_TRUE(ret);
 
-    entry2 = CALLOC(1, sizeof(*entry2));
-    entry2->action = 1;
-    entry2->device_mac = gkc_str2os_mac("AA:AA:AA:AA:AA:02");
-    entry2->attribute_type = GK_CACHE_REQ_TYPE_FQDN;
-    entry2->attr_name = strdup("www.entr2.com");
+    entry = entry2;
+    FREE(entry->device_mac);
+    entry->device_mac = str2os_mac("AA:AA:AA:AA:AA:01");
+    ret = gkc_add_attribute_entry(entry);
+    TEST_ASSERT_TRUE(ret);
 
-    gkc_add_attribute_entry(entry2);
+    entry = entry3;
+    FREE(entry->device_mac);
+    entry->device_mac = str2os_mac("AA:AA:AA:AA:AA:01");
+    ret = gkc_add_attribute_entry(entry);
+    TEST_ASSERT_TRUE(ret);
 
-    entry3 = CALLOC(1, sizeof(*entry3));
-    entry3->action = 1;
-    entry3->device_mac = gkc_str2os_mac("AA:AA:AA:AA:AA:02");
-    entry3->attribute_type = GK_CACHE_REQ_TYPE_FQDN;
-    entry3->attr_name = strdup("www.entr3.com");
+    entry = entry4;
+    FREE(entry->device_mac);
+    entry->device_mac = str2os_mac("AA:AA:AA:AA:AA:01");
+    ret = gkc_add_attribute_entry(entry);
+    TEST_ASSERT_TRUE(ret);
 
-    gkc_add_attribute_entry(entry3);
+    ret = gkc_lookup_attribute_entry(entry1, false);
+    TEST_ASSERT_TRUE(ret);
 
+    ret = gkc_lookup_attribute_entry(entry, false);
+    TEST_ASSERT_TRUE(ret);
 
-    entry4 = CALLOC(1, sizeof(*entry4));
-    entry4->action = 1;
-    entry4->device_mac =gkc_str2os_mac("AA:AA:AA:AA:AA:02");
-    entry4->attribute_type = GK_CACHE_REQ_TYPE_URL;
-    entry4->attr_name = strdup("https://www.google.com");
+    /* Verify the entry is already inserted. */
+    entry = entry3;
+    FREE(entry->device_mac);
+    entry->device_mac = str2os_mac("AA:AA:AA:AA:AA:01");
+    entry->attribute_type = GK_CACHE_REQ_TYPE_SNI;
+    ret = gkc_lookup_attribute_entry(entry, false);
+    TEST_ASSERT_TRUE(ret);
 
-    gkc_add_attribute_entry(entry4);
+    /* We only have this entry INSERTED once. Counter should be 0 */
+    /* Get a reference to the entry in cache. Don't free it ! */
+    from_cache = gkc_fetch_attribute_entry(entry);
+    TEST_ASSERT_NOT_NULL(from_cache);
+    TEST_ASSERT_EQUAL(GK_CACHE_REQ_TYPE_SNI, entry->attribute_type);
+    TEST_ASSERT_EQUAL_STRING(entry->attr_name, from_cache->attr.host_name->name);
+    TEST_ASSERT_EQUAL_UINT64(0, from_cache->attr.host_name->count_sni.total);
 
-    gkc_cache_entries();
+    /* try to insert a second time */
+    gkc_add_attribute_entry(entry);
 
-    free_cache_interface(entry1);
-    free_cache_interface(entry2);
-    free_cache_interface(entry3);
-    free_cache_interface(entry4);
+    /* Now counter should be increased */
+    from_cache = gkc_fetch_attribute_entry(entry);
+    TEST_ASSERT_NOT_NULL(from_cache);
+    TEST_ASSERT_EQUAL(GK_CACHE_REQ_TYPE_SNI, entry->attribute_type);
+    TEST_ASSERT_EQUAL_STRING(entry->attr_name, from_cache->attr.host_name->name);
+    TEST_ASSERT_EQUAL_UINT64(1, from_cache->attr.host_name->count_sni.total);
+
+    /* Try once more... */
+    gkc_add_attribute_entry(entry);
+
+    /* Get a reference to the entry in cache. Don't free it ! */
+    /* User counter should be unchanged as we were "too soon" */
+    from_cache = gkc_fetch_attribute_entry(entry);
+    TEST_ASSERT_NOT_NULL(from_cache);
+    TEST_ASSERT_EQUAL_UINT64(2, from_cache->attr.host_name->count_sni.total);
+
+    /* Same with a HOST request */
+    entry = entry2;
+    FREE(entry->device_mac);
+    entry->device_mac = str2os_mac("AA:AA:AA:AA:AA:01");
+    entry->attribute_type = GK_CACHE_REQ_TYPE_HOST;
+    gkc_add_attribute_entry(entry);
+
+    from_cache = gkc_fetch_attribute_entry(entry);
+    TEST_ASSERT_NOT_NULL(from_cache);
+    TEST_ASSERT_EQUAL(GK_CACHE_REQ_TYPE_HOST, entry->attribute_type);
+    TEST_ASSERT_EQUAL_STRING(entry->attr_name, from_cache->attr.host_name->name);
+    TEST_ASSERT_EQUAL_UINT64(1, from_cache->attr.host_name->count_host.total);
+
+    entry = entry4;
+    FREE(entry->device_mac);
+    entry->device_mac = str2os_mac("AA:AA:AA:AA:AA:01");
+    gkc_add_attribute_entry(entry);
+
+    entry = entry4;
+    FREE(entry->device_mac);
+    entry->device_mac = str2os_mac("AA:AA:AA:AA:AA:02");
+    gkc_add_attribute_entry(entry);
+
+    /* Exercise other cases */
+    entry = entry5;
+    lookup_out = gkc_fetch_attribute_entry(entry);
+    TEST_ASSERT_NULL(lookup_out);
+    ret = gkc_add_attribute_entry(entry);
+    TEST_ASSERT_TRUE(ret);
+    lookup_out = gkc_fetch_attribute_entry(entry);
+    TEST_ASSERT_NOT_NULL(lookup_out);
+
+    entry->attribute_type = GK_CACHE_REQ_TYPE_URL;
+    ret = gkc_add_attribute_entry(entry);
+    TEST_ASSERT_TRUE(ret);
+    lookup_out = gkc_fetch_attribute_entry(entry);
+    TEST_ASSERT_NOT_NULL(lookup_out);
+
+    gkc_print_cache_entries();
+
+    /* Cleanup */
+    gkc_cleanup_mgr();
 
     LOGI("ending test: %s", __func__);
 }
@@ -799,19 +601,24 @@ void
 test_add_flow(void)
 {
     struct gkc_ip_flow_interface *flow_entry;
+    bool ret = false;
 
     LOGI("starting test: %s ...", __func__);
 
     flow_entry = flow_entry1;
-    gkc_add_flow_entry(flow_entry);
+    ret = gkc_add_flow_entry(flow_entry);
+    TEST_ASSERT_TRUE(ret);
 
     flow_entry = flow_entry2;
-    gkc_add_flow_entry(flow_entry);
+    ret = gkc_add_flow_entry(flow_entry);
+    TEST_ASSERT_TRUE(ret);
 
     flow_entry = flow_entry3;
-    gkc_add_flow_entry(flow_entry);
+    ret = gkc_add_flow_entry(flow_entry);
+    TEST_ASSERT_TRUE(ret);
 
-    gkc_cache_entries();
+    ret = gkc_add_flow_entry(flow_entry);
+    TEST_ASSERT_FALSE(ret);
 
     LOGI("ending test: %s", __func__);
 }
@@ -820,39 +627,43 @@ void
 test_flow_lookup(void)
 {
     struct gkc_ip_flow_interface *flow_entry;
-    int ret;
+    bool ret;
 
     LOGI("starting test: %s ...", __func__);
+
     flow_entry = flow_entry1;
-    gkc_add_flow_entry(flow_entry);
+    ret = gkc_add_flow_entry(flow_entry);
+    TEST_ASSERT_TRUE(ret);
 
     /* search for the added flow */
     ret = gkc_lookup_flow(flow_entry, true);
     TEST_ASSERT_EQUAL_INT(true, ret);
 
     /* change the protocol value and search */
-    flow_entry           = flow_entry1;
+    flow_entry = flow_entry1;
     flow_entry->dst_port = 123;
-    ret                  = gkc_lookup_flow(flow_entry, true);
-    TEST_ASSERT_EQUAL_INT(false, ret);
+    ret = gkc_lookup_flow(flow_entry, true);
+    TEST_ASSERT_FALSE(ret);
 
     /* change the src port value and search */
-    flow_entry           = flow_entry1;
+    flow_entry = flow_entry1;
     flow_entry->src_port = 4444;
-    ret                  = gkc_lookup_flow(flow_entry, true);
-    TEST_ASSERT_EQUAL_INT(false, ret);
+    ret = gkc_lookup_flow(flow_entry, true);
+    TEST_ASSERT_FALSE(ret);
 
     /* change the protocol value and search */
-    flow_entry           = flow_entry1;
+    flow_entry = flow_entry1;
     flow_entry->protocol = 44;
-    ret                  = gkc_lookup_flow(flow_entry, true);
-    TEST_ASSERT_EQUAL_INT(false, ret);
+    ret = gkc_lookup_flow(flow_entry, true);
+    TEST_ASSERT_FALSE(ret);
 
     /* search for added value */
     flow_entry = flow_entry2;
     gkc_add_flow_entry(flow_entry);
     ret = gkc_lookup_flow(flow_entry, true);
-    TEST_ASSERT_EQUAL_INT(true, ret);
+    TEST_ASSERT_TRUE(ret);
+
+    TEST_ASSERT_EQUAL_UINT64(2, gk_get_cache_count());
 
     LOGI("ending test: %s", __func__);
 }
@@ -860,40 +671,41 @@ test_flow_lookup(void)
 void
 test_flow_delete(void)
 {
-    LOGI("starting test: %s ...", __func__);
     struct gkc_ip_flow_interface *flow_entry;
-    int ret;
+    bool ret;
 
     LOGI("starting test: %s ...", __func__);
     flow_entry = flow_entry1;
     ret = gkc_add_flow_entry(flow_entry);
-    TEST_ASSERT_EQUAL_INT(true, ret);
+    TEST_ASSERT_TRUE(ret);
     ret = gkc_lookup_flow(flow_entry, true);
-    TEST_ASSERT_EQUAL_INT(true, ret);
+    TEST_ASSERT_TRUE(ret);
 
     flow_entry = flow_entry2;
     ret = gkc_add_flow_entry(flow_entry);
-    TEST_ASSERT_EQUAL_INT(true, ret);
+    TEST_ASSERT_TRUE(ret);
     ret = gkc_lookup_flow(flow_entry, true);
-    TEST_ASSERT_EQUAL_INT(true, ret);
+    TEST_ASSERT_TRUE(ret);
 
     flow_entry = flow_entry3;
     ret = gkc_add_flow_entry(flow_entry);
-    TEST_ASSERT_EQUAL_INT(true, ret);
+    TEST_ASSERT_TRUE(ret);
     ret = gkc_lookup_flow(flow_entry, true);
-    TEST_ASSERT_EQUAL_INT(true, ret);
+    TEST_ASSERT_TRUE(ret);
+
+    TEST_ASSERT_EQUAL_UINT64(3, gk_get_cache_count());
 
     /* delete the flow and check */
     ret = gkc_del_flow(flow_entry);
-    TEST_ASSERT_EQUAL_INT(true, ret);
+    TEST_ASSERT_TRUE(ret);
     ret = gkc_lookup_flow(flow_entry, true);
-    TEST_ASSERT_EQUAL_INT(false, ret);
+    TEST_ASSERT_FALSE(ret);
+    TEST_ASSERT_EQUAL_UINT64(2, gk_get_cache_count());
 
     /* try to delete already deleted flow */
     ret = gkc_del_flow(flow_entry);
-    TEST_ASSERT_EQUAL_INT(false, ret);
-
-    gkc_cache_entries();
+    TEST_ASSERT_FALSE(ret);
+    TEST_ASSERT_EQUAL_UINT64(2, gk_get_cache_count());
 
     LOGI("ending test: %s", __func__);
 }
@@ -902,25 +714,27 @@ void
 test_flow_hit_counter(void)
 {
     struct gkc_ip_flow_interface *flow_entry;
-    int ret;
+    bool ret;
 
     LOGI("starting test: %s ...", __func__);
 
     flow_entry = flow_entry1;
     ret = gkc_add_flow_entry(flow_entry);
-    TEST_ASSERT_EQUAL_INT(true, ret);
+    TEST_ASSERT_TRUE(ret);
     ret = gkc_lookup_flow(flow_entry, true);
-    TEST_ASSERT_EQUAL_INT(true, ret);
-    TEST_ASSERT_EQUAL_INT(1, flow_entry->hit_counter);
-
-    ret = gkc_lookup_flow(flow_entry, true);
-    TEST_ASSERT_EQUAL_INT(true, ret);
+    TEST_ASSERT_TRUE(ret);
     TEST_ASSERT_EQUAL_INT(2, flow_entry->hit_counter);
 
+    ret = gkc_lookup_flow(flow_entry, true);
+    TEST_ASSERT_TRUE(ret);
+    TEST_ASSERT_EQUAL_INT(3, flow_entry->hit_counter);
+
     gkc_lookup_flow(flow_entry, true);
     gkc_lookup_flow(flow_entry, true);
     gkc_lookup_flow(flow_entry, true);
-    TEST_ASSERT_EQUAL_INT(5, flow_entry->hit_counter);
+    TEST_ASSERT_EQUAL_INT(6, flow_entry->hit_counter);
+
+    gkc_print_cache_entries();
 
     LOGI("ending test: %s", __func__);
 }
@@ -930,6 +744,7 @@ test_counters(void)
 {
     struct gk_attr_cache_interface *entry, *entry2;
     uint64_t count;
+    bool ret;
 
     LOGI("starting test: %s ...", __func__);
 
@@ -937,7 +752,8 @@ test_counters(void)
     entry = entry1;
     entry->action = FSM_ALLOW;
     entry->attribute_type = GK_CACHE_REQ_TYPE_FQDN;
-    gkc_add_attribute_entry(entry);
+    ret = gkc_add_attribute_entry(entry);
+    TEST_ASSERT_TRUE(ret);
     count = gkc_get_allowed_counter(entry->device_mac, GK_CACHE_REQ_TYPE_FQDN);
     TEST_ASSERT_EQUAL_INT(1, count);
     count = gkc_get_blocked_counter(entry->device_mac, GK_CACHE_REQ_TYPE_FQDN);
@@ -946,12 +762,13 @@ test_counters(void)
     /* add entry to the same device. */
     entry2 = CALLOC(1, sizeof(*entry2));
     entry2->action = FSM_ALLOW;
-    entry2->device_mac =gkc_str2os_mac("AA:AA:AA:AA:AA:01");
+    entry2->device_mac = str2os_mac("AA:AA:AA:AA:AA:01");
     entry2->attribute_type = GK_CACHE_REQ_TYPE_FQDN;
     entry2->cache_ttl = 1000;
     entry2->action = FSM_ALLOW;
     entry2->attr_name = strdup("www.entr2.com");
-    gkc_add_attribute_entry(entry2);
+    ret = gkc_add_attribute_entry(entry2);
+    TEST_ASSERT_TRUE(ret);
     count = gkc_get_allowed_counter(entry2->device_mac, GK_CACHE_REQ_TYPE_FQDN);
     TEST_ASSERT_EQUAL_INT(2, count);
     count = gkc_get_blocked_counter(entry2->device_mac, GK_CACHE_REQ_TYPE_FQDN);
@@ -968,18 +785,48 @@ void
 test_duplicate_entries(void)
 {
     struct gk_attr_cache_interface *entry;
+    struct attr_cache *cached_entry;
     uint64_t count;
+    bool ret;
 
     LOGI("starting test: %s ...", __func__);
     entry = entry1;
+    entry->attribute_type = GK_CACHE_REQ_TYPE_FQDN;
+
     /* entries should be added only once */
-    gkc_add_attribute_entry(entry);
+    ret = gkc_add_attribute_entry(entry);
+    TEST_ASSERT_TRUE(ret);
     count = gk_get_device_count();
     TEST_ASSERT_EQUAL_INT(1, count);
 
-    gkc_add_attribute_entry(entry);
+    /* This will count as a cache hit ! */
+    ret = gkc_add_attribute_entry(entry);
+    TEST_ASSERT_FALSE(ret);
     count = gk_get_device_count();
     TEST_ASSERT_EQUAL_INT(1, count);
+
+    /* This case will fall in the "aggregated" hostname entry. */
+    entry->attribute_type = GK_CACHE_REQ_TYPE_HOST;
+    ret = gkc_add_attribute_entry(entry);
+    TEST_ASSERT_FALSE(ret);
+    cached_entry = gkc_fetch_attribute_entry(entry);
+    TEST_ASSERT_EQUAL_INT(2, cached_entry->attr.host_name->count_fqdn.total);
+    TEST_ASSERT_EQUAL_INT(1, cached_entry->attr.host_name->count_host.total);
+
+    /* Change the direction, and insert again. */
+    entry->direction = GKC_FLOW_DIRECTION_INBOUND;
+
+    /* this entry does not exist in the cache */
+    cached_entry = gkc_fetch_attribute_entry(entry);
+    TEST_ASSERT_NULL(cached_entry);
+
+    ret = gkc_add_attribute_entry(entry);
+    TEST_ASSERT_TRUE(ret); /* because it is a new entry */
+
+    cached_entry = gkc_fetch_attribute_entry(entry);
+    /* the counters should no longer collide */
+    TEST_ASSERT_EQUAL_INT(0, cached_entry->attr.host_name->count_fqdn.total);
+    TEST_ASSERT_EQUAL_INT(1, cached_entry->attr.host_name->count_host.total);
 
     LOGI("ending test: %s", __func__);
 }
@@ -987,38 +834,47 @@ test_duplicate_entries(void)
 void
 test_max_flow_entries(void)
 {
-    int i;
     struct gkc_ip_flow_interface *flow_entry;
+    unsigned long num_entries;
+    size_t i;
+    bool ret;
+
+    LOGI("starting test: %s ...", __func__);
 
     flow_entry = CALLOC(1, sizeof(*flow_entry));
-    LOGI("starting test: %s ...", __func__);
-    for (i = 0; i < MAX_CACHE_ENTRIES; i++)
-    // for (i = 0; i < 20000; i++)
+    for (i = 0; i < OVER_MAX_CACHE_ENTRIES; i++)
     {
-        flow_entry->device_mac =gkc_str2os_mac(test_flow_entries[i].mac_str);
+        flow_entry->device_mac = str2os_mac(test_flow_entries[i].mac_str);
         flow_entry->direction = test_flow_entries[i].direction;
         flow_entry->src_port = test_flow_entries[i].src_port;
         flow_entry->dst_port = test_flow_entries[i].dst_port;
         flow_entry->ip_version = test_flow_entries[i].ip_version;
         flow_entry->protocol = test_flow_entries[i].protocol;
         flow_entry->action = test_flow_entries[i].action;
+        flow_entry->hit_counter = 0;
         flow_entry->src_ip_addr = CALLOC(1, sizeof(struct in6_addr));
-        // flow_entry->hit_counter = 0;
         inet_pton(AF_INET, test_flow_entries[i].src_ip_addr, flow_entry->src_ip_addr);
 
         flow_entry->dst_ip_addr = CALLOC(1, sizeof(struct in6_addr));
         inet_pton(AF_INET, test_flow_entries[i].dst_ip_addr, flow_entry->dst_ip_addr);
 
-        gkc_add_flow_entry(flow_entry);
+        ret = gkc_add_flow_entry(flow_entry);
+        /* We can only insert gk_cache_get_size(), so insert fails at that point */
+        TEST_ASSERT_TRUE( (ret && i < gk_cache_get_size()) || (!ret && i == gk_cache_get_size()) );
 
         FREE(flow_entry->device_mac);
         FREE(flow_entry->src_ip_addr);
         FREE(flow_entry->dst_ip_addr);
     }
-    LOGN("number of entries %lu \n", gk_get_cache_count());
 
     FREE(flow_entry);
-    // clear_gatekeeper_cache();
+
+    num_entries = gk_get_cache_count();
+    LOGN("number of entries %lu \n", num_entries);
+    TEST_ASSERT_EQUAL_UINT64(gk_cache_get_size(), num_entries);
+
+    clear_gatekeeper_cache();
+
     LOGI("ending test: %s", __func__);
 }
 
@@ -1027,49 +883,49 @@ test_max_attr_entries(void)
 {
     LOGI("starting test: %s ...", __func__);
     struct gk_attr_cache_interface *entry;
-    int current_count;
-    int ret;
-    int i;
-
-    ret = access("/tmp/genmac.txt", F_OK);
-    if (ret != 0) return;
+    int current_count = 0;
+    size_t i;
+    bool ret;
 
     entry = CALLOC(1, sizeof(*entry));
-    for (i = 0; i < MAX_CACHE_ENTRIES; ++i)
+    for (i = 0; i < OVER_MAX_CACHE_ENTRIES; ++i)
     {
-        entry->action         = 1;
-        entry->device_mac     = gkc_str2os_mac(test_attr_entries[i].mac_str);
+        entry->action = 1;
+        entry->device_mac = str2os_mac(test_attr_entries[i].mac_str);
         entry->attribute_type = GK_CACHE_REQ_TYPE_FQDN;
-        entry->cache_ttl      = 1000;
-        entry->action         = FSM_BLOCK;
-        entry->attr_name      = strdup(test_attr_entries[i].attr_name);
-        gkc_add_attribute_entry(entry);
+        entry->cache_ttl = 1000;
+        entry->action = FSM_BLOCK;
+        entry->attr_name = test_attr_entries[i].attr_name;
+
+        ret = gkc_add_attribute_entry(entry);
+        /* We can only insert gk_cache_get_size(), so insert fails at that point */
+        TEST_ASSERT_TRUE( (ret && i < gk_cache_get_size()) || (!ret && i == gk_cache_get_size()) );
 
         FREE(entry->device_mac);
-        FREE(entry->attr_name);
     }
 
     current_count = gk_get_cache_count();
+    LOGN("number of entries %lu \n", gk_get_cache_count());
+    TEST_ASSERT_EQUAL_INT(gk_cache_get_size(), current_count);
 
     for (i = 0; i < 10; i++)
     {
-        entry->action         = 1;
-        entry->device_mac     = gkc_str2os_mac(test_attr_entries[i].mac_str);
+        entry->action = 1;
+        entry->device_mac = str2os_mac(test_attr_entries[i].mac_str);
         entry->attribute_type = GK_CACHE_REQ_TYPE_FQDN;
-        entry->cache_ttl      = 1000;
-        entry->action         = FSM_BLOCK;
-        entry->attr_name      = strdup(test_attr_entries[i].attr_name);
+        entry->cache_ttl = 1000;
+        entry->action = FSM_BLOCK;
+        entry->attr_name = test_attr_entries[i].attr_name;
         gkc_del_attribute(entry);
 
         FREE(entry->device_mac);
-        FREE(entry->attr_name);
     }
 
     LOGN("number of entries %lu \n", gk_get_cache_count());
     TEST_ASSERT_EQUAL_INT(current_count - 10, gk_get_cache_count());
 
     FREE(entry);
-    // clear_gatekeeper_cache();
+    clear_gatekeeper_cache();
 
     LOGI("ending test: %s", __func__);
 }
@@ -1077,27 +933,27 @@ test_max_attr_entries(void)
 void
 test_flow_ttl(void)
 {
-    int ret;
+    bool ret;
     struct gkc_ip_flow_interface *flow_entry;
 
     LOGI("starting test: %s ...", __func__);
 
-    flow_entry            = flow_entry1;
+    flow_entry = flow_entry1;
     flow_entry->cache_ttl = 1000;
 
     gkc_add_flow_entry(flow_entry);
 
-    flow_entry            = flow_entry2;
+    flow_entry = flow_entry2;
     flow_entry->cache_ttl = 1000;
 
     gkc_add_flow_entry(flow_entry);
 
-    flow_entry            = flow_entry3;
+    flow_entry = flow_entry3;
     flow_entry->cache_ttl = 2;
 
     gkc_add_flow_entry(flow_entry);
 
-    flow_entry            = flow_entry4;
+    flow_entry = flow_entry4;
     flow_entry->cache_ttl = 2;
 
     gkc_add_flow_entry(flow_entry);
@@ -1109,13 +965,13 @@ test_flow_ttl(void)
 
     /* 2 entries should be deleted due to expired time */
     ret = gkc_lookup_flow(flow_entry3, true);
-    TEST_ASSERT_EQUAL_INT(0, ret);
+    TEST_ASSERT_FALSE(ret);
     ret = gkc_lookup_flow(flow_entry4, true);
-    TEST_ASSERT_EQUAL_INT(0, ret);
+    TEST_ASSERT_FALSE(ret);
     ret = gkc_lookup_flow(flow_entry2, true);
-    TEST_ASSERT_EQUAL_INT(1, ret);
+    TEST_ASSERT_TRUE(ret);
     ret = gkc_lookup_flow(flow_entry1, true);
-    TEST_ASSERT_EQUAL_INT(1, ret);
+    TEST_ASSERT_TRUE(ret);
 
     LOGI("ending test: %s", __func__);
 }
@@ -1124,17 +980,11 @@ void
 test_fqdn_redirect_entry(void)
 {
     struct gk_attr_cache_interface *entry;
-    int ret;
+    bool ret;
 
     LOGN("starting test: %s ...", __func__);
 
-    entry = CALLOC(1, sizeof(*entry));
-    entry->action = FSM_ALLOW;
-    entry->device_mac =gkc_str2os_mac("AA:AA:AA:AA:AA:01");
-    entry->attribute_type = GK_CACHE_REQ_TYPE_FQDN;
-    entry->cache_ttl = 1000;
-    entry->action = FSM_ALLOW;
-    entry->attr_name = strdup("www.entr2.com");
+    entry = entry1;
     entry->fqdn_redirect = CALLOC(1, sizeof(*entry->fqdn_redirect));
     if (entry->fqdn_redirect == NULL) goto error;
 
@@ -1143,19 +993,16 @@ test_fqdn_redirect_entry(void)
 
     STRSCPY(entry->fqdn_redirect->redirect_ips[0], "1.2.3.4");
     STRSCPY(entry->fqdn_redirect->redirect_ips[1], "1.2.3.4");
-    gkc_add_attribute_entry(entry);
+    ret = gkc_add_attribute_entry(entry);
+    TEST_ASSERT_TRUE(ret);
 
     ret = gkc_lookup_attribute_entry(entry, true);
-    TEST_ASSERT_EQUAL_INT(1, ret);
+    TEST_ASSERT_TRUE(ret);
 
 error:
-    FREE(entry->device_mac);
-    FREE(entry->attr_name);
-    FREE(entry->fqdn_redirect);
-    FREE(entry);
+    /* Nothing to cleanup */
 
     LOGN("ending test: %s", __func__);
-
 }
 
 void
@@ -1186,7 +1033,7 @@ test_gkc_new_flow_entry(void)
     TEST_ASSERT_EQUAL(4, out->ip_version);
     TEST_ASSERT_EQUAL_UINT8_ARRAY(src_ipv4, out->src_ip_addr, 4);
     TEST_ASSERT_EQUAL_UINT8_ARRAY(dst_ipv4, out->dst_ip_addr, 4);
-    free_flow_members(out);
+    gkc_free_flow_members(out);
     FREE(out);
 
     /* IPv6 */
@@ -1202,47 +1049,163 @@ test_gkc_new_flow_entry(void)
     TEST_ASSERT_EQUAL(6, out->ip_version);
     TEST_ASSERT_EQUAL(1, out->src_ip_addr[0]);
     TEST_ASSERT_EQUAL(2, out->dst_ip_addr[0]);
-    free_flow_members(out);
+    gkc_free_flow_members(out);
     FREE(out);
 
     free_flow_interface(in);
 }
 
 void
+test_gkc_is_flow_valid(void)
+{
+    struct gkc_ip_flow_interface flow;
+    bool res;
+
+    res = gkc_is_flow_valid(NULL);
+    TEST_ASSERT_FALSE(res);
+
+    memset(&flow, 0, sizeof(flow));
+    res = gkc_is_flow_valid(&flow);
+    TEST_ASSERT_FALSE(res);
+
+    flow.device_mac = CALLOC(1, sizeof(*flow.device_mac));
+    res = gkc_is_flow_valid(&flow);
+    TEST_ASSERT_FALSE(res);
+
+    flow.direction = 234; /* some random value */
+    res = gkc_is_flow_valid(&flow);
+    TEST_ASSERT_FALSE(res);
+
+    flow.direction = GKC_FLOW_DIRECTION_INBOUND;
+    flow.ip_version = 4;
+    flow.src_ip_addr = CALLOC(1, 16); /* only interested in non NULL */
+    flow.dst_ip_addr = CALLOC(1, 16); /* only interested in non NULL */
+    res = gkc_is_flow_valid(&flow);
+    TEST_ASSERT_TRUE(res);
+
+    flow.direction = GKC_FLOW_DIRECTION_OUTBOUND;
+    res = gkc_is_flow_valid(&flow);
+    TEST_ASSERT_TRUE(res);
+
+    flow.ip_version = 5;
+    res = gkc_is_flow_valid(&flow);
+    TEST_ASSERT_FALSE(res);
+
+    flow.ip_version = 6;
+    res = gkc_is_flow_valid(&flow);
+    TEST_ASSERT_TRUE(res);
+
+    FREE(flow.dst_ip_addr);
+    flow.dst_ip_addr = NULL;
+    res = gkc_is_flow_valid(&flow);
+    TEST_ASSERT_FALSE(res);
+
+    FREE(flow.src_ip_addr);
+    flow.src_ip_addr = NULL;
+    res = gkc_is_flow_valid(&flow);
+    TEST_ASSERT_FALSE(res);
+
+    FREE(flow.device_mac);
+ }
+
+void
 test_gkc_new_attr_entry(void)
 {
-    struct gk_attr_cache_interface *in;
-    struct attr_cache              *out;
+    struct gk_attr_cache_interface *entry;
+    struct attr_cache *out;
 
-    in = CALLOC(1, sizeof(*in));
-    memset(in, 0, sizeof(*in));
-    in->attr_name = strdup("SOME ATTR NAME");
-
-    in->attribute_type = GK_CACHE_REQ_TYPE_FQDN;
-    out = gkc_new_attr_entry(in);
-    TEST_ASSERT_NOT_NULL(out);
-    free_attr_members(out, GK_CACHE_REQ_TYPE_FQDN);
-    FREE(out->gk_policy);
-    FREE(out);
-
-    in->attribute_type = GK_CACHE_REQ_TYPE_INBOUND;
-    out = gkc_new_attr_entry(in);
+    entry = entry1;
+    entry->attribute_type = 12345; /* random value out of range */
+    out = gkc_new_attr_entry(entry);
     TEST_ASSERT_NULL(out);
-
-    FREE(in->attr_name);
-    FREE(in);
 }
 
-int
-main(int argc, char *argv[])
+void
+test_cache_size(void)
 {
-    (void)argc;
-    (void)argv;
+    struct gk_attr_cache_interface *entry;
+    bool ret;
 
-    target_log_open("TEST", LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_TRACE);
-    UnityBegin(test_name);
+    LOGI("starting test: %s ...", __func__);
 
+    /* cache is jus tinitialized, we can change the size */
+    gk_cache_set_size(10);
+    TEST_ASSERT_EQUAL_size_t(10, gk_cache_get_size());
+
+    entry = entry1;
+    ret = gkc_add_attribute_entry(entry);
+    TEST_ASSERT_TRUE(ret);
+    TEST_ASSERT_EQUAL_UINT64(1, gk_get_cache_count());
+
+    /* cache is not empty: can NOT change the size */
+    gk_cache_set_size(100);
+    TEST_ASSERT_EQUAL_size_t(10, gk_cache_get_size());
+
+    ret = gkc_del_attribute(entry);
+    TEST_ASSERT_TRUE(ret);
+    TEST_ASSERT_EQUAL_UINT64(0, gk_get_cache_count());
+
+    /* cache is empty again: changing size is OK */
+    gk_cache_set_size(100);
+    TEST_ASSERT_EQUAL_size_t(100, gk_cache_get_size());
+
+    LOGN("ending test: %s", __func__);
+}
+
+/* Only the corner cases here */
+void
+test_allow_blocked_counters(void)
+{
+    enum gk_cache_request_type attr_type;
+    os_macaddr_t *mac;
+
+    attr_type = 12345; /* random value not in enum */
+
+    /* Need to check this to tame cross-compiler GCC. Otherwise, it
+     * complains the variable is not used in the TEST_ASSERT_EQUAL_UINT64
+     */
+    TEST_ASSERT_EQUAL(12345, attr_type);
+
+    TEST_ASSERT_EQUAL_UINT64(0, gkc_get_allowed_counter(NULL, attr_type));
+    TEST_ASSERT_EQUAL_UINT64(0, gkc_get_blocked_counter(NULL, attr_type));
+
+    mac = str2os_mac("AA:AA:AA:AA:AA:01");
+    TEST_ASSERT_EQUAL_UINT64(0, gkc_get_allowed_counter(mac, attr_type));
+    TEST_ASSERT_EQUAL_UINT64(0, gkc_get_blocked_counter(mac, attr_type));
+
+    attr_type = GK_CACHE_REQ_TYPE_FQDN;
+    TEST_ASSERT_EQUAL_UINT64(0, gkc_get_allowed_counter(mac, attr_type));
+    TEST_ASSERT_EQUAL_UINT64(0, gkc_get_blocked_counter(mac, attr_type));
+
+    /* cleanup */
+    FREE(mac);
+}
+
+void
+test_gkc_add_to_cache_delete_entry(void)
+{
+    struct gk_attr_cache_interface *entry;
+    struct attr_cache *ret;
+
+    /* Make entry match exactly entry1, only replacing the attr_name ptr */
+    entry = CALLOC(1, sizeof(*entry));
+    memcpy(entry, entry1, sizeof(*entry));
+    entry->attr_name = STRDUP(entry1->attr_name);
+
+    gkc_add_attribute_entry(entry);
+
+    /* Free the ptr... the cache should still be valid */
+    FREE(entry->attr_name);
+    ret = gkc_fetch_attribute_entry(entry1);
+    TEST_ASSERT_TRUE(ret);
+    TEST_ASSERT_EQUAL_STRING(entry1->attr_name, ret->attr.host_name->name);
+
+    FREE(entry);
+}
+
+void
+run_gk_cache(void)
+{
     RUN_TEST(test_gkc_new_flow_entry);
     RUN_TEST(test_gkc_new_attr_entry);
 
@@ -1267,5 +1230,11 @@ main(int argc, char *argv[])
     RUN_TEST(test_max_attr_entries);
     RUN_TEST(test_max_flow_entries);
     RUN_TEST(test_host_entry_in_fqdn);
-    return UNITY_END();
+
+    RUN_TEST(test_gkc_new_attr_entry);
+    RUN_TEST(test_gkc_is_flow_valid);
+    RUN_TEST(test_cache_size);
+    RUN_TEST(test_allow_blocked_counters);
+
+    RUN_TEST(test_gkc_add_to_cache_delete_entry);
 }

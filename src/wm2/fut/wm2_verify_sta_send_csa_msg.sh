@@ -26,15 +26,15 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
-[ -e "${LIB_OVERRIDE_FILE}" ] && source "${LIB_OVERRIDE_FILE}" || raise "" -olfm
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 tc_name="wm2/$(basename "$0")"
 manager_setup_file="wm2/wm2_setup.sh"
-# Wait for channel to change, not necessarily become usable (CAC for DFS)
-channel_change_timeout=60
 
 usage()
 {
@@ -46,33 +46,36 @@ Arguments:
     -h  show this help message
     \$1  (gw_vif_mac)     : GW VIF mac address that LEAF is connected to : (string)(required)
     \$2  (gw_csa_channel) : Channel that triggered CSA on GW             : (string)(required)
-Script usage example:
-    ./${tc_name} d2:b4:f7:f0:23:26 6
+Testcase procedure:
+    - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
+                 Run: ./${tc_name} <GW_VIF_MAC> <CSA_CHANNEL>
 usage_string
 }
-while getopts h option; do
-    case "$option" in
-        h)
+if [ -n "${1}" ]; then
+    case "${1}" in
+        help | \
+        --help | \
+        -h)
             usage && exit 1
             ;;
         *)
-            echo "Unknown argument" && exit 1
             ;;
     esac
-done
+fi
+
 NARGS=2
 [ $# -ne ${NARGS} ] && usage && raise "Requires '${NARGS}' input argument(s)" -l "${tc_name}" -arg
-
 gw_vif_mac=${1}
 gw_csa_channel=${2}
 
 log_title "$tc_name: WM2 test - Verifying sta_send_csa message for MAC ${gw_vif_mac} to channel ${gw_csa_channel}"
 
+# Example log:
 # Mar 18 10:29:06 WM[19842]: <INFO>    TARGET: wifi0: csa rx to bssid d2:b4:f7:f0:23:26 chan 6 width 0MHz sec 0 cfreq2 0 valid 1 supported 1
 wm_csa_log_grep="$LOGREAD | tail -500 | grep -i 'csa' | grep -i '${gw_vif_mac} chan ${gw_csa_channel}'"
 
 wait_for_function_response 0 "${wm_csa_log_grep}" 10 &&
-    log -deb "$tc_name - sta_send_csa message found in logs" ||
+    log "$tc_name: sta_send_csa message found in logs - Success" ||
     raise "FAIL: Failed to find sta_send_csa message in logs" -l "$tc_name" -tc
 
 pass

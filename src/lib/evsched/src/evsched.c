@@ -40,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <ds_list.h>
 
 #include "evsched.h"
+#include "memutil.h"
 
 
 // Defines
@@ -146,7 +147,7 @@ evsched_timer_callback(struct ev_loop *loop, ev_timer *timer, int revents)
         if (tp->remove) {
             // Marked for removal, so free it
             LOGT("Task %u canceled", tp->task_id);
-            free(tp);
+            FREE(tp);
         }
         else {
             // Call function
@@ -161,7 +162,7 @@ evsched_timer_callback(struct ev_loop *loop, ev_timer *timer, int revents)
             }
             else {
                 // we're done with it, let's free it
-                free(tp);
+                FREE(tp);
             }
         }
 
@@ -177,7 +178,7 @@ evsched_timer_callback(struct ev_loop *loop, ev_timer *timer, int revents)
 
             // Marked for removal, so free it
             LOGT("Task %u canceled", tp->task_id);
-            free(tp);
+            FREE(tp);
         }
 
         tp = ds_list_inext(&iter);
@@ -191,7 +192,7 @@ evsched_timer_callback(struct ev_loop *loop, ev_timer *timer, int revents)
         // Reinsert it
         if (evsched_task_insert(tp, false) == false) {
             LOGE("evsched_timer_callback() failed to reschedule task %u", tp->task_id);
-            free(tp);
+            FREE(tp);
         }
 
         tp = ds_list_inext(&iter);
@@ -313,7 +314,7 @@ evsched_cleanup(void)
     tp = ds_list_ifirst(&iter, &evsched_tasklist);
     while(tp) {
         ds_list_iremove(&iter);
-        free(tp);
+        FREE(tp);
 
         tp = ds_list_inext(&iter);
     }
@@ -332,11 +333,7 @@ evsched_task(evsched_task_func_t func, void *arg, uint32_t ms)
         return 0;
     }
 
-    ntp = calloc(1, sizeof(*ntp));
-    if (!ntp) {
-        LOGE("evsched_task() failed to allocate memory for new task!");
-        return 0;
-    }
+    ntp = CALLOC(1, sizeof(*ntp));
 
     // Assign it a task id
     ntp->task_id = evsched_task_id++;
@@ -356,7 +353,7 @@ evsched_task(evsched_task_func_t func, void *arg, uint32_t ms)
         // Insert it into our task list
         if (evsched_task_insert(ntp, true) == false) {
             LOGE("evsched_task() failed to insert task into tasklist!");
-            free(ntp);
+            FREE(ntp);
             return 0;
         }
 
@@ -450,7 +447,7 @@ evsched_task_update(evsched_task_t task, uint32_t ms)
         tp->ms = ms;
         if (evsched_task_insert(tp, true) == false) {
             LOGE("evsched_task_update() failed to re-insert task into tasklist!");
-            free(tp);
+            FREE(tp);
             return false;
         }
 
@@ -492,7 +489,7 @@ evsched_task_cancel(evsched_task_t task)
     if (!tp) {
         return false;
     }
-    free(tp);
+    FREE(tp);
 
     LOGT("Task %u canceled", task);
     return true;
