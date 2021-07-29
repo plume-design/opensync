@@ -193,6 +193,11 @@ rootfs-make: build_all rootfs-prepare ovsdb-create
 
 rootfs: rootfs-clean
 	$(MAKE) rootfs-make
+ifeq ($(BUILD_PLUME_ROOTFS_PACK),y)
+	@# optional include rootfs-pack in rootfs
+	$(MAKE) rootfs-pack-only
+endif
+
 
 # empty targets -prepend and -append allow inserting additional commands
 rootfs-prepare-prepend: workdirs
@@ -211,7 +216,8 @@ rootfs-prepare-append: rootfs-prepare-main
 rootfs-prepare: rootfs-prepare-prepend rootfs-prepare-main rootfs-prepare-append
 
 # plume-rootfs-pack = plume-only part of rootfs (work/target/rootfs)
-plume-rootfs-pack: rootfs plume-rootfs-pack-only
+plume-rootfs-pack: rootfs
+	$(MAKE) plume-rootfs-pack-only
 
 ifeq ($(PLUME_ROOTFS_PACK_VERSION),)
 PLUME_ROOTFS_PACK_VERSION := $(shell $(call version-gen,make,$(PLUME_ROOTFS_PACK_VER_OPT)))
@@ -222,11 +228,6 @@ PLUME_ROOTFS_PACK_PATHNAME ?= $(IMAGEDIR)/$(PLUME_ROOTFS_PACK_FILENAME)
 plume-rootfs-pack-only: workdirs
 	$(NQ) "$(call color_install,pack) plume-rootfs $(call color_profile,$(BUILD_ROOTFS_DIR) => $(PLUME_ROOTFS_PACK_PATHNAME))"
 	$(Q)tar czf $(PLUME_ROOTFS_PACK_PATHNAME) -C $(BUILD_ROOTFS_DIR) .
-
-# optional include plume-rootfs-pack in rootfs:
-ifeq ($(BUILD_PLUME_ROOTFS_PACK),y)
-rootfs: plume-rootfs-pack-only
-endif
 
 # rootfs-install:
 #   - copy work-area rootfs to INSTALL_ROOTFS_DIR (can be SDK_ROOTFS)

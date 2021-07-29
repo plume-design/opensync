@@ -986,7 +986,6 @@ start:
                 if (cm2_is_extender()) {
                     cm2_ovsdb_connection_update_unreachable_cloud_counter(g_state.link.if_name,
                                                                           g_state.disconnects);
-                    g_state.run_stability = false;
                 }
                 // Update timeouts based on AWLAN_Node contents
                 cm2_compute_backoff();
