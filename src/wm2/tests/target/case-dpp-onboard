@@ -286,6 +286,46 @@ onboard_legacy_fallback_post() {
 .
 }
 
+onboard_cleanup() {
+	# This checks if STA vif removal does preempt/stop chirping
+	# Without this onboarding can take too long
+	$dut <<. || return $?
+		ovsh d DPP_Config
+		ovsh d DPP_Announcement
+		ovsh d Wifi_VIF_Config
+		ovsh w Wifi_VIF_State -n -w if_name==$dut_vif if_name:=$dut_vif
+		ovsh d Wifi_Radio_Config
+		ovsh d Wifi_Associated_Clients
+
+		sleep 5
+
+		echo 1 > /tmp/target_hwsim_dpp_key
+		echo 0 > /tmp/target_hwsim_dpp_curve
+		echo "$urikeyhex" > /tmp/target_hwsim_dpp_key_hex
+
+		vif=\$(ovsh -Ur i Wifi_VIF_Config \
+			enabled:=true \
+			if_name:=$dut_vif \
+			ssid:=$ssid \
+			'security::["map",[["key","$psk"],["encryption","WPA-PSK"]]]' \
+			vif_radio_idx:=0 \
+			mode:=sta
+		)
+
+		ovsh i Wifi_Radio_Config \
+			enabled:=true \
+			if_name:=$dut_phy \
+			ht_mode:=HT20 \
+			hw_mode:=11n \
+			freq_band:=2.4G \
+			"vif_configs::[\"set\",[[\"uuid\",\"\$vif\"]]]"
+
+		ovsh -t 5000 w DPP_Config -w auth==chirp_and_respond status:=in_progress
+		ovsh d Wifi_VIF_Config
+		ovsh -t 5000 w DPP_Config -w auth==chirp_and_respond status:=requested
+.
+}
+
 step() {
 	name=${self}_$(echo "$*" | tr ' ' '_' | tr -dc a-z0-9_)
 
@@ -309,6 +349,7 @@ base() {
 	step onboard_legacy_fallback_post 10
 	step onboard_legacy_fallback_post 30
 	step onboard_legacy_fallback_post 60
+	step onboard_cleanup
 }
 
 nonstdchan() {

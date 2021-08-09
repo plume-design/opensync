@@ -49,6 +49,11 @@ prepare_dut() {
 			vif_radio_idx:=1 \
 			mode:=ap
 		)
+		vif3=\$(ovsh -Ur i Wifi_VIF_Config \
+			if_name:=wlan2 \
+			vif_radio_idx:=2 \
+			mode:=ap
+		)
 		
 		ovsh i Wifi_VIF_State \
 			if_name:=wlan0 \
@@ -59,6 +64,11 @@ prepare_dut() {
 			if_name:=wlan1 \
 			mac:=10:00:00:00:00:01 \
 			channel:=36
+		
+		ovsh i Wifi_VIF_State \
+			if_name:=wlan2 \
+			mac:=10:00:00:00:00:02 \
+			channel:=167
 		
 		ovsh i Wifi_Radio_Config \
 			enabled:=true \
@@ -77,6 +87,15 @@ prepare_dut() {
 			freq_band:=5GL \
 			channel:=36 \
 			"vif_configs::[\"set\",[[\"uuid\",\"\$vif2\"]]]"
+		
+		ovsh i Wifi_Radio_Config \
+			enabled:=true \
+			if_name:=phy2 \
+			ht_mode:=HT80 \
+			hw_mode:=11ax \
+			freq_band:=6G \
+			channel:=167 \
+			"vif_configs::[\"set\",[[\"uuid\",\"\$vif3\"]]]"
 
 		ovsh i Band_Steering_Config \
 			chan_util_avg_count:=0  \
@@ -94,7 +113,7 @@ prepare_dut() {
 			gw_only:=false  \
 			'if_name_2g:=["set", []]'  \
 			'if_name_5g:=["set", []]'  \
-			'ifnames::["map",[["wlan0", "2.4G"],["wlan1", "5GL bs_allow"]]]' \
+			'ifnames::["map",[["wlan0", "2.4G"],["wlan1", "5GL bs_allow"], ["wlan2", "6G bs_allow"]]]' \
 			inact_check_sec:=10  \
 			inact_tmout_sec_normal:=60  \
 			inact_tmout_sec_overload:=30  \
@@ -106,6 +125,7 @@ prepare_dut() {
 
 	diff_vars "$ref_iface_wlan0" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
 	diff_vars "$ref_iface_wlan1" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_iface_wlan2" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
 }
 
 add_sta() {
@@ -146,8 +166,16 @@ add_sta() {
 .
 
 	diff_vars "$ref_set_neighbor_wlan0_0" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan0_2" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
 	diff_vars "$ref_set_neighbor_wlan0_1" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
-	diff_vars "$ref_set_neighbor_wlan1_0" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_set_neighbor_wlan1_1" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan1_2" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_set_neighbor_wlan2_1" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan2_2" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
 	diff_vars "$ref_sta_24" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
 	diff_vars "$ref_sta_5" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_sta_6" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
 }

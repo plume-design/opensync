@@ -35,6 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <arpa/inet.h>
 
 #include "os_types.h"
+#include "fsm.h"
 #include "fsm_policy.h"
 #include "ds_tree.h"
 #include "util.h"
@@ -74,6 +75,12 @@ struct attr_generic_s
     struct counter_s  hit_count;  /* number of times lookup is performed */
 };
 
+struct attr_ip_addr_s
+{
+    struct sockaddr_storage ip_addr;
+    struct counter_s        hit_count;  /* number of times lookup is performed */
+
+};
 
 struct attr_hostname_s
 {
@@ -88,8 +95,8 @@ union attribute_type
     struct attr_hostname_s *host_name;
     struct attr_generic_s  *url;
     struct attr_generic_s  *app_name;
-    struct attr_generic_s  *ipv4;
-    struct attr_generic_s  *ipv6;
+    struct attr_ip_addr_s  *ipv4;
+    struct attr_ip_addr_s  *ipv6;
 };
 
 /* enum for flow direction */
@@ -224,18 +231,20 @@ struct gk_cache_mgr
  */
 struct gk_attr_cache_interface
 {
-    os_macaddr_t *device_mac;     /* device mac address */
+    os_macaddr_t *device_mac;         /* device mac address */
     enum gk_cache_request_type attribute_type; /* request type */
-    char *attr_name;              /* attribute name */
-    uint64_t cache_ttl;           /* TTL value that should be set */
-    uint8_t action;               /* action req when adding will be set when
-                                     lookup is performed */
-    uint8_t direction;            /* direction for the request */
-    char *gk_policy;              /* gatekeeper rule string */
-    uint32_t category_id;         /* category plume id */
-    uint32_t confidence_level;    /* risk/confidence level */
-    uint64_t hit_counter;         /* hit count will be set when lookup
-                                     is performed */
+    char *attr_name;                  /* attribute name */
+    struct sockaddr_storage *ip_addr; /* attribute ip address if used */
+    uint64_t cache_ttl;               /* TTL value that should be set */
+    uint8_t action;                   /* action req when adding will be set when
+                                         lookup is performed */
+    uint8_t direction;                /* direction for the request */
+    char *gk_policy;                  /* gatekeeper rule string */
+    uint32_t category_id;             /* category plume id */
+    uint32_t confidence_level;        /* risk/confidence level */
+    uint64_t hit_counter;             /* hit count will be set when lookup
+                                         is performed */
+    uint64_t cache_key;               /* key for a request is computed only once */
     struct fqdn_redirect_s *fqdn_redirect;
     int categorized;
 };
@@ -588,7 +597,7 @@ gkc_free_attr_entry(struct attr_cache *attr_entry,
  *         DO NOT FREE as the entry remains in use in the ds_tree.
  */
 struct attr_cache*
-gkc_fetch_attribute_entry(struct gk_attr_cache_interface *entry);
+gkc_fetch_attribute_entry(struct gk_attr_cache_interface *req);
 
 /**
  * @brief Flush an entire cache for a specific device
@@ -628,5 +637,18 @@ gkc_flush_all(void);
  */
 int
 gkc_flush_client(struct fsm_session *session, struct fsm_policy *policy);
+
+/**
+ * @brief Compute a unique key for the request passed.
+ *
+ * @param req
+ * @return unique key matching the req (or 0 in case of error)
+ *
+ * @remark there is a 1 in 2^64 chance of a collision for the error value.
+ * @remark This is exposed for UT's benefit.
+ */
+uint64_t
+get_attr_key(struct gk_attr_cache_interface *req);
+
 
 #endif /* GK_CACHE_H_INCLUDED */

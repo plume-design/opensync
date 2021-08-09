@@ -64,4 +64,3 @@ main(int argc, char *argv[])
 
     return UNITY_END();
 }
-

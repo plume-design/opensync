@@ -42,9 +42,9 @@ cd "$dir"
 
 BM_TEST_PREFIX="$dut_ap_a_prefix"
 BM_TEST_CMD="
-	env BM_TEST_PREFIX=\"$dut_ap_b_prefix\" BM_TEST_CMD=\"$cmd\" ovsdb-server --remote=punix:$db_ap_b --run \"env PLUME_OVSDB_SOCK_PATH=$db_ap_b $bm\" \"$conf_ap_b\"
+	env BM_TEST_PREFIX=\"$dut_ap_b_prefix\" BM_TEST_CMD=\"$cmd\" ovsdb-server --remote=punix:$db_ap_b --run \"env PLUME_OVSDB_SOCK_PATH=$db_ap_b $bm -vv\" \"$conf_ap_b\"
 "
-time ovsdb-server --remote=punix:$db_ap_a --run "env PLUME_OVSDB_SOCK_PATH=$db_ap_a $bm" "$conf_ap_a"
+time ovsdb-server --remote=punix:$db_ap_a --run "env PLUME_OVSDB_SOCK_PATH=$db_ap_a $bm -vv" "$conf_ap_a"
 
 if test $? -eq 0
 then

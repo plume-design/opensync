@@ -27,14 +27,7 @@
 # LTE Manager UT
 #
 ##############################################################################
-UNIT_DISABLE := y
-ifneq ($(filter ZEUS_BCM52, $(TARGET)),)
-UNIT_DISABLE := n
-endif
-ifneq ($(filter native, $(TARGET)),)
-UNIT_DISABLE := n
-endif
-
+UNIT_DISABLE := $(if $(CONFIG_MANAGER_LTEM),n,y)
 UNIT_NAME := test_ltem
 
 UNIT_TYPE := TEST_BIN

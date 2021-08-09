@@ -613,6 +613,7 @@ void test_add_del_session(void)
     TEST_ASSERT_TRUE(ret == 0);
     ds_session = ds_tree_find(sessions, session);
     TEST_ASSERT_NOT_NULL(ds_session);
+    ipthreat_dpi_plugin_exit(session);
 
     session = &g_sessions[1];
     ds_session = ds_tree_find(sessions, session);

@@ -116,37 +116,77 @@ gkc_uint64_cmp(void *_a, void *_b)
     uint64_t *b = (uint64_t *)_b;
 
     if (*a < *b) return -1;
-    else if (*a > *b) return 1;
-    else return 0;
+    if (*a > *b) return 1;
+    return 0;
 }
 
 /* Fast hashing function. */
 static uint64_t
-MurmurOAAT64(const char *key)
+MurmurOAAT64(uint8_t dir, uint8_t *data, size_t len)
 {
     uint64_t h = 0x749E3E6989DF617;
+    size_t i;
 
-    while (*key != '\0')
+    h ^= dir;
+    h *= 0x5bd1e9955bd1e995;
+    h ^= h >> 47;
+
+    for (i = 0; i < len; i++)
     {
-        h ^= *key;
+        h ^= data[i];
         h *= 0x5bd1e9955bd1e995;
         h ^= h >> 47;
-        key++;
     }
+
     return h;
 }
 
-static uint64_t
-get_attr_key(char *name, uint8_t direction)
+uint64_t
+get_attr_key(struct gk_attr_cache_interface *req)
 {
-    const size_t buf_len = 4096;
-    char str_key[buf_len];
+    struct sockaddr_in6 *in6;
+    struct sockaddr_in *in4;
+    size_t data_len;
+    uint8_t *data;
+    uint64_t ret;
 
-    /* if the name is too long, having the direction first will
-     * still differentiate between inbound and outbound
-     */
-    snprintf(str_key, buf_len, "%u_%s", direction, name);
-    return MurmurOAAT64(str_key);
+    if (!req->attr_name && !req->ip_addr) return 0;
+
+    data = (uint8_t *)req->attr_name;
+    if (req->attr_name)
+        data_len = strlen(req->attr_name);
+    else
+        data_len = 0;
+
+    switch (req->attribute_type)
+    {
+        case GK_CACHE_REQ_TYPE_IPV4:
+            if (req->ip_addr)
+            {
+                /* Make sure to point the IPv4 address itself */
+                in4 = (struct sockaddr_in *)req->ip_addr;
+                data = (uint8_t *)&in4->sin_addr;
+                data_len = 4;
+            }
+            break;
+        case GK_CACHE_REQ_TYPE_IPV6:
+            if (req->ip_addr)
+            {
+                /* Make sure to point the IPv6 address itself */
+                in6 = (struct sockaddr_in6 *)req->ip_addr;
+                data = (uint8_t *)&in6->sin6_addr;
+                data_len = 16;
+            }
+            break;
+        default:
+            ; /* Nothing to be done */
+    }
+
+    if (data_len == 0) return 0;
+
+    ret = MurmurOAAT64(req->direction, data, data_len);
+
+    return ret;
 }
 
 /**
@@ -171,7 +211,7 @@ gkc_flow_entry_cmp(void *_a, void *_b)
     if (cmp != 0) return cmp;
 
     /* Get ip version comparison len. Default with the shortest. */
-    ipl = (key_a->ip_version == 16 ? 16 : 4);
+    ipl = (key_a->ip_version == 6 ? 16 : 4);
 
     /* Compare source IP addresses */
     cmp = memcmp(key_a->src_ip_addr, key_b->src_ip_addr, ipl);
@@ -247,8 +287,6 @@ gk_cache_init_mgr(struct gk_cache_mgr *mgr)
     ds_tree_init(&mgr->per_device_tree, gkc_mac_addr_cmp, struct per_device_cache, perdevice_tnode);
 
     mgr->initialized = true;
-
-    return;
 }
 
 /**
@@ -338,14 +376,16 @@ gkc_new_attr_entry(struct gk_attr_cache_interface *entry)
         case GK_CACHE_REQ_TYPE_IPV4:
             attr->ipv4 = CALLOC(1, sizeof(*attr->ipv4));
             if (attr->ipv4 == NULL) goto cleanup_new_attr;
-            attr->ipv4->name = STRDUP(entry->attr_name);
+            if (entry->ip_addr)
+                memcpy(&attr->ipv4->ip_addr, entry->ip_addr, sizeof(attr->ipv4->ip_addr));
             attr->ipv4->hit_count.total = 1;
             break;
 
         case GK_CACHE_REQ_TYPE_IPV6:
             attr->ipv6 = CALLOC(1, sizeof(*attr->ipv6));
             if (attr->ipv6 == NULL) goto cleanup_new_attr;
-            attr->ipv6->name = STRDUP(entry->attr_name);
+            if (entry->ip_addr)
+                memcpy(&attr->ipv6->ip_addr, entry->ip_addr, sizeof(attr->ipv6->ip_addr));
             attr->ipv6->hit_count.total = 1;
             break;
 
@@ -366,7 +406,9 @@ gkc_new_attr_entry(struct gk_attr_cache_interface *entry)
 
     /* add the direction and the key */
     new_attr_cache->direction = entry->direction;
-    new_attr_cache->key = get_attr_key(entry->attr_name, entry->direction);
+    if (entry->cache_key == 0)
+        entry->cache_key = get_attr_key(entry);
+    new_attr_cache->key = entry->cache_key;
 
     /* set action value: allow or block */
     new_attr_cache->action = entry->action;
@@ -567,6 +609,10 @@ gkc_add_attribute_entry(struct gk_attr_cache_interface *entry)
 
         ds_tree_insert(&mgr->per_device_tree, pdevice_cache, pdevice_cache->device_mac);
     }
+
+    /* Pre-compute the key */
+    if (entry->cache_key == 0)
+        entry->cache_key = get_attr_key(entry);
 
     /* Delay lookup until later, as we need different accounting.
      * See respective add functions.
@@ -805,7 +851,9 @@ gkc_lookup_attr_tree(ds_tree_t *tree, struct gk_attr_cache_interface *req, bool 
 
     if (!req->attr_name) return false;
 
-    key = get_attr_key(req->attr_name, req->direction);
+    if (req->cache_key == 0)
+        req->cache_key = get_attr_key(req);
+    key = req->cache_key;
 
     attr_entry = ds_tree_find(tree, &key);
     if (attr_entry == NULL) return false;
@@ -970,7 +1018,9 @@ gkc_fetch_attribute_entry(struct gk_attr_cache_interface *req)
     if (pdevice == NULL) return NULL;
 
     /* Build the key to look for */
-    key = get_attr_key(req->attr_name, req->direction);
+    if (req->cache_key == 0)
+        req->cache_key = get_attr_key(req);
+    key = req->cache_key;
 
     /* lookup the attributes tree */
     switch (req->attribute_type)
@@ -1167,8 +1217,11 @@ dir2str(uint8_t direction)
 static void
 dump_attr_tree(ds_tree_t *tree, enum gk_cache_request_type req_type)
 {
+    char ip_str[INET6_ADDRSTRLEN];
     union attribute_type *attr;
     struct attr_cache *entry;
+    struct sockaddr_in6 *in6;
+    struct sockaddr_in *in4;
 
     if (tree == NULL) return;
 
@@ -1195,15 +1248,19 @@ dump_attr_tree(ds_tree_t *tree, enum gk_cache_request_type req_type)
                 break;
 
             case GK_CACHE_REQ_TYPE_IPV4:
+                in4 = (struct sockaddr_in *)&(attr->ipv4->ip_addr);
+                inet_ntop(AF_INET, &in4->sin_addr, ip_str, INET_ADDRSTRLEN);
                 LOGT("\t\t\t %s, %s, %" PRId64 "",
-                     attr->ipv4->name,
+                     ip_str,
                      dir2str(entry->direction),
                      attr->ipv4->hit_count.total);
                 break;
 
             case GK_CACHE_REQ_TYPE_IPV6:
+                in6 = (struct sockaddr_in6 *)&(attr->ipv6->ip_addr);
+                inet_ntop(AF_INET6, &in6->sin6_addr, ip_str, INET6_ADDRSTRLEN);
                 LOGT("\t\t\t %s, %s, %" PRId64 "",
-                     attr->ipv6->name,
+                     ip_str,
                      dir2str(entry->direction),
                      attr->ipv6->hit_count.total);
                 break;
@@ -1304,7 +1361,6 @@ gkc_print_cache_entries(void)
         dump_flow_tree(subtree);
     }
     LOGT("=====END=====");
-    return;
 }
 
 void

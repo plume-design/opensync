@@ -31,3 +31,19 @@ ref_update_sta_5=$(cat <<-.
 	auth_reject_reason=0
 .
 )
+
+ref_update_sta_6=$(cat <<-.
+	CLIENT_UPDATE
+	mac=20:00:00:00:00:00
+	if_name=wlan2
+	blacklist=false
+	rssi_probe_hwm=0
+	rssi_probe_lwm=0
+	rssi_auth_hwm=0
+	rssi_auth_lwm=0
+	rssi_inact_xing=0
+	rssi_high_xing=0
+	rssi_low_xing=0
+	auth_reject_reason=0
+.
+)

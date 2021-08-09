@@ -262,7 +262,7 @@ typedef struct lte_modem_info_
 {
     char chip_vendor[16];
     char model[16];
-    char full_model[16];
+    char full_model[32];
     char imei[16];
     char imsi[16];
     char iccid[32];

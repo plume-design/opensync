@@ -261,9 +261,7 @@ bm_events_handle_event(bsal_event_t *event)
             if (client->state != BM_CLIENT_STATE_CONNECTED &&
                 client->state != BM_CLIENT_STATE_BACKOFF) {
                 if( client->steering_state != BM_CLIENT_CLIENT_STEERING ) {
-                    if (!bm_client_bs_ifname_allowed(client, ifname)) {
-                        bm_client_set_state(client, BM_CLIENT_STATE_STEERING);
-                    }
+                    bm_client_set_state(client, BM_CLIENT_STATE_STEERING);
                 }
 
                 reject_detection = bm_client_get_reject_detection( client );
@@ -306,6 +304,9 @@ bm_events_handle_event(bsal_event_t *event)
             case RADIO_TYPE_5GL:
             case RADIO_TYPE_5GU:
                 client->band_cap_5G = true;
+                break;
+             case RADIO_TYPE_6G:
+                client->band_cap_6G = true;
                 break;
             default:
                 break;

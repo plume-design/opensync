@@ -75,17 +75,16 @@ wano_plugin_handle_t *wanp_vlan_init(
         const char *ifname,
         wano_plugin_status_fn_t *status_fn)
 {
-    struct wano_wan_config wc;
     struct wanp_vlan *self;
 
+    self = CALLOC(1, sizeof(struct wanp_vlan));
+
     /* Load the persistent VLAN configuration and verify that it is valid */
-    if (!wano_wan_config_get(&wc, WC_TYPE_VLAN))
+    if (!wano_wan_config_get(&self->wvl_wan_config, WC_TYPE_VLAN))
     {
         LOG(INFO, "wanp_vlan: No persistent configuration present.");
         return NULL;
     }
-
-    self = CALLOC(1, sizeof(struct wanp_vlan));
 
     STRSCPY(self->wvl_handle.wh_ifname, ifname);
     self->wvl_handle.wh_plugin = wp;

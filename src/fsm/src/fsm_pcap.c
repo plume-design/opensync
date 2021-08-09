@@ -324,7 +324,7 @@ bool fsm_pcap_open(struct fsm_session *session) {
 
     pcaps->pcap = pcap_create(iface, pcap_err);
     if (pcaps->pcap == NULL) {
-        LOGN("PCAP initialization failed for interface %s.",
+        LOGE("PCAP initialization failed for interface %s.",
              iface);
         goto error;
     }

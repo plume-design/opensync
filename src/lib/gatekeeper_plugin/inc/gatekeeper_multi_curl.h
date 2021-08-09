@@ -75,9 +75,8 @@ struct gk_sock_info
  * @return true if the initialization succeeded,
  *         false otherwise
  */
-bool
-gk_send_mcurl_request(struct fsm_gk_session *fsm_gk_session, struct gk_mcurl_data *mcurl_data);
-
+bool gk_send_mcurl_request(struct fsm_gk_session *fsm_gk_session,
+                           struct gk_mcurl_data *mcurl_data);
 
 /**
  * @brief cleans up curl library.

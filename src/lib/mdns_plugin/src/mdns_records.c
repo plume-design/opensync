@@ -855,7 +855,7 @@ mdns_records_send_records(struct mdns_session *md_session)
     num_clients = mdns_records_get_num_clients(&report.staged_clients);
     if (num_clients > 0)
     {
-        LOGN("%s: Sending MDNS records report", __func__);
+        LOGT("%s: Sending MDNS records report", __func__);
         ret = mdns_records_send_report(&report, session->topic);
         if (ret)
         {
@@ -896,7 +896,7 @@ mdns_records_init(struct mdns_session *md_session)
     /* Don't initialize the report is report_repcords is false */
     if (!md_session->report_records)
     {
-        LOGN("%s: MDNS records reporting not enabled", __func__);
+        LOGT("%s: MDNS records reporting not enabled", __func__);
         report.initialized = false;
         return true;
     }

@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdlib.h>
 
 #include "fsm_policy.h"
+#include "fsm_utils.h"
 #include "gatekeeper_cache_cmp.h"
 #include "util.h"
 
@@ -49,6 +50,8 @@ mac_cmp(os_macaddr_t *a, os_macaddr_t *b)
 bool
 mac_cmp_true(os_macaddr_t *a, os_macaddr_t *b)
 {
+    (void)a;
+    (void)b;
     return true;
 }
 
@@ -106,6 +109,8 @@ risk_cmp_gte(int a, int b)
 bool
 risk_cmp_true(int a, int b)
 {
+    (void)a;
+    (void)b;
     return true;
 }
 
@@ -135,6 +140,9 @@ cat_cmp_eval(int c, struct int_set *s)
 {
     size_t i;
 
+    /* NULL set represents an empty set */
+    if (s == NULL) return false;
+
     for (i = 0; i < s->nelems; i++)
     {
         if (c == s->array[i]) return true;
@@ -157,6 +165,8 @@ cat_cmp_out(int c, struct int_set *s)
 bool
 cat_cmp_true(int c, struct int_set *s)
 {
+    (void)c;
+    (void)s;
     return true;
 }
 
@@ -206,6 +216,8 @@ hostname_cmp_wild(char *hostname, char *wildcard)
 bool
 hostname_cmp_true(char *a, char *b)
 {
+    (void)a;
+    (void)b;
     return true;
 }
 
@@ -249,6 +261,8 @@ app_cmp(const char *a, const char *b)
 bool
 app_cmp_true(const char *a, const char *b)
 {
+    (void)a;
+    (void)b;
     return true;
 }
 
@@ -267,19 +281,19 @@ get_app_cmp(int app_op)
 /*
  * IP address comparison
  *
- * Second parameter is one of the application names present in the str_set
- * of the rule. This will require extra work to be performed by the caller
- * for IN/OUT.
+ * We need to handle both IPv4 and IPv6.
  */
 bool
-ip_cmp(const char *a, const char *b)
+ip_cmp(struct sockaddr_storage *a, struct sockaddr_storage *b)
 {
-    return (strncmp(a, b, strlen(a)) == 0);
+    return sockaddr_storage_equals(a, b);
 }
 
 bool
-ip_cmp_true(const char *a, const char *b)
+ip_cmp_true(struct sockaddr_storage *a, struct sockaddr_storage *b)
 {
+    (void)a;
+    (void)b;
     return true;
 }
 

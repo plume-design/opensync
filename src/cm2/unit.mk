@@ -37,7 +37,7 @@ UNIT_TYPE := BIN
 UNIT_SRC    := src/cm2_main.c
 UNIT_SRC    += src/cm2_ovsdb.c
 UNIT_SRC    += src/cm2_event.c
-ifeq ($(BUILD_HAVE_LIBCARES),y)
+ifeq ($(CONFIG_LIBEVX_USE_CARES),y)
 UNIT_SRC    += src/cm2_resolve_ares.c
 else
 UNIT_SRC    += src/cm2_resolve_sync.c
@@ -74,7 +74,7 @@ UNIT_DEPS := src/lib/ovsdb
 UNIT_DEPS += src/lib/pjs
 UNIT_DEPS += src/lib/schema
 UNIT_DEPS += src/lib/osn
-ifeq ($(BUILD_HAVE_LIBCARES),y)
+ifeq ($(CONFIG_LIBEVX_USE_CARES),y)
 UNIT_DEPS += src/lib/evx
 endif
 UNIT_DEPS += src/lib/timevt

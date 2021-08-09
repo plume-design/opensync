@@ -55,6 +55,9 @@ static void timeout_cb(EV_P_ ev_timer *t, int revents)
     LOGI("evx: ares timeout: count = %d, tv: %ld.%06ld tvp: %ld.%06ld",
          count, tv.tv_sec, tv.tv_usec, tvp->tv_sec, tvp->tv_usec);
 
+    if (eares_p->timeout_user_cb)
+        eares_p->timeout_user_cb();
+
     ares_process(eares_p->ares.channel, &readers, &writers);
 }
 
@@ -165,7 +168,7 @@ static void evx_ares_sock_state_cb(void *data, int s, int read, int write)
     }
 }
 
-int evx_init_ares(struct ev_loop * loop, struct evx_ares *eares_p)
+int evx_init_ares(struct ev_loop * loop, struct evx_ares *eares_p, void (*timeout_user_cb)())
 {
     int optmask;
     int status;
@@ -189,6 +192,7 @@ int evx_init_ares(struct ev_loop * loop, struct evx_ares *eares_p)
 
     ev_timer_init(&eares_p->tw, timeout_cb, 0, ARES_PROCESS_TIMEOUT);
     eares_p->chan_initialized = 0;
+    eares_p->timeout_user_cb = timeout_user_cb;
 
     LOGI("evx: ares version: %s, max sockets = %d",
          ares_version(NULL), ARES_GETSOCK_MAXNUM);

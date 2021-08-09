@@ -310,3 +310,18 @@ bool cm2_is_addr_resolved(const cm2_addr_t *addr)
     LOGI("Resolved state: ipv4: %d ipv6: %d", addr->ipv4_addr_list.state, addr->ipv6_addr_list.state);
     return addr->ipv4_addr_list.state != CM2_ARES_R_IN_PROGRESS && addr->ipv6_addr_list.state != CM2_ARES_R_IN_PROGRESS;
 }
+
+static void cm2_ares_timeout_user_cb(void)
+{
+    WARN_ON(!target_device_wdt_ping());
+}
+
+int cm2_start_cares(void)
+{
+    return evx_init_ares(g_state.loop, &g_state.eares, cm2_ares_timeout_user_cb);
+}
+
+void cm2_stop_cares(void)
+{
+    evx_stop_ares(&g_state.eares);
+}

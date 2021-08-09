@@ -1498,7 +1498,7 @@ dns_handler(struct fsm_session *session, struct net_header_parser *net_header)
     policy_reply = fsm_policy_initialize_reply(session);
     if (policy_reply == NULL)
     {
-        LOGN("%s(): failed to initialize policy reply", __func__);
+        LOGE("%s(): failed to initialize policy reply", __func__);
         return;
     }
 
@@ -1880,7 +1880,7 @@ dns_send_report(struct fqdn_pending_req *req, struct fsm_policy_reply *policy_re
 
     if (policy_reply == NULL)
     {
-        LOGN("%s(): policy reply is empty not sending dns report", __func__);
+        LOGE("%s(): policy reply is empty not sending dns report", __func__);
         return;
     }
 

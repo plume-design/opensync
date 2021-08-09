@@ -144,11 +144,16 @@ typedef enum {
 } bm_client_btm_params_type_t;
 
 typedef enum {
-    BM_CLIENT_PREF_ALLOWED_NEVER              = 0,
-    BM_CLIENT_PREF_ALLOWED_HWM,
-    BM_CLIENT_PREF_ALLOWED_ALWAYS,
-    BM_CLIENT_PREF_ALLOWED_NON_DFS
-} bm_client_pref_allowed;
+    BM_CLIENT_PREF_5G_ALLOWED_NEVER              = 0,
+    BM_CLIENT_PREF_5G_ALLOWED_HWM,
+    BM_CLIENT_PREF_5G_ALLOWED_ALWAYS,
+    BM_CLIENT_PREF_5G_ALLOWED_NON_DFS
+} bm_client_pref_5g_allowed;
+
+typedef enum {
+    BM_CLIENT_PREF_6G_ALLOWED_NEVER              = 0,
+    BM_CLIENT_PREF_6G_ALLOWED_ALWAYS,
+} bm_client_pref_6g_allowed;
 
 typedef enum {
     BM_CLIENT_FORCE_KICK_NONE       = 0,
@@ -183,7 +188,8 @@ typedef struct {
 } bm_client_kick_info_t;
 
 typedef struct {
-    uint32_t                    rejects;
+    uint32_t                    rejects_2g;
+    uint32_t                    rejects_5g;
     uint32_t                    connects;
     uint32_t                    disconnects;
     uint32_t                    activity_changes;
@@ -277,7 +283,7 @@ typedef struct {
 typedef struct {
     ev_timer timer;
     char ifname[BSAL_IFNAME_LEN];
-} bm_client_pref_5g_pre_assoc_block_timer_t;
+} bm_client_pre_assoc_block_timer_t;
 
 typedef struct {
     char                        mac_addr[MAC_STR_LEN];
@@ -312,6 +318,7 @@ typedef struct {
     int                         max_rejects;
     int                         max_rejects_period;
     int                         pref_5g_pre_assoc_block_timeout_msecs;
+    int                         pref_6g_pre_assoc_block_timeout_msecs;
 
     int                         backoff_period;
     int                         backoff_exp_base;
@@ -326,7 +333,8 @@ typedef struct {
     uint16_t                    sticky_kick_debounce_period;
 
     bool                        pre_assoc_auth_block;
-    bm_client_pref_allowed      pref_allowed;
+    bm_client_pref_5g_allowed   pref_5g_allowed;
+    bm_client_pref_6g_allowed   pref_6g_allowed;
 
     bool                        kick_upon_idle;
     bm_client_kick_info_t       kick_info;
@@ -346,7 +354,8 @@ typedef struct {
     bm_client_cs_state_t        cs_state;
     bool                        cs_auto_disable;
 
-    int                         num_rejects;
+    int                         num_rejects_2g;
+    int                         num_rejects_5g;
     int                         num_rejects_copy;
     bool                        connected;
     bm_group_t                  *group;
@@ -364,12 +373,14 @@ typedef struct {
     // Client BTM and RRM capabilities
     bool                        band_cap_2G;
     bool                        band_cap_5G;
+    bool                        band_cap_6G;
     bsal_client_info_t          *info;
 
     bool                        enable_ch_scan;
     uint8_t                     ch_scan_interval;
 
-    bm_client_pref_5g_pre_assoc_block_timer_t pref_5g_pre_assoc_block_timer;
+    bm_client_pre_assoc_block_timer_t pref_5g_pre_assoc_block_timer;
+    bm_client_pre_assoc_block_timer_t pref_6g_pre_assoc_block_timer;
     evsched_task_t              backoff_task;
     evsched_task_t              cs_task;
     evsched_task_t              rssi_xing_task;

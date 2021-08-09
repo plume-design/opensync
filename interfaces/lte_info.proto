@@ -29,12 +29,13 @@ package interfaces.lte_info;
 // LTE common fields
 message LteCommonHeader {
   uint32 request_id = 1;
-  string if_name = 2; //wwan0
+  string if_name = 2; // wwan0
   string node_id = 3;
   string location_id = 4;
   string imei = 5;
   string imsi = 6;
-  uint64 reported_at = 7; // Unix time in seconds
+  string iccid = 7;
+  uint64 reported_at = 8; // Unix time in seconds
 }
 
 // Network Registration Status

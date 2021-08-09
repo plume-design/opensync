@@ -242,6 +242,7 @@ typedef struct {
     uint8_t                 is_RRM_supported;
     bool                    band_cap_2G;
     bool                    band_cap_5G;
+    bool                    band_cap_6G;
     bsal_datarate_info_t    datarate_info;
     bsal_rrm_caps_t         rrm_caps;
     size_t                  assoc_ies_len;
@@ -327,6 +328,7 @@ typedef struct {
     uint8_t                 is_RRM_supported;
     bool                    band_cap_2G;
     bool                    band_cap_5G;
+    bool                    band_cap_6G;
     bsal_datarate_info_t    datarate_info;
     bsal_rrm_caps_t         rrm_caps;
     uint8_t                 assoc_ies[BSAL_MAX_ASSOC_IES_LEN];

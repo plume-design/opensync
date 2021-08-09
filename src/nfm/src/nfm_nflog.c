@@ -115,7 +115,7 @@ void nfm_nflog_packet_to_protobuf(Nflog *nm, struct osn_nflog_packet *np)
      * Pack the received NFLOG message to a protobuf buffer
      */
     nm->node_id = nfm_mqtt_node_id[0] == '\0' ? NULL : nfm_mqtt_node_id;
-    nm->node_id = nfm_mqtt_location_id[0] == '\0' ? NULL : nfm_mqtt_location_id;
+    nm->location_id = nfm_mqtt_location_id[0] == '\0' ? NULL : nfm_mqtt_location_id;
 
     nm->ingress_ifname = nm->ingress_ifrole = NULL;
     nm->egress_ifname = nm->egress_ifrole = NULL;

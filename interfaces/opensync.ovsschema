@@ -1,7 +1,7 @@
 {
   "name": "Open_vSwitch",
-  "version": "7.11.288",
-  "cksum": "2340255440 244890",
+  "version": "7.11.293",
+  "cksum": "3290264019 245930",
   "tables": {
     "AWLAN_Node": {
       "columns": {
@@ -1016,6 +1016,13 @@
             },
             "min": 0,
             "max": 1
+          }
+        },
+        "os_persist": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
           }
         }
       },
@@ -2524,6 +2531,23 @@
             "min": 0,
             "max": 1
           }
+        },
+        "airtime_precedence": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
         }
       },
       "isRoot": true,
@@ -3003,6 +3027,23 @@
           "type": {
             "key": {
               "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "airtime_precedence": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              ]
             },
             "min": 0,
             "max": 1
@@ -10483,6 +10524,15 @@
               "type": "string",
               "minLength": 0,
               "maxLength": 255
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "os_persist": {
+          "type": {
+            "key": {
+              "type": "boolean"
             }
           }
         }
@@ -10580,14 +10630,18 @@
               "type": "string",
               "minLength": 0,
               "maxLength": 255
-            }
+            },
+            "min": 0,
+            "max": 1
           }
         },
         "modem_present": {
           "type": {
             "key": {
               "type": "boolean"
-            }
+            },
+            "min": 0,
+            "max": 1
           }
         },
         "iccid": {
@@ -10596,7 +10650,9 @@
               "type": "string",
               "minLength": 0,
               "maxLength": 64
-            }
+            },
+            "min": 0,
+            "max": 1
           }
         },
         "imei": {
@@ -10605,7 +10661,9 @@
               "type": "string",
               "minLength": 0,
               "maxLength": 64
-            }
+            },
+            "min": 0,
+            "max": 1
           }
         },
         "imsi": {
@@ -10614,25 +10672,9 @@
               "type": "string",
               "minLength": 0,
               "maxLength": 64
-            }
-          }
-        },
-        "chip_serial": {
-          "type": {
-            "key": {
-              "type": "string",
-              "minLength": 0,
-              "maxLength": 64
-            }
-          }
-        },
-        "active_sim_slot": {
-          "type": {
-            "key": {
-              "type": "string",
-              "minLength": 0,
-              "maxLength": 64
-            }
+            },
+            "min": 0,
+            "max": 1
           }
         },
         "sim_status": {
@@ -10656,28 +10698,36 @@
               "type": "string",
               "minLength": 0,
               "maxLength": 64
-            }
+            },
+            "min": 0,
+            "max": 1
           }
         },
         "mcc": {
           "type": {
             "key": {
               "type": "integer"
-            }
+            },
+            "min": 0,
+            "max": 1
           }
         },
         "mnc": {
           "type": {
             "key": {
               "type": "integer"
-            }
+            },
+            "min": 0,
+            "max": 1
           }
         },
         "tac": {
           "type": {
             "key": {
               "type": "integer"
-            }
+            },
+            "min": 0,
+            "max": 1
           }
         },
         "lte_net_state": {

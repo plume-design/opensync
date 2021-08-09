@@ -30,14 +30,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fsm_policy.h"
 #include "gatekeeper_cache.h"
 
-
 /*
  * MAC comparison
  */
 typedef bool (*mac_comparator)(os_macaddr_t *a, os_macaddr_t *b);
 bool mac_cmp(os_macaddr_t *a, os_macaddr_t *b);
 bool mac_cmp_true(os_macaddr_t *a, os_macaddr_t *b);
-mac_comparator get_mac_cmp(int cat_op);
+mac_comparator get_mac_cmp(int mac_op);
 
 /*
  * Risk comparison
@@ -50,7 +49,7 @@ bool risk_cmp_gt(int a, int b);
 bool risk_cmp_lte(int a, int b);
 bool risk_cmp_gte(int a, int b);
 bool risk_cmp_true(int a, int b);
-risk_comparator get_risk_cmp(int cat_op);
+risk_comparator get_risk_cmp(int risk_op);
 
 /*
  * Category comparison
@@ -79,7 +78,7 @@ bool hostname_cmp_sfr(char *a, char *b);
 bool hostname_cmp_sfl(char *a, char *b);
 bool hostname_cmp_wild(char *a, char *b);
 bool hostname_cmp_true(char *a, char *b);
-hostname_comparator get_hostname_cmp(int cat_op);
+hostname_comparator get_hostname_cmp(int fqdn_op);
 
 /*
  * APPLICATION name comparison
@@ -91,7 +90,7 @@ hostname_comparator get_hostname_cmp(int cat_op);
 typedef bool (*app_comparator)(const char *a, const char *b);
 bool app_cmp(const char *a, const char *b);
 bool app_cmp_true(const char *a, const char *b);
-app_comparator get_app_cmp(int cat_op);
+app_comparator get_app_cmp(int app_op);
 
 /*
  * IP address comparison
@@ -99,10 +98,12 @@ app_comparator get_app_cmp(int cat_op);
  * Comparison is performed on text representation of IP address.
  *
  * Second parameter is one of the IP addresses present in the str_set
- * of the rule. This will require extra work to be performed by the caller
+ * of the rule. IP addresses (IPv4 or IPv6) will have been transcribed
+ * into their binary form.
+ * This will require extra work to be performed by the caller
  * for IN/OUT.
  */
-typedef bool (*ip_comparator)(const char *a, const char *b);
-bool ip_cmp(const char *a, const char *b);
-bool ip_cmp_true(const char *a, const char *b);
+typedef bool (*ip_comparator)(struct sockaddr_storage *a, struct sockaddr_storage *b);
+bool ip_cmp(struct sockaddr_storage *a, struct sockaddr_storage *b);
+bool ip_cmp_true(struct sockaddr_storage *a, struct sockaddr_storage *b);
 ip_comparator get_ip_cmp(int cat_op);

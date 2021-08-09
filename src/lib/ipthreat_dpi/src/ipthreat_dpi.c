@@ -311,6 +311,8 @@ ipthreat_dpi_plugin_exit(struct fsm_session *session)
 
     dns_cache_cleanup_mgr();
     ipthreat_dpi_delete_session(session);
+
+    mgr->initialized = false;
     return;
 }
 
@@ -423,7 +425,6 @@ ipthreat_dpi_plugin_handler(struct fsm_session *session,
 
     ipthreat_dpi_process_message(ds_session);
 
-    net_header_logt(net_parser);
     return;
 }
 
@@ -700,70 +701,45 @@ ipthreat_process_report(struct fsm_policy_req* policy_request, struct fsm_policy
     ipthreat_dpi_send_report(policy_request, policy_reply);
 }
 
-static void
-ipthreat_process_async_action(struct fsm_policy_req *policy_request,
-                              struct fsm_policy_reply *policy_reply)
+void
+ipthreat_process_action(struct fsm_session *session, int action,
+                        struct net_header_parser *net_parser)
 {
     struct net_md_stats_accumulator *acc;
-
-    acc = policy_request->acc;
-    if (acc == NULL)
-    {
-        LOGT("%s(): acc is NULL, not setting action", __func__);
-        return;
-    }
-
-    LOGT("%s(): setting async action ", __func__);
-    if (policy_reply->action == FSM_DPI_DROP)
-    {
-        fsm_dpi_block_flow(acc);
-    }
-    else
-    {
-        fsm_dpi_allow_flow(acc);
-    }
-}
-
-void
-ipthreat_process_action(struct fsm_policy_req *policy_request,
-                        struct net_header_parser *net_parser,
-                        struct fsm_policy_reply *policy_reply)
-{
+    char ip_buf[INET6_ADDRSTRLEN] = { 0 };
     char *direction;
 
-    LOGT("%s(): ipthreat policy received action %d",
-         __func__, policy_reply->action);
-    policy_reply->action = (policy_reply->action == FSM_BLOCK ?
-                            FSM_DPI_DROP : FSM_DPI_PASSTHRU);
+    acc = net_parser->acc;
 
-    if (policy_reply->action == FSM_DPI_DROP)
+    LOGT("%s(): ipthreat policy received action %d", __func__, action);
+
+    if (action == FSM_DPI_DROP)
     {
-        direction = (policy_request->acc->direction == NET_MD_ACC_OUTBOUND_DIR) ?
+        direction = (acc->direction == NET_MD_ACC_OUTBOUND_DIR) ?
                         "outbound" :
                         "inbound";
+        if (acc->direction == NET_MD_ACC_OUTBOUND_DIR)
+        {
+            net_header_dstip_str(net_parser, ip_buf, sizeof(ip_buf));
+        }
+        else
+        {
+            net_header_srcip_str(net_parser, ip_buf, sizeof(ip_buf));
+        }
+
         LOGI("%s: blocking access to: %s connection %s",
              __func__,
              direction,
-             policy_request->url);
+             ip_buf);
         net_header_logi(net_parser);
     }
 
-    if (policy_reply->reply_type == FSM_ASYNC_REPLY)
-    {
-        LOGD("%s(): setting the async verdict using as %d",
-             __func__, policy_reply->action);
-        ipthreat_process_async_action(policy_request, policy_reply);
-    }
-    else
-    {
-        fsm_dpi_set_acc_state(policy_request->session, net_parser,
-                              policy_reply->action);
-    }
+    fsm_dpi_set_acc_state(session, net_parser, action);
 }
+
 
 int
 ipthreat_process_verdict(struct fsm_policy_req *policy_request,
-                         struct net_header_parser *net_parser,
                          struct fsm_policy_reply *policy_reply)
 {
     LOGT("%s(): processing ipthreat verdict for policy req == %p",
@@ -773,8 +749,6 @@ ipthreat_process_verdict(struct fsm_policy_req *policy_request,
     ipthreat_update_cache(policy_request, policy_reply);
 
     ipthreat_process_report(policy_request, policy_reply);
-
-    ipthreat_process_action(policy_request, net_parser, policy_reply);
 
     fsm_policy_free_request(policy_request);
 
@@ -819,6 +793,7 @@ init_ipthreat_specific_reply(struct fsm_request_args *request_args,
     policy_reply->categories_check = session->provider_ops->categories_check;
     policy_reply->risk_level_check = session->provider_ops->risk_level_check;
     policy_reply->gatekeeper_req = session->provider_ops->gatekeeper_req;
+    policy_reply->policy_response = ipthreat_process_verdict;
 }
 
 struct fsm_policy_reply *
@@ -864,6 +839,7 @@ ipthreat_dpi_process_message(struct ipthreat_dpi_session *ds_session)
     uint8_t *ip = NULL;
     int request_type;
     char *provider;
+    int action;
 
     session = ds_session->session;
     parser = &ds_session->parser;
@@ -967,8 +943,12 @@ ipthreat_dpi_process_message(struct ipthreat_dpi_session *ds_session)
          policy_reply);
 
     /* process the input request */
-    ipthreat_process_request(policy_request, policy_reply);
+    action = ipthreat_process_request(policy_request, policy_reply);
 
+    action = (action == FSM_BLOCK ? FSM_DPI_DROP : FSM_DPI_PASSTHRU);
+
+    /* process the verdict */
+    ipthreat_process_action(session, action, net_parser);
 
     return;
 

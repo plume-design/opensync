@@ -33,7 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "target.h"
 #include "util.h"
 
-#define QUEUE_MSG_SIZE 4096
+#define QUEUE_MSG_SIZE 10240
 
 typedef struct {
     char ifname[BSAL_IFNAME_LEN];

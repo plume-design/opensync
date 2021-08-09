@@ -28,6 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 
 #include "fsm_policy.h"
+#include "fsm_utils.h"
 #include "gatekeeper_cache.h"
 #include "gatekeeper_cache_cmp.h"
 #include "log.h"
@@ -164,48 +165,62 @@ test_ip_comparator(void)
     char ipv6_2[] = "2001:0000:3238:DFE1:0063:0000:0000:FFFF";
     char ipv4_1[] = "1.2.3.4";
     char ipv4_2[] = "1.2.3.255";
+    struct sockaddr_storage *ss_ipv4_1;
+    struct sockaddr_storage *ss_ipv4_2;
+    struct sockaddr_storage *ss_ipv6_1;
+    struct sockaddr_storage *ss_ipv6_2;
     ip_comparator ip_cmp_fct;
     bool ret;
 
+    ss_ipv4_1 = sockaddr_storage_create(AF_INET, ipv4_1);
+    ss_ipv4_2 = sockaddr_storage_create(AF_INET, ipv4_2);
+    ss_ipv6_1 = sockaddr_storage_create(AF_INET6, ipv6_1);
+    ss_ipv6_2 = sockaddr_storage_create(AF_INET6, ipv6_2);
+
     /* should return a blank comparator */
     ip_cmp_fct = get_ip_cmp(-1);
-    ret = ip_cmp_fct(ipv4_1, ipv4_1);
+    ret = ip_cmp_fct(ss_ipv4_1, ss_ipv4_1);
     TEST_ASSERT_TRUE(ret);
-    ret = ip_cmp_fct(ipv6_1, ipv6_1);
+    ret = ip_cmp_fct(ss_ipv6_1, ss_ipv6_1);
     TEST_ASSERT_TRUE(ret);
-    ret = ip_cmp_fct(ipv4_1, ipv6_1);
+    ret = ip_cmp_fct(ss_ipv4_1, ss_ipv6_1);
     TEST_ASSERT_TRUE(ret);
-    ret = ip_cmp_fct(ipv6_1, ipv4_1);
+    ret = ip_cmp_fct(ss_ipv6_1, ss_ipv4_1);
     TEST_ASSERT_TRUE(ret);
 
     /* find comparator now (IN or OUT should behave the same) */
     ip_cmp_fct = get_ip_cmp(IP_OP_IN);
-    ret = ip_cmp_fct(ipv4_1, ipv4_1);
+    ret = ip_cmp_fct(ss_ipv4_1, ss_ipv4_1);
     TEST_ASSERT_TRUE(ret);
-    ret = ip_cmp_fct(ipv4_1, ipv4_2);
+    ret = ip_cmp_fct(ss_ipv4_1, ss_ipv4_2);
     TEST_ASSERT_FALSE(ret);
-    ret = ip_cmp_fct(ipv6_1, ipv6_1);
+    ret = ip_cmp_fct(ss_ipv6_1, ss_ipv6_1);
     TEST_ASSERT_TRUE(ret);
-    ret = ip_cmp_fct(ipv6_1, ipv6_2);
+    ret = ip_cmp_fct(ss_ipv6_1, ss_ipv6_2);
     TEST_ASSERT_FALSE(ret);
-    ret = ip_cmp_fct(ipv4_1, ipv6_1);
+    ret = ip_cmp_fct(ss_ipv4_1, ss_ipv6_1);
     TEST_ASSERT_FALSE(ret);
-    ret = ip_cmp_fct(ipv6_1, ipv4_1);
+    ret = ip_cmp_fct(ss_ipv6_1, ss_ipv4_1);
     TEST_ASSERT_FALSE(ret);
 
     ip_cmp_fct = get_ip_cmp(IP_OP_OUT);
-    ret = ip_cmp_fct(ipv4_1, ipv4_1);
+    ret = ip_cmp_fct(ss_ipv4_1, ss_ipv4_1);
     TEST_ASSERT_TRUE(ret);
-    ret = ip_cmp_fct(ipv4_1, ipv4_2);
+    ret = ip_cmp_fct(ss_ipv4_1, ss_ipv4_2);
     TEST_ASSERT_FALSE(ret);
-    ret = ip_cmp_fct(ipv6_1, ipv6_1);
+    ret = ip_cmp_fct(ss_ipv6_1, ss_ipv6_1);
     TEST_ASSERT_TRUE(ret);
-    ret = ip_cmp_fct(ipv6_1, ipv6_2);
+    ret = ip_cmp_fct(ss_ipv6_1, ss_ipv6_2);
     TEST_ASSERT_FALSE(ret);
-    ret = ip_cmp_fct(ipv4_1, ipv6_1);
+    ret = ip_cmp_fct(ss_ipv4_1, ss_ipv6_1);
     TEST_ASSERT_FALSE(ret);
-    ret = ip_cmp_fct(ipv6_1, ipv4_1);
+    ret = ip_cmp_fct(ss_ipv6_1, ss_ipv4_1);
     TEST_ASSERT_FALSE(ret);
+
+    FREE(ss_ipv6_2);
+    FREE(ss_ipv6_1);
+    FREE(ss_ipv4_2);
+    FREE(ss_ipv4_1);
 }
 
 void
@@ -256,6 +271,15 @@ test_cat_comparator(void)
     ret = cat_cmp_fct(5, &cat_set);
     TEST_ASSERT_TRUE(ret);
 
+    /* Test the empty set */
+    cat_cmp_fct = get_cat_cmp(CAT_OP_IN);
+    ret = cat_cmp_fct(2, NULL);
+    TEST_ASSERT_FALSE(ret);
+     
+    cat_cmp_fct = get_cat_cmp(CAT_OP_OUT);
+    ret = cat_cmp_fct(2, NULL);
+    TEST_ASSERT_TRUE(ret);
+  
     /* IN and OUT do not behave the same !! */
     /* CAT_OP_IN */
     cat_cmp_fct = get_cat_cmp(CAT_OP_IN);
@@ -334,6 +358,52 @@ test_risk_comparator(void)
     TEST_ASSERT_TRUE(ret);
 }
 
+/* Implemented in gatekeeper_cache.c */
+void
+test_gkc_flow_entry_cmp(void)
+{
+    struct ip_flow_cache a;
+    struct ip_flow_cache b;
+    int ret;
+
+    MEMZERO(a);
+    MEMZERO(b);
+
+    a.ip_version = 4;
+    a.src_ip_addr = (unsigned char*)"1234";
+    a.dst_ip_addr = (unsigned char*)"1234";
+
+    b.ip_version = 4;
+    b.src_ip_addr = (unsigned char*)"1234";
+    b.dst_ip_addr = (unsigned char*)"1234";
+
+    ret = gkc_flow_entry_cmp(&a, &b);
+    TEST_ASSERT_EQUAL_INT(0, ret);
+
+    a.ip_version = 6;
+    a.src_ip_addr = (unsigned char*)"01234567890abcdef";
+    a.dst_ip_addr = (unsigned char*)"01234567890abcdef";
+
+    b.ip_version = 6;
+    b.src_ip_addr = (unsigned char*)"01234567890abcdef";
+    b.dst_ip_addr = (unsigned char*)"01234567890abcdef";
+
+    ret = gkc_flow_entry_cmp(&a, &b);
+    TEST_ASSERT_EQUAL_INT(0, ret);
+
+    a.ip_version = 5;
+    a.src_ip_addr = (unsigned char*)"12345";
+    a.dst_ip_addr = (unsigned char*)"1234f";    /* This should still be equal !! */
+
+    b.ip_version = 5;
+    b.src_ip_addr = (unsigned char*)"12345";
+    b.dst_ip_addr = (unsigned char*)"12345";
+
+    ret = gkc_flow_entry_cmp(&a, &b);
+    TEST_ASSERT_EQUAL_INT(0, ret);
+}
+
+
 void
 run_gk_cache_cmp(void)
 {
@@ -343,4 +413,6 @@ run_gk_cache_cmp(void)
     RUN_TEST(test_app_comparator);
     RUN_TEST(test_cat_comparator);
     RUN_TEST(test_risk_comparator);
+
+    RUN_TEST(test_gkc_flow_entry_cmp);
 }

@@ -1385,6 +1385,47 @@ test_fsm_policy_flush(void)
     FREE(session);
 }
 
+void
+test_fsm_policy_wildmatch(void)
+{
+    bool rc;
+
+    rc = fsm_policy_wildmatch("foo", "foo");
+    TEST_ASSERT_TRUE(rc);
+
+    rc = fsm_policy_wildmatch("foo.bar.com", "foo.bar.com");
+    TEST_ASSERT_TRUE(rc);
+
+    /* Too many dots */
+    rc = fsm_policy_wildmatch("1.2.3.4.5.6.7.8.9.0.a", "1.2.3.4.5.6.7.8.9.0.a");
+    TEST_ASSERT_FALSE(rc);
+
+    /* wildcards */
+    rc = fsm_policy_wildmatch("*", "foo");
+    TEST_ASSERT_TRUE(rc);
+
+    rc = fsm_policy_wildmatch("f*", "foo");
+    TEST_ASSERT_TRUE(rc);
+
+    rc = fsm_policy_wildmatch("f*o", "foo");
+    TEST_ASSERT_TRUE(rc);
+
+    rc = fsm_policy_wildmatch("f**", "foo");
+    TEST_ASSERT_TRUE(rc);
+
+    rc = fsm_policy_wildmatch("f**.com", "foo.com");
+    TEST_ASSERT_TRUE(rc);
+
+    rc = fsm_policy_wildmatch("foo.*", "foo.com");
+    TEST_ASSERT_TRUE(rc);
+
+    rc = fsm_policy_wildmatch("foo.bar", "foo.com");
+    TEST_ASSERT_FALSE(rc);
+
+    rc = fsm_policy_wildmatch("foo.*.com", "foo.com");
+    TEST_ASSERT_FALSE(rc);
+}
+
 
 int main(int argc, char *argv[])
 {
@@ -1411,6 +1452,7 @@ int main(int argc, char *argv[])
     RUN_TEST(test_apply_wildcard_policy_no_match);
     RUN_TEST(test_ip_threat_blacklist);
     RUN_TEST(test_fsm_policy_flush);
+    RUN_TEST(test_fsm_policy_wildmatch);
 
     return UNITY_END();
 }

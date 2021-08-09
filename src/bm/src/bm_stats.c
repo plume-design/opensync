@@ -399,6 +399,7 @@ bm_stats_steering_print_all_records()
                 LOGT( "is_RRM_supported     = %s", event_rec->is_RRM_supported ? "Yes" : "No" );
                 LOGT( "2G capable           = %s", event_rec->band_cap_2G ? "Yes" : "No" );
                 LOGT( "5G capable           = %s", event_rec->band_cap_5G ? "Yes" : "No" );
+                LOGT( "6G capable           = %s", event_rec->band_cap_6G ? "Yes" : "No" );
                 LOGT( "Max Channel Width    = %d", event_rec->max_chwidth );
                 LOGT( "Max Streams          = %d", event_rec->max_streams );
                 LOGT( "PHY Mode             = %d", event_rec->phy_mode );
@@ -495,7 +496,7 @@ bm_stats_steering_process_stats(bm_group_t *group)
                 band_rec->connected         = 0;
             }
 
-            band_rec->rejects               = stats->rejects;
+            band_rec->rejects               = stats->rejects_2g + stats->rejects_5g;
             band_rec->connects              = stats->connects;
             band_rec->disconnects           = stats->disconnects;
             band_rec->activity_changes      = stats->activity_changes;
@@ -607,7 +608,8 @@ bm_stats_steering_clear_all_stats(bm_group_t *group)
             if (WARN_ON(!stats))
                 continue;
 
-            stats->rejects = 0;
+            stats->rejects_2g = 0;
+            stats->rejects_5g = 0;
             stats->connects = 0;
             stats->disconnects = 0;
             stats->activity_changes = 0;
@@ -858,6 +860,7 @@ bm_stats_steering_parse_event(
 
             event_rec->band_cap_2G = event->data.connect.band_cap_2G ? 1 : 0;
             event_rec->band_cap_5G = event->data.connect.band_cap_5G ? 1 : 0;
+            event_rec->band_cap_6G = event->data.connect.band_cap_6G ? 1 : 0;
 
             event_rec->max_chwidth = event->data.connect.datarate_info.max_chwidth;
             event_rec->max_streams = event->data.connect.datarate_info.max_streams;

@@ -493,31 +493,6 @@ fsm_dpi_sni_process_report(struct fsm_policy_req *policy_request,
 }
 
 static void
-fsm_dpi_sni_process_apply_action(struct fsm_policy_req *policy_request,
-                                 struct fsm_policy_reply *policy_reply)
-{
-    struct net_md_stats_accumulator *acc;
-
-    acc = policy_request->acc;
-    if (acc == NULL)
-    {
-        LOGT("%s(): acc is NULL, cannot set action", __func__);
-        return;
-    }
-
-    if (policy_reply->action == FSM_DPI_DROP)
-    {
-        LOGT("%s(): setting block action", __func__);
-        fsm_dpi_block_flow(acc);
-    }
-    else
-    {
-        LOGT("%s(): setting allow action", __func__);
-        fsm_dpi_allow_flow(acc);
-    }
-}
-
-static void
 dpi_sni_free_memory(struct fsm_policy_req *policy_request,
                     struct fsm_policy_reply *policy_reply)
 {
@@ -535,8 +510,6 @@ fsm_dpi_sni_process_verdict(struct fsm_policy_req *policy_request,
     LOGT("%s(): processing dpi sni verdict with action %d", __func__, policy_reply->action);
 
     fsm_dpi_sni_process_action(policy_request, policy_reply);
-
-    fsm_dpi_sni_process_apply_action(policy_request, policy_reply);
 
     action = policy_reply->action;
 

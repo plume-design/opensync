@@ -687,7 +687,6 @@ gatekeeper_get_req(struct fsm_session *session,
     request_data.req = req;
     request_data.gk_req = gk_req;
 
-    rc = true;
     req_type = fsm_policy_get_req_type(req);
     req_type_str = gatekeeper_req_type_to_str(req_type);
 

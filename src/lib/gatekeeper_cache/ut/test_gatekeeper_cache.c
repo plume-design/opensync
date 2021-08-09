@@ -28,6 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdint.h>
 
 #include "gatekeeper_cache.h"
+#include "fsm_utils.h"
 #include "log.h"
 #include "memutil.h"
 #include "unity.h"
@@ -349,15 +350,19 @@ test_ipv4_attr(void)
     entry->attribute_type = GK_CACHE_REQ_TYPE_IPV4;
     entry->cache_ttl = 1000;
     entry->action = FSM_BLOCK;
-    entry->attr_name = strdup("1.1.1.1");
+    entry->attr_name = "1.2.3.4";
+    entry->ip_addr = sockaddr_storage_create(AF_INET, entry->attr_name);
 
     ret = gkc_add_attribute_entry(entry);
     TEST_ASSERT_TRUE(ret);
 
-    FREE(entry->attr_name);
-    entry->attr_name = strdup("2.2.2.2");
-    gkc_add_attribute_entry(entry);
-    gkc_print_cache_entries();
+    FREE(entry->ip_addr);
+    entry->cache_key = 0;
+
+    entry->attr_name = "5.6.7.8";
+    entry->ip_addr = sockaddr_storage_create(AF_INET, entry->attr_name);
+    ret = gkc_add_attribute_entry(entry);
+    TEST_ASSERT_TRUE(ret);
 
     ret = gkc_lookup_attribute_entry(entry, true);
     TEST_ASSERT_TRUE(ret);
@@ -367,14 +372,17 @@ test_ipv4_attr(void)
 
     out = gkc_fetch_attribute_entry(entry);
     TEST_ASSERT_NOT_NULL(out);
-    TEST_ASSERT_EQUAL_STRING(out->attr.ipv4->name, entry->attr_name);
+    ret = sockaddr_storage_equals(&out->attr.ipv4->ip_addr, entry->ip_addr);
+    TEST_ASSERT_TRUE(ret);
 
-    gkc_del_attribute(entry);
+    ret = gkc_del_attribute(entry);
+    TEST_ASSERT_TRUE(ret);
+
     ret = gkc_lookup_attribute_entry(entry, true);
     TEST_ASSERT_FALSE(ret);
 
+    FREE(entry->ip_addr);
     FREE(entry->device_mac);
-    FREE(entry->attr_name);
     FREE(entry);
 
     LOGI("ending test: %s", __func__);
@@ -393,14 +401,18 @@ test_ipv6_attr(void)
     entry->attribute_type = GK_CACHE_REQ_TYPE_IPV6;
     entry->cache_ttl = 1000;
     entry->action = FSM_BLOCK;
-    entry->attr_name = strdup("2001:0000:3238:DFE1:0063:0000:0000:FEFB");
+    entry->attr_name = "2001:0000:3238:DFE1:0063:0000:0000:FEFA";
+    entry->ip_addr = sockaddr_storage_create(AF_INET6, entry->attr_name);
 
     LOGI("starting test: %s ...", __func__);
     ret = gkc_add_attribute_entry(entry);
     TEST_ASSERT_TRUE(ret);
 
-    FREE(entry->attr_name);
-    entry->attr_name = strdup("2001:0000:3238:DFE1:0063:0000:0000:FEFA");
+    FREE(entry->ip_addr);
+    entry->cache_key = 0;
+
+    entry->attr_name = "2001:0000:3238:DFE1:0063:0000:0000:FEFB";
+    entry->ip_addr = sockaddr_storage_create(AF_INET6, entry->attr_name);
     gkc_add_attribute_entry(entry);
     gkc_print_cache_entries();
 
@@ -412,14 +424,17 @@ test_ipv6_attr(void)
 
     out = gkc_fetch_attribute_entry(entry);
     TEST_ASSERT_NOT_NULL(out);
-    TEST_ASSERT_EQUAL_STRING(out->attr.ipv6->name, entry->attr_name);
+    ret = sockaddr_storage_equals(&out->attr.ipv6->ip_addr, entry->ip_addr);
+    TEST_ASSERT_TRUE(ret);
 
-    gkc_del_attribute(entry);
+    ret = gkc_del_attribute(entry);
+    TEST_ASSERT_TRUE(ret);
+
     ret = gkc_lookup_attribute_entry(entry, true);
     TEST_ASSERT_FALSE(ret);
 
+    FREE(entry->ip_addr);
     FREE(entry->device_mac);
-    FREE(entry->attr_name);
     FREE(entry);
 
     LOGI("ending test: %s", __func__);
@@ -473,6 +488,52 @@ test_check_ttl(void)
 }
 
 void
+test_get_attr_key(void)
+{
+    struct gk_attr_cache_interface entry;
+    uint64_t ret;
+
+    MEMZERO(entry);
+
+    ret = get_attr_key(&entry);
+    TEST_ASSERT_EQUAL(0, ret);
+
+    entry.ip_addr = CALLOC(1, sizeof(*entry.ip_addr));
+    entry.attribute_type = GK_CACHE_REQ_TYPE_APP;
+    ret = get_attr_key(&entry);
+    TEST_ASSERT_EQUAL(0, ret);
+    FREE(entry.ip_addr);
+    entry.ip_addr = NULL;
+
+    entry.attr_name = "foo";
+    entry.attribute_type = GK_CACHE_REQ_TYPE_APP;
+    ret = get_attr_key(&entry);
+    TEST_ASSERT_NOT_EQUAL(0, ret);
+    entry.attribute_type = GK_CACHE_REQ_TYPE_IPV4;
+    ret = get_attr_key(&entry);
+    TEST_ASSERT_NOT_EQUAL(0, ret);
+    entry.attribute_type = GK_CACHE_REQ_TYPE_IPV6;
+    ret = get_attr_key(&entry);
+    TEST_ASSERT_NOT_EQUAL(0, ret);
+    entry.attr_name = NULL;
+
+      /* Some random bytes, don't care about value. */
+    entry.ip_addr = MALLOC(sizeof(*entry.ip_addr));
+    entry.attribute_type = GK_CACHE_REQ_TYPE_APP;
+    ret = get_attr_key(&entry);
+    TEST_ASSERT_EQUAL(0, ret);
+    entry.attribute_type = GK_CACHE_REQ_TYPE_IPV4;
+    ret = get_attr_key(&entry);
+    TEST_ASSERT_NOT_EQUAL(0, ret);
+    entry.attribute_type = GK_CACHE_REQ_TYPE_IPV6;
+    ret = get_attr_key(&entry);
+    TEST_ASSERT_NOT_EQUAL(0, ret);
+
+    /* cleanup */
+    FREE(entry.ip_addr);
+}
+
+void
 test_add_gk_cache(void)
 {
     struct gk_attr_cache_interface *entry;
@@ -487,6 +548,8 @@ test_add_gk_cache(void)
     ret = gkc_add_attribute_entry(entry);
     TEST_ASSERT_TRUE(ret);
 
+    /* re-using entry requires recalculating the key */
+    entry->cache_key = 0;
     entry->direction = GKC_FLOW_DIRECTION_INBOUND;
     ret = gkc_add_attribute_entry(entry);
     TEST_ASSERT_TRUE(ret);
@@ -815,6 +878,8 @@ test_duplicate_entries(void)
 
     /* Change the direction, and insert again. */
     entry->direction = GKC_FLOW_DIRECTION_INBOUND;
+    /* We are re-using the entry, so don't forget to recompute the key */
+    entry->cache_key = 0;
 
     /* this entry does not exist in the cache */
     cached_entry = gkc_fetch_attribute_entry(entry);
@@ -1208,6 +1273,8 @@ run_gk_cache(void)
 {
     RUN_TEST(test_gkc_new_flow_entry);
     RUN_TEST(test_gkc_new_attr_entry);
+
+    RUN_TEST(test_get_attr_key);
 
     RUN_TEST(test_add_gk_cache);
     RUN_TEST(test_check_ttl);

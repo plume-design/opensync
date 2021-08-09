@@ -863,6 +863,7 @@ wm2_vconf_recalc(const char *ifname, bool force)
     struct schema_Wifi_Credential_Config cconfs[8];
     struct schema_Wifi_VIF_Config_flags vchanged;
     int num_cconfs;
+    bool dpp_enabled;
     bool want;
     bool has;
 
@@ -896,6 +897,13 @@ wm2_vconf_recalc(const char *ifname, bool force)
         LOGN("%s: config is gone, but non-ap_vlan bss is running - workaround to put it down", ifname);
         SCHEMA_SET_INT(vconf.enabled, false);
         want = true;
+
+        /* This will invalidate chirping job if any. wm2_dpp_recalc() and
+         * wm2_dpp_job_submit() will soon call deferred recalcs, including this
+         * vif's one.
+         */
+        wm2_dpp_ifname_set(ifname, false);
+        wm2_dpp_interrupt();
     }
 
     if (!want)
@@ -999,7 +1007,11 @@ wm2_vconf_recalc(const char *ifname, bool force)
         return;
     }
 
-    wm2_dpp_ifname_set(ifname, vconf.enabled);
+    dpp_enabled = true;
+    dpp_enabled &= vconf.enabled;
+    dpp_enabled &= strlen(vconf.parent) == 0;
+
+    wm2_dpp_ifname_set(ifname, dpp_enabled);
     wm2_dpp_interrupt();
 
     if (!has) {
@@ -1132,12 +1144,16 @@ wm2_rconf_recalc_fixup_channel(struct schema_Wifi_Radio_Config *rconf,
     return true;
 }
 
-static void
+void
 wm2_rconf_recalc_fixup_nop_channel(struct schema_Wifi_Radio_Config *rconf,
                                    const struct schema_Wifi_Radio_State *rstate)
 {
     struct schema_Wifi_Radio_Config_flags rchanged;
+    const char *width_str = strpbrk(rconf->ht_mode, "1234567890");
+    const int *chans;
+    int width;
     int i;
+    int j;
 
     /* After RADAR hit channel is not available because of NOP */
     if (!rconf->channel_exists)
@@ -1150,15 +1166,35 @@ wm2_rconf_recalc_fixup_nop_channel(struct schema_Wifi_Radio_Config *rconf,
         return;
 
     for (i = 0; i < rstate->channels_len; i++) {
-        if (atoi(rstate->channels_keys[i]) != rconf->channel)
+        if (strstr(rstate->channels[i], "nop_started") == NULL)
             continue;
 
-        if (strstr(rstate->channels[i], "nop_started")) {
-            LOGW("%s: ignoring channel change %d -> %d because of NOP active on %d",
-                 rconf->if_name, rstate->channel, rconf->channel, rconf->channel);
-            rconf->channel = rstate->channel;
-            break;
+        width = atoi(width_str);
+        while ((chans = unii_5g_chan2list(rconf->channel, width)) != NULL) {
+            for (j = 0; chans[j]; j++)
+                if (atoi(rstate->channels_keys[i]) == chans[j])
+                    break;
+
+            if (chans[j] == 0)
+                break;
+
+            LOGD("%s: dfs: nol: channel %d unavailable for %d HT%d",
+                 rconf->if_name, chans[j], rconf->channel, width);
+            width /= 2;
         }
+
+        if (chans) {
+            LOGI("%s: dfs: nol: downgrading ht_mode %s -> HT%d",
+                 rconf->if_name, rconf->ht_mode, width);
+            STRSCPY_WARN(rconf->ht_mode, strfmta("HT%d", width));
+            return;
+        }
+
+        LOGI("%s: dfs: nol: ignoring channel %d, staying on %d %s",
+             rconf->if_name, rconf->channel, rstate->channel, rstate->ht_mode);
+        rconf->channel = rstate->channel;
+        STRSCPY_WARN(rconf->ht_mode, rstate->ht_mode);
+        return;
     }
 }
 
@@ -1727,6 +1763,20 @@ wm2_radio_config_bump(void)
 /******************************************************************************
  *  PUBLIC API definitions
  *****************************************************************************/
+void
+wm2_radio_delayed_soon(void)
+{
+    struct wm2_delayed *i;
+    ds_dlist_foreach(&delayed_list, i) {
+        LOGD("%s: %s: remaining %.2lf seconds, rescheduling now",
+             i->ifname, i->workname,
+             ev_timer_remaining(EV_DEFAULT_ &i->timer));
+        ev_timer_stop(EV_DEFAULT_ &i->timer);
+        ev_timer_set(&i->timer, 0.0, 0.0);
+        ev_timer_start(EV_DEFAULT_ &i->timer);
+    }
+}
+
 int
 wm2_radio_init_kickoff(void)
 {

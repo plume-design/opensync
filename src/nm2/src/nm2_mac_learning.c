@@ -67,6 +67,7 @@ struct nm2_mac_entry
     osn_mac_addr_t      me_mac;
     char                me_brname[16];
     char                me_ifname[16];
+    int                 vlan;
     bool                me_active;      /* True if entry is present in ovsdb */
     ds_tree_node_t      me_tnode;
     synclist_node_t     me_slnode;
@@ -137,7 +138,7 @@ static bool
 nm2_mac_learning_update(struct schema_OVS_MAC_Learning *omac, bool oper_status)
 {
     pjs_errmsg_t        perr;
-    json_t             *where, *row;
+    json_t             *where, *row, *cond;
     bool                ret;
 
     /* Skip deleting the empty entries at startup */
@@ -148,11 +149,18 @@ nm2_mac_learning_update(struct schema_OVS_MAC_Learning *omac, bool oper_status)
 
     // force lower case mac
     str_tolower(omac->hwaddr);
-    LOGT("Updating MAC learning '%s' %d", omac->hwaddr, oper_status);
+    LOGT("Updating MAC learning '%s' %d %d", omac->hwaddr, omac->vlan, oper_status);
+
+    where = json_array();
+
+    cond = ovsdb_tran_cond_single("hwaddr", OFUNC_EQ, omac->hwaddr);
+    json_array_append_new(where, cond);
+
+    cond = ovsdb_tran_cond_single_json("vlan", OFUNC_EQ, json_integer(omac->vlan));
+    json_array_append_new(where, cond);
 
     if (oper_status == false)
     {
-        where = ovsdb_tran_cond(OCLM_STR, "hwaddr", OFUNC_EQ, omac->hwaddr);
         ret = ovsdb_sync_delete_where(OVSDB_MAC_TABLE, where);
         if (!ret)
         {
@@ -170,8 +178,7 @@ nm2_mac_learning_update(struct schema_OVS_MAC_Learning *omac, bool oper_status)
     }
     else
     {
-        where = ovsdb_tran_cond(OCLM_STR, "hwaddr", OFUNC_EQ, omac->hwaddr);
-        row   = schema_OVS_MAC_Learning_to_json(omac, perr);
+        row = schema_OVS_MAC_Learning_to_json(omac, perr);
         ret = ovsdb_sync_upsert_where(OVSDB_MAC_TABLE, where, row, NULL);
         if (!ret)
         {
@@ -246,6 +253,7 @@ bool nm2_mac_update(struct schema_OVS_MAC_Learning *mac, bool add)
     memset(&kme, 0, sizeof(kme));
     STRSCPY(kme.me_brname, mac->brname);
     STRSCPY(kme.me_ifname, mac->ifname);
+    kme.vlan = mac->vlan;
     if (!osn_mac_addr_from_str(&kme.me_mac, mac->hwaddr))
     {
         LOG(WARN, "Error updating MAC entry, invalid MAC address: %s (brname:%s ifname%s)",
@@ -340,6 +348,8 @@ void nm2_mac_entry_to_schema(
     SCHEMA_SET_STR(schema->brname, me->me_brname);
     SCHEMA_SET_STR(schema->ifname, me->me_ifname);
 
+    schema->vlan = me->vlan;
+
     snprintf(
             mac,
             sizeof(mac),
@@ -364,6 +374,8 @@ int nm2_mac_entry_cmp(void *_a, void *_b)
 
     rc = strcmp(a->me_brname, b->me_brname);
     if (rc != 0) return rc;
+
+    if (a->vlan != b->vlan) return -1;
 
     return osn_mac_addr_cmp(&a->me_mac, &b->me_mac);
 }

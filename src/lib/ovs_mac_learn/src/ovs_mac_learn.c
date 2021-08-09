@@ -74,7 +74,6 @@ static void ovsmac_node_update(
         int vlan,
         os_macaddr_t macaddr);
 static void ovsmac_node_flush();
-static bool ovsmac_check_iface_flt(char *iface);
 static bool ovsmac_check_bridge_flt(char *bridge);
 
 
@@ -103,11 +102,6 @@ static ds_tree_t bridge_flt_list = DS_TREE_INIT(
         struct iface_flt_node,
         iface_node);
 
-static ds_tree_t iface_flt_list = DS_TREE_INIT(
-        (ds_key_cmp_t*)strcmp,
-        struct iface_flt_node,
-        iface_node);
-
 target_mac_learning_cb_t *g_mac_learning_cb_t;
 
 /*
@@ -119,9 +113,7 @@ bool ovsmac_init(void)
 {
     int ii;
     const char **brlist;
-    const char **iflist;
     struct bridge_flt_node *bf = NULL;
-    struct iface_flt_node *iff = NULL;
 
     LOG(INFO, "OVSMAC: Initializing.");
 
@@ -186,15 +178,6 @@ bool ovsmac_init(void)
         STRSCPY(bf->bridge, brlist[ii]);
         ds_tree_insert(&bridge_flt_list, bf, bf->bridge);
         LOG(INFO, "OVSMAC: * %s (bridge)", brlist[ii]);
-    }
-
-    iflist = target_ethclient_iflist_get();
-    for (ii=0; iflist[ii]; ii++)
-    {
-        iff = CALLOC(1, sizeof(struct iface_flt_node));
-        STRSCPY(iff->if_iface, iflist[ii]);
-        ds_tree_insert(&iface_flt_list, iff, iff->if_iface);
-        LOG(INFO, "OVSMAC: * %s (interface)", iflist[ii]);
     }
 
     LOG(INFO, "OVSMAC: Starting timer.");
@@ -316,14 +299,7 @@ bool ovsmac_scan_br(char *brif)
 
         LOG(DEBUG, "OVSMAC: bridge:%s ofport:%s vlan:%s mac:%s\n", brif, ifname, svlan, smac);
 
-        /*
-         * Check if given interface is in interface filter list
-         * Ethernet clients are connected to eth0 interface
-         */
-        if (true == ovsmac_check_iface_flt(ifname))
-        {
-            ovsmac_node_update(brif, ifname, vlan, mac);
-        }
+        ovsmac_node_update(brif, ifname, vlan, mac);
     }
 
     ret = true;
@@ -802,19 +778,6 @@ void iface_mon_fn(ovsdb_update_monitor_t *self)
             return;
     }
 }
-
-/*
- * Check if given interface is in iface filter list
- */
-static bool ovsmac_check_iface_flt(char *iface)
-{
-    struct iface_flt_node *iff;
-
-    iff = ds_tree_find(&iface_flt_list, iface);
-
-    return iff == NULL ? false : true;
-}
-
 
 /*
  * Check if given bridge in in bridge filter list

@@ -33,6 +33,8 @@ UNIT_TYPE := LIB
 UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM),n,y)
 
 UNIT_SRC := src/fsm_dpi_utils.c
+UNIT_SRC += src/fsm_utils.c
+UNIT_SRC += src/fsm_csum_utils.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -Isrc/fsm/inc

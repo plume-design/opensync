@@ -46,6 +46,7 @@ struct lte_common_header
     char *location_id;
     char *imei;
     char *imsi;
+    char *iccid;
     uint64_t reported_at; // Unix time in seconds
 };
 

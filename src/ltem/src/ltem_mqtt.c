@@ -41,7 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 struct lte_info_packed_buffer *lte_serialized = NULL;
 struct lte_info_report *lte_report = NULL;
 
-char *lte_deployment = "dog1";
+char *lte_deployment = "ci";
 char lte_mqtt_topic[256];
 
 static uint32_t lte_request_id = 0;
@@ -97,7 +97,6 @@ lte_set_common_header(struct lte_info_report *lte_report)
     bool ret;
     struct lte_common_header common_header;
     ltem_mgr_t *mgr = ltem_get_mgr();
-    time_t now = time(NULL);
 
     if (!lte_report) return -1;
 
@@ -108,7 +107,8 @@ lte_set_common_header(struct lte_info_report *lte_report)
     common_header.location_id = mgr->location_id;
     common_header.imei = mgr->modem_info.imei;
     common_header.imsi = mgr->modem_info.imsi;
-    common_header.reported_at = now;
+    common_header.iccid = mgr->modem_info.iccid;
+    // reported_at is set in lte_info_set_common_header
     ret = lte_info_set_common_header(&common_header, lte_report);
     if (!ret) return -1;
 
@@ -147,7 +147,7 @@ lte_set_data_usage(struct lte_info_report *lte_report)
     data_usage.rx_bytes = mgr->modem_info.rx_bytes;
     data_usage.tx_bytes = mgr->modem_info.tx_bytes;
     data_usage.failover_start = mgr->lte_state_info->lte_failover_start;
-    data_usage.failover_end = mgr->lte_state_info->lte_failover_count;
+    data_usage.failover_end = mgr->lte_state_info->lte_failover_end;
     data_usage.failover_count = mgr->lte_state_info->lte_failover_count;
     ret = lte_info_set_data_usage(&data_usage, lte_report);
     if (!ret) return -1;
@@ -320,7 +320,7 @@ lte_set_mqtt_topic(void)
     ltem_mgr_t *mgr = ltem_get_mgr();
 
     memset(lte_mqtt_topic, 0, sizeof(lte_mqtt_topic));
-    res = snprintf(lte_mqtt_topic, sizeof(lte_mqtt_topic), "dev-test/LteStats/%s/%s/%s",
+    res = snprintf(lte_mqtt_topic, sizeof(lte_mqtt_topic), "LteStats/%s/%s/%s",
                   lte_deployment, mgr->node_id, mgr->location_id);
     LOGI("%s: lte_mqtt_topic[%s], node_id[%s], location_id[%s]", __func__, lte_mqtt_topic, mgr->node_id, mgr->location_id);
     if (!res) LOGE("Set Mqtt Topic failed: %d[%s]", res, strerror(errno));

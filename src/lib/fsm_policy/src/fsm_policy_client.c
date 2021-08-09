@@ -255,9 +255,10 @@ fsm_policy_flush_cache(struct fsm_policy *policy)
 {
     struct fsm_policy_client *client;
     struct fsm_policy_session *mgr;
+    int num_flushed_record;
     ds_tree_t *tree;
 
-    LOGI("%s: Cache flush request", __func__);
+    LOGT("%s: Cache flush request", __func__);
     mgr = fsm_policy_get_mgr();
     tree = &mgr->clients;
 
@@ -266,7 +267,17 @@ fsm_policy_flush_cache(struct fsm_policy *policy)
     {
         if (client->flush_cache != NULL)
         {
-            client->flush_cache(client->session, policy);
+            num_flushed_record = client->flush_cache(client->session, policy);
+            if (num_flushed_record >= 0)
+            {
+                LOGD("%s: Flushed %d records from client %s", 
+                     __func__, num_flushed_record, client->name);
+            }
+            else
+            {
+                LOGD("%s: Failed to flush from client %s", 
+                     __func__, client->name);
+            }
         }
         client = ds_tree_next(tree, client);
     }

@@ -41,7 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "dppline.h"
 #include "dpp_bs_client.h"
 
-#define QUEUE_MSG_SIZE 8192
+#define QUEUE_MSG_SIZE 10240
 
 static int g_dpp_out = -1;
 

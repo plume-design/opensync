@@ -61,7 +61,7 @@ fsm_process_removed_tag(struct fsm_session *client_session,
     ds_tree_foreach(removed_attributes, item)
     {
         /* Register the client */
-        LOGN("%s(): unregistering tag value %s", __func__, item->value);
+        LOGI("%s(): unregistering tag value %s", __func__, item->value);
         fsm_dpi_unregister_client(dpi_plugin, item->value);
     }
 }
@@ -83,7 +83,7 @@ fsm_process_added_tag(struct fsm_session *client_session,
     ds_tree_foreach(added_attributes, item)
     {
         /* Register the client */
-        LOGN("%s(): registering tag value %s", __func__, item->value);
+        LOGI("%s(): registering tag value %s", __func__, item->value);
         fsm_dpi_register_client(dpi_plugin, client_session, item->value);
     }
 }
@@ -169,7 +169,7 @@ fsm_process_tag_update(om_tag_t *tag,
     client_session = ds_tree_find(sessions, dpi_tag->client_plugin_name);
     if (client_session == NULL) return;
 
-    LOGN("%s(): called for tag %s", __func__, tag->name);
+    LOGI("%s(): called for tag %s", __func__, tag->name);
 
     /* process the updated values */
     fsm_process_tags(client_session, removed, added, updated);
@@ -193,7 +193,7 @@ fsm_tag_for_updates(char *tag_name, char *plugin_name)
     dpi_tag = ds_tree_find(&mgr->dpi_client_tags_tree, tag_name);
     if (dpi_tag != NULL) return;
 
-    LOGN("%s(): adding tag %s (session: %s) to monitor list",
+    LOGI("%s(): adding tag %s (session: %s) to monitor list",
          __func__, tag_name, plugin_name);
 
     dpi_tag = CALLOC(1, sizeof(struct fsm_dpi_client_tags));
@@ -376,7 +376,7 @@ fsm_dpi_unregister_client(struct fsm_session *dpi_plugin_session,
     struct dpi_client *client;
     ds_tree_t *tree;
 
-    LOGN("%s(): unregistering flow attribute %s from %s",
+    LOGI("%s(): unregistering flow attribute %s from %s",
           __func__, attr, dpi_plugin_session->name);
 
     /* Validate access to the dpi plugin registration callback */

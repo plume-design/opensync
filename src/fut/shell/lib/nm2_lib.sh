@@ -27,7 +27,7 @@
 
 # Include basic environment config
 export FUT_NM2_LIB_SRC=true
-[ "${FUT_WM2_LIB_SRC}" != true ] && source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
+[ "${FUT_UNIT_LIB_SRC}" != true ] && source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
 echo "${FUT_TOPDIR}/shell/lib/nm2_lib.sh sourced"
 
 ####################### INFORMATION SECTION - START ###########################

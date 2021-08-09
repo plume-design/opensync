@@ -34,7 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 #define DPP_MAX_BS_EVENT_RECORDS    60
-#define DPP_MAX_BS_BANDS            4
+#define DPP_MAX_BS_BANDS            5
 #define DPP_IFNAME_LEN              17
 
 // proto: BSEventType
@@ -105,6 +105,7 @@ typedef struct
     bool                            is_RRM_supported;
     bool                            band_cap_2G;
     bool                            band_cap_5G;
+    bool                            band_cap_6G;
     uint32_t                        max_chwidth;
     uint32_t                        max_streams;
     uint32_t                        phy_mode;

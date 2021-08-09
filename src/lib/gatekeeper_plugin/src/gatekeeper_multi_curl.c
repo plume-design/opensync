@@ -89,9 +89,11 @@ gk_curl_multi_cleanup(struct fsm_gk_session *fsm_gk_session)
     struct gk_curl_multi_info *mcurl_info;
     CURLMcode mret;
 
-    LOGN("http2: cleaning up multi curl");
+    LOGI("%s(): http2: cleaning up multi curl", __func__);
 
     mcurl_info = &fsm_gk_session->mcurl;
+
+    if (mcurl_info->mcurl_connection_active == false) return false;
 
     if (mcurl_info->mcurl_handle == NULL) return false;
 
@@ -99,6 +101,7 @@ gk_curl_multi_cleanup(struct fsm_gk_session *fsm_gk_session)
     if (mret != CURLM_OK) return false;
 
     curl_global_cleanup();
+    mcurl_info->mcurl_connection_active = false;
     return true;
 }
 
@@ -219,7 +222,7 @@ gk_get_reply_header(Gatekeeper__Southbound__V1__GatekeeperReply *response, int r
             break;
 
         default:
-            LOGN("http2: %s() invalid request type %d", __func__, req_type);
+            LOGD("http2: %s() invalid request type %d", __func__, req_type);
             break;
     }
 
@@ -304,7 +307,7 @@ gk_process_fail_response(struct gk_conn_info *conn)
     type = conn->req_key.req_type;
     id = conn->req_key.req_id;
 
-    LOGN("processing failed response of request type/id %d/%d", type, id);
+    LOGD("%s(): processing failed response of request type/id %d/%d", __func__, type, id);
 
     gk_session = conn->context;
     gk_dump_tree(&gk_session->mcurl_data_tree);
@@ -320,6 +323,7 @@ gk_process_fail_response(struct gk_conn_info *conn)
     if (mcurl_data->gk_verdict->policy_reply == NULL)
     {
         LOGD("%s(): policy reply is NULL", __func__);
+        return;
     }
 
     policy_reply = mcurl_data->gk_verdict->policy_reply;
@@ -351,7 +355,7 @@ gk_process_response(struct gk_conn_info *conn)
 
     if (conn == NULL)
     {
-        LOGN("http2: conn pointer is NULL");
+        LOGD("%s(): http2: conn pointer is NULL", __func__);
         return false;
     }
 
@@ -368,7 +372,7 @@ gk_process_response(struct gk_conn_info *conn)
                                                                         (uint8_t *)data->buf);
     if (unpacked_data == NULL)
     {
-        LOGN("http2: error in unpacking data");
+        LOGD("%s(): http2: error in unpacking data", __func__);
         return false;
     }
 
@@ -481,7 +485,7 @@ event_cb(EV_P_ struct ev_io *w, int revents)
     check_multi_info(mcurl_info);
     if (mcurl_info->still_running <= 0)
     {
-        LOGN("last transfer done, kill timeout");
+        LOGD("%s(): last transfer done, kill timeout", __func__);
         ev_timer_stop(mcurl_info->loop, &mcurl_info->timer_event);
     }
 }
@@ -672,23 +676,34 @@ prog_cb(void *p, double dltotal, double dlnow, double ult,
 
 /**
  * @brief Create a new easy handle, and add it to the global curl_multi
- * @param url url to add.
+ * @param session pointer to fsm session
+ * @param fsm_gk_session gate keeper session
+ * @param mcurl_data multi curl data.
  * @return true if the initialization succeeded,
  *         false otherwise
  */
 bool
-gk_send_mcurl_request(struct fsm_gk_session *fsm_gk_session, struct gk_mcurl_data *mcurl_data)
+gk_send_mcurl_request(struct fsm_gk_session *fsm_gk_session,
+                      struct gk_mcurl_data *mcurl_data)
 {
     struct gk_curl_multi_info *mcurl_info;
     struct gk_server_info *server_info;
     struct fsm_gk_verdict *gk_verdict;
+    struct fsm_session *session;
     struct gk_conn_info *conn;
     char errbuf[CURL_ERROR_SIZE];
     CURLMcode rc;
 
+    session = fsm_gk_session->session;
     server_info = &fsm_gk_session->gk_server_info;
     mcurl_info = &fsm_gk_session->mcurl;
     gk_verdict = mcurl_data->gk_verdict;
+
+    if (mcurl_info->mcurl_connection_active == false)
+    {
+        LOGT("%s(): creating new mcurl connection", __func__);
+        gk_multi_curl_init(fsm_gk_session, session->loop);
+    }
 
     conn = CALLOC(1, sizeof(struct gk_conn_info));
     if (conn == NULL) return false;
@@ -738,12 +753,15 @@ gk_send_mcurl_request(struct fsm_gk_session *fsm_gk_session, struct gk_mcurl_dat
     LOGT("http2: %s() adding easy %p to multi %p (%s)",
          __func__, conn->easy, mcurl_info->mcurl_handle, conn->url);
 
+    /* updating connection time */
+    mcurl_info->mcurl_connection_time = time(NULL);
+
     /* add curl easy handle */
     rc = curl_multi_add_handle(mcurl_info->mcurl_handle, conn->easy);
     mcode_or_die("gk_send_mcurl_request: curl_multi_add_handle", rc);
     if (rc != CURLM_OK)
     {
-        LOGN("http2: curl_easy_perform failed: ret code: %d (%s)",
+        LOGD("%s(): http2: curl_easy_perform failed: ret code: %d (%s)", __func__,
              rc,
              errbuf);
         return false;
@@ -772,7 +790,9 @@ gk_multi_curl_init(struct fsm_gk_session *fsm_gk_session, struct ev_loop *loop)
 
     mcurl_info = &fsm_gk_session->mcurl;
 
-    LOGN("http2: initializing multi curl");
+    LOGI("%s(): http2: initializing multi curl", __func__);
+
+    if (mcurl_info->mcurl_connection_active == true) return true;
 
     /* initialize curl library */
     rc = curl_global_init(CURL_GLOBAL_DEFAULT);
@@ -791,13 +811,14 @@ gk_multi_curl_init(struct fsm_gk_session *fsm_gk_session, struct ev_loop *loop)
     cmret = curl_multi_setopt(mcurl_info->mcurl_handle, CURLMOPT_SOCKETFUNCTION, curl_sock_cb);
     if (cmret != CURLM_OK)
     {
-        LOGN("http2: failed to initialize socket callback function");
+        LOGD("%s(): http2: failed to initialize socket callback function",
+             __func__);
         goto err;
     }
     cmret = curl_multi_setopt(mcurl_info->mcurl_handle, CURLMOPT_SOCKETDATA, mcurl_info);
     if (cmret != CURLM_OK)
     {
-        LOGN("http2: failed to initialize socket callback data");
+        LOGD("%s(): http2: failed to initialize socket callback data", __func__);
         goto err;
     }
 
@@ -805,17 +826,20 @@ gk_multi_curl_init(struct fsm_gk_session *fsm_gk_session, struct ev_loop *loop)
     cmret = curl_multi_setopt(mcurl_info->mcurl_handle, CURLMOPT_TIMERFUNCTION, multi_timer_cb);
     if (cmret != CURLM_OK)
     {
-        LOGN("http2: failed to initialize timer callback function");
+        LOGD("%s(): http2: failed to initialize timer callback function", __func__);
         goto err;
     }
     cmret = curl_multi_setopt(mcurl_info->mcurl_handle, CURLMOPT_TIMERDATA, mcurl_info);
     if (cmret != CURLM_OK)
     {
-        LOGN("http2: failed to initialize timer callback data");
+        LOGD("%s(): http2: failed to initialize timer callback data", __func__);
         goto err;
     }
 
-    LOGN("http2: curl initialization successful");
+    LOGI("%s(): http2: curl initialization successful", __func__);
+
+    mcurl_info->mcurl_connection_active = true;
+    mcurl_info->mcurl_connection_time = time(NULL);
 
     return true;
 

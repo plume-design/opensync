@@ -168,13 +168,14 @@ struct  _Interfaces__LteInfo__LteCommonHeader
   ProtobufCMessage base;
   uint32_t request_id;
   /*
-   *wwan0
+   * wwan0
    */
   char *if_name;
   char *node_id;
   char *location_id;
   char *imei;
   char *imsi;
+  char *iccid;
   /*
    * Unix time in seconds
    */
@@ -182,7 +183,7 @@ struct  _Interfaces__LteInfo__LteCommonHeader
 };
 #define INTERFACES__LTE_INFO__LTE_COMMON_HEADER__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&interfaces__lte_info__lte_common_header__descriptor) \
-    , 0, (char *)protobuf_c_empty_string, (char *)protobuf_c_empty_string, (char *)protobuf_c_empty_string, (char *)protobuf_c_empty_string, (char *)protobuf_c_empty_string, 0 }
+    , 0, (char *)protobuf_c_empty_string, (char *)protobuf_c_empty_string, (char *)protobuf_c_empty_string, (char *)protobuf_c_empty_string, (char *)protobuf_c_empty_string, (char *)protobuf_c_empty_string, 0 }
 
 
 struct  _Interfaces__LteInfo__LteNetInfo

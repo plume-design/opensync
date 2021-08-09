@@ -303,7 +303,7 @@ void   interfaces__lte_info__lte_info_report__free_unpacked
   assert(message->base.descriptor == &interfaces__lte_info__lte_info_report__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
-static const ProtobufCFieldDescriptor interfaces__lte_info__lte_common_header__field_descriptors[7] =
+static const ProtobufCFieldDescriptor interfaces__lte_info__lte_common_header__field_descriptors[8] =
 {
   {
     "request_id",
@@ -378,8 +378,20 @@ static const ProtobufCFieldDescriptor interfaces__lte_info__lte_common_header__f
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
-    "reported_at",
+    "iccid",
     7,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_STRING,
+    0,   /* quantifier_offset */
+    offsetof(Interfaces__LteInfo__LteCommonHeader, iccid),
+    NULL,
+    &protobuf_c_empty_string,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "reported_at",
+    8,
     PROTOBUF_C_LABEL_NONE,
     PROTOBUF_C_TYPE_UINT64,
     0,   /* quantifier_offset */
@@ -391,18 +403,19 @@ static const ProtobufCFieldDescriptor interfaces__lte_info__lte_common_header__f
   },
 };
 static const unsigned interfaces__lte_info__lte_common_header__field_indices_by_name[] = {
+  6,   /* field[6] = iccid */
   1,   /* field[1] = if_name */
   4,   /* field[4] = imei */
   5,   /* field[5] = imsi */
   3,   /* field[3] = location_id */
   2,   /* field[2] = node_id */
-  6,   /* field[6] = reported_at */
+  7,   /* field[7] = reported_at */
   0,   /* field[0] = request_id */
 };
 static const ProtobufCIntRange interfaces__lte_info__lte_common_header__number_ranges[1 + 1] =
 {
   { 1, 0 },
-  { 0, 7 }
+  { 0, 8 }
 };
 const ProtobufCMessageDescriptor interfaces__lte_info__lte_common_header__descriptor =
 {
@@ -412,7 +425,7 @@ const ProtobufCMessageDescriptor interfaces__lte_info__lte_common_header__descri
   "Interfaces__LteInfo__LteCommonHeader",
   "interfaces.lte_info",
   sizeof(Interfaces__LteInfo__LteCommonHeader),
-  7,
+  8,
   interfaces__lte_info__lte_common_header__field_descriptors,
   interfaces__lte_info__lte_common_header__field_indices_by_name,
   1,  interfaces__lte_info__lte_common_header__number_ranges,

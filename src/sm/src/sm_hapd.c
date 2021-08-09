@@ -145,7 +145,7 @@ sm_hapd_bss_create(const struct schema_Wifi_Radio_State *rstate,
     STRSCPY_WARN(bss->report.if_name, vstate->if_name);
     memcpy(&bss->uuid, &vstate->_uuid, sizeof(bss->uuid));
 
-    hapd = hapd_new(rstate->if_name, vstate->if_name);
+    hapd = hapd_lookup(vstate->if_name) ?: hapd_new(rstate->if_name, vstate->if_name);
     if (!hapd) {
         LOGD("%s: Failed to alloc hapd for client auth fails reporting for if_name: %s",
              backend_name, vstate->if_name);

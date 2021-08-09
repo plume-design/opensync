@@ -252,60 +252,76 @@ static bool fsm_mac_check(struct fsm_policy_req *req,
 bool
 fsm_policy_wildmatch(char *pattern, char *domain)
 {
+    const int MAX_DOTS = 10;
     char *delim = ".";
-    char *saveptr1;
-    char *saveptr2;
-    char *str1;
-    char *str2;
-    char *sub1;
-    char *sub2;
+    char *pattern_copy;
+    char *pattern_tmp;
+    char *pattern_ptr;
+    char *pattern_sub;
+    char *domain_copy;
+    char *domain_tmp;
+    char *domain_ptr;
+    char *domain_sub;
+    bool rc = false;
     int ret;
-    int j;
+    int i;
 
-    for (j = 1, str1 = STRDUP(pattern), str2 = STRDUP(domain); ;
-         j++, str1 = NULL, str2 = NULL)
+
+    pattern_copy = STRDUP(pattern);
+    pattern_tmp = pattern_copy;
+
+    domain_copy = STRDUP(domain);
+    domain_tmp = domain_copy;
+
+    /* Make sure we never end in some infinite loop */
+    for (i = 0; i < MAX_DOTS; i++)
     {
-        sub1 = strtok_r(str1, delim, &saveptr1);
-        sub2 = strtok_r(str2, delim, &saveptr2);
+        pattern_sub = strtok_r(pattern_tmp, delim, &pattern_ptr);
+        pattern_tmp = NULL;
+
+        domain_sub = strtok_r(domain_tmp, delim, &domain_ptr);
+        domain_tmp = NULL;
+
         /*
          * If we have reached the end of both strings without returning false
          * then these match
          */
-        if (sub1 == NULL && sub2 == NULL)
+        if (pattern_sub == NULL && domain_sub == NULL)
         {
-            FREE(str1);
-            FREE(str2);
-
-            return true;
+            rc = true;
+            break;
         }
 
         /*
-         * If one of the strings has ended, they weren't even and
+         * If one of the strings has ended, number of delim weren't even and
          * there was no match
          */
-        if (sub1 == NULL || sub2 == NULL)
+        if (pattern_sub == NULL || domain_sub == NULL)
         {
-            FREE(str1);
-            FREE(str2);
-
-            return false;
+            rc = false;
+            break;
         }
 
 
-        ret = fnmatch(sub1, sub2, 0);
+        ret = fnmatch(pattern_sub, domain_sub, 0);
         if (ret)
         {
-            FREE(str1);
-            FREE(str2);
-
-            return false;
+            rc = false;
+            break;
         }
-
-        FREE(str1);
-        FREE(str2);
     }
 
-    return false;
+    /* Free the copies */
+    FREE(domain_copy);
+    FREE(pattern_copy);
+
+    if (i == MAX_DOTS)
+    {
+        LOGD("%s(): Pattern is too long %s", __func__, pattern);
+        rc = false;
+    }
+
+    return rc;
 }
 
 

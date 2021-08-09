@@ -37,6 +37,7 @@ sleep 100
 diff_vars "$ref_dpp_client_during_backoff" "$(timeout 1 bsal_sim read /dut_ap_a_dpp_out)" || return 1
 diff_vars "$ref_update_sta_24_during_backoff" "$(timeout 1 bsal_sim read /dut_ap_a_bsal_out)" || return 1
 diff_vars "$ref_update_sta_5_during_backoff" "$(timeout 1 bsal_sim read /dut_ap_a_bsal_out)" || return 1
+diff_vars "$ref_update_sta_6_during_backoff" "$(timeout 1 bsal_sim read /dut_ap_a_bsal_out)" || return 1
 
 bsal_sim write /dut_ap_a_bsal_in "UPDATE_CLIENT mac=20:00:00:00:00:00 btm=true rrm=true rrm_beacon_passive_mes=true rrm_beacon_active_mes=true rrm_beacon_table_mes=true \
 								  assoc_ies=000e6a616e75737a2d66742d74657374010802040b160c12182432043048606c2102001430140100000fac040100000fac040100000fac0200007f0b04004a0201000040000020460570000000003b155151525354737475767778797a7b7c7d7e7f808182dd070050f202000100" || return 1
@@ -49,3 +50,4 @@ sleep 60
 diff_vars "$ref_dpp_client_after_backoff" "$(timeout 1 bsal_sim read /dut_ap_a_dpp_out)" || return 1
 diff_vars "$ref_update_sta_24_after_backoff" "$(timeout 1 bsal_sim read /dut_ap_a_bsal_out)" || return 1
 diff_vars "$ref_update_sta_5_after_backoff" "$(timeout 1 bsal_sim read /dut_ap_a_bsal_out)" || return 1
+diff_vars "$ref_update_sta_6_after_backoff" "$(timeout 1 bsal_sim read /dut_ap_a_bsal_out)" || return 1

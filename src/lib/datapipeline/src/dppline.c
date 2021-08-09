@@ -1822,6 +1822,9 @@ static void dppline_add_stat_bs_client(Sts__Report * r, dppline_stats_t * s)
                 er->band_cap_5g = e_rec->band_cap_5G;
                 er->has_band_cap_5g = true;
 
+                er->band_cap_6g = e_rec->band_cap_6G;
+                er->has_band_cap_6g = true;
+
                 er->max_chwidth = e_rec->max_chwidth;
                 er->has_max_chwidth = true;
 

@@ -447,12 +447,12 @@ gk_get_ip_to_check(struct gk_ip_request *ip_req)
     if (acc->direction == NET_MD_ACC_OUTBOUND_DIR)
     {
         if (acc->originator == NET_MD_ACC_ORIGINATOR_SRC) return key->dst_ip;
-        else if (acc->originator == NET_MD_ACC_ORIGINATOR_DST) return key->src_ip;
+        if (acc->originator == NET_MD_ACC_ORIGINATOR_DST) return key->src_ip;
     }
     else if (acc->direction == NET_MD_ACC_INBOUND_DIR)
     {
         if (acc->originator == NET_MD_ACC_ORIGINATOR_SRC) return key->src_ip;
-        else if (acc->originator == NET_MD_ACC_ORIGINATOR_DST) return key->dst_ip;
+        if (acc->originator == NET_MD_ACC_ORIGINATOR_DST) return key->dst_ip;
     }
 
     return NULL;
@@ -470,7 +470,6 @@ gk_set_pb_ipv4_flow(struct net_md_stats_accumulator *acc)
 {
     Gatekeeper__Southbound__V1__GatekeeperIpv4FlowTuple *pb;
     struct net_md_flow_key *key;
-    uint32_t ipv4;
     uint8_t *ip;
 
     if (acc == NULL) return NULL;
@@ -484,6 +483,12 @@ gk_set_pb_ipv4_flow(struct net_md_stats_accumulator *acc)
     /* Initialize the protobuf structure */
     gatekeeper__southbound__v1__gatekeeper_ipv4_flow_tuple__init(pb);
 
+    /*
+     * Since we are casting a network order uint8_t* into
+     * host-order uint32_t we need to make sure proper
+     * swap will be applied (back to network-order).
+     */
+
     pb->transport = key->ipprotocol;
     if (acc->direction == NET_MD_ACC_OUTBOUND_DIR)
     {
@@ -491,13 +496,11 @@ gk_set_pb_ipv4_flow(struct net_md_stats_accumulator *acc)
         {
             /* prepare source ip address */
             ip = key->src_ip;
-            ipv4 = *(uint32_t *)ip;
-            pb->source_ipv4 = htonl(ipv4);
+            pb->source_ipv4 = htonl(*(uint32_t *)ip);
 
             /* prepare destination ip address */
             ip = key->dst_ip;
-            ipv4 = *(uint32_t *)ip;
-            pb->destination_ipv4 = htonl(ipv4);
+            pb->destination_ipv4 = htonl(*(uint32_t *)ip);
 
             /* prepare source port */
             pb->source_port = key->sport;
@@ -509,13 +512,11 @@ gk_set_pb_ipv4_flow(struct net_md_stats_accumulator *acc)
         {
             /* prepare source ip address */
             ip = key->src_ip;
-            ipv4 = *(uint32_t *)ip;
-            pb->destination_ipv4 = htonl(ipv4);
+            pb->destination_ipv4 = htonl(*(uint32_t *)ip);
 
             /* prepare destination ip address */
             ip = key->dst_ip;
-            ipv4 = *(uint32_t *)ip;
-            pb->source_ipv4 = htonl(ipv4);
+            pb->source_ipv4 = htonl(*(uint32_t *)ip);
 
             /* prepare source port */
             pb->source_port = key->dport;
@@ -530,13 +531,11 @@ gk_set_pb_ipv4_flow(struct net_md_stats_accumulator *acc)
         {
             /* prepare source ip address */
             ip = key->src_ip;
-            ipv4 = *(uint32_t *)ip;
-            pb->source_ipv4 = htonl(ipv4);
+            pb->source_ipv4 = htonl(*(uint32_t *)ip);
 
             /* prepare destination ip address */
             ip = key->dst_ip;
-            ipv4 = *(uint32_t *)ip;
-            pb->destination_ipv4 = htonl(ipv4);
+            pb->destination_ipv4 = htonl(*(uint32_t *)ip);
 
             /* prepare source port */
             pb->source_port = key->sport;
@@ -548,13 +547,11 @@ gk_set_pb_ipv4_flow(struct net_md_stats_accumulator *acc)
         {
             /* prepare source ip address */
             ip = key->src_ip;
-            ipv4 = *(uint32_t *)ip;
-            pb->destination_ipv4 = htonl(ipv4);
+            pb->destination_ipv4 = htonl(*(uint32_t *)ip);
 
             /* prepare destination ip address */
             ip = key->dst_ip;
-            ipv4 = *(uint32_t *)ip;
-            pb->source_ipv4 = htonl(ipv4);
+            pb->source_ipv4 = htonl(*(uint32_t *)ip);
 
             /* prepare source port */
             pb->source_port = key->dport;
@@ -677,9 +674,9 @@ gk_set_pb_ipv6_flow(struct net_md_stats_accumulator *acc)
 
 
 /**
- * @brief fills up a gatekeeper protobuf ipv6 request
+ * @brief fills up a gatekeeper protobuf ipv4 request
  *
- * @param ip_req the external representation of an gatekeeper ipv6 request
+ * @param ip_req the external representation of an gatekeeper ipv4 request
  * @return a filled up protobuf ipv4 request
  */
 static Gatekeeper__Southbound__V1__GatekeeperIpv4Req *
@@ -688,7 +685,6 @@ gk_set_pb_ipv4_req(struct gk_ip_request *ip_req)
     Gatekeeper__Southbound__V1__GatekeeperIpv4FlowTuple *flow_pb;
     Gatekeeper__Southbound__V1__GatekeeperIpv4Req *pb;
     struct net_md_stats_accumulator *acc;
-    uint32_t ipv4;
     uint8_t *ip;
 
     if (ip_req == NULL) return NULL;
@@ -710,8 +706,7 @@ gk_set_pb_ipv4_req(struct gk_ip_request *ip_req)
     ip = gk_get_ip_to_check(ip_req);
     if (ip == NULL) goto out_err;
 
-    ipv4 = *(uint32_t *)ip;
-    pb->addr_ipv4 = htonl(ipv4);
+    pb->addr_ipv4 = htonl(*(uint32_t *)ip);
 
     /* Add flow information */
     flow_pb = gk_set_pb_ipv4_flow(ip_req->acc);

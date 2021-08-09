@@ -369,10 +369,9 @@ cm2_ovsdb_set_dhcp_client(const char *if_name, bool enabled)
 
     LOGI("%s: Updating DHCP settings [%d]", if_name, enabled);
     ip_assign = enabled ? "dhcp" : "none";
-    STRSCPY(iconf.ip_assign_scheme, ip_assign);
-    iconf.ip_assign_scheme_exists = true;
-    iconf.enabled = true;
-    iconf.network = true;
+    SCHEMA_SET_STR(iconf.ip_assign_scheme, ip_assign);
+    SCHEMA_SET_BOOL(iconf.enabled, true);
+    SCHEMA_SET_BOOL(iconf.network, true);
 
     ret = ovsdb_table_update_where_f(&table_Wifi_Inet_Config,
                  ovsdb_where_simple(SCHEMA_COLUMN(Wifi_Inet_Config, if_name), if_name),
@@ -543,26 +542,22 @@ cm2_ovsdb_copy_dhcp_ipv4_configuration(char *up_src, char *up_dst)
     filter[idx++] = "+";
 
     if (ups_iconf.ip_assign_scheme_exists) {
-        STRSCPY(upd_iconf.ip_assign_scheme, ups_iconf.ip_assign_scheme);
-        upd_iconf.ip_assign_scheme_exists = true;
+        SCHEMA_SET_STR(upd_iconf.ip_assign_scheme, ups_iconf.ip_assign_scheme);
         filter[idx++] = SCHEMA_COLUMN(Wifi_Inet_Config, ip_assign_scheme);
     }
 
     if (ups_iconf.gateway_exists) {
-        STRSCPY(upd_iconf.gateway, ups_iconf.gateway);
-        upd_iconf.gateway_exists = true;
+        SCHEMA_SET_STR(upd_iconf.gateway, ups_iconf.gateway);
         filter[idx++] = SCHEMA_COLUMN(Wifi_Inet_Config, gateway);
     }
 
     if (ups_iconf.inet_addr_exists) {
-        STRSCPY(upd_iconf.inet_addr, ups_iconf.inet_addr);
-        upd_iconf.inet_addr_exists = true;
+        SCHEMA_SET_STR(upd_iconf.inet_addr, ups_iconf.inet_addr);
         filter[idx++] = SCHEMA_COLUMN(Wifi_Inet_Config, inet_addr);
     }
 
     if (ups_iconf.netmask_exists) {
-        STRSCPY(upd_iconf.netmask, ups_iconf.netmask);
-        upd_iconf.netmask_exists = true;
+        SCHEMA_SET_STR(upd_iconf.netmask, ups_iconf.netmask);
         filter[idx++] = SCHEMA_COLUMN(Wifi_Inet_Config, netmask);
     }
 
@@ -573,12 +568,10 @@ cm2_ovsdb_copy_dhcp_ipv4_configuration(char *up_src, char *up_dst)
     upd_iconf.dns_len = ups_iconf.dns_len;
     filter[idx++] = SCHEMA_COLUMN(Wifi_Inet_Config, dns);
 
-    upd_iconf.network_exists = true;
-    upd_iconf.network = true;
+    SCHEMA_SET_BOOL(upd_iconf.network, true);
     filter[idx++] = SCHEMA_COLUMN(Wifi_Inet_Config, network);
 
-    upd_iconf.enabled_exists = true;
-    upd_iconf.enabled = true;
+    SCHEMA_SET_BOOL(upd_iconf.enabled, true);
     filter[idx++] = SCHEMA_COLUMN(Wifi_Inet_Config, enabled);
 
     LOGI("%s: Updating DHCP configuration: %s", up_dst, upd_iconf.ip_assign_scheme);
@@ -626,7 +619,7 @@ cm2_util_set_dhcp_ipv4_cfg(char *if_name, char *inet_addr, bool refresh)
     empty_addr = !((strlen(inet_addr) > 0) && strcmp(inet_addr, "0.0.0.0") != 0);
     if (dhcp_static) {
         if (!empty_addr) {
-            char gre_ifname[IFNAME_SIZE];
+            char gre_ifname[C_IFNAME_LEN];
 
             LOGI("%s: Use static static IP address: %s", if_name, inet_addr);
             cm2_dhcpc_stop_dryrun(if_name);
@@ -723,29 +716,18 @@ cm2_ovsdb_insert_Wifi_Inet_Config(struct schema_Wifi_Master_State *master)
 
     STRSCPY(icfg.if_type, GRE_TYPE_NAME);
 
-    icfg.gre_local_inet_addr_exists = true;
-    STRSCPY(icfg.gre_local_inet_addr, master->inet_addr);
+    SCHEMA_SET_STR(icfg.gre_local_inet_addr, master->inet_addr);
+    SCHEMA_SET_BOOL(icfg.enabled, true);
+    SCHEMA_SET_BOOL(icfg.network, true);
 
-    icfg.enabled_exists = true;
-    icfg.enabled = true;
-
-    icfg.network_exists = true;
-    icfg.network = true;
-
-    icfg.mtu_exists = true;
-    icfg.mtu = CONFIG_CM2_MTU_ON_GRE;
-
-    icfg.gre_remote_inet_addr_exists = true;
-    STRSCPY(icfg.gre_remote_inet_addr, cm2_util_get_gateway_ip(master->inet_addr, master->netmask));
-
-    icfg.gre_ifname_exists = true;
-    STRSCPY(icfg.gre_ifname, master->if_name);
+    SCHEMA_SET_INT(icfg.mtu, CONFIG_CM2_MTU_ON_GRE);
+    SCHEMA_SET_STR(icfg.gre_remote_inet_addr, cm2_util_get_gateway_ip(master->inet_addr, master->netmask));
+    SCHEMA_SET_STR(icfg.gre_ifname, master->if_name);
 
     icfg.if_name_exists = true;
     cm2_util_ifname2gre(icfg.if_name, sizeof(icfg.if_name), master->if_name);
 
-    icfg.ip_assign_scheme_exists = true;
-    STRSCPY(icfg.ip_assign_scheme, "none");
+    SCHEMA_SET_STR(icfg.ip_assign_scheme, "none");
 
     LOGI("%s: Creating new gre iface: %s local addr: %s, remote_addr: %s, netmask: %s",
          master->if_name, icfg.if_name, icfg.gre_local_inet_addr,
@@ -765,7 +747,7 @@ cm2_ovsdb_insert_Wifi_Inet_Config(struct schema_Wifi_Master_State *master)
 /* Function removing GRE interface */
 static void
 cm2_ovsdb_remove_Wifi_Inet_Config(char *if_name, bool gre) {
-    char iface[IFNAME_SIZE];
+    char iface[C_IFNAME_LEN];
     int  ret;
 
     if (!gre)
@@ -987,7 +969,7 @@ static void
 cm2_ovsdb_util_translate_master_port_state(struct schema_Wifi_Master_State *master)
 {
     struct schema_Connection_Manager_Uplink con;
-    char                                    gre_ifname[IFNAME_SIZE];
+    char                                    gre_ifname[C_IFNAME_LEN];
     bool                                    port_state;
     bool                                    con_exist;
     bool                                    wds;
@@ -1029,12 +1011,9 @@ cm2_ovsdb_util_translate_master_port_state(struct schema_Wifi_Master_State *mast
 
     LOGI("%s: Add/update uplink in Connection Manager Uplink table", master->if_name);
 
-    STRSCPY(con.if_name, master->if_name);
-    con.if_name_exists = true;
-    STRSCPY(con.if_type, master->if_type);
-    con.if_type_exists = true;
-    con.has_L2_exists = true;
-    con.has_L2 = port_state;
+    SCHEMA_SET_STR(con.if_name, master->if_name);
+    SCHEMA_SET_STR(con.if_type, master->if_type);
+    SCHEMA_SET_BOOL(con.has_L2, true);
 
     WARN_ON(!ovsdb_table_upsert_simple(&table_Connection_Manager_Uplink,
                                        SCHEMA_COLUMN(Connection_Manager_Uplink, if_name),
@@ -1054,10 +1033,8 @@ cm2_ovsdb_util_translate_master_priority(struct schema_Wifi_Master_State *master
         return;
 
     memset(&con, 0, sizeof(con));
-    if (master->uplink_priority_exists) {
-        con.priority_exists = true;
-        con.priority = master->uplink_priority;
-    }
+    if (master->uplink_priority_exists)
+        SCHEMA_SET_INT(con.priority, master->uplink_priority);
 
     int ret = ovsdb_table_update_where_f(&table_Connection_Manager_Uplink,
                                          ovsdb_where_simple(SCHEMA_COLUMN(Connection_Manager_Uplink, if_name),
@@ -1126,15 +1103,11 @@ cm2_ovsdb_set_gw_offline_config(bool gw_offline)
 
     memset(&nconfig, 0, sizeof(nconfig));
 
-    nconfig.module_exists = true;
-    STRSCPY(nconfig.module, CM2_PM_MODULE_NAME);
+    SCHEMA_SET_STR(nconfig.module, CM2_PM_MODULE_NAME);
+    SCHEMA_SET_STR(nconfig.key, CM2_PM_GW_OFFLINE);
 
-    nconfig.key_exists = true;
-    STRSCPY(nconfig.key, CM2_PM_GW_OFFLINE);
-
-    nconfig.value_exists = true;
     gw_offline_val = gw_offline ? CM2_PM_GW_OFFLINE_ON : CM2_PM_GW_OFFLINE_OFF;
-    STRSCPY(nconfig.value, gw_offline_val);
+    SCHEMA_SET_STR(nconfig.value, gw_offline_val);
 
     where = json_array();
 
@@ -1292,8 +1265,7 @@ cm2_ovsdb_connection_update_priority(const char *if_name, int prio)
     char *filter[] = { "+", SCHEMA_COLUMN(Connection_Manager_Uplink, priority), NULL };
 
     memset(&con, 0, sizeof(con));
-    con.priority_exists = true;
-    con.priority = prio;
+    SCHEMA_SET_INT(con.priority, prio);
 
     return ovsdb_table_update_where_f(&table_Connection_Manager_Uplink,
                                       ovsdb_where_simple(SCHEMA_COLUMN(Connection_Manager_Uplink, if_name), if_name),
@@ -1307,8 +1279,7 @@ cm2_ovsdb_connection_update_used_state(char *if_name, bool state)
     char *filter[] = { "+", SCHEMA_COLUMN(Connection_Manager_Uplink, is_used), NULL };
 
     memset(&con, 0, sizeof(con));
-    con.is_used_exists = true;
-    con.is_used = state;
+    SCHEMA_SET_BOOL(con.is_used, state);
 
     int ret = ovsdb_table_update_where_f(&table_Connection_Manager_Uplink,
                                          ovsdb_where_simple(SCHEMA_COLUMN(Connection_Manager_Uplink, if_name), if_name),
@@ -1323,8 +1294,7 @@ cm2_ovsdb_connection_update_bridge_state(char *if_name, const char *bridge)
     char *filter[] = { "+", SCHEMA_COLUMN(Connection_Manager_Uplink, bridge), NULL };
 
     memset(&con, 0, sizeof(con));
-    con.bridge_exists = true;
-    STRSCPY(con.bridge, bridge);
+    SCHEMA_SET_STR(con.bridge, bridge);
 
     int ret = ovsdb_table_update_where_f(&table_Connection_Manager_Uplink,
                                          ovsdb_where_simple(SCHEMA_COLUMN(Connection_Manager_Uplink, if_name), if_name),
@@ -1340,8 +1310,7 @@ cm2_ovsdb_connection_update_loop_state(const char *if_name, bool state)
     int ret;
 
     memset(&con, 0, sizeof(con));
-    con.loop_exists = true;
-    con.loop = state;
+    SCHEMA_SET_BOOL(con.loop, state);
 
     ret = ovsdb_table_update_where_f(&table_Connection_Manager_Uplink,
                                      ovsdb_where_simple(SCHEMA_COLUMN(Connection_Manager_Uplink, if_name), if_name),
@@ -1399,9 +1368,7 @@ bool cm2_ovsdb_connection_update_ntp_state(const char *if_name, bool state) {
     int ret;
 
     memset(&con, 0, sizeof(con));
-
-    con.ntp_state_exists = true;
-    con.ntp_state = state;
+    SCHEMA_SET_BOOL(con.ntp_state, state);
 
     ret = ovsdb_table_update_where_f(&table_Connection_Manager_Uplink,
                                      ovsdb_where_simple(SCHEMA_COLUMN(Connection_Manager_Uplink, if_name), if_name),
@@ -1415,9 +1382,7 @@ bool cm2_ovsdb_connection_update_unreachable_link_counter(const char *if_name, i
     int ret;
 
     memset(&con, 0, sizeof(con));
-
-    con.unreachable_link_counter_exists = true;
-    con.unreachable_link_counter = counter;
+    SCHEMA_SET_INT(con.unreachable_link_counter, counter);
 
     ret = ovsdb_table_update_where_f(&table_Connection_Manager_Uplink,
                                      ovsdb_where_simple(SCHEMA_COLUMN(Connection_Manager_Uplink, if_name), if_name),
@@ -1431,9 +1396,7 @@ bool cm2_ovsdb_connection_update_unreachable_router_counter(const char *if_name,
     int ret;
 
     memset(&con, 0, sizeof(con));
-
-    con.unreachable_router_counter_exists = true;
-    con.unreachable_router_counter = counter;
+    SCHEMA_SET_INT(con.unreachable_router_counter, counter);
 
     ret = ovsdb_table_update_where_f(&table_Connection_Manager_Uplink,
                                      ovsdb_where_simple(SCHEMA_COLUMN(Connection_Manager_Uplink, if_name), if_name),
@@ -1447,9 +1410,7 @@ bool cm2_ovsdb_connection_update_unreachable_internet_counter(const char *if_nam
     int ret;
 
     memset(&con, 0, sizeof(con));
-
-    con.unreachable_internet_counter_exists = true;
-    con.unreachable_internet_counter = counter;
+    SCHEMA_SET_INT(con.unreachable_internet_counter, counter);
 
     ret = ovsdb_table_update_where_f(&table_Connection_Manager_Uplink,
                                      ovsdb_where_simple(SCHEMA_COLUMN(Connection_Manager_Uplink, if_name), if_name),
@@ -1463,9 +1424,7 @@ bool cm2_ovsdb_connection_update_unreachable_cloud_counter(const char *if_name, 
     int ret;
 
     memset(&con, 0, sizeof(con));
-
-    con.unreachable_cloud_counter_exists = true;
-    con.unreachable_cloud_counter = counter;
+    SCHEMA_SET_INT(con.unreachable_cloud_counter, counter);
 
     ret = ovsdb_table_update_where_f(&table_Connection_Manager_Uplink,
                                          ovsdb_where_simple(SCHEMA_COLUMN(Connection_Manager_Uplink, if_name), if_name),
@@ -1709,20 +1668,11 @@ void cm2_ovsdb_connection_clean_link_counters(char *if_name)
 
     LOGN("%s: Clean up link counters", if_name);
 
-    uplink.ntp_state = false;
-    uplink.ntp_state_exists = true;
-
-    uplink.unreachable_link_counter = -1;
-    uplink.unreachable_link_counter_exists = true;
-
-    uplink.unreachable_router_counter = -1;
-    uplink.unreachable_router_counter_exists = true;
-
-    uplink.unreachable_cloud_counter = -1;
-    uplink.unreachable_cloud_counter_exists = true;
-
-    uplink.unreachable_internet_counter = -1;
-    uplink.unreachable_internet_counter_exists = true;
+    SCHEMA_UNSET_FIELD(uplink.ntp_state);
+    SCHEMA_UNSET_FIELD(uplink.unreachable_link_counter);
+    SCHEMA_UNSET_FIELD(uplink.unreachable_router_counter);
+    SCHEMA_UNSET_FIELD(uplink.unreachable_cloud_counter);
+    SCHEMA_UNSET_FIELD(uplink.unreachable_internet_counter);
 
     ret = ovsdb_table_update_where_f(&table_Connection_Manager_Uplink,
                                      ovsdb_where_simple(SCHEMA_COLUMN(Connection_Manager_Uplink, if_name), if_name),
@@ -1804,7 +1754,7 @@ void callback_Wifi_Master_State(ovsdb_update_monitor_t *mon,
     LOGD("%s calling %s", __func__, master->if_name);
 
     if (mon->mon_type == OVSDB_UPDATE_DEL) {
-        char gre_ifname[IFNAME_SIZE];
+        char gre_ifname[C_IFNAME_LEN];
 
         LOGI("%s: Remove row detected in Master State", master->if_name);
 
@@ -2084,7 +2034,7 @@ cm2_Connection_Manager_Uplink_handle_update(
                 }
 
                 filter[idx++] = SCHEMA_COLUMN(Connection_Manager_Uplink, has_L3);
-                uplink->has_L3_exists = false;
+                SCHEMA_UNSET_FIELD(uplink->has_L3);
                 g_state.link.vtag.state = CM2_VTAG_NOT_USED;
 
                 if (!strcmp(g_state.link.if_name, uplink->if_name) && g_state.link.restart_pending) {
@@ -2146,27 +2096,11 @@ cm2_Connection_Manager_Uplink_handle_update(
 
     if (clean_up_counters || reconfigure) {
         LOGN("%s: Clean up counters", uplink->if_name);
-
-        filter[idx++] = SCHEMA_COLUMN(Connection_Manager_Uplink, ntp_state);
-        uplink->ntp_state = false;
-        uplink->ntp_state_exists = true;
-
-        filter[idx++] = SCHEMA_COLUMN(Connection_Manager_Uplink, unreachable_link_counter);
-        uplink->unreachable_link_counter = -1;
-        uplink->unreachable_link_counter_exists = true;
-
-        filter[idx++] = SCHEMA_COLUMN(Connection_Manager_Uplink, unreachable_router_counter);
-        uplink->unreachable_router_counter = -1;
-        uplink->unreachable_router_counter_exists = true;
-
-        filter[idx++] = SCHEMA_COLUMN(Connection_Manager_Uplink, unreachable_cloud_counter);
-        uplink->unreachable_cloud_counter = -1;
-        uplink->unreachable_cloud_counter_exists = true;
-
-        filter[idx++] = SCHEMA_COLUMN(Connection_Manager_Uplink, unreachable_internet_counter);
-        uplink->unreachable_internet_counter = -1;
-        uplink->unreachable_internet_counter_exists = true;
-
+        SCHEMA_UNSET_FIELD(uplink->ntp_state);
+        SCHEMA_UNSET_FIELD(uplink->unreachable_link_counter);
+        SCHEMA_UNSET_FIELD(uplink->unreachable_router_counter);
+        SCHEMA_UNSET_FIELD(uplink->unreachable_cloud_counter);
+        SCHEMA_UNSET_FIELD(uplink->unreachable_internet_counter);
         filter[idx] = NULL;
 
         int ret = ovsdb_table_update_f(&table_Connection_Manager_Uplink, uplink, filter);
@@ -2661,9 +2595,7 @@ void cm2_ovsdb_set_AWLAN_Node_boot_time(void)
     now = time(NULL);
     boot_time = now - s_info.uptime;
 
-    awlan.boot_time = boot_time;
-    awlan.boot_time_exists = true;
-
+    SCHEMA_SET_INT(awlan.boot_time, boot_time);
     ret = ovsdb_table_update_where_f(&table_AWLAN_Node, NULL, &awlan, filter);
     if (!ret)
     {
@@ -2743,8 +2675,7 @@ bool cm2_ovsdb_update_Port_tag(const char *if_name, int tag, bool set)
     if (set) {
         SCHEMA_SET_INT(port.tag, tag);
     } else {
-        port.tag_present = true;
-        port.tag_exists = false;
+        SCHEMA_UNSET_FIELD(port.tag);
     }
 
     ret = ovsdb_table_update_where(&table_Port,
@@ -2912,9 +2843,8 @@ int cm2_ovsdb_init_tables(void)
     LOGD("Initializing CM tables "
             "(Init OvS.Manager table)");
     memset(&manager, 0, sizeof(manager));
-    manager.inactivity_probe = 30000;
-    manager.inactivity_probe_exists = true;
-    STRSCPY(manager.target, "");
+    SCHEMA_SET_INT(manager.inactivity_probe, 30000);
+    SCHEMA_SET_STR(manager.target, "");
     success = ovsdb_table_upsert_with_parent_where(&table_Manager,
             NULL, &manager, false, NULL,
             SCHEMA_TABLE(Open_vSwitch), NULL,

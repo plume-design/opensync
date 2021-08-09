@@ -373,14 +373,14 @@ gk_curl_easy_cleanup(struct fsm_gk_session *fsm_gk_session)
 
     curl_info = &fsm_gk_session->ecurl;
 
-    if (curl_info->connection_active == false) return;
+    if (curl_info->ecurl_connection_active == false) return;
 
     if (curl_info->curl_handle == NULL) return;
 
     LOGT("%s(): cleaning up curl connection %p ", __func__, curl_info->curl_handle);
     curl_easy_cleanup(curl_info->curl_handle);
     curl_global_cleanup();
-    curl_info->connection_active = false;
+    curl_info->ecurl_connection_active = false;
 }
 
 /**
@@ -397,7 +397,7 @@ gk_curl_easy_init(struct fsm_gk_session *fsm_gk_session, struct ev_loop *loop)
 
     curl_info = &fsm_gk_session->ecurl;
 
-    if (curl_info->connection_active == true) return true;
+    if (curl_info->ecurl_connection_active == true) return true;
 
     curl_global_init(CURL_GLOBAL_ALL);
 
@@ -415,8 +415,8 @@ gk_curl_easy_init(struct fsm_gk_session *fsm_gk_session, struct ev_loop *loop)
     curl_easy_setopt(curl_info->curl_handle, CURLOPT_SSL_VERIFYPEER, 1L);
     curl_easy_setopt(curl_info->curl_handle, CURLOPT_SSL_VERIFYHOST, 1L);
 
-    curl_info->connection_active = true;
-    curl_info->connection_time = time(NULL);
+    curl_info->ecurl_connection_active = true;
+    curl_info->ecurl_connection_time = time(NULL);
 
     LOGT("%s() initialized curl handle %p ", __func__, curl_info->curl_handle);
     return true;
@@ -583,7 +583,7 @@ gk_send_ecurl_request(struct fsm_session *session,
     url_reply = req_info->reply;
     curl_info = &fsm_gk_session->ecurl;
 
-    if (curl_info->connection_active == false)
+    if (curl_info->ecurl_connection_active == false)
     {
         LOGT("%s(): creating new curl handler", __func__);
         gk_curl_easy_init(fsm_gk_session, session->loop);
@@ -597,7 +597,7 @@ gk_send_ecurl_request(struct fsm_session *session,
     chunk.size = 0;
 
     /* update connection time */
-    curl_info->connection_time = time(NULL);
+    curl_info->ecurl_connection_time = time(NULL);
     res = gk_send_curl_request(fsm_gk_session, &chunk, gk_verdict);
     stats = &fsm_gk_session->health_stats;
     stats->cloud_lookups++;

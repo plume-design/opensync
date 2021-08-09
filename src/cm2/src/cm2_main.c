@@ -80,7 +80,6 @@ bool cm2_is_extender(void)
     return g_state.target_type & TARGET_EXTENDER_TYPE ? true : false;
 }
 
-
 int main(int argc, char ** argv)
 {
     struct ev_loop *loop = EV_DEFAULT;
@@ -128,12 +127,11 @@ int main(int argc, char ** argv)
         cm2_wdt_init(loop);
         cm2_stability_init(loop);
     }
-#ifdef BUILD_HAVE_LIBCARES
-    if (evx_init_ares(g_state.loop, &g_state.eares) < 0) {
+
+    if (cm2_start_cares()) {
         LOGW("Ares init failed");
         return -1;
     }
-#endif
     ev_run(loop, 0);
 
     if (cm2_is_extender()) {
@@ -149,9 +147,8 @@ int main(int argc, char ** argv)
         LOGE("Stopping CM "
              "(Failed to stop OVSDB");
     }
-#ifdef BUILD_HAVE_LIBCARES
-    evx_stop_ares(&g_state.eares);
-#endif
+
+    cm2_stop_cares();
     ev_default_destroy();
 
     LOGN("Exiting CM");

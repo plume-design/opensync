@@ -134,7 +134,7 @@ gkhc_init_aggregator(struct gkc_report_aggregator *aggr, struct fsm_session *ses
     if (session && session->ops.get_config)
     {
         hs_max_report_size = session->ops.get_config(session,
-                                                     "hero_cache_max_report_size");
+                                                     "wc_hero_stats_max_report_size");
         if (hs_max_report_size != NULL)
         {
             max_report_size = strtoul(hs_max_report_size, NULL, 10);
@@ -154,6 +154,10 @@ cleanup:
     FREE(aggr->location_id);
     FREE(aggr->node_id);
 
+    /* Reset the structure completely */
+    MEMZERO(*aggr);
+    aggr->initialized = false;
+
     return false;
 }
 
@@ -170,17 +174,17 @@ gkhc_release_aggregator(struct gkc_report_aggregator *aggr)
         FREE(aggr->windows[i]);
     }
     FREE(aggr->windows);
-    aggr->windows_idx = 0;
 
     /* The content of stats gets transfered over to windows, so all
      * that's left to be freed is the array itself.
      */
     FREE(aggr->stats);
-    aggr->stats_idx = 0;
 
     FREE(aggr->location_id);
     FREE(aggr->node_id);
 
+    /* Reset the structure completely */
+    MEMZERO(*aggr);
     aggr->initialized = false;
 }
 
@@ -335,11 +339,11 @@ free_observation_window(Gatekeeper__HeroStats__HeroObservationWindow *window)
 
 /**
  * @brief Pre-compute the serialized report's header size. Data needs to be populated since
- * protobuf will remove 'zero-ed' entries. 
- * 
+ * protobuf will remove 'zero-ed' entries.
+ *
  * @param aggr a pointer to the initialized global aggregator (we need some of the values)
  * @return the size in bytes of the reports' header (cannot change during one execution)
- * 
+ *
  * @remark Should only be executed once.
  */
 static size_t
@@ -358,7 +362,7 @@ get_report_header_size(struct gkc_report_aggregator *aggr)
     pb.n_observation_window = 1;
     pb.observation_window = CALLOC(pb.n_observation_window, sizeof(*pb.observation_window));
     pb.observation_window[0] = new_window;
-   
+
     s = gatekeeper__hero_stats__hero_report__get_packed_size(&pb);
 
     FREE(pb.observation_point);
@@ -377,7 +381,10 @@ finalize_observation_window(struct gkc_report_aggregator *aggr)
     size_t record_size;
     size_t i;
 
-    /* We'll keep a running count of the anticipated report size, 
+    /* aggr not NULL by construction */
+    if (!aggr->initialized || (aggr->stats_idx == 0)) return;
+
+    /* We'll keep a running count of the anticipated report size,
      * starting with the header, then adding just enough records to the
      * observation window.
      */
@@ -389,10 +396,10 @@ finalize_observation_window(struct gkc_report_aggregator *aggr)
     for (i = 0; i < aggr->stats_idx; i++)
     {
         /* We need to check if this will push report size ovr the limit */
-        record_size = 
+        record_size =
             gatekeeper__hero_stats__hero_stats__get_packed_size(aggr->stats[i]);
 
-        /* Report will be too big with this window, so stash the window, 
+        /* Report will be too big with this window, so stash the window,
          * and start a new one
          */
         if ((current_report_size + record_size + 2) > aggr->report_max_size)
@@ -517,7 +524,7 @@ expand_hero_stats_array(struct gkc_report_aggregator *aggr)
 
     new_size = aggr->stats_prov + aggr->stats_max;
     new_stats = REALLOC(aggr->stats, new_size * sizeof(*new_stats));
-    if (!new_stats)
+    if (new_stats == NULL)
     {
         LOGD("%s(): cannot realloc for %zu entries", __func__, new_size);
         return;
@@ -635,9 +642,9 @@ serialize_ipv4_tree(ds_tree_t *tree, os_macaddr_t *device_id, struct gkc_report_
 {
     Gatekeeper__HeroStats__HeroStats *new_pb;
     Gatekeeper__HeroStats__HeroStats **pb;
-    struct attr_generic_s *attr;
+    struct attr_ip_addr_s *attr;
     struct attr_cache *entry;
-    int ret;
+    struct sockaddr_in *in;
 
     ds_tree_foreach(tree, entry)
     {
@@ -657,14 +664,13 @@ serialize_ipv4_tree(ds_tree_t *tree, os_macaddr_t *device_id, struct gkc_report_
         gatekeeper__hero_stats__hero_ipv4__init(new_pb->ipv4);
 
         attr = entry->attr.ipv4;
-        ret = inet_pton(AF_INET, attr->name, &new_pb->ipv4->addr_ipv4);
-        if (ret != 1)
-        {
-            LOGD("%s(): Invalid IPv4 addr = %s", __func__, attr->name);
-            free_stats(new_pb);
-            FREE(new_pb);
-            continue;
-        }
+
+        /*
+         * Since this is a cast, s_addr will turn into host-order.
+         * Swap back to network-order.
+         */
+        in = (struct sockaddr_in *)&(attr->ip_addr);
+        new_pb->ipv4->addr_ipv4 = htonl(in->sin_addr.s_addr);
         new_pb->ipv4->count = get_relative_count(&attr->hit_count);
 
         pb[aggr->stats_idx] = new_pb;
@@ -679,7 +685,8 @@ serialize_ipv6_tree(ds_tree_t *tree, os_macaddr_t *device_id, struct gkc_report_
 {
     Gatekeeper__HeroStats__HeroStats *new_pb;
     Gatekeeper__HeroStats__HeroStats **pb;
-    struct attr_generic_s *attr;
+    struct attr_ip_addr_s *attr;
+    struct sockaddr_in6 *in6;
     struct attr_cache *entry;
 
     ds_tree_foreach(tree, entry)
@@ -700,9 +707,10 @@ serialize_ipv6_tree(ds_tree_t *tree, os_macaddr_t *device_id, struct gkc_report_
         gatekeeper__hero_stats__hero_ipv6__init(new_pb->ipv6);
 
         attr = entry->attr.ipv6;
-        new_pb->ipv6->addr_ipv6.data = (uint8_t *)attr->name;
-        new_pb->ipv6->addr_ipv6.len  = strlen(attr->name);
-        new_pb->ipv6->count          = get_relative_count(&attr->hit_count);
+        in6 = (struct sockaddr_in6 *)&(attr->ip_addr);
+        new_pb->ipv6->addr_ipv6.data = (uint8_t *)&(in6->sin6_addr);
+        new_pb->ipv6->addr_ipv6.len  = 16;
+        new_pb->ipv6->count = get_relative_count(&attr->hit_count);
 
         pb[aggr->stats_idx] = new_pb;
         aggr->stats_idx++;
@@ -777,8 +785,12 @@ serialize_flow_tree(ds_tree_t *tree, os_macaddr_t *device_id, struct gkc_report_
             new_ipv4_tuple = new_pb->ipv4_tuple;
             gatekeeper__hero_stats__hero_ipv4_flow_tuple__init(new_ipv4_tuple);
 
-            new_ipv4_tuple->source_ipv4 = *((uint32_t *)entry->src_ip_addr);
-            new_ipv4_tuple->destination_ipv4 = *((uint32_t *)entry->dst_ip_addr);
+            /*
+             * we are casting network_order uint8_t* into host_order uint32_t.
+             * Ensure bytes are swapped back properly.
+             */
+            new_ipv4_tuple->source_ipv4 = htonl(*((uint32_t *)entry->src_ip_addr));
+            new_ipv4_tuple->destination_ipv4 = htonl(*((uint32_t *)entry->dst_ip_addr));
             new_ipv4_tuple->transport = entry->protocol;
             new_ipv4_tuple->source_port = entry->src_port;
             new_ipv4_tuple->destination_port = entry->dst_port;
@@ -862,6 +874,8 @@ gkhc_serialize_cache_entries(struct gkc_report_aggregator *aggr)
 void
 gkhc_activate_window(struct gkc_report_aggregator *aggr)
 {
+    if (aggr == NULL || aggr->initialized == false) return;
+
     aggr->start_observation_window = time(NULL);
 }
 
@@ -871,9 +885,14 @@ gkhc_activate_window(struct gkc_report_aggregator *aggr)
 void
 gkhc_close_window(struct gkc_report_aggregator *aggr)
 {
+    bool rc;
+
+    if (aggr == NULL || aggr->initialized == false) return;
+
     aggr->end_observation_window = time(NULL);
 
-    gkhc_serialize_cache_entries(aggr);
+    rc = gkhc_serialize_cache_entries(aggr);
+    if (!rc) return;
 
     /* Build a new observation window */
     finalize_observation_window(aggr);
@@ -898,8 +917,8 @@ free_hero_stats_report_pb(Gatekeeper__HeroStats__HeroReport *pb)
 /**
  * @copydoc gkhc_send_report()
  *
- * @details The observation window must have been closed prior to create 
- * the serialized report. Each "window" will be stored individually in the 
+ * @details The observation window must have been closed prior to create
+ * the serialized report. Each "window" will be stored individually in the
  * windows[] array, and a report will be created for each of them.
  * Once every window has been sent back, we can reset our local aggregator.
  */
@@ -918,12 +937,21 @@ gkhc_send_report(struct gkc_report_aggregator *aggr, char *mqtt_topic)
     size_t i;
     bool ret;
 
-    if (aggr == NULL || !aggr->initialized) return -1;
+    if (aggr == NULL || aggr->initialized == false) return -1;
 
     if (mqtt_topic == NULL || strlen(mqtt_topic) == 0)
     {
-        gkhc_release_aggregator(aggr);
-        return -1;
+        LOGD("%s(): MQTT topic is undefined. Skipping report.", __func__);
+
+        /* Clean the windows created during gkhc_close_window */
+        for (i = 0; i < aggr->windows_idx; i++)
+        {
+            free_observation_window(aggr->windows[i]);
+            FREE(aggr->windows[i]);
+        }
+
+        num_sent_reports = -1;
+        goto reset_windows;
     }
 
     /* the observation window was not closed !! */
@@ -989,6 +1017,7 @@ gkhc_send_report(struct gkc_report_aggregator *aggr, char *mqtt_topic)
     }
 
     /* Need to reset the aggr as we have emptied it! */
+reset_windows:
     FREE(aggr->windows);
     aggr->windows_idx = 0;
     aggr->windows_prov = aggr->windows_max;

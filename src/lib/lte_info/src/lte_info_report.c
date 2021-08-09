@@ -185,8 +185,13 @@ lte_info_set_common_header(struct lte_common_header *source,
     ret = lte_info_set_string(source->imsi, &header->imsi);
     if (!ret) goto error;
 
+    ret = lte_info_set_string(source->iccid, &header->iccid);
+    if (!ret) goto error;
+
     header->reported_at = time(NULL);
-    
+    LOGI("%s: request_id[%d], if_name[%s], node_id[%s], location_id[%s], imei[%s] imsi[%s], iccid[%s], reported_at[%d]",
+         __func__, header->request_id, header->if_name, header->node_id, header->location_id, header->imei, header->imsi,
+         header->iccid, (int)header->reported_at);
     return true;
 
 error:
@@ -214,6 +219,7 @@ lte_info_free_common_header(struct lte_info_report *report)
     FREE(header->location_id);
     FREE(header->imei);
     FREE(header->imsi);
+    FREE(header->iccid);
     FREE(header);
     report->header = NULL;
 }
@@ -471,6 +477,13 @@ lte_info_set_pb_common_header(struct lte_info_report *report)
     pb->if_name = header->if_name;
     pb->node_id = header->node_id;
     pb->location_id = header->location_id;
+    pb->imei = header->imei;
+    pb->imsi = header->imsi;
+    pb->iccid = header->iccid;
+    pb->reported_at = header->reported_at;
+    LOGI("%s: request_id[%d], if_name[%s], node_id[%s], location_id[%s], imei[%s] imsi[%s], iccid[%s], reported_at[%d]",
+         __func__, pb->request_id, pb->if_name, pb->node_id, pb->location_id, pb->imei, pb->imsi,
+         pb->iccid, (int)pb->reported_at);
 
     return pb;
 }

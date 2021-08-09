@@ -199,6 +199,14 @@ test_gkc_flush_rules_fqdn(void)
 
     fpr.fqdn_rule_present = true;
     fpr.fqdn_op = FQDN_OP_IN;
+
+    /* Test empty set */
+    fpr.fqdns = NULL;
+    ret = gkc_flush_rules(&fpr);
+    TEST_ASSERT_EQUAL_INT(0, ret);
+    FREE(fpr.fqdns);
+
+    /* Now have a set of FQDNs */
     fpr.fqdns = CALLOC(1, sizeof(*fpr.fqdns));
     fpr.fqdns->nelems = 1;
     fpr.fqdns->array = CALLOC(1, sizeof(*fpr.fqdns->array));
@@ -252,6 +260,13 @@ test_gkc_flush_rules_app(void)
 
     fpr.app_rule_present = true;
     fpr.app_op = APP_OP_IN;
+
+    /* Test empty set */
+    fpr.apps = NULL;
+    ret = gkc_flush_rules(&fpr);
+    TEST_ASSERT_EQUAL_INT(0, ret);
+    FREE(fpr.apps);
+
     fpr.apps = CALLOC(1, sizeof(*fpr.apps));
     fpr.apps->nelems = 1;
     fpr.apps->array = CALLOC(1, sizeof(*fpr.apps->array));
@@ -284,12 +299,15 @@ test_gkc_flush_rules_app(void)
     free_policy_rules(&fpr);
 }
 
-void
-test_gkc_flush_ipv4_and_ipv6(void)
+static void
+insert_ipv4_and_ipv6(void)
 {
     struct gk_attr_cache_interface *entry;
     struct fsm_policy_rules fpr;
-    int ret;
+    struct sockaddr_in6 *in6;
+    struct sockaddr_in *in4;
+    struct in6_addr in_ip6;
+    struct in_addr in_ip;
 
     memset(&fpr, 0, sizeof(fpr));
 
@@ -299,8 +317,16 @@ test_gkc_flush_ipv4_and_ipv6(void)
     entry->attribute_type = GK_CACHE_REQ_TYPE_IPV4;
     entry->cache_ttl = 1000;
     entry->action = FSM_BLOCK;
-    entry->attr_name = STRDUP("1.1.1.1");
+    entry->attr_name = STRDUP("1.2.3.4");
+    /* Populate the IPv4 */
+    inet_pton(AF_INET, entry->attr_name, &in_ip);
+    entry->ip_addr = CALLOC(1, sizeof(*entry->ip_addr));
+    in4 = (struct sockaddr_in *)entry->ip_addr;
+    in4->sin_family = AF_INET;
+    memcpy(&in4->sin_addr, &in_ip, sizeof(in4->sin_addr));
+
     gkc_add_attribute_entry(entry);
+    FREE(entry->ip_addr);
     FREE(entry->attr_name);
     FREE(entry->device_mac);
 
@@ -310,9 +336,30 @@ test_gkc_flush_ipv4_and_ipv6(void)
     entry->cache_ttl = 1000;
     entry->action = FSM_BLOCK;
     entry->attr_name = STRDUP("2001:0000:3238:DFE1:0063:0000:0000:FEFB");
+    /* Populate the IPv6 */
+    entry->ip_addr = CALLOC(1, sizeof(*entry->ip_addr));
+    inet_pton(AF_INET6, entry->attr_name, &in_ip6);
+    in6 = (struct sockaddr_in6 *)entry->ip_addr;
+    in6->sin6_family = AF_INET6;
+    memcpy(&in6->sin6_addr, &in_ip6, sizeof(in6->sin6_addr));
+
     gkc_add_attribute_entry(entry);
+    FREE(entry->ip_addr);
     FREE(entry->attr_name);
     FREE(entry->device_mac);
+    FREE(entry);
+}
+
+void
+test_gkc_flush_ipv4_and_ipv6(void)
+{
+    struct fsm_policy_rules fpr;
+    int ret;
+
+    insert_ipv4_and_ipv6();
+    gkc_print_cache_entries();
+
+    memset(&fpr, 0, sizeof(fpr));
 
     /* Perform this across ALL devices */
     /* Start with OUT and check for everything. Nothing should be deleted */
@@ -322,7 +369,7 @@ test_gkc_flush_ipv4_and_ipv6(void)
     fpr.ipaddrs->nelems = 4;
     fpr.ipaddrs->array = CALLOC(4, sizeof(*fpr.ipaddrs->array));
     fpr.ipaddrs->array[0] = CALLOC(64, sizeof(char));
-    strcpy(fpr.ipaddrs->array[0], "1.1.1.1");
+    strcpy(fpr.ipaddrs->array[0], "1.2.3.4");
     fpr.ipaddrs->array[1] = CALLOC(64, sizeof(char));
     strcpy(fpr.ipaddrs->array[1], "127.0.0.1");
     fpr.ipaddrs->array[2] = CALLOC(64, sizeof(char));
@@ -339,15 +386,50 @@ test_gkc_flush_ipv4_and_ipv6(void)
 
     /* Cleanup */
     free_policy_rules(&fpr);
+}
 
-    FREE(entry);
+void
+test_gkc_flush_ipv4_and_ipv6_empty_ip_set(void)
+{
+    struct fsm_policy_rules fpr;
+    int ret;
+
+    memset(&fpr, 0, sizeof(fpr));
+
+    insert_ipv4_and_ipv6();
+    gkc_print_cache_entries();
+
+    memset(&fpr, 0, sizeof(fpr));
+
+    /* Perform this across ALL devices */
+    /* Start with IN a NULL/empty ip set. Nothing should be deleted */
+    fpr.ip_rule_present = true;
+    fpr.ip_op = IP_OP_IN;
+
+    /* Test empty set */
+    fpr.ipaddrs = NULL;
+    ret = gkc_flush_rules(&fpr);
+    TEST_ASSERT_EQUAL_INT(0, ret);
+    FREE(fpr.ipaddrs);
+    fpr.ipaddrs = NULL;
+    
+    /* Now with OUT of the empty set, we should delete the 2 entries we added */
+    fpr.ip_op = IP_OP_OUT;
+    ret = gkc_flush_rules(&fpr);
+    TEST_ASSERT_EQUAL_INT(2, ret);
+
+    /* Cleanup */
+    free_policy_rules(&fpr);
 }
 
 void
 test_gkc_flush_client(void)
 {
+    struct fsm_session session;
     struct fsm_policy policy;
     int ret;
+
+    session.name = "my_session";
 
     ret = gkc_flush_client(NULL, NULL);
     TEST_ASSERT_EQUAL_INT(-1, ret);
@@ -361,7 +443,7 @@ test_gkc_flush_client(void)
     TEST_ASSERT_EQUAL_INT(0, ret);
 
     policy.action = FSM_FLUSH_CACHE;
-    ret = gkc_flush_client(NULL, &policy);
+    ret = gkc_flush_client(&session, &policy);
     TEST_ASSERT_EQUAL_INT(0, ret);
 }
 
@@ -374,5 +456,6 @@ run_gk_cache_flush(void)
     RUN_TEST(test_gkc_flush_rules_fqdn);
     RUN_TEST(test_gkc_flush_rules_app);
     RUN_TEST(test_gkc_flush_ipv4_and_ipv6);
+    RUN_TEST(test_gkc_flush_ipv4_and_ipv6_empty_ip_set);
     RUN_TEST(test_gkc_flush_client);
 }

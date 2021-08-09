@@ -639,7 +639,7 @@ struct fsm_policy *fsm_policy_insert_schema_p(struct policy_table *table,
     /* Insert policy in the table's policy tree */
     ds_tree_insert(&table->policies, fpolicy, &fpolicy->idx);
 
-    LOGN("%s: loaded policy %s into table %s", __func__,
+    LOGT("%s: loaded policy %s into table %s", __func__,
         fpolicy->rule_name, fpolicy->table_name);
 
     return fpolicy;

@@ -65,6 +65,13 @@ enum  ltem_lte_state
     LTEM_LTE_STATE_NUM,
 };
 
+enum ltem_lte_sim_status
+{
+    LTEM_LTE_SIM_UNKNOWN,
+    LTEM_LTE_SIM_REMOVED,
+    LTEM_LTE_SIM_INSERTED,
+};
+
 typedef struct lte_config_info_
 {
     char if_name[C_IFNAME_LEN];
@@ -73,52 +80,41 @@ typedef struct lte_config_info_
     bool ipv4_enable;
     bool ipv6_enable;
     bool force_use_lte;
-    char esim_download[32];
-    char esim_active[32];
     uint32_t active_simcard_slot;
     bool modem_enable;
+    uint32_t report_interval;
     char apn[32];
 } lte_config_info_t;
 
 typedef struct lte_state_info_
 {
-    lte_config_info_t *lte_config;
-    bool lte_failover_active;
     bool modem_present;
+    char iccid[32];
+    char imei[32];
+    char imsi[32];
+    enum ltem_lte_sim_status sim_status;
+    char provider[32];
+    uint32_t mcc;
+    uint32_t mnc;
+    uint32_t tac;
+    enum lte_net_reg_status net_state;
+    bool lte_failover_active;
     time_t lte_failover_start;
     time_t lte_failover_end;
     uint32_t lte_failover_count;
 } lte_state_info_t;
 
-typedef struct lte_state_info_rpt_
-{
-    char imei[32];
-    char imsi[32];
-    char net_info_state[64];
-    char tdd[32];
-    char mcc[32];
-    char mnc[32];
-    char lac[32];
-    char cellid[32];
-    char pcid[32];
-    char uarfcn[32];
-    char earfcn[32];
-    char band[16];
-    char ul_bandwidth[16];
-    char dl_bandwidth[32];
-} lte_state_info_rpt_t;
-
 typedef struct lte_route_info_
 {
     char lte_subnet[C_IPV6ADDR_LEN];
     char lte_netmask[C_IPV6ADDR_LEN];
+    char lte_gw[C_IPV6ADDR_LEN];
     char wan_subnet[C_IPV6ADDR_LEN];
     char wan_netmask[C_IPV6ADDR_LEN];
     char wan_if_name[C_IFNAME_LEN];
     char wan_gw[C_IPV6ADDR_LEN];
     char lte_dns1[C_IPV6ADDR_LEN];
     char lte_dns2[C_IPV6ADDR_LEN];
-    char lte_gw[C_IPV6ADDR_LEN];
 } lte_route_info_t;
 
 #define LTE_ATCMD(M)     \
@@ -205,17 +201,16 @@ char *ltem_get_wan_state_name(enum ltem_wan_state state);
 void ltem_event_init(void);
 int ltem_ovsdb_init(void);
 bool ltem_init_lte(void);
-int ltem_add_lte_route(ltem_mgr_t *mgr);
+int ltem_set_lte_route_metric(ltem_mgr_t *mgr);
+int ltem_force_lte_route(ltem_mgr_t *mgr);
 int ltem_restore_default_route(ltem_mgr_t *mgr);
 int ltem_get_modem_info(void);
 int ltem_create_lte_route_table(ltem_mgr_t *mgr);
 void ltem_create_client_table(ltem_mgr_t *mgr);
 void ltem_client_table_update(ltem_mgr_t *mgr, struct schema_DHCP_leased_IP *dhcp_lease);
 void ltem_client_table_delete(ltem_mgr_t *mgr, struct schema_DHCP_leased_IP *dhcp_lease);
-void ltem_update_lte_subnet(ltem_mgr_t *mgr, char *lte_subnet);
-void ltem_update_wan_subnet(ltem_mgr_t *mgr, char *if_name, char *wan_subnet, char *wan_gw);
-void ltem_update_lte_netmask(ltem_mgr_t *mgr, char *lte_netmask);
-void ltem_update_wan_netmask(ltem_mgr_t *mgr, char *wan_netmask);
+void ltem_update_wan_route(ltem_mgr_t *mgr, char *if_name, char *wan_subnet, char *wan_gw, char *netmask);
+void ltem_update_lte_route(ltem_mgr_t *mgr, char *if_name, char *lte_subnet, char *lte_gw, char *netmask);
 int ltem_add_lte_client_routes(ltem_mgr_t *mgr);
 int ltem_restore_default_client_routes(ltem_mgr_t *mgr);
 int ltem_check_dns(char *server, char *hostname);

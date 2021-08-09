@@ -34,6 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <netinet/in.h>
 #include <assert.h>
 
 /*
@@ -45,28 +46,28 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *  _MIN - refers to a minimum value of a numeric value
  * ===========================================================================
  */
-#define C_HOSTNAME_LEN  64                                  /**< Maximum hostname name (without FQDN) */
-#define C_FQDN_LEN      256                                 /**< Fully qualified hostname maximum length */
-#define C_IFNAME_LEN    65                                  /**< Interface name size, including trailing \0 */
-#define C_MACADDR_LEN   sizeof("11:22:33:44:55:66")         /**< Maximum length of a MAC address represented as string */
-#define C_IP4ADDR_LEN   sizeof("255.255.255.255")           /**< Maximum length of an IP address represented as string */
-#define C_IPV6ADDR_LEN \
-        sizeof("1111:2222:3333:4444:5555:6666:7777:8888/XX")/**< Maximum lenfg of an IPv6 address */
-#define C_MAXPATH_LEN   256                                 /**< Shorter than MAXPATH, but sufficient to access any path on the device */
-#define C_WPA_PSK_LEN   64                                  /**< WPA* PSK maximum length */
-#define C_INT8_LEN      sizeof("-255")                      /**< Space needed to represent a  8-bit integer */
-#define C_INT16_LEN     sizeof("-65536")                    /**< Space needed to represent a 16-bit integer */
-#define C_INT32_LEN     sizeof("-4294967296")               /**< Space needed to represent a 32-bit integer */
-#define C_INT64_LEN     sizeof("-18446744073709551616")     /**< Space needed to represent a 64-bit integer */
-#define C_HEXINT8_LEN   sizeof("-0xFF")                     /**< Space needed to represent a  8-bit hex integer */
-#define C_HEXINT16_LEN  sizeof("-0xFFFF")                   /**< Space needed to represent a 16-bit hex integer */
-#define C_HEXINT32_LEN  sizeof("-0xFFFFFFFF")               /**< Space needed to represent a 32-bit hex integer */
-#define C_HEXINT64_LEN  sizeof("-0xFFFFFFFFFFFFFFFF")       /**< Space needed to represent a 64-bit hex integer */
+#define C_HOSTNAME_LEN  64                              /**< Maximum hostname name (without FQDN) */
+#define C_FQDN_LEN      256                             /**< Fully qualified hostname maximum length */
+#define C_IFNAME_LEN    65                              /**< Interface name size, including trailing \0 */
+#define C_MACADDR_LEN   sizeof("11:22:33:44:55:66")     /**< Maximum length of a MAC address represented as string */
+#define C_IP4ADDR_LEN   INET_ADDRSTRLEN                 /**< Maximum length of an IP address represented as string */
+#define C_IPV6ADDR_LEN  \
+        (INET6_ADDRSTRLEN + sizeof("/32") - 1)          /**< Maximum length of an IPv6 address including suffix */
+#define C_MAXPATH_LEN   256                             /**< Shorter than MAXPATH, but sufficient to access any path on the device */
+#define C_WPA_PSK_LEN   64                              /**< WPA* PSK maximum length */
+#define C_INT8_LEN      sizeof("-255")                  /**< Space needed to represent a  8-bit integer */
+#define C_INT16_LEN     sizeof("-65536")                /**< Space needed to represent a 16-bit integer */
+#define C_INT32_LEN     sizeof("-4294967296")           /**< Space needed to represent a 32-bit integer */
+#define C_INT64_LEN     sizeof("-18446744073709551616") /**< Space needed to represent a 64-bit integer */
+#define C_HEXINT8_LEN   sizeof("-0xFF")                 /**< Space needed to represent a  8-bit hex integer */
+#define C_HEXINT16_LEN  sizeof("-0xFFFF")               /**< Space needed to represent a 16-bit hex integer */
+#define C_HEXINT32_LEN  sizeof("-0xFFFFFFFF")           /**< Space needed to represent a 32-bit hex integer */
+#define C_HEXINT64_LEN  sizeof("-0xFFFFFFFFFFFFFFFF")   /**< Space needed to represent a 64-bit hex integer */
 #define C_PID_LEN       C_INT64_LEN
 #define C_QOS_MAP_LEN \
-        sizeof("0:0 1:0 2:0 3:0 4:0 5:0 6:0 7:0")           /**< Maximum length of VLAN QOS map string */
-#define C_USERNAME_LEN  256                                 /**< Length of usernames */
-#define C_PASSWORD_LEN  256                                 /**< Length of passwords */
+        sizeof("0:0 1:0 2:0 3:0 4:0 5:0 6:0 7:0")       /**< Maximum length of VLAN QOS map string */
+#define C_USERNAME_LEN  256                             /**< Length of usernames */
+#define C_PASSWORD_LEN  256                             /**< Length of passwords */
 
 /*
  * ===========================================================================
@@ -95,10 +96,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *  Networking constants
  * ===========================================================================
  */
-#define C_VLAN_MIN      0                                   /**< Minimum VLAN ID */
-#define C_VLAN_MAX      4094                                /**< Maximum VLAN ID */
-#define C_VLAN_INVALID  -1                                  /**< Invalid VLAN */
-#define C_VLAN_LEN      sizeof("4094")                      /**< Maximum size of VLAN represented as string */
+#define C_VLAN_MIN      0                               /**< Minimum VLAN ID */
+#define C_VLAN_MAX      4094                            /**< Maximum VLAN ID */
+#define C_VLAN_INVALID  -1                              /**< Invalid VLAN */
+#define C_VLAN_LEN      sizeof("4094")                  /**< Maximum size of VLAN represented as string */
 
 /*
  * ===========================================================================

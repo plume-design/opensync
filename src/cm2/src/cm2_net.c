@@ -61,21 +61,21 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * interface name and interface type */
 typedef struct {
     ev_child cw;
-    char     if_name[128];
-    char     if_type[128];
+    char     if_name[C_IFNAME_LEN];
+    char     if_type[IFTYPE_SIZE];
     int      cnt;
 } dhcp_dryrun_t;
 
 /* ev_child must be the first element of the structure */
 typedef struct {
     ev_child cw;
-    char     if_name[128];
+    char     if_name[C_IFNAME_LEN];
     char     pckfile[128];
 } cm2_tcpdump_t;
 
 typedef struct {
     ev_timer timer;
-    char     if_name[128];
+    char     if_name[C_IFNAME_LEN];
 } cm2_delayed_eth_update_t;
 
 static const char *cm2_get_timeout_cmd_arg(void)

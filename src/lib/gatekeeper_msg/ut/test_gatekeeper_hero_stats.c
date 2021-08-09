@@ -34,6 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "gatekeeper_msg.h"
 #include "gatekeeper_cache.h"
 #include "gatekeeper_hero_stats.h"
+#include "fsm_utils.h"
 
 #include "test_gatekeeper_msg.h"
 
@@ -50,7 +51,7 @@ static char *
 mock_get_config(struct fsm_session *session, char *key)
 {
     (void)session;
-    if (strcmp(key, "hero_cache_max_report_size") == 0) return "500";
+    if (strcmp(key, "wc_hero_stats_max_report_size") == 0) return "500";
     return NULL;
 }
 
@@ -159,7 +160,7 @@ create_default_attr_entries(void)
     entry[0]->attribute_type = GK_CACHE_REQ_TYPE_FQDN;
     entry[0]->cache_ttl = 1000;
     entry[0]->action = FSM_BLOCK;
-    entry[0]->attr_name = strdup("www.test.com");
+    entry[0]->attr_name = STRDUP("www.test.com");
     entry[0]->direction = GKC_FLOW_DIRECTION_INBOUND;
 
     entry[1] = CALLOC(1, sizeof(*entry[1]));
@@ -168,7 +169,7 @@ create_default_attr_entries(void)
     entry[1]->attribute_type = GK_CACHE_REQ_TYPE_FQDN;
     entry[1]->cache_ttl = 1000;
     entry[1]->action = FSM_ALLOW;
-    entry[1]->attr_name = strdup("www.entr2.com");
+    entry[1]->attr_name = STRDUP("www.entr2.com");
     entry[1]->direction = GKC_FLOW_DIRECTION_OUTBOUND;
 
     entry[2] = CALLOC(1, sizeof(*entry[2]));
@@ -177,7 +178,7 @@ create_default_attr_entries(void)
     entry[2]->attribute_type = GK_CACHE_REQ_TYPE_IPV4;
     entry[2]->cache_ttl = 1000;
     entry[2]->action = FSM_ALLOW;
-    entry[2]->attr_name = strdup("www.entr3.com");
+    entry[2]->ip_addr = sockaddr_storage_create(AF_INET, "1.2.3.4");
 
     entry[3] = CALLOC(1, sizeof(*entry[3]));
     entry[3]->action = 1;
@@ -185,7 +186,7 @@ create_default_attr_entries(void)
     entry[3]->attribute_type = GK_CACHE_REQ_TYPE_IPV6;
     entry[3]->cache_ttl = 1000;
     entry[3]->action = FSM_BLOCK;
-    entry[3]->attr_name = strdup("https://www.google.com");
+    entry[3]->ip_addr = sockaddr_storage_create(AF_INET6, "0:0:0:0:0:FFFF:204.152.189.116");
     entry[3]->direction = GKC_FLOW_DIRECTION_INBOUND;
 
     entry[4] = CALLOC(1, sizeof(*entry[4]));
@@ -194,7 +195,7 @@ create_default_attr_entries(void)
     entry[4]->attribute_type = GK_CACHE_REQ_TYPE_APP;
     entry[4]->cache_ttl = 1000;
     entry[4]->action = FSM_BLOCK;
-    entry[4]->attr_name = strdup("testapp");
+    entry[4]->attr_name = STRDUP("testapp");
     entry[4]->gk_policy = "GK_POLICY";
 
     entry[5] = CALLOC(1, sizeof(*entry[5]));
@@ -203,7 +204,8 @@ create_default_attr_entries(void)
     entry[5]->attribute_type = GK_CACHE_REQ_TYPE_IPV4;
     entry[5]->cache_ttl = 1000;
     entry[5]->action = FSM_ALLOW;
-    entry[5]->attr_name = strdup("10.1.2.3");
+    entry[5]->attr_name = STRDUP("10.1.2.3");
+    entry[5]->ip_addr = sockaddr_storage_create(AF_INET, "10.1.2.3");
 }
 
 static void
@@ -214,29 +216,29 @@ create_default_flow_entries(void)
     flow_entry[0] = CALLOC(1, sizeof(*flow_entry[0]));
     flow_entry[0]->device_mac = str2os_mac("AA:AA:AA:AA:AA:01");
     flow_entry[0]->direction = GKC_FLOW_DIRECTION_INBOUND;
-    flow_entry[0]->src_port = 80;
-    flow_entry[0]->dst_port = 8002;
+    flow_entry[0]->src_port = htons(80);
+    flow_entry[0]->dst_port = htons(8002);
     flow_entry[0]->ip_version = 4;
     flow_entry[0]->protocol = 16;
     flow_entry[0]->cache_ttl = 1000;
     flow_entry[0]->action = FSM_BLOCK;
     flow_entry[0]->src_ip_addr = CALLOC(1, sizeof(struct in6_addr));
-    inet_pton(AF_INET, "1.1.1.1", flow_entry[0]->src_ip_addr);
+    inet_pton(AF_INET, "1.2.3.4", flow_entry[0]->src_ip_addr);
     flow_entry[0]->dst_ip_addr = CALLOC(1, sizeof(struct in6_addr));
-    inet_pton(AF_INET, "10.2.4.3", flow_entry[0]->dst_ip_addr);
+    inet_pton(AF_INET, "10.12.14.13", flow_entry[0]->dst_ip_addr);
     flow_entry[0]->gk_policy = "GK_flow_policy";
 
     flow_entry[1] = CALLOC(1, sizeof(*flow_entry[1]));
     flow_entry[1]->device_mac = str2os_mac("AA:AA:AA:AA:AA:02");
     flow_entry[1]->direction = GKC_FLOW_DIRECTION_INBOUND;
-    flow_entry[1]->src_port = 443;
-    flow_entry[1]->dst_port = 8888;
+    flow_entry[1]->src_port = htons(443);
+    flow_entry[1]->dst_port = htons(8888);
     flow_entry[1]->ip_version = 4;
     flow_entry[1]->protocol = 16;
     flow_entry[1]->cache_ttl = 1000;
     flow_entry[1]->action = FSM_BLOCK;
     flow_entry[1]->src_ip_addr = CALLOC(1, sizeof(struct in6_addr));
-    inet_pton(AF_INET, "2.2.2.2", flow_entry[1]->src_ip_addr);
+    inet_pton(AF_INET, "2.3.4.5", flow_entry[1]->src_ip_addr);
     flow_entry[1]->dst_ip_addr = CALLOC(1, sizeof(struct in6_addr));
     inet_pton(AF_INET, "10.2.2.2", flow_entry[1]->dst_ip_addr);
     flow_entry[1]->gk_policy = "GK_flow_policy";
@@ -244,8 +246,8 @@ create_default_flow_entries(void)
     flow_entry[2] = CALLOC(sizeof(struct gkc_ip_flow_interface), 1);
     flow_entry[2]->device_mac = str2os_mac("AA:AA:AA:AA:AA:02");
     flow_entry[2]->direction = GKC_FLOW_DIRECTION_INBOUND;
-    flow_entry[2]->src_port = 22;
-    flow_entry[2]->dst_port = 3333;
+    flow_entry[2]->src_port = htons(22);
+    flow_entry[2]->dst_port = htons(3333);
     flow_entry[2]->ip_version = 6;
     flow_entry[2]->protocol = 16;
     flow_entry[2]->cache_ttl = 1000;
@@ -258,13 +260,13 @@ create_default_flow_entries(void)
     flow_entry[3] = CALLOC(1, sizeof(*flow_entry[3]));
     flow_entry[3]->device_mac = str2os_mac("AA:AA:AA:AA:AA:03");
     flow_entry[3]->direction = GKC_FLOW_DIRECTION_OUTBOUND;
-    flow_entry[3]->src_port = 16;
-    flow_entry[3]->dst_port = 444;
+    flow_entry[3]->src_port = htons(16);
+    flow_entry[3]->dst_port = htons(444);
     flow_entry[3]->ip_version = 4;
     flow_entry[3]->src_ip_addr = CALLOC(1, sizeof(struct in6_addr));
-    inet_pton(AF_INET, "1.1.1.1", flow_entry[3]->src_ip_addr);
+    inet_pton(AF_INET, "1.2.3.4", flow_entry[3]->src_ip_addr);
     flow_entry[3]->dst_ip_addr = CALLOC(1, sizeof(struct in6_addr));
-    inet_pton(AF_INET, "10.2.4.3", flow_entry[3]->dst_ip_addr);
+    inet_pton(AF_INET, "10.12.14.13", flow_entry[3]->dst_ip_addr);
 }
 
 void
@@ -281,6 +283,7 @@ hero_stats_tearDown(void)
 
     for (idx = 0; idx < num_attr_entries; idx++)
     {
+        FREE(entry[idx]->ip_addr);
         FREE(entry[idx]->device_mac);
         FREE(entry[idx]->attr_name);
         FREE(entry[idx]);
@@ -481,7 +484,7 @@ test_release_aggregator(void)
     gkc_add_attribute_entry(entry[1]);
 
     FREE(entry[1]->attr_name);
-    entry[1]->attr_name = strdup("www.test2.com");
+    entry[1]->attr_name = STRDUP("www.test2.com");
     gkc_add_attribute_entry(entry[1]);
 
     /* Dump cache for this observation window */
@@ -524,11 +527,16 @@ test_gk_serialize_cache_add_entries(void)
     gkc_add_attribute_entry(entry[1]);
 
     FREE(entry[1]->attr_name);
-    entry[1]->attr_name = strdup("www.test2.com");
+    entry[1]->attr_name = STRDUP("www.test2.com");
+    entry[1]->gk_policy = "NEW POLICY";
     gkc_add_attribute_entry(entry[1]);
+    /*
+     * Note: at this point, gk_policy now contains a copy of the original !
+     * it must be explicitly freed
+     */
 
     FREE(entry[1]->attr_name);
-    entry[1]->attr_name = strdup("www.test2.com");
+    entry[1]->attr_name = STRDUP("www.test2.com");
     gkc_add_attribute_entry(entry[1]); /* Duplicate won't count ! */
 
     gkc_add_attribute_entry(entry[2]); /* Has a broken IPv4 ! Not inserted */
@@ -536,7 +544,7 @@ test_gk_serialize_cache_add_entries(void)
     gkc_add_attribute_entry(entry[4]);
 
     FREE(entry[1]->attr_name);
-    entry[1]->attr_name = strdup("www.test4.com");
+    entry[1]->attr_name = STRDUP("www.test4.com");
     entry[1]->action = FSM_BLOCK;
     gkc_add_attribute_entry(entry[1]);
 
@@ -545,7 +553,7 @@ test_gk_serialize_cache_add_entries(void)
     gkc_add_flow_entry(flow_entry[0]);
 
     FREE(entry[1]->attr_name);
-    entry[1]->attr_name = strdup("www.test5.com");
+    entry[1]->attr_name = STRDUP("www.test5.com");
     entry[1]->action = FSM_ALLOW;
     gkc_add_attribute_entry(entry[1]);
 
@@ -559,12 +567,22 @@ test_gk_serialize_cache_add_entries(void)
     gkhc_close_window(aggr);
 
     num_sent_reports = gkhc_send_report(aggr, "mqtt_channel_name");
-    /* The number of reports depends on their size. This could end up changing over time
+    /*
+     * The number of reports depends on their size. This could end up changing over time
      * if/when we add fields or change data size.
-     * Currently we have 5 files of resp size: 153, 152, 152, 167 and 200.
+     * Currently we have 4 files of resp size: 156, 180, 181 and 143.
      * See call to gkhc_set_max_record_size() above.
      */
-    TEST_ASSERT_EQUAL_INT(5, num_sent_reports);
+    TEST_ASSERT_EQUAL_INT(4, num_sent_reports);
+
+    /* Test case where we don't have a properly defined mqtt_topic */
+    /* Next statement should not complain about double free */
+    num_sent_reports = gkhc_send_report(aggr, NULL);
+    TEST_ASSERT_EQUAL_INT(-1, num_sent_reports);
+    gkhc_activate_window(aggr);
+    gkhc_close_window(aggr);
+    num_sent_reports = gkhc_send_report(aggr, NULL);
+    TEST_ASSERT_EQUAL_INT(-1, num_sent_reports);
 
     /* Cleanup */
     gk_cache_cleanup();

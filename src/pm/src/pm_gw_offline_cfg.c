@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb_sync.h"
 #include "schema.h"
 #include "json_util.h"
+#include "const.h"
 #include "util.h"
 #include "log.h"
 #include "osp_ps.h"
@@ -62,10 +63,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define PS_KEY_VIF_CONFIG           "vif_config"
 #define PS_KEY_INET_CONFIG          "inet_config"
+#define PS_KEY_INET_CONFIG_UPLINK   "inet_config_uplink"
 #define PS_KEY_RADIO_CONFIG         "radio_config"
 #define PS_KEY_INET_CONFIG_HOME_APS "inet_config_home_aps"
 #define PS_KEY_RADIO_IF_NAMES       "radio_if_names"
 #define PS_KEY_DHCP_RESERVED_IP     "dhcp_reserved_ip"
+#define PS_KEY_OF_CONFIG            "openflow_config"
+#define PS_KEY_OF_TAG               "openflow_tag"
+#define PS_KEY_OF_TAG_GROUP         "openflow_tag_group"
 
 #define PS_KEY_OFFLINE_CFG          KEY_OFFLINE_CFG
 
@@ -81,10 +86,14 @@ struct gw_offline_cfg
 {
     json_t *vif_config;
     json_t *inet_config;
+    json_t *inet_config_uplink;
     json_t *radio_config;
     json_t *inet_config_home_aps;
     json_t *radio_if_names;
     json_t *dhcp_reserved_ip;
+    json_t *openflow_config;
+    json_t *openflow_tag;
+    json_t *openflow_tag_group;
 };
 
 enum gw_offline_stat
@@ -105,6 +114,9 @@ static ovsdb_table_t table_Wifi_Inet_Config;
 static ovsdb_table_t table_Wifi_Radio_Config;
 static ovsdb_table_t table_DHCP_reserved_IP;
 static ovsdb_table_t table_Connection_Manager_Uplink;
+static ovsdb_table_t table_Openflow_Config;
+static ovsdb_table_t table_Openflow_Tag;
+static ovsdb_table_t table_Openflow_Tag_Group;
 
 static ev_timer timeout_no_cfg_change;
 
@@ -124,6 +136,9 @@ static bool gw_offline_cfg_ovsdb_read(struct gw_offline_cfg *cfg);
 static bool gw_offline_cfg_ovsdb_apply(const struct gw_offline_cfg *cfg);
 
 static bool gw_offline_uplink_bridge_set(const struct gw_offline_cfg *cfg);
+static bool gw_offline_uplink_ifname_get(char *if_name_buf, size_t len);
+static bool gw_offline_uplink_config_set_current(const struct gw_offline_cfg *cfg);
+static bool gw_offline_uplink_config_clear_previous(const char *if_name);
 
 bool pm_gw_offline_cfg_is_available();
 bool pm_gw_offline_load_and_apply_config();
@@ -141,23 +156,42 @@ static void delete_special_ovsdb_keys(json_t *rows)
     }
 }
 
+static void delete_ovsdb_column(json_t *rows, const char *column)
+{
+    size_t index;
+    json_t *row;
+
+    json_array_foreach(rows, index, row)
+    {
+        json_object_del(row, column);
+    }
+}
+
 static void gw_offline_cfg_release(struct gw_offline_cfg *cfg)
 {
     json_decref(cfg->vif_config);
     json_decref(cfg->inet_config);
+    json_decref(cfg->inet_config_uplink);
     json_decref(cfg->radio_config);
     json_decref(cfg->inet_config_home_aps);
     json_decref(cfg->radio_if_names);
     json_decref(cfg->dhcp_reserved_ip);
+    json_decref(cfg->openflow_config);
+    json_decref(cfg->openflow_tag);
+    json_decref(cfg->openflow_tag_group);
 }
 
 static void gw_offline_cfg_delete_special_keys(struct gw_offline_cfg *cfg)
 {
     delete_special_ovsdb_keys(cfg->vif_config);
     delete_special_ovsdb_keys(cfg->inet_config);
+    delete_special_ovsdb_keys(cfg->inet_config_uplink);
     delete_special_ovsdb_keys(cfg->radio_config);
     delete_special_ovsdb_keys(cfg->inet_config_home_aps);
     delete_special_ovsdb_keys(cfg->dhcp_reserved_ip);
+    delete_special_ovsdb_keys(cfg->openflow_config);
+    delete_special_ovsdb_keys(cfg->openflow_tag);
+    delete_special_ovsdb_keys(cfg->openflow_tag_group);
 }
 
 /* Determine if the saved config is "bridge config": */
@@ -274,6 +308,30 @@ static void callback_DHCP_reserved_IP(
     on_configuration_updated();
 }
 
+static void callback_Openflow_Config(
+        ovsdb_update_monitor_t *mon,
+        struct schema_Openflow_Config *old_rec,
+        struct schema_Openflow_Config *config)
+{
+    on_configuration_updated();
+}
+
+static void callback_Openflow_Tag(
+        ovsdb_update_monitor_t *mon,
+        struct schema_Openflow_Tag *old_rec,
+        struct schema_Openflow_Tag *config)
+{
+    on_configuration_updated();
+}
+
+static void callback_Openflow_Tag_Group(
+        ovsdb_update_monitor_t *mon,
+        struct schema_Openflow_Tag_Group *old_rec,
+        struct schema_Openflow_Tag_Group *config)
+{
+    on_configuration_updated();
+}
+
 static bool gw_offline_enable_cfg_mon()
 {
     static bool inited;
@@ -285,6 +343,9 @@ static bool gw_offline_enable_cfg_mon()
     OVSDB_TABLE_MONITOR(Wifi_Inet_Config, true);
     OVSDB_TABLE_MONITOR(Wifi_Radio_Config, true);
     OVSDB_TABLE_MONITOR(DHCP_reserved_IP, true);
+    OVSDB_TABLE_MONITOR(Openflow_Config, true);
+    OVSDB_TABLE_MONITOR(Openflow_Tag, true);
+    OVSDB_TABLE_MONITOR(Openflow_Tag_Group, true);
 
     ev_timer_init(&timeout_no_cfg_change, on_timeout_cfg_no_change, TIMEOUT_NO_CFG_CHANGE, 0.0);
 
@@ -309,7 +370,7 @@ static bool insert_port_into_bridge(char *bridge, char *port)
     return (cmd_log(command) == 0);
 }
 
-static void callback_Connection_Manager_Uplink(
+static void gw_offline_handle_eth_clients(
         ovsdb_update_monitor_t *mon,
         struct schema_Connection_Manager_Uplink *old_rec,
         struct schema_Connection_Manager_Uplink *link)
@@ -345,6 +406,57 @@ static void callback_Connection_Manager_Uplink(
     }
 }
 
+static void gw_offline_handle_uplink_change(
+        ovsdb_update_monitor_t *mon,
+        struct schema_Connection_Manager_Uplink *old_rec,
+        struct schema_Connection_Manager_Uplink *link)
+{
+    bool rv;
+
+    if (gw_offline_stat != status_active)  // Ignore if not in active gw_offline mode
+        return;
+    if (!is_eth_type(link->if_type))       // Ignore if this is not eth interface
+        return;
+
+    if (ovsdb_update_changed(mon, SCHEMA_COLUMN(Connection_Manager_Uplink, is_used)))
+    {
+        if (link->is_used_exists && link->is_used)
+        {
+            LOG(INFO, "offline_cfg: New uplink detected: %s. Will restore saved uplink config",
+                    link->if_name);
+
+            /* Restore saved uplink config (from saved config cache since we're
+             * in active gw_offline mode) to current uplink: */
+            rv = gw_offline_uplink_config_set_current(&cfg_cache);
+            if (!rv)
+            {
+                LOG(ERR, "offline_cfg: Error setting current uplink config");
+            }
+        }
+        else
+        {
+            LOG(INFO, "offline_cfg: No longer uplink: %s. Will clear any uplink config previously set",
+                    link->if_name);
+
+            rv = gw_offline_uplink_config_clear_previous(link->if_name);
+            if (!rv)
+            {
+                LOG(ERR, "offline_cfg: Error clearing previous uplink config");
+            }
+        }
+    }
+}
+
+static void callback_Connection_Manager_Uplink(
+        ovsdb_update_monitor_t *mon,
+        struct schema_Connection_Manager_Uplink *old_rec,
+        struct schema_Connection_Manager_Uplink *link)
+{
+    gw_offline_handle_eth_clients(mon, old_rec, link);
+
+    gw_offline_handle_uplink_change(mon, old_rec, link);
+}
+
 static bool gw_offline_enable_eth_clients_handling()
 {
     static bool inited;
@@ -355,6 +467,31 @@ static bool gw_offline_enable_eth_clients_handling()
     OVSDB_TABLE_MONITOR(Connection_Manager_Uplink, false);
 
     inited = true;
+    return true;
+}
+
+static bool gw_offline_openflow_set_offline_mode(bool offline_mode)
+{
+    if (offline_mode)
+    {
+        /* In offline mode the "offline_mode" tag should be configured to
+         * contain a single space string: */
+        json_t *device_value = json_pack("{ s : s, s : s }",
+                "name", "offline_mode", "device_value", " ");
+
+        ovsdb_sync_upsert(
+                SCHEMA_TABLE(Openflow_Tag), SCHEMA_COLUMN(Openflow_Tag, name),
+                "offline_mode", device_value, NULL);
+    }
+    else
+    {
+        /* and outside offline mode it should be empty */
+        json_t *device_value = json_pack("{ s : s, s : s }",
+                "name", "offline_mode", "device_value", "[\"set\",[]]");
+
+        ovsdb_sync_upsert(SCHEMA_TABLE(Openflow_Tag), SCHEMA_COLUMN(Openflow_Tag, name),
+                "offline_mode", device_value, NULL);
+    }
     return true;
 }
 
@@ -482,6 +619,9 @@ static void callback_Node_Config(
                 /* If active gw_offline mode successfuly entered, enable
                  * eth clients handling:  */
                 gw_offline_enable_eth_clients_handling();
+
+                /* and configure "offline_mode" openflow tag: */
+                gw_offline_openflow_set_offline_mode(true);
             }
             else
             {
@@ -503,6 +643,9 @@ static void callback_Node_Config(
              * If not, then restart of managers will be required.
              */
             gw_offline = false;
+
+            // Deconfigure "offline_mode" openflow tag:
+            gw_offline_openflow_set_offline_mode(false);
 
             // Set state accordingly:
             if (pm_gw_offline_cfg_is_available())
@@ -602,24 +745,43 @@ static void gw_offline_cfg_cleanup_radio_config(struct gw_offline_cfg *cfg)
 /* Add uuid (of a VIF) to Wifi_Radio_Config's 'vif_configs' for radio 'if_name': */
 static bool ovsdb_add_uuid_to_radio_config(const char *if_name, ovs_uuid_t uuid)
 {
-    json_t *row = NULL;
-    int rv;
+    json_t *mutation;
+    json_t *result;
+    json_t *value;
+    json_t *where;
+    json_t *rows;
+    int cnt;
 
-    LOG(DEBUG, "offline_cfg: Adding uuid=%s to Wifi_Radio_Config -where if_name==%s", uuid.uuid, if_name);
+    LOG(DEBUG, "offline_cfg: Adding uuid=%s to Wifi_Radio_Config::vif_configs -where if_name==%s", uuid.uuid, if_name);
 
-    row = json_pack("{ s : [ s, s ] }", "vif_configs", "uuid", uuid.uuid);
-    if (row == NULL)
+    value = json_pack("[ s, s ]", "uuid", uuid.uuid);
+    if (value == NULL)
     {
-        LOG(ERR, "offline_cfg: Error packing vif_configs json row");
+        LOG(ERR, "offline_cfg: Error packing vif_configs json value");
         return false;
     }
 
-    rv = ovsdb_sync_update("Wifi_Radio_Config", "if_name", if_name, row);
-    if (rv != 1)
+    where = ovsdb_where_simple(SCHEMA_COLUMN(Wifi_Radio_Config, if_name), if_name);
+    if (where == NULL)
     {
-        LOG(ERR, "offline_cfg: Error updating Wifi_Radio_Config: rv=%d", rv);
+        LOG(WARN, "offline_cfg: Error creating ovsdb where simple: if_name==%s", if_name);
+        json_decref(value);
         return false;
     }
+
+    mutation = ovsdb_mutation(SCHEMA_COLUMN(Wifi_Radio_Config, vif_configs), json_string("insert"), value);
+    rows = json_array();
+    json_array_append_new(rows, mutation);
+
+    result = ovsdb_tran_call_s(SCHEMA_TABLE(Wifi_Radio_Config), OTR_MUTATE, where, rows);
+    if (result == NULL)
+    {
+        LOG(WARN, "offline_cfg: Failed to execute ovsdb transact");
+        return false;
+    }
+    cnt = ovsdb_get_update_result_count(result, SCHEMA_TABLE(Wifi_Radio_Config), "mutate");
+
+    LOG(DEBUG, "offline_cfg: Successful OVSDB mutate, cnt=%d", cnt);
     return true;
 }
 
@@ -639,6 +801,9 @@ void pm_gw_offline_init(void *data)
     OVSDB_TABLE_INIT(Wifi_Radio_Config, if_name);
     OVSDB_TABLE_INIT(DHCP_reserved_IP, hw_addr);
     OVSDB_TABLE_INIT(Connection_Manager_Uplink, if_name);
+    OVSDB_TABLE_INIT_NO_KEY(Openflow_Config);
+    OVSDB_TABLE_INIT_NO_KEY(Openflow_Tag);
+    OVSDB_TABLE_INIT_NO_KEY(Openflow_Tag_Group);
 
     // Check feature enable flag (persistent):
     if (gw_offline_ps_load(PS_KEY_OFFLINE_CFG, &json_en) && json_en != NULL)
@@ -747,6 +912,14 @@ static bool gw_offline_cfg_ps_store(const struct gw_offline_cfg *cfg)
         cfg_cache.inet_config = json_incref(cfg->inet_config);
     } else LOG(DEBUG, "offline_cfg: inet_config: cached==stored. Skipped storing.");
 
+    if (!json_equal(cfg->inet_config_uplink, cfg_cache.inet_config_uplink))
+    {
+        rv = gw_offline_ps_store(PS_KEY_INET_CONFIG_UPLINK, cfg->inet_config_uplink);
+        if (!rv) goto exit;
+        json_decref(cfg_cache.inet_config_uplink);
+        cfg_cache.inet_config_uplink = json_incref(cfg->inet_config_uplink);
+    } else LOG(DEBUG, "offline_cfg: inet_config_uplink: cached==stored. Skipped storing.");
+
     if (!json_equal(cfg->radio_config, cfg_cache.radio_config))
     {
         rv = gw_offline_ps_store(PS_KEY_RADIO_CONFIG, cfg->radio_config);
@@ -778,6 +951,30 @@ static bool gw_offline_cfg_ps_store(const struct gw_offline_cfg *cfg)
         json_decref(cfg_cache.dhcp_reserved_ip);
         cfg_cache.dhcp_reserved_ip = json_incref(cfg->dhcp_reserved_ip);
     } else LOG(DEBUG, "offline_cfg: dhcp_reserved_ip: cached==stored. Skipped storing.");
+
+    if (!json_equal(cfg->openflow_config, cfg_cache.openflow_config))
+    {
+        rv = gw_offline_ps_store(PS_KEY_OF_CONFIG, cfg->openflow_config);
+        if (!rv) goto exit;
+        json_decref(cfg_cache.openflow_config);
+        cfg_cache.openflow_config = json_incref(cfg->openflow_config);
+    } else LOG(DEBUG, "offline_cfg: openflow_config: cached==stored. Skipped storing.");
+
+    if (!json_equal(cfg->openflow_tag, cfg_cache.openflow_tag))
+    {
+        rv = gw_offline_ps_store(PS_KEY_OF_TAG, cfg->openflow_tag);
+        if (!rv) goto exit;
+        json_decref(cfg_cache.openflow_tag);
+        cfg_cache.openflow_tag = json_incref(cfg->openflow_tag);
+    } else LOG(DEBUG, "offline_cfg: openflow_tag: cached==stored. Skipped storing.");
+
+    if (!json_equal(cfg->openflow_tag_group, cfg_cache.openflow_tag_group))
+    {
+        rv = gw_offline_ps_store(PS_KEY_OF_TAG_GROUP, cfg->openflow_tag_group);
+        if (!rv) goto exit;
+        json_decref(cfg_cache.openflow_tag_group);
+        cfg_cache.openflow_tag_group = json_incref(cfg->openflow_tag_group);
+    } else LOG(DEBUG, "offline_cfg: openflow_tag_group: cached==stored. Skipped storing.");
 
 exit:
     return rv;
@@ -855,6 +1052,11 @@ static bool gw_offline_cfg_ps_load(struct gw_offline_cfg *cfg)
     json_decref(cfg_cache.inet_config);
     cfg_cache.inet_config = json_incref(cfg->inet_config);
 
+    rv = gw_offline_ps_load(PS_KEY_INET_CONFIG_UPLINK, &cfg->inet_config_uplink);
+    if (!rv) goto exit;
+    json_decref(cfg_cache.inet_config_uplink);
+    cfg_cache.inet_config_uplink = json_incref(cfg->inet_config_uplink);
+
     rv = gw_offline_ps_load(PS_KEY_RADIO_CONFIG, &cfg->radio_config);
     if (!rv) goto exit;
     json_decref(cfg_cache.radio_config);
@@ -875,6 +1077,21 @@ static bool gw_offline_cfg_ps_load(struct gw_offline_cfg *cfg)
     json_decref(cfg_cache.dhcp_reserved_ip);
     cfg_cache.dhcp_reserved_ip = json_incref(cfg->dhcp_reserved_ip);
 
+    rv = gw_offline_ps_load(PS_KEY_OF_CONFIG, &cfg->openflow_config);
+    if (!rv) goto exit;
+    json_decref(cfg_cache.openflow_config);
+    cfg_cache.openflow_config = json_incref(cfg->openflow_config);
+
+    rv = gw_offline_ps_load(PS_KEY_OF_TAG, &cfg->openflow_tag);
+    if (!rv) goto exit;
+    json_decref(cfg_cache.openflow_tag);
+    cfg_cache.openflow_tag = json_incref(cfg->openflow_tag);
+
+    rv = gw_offline_ps_load(PS_KEY_OF_TAG_GROUP, &cfg->openflow_tag_group);
+    if (!rv) goto exit;
+    json_decref(cfg_cache.openflow_tag_group);
+    cfg_cache.openflow_tag_group = json_incref(cfg->openflow_tag_group);
+
 exit:
     return rv;
 }
@@ -882,6 +1099,7 @@ exit:
 /* Read the current subset of OVSDB config. */
 static bool gw_offline_cfg_ovsdb_read(struct gw_offline_cfg *cfg)
 {
+    char uplink[C_IFNAME_LEN];
     size_t index;
     json_t *json_res;
     json_t *row;
@@ -918,8 +1136,37 @@ static bool gw_offline_cfg_ovsdb_read(struct gw_offline_cfg *cfg)
     cfg->inet_config = ovsdb_sync_select("Wifi_Inet_Config", "if_name", LAN_BRIDGE);
     if (cfg->inet_config == NULL)
     {
-        LOG(ERR, "offline_cfg: Error selecting from Wifi_Inet_Config");
+        LOG(ERR, "offline_cfg: Error selecting from Wifi_Inet_Config -w if_name==%s", LAN_BRIDGE);
         goto exit_failure;
+    }
+
+    /* save certain uplink config from Wifi_Inet_Config */
+    if (gw_offline_uplink_ifname_get(uplink, sizeof(uplink)))
+    {
+        /* Currently we remember the following uplink's settings: upnp_mode  */
+        char *filter_columns[] = { "+", SCHEMA_COLUMN(Wifi_Inet_Config, upnp_mode), NULL };
+        json_t *row_uplink;
+        json_t *rows;
+
+        LOG(DEBUG, "offline_cfg: Uplink known=%s. will save uplink settings", uplink);
+
+        rows = ovsdb_sync_select(SCHEMA_TABLE(Wifi_Inet_Config), SCHEMA_COLUMN(Wifi_Inet_Config, if_name), uplink);
+        if (rows == NULL)
+        {
+            LOG(ERR, "offline_cfg: Error selecting from Wifi_Inet_Config -w if_name == %s", uplink);
+            goto exit_failure;
+        }
+        row_uplink = json_array_get(rows, 0);
+        json_incref(row_uplink);
+        json_decref(rows);
+
+        row_uplink = ovsdb_table_filter_row(row_uplink, filter_columns);
+
+        cfg->inet_config_uplink = json_array();
+        json_array_append_new(cfg->inet_config_uplink, row_uplink);
+
+        LOG(DEBUG, "offline_cfg: inet_config uplink config (from %s) that will be saved: %s",
+                uplink, json_dumps_static(row_uplink, 0));
     }
 
     /* Remember radio config: */
@@ -944,13 +1191,109 @@ static bool gw_offline_cfg_ovsdb_read(struct gw_offline_cfg *cfg)
         cfg->dhcp_reserved_ip = json_array();
     }
 
+    /* Openflow_Config: */
+    cfg->openflow_config = ovsdb_sync_select_where(SCHEMA_TABLE(Openflow_Config), NULL);
+    if (cfg->openflow_config == NULL)
+    {
+        LOG(DEBUG, "offline_cfg: Openflow_Config: NO rows in the table or error.");
+        cfg->openflow_config = json_array();
+    }
+
+    /* Openflow_Tag: */
+    cfg->openflow_tag = ovsdb_sync_select_where(SCHEMA_TABLE(Openflow_Tag), NULL);
+    if (cfg->openflow_tag == NULL)
+    {
+        LOG(DEBUG, "offline_cfg: Openflow_Tag: NO rows in the table or error.");
+        cfg->openflow_tag = json_array();
+    }
+
+    /* Openflow_Tag_Group: */
+    cfg->openflow_tag_group = ovsdb_sync_select_where(SCHEMA_TABLE(Openflow_Tag_Group), NULL);
+    if (cfg->openflow_tag_group == NULL)
+    {
+        LOG(DEBUG, "offline_cfg: Openflow_Tag_Group: NO rows in the table or error.");
+        cfg->openflow_tag_group = json_array();
+    }
+
     /* Delete special ovsdb keys like _uuid, etc, these should not be stored: */
     gw_offline_cfg_delete_special_keys(cfg);
+
+    /* Openflow_Tag rows should be saved and restored without device_value: */
+    delete_ovsdb_column(cfg->openflow_tag, "device_value");
 
     return true;
 exit_failure:
     gw_offline_cfg_release(cfg);
     return false;
+}
+
+/*
+ * Determine current uplink if known (in offline mode this may not always be
+ * the case) and set current uplink config from saved uplink config.
+ */
+static bool gw_offline_uplink_config_set_current(const struct gw_offline_cfg *cfg)
+{
+    char uplink[C_IFNAME_LEN];
+    int rc;
+
+    if (gw_offline_uplink_ifname_get(uplink, sizeof(uplink)))
+    {
+        LOG(INFO, "offline_cfg: Uplink known=%s. Restore uplink settings.", uplink);
+
+        if (cfg->inet_config_uplink == NULL)
+        {
+            LOG(ERR, "offline_cfg: %s: No saved uplink configuration, cannot restore it", __func__);
+            return false;
+        }
+        LOG(DEBUG, "offline_cfg: Saved uplink config = %s", json_dumps_static(cfg->inet_config_uplink, 0));
+
+        if ((rc = ovsdb_sync_update(
+                SCHEMA_TABLE(Wifi_Inet_Config),
+                SCHEMA_COLUMN(Wifi_Inet_Config, if_name), uplink,
+                json_incref(json_array_get(cfg->inet_config_uplink, 0)))) != 1)
+        {
+            LOG(ERR, "offline_cfg: Error updating Wifi_Inet_Config for %s, rc=%d", uplink, rc);
+            return false;
+        }
+        LOG(DEBUG, "offline_cfg: Updated %d row(s) in Wifi_Inet_Config -w if_name==%s", rc, uplink);
+    }
+
+    return true;
+}
+
+/*
+ * Clear any settings that were possibly set on a previous uplink if_name.
+ */
+static bool gw_offline_uplink_config_clear_previous(const char *if_name)
+{
+    int rc;
+    json_t *upnp_mode;
+
+    /*
+     * Currently the following settings need to be cleared:
+     * - upnp_mode
+     */
+    upnp_mode = json_pack("{ s : [ s , []] }", "upnp_mode", "set");
+    if (upnp_mode == NULL)
+    {
+        LOG(ERR, "offline_cfg: %s: Error packing json", __func__);
+        return false;
+    }
+    LOG(DEBUG, "offline_cfg: Clear previous uplink %s' upnp_mode config", if_name);
+
+    rc = ovsdb_sync_update(
+            SCHEMA_TABLE(Wifi_Inet_Config),
+            SCHEMA_COLUMN(Wifi_Inet_Config, if_name),
+            if_name,
+            upnp_mode);
+    if (rc == -1)
+    {
+        LOG(ERR, "offline_cfg: Error clearing upnp_mode setting in Wifi_Inet_Config for %s",
+                 if_name);
+        return false;
+    }
+
+    return true;
 }
 
 /* Apply the provided subset of config (obtained from persistent storage) to OVSDB. */
@@ -1052,6 +1395,54 @@ static bool gw_offline_cfg_ovsdb_apply(const struct gw_offline_cfg *cfg)
         }
     }
 
+    /* Replay Openflow_Config */
+    rc = ovsdb_sync_delete_where(SCHEMA_TABLE(Openflow_Config), NULL);
+    if (rc == -1)
+    {
+        LOG(ERR, "offline_cfg: Error deleting Openflow_Config");
+        return false;
+    }
+    json_array_foreach(cfg->openflow_config, index, row)
+    {
+        if (!ovsdb_sync_insert(SCHEMA_TABLE(Openflow_Config), json_incref(row), NULL))
+        {
+            LOG(ERR, "offline_cfg: Error inserting into Openflow_Config: row=%s", json_dumps_static(row, 0));
+            return false;
+        }
+    }
+
+    /* Replay Openflow_Tag */
+    rc = ovsdb_sync_delete_where(SCHEMA_TABLE(Openflow_Tag), NULL);
+    if (rc == -1)
+    {
+        LOG(ERR, "offline_cfg: Error deleting Openflow_Tag");
+        return false;
+    }
+    json_array_foreach(cfg->openflow_tag, index, row)
+    {
+        if (!ovsdb_sync_insert(SCHEMA_TABLE(Openflow_Tag), json_incref(row), NULL))
+        {
+            LOG(ERR, "offline_cfg: Error inserting into Openflow_Tag: row=%s", json_dumps_static(row, 0));
+            return false;
+        }
+    }
+
+    /* Replay Openflow_Tag_Group */
+    rc = ovsdb_sync_delete_where(SCHEMA_TABLE(Openflow_Tag_Group), NULL);
+    if (rc == -1)
+    {
+        LOG(ERR, "offline_cfg: Error deleting Openflow_Tag_Group");
+        return false;
+    }
+    json_array_foreach(cfg->openflow_tag_group, index, row)
+    {
+        if (!ovsdb_sync_insert(SCHEMA_TABLE(Openflow_Tag_Group), json_incref(row), NULL))
+        {
+            LOG(ERR, "offline_cfg: Error inserting into Openflow_Tag_Group: row=%s", json_dumps_static(row, 0));
+            return false;
+        }
+    }
+
     return true;
 }
 
@@ -1066,17 +1457,11 @@ static bool gw_offline_uplink_ifname_get(char *if_name_buf, size_t len)
                        ovsdb_where_simple_typed("is_used", "true", OCLM_BOOL));
 
     if (json == NULL || json_array_size(json) != 1)
-    {
-        LOG(WARN, "offline_cfg: Cannot determine GW's uplink interface");
         goto err_out;
-    }
 
     if_name = json_string_value(json_object_get(json_array_get(json, 0), "if_name"));
     if (if_name != NULL)
-    {
-        LOG(INFO, "offline_cfg: This GW's uplink interface=%s", if_name);
         strscpy(if_name_buf, if_name, len);
-    }
 
     rv = true;
 err_out:
@@ -1127,7 +1512,7 @@ static bool gw_offline_uplink_set_lan_bridge(const char *uplink)
 /* Determine uplink and set uplink bridge to LAN_BRIDGE */
 static bool gw_offline_uplink_bridge_set(const struct gw_offline_cfg *cfg)
 {
-    char uplink[32];
+    char uplink[C_IFNAME_LEN];
 
     // Config must be BRIDGE config, otherwise ignore:
     if (!gw_offline_cfg_is_bridge(cfg))
@@ -1135,7 +1520,11 @@ static bool gw_offline_uplink_bridge_set(const struct gw_offline_cfg *cfg)
 
     // Determine uplink interface name:
     if (!gw_offline_uplink_ifname_get(uplink, sizeof(uplink)))
+    {
+        LOG(WARN, "offline_cfg: Cannot determine GW's uplink interface");
         return false;
+    }
+    LOG(INFO, "offline_cfg: This GW's uplink interface=%s", uplink);
 
     // Check if uplink interface has IP assigned:
     if (!gw_offline_intf_is_ip_set(uplink))
@@ -1263,6 +1652,13 @@ bool pm_gw_offline_load_and_apply_config()
             goto exit;
         }
         LOG(INFO, "offline_cfg: Uplink set to LAN_BRIDGE (%s)", LAN_BRIDGE);
+    }
+
+    /* Restore uplink config from Wifi_Inet_Config to current uplink: */
+    if (!gw_offline_uplink_config_set_current(&gw_cfg))
+    {
+        LOG(ERR, "offline_cfg: Error restoring uplink's settings for the current uplink");
+        goto exit;
     }
 
     rv = true;

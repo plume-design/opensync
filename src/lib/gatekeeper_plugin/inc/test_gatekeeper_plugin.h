@@ -27,7 +27,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef TEST_GATEKEEPER_PLUGIN_H
 #define TEST_GATEKEEPER_PLUGIN_H
 
-char* g_certs_file;
+extern char *g_certs_file;
 
 extern void (*g_setUp)(void);
 extern void (*g_tearDown)(void);

@@ -24,8 +24,9 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-
 #include "gatekeeper_cache.h"
+#include "gatekeeper_cache_cmp.h"
+#include "fsm_utils.h"
 #include "log.h"
 #include "memutil.h"
 
@@ -59,12 +60,10 @@ gkc_free_attr_entry(struct attr_cache *attr_entry, enum gk_cache_request_type at
         break;
 
     case GK_CACHE_REQ_TYPE_IPV4:
-        FREE(attr->ipv4->name);
         FREE(attr->ipv4);
         break;
 
     case GK_CACHE_REQ_TYPE_IPV6:
-        FREE(attr->ipv6->name);
         FREE(attr->ipv6);
         break;
 
@@ -231,7 +230,10 @@ gkc_attr_ttl_expired(struct attr_cache *attr_entry)
 static const char *
 gk_get_attribute_value(struct attr_cache *attr_entry, enum gk_cache_request_type attr_type)
 {
+    static char ip_str[INET6_ADDRSTRLEN];
     union attribute_type *attr;
+    struct sockaddr_in6 *ipv6;
+    struct sockaddr_in *ipv4;
 
     attr = &attr_entry->attr;
 
@@ -249,10 +251,14 @@ gk_get_attribute_value(struct attr_cache *attr_entry, enum gk_cache_request_type
             return attr->url->name;
 
         case GK_CACHE_REQ_TYPE_IPV4:
-            return attr->ipv4->name;
+            ipv4 = (struct sockaddr_in *)&attr->ipv4->ip_addr;
+            inet_ntop(AF_INET, ipv4, ip_str, INET_ADDRSTRLEN);
+            return ip_str;
 
         case GK_CACHE_REQ_TYPE_IPV6:
-            return attr->ipv6->name;
+            ipv6 = (struct sockaddr_in6 *)&attr->ipv6->ip_addr;
+            inet_ntop(AF_INET, ipv6, ip_str, INET6_ADDRSTRLEN);
+            return ip_str;
 
         case GK_CACHE_REQ_TYPE_APP:
             return attr->app_name->name;
@@ -419,6 +425,7 @@ static bool
 gkc_is_attr_present(struct attr_cache *attr_entry, struct gk_attr_cache_interface *req)
 {
     union attribute_type *attr;
+    bool ret = false;
     int rc;
 
     attr = &attr_entry->attr;
@@ -432,29 +439,32 @@ gkc_is_attr_present(struct attr_cache *attr_entry, struct gk_attr_cache_interfac
         case GK_CACHE_REQ_TYPE_HOST:
         case GK_CACHE_REQ_TYPE_SNI:
             rc = strcmp(attr->host_name->name, req->attr_name);
+            ret = (rc == 0);
             break;
 
         case GK_CACHE_REQ_TYPE_URL:
             rc = strcmp(attr->url->name, req->attr_name);
+            ret = (rc == 0);
             break;
 
         case GK_CACHE_REQ_TYPE_IPV4:
-            rc = strcmp(attr->ipv4->name, req->attr_name);
+            ret = sockaddr_storage_equals(&attr->ipv4->ip_addr, req->ip_addr);
             break;
 
         case GK_CACHE_REQ_TYPE_IPV6:
-            rc = strcmp(attr->ipv6->name, req->attr_name);
+            ret = sockaddr_storage_equals(&attr->ipv6->ip_addr, req->ip_addr);
             break;
 
         case GK_CACHE_REQ_TYPE_APP:
             rc = strcmp(attr->app_name->name, req->attr_name);
+            ret = (rc == 0);
             break;
 
         default:
-            return false;
+            ;
     }
 
-    return (rc == 0);
+    return ret;
 }
 
 /**

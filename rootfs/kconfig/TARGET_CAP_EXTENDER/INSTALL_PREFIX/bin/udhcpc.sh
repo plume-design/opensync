@@ -34,7 +34,6 @@ set_dns=${action_set_dns:-true}
 set_routes=${action_set_routes:-false}
 set_staticroutes=${action_set_staticroutes:-false}
 set_msstaticroutes=${action_set_msstaticroutes:-false}
-set_debugnet=${action_set_debug_net:-false}
 
 # TODO: This hack shall be removed when DHCP requested options are used by cloud
 is_link_local()
@@ -190,11 +189,6 @@ setup_interface()
                 route add default gw "$i" dev "$interface"
                 valid_gw="${valid_gw:+$valid_gw|}$i"
             done
-
-            eval $(route -n | awk '
-                /^0.0.0.0\W{9}('"$valid_gw"')\W/ {next}
-                /^0.0.0.0/ {print "route del -net "$1" gw "$2";"}
-            ')
         }
     }
 
@@ -206,18 +200,6 @@ setup_interface()
     # Save DHCP requested options in the file to be read by OpenSync
     #
     [ -n "$OPTS_FILE" ] && print_opts > "$OPTS_FILE"
-
-    #
-    # Start debug network if needed, compare first 10 chars (magic number)
-    #
-    [ "$set_debugnet" = true ] || [ "$(echo "$vendorspec" | cut -c1-10)" = "J2WweWppb4" ] && {
-
-        # in any case start eth0.4, i.e. debug network
-        /etc/init.d/debugnet start
-
-        # try to establish ssh tunnel in any case
-        /etc/init.d/debugtun start
-    } 
 }
 
 applied=

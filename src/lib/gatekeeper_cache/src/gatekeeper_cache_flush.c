@@ -28,19 +28,34 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdint.h>
 #include <stdlib.h>
 
+#include "memory.h"
 #include "fsm_policy.h"
+#include "fsm_utils.h"
 #include "gatekeeper_cache.h"
 #include "gatekeeper_cache_cmp.h"
 #include "memutil.h"
 
+static struct str_set *
+allocated_empty_str_set()
+{
+    struct str_set *new_set;
+
+    new_set = CALLOC(1, sizeof(*new_set));
+    if (new_set == NULL) return NULL;
+    new_set->nelems = 0;
+
+    return new_set;
+}
+
 int
 gkc_flush_hostname(struct per_device_cache *cache, struct fsm_policy_rules *rules)
 {
-    struct attr_cache *entry, *checked_entry;
     hostname_comparator hostname_cmp_fct;
+    struct attr_cache *checked_entry;
     cat_comparator category_cmp_fct;
     risk_comparator risk_cmp_fct;
     ds_tree_t *hostname_cache;
+    struct attr_cache *entry;
     int is_matching_fqdn;
     int total_count = 0;
     bool need_delete;
@@ -49,10 +64,13 @@ gkc_flush_hostname(struct per_device_cache *cache, struct fsm_policy_rules *rule
     size_t i;
     bool rc;
 
+    /* We need an actual empty set as opposed to NULL */
+    if (rules->fqdns == NULL) rules->fqdns = allocated_empty_str_set();
+
     if (rules->risk_rule_present)
         risk_cmp_fct = get_risk_cmp(rules->risk_op);
     else
-        risk_cmp_fct = get_risk_cmp(FQDN_OP_TRUE);
+        risk_cmp_fct = get_risk_cmp(RISK_OP_TRUE);
 
     if (rules->cat_rule_present)
         category_cmp_fct = get_cat_cmp(rules->cat_op);
@@ -116,9 +134,10 @@ gkc_flush_hostname(struct per_device_cache *cache, struct fsm_policy_rules *rule
 int
 gkc_flush_app(struct per_device_cache *cache, struct fsm_policy_rules *rules)
 {
-    struct attr_cache *entry, *checked_entry;
+    struct attr_cache *checked_entry;
     risk_comparator risk_cmp_fct;
     app_comparator app_cmp_fct;
+    struct attr_cache *entry;
     ds_tree_t *app_cache;
     bool is_matching_app;
     int total_count = 0;
@@ -127,6 +146,9 @@ gkc_flush_app(struct per_device_cache *cache, struct fsm_policy_rules *rules)
     bool out_set;
     size_t i;
     bool rc;
+
+    /* We need an actual empty set as opposed to NULL */
+    if (rules->apps == NULL) rules->apps = allocated_empty_str_set();
 
     if (rules->risk_rule_present)
         risk_cmp_fct = get_risk_cmp(rules->risk_op);
@@ -184,18 +206,28 @@ gkc_flush_app(struct per_device_cache *cache, struct fsm_policy_rules *rules)
 int
 gkc_flush_ipv4(struct per_device_cache *cache, struct fsm_policy_rules *rules)
 {
-    struct attr_cache *entry, *checked_entry;
+    struct sockaddr_storage *checked_entry_ipv4;
+    struct attr_cache *checked_entry;
+    struct sockaddr_storage one_ipv4;
     cat_comparator category_cmp_fct;
     risk_comparator risk_cmp_fct;
+    struct attr_cache *entry;
     ip_comparator ip_cmp_fct;
+    struct sockaddr_in *in4;
     ds_tree_t *ipv4_cache;
     int is_matching_ipv4;
     int total_count = 0;
     bool need_delete;
-    char *ipv4str;
     bool out_set;
     size_t i;
+    int ret;
     bool rc;
+
+    /* We need an actual empty set as opposed to NULL */
+    /* If the function is called from gkc_flush_ip(), this will never be NULL */
+    if (rules->ipaddrs == NULL) rules->ipaddrs = allocated_empty_str_set();
+
+    one_ipv4.ss_family = AF_INET;
 
     if (rules->risk_rule_present)
         risk_cmp_fct = get_risk_cmp(rules->risk_op);
@@ -227,11 +259,17 @@ gkc_flush_ipv4(struct per_device_cache *cache, struct fsm_policy_rules *rules)
 
         need_delete = out_set;
 
-        /* now scan the list of names exhaustively */
-        ipv4str = checked_entry->attr.ipv4->name;
+        /* now scan the list of IPv4 addresses exhaustively */
+        checked_entry_ipv4 = &checked_entry->attr.ipv4->ip_addr;
         for (i = 0; i < rules->ipaddrs->nelems; i++)
         {
-            is_matching_ipv4 = ip_cmp_fct(ipv4str, rules->ipaddrs->array[i]);
+            /* Convert rules->ipaddrs->array[i] to IPv4 */
+            in4 = (struct sockaddr_in *)&one_ipv4;
+            ret = inet_pton(AF_INET, rules->ipaddrs->array[i], &in4->sin_addr);
+            if (ret != 1)
+                continue;
+
+            is_matching_ipv4 = ip_cmp_fct(checked_entry_ipv4, &one_ipv4);
             if (is_matching_ipv4)
             {
                 if (out_set) need_delete = false;
@@ -256,18 +294,28 @@ gkc_flush_ipv4(struct per_device_cache *cache, struct fsm_policy_rules *rules)
 int
 gkc_flush_ipv6(struct per_device_cache *cache, struct fsm_policy_rules *rules)
 {
-    struct attr_cache *entry, *checked_entry;
+    struct sockaddr_storage *checked_entry_ipv6;
+    struct attr_cache *checked_entry;
+    struct sockaddr_storage one_ipv6;
     cat_comparator category_cmp_fct;
     risk_comparator risk_cmp_fct;
+    struct attr_cache *entry;
     ip_comparator ip_cmp_fct;
+    struct sockaddr_in6 *in6;
     ds_tree_t *ipv6_cache;
     int is_matching_ipv6;
     int total_count = 0;
     bool need_delete;
-    char *ipv6str;
     bool out_set;
     size_t i;
+    int ret;
     bool rc;
+
+    /* We need an actual empty set as opposed to NULL */
+    /* If the function is called from gkc_flush_ip(), this will never be NULL */
+    if (rules->ipaddrs == NULL) rules->ipaddrs = allocated_empty_str_set();
+
+    one_ipv6.ss_family = AF_INET6;
 
     if (rules->risk_rule_present)
         risk_cmp_fct = get_risk_cmp(rules->risk_op);
@@ -299,11 +347,18 @@ gkc_flush_ipv6(struct per_device_cache *cache, struct fsm_policy_rules *rules)
 
         need_delete = out_set;
 
-        /* now scan the list of names exhaustively */
-        ipv6str = checked_entry->attr.ipv6->name;
+        /* now scan the list of IPv6 exhaustively */
+        checked_entry_ipv6 = &checked_entry->attr.ipv6->ip_addr;
         for (i = 0; i < rules->ipaddrs->nelems; i++)
         {
-            is_matching_ipv6 = ip_cmp_fct(ipv6str, rules->ipaddrs->array[i]);
+            /* Convert rules->ipaddrs->array[i] to IPv6 */
+            in6 = (struct sockaddr_in6 *)&one_ipv6;
+            ret = inet_pton(AF_INET6, rules->ipaddrs->array[i], &in6->sin6_addr);
+            if (ret != 1)
+                continue;
+
+            is_matching_ipv6 = ip_cmp_fct(checked_entry_ipv6, &one_ipv6);
+
             if (is_matching_ipv6)
             {
                 if (out_set) need_delete = false;
@@ -328,38 +383,49 @@ gkc_flush_ipv6(struct per_device_cache *cache, struct fsm_policy_rules *rules)
 int
 gkc_flush_ip(struct per_device_cache *cache, struct fsm_policy_rules *rules)
 {
-    struct str_set *orig_ipset, ipv4_set, ipv6_set;
+    struct str_set *orig_ipset;
+    struct str_set ipv4_set;
+    struct str_set ipv6_set;
     int total_count = 0;
     char ip_addr[16];
     size_t i;
     int ret;
     bool rc;
 
+    /* We need an actual empty set as opposed to NULL */
+    if (rules->ipaddrs == NULL) rules->ipaddrs = allocated_empty_str_set();
+
     /* We need to build 2 subsets: IPv4 and IPv6... */
     /* Save original set so we can restore it later */
     orig_ipset = rules->ipaddrs;
 
-    memset(&ipv4_set, 0, sizeof(ipv4_set));
-    ipv4_set.array = CALLOC(orig_ipset->nelems, sizeof(*ipv4_set.array));
+    MEMZERO(ipv4_set);
+    MEMZERO(ipv6_set);
 
-    memset(&ipv6_set, 0, sizeof(ipv6_set));
-    ipv6_set.array = CALLOC(orig_ipset->nelems, sizeof(*ipv6_set.array));
-
-    for (i = 0; i < rules->ipaddrs->nelems; i++)
+    if (orig_ipset->nelems > 0)
     {
-        rc = inet_pton(AF_INET, rules->ipaddrs->array[i], ip_addr);
-        if (rc == 1)
+        memset(&ipv4_set, 0, sizeof(ipv4_set));
+        ipv4_set.array = CALLOC(orig_ipset->nelems, sizeof(*ipv4_set.array));
+
+        memset(&ipv6_set, 0, sizeof(ipv6_set));
+        ipv6_set.array = CALLOC(orig_ipset->nelems, sizeof(*ipv6_set.array));
+
+        for (i = 0; i < rules->ipaddrs->nelems; i++)
         {
-            ipv4_set.array[ipv4_set.nelems] = STRDUP(rules->ipaddrs->array[i]);
-            ipv4_set.nelems++;
-            continue;
-        }
-        rc = inet_pton(AF_INET6, rules->ipaddrs->array[i], ip_addr);
-        if (rc == 1)
-        {
-            ipv6_set.array[ipv6_set.nelems] = STRDUP(rules->ipaddrs->array[i]);
-            ipv6_set.nelems++;
-            continue;
+            rc = inet_pton(AF_INET, rules->ipaddrs->array[i], ip_addr);
+            if (rc == 1)
+            {
+                ipv4_set.array[ipv4_set.nelems] = STRDUP(rules->ipaddrs->array[i]);
+                ipv4_set.nelems++;
+                continue;
+            }
+            rc = inet_pton(AF_INET6, rules->ipaddrs->array[i], ip_addr);
+            if (rc == 1)
+            {
+                ipv6_set.array[ipv6_set.nelems] = STRDUP(rules->ipaddrs->array[i]);
+                ipv6_set.nelems++;
+                continue;
+            }
         }
     }
 
@@ -432,7 +498,8 @@ gkc_flush_per_device(struct per_device_cache *entry, struct fsm_policy_rules *ru
 int
 gkc_flush_rules(struct fsm_policy_rules *rules)
 {
-    struct per_device_cache *pdevice, *remove_device;
+    struct per_device_cache *remove_device;
+    struct per_device_cache *pdevice;
     ds_tree_t *per_device_cache;
     mac_comparator mac_cmp_fct;
     struct gk_cache_mgr *mgr;
@@ -540,16 +607,24 @@ int
 gkc_flush_client(struct fsm_session *session, struct fsm_policy *policy)
 {
     int num_flushed_records;
+    char *name;
 
     if (!policy) return -1;
+
+    if (session && session->name && strlen(session->name))
+        name = session->name;
+    else
+        name = "'No name'";
 
     if (policy->action == FSM_FLUSH_CACHE)
     {
         num_flushed_records = gkc_flush_rules(&policy->rules);
         if (num_flushed_records >= 0)
-            LOGD("%s(): Flushed %d records from GK cache", __func__, num_flushed_records);
+            LOGD("%s(): Flushed %d records from GK cache in %s",
+                 __func__, num_flushed_records, name);
         else
-            LOGD("%s(): Policy did not flush any entry from GK cache", __func__);
+            LOGD("%s(): Policy did not flush any entry from GK cache in %s",
+                 __func__, name);
         return num_flushed_records;
     }
 
@@ -557,9 +632,11 @@ gkc_flush_client(struct fsm_session *session, struct fsm_policy *policy)
     {
         num_flushed_records = gkc_flush_all();
         if (num_flushed_records >= 0)
-            LOGD("%s(): Flushed all %d records from GK cache", __func__, num_flushed_records);
+            LOGD("%s(): Flushed all %d records from GK cache in %s",
+                 __func__, num_flushed_records, name);
         else
-            LOGD("%s(): Policy did not flush any entry from GK cache", __func__);
+            LOGD("%s(): Policy did not flush any entry from GK cache in %s",
+                 __func__, name);
         return num_flushed_records;
     }
 

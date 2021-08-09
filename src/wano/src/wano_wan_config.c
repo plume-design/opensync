@@ -191,6 +191,12 @@ bool wano_wan_config_from_schema(struct wano_wan_config *wc, struct schema_WAN_C
         const char *svlan = wano_wan_config_other_config_get(schema, "vlan_id");
         long vlan;
 
+        if (svlan == NULL)
+        {
+            LOG(ERR, "wan_config: VLAN config is missing the required `vlan_id` setting.");
+            return false;
+        }
+
         if (!os_strtoul((char *)svlan, &vlan, 0))
         {
             LOG(ERR, "wan_config: Invalid VLAN value: %s", svlan);

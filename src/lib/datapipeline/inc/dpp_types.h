@@ -400,11 +400,22 @@ static inline int radio_get_index_from_type(
 static inline uint32_t radio_get_chan_from_mhz(
         uint32_t                    freq)
 {
+    if (freq < 2412)
+          return 0;
+
     if (freq == 2484)
         return 14;
-    else if (freq < 2484)
-        return (freq - 2407) / 5;
-    return (freq - 5000) / 5;
+
+    if (freq < 5000)
+        return 1 + ((freq - 2412) / 5);
+    else if (freq < 5935)
+        return (freq - 5000) / 5;
+    else if (freq == 5935)
+        return 2;
+    else if (freq > 5950 && freq <= 7115)
+        return (freq - 5950) / 5;
+
+    return 0;
 }
 
 static inline char * radio_get_queue_name_from_type(

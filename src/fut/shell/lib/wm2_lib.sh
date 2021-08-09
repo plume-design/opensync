@@ -461,6 +461,7 @@ create_radio_vif_interface()
                 shift
                 ;;
             -default_oftag | \
+            -dpp_cc | \
             -wpa_oftags)
                 vif_args_c="${vif_args_c} ${replace} ${option#?} $(single_quote_arg "$1")"
                 shift

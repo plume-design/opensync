@@ -60,42 +60,66 @@ ovsdb_table_t table_Wifi_Route_State;
 ovsdb_table_t table_DHCP_leased_IP;
 ovsdb_table_t table_AWLAN_Node;
 
-void
+int
 ltem_update_conf(struct schema_Lte_Config *lte_conf)
 {
     ltem_mgr_t *mgr = ltem_get_mgr();
     lte_config_info_t *conf = mgr->lte_config_info;
 
+    if (conf == NULL) return -1;
     strncpy(conf->if_name, lte_conf->if_name, sizeof(conf->if_name));
     conf->manager_enable = lte_conf->manager_enable;
     conf->lte_failover_enable = lte_conf->lte_failover_enable;
     conf->ipv4_enable = lte_conf->ipv4_enable;
     conf->ipv6_enable = lte_conf->ipv6_enable;
     conf->force_use_lte = lte_conf->force_use_lte;
-    lte_conf->active_simcard_slot = conf->active_simcard_slot;
+    conf->active_simcard_slot = lte_conf->active_simcard_slot;
     conf->modem_enable = lte_conf->modem_enable;
+    if (conf->report_interval == 0)
+    {
+        conf->report_interval = mgr->mqtt_interval;
+    }
+    else
+    {
+        conf->report_interval = lte_conf->report_interval;
+    }
     strncpy(conf->apn, lte_conf->apn, sizeof(conf->apn));
+    return 0;
 }
 
 int
 ltem_ovsdb_create_lte_state(ltem_mgr_t *mgr)
 {
     struct schema_Lte_State lte_state;
+    lte_config_info_t *lte_config;
+    lte_state_info_t *lte_state_info;
+    lte_modem_info_t *modem_info;
     const char *if_name;
+    char *sim_status;
+    char *net_state;
     int rc;
 
     MEMZERO(lte_state);
 
-    if (mgr->lte_config_info == NULL)
+    if (mgr == NULL) return -1;
+
+    lte_config = mgr->lte_config_info;
+    if (lte_config == NULL)
     {
         LOGE("%s: lte_config_info NULL", __func__);
         return -1;
     }
-
-    if_name = mgr->lte_config_info->if_name;
+    if_name = lte_config->if_name;
     if (!if_name[0])
     {
         LOGI("%s: invalid if_name[%s]", __func__, if_name);
+        return -1;
+    }
+
+    lte_state_info = mgr->lte_state_info;
+    if (lte_state_info == NULL)
+    {
+        LOGE("%s: lte_state_info NULL", __func__);
         return -1;
     }
 
@@ -105,16 +129,218 @@ ltem_ovsdb_create_lte_state(ltem_mgr_t *mgr)
 
     LOG(INFO, "%s: Insert Lte_State: if_name=[%s]", __func__, if_name);
     lte_state._partial_update = true;
+    // Config from Lte_Config table
     SCHEMA_SET_STR(lte_state.if_name, if_name);
-    SCHEMA_SET_INT(lte_state.modem_present, true);
-    SCHEMA_SET_STR(lte_state.sim_status, "Inserted");
-    SCHEMA_SET_STR(lte_state.lte_net_state, "registered_roaming");
+    SCHEMA_SET_INT(lte_state.manager_enable, lte_config->manager_enable);
+    SCHEMA_SET_INT(lte_state.lte_failover_enable, lte_config->lte_failover_enable);
+    SCHEMA_SET_INT(lte_state.ipv4_enable, lte_config->ipv4_enable);
+    SCHEMA_SET_INT(lte_state.ipv6_enable, lte_config->ipv6_enable);
+    SCHEMA_SET_INT(lte_state.force_use_lte, lte_config->force_use_lte);
+    SCHEMA_SET_INT(lte_state.active_simcard_slot, lte_config->active_simcard_slot);
+    SCHEMA_SET_INT(lte_state.modem_enable, lte_config->modem_enable);
+    SCHEMA_SET_INT(lte_state.report_interval, lte_config->report_interval);
+    if (!lte_config->apn[0])
+    {
+        SCHEMA_SET_STR(lte_state.apn, "data.icore.name");
+    }
+    else
+    {
+        SCHEMA_SET_STR(lte_state.apn, lte_config->apn);
+    }
+    // State info
+    SCHEMA_SET_INT(lte_state.modem_present, lte_state_info->modem_present);
+    modem_info = &mgr->modem_info;
+    SCHEMA_SET_STR(lte_state.iccid, modem_info->iccid);
+    SCHEMA_SET_STR(lte_state.imei, modem_info->imei);
+    SCHEMA_SET_STR(lte_state.imsi, modem_info->imsi);
+    switch(lte_state_info->sim_status)
+    {
+        case LTEM_LTE_SIM_REMOVED:
+            sim_status = "Removed";
+            break;
+        case LTEM_LTE_SIM_INSERTED:
+            sim_status = "Inserted";
+            break;
+        default:
+            sim_status = "Unknown";
+            break;
+    }
+    SCHEMA_SET_STR(lte_state.sim_status, sim_status);
+    SCHEMA_SET_STR(lte_state.service_provider_name, modem_info->operator);
+    SCHEMA_SET_INT(lte_state.mcc, modem_info->srv_cell.mcc);
+    SCHEMA_SET_INT(lte_state.mnc, modem_info->srv_cell.mnc);
+    SCHEMA_SET_INT(lte_state.tac, modem_info->srv_cell.tac);
+
+    switch (modem_info->reg_status)
+    {
+        case LTE_NET_REG_STAT_NOTREG:
+            net_state = "not_registered_not_searching";
+            break;
+
+        case LTE_NET_REG_STAT_REG:
+            net_state = "registered_home_network";
+            break;
+
+        case LTE_NET_REG_STAT_SEARCH:
+            net_state = "not_registered_searching";
+            break;
+
+        case LTE_NET_REG_STAT_DENIED:
+            net_state = "registration_denied";
+            break;
+
+        case LTE_NET_REG_STAT_ROAMING:
+            net_state = "registered_roaming";
+            break;
+
+        default:
+            net_state = "unknown";
+            break;
+    }
+    SCHEMA_SET_STR(lte_state.lte_net_state, net_state);
+
     if (!ovsdb_table_insert(&table_Lte_State, &lte_state))
     {
         LOG(ERR, "%s: Error Inserting Lte_State", __func__);
         return -1;
     }
 
+    return 0;
+}
+int
+ltem_ovsdb_update_lte_state(ltem_mgr_t *mgr)
+{
+    struct schema_Lte_State lte_state;
+    lte_config_info_t *lte_config;
+    lte_state_info_t *lte_state_info;
+    lte_modem_info_t *modem_info;
+    const char *if_name;
+    char *sim_status;
+    char *net_state;
+    int res;
+    char *filter[] = { "+",
+                       SCHEMA_COLUMN(Lte_State, manager_enable),
+                       SCHEMA_COLUMN(Lte_State, lte_failover_enable),
+                       SCHEMA_COLUMN(Lte_State, ipv4_enable),
+                       SCHEMA_COLUMN(Lte_State, ipv6_enable),
+                       SCHEMA_COLUMN(Lte_State, force_use_lte),
+                       SCHEMA_COLUMN(Lte_State, active_simcard_slot),
+                       SCHEMA_COLUMN(Lte_State, modem_enable),
+                       SCHEMA_COLUMN(Lte_State, report_interval),
+                       SCHEMA_COLUMN(Lte_State, apn),
+                       SCHEMA_COLUMN(Lte_State, modem_present),
+                       SCHEMA_COLUMN(Lte_State, iccid),
+                       SCHEMA_COLUMN(Lte_State, imei),
+                       SCHEMA_COLUMN(Lte_State, imsi),
+                       SCHEMA_COLUMN(Lte_State, sim_status),
+                       SCHEMA_COLUMN(Lte_State, service_provider_name),
+                       SCHEMA_COLUMN(Lte_State, mcc),
+                       SCHEMA_COLUMN(Lte_State, mnc),
+                       SCHEMA_COLUMN(Lte_State, tac),
+                       SCHEMA_COLUMN(Lte_State, lte_net_state),
+                       NULL };
+
+    if (mgr == NULL) return -1;
+    lte_config = mgr->lte_config_info;
+    if (lte_config == NULL) return -1;
+    lte_state_info = mgr->lte_state_info;
+    if (lte_state_info == NULL) return -1;
+    modem_info = &mgr->modem_info;
+    if (modem_info == NULL) return -1;
+    if_name = lte_config->if_name;
+    if (!if_name[0]) return -1;
+    res = ovsdb_table_select_one(&table_Lte_State,
+                                 SCHEMA_COLUMN(Lte_State, if_name), if_name, &lte_state);
+    if (!res)
+    {
+        LOGI("%s: %s not found in Lte_State", __func__, if_name);
+        return -1;
+    }
+
+    MEMZERO(lte_state);
+
+    if_name = mgr->lte_config_info->if_name;
+    if(!if_name[0]) return -1;
+
+    LOGI("%s: update %s Lte_State settings", __func__, if_name);
+    lte_state._partial_update = true;
+    // Config from Lte_Config table
+    SCHEMA_SET_STR(lte_state.if_name, if_name);
+    SCHEMA_SET_INT(lte_state.manager_enable, lte_config->manager_enable);
+    SCHEMA_SET_INT(lte_state.lte_failover_enable, lte_config->lte_failover_enable);
+    SCHEMA_SET_INT(lte_state.ipv4_enable, lte_config->ipv4_enable);
+    SCHEMA_SET_INT(lte_state.ipv6_enable, lte_config->ipv6_enable);
+    SCHEMA_SET_INT(lte_state.force_use_lte, lte_config->force_use_lte);
+    SCHEMA_SET_INT(lte_state.active_simcard_slot, lte_config->active_simcard_slot);
+    SCHEMA_SET_INT(lte_state.modem_enable, lte_config->modem_enable);
+    SCHEMA_SET_INT(lte_state.report_interval, lte_config->report_interval);
+    if (!lte_config->apn[0])
+    {
+        SCHEMA_SET_STR(lte_state.apn, "data.icore.name");
+    }
+    else
+    {
+        SCHEMA_SET_STR(lte_state.apn, lte_config->apn);
+    }
+    // State info
+    SCHEMA_SET_INT(lte_state.modem_present, lte_state_info->modem_present);
+    SCHEMA_SET_STR(lte_state.iccid, modem_info->iccid);
+    SCHEMA_SET_STR(lte_state.imei, modem_info->imei);
+    SCHEMA_SET_STR(lte_state.imsi, modem_info->imsi);
+    switch(lte_state_info->sim_status)
+    {
+        case LTEM_LTE_SIM_REMOVED:
+            sim_status = "Removed";
+            break;
+        case LTEM_LTE_SIM_INSERTED:
+            sim_status = "Inserted";
+            break;
+        default:
+            sim_status = "Unknown";
+            break;
+    }
+    SCHEMA_SET_STR(lte_state.sim_status, sim_status);
+    SCHEMA_SET_STR(lte_state.service_provider_name, modem_info->operator);
+    SCHEMA_SET_INT(lte_state.mcc, modem_info->srv_cell.mcc);
+    SCHEMA_SET_INT(lte_state.mnc, modem_info->srv_cell.mnc);
+    SCHEMA_SET_INT(lte_state.tac, modem_info->srv_cell.tac);
+
+    switch (modem_info->reg_status)
+    {
+        case LTE_NET_REG_STAT_NOTREG:
+            net_state = "not_registered_not_searching";
+            break;
+
+        case LTE_NET_REG_STAT_REG:
+            net_state = "registered_home_network";
+            break;
+
+        case LTE_NET_REG_STAT_SEARCH:
+            net_state = "not_registered_searching";
+            break;
+
+        case LTE_NET_REG_STAT_DENIED:
+            net_state = "registration_denied";
+            break;
+
+        case LTE_NET_REG_STAT_ROAMING:
+            net_state = "registered_roaming";
+            break;
+
+        default:
+            net_state = "unknown";
+            break;
+    }
+    SCHEMA_SET_STR(lte_state.lte_net_state, net_state);
+
+    res = ovsdb_table_update_where_f(&table_Lte_State,
+                                     ovsdb_where_simple(SCHEMA_COLUMN(Lte_State, if_name), if_name),
+                                     &lte_state, filter);
+    if (!res)
+    {
+        LOGW("%s: Update %s Lte_State table failed", __func__, if_name);
+        return -1;
+    }
     return 0;
 }
 
@@ -250,6 +476,7 @@ callback_Lte_Config(ovsdb_update_monitor_t *mon,
             LOGI("%s mon_type = OVSDB_UPDATE_NEW", __func__);
         case OVSDB_UPDATE_MODIFY:
             LOGI("%s mon_type = OVSDB_UPDATE_MODIFY", __func__);
+            ltem_ovsdb_update_lte_state(mgr);
             rc = strncmp(lte_conf->apn, "", strlen(lte_conf->apn));
             if (rc) ltem_set_apn(lte_conf->apn);
 
@@ -263,6 +490,7 @@ callback_Lte_Config(ovsdb_update_monitor_t *mon,
             }
             else if (old_lte_conf->force_use_lte && !lte_conf->force_use_lte)
             {
+                ltem_restore_default_route(mgr);
                 ltem_set_wan_state(LTEM_WAN_STATE_UP);
             }
 
@@ -387,18 +615,39 @@ callback_Connection_Manager_Uplink(ovsdb_update_monitor_t *mon,
 }
 
 void
-ltem_handle_rs_update(struct schema_Wifi_Route_State *old_route_state, struct schema_Wifi_Route_State *route_state)
+ltem_handle_wan_rs_update(struct schema_Wifi_Route_State *old_route_state, struct schema_Wifi_Route_State *route_state)
 {
     ltem_mgr_t *mgr = ltem_get_mgr();
     char *default_mask = "0.0.0.0";
     int res;
 
-    LOGI("%s: if_name=%s, dest_addr=%s, dest_mask=%s", __func__, route_state->if_name, route_state->dest_addr, route_state->dest_mask);
+    LOGI("%s: if_name=%s, dest_addr=%s, dest_gw=%s, dest_mask=%s", __func__, route_state->if_name, route_state->dest_addr,
+         route_state->gateway, route_state->dest_mask);
     res = strncmp(route_state->dest_mask, default_mask, strlen(route_state->dest_mask));
     if (res == 0)
     {
-        ltem_update_wan_subnet(mgr, route_state->if_name, route_state->dest_addr, route_state->gateway);
-        ltem_update_wan_netmask(mgr, route_state->dest_mask);
+        ltem_update_wan_route(mgr, route_state->if_name, route_state->dest_addr, route_state->gateway, route_state->dest_mask);
+    }
+}
+
+void
+ltem_handle_lte_rs_update(struct schema_Wifi_Route_State *old_route_state, struct schema_Wifi_Route_State *route_state)
+{
+    ltem_mgr_t *mgr = ltem_get_mgr();
+    char *default_mask = "0.0.0.0";
+    int res;
+
+    LOGI("%s: if_name=%s, dest_addr=%s, dest_gw=%s, dest_mask=%s", __func__, route_state->if_name, route_state->dest_addr,
+         route_state->gateway, route_state->dest_mask);
+    res = strncmp(route_state->dest_mask, default_mask, strlen(route_state->dest_mask));
+    if (res == 0)
+    {
+        ltem_update_lte_route(mgr, route_state->if_name, route_state->dest_addr, route_state->gateway, route_state->dest_mask);
+        res = ltem_set_lte_route_metric(mgr);
+        if (res)
+        {
+            LOGE("%s: ltem_set_lte_route_metric: Failed", __func__);
+        }
     }
 }
 
@@ -422,12 +671,17 @@ callback_Wifi_Route_State(ovsdb_update_monitor_t *mon,
             res = strncmp(route_state->if_name, "eth0", strlen(route_state->if_name));
             if (res == 0)
             {
-                ltem_handle_rs_update(old_route_state, route_state);
+                ltem_handle_wan_rs_update(old_route_state, route_state);
             }
             res = strncmp(route_state->if_name, "eth1", strlen(route_state->if_name));
             if (res == 0)
             {
-                ltem_handle_rs_update(old_route_state, route_state);
+                ltem_handle_wan_rs_update(old_route_state, route_state);
+            }
+            res = strncmp(route_state->if_name, "wwan0", strlen(route_state->if_name));
+            if (res == 0)
+            {
+                ltem_handle_lte_rs_update(old_route_state, route_state);
             }
             break;
     }

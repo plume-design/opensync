@@ -247,7 +247,7 @@ mdns_plugin_send_mdns_response(struct mdns_session *m_session)
         if (sendto(pctxt->ipv4_mcast_fd, buf, len, 0, (struct sockaddr *)&to,
                sizeof(struct sockaddr_in)) != len)
         {
-            LOGN("%s: sending failed, error: '%s'", __func__, strerror(errno));
+            LOGD("%s: sending failed, error: '%s'", __func__, strerror(errno));
             return ;
         }
     }

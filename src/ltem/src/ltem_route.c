@@ -30,12 +30,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <unistd.h>
 
 #include "memutil.h"
-#include "log.h"         // logging routines
-#include "json_util.h"   // json routines
-#include "os.h"          // OS helpers
-#include "ovsdb.h"       // OVSDB helpers
-#include "target.h"      // target API
-#include "network_metadata.h"  // network metadata API
+#include "log.h"
+#include "json_util.h"
+#include "os.h"
+#include "ovsdb.h"
+#include "target.h"
+#include "network_metadata.h"
 
 #include "ltem_mgr.h"
 
@@ -157,31 +157,22 @@ ltem_create_client_table(ltem_mgr_t *mgr)
 }
 
 void
-ltem_update_lte_subnet(ltem_mgr_t *mgr, char *lte_subnet)
+ltem_update_lte_route(ltem_mgr_t *mgr, char *if_name, char *lte_subnet, char *lte_gw, char *lte_netmask)
 {
-    strncpy(mgr->lte_route->lte_subnet, lte_subnet,
-            sizeof(mgr->lte_route->lte_subnet));
-}
-
-void
-ltem_update_lte_netmask(ltem_mgr_t *mgr, char *lte_netmask)
-{
+    LOGI("%s: lte_if_name[%s], lte_subnet[%s], lte_gw[%s] lte_netmask[%s]", __func__, if_name, lte_subnet, lte_gw, lte_netmask);
+    strncpy(mgr->lte_route->lte_subnet, lte_subnet, sizeof(mgr->lte_route->lte_subnet));
+    strncpy(mgr->lte_route->lte_gw, lte_gw, sizeof(mgr->lte_route->lte_gw));
     strncpy(mgr->lte_route->lte_netmask, lte_netmask,
             sizeof(mgr->lte_route->lte_netmask));
 }
 
 void
-ltem_update_wan_subnet(ltem_mgr_t *mgr, char *if_name, char *wan_subnet, char *wan_gw)
+ltem_update_wan_route(ltem_mgr_t *mgr, char *if_name, char *wan_subnet, char *wan_gw, char *wan_netmask)
 {
     LOGI("%s: wan_if_name[%s], wan_subnet[%s], wan_gw[%s]", __func__, if_name, wan_subnet, wan_gw);
-    strncpy(mgr->lte_route->wan_if_name, if_name, strlen(if_name));
-    strncpy(mgr->lte_route->wan_subnet, wan_subnet, strlen(wan_subnet));
-    strncpy(mgr->lte_route->wan_gw, wan_gw, strlen(wan_gw));
-}
-
-void
-ltem_update_wan_netmask(ltem_mgr_t *mgr, char *wan_netmask)
-{
+    strncpy(mgr->lte_route->wan_if_name, if_name, sizeof(mgr->lte_route->wan_if_name));
+    strncpy(mgr->lte_route->wan_subnet, wan_subnet, sizeof(mgr->lte_route->wan_subnet));
+    strncpy(mgr->lte_route->wan_gw, wan_gw, sizeof(mgr->lte_route->wan_gw));
     strncpy(mgr->lte_route->wan_netmask, wan_netmask,
             sizeof(mgr->lte_route->wan_netmask));
 }
@@ -234,15 +225,43 @@ ltem_restore_default_client_routes(ltem_mgr_t *mgr)
 }
 
 int
-ltem_add_lte_route(ltem_mgr_t *mgr)
+ltem_set_lte_route_metric(ltem_mgr_t *mgr)
+{
+    int res = 0;
+    char cmd[1024];
+    lte_route_info_t *route;
+
+    LOGI("%s: failover:%d", __func__, mgr->lte_state_info->lte_failover_active);
+    route = mgr->lte_route;
+    if (!route) return -1;
+
+    /* Delete the route, then add it back */
+    snprintf(cmd, sizeof(cmd), "route del default dev wwan0");
+    res = ltem_route_exec_cmd(cmd);
+    /* route add default dev wwan0 */
+    snprintf(cmd, sizeof(cmd), "route add default gw %s metric 100 dev wwan0", route->lte_gw);
+    res = ltem_route_exec_cmd(cmd);
+    return res;
+}
+
+int
+ltem_force_lte_route(ltem_mgr_t *mgr)
 {
     int res = 0;
     char cmd[1024];
 
-    LOGI("%s: failover:%d", __func__, mgr->lte_state_info->lte_failover_active);
-    /* route add default dev wwan0 */
-    snprintf(cmd, sizeof(cmd), "route add default dev wwan0");
-    res = ltem_route_exec_cmd(cmd);
+    /* Delete the WAN route */
+    if (mgr->lte_route->wan_gw[0])
+    {
+        /* route delete default dev [eth0/eth1] */
+        snprintf(cmd, sizeof(cmd), "route delete default dev %s", mgr->lte_route->wan_if_name);
+        res = ltem_route_exec_cmd(cmd);
+        if (res)
+        {
+            LOGI("%s: cmd failed: %s, errno: %s", __func__, cmd, strerror(errno));
+            return res;
+        }
+    }
     return res;
 }
 
@@ -253,15 +272,6 @@ ltem_restore_default_route(ltem_mgr_t *mgr)
     char cmd[1024];
 
     LOGI("%s: failover:%d", __func__, mgr->lte_state_info->lte_failover_active);
-
-    /* route delete default dev wwan0 */
-    snprintf(cmd, sizeof(cmd), "route delete default dev wwan0");
-    res = ltem_route_exec_cmd(cmd);
-    if (res)
-    {
-        LOGI("%s: cmd failed: %s, errno: %s", __func__, cmd, strerror(errno));
-        return res;
-    }
 
     if (mgr->lte_route->wan_gw[0])
     {

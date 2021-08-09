@@ -744,6 +744,9 @@ wm2_dpp_jobs_submit(struct wm2_dpp_job *jobs)
         }
     }
 
+    if (n == 0)
+        wm2_radio_delayed_soon();
+
     return true;
 }
 

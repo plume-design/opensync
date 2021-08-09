@@ -78,13 +78,15 @@ struct gk_server_info
 struct gk_curl_easy_info
 {
     CURL *curl_handle;
-    bool connection_active;
-    time_t connection_time;
+    bool ecurl_connection_active;
+    time_t ecurl_connection_time;
 };
 
 struct gk_curl_multi_info
 {
     struct ev_timer timer_event;
+    bool mcurl_connection_active;
+    time_t mcurl_connection_time;
     struct ev_loop *loop;
     CURLM *mcurl_handle;
     int still_running;
@@ -149,14 +151,18 @@ struct fsm_gk_session
     struct gk_curl_easy_info ecurl;
     bool enable_multi_curl;
     bool initialized;
-    time_t stat_report_ts;
     int32_t reported_lookup_failures;
     int32_t remote_lookup_retries;
     ds_tree_node_t session_node;
     ds_tree_t mcurl_data_tree;          /* tree for storing gk_mcurl_data */
+    struct fsm_url_stats health_stats;
+    time_t health_stats_report_ts;
     long health_stats_report_interval;
     char *health_stats_report_topic;
-    struct fsm_url_stats health_stats;
+    struct gkc_report_aggregator *hero_stats;
+    time_t hero_stats_report_ts;
+    long hero_stats_report_interval;
+    char *hero_stats_report_topic;
     struct gatekeeper_offline gk_offline;
     uint32_t dns_cache_hit_count;
     const char *pattern_fqdn_lan;
@@ -235,7 +241,7 @@ gatekeeper_lookup_session(struct fsm_session *session);
  * @param gksession the gk session to delete
  */
 void
-gatekeeper_free_session(struct fsm_gk_session *gksession);
+gatekeeper_free_session(struct fsm_gk_session *gk_session);
 
 
 /**

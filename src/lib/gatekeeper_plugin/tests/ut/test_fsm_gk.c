@@ -1288,6 +1288,39 @@ test_connection_timeout(void)
 }
 
 void
+test_mcurl_connection_timeout(void)
+{
+    struct fsm_gk_session *fsm_gk_session;
+    struct fsm_session *session;
+    struct wc_health_stats hs;
+
+    LOGN("**** starting test %s ***** ", __func__);
+    memset(&hs, 0, sizeof(hs));
+    session        = &g_sessions[0];
+    fsm_gk_session = gatekeeper_lookup_session(session);
+    fsm_gk_session->enable_multi_curl = 1;
+    test_curl_app();
+
+    /* multi curl connection should be active */
+    TEST_ASSERT_EQUAL_INT(1, fsm_gk_session->mcurl.mcurl_connection_active);
+
+    /* wait for timeout to happen*/
+    sleep(GK_CURL_TIMEOUT);
+    sleep(5);
+    gatekeeper_periodic(session);
+
+    /* after timeout multi curl connection should be closed */
+    TEST_ASSERT_EQUAL_INT(0, fsm_gk_session->mcurl.mcurl_connection_active);
+
+    test_curl_app();
+    /* with new querry, a connection should be created */
+    TEST_ASSERT_EQUAL_INT(1, fsm_gk_session->mcurl.mcurl_connection_active);
+
+
+    LOGN("**** Ending test %s ***** ", __func__);
+}
+
+void
 test_backoff_on_connection_failure(void)
 {
     struct fsm_gk_session *fsm_gk_session;
@@ -1942,6 +1975,7 @@ run_test_fsm_gk(void)
     RUN_TEST(test_uncategorized_reply);
     RUN_TEST(test_validate_fqdn);
     RUN_TEST(test_mcurl_config);
+    RUN_TEST(test_mcurl_connection_timeout);
 
     /* restore the setup/teardown routines */
     g_setUp    = prev_setUp;

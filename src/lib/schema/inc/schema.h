@@ -91,6 +91,13 @@ SCHEMA_LISTX(_SCHEMA_COL_DECL)
             FIELD##_len++; \
         } while(0)
 
+#define SCHEMA_SET_BOOL(FIELD, VALUE) \
+        do { \
+            FIELD = (VALUE); \
+            FIELD##_exists  = true; \
+            FIELD##_present = true; \
+        } while (0)
+
 #define SCHEMA_SET_INT(FIELD, VALUE) \
         do { \
             FIELD = (VALUE); \

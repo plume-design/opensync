@@ -32,9 +32,25 @@ ref_update_sta_5_during_backoff=$(cat <<-.
 .
 )
 
+ref_update_sta_6_during_backoff=$(cat <<-.
+	CLIENT_UPDATE
+	mac=20:00:00:00:00:00
+	if_name=wlan2
+	blacklist=false
+	rssi_probe_hwm=0
+	rssi_probe_lwm=0
+	rssi_auth_hwm=0
+	rssi_auth_lwm=0
+	rssi_inact_xing=0
+	rssi_high_xing=0
+	rssi_low_xing=0
+	auth_reject_reason=0
+.
+)
+
 ref_dpp_client_during_backoff=$(cat <<-.
 	mac=20:00:00:00:00:00
-	num_band_records=4
+	num_band_records=5
 	    type=2.4G
 	    ifname=wlan0
 	    connected=false
@@ -167,6 +183,25 @@ ref_dpp_client_during_backoff=$(cat <<-.
 	        assoc_ies=
 	        assoc_ies_len=0
 	        btm_status=0
+
+	    type=6G
+	    ifname=wlan2
+	    connected=false
+	    rejects=0
+	    connects=0
+	    disconnects=0
+	    activity_changes=0
+	    steering_success_cnt=0
+	    steering_fail_cnt=0
+	    steering_kick_cnt=0
+	    sticky_kick_cnt=0
+	    probe_bcast_cnt=0
+	    probe_bcast_blocked=0
+	    probe_direct_cnt=0
+	    probe_direct_blocked=0
+	    num_event_records=0
+	    event_record=
+	        none
 .
 )
 
@@ -202,9 +237,25 @@ ref_update_sta_5_after_backoff_expire=$(cat <<-.
 .
 )
 
+ref_update_sta_6_after_backoff_expire=$(cat <<-.
+	CLIENT_UPDATE
+	mac=20:00:00:00:00:00
+	if_name=wlan2
+	blacklist=false
+	rssi_probe_hwm=0
+	rssi_probe_lwm=0
+	rssi_auth_hwm=0
+	rssi_auth_lwm=0
+	rssi_inact_xing=0
+	rssi_high_xing=0
+	rssi_low_xing=0
+	auth_reject_reason=0
+.
+)
+
 ref_dpp_client_after_backoff_expire=$(cat <<-.
 	mac=20:00:00:00:00:00
-	num_band_records=4
+	num_band_records=5
 	    type=2.4G
 	    ifname=wlan0
 	    connected=false
@@ -257,6 +308,25 @@ ref_dpp_client_after_backoff_expire=$(cat <<-.
 
 	    type=5GL
 	    ifname=wlan1
+	    connected=false
+	    rejects=0
+	    connects=0
+	    disconnects=0
+	    activity_changes=0
+	    steering_success_cnt=0
+	    steering_fail_cnt=0
+	    steering_kick_cnt=0
+	    sticky_kick_cnt=0
+	    probe_bcast_cnt=0
+	    probe_bcast_blocked=0
+	    probe_direct_cnt=0
+	    probe_direct_blocked=0
+	    num_event_records=0
+	    event_record=
+	        none
+
+	    type=6G
+	    ifname=wlan2
 	    connected=false
 	    rejects=0
 	    connects=0

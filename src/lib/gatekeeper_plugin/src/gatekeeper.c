@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "gatekeeper_multi_curl.h"
 #include "gatekeeper_single_curl.h"
 #include "gatekeeper_cache.h"
+#include "gatekeeper_hero_stats.h"
 #include "gatekeeper_data.h"
 #include "gatekeeper_msg.h"
 #include "ovsdb_sync.h"
@@ -211,9 +212,9 @@ gatekeeper_report_health_stats(struct fsm_gk_session *fsm_gk_session,
     op.node_id = session->node_id;
 
     /* set observation window */
-    ow.started_at = fsm_gk_session->stat_report_ts;
+    ow.started_at = fsm_gk_session->health_stats_report_ts;
     ow.ended_at = now;
-    fsm_gk_session->stat_report_ts = now;
+    fsm_gk_session->health_stats_report_ts = now;
 
     gatekeeper_report_compute_health_stats(fsm_gk_session, &hs);
 
@@ -348,8 +349,9 @@ gatekeeper_check_attr_cache(struct fsm_policy_req *req,
     }
 
     entry->device_mac = req->device_id;
+    entry->ip_addr = req->ip_addr;
     entry->attribute_type = req_type;
-    entry->attr_name = STRDUP(req->url);
+    entry->attr_name = req->url;
     ret = gkc_lookup_attribute_entry(entry, true);
     req_type_str = gatekeeper_req_type_to_str(req_type);
     LOGT("%s(): %s of type %s, is %s in cache",
@@ -374,7 +376,6 @@ gatekeeper_check_attr_cache(struct fsm_policy_req *req,
         policy_reply->from_cache = true;
     }
 
-    FREE(entry->attr_name);
     FREE(entry->gk_policy);
     FREE(entry->fqdn_redirect);
     FREE(entry);
@@ -526,10 +527,11 @@ gatekeeper_add_attr_cache(struct fsm_policy_req *req,
 
     entry->action = policy_reply->action;
     entry->device_mac = req->device_id;
+    entry->ip_addr = req->ip_addr;
     entry->attribute_type = req_type;
     entry->cache_ttl = policy_reply->cache_ttl;
     entry->categorized = policy_reply->categorized;
-    entry->attr_name = STRDUP(req->url);
+    entry->attr_name = req->url;
     entry->category_id = url_reply->reply_info.gk_info.category_id;
     entry->confidence_level = url_reply->reply_info.gk_info.confidence_level;
     if (url_reply->reply_info.gk_info.gk_policy)
@@ -548,7 +550,6 @@ gatekeeper_add_attr_cache(struct fsm_policy_req *req,
          (ret == true) ? "success" : "failed");
 
     FREE(entry->fqdn_redirect);
-    FREE(entry->attr_name);
     FREE(entry);
     return ret;
 }
@@ -642,12 +643,12 @@ gk_fsm_adjust_ttl(struct fsm_policy_req *req, struct fsm_policy_reply *policy_re
     category_id = url_reply->reply_info.gk_info.category_id;
     if (category_id != GK_NOT_RATED) return;
 
-    LOGD("%s: setting cache ttl for %s to %d seconds", __func__,
-         req->url, GK_UNRATED_TTL);
-
     /* update TTL value only for private IPs */
     ret = is_private_ip(req->url);
     if (ret == false) return;
+
+    LOGD("%s: setting cache ttl for %s to %d seconds", __func__,
+         req->url, GK_UNRATED_TTL);
 
     policy_reply->cache_ttl = GK_UNRATED_TTL;
     policy_reply->cat_unknown_to_service = true;
@@ -752,7 +753,7 @@ gk_purge_mcurl_data(struct fsm_gk_session* gk_session)
         }
 
         /* request is timed out, need to be removed */
-        LOGN("%s() removing request from tree: type %d, id %d policy_req == %p",
+        LOGT("%s() removing request from tree: type %d, id %d policy_req == %p",
              __func__,
              mcurl_data->req_type,
              mcurl_data->req_id,
@@ -798,14 +799,14 @@ gk_add_mcurl_data(struct fsm_session *session,
     gk_verdict->gk_pb = gatekeeper_get_req(session, policy_req, mcurl_data);
     if (gk_verdict->gk_pb == NULL)
     {
-        LOGN("%s(): failed to serialize curl data", __func__);
+        LOGE("%s(): failed to serialize curl data", __func__);
         goto error;
     }
 
     mcurl_data->timestamp = time(NULL);
     mcurl_data->req_type   = policy_req->req_type;
     mcurl_data->gk_verdict = gk_verdict;
-    LOGN("%s(): added curl data for request type: %d, with id %d, gk_verdict: %p, policy_req: %p, policy reply:%p",
+    LOGT("%s(): added curl data for request type: %d, with id %d, gk_verdict: %p, policy_req: %p, policy reply:%p",
          __func__,
          mcurl_data->req_type,
          mcurl_data->req_id,
@@ -832,11 +833,13 @@ gk_process_using_multi_curl(struct fsm_policy_req *policy_req,
 
     session = policy_req->session;
 
+
     fsm_gk_session = gatekeeper_lookup_session(session->service);
     if (fsm_gk_session == NULL) return false;
 
     mcurl_data = gk_add_mcurl_data(session, policy_req, policy_reply);
     if (mcurl_data == NULL) return false;
+    LOGT("%s(): returning mcurl_data == %p, mcurl_data->gk_verdict == %p", __func__, mcurl_data, mcurl_data->gk_verdict);
 
     gk_send_mcurl_request(fsm_gk_session, mcurl_data);
     return true;
@@ -883,7 +886,6 @@ gatekeeper_get_verdict(struct fsm_policy_req *req,
     struct fsm_gk_session *fsm_gk_session;
     struct gk_server_info *server_info;
     struct gatekeeper_offline *offline;
-    struct fsm_policy_req *policy_req;
     struct fqdn_pending_req *fqdn_req;
     struct fsm_gk_verdict *gk_verdict;
     struct fsm_url_request *req_info;
@@ -952,8 +954,6 @@ gatekeeper_get_verdict(struct fsm_policy_req *req,
 
     gk_verdict->policy_req = req;
     gk_verdict->policy_reply = policy_reply;
-    policy_req = gk_verdict->policy_req;
-    fqdn_req = policy_req->fqdn_req;
 
     LOGT("%s: url:%s path:%s", __func__, server_info->server_url, server_info->ca_path);
 
@@ -970,7 +970,7 @@ gatekeeper_get_verdict(struct fsm_policy_req *req,
 
     if (use_mcurl == true)
     {
-        LOGN("%s(): processing request using multi curl", __func__);
+        LOGT("%s(): processing request using multi curl", __func__);
         gk_process_using_multi_curl(req, policy_reply);
         /* set reply type to async, as request is processed using multi curl */
         policy_reply->reply_type = FSM_ASYNC_REPLY;
@@ -1090,7 +1090,7 @@ gatekeeper_init_curl(struct fsm_session *session)
     gk_mgr = gatekeeper_get_mgr();
     if (!gk_mgr->initialized) return false;
 
-    LOGN("%s(): initializing curl", __func__);
+    LOGI("%s(): initializing curl", __func__);
 
     server_info = &fsm_gk_session->gk_server_info;
 
@@ -1103,17 +1103,19 @@ gatekeeper_init_curl(struct fsm_session *session)
         server_info->cert_path = session->ops.get_config(session, "cacert");
     }
 
+    ds_tree_init(&fsm_gk_session->mcurl_data_tree,
+                    gk_mcurl_cmp,
+                    struct gk_mcurl_data,
+                    mcurl_req_node);
+
     if (fsm_gk_session->enable_multi_curl)
     {
-        LOGN("%s(): initializing multi curl", __func__);
+        LOGI("%s(): initializing multi curl", __func__);
         gk_multi_curl_init(fsm_gk_session, session->loop);
-        ds_tree_init(&fsm_gk_session->mcurl_data_tree,
-                     gk_mcurl_cmp,
-                     struct gk_mcurl_data,
-                     mcurl_req_node);
     }
     else
     {
+        LOGT("%s(): initializing single curl..", __func__);
         gk_curl_easy_init(fsm_gk_session, session->loop);
     }
 
@@ -1123,7 +1125,7 @@ gatekeeper_init_curl(struct fsm_session *session)
 void
 gatekeeper_monitor_ssl_table(void)
 {
-    LOGN("%s(): monitoring SSL table", __func__);
+    LOGI("%s(): monitoring SSL table", __func__);
     OVSDB_TABLE_INIT_NO_KEY(SSL);
     OVSDB_TABLE_MONITOR_F(SSL, ((char*[]){"ca_cert", "certificate", "private_key", NULL}));
 }
@@ -1206,7 +1208,8 @@ gatekeeper_module_init(struct fsm_session *session)
     cat_ops->gatekeeper_req = gatekeeper_get_verdict;
 
     now = time(NULL);
-    fsm_gk_session->stat_report_ts = now;
+    fsm_gk_session->health_stats_report_ts = now;
+    fsm_gk_session->hero_stats_report_ts = now;
 
     fsm_gk_session->gk_offline.check_offline = 30;
     fsm_gk_session->gk_offline.provider_offline = false;
@@ -1257,6 +1260,12 @@ gatekeeper_module_init(struct fsm_session *session)
     fsm_client->name = STRDUP("clear_gatekeeper_cache");
     fsm_client->flush_cache = gkc_flush_client;
     fsm_policy_register_client(fsm_client);
+
+    /* Setup hero cache */
+    fsm_gk_session->hero_stats = gkhc_get_aggregator();
+    if (!fsm_gk_session->hero_stats->initialized)
+        gkhc_init_aggregator(fsm_gk_session->hero_stats, session);
+    gkhc_activate_window(fsm_gk_session->hero_stats);
 
     fsm_gk_session->initialized = true;
     LOGD("%s: added session %s", __func__, session->name);
@@ -1349,14 +1358,12 @@ gatekeeper_exit(struct fsm_session *session)
     mgr->initialized = false;
 
     gatekeeper_delete_session(session);
-
-    return;
 }
 
 /**
  * @brief close curl connection if it is ideal for more then
  *        set GK_CURL_TIMEOUT value. When curl request
- *        is made, the connection_time value is udpated.
+ *        is made, the ecurl_connection_time value is udpated.
  *
  * @param ctime current time value
  */
@@ -1368,14 +1375,33 @@ gk_curl_easy_timeout(struct fsm_gk_session *fsm_gk_session, time_t ctime)
 
     curl_info = &fsm_gk_session->ecurl;
 
-    if (curl_info->connection_active == false) return;
+    if (curl_info->ecurl_connection_active == false) return;
 
-    time_diff = ctime - curl_info->connection_time;
+    time_diff = ctime - curl_info->ecurl_connection_time;
 
     if (time_diff < GK_CURL_TIMEOUT) return;
 
     LOGD("%s(): closing curl connection.", __func__);
     gk_curl_easy_cleanup(fsm_gk_session);
+}
+
+void
+gk_multi_curl_timeout(struct fsm_gk_session *fsm_gk_session, time_t ctime)
+{
+    struct gk_curl_multi_info *mcurl_info;
+    double time_diff;
+
+    mcurl_info = &fsm_gk_session->mcurl;
+
+    if (mcurl_info->mcurl_connection_active == false) return;
+
+    time_diff  = ctime - mcurl_info->mcurl_connection_time;
+
+    if (time_diff < GK_CURL_TIMEOUT) return;
+
+    LOGD("%s(): closing multi curl connection due to inactive timeout", __func__);
+
+    gk_curl_multi_cleanup(fsm_gk_session);
 }
 
 /**
@@ -1404,10 +1430,9 @@ gatekeeper_periodic(struct fsm_session *session)
     now = time(NULL);
 
     /* Check if the time has come to report the stats through mqtt */
-    cmp_report = now - fsm_gk_session->stat_report_ts;
+    /* First health stats */
+    cmp_report = now - fsm_gk_session->health_stats_report_ts;
     get_stats = (cmp_report >= fsm_gk_session->health_stats_report_interval);
-
-    /* No need to gather stats, bail */
     if (get_stats)
     {
         /* Report to mqtt */
@@ -1419,11 +1444,27 @@ gatekeeper_periodic(struct fsm_session *session)
         stats->min_lookup_latency = LONG_MAX;
     }
 
+    /* Now check for hero stats */
+    cmp_report = now - fsm_gk_session->hero_stats_report_ts;
+    get_stats = (cmp_report >= fsm_gk_session->hero_stats_report_interval);
+    if (get_stats)
+    {
+        gkhc_close_window(fsm_gk_session->hero_stats);
+
+        /* Report to mqtt */
+        gkhc_send_report(fsm_gk_session->hero_stats, fsm_gk_session->hero_stats_report_topic);
+
+        fsm_gk_session->hero_stats_report_ts = now;
+        gkhc_activate_window(fsm_gk_session->hero_stats);
+    }
+
     /* Proceed to other periodic tasks */
     if ((now - mgr->gk_time) < GK_PERIODIC_INTERVAL) return;
     mgr->gk_time = now;
 
     gk_curl_easy_timeout(fsm_gk_session, now);
+
+    gk_multi_curl_timeout(fsm_gk_session, now);
 
     /* remove expired entries from cache */
     gkc_ttl_cleanup();
@@ -1432,7 +1473,7 @@ gatekeeper_periodic(struct fsm_session *session)
     gk_purge_mcurl_data(fsm_gk_session);
 }
 
-#define GATEKEEPER_REPORT_HEALTH_STATS_INTERVAL (60*10)
+#define GATEKEEPER_REPORT_STATS_INTERVAL (60*10)
 
 void
 gatekeeper_update(struct fsm_session *session)
@@ -1444,6 +1485,8 @@ gatekeeper_update(struct fsm_session *session)
     char *mcurl_config;
     long interval;
     int val;
+
+    LOGT("%s(): gatekeeper configuration udated, reading new config", __func__);
 
     fsm_gk_session = (struct fsm_gk_session *)session->handler_ctxt;
     if (!fsm_gk_session) return;
@@ -1482,21 +1525,36 @@ gatekeeper_update(struct fsm_session *session)
 
     server_info->server_url = session->ops.get_config(session, "gk_url");
 
-    fsm_gk_session->health_stats_report_interval = (long)GATEKEEPER_REPORT_HEALTH_STATS_INTERVAL;
+    /* Health stats configuration */
+    fsm_gk_session->health_stats_report_interval = (long)GATEKEEPER_REPORT_STATS_INTERVAL;
     hs_report_interval = session->ops.get_config(session,
                                                  "wc_health_stats_interval_secs");
     if (hs_report_interval != NULL)
     {
-        interval = strtoul(hs_report_interval,  NULL, 10);
+        interval = strtoul(hs_report_interval, NULL, 10);
         fsm_gk_session->health_stats_report_interval = (long)interval;
     }
     hs_report_topic = session->ops.get_config(session,
                                               "wc_health_stats_topic");
     fsm_gk_session->health_stats_report_topic = hs_report_topic;
 
+    /* Hero stats configuration */
+    fsm_gk_session->hero_stats_report_interval = (long)GATEKEEPER_REPORT_STATS_INTERVAL;
+    hs_report_interval = session->ops.get_config(session,
+                                                 "wc_hero_stats_interval_secs");
+    if (hs_report_interval != NULL)
+    {
+        interval = strtoul(hs_report_interval, NULL, 10);
+        fsm_gk_session->hero_stats_report_interval = (long)interval;
+    }
+    hs_report_topic = session->ops.get_config(session,
+                                              "wc_hero_stats_topic");
+    fsm_gk_session->hero_stats_report_topic = hs_report_topic;
+
     /* As long as the GK cache is not persisted, there are no chance a flush
      * rule will have any impact at startup.
      */
+
     LOGT("%s: session %s is multi-curl %s", __func__, session->name,
          fsm_gk_session->enable_multi_curl ? "enabled" : "disabled");
 }
@@ -1546,8 +1604,6 @@ gk_clean_mcurl_tree(ds_tree_t *tree)
         ds_tree_remove(tree, to_remove);
         free_mcurl_data(to_remove);
     }
-
-    return;
 }
 
 /**
@@ -1614,8 +1670,4 @@ gatekeeper_delete_session(struct fsm_session *session)
     ds_tree_remove(sessions, gk_session);
     gk_clean_mcurl_tree(&gk_session->mcurl_data_tree);
     gatekeeper_free_session(gk_session);
-
-    return;
 }
-
-

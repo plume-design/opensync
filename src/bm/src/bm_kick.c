@@ -941,7 +941,7 @@ bm_kick_check_sticky_kick(bm_client_t *client)
      */
     time_t now;
 
-    if (client->pref_allowed == BM_CLIENT_PREF_ALLOWED_ALWAYS) {
+    if (client->pref_5g_allowed == BM_CLIENT_PREF_5G_ALLOWED_ALWAYS) {
         if (!bm_neighbor_number(client)) {
             /*
              * Empty neighbor table and we always prefer bs_allowed, this mean one
@@ -953,7 +953,7 @@ bm_kick_check_sticky_kick(bm_client_t *client)
         }
     }
 
-    if (client->pref_allowed == BM_CLIENT_PREF_ALLOWED_NON_DFS &&
+    if (client->pref_5g_allowed == BM_CLIENT_PREF_5G_ALLOWED_NON_DFS &&
         bm_neighbor_number(client) &&
         bm_neighbor_only_dfs_channels(client)) {
         LOGN("bm_kick: '%s' skip sticky kick, only DFS channels", client->mac_addr);

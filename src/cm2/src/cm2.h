@@ -30,12 +30,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "schema.h"
 #include "ds_list.h"
 #include "ev.h"
-#ifdef BUILD_HAVE_LIBCARES
+#ifdef CONFIG_LIBEVX_USE_CARES
 #include "evx.h"
 #endif
 #include "target.h"
 
-#define IFNAME_SIZE 128 + 1
 #define IFTYPE_SIZE 128 + 1
 
 #define VIF_TYPE_NAME    "vif"
@@ -102,7 +101,7 @@ typedef enum
 #define CM2_HOSTNAME_MAX 256
 #define CM2_PROTO_MAX 6
 
-#ifdef BUILD_HAVE_LIBCARES
+#ifdef CONFIG_LIBEVX_USE_CARES
 typedef enum
 {
     CM2_ARES_R_NOT_STARTED,
@@ -136,7 +135,7 @@ typedef struct
     char proto[CM2_PROTO_MAX];
     char hostname[CM2_HOSTNAME_MAX];
     int  port;
-#ifndef BUILD_HAVE_LIBCARES
+#ifndef CONFIG_LIBEVX_USE_CARES
     struct addrinfo *ai_list;
     struct addrinfo *ai_curr;
 #else
@@ -194,10 +193,10 @@ typedef struct
 
 typedef struct
 {
-    char        if_name[IFNAME_SIZE];
+    char        if_name[C_IFNAME_LEN];
     char        if_type[IFTYPE_SIZE];
     bool        is_bridge;
-    char        bridge_name[IFNAME_SIZE];
+    char        bridge_name[C_IFNAME_LEN];
     bool        is_used;
     bool        restart_pending;
     int         priority;
@@ -236,7 +235,7 @@ typedef struct
     uint8_t           ble_status;
     bool              ntp_check;
     struct ev_loop    *loop;
-#ifdef BUILD_HAVE_LIBCARES
+#ifdef CONFIG_LIBEVX_USE_CARES
     struct evx_ares   eares;
 #endif
     bool              have_manager;
@@ -340,9 +339,21 @@ void cm2_clear_addr(cm2_addr_t *addr);
 bool cm2_parse_resource(cm2_addr_t *addr, cm2_dest_e dest);
 bool cm2_set_addr(cm2_dest_e dest, char *resource);
 bool cm2_is_addr_resolved(const cm2_addr_t *addr);
-#ifndef BUILD_HAVE_LIBCARES
+#ifndef CONFIG_LIBEVX_USE_CARES
 int  cm2_getaddrinfo(char *hostname, struct addrinfo **res, char *msg);
 struct addrinfo* cm2_get_next_addrinfo(cm2_addr_t *addr);
+#endif
+#ifdef CONFIG_LIBEVX_USE_CARES
+int cm2_start_cares(void);
+void cm2_stop_cares(void);
+#else
+static inline int cm2_start_cares(void)
+{
+    return true;
+}
+static inline void cm2_stop_cares(void)
+{
+}
 #endif
 bool cm2_resolve(cm2_dest_e dest);
 void cm2_resolve_timeout(void);

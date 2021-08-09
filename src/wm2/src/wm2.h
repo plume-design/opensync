@@ -39,7 +39,10 @@ extern ovsdb_table_t table_Wifi_Associated_Clients;
 extern ovsdb_table_t table_Openflow_Tag;
 
 int     wm2_radio_init(void);
+void    wm2_radio_delayed_soon(void);
 bool    wm2_radio_onboard_vifs(char *buf, size_t len);
+void    wm2_rconf_recalc_fixup_nop_channel(struct schema_Wifi_Radio_Config *rconf,
+                                           const struct schema_Wifi_Radio_State *rstate);
 bool    wm2_clients_update(struct schema_Wifi_Associated_Clients *client,
                            char *vif,
                            bool associated);

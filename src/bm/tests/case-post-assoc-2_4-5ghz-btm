@@ -13,6 +13,7 @@ update_sta() {
 
 	diff_vars "$ref_sta_update_24" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
 	diff_vars "$ref_sta_update_5" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_sta_update_6" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
 }
 
 upsteer_btm() {
