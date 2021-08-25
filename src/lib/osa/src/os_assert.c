@@ -24,6 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include <signal.h>
+
 #include "log.h"
 
 #include "osa_assert.h"
@@ -43,4 +45,6 @@ void osa_assert_dump(
     vsnprintf(buf, sizeof(buf), fmt, va);
     LOG(ALERT, "%s: ASSERT: %s, %s:%d %s", func, cond, file, line, buf);
     va_end(va);
+
+    raise(SIGABRT);
 }

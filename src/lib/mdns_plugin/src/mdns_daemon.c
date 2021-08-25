@@ -98,16 +98,6 @@ mdnsd_ctxt_update(struct mdns_session *md_session)
 
     if (!md_session || !pctxt) return;
 
-    // Check for loglevel changes to update daemon.
-    if (LOG_SEVERITY_ENABLED(LOG_SEVERITY_DEBUG))
-    {
-        LOGD("mdns_plugin: Setting daemon's log level to Debug");
-        mdnsd_log_level("debug");
-    } else {
-        LOGD("mdns_plugin: Setting daemon's log level to Notice");
-        mdnsd_log_level("notice");
-    }
-
     // Get the latest mdns sip.
     rc = mdnsd_ctxt_set_srcip(md_session);
     // Get the latest mdns tx and tap intfs.

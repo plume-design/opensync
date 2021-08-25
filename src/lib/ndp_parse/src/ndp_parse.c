@@ -263,8 +263,9 @@ size_t
 ndp_parse_solicit(struct ndp_parser *parser)
 {
     struct net_header_parser *net_parser;
-    struct nd_neighbor_solicit *ns;
+    struct nd_neighbor_solicit ns;
     struct nd_opt_hdr *opt_hdr;
+    struct in6_addr *addr;
     os_macaddr_t *opt_mac;
     uint8_t opt_type;
     size_t opt_len;
@@ -273,14 +274,21 @@ ndp_parse_solicit(struct ndp_parser *parser)
 
     net_parser = parser->net_parser;
     len = parser->icmpv6_len;
-    if (len < sizeof(*ns)) return 0;
+    if (len < sizeof(ns.nd_ns_target)) return 0;
 
-    ns = (struct nd_neighbor_solicit *)(net_parser->data);
+    memset(&ns, 0, sizeof(struct nd_neighbor_solicit));
+
+    /* ICMPv6 hdr */
+    memcpy(&ns.nd_ns_hdr, &net_parser->ip_pld.icmp6hdr, sizeof(struct icmp6_hdr));
+
+    /* target address */
+    addr = (struct in6_addr *)(parser->data);
+    memcpy(&ns.nd_ns_target, addr, sizeof(struct in6_addr));
 
     /* Check for option */
-    len -= sizeof(*ns);
-    net_parser->data += sizeof(*ns);
-    net_parser->parsed += sizeof(*ns);
+    len -= sizeof(struct in6_addr);
+    net_parser->data += sizeof(struct in6_addr);
+    net_parser->parsed += sizeof(struct in6_addr);
 
     opt_mac = NULL;
     if (len > 0)
@@ -322,11 +330,12 @@ size_t
 ndp_parse_advert(struct ndp_parser *parser)
 {
     struct net_header_parser *net_parser;
-    struct nd_neighbor_advert *na;
+    struct nd_neighbor_advert na;
     struct sockaddr_storage *dst;
     struct nd_opt_hdr *opt_hdr;
     struct eth_header *eth_hdr;
     struct sockaddr_in6 *in6;
+    struct in6_addr *addr;
     os_macaddr_t *opt_mac;
     uint8_t opt_type;
     size_t opt_len;
@@ -337,14 +346,21 @@ ndp_parse_advert(struct ndp_parser *parser)
 
     net_parser = parser->net_parser;
     len = parser->icmpv6_len;
-    if (len < sizeof(*na)) return 0;
+    if (len < sizeof(na.nd_na_target)) return 0;
 
-    na = (struct nd_neighbor_advert *)(net_parser->data);
+    memset(&na, 0, sizeof(struct nd_neighbor_advert));
+
+    /* ICMPv6 hdr */
+    memcpy(&na.nd_na_hdr, &net_parser->ip_pld.icmp6hdr, sizeof(struct icmp6_hdr));
+
+    /* target address */
+    addr = (struct in6_addr *)(parser->data);
+    memcpy(&na.nd_na_target, addr, sizeof(struct in6_addr));
 
     /* Check for option */
-    len -= sizeof(*na);
-    net_parser->data += sizeof(*na);
-    net_parser->parsed += sizeof(*na);
+    len -= sizeof(struct in6_addr);
+    net_parser->data += sizeof(struct in6_addr);
+    net_parser->parsed += sizeof(struct in6_addr);
 
     if (len > 0)
     {
@@ -372,7 +388,7 @@ ndp_parse_advert(struct ndp_parser *parser)
 
     memset(in6, 0, sizeof(struct sockaddr_in6));
     in6->sin6_family = AF_INET6;
-    memcpy(&in6->sin6_addr, &na->nd_na_target, sizeof(in6->sin6_addr));
+    memcpy(&in6->sin6_addr, &na.nd_na_target, sizeof(in6->sin6_addr));
 
     if (parser->opt_mac)
     {
@@ -415,9 +431,7 @@ ndp_parse_content(struct ndp_parser *parser)
 
     /* basic validation */
     net_parser = parser->net_parser;
-    len = parser->icmpv6_len;
-    if (len < sizeof(*icmphdr)) return 0;
-    icmphdr = (struct icmp6_hdr *)(net_parser->data);
+    icmphdr = net_parser->ip_pld.icmp6hdr;
     code = icmphdr->icmp6_code;
     if (code != 0) return 0;
 

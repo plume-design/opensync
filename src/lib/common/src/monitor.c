@@ -41,6 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "os.h"
 #include "os_time.h"
+#include "os_backtrace.h"
 #include "osa_assert.h"
 #include "monitor.h"
 

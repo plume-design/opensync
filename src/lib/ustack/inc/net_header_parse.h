@@ -38,6 +38,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <netinet/ip6.h>
 #include <netinet/udp.h>
 #include <netinet/tcp.h>
+#include <netinet/ip_icmp.h>
+#include <netinet/icmp6.h>
 #include <netinet/in.h>
 
 #include "log.h"
@@ -96,6 +98,8 @@ struct net_header_parser
         void *payload;
         struct udphdr *udphdr;
         struct tcphdr *tcphdr;
+        struct icmphdr *icmphdr;
+        struct icmp6_hdr *icmp6hdr;
     } ip_pld;
     uint8_t *data;
     uint8_t *start;
@@ -264,6 +268,26 @@ size_t net_header_parse_tcp(struct net_header_parser *parser);
  *         0 otherwise
  */
 size_t net_header_parse_udp(struct net_header_parser *parser);
+
+
+/**
+ * @brief parse the icmp header of a pcap capture
+ *
+ * @param parser the parsed data container
+ * @return the buffer offset passed the udp header if successful,
+ *         0 otherwise
+ */
+size_t net_header_parse_icmp(struct net_header_parser *parser);
+
+
+/**
+ * @brief parse the icmp6 header of a pcap capture
+ *
+ * @param parser the parsed data container
+ * @return the buffer offset passed the udp header if successful,
+ *         0 otherwise
+ */
+size_t net_header_parse_icmp6(struct net_header_parser *parser);
 
 
 /**

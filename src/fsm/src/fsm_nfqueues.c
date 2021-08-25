@@ -149,6 +149,19 @@ fsm_nfq_net_header_parse(struct nfq_pkt_info *pkt_info, void *data)
         if (len == 0) return;
     }
 
+    if (ip_protocol == IPPROTO_ICMP)
+    {
+        len = net_header_parse_icmp(&net_parser);
+        if (len == 0) return;
+    }
+
+    if (ip_protocol == IPPROTO_ICMPV6)
+    {
+        len = net_header_parse_icmp6(&net_parser);
+        if (len == 0) return;
+    }
+
+
     session = (struct fsm_session *)data;
     parser_ops = &session->p_ops->parser_ops;
     parser_ops->handler(session, &net_parser);

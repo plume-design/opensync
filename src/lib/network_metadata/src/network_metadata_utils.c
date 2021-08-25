@@ -492,6 +492,7 @@ struct net_md_flow_key * set_net_md_flow_key(struct net_md_flow_key *lkey)
     key->fstart = lkey->fstart;
     key->fend = lkey->fend;
     key->tcp_flags = lkey->tcp_flags;
+    key->icmp_type = lkey->icmp_type;
     return key;
 
 err_free_src_ip:

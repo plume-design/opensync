@@ -145,9 +145,8 @@ void test_icmpv6_pcap_parse(void)
     TEST_ASSERT_EQUAL_INT(IPPROTO_ICMPV6, parser->ip_protocol);
 
     /* Validate the icmpv6 request */
-    icmphdr = (struct icmp6_hdr *)(parser->data);
-    len = sizeof(*icmphdr);
-    TEST_ASSERT_EQUAL_UINT(parser->packet_len, parser->parsed + len);
+    icmphdr = parser->ip_pld.icmp6hdr;
+    TEST_ASSERT_EQUAL_UINT(parser->packet_len, parser->parsed);
     TEST_ASSERT_EQUAL_UINT(ICMP6_ECHO_REQUEST, icmphdr->icmp6_type);
 }
 
@@ -346,7 +345,7 @@ void test_icmp4_request(void)
 
     /* icmp hdr validation */
     TEST_ASSERT_NOT_NULL(parser->eth_pld.payload);
-    icmp_hdr = (struct icmphdr *)(parser->data);
+    icmp_hdr = parser->ip_pld.icmphdr;
     TEST_ASSERT_EQUAL_UINT8(8, icmp_hdr->type);
     TEST_ASSERT_EQUAL_UINT8(0, icmp_hdr->code);
     TEST_ASSERT_EQUAL_UINT16(3320, icmp_hdr->un.echo.id);
@@ -390,7 +389,7 @@ void test_icmp4_reply(void)
 
     /* icmp hdr validation */
     TEST_ASSERT_NOT_NULL(parser->eth_pld.payload);
-    icmp_hdr = (struct icmphdr *)(parser->data);
+    icmp_hdr = parser->ip_pld.icmphdr;
     TEST_ASSERT_EQUAL_UINT8(0, icmp_hdr->type);
     TEST_ASSERT_EQUAL_UINT8(0, icmp_hdr->code);
 }

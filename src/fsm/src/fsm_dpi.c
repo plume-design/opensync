@@ -852,6 +852,82 @@ fsm_dpi_set_udp_acc_direction(struct fsm_dpi_dispatcher *dispatch,
 
 
 /**
+ * @brief set ICMP accumulator flow direction
+ *
+ * Sets the accumulator direction (outbound, inbound, undetermined)
+ * @param aggr the aggregator the accumulator belongs
+ * @param the accumulator to be tagged with a direction
+ */
+bool
+fsm_dpi_set_icmp_acc_direction(struct fsm_dpi_dispatcher *dispatch,
+                               struct net_md_stats_accumulator *acc)
+{
+    struct net_md_flow_key *key;
+    bool smac_found;
+    bool dmac_found;
+    uint8_t ipproto;
+    bool is_icmp;
+
+    if (dispatch == NULL) return false;
+    if (acc == NULL) return false;
+
+    key = acc->key;
+    if (key == NULL) return false;
+
+    ipproto = key->ipprotocol;
+    is_icmp = (ipproto == IPPROTO_ICMP);
+    is_icmp |= (ipproto == IPPROTO_ICMPV6);
+    if (!is_icmp) return false;
+
+    smac_found = fsm_dpi_find_mac(key->smac, dispatch);
+    dmac_found = fsm_dpi_find_mac(key->dmac, dispatch);
+
+    if (!(smac_found || dmac_found)) return false;
+
+    if (smac_found && dmac_found)
+    {
+        acc->direction = NET_MD_ACC_LAN2LAN_DIR;
+    }
+    else if (smac_found)
+    {
+        acc->direction = NET_MD_ACC_OUTBOUND_DIR;
+        acc->originator = NET_MD_ACC_ORIGINATOR_SRC;
+        if (ipproto == IPPROTO_ICMP && key->icmp_type == ICMP_ECHOREPLY)
+        {
+            acc->direction = NET_MD_ACC_INBOUND_DIR;
+            acc->originator = NET_MD_ACC_ORIGINATOR_DST;
+        }
+
+        if (ipproto == IPPROTO_ICMPV6 && key->icmp_type == ICMP6_ECHO_REPLY)
+        {
+            acc->direction = NET_MD_ACC_INBOUND_DIR;
+            acc->originator = NET_MD_ACC_ORIGINATOR_DST;
+        }
+    }
+    else if (dmac_found)
+    {
+        acc->direction = NET_MD_ACC_OUTBOUND_DIR;
+        acc->originator = NET_MD_ACC_ORIGINATOR_DST;
+        if (ipproto == IPPROTO_ICMP && key->icmp_type == ICMP_ECHO)
+        {
+            acc->direction = NET_MD_ACC_INBOUND_DIR;
+            acc->originator = NET_MD_ACC_ORIGINATOR_SRC;
+        }
+
+        if (ipproto == IPPROTO_ICMPV6 && key->icmp_type == ICMP6_ECHO_REQUEST)
+        {
+            acc->direction = NET_MD_ACC_INBOUND_DIR;
+            acc->originator = NET_MD_ACC_ORIGINATOR_SRC;
+        }
+    }
+
+    fsm_dpi_update_acc_key(acc);
+
+    return (acc->direction != NET_MD_ACC_UNSET_DIR);
+}
+
+
+/**
  * @brief set the accumulator flow direction
  *
  * Sets the accumulator direction (outbound, inbound, undetermined)
@@ -869,6 +945,9 @@ fsm_dpi_set_acc_direction(struct fsm_dpi_dispatcher *dispatch,
     if (rc) return rc;
 
     rc = fsm_dpi_set_udp_acc_direction(dispatch, acc);
+    if (rc) return rc;
+
+    rc = fsm_dpi_set_icmp_acc_direction(dispatch, acc);
 
     return rc;
 }
@@ -1405,7 +1484,20 @@ fsm_net_parser_to_acc(struct net_header_parser *net_parser,
         key.tcp_flags |= (tcphdr->syn ? FSM_TCP_SYN : 0);
         key.tcp_flags |= (tcphdr->ack ? FSM_TCP_ACK : 0);
     }
+    else if (key.ipprotocol == IPPROTO_ICMP)
+    {
+        struct icmphdr *icmphdr;
 
+        icmphdr = net_parser->ip_pld.icmphdr;
+        key.icmp_type = icmphdr->type;
+    }
+    else if (key.ipprotocol == IPPROTO_ICMPV6)
+    {
+        struct icmp6_hdr *icmp6hdr;
+
+        icmp6hdr = net_parser->ip_pld.icmp6hdr;
+        key.icmp_type = icmp6hdr->icmp6_type;
+    }
     acc = net_md_lookup_acc(aggr, &key);
 
     return acc;
@@ -1457,6 +1549,7 @@ fsm_dispatch_pkt(struct fsm_session *session,
     acc = net_parser->acc;
 
     if (acc == NULL) return;
+    mgr = fsm_get_mgr();
 
     if (acc->dpi_done != 0)
     {
@@ -1468,14 +1561,15 @@ fsm_dispatch_pkt(struct fsm_session *session,
                       NF_UTIL_NFQ_DROP : NF_UTIL_NFQ_ACCEPT;
             nf_queue_set_verdict(net_parser->packet_id, verdict);
         }
-
+        else
+        {
+            mgr->set_dpi_state(net_parser, acc->dpi_done);
+        }
         return;
     }
 
     tree = acc->dpi_plugins;
     if (tree == NULL) return;
-
-    mgr = fsm_get_mgr();
 
     info = ds_tree_head(tree);
     if (info == NULL) return;

@@ -3067,6 +3067,525 @@ test_11_dpi_dispatcher_reserved_port_originator(void)
     TEST_ASSERT_NULL(info);
 }
 
+
+/**
+ * @brief validate the registration of a dpi plugin
+ *
+ * The dpi plugin is registered first.
+ * The dpi dispatch plugin is registered thereafter.
+ * Verify protocol is ICMP or not.
+ * Validate ICMP type.
+ * Verify flow direction and originator of each packet.
+ * Send Protobuf to cloud.
+ * The dpi plugin is then removed.
+ */
+void
+test_12_dpi_dispatcher_icmp_req_reply(void)
+{
+    struct schema_Flow_Service_Manager_Config *conf;
+    union fsm_dpi_context *dispatcher_dpi_context;
+    union fsm_dpi_context *plugin_dpi_context;
+    struct fsm_dpi_dispatcher *dpi_dispatcher;
+    struct fsm_dpi_plugin *plugin_lookup;
+    struct net_header_parser *net_parser;
+    struct fsm_parser_ops *dispatch_ops;
+    struct fsm_dpi_flow_info *info;
+    struct fsm_session *dispatcher;
+    struct net_md_aggregator *aggr;
+    struct fsm_session *plugin;
+    ds_tree_t *dpi_plugins;
+    ds_tree_t *sessions;
+    uint16_t originator;
+    uint16_t direction;
+    char *mqtt_topic;
+    size_t icmp_type;
+    size_t protocol;
+    size_t len;
+    bool ret;
+
+    /* Add a dpi plugin session */
+    conf = &g_confs[19];
+    fsm_add_session(conf);
+    sessions = fsm_get_sessions();
+    plugin = ds_tree_find(sessions, conf->handler);
+    TEST_ASSERT_NOT_NULL(plugin);
+    ret = fsm_is_dpi(plugin);
+    TEST_ASSERT_TRUE(ret);
+    LOGI("DPI Plugin is success ");
+
+    /* Add a dpi dispatcher session */
+    conf = &g_confs[18];
+    fsm_add_session(conf);
+    dispatcher = ds_tree_find(sessions, conf->handler);
+    TEST_ASSERT_NOT_NULL(dispatcher);
+    ret = fsm_is_dpi(dispatcher);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Validate that the dpi plugin is registered to the dispatcher */
+    dispatcher_dpi_context = dispatcher->dpi;
+    TEST_ASSERT_NOT_NULL(dispatcher_dpi_context);
+    plugin_dpi_context = plugin->dpi;
+    TEST_ASSERT_NOT_NULL(plugin_dpi_context);
+    dpi_plugins = &dispatcher_dpi_context->dispatch.plugin_sessions;
+    plugin_lookup = ds_tree_find(dpi_plugins, plugin->name);
+    TEST_ASSERT_NOT_NULL(plugin_lookup);
+    TEST_ASSERT_TRUE(plugin_lookup->session == plugin);
+    TEST_ASSERT_TRUE(plugin_lookup->bound);
+
+    dpi_dispatcher = &dispatcher_dpi_context->dispatch;
+    net_parser = &dpi_dispatcher->net_parser;
+    aggr = dpi_dispatcher->aggr;
+
+#if defined(__x86_64__)
+    /* Set the send_report routine of the aggregator */
+    aggr->send_report = test_send_report;
+#endif
+
+    /* OUTBOUND PING REQUEST */
+    /* ICMP ECHO Packet */
+    PREPARE_UT(pkt183, net_parser);
+    len = net_header_parse(net_parser);
+    TEST_ASSERT_TRUE(len != 0);
+
+    /* Call the dispatcher's packet handler */
+    dispatch_ops = &dispatcher->p_ops->parser_ops;
+    TEST_ASSERT_NOT_NULL(dispatch_ops->handler);
+    dispatch_ops->handler(dispatcher, net_parser);
+
+    /* Validate that an accumulator was created */
+    TEST_ASSERT_NOT_NULL(net_parser->acc);
+
+    /* Validate that the accumulator has plugins recorded */
+    TEST_ASSERT_NOT_NULL(net_parser->acc->dpi_plugins);
+
+    /* Validate that the accumulator is aware of the plugin */
+    info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
+    TEST_ASSERT_NOT_NULL(info);
+    TEST_ASSERT_TRUE(info->session == plugin);
+
+    /* Validate packet is ICMP or not */
+    protocol = net_parser->acc->key->ipprotocol;
+    TEST_ASSERT_EQUAL_INT(protocol, IPPROTO_ICMP);
+
+    /* Validate ICMP type */
+    icmp_type = net_parser->acc->key->icmp_type;
+    TEST_ASSERT_EQUAL_INT(icmp_type, ICMP_ECHO);
+
+    originator = net_parser->acc->originator;
+    TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_SRC);
+
+    direction = net_parser->acc->direction;
+    TEST_ASSERT_EQUAL_INT(direction, NET_MD_ACC_OUTBOUND_DIR);
+
+    net_parser->acc->report = true;
+
+    /* Close the flows observation window */
+    net_md_close_active_window(aggr);
+
+    mqtt_topic = plugin->ops.get_config(plugin, "mqtt_v");
+    ret = aggr->send_report(aggr, mqtt_topic);
+    TEST_ASSERT_TRUE(ret);
+
+    /* ICMP Reply Packet */
+    PREPARE_UT(pkt184, net_parser);
+    len = net_header_parse(net_parser);
+    TEST_ASSERT_TRUE(len != 0);
+
+    /* Call the dispatcher's packet handler */
+    dispatch_ops = &dispatcher->p_ops->parser_ops;
+    TEST_ASSERT_NOT_NULL(dispatch_ops->handler);
+    dispatch_ops->handler(dispatcher, net_parser);
+
+    /* Validate that an accumulator was created */
+    TEST_ASSERT_NOT_NULL(net_parser->acc);
+
+    /* Validate that the accumulator has plugins recorded */
+    TEST_ASSERT_NOT_NULL(net_parser->acc->dpi_plugins);
+
+    /* Validate that the accumulator is aware of the plugin */
+    info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
+    TEST_ASSERT_NOT_NULL(info);
+    TEST_ASSERT_TRUE(info->session == plugin);
+
+    /* Validate packet is ICMP or not */
+    protocol = net_parser->acc->key->ipprotocol;
+    TEST_ASSERT_EQUAL_INT(protocol, IPPROTO_ICMP);
+
+    /* Validate ICMP type */
+    icmp_type = net_parser->acc->key->icmp_type;
+    TEST_ASSERT_EQUAL_INT(icmp_type, ICMP_ECHOREPLY);
+
+    originator = net_parser->acc->originator;
+    TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_DST);
+
+    direction = net_parser->acc->direction;
+    TEST_ASSERT_EQUAL_INT(direction, NET_MD_ACC_OUTBOUND_DIR);
+
+    net_parser->acc->report = true;
+
+    /* Close the flows observation window */
+    net_md_close_active_window(aggr);
+
+    mqtt_topic = plugin->ops.get_config(plugin, "mqtt_v");
+    ret = aggr->send_report(aggr, mqtt_topic);
+    TEST_ASSERT_TRUE(ret);
+
+    /* INBOUND PING REQUEST */
+    /* ICMP ECHO Packet */
+    PREPARE_UT(pkt185, net_parser);
+    len = net_header_parse(net_parser);
+    TEST_ASSERT_TRUE(len != 0);
+
+    /* Call the dispatcher's packet handler */
+    dispatch_ops = &dispatcher->p_ops->parser_ops;
+    TEST_ASSERT_NOT_NULL(dispatch_ops->handler);
+    dispatch_ops->handler(dispatcher, net_parser);
+
+    /* Validate that an accumulator was created */
+    TEST_ASSERT_NOT_NULL(net_parser->acc);
+
+    /* Validate that the accumulator has plugins recorded */
+    TEST_ASSERT_NOT_NULL(net_parser->acc->dpi_plugins);
+
+    /* Validate that the accumulator is aware of the plugin */
+    info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
+    TEST_ASSERT_NOT_NULL(info);
+    TEST_ASSERT_TRUE(info->session == plugin);
+
+    /* Validate packet is ICMP or not */
+    protocol = net_parser->acc->key->ipprotocol;
+    TEST_ASSERT_EQUAL_INT(protocol, IPPROTO_ICMP);
+
+    /* Validate ICMP type */
+    icmp_type = net_parser->acc->key->icmp_type;
+    TEST_ASSERT_EQUAL_INT(icmp_type, ICMP_ECHO);
+
+    originator = net_parser->acc->originator;
+    TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_SRC);
+
+    direction = net_parser->acc->direction;
+    TEST_ASSERT_EQUAL_INT(direction, NET_MD_ACC_INBOUND_DIR);
+
+    net_parser->acc->report = true;
+
+    /* Close the flows observation window */
+    net_md_close_active_window(aggr);
+
+    mqtt_topic = plugin->ops.get_config(plugin, "mqtt_v");
+    ret = aggr->send_report(aggr, mqtt_topic);
+    TEST_ASSERT_TRUE(ret);
+
+    /* ICMP Reply Packet */
+    PREPARE_UT(pkt186, net_parser);
+    len = net_header_parse(net_parser);
+    TEST_ASSERT_TRUE(len != 0);
+
+    /* Call the dispatcher's packet handler */
+    dispatch_ops = &dispatcher->p_ops->parser_ops;
+    TEST_ASSERT_NOT_NULL(dispatch_ops->handler);
+    dispatch_ops->handler(dispatcher, net_parser);
+
+    /* Validate that an accumulator was created */
+    TEST_ASSERT_NOT_NULL(net_parser->acc);
+
+    /* Validate that the accumulator has plugins recorded */
+    TEST_ASSERT_NOT_NULL(net_parser->acc->dpi_plugins);
+
+    /* Validate that the accumulator is aware of the plugin */
+    info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
+    TEST_ASSERT_NOT_NULL(info);
+    TEST_ASSERT_TRUE(info->session == plugin);
+
+    /* Validate packet is ICMP or not */
+    protocol = net_parser->acc->key->ipprotocol;
+    TEST_ASSERT_EQUAL_INT(protocol, IPPROTO_ICMP);
+
+    /* Validate ICMP type */
+    icmp_type = net_parser->acc->key->icmp_type;
+    TEST_ASSERT_EQUAL_INT(icmp_type, ICMP_ECHOREPLY);
+
+    originator = net_parser->acc->originator;
+    TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_DST);
+
+    direction = net_parser->acc->direction;
+    TEST_ASSERT_EQUAL_INT(direction, NET_MD_ACC_INBOUND_DIR);
+
+    net_parser->acc->report = true;
+
+    /* Close the flows observation window */
+    net_md_close_active_window(aggr);
+
+    mqtt_topic = plugin->ops.get_config(plugin, "mqtt_v");
+    ret = aggr->send_report(aggr, mqtt_topic);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Remove the dpi plugin session */
+    conf = &g_confs[19];
+    fsm_delete_session(conf);
+    info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
+    TEST_ASSERT_NULL(info);
+}
+
+
+/**
+ * @brief validate the registration of a dpi plugin
+ *
+ * The dpi plugin is registered first.
+ * The dpi dispatch plugin is registered thereafter.
+ * Verify protocol is ICMPv6 or not.
+ * Validate ICMPv6 type.
+ * Verify flow direction and originator of each packet.
+ * Send Protobuf to cloud.
+ * The dpi plugin is then removed.
+ */
+void
+test_13_dpi_dispatcher_icmpv6_req_reply(void)
+{
+    struct schema_Flow_Service_Manager_Config *conf;
+    union fsm_dpi_context *dispatcher_dpi_context;
+    union fsm_dpi_context *plugin_dpi_context;
+    struct fsm_dpi_dispatcher *dpi_dispatcher;
+    struct fsm_dpi_plugin *plugin_lookup;
+    struct net_header_parser *net_parser;
+    struct fsm_parser_ops *dispatch_ops;
+    struct fsm_dpi_flow_info *info;
+    struct fsm_session *dispatcher;
+    struct net_md_aggregator *aggr;
+    struct fsm_session *plugin;
+    ds_tree_t *dpi_plugins;
+    ds_tree_t *sessions;
+    uint16_t originator;
+    uint16_t direction;
+    char *mqtt_topic;
+    size_t icmp_type;
+    size_t protocol;
+    size_t len;
+    bool ret;
+
+    /* Add a dpi plugin session */
+    conf = &g_confs[19];
+    fsm_add_session(conf);
+    sessions = fsm_get_sessions();
+    plugin = ds_tree_find(sessions, conf->handler);
+    TEST_ASSERT_NOT_NULL(plugin);
+    ret = fsm_is_dpi(plugin);
+    TEST_ASSERT_TRUE(ret);
+    LOGI("DPI Plugin is success ");
+
+    /* Add a dpi dispatcher session */
+    conf = &g_confs[18];
+    fsm_add_session(conf);
+    dispatcher = ds_tree_find(sessions, conf->handler);
+    TEST_ASSERT_NOT_NULL(dispatcher);
+    ret = fsm_is_dpi(dispatcher);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Validate that the dpi plugin is registered to the dispatcher */
+    dispatcher_dpi_context = dispatcher->dpi;
+    TEST_ASSERT_NOT_NULL(dispatcher_dpi_context);
+    plugin_dpi_context = plugin->dpi;
+    TEST_ASSERT_NOT_NULL(plugin_dpi_context);
+    dpi_plugins = &dispatcher_dpi_context->dispatch.plugin_sessions;
+    plugin_lookup = ds_tree_find(dpi_plugins, plugin->name);
+    TEST_ASSERT_NOT_NULL(plugin_lookup);
+    TEST_ASSERT_TRUE(plugin_lookup->session == plugin);
+    TEST_ASSERT_TRUE(plugin_lookup->bound);
+
+    dpi_dispatcher = &dispatcher_dpi_context->dispatch;
+    net_parser = &dpi_dispatcher->net_parser;
+    aggr = dpi_dispatcher->aggr;
+
+#if defined(__x86_64__)
+    /* Set the send_report routine of the aggregator */
+    aggr->send_report = test_send_report;
+#endif
+
+    /* OUTBOUND PING6 packet */
+    /* ICMPv6 ECHO Packet */
+    PREPARE_UT(pkt10, net_parser);
+    len = net_header_parse(net_parser);
+    TEST_ASSERT_TRUE(len != 0);
+
+    /* Call the dispatcher's packet handler */
+    dispatch_ops = &dispatcher->p_ops->parser_ops;
+    TEST_ASSERT_NOT_NULL(dispatch_ops->handler);
+    dispatch_ops->handler(dispatcher, net_parser);
+
+    /* Validate that an accumulator was created */
+    TEST_ASSERT_NOT_NULL(net_parser->acc);
+
+    /* Validate that the accumulator has plugins recorded */
+    TEST_ASSERT_NOT_NULL(net_parser->acc->dpi_plugins);
+
+    /* Validate that the accumulator is aware of the plugin */
+    info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
+    TEST_ASSERT_NOT_NULL(info);
+    TEST_ASSERT_TRUE(info->session == plugin);
+
+    /* Validate packet is ICMPv6 or not */
+    protocol = net_parser->acc->key->ipprotocol;
+    TEST_ASSERT_EQUAL_INT(protocol, IPPROTO_ICMPV6);
+
+    /* Validate ICMPv6 type */
+    icmp_type = net_parser->acc->key->icmp_type;
+    TEST_ASSERT_EQUAL_INT(icmp_type, ICMP6_ECHO_REQUEST);
+
+    originator = net_parser->acc->originator;
+    TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_SRC);
+
+    direction = net_parser->acc->direction;
+    TEST_ASSERT_EQUAL_INT(direction, NET_MD_ACC_OUTBOUND_DIR);
+
+    net_parser->acc->report = true;
+
+    /* Close the flows observation window */
+    net_md_close_active_window(aggr);
+
+    mqtt_topic = plugin->ops.get_config(plugin, "mqtt_v");
+    ret = aggr->send_report(aggr, mqtt_topic);
+    TEST_ASSERT_TRUE(ret);
+
+    /* ICMPv6 Reply Packet */
+    PREPARE_UT(pkt11, net_parser);
+    len = net_header_parse(net_parser);
+    TEST_ASSERT_TRUE(len != 0);
+
+    /* Call the dispatcher's packet handler */
+    dispatch_ops = &dispatcher->p_ops->parser_ops;
+    TEST_ASSERT_NOT_NULL(dispatch_ops->handler);
+    dispatch_ops->handler(dispatcher, net_parser);
+
+    /* Validate that an accumulator was created */
+    TEST_ASSERT_NOT_NULL(net_parser->acc);
+
+    /* Validate that the accumulator has plugins recorded */
+    TEST_ASSERT_NOT_NULL(net_parser->acc->dpi_plugins);
+
+    /* Validate that the accumulator is aware of the plugin */
+    info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
+    TEST_ASSERT_NOT_NULL(info);
+    TEST_ASSERT_TRUE(info->session == plugin);
+
+    /* Validate packet is ICMPv6 or not */
+    protocol = net_parser->acc->key->ipprotocol;
+    TEST_ASSERT_EQUAL_INT(protocol, IPPROTO_ICMPV6);
+
+    /* Validate ICMPv6 type */
+    icmp_type = net_parser->acc->key->icmp_type;
+    TEST_ASSERT_EQUAL_INT(icmp_type, ICMP6_ECHO_REPLY);
+
+    originator = net_parser->acc->originator;
+    TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_DST);
+
+    direction = net_parser->acc->direction;
+    TEST_ASSERT_EQUAL_INT(direction, NET_MD_ACC_OUTBOUND_DIR);
+
+    net_parser->acc->report = true;
+
+    /* Close the flows observation window */
+    net_md_close_active_window(aggr);
+
+    mqtt_topic = plugin->ops.get_config(plugin, "mqtt_v");
+    ret = aggr->send_report(aggr, mqtt_topic);
+    TEST_ASSERT_TRUE(ret);
+
+    /* INBOUND PING6 REQUEST */
+    /* ICMPv6 ECHO Packet */
+    PREPARE_UT(pkt12, net_parser);
+    len = net_header_parse(net_parser);
+    TEST_ASSERT_TRUE(len != 0);
+
+    /* Call the dispatcher's packet handler */
+    dispatch_ops = &dispatcher->p_ops->parser_ops;
+    TEST_ASSERT_NOT_NULL(dispatch_ops->handler);
+    dispatch_ops->handler(dispatcher, net_parser);
+
+    /* Validate that an accumulator was created */
+    TEST_ASSERT_NOT_NULL(net_parser->acc);
+
+    /* Validate that the accumulator has plugins recorded */
+    TEST_ASSERT_NOT_NULL(net_parser->acc->dpi_plugins);
+
+    /* Validate that the accumulator is aware of the plugin */
+    info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
+    TEST_ASSERT_NOT_NULL(info);
+    TEST_ASSERT_TRUE(info->session == plugin);
+
+    /* Validate packet is ICMPv6 or not */
+    protocol = net_parser->acc->key->ipprotocol;
+    TEST_ASSERT_EQUAL_INT(protocol, IPPROTO_ICMPV6);
+
+    /* Validate ICMPv6 type */
+    icmp_type = net_parser->acc->key->icmp_type;
+    TEST_ASSERT_EQUAL_INT(icmp_type, ICMP6_ECHO_REQUEST);
+
+    originator = net_parser->acc->originator;
+    TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_SRC);
+
+    direction = net_parser->acc->direction;
+    TEST_ASSERT_EQUAL_INT(direction, NET_MD_ACC_INBOUND_DIR);
+
+    net_parser->acc->report = true;
+
+    /* Close the flows observation window */
+    net_md_close_active_window(aggr);
+
+    mqtt_topic = plugin->ops.get_config(plugin, "mqtt_v");
+    ret = aggr->send_report(aggr, mqtt_topic);
+    TEST_ASSERT_TRUE(ret);
+
+    /* ICMPv6 Reply Packet */
+    PREPARE_UT(pkt13, net_parser);
+    len = net_header_parse(net_parser);
+    TEST_ASSERT_TRUE(len != 0);
+
+    /* Call the dispatcher's packet handler */
+    dispatch_ops = &dispatcher->p_ops->parser_ops;
+    TEST_ASSERT_NOT_NULL(dispatch_ops->handler);
+    dispatch_ops->handler(dispatcher, net_parser);
+
+    /* Validate that an accumulator was created */
+    TEST_ASSERT_NOT_NULL(net_parser->acc);
+
+    /* Validate that the accumulator has plugins recorded */
+    TEST_ASSERT_NOT_NULL(net_parser->acc->dpi_plugins);
+
+    /* Validate that the accumulator is aware of the plugin */
+    info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
+    TEST_ASSERT_NOT_NULL(info);
+    TEST_ASSERT_TRUE(info->session == plugin);
+
+    /* Validate packet is ICMPv6 or not */
+    protocol = net_parser->acc->key->ipprotocol;
+    TEST_ASSERT_EQUAL_INT(protocol, IPPROTO_ICMPV6);
+
+    /* Validate ICMPv6 type */
+    icmp_type = net_parser->acc->key->icmp_type;
+    TEST_ASSERT_EQUAL_INT(icmp_type, ICMP6_ECHO_REPLY);
+
+    originator = net_parser->acc->originator;
+    TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_DST);
+
+    direction = net_parser->acc->direction;
+    TEST_ASSERT_EQUAL_INT(direction, NET_MD_ACC_INBOUND_DIR);
+
+    net_parser->acc->report = true;
+
+    /* Close the flows observation window */
+    net_md_close_active_window(aggr);
+
+    mqtt_topic = plugin->ops.get_config(plugin, "mqtt_v");
+    ret = aggr->send_report(aggr, mqtt_topic);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Remove the dpi plugin session */
+    conf = &g_confs[19];
+    fsm_delete_session(conf);
+    info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
+    TEST_ASSERT_NULL(info);
+}
+
+
 int
 main(int argc, char *argv[])
 {
@@ -3108,6 +3627,8 @@ main(int argc, char *argv[])
     RUN_TEST(test_9_dpi_dispatcher_excluded_devices);
     RUN_TEST(test_10_dpi_dispatcher_included_excluded_devices);
     RUN_TEST(test_11_dpi_dispatcher_reserved_port_originator);
+    RUN_TEST(test_12_dpi_dispatcher_icmp_req_reply);
+    RUN_TEST(test_13_dpi_dispatcher_icmpv6_req_reply);
 
     return UNITY_END();
 }
