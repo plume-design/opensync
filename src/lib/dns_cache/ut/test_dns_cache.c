@@ -106,11 +106,14 @@ int dns_cache_ev_test_setup(double timeout)
 
 void dns_cache_global_test_setup(void)
 {
+    struct dns_cache_settings cache_init;
 
     g_test_mgr.loop = EV_DEFAULT;
     g_test_mgr.g_timeout = 1.0;
+    cache_init.dns_cache_source = MODULE_DNS_PARSE;
+    cache_init.service_provider = IP2ACTION_WP_SVC;
 
-    dns_cache_init();
+    dns_cache_init(&cache_init);
 }
 
 void dns_cache_global_test_teardown(void)
@@ -672,14 +675,178 @@ void test_upd_dns_cache(void)
     LOGI("\n******************** %s: completed ****************\n", __func__);
 }
 
+
+void test_dns_cache_disable(void)
+{
+    struct dns_cache_settings cache_init;
+    bool rc;
+
+    LOGI("\n******************** %s: starting ****************\n", __func__);
+    dns_cache_disable();
+    // case : only dns module is up and running ipthreat module is disabled
+
+    /* Init dns cache through DNS module using gatekeeper service */
+    cache_init.dns_cache_source = MODULE_DNS_PARSE;
+    cache_init.service_provider = IP2ACTION_GK_SVC;
+    dns_cache_init(&cache_init);
+
+    rc = is_dns_cache_disabled();
+    TEST_ASSERT_TRUE(rc);
+    dns_cache_disable();
+
+    /* Init dns cache through DNS module using webpulse service */
+    cache_init.dns_cache_source = MODULE_DNS_PARSE;
+    cache_init.service_provider = IP2ACTION_WP_SVC;
+    dns_cache_init(&cache_init);
+
+    rc = is_dns_cache_disabled();
+    TEST_ASSERT_FALSE(rc);
+    dns_cache_disable();
+
+    /* Init dns cache through DNS module using brightcloud service */
+    cache_init.dns_cache_source = MODULE_DNS_PARSE;
+    cache_init.service_provider = IP2ACTION_BC_SVC;
+    dns_cache_init(&cache_init);
+
+    rc = is_dns_cache_disabled();
+    TEST_ASSERT_FALSE(rc);
+    dns_cache_disable();
+
+    // case : both dns and ipthreat modules are up and running
+
+    /* Init dns cache through DNS module using gatekeeper service */
+    cache_init.dns_cache_source = MODULE_DNS_PARSE;
+    cache_init.service_provider = IP2ACTION_GK_SVC;
+    dns_cache_init(&cache_init);
+    /* Init dns cache through ipthreat module using gatekeeper service */
+    cache_init.dns_cache_source = MODULE_IPTHREAT_DPI;
+    cache_init.service_provider = IP2ACTION_GK_SVC;
+    dns_cache_init(&cache_init);
+
+    rc = is_dns_cache_disabled();
+    TEST_ASSERT_TRUE(rc);
+    dns_cache_disable();
+
+    /* Init dns cache through DNS module using gatekeeper service */
+    cache_init.dns_cache_source = MODULE_DNS_PARSE;
+    cache_init.service_provider = IP2ACTION_GK_SVC;
+    dns_cache_init(&cache_init);
+    /* Init dns cache through ipthreat module using webpulse service */
+    cache_init.dns_cache_source = MODULE_IPTHREAT_DPI;
+    cache_init.service_provider = IP2ACTION_WP_SVC;
+    dns_cache_init(&cache_init);
+
+    rc = is_dns_cache_disabled();
+    TEST_ASSERT_FALSE(rc);
+    dns_cache_disable();
+
+    /* Init dns cache through DNS module using gatekeeper service */
+    cache_init.dns_cache_source = MODULE_DNS_PARSE;
+    cache_init.service_provider = IP2ACTION_GK_SVC;
+    dns_cache_init(&cache_init);
+    /* Init dns cache through ipthreat module using brightcloud service */
+    cache_init.dns_cache_source = MODULE_IPTHREAT_DPI;
+    cache_init.service_provider = IP2ACTION_BC_SVC;
+    dns_cache_init(&cache_init);
+
+    rc = is_dns_cache_disabled();
+    TEST_ASSERT_FALSE(rc);
+    dns_cache_disable();
+
+    /* Init dns cache through DNS module using webpulse service */
+    cache_init.dns_cache_source = MODULE_DNS_PARSE;
+    cache_init.service_provider = IP2ACTION_WP_SVC;
+    dns_cache_init(&cache_init);
+    /* Init dns cache through ipthreat module using webpulse service */
+    cache_init.dns_cache_source = MODULE_IPTHREAT_DPI;
+    cache_init.service_provider = IP2ACTION_WP_SVC;
+    dns_cache_init(&cache_init);
+
+    rc = is_dns_cache_disabled();
+    TEST_ASSERT_FALSE(rc);
+    dns_cache_disable();
+
+    /* Init dns cache through DNS module using webpulse service */
+    cache_init.dns_cache_source = MODULE_DNS_PARSE;
+    cache_init.service_provider = IP2ACTION_WP_SVC;
+    dns_cache_init(&cache_init);
+    /* Init dns cache through ipthreat module using gatekeeper service */
+    cache_init.dns_cache_source = MODULE_IPTHREAT_DPI;
+    cache_init.service_provider = IP2ACTION_GK_SVC;
+    dns_cache_init(&cache_init);
+
+    rc = is_dns_cache_disabled();
+    TEST_ASSERT_FALSE(rc);
+    dns_cache_disable();
+
+    /* Init dns cache through DNS module using webpulse service */
+    cache_init.dns_cache_source = MODULE_DNS_PARSE;
+    cache_init.service_provider = IP2ACTION_WP_SVC;
+    dns_cache_init(&cache_init);
+    /* Init dns cache through ipthreat module using brightcloud service */
+    cache_init.dns_cache_source = MODULE_IPTHREAT_DPI;
+    cache_init.service_provider = IP2ACTION_BC_SVC;
+    dns_cache_init(&cache_init);
+
+    rc = is_dns_cache_disabled();
+    TEST_ASSERT_FALSE(rc);
+    dns_cache_disable();
+
+    /* Init dns cache through DNS module using brightcloud service */
+    cache_init.dns_cache_source = MODULE_DNS_PARSE;
+    cache_init.service_provider = IP2ACTION_BC_SVC;
+    dns_cache_init(&cache_init);
+    /* Init dns cache through ipthreat module using brightcloud service */
+    cache_init.dns_cache_source = MODULE_IPTHREAT_DPI;
+    cache_init.service_provider = IP2ACTION_BC_SVC;
+    dns_cache_init(&cache_init);
+
+    rc = is_dns_cache_disabled();
+    TEST_ASSERT_FALSE(rc);
+    dns_cache_disable();
+
+    /* Init dns cache through DNS module using brightcloud service */
+    cache_init.dns_cache_source = MODULE_DNS_PARSE;
+    cache_init.service_provider = IP2ACTION_BC_SVC;
+    dns_cache_init(&cache_init);
+    /* Init dns cache through ipthreat module using gatekeeper service */
+    cache_init.dns_cache_source = MODULE_IPTHREAT_DPI;
+    cache_init.service_provider = IP2ACTION_GK_SVC;
+    dns_cache_init(&cache_init);
+
+    rc = is_dns_cache_disabled();
+    TEST_ASSERT_FALSE(rc);
+    dns_cache_disable();
+
+    /* Init dns cache through DNS module using brightcloud service */
+    cache_init.dns_cache_source = MODULE_DNS_PARSE;
+    cache_init.service_provider = IP2ACTION_BC_SVC;
+    dns_cache_init(&cache_init);
+    /* Init dns cache through ipthreat module using webpulse service */
+    cache_init.dns_cache_source = MODULE_IPTHREAT_DPI;
+    cache_init.service_provider = IP2ACTION_WP_SVC;
+    dns_cache_init(&cache_init);
+
+    rc = is_dns_cache_disabled();
+    TEST_ASSERT_FALSE(rc);
+    dns_cache_disable();
+
+    LOGI("\n******************** %s: completed ****************\n", __func__);
+}
+
+
 void test_dns_cache_ref_count(void)
 {
     LOGI("\n******************** %s: starting ****************\n", __func__);
+    struct dns_cache_settings cache_init;
     uint8_t refcount = 0;
+
     refcount = dns_cache_get_refcount();
     TEST_ASSERT_EQUAL_INT(1, refcount);
 
-    dns_cache_init();
+    cache_init.dns_cache_source = MODULE_DNS_PARSE;
+    cache_init.service_provider = IP2ACTION_WP_SVC;
+    dns_cache_init(&cache_init);
     refcount = dns_cache_get_refcount();
     TEST_ASSERT_EQUAL_INT(2, refcount);
 
@@ -695,9 +862,19 @@ void test_dns_cache_ref_count(void)
     refcount = dns_cache_get_refcount();
     TEST_ASSERT_EQUAL_INT(0, refcount);
 
-    dns_cache_init();
+    dns_cache_cleanup_mgr();
+    cache_init.dns_cache_source = MODULE_DNS_PARSE;
+    cache_init.service_provider = IP2ACTION_GK_SVC;
+    dns_cache_init(&cache_init);
+    refcount = dns_cache_get_refcount();
+    TEST_ASSERT_EQUAL_INT(0, refcount);
+
+    cache_init.dns_cache_source = MODULE_DNS_PARSE;
+    cache_init.service_provider = IP2ACTION_WP_SVC;
+    dns_cache_init(&cache_init);
     refcount = dns_cache_get_refcount();
     TEST_ASSERT_EQUAL_INT(1, refcount);
+
     LOGI("\n******************** %s: completed ****************\n", __func__);
 }
 
@@ -1581,6 +1758,7 @@ int main(int argc, char *argv[])
     RUN_TEST(test_wp_dns_cache);
     RUN_TEST(test_gk_dns_cache);
     RUN_TEST(test_dns_cache_entries);
+    RUN_TEST(test_dns_cache_disable);
 
     dns_cache_global_test_teardown();
     return UNITY_END();

@@ -55,6 +55,15 @@ typedef struct
     ds_dlist_node_t                 node;
 } sm_client_record_t;
 
+#ifdef CONFIG_SM_UPLINK_STATS
+typedef struct
+{
+    iftype_t                        type;
+    bool                            changed;
+    bool                            cached;
+} uplink_t;
+#endif /* CONFIG_SM_UPLINK_STATS */
+
 static inline sm_client_record_t * sm_client_record_alloc()
 {
     sm_client_record_t *record = NULL;
@@ -104,6 +113,11 @@ typedef struct
     uint64_t                        duration_ts;
     /* Reporting start timestamp used for reporting timestamp calculation */
     uint64_t                        report_ts;
+
+#ifdef CONFIG_SM_UPLINK_STATS
+    /* Uplink information */
+    uplink_t                        uplink;
+#endif /*  CONFIG_SM_UPLINK_STATS */
 
     ds_dlist_node_t                 node;
 } sm_client_ctx_t;
@@ -192,12 +206,21 @@ static
 bool sm_client_report_timer_restart(
         ev_timer                   *timer)
 {
-    sm_client_ctx_t                *client_ctx =
+    sm_client_ctx_t                *client_ctx;
+    sm_stats_request_t             *request_ctx;
+    radio_entry_t                  *radio_cfg_ctx;
+
+    if (NULL == timer->data)
+        return false;
+
+    client_ctx =
         (sm_client_ctx_t *) timer->data;
-    sm_stats_request_t             *request_ctx =
-            &client_ctx->request;
-    radio_entry_t                  *radio_cfg_ctx =
-        client_ctx->radio_cfg;
+
+    if (NULL == client_ctx->radio_cfg)
+        return false;
+
+    request_ctx = &client_ctx->request;
+    radio_cfg_ctx = client_ctx->radio_cfg;
 
     if (request_ctx->reporting_count) {
         request_ctx->reporting_count--;
@@ -652,6 +675,53 @@ void sm_client_report_stats_calculate_average (
     report->errors_tx   += record->errors_tx;
 }
 
+#ifdef CONFIG_SM_UPLINK_STATS
+static
+bool sm_client_report_get_uplink_type(
+        sm_client_ctx_t            *client_ctx)
+{
+    if (NULL == client_ctx)
+        return false;
+
+    if (client_ctx->uplink.cached)
+        return client_ctx->uplink.type;
+
+    if (!sm_cmu_get_type_for_used_link(client_ctx->uplink.type, sizeof(client_ctx->uplink.type)))
+        return false;
+
+    client_ctx->uplink.cached = true;
+    return true;
+}
+
+static void sm_client_report_update_uplink_type(
+        sm_client_ctx_t            *client_ctx,
+        dpp_client_report_data_t   *report_ctx)
+{
+
+    if (NULL == client_ctx)
+        return;
+
+    if (NULL == report_ctx)
+        return;
+
+    if (sm_client_report_get_uplink_type(client_ctx))
+        strcpy(report_ctx->uplink_type, client_ctx->uplink.type);
+
+    report_ctx->uplink_changed = client_ctx->uplink.changed;
+
+    /* Cleanup uplink changed in the next report */
+    if (client_ctx->uplink.changed)
+        client_ctx->uplink.changed = false;
+
+}
+#else
+static void sm_client_report_update_uplink_type(
+        sm_client_ctx_t            *client_ctx,
+        dpp_client_report_data_t   *report_ctx)
+{
+}
+#endif /* CONFIG_SM_UPLINK_STATS */
+
 static
 void sm_client_report_calculate_average (
         sm_client_ctx_t            *client_ctx,
@@ -744,6 +814,9 @@ bool sm_client_report_send(
     report_ctx->timestamp_ms =
         request_ctx->reporting_timestamp - client_ctx->report_ts +
         get_timestamp();
+
+    /* Update uplink type */
+    sm_client_report_update_uplink_type(client_ctx, report_ctx);
 
     client_ctx->record_qty++;
     for (   record = ds_dlist_ifirst(&record_iter, record_list);
@@ -1697,3 +1770,30 @@ bool sm_client_report_radio_change(
 
     return true;
 }
+
+#ifdef CONFIG_SM_UPLINK_STATS
+bool sm_client_report_uplink_change(
+        radio_entry_t              *radio_cfg,
+        const char                 *iftype)
+{
+    sm_client_ctx_t                *client_ctx = NULL;
+
+    if (NULL == radio_cfg)
+        return false;
+
+    client_ctx = sm_client_ctx_get(radio_cfg);
+    if (NULL == client_ctx)
+        return false;
+
+    if (!strcmp(iftype, client_ctx->uplink.type))
+        return true;
+
+    sm_client_report_stats (client_ctx);
+    sm_client_report_timer_restart(&client_ctx->report_timer);
+    STRSCPY_WARN(client_ctx->uplink.type, iftype);
+    client_ctx->uplink.cached = true;
+    client_ctx->uplink.changed = true;
+
+    return true;
+}
+#endif

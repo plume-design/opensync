@@ -88,6 +88,8 @@ typedef struct
     dppline_client_rec_t           *list;
     uint32_t                        qty;
     uint64_t                        timestamp_ms;
+    char                            *uplink_type;
+    bool                            uplink_changed;
 } dppline_client_stats_t;
 
 typedef struct
@@ -455,6 +457,8 @@ static bool dppline_copysts(dppline_stats_t * dst, void * sts)
                 dst->u.client.radio_type = report_data->radio_type;
                 dst->u.client.channel = report_data->channel;
                 dst->u.client.timestamp_ms = report_data->timestamp_ms;
+                dst->u.client.uplink_type = strdup(report_data->uplink_type);
+                dst->u.client.uplink_changed = report_data->uplink_changed;
                 for (   result_entry = ds_dlist_ifirst(&result_iter, &report_data->list);
                         result_entry != NULL;
                         result_entry = ds_dlist_inext(&result_iter))
@@ -1136,6 +1140,12 @@ static void dppline_add_stat_client(Sts__Report *r, dppline_stats_t *s)
     sr->timestamp_ms = client->timestamp_ms;
     sr->has_timestamp_ms = true;
     sr->channel = client->channel;
+    if (client->uplink_changed) {
+        sr->has_uplink_changed = true;
+        sr->uplink_changed = client->uplink_changed;
+    }
+    sr->uplink_type = strdup(client->uplink_type);
+
     sr->client_list = MALLOC(client->qty * sizeof(*sr->client_list));
     size += client->qty * sizeof(*sr->client_list);
     sr->n_client_list = client->qty;

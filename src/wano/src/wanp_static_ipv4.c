@@ -223,14 +223,14 @@ enum wanp_static_ipv4_state wanp_static_ipv4_state_CONFIGURE_IP(
                     PRI(osn_ip_addr),
                     FMT(osn_ip_addr, pwc->wc_gateway));
 
-            snprintf(dns1, sizeof(gateway),
+            snprintf(dns1, sizeof(dns1),
                     PRI(osn_ip_addr),
                     FMT(osn_ip_addr, pwc->wc_primary_dns));
 
             dns2[0] = '\0';
             if (osn_ip_addr_cmp(&pwc->wc_secondary_dns, &OSN_IP_ADDR_INIT) != 0)
             {
-                snprintf(dns2, sizeof(gateway),
+                snprintf(dns2, sizeof(dns2),
                         PRI(osn_ip_addr),
                         FMT(osn_ip_addr, pwc->wc_secondary_dns));
             }
@@ -450,7 +450,7 @@ void wanp_static_ipv4_fini(wano_plugin_handle_t *wh)
     close(wsh->ping_fd[0]);
     close(wsh->ping_fd[1]);
 
-    FREE(wh);
+    FREE(wsh);
 }
 
 /*

@@ -1,3 +1,5 @@
+#!/bin/sh -axe
+
 # Copyright (c) 2015, Plume Design Inc. All rights reserved.
 # 
 # Redistribution and use in source and binary forms, with or without
@@ -22,20 +24,13 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-SRCDIR   = src
-OBJDIR   = $(WORKDIR)/obj
-BINDIR   = $(WORKDIR)/bin
-LIBDIR   = $(WORKDIR)/lib
-FUTDIR   = $(WORKDIR)/fut
-PKGDIR   = $(WORKDIR)/pkg
 
-BUILD_ROOTFS_DIR  ?= $(WORKDIR)/rootfs
-APP_ROOTFS        ?= $(BUILD_ROOTFS_DIR)
-IMAGEDIR = images
-WORKDIRS = $(WORKDIR) $(OBJDIR) $(LIBDIR) $(BINDIR) $(BUILD_ROOTFS_DIR) $(IMAGEDIR) $(FUTDIR) $(PKGDIR)
-
-$(WORKDIRS):
-	$(Q)mkdir -p $@
-
-.PHONY: workdirs
-workdirs: $(WORKDIRS)
+dir="$(dirname "$(readlink -f "$0")")"
+cd "$dir"
+for i in "$@"
+do
+    echo "$dut_prepare" | $dut
+    echo "$ref_prepare" | $ref
+    mkdir -p "$dir/logs/$i"
+    ./$i 2>&1 | tee "$dir/logs/$i/log"
+done

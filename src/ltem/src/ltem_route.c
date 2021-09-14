@@ -113,8 +113,8 @@ ltem_client_table_update(ltem_mgr_t *mgr, struct schema_DHCP_leased_IP *dhcp_lea
     }
     if (dhcp_lease->hostname_present && dhcp_lease->inet_addr_present)
     {
-        strncpy(new_entry->client_name, dhcp_lease->hostname, sizeof(new_entry->client_name));
-        strncpy(new_entry->client_addr, dhcp_lease->inet_addr, sizeof(new_entry->client_addr));
+        STRSCPY(new_entry->client_name, dhcp_lease->hostname);
+        STRSCPY(new_entry->client_addr, dhcp_lease->inet_addr);
         LOGI("%s: New client entry %s:%s", __func__, dhcp_lease->hostname, dhcp_lease->inet_addr);
         entry = ds_tree_find(&mgr->client_table, new_entry);
         if (entry)
@@ -138,8 +138,8 @@ ltem_client_table_delete(ltem_mgr_t *mgr, struct schema_DHCP_leased_IP *dhcp_lea
 
     if (dhcp_lease->hostname_present && dhcp_lease->inet_addr_present)
     {
-        strncpy(to_del.client_name, dhcp_lease->hostname, sizeof(to_del.client_name));
-        strncpy(to_del.client_addr, dhcp_lease->inet_addr, sizeof(to_del.client_addr));
+        STRSCPY(to_del.client_name, dhcp_lease->hostname);
+        STRSCPY(to_del.client_addr, dhcp_lease->inet_addr);
         entry = ds_tree_find(&mgr->client_table, &to_del);
         if (!entry) return;
 
@@ -160,21 +160,22 @@ void
 ltem_update_lte_route(ltem_mgr_t *mgr, char *if_name, char *lte_subnet, char *lte_gw, char *lte_netmask)
 {
     LOGI("%s: lte_if_name[%s], lte_subnet[%s], lte_gw[%s] lte_netmask[%s]", __func__, if_name, lte_subnet, lte_gw, lte_netmask);
-    strncpy(mgr->lte_route->lte_subnet, lte_subnet, sizeof(mgr->lte_route->lte_subnet));
-    strncpy(mgr->lte_route->lte_gw, lte_gw, sizeof(mgr->lte_route->lte_gw));
-    strncpy(mgr->lte_route->lte_netmask, lte_netmask,
-            sizeof(mgr->lte_route->lte_netmask));
+    STRSCPY(mgr->lte_route->lte_if_name, if_name);
+    STRSCPY(mgr->lte_route->lte_subnet, lte_subnet);
+    STRSCPY(mgr->lte_route->lte_gw, lte_gw);
+    STRSCPY(mgr->lte_route->lte_netmask, lte_netmask);
+    mgr->lte_route->lte_metric = LTE_DEFAULT_METRIC;
 }
 
 void
 ltem_update_wan_route(ltem_mgr_t *mgr, char *if_name, char *wan_subnet, char *wan_gw, char *wan_netmask)
 {
     LOGI("%s: wan_if_name[%s], wan_subnet[%s], wan_gw[%s]", __func__, if_name, wan_subnet, wan_gw);
-    strncpy(mgr->lte_route->wan_if_name, if_name, sizeof(mgr->lte_route->wan_if_name));
-    strncpy(mgr->lte_route->wan_subnet, wan_subnet, sizeof(mgr->lte_route->wan_subnet));
-    strncpy(mgr->lte_route->wan_gw, wan_gw, sizeof(mgr->lte_route->wan_gw));
-    strncpy(mgr->lte_route->wan_netmask, wan_netmask,
-            sizeof(mgr->lte_route->wan_netmask));
+    STRSCPY(mgr->lte_route->wan_if_name, if_name);
+    STRSCPY(mgr->lte_route->wan_subnet, wan_subnet);
+    STRSCPY(mgr->lte_route->wan_gw, wan_gw);
+    STRSCPY(mgr->lte_route->wan_netmask, wan_netmask);
+    mgr->lte_route->wan_metric = WAN_DEFAULT_METRIC;
 }
 
 /*
@@ -235,12 +236,17 @@ ltem_set_lte_route_metric(ltem_mgr_t *mgr)
     route = mgr->lte_route;
     if (!route) return -1;
 
-    /* Delete the route, then add it back */
-    snprintf(cmd, sizeof(cmd), "route del default dev wwan0");
-    res = ltem_route_exec_cmd(cmd);
-    /* route add default dev wwan0 */
-    snprintf(cmd, sizeof(cmd), "route add default gw %s metric 100 dev wwan0", route->lte_gw);
-    res = ltem_route_exec_cmd(cmd);
+    if (route->lte_gw[0])
+    {
+        /* Delete the route, then add it back */
+        snprintf(cmd, sizeof(cmd), "ip route del default dev wwan0");
+        res = ltem_route_exec_cmd(cmd);
+        /* ip route add default via n.n.n.n dev wwan0 */
+        snprintf(cmd, sizeof(cmd), "ip route add default via %s metric %d dev %s",
+                 route->lte_gw, route->lte_metric, route->lte_if_name);
+        LOGI("%s: gw[%s], metric[%d], if_name[%s]", __func__, route->lte_gw, route->lte_metric, route->lte_if_name);
+        res = ltem_route_exec_cmd(cmd);
+    }
     return res;
 }
 
@@ -249,35 +255,83 @@ ltem_force_lte_route(ltem_mgr_t *mgr)
 {
     int res = 0;
     char cmd[1024];
+    lte_route_info_t *route;
 
-    /* Delete the WAN route */
-    if (mgr->lte_route->wan_gw[0])
+    route = mgr->lte_route;
+    if (!route) return -1;
+
+    /*
+     * Just changing the metric on a route is not supported.
+     * So, we have to delete the route and then add it back with
+     * the new metric.
+     */
+    if (route->wan_gw[0])
     {
-        /* route delete default dev [eth0/eth1] */
-        snprintf(cmd, sizeof(cmd), "route delete default dev %s", mgr->lte_route->wan_if_name);
+        /* ip route delete default dev [eth0/eth1] */
+        snprintf(cmd, sizeof(cmd), "ip route delete default dev %s", route->wan_if_name);
+        LOGI("%s: cmd[%s]", __func__, cmd);
         res = ltem_route_exec_cmd(cmd);
         if (res)
         {
             LOGI("%s: cmd failed: %s, errno: %s", __func__, cmd, strerror(errno));
             return res;
         }
+        route->wan_metric = WAN_L3_FAIL_METRIC;
+        /* ip route add default via n.n.n.n metric 110 dev eth0/eth1 */
+        snprintf(cmd, sizeof(cmd), "ip route add default via %s metric %d dev %s",
+                 route->wan_gw, route->wan_metric, route->wan_if_name);
+        LOGI("%s: cmd[%s]", __func__, cmd);
+        res = ltem_route_exec_cmd(cmd);
+        if (res)
+        {
+            LOGI("%s: cmd failed: %s, errno: %s", __func__, cmd, strerror(errno));
+            return res;
+        }
+    }
+    if (route->lte_gw[0])
+    {
+        /*
+         * For some reason, when we switch to LTE, udhcp runs again and
+         * adds a new default route that points at the LTE interface. 
+         * Start over by deleting it and restoring the LTE route with 
+         * the correct metric.
+         */
+        res = ltem_set_lte_route_metric(mgr);
     }
     return res;
 }
 
 int
-ltem_restore_default_route(ltem_mgr_t *mgr)
+ltem_restore_default_wan_route(ltem_mgr_t *mgr)
 {
     int res = 0;
     char cmd[1024];
+    lte_route_info_t *route;
 
+    route = mgr->lte_route;
+    if (!route) return -1;
     LOGI("%s: failover:%d", __func__, mgr->lte_state_info->lte_failover_active);
 
-    if (mgr->lte_route->wan_gw[0])
+    /*
+     * Delete the WAN route with the higher metric and restore the route with
+     * the default metric. We also have to delete the LTE route and re-add it.
+     */
+    if (route->wan_gw[0])
     {
-        /* route add default gw [gw] dev eth0/eth1 */
-        snprintf(cmd, sizeof(cmd), "route add default gw %s dev %s",
-                 mgr->lte_route->wan_gw, mgr->lte_route->wan_if_name);
+        /* ip route delete default dev [eth0/eth1] */
+        snprintf(cmd, sizeof(cmd), "ip route delete default dev %s", route->wan_if_name);
+        LOGI("%s: cmd[%s]", __func__, cmd);
+        res = ltem_route_exec_cmd(cmd);
+        if (res)
+        {
+            LOGI("%s: cmd failed: %s, errno: %s", __func__, cmd, strerror(errno));
+            return res;
+        }
+        route->wan_metric = WAN_DEFAULT_METRIC;
+        /* ip route add default via [gw] dev eth0/eth1 */
+        snprintf(cmd, sizeof(cmd), "ip route add default via %s metric %d dev %s",
+                 route->wan_gw, route->wan_metric, route->wan_if_name);
+        LOGI("%s: gw[%s], metric[%d], if_name[%s]", __func__, route->wan_gw, route->wan_metric, route->wan_if_name);
         res = ltem_route_exec_cmd(cmd);
         if (res)
         {
@@ -285,6 +339,9 @@ ltem_restore_default_route(ltem_mgr_t *mgr)
             return res;
         }
     }
+    if (route->lte_gw[0])
+    {
+        res = ltem_set_lte_route_metric(mgr);
+    }
     return res;
 }
-

@@ -87,6 +87,8 @@ enum HeroActions {
   HERO_ACTION_UNSPECIFIED = 0;
   HERO_ACTION_ALLOW = 1;
   HERO_ACTION_BLOCK = 2;
+  HERO_ACTION_REDIRECT = 3;
+  HERO_ACTION_FORWARD = 4;
 }
 
 enum HeroDirections {

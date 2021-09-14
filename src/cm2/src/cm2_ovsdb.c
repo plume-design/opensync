@@ -82,6 +82,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define CM2_PM_GW_OFFLINE_STATUS_READY  "ready"
 #define CM2_PM_GW_OFFLINE_STATUS_ACTIVE "active"
 
+#define CM2_DEFAULT_L_PRI_VLAN           12
+#define CM2_DEFAULT_L_PRI_ETH            11
+#define CM2_DEFAULT_L_PRI_MAX_WIFI       10
+#define CM2_DEFAULT_L_PRI_LTE            2
+#define CM2_DEFAULT_L_PRI_LOW            1
+
 static
 bool cm2_ovsdb_connection_remove_uplink(char *if_name);
 
@@ -96,6 +102,7 @@ ovsdb_table_t table_Wifi_Inet_Config;
 ovsdb_table_t table_Wifi_Inet_State;
 ovsdb_table_t table_Wifi_VIF_Config;
 ovsdb_table_t table_Wifi_VIF_State;
+ovsdb_table_t table_Wifi_Radio_State;
 ovsdb_table_t table_Port;
 ovsdb_table_t table_Bridge;
 ovsdb_table_t table_IP_Interface;
@@ -190,6 +197,8 @@ cm2_util_get_link_is_used(struct schema_Connection_Manager_Uplink *uplink)
     return false;
 }
 
+/* Functions with dependencies for KConfig configuration */
+
 static bool
 cm2_util_is_ifname_on_stalist(const char *ifname)
 {
@@ -212,6 +221,69 @@ cm2_util_is_ifname_on_stalist(const char *ifname)
     return false;
 #endif
 }
+
+#ifndef CM2_USE_WIFI_BAND_PRIORITY
+static int cm2_util_get_wifi_priority(const char *if_name, const char *if_type)
+{
+    return CM2_DEFAULT_L_PRI_LOW;
+}
+#else
+static int cm2_util_get_wifi_priority(const char *if_name, const char *if_type)
+{
+    struct schema_Wifi_Radio_State rstate;
+    struct schema_Wifi_VIF_State   vstate;
+    json_t                         *where;
+    char                           *vif;
+    const char                     *column = SCHEMA_COLUMN(Wifi_Radio_State, vif_states);
+    int                            prio = CM2_DEFAULT_L_PRI_LOW;
+
+    if (!strcmp(if_type, VIF_TYPE_NAME))
+        vif = if_name;
+    else if (!strcmp(if_type, GRE_TYPE_NAME))
+        vif = if_name + 2; /* Skip gre prefix: g- */
+    else {
+       LOGW("%s: Invalid interface type: %s", if_name, if_type);
+       return CM2_DEFAULT_L_PRI_LOW;
+    }
+
+    if (strlen(vif) == 0) {
+        LOGW("%s: Invalid interface name", if_name);
+        return CM2_DEFAULT_L_PRI_LOW;
+    }
+
+    if (WARN_ON(!(where = ovsdb_where_simple(SCHEMA_COLUMN(Wifi_VIF_State, if_name), vif))))
+        return CM2_DEFAULT_L_PRI_LOW;
+
+    if (WARN_ON(!ovsdb_table_select_one_where(&table_Wifi_VIF_State, where, &vstate)))
+        return CM2_DEFAULT_L_PRI_LOW;
+
+    if (strcmp(vstate.mode, "sta")) {
+        LOGW("%s: invalid VIF mode: %s", if_name, vstate.mode);
+        return CM2_DEFAULT_L_PRI_LOW;
+    }
+
+    if (WARN_ON(!(where = ovsdb_tran_cond(OCLM_UUID, column, OFUNC_INC, vstate._uuid.uuid))))
+        return CM2_DEFAULT_L_PRI_LOW;
+
+    MEMZERO(rstate);
+    if (ovsdb_table_select_one_where(&table_Wifi_Radio_State, where, &rstate)) {
+        LOGD("%s: found freq_band %s via radio state", if_name, rstate.freq_band);
+        if (!strcmp(rstate.freq_band, "6G"))
+            prio = CM2_DEFAULT_L_PRI_MAX_WIFI;
+        else if (!strcmp(rstate.freq_band, "5G") ||
+                 !strcmp(rstate.freq_band, "5GL") ||
+                 !strcmp(rstate.freq_band, "5GU"))
+            prio = CM2_DEFAULT_L_PRI_MAX_WIFI - 1;
+        else if (!strcmp(rstate.freq_band, "2.4G"))
+            prio = CM2_DEFAULT_L_PRI_MAX_WIFI - 2;
+    }
+
+    LOGI("%s: Set default WiFi priority: %d", if_name, prio);
+    return prio;
+}
+#endif /* CM2_USE_WIFI_BAND_PRIORITY */
+
+/* End functions with dependencies for KConfig configuration */
 
 static bool
 cm2_util_vif_is_sta(const char *ifname)
@@ -259,19 +331,17 @@ cm2_util_vif_is_sta(const char *ifname)
     return false;
 }
 
-static int cm2_util_set_defined_priority(char *if_type) {
-    int priority;
+static int cm2_util_set_defined_priority(char *if_name, const char *if_type) {
+    int priority = CM2_DEFAULT_L_PRI_LOW;
 
     if (!strcmp(if_type, VLAN_TYPE_NAME))
-        priority = 5;
+        priority = CM2_DEFAULT_L_PRI_VLAN;
     else if (!strcmp(if_type, ETH_TYPE_NAME))
-        priority = 4;
+        priority = CM2_DEFAULT_L_PRI_ETH;
     else if (cm2_is_wifi_type(if_type))
-        priority = 3;
+        priority = cm2_util_get_wifi_priority(if_name, if_type);
     else if (!strcmp(if_type, LTE_TYPE_NAME))
-        priority = 2;
-    else
-        priority = 1;
+        priority = CM2_DEFAULT_L_PRI_LTE;
 
     return priority;
 }
@@ -763,38 +833,6 @@ cm2_ovsdb_remove_Wifi_Inet_Config(char *if_name, bool gre) {
         LOGI("%s Remove row failed %s", __func__, iface);
 }
 
-/* Function required as a workaround for CAES-599 */
-void cm2_ovsdb_remove_unused_gre_interfaces(void) {
-    struct schema_Connection_Manager_Uplink *uplink;
-    void   *uplink_p;
-    int    count;
-    int    i;
-
-    uplink_p = ovsdb_table_select(&table_Connection_Manager_Uplink,
-                                  SCHEMA_COLUMN(Connection_Manager_Uplink, if_type),
-                                  "gre",
-                                  &count);
-
-    LOGD("%s Available gre links count = %d", __func__, count);
-
-    if (uplink_p) {
-        for (i = 0; i < count; i++) {
-            uplink = (struct schema_Connection_Manager_Uplink *) (uplink_p + table_Connection_Manager_Uplink.schema_size * i);
-            LOGD("%s link = %s type = %s is_used = %d",
-                 __func__, uplink->if_name, uplink->if_name, uplink->is_used);
-
-            if (strstr(uplink->if_name, "g-") != uplink->if_name)
-                continue;
-
-            if (uplink->is_used)
-                continue;
-
-            cm2_ovsdb_remove_Wifi_Inet_Config(uplink->if_name, true);
-        }
-        FREE(uplink_p);
-    }
-}
-
 int
 cm2_ovsdb_update_mac_reporting(char *ifname, bool state)
 {
@@ -866,13 +904,6 @@ cm2_ovsdb_util_translate_master_ip(struct schema_Wifi_Master_State *master)
                 master->if_name);
            return;
        }
-
-       if (g_state.link.is_used &&
-           strstr(g_state.link.if_name, master->if_name) == NULL) {
-           LOGI("%s: Link is used, skip creating new gre", master->if_name);
-           return;
-       }
-
        LOGN("%s Trigger creating gre", master->if_name);
 
        cm2_ovsdb_remove_Wifi_Inet_Config(master->if_name, false);
@@ -2012,7 +2043,7 @@ cm2_Connection_Manager_Uplink_handle_update(
 
         if (uplink->has_L2) {
             if (!uplink->priority_exists) {
-                def_priority = cm2_util_set_defined_priority(uplink->if_type);
+                def_priority = cm2_util_set_defined_priority(uplink->if_name, uplink->if_type);
                 LOGI("%s: Set default priority: %d", uplink->if_name, def_priority);
                 cm2_ovsdb_connection_update_priority(uplink->if_name, def_priority);
             }
@@ -2921,6 +2952,7 @@ int cm2_ovsdb_init(void)
     OVSDB_TABLE_INIT(Wifi_Inet_State, if_name);
     OVSDB_TABLE_INIT(Wifi_VIF_Config, if_name);
     OVSDB_TABLE_INIT(Wifi_VIF_State, if_name);
+    OVSDB_TABLE_INIT(Wifi_Radio_State, if_name);
     OVSDB_TABLE_INIT(Connection_Manager_Uplink, if_name);
     OVSDB_TABLE_INIT_NO_KEY(AW_Bluetooth_Config);
     OVSDB_TABLE_INIT_NO_KEY(Port);

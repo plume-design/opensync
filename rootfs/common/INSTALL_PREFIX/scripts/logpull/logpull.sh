@@ -58,7 +58,7 @@ logpull_usage()
     echo "./logpull.sh [options] <logpull_type>"
     echo
     echo "Options:"
-    echo " --maskpsks                           ... masks preshared keys from log files"
+    echo " --nopskmask                          ... skips masking preshared keys from log files"
     echo 
     echo "Logpull types:"
     for f in $LOGPULL_TYPE_DIR/* ; do
@@ -67,6 +67,12 @@ logpull_usage()
     echo
     exit 1
 }
+
+exit_handler()
+{
+    rm -rf "$LOGPULL_TMP_DIR"
+}
+trap exit_handler EXIT SIGINT SIGTERM
 
 logpull_type()
 {
@@ -87,23 +93,22 @@ logpull_run()
     done
 
     # Unpack all archives that got collected during the process
-    echo "unpacking collected archives ..."
-    find "$LOGPULL_TMP_DIR" -name '*.tar.gz' | xargs -n 1 sh -c 'echo unpacking "$0" && tar xzf "$0" -C "$(dirname "$0")" && rm "$0"'
+    logi "unpacking collected archives ..."
+    find "$LOGPULL_TMP_DIR" -name '*.tar.gz' | xargs -n 1 sh -c 'echo unpacking "$0" >&2 && tar xzf "$0" -C "$(dirname "$0")" && rm "$0"'
 
     # Mask PSKs
-    if [ -n "$MASK_PSKS" ]; then
+    if [ -z "$NO_PSK_MASK" ]; then
         logi "masking psks from logpull data"
-        find "$LOGPULL_TMP_DIR" -type f | xargs pskmask -o _MASKED_ -- ||
+        find "$LOGPULL_TMP_DIR" -type f | xargs $CONFIG_TARGET_PATH_TOOLS/pskmask -o _MASKED_ -- >&2 ||
         {
             loge "PSK masking failed"
-            exit 1
+            return 1
         }
     fi
 
     # Pack collected information into archive
     logi "packing collected files ..."
     tar cvhzf "$LOGPULL_ARCHIVE" -C "$(dirname $LOGPULL_TMP_DIR)" "$(basename $LOGPULL_TMP_DIR)" >&2
-    rm -rf "$LOGPULL_TMP_DIR"
 
     logi "archive size: $(wc -c $LOGPULL_ARCHIVE | awk '{ print $1 }') B"
 
@@ -115,8 +120,8 @@ logpull_run()
 }
 
 # Parse options
-if [ "$1" = "--maskpsks" ]; then
-    export MASK_PSKS=1
+if [ "$1" = "--nopskmask" ]; then
+    export NO_PSK_MASK=1
     shift
 fi
 [ "$#" -lt 1 ] && logpull_usage

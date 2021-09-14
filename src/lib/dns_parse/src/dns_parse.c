@@ -326,15 +326,22 @@ dns_plugin_exit(struct fsm_session *session)
 void
 dns_set_provider(struct fsm_session *session)
 {
+    struct dns_session *dns_session;
     ds_tree_t *other_config;
     struct str_pair *pair;
     char *provider;
 
+
+    dns_session = dns_get_session(session);
     other_config = session->conf->other_config;
     if (other_config == NULL) return;
 
     provider = session->ops.get_config(session, "provider_plugin");
-    if (provider != NULL) return;
+    if (provider != NULL)
+    {
+        dns_session->service_provider = dns_cache_get_service_provider(provider);
+        return;
+    }
 
     provider = session->ops.get_config(session, "provider");
     if (provider != NULL) return;
@@ -412,9 +419,6 @@ dns_mgr_init(void)
     mgr->policy_check = fqdn_policy_check;
     mgr->req_cache_ttl = REQ_CACHE_TTL;
 
-    /* Initialize the DNS cache */
-    dns_cache_init();
-
     mgr->initialized = true;
 }
 
@@ -422,9 +426,10 @@ dns_mgr_init(void)
 int
 dns_plugin_init(struct fsm_session *session)
 {
-    struct dns_cache *mgr;
-    struct dns_session *dns_session;
+    struct dns_cache_settings cache_init;
     struct fsm_parser_ops *parser_ops;
+    struct dns_session *dns_session;
+    struct dns_cache *mgr;
     time_t now;
     int rc;
 
@@ -468,6 +473,11 @@ dns_plugin_init(struct fsm_session *session)
     dns_session->debug = false;
     dns_set_provider(session);
     mgr->policy_init();
+
+    /* Initialize the DNS cache */
+    cache_init.dns_cache_source = MODULE_DNS_PARSE;
+    cache_init.service_provider = dns_session->service_provider;
+    dns_cache_init(&cache_init);
 
     ds_tree_init(&dns_session->session_devices, dns_dev_id_cmp,
                  struct dns_device, device_node);
@@ -640,16 +650,17 @@ process_response_ips(dns_info *dns, uint8_t *packet,
     struct ip2action_req ip_cache_req;
     struct sockaddr_storage ipaddr;
     int ip2action_cache_ttl;
-    dns_rr *answer;
+    bool disabled_dns_cache;
     const char *res;
+    dns_rr *answer;
+    bool add_entry;
     int qtype = -1;
     size_t index;
     uint32_t ttl;
+    bool cache;
     int i = 0;
     void *ip;
     bool rc;
-    bool cache;
-    bool add_entry;
 
     if (dns == NULL) return;
     if (req->dns_response.num_replies > 1) return;
@@ -710,9 +721,12 @@ process_response_ips(dns_info *dns, uint8_t *packet,
                 }
             }
 
-            cache = (add_entry && (req->req_info->reply != NULL) &&
-                     (!req->req_info->reply->connection_error) &&
-                     (policy_reply->categorized == FSM_FQDN_CAT_SUCCESS));
+            disabled_dns_cache = is_dns_cache_disabled();
+            cache =  (req->req_info->reply != NULL) &&
+                      (!req->req_info->reply->connection_error);
+            cache &= add_entry;
+            cache &= (policy_reply->categorized == FSM_FQDN_CAT_SUCCESS);
+            cache &= !disabled_dns_cache;
 
             if (cache)
             {

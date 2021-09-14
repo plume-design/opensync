@@ -29,10 +29,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <errno.h>
 #include <inttypes.h>
 
-#include "log.h"
-#include "util.h"
-#include "memutil.h"
 #include "execsh.h"
+#include "kconfig.h"
+#include "log.h"
+#include "memutil.h"
+#include "osn_types.h"
+#include "util.h"
 
 #include "lnx_ip.h"
 
@@ -52,17 +54,16 @@ struct lnx_ip_route_gw_node
 };
 
 static bool lnx_ip_addr_flush(lnx_ip_t *self);
-static bool lnx_ip_route_flush(lnx_ip_t *self);
+static bool lnx_ip_route_gw_apply(
+        lnx_ip_t *self,
+        osn_ip_addr_t *src,
+        osn_ip_addr_t *gw);
+static bool lnx_ip_route_gw_flush(lnx_ip_t *self);
 static void lnx_ip_status_poll(lnx_ip_t *self);
 
 /* execsh commands */
 static char lnx_ip_addr_add_cmd[] = _S(ip address add "$2/$3" broadcast "+" dev "$1");
 static char lnx_ip_addr_flush_cmd[] = _S([ ! -e "/sys/class/net/$1" ] || ip -4 address flush dev "$1");
-
-static char lnx_ip_route_gw_add_cmd[] = _S(route add "$2" gw "$3" dev "$1");
-
-/* Scope global doesn't flush "local" or "link" routes */
-static char lnx_ip_route_gw_flush_cmd[] = _S([ ! -e "/sys/class/net/$1" ] || ip -4 route flush dev "$1" scope global);
 
 static lnx_netlink_fn_t lnx_ip_nl_fn;
 static execsh_fn_t lnx_ip_addr_parse;
@@ -126,7 +127,7 @@ bool lnx_ip_fini(lnx_ip_t *self)
     }
 
     /* Flush routes */
-    lnx_ip_route_flush(self);
+    lnx_ip_route_gw_flush(self);
 
     /* Remove all active addresses */
     lnx_ip_addr_flush(self);
@@ -158,24 +159,6 @@ bool lnx_ip_fini(lnx_ip_t *self)
 }
 
 /*
- * Flush all configured IPv4 routes
- */
-bool lnx_ip_route_flush(lnx_ip_t *self)
-{
-    int rc;
-
-    rc = execsh_log(LOG_SEVERITY_DEBUG, lnx_ip_route_gw_flush_cmd, self->ip_ifname);
-    if (rc != 0)
-    {
-        LOG(WARN, "ip: %s: Unable to flush IPv4 routes.", self->ip_ifname);
-        return false;
-    }
-
-    return true;
-}
-
-
-/*
  * Flush all configured IPv4 addresses
  */
 bool lnx_ip_addr_flush(lnx_ip_t *self)
@@ -201,13 +184,12 @@ bool lnx_ip_apply(lnx_ip_t *self)
     struct lnx_ip_route_gw_node *rnode;
 
     char saddr[OSN_IP_ADDR_LEN];
-    char sgw[OSN_IP_ADDR_LEN];
     char spref[C_INT32_LEN];
     int rc;
 
     /* Start by issuing a flush */
     lnx_ip_addr_flush(self);
-    lnx_ip_route_flush(self);
+    lnx_ip_route_gw_flush(self);
 
     /* First apply IPv4 addresses */
     ds_tree_foreach(&self->ip_addr_list, node)
@@ -233,29 +215,9 @@ bool lnx_ip_apply(lnx_ip_t *self)
     /* Apply IPv4 routes */
     ds_tree_foreach(&self->ip_route_gw_list, rnode)
     {
-        if (osn_ip_addr_cmp(&rnode->src, &OSN_IP_ADDR_INIT) == 0)
+        if (!lnx_ip_route_gw_apply(self, &rnode->src, &rnode->gw))
         {
-            STRSCPY(saddr, "default");
-        }
-        else if (inet_ntop(AF_INET, &rnode->src.ia_addr, saddr, sizeof(saddr)) == NULL)
-        {
-            LOG(ERR, "ip: %s: Unable to convert IPv4 source address, skipping.", self->ip_ifname);
-            continue;
-        }
-
-        if (inet_ntop(AF_INET, &rnode->gw.ia_addr, sgw, sizeof(sgw)) == NULL)
-        {
-            LOG(ERR, "ip: %s: Unable to convert IPv4 gateway address, skipping.", self->ip_ifname);
-            continue;
-        }
-
-        rc = execsh_log(LOG_SEVERITY_DEBUG, lnx_ip_route_gw_add_cmd, self->ip_ifname, saddr, sgw);
-        if (rc != 0)
-        {
-            LOG(WARN, "ip: %s: Unable to add IPv4 gateway route: "PRI_osn_ip_addr" -> "PRI_osn_ip_addr,
-                    self->ip_ifname,
-                    FMT_osn_ip_addr(rnode->src),
-                    FMT_osn_ip_addr(rnode->gw));
+            LOG(WARN, "ip: %s: Unable to apply IPv4 routes.", self->ip_ifname);
             continue;
         }
     }
@@ -386,6 +348,80 @@ void lnx_ip_status_notify(lnx_ip_t *self, lnx_ip_status_fn_t *fn)
             LOG(WARN, "ip: %s: Unable to stop netlink object.", self->ip_ifname);
         }
     }
+}
+
+/*
+ * Apply IPv4 routes
+ */
+bool lnx_ip_route_gw_apply(lnx_ip_t *self, osn_ip_addr_t *src, osn_ip_addr_t *gw)
+{
+    char saddr[OSN_IP_ADDR_LEN];
+    char sgw[OSN_IP_ADDR_LEN];
+    int rc;
+
+    snprintf(sgw, sizeof(sgw), PRI_osn_ip_addr, FMT_osn_ip_addr(*gw));
+
+    /* OSN_IP_ADDR_INIT is used for default routes */
+    if (osn_ip_addr_cmp(src, &OSN_IP_ADDR_INIT) == 0)
+    {
+        rc = execsh_log(
+                LOG_SEVERITY_DEBUG,
+                _S(. "$1/bin/route_sub.sh"; route_default_add "$2" "$3"),
+                CONFIG_INSTALL_PREFIX,
+                self->ip_ifname,
+                sgw);
+    }
+    else
+    {
+        snprintf(saddr, sizeof(saddr), PRI_osn_ip_addr, FMT_osn_ip_addr(*src));
+        rc = execsh_log(
+                LOG_SEVERITY_DEBUG,
+                _S(route add "$2" gw "$3" dev "$1"),
+                self->ip_ifname,
+                saddr,
+                sgw);
+    }
+
+    if (rc != 0)
+    {
+        LOG(DEBUG, "ip: %s: Unable to add IPv4 route: "PRI_osn_ip_addr" -> "PRI_osn_ip_addr,
+                self->ip_ifname,
+                FMT_osn_ip_addr(*src),
+                FMT_osn_ip_addr(*gw));
+        return false;
+    }
+
+    return true;
+}
+
+/*
+ * Flush all configured IPv4 routes
+ */
+bool lnx_ip_route_gw_flush(lnx_ip_t *self)
+{
+    int rc;
+
+    rc = execsh_log(
+            LOG_SEVERITY_DEBUG,
+            _S(. "$1/bin/route_sub.sh"; route_default_flush "$2"),
+            CONFIG_INSTALL_PREFIX,
+            self->ip_ifname);
+    if (rc != 0)
+    {
+        LOG(WARN, "ip: %s: Unable to flush IPv4 default routes.", self->ip_ifname);
+    }
+
+    /* Scope global doesn't flush "local" or "link" routes */
+    rc = execsh_log(
+            LOG_SEVERITY_DEBUG,
+            _S([ ! -e "/sys/class/net/$1" ] || ip -4 route flush dev "$1" scope global),
+            self->ip_ifname);
+    if (rc != 0)
+    {
+        LOG(WARN, "ip: %s: Unable to flush IPv4 routes.", self->ip_ifname);
+    }
+
+    return true;
 }
 
 /*

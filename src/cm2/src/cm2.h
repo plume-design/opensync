@@ -302,7 +302,6 @@ bool cm2_ovsdb_connection_update_unreachable_internet_counter(const char *if_nam
 int  cm2_ovsdb_ble_config_update(uint8_t ble_status);
 int  cm2_ovsdb_ble_set_connectable(bool state);
 bool cm2_ovsdb_is_port_name(char *port_name);
-void cm2_ovsdb_remove_unused_gre_interfaces(void);
 void cm2_ovsdb_connection_update_ble_phy_link(void);
 bool cm2_ovsdb_update_Port_tag(const char *ifname, int tag, bool set);
 bool cm2_ovsdb_update_Port_trunks(const char *ifname, int *trunks, int num_trunks);

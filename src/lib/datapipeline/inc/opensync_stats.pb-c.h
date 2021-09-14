@@ -468,13 +468,10 @@ struct  _Sts__Client
   Sts__Client__TidStats **tid_stats;
   protobuf_c_boolean has_uapsd;
   uint32_t uapsd;
-  char *uplink_type;
-  protobuf_c_boolean has_uplink_changed;
-  protobuf_c_boolean uplink_changed;
 };
 #define STS__CLIENT__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&sts__client__descriptor) \
-    , NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, NULL, 0,NULL, 0,NULL, 0,NULL, 0, 0, NULL, 0, 0 }
+    , NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, NULL, 0,NULL, 0,NULL, 0,NULL, 0, 0 }
 
 
 struct  _Sts__ClientReport
@@ -486,10 +483,13 @@ struct  _Sts__ClientReport
   size_t n_client_list;
   Sts__Client **client_list;
   uint32_t channel;
+  char *uplink_type;
+  protobuf_c_boolean has_uplink_changed;
+  protobuf_c_boolean uplink_changed;
 };
 #define STS__CLIENT_REPORT__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&sts__client_report__descriptor) \
-    , STS__RADIO_BAND_TYPE__BAND2G, 0, 0, 0,NULL, 0 }
+    , STS__RADIO_BAND_TYPE__BAND2G, 0, 0, 0,NULL, 0, NULL, 0, 0 }
 
 
 struct  _Sts__ClientAuthFailsReport__BSS__Client

@@ -182,46 +182,6 @@ jencode_user_agent(struct fsm_session *session,
 }
 
 
-static char *actions[FSM_NUM_ACTIONS] =
-{
-    "none",        /* FSM_ACTION_NONE */
-    "blocked",     /* FSM_BLOCK */
-    "allowed",     /* FSM_ALLOW */
-    "observed",    /* FSM_OBSERVED */
-    "not matched", /* FSM_NO_MATCH */
-    "blocked",     /* FSM_REDIRECT */
-};
-
-static char *cache_lookup_failure = "cacheLookupFailed";
-static char *remote_lookup_failure = "remoteLookupFailed";
-
-
-/**
- * @brief returns a string matching the action to report
- *
- * @param to_report information to report
- * @return the action string
- */
-static inline char *
-get_action_str(struct fqdn_pending_req *to_report, struct fsm_policy_reply *policy_reply)
-{
-    struct fsm_url_request *url_info;
-    struct fsm_url_reply *cat_reply;
-
-    if (policy_reply->categorized != FSM_FQDN_CAT_FAILED)
-    {
-        return actions[policy_reply->action];
-    }
-
-    url_info = to_report->req_info;
-    cat_reply = url_info->reply;
-
-     /* cache lookup error */
-    if (cat_reply->lookup_status) return cache_lookup_failure;
-
-    return remote_lookup_failure; /* remote lookup error */
-}
-
 static json_t *
 jencode_gk_report(struct fsm_url_reply *reply)
 {
@@ -494,7 +454,7 @@ json_ipthreat_report(struct fsm_session *session,
     json_object_set_new(json_report, "classifiedBy", json_string("ip"));
     json_object_set_new(json_report, "ipAddr", json_string(str));
 
-    str = get_action_str(to_report, policy_reply);
+    str = policy_reply->log_action;
     json_object_set_new(json_report, "action", json_string(str));
     str = policy_reply->policy;
     json_object_set_new(json_report, "policy", json_string(str));
@@ -639,7 +599,7 @@ json_url_report(struct fsm_session *session,
             break;
     }
 
-    str = get_action_str(to_report, policy_reply);
+    str = policy_reply->log_action;
     json_object_set_new(body, "action", json_string(str));
     str = policy_reply->policy;
     json_object_set_new(body, "policy", json_string(str));

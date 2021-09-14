@@ -1388,19 +1388,23 @@ const ProtobufCMessageDescriptor gatekeeper__hero_stats__hero_report__descriptor
   (ProtobufCMessageInit) gatekeeper__hero_stats__hero_report__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
-static const ProtobufCEnumValue gatekeeper__hero_stats__hero_actions__enum_values_by_number[3] =
+static const ProtobufCEnumValue gatekeeper__hero_stats__hero_actions__enum_values_by_number[5] =
 {
   { "HERO_ACTION_UNSPECIFIED", "GATEKEEPER__HERO_STATS__HERO_ACTIONS__HERO_ACTION_UNSPECIFIED", 0 },
   { "HERO_ACTION_ALLOW", "GATEKEEPER__HERO_STATS__HERO_ACTIONS__HERO_ACTION_ALLOW", 1 },
   { "HERO_ACTION_BLOCK", "GATEKEEPER__HERO_STATS__HERO_ACTIONS__HERO_ACTION_BLOCK", 2 },
+  { "HERO_ACTION_REDIRECT", "GATEKEEPER__HERO_STATS__HERO_ACTIONS__HERO_ACTION_REDIRECT", 3 },
+  { "HERO_ACTION_FORWARD", "GATEKEEPER__HERO_STATS__HERO_ACTIONS__HERO_ACTION_FORWARD", 4 },
 };
 static const ProtobufCIntRange gatekeeper__hero_stats__hero_actions__value_ranges[] = {
-{0, 0},{0, 3}
+{0, 0},{0, 5}
 };
-static const ProtobufCEnumValueIndex gatekeeper__hero_stats__hero_actions__enum_values_by_name[3] =
+static const ProtobufCEnumValueIndex gatekeeper__hero_stats__hero_actions__enum_values_by_name[5] =
 {
   { "HERO_ACTION_ALLOW", 1 },
   { "HERO_ACTION_BLOCK", 2 },
+  { "HERO_ACTION_FORWARD", 4 },
+  { "HERO_ACTION_REDIRECT", 3 },
   { "HERO_ACTION_UNSPECIFIED", 0 },
 };
 const ProtobufCEnumDescriptor gatekeeper__hero_stats__hero_actions__descriptor =
@@ -1410,9 +1414,9 @@ const ProtobufCEnumDescriptor gatekeeper__hero_stats__hero_actions__descriptor =
   "HeroActions",
   "Gatekeeper__HeroStats__HeroActions",
   "gatekeeper.hero_stats",
-  3,
+  5,
   gatekeeper__hero_stats__hero_actions__enum_values_by_number,
-  3,
+  5,
   gatekeeper__hero_stats__hero_actions__enum_values_by_name,
   1,
   gatekeeper__hero_stats__hero_actions__value_ranges,
@@ -1420,7 +1424,7 @@ const ProtobufCEnumDescriptor gatekeeper__hero_stats__hero_actions__descriptor =
 };
 static const ProtobufCEnumValue gatekeeper__hero_stats__hero_directions__enum_values_by_number[4] =
 {
-  { "HERO_DIR_UNSET", "GATEKEEPER__HERO_STATS__HERO_DIRECTIONS__HERO_DIR_UNSET", 0 },
+  { "HERO_DIR_UNSPECIFIED", "GATEKEEPER__HERO_STATS__HERO_DIRECTIONS__HERO_DIR_UNSPECIFIED", 0 },
   { "HERO_DIR_INBOUND", "GATEKEEPER__HERO_STATS__HERO_DIRECTIONS__HERO_DIR_INBOUND", 1 },
   { "HERO_DIR_OUTBOUND", "GATEKEEPER__HERO_STATS__HERO_DIRECTIONS__HERO_DIR_OUTBOUND", 2 },
   { "HERO_DIR_LAN2LAN", "GATEKEEPER__HERO_STATS__HERO_DIRECTIONS__HERO_DIR_LAN2LAN", 3 },
@@ -1433,7 +1437,7 @@ static const ProtobufCEnumValueIndex gatekeeper__hero_stats__hero_directions__en
   { "HERO_DIR_INBOUND", 1 },
   { "HERO_DIR_LAN2LAN", 3 },
   { "HERO_DIR_OUTBOUND", 2 },
-  { "HERO_DIR_UNSET", 0 },
+  { "HERO_DIR_UNSPECIFIED", 0 },
 };
 const ProtobufCEnumDescriptor gatekeeper__hero_stats__hero_directions__descriptor =
 {

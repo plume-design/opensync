@@ -31,13 +31,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "osn_types.h"
 #include "ovsdb.h"
 
-#define WC_STATUS_MAX WC_STATUS_ERROR
-
 enum wano_wan_config_status
 {
     WC_STATUS_NONE = 0,
     WC_STATUS_SUCCESS = 1,
-    WC_STATUS_ERROR = 2
+    WC_STATUS_ERROR = 2,
+    WC_STATUS_LAST = WC_STATUS_ERROR
 };
 
 enum wano_wan_config_type

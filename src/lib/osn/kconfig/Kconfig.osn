@@ -323,5 +323,26 @@ if OSN_LINUX_ENABLED
                     yield some performance boost.
         endif
 
+    menuconfig OSN_LINUX_DEFAULT_ROUTES_VIA_NM
+        bool "Handle default routes via Network Manager"
+        default n
+        help
+            Install default routes via the Wifi_Route_Config table.
+
+            This option enables the default routes to be handled by NM. This is
+            required for LTE switchover and other functionalities that may
+            require to change the route metrics dynamically.
+
+            This affects submodules stuch as Static IPv4, DHCPv4 and PPPoE
+            clients.
+
+        config OSN_LINUX_DEFAULT_ROUTES_METRIC
+            int "Default routes metric"
+            depends on OSN_LINUX_DEFAULT_ROUTES_VIA_NM
+            default 100
+            help
+                Metric to be used by default routes
+
+                Applicable only when the default routes are managed by NM
 endif
 

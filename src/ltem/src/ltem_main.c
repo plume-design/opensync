@@ -183,20 +183,6 @@ int main(int argc, char **argv)
     LOGI("ltem_create_client_table");
     ltem_create_client_table(mgr);
 
-    // Read the modem info
-    if (ltem_get_modem_info())
-    {
-        LOGE("Initializing LTEM: ltem_get_modem_info: failed");
-        mgr->lte_state_info->modem_present = false;
-    }
-    else
-    {
-        if (!mgr) return -1;
-        if (!mgr->lte_state_info) return -1;
-        LOGI("LTE modem present");
-        mgr->lte_state_info->modem_present = true;
-    }
-
     LOGI("%s: state=%s", __func__, ltem_get_lte_state_name(mgr->lte_state));
 
     // Start the event loop

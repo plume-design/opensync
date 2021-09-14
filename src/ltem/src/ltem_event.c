@@ -39,7 +39,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // Intervals and timeouts in seconds
 #define LTEM_TIMER_INTERVAL   1
-#define LTEM_MGR_INTERVAL     60
+#define LTEM_STATE_UPDATE_INTERVAL 60
+#define LTEM_MQTT_INTERVAL     60 * 15
 
 static void
 ltem_mqtt_periodic(time_t now, ltem_mgr_t *mgr)
@@ -52,6 +53,20 @@ ltem_mqtt_periodic(time_t now, ltem_mgr_t *mgr)
     LOGI("%s: ltem_build_mqtt_report, res=%d", __func__, res);
 
     mgr->mqtt_periodic_ts = now;
+}
+
+static void
+ltem_state_periodic(time_t now, ltem_mgr_t *mgr)
+{
+    time_t elapsed;
+
+    LOGD("%s: modem_present[%d]", __func__, mgr->lte_state_info->modem_present);
+    elapsed = now - mgr->state_periodic_ts;
+    if (elapsed < LTEM_STATE_UPDATE_INTERVAL) return;
+
+    LOGD("%s: elapsed[%d] update_interval[%d]", __func__, (int)elapsed, (int)LTEM_STATE_UPDATE_INTERVAL);
+    ltem_ovsdb_update_lte_state(mgr);
+    mgr->state_periodic_ts = now;
 }
 
 /**
@@ -76,6 +91,7 @@ ltem_event_cb(struct ev_loop *loop, ev_timer *watcher, int revents)
     if ((now - mgr->periodic_ts) < LTEM_TIMER_INTERVAL) return;
 
     ltem_mqtt_periodic(now, mgr);
+    ltem_state_periodic(now, mgr);
 
     if (mgr->wan_state != LTEM_WAN_STATE_UNKNOWN && mgr->lte_state == LTEM_LTE_STATE_UP)
     {
@@ -102,7 +118,8 @@ ltem_event_init()
     mgr->timer.data = NULL;
     mgr->periodic_ts = time(NULL);
     mgr->mqtt_periodic_ts = time(NULL);
+    mgr->state_periodic_ts = time(NULL);
     mgr->init_time = time(NULL);
-    mgr->mqtt_interval = LTEM_MGR_INTERVAL;
+    mgr->mqtt_interval = LTEM_MQTT_INTERVAL;
     ev_timer_start(mgr->loop, &mgr->timer);
 }

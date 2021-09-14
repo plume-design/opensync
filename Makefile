@@ -76,6 +76,7 @@ include build/devshell.mk
 include build/help.mk
 include build/doc.mk
 include build/fut.mk
+include build/packages.mk
 
 build_all: workdirs schema-check unit-install fut
 

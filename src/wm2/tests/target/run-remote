@@ -1,6 +1,0 @@
-#!/bin/sh -axe
-echo "$dut_prepare" | $dut
-echo "$ref_prepare" | $ref
-
-cd "$(dirname "$(readlink -f "$0")")"
-for i in "$@"; do ./$i; done

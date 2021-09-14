@@ -237,5 +237,6 @@ rootfs-install-only: rootfs-install-prepend rootfs-install-main rootfs-install-a
 
 rootfs-install: rootfs
 	$(MAKE) rootfs-install-only
+	$(MAKE) packages
 
 

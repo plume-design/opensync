@@ -38,6 +38,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "dns_cache.h"
 #include "memutil.h"
 
+#define GATEKEEPER  "gatekeeper"
+#define WEBPULSE    "webpulse"
+#define BRIGHTCLOUD "brightcloud"
+
 static struct dns_cache_mgr
 mgr =
 {
@@ -141,6 +145,67 @@ print_dns_cache_entry(struct ip2action *i2a)
 
 }
 
+uint8_t
+dns_cache_get_service_provider(char *service_provider)
+{
+    int rc;
+
+    rc = strncmp(service_provider, GATEKEEPER, strlen(GATEKEEPER));
+    if (!rc) return IP2ACTION_GK_SVC;
+
+    rc = strncmp(service_provider, WEBPULSE, strlen(WEBPULSE));
+    if (!rc) return IP2ACTION_WP_SVC;
+
+    rc = strncmp(service_provider, BRIGHTCLOUD, strlen(BRIGHTCLOUD));
+    if (!rc) return IP2ACTION_BC_SVC;
+
+    return IP2ACTION_UNKNOWN_SVC;
+}
+
+void
+dns_cache_disable(void)
+{
+    struct dns_cache_mgr *mgr;
+    uint8_t cache_source;
+    uint8_t service_id;
+
+    mgr = dns_cache_get_mgr();
+    if (!mgr->initialized) return;
+
+    dns_cache_cleanup();
+
+    for (service_id = 0; service_id < SERVICE_PROVIDER_MAX_ELEMS; service_id++)
+    {
+        mgr->cache_hit_count[service_id] = 0;
+    }
+
+    for (cache_source = 0; cache_source < DNS_CACHE_SOURCE_MAX; cache_source++)
+    {
+        mgr->disable_dns_cache[cache_source] = false;
+    }
+    mgr->refcount = 0;
+    mgr->initialized = false;
+}
+
+static bool
+disable_dns_cache(struct dns_cache_settings *cache_init)
+{
+    struct dns_cache_mgr *mgr;
+
+    mgr = dns_cache_get_mgr();
+    if (!mgr->initialized) return false;
+
+    /* Disable dns_cache if DNS and ipthreat using gatekeeper as service */
+    if (mgr->disable_dns_cache[MODULE_DNS_PARSE] &&
+        mgr->disable_dns_cache[MODULE_IPTHREAT_DPI])
+    {
+        dns_cache_disable();
+        return true;
+    }
+
+    return false;
+}
+
 /**
  * @brief initialize dns_cache manager.
  */
@@ -172,15 +237,31 @@ dns_cache_init_mgr(struct dns_cache_mgr *mgr)
  * @return true for success and false for failure.
  */
 bool
-dns_cache_init(void)
+dns_cache_init(struct dns_cache_settings *cache_init)
 {
     struct dns_cache_mgr *mgr;
+    bool rc;
 
     mgr = dns_cache_get_mgr();
-    dns_cache_init_mgr(mgr);
+    rc = (cache_init->dns_cache_source == MODULE_DNS_PARSE);
+    rc &= (cache_init->service_provider == IP2ACTION_GK_SVC);
+    if (!rc)
+    {
+        dns_cache_init_mgr(mgr);
+    }
 
-    return true;
+    if (cache_init->service_provider == IP2ACTION_GK_SVC)
+    {
+        mgr->disable_dns_cache[cache_init->dns_cache_source] = true;
+    }
 
+    rc = disable_dns_cache(cache_init);
+    if (rc == true)
+    {
+        LOGD("%s : disabling DNS cache", __func__);
+    }
+
+    return mgr->initialized;
 }
 
 /**
@@ -244,20 +325,11 @@ void
 dns_cache_cleanup_mgr(void)
 {
     struct dns_cache_mgr *mgr = dns_cache_get_mgr();
-    uint8_t service_id;
 
     if (!mgr->initialized) return;
     mgr->refcount--;
 
-    if (mgr->refcount == 0)
-    {
-        dns_cache_cleanup();
-        for (service_id = 0; service_id < SERVICE_PROVIDER_MAX_ELEMS; service_id++)
-        {
-            mgr->cache_hit_count[service_id] = 0;
-        }
-        mgr->initialized = false;
-    }
+    if (mgr->refcount == 0) dns_cache_disable();
 }
 
 
@@ -789,3 +861,18 @@ print_dns_cache_details(void)
     print_dns_cache_hit_count();
 }
 
+/**
+ * @brief dns_cache status
+ *
+ * @return true on dns_cache disabled
+ */
+bool
+is_dns_cache_disabled(void)
+{
+    struct dns_cache_mgr *mgr;
+
+    mgr = dns_cache_get_mgr();
+    if (!mgr->initialized) return true;
+
+    return false;
+}

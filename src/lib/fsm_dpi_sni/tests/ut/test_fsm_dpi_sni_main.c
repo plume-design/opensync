@@ -43,7 +43,11 @@ char *test_name = "fsm_dpi_sni_plugin_tests";
 void
 setUp(void)
 {
-    dns_cache_init();
+    struct dns_cache_settings cache_init;
+
+    cache_init.dns_cache_source = MODULE_DNS_PARSE;
+    cache_init.service_provider = IP2ACTION_WP_SVC;
+    dns_cache_init(&cache_init);
 }
 
 /**

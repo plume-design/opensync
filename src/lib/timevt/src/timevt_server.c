@@ -244,16 +244,15 @@ static void eh_on_msg_received(ipc_msg_link_t *link, void *subscr, const ipc_msg
 
 static char *alloc_string(char *oldstr, const char *newstr)
 {
-    char *str = NULL;
-
-    if (newstr != NULL) {
-        REALLOC(oldstr, strlen(newstr) + 1);
-    } else {
-        FREE(oldstr);
-        str = NULL;
+    if (newstr != NULL)
+    {
+        return strcpy(REALLOC(oldstr, strlen(newstr) + 1), newstr);
     }
-    if (str) strcpy(str, newstr);
-    return str;
+    else
+    {
+        FREE(oldstr);
+        return NULL;
+    }
 }
 
 te_server_handle tesrv_open(struct ev_loop *ev, const char *addr, const char *sw_version,

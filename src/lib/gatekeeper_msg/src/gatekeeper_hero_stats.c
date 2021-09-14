@@ -83,8 +83,10 @@ get_protobuf_action_value(int action)
 {
     switch (action)
     {
-        case FSM_ALLOW : return GATEKEEPER__HERO_STATS__HERO_ACTIONS__HERO_ACTION_ALLOW;
-        case FSM_BLOCK : return GATEKEEPER__HERO_STATS__HERO_ACTIONS__HERO_ACTION_BLOCK;
+        case FSM_ALLOW    : return GATEKEEPER__HERO_STATS__HERO_ACTIONS__HERO_ACTION_ALLOW;
+        case FSM_BLOCK    : return GATEKEEPER__HERO_STATS__HERO_ACTIONS__HERO_ACTION_BLOCK;
+        case FSM_REDIRECT : return GATEKEEPER__HERO_STATS__HERO_ACTIONS__HERO_ACTION_REDIRECT;
+        case FSM_FORWARD  : return GATEKEEPER__HERO_STATS__HERO_ACTIONS__HERO_ACTION_FORWARD;
     }
     LOGD("%s(): no such action %d", __func__, action);
     return GATEKEEPER__HERO_STATS__HERO_ACTIONS__HERO_ACTION_UNSPECIFIED;
@@ -103,6 +105,8 @@ gkhc_init_aggregator(struct gkc_report_aggregator *aggr, struct fsm_session *ses
     long max_report_size;
 
     if (aggr->initialized) return true;
+
+    LOGD("%s: initializing", __func__);
 
     if (session == NULL) return false;
     if (session->node_id == NULL) return false;
@@ -147,6 +151,8 @@ gkhc_init_aggregator(struct gkc_report_aggregator *aggr, struct fsm_session *ses
 
     aggr->initialized = true;
 
+    LOGD("%s: fully initialized", __func__);
+
     return true;
 
 cleanup:
@@ -157,6 +163,8 @@ cleanup:
     /* Reset the structure completely */
     MEMZERO(*aggr);
     aggr->initialized = false;
+
+    LOGD("%s: cannot initialize", __func__);
 
     return false;
 }
@@ -874,9 +882,13 @@ gkhc_serialize_cache_entries(struct gkc_report_aggregator *aggr)
 void
 gkhc_activate_window(struct gkc_report_aggregator *aggr)
 {
+    time_t now;
+
     if (aggr == NULL || aggr->initialized == false) return;
 
-    aggr->start_observation_window = time(NULL);
+    now = time(NULL);
+    LOGT("%s: Activating window at %ld", __func__, now);
+    aggr->start_observation_window = now;
 }
 
 /**
@@ -885,11 +897,14 @@ gkhc_activate_window(struct gkc_report_aggregator *aggr)
 void
 gkhc_close_window(struct gkc_report_aggregator *aggr)
 {
+    time_t now;
     bool rc;
 
     if (aggr == NULL || aggr->initialized == false) return;
 
-    aggr->end_observation_window = time(NULL);
+    now = time(NULL);
+    aggr->end_observation_window = now;
+    LOGT("%s: Closing window at %ld", __func__, now);
 
     rc = gkhc_serialize_cache_entries(aggr);
     if (!rc) return;

@@ -38,7 +38,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "ltem_lte_modem.h"
 
-#define LTEM_ADDR_MAX_LEN 32
+#define LTE_DEFAULT_METRIC 100
+#define WAN_DEFAULT_METRIC 0
+#define WAN_L3_FAIL_METRIC 110
 
 enum  ltem_header_ids
 {
@@ -106,13 +108,16 @@ typedef struct lte_state_info_
 
 typedef struct lte_route_info_
 {
+    char lte_if_name[C_IFNAME_LEN];
     char lte_subnet[C_IPV6ADDR_LEN];
     char lte_netmask[C_IPV6ADDR_LEN];
     char lte_gw[C_IPV6ADDR_LEN];
+    uint32_t lte_metric;
+    char wan_if_name[C_IFNAME_LEN];
     char wan_subnet[C_IPV6ADDR_LEN];
     char wan_netmask[C_IPV6ADDR_LEN];
-    char wan_if_name[C_IFNAME_LEN];
     char wan_gw[C_IPV6ADDR_LEN];
+    uint32_t wan_metric;
     char lte_dns1[C_IPV6ADDR_LEN];
     char lte_dns2[C_IPV6ADDR_LEN];
 } lte_route_info_t;
@@ -170,6 +175,7 @@ typedef struct ltem_mgr_
     ev_timer timer;              // manager's event timer
     time_t periodic_ts;          // periodic timestamp
     time_t mqtt_periodic_ts;     // periodic timestamp for MQTT reports
+    time_t state_periodic_ts;    // periodic timestamp for Lte State updates
     time_t init_time;            // init time
     char pid[16];                // manager's pid
     struct sysinfo sysinfo;      /* system information */
@@ -187,6 +193,7 @@ typedef struct ltem_mgr_
     ltem_handlers_t handlers;
     lte_modem_info_t modem_info;
     time_t mqtt_interval;
+    char topic[256];
     char node_id[64];
     char location_id[64];
 } ltem_mgr_t;
@@ -203,7 +210,7 @@ int ltem_ovsdb_init(void);
 bool ltem_init_lte(void);
 int ltem_set_lte_route_metric(ltem_mgr_t *mgr);
 int ltem_force_lte_route(ltem_mgr_t *mgr);
-int ltem_restore_default_route(ltem_mgr_t *mgr);
+int ltem_restore_default_wan_route(ltem_mgr_t *mgr);
 int ltem_get_modem_info(void);
 int ltem_create_lte_route_table(ltem_mgr_t *mgr);
 void ltem_create_client_table(ltem_mgr_t *mgr);
@@ -221,6 +228,7 @@ int ltem_ovsdb_cmu_disable_lte(ltem_mgr_t *mgr);
 void ltem_ovsdb_cmu_check_lte(ltem_mgr_t *mgr);
 int ltem_ovsdb_wifi_inet_create_config(ltem_mgr_t *mgr);
 int ltem_ovsdb_lte_create_config(ltem_mgr_t *mgr);
+void ltem_ovsdb_update_awlan_node(struct schema_AWLAN_Node *new);
 void ltem_reset_modem(void);
 void ltem_evt_switch_slot(void);
 void ltem_set_qmi_mode(void);
@@ -229,5 +237,5 @@ void ltem_set_apn(char *apn);
 int ltem_build_mqtt_report(time_t now);
 int lte_set_mqtt_topic(void);
 void lte_dump_modem_info(void);
-
+int ltem_ovsdb_update_lte_state(ltem_mgr_t *mgr);
 #endif /* LTEM_MGR_H_INCLUDED */

@@ -483,8 +483,8 @@ static void cm2_trigger_restart_managers(void) {
         goto restart;
     }
 
-    skip_restart = cm2_enable_gw_offline();
-    if (skip_restart) {
+    if (cm2_enable_gw_offline()) {
+        skip_restart = true;
         LOGI("GW offline enabled, skip restart managers");
         goto restart;
     }
@@ -785,8 +785,6 @@ start:
                 break;
             }
 
-             /* Workaround for CAES-599 */
-            cm2_ovsdb_remove_unused_gre_interfaces();
             g_state.connected = false;
             g_state.is_con_stable = false;
 
@@ -885,8 +883,6 @@ start:
         case CM2_STATE_TRY_CONNECT:
             if (cm2_is_extender())
             {
-                /* Workaround for CAES-599, double check */
-                cm2_ovsdb_remove_unused_gre_interfaces();
                 cm2_ovsdb_connection_update_unreachable_cloud_counter(g_state.link.if_name, -1);
             }
 
@@ -998,9 +994,6 @@ start:
             break;
 
         case CM2_STATE_QUIESCE_OVS:
-            /* Workaround for CAES-599, double check */
-            cm2_ovsdb_remove_unused_gre_interfaces();
-
             if (cm2_state_changed())
             {
                 // quiesce ovsdb-server, wait for timeout

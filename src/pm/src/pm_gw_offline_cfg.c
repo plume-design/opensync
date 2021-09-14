@@ -74,7 +74,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define PS_KEY_OFFLINE_CFG          KEY_OFFLINE_CFG
 
-#define TIMEOUT_NO_CFG_CHANGE      30
+#define TIMEOUT_NO_CFG_CHANGE      15
 
 #if defined(CONFIG_TARGET_LAN_BRIDGE_NAME)
 #define LAN_BRIDGE   CONFIG_TARGET_LAN_BRIDGE_NAME
@@ -131,6 +131,7 @@ static bool gw_offline_ps_store(const char *ps_key, const json_t *config);
 static bool gw_offline_cfg_ps_store(const struct gw_offline_cfg *cfg);
 static bool gw_offline_ps_load(const char *ps_key, json_t **config);
 static bool gw_offline_cfg_ps_load(struct gw_offline_cfg *cfg);
+static bool gw_offline_ps_erase(void);
 
 static bool gw_offline_cfg_ovsdb_read(struct gw_offline_cfg *cfg);
 static bool gw_offline_cfg_ovsdb_apply(const struct gw_offline_cfg *cfg);
@@ -221,7 +222,35 @@ static void on_timeout_cfg_no_change(struct ev_loop *loop, ev_timer *watcher, in
     pm_gw_offline_read_and_store_config();
 }
 
-static bool pm_node_state_set(const char *key, const char *value)
+static bool pm_node_config_set(const char *key, const char *value, bool persist)
+{
+    struct schema_Node_Config node_config;
+    json_t *where;
+
+    where = json_array();
+    json_array_append_new(where, ovsdb_tran_cond_single("module", OFUNC_EQ, PM_MODULE_NAME));
+    json_array_append_new(where, ovsdb_tran_cond_single("key", OFUNC_EQ, (char *)key));
+
+    MEMZERO(node_config);
+    SCHEMA_SET_STR(node_config.module, PM_MODULE_NAME);
+    SCHEMA_SET_STR(node_config.key, key);
+
+    if (value != NULL)
+    {
+        SCHEMA_SET_STR(node_config.value, value);
+        if (persist)
+            SCHEMA_SET_BOOL(node_config.persist, persist);
+
+        ovsdb_table_upsert_where(&table_Node_Config, where, &node_config, false);
+    }
+    else
+    {
+        ovsdb_table_delete_where(&table_Node_Config, where);
+    }
+    return true;
+}
+
+static bool pm_node_state_set(const char *key, const char *value, bool persist)
 {
     struct schema_Node_State node_state;
     json_t *where;
@@ -237,6 +266,9 @@ static bool pm_node_state_set(const char *key, const char *value)
     if (value != NULL)
     {
         SCHEMA_SET_STR(node_state.value, value);
+        if (persist)
+            SCHEMA_SET_BOOL(node_state.persist, persist);
+
         ovsdb_table_upsert_where(&table_Node_State, where, &node_state, false);
     }
     else
@@ -337,7 +369,10 @@ static bool gw_offline_enable_cfg_mon()
     static bool inited;
 
     if (inited)
+    {
+        on_configuration_updated();
         return true;
+    }
 
     OVSDB_TABLE_MONITOR(Wifi_VIF_Config, true);
     OVSDB_TABLE_MONITOR(Wifi_Inet_Config, true);
@@ -518,12 +553,12 @@ static void callback_Node_Config(
         if (strcmp(config->value, VAL_OFFLINE_ON) == 0)
         {
             gw_offline_cfg = true;
-            LOG(INFO, "offline_cfg: Cloud enabled feature.");
+            LOG(INFO, "offline_cfg: Feature enabled.");
         }
         else
         {
             gw_offline_cfg = false;
-            LOG(INFO, "offline_cfg: Cloud disabled feature.");
+            LOG(INFO, "offline_cfg: Feature disabled.");
         }
 
         // Remember enable/disable flag:
@@ -541,19 +576,31 @@ static void callback_Node_Config(
         }
 
         // Reflect enable/disable flag in Node_State:
-        pm_node_state_set(KEY_OFFLINE_CFG, config->value);
+        pm_node_state_set(KEY_OFFLINE_CFG, config->value, (config->persist_exists && config->persist));
 
         // Indicate ready if enabled and config already available:
         if (gw_offline_cfg)
         {
             if (pm_gw_offline_cfg_is_available())
-                pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_READY);
+            {
+                LOG(INFO, "offline_cfg: Config already available in persistent storage.");
+                pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_READY, false);
+            }
             else
-                pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_ENABLED);
+            {
+                LOG(INFO, "offline_cfg: Config not yet available in persistent storage.");
+                pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_ENABLED, false);
+            }
         }
         else
         {
-            pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_DISABLED);
+            pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_DISABLED, false);
+
+            // When feature disabled, erase the saved persistent data:
+            if (gw_offline_ps_erase())
+                LOG(NOTICE, "offline_cfg: Config erased from persistent storage.");
+            else
+                LOG(ERR, "offline_cfg: Error erasing config from persistent storage.");
         }
     }
 
@@ -606,7 +653,7 @@ static void callback_Node_Config(
                  * from stored config, but PM may be responsible for some offline
                  * tasks in this state.
                  */
-                pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_ACTIVE);
+                pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_ACTIVE, false);
             }
             else
             {
@@ -649,9 +696,9 @@ static void callback_Node_Config(
 
             // Set state accordingly:
             if (pm_gw_offline_cfg_is_available())
-                pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_READY);
+                pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_READY, false);
             else
-                pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_ENABLED);
+                pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_ENABLED, false);
 
             LOG(NOTICE, "offline_cfg: gw_offline mode exited");
         }
@@ -805,6 +852,9 @@ void pm_gw_offline_init(void *data)
     OVSDB_TABLE_INIT_NO_KEY(Openflow_Tag);
     OVSDB_TABLE_INIT_NO_KEY(Openflow_Tag_Group);
 
+    // Always install Node_Config monitor, other monitors installed when enabled.
+    OVSDB_TABLE_MONITOR(Node_Config, true);
+
     // Check feature enable flag (persistent):
     if (gw_offline_ps_load(PS_KEY_OFFLINE_CFG, &json_en) && json_en != NULL)
     {
@@ -821,29 +871,20 @@ void pm_gw_offline_init(void *data)
 
     if (gw_offline_cfg)
     {
-        LOG(INFO, "offline_cfg: Feature enabled (flag set in persistent storage)");
-        pm_node_state_set(KEY_OFFLINE_CFG, VAL_OFFLINE_ON);
+        LOG(INFO, "offline_cfg: Feature enable flag set in persistent storage");
 
-        if (pm_gw_offline_cfg_is_available())
+        if (!pm_gw_offline_cfg_is_available())
         {
-            LOG(INFO, "offline_cfg: Config available in persistent storage.");
-            // Indicate the feature is "ready" (enabled && persistent config available):
-            pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_READY);
+            LOG(WARN, "offline_cfg: Feature enable persistent flag set "
+                      "but config not yet available in persistent storage.");
         }
-        else
-        {
-            LOG(INFO, "offline_cfg: Config NOT available in persistent storage.");
-            // Indicate the feature is "enabled" (but no persistent config available):
-            pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_ENABLED);
-        }
+
+        pm_node_config_set(KEY_OFFLINE_CFG, VAL_OFFLINE_ON, true);
     }
     else
     {
         LOG(DEBUG, "offline_cfg: Feature disabled (flag not set or not present in persistent storage)");
     }
-
-    // Always install Node_Config monitor, other monitors installed when enabled.
-    OVSDB_TABLE_MONITOR(Node_Config, true);
 }
 
 void pm_gw_offline_fini(void *data)
@@ -1093,6 +1134,39 @@ static bool gw_offline_cfg_ps_load(struct gw_offline_cfg *cfg)
     cfg_cache.openflow_tag_group = json_incref(cfg->openflow_tag_group);
 
 exit:
+    return rv;
+}
+
+static bool gw_offline_ps_erase(void)
+{
+    osp_ps_t *ps;
+    bool rv = false;
+
+    ps = osp_ps_open(PS_STORE_GW_OFFLINE, OSP_PS_RDWR);
+    if (ps == NULL)
+    {
+        LOG(ERR, "offline_cfg: Error opening %s persistent store.", PS_STORE_GW_OFFLINE);
+        goto exit;
+    }
+    LOG(DEBUG, "offline_cfg: Persistent store %s opened", PS_STORE_GW_OFFLINE);
+
+    if (!osp_ps_erase(ps))
+    {
+        LOG(ERR, "offline_cfg: Error erasing %s persistent store.", PS_STORE_GW_OFFLINE);
+        goto exit;
+    }
+    LOG(DEBUG, "offline_cfg: Persistent store %s: ERASED.", PS_STORE_GW_OFFLINE);
+
+    if (!osp_ps_sync(ps))
+    {
+        LOG(ERR, "offline_cfg: Error syncing %s persistent store.", PS_STORE_GW_OFFLINE);
+        goto exit;
+    }
+    LOG(DEBUG, "offline_cfg: Persistent store %s: synced.", PS_STORE_GW_OFFLINE);
+
+    rv = true;
+exit:
+    if (ps != NULL) osp_ps_close(ps);
     return rv;
 }
 
@@ -1607,9 +1681,9 @@ bool pm_gw_offline_read_and_store_config()
 exit:
     /* Indicate to CM that peristent storage is "ready":  */
     if (rv)
-        pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_READY);
+        pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_READY, false);
     else
-        pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_ERROR);
+        pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_ERROR, false);
 
     gw_offline_cfg_release(&gw_cfg);
     return rv;
@@ -1669,12 +1743,12 @@ exit:
     {
         /* Indicate in Node_State that the feature is "active"
          * (enabled && ps config applied): */
-        pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_ACTIVE);
+        pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_ACTIVE, false);
     }
     else
     {
         /* Indicate error in Node_State: */
-        pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_ERROR);
+        pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_ERROR, false);
     }
 
     return rv;

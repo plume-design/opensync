@@ -293,12 +293,11 @@ void main_tearDown(void)
     return;
 }
 
-int
+void
 test_policy_response(struct fsm_policy_req *policy_request, struct fsm_policy_reply *policy_reply)
 {
     fsm_policy_free_reply(policy_reply);
     fsm_free_url_reply(policy_request->fqdn_req->req_info->reply);
-    return 0;
 }
 
 bool

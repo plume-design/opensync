@@ -210,8 +210,10 @@ ipthreat_dpi_plugin_init(struct fsm_session *session)
 {
     struct ipthreat_dpi_session *ipthreat_dpi_session;
     struct fsm_dpi_plugin_ops *dpi_plugin_ops;
+    struct dns_cache_settings cache_init;
     struct fsm_policy_client *client;
     struct ipthreat_dpi_cache *mgr;
+    char *provider;
     char *outbound;
     char *inbound;
 
@@ -224,7 +226,6 @@ ipthreat_dpi_plugin_init(struct fsm_session *session)
     {
         ds_tree_init(&mgr->ipt_sessions, ipthreat_dpi_session_cmp,
                      struct ipthreat_dpi_session, session_node);
-        dns_cache_init();
         mgr->periodic_ts = time(NULL);
         mgr->initialized = true;
     }
@@ -276,6 +277,18 @@ ipthreat_dpi_plugin_init(struct fsm_session *session)
         fsm_policy_register_client(client);
     }
     ipthreat_dpi_session->initialized = true;
+
+    provider = session->ops.get_config(session, "provider_plugin");
+    if (provider != NULL)
+    {
+        ipthreat_dpi_session->service_provider = dns_cache_get_service_provider(provider);
+    }
+
+    /* Initialize the DNS cache */
+    cache_init.dns_cache_source = MODULE_IPTHREAT_DPI;
+    cache_init.service_provider = ipthreat_dpi_session->service_provider;
+    dns_cache_init(&cache_init);
+
     LOGD("%s: added session %s", __func__, session->name);
 
     return 0;
@@ -738,23 +751,24 @@ ipthreat_process_action(struct fsm_session *session, int action,
 }
 
 
-int
+static void
 ipthreat_process_verdict(struct fsm_policy_req *policy_request,
                          struct fsm_policy_reply *policy_reply)
 {
+    bool rc;
+
     LOGT("%s(): processing ipthreat verdict for policy req == %p",
          __func__,
          policy_request);
 
-    ipthreat_update_cache(policy_request, policy_reply);
+    rc = is_dns_cache_disabled();
+    if (!rc) ipthreat_update_cache(policy_request, policy_reply);
 
     ipthreat_process_report(policy_request, policy_reply);
 
     fsm_policy_free_request(policy_request);
 
     fsm_policy_free_reply(policy_reply);
-
-    return 0;
 }
 
 static int

@@ -26,7 +26,10 @@
 
 # {# jinja-parse #}
 INSTALL_PREFIX="{{INSTALL_PREFIX}}"
+
 [ -z "$1" ] && echo "Error: should be run by udhcpc" && exit 1
+
+. ${INSTALL_PREFIX}/bin/route_sub.sh
 
 # set default actions if not imported by env or missing
 set_gateway=${action_set_gateway:-true}
@@ -186,7 +189,7 @@ setup_interface()
 
             local valid_gw=""
             for i in $router ; do
-                route add default gw "$i" dev "$interface"
+                route_default_add "$interface" "$i"
                 valid_gw="${valid_gw:+$valid_gw|}$i"
             done
         }

@@ -241,6 +241,8 @@ typedef struct
     uint32_t                        channel;
     uint64_t                        timestamp_ms;
     ds_dlist_t                      list;       /* dpp_client_record_t */
+    iftype_t                        uplink_type;
+    bool                            uplink_changed;
 } dpp_client_report_data_t;
 
 #endif /* DPP_CLIENT_H_INCLUDED */

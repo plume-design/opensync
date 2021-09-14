@@ -77,7 +77,7 @@ static const char *psm_ovsdb_row_key_str(struct psm_ovsdb_row_key *rk);
 static void psm_ovsdb_row_key_from_json(struct psm_ovsdb_row_key *key, const char *table, json_t *row);
 static bool psm_ovsdb_row_key_from_str(struct psm_ovsdb_row_key *key, const char *str);
 static bool psm_ovsdb_row_uuid_get(ovs_uuid_t *uuid, json_t *row);
-static json_t *psm_ovsdb_row_filter(json_t *row);
+static json_t *psm_ovsdb_row_filter(const char *table, json_t *row);
 
 static ev_debounce g_psm_ovsdb_row_sync_debounce;
 
@@ -154,7 +154,7 @@ bool psm_ovsdb_row_update(const char *table, json_t *row)
         goto exit;
     }
 
-    row_filtered = psm_ovsdb_row_filter(row);
+    row_filtered = psm_ovsdb_row_filter(table, row);
     if (row_filtered == NULL)
     {
         LOG(ERR, "Unable to filter row: %s", json_dumps_static(row, 0));
@@ -580,12 +580,13 @@ const char *psm_ovsdb_row_key_str(struct psm_ovsdb_row_key *rk)
 
 /*
  * Take a JSON representation of a row as returned by OVSDB and filter out
- * unwanted columns such as _uuid, _version, references and default values
- * for various types (empty sets, empty strings, empty maps...)
+ * unwanted columns such as _uuid, _version, ephemeral columns, references and
+ * default values for various types (empty sets, empty strings, empty maps...)
  */
-json_t *psm_ovsdb_row_filter(json_t *row)
+json_t *psm_ovsdb_row_filter(const char *table, json_t *row)
 {
     json_t *row_filtered;
+    const char *column;
     const char *type;
     json_t *data;
     void *iter;
@@ -613,7 +614,14 @@ json_t *psm_ovsdb_row_filter(json_t *row)
          * - uuids: ["uuid", ...]
          * - uuid sets: ["set", [ ["uuid", ...] ] ]
          */
+        column = json_object_iter_key(iter);
         data = json_object_iter_value(iter);
+
+        /* Check for ephemeral columns */
+        if (psm_ovsdb_schema_column_is_ephemeral(table, column))
+        {
+            goto delete;
+        }
 
         /* Check for empty strings */
         const char *str = json_string_value(data);
@@ -666,7 +674,7 @@ json_t *psm_ovsdb_row_filter(json_t *row)
         continue;
 delete:
         /* Delete column */
-        json_object_del(row_filtered, json_object_iter_key(iter));
+        json_object_del(row_filtered, column);
     }
 
     return row_filtered;

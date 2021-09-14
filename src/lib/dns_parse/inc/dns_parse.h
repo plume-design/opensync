@@ -67,6 +67,7 @@ struct dns_session
     struct fsm_url_stats health_stats;
     struct web_cat_offline cat_offline;
     struct fqdn_pending_req *req;
+    uint8_t service_provider;
     bool initialized;
 };
 

@@ -1,0 +1,8 @@
+menu "mdnsd log Configuration"
+    config MDNS_OPENSYNC_LOG
+        bool "LOG mdns messages using OPENSYNC logger"
+        default y
+        help
+            LOG messages using Opensync logger on disable it will
+            use mdnsd specific logger.
+endmenu

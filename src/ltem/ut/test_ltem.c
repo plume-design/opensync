@@ -43,6 +43,76 @@ static ltem_mgr_t ltem_mgr;
 
 const char *test_name = "ltem_tests";
 
+struct schema_AWLAN_Node g_awlan_nodes_new[] =
+{
+    {
+        .mqtt_headers_keys =
+        {
+            "nodeId",
+            "locationId",
+        },
+        .mqtt_headers =
+        {
+            "HC83C0005B",
+            "602e11e768b6592af397e9f2",
+        },
+        .mqtt_headers_len = 2,
+
+        .mqtt_topics_keys =
+        {
+            "Crash.Reports",
+            "DHCP.Signatures",
+            "DNS.Queries",
+            "HTTP.Requests",
+            "LteStats",
+            "ObjectStore",
+            "UPnP.Devices",
+            "WifiBlaster.Results",
+            "aggregatedStats",
+        },
+        .mqtt_topics =
+        {
+            "Crash/Reports/dog1/HC83C0005B/602e11e768b6592af397e9f2",
+            "DHCP/Signatures/dog1/HC83C0005B/602e11e768b6592af397e9f2",
+            "DNS/Queries/dog1/HC83C0005B/602e11e768b6592af397e9f2",
+            "HTTP/Requests/dog1/HC83C0005B/602e11e768b6592af397e9f2",
+            "dev-test/LteStats/dog1/HC83C0005B/602e11e768b6592af397e9f2",
+            "ObjectStore/dog1/HC83C0005B/602e11e768b6592af397e9f2",
+            "UPnP/Devices/dog1/HC83C0005B/602e11e768b6592af397e9f2",
+            "WifiBlaster/dog1/HC83C0005B/602e11e768b6592af397e9f2",
+            "aggregatedStats/dog1/HC83C0005B/602e11e768b6592af397e9f2",
+        },
+        .mqtt_topics_len = 9,
+    },
+};
+
+struct schema_AWLAN_Node g_node_conf_old[] =
+{
+    {
+        .mqtt_headers_keys =
+        {
+            "nodeId",
+            "locationId",
+        },
+        .mqtt_headers =
+        {
+            "0",
+            "1",
+        },
+        .mqtt_headers_len = 2,
+
+        .mqtt_topics_keys =
+        {
+            "TDF1993",
+        },
+        .mqtt_topics =
+        {
+            "EpoHghTst",
+        },
+        .mqtt_topics_len = 1,
+    },
+};
+
 void
 setUp(void)
 {
@@ -83,8 +153,6 @@ ltem_ut_mgr_init(struct ev_loop *loop)
     mgr->lte_state_info = lte_state;
     mgr->lte_route = lte_route;
 
-    lte_set_mqtt_topic();
-
     return true;
 }
 
@@ -120,6 +188,44 @@ test_ltem_build_mqtt_report(void)
     TEST_ASSERT_EQUAL_INT(0, ret);
 }
 
+/**
+ * @brief update mqtt_headers
+ *
+ * setUp() sets the mqtt headers. Validate the original values,
+ * update and validate.
+ */
+void
+test_add_awlan_headers(void)
+{
+    ltem_mgr_t *mgr;
+    char *expected;
+    char *node_id;
+    char *location_id;
+    char *topic;
+    char *key;
+
+    mgr = ltem_get_mgr();
+
+    /* Validate original headers */
+    node_id = mgr->node_id;
+    TEST_ASSERT_NOT_NULL(node_id);
+    expected = g_awlan_nodes_new[0].mqtt_headers[0];
+    TEST_ASSERT_EQUAL_STRING(expected, node_id);
+    location_id = mgr->location_id;
+    TEST_ASSERT_NOT_NULL(location_id);
+    expected = g_awlan_nodes_new[0].mqtt_headers[1];
+    TEST_ASSERT_EQUAL_STRING(expected, location_id);
+
+    topic = mgr->topic;
+    TEST_ASSERT_NOT_NULL(topic);
+    expected = g_awlan_nodes_new[0].mqtt_topics[4];
+    TEST_ASSERT_EQUAL_STRING(expected, topic);
+    key = "LteStats";
+    TEST_ASSERT_NOT_NULL(key);
+    expected = g_awlan_nodes_new[0].mqtt_topics_keys[4];
+    TEST_ASSERT_EQUAL_STRING(expected, key);
+}
+
 int
 main(int argc, char **argv)
 {
@@ -137,6 +243,8 @@ main(int argc, char **argv)
     ltem_setup_ut_handlers(mgr);
     rc = mgr->handlers.ltem_mgr_init(loop);
     if (!rc) return -1;
+
+    ltem_ovsdb_update_awlan_node(&g_awlan_nodes_new[0]);
 
     RUN_TEST(test_ltem_build_mqtt_report);
 

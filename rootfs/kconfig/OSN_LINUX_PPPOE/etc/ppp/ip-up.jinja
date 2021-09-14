@@ -1,6 +1,9 @@
 #!/bin/sh
 
 . {{INSTALL_PREFIX}}/bin/dns_sub.sh
+. {{INSTALL_PREFIX}}/bin/route_sub.sh
+
+route_default_add "$IFNAME" "$IPREMOTE"
 
 dns_reset "$IFNAME"
 

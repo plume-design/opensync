@@ -252,8 +252,6 @@ message Client {
     repeated TxStats    tx_stats            = 11;
     repeated TidStats   tid_stats           = 12;
     optional uint32     uapsd               = 13;
-    optional string     uplink_type         = 14;
-    optional bool       uplink_changed      = 15;
 }
 
 message ClientReport {
@@ -261,6 +259,8 @@ message ClientReport {
     optional uint64         timestamp_ms    = 2;
     repeated Client         client_list     = 3;
     required uint32         channel         = 4;
+    optional string         uplink_type     = 5;
+    optional bool           uplink_changed  = 6;
 }
 
 message ClientAuthFailsReport {

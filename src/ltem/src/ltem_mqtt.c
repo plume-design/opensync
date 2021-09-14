@@ -297,6 +297,7 @@ int
 lte_serialize_report(void)
 {
     int res;
+    ltem_mgr_t *mgr = ltem_get_mgr();
 
     res = lte_set_report();
     if (res) return res;
@@ -304,39 +305,41 @@ lte_serialize_report(void)
     lte_serialized = serialize_lte_info(lte_report);
     if (!lte_serialized) return -1;
 
-    res = lte_send_report(lte_mqtt_topic, lte_serialized);
 
+    if (mgr->topic[0])
+    {
+        res = lte_send_report(mgr->topic, lte_serialized);
+        LOGI("%s: AWLAN topic[%s]", __func__, mgr->topic);
+    }
+    else
+    {
+        return -1;
+    }
     return res;
 }
 
 
-/**
- * @brief create mqtt topic
- */
-int
-lte_set_mqtt_topic(void)
-{
-    int res;
-    ltem_mgr_t *mgr = ltem_get_mgr();
-
-    memset(lte_mqtt_topic, 0, sizeof(lte_mqtt_topic));
-    res = snprintf(lte_mqtt_topic, sizeof(lte_mqtt_topic), "LteStats/%s/%s/%s",
-                  lte_deployment, mgr->node_id, mgr->location_id);
-    LOGI("%s: lte_mqtt_topic[%s], node_id[%s], location_id[%s]", __func__, lte_mqtt_topic, mgr->node_id, mgr->location_id);
-    if (!res) LOGE("Set Mqtt Topic failed: %d[%s]", res, strerror(errno));
-    return res;
-}
 
 int
 ltem_build_mqtt_report(time_t now)
 {
     int res;
-
-    res = lte_set_mqtt_topic();
-    if (res < 0) return res;
+    ltem_mgr_t *mgr = ltem_get_mgr();
 
     res = ltem_get_modem_info();
-    if (res < 0) return res;
+    if (res < 0)
+    {
+        LOGI("%s: ltem_get_modem_info: Failed", __func__);
+    }
+
+    if (mgr->modem_info.model[0])
+    {
+        mgr->lte_state_info->modem_present = true;
+    }
+    else
+    {
+        mgr->lte_state_info->modem_present = false;
+    }
 
     res = lte_serialize_report();
 

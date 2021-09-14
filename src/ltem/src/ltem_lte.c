@@ -67,26 +67,21 @@ ltem_parse_chip_info(char *buf, lte_chip_info_t *chip_info)
     len = strlen(buf);
     str = (char *)CALLOC(1, len);
     if (!str) return -1;
-    strncpy(str, buf, len);
+    strscpy(str, buf, len);
     token = strtok_r(str, delim1, &context);
     if (token == NULL) goto error;
-    strncpy(chip_info->cmd, token, sizeof(chip_info->cmd));
+    STRSCPY(chip_info->cmd, token);
     token = strtok_r(NULL, delim2, &context);
     if (token == NULL) goto error;
-    strncpy(chip_info->vendor, token, sizeof(chip_info->vendor));
+    STRSCPY(chip_info->vendor, token);
     token = strtok_r(NULL, delim2, &context);
     if (token == NULL) goto error;
-    strncpy(chip_info->model, &token[1], sizeof(chip_info->model));
+    STRSCPY(chip_info->model, &token[1]);
     token = strtok_r(NULL, delim3, &context);
     if (token == NULL) goto error;
     token = strtok_r(NULL, delim2, &context);
-    if (token == NULL)
-    {
-        LOGI("%s: full model token[NULL]", __func__);
-        goto error;
-    }
-    strncpy(chip_info->full_model, token, sizeof(chip_info->full_model));
-    LOGI("%s: full_model[%s]", __func__, chip_info->full_model);
+    if (token == NULL) goto error;
+    STRSCPY(chip_info->full_model, token);
     FREE(str);
     return 0;
 
@@ -100,13 +95,13 @@ int
 ltem_save_chip_info(lte_chip_info_t *chip_info, lte_modem_info_t *modem_info)
 {
     if (sizeof(modem_info->chip_vendor) != sizeof(chip_info->vendor)) return -1;
-    strncpy(modem_info->chip_vendor, chip_info->vendor, sizeof(modem_info->chip_vendor));
+    STRSCPY(modem_info->chip_vendor, chip_info->vendor);
 
     if (sizeof(modem_info->model) != sizeof(chip_info->model)) return -1;
-    strncpy(modem_info->model, chip_info->model, sizeof(modem_info->model));
+    STRSCPY(modem_info->model, chip_info->model);
 
     if (sizeof(modem_info->full_model) != sizeof(chip_info->full_model)) return -1;
-    strncpy(modem_info->full_model, chip_info->full_model, sizeof(modem_info->full_model));
+    STRSCPY(modem_info->full_model, chip_info->full_model);
 
     return 0;
 }
@@ -125,13 +120,13 @@ ltem_parse_imei(char *buf, lte_imei_t *imei)
     len = strlen(buf);
     str = (char *)CALLOC(1, len);
     if (!str) return -1;
-    strncpy(str, buf, len);
+    strscpy(str, buf, len);
     token = strtok_r(str, delim1, &context);
     if (token == NULL) goto error;
-    strncpy(imei->cmd, token, sizeof(imei->cmd));
+    STRSCPY(imei->cmd, token);
     token = strtok_r(NULL, delim2, &context);
     if (token == NULL) goto error;
-    strncpy(imei->imei, token, sizeof(imei->imei));
+    STRSCPY(imei->imei, token);
     FREE(str);
     return 0;
 
@@ -145,7 +140,7 @@ int
 ltem_save_imei(lte_imei_t *imei, lte_modem_info_t *modem_info)
 {
     if (sizeof(modem_info->imei) != sizeof(imei->imei)) return -1;
-    strncpy(modem_info->imei, imei->imei, sizeof(modem_info->imei));
+    STRSCPY(modem_info->imei, imei->imei);
     return 0;
 }
 
@@ -163,15 +158,13 @@ ltem_parse_imsi(char *buf, lte_imsi_t *imsi)
     len = strlen(buf);
     str = (char *)CALLOC(1, len);
     if (!str) return -1;
-    strncpy(str, buf, len);
+    strscpy(str, buf, len);
     token = strtok_r(str, delim1, &context);
-    LOGI("%s: cmd[%s]", __func__, token);
     if (token == NULL) goto error;
-    strncpy(imsi->cmd, token, sizeof(imsi->cmd));
+    STRSCPY(imsi->cmd, token);
     token = strtok_r(NULL, delim2, &context);
     if (token == NULL) goto error;
-    strncpy(imsi->imsi, token, sizeof(imsi->imsi));
-    LOGI("%s: imsi[%s]", __func__, token);
+    STRSCPY(imsi->imsi, token);
     FREE(str);
     return 0;
 
@@ -185,8 +178,7 @@ int
 ltem_save_imsi(lte_imsi_t *imsi, lte_modem_info_t *modem_info)
 {
     if (sizeof(modem_info->imsi) != sizeof(imsi->imsi)) return -1;
-    strncpy(modem_info->imsi, imsi->imsi, sizeof(modem_info->imsi));
-    LOGI("%s: imsi[%s]", __func__, modem_info->imsi);
+    STRSCPY(modem_info->imsi, imsi->imsi);
     return 0;
 }
 
@@ -204,13 +196,13 @@ ltem_parse_iccid(char *buf, lte_iccid_t *iccid)
     len = strlen(buf);
     str = (char *)CALLOC(1, len);
     if (!str) return -1;
-    strncpy(str, buf, len);
+    strscpy(str, buf, len);
     token = strtok_r(str, delim1, &context);
     if (token == NULL) goto error;
-    strncpy(iccid->cmd, token, sizeof(iccid->cmd));
+    STRSCPY(iccid->cmd, token);
     token = strtok_r(NULL, delim2, &context);
     if (token == NULL) goto error;
-    strncpy(iccid->iccid, token, sizeof(iccid->iccid));
+    STRSCPY(iccid->iccid, token);
     FREE(str);
     return 0;
 
@@ -224,7 +216,7 @@ int
 ltem_save_iccid(lte_iccid_t *iccid, lte_modem_info_t *modem_info)
 {
     if (sizeof(modem_info->iccid) != sizeof(iccid->iccid)) return -1;
-    strncpy(modem_info->iccid, iccid->iccid, sizeof(modem_info->iccid));
+    STRSCPY(modem_info->iccid, iccid->iccid);
     return 0;
 }
 
@@ -243,16 +235,16 @@ ltem_parse_reg_status(char *buf, lte_reg_status_t *reg_status)
     len = strlen(buf);
     str = (char *)CALLOC(1, len);
     if (!str) return -1;
-    strncpy(str, buf, len);
+    strscpy(str, buf, len);
     token = strtok_r(str, delim1, &context);
     if (token == NULL) goto error;
-    strncpy(reg_status->cmd, token, sizeof(reg_status->cmd));
+    STRSCPY(reg_status->cmd, token);
     token = strtok_r(NULL, delim2, &context);
     if (token == NULL) goto error;
-    strncpy(reg_status->net_reg_code, token, sizeof(reg_status->net_reg_code));
+    STRSCPY(reg_status->net_reg_code, token);
     token = strtok_r(NULL, delim3, &context);
     if (token == NULL) goto error;
-    strncpy(reg_status->net_reg_status, token, sizeof(reg_status->net_reg_status));
+    STRSCPY(reg_status->net_reg_status, token);
     FREE(str);
     return 0;
 
@@ -312,16 +304,16 @@ ltem_parse_sig_qual(char *buf, lte_sig_qual_t *sig_qual)
     len = strlen(buf);
     str = (char *)CALLOC(1, len);
     if (!str) return -1;
-    strncpy(str, buf, len);
+    strscpy(str, buf, len);
     token = strtok_r(str, delim1, &context);
     if (token == NULL) goto error;
-    strncpy(sig_qual->cmd, token, sizeof(sig_qual->cmd));
+    STRSCPY(sig_qual->cmd, token);
     token = strtok_r(NULL, delim2, &context);
     if (token == NULL) goto error;
-    strncpy(sig_qual->rssi_index, token, sizeof(sig_qual->rssi_index));
+    STRSCPY(sig_qual->rssi_index, token);
     token = strtok_r(NULL, delim3, &context);
     if (token == NULL) goto error;
-    strncpy(sig_qual->ber, token, sizeof(sig_qual->ber));
+    STRSCPY(sig_qual->ber, token);
     FREE(str);
     return 0;
 
@@ -365,17 +357,17 @@ ltem_parse_byte_counts(char *buf, lte_byte_counts_t *byte_counts)
     len = strlen(buf);
     str = (char *)CALLOC(1, len);
     if (!str) return -1;
-    strncpy(str, buf, len);
+    strscpy(str, buf, len);
     token = strtok_r(str, delim1, &context);
     if (token == NULL) goto error;
-    strncpy(byte_counts->cmd, token, sizeof(byte_counts->cmd));
+    STRSCPY(byte_counts->cmd, token);
     token = strtok_r(NULL, delim2, &context);
     if (token == NULL) goto error;
-    strncpy(byte_counts->tx_bytes, token, sizeof(byte_counts->tx_bytes));
+    STRSCPY(byte_counts->tx_bytes, token);
     if (token == NULL) goto error;
     token = strtok_r(NULL, delim3, &context);
     if (token == NULL) goto error;
-    strncpy(byte_counts->rx_bytes, token, sizeof(byte_counts->rx_bytes));
+    STRSCPY(byte_counts->rx_bytes, token);
     FREE(str);
     return 0;
 
@@ -407,13 +399,13 @@ ltem_parse_sim_slot(char *buf, lte_sim_slot_t *sim_slot)
     len = strlen(buf);
     str = (char *)CALLOC(1, len);
     if (!str) return -1;
-    strncpy(str, buf, len);
+    strscpy(str, buf, len);
     token = strtok_r(str, delim1, &context);
     if (token == NULL) goto error;
-    strncpy(sim_slot->cmd, token, sizeof(sim_slot->cmd));
+    STRSCPY(sim_slot->cmd, token);
     token = strtok_r(NULL, delim2, &context);
     if (token == NULL) goto error;
-    strncpy(sim_slot->slot, token, sizeof(sim_slot->slot));
+    STRSCPY(sim_slot->slot, token);
     FREE(str);
     return 0;
 
@@ -445,23 +437,23 @@ ltem_parse_operator(char *buf, lte_operator_t *operator)
     len = strlen(buf);
     str = (char *)CALLOC(1, len);
     if (!str) return -1;
-    strncpy(str, buf, len);
+    strscpy(str, buf, len);
     token = strtok_r(str, delim1, &context);
     if (token == NULL) goto error;
-    strncpy(operator->cmd, token, sizeof(operator->cmd));
+    STRSCPY(operator->cmd, token);
     token = strtok_r(NULL, delim2, &context);
     if (token == NULL) goto error;
-    strncpy(operator->mode, token, sizeof(operator->mode));
+    STRSCPY(operator->mode, token);
     if (token == NULL) goto error;
     token = strtok_r(NULL, delim2, &context);
     if (token == NULL) goto error;
-    strncpy(operator->format, token, sizeof(operator->format));
+    STRSCPY(operator->format, token);
     token = strtok_r(NULL, delim2, &context);
     if (token == NULL) goto error;
-    strncpy(operator->operator, token, sizeof(operator->operator));
+    STRSCPY(operator->operator, token);
     token = strtok_r(NULL, delim3, &context);
     if (token == NULL) goto error;
-    strncpy(operator->act, token, sizeof(operator->act));
+    STRSCPY(operator->act, token);
     FREE(str);
     return 0;
 
@@ -475,13 +467,58 @@ int
 ltem_save_operator(lte_operator_t *operator, lte_modem_info_t *modem_info)
 {
     if (sizeof(modem_info->operator) != sizeof( operator->operator)) return -1;
-    strncpy(modem_info->operator, operator->operator, sizeof(modem_info->operator));
+    STRSCPY(modem_info->operator, operator->operator);
     modem_info->act = atoi(operator->act);
     return 0;
 }
 
 int
-ltem_parse_serving_cell(char *buf, lte_srv_cell_t *srv_cell)
+ltem_parse_serving_cell_lte(char *buf, lte_srv_cell_t *srv_cell)
+{
+    char *delim1 = " ";
+    char *delim2 = ",";
+    char *delim3 = "\r";
+    char *context = NULL;
+    int len;
+    char *str;
+    char *token;
+    int i;
+    char *field;
+
+    memset(srv_cell, 0, sizeof(*srv_cell));
+    len = strlen(buf);
+    str = (char *)CALLOC(1, len);
+    if (!str) return -1;
+    strscpy(str, buf, len);
+    token = strtok_r(str, delim1, &context);
+    if (token == NULL) goto error;
+    STRSCPY(srv_cell->cmd, token);
+    token = strtok_r(NULL, delim2, &context);
+    if (token == NULL) goto error;
+    STRSCPY(srv_cell->cell_type, token);
+    field = (char *)srv_cell->state;
+    for (i = 0; i < SERVING_CELL_LTE_FIELD_CNT; i++)
+    {
+        token = strtok_r(NULL, delim2, &context);
+        if (token == NULL) goto error;
+        strscpy(field, token, sizeof(srv_cell->state));
+        field += sizeof(srv_cell->cell_type);
+    }
+    token = strtok_r(NULL, delim3, &context);
+    if (token == NULL) goto error;
+    STRSCPY(srv_cell->srxlev, token);
+
+    FREE(str);
+    return 0;
+
+error:
+    FREE(str);
+    LOGE("%s: failed", __func__);
+    return -1;
+}
+
+int
+ltem_parse_serving_cell_wcdma(char *buf, lte_srv_cell_t *srv_cell)
 {
     char *delim1 = " ";
     char *delim2 = ",";
@@ -505,7 +542,7 @@ ltem_parse_serving_cell(char *buf, lte_srv_cell_t *srv_cell)
     if (token == NULL) goto error;
     strncpy(srv_cell->cell_type, token, sizeof(srv_cell->cell_type));
     field = (char *)srv_cell->state;
-    for (i = 0; i < 16; i++)
+    for (i = 0; i < SERVING_CELL_WCDMA_FIELD_CNT; i++)
     {
         token = strtok_r(NULL, delim2, &context);
         if (token == NULL) goto error;
@@ -526,6 +563,58 @@ error:
 }
 
 int
+ltem_parse_serving_cell(char *buf, lte_srv_cell_t *srv_cell)
+{
+    char *delim1 = " ";
+    char *delim2 = ",";
+    char *context = NULL;
+    int len;
+    char *str;
+    char *token;
+    int res;
+
+    memset(srv_cell, 0, sizeof(*srv_cell));
+    len = strlen(buf);
+    str = (char *)CALLOC(1, len);
+    if (!str) return -1;
+    strncpy(str, buf, len);
+    token = strtok_r(str, delim1, &context);
+    if (token == NULL) goto error;
+    strncpy(srv_cell->cmd, token, sizeof(srv_cell->cmd));
+    token = strtok_r(NULL, delim2, &context);
+    if (token == NULL) goto error;
+    strncpy(srv_cell->cell_type, token, sizeof(srv_cell->cell_type));
+    token = strtok_r(NULL, delim2, &context);
+    if (token == NULL) goto error;
+    strncpy(srv_cell->state, token, sizeof(srv_cell->cell_type));
+    res = strncmp(srv_cell->state, "\"LIMSERV\"", strlen(srv_cell->state));
+    if (!res)
+    {
+        ltem_parse_serving_cell_wcdma(buf, srv_cell);
+    }
+
+    res = strncmp(srv_cell->state, "\"NOCONN\"", strlen(srv_cell->state));
+    if (!res)
+    {
+        ltem_parse_serving_cell_lte(buf, srv_cell);
+    }
+
+    res = strncmp(srv_cell->state, "\"CONNECT\"", strlen(srv_cell->state));
+    if (!res)
+    {
+        ltem_parse_serving_cell_lte(buf, srv_cell);
+    }
+
+    FREE(str);
+    return 0;
+
+error:
+    FREE(str);
+    LOGE("%s: failed", __func__);
+    return -1;
+}
+
+int
 ltem_save_serving_cell(lte_srv_cell_t *srv_cell, lte_modem_info_t *modem_info)
 {
     lte_serving_cell_info_t *srv_cell_info;
@@ -533,12 +622,15 @@ ltem_save_serving_cell(lte_srv_cell_t *srv_cell, lte_modem_info_t *modem_info)
     uint32_t bandwidth;
 
     srv_cell_info = &modem_info->srv_cell;
+    memset(srv_cell_info, 0, sizeof(*srv_cell_info));
 
     res = strncmp(srv_cell->state, "\"SEARCH\"", strlen(srv_cell->state));
-    if (!res) srv_cell_info->state = LTE_SERVING_CELL_SEARCH;
-
-    res = strncmp(srv_cell->state, "\"LIMSERV\"", strlen(srv_cell->state));
-    if (!res) srv_cell_info->state = LTE_SERVING_CELL_LIMSERV;
+    if (!res)
+    {
+        srv_cell_info->state = LTE_SERVING_CELL_SEARCH;
+        /* No network connection */
+        return 0;
+    }
 
     res = strncmp(srv_cell->state, "\"NOCONN\"", strlen(srv_cell->state));
     if (!res) srv_cell_info->state = LTE_SERVING_CELL_NOCONN;
@@ -642,24 +734,24 @@ ltem_parse_neigh_cell_intra(char *buf, lte_neigh_cell_intra_t *neigh_cell_intra)
     len = strlen(buf);
     str = (char *)CALLOC(1, len);
     if (!str) return -1;
-    strncpy(str, buf, len);
+    strscpy(str, buf, len);
     token = strtok_r(str, delim1, &context);
     if (token == NULL) goto error;
-    strncpy(neigh_cell_intra->cmd, token, sizeof(neigh_cell_intra->cmd));
+    STRSCPY(neigh_cell_intra->cmd, token);
     token = strtok_r(NULL, delim2, &context);
     if (token == NULL) goto error;
-    strncpy(neigh_cell_intra->cell_type, token, sizeof(neigh_cell_intra->cell_type));
+    STRSCPY(neigh_cell_intra->cell_type, token);
     field = (char *)neigh_cell_intra->mode;
     for (i = 0; i < 11; i++)
     {
         token = strtok_r(NULL, delim2, &context);
         if (token == NULL) goto error;
-        strncpy(field, token, sizeof(neigh_cell_intra->mode));
+        strscpy(field, token, sizeof(neigh_cell_intra->mode));
         field += sizeof(neigh_cell_intra->mode);
     }
     token = strtok_r(NULL, delim3, &context);
     if (token == NULL) goto error;
-    strncpy(neigh_cell_intra->s_intra_search, token, sizeof(neigh_cell_intra->s_intra_search));
+    STRSCPY(neigh_cell_intra->s_intra_search, token);
 
     FREE(str);
     return 0;
@@ -718,7 +810,7 @@ ltem_parse_neigh_cell_inter(char *buf, lte_neigh_cell_inter_t *neigh_cell_inter)
     len = strlen(buf);
     str = (char *)CALLOC(1, len);
     if (!str) return -1;
-    strncpy(str, buf, len);
+    strscpy(str, buf, len);
     token = strtok_r(str, delim1, &context); // neighbourcell intra...
     if (token == NULL) goto error;
     token = strtok_r(NULL, delim2, &context); // ...neighbourcell intra
@@ -727,21 +819,21 @@ ltem_parse_neigh_cell_inter(char *buf, lte_neigh_cell_inter_t *neigh_cell_inter)
     if (token == NULL) goto error;
     token = strtok_r(NULL, delim3, &context); // neighbourcell inter
     if (token == NULL) goto error;
-    strncpy(neigh_cell_inter->cell_type, token, sizeof(neigh_cell_inter->cell_type));
+    STRSCPY(neigh_cell_inter->cell_type, token);
     token = strtok_r(NULL, delim3, &context);
     if (token == NULL) goto error;
-    strncpy(neigh_cell_inter->mode, token, sizeof(neigh_cell_inter->mode));
+    STRSCPY(neigh_cell_inter->mode, token);
     field = (char *)neigh_cell_inter->freq_mode;
     for (i = 0; i < 9; i++)
     {
         token = strtok_r(NULL, delim3, &context);
         if (token == NULL) goto error;
-        strncpy(field, token, sizeof(neigh_cell_inter->freq_mode));
+        strscpy(field, token, sizeof(neigh_cell_inter->freq_mode));
         field += sizeof(neigh_cell_inter->mode);
     }
     token = strtok_r(NULL, delim4, &context);
     if (token == NULL) goto error;
-    strncpy(neigh_cell_inter->thresh_x_high, token, sizeof(neigh_cell_inter->thresh_x_high));
+    STRSCPY(neigh_cell_inter->thresh_x_high, token);
 
     FREE(str);
     return 0;
@@ -823,7 +915,7 @@ ltem_run_modem_cmd (const char *cmd)
         return at_error;
     }
 
-    memset(lte_at_buf, 0, sizeof(*lte_at_buf));
+    memset(lte_at_buf, 0, sizeof(lte_at_buf));
     res = handlers->lte_modem_read(fd, lte_at_buf, sizeof(lte_at_buf));
     if (res < 0)
     {
@@ -853,7 +945,7 @@ ltem_reset_modem(void)
     char *modem_resp;
 
     modem_resp = ltem_run_at_cmd(AT_MODEM_RESET);
-    LOGI("%s: at cmd: %s, at resp: %s", __func__, lte_at_cmd_tostr(AT_MODEM_RESET), modem_resp);
+    LOGD("%s: at cmd: %s, at resp: %s", __func__, lte_at_cmd_tostr(AT_MODEM_RESET), modem_resp);
 
     sleep(30);
 }
@@ -883,7 +975,7 @@ ltem_evt_switch_slot(void)
      * Switch sim slot to point at physical sim not esim.
      */
     modem_resp = ltem_run_at_cmd(AT_SWITCH_SLOT);
-    LOGI("%s: at cmd: %s, at resp: %s", __func__, lte_at_cmd_tostr(AT_SWITCH_SLOT), modem_resp);
+    LOGD("%s: at cmd: %s, at resp: %s", __func__, lte_at_cmd_tostr(AT_SWITCH_SLOT), modem_resp);
 
     ltem_reset_modem();
 }
@@ -894,7 +986,7 @@ ltem_set_qmi_mode(void)
     char *modem_resp;
 
     modem_resp = ltem_run_at_cmd(AT_SET_QMI_MODE);
-    LOGI("%s: at cmd: %s, at resp: %s", __func__, lte_at_cmd_tostr(AT_SET_QMI_MODE), modem_resp);
+    LOGD("%s: at cmd: %s, at resp: %s", __func__, lte_at_cmd_tostr(AT_SET_QMI_MODE), modem_resp);
 }
 
 void
@@ -903,7 +995,7 @@ ltem_set_kore_apn()
     char *modem_resp;
 
     modem_resp = ltem_run_at_cmd(AT_SET_KORE_APN);
-    LOGI("%s: at cmd: %s, at resp: %s", __func__, lte_at_cmd_tostr(AT_SET_KORE_APN), modem_resp);
+    LOGD("%s: at cmd: %s, at resp: %s", __func__, lte_at_cmd_tostr(AT_SET_KORE_APN), modem_resp);
 }
 
 void
@@ -916,7 +1008,7 @@ ltem_set_apn(char *apn)
     sprintf(cmd, "AT+CGDCONT=1,\"IPV4V6\",\"%s\",\"0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0\",0,0,0,0\r", apn);
 
     modem_resp = ltem_run_modem_cmd(cmd);
-    LOGI("%s: at cmd: %s, at resp: %s", __func__, cmd, modem_resp);
+    LOGD("%s: at cmd: %s, at resp: %s", __func__, cmd, modem_resp);
 }
 
 void
@@ -933,7 +1025,7 @@ lte_dump_modem_info(void)
     neigh_cell_intra = &mi->neigh_cell_intra;
     neigh_cell_inter = &mi->neigh_cell_inter;
 
-    LOGI("chip_vendor[%s], model[%s], full_model[%s], imei[%s], imsi[%s], iccid[%s], reg_status[%d], rssi[%d], ber[%d], tx_bytes[%d], rx_bytes[%d], slot[%d], operator[%s], access_tech[%d]",
+    LOGD("chip_vendor[%s], model[%s], full_model[%s], imei[%s], imsi[%s], iccid[%s], reg_status[%d], rssi[%d], ber[%d], tx_bytes[%d], rx_bytes[%d], slot[%d], operator[%s], access_tech[%d]",
          mi->chip_vendor,
          mi->model,
          mi->full_model,
@@ -949,7 +1041,7 @@ lte_dump_modem_info(void)
          mi->operator,
          mi->act);
 
-    LOGI("ServingCell: state[%d], mode[%d], fdd_tdd[%d], mcc[%d], mnc[%d], cellid[%d], pcid[%d], earfcn[%d], freq_band[%d], ul_bandwidth[%d], dl_bandwidth[%d], tac[%d], rsrp[%d], rsrq[%d], rssi[%d], sinr[%d], srxlev[%d]",
+    LOGD("ServingCell: state[%d], mode[%d], fdd_tdd[%d], mcc[%d], mnc[%d], cellid[%d], pcid[%d], earfcn[%d], freq_band[%d], ul_bandwidth[%d], dl_bandwidth[%d], tac[%d], rsrp[%d], rsrq[%d], rssi[%d], sinr[%d], srxlev[%d]",
          srv_cell->state,
          srv_cell->mode,
          srv_cell->fdd_tdd_mode,
@@ -968,7 +1060,7 @@ lte_dump_modem_info(void)
          srv_cell->sinr,
          srv_cell->srxlev);
 
-    LOGI("NeighborCell Intra: mode[%d], freq_mode[%d], earfcn[%d], pcid[%d], rsrq[%d], rsrp[%d], rssi[%d], sinr[%d], srxlev[%d], cell_reselect_priority[%d], s_non_intra_search[%d], thresh_serving_low[%d], s_intra_search[%d]",
+    LOGD("NeighborCell Intra: mode[%d], freq_mode[%d], earfcn[%d], pcid[%d], rsrq[%d], rsrp[%d], rssi[%d], sinr[%d], srxlev[%d], cell_reselect_priority[%d], s_non_intra_search[%d], thresh_serving_low[%d], s_intra_search[%d]",
          neigh_cell_intra->mode,
          neigh_cell_intra->freq_mode,
          neigh_cell_intra->earfcn,
@@ -1016,15 +1108,15 @@ lte_run_microcom_cmd(char *cmd)
         return NULL;
     }
 
-    memset(lte_at_buf, 0, sizeof(*lte_at_buf));
+    memset(lte_at_buf, 0, sizeof(lte_at_buf));
     while (true)
     {
         MEMZERO(at_line);
         fres = fgets(at_line, sizeof(at_line), fp);
+        if (fres == NULL) break;
         if (offset >= sizeof(lte_at_buf)) break;
         strncpy(&lte_at_buf[offset], at_line, strlen(at_line));
         offset += strlen(at_line);
-        if (fres == NULL) break;
     }
 
     pclose(fp);
@@ -1061,8 +1153,7 @@ ltem_get_modem_info(void)
     res = ltem_parse_chip_info(at_resp, &chip_info);
     if (res)
     {
-        LOGI("ltem_parse_chip_info:failed");
-        return res;
+        LOGI("%s: ltem_parse_chip_info:failed, at_resp[%s]", __func__, at_resp);
     }
     ltem_save_chip_info(&chip_info, modem_info);
 
@@ -1072,8 +1163,7 @@ ltem_get_modem_info(void)
     res = ltem_parse_imei(at_resp, &imei);
     if (res)
     {
-        LOGI("ltem_parse_imei:failed");
-        return res;
+        LOGI("%s: ltem_parse_imei:failed, at_resp[%s]", __func__, at_resp);
     }
     ltem_save_imei(&imei, modem_info);
 
@@ -1083,8 +1173,7 @@ ltem_get_modem_info(void)
     res = ltem_parse_imsi(at_resp, &imsi);
     if (res)
     {
-        LOGI("ltem_parse_imsi:failed");
-        return res;
+        LOGI("%s: ltem_parse_imsi:failed, at_resp[%s]", __func__, at_resp);
     }
     ltem_save_imsi(&imsi, modem_info);
 
@@ -1094,8 +1183,7 @@ ltem_get_modem_info(void)
     res = ltem_parse_iccid(at_resp, &iccid);
     if (res)
     {
-        LOGI("ltem_parse_iccid:failed");
-        return res;
+        LOGI("%s: ltem_parse_iccid:faile, dat_resp[%s]", __func__, at_resp);
     }
     ltem_save_iccid(&iccid, modem_info);
 
@@ -1105,8 +1193,7 @@ ltem_get_modem_info(void)
     res = ltem_parse_reg_status(at_resp, &reg_status);
     if (res)
     {
-        LOGI("ltem_parse_reg_status:failed");
-        return res;
+        LOGI("%s: ltem_parse_reg_status:failed, at_resp[%s]", __func__, at_resp);
     }
     ltem_save_reg_status(&reg_status, modem_info);
 
@@ -1116,8 +1203,7 @@ ltem_get_modem_info(void)
     res = ltem_parse_sig_qual(at_resp, &sig_qual);
     if (res)
     {
-        LOGI("ltem_parse_sig_qual:failed");
-        return res;
+        LOGI("%s: ltem_parse_sig_qual:failed, at_resp[%s]", __func__, at_resp);
     }
     ltem_save_sig_qual(&sig_qual, modem_info);
 
@@ -1127,8 +1213,7 @@ ltem_get_modem_info(void)
     res = ltem_parse_byte_counts(at_resp, &byte_counts);
     if (res)
     {
-        LOGI("ltem_parse_byte_counts:failed");
-        return res;
+        LOGI("%s: ltem_parse_byte_counts:failed, at_resp[%s]", __func__, at_resp);
     }
     ltem_save_byte_counts(&byte_counts, modem_info);
 
@@ -1138,8 +1223,7 @@ ltem_get_modem_info(void)
     res = ltem_parse_sim_slot(at_resp, &sim_slot);
     if (res)
     {
-        LOGI("ltem_parse_sim_slot:failed");
-        return res;
+        LOGI("%s: ltem_parse_sim_slot:failed, at_resp[%s]", __func__, at_resp);
     }
     ltem_save_sim_slot(&sim_slot, modem_info);
 
@@ -1149,8 +1233,7 @@ ltem_get_modem_info(void)
     res = ltem_parse_operator(at_resp, &operator);
     if (res)
     {
-        LOGI("ltem_parse_operator:failed");
-        return res;
+        LOGI("%s: ltem_parse_operator:failed, at_resp[%s]", __func__, at_resp);
     }
     ltem_save_operator(&operator, modem_info);
 
@@ -1160,8 +1243,7 @@ ltem_get_modem_info(void)
     res = ltem_parse_serving_cell(at_resp, &srv_cell);
     if (res)
     {
-        LOGI("ltem_parse_serving_cell:failed");
-        return res;
+        LOGI("%s: ltem_parse_serving_cell:failed, at_resp[%s]", __func__, at_resp);
     }
     ltem_save_serving_cell(&srv_cell, modem_info);
 
@@ -1171,8 +1253,7 @@ ltem_get_modem_info(void)
     res = ltem_parse_neigh_cell_intra(at_resp, &neigh_cell_intra);
     if (res)
     {
-        LOGI("ltem_parse_neigh_cell_intra:failed");
-        return res;
+        LOGI("%s: ltem_parse_neigh_cell_intra:failed, at_resp[%s]", __func__, at_resp);
     }
     ltem_save_neigh_cell_intra(&neigh_cell_intra, modem_info);
 
@@ -1180,8 +1261,7 @@ ltem_get_modem_info(void)
     res = ltem_parse_neigh_cell_inter(at_resp, &neigh_cell_inter);
     if (res)
     {
-        LOGI("ltem_parse_neigh_cell_inter:failed");
-        return res;
+        LOGI("%s: ltem_parse_neigh_cell_inter:failed, at_resp[%s]", __func__, at_resp);
     }
     ltem_save_neigh_cell_inter(&neigh_cell_inter, modem_info);
 

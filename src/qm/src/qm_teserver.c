@@ -228,7 +228,7 @@ void mqtt_telog_init(struct ev_loop *ev)
     memset(&g_tesrv, 0, sizeof(g_tesrv));
 
     g_tesrv.qos = -1;
-    (void)osp_unit_sw_version_get(g_tesrv.swver, sizeof(g_tesrv));
+    (void)osp_unit_sw_version_get(g_tesrv.swver, sizeof(g_tesrv.swver));
     g_tesrv.loop = ev ? ev : EV_DEFAULT;
 
     /*
@@ -238,14 +238,8 @@ void mqtt_telog_init(struct ev_loop *ev)
      */
     if (!open_server(10*60 /*=10 minutes*/)) return;
 
-    static char *filter[] =
-    {
-        SCHEMA_COLUMN(AWLAN_Node, mqtt_headers),
-        NULL,
-    };
-
     OVSDB_TABLE_INIT_NO_KEY(AWLAN_Node);
-    OVSDB_TABLE_MONITOR_F(AWLAN_Node, filter);
+    OVSDB_TABLE_MONITOR_F(AWLAN_Node, ((char*[]){"mqtt_headers", NULL}));
 
     // Initialize OVSDB TELOG_Config table
     OVSDB_TABLE_INIT_NO_KEY(TELOG_Config);

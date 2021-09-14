@@ -297,6 +297,45 @@ $(call UNIT_C_RULES)
 endef
 
 ##########################################################
+# Definition of a "PACKAGE" type unit
+##########################################################
+define UNIT_BUILD_PACKAGE
+# Add the unit to the global list of units
+UNIT_ALL += $(UNIT_PATH)
+UNIT_ALL_INSTALL += $(UNIT_PATH)/install
+UNIT_ALL_CLEAN += $(UNIT_PATH)/clean
+
+# PACKAGE_ARCH can be used to define per package arch
+$(UNIT_NAME)_PACKAGE_ARCH := $(firstword $(PACKAGE_ARCH) $(ARCH_3RDPARTY) $(TARGET))
+
+$(UNIT_NAME)_PACKAGE_VER := opensync-$(shell cat .version | cut -d. -f-3)
+$(UNIT_NAME)_PACKAGE_BIN := $(PACKAGE_NAME)-$$($(UNIT_NAME)_PACKAGE_ARCH)-$$($(UNIT_NAME)_PACKAGE_VER).tar.gz
+$(UNIT_NAME)_PKGDIR_WORK := $(PKGDIR)/$(PACKAGE_NAME)
+
+$(UNIT_NAME)_PACKAGE_DEPS = $(foreach SPEC,$(PACKAGE_SPECS),$(shell find $(firstword $(subst ____, ,$(strip $(SPEC)))) -type f 2>/dev/null) )
+
+$(call UNIT_MAKE_RULES)
+
+$(UNIT_BUILD)/.target: $(PKGDIR)/$$($(UNIT_NAME)_PACKAGE_BIN)
+
+$(PKGDIR)/$$($(UNIT_NAME)_PACKAGE_BIN): $(UNIT_ALL_DEPS) $$($(UNIT_NAME)_PACKAGE_DEPS)
+	$$(NQ) " $(call color_install,generate) [$(call COLOR_BOLD,$(UNIT_NAME))] $$@"
+	$(Q)$(foreach SPEC,$(PACKAGE_SPECS),mkdir -p $$($(UNIT_NAME)_PKGDIR_WORK)/$(lastword $(subst ____, ,$(strip $(SPEC))));)
+	$(Q)$(foreach SPEC,$(PACKAGE_SPECS),cp -r $(firstword $(subst ____, ,$(strip $(SPEC)))) $$($(UNIT_NAME)_PKGDIR_WORK)/$(lastword $(subst ____, ,$(strip $(SPEC))));)
+	$(Q)tar czf $$@ -C $$($(UNIT_NAME)_PKGDIR_WORK) .
+
+$(UNIT_PATH)/install: $(UNIT_BUILD)/.target
+
+$(UNIT_PATH)/uninstall:
+
+$(call UNIT_MAKE_DIRS)
+$(call UNIT_MAKE_INFO)
+$(call UNIT_MAKE_CLEAN,$(BINDIR)/$(UNIT_BIN))
+$(call UNIT_C_RULES)
+$(call UNIT_CXX_RULES)
+endef
+
+##########################################################
 # Generic Make rules, applicable to all targets
 ##########################################################
 define UNIT_MAKE_RULES
@@ -558,26 +597,31 @@ endif
 # process rules in-order instead of using shortest match.
 define PROCESS_LAYER
 ifneq ($$(LAYER),)
+UNIT_MK_TOPDIR := "$(TOP_DIR)/$$(LAYER)/$(2)"
 SUB_LAYERS := $$(wordlist 2,$$(words $$(SUB_LAYERS)),$$(SUB_LAYERS))
-UNIT_MKLIST := $$(shell find -L "$(TOP_DIR)/$$(LAYER)/src" -name $1 -printf "%08d%p\n" | sort -nr | cut -c9-)
+UNIT_MKLIST := $$(shell test -d $$(UNIT_MK_TOPDIR) && find -L $$(UNIT_MK_TOPDIR) -name $1 -printf "%08d%p\n" | sort -nr | cut -c9-)
 $$(eval $$(foreach UNIT_MK,$$(UNIT_MKLIST),$$(call UNIT_MAKE,$$(UNIT_MK))))
 endif
 endef
 
 define PROCESS_LAYERS
 UNIT_MK_NAME := $(1)
+UNIT_MK_DIR := $(2)
 SUB_LAYERS := $$(LAYER_LIST)
-$$(foreach LAYER,$$(LAYER_LIST),$$(eval $$(call PROCESS_LAYER,$$(UNIT_MK_NAME))))
+$$(foreach LAYER,$$(LAYER_LIST),$$(eval $$(call PROCESS_LAYER,$$(UNIT_MK_NAME),$$(UNIT_MK_DIR))))
 endef
 
-# Source-in all units definitions
-$(eval $(call PROCESS_LAYERS,'unit.mk'))
+# Source-in all package units definitions
+$(eval $(call PROCESS_LAYERS,'unit.mk',pkg))
+
+# Source-in all src units definitions
+$(eval $(call PROCESS_LAYERS,'unit.mk',src))
 
 # Save a list of all but the last unit so it can be referenced by the following mk rules
 UNIT_ALL_NOT_LAST := $(UNIT_ALL)
 
 # Process unit-last.mk last
-$(eval $(call PROCESS_LAYERS,'unit-last.mk'))
+$(eval $(call PROCESS_LAYERS,'unit-last.mk',src))
 
 
 # Process DEPS_CFLAGS_* after all layers to resolve circular deps

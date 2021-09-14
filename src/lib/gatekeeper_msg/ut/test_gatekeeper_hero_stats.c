@@ -177,7 +177,7 @@ create_default_attr_entries(void)
     entry[2]->device_mac = str2os_mac("AA:AA:AA:AA:AA:03");
     entry[2]->attribute_type = GK_CACHE_REQ_TYPE_IPV4;
     entry[2]->cache_ttl = 1000;
-    entry[2]->action = FSM_ALLOW;
+    entry[2]->action = FSM_REDIRECT;
     entry[2]->ip_addr = sockaddr_storage_create(AF_INET, "1.2.3.4");
 
     entry[3] = CALLOC(1, sizeof(*entry[3]));
@@ -203,7 +203,7 @@ create_default_attr_entries(void)
     entry[5]->device_mac = str2os_mac("AA:AA:AA:AA:AA:03");
     entry[5]->attribute_type = GK_CACHE_REQ_TYPE_IPV4;
     entry[5]->cache_ttl = 1000;
-    entry[5]->action = FSM_ALLOW;
+    entry[5]->action = FSM_FORWARD;
     entry[5]->attr_name = STRDUP("10.1.2.3");
     entry[5]->ip_addr = sockaddr_storage_create(AF_INET, "10.1.2.3");
 }
@@ -263,6 +263,7 @@ create_default_flow_entries(void)
     flow_entry[3]->src_port = htons(16);
     flow_entry[3]->dst_port = htons(444);
     flow_entry[3]->ip_version = 4;
+    /* flow_entry[3]->action = FSM_ALLOW;  Without this, we exercise the default in get_protobuf_action_value() */
     flow_entry[3]->src_ip_addr = CALLOC(1, sizeof(struct in6_addr));
     inet_pton(AF_INET, "1.2.3.4", flow_entry[3]->src_ip_addr);
     flow_entry[3]->dst_ip_addr = CALLOC(1, sizeof(struct in6_addr));

@@ -535,6 +535,7 @@ void delete_report_config(struct schema_FCM_Report_Config *conf)
     report_conf_tree = &mgr->report_conf_tree;
     report_conf_node = ds_tree_find(report_conf_tree, conf->name);
     if (report_conf_node == NULL) return;
+    free_str_tree(report_conf_node->other_config);
     ds_tree_remove(report_conf_tree, report_conf_node);
     FREE(report_conf_node);
 }
@@ -648,6 +649,7 @@ void delete_collect_config(struct schema_FCM_Collector_Config *conf)
 
     FREE(session);
 
+    free_str_tree(collector->collect_conf.other_config);
     ds_tree_remove(collect_tree, collector);
     FREE(collector);
 }

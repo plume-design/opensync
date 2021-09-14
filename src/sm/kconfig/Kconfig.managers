@@ -38,3 +38,10 @@ menuconfig MANAGER_SM
 
             This value should be always greater than or equal to 2 and be a
             power of 2.
+
+    config SM_UPLINK_STATS
+        depends on MANAGER_SM && MANAGER_CM
+        bool "Stats about uplink usage in Client report"
+        default n
+        help
+            Enable uplink type info in Client report

@@ -46,6 +46,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 bool psm_ovsdb_schema_init(bool monitor);
 bool psm_ovsdb_schema_column_exists(const char *table, const char *column);
+bool psm_ovsdb_schema_column_is_ephemeral(const char *table, const char *column);
 
 bool psm_ovsdb_row_init(void);
 bool psm_ovsdb_row_update(const char *table, json_t *row);

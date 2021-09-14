@@ -1,3 +1,5 @@
+#!/bin/sh
+
 # Copyright (c) 2015, Plume Design Inc. All rights reserved.
 # 
 # Redistribution and use in source and binary forms, with or without
@@ -22,20 +24,11 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-SRCDIR   = src
-OBJDIR   = $(WORKDIR)/obj
-BINDIR   = $(WORKDIR)/bin
-LIBDIR   = $(WORKDIR)/lib
-FUTDIR   = $(WORKDIR)/fut
-PKGDIR   = $(WORKDIR)/pkg
-
-BUILD_ROOTFS_DIR  ?= $(WORKDIR)/rootfs
-APP_ROOTFS        ?= $(BUILD_ROOTFS_DIR)
-IMAGEDIR = images
-WORKDIRS = $(WORKDIR) $(OBJDIR) $(LIBDIR) $(BINDIR) $(BUILD_ROOTFS_DIR) $(IMAGEDIR) $(FUTDIR) $(PKGDIR)
-
-$(WORKDIRS):
-	$(Q)mkdir -p $@
-
-.PHONY: workdirs
-workdirs: $(WORKDIRS)
+nice -n 19 make \
+	-C core \
+	TARGET=native \
+	IMAGE_DEPLOYMENT_PROFILE=dev-debug \
+	-j $(nproc) \
+	src/wm2 \
+	ovsdb-create \
+	src/tools/ovsh

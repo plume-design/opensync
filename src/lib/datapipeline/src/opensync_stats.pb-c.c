@@ -1876,7 +1876,7 @@ const ProtobufCMessageDescriptor sts__client__tid_stats__descriptor =
   (ProtobufCMessageInit) sts__client__tid_stats__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
-static const ProtobufCFieldDescriptor sts__client__field_descriptors[15] =
+static const ProtobufCFieldDescriptor sts__client__field_descriptors[13] =
 {
   {
     "mac_address",
@@ -2034,30 +2034,6 @@ static const ProtobufCFieldDescriptor sts__client__field_descriptors[15] =
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
-  {
-    "uplink_type",
-    14,
-    PROTOBUF_C_LABEL_OPTIONAL,
-    PROTOBUF_C_TYPE_STRING,
-    0,   /* quantifier_offset */
-    offsetof(Sts__Client, uplink_type),
-    NULL,
-    NULL,
-    0,             /* flags */
-    0,NULL,NULL    /* reserved1,reserved2, etc */
-  },
-  {
-    "uplink_changed",
-    15,
-    PROTOBUF_C_LABEL_OPTIONAL,
-    PROTOBUF_C_TYPE_BOOL,
-    offsetof(Sts__Client, has_uplink_changed),
-    offsetof(Sts__Client, uplink_changed),
-    NULL,
-    NULL,
-    0,             /* flags */
-    0,NULL,NULL    /* reserved1,reserved2, etc */
-  },
 };
 static const unsigned sts__client__field_indices_by_name[] = {
   3,   /* field[3] = connect_count */
@@ -2073,13 +2049,11 @@ static const unsigned sts__client__field_indices_by_name[] = {
   11,   /* field[11] = tid_stats */
   10,   /* field[10] = tx_stats */
   12,   /* field[12] = uapsd */
-  14,   /* field[14] = uplink_changed */
-  13,   /* field[13] = uplink_type */
 };
 static const ProtobufCIntRange sts__client__number_ranges[1 + 1] =
 {
   { 1, 0 },
-  { 0, 15 }
+  { 0, 13 }
 };
 const ProtobufCMessageDescriptor sts__client__descriptor =
 {
@@ -2089,14 +2063,14 @@ const ProtobufCMessageDescriptor sts__client__descriptor =
   "Sts__Client",
   "sts",
   sizeof(Sts__Client),
-  15,
+  13,
   sts__client__field_descriptors,
   sts__client__field_indices_by_name,
   1,  sts__client__number_ranges,
   (ProtobufCMessageInit) sts__client__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
-static const ProtobufCFieldDescriptor sts__client_report__field_descriptors[4] =
+static const ProtobufCFieldDescriptor sts__client_report__field_descriptors[6] =
 {
   {
     "band",
@@ -2146,17 +2120,43 @@ static const ProtobufCFieldDescriptor sts__client_report__field_descriptors[4] =
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
+  {
+    "uplink_type",
+    5,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_STRING,
+    0,   /* quantifier_offset */
+    offsetof(Sts__ClientReport, uplink_type),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "uplink_changed",
+    6,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_BOOL,
+    offsetof(Sts__ClientReport, has_uplink_changed),
+    offsetof(Sts__ClientReport, uplink_changed),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
 };
 static const unsigned sts__client_report__field_indices_by_name[] = {
   0,   /* field[0] = band */
   3,   /* field[3] = channel */
   2,   /* field[2] = client_list */
   1,   /* field[1] = timestamp_ms */
+  5,   /* field[5] = uplink_changed */
+  4,   /* field[4] = uplink_type */
 };
 static const ProtobufCIntRange sts__client_report__number_ranges[1 + 1] =
 {
   { 1, 0 },
-  { 0, 4 }
+  { 0, 6 }
 };
 const ProtobufCMessageDescriptor sts__client_report__descriptor =
 {
@@ -2166,7 +2166,7 @@ const ProtobufCMessageDescriptor sts__client_report__descriptor =
   "Sts__ClientReport",
   "sts",
   sizeof(Sts__ClientReport),
-  4,
+  6,
   sts__client_report__field_descriptors,
   sts__client_report__field_indices_by_name,
   1,  sts__client_report__number_ranges,

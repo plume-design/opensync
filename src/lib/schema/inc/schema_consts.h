@@ -38,6 +38,15 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define SCHEMA_CONSTS_RADIO_TYPE_STR_5GU    "5GU"
 #define SCHEMA_CONSTS_RADIO_TYPE_STR_6G     "6G"
 
+/* Interface types */
+#define SCHEMA_CONSTS_IF_TYPE_ETH           "eth"
+#define SCHEMA_CONSTS_IF_TYPE_LTE           "lte"
+#define SCHEMA_CONSTS_IF_TYPE_PPPOE         "pppoe"
+#define SCHEMA_CONSTS_IF_TYPE_VLAN          "vlan"
+#define SCHEMA_CONSTS_IF_TYPE_GRE           "gre"
+#define SCHEMA_CONSTS_IF_TYPE_GRE6          "gre6"
+#define SCHEMA_CONSTS_IF_TYPE_VIF           "vif"
+
 /* Cloud Radio ifname's */
 #define SCHEMA_CONSTS_RADIO_PHY_NAME_2G     "wifi0"
 #define SCHEMA_CONSTS_RADIO_PHY_NAME_5G     "wifi1"

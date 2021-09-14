@@ -69,12 +69,13 @@ struct ipthreat_dpi_parser
  */
 struct ipthreat_dpi_session
 {
-    struct fsm_session *session;
-    bool initialized;
     struct ipthreat_dpi_parser parser;
-    struct fsm_policy_client inbound;
     struct fsm_policy_client outbound;
+    struct fsm_policy_client inbound;
+    struct fsm_session *session;
     ds_tree_node_t session_node;
+    uint8_t service_provider;
+    bool initialized;
 };
 
 /**

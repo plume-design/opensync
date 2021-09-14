@@ -57,8 +57,6 @@ const char lnx_pppoe_peers_template[] =
     "persist\n"
     "# Acquire IP from peer\n"
     "noipdefault\n"
-    "# Add default route to peer when link is up\n"
-    "defaultroute\n"
     "# Hide passwords when logging\n"
     "hide-password\n"
     "# Enable the PPPoE plug-in\n"

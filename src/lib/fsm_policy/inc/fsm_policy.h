@@ -249,6 +249,7 @@ struct fsm_policy_reply
     int cat_match;       /* category match */
     int reply_type;      /* is policy check processed using blocking or aysnc*/
     int action;          /* action to take */
+    char *log_action;    /* action to log mqtt report */
     int rd_ttl;          /* redirected response's ttl */
     int cache_ttl;       /* ttl value for cache */
     int categorized;     /* categorization status */
@@ -277,10 +278,10 @@ struct fsm_policy_reply
                              struct fsm_policy_reply *policy_reply);
     bool (*gatekeeper_req)(struct fsm_policy_req *req,
                            struct fsm_policy_reply *policy_reply);
-    int (*policy_response)(struct fsm_policy_req *policy_request,
-                           struct fsm_policy_reply *policy_reply);
+    void (*policy_response)(struct fsm_policy_req *policy_request,
+                            struct fsm_policy_reply *policy_reply);
     void (*gatekeeper_response)(struct fsm_policy_req *policy_request,
-                              struct fsm_policy_reply *policy_reply);
+                                struct fsm_policy_reply *policy_reply);
 
     ds_tree_node_t reply_node;         // DS tree reply node
 };
@@ -472,5 +473,4 @@ void fsm_policy_free_url(struct fqdn_pending_req* pending_req);
 int gk_reply_type(struct fsm_policy_req *policy_request);
 void process_gk_response_cb(struct fsm_policy_req *policy_request,
                        struct fsm_policy_reply *policy_reply);
-
 #endif /* FSM_POLICY_H_INCLUDED */

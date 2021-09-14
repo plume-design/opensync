@@ -44,6 +44,7 @@ struct psm_ovsdb_schema_table
 struct psm_ovsdb_schema_column
 {
     char                       *sc_column;      /* Column name */
+    bool                        sc_ephemeral;   /* True if column is ephemeral */
     ds_tree_node_t              sc_tnode;       /* Tree node */
 };
 
@@ -124,6 +125,26 @@ bool psm_ovsdb_schema_column_exists(const char *table, const char *column)
 }
 
 /*
+ * Return true wheter table:column is an ephemeral column
+ *
+ * This function returns false if the column doesn't exist
+ */
+bool psm_ovsdb_schema_column_is_ephemeral(const char *table, const char *column)
+{
+    struct psm_ovsdb_schema_table *ptable;
+    struct psm_ovsdb_schema_column *pcolumn;
+
+    ptable = ds_tree_find(&g_psm_ovsdb_schema_table_list, (void *)table);
+    if (ptable == NULL) return false;
+
+    pcolumn = ds_tree_find(&ptable->st_column_list, (void *)column);
+    if (pcolumn == NULL) return false;
+
+    return pcolumn->sc_ephemeral;
+}
+
+
+/*
  * ===========================================================================
  *  Private functions
  * ===========================================================================
@@ -185,6 +206,7 @@ bool psm_ovsdb_schema_parse(json_t *schema)
         {
             pcolumn = CALLOC(1, sizeof(*pcolumn));
             pcolumn->sc_column = STRDUP(key);
+            pcolumn->sc_ephemeral = json_boolean_value(json_object_get(val, "ephemeral"));
             ds_tree_insert(&ptable->st_column_list, pcolumn, pcolumn->sc_column);
         }
 
@@ -221,4 +243,3 @@ void psm_ovsdb_schema_table_monitor(ovsdb_update_monitor_t *self)
         }
     }
 }
-

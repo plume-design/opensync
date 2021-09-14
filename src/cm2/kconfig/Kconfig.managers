@@ -19,6 +19,12 @@ if MANAGER_CM
         help
             Use Wifi_Master_State table to manage WAN links
 
+    config CM2_USE_WIFI_BAND_PRIORITY
+        bool "Set default uplink priority based on radio band"
+        default n
+        help
+            Use dafault uplink priority based on radio type for WiFi links, using during onboarding
+
     config CM2_USE_DRYRUN_ON_GRE
         bool "Use udhcpc dryrun on gre interfaces"
         default n

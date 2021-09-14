@@ -340,7 +340,7 @@ retry:
 			break;
 		}
 
-		DBG("Going back to sleep, for %d sec ...", tv.tv_sec);
+		DBG("Going back to sleep, for %ld sec ...", tv.tv_sec);
 	}
 
 	close(sd);

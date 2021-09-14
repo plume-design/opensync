@@ -1,3 +1,5 @@
+#!/bin/sh -axe
+
 # Copyright (c) 2015, Plume Design Inc. All rights reserved.
 # 
 # Redistribution and use in source and binary forms, with or without
@@ -22,20 +24,40 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-SRCDIR   = src
-OBJDIR   = $(WORKDIR)/obj
-BINDIR   = $(WORKDIR)/bin
-LIBDIR   = $(WORKDIR)/lib
-FUTDIR   = $(WORKDIR)/fut
-PKGDIR   = $(WORKDIR)/pkg
+#
+# This is intended to be run from (the same as native target
+# was built in) docker instance, from the opensync root
+# directory (the one, where core/, platform/ and vendor/
+# directories are at).
+#
 
-BUILD_ROOTFS_DIR  ?= $(WORKDIR)/rootfs
-APP_ROOTFS        ?= $(BUILD_ROOTFS_DIR)
-IMAGEDIR = images
-WORKDIRS = $(WORKDIR) $(OBJDIR) $(LIBDIR) $(BINDIR) $(BUILD_ROOTFS_DIR) $(IMAGEDIR) $(FUTDIR) $(PKGDIR)
+prepare=$(readlink -f "$0" | cut -f 1 -d '.')_prepare.sh
+$prepare
+self=$(readlink -f "$0")
+init="${self%.*}_init.sh"
+wm=$(readlink -f core/work/native-*/bin/wm)
+db=$(readlink -f core/work/native-*/rootfs/usr/opensync/etc/conf.db.bck)
+ovsh=$(readlink -f core/work/native-*/bin/ovsh)
+mem=${mem:-128M}
+dir=$(dirname "$self")
 
-$(WORKDIRS):
-	$(Q)mkdir -p $@
-
-.PHONY: workdirs
-workdirs: $(WORKDIRS)
+# FIXME: This could be run in parallel
+for i in "$@"
+do
+	mkdir -p "$dir/logs/$i"
+	linux.uml \
+		mem=$mem \
+		time-travel=inf-cpu \
+		hostfs=/ \
+		root=none \
+		rootfstype=hostfs \
+		mac80211_hwsim.radios=2 \
+		rootflags=/ \
+		init=$init \
+		env=$(env | grep opt_ | base64 -w0) \
+		env_dir=$dir \
+		env_db=$db \
+		env_wm=$wm \
+		env_cmd="./$i" \
+		 2>&1 | tee "$dir/logs/$i/log"
+done

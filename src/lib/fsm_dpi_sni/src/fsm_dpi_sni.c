@@ -80,7 +80,7 @@ static const struct fsm_req_type
 };
 
 /* Forward definition */
-static int
+static void
 fsm_dpi_sni_process_verdict(struct fsm_policy_req *policy_request,
                             struct fsm_policy_reply *policy_reply);
 
@@ -439,8 +439,9 @@ fsm_dpi_sni_process_request(struct fsm_policy_req *policy_request,
     return fsm_apply_policies(policy_request, policy_reply);
 }
 
+
 static void
-fsm_dpi_sni_process_action(struct fsm_policy_req *policy_request,
+fsm_dpi_sni_process_report(struct fsm_policy_req *policy_request,
                            struct fsm_policy_reply *policy_reply)
 {
     struct fqdn_pending_req *pending_req;
@@ -466,12 +467,11 @@ fsm_dpi_sni_process_action(struct fsm_policy_req *policy_request,
         policy_reply->to_report = false;
     }
 
-    if (policy_reply->log == FSM_REPORT_BLOCKED && policy_reply->action != FSM_BLOCK)
+    if (policy_reply->log == FSM_REPORT_BLOCKED &&
+        policy_reply->action != FSM_BLOCK)
     {
         policy_reply->to_report = false;
     }
-
-    policy_reply->action = (policy_reply->action == FSM_BLOCK ? FSM_DPI_DROP : FSM_DPI_PASSTHRU);
 
     /* Overwrite logging and policy if categorization failed */
     if (policy_reply->categorized == FSM_FQDN_CAT_FAILED)
@@ -479,17 +479,10 @@ fsm_dpi_sni_process_action(struct fsm_policy_req *policy_request,
         policy_reply->action = FSM_ALLOW;
         policy_reply->to_report = true;
     }
-}
 
-static int
-fsm_dpi_sni_process_report(struct fsm_policy_req *policy_request,
-                           struct fsm_policy_reply *policy_reply)
-{
     LOGT("%s(): processing report for dpi sni", __func__);
 
     fsm_dpi_sni_send_report(policy_request, policy_reply);
-
-    return 0;
 }
 
 static void
@@ -501,23 +494,15 @@ dpi_sni_free_memory(struct fsm_policy_req *policy_request,
     fsm_policy_free_reply(policy_reply);
 }
 
-static int
+static void
 fsm_dpi_sni_process_verdict(struct fsm_policy_req *policy_request,
                             struct fsm_policy_reply *policy_reply)
 {
-    int action;
-
     LOGT("%s(): processing dpi sni verdict with action %d", __func__, policy_reply->action);
-
-    fsm_dpi_sni_process_action(policy_request, policy_reply);
-
-    action = policy_reply->action;
 
     fsm_dpi_sni_process_report(policy_request, policy_reply);
 
     dpi_sni_free_memory(policy_request, policy_reply);
-
-    return action;
 }
 
 /**

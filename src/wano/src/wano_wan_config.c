@@ -49,7 +49,7 @@ struct wano_wan_config_cache
 struct wano_wan_config_ifstatus
 {
     char                            wcs_ifname[C_IFNAME_LEN];
-    enum wano_wan_config_status     wcs_status[WC_STATUS_MAX];
+    enum wano_wan_config_status     wcs_status[WC_STATUS_LAST + 1];
     ds_tree_node_t                  wcs_tnode;
 };
 

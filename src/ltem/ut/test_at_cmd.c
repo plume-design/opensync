@@ -60,7 +60,8 @@ char *at_csq="at+csq\r\r\n+CSQ: 18,99\r\n\r\nOK\r\n";
 char *at_qgdcnt="at+qgdcnt?\r\r\n+QGDCNT: 356397,150721\r\n\r\nOK\r\n";
 char *at_qdsim="at+qdsim?\r\r\n+QDSIM: 0\r\n\r\nOK\r\n";
 char *at_cops="at+cops?\r\r\n+COPS: 0,0,\"AT&T\",7\r\n\r\nOK\r\n";
-char *at_srv_cell="at+qeng=\"servingcell\"\r\r\n+QENG: \"servingcell\",\"NOCONN\",\"LTE\",\"FDD\",310,410,A1FBF0A,310,800,2,5,5,8B1E,-115,-14,-80,10,8\r\n\r\nOK\r\n";
+char *at_srv_cell_lte="at+qeng=\"servingcell\"\r\r\n+QENG: \"servingcell\",\"NOCONN\",\"LTE\",\"FDD\",310,410,A1FBF0A,310,800,2,5,5,8B1E,-115,-14,-80,10,8\r\n\r\nOK\r\n";
+char *at_srv_cell_wcdma="at+qeng=\"servingcell\"\r\r\n+QENG: \"servingcell\",\"LIMSRV\",\"WCDMA\",310,410,DEA6,2883C,4385,84,254,-102,-10,-,-,-,-,-\r\n\r\nOK\r\n";
 char *at_neigh_cell="at+qeng=\"neighbourcell\"\r\r\n+QENG: \"neighbourcell intra\",\"LTE\",800,310,-14,-115,-80,0,8,4,10,2,62\r\n+QENG: \"neighbourcell inter\",\"LTE\",5110,263,-11,-102,-82,0,8,2,6,6\r\n+QENG: \"neighbourcell inter\",\"LTE\",66986,-,-,-,-,-,0,6,6,1,-,-,-,-\r\n+QENG: \"neighbourcell\",\"WCDMA\",512,6,14,62,-,-,-,-\r\n+QENG: \"neighbourcell\",\"WCDMA\",4385,0,14,62,84,-1030,-110,15\r\n\r\nOK\r\n";
 
 char *at_rsp="at\r\r\nOK\r\n";
@@ -95,11 +96,7 @@ lte_ut_modem_open(char *modem_path)
 ssize_t
 lte_ut_modem_write(int fd, const char *cmd)
 {
-    ssize_t len;
-
-    len = strlen(cmd);
-    strncpy(modem_cmd_buf, cmd, len);
-    return 0;
+    return STRSCPY(modem_cmd_buf, cmd);
 }
 
 ssize_t
@@ -110,67 +107,73 @@ lte_ut_modem_read(int fd, char *at_buf, ssize_t at_len)
     res = strncmp(modem_cmd_buf, ati_cmd, strlen(ati_cmd));
     if (!res)
     {
-        strncpy(at_buf, at_ati, strlen(at_ati));
+        strscpy(at_buf, at_ati, strlen(at_ati));
         return strlen(at_ati);
     }
     res = strncmp(modem_cmd_buf, gsn_cmd, strlen(gsn_cmd));
     if (!res)
     {
-        strncpy(at_buf, at_gsn, strlen(at_gsn));
+        strscpy(at_buf, at_gsn, strlen(at_gsn));
         return strlen(at_gsn);
     }
     res = strncmp(modem_cmd_buf, cimi_cmd, strlen(cimi_cmd));
     if (!res)
     {
-        strncpy(at_buf, at_cimi, strlen(at_cimi));
+        strscpy(at_buf, at_cimi, strlen(at_cimi));
         return strlen(at_cimi);
     }
     res = strncmp(modem_cmd_buf, qccid_cmd, strlen(qccid_cmd));
     if (!res)
     {
-        strncpy(at_buf, at_qccid, strlen(at_qccid));
+        strscpy(at_buf, at_qccid, strlen(at_qccid));
         return strlen(at_qccid);
     }
     res = strncmp(modem_cmd_buf, creg_cmd, strlen(creg_cmd));
     if (!res)
     {
-        strncpy(at_buf, at_creg, strlen(at_creg));
+        strscpy(at_buf, at_creg, strlen(at_creg));
         return strlen(at_creg);
     }
     res = strncmp(modem_cmd_buf, csq_cmd, strlen(csq_cmd));
     if (!res)
     {
-        strncpy(at_buf, at_csq, strlen(at_csq));
+        strscpy(at_buf, at_csq, strlen(at_csq));
         return strlen(at_csq);
     }
     res = strncmp(modem_cmd_buf, qgdcnt_cmd, strlen(qgdcnt_cmd));
     if (!res)
     {
-        strncpy(at_buf, at_qgdcnt, strlen(at_qgdcnt));
+        strscpy(at_buf, at_qgdcnt, strlen(at_qgdcnt));
         return strlen(at_qgdcnt);
     }
     res = strncmp(modem_cmd_buf, qdsim_cmd, strlen(qdsim_cmd));
     if (!res)
     {
-        strncpy(at_buf, at_qdsim, strlen(at_qdsim));
+        strscpy(at_buf, at_qdsim, strlen(at_qdsim));
         return strlen(at_qdsim);
     }
     res = strncmp(modem_cmd_buf, cops_cmd, strlen(cops_cmd));
     if (!res)
     {
-        strncpy(at_buf, at_cops, strlen(at_cops));
+        strscpy(at_buf, at_cops, strlen(at_cops));
         return strlen(at_cops);
     }
     res = strncmp(modem_cmd_buf, srv_cell_cmd, strlen(srv_cell_cmd));
     if (!res)
     {
-        strncpy(at_buf, at_srv_cell, strlen(at_srv_cell));
-        return strlen(at_srv_cell);
+        strscpy(at_buf, at_srv_cell_lte, strlen(at_srv_cell_lte));
+        return strlen(at_srv_cell_lte);
+    }
+    res = strncmp(modem_cmd_buf, srv_cell_cmd, strlen(srv_cell_cmd));
+    if (!res)
+    {
+        strscpy(at_buf, at_srv_cell_wcdma, strlen(at_srv_cell_wcdma));
+        return strlen(at_srv_cell_wcdma);
     }
     res = strncmp(modem_cmd_buf, neigh_cell_cmd, strlen(neigh_cell_cmd));
     if (!res)
     {
-        strncpy(at_buf, at_neigh_cell, strlen(at_neigh_cell));
+        strscpy(at_buf, at_neigh_cell, strlen(at_neigh_cell));
         return strlen(at_neigh_cell);
     }
 

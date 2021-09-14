@@ -42,12 +42,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 *******************************************************************************/
 
 #define SERVICE_PROVIDER_MAX_ELEMS 3
+#define DNS_CACHE_SOURCE_MAX 2
 
 struct dns_cache_mgr
 {
     bool        initialized;
     uint8_t     refcount;
     uint32_t    cache_hit_count[SERVICE_PROVIDER_MAX_ELEMS];
+    bool        disable_dns_cache[DNS_CACHE_SOURCE_MAX];
     ds_tree_t   ip2a_tree;
     int         entries;
 };
@@ -58,6 +60,20 @@ enum {
     IP2ACTION_BC_SVC,
     IP2ACTION_WP_SVC,
     IP2ACTION_GK_SVC,
+    IP2ACTION_UNKNOWN_SVC,
+};
+
+/* Sources of DNS CACHE initialization */
+enum {
+    MODULE_DNS_PARSE,
+    MODULE_IPTHREAT_DPI,
+    MODULE_UNKNOWN,
+};
+
+struct dns_cache_settings
+{
+   uint8_t dns_cache_source;
+   int service_provider;
 };
 
 struct ip2action_bc_info
@@ -142,12 +158,12 @@ dns_cache_init_mgr(struct dns_cache_mgr *mgr);
 /**
  * @brief initialize dns_cache.
  *
- * receive: none
+ * receive: source plugin name and service provider.
  *
  * @return true for success and false for failure.
  */
 bool
-dns_cache_init(void);
+dns_cache_init(struct dns_cache_settings *cache_init);
 
 void
 dns_cache_cleanup_mgr(void);
@@ -281,5 +297,35 @@ print_dns_cache_hit_count(void);
  */
 void
 print_dns_cache_details(void);
+
+/**
+ * @brief returns service provider.
+ *
+ * @param service_provider
+ *
+ * @return None
+ */
+uint8_t
+dns_cache_get_service_provider(char *service_provider);
+
+/**
+ * @brief returns status of dns_cache disabled.
+ *
+ * @param None
+ *
+ * @return true if dns_cache disabled.
+ */
+bool
+is_dns_cache_disabled(void);
+
+/**
+ * @brief disable dns_cache.
+ *
+ * @param None
+ *
+ * @return None
+ */
+void
+dns_cache_disable(void);
 
 #endif /* DNS_CACHE_H_INCLUDED */

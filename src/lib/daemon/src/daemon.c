@@ -405,20 +405,27 @@ void __daemon_teardown(daemon_t *self, int wstatus)
     /* Figure out the reason the process died */
     if (WIFSIGNALED(wstatus))
     {
+        log_severity_t ls = LOG_SEVERITY_ERR;
+
+        if (WTERMSIG(wstatus) == self->dn_sig_expected)
+        {
+            ls = LOG_SEVERITY_INFO;
+        }
+
 #if defined(WCOREDUMP)
         if (!WCOREDUMP(wstatus))
 #else
         if (true)
 #endif
         {
-            LOG(ERR, "Daemon %s (%jd) was terminated by signal %d.",
+            LOG_SEVERITY(ls, "Daemon %s (%jd) was terminated by signal %d.",
                     self->dn_exec,
                     (intmax_t)self->dn_pid,
                     WTERMSIG(wstatus));
         }
         else
         {
-            LOG(ERR, "Daemon %s (%jd) crashed (signal %d) and produced a core dump.",
+            LOG_SEVERITY(ls, "Daemon %s (%jd) crashed (signal %d) and produced a core dump.",
                     self->dn_exec,
                     (intmax_t)self->dn_pid,
                     WTERMSIG(wstatus));
@@ -738,6 +745,7 @@ bool daemon_stop(daemon_t *self)
                 self->dn_exec,
                 (intmax_t)self->dn_pid, self->dn_sig_term);
 
+        self->dn_sig_expected = self->dn_sig_term;
         kill(self->dn_pid, self->dn_sig_term);
         daemon_wait(self, DAEMON_DEFAULT_KILL_TIMEOUT);
     }
@@ -749,9 +757,12 @@ bool daemon_stop(daemon_t *self)
                 (intmax_t)self->dn_pid,
                 self->dn_sig_kill);
 
+        self->dn_sig_expected = self->dn_sig_kill;
         kill(self->dn_pid, self->dn_sig_kill);
         daemon_wait(self, DAEMON_DEFAULT_KILL_TIMEOUT);
     }
+
+    self->dn_sig_expected = 0;
 
     if (self->dn_pid != 0)
     {

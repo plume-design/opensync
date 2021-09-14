@@ -29,6 +29,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "lte_info.h"
 
+#define SERVING_CELL_LTE_FIELD_CNT 16
+#define SERVING_CELL_WCDMA_FIELD_CNT 15
+
 typedef struct lte_chip_info_ //ati
 {
     char cmd[16];

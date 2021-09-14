@@ -62,6 +62,9 @@ typedef char radio_essid_t[RADIO_ESSID_LEN + 1];
 #define radio_get_chan_index(type, chan) \
     ((RADIO_TYPE_2G == type) ? (chan - 1) : ((RADIO_TYPE_5G == type) ? ((chan - 36)/4) : (chan/4) ))
 
+#define IFTYPE_LEN 8
+typedef char iftype_t[IFTYPE_LEN];
+
 typedef struct
 {
     uint32_t                        avg;

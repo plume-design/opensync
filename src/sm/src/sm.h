@@ -171,6 +171,15 @@ bool sm_client_report_request(
 bool sm_client_report_radio_change(
         radio_entry_t              *radio_cfg);
 
+#ifdef CONFIG_SM_UPLINK_STATS
+bool sm_client_report_uplink_change(
+        radio_entry_t              *radio_cfg,
+        const char                 *uplink);
+bool sm_cmu_get_type_for_used_link(
+        char                       *iftype,
+        size_t                     size);
+#endif /* CONFIG_SM_UPLINK_STATS */
+
 /******************************************************************************
  *  NEIGHBOR REPORT definitions
  *****************************************************************************/

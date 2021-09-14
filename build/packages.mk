@@ -22,20 +22,16 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-SRCDIR   = src
-OBJDIR   = $(WORKDIR)/obj
-BINDIR   = $(WORKDIR)/bin
-LIBDIR   = $(WORKDIR)/lib
-FUTDIR   = $(WORKDIR)/fut
-PKGDIR   = $(WORKDIR)/pkg
 
-BUILD_ROOTFS_DIR  ?= $(WORKDIR)/rootfs
-APP_ROOTFS        ?= $(BUILD_ROOTFS_DIR)
-IMAGEDIR = images
-WORKDIRS = $(WORKDIR) $(OBJDIR) $(LIBDIR) $(BINDIR) $(BUILD_ROOTFS_DIR) $(IMAGEDIR) $(FUTDIR) $(PKGDIR)
+.PHONY: packages
 
-$(WORKDIRS):
-	$(Q)mkdir -p $@
+PACKAGE_ARCHIVE := $(IMAGEDIR)/3rdparty-packages-$(TARGET)-$(ROOTFS_PACK_VERSION).tar.gz
 
-.PHONY: workdirs
-workdirs: $(WORKDIRS)
+PACKAGE_TO_PACK := $(shell cd $(PKGDIR) && ls *.tar.gz 2>/dev/null)
+
+packages:
+ifneq ($(BUILD_3RDPARTY_PACKAGES),n)
+ifneq ($(strip $(PACKAGE_TO_PACK)),)
+	$(Q)tar czf $(PACKAGE_ARCHIVE) -C $(PKGDIR) $(PACKAGE_TO_PACK)
+endif
+endif
