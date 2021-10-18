@@ -24,8 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef LTEM_LTE_MODEM_H_INCLUDED
-#define LTEM_LTE_MODEM_H_INCLUDED
+#ifndef OSN_LTE_MODEM_H_INCLUDED
+#define OSN_LTE_MODEM_H_INCLUDED
 
 #include "lte_info.h"
 
@@ -261,8 +261,16 @@ typedef struct lte_neighbor_cell_inter_info_
     uint32_t thresh_x_high;
 } lte_neighbor_cell_inter_info_t;
 
-typedef struct lte_modem_info_
+enum lte_sim_status
 {
+    LTE_SIM_UNKNOWN,
+    LTE_SIM_REMOVED,
+    LTE_SIM_INSERTED,
+};
+
+typedef struct osn_lte_modem_info_
+{
+    bool modem_present;
     char chip_vendor[16];
     char model[16];
     char full_model[32];
@@ -280,19 +288,46 @@ typedef struct lte_modem_info_
     lte_serving_cell_info_t srv_cell;
     lte_neighbor_cell_intra_info_t neigh_cell_intra;
     lte_neighbor_cell_inter_info_t neigh_cell_inter;
-} lte_modem_info_t;
+    enum lte_sim_status sim_status;
+    uint32_t active_simcard_slot;
+} osn_lte_modem_info_t;
 
-int ltem_parse_imei(char *buf, lte_imei_t *imei);
-int ltem_parse_imsi(char *buf, lte_imsi_t *imsi);
-int ltem_parse_iccid(char *buf, lte_iccid_t *iccid);
-int ltem_parse_reg_status(char *buf, lte_reg_status_t *reg_status);
-int ltem_parse_sig_qual(char *buf, lte_sig_qual_t *sig_qual);
-int ltem_parse_byte_counts(char *buf, lte_byte_counts_t *byte_counts);
-int ltem_parse_sim_slot(char *buf, lte_sim_slot_t *sim_slot);
-int ltem_parse_operator(char *buf, lte_operator_t *operator);
-int ltem_parse_serving_cell(char *buf, lte_srv_cell_t *srv_cell);
-int ltem_parse_neigh_cell_intra(char *buf, lte_neigh_cell_intra_t *neigh_cell_intra);
-int ltem_parse_neigh_cell_inter(char *buf, lte_neigh_cell_inter_t *neigh_cell_inter);
-char *ltem_run_modem_cmd(const char *cmd);
+int osn_lte_parse_chip_info(char *buf, lte_chip_info_t *chip_info);
+int osn_lte_save_chip_info(lte_chip_info_t *chip_info, osn_lte_modem_info_t *modem_info);
+int osn_lte_parse_at_output(char *buf);
+int osn_lte_parse_imei(char *buf, lte_imei_t *imei);
+int osn_lte_save_imei(lte_imei_t *imei, osn_lte_modem_info_t *modem_info);
+int osn_lte_parse_imsi(char *buf, lte_imsi_t *imsi);
+int osn_lte_save_imsi(lte_imsi_t *imsi, osn_lte_modem_info_t *modem_info);
+int osn_lte_parse_iccid(char *buf, lte_iccid_t *iccid);
+int osn_lte_save_iccid(lte_iccid_t *iccid, osn_lte_modem_info_t *modem_info);
+int osn_lte_parse_reg_status(char *buf, lte_reg_status_t *reg_status);
+int osn_lte_save_reg_status(lte_reg_status_t *reg_status, osn_lte_modem_info_t *modem_info);
+int osn_lte_parse_sig_qual(char *buf, lte_sig_qual_t *sig_qual);
+int osn_lte_save_sig_qual(lte_sig_qual_t *sig_qual, osn_lte_modem_info_t *modem_info);
+int osn_lte_parse_byte_counts(char *buf, lte_byte_counts_t *byte_counts);
+int osn_lte_save_byte_counts(lte_byte_counts_t *byte_counts, osn_lte_modem_info_t *modem_info);
+int osn_lte_parse_sim_slot(char *buf, lte_sim_slot_t *sim_slot);
+int osn_lte_save_sim_slot(lte_sim_slot_t *sim_slot, osn_lte_modem_info_t *modem_info);
+int osn_lte_parse_operator(char *buf, lte_operator_t *operator);
+int osn_lte_save_operator(lte_operator_t *operator, osn_lte_modem_info_t *modem_info);
+int osn_lte_parse_serving_cell(char *buf, lte_srv_cell_t *srv_cell);
+int osn_lte_save_serving_cell(lte_srv_cell_t *srv_cell, osn_lte_modem_info_t *modem_info);
+int osn_lte_parse_neigh_cell_intra(char *buf, lte_neigh_cell_intra_t *neigh_cell_intra);
+int osn_lte_save_neigh_cell_intra(lte_neigh_cell_intra_t *neigh_cell_intra, osn_lte_modem_info_t *modem_info);
+int osn_lte_parse_neigh_cell_inter(char *buf, lte_neigh_cell_inter_t *neigh_cell_inter);
+int osn_lte_save_neigh_cell_inter(lte_neigh_cell_inter_t *neigh_cell_inter, osn_lte_modem_info_t *modem_info);
+int osn_lte_modem_open(char *modem_path);
+ssize_t ons_lte_modem_write(int fd, const char *cmd);
+ssize_t osn_lte_modem_read(int fd, char *at_buf, ssize_t at_len);
+void osn_lte_modem_close(int fd);
+int osn_ltem_get_modem_info(void);
+char *osn_lte_run_microcom_cmd(char *cmd);
+char *osn_lte_run_modem_cmd(const char *cmd);
+osn_lte_modem_info_t *osn_get_modem_info(void);
+int osn_lte_read_modem(void);
+void osn_lte_set_sim_slot(uint32_t slot);
+void osn_lte_set_qmi_mode(void);
+void osn_lte_set_apn(char *apn);
 
-#endif /* LTEM_LTE_MODEM_H_INCLUDED */
+#endif /* OSN_LTE_MODEM_H_INCLUDED */

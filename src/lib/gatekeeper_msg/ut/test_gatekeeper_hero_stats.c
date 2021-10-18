@@ -374,7 +374,7 @@ test_send_report_param(void)
     bool ret;
 
     /* no aggr initalized */
-    num_reports = gkhc_send_report(NULL, "valid_mqtt_topic");
+    num_reports = gkhc_build_and_send_report(NULL, "valid_mqtt_topic");
     TEST_ASSERT_EQUAL_INT(-1, num_reports);
 
     /* get aggregator set up */
@@ -382,10 +382,10 @@ test_send_report_param(void)
     ret = gkhc_init_aggregator(aggr, &g_session);
     TEST_ASSERT_TRUE(ret);
 
-    num_reports = gkhc_send_report(aggr, NULL);
+    num_reports = gkhc_build_and_send_report(aggr, NULL);
     TEST_ASSERT_EQUAL_INT(-1, num_reports);
 
-    num_reports = gkhc_send_report(aggr, "");
+    num_reports = gkhc_build_and_send_report(aggr, "");
     TEST_ASSERT_EQUAL_INT(-1, num_reports);
 
     gkhc_release_aggregator(aggr);
@@ -420,7 +420,7 @@ test_gk_serialize_cache_no_entries(void)
     gkhc_close_window(aggr);
     TEST_ASSERT_NOT_EQUAL_INT(0, aggr->end_observation_window);
 
-    num_reports = gkhc_send_report(aggr, "mqtt_topic");
+    num_reports = gkhc_build_and_send_report(aggr, "mqtt_topic");
     TEST_ASSERT_EQUAL_INT(0, num_reports);
 
     /* cleanup */
@@ -567,7 +567,7 @@ test_gk_serialize_cache_add_entries(void)
 
     gkhc_close_window(aggr);
 
-    num_sent_reports = gkhc_send_report(aggr, "mqtt_channel_name");
+    num_sent_reports = gkhc_build_and_send_report(aggr, "mqtt_channel_name");
     /*
      * The number of reports depends on their size. This could end up changing over time
      * if/when we add fields or change data size.
@@ -576,13 +576,22 @@ test_gk_serialize_cache_add_entries(void)
      */
     TEST_ASSERT_EQUAL_INT(4, num_sent_reports);
 
+    /* Simulate a case where no update to any cached entry happens */
+    gkhc_activate_window(aggr);
+    LOGI("Sleep 2 more seconds to create an empty observation window");
+    sleep(2);
+    gkhc_close_window(aggr);
+
+    num_sent_reports = gkhc_build_and_send_report(aggr, "mqtt_channel_name");
+    TEST_ASSERT_EQUAL_INT(0, num_sent_reports);
+
     /* Test case where we don't have a properly defined mqtt_topic */
     /* Next statement should not complain about double free */
-    num_sent_reports = gkhc_send_report(aggr, NULL);
+    num_sent_reports = gkhc_build_and_send_report(aggr, NULL);
     TEST_ASSERT_EQUAL_INT(-1, num_sent_reports);
     gkhc_activate_window(aggr);
     gkhc_close_window(aggr);
-    num_sent_reports = gkhc_send_report(aggr, NULL);
+    num_sent_reports = gkhc_build_and_send_report(aggr, NULL);
     TEST_ASSERT_EQUAL_INT(-1, num_sent_reports);
 
     /* Cleanup */

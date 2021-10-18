@@ -3601,3 +3601,27 @@ void bm_client_handle_ext_xing(bm_client_t *client, const char *ifname, bsal_eve
 
     bm_client_xing_recalc(client, &info);
 }
+
+void bm_client_update_all_channel(const struct schema_Wifi_VIF_State *vstate)
+{
+    bm_client_t *client;
+
+    ds_tree_foreach(&bm_clients, client) {
+        if (client->connected == false)
+            continue;
+
+        if (strcmp(client->ifname, vstate->if_name) != 0)
+            continue;
+
+        if (client->self_neigh.channel == vstate->channel)
+            continue;
+
+        LOGI("%s: updating self_neigh of %s channel from %d to %d",
+             client->mac_addr,
+             vstate->if_name,
+             client->self_neigh.channel,
+             vstate->channel);
+
+        client->self_neigh.channel = vstate->channel;
+    }
+}

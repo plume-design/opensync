@@ -74,9 +74,8 @@ ltem_route_exec_cmd(char *cmd)
 {
     int res;
     res = system(cmd);
-    if (!res) return res;
 
-    LOGI("%s: cmd=%s, errno %s", __func__, cmd, strerror(errno));
+    LOGD("%s: cmd=%s, res=%d, errno=%s", __func__, cmd, res, strerror(errno));
     return res;
 }
 
@@ -269,11 +268,10 @@ ltem_force_lte_route(ltem_mgr_t *mgr)
     {
         /* ip route delete default dev [eth0/eth1] */
         snprintf(cmd, sizeof(cmd), "ip route delete default dev %s", route->wan_if_name);
-        LOGI("%s: cmd[%s]", __func__, cmd);
         res = ltem_route_exec_cmd(cmd);
         if (res)
         {
-            LOGI("%s: cmd failed: %s, errno: %s", __func__, cmd, strerror(errno));
+            LOGI("%s: cmd failed: %s, res=%d, errno: %s", __func__, cmd, res, strerror(errno));
             return res;
         }
         route->wan_metric = WAN_L3_FAIL_METRIC;
@@ -284,7 +282,7 @@ ltem_force_lte_route(ltem_mgr_t *mgr)
         res = ltem_route_exec_cmd(cmd);
         if (res)
         {
-            LOGI("%s: cmd failed: %s, errno: %s", __func__, cmd, strerror(errno));
+            LOGI("%s: cmd failed: %s, res=%d, errno: %s", __func__, cmd, res, strerror(errno));
             return res;
         }
     }
@@ -320,11 +318,10 @@ ltem_restore_default_wan_route(ltem_mgr_t *mgr)
     {
         /* ip route delete default dev [eth0/eth1] */
         snprintf(cmd, sizeof(cmd), "ip route delete default dev %s", route->wan_if_name);
-        LOGI("%s: cmd[%s]", __func__, cmd);
         res = ltem_route_exec_cmd(cmd);
         if (res)
         {
-            LOGI("%s: cmd failed: %s, errno: %s", __func__, cmd, strerror(errno));
+            LOGI("%s: cmd failed: %s, res=%d, errno: %s", __func__, cmd, res, strerror(errno));
             return res;
         }
         route->wan_metric = WAN_DEFAULT_METRIC;
@@ -335,7 +332,7 @@ ltem_restore_default_wan_route(ltem_mgr_t *mgr)
         res = ltem_route_exec_cmd(cmd);
         if (res)
         {
-            LOGI("%s: cmd failed: %s, errno: %s", __func__, cmd, strerror(errno));
+            LOGI("%s: cmd failed: %s, res=%d, errno: %s", __func__, cmd, res, strerror(errno));
             return res;
         }
     }

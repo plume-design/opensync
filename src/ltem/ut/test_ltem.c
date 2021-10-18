@@ -38,6 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ltem_lte_ut.h"
 #include "target.h"
 #include "unity.h"
+#include "osn_lte_modem.h"
 
 static ltem_mgr_t ltem_mgr;
 
@@ -131,6 +132,30 @@ ltem_get_mgr(void)
     return &ltem_mgr;
 }
 
+void
+ltem_populate_config(lte_config_info_t *lte_config)
+{
+    STRSCPY(lte_config->if_name, "wwan0");
+    lte_config->manager_enable = true;
+    lte_config->lte_failover_enable = true;
+    lte_config->ipv4_enable = true;
+    lte_config->ipv6_enable = false;
+    lte_config->force_use_lte = false;
+    lte_config->active_simcard_slot = 0;
+    lte_config->modem_enable = true;
+    lte_config->report_interval = 60;
+    STRSCPY(lte_config->apn, "Broadband");
+}
+
+void
+ltem_populate_state(lte_state_info_t *lte_state)
+{
+    lte_state->lte_failover_active = false;
+    lte_state->lte_failover_start = 100;
+    lte_state->lte_failover_end = 200;
+    lte_state->lte_failover_count = 1;
+}
+
 bool
 ltem_ut_mgr_init(struct ev_loop *loop)
 {
@@ -139,13 +164,16 @@ ltem_ut_mgr_init(struct ev_loop *loop)
     lte_route_info_t *lte_route;
 
     ltem_mgr_t *mgr = ltem_get_mgr();
+    mgr->modem_info = osn_get_modem_info();
 
     mgr->loop = loop;
 
     lte_config = CALLOC(1, sizeof(lte_config_info_t));
     if (lte_config == NULL) return false;
+    ltem_populate_config(lte_config);
     lte_state = CALLOC(1, sizeof(lte_state_info_t));
     if (lte_state == NULL) return false;
+    ltem_populate_state(lte_state);
     lte_route = CALLOC(1, sizeof(lte_route_info_t));
     if (lte_route == NULL) return false;
 
@@ -171,11 +199,194 @@ ltem_setup_ut_handlers(ltem_mgr_t *mgr)
 
     handlers->ltem_mgr_init = ltem_ut_mgr_init;
     handlers->system_call = ut_system;
-    handlers->lte_modem_open = lte_ut_modem_open;
-    handlers->lte_modem_write = lte_ut_modem_write;
-    handlers->lte_modem_read = lte_ut_modem_read;
-    handlers->lte_modem_close = lte_ut_modem_close;
-    handlers->lte_run_microcom_cmd = lte_ut_run_microcom_cmd;
+}
+
+int
+ut_check_modem_status(void)
+{
+    char *at_resp;
+    int res;
+    int i;
+
+    char *cmd = "at";
+    at_resp = lte_ut_run_microcom_cmd(cmd);
+    res = osn_lte_parse_at_output(at_resp);
+    if (!res) return res;
+    for (i = 0; i < 10; i++)
+    {
+        sleep(1);
+        at_resp = lte_ut_run_microcom_cmd(cmd);
+        res = osn_lte_parse_at_output(at_resp);
+        if (!res) break;
+    }
+    return res;
+}
+
+int
+ut_lte_read_modem(void)
+{
+    int res;
+    osn_lte_modem_info_t *modem_info;
+    char *at_resp;
+    lte_chip_info_t chip_info;
+    lte_imei_t imei;
+    lte_imsi_t imsi;
+    lte_iccid_t iccid;
+    lte_reg_status_t reg_status;
+    lte_sig_qual_t sig_qual;
+    lte_byte_counts_t byte_counts;
+    lte_sim_slot_t sim_slot;
+    lte_operator_t operator;
+    lte_srv_cell_t srv_cell;
+    lte_neigh_cell_intra_t neigh_cell_intra;
+
+    modem_info = osn_get_modem_info();
+    res = ut_check_modem_status();
+    if (!res)
+    {
+        LOGI("%s: modem status: OK", __func__);
+        modem_info->modem_present = true;
+    }
+    else
+    {
+        LOGI("%s: modem status: Not OK", __func__);
+        modem_info->modem_present = false;
+    }
+
+    char *ati_cmd = "ati";
+    at_resp = lte_ut_run_microcom_cmd(ati_cmd);
+    if (!at_resp) return -1;
+    res = osn_lte_parse_chip_info(at_resp, &chip_info);
+    if (res)
+    {
+        LOGE("osn_lte_parse_chip_info:failed");
+    }
+    osn_lte_save_chip_info(&chip_info, modem_info);
+
+    char *gsn_cmd = "at+gsn";
+    at_resp = lte_ut_run_microcom_cmd(gsn_cmd);
+    if (!at_resp) return -1;
+    res = osn_lte_parse_imei(at_resp, &imei);
+    if (res)
+    {
+        LOGE("osn_lte_parse_imei:failed");
+    }
+    osn_lte_save_imei(&imei, modem_info);
+
+    char *imsi_cmd = "at+cimi";
+    at_resp = lte_ut_run_microcom_cmd(imsi_cmd);
+    if (!at_resp) return -1;
+    res = osn_lte_parse_imsi(at_resp, &imsi);
+    if (res)
+    {
+        LOGE("osn_lte_parse_imsi:failed");
+    }
+    osn_lte_save_imsi(&imsi, modem_info);
+
+    char *iccid_cmd = "at+qccid";
+    at_resp = lte_ut_run_microcom_cmd(iccid_cmd);
+    if (!at_resp) return -1;
+    res = osn_lte_parse_iccid(at_resp, &iccid);
+    if (res)
+    {
+        LOGE("osn_lte_parse_iccid:failed");
+    }
+    osn_lte_save_iccid(&iccid, modem_info);
+
+    char *creg_cmd = "at+creg?"; // net reg status
+    at_resp = lte_ut_run_microcom_cmd(creg_cmd);
+    if (!at_resp) return -1;
+    res = osn_lte_parse_reg_status(at_resp, &reg_status);
+    if (res)
+    {
+        LOGE("osn_lte_parse_reg_status:failed");
+    }
+    osn_lte_save_reg_status(&reg_status, modem_info);
+
+    char *csq_cmd = "at+csq"; // rssi, ber
+    at_resp = lte_ut_run_microcom_cmd(csq_cmd);
+    if (!at_resp) return -1;
+    res = osn_lte_parse_sig_qual(at_resp, &sig_qual);
+    if (res)
+    {
+        LOGE("osn_lte_parse_sig_qual:failed");
+    }
+    osn_lte_save_sig_qual(&sig_qual, modem_info);
+
+    char *qgdcnt_cmd = "at+qgdcnt?"; //tx/rx bytes
+    at_resp = lte_ut_run_microcom_cmd(qgdcnt_cmd);
+    if (!at_resp) return -1;
+    res = osn_lte_parse_byte_counts(at_resp, &byte_counts);
+    if (res)
+    {
+        LOGE("osn_lte_parse_byte_counts:failed");
+    }
+    osn_lte_save_byte_counts(&byte_counts, modem_info);
+
+    char *qdsim_cmd = "at+qdsim?";
+    at_resp = lte_ut_run_microcom_cmd(qdsim_cmd);
+    if (!at_resp) return -1;
+    res = osn_lte_parse_sim_slot(at_resp, &sim_slot);
+    if (res)
+    {
+        LOGE("osn_lte_parse_sim_slot:failed");
+    }
+    osn_lte_save_sim_slot(&sim_slot, modem_info);
+
+    char *cops_cmd = "at+cops?";
+    at_resp = lte_ut_run_microcom_cmd(cops_cmd);
+    if (!at_resp) return -1;
+    res = osn_lte_parse_operator(at_resp, &operator);
+    if (res)
+    {
+        LOGE("osn_lte_parse_operator:failed");
+    }
+    osn_lte_save_operator(&operator, modem_info);
+
+    char *srv_cell_cmd = "at+qeng=\\\"servingcell\\\"";
+    at_resp = lte_ut_run_microcom_cmd(srv_cell_cmd);
+    if (!at_resp) return -1;
+    res = osn_lte_parse_serving_cell(at_resp, &srv_cell);
+    if (res)
+    {
+        LOGE("osn_lte_parse_serving_cell:failed");
+    }
+    osn_lte_save_serving_cell(&srv_cell, modem_info);
+
+    char *neigh_cell_cmd = "at+qeng=\\\"neighbourcell\\\"";
+    at_resp = lte_ut_run_microcom_cmd(neigh_cell_cmd);
+    if (!at_resp) return -1;
+    res = osn_lte_parse_neigh_cell_intra(at_resp, &neigh_cell_intra);
+    if (res)
+    {
+        LOGE("osn_lte_parse_neigh_cell_intra:failed");
+    }
+    osn_lte_save_neigh_cell_intra(&neigh_cell_intra, modem_info);
+
+    lte_neigh_cell_inter_t neigh_cell_inter;
+    res = osn_lte_parse_neigh_cell_inter(at_resp, &neigh_cell_inter);
+    if (res)
+    {
+        LOGE("osn_lte_parse_neigh_cell_inter:failed");
+    }
+    osn_lte_save_neigh_cell_inter(&neigh_cell_inter, modem_info);
+
+    return 0;
+}
+
+int
+ltem_ut_build_mqtt_report(time_t now)
+{
+    int res;
+
+    res = ut_lte_read_modem();
+    if (res < 0) return res;
+
+    res = lte_serialize_report();
+
+    lte_mqtt_cleanup();
+
+    return res;
 }
 
 void
@@ -184,7 +395,7 @@ test_ltem_build_mqtt_report(void)
     int ret;
     time_t now = time(NULL);
 
-    ret = ltem_build_mqtt_report(now);
+    ret = ltem_ut_build_mqtt_report(now);
     TEST_ASSERT_EQUAL_INT(0, ret);
 }
 

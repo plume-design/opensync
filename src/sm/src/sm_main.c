@@ -41,6 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "os.h"
 #include "os_socket.h"
+#include "os_random.h"
 #include "ovsdb.h"
 #include "evext.h"
 #include "dppline.h"

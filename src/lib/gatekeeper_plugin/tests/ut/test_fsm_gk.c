@@ -1834,6 +1834,62 @@ test_validate_fqdn(void)
             .fqdn = "foo.lan.com",
             .rc = true,
         },
+        {
+            .fqdn = "tpsvc_malware_lv5_i.test.nomdebug.com",
+            .rc = true,
+        },
+        {
+            .fqdn = "007_bet-men.blog.xfree.hu",
+            .rc = true,
+        },
+        {
+            .fqdn = "-007_betmen.blog.xfree.hu",
+            .rc = false,
+        },
+        {
+            .fqdn = "007_betmen-.blog.xfree.hu",
+            .rc = false,
+        },
+        {
+            .fqdn = "_007_betmen.blog.xfree.hu",
+            .rc = false,
+        },
+        {
+            .fqdn = "007_betmen_.blog.xfree.hu",
+            .rc = false,
+        },
+        {
+            .fqdn = "007_betmen.-blog.xfree.hu",
+            .rc = false,
+        },
+        {
+            .fqdn = "007_betmen.blog.xfree.hu-ki",
+            .rc = true,
+        },
+        {
+            .fqdn = "007_betmen.blog.xfree.hu_ki",
+            .rc = true,
+        },
+        {
+            .fqdn = "007_betmen.blog.xfree.-hu_ki",
+            .rc = false,
+        },
+        {
+            .fqdn = "007_betmen.blog.xfree._hu_ki",
+            .rc = false,
+        },
+        {
+            .fqdn = "007_betmen.blog.xfree.hu_ki-",
+            .rc = false,
+        },
+        {
+            .fqdn = "007_betmen.blog.xfree.hu_ki_",
+            .rc = false,
+        },
+        {
+            .fqdn = "007-008.foo.com",
+            .rc = true,
+        },
     };
 
     session = &g_sessions[0];

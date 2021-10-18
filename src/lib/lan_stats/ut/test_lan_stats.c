@@ -53,7 +53,9 @@ const char *test_name = "fcm_lan_stats_tests";
 char *g_node_id = "4C7770146A";
 char *g_loc_id = "5f93600e05bf767503dbbfe1";
 char *g_mqtt_topic = "lan/dog1/5f93600e05bf767503dbbfe1/07";
-char *g_default_dpctl_f[] = { "/tmp/stats.txt",  "/tmp/stats_2.txt" };
+char *g_default_dpctl_f[] = { "/tmp/stats.txt",
+                              "/tmp/stats_2.txt",
+                              "/tmp/stats_3.txt"};
 
 struct fcm_session *session = NULL;
 struct fcm_filter_client *c_client = NULL;
@@ -816,6 +818,75 @@ test_parent_cloud_tag(void)
     TEST_ASSERT_TRUE(rc);
 }
 
+/**
+ * @brief validates packets & bytes
+ *
+ * Validates packets and bytes in aggr with actual bytes & packets flow.
+ */
+void
+validate_flow_packets_bytes(void)
+{
+    lan_stats_instance_t *lan_stats_instance;
+    struct net_md_stats_accumulator *actual;
+    struct net_md_eth_pair *eth_pair;
+    fcm_collect_plugin_t *collector;
+    struct net_md_aggregator *aggr;
+    struct flow_counters expected;
+    int rc;
+
+    collector = &g_collector_tbl[0];
+    g_test_mgr.dpctl_file = g_default_dpctl_f[2];
+
+    /* add instance */
+    rc = lan_stats_plugin_init(collector);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    lan_stats_instance = lan_stats_get_active_instance();
+
+    session = calloc(1, sizeof(*session));
+    TEST_ASSERT_NOT_NULL(session);
+
+    c_client = calloc(1, sizeof(*c_client));
+    TEST_ASSERT_NOT_NULL(c_client);
+    session->handler_ctxt = c_client;
+
+    r_client = calloc(1, sizeof(*r_client));
+    TEST_ASSERT_NOT_NULL(r_client);
+    session->handler_ctxt = r_client;
+
+    lan_stats_instance->session = session;
+    lan_stats_instance->r_client =  r_client;
+    lan_stats_instance->c_client = c_client;
+
+    /* Update the flow collector routine */
+    lan_stats_instance->collect_flows = test_lan_stats_collect_flows;
+
+    /* Update the reporting routine */
+    aggr = lan_stats_instance->aggr;
+    TEST_ASSERT_NOT_NULL(aggr);
+    aggr->send_report = test_emit_report;
+
+    /* collect LAN stats and report it */
+    collector->collect_periodic(collector);
+    collector->send_report(collector);
+
+    /* both packets and bytes are 100 TB */
+    expected.packets_count = 100000053341680;
+    expected.bytes_count = 100000053341680;
+
+    eth_pair = ds_tree_head(&aggr->eth_pairs);
+    TEST_ASSERT_NOT_NULL(eth_pair);
+    actual = eth_pair->mac_stats;
+
+    /* validate the counters */
+    TEST_ASSERT_EQUAL_INT(expected.bytes_count, actual->counters.bytes_count);
+    TEST_ASSERT_EQUAL_INT(expected.packets_count, actual->counters.packets_count);
+
+    FREE(session);
+    FREE(c_client);
+    FREE(r_client);
+}
+
 
 int
 main(int argc, char *argv[])
@@ -858,6 +929,7 @@ main(int argc, char *argv[])
     RUN_TEST(test_parent_tag);
     RUN_TEST(test_parent_device_tag);
     RUN_TEST(test_parent_cloud_tag);
+    RUN_TEST(validate_flow_packets_bytes);
 
     lan_stats_exit_mgr();
 

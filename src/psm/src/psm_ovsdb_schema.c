@@ -221,7 +221,7 @@ void psm_ovsdb_schema_table_monitor(ovsdb_update_monitor_t *self)
     if (self->mon_json_new != NULL)
     {
         LOG(DEBUG, "Update row: %s: %s", self->mon_table,
-                json_dumps(self->mon_json_new, 0));
+                json_dumps_static(self->mon_json_new, 0));
 
         if (!psm_ovsdb_row_update(self->mon_table, self->mon_json_new))
         {
@@ -233,7 +233,7 @@ void psm_ovsdb_schema_table_monitor(ovsdb_update_monitor_t *self)
     else
     {
         LOG(DEBUG, "Delete row: %s: %s", self->mon_table,
-                json_dumps(self->mon_json_old, 0));
+                json_dumps_static(self->mon_json_old, 0));
 
         if (!psm_ovsdb_row_delete(self->mon_table, self->mon_json_old))
         {

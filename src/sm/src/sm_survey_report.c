@@ -41,6 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "os.h"
 #include "os_time.h"
+#include "os_random.h"
 #include "util.h"
 #include "memutil.h"
 
@@ -1775,7 +1776,7 @@ bool sm_survey_stats_process (
             }
             else {
                 /* Introduce random delay for max pod Qty = 6 (Selling package) */
-                request_ctx->threshold_pod_num = rand() % 5 + 1;
+                request_ctx->threshold_pod_num = os_random() % 5 + 1;
                 request_ctx->threshold_pod_qty = 6;
 
                 request_ctx->threshold_max_delay +=

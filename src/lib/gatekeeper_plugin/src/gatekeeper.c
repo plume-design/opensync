@@ -446,7 +446,7 @@ gk_check_policy_in_cache(struct fsm_policy_req *req,
     if (!cache_mgr->initialized) return false;
 
     req_type = fsm_policy_get_req_type(req);
-    if (req_type >=FSM_FQDN_REQ && req_type <= FSM_APP_REQ)
+    if (req_type >= FSM_FQDN_REQ && req_type <= FSM_APP_REQ)
     {
         LOGT("%s(): checking attribute cache", __func__);
         ret = gatekeeper_check_attr_cache(req, policy_reply);
@@ -674,7 +674,7 @@ gk_add_policy_to_cache(struct fsm_policy_req *req, struct fsm_policy_reply *poli
     gk_fsm_adjust_ttl(req, policy_reply);
 
     req_type = fsm_policy_get_req_type(req);
-    if (req_type >=FSM_FQDN_REQ && req_type <= FSM_APP_REQ)
+    if (req_type >= FSM_FQDN_REQ && req_type <= FSM_APP_REQ)
     {
         ret = gatekeeper_add_attr_cache(req, policy_reply);
     }
@@ -1132,11 +1132,11 @@ gatekeeper_monitor_ssl_table(void)
 
 
 static const char pattern_fqdn[] =
-    "^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])\\.){1,}"
-    "([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\\-]*[A-Za-z0-9])$";
+    "^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9_-]*[a-zA-Z0-9])\\.){1,}"
+    "([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9_-]*[a-zA-Z0-9])$";
 
 static const char pattern_fqdn_lan[] =
-    "^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])\\.){1,}"
+    "^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9_-]*[a-zA-Z0-9])\\.){1,}"
     "(lan)$";
 
 /**
@@ -1416,6 +1416,7 @@ gatekeeper_periodic(struct fsm_session *session)
 {
     struct fsm_gk_session *fsm_gk_session;
     struct fsm_url_stats *stats;
+    int num_hero_stats_records;
     struct fsm_gk_mgr *mgr;
     double cmp_report;
     bool get_stats;
@@ -1445,18 +1446,13 @@ gatekeeper_periodic(struct fsm_session *session)
     }
 
     /* Now check for hero stats */
-    cmp_report = now - fsm_gk_session->hero_stats_report_ts;
-    get_stats = (cmp_report >= fsm_gk_session->hero_stats_report_interval);
-    if (get_stats)
-    {
-        gkhc_close_window(fsm_gk_session->hero_stats);
-
-        /* Report to mqtt */
-        gkhc_send_report(fsm_gk_session->hero_stats, fsm_gk_session->hero_stats_report_topic);
-
-        fsm_gk_session->hero_stats_report_ts = now;
-        gkhc_activate_window(fsm_gk_session->hero_stats);
-    }
+    num_hero_stats_records = gkhc_send_report(session,
+                                              fsm_gk_session->hero_stats_report_interval);
+    if (num_hero_stats_records > 0)
+        LOGT("%s: Reported into %d hero_stats records",
+             __func__, num_hero_stats_records);
+    else if (num_hero_stats_records < 0)
+        LOGD("%s: Failed to report hero_stats", __func__);
 
     /* Proceed to other periodic tasks */
     if ((now - mgr->gk_time) < GK_PERIODIC_INTERVAL) return;

@@ -526,4 +526,5 @@ extern void                 bm_client_parse_assoc_ies(bm_client_t *client, const
 extern void                 bm_client_sta_info_update_callback(void);
 extern void                 bm_client_handle_ext_activity(bm_client_t *client, const char *ifname, bool active);
 extern void                 bm_client_handle_ext_xing(bm_client_t *client, const char *ifname, bsal_event_t *event);
+extern void                 bm_client_update_all_channel(const struct schema_Wifi_VIF_State *vstate);
 #endif /* BM_CLIENT_H_INCLUDED */

@@ -24,6 +24,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include "gatekeeper.h"
 #include "gatekeeper_cache.h"
 #include "gatekeeper_hero_stats.h"
 #include "gatekeeper_hero_stats.pb-c.h"
@@ -578,9 +579,22 @@ serialize_hostname_tree(ds_tree_t *tree, os_macaddr_t *device_id, struct gkc_rep
     Gatekeeper__HeroStats__HeroStats **pb;
     struct attr_hostname_s *attr;
     struct attr_cache *entry;
+    uint64_t count_fqdn;
+    uint64_t count_host;
+    uint64_t count_sni;
+    uint64_t rel_total;
 
     ds_tree_foreach(tree, entry)
     {
+        attr = entry->attr.host_name;
+        count_fqdn = get_relative_count(&attr->count_fqdn);
+        count_host = get_relative_count(&attr->count_host);
+        count_sni  = get_relative_count(&attr->count_sni);
+        rel_total = count_fqdn + count_host + count_sni;
+
+        /* This entry has not changed since last window */
+        if (rel_total == 0) continue;
+
         /* Need to keep this assignment in the loop as we might REALLOC */
         pb = aggr->stats;
 
@@ -596,11 +610,10 @@ serialize_hostname_tree(ds_tree_t *tree, os_macaddr_t *device_id, struct gkc_rep
         }
         gatekeeper__hero_stats__hero_hostname__init(new_pb->hostname);
 
-        attr = entry->attr.host_name;
         new_pb->hostname->name       = attr->name;
-        new_pb->hostname->count_fqdn = get_relative_count(&attr->count_fqdn);
-        new_pb->hostname->count_host = get_relative_count(&attr->count_host);
-        new_pb->hostname->count_sni  = get_relative_count(&attr->count_sni);
+        new_pb->hostname->count_fqdn = count_fqdn;
+        new_pb->hostname->count_host = count_host;
+        new_pb->hostname->count_sni  = count_sni;
 
         pb[aggr->stats_idx] = new_pb;
         aggr->stats_idx++;
@@ -616,9 +629,16 @@ serialize_url_tree(ds_tree_t *tree, os_macaddr_t *device_id, struct gkc_report_a
     Gatekeeper__HeroStats__HeroStats **pb;
     struct attr_generic_s *attr;
     struct attr_cache *entry;
+    uint64_t rel_count;
 
     ds_tree_foreach(tree, entry)
     {
+        attr = entry->attr.url;
+        rel_count = get_relative_count(&attr->hit_count);
+
+        /* This entry has not changed since last window */
+        if (rel_count == 0) continue;
+
         /* Need to keep this assignment in the loop as we might REALLOC */
         pb = aggr->stats;
 
@@ -634,9 +654,8 @@ serialize_url_tree(ds_tree_t *tree, os_macaddr_t *device_id, struct gkc_report_a
         }
         gatekeeper__hero_stats__hero_url__init(new_pb->url);
 
-        attr = entry->attr.url;
         new_pb->url->url = attr->name;
-        new_pb->url->count = get_relative_count(&attr->hit_count);
+        new_pb->url->count = rel_count;
 
         pb[aggr->stats_idx] = new_pb;
         aggr->stats_idx++;
@@ -653,9 +672,16 @@ serialize_ipv4_tree(ds_tree_t *tree, os_macaddr_t *device_id, struct gkc_report_
     struct attr_ip_addr_s *attr;
     struct attr_cache *entry;
     struct sockaddr_in *in;
+    uint64_t rel_count;
 
     ds_tree_foreach(tree, entry)
     {
+        attr = entry->attr.ipv4;
+        rel_count = get_relative_count(&attr->hit_count);
+
+        /* This entry has not changed since last window */
+        if (rel_count == 0) continue;
+
         /* Need to keep this assignment in the loop as we might REALLOC */
         pb = aggr->stats;
 
@@ -671,15 +697,13 @@ serialize_ipv4_tree(ds_tree_t *tree, os_macaddr_t *device_id, struct gkc_report_
         }
         gatekeeper__hero_stats__hero_ipv4__init(new_pb->ipv4);
 
-        attr = entry->attr.ipv4;
-
         /*
          * Since this is a cast, s_addr will turn into host-order.
          * Swap back to network-order.
          */
         in = (struct sockaddr_in *)&(attr->ip_addr);
         new_pb->ipv4->addr_ipv4 = htonl(in->sin_addr.s_addr);
-        new_pb->ipv4->count = get_relative_count(&attr->hit_count);
+        new_pb->ipv4->count = rel_count;
 
         pb[aggr->stats_idx] = new_pb;
         aggr->stats_idx++;
@@ -696,9 +720,16 @@ serialize_ipv6_tree(ds_tree_t *tree, os_macaddr_t *device_id, struct gkc_report_
     struct attr_ip_addr_s *attr;
     struct sockaddr_in6 *in6;
     struct attr_cache *entry;
+    uint64_t rel_count;
 
     ds_tree_foreach(tree, entry)
     {
+        attr = entry->attr.ipv6;
+        rel_count = get_relative_count(&attr->hit_count);
+
+        /* This entry has not changed since last window */
+        if (rel_count == 0) continue;
+
         /* Need to keep this assignment in the loop as we might REALLOC */
         pb = aggr->stats;
 
@@ -714,11 +745,10 @@ serialize_ipv6_tree(ds_tree_t *tree, os_macaddr_t *device_id, struct gkc_report_
         }
         gatekeeper__hero_stats__hero_ipv6__init(new_pb->ipv6);
 
-        attr = entry->attr.ipv6;
         in6 = (struct sockaddr_in6 *)&(attr->ip_addr);
         new_pb->ipv6->addr_ipv6.data = (uint8_t *)&(in6->sin6_addr);
         new_pb->ipv6->addr_ipv6.len  = 16;
-        new_pb->ipv6->count = get_relative_count(&attr->hit_count);
+        new_pb->ipv6->count = rel_count;
 
         pb[aggr->stats_idx] = new_pb;
         aggr->stats_idx++;
@@ -734,9 +764,16 @@ serialize_app_tree(ds_tree_t *tree, os_macaddr_t *device_id, struct gkc_report_a
     Gatekeeper__HeroStats__HeroStats **pb;
     struct attr_generic_s *attr;
     struct attr_cache *entry;
+    uint64_t rel_count;
 
     ds_tree_foreach(tree, entry)
     {
+        attr = entry->attr.url;
+        rel_count = get_relative_count(&attr->hit_count);
+
+        /* This entry has not changed since last window */
+        if (rel_count == 0) continue;
+
         /* Need to keep this assignment in the loop as we might REALLOC */
         pb = aggr->stats;
 
@@ -752,9 +789,8 @@ serialize_app_tree(ds_tree_t *tree, os_macaddr_t *device_id, struct gkc_report_a
         }
         gatekeeper__hero_stats__hero_app__init(new_pb->app);
 
-        attr = entry->attr.url;
         new_pb->app->name = attr->name;
-        new_pb->app->count = get_relative_count(&attr->hit_count);
+        new_pb->app->count = rel_count;
 
         pb[aggr->stats_idx] = new_pb;
         aggr->stats_idx++;
@@ -771,9 +807,15 @@ serialize_flow_tree(ds_tree_t *tree, os_macaddr_t *device_id, struct gkc_report_
     Gatekeeper__HeroStats__HeroStats *new_pb;
     Gatekeeper__HeroStats__HeroStats **pb;
     struct ip_flow_cache *entry;
+    uint64_t rel_count;
 
     ds_tree_foreach(tree, entry)
     {
+        rel_count = get_relative_count(&entry->hit_count);
+
+        /* This entry has not changed since last window */
+        if (rel_count == 0) continue;
+
         /* Need to keep this assignment in the loop as we might REALLOC */
         pb = aggr->stats;
 
@@ -802,7 +844,7 @@ serialize_flow_tree(ds_tree_t *tree, os_macaddr_t *device_id, struct gkc_report_
             new_ipv4_tuple->transport = entry->protocol;
             new_ipv4_tuple->source_port = entry->src_port;
             new_ipv4_tuple->destination_port = entry->dst_port;
-            new_ipv4_tuple->count = get_relative_count(&entry->hit_count);
+            new_ipv4_tuple->count = rel_count;
         }
         else if (entry->ip_version == 6)
         {
@@ -824,7 +866,7 @@ serialize_flow_tree(ds_tree_t *tree, os_macaddr_t *device_id, struct gkc_report_
             new_ipv6_tuple->transport = entry->protocol;
             new_ipv6_tuple->source_port = entry->src_port;
             new_ipv6_tuple->destination_port = entry->dst_port;
-            new_ipv6_tuple->count = get_relative_count(&entry->hit_count);
+            new_ipv6_tuple->count = rel_count;
         }
         else
         {
@@ -930,7 +972,7 @@ free_hero_stats_report_pb(Gatekeeper__HeroStats__HeroReport *pb)
 }
 
 /**
- * @copydoc gkhc_send_report()
+ * @copydoc gkhc_build_and_send_report()
  *
  * @details The observation window must have been closed prior to create
  * the serialized report. Each "window" will be stored individually in the
@@ -938,7 +980,7 @@ free_hero_stats_report_pb(Gatekeeper__HeroStats__HeroReport *pb)
  * Once every window has been sent back, we can reset our local aggregator.
  */
 int
-gkhc_send_report(struct gkc_report_aggregator *aggr, char *mqtt_topic)
+gkhc_build_and_send_report(struct gkc_report_aggregator *aggr, char *mqtt_topic)
 {
     Gatekeeper__HeroStats__HeroReport *pb;
     struct gk_packed_buffer serialized_pb;
@@ -1050,4 +1092,46 @@ cleanup_serialized_buf:
     FREE(pb);
 
     return -1;
+}
+
+int
+gkhc_send_report(struct fsm_session *session, long interval)
+{
+    struct fsm_gk_session *fsm_gk_session;
+    double cmp_report;
+    bool get_stats;
+    int retval;
+    time_t now;
+
+    retval = 0;
+
+    if (session == NULL) return retval;
+
+    fsm_gk_session = (struct fsm_gk_session *)session->handler_ctxt;
+    if (!fsm_gk_session) return retval;
+
+    now = time(NULL);
+
+    cmp_report = now - fsm_gk_session->hero_stats_report_ts;
+    get_stats = (cmp_report >= interval);
+    if (get_stats)
+    {
+        LOGI("%s: Reporting HERO stats", __func__);
+        gkhc_close_window(fsm_gk_session->hero_stats);
+
+        /* Report to mqtt */
+        retval = gkhc_build_and_send_report(fsm_gk_session->hero_stats,
+                                            fsm_gk_session->hero_stats_report_topic);
+
+        fsm_gk_session->hero_stats_report_ts = now;
+        gkhc_activate_window(fsm_gk_session->hero_stats);
+        LOGT("%s: Reporting complete", __func__);
+    }
+    else
+    {
+        LOGT("%s: Does not need to send HERO stats", __func__);
+    }
+
+
+    return retval;
 }

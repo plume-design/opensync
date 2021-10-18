@@ -34,7 +34,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb_update.h"
 #include "ovsdb_sync.h"
 #include "ovsdb_table.h"
-#include "schema.h"
 #include "log.h"
 #include "os.h"
 #include "qm_conn.h"
@@ -44,9 +43,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /* Log entries from this file will contain "OVSDB" */
 #define MODULE_ID LOG_MODULE_ID_OVSDB
-
-// ovsdb_table_t table_Connection_Manager_Uplink;
-// struct schema_Connection_Manager_Uplink con;
 
 
 #define LTE_NODE_MODULE "lte"
@@ -78,21 +74,9 @@ ltem_update_conf(struct schema_Lte_Config *lte_conf)
     conf->modem_enable = lte_conf->modem_enable;
     if (conf->modem_enable)
     {
-        if (ltem_get_modem_info())
+        if (osn_lte_read_modem())
         {
-            LOGE("%s: ltem_get_modem_info: failed", __func__);
-            // Try again if inital read fails
-            ltem_get_modem_info();
-        }
-        if (mgr->modem_info.model[0])
-        {
-            LOGI("LTE modem present");
-            mgr->lte_state_info->modem_present = true;
-        }
-        else
-        {
-            LOGI("LTE modem NOT present");
-            mgr->lte_state_info->modem_present = false;
+            LOGE("%s: osn_lte_read_modem(): failed", __func__);
         }
     }
 
@@ -116,7 +100,7 @@ ltem_ovsdb_create_lte_state(ltem_mgr_t *mgr)
     struct schema_Lte_State lte_state;
     lte_config_info_t *lte_config;
     lte_state_info_t *lte_state_info;
-    lte_modem_info_t *modem_info;
+    osn_lte_modem_info_t *modem_info;
     const char *if_name;
     char *sim_status;
     char *net_state;
@@ -150,7 +134,7 @@ ltem_ovsdb_create_lte_state(ltem_mgr_t *mgr)
                                 SCHEMA_COLUMN(Lte_State, if_name), if_name, &lte_state);
     if (rc) return 0;
 
-    LOG(INFO, "%s: Insert Lte_State: if_name=[%s]", __func__, if_name);
+    LOGI("%s: Insert Lte_State: if_name=[%s]", __func__, if_name);
     lte_state._partial_update = true;
     // Config from Lte_Config table
     SCHEMA_SET_STR(lte_state.if_name, if_name);
@@ -159,30 +143,23 @@ ltem_ovsdb_create_lte_state(ltem_mgr_t *mgr)
     SCHEMA_SET_INT(lte_state.ipv4_enable, lte_config->ipv4_enable);
     SCHEMA_SET_INT(lte_state.ipv6_enable, lte_config->ipv6_enable);
     SCHEMA_SET_INT(lte_state.force_use_lte, lte_config->force_use_lte);
-    SCHEMA_SET_INT(lte_state.active_simcard_slot, lte_config->active_simcard_slot);
     SCHEMA_SET_INT(lte_state.modem_enable, lte_config->modem_enable);
     SCHEMA_SET_INT(lte_state.report_interval, lte_config->report_interval);
-    if (!lte_config->apn[0])
-    {
-        SCHEMA_SET_STR(lte_state.apn, "data.icore.name");
-    }
-    else
-    {
-        SCHEMA_SET_STR(lte_state.apn, lte_config->apn);
-    }
+    SCHEMA_SET_STR(lte_state.apn, lte_config->apn);
+
     // State info
-    LOGI("%s: modem_present[%d]", __func__, lte_state_info->modem_present);
-    SCHEMA_SET_INT(lte_state.modem_present, lte_state_info->modem_present);
-    modem_info = &mgr->modem_info;
+    modem_info = mgr->modem_info;
+    SCHEMA_SET_INT(lte_state.modem_present, modem_info->modem_present);
+    SCHEMA_SET_INT(lte_state.active_simcard_slot, modem_info->active_simcard_slot);
     SCHEMA_SET_STR(lte_state.iccid, modem_info->iccid);
     SCHEMA_SET_STR(lte_state.imei, modem_info->imei);
     SCHEMA_SET_STR(lte_state.imsi, modem_info->imsi);
-    switch(lte_state_info->sim_status)
+    switch(modem_info->sim_status)
     {
-        case LTEM_LTE_SIM_REMOVED:
+        case LTE_SIM_REMOVED:
             sim_status = "Removed";
             break;
-        case LTEM_LTE_SIM_INSERTED:
+        case LTE_SIM_INSERTED:
             sim_status = "Inserted";
             break;
         default:
@@ -237,7 +214,7 @@ ltem_ovsdb_update_lte_state(ltem_mgr_t *mgr)
     struct schema_Lte_State lte_state;
     lte_config_info_t *lte_config;
     lte_state_info_t *lte_state_info;
-    lte_modem_info_t *modem_info;
+    osn_lte_modem_info_t *modem_info;
     const char *if_name;
     char *sim_status;
     char *net_state;
@@ -269,9 +246,11 @@ ltem_ovsdb_update_lte_state(ltem_mgr_t *mgr)
     if (lte_config == NULL) return -1;
     lte_state_info = mgr->lte_state_info;
     if (lte_state_info == NULL) return -1;
+    modem_info = mgr->modem_info;
+    if (modem_info == NULL) return -1;
     if_name = lte_config->if_name;
     if (!if_name[0]) return -1;
-    modem_info = &mgr->modem_info;
+    modem_info = osn_get_modem_info();
 
     res = ovsdb_table_select_one(&table_Lte_State,
                                  SCHEMA_COLUMN(Lte_State, if_name), if_name, &lte_state);
@@ -295,29 +274,22 @@ ltem_ovsdb_update_lte_state(ltem_mgr_t *mgr)
     SCHEMA_SET_INT(lte_state.ipv4_enable, lte_config->ipv4_enable);
     SCHEMA_SET_INT(lte_state.ipv6_enable, lte_config->ipv6_enable);
     SCHEMA_SET_INT(lte_state.force_use_lte, lte_config->force_use_lte);
-    SCHEMA_SET_INT(lte_state.active_simcard_slot, lte_config->active_simcard_slot);
     SCHEMA_SET_INT(lte_state.modem_enable, lte_config->modem_enable);
     SCHEMA_SET_INT(lte_state.report_interval, lte_config->report_interval);
-    if (!lte_config->apn[0])
-    {
-        SCHEMA_SET_STR(lte_state.apn, "data.icore.name");
-    }
-    else
-    {
-        SCHEMA_SET_STR(lte_state.apn, lte_config->apn);
-    }
+    SCHEMA_SET_STR(lte_state.apn, lte_config->apn);
+
     // State info
-    LOGI("%s: modem_present[%d]", __func__, lte_state_info->modem_present);
-    SCHEMA_SET_INT(lte_state.modem_present, lte_state_info->modem_present);
+    SCHEMA_SET_INT(lte_state.modem_present, modem_info->modem_present);
+    SCHEMA_SET_INT(lte_state.active_simcard_slot, modem_info->active_simcard_slot);
     SCHEMA_SET_STR(lte_state.iccid, modem_info->iccid);
     SCHEMA_SET_STR(lte_state.imei, modem_info->imei);
     SCHEMA_SET_STR(lte_state.imsi, modem_info->imsi);
-    switch(lte_state_info->sim_status)
+    switch(modem_info->sim_status)
     {
-        case LTEM_LTE_SIM_REMOVED:
+        case LTE_SIM_REMOVED:
             sim_status = "Removed";
             break;
-        case LTEM_LTE_SIM_INSERTED:
+        case LTE_SIM_INSERTED:
             sim_status = "Inserted";
             break;
         default:
@@ -370,12 +342,65 @@ ltem_ovsdb_update_lte_state(ltem_mgr_t *mgr)
 }
 
 int
-ltem_ovsdb_cmu_create_lte(ltem_mgr_t *mgr)
+ltem_ovsdb_cmu_update_lte(ltem_mgr_t *mgr)
+{
+    struct schema_Connection_Manager_Uplink cm_conf;
+    char *filter[] = { "+",
+                       SCHEMA_COLUMN(Connection_Manager_Uplink, has_L2),
+                       SCHEMA_COLUMN(Connection_Manager_Uplink, has_L3),
+                       SCHEMA_COLUMN(Connection_Manager_Uplink, priority),
+                       NULL };
+    const char *if_name;
+    char *null_inet_addr = "0.0.0.0";
+    int res;
+
+    if_name = mgr->lte_config_info->if_name;
+    if(!if_name[0])
+    {
+        LOGI("%s: if_name[%s]", __func__, if_name);
+        return 0;
+    }
+
+    res = ovsdb_table_select_one(&table_Connection_Manager_Uplink,
+                                 SCHEMA_COLUMN(Connection_Manager_Uplink, if_name), if_name, &cm_conf);
+    if (!res)
+    {
+        LOGI("%s: %s not found in Connection_Manager_Uplink", __func__, if_name);
+        return 0;
+    }
+
+    MEMZERO(cm_conf);
+
+    LOGI("%s: update %s LTE CM settings", __func__, if_name);
+    cm_conf._partial_update = true;
+    SCHEMA_SET_INT(cm_conf.has_L2, true);
+    SCHEMA_SET_INT(cm_conf.has_L3, false);
+    res = strncmp(mgr->lte_route->lte_ip_addr, null_inet_addr, strlen(mgr->lte_route->lte_ip_addr));
+    if (res)
+    {
+        SCHEMA_SET_INT(cm_conf.has_L3, true);
+    }
+    SCHEMA_SET_INT(cm_conf.priority, 2);
+
+    res = ovsdb_table_update_where_f(&table_Connection_Manager_Uplink,
+                                     ovsdb_where_simple(SCHEMA_COLUMN(Connection_Manager_Uplink, if_name), if_name),
+                                     &cm_conf, filter);
+    if (!res)
+    {
+        LOGW("%s: Update %s CM table failed", __func__, if_name);
+        return -1;
+    }
+    return 0;
+}
+
+int
+ltem_ovsdb_cmu_insert_lte(ltem_mgr_t *mgr)
 {
     struct schema_Connection_Manager_Uplink cm_conf;
     char *if_type = "lte";
     const char *if_name;
-    int rc;
+    char *null_inet_addr = "0.0.0.0";
+    int rc, res;
 
     MEMZERO(cm_conf);
 
@@ -389,14 +414,23 @@ ltem_ovsdb_cmu_create_lte(ltem_mgr_t *mgr)
 
     rc = ovsdb_table_select_one(&table_Connection_Manager_Uplink,
                                 SCHEMA_COLUMN(Connection_Manager_Uplink, if_name), if_name, &cm_conf);
-    if (rc) return 0;
+    if (rc)
+    {
+        LOGI("%s: Entry for %s exists, update Connection_Manager_Uplink table", __func__, if_name);
+        return ltem_ovsdb_cmu_update_lte(mgr);
+    }
 
-    LOG(INFO, "%s: Insert Connection_Manager_Uplink: if_name=[%s], if_type[%s]", __func__, if_name, if_type);
+    LOGI("%s: Insert Connection_Manager_Uplink: if_name=[%s], if_type[%s]", __func__, if_name, if_type);
     cm_conf._partial_update = true;
     SCHEMA_SET_STR(cm_conf.if_name, if_name);
     SCHEMA_SET_STR(cm_conf.if_type, if_type);
     SCHEMA_SET_INT(cm_conf.has_L2, true);
-    SCHEMA_SET_INT(cm_conf.has_L3, true);
+    SCHEMA_SET_INT(cm_conf.has_L3, false);
+    res = strncmp(mgr->lte_route->lte_ip_addr, null_inet_addr, strlen(mgr->lte_route->lte_ip_addr));
+    if (res)
+    {
+        SCHEMA_SET_INT(cm_conf.has_L3, true);
+    }
     SCHEMA_SET_INT(cm_conf.priority, 2);
     if (!ovsdb_table_insert(&table_Connection_Manager_Uplink, &cm_conf))
     {
@@ -504,7 +538,9 @@ callback_Lte_Config(ovsdb_update_monitor_t *mon,
             LOGI("%s mon_type = OVSDB_UPDATE_MODIFY", __func__);
             ltem_ovsdb_update_lte_state(mgr);
             rc = strncmp(lte_conf->apn, "", strlen(lte_conf->apn));
-            if (rc) ltem_set_apn(lte_conf->apn);
+            if (rc) osn_lte_set_apn(lte_conf->apn);
+
+            osn_lte_set_sim_slot(lte_conf->active_simcard_slot);
 
             if (!lte_conf->manager_enable && !lte_conf->force_use_lte)
             {
@@ -514,7 +550,7 @@ callback_Lte_Config(ovsdb_update_monitor_t *mon,
             {
                 ltem_set_wan_state(LTEM_WAN_STATE_DOWN);
             }
-            else if (old_lte_conf->force_use_lte && !lte_conf->force_use_lte)
+            else if (old_lte_conf->force_use_lte)
             {
                 ltem_restore_default_wan_route(mgr);
                 ltem_set_wan_state(LTEM_WAN_STATE_UP);
@@ -552,14 +588,22 @@ ltem_handle_nm_update_wwan0(struct schema_Wifi_Inet_State *old_inet_state,
                             struct schema_Wifi_Inet_State *inet_state)
 {
     char *null_inet_addr = "0.0.0.0";
+    ltem_mgr_t *mgr = ltem_get_mgr();
     int res;
 
     LOGI("%s: old: if_name=%s, enabled=%d inet_addr=%s, new: if_name=%s, enabled=%d, inet_addr=%s",
          __func__, old_inet_state->if_name, old_inet_state->enabled, old_inet_state->inet_addr, inet_state->if_name, inet_state->enabled, inet_state->inet_addr);
+    if (!mgr->lte_route)
+    {
+        LOGE("%s: lte_route NULL", __func__);
+        return;
+    }
+    STRSCPY(mgr->lte_route->lte_ip_addr, inet_state->inet_addr);
+    ltem_ovsdb_cmu_insert_lte(mgr);
     res = strncmp(inet_state->inet_addr, null_inet_addr, strlen(inet_state->inet_addr));
     if (!res)
     {
-        LOGI("%s: no ip addr: %s", __func__, inet_state->inet_addr);
+        ltem_set_lte_state(LTEM_LTE_STATE_DOWN);
         return;
     }
 
@@ -594,6 +638,7 @@ void
 ltem_handle_cm_update_lte(struct schema_Connection_Manager_Uplink *old_uplink,
                           struct schema_Connection_Manager_Uplink *uplink)
 {
+
     LOGI("%s: if_name=%s if_type=%s, has_L2=%d, has_L3=%d, priority=%d, is_used=%d",
          __func__, uplink->if_name, uplink->if_type, uplink->has_L2, uplink->has_L3, uplink->priority, uplink->is_used);
     if (uplink->is_used)
@@ -634,6 +679,7 @@ callback_Connection_Manager_Uplink(ovsdb_update_monitor_t *mon,
             res = strncmp(uplink->if_name, "wwan0", strlen(uplink->if_name));
             if (res == 0)
             {
+                LOGI("%s: if_name[%s], has_L2[%d], has_L3[%d], priority[%d]", __func__, uplink->if_name, uplink->has_L2, uplink->has_L3, uplink->priority);
                 ltem_handle_cm_update_lte(old_uplink, uplink);
             }
             break;

@@ -92,14 +92,27 @@ logpull_run()
         sh "$f"
     done
 
-    # Unpack all archives that got collected during the process
-    logi "unpacking collected archives ..."
-    find "$LOGPULL_TMP_DIR" -name '*.tar.gz' | xargs -n 1 sh -c 'echo unpacking "$0" >&2 && tar xzf "$0" -C "$(dirname "$0")" && rm "$0"'
-
     # Mask PSKs
     if [ -z "$NO_PSK_MASK" ]; then
         logi "masking psks from logpull data"
-        find "$LOGPULL_TMP_DIR" -type f | xargs $CONFIG_TARGET_PATH_TOOLS/pskmask -o _MASKED_ -- >&2 ||
+
+        TARB_EXT=".tar.gz"
+        logi "repacking tarballs"
+        for f in $(find "$LOGPULL_TMP_DIR" -name "*$TARB_EXT") ; do
+            TARB_TMPDIR="$(mktemp -d /tmp/masking-XXXXXX)"
+            logi "unpacking $f to $TARB_TMPDIR"
+            mkdir -p "$TARB_TMPDIR" >&2 && tar xzf "$f" -C "$TARB_TMPDIR" >&2
+            logi "masking tarball"
+            find "$TARB_TMPDIR" -type f | xargs $CONFIG_TARGET_PATH_TOOLS/pskmask -o _MASKED_ -- >&2 ||
+            {
+                loge "PSK masking failed"
+                return 1
+            }
+            logi "repacking $TARB_TMPDIR back to $f"
+            tar czf "$f" -C "$TARB_TMPDIR" . >&2 && rm -rf "$TARB_TMPDIR" >&2
+        done
+
+        find "$LOGPULL_TMP_DIR" -type f ! -name "$TARB_EXT"| xargs $CONFIG_TARGET_PATH_TOOLS/pskmask -o _MASKED_ -- >&2 ||
         {
             loge "PSK masking failed"
             return 1

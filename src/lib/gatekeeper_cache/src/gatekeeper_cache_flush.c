@@ -33,6 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fsm_utils.h"
 #include "gatekeeper_cache.h"
 #include "gatekeeper_cache_cmp.h"
+#include "gatekeeper_hero_stats.h"
 #include "memutil.h"
 
 static struct str_set *
@@ -593,52 +594,94 @@ gkc_flush_rules(struct fsm_policy_rules *rules)
 }
 
 int
-gkc_flush_all(void)
+gkc_flush_all(struct fsm_policy_rules *rules)
 {
-    size_t num_entries;
+    int num_entries;
 
-    num_entries = gk_get_cache_count();
-    gk_cache_cleanup();
+    /* if there is no mac rule, we flush everything */
+    if (!rules->mac_rule_present)
+    {
+        num_entries = (int)gk_get_cache_count();
+        gk_cache_cleanup();
+    }
+    else
+    {
+        num_entries = gkc_flush_rules(rules);
+    }
 
-    return (int)num_entries;
+    return num_entries;
 }
 
 int
 gkc_flush_client(struct fsm_session *session, struct fsm_policy *policy)
 {
+    int num_hero_stats_records;
     int num_flushed_records;
     char *name;
+    bool chk;
 
     if (!policy) return -1;
 
-    if (session && session->name && strlen(session->name))
+    chk = (session != NULL);
+    if (chk) chk &= (session->name != NULL);
+    if (chk) chk &= (strlen(session->name) != 0);
+    if (chk)
+    {
         name = session->name;
+    }
     else
+    {
         name = "'No name'";
+    }
+
+    chk  = (policy->action == FSM_FLUSH_CACHE);
+    chk |= (policy->action == FSM_FLUSH_ALL_CACHE);
+    if (chk)
+    {
+        num_hero_stats_records = gkhc_send_report(session, 5);  /* Do not report if a report was sent within 5 seconds */
+        if (num_hero_stats_records > 0)
+        {
+            LOGT("%s(): Reported into %d hero_stats records",
+                 __func__, num_hero_stats_records);
+        }
+        else if (num_hero_stats_records < 0)
+        {
+            LOGD("%s(): Failed to report hero_stats", __func__);
+        }
+    }
 
     if (policy->action == FSM_FLUSH_CACHE)
     {
         num_flushed_records = gkc_flush_rules(&policy->rules);
         if (num_flushed_records >= 0)
-            LOGD("%s(): Flushed %d records from GK cache in %s",
+        {
+            LOGD("%s(): FLUSH %d records from GK cache in %s",
                  __func__, num_flushed_records, name);
+        }
         else
+        {
             LOGD("%s(): Policy did not flush any entry from GK cache in %s",
                  __func__, name);
+        }
         return num_flushed_records;
     }
 
     if (policy->action == FSM_FLUSH_ALL_CACHE)
     {
-        num_flushed_records = gkc_flush_all();
+        num_flushed_records = gkc_flush_all(&policy->rules);
         if (num_flushed_records >= 0)
-            LOGD("%s(): Flushed all %d records from GK cache in %s",
+        {
+            LOGD("%s(): FLUSH_ALL %d records from GK cache in %s",
                  __func__, num_flushed_records, name);
+        }
         else
+        {
             LOGD("%s(): Policy did not flush any entry from GK cache in %s",
                  __func__, name);
+        }
         return num_flushed_records;
     }
 
+    LOGD("%s(): Unsupported action %d", __func__, policy->action);
     return -1;
 }

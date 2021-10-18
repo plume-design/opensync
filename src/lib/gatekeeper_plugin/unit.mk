@@ -29,16 +29,16 @@
 ###############################################################################
 UNIT_NAME := fsm_gatekeeper
 
-UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM),n,y)
+UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM), n, y)
 
 # Template type.
 # If compiled with clang, assume a native unit test target
 # and build a static library
 ifneq (,$(findstring clang,$(CC)))
-	UNIT_TYPE := LIB
+    UNIT_TYPE := LIB
 else
-	UNIT_TYPE := SHLIB
-	UNIT_DIR := lib
+    UNIT_TYPE := SHLIB
+    UNIT_DIR := lib
 endif
 
 UNIT_SRC := src/gatekeeper.c
@@ -47,7 +47,7 @@ UNIT_SRC += src/gatekeeper_single_curl.c
 UNIT_SRC += src/gatekeeper_data.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
-UNIT_CFLAGS += -Isrc/fsm/inc
+UNIT_CFLAGS += -I$(TOP_DIR)/src/fsm/inc
 
 UNIT_LDFLAGS := -lcurl -lmxml
 

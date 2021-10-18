@@ -229,7 +229,7 @@ mdns_plugin_send_mdns_response(struct mdns_session *m_session)
     pctxt = mgr->ctxt;
     if (!pctxt) return;
 
-    while (mdnsd_out(pctxt->dmn, &m, (long unsigned int *)&ip, &port))
+    while (mdnsd_out(pctxt->dmn, &m, &ip, &port))
     {
         unsigned char *buf;
         ssize_t len;

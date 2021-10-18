@@ -114,7 +114,11 @@ void callback_AWLAN_Node(ovsdb_update_monitor_t *mon,
         }
     }
 
-    qm_mqtt_set(mqtt_broker, mqtt_port, mqtt_topic, mqtt_qos, mqtt_compress);
+    if (!qm_mqtt_set(mqtt_broker, mqtt_port, mqtt_topic, mqtt_qos, mqtt_compress))
+    {
+        LOGE("MQTT settings set failed, now exiting");
+        exit(EXIT_FAILURE);
+    }
     qm_mqtt_set_log_interval(log_interval);
     qm_mqtt_set_agg_stats_interval(agg_stats_interval);
 }

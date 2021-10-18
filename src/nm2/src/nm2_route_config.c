@@ -24,121 +24,56 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include "nm2_iface.h"
-#include "schema.h"
+/*
+ * ===========================================================================
+ *  NM2 Wifi_Route_Config implementation
+ * ===========================================================================
+ */
+
+#include "ds_tree.h"
 #include "log.h"
 #include "osn_types.h"
-
 #include "ovsdb_table.h"
+#include "schema.h"
 
-#define MODULE_ID LOG_MODULE_ID_MAIN
+#include "nm2_iface.h"
 
-#define LOG_MOD_E(FMT, ...)         LOGE("route_config: "FMT, ## __VA_ARGS__)
-#define LOG_TAB_E(FIELD, FMT, ...)  LOGE("Wifi_Route_Config->"FIELD" :"FMT, ## __VA_ARGS__)
+struct nm2_route_cfg
+{
+    ovs_uuid_t      rc_uuid;        /* Cached uuid */
+    char           *rc_ifname;      /* Interface name associated with route */
+    osn_route4_t    rc_route;       /* Route structure */
+    ds_tree_t       rc_tnode;       /* Tree node */
+};
 
+static void callback_Wifi_Route_Config(
+        ovsdb_update_monitor_t *mon,
+        struct schema_Wifi_Route_Config *old,
+        struct schema_Wifi_Route_Config *new);
+
+static bool nm2_route_cfg_parse(
+        struct nm2_route_cfg *rt,
+        const struct schema_Wifi_Route_Config *schema);
+
+static void nm2_route_cfg_free(struct nm2_route_cfg *rt);
+static bool nm2_route_cfg_add(struct nm2_route_cfg *rt);
+static bool nm2_route_cfg_del(struct nm2_route_cfg *rt);
+
+/* Wifi_Route_Config table object */
 static ovsdb_table_t table_Wifi_Route_Config;
+/* Route cache represented as red-black tree where the row UUID is the key */
+static ds_tree_t g_nm2_route_cfg_list = DS_TREE_INIT(ds_str_cmp, struct nm2_route_cfg, rc_tnode);
 
-static bool parse_route_cfg(osn_route4_t *route, const struct schema_Wifi_Route_Config *psch)
+/*
+ * Initialize the route configuration subsystem
+ */
+void nm2_route_cfg_init()
 {
-    // initial dest validation done by schema
-    if (!osn_ip_addr_from_str(&route->dest, psch->dest_addr))
-    {
-        LOG_TAB_E("dest_addr", "Invalid destination IP address: %s", psch->dest_addr);
-        return false;
-    }
+    // Initialize OVSDB tables
+    OVSDB_TABLE_INIT(Wifi_Route_Config, dest_addr);
 
-    osn_ip_addr_t mask;
-    if (!osn_ip_addr_from_str(&mask, psch->dest_mask))
-    {
-        LOG_TAB_E("dest_mask", "Invalid destination IP mask: %s", psch->dest_mask);
-        return false;
-    }
-
-    route->dest.ia_prefix = osn_ip_addr_to_prefix(&mask);
-
-    route->gw = OSN_IP_ADDR_INIT;
-    route->gw_valid = false;
-
-    if (psch->gateway_exists)
-    {
-        if (!osn_ip_addr_from_str(&route->gw, psch->gateway))
-        {
-            LOG_TAB_E("gateway", "Invalid gateway IP address: %s", psch->gateway);
-            return false;
-        }
-        route->gw_valid = true;
-    }
-
-    route->metric = psch->metric_exists ? psch->metric : -1;
-    return true;
-}
-
-static struct nm2_iface * get_interface(
-    const osn_route4_t *route,
-    const struct schema_Wifi_Route_Config *psch)
-{
-    struct nm2_iface *ifc = NULL;
-
-    if (psch->if_name_exists)
-    {
-        ifc = nm2_iface_get_by_name((char*)psch->if_name);
-        if (NULL == ifc)
-        {
-            LOG_MOD_E("Network interface %s not found", psch->if_name);
-        }
-    }
-    else if (route->gw_valid)
-    {
-        char if_name[C_IFNAME_LEN];
-        if (osn_route_find_dev(route->gw, if_name, sizeof(if_name)))
-        {
-            ifc = nm2_iface_get_by_name(if_name);
-        }
-
-        if (NULL == ifc)
-        {
-            LOG_MOD_E("Network interface for %s gateway not found", FMT_osn_ip_addr(route->gw));
-        }
-    }
-    else
-    {
-        LOG_TAB_E("if_name", "Network interface not found, if_name or gateway expected");
-    }
-    
-    return ifc;
-}
-
-static bool add_route(const struct schema_Wifi_Route_Config *cfg)
-{
-    osn_route4_t rc;
-    if (!parse_route_cfg(&rc, cfg)) return false;
-
-    struct nm2_iface * nmifc = get_interface(&rc, cfg);
-    if (NULL == nmifc) return false;
-
-    if (!inet_route4_add(nmifc->if_inet, &rc))
-    {
-        LOG_MOD_E("Cannot add route to %s via %s", FMT_osn_ip_addr(rc.dest), nmifc->if_name);
-        return false;
-    }
-
-    return true;
-}
-
-static bool del_route(const struct schema_Wifi_Route_Config *cfg)
-{
-    osn_route4_t rc;
-    if (!parse_route_cfg(&rc, cfg)) return false;
-
-    struct nm2_iface * nmifc = get_interface(&rc, cfg);
-    if (NULL == nmifc) return false;
-
-    if (!inet_route4_remove(nmifc->if_inet, &rc))
-    {
-        LOG_MOD_E("Cannot delete route to %s via %s", FMT_osn_ip_addr(rc.dest), nmifc->if_name);
-        return false;
-    }
-    return true;
+    // Initialize OVSDB monitor callbacks
+    OVSDB_TABLE_MONITOR(Wifi_Route_Config, false);
 }
 
 /*
@@ -149,30 +84,183 @@ static void callback_Wifi_Route_Config(
         struct schema_Wifi_Route_Config *old,
         struct schema_Wifi_Route_Config *new)
 {
+    struct nm2_route_cfg *rt;
+
     switch(mon->mon_type)
     {
         case OVSDB_UPDATE_NEW:
-            add_route(new);
+            old = NULL;
             break;
+
         case OVSDB_UPDATE_DEL:
-            del_route(old);
+            new = NULL;
             break;
+
         case OVSDB_UPDATE_MODIFY:
-            /* Reject modifications: use delete/add route instead 
-             * Old struct contains only changes, cannot identify correctly
-             * which route shall be deleted before adding new one */
-            LOG_MOD_E("Direct route modification not supported; use del->add route instead");
             break;
+
         default:
-            LOG_MOD_E("Invalid mon_type(%d)", mon->mon_type);
+            LOG(ERR, "route_cfg: Unknown monitor type: %d", mon->mon_type);
+            return;
+    }
+
+    if (old != NULL)
+    {
+        /* Delete entry */
+        rt = ds_tree_find(&g_nm2_route_cfg_list,  &old->_uuid.uuid);
+        if (rt == NULL)
+        {
+            LOG(ERR, "route_cfg: Row with uuid %s not found, unable to delete.",
+                    old->_uuid.uuid);
+            return;
+        }
+
+        if (!nm2_route_cfg_del(rt))
+        {
+            LOG(ERR, "route_cfg: Error removing route "PRI_osn_ip_addr" for %s",
+                    FMT_osn_ip_addr(rt->rc_route.dest),
+                    rt->rc_ifname);
+        }
+
+        ds_tree_remove(&g_nm2_route_cfg_list, rt);
+        nm2_route_cfg_free(rt);
+        FREE(rt);
+    }
+
+    if (new != NULL)
+    {
+        rt = CALLOC(1, sizeof(struct nm2_route_cfg));
+        if (!nm2_route_cfg_parse(rt, new))
+        {
+            LOG(ERR, "route_cfg: Error parsing record with UUID %s.",
+                    new->_uuid.uuid);
+            FREE(rt);
+            return;
+        }
+
+        if (!nm2_route_cfg_add(rt))
+        {
+            LOG(ERR, "route_cfg: Error adding route "PRI_osn_ip_addr" for %s",
+                    FMT_osn_ip_addr(rt->rc_route.dest),
+                    rt->rc_ifname);
+        }
+
+        ds_tree_insert(&g_nm2_route_cfg_list, rt, new->_uuid.uuid);
     }
 }
 
-void nm2_route_write_init()
+/*
+ * Initialize a nm2_route_cfg structure from the Wifi_Route_Config schema
+ */
+bool nm2_route_cfg_parse(struct nm2_route_cfg *rt, const struct schema_Wifi_Route_Config *schema)
 {
-    // Initialize OVSDB tables
-    OVSDB_TABLE_INIT(Wifi_Route_Config, dest_addr);
+    osn_ip_addr_t mask;
 
-    // Initialize OVSDB monitor callbacks
-    OVSDB_TABLE_MONITOR(Wifi_Route_Config, false);
+    if (!osn_ip_addr_from_str(&rt->rc_route.dest, schema->dest_addr))
+    {
+        LOG(ERR, "route_cfg: Invalid destination IP address: %s", schema->dest_addr);
+        return false;
+    }
+
+    if (!osn_ip_addr_from_str(&mask, schema->dest_mask))
+    {
+        LOG(ERR, "route_cfg: Invalid route mask: %s", schema->dest_mask);
+        return false;
+    }
+
+    rt->rc_route.dest.ia_prefix = osn_ip_addr_to_prefix(&mask);
+
+    rt->rc_route.gw = OSN_IP_ADDR_INIT;
+    rt->rc_route.gw_valid = schema->gateway_exists;
+
+    if (schema->gateway_exists && !osn_ip_addr_from_str(&rt->rc_route.gw, schema->gateway))
+    {
+        LOG(ERR, "route_cfg: Invalid gateway address: %s", schema->gateway);
+        return false;
+    }
+
+    rt->rc_ifname = schema->if_name_exists ? STRDUP(schema->if_name) : NULL;
+    rt->rc_route.metric = schema->metric_exists ? schema->metric : -1;
+    rt->rc_ifname = STRDUP(schema->if_name);
+    memcpy(&rt->rc_uuid, &schema->_uuid, sizeof(rt->rc_uuid));
+
+    return true;
+}
+
+bool nm2_route_cfg_add(struct nm2_route_cfg *rt)
+{
+    struct nm2_iface *pif = NULL;
+
+    /* If the interface name is not set, this is a no-op */
+    if (rt->rc_ifname == NULL) return true;
+
+    pif = nm2_iface_get_by_name(rt->rc_ifname);
+    if (pif == NULL)
+    {
+        /*
+         * The case where the interface does not exist yet will be handled by
+         * nm2_route_cfg_reapply(), so return success here.
+         */
+        return true;
+    }
+
+    if (!inet_route4_add(pif->if_inet, &rt->rc_route))
+    {
+        return false;
+    }
+
+    nm2_iface_apply(pif);
+    return true;
+}
+
+bool nm2_route_cfg_del(struct nm2_route_cfg *rt)
+{
+    struct nm2_iface *pif = NULL;
+
+    /* If the interface name is not set, this is a no-op */
+    if (rt->rc_ifname == NULL) return true;
+
+    pif = nm2_iface_get_by_name(rt->rc_ifname);
+    if (pif == NULL)
+    {
+        /* Interface does not exist -- nothing to do */
+        return true;
+    }
+
+    if (!inet_route4_remove(pif->if_inet, &rt->rc_route))
+    {
+        return false;
+    }
+
+    nm2_iface_apply(pif);
+    return true;
+}
+
+/*
+ * Free a nm2_route_cfg structure
+ */
+void nm2_route_cfg_free(struct nm2_route_cfg *rt)
+{
+    FREE(rt->rc_ifname);
+}
+
+/*
+ * Re-apply all cached routes to the interface. This is typically called
+ * at interface creation.
+ */
+void nm2_route_cfg_reapply(struct nm2_iface *pif)
+{
+    struct nm2_route_cfg *rt;
+
+    ds_tree_foreach(&g_nm2_route_cfg_list, rt)
+    {
+        if (strcmp(pif->if_name, rt->rc_ifname) != 0) continue;
+
+        if (!inet_route4_add(pif->if_inet, &rt->rc_route))
+        {
+            LOG(ERR, "route_cfg: Error reapplying route "PRI_osn_ip_addr" for %s",
+                    FMT_osn_ip_addr(rt->rc_route.dest),
+                    rt->rc_ifname);
+        }
+    }
 }

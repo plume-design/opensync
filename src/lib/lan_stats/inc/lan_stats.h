@@ -69,19 +69,19 @@ typedef void (*collect_flows_fn)(struct lan_stats_instance *);
 
 typedef struct dp_ctl_stats_
 {
-    ovs_u128_       ufid;
-    char            smac_addr[MAC_ADDR_STR_LEN];
-    char            dmac_addr[MAC_ADDR_STR_LEN];
-    os_macaddr_t    smac_key;
-    os_macaddr_t    dmac_key;
-    char            eth_type[16];
-    char            vlan_eth_type[16];
-    unsigned int    eth_val;
-    unsigned int    vlan_eth_val;
-    unsigned int    vlan_id;
-    unsigned long   pkts;
-    unsigned long   bytes;
-    time_t          stime;
+    ovs_u128_                 ufid;
+    char                      smac_addr[MAC_ADDR_STR_LEN];
+    char                      dmac_addr[MAC_ADDR_STR_LEN];
+    os_macaddr_t              smac_key;
+    os_macaddr_t              dmac_key;
+    char                      eth_type[16];
+    char                      vlan_eth_type[16];
+    unsigned int              eth_val;
+    unsigned int              vlan_eth_val;
+    unsigned int              vlan_id;
+    unsigned long long        pkts;
+    unsigned long long        bytes;
+    time_t                    stime;
 
     ds_tree_node_t  dp_tnode;
 } dp_ctl_stats_t;

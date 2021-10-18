@@ -29,7 +29,7 @@ route_default_flush()
     ifname="$1"
 {% if CONFIG_OSN_LINUX_DEFAULT_ROUTES_VIA_NM %}
     {{CONFIG_TARGET_PATH_TOOLS}}/ovsh d Wifi_Route_Config \
-        --where if_name=="$IFNAME" \
+        --where if_name=="$ifname" \
         --where dest_addr=="0.0.0.0" \
         --where dest_mask=="0.0.0.0"
 {%- else %}

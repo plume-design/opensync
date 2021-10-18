@@ -46,6 +46,7 @@ UNIT_DEPS += src/lib/const
 UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/unity
 UNIT_DEPS += src/lib/gatekeeper_cache
+UNIT_DEPS += src/lib/gatekeeper_msg
 UNIT_DEPS += src/lib/fsm_policy
 UNIT_DEPS += src/lib/network_metadata
 

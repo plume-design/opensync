@@ -93,8 +93,6 @@ int main(int argc, char *argv[])
 {
     int retval = 0;
 
-    srand(getpid());
-
     if (!psm_parse_opts(argc, argv))
     {
         return 1;

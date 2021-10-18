@@ -38,11 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_types.h"
 #include "os_random.h"
 
-
 #define MODULE_ID LOG_MODULE_ID_OSA
-
-
-#define SEED_DEFAULT_IFNAME     "eth0"
 
 /*
  * os_random_seed: Initialize seed using srandom() and srand().
@@ -54,9 +50,13 @@ os_random_seed(const char *ifname)
 {
     os_macaddr_t    mac;
     uint32_t        seed;
+    static bool seed_initialised = false;
+
+    if (seed_initialised)
+        return;
 
     if (!ifname)
-        ifname = SEED_DEFAULT_IFNAME;
+        ifname = CONFIG_TARGET_LAN_BRIDGE_NAME;
 
     // Start seed out with current date/time
     seed = (uint32_t)time(NULL);
@@ -70,6 +70,8 @@ os_random_seed(const char *ifname)
         seed = seed ^ mac.addr[2] << 8 * (((uint8_t)seed ^ mac.addr[2]) & 0x3);
     }
 
+    seed = seed ^ getpid();
+
     LOGD("Random seed value set to 0x%08X", seed);
 
     // Change seed for random() function
@@ -78,5 +80,6 @@ os_random_seed(const char *ifname)
     // Change seed for rand() function
     srand(seed);
 
+    seed_initialised = true;
     return;
 }

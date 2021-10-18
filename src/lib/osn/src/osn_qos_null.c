@@ -102,11 +102,13 @@ bool osn_qos_end(osn_qos_t *self)
     return true;
 }
 
-uint32_t osn_qos_queue_begin(
+bool osn_qos_queue_begin(
         osn_qos_t *self,
         int priority,
         int bandwidth,
-        const struct osn_qos_other_config *other_config)
+        const char *tag,
+        const struct osn_qos_other_config *other_config,
+        struct osn_qos_queue_status *qqs)
 {
     (void)priority;
     (void)bandwidth;

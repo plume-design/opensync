@@ -34,7 +34,6 @@ UNIT_TYPE := TEST_BIN
 
 UNIT_SRC := test_ltem.c
 UNIT_SRC += test_at_cmd.c
-UNIT_SRC += ../src/ltem_lte.c
 UNIT_SRC += ../src/ltem_ovsdb.c
 UNIT_SRC += ../src/ltem_event.c
 UNIT_SRC += ../src/ltem_state_mgr.c
@@ -44,6 +43,7 @@ UNIT_SRC += ../src/ltem_mqtt.c
 
 UNIT_CFLAGS := -Isrc/ltem/inc
 UNIT_CFLAGS += -Isrc/lib/lte_info/inc
+UNIT_CFLAGS += -Isrc/lib/osn/inc
 
 UNIT_LDFLAGS := -lev -ljansson
 
@@ -67,6 +67,4 @@ UNIT_DEPS += src/lib/lte_info
 UNIT_DEPS += src/lib/osa
 UNIT_DEPS += src/lib/target
 UNIT_DEPS += src/lib/unity
-ifneq ($(filter ZEUS_BCM52, $(TARGET)),)
-UNIT_DEPS += vendor/plume/src/lib/prov
-endif
+UNIT_DEPS += src/lib/osn

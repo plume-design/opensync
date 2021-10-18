@@ -188,6 +188,7 @@ bool ovsdb_update_monitor_ex(
     int monid = ovsdb_register_update_cb(
             ovsdb_update_monitor_call_cbk,
             self);
+    self->mon_id = monid;
 
     if (!ovsdb_monit_call_argv(
             ovsdb_update_monitor_resp_cbk,

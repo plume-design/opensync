@@ -163,7 +163,7 @@ ltem_handle_lte_state_change(ltem_mgr_t *mgr)
     case LTEM_LTE_STATE_INIT:
         break;
     case LTEM_LTE_STATE_UP:
-        res = ltem_ovsdb_cmu_create_lte(mgr);
+        res = ltem_ovsdb_cmu_insert_lte(mgr);
         if (res)
         {
             LOGI("%s: ltem_ovsdb_cmu_create_lte: failed", __func__);

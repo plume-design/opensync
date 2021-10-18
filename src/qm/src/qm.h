@@ -68,7 +68,7 @@ int qm_ovsdb_init(void);
 
 bool qm_mqtt_init(void);
 void qm_mqtt_stop(void);
-void qm_mqtt_set(const char *broker, const char *port, const char *topic, const char *qos, int compress);
+bool qm_mqtt_set(const char *broker, const char *port, const char *topic, const char *qos, int compress);
 void qm_mqtt_set_log_interval(int log_interval);
 void qm_mqtt_set_agg_stats_interval(int agg_stats_interval);
 bool qm_mqtt_is_connected();

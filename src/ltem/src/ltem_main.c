@@ -38,7 +38,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "network_metadata.h"
 
 #include "ltem_mgr.h"
-#include "ltem_lte_hw.h"
 
 /* Default log severity */
 static log_severity_t  log_severity = LOG_SEVERITY_INFO;
@@ -67,14 +66,8 @@ ltem_setup_handlers(ltem_mgr_t *mgr)
     ltem_handlers_t *handlers;
 
     handlers = &mgr->handlers;
-
     handlers->ltem_mgr_init = ltem_init_mgr;
     handlers->system_call = system;
-    handlers->lte_modem_open = lte_modem_open;
-    handlers->lte_modem_write = lte_modem_write;
-    handlers->lte_modem_read = lte_modem_read;
-    handlers->lte_modem_close = lte_modem_close;
-    handlers->lte_run_microcom_cmd = lte_run_microcom_cmd;
 }
 
 bool
@@ -98,10 +91,9 @@ ltem_init_mgr(struct ev_loop *loop)
     mgr->lte_config_info = lte_config;
     mgr->lte_state_info = lte_state;
     mgr->lte_route = lte_route;
+    mgr->modem_info = osn_get_modem_info();
 
-    ltem_evt_switch_slot();
-    ltem_set_qmi_mode();
-    ltem_set_kore_apn();
+    osn_lte_set_qmi_mode();
 
     return true;
 }
@@ -180,7 +172,7 @@ int main(int argc, char **argv)
     }
 
     // Create client table
-    LOGI("ltem_create_client_table");
+    LOGD("ltem_create_client_table");
     ltem_create_client_table(mgr);
 
     LOGI("%s: state=%s", __func__, ltem_get_lte_state_name(mgr->lte_state));

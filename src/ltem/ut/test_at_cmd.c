@@ -34,11 +34,15 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "os.h"
 #include "memutil.h"
-#include "../inc/ltem_lte_modem.h"
-#include "../inc/ltem_lte_ut.h"
+#include "lte_info.h"
+#include "osn_lte_modem.h"
+
+#include "ltem_lte_ut.h"
 
 static char modem_cmd_buf[256];
+static char lte_at_buf[1024];
 
+char *at_cmd="at\r";
 char *ati_cmd="ati\r";
 char *gsn_cmd="at+gsn\r";
 char *cimi_cmd="at+cimi\r";
@@ -51,40 +55,19 @@ char *cops_cmd="at+cops?\r";
 char *srv_cell_cmd="at+qeng=\\\"servingcell\\\"";
 char *neigh_cell_cmd="at+qeng=\\\"neighbourcell\\\"";
 
-char *at_ati="ati\r\r\nQuectel\r\nEM06\r\nRevision: EM06ALAR03A05M4G\r\n\r\nOK\r\n";
-char *at_gsn="at+gsn\r\r\n861364040104042\r\n\r\nOK\r\n";
-char *at_cimi="at+cimi\r\r\n222013410161198\r\n\r\nOK\r\n";
-char *at_qccid="at+qccid\r\r\n+QCCID: 8910390000040102089F\r\n\r\nOK\r\n";
+char *at_at="at\r\r\nOK\r\n";
+char *at_ati="ati\r\r\nMyChip\r\nE123\r\nRevision: E1234ALA1A02M4G\r\n\r\nOK\r\n";
+char *at_gsn="at+gsn\r\r\n123456789012345\r\n\r\nOK\r\n";
+char *at_cimi="at+cimi\r\r\n123456789012345\r\n\r\nOK\r\n";
+char *at_qccid="at+qccid\r\r\n+QCCID: 8900000000000000003F\r\n\r\nOK\r\n";
 char *at_creg="at+creg?\r\r\n+CREG: 0,5\r\n\r\nOK\r\n";
 char *at_csq="at+csq\r\r\n+CSQ: 18,99\r\n\r\nOK\r\n";
 char *at_qgdcnt="at+qgdcnt?\r\r\n+QGDCNT: 356397,150721\r\n\r\nOK\r\n";
 char *at_qdsim="at+qdsim?\r\r\n+QDSIM: 0\r\n\r\nOK\r\n";
-char *at_cops="at+cops?\r\r\n+COPS: 0,0,\"AT&T\",7\r\n\r\nOK\r\n";
+char *at_cops="at+cops?\r\r\n+COPS: 0,0,\"MyProvider\",7\r\n\r\nOK\r\n";
 char *at_srv_cell_lte="at+qeng=\"servingcell\"\r\r\n+QENG: \"servingcell\",\"NOCONN\",\"LTE\",\"FDD\",310,410,A1FBF0A,310,800,2,5,5,8B1E,-115,-14,-80,10,8\r\n\r\nOK\r\n";
 char *at_srv_cell_wcdma="at+qeng=\"servingcell\"\r\r\n+QENG: \"servingcell\",\"LIMSRV\",\"WCDMA\",310,410,DEA6,2883C,4385,84,254,-102,-10,-,-,-,-,-\r\n\r\nOK\r\n";
 char *at_neigh_cell="at+qeng=\"neighbourcell\"\r\r\n+QENG: \"neighbourcell intra\",\"LTE\",800,310,-14,-115,-80,0,8,4,10,2,62\r\n+QENG: \"neighbourcell inter\",\"LTE\",5110,263,-11,-102,-82,0,8,2,6,6\r\n+QENG: \"neighbourcell inter\",\"LTE\",66986,-,-,-,-,-,0,6,6,1,-,-,-,-\r\n+QENG: \"neighbourcell\",\"WCDMA\",512,6,14,62,-,-,-,-\r\n+QENG: \"neighbourcell\",\"WCDMA\",4385,0,14,62,84,-1030,-110,15\r\n\r\nOK\r\n";
-
-char *at_rsp="at\r\r\nOK\r\n";
-char *ati_rsp="ati\r\r\nQuectel\r\nEM06\r\nRevision: EM06ALAR03A05M4G\r\n\r\nOK\r\n";
-char *gsn_rsp="at+gsn\r\r\n861364040104042\r\n\r\nOK\r\n";
-char *cimi_rsp="at+cimi\r\r\n222013410161197\r\n\r\nOK\r\n";
-char *qccid_rsp="at+qccid\r\r\n+QCCID: 8910390000040102071F\r\n\r\nOK\r\n";
-char *creg_rsp="at+creg?\r\r\n+CREG: 0,5\r\n\r\nOK\r\n";
-char *csq_rsp="at+csq\r\r\n+CSQ: 14,99\r\n\r\nOK\r\n";
-char *qgdcnt_rsp="at+qgdcnt?\r\r\n+QGDCNT: 932353,22334769\r\n\r\nOK\r\n";
-char *qdsim_rsp="at+qdsim?\r\r\n+QDSIM: 1\r\n\r\nOK\r\n";
-char *cops_rsp="at+cops?\r\r\n+COPS: 0,0,\"AT&T\",7\r\n\r\nOK\r\n";
-char *srv_cell_rsp="at+qeng=\"servingcell\"\r\r\n+QENG: \"servingcell\",\"NOCONN\",\"LTE\",\"FDD\",310,410,A1FBF0A,310,800,2,5,5,8B1E,-116,-12,-84,12,9\r\n\r\nOK\r\n";
-char *neigh_cell_rsp="at+qeng=\"neighbourcell\"\r\r\n+QENG: \"neighbourcell intra\",\"LTE\",800,310,-12,-116,-84,0,9,4,10,2,62\r\n+QENG: \"neighbourcell inter\",\"LTE\",5110,263,-14,-105,-81,0,9,2,6,6\r\n+QENG: \"neighbourcell inter\",\"LTE\",5110,42,-19,-109,-80,0,9,2,6,6\r\n+QENG: \"neighbourcell inter\",\"LTE\",66986,-,-,-,-,-,0,6,6,1,-,-,-,-\r\n+QENG: \"neighbourcell\",\"WCDMA\",512,6,14,62,-,-,-,-\r\n+QENG: \"neighbourcell\",\"WCDMA\",4385,0,14,62,84,-1010,-100,17\r\n+QENG: \"neighbourcell\",\"WCDMA\",4385,0,14,62,44,-1090,-185,9\r\n\r\nOK\r\n";
-
-/*
- *char *at_neigh_cell="at+qeng="neighbourcell"\r\r\n
- *+QENG: "neighbourcell intra"  ,"LTE",800  ,310,-14,-115,-80,0,8,4,10,2,62\r\n
- *+QENG: "neighbourcell inter"  ,"LTE",5110 ,263,-11,-102,-82,0,8,2,6 ,6\r\n
- *+QENG: "neighbourcell inter"  ,"LTE",66986,-  ,-  ,-   ,-  ,-,0,6,6 ,1,-,-,-,-\r\n
- *+QENG: "neighbourcell","WCDMA",512,6,14,62,-,-,-,-\r\n
- *+QENG: "neighbourcell","WCDMA",4385,0,14,62,84,-1030,-110,15\r\n\r\nOK\r\n";
- */
 
 int
 lte_ut_modem_open(char *modem_path)
@@ -104,6 +87,12 @@ lte_ut_modem_read(int fd, char *at_buf, ssize_t at_len)
 {
     ssize_t res;
 
+    res = strncmp(modem_cmd_buf, at_cmd, strlen(at_cmd));
+    if (!res)
+    {
+        strscpy(at_buf, at_at, strlen(at_at));
+        return strlen(at_at);
+    }
     res = strncmp(modem_cmd_buf, ati_cmd, strlen(ati_cmd));
     if (!res)
     {
@@ -188,11 +177,41 @@ lte_ut_modem_close(int fd)
 }
 
 char *
+lte_ut_run_modem_cmd (const char *cmd)
+{
+    int fd = 0;
+    int res;
+    char *at_error = "AT error";
+
+    lte_ut_modem_open(NULL);
+
+    res = lte_ut_modem_write(fd, cmd);
+    if (res < 0)
+    {
+     	LOGE("%s: modem write failed: %s", __func__, strerror(errno));
+        lte_ut_modem_close(fd);
+        return at_error;
+    }
+
+    memset(lte_at_buf, 0, sizeof(lte_at_buf));
+    res = lte_ut_modem_read(fd, lte_at_buf, sizeof(lte_at_buf));
+    if (res < 0)
+    {
+     	LOGE("%s: modem read failed: %s", __func__, strerror(errno));
+        lte_ut_modem_close(fd);
+        return at_error;
+    }
+
+    lte_ut_modem_close(fd);
+    return lte_at_buf;
+}
+
+char *
 lte_ut_run_microcom_cmd(char *cmd)
 {
     char at_cmd_str[256];
 
     sprintf(at_cmd_str, "%s\r", cmd);
-    return ltem_run_modem_cmd(at_cmd_str);
+    return lte_ut_run_modem_cmd(at_cmd_str);
 }
 

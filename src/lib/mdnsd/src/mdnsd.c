@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2003  Jeremie Miller <jer@jabber.org>
+ * Copyright (c) 2016-2021  Joachim Wiberg <troglobit@gmail.com>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -9,20 +10,21 @@
  *     * Redistributions in binary form must reproduce the above copyright
  *       notice, this list of conditions and the following disclaimer in the
  *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of the <organization> nor the
- *       names of its contributors may be used to endorse or promote products
- *       derived from this software without specific prior written permission.
+ *     * Neither the name of the copyright holders nor the names of its
+ *       contributors may be used to endorse or promote products derived from
+ *       this software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
- * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- * DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
- * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
- * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
- * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
- * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDERS OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include "mdnsd.h"
@@ -64,8 +66,8 @@ struct query {
 
 struct unicast {
     int id;
-    unsigned long int to;
-    unsigned short int port;
+    unsigned long to;    /* Modifed by OpenSync */
+    unsigned short port;
     mdns_record_t *r;
     struct unicast *next;
 };
@@ -121,7 +123,7 @@ static int _namehash(const char *s)
 /* Basic linked list and hash primitives */
 static struct query *_q_next(mdns_daemon_t *d, struct query *q, const char *host, int type)
 {
-    if (q == 0)
+    if (!q)
         q = d->queries[_namehash(host) % SPRIME];
     else
         q = q->next;
@@ -134,15 +136,15 @@ static struct query *_q_next(mdns_daemon_t *d, struct query *q, const char *host
     return 0;
 }
 
-static struct cached *_c_next(mdns_daemon_t *d, struct cached *c,const char *host, int type)
+static struct cached *_c_next(mdns_daemon_t *d, struct cached *c, const char *host, int type)
 {
-    if (c == 0)
+    if (!c)
         c = d->cache[_namehash(host) % LPRIME];
     else
         c = c->next;
 
     for (; c != 0; c = c->next) {
-        if ((type == c->rr.type || type == 255) && strcmp(c->rr.name, host) == 0)
+        if ((type == c->rr.type || type == QTYPE_ANY) && strcmp(c->rr.name, host) == 0)
             return c;
     }
 
@@ -151,22 +153,22 @@ static struct cached *_c_next(mdns_daemon_t *d, struct cached *c,const char *hos
 
 static mdns_record_t *_r_next(mdns_daemon_t *d, mdns_record_t *r, const char *host, int type)
 {
-    if (r == NULL)
+    if (!r)
         r = d->published[_namehash(host) % SPRIME];
     else
         r = r->next;
 
     for (; r != NULL; r = r->next) {
-        if (type == r->rr.type && strcmp(r->rr.name, host) == 0)
+        if ((type == r->rr.type || type == QTYPE_ANY) && strcmp(r->rr.name, host) == 0)
             return r;
     }
 
     return 0;
 }
 
-static int _rr_len(mdns_answer_t *rr)
+static size_t _rr_len(mdns_answer_t *rr)
 {
-    int len = 12;       /* name is always compressed (dup of earlier), plus normal stuff */
+    size_t len = 12;  /* name is always compressed (dup of earlier), plus normal stuff */
 
     if (rr->rdata)
         len += rr->rdlen;
@@ -188,9 +190,11 @@ static int _a_match(struct resource *r, mdns_answer_t *a)
     if (strcmp(r->name, a->name) || r->type != a->type)
         return 0;
 
-    if (r->type == QTYPE_SRV && !strcmp(r->known.srv.name, a->rdname) && a->srv.port == r->known.srv.port &&
-        a->srv.weight == r->known.srv.weight && a->srv.priority == r->known.srv.priority)
+    if (r->type == QTYPE_SRV && r->known.srv.name && a->rdname && !strcmp(r->known.srv.name, a->rdname) &&
+        a->srv.port == r->known.srv.port && a->srv.weight == r->known.srv.weight && a->srv.priority == r->known.srv.priority)
+    {
         return 1;
+    }
 
     if ((r->type == QTYPE_PTR || r->type == QTYPE_NS || r->type == QTYPE_CNAME) && !strcmp(a->rdname, r->known.ns.name))
         return 1;
@@ -205,9 +209,9 @@ static int _a_match(struct resource *r, mdns_answer_t *a)
 }
 
 /* Compare time values easily */
-static int _tvdiff(struct timeval old, struct timeval new)
+static long _tvdiff(struct timeval old, struct timeval new)
 {
-    int udiff = 0;
+    long udiff = 0;
 
     if (old.tv_sec != new.tv_sec)
         udiff = (new.tv_sec - old.tv_sec) * 1000000;
@@ -310,11 +314,13 @@ static void _r_send(mdns_daemon_t *d, mdns_record_t *r)
 }
 
 /* Create generic unicast response struct */
-static void _u_push(mdns_daemon_t *d, mdns_record_t *r, int id, unsigned long int to, unsigned short int port)
+static void _u_push(mdns_daemon_t *d, mdns_record_t *r, int id, unsigned long to, unsigned short port)
 {
     struct unicast *u;
 
     u = CALLOC(1, sizeof(struct unicast));
+    if (!u)
+        return;
 
     u->r = r;
     u->id = id;
@@ -442,7 +448,7 @@ static void _c_expire(mdns_daemon_t *d, struct cached **list)
     struct cached *last = NULL;
     struct cached *next;
 
-    while (cur != NULL) {
+    while (cur) {
         next = cur->next;
 
         if ((unsigned long)d->now.tv_sec >= cur->rr.ttl) {
@@ -479,6 +485,7 @@ static void _gc(mdns_daemon_t *d)
 
 static int _cache(mdns_daemon_t *d, struct resource *r)
 {
+    unsigned long int ttl;
     struct cached *c = 0;
     int i = _namehash(r->name) % LPRIME;
 
@@ -506,15 +513,30 @@ static int _cache(mdns_daemon_t *d, struct resource *r)
      * XXX: The c->rr.ttl is a hack for now, BAD SPEC, start
      *      retrying just after half-waypoint, then expire
      */
-    c = CALLOC(1, sizeof(struct cached));
+    ttl = (unsigned long)d->now.tv_sec + (r->ttl / 2) + 8;
 
-    c->rr.name = strdup(r->name);
+    /* If entry already exists, only udpate TTL value */
+    c = NULL;
+    while ((c = _c_next(d, c, r->name, r->type))) {
+        if (r->type == QTYPE_PTR && strcmp(c->rr.rdname, r->known.ns.name)) {
+            continue;
+        }
+        c->rr.ttl = ttl;
+        return 0;
+    }
+
+    /* New entry, cache it */
+    c = CALLOC(1, sizeof(struct cached));
+    if (!c)
+        return 1;
+
+    c->rr.name = STRDUP(r->name);
     if (!c->rr.name) {
         FREE(c);
         return 1;
     }
     c->rr.type = r->type;
-    c->rr.ttl = (unsigned long)d->now.tv_sec + (r->ttl / 2) + 8;
+    c->rr.ttl = ttl;
     c->rr.rdlen = r->rdlength;
     if (r->rdlength && !r->rdata) {
         //ERR("rdlength is %d but rdata is NULL for domain name %s, type: %d, ttl: %ld", r->rdlength, r->name, r->type, r->ttl);
@@ -524,6 +546,11 @@ static int _cache(mdns_daemon_t *d, struct resource *r)
     }
     if (r->rdlength) {
         c->rr.rdata = MALLOC(r->rdlength);
+        if (!c->rr.rdata) {
+            FREE(c->rr.name);
+            FREE(c);
+            return 1;
+        }
         memcpy(c->rr.rdata, r->rdata, r->rdlength);
     } else {
         c->rr.rdata = NULL;
@@ -537,11 +564,11 @@ static int _cache(mdns_daemon_t *d, struct resource *r)
     case QTYPE_NS:
     case QTYPE_CNAME:
     case QTYPE_PTR:
-        c->rr.rdname = strdup(r->known.ns.name);
+        c->rr.rdname = STRDUP(r->known.ns.name);
         break;
 
     case QTYPE_SRV:
-        c->rr.rdname = strdup(r->known.srv.name);
+        c->rr.rdname = STRDUP(r->known.srv.name);
         c->rr.srv.port = r->known.srv.port;
         c->rr.srv.weight = r->known.srv.weight;
         c->rr.srv.priority = r->known.srv.priority;
@@ -579,7 +606,7 @@ static int _r_out(mdns_daemon_t *d, struct message *m, mdns_record_t **list)
     mdns_record_t *r;
     int ret = 0;
 
-    while ((r = *list) != NULL && message_packet_len(m) + _rr_len(&r->rr) < d->frame) {
+    while ((r = *list) != NULL && message_packet_len(m) + (int)_rr_len(&r->rr) < d->frame) {
         if (r != r->list)
             *list = r->list;
         else
@@ -625,6 +652,8 @@ mdns_daemon_t *mdnsd_new(int class, int frame)
     mdns_daemon_t *d;
 
     d = CALLOC(1, sizeof(struct mdns_daemon));
+    if (!d)
+        return NULL;
 
     gettimeofday(&d->now, 0);
     d->expireall = (unsigned long)d->now.tv_sec + GC;
@@ -646,7 +675,7 @@ void mdnsd_set_address(mdns_daemon_t *d, struct in_addr addr)
         mdns_record_t *r, *next;
 
         r = d->published[i];
-        while (r != NULL) {
+        while (r) {
             next = r->next;
 
             if (r->rr.type == QTYPE_A)
@@ -697,7 +726,7 @@ void mdnsd_flush(mdns_daemon_t *d)
 void mdnsd_free(mdns_daemon_t *d)
 {
     struct unicast *u;
-    int i;
+    size_t i;
 
     for (i = 0; i< LPRIME; i++) {
         struct cached *cur = d->cache[i];
@@ -749,10 +778,12 @@ void mdnsd_register_receive_callback(mdns_daemon_t *d, mdnsd_record_received_cal
     d->received_callback_data = data;
 }
 
+/* Prototype changed by OpenSync */
 int mdnsd_in(mdns_daemon_t *d, struct message *m, struct sockaddr_storage *from)
 {
-    int i, j;
     mdns_record_t *r = NULL;
+    int i, j;
+    /* 2 variables added by OpenSync */
     unsigned short int port = 0;
     struct sockaddr_in  *in4;
 
@@ -767,11 +798,12 @@ int mdnsd_in(mdns_daemon_t *d, struct message *m, struct sockaddr_storage *from)
             mdns_record_t *r_start, *r_next;
             bool has_conflict = false;
 
-            if (m->qd[i].class != d->class)
+            if (!m->qd || m->qd[i].class != d->class)
                 continue;
 
             DBG("Query for %s of type %d ...", m->qd[i].name, m->qd[i].type);
-            if ((r = _r_next(d, NULL, m->qd[i].name, m->qd[i].type)) == NULL)
+            r = _r_next(d, NULL, m->qd[i].name, m->qd[i].type);
+            if (!r)
                 continue;
 
             /* Service enumeratio/discovery prepeare to send all matching records */
@@ -797,7 +829,7 @@ int mdnsd_in(mdns_daemon_t *d, struct message *m, struct sockaddr_storage *from)
                 if (r->unique && r->unique < 5 && !r->modified) {
                     /* Check all to-be answers against our own */
                     for (j = 0; j < m->nscount; j++) {
-                        if (m->qd[i].type != m->an[j].type || strcmp(m->qd[i].name, m->an[j].name))
+                        if (!m->an || m->qd[i].type != m->an[j].type || strcmp(m->qd[i].name, m->an[j].name))
                             continue;
 
                         /* This answer isn't ours, conflict! */
@@ -812,7 +844,7 @@ int mdnsd_in(mdns_daemon_t *d, struct message *m, struct sockaddr_storage *from)
 
                 /* Check the known answers for this question */
                 for (j = 0; j < m->ancount; j++) {
-                    if (m->qd[i].type != m->an[j].type || strcmp(m->qd[i].name, m->an[j].name))
+                    if (!m->an || m->qd[i].type != m->an[j].type || strcmp(m->qd[i].name, m->an[j].name))
                         continue;
 
                     if (d->received_callback)
@@ -831,6 +863,7 @@ int mdnsd_in(mdns_daemon_t *d, struct message *m, struct sockaddr_storage *from)
             }
 
             /* Send the matching unicast reply */
+            /* Pre-condition added by OpenSync */
             if (from->ss_family == AF_INET) {
                 in4  = (struct sockaddr_in *)from;
                 port = in4->sin_port;
@@ -844,7 +877,10 @@ int mdnsd_in(mdns_daemon_t *d, struct message *m, struct sockaddr_storage *from)
 
     /* Process each answer, check for a conflict, and cache */
     for (i = 0; i < m->ancount; i++) {
-        if (m->an[i].name == NULL) {
+        if (!m->an)
+            continue;
+
+        if (!m->an[i].name) {
             ERR("Got answer with NULL name at %p. Type: %d, TTL: %ld, skipping",
                 (void*)&m->an[i], m->an[i].type, m->an[i].ttl);
             continue;
@@ -852,7 +888,7 @@ int mdnsd_in(mdns_daemon_t *d, struct message *m, struct sockaddr_storage *from)
 
         DBG("Got Answer: Name: %s, Type: %d", m->an[i].name, m->an[i].type);
         r = _r_next(d, 0, m->an[i].name, m->an[i].type);
-        if (r != 0 && r->unique && !r->modified && _a_match(&m->an[i], &r->rr) == 0)
+        if (r != 0 && r->unique && r->modified && _a_match(&m->an[i], &r->rr))
             _conflict(d, r);
 
         if (d->received_callback)
@@ -867,7 +903,7 @@ int mdnsd_in(mdns_daemon_t *d, struct message *m, struct sockaddr_storage *from)
     return 0;
 }
 
-int mdnsd_out(mdns_daemon_t *d, struct message *m, unsigned long int *ip, unsigned short int *port)
+int mdnsd_out(mdns_daemon_t *d, struct message *m, struct in_addr *ip, unsigned short int *port)
 {
     mdns_record_t *r;
     int ret = 0;
@@ -877,7 +913,7 @@ int mdnsd_out(mdns_daemon_t *d, struct message *m, unsigned long int *ip, unsign
 
     /* Defaults, multicast */
     *port = htons(5353);
-    *ip = inet_addr("224.0.0.251");
+    ip->s_addr = inet_addr("224.0.0.251");
     m->header.qr = 1;
     m->header.aa = 1;
 
@@ -889,7 +925,7 @@ int mdnsd_out(mdns_daemon_t *d, struct message *m, unsigned long int *ip, unsign
 
         d->uanswers = u->next;
         *port = u->port;
-        *ip = u->to;
+        ip->s_addr = u->to;
         m->id = u->id;
         message_qd(m, u->r->rr.name, u->r->rr.type, d->class);
         message_an(m, u->r->rr.name, u->r->rr.type, d->class, u->r->rr.ttl);
@@ -905,12 +941,12 @@ int mdnsd_out(mdns_daemon_t *d, struct message *m, unsigned long int *ip, unsign
         ret += _r_out(d, m, &d->a_now);
 
     /* Check if it's time to send the publish retries (unlink if done) */
-    if (d->a_publish && _tvdiff(d->now, d->publish) <= 0) {
+    if (!d->probing && d->a_publish && _tvdiff(d->now, d->publish) <= 0) {
         mdns_record_t *cur = d->a_publish;
         mdns_record_t *last = NULL;
         mdns_record_t *next;
 
-        while (cur && message_packet_len(m) + _rr_len(&cur->rr) < d->frame) {
+        while (cur && message_packet_len(m) + (int)_rr_len(&cur->rr) < d->frame) {
             if (cur->rr.type == QTYPE_PTR) {
                 DBG("Send Publish PTR: Name: %s, rdlen: %d, rdata: %s, rdname: %s", cur->rr.name,cur->rr.rdlen, cur->rr.rdata, cur->rr.rdname);
             } else if (cur->rr.type == QTYPE_SRV) {
@@ -978,7 +1014,7 @@ int mdnsd_out(mdns_daemon_t *d, struct message *m, unsigned long int *ip, unsign
 
                 if (d->probing == r)
                     d->probing = r->list;
-                else
+                else if (last)
                     last->list = r->list;
 
                 r->list = 0;
@@ -997,7 +1033,7 @@ int mdnsd_out(mdns_daemon_t *d, struct message *m, unsigned long int *ip, unsign
         }
 
         /* Scan probe list again to append our to-be answers */
-        for (r = d->probing; r != 0; last = r, r = r->list) {
+        for (r = d->probing; r != 0; r = r->list) {
             r->unique++;
 
             DBG("Send Answer in Probe: Name: %s, Type: %d", r->rr.name, r->rr.type);
@@ -1049,7 +1085,7 @@ int mdnsd_out(mdns_daemon_t *d, struct message *m, unsigned long int *ip, unsign
             /* If room, add all known good entries */
             c = 0;
             while ((c = _c_next(d, c, q->name, q->type)) != 0 && c->rr.ttl > (unsigned long)d->now.tv_sec + 8 &&
-                   message_packet_len(m) + _rr_len(&c->rr) < d->frame) {
+                message_packet_len(m) + (int)_rr_len(&c->rr) < d->frame) {
 
                 DBG("Add known answer: Name: %s, Type: %d", c->rr.name, c->rr.type);
                 message_an(m, q->name, (unsigned short)q->type, (unsigned short)d->class, c->rr.ttl - (unsigned long)d->now.tv_sec);
@@ -1077,8 +1113,8 @@ int mdnsd_out(mdns_daemon_t *d, struct message *m, unsigned long int *ip, unsign
 struct timeval *mdnsd_sleep(mdns_daemon_t *d)
 {
     time_t expire;
-    int sec, usec;
-    int i;
+    long usec;
+    size_t i;
 
     d->sleep.tv_sec = d->sleep.tv_usec = 0;
 
@@ -1111,7 +1147,8 @@ struct timeval *mdnsd_sleep(mdns_daemon_t *d)
 
     /* Also check for queries with known answer expiration/retry */
     if (d->checkqlist) {
-        if ((sec = d->checkqlist - d->now.tv_sec) > 0)
+        long sec;
+        if ((sec = (long)d->checkqlist - d->now.tv_sec) > 0)
             d->sleep.tv_sec = sec;
         RET;
     }
@@ -1157,7 +1194,13 @@ void mdnsd_query(mdns_daemon_t *d, const char *host, int type, int (*answer)(mdn
             return;
 
         q = CALLOC(1, sizeof(struct query));
-        q->name = strdup(host);
+        if (!q)
+            return;
+        q->name = STRDUP(host);
+        if (!q->name) {
+            FREE(q);
+            return;
+        }
         q->type = type;
         q->next = d->queries[i];
         q->list = d->qlist;
@@ -1203,7 +1246,15 @@ mdns_record_t *mdnsd_shared(mdns_daemon_t *d, const char *host, unsigned short t
     mdns_record_t *r;
 
     r = CALLOC(1, sizeof(struct mdns_record));
-    r->rr.name = strdup(host);
+    if (!r)
+        return NULL;
+
+    r->rr.name = STRDUP(host);
+    if (!r->rr.name) {
+        FREE(r);
+        return NULL;
+    }
+
     r->rr.type = type;
     r->rr.ttl = ttl;
     r->next = d->published[i];
@@ -1218,6 +1269,9 @@ mdns_record_t *mdnsd_unique(mdns_daemon_t *d, const char *host, unsigned short t
     mdns_record_t *r;
 
     r = mdnsd_shared(d, host, type, ttl);
+    if (!r)
+        return NULL;
+
     r->conflict = conflict;
     r->arg = arg;
     r->unique = 1;
@@ -1250,8 +1304,14 @@ mdns_record_t *mdnsd_find(mdns_daemon_t *d, const char *name, unsigned short typ
     while (r) {
         const mdns_answer_t *data;
 
+        /*
+         * Search for a record with the same type and name.
+         * Records with different names might be in the same
+         * linked list when the hash functions % SPRIME assigns
+         * them the same index (hash collision)
+         */
         data = mdnsd_record_data(r);
-        if (data && data->type == type)
+        if (data && data->type == type && strcmp(data->name, name) == 0)
             return r;
 
         r = mdnsd_record_next(r);
@@ -1288,16 +1348,21 @@ void mdnsd_set_raw(mdns_daemon_t *d, mdns_record_t *r, const char *data, unsigne
         FREE(r->rr.rdata);
 
     r->rr.rdata = MALLOC(len);
-    memcpy(r->rr.rdata, data, len);
-    r->rr.rdlen = len;
+    if (r->rr.rdata) {
+        memcpy(r->rr.rdata, data, len);
+        r->rr.rdlen = len;
+    }
     _r_publish(d, r);
 }
 
 void mdnsd_set_host(mdns_daemon_t *d, mdns_record_t *r, const char *name)
 {
+    if (!r)
+        return;
+
     if (r->rr.rdname)
         FREE(r->rr.rdname);
-    r->rr.rdname = strdup(name);
+    r->rr.rdname = STRDUP(name);
     _r_publish(d, r);
 }
 
@@ -1317,22 +1382,31 @@ void mdnsd_set_srv(mdns_daemon_t *d, mdns_record_t *r, unsigned short priority, 
 
 static int process_in(mdns_daemon_t *d, int sd)
 {
-    struct sockaddr_storage from;
-    unsigned char buf[MAX_PACKET_LEN];
+    static unsigned char buf[MAX_PACKET_LEN + 1];
+    struct sockaddr_storage from;  /* Modified by OpenSync */
+    struct sockaddr_in *from_in;   /* Needed for cast */
     socklen_t ssize = sizeof(struct sockaddr_storage);
     ssize_t bsize;
 
+    memset(buf, 0, sizeof(buf));
+
     while ((bsize = recvfrom(sd, buf, MAX_PACKET_LEN, 0, (struct sockaddr *)&from, &ssize)) > 0) {
-        struct message m;
+        from_in = (struct sockaddr_in *)&from; /* Need to cast to access content */
+        if (from_in->sin_addr.s_addr == d->addr.s_addr)
+           continue;  /* Drop own multicast packet */
+
+        struct message m = { 0 };
         int rc;
 
+        buf[MAX_PACKET_LEN] = 0;
         mdnsd_log_hex("Got Data:", buf, bsize);
 
-        memset(&m, 0, sizeof(m));
-        message_parse(&m, buf);
-        rc = mdnsd_in(d, &m, &from);
+        rc = message_parse(&m, buf);
         if (rc)
-            return 1;
+            continue;
+        rc = mdnsd_in(d, &m, &from);  /* Modified by OpenSync */
+        if (rc)
+            continue;
     }
 
     if (bsize < 0 && errno != EAGAIN)
@@ -1348,7 +1422,7 @@ static int process_out(mdns_daemon_t *d, int sd)
     struct in_addr ip;
     struct message m;
 
-    while (mdnsd_out(d, &m, (long unsigned int *)&ip, &port)) {
+    while (mdnsd_out(d, &m, &ip, &port)) {
         unsigned char *buf;
         ssize_t len;
 
@@ -1392,6 +1466,24 @@ int mdnsd_step(mdns_daemon_t *d, int sd, bool in, bool out, struct timeval *tv)
     return rc;
 }
 
+void records_clear(mdns_daemon_t *d)
+{
+    int i;
+
+    for (i = 0; i < SPRIME; i++)
+    {
+        mdns_record_t *r = d->published[i];
+        while (r)
+        {
+            mdns_record_t *const next = r->next;
+            _r_remove_lists(d, r, NULL);
+            r = next;
+        }
+        d->published[i] = NULL;
+    }
+}
+
+/* Added by OpenSync */
 /* Create a new record, or update an existing one */
 mdns_record_t *mdnsd_set_record(mdns_daemon_t *d, int shared, char *host,
                                 const char *name, unsigned short type,

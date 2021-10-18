@@ -45,11 +45,14 @@ UNIT_DEPS += src/lib/fcm_filter
 UNIT_DEPS += src/lib/unity
 
 # Ensure the required files are copied in its correct location
-$(UNIT_BUILD)/.target: /tmp/stats.txt /tmp/stats_2.txt
+$(UNIT_BUILD)/.target: /tmp/stats.txt /tmp/stats_2.txt /tmp/stats_3.txt
 /tmp/stats.txt: $(UNIT_PATH)/stats.txt FORCE_LANSTATS
 	${NQ} " $(call color_copy,copy)    [$(call COLOR_BOLD,$<)] -> $@"
 	${Q} cp $< $@
 /tmp/stats_2.txt: $(UNIT_PATH)/stats_2.txt FORCE_LANSTATS
+	${NQ} " $(call color_copy,copy)    [$(call COLOR_BOLD,$<)] -> $@"
+	${Q} cp $< $@
+/tmp/stats_3.txt: $(UNIT_PATH)/stats_3.txt FORCE_LANSTATS
 	${NQ} " $(call color_copy,copy)    [$(call COLOR_BOLD,$<)] -> $@"
 	${Q} cp $< $@
 FORCE_LANSTATS:

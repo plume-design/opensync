@@ -39,11 +39,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include <inttypes.h>
 #include <unistd.h>
+#include <stdlib.h>
 
 #include <ev.h>
 
 #include "evx.h"
 #include "os_time.h"
+#include "os_random.h"
 #include "osa_assert.h"
 #include "ovsdb_sync.h"
 #include "ovsdb_table.h"
@@ -1077,7 +1079,7 @@ enum wano_ppline_state wano_ppline_state_IDLE(
             retries = (self->wpl_retries < WANO_PPLINE_RETRY_MAX) ? self->wpl_retries : WANO_PPLINE_RETRY_MAX;
             maxtime = WANO_PPLINE_RETRY_TIME << retries;
             /* Add the random component */
-            rtime = maxtime * 0.5 * (random() % 1000) / 1000.0;
+            rtime = maxtime * 0.5 * (os_random() % 1000) / 1000.0;
             /* Add the fixed component */
             rtime += maxtime * 0.5;
 

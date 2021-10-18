@@ -933,8 +933,11 @@ void sm_client_records_mark_disconnected (
                         client_entry->info.mac,
                         record_entry->info.mac)) {
                 /* Notify disconnection through stats cookie */
-                if (client_entry->stats_cookie !=
-                        record->cache.stats_cookie ) {
+                if (client_entry->stats_cookie != record->cache.stats_cookie )
+                {
+                    /* copy cookie to avoid next disconnect <-> reconnect detection
+                     * since reconnect detector logic does not check the cookie */
+                    record->cache.stats_cookie = client_entry->stats_cookie;
                     break;
                 }
 
@@ -1166,6 +1169,9 @@ bool sm_client_records_update(
                     client_entry);
         if (NULL != record) {
             record_entry = &record->entry;
+
+            /* Update general client info in case of change (confirmed case of ESSID change) */
+            record_entry->info = client_entry->info;
 
             /* Check reconnection */
             if(!record_entry->is_connected) {

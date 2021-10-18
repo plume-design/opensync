@@ -35,13 +35,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "target.h"
 #include "qm_conn.h"
-#include "lte_info.h"
 #include "ltem_mgr.h"
 
 struct lte_info_packed_buffer *lte_serialized = NULL;
 struct lte_info_report *lte_report = NULL;
 
-char *lte_deployment = "ci";
 char lte_mqtt_topic[256];
 
 static uint32_t lte_request_id = 0;
@@ -105,9 +103,9 @@ lte_set_common_header(struct lte_info_report *lte_report)
     common_header.if_name = mgr->lte_config_info->if_name;
     common_header.node_id = mgr->node_id;
     common_header.location_id = mgr->location_id;
-    common_header.imei = mgr->modem_info.imei;
-    common_header.imsi = mgr->modem_info.imsi;
-    common_header.iccid = mgr->modem_info.iccid;
+    common_header.imei = mgr->modem_info->imei;
+    common_header.imsi = mgr->modem_info->imsi;
+    common_header.iccid = mgr->modem_info->iccid;
     // reported_at is set in lte_info_set_common_header
     ret = lte_info_set_common_header(&common_header, lte_report);
     if (!ret) return -1;
@@ -125,9 +123,9 @@ lte_set_net_info(struct lte_info_report *lte_report)
     struct lte_net_info net_info;
     ltem_mgr_t *mgr = ltem_get_mgr();
 
-    net_info.net_status = mgr->modem_info.reg_status;
-    net_info.rssi = mgr->modem_info.rssi;
-    net_info.ber = mgr->modem_info.ber;
+    net_info.net_status = mgr->modem_info->reg_status;
+    net_info.rssi = mgr->modem_info->rssi;
+    net_info.ber = mgr->modem_info->ber;
     ret = lte_info_set_net_info(&net_info, lte_report);
     if (!ret) return -1;
 
@@ -144,8 +142,8 @@ lte_set_data_usage(struct lte_info_report *lte_report)
     ltem_mgr_t *mgr = ltem_get_mgr();
     struct lte_data_usage data_usage;
 
-    data_usage.rx_bytes = mgr->modem_info.rx_bytes;
-    data_usage.tx_bytes = mgr->modem_info.tx_bytes;
+    data_usage.rx_bytes = mgr->modem_info->rx_bytes;
+    data_usage.tx_bytes = mgr->modem_info->tx_bytes;
     data_usage.failover_start = mgr->lte_state_info->lte_failover_start;
     data_usage.failover_end = mgr->lte_state_info->lte_failover_end;
     data_usage.failover_count = mgr->lte_state_info->lte_failover_count;
@@ -168,7 +166,7 @@ lte_set_serving_cell(struct lte_info_report *lte_report)
     lte_serving_cell_info_t *srv_cell;
 
     MEMZERO(srv_cell_info);
-    srv_cell = &mgr->modem_info.srv_cell;
+    srv_cell = &mgr->modem_info->srv_cell;
 
     srv_cell_info.state = srv_cell->state;
     srv_cell_info.mode = srv_cell->mode;
@@ -205,7 +203,7 @@ lte_set_neigh_cell_intra_info(struct lte_info_report *lte_report)
     lte_neighbor_cell_intra_info_t *neigh_cell;
 
     MEMZERO(neigh_cell_info);
-    neigh_cell = &mgr->modem_info.neigh_cell_intra;
+    neigh_cell = &mgr->modem_info->neigh_cell_intra;
 
     neigh_cell_info.mode = neigh_cell->mode;
     neigh_cell_info.freq_mode = neigh_cell->freq_mode;
@@ -313,6 +311,7 @@ lte_serialize_report(void)
     }
     else
     {
+        LOGE("%s: AWLAN topic: not set, mqtt report not sent", __func__);
         return -1;
     }
     return res;
@@ -324,22 +323,9 @@ int
 ltem_build_mqtt_report(time_t now)
 {
     int res;
-    ltem_mgr_t *mgr = ltem_get_mgr();
 
-    res = ltem_get_modem_info();
-    if (res < 0)
-    {
-        LOGI("%s: ltem_get_modem_info: Failed", __func__);
-    }
-
-    if (mgr->modem_info.model[0])
-    {
-        mgr->lte_state_info->modem_present = true;
-    }
-    else
-    {
-        mgr->lte_state_info->modem_present = false;
-    }
+    res = osn_lte_read_modem();
+    if (res < 0) return res;
 
     res = lte_serialize_report();
 

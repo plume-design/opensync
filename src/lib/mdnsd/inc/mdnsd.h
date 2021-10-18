@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2003  Jeremie Miller <jer@jabber.org>
+ * Copyright (c) 2016-2021  Joachim Wiberg <troglobit@gmail.com>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -9,20 +10,21 @@
  *     * Redistributions in binary form must reproduce the above copyright
  *       notice, this list of conditions and the following disclaimer in the
  *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of the <organization> nor the
- *       names of its contributors may be used to endorse or promote products
- *       derived from this software without specific prior written permission.
+ *     * Neither the name of the copyright holders nor the names of its
+ *       contributors may be used to endorse or promote products derived from
+ *       this software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
- * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- * DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
- * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
- * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
- * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
- * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDERS OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
 */
 
 #ifndef LIB_MDNSD_H_
@@ -61,6 +63,7 @@ typedef struct mdns_daemon mdns_daemon_t;
 typedef struct mdns_record mdns_record_t;
 
 /* Callback for received record. Data is passed from the register call */
+/* Added by OpenSync 'from' IP address */
 typedef void (*mdnsd_record_received_callback)(const struct resource* r, void* data,
                                                struct sockaddr_storage *from);
 
@@ -113,12 +116,6 @@ void mdnsd_log(int severity, const char *fmt, ...);
  */
 mdns_daemon_t *mdnsd_new(int class, int frame);
 
-/* Create a new record, or update an existing one */
-mdns_record_t *mdnsd_set_record(mdns_daemon_t *d, int shared, char *host,
-                                const char *name, unsigned short type,
-                                unsigned long ttl,
-                                void (*conflict)(char *host, int type, void *arg),
-                                void *arg);
 /**
  * Set mDNS daemon host IP address
  */
@@ -157,6 +154,8 @@ void mdnsd_register_receive_callback(mdns_daemon_t *d, mdnsd_record_received_cal
 
 /**
  * Oncoming message from host (to be cached/processed)
+ *
+ * Addition by OpenSync: from IP address information
  */
 int mdnsd_in(mdns_daemon_t *d, struct message *m, struct sockaddr_storage *from);
 
@@ -164,7 +163,7 @@ int mdnsd_in(mdns_daemon_t *d, struct message *m, struct sockaddr_storage *from)
  * Outgoing messge to be delivered to host, returns >0 if one was
  * returned and m/ip/port set
  */
-int mdnsd_out(mdns_daemon_t *d, struct message *m, unsigned long int *ip, unsigned short int *port);
+int mdnsd_out(mdns_daemon_t *d, struct message *m, struct in_addr *ip, unsigned short *port);
 
 /**
  * returns the max wait-time until mdnsd_out() needs to be called again 
@@ -261,5 +260,21 @@ void mdnsd_set_srv(mdns_daemon_t *d, mdns_record_t *r, unsigned short priority, 
  * Returns 0 on success, 1 on read error, 2 on write error
  */
 int mdnsd_step(mdns_daemon_t *d, int mdns_socket, bool processIn, bool processOut, struct timeval *tv);
+
+/**
+ * Clear all records from the list published
+ * Returns none
+ */
+void records_clear(mdns_daemon_t *d);
+
+/**
+ * Added by OpenSync
+ * Create a new record, or update an existing one.
+ */
+mdns_record_t *mdnsd_set_record(mdns_daemon_t *d, int shared, char *host,
+                                const char *name, unsigned short type,
+                                unsigned long ttl,
+                                void (*conflict)(char *host, int type, void *arg),
+                                void *arg);
 
 #endif  /* LIB_MDNSD_H_ */

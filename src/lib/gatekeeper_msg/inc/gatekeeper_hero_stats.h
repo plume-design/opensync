@@ -163,6 +163,18 @@ gkhc_set_number_obs_windows(struct gkc_report_aggregator *aggr, size_t n);
  * @return number of successfully sent reports (possibly 0) or -1 in case of error.
  */
 int
-gkhc_send_report(struct gkc_report_aggregator *aggr, char *mqtt_topic);
+gkhc_build_and_send_report(struct gkc_report_aggregator *aggr, char *mqtt_topic);
+
+/**
+ * @brief send report for hero cache
+ *
+ * @param session pointer to the matching session
+ * @param interval the minimum number of seconds between reports
+ *
+ * @return number of successfully sent reports (possibly 0) or -1 in case of error.
+ */
+int
+gkhc_send_report(struct fsm_session *session, long interval);
+
 
 #endif /* GATEKEEPER_HERO_STATS_H_INCLUDED */

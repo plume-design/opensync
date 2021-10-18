@@ -180,6 +180,8 @@ static void gw_offline_cfg_release(struct gw_offline_cfg *cfg)
     json_decref(cfg->openflow_config);
     json_decref(cfg->openflow_tag);
     json_decref(cfg->openflow_tag_group);
+
+    memset(cfg, 0, sizeof(*cfg));
 }
 
 static void gw_offline_cfg_delete_special_keys(struct gw_offline_cfg *cfg)
@@ -1188,21 +1190,21 @@ static bool gw_offline_cfg_ovsdb_read(struct gw_offline_cfg *cfg)
         goto exit_failure;
     }
 
+    cfg->inet_config_home_aps = json_array();
     /* For each home AP: find a corresponding entry in Wifi_Inet_Config: */
     json_array_foreach(cfg->vif_config, index, row)
     {
         const char *if_name = json_string_value(json_object_get(row, "if_name"));
 
         json_res = ovsdb_sync_select("Wifi_Inet_Config", "if_name", if_name);
-        if (json_res == NULL || json_array_size(json_res) != 1)
+        if (json_res != NULL && json_array_size(json_res) == 1)
         {
-            LOG(ERR, "offline_cfg: Error selecting from Wifi_Inet_Config");
-            goto exit_failure;
+            json_array_append(cfg->inet_config_home_aps, json_array_get(json_res, 0));
         }
-        if (cfg->inet_config_home_aps == NULL)
-            cfg->inet_config_home_aps = json_array();
-
-        json_array_append(cfg->inet_config_home_aps, json_array_get(json_res, 0));
+        else
+        {
+            LOG(WARN, "offline_cfg: Error selecting from Wifi_Inet_Config: no row for if_name=%s", if_name);
+        }
         json_decref(json_res);
     }
 
@@ -1630,7 +1632,9 @@ bool pm_gw_offline_cfg_is_available()
         if (gw_cfg.radio_config == NULL || json_array_size(gw_cfg.radio_config) == 0)
             break;
         if (gw_cfg.inet_config_home_aps == NULL || json_array_size(gw_cfg.inet_config_home_aps) == 0)
-            break;
+        {
+            LOG(WARN, "offline_cfg: No inet_config home APs rows in stored config");
+        }
         if (gw_cfg.radio_if_names == NULL || json_array_size(gw_cfg.radio_if_names) == 0)
             break;
 

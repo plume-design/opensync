@@ -35,6 +35,7 @@ UNIT_TYPE := LIB
 
 UNIT_CFLAGS += -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -I$(UNIT_PATH)/src
+UNIT_CFLAGS += -Isrc/lib/lte_info/inc
 
 UNIT_SRC += src/osn_types.c
 
@@ -90,6 +91,7 @@ UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_MAPT_CERNET),src/osn_mapt_cernet.c)
 
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_LTE_NULL),src/osn_lte_null.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_LTE_LINUX),src/osn_lte_linux.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_LTE_LINUX),src/osn_lte_modem.c)
 
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_NFLOG_NULL),src/osn_nflog_null.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_NFLOG_LINUX),src/osn_nflog_linux.c)
@@ -127,3 +129,5 @@ UNIT_EXPORT_CFLAGS := -I$(UNIT_PATH)/inc
 
 UNIT_DEPS += src/lib/log
 UNIT_DEPS += src/lib/kconfig
+UNIT_DEPS += src/lib/schema
+UNIT_DEPS += src/lib/neigh_table

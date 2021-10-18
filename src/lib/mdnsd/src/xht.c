@@ -1,6 +1,7 @@
 /* Simple string->void* hashtable, very static and bare minimal, but efficient
  *
  * Copyright (c) 2003  Jeremie Miller <jer@jabber.org>
+ * Copyright (c) 2016-2021  Joachim Wiberg <troglobit@gmail.com>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -10,20 +11,21 @@
  *     * Redistributions in binary form must reproduce the above copyright
  *       notice, this list of conditions and the following disclaimer in the
  *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of the <organization> nor the
- *       names of its contributors may be used to endorse or promote products
- *       derived from this software without specific prior written permission.
+ *     * Neither the name of the copyright holders nor the names of its
+ *       contributors may be used to endorse or promote products derived from
+ *       this software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
- * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- * DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
- * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
- * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
- * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
- * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDERS OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include "xht.h"
@@ -82,8 +84,15 @@ xht_t *xht_new(int prime)
     xht_t *xnew;
 
     xnew = MALLOC(sizeof(struct xht));
+    if (!xnew)
+        return NULL;
+
     xnew->prime = prime;
     xnew->zen = CALLOC(1, sizeof(struct xhn) * prime);  /* array of xhn_t size of prime */
+    if (!xnew->zen) {
+        FREE(xnew);
+        return NULL;
+    }
 
     return xnew;
 }
@@ -108,7 +117,10 @@ static xhn_t *_xht_set(xht_t *h, const char *key, void *val, char flag)
 
     /* if none, make a new one, link into this index */
     if (n == NULL) {
-        n = MALLOC(sizeof(struct xhn));
+        n = CALLOC(1, sizeof(struct xhn));
+        if (n == NULL)
+            return NULL;
+
         n->next = h->zen[i].next;
         h->zen[i].next = n;
     }
@@ -128,7 +140,7 @@ static xhn_t *_xht_set(xht_t *h, const char *key, void *val, char flag)
 
 void xht_set(xht_t *h, const char *key, void *val)
 {
-    if (h == NULL || key == NULL)
+    if (h == NULL || h->zen == NULL || key == NULL)
         return;
     _xht_set(h, key, val, 0);
 }
@@ -137,13 +149,22 @@ void xht_store(xht_t *h, const char *key, int klen, void *val, int vlen)
 {
     char *ckey, *cval;
 
-    if (h == NULL || key == NULL || klen == 0)
+    if (h == NULL || h->zen == NULL || key == NULL || klen == 0 || val == NULL)
         return;
 
     ckey = MALLOC(klen + 1);
+    if (!ckey)
+        return;
+
     memcpy(ckey, key, klen);
     ckey[klen] = '\0';
+
     cval = MALLOC(vlen + 1);
+    if (!cval) {
+        FREE(ckey);
+        return;
+    }
+
     memcpy(cval, val, vlen);
     cval[vlen] = '\0';  /* convenience, in case it was a string too */
     _xht_set(h, ckey, cval, 1);
@@ -154,7 +175,7 @@ void *xht_get(xht_t *h, const char *key)
 {
     xhn_t *n;
 
-    if (h == NULL || key == NULL)
+    if (h == NULL || h->zen == NULL || key == NULL)
         return NULL;
 
     n = _xht_node_find(&h->zen[_xhter(key) % h->prime], key);
@@ -168,20 +189,24 @@ void *xht_get(xht_t *h, const char *key)
 void xht_free(xht_t *h)
 {
     int i;
-    xhn_t *n, *f;
 
     if (h == NULL)
         return;
 
     for (i = 0; i < h->prime; i++) {
-        if ((n = (&h->zen[i])) == NULL)
+        xhn_t *n = &h->zen[i];
+
+        if (!n)
             continue;
+
         if (n->flag) {
             FREE(n->u.key);
             FREE(n->val);
         }
+
         for (n = (&h->zen[i])->next; n != 0;) {
-            f = n->next;
+            xhn_t *f = n->next;
+
             if (n->flag) {
                 FREE(n->u.key);
                 FREE(n->val);
@@ -200,7 +225,7 @@ void xht_walk(xht_t *h, xht_walker w, void *arg)
     int i;
     xhn_t *n;
 
-    if (h == NULL || w == NULL)
+    if (h == NULL || h->zen == NULL || w == NULL)
         return;
 
     for (i = 0; i < h->prime; i++) {

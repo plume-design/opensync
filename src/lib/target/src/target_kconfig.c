@@ -669,11 +669,11 @@ util_connectivity_internet_ipv4_check(void) {
     ret = false;
 
     while (tries--) {
-        r1 = os_rand() % cnt_addr;
+        r1 = os_random() % cnt_addr;
         ret = util_ping_cmd(util_connectivity_check_inet_addrs[r1], false);
         if (!ret) {
             cnt_addr = util_connectivity_get_inet_addr_cnt(util_connectivity_check_inet_ipv4_addrs);
-            r2 = os_rand() % cnt_addr;
+            r2 = os_random() % cnt_addr;
             ret = util_ping_cmd(util_connectivity_check_inet_ipv4_addrs[r2], false);
             if (!ret)
                 LOGI("Internet IPv4 checking failed, dns1: %s, dns2: %s",
@@ -705,12 +705,12 @@ util_connectivity_internet_ipv6_check(void) {
     }
 
     while (tries--) {
-        r1 = os_rand() % cnt_addr;
+        r1 = os_random() % cnt_addr;
 
         ret = util_ping_cmd(util_connectivity_check_inet_addrs[r1], true);
         if (!ret) {
             cnt_addr = util_connectivity_get_inet_addr_cnt(util_connectivity_check_inet_ipv6_addrs);
-            r2 = os_rand() % cnt_addr;
+            r2 = os_random() % cnt_addr;
             snprintf(ipv6_addr, sizeof(ipv6_addr), "%s%%%s", util_connectivity_check_inet_ipv6_addrs[r2], ipv6_if);
             ret = util_ping_cmd(ipv6_addr, true);
             if (!ret)

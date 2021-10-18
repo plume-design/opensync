@@ -1295,6 +1295,75 @@ void test_ipthreat_gk_dns_cache(void)
     LOGI("\n******************** %s: completed ****************\n", __func__);
 }
 
+/**
+ * @brief validate provider_ops
+ */
+void test_ipthreat_null_provider_ops(void)
+{
+    struct ipthreat_dpi_session *ds_session;
+    struct net_header_parser *net_parser;
+    struct ipthreat_dpi_parser  *parser;
+    struct schema_FSM_Policy *spolicy;
+    struct ipthreat_dpi_cache *mgr;
+    struct fsm_session *session;
+    struct fsm_policy *fpolicy;
+    struct udphdr udphdr;
+    ds_tree_t *sessions;
+    struct iphdr iphdr;
+    int ret;
+
+    LOGI("\n******************** %s: starting ****************\n", __func__);
+
+    mgr = ipthreat_dpi_get_mgr();
+    sessions = &mgr->ipt_sessions;
+
+    /* add ipthreat session */
+    session = &g_sessions[2];
+    /* Overriding the provider_ops global configuration to NULL */
+    session->provider_ops = NULL;
+    ret = ipthreat_dpi_plugin_init(session);
+    TEST_ASSERT_TRUE(ret == 0);
+    ds_session = ds_tree_find(sessions, session);
+    TEST_ASSERT_NOT_NULL(ds_session);
+
+    /* add fsm policy */
+    spolicy = &spolicies[1];
+    fsm_add_policy(spolicy);
+    fpolicy = fsm_policy_lookup(spolicy);
+    TEST_ASSERT_NOT_NULL(fpolicy);
+
+    /* Validate rule name */
+    TEST_ASSERT_EQUAL_STRING(spolicy->name, fpolicy->rule_name);
+
+    /* populate v4 net_parser */
+    net_parser = CALLOC(1, sizeof(struct net_header_parser));
+    net_parser->eth_header = outbound_eth_header;
+    net_parser->ip_version = 4;
+    net_parser->ip_protocol = IPPROTO_UDP;
+    memcpy(&iphdr.saddr, g_v4_outbound_key.src_ip, 4);
+    memcpy(&iphdr.daddr, g_v4_outbound_key.dst_ip, 4);
+    udphdr.source = g_v4_outbound_key.sport;
+    udphdr.dest = g_v4_outbound_key.dport;
+    net_parser->eth_pld.ip.iphdr = &iphdr;
+    net_parser->ip_pld.udphdr = &udphdr;
+    net_parser->acc = &g_v4_outbound_acc;
+    parser = &ds_session->parser;
+    parser->net_parser = net_parser;
+
+    ipthreat_dpi_process_message(ds_session);
+    FREE(net_parser);
+
+    /* delete fsm policy */
+    fsm_delete_policy(spolicy);
+
+    /* free ipthreat session */
+    ipthreat_dpi_plugin_exit(session);
+    ds_session = ds_tree_find(sessions, session);
+    TEST_ASSERT_NULL(ds_session);
+
+    LOGI("\n******************** %s: completed ****************\n", __func__);
+}
+
 int main(int argc, char *argv[])
 {
     /* Set the logs to stdout */
@@ -1316,6 +1385,7 @@ int main(int argc, char *argv[])
     RUN_TEST(test_ipthreat_outbound_allow);
     RUN_TEST(test_ipthreat_lan2lan_traffic);
     RUN_TEST(test_ipthreat_gk_dns_cache);
+    RUN_TEST(test_ipthreat_null_provider_ops);
 
     global_test_exit();
 

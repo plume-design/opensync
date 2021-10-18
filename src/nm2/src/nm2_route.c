@@ -91,7 +91,7 @@ void nm2_route_update(struct schema_Wifi_Route_State *rts)
     }
     else
     {
-        if (!ovsdb_table_delete_where(&table_Wifi_Route_State, where))
+        if (ovsdb_table_delete_where(&table_Wifi_Route_State, where) < 0)
         {
             LOG(ERR, "nm2: Error updating Wifi_Route_State (delete).");
         }

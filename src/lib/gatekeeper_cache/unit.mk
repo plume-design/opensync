@@ -29,7 +29,7 @@
 ###############################################################################
 UNIT_NAME := gatekeeper_cache
 
-UNIT_DISABLE:= $(if $(CONFIG_LIBGATEKEEPER_CACHE),n,y)
+UNIT_DISABLE:= $(if $(CONFIG_LIBGATEKEEPER_CACHE), n, y)
 
 UNIT_TYPE := LIB
 UNIT_DIR := lib
@@ -44,7 +44,8 @@ UNIT_SRC += src/gatekeeper_cache_cmp.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -I$(TOP_DIR)/src/lib/common/inc
-UNIT_CFLAGS += -Isrc/lib/ustack/inc
+UNIT_CFLAGS += -I$(TOP_DIR)/src/lib/ustack/inc
+UNIT_CFLAGS += -I$(TOP_DIR)/src/lib/gatekeeper_msg/inc
 
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
 UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)

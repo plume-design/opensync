@@ -29,7 +29,7 @@
 ###############################################################################
 UNIT_NAME := gatekeeper_msg
 
-UNIT_DISABLE:= $(if $(CONFIG_LIBGATEKEEPER_MSG),n,y)
+UNIT_DISABLE:= $(if $(CONFIG_LIBGATEKEEPER_MSG), n, y)
 
 UNIT_TYPE := LIB
 
@@ -39,6 +39,9 @@ UNIT_SRC += src/gatekeeper_hero_stats.pb-c.c
 UNIT_SRC += src/gatekeeper_hero_stats.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
+UNIT_CFLAGS += -I$(TOP_DIR)/src/lib/gatekeeper_plugin/inc
+UNIT_CFLAGS += -I$(TOP_DIR)/src/lib/network_telemetry/inc
+
 UNIT_LDFLAGS := -lprotobuf-c
 
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)

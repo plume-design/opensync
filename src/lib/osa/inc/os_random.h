@@ -32,13 +32,8 @@ extern void     os_random_seed(const char *ifname);
 static inline long int
 os_random(void)
 {
+    os_random_seed(NULL);
     return random();
 }
 
-static inline int os_rand(void)
-{
-    return rand();
-}
-
 #endif /* OS_RANDOM_H_INCLUDED */
-

@@ -292,6 +292,8 @@ bm_vif_state_ovsdb_update_cb(ovsdb_update_monitor_t *self)
                 }
             }
 
+            bm_client_update_all_channel(&vstate);
+
             break;
         case OVSDB_UPDATE_DEL:
         default:

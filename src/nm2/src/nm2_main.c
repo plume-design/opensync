@@ -62,7 +62,6 @@ static log_severity_t nm2_log_severity = LOG_SEVERITY_INFO;
 /******************************************************************************
  *  PUBLIC API definitions
  *****************************************************************************/
-
 int main(int argc, char ** argv)
 {
     struct ev_loop *loop = EV_DEFAULT;
@@ -106,7 +105,7 @@ int main(int argc, char ** argv)
     nm2_dhcp_rip_init();
     nm2_portfw_init();
     nm2_route_init();
-    nm2_route_write_init();
+    nm2_route_cfg_init();
     nm2_mac_tags_ovsdb_init();
     nm2_ip_interface_init();
     nm2_ipv6_address_init();

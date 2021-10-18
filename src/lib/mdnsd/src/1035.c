@@ -1,6 +1,7 @@
 /* Standalone DNS parsing, RFC10350
  *
  * Copyright (c) 2003  Jeremie Miller <jer@jabber.org>
+ * Copyright (c) 2016-2021  Joachim Wiberg <troglobit@gmail.com>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -10,20 +11,21 @@
  *     * Redistributions in binary form must reproduce the above copyright
  *       notice, this list of conditions and the following disclaimer in the
  *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of the <organization> nor the
- *       names of its contributors may be used to endorse or promote products
- *       derived from this software without specific prior written permission.
+ *     * Neither the name of the copyright holders nor the names of its
+ *       contributors may be used to endorse or promote products derived from
+ *       this software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
- * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- * DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
- * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
- * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
- * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
- * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDERS OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include "1035.h"
@@ -32,7 +34,7 @@
 
 unsigned short int net2short(unsigned char **bufp)
 {
-    short int i;
+    unsigned short int i;
 
     i = **bufp;
     i <<= 8;
@@ -78,7 +80,7 @@ void long2net(unsigned long int l, unsigned char **bufp)
     *bufp += 4;
 }
 
-static unsigned short int _ldecomp(char *ptr)
+static unsigned short int _ldecomp(const char *ptr)
 {
     unsigned short int i;
 
@@ -91,10 +93,14 @@ static unsigned short int _ldecomp(char *ptr)
     return i;
 }
 
-static void _label(struct message *m, unsigned char **bufp, char **namep)
+static int _label(struct message *m, unsigned char **bufp, char **namep)
 {
     int x;
     char *label, *name;
+
+    /* Sanity check */
+    if (m->_len > (int)sizeof(m->_packet))
+        return 1;
 
     /* Set namep to the end of the block */
     *namep = name = (char *)m->_packet + m->_len;
@@ -102,17 +108,19 @@ static void _label(struct message *m, unsigned char **bufp, char **namep)
     /* Loop storing label in the block */
     for (label = (char *)*bufp; *label != 0; name += *label + 1, label += *label + 1) {
         /* Skip past any compression pointers, kick out if end encountered (bad data prolly) */
+        int prevOffset = -1;
         while (*label & 0xc0) {
             unsigned short int offset = _ldecomp(label);
-            if (offset > m->_len)
-                return;
+            if (offset <= prevOffset || offset > m->_len)
+                return 1;
             if (*(label = (char *)m->_buf + offset) == 0)
                 break;
+            prevOffset = offset;
         }
 
         /* Make sure we're not over the limits */
-        if ((name + *label) - *namep > 255 || m->_len + ((name + *label) - *namep) > 4096)
-            return;
+        if ((name + *label) - *namep > 255 || m->_len + ((name + *label) - *namep) >= MAX_PACKET_LEN)
+            return 1;
 
         /* Copy chars for this label */
         memcpy(name, label + 1, (size_t)*label);
@@ -131,17 +139,20 @@ static void _label(struct message *m, unsigned char **bufp, char **namep)
             continue;
 
         *namep = m->_labels[x];
-        return;
+        return 0;
     }
 
     /* No cache, so cache it if room */
     if (x < MAX_NUM_LABELS && m->_labels[x] == 0)
         m->_labels[x] = *namep;
-    m->_len += (name - *namep) + 1;
+
+    m->_len += (int)(name - *namep) + 1;
+
+    return 0;
 }
 
 /* Internal label matching */
-static int _lmatch(struct message *m, char *l1, char *l2)
+static int _lmatch(const struct message *m, const char *l1, const char *l2)
 {
     int len;
 
@@ -176,7 +187,7 @@ static int _lmatch(struct message *m, char *l1, char *l2)
 }
 
 /* Nasty, convert host into label using compression */
-static int _host(struct message *m, unsigned char **bufp, char *name)
+static int _host(struct message *m, unsigned char **bufp, const char *name)
 {
     char label[256], *l;
     int len = 0, x = 1, y = 0, last = 0;
@@ -189,7 +200,7 @@ static int _host(struct message *m, unsigned char **bufp, char *name)
         if (name[y] == '.') {
             if (!name[y + 1])
                 break;
-            label[last] = x - (last + 1);
+            label[last] = (char)(x - (last + 1));
             last = x;
         } else {
             label[x] = name[y];
@@ -201,7 +212,7 @@ static int _host(struct message *m, unsigned char **bufp, char *name)
         y++;
     }
 
-    label[last] = x - (last + 1);
+    label[last] = (char)(x - (last + 1));
     if (x == 1)
         x--;        /* Special case, bad names, but handle correctly */
     len = x + 1;
@@ -214,7 +225,7 @@ static int _host(struct message *m, unsigned char **bufp, char *name)
                 /* Matching label, set up pointer */
                 l = label + x;
                 short2net((unsigned char *)m->_labels[y] - m->_packet, (unsigned char **)&l);
-                label[x] |= 0xc0;
+                label[x] |= '\xc0';
                 len = x + 2;
                 break;
             }
@@ -245,7 +256,8 @@ static int _rrparse(struct message *m, struct resource *rr, int count, unsigned 
     int i;
 
     for (i = 0; i < count; i++) {
-        _label(m, bufp, &(rr[i].name));
+        if (_label(m, bufp, &(rr[i].name)))
+            return 1;
         rr[i].type     = net2short(bufp);
         rr[i].class    = net2short(bufp);
         rr[i].ttl      = net2long(bufp);
@@ -253,8 +265,10 @@ static int _rrparse(struct message *m, struct resource *rr, int count, unsigned 
 //      fprintf(stderr, "Record type %d class 0x%2x ttl %lu len %d\n", rr[i].type, rr[i].class, rr[i].ttl, rr[i].rdlength);
 
         /* If not going to overflow, make copy of source rdata */
-        if (rr[i].rdlength + (*bufp - m->_buf) > MAX_PACKET_LEN || m->_len + rr[i].rdlength > MAX_PACKET_LEN)
+        if (rr[i].rdlength + (*bufp - m->_buf) > MAX_PACKET_LEN || m->_len + rr[i].rdlength > MAX_PACKET_LEN) {
+            rr[i].rdlength = 0;
             return 1;
+        }
 
         /* For the following records the rdata will be parsed later. So don't set it here:
          * NS, CNAME, PTR, DNAME, SOA, MX, AFSDB, RT, KX, RP, PX, SRV, NSEC
@@ -280,22 +294,26 @@ static int _rrparse(struct message *m, struct resource *rr, int count, unsigned 
             break;
 
         case QTYPE_NS:
-            _label(m, bufp, &(rr[i].known.ns.name));
+            if (_label(m, bufp, &(rr[i].known.ns.name)))
+                return 1;
             break;
 
         case QTYPE_CNAME:
-            _label(m, bufp, &(rr[i].known.cname.name));
+            if (_label(m, bufp, &(rr[i].known.cname.name)))
+                return 1;
             break;
 
         case QTYPE_PTR:
-            _label(m, bufp, &(rr[i].known.ptr.name));
+            if (_label(m, bufp, &(rr[i].known.ptr.name)))
+                return 1;
             break;
 
         case QTYPE_SRV:
             rr[i].known.srv.priority = net2short(bufp);
             rr[i].known.srv.weight = net2short(bufp);
             rr[i].known.srv.port = net2short(bufp);
-            _label(m, bufp, &(rr[i].known.srv.name));
+            if (_label(m, bufp, &(rr[i].known.srv.name)))
+                return 1;
             break;
 
         case QTYPE_TXT:
@@ -311,16 +329,16 @@ static int _rrparse(struct message *m, struct resource *rr, int count, unsigned 
 #define my(x,y)                 \
     while (m->_len & 7)         \
         m->_len++;          \
-    x = (void *)(m->_packet + m->_len); \
-    m->_len += y;
+    (x) = (void *)(m->_packet + m->_len); \
+    m->_len += (y);
 
-void message_parse(struct message *m, unsigned char *packet)
+int message_parse(struct message *m, unsigned char *packet)
 {
     int i;
     unsigned char *buf;
 
     if (packet == 0 || m == 0)
-        return;
+        return 1;
 
     /* Header stuff bit crap */
     m->_buf = buf = packet;
@@ -343,31 +361,32 @@ void message_parse(struct message *m, unsigned char *packet)
     m->qdcount = net2short(&buf);
     if (m->_len + (sizeof(struct question) * m->qdcount) > MAX_PACKET_LEN - 8) {
         m->qdcount = 0;
-        return;
+        return 1;
     }
 
     m->ancount = net2short(&buf);
     if (m->_len + (sizeof(struct resource) * m->ancount) > MAX_PACKET_LEN - 8) {
         m->ancount = 0;
-        return;
+        return 1;
     }
 
     m->nscount = net2short(&buf);
     if (m->_len + (sizeof(struct resource) * m->nscount) > MAX_PACKET_LEN - 8) {
         m->nscount = 0;
-        return;
+        return 1;
     }
 
     m->arcount = net2short(&buf);
     if (m->_len + (sizeof(struct resource) * m->arcount) > MAX_PACKET_LEN - 8) {
         m->arcount = 0;
-        return;
+        return 1;
     }
 
     /* Process questions */
     my(m->qd, sizeof(struct question) * m->qdcount);
     for (i = 0; i < m->qdcount; i++) {
-        _label(m, &buf, &(m->qd[i].name));
+        if (_label(m, &buf, &(m->qd[i].name)))
+            return 1;
         m->qd[i].type  = net2short(&buf);
         m->qd[i].class = net2short(&buf);
     }
@@ -377,11 +396,13 @@ void message_parse(struct message *m, unsigned char *packet)
     my(m->ns, sizeof(struct resource) * m->nscount);
     my(m->ar, sizeof(struct resource) * m->arcount);
     if (_rrparse(m, m->an, m->ancount, &buf))
-        return;
+        return 1;
     if (_rrparse(m, m->ns, m->nscount, &buf))
-        return;
+        return 1;
     if (_rrparse(m, m->ar, m->arcount, &buf))
-        return;
+        return 1;
+
+    return 0;
 }
 
 void message_qd(struct message *m, char *name, unsigned short int type, unsigned short int class)
@@ -449,7 +470,7 @@ void message_rdata_srv(struct message *m, unsigned short int priority, unsigned 
 
 void message_rdata_raw(struct message *m, unsigned char *rdata, unsigned short int rdlength)
 {
-    if (((unsigned char *)m->_buf - m->_packet) + rdlength > 4096)
+    if ((m->_buf - m->_packet) + rdlength > 4096)
         rdlength = 0;
     short2net(rdlength, &(m->_buf));
     memcpy(m->_buf, rdata, rdlength);
@@ -495,5 +516,5 @@ int message_packet_len(struct message *m)
     if (m->_buf == 0)
         return 12;
 
-    return (unsigned char *)m->_buf - m->_packet;
+    return (int)(m->_buf - m->_packet);
 }

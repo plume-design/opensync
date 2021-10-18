@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "module.h"
 #include "os.h"
 #include "os_backtrace.h"
+#include "os_random.h"
 #include "ovsdb.h"
 #include "target.h"
 #include "memutil.h"
@@ -110,8 +111,6 @@ void wano_sig_usr(int signum)
 
 int main(int argc, char *argv[])
 {
-    srand(getpid());
-
     // Parse command-line arguments
     if (os_get_opt(argc, argv, &wano_log_severity))
     {

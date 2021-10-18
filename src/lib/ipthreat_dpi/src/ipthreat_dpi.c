@@ -804,10 +804,12 @@ init_ipthreat_specific_reply(struct fsm_request_args *request_args,
 
     policy_reply->provider = ipthreat_get_provider(session);;
     policy_reply->send_report = session->ops.send_report;
+    policy_reply->policy_response = ipthreat_process_verdict;
+
+    if (session->provider_ops == NULL) return;
     policy_reply->categories_check = session->provider_ops->categories_check;
     policy_reply->risk_level_check = session->provider_ops->risk_level_check;
     policy_reply->gatekeeper_req = session->provider_ops->gatekeeper_req;
-    policy_reply->policy_response = ipthreat_process_verdict;
 }
 
 struct fsm_policy_reply *

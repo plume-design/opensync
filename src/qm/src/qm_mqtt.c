@@ -78,12 +78,11 @@ bool qm_mqtt_is_connected()
 /**
  * Set MQTT settings
  */
-void qm_mqtt_set(const char *broker, const char *port, const char *topic, const char *qos, int compress)
+bool qm_mqtt_set(const char *broker, const char *port, const char *topic, const char *qos, int compress)
 {
     const char *new_broker;
     int new_port;
     bool broker_changed = false;
-
 
     qm_mqtt_compress = compress;
 
@@ -120,7 +119,7 @@ void qm_mqtt_set(const char *broker, const char *port, const char *topic, const 
     /* Initialize TLS stuff */
     if (!mosqev_tls_opts_set(&qm_mqtt, SSL_VERIFY_PEER, MOSQEV_TLS_VERSION, mosqev_ciphers))
     {
-        LOGE("setting TLS options.\n");
+        LOGE("Failed setting TLS options.\n");
         goto error;
     }
 
@@ -131,7 +130,7 @@ void qm_mqtt_set(const char *broker, const char *port, const char *topic, const 
                         target_tls_privkey_filename(),
                         NULL))
     {
-        LOGE("setting TLS certificates.\n");
+        LOGE("Failed setting TLS certificates.\n");
         goto error;
     }
 
@@ -148,11 +147,11 @@ void qm_mqtt_set(const char *broker, const char *port, const char *topic, const 
         qm_mqtt_reconnect();
     }
 
-    return;
+    return true;
 
 error:
     qm_mqtt_stop();
-    return;
+    return false;
 }
 
 bool qm_mqtt_config_valid(void)

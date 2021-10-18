@@ -84,9 +84,32 @@ void
 test_gkc_flush_all(void)
 {
     struct fsm_policy_rules fpr;
-    int ret, cache_entry_count;
+    int cache_entry_count;
+    int ret;
 
-    memset(&fpr, 0, sizeof(fpr));
+    MEMZERO(fpr);
+
+    /* add a few entries to chack a 'flush_all' for the whole cache */
+    gkc_add_attribute_entry(entry1);
+    gkc_add_attribute_entry(entry2);
+    gkc_add_attribute_entry(entry3);
+    gkc_add_attribute_entry(entry5);
+
+    gkc_add_flow_entry(flow_entry1);
+
+    cache_entry_count = gk_get_cache_count();
+    TEST_ASSERT_EQUAL_INT(5, cache_entry_count);
+
+    /* Make sure we have no mac rule */
+    fpr.mac_rule_present = false;
+
+    ret = gkc_flush_all(&fpr);
+    TEST_ASSERT_EQUAL_INT(cache_entry_count, ret);
+    cache_entry_count = gk_get_cache_count();
+    TEST_ASSERT_EQUAL_INT(0, cache_entry_count);
+
+    /* Cache is fully clean. We can proceed with flush_all
+     * for one MAC only */
 
     gkc_add_attribute_entry(entry1);
     gkc_add_attribute_entry(entry2);
@@ -98,10 +121,36 @@ test_gkc_flush_all(void)
     cache_entry_count = gk_get_cache_count();
     TEST_ASSERT_EQUAL_INT(5, cache_entry_count);
 
-    ret = gkc_flush_all();
-    TEST_ASSERT_EQUAL_INT(cache_entry_count, ret);
+    gkc_print_cache_entries();
+
+    /* Now we flush the 2 entries matching MAC of entry1 and flow_entry1 */
+
+    /* Create a matching policy_rule */
+    fpr.mac_rule_present = true;
+    fpr.mac_op = MAC_OP_IN;
+    fpr.macs = CALLOC(1, sizeof(*fpr.macs));
+    fpr.macs->nelems = 2;
+    fpr.macs->array = CALLOC(2, sizeof(*fpr.macs->array));
+    fpr.macs->array[0] = CALLOC(32, sizeof(char));
+    snprintf(fpr.macs->array[0],
+             32,
+             PRI_os_macaddr_t, FMT_os_macaddr_pt(entry1->device_mac));
+    fpr.macs->array[1] = CALLOC(32, sizeof(char));
+    strcpy(fpr.macs->array[1], "BROKEN_MAC");
+
+    ret = gkc_flush_all(&fpr);
+    TEST_ASSERT_EQUAL_INT(2, ret);
+
     cache_entry_count = gk_get_cache_count();
-    TEST_ASSERT_EQUAL_INT(0, cache_entry_count);
+    TEST_ASSERT_EQUAL_INT(3, cache_entry_count);
+
+    gkc_print_cache_entries();
+
+    /* Cleanup policy_rule */
+    FREE(fpr.macs->array[1]);
+    FREE(fpr.macs->array[0]);
+    FREE(fpr.macs->array);
+    FREE(fpr.macs);
 }
 
 void
@@ -129,7 +178,8 @@ test_gkc_flush_rules_macs(void)
 {
     struct gk_attr_cache_interface *entry;
     struct fsm_policy_rules fpr;
-    int ret, cache_entry_count;
+    int  cache_entry_count;
+    int ret;
 
     memset(&fpr, 0, sizeof(fpr));
     entry = CALLOC(1, sizeof(*entry));
@@ -412,7 +462,7 @@ test_gkc_flush_ipv4_and_ipv6_empty_ip_set(void)
     TEST_ASSERT_EQUAL_INT(0, ret);
     FREE(fpr.ipaddrs);
     fpr.ipaddrs = NULL;
-    
+
     /* Now with OUT of the empty set, we should delete the 2 entries we added */
     fpr.ip_op = IP_OP_OUT;
     ret = gkc_flush_rules(&fpr);
@@ -425,6 +475,7 @@ test_gkc_flush_ipv4_and_ipv6_empty_ip_set(void)
 void
 test_gkc_flush_client(void)
 {
+    struct fsm_gk_session *gk_session;
     struct fsm_session session;
     struct fsm_policy policy;
     int ret;
@@ -443,6 +494,10 @@ test_gkc_flush_client(void)
     TEST_ASSERT_EQUAL_INT(0, ret);
 
     policy.action = FSM_FLUSH_CACHE;
+
+    /* Since flush will try to send a hero_stats_report, disable that part. */
+    gk_session = NULL;
+    session.handler_ctxt = gk_session;
     ret = gkc_flush_client(&session, &policy);
     TEST_ASSERT_EQUAL_INT(0, ret);
 }

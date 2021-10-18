@@ -142,8 +142,8 @@ bool cm2_resolve(cm2_dest_e dest)
     ipv6 = g_state.link.ipv6.is_ip && addr->ipv6_addr_list.state != CM2_ARES_R_IN_PROGRESS ? true : false;
     ipv4 = g_state.link.ipv4.is_ip && addr->ipv4_addr_list.state != CM2_ARES_R_IN_PROGRESS ? true : false;
 
-    if ((g_state.link.ipv4.resolve_retry && addr->ipv6_addr_list.state == CM2_ARES_R_RESOLVED) ||
-        (g_state.link.ipv6.resolve_retry && addr->ipv4_addr_list.state == CM2_ARES_R_RESOLVED))
+    if ((g_state.link.ipv4.resolve_retry && ipv6 && addr->ipv6_addr_list.state == CM2_ARES_R_RESOLVED) ||
+        (g_state.link.ipv6.resolve_retry && ipv4 && addr->ipv4_addr_list.state == CM2_ARES_R_RESOLVED))
     {
         LOGI("Skip resolve re-trying");
         g_state.link.ipv4.resolve_retry = false;
@@ -207,20 +207,40 @@ void cm2_resolve_timeout(void)
 static bool
 cm2_validate_target_addr(cm2_addr_list *list, int addr_type)
 {
-    if (addr_type == AF_INET && (!g_state.link.ipv4.is_ip || g_state.link.ipv4.blocked))
-        return false;
+    LOGT("type: %d, ipv4.blocked = %d ipv6.blocked = %d ipv4.is_ip = %d, ipv6.is_ip = %d",
+          addr_type, g_state.link.ipv4.blocked, g_state.link.ipv6.blocked,
+          g_state.link.ipv4.is_ip, g_state.link.ipv6.is_ip);
 
-    if (addr_type == AF_INET6 && (!g_state.link.ipv6.is_ip || g_state.link.ipv6.blocked))
+    if (addr_type == AF_INET && (!g_state.link.ipv4.is_ip || g_state.link.ipv4.blocked)) {
+        LOGI("Ares: Skip ipv4 address. IP active: %s link blocked: %s ",
+             g_state.link.ipv4.is_ip ? "true" : "false",
+             g_state.link.ipv4.blocked ? "true" : "false");
         return false;
+    }
 
-    if (!list->h_addr_list)
-        return false;
+    if (addr_type == AF_INET6 && (!g_state.link.ipv6.is_ip || g_state.link.ipv6.blocked)) {
+        LOGI("Ares: Skip ipv6 address. IP active: %s link blocked: %s ",
+             g_state.link.ipv6.is_ip ? "true" : "false",
+             g_state.link.ipv6.blocked ? "true" : "false");
 
-    if (!list->h_addr_list[list->h_cur_idx])
         return false;
+    }
 
-    if (list->h_addrtype != addr_type)
+    if (!list->h_addr_list) {
+        LOGI("Ares: Addr Type: %d, Empty addr list", addr_type);
         return false;
+    }
+
+    if (!list->h_addr_list[list->h_cur_idx]) {
+        LOGI("Ares: Addr Type: %d. Empty addr for current index: %d",
+             addr_type, list->h_cur_idx);
+        return false;
+    }
+
+    if (list->h_addrtype != addr_type) {
+        LOGI("Address type mismatch: %d, %d", list->h_addrtype, addr_type);
+        return false;
+    }
 
     return true;
 }

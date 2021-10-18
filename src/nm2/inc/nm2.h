@@ -240,7 +240,8 @@ bool nm2_dhcp_lease_notify(void *self, bool released, struct osn_dhcp_server_lea
 bool nm2_route_init(void);
 inet_route_status_fn_t nm2_route_notify;
 
-void nm2_route_write_init(void);
+void nm2_route_cfg_init(void);
+void nm2_route_cfg_reapply(struct nm2_iface *pif);
 
 /*
  * ===========================================================================

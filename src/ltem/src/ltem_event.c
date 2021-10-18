@@ -60,7 +60,7 @@ ltem_state_periodic(time_t now, ltem_mgr_t *mgr)
 {
     time_t elapsed;
 
-    LOGD("%s: modem_present[%d]", __func__, mgr->lte_state_info->modem_present);
+    LOGD("%s: modem_present[%d]", __func__, mgr->modem_info->modem_present);
     elapsed = now - mgr->state_periodic_ts;
     if (elapsed < LTEM_STATE_UPDATE_INTERVAL) return;
 

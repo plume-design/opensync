@@ -622,11 +622,13 @@ gkc_flush_rules(struct fsm_policy_rules *rules);
 /**
  * @brief flush the entire cache.
  *
+ * @param rules the policy rules of cache entries to be flushed
+ *              (only rule potentially present is a mac rule)
  * @return the number of rules effectively flushed or -1 in case
  *         of any error.
  */
 int
-gkc_flush_all(void);
+gkc_flush_all(struct fsm_policy_rules *rules);
 
 /**
  * @brief callback hook so FSM can trigger cache flushes based on policy
