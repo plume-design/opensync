@@ -273,7 +273,11 @@ bool nm2_dhcp_lease_notify(
     strscpy(sdl.fingerprint, dl->dl_fingerprint, sizeof(sdl.fingerprint));
 
     sdl.vendor_class_exists = true;
-    strscpy(sdl.vendor_class, dl->dl_vendorclass, sizeof(sdl.vendor_class));
+    // Check for and remove leading and trailing double quotes
+    if (1 != sscanf(dl->dl_vendorclass, "\"%128[^\"]\"", sdl.vendor_class))
+    {   
+        strscpy(sdl.vendor_class, dl->dl_vendorclass, sizeof(sdl.vendor_class));
+    }  
 
     /* A lease time of 0 indicates that this entry should be deleted */
     sdl.lease_time_exists = true;
