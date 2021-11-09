@@ -249,17 +249,6 @@ bool target_unmap_ifname_exists(const char *ifname);
 /// @} LIB_TARGET_MAP
 
 /******************************************************************************
- *  BLE definitions
- *****************************************************************************/
-/// @cond INTERNAL
-
-bool target_ble_preinit(struct ev_loop *loop);
-bool target_ble_prerun(struct ev_loop *loop);
-bool target_ble_broadcast_start(struct schema_AW_Bluetooth_Config *config);
-bool target_ble_broadcast_stop(void);
-/// @endcond INTERNAL
-
-/******************************************************************************
  *  OM definitions
  *****************************************************************************/
 /// @cond INTERNAL

@@ -125,38 +125,6 @@ const char *target_tls_privkey_filename(void)
 #endif
 
 /******************************************************************************
- * BLE
- *****************************************************************************/
-
-#ifndef IMPL_target_ble_preinit
-bool target_ble_preinit(struct ev_loop *loop)
-{
-    return true;
-}
-#endif
-
-#ifndef IMPL_target_ble_prerun
-bool target_ble_prerun(struct ev_loop *loop)
-{
-    return true;
-}
-#endif
-
-#ifndef IMPL_target_ble_broadcast_start
-bool target_ble_broadcast_start(struct schema_AW_Bluetooth_Config *config)
-{
-    return false;
-}
-#endif
-
-#ifndef IMPL_target_ble_broadcast_stop
-bool target_ble_broadcast_stop(void)
-{
-    return false;
-}
-#endif
-
-/******************************************************************************
  * OM
  *****************************************************************************/
 
