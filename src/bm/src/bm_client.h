@@ -166,6 +166,7 @@ typedef enum {
     BM_CLIENT_RRM_ALL_CHANNELS     = 0,
     BM_CLIENT_RRM_2G_ONLY,
     BM_CLIENT_RRM_5G_ONLY,
+    BM_CLIENT_RRM_6G_ONLY,
     BM_CLIENT_RRM_OWN_CHANNEL_ONLY,
     BM_CLIENT_RRM_OWN_BAND_ONLY
 } bm_client_rrm_req_type_t;
@@ -423,6 +424,9 @@ typedef struct {
 
     unsigned int                active_treshold_bps;
 
+    bool                        neighbor_list_filter_by_beacon_report;
+    bool                        ignore_beacon_measurement_reports;
+
     ds_tree_node_t              dst_node;
 } bm_client_t;
 
@@ -527,4 +531,6 @@ extern void                 bm_client_sta_info_update_callback(void);
 extern void                 bm_client_handle_ext_activity(bm_client_t *client, const char *ifname, bool active);
 extern void                 bm_client_handle_ext_xing(bm_client_t *client, const char *ifname, bsal_event_t *event);
 extern void                 bm_client_update_all_channel(const struct schema_Wifi_VIF_State *vstate);
+extern void                 bm_client_ignore_beacon_measurement_reports(bm_client_t *client);
+extern bool                 bm_client_should_ignore_beacon_measurement_reports(const bm_client_t *client);
 #endif /* BM_CLIENT_H_INCLUDED */

@@ -488,7 +488,9 @@ void
 bm_client_send_rrm_req(bm_client_t *client, bm_client_rrm_req_type_t rrm_req_type, int delay)
 {
     bm_rrm_req_t *req;
-    uint8_t channels[8];
+    const size_t elements_num = 8;
+    uint8_t channels[elements_num];
+    uint8_t op_classes[elements_num];
     int num_channels;
     uint32_t delay_ms;
     int i;
@@ -503,7 +505,7 @@ bm_client_send_rrm_req(bm_client_t *client, bm_client_rrm_req_type_t rrm_req_typ
         return;
 
     bm_client_reset_rrm_neighbors(client);
-    num_channels = bm_neighbor_get_channels(client, rrm_req_type, channels, sizeof(channels), 0);
+    num_channels = bm_neighbor_get_channels(client, rrm_req_type, channels, elements_num, 0, op_classes, elements_num);
 
     for (i = 0; i < num_channels; i++) {
         if (bm_client_is_dfs_channel(channels[i])) {
@@ -534,7 +536,7 @@ bm_client_send_rrm_req(bm_client_t *client, bm_client_rrm_req_type_t rrm_req_typ
         req->rrm_params.meas_dur = BM_CLIENT_RRM_ACTIVE_MEASUREMENT_DURATION;
 
         req->rrm_params.channel = channels[i];
-        req->rrm_params.op_class = bm_neighbor_get_op_class(channels[i]);
+        req->rrm_params.op_class = op_classes[i];
 
         if (bm_client_is_dfs_channel(channels[i])) {
             req->rrm_params.meas_mode = 0;
@@ -1479,19 +1481,15 @@ bm_client_get_btm_params( struct schema_Band_Steering_Clients *bscli,
             }
         }
 
-        /* If not set, derive op_class and phy_type from channel */
         if (neigh->channel && type == BM_CLIENT_BTM_PARAMS_SC) {
-            if (!neigh->op_class) {
-                neigh->op_class = bm_neighbor_get_op_class(neigh->channel);
-                LOGD("%s: steering kick, setup op_class %d base on %d channel", client->mac_addr,
-                     neigh->op_class, neigh->channel);
-            }
+            /* It's impossible to infer these correctly due to 6GHz channel
+             * numbering overlapping with 2.4G and 5G
+             */
+            WARN_ON(!neigh->op_class);
+            WARN_ON(!neigh->phy_type);
 
-            if (!neigh->phy_type) {
-                neigh->phy_type = bm_neighbor_get_phy_type(neigh->channel);
-                LOGD("%s: steering kick, setup phy_type %d base on %d channel", client->mac_addr,
-                     neigh->phy_type, neigh->channel);
-            }
+            memset(neigh, 0, sizeof(*neigh));
+            btm_params->num_neigh = 0;
         }
     }
 
@@ -1622,24 +1620,26 @@ bm_client_from_ovsdb(struct schema_Band_Steering_Clients *bscli, bm_client_t *cl
     client->max_rejects_period = -1;
     client->pref_5g_pre_assoc_block_timeout_msecs = -1;
 
-    if (bscli->max_rejects > 0 &&
-        bscli->rejects_tmout_secs > 0 &&
-        (!bscli->pref_5g_pre_assoc_block_timeout_msecs_exists || bscli->pref_5g_pre_assoc_block_timeout_msecs == 0))
-    {
-        client->pref_5g_pre_assoc_block_policy = BM_CLIENT_PREF_5G_PRE_ASSOC_BLOCK_POLICY_COUNTER;
-        client->max_rejects = bscli->max_rejects;
-        client->max_rejects_period = bscli->rejects_tmout_secs;
-    }
-    else if (bscli->max_rejects == 0 &&
-             bscli->rejects_tmout_secs == 0 &&
-             bscli->pref_5g_pre_assoc_block_timeout_msecs > 0)
-    {
-        client->pref_5g_pre_assoc_block_policy = BM_CLIENT_PREF_5G_PRE_ASSOC_BLOCK_POLICY_TIMER;
-        client->pref_5g_pre_assoc_block_timeout_msecs = bscli->pref_5g_pre_assoc_block_timeout_msecs;
-    }
-    else {
-        LOGE("Client %s - invalid pre-assoc pref_5g reject configuration", client->mac_addr);
-        return false;
+    if (client->pref_5g_allowed == BM_CLIENT_PREF_5G_ALLOWED_ALWAYS) {
+        if (bscli->max_rejects > 0 &&
+            bscli->rejects_tmout_secs > 0 &&
+            (!bscli->pref_5g_pre_assoc_block_timeout_msecs_exists || bscli->pref_5g_pre_assoc_block_timeout_msecs == 0))
+        {
+            client->pref_5g_pre_assoc_block_policy = BM_CLIENT_PREF_5G_PRE_ASSOC_BLOCK_POLICY_COUNTER;
+            client->max_rejects = bscli->max_rejects;
+            client->max_rejects_period = bscli->rejects_tmout_secs;
+        }
+        else if (bscli->max_rejects == 0 &&
+                 bscli->rejects_tmout_secs == 0 &&
+                 bscli->pref_5g_pre_assoc_block_timeout_msecs > 0)
+        {
+            client->pref_5g_pre_assoc_block_policy = BM_CLIENT_PREF_5G_PRE_ASSOC_BLOCK_POLICY_TIMER;
+            client->pref_5g_pre_assoc_block_timeout_msecs = bscli->pref_5g_pre_assoc_block_timeout_msecs;
+        }
+        else {
+            LOGE("Client %s - invalid pre-assoc pref_5g reject configuration, disabling pre-assoc steering for 5g", client->mac_addr);
+            client->pref_5g_allowed = BM_CLIENT_PREF_5G_ALLOWED_NEVER;
+        }
     }
 
     client->pref_6g_pre_assoc_block_timeout_msecs = bscli->pref_6g_pre_assoc_block_timeout_msecs;
@@ -1768,6 +1768,9 @@ bm_client_from_ovsdb(struct schema_Band_Steering_Clients *bscli, bm_client_t *cl
     } else {
         client->active_treshold_bps = bscli->active_treshold_bps;
     }
+
+    /* Temporarily this is set to TRUE */
+    client->neighbor_list_filter_by_beacon_report = true;
 
     return true;
 }
@@ -3624,4 +3627,15 @@ void bm_client_update_all_channel(const struct schema_Wifi_VIF_State *vstate)
 
         client->self_neigh.channel = vstate->channel;
     }
+}
+
+void bm_client_ignore_beacon_measurement_reports(bm_client_t *client)
+{
+    client->ignore_beacon_measurement_reports = true;
+    LOGN("%s client reported suspicious Beacon Measurement Report, all further reports will be ignored", client->mac_addr);
+}
+
+bool bm_client_should_ignore_beacon_measurement_reports(const bm_client_t *client)
+{
+    return client->ignore_beacon_measurement_reports;
 }

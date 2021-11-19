@@ -519,7 +519,7 @@ void cm2_util_req_stability_cb(struct ev_loop *loop, ev_child *w, int revents);
 static
 void cm2_util_req_stability_check_recalc(void)
 {
-    const char *if_name = g_state.link.if_name;
+    const char *if_name = g_state.link.is_bridge ? g_state.link.bridge_name : g_state.link.if_name;
     bool update = g_state.stability_update_next;
     int opts = g_state.stability_opts_next;
     pid_t pid;

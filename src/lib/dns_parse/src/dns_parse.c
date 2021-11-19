@@ -32,6 +32,8 @@
 #include "ovsdb_utils.h"
 #include "ovsdb_sync.h"
 #include "wc_telemetry.h"
+#include "network_metadata_report.h"
+#include "gatekeeper_cache.h"
 
 #define IP2ACTION_MIN_TTL (6*60*60)
 
@@ -648,6 +650,8 @@ process_response_ips(dns_info *dns, uint8_t *packet,
                      struct fsm_policy_reply *policy_reply)
 {
     struct ip2action_req ip_cache_req;
+    char ipv6_addr[INET6_ADDRSTRLEN];
+    char ipv4_addr[INET_ADDRSTRLEN];
     struct sockaddr_storage ipaddr;
     int ip2action_cache_ttl;
     bool disabled_dns_cache;
@@ -655,6 +659,7 @@ process_response_ips(dns_info *dns, uint8_t *packet,
     dns_rr *answer;
     bool add_entry;
     int qtype = -1;
+    bool gk_cache;
     size_t index;
     uint32_t ttl;
     bool cache;
@@ -686,8 +691,6 @@ process_response_ips(dns_info *dns, uint8_t *packet,
                  __func__, qtype, answer->data, ttl);
             if (qtype == 1) /* IPv4 redirect */
             {
-                char ipv4_addr[INET_ADDRSTRLEN];
-
                 res = inet_ntop(AF_INET, packet + answer->type_pos + 10,
                                 ipv4_addr, INET_ADDRSTRLEN);
                 if (res == NULL)
@@ -704,8 +707,6 @@ process_response_ips(dns_info *dns, uint8_t *packet,
             }
             else if (qtype == 28) /* IPv6 */
             {
-                char ipv6_addr[INET6_ADDRSTRLEN];
-
                 res = inet_ntop(AF_INET6, packet + answer->type_pos + 10,
                                 ipv6_addr, INET6_ADDRSTRLEN);
                 if (res == NULL)
@@ -721,14 +722,76 @@ process_response_ips(dns_info *dns, uint8_t *packet,
                 }
             }
 
-            disabled_dns_cache = is_dns_cache_disabled();
-            cache =  (req->req_info->reply != NULL) &&
-                      (!req->req_info->reply->connection_error);
-            cache &= add_entry;
-            cache &= (policy_reply->categorized == FSM_FQDN_CAT_SUCCESS);
-            cache &= !disabled_dns_cache;
+            /* Check if caching is required */
+            cache = add_entry;
+            if (cache) cache &= (req->req_info->reply != NULL);
+            if (cache) cache &= !(req->req_info->reply->connection_error);
+            if (cache) cache &= (policy_reply->categorized == FSM_FQDN_CAT_SUCCESS);
 
-            if (cache)
+            /* Check the cache type we'll be using */
+            gk_cache = cache;
+            if (gk_cache) gk_cache &= (req->req_info->reply->service_id == IP2ACTION_GK_SVC);
+
+            /* Check if we'll be using the DNS cache */
+            disabled_dns_cache = is_dns_cache_disabled();
+            if (cache) cache &= !disabled_dns_cache;
+            if (gk_cache) gk_cache &= disabled_dns_cache;
+
+            LOGT("%s: cache: %s, gk_cache: %s", __func__,
+                 cache ? "true" : "false",
+                 gk_cache ? "true" : "false");
+
+            /* Trigger the gatekeeper cache addition API */
+            if (gk_cache)
+            {
+                struct gk_attr_cache_interface gkc_entry;
+                struct fsm_gk_info *fqdn_reply_gk;
+
+                MEMZERO(gkc_entry);
+                fqdn_reply_gk = &req->req_info->reply->gk;
+                gkc_entry.device_mac = &req->dev_id;
+                gkc_entry.attribute_type = (ipaddr.ss_family == AF_INET ?
+                                            GK_CACHE_REQ_TYPE_IPV4 :
+                                            GK_CACHE_REQ_TYPE_IPV6);
+
+                gkc_entry.ip_addr = &ipaddr;
+                ip2action_cache_ttl = ((ttl < IP2ACTION_MIN_TTL) ?
+                                       IP2ACTION_MIN_TTL : (int)ttl);
+                gkc_entry.cache_ttl = ((req->rd_ttl != -1) ?
+                                       req->rd_ttl : ip2action_cache_ttl);
+
+                switch(policy_reply->action)
+                {
+                    case FSM_REDIRECT:
+                        gkc_entry.action = FSM_BLOCK;
+                        break;
+
+                    case FSM_OBSERVED:
+                        gkc_entry.action = FSM_ALLOW;
+                        break;
+
+                    default:
+                        gkc_entry.action = policy_reply->action;
+                        break;
+                }
+
+                gkc_entry.direction = NET_MD_ACC_OUTBOUND_DIR;
+                gkc_entry.gk_policy = fqdn_reply_gk->gk_policy;
+                gkc_entry.category_id = fqdn_reply_gk->category_id;
+                gkc_entry.confidence_level = fqdn_reply_gk->confidence_level;
+                gkc_entry.categorized = policy_reply->categorized;
+                gkc_entry.is_private_ip = policy_reply->cat_unknown_to_service;
+
+                LOGD("%s: adding %s to the gatekeeper cache", __func__,
+                     qtype == 1 ? ipv4_addr : ipv6_addr);
+
+                rc = gkc_upsert_attribute_entry(&gkc_entry);
+                if (!rc)
+                {
+                    LOGD("%s: Couldn't add ip entry to gatekeeper cache.", __func__);
+                }
+            }
+            else if (cache)
             {
                 memset(&ip_cache_req, 0, sizeof(ip_cache_req));
                 ip_cache_req.device_mac = &req->dev_id;
@@ -1056,14 +1119,50 @@ dns_cache_add_redirect_entry(struct fqdn_pending_req *req,
                              struct sockaddr_storage *ipaddr)
 {
     struct ip2action_req ip_cache_req;
+    bool gk_cache;
     int rc;
 
     LOGD("%s(): adding redirect cache entry", __func__);
 
-    memset(&ip_cache_req, 0, sizeof(ip_cache_req));
-
     if (req->req_info == NULL || req->req_info->reply == NULL) return false;
 
+    gk_cache = is_dns_cache_disabled();
+    gk_cache &= (req->req_info->reply->service_id == IP2ACTION_GK_SVC);
+
+    if (gk_cache)
+    {
+        struct gk_attr_cache_interface gkc_entry;
+        struct fsm_gk_info *fqdn_reply_gk;
+
+        MEMZERO(gkc_entry);
+        fqdn_reply_gk = &req->req_info->reply->gk;
+        gkc_entry.device_mac = &req->dev_id;
+        gkc_entry.attribute_type = (ipaddr->ss_family == AF_INET ?
+                                    GK_CACHE_REQ_TYPE_IPV4 :
+                                    GK_CACHE_REQ_TYPE_IPV6);
+
+        gkc_entry.ip_addr = ipaddr;
+        gkc_entry.cache_ttl = DNS_REDIRECT_TTL;
+        gkc_entry.action = FSM_ALLOW;
+        gkc_entry.direction = NET_MD_ACC_OUTBOUND_DIR;
+        gkc_entry.gk_policy = fqdn_reply_gk->gk_policy;
+
+        /* Force the category ID to an acceptable value */
+        gkc_entry.category_id = 15; /* GK_NOT_RATED */
+        gkc_entry.confidence_level = 0;
+        gkc_entry.categorized = FSM_FQDN_CAT_SUCCESS;
+        gkc_entry.is_private_ip = false;
+        rc = gkc_upsert_attribute_entry(&gkc_entry);
+        if (!rc)
+        {
+            LOGD("%s: Couldn't add ip entry to gatekeeper cache.", __func__);
+            return false;
+        }
+
+        return true;
+    }
+
+    memset(&ip_cache_req, 0, sizeof(ip_cache_req));
     ip_cache_req.device_mac = &req->dev_id;
     ip_cache_req.ip_addr = ipaddr;
     ip_cache_req.service_id = req->req_info->reply->service_id;

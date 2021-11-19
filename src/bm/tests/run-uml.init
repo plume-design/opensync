@@ -9,6 +9,12 @@ mount -o rw,remount /
 mkdir -p /var/run
 ip link set lo up
 
+echo 128 > /proc/sys/fs/mqueue/msg_default
+echo 128 > /proc/sys/fs/mqueue/msg_max
+echo 16384 > /proc/sys/fs/mqueue/msgsize_default
+echo 16384 > /proc/sys/fs/mqueue/msgsize_max
+ulimit -q unlimited
+
 PATH=/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin
 dir=$(grep -o 'env_dir=[^ ]*' /proc/cmdline | cut -d= -f2)
 env=$(grep -o 'env=[^ ]*' /proc/cmdline | cut -d= -f2)

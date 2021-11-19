@@ -65,6 +65,17 @@ mdns_ovsdb_init(void)
     return;
 }
 
+void
+mdns_ovsdb_exit(void)
+{
+    LOGI("%s: Unregister OVSDB events", __func__);
+
+    /* Deregister monitor events */
+    ovsdb_unregister_update_cb(table_Service_Announcement.monitor.mon_id);
+
+    return;
+}
+
 ds_tree_t *
 mdnsd_get_services(void)
 {

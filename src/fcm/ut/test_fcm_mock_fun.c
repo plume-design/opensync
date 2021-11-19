@@ -24,11 +24,27 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#define _GNU_SOURCE /* Needed for RTLD_* */
+#include <dlfcn.h>
 #include "log.h"
 #include "fcm.h"
+#include "const.h"
 
-static int dl_test_handle = 0;
+/*
+ * Since we are wrapping some functions, the following
+ * statements will be required in the unit.mk.
+ * Note: augment accordingly if other __wrap_'ed functions
+ *       are needed.
+ *
+UNIT_LDFLAGS += -Wl,--wrap=dlopen
+UNIT_LDFLAGS += -Wl,--wrap=dlsym
+UNIT_LDFLAGS += -Wl,--wrap=dlclose
+*/
+
+static int dl_test_handle = 1234;
 fcm_collect_plugin_t *test_plugin = NULL;
+char *lib_so[] = {"/usr/opensync/lib/libfcm_test_FCM_collector.so", "/usr/opensync/lib/libfcm_test_FCM_collector_1.so"};
+char *fct_ptr_name[] = {"test_FCM_collector_plugin_init", "test_FCM_collector_1_plugin_init"};
 
 int test_plugin_init(fcm_collect_plugin_t *collector)
 {
@@ -37,24 +53,61 @@ int test_plugin_init(fcm_collect_plugin_t *collector)
     return 0;
 }
 
-void *dlopen (const char *file, int mode)
+extern void *__real_dlopen(const char *file, int mode);
+void *__wrap_dlopen(const char *file, int mode)
 {
-    LOGD("%s %s", __func__, file);
-    return &dl_test_handle;
+    /*
+     * Ensure we are "blocking" the loading of the actual shared object so
+     * we can return 'success'. We'll use the 'mock' handle to dlclose()
+     * properly.
+     */
+    size_t it;
+    int rc;
+
+    for (it = 0; it < ARRAY_SIZE(lib_so); it++)
+    {
+       rc = strcmp(file, lib_so[it]);
+       if (!rc) return &dl_test_handle;
+    }
+
+    return __real_dlopen(file, mode);
 }
 
-int dlclose (void *handle)
+extern int __real_dlclose(void *handle);
+int __wrap_dlclose(void *handle)
 {
-    return 0;
+    bool cond;
+
+    /* Nothing to be closed if we are using our local mocked functions */
+    cond = (handle != RTLD_DEFAULT);
+    if (cond) cond &= (handle != RTLD_NEXT);
+    if (cond) cond &= (*(int *)handle == dl_test_handle);
+    if (cond) return 0;
+
+    return __real_dlclose(handle);
 }
 
-void *dlsym (void *handle, const char *name)
+extern void* __real_dlsym(void * , const char *);
+void *__wrap_dlsym(void *handle, const char *name)
 {
-    LOGD("%s %s", __func__, name);
-    return &test_plugin_init;
-}
+    size_t it;
+    bool cond;
+    int rc;
 
-char *dlerror (void)
-{
-    return NULL;
+    /* Find our specific mock function */
+    cond = (handle != RTLD_DEFAULT);
+    if (cond) cond &= (handle != RTLD_NEXT);
+    if (cond) cond &= (*(int *)handle == dl_test_handle);
+    if (cond)
+    {
+        for (it = 0; it < ARRAY_SIZE(fct_ptr_name); it++)
+        {
+           rc = strcmp(name, fct_ptr_name[it]);
+           if (!rc) return &test_plugin_init;
+        }
+
+    }
+
+    /* If things were not mocked, then use the regular call */
+    return __real_dlsym(handle, name);
 }

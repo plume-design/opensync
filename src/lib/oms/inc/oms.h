@@ -105,11 +105,17 @@ struct oms_ovsdb_set
 void
 oms_init_manager(void);
 
+void
+oms_exit_manager(void);
+
 struct oms_mgr *
 oms_get_mgr(void);
 
 void
 oms_ovsdb_init(struct oms_ovsdb_set *oms_set);
+
+void
+oms_ovsdb_exit(struct oms_ovsdb_set *oms_set);
 
 
 /**

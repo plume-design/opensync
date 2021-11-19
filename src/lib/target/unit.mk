@@ -36,6 +36,7 @@ TARGET_COMMON_SRC := src/target_stub.c
 TARGET_COMMON_SRC += src/target_map.c
 TARGET_COMMON_SRC += src/target_linux.c
 TARGET_COMMON_SRC += src/target_mac_learn.c
+TARGET_COMMON_SRC += src/target_om_hook.c
 TARGET_COMMON_SRC += $(if $(CONFIG_TARGET_HWSIM),src/target_hwsim.c,)
 TARGET_COMMON_SRC += $(if $(CONFIG_TARGET_BSAL_SIM),src/target_bsal_sim.c,)
 
@@ -61,6 +62,7 @@ UNIT_DEPS += src/lib/log
 UNIT_DEPS += src/lib/ovs_mac_learn
 UNIT_DEPS += src/lib/osp
 UNIT_DEPS += src/lib/version
+UNIT_DEPS += src/lib/hw_acc
 UNIT_DEPS += $(if $(CONFIG_TARGET_HWSIM),src/lib/hostap,)
 
 UNIT_DEPS_CFLAGS += src/lib/datapipeline

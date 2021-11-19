@@ -86,9 +86,11 @@ void
 fcm_set_node_state(const char *module, const char *key, const char *value)
 {
     struct schema_Node_State node_state;
+    fcm_mgr_t *mgr;
     json_t *where;
     json_t *cond;
 
+    mgr = fcm_get_mgr();
     where = json_array();
 
     cond = ovsdb_tran_cond_single("module", OFUNC_EQ, (char *)module);
@@ -98,7 +100,7 @@ fcm_set_node_state(const char *module, const char *key, const char *value)
     SCHEMA_SET_STR(node_state.module, module);
     SCHEMA_SET_STR(node_state.key, key);
     SCHEMA_SET_STR(node_state.value, value);
-    ovsdb_table_upsert_where(&table_Node_State, where, &node_state, false);
+    mgr->cb_ovsdb_table_upsert_where(&table_Node_State, where, &node_state, false);
 
     json_decref(where);
 

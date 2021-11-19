@@ -255,9 +255,16 @@ struct neigh_interface * neigh_table_get_intf(int ifindex)
 void neigh_table_init_monitor(struct ev_loop *loop,
                               bool system_event, uint32_t ovsdb_event)
 {
+    struct neigh_table_mgr *mgr;
     int rc;
 
+    mgr = neigh_table_get_mgr();
+    if (!mgr->initialized) return;
+
     if (loop == NULL) return;
+
+    mgr->system_event = system_event;
+    mgr->ovsdb_event = ovsdb_event;
 
     if (system_event)
     {
@@ -367,7 +374,17 @@ void neigh_table_cache_cleanup(void)
  */
 void neigh_table_cleanup(void)
 {
+    bool rc;
+    uint32_t ovsdb_event;
     struct neigh_table_mgr *mgr = neigh_table_get_mgr();
+
+    if (!mgr->initialized) return;
+
+    rc = mgr->system_event;
+    if (rc) nf_neigh_exit();
+
+    ovsdb_event = mgr->ovsdb_event;
+    if (ovsdb_event) neigh_src_exit(ovsdb_event);
 
     neigh_table_cache_cleanup();
     mgr->initialized = false;

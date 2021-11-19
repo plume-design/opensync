@@ -488,7 +488,7 @@ void global_test_init(void)
         TEST_FAIL();
     }
 
-    dhcp_plugin_init(session);
+    dhcp_relay_plugin_init(session);
 
     d_session = dhcp_lookup_session(session);
     TEST_ASSERT_NOT_NULL(d_session);
@@ -535,7 +535,7 @@ void global_test_exit(void)
     free_str_tree(session->conf->other_config);
     if (net_parser)     FREE(net_parser);
 
-    dhcp_plugin_exit(session);
+    dhcp_relay_plugin_exit(session);
     g_mgr = NULL;
 }
 

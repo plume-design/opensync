@@ -46,7 +46,7 @@ struct sample_attribute_entries *test_attr_entries;
 struct sample_flow_entries *test_flow_entries;
 
 struct gk_attr_cache_interface *entry1, *entry2, *entry3, *entry4, *entry5;
-struct gkc_ip_flow_interface *flow_entry1, *flow_entry2, *flow_entry3, *flow_entry4;
+struct gkc_ip_flow_interface *flow_entry1, *flow_entry2, *flow_entry3, *flow_entry4, *flow_entry5;
 
 void
 populate_sample_attribute_entries(void)
@@ -196,6 +196,21 @@ create_default_flow_entries(void)
     inet_pton(AF_INET, "1.1.1.1", flow_entry4->src_ip_addr);
     flow_entry4->dst_ip_addr = CALLOC(1, sizeof(struct in6_addr));
     inet_pton(AF_INET, "10.2.4.3", flow_entry4->dst_ip_addr);
+
+    flow_entry5 = CALLOC(1, sizeof(*flow_entry3));
+    flow_entry5->device_mac = str2os_mac("AA:AA:AA:AA:AA:05");
+    flow_entry5->direction = GKC_FLOW_DIRECTION_INBOUND;
+    flow_entry5->src_port = 22;
+    flow_entry5->dst_port = 3333;
+    flow_entry5->ip_version = 4;
+    flow_entry5->protocol = 16;
+    flow_entry5->cache_ttl = 1000;
+    flow_entry5->dst_ip_addr = CALLOC(1, sizeof(struct in6_addr));
+    inet_pton(AF_INET, "2.2.2.2", flow_entry5->dst_ip_addr);
+    flow_entry5->src_ip_addr = CALLOC(1, sizeof(struct in6_addr));
+    inet_pton(AF_INET, "10.2.2.1", flow_entry5->src_ip_addr);
+
+
 }
 
 void
@@ -230,6 +245,7 @@ del_default_flow_entries(void)
     free_flow_interface(flow_entry2);
     free_flow_interface(flow_entry3);
     free_flow_interface(flow_entry4);
+    free_flow_interface(flow_entry5);
 }
 
 void

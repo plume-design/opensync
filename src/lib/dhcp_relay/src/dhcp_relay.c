@@ -37,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include<target.h>
 #include<memutil.h>
 
+#include "kconfig.h"
 #include "fsm_csum_utils.h"
 #include "dhcp_relay.h"
 
@@ -293,7 +294,9 @@ dhcp_prepare_forward(struct dhcp_session *d_session,
     }
 
     memcpy(d_session->raw_dst.sll_addr, eth_header->dstmac, sizeof(os_macaddr_t));
-    memcpy(packet+6, d_session->src_eth_addr.addr, sizeof(d_session->src_eth_addr.addr));
+    if (kconfig_enabled(DHCP_RELAY_SPOOF_SOURCE_MAC)) {
+        memcpy(packet+6, d_session->src_eth_addr.addr, sizeof(d_session->src_eth_addr.addr));
+    }
 }
 
 void
@@ -570,12 +573,12 @@ dhcp_delete_session(struct fsm_session *session)
 }
 
 /**
- * @brief plugin exit callback
+ * @brief dhcp_relay plugin exit callback
  *
  * @param session the fsm session container
  * @return none
  */
-void dhcp_plugin_exit(struct fsm_session *session)
+void dhcp_relay_plugin_exit(struct fsm_session *session)
 {
     struct dhcp_relay_mgr *mgr;
 
@@ -603,14 +606,14 @@ dhcp_mgr_init(void)
 }
 
 /**
- * dhcp_plugin_init: dso initialization entry point
+ * dhcp_relay_plugin_init: dso initialization entry point
  * @session: session pointer provided by fsm
  *
  * Initializes the plugin specific fields of the session,
  * like the pcap handler and the periodic routines called
  * by fsm.
  */
-int dhcp_plugin_init(struct fsm_session *session)
+int dhcp_relay_plugin_init(struct fsm_session *session)
 {
     struct  dhcp_session        *dhcp_session;
     struct  fsm_parser_ops      *parser_ops;
@@ -640,7 +643,7 @@ int dhcp_plugin_init(struct fsm_session *session)
 
     /* Set the fsm session */
     session->ops.periodic = dhcp_periodic;
-    session->ops.exit     = dhcp_plugin_exit;
+    session->ops.exit     = dhcp_relay_plugin_exit;
     session->handler_ctxt = dhcp_session;
 
     /* Set the plugin specific ops */

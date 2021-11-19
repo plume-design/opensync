@@ -47,7 +47,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "const.h"
 #include "log.h"
 
-#define GK_NOT_RATED 100
+#define GK_NOT_RATED 15
 #define GK_UNRATED_TTL (60*60*24)
 #define GK_MULTI_CURL_REQ_TIMEOUT 120
 
@@ -326,6 +326,7 @@ gatekeeper_check_attr_cache(struct fsm_policy_req *req,
                             struct fsm_policy_reply *policy_reply)
 {
     struct gk_attr_cache_interface *entry;
+    struct net_md_stats_accumulator *acc;
     struct fqdn_pending_req *fqdn_req;
     struct fsm_url_request *req_info;
     struct fsm_url_reply *url_reply;
@@ -348,10 +349,12 @@ gatekeeper_check_attr_cache(struct fsm_policy_req *req,
         return false;
     }
 
+    acc = req->acc;
     entry->device_mac = req->device_id;
     entry->ip_addr = req->ip_addr;
     entry->attribute_type = req_type;
     entry->attr_name = req->url;
+    entry->direction = (acc != NULL ? acc->direction : NET_MD_ACC_UNSET_DIR);
     ret = gkc_lookup_attribute_entry(entry, true);
     req_type_str = gatekeeper_req_type_to_str(req_type);
     LOGT("%s(): %s of type %s, is %s in cache",
@@ -374,6 +377,7 @@ gatekeeper_check_attr_cache(struct fsm_policy_req *req,
             url_reply->reply_info.gk_info.gk_policy = STRDUP(entry->gk_policy);
         }
         policy_reply->from_cache = true;
+        policy_reply->cat_unknown_to_service = entry->is_private_ip;
     }
 
     FREE(entry->gk_policy);
@@ -421,6 +425,7 @@ gatekeeper_check_ipflow_cache(struct fsm_policy_req *req,
         /* value found in cache update reply */
         policy_reply->action = flow_entry->action;
         policy_reply->from_cache = true;
+        policy_reply->cat_unknown_to_service = flow_entry->is_private_ip;
     }
 
     FREE(flow_entry);
@@ -505,9 +510,11 @@ gatekeeper_add_attr_cache(struct fsm_policy_req *req,
                           struct fsm_policy_reply *policy_reply)
 {
     struct gk_attr_cache_interface *entry;
+    struct net_md_stats_accumulator *acc;
     struct fqdn_pending_req *fqdn_req;
     struct fsm_url_request *req_info;
     struct fsm_url_reply *url_reply;
+    uint8_t direction;
     int req_type;
     bool ret;
 
@@ -522,18 +529,23 @@ gatekeeper_add_attr_cache(struct fsm_policy_req *req,
         return false;
     }
 
+    acc = req->acc;
+    direction = (acc != NULL) ? acc->direction : NET_MD_ACC_UNSET_DIR;
+
     entry = CALLOC(1, sizeof(*entry));
     if (entry == NULL) return false;
 
     entry->action = policy_reply->action;
     entry->device_mac = req->device_id;
     entry->ip_addr = req->ip_addr;
+    entry->direction = direction;
     entry->attribute_type = req_type;
     entry->cache_ttl = policy_reply->cache_ttl;
     entry->categorized = policy_reply->categorized;
     entry->attr_name = req->url;
     entry->category_id = url_reply->reply_info.gk_info.category_id;
     entry->confidence_level = url_reply->reply_info.gk_info.confidence_level;
+    entry->is_private_ip = policy_reply->cat_unknown_to_service;
     if (url_reply->reply_info.gk_info.gk_policy)
     {
         entry->gk_policy = url_reply->reply_info.gk_info.gk_policy;
@@ -610,6 +622,7 @@ gatekeeper_add_ipflow_cache(struct fsm_policy_req *req,
     flow_entry->dst_port = key->dport;
     flow_entry->category_id = url_reply->reply_info.gk_info.category_id;
     flow_entry->confidence_level = url_reply->reply_info.gk_info.confidence_level;
+    flow_entry->is_private_ip = policy_reply->cat_unknown_to_service;
     if (url_reply->reply_info.gk_info.gk_policy)
     {
         flow_entry->gk_policy = url_reply->reply_info.gk_info.gk_policy;
@@ -926,7 +939,8 @@ gatekeeper_get_verdict(struct fsm_policy_req *req,
     incache = gk_check_policy_in_cache(req, policy_reply);
     if (incache == true)
     {
-        stats->cache_hits++;
+        if (!policy_reply->cat_unknown_to_service)
+            stats->cache_hits++;
         LOGT("%s(): %s found in cache, returning action %d, redirect flag %d from cache",
              __func__,
              req->url,
@@ -1129,6 +1143,16 @@ gatekeeper_monitor_ssl_table(void)
     OVSDB_TABLE_INIT_NO_KEY(SSL);
     OVSDB_TABLE_MONITOR_F(SSL, ((char*[]){"ca_cert", "certificate", "private_key", NULL}));
 }
+
+void
+gatekeeper_unmonitor_ssl_table(void)
+{
+    LOGI("%s(): unmonitoring SSL table", __func__);
+
+    /* Deregister monitor events */
+    ovsdb_unregister_update_cb(table_SSL.monitor.mon_id);
+}
+
 
 
 static const char pattern_fqdn[] =
@@ -1356,6 +1380,7 @@ gatekeeper_exit(struct fsm_session *session)
     gk_curl_easy_cleanup(fsm_gk_session);
     gk_curl_multi_cleanup(fsm_gk_session);
     mgr->initialized = false;
+    gatekeeper_unmonitor_ssl_table();
 
     gatekeeper_delete_session(session);
 }

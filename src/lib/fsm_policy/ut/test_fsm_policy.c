@@ -1505,6 +1505,161 @@ void test_ipthreat_multiple_provider_check(void)
     dns_cache_cleanup_mgr();
 }
 
+/**
+ * @brief validate scenario
+ * where dns_cache says allowed & policy_table action is blocked
+ */
+void test_ipthreat_multiple_provider_block(void)
+{
+    struct fsm_policy_reply *policy_reply;
+    struct dns_cache_settings cache_init;
+    struct net_md_stats_accumulator acc;
+    struct fsm_session session = { 0 };
+    struct schema_FSM_Policy *spolicy;
+    struct fqdn_pending_req fqdn_req;
+    struct fsm_url_request req_info;
+    struct fsm_policy_session *mgr;
+    struct ip2action_req *ip2a_req;
+    struct sockaddr_storage ss_ip;
+    struct sockaddr_in *in4addr;
+    struct net_md_flow_key key;
+    struct policy_table *table;
+    struct fsm_policy *fpolicy;
+    struct fsm_policy_req req;
+    int reply_service_provider;
+    char *ip_str = "1.2.3.4";
+    struct sockaddr_in *in4;
+    int service_provider;
+    os_macaddr_t dev_mac;
+    struct in_addr in_ip;
+    uint32_t v4dstip;
+    bool rc_add, ret;
+    int rc;
+
+    /* Initialize local structures */
+    memset(&fqdn_req, 0, sizeof(fqdn_req));
+    memset(&req_info, 0, sizeof(req_info));
+    memset(&req, 0, sizeof(req));
+    memset(&dev_mac, 0, sizeof(dev_mac));
+    memset(&ss_ip, 0, sizeof(ss_ip));
+    memset(&acc, 0, sizeof(acc));
+    memset(&key, 0, sizeof(key));
+
+    /* Prepare dns cache entry */
+    cache_init.dns_cache_source = MODULE_IPTHREAT_DPI;
+    cache_init.service_provider = IP2ACTION_WP_SVC;
+    dns_cache_init(&cache_init);
+    ip2a_req = CALLOC(1, sizeof(struct ip2action_req));
+    ip2a_req->ip_addr = CALLOC(1, sizeof(struct sockaddr_storage));
+    ip2a_req->device_mac = CALLOC(1, sizeof(os_macaddr_t));
+    ip2a_req->device_mac->addr[0] = 0x00;
+    ip2a_req->device_mac->addr[1] = 0x00;
+    ip2a_req->device_mac->addr[2] = 0x00;
+    ip2a_req->device_mac->addr[3] = 0x00;
+    ip2a_req->device_mac->addr[4] = 0x00;
+    ip2a_req->device_mac->addr[5] = 0x00;
+    ip2a_req->action              = FSM_BLOCK;
+    ip2a_req->cache_ttl           = 600;
+    ip2a_req->policy_idx          = 2;
+    ip2a_req->service_id          = 1;
+    ip2a_req->nelems              = 1;
+    ip2a_req->categories[0]       = 7;
+    ip2a_req->cache_wb.risk_level = 7;
+    v4dstip = htonl(0x01020304);
+    in4addr = (struct sockaddr_in *)ip2a_req->ip_addr;
+    in4addr->sin_family = AF_INET;
+    memcpy(&in4addr->sin_addr, &v4dstip, sizeof(in4addr->sin_addr));
+
+    /* Add DNS cache entry */
+    rc_add = dns_cache_add_entry(ip2a_req);
+    TEST_ASSERT_TRUE(rc_add);
+    print_dns_cache();
+
+    /* Insert ip threat policy */
+    spolicy = &spolicies[10];
+    fsm_add_policy(spolicy);
+    fpolicy = fsm_policy_lookup(spolicy);
+
+    mgr = fsm_policy_get_mgr();
+    table = ds_tree_find(&mgr->policy_tables, spolicy->policy);
+    TEST_ASSERT_NOT_NULL(table);
+
+    /* Validate access to the fsm policy */
+    TEST_ASSERT_NOT_NULL(fpolicy);
+
+    rc = inet_pton(AF_INET, ip_str, &in_ip);
+    TEST_ASSERT_EQUAL_INT(1, rc);
+
+    in4 = (struct sockaddr_in *)&ss_ip;
+
+    memset(in4, 0, sizeof(struct sockaddr_in));
+    in4->sin_family = AF_INET;
+    memcpy(&in4->sin_addr, &in_ip, sizeof(in4->sin_addr));
+
+    fqdn_req.req_info = &req_info;
+    rc = getnameinfo((struct sockaddr *)&ss_ip, sizeof(ss_ip),
+                     fqdn_req.req_info->url, sizeof(fqdn_req.req_info->url),
+                     0, 0, NI_NUMERICHOST);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    rc = strcmp(ip_str, fqdn_req.req_info->url);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    req.device_id = &dev_mac;
+    req.fqdn_req = &fqdn_req;
+
+    key.src_ip = (uint8_t *)&in_ip.s_addr;
+    key.ip_version = 4;
+    acc.key = &key;
+    acc.direction = NET_MD_ACC_OUTBOUND_DIR;
+    acc.originator = NET_MD_ACC_ORIGINATOR_SRC;
+    /* Build the request elements */
+    fqdn_req.numq = 1;
+    req.fqdn_req = &fqdn_req;
+    req.req_type = FSM_IPV4_REQ;
+    req.device_id = &dev_mac;
+    req.ip_addr = &ss_ip;
+    req.acc = &acc;
+    req.url = fqdn_req.req_info->url;
+    req.session = &session;
+
+    policy_reply = fsm_policy_initialize_reply(&session);
+    policy_reply->provider = "gatekeeper";
+    if (policy_reply == NULL)
+    {
+        LOGD("%s(): failed to initialize policy reply", __func__);
+        return;
+    }
+
+    policy_reply->policy_table = table;
+
+    fsm_apply_policies(&req, policy_reply);
+    TEST_ASSERT_EQUAL_INT(FSM_BLOCK, policy_reply->action);
+    TEST_ASSERT_EQUAL_INT(FSM_REPORT_BLOCKED, policy_reply->log);
+    TEST_ASSERT_EQUAL_INT(2, policy_reply->policy_idx);
+
+    service_provider = dns_cache_get_service_provider(policy_reply->provider);
+    reply_service_provider = fqdn_req.req_info->reply->service_id;
+
+    /* Don't report service provider and reply service provider are different */
+    ret = (policy_reply->action == FSM_BLOCK);
+    ret &= (policy_reply->from_cache);
+    ret &= (service_provider != reply_service_provider);
+    if (ret)
+    {
+        policy_reply->to_report = false;
+        LOGT("%s: IPthreat provider :%d and Policy_reply provider: %d are different",
+             __func__, service_provider, reply_service_provider);
+    }
+
+    fsm_policy_free_reply(policy_reply);
+    fsm_free_url_reply(fqdn_req.req_info->reply);
+    FREE(ip2a_req->ip_addr);
+    FREE(ip2a_req->device_mac);
+    FREE(ip2a_req);
+    dns_cache_cleanup_mgr();
+}
+
 
 char *ut_flush = "flushed";
 
@@ -1693,6 +1848,7 @@ int main(int argc, char *argv[])
     RUN_TEST(test_fsm_policy_wildmatch);
     RUN_TEST(test_ipthreat_multiple_provider_check);
     RUN_TEST(test_set_log_action);
+    RUN_TEST(test_ipthreat_multiple_provider_block);
 
     return UNITY_END();
 }

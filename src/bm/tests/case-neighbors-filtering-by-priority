@@ -1,0 +1,322 @@
+#!/bin/sh -axe
+
+. ./common || return 1
+. ./case-neighbors-filtering-by-priority_vars || return 1
+
+connect_5g_sta() {
+	add_sta $1 || return 1
+
+	eval dut=\$$1
+
+	# Disable all RRM calls, they only polute log in this case
+	$dut <<. || return $?
+		ovsh u Band_Steering_Clients \
+			-w mac==20:00:00:00:00:00 \
+			send_rrm_after_assoc:=false \
+			send_rrm_after_xing:=false \
+			'rrm_bcn_rpt_params:=["map",[["enable_scan","false"]]]'
+.
+
+	diff_vars "$ref_client_update_wlan0" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_client_update_wlan1" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_client_update_wlan2" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	bsal_sim write /dut_ap_a_bsal_in "UPDATE_CLIENT mac=20:00:00:00:00:00 btm=true rrm=true rrm_beacon_passive_mes=true rrm_beacon_active_mes=true rrm_beacon_table_mes=true \
+									  assoc_ies=000e6a616e75737a2d66742d74657374010802040b160c12182432043048606c2102001430140100000fac040100000fac040100000fac0200007f0b04004a0201000040000020460570000000003b155151525354737475767778797a7b7c7d7e7f808182dd070050f202000100" || return 1
+	bsal_sim write /dut_ap_a_bsal_in "CONNECT mac=20:00:00:00:00:00 if_name=wlan1" || return 1
+}
+
+add_neighbors() {
+	eval dut=\$$1
+
+	$dut <<. || return $?
+		ovsh i Wifi_VIF_Neighbors \
+			bssid:=aa:aa:aa:aa:11:00 \
+			channel:=52 \
+			ht_mode:=HT80 \
+			if_name:=wlan1 \
+			priority:=0
+.
+
+	diff_vars "$ref_remove_neighbor_wlan0_ext_1100" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan1_ext_1100" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan2_ext_1100" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_remove_neighbor_wlan0_self_00" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan0_self_01" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan0_self_02" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_remove_neighbor_wlan1_self_00" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan1_self_01" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan1_self_02" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_remove_neighbor_wlan2_self_00" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan2_self_01" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan2_self_02" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_set_neighbor_wlan0_ext_1100" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan0_1" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan0_2" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan0_0" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_set_neighbor_wlan1_ext_1100" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan1_1" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan1_2" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_set_neighbor_wlan2_ext_1100" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan2_1" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan2_2" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	$dut <<. || return $?
+		ovsh i Wifi_VIF_Neighbors \
+			bssid:=aa:aa:aa:aa:11:01 \
+			channel:=60 \
+			ht_mode:=HT80 \
+			if_name:=wlan1 \
+			priority:=1
+.
+
+	diff_vars "$ref_remove_neighbor_wlan0_ext_1100" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan1_ext_1100" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan2_ext_1100" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_remove_neighbor_wlan0_ext_1101" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan1_ext_1101" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan2_ext_1101" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_remove_neighbor_wlan0_self_00" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan0_self_01" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan0_self_02" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_remove_neighbor_wlan1_self_00" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan1_self_01" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan1_self_02" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_remove_neighbor_wlan2_self_00" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan2_self_01" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan2_self_02" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_set_neighbor_wlan0_ext_1100" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan0_ext_1101" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan0_1" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan0_2" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan0_0" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_set_neighbor_wlan1_ext_1100" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan1_ext_1101" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan1_1" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan1_2" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_set_neighbor_wlan2_ext_1100" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan2_ext_1101" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan2_1" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan2_2" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	$dut <<. || return $?
+		ovsh i Wifi_VIF_Neighbors \
+			bssid:=aa:aa:aa:aa:11:02 \
+			channel:=100 \
+			ht_mode:=HT80 \
+			if_name:=wlan1 \
+			priority:=1
+.
+
+	diff_vars "$ref_remove_neighbor_wlan0_ext_1100" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan1_ext_1100" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan2_ext_1100" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_remove_neighbor_wlan0_ext_1102" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan1_ext_1102" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan2_ext_1102" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_remove_neighbor_wlan0_ext_1101" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan1_ext_1101" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan2_ext_1101" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_remove_neighbor_wlan0_self_00" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan0_self_01" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan0_self_02" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_remove_neighbor_wlan1_self_00" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan1_self_01" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan1_self_02" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_remove_neighbor_wlan2_self_00" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan2_self_01" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan2_self_02" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_set_neighbor_wlan0_ext_1100" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan0_ext_1102" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan0_ext_1101" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan0_1" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan0_2" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan0_0" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_set_neighbor_wlan1_ext_1100" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan1_ext_1102" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan1_ext_1101" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan1_1" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan1_2" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_set_neighbor_wlan2_ext_1100" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan2_ext_1102" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan2_ext_1101" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan2_1" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan2_2" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	$dut <<. || return $?
+		ovsh i Wifi_VIF_Neighbors \
+			bssid:=aa:aa:aa:aa:11:03 \
+			channel:=108 \
+			ht_mode:=HT80 \
+			if_name:=wlan1 \
+			priority:=1
+.
+
+	diff_vars "$ref_remove_neighbor_wlan0_ext_1100" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan1_ext_1100" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan2_ext_1100" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_remove_neighbor_wlan0_ext_1103" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan1_ext_1103" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan2_ext_1103" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_remove_neighbor_wlan0_ext_1102" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan1_ext_1102" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan2_ext_1102" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_remove_neighbor_wlan0_ext_1101" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan1_ext_1101" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan2_ext_1101" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_remove_neighbor_wlan0_self_00" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan0_self_01" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan0_self_02" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_remove_neighbor_wlan1_self_00" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan1_self_01" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan1_self_02" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_remove_neighbor_wlan2_self_00" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan2_self_01" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan2_self_02" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_set_neighbor_wlan0_ext_1100" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan0_ext_1103" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan0_ext_1102" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan0_ext_1101" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan0_1" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan0_2" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan0_0" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_set_neighbor_wlan1_ext_1100" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan1_ext_1103" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan1_ext_1102" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan1_ext_1101" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan1_1" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan1_2" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_set_neighbor_wlan2_ext_1100" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan2_ext_1103" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan2_ext_1102" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan2_ext_1101" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan2_1" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan2_2" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+}
+
+update_neighbors() {
+	eval dut=\$$1
+
+	# aa:aa:aa:aa:11:00 was added with the highest priority, change it to the lowest
+	$dut <<. || return 0
+		ovsh u Wifi_VIF_Neighbors \
+			-w bssid==aa:aa:aa:aa:11:00 \
+			priority:=4
+.
+
+	diff_vars "$ref_remove_neighbor_wlan0_ext_1103" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan1_ext_1103" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan2_ext_1103" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_remove_neighbor_wlan0_ext_1102" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan1_ext_1102" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan2_ext_1102" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_remove_neighbor_wlan0_ext_1101" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan1_ext_1101" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan2_ext_1101" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_remove_neighbor_wlan0_ext_1100" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan1_ext_1100" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan2_ext_1100" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_remove_neighbor_wlan0_self_00" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan0_self_01" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan0_self_02" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_remove_neighbor_wlan1_self_00" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan1_self_01" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan1_self_02" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_remove_neighbor_wlan2_self_00" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan2_self_01" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_remove_neighbor_wlan2_self_02" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_set_neighbor_wlan0_ext_1103" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan0_ext_1102" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan0_ext_1101" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan0_ext_1100" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan0_1" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan0_2" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan0_0" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_set_neighbor_wlan1_ext_1103" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan1_ext_1102" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan1_ext_1101" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan1_ext_1100" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan1_1" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan1_2" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_set_neighbor_wlan2_ext_1103" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan2_ext_1102" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan2_ext_1101" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan2_ext_1100" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan2_1" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan2_2" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+}
+
+first_steer_sta() {
+	eval dut=\$$1
+
+	sleep 1
+
+	bsal_sim write /dut_ap_a_bsal_in "RSSI_XING mac=20:00:00:00:00:00 if_name=wlan1 snr=25" || return 1
+	bsal_sim write /dut_ap_a_bsal_in "RSSI_XING mac=20:00:00:00:00:00 if_name=wlan1 snr=15 low_xing=lower" || return 1
+
+	sleep 1
+
+	diff_vars "$ref_first_btm_req" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_first_btm_req_retry" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+}
+
+second_steer_sta() {
+	eval dut=\$$1
+
+	sleep 1
+
+	bsal_sim write /dut_ap_a_bsal_in "RSSI_XING mac=20:00:00:00:00:00 if_name=wlan1 snr=25" || return 1
+	bsal_sim write /dut_ap_a_bsal_in "RSSI_XING mac=20:00:00:00:00:00 if_name=wlan1 snr=15 low_xing=lower" || return 1
+
+	sleep 1
+
+	diff_vars "$ref_second_btm_req" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+}
+
+step prepare_dut dut_ap_a
+step connect_5g_sta dut_ap_a
+
+step add_neighbors dut_ap_a
+step first_steer_sta dut_ap_a
+
+step update_neighbors dut_ap_a
+step second_steer_sta dut_ap_a

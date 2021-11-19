@@ -919,11 +919,9 @@ mdns_records_free_packed_buffer(packed_buffer_t *pb)
  * @return result of mqtt send
  */
 bool
-mdns_records_send_report(mdns_records_report_data_t *report, char *mqtt_topic)
+mdns_records_send_report(mdns_records_report_data_t *report, struct fsm_session *session)
 {
     packed_buffer_t *pb      = NULL;
-    bool            ret      = false;
-    qm_response_t   res;
 
     if (!report)
     {
@@ -931,7 +929,7 @@ mdns_records_send_report(mdns_records_report_data_t *report, char *mqtt_topic)
         return false;
     }
 
-    if (!mqtt_topic)
+    if (!session->topic)
     {
         LOGE("%s: MQTT topic is NULL", __func__);
         return false;
@@ -944,13 +942,7 @@ mdns_records_send_report(mdns_records_report_data_t *report, char *mqtt_topic)
         return false;
     }
 
-    ret = qm_conn_send_direct(QM_REQ_COMPRESS_IF_CFG, mqtt_topic,
-                              pb->buf, pb->len, &res);
-    if (!ret)
-    {
-        LOGE("%s: Mdns records report sending failed", __func__);
-        return false;
-    }
+    session->ops.send_pb_report(session, session->topic, pb->buf, pb->len);
 
     // Free the serialized container
     mdns_records_free_packed_buffer(pb);

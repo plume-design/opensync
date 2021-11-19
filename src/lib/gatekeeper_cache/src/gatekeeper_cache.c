@@ -415,6 +415,7 @@ gkc_new_attr_entry(struct gk_attr_cache_interface *entry)
     new_attr_cache->categorized = entry->categorized;
     new_attr_cache->category_id = entry->category_id;
     new_attr_cache->confidence_level = entry->confidence_level;
+    new_attr_cache->is_private_ip = entry->is_private_ip;
     if (entry->gk_policy)
     {
         new_attr_cache->gk_policy = STRDUP(entry->gk_policy);
@@ -444,6 +445,7 @@ gkc_insert_host_name(ds_tree_t *cache, struct gk_attr_cache_interface *entry)
     struct attr_cache *new_attr_cache;
     struct attr_hostname_s *attr;
     time_t now;
+    bool rc;
 
     /* Perform the lookup before right before the actual insert.
      * In the present case, we can have more than one 'add' for each
@@ -454,6 +456,15 @@ gkc_insert_host_name(ds_tree_t *cache, struct gk_attr_cache_interface *entry)
     cached_attr_entry = gkc_fetch_attribute_entry(entry);
     if (cached_attr_entry)
     {
+        rc = cached_attr_entry->is_private_ip;
+        if (rc)
+        {
+            now = time(NULL);
+            cached_attr_entry->cache_ts = now;
+            entry->is_private_ip = cached_attr_entry->is_private_ip;
+            return false;
+        }
+
         /* we don't need to test for validity as we just looked it up */
         attr = cached_attr_entry->attr.host_name;
 
@@ -848,8 +859,9 @@ gkc_lookup_attr_tree(ds_tree_t *tree, struct gk_attr_cache_interface *req, bool 
     union attribute_type *attr;
     int hit_count;
     uint64_t key;
+    bool rc;
 
-    if (!req->attr_name) return false;
+    if (!req->attr_name && !req->ip_addr) return false;
 
     if (req->cache_key == 0)
         req->cache_key = get_attr_key(req);
@@ -858,11 +870,12 @@ gkc_lookup_attr_tree(ds_tree_t *tree, struct gk_attr_cache_interface *req, bool 
     attr_entry = ds_tree_find(tree, &key);
     if (attr_entry == NULL) return false;
     attr = &attr_entry->attr;
+    rc = attr_entry->is_private_ip;
 
     hit_count = req->hit_counter;
 
     /* increment the hit counter for this attribute */
-    if (update_count)
+    if (update_count && !rc)
     {
         switch (req->attribute_type)
         {
@@ -913,6 +926,7 @@ gkc_lookup_attr_tree(ds_tree_t *tree, struct gk_attr_cache_interface *req, bool 
     req->categorized = attr_entry->categorized;
     req->category_id = attr_entry->category_id;
     req->confidence_level = attr_entry->confidence_level;
+    req->is_private_ip = attr_entry->is_private_ip;
 
     gkc_lookup_redirect_entry(req, attr_entry);
 
@@ -1054,6 +1068,68 @@ gkc_fetch_attribute_entry(struct gk_attr_cache_interface *req)
 
     return cache_entry;
 }
+
+
+/**
+ * @brief upate or add the given attribute to the cache.
+ *
+ * @params: req: interface structure specifing the attribute request
+ *
+ * @return true for success and false for failure.
+ */
+bool
+gkc_upsert_attribute_entry(struct gk_attr_cache_interface *entry)
+{
+    struct attr_cache *attr_entry;
+    time_t now;
+    bool rc;
+
+    /* Fetch the cache entry */
+    attr_entry = gkc_fetch_attribute_entry(entry);
+    if (attr_entry == NULL) /* Add the entry if not found */
+    {
+        rc = gkc_add_attribute_entry(entry);
+        if (!rc)
+        {
+            LOGD("%s: Couldn't add ip entry to gatekeeper cache.", __func__);
+        }
+        return rc;
+    }
+
+    /* Update the entry */
+    attr_entry->action = entry->action;
+    attr_entry->categorized = entry->categorized;
+    attr_entry->category_id = entry->category_id;
+    attr_entry->confidence_level = entry->confidence_level;
+    attr_entry->is_private_ip = entry->is_private_ip;
+    now = time(NULL);
+    attr_entry->cache_ts = now;
+
+    if (entry->gk_policy != NULL)
+    {
+        if (attr_entry->gk_policy != NULL)
+        {
+            int ret;
+
+            ret = strcmp_len(attr_entry->gk_policy, strlen(attr_entry->gk_policy),
+                             entry->gk_policy, strlen(entry->gk_policy));
+            if (ret)
+            {
+                FREE(attr_entry->gk_policy);
+                attr_entry->gk_policy = STRDUP(entry->gk_policy);
+            }
+        }
+        else
+        {
+            attr_entry->gk_policy = STRDUP(entry->gk_policy);
+        }
+    }
+    /* Leaving the redirecting fields alone for now */
+
+    return true;
+}
+
+
 
 /**
  * @brief Delete fqdn entry.
@@ -1231,9 +1307,10 @@ dump_attr_tree(ds_tree_t *tree, enum gk_cache_request_type req_type)
         switch (req_type)
         {
             case GK_CACHE_INTERNAL_TYPE_HOSTNAME:
-                LOGT("\t\t\t %s, %s, %" PRId64 " , %" PRId64 " , %" PRId64 "",
+                LOGT("\t\t\t %s, %s, %s, %" PRId64 " , %" PRId64 " , %" PRId64 "",
                      attr->host_name->name,
                      dir2str(entry->direction),
+                     fsm_policy_get_action_str(entry->action),
                      attr->host_name->count_fqdn.total,
                      attr->host_name->count_host.total,
                      attr->host_name->count_sni.total
@@ -1241,34 +1318,38 @@ dump_attr_tree(ds_tree_t *tree, enum gk_cache_request_type req_type)
                 break;
 
             case GK_CACHE_REQ_TYPE_URL:
-                LOGT("\t\t\t %s, %s, %" PRId64 "",
+                LOGT("\t\t\t %s, %s, %s, %" PRId64 "",
                      attr->url->name,
                      dir2str(entry->direction),
+                     fsm_policy_get_action_str(entry->action),
                      attr->url->hit_count.total);
                 break;
 
             case GK_CACHE_REQ_TYPE_IPV4:
                 in4 = (struct sockaddr_in *)&(attr->ipv4->ip_addr);
                 inet_ntop(AF_INET, &in4->sin_addr, ip_str, INET_ADDRSTRLEN);
-                LOGT("\t\t\t %s, %s, %" PRId64 "",
+                LOGT("\t\t\t %s, %s, %s, %" PRId64 "",
                      ip_str,
                      dir2str(entry->direction),
+                     fsm_policy_get_action_str(entry->action),
                      attr->ipv4->hit_count.total);
                 break;
 
             case GK_CACHE_REQ_TYPE_IPV6:
                 in6 = (struct sockaddr_in6 *)&(attr->ipv6->ip_addr);
                 inet_ntop(AF_INET6, &in6->sin6_addr, ip_str, INET6_ADDRSTRLEN);
-                LOGT("\t\t\t %s, %s, %" PRId64 "",
+                LOGT("\t\t\t %s, %s, %s, %" PRId64 "",
                      ip_str,
                      dir2str(entry->direction),
+                     fsm_policy_get_action_str(entry->action),
                      attr->ipv6->hit_count.total);
                 break;
 
             case GK_CACHE_REQ_TYPE_APP:
-                LOGT("\t\t\t %s, %s, %" PRId64 "",
+                LOGT("\t\t\t %s, %s, %s, %" PRId64 "",
                      attr->app_name->name,
                      dir2str(entry->direction),
+                     fsm_policy_get_action_str(entry->action),
                      attr->app_name->hit_count.total);
                 break;
 
@@ -1294,13 +1375,15 @@ dump_flow_tree(ds_tree_t *tree)
         domain = (entry->ip_version == 4 ? AF_INET : AF_INET6);
         inet_ntop(domain, entry->src_ip_addr, src_ip_str, sizeof(src_ip_str));
         inet_ntop(domain, entry->dst_ip_addr, dst_ip_str, sizeof(dst_ip_str));
-        LOGT("src ip %s, dst ip: %s sport: %d, dport: %d proto: %d action: %d",
+        LOGT("src ip %s, dst ip: %s sport: %d, dport: %d proto: %d action: %d, private ip: %s, hitcount: %" PRIu64 ,
              src_ip_str,
              dst_ip_str,
              entry->src_port,
              entry->dst_port,
              entry->protocol,
-             entry->action);
+             entry->action,
+             (entry->is_private_ip ? "true" : "false"),
+             entry->hit_count.total);
     }
 }
 
@@ -1315,6 +1398,8 @@ gkc_print_cache_entries(void)
     struct gk_cache_mgr *mgr;
     ds_tree_t *subtree;
     ds_tree_t *tree;
+
+    if (!LOG_SEVERITY_ENABLED(LOG_SEVERITY_TRACE)) return;
 
     mgr = gk_cache_get_mgr();
     if (!mgr->initialized) return;

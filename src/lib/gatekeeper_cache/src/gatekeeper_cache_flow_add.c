@@ -70,6 +70,7 @@ gkc_new_flow_entry(struct gkc_ip_flow_interface *req)
     flow_entry->protocol  = req->protocol;
     flow_entry->cache_ttl = req->cache_ttl;
     flow_entry->action    = req->action;
+    flow_entry->is_private_ip = req->is_private_ip;
 
     if (req->gk_policy)
     {

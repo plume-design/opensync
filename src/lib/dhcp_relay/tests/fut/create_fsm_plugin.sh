@@ -177,7 +177,7 @@ tag_name=dev_tag_dhcp
 # Flow_Service_Manager_Config parameters
 filter="udp port 67 or udp port 547"
 plugin=/usr/plume/lib/libfsm_dhcp_relay.so
-dso_init=dhcp_plugin_init
+dso_init=dhcp_relay_plugin_init
 fsm_handler=dev_dhcp_relay # must start with 'dev' so the controller leaves it alone
 
 priority=200 # must be higher than controller pushed rules

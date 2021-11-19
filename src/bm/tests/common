@@ -126,6 +126,16 @@ prepare_dut() {
 	diff_vars "$ref_iface_wlan0" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
 	diff_vars "$ref_iface_wlan1" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
 	diff_vars "$ref_iface_wlan2" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_set_neighbor_wlan0_1" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan0_2" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan0_0" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_set_neighbor_wlan1_1" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan1_2" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+
+	diff_vars "$ref_set_neighbor_wlan2_1" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
+	diff_vars "$ref_set_neighbor_wlan2_2" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
 }
 
 add_sta() {
@@ -150,13 +160,13 @@ add_sta() {
 			sc_kick_debounce_period:=0  \
 			sc_kick_reason:=0  \
 			steer_during_backoff:=true  \
-			'steering_btm_params:=["map",[["abridged","1"],["bss_term","0"],["btm_max_retries","3"],["btm_retry_interval","10"],["disassoc_imminent","0"],["pref","1"],["valid_interval","255"]]]'  \
+			'steering_btm_params:=["map",[["abridged","1"],["bss_term","0"],["btm_max_retries","0"],["btm_retry_interval","1"],["disassoc_imminent","0"],["pref","1"],["valid_interval","255"]]]'  \
 			steering_fail_cnt:=0  \
 			steering_kick_backoff_time:=1800  \
 			steering_kick_cnt:=0  \
 			steering_kick_guard_time:=10  \
 			steering_success_cnt:=0  \
-			'sticky_btm_params:=["map",[["abridged","1"],["bss_term","0"],["btm_max_retries","3"],["btm_retry_interval","10"],["disassoc_imminent","0"],["inc_neigh","true"],["pref","1"],["valid_interval","255"]]]'  \
+			'sticky_btm_params:=["map",[["abridged","1"],["bss_term","0"],["btm_max_retries","0"],["btm_retry_interval","1"],["disassoc_imminent","0"],["inc_neigh","true"],["pref","1"],["valid_interval","255"]]]'  \
 			sticky_kick_backoff_time:=0  \
 			sticky_kick_cnt:=0  \
 			sticky_kick_debounce_period:=60  \
@@ -164,16 +174,6 @@ add_sta() {
 			sticky_kick_reason:=1  \
 			sticky_kick_type:=btm_deauth
 .
-
-	diff_vars "$ref_set_neighbor_wlan0_0" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
-	diff_vars "$ref_set_neighbor_wlan0_2" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
-	diff_vars "$ref_set_neighbor_wlan0_1" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
-
-	diff_vars "$ref_set_neighbor_wlan1_1" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
-	diff_vars "$ref_set_neighbor_wlan1_2" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
-
-	diff_vars "$ref_set_neighbor_wlan2_1" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
-	diff_vars "$ref_set_neighbor_wlan2_2" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
 
 	diff_vars "$ref_sta_24" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1
 	diff_vars "$ref_sta_5" "$(timeout 1 bsal_sim read /${1}_bsal_out)" || return 1

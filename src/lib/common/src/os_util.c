@@ -106,7 +106,7 @@ char *os_util_strncpy(char *dest, const char *src, int32_t n)
     return dest;
 }
 
-static bool os_util_is_hex_char(char c)
+static bool os_util_is_hex_char(const char c)
 {
     if ((c >= '0') && (c <= '9'))
         return true;
@@ -120,7 +120,7 @@ static bool os_util_is_hex_char(char c)
     return false;
 }
 
-bool os_util_is_valid_mac_str(char *mac_str)
+bool os_util_is_valid_mac_str(const char *mac_str)
 {
     int i,j;
     bool rc = false;               /* 0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16  17   */

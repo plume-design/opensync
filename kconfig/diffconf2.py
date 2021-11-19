@@ -1,4 +1,4 @@
-#! /usr/bin/python3 -s
+#! /usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0
 #
 # diffconf2 - a tool to compare .config files.

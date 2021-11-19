@@ -1287,6 +1287,62 @@ test_gk_dns_cache(void)
 }
 
 
+/**
+ * @brief Basic test processing a reverse look up (type 12)
+ */
+void
+test_reverse_lookup(void)
+{
+    struct net_header_parser *net_parser;
+    struct schema_FSM_Policy *spolicy;
+    struct dns_session *dns_session;
+    size_t nelems;
+    size_t len;
+    size_t i;
+
+    /* Delete all policies */
+    nelems = (sizeof(g_spolicies) / sizeof(g_spolicies[0]));
+    for (i = 0; i < nelems; i++)
+    {
+        spolicy = &g_spolicies[i];
+
+        fsm_delete_policy(spolicy);
+    }
+
+    /* Add the update_tag policy */
+    spolicy = &g_spolicies[3];
+    fsm_add_policy(spolicy);
+    dns_session = dns_lookup_session(g_fsm_parser);
+    TEST_ASSERT_NOT_NULL(dns_session);
+
+    net_parser = CALLOC(1, sizeof(*net_parser));
+
+    /* Process query */
+    PREPARE_UT(pkt1, net_parser);
+    len = net_header_parse(net_parser);
+    TEST_ASSERT_TRUE(len != 0);
+    dns_handler(g_fsm_parser, net_parser);
+
+    /*
+     * The captured dns answer has 8 resolved IP addresses.
+     * Set validation expectations
+     */
+    g_ipv4_cnt = 0;
+
+    /* Process response */
+    memset(net_parser, 0, sizeof(*net_parser));
+    PREPARE_UT(pkt2, net_parser);
+    len = net_header_parse(net_parser);
+    TEST_ASSERT_TRUE(len != 0);
+    dns_handler(g_fsm_parser, net_parser);
+
+    g_dns_mgr->req_cache_ttl = 0;
+    dns_retire_reqs(g_fsm_parser);
+
+    FREE(net_parser);
+}
+
+
 
 int main(int argc, char *argv[])
 {
@@ -1314,6 +1370,7 @@ int main(int argc, char *argv[])
     RUN_TEST(test_update_v4_tag_generation_ip_expiration);
     RUN_TEST(test_update_v6_tag_generation_ip_expiration);
     RUN_TEST(test_gk_dns_cache);
+    RUN_TEST(test_reverse_lookup);
 
     return UNITY_END();
 }

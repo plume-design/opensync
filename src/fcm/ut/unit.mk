@@ -37,6 +37,9 @@ UNIT_SRC += ../src/fcm_event.c
 UNIT_CFLAGS := -I$(UNIT_PATH)/../inc
 
 UNIT_LDFLAGS := -lev
+UNIT_LDFLAGS += -Wl,--wrap=dlopen
+UNIT_LDFLAGS += -Wl,--wrap=dlsym
+UNIT_LDFLAGS += -Wl,--wrap=dlclose
 
 UNIT_DEPS := src/lib/log
 UNIT_DEPS += src/lib/common

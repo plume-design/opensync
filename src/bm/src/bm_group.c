@@ -336,16 +336,18 @@ bm_group_ovsdb_update_cb(ovsdb_update_monitor_t *self)
                      group->uuid);
                 FREE(group);
                 return;
-	    }
-
-            if (!bm_neighbor_get_self_neighbor(group->ifcfg[i].bsal.ifname, &group->ifcfg[i].self_neigh))
-                LOGW("Failed to get self neighbor %s", group->ifcfg[i].bsal.ifname);
+            }
 
             LOGN("Added %s ifname (uuid=%s)", group->ifcfg[i].ifname, group->uuid);
         }
 
         group->enabled = true;
         ds_tree_insert(&bm_groups, group, group->uuid);
+
+        for (i = 0; i < group->ifcfg_num; i++) {
+            if (!bm_neighbor_get_self_neighbor(group->ifcfg[i].bsal.ifname, &group->ifcfg[i].self_neigh))
+                LOGW("Failed to get self neighbor %s", group->ifcfg[i].bsal.ifname);
+        }
 
         if (!bm_client_add_all_to_group(group)) {
             LOGW("Failed to add one or more clients to if-group");
@@ -522,6 +524,7 @@ bm_group_find_radio_type_by_ifname(const char *ifname)
         }
     }
 
+    WARN_ON(1);
     return RADIO_TYPE_NONE;
 }
 

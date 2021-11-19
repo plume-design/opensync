@@ -134,6 +134,12 @@ void ut_ovsdb_init(void)
     return;
 }
 
+void ut_ovsdb_exit(void)
+{
+    return;
+}
+
+
 char *
 util_get_other_config_val(struct fsm_session *session, char *key)
 {
@@ -291,6 +297,7 @@ void test_load_unload_plugin(void)
     mdns_mgr_init();
     mgr = mdns_get_mgr();
     mgr->ovsdb_init = ut_ovsdb_init;
+    mgr->ovsdb_exit = ut_ovsdb_exit;
 
     mdns_plugin_init(session);
 
@@ -315,6 +322,7 @@ void test_add_mdnsd_service(void)
 
     mgr = mdns_get_mgr();
     mgr->ovsdb_init = ut_ovsdb_init;
+    mgr->ovsdb_exit = ut_ovsdb_exit;
 
     mdns_plugin_init(session);
     pctxt = mgr->ctxt;
@@ -374,6 +382,7 @@ void test_del_mdnsd_service(void)
 
     mgr = mdns_get_mgr();
     mgr->ovsdb_init = ut_ovsdb_init;
+    mgr->ovsdb_exit = ut_ovsdb_exit;
 
     mdns_plugin_init(session);
     pctxt = mgr->ctxt;
@@ -446,6 +455,7 @@ void test_modify_mdnsd_service(void)
 
     mgr = mdns_get_mgr();
     mgr->ovsdb_init = ut_ovsdb_init;
+    mgr->ovsdb_exit = ut_ovsdb_exit;
 
     mdns_plugin_init(session);
     pctxt = mgr->ctxt;
@@ -584,6 +594,7 @@ test_mdns_parser(void)
     mdns_mgr_init();
     mgr = mdns_get_mgr();
     mgr->ovsdb_init = ut_ovsdb_init;
+    mgr->ovsdb_exit = ut_ovsdb_exit;
 
     /* Prepare the mdns fsm session */
     session = &g_sessions[0];

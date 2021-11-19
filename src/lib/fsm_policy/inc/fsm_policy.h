@@ -437,7 +437,7 @@ void fsm_init_manager(void);
 struct fsm_policy_session * fsm_policy_get_mgr(void);
 void fsm_walk_policy_macs(struct fsm_policy *p);
 void fsm_policy_init(void);
-
+const char *fsm_policy_get_action_str(int action);
 bool fqdn_pre_validation(char *fqdn_string);
 struct fsm_policy *fsm_policy_lookup(struct schema_FSM_Policy *policy);
 struct fsm_policy *fsm_policy_get(struct schema_FSM_Policy *policy);

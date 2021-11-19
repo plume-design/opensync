@@ -42,6 +42,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "monitor.h"
 #include "json_util.h"
 #include "target.h"
+#include "dm_mod.h"
 
 #include "dm.h"
 #include "module.h"
@@ -146,6 +147,8 @@ int main (int argc, char ** argv)
     log_register_dynamic_severity(loop);
 
     dm_hook_init(loop);
+
+    dm_mod_init();
 
     dm_apply_cfg();
 

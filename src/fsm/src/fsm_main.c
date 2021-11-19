@@ -151,6 +151,8 @@ int main(int argc, char ** argv)
 
     neigh_table_cleanup();
 
+    fsm_oms_exit();
+
     if (!ovsdb_stop_loop(loop)) {
         LOGE("Stopping FSM "
              "(Failed to stop OVSDB");

@@ -43,6 +43,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 extern fcm_collect_plugin_t *test_plugin;
 static const char *test_name = "fcm_mgr_ut";
 
+struct test_mgr
+{
+    bool has_ovsdb;
+} g_test_mgr;
+
 static struct schema_FCM_Collector_Config test_collect[] =
 {
     {
@@ -152,11 +157,41 @@ static struct schema_FCM_Report_Config test_report[] =
 void setUp() {}
 void tearDown() {}
 
+bool native_ovsdb_table_upsert_where(ovsdb_table_t *table, json_t *where, void *record, bool update_uuid)
+{
+    LOGD("%s: Upsert opration for native platform", __func__);
+    return true;
+}
+
+int fcm_ovsdb_test_setup(void)
+{
+#if !defined(__x86_64__)
+    g_test_mgr.has_ovsdb = true;
+#else
+    g_test_mgr.has_ovsdb = false;
+#endif
+    return 0;
+}
+
 void fcm_test_init(void)
 {
     struct ev_loop *loop = EV_DEFAULT;
+    fcm_mgr_t *mgr;
+
+    mgr = fcm_get_mgr();
     fcm_init_mgr(loop);
     fcm_event_init();
+    fcm_ovsdb_test_setup();
+
+    if (g_test_mgr.has_ovsdb)
+    {
+        mgr->cb_ovsdb_table_upsert_where = ovsdb_table_upsert_where;
+    }
+    else
+    {
+        mgr->cb_ovsdb_table_upsert_where = native_ovsdb_table_upsert_where;
+    }
+
     fcm_ovsdb_init();
     fcm_filter_init();
 }

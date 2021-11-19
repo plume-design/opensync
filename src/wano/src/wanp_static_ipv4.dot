@@ -3,7 +3,9 @@ digraph {
     INIT -> CONFIGURE_IP;
     CONFIGURE_IP -> PROBE [label="INET_STATE_UPDATE"];
     PROBE -> PROBE [label="PING_FAILED"];
-    PROBE -> RUNNING [label="PING_SUCCEEDED"];
+    PROBE -> PROBE [label="INET_STATE_UPDATE"];
+    PROBE -> CONFIGURE_GW [label="PING_SUCCEEDED"];
+    CONFIGURE_GW -> RUNNING [label="INET_STATE_UPDATE"];
 
     TIMEOUT_EX[label="Timeout occurred"];
     CANCEL_EX[label="WAN cancelled"];

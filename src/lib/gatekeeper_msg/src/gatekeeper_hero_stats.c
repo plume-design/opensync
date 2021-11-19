@@ -1098,7 +1098,7 @@ int
 gkhc_send_report(struct fsm_session *session, long interval)
 {
     struct fsm_gk_session *fsm_gk_session;
-    double cmp_report;
+    time_t cmp_report;
     bool get_stats;
     int retval;
     time_t now;
@@ -1114,24 +1114,28 @@ gkhc_send_report(struct fsm_session *session, long interval)
 
     cmp_report = now - fsm_gk_session->hero_stats_report_ts;
     get_stats = (cmp_report >= interval);
-    if (get_stats)
+    if (!get_stats)
+        return retval;
+
+    LOGT("%s: Reporting HERO stats", __func__);
+    gkhc_close_window(fsm_gk_session->hero_stats);
+
+    /* Report to mqtt */
+    retval = gkhc_build_and_send_report(fsm_gk_session->hero_stats,
+                                        fsm_gk_session->hero_stats_report_topic);
+
+    if (retval > 0)
     {
-        LOGI("%s: Reporting HERO stats", __func__);
-        gkhc_close_window(fsm_gk_session->hero_stats);
-
-        /* Report to mqtt */
-        retval = gkhc_build_and_send_report(fsm_gk_session->hero_stats,
-                                            fsm_gk_session->hero_stats_report_topic);
-
-        fsm_gk_session->hero_stats_report_ts = now;
-        gkhc_activate_window(fsm_gk_session->hero_stats);
-        LOGT("%s: Reporting complete", __func__);
+        LOGI("%s: HERO stats sent in %d reports after %ld seconds", __func__, retval, cmp_report);
     }
     else
     {
-        LOGT("%s: Does not need to send HERO stats", __func__);
+        LOGD("%s: HERO stats didn't generate any report after %ld seconds", __func__, cmp_report);
     }
 
+    /* Set up the start of next observation window */
+    fsm_gk_session->hero_stats_report_ts = now;
+    gkhc_activate_window(fsm_gk_session->hero_stats);
 
     return retval;
 }

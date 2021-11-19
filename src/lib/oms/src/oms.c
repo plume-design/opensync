@@ -259,3 +259,16 @@ oms_init_manager(void)
 
     mgr->initialized = true;
 }
+
+void
+oms_exit_manager(void)
+{
+    struct oms_mgr *mgr;
+    mgr = oms_get_mgr();
+
+    if (!mgr->initialized) return;
+
+    oms_delete_state_entries();
+    oms_delete_config_entries();
+    mgr->initialized = false;
+}

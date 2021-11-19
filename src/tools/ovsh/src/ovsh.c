@@ -48,7 +48,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "memutil.h"
 
 #define OVSH_COL_NUM    256
-#define OVSH_COL_STR   1024
+#define OVSH_COL_STR   4096
 #define UUID_STR_LEN     36
 
 #define DEBUG(...) if (ovsh_opt_verbose) { fprintf(stderr, "[DEBUG] "); fprintf(stderr, __VA_ARGS__); }

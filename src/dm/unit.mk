@@ -48,6 +48,7 @@ endif
 UNIT_SRC += src/dm_st.c
 UNIT_SRC += src/dm_st_iperf.c
 UNIT_SRC += src/dm_st_plugin.c
+UNIT_SRC += src/dm_mod.c
 
 # Unit specific CFLAGS
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc

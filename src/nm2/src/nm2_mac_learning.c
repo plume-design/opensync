@@ -375,7 +375,8 @@ int nm2_mac_entry_cmp(void *_a, void *_b)
     rc = strcmp(a->me_brname, b->me_brname);
     if (rc != 0) return rc;
 
-    if (a->vlan != b->vlan) return -1;
+    rc = a->vlan - b->vlan;
+    if (rc != 0) return rc;
 
     return osn_mac_addr_cmp(&a->me_mac, &b->me_mac);
 }

@@ -25,6 +25,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include "bm.h"
+#include "util.h"
 #include "bm_ieee80211.h"
 
 static void
@@ -37,6 +38,9 @@ bm_action_frame_radio_measurement_report(bm_client_t *client,
     struct rrm_measurement_beacon_report *beacon_report;
     const u8 *ies;
     u8 len;
+
+    if (bm_client_should_ignore_beacon_measurement_reports(client))
+        return;
 
     ies = payload + 1;
     len = plen - 1;
@@ -55,6 +59,29 @@ bm_action_frame_radio_measurement_report(bm_client_t *client,
                 LOGI("%s skip beacon report len %d", client->mac_addr, report_element->len);
                 break;
             }
+
+            /* Check if "channel" is a valid operating channel */
+            if (!unii_5g_chan2list(beacon_report->channel, 20)) {
+                LOGI("%s ignore beacon report due to invalid 20 MHz channel: %d", client->mac_addr,
+                     beacon_report->channel);
+                bm_client_ignore_beacon_measurement_reports(client);
+                return;
+            }
+
+            /* See IEEE 802.11-2016; Table 9-154—RCPI values */
+            if (beacon_report->rcpi < 1 || beacon_report->rcpi > 219) {
+                LOGI("%s skip beacon report due to RCPI value being outside of usable/valid range: %d", client->mac_addr,
+                     beacon_report->rcpi);
+
+                if (beacon_report->rcpi == 255) {
+                    /* 255 stands for "Measurement not available", just skip this single report */
+                    continue;
+                }
+
+                bm_client_ignore_beacon_measurement_reports(client);
+                return;
+            }
+
             WARN_ON(!bm_client_set_rrm_neighbor(client, beacon_report->bssid,
                                                 beacon_report->channel, beacon_report->rcpi,
                                                 beacon_report->rsni));

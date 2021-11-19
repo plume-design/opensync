@@ -290,3 +290,16 @@ fsm_oms_init(void)
     oms_ovsdb_init(&oms_set);
     return;
 }
+
+void
+fsm_oms_exit(void)
+{
+    struct oms_ovsdb_set oms_set;
+    MEMZERO(oms_set);
+    oms_set.monitor_config = true;
+    oms_set.monitor_state = false;
+    oms_set.monitor_awlan = false;
+
+    oms_ovsdb_exit(&oms_set);
+    oms_exit_manager();
+}

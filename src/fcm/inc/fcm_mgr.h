@@ -34,6 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ds_tree.h"
 #include "fcm.h"
 #include "schema.h"
+#include "ovsdb_table.h"
 
 #define FCM_NEIGH_SYS_ENTRY_TTL (36*60*60)
 
@@ -49,6 +50,7 @@ typedef struct fcm_mgr_
     int64_t neigh_cache_ttl;     // neighbour table cache ttl
     struct sysinfo sysinfo;      /* system information */
     uint64_t max_mem;            /* max amount of memory allowed in kB */
+    bool (*cb_ovsdb_table_upsert_where)(ovsdb_table_t *, json_t *, void *, bool );
 } fcm_mgr_t;
 
 bool fcm_init_mgr(struct ev_loop *loop);

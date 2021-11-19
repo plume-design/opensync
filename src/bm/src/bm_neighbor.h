@@ -65,8 +65,7 @@ unsigned int    bm_neighbor_number(bm_client_t *client);
 bool bm_neighbor_get_self_btm_values(bsal_btm_params_t *btm_params, bm_client_t *client, bool bs_allowed);
 bool bm_neighbor_build_btm_neighbor_list(bm_client_t *client, bsal_btm_params_t *btm_params);
 
-uint8_t         bm_neighbor_get_op_class(uint8_t channel);
-uint8_t         bm_neighbor_get_phy_type(uint8_t channel);
+uint8_t         bm_neighbor_get_op_class(uint8_t channel, radio_type_t rtype);
 
 void bm_neighbor_set_all_to_group(const bm_group_t *group);
 void bm_neighbor_remove_all_from_group(const bm_group_t *group);
@@ -75,6 +74,6 @@ bool bm_neighbor_get_self_neighbor(const char *ifname, bsal_neigh_info_t *neigh)
 bool bm_neighbor_only_dfs_channels(bm_client_t *client);
 
 bool bm_neighbor_is_our_bssid(const bm_client_t *client, const unsigned char *bssid);
-int bm_neighbor_get_channels(bm_client_t *client, bm_client_rrm_req_type_t rrm_req_type, uint8_t *channels, int channels_size, int self_first);
+int bm_neighbor_get_channels(bm_client_t *client, bm_client_rrm_req_type_t rrm_req_type, uint8_t *channels, int channels_size, int self_first, uint8_t *op_classes, int op_classes_size);
 
 #endif /* BM_NEIGHBOR_H_INCLUDED */

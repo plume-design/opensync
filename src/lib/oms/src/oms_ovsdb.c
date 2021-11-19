@@ -759,3 +759,22 @@ oms_ovsdb_init(struct oms_ovsdb_set *oms_set)
     mgr->state_cb = oms_set->state_cb;
     mgr->report_cb = oms_set->report_cb;
 }
+
+void
+oms_ovsdb_exit(struct oms_ovsdb_set *oms_set)
+{
+    if (oms_set->monitor_config)
+    {
+        ovsdb_unregister_update_cb(table_Object_Store_State.monitor.mon_id);
+    }
+
+    if (oms_set->monitor_state)
+    {
+        ovsdb_unregister_update_cb(table_OMS_Config.monitor.mon_id);
+    }
+
+    if (oms_set->monitor_awlan)
+    {
+        ovsdb_unregister_update_cb(table_AWLAN_Node.monitor.mon_id);
+    }
+}

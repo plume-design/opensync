@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "memutil.h"
 #include "unity.h"
+#include "os.h"
 
 #include "test_gatekeeper_cache.h"
 
@@ -1267,6 +1268,302 @@ test_gkc_add_to_cache_delete_entry(void)
 
     FREE(entry);
 }
+void
+test_gkc_private_ipv4_attr_entry(void)
+{
+    struct gk_attr_cache_interface *entry;
+    struct attr_cache *cached_entry;
+    bool ret;
+
+    LOGI("starting test: %s ...", __func__);
+
+    entry = CALLOC(1, sizeof(*entry));
+    entry->action = 1;
+    entry->device_mac = str2os_mac("AA:AA:AA:AA:AA:01");
+    entry->attribute_type = GK_CACHE_REQ_TYPE_IPV4;
+    entry->cache_ttl = 1000;
+    entry->action = FSM_BLOCK;
+    entry->attr_name = "192.168.40.1";
+    entry->ip_addr = sockaddr_storage_create(AF_INET, entry->attr_name);
+    entry->is_private_ip = is_private_ip(entry->attr_name);
+
+    ret = gkc_add_attribute_entry(entry);
+    TEST_ASSERT_TRUE(ret);
+
+    ret = gkc_lookup_attribute_entry(entry, true);
+    TEST_ASSERT_TRUE(ret);
+
+    ret = gkc_lookup_attribute_entry(entry, true);
+    TEST_ASSERT_TRUE(ret);
+
+    ret = gkc_lookup_attribute_entry(entry, true);
+    TEST_ASSERT_TRUE(ret);
+
+    cached_entry = gkc_fetch_attribute_entry(entry);
+    TEST_ASSERT_NOT_NULL(cached_entry); /* Make sure to use the variable */
+    TEST_ASSERT_EQUAL_UINT64(1, cached_entry->attr.ipv4->hit_count.total);
+
+    gkc_print_cache_entries();
+    gkc_del_attribute(entry);
+    ret = gkc_lookup_attribute_entry(entry, true);
+    TEST_ASSERT_FALSE(ret);
+    gkc_print_cache_entries();
+
+    FREE(entry->ip_addr);
+    FREE(entry->device_mac);
+    FREE(entry);
+    LOGI("ending test: %s", __func__);
+}
+
+void
+test_gkc_private_ipv6_attr_entry(void)
+{
+    struct gk_attr_cache_interface *entry;
+    struct attr_cache *cached_entry;
+    bool ret;
+
+    entry = CALLOC(1, sizeof(*entry));
+    entry->action = 1;
+    entry->device_mac = str2os_mac("AA:AA:AA:AA:AA:01");
+    entry->attribute_type = GK_CACHE_REQ_TYPE_IPV6;
+    entry->cache_ttl = 1000;
+    entry->action = FSM_BLOCK;
+    entry->attr_name = "fe80::200:5aee:feaa:20a2";
+    entry->ip_addr = sockaddr_storage_create(AF_INET6, entry->attr_name);
+    entry->is_private_ip = is_private_ip(entry->attr_name);
+
+    LOGI("starting test: %s ...", __func__);
+    ret = gkc_add_attribute_entry(entry);
+    TEST_ASSERT_TRUE(ret);
+
+    gkc_print_cache_entries();
+
+    ret = gkc_lookup_attribute_entry(entry, true);
+    TEST_ASSERT_TRUE(ret);
+
+    ret = gkc_lookup_attribute_entry(entry, true);
+    TEST_ASSERT_TRUE(ret);
+
+    ret = gkc_lookup_attribute_entry(entry, true);
+    TEST_ASSERT_TRUE(ret);
+
+    ret = gkc_lookup_attribute_entry(entry, true);
+    TEST_ASSERT_TRUE(ret);
+
+    cached_entry = gkc_fetch_attribute_entry(entry);
+    TEST_ASSERT_NOT_NULL(cached_entry); /* Make sure to use the variable */
+    TEST_ASSERT_EQUAL_UINT64(1, cached_entry->attr.ipv6->hit_count.total);
+
+    gkc_print_cache_entries();
+    gkc_del_attribute(entry);
+    ret = gkc_lookup_attribute_entry(entry, true);
+    TEST_ASSERT_FALSE(ret);
+    gkc_print_cache_entries();
+
+    FREE(entry->ip_addr);
+    FREE(entry->device_mac);
+    FREE(entry);
+    LOGI("ending test: %s", __func__);
+}
+
+void
+test_gkc_private_ip_flow_entry(void)
+{
+    struct gkc_ip_flow_interface *flow_entry;
+    char  ipstr[INET6_ADDRSTRLEN] = { 0 };
+    bool ret = false;
+
+    LOGI("starting test: %s ...", __func__);
+
+    flow_entry = flow_entry5;
+    if (flow_entry->direction  == GKC_FLOW_DIRECTION_INBOUND)
+        inet_ntop(AF_INET, flow_entry->src_ip_addr, ipstr, sizeof(ipstr));
+    else
+        inet_ntop(AF_INET, flow_entry->dst_ip_addr, ipstr, sizeof(ipstr));
+
+    /** Check private ip */
+    flow_entry->is_private_ip =  is_private_ip(ipstr);
+    ret = gkc_add_flow_entry(flow_entry);
+    TEST_ASSERT_TRUE(ret);
+    gkc_print_cache_entries();
+
+    /** Add second time */
+    ret = gkc_add_flow_entry(flow_entry);
+    TEST_ASSERT_FALSE(ret);
+
+    /* search for the added flow */
+    ret = gkc_lookup_flow(flow_entry, true);
+    TEST_ASSERT_EQUAL_INT(true, ret);
+    ret = gkc_lookup_flow(flow_entry, true);
+    ret = gkc_lookup_flow(flow_entry, true);
+    ret = gkc_lookup_flow(flow_entry, true);
+    ret = gkc_lookup_flow(flow_entry, true);
+    ret = gkc_lookup_flow(flow_entry, true);
+    ret = gkc_lookup_flow(flow_entry, false);
+    TEST_ASSERT_EQUAL_INT(1, flow_entry->hit_counter);
+
+    /* delete the flow and check */
+    ret = gkc_del_flow(flow_entry);
+    TEST_ASSERT_TRUE(ret);
+    ret = gkc_lookup_flow(flow_entry, true);
+    TEST_ASSERT_FALSE(ret);
+    gkc_print_cache_entries();
+
+    flow_entry = flow_entry5;
+    flow_entry->is_private_ip = false;
+    ret = gkc_add_flow_entry(flow_entry);
+    TEST_ASSERT_TRUE(ret);
+    gkc_print_cache_entries();
+
+    /** Add second time */
+    ret = gkc_add_flow_entry(flow_entry);
+    TEST_ASSERT_FALSE(ret);
+
+    gkc_print_cache_entries();
+    /* search for the added flow */
+    gkc_lookup_flow(flow_entry, true);
+    gkc_lookup_flow(flow_entry, true);
+    gkc_lookup_flow(flow_entry, true);
+    gkc_lookup_flow(flow_entry, true);
+    gkc_lookup_flow(flow_entry, true);
+    gkc_print_cache_entries();
+    TEST_ASSERT_EQUAL_INT(6, flow_entry->hit_counter);
+}
+
+
+void
+test_ipv4_upsert(void)
+{
+    struct gk_attr_cache_interface entry;
+    struct attr_cache *out1;
+    struct attr_cache *out2;
+    char *ipv4 = "1.2.3.4";
+    bool ret;
+
+    LOGI("starting test: %s ...", __func__);
+
+    MEMZERO(entry);
+    entry.action = FSM_BLOCK;
+    entry.device_mac = str2os_mac("AA:AA:AA:AA:AA:01");
+    entry.attribute_type = GK_CACHE_REQ_TYPE_IPV4;
+    entry.cache_ttl = 1000;
+    entry.action = FSM_BLOCK;
+    entry.direction = NET_MD_ACC_OUTBOUND_DIR;
+    entry.gk_policy = STRDUP("gk_ut_block");
+    entry.ip_addr = sockaddr_storage_create(AF_INET, ipv4);
+
+    /* Fist validate that the entry is not yet cached */
+    out1 = gkc_fetch_attribute_entry(&entry);
+    TEST_ASSERT_NULL(out1);
+
+    ret = gkc_upsert_attribute_entry(&entry);
+    TEST_ASSERT_TRUE(ret);
+
+    out1 = gkc_fetch_attribute_entry(&entry);
+    TEST_ASSERT_NOT_NULL(out1);
+
+    TEST_ASSERT_EQUAL(entry.action, out1->action);
+    TEST_ASSERT_EQUAL_STRING(entry.gk_policy, out1->gk_policy);
+    ret = sockaddr_storage_equals(entry.ip_addr, &out1->attr.ipv4->ip_addr);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Update the entry */
+    entry.action = FSM_BLOCK;
+    FREE(entry.gk_policy);
+    entry.gk_policy = STRDUP("gk_ut_allow");
+    ret = gkc_upsert_attribute_entry(&entry);
+    TEST_ASSERT_TRUE(ret);
+
+    ret = gkc_upsert_attribute_entry(&entry);
+    TEST_ASSERT_TRUE(ret);
+
+    out2 = gkc_fetch_attribute_entry(&entry);
+    TEST_ASSERT_NOT_NULL(out2);
+
+    /* Validate that the same entry was fetched */
+    TEST_ASSERT_EQUAL(out1, out2);
+
+    TEST_ASSERT_EQUAL(entry.action, out2->action);
+    TEST_ASSERT_EQUAL_STRING(entry.gk_policy, out2->gk_policy);
+    ret = sockaddr_storage_equals(entry.ip_addr, &out2->attr.ipv4->ip_addr);
+    TEST_ASSERT_TRUE(ret);
+
+    ret = gkc_del_attribute(&entry);
+    TEST_ASSERT_TRUE(ret);
+
+    FREE(entry.ip_addr);
+    FREE(entry.gk_policy);
+    FREE(entry.device_mac);
+
+    LOGI("ending test: %s", __func__);
+}
+
+void
+test_ipv6_upsert(void)
+{
+    struct gk_attr_cache_interface entry;
+    struct attr_cache *out1;
+    struct attr_cache *out2;
+    char *ipv6 = "fe80::f0b4:f7ff:fef0:3582";
+    bool ret;
+
+    LOGI("starting test: %s ...", __func__);
+
+    MEMZERO(entry);
+    entry.action = FSM_BLOCK;
+    entry.device_mac = str2os_mac("AA:AA:AA:AA:AA:01");
+    entry.attribute_type = GK_CACHE_REQ_TYPE_IPV6;
+    entry.cache_ttl = 1000;
+    entry.action = FSM_BLOCK;
+    entry.direction = NET_MD_ACC_OUTBOUND_DIR;
+    entry.gk_policy = STRDUP("gk_ut_block");
+    entry.ip_addr = sockaddr_storage_create(AF_INET6, ipv6);
+
+    /* Fist validate that the entry is not yet cached */
+    out1 = gkc_fetch_attribute_entry(&entry);
+    TEST_ASSERT_NULL(out1);
+
+    ret = gkc_upsert_attribute_entry(&entry);
+    TEST_ASSERT_TRUE(ret);
+
+    out1 = gkc_fetch_attribute_entry(&entry);
+    TEST_ASSERT_NOT_NULL(out1);
+
+    TEST_ASSERT_EQUAL(entry.action, out1->action);
+    TEST_ASSERT_EQUAL_STRING(entry.gk_policy, out1->gk_policy);
+    ret = sockaddr_storage_equals(entry.ip_addr, &out1->attr.ipv6->ip_addr);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Update the entry */
+    entry.action = FSM_BLOCK;
+    FREE(entry.gk_policy);
+    entry.gk_policy = STRDUP("gk_ut_allow");
+    ret = gkc_upsert_attribute_entry(&entry);
+    TEST_ASSERT_TRUE(ret);
+
+    ret = gkc_upsert_attribute_entry(&entry);
+    TEST_ASSERT_TRUE(ret);
+
+    out2 = gkc_fetch_attribute_entry(&entry);
+    TEST_ASSERT_NOT_NULL(out2);
+
+    /* Validate that the same entry was fetched */
+    TEST_ASSERT_EQUAL(out1, out2);
+
+    TEST_ASSERT_EQUAL(entry.action, out2->action);
+    TEST_ASSERT_EQUAL_STRING(entry.gk_policy, out2->gk_policy);
+    ret = sockaddr_storage_equals(entry.ip_addr, &out2->attr.ipv6->ip_addr);
+    TEST_ASSERT_TRUE(ret);
+
+    ret = gkc_del_attribute(&entry);
+    TEST_ASSERT_TRUE(ret);
+
+    FREE(entry.ip_addr);
+    FREE(entry.gk_policy);
+    FREE(entry.device_mac);
+
+    LOGI("ending test: %s", __func__);
+}
 
 void
 run_gk_cache(void)
@@ -1304,4 +1601,9 @@ run_gk_cache(void)
     RUN_TEST(test_allow_blocked_counters);
 
     RUN_TEST(test_gkc_add_to_cache_delete_entry);
+    RUN_TEST(test_gkc_private_ipv4_attr_entry);
+    RUN_TEST(test_gkc_private_ipv6_attr_entry);
+    RUN_TEST(test_gkc_private_ip_flow_entry);
+    RUN_TEST(test_ipv4_upsert);
+    RUN_TEST(test_ipv6_upsert);
 }

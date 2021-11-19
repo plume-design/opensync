@@ -252,12 +252,12 @@ gk_get_attribute_value(struct attr_cache *attr_entry, enum gk_cache_request_type
 
         case GK_CACHE_REQ_TYPE_IPV4:
             ipv4 = (struct sockaddr_in *)&attr->ipv4->ip_addr;
-            inet_ntop(AF_INET, ipv4, ip_str, INET_ADDRSTRLEN);
+            inet_ntop(AF_INET, &ipv4->sin_addr, ip_str, INET_ADDRSTRLEN);
             return ip_str;
 
         case GK_CACHE_REQ_TYPE_IPV6:
             ipv6 = (struct sockaddr_in6 *)&attr->ipv6->ip_addr;
-            inet_ntop(AF_INET, ipv6, ip_str, INET6_ADDRSTRLEN);
+            inet_ntop(AF_INET6, &ipv6->sin6_addr, ip_str, INET6_ADDRSTRLEN);
             return ip_str;
 
         case GK_CACHE_REQ_TYPE_APP:
@@ -493,7 +493,7 @@ gkc_del_attr(ds_tree_t *attr_tree, struct gk_attr_cache_interface *req)
 
         LOGT("%s(): deleting attribute %s for device " PRI_os_macaddr_lower_t " ",
              __func__,
-             req->attr_name,
+             gk_get_attribute_value(remove, req->attribute_type),
              FMT_os_macaddr_pt(req->device_mac));
 
         gkc_free_attr_entry(remove, req->attribute_type);
@@ -519,7 +519,7 @@ gkc_del_attr_from_dev(struct per_device_cache *pdevice, struct gk_attr_cache_int
 {
     bool ret = false;
 
-    if (!req->attr_name) return false;
+    if (!req->attr_name && !req->ip_addr) return false;
 
     switch (req->attribute_type)
     {

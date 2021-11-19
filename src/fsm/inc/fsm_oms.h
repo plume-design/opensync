@@ -72,5 +72,10 @@ fsm_oms_get_last_active_version(struct fsm_session *session, char *name);
 void
 fsm_oms_init(void);
 
+/**
+ * @brief deinitializes the oms library
+ */
+void
+fsm_oms_exit(void);
 
 #endif /* FSM_OMS_H_INCLUDED */

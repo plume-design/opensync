@@ -54,8 +54,17 @@ wm2_tests_clients_logger_cb(logger_t *self,
         "Client '11:22:33:44:55:66' disconnected from 'sanity1' with key ''",
         "wm2_tests_clients: different-key re-connection case",
         "Client '11:22:33:44:55:66' connected on 'sanity1' with key ''",
-        "Client '11:22:33:44:55:66' re-connected on 'sanity1' with key 'key'",
-        "Client '11:22:33:44:55:66' disconnected from 'sanity1' with key 'key'",
+        "Client '11:22:33:44:55:66' re-connected on 'sanity1' with key 'key-2'",
+        "Client '11:22:33:44:55:66' disconnected from 'sanity1' with key 'key-2'",
+        "wm2_tests_clients: disconnect without connect",
+        "wm2_tests_clients: disconnect after op_flush_clients",
+        "Client '11:22:33:44:55:66' connected on 'sanity1' with key 'key-2'",
+        "Client '11:22:33:44:55:66' disconnected from 'sanity1' with key 'key-2'",
+        "wm2_tests_clients: disconnect after op_clients",
+        "Client '11:22:33:44:55:66' connected on 'sanity1' with key 'key-2'",
+        "Client '11:22:33:44:55:66' disconnected from 'sanity1' with key 'key-2'",
+        "Client '66:55:44:33:22:11' connected on 'sanity1' with key ''",
+        "Client '66:55:44:33:22:11' disconnected from 'sanity1' with key ''",
     };
     static size_t i = 0;
 
@@ -72,23 +81,43 @@ wm2_tests_clients_logger_cb(logger_t *self,
 }
 
 static void
+wm2_tests_ev_idle_cb(EV_P_ ev_idle *idle, int event)
+{
+    ev_idle_stop(EV_A_ idle);
+    ev_break(EV_A_ EVBREAK_ONE);
+}
+
+static void
+wm2_tests_ev_run(void)
+{
+    ev_idle idle;
+    ev_idle_init(&idle, wm2_tests_ev_idle_cb);
+    ev_idle_start(EV_DEFAULT_ &idle);
+    ev_run(EV_DEFAULT_ 0);
+}
+
+static void
 wm2_tests_clients(void)
 {
     struct schema_Wifi_Associated_Clients client1;
     struct schema_Wifi_Associated_Clients client2;
+    struct schema_Wifi_Associated_Clients client3;
     struct schema_Wifi_VIF_Config vconf1;
+    struct schema_Wifi_VIF_Config vconf2;
     struct schema_Wifi_VIF_State vstate1;
     struct schema_Wifi_VIF_State vstate2;
     struct schema_Wifi_VIF_State vstate3;
     struct schema_Openflow_Tag tag1;
     struct schema_Openflow_Tag tag2;
     struct schema_Openflow_Tag tag;
-    static const char *oftag1 = "gutentag";
-    static const char *oftag2 = "canttouchthis";
-    static const char *key = "12345678";
+    static const char *oftag1 = "oftag1";
+    static const char *oftag2 = "oftag2";
+    static const char *key1 = "12345678";
+    static const char *key2 = "87654321";
     logger_t logger;
 
     memset(&vconf1, 0, sizeof(vconf1));
+    memset(&vconf2, 0, sizeof(vconf2));
     memset(&vstate1, 0, sizeof(vstate1));
     memset(&vstate2, 0, sizeof(vstate2));
     memset(&vstate3, 0, sizeof(vstate3));
@@ -105,13 +134,21 @@ wm2_tests_clients(void)
     SCHEMA_SET_STR(vstate1.if_name, "sanity1");
     SCHEMA_SET_STR(vstate2.if_name, "sanity2");
     SCHEMA_SET_STR(vconf1.if_name, vstate1.if_name);
-    SCHEMA_KEY_VAL_APPEND(vconf1.security, "key", key);
+    SCHEMA_SET_STR(vconf2.if_name, vstate2.if_name);
+    SCHEMA_KEY_VAL_APPEND(vconf1.security, "key", key1);
     SCHEMA_KEY_VAL_APPEND(vconf1.security, "oftag", oftag1);
+    SCHEMA_KEY_VAL_APPEND(vconf1.security, "key-2", key2);
+    SCHEMA_KEY_VAL_APPEND(vconf1.security, "oftag-key-2", oftag2);
+    SCHEMA_KEY_VAL_APPEND(vconf2.security, "key", key1);
+    SCHEMA_KEY_VAL_APPEND(vconf2.security, "oftag", oftag1);
+    SCHEMA_KEY_VAL_APPEND(vconf2.security, "key-2", key2);
+    SCHEMA_KEY_VAL_APPEND(vconf2.security, "oftag-key-2", oftag2);
     SCHEMA_SET_STR(client1.mac, "11:22:33:44:55:66");
     SCHEMA_SET_STR(client1.state, "active");
     SCHEMA_SET_STR(tag1.name, oftag1);
     SCHEMA_SET_STR(tag2.name, oftag2);
-    SCHEMA_VAL_APPEND(tag2.device_value, "11:22:33:44:55:66");
+    memcpy(&client3, &client1, sizeof(client1));
+    SCHEMA_SET_STR(client3.mac, "66:55:44:33:22:11");
 
     ovsdb_table_delete_simple(&table_Wifi_Associated_Clients,
                               SCHEMA_COLUMN(Wifi_Associated_Clients, mac),
@@ -119,17 +156,19 @@ wm2_tests_clients(void)
     assert(1 == ovsdb_table_upsert(&table_Wifi_VIF_State, &vstate1, true));
     assert(1 == ovsdb_table_upsert(&table_Wifi_VIF_State, &vstate2, true));
     assert(1 == ovsdb_table_upsert(&table_Wifi_VIF_Config, &vconf1, true));
+    assert(1 == ovsdb_table_upsert(&table_Wifi_VIF_Config, &vconf2, true));
     assert(1 == ovsdb_table_upsert(&table_Openflow_Tag, &tag1, true));
     assert(1 == ovsdb_table_upsert(&table_Openflow_Tag, &tag2, true));
 
     LOGN("%s: simple case", __func__);
     assert(true == wm2_clients_update(&client1, vstate1.if_name, true));
+    wm2_tests_ev_run();
     assert(true == ovsdb_table_select_one(&table_Wifi_Associated_Clients,
                                           SCHEMA_COLUMN(Wifi_Associated_Clients, mac),
                                           client1.mac,
                                           &client2));
     assert(client2.key_id_exists == true);
-    assert(client2.oftag_exists == false);
+    assert(client2.oftag_exists == true);
     assert(client2.state_exists == true);
     assert(client2.uapsd_exists == client1.uapsd_exists);
     assert(client2.state_exists == client1.state_exists);
@@ -143,6 +182,7 @@ wm2_tests_clients(void)
                                                                 client2._uuid.uuid),
                                                 &vstate3));
     assert(true == wm2_clients_update(&client1, vstate1.if_name, false));
+    wm2_tests_ev_run();
     assert(false == ovsdb_table_select_one_where(&table_Wifi_VIF_State,
                                                  ovsdb_tran_cond(OCLM_UUID,
                                                                  "associated_clients",
@@ -156,21 +196,25 @@ wm2_tests_clients(void)
 
     LOGN("%s: roaming case", __func__);
     assert(true == wm2_clients_update(&client1, vstate1.if_name, true));
+    wm2_tests_ev_run();
     assert(true == ovsdb_table_select_one(&table_Wifi_Associated_Clients,
                                           SCHEMA_COLUMN(Wifi_Associated_Clients, mac),
                                           client1.mac,
                                           &client2));
     assert(true == wm2_clients_update(&client1, vstate2.if_name, true));
+    wm2_tests_ev_run();
     assert(true == ovsdb_table_select_one(&table_Wifi_Associated_Clients,
                 SCHEMA_COLUMN(Wifi_Associated_Clients, mac),
                 client1.mac,
                 &client2));
     assert(true == wm2_clients_update(&client1, vstate1.if_name, false));
+    wm2_tests_ev_run();
     assert(true == ovsdb_table_select_one(&table_Wifi_Associated_Clients,
                 SCHEMA_COLUMN(Wifi_Associated_Clients, mac),
                 client1.mac,
                 &client2));
     assert(true == wm2_clients_update(&client1, vstate2.if_name, false));
+    wm2_tests_ev_run();
     assert(false == ovsdb_table_select_one(&table_Wifi_Associated_Clients,
                 SCHEMA_COLUMN(Wifi_Associated_Clients, mac),
                 client1.mac,
@@ -180,25 +224,41 @@ wm2_tests_clients(void)
     assert(true == wm2_clients_update(&client1, vstate1.if_name, true));
     assert(true == wm2_clients_update(&client1, vstate1.if_name, true));
     assert(true == wm2_clients_update(&client1, vstate1.if_name, true));
+    wm2_tests_ev_run();
     assert(true == ovsdb_table_select_one(&table_Wifi_Associated_Clients,
                                           SCHEMA_COLUMN(Wifi_Associated_Clients, mac),
                                           client1.mac,
                                           &client2));
     assert(true == wm2_clients_update(&client1, vstate1.if_name, false));
+    wm2_tests_ev_run();
     assert(false == ovsdb_table_select_one(&table_Wifi_Associated_Clients,
                                            SCHEMA_COLUMN(Wifi_Associated_Clients, mac),
                                            client1.mac,
                                            &client2));
     assert(true == wm2_clients_update(&client1, vstate1.if_name, false));
     assert(true == wm2_clients_update(&client1, vstate1.if_name, false));
+    wm2_tests_ev_run();
 
     LOGN("%s: different-key re-connection case", __func__);
     assert(true == wm2_clients_update(&client1, vstate1.if_name, true));
+    wm2_tests_ev_run();
     assert(true == ovsdb_table_select_one(&table_Wifi_Associated_Clients,
                                           SCHEMA_COLUMN(Wifi_Associated_Clients, mac),
                                           client1.mac,
                                           &client2));
-    SCHEMA_SET_STR(client1.key_id, "key");
+    assert(true == ovsdb_table_select_one(&table_Openflow_Tag,
+                                          SCHEMA_COLUMN(Openflow_Tag, name),
+                                          oftag1,
+                                          &tag));
+    assert(tag.device_value_len == 1);
+    assert(true == ovsdb_table_select_one(&table_Openflow_Tag,
+                                          SCHEMA_COLUMN(Openflow_Tag, name),
+                                          oftag2,
+                                          &tag));
+    assert(tag.device_value_len == 0);
+    SCHEMA_SET_STR(client1.key_id, "key-2");
+    assert(true == wm2_clients_update(&client1, vstate1.if_name, true));
+    wm2_tests_ev_run();
     assert(true == ovsdb_table_select_one(&table_Openflow_Tag,
                                           SCHEMA_COLUMN(Openflow_Tag, name),
                                           oftag1,
@@ -209,22 +269,12 @@ wm2_tests_clients(void)
                                           oftag2,
                                           &tag));
     assert(tag.device_value_len == 1);
-    assert(true == wm2_clients_update(&client1, vstate1.if_name, true));
-    assert(true == ovsdb_table_select_one(&table_Openflow_Tag,
-                                          SCHEMA_COLUMN(Openflow_Tag, name),
-                                          oftag1,
-                                          &tag));
-    assert(tag.device_value_len == 1);
-    assert(true == ovsdb_table_select_one(&table_Openflow_Tag,
-                                          SCHEMA_COLUMN(Openflow_Tag, name),
-                                          oftag2,
-                                          &tag));
-    assert(tag.device_value_len == 1);
     assert(true == ovsdb_table_select_one(&table_Wifi_Associated_Clients,
                                           SCHEMA_COLUMN(Wifi_Associated_Clients, mac),
                                           client1.mac,
                                           &client2));
     assert(true == wm2_clients_update(&client1, vstate1.if_name, false));
+    wm2_tests_ev_run();
     assert(false == ovsdb_table_select_one(&table_Wifi_Associated_Clients,
                                            SCHEMA_COLUMN(Wifi_Associated_Clients, mac),
                                            client1.mac,
@@ -238,7 +288,69 @@ wm2_tests_clients(void)
                                           SCHEMA_COLUMN(Openflow_Tag, name),
                                           oftag2,
                                           &tag));
-    assert(tag.device_value_len == 1);
+    assert(tag.device_value_len == 0);
+
+    LOGN("%s: disconnect without connect", __func__);
+    assert(true == wm2_clients_update(&client1, vstate1.if_name, false));
+    wm2_tests_ev_run();
+    assert(false == ovsdb_table_select_one(&table_Wifi_Associated_Clients,
+                                           SCHEMA_COLUMN(Wifi_Associated_Clients, mac),
+                                           client1.mac,
+                                           &client2));
+    assert(true == wm2_clients_update(&client1, vstate1.if_name, true));
+    assert(true == wm2_clients_update(&client1, vstate1.if_name, false));
+    wm2_tests_ev_run();
+    assert(false == ovsdb_table_select_one(&table_Wifi_Associated_Clients,
+                                           SCHEMA_COLUMN(Wifi_Associated_Clients, mac),
+                                           client1.mac,
+                                           &client2));
+
+    LOGN("%s: disconnect after op_flush_clients", __func__);
+    assert(true == wm2_clients_update(&client1, vstate1.if_name, true));
+    wm2_tests_ev_run();
+    assert(true == ovsdb_table_select_one(&table_Wifi_Associated_Clients,
+                                          SCHEMA_COLUMN(Wifi_Associated_Clients, mac),
+                                          client1.mac,
+                                          &client2));
+    wm2_op_flush_clients(vstate1.if_name);
+    wm2_tests_ev_run();
+    assert(false == ovsdb_table_select_one(&table_Wifi_Associated_Clients,
+                                           SCHEMA_COLUMN(Wifi_Associated_Clients, mac),
+                                           client1.mac,
+                                           &client2));
+    assert(true == wm2_clients_update(&client1, vstate1.if_name, false));
+    assert(false == ovsdb_table_select_one(&table_Wifi_Associated_Clients,
+                                           SCHEMA_COLUMN(Wifi_Associated_Clients, mac),
+                                           client1.mac,
+                                           &client2));
+
+    LOGN("%s: disconnect after op_clients", __func__);
+    assert(true == wm2_clients_update(&client1, vstate1.if_name, true));
+    wm2_tests_ev_run();
+    assert(true == ovsdb_table_select_one(&table_Wifi_Associated_Clients,
+                                          SCHEMA_COLUMN(Wifi_Associated_Clients, mac),
+                                          client1.mac,
+                                          &client2));
+    wm2_op_clients(&client3, 1, vstate1.if_name);
+    wm2_tests_ev_run();
+    assert(false == ovsdb_table_select_one(&table_Wifi_Associated_Clients,
+                                           SCHEMA_COLUMN(Wifi_Associated_Clients, mac),
+                                           client1.mac,
+                                           &client2));
+    assert(true == ovsdb_table_select_one(&table_Wifi_Associated_Clients,
+                                          SCHEMA_COLUMN(Wifi_Associated_Clients, mac),
+                                          client3.mac,
+                                          &client2));
+    wm2_op_clients(NULL, 0, vstate1.if_name);
+    wm2_tests_ev_run();
+    assert(false == ovsdb_table_select_one(&table_Wifi_Associated_Clients,
+                                           SCHEMA_COLUMN(Wifi_Associated_Clients, mac),
+                                           client1.mac,
+                                           &client2));
+    assert(false == ovsdb_table_select_one(&table_Wifi_Associated_Clients,
+                                           SCHEMA_COLUMN(Wifi_Associated_Clients, mac),
+                                           client3.mac,
+                                           &client2));
 
     assert(1 == ovsdb_table_delete(&table_Wifi_VIF_State, &vstate1));
     assert(1 == ovsdb_table_delete(&table_Wifi_VIF_State, &vstate2));

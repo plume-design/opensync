@@ -114,6 +114,7 @@ mdns_mgr_init(void)
     ds_tree_init(&mgr->fsm_sessions, mdns_session_cmp,
                  struct mdns_session, session_node);
     mgr->ovsdb_init = mdns_ovsdb_init;
+    mgr->ovsdb_exit = mdns_ovsdb_exit;
     mgr->ctxt = NULL;
 
     mgr->initialized = true;
@@ -171,6 +172,7 @@ mdns_plugin_exit(struct fsm_session *session)
     mgr = mdns_get_mgr();
     if (!mgr->initialized) return;
 
+    mgr->ovsdb_exit();
     mdnsd_ctxt_exit();
     mdns_delete_session(session);
 
@@ -402,6 +404,7 @@ mdns_plugin_update(struct fsm_session *session)
     char                    *report_records;
     long                     interval;
     bool                     prev_enabled;
+    int cmp;
 
     if (!session) return;
 
@@ -410,9 +413,13 @@ mdns_plugin_update(struct fsm_session *session)
     prev_enabled = f_session->report_records;
 
     /* Check if MDNS records need to be reported */
+    f_session->report_records = false; /* set the default value explicitly */
     report_records = session->ops.get_config(session, "report_records");
-    if (report_records) f_session->report_records = true;
-    else                f_session->report_records = false;
+    if (report_records)
+    {
+        cmp = strcmp(report_records, "true");
+        if (cmp == 0) f_session->report_records = true;
+    }
 
     /* If report_records enabled now, initialize the report */
     if (!prev_enabled && f_session->report_records)
@@ -498,6 +505,7 @@ mdns_plugin_init(struct fsm_session *session)
     char                    *mdns_report_interval;
     long                    interval;
     char                    *report_records;
+    int cmp;
 
     if (session == NULL) return -1;
 
@@ -549,9 +557,13 @@ mdns_plugin_init(struct fsm_session *session)
     }
 
     /* Check if MDNS records need to be reported */
+    md_session->report_records = false;
     report_records = session->ops.get_config(session, "report_records");
-    if (report_records) md_session->report_records = true;
-    else                md_session->report_records = false;
+    if (report_records)
+    {
+        cmp = strcmp(report_records, "true");
+        if (cmp == 0) md_session->report_records = true;
+    }
 
     /* Get the MDNS record report interval */
     mdns_report_interval = session->ops.get_config(session, "records_report_interval");

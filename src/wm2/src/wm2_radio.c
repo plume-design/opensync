@@ -53,6 +53,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "target.h"
 #include "wm2_dpp.h"
 #include "wm2_target.h"
+#include "wm2_l2uf.h"
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
@@ -643,31 +644,6 @@ wm2_rconf_changed(const struct schema_Wifi_Radio_Config *conf,
     return changed;
 }
 
-#undef CMP
-#define CMP(cmp, name) \
-    (changed |= (changedf->name = ((cmp(conf, state, name, changedf->_uuid)) && \
-                                   (LOGD("%s: '%s' changed", conf->mac, #name), 1))))
-
-static bool
-wm2_client_changed(const struct schema_Wifi_Associated_Clients *conf,
-                   const struct schema_Wifi_Associated_Clients *state,
-                   struct schema_Wifi_Associated_Clients_flags *changedf)
-{
-    int changed = 0;
-
-    memset(changedf, 0, sizeof(*changedf));
-    CMP(CHANGED_INT, uapsd);
-    CMP(CHANGED_STR, key_id);
-    CMP(CHANGED_STR, state);
-    CMP(CHANGED_SET, capabilities);
-    CMP(CHANGED_MAP_STRSTR, kick);
-
-    if (changed)
-        LOGD("%s: changed", conf->mac);
-
-    return changed;
-}
-
 #undef CHANGED_STR
 #undef CHANGED_INT
 #undef CHANGED_SET
@@ -853,6 +829,21 @@ wm2_vconf_is_sta_changing_parent(const struct schema_Wifi_VIF_Config *vconf,
     return false;
 }
 
+static bool
+wm2_rstate_dfs_no_channels(const struct schema_Wifi_Radio_State *rstate)
+{
+    int i;
+    if (rstate->channels_len == 0)
+        return false;
+
+    for (i = 0; i < rstate->channels_len; i++) {
+        bool available = (strstr(rstate->channels[i], "nop_started") == NULL);
+        if (available)
+            return false;
+    }
+    return true;
+}
+
 static void
 wm2_vconf_recalc(const char *ifname, bool force)
 {
@@ -882,6 +873,9 @@ wm2_vconf_recalc(const char *ifname, bool force)
                                        ifname,
                                        &vstate)))
         wm2_vstate_init(&vstate, ifname);
+
+    if (want == true) wm2_l2uf_if_enable(ifname);
+    if (want == false) wm2_l2uf_if_disable(ifname);
 
     /* This is workaround to deal with unpatched controller.
      * Having this on device side prevents it from saner 3rd
@@ -971,6 +965,22 @@ wm2_vconf_recalc(const char *ifname, bool force)
 
     if (want && !vconf.enabled && (!has || !vstate.enabled))
         return;
+
+    if (has && wm2_rstate_dfs_no_channels(&rstate)) {
+        /*
+         * The easiest solution would be to simply deconfigure the interfaces
+         * here. However with the current semantics that would not work for all
+         * targets. Some would remove the interfaces instead of just 'downing'
+         * them. Also, if they were all 'downed', the DFS state might be lost
+         * due to a microcode reset. That could result in regulatory violation.
+         * Therefore settle by not touching the interfaces.
+         *
+         * See wm2_rconf_recalc() for the other part of this behavior.
+         */
+        LOGI("%s: ignoring config, no channels available due to dfs", vconf.if_name);
+        wm2_delayed_recalc(wm2_vconf_recalc, ifname);
+        return;
+    }
 
     if (want && wm2_dpp_in_progress(ifname) && wm2_dpp_is_chirping()) {
         LOGI("%s: skipping recalc, dpp onboarding attempt in progress", ifname);
@@ -1187,14 +1197,34 @@ wm2_rconf_recalc_fixup_nop_channel(struct schema_Wifi_Radio_Config *rconf,
             LOGI("%s: dfs: nol: downgrading ht_mode %s -> HT%d",
                  rconf->if_name, rconf->ht_mode, width);
             STRSCPY_WARN(rconf->ht_mode, strfmta("HT%d", width));
-            return;
+            break;
         }
 
         LOGI("%s: dfs: nol: ignoring channel %d, staying on %d %s",
              rconf->if_name, rconf->channel, rstate->channel, rstate->ht_mode);
         rconf->channel = rstate->channel;
         STRSCPY_WARN(rconf->ht_mode, rstate->ht_mode);
-        return;
+        break;
+    }
+
+    width = atoi(width_str);
+    while ((chans = unii_5g_chan2list(rconf->channel, width)) != NULL) {
+        for (i = 0; chans[i]; i++) {
+            for (j = 0; j < rstate->channels_len; j++)
+                if (atoi(rstate->channels_keys[j]) == chans[i])
+                    break;
+
+            if (j == rstate->channels_len)  /* 20 MHz hunk unavailable */
+                break;
+        }
+
+        if (chans[i] == 0)  /* all 20 MHz hunks available */
+            break;
+
+        LOGI("%s: dfs: nol: channel %d HT%d unavailable, downgrading to HT%d",
+                rconf->if_name, rconf->channel, width, width / 2);
+        width /= 2;
+        STRSCPY_WARN(rconf->ht_mode, strfmta("HT%d", width));
     }
 }
 
@@ -1288,6 +1318,15 @@ wm2_rconf_recalc(const char *ifname, bool force)
         wm2_rconf_recalc_fixup_nop_channel(&rconf, &rstate);
         wm2_rconf_recalc_fixup_tx_chainmask(&rconf);
         wm2_rconf_recalc_fixup_op_mode(&rconf, &rstate);
+    }
+
+    if (has && wm2_rstate_dfs_no_channels(&rstate)) {
+        /* This is intended to have a side-effect - on some platforms
+         * - to re-create vifs when dfs nol is cleared and some
+         * channels become available again.
+         */
+        LOGI("%s: no channels available due to dfs, disabling", rconf.if_name);
+        SCHEMA_SET_BOOL(rconf.enabled, false);
     }
 
     if (want && !rconf.enabled && (!has || !rstate.enabled))
@@ -1616,87 +1655,18 @@ wm2_op_client(const struct schema_Wifi_Associated_Clients *client,
     wm2_clients_update(&tmp, ifname, associated);
 }
 
-static void
+void
 wm2_op_clients(const struct schema_Wifi_Associated_Clients *clients,
                int num,
                const char *vif)
 {
-    struct schema_Wifi_Associated_Clients_flags changed;
-    struct schema_Wifi_Associated_Clients *ovs_clients;
-    struct schema_Wifi_VIF_State vstate;
-    json_t *where;
-    int i;
-    int j;
-
-    if (WARN_ON(!(where = ovsdb_where_simple(SCHEMA_COLUMN(Wifi_VIF_State, if_name), vif))))
-        return;
-    if (!ovsdb_table_select_one_where(&table_Wifi_VIF_State, where, &vstate))
-        return;
-    ovs_clients = CALLOC(vstate.associated_clients_len, sizeof(*ovs_clients));
-
-    for (i = 0; i < vstate.associated_clients_len; i++) {
-        if (WARN_ON(!(where = ovsdb_where_uuid("_uuid", vstate.associated_clients[i].uuid))))
-            goto free;
-        if (WARN_ON(!ovsdb_table_select_one_where(&table_Wifi_Associated_Clients, where, ovs_clients + i)))
-            goto free;
-    }
-
-    if (!schema_changed_set(clients, ovs_clients,
-                            num, vstate.associated_clients_len,
-                            sizeof(*clients),
-                            strncasecmp))
-        goto free;
-
-    LOGI("%s: syncing clients", vif);
-
-    for (i = 0; i < vstate.associated_clients_len; i++) {
-        for (j = 0; j < num; j++)
-            if (!strcasecmp(ovs_clients[i].mac, clients[j].mac))
-                break;
-        if (j == num) {
-            LOGI("%s: removing stale client %s", vif, ovs_clients[i].mac);
-            wm2_op_client(ovs_clients + i, vif, false);
-        }
-    }
-
-    for (i = 0; i < num; i++) {
-        for (j = 0; j < vstate.associated_clients_len; j++)
-            if (!strcasecmp(clients[i].mac, ovs_clients[j].mac))
-                break;
-        if (j == vstate.associated_clients_len || wm2_client_changed(clients + i, ovs_clients + j, &changed)) {
-            LOGI("%s: adding/updating client %s", vif, clients[i].mac);
-            wm2_op_client(clients + i, vif, true);
-        }
-    }
-
-free:
-    FREE(ovs_clients);
+    wm2_clients_update_per_vif(clients, num, vif);
 }
 
-static void
+void
 wm2_op_flush_clients(const char *vif)
 {
-    struct schema_Wifi_Associated_Clients client;
-    struct schema_Wifi_VIF_State vstate;
-    json_t *where;
-    int i;
-
-    if (!(where = ovsdb_where_simple(SCHEMA_COLUMN(Wifi_VIF_State, if_name), vif)))
-        return;
-    if (!ovsdb_table_select_one_where(&table_Wifi_VIF_State, where, &vstate))
-        return;
-
-    LOGI("%s: flushing clients", vif);
-    for (i = 0; i < vstate.associated_clients_len; i++) {
-        if (!(where = ovsdb_where_uuid("_uuid", vstate.associated_clients[i].uuid)))
-            continue;
-        if (!ovsdb_table_select_one_where(&table_Wifi_Associated_Clients, where, &client))
-            continue;
-        LOGI("%s: flushing client %s", vif, client.mac);
-        if (!(where = ovsdb_where_uuid("_uuid", vstate.associated_clients[i].uuid)))
-            continue;
-        ovsdb_table_delete_where(&table_Wifi_Associated_Clients, where);
-    }
+    wm2_clients_update_per_vif(NULL, 0, vif);
 }
 
 static const struct target_radio_ops rops = {

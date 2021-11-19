@@ -29,7 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <errno.h>
 #include <stdio.h>
 
-#define QUEUE_MSG_SIZE 10240
+#define QUEUE_MSG_SIZE 16384
 
 static const char *help = "bsal_sim command queue_name [input]\n\nPossible commands:\n\tread\n\twrite (needs input)\n";
 

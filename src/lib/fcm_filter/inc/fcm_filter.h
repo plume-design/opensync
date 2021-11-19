@@ -144,6 +144,7 @@ struct fcm_filter_mgr
     ds_tree_t fcm_filters;
     ds_tree_t clients;
     void (*ovsdb_init)(void);
+    void (*ovsdb_exit)(void);
 };
 
 #define FCM_MAX_FILTERS 60

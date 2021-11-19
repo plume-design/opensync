@@ -150,6 +150,7 @@ struct attr_cache
     struct fqdn_redirect_s *fqdn_redirect;
     uint8_t                 direction;        /* inbound or outbound */
     uint64_t                key;              /* used to differentiate entries */
+    bool                    is_private_ip;
     ds_tree_node_t          attr_tnode;
 };
 
@@ -173,6 +174,7 @@ struct ip_flow_cache
     uint32_t confidence_level;  /* risk/confidence level */
     time_t cache_ts;            /* time when the entry was added */
     struct counter_s hit_count; /* number of times lookup is performed */
+    bool is_private_ip;
     ds_tree_node_t ipflow_tnode;
 };
 
@@ -247,6 +249,7 @@ struct gk_attr_cache_interface
     uint64_t cache_key;               /* key for a request is computed only once */
     struct fqdn_redirect_s *fqdn_redirect;
     int categorized;
+    bool is_private_ip;
 };
 
 /**
@@ -274,6 +277,7 @@ struct gkc_ip_flow_interface
     uint32_t confidence_level; /* risk/confidence level */
     uint64_t hit_counter;      /* will be updated when lookup is performed */
     uint64_t cache_ttl;        /* TTL value that should be set */
+    bool is_private_ip;
 };
 
 struct gk_cache_mgr *
@@ -403,6 +407,17 @@ gkc_lookup_attribute_entry(struct gk_attr_cache_interface *req, bool update_coun
  */
 bool
 gkc_add_attribute_entry(struct gk_attr_cache_interface *entry);
+
+
+/**
+ * @brief upate or add the given attribute to the cache.
+ *
+ * @params: req: interface structure specifing the attribute request
+ *
+ * @return true for success and false for failure.
+ */
+bool
+gkc_upsert_attribute_entry(struct gk_attr_cache_interface *entry);
 
 /**
  * @brief delete the given attribute from cache

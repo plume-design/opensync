@@ -1,4 +1,4 @@
-ref_set_neighbor_wlan0_0=$(cat <<-.
+ref_set_neighbor_wlan0_1=$(cat <<-.
 	SET_NEIGHBOR
 	if_name=wlan0
 	bssid=10:00:00:00:00:01
@@ -11,7 +11,7 @@ ref_set_neighbor_wlan0_0=$(cat <<-.
 .
 )
 
-ref_set_neighbor_wlan0_1=$(cat <<-.
+ref_set_neighbor_wlan0_0=$(cat <<-.
 	SET_NEIGHBOR
 	if_name=wlan0
 	bssid=10:00:00:00:00:00
@@ -29,9 +29,9 @@ ref_set_neighbor_wlan0_2=$(cat <<-.
 	if_name=wlan0
 	bssid=10:00:00:00:00:02
 	bssid_info=143
-	op_class=125
+	op_class=131
 	channel=167
-	phy_type=9
+	phy_type=14
 	opt_subelems=
 	opt_subelems_len=0
 .
@@ -55,9 +55,9 @@ ref_set_neighbor_wlan1_2=$(cat <<-.
 	if_name=wlan1
 	bssid=10:00:00:00:00:02
 	bssid_info=143
-	op_class=125
+	op_class=131
 	channel=167
-	phy_type=9
+	phy_type=14
 	opt_subelems=
 	opt_subelems_len=0
 .
@@ -81,9 +81,9 @@ ref_set_neighbor_wlan2_2=$(cat <<-.
 	if_name=wlan2
 	bssid=10:00:00:00:00:02
 	bssid_info=143
-	op_class=125
+	op_class=131
 	channel=167
-	phy_type=9
+	phy_type=14
 	opt_subelems=
 	opt_subelems_len=0
 .

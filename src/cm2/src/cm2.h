@@ -348,7 +348,7 @@ void cm2_stop_cares(void);
 #else
 static inline int cm2_start_cares(void)
 {
-    return true;
+    return 0;
 }
 static inline void cm2_stop_cares(void)
 {

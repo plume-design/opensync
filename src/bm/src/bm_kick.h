@@ -39,9 +39,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define BTM_L_DFS_OP_CLASS              118
 #define BTM_U_DFS_OP_CLASS              121
 #define BTM_5GU_OP_CLASS                125
+#define BTM_6G_OP_CLASS                 131
 
 #define BTM_24_PHY_TYPE                 7
 #define BTM_5_PHY_TYPE                  9
+#define BTM_HE_PHY_TYPE                 14  /* HE is minimum PHY type for Wi-Fi 6e */
 
 #define RRM_DEFAULT_OP_CLASS            BTM_24_OP_CLASS
 #define RRM_DEFAULT_CHANNEL             0                   // All channels
@@ -71,6 +73,6 @@ extern bool             bm_kick(bm_client_t *client, bm_kick_type_t type, uint8_
 extern void             bm_kick_measurement(os_macaddr_t macaddr, uint8_t rssi);
 extern void             bm_kick_cancel_btm_retry_task( bm_client_t *client );
 extern bool             bm_kick_get_rrm_params(bsal_rrm_params_t *rrm_params);
-extern bool             bm_kick_get_rrm_op_class(bsal_rrm_params_t *rrm_params, uint8_t channel);
+extern bool             bm_kick_get_rrm_op_class(bsal_rrm_params_t *rrm_params, uint8_t channel, radio_type_t rtype);
 
 #endif /* BM_KICK_H_INCLUDED */

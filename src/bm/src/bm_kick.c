@@ -518,7 +518,7 @@ bm_kick_get_dpp_event_by_btm_type( bm_kick_type_t type,
 }
 
 bool
-bm_kick_get_rrm_op_class( bsal_rrm_params_t *rrm_params, uint8_t channel )
+bm_kick_get_rrm_op_class( bsal_rrm_params_t *rrm_params, uint8_t channel, radio_type_t rtype )
 {
     uint8_t op_class;
 
@@ -527,7 +527,7 @@ bm_kick_get_rrm_op_class( bsal_rrm_params_t *rrm_params, uint8_t channel )
     if( channel == RRM_DEFAULT_CHANNEL ) {
         rrm_params->op_class = RRM_DEFAULT_OP_CLASS;
     } else {
-        op_class = bm_neighbor_get_op_class( channel );
+        op_class = bm_neighbor_get_op_class( channel, rtype );
         if( op_class == 0 ) {
             LOGE( "get_rrm_params: Unable to get op_class for channel '%hhu'", channel );
             return false;
@@ -763,6 +763,7 @@ bm_kick_11k_channel_scan_scheduler( bm_client_t *client, os_macaddr_t macaddr,
     ds_tree_t       *bm_neighbors = NULL;
     bm_neighbor_t   *neigh        = NULL;
     uint8_t         channel;
+    radio_type_t    rtype;
 
     bm_neighbors = bm_neighbor_get_tree();
     if( !bm_neighbors ) {
@@ -773,8 +774,9 @@ bm_kick_11k_channel_scan_scheduler( bm_client_t *client, os_macaddr_t macaddr,
     ds_tree_foreach( bm_neighbors, neigh ) {
 
         channel = neigh->channel;
+        rtype = bm_group_find_radio_type_by_ifname(client->ifname);
 
-        if( !bm_kick_get_rrm_op_class( rrm_params, channel ) ) {
+        if( !bm_kick_get_rrm_op_class( rrm_params, channel, rtype ) ) {
             LOGE( "Client %s: Failed to get op_class for channel '%hhu'",
                                                     client->mac_addr, channel );
             return false;
@@ -828,7 +830,7 @@ bm_kick_handle_rrm_br_req(bm_client_t *client, bm_kick_type_t type)
         LOGD("Client %s: Initiating 11k RRM Beacon Report"
              " for kick type %s", client->mac_addr, bm_kick_get_kick_type_str(type));
 
-        if( !bm_kick_get_rrm_op_class( &rrm_params, 0 ) ) {
+        if( !bm_kick_get_rrm_op_class( &rrm_params, 0, RADIO_TYPE_2G ) ) {
             LOGE( "Client %s: Failed to get op_class for channel 0", client->mac_addr );
             return false;
         }

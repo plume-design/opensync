@@ -140,6 +140,12 @@ static int udhcpc_opt_encode(
     switch (opt)
     {
         case DHCP_OPTION_HOSTNAME:
+            if (*val == '\0')
+            {
+                LOG(WARN, "dhcp_client: Cannot encode empty hostname option.");
+                return 0;
+            }
+
             out->option = "-x";
             len = snprintf(out->value, sizeof(out->value), "hostname:%s", val);
             rv = 2;
@@ -160,16 +166,18 @@ static int udhcpc_opt_encode(
         case DHCP_OPTION_OSYNC_SWVER:
         case DHCP_OPTION_OSYNC_PROFILE:
         case DHCP_OPTION_OSYNC_SERIAL_OPT:
+            if (*val == '\0')
+            {
+                LOG(WARN, "dhcp_client: Cannot encode empty serial number option.");
+                return 0;
+            }
+
             /* add option */
             out->option = "-x";
             /* add leading option ID value */
             len = snprintf(out->value, sizeof(out->value), "0x%02X:", opt);
-            /* Encode string value */
-            while (*val != '\0')
-            {
-                len += snprintf(out->value + len, sizeof(out->value) - len, "%02X", *val++);
-                if ((size_t)len >= sizeof(out->value)) break;
-            }
+            len += snprintf(out->value + len, sizeof(out->value) - len, "%02X", *val++);
+            if ((size_t)len >= sizeof(out->value)) break;
             rv = 2;
             break;
 

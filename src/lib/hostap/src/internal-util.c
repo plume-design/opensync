@@ -88,9 +88,8 @@ util_vif_get_wpa_key_mgmt(const struct schema_Wifi_VIF_Config *vconf,
     if (!vconf->wpa)
         return;
 
-    /* Both WPA-PSK and WPA2-PSK */
-    if (util_vif_wpa_key_mgmt_partial_match(vconf, "-psk")) csnprintf(&buf, &len, "WPA-PSK ");
-
+    if (util_vif_wpa_key_mgmt_exact_match(vconf, "wpa-psk")) csnprintf(&buf, &len, "WPA-PSK ");
+    if (util_vif_wpa_key_mgmt_exact_match(vconf, "wpa2-psk")) csnprintf(&buf, &len, "WPA-PSK ");
     if (util_vif_wpa_key_mgmt_partial_match(vconf, "wpa2-eap")) csnprintf(&buf, &len, "WPA-EAP ");
     if (util_vif_wpa_key_mgmt_exact_match(vconf, "sae")) csnprintf(&buf, &len, "SAE ");
     if (util_vif_wpa_key_mgmt_partial_match(vconf, SCHEMA_CONSTS_KEY_FT_WPA2_PSK)) csnprintf(&buf, &len, "FT-PSK ");

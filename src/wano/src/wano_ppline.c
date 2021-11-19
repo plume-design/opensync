@@ -928,8 +928,6 @@ enum wano_ppline_state wano_ppline_state_IF_IPV4_RESET(
             LOG(INFO, "wano: %s: An IPv4 plugin is scheduled to run, resetting IPv4 settings.",
                     self->wpl_ifname);
 
-            self->wpl_plugin_imask &= ~WANO_PLUGIN_MASK_IPV4;
-
             WANO_INET_CONFIG_UPDATE(self->wpl_ifname, .ip_assign_scheme = "none");
             wano_inet_state_event_refresh(&self->wpl_inet_state_event);
             break;
@@ -937,6 +935,8 @@ enum wano_ppline_state wano_ppline_state_IF_IPV4_RESET(
         case wano_ppline_do_INET_STATE_UPDATE:
             if (strcmp(is->is_ip_assign_scheme, "none") != 0) break;
             if (osn_ip_addr_cmp(&is->is_ipaddr, &OSN_IP_ADDR_INIT) != 0) break;
+
+            self->wpl_plugin_imask &= ~WANO_PLUGIN_MASK_IPV4;
             return wano_ppline_IF_IPV6_RESET;
 
         case wano_ppline_do_PLUGIN_UPDATE:

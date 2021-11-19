@@ -46,10 +46,17 @@ void    wm2_rconf_recalc_fixup_nop_channel(struct schema_Wifi_Radio_Config *rcon
 bool    wm2_clients_update(struct schema_Wifi_Associated_Clients *client,
                            char *vif,
                            bool associated);
+void    wm2_clients_update_per_vif(const struct schema_Wifi_Associated_Clients *clients,
+                                   int n_clients,
+                                   const char *if_name);
 int     wm2_clients_oftag_set(const char *mac,
                               const char *oftag);
 int     wm2_clients_oftag_unset(const char *mac,
                                 const char *oftag);
+void    wm2_op_flush_clients(const char *vif);
+void    wm2_op_clients(const struct schema_Wifi_Associated_Clients *clients,
+                       int num,
+                       const char *vif);
 
 void wm2_radio_update_port_state(const char *cloud_vif_ifname);
 

@@ -57,6 +57,8 @@ collect_linux()
     collect_cmd mpstat -A -I ALL
     collect_cmd pidstat -Ir -T ALL
     collect_cmd mount
+    collect_cmd ls -Rla /var/run/
+    collect_cmd ls -Rla /tmp/
 
     collect_file /proc/stat
     collect_file /proc/meminfo

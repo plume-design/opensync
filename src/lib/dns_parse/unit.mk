@@ -37,3 +37,5 @@ UNIT_DEPS += src/lib/json_mqtt
 UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/neigh_table
 UNIT_DEPS += src/lib/dns_cache
+UNIT_DEPS += src/lib/gatekeeper_cache
+UNIT_DEPS += src/lib/network_metadata

@@ -182,7 +182,7 @@ extern packed_buffer_t     *mdns_records_serialize_report(mdns_records_report_da
 
 extern void                 mdns_records_collect_record(const struct resource *r, void *data, struct sockaddr_storage *from);
 extern void                 mdns_records_send_records(struct mdns_session *md_session);
-extern bool                 mdns_records_send_report(mdns_records_report_data_t *report, char *mqtt_topic);
+extern bool                 mdns_records_send_report(mdns_records_report_data_t *report, struct fsm_session *session);
 
 extern bool                 mdns_records_init(struct mdns_session *md_session);
 extern void                 mdns_records_exit(void);

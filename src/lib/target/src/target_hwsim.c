@@ -202,6 +202,11 @@ hwsim_update_phy(const char *phy)
     if (chan_num) SCHEMA_SET_INT(rstate.channel, chan_num);
     if (chan_bw) SCHEMA_SET_STR(rstate.ht_mode, chan_bw);
 
+    /* FIXME This should read out iw list channels. This is
+     * sufficient to pass the "no channels" for dfs in WM.
+     */
+    SCHEMA_KEY_VAL_APPEND(rstate.channels, strfmta("%d", 1), "");
+
     g_ops->op_rstate(&rstate);
 }
 

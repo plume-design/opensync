@@ -189,8 +189,8 @@ struct dhcp_relay_mgr
 /******************************************************************************
 * Function Declarations
 ******************************************************************************/
-int                         dhcp_plugin_init(struct fsm_session *session);
-void                        dhcp_plugin_exit(struct fsm_session *session);
+int                         dhcp_relay_plugin_init(struct fsm_session *session);
+void                        dhcp_relay_plugin_exit(struct fsm_session *session);
 
 struct      dhcp_relay_mgr *dhcp_get_mgr(void);
 struct      dhcp_session   *dhcp_lookup_session(struct fsm_session *session);

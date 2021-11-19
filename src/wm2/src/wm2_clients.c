@@ -42,6 +42,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "json_util.h"
 #include "ds_list.h"
+#include "ds_dlist.h"
 #include "schema.h"
 #include "log.h"
 #include "target.h"
@@ -61,6 +62,40 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define OVSDB_OPENFLOW_TAG_TABLE            "Openflow_Tag"
 
 #define OVSDB_CLIENTS_PARENT_COL            "associated_clients"
+
+#define WM2_CLIENT_RETRY_SECONDS 3
+
+struct wm2_client {
+    struct ds_dlist_node list;
+    struct ds_dlist vif_list;
+    struct schema_Wifi_Associated_Clients ovsdb;
+    char *mac_str;
+    char *oftag_in_ovsdb;
+    ev_timer retry;
+    ev_async async;
+};
+
+struct wm2_client_vif {
+    struct ds_dlist_node list;
+    struct wm2_client *c;
+    char *if_name;
+    char *wpa_key_id;
+    char *dpp_pk_hash;
+    char *oftag;
+    bool connected;
+    bool in_ovsdb;
+    bool print_when_removed;
+};
+
+enum wm2_client_transition {
+    WM2_CLIENT_CONNECTED,
+    WM2_CLIENT_DISCONNECTED,
+    WM2_CLIENT_ROAMED,
+    WM2_CLIENT_CHANGED,
+    WM2_CLIENT_NO_OP,
+};
+
+static struct ds_dlist g_wm2_clients = DS_DLIST_INIT(struct wm2_client, list);
 
 /******************************************************************************
  *  PRIVATE definitions
@@ -203,7 +238,7 @@ wm2_clients_oftag_unset(const char *mac,
     json_t *row;
     int cnt;
 
-    LOGD("%s: removing oftag", mac);
+    LOGD("%s: removing oftag='%s'", mac, oftag);
 
     where = ovsdb_tran_cond(OCLM_STR,
                             SCHEMA_COLUMN(Openflow_Tag, name),
@@ -321,41 +356,6 @@ wm2_clients_isolate(const char *ifname, const char *sta, bool connected)
     }
 }
 
-static int
-wm2_clients_get_refcount(const char *uuid)
-{
-    const char *column;
-    json_t *where;
-    int count;
-    void *temp = NULL;
-
-    column = SCHEMA_COLUMN(Wifi_VIF_State, associated_clients),
-    where = ovsdb_tran_cond(OCLM_UUID, column, OFUNC_INC, uuid);
-    temp = ovsdb_table_select_where(&table_Wifi_VIF_State, where, &count);
-    FREE(temp);
-
-    return count;
-}
-
-static void
-wm2_clients_war_esw_2684_noc_163_plat_878(const char *addr, const char *key_id)
-{
-    const char *table = SCHEMA_TABLE(Wifi_Associated_Clients);
-    const char *state = SCHEMA_COLUMN(Wifi_Associated_Clients, state);
-    const char *mac = SCHEMA_COLUMN(Wifi_Associated_Clients, mac);
-    json_t *row;
-
-    LOGI("%s: applying workaround %s", addr, __func__);
-
-    row = json_object();
-    json_object_set_new(row, state, json_string("idle"));
-    WARN_ON(ovsdb_sync_update(table, mac, addr, row) != 1);
-
-    row = json_object();
-    json_object_set_new(row, state, json_string("active"));
-    WARN_ON(ovsdb_sync_update(table, mac, addr, row) != 1);
-}
-
 static bool
 wm2_clients_get_default_oftag(const char *ifname, char *oftag, int size)
 {
@@ -372,136 +372,541 @@ wm2_clients_get_default_oftag(const char *ifname, char *oftag, int size)
     return true;
 }
 
+static bool
+wm2_client_is_connected(struct wm2_client *c)
+{
+    struct wm2_client_vif *v;
+
+    ds_dlist_foreach(&c->vif_list, v)
+        if (v->connected)
+            return true;
+
+    return false;
+}
+
+static bool
+wm2_client_ovsdb_is_connected(struct wm2_client *c)
+{
+    return strlen(c->ovsdb._uuid.uuid) > 0 ? true : false;
+}
+
+static struct wm2_client_vif *
+wm2_client_get_connected_vif_old(struct wm2_client *c)
+{
+    struct wm2_client_vif *v;
+
+    ds_dlist_foreach(&c->vif_list, v)
+        if (v->in_ovsdb == true) return v;
+
+    return NULL;
+}
+
+static struct wm2_client_vif *
+wm2_client_get_connected_vif_new(struct wm2_client *c)
+{
+    struct wm2_client_vif *v = ds_dlist_head(&c->vif_list);
+    if (v->connected == true) return v;
+    else return NULL;
+}
+
+static bool
+wm2_client_ovsdb_is_synced(struct wm2_client *c)
+{
+    struct wm2_client_vif *v = wm2_client_get_connected_vif_new(c);
+    const bool has_ovsdb = wm2_client_ovsdb_is_connected(c);
+    const bool want_ovsdb = wm2_client_is_connected(c);
+
+    if (has_ovsdb != want_ovsdb) return false;
+    if (strcmp(v ? (v->wpa_key_id ?: "") : "", c->ovsdb.key_id) != 0) return false;
+    if (strcmp(v ? (v->dpp_pk_hash ?: "") : "", c->ovsdb.dpp_netaccesskey_sha256_hex) != 0) return false;
+    if (strcmp(v ? (v->oftag ?: "") : "", c->ovsdb.oftag) != 0) return false;
+    if (strcmp(v ? (v->oftag ?: "") : "", c->oftag_in_ovsdb ?: "") != 0) return false;
+
+    return true;
+}
+
+static enum wm2_client_transition
+wm2_client_get_transition(struct wm2_client *c)
+{
+    struct wm2_client_vif *v_old = wm2_client_get_connected_vif_old(c);
+    struct wm2_client_vif *v_new = wm2_client_get_connected_vif_new(c);
+    const bool ovsdb_connected = wm2_client_ovsdb_is_connected(c);
+    const bool client_connected = wm2_client_is_connected(c);
+
+    if (ovsdb_connected == false && client_connected == true)
+        return WM2_CLIENT_CONNECTED;
+    if (ovsdb_connected == true && client_connected == false)
+        return WM2_CLIENT_DISCONNECTED;
+    if (ovsdb_connected == false && client_connected == false)
+        return WM2_CLIENT_NO_OP;
+    if (v_old != NULL && v_new != NULL && v_old != v_new)
+        return WM2_CLIENT_ROAMED;
+    if (wm2_client_ovsdb_is_synced(c) == false)
+        return WM2_CLIENT_CHANGED;
+
+    return WM2_CLIENT_NO_OP;
+}
+
+static void
+wm2_client_ovsdb_set_oftag(struct wm2_client *c)
+{
+    struct wm2_client_vif *v = wm2_client_get_connected_vif_new(c);
+    const char *oftag = v != NULL ? v->oftag : NULL;
+
+    if (strcmp(oftag ?: "", c->oftag_in_ovsdb ?: "") == 0)
+        return;
+
+    if (c->oftag_in_ovsdb != NULL) {
+        wm2_clients_oftag_unset(c->mac_str, c->oftag_in_ovsdb);
+        FREE(c->oftag_in_ovsdb);
+        c->oftag_in_ovsdb = NULL;
+    }
+
+    if (oftag != NULL) {
+        switch (wm2_clients_oftag_set(c->mac_str, oftag)) {
+            case 1:
+                assert(c->oftag_in_ovsdb == NULL);
+                c->oftag_in_ovsdb = STRDUP(oftag);
+                break;
+            case 0:
+                LOGI("%s: %s: oftag not updated, ignoring",
+                     c->mac_str, oftag);
+                assert(c->oftag_in_ovsdb == NULL);
+                c->oftag_in_ovsdb = STRDUP(oftag);
+                /*
+                 * This is what this case should be doing but the controller
+                 * doesn't set up all the Openflow_Tag rows currently (for
+                 * onboard/backhaul interfaces at least) and this would cause
+                 * WM indefinitely retry updating Openflow_Tag, causing a lot
+                 * of churn and warnings along the way.
+                 *
+                 * Until controller starts setting up Openflow_Tag will all the
+                 * Wifi_VIF_Config oftags this needs to stay commented out.
+                 */
+#if 0
+                LOGW("%s: %s: couldn't set oftag, probably because OpenflowTag doesn't exist, will retry",
+                     c->mac_str, c->oftag);
+                ev_timer_again(EV_DEFAULT_ &c->retry);
+#endif
+                break;
+            default:
+                /* This could be out-of-memory, contraint error or something
+                 * else. No use retrying.
+                 */
+                LOGE("%s: %s: couldn't set oftag, unexpected error, aborting..",
+                     c->mac_str, oftag);
+                ev_break(EV_DEFAULT_ EVBREAK_ALL);
+                break;
+        }
+    }
+}
+
+static void
+wm2_client_ovsdb_upsert(struct wm2_client *c)
+{
+    struct wm2_client_vif *v = wm2_client_get_connected_vif_new(c);
+    json_t *pwhere;
+    json_t *where;
+    bool update_uuid = true;
+
+    assert(v != NULL);
+
+    SCHEMA_SET_STR(c->ovsdb.mac, c->mac_str);
+    SCHEMA_SET_STR(c->ovsdb.key_id, v->wpa_key_id ?: "");
+    SCHEMA_SET_STR(c->ovsdb.state, "active");
+    if (v->oftag != NULL) SCHEMA_SET_STR(c->ovsdb.oftag, v->oftag);
+
+    pwhere = ovsdb_where_simple("if_name", v->if_name);
+    where = ovsdb_where_simple("mac", c->mac_str);
+
+    assert(pwhere != NULL);
+    assert(where != NULL);
+
+    if (WARN_ON(ovsdb_table_upsert_with_parent_where(&table_Wifi_Associated_Clients,
+                                                     where,
+                                                     &c->ovsdb,
+                                                     update_uuid,
+                                                     NULL,
+                                                     OVSDB_CLIENTS_PARENT,
+                                                     pwhere,
+                                                     OVSDB_CLIENTS_PARENT_COL)
+                                                     == false)) {
+        LOGW("%s: %s: couldn't upsert, probably because Wifi_VIF_State doesn't exist, will retry",
+             v->if_name, c->mac_str);
+        ev_timer_again(EV_DEFAULT_ &c->retry);
+        return;
+    }
+
+    v->in_ovsdb = true;
+}
+
+static void
+wm2_client_ovsdb_delete(struct wm2_client *c)
+{
+    struct wm2_client_vif *v;
+
+    assert(ovsdb_table_delete(&table_Wifi_Associated_Clients, &c->ovsdb) == true);
+    memset(&c->ovsdb, 0, sizeof(c->ovsdb));
+
+    ds_dlist_foreach(&c->vif_list, v)
+        v->in_ovsdb = false;
+}
+
+static void
+wm2_client_vif_free(struct wm2_client_vif *v)
+{
+    LOGD("%s: %s: removing interface", v->c->mac_str, v->if_name);
+    ds_dlist_remove(&v->c->vif_list, v);
+    FREE(v->if_name);
+    FREE(v->wpa_key_id);
+    FREE(v->dpp_pk_hash);
+    FREE(v->oftag);
+    FREE(v);
+}
+
+static void
+wm2_client_remove_disconnected_vifs(struct wm2_client *c)
+{
+    struct wm2_client_vif *tmp;
+    struct wm2_client_vif *v;
+
+    ds_dlist_foreach_safe(&c->vif_list, v, tmp)
+        if (v->connected == false && v->in_ovsdb == false)
+            wm2_client_vif_free(v);
+}
+
+static void
+wm2_client_free(struct wm2_client *c)
+{
+    LOGD("%s: removing client", c->mac_str);
+
+    ev_async_stop(EV_DEFAULT_ &c->async);
+    ev_timer_stop(EV_DEFAULT_ &c->retry);
+    ds_dlist_remove(&g_wm2_clients, c);
+    FREE(c->oftag_in_ovsdb);
+    FREE(c);
+}
+
+static void
+wm2_client_flush(struct wm2_client *c)
+{
+    wm2_client_remove_disconnected_vifs(c);
+
+    if (wm2_client_ovsdb_is_connected(c) == true) return;
+    if (wm2_client_is_connected(c) == true) return;
+    if (c->oftag_in_ovsdb != NULL) return;
+    if (ev_is_active(&c->retry) == true) return;
+    if (ev_is_pending(&c->async) == true) return;
+
+    wm2_client_free(c);
+}
+
+static void
+wm2_client_dump_debug(struct wm2_client *c)
+{
+    struct wm2_client_vif *v_new = wm2_client_get_connected_vif_new(c);
+    struct wm2_client_vif *v_old = wm2_client_get_connected_vif_old(c);
+    struct wm2_client_vif *v;
+
+    LOGD("%s: key=%s/%s/%s dpp=%s/%s/%s oftag=%s/%s/%s vif=%s->%s "
+         "async=%d retry=%d connected=%d/%d sync=%d",
+         c->mac_str,
+         v_old != NULL ? (v_old->wpa_key_id ?: "") : "",
+         v_new != NULL ? (v_new->wpa_key_id ?: "") : "",
+         c->ovsdb.key_id,
+         v_old != NULL ? (v_old->dpp_pk_hash ?: "") : "",
+         v_new != NULL ? (v_new->dpp_pk_hash ?: "") : "",
+         c->ovsdb.dpp_netaccesskey_sha256_hex,
+         c->oftag_in_ovsdb ?: "",
+         v_old != NULL ? (v_old->oftag ?: "") : "",
+         v_new != NULL ? (v_new->oftag ?: "") : "",
+         v_old ? v_old->if_name : "",
+         v_new ? v_new->if_name : "",
+         ev_is_pending(&c->async),
+         ev_is_active(&c->retry),
+         wm2_client_is_connected(c),
+         wm2_client_ovsdb_is_connected(c),
+         wm2_client_ovsdb_is_synced(c));
+
+    ds_dlist_foreach(&c->vif_list, v) {
+        LOGD("%s: %s: connected=%d ovsdb=%d",
+             c->mac_str,
+             v->if_name,
+             v->connected,
+             v->in_ovsdb);
+    }
+}
+
+static void
+wm2_client_work(struct wm2_client *c)
+{
+    struct wm2_client_vif *v_new = wm2_client_get_connected_vif_new(c);
+    struct wm2_client_vif *v_old = wm2_client_get_connected_vif_old(c);
+    struct wm2_client_vif *v;
+
+    wm2_client_dump_debug(c);
+
+    switch (wm2_client_get_transition(c)) {
+        case WM2_CLIENT_CONNECTED:
+            assert(v_new != NULL);
+            LOGN("Client '%s' connected on '%s' with key '%s'",
+                 c->mac_str, v_new->if_name, v_new->wpa_key_id ?: "");
+            wm2_client_ovsdb_upsert(c);
+            wm2_clients_isolate(v_new->if_name, c->mac_str, true);
+            break;
+        case WM2_CLIENT_DISCONNECTED:
+            assert(v_old != NULL);
+            LOGN("Client '%s' disconnected from '%s' with key '%s'",
+                 c->mac_str, v_old->if_name, c->ovsdb.key_id ?: "");
+            wm2_client_ovsdb_delete(c);
+            wm2_clients_isolate(v_old->if_name, c->mac_str, false);
+            break;
+        case WM2_CLIENT_ROAMED:
+            assert(v_old != NULL);
+            assert(v_new != NULL);
+            LOGN("Client '%s' roamed to '%s' with key '%s'",
+                 c->mac_str, v_new->if_name, v_new->wpa_key_id ?: "");
+            wm2_client_ovsdb_delete(c);
+            wm2_client_ovsdb_upsert(c);
+            wm2_clients_isolate(v_old->if_name, c->mac_str, false);
+            wm2_clients_isolate(v_new->if_name, c->mac_str, true);
+            v_old->print_when_removed = true;
+            v_new->print_when_removed = false;
+            break;
+        case WM2_CLIENT_CHANGED:
+            assert(v_new != NULL);
+            LOGN("Client '%s' re-connected on '%s' with key '%s'",
+                 c->mac_str, v_new->if_name, v_new->wpa_key_id ?: "");
+            wm2_client_ovsdb_upsert(c);
+            break;
+        case WM2_CLIENT_NO_OP:
+            LOGD("Client '%s' no-op", c->mac_str);
+            break;
+    }
+
+    ds_dlist_foreach(&c->vif_list, v) {
+        if (v->print_when_removed == true && v->connected == false) {
+            LOGN("Client '%s' removed from '%s' with key '%s'",
+                 c->mac_str, v->if_name, v->wpa_key_id ?: "");
+            v->print_when_removed = false;
+        }
+    }
+
+    wm2_client_ovsdb_set_oftag(c);
+    wm2_client_flush(c);
+}
+
+static void
+wm2_client_retry_cb(EV_P_ ev_timer *t, int event)
+{
+    struct wm2_client *c = container_of(t, struct wm2_client, retry);
+    LOGI("%s: retrying work", c->mac_str);
+    ev_timer_stop(EV_A_ t);
+    wm2_client_work(c);
+}
+
+static void
+wm2_client_async_cb(EV_P_ ev_async *a, int event)
+{
+    struct wm2_client *c = container_of(a, struct wm2_client, async);
+    wm2_client_work(c);
+}
+
+struct wm2_client *
+wm2_client_lookup(const char *mac_str)
+{
+    struct wm2_client *c;
+
+    ds_dlist_foreach(&g_wm2_clients, c)
+        if (strcasecmp(c->mac_str, mac_str) == 0)
+            return c;
+
+    return NULL;
+}
+
+static struct wm2_client *
+wm2_client_new(const char *mac_str)
+{
+    struct wm2_client *c;
+
+    LOGD("%s: creating client", mac_str);
+
+    c = CALLOC(1, sizeof(*c));
+    c->mac_str = STRDUP(mac_str);
+    str_tolower(c->mac_str);
+    ev_timer_init(&c->retry, wm2_client_retry_cb, 0, WM2_CLIENT_RETRY_SECONDS);
+    ev_async_init(&c->async, wm2_client_async_cb);
+    ev_async_start(EV_DEFAULT_ &c->async);
+    ds_dlist_init(&c->vif_list, struct wm2_client_vif, list);
+    ds_dlist_insert_head(&g_wm2_clients, c);
+
+    return c;
+}
+
+static struct wm2_client *
+wm2_client_lookup_or_new(const char *mac_str)
+{
+    struct wm2_client *c = wm2_client_lookup(mac_str);
+    if (c != NULL) return c;
+    return wm2_client_new(mac_str);
+}
+
+static struct wm2_client_vif *
+wm2_client_vif_lookup(struct wm2_client *c, const char *if_name)
+{
+    struct wm2_client_vif *v;
+
+    ds_dlist_foreach(&c->vif_list, v)
+        if (strcmp(v->if_name, if_name) == 0)
+            return v;
+
+    return NULL;
+}
+
+static struct wm2_client_vif *
+wm2_client_vif_new(struct wm2_client *c, const char *if_name)
+{
+    struct wm2_client_vif *v;
+
+    LOGD("%s: %s: creating interface", c->mac_str, if_name);
+    v = CALLOC(1, sizeof(*v));
+    v->if_name = STRDUP(if_name);
+    v->c = c;
+    ds_dlist_insert_head(&c->vif_list, v);
+
+    return v;
+}
+
+static struct wm2_client_vif *
+wm2_client_vif_lookup_or_new(struct wm2_client *c, const char *if_name)
+{
+    struct wm2_client_vif *v = wm2_client_vif_lookup(c, if_name);
+    if (v != NULL) return v;
+    return wm2_client_vif_new(c, if_name);
+}
+
+static char *
+wm2_client_get_oftag(const char *if_name,
+                     const char *mac_str,
+                     const char *wpa_key_id,
+                     const char *dpp_pk_hash)
+{
+    char oftag[32] = {0};
+
+    if (dpp_pk_hash != NULL) {
+        if (!wm2_dpp_key_to_oftag(dpp_pk_hash, oftag, sizeof(oftag)))
+            if (!wm2_clients_get_default_oftag(if_name, oftag, sizeof(oftag)))
+                LOGN("%s: %s: could not map oftag", if_name, mac_str);
+    }
+    else {
+        wm2_clients_oftag_from_key_id(if_name, wpa_key_id ?: "", oftag, sizeof(oftag));
+    }
+
+    if (strlen(oftag) > 0)
+        return STRDUP(oftag);
+    else
+        return NULL;
+}
+
+static void
+wm2_client_update(const char *if_name,
+                  const char *mac_str,
+                  const char *wpa_key_id,
+                  const char *dpp_pk_hash,
+                  bool connected)
+{
+    struct wm2_client *c = wm2_client_lookup_or_new(mac_str);
+    struct wm2_client_vif *v = wm2_client_vif_lookup_or_new(c, if_name);
+
+    if (strlen(wpa_key_id ?: "") == 0) wpa_key_id = NULL;
+    if (strlen(dpp_pk_hash ?: "") == 0) dpp_pk_hash = NULL;
+
+    FREE(v->wpa_key_id);
+    FREE(v->dpp_pk_hash);
+    FREE(v->oftag);
+
+    v->connected = connected;
+    ds_dlist_remove(&c->vif_list, v);
+
+    if (v->connected == true)
+        ds_dlist_insert_head(&c->vif_list, v);
+    else
+        ds_dlist_insert_tail(&c->vif_list, v);
+
+    v->wpa_key_id = wpa_key_id ? STRDUP(wpa_key_id) : NULL;
+    v->dpp_pk_hash = dpp_pk_hash ? STRDUP(dpp_pk_hash) : NULL;
+    v->oftag = wm2_client_is_connected(c) == true
+             ? wm2_client_get_oftag(if_name, c->mac_str, wpa_key_id, dpp_pk_hash)
+             : NULL;
+
+    LOGD("%s: %s: set client as %s, key_id=%s dpp=%s oftag=%s",
+         c->mac_str,
+         v->if_name,
+         v->connected ? "connected" : "disconnected",
+         v->wpa_key_id ?: "",
+         v->dpp_pk_hash ?: "",
+         v->oftag ?: "");
+
+    /* This is intended to debounce and coalesce multiple
+     * client events across multiple vifs. This isn't
+     * guaranteed to coalesce them all, but provides an easy
+     * way of handling these nicely most of the time.
+     */
+    ev_async_send(EV_DEFAULT_ &c->async);
+}
+
 bool
 wm2_clients_update(struct schema_Wifi_Associated_Clients *schema, char *ifname, bool status)
 {
-    struct schema_Wifi_Associated_Clients client;
-    const char *mac = str_tolower(strdupa(schema->mac));
-    const char *column;
-    const char *table;
-    ovs_uuid_t uuid;
-    json_t *where;
-    json_t *row;
-    char oftag[32];
-    bool ok;
-    int n;
+    LOGD("%s: %s: updating client as %s, key_id=%s, dpp=%s",
+         schema->mac,
+         ifname,
+         status ? "connected" : "disconnected",
+         schema->key_id,
+         schema->dpp_netaccesskey_sha256_hex);
 
-    oftag[0] = 0;
-
-    if (schema->dpp_netaccesskey_sha256_hex_exists) {
-        if (!wm2_dpp_key_to_oftag(schema->dpp_netaccesskey_sha256_hex, oftag, sizeof(oftag)))
-            if (!wm2_clients_get_default_oftag(ifname, oftag, sizeof(oftag)))
-                LOGN("%s: %s: could not map oftag", ifname, mac);
-    }
-    else {
-        wm2_clients_oftag_from_key_id(ifname, schema->key_id, oftag, sizeof(oftag));
-    }
-
-    LOGD("%s: update called with keyid='%s' oftag='%s' status=%d",
-         mac, schema->key_id, oftag, status);
-
-    memset(&client, 0, sizeof(client));
-    ovsdb_table_select_one(&table_Wifi_Associated_Clients,
-                           SCHEMA_COLUMN(Wifi_Associated_Clients, mac),
-                           mac,
-                           &client);
-
-    if (status) {
-        table = SCHEMA_TABLE(Wifi_Associated_Clients);
-        column = SCHEMA_COLUMN(Wifi_Associated_Clients, mac);
-        where = ovsdb_where_simple(column, mac);
-        row = json_object();
-        json_object_set_new(row, "mac", json_string(mac));
-        json_object_set_new(row, "key_id", json_string(schema->key_id));
-        json_object_set_new(row, "state", json_string(schema->state));
-        if (strlen(oftag) > 0)
-            json_object_set_new(row, "oftag", json_string(oftag));
-        if (schema->dpp_netaccesskey_sha256_hex_exists) {
-            json_object_set_new(row, "dpp_netaccesskey_sha256_hex",
-                                json_string(schema->dpp_netaccesskey_sha256_hex));
-        }
-
-        json_incref(row);
-        n = ovsdb_sync_update_one_get_uuid(table, where, row, &uuid);
-        if (WARN_ON(n < 0)) {
-            json_decref(row);
-            return false;
-        }
-        else if (n == 0) {
-            LOGN("Client '%s' connected on '%s' with key '%s'",
-                 mac, ifname, schema->key_id);
-
-            ok = ovsdb_sync_insert(table, row, &uuid);
-            if (WARN_ON(!ok))
-                return false;
-        }
-        else {
-            json_decref(row);
-        }
-
-        table = SCHEMA_TABLE(Wifi_VIF_State);
-        column = SCHEMA_COLUMN(Wifi_VIF_State, if_name);
-        where = ovsdb_where_simple(column, ifname);
-        column = SCHEMA_COLUMN(Wifi_VIF_State, associated_clients);
-        json_incref(where);
-
-        ovsdb_sync_mutate_uuid_set(table, where, column, OTR_DELETE, uuid.uuid);
-        ovsdb_sync_mutate_uuid_set(table, where, column, OTR_INSERT, uuid.uuid);
-        n = wm2_clients_get_refcount(uuid.uuid);
-
-        WARN_ON(n > 1 && !client.mac_exists);
-
-        if (n == 1 &&
-            client.mac_exists &&
-            strcmp(client.key_id, schema->key_id)) {
-            LOGN("Client '%s' re-connected on '%s' with key '%s'",
-                 mac, ifname, schema->key_id);
-        }
-
-        if (n > 1) {
-            LOGN("Client '%s' roamed to '%s' with key '%s'",
-                 mac, ifname, schema->key_id);
-        }
-
-        if (strlen(client.oftag) > 0)
-            wm2_clients_oftag_unset(mac, client.oftag);
-        if (strlen(oftag) > 0)
-            wm2_clients_oftag_set(mac, oftag);
-        wm2_clients_isolate(ifname, mac, true);
-        wm2_clients_war_esw_2684_noc_163_plat_878(mac, schema->key_id);
-    } else {
-        if (!client.mac_exists) {
-            LOGD("Client '%s' cannot be removed from '%s' because it does not exist",
-                 mac, ifname);
-            return true;
-        }
-
-        table = SCHEMA_TABLE(Wifi_VIF_State);
-        column = SCHEMA_COLUMN(Wifi_VIF_State, if_name);
-        where = ovsdb_where_simple(column, ifname);
-        column = SCHEMA_COLUMN(Wifi_VIF_State, associated_clients);
-        ovsdb_sync_mutate_uuid_set(table, where, column, OTR_DELETE, client._uuid.uuid);
-
-        n = wm2_clients_get_refcount(client._uuid.uuid);
-        if (n == 0) {
-            LOGN("Client '%s' disconnected from '%s' with key '%s'",
-                 mac, ifname, schema->key_id);
-
-            table = SCHEMA_TABLE(Wifi_Associated_Clients);
-            column = SCHEMA_COLUMN(Wifi_Associated_Clients, mac);
-            where = ovsdb_where_simple(column, mac);
-            n = ovsdb_sync_delete_where(table, where);
-            WARN_ON(n != 1);
-
-            if (strlen(client.oftag) > 0)
-                wm2_clients_oftag_unset(mac, client.oftag);
-        } else {
-            LOGN("Client '%s' removed from '%s' with key '%s'",
-                 mac, ifname, schema->key_id);
-        }
-
-        wm2_clients_isolate(ifname, mac, false);
-    }
-
+    wm2_client_update(ifname,
+                      schema->mac,
+                      schema->key_id,
+                      schema->dpp_netaccesskey_sha256_hex,
+                      status);
     return true;
+}
+
+void
+wm2_clients_update_per_vif(const struct schema_Wifi_Associated_Clients *clients,
+                           int n_clients,
+                           const char *if_name)
+{
+    struct wm2_client_vif *v;
+    struct wm2_client *c;
+    int i;
+
+    ds_dlist_foreach(&g_wm2_clients, c) {
+        ds_dlist_foreach(&c->vif_list, v) {
+            if (strcmp(v->if_name, if_name) == 0) {
+                for (i = 0; i < n_clients; i++)
+                    if (strcasecmp(clients[i].mac, c->mac_str) == 0)
+                        break;
+
+                if (i < n_clients)
+                    continue;
+
+                LOGI("%s: %s: flushing client", if_name, c->mac_str);
+                wm2_client_update(if_name,
+                                  c->mac_str,
+                                  v->wpa_key_id,
+                                  v->dpp_pk_hash,
+                                  false);
+            }
+        }
+    }
+
+    for (i = 0; i < n_clients; i++) {
+        wm2_client_update(if_name,
+                          clients[i].mac,
+                          clients[i].key_id,
+                          clients[i].dpp_netaccesskey_sha256_hex,
+                          true);
+    }
 }

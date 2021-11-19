@@ -40,6 +40,7 @@ UNIT_SRC     += src/wm2_clients.c
 UNIT_SRC     += src/wm2_dpp.c
 UNIT_SRC     += src/wm2_target.c
 UNIT_SRC     += src/wm2_dummy.c
+UNIT_SRC     += $(if $(CONFIG_MANAGER_WM_L2UF_KICK),src/wm2_l2uf.c,)
 
 UNIT_CFLAGS  += -I$(TOP_DIR)/src/lib/common/inc/
 
@@ -57,3 +58,4 @@ UNIT_DEPS    += src/lib/pjs
 UNIT_DEPS    += src/lib/schema
 UNIT_DEPS    += src/lib/target
 UNIT_DEPS    += src/lib/timevt
+UNIT_DEPS    += $(if $(CONFIG_MANAGER_WM_L2UF_KICK),src/lib/osn,)

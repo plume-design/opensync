@@ -1262,7 +1262,7 @@ hapd_sae_keyid_fixup(const struct hapd *hapd,
         return; /* None-SAE AKM, skipping */
 
     memset(&ctx, 0, sizeof(ctx));
-    hapd_parse_wpa_psks_file_buf(hapd->psks, if_name, hapd_sae_keyid_fixup_handle_wpa_psk, &ctx);
+    hapd_parse_wpa_psks_file_buf(R(hapd->pskspath), if_name, hapd_sae_keyid_fixup_handle_wpa_psk, &ctx);
 
     if (ctx.psks_num > 1) {
         LOGW("%s: keyid cannot be fixed for AP with SAE AKM using multiple PSKs", if_name);

@@ -33,7 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "target.h"
 #include "util.h"
 
-#define QUEUE_MSG_SIZE 10240
+#define QUEUE_MSG_SIZE 16384
 
 typedef struct {
     char ifname[BSAL_IFNAME_LEN];
@@ -418,7 +418,6 @@ bsal_in_cb(EV_P_ ev_io *w, int revents)
 int
 target_bsal_init(bsal_event_cb_t event_cb, struct ev_loop *loop)
 {
-    struct mq_attr attr;
     const char *prefix = getenv("BM_TEST_PREFIX");
     const char *queue_path;
 
@@ -427,19 +426,15 @@ target_bsal_init(bsal_event_cb_t event_cb, struct ev_loop *loop)
 
     LOGI("BM_TEST_PREFIX: %s", prefix);
 
-    memset(&attr, 0, sizeof(attr));
-    attr.mq_maxmsg = 16;
-    attr.mq_msgsize = QUEUE_MSG_SIZE;
-
     queue_path = strfmta("%s_bsal_in", prefix);
-    g_bsal_in = mq_open(queue_path, O_CREAT | O_RDONLY, 0644, &attr);
+    g_bsal_in = mq_open(queue_path, O_CREAT | O_RDONLY, 0644, NULL);
     if (g_bsal_in < 0) {
         LOGE("Failed to create queue: %s because: %s", queue_path, strerror(errno));
         return -1;
     }
 
     queue_path = strfmta("%s_bsal_out", prefix);
-    g_bsal_out = mq_open(queue_path, O_CREAT | O_WRONLY | O_NONBLOCK, 0644, &attr);
+    g_bsal_out = mq_open(queue_path, O_CREAT | O_WRONLY | O_NONBLOCK, 0644, NULL);
     if (g_bsal_out < 0) {
         LOGE("Failed to create queue: %s because: %s", queue_path, strerror(errno));
         return -1;

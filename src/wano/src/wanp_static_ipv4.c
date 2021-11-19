@@ -122,7 +122,7 @@ static void ping_pid_watcher_cb(struct ev_loop *loop, ev_child *w, int revents)
 
     if (WIFEXITED(w->rstatus) && WEXITSTATUS(w->rstatus) == 0)
     {
-        LOGI("wanp_static_ipv4: %s: ping succedded", h->handle.wh_ifname);
+        LOGI("wanp_static_ipv4: %s: ping succeeded", h->handle.wh_ifname);
         action = wanp_static_ipv4_do_PING_SUCCEEDED;
     }
     else
@@ -200,9 +200,6 @@ enum wanp_static_ipv4_state wanp_static_ipv4_state_CONFIGURE_IP(
 {
     char ipaddr[C_IP4ADDR_LEN];
     char netmask[C_IP4ADDR_LEN];
-    char gateway[C_IP4ADDR_LEN];
-    char dns1[C_IP4ADDR_LEN];
-    char dns2[C_IP4ADDR_LEN];
 
     wanp_static_ipv4_handle_t *h = CONTAINER_OF(state, wanp_static_ipv4_handle_t, state);
     struct wano_inet_state *is = data;
@@ -219,29 +216,10 @@ enum wanp_static_ipv4_state wanp_static_ipv4_state_CONFIGURE_IP(
                     PRI(osn_ip_addr),
                     FMT(osn_ip_addr, pwc->wc_netmask));
 
-            snprintf(gateway, sizeof(gateway),
-                    PRI(osn_ip_addr),
-                    FMT(osn_ip_addr, pwc->wc_gateway));
-
-            snprintf(dns1, sizeof(dns1),
-                    PRI(osn_ip_addr),
-                    FMT(osn_ip_addr, pwc->wc_primary_dns));
-
-            dns2[0] = '\0';
-            if (osn_ip_addr_cmp(&pwc->wc_secondary_dns, &OSN_IP_ADDR_INIT) != 0)
-            {
-                snprintf(dns2, sizeof(dns2),
-                        PRI(osn_ip_addr),
-                        FMT(osn_ip_addr, pwc->wc_secondary_dns));
-            }
-
-            LOG(INFO, "wanp_static_ipv4: %s: Setting ip_addr=%s netmask=%s gateway=%s dns1=%s dns2=%s",
+            LOG(INFO, "wanp_static_ipv4: %s: Setting ip_addr=%s netmask=%s",
                     h->handle.wh_ifname,
                     ipaddr,
-                    netmask,
-                    gateway,
-                    dns1,
-                    dns2[0] == '\0' ?"(none)" : dns2);
+                    netmask);
 
             WANO_INET_CONFIG_UPDATE(
                     h->handle.wh_ifname,
@@ -249,10 +227,7 @@ enum wanp_static_ipv4_state wanp_static_ipv4_state_CONFIGURE_IP(
                     .network = WANO_TRI_TRUE,
                     .ip_assign_scheme = "static",
                     .inet_addr = ipaddr,
-                    .netmask = netmask,
-                    .gateway = gateway,
-                    .dns1 = dns1,
-                    .dns2 = dns2[0] == '\0' ? NULL : dns2);
+                    .netmask = netmask);
 
             wano_inet_state_event_refresh(&h->inet_state_watcher);
             break;
@@ -260,29 +235,18 @@ enum wanp_static_ipv4_state wanp_static_ipv4_state_CONFIGURE_IP(
         case wanp_static_ipv4_do_INET_STATE_UPDATE:
             LOG(DEBUG, "static_ipv4:%s: enabled:%d network:%d scheme:%s "
                     "ipaddr:"PRI_osn_ip_addr" "
-                    "netmask:"PRI_osn_ip_addr" "
-                    "gateway:"PRI_osn_ip_addr" "
-                    "dns1:"PRI_osn_ip_addr" "
-                    "dns2:"PRI_osn_ip_addr,
+                    "netmask:"PRI_osn_ip_addr,
                     h->handle.wh_ifname,
                     is->is_enabled,
                     is->is_network,
                     is->is_ip_assign_scheme,
                     FMT_osn_ip_addr(is->is_ipaddr),
-                    FMT_osn_ip_addr(is->is_netmask),
-                    FMT_osn_ip_addr(is->is_gateway),
-                    FMT_osn_ip_addr(is->is_dns1),
-                    FMT_osn_ip_addr(is->is_dns2));
+                    FMT_osn_ip_addr(is->is_netmask));
             if (is->is_enabled != true) break;
             if (is->is_network != true) break;
             if (strcmp(is->is_ip_assign_scheme, "static") != 0) break;
             if (memcmp(&is->is_ipaddr, &pwc->wc_ipaddr, sizeof(is->is_ipaddr)) != 0) break;
             if (memcmp(&is->is_netmask, &pwc->wc_netmask, sizeof(is->is_netmask)) != 0) break;
-            if (memcmp(&is->is_gateway, &pwc->wc_gateway, sizeof(is->is_gateway)) != 0) break;
-            if (memcmp(&is->is_dns1, &pwc->wc_primary_dns, sizeof(is->is_dns1)) != 0) break;
-            if (memcmp(&is->is_dns2, &pwc->wc_secondary_dns, sizeof(is->is_dns2)) != 0) break;
-
-            wano_inet_state_event_fini(&h->inet_state_watcher);
             return wanp_static_ipv4_PROBE;
 
         default:
@@ -324,13 +288,85 @@ enum wanp_static_ipv4_state wanp_static_ipv4_state_PROBE(
             }
 
         case wanp_static_ipv4_do_PING_SUCCEEDED:
+            return wanp_static_ipv4_CONFIGURE_GW;
+
+        default:
+            break;
+    }
+
+    return 0;
+}
+
+enum wanp_static_ipv4_state wanp_static_ipv4_state_CONFIGURE_GW(
+        wanp_static_ipv4_state_t *state,
+        enum wanp_static_ipv4_action action,
+        void *data)
+{
+    char gateway[C_IP4ADDR_LEN];
+    char dns1[C_IP4ADDR_LEN];
+    char dns2[C_IP4ADDR_LEN];
+
+    wanp_static_ipv4_handle_t *h = CONTAINER_OF(state, wanp_static_ipv4_handle_t, state);
+    struct wano_inet_state *is = data;
+    struct wano_wan_config_static_ipv4 *pwc = &h->wan_config.wc_type_static_ipv4;
+
+    switch (action)
+    {
+        case wanp_static_ipv4_do_STATE_INIT:
+            snprintf(gateway, sizeof(gateway),
+                    PRI(osn_ip_addr),
+                    FMT(osn_ip_addr, pwc->wc_gateway));
+
+            snprintf(dns1, sizeof(dns1),
+                    PRI(osn_ip_addr),
+                    FMT(osn_ip_addr, pwc->wc_primary_dns));
+
+            dns2[0] = '\0';
+            if (osn_ip_addr_cmp(&pwc->wc_secondary_dns, &OSN_IP_ADDR_INIT) != 0)
+            {
+                snprintf(dns2, sizeof(dns2),
+                        PRI(osn_ip_addr),
+                        FMT(osn_ip_addr, pwc->wc_secondary_dns));
+            }
+
+            LOG(INFO, "wanp_static_ipv4: %s: Setting gateway=%s dns1=%s dns2=%s",
+                    h->handle.wh_ifname,
+                    gateway,
+                    dns1,
+                    dns2[0] == '\0' ?"(none)" : dns2);
+
+            WANO_INET_CONFIG_UPDATE(
+                    h->handle.wh_ifname,
+                    .enabled = WANO_TRI_TRUE,
+                    .network = WANO_TRI_TRUE,
+                    .gateway = gateway,
+                    .dns1 = dns1,
+                    .dns2 = dns2[0] == '\0' ? NULL : dns2);
+
+            wano_inet_state_event_refresh(&h->inet_state_watcher);
+            break;
+
+        case wanp_static_ipv4_do_INET_STATE_UPDATE:
+            LOG(DEBUG, "static_ipv4:%s: "
+                    "gateway:"PRI_osn_ip_addr" "
+                    "dns1:"PRI_osn_ip_addr" "
+                    "dns2:"PRI_osn_ip_addr,
+                    h->handle.wh_ifname,
+                    FMT_osn_ip_addr(is->is_gateway),
+                    FMT_osn_ip_addr(is->is_dns1),
+                    FMT_osn_ip_addr(is->is_dns2));
+            if (memcmp(&is->is_gateway, &pwc->wc_gateway, sizeof(is->is_gateway)) != 0) break;
+            if (memcmp(&is->is_dns1, &pwc->wc_primary_dns, sizeof(is->is_dns1)) != 0) break;
+            if (memcmp(&is->is_dns2, &pwc->wc_secondary_dns, sizeof(is->is_dns2)) != 0) break;
+
+            wano_inet_state_event_fini(&h->inet_state_watcher);
             return wanp_static_ipv4_RUNNING;
 
         default:
-            return 0;
+            break;
     }
 
-    return wanp_static_ipv4_RUNNING;
+    return 0;
 }
 
 enum wanp_static_ipv4_state wanp_static_ipv4_state_RUNNING(

@@ -662,6 +662,7 @@ bool fcm_init_mgr(struct ev_loop *loop)
     mgr = fcm_get_mgr();
     memset(mgr, 0, sizeof(fcm_mgr_t));
     mgr->loop = loop;
+    mgr->cb_ovsdb_table_upsert_where = ovsdb_table_upsert_where;
 
     snprintf(mgr->pid, sizeof(mgr->pid), "%d", (int)getpid());
     ds_tree_init(&fcm_mgr.collect_tree, fcm_tree_node_cmp,

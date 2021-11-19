@@ -92,6 +92,21 @@ const struct fsm_action
     }
 };
 
+const char * const fsm_action_str[] =
+{
+    [FSM_ACTION_NONE] = "none",
+    [FSM_BLOCK] = "blocked",
+    [FSM_ALLOW] = "allowed",
+    [FSM_OBSERVED] = "observed",
+    [FSM_NO_MATCH] = "not matched",
+    [FSM_REDIRECT] = "blocked",
+    [FSM_FORWARD] = "forward",
+    [FSM_UPDATE_TAG] = "update tag",
+    [FSM_GATEKEEPER_REQ] = "gk req",
+    [FSM_FLUSH_CACHE] = "flush cache",
+    [FSM_FLUSH_ALL_CACHE] = "flush all cache",
+};
+
 char *cache_lookup_failure = "cacheLookupFailed";
 char *remote_lookup_failure = "remoteLookupFailed";
 
@@ -115,6 +130,11 @@ fsm_policy_get_req_type(struct fsm_policy_req *req)
     return req->req_type;
 }
 
+const char *
+fsm_policy_get_action_str(int action)
+{
+    return fsm_action_str[action];
+}
 
 /**
  * @brief walk through fsm policy macs values
@@ -1449,7 +1469,7 @@ int fsm_apply_policies(struct fsm_policy_req *req,
     if (policy_reply->policy_response != NULL)
     {
         LOGT("%s(): calling policy response", __func__);
-        policy_reply->policy_response(req, policy_reply);;
+        policy_reply->policy_response(req, policy_reply);
     }
 
     return action;

@@ -856,7 +856,7 @@ mdns_records_send_records(struct mdns_session *md_session)
     if (num_clients > 0)
     {
         LOGT("%s: Sending MDNS records report", __func__);
-        ret = mdns_records_send_report(&report, session->topic);
+        ret = mdns_records_send_report(&report, session);
         if (ret)
         {
             /* The records were successfully reported to the cloud.

@@ -40,6 +40,7 @@ gkc_lookup_flows_tree(ds_tree_t *tree, struct gkc_ip_flow_interface *req, int up
     struct ip_flow_cache *target_entry;
     struct ip_flow_cache flow_entry;
     int ret = false;
+    bool rc;
 
     flow_entry.ip_version  = req->ip_version;
     flow_entry.src_ip_addr = req->src_ip_addr;
@@ -55,11 +56,13 @@ gkc_lookup_flows_tree(ds_tree_t *tree, struct gkc_ip_flow_interface *req, int up
     {
         /* entry found */
         ret = true;
-        if (update_count)
+        rc = target_entry->is_private_ip;
+        if (update_count && !rc)
         {
             target_entry->hit_count.total++;
         }
         req->hit_counter = target_entry->hit_count.total;
+        req->is_private_ip = target_entry->is_private_ip;
     }
 
     return ret;

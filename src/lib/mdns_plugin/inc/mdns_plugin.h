@@ -115,6 +115,7 @@ struct mdns_plugin_mgr
     struct ev_loop  *loop;
 
     void (*ovsdb_init)(void);
+    void (*ovsdb_exit)(void);
 };
 
 /**
@@ -205,6 +206,9 @@ callback_Service_Announcement(ovsdb_update_monitor_t *mon,
 
 void
 mdns_ovsdb_init(void);
+
+void
+mdns_ovsdb_exit(void);
 
 int
 mdnsd_service_cmp(void *a, void *b);

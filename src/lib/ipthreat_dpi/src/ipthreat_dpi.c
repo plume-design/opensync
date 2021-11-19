@@ -689,6 +689,35 @@ ipthreat_update_cache(struct fsm_policy_req *policy_request,
 }
 
 void
+ipthreat_update_policy_report(struct fsm_policy_req* policy_request, struct fsm_policy_reply *policy_reply)
+{
+    struct fqdn_pending_req *pending_req;
+    int reply_service_provider;
+    int service_provider;
+    bool rc;
+
+    service_provider = dns_cache_get_service_provider(policy_reply->provider);
+    pending_req = policy_request->fqdn_req;
+
+    /* check reply is empty or not */
+    if (pending_req->req_info->reply == NULL) return;
+
+    reply_service_provider = pending_req->req_info->reply->service_id;
+
+    /* Don't report if service provider and reply service provider are different */
+    rc = (policy_reply->action == FSM_BLOCK);
+    rc &= (policy_reply->from_cache);
+    rc &= (service_provider != reply_service_provider);
+
+    if (rc)
+    {
+        policy_reply->to_report = false;
+        LOGT("%s: IPthreat provider :%d and Policy_reply provider: %d are different",
+             __func__, service_provider, reply_service_provider);
+    }
+}
+
+void
 ipthreat_process_report(struct fsm_policy_req* policy_request, struct fsm_policy_reply *policy_reply)
 {
     policy_reply->to_report = true;
@@ -710,6 +739,9 @@ ipthreat_process_report(struct fsm_policy_req* policy_request, struct fsm_policy
         policy_reply->action = FSM_ALLOW;
         policy_reply->to_report = true;
     }
+
+    /* Overwrite to_report if service providers are different */
+    ipthreat_update_policy_report(policy_request, policy_reply);
 
     ipthreat_dpi_send_report(policy_request, policy_reply);
 }

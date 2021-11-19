@@ -76,7 +76,7 @@ extern bool    os_nif_br_add(char* ifname, char* br);
 extern bool    os_nif_br_del(char* ifname);
 extern bool    os_nif_ipaddr_from_str(os_ipaddr_t *ipaddr, const char* str);
 extern bool    os_nif_macaddr_from_str(os_macaddr_t* mac, const char* str);
-extern bool    os_nif_macaddr_to_str(os_macaddr_t* mac, char* str, const char* format);
+extern bool    os_nif_macaddr_to_str(const os_macaddr_t *mac, char *str, const char *format);
 extern pid_t   os_nif_pppoe_pidof(const char *ifname);
 extern bool    os_nif_pppoe_start(const char *ifname, const char *ifparent, const char *username, const char *password);
 extern bool    os_nif_pppoe_stop(const char *ifname);
