@@ -267,10 +267,10 @@ wpas_util_get_pairwise(int wpa)
     return "";
 }
 
-static char *
+static bool
 wpas_conf_gen_freqlist(struct wpas *wpas, char *freqs, size_t len)
 {
-    int onboard[] = {
+    static const int onboard[] = {
         /* the list excludes dfs channels to avoid inheriting cac */
         2412, 2417, 2422, 2427, 2432, 2437, 2442,
         2447, 2452, 2457, 2462, 2467, 2472, 2484,
@@ -278,15 +278,19 @@ wpas_conf_gen_freqlist(struct wpas *wpas, char *freqs, size_t len)
     };
     size_t i;
     size_t j;
+    size_t in;
+    size_t out;
 
     memset(freqs, 0, len);
 
-    for (i = 0; i < ARRAY_SIZE(wpas->freqlist); i++)
-        for (j = 0; j < ARRAY_SIZE(onboard); j++)
-            if (wpas->freqlist[i] && wpas->freqlist[i] == onboard[j])
-                csnprintf(&freqs, &len, "%d ", wpas->freqlist[i]);
+    for (i = 0, in = 0, out = 0; i < ARRAY_SIZE(wpas->freqlist) && wpas->freqlist[i]; i++)
+        for (j = 0, in++; j < ARRAY_SIZE(onboard); j++)
+            if (wpas->freqlist[i] == onboard[j])
+                if (csnprintf(&freqs, &len, "%d ", wpas->freqlist[i]) > 0) out++;
 
-    return strchomp(freqs, " ");
+    // return true when returned list is valid : empty (all allowed) or contains
+    // at least one allowed onboarding freq which was not filtered out
+    return in == 0 || out > 0;
 }
 
 static int
@@ -363,6 +367,7 @@ wpas_conf_gen_vif_network(struct wpas *wpas,
     char wpa_proto[64];
     bool dfs_allowed;
     char freqlist[512];
+    bool freqlist_valid;
     bool psk;
 
     if (!vconf->wpa) {
@@ -384,11 +389,12 @@ wpas_conf_gen_vif_network(struct wpas *wpas,
     util_vif_get_wpa_key_mgmt(vconf, ARRAY_AND_SIZE(wpa_key_mgmt));
     util_vif_get_ieee80211w(vconf, ARRAY_AND_SIZE(ieee80211w));
     wpa_passphrase = vconf->wpa_psks[0];
-    wpas_conf_gen_freqlist(wpas, freqlist, sizeof(freqlist));
+    freqlist_valid = wpas_conf_gen_freqlist(wpas, freqlist, sizeof(freqlist));
     dfs_allowed = (vconf->parent_exists && strlen(vconf->parent) > 0);
     psk = strstr(wpa_key_mgmt, "-PSK") || strstr(wpa_key_mgmt, "SAE");
 
     csnprintf(buf, len, "network={\n");
+    csnprintf(buf, len, "\tdisabled=%c\n", dfs_allowed || freqlist_valid ? '0' : '1');
     csnprintf(buf, len, "\tscan_ssid=1\n");
     csnprintf(buf, len, "\tbgscan=\"\"\n");
     csnprintf(buf, len, "\tscan_freq=%s\n", dfs_allowed ? "" : freqlist);
@@ -431,6 +437,7 @@ wpas_conf_gen_vif_network_legacy(struct wpas *wpas,
     const char *wpa_proto;
     bool dfs_allowed;
     char freqlist[512];
+    bool freqlist_valid;
     int wpa;
 
     wpa = wpas_util_get_mode(SCHEMA_KEY_VAL(vconf->security, "mode"));
@@ -438,10 +445,11 @@ wpas_conf_gen_vif_network_legacy(struct wpas *wpas,
     wpa_proto = wpas_util_get_proto_legacy(wpa);
     wpa_key_mgmt = SCHEMA_KEY_VAL(vconf->security, "encryption");
     wpa_passphrase = SCHEMA_KEY_VAL(vconf->security, "key");
-    wpas_conf_gen_freqlist(wpas, freqlist, sizeof(freqlist));
+    freqlist_valid = wpas_conf_gen_freqlist(wpas, freqlist, sizeof(freqlist));
     dfs_allowed = (vconf->parent_exists && strlen(vconf->parent) > 0);
 
     csnprintf(buf, len, "network={\n");
+    csnprintf(buf, len, "\tdisabled=%c\n", dfs_allowed || freqlist_valid ? '0' : '1');
     csnprintf(buf, len, "\tscan_ssid=1\n");
     csnprintf(buf, len, "\tbgscan=\"\"\n");
     csnprintf(buf, len, "\tscan_freq=%s\n", dfs_allowed ? "" : freqlist);
@@ -476,6 +484,7 @@ wpas_conf_gen_cred_config_networks(struct wpas *wpas,
     const char *wpa_key_mgmt;
     const char *wpa_proto;
     char freqlist[512];
+    bool freqlist_valid;
     bool dfs_allowed;
     int wpa;
 
@@ -484,7 +493,7 @@ wpas_conf_gen_cred_config_networks(struct wpas *wpas,
     wpa_proto = wpas_util_get_proto_legacy(wpa);
     wpa_key_mgmt = SCHEMA_KEY_VAL(vconf->security, "encryption");
     wpa_passphrase = SCHEMA_KEY_VAL(vconf->security, "key");
-    wpas_conf_gen_freqlist(wpas, freqlist, sizeof(freqlist));
+    freqlist_valid = wpas_conf_gen_freqlist(wpas, freqlist, sizeof(freqlist));
     dfs_allowed = (vconf->parent_exists && strlen(vconf->parent) > 0);
 
     for (; n_cconfs; n_cconfs--, cconfs++) {
@@ -495,6 +504,7 @@ wpas_conf_gen_cred_config_networks(struct wpas *wpas,
         wpa_passphrase = SCHEMA_KEY_VAL(cconfs->security, "key");
 
         csnprintf(buf, len, "network={\n");
+        csnprintf(buf, len, "\tdisabled=%c\n", dfs_allowed || freqlist_valid ? '0' : '1');
         csnprintf(buf, len, "\tscan_ssid=1\n");
         csnprintf(buf, len, "\tbgscan=\"\"\n");
         csnprintf(buf, len, "\tscan_freq=%s\n", dfs_allowed ? "" : freqlist);

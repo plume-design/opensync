@@ -230,7 +230,7 @@ static int _host(struct message *m, unsigned char **bufp, const char *name)
                 break;
             }
         }
-    
+
         if (label[x] & 0xc0)
             break;
     }
@@ -326,10 +326,10 @@ static int _rrparse(struct message *m, struct resource *rr, int count, unsigned 
 }
 
 /* Keep all our mem in one (aligned) block for easy freeing */
-#define my(x,y)                 \
+#define my(x, y)                 \
     while (m->_len & 7)         \
         m->_len++;          \
-    (x) = (void *)(m->_packet + m->_len); \
+    (x) = (void *)(m->_packet + m->_len);    \
     m->_len += (y);
 
 int message_parse(struct message *m, unsigned char *packet)

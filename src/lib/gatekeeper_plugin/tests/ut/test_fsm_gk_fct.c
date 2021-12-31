@@ -89,6 +89,7 @@ test_gk_populate_redirect_entry(void)
     memset(&entry, 0, sizeof(entry));
 
     req.fqdn_req = CALLOC(1, sizeof(*req.fqdn_req));
+    memset(&policy_reply, 0, sizeof(policy_reply));
     strcpy(policy_reply.redirects[0], "1.2.3.4");
     strcpy(policy_reply.redirects[1], "6.7.8.9");
     policy_reply.rd_ttl = 123;

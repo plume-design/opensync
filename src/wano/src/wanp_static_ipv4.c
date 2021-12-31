@@ -41,7 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "wano.h"
 #include "memutil.h"
 
-#include "wano_wan_config.h"
+#include "wano_wan.h"
 #include "wanp_static_ipv4_stam.h"
 
 typedef struct
@@ -61,6 +61,7 @@ typedef struct
     size_t   ping_buf_offset;
 
     struct wano_wan_config  wan_config;
+    bool     have_config;
 
     /** True if this plug-in detected a working WAN configuration */
     bool plugin_has_wan;
@@ -383,7 +384,13 @@ enum wanp_static_ipv4_state wanp_static_ipv4_state_RUNNING(
     {
         struct wano_plugin_status ws = WANO_PLUGIN_STATUS(WANP_OK);
 
-        wano_wan_config_status_set(h->handle.wh_ifname, WC_TYPE_STATIC_IPV4, WC_STATUS_SUCCESS);
+        if (h->have_config)
+        {
+            wano_wan_status_set(
+                    wano_wan_from_plugin_handle(&h->handle),
+                    WC_TYPE_STATIC_IPV4,
+                    WC_STATUS_SUCCESS);
+        }
 
         h->plugin_has_wan = true;
         wanp_static_ipv4_wan_lock = true;
@@ -435,25 +442,26 @@ wano_plugin_handle_t *wanp_static_ipv4_init(
     h->ping_fd[0] = -1;
     h->ping_fd[1] = -1;
 
-    /*
-     * Load static configration
-     */
-    if (!wano_wan_config_get(&h->wan_config, WC_TYPE_STATIC_IPV4))
-    {
-        LOG(NOTICE, "static_ipv4: No static IPv4 configuration present, skipping.");
-        goto error;
-    }
-
     return &h->handle;
-
-error:
-    if (h != NULL) FREE(h);
-    return NULL;
 }
 
 void wanp_static_ipv4_run(wano_plugin_handle_t *wh)
 {
     wanp_static_ipv4_handle_t *wsh = CONTAINER_OF(wh, wanp_static_ipv4_handle_t, handle);
+
+    /*
+     * Load static configration
+     */
+    wsh->have_config = wano_wan_config_get(
+                wano_wan_from_plugin_handle(wh),
+                WC_TYPE_STATIC_IPV4,
+                &wsh->wan_config);
+    if (!wsh->have_config)
+    {
+        LOG(NOTICE, "static_ipv4: No static IPv4 configuration present, skipping.");
+        wsh->status_fn( wh, &WANO_PLUGIN_STATUS(WANP_SKIP));
+        return;
+    }
 
     /* Register to Wifi_Inet_State events, this will also kick-off the state machine */
     wano_inet_state_event_init(
@@ -470,6 +478,14 @@ void wanp_static_ipv4_fini(wano_plugin_handle_t *wh)
     if (wsh->plugin_has_wan)
     {
         wanp_static_ipv4_wan_lock = false;
+    }
+
+    if (wsh->have_config)
+    {
+        wano_wan_status_set(
+                wano_wan_from_plugin_handle(&wsh->handle),
+                WC_TYPE_STATIC_IPV4,
+                WC_STATUS_ERROR);
     }
 
     if (wsh->ping_pid > 0)

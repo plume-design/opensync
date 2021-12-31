@@ -54,3 +54,4 @@ UNIT_DEPS += src/lib/log
 UNIT_DEPS += src/lib/neigh_table
 UNIT_DEPS += src/lib/ovsdb
 UNIT_DEPS += src/lib/ustack
+UNIT_DEPS += src/lib/common

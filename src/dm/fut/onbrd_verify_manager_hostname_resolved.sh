@@ -33,12 +33,11 @@ source "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="onbrd/$(basename "$0")"
 manager_setup_file="onbrd/onbrd_setup.sh"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+onbrd/onbrd_verify_manager_hostname_resolved.sh [-h] arguments
 Description:
     - Validate AWLAN_Node manager_addr being resolved in Manager target
 Arguments:
@@ -46,10 +45,10 @@ Arguments:
     \$1 is_extender : 'true' - device is an extender, 'false' - device is a residential_gateway : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name} <true/false>
+                 Run: ./onbrd/onbrd_verify_manager_hostname_resolved.sh <true/false>
 Script usage example:
-   ./${tc_name} true    #if device is a extender
-   ./${tc_name} false   #if device is a gateway
+   ./onbrd/onbrd_verify_manager_hostname_resolved.sh true    #if device is a extender
+   ./onbrd/onbrd_verify_manager_hostname_resolved.sh false   #if device is a gateway
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -71,20 +70,20 @@ fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 
 NARGS=1
-[ $# -ne ${NARGS} ] && usage && raise "Requires exactly ${NARGS} input argument" -l "${tc_name}" -arg
+[ $# -ne ${NARGS} ] && usage && raise "Requires exactly ${NARGS} input argument" -l "onbrd/onbrd_verify_manager_hostname_resolved.sh" -arg
 is_extender=${1}
 
 if [ $is_extender == "true" ]; then
     check_kconfig_option "TARGET_CAP_EXTENDER" "y" ||
-    raise "TARGET_CAP_EXTENDER != y - Device is not EXTENDER capable" -l "${tc_name}" -s
+    raise "TARGET_CAP_EXTENDER != y - Device is not EXTENDER capable" -l "onbrd/onbrd_verify_manager_hostname_resolved.sh" -s
 elif [ $is_extender == "false" ]; then
     check_kconfig_option "TARGET_CAP_GATEWAY" "y" ||
-    raise "TARGET_CAP_EXTENDER != y - Device is not a Gateway" -l "${tc_name}" -s
+    raise "TARGET_CAP_EXTENDER != y - Device is not a Gateway" -l "onbrd/onbrd_verify_manager_hostname_resolved.sh" -s
 else
-    raise "Wrong option" -l "${tc_name}" -s
+    raise "Wrong option" -l "onbrd/onbrd_verify_manager_hostname_resolved.sh" -s
 fi
 
-log_title "$tc_name: ONBRD test - Verify if AWLAN_Node manager address hostname is resolved"
+log_title "onbrd/onbrd_verify_manager_hostname_resolved.sh: ONBRD test - Verify if AWLAN_Node manager address hostname is resolved"
 
 # Restart managers to start every config resolution from the begining
 restart_managers
@@ -94,29 +93,29 @@ sleep 30
 redirector_addr_none="ssl:none:443"
 wait_for_function_response 'notempty' "get_ovsdb_entry_value AWLAN_Node redirector_addr" &&
     redirector_addr=$(get_ovsdb_entry_value AWLAN_Node redirector_addr) ||
-    raise "FAIL: AWLAN_Node::redirector_addr is not set" -l "${tc_name}" -tc
+    raise "FAIL: AWLAN_Node::redirector_addr is not set" -l "onbrd/onbrd_verify_manager_hostname_resolved.sh" -tc
 
 if [ $is_extender == "true" ]; then
-    log "$tc_name: Setting AWLAN_Node redirector_addr to ${redirector_addr_none}"
+    log "onbrd/onbrd_verify_manager_hostname_resolved.sh: Setting AWLAN_Node redirector_addr to ${redirector_addr_none}"
     update_ovsdb_entry AWLAN_Node -u redirector_addr "${redirector_addr_none}" &&
-        log "$tc_name: AWLAN_Node::redirector_addr updated - Success" ||
-        raise "FAIL: Could not update AWLAN_Node::redirector_addr" -l "$tc_name" -oe
+        log "onbrd/onbrd_verify_manager_hostname_resolved.sh: AWLAN_Node::redirector_addr updated - Success" ||
+        raise "FAIL: Could not update AWLAN_Node::redirector_addr" -l "onbrd/onbrd_verify_manager_hostname_resolved.sh" -oe
 
-    log "${tc_name}: Wait Manager target to clear"
+    log "onbrd/onbrd_verify_manager_hostname_resolved.sh: Wait Manager target to clear"
     wait_for_function_response 'empty' "get_ovsdb_entry_value Manager target" &&
-        log "${tc_name}: Manager::target is cleared - Success" ||
-        raise "FAIL: Manager::target is not cleared" -l "${tc_name}" -tc
+        log "onbrd/onbrd_verify_manager_hostname_resolved.sh: Manager::target is cleared - Success" ||
+        raise "FAIL: Manager::target is not cleared" -l "onbrd/onbrd_verify_manager_hostname_resolved.sh" -tc
 
-    log "$tc_name: Setting AWLAN_Node redirector_addr to ${redirector_addr}"
+    log "onbrd/onbrd_verify_manager_hostname_resolved.sh: Setting AWLAN_Node redirector_addr to ${redirector_addr}"
     update_ovsdb_entry AWLAN_Node -u redirector_addr "${redirector_addr}" &&
-        log "$tc_name: AWLAN_Node::redirector_addr updated - Success" ||
-        raise "FAIL: Could not update AWLAN_Node::redirector_addr" -l "$tc_name" -oe
+        log "onbrd/onbrd_verify_manager_hostname_resolved.sh: AWLAN_Node::redirector_addr updated - Success" ||
+        raise "FAIL: Could not update AWLAN_Node::redirector_addr" -l "onbrd/onbrd_verify_manager_hostname_resolved.sh" -oe
 fi
 
-log "${tc_name}: Wait Manager target to resolve to address"
+log "onbrd/onbrd_verify_manager_hostname_resolved.sh: Wait Manager target to resolve to address"
 wait_for_function_response 'notempty' "get_ovsdb_entry_value Manager target" &&
-    log "${tc_name}: Manager::target is set - Success" ||
-    raise "FAIL: Manager::target is not set" -l "${tc_name}" -tc
+    log "onbrd/onbrd_verify_manager_hostname_resolved.sh: Manager::target is set - Success" ||
+    raise "FAIL: Manager::target is not set" -l "onbrd/onbrd_verify_manager_hostname_resolved.sh" -tc
 
 print_tables Manager
 pass

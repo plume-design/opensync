@@ -412,7 +412,9 @@ test_gkc_flush_ipv4_and_ipv6(void)
     int ret;
 
     insert_ipv4_and_ipv6();
-    gkc_print_cache_entries();
+
+    gkc_print_cache_parts(GK_CACHE_REQ_TYPE_IPV4);
+    gkc_print_cache_parts(GK_CACHE_REQ_TYPE_IPV6);
 
     memset(&fpr, 0, sizeof(fpr));
 

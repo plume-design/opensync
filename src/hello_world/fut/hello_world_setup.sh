@@ -45,7 +45,7 @@ killall_process_by_name "${DEMO_MANAGER_BIN_NAME}"
 
 log "Starting $DEMO_MANAGER_BIN_NAME"
 start_specific_manager ${DEMO_MANAGER_BIN_NAME} ||
-    raise "start_specific_manager $DEMO_MANAGER_BIN_NAME" -l "$fn_name" -fc
+    raise "start_specific_manager $DEMO_MANAGER_BIN_NAME" -l "hello_world/hello_world_setup.sh" -fc
 
 log "Changing $DEMO_MANAGER_BIN_NAME log level to TRACE"
 ${OVSH} delete AW_Debug -w name==$DEMO_MANAGER_BIN_NAME

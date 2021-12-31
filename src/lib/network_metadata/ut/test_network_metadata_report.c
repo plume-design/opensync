@@ -44,6 +44,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 struct test_network_data_report g_nd_test;
 
+extern struct flow_uplink uplink_info[];
+
 struct in_key in_keys[] =
 {
     {    /* 0 */
@@ -61,6 +63,7 @@ struct in_key in_keys[] =
         .ip_version = 0
     },
     {   /* 2 */
+
         .smac = "11:22:33:44:55:66",
         .dmac = "dd:ee:ff:cc:bb:aa",
         .vlan_id = 1,
@@ -226,6 +229,7 @@ os_ufid_t ufid[] =
     .u32[3] = 1934593071,
   },
 };
+
 
 /**
  * @brief: translates reader friendly in_key structure in a net_md_flow_key
@@ -485,9 +489,9 @@ static void validate_sampling_one_key(struct net_md_aggregator *aggr,
                                       struct net_md_flow_key *key,
                                       struct flow_counters *counters)
 {
-    struct net_md_stats_accumulator *acc;
     struct flow_counters *init_counters, *update_counters;
     struct flow_counters zero_counters = { 0 };
+    struct net_md_stats_accumulator *acc;
     bool ret;
 
     init_counters = counters++;
@@ -744,6 +748,9 @@ void validate_aggregate_one_key(struct net_md_aggregator *aggr, size_t key_idx,
     ret = net_md_add_sample(aggr, key, report_1_counters);
     TEST_ASSERT_TRUE(ret);
 
+    ret = net_md_add_uplink(aggr, &uplink_info[1]);
+    TEST_ASSERT_TRUE(ret);
+
     /* Close the aggregator window */
     ret = net_md_close_active_window(aggr);
     TEST_ASSERT_TRUE(ret);
@@ -757,6 +764,9 @@ void validate_aggregate_one_key(struct net_md_aggregator *aggr, size_t key_idx,
 
     /* Add second sample */
     ret = net_md_add_sample(aggr, key, report_2_counters);
+    TEST_ASSERT_TRUE(ret);
+
+    ret = net_md_add_uplink(aggr, &uplink_info[1]);
     TEST_ASSERT_TRUE(ret);
 
     /* Close the aggregator window */
@@ -858,7 +868,13 @@ void validate_aggregate_two_keys(struct net_md_aggregator *aggr,
     ret = net_md_add_sample(aggr, key0, key0_report_1_counters);
     TEST_ASSERT_TRUE(ret);
 
+    ret = net_md_add_uplink(aggr, &uplink_info[2]);
+    TEST_ASSERT_TRUE(ret);
+
     ret = net_md_add_sample(aggr, key1, key1_report_1_counters);
+    TEST_ASSERT_TRUE(ret);
+
+    ret = net_md_add_uplink(aggr, &uplink_info[2]);
     TEST_ASSERT_TRUE(ret);
 
     /* Close the aggregator window */
@@ -885,6 +901,9 @@ void validate_aggregate_two_keys(struct net_md_aggregator *aggr,
 
     /* Add second sample */
     ret = net_md_add_sample(aggr, key0, key0_report_2_counters);
+    TEST_ASSERT_TRUE(ret);
+
+    ret = net_md_add_uplink(aggr, &uplink_info[2]);
     TEST_ASSERT_TRUE(ret);
 
     /* Close the aggregator window */
@@ -935,10 +954,10 @@ void test_ethernet_aggregate_two_keys(void)
 
     /*
      * Second report counters, absolute mode.
-     * Received a total of 50000 bytes for key 0, 30000 bytes for key 1.
+     * Received a total of 50000 bytes for key 0.
      */
-    counters[4].bytes_count = 80000;
-    counters[4].packets_count = 800;
+    counters[4].bytes_count = 50000;
+    counters[4].packets_count = 500;
 
     /*
      * First report counters, relative mode.
@@ -1017,6 +1036,7 @@ void test_large_loop(void)
                 counters[i].packets_count += (i * 100 + key_idx * 10 + n * 1000);
                 counters[i].bytes_count += (i * 2000 + key_idx * 100 + n * 10000);
                 ret = net_md_add_sample(aggr, key, &counters[i]);
+                TEST_ASSERT_TRUE(ret);
             }
         }
 
@@ -1079,6 +1099,7 @@ void test_add_remove_flows(void)
                 counters[i].packets_count += (i * 100 + key_idx * 10 + n * 1000);
                 counters[i].bytes_count += (i * 2000 + key_idx * 100 + n * 10000);
                 ret = net_md_add_sample(aggr, key, &counters[i]);
+                TEST_ASSERT_TRUE(ret);
             }
         }
 
@@ -1099,6 +1120,7 @@ void test_add_remove_flows(void)
             counters[i].packets_count += (i * 100 + key_idx * 10 + n * 1000);
             counters[i].bytes_count += (i * 2000 + key_idx * 100 + n * 10000);
             ret = net_md_add_sample(aggr, key, &counters[i]);
+            TEST_ASSERT_TRUE(ret);
         }
 
         /* Close the aggregator window */
@@ -1156,7 +1178,8 @@ void test_multiple_windows(void)
         {
             counters[i].packets_count += (i * 100 + key_idx * 10 + n * 1000);
             counters[i].bytes_count += (i * 2000 + key_idx * 100 + n * 10000);
-            ret = net_md_add_sample(aggr, key, &counters[i]);
+            ret = net_md_add_sample(aggr, key, &counters[i]);\
+            TEST_ASSERT_TRUE(ret);
         }
         /* Close the aggregator window */
         ret = net_md_close_active_window(aggr);
@@ -1240,6 +1263,7 @@ void test_report_filter(void)
             counters[i].packets_count += (i * 100 + key_idx * 10);
             counters[i].bytes_count += (i * 2000 + key_idx * 100);
             ret = net_md_add_sample(aggr, key, &counters[i]);
+            TEST_ASSERT_TRUE(ret);
         }
     }
 
@@ -1323,6 +1347,7 @@ void test_bogus_ttl(void)
     counter.packets_count =  1000;
     counter.bytes_count = 10000;
     ret = net_md_add_sample(aggr, key, &counter);
+    TEST_ASSERT_TRUE(ret);
 
     /* Sleep 2 seconds */
     sleep(2);
@@ -1429,7 +1454,6 @@ void
 test_vendor_data_one_key(void)
 {
     struct net_md_aggregator_set *aggr_set;
-    struct net_md_stats_accumulator *acc;
     struct flow_counters counters[1];
     struct net_md_aggregator *aggr;
     struct flow_vendor_data *vd1;
@@ -1476,6 +1500,7 @@ test_vendor_data_one_key(void)
         },
     };
 
+    struct net_md_stats_accumulator *acc;
     struct vendor_data_kv_pair **kvps1;
     struct vendor_data_kv_pair **kvps2;
     struct vendor_data_kv_pair *kvp;
@@ -1978,8 +2003,8 @@ test_vendor_data_serialize_deserialize(void)
     ret = net_md_close_active_window(aggr_in);
     TEST_ASSERT_TRUE(ret);
 
-    /* Prepare the transfer to the receiving aggregator */
     pb = serialize_flow_report(aggr_in->report);
+    TEST_ASSERT_NOT_NULL(pb);
 
     recv_pb.len = pb->len;
     recv_pb.buf = pb->buf;
@@ -2085,8 +2110,9 @@ test_update_flow_tags(void)
     ret = net_md_close_active_window(aggr);
     TEST_ASSERT_TRUE(ret);
 
-    /* Keep access to the protobuf to test adding the same flow tag */
     pb = serialize_flow_report(aggr->report);
+    TEST_ASSERT_NOT_NULL(pb);
+
     net_md_reset_aggregator(aggr);
 
     net_md_update_aggr(aggr, pb);
@@ -2158,8 +2184,8 @@ test_update_flow_tags(void)
     ret = net_md_close_active_window(alt_aggr);
     TEST_ASSERT_TRUE(ret);
 
-    /* Keep access to the protobuf to test adding the same flow tag */
     pb = serialize_flow_report(alt_aggr->report);
+    TEST_ASSERT_NOT_NULL(pb);
     net_md_reset_aggregator(alt_aggr);
 
     /* Update the original aggregator with the alt report */
@@ -2237,6 +2263,7 @@ test_update_vendor_data(void)
             .u64_value = 87654321,
         },
     };
+
     struct vendor_data_kv_pair **kvps1;
     struct vendor_data_kv_pair **kvps2;
     struct vendor_data_kv_pair *kvp;
@@ -2377,8 +2404,8 @@ test_update_vendor_data(void)
     ret = net_md_close_active_window(aggr_in);
     TEST_ASSERT_TRUE(ret);
 
-    /* Prepare the transfer to the receiving aggregator */
     pb = serialize_flow_report(aggr_in->report);
+    TEST_ASSERT_NOT_NULL(pb);
 
     recv_pb.len = pb->len;
     recv_pb.buf = pb->buf;
@@ -2512,8 +2539,8 @@ test_update_filter_flow_tags(void)
     ret = net_md_close_active_window(aggr);
     TEST_ASSERT_TRUE(ret);
 
-    /* Keep access to the protobuf to test adding the same flow tag */
     pb = serialize_flow_report(aggr->report);
+    TEST_ASSERT_NOT_NULL(pb);
     net_md_reset_aggregator(aggr);
 
     net_md_update_aggr(aggr, pb);
@@ -2585,8 +2612,9 @@ test_update_filter_flow_tags(void)
     ret = net_md_close_active_window(alt_aggr);
     TEST_ASSERT_TRUE(ret);
 
-    /* Keep access to the protobuf to test adding the same flow tag */
     pb = serialize_flow_report(alt_aggr->report);
+    TEST_ASSERT_NOT_NULL(pb);
+
     net_md_reset_aggregator(alt_aggr);
 
     /*
@@ -2724,6 +2752,7 @@ test_direction_originator_data_serialize_deserialize(void)
     ret = net_md_add_sample(aggr_in, key, counters);
     TEST_ASSERT_TRUE(ret);
 
+
     /* Validate the state of the accumulator bound to the key */
     acc_in = net_md_lookup_acc(aggr_in, key);
     TEST_ASSERT_NOT_NULL(acc_in);
@@ -2736,8 +2765,8 @@ test_direction_originator_data_serialize_deserialize(void)
     ret = net_md_close_active_window(aggr_in);
     TEST_ASSERT_TRUE(ret);
 
-    /* Prepare the transfer to the receiving aggregator */
     pb = serialize_flow_report(aggr_in->report);
+    TEST_ASSERT_NOT_NULL(pb);
 
     recv_pb.len = pb->len;
     recv_pb.buf = pb->buf;
@@ -2793,7 +2822,6 @@ test_acc_flow_info_report(void)
     struct net_md_flow_info info;
     struct net_md_flow_key *key;
     bool ret;
-
 
     TEST_ASSERT_TRUE(g_nd_test.initialized);
     counters[0].bytes_count = 10000;
@@ -2878,6 +2906,9 @@ test_net_md_ufid(void)
     ret = net_md_add_sample(aggr, key, &counters[0]);
     TEST_ASSERT_TRUE(ret);
 
+    ret = net_md_add_uplink(aggr, &uplink_info[0]);
+    TEST_ASSERT_TRUE(ret);
+
     /* Validate the state of the accumulator bound to the key */
     acc = net_md_lookup_acc(aggr, key);
     TEST_ASSERT_NOT_NULL(acc);
@@ -2902,6 +2933,9 @@ test_net_md_ufid(void)
 
     /* Add sample */
     ret = net_md_add_sample(aggr, key1, &counters[1]);
+    TEST_ASSERT_TRUE(ret);
+
+    ret = net_md_add_uplink(aggr, &uplink_info[1]);
     TEST_ASSERT_TRUE(ret);
 
     /* Validate the state of the accumulator bound to the key */
@@ -2982,6 +3016,7 @@ test_network_metadata_reports(void)
     // RUN_TEST(test_add_2_samples_all_keys);
     RUN_TEST(test_ethernet_aggregate_one_key);
     RUN_TEST(test_ethernet_aggregate_two_keys);
+
     RUN_TEST(test_large_loop);
     RUN_TEST(test_add_remove_flows);
     RUN_TEST(test_multiple_windows);

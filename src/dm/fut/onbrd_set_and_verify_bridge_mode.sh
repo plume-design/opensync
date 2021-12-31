@@ -33,12 +33,11 @@ source "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="onbrd/$(basename "$0")"
 manager_setup_file="onbrd/onbrd_setup.sh"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+onbrd/onbrd_set_and_verify_bridge_mode.sh [-h] arguments
 Description:
     - Validate device bridge mode settings
 Arguments:
@@ -50,9 +49,9 @@ Arguments:
     \$5 (patch_h2w)      : LAN to WAN patch    : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name} <WAN-INTERFACE> <WAN-IP> <HOME-INTERFACE> <PATCH-W2H> <PATCH-H2W>
+                 Run: ./onbrd/onbrd_set_and_verify_bridge_mode.sh <WAN-INTERFACE> <WAN-IP> <HOME-INTERFACE> <PATCH-W2H> <PATCH-H2W>
 Script usage example:
-   ./${tc_name} br-wan 192.168.200.10 br-home patch-w2h patch-h2w
+   ./onbrd/onbrd_set_and_verify_bridge_mode.sh br-wan 192.168.200.10 br-home patch-w2h patch-h2w
 usage_string
 }
 
@@ -69,13 +68,13 @@ if [ -n "${1}" ]; then
 fi
 
 check_kconfig_option "TARGET_CAP_EXTENDER" "y" ||
-    raise "TARGET_CAP_EXTENDER != y - Testcase applicable only for EXTENDER-s" -l "${tc_name}" -s
-log "$tc_name: Checking if WANO is enabled, if yes, skip..."
+    raise "TARGET_CAP_EXTENDER != y - Testcase applicable only for EXTENDER-s" -l "onbrd/onbrd_set_and_verify_bridge_mode.sh" -s
+log "onbrd/onbrd_set_and_verify_bridge_mode.sh: Checking if WANO is enabled, if yes, skip..."
 check_kconfig_option "CONFIG_MANAGER_WANO" "y" &&
-    raise "Test of bridge mode is not compatible if WANO is present on system" -l "${tc_name}" -s
+    raise "Test of bridge mode is not compatible if WANO is present on system" -l "onbrd/onbrd_set_and_verify_bridge_mode.sh" -s
 
 NARGS=5
-[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "onbrd/onbrd_set_and_verify_bridge_mode.sh" -arg
 # Fill variables with provided arguments or defaults.
 wan_interface=${1}
 wan_ip=${2}
@@ -90,80 +89,80 @@ ovs-vsctl show
 fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 
-log_title "$tc_name: ONBRD test - Verify Bridge Mode Settings"
+log_title "onbrd/onbrd_set_and_verify_bridge_mode.sh: ONBRD test - Verify Bridge Mode Settings"
 
 # WAN bridge section
 # Check if DHCP client is running on WAN bridge
 wait_for_function_response 0 "check_pid_udhcp $wan_interface" &&
-    log "$tc_name: check_pid_udhcp - PID found, DHCP client running - Success" ||
-    raise "FAIL: check_pid_udhcp - PID not found, DHCP client NOT running" -l "$tc_name" -tc
+    log "onbrd/onbrd_set_and_verify_bridge_mode.sh: check_pid_udhcp - PID found, DHCP client running - Success" ||
+    raise "FAIL: check_pid_udhcp - PID not found, DHCP client NOT running" -l "onbrd/onbrd_set_and_verify_bridge_mode.sh" -tc
 
 update_ovsdb_entry Wifi_Inet_Config -w if_name "$wan_interface" -u NAT true &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config::NAT is 'true' - Success" ||
-    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config::NAT is not 'true'" -l "$tc_name" -oe
+    log "onbrd/onbrd_set_and_verify_bridge_mode.sh: update_ovsdb_entry - Wifi_Inet_Config::NAT is 'true' - Success" ||
+    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config::NAT is not 'true'" -l "onbrd/onbrd_set_and_verify_bridge_mode.sh" -oe
 
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$wan_interface" -is NAT true &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::NAT is 'true' - Success" ||
-    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::NAT is not 'true'" -l "$tc_name" -tc
+    log "onbrd/onbrd_set_and_verify_bridge_mode.sh: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::NAT is 'true' - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::NAT is not 'true'" -l "onbrd/onbrd_set_and_verify_bridge_mode.sh" -tc
 
 update_ovsdb_entry Wifi_Inet_Config -w if_name "$wan_interface" -u ip_assign_scheme dhcp &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config::ip_assign_scheme is 'dhcp' - Success" ||
-    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config::ip_assign_scheme is not 'dhcp'" -l "$tc_name" -oe
+    log "onbrd/onbrd_set_and_verify_bridge_mode.sh: update_ovsdb_entry - Wifi_Inet_Config::ip_assign_scheme is 'dhcp' - Success" ||
+    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config::ip_assign_scheme is not 'dhcp'" -l "onbrd/onbrd_set_and_verify_bridge_mode.sh" -oe
 
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$wan_interface" -is ip_assign_scheme dhcp &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::ip_assign_scheme is 'dhcp' - Success" ||
-    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::ip_assign_scheme is not 'dhcp'" -l "$tc_name" -tc
+    log "onbrd/onbrd_set_and_verify_bridge_mode.sh: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::ip_assign_scheme is 'dhcp' - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::ip_assign_scheme is not 'dhcp'" -l "onbrd/onbrd_set_and_verify_bridge_mode.sh" -tc
 
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$wan_interface" -is inet_addr "$wan_ip" &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::inet_addr is private - Success" ||
-    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::inet_addr is not private" -l "$tc_name" -tc
+    log "onbrd/onbrd_set_and_verify_bridge_mode.sh: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::inet_addr is private - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::inet_addr is not private" -l "onbrd/onbrd_set_and_verify_bridge_mode.sh" -tc
 
 # LAN bridge section
 update_ovsdb_entry Wifi_Inet_Config -w if_name "$home_interface" -u NAT false &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config::NAT is 'false' - Success" ||
-    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config::NAT is not 'false'" -l "$tc_name" -oe
+    log "onbrd/onbrd_set_and_verify_bridge_mode.sh: update_ovsdb_entry - Wifi_Inet_Config::NAT is 'false' - Success" ||
+    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config::NAT is not 'false'" -l "onbrd/onbrd_set_and_verify_bridge_mode.sh" -oe
 
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$home_interface" -is NAT false &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::NAT is 'false' - Success" ||
-    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::NAT is not 'false'" -l "$tc_name" -tc
+    log "onbrd/onbrd_set_and_verify_bridge_mode.sh: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::NAT is 'false' - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::NAT is not 'false'" -l "onbrd/onbrd_set_and_verify_bridge_mode.sh" -tc
 
 update_ovsdb_entry Wifi_Inet_Config -w if_name "$home_interface" -u ip_assign_scheme none &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config::ip_assign_scheme is 'none' - Success" ||
-    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config::ip_assign_scheme is not 'none'" -l "$tc_name" -oe
+    log "onbrd/onbrd_set_and_verify_bridge_mode.sh: update_ovsdb_entry - Wifi_Inet_Config::ip_assign_scheme is 'none' - Success" ||
+    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config::ip_assign_scheme is not 'none'" -l "onbrd/onbrd_set_and_verify_bridge_mode.sh" -oe
 
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$home_interface" -is ip_assign_scheme none &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::ip_assign_scheme is 'none' - Success" ||
-    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::ip_assign_scheme is not 'none'" -l "$tc_name" -tc
+    log "onbrd/onbrd_set_and_verify_bridge_mode.sh: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::ip_assign_scheme is 'none' - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::ip_assign_scheme is not 'none'" -l "onbrd/onbrd_set_and_verify_bridge_mode.sh" -tc
 
 update_ovsdb_entry Wifi_Inet_Config -w if_name "$home_interface" -u "dhcpd" "[\"map\",[]]" &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config::dhcpd is [\"map\",[]] - Success" ||
-    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config::dhcpd is not [\"map\",[]]" -l "$tc_name" -oe
+    log "onbrd/onbrd_set_and_verify_bridge_mode.sh: update_ovsdb_entry - Wifi_Inet_Config::dhcpd is [\"map\",[]] - Success" ||
+    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config::dhcpd is not [\"map\",[]]" -l "onbrd/onbrd_set_and_verify_bridge_mode.sh" -oe
 
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$home_interface" -is "dhcpd" "[\"map\",[]]" &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::dhcpd is [\"map\",[]] - Success" ||
-    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::dhcpd [\"map\",[]]" -l "$tc_name" -tc
+    log "onbrd/onbrd_set_and_verify_bridge_mode.sh: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::dhcpd is [\"map\",[]] - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::dhcpd [\"map\",[]]" -l "onbrd/onbrd_set_and_verify_bridge_mode.sh" -tc
 
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$home_interface" -is "netmask" "0.0.0.0" &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::netmask is '0.0.0.0' - Success" ||
-    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::netmask is not '0.0.0.0'" -l "$tc_name" -tc
+    log "onbrd/onbrd_set_and_verify_bridge_mode.sh: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::netmask is '0.0.0.0' - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::netmask is not '0.0.0.0'" -l "onbrd/onbrd_set_and_verify_bridge_mode.sh" -tc
 
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$home_interface" -is inet_addr "0.0.0.0" &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::inet_addr is '0.0.0.0' - Success" ||
-    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::inet_addr is not '0.0.0.0'" -l "$tc_name" -tc
+    log "onbrd/onbrd_set_and_verify_bridge_mode.sh: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::inet_addr is '0.0.0.0' - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::inet_addr is not '0.0.0.0'" -l "onbrd/onbrd_set_and_verify_bridge_mode.sh" -tc
 
 # Creating patch interface
-log "$tc_name: create_patch_interface - creating patch $patch_w2h $patch_h2w"
+log "onbrd/onbrd_set_and_verify_bridge_mode.sh: create_patch_interface - creating patch $patch_w2h $patch_h2w"
 create_patch_interface "$wan_interface" "$patch_w2h" "$patch_h2w" &&
-    log "$tc_name: check_patch_if_exists - patch interface $patch_w2h created - Success" ||
-    raise "FAIL: check_patch_if_exists - Failed to create patch interface $patch_w2h" -l "$tc_name" -tc
+    log "onbrd/onbrd_set_and_verify_bridge_mode.sh: check_patch_if_exists - patch interface $patch_w2h created - Success" ||
+    raise "FAIL: check_patch_if_exists - Failed to create patch interface $patch_w2h" -l "onbrd/onbrd_set_and_verify_bridge_mode.sh" -tc
 
 wait_for_function_response 0 "check_if_patch_exists $patch_w2h" &&
-    log "$tc_name: check_patch_if_exists - patch interface $patch_w2h exists - Success" ||
-    raise "FAIL: check_patch_if_exists - patch interface $patch_w2h does not exists" -l "$tc_name" -tc
+    log "onbrd/onbrd_set_and_verify_bridge_mode.sh: check_patch_if_exists - patch interface $patch_w2h exists - Success" ||
+    raise "FAIL: check_patch_if_exists - patch interface $patch_w2h does not exists" -l "onbrd/onbrd_set_and_verify_bridge_mode.sh" -tc
 
 wait_for_function_response 0 "check_if_patch_exists $patch_h2w" &&
-    log "$tc_name: check_patch_if_exists - patch interface $patch_h2w exists - Success" ||
-    raise "FAIL: check_patch_if_exists - patch interface $patch_h2w does not exists" -l "$tc_name" -tc
+    log "onbrd/onbrd_set_and_verify_bridge_mode.sh: check_patch_if_exists - patch interface $patch_h2w exists - Success" ||
+    raise "FAIL: check_patch_if_exists - patch interface $patch_h2w does not exists" -l "onbrd/onbrd_set_and_verify_bridge_mode.sh" -tc
 
 # Restart managers to tidy up config
 restart_managers

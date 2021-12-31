@@ -38,29 +38,30 @@ struct osn_route4_cfg
     char if_name[0];
 };
 
-osn_route4_cfg_t *osn_route4_cfg_new(const char *if_name)
+osn_route4_cfg_t *lnx_route4_cfg_new(const char *if_name)
 {
     struct osn_route4_cfg *self = MALLOC(sizeof(*self) + strlen(if_name) + 1/*null*/);
     strcpy(self->if_name, if_name);
     return self;
 }
 
-bool osn_route4_cfg_del(osn_route4_cfg_t *self)
+bool lnx_route4_cfg_del(osn_route4_cfg_t *self)
 {
     FREE(self);
     return true;
 }
 
-bool osn_route_apply(osn_route4_cfg_t *self)
+const char* lnx_route4_cfg_name(const osn_route4_cfg_t *self)
 {
+    return self->if_name;
+}
+
+bool lnx_route_apply(osn_route4_cfg_t *self)
+{
+    (void)self;
     /* This implementation has no buffering for the routes, so apply
      * methods has nothing to do, all routes are already set in OS */
     return true;
-}
-
-const char* osn_route4_cfg_name(const osn_route4_cfg_t *self)
-{
-    return self->if_name;
 }
 
 static bool call_ip_route(char *cmd, int pos, size_t space, const char *if_name)
@@ -69,7 +70,7 @@ static bool call_ip_route(char *cmd, int pos, size_t space, const char *if_name)
 
     // check buffer overflow here, only if_name print is not size controlled
     // remaining parts have fixed length, which will fit in the buffer
-    
+
     if((size_t)n >= space)
     {
         LOG(ERR, "route: %s() if_name string too long", __FUNCTION__);
@@ -77,12 +78,7 @@ static bool call_ip_route(char *cmd, int pos, size_t space, const char *if_name)
     }
 
     int rc = cmd_log(cmd);
-    if (WEXIT_FAILURE(rc))
-    {
-        LOG(ERR, "route: Error executing command \"%s\", code=%d", cmd, rc);
-        return false;
-    }
-    return true;
+    return WEXIT_SUCCESS(rc);
 }
 
 static int build_ip_route_cmd(char *dst, size_t dst_size, const char *action, const osn_route4_t *route)
@@ -112,12 +108,12 @@ static bool execute_ip_route(osn_route4_cfg_t *self, const char *action, const o
     return call_ip_route(cmd, n, sizeof(cmd) - n, self->if_name);
 }
 
-bool osn_route_add(osn_route4_cfg_t *self, const osn_route4_t *route)
+bool lnx_route_add(osn_route4_cfg_t *self, const osn_route4_t *route)
 {
     return execute_ip_route(self, "add", route);
 }
 
-bool osn_route_remove(osn_route4_cfg_t *self, const osn_route4_t *route)
+bool lnx_route_remove(osn_route4_cfg_t *self, const osn_route4_t *route)
 {
     return execute_ip_route(self, "del", route);
 }
@@ -143,7 +139,7 @@ static char *find_dev_name(char *str)
     return *name == '\0' ? NULL : name;
 }
 
-bool osn_route_find_dev(osn_ip_addr_t addr, char *buf, size_t bufSize)
+bool lnx_route_find_dev(osn_ip_addr_t addr, char *buf, size_t bufSize)
 {
     /* Get interafce name from linux routing table */
     char cmd[256];

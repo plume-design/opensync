@@ -1,0 +1,9 @@
+if OSP_L2UF_LIBPCAP
+    comment "L2UF Options"
+    config OSP_L2UF_LIBPACP_DEVICE
+        string "L2UF Device"
+        default "br-home.l2uf"
+        help
+            The interface name where we can sniff l2uf frames with pcap.
+
+endif

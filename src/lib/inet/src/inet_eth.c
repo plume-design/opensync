@@ -50,7 +50,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *  Inet Ethernet implementation
  * ===========================================================================
  */
-static bool inet_eth_dtor(inet_t *super);
 static osn_netif_status_fn_t inet_eth_netif_status_fn;
 static osn_ip_status_fn_t inet_eth_ip4_status_fn;
 static bool inet_eth_noflood_set(inet_t *self, bool enable);

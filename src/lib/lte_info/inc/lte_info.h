@@ -64,12 +64,34 @@ enum lte_net_reg_status
     LTE_NET_REG_STAT_ROAMING = INTERFACES__LTE_INFO__LTE_NET_REG_STATUS__LTE_NET_REG_STAT_ROAMING,
 };
 
+enum lte_sim_type
+{
+    LTE_SIM_TYPE_UNSPECIFIED = INTERFACES__LTE_INFO__LTE_SIM_TYPE__LTE_SIM_TYPE_UNSPECIFIED,
+    LTE_SIM_TYPE_ESIM = INTERFACES__LTE_INFO__LTE_SIM_TYPE__LTE_SIM_TYPE_ESIM,
+    LTE_SIM_TYPE_PSIM = INTERFACES__LTE_INFO__LTE_SIM_TYPE__LTE_SIM_TYPE_PSIM,
+};
+
+enum lte_sim_status
+{
+    LTE_SIM_STATUS_UNSPECIFIED = INTERFACES__LTE_INFO__LTE_SIM_STATUS__LTE_SIM_STATUS_UNSPECIFIED,
+    LTE_SIM_STATUS_INSERTED = INTERFACES__LTE_INFO__LTE_SIM_STATUS__LTE_SIM_STATUS_INSERTED,
+    LTE_SIM_STATUS_REMOVED = INTERFACES__LTE_INFO__LTE_SIM_STATUS__LTE_SIM_STATUS_REMOVED,
+    LTE_SIM_STATUS_BAD = INTERFACES__LTE_INFO__LTE_SIM_STATUS__LTE_SIM_STATUS_BAD,
+};
+
 /**
  * LteNetInfo representation
  */
 struct lte_net_info
 {
     enum lte_net_reg_status net_status;
+    uint32_t mcc;
+    uint32_t mnc;
+    uint32_t tac;
+    char *service_provider;
+    enum lte_sim_type sim_type;
+    enum lte_sim_status sim_status;
+    uint32_t active_sim_slot;
     int32_t rssi;
     int32_t ber;
 };

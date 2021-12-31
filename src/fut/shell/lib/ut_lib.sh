@@ -29,6 +29,7 @@
 export FUT_UT_LIB_SRC=true
 [ "${FUT_UNIT_LIB_SRC}" != true ] && source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
 echo "${FUT_TOPDIR}/shell/lib/ut_lib.sh sourced"
+
 ####################### INFORMATION SECTION - START ###########################
 #
 #   Base library of common Unit Test functions
@@ -43,29 +44,27 @@ echo "${FUT_TOPDIR}/shell/lib/ut_lib.sh sourced"
 # INPUT PARAMETER(S):
 #   None.
 # RETURNS:
-#   None.
+#   0   Always.
 # USAGE EXAMPLE(S):
 #   ut_setup_test_environment
 ###############################################################################
 ut_setup_test_environment()
 {
-    fn_name="ut_lib:ut_setup_test_environment"
-
-    log "$fn_name - Running UT setup"
+    log -deb "ut_lib:ut_setup_test_environment - Running UT setup"
 
     stop_healthcheck &&
-        log -deb "$fn_name - healtcheck disabled - Success" ||
-        raise "FAIL: Failed to stop health check: stop_healthcheck" -l "$fn_name" -ds
+        log -deb "ut_lib:ut_setup_test_environment - healtcheck disabled - Success" ||
+        raise "FAIL: stop_healthcheck - Failed to stop health check" -l "ut_lib:ut_setup_test_environment" -ds
 
     cm_disable_fatal_state &&
-        log -deb "$fn_name - Fatal state disabled - Success" ||
-        raise "FAIL: Failed to disable fatal state: cm_disable_fatal_state" -l "$fn_name" -ds
+        log -deb "ut_lib:ut_setup_test_environment - CM fatal state disabled - Success" ||
+        raise "FAIL: cm_disable_fatal_state - Failed to disable CM fatal state" -l "ut_lib:ut_setup_test_environment" -ds
 
     # Ignoring failures
     /etc/init.d/manager restart ||
         true
 
-    log "$fn_name - UT setup - end"
+    log -deb "ut_lib:ut_setup_test_environment - UT setup - end"
 
     return 0
 }

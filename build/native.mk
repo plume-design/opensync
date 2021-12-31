@@ -80,4 +80,9 @@ LDFLAGS += -lssl -lcrypto -lpcap
 export CC
 export CXX
 export CFLAGS
+export LDFLAGS
 export LIBS
+
+# enable use of netlink lib for native build
+LIBNL3_HEADERS = -I/usr/include/libnl3
+export LIBNL3_HEADERS

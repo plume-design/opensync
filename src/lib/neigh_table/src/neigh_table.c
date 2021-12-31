@@ -46,9 +46,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "neigh_table.h"
 #include "nf_utils.h"
 #include "memutil.h"
+#include "sockaddr_storage.h"
 
-static struct neigh_table_mgr
-mgr =
+static struct neigh_table_mgr mgr =
 {
     .initialized = false,
 };
@@ -58,35 +58,32 @@ mgr =
  *
  * @return 0 on match and greater than 1 if no match.
  */
-
-int neigh_table_cmp(void *a, void *b)
+int
+neigh_table_cmp(const void *a, const void *b)
 {
-    struct neighbour_entry *e_a = (struct neighbour_entry *)a;
-    struct neighbour_entry *e_b = (struct neighbour_entry *)b;
-    size_t len;
+    const struct neighbour_entry *e_a = (const struct neighbour_entry *)a;
+    const struct neighbour_entry *e_b = (const struct neighbour_entry *)b;
     uint8_t *i_a;
     uint8_t *i_b;
-    int fdiff;
-    int idiff;
+    size_t len;
     size_t i;
+    int diff;
 
     /* Compare sources */
-    if ((e_a->source & e_b->source) == 0)
-    {
-        return (int)(e_a->source - e_b->source);
-    }
+    diff = (e_a->source - e_b->source);
+    if (diff != 0) return diff;
 
     /* Compare af families */
-    fdiff = (e_a->af_family - e_b->af_family);
-    if (fdiff != 0) return fdiff;
+    diff = (e_a->af_family - e_b->af_family);
+    if (diff != 0) return diff;
 
     len = (e_a->af_family == AF_INET) ? 4 : 16;
     i_a = e_a->ip_tbl;
     i_b = e_b->ip_tbl;
     for (i = 0; i != len; i++)
     {
-        idiff = (*i_a - *i_b);
-        if (idiff) return idiff;
+        diff = (*i_a - *i_b);
+        if (diff) return diff;
         i_a++;
         i_b++;
     }
@@ -94,22 +91,23 @@ int neigh_table_cmp(void *a, void *b)
     return 0;
 }
 
-int neigh_intf_cmp(void *a, void *b)
+int
+neigh_intf_cmp(const void *a, const void *b)
 {
-    int *idx_a = a;
-    int *idx_b = b;
+    const int *idx_a = a;
+    const int *idx_b = b;
 
     return (*idx_a - *idx_b);
 }
 
-struct neigh_table_mgr
-*neigh_table_get_mgr(void)
+struct neigh_table_mgr *
+neigh_table_get_mgr(void)
 {
     return &mgr;
 }
 
-
-void process_neigh_event(struct nf_neigh_info *neigh_info)
+void
+process_neigh_event(struct nf_neigh_info *neigh_info)
 {
     char ipstr[INET6_ADDRSTRLEN] = { 0 };
     struct neighbour_entry entry;
@@ -159,7 +157,8 @@ void process_neigh_event(struct nf_neigh_info *neigh_info)
     }
 }
 
-void process_link_event(struct nf_neigh_info *neigh_info)
+void
+process_link_event(struct nf_neigh_info *neigh_info)
 {
     struct neighbour_entry *remove_node;
     struct neighbour_entry *entry_node;
@@ -167,6 +166,7 @@ void process_link_event(struct nf_neigh_info *neigh_info)
     struct neigh_table_mgr *mgr;
     char ifname[32] = { 0 };
     ds_tree_t *tree;
+    bool remove;
     char *ifn;
 
     mgr = neigh_table_get_mgr();
@@ -181,12 +181,12 @@ void process_link_event(struct nf_neigh_info *neigh_info)
     if (intf == NULL) return;
     if (intf->entries_count <= 0) return;
 
+    if (neigh_info->source == 0) neigh_info->source = NEIGH_SRC_NOT_SET;
+
     tree = &mgr->neigh_table;
     entry_node = ds_tree_head(tree);
     while (entry_node != NULL)
     {
-        bool remove;
-
         remove = (entry_node->source == neigh_info->source);
         remove &= (entry_node->ifindex == neigh_info->ifindex);
         remove_node = entry_node;
@@ -204,8 +204,7 @@ void process_link_event(struct nf_neigh_info *neigh_info)
     /* Remove interface from tree interfaces */
     tree = &mgr->interfaces;
     ds_tree_remove(tree, intf);
-
-    return;
+    FREE(intf);
 }
 
 /**
@@ -215,7 +214,8 @@ void process_link_event(struct nf_neigh_info *neigh_info)
  *
  * Look up an interface context
  */
-struct neigh_interface * neigh_table_lookup_intf(int ifindex)
+struct neigh_interface *
+neigh_table_lookup_intf(int ifindex)
 {
     struct neigh_table_mgr *mgr = neigh_table_get_mgr();
     struct neigh_interface *intf;
@@ -233,7 +233,8 @@ struct neigh_interface * neigh_table_lookup_intf(int ifindex)
  *
  * Looks up an interface context. If not found, create one.
  */
-struct neigh_interface * neigh_table_get_intf(int ifindex)
+struct neigh_interface *
+neigh_table_get_intf(int ifindex)
 {
     struct neigh_interface *intf;
     struct neigh_table_mgr *mgr;
@@ -252,8 +253,8 @@ struct neigh_interface * neigh_table_get_intf(int ifindex)
     return intf;
 }
 
-void neigh_table_init_monitor(struct ev_loop *loop,
-                              bool system_event, uint32_t ovsdb_event)
+void
+neigh_table_init_monitor(struct ev_loop *loop, bool system_event, uint32_t ovsdb_event)
 {
     struct neigh_table_mgr *mgr;
     int rc;
@@ -283,7 +284,8 @@ void neigh_table_init_monitor(struct ev_loop *loop,
 }
 
 
-void neigh_table_init_manager(void)
+void
+neigh_table_init_manager(void)
 {
     struct neigh_table_mgr *mgr = neigh_table_get_mgr();
 
@@ -305,7 +307,8 @@ void neigh_table_init_manager(void)
  *
  * @return 0 for success and 1 for failure .
  */
-int neigh_table_init(void)
+int
+neigh_table_init(void)
 {
     struct neigh_table_mgr *mgr = neigh_table_get_mgr();
 
@@ -318,7 +321,8 @@ int neigh_table_init(void)
     return 0;
 }
 
-void free_neigh_entry(struct neighbour_entry *entry)
+void
+free_neigh_entry(struct neighbour_entry *entry)
 {
     if (!entry) return;
 
@@ -329,7 +333,8 @@ void free_neigh_entry(struct neighbour_entry *entry)
 }
 
 
-void neigh_table_cache_cleanup(void)
+void
+neigh_table_cache_cleanup(void)
 {
     struct neigh_table_mgr *mgr = neigh_table_get_mgr();
     struct neighbour_entry *remove_node;
@@ -365,14 +370,15 @@ void neigh_table_cache_cleanup(void)
         remove_intf = intf_node;
         intf_node = ds_tree_next(tree, intf_node);
         ds_tree_remove(tree, remove_intf);
-        FREE(intf_node);
+        FREE(remove_intf);
     }
-    return;
 }
+
 /**
  * @brief cleanup allocated memory.
  */
-void neigh_table_cleanup(void)
+void
+neigh_table_cleanup(void)
 {
     bool rc;
     uint32_t ovsdb_event;
@@ -388,8 +394,6 @@ void neigh_table_cleanup(void)
 
     neigh_table_cache_cleanup();
     mgr->initialized = false;
-
-    return;
 }
 
 /**
@@ -399,63 +403,33 @@ void neigh_table_cleanup(void)
  * If not set, set the default source, the af_family
  * and void ip address pointer used in the entry comparison routine
  */
-void neigh_table_set_entry(struct neighbour_entry *entry)
+void
+neigh_table_set_entry(struct neighbour_entry *entry)
 {
     struct sockaddr_storage *ipaddr;
+    struct sockaddr_in6 *sa6;
+    struct sockaddr_in *sa;
 
     if (!entry->source) entry->source = NEIGH_SRC_NOT_SET;
 
-    if (entry->af_family == 0) entry->af_family = entry->ipaddr->ss_family;
-
     if (entry->ip_tbl) return;
+
+    if (entry->ipaddr == NULL) return;
+
+    if (entry->af_family == 0) entry->af_family = entry->ipaddr->ss_family;
 
     ipaddr = entry->ipaddr;
     if (entry->af_family == AF_INET)
     {
-        struct sockaddr_in *sa;
-
         sa = (struct sockaddr_in *)ipaddr;
         entry->ip_tbl = (uint8_t *)(&sa->sin_addr.s_addr);
     }
 
     if (entry->af_family == AF_INET6)
     {
-        struct sockaddr_in6 *sa6;
-
         sa6 = (struct sockaddr_in6 *)ipaddr;
         entry->ip_tbl = sa6->sin6_addr.s6_addr;
     }
-}
-
-/**
- * @brief populates a sockaddr_storage structure from ip parameters
- *
- * @param af the inet family
- * @param ip a pointer to the ip address buffer
- * @param dst the sockaddr_storage structure to fill
- * @return none
- */
-static void
-neigh_table_populate_sockaddr(struct neighbour_entry *to_add,
-                              struct sockaddr_storage *dst)
-{
-    if (to_add->af_family == AF_INET)
-    {
-        struct sockaddr_in *in4 = (struct sockaddr_in *)dst;
-
-        memset(in4, 0, sizeof(struct sockaddr_in));
-        in4->sin_family = to_add->af_family;
-        memcpy(&in4->sin_addr, to_add->ip_tbl, sizeof(in4->sin_addr));
-    }
-    else if (to_add->af_family == AF_INET6)
-    {
-        struct sockaddr_in6 *in6 = (struct sockaddr_in6 *)dst;
-
-        memset(in6, 0, sizeof(struct sockaddr_in6));
-        in6->sin6_family = to_add->af_family;
-        memcpy(&in6->sin6_addr, to_add->ip_tbl, sizeof(in6->sin6_addr));
-    }
-    return;
 }
 
 
@@ -500,13 +474,14 @@ neigh_table_add_to_cache(struct neighbour_entry *to_add)
         if (entry->ifname == NULL) goto err_free_mac;
     }
 
-    neigh_table_populate_sockaddr(to_add, entry->ipaddr);
+    sockaddr_storage_populate(to_add->af_family, to_add->ip_tbl, entry->ipaddr);
     memcpy(entry->mac, to_add->mac, sizeof(os_macaddr_t));
     entry->source = to_add->source;
     entry->ifindex = to_add->ifindex;
     entry->cache_valid_ts = to_add->cache_valid_ts;
 
     neigh_table_set_entry(entry);
+
     LOGT("%s: adding to cache: ", __func__);
     print_neigh_entry(entry);
 
@@ -527,7 +502,8 @@ err_free_entry:
     return NULL;
 }
 
-bool neigh_table_add(struct neighbour_entry *to_add)
+bool
+neigh_table_add(struct neighbour_entry *to_add)
 {
     struct neigh_table_mgr *mgr = neigh_table_get_mgr();
     struct neighbour_entry *entry;
@@ -555,7 +531,8 @@ bool neigh_table_add(struct neighbour_entry *to_add)
 }
 
 
-void neigh_table_delete_from_cache(struct neighbour_entry *to_del)
+void
+neigh_table_delete_from_cache(struct neighbour_entry *to_del)
 {
     struct neigh_table_mgr *mgr = neigh_table_get_mgr();
     struct neighbour_entry *lookup;
@@ -575,7 +552,8 @@ void neigh_table_delete_from_cache(struct neighbour_entry *to_del)
     mgr->count--;
 }
 
-void neigh_table_delete(struct neighbour_entry *to_del)
+void
+neigh_table_delete(struct neighbour_entry *to_del)
 {
     struct neigh_table_mgr *mgr = neigh_table_get_mgr();
     struct neighbour_entry *lookup;
@@ -605,7 +583,8 @@ void neigh_table_delete(struct neighbour_entry *to_del)
     return;
 }
 
-bool neigh_table_cache_update(struct neighbour_entry *entry)
+bool
+neigh_table_cache_update(struct neighbour_entry *entry)
 {
     struct neigh_table_mgr *mgr = neigh_table_get_mgr();
     struct neighbour_entry *lookup;
@@ -681,7 +660,8 @@ int lookup_sources[] =
  *
  * @return true if found and false if not.
  */
-bool neigh_table_lookup(struct sockaddr_storage *ip_in, os_macaddr_t *mac_out)
+bool
+neigh_table_lookup_af(int af_family, void *ip_tbl, os_macaddr_t *mac_out)
 {
     struct neighbour_entry *lookup;
     struct neighbour_entry key;
@@ -689,15 +669,15 @@ bool neigh_table_lookup(struct sockaddr_storage *ip_in, os_macaddr_t *mac_out)
     size_t i;
     bool ret;
 
-    if (!ip_in || !mac_out) return false;
+    if (!ip_tbl || !mac_out) return false;
 
-    memset(&key, 0, sizeof(key));
-    key.ipaddr = ip_in;
-    key.mac    = mac_out;
+    MEMZERO(key);
+    key.af_family = af_family;
+    key.ip_tbl = ip_tbl;
+    key.mac = mac_out;
     key.ifname = NULL;
-    neigh_table_set_entry(&key);
-
-    len = sizeof(lookup_sources) / sizeof(lookup_sources[0]);
+    
+    len = ARRAY_SIZE(lookup_sources);
     for (i = 0; i < len; i++)
     {
         key.source = lookup_sources[i];
@@ -709,13 +689,47 @@ bool neigh_table_lookup(struct sockaddr_storage *ip_in, os_macaddr_t *mac_out)
     return ret;
 }
 
+bool
+neigh_table_lookup(struct sockaddr_storage *ip_in, os_macaddr_t *mac_out)
+{
+    struct sockaddr_in6 *ip_v6;
+    struct sockaddr_in *ip_v4;
+    int af_family;
+    void *ip_tbl;
+    bool rc;
+
+    if (ip_in == NULL) return false;
+
+    af_family = ip_in->ss_family;
+    switch (af_family)
+    {
+        case AF_INET:
+            ip_v4 = (struct sockaddr_in *)ip_in;
+            ip_tbl = &ip_v4->sin_addr;
+            break;
+
+        case AF_INET6:
+            ip_v6 = (struct sockaddr_in6 *)ip_in;
+            ip_tbl = &ip_v6->sin6_addr;
+            break;
+
+        default:
+            return false;
+    }
+
+    rc = neigh_table_lookup_af(af_family, ip_tbl, mac_out);
+
+    return rc;
+}
+
 
 /**
  * @brief remove old cache entres added by fsm
  *
  * @param ttl the cache entry time to live
  */
-void neigh_table_ttl_cleanup(int64_t ttl, uint32_t source_mask)
+void
+neigh_table_ttl_cleanup(int64_t ttl, uint32_t source_mask)
 {
     struct neigh_table_mgr *mgr = neigh_table_get_mgr();
     struct neighbour_entry *remove_node;
@@ -757,8 +771,8 @@ void neigh_table_ttl_cleanup(int64_t ttl, uint32_t source_mask)
     }
 }
 
-
-void print_neigh_entry(struct neighbour_entry *entry)
+void
+print_neigh_entry(struct neighbour_entry *entry)
 {
     char                   ipstr[INET6_ADDRSTRLEN] = { 0 };
     os_macaddr_t           nullmac = {{ 0 }};
@@ -782,20 +796,20 @@ void print_neigh_entry(struct neighbour_entry *entry)
          source ? source : "empty", entry->af_family);
 }
 
-void print_neigh_table(void)
+void
+print_neigh_table(void)
 {
     struct neigh_table_mgr *mgr = neigh_table_get_mgr();
     struct neighbour_entry *entry_node = NULL;
 
-    LOGT("%s: neigh_table dump", __func__);
+    LOGT("%s: ===== START =====", __func__);
 
     ds_tree_foreach(&mgr->neigh_table, entry_node)
     {
         print_neigh_entry(entry_node);
     }
-    LOGT("=====END=====");
+    LOGT("%s: =====  END  =====", __func__);
 }
-
 
 int
 neigh_table_get_cache_size(void)

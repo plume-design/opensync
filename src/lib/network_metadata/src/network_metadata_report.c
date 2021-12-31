@@ -143,6 +143,48 @@ err_free_aggr:
 
 
 /**
+ * @brief Add uplink stats to the accumulator
+ *
+ * @param aggr the aggregator
+ * @param key the lookup flow key
+ * @param uplink the flow uplink
+ * @return true if successful, false otherwise
+ */
+bool net_md_add_uplink(struct net_md_aggregator *aggr,
+                       struct flow_uplink *uplink)
+{
+    struct flow_window *window;
+    int rc;
+
+    if (aggr == NULL) return false;
+    if (uplink == NULL) return false;
+
+    window = net_md_active_window(aggr);
+    if (window == NULL) return false;
+
+    if (uplink->uplink_if_type == NULL) return false;
+    if (window->uplink->uplink_if_type == NULL)
+    {
+        window->uplink->uplink_if_type = STRDUP(uplink->uplink_if_type);
+    }
+    else
+    {
+        rc = strcmp(window->uplink->uplink_if_type, uplink->uplink_if_type);
+        if (rc != 0)
+        {
+            LOGI("%s: uplink type : %s is changed to :%s", __func__, window->uplink->uplink_if_type,
+                 uplink->uplink_if_type);
+
+            /* FREE old uplink*/
+            FREE(window->uplink->uplink_if_type);
+            window->uplink->uplink_if_type = STRDUP(uplink->uplink_if_type);
+        }
+    }
+    window->uplink->uplink_changed = uplink->uplink_changed;
+    return true;
+}
+
+/**
  * @brief Add sampled stats to the aggregator
  *
  * Called to add system level sampled data from a flow

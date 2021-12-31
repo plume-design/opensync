@@ -38,7 +38,7 @@ struct reflink_connection
     ds_tree_node_t  rc_tnode;           /* Tree node */
 };
 
-static int reflink_cmp(void *a, void *b);
+static int reflink_cmp(const void *a, const void *b);
 
 int reflink_ref(reflink_t *a, int ref);
 bool reflink_disconnect(reflink_t *src, reflink_t *dst);
@@ -179,7 +179,7 @@ int reflink_ref(reflink_t *rl, int refcnt)
  * ===========================================================================
  */
 
-int reflink_cmp(void *a, void *b)
+int reflink_cmp(const void *a, const void *b)
 {
-    return (uint8_t *)a - (uint8_t *)b;
+    return (const uint8_t *)a - (const uint8_t *)b;
 }

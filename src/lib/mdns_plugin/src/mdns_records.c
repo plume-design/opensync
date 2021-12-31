@@ -29,29 +29,34 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 #define _GNU_SOURCE
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdlib.h>
-#include <ctype.h>
+#include <arpa/inet.h>
+#include <inttypes.h>
+#include <netinet/in.h>
 #include <stdbool.h>
-#include <assert.h>
-#include <sys/types.h>
-#include <errno.h>
-#include <unistd.h>
-#include <linux/types.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <time.h>
 
+#include "ds.h"
+#include "ds_dlist.h"
+#include "ds_tree.h"
+#include "fsm.h"
 #include "log.h"
-#include "neigh_table.h"
-#include "os_nif.h"
-#include "policy_tags.h"
-#include "memutil.h"
-
+#include "mdns_plugin.h"
 #include "mdns_records.h"
+#include "memutil.h"
+#include "neigh_table.h"
+#include "os.h"
+#include "os_nif.h"
+#include "os_types.h"
+#include "policy_tags.h"
+#include "sockaddr_storage.h"
+#include "util.h"
 
 #define MAX_STRLEN      (512)
 
-static mdns_records_report_data_t   report;
+static mdns_records_report_data_t   g_report;
 
 /***********************************************************************************************************
  * Helper(utility) functions
@@ -213,49 +218,13 @@ mdns_records_copy_resource_details(const struct resource *src, struct resource *
  * Getting mac address from IP using neigh_table plugin
  ***********************************************************************************************************/
 
-static void
-mdns_records_populate_sockaddr(struct sockaddr_storage *from, struct sockaddr_storage *dst)
-{
-    struct sockaddr_in  *in4, *src4;
-    struct sockaddr_in6 *in6, *sr6;
-
-    switch (from->ss_family)
-    {
-        case AF_INET:
-            in4  = (struct sockaddr_in *)dst;
-            src4 = (struct sockaddr_in *)from;
-
-            memset(in4, 0, sizeof(struct sockaddr_in));
-
-            in4->sin_family = AF_INET;
-            memcpy(&in4->sin_addr, &src4->sin_addr, sizeof(in4->sin_addr));
-            break;
-
-        case AF_INET6:
-            in6  = (struct sockaddr_in6 *)dst;
-            sr6 = (struct sockaddr_in6 *)from;
-
-            memset(in6, 0, sizeof(struct sockaddr_in6));
-
-            in6->sin6_family = AF_INET6;;
-            memcpy(&in6->sin6_addr, &sr6->sin6_addr, sizeof(in6->sin6_addr));
-            break;
-    }
-
-    return;
-}
-
 static bool
 mdns_records_get_mac(struct sockaddr_storage *from, char *mac_str)
 {
-   struct sockaddr_storage key;
    os_macaddr_t            mac;
    bool                    ret;
 
-   memset(&key, 0, sizeof(struct sockaddr_storage));
-   mdns_records_populate_sockaddr(from, &key);
-
-   ret = neigh_table_lookup(&key, &mac);
+   ret = neigh_table_lookup(from, &mac);
    if (!ret)
    {
        LOGD("%s: Failed to lookup IP in neigh_table_lookup", __func__);
@@ -294,12 +263,10 @@ mdns_records_get_client_macs(ds_tree_t *clients)
             /* Store the MAC address */
             STRSCPY(client->mac_str, mac);
             LOGI("%s: Client with ip '%s' has mac '%s'", __func__, client->ip_str, client->mac_str);
-
         }
         else
         {
             LOGT("%s: Failed to get mac for client with ip '%s'", __func__, client->ip_str);
-            
         }
     }
 
@@ -450,7 +417,7 @@ mdns_records_include_client(char *mac, struct mdns_session *md_session)
 static void
 mdns_records_mark_records_as_reported(void)
 {
-    ds_tree_t           *stored_clients = &report.stored_clients;
+    ds_tree_t           *stored_clients = &g_report.stored_clients;
 
     mdns_client_t       *client         = NULL;
     mdns_records_list_t *records_list   = NULL;
@@ -481,7 +448,7 @@ mdns_records_mark_records_as_reported(void)
 static void
 mdns_records_stage_record(mdns_client_t *client, mdns_records_t *rec)
 {
-    ds_tree_t       *clients    = &report.staged_clients;
+    ds_tree_t       *clients    = &g_report.staged_clients;
     mdns_client_t   *new_client = NULL;
     struct resource *res = NULL, *new_res = NULL;
 
@@ -515,7 +482,7 @@ mdns_records_stage_record(mdns_client_t *client, mdns_records_t *rec)
 static void
 mdns_records_stage_report(struct mdns_session *md_session)
 {
-    ds_tree_t           *stored_clients = &report.stored_clients;
+    ds_tree_t           *stored_clients = &g_report.stored_clients;
 
     mdns_records_list_t *records_list   = NULL;
     mdns_records_t      *rec            = NULL;
@@ -661,7 +628,7 @@ mdns_records_clean_stale_records(void)
     ds_tree_iter_t          client_iter;
     ds_dlist_iter_t         rec_iter;
 
-    clients = &report.stored_clients;
+    clients = &g_report.stored_clients;
     if (!clients)   return;
 
     client = ds_tree_ifirst(&client_iter, clients);
@@ -717,7 +684,7 @@ mdns_records_clean_stale_records(void)
 static void
 mdns_records_store_record(const struct resource *r, void *data, struct sockaddr_storage *from)
 {
-    ds_tree_t               *clients      = &report.stored_clients;
+    ds_tree_t               *clients      = &g_report.stored_clients;
     mdns_client_t           *client       = NULL;
     mdns_records_list_t     *records_list = NULL;
     mdns_records_t          *rec          = NULL;
@@ -743,7 +710,7 @@ mdns_records_store_record(const struct resource *r, void *data, struct sockaddr_
     }
 
     LOGT("%s: Source IP %s", __func__, ip);
-    
+
     client = mdns_records_find_client_by_ip_str(clients, ip);
     if (!client)
     {
@@ -754,7 +721,7 @@ mdns_records_store_record(const struct resource *r, void *data, struct sockaddr_
             return;
         }
 
-        mdns_records_populate_sockaddr(from, &client->from);
+        sockaddr_storage_copy(from, &client->from);
 
         ds_tree_insert(clients, client, client->ip_str);
         LOGI("%s: Added MDNS client with IP '%s'", __func__, client->ip_str);
@@ -773,7 +740,7 @@ mdns_records_store_record(const struct resource *r, void *data, struct sockaddr_
              " name '%s'", __func__, client->ip_str, r->type, r->name);
         return;
     }
-    
+
     /* Allocate the record */
     rec = mdns_records_alloc_record();
     if (!rec)
@@ -804,7 +771,7 @@ mdns_records_collect_record(const struct resource *r, void *data, struct sockadd
 {
     /* If report is not initialized, the cloud doesn't want the records to be reported.
      * (report_records is false). If not intitialized, don't collect the record */
-    if (!report.initialized) return;
+    if (!g_report.initialized) return;
 
     switch (r->type)
     {
@@ -836,27 +803,27 @@ mdns_records_send_records(struct mdns_session *md_session)
     observation_window_t     window;
 
     if (!md_session) return;
-    session = md_session->session;
 
     /* Record the current observation window */
     window.started_at = md_session->records_report_ts;
     window.ended_at   = now;
-    mdns_records_set_observation_window(&window, &report.obs_w);
+    mdns_records_set_observation_window(&window, &g_report.obs_w);
 
     /* Get the client mac addresses from neigh_table */
-    mdns_records_get_client_macs(&report.stored_clients);
+    mdns_records_get_client_macs(&g_report.stored_clients);
 
     /* Mark the clients to be reported */
     mdns_records_stage_report(md_session);
 
     /* Dump the report */
-    mdns_records_dump_report(&report);
+    mdns_records_dump_report(&g_report);
 
-    num_clients = mdns_records_get_num_clients(&report.staged_clients);
+    num_clients = mdns_records_get_num_clients(&g_report.staged_clients);
     if (num_clients > 0)
     {
         LOGT("%s: Sending MDNS records report", __func__);
-        ret = mdns_records_send_report(&report, session);
+        session = md_session->session;
+        ret = mdns_records_send_report(&g_report, session);
         if (ret)
         {
             /* The records were successfully reported to the cloud.
@@ -868,7 +835,7 @@ mdns_records_send_records(struct mdns_session *md_session)
            records to the cloud, the records will not be marked as 'reported'
            and will be staged again. So no harming in cleaning the staging
            tree always */
-        mdns_records_clear_clients(&report.staged_clients);
+        mdns_records_clear_clients(&g_report.staged_clients);
     }
 
     mdns_records_clean_stale_records();
@@ -885,28 +852,28 @@ mdns_records_init(struct mdns_session *md_session)
     struct  fsm_session *session = NULL;
     node_info_t         *obs_p   = NULL;
 
-    if (!md_session) return false;
+    if (!md_session || !md_session->session) return false;
     session = md_session->session;
 
     /* Return if already initialized */
-    if (report.initialized) return true;
+    if (g_report.initialized) return true;
 
-    memset(&report, 0, sizeof(report));
+    MEMZERO(g_report);
 
-    /* Don't initialize the report is report_repcords is false */
+    /* Don't initialize the report is report_records is false */
     if (!md_session->report_records)
     {
         LOGT("%s: MDNS records reporting not enabled", __func__);
-        report.initialized = false;
+        g_report.initialized = false;
         return true;
     }
 
     /* Intialize the report */
-    ds_tree_init(&report.stored_clients, (ds_key_cmp_t *)strcmp, mdns_client_t, dst_node);
-    ds_tree_init(&report.staged_clients, (ds_key_cmp_t *)strcmp, mdns_client_t, dst_node);
+    ds_tree_init(&g_report.stored_clients, (ds_key_cmp_t *)strcmp, mdns_client_t, dst_node);
+    ds_tree_init(&g_report.staged_clients, (ds_key_cmp_t *)strcmp, mdns_client_t, dst_node);
 
     /* Get the node information (observation point) */
-    obs_p = &report.node_info;
+    obs_p = &g_report.node_info;
 
     if (!session->node_id)
     {
@@ -922,7 +889,7 @@ mdns_records_init(struct mdns_session *md_session)
     }
     (void)mdns_records_str_duplicate(session->location_id, &obs_p->location_id);
 
-    report.initialized = true;
+    g_report.initialized = true;
 
     return true;
 }
@@ -933,19 +900,17 @@ mdns_records_exit(void)
     node_info_t *obs_p = NULL;
 
     /* Free the node info */
-    obs_p = &report.node_info;
+    obs_p = &g_report.node_info;
     if (obs_p->node_id)     FREE(obs_p->node_id);
     if (obs_p->location_id) FREE(obs_p->location_id);
 
     /* Free the stored and staged client trees */
-    mdns_records_clear_clients(&report.stored_clients);
-    mdns_records_clear_clients(&report.staged_clients);
-
-    report.initialized = false;
+    mdns_records_clear_clients(&g_report.stored_clients);
+    mdns_records_clear_clients(&g_report.staged_clients);
 
     /* Reset the report */
-    memset(&report, 0, sizeof(mdns_records_report_data_t));
+    MEMZERO(g_report);
+    g_report.initialized = false;
 
     return;
 }
-   

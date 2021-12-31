@@ -1,0 +1,11 @@
+config OSP_L2UF_NULL
+    bool "Null"
+
+    help
+        Use a dummy L2UF implementation
+
+config OSP_L2UF_LIBPCAP
+    bool "libpcap"
+
+    help
+        Use the libpcap l2uf imlementation

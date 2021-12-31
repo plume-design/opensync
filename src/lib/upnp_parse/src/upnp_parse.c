@@ -59,7 +59,7 @@ struct upnp_cache *upnp_get_mgr(void) {
  * @return 0 if sessions matches
  */
 static int
-upnp_session_cmp(void *a, void *b)
+upnp_session_cmp(const void *a, const void *b)
 {
     uintptr_t p_a = (uintptr_t)a;
     uintptr_t p_b = (uintptr_t)b;
@@ -78,10 +78,10 @@ upnp_session_cmp(void *a, void *b)
  * @return 0 if mac addresses match, an integer otherwise
  */
 static int
-upnp_dev_id_cmp(void *a, void *b)
+upnp_dev_id_cmp(const void *a, const void *b)
 {
-    os_macaddr_t *dev_id_a = a;
-    os_macaddr_t *dev_id_b = b;
+    const os_macaddr_t *dev_id_a = a;
+    const os_macaddr_t *dev_id_b = b;
 
     return memcmp(dev_id_a->addr, dev_id_b->addr, sizeof(dev_id_a->addr));
 }
@@ -95,10 +95,10 @@ upnp_dev_id_cmp(void *a, void *b)
  *
  */
 static int
-upnp_url_cmp(void *a, void *b)
+upnp_url_cmp(const void *a, const void *b)
 {
-    char *url_a = a;
-    char *url_b = b;
+    const char *url_a = a;
+    const char *url_b = b;
 
     return strncmp(url_a, url_b, FSM_UPNP_URL_MAX_SIZE);
 }

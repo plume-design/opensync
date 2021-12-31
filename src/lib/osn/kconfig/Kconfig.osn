@@ -300,6 +300,27 @@ if OSN_LINUX_ENABLED
             This option implements the lnx_route API and enables the "Linux"
             route status backend (osn_route).
 
+    choice
+        prompt "Route Configuration Backend"
+        default OSN_LINUX_ROUTE_LIBNL3
+
+        config OSN_LINUX_ROUTE_LIBNL3
+            bool "libnl3"
+            help
+                Route management using netlink library (libnl3)
+
+                This option implements the osn_routes API and enables netlink based
+                "Linux" route control backend (osn_route).
+
+        config OSN_LINUX_ROUTE_IP
+            bool "ip route"
+            help
+                Route management using the `ip route` command
+
+                This option implements the osn_routes API and enables ip-route command
+                based "Linux" route control backend (osn_route).
+    endchoice
+
     config OSN_LINUX_LTE
         bool "Linux LTE support"
         default y
@@ -323,7 +344,7 @@ if OSN_LINUX_ENABLED
                     yield some performance boost.
         endif
 
-    menuconfig OSN_LINUX_DEFAULT_ROUTES_VIA_NM
+    config OSN_LINUX_DEFAULT_ROUTES_VIA_NM
         bool "Handle default routes via Network Manager"
         default n
         help
@@ -336,13 +357,17 @@ if OSN_LINUX_ENABLED
             This affects submodules stuch as Static IPv4, DHCPv4 and PPPoE
             clients.
 
-        config OSN_LINUX_DEFAULT_ROUTES_METRIC
-            int "Default routes metric"
-            depends on OSN_LINUX_DEFAULT_ROUTES_VIA_NM
-            default 100
-            help
-                Metric to be used by default routes
+    config OSN_LINUX_IGMP
+        bool "Linux IGMP configuration support"
+        default y
+        help
+            IGMP support uses OVS to configure IGMP
 
-                Applicable only when the default routes are managed by NM
+    config OSN_LINUX_MLD
+        bool "Linux MLD configuration support"
+        default y
+        help
+            MLD support uses OVS to configure MLD
+
 endif
 

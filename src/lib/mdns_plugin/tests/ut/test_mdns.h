@@ -67,6 +67,8 @@ extern void     test_set_serialization_clients(void);
 extern void     test_serialize_report(void);
 extern void     test_Mdns_Records_Report(void);
 
+extern void     test_mdns_records_send_records(void);
+
 /***********************************************************************************************************/
 
 #endif /* TEST_MDNS_H_INCLUDED */

@@ -33,12 +33,11 @@ source "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="onbrd/$(basename "$0")"
 manager_setup_file="onbrd/onbrd_setup.sh"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+onbrd/onbrd_verify_home_vaps_on_home_bridge.sh [-h] arguments
 Description:
     - Validate home vaps on home bridge exist
 Arguments:
@@ -47,10 +46,10 @@ Arguments:
     \$2 (bridge_home_interface) : used as bridge interface name to check : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name} <INTERFACE-NAME> <BRIDGE-HOME-INTERFACE>
+                 Run: ./onbrd/onbrd_verify_home_vaps_on_home_bridge.sh <INTERFACE-NAME> <BRIDGE-HOME-INTERFACE>
 Script usage example:
-   ./${tc_name} wl1.2 br-home
-   ./${tc_name} home-ap-l50 br-home
+   ./onbrd/onbrd_verify_home_vaps_on_home_bridge.sh wl1.2 br-home
+   ./onbrd/onbrd_verify_home_vaps_on_home_bridge.sh home-ap-l50 br-home
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -65,7 +64,7 @@ if [ -n "${1}" ]; then
     esac
 fi
 NARGS=2
-[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "onbrd/onbrd_verify_home_vaps_on_home_bridge.sh" -arg
 
 trap '
 fut_info_dump_line
@@ -76,23 +75,23 @@ fut_info_dump_line
 interface_name=$1
 bridge_home_interface=$2
 
-log_title "$tc_name: ONBRD test - Verify home VAPs on home bridge, check if interface '${interface_name}' in '${bridge_home_interface}'"
+log_title "onbrd/onbrd_verify_home_vaps_on_home_bridge.sh: ONBRD test - Verify home VAPs on home bridge, check if interface '${interface_name}' in '${bridge_home_interface}'"
 
 wait_for_function_response 0 "check_ovsdb_entry Wifi_VIF_State -w if_name $interface_name" &&
-    log "$tc_name: Interface $interface_name exists - Success" ||
-    raise "FAIL: interface $interface_name does not exist" -l "$tc_name" -tc
+    log "onbrd/onbrd_verify_home_vaps_on_home_bridge.sh: Interface $interface_name exists - Success" ||
+    raise "FAIL: interface $interface_name does not exist" -l "onbrd/onbrd_verify_home_vaps_on_home_bridge.sh" -tc
 
-log "$tc_name: Setting Wifi_VIF_Config bridge to $bridge_home_interface"
+log "onbrd/onbrd_verify_home_vaps_on_home_bridge.sh: Setting Wifi_VIF_Config bridge to $bridge_home_interface"
 update_ovsdb_entry Wifi_VIF_Config -u bridge "$bridge_home_interface" &&
-    log "$tc_name: update_ovsdb_entry - Wifi_VIF_Config::bridge is '$bridge_home_interface' - Success" ||
-    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_VIF_Config::bridge is not '$bridge_home_interface'" -l "$tc_name" -oe
+    log "onbrd/onbrd_verify_home_vaps_on_home_bridge.sh: update_ovsdb_entry - Wifi_VIF_Config::bridge is '$bridge_home_interface' - Success" ||
+    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_VIF_Config::bridge is not '$bridge_home_interface'" -l "onbrd/onbrd_verify_home_vaps_on_home_bridge.sh" -oe
 
-log "$tc_name: Verify bridge, waiting for Wifi_VIF_State bridge is $bridge_home_interface"
+log "onbrd/onbrd_verify_home_vaps_on_home_bridge.sh: Verify bridge, waiting for Wifi_VIF_State bridge is $bridge_home_interface"
 wait_ovsdb_entry Wifi_VIF_State -w if_name "$interface_name" -is bridge "$bridge_home_interface" &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_VIF_State bridge is '$bridge_home_interface' - Success" ||
-    raise "FAIL: wait_ovsdb_entry - Wifi_VIF_State::bridge is not '$bridge_home_interface'" -l "$tc_name" -tc
+    log "onbrd/onbrd_verify_home_vaps_on_home_bridge.sh: wait_ovsdb_entry - Wifi_VIF_State bridge is '$bridge_home_interface' - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Wifi_VIF_State::bridge is not '$bridge_home_interface'" -l "onbrd/onbrd_verify_home_vaps_on_home_bridge.sh" -tc
 
-log "$tc_name: Clean created interfaces after test"
+log "onbrd/onbrd_verify_home_vaps_on_home_bridge.sh: Clean created interfaces after test"
 vif_clean
 
 pass

@@ -191,7 +191,7 @@ static inline void ds_tree_insert_rebalance(ds_tree_t *root, ds_tree_node_t *bas
  *
  * This function uses the single pass (top-down) red-black tree insertion algorithm
  */
-void ds_tree_node_insert(ds_tree_t *root, ds_tree_node_t* node, void *key)
+void ds_tree_node_insert(ds_tree_t *root, ds_tree_node_t* node, const void *key)
 {
     /*
      * Initialize node
@@ -594,17 +594,17 @@ void ds_tree_graphviz(ds_tree_t *root, FILE *fdot)
 /**
  * Integer comparator
  */
-int ds_int_cmp(void *_a, void *_b)
+int ds_int_cmp(const void *_a, const void *_b)
 {
-    int *a = _a;
-    int *b = _b;
+    const int *a = _a;
+    const int *b = _b;
     return *a - *b;
 }
 
 /**
  * Pointer comparison (the key value is stored directly)
  */
-int ds_void_cmp(void *a, void *b)
+int ds_void_cmp(const void *a, const void *b)
 {
     return (int)((intptr_t)a - (intptr_t)b);
 }
@@ -613,7 +613,7 @@ int ds_void_cmp(void *a, void *b)
 /**
  * String comparator
  */
-int ds_str_cmp(void *a, void *b)
+int ds_str_cmp(const void *a, const void *b)
 {
     return strcmp((const char *)a, (const char *)b);
 }

@@ -33,7 +33,6 @@ source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="nm2/$(basename "$0")"
 manager_setup_file="nm2/nm2_setup.sh"
 create_radio_vif_file="tools/device/create_radio_vif_interface.sh"
 if_type_default="vif"
@@ -42,7 +41,7 @@ end_pool_default="10.10.10.50"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+nm2/nm2_ovsdb_configure_interface_dhcpd.sh [-h] arguments
 Description:
     - Script configures dhcpd on the interface through Wifi_Inet_Config table
         Script passes if Wifi_Inet_State table properly reflects changes from Wifi_Inet_Config table and dhcpd process on
@@ -56,12 +55,12 @@ Arguments:
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
           In case of if_type==eth:
-              Run: ./${tc_name} <IF-NAME> <IF-TYPE> <START-POOL> <END-POOL>
+              Run: ./nm2/nm2_ovsdb_configure_interface_dhcpd.sh <IF-NAME> <IF-TYPE> <START-POOL> <END-POOL>
           In case of if_type==vif:
                Create radio-vif interface (see ${create_radio_vif_file} -h)
-              Run: ./${tc_name} <IF-NAME> <IF-TYPE> <START-POOL> <END-POOL>
+              Run: ./nm2/nm2_ovsdb_configure_interface_dhcpd.sh <IF-NAME> <IF-TYPE> <START-POOL> <END-POOL>
 Script usage example:
-   ./${tc_name} wifi0 ${if_type_default} ${start_pool_default} ${end_pool_default}
+   ./nm2/nm2_ovsdb_configure_interface_dhcpd.sh wifi0 ${if_type_default} ${start_pool_default} ${end_pool_default}
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -77,7 +76,7 @@ if [ -n "${1}" ]; then
 fi
 
 NARGS=1
-[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "nm2/nm2_ovsdb_configure_interface_dhcpd.sh" -arg
 if_name=$1
 if_type=${2:-${if_type_default}}
 start_pool=${3:-${start_pool_default}}
@@ -86,16 +85,15 @@ end_pool=${4:-${end_pool_default}}
 trap '
     fut_info_dump_line
     print_tables Wifi_Inet_Config Wifi_Inet_State
-    fut_info_dump_line
     reset_inet_entry $if_name || true
     [ "$if_type" == "vif" ] && vif_clean
-    run_setup_if_crashed nm || true
     check_restore_management_access || true
+    fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 
-log_title "${tc_name}: NM2 test - Testing table Wifi_Inet_Config field dhcpd"
+log_title "nm2/nm2_ovsdb_configure_interface_dhcpd.sh: NM2 test - Testing table Wifi_Inet_Config field dhcpd"
 
-log "${tc_name}: Creating Wifi_Inet_Config entries for $if_name"
+log "nm2/nm2_ovsdb_configure_interface_dhcpd.sh: Creating Wifi_Inet_Config entries for $if_name"
 create_inet_entry \
     -if_name "$if_name" \
     -enabled true \
@@ -106,87 +104,87 @@ create_inet_entry \
     -netmask 255.255.255.0 \
     -dns "[\"map\",[]]" \
     -gateway 10.10.10.254 &&
-        log "$tc_name: Interface $if_name created - Success" ||
-        raise "FAIL: Failed to create $if_name interface" -l "$tc_name" -ds
+        log "nm2/nm2_ovsdb_configure_interface_dhcpd.sh: Interface $if_name created - Success" ||
+        raise "FAIL: Failed to create $if_name interface" -l "nm2/nm2_ovsdb_configure_interface_dhcpd.sh" -ds
 
-log "$tc_name: Check if interface is UP - $if_name"
+log "nm2/nm2_ovsdb_configure_interface_dhcpd.sh: Check if interface is UP - $if_name"
 get_if_fn_type="get_${if_type}_interface_is_up"
 wait_for_function_response 0 "$get_if_fn_type $if_name " &&
-    log "$tc_name: Interface $if_name is UP - Success" ||
-    raise "FAIL: Interface $if_name is DOWN, should be UP" -l "$tc_name" -ds
+    log "nm2/nm2_ovsdb_configure_interface_dhcpd.sh: Interface $if_name is UP - Success" ||
+    raise "FAIL: Interface $if_name is DOWN, should be UP" -l "nm2/nm2_ovsdb_configure_interface_dhcpd.sh" -ds
 
-log "$tc_name: Setting DHCP range on $if_name"
+log "nm2/nm2_ovsdb_configure_interface_dhcpd.sh: Setting DHCP range on $if_name"
 configure_dhcp_server_on_interface "$if_name" "$start_pool" "$end_pool" ||
-    raise "FAIL: Cannot update DHCP settings on $if_name" -l "$tc_name" -tc
+    raise "FAIL: Cannot update DHCP settings on $if_name" -l "nm2/nm2_ovsdb_configure_interface_dhcpd.sh" -tc
 
-log "$tc_name: LEVEL2 - Checking if settings were applied to the DHCP server #1"
+log "nm2/nm2_ovsdb_configure_interface_dhcpd.sh: LEVEL2 - Checking if settings were applied to the DHCP server #1"
 wait_for_function_response 0 "check_dhcp_from_dnsmasq_conf $if_name $start_pool $end_pool" &&
-    log "$tc_name: DNSMASQ DHCP configuration VALID (present) for $if_name - Success" ||
-    raise "FAIL: DNSMASQ DHCP configuration NOT VALID (not present) for $if_name" -l "$tc_name" -tc
+    log "nm2/nm2_ovsdb_configure_interface_dhcpd.sh: DNSMASQ DHCP configuration VALID (present) for $if_name - Success" ||
+    raise "FAIL: DNSMASQ DHCP configuration NOT VALID (not present) for $if_name" -l "nm2/nm2_ovsdb_configure_interface_dhcpd.sh" -tc
 
-log "$tc_name: Checking if DHCP server configuration is removed when the interface is DOWN - $if_name"
+log "nm2/nm2_ovsdb_configure_interface_dhcpd.sh: Checking if DHCP server configuration is removed when the interface is DOWN - $if_name"
 update_ovsdb_entry Wifi_Inet_Config -w if_name "$if_name" -u enabled false &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config::enabled is false for $if_name - Success" ||
-    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config::enabled is not false for $if_name" -l "$tc_name" -oe
+    log "nm2/nm2_ovsdb_configure_interface_dhcpd.sh: update_ovsdb_entry - Wifi_Inet_Config::enabled is false for $if_name - Success" ||
+    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config::enabled is not false for $if_name" -l "nm2/nm2_ovsdb_configure_interface_dhcpd.sh" -oe
 
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is enabled false &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::enabled is false for $if_name - Success" ||
-    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::enabled is not false for $if_name" -l "$tc_name" -tc
+    log "nm2/nm2_ovsdb_configure_interface_dhcpd.sh: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::enabled is false for $if_name - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::enabled is not false for $if_name" -l "nm2/nm2_ovsdb_configure_interface_dhcpd.sh" -tc
 
-log "$tc_name: LEVEL2 - Checking DHCP configuration for $if_name"
+log "nm2/nm2_ovsdb_configure_interface_dhcpd.sh: LEVEL2 - Checking DHCP configuration for $if_name"
 wait_for_function_response 1 "check_dhcp_from_dnsmasq_conf $if_name $start_pool $end_pool" &&
-    log "$tc_name: DNSMASQ DHCP configuration VALID (not present) for $if_name - Success" ||
-    raise "FAIL: DNSMASQ DHCP configuration NOT VALID (still present) for $if_name" -l "$tc_name" -tc
+    log "nm2/nm2_ovsdb_configure_interface_dhcpd.sh: DNSMASQ DHCP configuration VALID (not present) for $if_name - Success" ||
+    raise "FAIL: DNSMASQ DHCP configuration NOT VALID (still present) for $if_name" -l "nm2/nm2_ovsdb_configure_interface_dhcpd.sh" -tc
 
-log "$tc_name: Checking if DHCP server configuration is re-applied when the interface is UP for $if_name"
+log "nm2/nm2_ovsdb_configure_interface_dhcpd.sh: Checking if DHCP server configuration is re-applied when the interface is UP for $if_name"
 update_ovsdb_entry Wifi_Inet_Config -w if_name "$if_name" -u enabled true &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config::enabled is true for $if_name - Success" ||
-    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config::enabled is not true for $if_name" -l "$tc_name" -oe
+    log "nm2/nm2_ovsdb_configure_interface_dhcpd.sh: update_ovsdb_entry - Wifi_Inet_Config::enabled is true for $if_name - Success" ||
+    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config::enabled is not true for $if_name" -l "nm2/nm2_ovsdb_configure_interface_dhcpd.sh" -oe
 
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is enabled true &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State for $if_name - Success" ||
-    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - $if_name" -l "$tc_name" -tc
+    log "nm2/nm2_ovsdb_configure_interface_dhcpd.sh: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State for $if_name - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - $if_name" -l "nm2/nm2_ovsdb_configure_interface_dhcpd.sh" -tc
 
-log "$tc_name: LEVEL2 - Checking DHCP configuration for $if_name"
+log "nm2/nm2_ovsdb_configure_interface_dhcpd.sh: LEVEL2 - Checking DHCP configuration for $if_name"
 wait_for_function_response 0 "check_dhcp_from_dnsmasq_conf $if_name $start_pool $end_pool" &&
-    log "$tc_name: DNSMASQ DHCP configuration VALID (present) for $if_name - Success" ||
-    raise "FAIL: DNSMASQ DHCP configuration NOT VALID (not present) - $if_name" -l "$tc_name" -tc
+    log "nm2/nm2_ovsdb_configure_interface_dhcpd.sh: DNSMASQ DHCP configuration VALID (present) for $if_name - Success" ||
+    raise "FAIL: DNSMASQ DHCP configuration NOT VALID (not present) - $if_name" -l "nm2/nm2_ovsdb_configure_interface_dhcpd.sh" -tc
 
-log "$tc_name: Switching interface to DHCP client for $if_name"
+log "nm2/nm2_ovsdb_configure_interface_dhcpd.sh: Switching interface to DHCP client for $if_name"
 update_ovsdb_entry Wifi_Inet_Config -w if_name "$if_name" -u "ip_assign_scheme" "dhcp" &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config table updated for $if_name - Success" ||
-    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config - $if_name" -l "$tc_name" -oe
+    log "nm2/nm2_ovsdb_configure_interface_dhcpd.sh: update_ovsdb_entry - Wifi_Inet_Config table updated for $if_name - Success" ||
+    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config - $if_name" -l "nm2/nm2_ovsdb_configure_interface_dhcpd.sh" -oe
 
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is "ip_assign_scheme" "dhcp" &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State for $if_name - Success" ||
-    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - $if_name" -l "$tc_name" -tc
+    log "nm2/nm2_ovsdb_configure_interface_dhcpd.sh: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State for $if_name - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - $if_name" -l "nm2/nm2_ovsdb_configure_interface_dhcpd.sh" -tc
 
-log "$tc_name: Checking if DHCP client is alive on $if_name - LEVEL2"
+log "nm2/nm2_ovsdb_configure_interface_dhcpd.sh: Checking if DHCP client is alive on $if_name - LEVEL2"
 wait_for_function_response 0 "check_pid_file alive \"/var/run/udhcpc-$if_name.pid\"" &&
-    log "$tc_name: DHCP client process ACTIVE for $if_name - Success" ||
-    raise "FAIL: DHCP client process NOT ACTIVE for $if_name" -l "$tc_name" -tc
+    log "nm2/nm2_ovsdb_configure_interface_dhcpd.sh: DHCP client process ACTIVE for $if_name - Success" ||
+    raise "FAIL: DHCP client process NOT ACTIVE for $if_name" -l "nm2/nm2_ovsdb_configure_interface_dhcpd.sh" -tc
 
-log "$tc_name: Disabling DHCP client for $if_name"
+log "nm2/nm2_ovsdb_configure_interface_dhcpd.sh: Disabling DHCP client for $if_name"
 update_ovsdb_entry Wifi_Inet_Config -w if_name "$if_name" \
     -u "dhcpd" "[\"map\",[]]" \
     -u "ip_assign_scheme" "static" &&
-        log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config table updated for $if_name - Success" ||
-        raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config for $if_name" -l "$tc_name" -oe
+        log "nm2/nm2_ovsdb_configure_interface_dhcpd.sh: update_ovsdb_entry - Wifi_Inet_Config table updated for $if_name - Success" ||
+        raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config for $if_name" -l "nm2/nm2_ovsdb_configure_interface_dhcpd.sh" -oe
 
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" \
     -is "dhcpd" "[\"map\",[]]" \
     -is "ip_assign_scheme" "static" &&
-        log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State for $if_name - Success" ||
-        raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - $if_name" -l "$tc_name" -tc
+        log "nm2/nm2_ovsdb_configure_interface_dhcpd.sh: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State for $if_name - Success" ||
+        raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - $if_name" -l "nm2/nm2_ovsdb_configure_interface_dhcpd.sh" -tc
 
-log "$tc_name: Checking if settings were removed from the DHCP server for $if_name - LEVEL2"
+log "nm2/nm2_ovsdb_configure_interface_dhcpd.sh: Checking if settings were removed from the DHCP server for $if_name - LEVEL2"
 wait_for_function_response 1 "check_dhcp_from_dnsmasq_conf $if_name $start_pool $end_pool" &&
-    log "$tc_name: DNSMASQ DHCP configuration VALID (not present) #2 for $if_name - Success" ||
-    raise "FAIL: DNSMASQ DHCP configuration NOT VALID (still present) #2 for $if_name" -l "$tc_name" -tc
+    log "nm2/nm2_ovsdb_configure_interface_dhcpd.sh: DNSMASQ DHCP configuration VALID (not present) #2 for $if_name - Success" ||
+    raise "FAIL: DNSMASQ DHCP configuration NOT VALID (still present) #2 for $if_name" -l "nm2/nm2_ovsdb_configure_interface_dhcpd.sh" -tc
 
-log "$tc_name: Checking if DHCP client is dead on $if_name - LEVEL2"
+log "nm2/nm2_ovsdb_configure_interface_dhcpd.sh: Checking if DHCP client is dead on $if_name - LEVEL2"
 wait_for_function_response 0 "check_pid_file dead \"/var/run/udhcpc-$if_name.pid\"" &&
-    log "$tc_name: DHCP client process NOT ACTIVE for $if_name - Success" ||
-    raise "FAIL: DHCP client process ACTIVE for $if_name" -l "$tc_name" -tc
+    log "nm2/nm2_ovsdb_configure_interface_dhcpd.sh: DHCP client process NOT ACTIVE for $if_name - Success" ||
+    raise "FAIL: DHCP client process ACTIVE for $if_name" -l "nm2/nm2_ovsdb_configure_interface_dhcpd.sh" -tc
 
 pass

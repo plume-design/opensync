@@ -40,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ds_tree.h"
 #include "log.h"
 #include "memutil.h"
+#include "sockaddr_storage.h"
 #include "neigh_table.h"
 #include "ndp_parse.h"
 #include "assert.h"
@@ -72,7 +73,7 @@ ndp_get_mgr(void)
  * @return 0 if sessions matches
  */
 static int
-ndp_session_cmp(void *a, void *b)
+ndp_session_cmp(const void *a, const void *b)
 {
     uintptr_t p_a = (uintptr_t)a;
     uintptr_t p_b = (uintptr_t)b;
@@ -510,7 +511,6 @@ ndp_parse_advert(struct ndp_parser *parser)
     struct sockaddr_storage *dst;
     struct nd_opt_hdr *opt_hdr;
     struct eth_header *eth_hdr;
-    struct sockaddr_in6 *in6;
     struct in6_addr *addr;
     os_macaddr_t *opt_mac;
     uint8_t opt_type;
@@ -560,11 +560,7 @@ ndp_parse_advert(struct ndp_parser *parser)
 
     /* Prepare reporting. RFC 4861, 4.4. */
     dst = parser->entry.ipaddr;
-    in6 = (struct sockaddr_in6 *)dst;
-
-    memset(in6, 0, sizeof(struct sockaddr_in6));
-    in6->sin6_family = AF_INET6;
-    memcpy(&in6->sin6_addr, &na.nd_na_target, sizeof(in6->sin6_addr));
+    sockaddr_storage_populate(AF_INET6, &na.nd_na_target, dst);
 
     if (parser->opt_mac)
     {

@@ -60,6 +60,13 @@ menu "Target paths"
         default "/opt/tb/cm-disable-fatal"
         help
             This file inhibits the manager restart action -- use for testing only.
+
+    config TARGET_PATH_PRIVKEY
+        string "Path to private key used to authenticate with cloud"
+        default "/var/certs/client_dec.key"
+        help
+            Full file path to private key used to authenticate with cloud.
+
 endmenu
 
 menuconfig TARGET_ETH_LIST

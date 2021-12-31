@@ -35,11 +35,10 @@ source "${FUT_TOPDIR}/shell/lib/um_lib.sh"
 
 manager_setup_file="um/um_setup.sh"
 um_resource_path="resource/um/"
-tc_name="um/$(basename "$0")"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+um/um_download_image_while_downloading.sh [-h] arguments
 Description:
     - Script verifies download of FW image if during the download process another
       download is triggered. Initial download should not be interrupted.
@@ -75,10 +74,10 @@ Testcase procedure:
                      Duplicate image with different name, use prefix in front of 1st name
                      Create md5 file for 2nd image
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name} <FW-PATH> <FW-NAME-1> <FW-NAME-1> <fw_dl_timer>
+                 Run: ./um/um_download_image_while_downloading.sh <FW-PATH> <FW-NAME-1> <FW-NAME-1> <fw_dl_timer>
 
 Script usage example:
-   ${tc_name} "http://url_to_image image_name_1.img image_name_2.img 10"
+   um/um_download_image_while_downloading.sh "http://url_to_image image_name_1.img image_name_2.img 10"
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -93,7 +92,7 @@ if [ -n "${1}" ]; then
     esac
 fi
 NARGS=4
-[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "um/um_download_image_while_downloading.sh" -arg
 fw_path=$1
 fw_url=$2
 fw_url_2=$3
@@ -102,39 +101,38 @@ fw_dl_timer=$4
 trap '
     fut_info_dump_line
     print_tables AWLAN_Node
-    fut_info_dump_line
     reset_um_triggers $fw_path || true
-    run_setup_if_crashed um || true
+    fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 
-log_title "$tc_name: UM test - Download FW - upgrade_dl_timer - $fw_dl_timer seconds"
+log_title "um/um_download_image_while_downloading.sh: UM test - Download FW - upgrade_dl_timer - $fw_dl_timer seconds"
 
-log "$tc_name: Setting upggrade_dl_timer to $fw_dl_timer firmware_url to $fw_url"
+log "um/um_download_image_while_downloading.sh: Setting upggrade_dl_timer to $fw_dl_timer firmware_url to $fw_url"
 update_ovsdb_entry AWLAN_Node \
     -u upgrade_dl_timer "$fw_dl_timer" \
     -u firmware_url "$fw_url" &&
-        log "$tc_name: update_ovsdb_entry - Success to update" ||
-        raise "update_ovsdb_entry - Failed to update" -l "$tc_name" -oe
+        log "um/um_download_image_while_downloading.sh: update_ovsdb_entry - Success to update" ||
+        raise "update_ovsdb_entry - Failed to update" -l "um/um_download_image_while_downloading.sh" -oe
 
 start_time=$(date -D "%H:%M:%S"  +"%Y.%m.%d-%H:%M:%S")
 
-log "$tc_name: Waiting for FW download to start"
+log "um/um_download_image_while_downloading.sh: Waiting for FW download to start"
 dl_start_code=$(get_um_code "UPG_STS_FW_DL_START")
 wait_ovsdb_entry AWLAN_Node -is upgrade_status "$dl_start_code" &&
-    log "$tc_name: wait_ovsdb_entry - AWLAN_Node::upgrade_status is $dl_start_code - Success" ||
-    raise "FAIL: wait_ovsdb_entry - AWLAN_Node::upgrade_status is not $dl_start_code" -l "$tc_name" -tc
-log "$tc_name: Download of 1st FW image started and in progress!"
+    log "um/um_download_image_while_downloading.sh: wait_ovsdb_entry - AWLAN_Node::upgrade_status is $dl_start_code - Success" ||
+    raise "FAIL: wait_ovsdb_entry - AWLAN_Node::upgrade_status is not $dl_start_code" -l "um/um_download_image_while_downloading.sh" -tc
+log "um/um_download_image_while_downloading.sh: Download of 1st FW image started and in progress!"
 
 # Download of first image started...
 # ... now start with downloading new image (illegal or unexpected action).
-log "$tc_name: Starting another fw image download '$fw_url_2' while first one is still in progress"
+log "um/um_download_image_while_downloading.sh: Starting another fw image download '$fw_url_2' while first one is still in progress"
 update_ovsdb_entry AWLAN_Node \
     -u upgrade_dl_timer "$fw_dl_timer" \
     -u firmware_url "$fw_url_2" &&
-        log "$tc_name: update_ovsdb_entry - AWLAN_Node table updated - Success" ||
-        raise "FAIL: update_ovsdb_entry - AWLAN_Node table not updated" -l "$tc_name" -oe
+        log "um/um_download_image_while_downloading.sh: update_ovsdb_entry - AWLAN_Node table updated - Success" ||
+        raise "FAIL: update_ovsdb_entry - AWLAN_Node table not updated" -l "um/um_download_image_while_downloading.sh" -oe
 
-log "$tc_name: Waiting for FW download to finish"
+log "um/um_download_image_while_downloading.sh: Waiting for FW download to finish"
 dl_end_code=$(get_um_code "UPG_STS_FW_DL_END")
 wait_ovsdb_entry AWLAN_Node -is upgrade_status "$dl_end_code" &&
     fw_download_result 0 "$start_time" ||

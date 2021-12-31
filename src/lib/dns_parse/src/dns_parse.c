@@ -1,7 +1,6 @@
 #define _GNU_SOURCE
-#include <ctype.h>
+#include <arpa/nameser.h>
 #include <errno.h>
-#include <getopt.h>
 #include <net/if.h>
 #include <pcap.h>
 #include <stdio.h>
@@ -11,8 +10,6 @@
 #include <unistd.h>
 #include <linux/if_packet.h>
 #include <netinet/in.h>
-#include <netinet/ip.h>
-#include <netinet/udp.h>
 
 #include "log.h"
 #include "const.h"
@@ -22,8 +19,10 @@
 #include "policy_tags.h"
 #include "os_util.h"
 #include "memutil.h"
+#include "sockaddr_storage.h"
 
 #include "fsm.h"
+#include "fsm_dns_utils.h"
 #include "fsm_policy.h"
 #include "dns_cache.h"
 #include "dns_parse.h"
@@ -31,9 +30,6 @@
 #include "json_mqtt.h"
 #include "ovsdb_utils.h"
 #include "ovsdb_sync.h"
-#include "wc_telemetry.h"
-#include "network_metadata_report.h"
-#include "gatekeeper_cache.h"
 
 #define IP2ACTION_MIN_TTL (6*60*60)
 
@@ -63,10 +59,10 @@ struct dns_cache *dns_get_mgr(void)
  * Compare DNS messages based on their embedded IDs
  */
 static int
-dns_req_id_cmp(void *a, void *b)
+dns_req_id_cmp(const void *a, const void *b)
 {
-    uint16_t *id_a = a;
-    uint16_t *id_b = b;
+    const uint16_t *id_a = a;
+    const uint16_t *id_b = b;
 
     return ((int)(*id_a) - (int)(*id_b));
 };
@@ -79,10 +75,10 @@ dns_req_id_cmp(void *a, void *b)
  * Compare device sessions based on their device IDs (MAC address)
  */
 static int
-dns_dev_id_cmp(void *a, void *b)
+dns_dev_id_cmp(const void *a, const void *b)
 {
-    os_macaddr_t *dev_id_a = a;
-    os_macaddr_t *dev_id_b = b;
+    const os_macaddr_t *dev_id_a = a;
+    const os_macaddr_t *dev_id_b = b;
 
     return memcmp(dev_id_a->addr,
                   dev_id_b->addr,
@@ -193,12 +189,12 @@ dns_parse_update(struct fsm_session *session)
  * @return 0 if sessions matches
  */
 static int
-dns_session_cmp(void *a, void *b)
+dns_session_cmp(const void *a, const void *b)
 {
     uintptr_t p_a = (uintptr_t)a;
     uintptr_t p_b = (uintptr_t)b;
 
-    if (p_a ==  p_b) return 0;
+    if (p_a == p_b) return 0;
     if (p_a < p_b) return -1;
     return 1;
 }
@@ -307,8 +303,6 @@ dns_delete_session(struct fsm_session *session)
     LOGD("%s: removing session %s", __func__, session->name);
     ds_tree_remove(sessions, d_session);
     dns_free_session(d_session);
-
-    return;
 }
 
 
@@ -416,7 +410,7 @@ dns_mgr_init(void)
                  struct dns_session, session_node);
     mgr->set_forward_context = dns_set_forward_context;
     mgr->forward = dns_forward;
-    mgr->update_tag = dns_update_tag;
+    mgr->update_tag = fsm_dns_update_tag;
     mgr->policy_init = fsm_policy_init;
     mgr->policy_check = fqdn_policy_check;
     mgr->req_cache_ttl = REQ_CACHE_TTL;
@@ -560,112 +554,23 @@ process_response_ip(struct fqdn_pending_req *req,
     }
 }
 
-
-static void
-dns_parse_populate_sockaddr(int af, void *ip_addr, struct sockaddr_storage *dst)
-{
-    if (!ip_addr) return;
-
-    if (af == AF_INET)
-    {
-        struct sockaddr_in *in4 = (struct sockaddr_in *)dst;
-
-        memset(in4, 0, sizeof(struct sockaddr_in));
-        in4->sin_family = af;
-        memcpy(&in4->sin_addr, ip_addr, sizeof(in4->sin_addr));
-    }
-    else if (af == AF_INET6)
-    {
-        struct sockaddr_in6 *in6 = (struct sockaddr_in6 *)dst;
-
-        memset(in6, 0, sizeof(struct sockaddr_in6));
-        in6->sin6_family = af;
-        memcpy(&in6->sin6_addr, ip_addr, sizeof(in6->sin6_addr));
-    }
-    return;
-}
-
-/**
- * @brief Set wb details..
- *
- * receive wb dst and src.
- *
- * @return void.
- *
- */
-void
-populate_dns_wb_cache_entry(struct ip2action_wb_info *i2a_cache_wb,
-                            struct fsm_wp_info *fqdn_reply_wb)
-{
-    i2a_cache_wb->risk_level = fqdn_reply_wb->risk_level;
-}
-
-/**
- * @brief Set bc details.
- *
- * receive bc dst, src and nelems.
- *
- * @return void.
- *
- */
-void
-populate_dns_bc_cache_entry(struct ip2action_bc_info *i2a_cache_bc,
-                            struct fsm_bc_info *fqdn_reply_bc,
-                            uint8_t nelems)
-{
-    size_t index;
-
-    i2a_cache_bc->reputation = fqdn_reply_bc->reputation;
-    for (index = 0; index < nelems; index++)
-    {
-        i2a_cache_bc->confidence_levels[index] =
-            fqdn_reply_bc->confidence_levels[index];
-    }
-}
-
-/**
- * @brief Set gk details.
- *
- * receive gk dst and src.
- *
- * @return void.
- *
- */
-void
-populate_dns_gk_cache_entry(struct ip2action_gk_info *i2a_cache_gk,
-                            struct fsm_gk_info *fqdn_reply_gk)
-{
-    i2a_cache_gk->confidence_level = fqdn_reply_gk->confidence_level;
-    i2a_cache_gk->category_id = fqdn_reply_gk->category_id;
-    if (fqdn_reply_gk->gk_policy)
-    {
-        i2a_cache_gk->gk_policy = fqdn_reply_gk->gk_policy;
-    }
-}
-
-
 static void
 process_response_ips(dns_info *dns, uint8_t *packet,
                      struct fqdn_pending_req *req,
                      struct fsm_policy_reply *policy_reply)
 {
-    struct ip2action_req ip_cache_req;
     char ipv6_addr[INET6_ADDRSTRLEN];
     char ipv4_addr[INET_ADDRSTRLEN];
     struct sockaddr_storage ipaddr;
-    int ip2action_cache_ttl;
-    bool disabled_dns_cache;
+    struct dns_cache_param param;
+    uint32_t ip2action_cache_ttl;
     const char *res;
     dns_rr *answer;
     bool add_entry;
     int qtype = -1;
-    bool gk_cache;
-    size_t index;
     uint32_t ttl;
-    bool cache;
     int i = 0;
     void *ip;
-    bool rc;
 
     if (dns == NULL) return;
     if (req->dns_response.num_replies > 1) return;
@@ -675,8 +580,7 @@ process_response_ips(dns_info *dns, uint8_t *packet,
     ttl = 0;
     answer = dns->answers;
     qtype = dns->queries->type;
-    LOGT("%s: query type: %d",
-         __func__, qtype);
+    LOGT("%s: query type: %d", __func__, qtype);
 
     for (i = 0; i < dns->ancount && answer != NULL; i++)
     {
@@ -689,7 +593,7 @@ process_response_ips(dns_info *dns, uint8_t *packet,
             ip = packet + answer->type_pos + 10;
             LOGT("%s: type %d answer, addr %s ttl: %d",
                  __func__, qtype, answer->data, ttl);
-            if (qtype == 1) /* IPv4 redirect */
+            if (qtype == ns_t_a) /* IPv4 redirect */
             {
                 res = inet_ntop(AF_INET, packet + answer->type_pos + 10,
                                 ipv4_addr, INET_ADDRSTRLEN);
@@ -701,11 +605,11 @@ process_response_ips(dns_info *dns, uint8_t *packet,
                 else
                 {
                     add_entry = true;
-                    dns_parse_populate_sockaddr(AF_INET, ip, &ipaddr);
+                    sockaddr_storage_populate(AF_INET, ip, &ipaddr);
                     process_response_ip(req, ipv4_addr, INET_ADDRSTRLEN);
                 }
             }
-            else if (qtype == 28) /* IPv6 */
+            else if (qtype == ns_t_aaaa) /* IPv6 */
             {
                 res = inet_ntop(AF_INET6, packet + answer->type_pos + 10,
                                 ipv6_addr, INET6_ADDRSTRLEN);
@@ -717,126 +621,29 @@ process_response_ips(dns_info *dns, uint8_t *packet,
                 else
                 {
                     add_entry = true;
-                    dns_parse_populate_sockaddr(AF_INET6, ip, &ipaddr);
+                    sockaddr_storage_populate(AF_INET6, ip, &ipaddr);
                     process_response_ip(req, ipv6_addr, INET6_ADDRSTRLEN);
                 }
             }
 
-            /* Check if caching is required */
-            cache = add_entry;
-            if (cache) cache &= (req->req_info->reply != NULL);
-            if (cache) cache &= !(req->req_info->reply->connection_error);
-            if (cache) cache &= (policy_reply->categorized == FSM_FQDN_CAT_SUCCESS);
-
-            /* Check the cache type we'll be using */
-            gk_cache = cache;
-            if (gk_cache) gk_cache &= (req->req_info->reply->service_id == IP2ACTION_GK_SVC);
-
-            /* Check if we'll be using the DNS cache */
-            disabled_dns_cache = is_dns_cache_disabled();
-            if (cache) cache &= !disabled_dns_cache;
-            if (gk_cache) gk_cache &= disabled_dns_cache;
-
-            LOGT("%s: cache: %s, gk_cache: %s", __func__,
-                 cache ? "true" : "false",
-                 gk_cache ? "true" : "false");
-
-            /* Trigger the gatekeeper cache addition API */
-            if (gk_cache)
+            if (add_entry)
             {
-                struct gk_attr_cache_interface gkc_entry;
-                struct fsm_gk_info *fqdn_reply_gk;
+                MEMZERO(param);
+                param.req = req;
+                param.policy_reply = policy_reply;
+                param.ipaddr = &ipaddr;
 
-                MEMZERO(gkc_entry);
-                fqdn_reply_gk = &req->req_info->reply->gk;
-                gkc_entry.device_mac = &req->dev_id;
-                gkc_entry.attribute_type = (ipaddr.ss_family == AF_INET ?
-                                            GK_CACHE_REQ_TYPE_IPV4 :
-                                            GK_CACHE_REQ_TYPE_IPV6);
-
-                gkc_entry.ip_addr = &ipaddr;
                 ip2action_cache_ttl = ((ttl < IP2ACTION_MIN_TTL) ?
                                        IP2ACTION_MIN_TTL : (int)ttl);
-                gkc_entry.cache_ttl = ((req->rd_ttl != -1) ?
-                                       req->rd_ttl : ip2action_cache_ttl);
+                param.ttl = ((req->rd_ttl != -1) ?
+                             (uint32_t)req->rd_ttl : ip2action_cache_ttl);
+                param.direction = NET_MD_ACC_OUTBOUND_DIR;
+                param.action_by_name = policy_reply->action;
 
-                switch(policy_reply->action)
+                fsm_dns_cache_add_entry(&param);
+                if (LOG_SEVERITY_ENABLED(LOG_SEVERITY_TRACE))
                 {
-                    case FSM_REDIRECT:
-                        gkc_entry.action_by_name = FSM_BLOCK;
-                        break;
-
-                    case FSM_OBSERVED:
-                        gkc_entry.action_by_name = FSM_ALLOW;
-                        break;
-
-                    default:
-                        gkc_entry.action_by_name = policy_reply->action;
-                        break;
-                }
-
-                gkc_entry.direction = NET_MD_ACC_OUTBOUND_DIR;
-                gkc_entry.gk_policy = fqdn_reply_gk->gk_policy;
-                gkc_entry.category_id = fqdn_reply_gk->category_id;
-                gkc_entry.confidence_level = fqdn_reply_gk->confidence_level;
-                gkc_entry.categorized = policy_reply->categorized;
-                gkc_entry.is_private_ip = policy_reply->cat_unknown_to_service;
-
-                LOGD("%s: adding %s to the gatekeeper cache", __func__,
-                     qtype == 1 ? ipv4_addr : ipv6_addr);
-
-                rc = gkc_upsert_attribute_entry(&gkc_entry);
-                if (!rc)
-                {
-                    LOGD("%s: Couldn't add ip entry to gatekeeper cache.", __func__);
-                }
-            }
-            else if (cache)
-            {
-                memset(&ip_cache_req, 0, sizeof(ip_cache_req));
-                ip_cache_req.device_mac = &req->dev_id;
-                ip_cache_req.ip_addr = &ipaddr;
-                ip2action_cache_ttl = ((ttl < IP2ACTION_MIN_TTL) ?
-                                       IP2ACTION_MIN_TTL : (int)ttl);
-                ip_cache_req.cache_ttl = ((req->rd_ttl != -1) ?
-                                          req->rd_ttl : ip2action_cache_ttl);
-                ip_cache_req.action_by_name = policy_reply->action;
-                ip_cache_req.policy_idx = policy_reply->policy_idx;
-                ip_cache_req.service_id = req->req_info->reply->service_id;
-                ip_cache_req.nelems = req->req_info->reply->nelems;
-                ip_cache_req.cat_unknown_to_service = policy_reply->cat_unknown_to_service;
-                for (index = 0; index < req->req_info->reply->nelems; ++index)
-                {
-                    ip_cache_req.categories[index] =
-                        req->req_info->reply->categories[index];
-                }
-
-                if (ip_cache_req.service_id == IP2ACTION_BC_SVC)
-                {
-                    populate_dns_bc_cache_entry(&ip_cache_req.cache_bc,
-                                                &req->req_info->reply->bc,
-                                                req->req_info->reply->nelems);
-                }
-                else if (ip_cache_req.service_id == IP2ACTION_WP_SVC)
-                {
-                    populate_dns_wb_cache_entry(&ip_cache_req.cache_wb,
-                                                &req->req_info->reply->wb);
-                }
-                else if (ip_cache_req.service_id == IP2ACTION_GK_SVC)
-                {
-                    populate_dns_gk_cache_entry(&ip_cache_req.cache_gk,
-                                                &req->req_info->reply->gk);
-                }
-                else
-                {
-                    LOGD("%s : service id %d no recognized", __func__,
-                         req->req_info->reply->service_id);
-                }
-
-                rc = dns_cache_add_entry(&ip_cache_req);
-                if (rc == false)
-                {
-                    LOGW("%s: Couldn't add ip2action entry to cache.", __func__);
+                    fsm_dns_cache_print(&param);
                 }
             }
         }
@@ -861,241 +668,6 @@ dns_forward(struct dns_session *dns_session, dns_info *dns,
     }
 }
 
-
-static bool
-dns_updatev4_tag(struct fqdn_pending_req *req, struct fsm_policy_reply *policy_reply)
-{
-    struct schema_Openflow_Local_Tag *local_tag;
-    struct schema_Openflow_Tag *regular_tag;
-    size_t max_capacity;
-    size_t value_len;
-    size_t elem_len;
-    int tle_flag;
-    bool result;
-    size_t len;
-
-    regular_tag = NULL;
-    local_tag = NULL;
-    max_capacity = 0;
-    result = false;
-    len = 0;
-
-    if (policy_reply->action != FSM_UPDATE_TAG) return false;
-
-    tle_flag = om_get_type_of_tag(policy_reply->updatev4_tag);
-
-    if (tle_flag == OM_TLE_FLAG_DEVICE ||
-        tle_flag == OM_TLE_FLAG_CLOUD)
-    {
-        regular_tag = CALLOC(1, sizeof(*regular_tag));
-        if (regular_tag == NULL) goto out;
-
-        value_len = sizeof(regular_tag->device_value);
-        elem_len = sizeof(regular_tag->device_value[0]);
-        max_capacity = value_len / elem_len;
-
-        len = strlen(policy_reply->updatev4_tag);
-        os_util_strncpy(regular_tag->name, &policy_reply->updatev4_tag[3], len - 3);
-        regular_tag->name_exists = true;
-        regular_tag->name_present = true;
-
-        result = dns_generate_update_tag(req, policy_reply, regular_tag->device_value,
-                                         &regular_tag->device_value_len,
-                                         max_capacity, 4);
-        if (result)
-        {
-            result = dns_upsert_regular_tag(regular_tag, ovsdb_sync_upsert);
-            if (!result)
-            {
-                LOGT("%s: Openflow_Tag not updated for request.", __func__);
-            }
-        }
-        else
-        {
-            LOGT("%s: Openflow_Tag not updated for request.", __func__);
-        }
-    }
-    else if (tle_flag == OM_TLE_FLAG_LOCAL)
-    {
-        local_tag = CALLOC(1, sizeof(*local_tag));
-        if (local_tag == NULL) goto out;
-
-        value_len = sizeof(local_tag->values);
-        elem_len = sizeof(regular_tag->device_value[0]);
-        max_capacity = value_len / elem_len;
-
-        len = strlen(policy_reply->updatev4_tag);
-        os_util_strncpy(local_tag->name, &policy_reply->updatev4_tag[3], len - 3);
-        local_tag->name_exists = true;
-        local_tag->name_present = true;
-
-        result = dns_generate_update_tag(req, policy_reply, local_tag->values,
-                                         &local_tag->values_len,
-                                         max_capacity, 4);
-        if (result)
-        {
-            result = dns_upsert_local_tag(local_tag, ovsdb_sync_upsert);
-            if (!result)
-            {
-                LOGT("%s: Openflow_Local_Tag not updated for request.", __func__);
-            }
-        }
-        else
-        {
-            LOGT("%s: Openflow_Local_Tag not updated for request.", __func__);
-        }
-    }
-
-out:
-    FREE(regular_tag);
-    FREE(local_tag);
-
-    return result;
-}
-
-
-bool
-dns_updatev6_tag(struct fqdn_pending_req *req, struct fsm_policy_reply *policy_reply)
-{
-    struct schema_Openflow_Local_Tag *local_tag;
-    struct schema_Openflow_Tag *regular_tag;
-    size_t max_capacity;
-    size_t value_len;
-    size_t elem_len;
-    int tle_flag;
-    bool result;
-    size_t len;
-
-    regular_tag = NULL;
-    local_tag = NULL;
-    max_capacity = 0;
-    result = false;
-    len = 0;
-
-    if (policy_reply->action != FSM_UPDATE_TAG) return false;
-
-    tle_flag = om_get_type_of_tag(policy_reply->updatev6_tag);
-
-    if (tle_flag == OM_TLE_FLAG_DEVICE ||
-        tle_flag == OM_TLE_FLAG_CLOUD)
-    {
-        regular_tag = CALLOC(1, sizeof(*regular_tag));
-        if (regular_tag == NULL) goto out;
-
-        value_len = sizeof(regular_tag->device_value);
-        elem_len = sizeof(regular_tag->device_value[0]);
-        max_capacity = value_len / elem_len;
-
-        len = strlen(policy_reply->updatev6_tag);
-        os_util_strncpy(regular_tag->name, &policy_reply->updatev6_tag[3], len - 3);
-        regular_tag->name_exists = true;
-        regular_tag->name_present = true;
-
-        result = dns_generate_update_tag(req, policy_reply, regular_tag->device_value,
-                                         &regular_tag->device_value_len,
-                                         max_capacity, 6);
-        if (result)
-        {
-            result = dns_upsert_regular_tag(regular_tag, ovsdb_sync_upsert);
-            if (!result)
-            {
-                LOGT("%s: Openflow_Tag not updated for request.", __func__);
-            }
-        }
-        else
-        {
-            LOGT("%s: Openflow_Tag not updated for request.", __func__);
-        }
-    }
-    else if(tle_flag == OM_TLE_FLAG_LOCAL)
-    {
-        local_tag = CALLOC(1, sizeof(*local_tag));
-        if (local_tag == NULL) goto out;
-
-        value_len = sizeof(local_tag->values);
-        elem_len = sizeof(regular_tag->device_value[0]);
-        max_capacity = value_len / elem_len;
-
-        len = strlen(policy_reply->updatev6_tag);
-        os_util_strncpy(local_tag->name, &policy_reply->updatev6_tag[3], len - 3);
-        local_tag->name_exists = true;
-        local_tag->name_present = true;
-
-        result = dns_generate_update_tag(req, policy_reply, local_tag->values,
-                                         &local_tag->values_len,
-                                         max_capacity, 6);
-        if (result)
-        {
-            result = dns_upsert_local_tag(local_tag, ovsdb_sync_upsert);
-            if (!result)
-            {
-                LOGT("%s: Openflow_Local_Tag not updated for request.", __func__);
-            }
-        }
-        else
-        {
-            LOGT("%s: Openflow_Local_Tag not updated for request.", __func__);
-        }
-    }
-
-out:
-    FREE(regular_tag);
-    FREE(local_tag);
-
-    return result;
-}
-
-
-static bool
-is_device_excluded(char *tag, os_macaddr_t *mac)
-{
-    char mac_s[32] = { 0 };
-
-    snprintf(mac_s, sizeof(mac_s), PRI_os_macaddr_lower_t,
-             FMT_os_macaddr_pt(mac));
-
-    return om_tag_in(mac_s, tag);
-}
-
-
-void
-dns_update_tag(struct fqdn_pending_req *req, struct fsm_policy_reply *policy_reply)
-{
-    bool rc = false;
-
-    if (!req) return;
-
-    rc = is_device_excluded(policy_reply->excluded_devices, &req->dev_id);
-    if (rc)
-    {
-        LOGD("%s: mac " PRI_os_macaddr_lower_t " is excluded from tag updates."
-              ,__func__, FMT_os_macaddr_t(req->dev_id));
-        return;
-    }
-
-    if (policy_reply->updatev4_tag && req->dns_response.ipv4_cnt != 0)
-    {
-        rc = dns_updatev4_tag(req, policy_reply);
-        if (!rc)
-        {
-            LOGT("%s: Failed to update ipv4 OpenFlow tags.", __func__);
-        }
-    }
-
-    if (policy_reply->updatev6_tag &&
-        req->dns_response.ipv6_cnt != 0)
-    {
-        rc = dns_updatev6_tag(req, policy_reply);
-        if (!rc)
-        {
-            LOGT("%s: Failed to update ipv6 OpenFlow tags.",__func__);
-        }
-    }
-
-    return;
-}
-
-
 static char redirect_prefix[RD_SZ][4] =
 {
     "A-", "4A-", "C-"
@@ -1114,80 +686,6 @@ check_redirect(char *redirect, int id)
     return NULL;
 }
 
-bool
-dns_cache_add_redirect_entry(struct fqdn_pending_req *req,
-                             struct sockaddr_storage *ipaddr)
-{
-    struct ip2action_req ip_cache_req;
-    bool gk_cache;
-    int rc;
-
-    LOGD("%s(): adding redirect cache entry", __func__);
-
-    if (req->req_info == NULL || req->req_info->reply == NULL) return false;
-
-    gk_cache = is_dns_cache_disabled();
-    gk_cache &= (req->req_info->reply->service_id == IP2ACTION_GK_SVC);
-
-    if (gk_cache)
-    {
-        struct gk_attr_cache_interface gkc_entry;
-        struct fsm_gk_info *fqdn_reply_gk;
-
-        MEMZERO(gkc_entry);
-        fqdn_reply_gk = &req->req_info->reply->gk;
-        gkc_entry.device_mac = &req->dev_id;
-        gkc_entry.attribute_type = (ipaddr->ss_family == AF_INET ?
-                                    GK_CACHE_REQ_TYPE_IPV4 :
-                                    GK_CACHE_REQ_TYPE_IPV6);
-
-        gkc_entry.ip_addr = ipaddr;
-        gkc_entry.cache_ttl = DNS_REDIRECT_TTL;
-        gkc_entry.action_by_name = FSM_ALLOW;
-        gkc_entry.direction = NET_MD_ACC_OUTBOUND_DIR;
-        gkc_entry.gk_policy = fqdn_reply_gk->gk_policy;
-        gkc_entry.redirect_flag = true;
-
-        /* Force the category ID to an acceptable value */
-        gkc_entry.category_id = 15; /* GK_NOT_RATED */
-        gkc_entry.confidence_level = 0;
-        gkc_entry.categorized = FSM_FQDN_CAT_SUCCESS;
-        gkc_entry.is_private_ip = false;
-        rc = gkc_upsert_attribute_entry(&gkc_entry);
-        if (!rc)
-        {
-            LOGD("%s: Couldn't add ip entry to gatekeeper cache.", __func__);
-            return false;
-        }
-
-        return true;
-    }
-
-    memset(&ip_cache_req, 0, sizeof(ip_cache_req));
-    ip_cache_req.device_mac = &req->dev_id;
-    ip_cache_req.ip_addr = ipaddr;
-    ip_cache_req.service_id = req->req_info->reply->service_id;
-    ip_cache_req.action = FSM_ALLOW;
-    ip_cache_req.redirect_flag = true;
-
-    /* set required values for adding to cache */
-    if (ip_cache_req.service_id == IP2ACTION_BC_SVC)
-    {
-        ip_cache_req.nelems = 1;
-        ip_cache_req.cache_info.bc_info.reputation = 3;
-        ip_cache_req.cache_info.bc_info.confidence_levels[0] = 1;
-    }
-    else if (ip_cache_req.service_id == IP2ACTION_WP_SVC)
-    {
-        ip_cache_req.cache_info.wb_info.risk_level = 5;
-    }
-
-    /* 96 hours TTL */
-    ip_cache_req.cache_ttl = DNS_REDIRECT_TTL;
-
-    rc = dns_cache_add_entry(&ip_cache_req);
-    return rc;
-}
 
 static bool
 update_a_rrs(dns_info *dns, uint8_t *packet,
@@ -1196,6 +694,7 @@ update_a_rrs(dns_info *dns, uint8_t *packet,
 {
     dns_rr *answer = dns->answers;
     struct sockaddr_storage ipaddr;
+    struct dns_cache_param param;
     bool updated = false;
     int qtype = -1;
     int i = 0;
@@ -1223,7 +722,7 @@ update_a_rrs(dns_info *dns, uint8_t *packet,
 
             LOGT("%s: type %d answer, addr %s",
                  __func__, qtype, answer->data);
-            if (qtype == 1)  /* IPv4 redirect */
+            if (qtype == ns_t_a)  /* IPv4 redirect */
             {
                 char *ipv4_addr = check_redirect(policy_reply->redirects[0],
                                                  IPv4_REDIRECT);
@@ -1243,8 +742,13 @@ update_a_rrs(dns_info *dns, uint8_t *packet,
                     }
                     /* Add the redirected IP to cache */
                     LOGT("%s(): adding redirected IP %s to cache", __func__, ipv4_addr);
-                    dns_parse_populate_sockaddr(AF_INET, ip, &ipaddr);
-                    rc = dns_cache_add_redirect_entry(req, &ipaddr);
+                    sockaddr_storage_populate(AF_INET, ip, &ipaddr);
+
+                    param.req = req;
+                    param.ipaddr = &ipaddr;
+                    param.direction = NET_MD_ACC_OUTBOUND_DIR;
+                    param.action_by_name = policy_reply->action;
+                    rc = fsm_dns_cache_add_redirect_entry(&param);
                     if (rc == false)
                     {
                         LOGD("%s(): failed to add %s to cache", __func__, ipv4_addr);
@@ -1252,7 +756,7 @@ update_a_rrs(dns_info *dns, uint8_t *packet,
                     updated |= true;
                 }
             }
-            else if (qtype == 28)  /* IPv6 */
+            else if (qtype == ns_t_aaaa)  /* IPv6 */
             {
                 LOGT("%s: IPv6 record, rdlength == %d",
                      __func__, answer->rdlength);
@@ -1275,9 +779,13 @@ update_a_rrs(dns_info *dns, uint8_t *packet,
                     updated |= true;
 
                     LOGT("%s(): adding redirected IPv6 %s to cache", __func__, ipv6_addr);
-                    dns_parse_populate_sockaddr(AF_INET6, ip, &ipaddr);
-                    rc = dns_cache_add_redirect_entry(req, &ipaddr);
+                    sockaddr_storage_populate(AF_INET6, ip, &ipaddr);
 
+                    param.req = req;
+                    param.ipaddr = &ipaddr;
+                    param.direction = NET_MD_ACC_OUTBOUND_DIR;
+                    param.action_by_name = policy_reply->action;
+                    rc = fsm_dns_cache_add_redirect_entry(&param);
                     if (rc == false)
                     {
                         LOGD("%s(): failed to add IPv6 addr %s to cache", __func__, ipv6_addr);
@@ -1296,10 +804,11 @@ dns_handle_reply(struct dns_session *dns_session, dns_info *dns,
                  eth_info *eth, struct pcap_pkthdr *header,
                  uint8_t *packet)
 {
-    struct dns_device *ds = NULL;
-    struct fqdn_pending_req *req = NULL;
-    struct fsm_session *session;
+    struct fsm_dns_update_tag_param dns_tag_param;
     struct fsm_policy_reply *policy_reply;
+    struct fqdn_pending_req *req = NULL;
+    struct dns_device *ds = NULL;
+    struct fsm_session *session;
     struct dns_cache *mgr;
 
     mgr = dns_get_mgr();
@@ -1344,7 +853,14 @@ dns_handle_reply(struct dns_session *dns_session, dns_info *dns,
         * Update Tag if we are interested
         * in the IPs returned.
         */
-        mgr->update_tag(req, policy_reply);
+        if (req)
+        {
+            MEMZERO(dns_tag_param);
+            dns_tag_param.dns_response = &req->dns_response;
+            dns_tag_param.dev_id = &req->dev_id;
+            dns_tag_param.policy_reply = policy_reply;
+            mgr->update_tag(&dns_tag_param);
+        }
     }
 
     /* forward the DNS response if the session has no categorization provider */
@@ -1446,7 +962,6 @@ dns_handle_reply(struct dns_session *dns_session, dns_info *dns,
 
   free_out:
     free_rrs(&dns_session->ip, &dns_session->udp, dns, header);
-    return;
 }
 
 
@@ -2127,178 +1642,6 @@ dns_remove_req(struct dns_session *dns_session, os_macaddr_t *mac,
     dns_remove_policy_reply(ds, req_id);
 }
 
-
-bool
-is_in_device_set(char values[][MAX_TAG_VALUES_LEN], int values_len, char *checking)
-{
-    int ret;
-    int i;
-
-    for(i = 0; i < values_len; i++)
-    {
-        ret = strcmp(values[i], checking);
-        if (!ret) return true;
-    }
-    return false;
-}
-
-
-bool
-dns_generate_update_tag(struct fqdn_pending_req *req,
-                        struct fsm_policy_reply *policy_reply,
-                        char values[][MAX_TAG_VALUES_LEN],
-                        int *values_len, size_t max_capacity,
-                        int ip_ver)
-{
-    bool added_information;
-    om_tag_t *tag;
-    char *adding;
-    char name[MAX_TAG_NAME_LEN] = {0};
-    int  name_len = 0;
-    bool rc;
-    int i;
-
-    if (policy_reply->action != FSM_UPDATE_TAG) return false;
-
-    added_information = false;
-
-    if (ip_ver == 4)
-    {
-      name_len = strlen(policy_reply->updatev4_tag);
-      os_util_strncpy(name, &policy_reply->updatev4_tag[3], name_len - 3);
-      tag = om_tag_find_by_name(name, false);
-    }
-    else if (ip_ver == 6)
-    {
-      name_len = strlen(policy_reply->updatev6_tag);
-      os_util_strncpy(name, &policy_reply->updatev6_tag[3], name_len - 3);
-      tag = om_tag_find_by_name(name, false);
-    }
-    else
-    {
-      return false;
-    }
-
-    /* Load in current in memory tag state */
-    if (tag != NULL)
-    {
-        om_tag_list_entry_t *iter;
-        ds_tree_foreach(&tag->values, iter)
-        {
-            adding = iter->value;
-            rc = is_in_device_set(values, *values_len, adding);
-            if (!rc)
-            {
-                STRSCPY(values[*values_len], adding);
-                *values_len = *values_len + 1;
-            }
-        }
-    }
-
-    if (ip_ver == 4)
-    {
-        for (i = 0; i < req->dns_response.ipv4_cnt; i++)
-        {
-            adding = req->dns_response.ipv4_addrs[i];
-            rc = is_in_device_set(values, *values_len, adding);
-            if (rc) continue;
-
-            if (*values_len == (int)(max_capacity))
-            {
-                *values_len = *values_len % (int)max_capacity;
-                LOGD("%s: tag %s max capacity reached, adding circularly at index %d",
-                     __func__, name, *values_len);
-            }
-
-            STRSCPY(values[*values_len], adding);
-            *values_len = *values_len + 1;
-            added_information = true;
-        }
-    }
-    else if (ip_ver == 6)
-    {
-        for (i = 0; i < req->dns_response.ipv6_cnt; i++)
-        {
-            adding = req->dns_response.ipv6_addrs[i];
-            rc = is_in_device_set(values, *values_len, adding);
-            if (rc) continue;
-
-            if (*values_len == (int)(max_capacity))
-            {
-                *values_len = *values_len % (int)max_capacity;
-                LOGD("%s: tag %s max capacity reached, adding circularly at index %d",
-                     __func__, name, *values_len);
-            }
-
-            STRSCPY(values[*values_len], adding);
-            *values_len = *values_len + 1;
-            added_information = true;
-        }
-    }
-
-    return added_information;
-}
-
-
-
-bool
-dns_upsert_regular_tag(struct schema_Openflow_Tag *row, dns_ovsdb_updater updater)
-{
-    pjs_errmsg_t err;
-    json_t *jrow;
-    bool ret;
-
-    jrow = schema_Openflow_Tag_to_json(row, err);
-    if (jrow == NULL)
-    {
-        LOGD("%s: failed to generate JSON for upsert: %s", __func__, err);
-
-        return false;
-    }
-
-    ret = updater(SCHEMA_TABLE(Openflow_Tag), SCHEMA_COLUMN(Openflow_Tag, name),
-                  row->name, jrow, NULL);
-    if (ret)
-    {
-        LOGD("%s: Updated Openflow_Tag: %s with new IP set.", __func__,
-             row->name);
-        return true;
-    }
-    LOGD("%s: Return value from OVSDB update was: %d", __func__, ret);
-
-    return false;
-}
-
-
-bool
-dns_upsert_local_tag(struct schema_Openflow_Local_Tag *row, dns_ovsdb_updater updater)
-{
-    pjs_errmsg_t err;
-    json_t *jrow;
-    bool ret;
-
-    jrow = schema_Openflow_Local_Tag_to_json(row, err);
-    if (jrow == NULL)
-    {
-        LOGD("%s: failed to generate JSON for upsert: %s", __func__, err);
-
-        return false;
-    }
-
-    ret = updater(SCHEMA_TABLE(Openflow_Local_Tag),
-                  SCHEMA_COLUMN(Openflow_Local_Tag, name),
-                  row->name, jrow, NULL);
-    if (ret)
-    {
-        LOGD("%s: Updated Openflow_Local_Tag: %s with new IP set.", __func__,
-             row->name);
-        return true;
-    }
-    LOGD("%s: Return value from OVSDB update was: %d", __func__, ret);
-
-    return false;
-}
-
 void
 dns_retire_reqs(struct fsm_session *session)
 {
@@ -2367,9 +1710,9 @@ dns_periodic(struct fsm_session *session)
     dns_session = dns_lookup_session(session);
     if (dns_session == NULL) return;
 
-    /* Clean up expired ip2action entries */
-    dns_cache_ttl_cleanup();
-    print_dns_cache_details();
+    /* Clean up expired cache entries */
+    fsm_dns_cache_flush_ttl();
+    dns_cache_print_details();
 
     /* Retire unresolved old requests */
     dns_retire_reqs(session);
@@ -2516,5 +1859,10 @@ dns_policy_check(struct dns_device *ds,
     LOGT("%s: redirect = %s", __func__, policy_reply->redirect ? "true" : "false");
     ds_tree_insert(&ds->fqdn_pending_reqs, req, &req->req_id);
     ds_tree_insert(&ds->dns_policy_replies_tree, policy_reply, &policy_reply->req_id);
-    return;
+    if (policy_reply->redirect)
+    {
+        LOGT("%s: cname: %s, redirect[0] = %s, redirect[1] = %s", __func__,
+             policy_reply->redirect_cname, policy_reply->redirects[0],
+             policy_reply->redirects[1]);
+    }
 }

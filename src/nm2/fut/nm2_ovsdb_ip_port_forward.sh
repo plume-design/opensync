@@ -33,12 +33,11 @@ source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="nm2/$(basename "$0")"
 manager_setup_file="nm2/nm2_setup.sh"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+nm2/nm2_ovsdb_ip_port_forward.sh [-h] arguments
 Description:
     - Script checks if IP port forward rule is created on the system when configured through IP_Port_Forward table
       Script fails if IP port is not forwarded on the system
@@ -51,9 +50,9 @@ Arguments:
     \$5 (protocol)   : used as protocol in IP_Port_Forward table   : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name} <SRC-IFNAME> <SRC-PORT> <DST-IPADDR> <DST-PORT> <PROTOCOL>
+                 Run: ./nm2/nm2_ovsdb_ip_port_forward.sh <SRC-IFNAME> <SRC-PORT> <DST-IPADDR> <DST-PORT> <PROTOCOL>
 Script usage example:
-   ./${tc_name} wifi0 8080 10.10.10.200 80 tcp
+   ./nm2/nm2_ovsdb_ip_port_forward.sh wifi0 8080 10.10.10.200 80 tcp
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -69,7 +68,7 @@ if [ -n "${1}" ]; then
 fi
 
 NARGS=5
-[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "nm2/nm2_ovsdb_ip_port_forward.sh" -arg
 # No default values.
 src_ifname=$1
 src_port=$2
@@ -81,33 +80,32 @@ trap '
     fut_info_dump_line
     print_tables IP_Port_Forward
     fut_info_dump_line
-    run_setup_if_crashed nm || true
 ' EXIT SIGINT SIGTERM
 
-log_title "$tc_name: NM2 test - Testing IP port forwarding"
+log_title "nm2/nm2_ovsdb_ip_port_forward.sh: NM2 test - Testing IP port forwarding"
 
-log "$tc_name: Set IP FORWARD in OVSDB"
+log "nm2/nm2_ovsdb_ip_port_forward.sh: Set IP FORWARD in OVSDB"
 set_ip_forward "$src_ifname" "$src_port" "$dst_ipaddr" "$dst_port" "$protocol" &&
-    log "$tc_name: Set IP port forward for $src_ifname - Success" ||
-    raise "FAIL: Failed to set IP port forward - $src_ifname" -l "$tc_name" -tc
+    log "nm2/nm2_ovsdb_ip_port_forward.sh: Set IP port forward for $src_ifname - Success" ||
+    raise "FAIL: Failed to set IP port forward - $src_ifname" -l "nm2/nm2_ovsdb_ip_port_forward.sh" -tc
 
-log "$tc_name: Check for IP FORWARD record in iptables - LEVEL2"
+log "nm2/nm2_ovsdb_ip_port_forward.sh: Check for IP FORWARD record in iptables - LEVEL2"
 wait_for_function_response 0 "ip_port_forward $dst_ipaddr:$dst_port" &&
-    log "$tc_name: LEVEL2 - IP port forward record propagated to iptables" ||
-    raise "FAIL: LEVEL2 - Failed to propagate record into iptables" -l "$tc_name" -tc
+    log "nm2/nm2_ovsdb_ip_port_forward.sh: LEVEL2 - IP port forward record propagated to iptables" ||
+    raise "FAIL: LEVEL2 - Failed to propagate record into iptables" -l "nm2/nm2_ovsdb_ip_port_forward.sh" -tc
 
-log "$tc_name: Delete IP FORWARD from OVSDB"
+log "nm2/nm2_ovsdb_ip_port_forward.sh: Delete IP FORWARD from OVSDB"
 ${OVSH} d IP_Port_Forward -w dst_ipaddr=="$dst_ipaddr" -w src_ifname=="$src_ifname" &&
-    log "$tc_name: Deleted IP FORWARD for $src_ifname from IP_Port_Forward" ||
-    raise "FAIL: Failed to delete IP FORWARD for $src_ifname from IP_Port_Forward" -l "$tc_name" -tc
+    log "nm2/nm2_ovsdb_ip_port_forward.sh: Deleted IP FORWARD for $src_ifname from IP_Port_Forward" ||
+    raise "FAIL: Failed to delete IP FORWARD for $src_ifname from IP_Port_Forward" -l "nm2/nm2_ovsdb_ip_port_forward.sh" -tc
 
 wait_ovsdb_entry_remove IP_Port_Forward -w dst_ipaddr "$dst_ipaddr" -w src_ifname "$src_ifname" &&
-    log "$tc_name: Removed entry from IP_Port_Forward for $src_ifname - Success" ||
-    raise "FAIL: Failed to remove entry from IP_Port_Forward for $src_ifname" -l "$tc_name" -tc
+    log "nm2/nm2_ovsdb_ip_port_forward.sh: Removed entry from IP_Port_Forward for $src_ifname - Success" ||
+    raise "FAIL: Failed to remove entry from IP_Port_Forward for $src_ifname" -l "nm2/nm2_ovsdb_ip_port_forward.sh" -tc
 
-log "$tc_name: Check is IP FORWARD record is deleted from iptables - LEVEL2"
+log "nm2/nm2_ovsdb_ip_port_forward.sh: Check is IP FORWARD record is deleted from iptables - LEVEL2"
 wait_for_function_response 1 "ip_port_forward $dst_ipaddr:$dst_port" &&
-    log "$tc_name: LEVEL2 - IP FORWARD record deleted from iptables - Success" ||
+    log "nm2/nm2_ovsdb_ip_port_forward.sh: LEVEL2 - IP FORWARD record deleted from iptables - Success" ||
     force_delete_ip_port_forward_die "$src_ifname" "NM_PORT_FORWARD" "$dst_ipaddr:$dst_port"
 
 pass

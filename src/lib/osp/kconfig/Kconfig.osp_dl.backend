@@ -1,0 +1,14 @@
+config OSP_DL_NULL
+    bool "Null"
+    help
+        This backend implements a dummy implementation of the osp_dl API. All
+        functions in this implementation return an error.
+
+config OSP_DL_CURL
+    bool "cURL"
+    help
+        This backend provides a cURL based osp_DL API implementation.
+
+        Note: cURL to be fully asynchronous must be compiled with c-ares
+        support. Otherwise it will use the system resolver which may block on
+        DNS quieries.

@@ -33,11 +33,10 @@ source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="othr/$(basename "$0")"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+othr/othr_configure_and_verify_gre_tunnel_gw.sh [-h] arguments
 Description:
     - Script configures GRE (pgd) interface for associated LEAF device (leaf_radio_mac) and
         verifies communication to LEAF device (ping)
@@ -55,11 +54,11 @@ Testcase procedure (FUT scripts call only)(example):
     # Initial DUT and REF setup
     # On DUT: ./fut-base/shell//tests/dm/othr_setup.sh wifi0 wifi1 wifi2
     # On REF: ./fut-base/shell//tests/dm/othr_setup.sh wifi0 wifi1 wifi2
-    # On REF: ./fut-base/shell//tools/device/get_radio_mac_from_ovsdb.sh  if_name==wifi0
+    # On REF: ./fut-base/shell//tools/device/ovsdb/get_radio_mac_from_ovsdb.sh  if_name==wifi0
     # On REF: ./fut-base/shell//tools/device/ovsdb/remove_ovsdb_entry.sh  Wifi_Credential_Config -w ssid fut-5515.bhaul
     # On REF: ./fut-base/shell//tools/device/ovsdb/insert_ovsdb_entry.sh  Wifi_Credential_Config -i onboard_type gre -i ssid fut-5515.bhaul \
         -i security '["map",[["encryption","WPA-PSK"],["key","FutTestPSK"],["mode","2"]]]'
-    # On REF: ./fut-base/shell//tools/device/ovsdb/get_ovsdb_value.sh  Wifi_Credential_Config _uuid ssid fut-5515.bhaul true
+    # On REF: ./fut-base/shell//tools/device/ovsdb/get_ovsdb_entry_value.sh  Wifi_Credential_Config _uuid ssid fut-5515.bhaul true
     # On DUT: ./fut-base/shell//tools/device/check_wan_connectivity.sh
 
     # Configure DUT bhaul-ap
@@ -83,7 +82,7 @@ Testcase procedure (FUT scripts call only)(example):
     # On DUT: ./fut-base/shell//tests/dm/othr_configure_and_verify_gre_tunnel_gw.sh  bhaul-ap-24 60:b4:f7:f0:0e:b6 1562 br-home
     # On REF: ./fut-base/shell//tests/dm/othr_verify_gre_tunnel_leaf.sh  bhaul-sta-24 br-home
 Script usage example:
-    ./${tc_name} bhaul-ap-50 60:b4:f7:f2:f3:15 1562 br-home
+    ./othr/othr_configure_and_verify_gre_tunnel_gw.sh bhaul-ap-50 60:b4:f7:f2:f3:15 1562 br-home
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -102,12 +101,13 @@ trap '
 fut_info_dump_line
 print_tables Wifi_Inet_Config Wifi_Inet_State
 print_tables Wifi_VIF_Config Wifi_VIF_State
+print_tables DHCP_leased_IP
 ovs-vsctl show
 fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 
 NARGS=4
-[ $# -ne ${NARGS} ] && usage && raise "Requires exactly '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -ne ${NARGS} ] && usage && raise "Requires exactly '${NARGS}' input argument(s)" -l "othr/othr_configure_and_verify_gre_tunnel_gw.sh" -arg
 bhaul_ap_if_name=${1}
 leaf_radio_mac=${2}
 gre_mtu=${3}
@@ -118,24 +118,24 @@ associate_retry_count="6"
 associate_retry_sleep="10"
 n_ping="5"
 
-log "$tc_name: Waiting for LEAF backhaul STA to associate to GW backhaul AP"
-fnc_str="get_ovsdb_entry_value DHCP_leased_IP inet_addr -w hwaddr ${leaf_radio_mac} -raw"
+log "othr/othr_configure_and_verify_gre_tunnel_gw.sh: Waiting for LEAF backhaul STA to associate to GW backhaul AP"
+fnc_str="get_ovsdb_entry_value DHCP_leased_IP inet_addr -w hwaddr ${leaf_radio_mac} -r"
 check_ec_code=0
 wait_for_function_output "notempty" "${fnc_str}" "${associate_retry_count}" "${associate_retry_sleep}" || check_ec_code=$?
 print_tables DHCP_leased_IP || true
 
 if [ $check_ec_code -eq 0 ]; then
     leaf_sta_inet_addr=$($fnc_str) &&
-        log "$tc_name: LEAF ${leaf_sta_inet_addr} associated - Success" ||
-        raise "FAIL #1: LEAF ${leaf_sta_inet_addr} not associated"  -l "$tc_name" -ds
+        log "othr/othr_configure_and_verify_gre_tunnel_gw.sh: LEAF ${leaf_sta_inet_addr} associated - Success" ||
+        raise "FAIL #1: LEAF ${leaf_sta_inet_addr} not associated"  -l "othr/othr_configure_and_verify_gre_tunnel_gw.sh" -ds
 else
-    raise "FAIL #2: LEAF ${leaf_sta_inet_addr} not associated" -l "$tc_name" -ds
+    raise "FAIL #2: LEAF ${leaf_sta_inet_addr} not associated" -l "othr/othr_configure_and_verify_gre_tunnel_gw.sh" -ds
 fi
 gre_name="pgd$(echo "${leaf_sta_inet_addr//./-}" | cut -d'-' -f3-4)"
-ap_inet_addr=$(get_ovsdb_entry_value Wifi_Inet_Config inet_addr -w if_name "${bhaul_ap_if_name}" -raw)
+ap_inet_addr=$(get_ovsdb_entry_value Wifi_Inet_Config inet_addr -w if_name "${bhaul_ap_if_name}" -r)
 
 # TESTCASE:
-log "$tc_name: Create GW GRE parent interface"
+log "othr/othr_configure_and_verify_gre_tunnel_gw.sh: Create GW GRE parent interface"
 create_inet_entry \
     -if_name "${gre_name}" \
     -if_type "gre" \
@@ -146,26 +146,28 @@ create_inet_entry \
     -mtu "${gre_mtu}" \
     -network true \
     -enabled true &&
-        log "$tc_name: Interface ${gre_name} created - Success" ||
-        raise "FAIL: Failed to create interface ${gre_name}" -l "$tc_name" -ds
+        log "othr/othr_configure_and_verify_gre_tunnel_gw.sh: Interface ${gre_name} created - Success" ||
+        raise "FAIL: Failed to create interface ${gre_name}" -l "othr/othr_configure_and_verify_gre_tunnel_gw.sh" -ds
 
 wait_for_function_exit_code 0 "get_vif_interface_is_up ${gre_name}" "${associate_retry_count}" "${associate_retry_sleep}" &&
-    log -deb "$tc_name: Interface ${gre_name} is up on system" ||
-    raise "FAIL: Interface ${gre_name} is not up on system" -l "$tc_name" -ds
+    log -deb "othr/othr_configure_and_verify_gre_tunnel_gw.sh: Interface ${gre_name} is up on system" ||
+    raise "FAIL: Interface ${gre_name} is not up on system" -l "othr/othr_configure_and_verify_gre_tunnel_gw.sh" -ds
 
-log "$tc_name: Put GW GRE interface into LAN bridge"
+log "othr/othr_configure_and_verify_gre_tunnel_gw.sh: Put GW GRE interface into LAN bridge"
 add_bridge_port "${lan_bridge}" "${gre_name}"
 
-log "$tc_name: Test GW connectivity to LEAF GRE and WAN IP"
+log "othr/othr_configure_and_verify_gre_tunnel_gw.sh: Test GW connectivity to LEAF GRE and WAN IP"
 wait_for_function_response 'notempty' "get_associated_leaf_ip ${leaf_radio_mac}" 30 ||
-    raise "FAIL #3: Failed to get LEAF GRE IP" -l "${tc_name}" -tc
+    raise "FAIL #3: Failed to get LEAF GRE IP" -l "othr/othr_configure_and_verify_gre_tunnel_gw.sh" -tc
 
 leaf_gre_inet_addr="$(get_associated_leaf_ip "${leaf_radio_mac}")"
 [ -z "${leaf_gre_inet_addr}" ] &&
-    raise "FAIL #4: Failed to get LEAF GRE IP" -l "${tc_name}" -tc
+    raise "FAIL #4: Failed to get LEAF GRE IP" -l "othr/othr_configure_and_verify_gre_tunnel_gw.sh" -tc
 
-ping -c"${n_ping}" "${leaf_gre_inet_addr}" &&
-    log "$tc_name: Can ping LEAF GRE - Success" ||
-    raise "FAIL: Can not ping LEAF GRE" -l "${tc_name}" -tc
+
+# Try 3 times to ping LEAF, could not be immediately available
+wait_for_function_exit_code 0 "ping -c${n_ping} ${leaf_gre_inet_addr}" 3 &&
+    log "othr/othr_configure_and_verify_gre_tunnel_gw.sh: Can ping LEAF GRE - Success" ||
+    raise "FAIL: Can not ping LEAF GRE" -l "othr/othr_configure_and_verify_gre_tunnel_gw.sh" -tc
 
 pass

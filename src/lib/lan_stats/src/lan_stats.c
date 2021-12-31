@@ -43,8 +43,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "policy_tags.h"
 #include "memutil.h"
 #include "kconfig.h"
+#include "ovsdb.h"
+#include "ovsdb_table.h"
+#include "ovsdb_utils.h"
 
 #define ETH_DEVICES_TAG "${@eth_devices}"
+
+ovsdb_table_t table_Connection_Manager_Uplink;
 
 static char *dflt_fltr_name = "none";
 
@@ -56,6 +61,29 @@ static lan_stats_mgr_t g_lan_stats =
     .initialized = false,
 };
 
+/*
+ * @brief interface type will be converted from enum to
+ * string
+ */
+char *
+uplink_iface_type_to_str(uplink_iface_type val)
+{
+    const struct iface_type *map;
+    size_t array_size;
+    int i;
+
+    array_size = ARRAY_SIZE(iface_type_map);
+    map = iface_type_map;
+    for (i = 0; i < array_size; i++)
+    {
+        if (val == map->value) return map->iface_type;
+        map++;
+    }
+
+    map = iface_type_map;
+    return map->iface_type;
+}
+
 /**
  * @brief compare sessions
  *
@@ -64,7 +92,7 @@ static lan_stats_mgr_t g_lan_stats =
  * @return 0 if sessions matches
  */
 static int
-lan_stats_session_cmp(void *a, void *b)
+lan_stats_session_cmp(const void *a, const void *b)
 {
     uintptr_t p_a = (uintptr_t)a;
     uintptr_t p_b = (uintptr_t)b;
@@ -447,11 +475,17 @@ static void
 lan_stats_close_window(fcm_collect_plugin_t *collector)
 {
     lan_stats_instance_t *lan_stats_instance;
+    struct flow_uplink uplink = {0};
     struct net_md_aggregator *aggr;
     struct flow_window **windows;
     struct flow_window *window;
     struct flow_report *report;
+    char *iface_type_holder;
+    lan_stats_mgr_t *mgr;
     bool ret;
+
+    mgr = lan_stats_get_mgr();
+    if (!mgr->initialized) return;
 
     if (collector == NULL) return;
 
@@ -460,6 +494,19 @@ lan_stats_close_window(fcm_collect_plugin_t *collector)
 
     aggr = lan_stats_instance->aggr;
     if (aggr == NULL) return;
+
+    if (mgr->uplink_if_type)
+    {
+        iface_type_holder = uplink_iface_type_to_str(mgr->uplink_if_type);
+        uplink.uplink_if_type = iface_type_holder;
+        uplink.uplink_changed = mgr->curr_uplinked_changed;
+    }
+
+    ret = net_md_add_uplink(aggr, &uplink);
+    if (!ret)
+    {
+        LOGI("%s: Failed to add uplink to window", __func__);
+    }
 
     ret = net_md_close_active_window(aggr);
     if (!ret)
@@ -579,18 +626,24 @@ lan_stats_aggr_add_sample(fcm_collect_plugin_t *collector, dp_ctl_stats_t *stats
     pkts_ct.bytes_count = stats->bytes;
 
     ret = net_md_add_sample(aggr, &key, &pkts_ct);
-    if (!ret) LOGD("%s: Add sample to aggregator failed", __func__);
+    if (!ret)
+    {
+        LOGD("%s: Add sample to aggregator failed", __func__);
+        return;
+    }
 }
 
 static void
 lan_stats_send_report_cb(fcm_collect_plugin_t *collector)
 {
     lan_stats_instance_t *lan_stats_instance;
+    lan_stats_mgr_t *mgr;
 
     if (collector == NULL) return;
 
     if (collector->mqtt_topic == NULL) return;
 
+    mgr = lan_stats_get_mgr();
     lan_stats_instance = lan_stats_get_active_instance();
     if (lan_stats_instance != collector->plugin_ctx)
     {
@@ -598,10 +651,42 @@ lan_stats_send_report_cb(fcm_collect_plugin_t *collector)
       return;
     }
 
+    mgr->report = true;
     lan_stats_close_window(collector);
     lan_stats_send_aggr_report(lan_stats_instance);
     lan_stats_activate_window(collector);
 }
+
+/**
+ * @brief updating uplink info to "dp_ctl_stats_t"
+ */
+void
+lan_stats_add_uplink_info(lan_stats_instance_t *lan_stats_instance)
+{
+    dp_ctl_stats_t *stats;
+    lan_stats_mgr_t *mgr;
+
+    if (lan_stats_instance == NULL) return;
+    stats = &lan_stats_instance->stats;
+
+    mgr = lan_stats_get_mgr();
+    if (!mgr->initialized) return;
+
+    if (mgr->uplink_if_type != IFTYPE_ETH &&
+        mgr->uplink_if_type != IFTYPE_LTE) return;
+
+    if ((mgr->uplink_if_type == stats->uplink_if_type) && (mgr->report))
+    {
+       stats->uplink_changed = false;
+    }
+    else
+    {
+       stats->uplink_if_type = mgr->uplink_if_type;
+       stats->uplink_changed = mgr->uplink_changed;
+    }
+    mgr->curr_uplinked_changed = stats->uplink_changed;
+}
+
 
 void
 lan_stats_flows_filter(lan_stats_instance_t *lan_stats_instance)
@@ -645,23 +730,30 @@ lan_stats_flows_filter(lan_stats_instance_t *lan_stats_instance)
         {
             LOGD("%s: Flow collect allowed: filter_name: %s, ufid: "PRI_os_ufid_t \
                     " smac: %s, dmac: %s, vlan_id: %d, eth_type: %d, pks: %lld, " \
-                    "bytes: %lld\n", __func__,
+                    "bytes: %lld, uplink_if_type: %s, uplink_changed: %s", __func__,
                     collector->filters.collect ?
                     collector->filters.collect : dflt_fltr_name,
                     FMT_os_ufid_t_pt(&stats->ufid.id),
                     stats->smac_addr,
                     stats->dmac_addr, stats->vlan_id, stats->eth_val,
-                    stats->pkts, stats->bytes);
+                    stats->pkts, stats->bytes,
+                    ((stats->uplink_if_type) ?
+                    uplink_iface_type_to_str(stats->uplink_if_type) : NULL),
+                    (stats->uplink_changed ? "true" : "false"));
+
             lan_stats_aggr_add_sample(collector, stats);
         }
         else
             LOGD("%s: Flow collect dropped: filter_name: %s, smac: %s, "\
                     "dmac: %s, vlan_id: %d, eth_type: %d, pks: %lld, "\
-                    "bytes: %lld\n", __func__,
+                    "bytes: %lld, uplink_if_type: %s, uplink_changed: %s", __func__,
                     collector->filters.collect ?
                     collector->filters.collect : dflt_fltr_name,
                     stats->smac_addr, stats->dmac_addr,
-                    stats->vlan_id, stats->eth_val, stats->pkts, stats->bytes);
+                    stats->vlan_id, stats->eth_val, stats->pkts, stats->bytes,
+                    ((stats->uplink_if_type) ?
+                    uplink_iface_type_to_str(stats->uplink_if_type) : NULL),
+                    (stats->uplink_changed ? "true" : "false"));
     }
     else
     {
@@ -730,6 +822,7 @@ void lan_stats_plugin_exit(fcm_collect_plugin_t *collector)
     lan_stats_instance = ds_tree_head(&mgr->lan_stats_sessions);
     if (lan_stats_instance != NULL) mgr->active = lan_stats_instance;
 
+    if (mgr->num_sessions == 0) lan_stats_exit_mgr();
     return;
 }
 
@@ -738,6 +831,26 @@ lan_stats_plugin_close_cb(fcm_collect_plugin_t *collector)
 {
     LOGD("%s: lan stats stats plugin stopped", __func__);
     lan_stats_plugin_exit(collector);
+}
+
+/**
+ * @brief maintaining uplink info in "lan_stats_mgr_t"
+ */
+void
+link_stats_collect_cb(uplink_iface_type uplink_if_type)
+{
+    lan_stats_mgr_t *mgr;
+
+    if (uplink_if_type == IFTYPE_NONE) return;
+
+    mgr = lan_stats_get_mgr();
+    if (uplink_if_type != mgr->uplink_if_type)
+    {
+        mgr->report = false;
+    }
+
+    mgr->uplink_changed = true;
+    mgr->uplink_if_type = uplink_if_type;
 }
 
 /* Entry function for plugin */
@@ -756,6 +869,9 @@ int lan_stats_plugin_init(fcm_collect_plugin_t *collector)
         LOGI("%s(): initializing lan stats manager", __func__);
         lan_stats_init_mgr(collector->loop);
     }
+
+    /* adding ovsdb registration*/
+    mgr->ovsdb_init();
 
     if (mgr->num_sessions == mgr->max_sessions)
     {
@@ -790,7 +906,7 @@ int lan_stats_plugin_init(fcm_collect_plugin_t *collector)
     collector->collect_periodic = lan_stats_collect_cb;
     collector->send_report = lan_stats_send_report_cb;
     collector->close_plugin = lan_stats_plugin_close_cb;
-    
+
     rc = lan_stats_alloc_aggr(lan_stats_instance);
     if (rc != 0)
     {
@@ -838,6 +954,78 @@ int lan_stats_plugin_init(fcm_collect_plugin_t *collector)
     return 0;
 }
 
+/*
+ * @brief interface type will be converted from string to
+ * enum
+ */
+uplink_iface_type iftype_string_to_enum(char *format)
+{
+    const struct iface_type *map;
+    size_t array_size;
+    size_t ret;
+    size_t i;
+
+    array_size = ARRAY_SIZE(iface_type_map);
+    map = iface_type_map;
+
+    for (i = 0; i < array_size; i++)
+    {
+        ret = strcmp(format, map->iface_type);
+        if (ret == 0) return map->value;
+        map++;
+    }
+
+    map = iface_type_map;
+    return map->value;
+}
+
+/**
+ * @brief registered callback for Connection_Manager_Uplink events
+ */
+void
+callback_Connection_Manager_Uplink(ovsdb_update_monitor_t *mon,
+                                   struct schema_Connection_Manager_Uplink *old_uplink,
+                                   struct schema_Connection_Manager_Uplink *uplink)
+{
+
+    uplink_iface_type fmt;
+
+    if (!uplink->is_used) return;
+
+    fmt = iftype_string_to_enum(uplink->if_type);
+    if (fmt == IFTYPE_ETH || fmt == IFTYPE_LTE)
+    {
+        link_stats_collect_cb(fmt);
+    }
+}
+
+/**
+ * @brief register's ovsdb initialization
+ */
+void
+lan_stats_ovsdb_init(void)
+{
+    LOGI("%s(): monitoring CMU table", __func__);
+
+    // Initialize OVSDB tables
+    OVSDB_TABLE_INIT(Connection_Manager_Uplink, is_used);
+
+    // Initialize OVSDB monitor callbacks
+    OVSDB_TABLE_MONITOR(Connection_Manager_Uplink, false);
+}
+
+/**
+ * @brief deregister's ovsdb initialization
+ */
+void
+lan_stats_ovsdb_exit(void)
+{
+    LOGI("%s(): unmonitoring CMU table", __func__);
+
+    /* Deregister monitor events */
+    ovsdb_unregister_update_cb(table_Connection_Manager_Uplink.monitor.mon_id);
+}
+
 void
 lan_stats_init_mgr(struct ev_loop *loop)
 {
@@ -850,8 +1038,12 @@ lan_stats_init_mgr(struct ev_loop *loop)
     ds_tree_init(&mgr->lan_stats_sessions, lan_stats_session_cmp,
                  lan_stats_instance_t, lan_stats_node);
 
+    if (mgr->ovsdb_init == NULL) mgr->ovsdb_init = lan_stats_ovsdb_init;
+    if (mgr->ovsdb_exit == NULL) mgr->ovsdb_exit = lan_stats_ovsdb_exit;
+
     mgr->debug = false;
     mgr->initialized = true;
+    mgr->report = false;
 
     return;
 }
@@ -862,6 +1054,10 @@ lan_stats_exit_mgr(void)
     lan_stats_mgr_t *mgr;
 
     mgr = lan_stats_get_mgr();
+
+    /* Removing ovsdb registration*/
+    if (mgr->ovsdb_exit != NULL) mgr->ovsdb_exit();
+
     memset(mgr, 0, sizeof(*mgr));
     mgr->initialized = false;
 }

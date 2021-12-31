@@ -962,6 +962,7 @@ bool risk_level_compare(struct fsm_url_reply *reply,
 bool
 fsm_dns_cache_lookup(struct fsm_policy_req *req, struct fsm_policy_reply *policy_reply)
 {
+    struct net_md_stats_accumulator *acc;
     struct ip2action_req  lkp_req;
     struct fsm_url_reply *reply;
     int req_type;
@@ -970,6 +971,7 @@ fsm_dns_cache_lookup(struct fsm_policy_req *req, struct fsm_policy_reply *policy
     bool rc;
 
     /* Bail if the reuqest of no interest */
+    acc = req->acc;
     req_type = req->req_type;
     process = (req_type == FSM_IPV4_REQ);
     process |= (req_type == FSM_IPV6_REQ);
@@ -982,6 +984,7 @@ fsm_dns_cache_lookup(struct fsm_policy_req *req, struct fsm_policy_reply *policy
     memset(&lkp_req, 0, sizeof(lkp_req));
     lkp_req.device_mac = req->device_id;
     lkp_req.ip_addr = req->ip_addr;
+    lkp_req.direction = (acc != NULL ? acc->direction : NET_MD_ACC_UNSET_DIR);
     rc = dns_cache_ip2action_lookup(&lkp_req);
 
     /* bail if the dns cache lookup failed */
@@ -1250,7 +1253,7 @@ fsm_policy_initialize_reply(struct fsm_session *session)
     policy_reply->cache_ttl = 0;
     policy_reply->risk_level = -1;
     policy_reply->cat_match = -1;
-    policy_reply->redirect = -1;
+    policy_reply->redirect = false;
     policy_reply->to_report = false;
     policy_reply->fsm_checked = false;
     policy_reply->reply_type = FSM_INLINE_REPLY;

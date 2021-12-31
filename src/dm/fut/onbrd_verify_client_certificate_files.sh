@@ -33,12 +33,11 @@ source "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="onbrd/$(basename "$0")"
 manager_setup_file="onbrd/onbrd_setup.sh"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+onbrd/onbrd_verify_client_certificate_files.sh [-h] arguments
 Description:
     - Validate certificate files on devices
 Arguments:
@@ -46,9 +45,9 @@ Arguments:
     \$1 (cert_file) : Used to define specific cert file path from SSL table : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name} <CERT-FILE>
+                 Run: ./onbrd/onbrd_verify_client_certificate_files.sh <CERT-FILE>
 Script usage example:
-   ./${tc_name} ca_cert
+   ./onbrd/onbrd_verify_client_certificate_files.sh ca_cert
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -70,19 +69,19 @@ fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 
 NARGS=1
-[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "onbrd/onbrd_verify_client_certificate_files.sh" -arg
 cert_file=$1
 cert_file_path=$(get_ovsdb_entry_value SSL "$cert_file")
 
-log_title "$tc_name: ONBRD test - Verify cert file '${cert_file}' is valid"
+log_title "onbrd/onbrd_verify_client_certificate_files.sh: ONBRD test - Verify cert file '${cert_file}' is valid"
 
 [ -e "$cert_file_path" ] &&
-    log "$tc_name: file '$cert_file_path' exists - Success" ||
-    raise "FAIL: file '$cert_file_path' is missing" -l "$tc_name" -tc
+    log "onbrd/onbrd_verify_client_certificate_files.sh: file '$cert_file_path' exists - Success" ||
+    raise "FAIL: file '$cert_file_path' is missing" -l "onbrd/onbrd_verify_client_certificate_files.sh" -tc
 
-log "$tc_name: Verify file is not empty"
+log "onbrd/onbrd_verify_client_certificate_files.sh: Verify file is not empty"
 [ -s "$cert_file_path" ] &&
-    log "$tc_name: file '$cert_file_path' is not empty - Success" ||
-    raise "FAIL: file '$cert_file_path' is empty" -l "$tc_name" -tc
+    log "onbrd/onbrd_verify_client_certificate_files.sh: file '$cert_file_path' is not empty - Success" ||
+    raise "FAIL: file '$cert_file_path' is empty" -l "onbrd/onbrd_verify_client_certificate_files.sh" -tc
 
 pass

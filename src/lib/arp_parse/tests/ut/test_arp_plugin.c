@@ -41,6 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "unity.h"
 #include "pcap.c"
 #include "memutil.h"
+#include "sockaddr_storage.h"
 
 const char *test_name = "arp_plugin_tests";
 
@@ -171,14 +172,14 @@ create_hex_dump(const char *fname, const uint8_t *buf, size_t len)
 
     for (i = 0; i < len; i++)
     {
-	 new_line = (i == 0 ? true : ((i % 8) == 0));
-	 if (new_line)
-	 {
-	      if (line_number) fprintf(f, "\n");
-	      fprintf(f, "%06x", line_number);
-	      line_number += 8;
-	 }
-         fprintf(f, " %02x", buf[i]);
+        new_line = (i == 0 ? true : ((i % 8) == 0));
+        if (new_line)
+        {
+            if (line_number) fprintf(f, "\n");
+            fprintf(f, "%06x", line_number);
+            line_number += 8;
+        }
+        fprintf(f, " %02x", buf[i]);
     }
     fprintf(f, "\n");
     fclose(f);
@@ -388,27 +389,6 @@ void test_load_unload_plugin(void)
      */
 }
 
-void util_populate_sockaddr(int af, void *ip, struct sockaddr_storage *dst)
-{
-    if (af == AF_INET)
-    {
-        struct sockaddr_in *in4 = (struct sockaddr_in *)dst;
-
-        memset(in4, 0, sizeof(struct sockaddr_in));
-        in4->sin_family = af;
-        memcpy(&in4->sin_addr, ip, sizeof(in4->sin_addr));
-    }
-    else if (af == AF_INET6)
-    {
-        struct sockaddr_in6 *in6 = (struct sockaddr_in6 *)dst;
-
-        memset(in6, 0, sizeof(struct sockaddr_in6));
-        in6->sin6_family = af;
-        memcpy(&in6->sin6_addr, ip, sizeof(in6->sin6_addr));
-    }
-    return;
-}
-
 /**
  * @brief test arp request parsing
  *
@@ -531,7 +511,6 @@ void test_ip_mac_mapping(void)
     struct net_header_parser *net_parser;
     struct arp_session *a_session;
     struct fsm_session *session;
-    struct sockaddr_storage key;
     struct arp_parser *parser;
     os_macaddr_t mac_out;
     uint32_t ip_addr;
@@ -562,9 +541,7 @@ void test_ip_mac_mapping(void)
 
     /* fill sockaddr */
     ip_addr = parser->arp.s_ip;
-    memset(&key, 0, sizeof(struct sockaddr_storage));
-    util_populate_sockaddr(AF_INET, &ip_addr, &key);
-    rc_lookup = neigh_table_lookup(&key, &mac_out);
+    rc_lookup = neigh_table_lookup_af(AF_INET, &ip_addr, &mac_out);
 
     /* Validate lookup to the neighbour entry */
     TEST_ASSERT_TRUE(rc_lookup);

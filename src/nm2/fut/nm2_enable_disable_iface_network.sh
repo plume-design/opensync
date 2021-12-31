@@ -33,12 +33,11 @@ source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="nm2/$(basename "$0")"
 manager_setup_file="nm2/nm2_setup.sh"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+nm2/nm2_enable_disable_iface_network.sh [-h] arguments
 Description:
     - Script enables and disables interface through Wifi_Inet_Config table
       Script fails if Wifi_Inet_State 'network' field does not match Wifi_Inet_Config
@@ -48,9 +47,9 @@ Arguments:
     \$2 (if_type) : used as if_type in Wifi_Inet_Config table : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name} <IF-NAME> <IF-TYPE>
+                 Run: ./nm2/nm2_enable_disable_iface_network.sh <IF-NAME> <IF-TYPE>
 Script usage example:
-   ./${tc_name} eth0 eth
+   ./nm2/nm2_enable_disable_iface_network.sh eth0 eth
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -66,7 +65,7 @@ if [ -n "${1}" ]; then
 fi
 
 NARGS=2
-[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "nm2/nm2_enable_disable_iface_network.sh" -arg
 if_name=$1
 if_type=$2
 inet_addr=10.10.10.30
@@ -74,15 +73,14 @@ inet_addr=10.10.10.30
 trap '
     fut_info_dump_line
     print_tables Wifi_Inet_Config Wifi_Inet_State
-    fut_info_dump_line
     reset_inet_entry $if_name || true
-    run_setup_if_crashed nm || true
     check_restore_management_access || true
+    fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 
-log_title "$tc_name: NM2 test - Enable disable interface"
+log_title "nm2/nm2_enable_disable_iface_network.sh: NM2 test - Enable disable interface"
 
-log "$tc_name: Creating Wifi_Inet_Config entries for: $if_name"
+log "nm2/nm2_enable_disable_iface_network.sh: Creating Wifi_Inet_Config entries for: $if_name"
 create_inet_entry \
     -if_name "$if_name" \
     -enabled true \
@@ -91,40 +89,40 @@ create_inet_entry \
     -ip_assign_scheme static \
     -netmask "255.255.255.0" \
     -inet_addr "$inet_addr" &&
-        log "$tc_name: Interface $if_name created - Success" ||
-        raise "FAIL: Failed to create $if_name interface" -l "$tc_name" -ds
+        log "nm2/nm2_enable_disable_iface_network.sh: Interface $if_name created - Success" ||
+        raise "FAIL: Failed to create $if_name interface" -l "nm2/nm2_enable_disable_iface_network.sh" -ds
 
-log "$tc_name: LEVEL2 - Check if IP address $inet_addr was properly applied to $if_name"
+log "nm2/nm2_enable_disable_iface_network.sh: LEVEL2 - Check if IP address $inet_addr was properly applied to $if_name"
 wait_for_function_response 0 "get_interface_ip_address_from_system $if_name | grep -q \"$inet_addr\"" &&
-    log "$tc_name: Setting applied to ifconfig - IP: $inet_addr - Success" ||
-    raise "FAIL: Failed to apply settings to ifconfig - IP: $inet_addr" -l "$tc_name" -tc
+    log "nm2/nm2_enable_disable_iface_network.sh: Setting applied to ifconfig - IP: $inet_addr - Success" ||
+    raise "FAIL: Failed to apply settings to ifconfig - IP: $inet_addr" -l "nm2/nm2_enable_disable_iface_network.sh" -tc
 
-log "$tc_name: Disabling network, setting Wifi_Inet_Config::network to 'false'"
+log "nm2/nm2_enable_disable_iface_network.sh: Disabling network, setting Wifi_Inet_Config::network to 'false'"
 update_ovsdb_entry Wifi_Inet_Config -w if_name "$if_name" -u network false &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config::network is 'false' - Success" ||
-    raise "FAIL: update_ovsdb_entry - Wifi_Inet_Config::network is not 'false'" -l "$tc_name" -oe
+    log "nm2/nm2_enable_disable_iface_network.sh: update_ovsdb_entry - Wifi_Inet_Config::network is 'false' - Success" ||
+    raise "FAIL: update_ovsdb_entry - Wifi_Inet_Config::network is not 'false'" -l "nm2/nm2_enable_disable_iface_network.sh" -oe
 
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is network false &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::network is 'false' - Success" ||
-    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::network is not 'false'" -l "$tc_name" -tc
+    log "nm2/nm2_enable_disable_iface_network.sh: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::network is 'false' - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::network is not 'false'" -l "nm2/nm2_enable_disable_iface_network.sh" -tc
 
-log "$tc_name: Checking if all network settings on interface are empty"
+log "nm2/nm2_enable_disable_iface_network.sh: Checking if all network settings on interface are empty"
 wait_for_function_response 1 "get_interface_ip_address_from_system $if_name | grep -q \"$inet_addr\"" &&
-    log "$tc_name: Setting removed from ifconfig for '$if_name' - Success" ||
-    raise "FAIL: Failed to remove settings from ifconfig for '$if_name'" -l "$tc_name" -tc
+    log "nm2/nm2_enable_disable_iface_network.sh: Setting removed from ifconfig for '$if_name' - Success" ||
+    raise "FAIL: Failed to remove settings from ifconfig for '$if_name'" -l "nm2/nm2_enable_disable_iface_network.sh" -tc
 
-log "$tc_name: Re-enabling network, setting Wifi_Inet_Config::network to 'true'"
+log "nm2/nm2_enable_disable_iface_network.sh: Re-enabling network, setting Wifi_Inet_Config::network to 'true'"
 update_ovsdb_entry Wifi_Inet_Config -w if_name "$if_name" -u network true &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config::network is 'true' - Success" ||
-    raise "FAIL: update_ovsdb_entry - Wifi_Inet_Config::network is not 'true'" -l "$tc_name" -oe
+    log "nm2/nm2_enable_disable_iface_network.sh: update_ovsdb_entry - Wifi_Inet_Config::network is 'true' - Success" ||
+    raise "FAIL: update_ovsdb_entry - Wifi_Inet_Config::network is not 'true'" -l "nm2/nm2_enable_disable_iface_network.sh" -oe
 
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is network true &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::network is 'true' - Success" ||
-    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::network is not 'true'" -l "$tc_name" -tc
+    log "nm2/nm2_enable_disable_iface_network.sh: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::network is 'true' - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::network is not 'true'" -l "nm2/nm2_enable_disable_iface_network.sh" -tc
 
-log "$tc_name: LEVEL2 - Check if IP address $inet_addr was properly applied to $if_name"
+log "nm2/nm2_enable_disable_iface_network.sh: LEVEL2 - Check if IP address $inet_addr was properly applied to $if_name"
 wait_for_function_response 0 "get_interface_ip_address_from_system $if_name | grep -q \"$inet_addr\"" &&
-    log "$tc_name: Setting applied to ifconfig - IP: $inet_addr - Success" ||
-    raise "FAIL: Failed to apply settings to ifconfig - IP: $inet_addr" -l "$tc_name" -tc
+    log "nm2/nm2_enable_disable_iface_network.sh: Setting applied to ifconfig - IP: $inet_addr - Success" ||
+    raise "FAIL: Failed to apply settings to ifconfig - IP: $inet_addr" -l "nm2/nm2_enable_disable_iface_network.sh" -tc
 
 pass

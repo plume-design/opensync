@@ -33,13 +33,12 @@ source "${FUT_TOPDIR}/shell/lib/dm_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="dm/$(basename "$0")"
 manager_setup_file="dm/dm_setup.sh"
 status=""
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+dm/dm_verify_enable_node_services.sh [-h] arguments
 Description:
     - Check if manager/service is running if 'enable' field in the 'Node_Services'
       table is set true.
@@ -51,10 +50,10 @@ Arguments:
     \$2 (kconfig_val) : Kconfig option to check if 'manager' is compiled : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name} <MANAGER> <KCONFIG_VAL>
+                 Run: ./dm/dm_verify_enable_node_services.sh <MANAGER> <KCONFIG_VAL>
 Script usage example:
-    ./${tc_name} wm CONFIG_MANAGER_WM
-    ./${tc_name} blem CONFIG_MANAGER_BLEM
+    ./dm/dm_verify_enable_node_services.sh wm CONFIG_MANAGER_WM
+    ./dm/dm_verify_enable_node_services.sh blem CONFIG_MANAGER_BLEM
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -70,21 +69,21 @@ if [ -n "${1}" ]; then
 fi
 
 NARGS=2
-[ $# -ne ${NARGS} ] && usage && raise "Requires exactly '${NARGS}' input arguments" -l "${tc_name}" -arg
+[ $# -ne ${NARGS} ] && usage && raise "Requires exactly '${NARGS}' input arguments" -l "dm/dm_verify_enable_node_services.sh" -arg
 manager=${1}
 kconfig_val=${2}
 
-log_title "$tc_name: DM test - Verify status of each manager against 'enable' field value in the 'Node_Services' table."
+log_title "dm/dm_verify_enable_node_services.sh: DM test - Verify status of each manager against 'enable' field value in the 'Node_Services' table."
 
 print_tables Node_Services
 
 check_kconfig_option "$kconfig_val" "y" &&
-    log "$tc_name: $kconfig_val = y - KCONFIG exists on the device - Success" ||
-    raise "FAIL: $kconfig_val != y - KCONFIG does not exist on the device" -l "$tc_name" -s
+    log "dm/dm_verify_enable_node_services.sh: $kconfig_val = y - KCONFIG exists on the device - Success" ||
+    raise "FAIL: $kconfig_val != y - KCONFIG does not exist on the device" -l "dm/dm_verify_enable_node_services.sh" -s
 
 check_ovsdb_entry Node_Services -w service "$manager" &&
-    log "$tc_name: Node_Services table contains $manager - Success" ||
-    raise "FAIL: Node_Services table does not contain $manager" -l "$tc_name" -tc
+    log "dm/dm_verify_enable_node_services.sh: Node_Services table contains $manager - Success" ||
+    raise "FAIL: Node_Services table does not contain $manager" -l "dm/dm_verify_enable_node_services.sh" -tc
 
 service_enabled=$(get_ovsdb_entry_value Node_Services enable -w service $manager -r)
 pid_of_manager=$(get_pid "${OPENSYNC_ROOTDIR}/bin/$manager")
@@ -92,15 +91,15 @@ pid_of_manager=$(get_pid "${OPENSYNC_ROOTDIR}/bin/$manager")
 if [ $service_enabled == "false" ]; then
     status="not "
     [ -z $pid_of_manager ] ||
-        raise "FAIL: Service ${manager} is running despite 'enable' field is set 'false' in 'Node_Services' table." -l "$tc_name" -tc
+        raise "FAIL: Service ${manager} is running despite 'enable' field is set 'false' in 'Node_Services' table." -l "dm/dm_verify_enable_node_services.sh" -tc
 elif [ $service_enabled == "true" ]; then
     [ -z $pid_of_manager ] &&
-        raise "FAIL: Service ${manager} is not running despite 'enable' field is set 'true' in 'Node_Services' table." -l "$tc_name" -tc
+        raise "FAIL: Service ${manager} is not running despite 'enable' field is set 'true' in 'Node_Services' table." -l "dm/dm_verify_enable_node_services.sh" -tc
 else
-    raise "FAIL: 'enable' field for ${manager} is set invalid value in 'Node_Services' table." -l "$tc_name" -tc
+    raise "FAIL: 'enable' field for ${manager} is set invalid value in 'Node_Services' table." -l "dm/dm_verify_enable_node_services.sh" -tc
 fi
 
-log "$tc_name: Service '${manager}' is ${status}running as 'enable' field is set '${service_enabled}' in the 'Node_Services' table - Success"
+log "dm/dm_verify_enable_node_services.sh: Service '${manager}' is ${status}running as 'enable' field is set '${service_enabled}' in the 'Node_Services' table - Success"
 
 pass
 

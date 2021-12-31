@@ -32,6 +32,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <errno.h>
 #include <jansson.h>
 #include <pcap.h>
+#include <net/if.h>
+#include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -55,6 +57,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "network_metadata_report.h"
 #include "fsm_dpi_utils.h"
 #include "fsm_internal.h"
+#include "fsm_packet_reinject_utils.h"
 #include "imc.h"
 #include "qm_conn.h"
 #include "nf_utils.h"
@@ -690,6 +693,24 @@ fsm_dpi_find_mac(os_macaddr_t *mac, struct fsm_dpi_dispatcher *dispatch)
 
 
 /**
+ * @brief check if the multicast bit is set in a mac address
+ *        (bit 0 of byte 0 is set to 1)
+ *
+ * @param mac a pointer to the MAC address to check
+ * @return true if we have a broadcast/multicast MAC address
+ */
+static bool
+fsm_dpi_is_mac_bcast(os_macaddr_t *mac)
+{
+    bool rc;
+
+    if (mac == NULL) return false;
+
+    rc = (mac->addr[0] & 0x1) == 0x1;
+    return rc;
+}
+
+/**
  * @brief compare 2 dpi sessions names
  *
  * @param a the first session's name
@@ -697,7 +718,7 @@ fsm_dpi_find_mac(os_macaddr_t *mac, struct fsm_dpi_dispatcher *dispatch)
  * @return 0 if names match
  */
 static int
-fsm_dpi_sessions_cmp(void *a, void *b)
+fsm_dpi_sessions_cmp(const void *a, const void *b)
 {
     return strcmp(a, b);
 }
@@ -752,7 +773,9 @@ fsm_dpi_set_acc_direction_on_port(struct fsm_dpi_dispatcher *dispatch,
 {
     struct net_md_flow_key *key;
     bool smac_found;
+    bool smac_bcast;
     bool dmac_found;
+    bool dmac_bcast;
     uint16_t sport;
     uint16_t dport;
 
@@ -762,12 +785,18 @@ fsm_dpi_set_acc_direction_on_port(struct fsm_dpi_dispatcher *dispatch,
     key = acc->key;
     if (key == NULL) return;
 
-    smac_found = fsm_dpi_find_mac(key->smac, dispatch);
-    dmac_found = fsm_dpi_find_mac(key->dmac, dispatch);
+    smac_bcast = fsm_dpi_is_mac_bcast(key->smac);
+    dmac_bcast = fsm_dpi_is_mac_bcast(key->dmac);
+    smac_found = fsm_dpi_find_mac(key->smac, dispatch) || smac_bcast;
+    dmac_found = fsm_dpi_find_mac(key->dmac, dispatch) || dmac_bcast;
     sport = htons(key->sport);
     dport = htons(key->dport);
 
-    if (!(smac_found || dmac_found)) return;
+    if (!(smac_found || dmac_found))
+    {
+        LOGD("%s: no MAC found", __func__);
+        return;
+    }
 
     if (smac_found && dmac_found)
     {
@@ -800,6 +829,11 @@ fsm_dpi_set_acc_direction_on_port(struct fsm_dpi_dispatcher *dispatch,
     else if (acc->direction == NET_MD_ACC_OUTBOUND_DIR)
     {
         acc->originator = (smac_found ? NET_MD_ACC_ORIGINATOR_SRC :
+                           NET_MD_ACC_ORIGINATOR_DST);
+    }
+    else if (acc->direction == NET_MD_ACC_LAN2LAN_DIR)
+    {
+        acc->originator = (dmac_found ? NET_MD_ACC_ORIGINATOR_SRC :
                            NET_MD_ACC_ORIGINATOR_DST);
     }
 }
@@ -1445,7 +1479,7 @@ fsm_free_dpi_context(struct fsm_session *session)
  * @return 0 if sessions matches
  */
 static int
-fsm_dpi_session_cmp(void *a, void *b)
+fsm_dpi_session_cmp(const void *a, const void *b)
 {
     uintptr_t p_a = (uintptr_t)a;
     uintptr_t p_b = (uintptr_t)b;
@@ -1576,7 +1610,6 @@ fsm_dpi_mark_for_report(struct fsm_session *session,
     fsm_dpi_mark_acc_for_report(acc->aggr, acc);
 }
 
-
 /**
  * @brief dipatches a received packet to the dpi plugin handlers
  *
@@ -1612,7 +1645,7 @@ fsm_dispatch_pkt(struct fsm_session *session,
 
     if (acc->dpi_done != 0)
     {
-        if (session->tap_type == FSM_TAP_NFQ)
+        if (session->tap_type & FSM_TAP_NFQ)
         {
             int verdict;
 
@@ -1703,8 +1736,12 @@ fsm_dispatch_pkt(struct fsm_session *session,
         info = ds_tree_next(tree, info);
     }
 
+    if (net_parser->payload_updated)
+    {
+        fsm_forward_pkt(session, net_parser);
+    }
 
-    if (session->tap_type == FSM_TAP_NFQ)
+    if (session->tap_type & FSM_TAP_NFQ)
     {
         if (drop)
         {
@@ -1775,7 +1812,7 @@ fsm_dpi_handler(struct fsm_session *session,
 
     dispatch = &dpi_context->dispatch;
 
-    if (session->tap_type == FSM_TAP_NFQ)
+    if (session->tap_type & FSM_TAP_NFQ)
     {
         eth_hdr = &net_parser->eth_header;
         if ((eth_hdr->srcmac) && (eth_hdr->dstmac))

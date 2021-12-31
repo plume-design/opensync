@@ -33,12 +33,11 @@ source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="wm2/$(basename "$0")"
 manager_setup_file="wm2/wm2_setup.sh"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+wm2/wm2_immutable_radio_hw_mode.sh [-h] arguments
 Description:
     - Script tries to set chosen HW MODE. This is IMMUTABLE field and it can't be changed. If interface is not UP it brings up
       the interface, and tries to set HW MODE to desired value. IF IMMUTABLE field is changed test will FAIL.
@@ -56,9 +55,9 @@ Arguments:
     \$10 (custom_hw_mode) : used as custom hw_mode in Wifi_Radio_Config table : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name} <RADIO-IDX> <IF-NAME> <SSID> <SECURITY> <CHANNEL> <HT-MODE> <HW-MODE> <MODE> <VIF-IF-NAME> <CUSTOM-HW-MODE>
+                 Run: ./wm2/wm2_immutable_radio_hw_mode.sh <RADIO-IDX> <IF-NAME> <SSID> <SECURITY> <CHANNEL> <HT-MODE> <HW-MODE> <MODE> <VIF-IF-NAME> <CUSTOM-HW-MODE>
 Script usage example:
-   ./${tc_name} 2 wifi1 test_wifi_50L WifiPassword123 44 HT20 11ac ap home-ap-l50 11n
+   ./wm2/wm2_immutable_radio_hw_mode.sh 2 wifi1 test_wifi_50L WifiPassword123 44 HT20 11ac ap home-ap-l50 11n
 usage_string
 }
 
@@ -75,7 +74,7 @@ if [ -n "${1}" ]; then
 fi
 
 NARGS=10
-[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "wm2/wm2_immutable_radio_hw_mode.sh" -arg
 vif_radio_idx=$1
 if_name=$2
 ssid=$3
@@ -92,16 +91,15 @@ trap '
     print_tables Wifi_Radio_Config Wifi_Radio_State
     print_tables Wifi_VIF_Config Wifi_VIF_State
     fut_info_dump_line
-    run_setup_if_crashed wm || true
 ' EXIT SIGINT SIGTERM
 
-log_title "$tc_name: WM2 test - Immutable radio hw mode - '${hw_mode}'"
+log_title "wm2/wm2_immutable_radio_hw_mode.sh: WM2 test - Immutable radio hw mode - '${hw_mode}'"
 
 if [ "$hw_mode" = "$custom_hw_mode" ]; then
-    raise "Chosen CUSTOM HW MODE ($custom_hw_mode) needs to be DIFFERENT from default HW MODE ($hw_mode)" -l "$tc_name" -tc
+    raise "Chosen CUSTOM HW MODE ($custom_hw_mode) needs to be DIFFERENT from default HW MODE ($hw_mode)" -l "wm2/wm2_immutable_radio_hw_mode.sh" -tc
 fi
 
-log "$tc_name: Checking if Radio/VIF states are valid for test"
+log "wm2/wm2_immutable_radio_hw_mode.sh: Checking if Radio/VIF states are valid for test"
 check_radio_vif_state \
     -if_name "$if_name" \
     -vif_if_name "$vif_if_name" \
@@ -111,11 +109,11 @@ check_radio_vif_state \
     -security "$security" \
     -hw_mode "$hw_mode" \
     -mode "$mode" &&
-        log "$tc_name: Radio/VIF states are valid" ||
+        log "wm2/wm2_immutable_radio_hw_mode.sh: Radio/VIF states are valid" ||
             (
-                log "$tc_name: Cleaning VIF_Config"
+                log "wm2/wm2_immutable_radio_hw_mode.sh: Cleaning VIF_Config"
                 vif_clean
-                log "$tc_name: Radio/VIF states are not valid, creating interface..."
+                log "wm2/wm2_immutable_radio_hw_mode.sh: Radio/VIF states are not valid, creating interface..."
                 create_radio_vif_interface \
                     -vif_radio_idx "$vif_radio_idx" \
                     -channel_mode manual \
@@ -127,29 +125,30 @@ check_radio_vif_state \
                     -ht_mode "$ht_mode" \
                     -hw_mode "$hw_mode" \
                     -mode "$mode" \
-                    -vif_if_name "$vif_if_name" &&
-                        log "$tc_name: create_radio_vif_interface - Interface $if_name created - Success"
+                    -vif_if_name "$vif_if_name" \
+                    -disable_cac &&
+                        log "wm2/wm2_immutable_radio_hw_mode.sh: create_radio_vif_interface - Interface $if_name created - Success"
             ) ||
-        raise "FAIL: create_radio_vif_interface - Interface $if_name not created" -l "$tc_name" -ds
+        raise "FAIL: create_radio_vif_interface - Interface $if_name not created" -l "wm2/wm2_immutable_radio_hw_mode.sh" -ds
 
-log "$tc_name: Changing HW MODE to $custom_hw_mode"
+log "wm2/wm2_immutable_radio_hw_mode.sh: Changing HW MODE to $custom_hw_mode"
 update_ovsdb_entry Wifi_Radio_Config -w if_name "$if_name" -u hw_mode "$custom_hw_mode" &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Radio_Config::hw_mode is $custom_hw_mode - Success" ||
-    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Radio_Config::hw_mode is not $custom_hw_mode" -l "$tc_name" -oe
+    log "wm2/wm2_immutable_radio_hw_mode.sh: update_ovsdb_entry - Wifi_Radio_Config::hw_mode is $custom_hw_mode - Success" ||
+    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Radio_Config::hw_mode is not $custom_hw_mode" -l "wm2/wm2_immutable_radio_hw_mode.sh" -oe
 
 res=$(wait_ovsdb_entry Wifi_Radio_State -w if_name "$if_name" -is hw_mode "$custom_hw_mode" -ec)
 
-log "$tc_name: Reversing HW MODE to normal value"
+log "wm2/wm2_immutable_radio_hw_mode.sh: Reversing HW MODE to normal value"
 update_ovsdb_entry Wifi_Radio_Config -w if_name "$if_name" -u hw_mode "$hw_mode" &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Radio_Config::hw_mode is $hw_mode - Success" ||
-    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Radio_Config::hw_mode is not $hw_mode" -l "$tc_name" -oe
+    log "wm2/wm2_immutable_radio_hw_mode.sh: update_ovsdb_entry - Wifi_Radio_Config::hw_mode is $hw_mode - Success" ||
+    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Radio_Config::hw_mode is not $hw_mode" -l "wm2/wm2_immutable_radio_hw_mode.sh" -oe
 
 wait_ovsdb_entry Wifi_Radio_State -w if_name "$if_name" -is hw_mode "$hw_mode" &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Radio_Config reflected to Wifi_Radio_State::hw_mode is $hw_mode - Success" ||
-    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Radio_Config to Wifi_Radio_State::hw_mode is not $hw_mode" -l "$tc_name" -tc
+    log "wm2/wm2_immutable_radio_hw_mode.sh: wait_ovsdb_entry - Wifi_Radio_Config reflected to Wifi_Radio_State::hw_mode is $hw_mode - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Radio_Config to Wifi_Radio_State::hw_mode is not $hw_mode" -l "wm2/wm2_immutable_radio_hw_mode.sh" -tc
 
 if [ "$res" -eq 0 ]; then
-    raise "FAIL: Immutable field HW MODE was changed to $custom_hw_mode" -l "$tc_name" -tc
+    raise "FAIL: Immutable field HW MODE was changed to $custom_hw_mode" -l "wm2/wm2_immutable_radio_hw_mode.sh" -tc
 fi
 
 pass

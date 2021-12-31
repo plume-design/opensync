@@ -478,6 +478,7 @@ gk_populate_redirect_entry(struct gk_attr_cache_interface *entry,
                            struct fsm_policy_reply *policy_reply)
 {
     struct fqdn_redirect_s *redirect_entry;
+    size_t len;
 
     if (policy_reply->redirect == false) return;
 
@@ -487,8 +488,23 @@ gk_populate_redirect_entry(struct gk_attr_cache_interface *entry,
 
     redirect_entry->redirect     = policy_reply->redirect;
     redirect_entry->redirect_ttl = policy_reply->rd_ttl;
-    STRSCPY(redirect_entry->redirect_ips[0], policy_reply->redirects[0]);
-    STRSCPY(redirect_entry->redirect_ips[1], policy_reply->redirects[1]);
+
+    len = strlen(policy_reply->redirect_cname);
+    if (len != 0)
+    {
+        redirect_entry->redirect_cname = STRDUP(policy_reply->redirect_cname);
+        LOGT("%s(): populated redirect entries for gk cache, redirect flag %d "
+             "CNAME %s",
+             __func__,
+             redirect_entry->redirect,
+             redirect_entry->redirect_cname);
+        return;
+    }
+
+    if (strlen(policy_reply->redirects[0]) != 0)
+        STRSCPY(redirect_entry->redirect_ips[0], policy_reply->redirects[0]);
+    if (strlen(policy_reply->redirects[1]) != 0)
+        STRSCPY(redirect_entry->redirect_ips[1], policy_reply->redirects[1]);
 
     LOGT("%s(): populated redirect entries for gk cache, redirect flag %d "
          "IPv4 %s, IPv6 %s",
@@ -555,12 +571,15 @@ gatekeeper_add_attr_cache(struct fsm_policy_req *req,
     if (req_type == GK_CACHE_REQ_TYPE_FQDN) gk_populate_redirect_entry(entry, req, policy_reply);
 
     ret = gkc_add_attribute_entry(entry);
-    LOGT("%s(): adding %s (attr type %d) to cache %s ",
+    LOGT("%s(): adding %s (attr type %d) ttl (%" PRIu64 ") to cache %s ",
          __func__,
          req->url,
          req_type,
+         entry->cache_ttl,
          (ret == true) ? "success" : "failed");
 
+    if (entry->fqdn_redirect != NULL)
+        FREE(entry->fqdn_redirect->redirect_cname);
     FREE(entry->fqdn_redirect);
     FREE(entry);
     return ret;
@@ -706,7 +725,7 @@ gk_add_policy_to_cache(struct fsm_policy_req *req, struct fsm_policy_reply *poli
  * @param start the clock_t value before the categorization API call
  * @param end the clock_t value before the categorization API call
  */
-static long
+long
 fsm_gk_update_latencies(struct fsm_gk_session *gk_session,
                         struct timespec *start, struct timespec *end)
 {
@@ -809,6 +828,7 @@ gk_add_mcurl_data(struct fsm_session *session,
 
     gk_verdict->policy_req = policy_req;
     gk_verdict->policy_reply = policy_reply;
+    gk_verdict->gk_session_context = fsm_gk_session;
     gk_verdict->gk_pb = gatekeeper_get_req(session, policy_req, mcurl_data);
     if (gk_verdict->gk_pb == NULL)
     {
@@ -817,6 +837,7 @@ gk_add_mcurl_data(struct fsm_session *session,
     }
 
     mcurl_data->timestamp = time(NULL);
+    clock_gettime(CLOCK_REALTIME, &mcurl_data->req_time);
     mcurl_data->req_type   = policy_req->req_type;
     mcurl_data->gk_verdict = gk_verdict;
     LOGT("%s(): added curl data for request type: %d, with id %d, gk_verdict: %p, policy_req: %p, policy reply:%p",
@@ -968,6 +989,7 @@ gatekeeper_get_verdict(struct fsm_policy_req *req,
 
     gk_verdict->policy_req = req;
     gk_verdict->policy_reply = policy_reply;
+    gk_verdict->gk_session_context = fsm_gk_session;
 
     LOGT("%s: url:%s path:%s", __func__, server_info->server_url, server_info->ca_path);
 
@@ -1041,7 +1063,7 @@ error:
  * @return 0 if sessions match
  */
 static int
-fsm_gk_session_cmp(void *a, void *b)
+fsm_gk_session_cmp(const void *a, const void *b)
 {
     uintptr_t p_a = (uintptr_t)a;
     uintptr_t p_b = (uintptr_t)b;
@@ -1052,10 +1074,10 @@ fsm_gk_session_cmp(void *a, void *b)
 }
 
 static int
-gk_mcurl_cmp(void *a, void *b)
+gk_mcurl_cmp(const void *a, const void *b)
 {
-    struct gk_mcurl_data *ta = a;
-    struct gk_mcurl_data *tb = b;
+    const struct gk_mcurl_data *ta = a;
+    const struct gk_mcurl_data *tb = b;
 
     int cmp = ta->req_id - tb->req_id;
     if (cmp) return cmp;
@@ -1080,7 +1102,7 @@ gatekeeper_init(struct fsm_session *session)
     if (mgr->initialized) return true;
 
     memset(&mgr->req_ids, 0, sizeof(mgr->req_ids));
-
+    mgr->getaddrinfo = getaddrinfo;
     mgr->initialized = true;
     return true;
 }
@@ -1237,6 +1259,8 @@ gatekeeper_module_init(struct fsm_session *session)
 
     fsm_gk_session->gk_offline.check_offline = 30;
     fsm_gk_session->gk_offline.provider_offline = false;
+    fsm_gk_session->cname_offline.check_offline = 30;
+    fsm_gk_session->cname_offline.cname_offline = false;
 
     /* initialize latency counter */
     fsm_gk_session->health_stats.min_lookup_latency = LONG_MAX;

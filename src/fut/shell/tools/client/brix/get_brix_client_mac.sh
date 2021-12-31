@@ -34,16 +34,15 @@ source "${fut_topdir}"/config/default_shell.sh &> /dev/null
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh &> /dev/null
 source "$fut_topdir/lib/brix_lib.sh" &> /dev/null
 
-tc_name="tools/client/brix/$(basename "$0")"
 usage() {
     cat << usage_string
-${tc_name} [-h] arguments
+tools/client/brix/get_brix_client_mac.sh [-h] arguments
 Description:
     - Get mac address of client wireless interface
 Arguments:
     -h  show this help message
 Script usage example:
-   ./${tc_name}
+   ./tools/client/brix/get_brix_client_mac.sh
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -59,8 +58,9 @@ if [ -n "${1}" ]; then
 fi
 
 NARGS=0
-[ $# -ne ${NARGS} ] && usage && raise "Requires '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -ne ${NARGS} ] && usage && raise "Requires '${NARGS}' input argument(s)" -l "tools/client/brix/get_brix_client_mac.sh" -arg
 
-echo "$(sudo ip netns exec nswifi1 ifconfig | grep -i "ether" | awk '{print $2}')" ||
-    raise -l "${tc_name}" "Failed to get Client mac" -tc
+wlan_namespace_cmd="sudo ip netns exec nswifi1 bash"
+mac_addr=$(${wlan_namespace_cmd} -c "ifconfig wlan0" | grep -i 'ether' | awk '{ print $2 }')
 
+echo "$mac_addr"

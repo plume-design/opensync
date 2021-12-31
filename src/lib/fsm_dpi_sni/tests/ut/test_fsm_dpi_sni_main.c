@@ -60,8 +60,10 @@ tearDown(void)
 }
 
 
-extern void run_test_plugin();
-extern void run_test_functions();
+extern void run_test_plugin(void);
+extern void run_test_functions(void);
+extern void run_test_adt(void);
+extern void run_test_dns(void);
 
 int
 main(int argc, char *argv[])
@@ -77,6 +79,8 @@ main(int argc, char *argv[])
 
     run_test_plugin();
     run_test_functions();
+    run_test_adt();
+    run_test_dns();
 
     return UNITY_END();
 }

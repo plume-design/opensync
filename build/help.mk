@@ -41,6 +41,8 @@ help:
 	$(NQ) "   unit-install              Build and install ALL active units"
 	$(NQ) "   unit-clean                Clean ALL active units"
 	$(NQ) "   unit-list                 List ALL active units"
+	$(NQ) "   unit-run                  Build and exectutes ALL active units"
+	$(NQ) "   unit-coverage             Build, execute and provide coverage (requires CC=clang-6.0)"
 	$(NQ) ""
 	$(NQ) "   UNIT_PATH/clean           Clean a single UNIT"
 	$(NQ) "   UNIT_PATH/rclean          Clean a single UNIT and its dependencies"

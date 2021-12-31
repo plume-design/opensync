@@ -126,6 +126,7 @@ int main(int argc, char ** argv)
     if (cm2_is_extender()) {
         cm2_wdt_init(loop);
         cm2_stability_init(loop);
+        cm2_update_uplinks_init(loop);
     }
 
     if (cm2_start_cares()) {
@@ -137,6 +138,7 @@ int main(int argc, char ** argv)
     if (cm2_is_extender()) {
         cm2_wdt_close(loop);
         cm2_stability_close(loop);
+        cm2_update_uplinks_close(loop);
     }
 
     cm2_event_close(loop);

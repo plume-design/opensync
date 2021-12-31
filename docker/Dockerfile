@@ -51,6 +51,9 @@ RUN tar xzf curl-7.68.0.tar.gz \
     && make V=s -j $(nproc) install \
     && ldconfig
 
+# Install netlink library nl-3
+RUN $PKGINSTALL libnl-3-dev libnl-route-3-dev
+
 # OVS directory setup
 RUN mkdir -p /var/run/openvswitch
 RUN chmod 0777 /var/run/openvswitch

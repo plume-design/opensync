@@ -34,17 +34,16 @@ source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="fsm/$(basename "$0")"
 manager_setup_file="fsm/fsm_setup.sh"
 create_rad_vif_if_file="tools/device/create_radio_vif_interface.sh"
 create_inet_file="tools/device/create_inet_interface.sh"
 add_bridge_port_file="tools/device/add_bridge_port.sh"
 configure_lan_bridge_for_wan_connectivity_file="tools/device/configure_lan_bridge_for_wan_connectivity.sh"
 # Default of_port must be unique between fsm tests for valid testing
-of_port_default=30001
+of_port_default=10003
 usage() {
     cat << usage_string
-${tc_name} [-h] arguments
+fsm/fsm_configure_test_ndp_plugin.sh [-h] arguments
 Description:
     - Script configures interfaces FSM settings for NDP blocking rules
     - Requires 'ping6' tool be present on the system
@@ -67,10 +66,10 @@ Testcase procedure:
             Update Inet entry for home bridge interface for dhcpd (br-home)
                 Run: ./${create_inet_file} (see ${create_inet_file} -h)
             Test FSM for NDP plugin test
-                Run: ./${tc_name} <LAN-BRIDGE-IF>
+                Run: ./fsm/fsm_configure_test_ndp_plugin.sh <LAN-BRIDGE-IF>
 Script usage example:
-    ./${tc_name} br-home
-    ./${tc_name} br-home 3002
+    ./fsm/fsm_configure_test_ndp_plugin.sh br-home
+    ./fsm/fsm_configure_test_ndp_plugin.sh br-home 3002
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -103,15 +102,15 @@ of_port=${2:-${of_port_default}}
 
 client_mac=$(get_ovsdb_entry_value Wifi_Associated_Clients mac)
 if [ -z "${client_mac}" ]; then
-    raise "Couldn't acquire Client mac address from Wifi_Associated_Clients, is client connected?" -l "${tc_name}"
+    raise "Couldn't acquire Client mac address from Wifi_Associated_Clients, is client connected?" -l "fsm/fsm_configure_test_ndp_plugin.sh"
 fi
 # Use first MAC from Wifi_Associated_Clients
 client_mac="${client_mac%%,*}"
 tap_ndp_if="${lan_bridge_if}.tndp"
 
-log_title "$tc_name: FSM test - Configure ndp plugin"
+log_title "fsm/fsm_configure_test_ndp_plugin.sh: FSM test - Configure ndp plugin"
 
-log "$tc_name: Configuring TAP interfaces required for FSM testing"
+log "fsm/fsm_configure_test_ndp_plugin.sh: Configuring TAP interfaces required for FSM testing"
 add_bridge_port "${lan_bridge_if}" "${tap_ndp_if}"
 set_ovs_vsctl_interface_option "${tap_ndp_if}" "type" "internal"
 set_ovs_vsctl_interface_option "${tap_ndp_if}" "ofport_request" "${of_port}"
@@ -122,10 +121,10 @@ create_inet_entry \
     -dhcp_sniff "false" \
     -network true \
     -enabled true &&
-        log "$tc_name: Interface ${tap_ndp_if} created - Success" ||
-        raise "FAIL: Failed to create interface ${tap_ndp_if}" -l "$tc_name" -ds
+        log "fsm/fsm_configure_test_ndp_plugin.sh: Interface ${tap_ndp_if} created - Success" ||
+        raise "FAIL: Failed to create interface ${tap_ndp_if}" -l "fsm/fsm_configure_test_ndp_plugin.sh" -ds
 
-log "$tc_name: Cleaning FSM OVSDB Config tables"
+log "fsm/fsm_configure_test_ndp_plugin.sh: Cleaning FSM OVSDB Config tables"
 empty_ovsdb_table Openflow_Config
 empty_ovsdb_table Flow_Service_Manager_Config
 empty_ovsdb_table FSM_Policy
@@ -138,8 +137,8 @@ insert_ovsdb_entry Openflow_Config \
     -i priority 200 \
     -i bridge "${lan_bridge_if}" \
     -i action "normal,output:${of_port}" &&
-        log "$tc_name: Egress rule inserted - Success" ||
-        raise "FAIL: Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "fsm/fsm_configure_test_ndp_plugin.sh: Egress rule inserted - Success" ||
+        raise "FAIL: Failed to insert_ovsdb_entry" -l "fsm/fsm_configure_test_ndp_plugin.sh" -oe
 
 # Insert ingress rule to Openflow_Config
 insert_ovsdb_entry Openflow_Config \
@@ -149,25 +148,25 @@ insert_ovsdb_entry Openflow_Config \
     -i priority 200 \
     -i bridge "${lan_bridge_if}" \
     -i action "normal,output:${of_port}" &&
-        log "$tc_name: Ingress rule inserted - Success" ||
-        raise "FAIL: Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "fsm/fsm_configure_test_ndp_plugin.sh: Ingress rule inserted - Success" ||
+        raise "FAIL: Failed to insert_ovsdb_entry" -l "fsm/fsm_configure_test_ndp_plugin.sh" -oe
 
 insert_ovsdb_entry Flow_Service_Manager_Config \
     -i if_name "${tap_ndp_if}" \
     -i handler "dev_ndp" \
     -i plugin '/usr/opensync/lib/libfsm_ndp.so' \
     -i other_config '["map",[["dso_init","ndp_plugin_init"]]]' &&
-        log "$tc_name: Flow_Service_Manager_Config entry added - Success" ||
-        raise "FAIL: Failed to insert Flow_Service_Manager_Config entry" -l "$tc_name" -oe
+        log "fsm/fsm_configure_test_ndp_plugin.sh: Flow_Service_Manager_Config entry added - Success" ||
+        raise "FAIL: Failed to insert Flow_Service_Manager_Config entry" -l "fsm/fsm_configure_test_ndp_plugin.sh" -oe
 
-log "$tc_name: ping6 clients"
+log "fsm/fsm_configure_test_ndp_plugin.sh: ping6 clients"
 wait_for_function_response 0 "ping6 -c2 -I ${tap_ndp_if} ff02::1" 5 &&
-    log "$tc_name: ping6 clients - Success" ||
-    log -wrn "$tc_name: Failed to ping6 clients"
+    log "fsm/fsm_configure_test_ndp_plugin.sh: ping6 clients - Success" ||
+    log -wrn "fsm/fsm_configure_test_ndp_plugin.sh: Failed to ping6 clients"
 
 wait_for_function_response 0 "${OVSH} s IPv6_Neighbors hwaddr | grep '${client_mac}'" 30 &&
-    log "$tc_name: Client added into IPv6_Neighbors table - Success" ||
-    raise "FAIL: Client not added into IPv6_Neighbors table" -l "$tc_name" -oe
+    log "fsm/fsm_configure_test_ndp_plugin.sh: Client added into IPv6_Neighbors table - Success" ||
+    raise "FAIL: Client not added into IPv6_Neighbors table" -l "fsm/fsm_configure_test_ndp_plugin.sh" -oe
 
 print_tables IPv6_Neighbors
 

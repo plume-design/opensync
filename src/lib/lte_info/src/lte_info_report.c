@@ -45,6 +45,7 @@ bool
 lte_info_set_net_info(struct lte_net_info *source, struct lte_info_report *report)
 {
     struct lte_net_info *lte_net_info;
+    bool ret;
 
     if (source == NULL) return false;
     if (report == NULL) return false;
@@ -57,6 +58,14 @@ lte_info_set_net_info(struct lte_net_info *source, struct lte_info_report *repor
 
     lte_net_info = report->lte_net_info;
     lte_net_info->net_status = source->net_status;
+    lte_net_info->mcc = source->mcc;
+    lte_net_info->mnc = source->mnc;
+    lte_net_info->tac = source->tac;
+    ret = lte_info_set_string(source->service_provider, &lte_net_info->service_provider);
+    if (!ret) goto error;
+    lte_net_info->sim_type = source->sim_type;
+    lte_net_info->sim_status = source->sim_status;
+    lte_net_info->active_sim_slot = source->active_sim_slot;
     lte_net_info->rssi = source->rssi;
     lte_net_info->ber = source->ber;
 
@@ -83,6 +92,7 @@ lte_info_free_net_info(struct lte_info_report *report)
     lte_net_info = report->lte_net_info;
     if (lte_net_info == NULL) return;
 
+    FREE(lte_net_info->service_provider);
     FREE(lte_net_info);
     report->lte_net_info = NULL;
 }
@@ -189,7 +199,7 @@ lte_info_set_common_header(struct lte_common_header *source,
     if (!ret) goto error;
 
     header->reported_at = time(NULL);
-    LOGI("%s: request_id[%d], if_name[%s], node_id[%s], location_id[%s], imei[%s] imsi[%s], iccid[%s], reported_at[%d]",
+    LOGD("%s: request_id[%d], if_name[%s], node_id[%s], location_id[%s], imei[%s] imsi[%s], iccid[%s], reported_at[%d]",
          __func__, header->request_id, header->if_name, header->node_id, header->location_id, header->imei, header->imsi,
          header->iccid, (int)header->reported_at);
     return true;
@@ -416,7 +426,7 @@ lte_info_set_serving_cell(struct lte_net_serving_cell_info *source,
     cell->dl_bandwidth = source->dl_bandwidth;
     cell->tac = source->tac;
     cell->rsrp = source->rsrp;
-    cell->rsrq = source->rsrp;
+    cell->rsrq = source->rsrq;
     cell->rssi = source->rssi;
     cell->sinr = source->sinr;
     cell->srxlev = source->srxlev;
@@ -481,7 +491,7 @@ lte_info_set_pb_common_header(struct lte_info_report *report)
     pb->imsi = header->imsi;
     pb->iccid = header->iccid;
     pb->reported_at = header->reported_at;
-    LOGI("%s: request_id[%d], if_name[%s], node_id[%s], location_id[%s], imei[%s] imsi[%s], iccid[%s], reported_at[%d]",
+    LOGD("%s: request_id[%d], if_name[%s], node_id[%s], location_id[%s], imei[%s] imsi[%s], iccid[%s], reported_at[%d]",
          __func__, pb->request_id, pb->if_name, pb->node_id, pb->location_id, pb->imei, pb->imsi,
          pb->iccid, (int)pb->reported_at);
 
@@ -514,8 +524,14 @@ lte_info_set_lte_net_info(struct lte_info_report *report)
 
     /* Assign the message fields */
     pb->net_status = (Interfaces__LteInfo__LteNetRegStatus)lte_net_info->net_status;
+    pb->mcc = lte_net_info->mcc;
+    pb->mnc = lte_net_info->mnc;
+    pb->tac = lte_net_info->tac;
+    pb->service_provider = lte_net_info->service_provider;
     pb->rssi = lte_net_info->rssi;
     pb->ber = lte_net_info->ber;
+    pb->sim_type = (Interfaces__LteInfo__LteSimType)lte_net_info->sim_type;
+    pb->sim_status = (Interfaces__LteInfo__LteSimStatus)lte_net_info->sim_status;
 
     return pb;
 }

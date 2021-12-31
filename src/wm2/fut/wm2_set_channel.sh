@@ -33,7 +33,6 @@ source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="wm2/$(basename "$0")"
 manager_setup_file="wm2/wm2_setup.sh"
 # Wait for channel to change, not necessarily become usable (CAC for DFS)
 channel_change_timeout=60
@@ -41,7 +40,7 @@ channel_change_timeout=60
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+wm2/wm2_set_channel.sh [-h] arguments
 Description:
     - Script sets VIF to chosen channel. If interface is not UP it brings up the interface, checks if channel
       is allowed, and sets channel to desired value.
@@ -60,11 +59,11 @@ Arguments:
     \$9  (mode)            : Wifi_VIF_Config::mode                                  : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name} <IF_NAME> <VIF_IF_NAME> <VIF-RADIO-IDX> <SSID> <SECURITY> <CHANNEL> <HT_MODE> <HW_MODE> <MODE>
+                 Run: ./wm2/wm2_set_channel.sh <IF_NAME> <VIF_IF_NAME> <VIF-RADIO-IDX> <SSID> <SECURITY> <CHANNEL> <HT_MODE> <HW_MODE> <MODE>
 Script usage example:
-    ./${tc_name} wifi2 home-ap-u50 2 FUTssid '["map",[["encryption","WPA-PSK"],["key","FUTpsk"],["mode","2"]]]' 128 HT40 11ac ap
-    ./${tc_name} wifi1 home-ap-l50 2 FUTssid '["map",[["encryption","WPA-PSK"],["key","FUTpsk"],["mode","2"]]]' 36 HT20 11ac ap
-    ./${tc_name} wl1 wl1.2 2 FUTssid '["map",[["encryption","WPA-PSK"],["key","FUTpsk"],["mode","2"]]]' 1 HT20 11ax ap
+    ./wm2/wm2_set_channel.sh wifi2 home-ap-u50 2 FUTssid '["map",[["encryption","WPA-PSK"],["key","FUTpsk"],["mode","2"]]]' 128 HT40 11ac ap
+    ./wm2/wm2_set_channel.sh wifi1 home-ap-l50 2 FUTssid '["map",[["encryption","WPA-PSK"],["key","FUTpsk"],["mode","2"]]]' 36 HT20 11ac ap
+    ./wm2/wm2_set_channel.sh wl1 wl1.2 2 FUTssid '["map",[["encryption","WPA-PSK"],["key","FUTpsk"],["mode","2"]]]' 1 HT20 11ax ap
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -80,7 +79,7 @@ if [ -n "${1}" ]; then
 fi
 
 NARGS=9
-[ $# -ne ${NARGS} ] && usage && raise "Requires '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -ne ${NARGS} ] && usage && raise "Requires '${NARGS}' input argument(s)" -l "wm2/wm2_set_channel.sh" -arg
 if_name=${1}
 vif_if_name=${2}
 vif_radio_idx=${3}
@@ -96,21 +95,20 @@ trap '
     print_tables Wifi_Radio_Config Wifi_Radio_State
     print_tables Wifi_VIF_Config Wifi_VIF_State
     fut_info_dump_line
-    run_setup_if_crashed wm || true
 ' EXIT SIGINT SIGTERM
 
-log_title "$tc_name: WM2 test - Testing Wifi_Radio_Config field channel - '${channel}'"
+log_title "wm2/wm2_set_channel.sh: WM2 test - Testing Wifi_Radio_Config field channel - '${channel}'"
 
 # Sanity check - is channel even allowed on the radio
 check_is_channel_allowed "$channel" "$if_name" &&
-    log "$tc_name: check_is_channel_allowed - channel $channel is allowed on radio $if_name" ||
-    raise "Channel $channel is not allowed on radio $if_name" -l "$tc_name" -ds
+    log "wm2/wm2_set_channel.sh: check_is_channel_allowed - channel $channel is allowed on radio $if_name" ||
+    raise "Channel $channel is not allowed on radio $if_name" -l "wm2/wm2_set_channel.sh" -ds
 
 # Testcase:
 # Configure radio, create VIF and apply channel
 # This needs to be done simultaneously for the driver to bring up an active AP
-log "$tc_name: Configuring Wifi_Radio_Config, creating interface in Wifi_VIF_Config."
-log "$tc_name: Waiting for ${channel_change_timeout}s for settings {channel:$channel}"
+log "wm2/wm2_set_channel.sh: Configuring Wifi_Radio_Config, creating interface in Wifi_VIF_Config."
+log "wm2/wm2_set_channel.sh: Waiting for ${channel_change_timeout}s for settings {channel:$channel}"
 create_radio_vif_interface \
     -channel "$channel" \
     -channel_mode manual \
@@ -123,18 +121,19 @@ create_radio_vif_interface \
     -ssid "$ssid" \
     -vif_if_name "$vif_if_name" \
     -vif_radio_idx "$vif_radio_idx" \
-    -timeout ${channel_change_timeout} &&
-        log "$tc_name: create_radio_vif_interface {$if_name, $channel} - Success" ||
-        raise "FAIL: create_radio_vif_interface {$if_name, $channel} - Interface not created" -l "$tc_name" -ds
+    -timeout ${channel_change_timeout} \
+    -disable_cac &&
+        log "wm2/wm2_set_channel.sh: create_radio_vif_interface {$if_name, $channel} - Success" ||
+        raise "FAIL: create_radio_vif_interface {$if_name, $channel} - Interface not created" -l "wm2/wm2_set_channel.sh" -ds
 
-log "$tc_name: Waiting for settings to apply to Wifi_Radio_State {channel:$channel}"
+log "wm2/wm2_set_channel.sh: Waiting for settings to apply to Wifi_Radio_State {channel:$channel}"
 wait_ovsdb_entry Wifi_Radio_State -w if_name "$if_name" -is channel "$channel" &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Radio_Config reflected to Wifi_Radio_State::channel is $channel - Success" ||
-    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Radio_Config to Wifi_Radio_State::channel is not $channel" -l "$tc_name" -tc
+    log "wm2/wm2_set_channel.sh: wait_ovsdb_entry - Wifi_Radio_Config reflected to Wifi_Radio_State::channel is $channel - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Radio_Config to Wifi_Radio_State::channel is not $channel" -l "wm2/wm2_set_channel.sh" -tc
 
-log "$tc_name: Checking channel $channel at system level - LEVEL2"
+log "wm2/wm2_set_channel.sh: Checking channel $channel at system level - LEVEL2"
 check_channel_at_os_level "$channel" "$vif_if_name" &&
-    log "$tc_name: check_channel_at_os_level - Channel $channel set at system level - Success" ||
-    raise "FAIL: check_channel_at_os_level - Channel $channel not set at system level" -l "$tc_name" -tc
+    log "wm2/wm2_set_channel.sh: check_channel_at_os_level - Channel $channel set at system level - Success" ||
+    raise "FAIL: check_channel_at_os_level - Channel $channel not set at system level" -l "wm2/wm2_set_channel.sh" -tc
 
 pass

@@ -40,7 +40,9 @@ echo "${FUT_TOPDIR}/shell/lib/othr_lib.sh sourced"
 
 ###############################################################################
 # DESCRIPTION:
-#   Function prepares device for OTHR tests.
+#   Function prepares device for OTHR tests. If called with parameters it waits
+#   for radio interfaces in Wifi_Radio_State table.
+#   Calling it without radio interface names, it skips the step checking the interfaces.
 #   Raises exception on fail.
 # INPUT PARAMETER(S):
 #   None.
@@ -52,34 +54,30 @@ echo "${FUT_TOPDIR}/shell/lib/othr_lib.sh sourced"
 ###############################################################################
 othr_setup_test_environment()
 {
-    fn_name="othr_lib:othr_setup_test_environment"
-
-    log "$fn_name - Running OTHR setup"
+    log "othr_lib:othr_setup_test_environment - Running OTHR setup"
 
     device_init &&
-        log -deb "$fn_name - Device initialized - Success" ||
-        raise "FAIL: Could not initialize device: device_init" -l "$fn_name" -ds
+        log -deb "othr_lib:othr_setup_test_environment - Device initialized - Success" ||
+        raise "FAIL: device_init - Could not initialize device" -l "othr_lib:othr_setup_test_environment" -ds
 
     start_openswitch &&
-        log -deb "$fn_name - OpenvSwitch started - Success" ||
-        raise "FAIL: Could not start OpenvSwitch: start_openswitch" -l "$fn_name" -ds
+        log -deb "othr_lib:othr_setup_test_environment - OpenvSwitch started - Success" ||
+        raise "FAIL: start_openswitch - Could not start OpenvSwitch" -l "othr_lib:othr_setup_test_environment" -ds
 
     restart_managers
-    log "${fn_name}: Executed restart_managers, exit code: $?"
+    log -deb "othr_lib:othr_setup_test_environment: Executed restart_managers, exit code: $?"
 
     # Check if all radio interfaces are created
     for if_name in "$@"
     do
         wait_ovsdb_entry Wifi_Radio_State -w if_name "$if_name" -is if_name "$if_name" &&
-            log -deb "$fn_name - Wifi_Radio_State::if_name '$if_name' present - Success" ||
-            raise "FAIL: Wifi_Radio_State::if_name for $if_name does not exist" -l "$fn_name" -ds
+            log -deb "othr_lib:othr_setup_test_environment - Wifi_Radio_State::if_name '$if_name' present - Success" ||
+            raise "FAIL: Wifi_Radio_State::if_name for '$if_name' does not exist" -l "othr_lib:othr_setup_test_environment" -ds
     done
 
-    log "$fn_name - OTHR setup - end"
+    log -deb "othr_lib:othr_setup_test_environment - OTHR setup - end"
 
     return 0
 }
 
 ####################### SETUP SECTION - STOP ##################################
-
-####################### TEST CASE SECTION - START #############################

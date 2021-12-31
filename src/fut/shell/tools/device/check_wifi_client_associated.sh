@@ -33,18 +33,16 @@ source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="tools/device/$(basename "$0")"
-
 usage() {
     cat <<usage_string
-${tc_name} [-h] arguments
+tools/device/check_wifi_client_associated.sh [-h] arguments
 Description:
     - Script verifies Wifi_Associated_Clients table is populated with client's mac.
 Arguments:
     -h  show this help message
     \$1  (client_mac)     : MAC address of client connected to ap: (string)(required)
 Script usage example:
-    ./${tc_name} a1:b2:c3:d4:e5:f6
+    ./tools/device/check_wifi_client_associated.sh a1:b2:c3:d4:e5:f6
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -60,9 +58,13 @@ if [ -n "${1}" ]; then
 fi
 
 trap '
+fut_ec=$?
 fut_info_dump_line
-print_tables Wifi_Associated_Clients
+if [ $fut_ec -ne 0 ]; then 
+    print_tables Wifi_Associated_Clients
+fi
 fut_info_dump_line
+exit $fut_ec
 ' EXIT SIGINT SIGTERM
 
 # INPUT ARGUMENTS:
@@ -70,14 +72,14 @@ NARGS=1
 [ $# -ne ${NARGS} ] && raise "Requires exactly '${NARGS}' input argument" -arg
 client_mac=${1}
 
-log_title "$tc_name: Verify that the client is associated to AP"
+log_title "tools/device/check_wifi_client_associated.sh: Verify that the client is associated to AP"
 
 check_ovsdb_entry Wifi_Associated_Clients -w mac "$client_mac"
 if [ $? -eq 0 ]; then
-    log "$tc_name: Valid client mac $client_mac is populated in the Wifi_Associated_Clients table - Success"
+    log "tools/device/check_wifi_client_associated.sh: Valid client mac $client_mac is populated in the Wifi_Associated_Clients table - Success"
     exit 0
 else
-    log "${tc_name}: Client mac address $client_mac is not populated in the Wifi_Associated_Clients table."
+    log "tools/device/check_wifi_client_associated.sh: Client mac address $client_mac is not populated in the Wifi_Associated_Clients table."
     exit 1
 fi
 

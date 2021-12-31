@@ -33,4 +33,4 @@ UNIT_DIR := shell/tools/server/cm
 
 UNIT_FILE := address_dns_man.sh
 UNIT_FILE += address_internet_man.sh
-UNIT_FILE += manipulate_port_number.sh
+UNIT_FILE += manipulate_cloud_ip_addresses.sh

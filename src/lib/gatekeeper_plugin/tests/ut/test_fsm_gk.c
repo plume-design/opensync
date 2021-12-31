@@ -29,8 +29,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdbool.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/types.h>
 #include <curl/curl.h>
 #include <netdb.h>
+#include <errno.h>
 
 #include "fsm_dpi_sni.h"
 #include "wc_telemetry.h"
@@ -264,7 +266,7 @@ main_setUp(void)
     if (!mgr->initialized) fsm_init_manager();
 
     session->conf = &g_confs[0];
-    session->ops  = g_ops;
+    session->ops = g_ops;
     session->name = g_confs[0].handler;
     session->conf->other_config = schema2tree(OTHER_CONFIG_NELEM_SIZE,
                                               OTHER_CONFIG_NELEM_SIZE,
@@ -314,12 +316,12 @@ dummy_gatekeeper_get_verdict(struct fsm_policy_req *req,
     struct fsm_url_reply *url_reply;
     struct fsm_session *session;
     struct fsm_url_stats *stats;
-    bool ret = true;
     struct ev_loop *loop;
+    bool ret = true;
     int gk_response;
-    loop = ev_default_loop(0);
     bool use_mcurl;
 
+    loop = ev_default_loop(0);
     session = req->session;
     fsm_gk_session = gatekeeper_lookup_session(session);
     if (!fsm_gk_session) return false;
@@ -328,6 +330,7 @@ dummy_gatekeeper_get_verdict(struct fsm_policy_req *req,
 
     gk_verdict->policy_req = req;
     gk_verdict->policy_reply = policy_reply;
+    gk_verdict->gk_session_context = fsm_gk_session;
     policy_req = gk_verdict->policy_req;
     fqdn_req = policy_req->fqdn_req;
     req_info = fqdn_req->req_info;
@@ -418,6 +421,156 @@ error:
 }
 
 void
+test_cname_redirect(void)
+{
+    char * SAFE_URL = "forcesafesearch.google.com";
+    struct fsm_policy_reply *policy_reply;
+    struct schema_FSM_Policy *spolicy;
+    struct fqdn_pending_req fqdn_req;
+    struct fsm_url_request req_info;
+    struct fsm_policy_rules *rules;
+    struct fsm_policy_session *mgr;
+    char * URL = "www.google.com";
+    struct fsm_session *session;
+    struct fsm_policy *fpolicy;
+    struct policy_table *table;
+    struct fsm_policy_req req;
+    char ipv4_redirect_s[256];
+    char ipv6_redirect_s[256];
+    struct str_set *fqdns_set;
+    struct str_set *macs_set;
+    struct addrinfo *result;
+    struct addrinfo hints;
+    os_macaddr_t dev_mac;
+    struct addrinfo *rp;
+    char addr_str[256];
+    const char *res;
+    bool status = 1;
+    void *addr;
+    size_t i;
+    int ret;
+
+    session = &g_sessions[0];
+    LOGN("Starting test %s()", __func__);
+    if (g_is_connected == false) return;
+
+    /* Initialize local structures */
+    memset(&fqdn_req, 0, sizeof(fqdn_req));
+    memset(&req_info, 0, sizeof(req_info));
+    memset(&req, 0, sizeof(req));
+    memset(&dev_mac, 0, sizeof(dev_mac));
+
+    spolicy = &spolicies[1];
+
+    /* Validate access to the fsm policy */
+    fsm_add_policy(spolicy);
+    fpolicy = fsm_policy_lookup(spolicy);
+    TEST_ASSERT_NOT_NULL(fpolicy);
+
+    /* Validate rule name */
+    TEST_ASSERT_EQUAL_STRING(spolicy->name, fpolicy->rule_name);
+
+    /* Validate mac content */
+    rules = &fpolicy->rules;
+    macs_set = rules->macs;
+    TEST_ASSERT_NOT_NULL(macs_set);
+    TEST_ASSERT_EQUAL_INT(spolicy->macs_len, macs_set->nelems);
+    for (i = 0; i < macs_set->nelems; i++)
+    {
+        TEST_ASSERT_EQUAL_STRING(spolicy->macs[i], macs_set->array[i]);
+    }
+
+    /* Validate FQDNs content */
+    fqdns_set = rules->fqdns;
+    TEST_ASSERT_NOT_NULL(fqdns_set);
+
+    mgr = fsm_policy_get_mgr();
+    table = ds_tree_find(&mgr->policy_tables, spolicy->policy);
+    TEST_ASSERT_NOT_NULL(table);
+
+    /* Validate access to the fsm policy */
+    TEST_ASSERT_NOT_NULL(fpolicy);
+
+    req.device_id = &dev_mac;
+
+    /* Build the request elements */
+    STRSCPY(req_info.url, URL);
+    req.url = URL;
+    fqdn_req.req_info = &req_info;
+    fqdn_req.numq = 1;
+    req.req_type = FSM_FQDN_REQ;
+    req.fqdn_req = &fqdn_req;
+    req.session = session;
+
+    policy_reply = fsm_policy_initialize_reply(session);
+    if (policy_reply == NULL)
+    {
+        LOGD("%s(): failed to initialize policy reply", __func__);
+        return;
+    }
+    policy_reply->policy_table = table;
+    policy_reply->gatekeeper_req = dummy_gatekeeper_get_verdict;
+    fsm_apply_policies(&req, policy_reply);
+
+    /* Get forcesafesearch.google.com ip address through getaddrinfo() */
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_flags = AI_PASSIVE;
+    hints.ai_protocol = 0;
+
+    result = NULL;
+    ret = getaddrinfo(SAFE_URL, NULL, &hints, &result);
+    if (ret != 0)
+    {
+        LOGI("Unable to resolve : %s  [%s]\n", SAFE_URL, strerror(errno));
+        goto error;
+    }
+
+    for (rp = result; rp != NULL; rp = rp->ai_next)
+    {
+        if (rp->ai_family == AF_INET)
+        {
+            struct sockaddr_in *ipv4 = (struct sockaddr_in *)rp->ai_addr;
+            addr = &(ipv4->sin_addr);
+        }
+        else
+        {
+            struct sockaddr_in6 *ipv6 = (struct sockaddr_in6 *)rp->ai_addr;
+            addr = &(ipv6->sin6_addr);
+        }
+        res = inet_ntop(rp->ai_family, addr, addr_str, sizeof(addr_str));
+        if (res != NULL)
+        {
+            if (rp->ai_family == AF_INET)
+            {
+                snprintf(ipv4_redirect_s, sizeof(ipv4_redirect_s), "A-%s", addr_str);
+                status = strcmp(ipv4_redirect_s, policy_reply->redirects[0]);
+                if (status == 0) break;
+            }
+            else
+            {
+                snprintf(ipv6_redirect_s, sizeof(ipv6_redirect_s), "4A-%s", addr_str);
+                status = strcmp(ipv6_redirect_s, policy_reply->redirects[1]);
+                if (status == 0) break;
+            }
+        }
+    }
+
+    /* status 0 means IP addresses of redirects are matched */
+    TEST_ASSERT_EQUAL_INT(0, status);
+
+error:
+   if (result)
+       freeaddrinfo(result);
+
+    fsm_policy_free_reply(policy_reply);
+    fsm_free_url_reply(fqdn_req.req_info->reply);
+
+    LOGN("Finishing test %s()", __func__);
+}
+
+void
 test_curl_fqdn(void)
 {
     struct schema_FSM_Policy *spolicy;
@@ -456,7 +609,7 @@ test_curl_fqdn(void)
     TEST_ASSERT_EQUAL_STRING(spolicy->name, fpolicy->rule_name);
 
     /* Validate mac content */
-    rules    = &fpolicy->rules;
+    rules = &fpolicy->rules;
     macs_set = rules->macs;
     TEST_ASSERT_NOT_NULL(macs_set);
     TEST_ASSERT_EQUAL_INT(spolicy->macs_len, macs_set->nelems);
@@ -469,7 +622,7 @@ test_curl_fqdn(void)
     fqdns_set = rules->fqdns;
     TEST_ASSERT_NOT_NULL(fqdns_set);
 
-    mgr   = fsm_policy_get_mgr();
+    mgr = fsm_policy_get_mgr();
     table = ds_tree_find(&mgr->policy_tables, spolicy->policy);
     TEST_ASSERT_NOT_NULL(table);
 
@@ -480,11 +633,11 @@ test_curl_fqdn(void)
 
     /* Build the request elements */
     STRSCPY(req_info.url, "www.google.com");
-    req.url                   = "www.google.com";
-    fqdn_req.req_info         = &req_info;
-    fqdn_req.numq             = 1;
-    req.req_type         = FSM_SNI_REQ;
-    req.fqdn_req              = &fqdn_req;
+    req.url = "www.google.com";
+    fqdn_req.req_info = &req_info;
+    fqdn_req.numq = 1;
+    req.req_type = FSM_SNI_REQ;
+    req.fqdn_req = &fqdn_req;
     req.session = session;
 
     policy_reply = fsm_policy_initialize_reply(session);
@@ -506,19 +659,19 @@ test_curl_fqdn(void)
 void
 run_fqdn_query(char *input_url)
 {
+    struct fsm_policy_reply *policy_reply;
     struct schema_FSM_Policy *spolicy;
-    struct fsm_policy *fpolicy;
-    struct fsm_policy_rules *rules;
     struct fqdn_pending_req fqdn_req;
     struct fsm_url_request req_info;
-    struct fsm_policy_req req;
-    os_macaddr_t dev_mac;
-    struct fsm_policy_reply *policy_reply;
+    struct fsm_policy_rules *rules;
     struct fsm_policy_session *mgr;
-    struct policy_table *table;
     struct fsm_session *session;
-    struct str_set *macs_set;
+    struct fsm_policy *fpolicy;
+    struct policy_table *table;
+    struct fsm_policy_req req;
     struct str_set *fqdns_set;
+    struct str_set *macs_set;
+    os_macaddr_t dev_mac;
     size_t i;
 
     session = &g_sessions[0];
@@ -541,7 +694,7 @@ run_fqdn_query(char *input_url)
     TEST_ASSERT_EQUAL_STRING(spolicy->name, fpolicy->rule_name);
 
     /* Validate mac content */
-    rules    = &fpolicy->rules;
+    rules = &fpolicy->rules;
     macs_set = rules->macs;
     TEST_ASSERT_NOT_NULL(macs_set);
     TEST_ASSERT_EQUAL_INT(spolicy->macs_len, macs_set->nelems);
@@ -554,7 +707,7 @@ run_fqdn_query(char *input_url)
     fqdns_set = rules->fqdns;
     TEST_ASSERT_NOT_NULL(fqdns_set);
 
-    mgr   = fsm_policy_get_mgr();
+    mgr = fsm_policy_get_mgr();
     table = ds_tree_find(&mgr->policy_tables, spolicy->policy);
     TEST_ASSERT_NOT_NULL(table);
 
@@ -565,11 +718,11 @@ run_fqdn_query(char *input_url)
 
     /* Build the request elements */
     STRSCPY(req_info.url, input_url);
-    req.url                   = input_url;
-    fqdn_req.req_info         = &req_info;
-    fqdn_req.numq             = 1;
-    req.req_type         = FSM_FQDN_REQ;
-    req.fqdn_req              = &fqdn_req;
+    req.url = input_url;
+    fqdn_req.req_info = &req_info;
+    fqdn_req.numq = 1;
+    req.req_type = FSM_FQDN_REQ;
+    req.fqdn_req = &fqdn_req;
     req.session = session;
 
     policy_reply = fsm_policy_initialize_reply(session);
@@ -590,15 +743,15 @@ run_fqdn_query(char *input_url)
 void
 test_curl_multi(void)
 {
-    struct net_md_stats_accumulator acc;
+    struct fsm_policy_reply *policy_reply;
     struct fsm_gk_session *fsm_gk_session;
-    struct fsm_session *session;
+    struct net_md_stats_accumulator acc;
     struct schema_FSM_Policy *spolicy;
     struct fqdn_pending_req fqdn_req;
     struct fsm_url_request req_info;
     struct fsm_policy_session *mgr;
-    struct fsm_policy_reply *policy_reply;
     struct sockaddr_storage ss_ip;
+    struct fsm_session *session;
     struct net_md_flow_key key;
     struct policy_table *table;
     struct fsm_policy *fpolicy;
@@ -634,8 +787,8 @@ test_curl_multi(void)
     spolicy = &spolicies[0];
     fsm_add_policy(spolicy);
     fpolicy = fsm_policy_lookup(spolicy);
-    mgr     = fsm_policy_get_mgr();
-    table   = ds_tree_find(&mgr->policy_tables, spolicy->policy);
+    mgr = fsm_policy_get_mgr();
+    table = ds_tree_find(&mgr->policy_tables, spolicy->policy);
     TEST_ASSERT_NOT_NULL(table);
 
     /* Validate access to the fsm policy */
@@ -659,21 +812,21 @@ test_curl_multi(void)
     TEST_ASSERT_EQUAL_INT(0, rc);
 
     req.device_id = &dev_mac;
-    req.fqdn_req  = &fqdn_req;
+    req.fqdn_req = &fqdn_req;
     req.session = session;
 
-    key.src_ip     = (uint8_t *)&in_ip.s_addr;
+    key.src_ip = (uint8_t *)&in_ip.s_addr;
     key.ip_version = 4;
-    acc.key        = &key;
-    acc.direction  = NET_MD_ACC_OUTBOUND_DIR;
+    acc.key = &key;
+    acc.direction = NET_MD_ACC_OUTBOUND_DIR;
     acc.originator = NET_MD_ACC_ORIGINATOR_SRC;
     /* Build the request elements */
-    fqdn_req.numq             = 1;
-    req.fqdn_req              = &fqdn_req;
-    req.device_id             = &dev_mac;
-    req.ip_addr               = &ss_ip;
-    req.acc                   = &acc;
-    req.url                   = fqdn_req.req_info->url;
+    fqdn_req.numq = 1;
+    req.fqdn_req = &fqdn_req;
+    req.device_id = &dev_mac;
+    req.ip_addr = &ss_ip;
+    req.acc = &acc;
+    req.url = fqdn_req.req_info->url;
     policy_reply = fsm_policy_initialize_reply(session);
     if (policy_reply == NULL)
     {
@@ -692,16 +845,16 @@ test_curl_multi(void)
 void
 test_curl_sni(void)
 {
+    struct fsm_policy_reply *policy_reply;
     struct schema_FSM_Policy *spolicy;
-    struct fsm_policy *fpolicy;
     struct fqdn_pending_req fqdn_req;
     struct fsm_url_request req_info;
+    struct fsm_policy_session *mgr;
+    struct fsm_session *session;
+    struct fsm_policy *fpolicy;
+    struct policy_table *table;
     struct fsm_policy_req req;
     os_macaddr_t dev_mac;
-    struct fsm_policy_reply *policy_reply;
-    struct fsm_policy_session *mgr;
-    struct policy_table *table;
-    struct fsm_session *session;
 
     LOGN("Starting test %s()", __func__);
     session = &g_sessions[0];
@@ -723,17 +876,17 @@ test_curl_sni(void)
     TEST_ASSERT_EQUAL_STRING(spolicy->name, fpolicy->rule_name);
 
     /* Validate mac content */
-    mgr           = fsm_policy_get_mgr();
-    table         = ds_tree_find(&mgr->policy_tables, spolicy->policy);
+    mgr = fsm_policy_get_mgr();
+    table = ds_tree_find(&mgr->policy_tables, spolicy->policy);
     req.device_id = &dev_mac;
 
     /* Build the request elements */
     STRSCPY(req_info.url, "www.google.com");
-    req.url                   = "www.google.com";
-    fqdn_req.req_info         = &req_info;
-    fqdn_req.numq             = 1;
-    req.req_type         = FSM_SNI_REQ;
-    req.fqdn_req              = &fqdn_req;
+    req.url = "www.google.com";
+    fqdn_req.req_info = &req_info;
+    fqdn_req.numq = 1;
+    req.req_type = FSM_SNI_REQ;
+    req.fqdn_req = &fqdn_req;
     req.session = session;
 
     policy_reply = fsm_policy_initialize_reply(session);
@@ -755,16 +908,16 @@ test_curl_sni(void)
 void
 test_curl_url(void)
 {
+    struct fsm_policy_reply *policy_reply;
     struct schema_FSM_Policy *spolicy;
-    struct fsm_policy *fpolicy;
     struct fqdn_pending_req fqdn_req;
     struct fsm_url_request req_info;
+    struct fsm_policy_session *mgr;
+    struct fsm_session *session;
+    struct policy_table *table;
+    struct fsm_policy *fpolicy;
     struct fsm_policy_req req;
     os_macaddr_t dev_mac;
-    struct fsm_policy_reply *policy_reply;
-    struct fsm_policy_session *mgr;
-    struct policy_table *table;
-    struct fsm_session *session;
 
     if (g_is_connected == false) return;
     session = &g_sessions[0];
@@ -785,17 +938,17 @@ test_curl_url(void)
     /* Validate rule name */
     TEST_ASSERT_EQUAL_STRING(spolicy->name, fpolicy->rule_name);
 
-    mgr           = fsm_policy_get_mgr();
-    table         = ds_tree_find(&mgr->policy_tables, spolicy->policy);
+    mgr = fsm_policy_get_mgr();
+    table = ds_tree_find(&mgr->policy_tables, spolicy->policy);
     req.device_id = &dev_mac;
 
     /* Build the request elements */
     STRSCPY(req_info.url, "www.google.com");
-    req.url                   = "www.google.com";
-    fqdn_req.req_info         = &req_info;
-    fqdn_req.numq             = 1;
-    req.req_type         = FSM_URL_REQ;
-    req.fqdn_req              = &fqdn_req;
+    req.url = "www.google.com";
+    fqdn_req.req_info = &req_info;
+    fqdn_req.numq = 1;
+    req.req_type = FSM_URL_REQ;
+    req.fqdn_req = &fqdn_req;
     req.session = session;
     policy_reply = fsm_policy_initialize_reply(session);
     if (policy_reply == NULL)
@@ -817,16 +970,16 @@ test_curl_url(void)
 void
 test_curl_host(void)
 {
+    struct fsm_policy_reply *policy_reply;
     struct schema_FSM_Policy *spolicy;
-    struct fsm_policy *fpolicy;
     struct fqdn_pending_req fqdn_req;
     struct fsm_url_request req_info;
+    struct fsm_policy_session *mgr;
+    struct fsm_session *session;
+    struct policy_table *table;
+    struct fsm_policy *fpolicy;
     struct fsm_policy_req req;
     os_macaddr_t dev_mac;
-    struct fsm_policy_reply *policy_reply;
-    struct fsm_policy_session *mgr;
-    struct policy_table *table;
-    struct fsm_session *session;
 
     if (g_is_connected == false) return;
     LOGN("Starting test %s()", __func__);
@@ -847,17 +1000,17 @@ test_curl_host(void)
     /* Validate rule name */
     TEST_ASSERT_EQUAL_STRING(spolicy->name, fpolicy->rule_name);
 
-    mgr           = fsm_policy_get_mgr();
-    table         = ds_tree_find(&mgr->policy_tables, spolicy->policy);
+    mgr = fsm_policy_get_mgr();
+    table = ds_tree_find(&mgr->policy_tables, spolicy->policy);
     req.device_id = &dev_mac;
 
     /* Build the request elements */
     STRSCPY(req_info.url, "test-host.com");
-    req.url                   = "test-host.com";
-    fqdn_req.req_info         = &req_info;
-    fqdn_req.numq             = 1;
-    req.req_type         = FSM_HOST_REQ;
-    req.fqdn_req              = &fqdn_req;
+    req.url = "test-host.com";
+    fqdn_req.req_info = &req_info;
+    fqdn_req.numq = 1;
+    req.req_type = FSM_HOST_REQ;
+    req.fqdn_req = &fqdn_req;
     req.session = session;
     policy_reply = fsm_policy_initialize_reply(session);
     if (policy_reply == NULL)
@@ -878,16 +1031,16 @@ test_curl_host(void)
 void
 test_curl_app(void)
 {
+    struct fsm_policy_reply *policy_reply;
     struct schema_FSM_Policy *spolicy;
-    struct fsm_policy *fpolicy;
     struct fqdn_pending_req fqdn_req;
     struct fsm_url_request req_info;
+    struct fsm_policy_session *mgr;
+    struct fsm_session *session;
+    struct fsm_policy *fpolicy;
+    struct policy_table *table;
     struct fsm_policy_req req;
     os_macaddr_t dev_mac;
-    struct fsm_policy_reply *policy_reply;
-    struct fsm_policy_session *mgr;
-    struct policy_table *table;
-    struct fsm_session *session;
 
     if (g_is_connected == false) return;
     session = &g_sessions[0];
@@ -908,17 +1061,17 @@ test_curl_app(void)
     /* Validate rule name */
     TEST_ASSERT_EQUAL_STRING(spolicy->name, fpolicy->rule_name);
 
-    mgr           = fsm_policy_get_mgr();
-    table         = ds_tree_find(&mgr->policy_tables, spolicy->policy);
+    mgr = fsm_policy_get_mgr();
+    table = ds_tree_find(&mgr->policy_tables, spolicy->policy);
     req.device_id = &dev_mac;
 
     /* Build the request elements */
     STRSCPY(req_info.url, "signal");
-    req.url                   = "signal";
-    fqdn_req.req_info         = &req_info;
-    fqdn_req.numq             = 1;
-    req.req_type         = FSM_APP_REQ;
-    req.fqdn_req              = &fqdn_req;
+    req.url = "signal";
+    fqdn_req.req_info = &req_info;
+    fqdn_req.numq = 1;
+    req.req_type = FSM_APP_REQ;
+    req.fqdn_req = &fqdn_req;
     req.session = session;
 
     policy_reply = fsm_policy_initialize_reply(session);
@@ -940,14 +1093,14 @@ test_curl_app(void)
 void
 test_curl_ipv4_flow(void)
 {
+    struct fsm_policy_reply *policy_reply;
     struct net_md_stats_accumulator acc;
-    struct fsm_session *session;
     struct schema_FSM_Policy *spolicy;
     struct fqdn_pending_req fqdn_req;
     struct fsm_url_request req_info;
     struct fsm_policy_session *mgr;
-    struct fsm_policy_reply *policy_reply;
     struct sockaddr_storage ss_ip;
+    struct fsm_session *session;
     struct net_md_flow_key key;
     struct policy_table *table;
     struct fsm_policy *fpolicy;
@@ -976,7 +1129,7 @@ test_curl_ipv4_flow(void)
     fsm_add_policy(spolicy);
     fpolicy = fsm_policy_lookup(spolicy);
 
-    mgr   = fsm_policy_get_mgr();
+    mgr = fsm_policy_get_mgr();
     table = ds_tree_find(&mgr->policy_tables, spolicy->policy);
     TEST_ASSERT_NOT_NULL(table);
 
@@ -1002,22 +1155,22 @@ test_curl_ipv4_flow(void)
     TEST_ASSERT_EQUAL_INT(0, rc);
 
     req.device_id = &dev_mac;
-    req.fqdn_req  = &fqdn_req;
+    req.fqdn_req = &fqdn_req;
 
-    key.src_ip     = (uint8_t *)&in_ip.s_addr;
-    key.dst_ip     = (uint8_t *)&in_ip.s_addr;
+    key.src_ip = (uint8_t *)&in_ip.s_addr;
+    key.dst_ip = (uint8_t *)&in_ip.s_addr;
     key.ip_version = 4;
-    acc.key        = &key;
-    acc.direction  = NET_MD_ACC_OUTBOUND_DIR;
+    acc.key = &key;
+    acc.direction = NET_MD_ACC_OUTBOUND_DIR;
     acc.originator = NET_MD_ACC_ORIGINATOR_SRC;
     /* Build the request elements */
     fqdn_req.numq             = 1;
 
     req.req_type = FSM_IPV4_REQ;
-    req.fqdn_req      = &fqdn_req;
-    req.device_id     = &dev_mac;
-    req.acc           = &acc;
-    req.url           = fqdn_req.req_info->url;
+    req.fqdn_req = &fqdn_req;
+    req.device_id = &dev_mac;
+    req.acc = &acc;
+    req.url = fqdn_req.req_info->url;
     req.session = session;
 
     policy_reply = fsm_policy_initialize_reply(session);
@@ -1042,15 +1195,15 @@ test_curl_ipv4_flow(void)
 void
 test_curl_ipv6_flow(void)
 {
+    struct fsm_policy_reply *policy_reply;
     struct net_md_stats_accumulator acc;
-    struct fsm_session *session;
     struct schema_FSM_Policy *spolicy;
     struct fqdn_pending_req fqdn_req;
     struct fsm_url_request req_info;
     struct fsm_policy_session *mgr;
-    struct fsm_policy_reply *policy_reply;
     struct sockaddr_storage ss_ip;
     struct net_md_flow_key v6_key;
+    struct fsm_session *session;
     struct policy_table *table;
     struct fsm_policy *fpolicy;
     struct fsm_policy_req req;
@@ -1078,7 +1231,7 @@ test_curl_ipv6_flow(void)
     fpolicy = fsm_policy_lookup(spolicy);
     TEST_ASSERT_NOT_NULL(fpolicy);
 
-    mgr   = fsm_policy_get_mgr();
+    mgr = fsm_policy_get_mgr();
     table = ds_tree_find(&mgr->policy_tables, spolicy->policy);
     TEST_ASSERT_NOT_NULL(table);
 
@@ -1098,11 +1251,11 @@ test_curl_ipv6_flow(void)
     TEST_ASSERT_EQUAL_INT(0, rc);
 
     req.device_id = &dev_mac;
-    req.fqdn_req  = &fqdn_req;
+    req.fqdn_req = &fqdn_req;
 
     /* check for IPv6 */
     v6_key.src_ip = CALLOC(1, 16);
-    rc            = inet_pton(AF_INET6, "1:2::3", v6_key.src_ip);
+    rc = inet_pton(AF_INET6, "1:2::3", v6_key.src_ip);
     TEST_ASSERT_EQUAL_INT(1, rc);
 
     v6_key.dst_ip = CALLOC(1, 16);
@@ -1110,19 +1263,19 @@ test_curl_ipv6_flow(void)
     TEST_ASSERT_EQUAL_INT(1, rc);
     v6_key.ip_version = 6;
 
-    acc.key        = &v6_key;
-    acc.direction  = NET_MD_ACC_OUTBOUND_DIR;
+    acc.key = &v6_key;
+    acc.direction = NET_MD_ACC_OUTBOUND_DIR;
     acc.originator = NET_MD_ACC_ORIGINATOR_SRC;
 
-    fqdn_req.numq           = 1;
+    fqdn_req.numq = 1;
 
     req.req_type = FSM_IPV6_REQ;
 
-    req.fqdn_req  = &fqdn_req;
+    req.fqdn_req = &fqdn_req;
     req.device_id = &dev_mac;
-    req.ip_addr   = &ss_ip;
-    req.acc       = &acc;
-    req.url       = fqdn_req.req_info->url;
+    req.ip_addr = &ss_ip;
+    req.acc = &acc;
+    req.url = fqdn_req.req_info->url;
     req.session = session;
 
     policy_reply = fsm_policy_initialize_reply(session);
@@ -1156,7 +1309,7 @@ test_health_stats_report(void)
 
     LOGN("**** starting test %s ***** ", __func__);
     memset(&hs, 0, sizeof(hs));
-    session        = &g_sessions[0];
+    session = &g_sessions[0];
     fsm_gk_session = gatekeeper_lookup_session(session);
     stats = &fsm_gk_session->health_stats;
 
@@ -1259,7 +1412,7 @@ test_connection_timeout(void)
 
     LOGN("**** starting test %s ***** ", __func__);
     memset(&hs, 0, sizeof(hs));
-    session        = &g_sessions[0];
+    session = &g_sessions[0];
     fsm_gk_session = gatekeeper_lookup_session(session);
 
     /* check failure condition, set server_url to invalid entry
@@ -1295,7 +1448,7 @@ test_mcurl_connection_timeout(void)
 
     LOGN("**** starting test %s ***** ", __func__);
     memset(&hs, 0, sizeof(hs));
-    session        = &g_sessions[0];
+    session = &g_sessions[0];
     fsm_gk_session = gatekeeper_lookup_session(session);
     fsm_gk_session->enable_multi_curl = 1;
     test_curl_app();
@@ -1331,7 +1484,7 @@ test_backoff_on_connection_failure(void)
 
     LOGN("**** starting test %s ***** ", __func__);
     memset(&hs, 0, sizeof(hs));
-    session        = &g_sessions[0];
+    session = &g_sessions[0];
     fsm_gk_session = gatekeeper_lookup_session(session);
     stats = &fsm_gk_session->health_stats;
 
@@ -1376,17 +1529,17 @@ test_backoff_on_connection_failure(void)
 void
 test_send_report(void)
 {
+    struct fsm_policy_reply *policy_reply;
     struct schema_FSM_Policy *spolicy;
-    struct fsm_policy *fpolicy;
     struct fqdn_pending_req fqdn_req;
     struct fsm_url_request req_info;
-    struct fsm_policy_req req;
-    os_macaddr_t dev_mac;
-    struct fsm_policy_reply *policy_reply;
     struct fsm_url_reply *url_reply;
     struct fsm_policy_session *mgr;
-    struct policy_table *table;
     struct fsm_session *session;
+    struct fsm_policy *fpolicy;
+    struct policy_table *table;
+    struct fsm_policy_req req;
+    os_macaddr_t dev_mac;
     int len;
 
     if (g_is_connected == false) return;
@@ -1408,17 +1561,17 @@ test_send_report(void)
     /* Validate rule name */
     TEST_ASSERT_EQUAL_STRING(spolicy->name, fpolicy->rule_name);
 
-    mgr           = fsm_policy_get_mgr();
-    table         = ds_tree_find(&mgr->policy_tables, spolicy->policy);
+    mgr = fsm_policy_get_mgr();
+    table = ds_tree_find(&mgr->policy_tables, spolicy->policy);
     req.device_id = &dev_mac;
 
     /* Build the request elements */
     STRSCPY(req_info.url, "www.google.com");
-    req.url                 = "www.google.com";
-    fqdn_req.req_info       = &req_info;
-    fqdn_req.numq           = 1;
-    req.req_type       = FSM_URL_REQ;
-    req.fqdn_req            = &fqdn_req;
+    req.url = "www.google.com";
+    fqdn_req.req_info = &req_info;
+    fqdn_req.numq = 1;
+    req.req_type = FSM_URL_REQ;
+    req.fqdn_req = &fqdn_req;
     req.session = session;
 
     policy_reply = fsm_policy_initialize_reply(session);
@@ -1432,7 +1585,7 @@ test_send_report(void)
     fsm_apply_policies(&req, policy_reply);
 
     url_reply = req_info.reply;
-    len       = strlen(url_reply->reply_info.gk_info.gk_policy);
+    len = strlen(url_reply->reply_info.gk_info.gk_policy);
     TEST_ASSERT_GREATER_THAN(0, url_reply->reply_info.gk_info.category_id);
     TEST_ASSERT_GREATER_THAN(0, url_reply->reply_info.gk_info.confidence_level);
     TEST_ASSERT_GREATER_THAN(0, len);
@@ -1528,7 +1681,7 @@ test_categorization_count(void)
 
     LOGN("**** starting test %s ***** ", __func__);
     memset(&hs, 0, sizeof(hs));
-    session        = &g_sessions[0];
+    session = &g_sessions[0];
     fsm_gk_session = gatekeeper_lookup_session(session);
 
     server_info = &fsm_gk_session->gk_server_info;
@@ -1586,7 +1739,7 @@ test_cache_entry_report(void)
     /* start from clean cache */
     gk_cache_cleanup();
     memset(&hs, 0, sizeof(hs));
-    session        = &g_sessions[0];
+    session = &g_sessions[0];
     fsm_gk_session = gatekeeper_lookup_session(session);
 
     /* check for attribute type app,
@@ -1708,19 +1861,19 @@ test_private_ip(void)
 void
 test_uncategorized_reply(void)
 {
+    struct fsm_policy_reply *policy_reply;
     struct net_md_stats_accumulator acc;
-    struct fsm_session *session;
     struct schema_FSM_Policy *spolicy;
     struct fqdn_pending_req fqdn_req;
     struct fsm_url_request req_info;
     struct fsm_policy_session *mgr;
-    struct fsm_policy_reply *policy_reply;
     struct sockaddr_storage ss_ip;
+    char *ip_str = "192.168.20.1";
+    struct fsm_session *session;
     struct net_md_flow_key key;
     struct policy_table *table;
     struct fsm_policy *fpolicy;
     struct fsm_policy_req req;
-    char *ip_str = "192.168.20.1";
     struct sockaddr_in *in4;
     os_macaddr_t dev_mac;
     struct in_addr in_ip;
@@ -1744,7 +1897,7 @@ test_uncategorized_reply(void)
     fsm_add_policy(spolicy);
     fpolicy = fsm_policy_lookup(spolicy);
 
-    mgr   = fsm_policy_get_mgr();
+    mgr = fsm_policy_get_mgr();
     table = ds_tree_find(&mgr->policy_tables, spolicy->policy);
     TEST_ASSERT_NOT_NULL(table);
 
@@ -1770,22 +1923,22 @@ test_uncategorized_reply(void)
     TEST_ASSERT_EQUAL_INT(0, rc);
 
     req.device_id = &dev_mac;
-    req.fqdn_req  = &fqdn_req;
+    req.fqdn_req = &fqdn_req;
 
-    key.src_ip     = (uint8_t *)&in_ip.s_addr;
-    key.dst_ip     = (uint8_t *)&in_ip.s_addr;
+    key.src_ip = (uint8_t *)&in_ip.s_addr;
+    key.dst_ip = (uint8_t *)&in_ip.s_addr;
     key.ip_version = 4;
-    acc.key        = &key;
-    acc.direction  = NET_MD_ACC_OUTBOUND_DIR;
+    acc.key = &key;
+    acc.direction = NET_MD_ACC_OUTBOUND_DIR;
     acc.originator = NET_MD_ACC_ORIGINATOR_SRC;
     /* Build the request elements */
-    fqdn_req.numq             = 1;
+    fqdn_req.numq = 1;
 
     req.req_type = FSM_IPV4_REQ;
-    req.fqdn_req      = &fqdn_req;
-    req.device_id     = &dev_mac;
-    req.acc           = &acc;
-    req.url           = fqdn_req.req_info->url;
+    req.fqdn_req = &fqdn_req;
+    req.device_id = &dev_mac;
+    req.acc = &acc;
+    req.url = fqdn_req.req_info->url;
     req.session = session;
     req.session = session;
     policy_reply = fsm_policy_initialize_reply(session);
@@ -1800,7 +1953,7 @@ test_uncategorized_reply(void)
     /* Since it is Private IP, cache_ttl will be modified,
      * and cat_unknown_to_service will be set to true
      */
-    TEST_ASSERT_EQUAL_INT(policy_reply->cache_ttl, (60*60*24));
+    TEST_ASSERT_EQUAL_INT((60*60*24), policy_reply->cache_ttl);
     TEST_ASSERT_TRUE(policy_reply->cat_unknown_to_service);
     fsm_policy_free_reply(policy_reply);
     fsm_free_url_reply(fqdn_req.req_info->reply);
@@ -1943,7 +2096,7 @@ test_mcurl_config(void)
         },
     };
 
-    session  = &g_sessions[0];
+    session = &g_sessions[0];
     fsm_gk_session = gatekeeper_lookup_session(session);
     if (fsm_gk_session->enable_multi_curl == false)
     {
@@ -2000,10 +2153,10 @@ run_test_fsm_gk(void)
     if (ret == true) g_is_connected = true;
 
     /* swap the setup/teardown routines */
-    prev_setUp    = g_setUp;
+    prev_setUp = g_setUp;
     prev_tearDown = g_tearDown;
-    g_setUp       = main_setUp;
-    g_tearDown    = main_tearDown;
+    g_setUp = main_setUp;
+    g_tearDown = main_tearDown;
 
     RUN_TEST(test_curl_multi);
     RUN_TEST(test_curl_fqdn);
@@ -2031,8 +2184,9 @@ run_test_fsm_gk(void)
     RUN_TEST(test_validate_fqdn);
     RUN_TEST(test_mcurl_config);
     RUN_TEST(test_mcurl_connection_timeout);
+    RUN_TEST(test_cname_redirect);
 
     /* restore the setup/teardown routines */
-    g_setUp    = prev_setUp;
+    g_setUp = prev_setUp;
     g_tearDown = prev_tearDown;
 }

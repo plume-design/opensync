@@ -35,17 +35,16 @@ source "${FUT_TOPDIR}/shell/lib/lm_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="lm/$(basename "$0")"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+lm/lm_setup.sh [-h] arguments
 Description:
     - Setup device for LM testing
 Arguments:
     -h : show this help message
 Script usage example:
-    ./${tc_name}
+    ./lm/lm_setup.sh
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -61,7 +60,7 @@ if [ -n "${1}" ]; then
 fi
 
 lm_setup_test_environment &&
-    log "$tc_name: lm_setup_test_environment - Success " ||
-    raise "FAIL: lm_setup_test_environment" -l "$tc_name" -ds
+    log "lm/lm_setup.sh: lm_setup_test_environment - Success " ||
+    raise "FAIL: lm_setup_test_environment" -l "lm/lm_setup.sh" -ds
 
 exit 0

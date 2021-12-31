@@ -101,12 +101,12 @@ struct dnsmasq_range
 };
 
 /* IP range comparison function */
-int dnsmasq_range_cmp(void *_a, void *_b)
+int dnsmasq_range_cmp(const void *_a, const void *_b)
 {
     int rc;
 
-    struct dnsmasq_range *a = _a;
-    struct dnsmasq_range *b = _b;
+    const struct dnsmasq_range *a = _a;
+    const struct dnsmasq_range *b = _b;
 
     rc = osn_ip_addr_cmp(&a->dr_range_start, &b->dr_range_start);
     if (rc != 0) return rc;

@@ -83,7 +83,7 @@ struct nm2_mac_iface
 };
 
 static void nm2_mac_refresh(void);
-static int nm2_mac_entry_cmp(void *a, void *b);
+static int nm2_mac_entry_cmp(const void *a, const void *b);
 static bool nm2_mac_update(struct schema_OVS_MAC_Learning *omac, bool oper_status);
 static void nm2_mac_entry_to_schema(struct schema_OVS_MAC_Learning *schema, struct nm2_mac_entry *me);
 static synclist_fn_t nm2_mac_entry_sync_fn;
@@ -362,12 +362,12 @@ void nm2_mac_entry_to_schema(
  * nm2_mac_entry comparator: first sort by bridge name, then by interface name
  * and finally by the MAC address
  */
-int nm2_mac_entry_cmp(void *_a, void *_b)
+int nm2_mac_entry_cmp(const void *_a, const void *_b)
 {
     int rc;
 
-    struct nm2_mac_entry *a = _a;
-    struct nm2_mac_entry *b = _b;
+    const struct nm2_mac_entry *a = _a;
+    const struct nm2_mac_entry *b = _b;
 
     rc = strcmp(a->me_ifname, b->me_ifname);
     if (rc != 0) return rc;

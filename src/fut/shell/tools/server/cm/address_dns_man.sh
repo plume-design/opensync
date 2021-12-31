@@ -34,19 +34,18 @@ source "${fut_topdir}"/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh &> /dev/null
 source "$fut_topdir/lib/rpi_lib.sh"
 
-tc_name="tools/server/cm/$(basename $0)"
 usage()
 {
 cat << EOF
-${tc_name} [-h] ip_address type
+tools/server/cm/address_dns_man.sh [-h] ip_address type
 Options:
     -h  show this help message
 Arguments:
     ip_address=$1 -- IP address to perform action on - (string)(required)
     type=$2 -- type of action to perform: block/unblock - (string)(required)
 Usage:
-   ${tc_name} "192.168.200.11" "block"
-   ${tc_name} "192.168.200.10" "unblock"
+   tools/server/cm/address_dns_man.sh "192.168.200.11" "block"
+   tools/server/cm/address_dns_man.sh "192.168.200.10" "unblock"
 EOF
 exit 1
 }
@@ -62,9 +61,9 @@ if [ -n "${1}" ]; then
 fi
 
 NARGS=2
-[ $# -ne ${NARGS} ] && raise "Requires exactly '${NARGS}' input argument(s)" -l "$tc_name" -arg
+[ $# -ne ${NARGS} ] && raise "Requires exactly '${NARGS}' input argument(s)" -l "tools/server/cm/address_dns_man.sh" -arg
 ip_address=${1}
 type=${2}
 
-log "${tc_name}: Manipulate DNS traffic: ${type} ${ip_address}"
+log "tools/server/cm/address_dns_man.sh: Manipulate DNS traffic: ${type} ${ip_address}"
 address_dns_manipulation "$ip_address" "$type"

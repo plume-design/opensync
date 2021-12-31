@@ -33,9 +33,7 @@ UNIT_DISABLE:= $(if $(CONFIG_LIBGATEKEEPER_MSG), n, y)
 
 UNIT_TYPE := LIB
 
-UNIT_SRC := src/gatekeeper.pb-c.c
-UNIT_SRC += src/gatekeeper_msg.c
-UNIT_SRC += src/gatekeeper_hero_stats.pb-c.c
+UNIT_SRC := src/gatekeeper_msg.c
 UNIT_SRC += src/gatekeeper_hero_stats.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
@@ -53,3 +51,4 @@ UNIT_DEPS += src/lib/osa
 UNIT_DEPS += src/lib/network_metadata
 UNIT_DEPS += src/lib/fsm_policy
 UNIT_DEPS += src/lib/gatekeeper_cache
+UNIT_DEPS += src/lib/protobuf

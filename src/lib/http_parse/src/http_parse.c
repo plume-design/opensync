@@ -171,7 +171,7 @@ static http_parser_settings parser_callbacks =
  * @return 0 if sessions matches
  */
 static int
-http_session_cmp(void *a, void *b)
+http_session_cmp(const void *a, const void *b)
 {
     uintptr_t p_a = (uintptr_t)a;
     uintptr_t p_b = (uintptr_t)b;
@@ -190,10 +190,10 @@ http_session_cmp(void *a, void *b)
  * @return 0 if mac addresses match, an integer otherwise
  */
 static int
-http_dev_id_cmp(void *a, void *b)
+http_dev_id_cmp(const void *a, const void *b)
 {
-    os_macaddr_t *dev_id_a = a;
-    os_macaddr_t *dev_id_b = b;
+    const os_macaddr_t *dev_id_a = a;
+    const os_macaddr_t *dev_id_b = b;
 
     return memcmp(dev_id_a->addr, dev_id_b->addr, sizeof(dev_id_a->addr));
 }
@@ -206,9 +206,9 @@ http_dev_id_cmp(void *a, void *b)
  *
  */
 static int
-http_ua_cmp(void *a, void *b) {
-    char *ua_a = a;
-    char *ua_b = b;
+http_ua_cmp(const void *a, const void *b) {
+    const char *ua_a = a;
+    const char *ua_b = b;
 
     return(strncmp(ua_a, ua_b, MAX_ELEMENT_SIZE));
 }

@@ -92,10 +92,10 @@ gk_cache_get_size(void)
  *         (implying the "order" between the entries)
  */
 static int
-gkc_mac_addr_cmp(void *_a, void *_b)
+gkc_mac_addr_cmp(const void *_a, const void *_b)
 {
-    os_macaddr_t *a = _a;
-    os_macaddr_t *b = _b;
+    const os_macaddr_t *a = _a;
+    const os_macaddr_t *b = _b;
 
     return memcmp(a->addr, b->addr, sizeof(a->addr));
 }
@@ -110,10 +110,10 @@ gkc_mac_addr_cmp(void *_a, void *_b)
  *         (implying the "order" between the entries)
  */
 static int
-gkc_uint64_cmp(void *_a, void *_b)
+gkc_uint64_cmp(const void *_a, const void *_b)
 {
-    uint64_t *a = (uint64_t *)_a;
-    uint64_t *b = (uint64_t *)_b;
+    const uint64_t *a = (const uint64_t *)_a;
+    const uint64_t *b = (const uint64_t *)_b;
 
     if (*a < *b) return -1;
     if (*a > *b) return 1;
@@ -199,10 +199,10 @@ get_attr_key(struct gk_attr_cache_interface *req)
  *         (implying the "order" between the entries)
  */
 int
-gkc_flow_entry_cmp(void *_a, void *_b)
+gkc_flow_entry_cmp(const void *_a, const void *_b)
 {
-    struct ip_flow_cache *key_a = _a;
-    struct ip_flow_cache *key_b = _b;
+    const struct ip_flow_cache *key_a = _a;
+    const struct ip_flow_cache *key_b = _b;
     int ipl;
     int cmp;
 
@@ -315,8 +315,16 @@ gk_add_new_redirect_entry(struct gk_attr_cache_interface *input, struct attr_cac
 
     new_redirect->redirect = in_redirect->redirect;
     new_redirect->redirect_ttl = in_redirect->redirect_ttl;
-    STRSCPY(new_redirect->redirect_ips[0], in_redirect->redirect_ips[0]);
-    STRSCPY(new_redirect->redirect_ips[1], in_redirect->redirect_ips[1]);
+
+    if (in_redirect->redirect_cname != NULL)
+    {
+        new_redirect->redirect_cname = STRDUP(in_redirect->redirect_cname);
+    }
+    else
+    {
+        STRSCPY(new_redirect->redirect_ips[0], in_redirect->redirect_ips[0]);
+        STRSCPY(new_redirect->redirect_ips[1], in_redirect->redirect_ips[1]);
+    }
 }
 
 /**
@@ -1166,9 +1174,27 @@ bool
 gkc_upsert_attribute_entry(struct gk_attr_cache_interface *entry)
 {
     enum gk_cache_request_type attribute_type;
+    char  ipstr[INET6_ADDRSTRLEN] = { 0 };
+    struct sockaddr_in6 *addr_v6;
+    struct sockaddr_in *addr_v4;
     struct attr_cache *attr_entry;
     time_t now;
     bool rc;
+
+    attribute_type = entry->attribute_type;
+    if (entry->attr_name == NULL)
+    {
+        if (attribute_type == GK_CACHE_REQ_TYPE_IPV4)
+        {
+            addr_v4 = (struct sockaddr_in *)entry->ip_addr;
+            inet_ntop(AF_INET, &addr_v4->sin_addr, ipstr, sizeof(ipstr));
+        }
+        else if (attribute_type == GK_CACHE_REQ_TYPE_IPV6)
+        {
+            addr_v6 = (struct sockaddr_in6 *)entry->ip_addr;
+            inet_ntop(AF_INET6, &addr_v6->sin6_addr, ipstr, sizeof(ipstr));
+        }
+    }
 
     /* Fetch the cache entry */
     attr_entry = gkc_fetch_attribute_entry(entry);
@@ -1179,13 +1205,18 @@ gkc_upsert_attribute_entry(struct gk_attr_cache_interface *entry)
         {
             LOGD("%s: Couldn't add ip entry to gatekeeper cache.", __func__);
         }
+        LOGT("%s(): adding %s (attr type %d) ttl (%" PRIu64 ") to cache %s ",
+             __func__,
+             ((entry->attr_name != NULL) ? entry->attr_name : ipstr),
+             attribute_type,
+             entry->cache_ttl,
+             (rc == true) ? "success" : "failed");
         return rc;
     }
 
     /* Update the entry */
     if (entry->action_by_name != FSM_ACTION_NONE)
     {
-        attribute_type = entry->attribute_type;
         if (attribute_type == GK_CACHE_REQ_TYPE_IPV4)
         {
             attr_entry->attr.ipv4->action_by_name = entry->action_by_name;
@@ -1226,6 +1257,12 @@ gkc_upsert_attribute_entry(struct gk_attr_cache_interface *entry)
     }
     /* Leaving the redirecting fields alone for now */
 
+    LOGT("%s(): updating %s (attr type %d) ttl (%" PRIu64 ") to cache %s ",
+         __func__,
+         ((entry->attr_name != NULL) ? entry->attr_name : ipstr),
+         attribute_type,
+         entry->cache_ttl,
+         "success");
     return true;
 }
 
@@ -1494,6 +1531,36 @@ dump_flow_tree(ds_tree_t *tree)
 void
 gkc_print_cache_entries(void)
 {
+    if (LOG_SEVERITY_ENABLED(LOG_SEVERITY_TRACE))
+    {
+        gkc_print_cache_parts(GK_CACHE_MAX_REQ_TYPES);
+    }
+}
+
+#define PRINT_ONE_CACHE(type, field, name, dump) \
+{\
+    if (cache_type == type || cache_type == GK_CACHE_MAX_REQ_TYPES)\
+    {\
+        subtree = &entry->field;\
+        if (!ds_tree_is_empty(subtree))\
+        {\
+            LOGT("\t %s Entries :", name);\
+            dump;\
+        }\
+        continue;\
+    }\
+}
+
+#define PRINT_ATTR_CACHE(type, field, name) \
+    PRINT_ONE_CACHE(type, field, name, dump_attr_tree(subtree, type));
+
+#define PRINT_FLOW_CACHE(type, field, name) \
+    PRINT_ONE_CACHE(type, field, name, dump_flow_tree(subtree));
+
+
+void
+gkc_print_cache_parts(enum gk_cache_request_type cache_type)
+{
     struct per_device_cache *entry;
     struct gk_cache_mgr *mgr;
     ds_tree_t *subtree;
@@ -1517,36 +1584,21 @@ gkc_print_cache_entries(void)
              FMT_os_macaddr_pt(entry->device_mac));
         LOGT("--------------------------------------------------------------------------------------------------");
 
-        subtree = &entry->hostname_tree;
-        LOGT("\t COMBINED Entries : \n");
-        dump_attr_tree(subtree, GK_CACHE_INTERNAL_TYPE_HOSTNAME);
+        PRINT_ATTR_CACHE(GK_CACHE_INTERNAL_TYPE_HOSTNAME, hostname_tree, "COMBINED");
+        PRINT_ATTR_CACHE(GK_CACHE_REQ_TYPE_URL, url_tree, "URL");
+        PRINT_ATTR_CACHE(GK_CACHE_REQ_TYPE_IPV4, ipv4_tree, "IPv4");
+        PRINT_ATTR_CACHE(GK_CACHE_REQ_TYPE_IPV6, ipv6_tree, "IPv6");
+        PRINT_ATTR_CACHE(GK_CACHE_REQ_TYPE_APP, app_tree, "APP Name");
 
-        subtree = &entry->url_tree;
-        LOGT("\t URL Entries : \n");
-        dump_attr_tree(subtree, GK_CACHE_REQ_TYPE_URL);
-
-        subtree = &entry->ipv4_tree;
-        LOGT("\t IPv4 Entries : \n");
-        dump_attr_tree(subtree, GK_CACHE_REQ_TYPE_IPV4);
-
-        subtree = &entry->ipv6_tree;
-        LOGT("\t IPv6 Entries : \n");
-        dump_attr_tree(subtree, GK_CACHE_REQ_TYPE_IPV6);
-
-        subtree = &entry->app_tree;
-        LOGT("\t APP Name Entries : \n");
-        dump_attr_tree(subtree, GK_CACHE_REQ_TYPE_APP);
-
-        subtree = &entry->inbound_tree;
-        LOGT("\t Inbound Entries : \n");
-        dump_flow_tree(subtree);
-
-        subtree = &entry->outbound_tree;
-        LOGT("\t Outbound Entries : \n");
-        dump_flow_tree(subtree);
+        PRINT_FLOW_CACHE(GK_CACHE_REQ_TYPE_INBOUND, inbound_tree, "Inbound Entries");
+        PRINT_FLOW_CACHE(GK_CACHE_REQ_TYPE_OUTBOUND, outbound_tree, "Outbound Entries");
     }
     LOGT("=====END=====");
 }
+
+#undef PRINT_FLOW_CACHE
+#undef PRINT_ATTR_CACHE
+#undef PRINT_ONE_CACHE
 
 void
 clear_gatekeeper_cache(void)

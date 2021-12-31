@@ -39,6 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "network_metadata_report.h"
 
 #define MD_MAX_STRLEN (256)
+#define UPLINK_INTERFACE (10)
 
 enum acc_state
 {
@@ -108,8 +109,8 @@ net_md_lookup_reverse_acc(struct net_md_aggregator *aggr,
 			  struct net_md_stats_accumulator *acc);
 void net_md_free_flow(struct net_md_flow *flow);
 void net_md_free_eth_pair(struct net_md_eth_pair *pair);
-int net_md_eth_cmp(void *a, void *b);
-int net_md_5tuple_cmp(void *a, void *b);
+int net_md_eth_cmp(const void *a, const void *b);
+int net_md_5tuple_cmp(const void *a, const void *b);
 char * net_md_set_str(char *in_str);
 os_ufid_t *net_md_set_ufid(os_ufid_t *in_ufid);
 os_macaddr_t * net_md_set_os_macaddr(os_macaddr_t *in_mac);

@@ -229,6 +229,7 @@ ut_lte_read_modem(void)
     osn_lte_modem_info_t *modem_info;
     char *at_resp;
     lte_chip_info_t chip_info;
+    lte_sim_insertion_status_t sim_status;
     lte_imei_t imei;
     lte_imsi_t imsi;
     lte_iccid_t iccid;
@@ -238,6 +239,7 @@ ut_lte_read_modem(void)
     lte_sim_slot_t sim_slot;
     lte_operator_t operator;
     lte_srv_cell_t srv_cell;
+    lte_srv_cell_wcdma_t srv_cell_wcdma;
     lte_neigh_cell_intra_t neigh_cell_intra;
 
     modem_info = osn_get_modem_info();
@@ -253,6 +255,8 @@ ut_lte_read_modem(void)
         modem_info->modem_present = false;
     }
 
+    modem_info->sim_inserted = true;
+
     char *ati_cmd = "ati";
     at_resp = lte_ut_run_microcom_cmd(ati_cmd);
     if (!at_resp) return -1;
@@ -262,6 +266,16 @@ ut_lte_read_modem(void)
         LOGE("osn_lte_parse_chip_info:failed");
     }
     osn_lte_save_chip_info(&chip_info, modem_info);
+
+    char *qsimstat_cmd = "at+qsimstat?";
+    at_resp = lte_ut_run_microcom_cmd(qsimstat_cmd);
+    if (!at_resp) return -1;
+    res = osn_lte_parse_sim_status(at_resp, &sim_status);
+    if (res)
+    {
+        LOGE("osn_lte_parse_sim_status:failed");
+    }
+    osn_lte_save_sim_status(&sim_status, modem_info);
 
     char *gsn_cmd = "at+gsn";
     at_resp = lte_ut_run_microcom_cmd(gsn_cmd);
@@ -346,12 +360,12 @@ ut_lte_read_modem(void)
     char *srv_cell_cmd = "at+qeng=\\\"servingcell\\\"";
     at_resp = lte_ut_run_microcom_cmd(srv_cell_cmd);
     if (!at_resp) return -1;
-    res = osn_lte_parse_serving_cell(at_resp, &srv_cell);
+    res = osn_lte_parse_serving_cell(at_resp, &srv_cell, &srv_cell_wcdma);
     if (res)
     {
         LOGE("osn_lte_parse_serving_cell:failed");
     }
-    osn_lte_save_serving_cell(&srv_cell, modem_info);
+    osn_lte_save_serving_cell(&srv_cell, &srv_cell_wcdma, modem_info);
 
     char *neigh_cell_cmd = "at+qeng=\\\"neighbourcell\\\"";
     at_resp = lte_ut_run_microcom_cmd(neigh_cell_cmd);

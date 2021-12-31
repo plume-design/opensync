@@ -33,22 +33,22 @@ source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="wm2/$(basename "$0")"
 manager_setup_file="wm2/wm2_setup.sh"
 
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+wm2/wm2_verify_sta_send_csa_msg.sh [-h] arguments
 Description:
     - Script is executed on LEAF device to verify GW sent csa msg on GW channel change
 Arguments:
     -h  show this help message
     \$1  (gw_vif_mac)     : GW VIF mac address that LEAF is connected to : (string)(required)
     \$2  (gw_csa_channel) : Channel that triggered CSA on GW             : (string)(required)
+    \$3  (ht_mode)        : HT mode of the channel                       : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name} <GW_VIF_MAC> <CSA_CHANNEL>
+                 Run: ./wm2/wm2_verify_sta_send_csa_msg.sh <GW_VIF_MAC> <CSA_CHANNEL> <HT_MODE>
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -63,19 +63,16 @@ if [ -n "${1}" ]; then
     esac
 fi
 
-NARGS=2
-[ $# -ne ${NARGS} ] && usage && raise "Requires '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+NARGS=3
+[ $# -ne ${NARGS} ] && usage && raise "Requires '${NARGS}' input argument(s)" -l "wm2/wm2_verify_sta_send_csa_msg.sh" -arg
 gw_vif_mac=${1}
 gw_csa_channel=${2}
+ht_mode=${3}
 
-log_title "$tc_name: WM2 test - Verifying sta_send_csa message for MAC ${gw_vif_mac} to channel ${gw_csa_channel}"
+log_title "wm2/wm2_verify_sta_send_csa_msg.sh: WM2 test - Verifying sta_send_csa message for MAC ${gw_vif_mac} to channel ${gw_csa_channel}/${ht_mode}"
 
-# Example log:
-# Mar 18 10:29:06 WM[19842]: <INFO>    TARGET: wifi0: csa rx to bssid d2:b4:f7:f0:23:26 chan 6 width 0MHz sec 0 cfreq2 0 valid 1 supported 1
-wm_csa_log_grep="$LOGREAD | tail -500 | grep -i 'csa' | grep -i '${gw_vif_mac} chan ${gw_csa_channel}'"
-
-wait_for_function_response 0 "${wm_csa_log_grep}" 10 &&
-    log "$tc_name: sta_send_csa message found in logs - Success" ||
-    raise "FAIL: Failed to find sta_send_csa message in logs" -l "$tc_name" -tc
+check_sta_send_csa_message ${gw_vif_mac} ${gw_csa_channel} ${ht_mode} &&
+    log "wm2/wm2_verify_sta_send_csa_msg.sh: sta_send_csa message found in logs - Success" ||
+    raise "FAIL: Failed to find sta_send_csa message in logs" -l "wm2/wm2_verify_sta_send_csa_msg.sh" -tc
 
 pass

@@ -37,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "json_util.h"
 #include "log.h"
 #include "memutil.h"
+#include "sockaddr_storage.h"
 #include "qm_conn.h"
 #include "target.h"
 #include "unity.h"
@@ -403,26 +404,6 @@ void test_load_unload_plugin(void)
      */
 }
 
-void util_populate_sockaddr(int af, void *ip, struct sockaddr_storage *dst)
-{
-    if (af == AF_INET)
-    {
-        struct sockaddr_in *in4 = (struct sockaddr_in *)dst;
-
-        memset(in4, 0, sizeof(struct sockaddr_in));
-        in4->sin_family = af;
-        memcpy(&in4->sin_addr, ip, sizeof(in4->sin_addr));
-    }
-    else if (af == AF_INET6)
-    {
-        struct sockaddr_in6 *in6 = (struct sockaddr_in6 *)dst;
-
-        memset(in6, 0, sizeof(struct sockaddr_in6));
-        in6->sin6_family = af;
-        memcpy(&in6->sin6_addr, ip, sizeof(in6->sin6_addr));
-    }
-    return;
-}
 
 /**
  * @brief test arp request parsing
@@ -555,7 +536,6 @@ void test_ip_mac_mapping(void)
     struct net_header_parser *net_parser;
     struct ndp_session *n_session;
     struct fsm_session *session;
-    struct sockaddr_storage key;
     struct ndp_parser *parser;
     os_macaddr_t mac_out;
     uint32_t ip_addr;
@@ -588,9 +568,7 @@ void test_ip_mac_mapping(void)
 
     /* fill sockaddr */
     ip_addr = parser->arp.s_ip;
-    memset(&key, 0, sizeof(struct sockaddr_storage));
-    util_populate_sockaddr(AF_INET, &ip_addr, &key);
-    rc_lookup = neigh_table_lookup(&key, &mac_out);
+    rc_lookup = neigh_table_lookup_af(AF_INET, &ip_addr, &mac_out);
 
     /* Validate lookup to the neighbour entry */
     TEST_ASSERT_TRUE(rc_lookup);

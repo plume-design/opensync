@@ -35,17 +35,16 @@ source "${FUT_TOPDIR}/shell/lib/qm_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="qm/$(basename "$0")"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+qm/qm_setup.sh [-h] arguments
 Description:
     - Setup device for QM testing
 Arguments:
     -h : show this help message
 Script usage example:
-    ./${tc_name}
+    ./qm/qm_setup.sh
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -61,10 +60,10 @@ if [ -n "${1}" ]; then
 fi
 
 check_kconfig_option "CONFIG_MANAGER_QM" "y" ||
-    raise "CONFIG_MANAGER_QM != y - QM is not present on the device" -l "${tc_name}" -s
+    raise "CONFIG_MANAGER_QM != y - QM is not present on the device" -l "qm/qm_setup.sh" -s
 
 qm_setup_test_environment &&
-    log "$tc_name: qm_setup_test_environment - Success " ||
-    raise "FAIL: qm_setup_test_environment" -l "$tc_name" -ds
+    log "qm/qm_setup.sh: qm_setup_test_environment - Success " ||
+    raise "FAIL: qm_setup_test_environment" -l "qm/qm_setup.sh" -ds
 
 exit 0

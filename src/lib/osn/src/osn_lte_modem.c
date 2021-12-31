@@ -97,6 +97,18 @@ osn_lte_save_chip_info(lte_chip_info_t *chip_info, osn_lte_modem_info_t *modem_i
 }
 
 int
+osn_lte_parse_sim_status(char *buf, lte_sim_insertion_status_t *sim_status)
+{
+    return 0;
+}
+
+int
+osn_lte_save_sim_status(lte_sim_insertion_status_t *sim_status, osn_lte_modem_info_t *modem_info)
+{
+    return 0;
+}
+
+int
 osn_lte_parse_imei(char *buf, lte_imei_t *imei)
 {
     return 0;
@@ -193,13 +205,12 @@ osn_lte_save_operator(lte_operator_t *operator, osn_lte_modem_info_t *modem_info
 }
 
 int
-osn_lte_parse_serving_cell(char *buf, lte_srv_cell_t *srv_cell)
+osn_lte_parse_serving_cell(char *buf, lte_srv_cell_t *srv_cell, lte_srv_cell_wcdma_t *srv_cell_wcdma)
 {
     return 0;
 }
 
-int
-osn_lte_save_serving_cell(lte_srv_cell_t *srv_cell, osn_lte_modem_info_t *modem_info)
+int osn_lte_save_serving_cell(lte_srv_cell_t *srv_cell, lte_srv_cell_wcdma_t *srv_cell_wcdma, osn_lte_modem_info_t *modem_info)
 {
     return 0;
 }
@@ -229,6 +240,12 @@ osn_lte_save_neigh_cell_inter(lte_neigh_cell_inter_t *neigh_cell_inter, osn_lte_
 
 }
 
+void
+osn_lte_set_bands(char *bands)
+{
+    return;
+}
+
 char *
 osn_lte_run_modem_cmd (const char *cmd)
 {
@@ -255,6 +272,12 @@ osn_lte_set_qmi_mode(void)
 
 void
 osn_lte_set_apn(char *apn)
+{
+    return;
+}
+
+void
+osn_lte_enable_sim_detect(void)
 {
     return;
 }

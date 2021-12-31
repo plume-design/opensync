@@ -61,14 +61,14 @@ void create_hex_dump(const char *fname, const uint8_t *buf, size_t len)
 
     for (i = 0; i < len; i++)
     {
-	 new_line = (i == 0 ? true : ((i % 8) == 0));
-	 if (new_line)
-	 {
-	      if (line_number) fprintf(f, "\n");
-	      fprintf(f, "%06x", line_number);
-	      line_number += 8;
-	 }
-         fprintf(f, " %02x", buf[i]);
+        new_line = (i == 0 ? true : ((i % 8) == 0));
+        if (new_line)
+        {
+            if (line_number) fprintf(f, "\n");
+            fprintf(f, "%06x", line_number);
+            line_number += 8;
+        }
+        fprintf(f, " %02x", buf[i]);
     }
     fprintf(f, "\n");
     fclose(f);
@@ -249,7 +249,7 @@ struct schema_Flow_Service_Manager_Config g_confs[] =
         .other_config_len = 2,
     },
 
-    /* bogus plugin, , idx: 4 */
+    /* bogus plugin, idx: 4 */
     {
         .handler = "fsm_bogus_plugin",
         .plugin = "bogus",
@@ -640,10 +640,10 @@ test_unregister_client(struct fsm_session *dpi_plugin,
 
 
 int
-test_cmp_flow_attributes(void *a, void *b)
+test_cmp_flow_attributes(const void *a, const void *b)
 {
-    char *str_a = a;
-    char *str_b = b;
+    const char *str_a = a;
+    const char *str_b = b;
     int cmp;
 
     cmp = strcmp(str_a, str_b);
@@ -675,11 +675,12 @@ test_13_dso_init(struct fsm_session *session)
 
 
 int
-test_client_callback(struct fsm_session *client, char *attribute, char *value,
-                     struct net_md_stats_accumulator *acc)
+test_client_callback(struct fsm_session *client, const char *attr,
+                     uint8_t type, uint16_t length, const void *value,
+                     struct fsm_dpi_plugin_client_pkt_info *pkt_info)
 {
     LOGI("%s: calling client %s for attribute %s", __func__,
-         client->name, attribute);
+         client->name, attr);
 
     return 0;
 }
@@ -699,7 +700,7 @@ test_14_dso_init(struct fsm_session *session)
 }
 
 
-typedef int (*dso_init)(struct fsm_session *session);;
+typedef int (*dso_init)(struct fsm_session *session);
 
 /**
  * @brief maps function name to actual function
@@ -2095,12 +2096,14 @@ test_1_dpi_plugin_and_client_plugin(void)
     struct schema_Flow_Service_Manager_Config *conf;
     union fsm_dpi_context *dispatcher_dpi_context;
     union fsm_dpi_context *plugin_dpi_context;
+    struct reg_client_session *client_head;
     struct fsm_session *dpi_plugin_client;
     struct fsm_dpi_plugin *plugin_lookup;
     struct fsm_session *dispatcher;
     struct fsm_session *dpi_plugin;
     om_tag_list_entry_t *tag_item;
     struct dpi_client *client;
+    log_severity_t old_log;
     ds_tree_t *dpi_plugins;
     ds_tree_t *tag_values;
     char *attributes_tag;
@@ -2151,6 +2154,10 @@ test_1_dpi_plugin_and_client_plugin(void)
     /* Access the dpi plugin's flow attributes tree */
     attrs = &dpi_plugin->dpi->plugin.dpi_clients;
 
+    /* Makes the internal 'print' visible */
+    old_log = log_severity_get();
+    log_severity_set(LOG_SEVERITY_TRACE);
+
     /* Get the actual tag from its name */
     tag = om_tag_find(attributes_tag);
     TEST_ASSERT_NOT_NULL(tag);
@@ -2159,12 +2166,18 @@ test_1_dpi_plugin_and_client_plugin(void)
     {
         client = ds_tree_find(attrs, tag_item->value);
         TEST_ASSERT_NOT_NULL(client);
-        TEST_ASSERT_NOT_NULL(client->session);
-        TEST_ASSERT_EQUAL(dpi_plugin_client, client->session);
+        TEST_ASSERT_EQUAL(1, client->num_sessions);
+        fsm_print_one_dpi_client(client);
+        /* We are sure there is only one entry, so simply fetch the head */
+        client_head = ds_tree_head(&client->reg_sessions);
+        TEST_ASSERT_EQUAL(dpi_plugin_client, client_head->session);
         dpi_plugin->p_ops->dpi_plugin_ops.notify_client(dpi_plugin,
                                                         tag_item->value,
-                                                        NULL, NULL);
+                                                        0, 0, NULL, NULL);
     }
+
+    /* Restore log level */
+    log_severity_set(old_log);
 
     /* Remove the dpi client session */
     conf = &g_confs[14];
@@ -2208,6 +2221,7 @@ test_2_dpi_plugin_and_client_plugin(void)
     struct schema_Flow_Service_Manager_Config *conf;
     union fsm_dpi_context *dispatcher_dpi_context;
     union fsm_dpi_context *plugin_dpi_context;
+    struct reg_client_session *client_head;
     struct fsm_session *dpi_plugin_client;
     struct fsm_dpi_plugin *plugin_lookup;
     struct fsm_session *dispatcher;
@@ -2215,6 +2229,7 @@ test_2_dpi_plugin_and_client_plugin(void)
     om_tag_list_entry_t *tag_item;
     struct dpi_client *client;
     ds_tree_t *dpi_plugins;
+    log_severity_t old_log;
     ds_tree_t *tag_values;
     char *attributes_tag;
     ds_tree_t *sessions;
@@ -2264,6 +2279,10 @@ test_2_dpi_plugin_and_client_plugin(void)
     /* Access the dpi plugin's flow attributes tree */
     attrs = &dpi_plugin->dpi->plugin.dpi_clients;
 
+    /* Makes the internal 'print' visible */
+    old_log = log_severity_get();
+    log_severity_set(LOG_SEVERITY_TRACE);
+
     /* Get the actual tag from its name */
     tag = om_tag_find(attributes_tag);
     TEST_ASSERT_NOT_NULL(tag);
@@ -2272,12 +2291,19 @@ test_2_dpi_plugin_and_client_plugin(void)
     {
         client = ds_tree_find(attrs, tag_item->value);
         TEST_ASSERT_NOT_NULL(client);
-        TEST_ASSERT_NOT_NULL(client->session);
-        TEST_ASSERT_EQUAL(dpi_plugin_client, client->session);
+        TEST_ASSERT_EQUAL(1, client->num_sessions);
+        fsm_print_one_dpi_client(client);
+
+        /* We are sure there is only one entry, so simply fetch the head */
+        client_head = ds_tree_head(&client->reg_sessions);
+        TEST_ASSERT_EQUAL(dpi_plugin_client, client_head->session);
         dpi_plugin->p_ops->dpi_plugin_ops.notify_client(dpi_plugin,
                                                         tag_item->value,
-                                                        NULL, NULL);
+                                                        0, 0, NULL, NULL);
     }
+
+    /* Restore log level */
+    log_severity_set(old_log);
 
     /* Remove the dpi client session */
     conf = &g_confs[14];
@@ -2293,9 +2319,9 @@ test_tags_added_to_monitor_list(void)
 {
     struct schema_Flow_Service_Manager_Config *conf;
     struct fsm_session *dpi_plugin_client;
+    struct fsm_dpi_client_tags *dpi_tag;
     struct fsm_session *dpi_plugin;
     struct fsm_session *dispatcher;
-    struct fsm_dpi_client_tags *dpi_tag;
     char *attributes_tag;
     ds_tree_t *sessions;
     struct fsm_mgr *mgr;
@@ -2467,7 +2493,7 @@ test_add_new_tag_value(void)
         {
             "foo.http_dev",
             "foo.sni_dev",
-            "foo.new_app", // new entry
+            "foo.new_app", /* new entry */
         },
         .cloud_value_len = 3,
         .cloud_value =
@@ -2502,14 +2528,14 @@ test_del_tag_value(void)
         {
             "foo.http_dev",
             "foo.sni_dev",
-            "foo.app_dev", // added attribute
+            "foo.app_dev", /* added attribute */
         },
         .cloud_value_len = 2,
         .cloud_value =
         {
             "foo.http_cloud",
             "foo.sni_cloud",
-            // "foo.app_cloud",
+            /* "foo.app_cloud", */
         },
     };
 
@@ -2538,14 +2564,14 @@ test_tag_update_value(void)
         {
             "foo.http_dev",
             "foo.sni_dev",
-            "foo.app_dev",    // added attribute
+            "foo.app_dev",    /* added attribute */
         },
         .cloud_value_len = 2,
         .cloud_value =
         {
             "foo.http_cloud",
             "foo.sni_cloud",
-            // "foo.app_cloud", // deleted attribute
+            /* "foo.app_cloud", */ /* deleted attribute */
         },
     };
 
@@ -3529,6 +3555,35 @@ test_13_dpi_dispatcher_icmpv6_req_reply(void)
     TEST_ASSERT_NULL(info);
 }
 
+void
+test_fsm_tap_type_from_str(void)
+{
+    uint32_t retval;
+
+    retval = fsm_tap_type_from_str(NULL);
+    TEST_ASSERT_EQUAL(FSM_TAP_PCAP, retval);
+
+    retval = fsm_tap_type_from_str("");
+    TEST_ASSERT_EQUAL(FSM_TAP_PCAP, retval);
+
+    retval = fsm_tap_type_from_str("fsm_tap_pcap");
+    TEST_ASSERT_EQUAL(FSM_TAP_PCAP, retval);
+
+    retval = fsm_tap_type_from_str("fsm_tap_nfqueues");
+    TEST_ASSERT_EQUAL(FSM_TAP_NFQ, retval);
+
+    retval = fsm_tap_type_from_str("fsm_tap_pcap,fsm_tap_nfqueues");
+    TEST_ASSERT_EQUAL((FSM_TAP_PCAP | FSM_TAP_NFQ), retval);
+
+    retval = fsm_tap_type_from_str("broken");
+    TEST_ASSERT_EQUAL(FSM_TAP_PCAP, retval);
+
+    retval = fsm_tap_type_from_str("tsm_tap_pcap, fsm_tap_nfqueues");
+    TEST_ASSERT_EQUAL(FSM_TAP_PCAP, retval);
+
+    retval = fsm_tap_type_from_str("tsm_tap_pcap ,fsm_tap_nfqueues");
+    TEST_ASSERT_EQUAL(FSM_TAP_NFQ, retval);
+}
 
 /**
  * @brief validate the registration of a dpi plugin
@@ -4449,6 +4504,8 @@ main(int argc, char *argv[])
     RUN_TEST(test_dpi_dispatcher_tcp_http_req_response);
     RUN_TEST(test_dpi_dispatcher_tcp_https_req_response);
     RUN_TEST(test_dpi_dispatcher_udp_https_req_response);
+
+    RUN_TEST(test_fsm_tap_type_from_str);
 
     return UNITY_END();
 }

@@ -80,7 +80,7 @@ struct str_ipair
  * @return the string comparision result
  */
 int
-str_tree_cmp(void *a, void *b);
+str_tree_cmp(const void *a, const void *b);
 
 
 /**

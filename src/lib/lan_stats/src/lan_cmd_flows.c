@@ -59,6 +59,7 @@ lan_stats_collect_flows(lan_stats_instance_t *lan_stats_instance)
         memset(stats, 0, sizeof(*stats));
         LOGD("ovs-dpctl dump line %s", line_buf);
         lan_stats_parse_flows(lan_stats_instance, line_buf);
+        lan_stats_add_uplink_info(lan_stats_instance);
         lan_stats_flows_filter(lan_stats_instance);
         memset(line_buf, 0, sizeof(line_buf));
     }

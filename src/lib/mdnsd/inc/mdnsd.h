@@ -63,7 +63,7 @@ typedef struct mdns_daemon mdns_daemon_t;
 typedef struct mdns_record mdns_record_t;
 
 /* Callback for received record. Data is passed from the register call */
-/* Added by OpenSync 'from' IP address */
+/* Added by Plume 'from' IP address */
 typedef void (*mdnsd_record_received_callback)(const struct resource* r, void* data,
                                                struct sockaddr_storage *from);
 
@@ -155,7 +155,7 @@ void mdnsd_register_receive_callback(mdns_daemon_t *d, mdnsd_record_received_cal
 /**
  * Oncoming message from host (to be cached/processed)
  *
- * Addition by OpenSync: from IP address information
+ * Addition by Plume: from IP address information
  */
 int mdnsd_in(mdns_daemon_t *d, struct message *m, struct sockaddr_storage *from);
 
@@ -166,7 +166,7 @@ int mdnsd_in(mdns_daemon_t *d, struct message *m, struct sockaddr_storage *from)
 int mdnsd_out(mdns_daemon_t *d, struct message *m, struct in_addr *ip, unsigned short *port);
 
 /**
- * returns the max wait-time until mdnsd_out() needs to be called again 
+ * returns the max wait-time until mdnsd_out() needs to be called again
  */
 struct timeval *mdnsd_sleep(mdns_daemon_t *d);
 
@@ -178,7 +178,7 @@ struct timeval *mdnsd_sleep(mdns_daemon_t *d);
  * Register a new query
  *
  * The answer() callback is called whenever one is found/changes/expires
- * (immediate or anytime after, mdns_answer_t valid until ->ttl==0)
+ * (immediate or anytime after, mdns_answer_t valid until ->ttl == 0)
  * either answer returns -1, or another mdnsd_query() with a %NULL answer
  * will remove/unregister this query
  */
@@ -220,7 +220,7 @@ const mdns_answer_t *mdnsd_record_data(const mdns_record_t *r);
 mdns_record_t *mdnsd_unique(mdns_daemon_t *d, const char *host, unsigned short type, unsigned long ttl, void (*conflict)(char *host, int type, void *arg), void *arg);
 
 
-/** 
+/**
  * Create a new shared record
  */
 mdns_record_t *mdnsd_shared(mdns_daemon_t *d, const char *host, unsigned short type, unsigned long ttl);
@@ -268,7 +268,7 @@ int mdnsd_step(mdns_daemon_t *d, int mdns_socket, bool processIn, bool processOu
 void records_clear(mdns_daemon_t *d);
 
 /**
- * Added by OpenSync
+ * Added by Plume
  * Create a new record, or update an existing one.
  */
 mdns_record_t *mdnsd_set_record(mdns_daemon_t *d, int shared, char *host,

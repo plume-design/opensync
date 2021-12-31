@@ -33,11 +33,10 @@ source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="othr/$(basename "$0")"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+othr/othr_verify_gre_iface_wifi_master_state.sh [-h] arguments
 Description:
     - Script verifies wifi_master_state table is populated with GRE interface
 Arguments:
@@ -60,7 +59,7 @@ Arguments:
     # Verify wifi_master_state table contents for GRE interface
     # On DUT: ./fut-base/shell//tests/dm/othr_verify_gre_iface_wifi_master_state.sh  bhaul-ap-24 gre-ifname-100 1562
 Script usage example:
-    ./${tc_name} bhaul-ap-50 gre-ifname-100 1562
+    ./othr/othr_verify_gre_iface_wifi_master_state.sh bhaul-ap-50 gre-ifname-100 1562
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -82,7 +81,7 @@ fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 
 NARGS=3
-[ $# -ne ${NARGS} ] && usage && raise "Requires exactly '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -ne ${NARGS} ] && usage && raise "Requires exactly '${NARGS}' input argument(s)" -l "othr/othr_verify_gre_iface_wifi_master_state.sh" -arg
 bhaul_ap_if_name=${1}
 gre_name=${2}
 gre_mtu=${3}
@@ -90,19 +89,19 @@ gre_mtu=${3}
 remote_inet_addr="1.1.1.1"
 bhaul_ip_assign_scheme="none"
 
-log "$tc_name: - Verify wifi_master_state table is populated with GRE interface"
+log "othr/othr_verify_gre_iface_wifi_master_state.sh: - Verify wifi_master_state table is populated with GRE interface"
 
 ${OVSH} s Wifi_Master_State
 if [ $? -eq 0 ]; then
-    log "$tc_name: Wifi_Master_State table exists"
+    log "othr/othr_verify_gre_iface_wifi_master_state.sh: Wifi_Master_State table exists"
 else
-    raise "FAIL: Wifi_Master_State table does not exist" -l "$tc_name" -tc
+    raise "FAIL: Wifi_Master_State table does not exist" -l "othr/othr_verify_gre_iface_wifi_master_state.sh" -tc
 fi
 
-ap_inet_addr=$(get_ovsdb_entry_value Wifi_Inet_Config inet_addr -w if_name "${bhaul_ap_if_name}" -raw)
+ap_inet_addr=$(get_ovsdb_entry_value Wifi_Inet_Config inet_addr -w if_name "${bhaul_ap_if_name}" -r)
 
 # TESTCASE:
-log "$tc_name: Create GW GRE parent interface"
+log "othr/othr_verify_gre_iface_wifi_master_state.sh: Create GW GRE parent interface"
 create_inet_entry \
     -if_name "${gre_name}" \
     -if_type "gre" \
@@ -113,12 +112,12 @@ create_inet_entry \
     -mtu "${gre_mtu}" \
     -network true \
     -enabled true &&
-        log "$tc_name: Interface ${gre_name} created - Success" ||
-        raise "FAIL: Failed to create interface ${gre_name}" -l "$tc_name" -ds
+        log "othr/othr_verify_gre_iface_wifi_master_state.sh: Interface ${gre_name} created - Success" ||
+        raise "FAIL: Failed to create interface ${gre_name}" -l "othr/othr_verify_gre_iface_wifi_master_state.sh" -ds
 
 check_ovsdb_entry Wifi_Master_State -w if_name ${gre_name} &&
-    log "$tc_name: Wifi_Master_State populated with GRE interface '${gre_name}' - Success" ||
-    raise "FAIL: Wifi_Master_State not populated with GRE interface '${gre_name}'" -l "$tc_name" -tc
+    log "othr/othr_verify_gre_iface_wifi_master_state.sh: Wifi_Master_State populated with GRE interface '${gre_name}' - Success" ||
+    raise "FAIL: Wifi_Master_State not populated with GRE interface '${gre_name}'" -l "othr/othr_verify_gre_iface_wifi_master_state.sh" -tc
 
 pass
 

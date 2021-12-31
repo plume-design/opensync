@@ -31,6 +31,36 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "lnx_lte.h"
 
+/**
+ * Controls IPv6 support for a given network interface.
+ *
+ * @param[in]   if_name if_name is a network interface name for which IPv6
+ *                      support needs to be controlled
+ * @param[cmd]  cmd     Used to Disable(1) or Enable(0) IPv6 support
+ *
+ */
+void lnx_lte_ip6_control(const char *ifname, int cmd)
+{
+    FILE *fp;
+    char ipv6_file[128];
+
+    snprintf(ipv6_file, sizeof(ipv6_file),
+            "/proc/sys/net/ipv6/conf/%s/disable_ipv6", ifname);
+    fp = fopen(ipv6_file, "w");
+    if (fp == NULL)
+    {
+       LOGE( "lte: %s: Error opening the file ",
+                ipv6_file);
+       return;
+    }
+
+    LOGI("%s: IPv6 support for LTE(%s) is  %s", __func__, ifname,
+                    cmd ? "Disabled" : "Enabled");
+    fprintf(fp, "%d", cmd);
+    fclose(fp);
+}
+
+
 bool lnx_lte_init(lnx_lte_t *self, const char *ifname)
 {
     bool res;
@@ -44,7 +74,8 @@ bool lnx_lte_init(lnx_lte_t *self, const char *ifname)
         LOG(ERR, "lte: %s: Interface name too long.", ifname);
         return false;
     }
-
+    /* Disable IPv6 support for LTE interface*/
+    lnx_lte_ip6_control(ifname, 1);
     /*
      * Launch the quectel daemon to make an LTE 'call'
      */

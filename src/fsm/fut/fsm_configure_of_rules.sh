@@ -33,11 +33,10 @@ source "${FUT_TOPDIR}/shell/lib/fsm_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="fsm/$(basename "$0")"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+fsm/fsm_configure_of_rules.sh [-h] arguments
 Description:
     - Script insert rule to Openflow table as a part of fsm plugin configuration.
 
@@ -49,9 +48,9 @@ Arguments:
     \$4 (token)         : used as Openflow token                             : (string)(required)
 
 Script usage example:
-   ./${tc_name} br-home normal,output:3001 udp,tp_dst=53 dev_flow_dns_out
-   ./${tc_name} br-home normal,output:4001 tcp,tcp_dst=80 dev_flow_http_out
-   ./${tc_name} br-home output:5001 udp,tp_dst=53 dev_flow_upnp_out
+   ./fsm/fsm_configure_of_rules.sh br-home normal,output:3001 udp,tp_dst=53 dev_flow_dns_out
+   ./fsm/fsm_configure_of_rules.sh br-home normal,output:4001 tcp,tcp_dst=80 dev_flow_http_out
+   ./fsm/fsm_configure_of_rules.sh br-home output:5001 udp,tp_dst=53 dev_flow_upnp_out
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -85,9 +84,9 @@ client_mac="ab:12:cd:34:ef:56"
 # Construct from input arguments
 of_req_rule="dl_src=${client_mac},${rule}"
 
-log_title "$tc_name: FSM test - Configure Openflow rules"
+log_title "fsm/fsm_configure_of_rules.sh: FSM test - Configure Openflow rules - $rule"
 
-log "$tc_name: Cleaning FSM OVSDB Config table"
+log "fsm/fsm_configure_of_rules.sh: Cleaning FSM OVSDB Config table"
 empty_ovsdb_table Openflow_Config
 
 # Insert rule to Openflow_Config
@@ -98,13 +97,21 @@ insert_ovsdb_entry Openflow_Config \
     -i table 0 \
     -i rule "$of_req_rule" \
     -i token "$token" &&
-        log "$tc_name: Openflow rule inserted - Success" ||
-        raise "FAIL: Failed to insert Openflow rule" -l "$tc_name" -oe
+        log "fsm/fsm_configure_of_rules.sh: Openflow rule inserted - Success" ||
+        raise "FAIL: Failed to insert Openflow rule" -l "fsm/fsm_configure_of_rules.sh" -oe
 
 # Check if rule is applied
-log "$tc_name: Checking if rule is set for $of_req_rule"
+log "fsm/fsm_configure_of_rules.sh: Checking if rule is set for $of_req_rule"
 wait_ovsdb_entry Openflow_State -w token "$token" -is success true &&
-    log "$tc_name: wait_ovsdb_entry - Rule is set - Openflow_State::success is 'true' - Success" ||
-    raise "FAIL: wait_ovsdb_entry - Failed to set rule - Openflow_State::success for '$token' is not 'true'" -l "$tc_name" -tc
+    log "fsm/fsm_configure_of_rules.sh: wait_ovsdb_entry - Rule is set - Openflow_State::success is 'true' - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to set rule - Openflow_State::success for '$token' is not 'true'" -l "fsm/fsm_configure_of_rules.sh" -tc
+
+# Removing entry
+remove_ovsdb_entry Openflow_Config -w bridge "${lan_bridge_if}" &&
+    log "fsm/fsm_configure_of_rules.sh: remove_ovsdb_entry - Removed entry for ${lan_bridge_if} from Openflow_Config - Success" ||
+    raise "FAIL: remove_ovsdb_entry - Failed to remove entry for ${lan_bridge_if} from Openflow_Config" -l "fsm/fsm_configure_of_rules.sh" -oe
+
+empty_ovsdb_table Openflow_Config
+empty_ovsdb_table Openflow_State
 
 pass

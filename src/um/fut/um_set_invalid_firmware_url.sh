@@ -33,12 +33,11 @@ source "${FUT_TOPDIR}/shell/lib/um_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="um/$(basename "$0")"
 manager_setup_file="um/um_setup.sh"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+um/um_set_invalid_firmware_url.sh [-h] arguments
 Description:
     - Script validates AWLAN_Node 'upgrade_status' field proper code change if invalid fw url is provided
 Arguments:
@@ -48,9 +47,9 @@ Arguments:
     \$3 (fw_pass) : used as firmware_pass in AWLAN_Node table                   : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name} <FW-PATH> <FW-URL> <FW-PASS>
+                 Run: ./um/um_set_invalid_firmware_url.sh <FW-PATH> <FW-URL> <FW-PASS>
 Script usage example:
-   ./${tc_name} /tmp/pfirmware http://some_random_url_without_fw_image/fw.img
+   ./um/um_set_invalid_firmware_url.sh /tmp/pfirmware http://some_random_url_without_fw_image/fw.img
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -66,29 +65,28 @@ if [ -n "${1}" ]; then
 fi
 
 NARGS=2
-[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "um/um_set_invalid_firmware_url.sh" -arg
 fw_path=$1
 fw_url=$2
 
 trap '
     fut_info_dump_line
     print_tables AWLAN_Node
-    fut_info_dump_line
     reset_um_triggers $fw_path || true
-    run_setup_if_crashed um || true
+    fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 
-log_title "$tc_name: UM test - Download FW - invalid firmware_url"
+log_title "um/um_set_invalid_firmware_url.sh: UM test - Download FW - invalid firmware_url"
 
-log "$tc_name: Setting firmware_url to $fw_url"
+log "um/um_set_invalid_firmware_url.sh: Setting firmware_url to $fw_url"
 update_ovsdb_entry AWLAN_Node -u firmware_url "$fw_url" &&
-    log "$tc_name: update_ovsdb_entry - AWLAN_Node::firmware_url is $fw_url - Success" ||
-    raise "FAIL: update_ovsdb_entry - AWLAN_Node::firmware_url is not $fw_url" -l "$tc_name" -oe
+    log "um/um_set_invalid_firmware_url.sh: update_ovsdb_entry - AWLAN_Node::firmware_url is $fw_url - Success" ||
+    raise "FAIL: update_ovsdb_entry - AWLAN_Node::firmware_url is not $fw_url" -l "um/um_set_invalid_firmware_url.sh" -oe
 
 fw_fail_code=$(get_um_code "UPG_ERR_DL_FW")
-log "$tc_name: Waiting for AWLAN_Node::upgrade_status to become UPG_ERR_IMG_FAIL ($fw_fail_code)"
+log "um/um_set_invalid_firmware_url.sh: Waiting for AWLAN_Node::upgrade_status to become UPG_ERR_IMG_FAIL ($fw_fail_code)"
 wait_ovsdb_entry AWLAN_Node -is upgrade_status "$fw_fail_code" &&
-    log "$tc_name: wait_ovsdb_entry - AWLAN_Node::upgrade_status is $fw_fail_code - Success" ||
-    raise "FAIL: wait_ovsdb_entry - AWLAN_Node::upgrade_status is not $fw_fail_code" -l "$tc_name" -tc
+    log "um/um_set_invalid_firmware_url.sh: wait_ovsdb_entry - AWLAN_Node::upgrade_status is $fw_fail_code - Success" ||
+    raise "FAIL: wait_ovsdb_entry - AWLAN_Node::upgrade_status is not $fw_fail_code" -l "um/um_set_invalid_firmware_url.sh" -tc
 
 pass

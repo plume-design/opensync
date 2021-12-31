@@ -1,7 +1,7 @@
 {
   "name": "Open_vSwitch",
-  "version": "7.11.294",
-  "cksum": "3442619178 245990",
+  "version": "7.11.306",
+  "cksum": "3210424133 248696",
   "tables": {
     "AWLAN_Node": {
       "columns": {
@@ -3268,7 +3268,7 @@
           "type": {
             "key": {
               "type": "string",
-              "maxLength": 512
+              "maxLength": 10240
             },
             "min": 0,
             "max": 1
@@ -5574,6 +5574,17 @@
             "min": 0,
             "max": 1
           }
+        },
+        "st_endpoint_url": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 128
+            },
+            "min": 0,
+            "max": 1
+          }
         }
       },
       "isRoot": true,
@@ -6407,6 +6418,15 @@
                         "type": "integer",
                         "minInteger": 0
                      }
+                }
+            },
+            "neighbor_list_filter_by_beacon_report": {
+                "type": {
+                    "key": {
+                        "type": "boolean"
+                    },
+                    "min": 0,
+                    "max": 1
                 }
             }
         },
@@ -9226,10 +9246,11 @@
         "mcast_group_exceptions": {
           "type": {
             "key": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 20
             },
             "min": 0,
-            "max": 255
+            "max": 8
           }
         },
         "unknown_mcast_group_behavior": {
@@ -9249,18 +9270,14 @@
         "query_robustness_value": {
           "type": {
             "key": {
-              "type": "integer",
-              "minInteger": 2,
-              "maxInteger": 10
+              "type": "integer"
             }
           }
         },
         "maximum_groups": {
           "type": {
             "key": {
-              "type": "integer",
-              "minInteger": 2,
-              "maxInteger": 5000
+              "type": "integer"
             }
           }
         },
@@ -9287,19 +9304,21 @@
         "proxy_group_exceptions": {
           "type": {
             "key": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 20
             },
             "min": 0,
-            "max": 255
+            "max": 4
           }
         },
         "proxy_allowed_subnets": {
           "type": {
             "key": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 20
             },
             "min": 0,
-            "max": 255
+            "max": 4
           }
         },
         "querier_enabled": {
@@ -9312,27 +9331,21 @@
         "query_interval": {
           "type": {
             "key": {
-              "type": "integer",
-              "minInteger": 1,
-              "maxInteger": 18000
+              "type": "integer"
             }
           }
         },
         "query_response_interval": {
           "type": {
             "key": {
-              "type": "integer",
-                "minInteger": 0,
-                "maxInteger": 25
+              "type": "integer"
             }
           }
         },
         "last_member_query_interval": {
           "type": {
             "key": {
-              "type": "integer",
-              "minInteger": 100,
-              "maxInteger": 25500
+              "type": "integer"
             }
           }
         },
@@ -9347,7 +9360,7 @@
               "maxLength": 64
             },
             "min": 0,
-            "max": 32
+            "max": 16
           }
         }
       },
@@ -9385,10 +9398,11 @@
         "mcast_group_exceptions": {
           "type": {
             "key": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 50
             },
             "min": 0,
-            "max": 255
+            "max": 8
           }
         },
         "unknown_mcast_group_behavior": {
@@ -9408,18 +9422,14 @@
         "query_robustness_value": {
           "type": {
             "key": {
-              "type": "integer",
-              "minInteger": 2,
-              "maxInteger": 10
+              "type": "integer"
             }
           }
         },
         "maximum_groups": {
           "type": {
             "key": {
-              "type": "integer",
-              "minInteger": 2,
-              "maxInteger": 5000
+              "type": "integer"
             }
           }
         },
@@ -9446,19 +9456,21 @@
         "proxy_group_exceptions": {
           "type": {
             "key": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 50
             },
             "min": 0,
-            "max": 255
+            "max": 4
           }
         },
         "proxy_allowed_subnets": {
           "type": {
             "key": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 50
             },
             "min": 0,
-            "max": 255
+            "max": 4
           }
         },
         "querier_enabled": {
@@ -9471,27 +9483,21 @@
         "query_interval": {
           "type": {
             "key": {
-              "type": "integer",
-              "minInteger": 1,
-              "maxInteger": 18000
+              "type": "integer"
             }
           }
         },
         "query_response_interval": {
           "type": {
             "key": {
-              "type": "integer",
-                "minInteger": 0,
-                "maxInteger": 25
+              "type": "integer"
             }
           }
         },
         "last_member_query_interval": {
           "type": {
             "key": {
-              "type": "integer",
-              "minInteger": 100,
-              "maxInteger": 25500
+              "type": "integer"
             }
           }
         },
@@ -9506,7 +9512,7 @@
               "maxLength": 64
             },
             "min": 0,
-            "max": 32
+            "max": 16
           }
         }
       },
@@ -10297,6 +10303,17 @@
             "max": 1
           }
         },
+        "gre_of_port": {
+          "type": {
+            "key": {
+              "type": "integer",
+              "minInteger": 1,
+              "maxInteger": 62279
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
         "gre_endpoint": {
           "type": {
             "key": {
@@ -10531,7 +10548,50 @@
             "max": 1
           }
         },
+        "lte_bands_enable": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 20
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
         "os_persist": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "enable_persist": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "esim_activation_code": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 255
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "esim_download_start": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "esim_profile_activate": {
           "type": {
             "key": {
               "type": "boolean"
@@ -10637,6 +10697,17 @@
             "max": 1
           }
         },
+        "lte_bands_enable": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 20
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
         "modem_present": {
           "type": {
             "key": {
@@ -10688,6 +10759,7 @@
                 [
                   "Removed",
                   "Inserted",
+                  "Bad",
                   "Unknown"
                 ]
               ]
@@ -10748,6 +10820,63 @@
                 ]
               ]
             }
+          }
+        },
+        "enable_persist": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "esim_activation_code": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 255
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "esim_download_start": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "esim_profile_activate": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "esim_download_in_progress": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "esim_download_complete": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "esim_active_profile": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 255
+            },
+            "min": 0,
+            "max": 1
           }
         }
       },
@@ -11007,6 +11136,7 @@
               "enum": [
                 "set",
                 [
+                  "dhcp",
                   "pppoe",
                   "vlan",
                   "static_ipv4"

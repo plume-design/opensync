@@ -115,7 +115,6 @@ int main(int argc, char ** argv)
     nm2_dhcp_option_init();
     nm2_ipv6_routeadv_init();
     nm2_mcast_init();
-    nm2_cmu_init();
 
     ev_run(loop, 0);
 

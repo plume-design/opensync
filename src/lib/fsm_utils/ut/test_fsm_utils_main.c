@@ -60,9 +60,7 @@ main(int argc, char *argv[])
 
     UnityBegin(test_name);
 
-    run_test_fsm_utils();
     run_test_fsm_csum_utils();
 
     return UNITY_END();
 }
-

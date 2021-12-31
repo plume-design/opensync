@@ -148,6 +148,7 @@ bool log_open(char *name, int flags)
     {
         flags |= LOG_OPEN_SYSLOG;
         if (isatty(0)) flags |= LOG_OPEN_STDOUT;
+        if (getenv("INVOCATION_ID")) flags |= LOG_OPEN_JOURNAL;
         flags |= LOG_OPEN_REMOTE;
     }
 
@@ -162,6 +163,15 @@ bool log_open(char *name, int flags)
         logger_stdout_new(&logger_stdout, flags & LOG_OPEN_STDOUT_QUIET);
         log_register_logger(&logger_stdout);
     }
+
+#ifdef CONFIG_LOG_JOURNAL
+    static logger_t logger_journal;
+    if (flags & LOG_OPEN_JOURNAL)
+    {
+        logger_journal_new(&logger_journal);
+        log_register_logger(&logger_journal);
+    }
+#endif
 
 #ifdef CONFIG_LOG_REMOTE
     static logger_t logger_remote;

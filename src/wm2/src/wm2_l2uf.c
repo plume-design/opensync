@@ -158,7 +158,7 @@ wm2_l2uf_io_process(EV_P_ ev_io *io, int revent)
 
     rc = pcap_dispatch(i->pcap, 64, wm2_l2uf_pcap_recv, (u_char *)i);
     if (rc == -1) {
-        LOGW("l2uf: pcap: dispatch failed");
+        LOGI("l2uf: pcap: dispatch failed");
         wm2_l2uf_if_pcap_stop(i);
     }
 }

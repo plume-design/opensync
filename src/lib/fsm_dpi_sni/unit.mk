@@ -24,23 +24,25 @@
 
 ###############################################################################
 #
-# fsm dpi client plugin library processeing urls
+# fsm dpi client plugin library
 #
 ###############################################################################
 UNIT_NAME := fsm_dpi_sni
 
-UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM),n,y)
+UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM), n, y)
 
 # If compiled with clang, assume a native unit test target
 # and build a static library
 ifneq (,$(findstring clang,$(CC)))
-	UNIT_TYPE := LIB
+    UNIT_TYPE := LIB
 else
-	UNIT_TYPE := SHLIB
-	UNIT_DIR := lib
+    UNIT_TYPE := SHLIB
+    UNIT_DIR := lib
 endif
 
 UNIT_SRC := src/fsm_dpi_sni.c
+UNIT_SRC += src/fsm_dpi_adt.c
+UNIT_SRC += src/fsm_dpi_dns.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -Isrc/fsm/inc
@@ -49,10 +51,12 @@ UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
 UNIT_EXPORT_LDFLAGS := -ljansson
 
 UNIT_DEPS := src/lib/const
-UNIT_DEPS += src/lib/log
-UNIT_DEPS += src/lib/network_metadata
+UNIT_DEPS += src/lib/dns_cache
 UNIT_DEPS += src/lib/fsm_policy
+UNIT_DEPS += src/lib/fsm_utils
 UNIT_DEPS += src/lib/gatekeeper_cache
 UNIT_DEPS += src/lib/json_mqtt
+UNIT_DEPS += src/lib/log
+UNIT_DEPS += src/lib/network_metadata
 UNIT_DEPS += src/lib/policy_tags
-UNIT_DEPS += src/lib/fsm_utils
+UNIT_DEPS += src/lib/protobuf

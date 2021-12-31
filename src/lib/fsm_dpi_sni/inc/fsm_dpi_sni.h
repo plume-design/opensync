@@ -28,17 +28,28 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define FSM_DPI_SNI_H_INCLUDED
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <time.h>
 
+#include "ds_tree.h"
 #include "fsm.h"
 #include "fsm_policy.h"
-#include "ds_tree.h"
 #include "network_metadata_report.h"
+
+
+typedef enum
+{
+    FSM_SESSION_TYPE_UNSPECIFIED = 0,
+    FSM_SESSION_TYPE_SNI,
+    FSM_SESSION_TYPE_ADT,
+    FSM_SESSION_TYPE_DNS,
+    FSM_SESSION_TYPE_APP,
+} fsm_dpi_session_type_t;
 
 /**
  * @brief a session, instance of processing state and routines.
  *
- * The session provides an executing instance of the services'
+ * The session provides an executing instance of the services
  * provided by the plugin.
  * It embeds:
  * - a fsm session
@@ -48,10 +59,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 struct fsm_dpi_sni_session
 {
     struct fsm_session *session;
+    fsm_dpi_session_type_t session_type;
     bool initialized;
     time_t timestamp;
     char *included_devices;
     char *excluded_devices;
+    struct fsm_dpi_adt_report_aggregator *adt_aggr;
     ds_tree_node_t session_node;
 };
 
@@ -135,17 +148,37 @@ fsm_dpi_sni_free_session(struct fsm_dpi_sni_session *u_session);
 void
 fsm_dpi_sni_delete_session(struct fsm_session *session);
 
+
 /**
- * @brief process a flow attribute
+ * @brief process a flow attribute (shared processing of `include`, `exclude`,
+ *        as well as initial parameter checks)
  *
  * @param session the fsm session
  * @param attr the attribute flow
- * @param value the attribute flow value
- * @param acc the flow
+ * @param type the value type (RTS_BINARY, RTS_STRING or RTS_NUMBER)
+ * @param length the length in bytes of the value
+ * @param value the value itself
+ * @param packet_info packet details (acc, net_parser)
  */
 int
-fsm_dpi_sni_process_attr(struct fsm_session *session, char *attr, char *value,
-                         struct net_md_stats_accumulator *acc);
+fsm_dpi_generic_process_attr(struct fsm_session *session, const char *attr,
+                             uint8_t type, uint16_t length, const void *value,
+                             struct fsm_dpi_plugin_client_pkt_info *pkt_info);
+
+/**
+ * @brief process an SNI flow attribute specifically
+ *
+ * @param session the fsm session
+ * @param attr the attribute flow
+ * @param type the value type (RTS_BINARY, RTS_STRING or RTS_NUMBER)
+ * @param length the length in bytes of the value
+ * @param value the value itself
+ * @param packet_info packet details (acc, net_parser)
+ */
+int
+fsm_dpi_sni_process_attr(struct fsm_session *session, const char *attr,
+                         uint8_t type, uint16_t length, const void *value,
+                         struct fsm_dpi_plugin_client_pkt_info *pkt_info);
 
 struct fsm_dpi_sni_cache *
 fsm_dpi_sni_get_mgr(void);

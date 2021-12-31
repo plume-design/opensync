@@ -35,19 +35,18 @@ source "${FUT_TOPDIR}/shell/lib/dm_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="dm/$(basename "$0")"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+dm/dm_setup.sh [-h] arguments
 Description:
     - Setup device for DM testing
 Arguments:
     -h : show this help message
     \$@ (radio_if_names) : wait for if_name in Wifi_Radio_State table to be present after setup : (string)(optional)
 Script usage example:
-    ./${tc_name}
-    ./${tc_name} wifi0 wifi1
+    ./dm/dm_setup.sh
+    ./dm/dm_setup.sh wifi0 wifi1
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -63,10 +62,10 @@ if [ -n "${1}" ]; then
 fi
 
 check_kconfig_option "CONFIG_MANAGER_DM" "y" ||
-    raise "CONFIG_MANAGER_DM != y - DM is not present on the device" -l "${tc_name}" -s
+    raise "CONFIG_MANAGER_DM != y - DM is not present on the device" -l "dm/dm_setup.sh" -s
 
 dm_setup_test_environment "$@" &&
-    log "$tc_name: dm_setup_test_environment - Success " ||
-    raise "FAIL: dm_setup_test_environment" -l "$tc_name" -ds
+    log "dm/dm_setup.sh: dm_setup_test_environment - Success " ||
+    raise "FAIL: dm_setup_test_environment" -l "dm/dm_setup.sh" -ds
 
 exit 0

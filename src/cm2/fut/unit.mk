@@ -32,6 +32,7 @@ UNIT_TYPE := FUT
 UNIT_DIR := shell/tests/cm2
 
 UNIT_FILE := cm2_setup.sh
+UNIT_FILE += cm2_ble_status_cloud_down.sh
 UNIT_FILE += cm2_ble_status_interface_down.sh
 UNIT_FILE += cm2_ble_status_internet_block.sh
 UNIT_FILE += cm2_cloud_down.sh

@@ -36,6 +36,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "osn_dhcpv6.h"
 #include "osn_dhcp.h"
 #include "osn_upnp.h"
+#include "osn_igmp.h"
+#include "osn_mld.h"
 
 
 /*
@@ -241,8 +243,9 @@ struct __inet
     /* Enable NAT */
     bool        (*in_nat_enable_fn)(inet_t *self, bool enable);
 
-    /* Enable IGMP */
-    bool        (*in_igmp_enable_fn)(inet_t *self, bool enable, int iage, int itsize);
+    /* Multicast */
+    bool        (*in_igmp_update_ref_fn)(inet_t *self, bool increase);
+    bool        (*in_mld_update_ref_fn)(inet_t *self, bool increase);
 
     bool        (*in_upnp_mode_set_fn)(inet_t *self, enum osn_upnp_mode mode);
 
@@ -526,11 +529,18 @@ static inline bool inet_nat_enable(inet_t *self, bool enable)
     return self->in_nat_enable_fn(self, enable);
 }
 
-static inline bool inet_igmp_enable(inet_t *self, int iigmp, int iage, int itsize)
+static inline bool inet_igmp_update_ref(inet_t *self, bool increase)
 {
-    if (self->in_igmp_enable_fn == NULL) return false;
+    if (self->in_igmp_update_ref_fn == NULL) return false;
 
-    return self->in_igmp_enable_fn(self, iigmp, iage, itsize);
+    return self->in_igmp_update_ref_fn(self, increase);
+}
+
+static inline bool inet_mld_update_ref(inet_t *self, bool increase)
+{
+    if (self->in_mld_update_ref_fn == NULL) return false;
+
+    return self->in_mld_update_ref_fn(self, increase);
 }
 
 static inline bool inet_upnp_mode_set(inet_t *self, enum osn_upnp_mode mode)
@@ -926,5 +936,14 @@ static inline bool inet_radv_dnssl(inet_t *self, bool add, char *sl)
 
     return self->in_radv_dnssl_fn(self, add, sl);
 }
+
+bool inet_igmp_set_config(struct osn_igmp_snooping_config *snooping_config,
+                          struct osn_igmp_proxy_config *proxy_config,
+                          struct osn_igmp_querier_config *querier_config,
+                          struct osn_mcast_other_config *other_config);
+bool inet_mld_set_config(struct osn_mld_snooping_config *snooping_config,
+                         struct osn_mld_proxy_config *proxy_config,
+                         struct osn_mld_querier_config *querier_config,
+                         struct osn_mcast_other_config *other_config);
 
 #endif /* INET_H_INCLUDED */

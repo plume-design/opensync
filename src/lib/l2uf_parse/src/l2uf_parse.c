@@ -64,7 +64,7 @@ l2uf_get_mgr(void)
  * @return 0 if sessions matches
  */
 static int
-l2uf_session_cmp(void *a, void *b)
+l2uf_session_cmp(const void *a, const void *b)
 {
     uintptr_t p_a = (uintptr_t)a;
     uintptr_t p_b = (uintptr_t)b;

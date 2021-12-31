@@ -33,22 +33,21 @@ source "${FUT_TOPDIR}/shell/lib/dm_lib.sh"  &> /dev/null
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" &> /dev/null
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" &> /dev/null
 
-tc_name="dm/$(basename "$0")"
 dm_setup_file="dm/dm_setup.sh"
 
 usage()
 {
 cat << usage_string
-${tc_name} [-h]
+tools/device/check_reboot_file_exists.sh [-h]
 Description:
     - Script checks if reboot file exists.
 Arguments:
     -h  show this help message
 Testcase procedure:
     - On DEVICE: Run: ./${dm_setup_file} (see ${dm_setup_file} -h)
-    - On DEVICE: Run: ./${tc_name}
+    - On DEVICE: Run: ./tools/device/check_reboot_file_exists.sh
 Script usage example:
-    ./${tc_name}
+    ./tools/device/check_reboot_file_exists.sh
 usage_string
 }
 
@@ -64,8 +63,18 @@ if [ -n "${1}" ]; then
     esac
 fi
 
+trap '
+fut_ec=$?
+fut_info_dump_line
+if [ $fut_ec -ne 0 ]; then 
+    print_tables Reboot_Status
+fi
+fut_info_dump_line
+exit $fut_ec
+' EXIT SIGINT SIGTERM
+
 check_kconfig_option "CONFIG_OSP_REBOOT_PSTORE" "y" ||
-    raise "CONFIG_OSP_REBOOT_PSTORE != y - Testcase not applicable REBOOT PERSISTENT STORAGE not supported" -l "${tc_name}" -s
+    raise "CONFIG_OSP_REBOOT_PSTORE != y - Testcase not applicable REBOOT PERSISTENT STORAGE not supported" -l "tools/device/check_reboot_file_exists.sh" -s
 
 # Reboot file path is hard coded.
 # There is no option in OpenSync to configure its location.
@@ -73,12 +82,12 @@ reboot_file_path="/var/run/osp_reboot_reason"
 
 if [ -e "$reboot_file_path" ]; then
 {
-    log "${tc_name}: Reboot file exists '$reboot_file_path'"
+    log "tools/device/check_reboot_file_exists.sh: Reboot file exists '$reboot_file_path'"
     exit 0
 }
 else
 {
-    log "${tc_name}: Could not find reboot file at '$reboot_file_path'"
+    log "tools/device/check_reboot_file_exists.sh: Could not find reboot file at '$reboot_file_path'"
     exit 1
 }
 fi

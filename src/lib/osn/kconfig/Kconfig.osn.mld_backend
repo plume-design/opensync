@@ -1,0 +1,13 @@
+config OSN_BACKEND_MLD_NULL
+    bool "Null"
+
+    help
+        Use dummy implementation of MLD networking.
+
+config OSN_BACKEND_MLD_LINUX
+    bool "Linux"
+    select OSN_LINUX_ENABLED
+    select OSN_LINUX_MLD
+    help
+        Use the Linux MLD backend provided by OpenSync
+

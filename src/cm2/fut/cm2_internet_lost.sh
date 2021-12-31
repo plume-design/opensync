@@ -33,7 +33,6 @@ source "${FUT_TOPDIR}/shell/lib/cm2_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="cm2/$(basename "$0")"
 cm_setup_file="cm2/cm2_setup.sh"
 adr_internet_man_file="tools/server/cm/address_internet_man.sh"
 step_1_name="check_counter"
@@ -42,7 +41,7 @@ counter_default=4
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+cm2/cm2_internet_lost.sh [-h] arguments
 Description:
     - Script checks if CM updates Connection_Manager_Uplink field 'unreachable_internet_counter' reaches given value when internet is unreachable
       If the field 'unreachable_internet_counter' doesen't reach given value, test fails
@@ -53,13 +52,13 @@ Arguments:
     \$3 (test_step)                    : used as test step                : (string)(optional) : (default:${step_1_name}) : (${step_1_name}, ${step_2_name})
 Testcase procedure:
     - On DEVICE: Run: ./${cm_setup_file} (see ${cm_setup_file} -h)
-                 Run: ./${tc_name} <WAN_IF_NAME> <UNRCH-CLOUD-COUNTER> ${step_1_name}
+                 Run: ./cm2/cm2_internet_lost.sh <WAN_IF_NAME> <UNRCH-CLOUD-COUNTER> ${step_1_name}
     - On RPI SERVER: Run: ./${adr_internet_man_file} <WAN-IP-ADDRESS> block
-    - On DEVICE: Run: ./${tc_name} <WAN_IF_NAME> <UNRCH-CLOUD-COUNTER> ${step_2_name}
+    - On DEVICE: Run: ./cm2/cm2_internet_lost.sh <WAN_IF_NAME> <UNRCH-CLOUD-COUNTER> ${step_2_name}
     - On RPI SERVER: Run: ./${adr_internet_man_file} <WAN-IP-ADDRESS> unblock
 Script usage example:
-    ./${tc_name} eth0 ${counter_default} ${step_1_name}
-    ./${tc_name} eth0 0 ${step_2_name}
+    ./cm2/cm2_internet_lost.sh eth0 ${counter_default} ${step_1_name}
+    ./cm2/cm2_internet_lost.sh eth0 0 ${step_2_name}
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -75,10 +74,10 @@ if [ -n "${1}" ]; then
 fi
 
 check_kconfig_option "TARGET_CAP_EXTENDER" "y" ||
-    raise "TARGET_CAP_EXTENDER != y - Testcase applicable only for EXTENDER-s" -l "${tc_name}" -s
+    raise "TARGET_CAP_EXTENDER != y - Testcase applicable only for EXTENDER-s" -l "cm2/cm2_internet_lost.sh" -s
 
 NARGS=1
-[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "cm2/cm2_internet_lost.sh" -arg
 if_name=${1}
 unreachable_internet_counter=${2:-${counter_default}}
 test_type=${3:-"${step_1_name}"}
@@ -86,25 +85,24 @@ test_type=${3:-"${step_1_name}"}
 trap '
 fut_info_dump_line
 print_tables Connection_Manager_Uplink
-fut_info_dump_line
 check_restore_management_access || true
-run_setup_if_crashed cm || true
+fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 
-log_title "$tc_name: CM2 test - Internet Lost - $test_type"
+log_title "cm2/cm2_internet_lost.sh: CM2 test - Internet Lost - $test_type"
 
 if [ "$test_type" = "${step_1_name}" ]; then
-    log "$tc_name: Waiting for unreachable_internet_counter to reach $unreachable_internet_counter"
+    log "cm2/cm2_internet_lost.sh: Waiting for unreachable_internet_counter to reach $unreachable_internet_counter"
     wait_ovsdb_entry Connection_Manager_Uplink -w if_name "${if_name}" -is unreachable_internet_counter "$unreachable_internet_counter" &&
-        log "$tc_name: Connection_Manager_Uplink::unreachable_internet_counter is $unreachable_internet_counter - Success" ||
-        raise "FAIL: Connection_Manager_Uplink::unreachable_internet_counter is not $unreachable_internet_counter" -l "$tc_name" -ow
+        log "cm2/cm2_internet_lost.sh: Connection_Manager_Uplink::unreachable_internet_counter is $unreachable_internet_counter - Success" ||
+        raise "FAIL: Connection_Manager_Uplink::unreachable_internet_counter is not $unreachable_internet_counter" -l "cm2/cm2_internet_lost.sh" -ow
 elif [ "$test_type" = "${step_2_name}" ]; then
-    log "$tc_name: Waiting for unreachable_internet_counter to reset to 0"
+    log "cm2/cm2_internet_lost.sh: Waiting for unreachable_internet_counter to reset to 0"
     wait_ovsdb_entry Connection_Manager_Uplink -w if_name "${if_name}" -is unreachable_internet_counter "0" &&
-        log "$tc_name: Connection_Manager_Uplink::unreachable_internet_counter reset to 0 - Success" ||
-        raise "FAIL: Connection_Manager_Uplink::unreachable_internet_counter is not 0" -l "$tc_name" -ow
+        log "cm2/cm2_internet_lost.sh: Connection_Manager_Uplink::unreachable_internet_counter reset to 0 - Success" ||
+        raise "FAIL: Connection_Manager_Uplink::unreachable_internet_counter is not 0" -l "cm2/cm2_internet_lost.sh" -ow
 else
-    raise "FAIL: Wrong test type option" -l "$tc_name" -arg
+    raise "FAIL: Wrong test type option" -l "cm2/cm2_internet_lost.sh" -arg
 fi
 
 pass

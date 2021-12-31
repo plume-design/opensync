@@ -45,6 +45,15 @@ menu "libinet Configuration"
             specific code should define inet_gre_new() function which returns a
             suitable interface object that implements a tunneling protocol.
 
+    config INET_GRE_DF_ENABLE
+        bool "Use ignore-df flag for GRETAP implementation"
+        depends on INET_GRETAP
+        default n
+        help
+            Use the ignore-df flag from iproute2 to disable "do not fragment bit (DF)"
+            option in IPv4 so that packets greater than MTU size will get fragmented.
+            If not selected, GRETAP tunnel should be created without the ignore-df flag.
+
     menuconfig INET_FW_ENABLED
         bool "Firewall"
         default y

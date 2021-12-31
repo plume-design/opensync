@@ -1,0 +1,136 @@
+// Copyright (c) 2015, Plume Design Inc. All rights reserved.
+// 
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
+//    1. Redistributions of source code must retain the above copyright
+//       notice, this list of conditions and the following disclaimer.
+//    2. Redistributions in binary form must reproduce the above copyright
+//       notice, this list of conditions and the following disclaimer in the
+//       documentation and/or other materials provided with the distribution.
+//    3. Neither the name of the Plume Design Inc. nor the
+//       names of its contributors may be used to endorse or promote products
+//       derived from this software without specific prior written permission.
+// 
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+// ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+// WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL Plume Design Inc. BE LIABLE FOR ANY
+// DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+// (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+// LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+// ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+syntax = "proto3";
+
+package gatekeeper.hero_stats;
+
+message HeroObservationPoint {
+  string node_id = 1;
+  string location_id = 2;
+}
+
+// FQDN/SNI/HTTP_HOST stats
+message HeroHostname {
+  string name = 1;
+  uint64 count_fqdn = 2;
+  uint64 count_host = 3;
+  uint64 count_sni = 4;
+}
+
+// HTTP URL stats
+message HeroUrl {
+  string url = 1;
+  uint64 count = 2;
+}
+
+// IPv4 stats
+message HeroIpv4 {
+  uint32 addr_ipv4 = 1;
+  uint64 count = 2;
+}
+
+// IPv6 stats
+message HeroIpv6 {
+  bytes addr_ipv6 = 1;
+  uint64 count = 2;
+}
+
+// App stats
+message HeroApp {
+  string name = 1;
+  uint64 count = 2;
+}
+
+// IPv4 tuple stats
+message HeroIpv4FlowTuple {
+  uint32 source_ipv4 = 1;
+  uint32 destination_ipv4 = 2;
+  uint32 transport = 3;
+  uint32 source_port = 4;
+  uint32 destination_port = 5;
+  uint64 count = 6;
+}
+
+// IPv6 tuple stats
+message HeroIpv6FlowTuple {
+  bytes source_ipv6 = 1;
+  bytes destination_ipv6 = 2;
+  uint32 transport = 3;
+  uint32 source_port = 4;
+  uint32 destination_port = 5;
+  uint64 count = 6;
+}
+
+// Redirect info
+message HeroRedirect {
+  string cname = 1;
+  uint32 ipv4 = 2;
+  bytes ipv6 = 3;
+}
+
+enum HeroActions {
+  HERO_ACTION_UNSPECIFIED = 0;
+  HERO_ACTION_ALLOW = 1;
+  HERO_ACTION_BLOCK = 2;
+  HERO_ACTION_REDIRECT = 3;
+  HERO_ACTION_FORWARD = 4;
+}
+
+enum HeroDirections {
+  HERO_DIR_UNSPECIFIED = 0;
+  HERO_DIR_INBOUND = 1;
+  HERO_DIR_OUTBOUND = 2;
+  HERO_DIR_LAN2LAN = 3;
+}
+
+message HeroStats
+{
+  bytes device_id = 1;
+  HeroActions action = 2;
+  uint32 category_id = 3;
+  string policy = 4;
+  uint64 last_access_ts = 5;
+  HeroDirections direction = 6;
+  HeroHostname hostname = 7;
+  HeroUrl url = 8;
+  HeroIpv4 ipv4 = 9;
+  HeroIpv6 ipv6 = 10;
+  HeroApp app = 11;
+  HeroIpv4FlowTuple ipv4_tuple = 12;
+  HeroIpv6FlowTuple ipv6_tuple = 13;
+  HeroRedirect redirect = 14;
+}
+
+message HeroObservationWindow {
+  uint64 started_at = 1;
+  uint64 ended_at = 2;
+  repeated HeroStats hero_stats = 3;
+}
+
+message HeroReport {
+  uint64 reported_at = 1;
+  HeroObservationPoint observation_point = 2;
+  repeated HeroObservationWindow observation_window = 3;
+}

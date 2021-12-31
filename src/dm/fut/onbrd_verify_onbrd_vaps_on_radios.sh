@@ -33,12 +33,11 @@ source "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="onbrd/$(basename "$0")"
 manager_setup_file="onbrd/onbrd_setup.sh"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+onbrd/onbrd_verify_onbrd_vaps_on_radios.sh [-h] arguments
 Description:
     - Validate onbrd vaps on radios
 Arguments:
@@ -46,11 +45,11 @@ Arguments:
     \$1 (if_name) : used as interface name to check : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name} <IF-NAME>
+                 Run: ./onbrd/onbrd_verify_onbrd_vaps_on_radios.sh <IF-NAME>
 Script usage example:
-   ./${tc_name} onboard-ap-24
-   ./${tc_name} onboard-ap-l50
-   ./${tc_name} onboard-ap-u50
+   ./onbrd/onbrd_verify_onbrd_vaps_on_radios.sh onboard-ap-24
+   ./onbrd/onbrd_verify_onbrd_vaps_on_radios.sh onboard-ap-l50
+   ./onbrd/onbrd_verify_onbrd_vaps_on_radios.sh onboard-ap-u50
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -72,17 +71,17 @@ fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 
 NARGS=1
-[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "onbrd/onbrd_verify_onbrd_vaps_on_radios.sh" -arg
 interface_name=$1
 
-log_title "$tc_name: ONBRD test - Verify onboarding VAPs on all radios"
+log_title "onbrd/onbrd_verify_onbrd_vaps_on_radios.sh: ONBRD test - Verify onboarding VAPs on all radios"
 
-log "$tc_name: Verify onboarding VAPs on all radios, check interface $interface_name"
+log "onbrd/onbrd_verify_onbrd_vaps_on_radios.sh: Verify onboarding VAPs on all radios, check interface $interface_name"
 wait_for_function_response 0 "check_ovsdb_entry Wifi_VIF_State -w if_name $interface_name" &&
-    log "$tc_name: Interface $interface_name exists - Success" ||
-    raise "FAIL: interface $interface_name does not exist" -l "$tc_name" -tc
+    log "onbrd/onbrd_verify_onbrd_vaps_on_radios.sh: Interface $interface_name exists - Success" ||
+    raise "FAIL: interface $interface_name does not exist" -l "onbrd/onbrd_verify_onbrd_vaps_on_radios.sh" -tc
 
-log "$tc_name: Clean created interfaces after test"
+log "onbrd/onbrd_verify_onbrd_vaps_on_radios.sh: Clean created interfaces after test"
 vif_clean
 
 pass

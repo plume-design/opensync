@@ -22,7 +22,7 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-UNIT_NAME := fut_platform_overrides
+UNIT_NAME := fut_ref_library_override
 
 UNIT_DISABLE := n
 
@@ -31,5 +31,7 @@ UNIT_TYPE := FUT
 # Output directory
 UNIT_DIR := shell/lib/override/
 
-UNIT_FILE := bcm_platform_override.sh
-UNIT_FILE += qca_platform_override.sh
+UNIT_FILE := bcm947622dvt_lib_override.sh
+UNIT_FILE += mr8300_ext_lib_override.sh
+UNIT_FILE += pp203x_lib_override.sh
+UNIT_FILE += pp403z_lib_override.sh

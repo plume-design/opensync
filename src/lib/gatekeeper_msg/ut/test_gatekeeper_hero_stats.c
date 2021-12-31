@@ -30,11 +30,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "unity.h"
 #include "memutil.h"
+#include "sockaddr_storage.h"
 
 #include "gatekeeper_msg.h"
 #include "gatekeeper_cache.h"
 #include "gatekeeper_hero_stats.h"
-#include "fsm_utils.h"
 
 #include "test_gatekeeper_msg.h"
 
@@ -600,6 +600,122 @@ test_gk_serialize_cache_add_entries(void)
 }
 
 void
+test_gk_serialize_cache_redirect_cname_entries(void)
+{
+    struct gkc_report_aggregator *aggr;
+    int num_sent_reports;
+
+    aggr = gkhc_get_aggregator();
+
+    gk_cache_init();
+
+    /* use a fairly small size so we have more than one record per
+     * report sent and a few files for the records in the cache
+     */
+    gkhc_set_max_record_size(aggr, 200);
+    gkhc_set_records_per_report(aggr, 2);
+    gkhc_set_number_obs_windows(aggr, 3);
+    gkhc_init_aggregator(aggr, &g_session);
+    /* attach a "fake" sender */
+    aggr->send_report = ut_qm_conn_send_direct;
+
+    gkhc_activate_window(aggr);
+    entry[1]->fqdn_redirect = CALLOC(1, sizeof(struct fqdn_redirect_s));
+    entry[1]->fqdn_redirect->redirect = true;
+    entry[1]->fqdn_redirect->redirect_cname = "safesearch.com";
+
+    /* populate a bunch of entries in the cache */
+    gkc_add_attribute_entry(entry[1]);
+    FREE(entry[1]->fqdn_redirect);
+
+    LOGI("Sleep 2 seconds to create an observation window");
+    sleep(2);
+
+    gkhc_close_window(aggr);
+
+    num_sent_reports = gkhc_build_and_send_report(aggr, "mqtt_channel_name");
+    TEST_ASSERT_EQUAL_INT(1, num_sent_reports);
+
+    /* Cleanup */
+    gk_cache_cleanup();
+    gkhc_release_aggregator(aggr);
+}
+
+void
+test_gk_serialize_cache_redirect_ip_entries(void)
+{
+    struct gkc_report_aggregator *aggr;
+    int num_sent_reports;
+
+    aggr = gkhc_get_aggregator();
+
+    gk_cache_init();
+
+    /* use a fairly small size so we have more than one record per
+     * report sent and a few files for the records in the cache
+     */
+    gkhc_set_max_record_size(aggr, 200);
+    gkhc_set_records_per_report(aggr, 2);
+    gkhc_set_number_obs_windows(aggr, 3);
+    gkhc_init_aggregator(aggr, &g_session);
+    /* attach a "fake" sender */
+    aggr->send_report = ut_qm_conn_send_direct;
+
+    gkhc_activate_window(aggr);
+
+    entry[0]->fqdn_redirect = CALLOC(1, sizeof(struct fqdn_redirect_s));
+    entry[0]->fqdn_redirect->redirect = true;
+    STRSCPY(entry[0]->fqdn_redirect->redirect_ips[0], "1.2.3.4");
+
+    /* populate a bunch of entries in the cache */
+    gkc_add_attribute_entry(entry[0]);
+    FREE(entry[0]->fqdn_redirect);
+
+    entry[1]->fqdn_redirect = CALLOC(1, sizeof(struct fqdn_redirect_s));
+    entry[1]->fqdn_redirect->redirect = true;
+    STRSCPY(entry[1]->fqdn_redirect->redirect_ips[1], "fe80::1");
+
+    /* populate a bunch of entries in the cache */
+    gkc_add_attribute_entry(entry[1]);
+    FREE(entry[1]->fqdn_redirect);
+
+    LOGI("Sleep 2 seconds to create an observation window");
+    sleep(2);
+
+    gkhc_close_window(aggr);
+
+    num_sent_reports = gkhc_build_and_send_report(aggr, "mqtt_channel_name");
+    TEST_ASSERT_EQUAL_INT(1, num_sent_reports);
+
+    /* Simulate a case where no update to any cached entry happens */
+    gkhc_activate_window(aggr);
+    LOGI("Sleep 2 more seconds to create an empty observation window");
+    sleep(2);
+
+    entry[0]->fqdn_redirect = CALLOC(1, sizeof(struct fqdn_redirect_s));
+    entry[0]->fqdn_redirect->redirect = true;
+    STRSCPY(entry[0]->fqdn_redirect->redirect_ips[0], "1.2.3.4");
+    STRSCPY(entry[0]->fqdn_redirect->redirect_ips[1], "fe80::1");
+
+    /* populate a bunch of entries in the cache */
+    gkc_add_attribute_entry(entry[0]);
+    FREE(entry[0]->fqdn_redirect);
+
+    LOGI("Sleep 2 seconds to create an observation window");
+    sleep(2);
+
+    gkhc_close_window(aggr);
+
+    num_sent_reports = gkhc_build_and_send_report(aggr, "mqtt_channel_name");
+    TEST_ASSERT_EQUAL_INT(1, num_sent_reports);
+
+    /* Cleanup */
+    gk_cache_cleanup();
+    gkhc_release_aggregator(aggr);
+}
+
+
+void
 run_test_gatekeeper_hero_stats(void)
 {
     void (*prev_setUp)(void);
@@ -623,6 +739,8 @@ run_test_gatekeeper_hero_stats(void)
     RUN_TEST(test_gk_serialize_cache_no_entries);
     RUN_TEST(test_release_aggregator);
     RUN_TEST(test_gk_serialize_cache_add_entries);
+    RUN_TEST(test_gk_serialize_cache_redirect_cname_entries);
+    RUN_TEST(test_gk_serialize_cache_redirect_ip_entries);
 
     /* restore the setup/teardown routines */
     g_setUp    = prev_setUp;

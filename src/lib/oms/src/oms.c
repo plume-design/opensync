@@ -50,14 +50,14 @@ oms_get_mgr(void)
  * A config entry is uniquely identified by its object id and version
  */
 static int
-oms_config_cmp(void *a, void *b)
+oms_config_cmp(const void *a, const void *b)
 {
-    struct oms_config_entry *id_a;
-    struct oms_config_entry *id_b;
+    const struct oms_config_entry *id_a;
+    const struct oms_config_entry *id_b;
     int ret;
 
-    id_a = (struct oms_config_entry *)a;
-    id_b = (struct oms_config_entry *)b;
+    id_a = (const struct oms_config_entry *)a;
+    id_b = (const struct oms_config_entry *)b;
 
     /* First compare object id */
     ret = strcmp(id_a->object, id_b->object);
@@ -74,14 +74,14 @@ oms_config_cmp(void *a, void *b)
  * A state entry is uniquely identified by its object id and version
  */
 static int
-oms_state_cmp(void *a, void *b)
+oms_state_cmp(const void *a, const void *b)
 {
-    struct oms_state_entry *id_a;
-    struct oms_state_entry *id_b;
+    const struct oms_state_entry *id_a;
+    const struct oms_state_entry *id_b;
     int ret;
 
-    id_a = (struct oms_state_entry *)a;
-    id_b = (struct oms_state_entry *)b;
+    id_a = (const struct oms_state_entry *)a;
+    id_b = (const struct oms_state_entry *)b;
 
     ret = strcmp(id_a->object, id_b->object);
     if (ret != 0) return ret;

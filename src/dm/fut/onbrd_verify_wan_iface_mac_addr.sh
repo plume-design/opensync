@@ -33,12 +33,11 @@ source "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="onbrd/$(basename "$0")"
 manager_setup_file="onbrd/onbrd_setup.sh"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+onbrd/onbrd_verify_wan_iface_mac_addr.sh [-h] arguments
 Description:
     - Verify if WAN interface in Wifi_Inet_State has MAC address matching the system.
       If script is used without parameter it is for for WANO enabled devices and would
@@ -50,13 +49,13 @@ Arguments:
     \$1 (if_name) : used as WAN interface name to check : (string)(optional)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name}
+                 Run: ./onbrd/onbrd_verify_wan_iface_mac_addr.sh
     or (no WANO)
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name} [<WAN_INTERFACE>]
+                 Run: ./onbrd/onbrd_verify_wan_iface_mac_addr.sh [<WAN_INTERFACE>]
 Script usage example:
-   ./${tc_name}
-   ./${tc_name} br-wan
+   ./onbrd/onbrd_verify_wan_iface_mac_addr.sh
+   ./onbrd/onbrd_verify_wan_iface_mac_addr.sh br-wan
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -78,31 +77,31 @@ print_tables Connection_Manager_Uplink Wifi_Inet_State
 fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 
-log_title "$tc_name: ONBRD test - Verify if WAN interface in Wifi_Inet_State has MAC address matching the system"
+log_title "onbrd/onbrd_verify_wan_iface_mac_addr.sh: ONBRD test - Verify if WAN interface in Wifi_Inet_State has MAC address matching the system"
 
 NARGS=1
 if [ $# -eq 0 ]; then
     print_tables Connection_Manager_Uplink
     wan_interface=$(get_wan_uplink_if_name)
     if [ -z "$wan_interface" ]; then
-       raise "FAIL: Could not auto-determine WAN interface from Connection_Manager_Uplink" -l "$tc_name" -tc
+       raise "FAIL: Could not auto-determine WAN interface from Connection_Manager_Uplink" -l "onbrd/onbrd_verify_wan_iface_mac_addr.sh" -tc
     fi
 elif [ $# -eq ${NARGS} ]; then
     wan_interface=${1}
 elif [ $# -gt ${NARGS} ]; then
     usage
-    raise "Requires at most '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+    raise "Requires at most '${NARGS}' input argument(s)" -l "onbrd/onbrd_verify_wan_iface_mac_addr.sh" -arg
 fi
 
 # shellcheck disable=SC2060
 mac_address=$(get_radio_mac_from_system "$wan_interface" | tr [A-Z] [a-z])
 if [ -z "$mac_address" ]; then
-    raise "FAIL: Could not determine MAC for WAN interface '$wan_interface' from system" -l "$tc_name" -tc
+    raise "FAIL: Could not determine MAC for WAN interface '$wan_interface' from system" -l "onbrd/onbrd_verify_wan_iface_mac_addr.sh" -tc
 fi
 
-log "$tc_name: Verify used WAN interface '$wan_interface' MAC address equals '$mac_address'"
+log "onbrd/onbrd_verify_wan_iface_mac_addr.sh: Verify used WAN interface '$wan_interface' MAC address equals '$mac_address'"
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$wan_interface" -is hwaddr "$mac_address" &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_State '$wan_interface' hwaddr is equal to '$mac_address' - Success" ||
-    raise "FAIL: wait_ovsdb_entry - Wifi_Inet_State '$wan_interface' hwaddr is NOT equal to '$mac_address'" -l "$tc_name" -tc
+    log "onbrd/onbrd_verify_wan_iface_mac_addr.sh: wait_ovsdb_entry - Wifi_Inet_State '$wan_interface' hwaddr is equal to '$mac_address' - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Wifi_Inet_State '$wan_interface' hwaddr is NOT equal to '$mac_address'" -l "onbrd/onbrd_verify_wan_iface_mac_addr.sh" -tc
 
 pass

@@ -79,18 +79,6 @@ static bool nm2_inet_interface_set(
         struct nm2_iface *piface,
         const struct schema_Wifi_Inet_Config *pconfig);
 
-static bool nm2_inet_igmp_set(
-        struct nm2_iface *piface,
-        const struct schema_Wifi_Inet_Config *pconfig);
-
-static bool nm2_inet_igmp_proxy_set(
-        struct nm2_iface *piface,
-        const struct schema_Wifi_Inet_Config *pconfig);
-
-static bool nm2_inet_mld_proxy_set(
-        struct nm2_iface *piface,
-        const struct schema_Wifi_Inet_Config *pconfig);
-
 static bool nm2_inet_ip_assign_scheme_set(
         struct nm2_iface *piface,
         const struct schema_Wifi_Inet_Config *pconfig);
@@ -177,52 +165,6 @@ void nm2_inet_config_init(void)
     return;
 }
 
-/* Util function to get snooping enabled interfaces */
-bool nm2_inet_util_get_snooping_intfs(target_mcproxy_params_t *proxy_params)
-{
-    struct schema_Wifi_Inet_Config    inet_conf;
-    json_t                           *jrows;
-    json_t                           *where;
-    int                               cnt = 0;
-    int                               i = 0;
-    pjs_errmsg_t                      perr;
-
-    where = ovsdb_tran_cond(OCLM_BOOL, "igmp", OFUNC_EQ, "true");
-    if (!where)
-        return false;
-
-    jrows = ovsdb_sync_select_where(SCHEMA_TABLE(Wifi_Inet_Config), where);
-    if(!jrows)
-    {
-        json_decref(where);
-        return false;
-    }
-    cnt = json_array_size(jrows);
-    if(!cnt)
-    {
-        json_decref(jrows);
-        return false;
-    }
-
-   proxy_params->dwnstrm_ifs = (ifname *)CALLOC(cnt, sizeof(proxy_params->dwnstrm_ifs[0]));
-
-    for (i = 0; i < cnt; i++)
-    {
-        if(!schema_Wifi_Inet_Config_from_json(&inet_conf, json_array_get(jrows, i),
-                                    false, perr))
-        {
-            LOGE("Unable to parse Wifi_Inet_Config column: %s", perr);
-            json_decref(jrows);
-            return false;
-        }
-        strscpy(proxy_params->dwnstrm_ifs[i], inet_conf.if_name, sizeof(ifname));
-        memset(&inet_conf, 0, sizeof(inet_conf));
-    }
-    json_decref(jrows);
-    proxy_params->num_dwnstrifs = cnt;
-    return true;
-}
-
 
 /*
  * ===========================================================================
@@ -240,7 +182,6 @@ bool nm2_inet_config_set(struct nm2_iface *piface, struct schema_Wifi_Inet_Confi
     nm2_inet_copy(piface, iconf);
 
     retval &= nm2_inet_interface_set(piface, iconf);
-    retval &= nm2_inet_igmp_set(piface, iconf);
     retval &= nm2_inet_ip_assign_scheme_set(piface, iconf);
     retval &= nm2_inet_upnp_set(piface, iconf);
     retval &= nm2_inet_static_set(piface, iconf);
@@ -252,8 +193,6 @@ bool nm2_inet_config_set(struct nm2_iface *piface, struct schema_Wifi_Inet_Confi
     retval &= nm2_inet_vlan_set(piface, iconf);
     retval &= nm2_inet_vlan_egress_qos_map_set(piface, iconf);
     retval &= nm2_inet_credential_set(piface, iconf);
-    retval &= nm2_inet_igmp_proxy_set(piface, iconf);
-    retval &= nm2_inet_mld_proxy_set(piface, iconf);
 
     return retval;
 }
@@ -327,173 +266,6 @@ bool nm2_inet_interface_set(
 
     return retval;
 }
-
-
-/* Apply IGMP configuration from schema */
-bool nm2_inet_igmp_set(
-        struct nm2_iface *piface,
-        const struct schema_Wifi_Inet_Config *iconf)
-{
-    char *pr;
-
-    bool is_role_nw_iptv = false;
-    bool is_role_type_eth = false;
-    char role[strlen(iconf->role) + 1];
-    char *prole = role;
-
-    STRSCPY(role, iconf->role);
-    while ((pr = strsep(&prole, ",")) != NULL)
-    {
-        if (strcmp(pr, "nw=iptv") == 0)
-        {
-            is_role_nw_iptv = true;
-            continue;
-        }
-
-        if (strcmp(pr, "if_type=eth") == 0)
-        {
-            is_role_type_eth = true;
-            continue;
-        }
-    }
-
-    target_set_mcast_iptv(piface->if_name, is_role_type_eth && is_role_nw_iptv);
-
-    if (piface->if_type != NM2_IFTYPE_BRIDGE)
-    {
-        return true;
-    }
-
-    int iigmp = iconf->igmp_exists ? iconf->igmp : false;
-    int iage = iconf->igmp_age_exists ? iconf->igmp_age : 300;
-    int itsize = iconf->igmp_tsize_present ? iconf->igmp_tsize: 1024;
-
-    if (!inet_igmp_enable(piface->if_inet, iigmp, iage, itsize))
-    {
-        LOG(WARN, "inet_config: %s (%s): Error enabling IGMP (%d).",
-                piface->if_name,
-                nm2_iftype_tostr(piface->if_type),
-                iconf->igmp_exists && iconf->igmp);
-
-        return false;
-    }
-
-    if (!target_set_igmp_snooping(piface->if_name, iigmp))
-    {
-        LOG(WARN, "inet_config: %s (%s): Error set target IGMP (%d).",
-                piface->if_name,
-                nm2_iftype_tostr(piface->if_type),
-                iconf->igmp_exists && iconf->igmp);
-
-        return false;
-    }
-
-    return true;
-}
-
-/* Apply IGMP Proxy configuration from schema */
-static bool nm2_inet_igmp_proxy_set(
-        struct nm2_iface *piface,
-        const struct schema_Wifi_Inet_Config *pconfig)
-{
-    target_mcproxy_params_t    proxy_params;
-    bool                       rc = false;
-
-    if (pconfig->igmp_proxy_exists != true)
-        return true;
-
-    if (pconfig->igmp_proxy_changed != true)
-        return true;
-    /*
-     * Getting list of snooping enabled interfaces which will be
-     * the downstream interfaces.
-     */
-     memset(&proxy_params, 0, sizeof(target_mcproxy_params_t));
-    if(strcmp(pconfig->igmp_proxy, "disabled") &&
-        !nm2_inet_util_get_snooping_intfs(&proxy_params))
-    {
-        LOGN("inet_config: igmp_proxy :Error getting snooping interfaces.");
-        goto err;
-    }
-
-    // Upstream interface.
-    strscpy(proxy_params.upstrm_if, piface->if_name, sizeof(ifname));
-
-    // Configured protocol version.
-    if (!strcmp(pconfig->igmp_proxy, "disabled"))
-    {
-        proxy_params.protocol = DISABLE_IGMP;
-    }
-    else if (!strcmp(pconfig->igmp_proxy, "IGMPv1"))
-    {
-        proxy_params.protocol = IGMPv1;
-    }
-    else if (!strcmp(pconfig->igmp_proxy, "IGMPv2"))
-    {
-        proxy_params.protocol = IGMPv2;
-    }
-    else if (!strcmp(pconfig->igmp_proxy, "IGMPv3"))
-    {
-        proxy_params.protocol = IGMPv3;
-    }
-
-    if(WARN_ON(target_set_igmp_mcproxy_params(&proxy_params) == rc))
-        goto err;
-    rc = true;
-err:
-    if (proxy_params.num_dwnstrifs) FREE(proxy_params.dwnstrm_ifs);
-    return rc;
-}
-
-static bool nm2_inet_mld_proxy_set(
-        struct nm2_iface *piface,
-        const struct schema_Wifi_Inet_Config *pconfig)
-{
-    target_mcproxy_params_t    proxy_params;
-    bool                       rc = false;
-
-    if (pconfig->mld_proxy_exists != true)
-        return true;
-
-    if (pconfig->mld_proxy_changed != true)
-        return true;
-    /*
-     * Getting list of snooping enabled interfaces which will be
-     * the downstream interfaces for mcproxy.
-     */
-    memset(&proxy_params, 0, sizeof(target_mcproxy_params_t));
-    if(strcmp(pconfig->mld_proxy, "disabled") &&
-        !nm2_inet_util_get_snooping_intfs(&proxy_params))
-    {
-        LOGN("inet_config: mld_proxy :Error getting snooping interfaces.");
-        goto err;
-    }
-
-    // Upstream interface.
-    strscpy(proxy_params.upstrm_if, piface->if_name, sizeof(ifname));
-
-    // Configured protocol version.
-    if (!strcmp(pconfig->mld_proxy, "disabled"))
-    {
-        proxy_params.protocol = DISABLE_MLD;
-    }
-    else if (!strcmp(pconfig->mld_proxy, "MLDv1"))
-    {
-        proxy_params.protocol = MLDv1;
-    }
-    else if (!strcmp(pconfig->mld_proxy, "MLDv2"))
-    {
-        proxy_params.protocol = MLDv2;
-    }
-
-    if(WARN_ON(target_set_mld_mcproxy_params(&proxy_params) == rc))
-        goto err;
-    rc = true;
-err:
-    if (proxy_params.num_dwnstrifs) FREE(proxy_params.dwnstrm_ifs);
-    return rc;
-}
-
 
 static void nm2_inet_dhcp_req_options_set(
         struct nm2_iface *piface,
@@ -966,11 +738,10 @@ bool nm2_inet_ip4tunnel_set(
     osn_ip_addr_t remote_addr = OSN_IP_ADDR_INIT;
     osn_mac_addr_t remote_mac = OSN_MAC_ADDR_INIT;
 
+    // support only GRE tunnel types
     if (piface->if_type != NM2_IFTYPE_GRE)
     {
-        LOG(WARN, "inet_config: ipv4 %s: if_type %d not expected != %d",
-                piface->if_name, piface->if_type, NM2_IFTYPE_GRE );
-        return retval;
+        return true;
     }
 
     if (iconf->gre_ifname_exists)
@@ -1052,11 +823,10 @@ bool nm2_inet_ip6tunnel_set(
     osn_ip6_addr_t remote_addr = OSN_IP6_ADDR_INIT;
     osn_mac_addr_t remote_mac = OSN_MAC_ADDR_INIT;
 
+    // support only GRE tunnel types
     if (piface->if_type != NM2_IFTYPE_GRE6)
     {
-        LOG(WARN, "inet_config: ipv6 %s: if_type %d not expected != %d",
-                piface->if_name, piface->if_type, NM2_IFTYPE_GRE );
-        return retval;
+        return true;
     }
 
     if (iconf->gre_ifname_exists)
@@ -1322,6 +1092,7 @@ void callback_Wifi_Inet_Config(
     {
         case OVSDB_UPDATE_NEW:
             piface = nm2_add_inet_conf(iconf);
+            nm2_mcast_init_ifc(piface);
             break;
         case OVSDB_UPDATE_DEL:
             nm2_del_inet_conf(old_rec);

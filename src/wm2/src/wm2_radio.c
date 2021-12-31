@@ -602,6 +602,7 @@ wm2_vconf_changed(const struct schema_Wifi_VIF_Config *conf,
     CMP(CHANGED_STR, dpp_csign_hex);
     CMP(CHANGED_INT, min_rssi);
     CMP(CHANGED_INT, max_sta);
+    CMP(CHANGED_STR, airtime_precedence);
     if (changed)
         LOGD("%s: changed (forced=%d)", conf->if_name, changedf->_uuid);
 

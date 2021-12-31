@@ -169,7 +169,7 @@ bool osn_ip_addr_from_sockaddr(osn_ip_addr_t *out, const struct sockaddr *in);
  * if @p a is found, respectively, to be less than, to match, or be
  * greater than @p b.
  */
-int osn_ip_addr_cmp(void *a, void *b);
+int osn_ip_addr_cmp(const void *a, const void *b);
 
 /**
  * Strip the non-subnet part of an IP address. For example:
@@ -351,7 +351,7 @@ bool osn_ip6_addr_from_str(osn_ip6_addr_t *out, const char *str);
  * if @p a is found, respectively, to be less than, to match, or be
  * greater than @p b.
  */
-int osn_ip6_addr_cmp(void *a, void *b);
+int osn_ip6_addr_cmp(const void *a, const void *b);
 
 /**
  * Comparator for @ref osn_ip6_addr_t structures. This version ignores the
@@ -365,7 +365,7 @@ int osn_ip6_addr_cmp(void *a, void *b);
  * if @p a is found, respectively, to be less than, to match, or be
  * greater than @p b.
  */
-int osn_ip6_addr_nolft_cmp(void *_a, void *_b);
+int osn_ip6_addr_nolft_cmp(const void *_a, const void *_b);
 
 /**
  * Detect the IPv6 address type.
@@ -467,7 +467,7 @@ bool osn_mac_addr_from_str(osn_mac_addr_t *out, const char *str);
  * if @p a is found, respectively, to be less than, to match, or be
  * greater than @p b.
  */
-int osn_mac_addr_cmp(void *_a, void *_b);
+int osn_mac_addr_cmp(const void *_a, const void *_b);
 
 /** @} OSN_COMMON_osn_mac_addr_t */
 

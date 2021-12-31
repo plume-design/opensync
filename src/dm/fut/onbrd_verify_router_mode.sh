@@ -33,13 +33,12 @@ source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="onbrd/$(basename "$0")"
 manager_setup_file="onbrd/onbrd_setup.sh"
 
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+onbrd/onbrd_verify_router_mode.sh [-h] arguments
 Description:
     - Validate device router mode settings
 Arguments:
@@ -50,10 +49,10 @@ Arguments:
     \$4 (dhcp_end_pool)   : End of DHCP pool in Wifi_Inet_Config                  : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name} <BR-WAN> <BR-HOME> <START-POOL> <END-POOL>
+                 Run: ./onbrd/onbrd_verify_router_mode.sh <BR-WAN> <BR-HOME> <START-POOL> <END-POOL>
 Script usage example:
-   ./${tc_name} eth0 br-home 10.10.10.20 10.10.10.50
-   ./${tc_name} br-wan br-home 10.10.10.20 10.10.10.50
+   ./onbrd/onbrd_verify_router_mode.sh eth0 br-home 10.10.10.20 10.10.10.50
+   ./onbrd/onbrd_verify_router_mode.sh br-wan br-home 10.10.10.20 10.10.10.50
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -69,11 +68,8 @@ if [ -n "${1}" ]; then
 fi
 
 
-check_kconfig_option "TARGET_CAP_EXTENDER" "y" ||
-    raise "TARGET_CAP_EXTENDER != y - Testcase applicable only for EXTENDER-s" -l "${tc_name}" -s
-
 NARGS=4
-[ $# -ne ${NARGS} ] && usage && raise "Requires exactly '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -ne ${NARGS} ] && usage && raise "Requires exactly '${NARGS}' input argument(s)" -l "onbrd/onbrd_verify_router_mode.sh" -arg
 wan_iface=${1}
 lan_bridge=${2}
 dhcp_start_pool=${3}
@@ -86,55 +82,55 @@ print_tables Wifi_Inet_State
 fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 
-log_title "$tc_name: ONBRD test - Verify router mode settings applied"
+log_title "onbrd/onbrd_verify_router_mode.sh: ONBRD test - Verify router mode settings applied"
 
 # WAN bridge section
-log "$tc_name: Check if interface '$wan_iface' is UP"
+log "onbrd/onbrd_verify_router_mode.sh: Check if interface '$wan_iface' is UP"
 wait_for_function_response 0 "get_eth_interface_is_up $wan_iface" &&
-    log "$tc_name: Interface '$wan_iface' is UP - Success" ||
-    raise "FAIL: Interface '$wan_iface' is DOWN, should be UP" -l "$tc_name" -ds
+    log "onbrd/onbrd_verify_router_mode.sh: Interface '$wan_iface' is UP - Success" ||
+    raise "FAIL: Interface '$wan_iface' is DOWN, should be UP" -l "onbrd/onbrd_verify_router_mode.sh" -ds
 
 # Check if DHCP client is running on WAN bridge
-log "$tc_name: Check if DHCP client is running on WAN bridge - '$wan_iface'"
+log "onbrd/onbrd_verify_router_mode.sh: Check if DHCP client is running on WAN bridge - '$wan_iface'"
 wait_for_function_response 0 "check_pid_udhcp $wan_iface" &&
-    log "$tc_name: check_pid_udhcp '$wan_iface' - PID found, DHCP client running - Success" ||
-    raise "FAIL: check_pid_udhcp '$wan_iface' - PID not found, DHCP client is not running" -l "$tc_name" -tc
+    log "onbrd/onbrd_verify_router_mode.sh: check_pid_udhcp '$wan_iface' - PID found, DHCP client running - Success" ||
+    raise "FAIL: check_pid_udhcp '$wan_iface' - PID not found, DHCP client is not running" -l "onbrd/onbrd_verify_router_mode.sh" -tc
 
-log "$tc_name: Setting Wifi_Inet_Config::NAT to true on '$wan_iface'"
+log "onbrd/onbrd_verify_router_mode.sh: Setting Wifi_Inet_Config::NAT to true on '$wan_iface'"
 update_ovsdb_entry Wifi_Inet_Config -w if_name "$wan_iface" -u NAT true &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config::NAT is 'true' - Success" ||
-    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config::NAT is not 'true'" -l "$tc_name" -oe
+    log "onbrd/onbrd_verify_router_mode.sh: update_ovsdb_entry - Wifi_Inet_Config::NAT is 'true' - Success" ||
+    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config::NAT is not 'true'" -l "onbrd/onbrd_verify_router_mode.sh" -oe
 
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$wan_iface" -is NAT true &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::NAT is 'true' - Success" ||
-    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::NAT is not 'true'" -l "$tc_name" -tc
+    log "onbrd/onbrd_verify_router_mode.sh: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::NAT is 'true' - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::NAT is not 'true'" -l "onbrd/onbrd_verify_router_mode.sh" -tc
 
 # LAN bridge section
-log "$tc_name: Setting DHCP range on $lan_bridge to '$dhcp_start_pool' '$dhcp_end_pool'"
+log "onbrd/onbrd_verify_router_mode.sh: Setting DHCP range on $lan_bridge to '$dhcp_start_pool' '$dhcp_end_pool'"
 configure_dhcp_server_on_interface "$lan_bridge" "$dhcp_start_pool" "$dhcp_end_pool" &&
-    log "$tc_name: configure_dhcp_server_on_interface - DHCP settings updated - Success" ||
-    raise "FAIL: Cannot update DHCP settings inside CONFIG $wan_iface" -l "$tc_name" -tc
+    log "onbrd/onbrd_verify_router_mode.sh: configure_dhcp_server_on_interface - DHCP settings updated - Success" ||
+    raise "FAIL: Cannot update DHCP settings inside CONFIG $wan_iface" -l "onbrd/onbrd_verify_router_mode.sh" -tc
 
-log "$tc_name: Setting Wifi_Inet_Config::NAT to false"
+log "onbrd/onbrd_verify_router_mode.sh: Setting Wifi_Inet_Config::NAT to false"
 update_ovsdb_entry Wifi_Inet_Config -w if_name "$lan_bridge" -u NAT false &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config::NAT is 'false' - Success" ||
-    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config::NAT is not 'false'" -l "$tc_name" -oe
+    log "onbrd/onbrd_verify_router_mode.sh: update_ovsdb_entry - Wifi_Inet_Config::NAT is 'false' - Success" ||
+    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config::NAT is not 'false'" -l "onbrd/onbrd_verify_router_mode.sh" -oe
 
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$lan_bridge" -is NAT false &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::NAT is 'false' - Success" ||
-    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::NAT is not 'false'" -l "$tc_name" -tc
+    log "onbrd/onbrd_verify_router_mode.sh: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::NAT is 'false' - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::NAT is not 'false'" -l "onbrd/onbrd_verify_router_mode.sh" -tc
 
 update_ovsdb_entry Wifi_Inet_Config -w if_name "$lan_bridge" -u ip_assign_scheme static &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config::ip_assign_scheme is 'static' - Success" ||
-    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config::ip_assign_scheme is not 'static'" -l "$tc_name" -oe
+    log "onbrd/onbrd_verify_router_mode.sh: update_ovsdb_entry - Wifi_Inet_Config::ip_assign_scheme is 'static' - Success" ||
+    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config::ip_assign_scheme is not 'static'" -l "onbrd/onbrd_verify_router_mode.sh" -oe
 
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$lan_bridge" -is ip_assign_scheme static &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::ip_assign_scheme is 'static' - Success" ||
-    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::ip_assign_scheme is not 'static'" -l "$tc_name" -tc
+    log "onbrd/onbrd_verify_router_mode.sh: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::ip_assign_scheme is 'static' - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::ip_assign_scheme is not 'static'" -l "onbrd/onbrd_verify_router_mode.sh" -tc
 
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$lan_bridge" -is "netmask" 0.0.0.0 &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::netmask is 0.0.0.0  - Success" ||
-    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::netmask is not 0.0.0.0" -l "$tc_name" -tc
+    log "onbrd/onbrd_verify_router_mode.sh: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::netmask is 0.0.0.0  - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::netmask is not 0.0.0.0" -l "onbrd/onbrd_verify_router_mode.sh" -tc
 
 print_tables Wifi_Inet_Config Wifi_Inet_State
 

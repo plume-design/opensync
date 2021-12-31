@@ -94,6 +94,7 @@ ltem_init_mgr(struct ev_loop *loop)
     mgr->modem_info = osn_get_modem_info();
 
     osn_lte_set_qmi_mode();
+    osn_lte_enable_sim_detect();
 
     return true;
 }

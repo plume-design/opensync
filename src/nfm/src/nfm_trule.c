@@ -288,7 +288,7 @@ static bool nfm_trule_apply(struct nfm_trule *self, om_action_t type, struct nfm
 	STRSCPY(conf.rule, rule);
 
 	switch (type) {
-	case ADD:
+	case OM_ACTION_ADD:
 		LOGD("[%s] Apply expanded template rule: add '%s'", self->conf.name, rule);
 		errcode = nfm_osfw_add_rule(&conf);
 		if (!errcode) {
@@ -296,7 +296,7 @@ static bool nfm_trule_apply(struct nfm_trule *self, om_action_t type, struct nfm
 		}
 		break;
 
-	case DELETE:
+	case OM_ACTION_DELETE:
 		LOGD("[%s] Apply expanded template rule: remove '%s'", self->conf.name, rule);
 		errcode = nfm_osfw_del_rule(&conf);
 		if (!errcode) {
@@ -334,7 +334,7 @@ static bool nfm_trule_apply_tag(struct nfm_trule *self, om_action_t type,
 
 	if (tdn == 0) {
 		LOGI("[%s] Apply tag for Netfilter template rule: %s system rules from template rule %s",
-				self->conf.name, (type == ADD) ? "Adding" : "Removing",
+				self->conf.name, (type == OM_ACTION_ADD) ? "Adding" : "Removing",
 				ttle->value);
 	}
 
@@ -343,7 +343,7 @@ static bool nfm_trule_apply_tag(struct nfm_trule *self, om_action_t type,
 		filter = tdata->filter;
 	} else {
 		tag = om_tag_find_by_name(ttle->value, (ttle->flags & OM_TLE_FLAG_GROUP) ? true : false);
-		if (tag == NULL && type == DELETE)
+		if (tag == NULL && type == OM_ACTION_DELETE)
 		{
 			/*
 			 * Remove a non-existing tag should result in success -- this can
@@ -462,7 +462,7 @@ static bool nfm_trule_set_tags(struct nfm_trule *self)
 		return false;
 	}
 
-	errcode = nfm_trule_update_tags(self, ADD);
+	errcode = nfm_trule_update_tags(self, OM_ACTION_ADD);
 	if (!errcode) {
 		LOGE("[%s] Set Nefilter template rule: update tags failed", self->conf.name);
 		return false;
@@ -474,7 +474,7 @@ static bool nfm_trule_unset_tags(struct nfm_trule *self)
 {
 	bool errcode = true;
 
-	errcode = nfm_trule_update_tags(self, DELETE);
+	errcode = nfm_trule_update_tags(self, OM_ACTION_DELETE);
 	if (!errcode) {
 		LOGE("[%s] Set Nefilter template rule: update tags failed", self->conf.name);
 		return false;
@@ -679,7 +679,7 @@ bool nfm_trule_on_tag_update(struct nfm_trule *self, om_tag_t *tag, struct ds_tr
 		tdata.filter = NFM_TAG_FILTER_NORMAL;
 		tdata.ignore_err = false;
 		tle = ds_tree_ifirst(&iter, &self->tags);
-		if (!nfm_trule_apply_tag(self, DELETE, tle, &iter, &tdata, 0)) {
+		if (!nfm_trule_apply_tag(self, OM_ACTION_DELETE, tle, &iter, &tdata, 0)) {
 			errcode = false;
 		}
 	}
@@ -692,7 +692,7 @@ bool nfm_trule_on_tag_update(struct nfm_trule *self, om_tag_t *tag, struct ds_tr
 		tdata.filter = NFM_TAG_FILTER_NORMAL;
 		tdata.ignore_err = false;
 		tle = ds_tree_ifirst(&iter, &self->tags);
-		if (!nfm_trule_apply_tag(self, ADD, tle, &iter, &tdata, 0)) {
+		if (!nfm_trule_apply_tag(self, OM_ACTION_ADD, tle, &iter, &tdata, 0)) {
 			errcode = false;
 		}
 	}
@@ -707,7 +707,7 @@ bool nfm_trule_on_tag_update(struct nfm_trule *self, om_tag_t *tag, struct ds_tr
 		/* Some rules may already not exist */
 		tdata.ignore_err = true;
 		tle = ds_tree_ifirst(&iter, &self->tags);
-		if (!nfm_trule_apply_tag(self, DELETE, tle, &iter, &tdata, 0)) {
+		if (!nfm_trule_apply_tag(self, OM_ACTION_DELETE, tle, &iter, &tdata, 0)) {
 			errcode = false;
 		}
 
@@ -718,7 +718,7 @@ bool nfm_trule_on_tag_update(struct nfm_trule *self, om_tag_t *tag, struct ds_tr
 		tdata.filter = NFM_TAG_FILTER_MATCH;
 		tdata.ignore_err = false;
 		tle = ds_tree_ifirst(&iter, &self->tags);
-		if (!nfm_trule_apply_tag(self, ADD, tle, &iter, &tdata, 0)) {
+		if (!nfm_trule_apply_tag(self, OM_ACTION_ADD, tle, &iter, &tdata, 0)) {
 			errcode = false;
 		}
 	}
@@ -846,4 +846,3 @@ bool nfm_trule_modify(const struct schema_Netfilter *conf)
 	}
 	return true;
 }
-

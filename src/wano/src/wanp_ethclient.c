@@ -861,7 +861,7 @@ void wanp_ethclient_module_start(void *data)
      * The side effect of the flood action is that it floods all ports in the
      * bridge.
      */
-    static char ethclient_tap_create[] = _S
+    static char ethclient_tap_create[] = SHELL
     (
         if_brlan="$1";
         if_ethc="$2";
@@ -878,8 +878,8 @@ void wanp_ethclient_module_start(void *data)
     /*
      * Create the packet re-injection interface.
      */
-    if (execsh_log(
-                LOG_SEVERITY_DEBUG,
+    if (EXECSH_LOG(
+                DEBUG,
                 ethclient_tap_create,
                 CONFIG_TARGET_LAN_BRIDGE_NAME,
                 WANP_ETHCLIENT_INJECT_IF) != 0)
@@ -896,7 +896,7 @@ void wanp_ethclient_module_stop(void *data)
 {
     (void)data;
 
-    static char ethclient_tap_delete[] = _S
+    static char ethclient_tap_delete[] = SHELL
     (
         if_brlan="$1";
         if_ethc="$2";
@@ -923,8 +923,8 @@ void wanp_ethclient_module_stop(void *data)
     /*
      * Delete the packet re-injection interface.
      */
-    if (execsh_log(
-                LOG_SEVERITY_DEBUG,
+    if (EXECSH_LOG(
+                DEBUG,
                 ethclient_tap_delete,
                 CONFIG_TARGET_LAN_BRIDGE_NAME,
                 WANP_ETHCLIENT_INJECT_IF) != 0)

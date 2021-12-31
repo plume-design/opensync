@@ -24,24 +24,21 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include <stdlib.h>
-#include <stddef.h>
-#include <time.h>
 #include <errno.h>
-#include <ctype.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include <string.h>
+#include <stdlib.h>
+#include <time.h>
 
-#include "const.h"
 #include "ds_tree.h"
 #include "log.h"
-#include "assert.h"
-#include "ovsdb.h"
-#include "ovsdb_cache.h"
-#include "ovsdb_table.h"
-#include "schema.h"
 #include "memutil.h"
-
+#include "sockaddr_storage.h"
 #include "mdns_plugin.h"
 #include "mdns_records.h"
+
 
 static struct mdns_plugin_mgr
 mgr =
@@ -63,12 +60,12 @@ mdns_get_mgr(void)
  * @return 0 if sessions matches
  */
 static int
-mdns_session_cmp(void *a, void *b)
+mdns_session_cmp(const void *a, const void *b)
 {
     uintptr_t p_a = (uintptr_t)a;
     uintptr_t p_b = (uintptr_t)b;
 
-    if (p_a ==  p_b) return 0;
+    if (p_a == p_b) return 0;
     if (p_a < p_b) return -1;
     return 1;
 }
@@ -154,8 +151,6 @@ mdns_delete_session(struct fsm_session *session)
 
     ds_tree_remove(sessions, md_session);
     mdns_free_session(md_session);
-
-    return;
 }
 
 /**
@@ -179,7 +174,6 @@ mdns_plugin_exit(struct fsm_session *session)
     mdns_records_exit();
 
     mgr->initialized = false;
-    return;
 }
 
 static void
@@ -210,8 +204,6 @@ create_hex_dump(const char *fname, const uint8_t *buf, size_t len)
 
     fprintf(f, "\n");
     fclose(f);
-
-    return;
 }
 
 static void
@@ -234,6 +226,7 @@ mdns_plugin_send_mdns_response(struct mdns_session *m_session)
     while (mdnsd_out(pctxt->dmn, &m, &ip, &port))
     {
         unsigned char *buf;
+        ssize_t sent_len;
         ssize_t len;
 
         memset(&to, 0, sizeof(to));
@@ -246,51 +239,41 @@ mdns_plugin_send_mdns_response(struct mdns_session *m_session)
 
         create_hex_dump("/tmp/mdns_response.txtpcap", buf, len);
 
-        if (sendto(pctxt->ipv4_mcast_fd, buf, len, 0, (struct sockaddr *)&to,
-               sizeof(struct sockaddr_in)) != len)
+        sent_len = sendto(pctxt->ipv4_mcast_fd, buf, len, 0, (struct sockaddr *)&to,
+                          sizeof(struct sockaddr_in));
+        if (sent_len != len)
         {
             LOGD("%s: sending failed, error: '%s'", __func__, strerror(errno));
-            return ;
+            return;
         }
     }
-
-    return;
 }
 
-
-static bool
+bool
 mdns_populate_sockaddr(struct net_header_parser *parser,
                        struct sockaddr_storage *dst)
 {
-    const void *ip;
-    bool ret;
+    struct ip6_hdr *hdrv6;
+    struct iphdr *hdrv4;
+    void *ip;
 
-    ip = NULL;
-    ret = false;
     if (parser->ip_version == 4)
     {
-        struct iphdr *hdr = net_header_get_ipv4_hdr(parser);
-        struct sockaddr_in *in4 = (struct sockaddr_in *)dst;
-
-        memset(in4, 0, sizeof(struct sockaddr_in));
-        in4->sin_family = AF_INET;
-        ip = &hdr->saddr;
-        memcpy(&in4->sin_addr, ip, sizeof(in4->sin_addr));
-        ret = true;
+        hdrv4 = net_header_get_ipv4_hdr(parser);
+        ip = &hdrv4->saddr;
+        sockaddr_storage_populate(AF_INET, ip, dst);
+        return true;
     }
-    else if (parser->ip_version == 6)
+
+    if (parser->ip_version == 6)
     {
-        struct sockaddr_in6 *in6 = (struct sockaddr_in6 *)dst;
-        struct ip6_hdr *hdr = net_header_get_ipv6_hdr(parser);
-
-        memset(in6, 0, sizeof(struct sockaddr_in6));
-        in6->sin6_family = AF_INET6;
-        ip = &hdr->ip6_src;
-        memcpy(&in6->sin6_addr, ip, sizeof(in6->sin6_addr));
-        ret = true;
+        hdrv6 = net_header_get_ipv6_hdr(parser);
+        ip = &hdrv6->ip6_src;
+        sockaddr_storage_populate(AF_INET6, ip, dst);
+        return true;
     }
 
-    return ret;
+    return false;
 }
 
 static void
@@ -321,15 +304,15 @@ mdns_plugin_process_message(struct mdns_session *m_session)
     if (!pctxt) return;
 
     /* Some basic validation */
-    // Check ethertype
+    /* Check ethertype */
     ethertype = net_header_get_ethertype(net_parser);
     if (ethertype != ETH_P_IP) return;
 
-    // Check for UDP protocol
+    /* Check for UDP protocol */
     ip_protocol = net_parser->ip_protocol;
     if (ip_protocol != IPPROTO_UDP) return;
 
-    // Check the UDP src and dst ports
+    /* Check the UDP src and dst ports */
     hdr = net_parser->ip_pld.udphdr;
     if ((ntohs(hdr->source) != 5353 || ntohs(hdr->dest) != 5353))
     {
@@ -370,11 +353,9 @@ mdns_plugin_process_message(struct mdns_session *m_session)
     if (!rc)
     {
         LOGT("%s: Sending back the MDNS response", __func__);
-        // Send back a response
+        /* Send back a response */
         mdns_plugin_send_mdns_response(m_session);
     }
-
-    return;
 }
 
 /**
@@ -402,18 +383,16 @@ mdns_plugin_handler(struct fsm_session *session,
     mdns_parser->net_parser = net_parser;
 
     mdns_plugin_process_message(m_session);
-
-    return;
 }
 
 static void
 mdns_plugin_update(struct fsm_session *session)
 {
-    struct mdns_session     *f_session;
-    char                    *mdns_report_interval;
-    char                    *report_records;
-    long                     interval;
-    bool                     prev_enabled;
+    struct mdns_session *f_session;
+    char *mdns_report_interval;
+    char *report_records;
+    bool prev_enabled;
+    long interval;
     int cmp;
 
     if (!session) return;
@@ -441,8 +420,8 @@ mdns_plugin_update(struct fsm_session *session)
     mdns_report_interval = session->ops.get_config(session, "records_report_interval");
     if (mdns_report_interval)
     {
-        interval = strtoul(mdns_report_interval, NULL, 10);
-        f_session->records_report_interval = (long)interval;
+        interval = strtol(mdns_report_interval, NULL, 10);
+        f_session->records_report_interval = interval;
     }
     else
     {
@@ -454,10 +433,8 @@ mdns_plugin_update(struct fsm_session *session)
     f_session->targeted_devices = session->ops.get_config(session, "targeted_devices");
     f_session->excluded_devices = session->ops.get_config(session, "excluded_devices");
 
-    // Update mdnsd ctxt.
+    /* Update mdnsd ctxt. */
     mdnsd_ctxt_update(f_session);
-
-    return;
 }
 
 /**
@@ -491,8 +468,6 @@ mdns_plugin_periodic(struct fsm_session *session)
         /* Report to cloud via mqtt */
         if (send_report)    mdns_records_send_records(f_session);
     }
-
-    return;
 }
 
 /**
@@ -506,15 +481,14 @@ mdns_plugin_periodic(struct fsm_session *session)
 int
 mdns_plugin_init(struct fsm_session *session)
 {
+    struct fsm_parser_ops *parser_ops;
+    struct mdns_session *md_session;
+    struct mdnsd_context *pctxt;
     struct mdns_plugin_mgr *mgr;
-    struct mdns_session    *md_session;
-    struct mdnsd_context   *pctxt;
-    struct fsm_parser_ops  *parser_ops;
-
-    time_t                  now;
-    char                    *mdns_report_interval;
-    long                    interval;
-    char                    *report_records;
+    char *mdns_report_interval;
+    char *report_records;
+    long interval;
+    time_t now;
     int cmp;
 
     if (session == NULL) return -1;
@@ -549,10 +523,10 @@ mdns_plugin_init(struct fsm_session *session)
     /* Wrap up the session initialization */
     md_session->session = session;
 
-    // Initialize mdnsd.
+    /* Initialize mdnsd. */
     if (!mdnsd_ctxt_init(md_session)) goto err_plugin;
 
-    // Start the daemon
+    /* Start the daemon */
     pctxt = mgr->ctxt;
     if (!pctxt)
     {
@@ -579,8 +553,8 @@ mdns_plugin_init(struct fsm_session *session)
     mdns_report_interval = session->ops.get_config(session, "records_report_interval");
     if (mdns_report_interval)
     {
-        interval = strtoul(mdns_report_interval, NULL, 10);
-        md_session->records_report_interval = (long)interval;
+        interval = strtol(mdns_report_interval, NULL, 10);
+        md_session->records_report_interval = interval;
     }
     else
     {

@@ -54,4 +54,3 @@ UNIT_DEPS += src/lib/log
 UNIT_DEPS += src/lib/ds
 UNIT_DEPS += src/lib/ovsdb
 UNIT_DEPS += src/lib/fsm_policy
-UNIT_DEPS += src/lib/fsm_utils

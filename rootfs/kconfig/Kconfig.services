@@ -1,0 +1,5 @@
+config HEALTHCHECK_HOSTAPD_WPA_SUPPLICANT
+    bool "Hostapd and wpa_supplicant healthcheck routine"
+    default n
+    help
+        Checks for hostapd and wpa_supplicant global instance process existence.

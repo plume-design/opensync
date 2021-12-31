@@ -36,12 +36,14 @@ UNIT_SRC  := src/log.c
 UNIT_SRC  += src/log_syslog.c
 UNIT_SRC  += src/log_stdout.c
 UNIT_SRC  += src/log_traceback.c
+UNIT_SRC  += $(if $(CONFIG_LOG_JOURNAL),src/log_journal.c,)
 UNIT_SRC  += $(if $(CONFIG_LOG_REMOTE),src/log_remote.c,)
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -Isrc/lib/osa/inc
 
 UNIT_LDFLAGS += -lev
+UNIT_LDFLAGS += $(if $(CONFIG_LOG_JOURNAL),-lsystemd,)
 
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
 UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)

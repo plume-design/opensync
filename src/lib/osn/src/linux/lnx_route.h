@@ -56,4 +56,13 @@ bool lnx_route_init(lnx_route_t *slef, const char *ifname);
 bool lnx_route_fini(lnx_route_t *self);
 bool lnx_route_status_notify(lnx_route_t *self, lnx_route_status_fn_t *func);
 
+bool lnx_route_add(osn_route4_cfg_t *self, const osn_route4_t *route);
+bool lnx_route_remove(osn_route4_cfg_t *self, const osn_route4_t *route);
+bool lnx_route_find_dev(osn_ip_addr_t addr, char *buf, size_t bufSize);
+
+osn_route4_cfg_t *lnx_route4_cfg_new(const char *if_name);
+bool lnx_route4_cfg_del(osn_route4_cfg_t *self);
+const char* lnx_route4_cfg_name(const osn_route4_cfg_t *self);
+bool lnx_route_apply(osn_route4_cfg_t *self);
+
 #endif /* LNX_ROUTE_H_INCLUDED */

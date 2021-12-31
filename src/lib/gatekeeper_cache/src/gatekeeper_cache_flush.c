@@ -30,11 +30,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "memory.h"
 #include "fsm_policy.h"
-#include "fsm_utils.h"
 #include "gatekeeper_cache.h"
 #include "gatekeeper_cache_cmp.h"
 #include "gatekeeper_hero_stats.h"
 #include "memutil.h"
+#include "sockaddr_storage.h"
 
 static struct str_set *
 allocated_empty_str_set()

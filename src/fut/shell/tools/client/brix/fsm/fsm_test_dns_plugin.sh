@@ -34,10 +34,9 @@ source "${fut_topdir}"/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh &> /dev/null
 source "$fut_topdir/lib/brix_lib.sh"
 
-tc_name="tools/client/brix/fsm/$(basename "$0")"
 usage() {
     cat << usage_string
-${tc_name} [-h] arguments
+tools/client/brix/fsm/fsm_test_dns_plugin.sh [-h] arguments
 Description:
     - Script resolves url using 'dig' and it checks url final destination
 Arguments:
@@ -46,7 +45,7 @@ Arguments:
     \$2 (url)                 : URL to dig                           : (string)(required)
     \$3 (url_resolve)         : Address of resolved URL              : (string)(required)
 Script usage example:
-   ./${tc_name} "ip netns exec nswifi1 bash" "google.com" "1.2.3.4"
+   ./tools/client/brix/fsm/fsm_test_dns_plugin.sh "ip netns exec nswifi1 bash" "google.com" "1.2.3.4"
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -61,7 +60,7 @@ if [ -n "${1}" ]; then
     esac
 fi
 NARGS=3
-[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "tools/client/brix/fsm/fsm_test_dns_plugin.sh" -arg
 
 namespace_enter_cmd=$1
 url=$2
@@ -70,7 +69,7 @@ url_resolve=$3
 ${namespace_enter_cmd} -c "dig +short ${url}" | grep -q "${url_resolve}" || $(exit 1)
 if [[ "$?" != 0 ]];then
     ${namespace_enter_cmd} -c "dig ${url}"
-    raise "${url} not resolved to ${url_resolve}" -l "${tc_name}"
+    raise "${url} not resolved to ${url_resolve}" -l "tools/client/brix/fsm/fsm_test_dns_plugin.sh"
 else
-    log "${tc_name}: ${url} resolved to ${url_resolve}"
+    log "tools/client/brix/fsm/fsm_test_dns_plugin.sh: ${url} resolved to ${url_resolve}"
 fi

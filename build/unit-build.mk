@@ -667,37 +667,74 @@ unit-clean: $(UNIT_ALL_CLEAN) $(TESTBINDIR)/clean
 ##########################################################
 # Targets to allow for code coverage calculation
 ##########################################################
+# Note : currently we are NOT failing the build if a test does not complete
+#        we will NOT fail. 
+#        Eventually we must uncomment the "exit 1" in the 2 following targets
+#        (unit-run-prerequisite and unit-run).
 
-# Simply running the UT doesn't require a specific compiler.
-# All unset options are properly ignored.
-# Note: if make is interrupted, FAILURE.log will not be deleted.
-unit-run: unit-all
+unit-run-prerequisite: unit-all
+	$(NQ) " $(call color_external,Start)   [$(call COLOR_BOLD,OVSDB)]"
+	$(Q)3rdparty/plume/docker/ovsdb_service.sh start
+	$(NQ) " $(call color_external,Start)   [$(call COLOR_BOLD,GK container)]"
+	$(Q)3rdparty/plume/docker/gk_container_service.sh start
+	$(Q)wget --quiet --ca-certificate=/tmp/cacert.pem https://ovs_dev.plume.com:443 -O /dev/null; \
+	if [ ! $$? -eq 0 ]; then \
+	    echo "$(call COLOR_RED,ERROR: GATEKEEPER container not started)"; \
+	    echo "$(call COLOR_BOLD, test_gatekeeper_plugin will fail with errors)"; \
+	    # exit 1; \
+	fi
+
+unit-run-exec: unit-run-prerequisite
+	$(NQ) " $(call color_external,Running) $(call COLOR_BOLD,all unit-tests)"
 	$(Q)UNIT_TESTS=`find ${TESTBINDIR} -name unit`; \
 	export ASAN_SYMBOLIZER_PATH=${ASAN_SYMBOLIZER_PATH}; \
 	export ASAN_OPTIONS=${ASAN_OPTIONS}; \
 	for unit in $$UNIT_TESTS; do \
+	    echo "   $(call color_external,Executing) $$(basename $$(dirname $$unit))"; \
 	    LLVM_PROFILE_FILE="$$unit.profraw" LD_LIBRARY_PATH=${LIBDIR} $$unit; \
 	    ERR_CODE=$$?; \
 	    if [ $$ERR_CODE != 0 ]; then \
 	        echo $$unit FAILED $$ERR_CODE >> FAILURE.log; \
 	    fi \
 	done
-	$(Q)if [ -f FAILURE.log ]; then cat FAILURE.log; $(RM) FAILURE.log; exit 1; fi
 
+unit-run-cleanup: unit-run-exec
+	$(NQ) " $(call color_external,Stop)    [$(call COLOR_BOLD,GK container)]"
+	$(Q)3rdparty/plume/docker/gk_container_service.sh stop
+	$(NQ) " $(call color_external,Stop)    [$(call COLOR_BOLD,OVSDB)]"
+	$(Q)3rdparty/plume/docker/ovsdb_service.sh stop
+	
+
+# Simply running the UT doesn't require a specific compiler.
+# All unset options are properly ignored.
+# 
+# We need to use multiple targets in order to ensure execution order
+# (make does not guarantee order of evaluation of multiple dependencies)
+# Note: if make is interrupted, FAILURE.log will not be deleted.
+unit-run: unit-run-cleanup
+	$(Q)if [ -f FAILURE.log ]; then \
+	    echo "\n$(call COLOR_RED,ERROR: following UT failed)"; \
+	    cat FAILURE.log; \
+	    $(RM) FAILURE.log; \
+	    echo "\n$(call COLOR_RED,Unit-test failure(s))";\
+	    # exit 1; \
+	else \
+	    echo "$(call COLOR_GREEN,Unit-test complete)";\
+	fi
+
+# For coverage execution, we must intially check if we have properly set up CLANG
+# and the associated tools.
+#
 unit-coverage-prerequisite:
 	$(Q)if [ -z "${CLANG_VERSION}" ]; then \
-	    echo ; \
-	    echo "$(call COLOR_RED,ERROR: CC=clang-<version> is required)"; \
+	    echo "\n$(call COLOR_RED,ERROR: CC=clang-<version> is required)"; \
 	    echo "  Command line should look like:"; \
-	    echo "$(call COLOR_BOLD,       CC=clang-6.0 make TARGET=native unit-coverage)"; \
-	    echo ; \
+	    echo "$(call COLOR_BOLD,       CC=clang-6.0 make TARGET=native unit-coverage)\n"; \
 	    exit 1; \
 	fi
 	$(Q)llvm-profdata${CLANG_VERSION} show -help > /dev/null; \
 	if [ ! $$? -eq 0 ]; then \
-	    echo ; \
-	    echo "$(call COLOR_RED,ERROR: Missing llvm-profdata${CLANG_VERSION} for CLANG)"; \
-	    echo ; \
+	    echo "\n$(call COLOR_RED,ERROR: Missing llvm-profdata${CLANG_VERSION} for CLANG)\n"; \
  	    exit 1; \
 	fi
 
@@ -707,7 +744,21 @@ unit-coverage: unit-coverage-prerequisite unit-run
 	$(Q)llvm-profdata${CLANG_VERSION} merge -sparse ${TESTBINDIR}/*/*profraw -o ${TESTBINDIR}/all.profdata
 	$(Q)SRC_FILES=`find ./src \( -not -path "*/ut/*" -and -name "*.[ch]" -and -not -name "*pb-c*" \) | sort`; \
 	UNIT_TESTS=`find ${TESTBINDIR} -name unit`; \
-	BIN_UT=`echo $$UNIT_TESTS | tr ' ' ','`; \
+	BIN_UT=`echo $$UNIT_TESTS | sed 's/ / -object /g'`; \
 	FIRST_BIN=`echo $$UNIT_TESTS | sed 's/ .*//'`; \
 	llvm-cov${CLANG_VERSION} show -instr-profile=${TESTBINDIR}/all.profdata $$FIRST_BIN -object $$BIN_UT -format=html -use-color -output-dir=${TESTBINDIR} $$SRC_FILES
 	$(NQ) "\n       Visualize report by opening :  $(call COLOR_BOLD,file://$$PWD/${TESTBINDIR}/index.html)"
+
+# Provide individual coverage
+%/coverage: CFLAGS += -fprofile-instr-generate -fcoverage-mapping
+%/coverage: LDFLAGS += -fprofile-instr-generate -fcoverage-mapping
+%/coverage: unit-coverage-prerequisite %
+	$(Q)export unit_path=${TESTBINDIR}/${UNIT_NAME_$(@D)}; \
+	SRC_FILES=`find ./src \( -not -path "*/ut/*" -and -name "*.[ch]" -and -not -name "*pb-c*" \) | sort`; \
+	export ASAN_SYMBOLIZER_PATH=${ASAN_SYMBOLIZER_PATH}; \
+        export ASAN_OPTIONS=${ASAN_OPTIONS}; \
+        LLVM_PROFILE_FILE="$$unit_path/unit.profraw" LD_LIBRARY_PATH=${LIBDIR} $$unit_path/unit; \
+	llvm-profdata${CLANG_VERSION} merge -sparse $$unit_path/unit.profraw -o $$unit_path/unit.profdata; \
+	llvm-cov${CLANG_VERSION} show -instr-profile=$$unit_path/unit.profdata $$unit_path/unit -format=html -use-color -output-dir=$$unit_path $$SRC_FILES; \
+	echo "\n   Visualize report by opening (CTRL + click):\n     $(call COLOR_BOLD,file://$$PWD/$$unit_path/index.html)"
+

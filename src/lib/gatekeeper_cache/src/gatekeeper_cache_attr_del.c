@@ -26,9 +26,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "gatekeeper_cache.h"
 #include "gatekeeper_cache_cmp.h"
-#include "fsm_utils.h"
 #include "log.h"
 #include "memutil.h"
+#include "sockaddr_storage.h"
 
 /**
  * @brief frees memory used by attribute when it is deleted
@@ -46,7 +46,10 @@ gkc_free_attr_entry(struct attr_cache *attr_entry, enum gk_cache_request_type at
     /* the 3 entries are now folded into the 'internal' type */
     case GK_CACHE_INTERNAL_TYPE_HOSTNAME:
     case GK_CACHE_REQ_TYPE_FQDN:
+        if (attr_entry->fqdn_redirect != NULL)
+            FREE(attr_entry->fqdn_redirect->redirect_cname);
         FREE(attr_entry->fqdn_redirect);
+
         /* fallthru */
     case GK_CACHE_REQ_TYPE_HOST:
     case GK_CACHE_REQ_TYPE_SNI:

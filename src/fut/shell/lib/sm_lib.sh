@@ -43,61 +43,34 @@ sm_log_test_pass_msg="---------------------------------- OK --------------------
 ###############################################################################
 # DESCRIPTION:
 #   Function prepares device for SM tests.
-#   If called with parametes it makes wm2 setup.
-#   Raises exception on fail of:
-#       - start pm or lm manager,
-#       - start of qm,
-#       - start of sm.
 # INPUT PARAMETER(S):
-#   $@  wm setup parameters (required)
+#   $@  interfaces (string, optional)
 # RETURNS:
-#   None.
+#   0   On success.
 #   See DESCRIPTION.
 # USAGE EXAMPLE(S):
 #   sm_setup_test_environment
 ###############################################################################
 sm_setup_test_environment()
 {
-    fn_name="sm_lib:sm_setup_test_environment"
+    log "sm_lib:sm_setup_test_environment - Running SM setup"
+
     wm_setup_test_environment "$@" &&
-        log -deb "$fn_name - wm_setup_test_environment - Success" ||
-        raise "FAIL: wm_setup_test_environment" -l "$fn_name" -ds
+        log -deb "sm_lib:sm_setup_test_environment - wm_setup_test_environment - Success" ||
+        raise "FAIL: wm_setup_test_environment" -l "sm_lib:sm_setup_test_environment" -ds
 
-    log "$fn_name - Running SM setup"
-
-    # Check if LM can be started, if not try starting PM.
-    # If it fails raises an exception.
-    start_specific_manager lm
-    if [ $? -eq 0 ]; then
-        log -deb "$fn_name - start_specific_manager lm - Success"
-    else
-        log -deb "$fn_name - start_specific_manager lm failed. Trying to start pm instead"
-        start_specific_manager pm
-        if [ $? -eq 0 ]; then
-            log -deb "$fn_name - start_specific_manager pm - Success"
-        else
-            raise "FAIL: Both start_specific_manager lm, start_specific_manager pm failed" -l "$fn_name" -ds
-        fi
-    fi
-
-    # QM start for report queue handling
-    start_specific_manager qm &&
-        log -deb "$fn_name - start_specific_manager qm - Success" ||
-        raise "FAIL: Could not start manager: start_specific_manager qm" -l "$fn_name" -ds
-
-    start_specific_manager sm &&
-        log -deb "$fn_name - start_specific_manager sm - Success" ||
-        raise "FAIL: Could not start manager: start_specific_manager sm" -l "$fn_name" -ds
+    restart_managers
+    log -deb "sm_lib:sm_setup_test_environment - Executed restart_managers, exit code: $?"
 
     empty_ovsdb_table AW_Debug &&
-        log -deb "$fn_name - AW_Debug table emptied - Success" ||
-        raise "FAIL: Could not empty table: empty_ovsdb_table AW_Debug" -l "$fn_name" -ds
+        log -deb "sm_lib:sm_setup_test_environment - AW_Debug table emptied - Success" ||
+        raise "FAIL: empty_ovsdb_table AW_Debug - Could not empty table" -l "sm_lib:sm_setup_test_environment" -ds
 
     set_manager_log SM TRACE &&
-        log -deb "$fn_name - Manager log for SM set to TRACE - Success" ||
-        raise "FAIL: Could not set manager log severity: set_manager_log SM TRACE" -l "$fn_name" -ds
+        log -deb "sm_lib:sm_setup_test_environment - Manager log for SM set to TRACE - Success" ||
+        raise "FAIL: set_manager_log SM TRACE - Could not set SM manager log severity" -l "sm_lib:sm_setup_test_environment" -ds
 
-    log "$fn_name - SM setup - end"
+    log -deb "sm_lib:sm_setup_test_environment - SM setup - end"
 
     return 0
 }
@@ -111,15 +84,15 @@ sm_setup_test_environment()
 #   Supported report type: raw
 #   Raises exception on failing to configure Wifi_Stats_Config table.
 # INPUT PARAMETER(S):
-#   $1  radio type (required)
-#   $2  channel list (required)
-#   $3  stats type (required)
-#   $4  survey type (required)
-#   $5  reporting interval (required)
-#   $6  sampling interval (required)
-#   $6  report type (required)
+#   $1  radio type (string, required)
+#   $2  channel list (string, required)
+#   $3  stats type (string, required)
+#   $4  survey type (string, required)
+#   $5  reporting interval (int, required)
+#   $6  sampling interval (int, required)
+#   $6  report type (string, required)
 # RETURNS:
-#   None.
+#   0   On success.
 #   See DESCRIPTION.
 # USAGE EXAMPLE(S):
 #   insert_ws_config 5GL "[\"set\",[$sm_channel]]" survey on-chan 10 5 raw
@@ -127,10 +100,9 @@ sm_setup_test_environment()
 ###############################################################################
 insert_ws_config()
 {
-    fn_name="sm_lib:insert_ws_config"
     local NARGS=7
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "sm_lib:insert_ws_config requires ${NARGS} input argument(s), $# given" -arg
     sm_radio_type=$1
     sm_channel_list=$2
     sm_stats_type=$3
@@ -139,7 +111,7 @@ insert_ws_config()
     sm_sampling_interval=$6
     sm_report_type=$7
 
-    log -deb "$fn_name - Inserting Wifi_Stats_Config config"
+    log "sm_lib:insert_ws_config - Inserting configuration to Wifi_Stats_Config "
 
     if [ -z "$sm_survey_type" ]; then
         sm_survey_type="[\"set\",[]]"
@@ -153,8 +125,8 @@ insert_ws_config()
         -i reporting_interval "$sm_reporting_interval" \
         -i sampling_interval "$sm_sampling_interval" \
         -i report_type "$sm_report_type" &&
-            log -deb "$fn_name - Wifi_Stats_Config config inserted" ||
-            raise "FAIL: Could not insert to Wifi_Stats_Config: insert_ovsdb_entry" -l "$fn_name" -oe
+            log -deb "sm_lib:insert_ws_config - Configuration inserted to Wifi_Stats_Config table - Success" ||
+            raise "FAIL: insert_ovsdb_entry - Could not insert to Wifi_Stats_Config" -l "sm_lib:insert_ws_config" -oe
 
     return 0
 }
@@ -165,7 +137,7 @@ insert_ws_config()
 
 ###############################################################################
 # DESCRIPTION:
-#   Function checks existance of survey report log messages.
+#   Function checks existence of survey report log messages.
 #   Supported radio types: 2.4G, 5GL, 5GU
 #   Supported survey types: on-chan, off-chan
 #   Supported log types: processing_survey, scheduled_scan, fetched_survey, sending_survey_report
@@ -173,12 +145,12 @@ insert_ws_config()
 #       - incorrect log type provided
 #       - logs not found
 # INPUT PARAMETER(S):
-#   $1  radio type (required)
-#   $2  channel (required)
-#   $3  survey type (required)
-#   $4  log type (required)
+#   $1  radio type (string, required)
+#   $2  channel (int, required)
+#   $3  survey type (string, required)
+#   $4  log type (string, required)
 # RETURNS:
-#   None.
+#   0   On success.
 #   See DESCRIPTION.
 # USAGE EXAMPLE(S):
 #   check_survey_report_log 5GL 1 on-chan processing_survey
@@ -186,10 +158,9 @@ insert_ws_config()
 ###############################################################################
 check_survey_report_log()
 {
-    fn_name="sm_lib:check_survey_report_log"
     local NARGS=4
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "sm_lib:check_survey_report_log requires ${NARGS} input argument(s), $# given" -arg
     sm_radio_type=$1
     sm_channel=$2
     sm_survey_type=$3
@@ -221,32 +192,32 @@ check_survey_report_log()
         sm_log_grep="$LOGREAD | tail -1000 | grep -i 'Sending $sm_radio_type' | grep -i '$sm_survey_type $sm_channel survey report'"
         ;;
     *)
-        raise "FAIL: Incorrect log type provided" -l "$fn_name" -arg
+        raise "FAIL: Incorrect log type provided" -l "sm_lib:check_survey_report_log" -arg
         ;;
     esac
 
-    log "$fn_name - $log_msg"
+    log "sm_lib:check_survey_report_log - $log_msg"
     wait_for_function_response 0 "${sm_log_grep}" &&
-        log -deb "$fn_name - $sm_log_test_pass_msg" ||
-        raise "FAIL: $die_msg" -l "$fn_name" -tc
+        log -deb "sm_lib:check_survey_report_log - Found $sm_log_test_pass_msg - Success" ||
+        raise "FAIL: $die_msg" -l "sm_lib:check_survey_report_log - Log not found" -tc
 
     return 0
 }
 
 ###############################################################################
 # DESCRIPTION:
-#   Function inspects existance of all survey report messages.
+#   Function inspects existence of all survey report messages.
 #   Supported radio types: 2.4G, 5GL, 5GU
 #   Supported survey types: on-chan, off-chan
 #   Supported report type: raw
-#   Raises exception on failing to empty table Wifi_Stats_Config.
+#   Raises exception if fails to empty table Wifi_Stats_Config.
 # INPUT PARAMETER(S):
-#   $1  radio type (required)
-#   $2  channel (required)
-#   $3  survey type (required)
-#   $4  reporting interval (required)
-#   $5  sampling interval (required)
-#   $6  report type (required)
+#   $1  radio type (string, required)
+#   $2  channel (int, required)
+#   $3  survey type (string, required)
+#   $4  reporting interval (int, required)
+#   $5  sampling interval (int, required)
+#   $6  report type (string, required)
 # RETURNS:
 #   0   On success.
 #   See DESCRIPTION.
@@ -255,10 +226,9 @@ check_survey_report_log()
 ###############################################################################
 inspect_survey_report()
 {
-    fn_name="sm_lib:inspect_survey_report"
     local NARGS=6
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "sm_lib:inspect_survey_report requires ${NARGS} input argument(s), $# given" -arg
     sm_radio_type=$1
     sm_channel=$2
     sm_survey_type=$3
@@ -270,7 +240,7 @@ inspect_survey_report()
     sm_channel_list="[\"set\",[$sm_channel]]"
 
     empty_ovsdb_table Wifi_Stats_Config ||
-        raise "FAIL: Could not empty Wifi_Stats_Config: empty_ovsdb_table" -l "$fn_name" -oe
+        raise "FAIL: empty_ovsdb_table - Could not empty Wifi_Stats_Config" -l "sm_lib:inspect_survey_report" -oe
 
     insert_ws_config \
         "$sm_radio_type" \
@@ -280,8 +250,8 @@ inspect_survey_report()
         "$sm_reporting_interval" \
         "$sm_sampling_interval" \
         "$sm_report_type" &&
-            log "Success: Wifi_Stats_Config inserted" ||
-            raise "FAIL: Could not insert Wifi_Stats_Config: insert_ws_config" -l "$fn_name" -oe
+            log -deb "sm_lib:inspect_survey_report - Wifi_Stats_Config inserted - Success" ||
+            raise "FAIL: Could not insert Wifi_Stats_Config: insert_ws_config" -l "sm_lib:inspect_survey_report" -oe
 
     check_survey_report_log "$sm_radio_type" "$sm_channel" "$sm_survey_type" processing_survey
     check_survey_report_log "$sm_radio_type" "$sm_channel" "$sm_survey_type" scheduled_scan
@@ -289,7 +259,7 @@ inspect_survey_report()
     check_survey_report_log "$sm_radio_type" "$sm_channel" "$sm_survey_type" sending_survey_report
 
     empty_ovsdb_table Wifi_Stats_Config ||
-        raise "FAIL: Could not empty Wifi_Stats_Config: empty_ovsdb_table" -l "$fn_name" -oe
+        raise "FAIL: empty_ovsdb_table - Could not empty Wifi_Stats_Config table" -l "sm_lib:inspect_survey_report" -oe
 
     return 0
 }
@@ -299,29 +269,29 @@ inspect_survey_report()
 #   Function checks neighbor report log messages.
 #   Supported radio types: 2.4G, 5GL, 5GU
 #   Supported survey types: on-chan, off-chan
-#   Supported log types: add_neighbor, parsed_neighbor_bssid, parsed_neighbor_ssid, sending_neighbor
+#   Supported log types: add_neighbor, parsed_neighbor_bssid,
+#                        parsed_neighbor_ssid, sending_neighbor
 #   Raises exception on fail:
 #       - incorrect log type provided
-#       - logs not found
+#       - log not found
 # INPUT PARAMETER(S):
-#   $1  radio type (required)
-#   $2  channel (required)
-#   $3  survey type (required)
-#   $4  log type (required)
-#   $5  neighbor mac (required)
-#   $6  neighbor ssid (required)
+#   $1  radio type (string, required)
+#   $2  channel (int, required)
+#   $3  survey type (string, required)
+#   $4  log type (string, required)
+#   $5  neighbor mac (string, required)
+#   $6  neighbor ssid (string, required)
 # RETURNS:
-#   None.
+#   0   On success.
 #   See DESCRIPTION.
 # USAGE EXAMPLE(S):
 #   check_neighbor_report_log 5GL 1 on-chan add_neighbor <neighbor MAC> <neighbor SSID>
 ###############################################################################
 check_neighbor_report_log()
 {
-    fn_name="sm_lib:check_neighbor_report_log"
     local NARGS=6
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "sm_lib:check_neighbor_report_log requires ${NARGS} input argument(s), $# given" -arg
     sm_radio_type=$1
     sm_channel=$2
     sm_survey_type=$3
@@ -352,37 +322,37 @@ check_neighbor_report_log()
         log_msg="Checking for $sm_radio_type neighbor sending of $sm_neighbor_mac"
         die_msg="No neighbor $sm_neighbor_mac was sent"
         sm_log_test_pass_msg="Neighbor $sm_neighbor_mac was sent"
-        sm_log_grep="$LOGREAD | tail -1000 | grep -i 'Sending $sm_radio_type' | grep -i \"$sm_survey_type neighbors {bssid='$sm_neighbor_mac' ssid='$sm_neighbor_ssid'\" | grep -i 'chan=$sm_channel'"
+        sm_log_grep="$LOGREAD | tail -5000 | grep -i 'Sending $sm_radio_type' | grep -i \"$sm_survey_type neighbors {bssid='$sm_neighbor_mac' ssid='$sm_neighbor_ssid'\" | grep -i 'chan=$sm_channel'"
         ;;
     *)
-        raise "FAIL: Incorrect log type provided" -l "$fn_name" -arg
+        raise "FAIL: Incorrect log type provided" -l "sm_lib:check_neighbor_report_log" -arg
         ;;
     esac
 
-    log "$fn_name - $log_msg"
+    log "sm_lib:check_neighbor_report_log - $log_msg"
     wait_for_function_response 0 "${sm_log_grep}" &&
-        log -deb "$fn_name - $sm_log_test_pass_msg" ||
-        raise "FAIL: $die_msg" -l "$fn_name" -tc
+        log -deb "sm_lib:check_neighbor_report_log - Found $sm_log_test_pass_msg - Success" ||
+        raise "FAIL: $die_msg" -l "sm_lib:check_neighbor_report_log - Log not found" -tc
 
     return 0
 }
 
 ###############################################################################
 # DESCRIPTION:
-#   Function checks existance of neighbor report messages.
+#   Function checks existence of neighbor report messages.
 #   Supported radio types: 2.4G, 5GL, 5GU
 #   Supported survey types: on-chan, off-chan
 #   Supported report type: raw
 #   Raises exception on fail.
 # INPUT PARAMETER(S):
-#   $1  radio type (required)
-#   $2  channel (required)
-#   $3  survey type (required)
-#   $4  reporting interval (required)
-#   $5  sampling interval (required)
-#   $6  report type (required)
-#   $7  neighbor ssid (required)
-#   $8  neighbor MAC address (required)
+#   $1  radio type (string, required)
+#   $2  channel (int, required)
+#   $3  survey type (string, required)
+#   $4  reporting interval (int, required)
+#   $5  sampling interval (int, required)
+#   $6  report type (string, required)
+#   $7  neighbor ssid (string, required)
+#   $8  neighbor MAC address (string, required)
 # RETURNS:
 #   0   On success.
 #   See DESCRIPTION.
@@ -391,10 +361,9 @@ check_neighbor_report_log()
 ###############################################################################
 inspect_neighbor_report()
 {
-    fn_name="sm_lib:inspect_neighbor_report"
     local NARGS=8
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "sm_lib:inspect_neighbor_report requires ${NARGS} input argument(s), $# given" -arg
     sm_radio_type=$1
     sm_channel=$2
     sm_survey_type=$3
@@ -408,7 +377,7 @@ inspect_neighbor_report()
     sm_channel_list="[\"set\",[$sm_channel]]"
 
     empty_ovsdb_table Wifi_Stats_Config ||
-        raise "FAIL: Could not empty Wifi_Stats_Config: empty_ovsdb_table" -l "$fn_name" -oe
+        raise "FAIL: Could not empty Wifi_Stats_Config: empty_ovsdb_table" -l "sm_lib:inspect_neighbor_report" -oe
 
     insert_ws_config \
         "$sm_radio_type" \
@@ -418,8 +387,8 @@ inspect_neighbor_report()
         "$sm_reporting_interval" \
         "$sm_sampling_interval" \
         "$sm_report_type" &&
-            log "Success: Wifi_Stats_Config inserted" ||
-            raise "FAIL: Could not insert Wifi_Stats_Config: insert_ws_config" -l "$fn_name" -oe
+            log -deb "sm_lib:inspect_neighbor_report - Wifi_Stats_Config inserted - Success" ||
+            raise "FAIL: Could not insert Wifi_Stats_Config: insert_ws_config" -l "sm_lib:inspect_neighbor_report" -oe
 
     insert_ws_config \
         "$sm_radio_type" \
@@ -429,8 +398,8 @@ inspect_neighbor_report()
         "$sm_reporting_interval" \
         "$sm_sampling_interval" \
         "$sm_report_type" &&
-            log "Success: Wifi_Stats_Config inserted" ||
-            raise "FAIL: Could not insert Wifi_Stats_Config: insert_ws_config" -l "$fn_name" -oe
+            log -deb "sm_lib:inspect_neighbor_report - Wifi_Stats_Config inserted - Success" ||
+            raise "FAIL: Could not insert Wifi_Stats_Config: insert_ws_config" -l "sm_lib:inspect_neighbor_report" -oe
 
     check_neighbor_report_log "$sm_radio_type" "$sm_channel" "$sm_survey_type" add_neighbor "$sm_neighbor_mac" "$sm_neighbor_ssid"
     check_neighbor_report_log "$sm_radio_type" "$sm_channel" "$sm_survey_type" parsed_neighbor_bssid "$sm_neighbor_mac" "$sm_neighbor_ssid"
@@ -438,7 +407,7 @@ inspect_neighbor_report()
     check_neighbor_report_log "$sm_radio_type" "$sm_channel" "$sm_survey_type" sending_neighbor "$sm_neighbor_mac" "$sm_neighbor_ssid"
 
     empty_ovsdb_table Wifi_Stats_Config ||
-        raise "FAIL: Could not empty Wifi_Stats_Config: empty_ovsdb_table" -l "$fn_name" -oe
+        raise "FAIL: empty_ovsdb_table - Could not empty Wifi_Stats_Config table" -l "sm_lib:inspect_neighbor_report" -oe
 
     return 0
 }
@@ -452,9 +421,9 @@ inspect_neighbor_report()
 #       - incorrect log type provided
 #       - logs not found
 # INPUT PARAMETER(S):
-#   $1  radio type (required)
-#   $2  client mac (required)
-#   $3  log type (required)
+#   $1  radio type (string, required)
+#   $2  client mac (string, required)
+#   $3  log type (string, required)
 # RETURNS:
 #   None.
 #   See DESCRIPTION.
@@ -464,10 +433,9 @@ inspect_neighbor_report()
 ###############################################################################
 check_leaf_report_log()
 {
-    fn_name="sm_lib:check_leaf_report_log"
     local NARGS=3
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "sm_lib:check_leaf_report_log requires ${NARGS} input argument(s), $# given" -arg
     sm_radio_type=$1
     # shellcheck disable=SC2018,SC2019
     sm_client_mac_address=$(echo "$2" | tr a-z A-Z)
@@ -499,30 +467,30 @@ check_leaf_report_log()
         sm_log_grep="$LOGREAD | tail -1000 | grep -i 'Sending $sm_radio_type' | grep -i 'client $sm_client_mac_address stats'"
         ;;
     *)
-        raise "FAIL: Incorrect log type provided" -l "$fn_name" -arg
+        raise "FAIL: Incorrect log type provided" -l "sm_lib:check_leaf_report_log" -arg
         ;;
     esac
-    log -deb "$fn_name - $log_msg"
 
+    log "sm_lib:check_leaf_report_log - $log_msg"
     wait_for_function_response 0 "${sm_log_grep}" &&
-        log -deb "$fn_name - $sm_log_test_pass_msg" ||
-        raise "FAIL: $die_msg" -l "$fn_name" -tc
+        log -deb "sm_lib:check_leaf_report_log - Log $sm_log_test_pass_msg found - Success" ||
+        raise "FAIL: $die_msg" -l "sm_lib:check_leaf_report_log" -tc
 
     return 0
 }
 
 ###############################################################################
 # DESCRIPTION:
-#   Function checks existance of leaf report messages.
+#   Function checks existence of leaf report messages.
 #   Supported radio types: 2.4G, 5GL, 5GU
 #   Supported report type: raw
 #   Raises exception on fail.
 # INPUT PARAMETER(S):
-#   $1  radio type (required)
-#   $2  reporting interval (required)
-#   $3  sampling interval (required)
-#   $4  report type (required)
-#   $5  leaf mac (required)
+#   $1  radio type (string, required)
+#   $2  reporting interval (int, required)
+#   $3  sampling interval (int, required)
+#   $4  report type (string, required)
+#   $5  leaf mac (string, required)
 # RETURNS:
 #   0   On success.
 #   See DESCRIPTION.
@@ -531,10 +499,9 @@ check_leaf_report_log()
 ###############################################################################
 inspect_leaf_report()
 {
-    fn_name="sm_lib:inspect_leaf_report"
     local NARGS=5
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "sm_lib:inspect_leaf_report requires ${NARGS} input argument(s), $# given" -arg
     sm_radio_type=$1
     sm_reporting_interval=$2
     sm_sampling_interval=$3
@@ -542,7 +509,7 @@ inspect_leaf_report()
     sm_leaf_mac=$5
 
     empty_ovsdb_table Wifi_Stats_Config ||
-        raise "FAIL: Could not empty Wifi_Stats_Config: empty_ovsdb_table" -l "$fn_name" -oe
+        raise "FAIL: Could not empty Wifi_Stats_Config: empty_ovsdb_table" -l "sm_lib:inspect_leaf_report" -oe
 
     insert_ws_config \
         "$sm_radio_type" \
@@ -552,8 +519,8 @@ inspect_leaf_report()
         "$sm_reporting_interval" \
         "$sm_sampling_interval" \
         "$sm_report_type" &&
-            log "Success: Wifi_Stats_Config inserted" ||
-            raise "FAIL: Could not insert Wifi_Stats_Config: insert_ws_config" -l "$fn_name" -oe
+            log -deb "sm_lib:inspect_leaf_report - Wifi_Stats_Config inserted - Success" ||
+            raise "FAIL: Could not insert Wifi_Stats_Config: insert_ws_config" -l "sm_lib:inspect_leaf_report" -oe
 
     insert_ws_config \
         "$sm_radio_type" \
@@ -563,8 +530,8 @@ inspect_leaf_report()
         "$sm_reporting_interval" \
         "$sm_sampling_interval" \
         "$sm_report_type" &&
-            log "Success: Wifi_Stats_Config inserted" ||
-            raise "FAIL: Could not insert Wifi_Stats_Config: insert_ws_config" -l "$fn_name" -oe
+            log -deb "sm_lib:inspect_leaf_report - Wifi_Stats_Config inserted - Success" ||
+            raise "FAIL: Could not insert Wifi_Stats_Config: insert_ws_config" -l "sm_lib:inspect_leaf_report" -oe
 
     check_leaf_report_log "$sm_radio_type" "$sm_leaf_mac" connected
     check_leaf_report_log "$sm_radio_type" "$sm_leaf_mac" client_parsing
@@ -572,7 +539,7 @@ inspect_leaf_report()
     check_leaf_report_log "$sm_radio_type" "$sm_leaf_mac" sending
 
     empty_ovsdb_table Wifi_Stats_Config ||
-        raise "FAIL: Could not empty Wifi_Stats_Config: empty_ovsdb_table" -l "$fn_name" -oe
+        raise "FAIL: empty_ovsdb_table - Could not empty Wifi_Stats_Config table" -l "sm_lib:inspect_leaf_report" -oe
 
     return 0
 }

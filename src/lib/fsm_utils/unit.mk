@@ -33,11 +33,14 @@ UNIT_TYPE := LIB
 UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM),n,y)
 
 UNIT_SRC := src/fsm_dpi_utils.c
-UNIT_SRC += src/fsm_utils.c
 UNIT_SRC += src/fsm_csum_utils.c
+UNIT_SRC += src/fsm_packet_reinject_utils.c
+UNIT_SRC += src/fsm_dns_tag.c
+UNIT_SRC += src/fsm_dns_cache_utils.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -Isrc/fsm/inc
+UNIT_CFLAGS += -Isrc/lib/dns_parse/inc
 UNIT_LDFLAGS :=
 
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
@@ -50,3 +53,4 @@ UNIT_DEPS += src/lib/ustack
 UNIT_DEPS += src/lib/nf_utils
 UNIT_DEPS += src/lib/fsm_policy
 UNIT_DEPS += src/lib/network_metadata
+UNIT_DEPS += src/lib/gatekeeper_cache

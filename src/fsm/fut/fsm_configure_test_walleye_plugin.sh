@@ -34,16 +34,15 @@ source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="fsm/$(basename "$0")"
 manager_setup_file="fsm/fsm_setup.sh"
 server_start_mqtt='tools/server/start_mqtt'
 device_connect_mqtt='tools/device/fut_configure_mqtt'
 # Default of_port must be unique between fsm tests for valid testing
-of_port=30002
+of_port=10004
 
 usage() {
     cat <<usage_string
-${tc_name} [-h] arguments
+fsm/fsm_configure_test_walleye_plugin.sh [-h] arguments
 Description:
     - Script configures interfaces FSM settings for WallEye Plugin rules
 Arguments:
@@ -57,7 +56,7 @@ Testcase procedure:
             Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
             Run: ./${device_connect_mqtt} (see ${create_rad_vif_if_file} -h)
 Script usage example:
-    ./${tc_name} br-home /usr/opensync/lib/libfsm_walleye_dpi.so
+    ./fsm/fsm_configure_test_walleye_plugin.sh br-home /usr/opensync/lib/libfsm_walleye_dpi.so
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -101,9 +100,9 @@ of_out_action_ct_drop="\"DROP\""
 
 tap_dpi_if="${lan_bridge_if}.dpiwn"
 
-log_title "$tc_name: FSM test - Configure walleye plugin"
+log_title "fsm/fsm_configure_test_walleye_plugin.sh: FSM test - Configure walleye plugin"
 
-log "$tc_name: Configuring TAP interfaces required for FSM testing"
+log "fsm/fsm_configure_test_walleye_plugin.sh: Configuring TAP interfaces required for FSM testing"
 add_bridge_port "${lan_bridge_if}" "${tap_dpi_if}"
 set_ovs_vsctl_interface_option "${tap_dpi_if}" "type" "internal"
 set_ovs_vsctl_interface_option "${tap_dpi_if}" "ofport_request" "${of_port}"
@@ -114,10 +113,10 @@ create_inet_entry \
     -dhcp_sniff "false" \
     -network true \
     -enabled true &&
-        log "$tc_name: Interface ${tap_dpi_if} created - Success" ||
-        raise "FAIL: Failed to create interface ${tap_dpi_if}" -l "$tc_name" -ds
+        log "fsm/fsm_configure_test_walleye_plugin.sh: Interface ${tap_dpi_if} created - Success" ||
+        raise "FAIL: Failed to create interface ${tap_dpi_if}" -l "fsm/fsm_configure_test_walleye_plugin.sh" -ds
 
-log "$tc_name: Cleaning FSM OVSDB Config tables"
+log "fsm/fsm_configure_test_walleye_plugin.sh: Cleaning FSM OVSDB Config tables"
 empty_ovsdb_table Openflow_Config
 empty_ovsdb_table Flow_Service_Manager_Config
 empty_ovsdb_table FSM_Policy
@@ -129,8 +128,8 @@ insert_ovsdb_entry Openflow_Config \
     -i priority 0 \
     -i bridge "${lan_bridge_if}" \
     -i action "NORMAL" &&
-        log "$tc_name: Ingress rule inserted - Success" ||
-        raise "FAIL: Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "fsm/fsm_configure_test_walleye_plugin.sh: Ingress rule inserted - Success" ||
+        raise "FAIL: Failed to insert_ovsdb_entry" -l "fsm/fsm_configure_test_walleye_plugin.sh" -oe
 
 # Insert egress rule to Openflow_Config
 insert_ovsdb_entry Openflow_Config \
@@ -139,8 +138,8 @@ insert_ovsdb_entry Openflow_Config \
     -i priority 200 \
     -i bridge "${lan_bridge_if}" \
     -i action "resubmit\(,7\)" &&
-        log "$tc_name: Ingress rule inserted - Success" ||
-        raise "FAIL: Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "fsm/fsm_configure_test_walleye_plugin.sh: Ingress rule inserted - Success" ||
+        raise "FAIL: Failed to insert_ovsdb_entry" -l "fsm/fsm_configure_test_walleye_plugin.sh" -oe
 
 # Insert egress rule to Openflow_Config
 insert_ovsdb_entry Openflow_Config \
@@ -149,8 +148,8 @@ insert_ovsdb_entry Openflow_Config \
     -i priority 0 \
     -i bridge "${lan_bridge_if}" \
     -i action "NORMAL" &&
-        log "$tc_name: Ingress rule inserted - Success" ||
-        raise "FAIL: Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "fsm/fsm_configure_test_walleye_plugin.sh: Ingress rule inserted - Success" ||
+        raise "FAIL: Failed to insert_ovsdb_entry" -l "fsm/fsm_configure_test_walleye_plugin.sh" -oe
 
 # Insert egress rule to Openflow_Config
 insert_ovsdb_entry Openflow_Config \
@@ -160,8 +159,8 @@ insert_ovsdb_entry Openflow_Config \
      -i priority 200 \
      -i rule "${of_out_rule_ct}" \
      -i action "${of_out_action_ct}" &&
-        log "$tc_name: Ingress rule inserted - Success" ||
-        raise "FAIL: Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "fsm/fsm_configure_test_walleye_plugin.sh: Ingress rule inserted - Success" ||
+        raise "FAIL: Failed to insert_ovsdb_entry" -l "fsm/fsm_configure_test_walleye_plugin.sh" -oe
 
 # Insert egress rule to Openflow_Config
 insert_ovsdb_entry Openflow_Config \
@@ -171,8 +170,8 @@ insert_ovsdb_entry Openflow_Config \
     -i priority 200 \
     -i rule "${of_out_rule_ct_inspect_new_conn}" \
     -i action "${of_out_action_ct_inspect_new_conn}" &&
-        log "$tc_name: Ingress rule inserted - Success" ||
-        raise "FAIL: Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "fsm/fsm_configure_test_walleye_plugin.sh: Ingress rule inserted - Success" ||
+        raise "FAIL: Failed to insert_ovsdb_entry" -l "fsm/fsm_configure_test_walleye_plugin.sh" -oe
 
 # Insert egress rule to Openflow_Config
 insert_ovsdb_entry Openflow_Config \
@@ -182,8 +181,8 @@ insert_ovsdb_entry Openflow_Config \
     -i priority 200 \
     -i rule "${of_out_rule_ct_inspect}" \
     -i action "${of_out_action_ct_inspect}" &&
-        log "$tc_name: Ingress rule inserted - Success" ||
-        raise "FAIL: Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "fsm/fsm_configure_test_walleye_plugin.sh: Ingress rule inserted - Success" ||
+        raise "FAIL: Failed to insert_ovsdb_entry" -l "fsm/fsm_configure_test_walleye_plugin.sh" -oe
 
 # Insert egress rule to Openflow_Config
 insert_ovsdb_entry Openflow_Config \
@@ -193,8 +192,8 @@ insert_ovsdb_entry Openflow_Config \
     -i priority 200 \
     -i rule "${of_out_rule_ct_passthru}" \
     -i action "${of_out_action_ct_passthru}" &&
-        log "$tc_name: Ingress rule inserted - Success" ||
-        raise "FAIL: Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "fsm/fsm_configure_test_walleye_plugin.sh: Ingress rule inserted - Success" ||
+        raise "FAIL: Failed to insert_ovsdb_entry" -l "fsm/fsm_configure_test_walleye_plugin.sh" -oe
 
 # Insert egress rule to Openflow_Config
 insert_ovsdb_entry Openflow_Config \
@@ -204,8 +203,8 @@ insert_ovsdb_entry Openflow_Config \
     -i priority 200 \
     -i rule "${of_out_rule_ct_drop}" \
     -i action "${of_out_action_ct_drop}" &&
-        log "$tc_name: Ingress rule inserted - Success" ||
-        raise "FAIL: Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "fsm/fsm_configure_test_walleye_plugin.sh: Ingress rule inserted - Success" ||
+        raise "FAIL: Failed to insert_ovsdb_entry" -l "fsm/fsm_configure_test_walleye_plugin.sh" -oe
 
 mqtt_hero_value="dev-test/dev_dpi_walleye/$(get_node_id)/$(get_location_id)"
 insert_ovsdb_entry Flow_Service_Manager_Config \
@@ -213,16 +212,16 @@ insert_ovsdb_entry Flow_Service_Manager_Config \
     -i type "dpi_plugin" \
     -i plugin "${fsm_plugin}" \
     -i other_config '["map",[["mqtt_v","'"${mqtt_hero_value}"'"],["dso_init","walleye_dpi_plugin_init"],["dpi_dispatcher","core_dpi_dispatch"]]]' &&
-        log "$tc_name: Ingress rule inserted - Success" ||
-        raise "FAIL: Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "fsm/fsm_configure_test_walleye_plugin.sh: Ingress rule inserted - Success" ||
+        raise "FAIL: Failed to insert_ovsdb_entry" -l "fsm/fsm_configure_test_walleye_plugin.sh" -oe
 
 fsm_message_regex="$LOGREAD | tail -500 | grep walleye_signature_load | grep succeeded"
 wait_for_function_response 0 "${fsm_message_regex}" 5 &&
-    log "$tc_name: walleye signature loaded - Success" ||
-    raise "FAIL: walleye signature not loaded" -l "$tc_name" -tc
+    log "fsm/fsm_configure_test_walleye_plugin.sh: walleye signature loaded - Success" ||
+    raise "FAIL: walleye signature not loaded" -l "fsm/fsm_configure_test_walleye_plugin.sh" -tc
 
 wait_ovsdb_entry Object_Store_State \
     -is name "app_signatures" \
     -is status "active" &&
-        log "$tc_name: walleye signature added - Success" ||
-        raise "FAIL: walleye signature not added" -l "$tc_name" -tc
+        log "fsm/fsm_configure_test_walleye_plugin.sh: walleye signature added - Success" ||
+        raise "FAIL: walleye signature not added" -l "fsm/fsm_configure_test_walleye_plugin.sh" -tc

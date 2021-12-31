@@ -1,0 +1,19 @@
+config OSP_UPG_NULL
+    bool "Null"
+    help
+        Null osp_upg backend. All functions in this implementation return an
+        error.
+
+config OSP_UPG_GEN
+    bool "Generic"
+    help
+        Generic upgrade backend. This backend uses various scripts to implement
+        system upgrade.
+
+        Three scripts must be provided in order for the upgrade backend to be
+        functional:
+            - a system check script (OSP_UPG_GEN_CHECKSYSTEM_SCRIPT)
+            - an upgrade script (OSP_UPG_GEN_UPGRADE_SCRIPT)
+            - a commit script (OSP_UPG_GEN_COMMIT_SCRIPT)
+
+        All scripts are defined via Kconfig.

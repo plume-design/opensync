@@ -37,7 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define MODULE_ID LOG_MODULE_ID_OVSDB
 
 ovsdb_table_t    table_Captive_Portal;
-static int cportal_cmp(void *a, void *b);
+static int cportal_cmp(const void *a, const void *b);
 void callback_Captive_Portal(
         ovsdb_update_monitor_t *mon,
         struct schema_Captive_Portal *old,
@@ -69,7 +69,7 @@ int cportal_ovsdb_init(void)
  * @return 0 if sessions matches
  */
 static int
-cportal_cmp(void *a, void *b)
+cportal_cmp(const void *a, const void *b)
 {
     /*
      * For now we only support one instance of

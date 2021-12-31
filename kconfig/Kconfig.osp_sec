@@ -1,0 +1,10 @@
+#
+# Include core OSP SEC modules
+#
+source "src/lib/osp/kconfig/Kconfig.osp_sec"
+
+#
+# Include platform/vendor OSP SEC modules
+#
+osource "platform/*/kconfig/Kconfig.osp_sec"
+osource "vendor/*/kconfig/Kconfig.osp_sec"

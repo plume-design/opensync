@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <errno.h>
 
 #include "fsm.h"
+#include "fsm_dns_utils.h"
 #include "const.h"
 #include "ds_tree.h"
 #include "log.h"
@@ -48,6 +49,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fsm_dpi_utils.h"
 #include "json_mqtt.h"
 #include "memutil.h"
+#include "sockaddr_storage.h"
 #include "fsm_policy.h"
 
 #define IPTHREAT_CACHE_INTERVAL  120
@@ -76,7 +78,7 @@ ipthreat_dpi_get_mgr(void)
  * @return 0 if sessions matches
  */
 static int
-ipthreat_dpi_session_cmp(void *a, void *b)
+ipthreat_dpi_session_cmp(const void *a, const void *b)
 {
     uintptr_t p_a = (uintptr_t)a;
     uintptr_t p_b = (uintptr_t)b;
@@ -107,7 +109,7 @@ ipthreat_dpi_plugin_periodic(struct fsm_session *session)
 
     /*Clean up expired ip2action entries every 2mins.*/
     dns_cache_ttl_cleanup();
-    print_dns_cache_size();
+    dns_cache_print_size();
 }
 
 
@@ -352,65 +354,6 @@ ipthreat_dpi_send_report(struct fsm_policy_req *policy_req,
 }
 
 /**
- * @brief Set wb details..
- *
- * receive wb dst and src.
- *
- * @return void.
- *
- */
-void
-populate_wb_dns_cache_entry(struct ip2action_wb_info *i2a_cache_wb,
-                            struct fsm_wp_info *fqdn_reply_wb)
-{
-    i2a_cache_wb->risk_level = fqdn_reply_wb->risk_level;
-}
-
-/**
- * @brief Set bc details.
- *
- * receive bc dst, src and nelems.
- *
- * @return void.
- *
- */
-void
-populate_bc_dns_cache_entry(struct ip2action_bc_info *i2a_cache_bc,
-                            struct fsm_bc_info *fqdn_reply_bc,
-                            uint8_t nelems)
-{
-    size_t index;
-
-    i2a_cache_bc->reputation = fqdn_reply_bc->reputation;
-    for (index = 0; index < nelems; index++)
-    {
-        i2a_cache_bc->confidence_levels[index] =
-            fqdn_reply_bc->confidence_levels[index];
-    }
-}
-
-/**
- * @brief Set gk details.
- *
- * receive gk dst and src.
- *
- * @return void.
- *
- */
-void
-populate_gk_dns_cache_entry(struct ip2action_gk_info *i2a_cache_gk,
-                            struct fsm_gk_info *fqdn_reply_gk)
-{
-    i2a_cache_gk->confidence_level = fqdn_reply_gk->confidence_level;
-    i2a_cache_gk->category_id = fqdn_reply_gk->category_id;
-    if (fqdn_reply_gk->gk_policy)
-    {
-        i2a_cache_gk->gk_policy = fqdn_reply_gk->gk_policy;
-    }
-}
-
-
-/**
  * @brief session packet processing entry point
  *
  * packet processing handler.
@@ -438,28 +381,6 @@ ipthreat_dpi_plugin_handler(struct fsm_session *session,
 
     ipthreat_dpi_process_message(ds_session);
 
-    return;
-}
-
-static void
-util_populate_sockaddr(int af, void *ip_addr, struct sockaddr_storage *dst)
-{
-    if (!ip_addr) return;
-
-    if (af == AF_INET)
-    {
-        struct sockaddr_in *in4 = (struct sockaddr_in *)dst;
-
-        memset(in4, 0, sizeof(struct sockaddr_in));
-        in4->sin_family = af;
-        memcpy(&in4->sin_addr, ip_addr, sizeof(in4->sin_addr));
-    } else if (af == AF_INET6) {
-        struct sockaddr_in6 *in6 = (struct sockaddr_in6 *)dst;
-
-        memset(in6, 0, sizeof(struct sockaddr_in6));
-        in6->sin6_family = af;
-        memcpy(&in6->sin6_addr, ip_addr, sizeof(in6->sin6_addr));
-    }
     return;
 }
 
@@ -630,14 +551,13 @@ void
 ipthreat_update_cache(struct fsm_policy_req *policy_request,
                       struct fsm_policy_reply *policy_reply)
 {
+    struct net_md_stats_accumulator *acc;
     struct fqdn_pending_req *pending_req;
-    struct ip2action_req cache_req;
-    size_t index;
+    struct dns_cache_param param;
     bool ret;
-    int rc;
 
-    memset(&cache_req, 0, sizeof(cache_req));
     pending_req = policy_request->fqdn_req;
+    acc = pending_req->acc;
 
     /* check if the reply is valid */
     ret = ipthreat_validate_reply(policy_request, policy_reply);
@@ -645,47 +565,18 @@ ipthreat_update_cache(struct fsm_policy_req *policy_request,
 
     LOGT("%s(): updating cache for %s", __func__, policy_request->url);
 
-    cache_req.device_mac = policy_request->device_id;
-    cache_req.ip_addr = policy_request->ip_addr;
-    cache_req.cache_ttl = ipthreat_get_ttl(policy_request, policy_reply);
-    cache_req.action = policy_reply->action;
-    cache_req.policy_idx = policy_reply->policy_idx;
-    cache_req.service_id = pending_req->req_info->reply->service_id;
-    cache_req.nelems = pending_req->req_info->reply->nelems;
-    cache_req.cat_unknown_to_service = policy_reply->cat_unknown_to_service;
-
-    for (index = 0; index < pending_req->req_info->reply->nelems; ++index)
-    {
-        cache_req.categories[index] = pending_req->req_info->reply->categories[index];
-    }
-
-    if (cache_req.service_id == IP2ACTION_BC_SVC)
-    {
-        populate_bc_dns_cache_entry(&cache_req.cache_bc,
-                                    &pending_req->req_info->reply->bc,
-                                    pending_req->req_info->reply->nelems);
-    }
-    else if (cache_req.service_id == IP2ACTION_WP_SVC)
-    {
-        populate_wb_dns_cache_entry(&cache_req.cache_wb,
-                                    &pending_req->req_info->reply->wb);
-    }
-    else if (cache_req.service_id == IP2ACTION_GK_SVC)
-    {
-        populate_gk_dns_cache_entry(&cache_req.cache_gk,
-                                    &pending_req->req_info->reply->gk);
-    }
-    else
-    {
-        LOGD("%s : service id %d no recognized", __func__, pending_req->req_info->reply->service_id);
-    }
-
-    rc = dns_cache_add_entry(&cache_req);
-    if (!rc)
+    MEMZERO(param);
+    param.policy_reply = policy_reply;
+    param.req = pending_req;
+    param.ipaddr = policy_request->ip_addr;
+    param.ttl = ipthreat_get_ttl(policy_request, policy_reply);
+    param.direction = (acc != NULL ? acc->direction : NET_MD_ACC_UNSET_DIR);
+    param.action = policy_reply->action;
+    ret = fsm_dns_cache_add_entry(&param);
+    if (!ret)
     {
         LOGW("%s: Couldn't add ip2action entry to cache.",__func__);
     }
-
 }
 
 void
@@ -834,7 +725,7 @@ init_ipthreat_specific_reply(struct fsm_request_args *request_args,
 
     session = request_args->session;
 
-    policy_reply->provider = ipthreat_get_provider(session);;
+    policy_reply->provider = ipthreat_get_provider(session);
     policy_reply->send_report = session->ops.send_report;
     policy_reply->policy_response = ipthreat_process_verdict;
 
@@ -946,7 +837,7 @@ ipthreat_dpi_process_message(struct ipthreat_dpi_session *ds_session)
         return;
     }
 
-    util_populate_sockaddr(key.ip_version == 4 ? AF_INET : AF_INET6, ip, &ip_addr);
+    sockaddr_storage_populate(key.ip_version == 4 ? AF_INET : AF_INET6, ip, &ip_addr);
 
     provider = ipthreat_get_provider(session);
     if (provider == NULL)
@@ -1119,4 +1010,3 @@ ipthreat_dpi_delete_session(struct fsm_session *session)
 
     return;
 }
-

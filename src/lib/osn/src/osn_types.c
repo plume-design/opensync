@@ -125,10 +125,10 @@ bool osn_ip_addr_from_sockaddr(osn_ip_addr_t *out, const struct sockaddr *in)
  * Comparator function -- compare two osn_ip_addr_t and return negative, 0 or positive if
  * a is lower than, equal to or greater than b, respectively.
  */
-int osn_ip_addr_cmp(void *_a, void *_b)
+int osn_ip_addr_cmp(const void *_a, const void *_b)
 {
-    osn_ip_addr_t *a = _a;
-    osn_ip_addr_t *b = _b;
+    const osn_ip_addr_t *a = _a;
+    const osn_ip_addr_t *b = _b;
 
     int rc;
 
@@ -318,10 +318,10 @@ bool osn_ip6_addr_from_str(osn_ip6_addr_t *out, const char *str)
  * Comparator function -- compare two osn_ip6_addr_t and return negative, 0 or positive if
  * a is lower than, equal to or greater than b, respectively.
  */
-int osn_ip6_addr_cmp(void *_a, void *_b)
+int osn_ip6_addr_cmp(const void *_a, const void *_b)
 {
-    osn_ip6_addr_t *a = _a;
-    osn_ip6_addr_t *b = _b;
+    const osn_ip6_addr_t *a = _a;
+    const osn_ip6_addr_t *b = _b;
 
     int rc;
 
@@ -345,10 +345,10 @@ int osn_ip6_addr_cmp(void *_a, void *_b)
  *
  * This version ignores lifetime values.
  */
-int osn_ip6_addr_nolft_cmp(void *_a, void *_b)
+int osn_ip6_addr_nolft_cmp(const void *_a, const void *_b)
 {
-    osn_ip6_addr_t *a = _a;
-    osn_ip6_addr_t *b = _b;
+    const osn_ip6_addr_t *a = _a;
+    const osn_ip6_addr_t *b = _b;
 
     int rc;
 
@@ -474,10 +474,10 @@ bool osn_mac_addr_from_str(osn_mac_addr_t *mac, const char *str)
  * Comparator function -- compare two osn_mac_addr_t and return negative, 0 or positive if
  * a is lower than, equal to or greater than b, respectively.
  */
-int osn_mac_addr_cmp(void *_a, void *_b)
+int osn_mac_addr_cmp(const void *_a, const void *_b)
 {
-    osn_mac_addr_t *a = _a;
-    osn_mac_addr_t *b = _b;
+    const osn_mac_addr_t *a = _a;
+    const osn_mac_addr_t *b = _b;
 
     return memcmp(a->ma_addr, b->ma_addr, sizeof(a->ma_addr));
 }

@@ -253,6 +253,7 @@ dump_flows(lan_stats_instance_t *lan_stats_instance, struct dpctl_params *dpctl_
 #endif
         ds.string[ds.length] = '\0';
         lan_stats_parse_flows(lan_stats_instance, ds.string);
+        lan_stats_add_uplink_info(lan_stats_instance);
         lan_stats_flows_filter(lan_stats_instance);
         ds_clear(&ds);
     }

@@ -51,10 +51,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 static fcm_mgr_t fcm_mgr;
 
-static int fcm_tree_node_cmp(void *a, void *b)
+static int fcm_tree_node_cmp(const void *a, const void *b)
 {
-    char *name_a = a;
-    char *name_b = b;
+    const char *name_a = a;
+    const char *name_b = b;
     return (strcmp(name_a, name_b));
 }
 
@@ -509,6 +509,7 @@ void init_report_config(struct schema_FCM_Report_Config *conf)
     // call any pending collector_plugin init waiting for report_config
     init_pending_collector_plugin(&mgr->collect_tree);
 }
+
 
 void update_report_config(struct schema_FCM_Report_Config *conf)
 {

@@ -34,10 +34,9 @@ source "${fut_topdir}"/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh &> /dev/null
 source "$fut_topdir/lib/rpi_lib.sh"
 
-tc_name="tools/client/rpi/fsm/$(basename "$0")"
 usage() {
     cat << usage_string
-${tc_name} [-h] arguments
+tools/client/rpi/fsm/fsm_make_curl_agent_req.sh [-h] arguments
 Description:
     - Script makes curl request to url with specified user_agent
 Arguments:
@@ -46,7 +45,7 @@ Arguments:
     \$2 (user_agent)          : User agent to pass with curl request : (string)(required)
     \$3 (url)                 : URL to make curl request             : (string)(required)
 Script usage example:
-   ./${tc_name} "custom_user_agent_name" "www.google.com"
+   ./tools/client/rpi/fsm/fsm_make_curl_agent_req.sh "custom_user_agent_name" "www.google.com"
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -61,7 +60,7 @@ if [ -n "${1}" ]; then
     esac
 fi
 NARGS=3
-[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "tools/client/rpi/fsm/fsm_make_curl_agent_req.sh" -arg
 
 namespace_enter_cmd=$1
 user_agent=$2
@@ -69,7 +68,7 @@ url=$3
 
 ${namespace_enter_cmd} -c "curl -S -s --output /dev/null -A '${user_agent}' '${url}'" || $(exit 1)
 if [[ "$?" != 0 ]];then
-    raise "Failed to make curl request to ${url} with user_agent ${user_agent}" -l "${tc_name}"
+    raise "Failed to make curl request to ${url} with user_agent ${user_agent}" -l "tools/client/rpi/fsm/fsm_make_curl_agent_req.sh"
 else
-    log "${tc_name}: curl request made to ${url} with user_agent ${user_agent}"
+    log "tools/client/rpi/fsm/fsm_make_curl_agent_req.sh: curl request made to ${url} with user_agent ${user_agent}"
 fi

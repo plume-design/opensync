@@ -1115,10 +1115,10 @@ void dnsmasq6_server_status_lease_add(
     status->d6st_leases[status->d6st_leases_len++] = *lease;
 }
 
-int dnsmasq6_server_lease_cmp(void *_a, void *_b)
+int dnsmasq6_server_lease_cmp(const void *_a, const void *_b)
 {
-    struct osn_dhcpv6_server_lease *a = _a;
-    struct osn_dhcpv6_server_lease *b = _b;
+    const struct osn_dhcpv6_server_lease *a = _a;
+    const struct osn_dhcpv6_server_lease *b = _b;
     int rc;
 
     rc = osn_ip6_addr_cmp(&a->d6s_addr, &b->d6s_addr);

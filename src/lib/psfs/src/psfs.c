@@ -25,6 +25,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <arpa/inet.h>
 #include <sys/uio.h>
 #include <stdint.h>
@@ -37,6 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "log.h"
 #include "osp_ps.h"
+#include "osp_sec.h"
 #include "util.h"
 #include "memutil.h"
 #include "const.h"
@@ -57,6 +59,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define PSFS_CRC32_POLY                     0xEDB88320
 /* Running a CRC32 over a "data + CRC32" buffer will always yield this number */
 #define PSFS_CRC32_VERIFY                   0x2144DF1C
+
+/* Calculate pad length given size x */
+#define PSFS_PAD_LEN(x)                     ((4 - ((x) & 3)) & 3)
 
 #define PSFS_INIT (psfs_t)      \
 {                               \
@@ -279,9 +284,10 @@ bool psfs_close(psfs_t *ps)
 bool psfs_sync(psfs_t *ps, bool force_prune)
 {
     double wasted_ratio;
-    ssize_t wasted;
+    struct statvfs sfs;
     struct stat st;
 
+    bool retval = true;
     bool prune = false;
 
     if ((ps->psfs_flags & OSP_PS_WRITE) == 0)
@@ -290,24 +296,24 @@ bool psfs_sync(psfs_t *ps, bool force_prune)
         return true;
     }
 
-    /* Calculate wasted space */
-    if (fstat(ps->psfs_fd, &st) != 0)
-    {
-        LOG(ERR, "psfs: %s: sync: Unable to stat file, falling back to append strategy.", ps->psfs_name);
-    }
-    wasted = (st.st_size > ps->psfs_used) ? st.st_size - ps->psfs_used : 0;
-    wasted_ratio = (st.st_size == 0) ? 0.0 : (double)wasted / st.st_size;
+    wasted_ratio = (double)ps->psfs_wasted / (ps->psfs_used + ps->psfs_wasted);
 
-    LOG(INFO, "psfs: %s: Syncing; used bytes = %zd, wasted bytes = %zd, waste ratio = %0.2f",
+    LOG(INFO, "psfs: %s: Pre-sync; used bytes = %zd, wasted bytes = %zd, wasted ratio = %0.2f%%",
             ps->psfs_name,
             ps->psfs_used,
-            wasted,
-            wasted_ratio);
+            ps->psfs_wasted,
+            wasted_ratio * 100.0);
+
+    if (fstat(ps->psfs_fd, &st) != 0)
+    {
+        LOG(WARN, "psfs: %s: sync: Unable to stat store file.", ps->psfs_name);
+        st.st_size = 0;
+    }
 
     /* Do not use prune when the file size is below PSFS_SYNC_MIN */
-    if (st.st_size > (CONFIG_PSFS_SYNC_MIN*1024))
+    if (st.st_size == 0 || st.st_size > (CONFIG_PSFS_SYNC_MIN*1024))
     {
-        if (wasted > (CONFIG_PSFS_SYNC_WASTED_MAX*1024))
+        if (ps->psfs_wasted > (CONFIG_PSFS_SYNC_WASTED_MAX*1024))
         {
             LOG(INFO, "psfs: %s: Forcing prune mode as wasted space exceeds %dkB.",
                     ps->psfs_name,
@@ -324,17 +330,63 @@ bool psfs_sync(psfs_t *ps, bool force_prune)
         }
     }
 
-    /* Heuristic to decide whether to do an append or prune operation */
-    if (prune || force_prune)
+    if (fstatvfs(ps->psfs_fd, &sfs) == 0)
     {
-        return psfs_sync_prune(ps);
+        intmax_t fs_avail;
+        intmax_t fs_reserved;
+
+        intmax_t fs_free = sfs.f_bsize * sfs.f_bavail;
+
+        /* Reduce the amount of free space by PSFS_FS_RESERVED_FREE */
+        fs_reserved = (intmax_t)CONFIG_PSFS_FS_RESERVED_FREE * 1024;
+        fs_avail = fs_free < fs_reserved ? 0 : (fs_free - fs_reserved);
+
+        /*
+         * If the current storage usage is greater than the available space,
+         * refuse further writes. This ensures there's always free space for a
+         * prune operation.
+         */
+        if (fs_avail < ps->psfs_used)
+        {
+            LOG(ERR, "psfs: %s: sync: Filesystem low on space, refusing updates. Free space %jd (of which %jd is reserved), store size %zd.",
+                    ps->psfs_name,
+                    fs_free,
+                    fs_reserved,
+                    ps->psfs_used);
+            return false;
+        }
+        /*
+         * If we're getting short on filesystem space, start prunning more aggresively
+         */
+        else if (fs_avail < (ps->psfs_used * 2) && ps->psfs_wasted > 0)
+        {
+            LOG(NOTICE, "psfs: %s: sync: Filesystem space getting low, forcing prune.", ps->psfs_name);
+            prune = true;
+        }
     }
     else
     {
-        return psfs_sync_append(ps);
+        LOG(WARN, "psfs: %s: sync: Unable to stat filesystem, forcing prune strategy.", ps->psfs_name);
+        prune = true;
     }
 
-    return true;
+    /* Heuristic to decide whether to do an append or prune operation */
+    if (prune || force_prune)
+    {
+        retval = psfs_sync_prune(ps);
+    }
+    else
+    {
+        retval = psfs_sync_append(ps);
+    }
+
+    LOG(INFO, "psfs: %s: Sync; used bytes = %zd, wasted bytes = %zd, wasted ratio = %0.2f%%",
+            ps->psfs_name,
+            ps->psfs_used,
+            ps->psfs_wasted,
+            wasted_ratio * 100.0);
+
+    return retval;
 }
 
 /**
@@ -457,6 +509,9 @@ bool psfs_erase(psfs_t *ps)
  *
  * @note
  * A value of NULL or value_sz of 0 indicates that the key must be deleted.
+ *
+ * @note If OSP_PS_ENCRYPTION flag was specified the value of bytes stored (and
+ * thus the value returned) may be slightly larger then the @p value_sz.
  */
 ssize_t psfs_set(psfs_t *ps, const char *key, const void *value, size_t value_sz)
 {
@@ -473,10 +528,41 @@ ssize_t psfs_set(psfs_t *ps, const char *key, const void *value, size_t value_sz
     pr = ds_tree_find(&ps->psfs_root, (void *)key);
     if (pr != NULL)
     {
-        /* Compare data, if it is the same do nothing */
-        if (pr->pr_datasz == value_sz && memcmp(pr->pr_data, value, value_sz) == 0)
+        void *dec_data = pr->pr_data;
+        ssize_t dec_datasz = pr->pr_datasz;
+        bool decrypt_ok = true;
+
+        if (ps->psfs_flags & OSP_PS_ENCRYPTION)
         {
-            return value_sz;
+            dec_datasz = osp_sec_decrypt(NULL, 0, pr->pr_data, pr->pr_datasz);
+            dec_data = MALLOC(dec_datasz);
+
+            dec_datasz = osp_sec_decrypt(dec_data, dec_datasz, pr->pr_data, pr->pr_datasz);
+            if (dec_datasz < 0)
+            {
+                LOG(WARN, "Failed decrypting value for key %s. Value not encrypted?", key);
+
+                /* Decryption failed: Assume data is not encrypted: */
+                FREE(dec_data);
+                dec_data = pr->pr_data;
+                dec_datasz = pr->pr_datasz;
+
+                decrypt_ok = false;
+            }
+        }
+
+        /* Compare data, if it is the same do nothing */
+        if ((size_t)dec_datasz == value_sz && memcmp(dec_data, value, value_sz) == 0)
+        {
+            if (ps->psfs_flags & OSP_PS_ENCRYPTION && dec_data != pr->pr_data)
+                FREE(dec_data);
+
+            if (decrypt_ok)
+                return value_sz;
+
+            /* Unless if decryption failed. In this case we're assuming old value
+             * is plaintext and equals the new value, but we want to encrypt
+             * it bellow and now have it stored encrypted. */
         }
 
         /* Remove old entry */
@@ -486,6 +572,25 @@ ssize_t psfs_set(psfs_t *ps, const char *key, const void *value, size_t value_sz
     {
         /* Key does not exists, and value_sz is 0 (delete key) -- nothing to do */
         return 0;
+    }
+
+    if (ps->psfs_flags & OSP_PS_ENCRYPTION)
+    {
+        void *enc_value;
+        ssize_t enc_value_sz;
+
+        enc_value_sz = osp_sec_encrypt(NULL, 0, value, value_sz);
+        enc_value = MALLOC(enc_value_sz);
+
+        enc_value_sz = osp_sec_encrypt(enc_value, enc_value_sz, value, value_sz);
+        if (enc_value_sz < 0)
+        {
+            LOG(ERR, "Failed to encrypt value for key %s", key);
+            FREE(enc_value);
+            return -1;
+        }
+        value = enc_value;
+        value_sz = enc_value_sz;
     }
 
     pr = CALLOC(1, sizeof(*pr));
@@ -498,6 +603,9 @@ ssize_t psfs_set(psfs_t *ps, const char *key, const void *value, size_t value_sz
 
     /* Update byte count */
     ps->psfs_used += pr->pr_used;
+
+    if (ps->psfs_flags & OSP_PS_ENCRYPTION)
+        FREE(value);
 
     return value_sz;
 }
@@ -537,8 +645,30 @@ ssize_t psfs_get(psfs_t *ps, const char *key, void *value, size_t value_sz)
         return 0;
     }
 
-    memcpy(value, pr->pr_data, pr->pr_datasz < value_sz ? pr->pr_datasz : value_sz);
+    if (ps->psfs_flags & OSP_PS_ENCRYPTION)
+    {
+        void *dec_data;
+        ssize_t dec_datasz = 0;
 
+        dec_datasz = osp_sec_decrypt(NULL, 0, pr->pr_data, pr->pr_datasz);
+        dec_data = MALLOC(dec_datasz);
+
+        dec_datasz = osp_sec_decrypt(dec_data, dec_datasz, pr->pr_data, pr->pr_datasz);
+        if (dec_datasz < 0)
+        {
+            LOG(WARN, "Failed decrypting value for key %s. Value not encrypted?", key);
+
+            /* Decryption failed: Assume data is not encrypted: */
+            FREE(dec_data);
+            memcpy(value, pr->pr_data, pr->pr_datasz < value_sz ? pr->pr_datasz : value_sz);
+            return pr->pr_datasz;
+        }
+        memcpy(value, dec_data, (size_t)dec_datasz < value_sz ? (size_t)dec_datasz : value_sz);
+        FREE(dec_data);
+        return dec_datasz;
+    }
+
+    memcpy(value, pr->pr_data, pr->pr_datasz < value_sz ? pr->pr_datasz : value_sz);
     return pr->pr_datasz;
 }
 
@@ -764,6 +894,7 @@ void psfs_drop_record(psfs_t *ps, struct psfs_record *pr, ds_tree_iter_t *iter)
     }
 
     ps->psfs_used -= pr->pr_used;
+    ps->psfs_wasted += pr->pr_used;
     psfs_record_fini(pr);
     FREE(pr);
 }
@@ -801,6 +932,7 @@ void psfs_record_init(
 
     /* Update bytes used by this record, datasize + magic number + size + crc32 */
     pr->pr_used = ksz + datasz + (3 * sizeof(uint32_t));
+    pr->pr_used += PSFS_PAD_LEN(pr->pr_used);
 }
 
 /**
@@ -866,7 +998,7 @@ ssize_t psfs_record_write(int fd, struct psfs_record *pr)
     bpadlen = 0;
     if ((st.st_size & 0x3) != 0)
     {
-        bpadlen = 4 - ((st.st_size) & 0x3);
+        bpadlen = PSFS_PAD_LEN(st.st_size);
     }
 
     wmagic = htonl(PSFS_MAGIC);
@@ -898,7 +1030,7 @@ ssize_t psfs_record_write(int fd, struct psfs_record *pr)
     epadlen = 0;
     if ((retval & 0x3) != 0)
     {
-        epadlen = 4 - (retval & 0x3);
+        epadlen = PSFS_PAD_LEN(retval);
     }
 
     struct iovec iov[] =
@@ -996,7 +1128,7 @@ ssize_t psfs_record_read(int fd, struct psfs_record *pr)
      */
     if ((coff & 0x3) != 0)
     {
-        padlen = 4 - (coff & 0x3);
+        padlen = PSFS_PAD_LEN(coff);
         /* Align to 4 byets */
         rc = read(fd, &wdata, (size_t)padlen);
         if (rc == 0)
@@ -1114,7 +1246,8 @@ ssize_t psfs_record_read(int fd, struct psfs_record *pr)
 
     pr->pr_data = (uint8_t *)pr->pr_key + doff;
     pr->pr_datasz = pr_size - doff;
-    pr->pr_used = retval;
+    /* Include the padding size */
+    pr->pr_used = retval + PSFS_PAD_LEN(retval);
 
     return retval;
 
@@ -1273,6 +1406,8 @@ bool psfs_sync_prune(psfs_t *ps)
     /* ... and replace it with the temporary file descriptor */
     ps->psfs_fd = tfd;
     tfd = -1;
+    /* After a prune, there should be 0 wasted bytes */
+    ps->psfs_wasted = 0;
 
     retval = true;
 

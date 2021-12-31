@@ -1,0 +1,11 @@
+#
+# Core SEC modules
+#
+source "src/lib/osp/kconfig/Kconfig.osp_sec.backend"
+
+#
+# vendor/platform SEC modules
+#
+osource "platform/*/kconfig/Kconfig.osp_sec.backend"
+osource "vendor/*/kconfig/Kconfig.osp_sec.backend"
+

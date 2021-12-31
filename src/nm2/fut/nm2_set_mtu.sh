@@ -33,12 +33,11 @@ source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="nm2/$(basename "$0")"
 manager_setup_file="nm2/nm2_setup.sh"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+nm2/nm2_set_mtu.sh [-h] arguments
 Description:
     - Script configures interfaces mtu through Wifi_inet_Config 'mtu' field and checks if it is propagated
       into Wifi_Inet_State table and to the system, fails otherwise
@@ -49,9 +48,9 @@ Arguments:
     \$3 (mtu)     : used as mtu in Wifi_Inet_Config table     : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name} <IF-NAME> <IF-TYPE> <MTU>
+                 Run: ./nm2/nm2_set_mtu.sh <IF-NAME> <IF-TYPE> <MTU>
 Script usage example:
-   ./${tc_name} eth0 eth 1500
+   ./nm2/nm2_set_mtu.sh eth0 eth 1500
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -67,7 +66,7 @@ if [ -n "${1}" ]; then
 fi
 
 NARGS=3
-[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "nm2/nm2_set_mtu.sh" -arg
 # Fill variables with provided arguments or defaults.
 if_name=$1
 if_type=$2
@@ -76,36 +75,48 @@ mtu=$3
 trap '
     fut_info_dump_line
     print_tables Wifi_Inet_Config Wifi_Inet_State
-    fut_info_dump_line
     reset_inet_entry $if_name || true
-    run_setup_if_crashed nm || true
     check_restore_management_access || true
+    fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 
-log_title "$tc_name: NM2 test - Testing table Wifi_Inet_Config field mtu - $mtu"
+log_title "nm2/nm2_set_mtu.sh: NM2 test - Testing table Wifi_Inet_Config field mtu - $mtu"
 
-log "$tc_name: Creating Wifi_Inet_Config entries for $if_name (enabled=true, network=true, ip_assign_scheme=static)"
-create_inet_entry \
-    -if_name "$if_name" \
-    -enabled true \
-    -network true \
-    -ip_assign_scheme static \
-    -if_type "$if_type" &&
-        log "$tc_name: Interface $if_name created - Success" ||
-        raise "FAIL: Failed to create $if_name interface" -l "$tc_name" -ds
+log "nm2/nm2_set_mtu.sh: Creating Wifi_Inet_Config entries for $if_name (enabled=true, network=true, ip_assign_scheme=static)"
+if [ "${if_type}" == "vif" ]; then
+    create_inet_entry \
+        -if_name "$if_name" \
+        -enabled true \
+        -network true \
+        -ip_assign_scheme static \
+        -if_type "$if_type" \
+        -inet_addr "10.10.10.30" \
+        -netmask "255.255.255.0" &&
+            log "nm2/nm2_set_mtu.sh: Interface $if_name created - Success" ||
+            raise "FAIL: Failed to create $if_name interface" -l "nm2/nm2_set_mtu.sh" -ds
+else
+    create_inet_entry \
+        -if_name "$if_name" \
+        -enabled true \
+        -network true \
+        -ip_assign_scheme static \
+        -if_type "$if_type" &&
+            log "nm2/nm2_set_mtu.sh: Interface $if_name created - Success" ||
+            raise "FAIL: Failed to create $if_name interface" -l "nm2/nm2_set_mtu.sh" -ds
+fi
 
-log "$tc_name: Setting MTU to $mtu"
+log "nm2/nm2_set_mtu.sh: Setting MTU to $mtu"
 update_ovsdb_entry Wifi_Inet_Config -w if_name "$if_name" -u mtu "$mtu" &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config::mtu is $mtu - Success" ||
-    raise "FAIL: update_ovsdb_entry - Wifi_Inet_Config::mtu is not $mtu" -l "$tc_name" -oe
+    log "nm2/nm2_set_mtu.sh: update_ovsdb_entry - Wifi_Inet_Config::mtu is $mtu - Success" ||
+    raise "FAIL: update_ovsdb_entry - Wifi_Inet_Config::mtu is not $mtu" -l "nm2/nm2_set_mtu.sh" -oe
 
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is mtu "$mtu" &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::mtu is $mtu - Success" ||
-    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::mtu is not $mtu" -l "$tc_name" -tc
+    log "nm2/nm2_set_mtu.sh: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::mtu is $mtu - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::mtu is not $mtu" -l "nm2/nm2_set_mtu.sh" -tc
 
-log "$tc_name: Checking if MTU was properly applied for $if_name - LEVEL2"
+log "nm2/nm2_set_mtu.sh: Checking if MTU was properly applied for $if_name - LEVEL2"
 wait_for_function_response 0 "get_interface_mtu_from_system $if_name | grep -q \"$mtu\"" &&
-    log "$tc_name: LEVEL2 - MTU applied to ifconfig for interface $if_name - Success" ||
-    raise "FAIL: LEVEL2 - Failed to apply MTU to ifconfig for interface $if_name" -l "$tc_name" -tc
+    log "nm2/nm2_set_mtu.sh: LEVEL2 - MTU applied to ifconfig for interface $if_name - Success" ||
+    raise "FAIL: LEVEL2 - Failed to apply MTU to ifconfig for interface $if_name" -l "nm2/nm2_set_mtu.sh" -tc
 
 pass

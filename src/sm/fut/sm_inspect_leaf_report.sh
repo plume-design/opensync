@@ -33,13 +33,12 @@ source "${FUT_TOPDIR}/shell/lib/sm_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="sm/$(basename "$0")"
 manager_setup_file="sm/sm_setup.sh"
 radio_vif_create_path="tools/device/create_radio_vif_interface.sh"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+sm/sm_inspect_leaf_report.sh [-h] arguments
 Description:
     - Script configures SM leaf reporting and inspects the logs for the leaf device being reported by SM, fails otherwise
 Arguments:
@@ -55,9 +54,9 @@ Testcase procedure:
     - On LEAF:   Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
                  Create required Radio-VIF STA interface settings to associate it to DUT/DEVICE (see ${radio_vif_create_path} -h)
     - On DEVICE:
-                 Run: ./${tc_name} <RADIO-TYPE> <REPORTING-INTERVAL> <SAMPLING-INTERVAL> <REPORT-TYPE> <LEAF-MAC>
+                 Run: ./sm/sm_inspect_leaf_report.sh <RADIO-TYPE> <REPORTING-INTERVAL> <SAMPLING-INTERVAL> <REPORT-TYPE> <LEAF-MAC>
 Script usage example:
-   ./${tc_name} 2.4G 10 5 raw 3c:7b:96:4d:11:5c
+   ./sm/sm_inspect_leaf_report.sh 2.4G 10 5 raw 3c:7b:96:4d:11:5c
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -72,24 +71,23 @@ if [ -n "${1}" ]; then
     esac
 fi
 NARGS=5
-[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "sm/sm_inspect_leaf_report.sh" -arg
 sm_radio_type=$1
 sm_reporting_interval=$2
 sm_sampling_interval=$3
 sm_report_type=$4
 sm_leaf_mac=$5
 
-trap 'run_setup_if_crashed sm' EXIT SIGINT SIGTERM
 
-log_title "$tc_name: SM test - Inspect leaf report for $sm_radio_type"
+log_title "sm/sm_inspect_leaf_report.sh: SM test - Inspect leaf report for $sm_radio_type"
 
-log "$tc_name: Inspecting leaf report type $sm_report_type for leaf $sm_leaf_mac radio $sm_radio_type "
+log "sm/sm_inspect_leaf_report.sh: Inspecting leaf report type $sm_report_type for leaf $sm_leaf_mac radio $sm_radio_type "
 inspect_leaf_report \
     "$sm_radio_type" \
     "$sm_reporting_interval" \
     "$sm_sampling_interval" \
     "$sm_report_type" \
     "$sm_leaf_mac" ||
-        raise "FAIL: inspect_leaf_report - $sm_report_type logs for LEAF $sm_leaf_mac not found for radio $sm_radio_type" -l "$tc_name" -tc
+        raise "FAIL: inspect_leaf_report - $sm_report_type logs for LEAF $sm_leaf_mac not found for radio $sm_radio_type" -l "sm/sm_inspect_leaf_report.sh" -tc
 
 pass

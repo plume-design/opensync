@@ -27,8 +27,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef OSP_DL_H_INCLUDED
 #define OSP_DL_H_INCLUDED
 
+#include <stdbool.h>
 #include <stdio.h>
-
 
 /// @file
 /// @brief OSP Download API

@@ -33,12 +33,11 @@ source "${FUT_TOPDIR}/shell/lib/brv_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="brv/$(basename "$0")"
 brv_setup_file="brv/brv_setup.sh"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+brv/brv_is_script_on_system.sh [-h] arguments
 Description:
     - Script checks if the specified script is present on the system, fails otherwise
 Arguments:
@@ -46,9 +45,9 @@ Arguments:
     \$1 (builtin_script) : name of the required script : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${brv_setup_file} (see ${brv_setup_file} -h)
-                 Run: ./${tc_name} <SCRIPT-NAME>
+                 Run: ./brv/brv_is_script_on_system.sh <SCRIPT-NAME>
 Script usage example:
-   ./${tc_name} "/usr/opensync/scripts/healthcheck.funcs.sh"
+   ./brv/brv_is_script_on_system.sh "/usr/opensync/scripts/healthcheck.funcs.sh"
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -63,18 +62,18 @@ if [ -n "${1}" ]; then
     esac
 fi
 NARGS=1
-[ $# -ne ${NARGS} ] && usage && raise "Requires exactly '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -ne ${NARGS} ] && usage && raise "Requires exactly '${NARGS}' input argument(s)" -l "brv/brv_is_script_on_system.sh" -arg
 
 script_path=$1
 
-log_title "${tc_name}: BRV test - Check if script '${script_path}' is present on device"
+log_title "brv/brv_is_script_on_system.sh: BRV test - Check if script '${script_path}' is present on device"
 
 is_script_on_system "${script_path}"
 rc=$?
 if [ $rc = 0 ]; then
-    log "${tc_name}: script '${script_path}' found on device - Success"
+    log "brv/brv_is_script_on_system.sh: script '${script_path}' found on device - Success"
 else
-    raise "FAIL: Script '${script_path}' could not be found on device" -l "${tc_name}" -tc
+    raise "FAIL: Script '${script_path}' could not be found on device" -l "brv/brv_is_script_on_system.sh" -tc
 fi
 
 pass

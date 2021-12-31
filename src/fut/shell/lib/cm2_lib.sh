@@ -29,6 +29,7 @@
 export FUT_CM2_LIB_SRC=true
 [ "${FUT_UNIT_LIB_SRC}" != true ] && source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
 echo "${FUT_TOPDIR}/shell/lib/cm2_lib.sh sourced"
+
 ####################### INFORMATION SECTION - START ###########################
 #
 #   Base library of common Connection Manager functions
@@ -40,10 +41,10 @@ echo "${FUT_TOPDIR}/shell/lib/cm2_lib.sh sourced"
 ###############################################################################
 # DESCRIPTION:
 #   Function prepares device for CM tests.
-#   Raises an exception on fail.
+#   Raises exception on fail in any of its steps.
 # INPUT PARAMETER(S):
-#   $1  wan_eth_if_name: uplink ethernet interface name (string)(optional)
-#   $2  wan_bridge_if_name: WAN bridge interface name (string)(optional)
+#   $1  wan_eth_if_name: uplink ethernet interface name (string, optional)
+#   $2  wan_bridge_if_name: WAN bridge interface name (string, optional)
 # RETURNS:
 #   0   On success.
 #   See description.
@@ -53,67 +54,70 @@ echo "${FUT_TOPDIR}/shell/lib/cm2_lib.sh sourced"
 ###############################################################################
 cm_setup_test_environment()
 {
-    fn_name="cm2_lib:cm_setup_test_environment"
     wan_eth_if_name=${1}
     wan_bridge_if_name=${2}
+    use_fut_cloud=${3:-"false"}
+
     check_kconfig_option "CONFIG_MANAGER_WANO" "y" && is_wano=true || is_wano=false
 
-    log "$fn_name - Running CM2 setup"
+    log -deb "cm2_lib:cm_setup_test_environment - Running CM2 setup"
 
     device_init &&
-        log -deb "$fn_name - Device initialized - Success" ||
-        raise "FAIL: Could not initialize device: device_init" -l "$fn_name" -ds
+        log -deb "cm2_lib:cm_setup_test_environment - Device initialized - Success" ||
+        raise "FAIL: device_init - Could not initialize device" -l "cm2_lib:cm_setup_test_environment" -ds
 
     start_openswitch &&
-        log -deb "$fn_name - OpenvSwitch started - Success" ||
-        raise "FAIL: Could not start OpenvSwitch: start_openswitch" -l "$fn_name" -ds
+        log -deb "cm2_lib:cm_setup_test_environment - OpenvSwitch started - Success" ||
+        raise "FAIL: start_openswitch - Could not start OpenvSwitch" -l "cm2_lib:cm_setup_test_environment" -ds
 
     manipulate_iptables_protocol unblock DNS &&
-        log -deb "$fn_name - iptables unblock DNS - Success" ||
-        raise "FAIL: Could not unblock DNS traffic: manipulate_iptables_protocol unblock DNS" -l "$fn_name" -ds
+        log -deb "cm2_lib:cm_setup_test_environment - iptables unblock DNS - Success" ||
+        raise "FAIL: manipulate_iptables_protocol unblock DNS - Could not unblock DNS traffic" -l "cm2_lib:cm_setup_test_environment" -ds
 
     manipulate_iptables_protocol unblock SSL &&
-        log -deb "$fn_name - iptables unblock SSL - Success" ||
-        raise "FAIL: Could not unblock SSL traffic: manipulate_iptables_protocol unblock SSL" -l "$fn_name" -ds
+        log -deb "cm2_lib:cm_setup_test_environment - iptables unblock SSL - Success" ||
+        raise "FAIL: Could not unblock SSL traffic: manipulate_iptables_protocol unblock SSL" -l "cm2_lib:cm_setup_test_environment" -ds
 
     # Legacy procedure requires manual adding of WAN ethernet interface into WAN bridge
-    if [ -n ${wan_eth_if_name} ] && [ -n ${wan_bridge_if_name} ] && [ $is_wano == false ] ; then
+    if [ -n "${wan_eth_if_name}" ] && [ -n "${wan_bridge_if_name}" ] && [ $is_wano == false ] ; then
         add_bridge_interface "${wan_bridge_if_name}" "${wan_eth_if_name}" &&
-            log -deb "$fn_name - interface '$cm2_if_name' added to bridge 'br-wan' - Success" ||
-            raise "FAIL: Could not add interface to br-wan bridge: add_bridge_interface br-wan $cm2_if_name" -l "$fn_name" -ds
+            log -deb "cm2_lib:cm_setup_test_environment - Interface added to bridge - Success" ||
+            raise "FAIL: add_bridge_interface $wan_bridge_if_name $wan_eth_if_name - Could not add interface to bridge" -l "cm2_lib:cm_setup_test_environment" -ds
+    else
+        log -deb "cm2_lib:cm_setup_test_environment - Device does not require adding bridge interface"
+        log -deb "Details:\nwan_eth_if_name: ${wan_eth_if_name}\nwan_bridge_if_name: ${wan_bridge_if_name}\nis_wano: ${is_wano}"
     fi
 
-    start_specific_manager cm -v &&
-        log -deb "$fn_name - start_specific_manager cm - Success" ||
-        raise "FAIL: Could not start manager: start_specific_manager cm" -l "$fn_name" -ds
-
-    start_specific_manager nm &&
-        log -deb "$fn_name - start_specific_manager nm - Success" ||
-        raise "FAIL: Could not start manager: start_specific_manager nm" -l "$fn_name" -ds
-
-    if [ $is_wano == true ]; then
-        start_specific_manager wano &&
-            log -deb "$fn_name - start_specific_manager wano - Success" ||
-            raise "FAIL: Could not start manager: start_if_specific_manager wano" -l "$fn_name" -ds
-    fi
+    restart_managers
+    log -deb "cm2_lib:cm_setup_test_environment - Executed restart_managers, exit code: $?"
 
     empty_ovsdb_table AW_Debug &&
-        log -deb "$fn_name - AW_Debug table emptied - Success" ||
-        raise "FAIL: Could not empty table: empty_ovsdb_table AW_Debug" -l "$fn_name" -ds
+        log -deb "cm2_lib:cm_setup_test_environment - AW_Debug table emptied - Success" ||
+        raise "FAIL: empty_ovsdb_table AW_Debug - Could not empty table:" -l "cm2_lib:cm_setup_test_environment" -ds
 
     set_manager_log CM TRACE &&
-        log -deb "$fn_name - Manager log for CM set to TRACE - Success" ||
-        raise "FAIL: Could not set manager log severity: set_manager_log CM TRACE" -l "$fn_name" -ds
+        log -deb "cm2_lib:cm_setup_test_environment - Manager log for CM set to TRACE - Success" ||
+        raise "FAIL: set_manager_log CM TRACE - Could not set manager log severity" -l "cm2_lib:cm_setup_test_environment" -ds
 
     set_manager_log NM TRACE &&
-        log -deb "$fn_name - Manager log for NM set to TRACE - Success" ||
-        raise "FAIL: Could not set manager log severity: set_manager_log NM TRACE" -l "$fn_name" -ds
+        log -deb "cm2_lib:cm_setup_test_environment - Manager log for NM set to TRACE - Success" ||
+        raise "FAIL: set_manager_log NM TRACE - Could not set manager log severity" -l "cm2_lib:cm_setup_test_environment" -ds
 
     wait_for_function_response 0 "check_default_route_gw" &&
-        log -deb "$fn_name - Default GW added to routes - Success" ||
-        raise "FAIL: Default GW not added to routes" -l "$fn_name" -ds
+        log -deb "cm2_lib:cm_setup_test_environment - Default GW added to routes - Success" ||
+        raise "FAIL: check_default_route_gw - Default GW not added to routes" -l "cm2_lib:cm_setup_test_environment" -ds
 
-    log "$fn_name - CM setup - end"
+    if [ "${use_fut_cloud}" == "true" ]; then
+        # Give time for CM to stabilize before connecting to FUT loud.
+        # Some kind of race-condition issue
+        log -deb "cm2_lib:cm_setup_test_environment: Sleeping for 10s before setting up FUT Cloud connection"
+        sleep 10
+        connect_to_fut_cloud -ip 5 &&
+            log "cm2_lib:cm_setup_test_environment: Device connected to FUT cloud - Success" ||
+            raise "FAIL: Failed to connect device to FUT cloud" -l "cm2_lib:cm_setup_test_environment" -ds
+    fi
+
+    log -deb "cm2_lib:cm_setup_test_environment - CM2 setup - end"
 
     return 0
 }
@@ -155,19 +159,22 @@ check_default_route_gw()
 
 ###############################################################################
 # DESCRIPTION:
-#   Function manipulates traffic by protocol using iptables.
+#   Function manipulates traffic by protocol type using iptables.
 #   Adds (inserts) or removes (deletes) rules to OUTPUT chain.
 #   Can block traffic by using block option.
 #   Can unblock traffic by using unblock option.
 #   Supports traffic types:
 #       - DNS
 #       - SSL
+#   Supports manipulation types:
+#       - block
+#       - unblock
 #   Raises exception if rule cannot be applied.
 # INPUT PARAMETER(S):
-#   $1  option, block or unblock traffic (required)
-#   $2  traffic type (required)
+#   $1  option, block or unblock traffic (string, required)
+#   $2  traffic type (string, required)
 # RETURNS:
-#   None.
+#   0   On success.
 #   See DESCRIPTION.
 # USAGE EXAMPLE(S):
 #   manipulate_iptables_protocol unblock SSL
@@ -175,14 +182,13 @@ check_default_route_gw()
 ###############################################################################
 manipulate_iptables_protocol()
 {
-    fn_name="cm2_lib:manipulate_iptables_protocol"
     local NARGS=2
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "cm2_lib:manipulate_iptables_protocol requires ${NARGS} input argument(s), $# given" -arg
     option=$1
     traffic_type=$2
 
-    log -deb "$fn_name - $option $traffic_type traffic"
+    log -deb "cm2_lib:manipulate_iptables_protocol - $option $traffic_type traffic"
 
     if [ "$option" == "block" ]; then
         iptable_option='I'
@@ -192,7 +198,7 @@ manipulate_iptables_protocol()
         # Waiting for exit code 1 if multiple iptables rules are inserted - safer way
         exit_code=1
     else
-        raise "FAIL: Wrong option, given:$option, supported: block, unblock" -l "$fn_name" -arg
+        raise "FAIL: Wrong option, given:$option, supported: block, unblock" -l "cm2_lib:manipulate_iptables_protocol" -arg
     fi
 
     if [ "$traffic_type" == "DNS" ]; then
@@ -202,17 +208,17 @@ manipulate_iptables_protocol()
         traffic_port="443"
         traffic_port_type="tcp"
     else
-        raise "FAIL: Wrong traffic_type, given:$option, supported: DNS, SSL" -l "$fn_name" -arg
+        raise "FAIL: Wrong traffic_type, given:$option, supported: DNS, SSL" -l "cm2_lib:manipulate_iptables_protocol" -arg
     fi
 
-    $(iptables -S | grep -q "OUTPUT -p $traffic_port_type -m $traffic_port_type --dport $traffic_port -j DROP")
+    $(iptables -S | grep "OUTPUT -p $traffic_port_type -m $traffic_port_type --dport $traffic_port -j DROP")
     # Add rule if not already an identical one in table, but unblock always
     if [ "$?" -ne 0 ] || [ "$option" == "unblock" ]; then
         wait_for_function_response $exit_code "iptables -$iptable_option OUTPUT -p $traffic_port_type --dport $traffic_port -j DROP" &&
-            log -deb "$fn_name - $traffic_type traffic ${option}ed" ||
-            raise "FAIL: Could not $option $traffic_type traffic" -l "$fn_name" -nf
+            log -deb "cm2_lib:manipulate_iptables_protocol - $traffic_type traffic ${option}ed - Success" ||
+            raise "FAIL: Could not $option $traffic_type traffic" -l "cm2_lib:manipulate_iptables_protocol" -nf
     else
-        log "$fn_name - Add failure: Rule already in chain"
+        log -deb "cm2_lib:manipulate_iptables_protocol - Add failure: Rule already in chain?"
     fi
 
     return 0
@@ -226,24 +232,23 @@ manipulate_iptables_protocol()
 #   Can unblock traffic by using unblock option.
 #   Raises exception is rule cannot be applied.
 # INPUT PARAMETER(S):
-#   $1  option, block or unblock traffic
-#   $2  source address to be blocked
+#   $1  option, block or unblock traffic (string, required)
+#   $2  source address to be blocked (string, required)
 # RETURNS:
-#   None.
+#   0   On success.
 #   See DESCRIPTION.
 # USAGE EXAMPLE(S):
 #   manipulate_iptables_address block 192.168.200.10
 ###############################################################################
 manipulate_iptables_address()
 {
-    fn_name="cm2_lib:manipulate_iptables_address"
     local NARGS=2
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "cm2_lib:manipulate_iptables_address requires ${NARGS} input argument(s), $# given" -arg
     option=$1
     address=$2
 
-    log -deb "$fn_name - $option $address internet"
+    log -deb "cm2_lib:manipulate_iptables_address - $option $address internet"
 
     if [ "$option" == "block" ]; then
         iptable_option='I'
@@ -253,20 +258,37 @@ manipulate_iptables_address()
         # Waiting for exit code 1 if multiple iptables rules are inserted - safer way
         exit_code=1
     else
-        raise "FAIL: Wrong option, given:$option, supported: block, unblock" -l "$fn_name" -arg
+        raise "FAIL: Wrong option, given:$option, supported: block, unblock" -l "cm2_lib:manipulate_iptables_address" -arg
     fi
 
-    $(iptables -S | grep -q "OUTPUT -s $address -j DROP")
+    $(iptables -S | grep "OUTPUT -s $address -j DROP")
     # Add rule if not already an identical one in table, but unblock always
     if [ "$?" -ne 0 ] || [ "$option" == "unblock" ]; then
         wait_for_function_response $exit_code "iptables -$iptable_option OUTPUT -s $address -j DROP" &&
-            log -deb "$fn_name - internet ${option}ed" ||
-            raise "FAIL: Could not $option internet" -l "$fn_name" -nf
+            log -deb "cm2_lib:manipulate_iptables_address - internet ${option}ed - Success" ||
+            raise "FAIL: Could not $option internet" -l "cm2_lib:manipulate_iptables_address" -nf
     else
-        log "$fn_name - Add failure: Rule already in chain"
+        log -deb "cm2_lib:manipulate_iptables_address - Add failure: Rule already in chain?"
     fi
 
     return 0
 }
 
 ####################### TEST CASE SECTION - STOP ##############################
+
+###############################################################################
+# DESCRIPTION:
+#   Function clears the DNS cache.
+#   This is a stub function. Provide function for each device in overrides.
+# INPUT PARAMETER(S):
+#   None.
+# RETURNS:
+#   0   Always.
+# USAGE EXAMPLE(S):
+#   clear_dns_cache
+###############################################################################
+clear_dns_cache()
+{
+    log -deb "cm2_lib:clear_dns_cache - This is a stub function. Override implementation can be provided to clear DNS cache."
+    return 0
+}

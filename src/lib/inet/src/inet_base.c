@@ -52,6 +52,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 static bool inet_base_init_ip6(inet_base_t *self);
 static bool inet_base_firewall_commit(inet_base_t *self, bool start);
 static bool inet_base_igmp_commit(inet_base_t *self, bool start);
+static bool inet_base_mld_commit(inet_base_t *self, bool start);
 static bool inet_base_upnp_commit(inet_base_t *self, bool start);
 static bool inet_base_scheme_static_commit(inet_base_t *self, bool start);
 static void inet_base_dhcp_server_status(osn_dhcp_server_t *ds, struct osn_dhcp_server_status *st);
@@ -90,12 +91,12 @@ struct dhcp_lease_node
     synclist_node_t                 dl_snode;
 };
 
-int dhcp_lease_node_cmp(void *_a, void *_b)
+int dhcp_lease_node_cmp(const void *_a, const void *_b)
 {
     int rc;
 
-    struct dhcp_lease_node *a = _a;
-    struct dhcp_lease_node *b = _b;
+    const struct dhcp_lease_node *a = _a;
+    const struct dhcp_lease_node *b = _b;
 
     rc = osn_mac_addr_cmp(&a->dl_lease.dl_hwaddr, &b->dl_lease.dl_hwaddr);
     if (rc != 0) return rc;
@@ -217,7 +218,8 @@ bool inet_base_init(inet_base_t *self, const char *ifname)
     self->inet.in_network_enable_fn             = inet_base_network_enable;
     self->inet.in_mtu_set_fn                    = inet_base_mtu_set;
     self->inet.in_nat_enable_fn                 = inet_base_nat_enable;
-    self->inet.in_igmp_enable_fn                = inet_base_igmp_enable;
+    self->inet.in_igmp_update_ref_fn            = inet_base_igmp_update_ref;
+    self->inet.in_mld_update_ref_fn             = inet_base_mld_update_ref;
     self->inet.in_upnp_mode_set_fn              = inet_base_upnp_mode_set;
     self->inet.in_assign_scheme_set_fn          = inet_base_assign_scheme_set;
     self->inet.in_ipaddr_static_set_fn          = inet_base_ipaddr_static_set;
@@ -338,10 +340,18 @@ bool inet_base_init(inet_base_t *self, const char *ifname)
         goto error;
     }
 
-    self->in_igmp = inet_igmp_new(self->inet.in_ifname);
+    self->in_igmp = osn_igmp_new();
     if (self->in_igmp == NULL)
     {
-        LOG(ERR, "inet_base: %s: Ignoring creating IGMP snooping instance. ", self->inet.in_ifname);
+        LOG(ERR, "inet_base: %s: Error creating IGMP instance. ", self->inet.in_ifname);
+        goto error;
+    }
+
+    self->in_mld = osn_mld_new();
+    if (self->in_mld == NULL)
+    {
+        LOG(ERR, "inet_base: %s: Error creating MLD instance. ", self->inet.in_ifname);
+        goto error;
     }
 
     self->in_upnp = osn_upnp_new(self->inet.in_ifname);
@@ -431,6 +441,7 @@ bool inet_base_init(inet_base_t *self, const char *ifname)
                                                 inet_unit(INET_BASE_SCHEME_DHCP, NULL),
                                                 inet_unit(INET_BASE_DHCPSNIFF, NULL),
                                                 inet_unit(INET_BASE_IGMP, NULL),
+                                                inet_unit(INET_BASE_MLD, NULL),
                                                 inet_unit(INET_BASE_IPV4_READY,
                                                             inet_unit(INET_BASE_ROUTES, NULL),
                                                             NULL),
@@ -564,9 +575,9 @@ bool inet_base_fini(inet_base_t *self)
         retval = false;
     }
 
-    if (self->in_igmp != NULL && !inet_igmp_del(self->in_igmp))
+    if (self->in_igmp != NULL && !osn_igmp_del(self->in_igmp))
     {
-        LOG(WARN, "inet_base: %s: Error freeing IGMP snooping objects.", self->inet.in_ifname);
+        LOG(WARN, "inet_base: %s: Error freeing IGMP objects.", self->inet.in_ifname);
         retval = false;
     }
 
@@ -790,51 +801,45 @@ bool inet_base_nat_enable(inet_t *super, bool enabled)
 }
 
 /**
- * Enable IGMP snooping on interface
+ * Increase reference count of IGMP snooping on interface
  */
-bool inet_base_igmp_enable(inet_t *super, bool enable, int iage, int itsize)
+bool inet_base_igmp_update_ref(inet_t *super, bool increase)
 {
     inet_base_t *self = (inet_base_t *)super;
 
-    if (self->in_igmp_enabled == enable &&
-            iage == self->in_igmp_age &&
-            itsize == self->in_igmp_tsize &&
-            inet_unit_is_enabled(self->in_units, INET_BASE_IGMP))
-    {
-        /* Nothing to do -- configuration unchanged */
-        return true;
-    }
-
-    /* Push new configuration to the driver */
-    if (!inet_igmp_set(self->in_igmp, enable, iage, itsize))
-    {
-        LOG(ERR, "inet_base: %s: Error setting IGMP snooping on interface (%d -> %d)",
-                self->inet.in_ifname,
-                self->in_igmp_enabled,
-                enable);
-        return false;
-    }
-
-    /* Cache current values -- we don't want to restart IGMP if the configuration stays the same */
-    self->in_igmp_enabled = enable;
-    self->in_igmp_age = iage;
-    self->in_igmp_tsize = itsize;
-
-    if(enable)
-    {
-        /* The IGMP unit needs to be started or restarted (due to configuration change) */
-        if (!inet_unit_restart(self->in_units, INET_BASE_IGMP, true))
-        {
-            LOG(ERR, "inet_base: %s: Error restarting INET_BASE_IGMP (NAT)",
-                    self->inet.in_ifname);
-            return false;
-        }
-    }
+    if (increase)
+        self->in_igmp_refs++;
     else
-    {
-        /* The unit needs to be disabled */
-        inet_unit_stop(self->in_units, INET_BASE_IGMP);
-    }
+        self->in_igmp_refs--;
+
+    inet_unit_enable(self->in_units, INET_BASE_IGMP, self->in_igmp_refs > 0);
+    LOG(DEBUG, "inet_base: Setting IGMP unit config on interface %s, refs %d, increase (%d) %d",
+            self->inet.in_ifname,
+            self->in_igmp_refs,
+            self->in_igmp_refs > 0,
+            increase);
+
+    return true;
+}
+
+/**
+ * Increase reference count of MLD snooping on interface
+ */
+bool inet_base_mld_update_ref(inet_t *super, bool increase)
+{
+    inet_base_t *self = (inet_base_t *)super;
+
+    if (increase)
+        self->in_mld_refs++;
+    else
+        self->in_mld_refs--;
+
+    inet_unit_enable(self->in_units, INET_BASE_MLD, self->in_mld_refs > 0);
+    LOG(DEBUG, "inet_base: Setting MLD unit config on interface %s, refs %d, increase (%d) %d",
+            self->inet.in_ifname,
+            self->in_mld_refs,
+            self->in_mld_refs > 0,
+            increase);
 
     return true;
 }
@@ -1158,6 +1163,14 @@ bool inet_base_dhcp_client_option_fn(
 {
     inet_base_t *self = osn_dhcp_client_data_get(dhcpc);
 
+    if (value /*dhcp update, not d-tor call*/)
+    {
+        /* DHCP addr lease was updated with options. Refresh static routes
+        * added by OpenSync because kernel may flush those routes while
+        * renewing or restarting DHCP addr assignment */
+        inet_routes_reapply(self->in_routes_set);
+    }
+
     if (self->in_dhcpc_option_fn != NULL)
         self->in_dhcpc_option_fn(&self->inet, opt, value);
 
@@ -1346,7 +1359,7 @@ bool inet_base_dhcps_rip_set(
     if (!changed) return true;
 
     /*
-     * Assign new hostname -- free the old entry if there's any
+     * Assign new hostname -- FREE the old entry if there's any
      */
     if (rn->rn_hostname != NULL)
     {
@@ -1474,14 +1487,6 @@ bool inet_base_dhsnif_lease_notify(inet_t *super, inet_dhcp_lease_fn_t *func)
 bool inet_base_route_status(osn_route_t *rt, struct osn_route_status *status, bool remove)
 {
     inet_base_t *self = osn_route_data_get(rt);
-
-    if (remove)
-    {
-        /* One of routes was removed for this interface, it could be the effect
-         * of temporary down/up of the interface causing static route to be
-         * flushed by kernel. If this is the case try to reapply the route */
-        inet_routes_reapply(self->in_routes_set, &status->rts_route);
-    }
 
     if (self->in_route_status_fn != NULL)
         self->in_route_status_fn(&self->inet, status, remove);
@@ -1616,6 +1621,9 @@ bool inet_base_service_commit(
         case INET_BASE_IGMP:
             return inet_base_igmp_commit(self, start);
 
+        case INET_BASE_MLD:
+            return inet_base_mld_commit(self, start);
+
         case INET_BASE_UPNP:
             return inet_base_upnp_commit(self, start);
 
@@ -1687,18 +1695,37 @@ bool inet_base_firewall_commit(inet_base_t *self, bool start)
 
 bool inet_base_igmp_commit(inet_base_t *self, bool start)
 {
-    /* Start service */
-    if (start && !inet_igmp_start(self->in_igmp))
-    {
-        LOG(ERR, "inet_base: %s: Error starting the IGMP snooping service.", self->inet.in_ifname);
-        return false;
-    }
-    /* Stop service */
-    if (!start && !inet_igmp_stop(self->in_igmp))
-    {
-        LOG(ERR, "inet_base: %s: Error stopping the IGMP snooping service.", self->inet.in_ifname);
-        return false;
-    }
+    LOG(DEBUG, "inet_base: Commiting IGMP unit config on interface %s, start %d",
+            self->inet.in_ifname,
+            start);
+
+    /* Push the status of my role down to osn layer */
+    osn_igmp_update_iface_status(
+        self->in_igmp,
+        self->inet.in_ifname,
+        start);
+
+    /* Init apply debounce */
+    osn_igmp_apply(self->in_igmp);
+
+    return true;
+}
+
+bool inet_base_mld_commit(inet_base_t *self, bool start)
+{
+    LOG(DEBUG, "inet_base: Commiting MLD unit config on interface %s, start %d",
+            self->inet.in_ifname,
+            start);
+
+    /* Push the status of my role down to osn layer */
+    osn_mld_update_iface_status(
+        self->in_mld,
+        self->inet.in_ifname,
+        start);
+
+    /* Init apply debounce */
+    osn_mld_apply(self->in_mld);
+
     return true;
 }
 
@@ -1865,12 +1892,6 @@ bool inet_base_dhcp_server_commit(inet_base_t *self, bool start)
         self->in_dhcps = NULL;
     }
 
-    if (!start)
-    {
-        TELOG_STEP("DHCP4_SERVER", self->inet.in_ifname, "stop", NULL);
-        return true;
-    }
-
     /*
      * Create new DHCPv4 object
      */
@@ -1932,6 +1953,12 @@ bool inet_base_dhcp_server_commit(inet_base_t *self, bool start)
                     FMT_osn_ip_addr(rn->rn_ipaddr),
                     rn->rn_hostname == NULL ? "(null)" : rn->rn_hostname);
         }
+    }
+
+    if (!start)
+    {
+        TELOG_STEP("DHCP4_SERVER", self->inet.in_ifname, "stop", NULL);
+        return true;
     }
 
     /* Apply configuration */
@@ -2259,12 +2286,12 @@ bool inet_base_ip6_addr_status_notify(
  * Index IPv6 address status structures by the IPv6 address and
  * by the origin
  */
-int ip6_addr_status_node_cmp(void *_a, void *_b)
+int ip6_addr_status_node_cmp(const void *_a, const void *_b)
 {
     int rc;
 
-    struct ip6_addr_status_node *a = _a;
-    struct ip6_addr_status_node *b = _b;
+    const struct ip6_addr_status_node *a = _a;
+    const struct ip6_addr_status_node *b = _b;
 
     /* Lifetimes are constantly changing, do not use them as the key */
     rc = osn_ip6_addr_nolft_cmp(&a->as_addr.is_addr, &b->as_addr.is_addr);
@@ -2336,12 +2363,12 @@ bool inet_base_ip6_neigh_status_notify(
     return true;
 }
 
-int ip6_neigh_status_node_cmp(void *_a, void *_b)
+int ip6_neigh_status_node_cmp(const void *_a, const void *_b)
 {
     int rc;
 
-    struct ip6_neigh_status_node *a = _a;
-    struct ip6_neigh_status_node *b = _b;
+    const struct ip6_neigh_status_node *a = _a;
+    const struct ip6_neigh_status_node *b = _b;
 
     rc = osn_ip6_addr_cmp(&a->ns_neigh.in_ipaddr, &b->ns_neigh.in_ipaddr);
     if (rc != 0) return rc;
@@ -3080,10 +3107,10 @@ const char *inet_base_service_str(enum inet_base_services srv)
     }
 }
 
-int osn_dhcpv6_server_lease_cmp(void *_a, void *_b)
+int osn_dhcpv6_server_lease_cmp(const void *_a, const void *_b)
 {
-    struct osn_dhcpv6_server_lease *a = _a;
-    struct osn_dhcpv6_server_lease *b = _b;
+    const struct osn_dhcpv6_server_lease *a = _a;
+    const struct osn_dhcpv6_server_lease *b = _b;
     int rc;
 
     rc = osn_ip6_addr_cmp(&a->d6s_addr, &b->d6s_addr);
@@ -3099,4 +3126,52 @@ int osn_dhcpv6_server_lease_cmp(void *_a, void *_b)
     if (rc != 0) return rc;
 
     return 0;
+}
+
+bool inet_igmp_set_config(struct osn_igmp_snooping_config *snooping_config,
+                          struct osn_igmp_proxy_config *proxy_config,
+                          struct osn_igmp_querier_config *querier_config,
+                          struct osn_mcast_other_config *other_config)
+{
+    static osn_igmp_t *igmp = NULL;
+
+    if (igmp == NULL)
+    {
+        igmp = osn_igmp_new();
+    }
+
+    /* Push config down to osn layer */
+    osn_igmp_snooping_set(igmp, snooping_config);
+    osn_igmp_proxy_set(igmp, proxy_config);
+    osn_igmp_querier_set(igmp, querier_config);
+    osn_igmp_other_config_set(igmp, other_config);
+
+    /* Init apply debounce */
+    osn_igmp_apply(igmp);
+
+    return true;
+}
+
+bool inet_mld_set_config(struct osn_mld_snooping_config *snooping_config,
+                         struct osn_mld_proxy_config *proxy_config,
+                         struct osn_mld_querier_config *querier_config,
+                         struct osn_mcast_other_config *other_config)
+{
+    static osn_mld_t *mld = NULL;
+
+    if (mld == NULL)
+    {
+        mld = osn_mld_new();
+    }
+
+    /* Push config down to osn layer */
+    osn_mld_snooping_set(mld, snooping_config);
+    osn_mld_proxy_set(mld, proxy_config);
+    osn_mld_querier_set(mld, querier_config);
+    osn_mld_other_config_set(mld, other_config);
+
+    /* Init apply debounce */
+    osn_mld_apply(mld);
+
+    return true;
 }

@@ -1,0 +1,10 @@
+#
+# OpenSync core platform l2uf backend
+#
+source "src/lib/osp/kconfig/Kconfig.osp_l2uf.backend"
+
+#
+# Platform/vendor L2UF backens
+#
+osource "platform/*/kconfig/Kconfig.osp_l2uf.backend"
+osource "vendor/*/kconfig/Kconfig.osp_l2uf.backend"

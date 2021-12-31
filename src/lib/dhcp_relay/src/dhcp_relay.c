@@ -65,7 +65,7 @@ ds_dlist_t *dhcp_get_relay_options(void)
  * @param b session pointer
  * @return 0 if sessions matches
  */
-static int dhcp_session_cmp(void *a, void *b)
+static int dhcp_session_cmp(const void *a, const void *b)
 {
     uintptr_t p_a = (uintptr_t)a;
     uintptr_t p_b = (uintptr_t)b;
@@ -158,6 +158,43 @@ dhcp_relay_update_headers(struct net_header_parser *net_parser, uint8_t *popt, u
     return;
 }
 
+/*
+ * Add a relay option to the injection list. Returns a pointer to the option.
+ */
+
+static struct dhcp_relay_conf_options *
+dhcp_relay_relay_options_store(ds_dlist_t* options,
+                               int ip_version,
+                               int option_id,
+                               const char* value)
+{
+    struct dhcp_relay_conf_options  *opt = NULL;
+    char                            *value_copy = NULL;
+
+    value_copy = STRDUP(value);
+    if (value_copy == NULL) {
+        return NULL;
+    }
+
+    opt = CALLOC(1, sizeof(struct dhcp_relay_conf_options));
+    if (opt == NULL)
+    {
+        LOGE("%s: Unable to allocate dhcp_relay_conf_options!", __func__);
+        FREE(value_copy);
+        return NULL;
+    }
+
+    opt->version = ip_version;
+    opt->id = option_id;
+    opt->value = value_copy;
+
+    ds_dlist_insert_tail(options, opt);
+    LOGT("%s: Storing id '%hhu' version: '%hhu' value: '%s'",
+            __func__, opt->id, opt->version, opt->value);
+
+    return opt;
+}
+
 /**
  * dhcp_relay_options_init: dso initialization entry point
  */
@@ -165,10 +202,10 @@ dhcp_relay_update_headers(struct net_header_parser *net_parser, uint8_t *popt, u
 static int
 dhcp_relay_relay_options_init(void)
 {
-    char buf[300];
-    FILE *conf =NULL;
-    ds_dlist_t *options;
-    int rc;
+    char        buf[300];
+    FILE        *conf = NULL;
+    ds_dlist_t  *options = NULL;
+    int         rc;
 
     /* Init DHCP Options Relay */
     options = dhcp_get_relay_options();
@@ -185,18 +222,10 @@ dhcp_relay_relay_options_init(void)
 
     while (fgets(buf, sizeof(buf), conf) != NULL)
     {
+        int version, id;
         char *p = buf;
-        char *str;
-        char *value;
-        struct dhcp_relay_conf_options *opt;
-
-        opt = CALLOC(1, sizeof(struct dhcp_relay_conf_options));
-        if (opt == NULL)
-        {
-            LOGE("%s: Unable to allocate update handler!", __func__);
-            FREE(opt);
-            return -1;
-        }
+        char *str = NULL;
+        char *value = NULL;
 
         /* Check IPv6 or IPv4 option and select versio */
         rc = strncmp(p, "DHCPv4_OPTION:", strlen("DHCPv4_OPTION:"));
@@ -204,45 +233,35 @@ dhcp_relay_relay_options_init(void)
         {
             /* Skip the "export keyword" */
             p += strlen("DHCPv4_OPTION:");
-            opt->version = 4;
+            version = 4;
         }
         else
         {
             /* Skip the "export keyword" */
             p += strlen("DHCPv6_OPTION:");
-            opt->version = 6;
+            version = 6;
         }
 
         str = strsep(&p, "=");
         if (str == NULL)
         {
-            FREE(opt);
             continue;
         }
 
-        opt->id = atoi(str);
+        id = atoi(str);
 
         /* Skip the first ' */
         value = strsep(&p, "'");
         if (value == NULL || value[0] != '\0')
         {
-            FREE(opt);
             continue;
         }
 
         value = strsep(&p, "'");
-        opt->value = STRDUP(value);
-        if (opt->value == NULL)
+        if (dhcp_relay_relay_options_store(options, version, id, value) == NULL)
         {
-            LOGE("%s: Allocation failed", __func__);
-            FREE(opt->value);
-            FREE(opt);
             return -1;
         }
-
-        ds_dlist_insert_tail(options, opt);
-        LOGT("%s: Storing id '%hhu' version: '%hhu' value: '%s'",
-             __func__, opt->id, opt->version, opt->value);
    }
 
    return 1;

@@ -630,7 +630,7 @@ static void bm_client_report_caps(bm_client_t *client, const char *ifname, bsal_
     event.data.connect.is_RRM_supported = info->is_RRM_supported;
     event.data.connect.band_cap_2G = info->band_cap_2G | client->band_cap_2G;
     event.data.connect.band_cap_5G = info->band_cap_5G | client->band_cap_5G;
-    event.data.connect.band_cap_6G = info->band_cap_5G | client->band_cap_6G;
+    event.data.connect.band_cap_6G = info->band_cap_6G | client->band_cap_6G;
     event.data.connect.assoc_ies_len = info->assoc_ies_len <= ARRAY_SIZE(event.data.connect.assoc_ies)
                                      ? info->assoc_ies_len
                                      : ARRAY_SIZE(event.data.connect.assoc_ies);
@@ -1769,8 +1769,11 @@ bm_client_from_ovsdb(struct schema_Band_Steering_Clients *bscli, bm_client_t *cl
         client->active_treshold_bps = bscli->active_treshold_bps;
     }
 
-    /* Temporarily this is set to TRUE */
-    client->neighbor_list_filter_by_beacon_report = true;
+    if (!bscli->neighbor_list_filter_by_beacon_report_exists) {
+        client->neighbor_list_filter_by_beacon_report = true;
+    } else {
+        client->neighbor_list_filter_by_beacon_report = bscli->neighbor_list_filter_by_beacon_report;
+    }
 
     return true;
 }

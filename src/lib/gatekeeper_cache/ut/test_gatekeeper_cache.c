@@ -28,9 +28,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdint.h>
 
 #include "gatekeeper_cache.h"
-#include "fsm_utils.h"
 #include "log.h"
 #include "memutil.h"
+#include "sockaddr_storage.h"
 #include "unity.h"
 #include "os.h"
 
@@ -1654,7 +1654,6 @@ test_ipv4_upsert_action_by_name(void)
     FREE(entry.ip_addr);
     FREE(entry.device_mac);
     LOGI("ending test: %s", __func__);
-
 }
 
 void

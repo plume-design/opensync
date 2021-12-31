@@ -144,8 +144,8 @@ void        dhcp_plugin_handler(struct fsm_session *session,
 struct      dhcp_session *dhcp_lookup_session(struct fsm_session *session);
 
 struct      dhcp_parse_mgr *dhcp_get_mgr(void);
-int         dhcp_lease_cmp(void *a, void *b);
-int         dhcp_local_domain_cmp(void *a, void *b);
+int         dhcp_lease_cmp(const void *a, const void *b);
+int         dhcp_local_domain_cmp(const void *a, const void *b);
 
 size_t      dhcp_parse_message(struct dhcp_parser *parser);
 size_t      dhcp_parse_content(struct dhcp_parser *parser);

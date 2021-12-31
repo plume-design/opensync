@@ -94,16 +94,16 @@ oms_report_set_node_info(void)
     object_manager__status__observation_point__init(pb);
 
     /* Set the protobuf fields */
-    ret = oms_report_str_duplicate(mgr->node_id, &pb->nodeid);
+    ret = oms_report_str_duplicate(mgr->node_id, &pb->node_id);
     if (!ret) goto err_free_pb;
 
-    ret = oms_report_str_duplicate(mgr->location_id, &pb->locationid);
+    ret = oms_report_str_duplicate(mgr->location_id, &pb->location_id);
     if (!ret) goto err_free_node_id;
 
     return pb;
 
 err_free_node_id:
-    FREE(pb->nodeid);
+    FREE(pb->node_id);
 
 err_free_pb:
     FREE(pb);
@@ -125,8 +125,8 @@ oms_report_free_pb_op(ObjectManager__Status__ObservationPoint *pb)
 {
     if (pb == NULL) return;
 
-    FREE(pb->nodeid);
-    FREE(pb->locationid);
+    FREE(pb->node_id);
+    FREE(pb->location_id);
 
     FREE(pb);
 
@@ -217,7 +217,7 @@ oms_report_set_report_status(struct oms_state_entry *state)
     /* Initialize the protobuf structure */
     object_manager__status__object_status__init(pb);
 
-    ret = oms_report_str_duplicate(state->object, &pb->objectname);
+    ret = oms_report_str_duplicate(state->object, &pb->name);
     if (!ret) goto err_free_pb;
 
     ret = oms_report_str_duplicate(state->state, &pb->status);
@@ -231,7 +231,7 @@ err_free_state:
     FREE(pb->status);
 
 err_free_object:
-    FREE(pb->objectname);
+    FREE(pb->name);
 
 err_free_pb:
     FREE(pb);
@@ -253,7 +253,7 @@ oms_report_free_pb_report_status(ObjectManager__Status__ObjectStatus *pb)
 {
     if (pb == NULL) return;
 
-    FREE(pb->objectname);
+    FREE(pb->name);
     FREE(pb->status);
     FREE(pb->version);
 
@@ -402,20 +402,20 @@ oms_report_set_pb_report(void)
     object_manager__status__object_status_report__init(pb);
 
     /* Set protobuf fields */
-    pb->reportedat = time(NULL);
-    pb->has_reportedat = true;
+    pb->reported_at = time(NULL);
+    pb->has_reported_at = true;
 
-    pb->observationpoint = oms_report_set_node_info();
-    if (!pb->observationpoint) goto err_free_pb_report;
+    pb->observation_point = oms_report_set_node_info();
+    if (!pb->observation_point) goto err_free_pb_report;
 
-    pb->objectstatus = oms_report_set_object_status();
-    if (!pb->objectstatus) goto err_free_pb_os;
-    pb->n_objectstatus = mgr->num_reports;
+    pb->object_status = oms_report_set_object_status();
+    if (!pb->object_status) goto err_free_pb_os;
+    pb->n_object_status = mgr->num_reports;
 
     return pb;
 
 err_free_pb_os:
-    oms_report_free_pb_op(pb->observationpoint);
+    oms_report_free_pb_op(pb->observation_point);
 
 err_free_pb_report:
     FREE(pb);
@@ -439,14 +439,14 @@ oms_report_free_pb_report(ObjectManager__Status__ObjectStatusReport *pb)
 
     if (pb == NULL) return;
 
-    oms_report_free_pb_op(pb->observationpoint);
+    oms_report_free_pb_op(pb->observation_point);
 
-    for (i = 0; i < pb->n_objectstatus; i++)
+    for (i = 0; i < pb->n_object_status; i++)
     {
-        oms_report_free_pb_report_status(pb->objectstatus[i]);
+        oms_report_free_pb_report_status(pb->object_status[i]);
     }
 
-    FREE(pb->objectstatus);
+    FREE(pb->object_status);
     FREE(pb);
 
     return;

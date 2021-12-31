@@ -33,11 +33,10 @@ source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "" -olfm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "" -olfm
 
-tc_name="tools/device/$(basename "$0")"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+tools/device/check_device_in_bridge_mode.sh [-h] arguments
 Description:
     - Script checks if device operates in 'bridge' mode
     - If device operates in 'bridge', script exits with exit code 0
@@ -50,7 +49,7 @@ Arguments:
     - \$4 (patch_w2h)     : Patch WAN-HOME port name : (string)(optional)
     - \$5 (patch_h2w)     : Patch HOME-WAN port name : (string)(optional)
 Script usage example:
-   ./${tc_name} eth0 br-lan br-wan patch-w2h patch-h2w
+   ./tools/device/check_device_in_bridge_mode.sh eth0 br-lan br-wan patch-w2h patch-h2w
 usage_string
 }
 
@@ -76,9 +75,13 @@ patch_w2h=${4:-false}
 patch_h2w=${5:-false}
 
 trap '
+fut_ec=$?
 fut_info_dump_line
-print_tables Port Bridge Wifi_Route_State
+if [ $fut_ec -ne 0 ]; then 
+    print_tables Port Bridge Wifi_Route_State
+fi
 fut_info_dump_line
+exit $fut_ec
 ' EXIT SIGINT SIGTERM
 
 check_kconfig_option "CONFIG_MANAGER_WANO" "y" &&
@@ -86,11 +89,7 @@ check_kconfig_option "CONFIG_MANAGER_WANO" "y" &&
     is_wano=1
 
 # Check if WANO is enabled on device
-if [ ${is_wano} -eq 1 ]
-  && [ "${lan_bridge}" != false ]
-  && [ "${wan_bridge}" != false ]
-  && [ "${patch_w2h}" != false ]
-  && [ "${patch_h2w}" != false ]; then
+if [ ${is_wano} -eq 1 ] && [ "${lan_bridge}" != false ] && [ "${wan_bridge}" != false ] && [ "${patch_w2h}" != false ] && [ "${patch_h2w}" != false ]; then
     # Check if patch ports are present in Port table, exit with 1 if not
     port_w2h=$(get_ovsdb_entry_value Port _uuid -w name "$patch_w2h" -r) || exit 1
     port_h2w=$(get_ovsdb_entry_value Port _uuid -w name "$patch_h2w" -r) || exit 1

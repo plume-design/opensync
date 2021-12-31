@@ -43,6 +43,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "reflink.h"
 #include "util.h"
 
+#include "wano_wan.h"
 #include "wano_ppline_stam.h"
 
 /*
@@ -456,6 +457,9 @@ bool wano_connmgr_uplink_flush(void);
 #define WANO_CONNMGR_UPLINK_UPDATE(ifname, ...) \
     wano_connmgr_uplink_update(ifname, &(struct wano_connmgr_uplink_args){ __VA_ARGS__ })
 
+#define WANO_CONNMGR_UPLINK_DELETE_COLUMN(ifname, ...) \
+    wano_connmgr_uplink_delete_column(ifname, &(struct wano_connmgr_uplink_args){ __VA_ARGS__ })
+
 /**
  * Update the Connection_Manager_Uplink table
  */
@@ -466,6 +470,13 @@ bool wano_connmgr_uplink_update(
  * Delete a single row from the Connection_Manager_Uplink table
  */
 bool wano_connmgr_uplink_delete(const char *ifname);
+
+/**
+ * Delete columns from a Connection_Manager_Uplink row
+ */
+bool wano_connmgr_uplink_delete_column(
+        const char *ifname,
+        struct wano_connmgr_uplink_args *args);
 
 /*
  * ===========================================================================
@@ -597,6 +608,7 @@ struct wano_ppline
     ds_dlist_t                  wpl_event_list;             /**< List of event callbacks */
     bool                        wpl_has_l3;                 /**< True if the has_L3 column was set */
     ds_dlist_node_t             wpl_dnode;                  /**< dlist node for the ppline list */
+    wano_wan_t                 *wpl_wan;                    /**< Associated WAN object, if any */
 };
 
 typedef struct wano_ppline_event wano_ppline_event_t;
@@ -645,6 +657,19 @@ bool wano_ppline_init(
 void wano_ppline_fini(wano_ppline_t *self);
 
 /**
+ * Associate a WAN object with the pipeline; plug-ins run by the pipeline will
+ * be able to use the WAN configuration from the WAN objcet.
+ *
+ * Use NULL to disassociate the object.
+ */
+void wano_ppline_wan_set(wano_ppline_t *self, wano_wan_t *wan);
+
+/**
+ * Get the current WAN object associated with the pipeline.
+ */
+wano_wan_t *wano_ppline_wan_get(wano_ppline_t *self);
+
+/**
  * Restart WAN management on all interfaces. This is necessary, for example,
  * when the WAN configuration changes.
  */
@@ -654,7 +679,12 @@ void wano_ppline_restart_all(void);
  * Utility function for retrieving the pipeline instance from a plug-in
  * handle
  */
-wano_ppline_t *wano_ppline_from_plugin_handle(wano_plugin_handle_t *plugin);
+wano_ppline_t *wano_ppline_from_plugin_handle(const wano_plugin_handle_t *plugin);
+
+/**
+ * Retrieve the WAN object associated with the plug-in handle
+ */
+wano_wan_t *wano_wan_from_plugin_handle(wano_plugin_handle_t *plugin);
 
 /** Initialize a plug-in pipeline event structure */
 void wano_ppline_event_init(

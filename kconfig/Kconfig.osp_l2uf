@@ -1,0 +1,11 @@
+#
+# OpenSync core l2uf
+#
+source "src/lib/osp/kconfig/Kconfig.osp_l2uf"
+
+#
+# Platform/vendor l2uf
+#
+osource "platform/*/kconfig/Kconfig.osp_l2uf"
+osource "vendor/*/kconfig/Kconfig.osp_l2uf"
+

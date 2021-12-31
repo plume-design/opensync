@@ -188,7 +188,7 @@ attrs_tag=${ATTRS_TAG:-'${dev_dpi_attrs}'}
 dpi_plugin=${DPI_PLUGIN}
 policy_name=${POLICY_TABLE:-dev_brightcloud}
 provider_plugin=${PROVIDER_PLUGIN:-brightcloud}
-fsm_handler=dev_fsm_dpi_sni
+fsm_handler=dev_dpi_sni
 
 # Validate the command argument
 if [ -z ${cmd} ]; then

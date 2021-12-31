@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "gatekeeper_hero_stats.pb-c.h"
 #include "log.h"
 #include "memutil.h"
+#include "os.h"
 
 static size_t MAX_WINDOWS = 10;
 static size_t MAX_REPORTS = 50;
@@ -551,7 +552,8 @@ free_stats(Gatekeeper__HeroStats__HeroStats *pb)
     if (pb == NULL) return;
 
     FREE(pb->policy);
-
+    if (pb->redirect != NULL) FREE(pb->redirect->ipv6.data);
+    FREE(pb->redirect);
     FREE(pb->ipv4);
     FREE(pb->ipv4_tuple);
     FREE(pb->ipv6);
@@ -575,14 +577,20 @@ get_relative_count(struct counter_s *cnt)
 static void
 serialize_hostname_tree(ds_tree_t *tree, os_macaddr_t *device_id, struct gkc_report_aggregator *aggr)
 {
+    Gatekeeper__HeroStats__HeroRedirect *new_redirect;
     Gatekeeper__HeroStats__HeroStats *new_pb;
     Gatekeeper__HeroStats__HeroStats **pb;
+    struct fqdn_redirect_s *fqdn_redirect;
     struct attr_hostname_s *attr;
     struct attr_cache *entry;
     uint64_t count_fqdn;
     uint64_t count_host;
+    struct in6_addr in6;
+    struct in_addr in4;
     uint64_t count_sni;
     uint64_t rel_total;
+    bool sr_cname;
+    int rc;
 
     ds_tree_foreach(tree, entry)
     {
@@ -614,6 +622,33 @@ serialize_hostname_tree(ds_tree_t *tree, os_macaddr_t *device_id, struct gkc_rep
         new_pb->hostname->count_fqdn = count_fqdn;
         new_pb->hostname->count_host = count_host;
         new_pb->hostname->count_sni  = count_sni;
+        fqdn_redirect = entry->fqdn_redirect;
+
+        if ((fqdn_redirect != NULL) && (fqdn_redirect->redirect))
+        {
+            new_pb->redirect = CALLOC(1, sizeof(*new_pb->redirect));
+            if (new_pb->redirect == NULL) continue;
+
+            new_redirect = new_pb->redirect;
+            gatekeeper__hero_stats__hero_redirect__init(new_redirect);
+            sr_cname = (fqdn_redirect->redirect_cname != NULL);
+            if (sr_cname) sr_cname &= (strlen(fqdn_redirect->redirect_cname) >= 3);
+            if (sr_cname) new_redirect->cname = &fqdn_redirect->redirect_cname[2];
+
+            rc = inet_pton(AF_INET, &fqdn_redirect->redirect_ips[0][2], &in4);
+            if (rc == 1)
+            {
+                new_redirect->ipv4 = htonl(in4.s_addr);
+            }
+
+            rc = inet_pton(AF_INET6, &fqdn_redirect->redirect_ips[1][3], &in6);
+            if (rc == 1)
+            {
+                new_redirect->ipv6.data = CALLOC(1, 16);
+                MEM_CPY(new_redirect->ipv6.data, (uint8_t *)&(in6.s6_addr), 16);
+                new_redirect->ipv6.len  = 16;
+            }
+        }
 
         pb[aggr->stats_idx] = new_pb;
         aggr->stats_idx++;

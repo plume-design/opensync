@@ -33,12 +33,11 @@ source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="nm2/$(basename "$0")"
 manager_setup_file="nm2/nm2_setup.sh"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+nm2/nm2_configure_nonexistent_iface.sh [-h] arguments
 Description:
     - Script creates undefined interface through Wifi_Inet_Config table
       Script fails if:
@@ -52,9 +51,9 @@ Arguments:
     \$3 (inet_addr) : used as inet_addr in Wifi_Inet_Config table : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name} <IF-NAME> <IF-TYPE> <INET-ADDR>
+                 Run: ./nm2/nm2_configure_nonexistent_iface.sh <IF-NAME> <IF-TYPE> <INET-ADDR>
 Script usage example:
-   ./${tc_name} test1 eth 10.10.10.15
+   ./nm2/nm2_configure_nonexistent_iface.sh test1 eth 10.10.10.15
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -71,7 +70,7 @@ fi
 
 # Fill variables with provided arguments or defaults.
 NARGS=3
-[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "nm2/nm2_configure_nonexistent_iface.sh" -arg
 if_name=$1
 if_type=$2
 ip_address=$3
@@ -81,12 +80,11 @@ trap '
 fut_info_dump_line
 print_tables Wifi_Inet_Config Wifi_Inet_State
 fut_info_dump_line
-run_setup_if_crashed nm || true
 ' EXIT SIGINT SIGTERM
 
-log_title "$tc_name: NM2 test - Configure non-existent interface"
+log_title "nm2/nm2_configure_nonexistent_iface.sh: NM2 test - Configure non-existent interface"
 
-log "$tc_name: Creating NONEXISTENT interface $if_name of type $if_type"
+log "nm2/nm2_configure_nonexistent_iface.sh: Creating NONEXISTENT interface $if_name of type $if_type"
 insert_ovsdb_entry Wifi_Inet_Config \
     -i if_name "$if_name" \
     -i if_type "$if_type" \
@@ -99,24 +97,24 @@ insert_ovsdb_entry Wifi_Inet_Config \
     -i ip_assign_scheme static \
     -i parent_ifname eth1 \
     -i mtu 1500 &&
-        log "$tc_name: NONEXISTENT interface $if_name created - Success" ||
-        raise "FAIL: Failed to insert_ovsdb_entry for $if_name" -l "$tc_name" -oe
+        log "nm2/nm2_configure_nonexistent_iface.sh: NONEXISTENT interface $if_name created - Success" ||
+        raise "FAIL: Failed to insert_ovsdb_entry for $if_name" -l "nm2/nm2_configure_nonexistent_iface.sh" -oe
 
-log "$tc_name: Checking if NONEXISTENT interface $if_name was created"
+log "nm2/nm2_configure_nonexistent_iface.sh: Checking if NONEXISTENT interface $if_name was created"
 # Interface must be present in Wifi_Inet_State table...
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is if_type "$if_type" &&
-    log "$tc_name: NONEXISTENT interface present in Wifi_Inet_State::if_name = $if_name - Success" ||
-    raise "FAIL: Wifi_Inet_State::if_name = $if_name not present" -l "$tc_name" -ow
+    log "nm2/nm2_configure_nonexistent_iface.sh: NONEXISTENT interface present in Wifi_Inet_State::if_name = $if_name - Success" ||
+    raise "FAIL: Wifi_Inet_State::if_name = $if_name not present" -l "nm2/nm2_configure_nonexistent_iface.sh" -ow
 
 # ...but not on system.
 wait_for_function_response 1 "check_interface_exists $if_name" &&
-    log "$tc_name: Interface $if_name of type $if_type does not exist on system - Success" ||
-    raise "FAIL: Interface $if_name of type $if_type exists on system, but should NOT" -l "$tc_name" -tc
+    log "nm2/nm2_configure_nonexistent_iface.sh: Interface $if_name of type $if_type does not exist on system - Success" ||
+    raise "FAIL: Interface $if_name of type $if_type exists on system, but should NOT" -l "nm2/nm2_configure_nonexistent_iface.sh" -tc
 
 # Check if manager survived.
 manager_pid_file="${OPENSYNC_ROOTDIR}/bin/nm"
 wait_for_function_response 0 "check_manager_alive $manager_pid_file" &&
-    log "$tc_name: NETWORK MANAGER is running - Success" ||
-    raise "FAIL: NETWORK MANAGER not running/crashed" -l "$tc_name" -tc
+    log "nm2/nm2_configure_nonexistent_iface.sh: NETWORK MANAGER is running - Success" ||
+    raise "FAIL: NETWORK MANAGER not running/crashed" -l "nm2/nm2_configure_nonexistent_iface.sh" -tc
 
 pass

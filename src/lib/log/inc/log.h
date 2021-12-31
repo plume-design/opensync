@@ -256,6 +256,7 @@ static inline void __unused_MODULE_ID(void)
 #define LOG_OPEN_STDOUT         (1 << 2)        /* Log to stdout */
 #define LOG_OPEN_STDOUT_QUIET   (1 << 3)        /* Log to stdout is quiet, shows only STDOUT severity messages */
 #define LOG_OPEN_REMOTE         (1 << 4)        /* Log to mqtt */
+#define LOG_OPEN_JOURNAL        (1 << 5)        /* Log to journal */
 
 /*
  * ===========================================================================
@@ -341,5 +342,6 @@ bool logger_syslog_new(logger_t *self);
 bool logger_stdout_new(logger_t *self, bool quiet_mode);
 bool logger_remote_new(logger_t *self);
 bool logger_traceback_new(logger_t *);
+void logger_journal_new(logger_t *self);
 
 #endif /* LOG_H_INCLUDED */

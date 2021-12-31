@@ -157,9 +157,14 @@ static struct schema_FCM_Report_Config test_report[] =
 void setUp() {}
 void tearDown() {}
 
+/*
+ *Dummy Upsert function - perform decref on 'where'
+ *@param : incref on 'where' is in fcm_set_node_state.
+ */
 bool native_ovsdb_table_upsert_where(ovsdb_table_t *table, json_t *where, void *record, bool update_uuid)
 {
     LOGD("%s: Upsert opration for native platform", __func__);
+    json_decref(where);
     return true;
 }
 

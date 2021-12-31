@@ -56,9 +56,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define TEMPLATE_CLOUD_CHAR     '#'
 
 typedef enum {
-    ADD         = 0,
-    DELETE,
-    UPDATE
+    OM_ACTION_ADD = 0,
+    OM_ACTION_DELETE,
+    OM_ACTION_UPDATE
 } om_action_t;
 
 enum

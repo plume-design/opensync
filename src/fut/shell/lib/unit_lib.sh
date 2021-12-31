@@ -29,6 +29,7 @@
 export FUT_UNIT_LIB_SRC=true
 [ "${FUT_BASE_LIB_SRC}" != true ] && source "${FUT_TOPDIR}/shell/lib/base_lib.sh"
 echo "${FUT_TOPDIR}/shell/lib/unit_lib.sh sourced"
+
 ####################### INFORMATION SECTION - START ###########################
 #
 #   Common library of shared functions, used globally
@@ -39,23 +40,26 @@ echo "${FUT_TOPDIR}/shell/lib/unit_lib.sh sourced"
 
 ###############################################################################
 # DESCRIPTION:
-#   Function returns filename of the script manipulating OpenSync managers.
+#   Function returns path to the script manipulating OpenSync managers.
+#   Function assumes one of the two manager scripts exist on system;
+#       - opensync
+#       - manager
+#   Raises exception if manager script does not exist.
 # INPUT PARAMETER(S):
 #   None.
 # RETURNS:
-#   Path to managers script.
+#   Echoes path to manager script.
 # USAGE EXAMPLE(S):
 #   get_managers_script
 ###############################################################################
 get_managers_script()
 {
-    fn_name="unit_lib:get_managers_script"
     if [ -e /etc/init.d/opensync ]; then
         echo "/etc/init.d/opensync"
     elif [ -e /etc/init.d/manager ]; then
         echo "/etc/init.d/manager"
     else
-        raise "FAIL: Missing start OS managers script" -l "${fn_name}" -ds
+        raise "FAIL: Missing the script to start OS managers" -l "unit_lib:get_managers_script" -ds
     fi
 }
 
@@ -65,7 +69,7 @@ get_managers_script()
 # INPUT PARAMETER(S):
 #   None.
 # RETURNS:
-#   Path to openvswitch script.
+#   Echoes path to openvswitch script.
 # USAGE EXAMPLE(S):
 #   get_openvswitch_script
 ###############################################################################
@@ -80,7 +84,7 @@ get_openvswitch_script()
 # INPUT PARAMETER(S):
 #   None.
 # RETURNS:
-#   Command to list processes.
+#   Echoes list of processes.
 # USAGE EXAMPLE(S):
 #   get_process_cmd
 ###############################################################################
@@ -92,10 +96,10 @@ get_process_cmd()
 ###############################################################################
 # DESCRIPTION:
 #   Function echoes single quoted input argument. Used for ovsh tool.
-#   It is imperative that this function not log or echo anything, as its main
+#   It is imperative that this function does not log or echo anything, as its main
 #   functionality is to echo and the value being used upstream.
 # INPUT PARAMETER(S):
-#   arg: string containing double quotes, command or other special characters
+#   arg: string containing double quotes, command or other special characters (string, required)
 # PRINTS:
 #   Single quoted input argument.
 # RETURNS:
@@ -113,18 +117,17 @@ single_quote_arg()
 #   Function gets MAC address of a provided interface.
 #   Function supports ':' delimiter only.
 # INPUT PARAMETER(S):
-#   $1 interface name (required)
+#   $1  Interface name (string, required)
 # RETURNS:
-#   HW address of interface.
+#   HW address of an interface.
 # USAGE EXAMPLE(S):
 #   get_radio_mac_from_system eth0
 ###############################################################################
 get_radio_mac_from_system()
 {
-    fn_name="unit_lib:get_radio_mac_from_system"
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "unit_lib:get_radio_mac_from_system requires ${NARGS} input argument(s), $# given" -arg
     if_name=$1
 
     # Match 2 alfanum chars and a : five times plus additional 2 alfanum chars
@@ -135,9 +138,9 @@ get_radio_mac_from_system()
 # DESCRIPTION:
 #   Function returns MAC of radio interface from Wifi_Radio_State table.
 #   Using condition string interface can be selected by name, channel,
-#   freqency band etc. See USAGE EXAMPLE(S).
+#   frequency band etc. See USAGE EXAMPLE(S).
 # INPUT PARAMETER(S):
-#   $1 condition string (required)
+#   $1 condition string (string, required)
 # RETURNS:
 #   Radio interface MAC address.
 # USAGE EXAMPLES(S):
@@ -147,10 +150,9 @@ get_radio_mac_from_system()
 ###############################################################################
 get_radio_mac_from_ovsdb()
 {
-    fn_name="unit_lib:get_radio_mac_from_ovsdb"
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "unit_lib:get_radio_mac_from_ovsdb requires ${NARGS} input argument(s), $# given" -arg
     local where_clause=$1
 
     # No logging, this function echoes the requested value to caller!
@@ -158,6 +160,29 @@ get_radio_mac_from_ovsdb()
     return $?
 }
 
+###############################################################################
+# DESCRIPTION:
+#   Function returns MAC of vif interface from Wifi_VIF_State table.
+#   Using condition string interface can be selected by name, channel, etc.
+# INPUT PARAMETER(S):
+#   $1 condition string (string, required)
+# RETURNS:
+#   VIF interface MAC address.
+# USAGE EXAMPLES(S):
+#   get_vif_mac_from_ovsdb "if_name==bhaul-sta-24"
+#   get_vif_mac_from_ovsdb "channel==6"
+###############################################################################
+get_vif_mac_from_ovsdb()
+{
+    local NARGS=1
+    [ $# -ne ${NARGS} ] &&
+        raise "unit_lib:get_vif_mac_from_ovsdb requires ${NARGS} input argument(s), $# given" -arg
+    local where_clause=$1
+
+    # No logging, this function echoes the requested value to caller!
+    ${OVSH} s Wifi_VIF_State -w ${where_clause} mac -r
+    return $?
+}
 
 ###############################################################################
 # DESCRIPTION:
@@ -173,8 +198,6 @@ get_radio_mac_from_ovsdb()
 ###############################################################################
 get_wan_uplink_if_name()
 {
-    fn_name="unit_lib:get_used_if_name_from_ovsdb"
-
     # No logging, this function echoes the requested value to caller!
     ${OVSH} s Connection_Manager_Uplink -w is_used==true if_name -r
     return $?
@@ -189,10 +212,10 @@ get_wan_uplink_if_name()
 #   provided. Parameter defaults to false.
 #   If IP is not provided within timeout, function raises an exception.
 # INPUT PARAMETER(S):
-#   $1 interface name (required)
-#   $2 option to select if IP address is requested (optional)
+#   $1 interface name (string, required)
+#   $2 option to select if IP address is requested (bool, optional)
 # RETURNS:
-#   0   on success
+#   0   On success
 #   See DESCRIPTION.
 # USAGE EXAMPLES(S):
 #   start_udhcpc eth0 true
@@ -200,28 +223,27 @@ get_wan_uplink_if_name()
 ###############################################################################
 start_udhcpc()
 {
-    fn_name="unit_lib:start_udhcpc"
     NARGS_MIN=1
     NARGS_MAX=2
     [ $# -ge ${NARGS_MIN} ] && [ $# -le ${NARGS_MAX} ] ||
-        raise "${fn_name} requires ${NARGS_MIN}-${NARGS_MAX} input arguments, $# given" -arg
+        raise "unit_lib:start_udhcpc requires ${NARGS_MIN}-${NARGS_MAX} input arguments, $# given" -arg
     if_name=$1
     should_get_address=${2:-false}
 
-    log -deb "$fn_name - Starting udhcpc on $if_name"
+    log -deb "unit_lib:start_udhcpc - Starting udhcpc on $if_name"
 
     ps_out=$(pgrep "/sbin/udhcpc.*$if_name")
     if [ $? -eq 0 ]; then
         # shellcheck disable=2086
-        kill $ps_out && log -deb "$fn_name - Old udhcpc pid killed for $if_name"
+        kill $ps_out && log -deb "unit_lib:start_udhcpc - Old udhcpc pid killed for $if_name"
     fi
 
     /sbin/udhcpc -i "$if_name" -f -p /var/run/udhcpc-"$if_name".pid -s ${OPENSYNC_ROOTDIR}/bin/udhcpc.sh -t 60 -T 1 -S --no-default-options &>/dev/null &
 
     if [ "$should_get_address" = "true" ]; then
         wait_for_function_response 'notempty' "get_interface_ip_address_from_system $if_name" &&
-            log "$fn_name - DHCPC provided address to $if_name" ||
-            raise "FAIL: DHCPC didn't provide address to $if_name" -l "$fn_name" -ds
+            log -deb "unit_lib:start_udhcpc - DHCPC provided address to '$if_name' - Success" ||
+            raise "FAIL: DHCPC did not provide address to '$if_name'" -l "unit_lib:start_udhcpc" -ds
     fi
 
     return 0
@@ -236,7 +258,7 @@ start_udhcpc()
 # DESCRIPTION:
 #   Function echoes PID of provided process.
 # INPUT PARAMETER(S):
-#   $1 process name (required)
+#   $1 process name (string, required)
 # ECHOES:
 #   PID value.
 # USAGE EXAMPLE(S):
@@ -244,10 +266,9 @@ start_udhcpc()
 ###############################################################################
 get_pid()
 {
-    fn_name="unit_lib:get_pid"
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "unit_lib:get_pid requires ${NARGS} input argument(s), $# given" -arg
     process_name=$1
 
     # Match parameter string, but exclude lines containing 'grep'.
@@ -258,33 +279,36 @@ get_pid()
 ###############################################################################
 # DESCRIPTION:
 # INPUT PARAMETER(S):
+#   $1  process status type (string, required)
+#   $2  process file (string, required)
 # RETURNS:
-#   0
-#   1
+#   0   process file does not exist and process should be dead
+#   0   process file exists and process is alive
+#   1   process file does not exist and process should be alive
+#   1   process file exists and process should be dead
 # USAGE EXAMPLE(S):
 #   check_pid_file alive \"/var/run/udhcpc-$if_name.pid\"
 #   check_pid_file dead \"/var/run/udhcpc-$if_name.pid\"
 ###############################################################################
 check_pid_file()
 {
-    fn_name="unit_lib:check_pid_file"
     local NARGS=2
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "unit_lib:check_pid_file requires ${NARGS} input argument(s), $# given" -arg
     type=$1
     file=$2
 
     if [ "$type" = "dead" ] && [ ! -f "$file" ]; then
-        log -deb "$fn_name - Process $file is dead"
+        log -deb "unit_lib:check_pid_file - Process '$file' is dead"
         return 0
     elif [ "$type" = "alive" ] && [ -f "$file" ]; then
-        log -deb "$fn_name - Process $file is alive"
+        log -deb "unit_lib:check_pid_file - Process '$file' is alive"
         return 0
     elif [ "$type" = "dead" ] && [ -f "$file" ]; then
-        log -deb "$fn_name - Process is alive"
+        log -deb "unit_lib:check_pid_file - Process is alive"
         return 1
     else
-        log -deb "$fn_name - Process is dead"
+        log -deb "unit_lib:check_pid_file - Process is dead"
         return 1
     fi
 }
@@ -292,9 +316,9 @@ check_pid_file()
 ###############################################################################
 # DESCRIPTION:
 #   Function checks if udhcps service (DHCP client) on provided interface is
-#   running. It does so by checking existance of PID of DHCP client service.
+#   running. It does so by checking existence of PID of DHCP client service.
 # INPUT PARAMETER(S):
-#   $1  interface name (required)
+#   $1  Interface name (string, required)
 # RETURNS:
 #   0   PID found, udhcpc service is running
 #   1   PID not found, udhcpc service is not running
@@ -303,28 +327,27 @@ check_pid_file()
 ###############################################################################
 check_pid_udhcp()
 {
-    local fn_name="unit_lib:check_pid_udhcp"
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "unit_lib:check_pid_udhcp requires ${NARGS} input argument(s), $# given" -arg
     local if_name="${1}"
 
     PID=$($(get_process_cmd) | grep -e udhcpc | grep -e "${if_name}" | grep -v 'grep' | awk '{ print $1 }')
     if [ -z "$PID" ]; then
-        log -deb "${fn_name} - DHCP client not running on ${if_name}"
+        log -deb "unit_lib:check_pid_udhcp - DHCP client not running on '${if_name}'"
         return 1
     else
-        log -deb "${fn_name} - DHCP client running on ${if_name}, PID=${PID}"
+        log -deb "unit_lib:check_pid_udhcp - DHCP client running on '${if_name}', PID=${PID}"
         return 0
     fi
 }
 
 ###############################################################################
 # DESCRIPTION:
-#   Function kills process of provided name.
-#   Required binary/tool pidof installed on system.
+#   Function kills process of given name.
+#   Requires binary/tool pidof installed on system.
 # INPUT PARAMETER(S):
-#   $1 process name (required)
+#   $1 process name (string, required)
 # RETURNS:
 #   None.
 # USAGE EXAMPLE(S):
@@ -332,10 +355,9 @@ check_pid_udhcp()
 ###############################################################################
 killall_process_by_name()
 {
-    fn_name="unit_lib:killall_process_by_name"
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "unit_lib:killall_process_by_name requires ${NARGS} input argument(s), $# given" -arg
     process_name=$1
     local PROCESS_PID
 
@@ -351,9 +373,9 @@ killall_process_by_name()
                 fi
             done
             if [ $? -eq 0 ]; then
-                log -deb "${fn_name} - killed process:${P} with signal:${S}"
+                log -deb "unit_lib:killall_process_by_name - killed process: ${P} with signal: ${S}"
             else
-                log -deb "${fn_name} - killall_process_by_name - could not kill process:${P}"
+                log -deb "unit_lib:killall_process_by_name - killall_process_by_name - could not kill process: ${P}"
             fi
         done
     fi
@@ -379,36 +401,36 @@ killall_process_by_name()
 ###############################################################################
 device_init()
 {
-    fn_name="unit_lib:device_init"
     disable_watchdog &&
-        log -deb "$fn_name - Watchdog disabled - Success" ||
-        raise "FAIL: Could not disable watchdog" -l "$fn_name" -ds
+        log -deb "unit_lib:device_init - Watchdog disabled - Success" ||
+        raise "FAIL: Could not disable watchdog" -l "unit_lib:device_init" -ds
+
     stop_managers &&
-        log -deb "$fn_name - Managers stopped - Success" ||
-        raise "FAIL: Could not stop managers" -l "$fn_name" -ds
+        log -deb "unit_lib:device_init - Managers stopped - Success" ||
+        raise "FAIL: Could not stop managers" -l "unit_lib:device_init" -ds
+
     cm_disable_fatal_state &&
-        log -deb "$fn_name - CM fatal state disabled - Success" ||
-        raise "FAIL: Could not disable CM fatal state" -l "$fn_name" -ds
+        log -deb "unit_lib:device_init - CM fatal state disabled - Success" ||
+        raise "FAIL: Could not disable CM fatal state" -l "unit_lib:device_init" -ds
+
     return $?
 }
 
 ###############################################################################
 # DESCRIPTION:
-#   Function stops device healthcheck service, so it does not interfere wtih
+#   Function stops device healthcheck service, so it does not interfere with
 #   FUT test execution.
+#   This is a stub function. Provide function for each device in overrides.
 # INPUT PARAMETER(S):
 #   None.
 # RETURNS:
 #   0   Always.
-# NOTE:
-#   This is a stub function. Provide function for each device in overrides.
 # USAGE EXAMPLE(S):
 #   stop_healthcheck
 ###############################################################################
 stop_healthcheck()
 {
-    local fn_name="unit_lib:stop_healthcheck"
-    log -deb "$fn_name - This is a stub function. Override implementation needed for each model."
+    log -deb "unit_lib:stop_healthcheck - This is a stub function. Override implementation needed for each model."
     return 0
 }
 
@@ -420,20 +442,18 @@ stop_healthcheck()
 ###############################################################################
 # DESCRIPTION:
 #   Function disables watchdog.
+#   This is a stub function. Provide function for each device in overrides.
 # INPUT PARAMETER(S):
 #   None.
 # RETURNS:
 #   0   Always.
-# NOTE:
-#   This is a stub function. Provide function for each device in overrides.
 # USAGE EXAMPLE(S):
 #   disable_watchdog
 ###############################################################################
 disable_watchdog()
 {
-    local fn_name="unit_lib:disable_watchdog"
-    log -deb "$fn_name - Disabling watchdog."
-    log -deb "$fn_name - This is a stub function. Override implementation needed for each model."
+    log -deb "unit_lib:disable_watchdog - Disabling watchdog."
+    log -deb "unit_lib:disable_watchdog - This is a stub function. Override implementation needed for each model."
     return 0
 }
 
@@ -461,27 +481,26 @@ disable_watchdog()
 ###############################################################################
 start_openswitch()
 {
-    fn_name="unit_lib:start_openswitch"
+    log -deb "unit_lib:start_openswitch - Starting Open vSwitch"
 
-    log -deb "$fn_name - Starting Open vSwitch"
     # shellcheck disable=SC2034,2091
     ovs_run=$($(get_process_cmd)  | grep -v "grep" | grep "ovs-vswitchd")
     if [ "$?" -eq 0 ]; then
-        log -deb "$fn_name - Open vSwitch already running"
+        log -deb "unit_lib:start_openswitch - Open vSwitch already running"
         return 0
     fi
 
     OPENVSWITCH_SCRIPT=$(get_openvswitch_script)
     ${OPENVSWITCH_SCRIPT} start ||
-        raise "FAIL: Issue during Open vSwitch start" -l "$fn_name" -ds
+        raise "FAIL: Issue during Open vSwitch start" -l "unit_lib:start_openswitch" -ds
 
     wait_for_function_response 0 "pidof ovs-vswitchd" &&
-        log -deb "$fn_name - ovs-vswitchd running" ||
-        raise "FAIL: Could not start ovs-vswitchd" -l "$fn_name" -ds
+        log -deb "unit_lib:start_openswitch - ovs-vswitchd running - Success" ||
+        raise "FAIL: Could not start ovs-vswitchd" -l "unit_lib:start_openswitch" -ds
 
     wait_for_function_response 0 "pidof ovsdb-server" &&
-        log -deb "$fn_name - ovsdb-server running" ||
-        raise "FAIL: Could not start ovsdb-server" -l "$fn_name" -ds
+        log -deb "unit_lib:start_openswitch - ovsdb-server running - Success" ||
+        raise "FAIL: Could not start ovsdb-server" -l "unit_lib:start_openswitch" -ds
 
     sleep 1
 
@@ -501,13 +520,12 @@ start_openswitch()
 ###############################################################################
 stop_openswitch()
 {
-    fn_name="unit_lib:stop_openswitch"
+    log "unit_lib:stop_openswitch - Stopping Open vSwitch"
 
-    log -deb "$fn_name - Stopping Open vSwitch"
     OPENVSWITCH_SCRIPT=$(get_openvswitch_script)
     ${OPENVSWITCH_SCRIPT} stop &&
-        log -deb "$fn_name - Open vSwitch stopped" ||
-        raise "FAIL: Issue during Open vSwitch stop" -l "$fn_name" -ds
+        log -deb "unit_lib:stop_openswitch - Open vSwitch stopped - Success" ||
+        raise "FAIL: Issue during Open vSwitch stop" -l "unit_lib:stop_openswitch" -ds
 
     return 0
 }
@@ -538,34 +556,33 @@ stop_openswitch()
 ###############################################################################
 start_managers()
 {
-    fn_name="unit_lib:start_managers"
+    log -deb "unit_lib:start_managers Starting OpenSync managers"
 
-    log -deb "$fn_name Starting OpenSync managers"
     MANAGER_SCRIPT=$(get_managers_script)
     ret=$($MANAGER_SCRIPT start)
     # Make sure to define return value on success or failure
     if [ $? -ne 1 ]; then
-        raise "FAIL: Issue during OpenSync manager start" -l "$fn_name" -ds
+        raise "FAIL: Issue during OpenSync manager start" -l "unit_lib:start_managers" -ds
     else
-        log "$fn_name - OpenSync managers started"
+        log -deb "unit_lib:start_managers - OpenSync managers started - Success"
     fi
 
     # Check dm slave PID
     # shellcheck disable=2091
     PID=$($(get_process_cmd) | grep -e "${OPENSYNC_ROOTDIR}/bin/dm" | grep -v 'grep' | grep -v slave | awk '{ print $1 }')
     if [ -z "$PID" ]; then
-        raise "FAIL: Issue during manager start, dm slave not running" -l "$fn_name" -ds
+        raise "FAIL: Issue during manager start, dm slave not running" -l "unit_lib:start_managers" -ds
     else
-        log "$fn_name - dm slave PID = $PID"
+        log -deb "unit_lib:start_managers - dm slave PID = $PID"
     fi
 
     # Check dm master PID
     # shellcheck disable=2091
     PID=$($(get_process_cmd) | grep -e "${OPENSYNC_ROOTDIR}/bin/dm" | grep -v 'grep' | grep -v master | awk '{ print $1 }')
     if [ -z "$PID" ]; then
-        raise "FAIL: Issue during manager start, dm master not running" -l "$fn_name" -ds
+        raise "FAIL: Issue during manager start, dm master not running" -l "unit_lib:start_managers" -ds
     else
-        log "$fn_name - dm master PID = $PID"
+        log -deb "unit_lib:start_managers - dm master PID = $PID"
     fi
 
     return 0
@@ -577,20 +594,19 @@ start_managers()
 #   Executes managers script with restart option.
 # INPUT PARAMETER(S):
 #   None.
-# USAGE EXAMPLE(S):
-#   restart_managers
 # RETURNS:
 #   Last exit status.
+# USAGE EXAMPLE(S):
+#   restart_managers
 ###############################################################################
 restart_managers()
 {
-    fn_name="unit_lib:restart_managers"
-    log -deb "$fn_name - Restarting OpenSync managers"
+    log -deb "unit_lib:restart_managers - Restarting OpenSync managers"
     MANAGER_SCRIPT=$(get_managers_script)
     # shellcheck disable=2034
     ret=$($MANAGER_SCRIPT restart)
     ec=$?
-    log -deb "$fn_name - manager restart exit code ${ec}"
+    log -deb "unit_lib:restart_managers - manager restart exit code ${ec}"
     return $ec
 }
 
@@ -608,12 +624,11 @@ restart_managers()
 ###############################################################################
 stop_managers()
 {
-    fn_name="unit_lib:stop_managers"
-    log -deb "$fn_name - Stopping OpenSync managers"
+    log -deb "unit_lib:stop_managers - Stopping OpenSync managers"
     MANAGER_SCRIPT=$(get_managers_script)
     $MANAGER_SCRIPT stop &&
-        log -deb "$fn_name - OpenSync manager stopped" ||
-        raise "FAIL: Issue during OpenSync manager stop" -l "$fn_name" -ds
+        log -deb "unit_lib:stop_managers - OpenSync manager stopped - Success" ||
+        raise "FAIL: Issue during OpenSync manager stop" -l "unit_lib:stop_managers" -ds
 
     return 0
 }
@@ -621,11 +636,11 @@ stop_managers()
 ###############################################################################
 # DESCRIPTION:
 #   Function starts a single specific OpenSync manager.
-#   Raises an exception if managers script is not executable or if it
-#   does not exist.
+#   Raises an exception if managers script is not executable or if
+#   it does not exist.
 # INPUT PARAMETER(S):
-#   $1  manager name (required)
-#   $2  option used with start manager (optional)
+#   $1  manager name (string, required)
+#   $2  option used with start manager (string, optional)
 # RETURNS:
 #   0   On success.
 #   1   Manager is not executable.
@@ -636,23 +651,31 @@ stop_managers()
 ###############################################################################
 start_specific_manager()
 {
-    fn_name="unit_lib:start_specific_manager"
     NARGS_MIN=1
     NARGS_MAX=2
     [ $# -ge ${NARGS_MIN} ] && [ $# -le ${NARGS_MAX} ] ||
-        raise "${fn_name} requires ${NARGS_MIN}-${NARGS_MAX} input arguments, $# given" -arg
+        raise "unit_lib:start_specific_manager requires ${NARGS_MIN}-${NARGS_MAX} input arguments, $# given" -arg
     manager="${OPENSYNC_ROOTDIR}/bin/$1"
     option=$2
 
     # Check if executable
     if [ ! -x "$manager" ]; then
-        log -deb "$fn_name - Manager $manager does not exist or is not executable"
+        log -deb "unit_lib:start_specific_manager - Manager $manager does not exist or is not executable"
         return 1
     fi
 
     # Start manager
     # shellcheck disable=SC2018,SC2019
-    log -deb "$fn_name - Starting $manager $option" | tr a-z A-Z
+    log -deb "unit_lib:start_specific_manager - Starting $manager $option" | tr a-z A-Z
+
+    if [ "$1" == "wm" ]; then
+        ps_out=$(pgrep $manager)
+        if [ $? -eq 0 ]; then
+            kill -9 $ps_out && log -deb "unit_lib:start_specific_manager - Old pid killed for $manager"
+        fi
+        sleep 10
+    fi
+
     $manager "$option" >/dev/null 2>&1 &
     sleep 1
 }
@@ -660,11 +683,11 @@ start_specific_manager()
 ###############################################################################
 # DESCRIPTION:
 #   Function sets log severity for manager by managing AW_Debug table.
-#   Possible log severity levels are INFO, TRACE, DEBUG...
+#   Possible log severity levels are INFO, TRACE, DEBUG..
 #   Raises an exception if log severity is not succesfully set.
 # INPUT PARAMETER(S):
-#   $1 manager name (required)
-#   $2 log severity (required)
+#   $1 manager name (string, required)
+#   $2 log severity (string, required)
 # RETURNS:
 #   See DESCRIPTION.
 # USAGE EXAMPLE(S):
@@ -673,47 +696,26 @@ start_specific_manager()
 ###############################################################################
 set_manager_log()
 {
-    fn_name="unit_lib:set_manager_log"
     local NARGS=2
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
-    manager_name=$1
-    severity=$2
+        raise "unit_lib:set_manager_log requires ${NARGS} input argument(s), $# given" -arg
+    name=$1
+    log_severity=$2
 
-    log -deb "$fn_name - Adding $manager_name to AW_Debug with severity $severity"
-    insert_ovsdb_entry AW_Debug -i name "$manager_name" -i log_severity "$severity" ||
-        raise "FAIL: Could not insert to table AW_Debug::log_severity" -l "$fn_name" -oe
-}
-
-###############################################################################
-# DESCRIPTION:
-#   Function runs manager setup if any of the managers in provided
-#   parameters crashed. Checks existance of PID for provided managers.
-#   If not found run setup for the crashed manager.
-# INPUT PARAMETER(S):
-#   $@  crashed managers
-# RETURNS:
-#   0   On success.
-#   1   Manager is not executable.
-#   See DESCRIPTION.
-# USAGE EXAMPLE(S):
-#   run_setup_if_crashed wm
-#   run_setup_if_crashed nm cm
-###############################################################################
-run_setup_if_crashed()
-{
-    fn_name="unit_lib:run_setup_if_crashed"
-    for manager in "$@"
-    do
-        manager_pid_file="${OPENSYNC_ROOTDIR}/bin/$manager"
-        pid_of_manager=$(get_pid "$manager_pid_file")
-        if [ -z "$pid_of_manager" ]; then
-            log -deb "$fn_name - Manager $manager crashed. Executing module environment setup"
-            eval "${manager}_setup_test_environment" &&
-                log -deb "$fn_name - Test environment for $manager success" ||
-                raise "FAIL: Test environment for $manager failed" -l "$fn_name" -tc
-        fi
-    done
+    log -deb "unit_lib:set_manager_log - Checking if AW_Debug contains ${name}"
+    check_ovsdb_entry AW_Debug -w name "${name}"
+    if [ "$?" == 0 ];then
+        log -deb "unit_lib:set_manager_log - AW_Debug contains ${name}, will update"
+        update_ovsdb_entry AW_Debug -w name "${name}" -u log_severity "${log_severity}" &&
+            log -deb "unit_lib:set_manager_log - AW_Debug ${name} updated to ${log_severity}" ||
+            raise "FAIL: Could not update AW_Debug ${name} to ${log_severity}" -l "unit_lib:set_manager_log" -oe
+    else
+        log -deb "unit_lib:set_manager_log - Adding ${name} to AW_Debug with severity ${log_severity}"
+        insert_ovsdb_entry AW_Debug -i name "${name}" -i log_severity "${log_severity}" ||
+            raise "FAIL: Could not insert to table AW_Debug::log_severity" -l "unit_lib:set_manager_log" -oe
+    fi
+    log -deb "unit_lib:set_manager_log - Dumping table AW_Debug"
+    print_tables AW_Debug || true
 }
 
 ###############################################################################
@@ -732,15 +734,14 @@ run_setup_if_crashed()
 ###############################################################################
 cm_disable_fatal_state()
 {
-    fn_name="unit_lib:cm_disable_fatal_state"
-    log -deb "$fn_name - Disabling CM manager restart procedure"
+    log -deb "unit_lib:cm_disable_fatal_state - Disabling CM manager restart procedure"
     if [ ! -d /opt/tb ]; then
         mkdir -p /opt/tb/
     fi
     # Create cm-disable-fatal file in /opt/tb/
     touch /opt/tb/cm-disable-fatal
     if [ $? != 0 ]; then
-        log -deb "$fn_name - /opt/tb is not writable, mount a tmpfs over it"
+        log -deb "unit_lib:cm_disable_fatal_state - /opt/tb is not writable, mount a tmpfs over it"
         mount -t tmpfs tmpfs /opt/tb
         touch /opt/tb/cm-disable-fatal
     fi
@@ -759,8 +760,7 @@ cm_disable_fatal_state()
 ###############################################################################
 cm_enable_fatal_state()
 {
-    fn_name="unit_lib:cm_enable_fatal_state"
-    log -deb "$fn_name - Enabling CM manager restart procedure"
+    log -deb "unit_lib:cm_enable_fatal_state - Enabling CM manager restart procedure"
     # Delete cm-disable-fatal file in /opt/tb/
     rm -f /opt/tb/cm-disable-fatal
 }
@@ -769,7 +769,7 @@ cm_enable_fatal_state()
 # DESCRIPTION:
 #   Function checks if manager is alive by checking its PID.
 # INPUT PARAMETER(S):
-#   $1  manager bin file (string) (required)
+#   $1  manager bin file (string, required)
 # RETURNS:
 #   0   Manager is alive.
 #   1   Manager is not alive.
@@ -778,18 +778,17 @@ cm_enable_fatal_state()
 ###############################################################################
 check_manager_alive()
 {
-    fn_name="nm2_lib:check_manager_alive"
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "unit_lib:check_manager_alive requires ${NARGS} input argument(s), $# given" -arg
     manager_bin_file=$1
 
     pid_of_manager=$(get_pid "$manager_bin_file")
     if [ -z "$pid_of_manager" ]; then
-        log "${fn_name} - $manager_bin_file PID not found"
+        log -deb "unit_lib:check_manager_alive - $manager_bin_file PID not found"
         return 1
     else
-        log "${fn_name} - $manager_bin_file PID found"
+        log -deb "unit_lib:check_manager_alive - $manager_bin_file PID found"
         return 0
     fi
 }
@@ -810,30 +809,29 @@ check_manager_alive()
 #   additional -w option used, there must always be 2 additional parameters.
 #   In short, optional parameters come in groups of 3.
 #
-#   -raw (raw)  output value is echoed without formatting
 #   -r (raw)    output value is echoed without formatting
 #
 # INPUT PARAMETER(S):
-#   $1  ovsdb table (required)
-#   $2  ovsdb field in ovsdb table (required)
-#   $3  option, supported options: -w, -raw (optional, see DESCRIPTION)
-#   $4  ovsdb field in ovsdb table (optional, see DESCRIPTION)
-#   $5  ovsdb field value (optional, see DESCRIPTION)
+#   $1  ovsdb table (string, required)
+#   $2  ovsdb field in ovsdb table (string, required)
+#   $3  option, supported options: -w, -raw (string, optional, see DESCRIPTION)
+#   $4  ovsdb field in ovsdb table (string, optional, see DESCRIPTION)
+#   $5  ovsdb field value (string, optional, see DESCRIPTION)
 #   ...
 # ECHOES:
 #   Echoes field value.
 # USAGE EXAMPLE(S):
 #   get_ovsdb_entry_value AWLAN_Node firmware_version
-#   get_ovsdb_entry_value Manager target -raw
+#   get_ovsdb_entry_value Manager target -r
 ###############################################################################
 get_ovsdb_entry_value()
 {
-    fn_name="unit_lib:get_ovsdb_entry_value"
     ovsdb_table=$1
     ovsdb_field=$2
     shift 2
     conditions_string=""
-    raw=false
+    raw="false"
+    json_value="false"
 
     while [ -n "$1" ]; do
         option=$1
@@ -843,28 +841,40 @@ get_ovsdb_entry_value()
                 conditions_string="$conditions_string -w $1==$2"
                 shift 2
                 ;;
-            -raw)
-                raw=true
+            -r)
+                raw="true"
                 shift
                 ;;
-            -r)
-                raw=true
+            -json_value)
+                json_value=$1
                 shift
                 ;;
             *)
-                raise "FAIL: Wrong option provided: $option" -l "$fn_name" -arg
+                raise "FAIL: Wrong option provided: $option" -l "unit_lib:get_ovsdb_entry_value" -arg
                 ;;
         esac
     done
 
     # shellcheck disable=SC2086
-    raw_field_value=$(${OVSH} s "$ovsdb_table" $conditions_string "$ovsdb_field" -r) ||
-        return 1
+    if [ "$json_value" == "false" ]; then
+        raw_field_value=$(${OVSH} s "$ovsdb_table" $conditions_string "$ovsdb_field" -r) ||
+            return 1
+    else
+        raw_field_value=$(${OVSH} s "$ovsdb_table" $conditions_string "$ovsdb_field" -j) ||
+            return 1
+    fi
 
     echo "$raw_field_value" | grep -q '"uuid"'
     uuid_check_res="$?"
-    if [ "$raw" == false ] && [ "$uuid_check_res" == 0 ]; then
+    if [ "$json_value" == "false" ] && [ "$raw" == "false" ] && [ "$uuid_check_res" == "0" ]; then
         value=$(echo "$raw_field_value" | cut -d ',' -f 2 | cut -d '"' -f 2)
+    elif [ "$json_value" != "false" ]; then
+        value=$(echo "$raw_field_value" | sed -n "/${json_value}/{n;p;}")
+        if [ ${?} != 0 ]; then
+            value=$(echo "$raw_field_value" | awk "/${json_value}/{getline; print}")
+        fi
+        # Remove leading whitespaces from json output
+        value=$(echo "${value}" | sed 's/^ *//g')
     else
         value="$raw_field_value"
     fi
@@ -885,10 +895,10 @@ get_ovsdb_entry_value()
 #   In short, optional parameters come in groups of 3.
 #
 # INPUT PARAMETER(S):
-#   $1  ovsdb table (required)
-#   $2  option, supported options: -w (optional, see DESCRIPTION)
-#   $3  ovsdb field in ovsdb table (optional, see DESCRIPTION)
-#   $4  ovsdb field value (optional, see DESCRIPTION)
+#   $1  ovsdb table (string, required)
+#   $2  option, supported options: -w (string, optional, see DESCRIPTION)
+#   $3  ovsdb field in ovsdb table (string, optional, see DESCRIPTION)
+#   $4  ovsdb field value (string, optional, see DESCRIPTION)
 #   ...
 # RETURNS:
 #   0   Value is as expected.
@@ -898,39 +908,75 @@ get_ovsdb_entry_value()
 ###############################################################################
 check_ovsdb_entry()
 {
-    fn_name="unit_lib:check_ovsdb_entry"
     ovsdb_table=$1
     shift 1
     conditions_string=""
-
+    transact_string='["Open_vSwitch",{"op": "select","table": "'$ovsdb_table'","where":['
     while [ -n "$1" ]; do
         option=$1
         shift
         case "$option" in
             -w)
-                echo ${2} | grep -qe "[ \"]" -e '\\' &&
+                echo ${2} | grep -e "[ \"]" -e '\\' &&
                     conditions_string="$conditions_string -w $1==$(single_quote_arg "${2}")" ||
                     conditions_string="$conditions_string -w $1==$2"
+                    val_str="$2"
+                    echo "$2" | grep -q "map"
+                    if [ "$?" != "0" ]; then
+                        echo "$2" | grep -q "false\|true"
+                        if [ "$?" != "0" ]; then
+                            echo "$2" | grep -q "\""
+                            if [ "$?" != "0" ]; then
+                                [ "$2" -eq "$2" ] 2>/dev/null && is_number="0" || is_number="1"
+                                if [ "${is_number}" == "1" ]; then
+                                    val_str='"'$2'"'
+                                fi
+                            fi
+                        fi
+                    fi
+                    transact_string=$transact_string'["'$1'","==",'$val_str'],'
                 shift 2
                 ;;
             *)
-                raise "FAIL: Wrong option provided: $option" -l "$fn_name" -arg
+                raise "FAIL: Wrong option provided: $option" -l "unit_lib:check_ovsdb_entry" -arg
                 ;;
         esac
     done
-
+    transact_string="$transact_string]}]"
+    # remove last , from where statement ],]}]
+    transact_string=${transact_string//],]/]]}
     check_cmd="${OVSH} s $ovsdb_table $conditions_string"
-
-    log "$fn_name - Checking if entry exists \n$check_cmd"
-    eval "$check_cmd" && return 0 || return 1
+    log -deb "unit_lib:check_ovsdb_entry - Checking if entry exists:\n\t$check_cmd"
+    eval "$check_cmd"
+    if [ "$?" == 0 ]; then
+        log -deb "unit_lib:check_ovsdb_entry - Entry exists"
+        return 0
+    else
+        log -deb "unit_lib:check_ovsdb_entry - Entry does not exists or there is issue with check, will re-check with ovsdb-client transact command"
+        log -deb "unit_lib:check_ovsdb_entry - Transact string: ovsdb-client transact \'${transact_string}\'"
+        res=$(eval ovsdb-client transact \'${transact_string}\')
+        if [ "$?" == "0" ]; then
+            echo "${res}" | grep '\[{"rows":\[\]}\]'
+            if [ "$?" == "0" ]; then
+                log -err "unit_lib:check_ovsdb_entry - Entry does not exists"
+                return 1
+            else
+                log -deb "unit_lib:check_ovsdb_entry - Entry exists"
+                return 0
+            fi
+        else
+            log -err "unit_lib:check_ovsdb_entry - Entry does not exists"
+            return 1
+        fi
+    fi
 }
 
 ###############################################################################
 # DESCRIPTION:
 #   Function deletes all entries in ovsdb table.
-#   Raises an exception if table emtries cannot be deleted.
+#   Raises an exception if table entries cannot be deleted.
 # INPUT PARAMETER(S):
-#   $1  ovsdb table (required)
+#   $1  ovsdb table (string, required)
 # RETURNS:
 #   0   On success.
 #   See DESCRIPTION.
@@ -940,43 +986,34 @@ check_ovsdb_entry()
 ###############################################################################
 empty_ovsdb_table()
 {
-    fn_name="unit_lib:empty_ovsdb_table"
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "unit_lib:empty_ovsdb_table requires ${NARGS} input argument(s), $# given" -arg
     ovsdb_table=$1
 
-    log -deb "$fn_name - Clearing $ovsdb_table table"
+    log -deb "unit_lib:empty_ovsdb_table - Clearing $ovsdb_table table"
     ${OVSH} d "$ovsdb_table" ||
-        raise "FAIL: Could not delete table $ovsdb_table" -l "$fn_name" -oe
+        raise "FAIL: Could not delete table $ovsdb_table" -l "unit_lib:empty_ovsdb_table" -oe
 }
 
 ###############################################################################
 # DESCRIPTION:
-#   Function checks if the field exists in the specific table.
-#
-#   Returns 0 (true) if the field exists in the ovsdb table else 1 (false)
-#   is returned.
-#
-#   Logging of PASS/FAIL messages are not done. Only 0/1 value is returned
-#   based on the existence of ovsdb table field.
-#
+#   Function checks if field exists in the specific table.
 # INPUT PARAMETER(S):
-#   $1  ovsdb table name.
-#   $2  field name in the ovsdb table.
+#   $1  ovsdb table name (string, required)
+#   $2  field name in the ovsdb table (string, required)
 # RETURNS:
-#   0 if the field exists in ovsdb table.
-#   1 if the field does not exist in ovsdb table.
+#   0   If field exists in ovsdb table.
+#   1   If field does not exist in ovsdb table.
 #   See DESCRIPTION.
 # USAGE EXAMPLE(S):
 #   check_ovsdb_table_field_exists AWLAN_Node device_mode
 ###############################################################################
 check_ovsdb_table_field_exists()
 {
-    fn_name="unit_lib:check_ovsdb_table_field_exists"
     local NARGS=2
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "unit_lib:check_ovsdb_table_field_exists requires ${NARGS} input argument(s), $# given" -arg
     ovsdb_table=$1
     field_name=$2
 
@@ -992,11 +1029,11 @@ check_ovsdb_table_field_exists()
 # DESCRIPTION:
 #   Function waits for ovsdb table removal within given timeout.
 #   Some ovsdb tables take time to be emptied. This function is used for
-#   such tables and would raise exception that table was not emptied
-#   only after given time.
+#   such tables and would raise exception if such table was not emptied
+#   after given time.
 # INPUT PARAMETER(S):
-#   $1  ovsdb table (required)
-#   $2  wait timeout in seconds (optional, defaults to DEFAULT_WAIT_TIME)
+#   $1  ovsdb table (string, required)
+#   $2  wait timeout in seconds (int, optional, defaults to DEFAULT_WAIT_TIME)
 # RETURNS:
 #   0   On success.
 #   1   On fail.
@@ -1005,24 +1042,23 @@ check_ovsdb_table_field_exists()
 ###############################################################################
 wait_for_empty_ovsdb_table()
 {
-    fn_name="unit_lib:wait_for_empty_ovsdb_table"
     NARGS_MIN=1
     NARGS_MAX=2
     [ $# -ge ${NARGS_MIN} ] && [ $# -le ${NARGS_MAX} ] ||
-        raise "${fn_name} requires ${NARGS_MIN}-${NARGS_MAX} input arguments, $# given" -arg
+        raise "unit_lib:wait_for_empty_ovsdb_table requires ${NARGS_MIN}-${NARGS_MAX} input arguments, $# given" -arg
     ovsdb_table=$1
     empty_timeout=${2:-$DEFAULT_WAIT_TIME}
 
-    log -deb "$fn_name - Waiting for table $ovsdb_table deletion"
+    log "unit_lib:wait_for_empty_ovsdb_table - Waiting for table $ovsdb_table deletion"
     wait_time=0
     while [ $wait_time -le $empty_timeout ]; do
         wait_time=$((wait_time+1))
 
-        log -deb "$fn_name - Select $ovsdb_table try $wait_time"
+        log -deb "unit_lib:wait_for_empty_ovsdb_table - Select $ovsdb_table, try: $wait_time"
         table_select=$(${OVSH} s "$ovsdb_table") || true
 
         if [ -z "$table_select" ]; then
-            log -deb "$fn_name - Table $ovsdb_table is empty!"
+            log -deb "unit_lib:wait_for_empty_ovsdb_table - Table $ovsdb_table is empty!"
             break
         fi
 
@@ -1030,10 +1066,10 @@ wait_for_empty_ovsdb_table()
     done
 
     if [ $wait_time -gt "$empty_timeout" ]; then
-        raise "FAIL: Could not delete table $ovsdb_table" -l "$fn_name" -oe
+        raise "FAIL: Could not delete table $ovsdb_table" -l "unit_lib:wait_for_empty_ovsdb_table" -oe
         return 1
     else
-        log -deb "$fn_name - Table $ovsdb_table successfully deleted!"
+        log -deb "unit_lib:wait_for_empty_ovsdb_table - Table $ovsdb_table deleted - Success"
         return 0
     fi
 }
@@ -1053,10 +1089,10 @@ wait_for_empty_ovsdb_table()
 #   In short, optional parameters come in groups of 3.
 #
 # INPUT PARAMETER(S):
-#   $1  ovsdb table (required)
-#   $2  option, supported options: -w (optional, see DESCRIPTION)
-#   $3  ovsdb field in ovsdb table (optional, see DESCRIPTION)
-#   $4  ovsdb field value (optional, see DESCRIPTION)
+#   $1  ovsdb table (string, required)
+#   $2  option, supported options: -w (string, optional, see DESCRIPTION)
+#   $3  ovsdb field in ovsdb table (string, optional, see DESCRIPTION)
+#   $4  ovsdb field value (string, optional, see DESCRIPTION)
 # RETURNS:
 #   0   On success.
 #   1   On fail.
@@ -1066,11 +1102,10 @@ wait_for_empty_ovsdb_table()
 ###############################################################################
 wait_ovsdb_entry_remove()
 {
-    fn_name="unit_lib:wait_ovsdb_entry_remove"
     ovsdb_table=$1
     shift
     conditions_string=""
-    info_string="$fn_name - Waiting for entry removal:\n"
+    info_string="unit_lib:wait_ovsdb_entry_remove - Waiting for entry removal:\n"
 
     while [ -n "$1" ]; do
         option=$1
@@ -1082,12 +1117,12 @@ wait_ovsdb_entry_remove()
                 shift 2
                 ;;
             *)
-                raise "FAIL: Wrong option provided: $option" -l "$fn_name" -arg
+                raise "FAIL: Wrong option provided: $option" -l "unit_lib:wait_ovsdb_entry_remove" -arg
                 ;;
         esac
     done
 
-    log -deb "$info_string"
+    log "$info_string"
     select_entry_command="$ovsdb_table $conditions_string"
     wait_time=0
     while [ $wait_time -le $DEFAULT_WAIT_TIME ]; do
@@ -1103,10 +1138,10 @@ wait_ovsdb_entry_remove()
     done
 
     if [ $wait_time -gt "$DEFAULT_WAIT_TIME" ]; then
-        raise "FAIL: Could not remove entry from $ovsdb_table" -l "$fn_name" -ow
+        raise "FAIL: Could not remove entry from $ovsdb_table" -l "unit_lib:wait_ovsdb_entry_remove" -ow
         return 1
     else
-        log -deb "$fn_name - Entry deleted"
+        log -deb "unit_lib:wait_ovsdb_entry_remove - Entry deleted - Success"
         return 0
     fi
 }
@@ -1131,18 +1166,18 @@ wait_ovsdb_entry_remove()
 #   -force (force)  forces update to selected field
 #
 # INPUT PARAMETER(S):
-#   $1  ovsdb table (required)
+#   $1  ovsdb table (string, required)
 #   $2  option, supported options: -m, -w, -u, -force
 #   $3  ovsdb field in ovsdb table (-w option); update method (-m option)
 #   $4  ovsdb field value (-w option)
 # RETURNS:
 #   0   On success.
+#   See DESCRIPTION.
 # USAGE EXAMPLE(S):
 #   update_ovsdb_entry Wifi_Inet_Config -w if_name br-home -u ip_assign_scheme static
 ###############################################################################
 update_ovsdb_entry()
 {
-    fn_name="unit_lib:update_ovsdb_entry"
     ovsdb_table=$1
     shift
     conditions_string=""
@@ -1163,7 +1198,7 @@ update_ovsdb_entry()
                 shift 2
                 ;;
             -u)
-                echo ${2} | grep -qe "[ \"]" -e '\\' &&
+                echo ${2} | grep -e "[ \"]" -e '\\' &&
                     update_string="${update_string} ${1}${update_method}$(single_quote_arg "${2}")" ||
                     update_string="${update_string} ${1}${update_method}${2}"
                 shift 2
@@ -1173,29 +1208,29 @@ update_ovsdb_entry()
                 force_insert=0
                 ;;
             *)
-                raise "FAIL: Wrong option provided: $option" -l "$fn_name" -arg
+                raise "FAIL: Wrong option provided: $option" -l "unit_lib:update_ovsdb_entry" -arg
                 ;;
         esac
     done
 
     entry_command="${OVSH} u $ovsdb_table $conditions_string $update_string"
-    log -deb "$fn_name - Executing update command\n$entry_command"
+    log -deb "unit_lib:update_ovsdb_entry - Executing update command:\n\t$entry_command"
 
     eval ${entry_command}
     # shellcheck disable=SC2181
     if [ "$?" -eq 0 ]; then
-        log -deb "$fn_name - Entry updated"
+        log -deb "unit_lib:update_ovsdb_entry - Entry updated"
         log -deb "${OVSH} s $ovsdb_table $conditions_string"
         # shellcheck disable=SC2086
         ${OVSH} s "$ovsdb_table" $conditions_string ||
-            log -deb "$fn_name - Failed to print entry"
+            log -deb "unit_lib:update_ovsdb_entry - Failed to print entry"
     else
-        ${OVSH} s "$ovsdb_table" || log -deb "$fn_name - Failed to print table $ovsdb_table"
+        ${OVSH} s "$ovsdb_table" || log -deb "unit_lib:update_ovsdb_entry - Failed to print table $ovsdb_table"
 
         if [ $force_insert -eq 0 ]; then
-            log -deb "$fn_name - Force entry, not failing!"
+            log -deb "unit_lib:update_ovsdb_entry - Force insert, not failing!"
         else
-            raise "FAIL: Could not update entry in $ovsdb_table" -l "$fn_name" -oe
+            raise "FAIL: Could not update entry in $ovsdb_table" -l "unit_lib:update_ovsdb_entry" -oe
         fi
     fi
 
@@ -1216,7 +1251,7 @@ update_ovsdb_entry()
 #   In short, optional parameters come in groups of 3.
 #
 # INPUT PARAMETER(S):
-#   $1  ovsdb table (required)
+#   $1  ovsdb table (string, required)
 #   $2  option, supported options: -w (optional, see DESCRIPTION)
 #   $3  ovsdb field in ovsdb table (optional, see DESCRIPTION)
 #   $4  ovsdb field value (optional, see DESCRIPTION)
@@ -1229,7 +1264,6 @@ update_ovsdb_entry()
 ###############################################################################
 remove_ovsdb_entry()
 {
-    fn_name="unit_lib:remove_ovsdb_entry"
     ovsdb_table=$1
     shift
     conditions_string=""
@@ -1243,20 +1277,20 @@ remove_ovsdb_entry()
                 shift 2
                 ;;
             *)
-                raise "FAIL: Wrong option provided: $option" -l "$fn_name" -arg
+                raise "FAIL: Wrong option provided: $option" -l "unit_lib:remove_ovsdb_entry" -arg
                 ;;
         esac
     done
 
     remove_command="${OVSH} d $ovsdb_table $conditions_string"
-    log -deb "$fn_name - $remove_command"
+    log -deb "unit_lib:remove_ovsdb_entry - $remove_command"
     ${remove_command}
     if [ "$?" -eq 0 ]; then
-        log -deb "$fn_name - Entry removed"
+        log -deb "unit_lib:remove_ovsdb_entry - Entry removed"
     else
         print_tables "$ovsdb_table" ||
-            log -deb "$fn_name - Failed to print table $ovsdb_table"
-        raise  "FAIL: Could not remove entry from $ovsdb_table" -l "$fn_name" -oe
+            log -deb "unit_lib:remove_ovsdb_entry - Failed to print table $ovsdb_table"
+        raise  "FAIL: Could not remove entry from $ovsdb_table" -l "unit_lib:remove_ovsdb_entry" -oe
     fi
 
     return 0
@@ -1278,7 +1312,7 @@ remove_ovsdb_entry()
 #                       value forming insert string.
 #
 # INPUT PARAMETER(S):
-#   $1  ovsdb table
+#   $1  ovsdb table (string, required)
 #   $2  option, supported options: -i
 #   $3  ovsdb field in ovsdb table
 #   $4  ovsdb field value
@@ -1290,42 +1324,47 @@ remove_ovsdb_entry()
 ###############################################################################
 insert_ovsdb_entry()
 {
-    local fn_name="unit_lib:insert_ovsdb_entry"
     local ovsdb_table=$1
     shift
     local insert_string=""
     local conditions_string=""
+    local insert_method=":="
 
     while [ -n "${1}" ]; do
         option=${1}
         shift
         case "$option" in
             -i)
-                echo ${2} | grep -qe "[ \"]" -e '\\' &&
-                    insert_string="${insert_string} "${1}":="$(single_quote_arg "${2}") ||
-                    insert_string="${insert_string} "${1}":="${2}
+                echo ${2} | grep -e "[ \"]" -e '\\' &&
+                    insert_string="${insert_string} "${1}"${insert_method}"$(single_quote_arg "${2}") ||
+                    insert_string="${insert_string} "${1}"${insert_method}"${2}
+                insert_method=":="
                 shift 2
+                ;;
+            -m)
+                insert_method="$1"
+                shift
                 ;;
             -w)
                 conditions_string="$conditions_string -w $1==$2"
                 shift 2
                 ;;
             *)
-                raise "FAIL: Wrong option provided: $option" -l "$fn_name" -arg
+                raise "FAIL: Wrong option provided: $option" -l "unit_lib:insert_ovsdb_entry" -arg
                 ;;
         esac
     done
 
     entry_command="${OVSH} i $ovsdb_table $insert_string $conditions_string"
-    log -deb "$fn_name - Executing ${entry_command}"
+    log -deb "unit_lib:insert_ovsdb_entry - Executing ${entry_command}"
     eval ${entry_command}
     if [ $? -eq 0 ]; then
-        log -deb "$fn_name - Success: entry inserted to $ovsdb_table"
+        log -deb "unit_lib:insert_ovsdb_entry - Entry inserted to $ovsdb_table - Success"
         ${OVSH} s "$ovsdb_table"
         return 0
     else
         ${OVSH} s "$ovsdb_table"
-        raise  "FAIL: Could not insert entry to $ovsdb_table" -l "$fn_name" -oe
+        raise  "FAIL: Could not insert entry to $ovsdb_table" -l "unit_lib:insert_ovsdb_entry" -oe
     fi
 }
 
@@ -1357,7 +1396,7 @@ insert_ovsdb_entry()
 #   -t              timeout in seconds
 #
 # INPUT PARAMETER(S):
-#   $1  ovsdb table (required)
+#   $1  ovsdb table (string, required)
 #   $2  option, supported options: -w, -wn, -is, -is_not, -ec
 #   $3  ovsdb field in ovsdb table, exit code
 #   $4  ovsdb field value
@@ -1372,7 +1411,6 @@ insert_ovsdb_entry()
 ###############################################################################
 wait_ovsdb_entry()
 {
-    fn_name="unit_lib:wait_ovsdb_entry"
     ovsdb_table=$1
     shift
     conditions_string=""
@@ -1382,32 +1420,33 @@ wait_ovsdb_entry()
     ovsh_cmd=${OVSH}
     wait_entry_not_equal_command=""
     wait_entry_not_equal_command_ec="0"
+    wait_entry_equal_command_ec="0"
 
     while [ -n "$1" ]; do
         option=$1
         shift
         case "$option" in
             -w)
-                echo ${2} | grep -qe "[ \"]" -e '\\' &&
+                echo ${2} | grep -e "[ \"]" -e '\\' &&
                     conditions_string="$conditions_string -w $1==$(single_quote_arg "${2}")" ||
                     conditions_string="$conditions_string -w $1==$2"
                 shift 2
                 ;;
             -wn)
-                echo ${2} | grep -qe "[ \"]" -e '\\' &&
+                echo ${2} | grep -e "[ \"]" -e '\\' &&
                     conditions_string="$conditions_string -w $1!=$(single_quote_arg "${2}")" ||
                     conditions_string="$conditions_string -w $1!=$2"
                 shift 2
                 ;;
             -is)
-                echo ${2} | grep -qe "[ \"]" -e '\\' &&
+                echo ${2} | grep -e "[ \"]" -e '\\' &&
                     where_is_string="$where_is_string $1:=$(single_quote_arg "${2}")" ||
                     where_is_string="$where_is_string $1:=$2"
                 shift 2
                 ;;
             -is_not)
                 # Due to ovsh limitation, in -n option, we need to seperatly wait for NOT equal part
-                echo ${2} | grep -qe "[ \"]" -e '\\' &&
+                echo ${2} | grep -e "[ \"]" -e '\\' &&
                     where_is_not_string="$where_is_not_string -n $1:=$(single_quote_arg "${2}")" ||
                     where_is_not_string="$where_is_not_string -n $1:=$2"
                 shift 2
@@ -1421,24 +1460,28 @@ wait_ovsdb_entry()
                 shift
                 ;;
             *)
-                raise "FAIL: Wrong option provided: $option" -l "$fn_name" -arg
+                raise "FAIL: Wrong option provided: $option" -l "unit_lib:wait_ovsdb_entry" -arg
                 ;;
         esac
     done
 
-    wait_entry_equal_command="$ovsh_cmd wait $ovsdb_table $conditions_string $where_is_string"
+    if [ -n "${where_is_string}" ]; then
+        wait_entry_equal_command="$ovsh_cmd wait $ovsdb_table $conditions_string $where_is_string"
+    fi
 
     if [ -n "${where_is_not_string}" ]; then
         wait_entry_not_equal_command="$ovsh_cmd wait $ovsdb_table $conditions_string $where_is_not_string"
     fi
 
-    log -deb "$fn_name - Waiting for entry: \n$wait_entry_equal_command"
-    eval ${wait_entry_equal_command}
-    wait_entry_equal_command_ec="$?"
+    if [ -n "${wait_entry_equal_command}" ]; then
+        log "unit_lib:wait_ovsdb_entry - Waiting for entry:\n\t$wait_entry_equal_command"
+        eval ${wait_entry_equal_command}
+        wait_entry_equal_command_ec="$?"
+    fi
 
     if [ -n "${wait_entry_not_equal_command}" ]; then
-        log -deb "$fn_name - Waiting for entry: \n$wait_entry_not_equal_command"
-        ${wait_entry_not_equal_command}
+        log -deb "unit_lib:wait_ovsdb_entry - Waiting for entry:\n\t$wait_entry_not_equal_command"
+        eval ${wait_entry_not_equal_command}
         wait_entry_not_equal_command_ec="$?"
     fi
 
@@ -1449,14 +1492,14 @@ wait_ovsdb_entry()
     fi
 
     if [ "$wait_entry_final_ec" -eq "$expected_ec" ]; then
-        log -deb "$fn_name - SUCCESS: $wait_entry_equal_command"
+        log -deb "unit_lib:wait_ovsdb_entry - $wait_entry_equal_command - Success"
         # shellcheck disable=SC2086
-        ${OVSH} s "$ovsdb_table" $conditions_string || log -err "$fn_name: Failed to select entry: ${OVSH} s $ovsdb_table $conditions_string"
+        ${OVSH} s "$ovsdb_table" $conditions_string || log -err "unit_lib:wait_ovsdb_entry: Failed to select entry: ${OVSH} s $ovsdb_table $conditions_string"
         return 0
     else
-        log -deb "$fn_name - FAIL: Table $ovsdb_table"
-        ${OVSH} s "$ovsdb_table" || log -err "$fn_name: Failed to print table: ${OVSH} s $ovsdb_table"
-        log -deb "$fn_name - FAIL: $wait_entry_equal_command"
+        log -deb "unit_lib:wait_ovsdb_entry - FAIL: Table $ovsdb_table"
+        ${OVSH} s "$ovsdb_table" || log -err "unit_lib:wait_ovsdb_entry: Failed to print table: ${OVSH} s $ovsdb_table"
+        log -deb "unit_lib:wait_ovsdb_entry - FAIL: $wait_entry_equal_command"
         return 1
     fi
 }
@@ -1479,9 +1522,9 @@ wait_ovsdb_entry()
 #               not '["set",[]]' or not '["map",[]]').
 #
 # INPUT PARAMETER(S):
-#   $1  value to wait for (required)
-#   $2  function call (required)
-#   $3  wait timeout in seconds (optional)
+#   $1  value to wait for (int, required)
+#   $2  function call (string, required)
+#   $3  wait timeout in seconds (int, optional)
 # RETURNS:
 #   0   On success.
 #   1   Function did not return expected value within timeout.
@@ -1491,11 +1534,10 @@ wait_ovsdb_entry()
 ###############################################################################
 wait_for_function_response()
 {
-    fn_name="unit_lib:wait_for_function_response"
     NARGS_MIN=2
     NARGS_MAX=3
     [ $# -ge ${NARGS_MIN} ] && [ $# -le ${NARGS_MAX} ] ||
-        raise "${fn_name} requires ${NARGS_MIN}-${NARGS_MAX} input arguments, $# given" -arg
+        raise "unit_lib:wait_for_function_response requires ${NARGS_MIN}-${NARGS_MAX} input arguments, $# given" -arg
     wait_for_value="$1"
     function_to_wait_for="$2"
     wait_time=${3:-$DEFAULT_WAIT_TIME}
@@ -1504,16 +1546,16 @@ wait_for_function_response()
     local retval=1
 
     if [ "$wait_for_value" = 'empty' ]; then
-        log -deb "$fn_name - Waiting for function $function_to_wait_for empty response"
+        log -deb "unit_lib:wait_for_function_response - Waiting for function $function_to_wait_for empty response"
     elif [ "$wait_for_value" = 'notempty' ]; then
-        log -deb "$fn_name - Waiting for function $function_to_wait_for not empty response"
+        log -deb "unit_lib:wait_for_function_response - Waiting for function $function_to_wait_for not empty response"
         echo "$function_to_wait_for" | grep -q "get_ovsdb_entry_value" && is_get_ovsdb_entry_value=0
     else
-        log -deb "$fn_name - Waiting for function $function_to_wait_for exit code $wait_for_value"
+        log -deb "unit_lib:wait_for_function_response - Waiting for function $function_to_wait_for exit code $wait_for_value"
     fi
 
     while [ $func_exec_time -le $wait_time ]; do
-        log -deb "$fn_name - Executing: $function_to_wait_for"
+        log -deb "unit_lib:wait_for_function_response - Executing: $function_to_wait_for"
         func_exec_time=$((func_exec_time+1))
 
         if [ "$wait_for_value" = 'empty' ] || [ "$wait_for_value" = 'notempty' ]; then
@@ -1535,7 +1577,7 @@ wait_for_function_response()
             eval "$function_to_wait_for" && function_res=0 || function_res=1
         fi
 
-        log -deb "$fn_name - Function response/code is $function_res"
+        log -deb "unit_lib:wait_for_function_response - Function response/code is $function_res"
 
         if [ "$function_res" = "$wait_for_value" ]; then
             retval=0
@@ -1546,7 +1588,7 @@ wait_for_function_response()
     done
 
     if [ $retval = 1 ]; then
-        log -deb "$fn_name - Function $function_to_wait_for timed out"
+        log -deb "unit_lib:wait_for_function_response - Function $function_to_wait_for timed out"
     fi
     return $retval
 }
@@ -1558,11 +1600,11 @@ wait_for_function_response()
 #   Raises an exception if times out.
 #   Supported expected values are "empty", "notempty" or custom.
 # INPUT PARAMETER(S):
-#   $1  wait for output value (required)
-#   $2  function call, string with the function to wait for output (required)
+#   $1  wait for output value (int, required)
+#   $2  function call, function returning value (string, required)
 #   $3  retry count, number of iterations to stop checks
-#                    (optional, default=DEFAULT_WAIT_TIME)
-#   $4  retry_sleep, time in seconds between checks (optional, default=1)
+#                    (int, optional, default=DEFAULT_WAIT_TIME)
+#   $4  retry_sleep, time in seconds between checks (int, optional, default=1)
 # RETURNS:
 #   0   On success.
 #   1   On fail.
@@ -1572,11 +1614,10 @@ wait_for_function_response()
 ###############################################################################
 wait_for_function_output()
 {
-    local fn_name="unit_lib:wait_for_function_output"
     NARGS_MIN=2
     NARGS_MAX=4
     [ $# -ge ${NARGS_MIN} ] && [ $# -le ${NARGS_MAX} ] ||
-        raise "${fn_name} requires ${NARGS_MIN}-${NARGS_MAX} input arguments, $# given" -arg
+        raise "unit_lib:wait_for_function_output requires ${NARGS_MIN}-${NARGS_MAX} input arguments, $# given" -arg
     local wait_for_value=$1
     local function_to_wait_for=$2
     local retry_count=${3:-$DEFAULT_WAIT_TIME}
@@ -1584,10 +1625,10 @@ wait_for_function_output()
     local fn_exec_cnt=0
     local is_get_ovsdb_entry_value=0
 
-    [ $(echo "$function_to_wait_for" | grep -qwF "get_ovsdb_entry_value") ] &&
+    [ $(echo "$function_to_wait_for" | grep -wF "get_ovsdb_entry_value") ] &&
         is_get_ovsdb_entry_value=1
 
-    log -deb "$fn_name - Executing $function_to_wait_for, waiting for $wait_for_value response"
+    log -deb "unit_lib:wait_for_function_output - Executing $function_to_wait_for, waiting for $wait_for_value response"
     while [ $fn_exec_cnt -le $retry_count ]; do
         fn_exec_cnt=$(( $fn_exec_cnt + 1 ))
 
@@ -1610,13 +1651,13 @@ wait_for_function_output()
             [ "$res" = "$wait_for_value" ] && return 0
         fi
 
-        log -deb "$fn_name - Function retry ${fn_exec_cnt} output: ${res}"
+        log -deb "unit_lib:wait_for_function_output - Function retry ${fn_exec_cnt} output: ${res}"
 
         sleep "${retry_sleep}"
     done
 
     if [ $fn_exec_cnt -gt "$retry_count" ]; then
-        raise "FAIL: Function $function_to_wait_for timed out" -l "${fn_name}"
+        raise "FAIL: Function $function_to_wait_for timed out" -l "unit_lib:wait_for_function_output"
         return 1
     else
         return 0
@@ -1626,13 +1667,13 @@ wait_for_function_output()
 ###############################################################################
 # DESCRIPTION:
 #   Function waits for expected exit code, not stdout/stderr output.
-#   Raises an exception if times out.
+#   Raises an exception if timeouts.
 # INPUT PARAMETER(S):
-#   $1  expected exit code (required)
-#   $2  function call, string with the function to wait for output (required)
+#   $1  expected exit code (int, required)
+#   $2  function call, function returning value (string, required)
 #   $3  retry count, number of iterations to stop checks
-#                    (optional, default=DEFAULT_WAIT_TIME)
-#   $4 retry sleep, time in seconds between checks (optional, default=1)
+#                    (int, optional, default=DEFAULT_WAIT_TIME)
+#   $4  retry sleep, time in seconds between checks (int, optional, default=1)
 # RETURNS:
 #   0   On success.
 #   See DESCRIPTION.
@@ -1641,24 +1682,23 @@ wait_for_function_output()
 ###############################################################################
 wait_for_function_exit_code()
 {
-    local fn_name="unit_lib:wait_for_function_exit_code"
     NARGS_MIN=2
     NARGS_MAX=4
     [ $# -ge ${NARGS_MIN} ] && [ $# -le ${NARGS_MAX} ] ||
-        raise "${fn_name} requires ${NARGS_MIN}-${NARGS_MAX} input arguments, $# given" -arg
+        raise "unit_lib:wait_for_functin_exit_code requires ${NARGS_MIN}-${NARGS_MAX} input arguments, $# given" -arg
     local exp_ec=$1
     local function_to_wait_for=$2
     local retry_count=${3:-$DEFAULT_WAIT_TIME}
     local retry_sleep=${4:-1}
     local fn_exec_cnt=1
 
-    log -deb "${fn_name} - Executing $function_to_wait_for, waiting for exit code ${exp_ec}"
+    log -deb "unit_lib:wait_for_functin_exit_code - Executing $function_to_wait_for, waiting for exit code ${exp_ec}"
     res=$($function_to_wait_for)
     local act_ec=$?
     while [ ${act_ec} -ne "${exp_ec}" ]; do
-        log -deb "${fn_name} - Retry ${fn_exec_cnt}, exit code: ${act_ec}, expecting: ${exp_ec}"
+        log -deb "unit_lib:wait_for_functin_exit_code - Retry ${fn_exec_cnt}, exit code: ${act_ec}, expecting: ${exp_ec}"
         if [ ${fn_exec_cnt} -ge "${retry_count}" ]; then
-            raise "FAIL: Function ${function_to_wait_for} timed out" -l "${fn_name}"
+            raise "FAIL: Function ${function_to_wait_for} timed out" -l "unit_lib:wait_for_functin_exit_code"
         fi
         sleep "${retry_sleep}"
         res=$($function_to_wait_for)
@@ -1666,7 +1706,7 @@ wait_for_function_exit_code()
         fn_exec_cnt=$(( $fn_exec_cnt + 1 ))
     done
 
-    log -deb "${fn_name} - Exit code: ${act_ec} equal to expected: ${exp_ec}"
+    log -deb "unit_lib:wait_for_functin_exit_code - Exit code: ${act_ec} equal to expected: ${exp_ec}"
 
     return 0
 }
@@ -1674,40 +1714,35 @@ wait_for_function_exit_code()
 ###############################################################################
 # DESCRIPTION:
 #   Function returns state of the ethernet interface provided in parameter.
-#
-#   Uses and required ifconfig tool to be installed on device.
+#   Uses and requires ifconfig tool to be installed on device.
 #   Provide adequate function in overrides otherwise.
-#
 # INPUT PARAMETER(S):
-#   $1  ethernet interface name (required)
+#   $1  Ethernet interface name (string, required)
 # RETURNS:
-#   0   if ethernet interface state is UP, non zero otherwise.
+#   0   If ethernet interface state is UP, non zero otherwise.
 # USAGE EXAMPLE(S):
 #   get_eth_interface_is_up eth0
 ###############################################################################
 get_eth_interface_is_up()
 {
-    fn_name="unit_lib:get_eth_interface_is_up"
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "unit_lib:get_eth_interface_is_up requires ${NARGS} input argument(s), $# given" -arg
     if_name=$1
 
-    ifconfig "$if_name" 2>/dev/null | grep Metric | grep -q UP
+    ifconfig "$if_name" 2>/dev/null | grep Metric | grep UP
     return $?
 }
 
 ###############################################################################
 # DESCRIPTION:
 #   Function returns state of the wireless interface provided in parameter.
-#
-#   Uses and required ifconfig tool to be installed on device.
+#   Uses and requires ifconfig tool to be installed on device.
 #   Provide adequate function in overrides otherwise.
-#
 # INPUT PARAMETER(S):
-#   $1  wireless interface name (required)
+#   $1  VIF interface name (string, required)
 # RETURNS:
-#   0   if wireless interface state is UP, non zero otherwise.
+#   0   If VIF interface state is up, non zero otherwise.
 # USAGE EXAMPLE(S):
 #   get_vif_interface_is_up home-ap-24
 ###############################################################################
@@ -1718,25 +1753,23 @@ get_vif_interface_is_up()
 
 ###############################################################################
 # DESCRIPTION:
-#   Function drops interface
-#
-#   Uses and required ifconfig tool to be installed on device.
+#   Function drops interface.
+#   Uses and requires ifconfig tool to be installed on device.
 #   Provide adequate function in overrides otherwise.
-#
 # INPUT PARAMETER(S):
-#   $1  interface name (required)
+#   $1  Interface name (string, required)
 # RETURNS:
-#   0   if interface was dropped, non zero otherwise.
+#   0   If interface was dropped, non zero otherwise.
 # USAGE EXAMPLE(S):
 #   interface_bring_down eth0
 ###############################################################################
 interface_bring_down()
 {
-    fn_name="unit_lib:interface_bring_down"
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "unit_lib:interface_bring_down requires ${NARGS} input argument(s), $# given" -arg
     if_name=$1
+
     ifconfig "$if_name" down
     return $?
 }
@@ -1744,24 +1777,22 @@ interface_bring_down()
 ###############################################################################
 # DESCRIPTION:
 #   Function brings up interface
-#
-#   Uses and required ifconfig tool to be installed on device.
+#   Uses and requires ifconfig tool to be installed on device.
 #   Provide adequate function in overrides otherwise.
-#
 # INPUT PARAMETER(S):
-#   $1  interface name (required)
+#   $1  Interface name (string, required)
 # RETURNS:
-#   0   if interface was bringed up, non zero otherwise.
+#   0   If interface was brought up, non zero otherwise.
 # USAGE EXAMPLE(S):
 #   interface_bring_up eth0
 ###############################################################################
 interface_bring_up()
 {
-    fn_name="unit_lib:interface_bring_up"
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "unit_lib:interface_bring_up requires ${NARGS} input argument(s), $# given" -arg
     if_name=$1
+
     ifconfig "$if_name" up
     return $?
 }
@@ -1769,12 +1800,10 @@ interface_bring_up()
 ###############################################################################
 # DESCRIPTION:
 #   Function returns IP address of interface provided in parameter.
-#
-#   Uses and required ifconfig tool to be insalled on device.
+#   Uses and requires ifconfig tool to be insalled on device.
 #   Provide adequate function in overrides otherwise.
-#
 # INPUT PARAMETER(S):
-#   $1  interface name (required)
+#   $1  Interface name (string, required)
 # RETURNS:
 #   IP address of an interface
 # USAGE EXAMPLE(S):
@@ -1782,10 +1811,9 @@ interface_bring_up()
 ###############################################################################
 get_interface_ip_address_from_system()
 {
-    fn_name="unit_lib:get_interface_ip_address_from_system"
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "unit_lib:get_interface_ip_address_from_system requires ${NARGS} input argument(s), $# given" -arg
     if_name=$1
 
     ifconfig "$if_name" | tr -s ' :' '@' | grep -e '^@inet@' | cut -d '@' -f 4
@@ -1794,12 +1822,10 @@ get_interface_ip_address_from_system()
 ###############################################################################
 # DESCRIPTION:
 #   Function returns IP address of leaf device based on LEAF MAC address.
-#
-#   Uses /tmp/dhcp.leases file as default for acquirement of leased LEAF IP address .
+#   Uses /tmp/dhcp.leases file as default for acquirement of leased LEAF IP address.
 #   Provide adequate function in overrides otherwise.
-#
 # INPUT PARAMETER(S):
-#   $1  leaf MAC address (required)
+#   $1  leaf MAC address (string, required)
 # RETURNS:
 #   IP address of associated leaf device
 # USAGE EXAMPLE(S):
@@ -1807,13 +1833,26 @@ get_interface_ip_address_from_system()
 ###############################################################################
 get_associated_leaf_ip()
 {
-    fn_name="unit_lib:get_associated_leaf_ip"
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "unit_lib:get_associated_leaf_ip requires ${NARGS} input argument(s), $# given" -arg
+
     cat /tmp/dhcp.leases | grep "${1}" | awk '{print $3}'
 }
-
+###############################################################################
+# DESCRIPTION:
+#   Function returns process path of udhcpc on the device.
+#   Function returns kconfig CONFIG_OSN_UDHCPC_PATH value as default
+# ECHOES:
+#   udhcpc path
+# USAGE EXAMPLE(S):
+#   get_udhcpc_path
+###############################################################################
+get_udhcpc_path()
+{
+    path=$(get_kconfig_option_value "CONFIG_OSN_UDHCPC_PATH")
+    echo "${path//\"/}"
+}
 ###############################################################################
 # DESCRIPTION:
 #   Function checks and restores management access to device.
@@ -1826,50 +1865,66 @@ get_associated_leaf_ip()
 ###############################################################################
 check_restore_management_access()
 {
-    fn_name="unit_lib:check_restore_management_access"
-    log -deb "$fn_name - Checking and restoring needed management access"
-    mng_iface=${MGMT_IFACE:-eth0}
-    get_eth_interface_is_up "${mng_iface}"
+    log "unit_lib:check_restore_management_access - Checking and restoring needed management access"
+    if [ -z "${MGMT_IFACE}" ]; then
+        log -deb "unit_lib:check_restore_management_access - MGMT_IFACE is not set. Nothing to do."
+        return 0
+    fi
+    udhcpc_path=$(get_udhcpc_path)
+    if [ -z "${udhcpc_path}" ]; then
+        log -deb "unit_lib:check_restore_management_access - udhcpc path is not set. Nothing to do."
+        return 0
+    fi
+    get_eth_interface_is_up "${MGMT_IFACE}"
     if [ "$?" = 0 ]; then
-        log -deb "$fn_name - Interface ${mng_iface} is UP"
+        log -deb "unit_lib:check_restore_management_access - Interface ${MGMT_IFACE} is UP"
     else
-        log -deb "$fn_name - Interface ${mng_iface} is DOWN, bringing it UP"
-        wait_for_function_response 0 "ifconfig ${mng_iface} up" "${MGMT_IFACE_UP_TIMEOUT}" &&
-            log -deb "$fn_name - Interface ${mng_iface} brought UP" ||
-            log -err "FAIL: Could not bring up interface ${mng_iface}" -l "$fn_name" -ds
+        log -deb "unit_lib:check_restore_management_access - Interface ${MGMT_IFACE} is DOWN, bringing it UP"
+        wait_for_function_response 0 "ifconfig ${MGMT_IFACE} up" "${MGMT_IFACE_UP_TIMEOUT}" &&
+            log -deb "unit_lib:check_restore_management_access - Interface ${MGMT_IFACE} brought UP" ||
+            log -err "FAIL: Could not bring up interface ${MGMT_IFACE}" -l "unit_lib:check_restore_management_access" -ds
     fi
 
-    get_eth_interface_is_up "${mng_iface}.4"
+    get_eth_interface_is_up "${MGMT_IFACE}"
     if [ "$?" = 0 ]; then
-        log -deb "$fn_name - Interface ${mng_iface}.4 is UP"
+        log -deb "unit_lib:check_restore_management_access - Interface ${MGMT_IFACE} is UP"
     else
-        log -deb "$fn_name - Interface ${mng_iface}.4 is DOWN, bringing it UP"
-        ifconfig "${mng_iface}.4" up &&
-            log -deb "$fn_name - Interface ${mng_iface}.4 brought UP" ||
-            log -deb "$fn_name - Failed to bring up interface ${mng_iface}.4, checking udhcpc"
+        log -deb "unit_lib:check_restore_management_access - Interface ${MGMT_IFACE} is DOWN, bringing it UP"
+        ifconfig "${MGMT_IFACE}" up &&
+            log -deb "unit_lib:check_restore_management_access - Interface ${MGMT_IFACE} brought UP" ||
+            log -deb "unit_lib:check_restore_management_access - Failed to bring up interface ${MGMT_IFACE}, checking udhcpc"
     fi
 
-    eth_04_address=$(get_interface_ip_address_from_system "${mng_iface}.4")
+    eth_04_address=$(get_interface_ip_address_from_system "${MGMT_IFACE}")
     if [ -z "$eth_04_address" ]; then
-        log -deb "$fn_name - Interface ${mng_iface}.4 has no address, setting udhcpc"
-        log -deb "$fn_name - Running force address renew for ${mng_iface}.4"
-        no_address=1
-        while [ "$no_address" = 1 ]; do
-            log -deb "$fn_name - Killing old ${mng_iface}.4 udhcpc pids"
-            dhcpcd_pids=$(pgrep -f "/sbin/udhcpc .* ${mng_iface}.4")
+        log -deb "unit_lib:check_restore_management_access - Interface ${MGMT_IFACE} has no address, setting udhcpc"
+        log -deb "unit_lib:check_restore_management_access - Running force address renew for ${MGMT_IFACE}"
+        check_counter=0
+        while [ ${check_counter} -lt 3 ]; do
+            check_counter=$(($check_counter + 1))
+            ifconfig "${MGMT_IFACE}" up &&
+                log -deb "unit_lib:check_restore_management_access - Interface ${MGMT_IFACE} brought UP" ||
+                log -err "unit_lib:check_restore_management_access - Failed to bring up interface ${MGMT_IFACE}, checking udhcpc"
+            log -deb "unit_lib:check_restore_management_access - Killing old ${MGMT_IFACE} udhcpc pids"
+            dhcpcd_pids=$(pgrep -f "${udhcpc_path} .* ${MGMT_IFACE}")
             # shellcheck disable=SC2086
             kill $dhcpcd_pids &&
-                log -deb "$fn_name - ${mng_iface}.4 udhcpc pids killed" ||
-                log -deb "$fn_name - No ${mng_iface}.4 udhcpc pid to kill"
-            log -deb "$fn_name - Starting udhcpc on ${mng_iface}.4"
-            /sbin/udhcpc -f -S -i "${mng_iface}.4" -C -o -O subnet &>/dev/null &
-            log -deb "$fn_name - Waiting for ${mng_iface}.4 address"
-            wait_for_function_response notempty "get_interface_ip_address_from_system ${mng_iface}.4" "${MGMT_CONN_TIMEOUT}" &&
-                log -deb "$fn_name - ${mng_iface}.4 address valid" && break ||
-                log -deb "$fn_name - Failed to set ${mng_iface}.4 address, repeating"
+                log -deb "unit_lib:check_restore_management_access - ${MGMT_IFACE} udhcpc pids killed" ||
+                log -err "unit_lib:check_restore_management_access - No ${MGMT_IFACE} udhcpc pid to kill"
+            log -deb "unit_lib:check_restore_management_access - Starting udhcpc on '${MGMT_IFACE}'"
+            ${udhcpc_path} -f -S -i "${MGMT_IFACE}" -C -o -O subnet &>/dev/null &
+            log -deb "unit_lib:check_restore_management_access - Waiting for ${MGMT_IFACE} address"
+            wait_for_function_response notempty "get_interface_ip_address_from_system ${MGMT_IFACE}" "${MGMT_CONN_TIMEOUT}"
+            if [ "$?" == "0" ]; then
+                check_counter=5
+                log -deb "unit_lib:check_restore_management_access - ${MGMT_IFACE} $(get_interface_ip_address_from_system ${MGMT_IFACE}) address valid"
+                break
+            else
+                log -err "unit_lib:check_restore_management_access - Failed to set ${MGMT_IFACE} address, repeating ${check_counter}"
+            fi
         done
     else
-        log -deb "$fn_name - Interface ${mng_iface}.4 address is $eth_04_address"
+        log -deb "unit_lib:check_restore_management_access - Interface ${MGMT_IFACE} address is '$eth_04_address'"
     fi
 }
 
@@ -1888,14 +1943,13 @@ check_restore_management_access()
 ###############################################################################
 print_tables()
 {
-    fn_name="unit_lib:print_tables"
     NARGS_MIN=1
     [ $# -ge ${NARGS_MIN} ] ||
-        raise "${fn_name} requires at least ${NARGS_MIN} input argument(s), $# given" -arg
+        raise "unit_lib:print_tables requires at least ${NARGS_MIN} input argument(s), $# given" -arg
 
     for table in "$@"
     do
-        log -deb "$fn_name - OVSDB table - $table:"
+        log -deb "unit_lib:print_tables - OVSDB table - $table:"
         ${OVSH} s "$table"
     done
 
@@ -1930,9 +1984,9 @@ fut_info_dump_line()
 #       - HW address cannot be set,
 #       - MTU cannot be set.
 # INPUT PARAMETER(S):
-#   $1  bridge name (required)
-#   $2  HW address of bridge (required)
-#   $3  MTU (optional)
+#   $1  Bridge name (string, required)
+#   $2  HW address of bridge (string, required)
+#   $3  MTU (int, optional)
 # RETURNS:
 #   0   On success.
 #   See DESCRIPTION.
@@ -1941,46 +1995,45 @@ fut_info_dump_line()
 ###############################################################################
 add_ovs_bridge()
 {
-    fn_name="unit_lib:add_ovs_bridge"
     NARGS_MIN=2
     NARGS_MAX=3
     [ $# -ge ${NARGS_MIN} ] && [ $# -le ${NARGS_MAX} ] ||
-        raise "${fn_name} requires ${NARGS_MIN}-${NARGS_MAX} input arguments" -arg
+        raise "unit_lib:add_ovs_bridge requires ${NARGS_MIN}-${NARGS_MAX} input arguments" -arg
     bridge_name=$1
     hwaddr=$2
     bridge_mtu=$3
 
     if [ -z "${bridge_name}" ]; then
-        raise "FAIL: First input argument 'bridge_name' is empty" -l "${fn_name}" -arg
+        raise "FAIL: First input argument 'bridge_name' is empty" -l "unit_lib:add_ovs_bridge" -arg
     fi
-    log -deb "${fn_name} - Add bridge ${bridge_name}"
+    log -deb "unit_lib:add_ovs_bridge - Add bridge '${bridge_name}'"
     ovs-vsctl br-exists "${bridge_name}"
     if [ $? = 2 ]; then
         ovs-vsctl add-br "${bridge_name}" &&
-            log -deb "${fn_name} - Success: ovs-vsctl add-br ${bridge_name}" ||
-            raise "FAIL: Could not add bridge ${bridge_name} to ovs-vsctl" -l "${fn_name}" -ds
+            log -deb "unit_lib:add_ovs_bridge - ovs-vsctl add-br ${bridge_name} - Success" ||
+            raise "FAIL: Could not add bridge '${bridge_name}' to ovs-vsctl" -l "unit_lib:add_ovs_bridge" -ds
     else
-        log -deb "${fn_name} - Bridge ${bridge_name} already exists"
+        log -deb "unit_lib:add_ovs_bridge - Bridge '${bridge_name}' already exists"
     fi
 
     # Set hwaddr if provided
     if [ -z "${hwaddr}" ]; then
         return 0
     else
-        log -deb "${fn_name} - Set bridge hwaddr ${hwaddr}"
+        log -deb "unit_lib:add_ovs_bridge - Set bridge hwaddr to '${hwaddr}'"
         ovs-vsctl set bridge "${bridge_name}" other-config:hwaddr="${hwaddr}" &&
-            log -deb "${fn_name} - Success: set bridge hwaddr" ||
-            raise "FAIL: Could not set hwaddr to bridge ${bridge_name}" -l "${fn_name}" -ds
+            log -deb "unit_lib:add_ovs_bridge - Set bridge hwaddr - Success" ||
+            raise "FAIL: Could not set hwaddr to bridge '${bridge_name}'" -l "unit_lib:add_ovs_bridge" -ds
     fi
 
     # Set mtu if provided
     if [ -z "${bridge_mtu}" ]; then
         return 0
     else
-        log -deb "${fn_name} - Set bridge mtu ${bridge_mtu}"
+        log -deb "unit_lib:add_ovs_bridge - Set bridge mtu ${bridge_mtu}"
         ovs-vsctl set int "${bridge_name}" mtu_request="${bridge_mtu}" &&
-            log -deb "${fn_name} - Success: set bridge mtu" ||
-            raise "FAIL: Could not set mtu to bridge ${bridge_name}" -l "${fn_name}" -ds
+            log -deb "unit_lib:add_ovs_bridge - Set bridge MTU - Success" ||
+            raise "FAIL: Could not set MTU to bridge '${bridge_name}'" -l "unit_lib:add_ovs_bridge" -ds
     fi
 
     return 0
@@ -1999,8 +2052,8 @@ add_ovs_bridge()
 #       - bridge cannot be added,
 #       - cannot get HW address.
 # INPUT PARAMETER(S):
-#   $1  bridge name (required)
-#   $2  interface name (required)
+#   $1  Bridge name (string, required)
+#   $2  Interface name (string, required)
 # RETURNS:
 #   None.
 #   See DESCRIPTION.
@@ -2009,36 +2062,35 @@ add_ovs_bridge()
 ###############################################################################
 add_bridge_interface()
 {
-    fn_name="unit_lib:add_bridge_interface"
     local NARGS=2
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "unit_lib:add_bridge_interface requires ${NARGS} input argument(s), $# given" -arg
     br_name=$1
     br_if_name=$2
 
-    log -deb "$fn_name - Adding $br_name - $br_if_name"
+    log "unit_lib:add_bridge_interface - Adding $br_name - $br_if_name"
 
     ovs-vsctl br-exists "$br_name"
     if [ "$?" = 2 ]; then
         ovs-vsctl add-br "$br_name" &&
-            log -deb "$fn_name - Success: ovs-vsctl add-br $br_name" ||
-            raise "Failed: ovs-vsctl add-br $br_name" -l "$fn_name" -ds
+            log -deb "unit_lib:add_bridge_interface - ovs-vsctl add-br $br_name - Success" ||
+            raise "FAIL: ovs-vsctl add-br $br_name" -l "unit_lib:add_bridge_interface" -ds
     else
-        log -deb "$fn_name - Bridge $br_name already exists"
+        log -deb "unit_lib:add_bridge_interface - Bridge '$br_name' already exists"
         return 0
     fi
 
     br_mac=$(get_radio_mac_from_system "$br_if_name") &&
-        log -deb "$fn_name - Success: get_radio_mac_from_system $br_if_name" ||
-        raise "FAIL: Could not get interface $br_if_name MAC address" -l "$fn_name" -ds
+        log -deb "unit_lib:add_bridge_interface - get_radio_mac_from_system $br_if_name - Success" ||
+        raise "FAIL: Could not get interface $br_if_name MAC address" -l "unit_lib:add_bridge_interface" -ds
 
     ovs-vsctl set bridge "$br_name" other-config:hwaddr="$br_mac" &&
-        log -deb "$fn_name - Success: ovs-vsctl set bridge $br_name other-config:hwaddr=$br_mac" ||
-        raise "FAIL: Could not set to bridge $br_name other-config:hwaddr=$br_mac to ovs-vsctl" -l "$fn_name" -ds
+        log -deb "unit_lib:add_bridge_interface - ovs-vsctl set bridge $br_name other-config:hwaddr=$br_mac - Success" ||
+        raise "FAIL: Could not set to bridge $br_name other-config:hwaddr=$br_mac to ovs-vsctl" -l "unit_lib:add_bridge_interface" -ds
 
     ovs-vsctl set int "$br_name" mtu_request=1500 &&
-        log -deb "$fn_name - Success: ovs-vsctl set int $br_name mtu_request=1500" ||
-        raise "FAIL: Could not set to bridge int $br_name mtu_request=1500" -l "$fn_name" -ds
+        log -deb "unit_lib:add_bridge_interface - ovs-vsctl set int $br_name mtu_request=1500 - Success" ||
+        raise "FAIL: ovs-vsctl set int $br_name mtu_request=1500 - Could not set to bridge '$br_name'" -l "unit_lib:add_bridge_interface" -ds
 }
 
 ###############################################################################
@@ -2054,8 +2106,8 @@ add_bridge_interface()
 #       - bridge does not exist,
 #       - port cannot be added.
 # INPUT PARAMETER(S):
-#   $1  bridge name (required)
-#   $2  port name (required)
+#   $1  Bridge name (string, required)
+#   $2  Port name (string, required)
 # RETURNS:
 #   0   On success.
 #   See DESCRIPTION.
@@ -2064,26 +2116,26 @@ add_bridge_interface()
 ###############################################################################
 add_bridge_port()
 {
-    fn_name="unit_lib:add_bridge_port"
     local NARGS=2
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "unit_lib:add_bridge_port requires ${NARGS} input argument(s), $# given" -arg
     bridge_name=$1
     port_name=$2
 
-    log -deb "$fn_name - Adding bridge port ${port_name} to ${bridge_name}"
+    log "unit_lib:add_bridge_port - Adding port '${port_name}' to bridge '${bridge_name}'"
     ovs-vsctl br-exists "${bridge_name}"
     if [ $? = 2 ]; then
-        raise "FAIL: Bridge ${bridge_name} does not exist" -l "${fn_name}" -ds
+        raise "FAIL: Bridge '${bridge_name}' does not exist" -l "unit_lib:add_bridge_port" -ds
     fi
-    ovs-vsctl list-ports "${bridge_name}" | grep -qwF "${port_name}"
+    ovs-vsctl list-ports "${bridge_name}" || true
+    ovs-vsctl list-ports "${bridge_name}" | grep -wF "${port_name}"
     if [ $? = 0 ]; then
-        log -deb "$fn_name - Port ${port_name} already in bridge ${bridge_name}"
+        log -deb "unit_lib:add_bridge_port - Port '${port_name}' already in bridge '${bridge_name}'"
         return 0
     else
         ovs-vsctl add-port "${bridge_name}" "${port_name}" &&
-            log -deb "$fn_name - Success: ovs-vsctl add-port ${bridge_name} ${port_name}" ||
-            raise "FAIL: Could not add bridge port ${port_name} to bridge ${bridge_name}" -l $fn_name -ds
+            log -deb "unit_lib:add_bridge_port - ovs-vsctl add-port ${bridge_name} ${port_name} - Success" ||
+            raise "FAIL: Could not add port '${port_name}' to bridge '${bridge_name}'" -l unit_lib:add_bridge_port -ds
     fi
 }
 
@@ -2093,7 +2145,7 @@ add_bridge_port()
 #   Function uses ovs-vsctl command, different from native Linux bridge.
 #   Raises an exception if bridge cannot be deleted.
 # INPUT PARAMETER(S):
-#   $1  bridge name (required)
+#   $1  Bridge name (string, required)
 # RETURNS:
 #   None.
 #   See DESCRIPTION.
@@ -2102,15 +2154,14 @@ add_bridge_port()
 ###############################################################################
 remove_bridge_interface()
 {
-    fn_name="unit_lib:remove_bridge_interface"
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "unit_lib:remove_bridge_interface requires ${NARGS} input argument(s), $# given" -arg
     br_name=$1
 
     ovs-vsctl del-br "$br_name" &&
-        log -deb "$fn_name - Success: ovs-vsctl del-br $br_name" ||
-        raise "FAIL: Could not remove bridge $br_name from ovs-vsctl" -l "$fn_name" -ds
+        log -deb "unit_lib:remove_bridge_interface - ovs-vsctl del-br $br_name - Success" ||
+        raise "FAIL: Could not remove bridge '$br_name' from ovs-vsctl" -l "unit_lib:remove_bridge_interface" -ds
 }
 
 ###############################################################################
@@ -2119,8 +2170,8 @@ remove_bridge_interface()
 #   Function uses ovs-vsctl command, different from native Linux bridge.
 #   Raises an exception if port cannot be deleted.
 # INPUT PARAMETER(S):
-#   $1  bridge name (required)
-#   $2  port name (required)
+#   $1  Bridge name (string, required)
+#   $2  Port name (string, required)
 # RETURNS:
 #   None.
 #   See DESCRIPTION.
@@ -2130,16 +2181,21 @@ remove_bridge_interface()
 ###############################################################################
 remove_port_from_bridge()
 {
-    fn_name="unit_lib:remove_port_from_bridge"
     local NARGS=2
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s)" -arg
+        raise "unit_lib:remove_port_from_bridge requires ${NARGS} input argument(s)" -arg
     br_name=$1
     port_name=$2
 
-    ovs-vsctl del-port "$br_name" "$port_name" &&
-        log -deb "$fn_name - Success: ovs-vsctl del-port $br_name $port_name" ||
-        raise "Failed: ovs-vsctl del-port $br_name $port_name" -l "$fn_name" -ds
+    res=$(check_if_port_in_bridge "$port_name" "$br_name")
+    if [ "$res" = 0 ]; then
+        log -deb "unit_lib:remove_port_from_bridge - Port $port_name exists in bridge $br_name - Removing..."
+        ovs-vsctl del-port "$br_name" "$port_name" &&
+            log -deb "unit_lib:remove_port_from_bridge - ovs-vsctl del-port $br_name $port_name - Success" ||
+            raise "Failed: ovs-vsctl del-port $br_name $port_name" -l "unit_lib:remove_port_from_bridge" -ds
+    else
+        log -wrn "unit_lib:remove_port_from_bridge - Port '$port_name' does not exist in bridge $br_name"
+    fi
 }
 
 ###############################################################################
@@ -2148,9 +2204,9 @@ remove_port_from_bridge()
 #   Function uses ovs-vsctl command, different from native Linux bridge.
 #   Raises an exception if patch cannot be set.
 # INPUT PARAMETER(S):
-#   $1  interface name (not used)
-#   $2  patch name (required)
-#   $3  peer name (required)
+#   $1  interface name (string, required, not used)
+#   $2  patch name (string, required)
+#   $3  peer name (string, required)
 # RETURNS:
 #   None.
 #   See DESCRIPTION.
@@ -2160,21 +2216,20 @@ remove_port_from_bridge()
 ###############################################################################
 set_interface_patch()
 {
-    fn_name="unit_lib:set_interface_patch"
     local NARGS=3
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "unit_lib:set_interface_patch requires ${NARGS} input argument(s), $# given" -arg
     if_name=$1
     patch=$2
     peer=$3
 
     ovs-vsctl set interface "$patch" type=patch &&
-        log -deb "$fn_name - Success: ovs-vsctl set interface $patch type=patch" ||
-        raise "FAIL: Could not set interface patch: ovs-vsctl set interface $patch type=patch" -l "$fn_name" -ds
+        log -deb "unit_lib:set_interface_patch - ovs-vsctl set interface '$patch' type=patch - Success" ||
+        raise "FAIL: Could not set interface patch: ovs-vsctl set interface '$patch' type=patch" -l "unit_lib:set_interface_patch" -ds
 
     ovs-vsctl set interface "$patch" options:peer="$peer" &&
-        log -deb "$fn_name - Success: ovs-vsctl set interface $patch options:peer=$peer" ||
-        raise "FAIL: Could not set interface patch peer: ovs-vsctl set interface $patch options:peer=$peer" -l "$fn_name" -ds
+        log -deb "unit_lib:set_interface_patch - ovs-vsctl set interface '$patch' options:peer=$peer - Success" ||
+        raise "FAIL: Could not set interface patch peer: ovs-vsctl set interface '$patch' options:peer=$peer" -l "unit_lib:set_interface_patch" -ds
 }
 
 ###############################################################################
@@ -2183,9 +2238,9 @@ set_interface_patch()
 #   Function uses ovs-vsctl command, different from native Linux bridge.
 #   Raises an exception on failure.
 # INPUT PARAMETER(S):
-#   $1  if_name (required)
-#   $2  option (required)
-#   $3  value (required)
+#   $1  Interface name (string, required)
+#   $2  Option (string, required)
+#   $3  Value (string, required)
 # RETURNS:
 #   None.
 #   See DESCRIPTION.
@@ -2195,17 +2250,16 @@ set_interface_patch()
 ###############################################################################
 set_ovs_vsctl_interface_option()
 {
-    fn_name="unit_lib:set_ovs_vsctl_interface_option"
     local NARGS=3
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "unit_lib:set_ovs_vsctl_interface_option requires ${NARGS} input argument(s), $# given" -arg
     if_name=$1
     option=$2
     value=$3
 
     ovs-vsctl set interface "${if_name}" "${option}"="${value}" &&
-        log -deb "$fn_name - Success: ovs-vsctl set interface ${if_name} ${option}=${value}" ||
-        raise "FAIL: Could not set interface option: set interface ${if_name} ${option}=${value}" -l "$fn_name" -ds
+        log -deb "unit_lib:set_ovs_vsctl_interface_option - ovs-vsctl set interface ${if_name} ${option}=${value} - Success" ||
+        raise "FAIL: Could not set interface option: set interface ${if_name} ${option}=${value}" -l "unit_lib:set_ovs_vsctl_interface_option" -ds
 }
 
 ###############################################################################
@@ -2213,8 +2267,8 @@ set_ovs_vsctl_interface_option()
 #   Function checks if port is in bridge.
 #   Function uses ovs-vsctl command, different from native Linux bridge.
 # INPUT PARAMETER(S):
-#   $1  port name (required)
-#   $2  bridge name (required)
+#   $1  Port name (string, required)
+#   $2  Bridge name (string, required)
 # RETURNS:
 #   0   Port in bridge.
 #   1   Port is not in bridge.
@@ -2223,19 +2277,18 @@ set_ovs_vsctl_interface_option()
 ###############################################################################
 check_if_port_in_bridge()
 {
-    fn_name="unit_lib:check_if_port_in_bridge"
     local NARGS=2
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "unit_lib:check_if_port_in_bridge requires ${NARGS} input argument(s), $# given" -arg
     port_name=$1
     br_name=$2
 
-    ovs-vsctl list-ports "$br_name" | grep -q "$port_name"
+    ovs-vsctl list-ports "$br_name" | grep "$port_name"
     if [ "$?" = 0 ]; then
-        log -deb "$fn_name - Port $port_name exists on bridge $br_name"
+        log -deb "unit_lib:check_if_port_in_bridge - Port '$port_name' exists on bridge '$br_name'"
         return 0
     else
-        log -deb "$fn_name - Port $port_name does not exist on bridge $br_name"
+        log -deb "unit_lib:check_if_port_in_bridge - Port '$port_name' does not exist on bridge '$br_name'"
         return 1
     fi
 }
@@ -2257,10 +2310,10 @@ check_if_port_in_bridge()
 #       - wait for cloud state to become ACTIVE
 #   Raises an exception on fail.
 # INPUT PARAMETER(S):
-#   $1  cloud IP (optional, defaults to 192.168.200.1)
-#   $2  port (optional, defaults to 443)
-#   $3  certificates folder (optional, defaults to $FUT_TOPDIR/utility/files)
-#   $4  certificate file (optional, defaults to fut_ca.pem)
+#   $1  Cloud IP (string, optional, defaults to 192.168.200.1)
+#   $2  Port (int, optional, defaults to 65000)
+#   $3  Certificates folder (string, optional, defaults to $FUT_TOPDIR/utility/files)
+#   $4  Certificate file (string, optional, defaults to fut_ca.pem)
 # RETURNS:
 #   None.
 #   See DESCRIPTION.
@@ -2270,63 +2323,90 @@ check_if_port_in_bridge()
 ###############################################################################
 connect_to_fut_cloud()
 {
-    fn_name="unit_lib:connect_to_fut_cloud"
-    target=${1:-"192.168.200.1"}
-    port=${2:-"65000"}
-    cert_dir=${3:-"$FUT_TOPDIR/shell/tools/device/files"}
-    ca_fname=${4:-"fut_ca.pem"}
+    target="192.168.200.1"
+    port=65000
+    cert_dir="$FUT_TOPDIR/shell/tools/device/files"
+    ca_fname="fut_ca.pem"
     inactivity_probe=30000
 
-    log -deb "$fn_name - Configure certificates, check if file exists"
+    while [ -n "$1" ]; do
+        option=$1
+        shift
+        case "$option" in
+            -t)
+                target="${1}"
+                shift
+                ;;
+            -p)
+                port="${1}"
+                shift
+                ;;
+            -cd)
+                cert_dir="${1}"
+                shift
+                ;;
+            -ca)
+                ca_fname="${1}"
+                shift
+                ;;
+            -ip)
+                inactivity_probe="${1}000"
+                shift
+                ;;
+            *)
+              ;;
+        esac
+    done
+
+    log -deb "unit_lib:connect_to_fut_cloud - Configure certificates, check if file exists"
     test -f "$cert_dir/$ca_fname" ||
-        raise "FAIL: File $cert_dir/$ca_fname not found" -l "$fn_name" -ds
+        raise "FAIL: File $cert_dir/$ca_fname not found" -l "unit_lib:connect_to_fut_cloud" -ds
 
     update_ovsdb_entry SSL -u ca_cert "$cert_dir/$ca_fname"
-        log -deb "$fn_name - SSL ca_cert set to $cert_dir/$ca_fname" ||
-        raise "FAIL: SSL ca_cert not set to $cert_dir/$ca_fname" -l "$fn_name" -ds
+        log -deb "unit_lib:connect_to_fut_cloud - SSL ca_cert set to $cert_dir/$ca_fname - Success" ||
+        raise "FAIL: SSL ca_cert not set to $cert_dir/$ca_fname" -l "unit_lib:connect_to_fut_cloud" -ds
 
     # Remove redirector, to not interfere with the flow
     update_ovsdb_entry AWLAN_Node -u redirector_addr ''
-        log -deb "$fn_name - AWLAN_Node redirector_addr set to ''" ||
-        raise "FAIL: AWLAN_Node::redirector_addr not set to ''" -l "$fn_name" -ds
+        log -deb "unit_lib:connect_to_fut_cloud - AWLAN_Node redirector_addr set to '' - Success" ||
+        raise "FAIL: AWLAN_Node::redirector_addr not set to ''" -l "unit_lib:connect_to_fut_cloud" -ds
 
     # Remove manager_addr, to not interfere with the flow
     update_ovsdb_entry AWLAN_Node -u manager_addr ''
-        log -deb "$fn_name - AWLAN_Node manager_addr set to ''" ||
-        raise "FAIL: AWLAN_Node::manager_addr not set to ''" -l "$fn_name" -ds
+        log -deb "unit_lib:connect_to_fut_cloud - AWLAN_Node manager_addr set to '' - Success" ||
+        raise "FAIL: AWLAN_Node::manager_addr not set to ''" -l "unit_lib:connect_to_fut_cloud" -ds
 
     # Inactivity probe sets the timing of keepalive packets
     update_ovsdb_entry Manager -u inactivity_probe $inactivity_probe &&
-        log -deb "$fn_name - Manager inactivity_probe set to $inactivity_probe" ||
-        raise "FAIL: Manager::inactivity_probe not set to $inactivity_probe" -l "$fn_name" -ds
+        log -deb "unit_lib:connect_to_fut_cloud - Manager inactivity_probe set to $inactivity_probe - Success" ||
+        raise "FAIL: Manager::inactivity_probe not set to $inactivity_probe" -l "unit_lib:connect_to_fut_cloud" -ds
 
     # Minimize AWLAN_Node::min_backoff timer (8s is ovsdb-server retry timeout)
     update_ovsdb_entry AWLAN_Node -u min_backoff "8" &&
-        log -deb "$fn_name - AWLAN_Node min_backof set to 8" ||
-        raise "FAIL: AWLAN_Node::min_backoff not set to 8" -l "$fn_name" -ds
+        log -deb "unit_lib:connect_to_fut_cloud - AWLAN_Node min_backof set to 8 - Success" ||
+        raise "FAIL: AWLAN_Node::min_backoff not set to 8" -l "unit_lib:connect_to_fut_cloud" -ds
 
     # Minimize AWLAN_Node::max_backoff timer
     update_ovsdb_entry AWLAN_Node -u max_backoff "9" &&
-        log -deb "$fn_name - AWLAN_Node max_backof set to 9" ||
-        raise "FAIL: AWLAN_Node::max_backoff not set to 9" -l "$fn_name" -ds
+        log -deb "unit_lib:connect_to_fut_cloud - AWLAN_Node max_backof set to 9 - Success" ||
+        raise "FAIL: AWLAN_Node::max_backoff not set to 9" -l "unit_lib:connect_to_fut_cloud" -ds
 
     # Clear Manager::target before starting
     update_ovsdb_entry Manager -u target ''
-        log -deb "$fn_name - Manager target set to ''" ||
-        raise "FAIL: Manager::target not set to ''" -l "$fn_name" -ds
+        log -deb "unit_lib:connect_to_fut_cloud - Manager target set to '' - Success" ||
+        raise "FAIL: Manager::target not set to ''" -l "unit_lib:connect_to_fut_cloud" -ds
 
     # Wait for CM to settle
     sleep 2
 
-    # AWLAN_Node::manager_addr is the controller address, provided by redirector
-    update_ovsdb_entry AWLAN_Node -u manager_addr "ssl:$target:$port" &&
-        log -deb "$fn_name - AWLAN_Node manager_addr set to ssl:$target:$port" ||
-        raise "FAIL: AWLAN_Node::manager_addr not set to ssl:$target:$port" -l "$fn_name" -ds
+    update_ovsdb_entry AWLAN_Node -u redirector_addr "ssl:$target:$port" &&
+        log -deb "unit_lib:connect_to_fut_cloud - AWLAN_Node redirector_addr set to ssl:$target:$port - Success" ||
+        raise "FAIL: AWLAN_Node::redirector_addr not set to ssl:$target:$port" -l "unit_lib:connect_to_fut_cloud" -ds
 
-    log -deb "$fn_name - Waiting for FUT cloud status to go to ACTIVE"
+    log -deb "unit_lib:connect_to_fut_cloud - Waiting for FUT cloud status to go to ACTIVE - Success"
     wait_cloud_state ACTIVE &&
-        log -deb "$fn_name - Manager::status is set to ACTIVE. Connected to FUT cloud." ||
-        raise "FAIL: Manager::status is not ACTIVE. Not connected to FUT cloud." -l "$fn_name" -ds
+        log -deb "unit_lib:connect_to_fut_cloud - Manager::status is set to ACTIVE. Connected to FUT cloud. - Success" ||
+        raise "FAIL: Manager::status is not ACTIVE. Not connected to FUT cloud." -l "unit_lib:connect_to_fut_cloud" -ds
 }
 
 ###############################################################################
@@ -2363,14 +2443,14 @@ get_node_id()
 # DESCRIPTION:
 #   Function waits for Cloud status in Manager table to become
 #   as provided in parameter.
-#   Cloud statuses are:
+#   Cloud status can be one of:
 #       ACTIVE          device is connected to the Cloud.
 #       BACKOFF         device could not connect to the Cloud, will retry.
 #       CONNECTING      connecting to the Cloud in progress.
 #       DISCONNECTED    device is disconnected from the Cloud.
 #   Raises an exception on fail.
 # INPUT PARAMETER(S):
-#   $1  desired Cloud state (required)
+#   $1  Desired Cloud state (string, required)
 # RETURNS:
 #   None.
 #   See DESCRIPTION.
@@ -2379,30 +2459,29 @@ get_node_id()
 ###############################################################################
 wait_cloud_state()
 {
-    fn_name="unit_lib:wait_cloud_state"
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "unit_lib:wait_cloud_state requires ${NARGS} input argument(s), $# given" -arg
     wait_for_cloud_status=$1
 
-    log -deb "$fn_name - Waiting for the FUT cloud status $wait_for_cloud_status"
-    wait_for_function_response 0 "${OVSH} s Manager status -r | grep -q \"$wait_for_cloud_status\"" &&
-        log -deb "$fn_name - FUT cloud status is $wait_for_cloud_status" ||
-        raise "FAIL: FUT cloud status is not $wait_for_cloud_status" -l "$fn_name" -ow
+    log "unit_lib:wait_cloud_state - Waiting for the FUT cloud status $wait_for_cloud_status"
+    wait_for_function_response 0 "${OVSH} s Manager status -r | grep \"$wait_for_cloud_status\"" &&
+        log -deb "unit_lib:wait_cloud_state - FUT cloud status is $wait_for_cloud_status" ||
+        raise "FAIL: FUT cloud status is not $wait_for_cloud_status" -l "unit_lib:wait_cloud_state" -ow
 }
 
 ###############################################################################
 # DESCRIPTION:
 #   Function waits for Cloud status in Manager table not to become
 #   as provided in parameter.
-#   Cloud statuses are:
+#   Cloud status can be one of:
 #       ACTIVE          device is connected to Cloud.
 #       BACKOFF         device could not connect to Cloud, will retry.
 #       CONNECTING      connecting to Cloud in progress.
 #       DISCONNECTED    device is disconnected from Cloud.
 #   Raises an exception on fail.
 # INPUT PARAMETER(S):
-#   $1  un-desired cloud state (required)
+#   $1  un-desired cloud state (string, required)
 # RETURNS:
 #   None.
 #   See DESCRIPTION.
@@ -2411,17 +2490,16 @@ wait_cloud_state()
 ###############################################################################
 wait_cloud_state_not()
 {
-    fn_name="unit_lib:wait_cloud_state_not"
     local NARGS=1
     [ $# -lt ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "unit_lib:wait_cloud_state_not requires ${NARGS} input argument(s), $# given" -arg
     wait_for_cloud_state_not=${1}
     wait_for_cloud_state_not_timeout=${2:-60}
 
-    log -deb "$fn_name - Waiting for cloud state not to be $wait_for_cloud_state_not"
-    wait_for_function_response 0 "${OVSH} s Manager status -r | grep -q \"$wait_for_cloud_state_not\"" "${wait_for_cloud_state_not_timeout}" &&
-        raise "FAIL: Manager::status is $wait_for_cloud_state_not" -l "$fn_name" -ow ||
-        log -deb "$fn_name - Cloud state is not $wait_for_cloud_state_not"
+    log "unit_lib:wait_cloud_state_not - Waiting for cloud state not to be $wait_for_cloud_state_not"
+    wait_for_function_response 0 "${OVSH} s Manager status -r | grep \"$wait_for_cloud_state_not\"" "${wait_for_cloud_state_not_timeout}" &&
+        raise "FAIL: Manager::status is $wait_for_cloud_state_not" -l "unit_lib:wait_cloud_state_not" -ow ||
+        log -deb "unit_lib:wait_cloud_state_not - Cloud state is not $wait_for_cloud_state_not"
 }
 
 ####################### FUT CLOUD SECTION - STOP ##############################
@@ -2431,23 +2509,22 @@ wait_cloud_state_not()
 ###############################################################################
 # DESCRIPTION:
 #   Function checks kconfig value from ${OPENSYNC_ROOTDIR}/etc/kconfig
-#       if it matches given value
+#   if it matches given value.
 #   Raises an exception if kconfig field is missing from given path.
 # INPUT PARAMETER(S):
-#   $1  kconfig option name (required)
-#   $2  kconfig option value to check (required)
+#   $1  kconfig option name (string, required)
+#   $2  kconfig option value to check (string, required)
 # RETURNS:
-#   0 - value matches to the one in kconfig path
-#   1 - value does not match to the one in kconfig path
+#   0   value matches to the one in kconfig path
+#   1   value does not match to the one in kconfig path
 # USAGE EXAMPLE(S):
 #   check_kconfig_option "CONFIG_PM_ENABLE_LED" "y"
 ###############################################################################
 check_kconfig_option()
 {
-    fn_name="unit_lib:check_kconfig_option"
     local NARGS=2
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "unit_lib:check_kconfig_option requires ${NARGS} input argument(s), $# given" -arg
     kconfig_option_name=${1}
     kconfig_option_value=${2}
 
@@ -2455,7 +2532,7 @@ check_kconfig_option()
     if ! [ -f "${kconfig_path}" ]; then
         raise "kconfig file is not present on ${kconfig_path}" -l "unit_lib:check_kconfig_option" -ds
     fi
-    cat "${kconfig_path}" | grep -q "${kconfig_option_name}=${kconfig_option_value}"
+    cat "${kconfig_path}" | grep "${kconfig_option_name}=${kconfig_option_value}"
     return $?
 }
 
@@ -2464,7 +2541,7 @@ check_kconfig_option()
 #   Function echoes kconfig value from ${OPENSYNC_ROOTDIR}/etc/kconfig which matches value name
 #   Raises an exception if kconfig field is missing from given path.
 # INPUT PARAMETER(S):
-#   $1  kconfig option name (required)
+#   $1  kconfig option name (string, required)
 # RETURNS:
 #   None.
 #   See description
@@ -2473,22 +2550,21 @@ check_kconfig_option()
 ###############################################################################
 get_kconfig_option_value()
 {
-    fn_name="unit_lib:check_kconfig_option"
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "unit_lib:get_kconfig_option_value requires ${NARGS} input argument(s), $# given" -arg
     kconfig_option_name=${1}
 
     kconfig_path="${OPENSYNC_ROOTDIR}/etc/kconfig"
     if ! [ -f "${kconfig_path}" ]; then
-        raise "kconfig file is not present on ${kconfig_path}" -l "unit_lib:check_kconfig_option" -ds
+        raise "kconfig file is not present on ${kconfig_path}" -l "unit_lib:get_kconfig_option_value" -ds
     fi
     cat "${kconfig_path}" | grep "${kconfig_option_name}" |  cut -d "=" -f2
 }
 
 ###############################################################################
 # DESCRIPTION:
-#   Function ensures that "dir_path"is writable.
+#   Function ensures that "dir_path" is writable.
 #   Common usage is to ensure TARGET_PATH_LOG_STATE can be updated.
 #   Requires the path "/tmp" to be writable, executable, tmpfs
 # INPUT PARAMETER(S):
@@ -2500,12 +2576,11 @@ get_kconfig_option_value()
 ###############################################################################
 writable_dir()
 {
-    fn_name="unit_lib:writable_dir"
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name}: requires ${NARGS} input argument(s), $# given" -arg
-    [ -n "${1}" ] || raise "Input argument empty" -l "$fn_name"  -arg
-    [ -d "${1}" ] || raise "Input argument '${1}' is not a directory" -l "$fn_name"  -arg
+        raise "unit_lib:writable_dir: requires ${NARGS} input argument(s), $# given" -arg
+    [ -n "${1}" ] || raise "Input argument empty" -l "unit_lib:writable_dir"  -arg
+    [ -d "${1}" ] || raise "Input argument '${1}' is not a directory" -l "unit_lib:writable_dir"  -arg
     dir_path="${1}"
     subst_dir=${dir_path//\//_}
 
@@ -2522,10 +2597,23 @@ writable_dir()
 
 ####################### FUT CMD SECTION - STOP ################################
 
-
+###############################################################################
+# DESCRIPTION:
+#   Function triggers cloud reboot by creating Wifi_Test_Config table
+#   and inserting reboot command to table.
+# INPUT PARAMETER(S):
+#   None.
+# RETURNS:
+#   0   Always
+# USAGE EXAMPLE(S):
+#   trigger_cloud_reboot
+###############################################################################
 trigger_cloud_reboot()
 {
-    fn_name="unit_lib:trigger_cloud_reboot"
-    log -deb "$fn_name - This is a stub function. Override implementation needed for each model."
+    params='["map",[["arg","5"],["path","/usr/plume/bin/delayed-reboot"]]]'
+    insert_ovsdb_entry Wifi_Test_Config -i params "$params" -i test_id reboot
+
     return 0
 }
+
+####################### FUT CMD SECTION - STOP ################################

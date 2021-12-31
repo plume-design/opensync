@@ -139,8 +139,8 @@ bool cm2_resolve(cm2_dest_e dest)
 
     addr = cm2_get_addr(dest);
 
-    ipv6 = g_state.link.ipv6.is_ip && addr->ipv6_addr_list.state != CM2_ARES_R_IN_PROGRESS ? true : false;
-    ipv4 = g_state.link.ipv4.is_ip && addr->ipv4_addr_list.state != CM2_ARES_R_IN_PROGRESS ? true : false;
+    ipv6 = g_state.link.ipv6.is_ip && addr->ipv6_addr_list.state != CM2_ARES_R_IN_PROGRESS;
+    ipv4 = g_state.link.ipv4.is_ip && addr->ipv4_addr_list.state != CM2_ARES_R_IN_PROGRESS;
 
     if ((g_state.link.ipv4.resolve_retry && ipv6 && addr->ipv6_addr_list.state == CM2_ARES_R_RESOLVED) ||
         (g_state.link.ipv6.resolve_retry && ipv4 && addr->ipv4_addr_list.state == CM2_ARES_R_RESOLVED))

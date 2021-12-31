@@ -46,8 +46,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define OTHER_CONFIG_NELEMS 4
 #define OTHER_CONFIG_NELEM_SIZE 128
 
+char *test_name = "test_dhcp_relay";
+char *g_dhcp_relay_conf = "/tmp/dhcp_relay.conf";
+
 struct dhcp_relay_mgr       *g_mgr;
-const char                  *test_name = "dhcp_relay_tests";
 struct ev_loop              *g_loop;
 struct net_header_parser    *net_parser;
 
@@ -551,13 +553,29 @@ void tearDown(void)
 
 int main(int argc, char *argv[])
 {
+    bool ret;
+
     (void)argc;
     (void)argv;
 
-    target_log_open("TEST", LOG_OPEN_STDOUT);
+    target_log_open(test_name, LOG_OPEN_STDOUT);
     log_severity_set(LOG_SEVERITY_TRACE);
 
     UnityBegin(test_name);
+
+    /*
+     * This is a requirement: Do NOT proceed if the file is missing.
+     * File presence will not be tested any further.
+     */
+    ret = access(g_dhcp_relay_conf, F_OK);
+    if (ret != 0)
+    {
+        LOGW("In %s: test requires %s", test_name, g_dhcp_relay_conf);
+        Unity.TestFailed[Unity.TestFailures] = strdup(__func__);
+        Unity.TestFailures++;
+        return UNITY_END();
+    }
+
 
     global_test_init();
 

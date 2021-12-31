@@ -37,7 +37,7 @@ KCONFIG_TARGET := kconfig/targets/config_$(TARGET)
 CPU_TYPE    := $(shell uname -m)
 DIST_NAME   := $(shell if [ -e /etc/os-release ]; then . /etc/os-release; echo $$ID$$VERSION_ID; fi)
 ifneq ($(DIST_NAME),)
-WORKDIR  = work/$(TARGET)-$(DIST_NAME)-$(CPU_TYPE)
+WORKDIR  = work/$(TARGET)-$(CC)-$(DIST_NAME)-$(CPU_TYPE)
 endif
 endif
 
@@ -55,7 +55,7 @@ endif
 ifeq ($(TARGET),alltargets)
 ARCH = native
 ARCH_MK = build/$(ARCH).mk
-INCLUDE_LAYERS += $(wildcard vendor/*)
+INCLUDE_LAYERS += $(wildcard vendor/* platform/*)
 KCONFIG_TARGET := kconfig/targets/config_default
 CPU_TYPE := $(shell uname -m)
 DIST_NAME := $(shell if [ -e /etc/os-release ]; then . /etc/os-release; echo $$ID$$VERSION_ID; fi)

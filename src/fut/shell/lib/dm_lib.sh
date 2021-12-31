@@ -40,8 +40,11 @@ echo "${FUT_TOPDIR}/shell/lib/dm_lib.sh sourced"
 
 ###############################################################################
 # DESCRIPTION:
-#   Function prepares device for DM tests.
-#   Raises exception on fail.
+#   Function prepares device for DM tests. If called with parameters it waits
+#   for radio interfaces in Wifi_Radio_State table to appear.
+#   Calling it without radio interface names, it skips the step checking
+#   if the interfaces are created.
+#   Raises exception on fail in any of its steps.
 # INPUT PARAMETER(S):
 #   None.
 # RETURNS:
@@ -52,32 +55,28 @@ echo "${FUT_TOPDIR}/shell/lib/dm_lib.sh sourced"
 ###############################################################################
 dm_setup_test_environment()
 {
-
-    fn_name="dm_lib:dm_setup_test_environment"
-
-    log "$fn_name - Running DM setup"
+    log -deb "dm_lib:dm_setup_test_environment - Running DM setup"
 
     device_init &&
-        log -deb "$fn_name - Device initialized - Success" ||
-        raise "FAIL: Could not initialize device: device_init" -l "$fn_name" -ds
+        log -deb "dm_lib:dm_setup_test_environment - Device initialized - Success" ||
+        raise "FAIL: device_init - Could not initialize device" -l "dm_lib:dm_setup_test_environment" -ds
 
     start_openswitch &&
-        log -deb "$fn_name - OpenvSwitch started - Success" ||
-        raise "FAIL: Could not start OpenvSwitch: start_openswitch" -l "$fn_name" -ds
+        log -deb "dm_lib:dm_setup_test_environment - OpenvSwitch started - Success" ||
+        raise "FAIL: start_openswitch - Could not start OpenvSwitch" -l "dm_lib:dm_setup_test_environment" -ds
 
-    start_specific_manager dm &&
-        log -deb "$fn_name - start_specific_manager dm - Success" ||
-        raise "FAIL: Could not start manager: start_specific_manager dm" -l "$fn_name" -ds
+    restart_managers
+        log -deb "dm_lib:dm_setup_test_environment: Executed restart_managers, exit code: $?"
 
     # Check if all radio interfaces are created
     for if_name in "$@"
     do
         wait_ovsdb_entry Wifi_Radio_State -w if_name "$if_name" -is if_name "$if_name" &&
-            log -deb "$fn_name - Wifi_Radio_State::if_name '$if_name' present - Success" ||
-            raise "FAIL: Wifi_Radio_State::if_name for $if_name does not exist" -l "$fn_name" -ds
+            log -deb "dm_lib:dm_setup_test_environment - Wifi_Radio_State::if_name '$if_name' present - Success" ||
+            raise "FAIL: Wifi_Radio_State::if_name for '$if_name' does not exist" -l "dm_lib:dm_setup_test_environment" -ds
     done
 
-    log "$fn_name - DM setup - end"
+    log -deb "dm_lib:dm_setup_test_environment - DM setup - end"
 
     return 0
 }

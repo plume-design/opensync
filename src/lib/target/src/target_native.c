@@ -43,6 +43,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "util.h"
 #include "os_util.h"
 #include "os_regex.h"
+#include "dpp_types.h"
+#include "target_native.h"
 
 #define MODULE_ID LOG_MODULE_ID_TARGET
 
@@ -53,3 +55,31 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 void target_managers_restart(void)
 {
 }
+
+bool target_is_radio_interface_ready(char *phy_name)
+{
+    (void)phy_name;
+    return true;
+}
+
+bool target_is_interface_ready(char *if_name)
+{
+    (void)if_name;
+    return true;
+}
+
+target_survey_record_t *target_survey_record_alloc()
+{
+    char *ptr = malloc(16);
+    return ptr;
+}
+
+bool target_stats_capacity_get(radio_entry_t *radio_cfg,
+                               target_capacity_data_t *capacity_new)
+{
+    (void)radio_cfg;
+    (void)capacity_new;
+    return true;
+}
+//    (void)
+

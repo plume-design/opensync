@@ -33,12 +33,11 @@ source "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="onbrd/$(basename "$0")"
 manager_setup_file="onbrd/onbrd_setup.sh"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+onbrd/onbrd_verify_number_of_radios.sh [-h] arguments
 Description:
     - Validate number of radios on device
 Arguments:
@@ -46,10 +45,10 @@ Arguments:
     \$1 (num_of_radios) : used as number of radios to verify correct number of radios configured : (int)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name} <NUM-OF-RADIOS>
+                 Run: ./onbrd/onbrd_verify_number_of_radios.sh <NUM-OF-RADIOS>
 Script usage example:
-   ./${tc_name} 2
-   ./${tc_name} 3
+   ./onbrd/onbrd_verify_number_of_radios.sh 2
+   ./onbrd/onbrd_verify_number_of_radios.sh 3
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -71,14 +70,14 @@ fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 
 NARGS=1
-[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "onbrd/onbrd_verify_number_of_radios.sh" -arg
 num_of_radios=$1
 
-log_title "$tc_name: ONBRD test - Verify number of radios"
+log_title "onbrd/onbrd_verify_number_of_radios.sh: ONBRD test - Verify number of radios"
 
-log "$tc_name: Verify number of radios, waiting for '${num_of_radios}'"
+log "onbrd/onbrd_verify_number_of_radios.sh: Verify number of radios, waiting for '${num_of_radios}'"
 wait_for_function_response 0 "check_number_of_radios $num_of_radios" &&
-    log "$tc_name: Number of radios is $num_of_radios - Success" ||
-    raise "FAIL: Number of radios is not $num_of_radios" -l "$tc_name" -tc
+    log "onbrd/onbrd_verify_number_of_radios.sh: Number of radios is $num_of_radios - Success" ||
+    raise "FAIL: Number of radios is not $num_of_radios" -l "onbrd/onbrd_verify_number_of_radios.sh" -tc
 
 pass

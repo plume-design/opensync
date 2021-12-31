@@ -30,14 +30,15 @@ UNIT_TYPE := TEST_BIN
 
 UNIT_SRC := test_fsm_core.c
 UNIT_SRC += ../src/fsm_ovsdb.c
-UNIT_SRC += ../src/fsm_pcap.c
 UNIT_SRC += ../src/fsm_event.c
 UNIT_SRC += ../src/fsm_service.c
 UNIT_SRC += ../src/fsm_dpi.c
 UNIT_SRC += ../src/fsm_oms.c
 UNIT_SRC += ../src/fsm_internal.c
-UNIT_SRC += ../src/fsm_nfqueues.c
 UNIT_SRC += ../src/fsm_dpi_client.c
+UNIT_SRC += ../src/fsm_pcap.c
+UNIT_SRC += ../src/fsm_nfqueues.c
+UNIT_SRC += ../src/fsm_raw.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/../inc
 UNIT_CFLAGS += -Isrc/lib/imc/inc
@@ -57,4 +58,3 @@ UNIT_DEPS += src/lib/network_metadata
 UNIT_DEPS += src/lib/oms
 UNIT_DEPS += src/lib/neigh_table
 UNIT_DEPS += src/lib/gatekeeper_cache
-

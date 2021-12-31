@@ -71,16 +71,32 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define PS_KEY_OF_CONFIG            "openflow_config"
 #define PS_KEY_OF_TAG               "openflow_tag"
 #define PS_KEY_OF_TAG_GROUP         "openflow_tag_group"
+#define PS_KEY_IPV6_CFG             "ipv6_cfg"
+#define PS_KEY_INET_CONFIG_VLAN     "inet_config_vlan"
+#define PS_KEY_IGMP_CONFIG          "igmp_config"
+#define PS_KEY_MLD_CONFIG           "mld_config"
+#define PS_KEY_ROUTE_CONFIG         "route_config"
 
 #define PS_KEY_OFFLINE_CFG          KEY_OFFLINE_CFG
 
 #define TIMEOUT_NO_CFG_CHANGE      15
+#define DEBOUNCE_DHCP_OPTION       4
 
 #if defined(CONFIG_TARGET_LAN_BRIDGE_NAME)
 #define LAN_BRIDGE   CONFIG_TARGET_LAN_BRIDGE_NAME
 #else
 #define LAN_BRIDGE   SCHEMA_CONSTS_BR_NAME_HOME
 #endif
+
+/*
+ * Generate the PJS structure struct gw_offline_ipv6_cfg
+ * for json convert functions:
+ */
+#include "pm_gw_offline_cfg_pjs.h"
+#include "pjs_gen_h.h"
+
+#include "pm_gw_offline_cfg_pjs.h"
+#include "pjs_gen_c.h"
 
 struct gw_offline_cfg
 {
@@ -94,6 +110,11 @@ struct gw_offline_cfg
     json_t *openflow_config;
     json_t *openflow_tag;
     json_t *openflow_tag_group;
+    json_t *ipv6_cfg;
+    json_t *inet_config_vlan;
+    json_t *igmp_config;
+    json_t *mld_config;
+    json_t *route_config;
 };
 
 enum gw_offline_stat
@@ -117,8 +138,18 @@ static ovsdb_table_t table_Connection_Manager_Uplink;
 static ovsdb_table_t table_Openflow_Config;
 static ovsdb_table_t table_Openflow_Tag;
 static ovsdb_table_t table_Openflow_Tag_Group;
+static ovsdb_table_t table_IPv6_Address;
+static ovsdb_table_t table_DHCPv6_Server;
+static ovsdb_table_t table_IPv6_RouteAdv;
+static ovsdb_table_t table_IPv6_Prefix;
+static ovsdb_table_t table_DHCP_Option;
+static ovsdb_table_t table_IP_Interface;
+static ovsdb_table_t table_IGMP_Config;
+static ovsdb_table_t table_MLD_Config;
+static ovsdb_table_t table_Wifi_Route_Config;
 
 static ev_timer timeout_no_cfg_change;
+static ev_timer debounce_dco;
 
 static struct gw_offline_cfg cfg_cache;
 
@@ -135,6 +166,7 @@ static bool gw_offline_ps_erase(void);
 
 static bool gw_offline_cfg_ovsdb_read(struct gw_offline_cfg *cfg);
 static bool gw_offline_cfg_ovsdb_apply(const struct gw_offline_cfg *cfg);
+static bool gw_offline_cfg_ipv6_provision(const struct gw_offline_cfg *cfg);
 
 static bool gw_offline_uplink_bridge_set(const struct gw_offline_cfg *cfg);
 static bool gw_offline_uplink_ifname_get(char *if_name_buf, size_t len);
@@ -180,6 +212,11 @@ static void gw_offline_cfg_release(struct gw_offline_cfg *cfg)
     json_decref(cfg->openflow_config);
     json_decref(cfg->openflow_tag);
     json_decref(cfg->openflow_tag_group);
+    json_decref(cfg->ipv6_cfg);
+    json_decref(cfg->inet_config_vlan);
+    json_decref(cfg->igmp_config);
+    json_decref(cfg->mld_config);
+    json_decref(cfg->route_config);
 
     memset(cfg, 0, sizeof(*cfg));
 }
@@ -195,6 +232,11 @@ static void gw_offline_cfg_delete_special_keys(struct gw_offline_cfg *cfg)
     delete_special_ovsdb_keys(cfg->openflow_config);
     delete_special_ovsdb_keys(cfg->openflow_tag);
     delete_special_ovsdb_keys(cfg->openflow_tag_group);
+    delete_special_ovsdb_keys(cfg->ipv6_cfg);
+    delete_special_ovsdb_keys(cfg->inet_config_vlan);
+    delete_special_ovsdb_keys(cfg->igmp_config);
+    delete_special_ovsdb_keys(cfg->mld_config);
+    delete_special_ovsdb_keys(cfg->route_config);
 }
 
 /* Determine if the saved config is "bridge config": */
@@ -366,6 +408,54 @@ static void callback_Openflow_Tag_Group(
     on_configuration_updated();
 }
 
+static void callback_DHCPv6_Server(
+        ovsdb_update_monitor_t *mon,
+        struct schema_DHCPv6_Server *old_rec,
+        struct schema_DHCPv6_Server *config)
+{
+    on_configuration_updated();
+}
+
+static void callback_IPv6_RouteAdv(
+        ovsdb_update_monitor_t *mon,
+        struct schema_IPv6_RouteAdv *old_rec,
+        struct schema_IPv6_RouteAdv *config)
+{
+    on_configuration_updated();
+}
+
+static void callback_IPv6_Prefix(
+        ovsdb_update_monitor_t *mon,
+        struct schema_IPv6_Prefix *old_rec,
+        struct schema_IPv6_Prefix *config)
+{
+    on_configuration_updated();
+}
+
+static void callback_IGMP_Config(
+        ovsdb_update_monitor_t *mon,
+        struct schema_IGMP_Config *old_rec,
+        struct schema_IGMP_Config *config)
+{
+    on_configuration_updated();
+}
+
+static void callback_MLD_Config(
+        ovsdb_update_monitor_t *mon,
+        struct schema_MLD_Config *old_rec,
+        struct schema_MLD_Config *config)
+{
+    on_configuration_updated();
+}
+
+static void callback_Wifi_Route_Config(
+        ovsdb_update_monitor_t *mon,
+        struct schema_Wifi_Route_Config *old_rec,
+        struct schema_Wifi_Route_Config *config)
+{
+    on_configuration_updated();
+}
+
 static bool gw_offline_enable_cfg_mon()
 {
     static bool inited;
@@ -383,6 +473,14 @@ static bool gw_offline_enable_cfg_mon()
     OVSDB_TABLE_MONITOR(Openflow_Config, true);
     OVSDB_TABLE_MONITOR(Openflow_Tag, true);
     OVSDB_TABLE_MONITOR(Openflow_Tag_Group, true);
+
+    OVSDB_TABLE_MONITOR(DHCPv6_Server, true);
+    OVSDB_TABLE_MONITOR(IPv6_RouteAdv, true);
+    OVSDB_TABLE_MONITOR(IPv6_Prefix, true);
+
+    OVSDB_TABLE_MONITOR(IGMP_Config, true);
+    OVSDB_TABLE_MONITOR(MLD_Config, true);
+    OVSDB_TABLE_MONITOR(Wifi_Route_Config, true);
 
     ev_timer_init(&timeout_no_cfg_change, on_timeout_cfg_no_change, TIMEOUT_NO_CFG_CHANGE, 0.0);
 
@@ -854,6 +952,18 @@ void pm_gw_offline_init(void *data)
     OVSDB_TABLE_INIT_NO_KEY(Openflow_Tag);
     OVSDB_TABLE_INIT_NO_KEY(Openflow_Tag_Group);
 
+    OVSDB_TABLE_INIT_NO_KEY(IPv6_Address);
+    OVSDB_TABLE_INIT(IPv6_Prefix, address);
+    OVSDB_TABLE_INIT(IPv6_RouteAdv, interface);
+    OVSDB_TABLE_INIT(DHCPv6_Server, interface);
+    OVSDB_TABLE_INIT_NO_KEY(DHCP_Option);
+
+    OVSDB_TABLE_INIT(IP_Interface, name);
+
+    OVSDB_TABLE_INIT_NO_KEY(IGMP_Config);
+    OVSDB_TABLE_INIT_NO_KEY(MLD_Config);
+    OVSDB_TABLE_INIT_NO_KEY(Wifi_Route_Config);
+
     // Always install Node_Config monitor, other monitors installed when enabled.
     OVSDB_TABLE_MONITOR(Node_Config, true);
 
@@ -1019,6 +1129,46 @@ static bool gw_offline_cfg_ps_store(const struct gw_offline_cfg *cfg)
         cfg_cache.openflow_tag_group = json_incref(cfg->openflow_tag_group);
     } else LOG(DEBUG, "offline_cfg: openflow_tag_group: cached==stored. Skipped storing.");
 
+    if (!json_equal(cfg->ipv6_cfg, cfg_cache.ipv6_cfg))
+    {
+        rv = gw_offline_ps_store(PS_KEY_IPV6_CFG, cfg->ipv6_cfg);
+        if (!rv) goto exit;
+        json_decref(cfg_cache.ipv6_cfg);
+        cfg_cache.ipv6_cfg = json_incref(cfg->ipv6_cfg);
+    } else LOG(DEBUG, "offline_cfg: ipv6_cfg: cached==stored. Skipped storing.");
+
+    if (!json_equal(cfg->inet_config_vlan, cfg_cache.inet_config_vlan))
+    {
+        rv = gw_offline_ps_store(PS_KEY_INET_CONFIG_VLAN, cfg->inet_config_vlan);
+        if (!rv) goto exit;
+        json_decref(cfg_cache.inet_config_vlan);
+        cfg_cache.inet_config_vlan = json_incref(cfg->inet_config_vlan);
+    } else LOG(DEBUG, "offline_cfg: inet_config_vlan: cached==stored. Skipped storing.");
+
+    if (!json_equal(cfg->igmp_config, cfg_cache.igmp_config))
+    {
+        rv = gw_offline_ps_store(PS_KEY_IGMP_CONFIG, cfg->igmp_config);
+        if (!rv) goto exit;
+        json_decref(cfg_cache.igmp_config);
+        cfg_cache.igmp_config = json_incref(cfg->igmp_config);
+    } else LOG(DEBUG, "offline_cfg: igmp_config: cached==stored. Skipped storing.");
+
+    if (!json_equal(cfg->mld_config, cfg_cache.mld_config))
+    {
+        rv = gw_offline_ps_store(PS_KEY_MLD_CONFIG, cfg->mld_config);
+        if (!rv) goto exit;
+        json_decref(cfg_cache.mld_config);
+        cfg_cache.mld_config = json_incref(cfg->mld_config);
+    } else LOG(DEBUG, "offline_cfg: mld_config: cached==stored. Skipped storing.");
+
+    if (!json_equal(cfg->route_config, cfg_cache.route_config))
+    {
+        rv = gw_offline_ps_store(PS_KEY_ROUTE_CONFIG, cfg->route_config);
+        if (!rv) goto exit;
+        json_decref(cfg_cache.route_config);
+        cfg_cache.route_config = json_incref(cfg->route_config);
+    } else LOG(DEBUG, "offline_cfg: route_config: cached==stored. Skipped storing.");
+
 exit:
     return rv;
 }
@@ -1135,6 +1285,31 @@ static bool gw_offline_cfg_ps_load(struct gw_offline_cfg *cfg)
     json_decref(cfg_cache.openflow_tag_group);
     cfg_cache.openflow_tag_group = json_incref(cfg->openflow_tag_group);
 
+    rv = gw_offline_ps_load(PS_KEY_IPV6_CFG, &cfg->ipv6_cfg);
+    if (!rv) goto exit;
+    json_decref(cfg_cache.ipv6_cfg);
+    cfg_cache.ipv6_cfg = json_incref(cfg->ipv6_cfg);
+
+    rv = gw_offline_ps_load(PS_KEY_INET_CONFIG_VLAN, &cfg->inet_config_vlan);
+    if (!rv) goto exit;
+    json_decref(cfg_cache.inet_config_vlan);
+    cfg_cache.inet_config_vlan = json_incref(cfg->inet_config_vlan);
+
+    rv = gw_offline_ps_load(PS_KEY_IGMP_CONFIG, &cfg->igmp_config);
+    if (!rv) goto exit;
+    json_decref(cfg_cache.igmp_config);
+    cfg_cache.igmp_config = json_incref(cfg->igmp_config);
+
+    rv = gw_offline_ps_load(PS_KEY_MLD_CONFIG, &cfg->mld_config);
+    if (!rv) goto exit;
+    json_decref(cfg_cache.mld_config);
+    cfg_cache.mld_config = json_incref(cfg->mld_config);
+
+    rv = gw_offline_ps_load(PS_KEY_ROUTE_CONFIG, &cfg->route_config);
+    if (!rv) goto exit;
+    json_decref(cfg_cache.route_config);
+    cfg_cache.route_config = json_incref(cfg->route_config);
+
 exit:
     return rv;
 }
@@ -1172,12 +1347,87 @@ exit:
     return rv;
 }
 
+static const char *util_get_mcast_intf(const struct gw_offline_cfg *cfg)
+{
+    size_t index;
+    json_t *igmp;
+    json_t *map_array;
+    json_t *map_entry;
+
+    if (json_array_size(cfg->igmp_config) == 0)
+    {
+        return NULL;
+    }
+
+    igmp = json_array_get(cfg->igmp_config, 0);
+    map_array = json_array_get(json_object_get(igmp, SCHEMA_COLUMN(IGMP_Config, other_config)), 1);
+
+    json_array_foreach(map_array, index, map_entry)
+    {
+        if (strcmp(json_string_value(json_array_get(map_entry, 0)), "mcast_interface") == 0)
+        {
+            return json_string_value(json_array_get(map_entry, 1));
+        }
+    }
+    return NULL;
+}
+
+/* Read IPv6-related OVSDB tables with relevant fields. */
+static bool gw_offline_cfg_ipv6_read(struct gw_offline_cfg *cfg)
+{
+    struct gw_offline_ipv6_cfg ipv6_cfg = { 0 };
+    struct schema_IPv6_RouteAdv ipv6_routeAdv;
+    struct schema_DHCPv6_Server dhcpv6_server;
+    struct schema_IPv6_Prefix ipv6_prefix;
+    pjs_errmsg_t perr;
+    json_t *where;
+
+    /* IPv6_Prefix: (for now we assume cloud behaviour: either 0 or 1 row for IPv6 prefix configured) */
+    where = ovsdb_where_simple_typed(SCHEMA_COLUMN(IPv6_Prefix, enable), "true", OCLM_BOOL);
+    if (ovsdb_table_select_one_where(&table_IPv6_Prefix, where, &ipv6_prefix))
+    {
+        ipv6_cfg.prefix_is_set = true;
+
+        ipv6_cfg.prefix_autonomous = ipv6_prefix.autonomous;
+    }
+
+    /* IPv6_RouteAdv: */
+    if (ovsdb_table_select_one_where(&table_IPv6_RouteAdv, NULL, &ipv6_routeAdv))
+    {
+        ipv6_cfg.routeAdv_is_set = true;
+
+        ipv6_cfg.routeAdv_managed = ipv6_routeAdv.managed;
+        ipv6_cfg.routeAdv_other_config = ipv6_routeAdv.other_config;
+        ipv6_cfg.routeAdv_prefixes_is_set = ipv6_routeAdv.prefixes_present && ipv6_routeAdv.prefixes_len > 0;
+        ipv6_cfg.routeAdv_rdnss_is_set = ipv6_routeAdv.rdnss_present && ipv6_routeAdv.rdnss_len > 0;
+        ipv6_cfg.routeAdv_dnssl_is_set = ipv6_routeAdv.dnssl_present && ipv6_routeAdv.dnssl_len > 0;
+    }
+
+    /* DHCPv6_Server: */
+    if (ovsdb_table_select_one_where(&table_DHCPv6_Server, NULL, &dhcpv6_server))
+    {
+        ipv6_cfg.dhcpv6_server_is_set = true;
+        ipv6_cfg.dhcpv6_server_prefixes_is_set = dhcpv6_server.prefixes_present && dhcpv6_server.prefixes_len > 0;
+    }
+
+    /* Convert IPv6 config to json: */
+    cfg->ipv6_cfg = gw_offline_ipv6_cfg_to_json(&ipv6_cfg, perr);
+    if (cfg->ipv6_cfg == NULL)
+    {
+        LOG(ERR, "offline_cfg: Error converting gw_offline_ipv6_cfg structure to JSON: %s", perr);
+        return false;
+    }
+
+    return true;
+}
+
 /* Read the current subset of OVSDB config. */
 static bool gw_offline_cfg_ovsdb_read(struct gw_offline_cfg *cfg)
 {
     char uplink[C_IFNAME_LEN];
     size_t index;
     json_t *json_res;
+    json_t *where;
     json_t *row;
 
     memset(cfg, 0, sizeof(*cfg));
@@ -1291,11 +1541,80 @@ static bool gw_offline_cfg_ovsdb_read(struct gw_offline_cfg *cfg)
         cfg->openflow_tag_group = json_array();
     }
 
+    if (!gw_offline_cfg_ipv6_read(cfg))
+    {
+        LOG(WARN, "offline_cfg: Failed obtaining IPv6 configuration");
+    }
+
     /* Delete special ovsdb keys like _uuid, etc, these should not be stored: */
     gw_offline_cfg_delete_special_keys(cfg);
 
     /* Openflow_Tag rows should be saved and restored without device_value: */
     delete_ovsdb_column(cfg->openflow_tag, "device_value");
+
+    /* IGMP Config: */
+    cfg->igmp_config = ovsdb_sync_select_where(SCHEMA_TABLE(IGMP_Config), NULL);
+    if (cfg->igmp_config == NULL)
+    {
+        LOG(DEBUG, "offline_cfg: IGMP_Config: No rows or error");
+        cfg->igmp_config = json_array();
+    }
+
+    /* MLD Config: */
+    cfg->mld_config = ovsdb_sync_select_where(SCHEMA_TABLE(MLD_Config), NULL);
+    if (cfg->mld_config == NULL)
+    {
+        LOG(DEBUG, "offline_cfg: MLD_Config: No rows or error");
+        cfg->mld_config = json_array();
+    }
+
+    /* Wifi_Inet_Config VLAN Interfaces: We want to save the mcast vlan interface inet config: */
+    if (json_array_size(cfg->igmp_config) != 0)
+    {
+        where = json_array();
+        json_array_append_new(
+                where,
+                ovsdb_tran_cond_single(SCHEMA_COLUMN(Wifi_Inet_Config, if_type), OFUNC_EQ, "vlan"));
+
+        const char *mcast_intf = util_get_mcast_intf(cfg);
+        if (mcast_intf == NULL)
+        {
+            LOG(ERR, "offline_cfg: Cannot determine multicast interface.");
+            goto exit_failure;
+        }
+        LOG(DEBUG, "offline_cfg: mcast interface: %s", mcast_intf);
+        json_array_append_new(
+                where,
+                ovsdb_tran_cond_single(SCHEMA_COLUMN(Wifi_Inet_Config, if_name), OFUNC_EQ, (char *)mcast_intf));
+
+        cfg->inet_config_vlan = ovsdb_sync_select_where(
+                SCHEMA_TABLE(Wifi_Inet_Config),
+                where);
+        if (cfg->inet_config_vlan == NULL)
+        {
+            LOG(DEBUG, "offline_cfg: Wifi_Inet_Config: No if_type==vlan mcast interfaces or error");
+            cfg->inet_config_vlan = json_array();
+        }
+    }
+    else
+    {
+        cfg->inet_config_vlan = json_array();
+    }
+
+    /* Wifi_Route_Config: We want to save all static routes possibly pushed by
+     * cloud. We do not want to save any default routes (dest 0.0.0.0): */
+    where = json_array();
+    json_array_append_new(
+            where,
+            ovsdb_tran_cond_single(SCHEMA_COLUMN(Wifi_Route_Config, dest_addr), OFUNC_NEQ, "0.0.0.0"));
+    cfg->route_config = ovsdb_sync_select_where(
+            SCHEMA_TABLE(Wifi_Route_Config),
+            where);
+    if (cfg->route_config == NULL)
+    {
+        LOG(DEBUG, "offline_cfg: Wifi_Route_Config: No rows or error");
+        cfg->route_config = json_array();
+    }
 
     return true;
 exit_failure:
@@ -1370,6 +1689,578 @@ static bool gw_offline_uplink_config_clear_previous(const char *if_name)
     }
 
     return true;
+}
+
+/* Check if stored config has IPv6 enabled: */
+static bool util_cfg_is_ipv6_enabled(const struct gw_offline_cfg *cfg)
+{
+    struct gw_offline_ipv6_cfg ipv6_cfg;
+    pjs_errmsg_t perr;
+
+    if (!gw_offline_ipv6_cfg_from_json(&ipv6_cfg, cfg->ipv6_cfg, false, perr))
+    {
+        LOG(ERR, "offline_cfg: Error converting JSON ipv6_cfg to gw_offline_ipv6_cfg structure: %s", perr);
+        return false;
+    }
+    if (ipv6_cfg.routeAdv_is_set && ipv6_cfg.prefix_is_set)
+    {
+        return true;
+    }
+    return false;
+}
+
+static struct schema_DHCP_Option *util_dhcp_option_get(
+        struct schema_DHCP_Option *dhcp_options,
+        int n,
+        int tag)
+{
+    struct schema_DHCP_Option *dco;
+    int i;
+
+    for (i = 0; i < n; i++)
+    {
+        dco = &dhcp_options[i];
+        if (dco->tag_exists && dco->tag == tag)
+        {
+            return dco;
+        }
+    }
+    return NULL;
+}
+
+static bool util_dhcpv6_optval_get(char *buf, size_t len,
+        const struct schema_DHCP_Option *opt, unsigned index)
+{
+    char opt_val[sizeof(opt->value)];
+    char *tok;
+    unsigned n;
+
+    STRSCPY(opt_val, opt->value);
+
+    n = 0;
+    tok = strtok(opt_val, ", \t\n");
+    while (tok != NULL)
+    {
+        if (n++ == index) goto out;
+        tok = strtok(NULL, ", \t\n");
+
+    };
+    return false;
+out:
+    strscpy(buf, tok, len);
+    return true;
+}
+
+/* Take prefix from DHCPv6 option 26 (in the form 2001:ee2:1704:99ff::/64)
+ * and make up a suitable address for LAN_BRIDGE interface. */
+static bool util_brlan_addr_from_prefix(char *addr_buf, size_t len, const char *prefix)
+{
+    char prefix_buf[strlen(prefix)+1];
+    char *pref;
+    char *pref_len;
+
+    /* strtok() modifies the string, so make a copy first: */
+    strscpy(prefix_buf, prefix, strlen(prefix)+1);
+
+    pref = strtok(prefix_buf, "/");
+    if (pref == NULL) return false;
+    LOG(TRACE, "offline_cfg: %s(): parsed prefix=<%s>", __func__, pref);
+
+    pref_len = strtok(NULL, " ");
+    if (pref_len == NULL) return false;
+    LOG(TRACE, "offline_cfg: %s(): parsed pref_len=<%s>", __func__, pref_len);
+
+    /* From prefix and prefix_len, make an address for LAN_BRIDGE: */
+    snprintf(addr_buf, len, "%s%s/%s", pref, "1", pref_len);
+    LOG(TRACE, "offline_cfg: %s(): LAN_BRIDGE address=<%s>", __func__, addr_buf);
+
+    return true;
+}
+
+static bool gw_offline_cfg_ipv6_disable()
+{
+    ovsdb_table_delete(&table_IPv6_Prefix, NULL);
+    ovsdb_table_delete(&table_IPv6_RouteAdv, NULL);
+    ovsdb_table_delete(&table_DHCPv6_Server, NULL);
+    ovsdb_table_delete_where(
+            &table_IP_Interface,
+            ovsdb_where_simple(SCHEMA_COLUMN(IP_Interface, name), LAN_BRIDGE));
+
+    LOG(INFO, "offline_cfg: Disabled IPv6.");
+    return true;
+}
+
+static void handle_dhcp_option_update(struct ev_loop *loop, ev_timer *watcher, int revent)
+{
+    if (gw_offline_stat == status_active)
+    {
+        /* Provision (either enable or disable) IPv6 according to the
+         * currently received DHCPv6 options: */
+        gw_offline_cfg_ipv6_provision(&cfg_cache);
+    }
+}
+
+static void callback_DHCP_Option(
+        ovsdb_update_monitor_t *mon,
+        struct schema_DHCP_Option *old_rec,
+        struct schema_DHCP_Option *dco)
+{
+    if (mon->mon_type == OVSDB_UPDATE_ERROR)
+        return;
+    if (gw_offline_stat != status_active) // Ignore if not in active gw_offline mode
+        return;
+
+    /* If this is not DHCPv6 and RX-type option, ignore it: */
+    if (!(strcmp(dco->version, "v6") == 0 && strcmp(dco->type, "rx") == 0))
+    {
+        return;
+    }
+    LOG(DEBUG, "offline_cfg: DHCP_Option change.");
+
+    ev_timer_stop(EV_DEFAULT, &debounce_dco);
+    ev_timer_set(&debounce_dco, DEBOUNCE_DHCP_OPTION, 0.0);
+    ev_timer_start(EV_DEFAULT, &debounce_dco);
+}
+
+static bool gw_offline_monitor_dhcp_option()
+{
+    static bool inited;
+
+    if (inited) return true;
+
+    OVSDB_TABLE_MONITOR(DHCP_Option, true);
+
+    ev_timer_init(&debounce_dco, handle_dhcp_option_update, DEBOUNCE_DHCP_OPTION, 0.0);
+
+    inited = true;
+    return true;
+}
+
+static bool gw_offline_cfg_ipv6_provision(const struct gw_offline_cfg *cfg)
+{
+    struct gw_offline_ipv6_cfg ipv6_cfg;            // Stored IPv6 config
+    struct schema_DHCP_Option *dhcp_options = NULL; // all DHCP v6 rx options
+    struct schema_DHCP_Option *dco26;               // DHCPv6 opt 26
+    struct schema_DHCP_Option *dco23;               // DHCPv6 opt 23
+    struct schema_DHCP_Option *dco24;               // DHCPv6 opt 24
+    struct schema_IPv6_RouteAdv ipv6_routeAdv;
+    struct schema_DHCPv6_Server dhcpv6_server;
+    struct schema_IPv6_Prefix ipv6_prefix;
+    struct schema_IPv6_Address ipv6_addr;
+    struct schema_DHCP_Option dhcp_option;
+    struct schema_IP_Interface ip_intf;
+    ovs_uuid_t uuid_ip_intf_lanbr;                  //  LAN_BRIDGE uuid of IP_Interface
+    pjs_errmsg_t perr;
+    json_t *where;
+    bool rv = false;
+    int n;
+
+    /* Take stored IPv6 config JSON and convert it to gw_offline_ipv6_cfg config struct: */
+    if (!gw_offline_ipv6_cfg_from_json(&ipv6_cfg, cfg->ipv6_cfg, false, perr))
+    {
+        LOG(ERR, "offline_cfg: Error converting JSON ipv6_cfg to gw_offline_ipv6_cfg structure: %s", perr);
+        return true;
+    }
+
+    /* Check if stored config has IPv6 enabled: */
+    if (!(ipv6_cfg.routeAdv_is_set && ipv6_cfg.prefix_is_set))
+    {
+        LOG(DEBUG, "offline_cfg: IPv6 not enabled in stored config");
+        return true;
+    }
+    LOG(DEBUG, "offline_cfg: IPv6 enabled in stored config");
+
+    /* Get received DHCPv6 options: */
+    where = ovsdb_where_multi(
+            ovsdb_where_simple_typed(SCHEMA_COLUMN(DHCP_Option, enable), "true", OCLM_BOOL),
+            ovsdb_where_simple(SCHEMA_COLUMN(DHCP_Option, type), "rx"),
+            ovsdb_where_simple(SCHEMA_COLUMN(DHCP_Option, version), "v6"),
+            NULL);
+
+    dhcp_options = ovsdb_table_select_where(&table_DHCP_Option, where, &n);
+
+    /* DHCPv6 option 26 (IAPREFIX) has to be present to provision IPv6: */
+    if (dhcp_options == NULL || n == 0 || (dco26 = util_dhcp_option_get(dhcp_options, n, 26)) == NULL)
+    {
+        LOG(DEBUG, "offline_cfg: No DHCP option 26 currently present. Cannot provision IPv6");
+        gw_offline_cfg_ipv6_disable();
+        goto out;
+    }
+    if ((dco23 = util_dhcp_option_get(dhcp_options, n, 23)) == NULL)
+    {
+        LOG(DEBUG, "offline_cfg: No DHCP option 23 present");
+    }
+    if ((dco24 = util_dhcp_option_get(dhcp_options, n, 24)) == NULL)
+    {
+        LOG(DEBUG, "offline_cfg: No DHCP option 24 present");
+    }
+
+    LOG(INFO, "offline_cfg: Provisioning IPv6...");
+
+    /* Prepare IPv6_Address for br-home: */
+    memset(&ipv6_addr, 0, sizeof(ipv6_addr));
+    if (!util_dhcpv6_optval_get(ipv6_addr.prefix, sizeof(ipv6_addr.prefix), dco26, 0))
+    {
+        LOG(ERR, "offline_cfg: Error parsing prefix from DHCPv6 option 26");
+        goto out;
+    }
+    ipv6_addr.prefix_exists = true;
+    if (!util_dhcpv6_optval_get(ipv6_addr.preferred_lifetime, sizeof(ipv6_addr.preferred_lifetime), dco26, 1))
+    {
+        LOG(ERR, "offline_cfg: Error parsing preferred_lifetime from DHCPv6 option 26");
+        goto out;
+    }
+    ipv6_addr.preferred_lifetime_exists = true;
+    if (!util_dhcpv6_optval_get(ipv6_addr.valid_lifetime, sizeof(ipv6_addr.valid_lifetime), dco26, 2))
+    {
+        LOG(ERR, "offline_cfg: Error parsing valid_lifetime from DHCPv6 option 26");
+        goto out;
+    }
+    ipv6_addr.valid_lifetime_exists = true;
+    if (!util_brlan_addr_from_prefix(ipv6_addr.address, sizeof(ipv6_addr.address), ipv6_addr.prefix))
+    {
+        LOG(ERR, "offline_cfg: Error getting IPv6 lan address from prefix");
+        goto out;
+    }
+    ipv6_addr.address_exists = true;
+    STRSCPY(ipv6_addr.status, "enabled");
+    ipv6_addr.status_exists = true;
+    STRSCPY(ipv6_addr.origin, "static");
+    ipv6_addr.origin_exists = true;
+    STRSCPY(ipv6_addr.address_status, "preferred");
+    ipv6_addr.address_status_exists = true;
+    ipv6_addr.enable = true;
+    ipv6_addr.enable_exists = true;
+
+    /* Upsert IP_Interface (with primary key == name) row for br-home -- initial values: */
+    if (!ovsdb_table_select_one_where(
+            &table_IP_Interface,
+            ovsdb_where_simple(SCHEMA_COLUMN(IP_Interface, name), LAN_BRIDGE), &ip_intf))
+    {
+        memset(&ip_intf, 0, sizeof(ip_intf));
+        STRSCPY(ip_intf.name, LAN_BRIDGE); // name is immutable, only set it for insert
+        ip_intf.name_exists = true;
+    }
+    else
+    {
+        memset(&ip_intf, 0, sizeof(ip_intf));
+        ip_intf._partial_update = true;
+    }
+    STRSCPY(ip_intf.if_name, LAN_BRIDGE);
+    ip_intf.if_name_exists = true;
+    ip_intf.if_name_present = true;
+    ip_intf.enable = true;
+    ip_intf.enable_exists = true;
+    ip_intf.enable_present = true;
+
+    if (!ovsdb_table_upsert_where(
+            &table_IP_Interface,
+            ovsdb_where_simple(SCHEMA_COLUMN(IP_Interface, name), LAN_BRIDGE),
+            &ip_intf, false))
+    {
+        LOG(ERR, "offline_cfg: IPv6: Error upserting IP_Interface");
+        goto out;
+    }
+
+    /* Upsert IPv6_Address with parent IP_interface(name==LAN_BRIDGE)::ipv6_addr.
+     *
+     * This will set global IPv6 address to LAN_BRIDGE interface. */
+    if (!ovsdb_table_upsert_with_parent_where(
+            &table_IPv6_Address,
+            ovsdb_where_simple(SCHEMA_COLUMN(IPv6_Address, address), ipv6_addr.address),
+            &ipv6_addr,
+            false,
+            NULL,
+            SCHEMA_TABLE(IP_Interface),
+            ovsdb_where_simple(SCHEMA_COLUMN(IP_Interface, name), LAN_BRIDGE),
+            SCHEMA_COLUMN(IP_Interface, ipv6_addr)))
+    {
+        LOG(ERROR, "offline_cfg: Error upserting IPv6_Address with parent IP_Interface");
+        goto out;
+    }
+
+    /* IP_Interface (if_name==LAN_BRIDGE) uuid: (needed later to set references): */
+    if (!ovsdb_sync_get_uuid(
+            SCHEMA_TABLE(IP_Interface),
+            SCHEMA_COLUMN(IP_Interface, if_name),
+            LAN_BRIDGE,
+            &uuid_ip_intf_lanbr))
+    {
+        LOG(ERR, "offline_cfg: Error getting row for lan bridge uuid in IP_Interface");
+        goto out;
+    }
+
+    /* IPv6_RouteAdv: intial values: */
+    memset(&ipv6_routeAdv, 0, sizeof(ipv6_routeAdv));
+    ipv6_routeAdv._partial_update = true;
+
+    ipv6_routeAdv.interface = uuid_ip_intf_lanbr;      // on LAN_BRIDGE IP_Interface
+    ipv6_routeAdv.interface_exists = true;
+    ipv6_routeAdv.interface_present = true;
+    ipv6_routeAdv.managed = ipv6_cfg.routeAdv_managed; // managed flag from config
+    ipv6_routeAdv.managed_exists = true;
+    ipv6_routeAdv.managed_present = true;
+    STRSCPY(ipv6_routeAdv.preferred_router, "high");
+    ipv6_routeAdv.preferred_router_exists = true;
+    ipv6_routeAdv.preferred_router_present = true;
+    ipv6_routeAdv.other_config = ipv6_cfg.routeAdv_other_config; // other_config flag from config
+    ipv6_routeAdv.other_config_exists = true;
+    ipv6_routeAdv.other_config_present = true;
+    STRSCPY(ipv6_routeAdv.status, "enabled");
+    ipv6_routeAdv.status_exists = true;
+    ipv6_routeAdv.status_present = true;
+    if (dco24 != NULL)
+    {
+        int n_max = sizeof(ipv6_routeAdv.dnssl) / sizeof(ipv6_routeAdv.dnssl[n]);
+        n = 0;
+        while (n < n_max && util_dhcpv6_optval_get(ipv6_routeAdv.dnssl[n], sizeof(ipv6_routeAdv.dnssl[n]), dco24, n))
+        {
+            n++;
+            ipv6_routeAdv.dnssl_len = n;
+        }
+    }
+    ipv6_routeAdv.dnssl_present = true;
+
+    if (!ovsdb_table_upsert_where(
+            &table_IPv6_RouteAdv,
+            ovsdb_where_simple_typed(SCHEMA_COLUMN(IPv6_RouteAdv, interface), &uuid_ip_intf_lanbr, OCLM_UUID),
+            &ipv6_routeAdv,
+            false))
+    {
+        LOG(ERR, "offline_cfg: Error inserting IPv6_RouteAdv");
+        goto out;
+    }
+
+    /* DHCPv6_Server */
+    if (ipv6_cfg.dhcpv6_server_is_set) // if config has DHCPv6_Server configured
+    {
+        /* DHCPv6_Server initial upsert: */
+        memset(&dhcpv6_server, 0, sizeof(dhcpv6_server));
+        dhcpv6_server._partial_update = true;
+
+        dhcpv6_server.prefix_delegation = false;
+        dhcpv6_server.prefix_delegation_exists = true;
+        dhcpv6_server.prefix_delegation_present = true;
+        STRSCPY(dhcpv6_server.status, "enabled");
+        dhcpv6_server.status_exists = true;
+        dhcpv6_server.status_present = true;
+        dhcpv6_server.interface = uuid_ip_intf_lanbr; // on LAN_BRIDGE IP_Interface
+        dhcpv6_server.interface_exists = true;
+        dhcpv6_server.interface_present = true;
+        dhcpv6_server.options_present = true;
+
+        if (!ovsdb_table_upsert_where(
+                &table_DHCPv6_Server,
+                ovsdb_where_simple_typed(SCHEMA_COLUMN(DHCPv6_Server, interface), &uuid_ip_intf_lanbr, OCLM_UUID),
+                &dhcpv6_server,
+                false))
+        {
+            LOG(ERR, "offline_cfg: Error upserting DHCPv6_Server");
+            goto out;
+        }
+
+        /* For received DHCPv6 option 23, configure a corresponding TX DHCPv6 option 23: */
+        if (dco23 != NULL)
+        {
+            memset(&dhcp_option, 0, sizeof(dhcp_option));
+            STRSCPY(dhcp_option.version, "v6");
+            dhcp_option.version_exists = true;
+            dhcp_option.tag = 23;
+            dhcp_option.tag_exists = true;
+            STRSCPY(dhcp_option.value, dco23->value); // copy value from RX DHCPv6 option 23
+            dhcp_option.value_exists = true;
+            STRSCPY(dhcp_option.type, "tx");          // TX option type
+            dhcp_option.type_exists = true;
+
+            where = ovsdb_where_multi(
+                    ovsdb_where_simple(SCHEMA_COLUMN(DHCP_Option, type), "tx"),
+                    ovsdb_where_simple(SCHEMA_COLUMN(DHCP_Option, version), "v6"),
+                    ovsdb_where_simple_typed(SCHEMA_COLUMN(DHCP_Option, value), "23", OCLM_INT),
+                    NULL);
+
+            /* Upsert DHCP_Option row with parent DHCPv6_Server(interface==LAN_BRIDGE)::options: */
+            if (!ovsdb_table_upsert_with_parent_where(
+                    &table_DHCP_Option,
+                    where,
+                    &dhcp_option,
+                    false,
+                    NULL,
+                    SCHEMA_TABLE(DHCPv6_Server),
+                    ovsdb_where_simple_typed(SCHEMA_COLUMN(DHCPv6_Server, interface), &uuid_ip_intf_lanbr, OCLM_UUID),
+                    SCHEMA_COLUMN(DHCPv6_Server, options)))
+            {
+                LOG(ERROR, "offline_cfg: Error upserting DHCP_Option (23) with parent DHCPv6_Server");
+                goto out;
+            }
+        }
+
+        /* For received DHCPv6 option 24, configure a corresponding TX DHCPv6 option 24: */
+        if (dco24 != NULL)
+        {
+            memset(&dhcp_option, 0, sizeof(dhcp_option));
+            STRSCPY(dhcp_option.version, "v6");
+            dhcp_option.version_exists = true;
+            dhcp_option.tag = 24;
+            dhcp_option.tag_exists = true;
+            STRSCPY(dhcp_option.value, dco24->value); // copy value from RX DHCPv6 option 24
+            dhcp_option.value_exists = true;
+            STRSCPY(dhcp_option.type, "tx");          // TX option type
+            dhcp_option.type_exists = true;
+
+            where = ovsdb_where_multi(
+                    ovsdb_where_simple(SCHEMA_COLUMN(DHCP_Option, type), "tx"),
+                    ovsdb_where_simple(SCHEMA_COLUMN(DHCP_Option, version), "v6"),
+                    ovsdb_where_simple_typed(SCHEMA_COLUMN(DHCP_Option, value), "24", OCLM_INT),
+                    NULL);
+
+            /* Upsert DHCP_Option row with parent DHCPv6_Server(interface==LAN_BRIDGE)::options: */
+            if (!ovsdb_table_upsert_with_parent_where(
+                    &table_DHCP_Option,
+                    where,
+                    &dhcp_option,
+                    false,
+                    NULL,
+                    SCHEMA_TABLE(DHCPv6_Server),
+                    ovsdb_where_simple_typed(SCHEMA_COLUMN(DHCPv6_Server, interface), &uuid_ip_intf_lanbr, OCLM_UUID),
+                    SCHEMA_COLUMN(DHCPv6_Server, options)))
+            {
+                LOG(ERROR, "offline_cfg: Error upserting DHCP_Option (24) with parent DHCPv6_Server");
+                goto out;
+            }
+        }
+
+    }
+
+    /* Configure rdnss: */
+    if (dco23 != NULL)
+    {
+        memset(&ipv6_addr, 0, sizeof(ipv6_addr));
+        if (!util_dhcpv6_optval_get(ipv6_addr.prefix, sizeof(ipv6_addr.prefix), dco26, 0))
+        {
+            LOG(ERR, "offline_cfg: Error parsing prefix from DHCPv6 option 26");
+            goto out;
+        }
+        ipv6_addr.prefix_exists = true;
+        if (!util_dhcpv6_optval_get(ipv6_addr.preferred_lifetime, sizeof(ipv6_addr.preferred_lifetime), dco26, 1))
+        {
+            LOG(ERR, "offline_cfg: Error parsing preferred_lifetime from DHCPv6 option 26");
+            goto out;
+        }
+        ipv6_addr.preferred_lifetime_exists = true;
+        if (!util_dhcpv6_optval_get(ipv6_addr.valid_lifetime, sizeof(ipv6_addr.valid_lifetime), dco26, 2))
+        {
+            LOG(ERR, "offline_cfg: Error parsing valid_lifetime from DHCPv6 option 26");
+            goto out;
+        }
+        ipv6_addr.valid_lifetime_exists = true;
+        if (!util_dhcpv6_optval_get(ipv6_addr.address, sizeof(ipv6_addr.address), dco23, 0))
+        {
+            LOG(ERR, "offline_cfg: Error parsing value from DHCPv6 option 23");
+            goto out;
+        }
+        ipv6_addr.address_exists = true;
+        STRSCPY(ipv6_addr.status, "enabled");
+        ipv6_addr.status_exists = true;
+        STRSCPY(ipv6_addr.origin, "static");
+        ipv6_addr.origin_exists = true;
+        STRSCPY(ipv6_addr.address_status, "inaccessible");
+        ipv6_addr.address_status_exists = true;
+        ipv6_addr.enable = true;
+        ipv6_addr.enable_exists = true;
+
+        /* Upsert IPv6_Address with parent IPv6_RouteAdv(interface==LAN_BRIDGE)::rdnss */
+        if (!ovsdb_table_upsert_with_parent_where(
+                &table_IPv6_Address,
+                ovsdb_where_simple(SCHEMA_COLUMN(IPv6_Address, address), ipv6_addr.address),
+                &ipv6_addr,
+                false,
+                NULL,
+                SCHEMA_TABLE(IPv6_RouteAdv),
+                ovsdb_where_simple_typed(SCHEMA_COLUMN(IPv6_RouteAdv, interface), &uuid_ip_intf_lanbr, OCLM_UUID),
+                SCHEMA_COLUMN(IPv6_RouteAdv, rdnss)))
+        {
+            LOG(ERROR, "offline_cfg: Error upserting IPv6_Address with parent IPv6_RouteAdv");
+            goto out;
+        }
+    }
+
+    /* Configure IPv6_Prefix: */
+    memset(&ipv6_prefix, 0, sizeof(ipv6_prefix));
+    if (!util_dhcpv6_optval_get(ipv6_prefix.address, sizeof(ipv6_prefix.address), dco26, 0))
+    {
+        LOG(ERR, "offline_cfg: Error parsing prefix from DHCPv6 option 26");
+        goto out;
+    }
+    ipv6_prefix.address_exists = true;
+    if (!util_dhcpv6_optval_get(ipv6_prefix.preferred_lifetime, sizeof(ipv6_prefix.preferred_lifetime), dco26, 1))
+    {
+        LOG(ERR, "offline_cfg: Error parsing preferred_lifetime from DHCPv6 option 26");
+        goto out;
+    }
+    ipv6_prefix.preferred_lifetime_exists = true;
+    if (!util_dhcpv6_optval_get(ipv6_prefix.valid_lifetime, sizeof(ipv6_prefix.valid_lifetime), dco26, 2))
+    {
+        LOG(ERR, "offline_cfg: Error parsing valid_lifetime from DHCPv6 option 26");
+        goto out;
+    }
+    ipv6_prefix.valid_lifetime_exists = true;
+    ipv6_prefix.on_link = true;
+    ipv6_prefix.on_link_exists = true;
+    STRSCPY(ipv6_prefix.prefix_status, "preferred");
+    ipv6_prefix.prefix_status_exists = true;
+    STRSCPY(ipv6_prefix.static_type, "static");
+    ipv6_prefix.static_type_exists = true;
+    STRSCPY(ipv6_prefix.origin, "ra");
+    ipv6_prefix.origin_exists = true;
+    ipv6_prefix.autonomous = ipv6_cfg.prefix_autonomous; // from stored config
+    ipv6_prefix.autonomous_exists = true;
+    ipv6_prefix.enable = true;
+    ipv6_prefix.enable_exists = true;
+
+    /* Configure prefix to DHCPv6_Server if config demands it: */
+    if (ipv6_cfg.dhcpv6_server_is_set && ipv6_cfg.dhcpv6_server_prefixes_is_set)
+    {
+        /* Upsert IPv6_Prefix (primary key interface)
+         * with parent DHCPv6_Server(interface==LAN_BRIDGE)::prefixes: */
+        if (!ovsdb_table_upsert_with_parent(
+                &table_IPv6_Prefix,
+                &ipv6_prefix,
+                false,
+                NULL,
+                SCHEMA_TABLE(DHCPv6_Server),
+                ovsdb_where_simple_typed(SCHEMA_COLUMN(DHCPv6_Server, interface), &uuid_ip_intf_lanbr, OCLM_UUID),
+                SCHEMA_COLUMN(DHCPv6_Server, prefixes)))
+        {
+            LOG(ERROR, "offline_cfg: Error upserting IPv6_Prefix with parent DHCPv6_Server");
+            goto out;
+        }
+    }
+
+    /* Configure prefix to IPv6_RouteAdv if config demands it: */
+    if (ipv6_cfg.routeAdv_prefixes_is_set)
+    {
+        /* Upsert IPv6_Prefix (primary key interface)
+         * with parent IPv6_RouteAdv(interface==LAN_BRIDGE)::prefixes: */
+        if (!ovsdb_table_upsert_with_parent(
+                &table_IPv6_Prefix,
+                &ipv6_prefix,
+                false,
+                NULL,
+                SCHEMA_TABLE(IPv6_RouteAdv),
+                ovsdb_where_simple_typed(SCHEMA_COLUMN(IPv6_RouteAdv, interface), &uuid_ip_intf_lanbr, OCLM_UUID),
+                SCHEMA_COLUMN(IPv6_RouteAdv, prefixes)))
+        {
+            LOG(ERROR, "offline_cfg: Error upserting IPv6_Prefix with parent IPv6_RouteAdv");
+            goto out;
+        }
+    }
+
+    /* IPv6 provisioning done. */
+    LOG(INFO, "offline_cfg: IPv6 enabled and provisioned.");
+    rv = true;
+out:
+    FREE(dhcp_options);
+    return rv;
 }
 
 /* Apply the provided subset of config (obtained from persistent storage) to OVSDB. */
@@ -1451,6 +2342,70 @@ static bool gw_offline_cfg_ovsdb_apply(const struct gw_offline_cfg *cfg)
         if (!ovsdb_sync_upsert("Wifi_Inet_Config", "if_name", if_name, json_incref(row), NULL))
         {
             LOG(ERR, "offline_cfg: Error inserting into Wifi_Inet_Config: row=%s", json_dumps_static(row, 0));
+            return false;
+        }
+    }
+
+    /* Configure vlan interfaces in Wifi_Inet_Config... */
+    json_array_foreach(cfg->inet_config_vlan, index, row)
+    {
+        const char *if_name = json_string_value(json_object_get(row, SCHEMA_COLUMN(Wifi_Inet_Config, if_name)));
+
+        if (!ovsdb_sync_upsert(
+                SCHEMA_TABLE(Wifi_Inet_Config),
+                SCHEMA_COLUMN(Wifi_Inet_Config, if_name),
+                if_name,
+                json_incref(row), NULL))
+        {
+            LOG(ERR, "offline_cfg: Error upserting into Wifi_Inet_Config: row=%s", json_dumps_static(row, 0));
+            return false;
+        }
+    }
+
+    /* Configure IGMP Config: */
+    rc = ovsdb_sync_delete_where(SCHEMA_TABLE(IGMP_Config), NULL);
+    if (rc == -1)
+    {
+        LOG(ERR, "offline_cfg: Error deleting IGMP_Config");
+        return false;
+    }
+    json_array_foreach(cfg->igmp_config, index, row)
+    {
+        if (!ovsdb_sync_insert(SCHEMA_TABLE(IGMP_Config), json_incref(row), NULL))
+        {
+            LOG(ERR, "offline_cfg: Error inserting into IGMP_Config: row=%s", json_dumps_static(row, 0));
+            return false;
+        }
+    }
+
+    /* Configure MLD Config: */
+    rc = ovsdb_sync_delete_where(SCHEMA_TABLE(MLD_Config), NULL);
+    if (rc == -1)
+    {
+        LOG(ERR, "offline_cfg: Error deleting MLD_Config");
+        return false;
+    }
+    json_array_foreach(cfg->mld_config, index, row)
+    {
+        if (!ovsdb_sync_insert(SCHEMA_TABLE(MLD_Config), json_incref(row), NULL))
+        {
+            LOG(ERR, "offline_cfg: Error inserting into MLD_Config: row=%s", json_dumps_static(row, 0));
+            return false;
+        }
+    }
+
+    /* Configure Wifi_Route_Config: */
+    rc = ovsdb_sync_delete_where(SCHEMA_TABLE(Wifi_Route_Config), NULL);
+    if (rc == -1)
+    {
+        LOG(ERR, "offline_cfg: Error deleting Wifi_Route_Config");
+        return false;
+    }
+    json_array_foreach(cfg->route_config, index, row)
+    {
+        if (!ovsdb_sync_insert(SCHEMA_TABLE(Wifi_Route_Config), json_incref(row), NULL))
+        {
+            LOG(ERR, "offline_cfg: Error inserting into Wifi_Route_Config: row=%s", json_dumps_static(row, 0));
             return false;
         }
     }
@@ -1742,6 +2697,13 @@ bool pm_gw_offline_load_and_apply_config()
     {
         LOG(ERR, "offline_cfg: Error restoring uplink's settings for the current uplink");
         goto exit;
+    }
+
+    /* IPv6 configuration and provisioning (if IPv6 enabled in stored config): */
+    if (util_cfg_is_ipv6_enabled(&gw_cfg))
+    {
+        /* Monitor DHCP_Option table. */
+        gw_offline_monitor_dhcp_option();
     }
 
     rv = true;

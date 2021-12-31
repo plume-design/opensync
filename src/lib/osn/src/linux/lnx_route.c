@@ -601,12 +601,12 @@ error:
 }
 
 /* Index osn_route_state by ip/mask and gateway ip address */
-int lnx_route_state_cmp(void *_a, void *_b)
+int lnx_route_state_cmp(const void *_a, const void *_b)
 {
     int rc;
 
-    struct osn_route_status *a = _a;
-    struct osn_route_status *b = _b;
+    const struct osn_route_status *a = _a;
+    const struct osn_route_status *b = _b;
 
     rc = osn_ip_addr_cmp(&a->rts_route.dest, &b->rts_route.dest);
     if (rc != 0) return rc;
@@ -618,10 +618,10 @@ int lnx_route_state_cmp(void *_a, void *_b)
 }
 
 /* Index a struct lnx_route_arp_cache structure by arp_ipaddr and arp_ifname */
-int lnx_route_arp_cmp(void *_a, void *_b)
+int lnx_route_arp_cmp(const void *_a, const void *_b)
 {
-    struct lnx_route_arp_cache *a = _a;
-    struct lnx_route_arp_cache *b = _b;
+    const struct lnx_route_arp_cache *a = _a;
+    const struct lnx_route_arp_cache *b = _b;
 
     int rc;
 

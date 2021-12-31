@@ -255,6 +255,7 @@ extern bool             _c_get_param_by_key(c_item_t *list, int list_sz, int key
  */
 #define __V(x, ...)                     __VA_ARGS__
 #define C_VPACK(...)                    ((char *[]){ __V(dummy, ##__VA_ARGS__, NULL) })
+#define C_CVPACK(...)                   ((const char *[]){ __V(dummy, ##__VA_ARGS__, NULL) })
 
 /**
  * Same as VPACK, except it can take any array type and custom array terminator value

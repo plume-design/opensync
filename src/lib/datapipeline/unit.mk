@@ -32,8 +32,7 @@ UNIT_NAME := datapipeline
 # Template type:
 UNIT_TYPE := LIB
 
-UNIT_SRC := src/opensync_stats.pb-c.c
-UNIT_SRC += $(if $(CONFIG_TARGET_BSAL_SIM),src/dppline_bsal_sim.c,src/dppline.c)
+UNIT_SRC := $(if $(CONFIG_TARGET_BSAL_SIM),src/dppline_bsal_sim.c,src/dppline.c)
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 
@@ -43,4 +42,4 @@ UNIT_EXPORT_LDFLAGS := -lprotobuf-c
 UNIT_DEPS := src/lib/ds
 UNIT_DEPS += src/lib/osa
 UNIT_DEPS += src/lib/common
-
+UNIT_DEPS += src/lib/protobuf

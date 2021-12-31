@@ -36,7 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 static ds_key_cmp_t uuidset_cmp;
 static synclist_fn_t uuid_synclist_fn;
-static int uuidset_cmp(void *_a, void *_b);
+static int uuidset_cmp(const void *_a, const void *_b);
 static void *uuid_synclist_fn(synclist_t *list, void *_old, void *_new);
 static void uuidset_reflink_fn(reflink_t *obj, reflink_t *remote);
 
@@ -204,10 +204,10 @@ void uuidset_reflink_fn(reflink_t *obj, reflink_t *remote)
 }
 
 /* Compare two uuidset_node structures */
-int uuidset_cmp(void *_a, void *_b)
+int uuidset_cmp(const void *_a, const void *_b)
 {
-    struct uuidset_node *a = _a;
-    struct uuidset_node *b = _b;
+    const struct uuidset_node *a = _a;
+    const struct uuidset_node *b = _b;
 
     return strcmp(a->un_uuid.uuid, b->un_uuid.uuid);
 }

@@ -45,6 +45,17 @@ Arguments:
 See wm2_lib::create_vif_interface for more information
 usage_string
 }
+
+trap '
+fut_ec=$?
+fut_info_dump_line
+if [ $fut_ec -ne 0 ]; then 
+    print_tables Wifi_VIF_Config Wifi_VIF_State Wifi_Radio_Config Wifi_Radio_State
+fi
+fut_info_dump_line
+exit $fut_ec
+' EXIT SIGINT SIGTERM
+
 if [ -n "${1}" ]; then
     case "${1}" in
         help | \

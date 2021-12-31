@@ -261,6 +261,7 @@ struct fsm_policy_reply
     char *updatev6_tag;  /* Tag to store ipv6 dns results with if any */
     char *excluded_devices; /* Tag containing list of excludede devices */
     bool redirect;       /* Redirect dns reply */
+    char redirect_cname[256]; /* Redirect cname, in case of url redirect */
     char redirects[2][256]; /* Redirect IP addresses, in case of redirect */
     int risk_level;         /* Risk level determined by the security provider */
     bool fsm_checked;       /* flag to indicate if fsm policy check is performed */

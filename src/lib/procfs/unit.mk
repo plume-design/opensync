@@ -39,6 +39,7 @@ UNIT_CFLAGS := $(UNIT_EXPORT_CFLAGS)
 UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/ds
 UNIT_DEPS += src/lib/const
+UNIT_DEPS += src/lib/log
 
 UNIT_DEPS_CFLAGS += src/lib/log
 

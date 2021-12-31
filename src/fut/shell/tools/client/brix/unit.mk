@@ -31,6 +31,6 @@ UNIT_TYPE := FUT
 # Output directory
 UNIT_DIR := shell/tools/client/brix
 
-UNIT_FILE := connect_to_wpa2.sh
-UNIT_FILE += connect_to_wpa3.sh
+UNIT_FILE := check_internet_traffic.sh
 UNIT_FILE += get_brix_client_mac.sh
+UNIT_FILE += reboot_brix_client.sh

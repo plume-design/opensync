@@ -28,9 +28,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdint.h>
 
 #include "fsm_internal.h"
-#include "policy_tags.h"
 #include "log.h"
 #include "nf_utils.h"
+#include "policy_tags.h"
 
 static const struct fsm_tap_type
 {
@@ -52,41 +52,72 @@ static const struct fsm_tap_type
     }
 };
 
+/**
+ * @brief sets the session type based on the conf_type
+ *
+ * @param conf_type string value pulled from ovsdb
+ *        The string contains a comma separated list of the taps to be open.
+ * @return an integer representing the type of tap we are handling
+ *         There can be more than one service (i.e., more than one bit can be set)
+ */
+uint32_t
+fsm_tap_type_from_str(char *conf_type)
+{
+    char *tmp_conf_type;
+    char *base_ptr;
+    size_t nelems;
+    char *token;
+    int retval;
+    size_t i;
+    int cmp;
 
+    if (conf_type == NULL) return FSM_TAP_PCAP;
+
+    /* If this stays to 0, then we should default to PCAP */
+    retval = 0;
+
+    /* We cannot tokenize conf_type directly as it is a reference. */
+    tmp_conf_type = STRDUP(conf_type);
+
+    nelems = ARRAY_SIZE(tap_map);
+
+    base_ptr = tmp_conf_type;
+    while ((token = strtok_r(base_ptr, ",", &base_ptr)) != NULL)
+    {
+        /* Walk the known types */
+        for (i = 0; i < nelems; i++)
+        {
+            cmp = strcmp(token, tap_map[i].tap_str_type);
+            if (cmp == 0)
+            {
+                retval |= tap_map[i].tap_type;
+                break;
+            }
+        }
+    }
+
+    FREE(tmp_conf_type);
+
+    /* Default to pcap if nothing was set*/
+    return (retval == 0) ? FSM_TAP_PCAP : retval;
+}
 
 /**
  * @brief sets the session type based on the ovsdb values
  *
  * @param the ovsdb configuration
- * @return an integer representing the type of service
+ * @return an integer representing the type of tap we are handling.
+ *         There can be more than one service (more than one bit on).
  */
-static int
+uint32_t
 fsm_tap_type(struct fsm_session *session)
 {
-    const struct fsm_tap_type *map;
     char *conf_type;
-    size_t nelems;
-    size_t i;
-    int cmp;
 
     conf_type = session->ops.get_config(session, "tap_type");
-    if (conf_type == NULL) return FSM_TAP_PCAP;
 
-    /* Walk the known types */
-    nelems = (sizeof(tap_map) / sizeof(tap_map[0]));
-    map = tap_map;
-    for (i = 0; i < nelems; i++)
-    {
-        cmp = strcmp(conf_type, map->tap_str_type);
-        if (!cmp) return map->tap_type;
-
-        map++;
-    }
-
-    /* Default to pcap */
-    return FSM_TAP_PCAP;
+    return fsm_tap_type_from_str(conf_type);
 }
-
 
 /**
  * @brief returns the tapping mode for a session
@@ -94,7 +125,7 @@ fsm_tap_type(struct fsm_session *session)
  * @param session the fsm session to probe
  * @return the tapping mode
  */
-int
+uint32_t
 fsm_session_tap_mode(struct fsm_session *session)
 {
     int tap_type;
@@ -105,12 +136,51 @@ fsm_session_tap_mode(struct fsm_session *session)
 
     tap_type = fsm_tap_type(session);
 
-    LOGI("%s: session %s: tap type: %d", __func__,
-         session->name, tap_type);
+    LOGI("%s: session %s: tap type: %d", __func__, session->name, tap_type);
 
     return tap_type;
 }
 
+static bool
+fsm_update_open_taps(uint32_t taps_to_open, struct fsm_session *session)
+{
+    bool rc = false;
+
+    if (taps_to_open == FSM_TAP_NONE) rc = true;
+
+    if (taps_to_open & FSM_TAP_PCAP) rc |= fsm_pcap_tap_update(session);
+
+    if (taps_to_open & FSM_TAP_NFQ) rc |= fsm_nfq_tap_update(session);
+
+    if (taps_to_open & FSM_TAP_RAW) rc |= fsm_raw_tap_update(session);
+
+    return rc;
+}
+
+static void
+fsm_update_close_taps(uint32_t taps_to_close, struct fsm_session *session)
+{
+    struct fsm_pcaps *pcaps;
+
+    if (taps_to_close & FSM_TAP_PCAP)
+    {
+        /* Free pcap resources */
+        pcaps = session->pcaps;
+        if (pcaps != NULL) fsm_pcap_close(session);
+    }
+
+    if (taps_to_close & FSM_TAP_NFQ)
+    {
+        /* Free nfq resources */
+        nf_queue_exit();
+    }
+
+    if (taps_to_close & FSM_TAP_RAW)
+    {
+        /* Free raw socket resources */
+        return;
+    }
+}
 
 /**
  * @brief Initializes the tap context for the given session
@@ -121,86 +191,40 @@ fsm_session_tap_mode(struct fsm_session *session)
 bool
 fsm_update_session_tap(struct fsm_session *session)
 {
-    int orig_tap_type;
-    int tap_type;
-    bool rc;
+    uint32_t before_tap_type;
+    uint32_t after_tap_type;
+    uint32_t taps_to_close;
+    uint32_t taps_to_open;
 
     /* Get the current tap type */
-    orig_tap_type = session->tap_type;
+    before_tap_type = session->tap_type;
 
     /* Get the configured tap type */
-    tap_type = fsm_session_tap_mode(session);
+    after_tap_type = fsm_session_tap_mode(session);
 
-    if (tap_type != orig_tap_type)
-    {
-        /* The tap type has changed, free existing tap resources */
-        fsm_free_tap_resources(session);
-    }
+    /* what to close and what to open */
+    taps_to_close = before_tap_type & ~after_tap_type;
+    taps_to_open = ~before_tap_type & after_tap_type;
 
     /* Update the session tap type */
-    session->tap_type = tap_type;
+    session->tap_type = after_tap_type;
 
-    switch (tap_type)
-    {
-        case FSM_TAP_NONE:
-            rc = true;
-            break;
+    fsm_update_close_taps(taps_to_close, session);
 
-        case FSM_TAP_PCAP:
-            rc = fsm_pcap_update(session);
-            break;
-
-        case FSM_TAP_NFQ:
-            rc = fsm_nfq_tap_update(session);
-            break;
-
-        case FSM_TAP_RAW:
-            rc = fsm_raw_tap_update(session);
-            break;
-
-        default:
-            rc = false;
-            break;
-    }
-
-    return rc;
+    return fsm_update_open_taps(taps_to_open, session);
 }
-
 
 /**
  * @brief frees fsm tap resources pcap, nfqueues and raw socket
  *
  * @param session the fsm session involved
  */
-void fsm_free_tap_resources(struct fsm_session *session)
+void
+fsm_free_tap_resources(struct fsm_session *session)
 {
-    struct fsm_pcaps *pcaps;
-    int tap_type;
-
-    tap_type = session->tap_type;
-    switch (tap_type)
-    {
-    case FSM_TAP_NONE:
-    case FSM_TAP_PCAP:
-        /* Free pcap resources */
-        pcaps = session->pcaps;
-        if (pcaps != NULL)
-        {
-            fsm_pcap_close(session);
-        }
-        break;
-
-    case FSM_TAP_NFQ:
-        /* Free nfq resources */
-        nf_queue_exit();
-        break;
-
-    case FSM_TAP_RAW:
-        /* Free raw socket resources */
-        break;
-    }
+    /* Taps to be closed are the taps currently open */
+    fsm_update_close_taps(session->tap_type, session);
 }
-
 
 /**
  * @brief wrap a dpi plugin initialization
@@ -228,14 +252,13 @@ fsm_wrap_init_dpi_plugin(struct fsm_session *session)
         tree = &dpi_plugin->dpi_clients;
 
         ds_tree_init(tree, dpi_plugin_ops->flow_attr_cmp,
-                     struct dpi_client, node);
+                     struct dpi_client, next);
         dpi_plugin->clients_init = true;
     }
 
     fsm_dpi_register_clients(session);
     return true;
 }
-
 
 /**
  * @brief wrap plugin initialization
@@ -253,12 +276,12 @@ fsm_wrap_init_plugin(struct fsm_session *session)
 
     switch (session->type)
     {
-    case FSM_DPI_PLUGIN:
-        ret = fsm_wrap_init_dpi_plugin(session);
-        break;
+        case FSM_DPI_PLUGIN:
+            ret = fsm_wrap_init_dpi_plugin(session);
+            break;
 
-    default:
-        ret = true;;
+        default:
+            ret = true;
     }
 
     return ret;

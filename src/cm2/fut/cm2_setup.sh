@@ -34,11 +34,10 @@ source "${FUT_TOPDIR}/shell/lib/cm2_lib.sh"
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
 # Setup test environment for CM tests.
-tc_name="cm2/$(basename "$0")"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+cm2/cm2_setup.sh [-h] arguments
 Description:
     - Setup device for CM testing
 Arguments:
@@ -46,8 +45,8 @@ Arguments:
     \$1 (wan_eth_if_name)    : uplink ethernet interface name : (string)(optional)
     \$2 (wan_bridge_if_name) : WAN bridge interface name      : (string)(optional)
 Script usage example:
-    ./${tc_name}
-    ./${tc_name} eth0 br-wan
+    ./cm2/cm2_setup.sh
+    ./cm2/cm2_setup.sh eth0 br-wan
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -63,15 +62,16 @@ if [ -n "${1}" ]; then
 fi
 
 check_kconfig_option "CONFIG_MANAGER_CM" "y" ||
-    raise "CONFIG_MANAGER_CM != y - CM not present on device" -l "${tc_name}" -s
+    raise "CONFIG_MANAGER_CM != y - CM not present on device" -l "cm2/cm2_setup.sh" -s
 
 NARGS=0
-[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "cm2/cm2_setup.sh" -arg
 wan_eth_if_name=${1}
 wan_bridge_if_name=${2}
+use_fut_cloud=${3:-"false"}
 
-cm_setup_test_environment ${wan_eth_if_name} ${wan_bridge_if_name} &&
-    log "$tc_name: cm_setup_test_environment - Success " ||
-    raise "FAIL: cm_setup_test_environment" -l "$tc_name" -ds
+cm_setup_test_environment ${wan_eth_if_name} ${wan_bridge_if_name} ${use_fut_cloud} &&
+    log "cm2/cm2_setup.sh: cm_setup_test_environment - Success " ||
+    raise "FAIL: cm_setup_test_environment" -l "cm2/cm2_setup.sh" -ds
 
 exit 0

@@ -44,6 +44,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fcm_priv.h"
 #include "fcm_mgr.h"
 #include "memutil.h"
+#include "const.h"
 
 /* Log entries from this file will contain "OVSDB" */
 #define MODULE_ID LOG_MODULE_ID_OVSDB
@@ -82,13 +83,14 @@ static fcm_header_ids fcm_get_awlan_header_id(const char *key)
  * @param key the Node_State key
  * @param key the Node_State value
  */
-void
+bool
 fcm_set_node_state(const char *module, const char *key, const char *value)
 {
     struct schema_Node_State node_state;
     fcm_mgr_t *mgr;
     json_t *where;
     json_t *cond;
+    bool   ret;
 
     mgr = fcm_get_mgr();
     where = json_array();
@@ -100,11 +102,16 @@ fcm_set_node_state(const char *module, const char *key, const char *value)
     SCHEMA_SET_STR(node_state.module, module);
     SCHEMA_SET_STR(node_state.key, key);
     SCHEMA_SET_STR(node_state.value, value);
-    mgr->cb_ovsdb_table_upsert_where(&table_Node_State, where, &node_state, false);
 
-    json_decref(where);
+    ret = mgr->cb_ovsdb_table_upsert_where(&table_Node_State, where, &node_state,
+          false);
+    if (!ret)
+    {
+        LOGD("%s : Error upserting Node state", __func__);
+        return false;
+    }
 
-    return;
+    return true;
 }
 
 
@@ -142,9 +149,10 @@ fcm_set_max_mem(void)
 void
 fcm_rm_node_config(struct schema_Node_Config *old_rec)
 {
-    fcm_mgr_t *mgr;
     char str_value[32];
+    fcm_mgr_t *mgr;
     char *module;
+    bool ret;
     int rc;
 
     module = old_rec->module;
@@ -157,7 +165,12 @@ fcm_rm_node_config(struct schema_Node_Config *old_rec)
     mgr = fcm_get_mgr();
 
     snprintf(str_value, sizeof(str_value), "%" PRIu64 " kB", mgr->max_mem);
-    fcm_set_node_state(FCM_NODE_MODULE, FCM_NODE_STATE_MEM_KEY, str_value);
+    ret = fcm_set_node_state(FCM_NODE_MODULE, FCM_NODE_STATE_MEM_KEY, str_value);
+    if (!ret)
+    {
+        LOGD("%s : Upserting Node state Failed",__func__);
+        return;
+    }
 }
 
 /**
@@ -166,12 +179,12 @@ fcm_rm_node_config(struct schema_Node_Config *old_rec)
 void
 fcm_get_node_config(struct schema_Node_Config *node_cfg)
 {
-    fcm_mgr_t *mgr;
     char str_value[32];
+    fcm_mgr_t *mgr;
     char *module;
     long value;
     char *key;
-
+    bool ret;
     int rc;
 
     module = node_cfg->module;
@@ -206,7 +219,13 @@ fcm_get_node_config(struct schema_Node_Config *node_cfg)
     LOGI("%s: set fcm max mem usage to %" PRIu64 " kB", __func__,
          mgr->max_mem);
     snprintf(str_value, sizeof(str_value), "%" PRIu64 " kB", mgr->max_mem);
-    fcm_set_node_state(FCM_NODE_MODULE, FCM_NODE_STATE_MEM_KEY, str_value);
+
+    ret = fcm_set_node_state(FCM_NODE_MODULE, FCM_NODE_STATE_MEM_KEY, str_value);
+    if (!ret)
+    {
+        LOGD("%s: Upserting Node-state failed", __func__);
+        return;
+    }
 }
 
 /**
@@ -256,6 +275,7 @@ static void fcm_get_awlan_headers(struct schema_AWLAN_Node *awlan)
     }
 }
 
+
 void callback_AWLAN_Node(
         ovsdb_update_monitor_t *mon,
         struct schema_AWLAN_Node *old_rec,
@@ -266,7 +286,6 @@ void callback_AWLAN_Node(
         fcm_get_awlan_headers(awlan);
     }
 }
-
 
 
 void callback_FCM_Collector_Config(
@@ -354,8 +373,9 @@ callback_Node_Config(ovsdb_update_monitor_t *mon,
 
 int fcm_ovsdb_init(void)
 {
-    fcm_mgr_t *mgr;
     char str_value[32] = { 0 };
+    fcm_mgr_t *mgr;
+    bool ret;
 
     LOGI("Initializing FCM tables");
 
@@ -376,7 +396,12 @@ int fcm_ovsdb_init(void)
 
     // Advertize default memory limit usage
     snprintf(str_value, sizeof(str_value), "%" PRIu64 " kB", mgr->max_mem);
-    fcm_set_node_state(FCM_NODE_MODULE, FCM_NODE_STATE_MEM_KEY, str_value);
+    ret = fcm_set_node_state(FCM_NODE_MODULE, FCM_NODE_STATE_MEM_KEY, str_value);
+    if (!ret)
+    {
+        LOGD("%s: Upserting Node-state fail", __func__);
+        return -1;
+    }
 
     return 0;
 }

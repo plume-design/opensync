@@ -81,7 +81,8 @@ typedef enum {
     TARGET_INIT_MGR_PPM             = 18,
     TARGET_INIT_MGR_NFM             = 19,
     TARGET_INIT_MGR_MAPTM           = 20,
-    TARGET_INIT_MGR_LTEM            = 21
+    TARGET_INIT_MGR_LTEM            = 21,
+    TARGET_INIT_MGR_PWM             = 22
 } target_init_opt_t;
 
 /**

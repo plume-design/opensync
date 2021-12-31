@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "synclist.h"
 #include "ovsdb_sync.h"
 #include "osp_l2switch.h"
+#include "osp_l2uf.h"
 
 #include "nm2.h"
 
@@ -59,6 +60,9 @@ void                    nm2_mod_vlans(struct schema_Port *oldrec,
 bool nm2_port_init(void)
 {
     if (!osp_l2switch_init())
+        return true;
+
+    if (!osp_l2uf_init())
         return true;
 
     LOG(INFO, "Initializing NM Port monitoring.");

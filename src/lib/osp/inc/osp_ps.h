@@ -58,9 +58,10 @@ typedef struct osp_ps osp_ps_t;
 /**
  * Flags for @ref osp_ps_open()
  */
-#define OSP_PS_READ     (1 << 0)        /**< Read mode */
-#define OSP_PS_WRITE    (1 << 1)        /**< Write mode */
-#define OSP_PS_PRESERVE (1 << 2)        /**< Preserve store across upgrades */
+#define OSP_PS_READ        (1 << 0)      /**< Read mode */
+#define OSP_PS_WRITE       (1 << 1)      /**< Write mode */
+#define OSP_PS_PRESERVE    (1 << 2)      /**< Preserve store across upgrades */
+#define OSP_PS_ENCRYPTION  (1 << 3)      /**< Encrypt/decrypt data */
 
 /** Read-write access */
 #define OSP_PS_RDWR     (OSP_PS_READ | OSP_PS_WRITE)
@@ -126,6 +127,9 @@ bool osp_ps_close(osp_ps_t *ps);
  * This function does not guarantee that the data was saved to persistent
  * store. To ensure that data hits the storage, a call to @ref osp_ps_sync()
  * or @ref osp_ps_close() is required.
+ *
+ * @note If OSP_PS_ENCRYPTION flag was specified the value of bytes stored (and
+ * thus the value returned) may be slightly larger then the @p value_sz.
  */
 ssize_t osp_ps_set(
         osp_ps_t *ps,

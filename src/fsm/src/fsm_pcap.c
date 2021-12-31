@@ -247,11 +247,11 @@ fsm_set_pcap_options(struct fsm_session *session)
 }
 
 bool
-fsm_pcap_update(struct fsm_session *session)
+fsm_pcap_tap_update(struct fsm_session *session)
 {
     bool ret;
 
-    if (session->tap_type != FSM_TAP_PCAP) return false;
+    if ((session->tap_type & FSM_TAP_PCAP) == 0) return false;
 
     ret = fsm_get_pcap_options(session);
     if (session->pcaps != NULL) fsm_pcap_close(session);

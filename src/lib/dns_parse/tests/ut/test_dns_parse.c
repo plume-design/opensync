@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "dns_parse.h"
+#include "fsm_dns_utils.h"
 #include "fsm_policy.h"
 #include "json_util.h"
 #include "log.h"
@@ -422,7 +423,7 @@ void setUp(void)
     g_dns_mgr = dns_get_mgr();
     g_dns_mgr->set_forward_context = test_set_fwd_context;
     g_dns_mgr->forward = test_dns_forward;
-    g_dns_mgr->update_tag = dns_update_tag;
+    g_dns_mgr->update_tag = fsm_dns_update_tag;
     g_dns_mgr->policy_init = test_dns_policy_init;
 
     dns_plugin_init(g_fsm_parser);
@@ -743,8 +744,9 @@ test_update_v4_tag_generation(void)
 {
     struct schema_Openflow_Local_Tag *local_tag;
     struct schema_Openflow_Tag *regular_tag;
-    struct fqdn_pending_req req;
     struct fsm_policy_reply policy_reply;
+    struct dns_response_s *dns_response;
+    struct fqdn_pending_req req;
     char regular_tag_name[64];
     char local_tag_name[64];
     size_t max_capacity;
@@ -775,18 +777,21 @@ test_update_v4_tag_generation(void)
     memset(regular_tag_name, 0, sizeof(regular_tag_name));
     snprintf(regular_tag_name, sizeof(regular_tag_name), "${@%s}", g_tags[0].name);
     policy_reply.updatev4_tag = regular_tag_name;
-    rc = dns_generate_update_tag(&req, &policy_reply, regular_tag->device_value,
-                                 &regular_tag->device_value_len,
-                                 max_capacity, 4);
+    dns_response = &req.dns_response;
+    rc = fsm_dns_generate_update_tag(dns_response, &policy_reply,
+                                     regular_tag->device_value,
+                                     &regular_tag->device_value_len,
+                                     max_capacity, 4);
     TEST_ASSERT_TRUE(rc);
     TEST_ASSERT_EQUAL(max_capacity, regular_tag->device_value_len);
 
     memset(local_tag_name, 0, sizeof(local_tag_name));
     snprintf(local_tag_name, sizeof(local_tag_name), "${*%s}", g_ltags[0].name);
     policy_reply.updatev4_tag = local_tag_name;
-    rc = dns_generate_update_tag(&req, &policy_reply, local_tag->values,
-                                 &local_tag->values_len,
-                                 max_capacity, 4);
+    rc = fsm_dns_generate_update_tag(dns_response, &policy_reply,
+                                     local_tag->values,
+                                     &local_tag->values_len,
+                                     max_capacity, 4);
     TEST_ASSERT_TRUE(rc);
     TEST_ASSERT_EQUAL(max_capacity, local_tag->values_len);
 
@@ -808,8 +813,9 @@ test_update_v6_tag_generation(void)
 {
     struct schema_Openflow_Local_Tag *local_tag;
     struct schema_Openflow_Tag *regular_tag;
-    struct fqdn_pending_req req;
     struct fsm_policy_reply policy_reply;
+    struct dns_response_s *dns_response;
+    struct fqdn_pending_req req;
     char regular_tag_name[64];
     char local_tag_name[64];
     size_t max_capacity;
@@ -840,18 +846,21 @@ test_update_v6_tag_generation(void)
     memset(regular_tag_name, 0, sizeof(regular_tag_name));
     snprintf(regular_tag_name, sizeof(regular_tag_name), "${@%s}", g_tags[0].name);
     policy_reply.updatev6_tag = regular_tag_name;
-    rc = dns_generate_update_tag(&req, &policy_reply, regular_tag->device_value,
-                                 &regular_tag->device_value_len,
-                                 max_capacity, 6);
+    dns_response = &req.dns_response;
+    rc = fsm_dns_generate_update_tag(dns_response, &policy_reply,
+                                     regular_tag->device_value,
+                                     &regular_tag->device_value_len,
+                                     max_capacity, 6);
     TEST_ASSERT_TRUE(rc);
     TEST_ASSERT_EQUAL(max_capacity, regular_tag->device_value_len);
 
     memset(local_tag_name, 0, sizeof(local_tag_name));
     snprintf(local_tag_name, sizeof(local_tag_name), "${*%s}", g_ltags[1].name);
     policy_reply.updatev6_tag = local_tag_name;
-    rc = dns_generate_update_tag(&req, &policy_reply, local_tag->values,
-                                 &local_tag->values_len,
-                                 max_capacity, 6);
+    rc = fsm_dns_generate_update_tag(dns_response, &policy_reply,
+                                     local_tag->values,
+                                     &local_tag->values_len,
+                                     max_capacity, 6);
     TEST_ASSERT_TRUE(rc);
     TEST_ASSERT_EQUAL(max_capacity, local_tag->values_len);
 
@@ -870,6 +879,7 @@ test_update_v4_tag_generation_with_duplicates(void)
 {
     struct schema_Openflow_Local_Tag *local_tag;
     struct fqdn_pending_req req;
+    struct dns_response_s *dns_response;
     struct fsm_policy_reply policy_reply;
     char local_tag_name[64];
     size_t max_capacity;
@@ -901,9 +911,11 @@ test_update_v4_tag_generation_with_duplicates(void)
     memset(local_tag_name, 0, sizeof(local_tag_name));
     snprintf(local_tag_name, sizeof(local_tag_name), "${*%s}", g_ltags[0].name);
     policy_reply.updatev4_tag = local_tag_name;
-    rc = dns_generate_update_tag(&req, &policy_reply, local_tag->values,
-                                 &local_tag->values_len,
-                                 max_capacity, 4);
+    dns_response = &req.dns_response;
+    rc = fsm_dns_generate_update_tag(dns_response, &policy_reply,
+                                     local_tag->values,
+                                     &local_tag->values_len,
+                                     max_capacity, 4);
     TEST_ASSERT_TRUE(rc);
 
     /* Only one address should be present in the generated tag */
@@ -925,8 +937,9 @@ void
 test_update_v6_tag_generation_with_duplicates(void)
 {
     struct schema_Openflow_Local_Tag *local_tag;
-    struct fqdn_pending_req req;
     struct fsm_policy_reply policy_reply;
+    struct dns_response_s *dns_response;
+    struct fqdn_pending_req req;
     char local_tag_name[64];
     size_t max_capacity;
     const char *res;
@@ -955,9 +968,11 @@ test_update_v6_tag_generation_with_duplicates(void)
     memset(local_tag_name, 0, sizeof(local_tag_name));
     snprintf(local_tag_name, sizeof(local_tag_name), "${*%s}", g_ltags[1].name);
     policy_reply.updatev6_tag = local_tag_name;
-    rc = dns_generate_update_tag(&req, &policy_reply, local_tag->values,
-                                 &local_tag->values_len,
-                                 max_capacity, 6);
+    dns_response = &req.dns_response;
+    rc = fsm_dns_generate_update_tag(dns_response, &policy_reply,
+                                     local_tag->values,
+                                     &local_tag->values_len,
+                                     max_capacity, 6);
     TEST_ASSERT_TRUE(rc);
 
     /* Only one address should be present in the generated tag */
@@ -976,8 +991,9 @@ void
 test_update_v4_tag_generation_ip_expiration(void)
 {
     struct schema_Openflow_Local_Tag *local_tag;
-    struct fqdn_pending_req req;
     struct fsm_policy_reply policy_reply;
+    struct dns_response_s *dns_response;
+    struct fqdn_pending_req req;
     char local_tag_name[64];
     size_t max_capacity;
     const char *res;
@@ -1010,9 +1026,11 @@ test_update_v4_tag_generation_ip_expiration(void)
     memset(local_tag_name, 0, sizeof(local_tag_name));
     snprintf(local_tag_name, sizeof(local_tag_name), "${*%s}", g_ltags[0].name);
     policy_reply.updatev4_tag = local_tag_name;
-    rc = dns_generate_update_tag(&req, &policy_reply, local_tag->values,
-                                 &local_tag->values_len,
-                                 max_capacity, 4);
+    dns_response = &req.dns_response;
+    rc = fsm_dns_generate_update_tag(dns_response, &policy_reply,
+                                     local_tag->values,
+                                     &local_tag->values_len,
+                                     max_capacity, 4);
     TEST_ASSERT_TRUE(rc);
 
     /* Expected length index is 8 in the generated tag */
@@ -1050,9 +1068,11 @@ test_update_v4_tag_generation_ip_expiration(void)
     memset(local_tag_name, 0, sizeof(local_tag_name));
     snprintf(local_tag_name, sizeof(local_tag_name), "${*%s}", g_ltags[0].name);
     policy_reply.updatev4_tag = local_tag_name;
-    rc = dns_generate_update_tag(&req, &policy_reply, local_tag->values,
-                                 &local_tag->values_len,
-                                 max_capacity, 4);
+    dns_response = &req.dns_response;
+    rc = fsm_dns_generate_update_tag(dns_response, &policy_reply,
+                                     local_tag->values,
+                                     &local_tag->values_len,
+                                     max_capacity, 4);
     TEST_ASSERT_TRUE(rc);
 
     /* Expected length index is 16 in the generated tag */
@@ -1090,9 +1110,11 @@ test_update_v4_tag_generation_ip_expiration(void)
     memset(local_tag_name, 0, sizeof(local_tag_name));
     snprintf(local_tag_name, sizeof(local_tag_name), "${*%s}", g_ltags[0].name);
     policy_reply.updatev4_tag = local_tag_name;
-    rc = dns_generate_update_tag(&req, &policy_reply, local_tag->values,
-                                 &local_tag->values_len,
-                                 max_capacity, 4);
+    dns_response = &req.dns_response;
+    rc = fsm_dns_generate_update_tag(dns_response, &policy_reply,
+                                     local_tag->values,
+                                     &local_tag->values_len,
+                                     max_capacity, 4);
     TEST_ASSERT_TRUE(rc);
 
     /* Expected length index is 4 in the generated tag */
@@ -1116,8 +1138,9 @@ void
 test_update_v6_tag_generation_ip_expiration(void)
 {
     struct schema_Openflow_Local_Tag *local_tag;
-    struct fqdn_pending_req req;
     struct fsm_policy_reply policy_reply;
+    struct dns_response_s *dns_response;
+    struct fqdn_pending_req req;
     char local_tag_name[64];
     size_t max_capacity;
     const char *res;
@@ -1147,9 +1170,11 @@ test_update_v6_tag_generation_ip_expiration(void)
     memset(local_tag_name, 0, sizeof(local_tag_name));
     snprintf(local_tag_name, sizeof(local_tag_name), "${*%s}", g_ltags[1].name);
     policy_reply.updatev6_tag = local_tag_name;
-    rc = dns_generate_update_tag(&req, &policy_reply, local_tag->values,
-                                 &local_tag->values_len,
-                                 max_capacity, 6);
+    dns_response = &req.dns_response;
+    rc = fsm_dns_generate_update_tag(dns_response, &policy_reply,
+                                     local_tag->values,
+                                     &local_tag->values_len,
+                                     max_capacity, 6);
     TEST_ASSERT_TRUE(rc);
 
     /* Expected length index is 8 in the generated tag */
@@ -1181,9 +1206,11 @@ test_update_v6_tag_generation_ip_expiration(void)
     memset(local_tag_name, 0, sizeof(local_tag_name));
     snprintf(local_tag_name, sizeof(local_tag_name), "${*%s}", g_ltags[1].name);
     policy_reply.updatev6_tag = local_tag_name;
-    rc = dns_generate_update_tag(&req, &policy_reply, local_tag->values,
-                                 &local_tag->values_len,
-                                 max_capacity, 6);
+    dns_response = &req.dns_response;
+    rc = fsm_dns_generate_update_tag(dns_response, &policy_reply,
+                                     local_tag->values,
+                                     &local_tag->values_len,
+                                     max_capacity, 6);
 
     TEST_ASSERT_TRUE(rc);
 
@@ -1216,9 +1243,10 @@ test_update_v6_tag_generation_ip_expiration(void)
     memset(local_tag_name, 0, sizeof(local_tag_name));
     snprintf(local_tag_name, sizeof(local_tag_name), "${*%s}", g_ltags[1].name);
     policy_reply.updatev6_tag = local_tag_name;
-    rc = dns_generate_update_tag(&req, &policy_reply, local_tag->values,
-                                 &local_tag->values_len,
-                                 max_capacity, 6);
+    rc = fsm_dns_generate_update_tag(dns_response, &policy_reply,
+                                     local_tag->values,
+                                     &local_tag->values_len,
+                                     max_capacity, 6);
 
     TEST_ASSERT_TRUE(rc);
 

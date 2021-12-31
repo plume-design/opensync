@@ -1,0 +1,11 @@
+#
+# OpenSync core network MLD backend
+#
+source "src/lib/osn/kconfig/Kconfig.osn.mld_backend"
+
+#
+# Platform/vendor MLD backends
+#
+osource "platform/*/kconfig/Kconfig.osn.mld_backend"
+osource "vendor/*/kconfig/Kconfig.osn.mld_backend"
+

@@ -33,12 +33,11 @@ source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="nm2/$(basename "$0")"
 manager_setup_file="nm2/nm2_setup.sh"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+nm2/nm2_vlan_interface.sh [-h] arguments
 Description:
     - Script creates VLAN through Wifi_Inet_Config table and validates its existence in Wifi_Inet_State table and on the
       system, fails otherwise
@@ -48,9 +47,9 @@ Arguments:
     \$2 (vlan_id)        : used as vlan_id for virtual interface '100' in 'eth0.100' : (integer)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name} <parent_ifname> <vlan_id>
+                 Run: ./nm2/nm2_vlan_interface.sh <parent_ifname> <vlan_id>
 Script usage example:
-   ./${tc_name} eth0 100
+   ./nm2/nm2_vlan_interface.sh eth0 100
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -66,11 +65,11 @@ if [ -n "${1}" ]; then
 fi
 
 check_kconfig_option "CONFIG_OSN_LINUX_VLAN" "y" &&
-    log "${tc_name}: CONFIG_OSN_LINUX_VLAN==y - VLAN is enabled on this device" ||
-    raise "CONFIG_OSN_LINUX_VLAN != y - VLAN is disabled on this device" -l "${tc_name}" -s
+    log "nm2/nm2_vlan_interface.sh: CONFIG_OSN_LINUX_VLAN==y - VLAN is enabled on this device" ||
+    raise "CONFIG_OSN_LINUX_VLAN != y - VLAN is disabled on this device" -l "nm2/nm2_vlan_interface.sh" -s
 
 NARGS=2
-[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "nm2/nm2_vlan_interface.sh" -arg
 # Fill variables with provided arguments or defaults.
 parent_ifname=$1
 vlan_id=$2
@@ -78,18 +77,17 @@ vlan_id=$2
 trap '
     fut_info_dump_line
     print_tables Wifi_Inet_Config Wifi_Inet_State
-    fut_info_dump_line
     delete_inet_interface "$if_name"
-    run_setup_if_crashed nm || true
     check_restore_management_access || true
+    fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 
 # Construct if_name from parent_ifname and vlan_id (example: eth0.100).
 if_name="$parent_ifname.$vlan_id"
 
-log_title "$tc_name: NM2 test - Testing vlan_id"
+log_title "nm2/nm2_vlan_interface.sh: NM2 test - Testing vlan_id"
 
-log "$tc_name: Creating Wifi_Inet_Config entry for $if_name (enabled=true, network=true, ip_assign_scheme=static)"
+log "nm2/nm2_vlan_interface.sh: Creating Wifi_Inet_Config entry for $if_name (enabled=true, network=true, ip_assign_scheme=static)"
 create_inet_entry \
     -if_name "$if_name" \
     -enabled true \
@@ -100,36 +98,22 @@ create_inet_entry \
     -if_type vlan \
     -vlan_id "$vlan_id" \
     -parent_ifname "$parent_ifname" &&
-        log "$tc_name: Interface $if_name created - Success" ||
-        raise "FAIL: Failed to create $if_name interface" -l "$tc_name" -ds
+        log "nm2/nm2_vlan_interface.sh: Interface $if_name created - Success" ||
+        raise "FAIL: Failed to create $if_name interface" -l "nm2/nm2_vlan_interface.sh" -ds
 
-log "$tc_name: Check is interface $if_name up - LEVEL2"
+log "nm2/nm2_vlan_interface.sh: Check is interface $if_name up - LEVEL2"
 wait_for_function_response 0 "get_eth_interface_is_up $if_name" &&
-    log "$tc_name: wait_for_function_response - Interface $if_name is UP - Success" ||
-    raise "FAIL: wait_for_function_response - Interface $if_name is DOWN" -l "$tc_name" -ds
+    log "nm2/nm2_vlan_interface.sh: wait_for_function_response - Interface $if_name is UP - Success" ||
+    raise "FAIL: wait_for_function_response - Interface $if_name is DOWN" -l "nm2/nm2_vlan_interface.sh" -ds
 
-vlan_pid="/proc/net/vlan/${if_name}"
-log "$tc_name: Checking for  ${vlan_pid} existence - LEVEL2"
-wait_for_function_response 0 "[ -f ${vlan_pid} ]" &&
-    log "$tc_name: LEVEL2 - PID ${vlan_pid} is runinng - Success" ||
-    raise "FAIL: LEVEL2 - PID ${vlan_pid} is NOT running" -l "$tc_name" -tc
+log "nm2/nm2_vlan_interface.sh: Check if VLAN interface $if_name exists at OS level - LEVEL2"
+check_vlan_iface "$parent_ifname" "$vlan_id" &&
+    log "nm2/nm2_vlan_interface.sh: VLAN interface $if_name exists at OS level - Success" ||
+    raise "FAIL: VLAN interface $if_name does not exist at OS level" -l "nm2/nm2_vlan_interface.sh" -tc
 
-log "$tc_name: Output PID ${vlan_pid} info:"
-cat "${vlan_pid}"
-
-log "$tc_name: Validating PID VLAN config - vlan_id == ${vlan_id} - LEVEL2"
-wait_for_function_response 0 "cat "${vlan_pid}" | grep 'VID: ${vlan_id}'" &&
-    log "$tc_name: LEVEL2 - VID is set to 100 - Success" ||
-    raise "FAIL: LEVEL2 - VID is not set" -l "$tc_name" -tc
-
-log "$tc_name: Check parent device for VLAN - LEVEL2"
-wait_for_function_response 0 "cat "${vlan_pid}" | grep 'Device: ${parent_ifname}'" &&
-    log "$tc_name: LEVEL2 - Device is set to ${parent_ifname} - Success" ||
-    raise "FAIL: LEVEL2 - Device is not set to ${parent_ifname}" -l "$tc_name" -tc
-
-log "$tc_name: Remove VLAN interface"
+log "nm2/nm2_vlan_interface.sh: Remove VLAN interface"
 delete_inet_interface "$if_name" &&
-    log "$tc_name: VLAN interface $if_name removed from device - Success" ||
-    raise "FAIL: VLAN interface $if_name not removed from device" -l "$tc_name" -tc
+    log "nm2/nm2_vlan_interface.sh: VLAN interface $if_name removed from device - Success" ||
+    raise "FAIL: VLAN interface $if_name not removed from device" -l "nm2/nm2_vlan_interface.sh" -tc
 
 pass

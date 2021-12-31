@@ -46,15 +46,15 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 struct neighbour_entry
 {
-    struct sockaddr_storage     *ipaddr;
-    os_macaddr_t                *mac;
-    char                        *ifname;
-    int                         ifindex;
-    uint32_t                    source;
-    time_t                      cache_valid_ts;
-    uint8_t                     *ip_tbl;           // for fast lookups
-    int                         af_family;         // for fast lookups
-    ds_tree_node_t              entry_node;        // tree node structure
+    struct sockaddr_storage *ipaddr;
+    os_macaddr_t *mac;
+    char *ifname;
+    int ifindex;
+    uint32_t source;
+    time_t cache_valid_ts;
+    uint8_t *ip_tbl;           // for fast lookups
+    int af_family;             // for fast lookups
+    ds_tree_node_t entry_node; // tree node structure
 };
 
 /*
@@ -82,23 +82,23 @@ struct neigh_table_mgr
 
 enum source
 {
-    NEIGH_SRC_NOT_SET       = 1 << 0,
-    NEIGH_TBL_SYSTEM        = 1 << 1,
-    OVSDB_DHCP_LEASE        = 1 << 2,
-    OVSDB_ARP               = 1 << 3,
-    FSM_ARP                 = OVSDB_ARP,
-    OVSDB_NDP               = 1 << 4,
-    FSM_NDP                 = OVSDB_NDP,
-    OVSDB_INET_STATE        = 1 << 5,
-    NEIGH_UT                = 1 << 6,
+    NEIGH_SRC_NOT_SET = 1 << 0,
+    NEIGH_TBL_SYSTEM  = 1 << 1,
+    OVSDB_DHCP_LEASE  = 1 << 2,
+    OVSDB_ARP         = 1 << 3,
+    FSM_ARP           = OVSDB_ARP,
+    OVSDB_NDP         = 1 << 4,
+    FSM_NDP           = OVSDB_NDP,
+    OVSDB_INET_STATE  = 1 << 5,
+    NEIGH_UT          = 1 << 6,
 };
 
 enum ovsdb_table_lookup
 {
-    DHCP_LEASED_IP          = 1 << 0,
-    IPV4_NEIGHBORS          = 1 << 1,
-    IPV6_NEIGHBORS          = 1 << 2,
-    WIFI_INET_STATE         = 1 << 3,
+    DHCP_LEASED_IP  = 1 << 0,
+    IPV4_NEIGHBORS  = 1 << 1,
+    IPV6_NEIGHBORS  = 1 << 2,
+    WIFI_INET_STATE = 1 << 3,
 };
 
 struct neigh_mapping_source
@@ -107,14 +107,12 @@ struct neigh_mapping_source
     int source_enum;
 };
 
-struct neigh_table_mgr
-*neigh_table_get_mgr(void);
+struct neigh_table_mgr *neigh_table_get_mgr(void);
 
 /**
  * @brief initialize neighbor_table handle manager.
  */
-void
-neigh_table_init_manager(void);
+void neigh_table_init_manager(void);
 
 /**
  * @brief initialize neighbor_table handle.
@@ -123,8 +121,7 @@ neigh_table_init_manager(void);
  *
  * @return 0 for success and 1 for failure .
  */
-int
-neigh_table_init(void);
+int neigh_table_init(void);
 
 void neigh_table_cache_cleanup(void);
 
@@ -135,57 +132,41 @@ void neigh_table_cache_cleanup(void);
  *
  * @return void.
  */
-void
-neigh_table_cleanup(void);
+void neigh_table_cleanup(void);
+void free_neigh_entry(struct neighbour_entry *entry);
 
 /**
  * @brief compare neighbor table entries.
  *
- * @return 0 on match and greater than 1 if no match.
+ * @return 0 on match, non-zero integer otherwise.
  */
+int neigh_table_cmp(const void *a, const void *b);
+int neigh_intf_cmp(const void *a, const void *b);
 
-void
-free_neigh_entry(struct neighbour_entry *entry);
-
-int
-neigh_table_cmp(void *a, void *b);
-
-bool
-update_ip_in_ovsdb_table(struct neighbour_entry *key, bool remove);
+bool update_ip_in_ovsdb_table(struct neighbour_entry *key, bool remove);
 
 /**
  * @brief lookup for a neighbor table entry.
  *
  * @return true if found, false otherwise.
  */
-bool
-neigh_table_lookup(struct sockaddr_storage *ip_in,
-                   os_macaddr_t *mac_out);
+bool neigh_table_lookup(struct sockaddr_storage *ip_in, os_macaddr_t *mac_out);
+bool neigh_table_lookup_af(int af_family, void *ip_in, os_macaddr_t *mac_out);
 
-void
-print_neigh_entry(struct neighbour_entry *entry);
+void print_neigh_entry(struct neighbour_entry *entry);
+void print_neigh_table(void);
 
-void
-print_neigh_table(void);
+struct neighbour_entry *neigh_table_add_to_cache(struct neighbour_entry *to_add);
 
-struct neighbour_entry *
-neigh_table_add_to_cache(struct neighbour_entry *to_add);
+bool neigh_table_add(struct neighbour_entry *to_add);
 
-bool
-neigh_table_add(struct neighbour_entry *to_add);
+void neigh_table_delete_from_cache(struct neighbour_entry *to_del);
 
-void
-neigh_table_delete_from_cache(struct neighbour_entry *to_del);
+void neigh_table_delete(struct neighbour_entry *to_del);
 
-void
-neigh_table_delete(struct neighbour_entry *to_del);
+struct neighbour_entry * neigh_table_cache_lookup(struct neighbour_entry *key);
 
-struct neighbour_entry *
-neigh_table_cache_lookup(struct neighbour_entry *key);
-
-bool
-neigh_table_cache_update(struct neighbour_entry *entry);
-
+bool neigh_table_cache_update(struct neighbour_entry *entry);
 
 /**
  * @brief remove old cache entres added by fsm
@@ -194,15 +175,13 @@ neigh_table_cache_update(struct neighbour_entry *entry);
  */
 void neigh_table_ttl_cleanup(int64_t ttl, uint32_t source_mask);
 
-
 /**
  * @brief return the source based on its enum value
  *
  * @param source_enum the source represented as an integer
  * @return a string pointer representing the source
  */
-char *
-neigh_table_get_source(int source_enum);
+char *neigh_table_get_source(int source_enum);
 
 /**
  * @brief set fast lookup fields of a neighbour entry
@@ -234,8 +213,7 @@ struct neigh_interface * neigh_table_get_intf(int ifindex);
 /**
  * @brief initializes ovsdb callback
  */
-void
-neigh_src_init(uint32_t ovsdb_event);
+void neigh_src_init(uint32_t ovsdb_event);
 
 /**
  * @brief deregister ovsdb callback
@@ -245,7 +223,10 @@ void neigh_src_exit(uint32_t ovsdb_event);
 void neigh_table_init_monitor(struct ev_loop *loop,
                               bool system_event, uint32_t ovsdb_event);
 
-int
-neigh_table_get_cache_size(void);
+int neigh_table_get_cache_size(void);
+
+/* Exposed for UT */
+void process_neigh_event(struct nf_neigh_info *neigh_info);
+void process_link_event(struct nf_neigh_info *neigh_info);
 
 #endif /* NEIGH_TABLE_H_INCLUDED */

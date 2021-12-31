@@ -3,6 +3,7 @@ myname=$(basename $0)
 
 TAG=${DOCKER_TAG:-$(dirname "$(readlink -f "$0")" | tr / - | cut -b2- | tr A-Z a-z)}
 ENTRYPOINT="/bin/sh -c"
+GID=$(id -g)
 
 #=============================================================================
 
@@ -171,7 +172,7 @@ run_docker()
     )
 
     [ "${ROOT:-no}" = "no" ] && {
-        ARGS+=(-u$UID:$UID)
+        ARGS+=(-u$UID:$GID)
         [ -e "$SSH_AUTH_SOCK" ] && {
             ARGS+=(-eSSH_AUTH_SOCK -v"$SSH_AUTH_SOCK:$SSH_AUTH_SOCK")
         }

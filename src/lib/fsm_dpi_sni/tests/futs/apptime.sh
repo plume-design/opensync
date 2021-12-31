@@ -121,7 +121,7 @@ cmd=${CMD}
 attrs_tag=${ATTRS_TAG:-'${dev_app_attrs}'}
 dpi_plugin=${DPI_PLUGIN:-walleye_dpi}
 policy_name=dev_app
-fsm_handler=dev_fsm_dpi_app
+fsm_handler=dev_dpi_app
 x_devs='${dev_x}'
 
 # Validate the command argument

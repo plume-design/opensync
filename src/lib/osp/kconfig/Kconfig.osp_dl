@@ -1,0 +1,50 @@
+if OSP_DL_CURL
+    menu "cURL Options"
+        config OSP_DL_CURL_RETRY
+            int "Maximum number of download retries"
+            default 3
+
+            help
+                The maximum number of times osp_dl_curl will retry to download
+                an URL before giving up.
+
+        config OSP_DL_CURL_PROGRESS_INTERVAL
+            int "Progress interval"
+            default 10
+
+            help
+                This is the number of seconds between progress reports.
+
+                Use 0 to disable periodic progress reports.
+
+        config OSP_DL_CURL_CERT_AUTHORITY_FILE
+            string "Certificate authority file"
+            default "$(INSTALL_PREFIX)/certs/auth.pem"
+            help
+                Path to the certificate authority file.
+
+                This corresponds to the -ca curl option. Use an empty string to
+                use system's default.
+
+        config OSP_DL_CURL_ALLOW_UNTRUSTED_CONNECTIONS
+            bool "Allow untrusted HTTPS connections"
+            default n
+
+            help
+                This options enables insecure https connections to untrusted https
+                servers (their identity could not be verified).
+
+                This corresponds to the -k curl option.
+
+        config OSP_DL_CURL_DETECT_STALLED
+            bool "Detect stalled connections"
+            default y
+
+            help
+                Detect if the connection has stalled and retry the download.
+
+                This is roughly equivalent to the following curl options:
+                    --connec-timeout 30 --speed-limit 128 --speed-time 30
+    endmenu
+endif
+

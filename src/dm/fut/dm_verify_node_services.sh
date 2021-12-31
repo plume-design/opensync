@@ -33,12 +33,11 @@ source "${FUT_TOPDIR}/shell/lib/dm_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="dm/$(basename "$0")"
 manager_setup_file="dm/dm_setup.sh"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+dm/dm_verify_node_services.sh [-h] arguments
 Description:
     - Verify Node_Services table is correctly populated
     - Check if Node_Services table contains service_name from test case config
@@ -50,10 +49,10 @@ Arguments:
     \$2 (kconfig_val) : kconfig value used to check service is supported on device or not : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name} <service> <KCONFIG-VALUE>
+                 Run: ./dm/dm_verify_node_services.sh <service> <KCONFIG-VALUE>
 Script usage example:
-    ./${tc_name} wm CONFIG_MANAGER_WM
-    ./${tc_name} blem CONFIG_MANAGER_BLEM
+    ./dm/dm_verify_node_services.sh wm CONFIG_MANAGER_WM
+    ./dm/dm_verify_node_services.sh blem CONFIG_MANAGER_BLEM
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -69,7 +68,7 @@ if [ -n "${1}" ]; then
 fi
 
 NARGS=2
-[ $# -ne ${NARGS} ] && usage && raise "Requires exactly '${NARGS}' input arguments" -l "${tc_name}" -arg
+[ $# -ne ${NARGS} ] && usage && raise "Requires exactly '${NARGS}' input arguments" -l "dm/dm_verify_node_services.sh" -arg
 service_name=${1}
 kconfig_val=${2}
 
@@ -79,22 +78,22 @@ print_tables Node_Services
 fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 
-log_title "$tc_name: DM test - Verify Node_Services table contains given service, respective enable field is set to true and is running"
+log_title "dm/dm_verify_node_services.sh: DM test - Verify Node_Services table contains given service, respective enable field is set to true and is running"
 
 check_kconfig_option "$kconfig_val" "y" &&
-    log "$tc_name: $kconfig_val = y - KCONFIG exists on the device - Success" ||
-    raise "FAIL: $kconfig_val - KCONFIG is not supported on the device" -l "$tc_name" -s
+    log "dm/dm_verify_node_services.sh: $kconfig_val = y - KCONFIG exists on the device - Success" ||
+    raise "FAIL: $kconfig_val - KCONFIG is not supported on the device" -l "dm/dm_verify_node_services.sh" -s
 
 check_ovsdb_entry Node_Services -w service "$service_name" &&
-    log "$tc_name: Node_Services table contains $service_name - Success" ||
-    raise "FAIL: Node_Services table does not contain $service_name" -l "$tc_name" -tc
+    log "dm/dm_verify_node_services.sh: Node_Services table contains $service_name - Success" ||
+    raise "FAIL: Node_Services table does not contain $service_name" -l "dm/dm_verify_node_services.sh" -tc
 
 if [ $(get_ovsdb_entry_value Node_Services enable -w service $service_name) == "true" ]; then
-    log "$tc_name: $service_name from Node_Services table that have enable field set to true"
+    log "dm/dm_verify_node_services.sh: $service_name from Node_Services table that have enable field set to true"
     if [ -n $($(get_process_cmd) | grep /usr/opensync/bin/$service_name | grep -v 'grep' | wc -l) ]; then
-        log "$tc_name: $service_name from Node_Services table is running - Success"
+        log "dm/dm_verify_node_services.sh: $service_name from Node_Services table is running - Success"
     else
-        raise "FAIL: $service_name from Node_Services table is not running" -l "$tc_name" -tc
+        raise "FAIL: $service_name from Node_Services table is not running" -l "dm/dm_verify_node_services.sh" -tc
     fi
 else
     raise "FAIL: $service_name from Node_Services table that have enable field not set to true"

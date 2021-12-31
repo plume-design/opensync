@@ -30,28 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "fsm_internal.h"
 #include "neigh_table.h"
-
-
-void util_populate_sockaddr(int af, void *ip, struct sockaddr_storage *dst)
-{
-    if (af == AF_INET)
-    {
-        struct sockaddr_in *in4 = (struct sockaddr_in *)dst;
-
-        memset(in4, 0, sizeof(struct sockaddr_in));
-        in4->sin_family = af;
-        memcpy(&in4->sin_addr, ip, sizeof(in4->sin_addr));
-    }
-    else if (af == AF_INET6)
-    {
-        struct sockaddr_in6 *in6 = (struct sockaddr_in6 *)dst;
-
-        memset(in6, 0, sizeof(struct sockaddr_in6));
-        in6->sin6_family = af;
-        memcpy(&in6->sin6_addr, ip, sizeof(in6->sin6_addr));
-    }
-    return;
-}
+#include "sockaddr_storage.h"
 
 
 /**
@@ -65,7 +44,6 @@ fsm_nfq_net_header_parse(struct nfq_pkt_info *pkt_info, void *data)
     struct net_header_parser net_parser;
     struct fsm_parser_ops *parser_ops;
     struct fsm_session *session;
-    struct sockaddr_storage key;
     struct ip6_hdr *ipv6hdr;
     struct iphdr *ipv4hdr;
     os_macaddr_t src_mac;
@@ -87,8 +65,8 @@ fsm_nfq_net_header_parse(struct nfq_pkt_info *pkt_info, void *data)
     net_parser.start = net_parser.data;
     net_parser.parsed = 0;
 
-    /* nfqueues are L3 packets, flag eth_header_available is set false */
-    net_parser.eth_header_available = false;
+    /* set packet source as NFQ */
+    net_parser.source = PKT_SOURCE_NFQ;
     net_parser.eth_header.ethertype = pkt_info->hw_protocol;
 
     len = net_header_parse_ip(&net_parser);
@@ -116,11 +94,9 @@ fsm_nfq_net_header_parse(struct nfq_pkt_info *pkt_info, void *data)
     }
 
     /* fetch ethernet header details using neigh table lookup */
-    memset(&key, 0, sizeof(struct sockaddr_storage));
-    util_populate_sockaddr(domain, src_ip, &key);
     if (!pkt_info->hw_addr)
     {
-        rc_lookup = neigh_table_lookup(&key, &src_mac);
+        rc_lookup = neigh_table_lookup_af(domain, src_ip, &src_mac);
         if (rc_lookup) net_parser.eth_header.srcmac = &src_mac;
     }
     else
@@ -129,9 +105,7 @@ fsm_nfq_net_header_parse(struct nfq_pkt_info *pkt_info, void *data)
         net_parser.eth_header.srcmac = &src_mac;
     }
 
-    memset(&key, 0, sizeof(struct sockaddr_storage));
-    util_populate_sockaddr(domain, dst_ip, &key);
-    rc_lookup = neigh_table_lookup(&key, &dst_mac);
+    rc_lookup = neigh_table_lookup_af(domain, dst_ip, &dst_mac);
     if (rc_lookup)
     {
         net_parser.eth_header.dstmac = &dst_mac;
@@ -162,12 +136,9 @@ fsm_nfq_net_header_parse(struct nfq_pkt_info *pkt_info, void *data)
         if (len == 0) return;
     }
 
-
     session = (struct fsm_session *)data;
     parser_ops = &session->p_ops->parser_ops;
     parser_ops->handler(session, &net_parser);
-
-    return;
 }
 
 
@@ -196,7 +167,7 @@ fsm_nfq_tap_update(struct fsm_session *session)
     int ret_val;
     bool ret;
 
-    if (session->tap_type != FSM_TAP_NFQ) return false;
+    if ((session->tap_type & FSM_TAP_NFQ) == 0) return false;
 
     ret = nf_queue_init();
     if (ret == false)

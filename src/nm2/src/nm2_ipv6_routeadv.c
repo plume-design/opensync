@@ -65,10 +65,10 @@ struct ipv6_routeadv_dnssl
 
 };
 
-int ipv6_routeadv_dnssl_cmp(void *_a, void *_b)
+int ipv6_routeadv_dnssl_cmp(const void *_a, const void *_b)
 {
-    struct ipv6_routeadv_dnssl *a = _a;
-    struct ipv6_routeadv_dnssl *b = _b;
+    const struct ipv6_routeadv_dnssl *a = _a;
+    const struct ipv6_routeadv_dnssl *b = _b;
 
     return strcmp(a->ds_dnssl, b->ds_dnssl);
 }

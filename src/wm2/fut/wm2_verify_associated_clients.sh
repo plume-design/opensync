@@ -33,23 +33,24 @@ source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="wm2/$(basename "$0")"
 manager_setup_file="wm2/wm2_setup.sh"
 
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+wm2/wm2_verify_associated_clients.sh [-h] arguments
 Description:
     - Script to verify Wifi_Associated_Clients table is populated with correct values when client is connected to DUT.
 Arguments:
     -h  show this help message
-    \$1  (client_mac)     : MAC address of client connected to ap: (string)(required)
+    \$1 (client_wpa_type)  : client wpa type                            : (string)(required)
+    \$2 (vif_if_name)      : Wifi_VIF_Config::if_name                   : (string)(required)
+    \$3 (client_mac)       : MAC address of client connected to ap      : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name} <CLIENT MAC>
+                 Run: ./wm2/wm2_verify_associated_clients.sh <CLIENT MAC>
 Script usage example:
-    ./${tc_name} a1:b2:c3:d4:e5:f6
+    ./wm2/wm2_verify_associated_clients.sh wpa3 wl0.2 a1:b2:c3:d4:e5:f6
 
 usage_string
 }
@@ -70,23 +71,39 @@ trap '
     fut_info_dump_line
     print_tables Wifi_Associated_Clients
     fut_info_dump_line
-    run_setup_if_crashed wm || true
 ' EXIT SIGINT SIGTERM
 
-NARGS=1
-[ $# -ne ${NARGS} ] && usage && raise "Requires exactly ${NARGS} input argument" -l "${tc_name}" -arg
+NARGS=3
+[ $# -ne ${NARGS} ] && usage && raise "Requires exactly ${NARGS} input argument" -l "wm2/wm2_verify_associated_clients.sh" -arg
 
-client_mac=${1}
-log_title "$tc_name: WM2 test - Verify Wifi_Associated_Clients table is populated with client MAC"
+client_wpa_type=${1}
+vif_if_name=${2}
+client_mac=${3}
 
-check_ovsdb_entry Wifi_Associated_Clients -w mac "$client_mac" &&
-    log "$tc_name: Valid client mac $client_mac is populated in the Wifi_Associated_Clients table - Success" ||
-    raise "FAIL: Client mac address is not present in the Wifi_Associated_Clients table." -l "$tc_name" -tc
+log_title "wm2/wm2_verify_associated_clients.sh: WM2 test - Verify Wifi_Associated_Clients table is populated with client MAC"
 
-# Make sure state in Wifi_Associated_Clients is 'active' for connected client
-get_state=$(get_ovsdb_entry_value Wifi_Associated_Clients state -w mac "$client_mac" -r)
-[ "$get_state" == "active" ] &&
-    log "$tc_name: Wifi_Associated_Clients::state is '$get_state' for $client_mac - Success" ||
-    raise "FAIL: Wifi_Associated_Clients::state is not 'active' for $client_mac" -l "$tc_name" -tc
+if [ "${client_wpa_type}" == "wpa2" ]; then
+    check_ovsdb_entry Wifi_Associated_Clients -w mac "$client_mac" &&
+        log "wm2/wm2_verify_associated_clients.sh: Valid client mac $client_mac is populated in the Wifi_Associated_Clients table - Success" ||
+        raise "FAIL: Client mac address is not present in the Wifi_Associated_Clients table." -l "wm2/wm2_verify_associated_clients.sh" -tc
+ 
+    # Make sure state in Wifi_Associated_Clients is 'active' for connected client
+    get_state=$(get_ovsdb_entry_value Wifi_Associated_Clients state -w mac "$client_mac" -r)
+    [ "$get_state" == "active" ] &&
+        log "wm2/wm2_verify_associated_clients.sh: Wifi_Associated_Clients::state is '$get_state' for $client_mac - Success" ||
+        raise "FAIL: Wifi_Associated_Clients::state is not 'active' for $client_mac" -l "wm2/wm2_verify_associated_clients.sh" -tc
+elif [ "${client_wpa_type}" == "wpa3" ]; then
+    wait_for_function_response 0 "${OVSH} s Wifi_Associated_Clients" &&
+        log "wm2/wm2_verify_associated_clients.sh: Wifi_Associated_Clients table populated - Success" ||
+        raise "FAIL: Wifi_Associated_Clients table not populated" -l "wm2/wm2_verify_associated_clients.sh" -tc
+
+    wait_for_function_response 'notempty' "get_ovsdb_entry_value Wifi_VIF_State associated_clients -w if_name ${vif_if_name}" &&
+        assoc_clients_res=$(get_ovsdb_entry_value Wifi_VIF_State associated_clients -w if_name "${vif_if_name}") ||
+        raise "FAIL: Failed to retrieve client associated to ${vif_if_name}" -l "wm2/wm2_verify_associated_clients.sh" -tc
+ 
+    check_ovsdb_entry Wifi_Associated_Clients  -w _uuid "[\"uuid\",\"${assoc_clients_res}\"]" -w mac "${client_mac}" &&
+        log "wm2/wm2_verify_associated_clients.sh: check_ovsdb_entry - client '${client_mac}' is  associated to ${vif_if_name} - Success" ||
+        raise "FAIL: check_ovsdb_entry - client ${client_mac} not associated to ${vif_if_name}" -l "wm2/wm2_verify_associated_clients.sh" -tc
+fi
 
 pass

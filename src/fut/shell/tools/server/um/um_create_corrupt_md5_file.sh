@@ -34,18 +34,17 @@ source "${fut_topdir}"/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh &> /dev/null
 source "$fut_topdir/lib/rpi_lib.sh"
 
-tc_name="tools/server/um/$(basename "$0")"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+tools/server/um/um_create_corrupt_md5_file.sh [-h] arguments
 Description:
     - Creates corrupted MD5 file of FW image
 Arguments:
     -h  show this help message
     \$1 (um_fw_path) : path to clean FW which to create corrupted copy : (string)(required)
 Script usage example:
-   ./${tc_name} /tmp/clean_device_fw.img
+   ./tools/server/um/um_create_corrupt_md5_file.sh /tmp/clean_device_fw.img
 Result:
     - Creates corrupted MD5 sum of image (example clean_device_fw.img.md5)
 usage_string
@@ -62,7 +61,7 @@ if [ -n "${1}" ]; then
     esac
 fi
 NARGS=1
-[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "tools/server/um/um_create_corrupt_md5_file.sh" -arg
 
 um_fw_path=$1
 um_create_corrupt_md5_file "$um_fw_path"

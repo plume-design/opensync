@@ -200,18 +200,18 @@ om_template_apply(om_action_t type, om_tflow_t *tflow, om_tdata_t *tdata)
 
     LOGD("[%s] %s expanded rule '%s'",
                 tflow->token,
-                (type == ADD) ? "Adding" : "Removing",
+                (type == OM_ACTION_ADD) ? "Adding" : "Removing",
                 erule);
 
     switch(type) {
 
-    case ADD:
+    case OM_ACTION_ADD:
         if (om_tflow_to_schema(tflow, erule, &sflow)) {
             ret = om_add_flow(sflow.token, &sflow);
         }
         break;
 
-    case DELETE:
+    case OM_ACTION_DELETE:
         if (om_tflow_to_schema(tflow, erule, &sflow)) {
             ret = om_del_flow(sflow.token, &sflow);
         }
@@ -242,7 +242,7 @@ om_template_apply_tag(om_action_t type, om_tflow_t *tflow,
 
     if (tdn == 0) {
         LOGI("[%s] %s system flows from template flow %s",
-             tflow->token, (type == ADD) ? "Adding" : "Removing",
+             tflow->token, (type == OM_ACTION_ADD) ? "Adding" : "Removing",
              ttle->value);
     }
 
@@ -387,7 +387,7 @@ om_template_tag_update(om_tag_t *tag, ds_tree_t *removed,
             tdata.filter              = TAG_FILTER_NORMAL;
             tdata.ignore_err          = false;
             tle = ds_tree_ifirst(&iter, &tflow->tags);
-            if (!om_template_apply_tag(DELETE, tflow, tle, &iter, &tdata, 0)) {
+            if (!om_template_apply_tag(OM_ACTION_DELETE, tflow, tle, &iter, &tdata, 0)) {
                 ret = false; // still continue
             }
         }
@@ -400,7 +400,7 @@ om_template_tag_update(om_tag_t *tag, ds_tree_t *removed,
             tdata.filter              = TAG_FILTER_NORMAL;
             tdata.ignore_err          = false;
             tle = ds_tree_ifirst(&iter, &tflow->tags);
-            if (!om_template_apply_tag(ADD, tflow, tle, &iter, &tdata, 0)) {
+            if (!om_template_apply_tag(OM_ACTION_ADD, tflow, tle, &iter, &tdata, 0)) {
                 ret = false; // still continue
             }
         }
@@ -414,7 +414,7 @@ om_template_tag_update(om_tag_t *tag, ds_tree_t *removed,
             tdata.filter              = TAG_FILTER_MISMATCH;
             tdata.ignore_err          = true; // Some flows may already not exist
             tle = ds_tree_ifirst(&iter, &tflow->tags);
-            if (!om_template_apply_tag(DELETE, tflow, tle, &iter, &tdata, 0)) {
+            if (!om_template_apply_tag(OM_ACTION_DELETE, tflow, tle, &iter, &tdata, 0)) {
                 ret = false; // still continue
             }
 
@@ -425,7 +425,7 @@ om_template_tag_update(om_tag_t *tag, ds_tree_t *removed,
             tdata.filter              = TAG_FILTER_MATCH;
             tdata.ignore_err          = false;
             tle = ds_tree_ifirst(&iter, &tflow->tags);
-            if (!om_template_apply_tag(ADD, tflow, tle, &iter, &tdata, 0)) {
+            if (!om_template_apply_tag(OM_ACTION_ADD, tflow, tle, &iter, &tdata, 0)) {
                 ret = false; // still continue
             }
         }

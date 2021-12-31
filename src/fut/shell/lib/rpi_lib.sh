@@ -47,7 +47,7 @@ iptables_chain="FORWARD"
 # DESCRIPTION:
 #   Function checks if package is installed.
 # INPUT PARAMETER(S):
-#   $1  package to be checked
+#   $1  package to be checked (string, required)
 # RETURNS:
 #   Last exit code.
 # USAGE EXAMPLE(S):
@@ -55,7 +55,6 @@ iptables_chain="FORWARD"
 ###############################################################################
 dpkg_is_package_installed()
 {
-    local fn_name="rpi_lib:dpkg_is_package_installed"
     package=$1
     dpkg -l | grep -w "${package}" | grep -E -q ^ii
     return $?
@@ -67,9 +66,9 @@ dpkg_is_package_installed()
 #   Uses haproxy package.
 #   Raises exception:
 #       - if package is not installed,
-#       - haproxy file is not present,
-#       - certificate files are not present,
-#       - haproxy did not start.
+#       - if haproxy file is not present,
+#       - if certificate files are not present,
+#       - if haproxy did not start.
 # INPUT PARAMETER(S):
 #   None.
 # RETURNS:
@@ -79,29 +78,28 @@ dpkg_is_package_installed()
 ###############################################################################
 start_cloud_simulation()
 {
-    local fn_name="rpi_lib:start_cloud_simulation"
     local cert_dir="/etc/haproxy/certs/fut/"
-    log "$fn_name - Check if haproxy package is installed"
+    log -deb "rpi_lib:start_cloud_simulation - Check if haproxy package is installed"
     dpkg_is_package_installed "haproxy" ||
-        raise "FAIL: haproxy not installed" -l "$fn_name" -ds
+        raise "FAIL: haproxy not installed" -l "rpi_lib:start_cloud_simulation" -ds
 
-    log "$fn_name - Creating cert dir: ${cert_dir}"
+    log -deb "rpi_lib:start_cloud_simulation - Creating cert dir: ${cert_dir}"
     sudo mkdir -p "${cert_dir}" ||
-        raise "FAIL: Could not create cert dir!" -l "$fn_name" -ds
-    log "$fn_name - Copy haproxy configuration file and certificates"
+        raise "FAIL: Could not create cert dir!" -l "rpi_lib:start_cloud_simulation" -ds
+    log -deb "rpi_lib:start_cloud_simulation - Copy haproxy configuration file and certificates"
     sudo cp "${FUT_TOPDIR}/shell/tools/server/files"/haproxy.cfg /etc/haproxy/haproxy.cfg ||
-        raise "FAIL: Config file not present!" -l "$fn_name" -ds
+        raise "FAIL: Config file not present!" -l "rpi_lib:start_cloud_simulation" -ds
     sudo cp "${FUT_TOPDIR}/shell/tools/server/files"/{fut_controller.pem,plume_ca_chain.pem} "${cert_dir}" ||
-        raise "FAIL: Certificates not present!" -l "$fn_name" -ds
+        raise "FAIL: Certificates not present!" -l "rpi_lib:start_cloud_simulation" -ds
 
-    log "$fn_name - Restart haproxy service"
+    log -deb "rpi_lib:start_cloud_simulation - Restart haproxy service"
     sudo service haproxy restart ||
-        raise "FAIL: haproxy not started" -l "$fn_name" -ds
-    log "$fn_name - haproxy service running"
+        raise "FAIL: haproxy not started" -l "rpi_lib:start_cloud_simulation" -ds
+    log -deb "rpi_lib:start_cloud_simulation - haproxy service running"
 
-    log "$fn_name - Starting Cloud listener - logging path /tmp/cloud_listener.log"
+    log -deb "rpi_lib:start_cloud_simulation - Starting Cloud listener - logging path /tmp/cloud_listener.log"
     "${FUT_TOPDIR}"/framework/tools/cloud_listener.py -v > /dev/null 2>&1 &
-    log "$fn_name - Cloud listener started" && exit 0
+    log -deb "rpi_lib:start_cloud_simulation - Cloud listener started" && exit 0
 }
 
 ###############################################################################
@@ -118,16 +116,15 @@ start_cloud_simulation()
 ###############################################################################
 stop_cloud_simulation()
 {
-    fn_name="rpi_lib:stop_cloud_simulation"
-    log "$fn_name - Stop haproxy service"
+    log "rpi_lib:stop_cloud_simulation - Stop haproxy service"
 
     sudo service haproxy stop
     sudo systemctl is-active --quiet haproxy &&
-        raise "FAIL: haproxy not stopped" -l "$fn_name" -ds
-    log "$fn_name - haproxy service stopped"
-    log "$fn_name - Stop Cloud listener"
+        raise "FAIL: haproxy not stopped" -l "rpi_lib:stop_cloud_simulation" -ds
+    log -deb "rpi_lib:stop_cloud_simulation - haproxy service stopped"
+    log -deb "rpi_lib:stop_cloud_simulation - Stop Cloud listener"
     kill $(pgrep cloud_listener) > /dev/null 2>&1 &
-    log "$fn_name - Cloud listener stopped"
+    log -deb "rpi_lib:stop_cloud_simulation - Cloud listener stopped"
 }
 
 ###############################################################################
@@ -136,9 +133,9 @@ stop_cloud_simulation()
 #   Uses haproxy package.
 #   Raises exception:
 #       - if package is not installed,
-#       - mosquitto file is not present,
-#       - certificate files are not present,
-#       - mosquitto did not start.
+#       - if mosquitto file is not present,
+#       - if certificate files are not present,
+#       - if mosquitto did not start.
 # INPUT PARAMETER(S):
 #   None.
 # RETURNS:
@@ -148,22 +145,22 @@ stop_cloud_simulation()
 ###############################################################################
 start_fut_mqtt()
 {
-    local fn_name="rpi_lib:start_fut_mqtt"
     local cert_dir="/etc/mosquitto/certs/fut/"
     local mqtt_conf_file="${FUT_TOPDIR}/shell/tools/server/files/fut_mqtt.conf"
 
-    log "$fn_name - Creating cert dir: ${cert_dir}"
+    log -deb "rpi_lib:start_fut_mqtt - Creating cert dir: ${cert_dir}"
     sudo mkdir -p "${cert_dir}" ||
-        raise "Failed to create cert dir!" -l "$fn_name" -ds
+        raise "FAIL: Failed to create cert dir!" -l "rpi_lib:start_fut_mqtt" -ds
 
-    log "Copy mosquitto certificates"
+    log -deb "rpi_lib:start_fut_mqtt - Copy mosquitto certificates"
     sudo cp "${FUT_TOPDIR}/shell/tools/server/files"/{fut_controller.pem,plume_ca_chain.pem} "${cert_dir}" ||
-        raise "Certificates not present!" -l "$fn_name" -ds
+        raise "FAIL: Certificates not present!" -l "rpi_lib:start_fut_mqtt" -ds
 
-    log "Start mosquitto service"
+    log -deb "rpi_lib:start_fut_mqtt - Start mosquitto service"
     /usr/sbin/mosquitto -c "${mqtt_conf_file}" -d ||
-        raise "mosquitto not started" -l "$fn_name" -ds
-    log "mosquitto service running"
+        raise "FAIL: mosquitto not started" -l "rpi_lib:start_fut_mqtt" -ds
+
+    log -deb "rpi_lib:start_fut_mqtt - mosquitto service running"
 }
 
 ###############################################################################
@@ -180,12 +177,32 @@ start_fut_mqtt()
 ###############################################################################
 stop_fut_mqtt()
 {
-    fn_name="rpi_lib:stop_fut_mqtt"
-    log "${fn_name} - Stopping MQTT daemon"
+    log -deb "rpi_lib:stop_fut_mqtt - Stopping MQTT daemon"
     # shellcheck disable=SC2046
     sudo kill $(pgrep mosquitto) &&
-        log "mosquitto service stopped" ||
-        log "mosquitto service not running"
+        log -deb "rpi_lib:stop_fut_mqtt - mosquitto service stopped" ||
+        log -deb "rpi_lib:stop_fut_mqtt - mosquitto service not running"
+}
+
+###############################################################################
+# DESCRIPTION:
+#   Function prints all the details of certificate in PEM format.
+# INPUT PARAMETER(S):
+#   $1 certificate file (string, required)
+# RETURNS:
+#   See DESCRIPTION.
+# USAGE EXAMPLE(S):
+#   print_certificate_details "cert.pem"
+###############################################################################
+print_certificate_details()
+{
+    local NARGS=1
+    [ $# -ne ${NARGS} ] &&
+        raise "rpi_lib:print_certificate_details requires ${NARGS} input argument(s), $# given" -arg
+    cert_file=$1
+
+    log "rpi_lib: print_certificate_details - Printing details of certificate: $cert_file"
+    openssl x509 -in $cert_file -noout -text
 }
 ####################### UTILITY SECTION - STOP ################################
 
@@ -203,10 +220,9 @@ stop_fut_mqtt()
 ###############################################################################
 um_encrypt_image()
 {
-    fn_name="rpi_lib:um_encrypt_image"
     local NARGS=2
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "rpi_lib:um_encrypt_image requires ${NARGS} input argument(s), $# given" -arg
     um_fw_unc_path=$1
     um_fw_key_path=$2
     um_fw_name=${um_fw_unc_path##*/}
@@ -216,10 +232,10 @@ um_encrypt_image()
 
     [ -f "$um_fw_enc_path" ] && rm "$um_fw_enc_path"
 
-    log "Encypring image $um_fw_path with key $um_fw_key_path"
+    log "rpi_lib:um_encrypt_image - Encypring image $um_fw_path with key $um_fw_key_path"
     openssl enc -aes-256-cbc -pass pass:"$(cat "$um_fw_key_path")" -md sha256 -nosalt -in "$um_fw_unc_path" -out "$um_fw_enc_path" &&
-        log "Image encrypted" ||
-        raise "Failed to encrypt image" -l "$fn_name" -ds
+        log -deb "rpi_lib:um_encrypt_image - Image encrypted - Success" ||
+        raise "FAIL: Failed to encrypt image" -l "rpi_lib:um_encrypt_image" -ds
 }
 
 ###############################################################################
@@ -230,19 +246,18 @@ um_encrypt_image()
 ###############################################################################
 um_create_md5_file()
 {
-    fn_name="rpi_lib:um_create_md5_file"
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "rpi_lib:um_create_md5_file requires ${NARGS} input argument(s), $# given" -arg
     um_file_path=$1
 
     um_fw_name=${um_file_path##*/}
     um_file_cd_path=${um_file_path//"$um_fw_name"/""}
 
-    log "Creating md5 sum file of file $um_file_path"
+    log "rpi_lib:um_create_md5_file - Creating md5 sum file of file $um_file_path"
     cd "$um_file_cd_path" && md5sum "$um_fw_name" > "$um_fw_name.md5" &&
-        log "$fn_name - md5 sum file created" ||
-        raise "FAIL: Could not create md5 sum file" -l "$fn_name" -ds
+        log -deb "rpi_lib:um_create_md5_file - md5 sum file created - Success" ||
+        raise "FAIL: Could not create md5 sum file" -l "rpi_lib:um_create_md5_file" -ds
 }
 
 ###############################################################################
@@ -253,10 +268,9 @@ um_create_md5_file()
 ###############################################################################
 um_create_corrupt_md5_file()
 {
-    fn_name="rpi_lib:um_create_corrupt_md5_file"
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "rpi_lib:um_create_corrupt_md5_file requires ${NARGS} input argument(s), $# given" -arg
     um_file_path=$1
 
     um_fw_name=${um_file_path##*/}
@@ -264,10 +278,10 @@ um_create_corrupt_md5_file()
     um_md5_name="$um_file_cd_path/${um_fw_name}.md5"
     um_hash_only="$(cd "$um_file_cd_path" && md5sum "$um_fw_name" | cut -d' ' -f1)"
 
-    log "$fn_name - Creating $um_file_path.md5"
+    log "rpi_lib:um_create_corrupt_md5_file - Creating $um_file_path.md5"
     echo "${um_hash_only:16:16}${um_hash_only:0:16}  ${um_fw_name}" > "$um_md5_name" &&
-        log "$fn_name - Created $um_md5_name" ||
-        raise "FAIL: Could not create $um_md5_name" -l "$fn_name" -ds
+        log -deb "rpi_lib:um_create_corrupt_md5_file - Created '$um_md5_name' - Success" ||
+        raise "FAIL: Could not create '$um_md5_name'" -l "rpi_lib:um_create_corrupt_md5_file" -ds
 }
 
 ###############################################################################
@@ -278,27 +292,27 @@ um_create_corrupt_md5_file()
 ###############################################################################
 um_create_corrupt_image()
 {
-    fn_name="rpi_lib:um_create_corrupt_image"
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "rpi_lib:um_create_corrupt_image requires ${NARGS} input argument(s), $# given" -arg
     um_fw_path=$1
 
     um_fw_name=${um_fw_path##*/}
     um_file_cd_path=${um_fw_path//"$um_fw_name"/""}
     um_corrupt_fw_path="$um_file_cd_path/corrupt_${um_fw_name}"
+    # shellcheck disable=SC2034
     um_corrupt_size=$(("$(stat --printf="%s" "$um_fw_path")" - "1"))
 
     [ -f "$um_corrupt_fw_path" ] && rm "$um_corrupt_fw_path"
 
-    log "$fn_name - Corrupting image $um_fw_path"
+    log "rpi_lib:um_create_corrupt_image - Corrupting image '$um_fw_path'"
     cp "$um_fw_path" "$um_corrupt_fw_path" &&
-        log "$fn_name - Image copied Step #1" ||
-        raise "FAIL: Could not copy image Step #1" -l "$fn_name" -ds
+        log -deb "rpi_lib:um_create_corrupt_image - Image copied Step #1" ||
+        raise "FAIL: Could not copy image Step #1" -l "rpi_lib:um_create_corrupt_image" -ds
 
     dd if=/dev/urandom of="$um_corrupt_fw_path" bs=1 count=100 seek=1000 conv=notrunc &&
-        log "$fn_name - Image corrupted Step #2" ||
-        raise "FAIL: Could not corrupt image Step #2" -l "$fn_name" -ds
+        log -deb "rpi_lib:um_create_corrupt_image - Image corrupted Step #2" ||
+        raise "FAIL: Could not corrupt image Step #2" -l "rpi_lib:um_create_corrupt_image" -ds
 }
 
 ####################### FW IMAGE SECTION - STOP ###############################
@@ -311,9 +325,9 @@ um_create_corrupt_image()
 #   DROP rule. Traffic can be blocked or unblocked.
 #   Dies if cannot manipulate traffic.
 # INPUT PARAMETER(S):
-#   $1  ip address to block or unblock (required)
-#   $2  type of rule to add, supported block, unblock (required)
-#   $3  sudo command (defaults to sudo) (optional)
+#   $1  ip address to block or unblock (string, required)
+#   $2  type of rule to add, supported block, unblock (string, required)
+#   $3  sudo command (defaults to sudo) (string, optional)
 # RETURNS:
 #   0   On success.
 #   See DESCRIPTION.
@@ -323,11 +337,10 @@ um_create_corrupt_image()
 ###############################################################################
 address_internet_manipulation()
 {
-    local fn_name="rpi_lib:address_internet_manipulation"
     NARGS_MIN=2
     NARGS_MAX=3
     [ $# -ge ${NARGS_MIN} ] && [ $# -le ${NARGS_MAX} ] ||
-        raise "${fn_name} requires ${NARGS_MIN}-${NARGS_MAX} input arguments, $# given" -arg
+        raise "rpi_lib:address_internet_manipulation requires ${NARGS_MIN}-${NARGS_MAX} input arguments, $# given" -arg
     local ip_address=${1}
     local type=${2}
     local sudo_cmd=${3:-"sudo"}
@@ -336,12 +349,52 @@ address_internet_manipulation()
     [[ $type == "block" ]] && type_arg="-I" || type_arg="-D"
     [[ $type == "block" ]] && type_ec=0 || type_ec=1
 
-    log -deb "$fn_name - Manipulating internet for ip address $ip_address"
+    log "rpi_lib:address_internet_manipulation - Manipulating internet for ip address '$ip_address'"
     address_internet_check "$ip_address" "$type"
 
     wait_for_function_response "$type_ec" "${sudo_cmd} ${iptables_cmd} $type_arg FORWARD -s $ip_address -o eth0 -j DROP" &&
-        log -deb "$fn_name - Internet ${type}ed for address $ip_address" ||
-        raise "FAIL: Could not $type internet for address $ip_address" -l "$fn_name" -ds
+        log -deb "rpi_lib:address_internet_manipulation - Internet ${type}ed for address '$ip_address' - Success" ||
+        raise "FAIL: Could not $type internet for address '$ip_address'" -l "rpi_lib:address_internet_manipulation" -ds
+
+    return 0
+}
+
+###############################################################################
+# DESCRIPTION:
+#   Function manipulates (blocks/unblocks) the traffic for the
+#   cloud controller IP.
+# INPUT PARAMETER(S):
+#   $1  ip address to be blocked or unblocked (string, required)
+#   $2  type of manipulation, supported block, unblock (string, required)
+#   $3  sudo command (defaults to sudo) (string, optional)
+# RETURNS:
+#   0   Traffic blocked or unblocked.
+#   1   Traffic manipulation failed.
+# USAGE EXAMPLE(S):
+#   manipulate_cloud_controller_traffic 12.34.45.56 block
+###############################################################################
+manipulate_cloud_controller_traffic()
+{
+    NARGS_MIN=2
+    NARGS_MAX=3
+    [ $# -ge ${NARGS_MIN} ] && [ $# -le ${NARGS_MAX} ] ||
+        raise "rpi_lib:manipulate_cloud_controller_traffic requires ${NARGS_MIN}-${NARGS_MAX} input arguments, $# given" -arg
+    local ip_address=${1}
+    local type=${2}
+    local sudo_cmd=${3:-"sudo"}
+
+    # Select command and exit code according to options.
+    [[ $type == "block" ]] && type_arg="-I" || type_arg="-D"
+    [[ $type == "block" ]] && type_ec=0 || type_ec=1
+
+    log "rpi_lib:manipulate_cloud_controller_traffic - Manipulating traffic for ip address $ip_address"
+
+    wait_for_function_response "$type_ec" "${sudo_cmd} ${iptables_cmd} $type_arg FORWARD -s $ip_address -i eth0 -j DROP" &&
+    wait_for_function_response "$type_ec" "${sudo_cmd} ${iptables_cmd} $type_arg FORWARD -d $ip_address -i eth0 -j DROP" &&
+    wait_for_function_response "$type_ec" "${sudo_cmd} ${iptables_cmd} $type_arg INPUT -s $ip_address -i eth0 -j DROP" &&
+    wait_for_function_response "$type_ec" "${sudo_cmd} ${iptables_cmd} $type_arg OUTPUT -d $ip_address -j DROP" &&
+        log -deb "rpi_lib:manipulate_cloud_controller_traffic - Traffic ${type}ed for address '$ip_address' - Success" ||
+        raise "FAIL: Could not $type traffic for address '$ip_address'" -l "rpi_lib:manipulate_cloud_controller_traffic" -ds
 
     return 0
 }
@@ -352,9 +405,9 @@ address_internet_manipulation()
 #   for source IP.
 #   Raises exception if internet access is already blocked or unblocked.
 # INPUT PARAMETER(S):
-#   $1  ip address to be blocked or unblocked (required)
-#   $2  type of manipulation, supported block, unblock (required)
-#   $3  sudo command (defaults to sudo) (optional)
+#   $1  ip address to be blocked or unblocked (string, required)
+#   $2  type of manipulation, supported block, unblock (string, required)
+#   $3  sudo command (string, optional, defaults to sudo)
 # RETURNS:
 #   0   Traffic already blocked or unblocked.
 #   1   Traffic not yet manipulated.
@@ -363,11 +416,10 @@ address_internet_manipulation()
 ###############################################################################
 address_internet_check()
 {
-    local fn_name="rpi_lib:address_internet_check"
     NARGS_MIN=2
     NARGS_MAX=3
     [ $# -ge ${NARGS_MIN} ] && [ $# -le ${NARGS_MAX} ] ||
-        raise "${fn_name} requires ${NARGS_MIN}-${NARGS_MAX} input arguments, $# given" -arg
+        raise "rpi_lib:address_internet_check requires ${NARGS_MIN}-${NARGS_MAX} input arguments, $# given" -arg
     local ip_address=${1}
     local type=${2}
     local sudo_cmd=${3:-"sudo"}
@@ -380,7 +432,7 @@ address_internet_check()
 
     check_ec=$(${sudo_cmd} ${iptables_cmd} -C FORWARD -s "$ip_address" -o eth0 -j DROP)
     if [ "$?" -eq "$exit_code" ]; then
-        raise "FAIL: Internet already ${type}ed for address $ip_address" -l "$fn_name" -ec 0 -ds
+        raise "FAIL: Internet already ${type}ed for address '$ip_address'" -l "rpi_lib:address_internet_check" -ec 0 -ds
     else
         return 1
     fi
@@ -392,10 +444,10 @@ address_internet_check()
 #   DROP rule. Traffic can be blocked or unblocked on that specific port.
 #   Dies if cannot manipulate traffic.
 # INPUT PARAMETER(S):
-#   $1  ip address of device on which port number needs to be blocked (required)
-#   $2  port number to manipulate (required)
-#   $3  action, supported block, unblock (required)
-#   $4  sudo command (defaults to sudo) (optional)
+#   $1  IP address of device on which port number needs to be blocked (string, required)
+#   $2  Port number to manipulate (string, required)
+#   $3  Action, supported block, unblock (string, required)
+#   $4  sudo command (string, optional, defaults to sudo)
 # RETURNS:
 #   0   On success.
 #   See DESCRIPTION.
@@ -405,23 +457,21 @@ address_internet_check()
 ###############################################################################
 port_number_manipulation()
 {
-    local fn_name="rpi_lib:port_number_manipulation"
     NARGS_MIN=3
     NARGS_MAX=4
     [ $# -ge ${NARGS_MIN} ] && [ $# -le ${NARGS_MAX} ] ||
-        raise "${fn_name} requires ${NARGS_MIN}-${NARGS_MAX} input arguments, $# given" -arg
+        raise "rpi_lib:address_internet_check requires ${NARGS_MIN}-${NARGS_MAX} input arguments, $# given" -arg
     local ip_address=${1}
     local port_num=${2}
     local action=${3}
     local sudo_cmd=${4:-"sudo"}
 
-
     [ $action == "block" ] && type_arg="-I" || type_arg="-D"
     [ $action == "block" ] && type_ec=0 || type_ec=1
 
     wait_for_function_response "$type_ec" "${sudo_cmd} ${iptables_cmd} $type_arg FORWARD -p tcp -d ${ip_address} --sport ${port_num} -j DROP" &&
-        log -deb "$fn_name - Port number $port_num ${action}ed on IP ${ip_address} successfully" ||
-        raise "FAIL: Could not ${action} port number $port_num" -l "$fn_name" -tc
+        log -deb "rpi_lib:address_internet_check - Port number '$port_num' ${action}ed on IP '${ip_address}' - Success" ||
+        raise "FAIL: Could not ${action} port number '$port_num'" -l "rpi_lib:port_number_manipulation" -tc
 
     return 0
 }
@@ -430,12 +480,12 @@ port_number_manipulation()
 # DESCRIPTION:
 #   Function manipulates DNS traffic for source IP by adding or removing
 #   DROP rule. Traffic can be blocked or unblocked.
-#   Raises exception if there are not enough arguments, invalid arguments,
+#   Raises exception if there are not enough arguments, invalid arguments or
 #   traffic cannot be manipulated.
 # INPUT PARAMETER(S):
-#   $1  ip address to block or unblock (required)
-#   $2  type of rule to add, supported block, unblock (required)
-#   $3  sudo command (defaults to sudo) (optional)
+#   $1  ip address to block or unblock (string, required)
+#   $2  type of rule to add, supported block, unblock (string, required)
+#   $3  sudo command (string, optional, defaults to sudo)
 # RETURNS:
 #   0   On success.
 #   See DESCRIPTION
@@ -446,19 +496,19 @@ port_number_manipulation()
 address_dns_manipulation()
 {
     local iptables_chain="INPUT"
-    local fn_name="rpi_lib:address_dns_manipulation"
     NARGS_MIN=2
     NARGS_MAX=3
     [ $# -ge ${NARGS_MIN} ] && [ $# -le ${NARGS_MAX} ] ||
-        raise "${fn_name} requires ${NARGS_MIN}-${NARGS_MAX} input arguments, $# given" -arg
+        raise "rpi_lib:address_dns_manipulation requires ${NARGS_MIN}-${NARGS_MAX} input arguments, $# given" -arg
     local ip_address=${1}
     local type=${2}
     local sudo_cmd=${3:-"sudo"}
     local retry_cnt=3
 
-    [ -z "${1}" ] || [ -z "${2}" ] && raise "Empty input argument(s)" -l "${fn_name}" -arg
+    [ -z "${1}" ] || [ -z "${2}" ] &&
+        raise "Empty input argument(s)" -l "rpi_lib:address_dns_manipulation" -arg
 
-    log -deb "${fn_name} - Manipulate DNS traffic: ${type} ${ip_address}"
+    log -deb "rpi_lib:address_dns_manipulation - Manipulate DNS traffic: ${type} ${ip_address}"
 
     local iptables_args_udp="${iptables_chain} -p udp -s ${ip_address} --dport 53 -j DROP"
     local iptables_args_udp_ssl="${iptables_chain} -p udp -s ${ip_address} --dport 853 -j DROP"
@@ -472,10 +522,11 @@ address_dns_manipulation()
     elif [ "${type}" == "unblock" ]; then
         local action_type='-D'
         # Waiting exit code 1 for unblock in case there is more than one rules of block in iptables
-        # It will delete all the rules, iptables will return exit code 1 in case non existing rule tries to be deleted
+        # It will delete all the rules,
+        # iptables will return exit code 1 in case non existing rule tries to be deleted
         local wait_exit_code=1
     else
-        raise "FAIL: Invalid input argument type, given: ${type}, supported: block, unblock" -l "${fn_name}" -arg
+        raise "FAIL: Invalid input argument type, given: ${type}, supported: block, unblock" -l "rpi_lib:address_dns_manipulation" -arg
     fi
 
     local cmd_udp="${sudo_cmd} ${iptables_cmd} ${action_type} ${iptables_args_udp}"
@@ -484,29 +535,29 @@ address_dns_manipulation()
     local cmd_tcp_ssl="${sudo_cmd} ${iptables_cmd} ${action_type} ${iptables_args_tcp_ssl}"
 
     wait_for_function_exit_code "${wait_exit_code}" "${cmd_udp}" "${retry_cnt}" &&
-        log -deb "${fn_name} - DNS traffic ${type}ed for ${ip_address}" ||
-        raise "FAIL: Could not ${type} DNS traffic for ${ip_address}" -l "${fn_name}" -ds
+        log -deb "rpi_lib:address_dns_manipulation - DNS traffic ${type}ed for '${ip_address}'" ||
+        raise "FAIL: Could not ${type} DNS traffic for '${ip_address}'" -l "rpi_lib:address_dns_manipulation" -ds
     wait_for_function_exit_code "${wait_exit_code}" "${cmd_tcp}" "${retry_cnt}" &&
-        log -deb "${fn_name} - DNS traffic ${type}ed for ${ip_address}" ||
-        raise "FAIL: Could not ${type} DNS traffic for ${ip_address}" -l "${fn_name}" -ds
+        log -deb "rpi_lib:address_dns_manipulation - DNS traffic ${type}ed for '${ip_address}'" ||
+        raise "FAIL: Could not ${type} DNS traffic for '${ip_address}'" -l "rpi_lib:address_dns_manipulation" -ds
     wait_for_function_exit_code "${wait_exit_code}" "${cmd_udp_ssl}" "${retry_cnt}" &&
-        log -deb "${fn_name} - DNS traffic ${type}ed for ${ip_address}" ||
-        raise "FAIL: Could not ${type} DNS traffic for ${ip_address}" -l "${fn_name}" -ds
+        log -deb "rpi_lib:address_dns_manipulation - DNS traffic ${type}ed for '${ip_address}'" ||
+        raise "FAIL: Could not ${type} DNS traffic for '${ip_address}'" -l "rpi_lib:address_dns_manipulation" -ds
     wait_for_function_exit_code "${wait_exit_code}" "${cmd_tcp_ssl}" "${retry_cnt}" &&
-        log -deb "${fn_name} - DNS traffic ${type}ed for ${ip_address}" ||
-        raise "FAIL: Could not ${type} DNS traffic for ${ip_address}" -l "${fn_name}" -ds
+        log -deb "rpi_lib:address_dns_manipulation - DNS traffic ${type}ed for '${ip_address}'" ||
+        raise "FAIL: Could not ${type} DNS traffic for '${ip_address}'" -l "rpi_lib:address_dns_manipulation" -ds
     address_dns_check "${ip_address}" "${type}" &&
-        log -deb "${fn_name} - Command ${cmd_udp} success" ||
-        raise "FAIL: Command manipulating iptables incorrectly reported success, check system" -l "${fn_name}" -ds
+        log -deb "rpi_lib:address_dns_manipulation - Command '${cmd_udp}' success" ||
+        raise "FAIL: Command manipulating iptables incorrectly reported success, check system" -l "rpi_lib:address_dns_manipulation" -ds
 }
 
 ###############################################################################
 # DESCRIPTION:
 #   Function checks if traffic is already blocked or unblocked for source IP.
 # INPUT PARAMETER(S):
-#   $1  ip address to be blocked or unblocked (required)
-#   $2  type of rule to add, supported block, unblock (required)
-#   $3  sudo command (defaults to sudo) (optional)
+#   $1  IP address to be blocked or unblocked (string, required)
+#   $2  type of rule to add, supported block, unblock (string, required)
+#   $3  sudo command (string, optional, defaults to sudo)
 # RETURNS:
 #   0   Traffic already blocked or unblocked.
 #   1   Traffic not yet manipulated.
@@ -515,11 +566,10 @@ address_dns_manipulation()
 ###############################################################################
 address_dns_check()
 {
-    fn_name="rpi_lib:address_dns_check"
     NARGS_MIN=2
     NARGS_MAX=3
     [ $# -ge ${NARGS_MIN} ] && [ $# -le ${NARGS_MAX} ] ||
-        raise "${fn_name} requires ${NARGS_MIN}-${NARGS_MAX} input arguments, $# given" -arg
+        raise "rpi_lib:address_dns_check requires ${NARGS_MIN}-${NARGS_MAX} input arguments, $# given" -arg
     local iptables_chain="INPUT"
     local ip_address=${1}
     local type=${2}
@@ -534,7 +584,7 @@ address_dns_check()
     # shellcheck disable=SC2034
     check_ec=$(${sudo_cmd} ${iptables_cmd} -C ${iptables_chain} -p udp -s "$ip_address" --dport 53 -j DROP)
     if [ "$?" -eq "$exit_code" ]; then
-        log -deb "$fn_name - DNS traffic already ${type}ed for address $ip_address"
+        log -deb "rpi_lib:address_dns_check - DNS traffic already ${type}ed for address '$ip_address'"
         return 0
     else
         return 1

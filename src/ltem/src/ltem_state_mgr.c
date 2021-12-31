@@ -104,7 +104,12 @@ ltem_handle_wan_state_change(ltem_mgr_t *mgr)
     case LTEM_WAN_STATE_UNKNOWN:
         break;
     case LTEM_WAN_STATE_DOWN:
-        if (mgr->lte_state == LTEM_LTE_STATE_UP && (mgr->lte_config_info->lte_failover_enable || mgr->lte_config_info->force_use_lte))
+        if (!mgr || !mgr->lte_config_info || !mgr->lte_config_info->manager_enable)
+        {
+            LOGI("%s: %s, manager_enable=false", __func__, ltem_get_wan_state_name(mgr->wan_state));
+            break;
+        }
+        if (mgr->lte_state == LTEM_LTE_STATE_UP && (mgr->lte_config_info->lte_failover_enable && mgr->lte_config_info->force_use_lte))
         {
             res = ltem_force_lte_route(mgr);
             mgr->lte_state_info->lte_failover_active = true;
@@ -136,6 +141,8 @@ ltem_set_wan_state(enum ltem_wan_state wan_state) {
 
     mgr = ltem_get_mgr();
 
+    if (!mgr || !mgr->lte_config_info || !mgr->lte_config_info->manager_enable) return;
+
     if (mgr->wan_state == wan_state)
     {
         LOGI("Same wan_state %s", ltem_get_wan_state_name(wan_state));
@@ -166,8 +173,16 @@ ltem_handle_lte_state_change(ltem_mgr_t *mgr)
         res = ltem_ovsdb_cmu_insert_lte(mgr);
         if (res)
         {
-            LOGI("%s: ltem_ovsdb_cmu_create_lte: failed", __func__);
+            LOGI("%s: ltem_ovsdb_cmu_create_lte: failed, res[%d]", __func__, res);
             ltem_set_lte_state(LTEM_LTE_STATE_DOWN);
+        }
+        else
+        {
+            res = ltem_set_lte_route_metric(mgr);
+            if (res)
+            {
+                LOGI("%s: ltem_set_lte_route_metric: failed, res[%d]", __func__, res);
+            }
         }
         break;
     case LTEM_LTE_STATE_DOWN:
@@ -195,7 +210,7 @@ ltem_set_lte_state(enum ltem_lte_state lte_state) {
 
     if (mgr->lte_state == lte_state)
     {
-        LOGI("Same lte_state %s", ltem_get_lte_state_name(lte_state));
+        LOGD("Same lte_state %s", ltem_get_lte_state_name(lte_state));
         return;
     }
     else

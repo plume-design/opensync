@@ -33,12 +33,11 @@ source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="nm2/$(basename "$0")"
 manager_setup_file="nm2/nm2_setup.sh"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+nm2/nm2_set_nat.sh [-h] arguments
 Description:
     - Script configures interfaces NAT through Wifi_inet_Config 'NAT' field and checks if it is propagated
       into Wifi_Inet_State table and to the system, fails otherwise
@@ -49,9 +48,9 @@ Arguments:
     \$3 (NAT)     : used as NAT in Wifi_Inet_Config table     : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name}
+                 Run: ./nm2/nm2_set_nat.sh
 Script usage example:
-   ./${tc_name} eth0 eth true
+   ./nm2/nm2_set_nat.sh eth0 eth true
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -66,7 +65,7 @@ if [ -n "${1}" ]; then
     esac
 fi
 NARGS=3
-[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "nm2/nm2_set_nat.sh" -arg
 # Fill variables with provided arguments or defaults.
 if_name=$1
 if_type=$2
@@ -75,50 +74,62 @@ NAT=$3
 trap '
     fut_info_dump_line
     print_tables Wifi_Inet_Config Wifi_Inet_State
-    fut_info_dump_line
     reset_inet_entry $if_name || true
-    run_setup_if_crashed nm || true
     check_restore_management_access || true
+    fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 
-log_title "$tc_name: NM2 test - Testing table Wifi_Inet_Config field NAT - $NAT"
+log_title "nm2/nm2_set_nat.sh: NM2 test - Testing table Wifi_Inet_Config field NAT - $NAT"
 
-log "$tc_name: Creating Wifi_Inet_Config entry for $if_name (enabled=true, network=true, ip_assign_scheme=static)"
-create_inet_entry \
-    -if_name "$if_name" \
-    -enabled true \
-    -network true \
-    -ip_assign_scheme static \
-    -if_type "$if_type" &&
-        log "$tc_name: Interface $if_name created - Success" ||
-        raise "FAIL: Failed to create $if_name interface" -l "$tc_name" -ds
+log "nm2/nm2_set_nat.sh: Creating Wifi_Inet_Config entry for $if_name (enabled=true, network=true, ip_assign_scheme=static)"
+if [ "${if_type}" == "vif" ]; then
+    create_inet_entry \
+        -if_name "$if_name" \
+        -enabled true \
+        -network true \
+        -ip_assign_scheme static \
+        -if_type "$if_type" \
+        -inet_addr "10.10.10.30" \
+        -netmask "255.255.255.0" &&
+            log "nm2/nm2_set_nat.sh: Interface $if_name created - Success" ||
+            raise "FAIL: Failed to create $if_name interface" -l "nm2/nm2_set_nat.sh" -ds
+else
+    create_inet_entry \
+        -if_name "$if_name" \
+        -enabled true \
+        -network true \
+        -ip_assign_scheme static \
+        -if_type "$if_type" &&
+            log "nm2/nm2_set_nat.sh: Interface $if_name created - Success" ||
+            raise "FAIL: Failed to create $if_name interface" -l "nm2/nm2_set_nat.sh" -ds
+fi
 
-log "$tc_name: Setting NAT for interface $if_name to $NAT"
+log "nm2/nm2_set_nat.sh: Setting NAT for interface $if_name to $NAT"
 update_ovsdb_entry Wifi_Inet_Config -w if_name "$if_name" -u NAT "$NAT" &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config::NAT is $NAT - Success" ||
-    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config::NAT is not $NAT" -l "$tc_name" -oe
+    log "nm2/nm2_set_nat.sh: update_ovsdb_entry - Wifi_Inet_Config::NAT is $NAT - Success" ||
+    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config::NAT is not $NAT" -l "nm2/nm2_set_nat.sh" -oe
 
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is NAT "$NAT" &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::NAT is $NAT - Success" ||
-    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::NAT is not $NAT" -l "$tc_name" -tc
+    log "nm2/nm2_set_nat.sh: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::NAT is $NAT - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::NAT is not $NAT" -l "nm2/nm2_set_nat.sh" -tc
 
-log "$tc_name: Checking state of NAT for $if_name (must be ON) - LEVEL2"
+log "nm2/nm2_set_nat.sh: Checking state of NAT for $if_name (must be ON) - LEVEL2"
 wait_for_function_response 0 "check_interface_nat_enabled $if_name" &&
-    log "$tc_name: LEVEL2 - NAT applied to iptables for interface $if_name - Success" ||
-    raise "FAIL: LEVEL2 - Failed to apply NAT to iptables for interface $if_name" -l "$tc_name" -tc
+    log "nm2/nm2_set_nat.sh: LEVEL2 - NAT applied to iptables for interface $if_name - Success" ||
+    raise "FAIL: LEVEL2 - Failed to apply NAT to iptables for interface $if_name" -l "nm2/nm2_set_nat.sh" -tc
 
-log "$tc_name: Disabling NAT for $if_name"
+log "nm2/nm2_set_nat.sh: Disabling NAT for $if_name"
 update_ovsdb_entry Wifi_Inet_Config -w if_name "$if_name" -u NAT false &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config table::NAT is 'false' - Success" ||
-    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config::NAT is not 'false'" -l "$tc_name" -oe
+    log "nm2/nm2_set_nat.sh: update_ovsdb_entry - Wifi_Inet_Config table::NAT is 'false' - Success" ||
+    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config::NAT is not 'false'" -l "nm2/nm2_set_nat.sh" -oe
 
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is NAT false &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::NAT is 'false' - Success" ||
-    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::NAT is not 'false'" -l "$tc_name" -tc
+    log "nm2/nm2_set_nat.sh: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::NAT is 'false' - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::NAT is not 'false'" -l "nm2/nm2_set_nat.sh" -tc
 
-log "$tc_name: Checking state of NAT for $if_name (must be OFF) - LEVEL2"
+log "nm2/nm2_set_nat.sh: Checking state of NAT for $if_name (must be OFF) - LEVEL2"
 wait_for_function_response 1 "check_interface_nat_enabled $if_name" &&
-    log "$tc_name: LEVEL2 - NAT removed from iptables for interface $if_name - Success" ||
-    raise "FAIL: LEVEL2 - Failed to remove NAT from iptables for interface $if_name" -l "$tc_name" -tc
+    log "nm2/nm2_set_nat.sh: LEVEL2 - NAT removed from iptables for interface $if_name - Success" ||
+    raise "FAIL: LEVEL2 - Failed to remove NAT from iptables for interface $if_name" -l "nm2/nm2_set_nat.sh" -tc
 
 pass

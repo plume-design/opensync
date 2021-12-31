@@ -33,11 +33,9 @@ source "${FUT_TOPDIR}/shell/lib/fsm_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="fsm/$(basename "$0")"
-
 usage() {
     cat << usage_string
-${tc_name} [-h] arguments
+fsm/fsm_configure_fsm_tables.sh [-h] arguments
 Description:
     - Script configures FSM settings to Flow_Service_Manager_Config
 Arguments:
@@ -47,8 +45,8 @@ Arguments:
     \$3 (handler)       : used as handler at fsm tables         : (string)(required)
     \$4 (plugin)        : used as plugin at fsm tables          : (string)(required)
 Script usage example:
-    ./${tc_name} br-home tdns dev_dns /usr/opensync/lib/libfsm_dns.so
-    ./${tc_name} br-home thttp dev_http /usr/opensync/lib/libfsm_http.so
+    ./fsm/fsm_configure_fsm_tables.sh br-home tdns dev_dns /usr/opensync/lib/libfsm_dns.so
+    ./fsm/fsm_configure_fsm_tables.sh br-home thttp dev_http /usr/opensync/lib/libfsm_http.so
 usage_string
 }
 
@@ -82,9 +80,9 @@ plugin=${4}
 # Construct from input arguments
 tap_if="${lan_bridge_if}.${tap_name_postfix}"
 
-log_title "$tc_name: FSM test - Configuring FSM tables required for FSM testing"
+log_title "fsm/fsm_configure_fsm_tables.sh: FSM test - Configuring FSM tables required for FSM testing - $tap_if - $plugin"
 
-log "$tc_name: Cleaning FSM OVSDB Config tables"
+log "fsm/fsm_configure_fsm_tables.sh: Cleaning FSM OVSDB Config tables"
 empty_ovsdb_table Openflow_Config
 empty_ovsdb_table Flow_Service_Manager_Config
 empty_ovsdb_table FSM_Policy
@@ -93,7 +91,12 @@ insert_ovsdb_entry Flow_Service_Manager_Config \
     -i if_name "${tap_if}" \
     -i handler "$handler" \
     -i plugin "$plugin" &&
-        log "$tc_name: Flow_Service_Manager_Config entry added - Success" ||
-        raise "FAIL: insert_ovsdb_entry - Failed to insert Flow_Service_Manager_Config entry" -l "$tc_name" -oe
+        log "fsm/fsm_configure_fsm_tables.sh: Flow_Service_Manager_Config entry added - Success" ||
+        raise "FAIL: insert_ovsdb_entry - Failed to insert Flow_Service_Manager_Config entry" -l "fsm/fsm_configure_fsm_tables.sh" -oe
+
+# Removing entry
+remove_ovsdb_entry Flow_Service_Manager_Config -w if_name "${tap_if}" &&
+    log "fsm/fsm_configure_fsm_tables.sh: remove_ovsdb_entry - Removed entry for ${tap_if} from Flow_Service_Manager_Config - Success" ||
+    raise "FAIL: remove_ovsdb_entry - Failed to remove entry for ${tap_if} from Flow_Service_Manager_Config" -l "fsm/fsm_configure_fsm_tables.sh" -oe
 
 pass

@@ -36,7 +36,6 @@ UNIT_DIR := lib
 UNIT_SRC := src/oms.c
 UNIT_SRC += src/oms_ovsdb.c
 UNIT_SRC += src/oms_report.c
-UNIT_SRC += src/object_manager.pb-c.c
 UNIT_SRC += src/oms_ps.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
@@ -50,3 +49,4 @@ UNIT_DEPS += src/lib/ds
 UNIT_DEPS += src/lib/ovsdb
 UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/osp
+UNIT_DEPS += src/lib/protobuf

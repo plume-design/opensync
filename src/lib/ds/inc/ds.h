@@ -68,7 +68,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * Key compare function; this function should return a negative number
  * if a < b; 0 if a == b or a positive number if a > b
  */
-typedef int ds_key_cmp_t(void *a, void *b);
+typedef int ds_key_cmp_t(const void *a, const void *b);
 
 /** Integer comparator */
 extern ds_key_cmp_t ds_int_cmp;

@@ -27,11 +27,17 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdlib.h>
 #include <string.h>
 
+#include <ev.h>
+
 #include "inet_routes.h"
 #include "osn_inet.h"
 #include "ds_dlist.h"
 #include "log.h"
 #include "memutil.h"
+
+#ifndef INET_ROUTES4_APPLY_DELAY
+#define INET_ROUTES4_APPLY_DELAY 0.25
+#endif
 
 // route element for list collection
 typedef struct route_elem
@@ -45,6 +51,7 @@ struct inet_routes
 {
     osn_route4_cfg_t *osn_rc; // OSN route configurator
     bool enabled;
+    ev_timer apply_timer; // routes apply delay timer
     ds_dlist_t routes;
 };
 
@@ -97,37 +104,6 @@ static route_elem_t* prv_find_route(ds_dlist_t *routes, const osn_route4_t *patt
     return re;
 }
 
-inet_routes_t *inet_routes_new(const char * if_name)
-{
-    osn_route4_cfg_t *rcfg = osn_route4_cfg_new(if_name);
-    if (NULL == rcfg) return NULL;
-
-    inet_routes_t * self = (inet_routes_t *)MALLOC(sizeof(*self));
-
-    self->osn_rc = rcfg;
-    self->enabled = false;
-    ds_dlist_init(&self->routes, route_elem_t, node);
-    return self;
-}
-
-void inet_routes_del(inet_routes_t * self)
-{
-    route_elem_t *re;
-    for (re = ds_dlist_head(&self->routes); re != NULL; )
-    {
-        route_elem_t *re_temp = re;
-        re = ds_dlist_next(&self->routes, re);
-
-        if (self->enabled)
-            prv_route_delete(self, re_temp, true);
-        else
-            prv_route_remove(self, re_temp);
-    }
-
-    osn_route4_cfg_del(self->osn_rc);
-    FREE(self);
-}
-
 bool inet_routes_add(inet_routes_t *self, const osn_route4_t *route)
 {
     if (self->enabled)
@@ -155,12 +131,8 @@ bool inet_routes_remove(inet_routes_t * self, const osn_route4_t *route)
     }
 }
 
-bool inet_routes_enable(inet_routes_t * self, bool enable)
+static bool prv_apply_all_routes(inet_routes_t * self, bool enable)
 {
-    if (self->enabled == enable) return true;
-
-    self->enabled = enable;
-
     bool rv = true;
     route_elem_t *re;
     for (re = ds_dlist_head(&self->routes); re != NULL; re = ds_dlist_next(&self->routes, re))
@@ -176,7 +148,16 @@ bool inet_routes_enable(inet_routes_t * self, bool enable)
             (void)prv_route_delete(self, re, false);
         }
     }
-    return rv;    
+    return rv;
+}
+
+bool inet_routes_enable(inet_routes_t * self, bool enable)
+{
+    if (self->enabled == enable) return true;
+
+    self->enabled = enable;
+
+    return prv_apply_all_routes(self, enable);
 }
 
 bool inet_routes_is_enabled(const inet_routes_t * self)
@@ -184,15 +165,58 @@ bool inet_routes_is_enabled(const inet_routes_t * self)
     return self->enabled;
 }
 
-bool inet_routes_reapply(inet_routes_t *self, const osn_route4_t *route)
+bool inet_routes_reapply(inet_routes_t *self)
 {
     if (!self->enabled) return false;
 
-    route_elem_t *re = prv_find_route(&self->routes, route);
-    if (NULL == re) return false;
-    
-    /* Adding may fail if interface is down or route already added, but this 
-     * is not a problem */
-    (void)prv_route_add(self, route, false);
+    ev_timer_again(EV_DEFAULT, &self->apply_timer);
     return true;
+}
+
+static void eh_on_apply_time_expired(struct ev_loop *loop, ev_timer *w, int revents)
+{
+    inet_routes_t *self = CONTAINER_OF(w, struct inet_routes, apply_timer);
+
+    if (self->enabled)
+    {
+        LOG(INFO, "inet_routes: %s: reapplying static routes", osn_route4_cfg_name(self->osn_rc));
+        
+        /* Adding may fail if interface is down or route already added,
+         * but this is not a problem */
+        (void)prv_apply_all_routes(self, true);
+    }
+    ev_timer_stop(EV_DEFAULT, w);
+}
+
+inet_routes_t *inet_routes_new(const char * if_name)
+{
+    osn_route4_cfg_t *rcfg = osn_route4_cfg_new(if_name);
+    if (NULL == rcfg) return NULL;
+
+    inet_routes_t * self = (inet_routes_t *)MALLOC(sizeof(*self));
+
+    self->osn_rc = rcfg;
+    self->enabled = false;
+    ev_timer_init(&self->apply_timer, &eh_on_apply_time_expired, INET_ROUTES4_APPLY_DELAY, INET_ROUTES4_APPLY_DELAY);
+    ds_dlist_init(&self->routes, route_elem_t, node);
+    return self;
+}
+
+void inet_routes_del(inet_routes_t * self)
+{
+    route_elem_t *re;
+    for (re = ds_dlist_head(&self->routes); re != NULL; )
+    {
+        route_elem_t *re_temp = re;
+        re = ds_dlist_next(&self->routes, re);
+
+        if (self->enabled)
+            prv_route_delete(self, re_temp, true);
+        else
+            prv_route_remove(self, re_temp);
+    }
+
+    osn_route4_cfg_del(self->osn_rc);
+    ev_timer_stop(EV_DEFAULT, &self->apply_timer);
+    FREE(self);
 }

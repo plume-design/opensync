@@ -33,11 +33,10 @@ source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="tools/device/$(basename "$0")"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+tools/device/create_inet_interface.sh [-h] arguments
 Description:
     - Create/updates Inet interface and validate it in State table
 Arguments:
@@ -63,13 +62,24 @@ Arguments:
     -inet_addr_n          : Used to generate Wifi_Inet_Config::broadcast,dhcpd,inet_addr,netmask : (string)(optional)
     -subnet               : Used to generate Wifi_Inet_Config::broadcast,dhcpd,inet_addr,netmask : (string)(optional)
 Script usage example:
-   ./${tc_name} -if_name eth0 -NAT false -mtu 1600
-   ./${tc_name} -if_name eth1 -netmask 255.50.255.255.1
-   ./${tc_name} -if_name wifi0 -enabled false -network false
+   ./tools/device/create_inet_interface.sh -if_name eth0 -NAT false -mtu 1600
+   ./tools/device/create_inet_interface.sh -if_name eth1 -netmask 255.50.255.255.1
+   ./tools/device/create_inet_interface.sh -if_name wifi0 -enabled false -network false
 usage_string
 }
+
+trap '
+fut_ec=$?
+fut_info_dump_line
+if [ $fut_ec -ne 0 ]; then 
+    print_tables Wifi_Inet_Config Wifi_Inet_State Wifi_Master_State
+fi
+fut_info_dump_line
+exit $fut_ec
+' EXIT SIGINT SIGTERM
+
 NARGS=1
-[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "tools/device/create_inet_interface.sh" -arg
 
 log "tools/device/$(basename "$0"): Creating Inet entry"
 create_inet_entry "$@" &&

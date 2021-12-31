@@ -31,7 +31,6 @@ export FUT_CM2_LIB_SRC=false
 export FUT_DM_LIB_SRC=false
 export FUT_NM2_LIB_SRC=false
 export FUT_ONBRD_LIB_SRC=false
-export FUT_PM_LED_LIB_SRC=false
 export FUT_QM_LIB_SRC=false
 export FUT_RPI_LIB_SRC=false
 export FUT_SM_LIB_SRC=false
@@ -50,7 +49,7 @@ export FUT_WM2_LIB_SRC=false
 [ -z "$PLATFORM_OVERRIDE_FILE" ] && export PLATFORM_OVERRIDE_FILE=
 [ -z "$MODEL_OVERRIDE_FILE" ] && export MODEL_OVERRIDE_FILE=
 [ -z "$PATH" ] && export PATH="/bin:/sbin:/usr/bin:/usr/sbin:${OPENSYNC_ROOTDIR}/tools:${OPENSYNC_ROOTDIR}/bin"
-[ -z "$MGMT_IFACE" ] && export MGMT_IFACE=eth0
+[ -z "$MGMT_IFACE" ] && export MGMT_IFACE=
 [ -z "$MGMT_IFACE_UP_TIMEOUT" ] && export MGMT_IFACE_UP_TIMEOUT=10
 [ -z "$MGMT_CONN_TIMEOUT" ] && export MGMT_CONN_TIMEOUT=30
 

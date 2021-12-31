@@ -164,6 +164,8 @@ struct nfqueue_ctxt
     process_nfq_event_cb nfq_cb;
     int nfq_fd;
     void *user_data;
+    char send_buf[0xFFFF];
+    struct nlmsghdr *nlh;
     ds_tree_node_t  nfq_tnode;
 };
 
@@ -187,4 +189,6 @@ bool nf_queue_set_verdict(uint32_t packet_id, int action, uint32_t queue_num);
 bool nf_queue_set_nlsock_buffsz(uint32_t queue_num, uint32_t sock_buff_sz);
 
 bool nf_queue_set_queue_maxlen(uint32_t queue_num, uint32_t queue_maxlen);
+
+bool nf_queue_update_payload(uint32_t packet_id, uint32_t queue_num);
 #endif /* NF_UTILS_H_INCLUDED */

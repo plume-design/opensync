@@ -77,7 +77,8 @@ typedef enum
     OSP_UPG_SU_RUN       = 15,  /**< Upgrade in progress running   */
     OSP_UPG_DL_NOFREE    = 16,  /**< Not enough free space on unit */
     OSP_UPG_WRONG_PARAM  = 17,  /**< Wrong flashing parameters     */
-    OSP_UPG_INTERNAL     = 18   /**< Internal error                */
+    OSP_UPG_INTERNAL     = 18,  /**< Internal error                */
+    OSP_UPG_LAST_ERROR   = OSP_UPG_INTERNAL
 } osp_upg_status_t;
 
 

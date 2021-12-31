@@ -26,6 +26,15 @@ menuconfig PSFS_ENABLED
             The PSFS storage folder location that is preserved across system
             upgrades.
 
+    config PSFS_FS_RESERVED_FREE
+        depends on PSFS_ENABLED
+        int "Reserved free space (kB)"
+        default 0
+        help
+            If the amount of free space on the filesystem is below
+            PSFS_FS_RESERVED_FREE, PSFS will treat the filesystem as full and
+            will refuse further writes until more free space is made available.
+
     config PSFS_SYNC_MIN
         depends on PSFS_ENABLED
         int "Minimum store file size before pruning is attempted (kB)"
@@ -53,5 +62,4 @@ menuconfig PSFS_ENABLED
         help
             If wasted bytes vs good bytes is more than this percent, force
             prune mode on close or sync.
-
 endif

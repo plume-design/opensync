@@ -38,9 +38,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "lte_info.h"
 #include "osn_lte_modem.h"
 
-#define LTE_DEFAULT_METRIC 100
-#define WAN_DEFAULT_METRIC 0
-#define WAN_L3_FAIL_METRIC 110
+#define WAN_DEFAULT_METRIC CONFIG_MANAGER_NM_ROUTE_BASE_METRIC
+#define LTE_DEFAULT_METRIC WAN_DEFAULT_METRIC + 50
+#define WAN_L3_FAIL_METRIC LTE_DEFAULT_METRIC + 10
 
 enum  ltem_header_ids
 {
@@ -79,6 +79,8 @@ typedef struct lte_config_info_
     bool modem_enable;
     uint32_t report_interval;
     char apn[32];
+    char lte_bands[32];
+    bool enable_persist;
 } lte_config_info_t;
 
 typedef struct lte_state_info_
@@ -87,6 +89,8 @@ typedef struct lte_state_info_
     time_t lte_failover_start;
     time_t lte_failover_end;
     uint32_t lte_failover_count;
+    uint64_t lte_bands;
+    bool enable_persist;
 } lte_state_info_t;
 
 typedef struct lte_route_info_
@@ -180,6 +184,7 @@ void ltem_ovsdb_cmu_check_lte(ltem_mgr_t *mgr);
 int ltem_ovsdb_wifi_inet_create_config(ltem_mgr_t *mgr);
 int ltem_ovsdb_lte_create_config(ltem_mgr_t *mgr);
 void ltem_ovsdb_update_awlan_node(struct schema_AWLAN_Node *new);
+int ltem_ovsdb_update_wifi_route_config_metric(ltem_mgr_t *mgr, char *if_name, uint32_t metric);
 void ltem_reset_modem(void);
 int ltem_build_mqtt_report(time_t now);
 int lte_set_mqtt_topic(void);

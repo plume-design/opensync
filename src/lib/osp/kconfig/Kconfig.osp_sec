@@ -1,0 +1,17 @@
+# Add sec_openssl options
+#
+
+if OSP_SEC_OPENSSL
+    menu "OpenSSL Backend Options"
+        choice
+            prompt "Key Generation"
+            default OSP_SEC_KEY_DEFAULT
+            source "src/lib/osp/kconfig/Kconfig.osp_sec.backend.key"
+	    
+            osource "vendor/*/kconfig/Kconfig.osp_sec.backend.key"
+            osource "platform/*/kconfig/Kconfig.osp_sec.backend.key"
+        endchoice
+    endmenu
+
+endif
+

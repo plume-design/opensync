@@ -33,7 +33,6 @@ UNIT_DISABLE := $(if $(CONFIG_MANAGER_LTEM),n,y)
 
 UNIT_TYPE := LIB
 
-UNIT_SRC := src/lte_info.pb-c.c
 UNIT_SRC += src/lte_info_report.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
@@ -46,3 +45,4 @@ UNIT_DEPS := src/lib/const
 UNIT_DEPS += src/lib/log
 UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/osa
+UNIT_DEPS += src/lib/protobuf

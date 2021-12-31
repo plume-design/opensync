@@ -46,7 +46,7 @@ ovsdb_table_t table_Service_Announcement;
  * @return 0 if services matches
  */
 int
-mdnsd_service_cmp(void *a, void *b)
+mdnsd_service_cmp(const void *a, const void *b)
 {
     return strcmp(a, b);
 }

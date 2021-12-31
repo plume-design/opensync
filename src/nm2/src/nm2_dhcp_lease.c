@@ -81,12 +81,12 @@ static bool __nm2_dhcp_lease_notify(
 
 
 /* ds_tree comparator */
-int osn_dhcp_server_lease_cmp(void *_a, void *_b)
+int osn_dhcp_server_lease_cmp(const void *_a, const void *_b)
 {
     int rc;
 
-    struct osn_dhcp_server_lease *a = _a;
-    struct osn_dhcp_server_lease *b = _b;
+    const struct osn_dhcp_server_lease *a = _a;
+    const struct osn_dhcp_server_lease *b = _b;
 
     rc = osn_mac_addr_cmp(&a->dl_hwaddr, &b->dl_hwaddr);
     if (rc != 0) return rc;
@@ -99,10 +99,10 @@ int osn_dhcp_server_lease_cmp(void *_a, void *_b)
 
 
 /* Synclist comparator */
-int osn_dhcp_server_lease_sync_cmp(void *_a, void *_b)
+int osn_dhcp_server_lease_sync_cmp(const void *_a, const void *_b)
 {
-    struct osn_dhcp_server_lease *a = _a;
-    struct osn_dhcp_server_lease *b = _b;
+    const struct osn_dhcp_server_lease *a = _a;
+    const struct osn_dhcp_server_lease *b = _b;
 
     return osn_mac_addr_cmp(&a->dl_hwaddr, &b->dl_hwaddr);
 }

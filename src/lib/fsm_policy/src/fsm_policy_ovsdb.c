@@ -116,10 +116,10 @@ void fsm_redirects_fqdn_to_ip(struct fsm_policy *p, int family)
 #endif
 }
 
-static int policy_id_cmp(void *id1, void *id2)
+static int policy_id_cmp(const void *id1, const void *id2)
 {
-    int i = *(int *)id1;
-    int j = *(int *)id2;
+    const int i = *(const int *)id1;
+    const int j = *(const int *)id2;
 
     return i - j;
 }
@@ -945,10 +945,10 @@ struct policy_table * fsm_policy_find_table(char *name)
 }
 
 
-int table_name_cmp(void *a, void *b)
+int table_name_cmp(const void *a, const void *b)
 {
-    char *name_a = (char *)a;
-    char *name_b = (char *)b;
+    const char *name_a = (const char *)a;
+    const char *name_b = (const char *)b;
 
     return strncmp(name_a, name_b, POLICY_NAME_SIZE);
 }

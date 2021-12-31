@@ -66,6 +66,26 @@ struct test_network_data g_test;
 
 extern struct test_network_data_report g_nd_test;
 
+struct flow_uplink uplink_info[] =
+{
+    {
+         .uplink_if_type = "eth",
+         .uplink_changed = true
+    },
+    {
+        .uplink_if_type = "eth",
+        .uplink_changed = false
+    },
+    {
+        .uplink_if_type = "lte",
+        .uplink_changed = true
+    },
+    {
+        .uplink_if_type = "lte",
+        .uplink_changed = false
+    },
+};
+
 struct vendor_data_kv_pair g_vd1_kps[] =
 {
     {
@@ -270,12 +290,11 @@ static struct flow_counters* set_flow_counters(int id)
     return counters;
 }
 
-
 static struct flow_stats * set_flow_stats(int id)
 {
-    struct flow_key *key;
     struct flow_counters *counters;
     struct flow_stats *stats;
+    struct flow_key *key;
 
     key = set_flow_key(id);
     if (key == NULL) return NULL;
@@ -325,6 +344,18 @@ err_free_window:
     FREE(window);
 
     return NULL;
+}
+
+static struct flow_uplink *set_flow_uplink(struct flow_uplink *uplink)
+{
+    struct flow_uplink *flow_uplink;
+    flow_uplink = CALLOC(1, sizeof(struct flow_uplink));
+
+    if (uplink == NULL) return NULL;
+    flow_uplink->uplink_if_type = STRDUP(uplink->uplink_if_type);
+    flow_uplink->uplink_changed = uplink->uplink_changed;
+
+    return flow_uplink;
 }
 
 static struct flow_report * set_flow_report(size_t num_windows)
@@ -387,12 +418,14 @@ void main_setUp(void)
     g_test.window1 = set_flow_window(1, 10, 1);
     if (g_test.window1 == NULL) goto err_free_stats4;
 
+    g_test.window1->uplink = set_flow_uplink(&uplink_info[0]);
     window_stats = g_test.window1->flow_stats;
     *window_stats = g_test.stats1;
 
     g_test.window2 = set_flow_window(2, 20, 3);
     if (g_test.window1 == NULL) goto err_free_window1;
 
+    g_test.window2->uplink = set_flow_uplink(&uplink_info[2]);
     window_stats = g_test.window2->flow_stats;
     *window_stats++ = g_test.stats2;
     *window_stats++ = g_test.stats3;
@@ -595,6 +628,19 @@ static void validate_flow_counters(struct flow_counters *counters,
 {
     TEST_ASSERT_EQUAL_UINT(counters->packets_count, counters_pb->packetscount);
     TEST_ASSERT_EQUAL_UINT(counters->bytes_count, counters_pb->bytescount);
+}
+
+/**
+ * @brief validates the contents of a flow uplink protobuf
+ */
+static void validate_flow_uplink(struct flow_uplink *uplink,
+                                 Traffic__FlowUplink *uplink_pb)
+{
+    bool ret;
+
+    TEST_ASSERT_EQUAL_STRING(uplink->uplink_if_type, uplink_pb->uplinkiftype);
+    ret = (uplink->uplink_changed == uplink_pb->uplinkchanged);
+    TEST_ASSERT_TRUE(ret);
 }
 
 
@@ -842,6 +888,48 @@ void test_serialize_flow_key(void)
     traffic__flow_key__free_unpacked(key_pb, NULL);
 }
 
+/**
+ * @brief tests serialize_flow_uplink() when provided a valid key pointer
+ */
+void test_serialize_flow_uplink(void)
+{
+    struct flow_uplink *uplink;
+    struct packed_buffer *pb;
+    struct packed_buffer pb_r = { 0 };
+    uint8_t rbuf[4096];
+    size_t nread = 0;
+    Traffic__FlowUplink *Uplink_pb;
+
+    uplink = &uplink_info[1];
+
+    /* Serialize the flow_counter data */
+    pb = serialize_flow_uplink(uplink);
+
+    /* Basic validation */
+    TEST_ASSERT_NOT_NULL(pb);
+    TEST_ASSERT_NOT_NULL(pb->buf);
+
+    /* Save the serialized protobuf to file */
+    pb2file(pb, g_test.f_name);
+
+    /* Free the serialized container */
+    free_packed_buffer(pb);
+    FREE(pb);
+
+    /* Read back the serialized protobuf */
+    pb_r.buf = rbuf;
+    pb_r.len = sizeof(rbuf);
+    nread = file2pb(g_test.f_name, &pb_r);
+    Uplink_pb = traffic__flow_uplink__unpack(NULL, nread, rbuf);
+
+    /* Validate the deserialized content */
+    TEST_ASSERT_NOT_NULL(Uplink_pb);
+
+    validate_flow_uplink(uplink, Uplink_pb);
+
+    /* Free the deserialized content */
+    traffic__flow_uplink__free_unpacked(Uplink_pb, NULL);
+}
 
 /**
  * @brief tests serialize_flow_key() with optional fields not set
@@ -1618,6 +1706,7 @@ test_network_metadata(void)
     RUN_TEST(test_serialize_flow_key);
     RUN_TEST(test_serialize_flow_key_with_optional_fields);
     RUN_TEST(test_serialize_flow_counters);
+    RUN_TEST(test_serialize_flow_uplink);
     RUN_TEST(test_serialize_flow_stats);
     RUN_TEST(test_set_flow_stats);
     RUN_TEST(test_serialize_observation_windows);

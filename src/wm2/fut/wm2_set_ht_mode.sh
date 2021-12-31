@@ -33,7 +33,6 @@ source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="wm2/$(basename "$0")"
 manager_setup_file="wm2/wm2_setup.sh"
 # Wait for channel to change, not necessarily become usable (CAC for DFS)
 channel_change_timeout=60
@@ -41,7 +40,7 @@ channel_change_timeout=60
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+wm2/wm2_set_ht_mode.sh [-h] arguments
 Description:
     - Script tries to set chosen HT MODE. If interface is not UP it brings up the interface, and tries to set HT MODE to desired value.
 Arguments:
@@ -57,9 +56,9 @@ Arguments:
     \$9  (mode)          : Wifi_VIF_Config::mode          : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name} <IF-NAME> <VIF-IF-NAME> <VIF-RADIO-IDX> <SSID> <SECURITY> <CHANNEL> <HT-MODE> <HW-MODE> <MODE>
+                 Run: ./wm2/wm2_set_ht_mode.sh <IF-NAME> <VIF-IF-NAME> <VIF-RADIO-IDX> <SSID> <SECURITY> <CHANNEL> <HT-MODE> <HW-MODE> <MODE>
 Script usage example:
-    ./${tc_name} wifi1 home-ap-l50 2 FUTssid '["map",[["encryption","WPA-PSK"],["key","FUTpsk"],["mode","2"]]]' 36 HT20 11ac ap
+    ./wm2/wm2_set_ht_mode.sh wifi1 home-ap-l50 2 FUTssid '["map",[["encryption","WPA-PSK"],["key","FUTpsk"],["mode","2"]]]' 36 HT20 11ac ap
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -75,7 +74,7 @@ if [ -n "${1}" ]; then
 fi
 
 NARGS=9
-[ $# -ne ${NARGS} ] && usage && raise "Requires '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -ne ${NARGS} ] && usage && raise "Requires '${NARGS}' input argument(s)" -l "wm2/wm2_set_ht_mode.sh" -arg
 if_name=${1}
 vif_if_name=${2}
 vif_radio_idx=${3}
@@ -91,16 +90,15 @@ trap '
     print_tables Wifi_Radio_Config Wifi_Radio_State
     print_tables Wifi_VIF_Config Wifi_VIF_State
     fut_info_dump_line
-    run_setup_if_crashed wm || true
 ' EXIT SIGINT SIGTERM
 
-log_title "$tc_name: WM2 test - Testing Wifi_Radio_Config field ht_mode - '${ht_mode}'"
+log_title "wm2/wm2_set_ht_mode.sh: WM2 test - Testing Wifi_Radio_Config field ht_mode - '${ht_mode}'"
 
 # Testcase:
 # Configure radio, create VIF and apply channel and ht_mode
 # This needs to be done simultaneously for the driver to bring up an active AP
-log "$tc_name: Configuring Wifi_Radio_Config, creating interface in Wifi_VIF_Config."
-log "$tc_name: Waiting for ${channel_change_timeout}s for settings {ht_mode:$ht_mode}"
+log "wm2/wm2_set_ht_mode.sh: Configuring Wifi_Radio_Config, creating interface in Wifi_VIF_Config."
+log "wm2/wm2_set_ht_mode.sh: Waiting for ${channel_change_timeout}s for settings {ht_mode:$ht_mode}"
 create_radio_vif_interface \
     -channel "$channel" \
     -channel_mode manual \
@@ -113,17 +111,18 @@ create_radio_vif_interface \
     -ssid "$ssid" \
     -vif_if_name "$vif_if_name" \
     -vif_radio_idx "$vif_radio_idx" \
-    -timeout ${channel_change_timeout} &&
-        log "$tc_name: create_radio_vif_interface {$if_name, $ht_mode} - Interface created - Success" ||
-        raise "FAIL: create_radio_vif_interface {$if_name, $ht_mode} - Failed to create interface" -l "$tc_name" -ds
+    -timeout ${channel_change_timeout} \
+    -disable_cac &&
+        log "wm2/wm2_set_ht_mode.sh: create_radio_vif_interface {$if_name, $ht_mode} - Interface created - Success" ||
+        raise "FAIL: create_radio_vif_interface {$if_name, $ht_mode} - Failed to create interface" -l "wm2/wm2_set_ht_mode.sh" -ds
 
 wait_ovsdb_entry Wifi_Radio_State -w if_name "$if_name" -is ht_mode "$ht_mode" &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Radio_Config reflected to Wifi_Radio_State::ht_mode is $ht_mode - Success" ||
-    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Radio_Config to Wifi_Radio_State::ht_mode is not $ht_mode" -l "$tc_name" -tc
+    log "wm2/wm2_set_ht_mode.sh: wait_ovsdb_entry - Wifi_Radio_Config reflected to Wifi_Radio_State::ht_mode is $ht_mode - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Radio_Config to Wifi_Radio_State::ht_mode is not $ht_mode" -l "wm2/wm2_set_ht_mode.sh" -tc
 
-log "$tc_name: Checking ht_mode at system level - LEVEL2"
+log "wm2/wm2_set_ht_mode.sh: Checking ht_mode at system level - LEVEL2"
 check_ht_mode_at_os_level "$ht_mode" "$vif_if_name" "$channel" &&
-    log "$tc_name: LEVEL2 - check_ht_mode_at_os_level - ht_mode $ht_mode set at system level - Success" ||
-    raise "FAIL: LEVEL2 - check_ht_mode_at_os_level - ht_mode  $ht_mode not set at system level" -l "$tc_name" -tc
+    log "wm2/wm2_set_ht_mode.sh: LEVEL2 - check_ht_mode_at_os_level - ht_mode $ht_mode set at system level - Success" ||
+    raise "FAIL: LEVEL2 - check_ht_mode_at_os_level - ht_mode  $ht_mode not set at system level" -l "wm2/wm2_set_ht_mode.sh" -tc
 
 pass

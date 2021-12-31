@@ -25,45 +25,24 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <string.h>
 #include <sys/socket.h>
 
-#include "fsm_dpi_sni.h"
 #include "dns_cache.h"
-#include "gatekeeper_cache.h"
 #include "dns_parse.h"
+#include "fsm_dns_utils.h"
+#include "fsm_dpi_sni.h"
+#include "gatekeeper_cache.h"
 #include "memutil.h"
+#include "sockaddr_storage.h"
 #include "unity.h"
 
 os_macaddr_t g_src_mac =
 {
     .addr = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06 },
 };
-
-static void
-dpi_parse_populate_sockaddr(int af, void *ip_addr, struct sockaddr_storage *dst)
-{
-    if (!ip_addr) return;
-
-    if (af == AF_INET)
-    {
-        struct sockaddr_in *in4 = (struct sockaddr_in *)dst;
-
-        memset(in4, 0, sizeof(struct sockaddr_in));
-        in4->sin_family = af;
-        memcpy(&in4->sin_addr, ip_addr, sizeof(in4->sin_addr));
-    }
-    else if (af == AF_INET6)
-    {
-        struct sockaddr_in6 *in6 = (struct sockaddr_in6 *)dst;
-
-        memset(in6, 0, sizeof(struct sockaddr_in6));
-        in6->sin6_family = af;
-        memcpy(&in6->sin6_addr, ip_addr, sizeof(in6->sin6_addr));
-    }
-}
 
 void
 test_redirected_flow_v6(void)
@@ -87,7 +66,7 @@ test_redirected_flow_v6(void)
     ip_cache_req->device_mac = CALLOC(1, sizeof(os_macaddr_t));
     TEST_ASSERT_NOT_NULL(ip_cache_req->device_mac);
 
-    dpi_parse_populate_sockaddr(AF_INET6, &cache_v6_ip, ip_cache_req->ip_addr);
+    sockaddr_storage_populate(AF_INET6, &cache_v6_ip, ip_cache_req->ip_addr);
     ip_cache_req->device_mac->addr[0] = 0x01;
     ip_cache_req->device_mac->addr[1] = 0x02;
     ip_cache_req->device_mac->addr[2] = 0x03;
@@ -137,6 +116,7 @@ test_redirected_flow_v6(void)
 void
 test_redirect_cache(void)
 {
+    struct dns_cache_param param;
     struct fqdn_pending_req fqdn_req;
     struct fsm_url_request req_info;
     struct sockaddr_storage ipaddr;
@@ -153,24 +133,27 @@ test_redirect_cache(void)
     memset(&reply, 0, sizeof(reply));
 
     inet_pton(AF_INET, "1.2.3.4", cache_ipv4);
-    dpi_parse_populate_sockaddr(AF_INET, cache_ipv4, &ipaddr);
+    sockaddr_storage_populate(AF_INET, cache_ipv4, &ipaddr);
 
     fqdn_req.dev_id = g_src_mac;
     reply.service_id = IP2ACTION_GK_SVC;
     req_info.reply = &reply;
     fqdn_req.req_info = &req_info;
 
-    rc = dns_cache_add_redirect_entry(&fqdn_req, &ipaddr);
+    param.req = &fqdn_req;
+    param.ipaddr = &ipaddr;
+
+    rc = fsm_dns_cache_add_redirect_entry(&param);
     TEST_ASSERT_TRUE(rc);
     dns_cache_cleanup();
 
     reply.service_id = IP2ACTION_BC_SVC;
-    rc = dns_cache_add_redirect_entry(&fqdn_req, &ipaddr);
+    rc = fsm_dns_cache_add_redirect_entry(&param);
     TEST_ASSERT_TRUE(rc);
     dns_cache_cleanup();
 
     reply.service_id = IP2ACTION_WP_SVC;
-    rc = dns_cache_add_redirect_entry(&fqdn_req, &ipaddr);
+    rc = fsm_dns_cache_add_redirect_entry(&param);
     TEST_ASSERT_TRUE(rc);
     dns_cache_cleanup();
 
@@ -179,22 +162,22 @@ test_redirect_cache(void)
     cache_v6_ip[2] = 0x06060606;
     cache_v6_ip[3] = 0x06060606;
 
-    dpi_parse_populate_sockaddr(AF_INET6, &cache_v6_ip, &ipaddr);
+    sockaddr_storage_populate(AF_INET6, &cache_v6_ip, &ipaddr);
     reply.service_id = IP2ACTION_GK_SVC;
     req_info.reply = &reply;
     fqdn_req.req_info = &req_info;
 
-    rc = dns_cache_add_redirect_entry(&fqdn_req, &ipaddr);
+    rc = fsm_dns_cache_add_redirect_entry(&param);
     TEST_ASSERT_TRUE(rc);
     dns_cache_cleanup();
 
     reply.service_id = IP2ACTION_BC_SVC;
-    rc = dns_cache_add_redirect_entry(&fqdn_req, &ipaddr);
+    rc = fsm_dns_cache_add_redirect_entry(&param);
     TEST_ASSERT_TRUE(rc);
     dns_cache_cleanup();
 
     reply.service_id = IP2ACTION_WP_SVC;
-    rc = dns_cache_add_redirect_entry(&fqdn_req, &ipaddr);
+    rc = fsm_dns_cache_add_redirect_entry(&param);
     TEST_ASSERT_TRUE(rc);
     dns_cache_cleanup();
 
@@ -230,7 +213,7 @@ test_redirected_flow_gatekeeper_cache(void)
     gk_cache_init();
 
     inet_pton(AF_INET, "1.2.3.4", cache_ip);
-    dpi_parse_populate_sockaddr(AF_INET, cache_ip, &ipaddr);
+    sockaddr_storage_populate(AF_INET, cache_ip, &ipaddr);
     MEMZERO(entry);
 
     entry.device_mac = &g_src_mac;
@@ -264,7 +247,7 @@ test_redirected_flow_gatekeeper_cache(void)
     cache_v6_ip[2] = 0x06060606;
     cache_v6_ip[3] = 0x06060606;
 
-    dpi_parse_populate_sockaddr(AF_INET6, &cache_v6_ip, &ipaddr);
+    sockaddr_storage_populate(AF_INET6, &cache_v6_ip, &ipaddr);
     MEMZERO(entry);
 
     entry.device_mac = &g_src_mac;
@@ -336,7 +319,7 @@ test_redirected_flow_dns_cache(void)
 
     /* IP address present in cache. */
     inet_pton(AF_INET, "1.2.3.4", cache_ip);
-    dpi_parse_populate_sockaddr(AF_INET, cache_ip, &ipaddr);
+    sockaddr_storage_populate(AF_INET, cache_ip, &ipaddr);
     memset(&ip_cache_req, 0, sizeof(ip_cache_req));
     ip_cache_req.device_mac = &g_src_mac;
     ip_cache_req.ip_addr = &ipaddr;

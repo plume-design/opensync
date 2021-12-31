@@ -120,7 +120,7 @@ fsm_get_sessions(void)
 }
 
 static int
-fsm_sessions_cmp(void *a, void *b)
+fsm_sessions_cmp(const void *a, const void *b)
 {
     return strcmp(a, b);
 }
@@ -205,7 +205,7 @@ fsm_init_mgr(struct ev_loop *loop)
 
     /* initialize tag tree */
     ds_tree_init(&mgr->dpi_client_tags_tree, (ds_key_cmp_t *) strcmp,
-                 struct fsm_dpi_client_tags, tag_list);
+                 struct fsm_dpi_client_tags, next);
 
     /* register for tag update callback */
     fsm_tag_update_init();
@@ -738,23 +738,23 @@ fsm_send_to_qm(qm_compress_t compress, char *topic, void *data, int data_size)
     mgr = fsm_get_mgr();
     if (mgr->qm_backoff != 0)
     {
-	 now = time(NULL);
-	 backoff = ((now - mgr->qm_backoff) < FSM_QM_BACKOFF_INTERVAL);
-	 if (backoff) LOGD("%s: in back off since %ld seconds", __func__,
-			   (now - mgr->qm_backoff));
-	 if (backoff) return false;
+        now = time(NULL);
+        backoff = ((now - mgr->qm_backoff) < FSM_QM_BACKOFF_INTERVAL);
+        if (backoff) LOGD("%s: in back off since %ld seconds", __func__,
+                          (now - mgr->qm_backoff));
+        if (backoff) return false;
 
-	 /* Reflect that we are out of back off */
-	 LOGD("%s: out of back off since %ld seconds", __func__,
-	      (now - mgr->qm_backoff) - FSM_QM_BACKOFF_INTERVAL);
-	 mgr->qm_backoff = 0;
+        /* Reflect that we are out of back off */
+        LOGD("%s: out of back off since %ld seconds", __func__,
+            (now - mgr->qm_backoff) - FSM_QM_BACKOFF_INTERVAL);
+        mgr->qm_backoff = 0;
     }
 
     ret = qm_conn_send_direct(compress, topic, data, data_size, &res);
     if (ret) return true;
 
     LOGE("%s: error sending mqtt with topic %s: response: %u, error: %u",
-	 __func__, topic, res.response, res.error);
+         __func__, topic, res.response, res.error);
 
     if (res.error != QM_ERROR_CONNECT) return false;
 
@@ -785,7 +785,7 @@ fsm_send_report(struct fsm_session *session, char *report)
     if (session->topic == NULL) goto free_report;
 
     ret = fsm_send_to_qm(QM_REQ_COMPRESS_DISABLE, session->topic,
-			 report, strlen(report));
+                         report, strlen(report));
     if (ret) session->report_count++;
 
 free_report:
@@ -901,6 +901,9 @@ fsm_free_session(struct fsm_session *session)
 
     /* Call the session exit routine */
     if (session->ops.exit != NULL) session->ops.exit(session);
+
+    /* close forward_ctx socket*/
+    if (session->forward_ctx.initialized) close(session->forward_ctx.sock_fd);
 
     /* Free optional dpi context */
     ret = fsm_is_dpi(session);

@@ -33,18 +33,17 @@ source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="tools/device/$(basename "$0")"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+tools/device/vif_clean.sh [-h] arguments
 Description:
     - Script is used to empty Wifi_VIF_Config table and waits for the State table to be emptied
 Arguments:
     -h  show this help message
     - \$1 (timout) : time in seconds to wait for VIF to be cleaned : (int)(optional)
 Script usage example:
-   ./${tc_name}
+   ./tools/device/vif_clean.sh
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -59,7 +58,17 @@ if [ -n "${1}" ]; then
     esac
 fi
 
+trap '
+fut_ec=$?
+fut_info_dump_line
+if [ $fut_ec -ne 0 ]; then 
+    print_tables Wifi_VIF_Config Wifi_VIF_State
+fi
+fut_info_dump_line
+exit $fut_ec
+' EXIT SIGINT SIGTERM
+
 vif_clean $1 ||
-    raise "vif_clean - Failed" -l "tools/device/$(basename "$0")" -tc
+    raise "vif_clean - Failed" -l "tools/device/vif_clean.sh" -tc
 
 exit 0

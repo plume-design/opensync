@@ -33,12 +33,11 @@ source "${FUT_TOPDIR}/shell/lib/unit_lib.sh" &> /dev/null
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" &> /dev/null
 [ -n "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" &> /dev/null
 
-tc_name="dm/$(basename "$0")"
 manager_setup_file="dm/dm_setup.sh"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+dm/dm_get_count_reboot_status.sh [-h] arguments
 Description:
     Echoes recent 'count' field in the Reboot_Status table.
 
@@ -46,9 +45,9 @@ Arguments:
     -h  show this help message
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name}
+                 Run: ./dm/dm_get_count_reboot_status.sh
 Script usage example:
-   ./${tc_name}
+   ./dm/dm_get_count_reboot_status.sh
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -64,7 +63,7 @@ if [ -n "${1}" ]; then
 fi
 
 check_kconfig_option "CONFIG_OSP_REBOOT_PSTORE" "y" ||
-    raise "CONFIG_OSP_REBOOT_PSTORE != y - Testcase not applicable REBOOT PERSISTENT STORAGE not supported" -l "${tc_name}" -s
+    raise "CONFIG_OSP_REBOOT_PSTORE != y - Testcase not applicable REBOOT PERSISTENT STORAGE not supported" -l "dm/dm_get_count_reboot_status.sh" -s
 
 reboot_count_array=$(${OVSH} s Reboot_Status count -r)
 

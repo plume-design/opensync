@@ -39,7 +39,8 @@ struct psfs
     int                 psfs_flags;         /* Flags */
     ds_tree_t           psfs_root;          /* Key/Value cache */
     struct psfs_record *psfs_next;          /* Next element to return with psfs_next() */
-    ssize_t             psfs_used;          /* Number of bytes used by "good" records in this store */
+    ssize_t             psfs_used;          /* Number of bytes used by "good" records */
+    ssize_t             psfs_wasted;        /* Number of bytes used by deleted records */
 };
 
 typedef struct psfs psfs_t;

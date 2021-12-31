@@ -24,7 +24,7 @@ menu "Common"
             endchoice
 
             choice
-                prompt "IPv4 routing (status reporting)"
+                prompt "IPv4 routing (control and reporting)"
                 default OSN_BACKEND_ROUTEV4_LINUX
                 source "kconfig/Kconfig.osn.routev4_backend"
             endchoice
@@ -84,6 +84,18 @@ menu "Common"
             endchoice
 
             choice
+                prompt "IGMP"
+                default OSN_BACKEND_IGMP_LINUX
+                source "kconfig/Kconfig.osn.igmp_backend"
+            endchoice
+
+            choice
+                prompt "MLD"
+                default OSN_BACKEND_MLD_LINUX
+                source "kconfig/Kconfig.osn.mld_backend"
+            endchoice
+
+            choice
                 prompt "QoS"
                 default OSN_BACKEND_QOS_LINUX
                 source "kconfig/Kconfig.osn.qos_backend"
@@ -125,28 +137,49 @@ menu "Common"
         endmenu
 
         menu "Platform (OSP)"
-            comment "Unit (OSP unit)"
-            choice
-                prompt "OSP Unit Backend"
-                source "kconfig/Kconfig.osp_unit.backend"
-            endchoice
+            menu "Unit (OSP unit)"
+                choice
+                    prompt "OSP Unit Backend"
+                    source "kconfig/Kconfig.osp_unit.backend"
+                endchoice
+            endmenu
 
-            comment "Persistent Storage (OSP_PS)"
-            choice
-                prompt "Persistent Storage Backend"
-                source "kconfig/Kconfig.osp_ps.backend"
-            endchoice
-            source "kconfig/Kconfig.osp_ps"
+            menu "Upgrade (OSP_UPG)"
+                choice
+                    prompt "Upgrade Backend"
+                    source "kconfig/Kconfig.osp_upg.backend"
+                endchoice
+                source "kconfig/Kconfig.osp_upg"
+            endmenu
 
-            comment "Reboot and Related Features (OSP_REBOOT)"
-            choice
-                prompt "Reboot Backend"
-                source "kconfig/Kconfig.osp_reboot.backend"
-            endchoice
-            source "kconfig/Kconfig.osp_reboot"
+            menu "Download (OSP_DL)"
+                choice
+                    prompt "Download Backend"
+                    default OSP_DL_CURL
+                    source "kconfig/Kconfig.osp_dl.backend"
+                endchoice
+                source "kconfig/Kconfig.osp_dl"
+            endmenu
 
-            comment "OSP LED"
-            source "kconfig/Kconfig.osp_led"
+            menu "Persistent Storage (OSP_PS)"
+                choice
+                    prompt "Persistent Storage Backend"
+                    source "kconfig/Kconfig.osp_ps.backend"
+                endchoice
+                source "kconfig/Kconfig.osp_ps"
+            endmenu
+
+            menu "Reboot and Related Features (OSP_REBOOT)"
+                choice
+                    prompt "Reboot Backend"
+                    source "kconfig/Kconfig.osp_reboot.backend"
+                endchoice
+                source "kconfig/Kconfig.osp_reboot"
+            endmenu
+
+            menu "OSP LED"
+                source "kconfig/Kconfig.osp_led"
+            endmenu
 
             menu "Layer 2 Switch Control"
                 choice
@@ -156,15 +189,34 @@ menu "Common"
                 source "kconfig/Kconfig.osp_l2switch"
             endmenu
 
-            comment "Object Management (OSP_OBJM)"
-            choice
-                prompt "Object Management Backend"
-                source "kconfig/Kconfig.osp_objm.backend"
-            endchoice
-            source "kconfig/Kconfig.osp_objm"
+            menu "L2UF"
+                choice
+                    prompt "L2UF backend"
+                    source "kconfig/Kconfig.osp_l2uf.backend"
+                endchoice
+                source "kconfig/Kconfig.osp_l2uf"
+            endmenu
 
-            comment "OSP Power"
-            source "kconfig/Kconfig.osp_power.backend"
+            menu "Object Management (OSP_OBJM)"
+                choice
+                    prompt "Object Management Backend"
+                    source "kconfig/Kconfig.osp_objm.backend"
+                endchoice
+                source "kconfig/Kconfig.osp_objm"
+            endmenu
+
+            menu "OSP Power"
+                source "kconfig/Kconfig.osp_power.backend"
+            endmenu
+
+            menu "Security (OSP_SEC)"
+                choice
+                    prompt "Security Backend"
+                    default OSP_SEC_OPENSSL
+                    source "kconfig/Kconfig.osp_sec.backend"
+                endchoice
+                source "kconfig/Kconfig.osp_sec"
+            endmenu
 
         endmenu
     endmenu

@@ -128,12 +128,12 @@ bool wano_plugin_fini(wano_plugin_handle_t *wh)
 /**
  * Plug-in comparator function -- compares the priority and the name
  */
-int wanp_cmp(void *_a, void *_b)
+int wanp_cmp(const void *_a, const void *_b)
 {
     int c;
 
-    struct wano_plugin *a = _a;
-    struct wano_plugin *b = _b;
+    const struct wano_plugin *a = _a;
+    const struct wano_plugin *b = _b;
 
     /*
      * We want an ordered list sorted by priority, therefore compare the

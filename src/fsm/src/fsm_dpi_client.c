@@ -24,10 +24,21 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include <stdbool.h>
+#include <stdint.h>
+#include <string.h>
+
+#include "ds_tree.h"
 #include "fsm.h"
 #include "fsm_internal.h"
-#include "policy_tags.h"
+#include "log.h"
 #include "memutil.h"
+#include "network_metadata_report.h"
+#include "policy_tags.h"
+#include "util.h"
+
+static char *FLOW_ATTRIBUTES = "flow_attributes";
+static char *DPI_PLUGIN = "dpi_plugin";
 
 /**
  * @brief check if a fsm session is a dpi client session
@@ -45,9 +56,9 @@ fsm_is_dpi_client(struct fsm_session *session)
 }
 
 /**
- * @brief process attributes which are removed from the tag
+ * @brief process attributes which are removed from the tags
  *
- * @param client_session session associated with this tag
+ * @param client_session session associated with these tags
  *        dpi_plugin - dpi plugin session
  *        removed_attributes tag attributes removed
  */
@@ -60,18 +71,19 @@ fsm_process_removed_tag(struct fsm_session *client_session,
 
     ds_tree_foreach(removed_attributes, item)
     {
-        /* Register the client */
-        LOGI("%s(): unregistering tag value %s", __func__, item->value);
-        fsm_dpi_unregister_client(dpi_plugin, item->value);
+        /* Unregister the client */
+        LOGI("%s: unregistering tag value %s for client %s",
+             __func__, item->value, client_session->name);
+        fsm_dpi_unregister_client(dpi_plugin, client_session, item->value);
     }
 }
 
 /**
- * @brief process attributes which are added to the tag
+ * @brief process attributes which are added to the tags
  *
- * @param client_session session associated with this tag
- *        dpi_plugin - dpi plugin session
- *        added_attributes tag attributes added
+ * @param client_session session associated with these tags
+ * @param dpi_plugin dpi plugin session
+ * @param added_attributes tag attributes added
  */
 static void
 fsm_process_added_tag(struct fsm_session *client_session,
@@ -83,7 +95,8 @@ fsm_process_added_tag(struct fsm_session *client_session,
     ds_tree_foreach(added_attributes, item)
     {
         /* Register the client */
-        LOGI("%s(): registering tag value %s", __func__, item->value);
+        LOGI("%s: registering tag value %s for client %s",
+             __func__, item->value, client_session->name);
         fsm_dpi_register_client(dpi_plugin, client_session, item->value);
     }
 }
@@ -91,10 +104,10 @@ fsm_process_added_tag(struct fsm_session *client_session,
 /**
  * @brief process the modified tag values
  *
- * @param client_session: session associated with this tag
- *        removed attributes removed from config
- *        added - attributes added to config
- *        updated - attributes updated in config
+ * @param client_session session associated with this tag
+ * @param removed attributes removed from config
+ * @param added attributes added to config
+ * @param updated attributes updated in config
  * @return None
  */
 static void
@@ -114,7 +127,7 @@ fsm_process_tags(struct fsm_session *client_session,
     if (!ret) return;
 
     /* Look up the dpi plugin handler in the other_config settings */
-    dpi_plugin_handler = client_session->ops.get_config(client_session, "dpi_plugin");
+    dpi_plugin_handler = client_session->ops.get_config(client_session, DPI_PLUGIN);
     if (dpi_plugin_handler == NULL) return;
 
     /* Look up the corresponding session */
@@ -140,10 +153,10 @@ fsm_process_tags(struct fsm_session *client_session,
 /**
  * @brief called when tag values are updated.  Check for the tag
  *        we are interested and process the updated value
- * @param tag - tag whose value is updated
- *        removed - values which are removed from this tag
- *        added - values which are added to this tag
- *        updated - values which are updated for this tag
+ * @param tag tag whose value is updated
+ * @param removed values which are removed from this tag
+ * @param added values which are added to this tag
+ * @param updated values which are updated for this tag
  */
 void
 fsm_process_tag_update(om_tag_t *tag,
@@ -151,41 +164,49 @@ fsm_process_tag_update(om_tag_t *tag,
                        struct ds_tree *added,
                        struct ds_tree *updated)
 {
-    struct fsm_session *client_session;
     struct fsm_dpi_client_tags *dpi_tag;
+    struct fsm_session *client_session;
     struct fsm_mgr *mgr;
     ds_tree_t *sessions;
+
+    LOGT("%s: Looking for tag %s", __func__, tag->name);
 
     mgr = fsm_get_mgr();
 
     /* check if this tag is in the list of tags we are interested */
     dpi_tag = ds_tree_find(&mgr->dpi_client_tags_tree, tag->name);
-    if (dpi_tag == NULL) return;
+    if (dpi_tag == NULL) goto nothing_to_process;
 
     /* get session associated with this tag */
     sessions = fsm_get_sessions();
-    if (sessions == NULL) return;
+    if (sessions == NULL) goto nothing_to_process;
 
     client_session = ds_tree_find(sessions, dpi_tag->client_plugin_name);
-    if (client_session == NULL) return;
-
-    LOGI("%s(): called for tag %s", __func__, tag->name);
+    if (client_session == NULL) goto nothing_to_process;
 
     /* process the updated values */
     fsm_process_tags(client_session, removed, added, updated);
+    LOGT("%s: All attributes processed for tag %s", __func__, tag->name);
+
+    return;
+
+nothing_to_process:
+    LOGT("%s: Nothing to process for %s", __func__, tag->name);
 }
 
 /**
  * @brief add the tag_name and the associated plugin_name for
  *        tag value updates
- * @param tag_name - tag name to be monitored
- *        plugin_name - name of the plugin associated with this tag
+ * @param tag_name tag name to be monitored
+ * @param plugin_name name of the plugin associated with this tag
  */
 void
-fsm_tag_for_updates(char *tag_name, char *plugin_name)
+fsm_add_tag_for_updates(char *tag_name, char *plugin_name)
 {
     struct fsm_dpi_client_tags *dpi_tag;
     struct fsm_mgr *mgr;
+
+    LOGT("%s: Looking for tag %s", __func__, tag_name);
 
     mgr = fsm_get_mgr();
 
@@ -193,7 +214,7 @@ fsm_tag_for_updates(char *tag_name, char *plugin_name)
     dpi_tag = ds_tree_find(&mgr->dpi_client_tags_tree, tag_name);
     if (dpi_tag != NULL) return;
 
-    LOGI("%s(): adding tag %s (session: %s) to monitor list",
+    LOGI("%s: Adding tag %s (session: %s) to monitor list",
          __func__, tag_name, plugin_name);
 
     dpi_tag = CALLOC(1, sizeof(struct fsm_dpi_client_tags));
@@ -224,7 +245,7 @@ fsm_update_dpi_plugin_client(struct fsm_session *session)
     char *tag_s;
 
     /* Look up the dpi plugin handler in the other_config settings */
-    dpi_plugin_handler = session->ops.get_config(session, "dpi_plugin");
+    dpi_plugin_handler = session->ops.get_config(session, DPI_PLUGIN);
 
     /* Bail if not provided */
     if (dpi_plugin_handler == NULL) return false;
@@ -245,7 +266,7 @@ fsm_update_dpi_plugin_client(struct fsm_session *session)
     if (dpi_plugin_ops->register_client == NULL) return false;
 
     /* Access the tag containing the attributes we care about */
-    attributes_tag = session->ops.get_config(session, "flow_attributes");
+    attributes_tag = session->ops.get_config(session, FLOW_ATTRIBUTES);
     /* It's acceptable to get no tag */
     if (attributes_tag == NULL) return true;
 
@@ -275,8 +296,8 @@ fsm_update_dpi_plugin_client(struct fsm_session *session)
         tag_s = tag->name;
     }
 
-    /* add tag for for getting updates */
-    fsm_tag_for_updates(tag_s, session->name);
+    /* add tag for getting updates */
+    fsm_add_tag_for_updates(tag_s, session->name);
 
     /* If no tag found, it might not yet have been created */
     if (tag == NULL) return true;
@@ -289,12 +310,46 @@ fsm_update_dpi_plugin_client(struct fsm_session *session)
         if (tag_type && !(tag_item->flags & tag_type)) continue;
 
         /* Register the client */
-        fsm_dpi_register_client(dpi_plugin, session,  tag_item->value);
+        fsm_dpi_register_client(dpi_plugin, session, tag_item->value);
     }
 
     return true;
 }
 
+void
+fsm_print_one_dpi_client(struct dpi_client* client)
+{
+    struct reg_client_session *one_session;
+
+    /* Don't proceed with a loop if we are not enabled */
+    if (!LOG_SEVERITY_ENABLED(LOG_SEVERITY_TRACE)) return;
+
+    LOGT("%s: ---> %s : %d callback", __func__, client->attr, client->num_sessions);
+    ds_tree_foreach(&client->reg_sessions, one_session)
+        LOGT("%s: --->---> %s", __func__, one_session->session->name);
+}
+
+void
+fsm_print_dpi_clients(ds_tree_t *tree)
+{
+    struct dpi_client *client;
+
+    /* Don't proceed with a loop if we are not enabled */
+    if (!LOG_SEVERITY_ENABLED(LOG_SEVERITY_TRACE)) return;
+
+    LOGT("%s: Start", __func__);
+    ds_tree_foreach(tree, client)
+    {
+        if (client->num_sessions) fsm_print_one_dpi_client(client);
+    }
+    LOGT("%s: End", __func__);
+}
+
+
+static int attr_cmp(const void *attr1, const void *attr2)
+{
+    return strcmp((const char *)attr1, (const char *)attr2);
+}
 
 /**
  * @brief registers a dpi client to a dpi plugin for a specific flow attribute
@@ -311,11 +366,13 @@ fsm_dpi_register_client(struct fsm_session *dpi_plugin_session,
                         struct fsm_session *dpi_client_session,
                         char *attr)
 {
+    struct reg_client_session *new_client_session;
     struct fsm_dpi_plugin_ops *dpi_plugin_ops;
     struct fsm_dpi_plugin *dpi_plugin;
-    struct dpi_client *to_add;
-    struct dpi_client *client;
-    ds_tree_t *tree;
+    struct dpi_client *new_client;
+    struct dpi_client *one_client;
+    ds_tree_t *dpi_clients;
+    bool register_client;
 
     /* Validate access to the dpi plugin registration callback */
     dpi_plugin_ops = &dpi_plugin_session->p_ops->dpi_plugin_ops;
@@ -324,30 +381,65 @@ fsm_dpi_register_client(struct fsm_session *dpi_plugin_session,
 
     /* Get the dpi plugin context */
     dpi_plugin = &dpi_plugin_session->dpi->plugin;
-    tree = &dpi_plugin->dpi_clients;
+    dpi_clients = &dpi_plugin->dpi_clients;
 
-    /* Bail if the attribute is already claimed */
-    client = ds_tree_find(tree, attr);
-    if (client != NULL) return;
+    new_client = NULL;
+    register_client = false;
 
-    to_add = CALLOC(1, sizeof(*to_add));
-    if (to_add == NULL) return;
+    LOGT("%s: Registering %s for plugin %s", __func__, attr, dpi_client_session->name);
+    one_client = ds_tree_find(dpi_clients, attr);
 
-    to_add->attr = STRDUP(attr);
-    if (to_add->attr == NULL) goto err_free_attr_node;
+    /* The attribute is not yet monitored by anyone, create entry */
+    if (one_client == NULL)
+    {
+        new_client = CALLOC(1, sizeof(*new_client));
+        if (new_client == NULL) goto err_free_attr_node;
 
-    to_add->session = dpi_client_session;
-    ds_tree_insert(tree, to_add, to_add->attr);
+        new_client->attr = STRDUP(attr);
+        if (new_client->attr == NULL) goto err_free_attr_node;
 
-    dpi_plugin_ops->register_client(dpi_plugin_session, dpi_client_session,
-                                    to_add->attr);
+        ds_tree_init(&new_client->reg_sessions, attr_cmp,
+                     struct reg_client_session, next);
+        new_client->num_sessions = 0;
+
+        /* Now we can add the entry */
+        ds_tree_insert(dpi_clients, new_client, new_client->attr);
+
+        /* We still need to add the session to this list */
+        one_client = new_client;
+
+        /* We need to register a callback for this attribute */
+        register_client = true;
+    }
+
+    /* New client session */
+    new_client_session = CALLOC(1, sizeof(*new_client_session));
+    if (new_client_session == NULL) goto exit_free_new_client_session;
+    new_client_session->name = dpi_plugin_session->name;  /* No need for a copy */
+    new_client_session->session = dpi_client_session;
+
+    /* Now add to this client the attribute */
+    ds_tree_insert(&one_client->reg_sessions, new_client_session, new_client_session->name);
+    one_client->num_sessions++;
+
+    /* Ensure we are only registering one callback per attribute */
+    if (register_client)
+    {
+        dpi_plugin_ops->register_client(dpi_plugin_session, dpi_client_session, attr);
+    }
+
+    fsm_print_dpi_clients(dpi_clients);
 
     return;
 
-err_free_attr_node:
-    FREE(to_add);
-}
+exit_free_new_client_session:
+    if (new_client_session) FREE(new_client_session->name);
+    FREE(new_client_session);
 
+err_free_attr_node:
+    if (new_client) FREE(new_client->attr);
+    FREE(new_client);
+}
 
 /**
  * @brief free a dpi_client node
@@ -362,22 +454,29 @@ fsm_free_dpi_client_node(struct dpi_client *dpi_client_node)
 }
 
 /**
- * @brief unregister the dpi client for the given attribute
+ * @brief unregister all dpi clients for the given attribute
  *
  * @param dpi_plugin_session dpi plugin to unregister
+ * @param dpi_client_session dpi client to unregister
  * @param attr the flow attribute
  */
 void
 fsm_dpi_unregister_client(struct fsm_session *dpi_plugin_session,
+                          struct fsm_session *dpi_client_session,
                           char *attr)
 {
     struct fsm_dpi_plugin_ops *dpi_plugin_ops;
+    struct reg_client_session *client_session;
+    struct reg_client_session *remove_session;
+    struct reg_client_session *next_session;
     struct fsm_dpi_plugin *dpi_plugin;
-    struct dpi_client *client;
-    ds_tree_t *tree;
+    struct dpi_client *attr_clients;
+    ds_tree_t *reg_sessions;
+    ds_tree_t *attr_tree;
+    int rc;
 
-    LOGI("%s(): unregistering flow attribute %s from %s",
-          __func__, attr, dpi_plugin_session->name);
+    LOGD("%s: Unregistering flow attribute %s from %s",
+          __func__, attr, dpi_client_session->name);
 
     /* Validate access to the dpi plugin registration callback */
     dpi_plugin_ops = &dpi_plugin_session->p_ops->dpi_plugin_ops;
@@ -386,26 +485,62 @@ fsm_dpi_unregister_client(struct fsm_session *dpi_plugin_session,
 
     /* Get the dpi plugin context */
     dpi_plugin = &dpi_plugin_session->dpi->plugin;
-    tree = &dpi_plugin->dpi_clients;
+    attr_tree = &dpi_plugin->dpi_clients;
 
     /* Bail if the attribute is not registered */
-    client = ds_tree_find(tree, attr);
-    if (client == NULL) return;
+    attr_clients = ds_tree_find(attr_tree, attr);
+    if (attr_clients == NULL) return;
+
+    /* Scan all the registered sessions, and find the one matching the client */
+    reg_sessions = &attr_clients->reg_sessions;
+
+    client_session = ds_tree_head(reg_sessions);
+    while (client_session != NULL)
+    {
+        next_session = ds_tree_next(reg_sessions, client_session);
+        remove_session = client_session;
+
+        LOGT("%s: Checking on %s against %s",
+             __func__, dpi_client_session->name, remove_session->session->name);
+        rc = strcmp(dpi_client_session->name, remove_session->session->name);
+        if (rc == 0)
+        {
+            LOGD("%s: Delete monitoring on %s for %s",
+                 __func__, attr, dpi_client_session->name);
+            ds_tree_remove(reg_sessions, remove_session);
+            FREE(remove_session);
+            attr_clients->num_sessions--;
+        }
+
+        client_session = next_session;
+    }
+
+    if (attr_clients->num_sessions != 0)
+    {
+        LOGD("%s: Attribute %s still registered with %d callback",
+             __func__, attr, attr_clients->num_sessions);
+        fsm_print_dpi_clients(attr_tree);
+        return;
+    }
+
+    LOGD("%s: Delete the attribute from the registered list", __func__);
 
     /* unregister the client for the given attribute */
-    ds_tree_remove(tree, client);
-    dpi_plugin_ops->unregister_client(dpi_plugin_session, client->attr);
-    fsm_free_dpi_client_node(client);
+    ds_tree_remove(attr_tree, attr_clients);
+
+    dpi_plugin_ops->unregister_client(dpi_plugin_session, attr_clients->attr);
+    fsm_free_dpi_client_node(attr_clients);
+
+    fsm_print_dpi_clients(attr_tree);
 }
 
 /**
- * @brief free memory used by client plugin name
- *        and tag name.
+ * @brief free memory used by client plugin name and tag name.
  *
  * @param dpi_tag pointer to struct fsm_dpi_client_tags holding
  *        session name and tag name
  */
-void
+static void
 fsm_free_plugin_tags(struct fsm_dpi_client_tags *dpi_tag)
 {
     FREE(dpi_tag->client_plugin_name);
@@ -424,33 +559,30 @@ struct fsm_dpi_client_tags *
 fsm_get_tag_by_name(struct fsm_mgr *mgr, const char *name)
 {
     struct fsm_dpi_client_tags *dpi_tag;
+    int rc;
 
     ds_tree_foreach(&mgr->dpi_client_tags_tree, dpi_tag)
     {
-        if (strcmp(dpi_tag->client_plugin_name, name)) continue;
+        rc = strcmp(dpi_tag->client_plugin_name, name);
 
         /* return the required tag */
-        return dpi_tag;
+        if (rc == 0) return dpi_tag;
     }
     return NULL;
 }
 
 /**
- * @brief registers a dpi client to a dpi plugin for a specific flow attribute
+ * @brief unregisters a dpi plugin
  *
  * @param dpi_plugin_session the dpi plugin to register to
- * @param dpi_client_session the registering dpi client
- * @param attr the flow attribute
- *
- * Stores the flow attribute <-> session on behalf of the dpi plugin,
- * and triggers the dpi specific binding
+
  */
 void
 fsm_dpi_unregister_clients(struct fsm_session *dpi_plugin_session)
 {
     struct fsm_dpi_plugin_ops *dpi_plugin_ops;
-    struct fsm_dpi_plugin *dpi_plugin;
     struct fsm_dpi_client_tags *dpi_tag;
+    struct fsm_dpi_plugin *dpi_plugin;
     struct dpi_client *remove;
     struct dpi_client *client;
     struct dpi_client *next;
@@ -469,8 +601,8 @@ fsm_dpi_unregister_clients(struct fsm_session *dpi_plugin_session)
     if (dpi_plugin->clients_init == false) return;
 
     tree = &dpi_plugin->dpi_clients;
-    client = ds_tree_head(tree);
 
+    client = ds_tree_head(tree);
     while (client != NULL)
     {
         next = ds_tree_next(tree, client);
@@ -520,7 +652,7 @@ fsm_dpi_register_clients(struct fsm_session *dpi_plugin_session)
         tree = &dpi_plugin->dpi_clients;
 
         ds_tree_init(tree, dpi_plugin_ops->flow_attr_cmp,
-                     struct dpi_client, node);
+                     struct dpi_client, next);
         dpi_plugin->clients_init = true;
     }
 
@@ -536,42 +668,80 @@ fsm_dpi_register_clients(struct fsm_session *dpi_plugin_session)
     }
 }
 
+
+static int
+fsm_dpi_action_weight[] =
+{
+    [FSM_DPI_CLEAR] = 0,
+    [FSM_DPI_IGNORED] = 10,
+    [FSM_DPI_PASSTHRU] = 20,
+    [FSM_DPI_INSPECT] = 30,
+    [FSM_DPI_DROP] = 40,
+};
+
+
 /**
- * @brief call back registered client
+ * @brief call back registered client(s)
  *
- * @param dpi_plugin_session the dpi plgin session
+ * @param dpi_plugin_session the dpi plugin session
  * @param attr the attribute to trigger the report
  * @param value the value of the attribute
  */
 int
-fsm_dpi_call_client(struct fsm_session *dpi_plugin_session, char *attr, char *value,
-                    struct net_md_stats_accumulator *acc)
+fsm_dpi_call_client(struct fsm_session *dpi_plugin_session, const char *attr,
+                    uint8_t type, uint16_t length, const void *value,
+                    struct fsm_dpi_plugin_client_pkt_info *pkt_info)
 {
     struct fsm_dpi_plugin_client_ops *dpi_client_plugin_ops;
+    struct reg_client_session *client_session;
     struct fsm_session *dpi_client_session;
-    struct dpi_client *client;
+    struct dpi_client *clients;
+    int weight_max_idx;
     ds_tree_t *attrs;
+    int weight;
+    int ret;
     int rc;
 
-    /* look up the client session */
+    /* This is the default behavior */
+    ret = FSM_DPI_IGNORED;
+    weight = fsm_dpi_action_weight[ret];
+
+    /* look up the client sessions */
     attrs = &dpi_plugin_session->dpi->plugin.dpi_clients;
-    client = ds_tree_find(attrs, attr);
-    if (client == NULL) return FSM_DPI_IGNORED;
+    clients = ds_tree_find(attrs, (char *)attr);
+    if (clients == NULL) return ret;
+    if (clients->num_sessions == 0) return ret;
 
-    dpi_client_session = client->session;
+    weight_max_idx = (int)(ARRAY_SIZE(fsm_dpi_action_weight));
+    ds_tree_foreach(&clients->reg_sessions, client_session)
+    {
+        dpi_client_session = client_session->session;
 
-    /* Access the client call back */
-    dpi_client_plugin_ops = &dpi_client_session->p_ops->dpi_plugin_client_ops;
-    if (dpi_client_plugin_ops->process_attr == NULL) return FSM_DPI_IGNORED;
+        /* Access the client call back */
+        dpi_client_plugin_ops = &dpi_client_session->p_ops->dpi_plugin_client_ops;
+        if (dpi_client_plugin_ops->process_attr == NULL) continue;
 
-    rc = dpi_client_plugin_ops->process_attr(dpi_client_session, attr, value, acc);
+        LOGT("%s: Calling %s for attribute %s",
+             __func__, client_session->session->name, attr);
 
-    return rc;
+        /* Return value needs to be somehow combined (ignore PASSTHRU, etc) */
+        rc = dpi_client_plugin_ops->process_attr(dpi_client_session, attr, type,
+                                                 length, value, pkt_info);
+        if ((rc < 0) || (rc >= weight_max_idx)) continue;
+        if (fsm_dpi_action_weight[rc] > weight)
+        {
+            LOGD("%s: Return value already set to %d before %s. Now %d",
+                    __func__, ret, dpi_client_session->name, rc);
+            weight = fsm_dpi_action_weight[rc];
+            ret = rc;
+        }
+    }
+
+    return ret;
 }
 
-
 /**
- * @brief free the dpi reources of a dpi_plugin_client session
+ * @brief free the dpi resources of a dpi_plugin_client session
  *
  * @param session the session to free
  */
@@ -589,7 +759,7 @@ fsm_free_dpi_plugin_client(struct fsm_session *session)
     om_tag_t *tag;
 
     /* Look up the dpi plugin handler in the other_config settings */
-    dpi_plugin_handler = session->ops.get_config(session, "dpi_plugin");
+    dpi_plugin_handler = session->ops.get_config(session, DPI_PLUGIN);
     if (dpi_plugin_handler == NULL) return;
 
     /* Look up the corresponding session */
@@ -597,7 +767,7 @@ fsm_free_dpi_plugin_client(struct fsm_session *session)
     dpi_plugin = ds_tree_find(sessions, dpi_plugin_handler);
     if (dpi_plugin == NULL) return;
 
-    attributes_tag = session->ops.get_config(session, "flow_attributes");
+    attributes_tag = session->ops.get_config(session, FLOW_ATTRIBUTES);
     if (attributes_tag == NULL) return;
 
     /* Get the actual tag from its name */
@@ -607,7 +777,7 @@ fsm_free_dpi_plugin_client(struct fsm_session *session)
     tag_values = &tag->values;
     ds_tree_foreach(tag_values, tag_item)
     {
-        fsm_dpi_unregister_client(dpi_plugin, tag_item->value);
+        fsm_dpi_unregister_client(dpi_plugin, session, tag_item->value);
     }
 
     /* get the tag name associated with this session */

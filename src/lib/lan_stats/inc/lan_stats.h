@@ -63,9 +63,73 @@ typedef union ovs_u128 {
     } u64;
 } ovs_u128_;
 
+typedef enum
+{
+    IFTYPE_NONE    =  0,
+    IFTYPE_ETH     =  1,
+    IFTYPE_VIF     =  2,
+    IFTYPE_VLAN    =  3,
+    IFTYPE_BRIDGE  =  4,
+    IFTYPE_GRE     =  5,
+    IFTYPE_GRE6    =  6,
+    IFTYPE_TAP     =  7,
+    IFTYPE_PPPOE   =  8,
+    IFTYPE_LTE     =  9
+} uplink_iface_type;
+
+struct iface_type
+{
+    char *iface_type;
+    int value;
+};
+
 struct lan_stats_instance;
 
 typedef void (*collect_flows_fn)(struct lan_stats_instance *);
+
+static const struct iface_type iface_type_map[] =
+{
+    {
+        .value = IFTYPE_NONE,
+        .iface_type = "",
+    },
+    {
+        .value = IFTYPE_ETH,
+        .iface_type = "eth",
+    },
+    {
+        .value = IFTYPE_VIF,
+        .iface_type = "vif",
+    },
+    {
+        .value = IFTYPE_VLAN,
+        .iface_type = "vlan",
+    },
+    {
+        .value = IFTYPE_BRIDGE,
+        .iface_type = "bridge",
+    },
+    {
+        .value = IFTYPE_GRE,
+        .iface_type = "gre",
+    },
+    {
+        .value = IFTYPE_GRE6,
+        .iface_type = "gre6",
+    },
+    {
+        .value = IFTYPE_TAP,
+        .iface_type = "tap",
+    },
+    {
+        .value = IFTYPE_PPPOE,
+        .iface_type = "pppoe",
+    },
+    {
+        .value = IFTYPE_LTE,
+        .iface_type = "lte",
+    },
+};
 
 typedef struct dp_ctl_stats_
 {
@@ -81,6 +145,8 @@ typedef struct dp_ctl_stats_
     unsigned int              vlan_id;
     unsigned long long        pkts;
     unsigned long long        bytes;
+    uplink_iface_type         uplink_if_type;
+    bool                      uplink_changed;
     time_t                    stime;
 
     ds_tree_node_t  dp_tnode;
@@ -110,6 +176,12 @@ typedef struct lan_stats_mgr_
     int max_sessions;
     lan_stats_instance_t *active;
     bool debug;
+    uplink_iface_type uplink_if_type;
+    bool curr_uplinked_changed;
+    bool uplink_changed;
+    bool report;
+    void (*ovsdb_init)(void);
+    void (*ovsdb_exit)(void);
 } lan_stats_mgr_t;
 
 void
@@ -137,5 +209,11 @@ void
 lan_stats_flows_filter(lan_stats_instance_t *lan_stats_instance);
 
 void lan_stats_collect_flows(lan_stats_instance_t *lan_stats_instance);
+
+void
+link_stats_collect_cb(uplink_iface_type uplink_if_type);
+
+void
+lan_stats_add_uplink_info(lan_stats_instance_t *lan_stats_instance);
 
 #endif /* LAN_STATS_H_INCLUDED */

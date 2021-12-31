@@ -52,6 +52,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "nf_utils.h"
 #include "kconfig.h"
 #include "memutil.h"
+#include "sockaddr_storage.h"
 
 #include <netdb.h>
 #include <sys/socket.h>
@@ -100,7 +101,7 @@ static struct imc_context g_imc_app_server =
  */
 static struct imc_dso g_imc_context = { 0 };
 
-static int flow_cmp(void *a, void *b);
+static int flow_cmp(const void *a, const void *b);
 
 /**
  * Temporary list to merge similar flows across zones.
@@ -115,10 +116,10 @@ ds_tree_t flow_tracker_list = DS_TREE_INIT(flow_cmp, struct flow_tracker, ft_tno
  * @return 0 if flows match
  */
 static int
-flow_cmp (void *a, void *b)
+flow_cmp (const void *a, const void *b)
 {
-    layer3_ct_info_t  *l3_a = (layer3_ct_info_t *)a;
-    layer3_ct_info_t  *l3_b = (layer3_ct_info_t *)b;
+    const layer3_ct_info_t  *l3_a = (const layer3_ct_info_t *)a;
+    const layer3_ct_info_t  *l3_b = (const layer3_ct_info_t *)b;
 
     return memcmp(l3_a, l3_b, sizeof(layer3_ct_info_t));
 }
@@ -143,7 +144,8 @@ process_merged_multi_zonestats(ds_dlist_t *list, ds_tree_t *tree)
     while (ft != NULL)
     {
         count++;
-        if (ft->zone_id == 1) {
+        if (ft->zone_id == 1)
+        {
             ds_dlist_remove(list, ft->flowptr);
             FREE(ft->flowptr);
             ct_stats->node_count--;
@@ -194,11 +196,11 @@ flow_merge_multi_zonestats(ctflow_info_t *flow, uint16_t zone_id)
 
     if (ft == NULL)
     {
-      // Allocate for the flow.
-      ft = CALLOC(1, sizeof(struct flow_tracker));
-      ft->flowptr = flow;
-      ft->zone_id = zone_id;
-      ds_tree_insert(&flow_tracker_list, ft, &flow->flow.layer3_info);
+        // Allocate for the flow.
+        ft = CALLOC(1, sizeof(struct flow_tracker));
+        ft->flowptr = flow;
+        ft->zone_id = zone_id;
+        ds_tree_insert(&flow_tracker_list, ft, &flow->flow.layer3_info);
     }
     else
     {
@@ -346,12 +348,12 @@ static char *g_appname;
  * @return 0 if sessions matches
  */
 static int
-ct_stats_session_cmp(void *a, void *b)
+ct_stats_session_cmp(const void *a, const void *b)
 {
     uintptr_t p_a = (uintptr_t)a;
     uintptr_t p_b = (uintptr_t)b;
 
-    if (p_a ==  p_b) return 0;
+    if (p_a == p_b) return 0;
     if (p_a < p_b) return -1;
     return 1;
 }
@@ -434,37 +436,6 @@ ct_stats_get_active_instance(void)
 }
 
 /**
- * @brief populates a sockaddr_storage structure from ip parameters
- *
- * @param af the the inet family
- * @param ip a pointer to the ip address buffer
- * @param dst the sockaddr_storage structure to fill
- * @return MNL_CB_OK when successful, -1 otherwise
- */
-static void
-ct_stats_populate_sockaddr(int af, void *ip, struct sockaddr_storage *dst)
-{
-    if (af == AF_INET)
-    {
-        struct sockaddr_in *in4 = (struct sockaddr_in *)dst;
-
-        memset(in4, 0, sizeof(struct sockaddr_in));
-        in4->sin_family = af;
-        memcpy(&in4->sin_addr, ip, sizeof(in4->sin_addr));
-    }
-    else if (af == AF_INET6)
-    {
-        struct sockaddr_in6 *in6 = (struct sockaddr_in6 *)dst;
-
-        memset(in6, 0, sizeof(struct sockaddr_in6));
-        in6->sin6_family = af;
-        memcpy(&in6->sin6_addr, ip, sizeof(in6->sin6_addr));
-    }
-    return;
-}
-
-
-/**
  * @brief checks if an ipv4 or ipv6 address represents
  *        a broadcast or multicast ip.
  *        ipv4 multicast starts 0xE.
@@ -537,17 +508,17 @@ parse_counters_cb(const struct nlattr *attr, void *data)
 
     switch (type)
     {
-    case CTA_COUNTERS_PACKETS:
-    case CTA_COUNTERS_BYTES:
-        rc = mnl_attr_validate(attr, MNL_TYPE_U64);
-        if (rc < 0) return MNL_CB_ERROR;
-        break;
+        case CTA_COUNTERS_PACKETS:
+        case CTA_COUNTERS_BYTES:
+            rc = mnl_attr_validate(attr, MNL_TYPE_U64);
+            if (rc < 0) return MNL_CB_ERROR;
+            break;
 
-    case CTA_COUNTERS32_PACKETS:
-    case CTA_COUNTERS32_BYTES:
-        rc = mnl_attr_validate(attr, MNL_TYPE_U32);
-        if (rc < 0) return MNL_CB_ERROR;
-        break;
+        case CTA_COUNTERS32_PACKETS:
+        case CTA_COUNTERS32_BYTES:
+            rc = mnl_attr_validate(attr, MNL_TYPE_U32);
+            if (rc < 0) return MNL_CB_ERROR;
+            break;
     }
     tb[type] = attr;
 
@@ -577,18 +548,18 @@ parse_ip_cb(const struct nlattr *attr, void *data)
 
     switch (type)
     {
-    case CTA_IP_V4_SRC:
-    case CTA_IP_V4_DST:
-        rc = mnl_attr_validate(attr, MNL_TYPE_U32);
-        if (rc < 0) return MNL_CB_ERROR;
-        break;
+        case CTA_IP_V4_SRC:
+        case CTA_IP_V4_DST:
+            rc = mnl_attr_validate(attr, MNL_TYPE_U32);
+            if (rc < 0) return MNL_CB_ERROR;
+            break;
 
-    case CTA_IP_V6_SRC:
-    case CTA_IP_V6_DST:
-        rc =  mnl_attr_validate2(attr, MNL_TYPE_BINARY,
-                                 sizeof(struct in6_addr));
-        if (rc < 0) return MNL_CB_ERROR;
-        break;
+        case CTA_IP_V6_SRC:
+        case CTA_IP_V6_DST:
+            rc =  mnl_attr_validate2(attr, MNL_TYPE_BINARY,
+                                     sizeof(struct in6_addr));
+            if (rc < 0) return MNL_CB_ERROR;
+            break;
     }
 
     tb[type] = attr;
@@ -619,19 +590,19 @@ parse_proto_cb(const struct nlattr *attr, void *data)
 
     switch (type)
     {
-    case CTA_PROTO_NUM:
-    case CTA_PROTO_ICMP_TYPE:
-    case CTA_PROTO_ICMP_CODE:
-        rc = mnl_attr_validate(attr, MNL_TYPE_U8);
-        if (rc < 0) return MNL_CB_ERROR;
-        break;
+        case CTA_PROTO_NUM:
+        case CTA_PROTO_ICMP_TYPE:
+        case CTA_PROTO_ICMP_CODE:
+            rc = mnl_attr_validate(attr, MNL_TYPE_U8);
+            if (rc < 0) return MNL_CB_ERROR;
+            break;
 
-    case CTA_PROTO_SRC_PORT:
-    case CTA_PROTO_DST_PORT:
-    case CTA_PROTO_ICMP_ID:
-        rc = mnl_attr_validate(attr, MNL_TYPE_U16);
-        if (rc < 0) return MNL_CB_ERROR;
-        break;
+        case CTA_PROTO_SRC_PORT:
+        case CTA_PROTO_DST_PORT:
+        case CTA_PROTO_ICMP_ID:
+            rc = mnl_attr_validate(attr, MNL_TYPE_U16);
+            if (rc < 0) return MNL_CB_ERROR;
+            break;
     }
 
     tb[type] = attr;
@@ -663,20 +634,20 @@ parse_tuple_cb(const struct nlattr *attr, void *data)
 
     switch (type)
     {
-    case CTA_TUPLE_IP:
-        rc = mnl_attr_validate(attr, MNL_TYPE_NESTED);
-        if (rc < 0) return MNL_CB_ERROR;
-        break;
+        case CTA_TUPLE_IP:
+            rc = mnl_attr_validate(attr, MNL_TYPE_NESTED);
+            if (rc < 0) return MNL_CB_ERROR;
+            break;
 
-    case CTA_TUPLE_PROTO:
-        rc = mnl_attr_validate(attr, MNL_TYPE_NESTED);
-        if (rc < 0) return MNL_CB_ERROR;
-        break;
+        case CTA_TUPLE_PROTO:
+            rc = mnl_attr_validate(attr, MNL_TYPE_NESTED);
+            if (rc < 0) return MNL_CB_ERROR;
+            break;
 
-    case CTA_TUPLE_ZONE:
-        rc = mnl_attr_validate(attr, MNL_TYPE_U16);
-        if (rc < 0) return MNL_CB_ERROR;
-        break;
+        case CTA_TUPLE_ZONE:
+            rc = mnl_attr_validate(attr, MNL_TYPE_U16);
+            if (rc < 0) return MNL_CB_ERROR;
+            break;
     }
 
     tb[type] = attr;
@@ -717,28 +688,28 @@ get_tuple(const struct nlattr *nest, ct_flow_t *flow)
         if (ip_tb[CTA_IP_V4_SRC] != NULL)
         {
             in = mnl_attr_get_payload(ip_tb[CTA_IP_V4_SRC]);
-            ct_stats_populate_sockaddr(AF_INET, &in->s_addr,
-                                       &flow->layer3_info.src_ip);
+            sockaddr_storage_populate(AF_INET, &in->s_addr,
+                                      &flow->layer3_info.src_ip);
         }
 
         if (ip_tb[CTA_IP_V4_DST] != NULL)
         {
             in = mnl_attr_get_payload(ip_tb[CTA_IP_V4_DST]);
-            ct_stats_populate_sockaddr(AF_INET, &in->s_addr,
-                                       &flow->layer3_info.dst_ip);
+            sockaddr_storage_populate(AF_INET, &in->s_addr,
+                                      &flow->layer3_info.dst_ip);
         }
 
         if (ip_tb[CTA_IP_V6_SRC] != NULL)
         {
             in6 = mnl_attr_get_payload(ip_tb[CTA_IP_V6_SRC]);
-            ct_stats_populate_sockaddr(AF_INET6, in6->s6_addr,
-                                       &flow->layer3_info.src_ip);
+            sockaddr_storage_populate(AF_INET6, in6->s6_addr,
+                                      &flow->layer3_info.src_ip);
         }
         if (ip_tb[CTA_IP_V6_DST] != NULL)
         {
            in6 = mnl_attr_get_payload(ip_tb[CTA_IP_V6_DST]);
-           ct_stats_populate_sockaddr(AF_INET6, in6->s6_addr,
-                                      &flow->layer3_info.dst_ip);
+           sockaddr_storage_populate(AF_INET6, in6->s6_addr,
+                                     &flow->layer3_info.dst_ip);
         }
     }
 
@@ -822,10 +793,10 @@ parse_protoinfo(const struct nlattr *attr, void *data)
 
     switch(type)
     {
-    case CTA_PROTOINFO_TCP:
-        rc = mnl_attr_validate(attr, MNL_TYPE_NESTED);
-        if (rc < 0) return MNL_CB_ERROR;
-        break;
+        case CTA_PROTOINFO_TCP:
+            rc = mnl_attr_validate(attr, MNL_TYPE_NESTED);
+            if (rc < 0) return MNL_CB_ERROR;
+            break;
     }
 
     tb[type] = attr;
@@ -856,10 +827,10 @@ parse_tcp_protoinfo(const struct nlattr *attr, void *data)
 
     switch (type)
     {
-    case CTA_PROTOINFO_TCP_STATE:
-        rc = mnl_attr_validate(attr, MNL_TYPE_U8);
-        if (rc < 0) return MNL_CB_ERROR;
-        break;
+        case CTA_PROTOINFO_TCP_STATE:
+            rc = mnl_attr_validate(attr, MNL_TYPE_U8);
+            if (rc < 0) return MNL_CB_ERROR;
+            break;
     }
 
     tb[type] = attr;
@@ -901,25 +872,25 @@ get_protoinfo(const struct nlattr *nest, ct_flow_t *flow)
             state = mnl_attr_get_u8(tcp_tb[CTA_PROTOINFO_TCP_STATE]);
             switch (state)
             {
-            case TCP_CONNTRACK_SYN_SENT:
-            case TCP_CONNTRACK_SYN_RECV:
-            case TCP_CONNTRACK_ESTABLISHED:
-                flow->start = true;
-                LOGD("%s: TCP Flow started", __func__);
-                break;
+                case TCP_CONNTRACK_SYN_SENT:
+                case TCP_CONNTRACK_SYN_RECV:
+                case TCP_CONNTRACK_ESTABLISHED:
+                    flow->start = true;
+                    LOGD("%s: TCP Flow started", __func__);
+                    break;
 
-            case TCP_CONNTRACK_FIN_WAIT:
-            case TCP_CONNTRACK_CLOSE_WAIT:
-            case TCP_CONNTRACK_LAST_ACK:
-            case TCP_CONNTRACK_TIME_WAIT:
-            case TCP_CONNTRACK_CLOSE:
-            case TCP_CONNTRACK_TIMEOUT_MAX:
-                flow->end = true;
-                LOGD("%s: TCP Flow ended", __func__);
-                break;
+                case TCP_CONNTRACK_FIN_WAIT:
+                case TCP_CONNTRACK_CLOSE_WAIT:
+                case TCP_CONNTRACK_LAST_ACK:
+                case TCP_CONNTRACK_TIME_WAIT:
+                case TCP_CONNTRACK_CLOSE:
+                case TCP_CONNTRACK_TIMEOUT_MAX:
+                    flow->end = true;
+                    LOGD("%s: TCP Flow ended", __func__);
+                    break;
 
-            default:
-                break;
+                default:
+                    break;
             }
         }
     }
@@ -950,24 +921,24 @@ data_attr_cb(const struct nlattr *attr, void *data)
 
     switch (type)
     {
-    case CTA_TUPLE_ORIG:
-    case CTA_COUNTERS_ORIG:
-    case CTA_COUNTERS_REPLY:
-        rc = mnl_attr_validate(attr, MNL_TYPE_NESTED);
-        if (rc < 0) return MNL_CB_ERROR;
-        break;
+        case CTA_TUPLE_ORIG:
+        case CTA_COUNTERS_ORIG:
+        case CTA_COUNTERS_REPLY:
+            rc = mnl_attr_validate(attr, MNL_TYPE_NESTED);
+            if (rc < 0) return MNL_CB_ERROR;
+            break;
 
-    case CTA_TIMEOUT:
-    case CTA_MARK:
-    case CTA_SECMARK:
-        rc =  mnl_attr_validate(attr, MNL_TYPE_U32);
-        if (rc < 0) return MNL_CB_ERROR;
-        break;
+        case CTA_TIMEOUT:
+        case CTA_MARK:
+        case CTA_SECMARK:
+            rc =  mnl_attr_validate(attr, MNL_TYPE_U32);
+            if (rc < 0) return MNL_CB_ERROR;
+            break;
 
-    case CTA_ZONE:
-        rc = mnl_attr_validate(attr, MNL_TYPE_U16);
-        if (rc < 0) return MNL_CB_ERROR;
-        break;
+        case CTA_ZONE:
+            rc = mnl_attr_validate(attr, MNL_TYPE_U16);
+            if (rc < 0) return MNL_CB_ERROR;
+            break;
     }
 
     tb[type] = attr;
@@ -1474,7 +1445,7 @@ ct_flow_add_sample(flow_stats_t *ct_stats)
             if (flow->end) key.fend = true;
             sample_count++;
 
-            ret =  net_md_add_sample(aggr, &key, &pkts_ct);
+            ret = net_md_add_sample(aggr, &key, &pkts_ct);
             if (!ret)
             {
                 LOGW("%s: some error with net_md_add_sample", __func__);
@@ -1578,7 +1549,7 @@ ct_stats_collect_filter_cb(struct net_md_aggregator *aggr,
     if (key->ip_version == 4 || key->ip_version == 6)
     {
         af = (key->ip_version == 4 ? AF_INET : AF_INET6);
-        ct_stats_populate_sockaddr(af, key->dst_ip, &dst_ip);
+        sockaddr_storage_populate(af, key->dst_ip, &dst_ip);
         rc = ct_stats_filter_ip(af, &dst_ip);
         if (rc)
         {
@@ -1663,7 +1634,7 @@ alloc_aggr(flow_stats_t *ct_stats)
     aggr_set.acc_ttl = (2 * collector->report_interval);
     aggr_set.report_filter = fcm_report_filter_nmd_callback;
     aggr_set.collect_filter = ct_stats_collect_filter_cb;
-    aggr_set.neigh_lookup = neigh_table_lookup;
+    aggr_set.neigh_lookup = neigh_table_lookup_af;
     aggr_set.on_acc_report = ct_stats_on_acc_report;
     aggr = net_md_allocate_aggregator(&aggr_set);
     if (aggr == NULL)
@@ -1942,13 +1913,16 @@ app_recv_cb(void *data, size_t len)
     }
 
     str = CALLOC(1, len + 1);
+    if (str == NULL) goto err;
 
     strscpy(str, (char *)data, len + 1);
     LOGI("%s: received app name %s", __func__, str);
     g_appname = str;
     net_md_process_aggr(ct_stats->aggr);
-    g_appname = NULL;
     FREE(str);
+
+err:
+    g_appname = NULL;
 }
 
 

@@ -33,21 +33,20 @@ source "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="onbrd/$(basename "$0")"
 manager_setup_file="onbrd/onbrd_setup.sh"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+onbrd/onbrd_verify_redirector_address_awlan_node.sh [-h] arguments
 Description:
     - Validate redirector address in AWLAN_Node table
 Arguments:
     -h  show this help message
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name}
+                 Run: ./onbrd/onbrd_verify_redirector_address_awlan_node.sh
 Script usage example:
-   ./${tc_name}
+   ./onbrd/onbrd_verify_redirector_address_awlan_node.sh
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -68,7 +67,7 @@ print_tables AWLAN_Node
 fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 
-log_title "$tc_name: ONBRD test - Verify redirector address"
+log_title "onbrd/onbrd_verify_redirector_address_awlan_node.sh: ONBRD test - Verify redirector address"
 
 wait_for_function_response 'notempty' "get_ovsdb_entry_value AWLAN_Node redirector_addr" &&
     check_pass=true ||
@@ -77,6 +76,6 @@ wait_for_function_response 'notempty' "get_ovsdb_entry_value AWLAN_Node redirect
 print_tables AWLAN_Node
 
 [ "${check_pass}" = true ] &&
-    log "$tc_name: AWLAN_Node::redirector_addr is populated - Success" ||
-    raise "FAIL: AWLAN_Node::redirector_addr is not populated" -l "$tc_name" -tc
+    log "onbrd/onbrd_verify_redirector_address_awlan_node.sh: AWLAN_Node::redirector_addr is populated - Success" ||
+    raise "FAIL: AWLAN_Node::redirector_addr is not populated" -l "onbrd/onbrd_verify_redirector_address_awlan_node.sh" -tc
 pass

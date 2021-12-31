@@ -239,7 +239,7 @@ void nfm_objm_dispatch_fn(struct ev_loop *loop, ev_debounce *w, int revent)
     if (no != NULL) no->no_pending = false;
 }
 
-int nfm_objm_version_cmp(void *a, void *b)
+int nfm_objm_version_cmp(const void *a, const void *b)
 {
     /*
      * Invert the parameters so newer versions end up at the beginning of the tree.

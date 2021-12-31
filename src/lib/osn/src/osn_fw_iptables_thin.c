@@ -104,6 +104,7 @@ static char *osfw_target_builtin[] =
 {
     "ACCEPT",
     "CLASSIFY",
+    "CT",
     "DNAT",
     "DROP",
     "DSCP",
@@ -665,10 +666,10 @@ bool osfw_target_is_builtin(const char *target)
     return false;
 }
 
-int osfw_rule_cmp(void *_a, void *_b)
+int osfw_rule_cmp(const void *_a, const void *_b)
 {
-    struct osfw_rule *a = _a;
-    struct osfw_rule *b = _b;
+    const struct osfw_rule *a = _a;
+    const struct osfw_rule *b = _b;
     int rc;
 
     /* Sort by family */
@@ -698,12 +699,12 @@ int osfw_rule_cmp(void *_a, void *_b)
     return 0;
 }
 
-int osfw_chain_cmp(void *_a, void *_b)
+int osfw_chain_cmp(const void *_a, const void *_b)
 {
     int rc;
 
-    struct osfw_chain *a = _a;
-    struct osfw_chain *b = _b;
+    const struct osfw_chain *a = _a;
+    const struct osfw_chain *b = _b;
 
     rc = a->fc_family - b->fc_family;
     if (rc != 0) return rc;

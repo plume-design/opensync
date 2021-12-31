@@ -98,7 +98,7 @@ om_monitor_update_openflow_state( struct schema_Openflow_Config *ofconf,
     ofstate.success = ret;
     ofstate.success_exists = true;
 
-    if( type == ADD ) {
+    if( type == OM_ACTION_ADD ) {
         // A new flow was added successfully. Add a new row into Openflow_State so that
         // the cloud knows ovs-ofctl succeeded.
         if( !( js_row = schema_Openflow_State_to_json( &ofstate, NULL ))) {
@@ -123,7 +123,7 @@ om_monitor_update_openflow_state( struct schema_Openflow_Config *ofconf,
         }
         json_decref(jrc);
 
-    } else if( type == DELETE ) {
+    } else if( type == OM_ACTION_DELETE ) {
         if( ret ) {
             // A flow was deleted successfully. Delete the corresponding
             // row from Openflow_State so that cloud knows ovs-ofctl succeeded.
@@ -395,7 +395,7 @@ om_range_generate_ipv4_rules( char *start, char *end,
     unsigned long                   endIP = om_range_dot_to_long_ip(end);
 
     unsigned int                    iterator;
-    
+
     memcpy(&out, sflow, sizeof(out));
 
     for (iterator=startIP; iterator <= endIP; iterator++)
@@ -552,7 +552,7 @@ om_monitor_update_flows_parsed(om_action_t type, struct schema_Openflow_Config *
     is_template = om_tflow_rule_is_template(ofconf->rule);
 
     switch( type ) {
-        case ADD:
+        case OM_ACTION_ADD:
             if (is_template) {
                 ret = om_tflow_add_from_schema(ofconf);
             }
@@ -568,11 +568,11 @@ om_monitor_update_flows_parsed(om_action_t type, struct schema_Openflow_Config *
             }
             break;
 
-        case UPDATE:
+        case OM_ACTION_UPDATE:
             LOGE("Cloud attempted to update a flow (token '%s') -- this is not supported!", ofconf->token);
             return false;
 
-        case DELETE:
+        case OM_ACTION_DELETE:
             if (is_template) {
                 ret = om_tflow_remove_from_schema(ofconf);
             }
@@ -623,10 +623,10 @@ om_monitor_update_flows(om_action_t type, json_t *js)
                 /* NOTE: Due to the security aspect of the use case when ranges
                  *       are involved, rules are still added partially when errors
                  *       are encountered, and are not rolled back completely.
-                 *       
+                 *
                  *       For eg: For rule: tcp,tp_src=$<1-5>, if addition "tcp, tp_src=3"
                  *       fails, all others(1,2,4,5) are still added.
-                 *      
+                 *
                  *       The arguement is, if ports 1-5 are to be allowed, and 3 fails,
                  *       1,2,4,5 are still allowed. And similarly for blocked ports.
                  *       For these use cases, something is always better than nothing.
@@ -656,15 +656,15 @@ om_monitor_config_cb(ovsdb_update_monitor_t *self)
     switch(self->mon_type) {
 
     case OVSDB_UPDATE_NEW:
-        om_monitor_update_flows(ADD, self->mon_json_new);
+        om_monitor_update_flows(OM_ACTION_ADD, self->mon_json_new);
         break;
 
     case OVSDB_UPDATE_MODIFY:
-        om_monitor_update_flows(UPDATE, self->mon_json_new);
+        om_monitor_update_flows(OM_ACTION_UPDATE, self->mon_json_new);
         break;
 
     case OVSDB_UPDATE_DEL:
-        om_monitor_update_flows(DELETE, self->mon_json_old);
+        om_monitor_update_flows(OM_ACTION_DELETE, self->mon_json_old);
         break;
 
     default:
@@ -693,15 +693,15 @@ om_monitor_update_tags(om_action_t type, json_t *js)
 
     switch(type) {
 
-    case ADD:
+    case OM_ACTION_ADD:
         om_tag_add_from_schema(&stag);
         break;
 
-    case DELETE:
+    case OM_ACTION_DELETE:
         om_tag_remove_from_schema(&stag);
         break;
 
-    case UPDATE:
+    case OM_ACTION_UPDATE:
         om_tag_update_from_schema(&stag);
         break;
 
@@ -747,15 +747,15 @@ om_monitor_tags_cb(ovsdb_update_monitor_t *self)
     switch(self->mon_type) {
 
     case OVSDB_UPDATE_NEW:
-        om_monitor_update_tags(ADD, self->mon_json_new);
+        om_monitor_update_tags(OM_ACTION_ADD, self->mon_json_new);
         break;
 
     case OVSDB_UPDATE_MODIFY:
-        om_monitor_update_tags(UPDATE, self->mon_json_new);
+        om_monitor_update_tags(OM_ACTION_UPDATE, self->mon_json_new);
         break;
 
     case OVSDB_UPDATE_DEL:
-        om_monitor_update_tags(DELETE, self->mon_json_old);
+        om_monitor_update_tags(OM_ACTION_DELETE, self->mon_json_old);
         break;
 
     default:
@@ -784,15 +784,15 @@ om_monitor_update_tag_groups(om_action_t type, json_t *js)
 
     switch(type) {
 
-    case ADD:
+    case OM_ACTION_ADD:
         om_tag_group_add_from_schema(&sgroup);
         break;
 
-    case DELETE:
+    case OM_ACTION_DELETE:
         om_tag_group_remove_from_schema(&sgroup);
         break;
 
-    case UPDATE:
+    case OM_ACTION_UPDATE:
         om_tag_group_update_from_schema(&sgroup);
         break;
 
@@ -813,15 +813,15 @@ om_monitor_tag_groups_cb(ovsdb_update_monitor_t *self)
     switch(self->mon_type) {
 
     case OVSDB_UPDATE_NEW:
-        om_monitor_update_tag_groups(ADD, self->mon_json_new);
+        om_monitor_update_tag_groups(OM_ACTION_ADD, self->mon_json_new);
         break;
 
     case OVSDB_UPDATE_MODIFY:
-        om_monitor_update_tag_groups(UPDATE, self->mon_json_new);
+        om_monitor_update_tag_groups(OM_ACTION_UPDATE, self->mon_json_new);
         break;
 
     case OVSDB_UPDATE_DEL:
-        om_monitor_update_tag_groups(DELETE, self->mon_json_old);
+        om_monitor_update_tag_groups(OM_ACTION_DELETE, self->mon_json_old);
         break;
 
     default:

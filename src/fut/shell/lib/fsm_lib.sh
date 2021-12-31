@@ -29,6 +29,7 @@
 export FUT_FSM_LIB_SRC=true
 [ "${FUT_UNIT_LIB_SRC}" != true ] && source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
 echo "${FUT_TOPDIR}/shell/lib/fsm_lib.sh sourced"
+
 ####################### INFORMATION SECTION - START ###########################
 #
 #   Base library of common Flow Control Manager functions
@@ -40,7 +41,7 @@ echo "${FUT_TOPDIR}/shell/lib/fsm_lib.sh sourced"
 ###############################################################################
 # DESCRIPTION:
 #   Function prepares test environmet for FSM testing.
-#   Raises an exception on fail.
+#   Raises exception on fail in any of its steps.
 # INPUT PARAMETER(S):
 #   None.
 # RETURNS:
@@ -50,30 +51,28 @@ echo "${FUT_TOPDIR}/shell/lib/fsm_lib.sh sourced"
 ###############################################################################
 fsm_setup_test_environment()
 {
-    fn_name="fsm_lib:fsm_setup_test_environment"
-
-    log "$fn_name - Running FSM setup"
+    log -deb "fsm_lib:fsm_setup_test_environment - Running FSM setup"
 
     device_init  &&
-        log -deb "$fn_name - Device initialized - Success" ||
-        raise "FAIL: Could not initialize device: device_init" -l "$fn_name" -ds
+        log -deb "fsm_lib:fsm_setup_test_environment - Device initialized - Success" ||
+        raise "FAIL: device_init - Could not initialize device" -l "fsm_lib:fsm_setup_test_environment" -ds
 
     start_openswitch &&
-        log -deb "$fn_name - OpenvSwitch started - Success"  ||
-        raise "FAIL: Could not start OpenvSwitch: start_openswitch" -l "$fn_name" -ds
+        log -deb "fsm_lib:fsm_setup_test_environment - OpenvSwitch started - Success"  ||
+        raise "FAIL: start_openswitch - Could not start OpenvSwitch" -l "fsm_lib:fsm_setup_test_environment" -ds
 
     restart_managers
-    log "${fn_name} - Executed restart_managers, exit code: $?"
+    log -deb "fsm_lib:fsm_setup_test_environment - Executed restart_managers, exit code: $?"
 
     empty_ovsdb_table AW_Debug &&
-        log -deb "$fn_name - AW_Debug table emptied - Success"  ||
-        raise "FAIL: Could not empty table: empty_ovsdb_table AW_Debug" -l "$fn_name" -ds
+        log -deb "fsm_lib:fsm_setup_test_environment - AW_Debug table emptied - Success"  ||
+        raise "FAIL: empty_ovsdb_table AW_Debug - Could not empty table" -l "fsm_lib:fsm_setup_test_environment" -ds
 
     set_manager_log FSM TRACE &&
-        log -deb "$fn_name - Manager log for FSM set to TRACE - Success"||
-        raise "FAIL: Could not set manager log severity: set_manager_log FSM TRACE" -l "$fn_name" -ds
+        log -deb "fsm_lib:fsm_setup_test_environment - Manager log for FSM set to TRACE - Success"||
+        raise "FAIL: set_manager_log FSM TRACE - Could not set manager log severity" -l "fsm_lib:fsm_setup_test_environment" -ds
 
-    log "$fn_name - FSM setup - end"
+    log -deb "fsm_lib:fsm_setup_test_environment - FSM setup - end"
 
     return 0
 }
@@ -83,7 +82,7 @@ fsm_setup_test_environment()
 #   Function check if a command is in the path.
 #   Raises an exception if not in the path.
 # INPUT PARAMETER(S):
-#   $1  command to check (required)
+#   $1  Command to check (string, required)
 # RETURNS:
 #   0   On success.
 # USAGE EXAMPLE(S):
@@ -92,18 +91,17 @@ fsm_setup_test_environment()
 ###############################################################################
 check_cmd()
 {
-    fn_name="fsm_lib:check_cmd"
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input arguments, $# given" -arg
+        raise "fsm_lib:check_cmd requires ${NARGS} input arguments, $# given" -arg
     cmd=$1
 
     path_cmd=$(which "${cmd}")
     if [ -z "${path_cmd}" ]; then
-        raise "FAIL: Could not find ${cmd} command in path" -l "$fn_name" -fc
+        raise "FAIL: Could not find '${cmd}' command in path" -l "fsm_lib:check_cmd" -fc
         return 1
     fi
-    log "${fn_name} - Found ${cmd} as ${path_cmd}"
+    log -deb "fsm_lib:check_cmd - Found '${cmd}' as '${path_cmd}' - Success"
 
     return 0
 }
@@ -113,9 +111,9 @@ check_cmd()
 #   Function creates tap interface on bridge with selected Openflow port.
 #   Raises an exception if not in the path.
 # INPUT PARAMETER(S):
-#   $1  bridge name (required)
-#   $2  interface name (required)
-#   $3  open flow port (required)
+#   $1  Bridge name (string, required)
+#   $2  Interface name (string, required)
+#   $3  Open flow port (string, required)
 # RETURNS:
 #   0   On success.
 # USAGE EXAMPLE(S):
@@ -124,15 +122,14 @@ check_cmd()
 ###############################################################################
 gen_tap_cmd()
 {
-    fn_name="fsm_lib:gen_tap_cmd"
     local NARGS=3
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input arguments, $# given" -arg
+        raise "fsm_lib:gen_tap_cmd requires ${NARGS} input arguments, $# given" -arg
     bridge=$1
     intf=$2
     ofport=$3
 
-    log "${fn_name} - Generating tap interface ${intf} on bridge ${bridge}"
+    log -deb "fsm_lib:gen_tap_cmd - Generating tap interface '${intf}' on bridge '${bridge}'"
 
     ovs-vsctl add-port "${bridge}" "${intf}"  \
         -- set interface "${intf}"  type=internal \
@@ -143,7 +140,7 @@ gen_tap_cmd()
 # DESCRIPTION:
 #   Function brings up tap interface.
 # INPUT PARAMETER(S):
-#   $1  interface name (required)
+#   $1  Interface name (string, required)
 # RETURNS:
 #   None.
 # USAGE EXAMPLE(S):
@@ -151,13 +148,12 @@ gen_tap_cmd()
 ###############################################################################
 tap_up_cmd()
 {
-    fn_name="fsm_lib:tap_up_cmd"
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input arguments, $# given" -arg
+        raise "fsm_lib:tap_up_cmd requires ${NARGS} input arguments, $# given" -arg
     intf=$1
 
-    log "${fn_name} - Bringing tap interface ${intf} up"
+    log -deb "fsm_lib:tap_up_cmd - Bringing tap interface '${intf}' up"
     ip link set "${intf}" up
 }
 
@@ -166,8 +162,8 @@ tap_up_cmd()
 #   Function marks interface as no-flood.
 #   So, only the traffic matching the flow filter will hit the plugin.
 # INPUT PARAMETER(S):
-#   $1 bridge name (required)
-#   $2 interface name (required)
+#   $1 Bridge name (string, required)
+#   $2 Interface name (string, required)
 # RETURNS:
 #   None.
 # USAGE EXAMPLE(S):
@@ -175,14 +171,13 @@ tap_up_cmd()
 ###############################################################################
 gen_no_flood_cmd()
 {
-    fn_name="fsm_lib:tap_up_cmd"
     local NARGS=2
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input arguments, $# given" -arg
+        raise "fsm_lib:gen_no_flood_cmd requires ${NARGS} input arguments, $# given" -arg
     bridge=$1
     intf=$2
 
-    log "${fn_name}: mark interface ${intf} no flood"
+    log -deb "fsm_lib:gen_no_flood_cmd: Mark interface '${intf}' as 'no-flood'"
 
     ovs-ofctl mod-port "${bridge}" "${intf}" no-flood
 }

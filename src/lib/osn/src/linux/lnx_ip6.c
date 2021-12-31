@@ -76,9 +76,9 @@ struct lnx_ip6_addr_node
 };
 
 static bool lnx_ip6_addr_flush(lnx_ip6_t *self);
-static bool lnx_ip6_ipaddr_parse(void *_self, int type, const char *line);
+static execsh_fn_t lnx_ip6_ipaddr_parse;
 static void lnx_ip6_status_ipaddr_update(lnx_ip6_t *self);
-static bool lnx_ip6_neigh_parse(void *_self, int type, const char *line);
+static execsh_fn_t lnx_ip6_neigh_parse;
 static void lnx_ip6_status_neigh_update(lnx_ip6_t *self);
 static lnx_netlink_fn_t lnx_ip6_nl_fn;
 
@@ -337,7 +337,7 @@ bool lnx_ip6_dns_del(lnx_ip6_t *ip6, const osn_ip6_addr_t *addr)
 /**
  * Parse a single line of a "ip -o -6 addr show dev IF" output.
  */
-bool lnx_ip6_ipaddr_parse(void *_self, int type, const char *line)
+bool lnx_ip6_ipaddr_parse(void *_self, enum execsh_io type, const char *line)
 {
     struct lnx_ip6_addr *paddr;
     osn_ip6_addr_t ip6addr;
@@ -351,10 +351,10 @@ bool lnx_ip6_ipaddr_parse(void *_self, int type, const char *line)
 
     LOG(DEBUG, "ip6: %s: ip_addr_show%s %s",
             self->ip6_ifname,
-            type == EXECSH_PIPE_STDOUT ? ">" : "|",
+            type == EXECSH_IO_STDOUT ? ">" : "|",
             line);
 
-    if (type != EXECSH_PIPE_STDOUT) return true;
+    if (type != EXECSH_IO_STDOUT) return true;
 
     STRSCPY(buf, line);
 
@@ -496,7 +496,7 @@ void lnx_ip6_status_ipaddr_update(lnx_ip6_t *self)
 /**
  * Parse a single line of a "ip -6 neigh show" output.
  */
-bool lnx_ip6_neigh_parse(void *ctx, int type, const char *line)
+bool lnx_ip6_neigh_parse(void *ctx, enum execsh_io type, const char *line)
 {
     (void)ctx;
 
@@ -509,10 +509,10 @@ bool lnx_ip6_neigh_parse(void *ctx, int type, const char *line)
     char *sp;
 
     LOG(DEBUG, "ip6: ip_neigh_show%s %s",
-            type == EXECSH_PIPE_STDOUT ? ">" : "|",
+            type == EXECSH_IO_STDOUT ? ">" : "|",
             line);
 
-    if (type != EXECSH_PIPE_STDOUT) return true;
+    if (type != EXECSH_IO_STDOUT) return true;
 
     STRSCPY(buf, line);
 

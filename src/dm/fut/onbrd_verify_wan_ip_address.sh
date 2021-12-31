@@ -33,12 +33,11 @@ source "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="onbrd/$(basename "$0")"
 manager_setup_file="onbrd/onbrd_setup.sh"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+onbrd/onbrd_verify_wan_ip_address.sh [-h] arguments
 Description:
     - Validate wan ip address
 Arguments:
@@ -47,9 +46,9 @@ Arguments:
     \$2 (wan_ip)            : used as WAN IP address to be checked                       : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name} br-wan 192.168.200.10
+                 Run: ./onbrd/onbrd_verify_wan_ip_address.sh br-wan 192.168.200.10
 Script usage example:
-   ./${tc_name} br-wan 192.168.200.10
+   ./onbrd/onbrd_verify_wan_ip_address.sh br-wan 192.168.200.10
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -72,18 +71,18 @@ fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 
 NARGS=2
-[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "onbrd/onbrd_verify_wan_ip_address.sh" -arg
 wan_interface=${1}
 inet_addr=${2}
 
-log_title "$tc_name: ONBRD test - Verify WAN_IP in Wifi_Inet_State is correctly applied"
+log_title "onbrd/onbrd_verify_wan_ip_address.sh: ONBRD test - Verify WAN_IP in Wifi_Inet_State is correctly applied"
 
-log "$tc_name: Verify WAN IP address '$inet_addr' for interface '$wan_interface'"
+log "onbrd/onbrd_verify_wan_ip_address.sh: Verify WAN IP address '$inet_addr' for interface '$wan_interface'"
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$wan_interface" -is inet_addr "$inet_addr" &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_State '$wan_interface' inet_addr is equal to '$inet_addr' - Success" ||
-    raise "FAIL: wait_ovsdb_entry - Wifi_Inet_State '$wan_interface' inet_addr is not equal to '$inet_addr'" -l "$tc_name" -tc
+    log "onbrd/onbrd_verify_wan_ip_address.sh: wait_ovsdb_entry - Wifi_Inet_State '$wan_interface' inet_addr is equal to '$inet_addr' - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Wifi_Inet_State '$wan_interface' inet_addr is not equal to '$inet_addr'" -l "onbrd/onbrd_verify_wan_ip_address.sh" -tc
 wait_for_function_response 0 "verify_wan_ip_l2 $wan_interface $inet_addr" &&
-    log "$tc_name: LEVEL2 - WAN IP for '$wan_interface' is equal to '$inet_addr' - Success" ||
-    raise "FAIL: LEVEL2 - WAN IP for '$wan_interface' is not equal to '$inet_addr'" -l "$tc_name" -tc
+    log "onbrd/onbrd_verify_wan_ip_address.sh: LEVEL2 - WAN IP for '$wan_interface' is equal to '$inet_addr' - Success" ||
+    raise "FAIL: LEVEL2 - WAN IP for '$wan_interface' is not equal to '$inet_addr'" -l "onbrd/onbrd_verify_wan_ip_address.sh" -tc
 
 pass

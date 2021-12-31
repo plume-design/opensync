@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "target.h"
 #include "unity.h"
 #include "memutil.h"
+#include "sockaddr_storage.h"
 
 #include "test_mdns.h"
 
@@ -537,43 +538,6 @@ void test_modify_mdnsd_service(void)
     mdns_plugin_exit(session);
 }
 
-
-static bool
-mdns_populate_sockaddr(struct net_header_parser *parser,
-                       struct sockaddr_storage *dst)
-{
-    const void *ip;
-    bool ret;
-
-    ip = NULL;
-    ret = false;
-    if (parser->ip_version == 4)
-    {
-        struct iphdr *hdr = net_header_get_ipv4_hdr(parser);
-        struct sockaddr_in *in4 = (struct sockaddr_in *)dst;
-
-        memset(in4, 0, sizeof(struct sockaddr_in));
-        in4->sin_family = AF_INET;
-        ip = &hdr->saddr;
-        memcpy(&in4->sin_addr, ip, sizeof(in4->sin_addr));
-        ret = true;
-    }
-    else if (parser->ip_version == 6)
-    {
-        struct sockaddr_in6 *in6 = (struct sockaddr_in6 *)dst;
-        struct ip6_hdr *hdr = net_header_get_ipv6_hdr(parser);
-
-        memset(in6, 0, sizeof(struct sockaddr_in6));
-        in6->sin6_family = AF_INET6;
-        ip = &hdr->ip6_src;
-        memcpy(&in6->sin6_addr, ip, sizeof(in6->sin6_addr));
-        ret = true;
-    }
-
-    return ret;
-}
-
-
 void
 test_mdns_parser(void)
 {
@@ -635,6 +599,76 @@ test_mdns_parser(void)
     FREE(net_parser);
 }
 
+void
+test_mdns_records_send_records(void)
+{
+    struct sockaddr_storage *ipv4_1;
+    struct sockaddr_storage *ipv6_1;
+    struct mdns_session md_session;
+    struct fsm_session *session;
+    struct resource res;
+    bool rc;
+
+    MEMZERO(md_session);
+
+    /* No return value to be tested, but should not crash */
+    LOGD("%s: mdns_records_send_records(NULL)", __func__);
+    mdns_records_send_records(NULL);
+
+    /* No initialized g_record */
+    md_session.records_report_ts = time(NULL);
+    md_session.records_report_interval = 2UL;
+    mdns_records_send_records(&md_session);
+
+    /* Initialize stuff */
+    rc = mdns_records_init(NULL);
+    TEST_ASSERT_FALSE(rc);
+
+    /* incomplete md_session */
+    rc = mdns_records_init(&md_session);
+    TEST_ASSERT_FALSE(rc);
+    
+    /* We are NOT reporting, but we are still partially initialized */
+    md_session.session = CALLOC(1, sizeof(*md_session.session));
+    md_session.report_records = false;
+    rc = mdns_records_init(&md_session);
+    TEST_ASSERT_TRUE(rc);
+
+    /* we have no node_id, location_id in session */
+    md_session.report_records = true;
+    rc = mdns_records_init(&md_session);
+    TEST_ASSERT_FALSE(rc);
+
+    /* Now with a clean md_session */
+    session = md_session.session;
+    session->node_id = "NODE_ID";
+    session->location_id = "LOCATION_ID";
+    rc = mdns_records_init(&md_session);
+    TEST_ASSERT_TRUE(rc);
+
+    /* initialized md_session */
+    mdns_records_send_records(&md_session);
+
+    ipv4_1 = sockaddr_storage_create(AF_INET, "192.168.0.1");
+    ipv6_1 = sockaddr_storage_create(AF_INET6, "0:0:0:0:0:FFFF:204.152.189.116");
+
+    MEMZERO(res);
+    res.type = QTYPE_A;
+    res.name = "REQUIRED_TO_BE_NON_NULL";
+    mdns_records_collect_record(&res, NULL, ipv4_1);
+    mdns_records_collect_record(&res, NULL, ipv6_1);
+
+    LOGD("%s: mdns_records_send_records(POPULATED)", __func__);
+    mdns_records_send_records(&md_session);
+
+    /* terminate properly */
+    mdns_records_exit();
+    
+    /* cleanup */
+    FREE(ipv6_1);
+    FREE(ipv4_1);
+    FREE(md_session.session);
+}
 
 int main(int argc, char *argv[])
 {
@@ -659,6 +693,7 @@ int main(int argc, char *argv[])
     /* Mdns Record tests */
     RUN_TEST(test_serialize_record);
     RUN_TEST(test_set_records);
+    RUN_TEST(test_mdns_records_send_records);
 
     /* Mdns client tests */
     RUN_TEST(test_serialize_client);

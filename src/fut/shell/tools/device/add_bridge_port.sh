@@ -33,19 +33,18 @@ source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="tools/device/$(basename "$0")"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+tools/device/add_bridge_port.sh [-h] arguments
 Description:
-    - Add bridge port trough ovs-vsctl
+    - Add bridge port through ovs-vsctl
 Arguments:
     -h  show this help message
     - \$1 (bridge) : Bridge interface name      : (string)(required)
     - \$2 (port)   : Bridge port interface name : (string)(required)
 Script usage example:
-   ./${tc_name} br-home home-ap-l50
+   ./tools/device/add_bridge_port.sh br-home home-ap-l50
 usage_string
 }
 if [ -n "${1}" ] > /dev/null 2>&1; then
@@ -59,14 +58,15 @@ if [ -n "${1}" ] > /dev/null 2>&1; then
             ;;
     esac
 fi
+
 # INPUT ARGUMENTS:
 NARGS=2
 [ $# -lt ${NARGS} ] && raise "Requires at least '${NARGS}' input argument(s)" -arg
-
 bridge=${1}
 port_if=${2}
+
 add_bridge_port "${bridge}" "${port_if}" &&
-    log -deb "$tc_name: Interface ${port_if} successfully added to bridge ${bridge}" ||
-    raise "Failed to add interface ${port_if} to bridge ${bridge}" -l "$tc_name" -ds
+    log -deb "tools/device/add_bridge_port.sh: Interface ${port_if} successfully added to bridge ${bridge}" ||
+    raise "Failed to add interface ${port_if} to bridge ${bridge}" -l "tools/device/add_bridge_port.sh" -ds
 
 exit 0

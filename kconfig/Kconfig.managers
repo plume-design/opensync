@@ -24,6 +24,7 @@ source "src/cpm/kconfig/Kconfig.managers"
 source "src/hello_world/kconfig/Kconfig.managers"
 source "src/ltem/kconfig/Kconfig.managers"
 source "src/psm/kconfig/Kconfig.managers"
+source "src/pwm/kconfig/Kconfig.managers"
 
 #
 # Include platform/vendor managers

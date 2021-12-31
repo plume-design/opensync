@@ -28,11 +28,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 
 #include "fsm_policy.h"
-#include "fsm_utils.h"
 #include "gatekeeper_cache.h"
 #include "gatekeeper_cache_cmp.h"
 #include "log.h"
 #include "memutil.h"
+#include "sockaddr_storage.h"
 #include "unity.h"
 
 #include "test_gatekeeper_cache.h"

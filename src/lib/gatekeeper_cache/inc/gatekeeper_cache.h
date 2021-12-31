@@ -128,6 +128,7 @@ struct gkc_del_info_s
  */
 struct fqdn_redirect_s
 {
+    char *redirect_cname;
     char redirect_ips[2][256];
     int redirect_ttl;
     bool redirect;
@@ -374,11 +375,19 @@ gkc_get_blocked_counter(os_macaddr_t *device_mac,
                         enum gk_cache_request_type attr_type);
 
 /**
- * @brief print cache'd entres.
+ * @brief print cache'd entries for ALL REQ types.
  *
  */
 void
 gkc_print_cache_entries(void);
+
+/**
+ * @brief print cache'd entries for a specified type (ALL types
+ *        printed when using GK_CACHE_MAX_REQ_TYPES)
+ *
+ */
+void
+gkc_print_cache_parts(enum gk_cache_request_type cache_type);
 
 /**
  * @brief get the count of the devices stored in cache
@@ -530,7 +539,7 @@ gkc_lookup_flows_for_device(struct per_device_cache *pdevice,
  * @return 0 if equal
  */
 int
-gkc_flow_entry_cmp(void *_a, void *_b);
+gkc_flow_entry_cmp(const void *_a, const void *_b);
 
 /**
  * @brief validate the request input.

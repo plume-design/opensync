@@ -33,12 +33,11 @@ source "${FUT_TOPDIR}/shell/lib/dm_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="dm/$(basename "$0")"
 manager_setup_file="dm/dm_setup.sh"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+dm/dm_verify_count_reboot_status.sh [-h] arguments
 Description:
     Validate 'count' field in the Reboot_Status table.
     The test script validates if count field in the Reboot_Status table is being
@@ -49,9 +48,9 @@ Arguments:
     -h  show this help message
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name}
+                 Run: ./dm/dm_verify_count_reboot_status.sh
 Script usage example:
-   ./${tc_name}
+   ./dm/dm_verify_count_reboot_status.sh
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -72,7 +71,7 @@ print_tables Reboot_Status
 fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 
-log_title "$tc_name: DM test - Verify 'count' field value in Reboot_Status table is greater than or equals to one."
+log_title "dm/dm_verify_count_reboot_status.sh: DM test - Verify 'count' field value in Reboot_Status table is greater than or equals to one."
 
 print_tables Reboot_Status
 
@@ -85,9 +84,9 @@ for reboot_count in $reboot_count_array; do
 done
 
 if [ $reboot_count -ge 1 ]; then
-    log "$tc_name: Valid Reboot_Status::count value (i.e, >= 1) found - Success"
+    log "dm/dm_verify_count_reboot_status.sh: Valid Reboot_Status::count value (i.e, >= 1) found - Success"
 else
-    raise "FAIL: Invalid Reboot_Status::count value found" -l "$tc_name" -tc
+    raise "FAIL: Invalid Reboot_Status::count value found" -l "dm/dm_verify_count_reboot_status.sh" -tc
 fi
 
 pass

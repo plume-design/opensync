@@ -43,8 +43,8 @@ UNIT_LDFLAGS += -Wl,--wrap=dlclose
 
 static int dl_test_handle = 1234;
 fcm_collect_plugin_t *test_plugin = NULL;
-char *lib_so[] = {"/usr/opensync/lib/libfcm_test_FCM_collector.so", "/usr/opensync/lib/libfcm_test_FCM_collector_1.so"};
-char *fct_ptr_name[] = {"test_FCM_collector_plugin_init", "test_FCM_collector_1_plugin_init"};
+char *lib_so[] = {"test_FCM_collector.so", "test_FCM_collector_1.so"};
+char *fct_ptr_name[] = {"test_plugin_init", "test_1_plugin_init"};
 
 int test_plugin_init(fcm_collect_plugin_t *collector)
 {

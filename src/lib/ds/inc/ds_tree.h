@@ -62,6 +62,20 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ds_tree_foreach_iter_err(tree, p, iter) \
     for (p = ds_tree_ifirst(iter, tree); p != NULL; p = ds_tree_inext_err(iter))
 
+/*
+ * Same as ds_tree_foreach() except it is safe to remove the _current_ element
+ * from the list. This foreach statement requires an additional parameter for
+ * temporary storage.
+ *
+ * Note: Use with care, this macro will not detect any iteration errors
+ * (for example, if the next element is removed somewhere inside the foreach
+ * loop)
+ */
+#define ds_tree_foreach_safe(tree, elem, tmp) \
+    for ((elem) = ds_tree_head(tree),  (tmp) = ((elem) != NULL) ? ds_tree_next((tree), (elem)) : NULL; \
+                (elem) != NULL; \
+                (elem) = (tmp), (tmp) = ((elem) != NULL) ? ds_tree_next((tree), (elem)) : NULL)
+
 typedef struct ds_tree_node ds_tree_node_t;
 typedef struct ds_tree ds_tree_t;
 typedef struct ds_tree_iter ds_tree_iter_t;
@@ -80,7 +94,7 @@ typedef char *ds_tree_str_t(ds_tree_node_t *node);
  */
 struct ds_tree_node
 {
-    void*               otn_key;            /**< Node key                   */
+    const void*         otn_key;            /**< Node key                   */
     int                 otn_prop;           /**< Node property, color       */
     ds_tree_node_t*     otn_parent;         /**< Node's parent pointer      */
     ds_tree_node_t*     otn_child[2];       /**< Node children pointers     */
@@ -120,8 +134,8 @@ struct ds_tree_iter
 static inline bool   ds_tree_is_empty(ds_tree_t *root);
 static inline void  *ds_tree_next(ds_tree_t *root, void *data);
 static inline void  *ds_tree_prev(ds_tree_t *root, void *data);
-static inline void   ds_tree_insert(ds_tree_t *root, void *data, void *key);
-static inline void  *ds_tree_find(ds_tree_t *root, void *key);
+static inline void   ds_tree_insert(ds_tree_t *root, void *data, const void *key);
+static inline void  *ds_tree_find(ds_tree_t *root, const void *key);
 static inline void  *ds_tree_remove(ds_tree_t *root, void *data);
 
 /*

@@ -31,6 +31,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <limits.h>
 #include <stdint.h>
 #include <regex.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
 
 #include "fsm.h"
 #include "ds_tree.h"
@@ -97,6 +100,7 @@ struct gk_mcurl_data
     int req_type;
     int req_id;
     time_t timestamp;
+    struct timespec req_time;
     struct fsm_gk_verdict *gk_verdict;
     ds_tree_node_t mcurl_req_node;
 };
@@ -112,6 +116,9 @@ struct fsm_gk_mgr
     bool initialized;
     time_t gk_time;
     struct gk_req_ids req_ids;
+    int (*getaddrinfo)(const char *node, const char *service,
+                       const struct addrinfo *hints,
+                       struct addrinfo **res);
     ds_tree_t fsm_sessions;
 };
 
@@ -120,6 +127,7 @@ struct fsm_gk_verdict
     struct fsm_policy_req *policy_req;
     struct fsm_policy_reply *policy_reply;
     struct gk_packed_buffer *gk_pb;
+    struct fsm_gk_session *gk_session_context;
 };
 
 
@@ -129,6 +137,15 @@ struct gatekeeper_offline
     time_t check_offline;
     bool provider_offline;
     uint32_t connection_failures;
+};
+
+
+struct gk_cname_offline
+{
+    time_t offline_ts;
+    time_t check_offline;
+    bool cname_offline;
+    uint32_t cname_resolve_failures;
 };
 
 /**
@@ -164,6 +181,7 @@ struct fsm_gk_session
     long hero_stats_report_interval;
     char *hero_stats_report_topic;
     struct gatekeeper_offline gk_offline;
+    struct gk_cname_offline cname_offline;
     uint32_t dns_cache_hit_count;
     const char *pattern_fqdn_lan;
     const char *pattern_fqdn;
@@ -313,5 +331,16 @@ gk_process_using_multi_curl(struct fsm_policy_req *policy_req,
                             struct fsm_policy_reply *policy_reply);
 bool
 gk_lookup_using_multi_curl(struct fsm_policy_req* req);
+
+long
+fsm_gk_update_latencies(struct fsm_gk_session *gk_session,
+                        struct timespec *start, struct timespec *end);
+
+void
+gk_update_uncategorized_count(struct fsm_gk_session *fsm_gk_session,
+                              struct fsm_gk_verdict *gk_verdict);
+
+void
+gk_update_categorization_count(struct fsm_gk_session *fsm_gk_session);
 
 #endif /* GATEKEEPER_H_INCLUDED */

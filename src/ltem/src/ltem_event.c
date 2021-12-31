@@ -50,7 +50,10 @@ ltem_mqtt_periodic(time_t now, ltem_mgr_t *mgr)
     if ((now - mgr->mqtt_periodic_ts) < mgr->mqtt_interval) return;
 
     res = ltem_build_mqtt_report(now);
-    LOGI("%s: ltem_build_mqtt_report, res=%d", __func__, res);
+    if (res)
+    {
+        LOGI("%s: ltem_build_mqtt_report: failed, res=%d", __func__, res);
+    }
 
     mgr->mqtt_periodic_ts = now;
 }

@@ -36,12 +36,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "ds_tree.h"
 
-static inline void              *ds_tree_node_key(ds_tree_node_t *node);
+static inline const void        *ds_tree_node_key(ds_tree_node_t *node);
 static inline ds_tree_node_t    *ds_tree_node_next(ds_tree_node_t *node);
 static inline ds_tree_node_t    *ds_tree_node_prev(ds_tree_node_t *node);
 static inline ds_tree_node_t    *ds_tree_node_min(ds_tree_node_t *node);
 static inline ds_tree_node_t    *ds_tree_node_max(ds_tree_node_t *node);
-extern void                      ds_tree_node_insert(ds_tree_t* root, ds_tree_node_t* node, void* key);
+extern void                      ds_tree_node_insert(ds_tree_t* root, ds_tree_node_t* node, const void* key);
 extern void                      ds_tree_node_remove(ds_tree_t* root, ds_tree_node_t* node);
 
 /*
@@ -56,7 +56,7 @@ extern void                      ds_tree_node_remove(ds_tree_t* root, ds_tree_no
  * @return
  * This function returns they node that corresponds to key @p key or NULL if not found
  */
-static inline void* ds_tree_find(ds_tree_t *root, void *key)
+static inline void* ds_tree_find(ds_tree_t *root, const void *key)
 {
     ds_tree_node_t *node = root->ot_root;
 
@@ -131,7 +131,7 @@ static inline void *ds_tree_prev(ds_tree_t *root, void *data)
 /*
  * Insert an element into the tree
  */
-static inline void ds_tree_insert(ds_tree_t *root, void *data, void *key)
+static inline void ds_tree_insert(ds_tree_t *root, void *data, const void *key)
 {
     ds_tree_node_t *node = CONT_TO_NODE(data, root->ot_cof);
 
@@ -270,7 +270,7 @@ static inline void* ds_tree_iremove(ds_tree_iter_t *iter)
 /**
  * Return a node key
  */
-static inline void *ds_tree_node_key(ds_tree_node_t *node)
+static inline const void *ds_tree_node_key(ds_tree_node_t *node)
 {
     return node->otn_key;
 }

@@ -33,13 +33,12 @@ source "${FUT_TOPDIR}/shell/lib/sm_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="sm/$(basename "$0")"
 manager_setup_file="sm/sm_setup.sh"
 radio_vif_create_path="tools/device/create_radio_vif_interface.sh"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+sm/sm_inspect_survey_report.sh [-h] arguments
 Description:
     - Script configures SM survey reporting and inspects the logs, fails otherwise
 Arguments:
@@ -53,9 +52,9 @@ Arguments:
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
                  Create required Radio-VIF interface settings (see ${radio_vif_create_path} -h)
-                 Run: ./${tc_name} <RADIO-TYPE> <CHANNEL> <SURVEY-TYPE> <REPORTING-INTERVAL> <SAMPLING-INTERVAL> <REPORT-TYPE>
+                 Run: ./sm/sm_inspect_survey_report.sh <RADIO-TYPE> <CHANNEL> <SURVEY-TYPE> <REPORTING-INTERVAL> <SAMPLING-INTERVAL> <REPORT-TYPE>
 Script usage example:
-   ./${tc_name} 2.4G 6 on-chan 10 5 raw
+   ./sm/sm_inspect_survey_report.sh 2.4G 6 on-chan 10 5 raw
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -70,7 +69,7 @@ if [ -n "${1}" ]; then
     esac
 fi
 NARGS=6
-[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "sm/sm_inspect_survey_report.sh" -arg
 sm_radio_type=$1
 sm_channel=$2
 sm_survey_type=$3
@@ -78,11 +77,10 @@ sm_reporting_interval=$4
 sm_sampling_interval=$5
 sm_report_type=$6
 
-trap 'run_setup_if_crashed sm' EXIT SIGINT SIGTERM
 
-log_title "$tc_name: SM test - Inspect survey report for $sm_radio_type"
+log_title "sm/sm_inspect_survey_report.sh: SM test - Inspect survey report for $sm_radio_type"
 
-log "$tc_name: Inspecting survey report on $sm_radio_type $sm_survey_type channel $sm_channel"
+log "sm/sm_inspect_survey_report.sh: Inspecting survey report on $sm_radio_type $sm_survey_type channel $sm_channel"
 inspect_survey_report \
     "$sm_radio_type" \
     "$sm_channel" \
@@ -90,6 +88,6 @@ inspect_survey_report \
     "$sm_reporting_interval" \
     "$sm_sampling_interval" \
     "$sm_report_type" ||
-        raise "FAIL: inspect_survey_report - $sm_survey_type logs not found for radio $sm_radio_type" -l "$tc_name" -tc
+        raise "FAIL: inspect_survey_report - $sm_survey_type logs not found for radio $sm_radio_type" -l "sm/sm_inspect_survey_report.sh" -tc
 
 pass

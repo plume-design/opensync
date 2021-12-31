@@ -38,6 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_types.h"
 #include "dns_cache.h"
 #include "memutil.h"
+#include "network_metadata_report.h"
 
 #define GATEKEEPER  "gatekeeper"
 #define WEBPULSE    "webpulse"
@@ -57,15 +58,16 @@ dns_cache_get_mgr(void)
 }
 
 static int
-dns_cache_ip2action_cmp(void *_a, void *_b)
+dns_cache_ip2action_cmp(const void *_a, const void *_b)
 {
-    struct ip2action *a = (struct ip2action *)_a;
-    struct ip2action *b = (struct ip2action *)_b;
+    const struct ip2action *a = (const struct ip2action *)_a;
+    const struct ip2action *b = (const struct ip2action *)_b;
     size_t len;
     uint8_t *i_a;
     uint8_t *i_b;
     int fdiff;
     int idiff;
+    int ddiff;
     size_t i;
     int mac_cmp;
 
@@ -90,60 +92,11 @@ dns_cache_ip2action_cmp(void *_a, void *_b)
         i_b++;
     }
 
+    /* Compare direction */
+    ddiff = (a->direction - b->direction);
+    if (ddiff != 0) return ddiff;
+
     return 0;
-}
-
-static void
-print_dns_cache_entry(struct ip2action *i2a)
-{
-    char                   ipstr[INET6_ADDRSTRLEN] = { 0 };
-    os_macaddr_t           nullmac = {{ 0 }};
-    os_macaddr_t           *pmac;
-    const char             *ip;
-    size_t                 index;
-
-    if (!i2a) return;
-
-    ip = inet_ntop(i2a->ip_addr->ss_family, i2a->ip_tbl, ipstr, sizeof(ipstr));
-    if (ip == NULL)
-    {
-        LOGD("%s: inet_ntop failed: %s", __func__, strerror(errno));
-        return;
-    }
-
-    pmac = (i2a->device_mac != NULL) ? i2a->device_mac : &nullmac;
-    LOGD("ip %s, mac "PRI_os_macaddr_lower_t
-         " action: %d action_by_name: %d ttl: %d policy_idx: %d service_id: %d redirect flag: %d"
-         " unknown_cat: %d", ipstr, FMT_os_macaddr_pt(pmac),
-         i2a->action, i2a->action_by_name, i2a->cache_ttl, i2a->policy_idx,
-         i2a->service_id, i2a->redirect_flag, i2a->cat_unknown_to_service);
-
-    if (i2a->service_id == IP2ACTION_WP_SVC)
-    {
-        LOGD("%s risk_level: %d", __func__, i2a->cache_wb.risk_level);
-    }
-    else if (i2a->service_id == IP2ACTION_BC_SVC)
-    {
-        LOGD("%s reputationScore: %d", __func__, i2a->cache_bc.reputation);
-    }
-    else
-    {
-        LOGD("%s confidence_level: %d category_id: %d gk_policy: %s",
-             __func__, i2a->cache_gk.confidence_level,
-             i2a->cache_gk.category_id, i2a->cache_gk.gk_policy);
-    }
-
-    for (index = 0; index < i2a->nelems; index++)
-    {
-        LOGD(" %s categories: %d", __func__, i2a->categories[index]);
-
-        if (i2a->service_id == IP2ACTION_BC_SVC)
-        {
-            LOGD(" %s confidence_levels: %d", __func__,
-                 i2a->cache_bc.confidence_levels[index]);
-        }
-    }
-
 }
 
 uint8_t
@@ -397,6 +350,7 @@ dns_cache_lookup_ip2action(struct ip2action_req *req)
     i2a_lkp.ip_addr = req->ip_addr;
     dns_cache_set_ip(&i2a_lkp);
     i2a_lkp.device_mac = req->device_mac;
+    i2a_lkp.direction = req->direction;
 
     i2a = ds_tree_find(&mgr->ip2a_tree, &i2a_lkp);
     if (i2a != NULL) return i2a;
@@ -640,6 +594,7 @@ dns_cache_alloc_ip2action(struct ip2action_req  *to_add)
     i2a->redirect_flag = to_add->redirect_flag;
     i2a->nelems = to_add->nelems;
     i2a->cat_unknown_to_service = to_add->cat_unknown_to_service;
+    i2a->direction = to_add->direction;
 
     for (index = 0; index < to_add->nelems; ++index)
     {
@@ -784,31 +739,6 @@ dns_cache_ttl_cleanup(void)
 }
 
 /**
- * @brief print cache'd entres.
- *
- */
-void
-print_dns_cache(void)
-{
-    struct dns_cache_mgr *mgr = dns_cache_get_mgr();
-    struct ip2action     *i2a;
-    ds_tree_t            *tree;
-
-    if (!mgr->initialized) return;
-
-    tree = &mgr->ip2a_tree;
-
-    LOGT("%s: dns_cache dump", __func__);
-
-    ds_tree_foreach(tree, i2a)
-    {
-        print_dns_cache_entry(i2a);
-    }
-    LOGT("=====END=====");
-    return;
-}
-
-/**
  * @brief returns cache size.
  *
  * @param None
@@ -832,7 +762,7 @@ dns_cache_get_size(void)
  * @return None
  */
 void
-print_dns_cache_size(void)
+dns_cache_print_size(void)
 {
     int no_of_elements;
     no_of_elements = dns_cache_get_size();
@@ -855,6 +785,110 @@ dns_cache_get_refcount(void)
     mgr = dns_cache_get_mgr();
     if (!mgr->initialized) return 0;
     return mgr->refcount;
+}
+
+/**
+ * @brief pretty print the direction
+ *
+ * @param direction
+ *
+ * @return matching string description
+ */
+static const char *
+dir2str(uint8_t direction)
+{
+    switch (direction)
+    {
+        case NET_MD_ACC_INBOUND_DIR     : return "inbound";
+        case NET_MD_ACC_OUTBOUND_DIR    : return "outbound";
+        case NET_MD_ACC_LAN2LAN_DIR     : return "lan2lan";
+        case NET_MD_ACC_UNSET_DIR       :
+        default:                          return "unset";
+    }
+}
+
+static void
+dns_cache_print_entry(struct ip2action *i2a)
+{
+    char ipstr[INET6_ADDRSTRLEN] = { 0 };
+    os_macaddr_t nullmac = {{ 0 }};
+    char category_text[128];
+    os_macaddr_t *pmac;
+    const char *ip;
+    size_t index;
+
+    if (!i2a) return;
+
+    /* Don't go thru the rest of the function if we are not logging */
+    if (!LOG_SEVERITY_ENABLED(LOG_DEBUG)) return;
+
+    ip = inet_ntop(i2a->ip_addr->ss_family, i2a->ip_tbl, ipstr, sizeof(ipstr));
+    if (ip == NULL)
+    {
+        LOGD("%s: inet_ntop failed: %s", __func__, strerror(errno));
+        return;
+    }
+
+    pmac = (i2a->device_mac != NULL) ? i2a->device_mac : &nullmac;
+    LOGD("%s: ip %s, mac "PRI_os_macaddr_lower_t
+         " action: %d action_by_name: %d ttl: %d policy_idx: %d service_id: %d redirect flag: %d"
+         " unknown_cat: %d direction: %s", __func__,
+         ipstr, FMT_os_macaddr_pt(pmac),
+         i2a->action, i2a->action_by_name, i2a->cache_ttl, i2a->policy_idx,
+         i2a->service_id, i2a->redirect_flag, i2a->cat_unknown_to_service,
+         dir2str(i2a->direction));
+
+    if (i2a->service_id == IP2ACTION_WP_SVC)
+    {
+        LOGD("%s:     risk_level: %d", __func__, i2a->cache_wb.risk_level);
+    }
+    else if (i2a->service_id == IP2ACTION_BC_SVC)
+    {
+        LOGD("%s:     reputationScore: %d", __func__, i2a->cache_bc.reputation);
+    }
+    else
+    {
+        LOGD("%s:     confidence_level: %d category_id: %d gk_policy: %s",
+             __func__, i2a->cache_gk.confidence_level,
+             i2a->cache_gk.category_id, i2a->cache_gk.gk_policy);
+    }
+
+    for (index = 0; index < i2a->nelems; index++)
+    {
+        snprintf(category_text, sizeof(category_text), "categories: %d", i2a->categories[index]);
+
+        if (i2a->service_id == IP2ACTION_BC_SVC)
+        {
+            snprintf(category_text + strlen(category_text), sizeof(category_text),
+                     " confidence_levels: %d", i2a->cache_bc.confidence_levels[index]);
+        }
+
+        LOGD("%s:     %s", __func__, category_text);
+    }
+}
+
+/**
+ * @brief print cache'd entres.
+ *
+ */
+void
+dns_cache_print(void)
+{
+    struct dns_cache_mgr *mgr = dns_cache_get_mgr();
+    struct ip2action *i2a;
+    ds_tree_t *tree;
+
+    if (!mgr->initialized) return;
+
+    tree = &mgr->ip2a_tree;
+
+    LOGT("%s: ====START====", __func__);
+
+    ds_tree_foreach(tree, i2a)
+    {
+        dns_cache_print_entry(i2a);
+    }
+    LOGT("%s: =====END=====", __func__);
 }
 
 /**
@@ -882,7 +916,7 @@ dns_cache_get_hit_count(uint8_t service_id)
  * @return None
  */
 void
-print_dns_cache_hit_count(void)
+dns_cache_print_hit_count(void)
 {
     uint32_t hit_count;
     uint8_t service_id;
@@ -904,15 +938,15 @@ print_dns_cache_hit_count(void)
  * @return None
  */
 void
-print_dns_cache_details(void)
+dns_cache_print_details(void)
 {
     struct dns_cache_mgr *mgr;
 
     mgr = dns_cache_get_mgr();
     if (!mgr->initialized) return;
 
-    print_dns_cache_size();
-    print_dns_cache_hit_count();
+    dns_cache_print_size();
+    dns_cache_print_hit_count();
 }
 
 /**

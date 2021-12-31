@@ -649,7 +649,7 @@ bool nfm_rule_del(const char *nfm_id[])
 
 
 /* Compare two inet_portforward structures -- used for tree comparator */
-int fw_portforward_cmp(void *_a, void *_b)
+int fw_portforward_cmp(const void *_a, const void *_b)
 {
     int rc;
 

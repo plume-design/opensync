@@ -50,6 +50,7 @@ static char *osfw_target_builtin[] =
 {
 	"ACCEPT",
 	"CLASSIFY",
+	"CT",
 	"DNAT",
 	"DROP",
 	"DSCP",

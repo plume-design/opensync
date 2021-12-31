@@ -1,6 +1,6 @@
 menuconfig MANAGER_UM
     bool "Upgrade Manager (UM)"
-    default n
+    default y
     help
         Enable Upgrade Manager (UM)
 

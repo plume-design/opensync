@@ -33,17 +33,16 @@ source "${FUT_TOPDIR}/shell/lib/brv_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="brv/$(basename "$0")"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+brv/brv_setup.sh [-h] arguments
 Description:
     - Setup device for BRV testing
 Arguments:
     -h : show this help message
 Script usage example:
-    ./${tc_name}
+    ./brv/brv_setup.sh
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -59,7 +58,7 @@ if [ -n "${1}" ]; then
 fi
 
 brv_setup_env &&
-    log "${tc_name}: brv_setup_env - Success " ||
-    raise "FAIL: brv_setup_env" -l "$tc_name" -ds
+    log "brv/brv_setup.sh: brv_setup_env - Success " ||
+    raise "FAIL: brv_setup_env" -l "brv/brv_setup.sh" -ds
 
 exit 0

@@ -17,3 +17,27 @@ menuconfig MANAGER_NM
         default n
         help
             Network Manager configures OVS multicast exceptions when Snooping enabled
+
+    config MANAGER_NM_ROUTE_BASE_METRIC
+        int "Routes base metric"
+        default 100
+
+        help
+            For any route metric in the Wifi_Route_Config table that has an unset
+            value, calculate the metric value by using the interface type and the
+            the value of this option.
+
+            A metric modifier is calcualted from the interface type in this
+            order of priority:
+                - bridge, eth, vlan
+                - gre
+                - tap
+                - wifi
+                - PPPoE
+                - LTE
+                - Everything else
+
+            The metric is then calculated by adding the modifer to the
+            MANAGER_NM_ROUTE_BASE_METRIC value.
+
+            This ensures proper WAN priority across different interface types.

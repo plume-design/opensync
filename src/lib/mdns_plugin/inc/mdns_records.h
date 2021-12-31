@@ -27,17 +27,19 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef MDNS_RECORDS_H_INCLUDED
 #define MDNS_RECORDS_H_INCLUDED
 
-#include <arpa/inet.h>
-
-#include "ds.h"
-#include "ds_tree.h"
-#include "ds_dlist.h"
-#include "memutil.h"
+#include <netinet/in.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <sys/socket.h>
 
 #include "1035.h"
-#include "ovsdb_table.h"
+#include "ds_tree.h"
+#include "ds_dlist.h"
+#include "fsm.h"
 #include "mdns_plugin.h"
 #include "mdns_records_telemetry.pb-c.h"
+#include "memutil.h"
+#include "util.h"
 
 #ifndef MAC_STR_LEN
 #define MAC_STR_LEN         18
@@ -140,7 +142,7 @@ static inline
 void mdns_records_free_record(mdns_records_t *rec)
 {
     FREE(rec);
-} 
+}
 
 static inline
 mdns_client_t *mdns_records_alloc_client(char *ip)

@@ -439,10 +439,10 @@ void ovsmac_node_flush(void)
 /**
  * ovsmac_node comparator
  */
-int ovsmac_cmp_fn(void *_a, void *_b)
+int ovsmac_cmp_fn(const void *_a, const void *_b)
 {
-    struct schema_OVS_MAC_Learning *a = _a;
-    struct schema_OVS_MAC_Learning *b = _b;
+    const struct schema_OVS_MAC_Learning *a = _a;
+    const struct schema_OVS_MAC_Learning *b = _b;
 
     int rc;
 

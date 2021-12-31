@@ -24,7 +24,6 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-
 #include <stdarg.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -42,6 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ovsdb_update.h"
 #include "log.h"
 #include "util.h"
+#include "memutil.h"
 #include "json_util.h"
 #include "schema.h"
 #include "os_proc.h"
@@ -223,7 +223,7 @@ exit:
     /* Clear timer data */
     if (w->data)
     {
-         free(w->data);
+         FREE(w->data);
          w->data = NULL;
     }
 
@@ -253,9 +253,9 @@ static void cb_upg(const osp_upg_op_t op,
             }
             else
             {
-                if(upg_url)
+                if (upg_url)
                 {
-                    free(upg_url);
+                    FREE(upg_url);
                     upg_url = NULL;
                 }
                 LOG(ERR, "Error in downloading. Errno: %d", osp_upg_errno());
@@ -328,10 +328,11 @@ static void callback_AWLAN_Node(
                             awlan_node->upgrade_timer);
                 if (strlen(awlan_node->firmware_url) > 0)
                 {
-                    if(upg_url == NULL || strncmp(upg_url, awlan_node->firmware_url, sizeof(awlan_node->firmware_url))){
-                        if(upg_url)
+                    if (upg_url == NULL || strncmp(upg_url, awlan_node->firmware_url, sizeof(awlan_node->firmware_url)))
+                    {
+                        if (upg_url)
                         {
-                           free(upg_url);
+                           FREE(upg_url);
                            upg_url = NULL;
                         }
                         upg_url = strdup(awlan_node->firmware_url);
@@ -344,9 +345,9 @@ static void callback_AWLAN_Node(
                 }
                 else
                 {
-                    if(upg_url)
+                    if (upg_url)
                     {
-                        free(upg_url);
+                        FREE(upg_url);
                         upg_url = NULL;
                     }
                     LOG(NOTICE, "URL is empty");
@@ -373,7 +374,7 @@ static void callback_AWLAN_Node(
 
                     if (utimer.data)
                     {
-                        free(utimer.data);
+                        FREE(utimer.data);
                         utimer.data = NULL;
                     }
 

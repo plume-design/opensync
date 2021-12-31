@@ -33,7 +33,6 @@ source "${FUT_TOPDIR}/shell/lib/fsm_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="fsm/$(basename "$0")"
 manager_setup_file="fsm/fsm_setup.sh"
 create_rad_vif_if_file="tools/device/create_radio_vif_interface.sh"
 create_inet_file="tools/device/create_inet_interface.sh"
@@ -43,7 +42,7 @@ client_connect_file="tools/client/rpi/connect_to_wpa2.sh"
 client_upnp_server_file="/home/plume/upnp/upnp_server.py"
 usage() {
     cat << usage_string
-${tc_name} [-h] arguments
+fsm/fsm_test_upnp_plugin.sh [-h] arguments
 Description:
     - Script checks logs for FSM UPnP message creation - fsm_send_report
 Arguments:
@@ -70,15 +69,15 @@ Testcase procedure:
             Update Inet entry for home bridge interface for dhcpd (br-home)
                 Run: ./${create_inet_file} (see ${create_inet_file} -h)
             Configure FSM for UPnP plugin test
-                Run: ./${tc_name} <LAN-BRIDGE-IF> <FSM-URL-BLOCK> <FSM-URL-REDIRECT>
+                Run: ./fsm/fsm_test_upnp_plugin.sh <LAN-BRIDGE-IF> <FSM-URL-BLOCK> <FSM-URL-REDIRECT>
     - On Client:
             Configure Client to DUT
                 Run: /.${client_connect_file} (see ${client_connect_file} -h)
             Bring up UPnP Server on Client
                 Run /.${client_upnp_server_file} (see ${client_upnp_server_file} -h)
-    - On DEVICE: Run: ./${tc_name} <deviceType> <friendlyName> <manufacturer> <manufacturerURL> <modelDescription> <modelName> <modelNumber>
+    - On DEVICE: Run: ./fsm/fsm_test_upnp_plugin.sh <deviceType> <friendlyName> <manufacturer> <manufacturerURL> <modelDescription> <modelName> <modelNumber>
 Script usage example:
-    ./${tc_name} 'urn:plume-test:device:test:1' 'FUT test device' 'FUT testing, Inc' 'https://www.fut.com' 'FUT UPnP service' 'FUT tester' '1.0'
+    ./fsm/fsm_test_upnp_plugin.sh 'urn:plume-test:device:test:1' 'FUT test device' 'FUT testing, Inc' 'https://www.fut.com' 'FUT UPnP service' 'FUT tester' '1.0'
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -110,11 +109,11 @@ modelDescription=${5}
 modelName=${6}
 modelNumber=${7}
 
-log_title "$tc_name: FSM test - Test UPnP plugin - Verify presence of load message"
+log_title "fsm/fsm_test_upnp_plugin.sh: FSM test - Test UPnP plugin - Verify presence of load message"
 
 client_mac=$(get_ovsdb_entry_value Wifi_Associated_Clients mac)
 if [ -z "${client_mac}" ]; then
-    raise "FAIL: Could not acquire Client MAC address from Wifi_Associated_Clients, is client connected?" -l "${tc_name}"
+    raise "FAIL: Could not acquire Client MAC address from Wifi_Associated_Clients, is client connected?" -l "fsm/fsm_test_upnp_plugin.sh"
 fi
 # shellcheck disable=SC2018,SC2019
 client_mac=$(echo "${client_mac}" | tr a-z A-Z)
@@ -147,5 +146,5 @@ fsm_message_regex="$LOGREAD |
  grep nodeId |
  grep $(get_node_id)"
 wait_for_function_response 0 "${fsm_message_regex}" 10 &&
-    log "$tc_name: FSM UPnP plugin creation message found in logs - Success" ||
-    raise "FAIL: Failed to find FSM UPnP message creation in logs, regex used: ${fsm_message_regex} " -l "$tc_name" -tc
+    log "fsm/fsm_test_upnp_plugin.sh: FSM UPnP plugin creation message found in logs - Success" ||
+    raise "FAIL: Failed to find FSM UPnP message creation in logs, regex used: ${fsm_message_regex} " -l "fsm/fsm_test_upnp_plugin.sh" -tc

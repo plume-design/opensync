@@ -114,7 +114,7 @@ size_t net_header_parse_eth(struct net_header_parser *parser)
     parser->data += parsed;
 
     parser->eth_pld.payload = parser->data;
-    parser->eth_header_available = true;
+    parser->source = PKT_SOURCE_PCAP;
 
     return parsed;
 }

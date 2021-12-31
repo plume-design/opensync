@@ -33,13 +33,12 @@ source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="wm2/$(basename "$0")"
 manager_setup_file="wm2/wm2_setup.sh"
 channel_change_timeout=60
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+wm2/wm2_set_radio_tx_power_neg.sh [-h] arguments
 Description:
     - Make sure all radio interfaces for this device are up and have valid
       configuration. If not create new interface with configuration
@@ -65,9 +64,9 @@ Arguments:
     \$11 (mismatch_tx_power) : used as mismatch_tx_power              : (int)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name}
+                 Run: ./wm2/wm2_set_radio_tx_power_neg.sh
 Script usage example:
-   ./${tc_name} 2 wifi1 test_wifi_50L WifiPassword123 44 HT20 11ac ap home-ap-l50 23 25
+   ./wm2/wm2_set_radio_tx_power_neg.sh 2 wifi1 test_wifi_50L WifiPassword123 44 HT20 11ac ap home-ap-l50 23 25
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -83,7 +82,7 @@ if [ -n "${1}" ]; then
 fi
 
 NARGS=11
-[ $# -ne ${NARGS} ] && usage && raise "Requires exactly '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -ne ${NARGS} ] && usage && raise "Requires exactly '${NARGS}' input argument(s)" -l "wm2/wm2_set_radio_tx_power_neg.sh" -arg
 vif_radio_idx=$1
 if_name=$2
 ssid=$3
@@ -97,7 +96,7 @@ tx_power=${10}
 mismatch_tx_power=${11}
 
 if [ $mismatch_tx_power -lt 1 ] && [ $mismatch_tx_power -gt 32 ]; then
-    raise "$mismatch_tx_power is not between 1 and 32" -l "$tc_name" -s
+    raise "$mismatch_tx_power is not between 1 and 32" -l "wm2/wm2_set_radio_tx_power_neg.sh" -s
 fi
 
 trap '
@@ -105,12 +104,11 @@ trap '
     print_tables Wifi_Radio_Config Wifi_Radio_State
     print_tables Wifi_VIF_Config Wifi_VIF_State
     fut_info_dump_line
-    run_setup_if_crashed wm || true
 ' EXIT SIGINT SIGTERM
 
-log_title "$tc_name: WM2 test - Testing Wifi_Radio_Config field mismatch_tx_power - '${mismatch_tx_power}'"
+log_title "wm2/wm2_set_radio_tx_power_neg.sh: WM2 test - Testing Wifi_Radio_Config field mismatch_tx_power - '${mismatch_tx_power}'"
 
-log "$tc_name: Checking if Radio/VIF states are valid for test"
+log "wm2/wm2_set_radio_tx_power_neg.sh: Checking if Radio/VIF states are valid for test"
 check_radio_vif_state \
     -if_name "$if_name" \
     -vif_if_name "$vif_if_name" \
@@ -120,11 +118,11 @@ check_radio_vif_state \
     -security "$security" \
     -hw_mode "$hw_mode" \
     -mode "$mode" &&
-        log "$tc_name: Radio/VIF states are valid" ||
+        log "wm2/wm2_set_radio_tx_power_neg.sh: Radio/VIF states are valid" ||
             (
-                log "$tc_name: Cleaning VIF_Config"
+                log "wm2/wm2_set_radio_tx_power_neg.sh: Cleaning VIF_Config"
                 vif_clean
-                log "$tc_name: Radio/VIF states are not valid, creating interface..."
+                log "wm2/wm2_set_radio_tx_power_neg.sh: Radio/VIF states are not valid, creating interface..."
                 create_radio_vif_interface \
                     -vif_radio_idx "$vif_radio_idx" \
                     -channel_mode manual \
@@ -138,48 +136,49 @@ check_radio_vif_state \
                     -tx_power "$tx_power" \
                     -mode "$mode" \
                     -vif_if_name "$vif_if_name" \
-                    -timeout ${channel_change_timeout} &&
-                        log "$tc_name: create_radio_vif_interface - Interface $if_name created - Success"
+                    -timeout ${channel_change_timeout} \
+                    -disable_cac &&
+                        log "wm2/wm2_set_radio_tx_power_neg.sh: create_radio_vif_interface - Interface $if_name created - Success"
             ) ||
-        raise "FAIL: create_radio_vif_interface - Interface $if_name not created" -l "$tc_name" -tc
+        raise "FAIL: create_radio_vif_interface - Interface $if_name not created" -l "wm2/wm2_set_radio_tx_power_neg.sh" -tc
 
-log "$tc_name: Changing tx_power to $mismatch_tx_power"
+log "wm2/wm2_set_radio_tx_power_neg.sh: Changing tx_power to $mismatch_tx_power"
 update_ovsdb_entry Wifi_Radio_Config -w if_name "$if_name" -u tx_power "$mismatch_tx_power" &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Radio_Config::tx_power is $mismatch_tx_power - Success" ||
-    raise "FAIL: update_ovsdb_entry - Wifi_Radio_Config::tx_power is not $mismatch_tx_power" -l "$tc_name" -oe
+    log "wm2/wm2_set_radio_tx_power_neg.sh: update_ovsdb_entry - Wifi_Radio_Config::tx_power is $mismatch_tx_power - Success" ||
+    raise "FAIL: update_ovsdb_entry - Wifi_Radio_Config::tx_power is not $mismatch_tx_power" -l "wm2/wm2_set_radio_tx_power_neg.sh" -oe
 
 wait_ovsdb_entry Wifi_Radio_State -w if_name "$if_name" -is tx_power "$mismatch_tx_power" -t ${channel_change_timeout} &&
-    raise "FAIL: wait_ovsdb_entry - Wifi_Radio_Config reflected to Wifi_Radio_State::tx_power is $mismatch_tx_power" -l "$tc_name" -ow ||
-    log "$tc_name: wait_ovsdb_entry - Failed to reflect Wifi_Radio_Config to Wifi_Radio_State::tx_power is not $mismatch_tx_power - Success"
+    raise "FAIL: wait_ovsdb_entry - Wifi_Radio_Config reflected to Wifi_Radio_State::tx_power is $mismatch_tx_power" -l "wm2/wm2_set_radio_tx_power_neg.sh" -ow ||
+    log "wm2/wm2_set_radio_tx_power_neg.sh: wait_ovsdb_entry - Failed to reflect Wifi_Radio_Config to Wifi_Radio_State::tx_power is not $mismatch_tx_power - Success"
 
 # LEVEL2 check. Passes if system reports original tx_power is still set.
 tx_power_from_os=$(get_tx_power_from_os "$vif_if_name") ||
-    raise "FAIL: Error while fetching tx_power from system" -l "$tc_name" -fc
+    raise "FAIL: Error while fetching tx_power from system" -l "wm2/wm2_set_radio_tx_power_neg.sh" -fc
 
 if [ "$tx_power_from_os" = "" ]; then
-    raise "FAIL: Error while fetching tx_power from system" -l "$tc_name" -fc
+    raise "FAIL: Error while fetching tx_power from system" -l "wm2/wm2_set_radio_tx_power_neg.sh" -fc
 else
     if [ "$tx_power_from_os" != "$mismatch_tx_power" ]; then
-        log "$tc_name: tx_power '$mismatch_tx_power' not applied to system. System reports current tx_power '$tx_power_from_os' - Success"
+        log "wm2/wm2_set_radio_tx_power_neg.sh: tx_power '$mismatch_tx_power' not applied to system. System reports current tx_power '$tx_power_from_os' - Success"
     else
-        raise "FAIL: tx_power '$mismatch_tx_power' applied to system. System reports current tx_power '$tx_power_from_os'" -l "$tc_name" -tc
+        raise "FAIL: tx_power '$mismatch_tx_power' applied to system. System reports current tx_power '$tx_power_from_os'" -l "wm2/wm2_set_radio_tx_power_neg.sh" -tc
     fi
 fi
 
-log "$tc_name: Reversing tx_power to normal value"
+log "wm2/wm2_set_radio_tx_power_neg.sh: Reversing tx_power to normal value"
 update_ovsdb_entry Wifi_Radio_Config -w if_name "$if_name" -u tx_power "$tx_power" &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Radio_Config table updated - tx_power $tx_power" ||
-    raise "update_ovsdb_entry - Failed to update Wifi_Radio_Config - tx_power $tx_power" -l "$tc_name" -tc
+    log "wm2/wm2_set_radio_tx_power_neg.sh: update_ovsdb_entry - Wifi_Radio_Config table updated - tx_power $tx_power" ||
+    raise "update_ovsdb_entry - Failed to update Wifi_Radio_Config - tx_power $tx_power" -l "wm2/wm2_set_radio_tx_power_neg.sh" -tc
 
 wait_ovsdb_entry Wifi_Radio_State -w if_name "$if_name" -is tx_power "$tx_power" -t ${channel_change_timeout} &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Radio_Config reflected to Wifi_Radio_State - tx_power $tx_power" ||
-    raise "wait_ovsdb_entry - Failed to reflect Wifi_Radio_Config to Wifi_Radio_State - tx_power $tx_power" -l "$tc_name" -tc
+    log "wm2/wm2_set_radio_tx_power_neg.sh: wait_ovsdb_entry - Wifi_Radio_Config reflected to Wifi_Radio_State - tx_power $tx_power" ||
+    raise "wait_ovsdb_entry - Failed to reflect Wifi_Radio_Config to Wifi_Radio_State - tx_power $tx_power" -l "wm2/wm2_set_radio_tx_power_neg.sh" -tc
 
 # Check if manager survived.
 manager_bin_file="${OPENSYNC_ROOTDIR}/bin/wm"
 wait_for_function_response 0 "check_manager_alive $manager_bin_file" &&
-    log "$tc_name: Success: WIRELESS MANAGER is running" ||
-    raise "FAIL: WIRELESS MANAGER not running/crashed" -l "$tc_name" -tc
+    log "wm2/wm2_set_radio_tx_power_neg.sh: Success: WIRELESS MANAGER is running" ||
+    raise "FAIL: WIRELESS MANAGER not running/crashed" -l "wm2/wm2_set_radio_tx_power_neg.sh" -tc
 
 pass
 

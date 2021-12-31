@@ -34,8 +34,7 @@ UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM),n,y)
 # Template type:
 UNIT_TYPE := LIB
 
-UNIT_SRC := src/network_metadata.pb-c.c
-UNIT_SRC += src/network_metadata.c
+UNIT_SRC := src/network_metadata.c
 UNIT_SRC += src/network_metadata_report.c
 UNIT_SRC += src/network_metadata_utils.c
 
@@ -46,4 +45,5 @@ UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
 UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 
 UNIT_DEPS := src/lib/log
+UNIT_DEPS += src/lib/protobuf
 UNIT_DEPS += src/qm/qm_conn

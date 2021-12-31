@@ -34,7 +34,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "inet_unit.h"
 #include "osn_dhcp.h"
 #include "inet_fw.h"
-#include "inet_igmp.h"
+#include "osn_igmp.h"
+#include "osn_mld.h"
 #include "osn_upnp.h"
 #include "inet_dns.h"
 #include "inet_dhsnif.h"
@@ -49,6 +50,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     M(INET_BASE_FIREWALL,       "Firewall")                         \
     M(INET_BASE_UPNP,           "UPnP")                             \
     M(INET_BASE_IGMP,           "IGMP")                             \
+    M(INET_BASE_MLD,            "MLD")                              \
     M(INET_BASE_NETWORK,        "Basic Networking")                 \
     M(INET_BASE_MTU,            "Interface MTU")                    \
     M(INET_BASE_SCHEME_NONE,    "IPv4 Assignment Scheme: None")     \
@@ -110,8 +112,9 @@ struct __inet_base
     /* Firewall class */
     inet_fw_t              *in_fw;
 
-    /* IGMP snooping class */
-    inet_igmp_t            *in_igmp;
+    /* Multicast classes */
+    osn_igmp_t             *in_igmp;
+    osn_mld_t              *in_mld;
 
     /* UPnP class */
     osn_upnp_t             *in_upnp;
@@ -149,9 +152,9 @@ struct __inet_base
     bool                    in_network_enabled;
 
     bool                    in_nat_enabled;
-    bool                    in_igmp_enabled;
-    int                     in_igmp_age;
-    int                     in_igmp_tsize;
+
+    int                     in_igmp_refs;
+    int                     in_mld_refs;
 
     enum osn_upnp_mode      in_upnp_mode;
 
@@ -264,9 +267,15 @@ extern bool inet_base_gateway_set(inet_t *super, osn_ip_addr_t gwaddr);
  * ===========================================================================
  */
 extern bool inet_base_nat_enable(inet_t *super, bool enable);
-extern bool inet_base_igmp_enable(inet_t *super, bool enable, int iage, int itsize);
 extern bool inet_base_upnp_mode_set(inet_t *super, enum osn_upnp_mode mode);
 
+/*
+ * ===========================================================================
+ *  Multicast method implementations
+ * ===========================================================================
+ */
+extern bool inet_base_igmp_update_ref(inet_t *super, bool increase);
+extern bool inet_base_mld_update_ref(inet_t *super, bool increase);
 
 /*
  * ===========================================================================

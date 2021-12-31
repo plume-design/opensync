@@ -31,47 +31,64 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "network_metadata_report.h"
 #include "policy_tags.h"
 
+/*
+"other_config":["map",[["excluded_devices","${all_gateways}"],["nfqueues","${fsm_nfqueues}"],
+    ["tap_type","fsm_tap_nfqueues"]]]
+
+    other_config -> no schema modification just parse the value (string or map or array or whatnot)
+    NOTHING == PCAP
+    TAP_PCAP == PCAP
+    TAP_NFQ == NFQ
+    TAP_PCAP | TAP_NFQ == both
+*/
 enum
 {
-    FSM_TAP_NONE = 0,
-    FSM_TAP_PCAP,
-    FSM_TAP_NFQ,
-    FSM_TAP_RAW,
+    FSM_TAP_NONE = 0x00,
+    FSM_TAP_PCAP = 0x01,
+    FSM_TAP_NFQ = 0x02,
+    FSM_TAP_RAW = 0x04,
 };
 
+struct reg_client_session
+{
+    char *name;
+    struct fsm_session *session;
+    ds_tree_node_t next;
+};
 
 struct dpi_client
 {
-    struct fsm_session *session;
-    char *attr;
-    ds_tree_node_t node;
+    char *attr;              /* Name of the monitored attribute */
+    ds_tree_t reg_sessions;  /* This is a container of struct reg_client_session */
+    uint32_t num_sessions;   /* Number of clients monitoring the attribute */
+    ds_tree_node_t next;
 };
 
 struct fsm_dpi_client_tags
 {
     char *name;
     char *client_plugin_name;
-    struct ds_tree_node tag_list;
+    ds_tree_node_t next;
 };
 
 /**
  * @brief returns the tapping mode for a session
  *
  * @param session the fsm session to probe
- * @return the tapping mode
+ * @return the tapping mode (each bit enabled represents one tap)
  */
-int
+uint32_t
 fsm_session_tap_mode(struct fsm_session *session);
 
 
 /**
- * @brief update pacp settings for the given session
+ * @brief update pcap settings for the given session
  *
  * @param session the fsm session involved
  * @return true if the pcap settings were successful, false otherwise
  */
 bool
-fsm_pcap_update(struct fsm_session *session);
+fsm_pcap_tap_update(struct fsm_session *session);
 
 
 /**
@@ -90,12 +107,8 @@ fsm_nfq_tap_update(struct fsm_session *session);
  * @param session the fsm session involved
  * @return true if the raw sockets settings were successful, false otherwise
  */
-static inline bool
-fsm_raw_tap_update(struct fsm_session *session)
-{
-    /* Placeholder */
-    return false;
-}
+bool
+fsm_raw_tap_update(struct fsm_session *session);
 
 
 /**
@@ -113,7 +126,8 @@ fsm_update_session_tap(struct fsm_session *session);
  *
  * @param session the fsm session to probe
  */
-void fsm_free_tap_resources(struct fsm_session *session);
+void
+fsm_free_tap_resources(struct fsm_session *session);
 
 
 /**
@@ -123,7 +137,8 @@ void fsm_free_tap_resources(struct fsm_session *session);
  * @param queue_num nfqueue queue number
  * @return 0 if the nfqueue initialization successful, -1 otherwise
  */
-int fsm_nfqueues_init(struct fsm_session *session, int queue_num);
+int
+fsm_nfqueues_init(struct fsm_session *session, int queue_num);
 
 
 /**
@@ -131,14 +146,15 @@ int fsm_nfqueues_init(struct fsm_session *session, int queue_num);
  *
  * @param session the fsm session involved
  */
-void fsm_nfq_close(struct fsm_session *session);
+void
+fsm_nfq_close(struct fsm_session *session);
 
 
 /**
  * @brief check if a fsm session is a dpi client session
  *
  * @param session the session to check
- * @return true is the session is  a dpi plugin client,
+ * @return true is the session is a dpi plugin client,
  *         false otherwise.
  */
 bool
@@ -147,9 +163,9 @@ fsm_is_dpi_client(struct fsm_session *session);
 
 void
 fsm_process_tag_update(om_tag_t *tag,
-                  struct ds_tree *removed,
-                  struct ds_tree *added,
-                  struct ds_tree *updated);
+                       struct ds_tree *removed,
+                       struct ds_tree *added,
+                       struct ds_tree *updated);
 
 /**
  * @brief initializes a dpi plugin client session
@@ -179,10 +195,12 @@ fsm_dpi_register_client(struct fsm_session *dpi_plugin_session,
  * @brief unregister the dpi client for the given attribute
  *
  * @param dpi_plugin_session dpi plugin to unregister
+ * @param dpi_client_session the dpi client to unregister
  * @param attr the flow attribute
  */
 void
 fsm_dpi_unregister_client(struct fsm_session *dpi_plugin_session,
+                          struct fsm_session *dpi_client_session,
                           char *attr);
 
 /**
@@ -227,8 +245,9 @@ fsm_dpi_register_clients(struct fsm_session *dpi_plugin_session);
  * @return the action to take
  */
 int
-fsm_dpi_call_client(struct fsm_session *dpi_plugin_session, char *attr, char *value,
-                    struct net_md_stats_accumulator *acc);
+fsm_dpi_call_client(struct fsm_session *dpi_plugin_session, const char *attr,
+                    uint8_t type, uint16_t length, const void *value,
+                    struct fsm_dpi_plugin_client_pkt_info *pkt_info);
 
 int
 fsm_nfq_set_verdict(struct fsm_session *session, int action);
@@ -253,5 +272,18 @@ nfq_build_verdict(char *buf, int id, int queue_num, int verd);
  */
 void
 fsm_free_dpi_plugin_client(struct fsm_session *session);
+
+/*
+ * Exposed for unit-test
+  */
+uint32_t
+fsm_tap_type_from_str(char *conf_type);
+
+void
+fsm_print_one_dpi_client(struct dpi_client* client);
+
+void
+fsm_print_dpi_clients(ds_tree_t *tree);
+
 
 #endif /* FSM_INTERNAL_H_INCLUDED */

@@ -56,7 +56,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /*****************************************************************************/
 
-static int mac_learning_cmp(void *_a, void *_b);
+static int mac_learning_cmp(const void *_a, const void *_b);
 
 struct mac_learning_flt_t {
     char                    brname[IFNAMSIZ];
@@ -298,10 +298,10 @@ static void mac_learning_flush(void)
     }
 }
 
-static int mac_learning_cmp(void *_a, void *_b)
+static int mac_learning_cmp(const void *_a, const void *_b)
 {
-    struct schema_OVS_MAC_Learning *a = _a;
-    struct schema_OVS_MAC_Learning *b = _b;
+    const struct schema_OVS_MAC_Learning *a = _a;
+    const struct schema_OVS_MAC_Learning *b = _b;
     return strcmp(a->hwaddr, b->hwaddr);
 }
 

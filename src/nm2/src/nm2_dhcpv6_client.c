@@ -68,12 +68,12 @@ struct dhcpv6_client_recv_opt
 };
 
 /* Comparator for nm2_dhcpv6_client_recv_opt */
-static inline int dhcpv6_client_recv_opt_cmp(void *_a, void *_b)
+static inline int dhcpv6_client_recv_opt_cmp(const void *_a, const void *_b)
 {
     int rc;
 
-    struct dhcpv6_client_recv_opt *a = _a;
-    struct dhcpv6_client_recv_opt *b = _b;
+    const struct dhcpv6_client_recv_opt *a = _a;
+    const struct dhcpv6_client_recv_opt *b = _b;
 
     rc = a->ropt_tag - b->ropt_tag;
     if (rc != 0) return rc;

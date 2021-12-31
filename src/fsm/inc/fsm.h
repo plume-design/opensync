@@ -31,23 +31,29 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <libmnl/libmnl.h>
 #include <pcap.h>
 #include <sys/sysinfo.h>
+#include <linux/if_packet.h>
 #include <time.h>
 
 #include "ds_tree.h"
 #include "fsm_policy.h"
+#include "net_header_parse.h"
+#include "network_metadata_report.h"
 #include "os_types.h"
 #include "ovsdb_utils.h"
 #include "schema.h"
-#include "net_header_parse.h"
-#include "network_metadata_report.h"
+
+/* These are the type provided in rts_subscribe() callback. */
+#define RTS_TYPE_NUMBER 1
+#define RTS_TYPE_STRING 2
+#define RTS_TYPE_BINARY 3
 
 struct fsm_session;
 
 struct fsm_object
 {
-        char *object;
-        char *version;
-        int state;
+    char *object;
+    char *version;
+    int state;
 };
 
 
@@ -140,6 +146,18 @@ struct fsm_web_cat_ops
 
 
 /**
++ * @brief dpi plugin client packet details
++ *
++ * Packet details are provided by the plugin
++ */
+struct fsm_dpi_plugin_client_pkt_info
+{
+    struct net_md_stats_accumulator *acc;
+    struct net_header_parser *parser;
+};
+
+
+/**
  * @brief dpi plugin specific operations
  *
  * The callbacks are provided by the plugin
@@ -151,9 +169,10 @@ struct fsm_dpi_plugin_ops
                             struct fsm_session *,
                             char *);
     bool (*unregister_client)(struct fsm_session *, char *);
-    int (*flow_attr_cmp)(void *, void *);
-    int (*notify_client)(struct fsm_session *, char *, char *,
-                         struct net_md_stats_accumulator *acc);
+    int (*flow_attr_cmp)(const void *, const void *);
+    int (*notify_client)(struct fsm_session *, const char *,
+                         uint8_t, uint16_t, const void *,
+                         struct fsm_dpi_plugin_client_pkt_info *);
     void (*register_clients)(struct fsm_session *);
     void (*unregister_clients)(struct fsm_session *);
 };
@@ -166,8 +185,9 @@ struct fsm_dpi_plugin_ops
  */
 struct fsm_dpi_plugin_client_ops
 {
-    int (*process_attr)(struct fsm_session *, char *, char *,
-                        struct net_md_stats_accumulator *acc);
+    int (*process_attr)(struct fsm_session *, const char *,
+                        uint8_t, uint16_t, const void *,
+                        struct fsm_dpi_plugin_client_pkt_info *);
 };
 
 
@@ -223,7 +243,8 @@ struct fsm_pcaps
  *
  * Matches the enumeration defined in the ovsdb schema
  */
-enum {
+enum
+{
     FSM_UNKNOWN_SERVICE = -1,
     FSM_PARSER = 0,
     FSM_WEB_CAT,
@@ -240,7 +261,8 @@ struct fsm_type
     int fsm_type;
 };
 
-enum {
+enum
+{
     FSM_SERVICE_DELETE = 0,
     FSM_SERVICE_ADD
 };
@@ -321,6 +343,14 @@ struct fsm_dpi_flow_info
 };
 
 
+struct fsm_forward_context
+{
+    bool initialized;
+    int sock_fd;
+    os_macaddr_t src_eth_addr;
+    struct sockaddr_ll raw_dst;
+};
+
 /**
  * @brief session container.
  *
@@ -342,7 +372,7 @@ struct fsm_session
     char *dso;                       /* plugin dso path */
     bool flood_tap;                  /* openflow flood enabled or not */
     int type;                        /* Session'service type */
-    int tap_type;                    /* Session's tap type */
+    uint32_t tap_type;               /* Session's tap type */
     int64_t report_count;            /* mqtt reports counter */
     struct ev_loop *loop;            /* event loop */
     struct fsm_session *service;     /* service provider */
@@ -354,6 +384,7 @@ struct fsm_session
     struct fsm_policy_client policy_client;
     struct fsm_session *provider_plugin;
     struct fsm_web_cat_ops *provider_ops;
+    struct fsm_forward_context forward_ctx;
 };
 
 

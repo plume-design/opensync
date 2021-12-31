@@ -45,8 +45,7 @@ UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_NETIF_LINUX),src/osn_netif_linux.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_IPV4_NULL),src/osn_ip_null.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_IPV4_LINUX),src/osn_ip_linux.c)
 
-UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_ROUTEV4_NULL),src/osn_route_null.c)
-UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_ROUTEV4_LINUX),src/osn_route_linux.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_ROUTEV4_NULL),src/osn_route_null.c,src/osn_route_linux.c)
 
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_DHCPV4_CLIENT_NULL),src/osn_dhcp_client_null.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_DHCPV4_CLIENT_UDHCP),src/osn_dhcp_client_udhcp.c)
@@ -96,6 +95,12 @@ UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_LTE_LINUX),src/osn_lte_modem.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_NFLOG_NULL),src/osn_nflog_null.c)
 UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_NFLOG_LINUX),src/osn_nflog_linux.c)
 
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_IGMP_NULL),src/osn_igmp_null.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_IGMP_LINUX),src/osn_igmp_linux.c)
+
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_MLD_NULL),src/osn_mld_null.c)
+UNIT_SRC += $(if $(CONFIG_OSN_BACKEND_MLD_LINUX),src/osn_mld_linux.c)
+
 ifdef CONFIG_OSN_LINUX_ENABLED
 UNIT_CFLAGS += -I$(UNIT_PATH)/src/linux
 
@@ -106,7 +111,8 @@ UNIT_SRC += $(if $(CONFIG_OSN_LINUX_IPV6),src/linux/lnx_ip6.c)
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_NETIF),src/linux/lnx_netif.c)
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_NETLINK),src/linux/lnx_netlink.c)
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_ROUTE),src/linux/lnx_route.c)
-UNIT_SRC += $(if $(CONFIG_OSN_LINUX_ROUTE),src/linux/lnx_route_config.c)
+UNIT_SRC += $(if $(CONFIG_OSN_LINUX_ROUTE_LIBNL3),src/linux/lnx_routes.c)
+UNIT_SRC += $(if $(CONFIG_OSN_LINUX_ROUTE_IP),src/linux/lnx_route_config.c)
 UNIT_SRC += $(if $(CONFIG_OSN_MINIUPNPD),src/linux/mupnp_server.c)
 UNIT_SRC += $(if $(CONFIG_OSN_MINIUPNPD),src/linux/mupnp_cfg_iptv.c)
 UNIT_SRC += $(if $(CONFIG_OSN_MINIUPNPD),src/linux/mupnp_cfg_wan.c)
@@ -118,6 +124,14 @@ UNIT_SRC += $(if $(CONFIG_OSN_LINUX_PPPOE),src/linux/lnx_pppoe.c)
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_VLAN),src/linux/lnx_vlan.c)
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_QOS),src/linux/lnx_qos.c)
 UNIT_SRC += $(if $(CONFIG_OSN_LINUX_LTE),src/linux/lnx_lte.c)
+UNIT_SRC += $(if $(CONFIG_OSN_LINUX_IGMP),src/linux/lnx_igmp.c)
+UNIT_SRC += $(if $(CONFIG_OSN_LINUX_MLD),src/linux/lnx_mld.c)
+UNIT_SRC += $(if $(or $(CONFIG_OSN_LINUX_IGMP),$(CONFIG_OSN_LINUX_MLD)),src/linux/lnx_mcast_bridge.c)
+
+ifeq ($(CONFIG_OSN_LINUX_ROUTE_LIBNL3),y)
+UNIT_CFLAGS += $(LIBNL3_HEADERS)
+UNIT_LDFLAGS += -lnl-3 -lnl-route-3
+endif
 
 UNIT_DEPS += src/lib/daemon
 UNIT_DEPS += src/lib/evx
@@ -126,6 +140,7 @@ UNIT_DEPS += src/lib/execsh
 endif
 
 UNIT_EXPORT_CFLAGS := -I$(UNIT_PATH)/inc
+UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 
 UNIT_DEPS += src/lib/log
 UNIT_DEPS += src/lib/kconfig

@@ -47,6 +47,7 @@ UNIT_DEPS := src/lib/common
 UNIT_DEPS += src/lib/ds
 UNIT_DEPS += src/lib/const
 UNIT_DEPS += src/lib/schema
+UNIT_DEPS += src/lib/protobuf
 UNIT_DEPS_CFLAGS += src/lib/ovsdb
 UNIT_DEPS_CFLAGS += src/lib/datapipeline
 UNIT_DEPS_CFLAGS += src/lib/target

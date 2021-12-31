@@ -961,7 +961,7 @@ bool inet_dhsnif_fingerprint_to_str(uint8_t *finger, char *s, size_t sz)
 /**
  * Function for comparing keys for a dhcps_lease structure
  */
-int inet_dhsnif_lease_cmp(void *a, void *b)
+int inet_dhsnif_lease_cmp(const void *a, const void *b)
 {
     return memcmp(a, b, sizeof(os_macaddr_t));
 }

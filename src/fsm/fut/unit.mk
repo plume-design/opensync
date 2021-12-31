@@ -41,7 +41,6 @@ UNIT_FILE += fsm_configure_http_plugin.sh
 UNIT_FILE += fsm_configure_upnp_plugin.sh
 UNIT_FILE += fsm_configure_test_ndp_plugin.sh
 UNIT_FILE += fsm_configure_test_walleye_plugin.sh
-UNIT_FILE += fsm_connect_wifi_client_to_ap.sh
 UNIT_FILE += fsm_create_tap_interface.sh
 UNIT_FILE += fsm_test_http_plugin.sh
 UNIT_FILE += fsm_test_upnp_plugin.sh

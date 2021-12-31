@@ -26,18 +26,19 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef MDNS_PLUGIN_H_INCLUDED
 #define MDNS_PLUGIN_H_INCLUDED
-#include <pcap.h>
-#include <stdint.h>
-#include <time.h>
+
 #include <ev.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <time.h>
 
+#include "ds_tree.h"
 #include "fsm.h"
-#include "net_header_parse.h"
-#include "os_types.h"
-#include "ovsdb.h"
-#include "schema.h"
-
 #include "mdnsd.h"
+#include "net_header_parse.h"
+#include "ovsdb_update.h"
 
 
 /**
@@ -211,7 +212,7 @@ void
 mdns_ovsdb_exit(void);
 
 int
-mdnsd_service_cmp(void *a, void *b);
+mdnsd_service_cmp(const void *a, const void *b);
 
 ds_tree_t *
 mdnsd_get_services(void);
@@ -248,4 +249,10 @@ mdnsd_update_record(struct mdnsd_service *service);
 
 void
 mdnsd_remove_record(struct mdnsd_service *service);
-#endif // MDNS_PLUGIN_H_INCLUDED
+
+/* exposing for the benefit of UT */
+bool
+mdns_populate_sockaddr(struct net_header_parser *parser,
+                       struct sockaddr_storage *dst);
+
+#endif /* MDNS_PLUGIN_H_INCLUDED */

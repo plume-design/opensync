@@ -110,6 +110,7 @@ struct ip2action
     bool                        redirect_flag;
     uint8_t                     categories[URL_REPORT_MAX_ELEMS];
     bool                        cat_unknown_to_service;
+    uint8_t                     direction;
     union
     {
         struct ip2action_bc_info bc_info;
@@ -137,6 +138,7 @@ struct ip2action_req
     uint8_t                  categories[URL_REPORT_MAX_ELEMS];
     bool                     cat_unknown_to_service;
     int                      (*set_ttl)(void);
+    uint8_t                  direction;
     union
     {
         struct ip2action_bc_info bc_info;
@@ -238,7 +240,7 @@ dns_cache_ttl_cleanup();
  *
  */
 void
-print_dns_cache(void);
+dns_cache_print(void);
 
 /**
  * @brief return cache size.
@@ -258,7 +260,7 @@ dns_cache_get_size(void);
  * @return None
  */
 void
-print_dns_cache_size(void);
+dns_cache_print_size(void);
 
 /**
  * @brief returns cache ref count.
@@ -288,7 +290,7 @@ dns_cache_get_hit_count(uint8_t service_id);
  * @return None
  */
 void
-print_dns_cache_hit_count(void);
+dns_cache_print_hit_count(void);
 
 /**
  * @brief print dns_cache details.
@@ -298,7 +300,7 @@ print_dns_cache_hit_count(void);
  * @return None
  */
 void
-print_dns_cache_details(void);
+dns_cache_print_details(void);
 
 /**
  * @brief returns service provider.

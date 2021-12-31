@@ -229,8 +229,7 @@ nf_queue_send_nlh_request(struct nlmsghdr *nlh, uint8_t cfg_type,
 }
 
 static void
-nf_queue_send_verdict(struct nlmsghdr *nlh,
-                      struct nfqnl_msg_verdict_hdr *vhdr,
+nf_queue_send_verdict(struct nfqnl_msg_verdict_hdr *vhdr,
                       uint32_t queue_num)
 {
     struct nf_queue_context *ctxt;
@@ -269,16 +268,16 @@ nf_queue_send_verdict(struct nlmsghdr *nlh,
                 break;
     }
 
-    mnl_attr_put(nlh, NFQA_VERDICT_HDR, sizeof(struct nfqnl_msg_verdict_hdr), vhdr);
+    mnl_attr_put(nfq->nlh, NFQA_VERDICT_HDR, sizeof(struct nfqnl_msg_verdict_hdr), vhdr);
 
     if (mark == 2 || mark == 3)
     {
-        nest = mnl_attr_nest_start(nlh, NFQA_CT);
-        mnl_attr_put_u32(nlh, CTA_MARK, htonl(mark));
-        mnl_attr_nest_end(nlh, nest);
+        nest = mnl_attr_nest_start(nfq->nlh, NFQA_CT);
+        mnl_attr_put_u32(nfq->nlh, CTA_MARK, htonl(mark));
+        mnl_attr_nest_end(nfq->nlh, nest);
     }
 
-    ret = mnl_socket_sendto(nfq->nfq_mnl, nlh, nlh->nlmsg_len);
+    ret = mnl_socket_sendto(nfq->nfq_mnl, nfq->nlh, nfq->nlh->nlmsg_len);
     if (ret == -1)
     {
         LOGE("%s: Failed to send verdict for packet_id[%d]",__func__,ntohl(vhdr->id));
@@ -297,7 +296,6 @@ nf_queue_read_mnl_cbk(EV_P_ ev_io *ev, int revents)
     struct nfqnl_msg_verdict_hdr vhdr;
     struct nfqueue_ctxt *nfq;
     char rcv_buf[0xFFFF];
-    struct nlmsghdr *nlh;
     int portid = 0;
     int ret = 0;
 
@@ -312,6 +310,9 @@ nf_queue_read_mnl_cbk(EV_P_ ev_io *ev, int revents)
     ctxt = nf_queue_get_context();
     if (ctxt->initialized == false) return;
 
+    memset(&nfq->send_buf, 0, sizeof(nfq->send_buf));
+
+    nfq->nlh = NULL;
     pkt_info = &nfq->pkt_info;
     pkt_info->verdict = NF_UTIL_NFQ_INSPECT;
 
@@ -321,6 +322,8 @@ nf_queue_read_mnl_cbk(EV_P_ ev_io *ev, int revents)
         LOGE("%s: mnl_socket_recvfrom failed: %s", __func__, strerror(errno));
         return;
     }
+
+    nfq->nlh = nf_queue_set_nlh_request(nfq->send_buf, NFQNL_MSG_VERDICT, nfq->queue_num);
 
     portid = mnl_socket_get_portid(nfq->nfq_mnl);
     ret = mnl_cb_run(rcv_buf, ret, 0, portid, nf_queue_cb, nfq);
@@ -334,8 +337,7 @@ nf_queue_read_mnl_cbk(EV_P_ ev_io *ev, int revents)
     memset(&vhdr, 0, sizeof(struct nfqnl_msg_verdict_hdr));
     vhdr.id = htonl(pkt_info->packet_id);
 
-    nlh = nf_queue_set_nlh_request(rcv_buf, NFQNL_MSG_VERDICT, nfq->queue_num);
-    nf_queue_send_verdict(nlh, &vhdr, nfq->queue_num);
+    nf_queue_send_verdict(&vhdr, nfq->queue_num);
 
     return;
 }
@@ -486,10 +488,10 @@ nf_queue_set_queue_maxlen(uint32_t queue_num, uint32_t queue_maxlen)
 }
 
 static int
-nfq_cmp(void *_a, void *_b)
+nfq_cmp(const void *_a, const void *_b)
 {
-    struct nfqueue_ctxt *a = (struct nfqueue_ctxt *)_a;
-    struct nfqueue_ctxt *b = (struct nfqueue_ctxt *)_b;
+    const struct nfqueue_ctxt *a = (const struct nfqueue_ctxt *)_a;
+    const struct nfqueue_ctxt *b = (const struct nfqueue_ctxt *)_b;
 
     return (a->queue_num - b->queue_num);
 }
@@ -614,5 +616,36 @@ nf_queue_set_verdict(uint32_t packet_id, int action, uint32_t queue_num)
          __func__, packet_id, queue_num, pkt_info->verdict,
          pkt_info->verdict == NF_UTIL_NFQ_DROP ? "Drop" : "Accept/Inspect");
 
+    return true;
+}
+
+
+/**
+ *
+ * @brief update payload for given pktid.
+ */
+bool
+nf_queue_update_payload(uint32_t packet_id, uint32_t queue_num)
+{
+    struct nf_queue_context  *ctxt;
+    struct nfq_pkt_info *pkt_info;
+    struct nfqueue_ctxt nfq_lkp;
+    struct nfqueue_ctxt *nfq;
+
+    ctxt = nf_queue_get_context();
+    if (ctxt->initialized == false) return false;
+
+    memset(&nfq_lkp, 0, sizeof(struct nfqueue_ctxt));
+    nfq_lkp.queue_num = queue_num;
+    nfq = ds_tree_find(&ctxt->nfq_tree, &nfq_lkp);
+    if (nfq == NULL) return false;
+
+    pkt_info = &nfq->pkt_info;
+    if (pkt_info->packet_id != packet_id) return false;
+
+    mnl_attr_put(nfq->nlh, NFQA_PAYLOAD, pkt_info->payload_len, pkt_info->payload);
+
+    LOGD("%s: updated payload for packet_id[%d] of queue[%d]",
+         __func__, packet_id, queue_num);
     return true;
 }

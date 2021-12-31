@@ -42,3 +42,4 @@ UNIT_FILE += um_set_invalid_firmware_url.sh
 UNIT_FILE += um_set_upgrade_dl_timer_abort.sh
 UNIT_FILE += um_set_upgrade_dl_timer_end.sh
 UNIT_FILE += um_set_upgrade_timer.sh
+UNIT_FILE += um_verify_firmware_url_length.sh

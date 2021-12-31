@@ -33,12 +33,11 @@ source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="wm2/$(basename "$0")"
 manager_setup_file="wm2/wm2_setup.sh"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+wm2/wm2_set_radio_tx_power.sh [-h] arguments
 Description:
     - Script tries to set chosen TX POWER. If interface is not UP it brings up the interface, and tries to set
       TX POWER to desired value.
@@ -56,9 +55,9 @@ Arguments:
     \$10 (tx_power)     : used as tx_power in Wifi_Radio_Config table : (int)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name}
+                 Run: ./wm2/wm2_set_radio_tx_power.sh
 Script usage example:
-   ./${tc_name} 2 wifi1 test_wifi_50L WifiPassword123 44 HT20 11ac ap home-ap-l50 23
+   ./wm2/wm2_set_radio_tx_power.sh 2 wifi1 test_wifi_50L WifiPassword123 44 HT20 11ac ap home-ap-l50 23
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -74,7 +73,7 @@ if [ -n "${1}" ]; then
 fi
 
 NARGS=10
-[ $# -ne ${NARGS} ] && usage && raise "Requires exactly '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -ne ${NARGS} ] && usage && raise "Requires exactly '${NARGS}' input argument(s)" -l "wm2/wm2_set_radio_tx_power.sh" -arg
 vif_radio_idx=$1
 if_name=$2
 ssid=$3
@@ -91,12 +90,11 @@ trap '
     print_tables Wifi_Radio_Config Wifi_Radio_State
     print_tables Wifi_VIF_Config Wifi_VIF_State
     fut_info_dump_line
-    run_setup_if_crashed wm || true
 ' EXIT SIGINT SIGTERM
 
-log_title "$tc_name: WM2 test - Testing Wifi_Radio_Config field tx_power - '${tx_power}'"
+log_title "wm2/wm2_set_radio_tx_power.sh: WM2 test - Testing Wifi_Radio_Config field tx_power - '${tx_power}'"
 
-log "$tc_name: Checking if Radio/VIF states are valid for test"
+log "wm2/wm2_set_radio_tx_power.sh: Checking if Radio/VIF states are valid for test"
 check_radio_vif_state \
     -if_name "$if_name" \
     -vif_if_name "$vif_if_name" \
@@ -106,11 +104,11 @@ check_radio_vif_state \
     -security "$security" \
     -hw_mode "$hw_mode" \
     -mode "$mode" &&
-        log "$tc_name: Radio/VIF states are valid" ||
+        log "wm2/wm2_set_radio_tx_power.sh: Radio/VIF states are valid" ||
             (
-                log "$tc_name: Cleaning VIF_Config"
+                log "wm2/wm2_set_radio_tx_power.sh: Cleaning VIF_Config"
                 vif_clean
-                log "$tc_name: Radio/VIF states are not valid, creating interface..."
+                log "wm2/wm2_set_radio_tx_power.sh: Radio/VIF states are not valid, creating interface..."
                 create_radio_vif_interface \
                     -vif_radio_idx "$vif_radio_idx" \
                     -channel_mode manual \
@@ -122,23 +120,24 @@ check_radio_vif_state \
                     -ht_mode "$ht_mode" \
                     -hw_mode "$hw_mode" \
                     -mode "$mode" \
-                    -vif_if_name "$vif_if_name" &&
-                        log "$tc_name: create_radio_vif_interface - Interface $if_name created - Success"
+                    -vif_if_name "$vif_if_name" \
+                    -disable_cac &&
+                        log "wm2/wm2_set_radio_tx_power.sh: create_radio_vif_interface - Interface $if_name created - Success"
             ) ||
-        raise "FAIL: create_radio_vif_interface - Interface $if_name not created" -l "$tc_name" -ds
+        raise "FAIL: create_radio_vif_interface - Interface $if_name not created" -l "wm2/wm2_set_radio_tx_power.sh" -ds
 
-log "$tc_name: Changing tx_power to $tx_power"
+log "wm2/wm2_set_radio_tx_power.sh: Changing tx_power to $tx_power"
 update_ovsdb_entry Wifi_Radio_Config -w if_name "$if_name" -u tx_power "$tx_power" &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Radio_Config::tx_power is $tx_power - Success" ||
-    raise "FAIL: update_ovsdb_entry - Wifi_Radio_Config::tx_power is not $tx_power" -l "$tc_name" -oe
+    log "wm2/wm2_set_radio_tx_power.sh: update_ovsdb_entry - Wifi_Radio_Config::tx_power is $tx_power - Success" ||
+    raise "FAIL: update_ovsdb_entry - Wifi_Radio_Config::tx_power is not $tx_power" -l "wm2/wm2_set_radio_tx_power.sh" -oe
 
 wait_ovsdb_entry Wifi_Radio_State -w if_name "$if_name" -is tx_power "$tx_power" &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Radio_Config reflected to Wifi_Radio_State::tx_power is $tx_power - Success" ||
-    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Radio_Config to Wifi_Radio_State::tx_power is not $tx_power" -l "$tc_name" -ow
+    log "wm2/wm2_set_radio_tx_power.sh: wait_ovsdb_entry - Wifi_Radio_Config reflected to Wifi_Radio_State::tx_power is $tx_power - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Radio_Config to Wifi_Radio_State::tx_power is not $tx_power" -l "wm2/wm2_set_radio_tx_power.sh" -ow
 
-log "$tc_name: Checking tx_power $tx_power at system level - LEVEL2"
+log "wm2/wm2_set_radio_tx_power.sh: Checking tx_power $tx_power at system level - LEVEL2"
 check_tx_power_at_os_level "$tx_power" "$vif_if_name" "$if_name" &&
-    log "$tc_name: LEVEL2 - check_tx_power_at_os_level - tx_power $tx_power set at system level - Success" ||
-    raise "FAIL: LEVEL2 - check_tx_power_at_os_level - tx_power $tx_power not set at system level" -l "$tc_name" -tc
+    log "wm2/wm2_set_radio_tx_power.sh: LEVEL2 - check_tx_power_at_os_level - tx_power $tx_power set at system level - Success" ||
+    raise "FAIL: LEVEL2 - check_tx_power_at_os_level - tx_power $tx_power not set at system level" -l "wm2/wm2_set_radio_tx_power.sh" -tc
 
 pass

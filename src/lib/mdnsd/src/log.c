@@ -41,7 +41,7 @@
 #define MAX(x,y) ((x) > (y) ? (x) : (y))
 #endif
 
-/* Modified by OpenSync */
+/* Modified by Plume */
 static int do_syslog = 1;
 static int loglevel  = LOG_NOTICE;
 
@@ -52,7 +52,7 @@ int mdnsd_log_level(char *level)
 
     for (i = 0; prioritynames[i].c_name; i++) {
         size_t len = MAX(strlen(prioritynames[i].c_name),
-                 strlen(level));
+                         strlen(level));
 
         if (!strncasecmp(prioritynames[i].c_name, level, len)) {
             lvl = prioritynames[i].c_val;
@@ -116,7 +116,7 @@ void mdnsd_log_hex(char *msg, unsigned char *buffer, ssize_t len)
 void mdnsd_log(int severity, const char *fmt, ...)
 {
     FILE *file;
-        va_list args;
+    va_list args;
 
     if (loglevel == INTERNAL_NOPRI)
         return;
@@ -126,7 +126,7 @@ void mdnsd_log(int severity, const char *fmt, ...)
     else
         file = stderr;
 
-        va_start(args, fmt);
+    va_start(args, fmt);
     if (do_syslog)
         vsyslog(severity, fmt, args);
     else if (severity <= loglevel) {
@@ -134,7 +134,7 @@ void mdnsd_log(int severity, const char *fmt, ...)
         fprintf(file, "\n");
         fflush(file);
     }
-        va_end(args);
+    va_end(args);
 }
 
 void mdnsd_log_time(struct timeval *tv, char *buf, size_t len)

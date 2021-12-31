@@ -33,6 +33,7 @@
 #   printf
 #
 echo "${FUT_TOPDIR}/shell/lib/base_lib.sh sourced"
+
 ###############################################################################
 # DESCRIPTION:
 #   Function is used to raise an exception, usually during test execution.
@@ -136,6 +137,7 @@ raise()
                 ;;
         esac
     done
+
     echo "$(date +%T) [ERROR] ${exception_location} - ${exception_msg}"
     if [ "$is_skip" = 'false' ]; then
         echo "FutShellException|FES|${exception_type}|FES|${exception_name}|FES|${exception_msg} AT ${exception_location}"
@@ -147,13 +149,13 @@ raise()
 
 ###############################################################################
 # DESCRIPTION:
-#   Function is used to mark test as passes.
+#   Function is used to mark test as passed.
 # INPUT PARAMETER(S):
-#   $1  pass message
+#   $1  pass message (string, optional)
 # EXITS:
 #   0   Always.
 # USAGE EXAMPLE(S):
-#
+#   pass
 ###############################################################################
 pass()
 {
@@ -188,13 +190,17 @@ log_title()
 #       -deb    mark log message as debug
 #       -wrn    mark log message as warning
 #       -err    mark log message as error
+#   If called without flag, message is shell log.
 # INPUT PARAMETER(S):
-#   $1  flag, setting debug or error message type
+#   $1  log type, setting debug, warning or error log type (string, optional)
 # RETURNS:
 #   0   DEBUG or SHELL message logged.
 #   1   ERROR message logged.
 # USAGE EXAMPLE(S):
 #   log <log message>
+#   log -deb <log message>
+#   log -wrn <log message>
+#   log -err <log message>
 ###############################################################################
 log()
 {
@@ -215,4 +221,15 @@ log()
     echo -e "$(date +%T) $msg_type $*"
 
     return $exit_code
+}
+
+contains_element () {
+    local match="$1"
+    shift
+    while [ -n "${1}" ]; do
+        value="${1}"
+        [ "${value}" == "${match}" ] && echo 0 && return 0
+        shift
+    done
+    echo 1 && return 1
 }

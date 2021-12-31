@@ -5,3 +5,6 @@ menuconfig SERVICE_HEALTHCHECK
         A set of scripts that check the health of the system and
         reboot the system in case of repeated errors or fatal failure
 
+if SERVICE_HEALTHCHECK
+    source "rootfs/kconfig/Kconfig.services"
+endif

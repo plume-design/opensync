@@ -34,7 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "json_util.h"
 #include "memutil.h"
 
-#include "wano_wan_config.h"
+#include "wano_wan.h"
 
 #include "wanp_pppoe_stam.h"
 
@@ -47,6 +47,7 @@ struct wanp_pppoe_handle
     osn_ip_addr_t                   wpoe_ipaddr;
     char                            wpoe_ppp_ifname[C_IFNAME_LEN];
     struct wano_wan_config          wpoe_wan_config;
+    bool                            wpoe_have_config;
     struct wano_plugin_status       wpoe_status;
 };
 
@@ -56,7 +57,6 @@ static wano_plugin_ops_init_fn_t wanp_pppoe_init;
 static wano_plugin_ops_run_fn_t wanp_pppoe_run;
 static wano_plugin_ops_fini_fn_t wanp_pppoe_fini;
 static wano_inet_state_event_fn_t wanp_pppoe_inet_state_event_fn;
-static bool wanp_pppoe_get_wan_config(struct wanp_pppoe_handle *wh);
 
 static struct wano_plugin wanp_pppoe = WANO_PLUGIN_INIT(
         "pppoe",
@@ -65,6 +65,8 @@ static struct wano_plugin wanp_pppoe = WANO_PLUGIN_INIT(
         wanp_pppoe_init,
         wanp_pppoe_run,
         wanp_pppoe_fini);
+
+static ovsdb_table_t table_Wifi_Inet_Config;
 
 /*
  * ===========================================================================
@@ -89,8 +91,12 @@ enum wanp_pppoe_state wanp_pppoe_state_INIT(
             break;
 
         case wanp_pppoe_do_INIT:
-            LOG(DEBUG, "wanp_pppoe: Reading credentials from persistent storage");
-            if (wanp_pppoe_get_wan_config(wpoe) == false)
+            wpoe->wpoe_have_config = wano_wan_config_get(
+                    wano_wan_from_plugin_handle(&wpoe->wpoe_handle),
+                    WC_TYPE_PPPOE,
+                    &wpoe->wpoe_wan_config);
+
+            if (!wpoe->wpoe_have_config)
             {
                 LOG(NOTICE, "wanp_pppoe: No PPPoE configuration is present. Skipping plug-in.");
                 wpoe->wpoe_status_fn(
@@ -116,7 +122,6 @@ enum wanp_pppoe_state wanp_pppoe_state_ENABLE_PPPOE(
     struct wano_inet_state *is;
 
     struct schema_Wifi_Inet_Config inet_config;
-    ovsdb_table_t table_Wifi_Inet_Config;
 
     wpoe = CONTAINER_OF(state, struct wanp_pppoe_handle, wpoe_state);
     is = data;
@@ -129,7 +134,6 @@ enum wanp_pppoe_state wanp_pppoe_state_ENABLE_PPPOE(
                       wpoe->wpoe_handle.wh_ifname);
 
             // Insert new pppoe interface in Wifi_Inet_Config table
-            OVSDB_TABLE_INIT(Wifi_Inet_Config, if_name);
             memset(&inet_config, 0, sizeof(inet_config));
             inet_config._partial_update = true;
 
@@ -233,7 +237,12 @@ enum wanp_pppoe_state wanp_pppoe_state_RUNNING(
     {
         struct wano_plugin_status ws = WANO_PLUGIN_STATUS(WANP_OK);
 
-        wano_wan_config_status_set(wpoe->wpoe_handle.wh_ifname, WC_TYPE_PPPOE, WC_STATUS_SUCCESS);
+        if (wpoe->wpoe_have_config)
+        {
+            wano_wan_status_set(
+                    wano_wan_from_plugin_handle(&wpoe->wpoe_handle),
+                    WC_TYPE_PPPOE, WC_STATUS_SUCCESS);
+        }
 
         STRSCPY(ws.ws_ifname, wpoe->wpoe_ppp_ifname);
         STRSCPY(ws.ws_iftype, "pppoe");
@@ -279,7 +288,15 @@ enum wanp_pppoe_state wanp_pppoe_state_EXCEPTION(
     struct wanp_pppoe_handle *wpoe = CONTAINER_OF(state, struct wanp_pppoe_handle, wpoe_state);
 
     LOG(INFO, "wanp_pppoe: PPPOE_EXCEPTION: %s", wanp_pppoe_action_str(action));
-    wano_wan_config_status_set(wpoe->wpoe_handle.wh_ifname, WC_TYPE_PPPOE, WC_STATUS_ERROR);
+
+    /* Set WAN status */
+    if (wpoe->wpoe_have_config)
+    {
+        wano_wan_status_set(
+                wano_wan_from_plugin_handle(&wpoe->wpoe_handle),
+                WC_TYPE_PPPOE,
+                WC_STATUS_ERROR);
+    }
 
     return 0;
 }
@@ -326,7 +343,18 @@ void wanp_pppoe_fini(wano_plugin_handle_t *wh)
 
     wano_inet_state_event_fini(&wph->wpoe_inet_state_watcher);
 
-    wano_wan_config_status_set(wh->wh_ifname, WC_TYPE_PPPOE, WC_STATUS_ERROR);
+    ovsdb_table_delete_simple(
+            &table_Wifi_Inet_Config,
+            "if_name",
+            wph->wpoe_ppp_ifname);
+
+    if (wph->wpoe_have_config)
+    {
+        wano_wan_status_set(
+                wano_wan_from_plugin_handle(wh),
+                WC_TYPE_PPPOE,
+                WC_STATUS_ERROR);
+    }
 
     FREE(wph);
 }
@@ -350,17 +378,6 @@ void wanp_pppoe_inet_state_event_fn(
     }
 }
 
-bool wanp_pppoe_get_wan_config(struct wanp_pppoe_handle *wpoe)
-{
-    if (!wano_wan_config_get(&wpoe->wpoe_wan_config, WC_TYPE_PPPOE))
-    {
-        LOG(DEBUG, "wanp_pppoe: No local configuration present.");
-        return false;
-    }
-
-    return true;
-}
-
 /*
  * ===========================================================================
  *  Module Support
@@ -369,6 +386,7 @@ bool wanp_pppoe_get_wan_config(struct wanp_pppoe_handle *wpoe)
 void wanp_pppoe_module_start(void *data)
 {
     (void)data;
+    OVSDB_TABLE_INIT(Wifi_Inet_Config, if_name);
     wano_plugin_register(&wanp_pppoe);
 }
 

@@ -145,7 +145,7 @@ static void callback_Wifi_Route_Config(
                     rt->rc_ifname);
         }
 
-        ds_tree_insert(&g_nm2_route_cfg_list, rt, new->_uuid.uuid);
+        ds_tree_insert(&g_nm2_route_cfg_list, rt, rt->rc_uuid.uuid);
     }
 }
 
@@ -202,6 +202,58 @@ bool nm2_route_cfg_add(struct nm2_route_cfg *rt)
          * nm2_route_cfg_reapply(), so return success here.
          */
         return true;
+    }
+
+    if (rt->rc_route.metric == -1)
+    {
+        int rtmod = 0;
+        /*
+         * Assign the route metric dynamically according to the interface type.
+         *
+         * This is still somewhat suboptimal as interfaces with the same type
+         * can still have the same route. However this case (for now) is more
+         * theoretical than practical and the current approach does solve,
+         * among other things, all current LTE use cases.
+         */
+        switch (pif->if_type)
+        {
+            case NM2_IFTYPE_BRIDGE:
+            case NM2_IFTYPE_ETH:
+            case NM2_IFTYPE_VLAN:
+                rtmod = 0;
+                break;
+
+            case NM2_IFTYPE_GRE:
+            case NM2_IFTYPE_GRE6:
+                rtmod = 10;
+                break;
+
+            case NM2_IFTYPE_TAP:
+                rtmod = 20;
+                break;
+
+            case NM2_IFTYPE_VIF:
+                rtmod = 30;
+                break;
+
+            case NM2_IFTYPE_PPPOE:
+                rtmod = 40;
+                break;
+
+            case NM2_IFTYPE_LTE:
+                rtmod = 50;
+                break;
+
+            default:
+                rtmod = 99;
+                break;
+        }
+
+        rt->rc_route.metric = CONFIG_MANAGER_NM_ROUTE_BASE_METRIC + rtmod;
+        LOG(INFO, "route_cfg: %s: Setting metric of route "PRI_osn_ip_addr" to %d.",
+                pif->if_name,
+                FMT_osn_ip_addr(rt->rc_route.dest),
+                rt->rc_route.metric);
     }
 
     if (!inet_route4_add(pif->if_inet, &rt->rc_route))

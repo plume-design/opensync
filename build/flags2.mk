@@ -32,21 +32,27 @@ CFLAGS += $(VENDOR_CFLAGS)
 TARGET_DEF := TARGET_$(shell echo -n "$(TARGET)" | tr -sc '[A-Za-z0-9]' _ | tr '[a-z]' '[A-Z]')
 CFLAGS += -D$(TARGET_DEF) -DTARGET_NAME="\"$(TARGET)\""
 
-# gcc version specific flags
+# gcc version specific flags  (does not apply to clang)
+ifeq (,$(findstring clang,$(CC)))
 ifndef GCCVERFLAGS
 ifneq ($(CC),)
 GCCVER := $(shell $(CC) -dumpversion 2>/dev/null | cut -f1 -d.)
 endif
 ifneq ($(GCCVER),)
 ifeq ($(shell [ $(GCCVER) -ge 7 ] && echo y),y)
-#GCCVERFLAGS += -Wno-format-truncation
 GCCVERFLAGS += -Wno-error=format-truncation
 endif
 ifeq ($(shell [ $(GCCVER) -ge 8 ] && echo y),y)
-#GCCVERFLAGS += -Wno-stringop-truncation
 GCCVERFLAGS += -Wno-error=stringop-truncation
+GCCVERFLAGS += -Wno-error=implicit-fallthrough
+endif
+ifeq ($(shell [ $(GCCVER) -ge 10 ] && echo y),y)
+GCCVERFLAGS += -Wno-error=stringop-overflow
 endif
 endif
 endif
+endif
+
+
 CFLAGS += $(GCCVERFLAGS)
 

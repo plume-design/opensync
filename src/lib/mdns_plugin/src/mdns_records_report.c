@@ -25,12 +25,17 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #define __GNU_SOURCE
-#include <stdio.h>
-#include <stdlib.h>
-#include <time.h>
 
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <string.h>
+
+#include "ds_dlist.h"
+#include "ds_tree.h"
+#include "fsm.h"
 #include "log.h"
-#include "qm_conn.h"
 #include "mdns_records.h"
 #include "memutil.h"
 
@@ -96,8 +101,6 @@ mdns_records_free_pb_op(Interfaces__MdnsRecordsTelemetry__ObservationPoint *pb)
     FREE(pb->location_id);
 
     FREE(pb);
-
-    return;
 }
 
 /**
@@ -503,11 +506,11 @@ Interfaces__MdnsRecordsTelemetry__MdnsRecord **
 mdns_records_set_pb_mdns_records(mdns_client_t *client)
 {
     Interfaces__MdnsRecordsTelemetry__MdnsRecord **records_pb_tbl = NULL;
-    size_t  i, allocated = 0;
-
     mdns_records_list_t *records_list = &client->records_list;
-    mdns_records_t      *rec = NULL;
-    ds_dlist_iter_t      rec_iter;
+    mdns_records_t *rec = NULL;
+    ds_dlist_iter_t rec_iter;
+    size_t allocated = 0;
+    size_t i;
 
     if (client->num_records == 0) return NULL;
 
@@ -621,8 +624,6 @@ mdns_records_free_pb_client(Interfaces__MdnsRecordsTelemetry__MdnsClient *pb)
     FREE(pb->ip);
 
     FREE(pb);
-
-    return;
 }
 
 /**
@@ -693,10 +694,11 @@ Interfaces__MdnsRecordsTelemetry__MdnsClient **
 mdns_records_set_pb_clients(mdns_records_report_data_t *report)
 {
     Interfaces__MdnsRecordsTelemetry__MdnsClient **clients_pb_tbl;
-    size_t  i, num_clients, allocated = 0;
-
-    ds_tree_t       *clients = &report->staged_clients;
-    mdns_client_t   *client  = NULL;
+    ds_tree_t *clients = &report->staged_clients;
+    mdns_client_t *client = NULL;
+    size_t allocated = 0;
+    size_t num_clients;
+    size_t i;
 
     if (!report) return NULL;
 
@@ -751,7 +753,7 @@ mdns_records_set_pb_report(mdns_records_report_data_t *report)
     /* Initialize protobuf */
     interfaces__mdns_records_telemetry__mdns_records_report__init(pb);
 
-    /* Set obsveration point */
+    /* Set observation point */
     pb->observation_point = mdns_records_set_node_info(&report->node_info);
     if (!pb->observation_point)
     {
@@ -766,7 +768,6 @@ mdns_records_set_pb_report(mdns_records_report_data_t *report)
         LOGE("%s: set observation_window failed", __func__);
         goto err_free_pb_op;
     }
-
 
     /* Allocate the clients container */
     pb->clients = mdns_records_set_pb_clients(report);
@@ -817,8 +818,6 @@ mdns_records_free_pb_report(Interfaces__MdnsRecordsTelemetry__MdnsRecordsReport 
 
     FREE(pb->clients);
     FREE(pb);
-
-    return;
 }
 
 /*****************************************************************************
@@ -921,11 +920,11 @@ mdns_records_free_packed_buffer(packed_buffer_t *pb)
 bool
 mdns_records_send_report(mdns_records_report_data_t *report, struct fsm_session *session)
 {
-    packed_buffer_t *pb      = NULL;
+    packed_buffer_t *pb;
 
     if (!report)
     {
-        LOGE("%s: Mdns Records Report is NULL", __func__);
+        LOGE("%s: mDNS records report is NULL", __func__);
         return false;
     }
 
@@ -938,13 +937,12 @@ mdns_records_send_report(mdns_records_report_data_t *report, struct fsm_session 
     pb = mdns_records_serialize_report(report);
     if (!pb)
     {
-        LOGE("%s: Mdns records report serialization failed", __func__);
+        LOGE("%s: mDNS records report serialization failed", __func__);
         return false;
     }
 
     session->ops.send_pb_report(session, session->topic, pb->buf, pb->len);
 
-    // Free the serialized container
     mdns_records_free_packed_buffer(pb);
 
     return true;

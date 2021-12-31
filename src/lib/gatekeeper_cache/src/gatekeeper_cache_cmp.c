@@ -30,9 +30,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdlib.h>
 
 #include "fsm_policy.h"
-#include "fsm_utils.h"
 #include "gatekeeper_cache_cmp.h"
 #include "util.h"
+#include "sockaddr_storage.h"
 
 /*
  * MAC address comparison

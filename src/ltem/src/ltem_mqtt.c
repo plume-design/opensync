@@ -70,7 +70,7 @@ lte_send_report(char *topic, struct lte_info_packed_buffer *pb)
         return -1;
     }
 
-    LOGI("%s: msg len: %zu, topic: %s",
+    LOGD("%s: msg len: %zu, topic: %s",
          __func__, pb->len, topic);
 
 #ifndef ARCH_X86
@@ -126,6 +126,14 @@ lte_set_net_info(struct lte_info_report *lte_report)
     net_info.net_status = mgr->modem_info->reg_status;
     net_info.rssi = mgr->modem_info->rssi;
     net_info.ber = mgr->modem_info->ber;
+    net_info.mcc = mgr->modem_info->srv_cell.mcc;
+    net_info.mnc = mgr->modem_info->srv_cell.mnc;
+    net_info.tac = mgr->modem_info->srv_cell.tac;
+    net_info.service_provider = mgr->modem_info->operator;
+    net_info.sim_type = mgr->modem_info->sim_type;
+    net_info.sim_status = mgr->modem_info->sim_status;
+    net_info.active_sim_slot = mgr->modem_info->active_simcard_slot;
+
     ret = lte_info_set_net_info(&net_info, lte_report);
     if (!ret) return -1;
 
@@ -155,7 +163,26 @@ lte_set_data_usage(struct lte_info_report *lte_report)
 }
 
 /**
- * @brief test setting a serving cell info
+ * @brief Set serving cell lte info
+ */
+void
+lte_set_serving_cell_lte(struct lte_net_serving_cell_info *srv_cell_info, lte_serving_cell_info_t *srv_cell)
+{
+    srv_cell_info->fdd_tdd_mode = srv_cell->fdd_tdd_mode;
+    srv_cell_info->earfcn = srv_cell->earfcn;
+    srv_cell_info->freq_band = srv_cell->freq_band;
+    srv_cell_info->ul_bandwidth = srv_cell->ul_bandwidth;
+    srv_cell_info->dl_bandwidth = srv_cell->dl_bandwidth;
+    srv_cell_info->tac = srv_cell->tac;
+    srv_cell_info->rsrp = srv_cell->rsrp;
+    srv_cell_info->rsrq = srv_cell->rsrq;
+    srv_cell_info->rssi = srv_cell->rssi;
+    srv_cell_info->sinr = srv_cell->sinr;
+    srv_cell_info->srxlev = srv_cell->srxlev;
+}
+
+/**
+ * @brief Set serving cell info
  */
 int
 lte_set_serving_cell(struct lte_info_report *lte_report)
@@ -169,27 +196,34 @@ lte_set_serving_cell(struct lte_info_report *lte_report)
     srv_cell = &mgr->modem_info->srv_cell;
 
     srv_cell_info.state = srv_cell->state;
+    if (srv_cell->state == LTE_SERVING_CELL_SEARCH) /* No service */
+    {
+        LOGI("%s: state=LTE_SERVING_CELL_SEARCH", __func__);
+    }
+
+    if (srv_cell->state == LTE_SERVING_CELL_LIMSERV) /* No LTE */
+    {
+        LOGI("%s: state=LTE_SERVING_CELL_LIMSERV", __func__);
+    }
+
     srv_cell_info.mode = srv_cell->mode;
-    srv_cell_info.fdd_tdd_mode = srv_cell->fdd_tdd_mode;
+    if (srv_cell->state == LTE_SERVING_CELL_NOCONN &&
+        srv_cell->mode == LTE_CELL_MODE_WCDMA) /* No PDP context, WCDMA mode */
+    {
+        LOGI("%s: state=LTE_SERVING_CELL_NOCONN, srv_cell->mode=LTE_CELL_MODE_WCDMA", __func__);
+    }
+
     srv_cell_info.cellid = srv_cell->cellid;
     srv_cell_info.pcid = srv_cell->pcid;
-    srv_cell_info.earfcn = srv_cell->earfcn;
-    srv_cell_info.freq_band = srv_cell->freq_band;
-    srv_cell_info.ul_bandwidth = srv_cell->ul_bandwidth;
-    srv_cell_info.dl_bandwidth = srv_cell->dl_bandwidth;
-    srv_cell_info.tac = srv_cell->tac;
-    srv_cell_info.rsrp = srv_cell->rsrp;
-    srv_cell_info.rsrq = srv_cell->rsrq;
-    srv_cell_info.rssi = srv_cell->rssi;
-    srv_cell_info.sinr = srv_cell->sinr;
-    srv_cell_info.srxlev = srv_cell->srxlev;
-
+    if (srv_cell->mode == LTE_CELL_MODE_LTE)
+    {
+        lte_set_serving_cell_lte(&srv_cell_info, srv_cell);
+    }
     ret = lte_info_set_serving_cell(&srv_cell_info, lte_report);
     if (!ret) return -1;
 
     return 0;
 }
-
 
 /**
  * @brief Set intra neighbor cell info in the report
@@ -225,6 +259,34 @@ lte_set_neigh_cell_intra_info(struct lte_info_report *lte_report)
     return 0;
 }
 
+/**
+ * @brief Check the modem status
+ */
+
+int
+lte_check_modem_status(ltem_mgr_t *mgr)
+{
+    lte_config_info_t *lte_config_info;
+    osn_lte_modem_info_t *modem_info;
+    int res;
+
+    lte_config_info = mgr->lte_config_info;
+    if (!lte_config_info) return -1;
+
+    modem_info = mgr->modem_info;
+    if (!modem_info) return -1;
+
+    if (!lte_config_info->modem_enable) return -1;
+
+    if (!modem_info->modem_present) return -1;
+
+    if (!modem_info->sim_inserted) return -1;
+
+    res = strncmp(modem_info->iccid, "0", strlen(modem_info->iccid));
+    if (!res) return -1;
+
+    return 0;
+}
 
 /**
  * @brief set a full report
@@ -233,6 +295,9 @@ int
 lte_set_report(void)
 {
     int res;
+    ltem_mgr_t *mgr = ltem_get_mgr();
+
+    if (lte_check_modem_status(mgr)) return -1;
 
     lte_report = lte_info_allocate_report(1);
     if (!lte_report)
@@ -307,7 +372,7 @@ lte_serialize_report(void)
     if (mgr->topic[0])
     {
         res = lte_send_report(mgr->topic, lte_serialized);
-        LOGI("%s: AWLAN topic[%s]", __func__, mgr->topic);
+        LOGD("%s: AWLAN topic[%s]", __func__, mgr->topic);
     }
     else
     {
@@ -316,8 +381,6 @@ lte_serialize_report(void)
     }
     return res;
 }
-
-
 
 int
 ltem_build_mqtt_report(time_t now)

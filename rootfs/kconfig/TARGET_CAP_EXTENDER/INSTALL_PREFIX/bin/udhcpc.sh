@@ -153,11 +153,6 @@ subnet2prefix()
     echo "$prefix"
 }
 
-is_addr4_assigned()
-{
-    ip -4 -o addr show dev "$interface" | grep -q "$1"
-}
-
 log_dhcp_time_event()
 {
     logger="${INSTALL_PREFIX}"/tools/telog
@@ -172,16 +167,8 @@ setup_interface()
     prefix=$(subnet2prefix "${subnet:-255.255.255.0}")
 
     _addr="$ip/$prefix"
-
-    if ! is_addr4_assigned "$_addr" ; then
-
-        echo "$interface: flushing ipv4 addr"
-        ip -4 addr flush dev "$interface"
-
-        echo "$interface: adding ipv4 addr $_addr"
-        ip addr add dev "$interface" "$_addr" broadcast "${broadcast:-+}"
-
-    fi
+    echo "$interface: adding ipv4 addr $_addr"
+    ip addr replace dev "$interface" "$_addr" broadcast "${broadcast:-+}"
 
     [ "$set_gateway" = true ] && {
         [ -n "$router" ] && [ "$router" != "0.0.0.0" ] && [ "$router" != "255.255.255.255" ] && {
@@ -210,8 +197,10 @@ log_dhcp_time_event "$1"
 
 case "$1" in
         deconfig)
-                # Moved addr flush to setup_interface
-                [ -n "$OPTS_FILE" ] && rm -f "$OPTS_FILE"
+            echo "$interface: flushing ipv4 addr"
+            ip -4 addr flush dev "$interface"
+            route_default_flush "$interface"
+            [ -w "$OPTS_FILE" ] && rm -f "$OPTS_FILE"
         ;;
         renew)
                 setup_interface update

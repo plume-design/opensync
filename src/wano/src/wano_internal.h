@@ -59,6 +59,6 @@ bool wano_ovs_port_init(void);
  *  WAN Configuration
  * ===========================================================================
  */
-bool wano_wan_config_init();
+bool wano_wan_ovsdb_init();
 
 #endif /* WANO_INTERNAL_H_INCLUDED */

@@ -33,13 +33,11 @@ source "${FUT_TOPDIR}/shell/lib/fsm_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="fsm/$(basename "$0")"
-
 check_kconfig_option "CONFIG_MANAGER_FSM" "y" ||
-    raise "CONFIG_MANAGER_FSM != y - FSM not present on device" -l "${tc_name}" -s
+    raise "CONFIG_MANAGER_FSM != y - FSM not present on device" -l "fsm/fsm_setup.sh" -s
 
 fsm_setup_test_environment "$@" &&
-    log "$tc_name: fsm_setup_test_environment - Success " ||
-    raise "FAIL: fsm_setup_test_environment" -l "$tc_name" -ds
+    log "fsm/fsm_setup.sh: fsm_setup_test_environment - Success " ||
+    raise "FAIL: fsm_setup_test_environment" -l "fsm/fsm_setup.sh" -ds
 
 exit 0

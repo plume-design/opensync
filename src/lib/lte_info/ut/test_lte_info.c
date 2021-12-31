@@ -59,8 +59,15 @@ struct lte_common_header g_common_header =
 struct lte_net_info g_lte_net_info =
 {
     .net_status = LTE_NET_REG_STAT_REG,
+    .mcc = 310,
+    .mnc = 410,
+    .tac = 8,
+    .service_provider = "AT&T",
+    .sim_type = LTE_SIM_TYPE_PSIM,
+    .sim_status = LTE_SIM_STATUS_INSERTED,
+    .active_sim_slot = 1,
     .rssi = -71,
-    .ber = 5,
+    .ber = 99,
 };
 
 struct lte_data_usage g_lte_data_usage =

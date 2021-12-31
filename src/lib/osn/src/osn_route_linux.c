@@ -94,3 +94,38 @@ void* osn_route_data_get(osn_route_t *self)
 {
     return self->rt_data;
 }
+
+bool osn_route_add(osn_route4_cfg_t *self, const osn_route4_t *route)
+{
+    return lnx_route_add(self, route);
+}
+
+bool osn_route_remove(osn_route4_cfg_t *self, const osn_route4_t *route)
+{
+    return lnx_route_remove(self, route);
+}
+
+bool osn_route_find_dev(osn_ip_addr_t addr, char *buf, size_t bufSize)
+{
+    return lnx_route_find_dev(addr, buf, bufSize);
+}
+
+osn_route4_cfg_t *osn_route4_cfg_new(const char *if_name)
+{
+    return lnx_route4_cfg_new(if_name);
+}
+
+bool osn_route4_cfg_del(osn_route4_cfg_t *self)
+{
+    return lnx_route4_cfg_del(self);
+}
+
+const char* osn_route4_cfg_name(const osn_route4_cfg_t *self)
+{
+    return lnx_route4_cfg_name(self);
+}
+
+bool osn_route_apply(osn_route4_cfg_t *self)
+{
+    return lnx_route_apply(self);
+}

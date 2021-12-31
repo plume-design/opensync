@@ -1,0 +1,5 @@
+config OSP_SEC_OPENSSL
+    bool "OpenSSL"
+    help
+        This backend provides an OpenSSL based osp_sec API implementation.
+

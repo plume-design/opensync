@@ -443,7 +443,7 @@ bool cm2_enable_gw_offline()
     return true;
 }
 
-static void cm2_trigger_restart_managers(void) {
+void cm2_trigger_restart_managers(void) {
     bool skip_restart;
     bool r;
 
@@ -455,6 +455,11 @@ static void cm2_trigger_restart_managers(void) {
     r = cm2_vtag_stability_check();
     if (!r) {
         LOGI("Vtag pending, skip restart managers");
+        skip_restart = true;
+        goto restart;
+    }
+
+    if (cm2_ovsdb_recalc_links()) {
         skip_restart = true;
         goto restart;
     }
@@ -596,8 +601,10 @@ static void cm2_restore_bridge_config()
 
 void cm2_update_state(cm2_reason_e reason)
 {
-    int  ret;
+    target_connectivity_check_option_t opts;
     char *uplink;
+    bool ipv4 = false;
+    bool ipv6 = false;
 
 start:
     cm2_log_state(reason);
@@ -633,7 +640,7 @@ start:
             }
 
             cm2_ovsdb_connection_clean_link_counters(g_state.link.if_name);
-            cm2_connection_req_stability_check_async(LINK_CHECK, false, false);
+            cm2_connection_req_stability_check_async(g_state.link.if_name, g_state.link.if_type, uplink, LINK_CHECK, false, false);
             cm2_set_state(true, CM2_STATE_WAN_IP);
             break;
         case CM2_REASON_SET_NEW_VTAG:
@@ -722,7 +729,7 @@ start:
             }
             if (g_state.link.is_used)
             {
-                cm2_connection_req_stability_check_async(LINK_CHECK, false, false);
+                cm2_connection_req_stability_check_async(g_state.link.if_name, g_state.link.if_type, uplink, LINK_CHECK, false, false);
                 cm2_set_backhaul_update_ble_state();
                 cm2_set_state(true, CM2_STATE_WAN_IP);
             }
@@ -738,14 +745,24 @@ start:
                 LOGI("Waiting for finish get WLAN IP");
             }
             WARN_ON(cm2_update_main_link_ip(&g_state.link) < 0);
-            ret = 0;
-
-            if (g_state.link.ipv4.is_ip || g_state.link.ipv6.is_ip) {
-                ret = cm2_connection_req_stability_check(cm2_util_add_ip_opts(ROUTER_CHECK), false);
-                cm2_set_ble_state(ret, BLE_ONBOARDING_STATUS_ROUTER_OK);
+            if (!g_state.link.ipv4.blocked && g_state.link.ipv4.is_ip) {
+                opts = IPV4_CHECK;
+                opts |= cm2_is_lte_type(g_state.link.if_type) ? INTERNET_CHECK : ROUTER_CHECK;
+                ipv4 = cm2_connection_req_stability_check(g_state.link.if_name, g_state.link.if_type, uplink, opts, true);
+                LOGI("ipv4: %d", ipv4);
             }
 
-            if (ret) {
+            if (!g_state.link.ipv6.blocked && g_state.link.ipv6.is_ip) {
+                opts = IPV6_CHECK | ROUTER_CHECK;
+                ipv6 = cm2_connection_req_stability_check(g_state.link.if_name, g_state.link.if_type, uplink, opts, true);
+                LOGI("Ipv6: %d", ipv4);
+            }
+
+            if (g_state.link.ipv4.is_ip || g_state.link.ipv6.is_ip) {
+                cm2_set_ble_state(ipv4 || ipv6, BLE_ONBOARDING_STATUS_ROUTER_OK);
+            }
+
+            if (ipv4 || ipv6) {
                 cm2_set_state(true, CM2_STATE_NTP_CHECK);
             }
             else if (cm2_timeout(false))
@@ -760,17 +777,13 @@ start:
             if (cm2_state_changed()) // first iteration
             {
                 LOGI("Waiting for finish NTP");
-                cm2_connection_req_stability_check_async(INTERNET_CHECK, true, false);
+                cm2_connection_req_stability_check_async(g_state.link.if_name, g_state.link.if_type, uplink, INTERNET_CHECK, true, false);
             }
 
-            if (cm2_connection_req_stability_check(cm2_util_add_ip_opts(NTP_CHECK), false))
+            if (cm2_connection_req_stability_check(g_state.link.if_name, g_state.link.if_type, uplink, NTP_CHECK, false))
             {
-                cm2_state_e n_state;
-
                 cm2_set_ble_state(true, BLE_ONBOARDING_STATUS_INTERNET_OK);
-
-                n_state = g_state.fast_reconnect ? CM2_STATE_FAST_RECONNECT : CM2_STATE_OVS_INIT;
-                cm2_set_state(true, n_state);
+                cm2_set_state(true, g_state.fast_reconnect ? CM2_STATE_FAST_RECONNECT : CM2_STATE_OVS_INIT);
             }
             else if (cm2_timeout(false))
             {
@@ -810,7 +823,8 @@ start:
             {
                 if (cm2_is_extender()) {
                     WARN_ON(cm2_update_main_link_ip(&g_state.link) < 0);
-                    cm2_connection_req_stability_check_async(LINK_CHECK | ROUTER_CHECK | INTERNET_CHECK, false, true);
+                    opts = LINK_CHECK | ROUTER_CHECK | INTERNET_CHECK;
+                    cm2_connection_req_stability_check_async(g_state.link.if_name, g_state.link.if_type, uplink, opts, false, true);
                 }
 
                 if (g_state.link.ipv4.resolve_retry ||
@@ -898,7 +912,8 @@ start:
             {
                 if (cm2_is_extender()) {
                     WARN_ON(cm2_update_main_link_ip(&g_state.link) < 0);
-                    cm2_connection_req_stability_check_async(LINK_CHECK | ROUTER_CHECK | INTERNET_CHECK, false, true);
+                    opts = LINK_CHECK | ROUTER_CHECK | INTERNET_CHECK;
+                    cm2_connection_req_stability_check_async(g_state.link.if_name, g_state.link.if_type, uplink, opts, false, true);
                 }
 
                 if (!cm2_write_current_target_addr())
@@ -918,7 +933,8 @@ start:
             {
                 if (cm2_is_extender()) {
                     WARN_ON(cm2_update_main_link_ip(&g_state.link) < 0);
-                    cm2_connection_req_stability_check_async(LINK_CHECK | ROUTER_CHECK | INTERNET_CHECK, false, true);
+                    opts = LINK_CHECK | ROUTER_CHECK | INTERNET_CHECK;
+                    cm2_connection_req_stability_check_async(g_state.link.if_name, g_state.link.if_type, uplink, opts, false, true);
                 }
 
                 // timeout - write next address
@@ -957,7 +973,8 @@ start:
             {
                 LOG(NOTICE, "===== Connected to: %s", cm2_curr_dest_name());
                 if (cm2_is_extender()) {
-                    cm2_connection_req_stability_check_async(LINK_CHECK | ROUTER_CHECK | INTERNET_CHECK, true, false);
+                    opts = LINK_CHECK | ROUTER_CHECK | INTERNET_CHECK;
+                    cm2_connection_req_stability_check_async(g_state.link.if_name, g_state.link.if_type, uplink, opts, true, false);
                     cm2_set_ble_state(true, BLE_ONBOARDING_STATUS_CLOUD_OK);
                     cm2_update_device_type(g_state.link.if_type);
                     g_state.cnts.skip_restart = 0;

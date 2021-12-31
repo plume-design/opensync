@@ -33,12 +33,11 @@ source "${FUT_TOPDIR}/shell/lib/brv_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="brv/$(basename "$0")"
 brv_setup_file="brv/brv_setup.sh"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+brv/brv_busybox_builtins.sh [-h] arguments
 Description:
     - Script checks if the specified tool is busybox builtin tool, fails otherwise
 Arguments:
@@ -46,9 +45,9 @@ Arguments:
     \$1 (builtin_tool) : name of the required busybox built-in tool : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${brv_setup_file} (see ${brv_setup_file} -h)
-                 Run: ./${tc_name} <TOOL-NAME>
+                 Run: ./brv/brv_busybox_builtins.sh <TOOL-NAME>
 Script usage example:
-   ./${tc_name} "tail"
+   ./brv/brv_busybox_builtins.sh "tail"
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -63,23 +62,23 @@ if [ -n "${1}" ]; then
     esac
 fi
 NARGS=1
-[ $# -ne ${NARGS} ] && usage && raise "Requires exactly '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -ne ${NARGS} ] && usage && raise "Requires exactly '${NARGS}' input argument(s)" -l "brv/brv_busybox_builtins.sh" -arg
 
 builtin_tool=$1
 
-log_title "${tc_name}: BRV test - Verify '${builtin_tool}' is built into busybox"
+log_title "brv/brv_busybox_builtins.sh: BRV test - Verify '${builtin_tool}' is built into busybox"
 
 is_tool_on_system "busybox"
 rc=$?
 if [ $rc != 0 ]; then
-    raise "FAIL: Refusing tool search, busybox is not present on system" -l "${tc_name}" -nf
+    raise "FAIL: Refusing tool search, busybox is not present on system" -l "brv/brv_busybox_builtins.sh" -nf
 fi
 is_busybox_builtin "${builtin_tool}"
 rc=$?
 if [ $rc == 0 ]; then
-    log "${tc_name}: '${builtin_tool}' is built into busybox - Success"
+    log "brv/brv_busybox_builtins.sh: '${builtin_tool}' is built into busybox - Success"
 else
-    raise "FAIL: '${builtin_tool}' is not built into busybox" -l "${tc_name}" -tc
+    raise "FAIL: '${builtin_tool}' is not built into busybox" -l "brv/brv_busybox_builtins.sh" -tc
 fi
 
 pass

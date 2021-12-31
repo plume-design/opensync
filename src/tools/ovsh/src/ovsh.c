@@ -149,7 +149,7 @@ int main(int argc, char *argv[])
         /*
          * Parse options
          */
-        opt = getopt_long(argc, argv, "w:vd:t:jrcmMTuUo:qnaA:p", ovsh_long_opts, NULL);
+        opt = getopt_long(argc, argv, "w:vd:t:jrcmMTuUo:qnaAp:", ovsh_long_opts, NULL);
         switch (opt)
         {
             case 'w':

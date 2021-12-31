@@ -32,6 +32,6 @@ UNIT_TYPE := FUT
 UNIT_DIR := shell/tools/client/rpi
 
 UNIT_FILE := check_internet_traffic.sh
-UNIT_FILE += connect_to_wpa2.sh
 UNIT_FILE += get_rpi_client_mac.sh
 UNIT_FILE += get_rpi_client_ip.sh
+UNIT_FILE += reboot_rpi_client.sh

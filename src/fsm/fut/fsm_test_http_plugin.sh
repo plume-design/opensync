@@ -33,7 +33,6 @@ source "${FUT_TOPDIR}/shell/lib/fsm_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="fsm/$(basename "$0")"
 manager_setup_file="fsm/fsm_setup.sh"
 create_rad_vif_if_file="tools/device/create_radio_vif_interface.sh"
 create_inet_file="tools/device/create_inet_interface.sh"
@@ -43,7 +42,7 @@ client_connect_file="tools/client/rpi/connect_to_wpa2.sh"
 client_send_curl_file="tools/client/rpi/fsm/fsm_make_curl_agent_req.sh"
 usage() {
     cat << usage_string
-${tc_name} [-h] arguments
+fsm/fsm_test_http_plugin.sh [-h] arguments
 Description:
     - Script checks logs for FSM HTTP agent message creation - fsm_send_report
 Arguments:
@@ -64,15 +63,15 @@ Testcase procedure:
             Update Inet entry for home bridge interface for dhcpd (br-home)
                 Run: ./${create_inet_file} (see ${create_inet_file} -h)
             Configure FSM for HTTP plugin test
-                Run: ./${tc_name} <LAN-BRIDGE-IF> <FSM-URL-BLOCK> <FSM-URL-REDIRECT>
+                Run: ./fsm/fsm_test_http_plugin.sh <LAN-BRIDGE-IF> <FSM-URL-BLOCK> <FSM-URL-REDIRECT>
     - On Client:
             Configure Client to DUT
                 Run: /.${client_connect_file} (see ${client_connect_file} -h)
             Send curl request from Client specifying user_agent
                 Run /.${client_send_curl_file} (see ${client_send_curl_file} -h)
-    - On DEVICE: Run: ./${tc_name} <EXPECTED_USER_AGENT>
+    - On DEVICE: Run: ./fsm/fsm_test_http_plugin.sh <EXPECTED_USER_AGENT>
 Script usage example:
-    ./${tc_name} custom_user_agent
+    ./fsm/fsm_test_http_plugin.sh custom_user_agent
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -100,7 +99,7 @@ expected_user_agent=${1}
 
 client_mac=$(get_ovsdb_entry_value Wifi_Associated_Clients mac)
 if [ -z "${client_mac}" ]; then
-    raise "FAIL: Could not acquire Client MAC address from Wifi_Associated_Clients, is client connected?" -l "${tc_name}"
+    raise "FAIL: Could not acquire Client MAC address from Wifi_Associated_Clients, is client connected?" -l "fsm/fsm_test_http_plugin.sh"
 fi
 # shellcheck disable=SC2060,SC2018,SC2019
 client_mac=$(echo "${client_mac}" | tr a-z A-Z)
@@ -109,5 +108,5 @@ client_mac="${client_mac%%,*}"
 # FSM logs objects in non-constant order, reason for multiple grep-s
 fsm_message_regex="$LOGREAD | tail -500 | grep fsm_send_report | grep locationId | grep $(get_location_id) | grep nodeId | grep $(get_node_id) | grep httpRequests | grep ${client_mac} | grep userAgent | grep ${expected_user_agent}"
 wait_for_function_response 0 "${fsm_message_regex}" 5 &&
-    log "$tc_name: FSM HTTP plugin UserAgent creation message found in logs - Success" ||
-    raise "FAIL: Failed to find FSM HTTP message creation in logs, regex used: ${fsm_message_regex} " -l "$tc_name" -tc
+    log "fsm/fsm_test_http_plugin.sh: FSM HTTP plugin UserAgent creation message found in logs - Success" ||
+    raise "FAIL: Failed to find FSM HTTP message creation in logs, regex used: ${fsm_message_regex} " -l "fsm/fsm_test_http_plugin.sh" -tc

@@ -40,8 +40,10 @@ echo "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh sourced"
 
 ###############################################################################
 # DESCRIPTION:
-#   Function prepares device for ONBRD tests.
-#   Raises exception on fail.
+#   Function prepares device for ONBRD tests. If called with parameters it waits
+#   for radio interfaces in Wifi_Radio_State table.
+#   Calling it without radio interface names, it skips the step checking the interfaces.
+#   Raises exception on fail in any of its steps.
 # INPUT PARAMETER(S):
 #   None.
 # RETURNS:
@@ -52,30 +54,28 @@ echo "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh sourced"
 ###############################################################################
 onbrd_setup_test_environment()
 {
-    fn_name="onbrd_lib:onbrd_setup_test_environment"
-
-    log "$fn_name - Running ONBRD setup"
+    log "onbrd_lib:onbrd_setup_test_environment - Running ONBRD setup"
 
     device_init &&
-        log -deb "$fn_name - Device initialized - Success" ||
-        raise "FAIL: Could not initialize device: device_init" -l "$fn_name" -ds
+        log -deb "onbrd_lib:onbrd_setup_test_environment - Device initialized - Success" ||
+        raise "FAIL: device_init - Could not initialize device" -l "onbrd_lib:onbrd_setup_test_environment" -ds
 
     start_openswitch &&
-        log -deb "$fn_name - OpenvSwitch started - Success" ||
-        raise "FAIL: Could not start OpenvSwitch: start_openswitch" -l "$fn_name" -ds
+        log -deb "onbrd_lib:onbrd_setup_test_environment - OpenvSwitch started - Success" ||
+        raise "FAIL: start_openswitch - Could not start OpenvSwitch" -l "onbrd_lib:onbrd_setup_test_environment" -ds
 
     restart_managers
-    log "${fn_name}: Executed restart_managers, exit code: $?"
+    log -deb "onbrd_lib:onbrd_setup_test_environment: Executed restart_managers, exit code: $?"
 
-    # Check if all radio interfaces are created
+    # Check if radio interfaces are created
     for if_name in "$@"
     do
         wait_ovsdb_entry Wifi_Radio_State -w if_name "$if_name" -is if_name "$if_name" &&
-            log -deb "$fn_name - Wifi_Radio_State::if_name '$if_name' present - Success" ||
-            raise "FAIL: Wifi_Radio_State::if_name for $if_name does not exist" -l "$fn_name" -ds
+            log -deb "onbrd_lib:onbrd_setup_test_environment - Wifi_Radio_State::if_name '$if_name' present - Success" ||
+            raise "FAIL: Wifi_Radio_State::if_name for '$if_name' does not exist" -l "onbrd_lib:onbrd_setup_test_environment" -ds
     done
 
-    log "$fn_name - ONBRD setup - end"
+    log -deb "onbrd_lib:onbrd_setup_test_environment - ONBRD setup - end"
 
     return 0
 }
@@ -86,7 +86,7 @@ onbrd_setup_test_environment()
 
 ###############################################################################
 # DESCRIPTION:
-#   Function echoes number of radios in Wifi_Radio_State table.
+#   Function echoes number of radio interfaces present in Wifi_Radio_State table.
 # INPUT PARAMETER(S):
 #   None.
 # ECHOES:
@@ -104,7 +104,7 @@ get_number_of_radios()
 # DESCRIPTION:
 #   Function checks if number of radios for device is as expected in parameter.
 # INPUT PARAMETER(S):
-#   $1  number of expected radios (required)
+#   $1  number of expected radios (int, required)
 # RETURNS:
 #   0   Number of radios is as expected.
 #   1   Number of radios is not as expected.
@@ -113,14 +113,13 @@ get_number_of_radios()
 ###############################################################################
 check_number_of_radios()
 {
-    fn_name="onbrd_lib:check_number_of_radios"
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "onbrd_lib:check_number_of_radios requires ${NARGS} input argument(s), $# given" -arg
     num_of_radios_1=$1
     num_of_radios_2=$(get_number_of_radios)
 
-    log -deb "$fn_name - Number of radios is $num_of_radios_2"
+    log -deb "onbrd_lib:check_number_of_radios - Number of radios is $num_of_radios_2"
 
     if [ "$num_of_radios_1" = "$num_of_radios_2" ]; then
         return 0
@@ -131,83 +130,80 @@ check_number_of_radios()
 
 ###############################################################################
 # DESCRIPTION:
-#   Function checks if system (LEVEL2) inet_addr is the same as
+#   Function checks if inet_addr at OS - LEVEL2 is the same as
 #   in test case config.
 # INPUT PARAMETER(S):
-#   $1  bridge interface name (required)
-#   $2  expected WAN IP (required)
+#   $1  Bridge interface name (string, required)
+#   $2  Expected WAN IP (string, required)
 # RETURNS:
 #   0   IP is as expected.
-#   1   bridge has no IP assigned.
+#   1   WAN bridge has no IP assigned or IP not equal to OS LEVEL2 IP address.
 # USAGE EXAMPLE(S):
 #   verify_wan_ip_l2 br-wan 192.168.200.10
 ###############################################################################
 verify_wan_ip_l2()
 {
-    fn_name="onbrd_lib:verify_wan_ip_l2"
     local NARGS=2
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "onbrd_lib:verify_wan_ip_l2 requires ${NARGS} input argument(s), $# given" -arg
     br_wan=$1
     inet_addr_in=$2
 
     # LEVEL2
     inet_addr=$(ifconfig "$br_wan" | grep 'inet addr' | awk '/t addr:/{gsub(/.*:/,"",$2); print $2}')
     if [ -z "$inet_addr" ]; then
-        log -deb "$fn_name - inet_addr is empty"
+        log -deb "onbrd_lib:verify_wan_ip_l2 - inet_addr is empty"
         return 1
     fi
 
     if [ "$inet_addr_in" = "$inet_addr" ]; then
-        log -deb "$fn_name - Success: OVSDB inet_addr '$inet_addr_in' equals LEVEL2 inet_addr '$inet_addr'"
+        log -deb "onbrd_lib:verify_wan_ip_l2 - OVSDB inet_addr '$inet_addr_in' equals LEVEL2 inet_addr '$inet_addr' - Success"
         return 0
     else
-        log -deb "$fn_name - FAIL: OVSDB inet_addr '$inet_addr_in' not equal to LEVEL2 inet_addr '$inet_addr'"
+        log -deb "onbrd_lib:verify_wan_ip_l2 - FAIL: OVSDB inet_addr '$inet_addr_in' not equal to LEVEL2 inet_addr '$inet_addr'"
         return 1
     fi
 }
 
 ###############################################################################
 # DESCRIPTION:
-#   Function creates patch interface.
+#   Function creates patch interface on bridge.
 # INPUT PARAMETER(S):
-#   $1  bridge name (required)
-#   $2  patch interface name (required)
-#   $3  patch interface name (required)
+#   $1  Bridge name (string, required)
+#   $2  Patch interface name (string, required)
+#   $3  Patch interface name (string, required)
 # RETURNS:
-#   None.
+#   0   On success.
 # USAGE EXAMPLE(S):
 #   create_patch_interface br-wan patch-w2h patch-h2w
 ###############################################################################
 create_patch_interface()
 {
-    fn_name="onbrd_lib:create_patch_interface"
     local NARGS=3
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "onbrd_lib:create_patch_interface requires ${NARGS} input argument(s), $# given" -arg
     br_wan=$1
     patch_w2h=$2
     patch_h2w=$3
 
-
     num1=$(ovs-vsctl show | grep "$patch_w2h" | grep Interface | awk '{print $2}' | wc -l)
     if [ "$num1" -gt 0 ]; then
         # Add WAN-to-HOME patch port
-        log -deb "$fn_name - '$patch_w2h' patch exists"
+        log -deb "onbrd_lib:create_patch_interface - '$patch_w2h' patch exists"
     else
         # Add WAN-to-HOME patch port
-        log -deb "$fn_name - Adding '$patch_w2h' to patch port"
+        log -deb "onbrd_lib:create_patch_interface - Adding '$patch_w2h' to patch port"
         add_bridge_port "$br_wan" "$patch_w2h"
         set_interface_patch "$br_wan" "$patch_w2h" "$patch_h2w"
     fi
 
     num2=$(ovs-vsctl show | grep "$patch_h2w" | grep Interface | awk '{print $2}' | wc -l)
     if [ "$num2" -gt 0 ]; then
-        # Add WAN-to-HOME patch port
-        log -deb "$fn_name - '$patch_h2w' patch exists"
+        # Add HOME-to-WAN patch port
+        log -deb "onbrd_lib:create_patch_interface - '$patch_h2w' patch exists"
     else
-        # Add WAN-to-HOME patch port
-        log -deb "$fn_name - Adding $patch_h2w to patch port"
+        # Add HOME-to-WAN patch port
+        log -deb "onbrd_lib:create_patch_interface - Adding '$patch_h2w' to patch port"
         add_bridge_port "$br_wan" "$patch_h2w"
         set_interface_patch "$br_wan" "$patch_h2w" "$patch_w2h"
     fi
@@ -222,7 +218,7 @@ create_patch_interface()
 #   Function checks if patch exists.
 #   Function uses ovs-vsctl command, different from native Linux bridge.
 # INPUT PARAMETER(S):
-#   $1  patch name (required)
+#   $1  patch name (string, required)
 # RETURNS:
 #   0   Patch exists.
 #   1   Patch does not exist.
@@ -232,18 +228,17 @@ create_patch_interface()
 ###############################################################################
 check_if_patch_exists()
 {
-    fn_name="onbrd_lib:check_if_patch_exists"
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "onbrd_lib:check_if_patch_exists requires ${NARGS} input argument(s), $# given" -arg
     patch=$1
 
     num=$(ovs-vsctl show | grep "$patch" | grep Interface | awk '{print $2}' | wc -l)
     if [ "$num" -gt 0 ]; then
-        log -deb "$fn_name - '$patch' interface exists"
+        log -deb "onbrd_lib:check_if_patch_exists - '$patch' interface exists"
         return 0
     else
-        log -deb "$fn_name - '$patch' interface does not exist"
+        log -deb "onbrd_lib:check_if_patch_exists - '$patch' interface does not exist"
         return 1
     fi
 }
@@ -251,6 +246,7 @@ check_if_patch_exists()
 ###############################################################################
 # DESCRIPTION:
 #   Function checks if provided firmware version string is a valid pattern.
+#   Raises an exception if firmware version string has invalid pattern.
 # FIELDS OF INTEREST:
 #             (optional) build description
 #             (optional) nano version    |
@@ -262,10 +258,10 @@ check_if_patch_exists()
 #          (optional) micro version   |
 #               (optional) build number
 # INPUT PARAMETER(S):
-#   $1  FW version string
+#   $1  FW version (string, required)
 # RETURNS:
 #   0   Firmware version string is valid
-#   1   Firmware version string is not valid
+#   See DESCRIPTION.
 #   Function will send an exit singnal upon error, use subprocess to avoid this
 # USAGE EXAMPLE(S):
 #   verify_fw_pattern 3.0.0-29-g100a068-dev-debug
@@ -273,14 +269,13 @@ check_if_patch_exists()
 ###############################################################################
 verify_fw_pattern()
 {
-    fn_name="onbrd_lib:verify_fw_pattern"
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
-        raise "${fn_name} requires ${NARGS} input argument(s), $# given" -arg
+        raise "onbrd_lib:verify_fw_pattern requires ${NARGS} input argument(s), $# given" -arg
     fw_version="${1}"
 
     [ -n "${fw_version}" ] ||
-        raise "Firmware version string '${fw_version}' is empty!" -l "${fn_name}"
+        raise "FAIL: Firmware version string '${fw_version}' is empty!" -l "onbrd_lib:verify_fw_pattern"
 
     ### Split by delimiter '-' to separate version and build information
     # only three elements are of interest
@@ -295,19 +290,19 @@ verify_fw_pattern()
     if [ -n "${build_number}" ]; then
         # If not empty, must be integer between 1 and 6 numerals
         [ ${#build_number} -ge 1 ] && [ ${#build_number} -le 6 ] ||
-            raise "FAIL: Build number '${build_number}' must contain 1-6 numerals, not ${#build_number}" -l "${fn_name}"
-        echo ${build_number} | grep -q -E "^[0-9]*$" ||
-            raise "FAIL: Build number '${build_number}' contains non numeral characters!" -l "${fn_name}"
+            raise "FAIL: Build number '${build_number}' must contain 1-6 numerals, not ${#build_number}" -l "onbrd_lib:verify_fw_pattern"
+        echo ${build_number} | grep -E "^[0-9]*$" ||
+            raise "FAIL: Build number '${build_number}' contains non numeral characters!" -l "onbrd_lib:verify_fw_pattern"
     fi
 
     # Verify the version segment before splitting
     [ -n "${fw_segment_0}" ] ||
-        raise "FAIL: Firmware version segment '${fw_segment_0}' is empty!" -l "${fn_name}"
-    echo "${fw_segment_0}" | grep -q -E "^[0-9.]*$" ||
-        raise "FAIL: Firmware version segment '${fw_segment_0}' contains invalid characters!" -l "${fn_name}"
+        raise "FAIL: Firmware version segment '${fw_segment_0}' is empty!" -l "onbrd_lib:verify_fw_pattern"
+    echo "${fw_segment_0}" | grep -E "^[0-9.]*$" ||
+        raise "FAIL: Firmware version segment '${fw_segment_0}' contains invalid characters!" -l "onbrd_lib:verify_fw_pattern"
     # At least major and minor versions are needed, so one dot "." is required
-    echo "${fw_segment_0}" | grep -q [.] ||
-        raise "FAIL: Firmware version segment '${fw_segment_0}' does not contain the delimiter '.'" -l "${fn_name}"
+    echo "${fw_segment_0}" | grep [.] ||
+        raise "FAIL: Firmware version segment '${fw_segment_0}' does not contain the delimiter '.'" -l "onbrd_lib:verify_fw_pattern"
     ### Split by delimiter '.' to get version segments
     ver_major="$(echo "$fw_segment_0" | cut -d'.' -f1)"
     ver_minor="$(echo "$fw_segment_0" | cut -d'.' -f2)"
@@ -316,24 +311,62 @@ verify_fw_pattern()
     ver_overflow="$(echo "$fw_segment_0" | cut -d'.' -f5-)"
     # Allow 2 to 4 elements, else fail
     [ -n "${ver_major}" ] ||
-        raise "FAIL: Major version ${ver_major} is empty!" -l "${fn_name}"
+        raise "FAIL: Major version ${ver_major} is empty!" -l "onbrd_lib:verify_fw_pattern"
     [ -n "${ver_minor}" ] ||
-        raise "FAIL: Minor version ${ver_minor} is empty!" -l "${fn_name}"
+        raise "FAIL: Minor version ${ver_minor} is empty!" -l "onbrd_lib:verify_fw_pattern"
     [ -z "${ver_overflow}" ] ||
-        raise "FAIL: Firmware version ${fw_segment_0} has too many segments (2-4), overflow: '${ver_overflow}'" -l "${fn_name}"
+        raise "FAIL: Firmware version ${fw_segment_0} has too many segments (2-4), overflow: '${ver_overflow}'" -l "onbrd_lib:verify_fw_pattern"
     # Non-empty segments must have 1-4 numerals
     [ ${#ver_major} -ge 1 ] && [ ${#ver_major} -le 3 ] ||
-        raise "FAIL: Major version '${ver_major}' must contain 1-3 numerals, not ${#ver_major}" -l "${fn_name}"
+        raise "FAIL: Major version '${ver_major}' must contain 1-3 numerals, not ${#ver_major}" -l "onbrd_lib:verify_fw_pattern"
     [ ${#ver_minor} -ge 1 ] && [ ${#ver_minor} -le 3 ] ||
-        raise "FAIL: Minor version '${ver_minor}' must contain 1-3 numerals, not ${#ver_minor}" -l "${fn_name}"
+        raise "FAIL: Minor version '${ver_minor}' must contain 1-3 numerals, not ${#ver_minor}" -l "onbrd_lib:verify_fw_pattern"
     if [ -n "${ver_micro}" ]; then
         [ ${#ver_micro} -ge 1 ] && [ ${#ver_micro} -le 3 ] ||
-            raise "FAIL: Micro version '${ver_micro}' must contain 1-3 numerals, not ${#ver_micro}" -l "${fn_name}"
+            raise "FAIL: Micro version '${ver_micro}' must contain 1-3 numerals, not ${#ver_micro}" -l "onbrd_lib:verify_fw_pattern"
     fi
     if [ -n "${ver_nano}" ]; then
         [ ${#ver_nano} -ge 1 ] && [ ${#ver_nano} -le 3 ] ||
-            raise "FAIL: Nano version '${ver_nano}' must contain 1-3 numerals, not ${#ver_nano}" -l "${fn_name}"
+            raise "FAIL: Nano version '${ver_nano}' must contain 1-3 numerals, not ${#ver_nano}" -l "onbrd_lib:verify_fw_pattern"
     fi
+
+    return 0
+}
+
+###############################################################################
+# DESCRIPTION:
+#   Function compares CN (Common Name) of the certificate to
+#   several parameters:
+#       - device model string,
+#       - device id,
+#       - WAN eth port MAC address.
+#   NOTE: CN verification is optional, this function just echoes these
+#         parameters. If the validation should be required, please overload the
+#         function in the device shell library overload file.
+# INPUT PARAMETER(S):
+#   $1  Common Name stored in the certificate (string, required)
+#   $2  Device model string (string, optional)
+#   $3  Device id (string, optional)
+#   $4  MAC address of device WAN eth port (string, optional)
+# RETURNS:
+#   0   Always.
+# USAGE EXAMPLE(S):
+#   verify_certificate_cn 1A2B3C4D5E6F 1A2B3C4D5E6F PP203X 00904C324057
+###############################################################################
+verify_certificate_cn()
+{
+    local NARGS=1
+    [ $# -lt ${NARGS} ] &&
+        raise "onbrd_lib:verify_certificate_cn requires at least ${NARGS} input argument(s), $# given" -arg
+
+    local comm_name=${1}
+    echo "Common Name of the certificate: $comm_name"
+    local device_model=${2}
+    echo "Device model: $device_model"
+    local device_id=${3}
+    echo "Device ID: $device_id"
+    local wan_eth_mac=${4}
+    echo "WAN eth port MAC address: $wan_eth_mac"
 
     return 0
 }

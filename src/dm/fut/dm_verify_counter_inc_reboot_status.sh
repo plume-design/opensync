@@ -33,21 +33,20 @@ source "${FUT_TOPDIR}/shell/lib/dm_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="dm/$(basename "$0")"
 manager_setup_file="dm/dm_setup.sh"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+dm/dm_verify_counter_inc_reboot_status.sh [-h] arguments
 Description:
     The test script checks if count is incremented and reboot type is USER after reboot
 Arguments:
     -h  show this help message
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name} <COUNT_BEFORE_REBOOT> <COUNT_AFTER_REBOOT>
+                 Run: ./dm/dm_verify_counter_inc_reboot_status.sh <COUNT_BEFORE_REBOOT> <COUNT_AFTER_REBOOT>
 Script usage example:
-   ./${tc_name} 121 122
+   ./dm/dm_verify_counter_inc_reboot_status.sh 121 122
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -69,20 +68,20 @@ fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 
 NARGS=2
-[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "dm/dm_verify_counter_inc_reboot_status.sh" -arg
 count_before_reboot=$1
 count_after_reboot=$2
 
-log_title "$tc_name: DM test - Verify Reboot_Status::count is incremented and reboot type is USER"
+log_title "dm/dm_verify_counter_inc_reboot_status.sh: DM test - Verify Reboot_Status::count is incremented and reboot type is USER"
 
 count_to_check=$(($count_before_reboot+1))
 if [ $count_after_reboot -eq $count_to_check ]; then
-    log "$tc_name: Reboot_Status::count field is incremented - Success"
+    log "dm/dm_verify_counter_inc_reboot_status.sh: Reboot_Status::count field is incremented - Success"
     wait_for_function_response 0 "check_ovsdb_entry Reboot_Status -w count $count_after_reboot -w type 'USER'" &&
-        log "$tc_name: Reboot reason is USER - Success" ||
-        raise "FAIL: Reboot reason is not USER" -l "$tc_name" -tc
+        log "dm/dm_verify_counter_inc_reboot_status.sh: Reboot reason is USER - Success" ||
+        raise "FAIL: Reboot reason is not USER" -l "dm/dm_verify_counter_inc_reboot_status.sh" -tc
 else
-    raise "FAIL: Reboot_Status::count field is not incremented" -l "$tc_name" -tc
+    raise "FAIL: Reboot_Status::count field is not incremented" -l "dm/dm_verify_counter_inc_reboot_status.sh" -tc
 fi
 
 pass

@@ -35,19 +35,18 @@ source "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="onbrd/$(basename "$0")"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+onbrd/onbrd_setup.sh [-h] arguments
 Description:
     - Setup device for ONBRD testing
 Arguments:
     -h : show this help message
     \$@ (radio_if_names) : wait for if_name in Wifi_Radio_State table to be present after setup : (string)(optional)
 Script usage example:
-    ./${tc_name}
-    ./${tc_name} wifi0 wifi1
+    ./onbrd/onbrd_setup.sh
+    ./onbrd/onbrd_setup.sh wifi0 wifi1
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -63,7 +62,7 @@ if [ -n "${1}" ]; then
 fi
 
 onbrd_setup_test_environment "$@" &&
-    log "$tc_name: onbrd_setup_test_environment - Success " ||
-    raise "FAIL: onbrd_setup_test_environment" -l "$tc_name" -ds
+    log "onbrd/onbrd_setup.sh: onbrd_setup_test_environment - Success " ||
+    raise "FAIL: onbrd_setup_test_environment" -l "onbrd/onbrd_setup.sh" -ds
 
 exit 0

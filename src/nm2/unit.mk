@@ -34,7 +34,6 @@ UNIT_NAME := nm
 # Template type:
 UNIT_TYPE := BIN
 
-UNIT_SRC    += src/nm2_connmgr_uplink.c
 UNIT_SRC    += src/nm2_dhcp_lease.c
 UNIT_SRC    += src/nm2_dhcp_option.c
 UNIT_SRC    += src/nm2_dhcp_rip.c

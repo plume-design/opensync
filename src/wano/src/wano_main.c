@@ -42,17 +42,31 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "memutil.h"
 
 #include "wano.h"
+#include "wano_wan.h"
 #include "wano_internal.h"
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
+
+/*
+ * Structure for defining built-in interfaces
+ */
+struct wano_builtin
+{
+    wano_ppline_t           wb_ppline;          /* WAN plug-in pipeline */
+    wano_ppline_event_t     wb_ppline_event;    /* Pipeline event object */
+    wano_wan_t              wb_wan;             /* WAN configuration */
+};
+
 
 static log_severity_t wano_log_severity = LOG_SEVERITY_INFO;
 
 /*
  * WANO plug-in pipelines associated with built-in interfaces
  */
-static int wano_builtin_pplines_len = 0;
-static wano_ppline_t *wano_builtin_pplines = NULL;
+static int wano_builtin_len = 0;
+static struct wano_builtin *wano_builtin_list = NULL;
+
+static wano_ppline_event_fn_t wano_builtin_ppline_event_fn;
 
 /*
  * Start built-in WAN interfaces
@@ -65,31 +79,67 @@ void wano_start_builtin_ifaces(void)
     int ii;
 
     /* Split interface string and calculate its length */
-    wano_builtin_pplines_len = 0;
+    wano_builtin_len = 0;
     for (pif = strtok_r(iflist, " ", &psave);
             pif != NULL;
             pif = strtok_r(NULL, " ", &psave))
     {
-        wano_builtin_pplines_len++;
+        wano_builtin_len++;
     }
 
-    wano_builtin_pplines = CALLOC(wano_builtin_pplines_len, sizeof(wano_builtin_pplines[0]));
+    wano_builtin_list = CALLOC(wano_builtin_len, sizeof(wano_builtin_list[0]));
 
     pif = iflist;
-    for (ii = 0; ii < wano_builtin_pplines_len; ii++)
+    for (ii = 0; ii < wano_builtin_len; ii++)
     {
         /* Add plug-in pipeline to interface  */
-        if (!wano_ppline_init(&wano_builtin_pplines[ii], pif, "eth", 0))
+        if (!wano_ppline_init(&wano_builtin_list[ii].wb_ppline, pif, "eth", 0))
         {
             LOG(ERR, "wano: %s: Error starting plug-in interface on built-in interface.", pif);
+            continue;
         }
-        else
-        {
-            LOG(NOTICE, "wano: %s: Started plug-in pipeline on built-in interface.", pif);
-        }
+
+        /* Initialize the WAN object and associated it with the ppline */
+        wano_wan_init(&wano_builtin_list[ii].wb_wan);
+        wano_ppline_wan_set(
+                &wano_builtin_list[ii].wb_ppline,
+                &wano_builtin_list[ii].wb_wan);
+
+        /* Start the ppline event watcher */
+        wano_ppline_event_init(&wano_builtin_list[ii].wb_ppline_event, wano_builtin_ppline_event_fn);
+        wano_ppline_event_start(
+                &wano_builtin_list[ii].wb_ppline_event,
+                &wano_builtin_list[ii].wb_ppline);
+
+        LOG(NOTICE, "wano: %s: Started plug-in pipeline on built-in interface.", pif);
 
         /* Move to next interface */
         pif += strlen(pif) + 1;
+    }
+}
+
+void wano_builtin_ppline_event_fn(wano_ppline_event_t *event, enum wano_ppline_status status)
+{
+    struct wano_builtin *wb = CONTAINER_OF(event, struct wano_builtin, wb_ppline_event);
+
+    switch (status)
+    {
+        case WANO_PPLINE_RESTART:
+            LOG(INFO, "wano: Resetting WAN configuration.");
+            wano_wan_reset(&wb->wb_wan);
+            break;
+
+        case WANO_PPLINE_ABORT:
+            wano_wan_rollover(&wb->wb_wan);
+            break;
+
+        case WANO_PPLINE_IDLE:
+            LOG(INFO, "wano: Moving to next WAN configuration.");
+            wano_wan_next(&wb->wb_wan);
+            break;
+
+        default:
+            break;
     }
 }
 
@@ -97,16 +147,27 @@ void wano_stop_builtin_ifaces(void)
 {
     int ii;
 
-    for (ii = 0; ii < wano_builtin_pplines_len; ii++)
+    for (ii = 0; ii < wano_builtin_len; ii++)
     {
-        wano_ppline_fini(&wano_builtin_pplines[ii]);
+        wano_ppline_event_stop(&wano_builtin_list[ii].wb_ppline_event);
+        wano_ppline_fini(&wano_builtin_list[ii].wb_ppline);
+        wano_wan_fini(&wano_builtin_list[ii].wb_wan);
     }
 }
 
-void wano_sig_usr(int signum)
+void wano_sig_handler(int signum)
 {
     (void)signum;
-    wano_ppline_restart_all();
+    switch (signum)
+    {
+        case SIGHUP:
+            wano_ppline_restart_all();
+            break;
+
+        default:
+            LOG(ERR, "wano: Received unhandled signal: %d", signum);
+            break;
+    }
 }
 
 int main(int argc, char *argv[])
@@ -156,7 +217,7 @@ int main(int argc, char *argv[])
     }
 
     // Initialize WAN configuration
-    if (!wano_wan_config_init())
+    if (!wano_wan_ovsdb_init())
     {
         LOG(EMERG, "Error initializing WAN_Config table monitor.");
         return 1;
@@ -176,12 +237,12 @@ int main(int argc, char *argv[])
 
     // Install signal handler
     struct sigaction sa;
-    sa.sa_handler = wano_sig_usr;
+    sa.sa_handler = wano_sig_handler;
     sa.sa_flags = SA_RESTART;
     sigemptyset(&sa.sa_mask);
-    if (sigaction(SIGUSR1, &sa, NULL) != 0)
+    if (sigaction(SIGHUP, &sa, NULL) != 0)
     {
-        LOG(WARN, "wano: Error installing SIGUSR1 handler.");
+        LOG(WARN, "wano: Error installing SIGHUP handler.");
     }
 
     ev_run(EV_DEFAULT, 0);

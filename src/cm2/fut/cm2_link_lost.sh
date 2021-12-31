@@ -33,12 +33,11 @@ source "${FUT_TOPDIR}/shell/lib/cm2_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="cm2/$(basename "$0")"
 cm_setup_file="cm2/cm2_setup.sh"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+cm2/cm2_link_lost.sh [-h] arguments
 Description:
     - Test script validates Connection_Manager_Uplink:has_L2 proper behaviour
 Arguments:
@@ -46,9 +45,9 @@ Arguments:
     \$1 (if_name_l2) : used as L2 interface : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${cm_setup_file} (see ${cm_setup_file} -h)
-                 Run: ./${tc_name} <IF-NAME-L2>
+                 Run: ./cm2/cm2_link_lost.sh <IF-NAME-L2>
 Script usage example:
-    ./${tc_name} eth0
+    ./cm2/cm2_link_lost.sh eth0
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -64,41 +63,40 @@ if [ -n "${1}" ]; then
 fi
 
 check_kconfig_option "TARGET_CAP_EXTENDER" "y" ||
-    raise "TARGET_CAP_EXTENDER != y - Testcase applicable only for EXTENDER-s" -l "${tc_name}" -s
+    raise "TARGET_CAP_EXTENDER != y - Testcase applicable only for EXTENDER-s" -l "cm2/cm2_link_lost.sh" -s
 
 NARGS=1
-[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "cm2/cm2_link_lost.sh" -arg
 if_name=$1
 
 trap '
 fut_info_dump_line
 print_tables Connection_Manager_Uplink
-fut_info_dump_line
 interface_bring_up "$if_name" || true
 check_restore_management_access || true
-run_setup_if_crashed cm || true
+fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 
-log_title "$tc_name: CM2 test - has_L2 validation"
+log_title "cm2/cm2_link_lost.sh: CM2 test - has_L2 validation"
 
-log "$tc_name: Dropping interface $if_name"
+log "cm2/cm2_link_lost.sh: Dropping interface $if_name"
 interface_bring_down "$if_name" &&
-    log "$tc_name: Interface $if_name is down - Success" ||
-    raise "FAIL: Could not bring down interface $if_name" -l "$tc_name" -ds
+    log "cm2/cm2_link_lost.sh: Interface $if_name is down - Success" ||
+    raise "FAIL: Could not bring down interface $if_name" -l "cm2/cm2_link_lost.sh" -ds
 
-log "$tc_name: Waiting for Connection_Manager_Uplink::has_L2 is false on $if_name"
+log "cm2/cm2_link_lost.sh: Waiting for Connection_Manager_Uplink::has_L2 is false on $if_name"
 wait_ovsdb_entry Connection_Manager_Uplink -w if_name "$if_name" -is has_L2 false &&
-    log "$tc_name: wait_ovsdb_entry - Interface $if_name has_L2 is false - Success" ||
-    raise "FAIL: Connection_Manager_Uplink::has_L2 is not false" -l "$tc_name" -ow
+    log "cm2/cm2_link_lost.sh: wait_ovsdb_entry - Interface $if_name has_L2 is false - Success" ||
+    raise "FAIL: Connection_Manager_Uplink::has_L2 is not false" -l "cm2/cm2_link_lost.sh" -ow
 
-log "$tc_name: Bringing up interface $if_name"
+log "cm2/cm2_link_lost.sh: Bringing up interface $if_name"
 interface_bring_up "$if_name" &&
-    log "$tc_name: Interface $if_name is up - Success" ||
-    raise "FAIL: Could not bring up interface $if_name" -l "$tc_name" -ds
+    log "cm2/cm2_link_lost.sh: Interface $if_name is up - Success" ||
+    raise "FAIL: Could not bring up interface $if_name" -l "cm2/cm2_link_lost.sh" -ds
 
-log "$tc_name: Waiting for Connection_Manager_Uplink::has_L2 -> true for ifname==$if_name"
+log "cm2/cm2_link_lost.sh: Waiting for Connection_Manager_Uplink::has_L2 -> true for ifname==$if_name"
 wait_ovsdb_entry Connection_Manager_Uplink -w if_name "$if_name" -is has_L2 true &&
-    log "$tc_name: wait_ovsdb_entry - Interface $if_name has_L2 is true - Success" ||
-    raise "FAIL: Connection_Manager_Uplink::has_L2 is not true" -l "$tc_name" -ow
+    log "cm2/cm2_link_lost.sh: wait_ovsdb_entry - Interface $if_name has_L2 is true - Success" ||
+    raise "FAIL: Connection_Manager_Uplink::has_L2 is not true" -l "cm2/cm2_link_lost.sh" -ow
 
 pass

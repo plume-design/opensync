@@ -34,11 +34,10 @@ source "${fut_topdir}"/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh &> /dev/null
 source "$fut_topdir/lib/rpi_lib.sh"
 
-tc_name="tools/server/um/$(basename "$0")"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+tools/server/um/um_encrypt_image.sh [-h] arguments
 Description:
     - Creates encrypted FW image from clean image using given key
 Arguments:
@@ -46,7 +45,7 @@ Arguments:
     \$1 (um_fw_path)     : path to clean FW which to create corrupted copy : (string)(required)
     \$2 (um_fw_key_path) : path to file containing key string              : (string)(required)
 Script usage example:
-   ./${tc_name} /tmp/clean_device_fw.img /tmp/my_custom_key.key
+   ./tools/server/um/um_encrypt_image.sh /tmp/clean_device_fw.img /tmp/my_custom_key.key
 Result:
     - Creates encrypted .eim FW image encrypted with key from um_fw_key_path
 usage_string
@@ -63,7 +62,7 @@ if [ -n "${1}" ]; then
     esac
 fi
 NARGS=1
-[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "tools/server/um/um_encrypt_image.sh" -arg
 
 um_fw_path=$1
 um_fw_key_path=$2

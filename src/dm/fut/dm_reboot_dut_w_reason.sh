@@ -33,12 +33,11 @@ source "${FUT_TOPDIR}/shell/lib/dm_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="dm/$(basename "$0")"
 dm_setup_file="dm/dm_setup.sh"
 usage()
 {
 cat << usage_string
-${tc_name} [-h]
+dm/dm_reboot_dut_w_reason.sh [-h]
 Description:
     Script reboots device in a configured manner:
       - USER intervention and
@@ -48,10 +47,10 @@ Arguments:
     \$1 (reboot_reason) : Reboot trigger type     : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${dm_setup_file} (see ${dm_setup_file} -h)
-    - On DEVICE: Run: ./${tc_name} <REBOOT_REASON>
+    - On DEVICE: Run: ./dm/dm_reboot_dut_w_reason.sh <REBOOT_REASON>
 Script usage example:
-    ./${tc_name} USER
-    ./${tc_name} CLOUD
+    ./dm/dm_reboot_dut_w_reason.sh USER
+    ./dm/dm_reboot_dut_w_reason.sh CLOUD
 usage_string
 }
 
@@ -68,16 +67,16 @@ if [ -n "${1}" ]; then
 fi
 
 check_kconfig_option "CONFIG_OSP_REBOOT_PSTORE" "y" ||
-    raise "CONFIG_OSP_REBOOT_PSTORE != y - Testcase not applicable REBOOT PERSISTENT STORAGE not supported" -l "${tc_name}" -s
+    raise "CONFIG_OSP_REBOOT_PSTORE != y - Testcase not applicable REBOOT PERSISTENT STORAGE not supported" -l "dm/dm_reboot_dut_w_reason.sh" -s
 
 NARGS=1
-[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "dm/dm_reboot_dut_w_reason.sh" -arg
 # Fill variables with provided arguments.
 reboot_reason=$1
 
-log_title "$tc_name: DM test - Reboot DUT with reason - $reboot_reason"
+log_title "dm/dm_reboot_dut_w_reason.sh: DM test - Reboot DUT with reason - $reboot_reason"
 
-log "$tc_name - Simulating $reboot_reason reboot"
+log "dm/dm_reboot_dut_w_reason.sh - Simulating $reboot_reason reboot"
 case "$reboot_reason" in
     "USER")
         reboot
@@ -87,7 +86,7 @@ case "$reboot_reason" in
         print_tables Wifi_Test_Config
     ;;
     *)
-        raise "FAIL: Unknown reason to check: $reboot_reason" -l "$tc_name" -arg
+        raise "FAIL: Unknown reason to check: $reboot_reason" -l "dm/dm_reboot_dut_w_reason.sh" -arg
     ;;
 esac
 

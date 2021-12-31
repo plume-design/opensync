@@ -33,14 +33,12 @@ source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-trap 'run_setup_if_crashed wm || true' EXIT SIGINT SIGTERM
-tc_name="tools/device/$(basename "$0")"
 patch_w2h_default="patch-w2h"
 patch_h2w_default="patch-h2w"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+tools/device/configure_lan_bridge_for_wan_connectivity.sh [-h] arguments
 Description:
     - Script configures WAN connectivity on LAN bridge.
     - The procedure is different depending on the device implementing WANO or not! Example for "wan_br" parameter:
@@ -57,7 +55,7 @@ Arguments:
     - \$4 (patch_w2h)   : WAN-to-LAN patch port name                      : (string)(optional)(default: $patch_w2h_default)
     - \$5 (patch_h2w)   : LAN-to-WAN patch port name                      : (string)(optional)(default: $patch_h2w_default)
 Script usage example:
-   ./${tc_name} eth0 br-wan br-home
+   ./tools/device/configure_lan_bridge_for_wan_connectivity.sh eth0 br-wan br-home
 usage_string
 }
 if [ -n "${1}" ] > /dev/null 2>&1; then
@@ -75,10 +73,20 @@ fi
 check_kconfig_option "CONFIG_MANAGER_WANO" "y" &&
     is_wano="true" ||
     is_wano="false"
-log "${tc_name}: Is WANO enabled: ${is_wano}"
+log "tools/device/configure_lan_bridge_for_wan_connectivity.sh: Is WANO enabled: ${is_wano}"
+
+trap '
+fut_ec=$?
+fut_info_dump_line
+if [ $fut_ec -ne 0 ]; then 
+    print_tables WAN_Config Connection_Manager_Uplink Wifi_Inet_Config Wifi_Inet_State
+fi
+fut_info_dump_line
+exit $fut_ec
+' EXIT SIGINT SIGTERM
 
 NARGS=3
-[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "tools/device/configure_lan_bridge_for_wan_connectivity.sh" -arg
 
 wan_eth=${1}
 wan_br=${2}
@@ -95,8 +103,8 @@ if [ "${is_wano}" == "false" ];then
         -ip_assign_scheme "dhcp" \
         -network "true" \
         -enabled "true" &&
-            log -deb "$tc_name: Interface ${wan_br} successfully created" ||
-            raise "Failed to create interface ${wan_br}" -l "$tc_name" -ds
+            log -deb "tools/device/configure_lan_bridge_for_wan_connectivity.sh: Interface ${wan_br} successfully created" ||
+            raise "Failed to create interface ${wan_br}" -l "tools/device/configure_lan_bridge_for_wan_connectivity.sh" -ds
     add_bridge_port "${wan_br}" "${patch_w2h}"
     set_interface_patch "${wan_br}" "${patch_w2h}" "${patch_h2w}"
     add_bridge_port "${lan_br}" "${patch_h2w}"
@@ -111,8 +119,8 @@ else
         -ip_assign_scheme "dhcp" \
         -network "true" \
         -enabled "true" &&
-            log -deb "$tc_name: Interface ${lan_br} successfully created" ||
-            raise "Failed to create interface ${lan_br}" -l "$tc_name" -ds
+            log -deb "tools/device/configure_lan_bridge_for_wan_connectivity.sh: Interface ${lan_br} successfully created" ||
+            raise "Failed to create interface ${lan_br}" -l "tools/device/configure_lan_bridge_for_wan_connectivity.sh" -ds
     udhcpc_if=${lan_br}
 fi
 

@@ -35,11 +35,10 @@ source "${FUT_TOPDIR}/shell/lib/um_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="um/$(basename "$0")"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+um/um_setup.sh [-h] arguments
 Description:
     - Setup device for UM testing
 Arguments:
@@ -47,7 +46,7 @@ Arguments:
     \$1 (fw_download_path) : Path where UM downloads FW files : (string) (required)
     \$2 (if_name)          : Interface name for udhcpc start  : (string) (optional) : (default:eth0)
 Script usage example:
-    ./${tc_name} /tmp/pfirmware eth0
+    ./um/um_setup.sh /tmp/pfirmware eth0
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -62,13 +61,13 @@ if [ -n "${1}" ]; then
     esac
 fi
 NARGS=1
-[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "um/um_setup.sh" -arg
 
 check_kconfig_option "CONFIG_MANAGER_UM" "y" ||
-    raise "CONFIG_MANAGER_UM != y - UM not present on device" -l "${tc_name}" -s
+    raise "CONFIG_MANAGER_UM != y - UM not present on device" -l "um/um_setup.sh" -s
 
 um_setup_test_environment "$@" &&
-    log "$tc_name: um_setup_test_environment - Success" ||
-    raise "FAIL: um_setup_test_environment" -l "$tc_name" -ds
+    log "um/um_setup.sh: um_setup_test_environment - Success" ||
+    raise "FAIL: um_setup_test_environment" -l "um/um_setup.sh" -ds
 
 exit 0

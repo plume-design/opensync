@@ -36,16 +36,16 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * @param b session pointer
  * @return 0 if sessions matches
  */
-static int client_cmp(void *a, void *b)
+static int client_cmp(const void *a, const void *b)
 {
-    struct fsm_policy_client *client_a;
-    struct fsm_policy_client *client_b;
+    const struct fsm_policy_client *client_a;
+    const struct fsm_policy_client *client_b;
     char *default_name = "default";
     char *name_a;
     char *name_b;
 
-    client_a = (struct fsm_policy_client *)a;
-    client_b = (struct fsm_policy_client *)b;
+    client_a = (const struct fsm_policy_client *)a;
+    client_b = (const struct fsm_policy_client *)b;
 
     uintptr_t p_a = (uintptr_t)(client_a->session);
     uintptr_t p_b = (uintptr_t)(client_b->session);

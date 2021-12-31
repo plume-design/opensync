@@ -39,6 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "qm_conn.h"
 #include "dppline.h"
 #include "network_metadata.h"
+#include "lte_info.h"
 #include "ltem_mgr.h"
 
 /* Log entries from this file will contain "OVSDB" */
@@ -50,12 +51,50 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ovsdb_table_t table_Lte_Config;
 ovsdb_table_t table_Lte_State;
+ovsdb_table_t table_Wifi_Inet_Config;
 ovsdb_table_t table_Wifi_Inet_State;
 ovsdb_table_t table_Connection_Manager_Uplink;
 ovsdb_table_t table_Wifi_Route_State;
 ovsdb_table_t table_DHCP_leased_IP;
 ovsdb_table_t table_AWLAN_Node;
 ovsdb_table_t table_Wifi_Route_Config;
+
+void
+ltem_disable_band_40(ltem_mgr_t *mgr)
+{
+    char lte_bands[32];
+    char u_bands_str[32];
+    char l_bands_str[32];
+    char *ptr;
+    uint64_t upper_bands;
+    uint64_t lower_bands;
+    osn_lte_modem_info_t *modem_info;
+
+    MEMZERO(lte_bands);
+    MEMZERO(u_bands_str);
+    MEMZERO(l_bands_str);
+
+    modem_info = mgr->modem_info;
+    STRSCPY(lte_bands, modem_info->lte_band_val);
+    u_bands_str[0] = lte_bands[0]; /* If bands above 68 are ever used, this needs to change */
+    strncpy(l_bands_str, &lte_bands[1], sizeof(l_bands_str));
+
+    upper_bands = strtol(u_bands_str, &ptr, 16);
+    lower_bands = strtol(l_bands_str, &ptr, 16);
+
+    if (!(lower_bands & (1ULL << 39))) /* Band 40 is bit 39 */
+    {
+        LOGD("%s: bit 40 not set", __func__);
+        return;
+    }
+
+    lower_bands &= ~(1ULL << 39); /* Band 40 is bit 39 */
+
+    MEMZERO(lte_bands);
+    sprintf(lte_bands, "%01llx%016llx", (long long unsigned int)upper_bands, (long long unsigned int)lower_bands);
+    LOGD("%s: Setting LTE bands[%s]", __func__, lte_bands);
+    osn_lte_set_bands(lte_bands);
+}
 
 int
 ltem_update_conf(struct schema_Lte_Config *lte_conf)
@@ -72,11 +111,17 @@ ltem_update_conf(struct schema_Lte_Config *lte_conf)
     conf->force_use_lte = lte_conf->force_use_lte;
     conf->active_simcard_slot = lte_conf->active_simcard_slot;
     conf->modem_enable = lte_conf->modem_enable;
+    conf->enable_persist = lte_conf->enable_persist;
     if (conf->modem_enable)
     {
         if (osn_lte_read_modem())
         {
             LOGE("%s: osn_lte_read_modem(): failed", __func__);
+        }
+        else
+        {
+            /* Disable band 40 */
+            ltem_disable_band_40(mgr);
         }
     }
 
@@ -88,8 +133,9 @@ ltem_update_conf(struct schema_Lte_Config *lte_conf)
     {
         mgr->mqtt_interval = conf->report_interval = lte_conf->report_interval;
     }
-    LOGI("%s: report_interval[%d]", __func__, conf->report_interval);
+    LOGD("%s: report_interval[%d]", __func__, conf->report_interval);
     STRSCPY(conf->apn, lte_conf->apn);
+    STRSCPY(conf->lte_bands, lte_conf->lte_bands_enable);
 
     return 0;
 }
@@ -144,23 +190,26 @@ ltem_ovsdb_create_lte_state(ltem_mgr_t *mgr)
     SCHEMA_SET_INT(lte_state.ipv6_enable, lte_config->ipv6_enable);
     SCHEMA_SET_INT(lte_state.force_use_lte, lte_config->force_use_lte);
     SCHEMA_SET_INT(lte_state.modem_enable, lte_config->modem_enable);
+    SCHEMA_SET_INT(lte_state.active_simcard_slot, lte_config->active_simcard_slot);
     SCHEMA_SET_INT(lte_state.report_interval, lte_config->report_interval);
     SCHEMA_SET_STR(lte_state.apn, lte_config->apn);
 
     // State info
     modem_info = mgr->modem_info;
     SCHEMA_SET_INT(lte_state.modem_present, modem_info->modem_present);
-    SCHEMA_SET_INT(lte_state.active_simcard_slot, modem_info->active_simcard_slot);
     SCHEMA_SET_STR(lte_state.iccid, modem_info->iccid);
     SCHEMA_SET_STR(lte_state.imei, modem_info->imei);
     SCHEMA_SET_STR(lte_state.imsi, modem_info->imsi);
     switch(modem_info->sim_status)
     {
-        case LTE_SIM_REMOVED:
+        case LTE_SIM_STATUS_REMOVED:
             sim_status = "Removed";
             break;
-        case LTE_SIM_INSERTED:
+        case LTE_SIM_STATUS_INSERTED:
             sim_status = "Inserted";
+            break;
+        case LTE_SIM_STATUS_BAD:
+            sim_status = "Bad";
             break;
         default:
             sim_status = "Unknown";
@@ -199,6 +248,8 @@ ltem_ovsdb_create_lte_state(ltem_mgr_t *mgr)
             break;
     }
     SCHEMA_SET_STR(lte_state.lte_net_state, net_state);
+
+    SCHEMA_SET_STR(lte_state.lte_bands_enable, modem_info->lte_band_val);
 
     if (!ovsdb_table_insert(&table_Lte_State, &lte_state))
     {
@@ -239,6 +290,7 @@ ltem_ovsdb_update_lte_state(ltem_mgr_t *mgr)
                        SCHEMA_COLUMN(Lte_State, mnc),
                        SCHEMA_COLUMN(Lte_State, tac),
                        SCHEMA_COLUMN(Lte_State, lte_net_state),
+                       SCHEMA_COLUMN(Lte_State, lte_bands_enable),
                        NULL };
 
     if (mgr == NULL) return -1;
@@ -275,22 +327,25 @@ ltem_ovsdb_update_lte_state(ltem_mgr_t *mgr)
     SCHEMA_SET_INT(lte_state.ipv6_enable, lte_config->ipv6_enable);
     SCHEMA_SET_INT(lte_state.force_use_lte, lte_config->force_use_lte);
     SCHEMA_SET_INT(lte_state.modem_enable, lte_config->modem_enable);
+    SCHEMA_SET_INT(lte_state.active_simcard_slot, lte_config->active_simcard_slot);
     SCHEMA_SET_INT(lte_state.report_interval, lte_config->report_interval);
     SCHEMA_SET_STR(lte_state.apn, lte_config->apn);
 
     // State info
     SCHEMA_SET_INT(lte_state.modem_present, modem_info->modem_present);
-    SCHEMA_SET_INT(lte_state.active_simcard_slot, modem_info->active_simcard_slot);
     SCHEMA_SET_STR(lte_state.iccid, modem_info->iccid);
     SCHEMA_SET_STR(lte_state.imei, modem_info->imei);
     SCHEMA_SET_STR(lte_state.imsi, modem_info->imsi);
     switch(modem_info->sim_status)
     {
-        case LTE_SIM_REMOVED:
+        case LTE_SIM_STATUS_REMOVED:
             sim_status = "Removed";
             break;
-        case LTE_SIM_INSERTED:
+        case LTE_SIM_STATUS_INSERTED:
             sim_status = "Inserted";
+            break;
+        case LTE_SIM_STATUS_BAD:
+            sim_status = "Bad";
             break;
         default:
             sim_status = "Unknown";
@@ -329,6 +384,8 @@ ltem_ovsdb_update_lte_state(ltem_mgr_t *mgr)
             break;
     }
     SCHEMA_SET_STR(lte_state.lte_net_state, net_state);
+
+    SCHEMA_SET_STR(lte_state.lte_bands_enable, modem_info->lte_band_val);
 
     res = ovsdb_table_update_where_f(&table_Lte_State,
                                      ovsdb_where_simple(SCHEMA_COLUMN(Lte_State, if_name), if_name),
@@ -371,7 +428,7 @@ ltem_ovsdb_cmu_update_lte(ltem_mgr_t *mgr)
 
     MEMZERO(cm_conf);
 
-    LOGI("%s: update %s LTE CM settings", __func__, if_name);
+    LOGD("%s: update %s LTE CM settings", __func__, if_name);
     cm_conf._partial_update = true;
     SCHEMA_SET_INT(cm_conf.has_L2, true);
     SCHEMA_SET_INT(cm_conf.has_L3, false);
@@ -466,7 +523,7 @@ ltem_ovsdb_cmu_disable_lte(ltem_mgr_t *mgr)
     if_name = mgr->lte_config_info->if_name;
     if(!if_name[0]) return 0;
 
-    LOGI("%s: update %s LTE CM settings", __func__, if_name);
+    LOGD("%s: update %s LTE CM settings", __func__, if_name);
     cm_conf.has_L2 = false;
     cm_conf.has_L3 = false;
     cm_conf.priority = 0;
@@ -496,8 +553,155 @@ ltem_ovsdb_cmu_check_lte (ltem_mgr_t *mgr)
         return;
     }
 
-    LOGI("%s: if_name=%s, if_type=%s, has_L2=%d, has_L3=%d, priority=%d",
+    LOGD("%s: if_name=%s, if_type=%s, has_L2=%d, has_L3=%d, priority=%d",
          __func__, uplink.if_name, uplink.if_type, uplink.has_L2, uplink.has_L3, uplink.priority);
+}
+
+/**
+ * @brief update os_persist field on wifi_inet_table
+ *
+ * @param persist_state flag reflects enable_persist state
+ * @param if_name Lte ifname
+ * @return true when wifi_inet_config ovsdb table updated successfully
+ *         false otherwise
+ */
+static bool
+ltem_wifi_inet_os_persist_update(bool persist_state, char *if_name)
+{
+    struct schema_Wifi_Inet_Config icfg;
+    int ret;
+
+    ret = ovsdb_table_select_one(&table_Wifi_Inet_Config,
+                SCHEMA_COLUMN(Wifi_Inet_Config, if_name), if_name, &icfg);
+
+    if (!ret)
+    {
+        LOGE("%s: %s: Failed to get interface config", __func__, if_name);
+        return false;
+    }
+
+    /* return true if os_persist is already set, update otherwise */
+    if (icfg.os_persist == persist_state) return true;
+
+    MEMZERO(icfg);
+    char *filter[] = { "+",
+                       SCHEMA_COLUMN(Wifi_Inet_Config, os_persist),
+                       NULL };
+    SCHEMA_SET_INT(icfg.os_persist, persist_state);
+    ret = ovsdb_table_update_where_f(&table_Wifi_Inet_Config,
+                 ovsdb_where_simple(SCHEMA_COLUMN(Wifi_Inet_Config, if_name), if_name),
+                 &icfg, filter);
+
+    if (!ret)
+    {
+        LOGE("%s: %s: Failed to update interface config", __func__, if_name);
+        return false;
+    }
+
+    return true;
+}
+
+/**
+ * @brief called when os_persist field needs to be updated for
+ * Lte_config table
+ *
+ * @param persist_state flag reflects enable_persist state
+ * @param if_name Lte if_name
+ * @return true when lte_config ovsdb table updated successfully
+ *         false otherwise
+ */
+static bool
+ltem_lte_config_os_persist_update(bool persist_state, char *if_name)
+{
+    struct schema_Lte_Config lte_cfg;
+    int ret;
+
+    ret = ovsdb_table_select_one(&table_Lte_Config,
+                SCHEMA_COLUMN(Lte_Config, if_name), if_name, &lte_cfg);
+
+    if (!ret)
+    {
+        LOGE("%s: %s: Failed to get interface config", __func__, if_name);
+        return false;
+    }
+
+    /* return true if os_persist is already set, update otherwise */
+    if (lte_cfg.os_persist == persist_state) return true;
+
+    /* update the os_persist field */
+    MEMZERO(lte_cfg);
+    char *filter[] = { "+",
+                       SCHEMA_COLUMN(Lte_Config, os_persist),
+                       NULL };
+    SCHEMA_SET_INT(lte_cfg.os_persist, persist_state);
+    ret = ovsdb_table_update_where_f(&table_Lte_Config,
+                 ovsdb_where_simple(SCHEMA_COLUMN(Lte_Config, if_name), if_name),
+                 &lte_cfg, filter);
+
+    if (!ret)
+    {
+        LOGE("%s: %s: Failed to update interface config", __func__, if_name);
+        return false;
+    }
+
+    return true;
+}
+
+/**
+ * @brief called when os_persist field needs to be updated for
+ * Lte_state table
+ *
+ * @param persist_state flag reflects enable_persist state
+ * @param if_name Lte if_name
+ * @return none
+ */
+static void
+ltem_lte_state_update_persist(bool state, char *if_name)
+{
+    struct schema_Lte_State lte_state;
+    int ret;
+    char *filter[] = { "+",
+                       SCHEMA_COLUMN(Lte_State, enable_persist),
+                       NULL };
+
+    ret = ovsdb_table_select_one(&table_Lte_State,
+                SCHEMA_COLUMN(Lte_State, if_name), if_name, &lte_state);
+
+    if (!ret)
+    {
+        LOGE("%s: %s: Failed to get interface config", __func__, if_name);
+        return;
+    }
+    if (lte_state.enable_persist == state) return;
+
+    SCHEMA_SET_INT(lte_state.enable_persist, state);
+    ret = ovsdb_table_update_where_f(&table_Lte_State,
+                 ovsdb_where_simple(SCHEMA_COLUMN(Lte_State, if_name), if_name),
+                 &lte_state, filter);
+    if (!ret)
+    {
+            LOGE("%s: Failed to update Lte_State table entry", __func__);
+    }
+}
+
+/**
+ * @brief update os_persist field on Wifi_Inet and Lte_Config
+ * based on enable_persist flag
+ *
+ * @param persist_state flag reflects enable_persist state
+ * @param if_name Lte ifname
+ * @return none
+ */
+static void
+ltem_update_enable_persist(bool persist_state, char *if_name)
+{
+    /* Update enable_persist field in Lte_state table only when Lte_config and
+       Wifi_Init_config updates  successfully */
+    if ( ltem_wifi_inet_os_persist_update(persist_state, if_name) &&
+         ltem_lte_config_os_persist_update(persist_state, if_name) )
+    {
+            ltem_lte_state_update_persist(persist_state, if_name);
+    }
 }
 
 void
@@ -542,6 +746,9 @@ callback_Lte_Config(ovsdb_update_monitor_t *mon,
 
             osn_lte_set_sim_slot(lte_conf->active_simcard_slot);
 
+            rc = strncmp(lte_conf->lte_bands_enable, "", strlen(lte_conf->lte_bands_enable));
+            if (rc) osn_lte_set_bands(lte_conf->lte_bands_enable);
+
             if (!lte_conf->manager_enable && !lte_conf->force_use_lte)
             {
                 ltem_ovsdb_cmu_disable_lte(mgr);
@@ -550,12 +757,16 @@ callback_Lte_Config(ovsdb_update_monitor_t *mon,
             {
                 ltem_set_wan_state(LTEM_WAN_STATE_DOWN);
             }
-            else if (old_lte_conf->force_use_lte)
+            else if (old_lte_conf->force_use_lte && !lte_conf->force_use_lte)
             {
-                ltem_restore_default_wan_route(mgr);
+                LOGI("%s: force_lte[%d]", __func__, lte_conf->force_use_lte);
                 ltem_set_wan_state(LTEM_WAN_STATE_UP);
             }
-
+            if (lte_conf->enable_persist != old_lte_conf->enable_persist)
+            {
+                LOGI("%s: enable_persist[%d]", __func__, lte_conf->enable_persist);
+                ltem_update_enable_persist(lte_conf->enable_persist, lte_conf->if_name);
+            }
             break;
         case OVSDB_UPDATE_DEL:
             LOGI("%s mon_type = OVSDB_UPDATE_DEL", __func__);
@@ -598,16 +809,15 @@ ltem_handle_nm_update_wwan0(struct schema_Wifi_Inet_State *old_inet_state,
         LOGE("%s: lte_route NULL", __func__);
         return;
     }
+
     STRSCPY(mgr->lte_route->lte_ip_addr, inet_state->inet_addr);
     ltem_ovsdb_cmu_insert_lte(mgr);
     res = strncmp(inet_state->inet_addr, null_inet_addr, strlen(inet_state->inet_addr));
     if (!res)
     {
         ltem_set_lte_state(LTEM_LTE_STATE_DOWN);
-        return;
     }
 
-    ltem_set_lte_state(LTEM_LTE_STATE_UP);
 }
 
 void
@@ -639,17 +849,17 @@ ltem_handle_cm_update_lte(struct schema_Connection_Manager_Uplink *old_uplink,
                           struct schema_Connection_Manager_Uplink *uplink)
 {
 
-    LOGI("%s: if_name=%s if_type=%s, has_L2=%d, has_L3=%d, priority=%d, is_used=%d",
+    LOGD("%s: if_name=%s if_type=%s, has_L2=%d, has_L3=%d, priority=%d, is_used=%d",
          __func__, uplink->if_name, uplink->if_type, uplink->has_L2, uplink->has_L3, uplink->priority, uplink->is_used);
     if (uplink->is_used)
     {
         ltem_set_wan_state(LTEM_WAN_STATE_DOWN);
-        LOGI("%s: wwan0 is_used[true]", __func__);
+        LOGD("%s: wwan0 is_used[true]", __func__);
     }
     else
     {
         ltem_set_wan_state(LTEM_WAN_STATE_UP);
-        LOGI("%s: wwan0 is_used[false]", __func__);
+        LOGD("%s: wwan0 is_used[false]", __func__);
     }
 }
 
@@ -679,7 +889,7 @@ callback_Connection_Manager_Uplink(ovsdb_update_monitor_t *mon,
             res = strncmp(uplink->if_name, "wwan0", strlen(uplink->if_name));
             if (res == 0)
             {
-                LOGI("%s: if_name[%s], has_L2[%d], has_L3[%d], priority[%d]", __func__, uplink->if_name, uplink->has_L2, uplink->has_L3, uplink->priority);
+                LOGI("%s: if_name[%s], has_L2[%d], has_L3[%d], priority[%d] is_used[%d]", __func__, uplink->if_name, uplink->has_L2, uplink->has_L3, uplink->priority, uplink->is_used);
                 ltem_handle_cm_update_lte(old_uplink, uplink);
             }
             break;
@@ -707,6 +917,7 @@ ltem_handle_lte_rs_update(struct schema_Wifi_Route_State *old_route_state, struc
 {
     ltem_mgr_t *mgr = ltem_get_mgr();
     char *default_mask = "0.0.0.0";
+    char *null_gateway = "0.0.0.0";
     int res;
 
     LOGI("%s: if_name=%s, dest_addr=%s, dest_gw=%s, dest_mask=%s", __func__, route_state->if_name, route_state->dest_addr,
@@ -715,11 +926,12 @@ ltem_handle_lte_rs_update(struct schema_Wifi_Route_State *old_route_state, struc
     if (res == 0)
     {
         ltem_update_lte_route(mgr, route_state->if_name, route_state->dest_addr, route_state->gateway, route_state->dest_mask);
-        res = ltem_set_lte_route_metric(mgr);
-        if (res)
-        {
-            LOGE("%s: ltem_set_lte_route_metric: Failed", __func__);
-        }
+    }
+
+    res = strncmp(route_state->gateway, null_gateway, strlen(route_state->gateway));
+    if (res)
+    {
+        ltem_set_lte_state(LTEM_LTE_STATE_UP);
     }
 }
 
@@ -737,6 +949,8 @@ callback_Wifi_Route_State(ovsdb_update_monitor_t *mon,
             return;
 
         case OVSDB_UPDATE_DEL:
+            LOGI("%s: OVSDB_UPDATE_DEL: if_name=%s, dest_addr=%s, dest_gw=%s, dest_mask=%s", __func__,
+                 old_route_state->if_name, old_route_state->dest_addr, old_route_state->gateway, old_route_state->dest_mask);
             break;
         case OVSDB_UPDATE_NEW:
         case OVSDB_UPDATE_MODIFY:
@@ -809,13 +1023,52 @@ void callback_AWLAN_Node(
 
 }
 
+int
+ltem_ovsdb_update_wifi_route_config_metric(ltem_mgr_t *mgr, char *if_name, uint32_t metric)
+{
+    struct schema_Wifi_Route_Config route_config;
+    lte_route_info_t *route_info;
+    int res;
+
+    route_info = mgr->lte_route;
+    if (!route_info)
+    {
+        LOGE("%s: route_info not set", __func__);
+        return -1;
+    }
+
+    res = ovsdb_table_select_one(&table_Wifi_Route_Config,
+                                 SCHEMA_COLUMN(Wifi_Route_Config, if_name), if_name, &route_config);
+    if (!res)
+    {
+        LOGI("%s: %s not found in Wifi_Route_Config", __func__, if_name);
+        return -1;
+    }
+
+
+    LOGI("%s: update %s Wifi_Route_Config settings: subnet[%s], netmask[%s] gw[%s], metric[%d]",
+         __func__, route_config.if_name, route_config.dest_addr, route_config.dest_mask, route_config.gateway, metric);
+
+    route_config._partial_update = true;
+    SCHEMA_SET_INT(route_config.metric, metric);
+    res = ovsdb_table_upsert_simple(&table_Wifi_Route_Config,
+                                    SCHEMA_COLUMN(Wifi_Route_Config, if_name),
+                                    route_config.if_name,
+                                    &route_config,
+                                    NULL);
+    if (!res)
+    {
+        LOGW("%s: Update %s Wifi_Route_Config failed", __func__, if_name);
+        return -1;
+    }
+    return 0;
+}
+
 void
 callback_Wifi_Route_Config(ovsdb_update_monitor_t *mon,
                            struct schema_Wifi_Route_Config *old_route_config,
                            struct schema_Wifi_Route_Config *route_config)
 {
-    int res;
-
     switch (mon->mon_type)
     {
         default:
@@ -824,16 +1077,19 @@ callback_Wifi_Route_Config(ovsdb_update_monitor_t *mon,
             return;
 
         case OVSDB_UPDATE_NEW:
+            LOGI("%s:  OVSDB_UPDATE_NEW route config: if_name[%s], dest_addr[%s], dest_mask[%s], gateway[%s], metric[%d]",
+                 __func__, route_config->if_name, route_config->dest_addr, route_config->dest_mask,
+                 route_config->gateway, route_config->metric);
+            break;
         case OVSDB_UPDATE_MODIFY:
-            res = strncmp(route_config->if_name, "wwan0", strlen(route_config->if_name));
-            if (res == 0)
-            {
-                LOGI("%s: New/updated route config: if_name[%s], dest_addr[%s], dest_mask[%s], gateway[%s], metric[%d]",
-                     __func__, route_config->if_name, route_config->dest_addr, route_config->dest_mask,
-                     route_config->gateway, route_config->metric);
-            }
+            LOGI("%s: OVSDB_UPDATE_MODIFY route config: if_name[%s], dest_addr[%s], dest_mask[%s], gateway[%s], metric[%d]",
+                 __func__, route_config->if_name, route_config->dest_addr, route_config->dest_mask,
+                 route_config->gateway, route_config->metric);
             break;
         case OVSDB_UPDATE_DEL:
+            LOGI("%s: OVSDB_UPDATE_DEL route config: if_name[%s], dest_addr[%s], dest_mask[%s], gateway[%s], metric[%d]",
+                 __func__, route_config->if_name, route_config->dest_addr, route_config->dest_mask,
+                 route_config->gateway, route_config->metric);
             break;
     }
 }
@@ -854,6 +1110,7 @@ ltem_ovsdb_init(void)
     OVSDB_TABLE_INIT_NO_KEY(Lte_Config);
     OVSDB_TABLE_INIT_NO_KEY(Lte_State);
     OVSDB_TABLE_INIT(Wifi_Inet_State, if_name);
+    OVSDB_TABLE_INIT(Wifi_Inet_Config, if_name);
     OVSDB_TABLE_INIT(Connection_Manager_Uplink, if_name);
     OVSDB_TABLE_INIT(Wifi_Route_State, if_name);
     OVSDB_TABLE_INIT(Wifi_Route_Config, if_name);

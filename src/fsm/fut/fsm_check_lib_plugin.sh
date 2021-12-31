@@ -33,17 +33,16 @@ source "${FUT_TOPDIR}/shell/lib/fsm_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="fsm/$(basename "$0")"
 usage() {
     cat << usage_string
-${tc_name} [-h] arguments
+fsm/fsm_check_lib_plugin.sh [-h] arguments
 Description:
     - Script checks existence of FSM Plugin lib file
 Arguments:
     -h  show this help message
     \$1 (expected_user_agent) : Plugin lib file path : (string)(required)
 Script usage example:
-    ./${tc_name} custom_user_agent
+    ./fsm/fsm_check_lib_plugin.sh custom_user_agent
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -66,4 +65,4 @@ plugin_lib_file_path=${1}
 log "Checking if FSM Plugin lib file exists"
 [ -f "${plugin_lib_file_path}" ] &&
     log "FSM plugin lib ${plugin_lib_file_path} file exists - Success" ||
-    raise "Missing ${plugin_lib_file_path} FSM plugin lib file" -tc "${tc_name}" -s
+    raise "Missing ${plugin_lib_file_path} FSM plugin lib file" -tc "fsm/fsm_check_lib_plugin.sh" -s

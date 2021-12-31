@@ -92,10 +92,10 @@ ltem_create_lte_route_table(ltem_mgr_t *mgr)
 }
 
 static int
-client_cmp(void *a, void *b)
+client_cmp(const void *a, const void *b)
 {
-    char *name_a = a;
-    char *name_b = b;
+    const char *name_a = a;
+    const char *name_b = b;
     return (strcmp(name_a, name_b));
 }
 void
@@ -158,12 +158,13 @@ ltem_create_client_table(ltem_mgr_t *mgr)
 void
 ltem_update_lte_route(ltem_mgr_t *mgr, char *if_name, char *lte_subnet, char *lte_gw, char *lte_netmask)
 {
-    LOGI("%s: lte_if_name[%s], lte_subnet[%s], lte_gw[%s] lte_netmask[%s]", __func__, if_name, lte_subnet, lte_gw, lte_netmask);
     STRSCPY(mgr->lte_route->lte_if_name, if_name);
     STRSCPY(mgr->lte_route->lte_subnet, lte_subnet);
     STRSCPY(mgr->lte_route->lte_gw, lte_gw);
     STRSCPY(mgr->lte_route->lte_netmask, lte_netmask);
     mgr->lte_route->lte_metric = LTE_DEFAULT_METRIC;
+    LOGI("%s: lte_if_name[%s], lte_subnet[%s], lte_gw[%s] lte_netmask[%s], metric[%d]", __func__, if_name,
+         lte_subnet, lte_gw, lte_netmask, mgr->lte_route->lte_metric);
 }
 
 void
@@ -227,118 +228,64 @@ ltem_restore_default_client_routes(ltem_mgr_t *mgr)
 int
 ltem_set_lte_route_metric(ltem_mgr_t *mgr)
 {
-    int res = 0;
-    char cmd[1024];
     lte_route_info_t *route;
 
-    LOGI("%s: failover:%d", __func__, mgr->lte_state_info->lte_failover_active);
     route = mgr->lte_route;
     if (!route) return -1;
 
     if (route->lte_gw[0])
     {
-        /* Delete the route, then add it back */
-        snprintf(cmd, sizeof(cmd), "ip route del default dev wwan0");
-        res = ltem_route_exec_cmd(cmd);
-        /* ip route add default via n.n.n.n dev wwan0 */
-        snprintf(cmd, sizeof(cmd), "ip route add default via %s metric %d dev %s",
-                 route->lte_gw, route->lte_metric, route->lte_if_name);
-        LOGI("%s: gw[%s], metric[%d], if_name[%s]", __func__, route->lte_gw, route->lte_metric, route->lte_if_name);
-        res = ltem_route_exec_cmd(cmd);
+        /*
+         * Route updates are now handled by NM via the Wifi_Route_Config table.
+         */
+        return ltem_ovsdb_update_wifi_route_config_metric(mgr, route->lte_if_name, route->lte_metric);
     }
-    return res;
+    else
+    {
+        LOGI("%s: lte_gw[%s] not set", __func__, route->lte_gw);
+    }
+
+    return 0;
 }
 
 int
 ltem_force_lte_route(ltem_mgr_t *mgr)
 {
-    int res = 0;
-    char cmd[1024];
     lte_route_info_t *route;
 
     route = mgr->lte_route;
     if (!route) return -1;
 
-    /*
-     * Just changing the metric on a route is not supported.
-     * So, we have to delete the route and then add it back with
-     * the new metric.
-     */
     if (route->wan_gw[0])
     {
-        /* ip route delete default dev [eth0/eth1] */
-        snprintf(cmd, sizeof(cmd), "ip route delete default dev %s", route->wan_if_name);
-        res = ltem_route_exec_cmd(cmd);
-        if (res)
-        {
-            LOGI("%s: cmd failed: %s, res=%d, errno: %s", __func__, cmd, res, strerror(errno));
-            return res;
-        }
+        LOGI("%s: if_name[%s]", __func__, route->wan_if_name);
         route->wan_metric = WAN_L3_FAIL_METRIC;
-        /* ip route add default via n.n.n.n metric 110 dev eth0/eth1 */
-        snprintf(cmd, sizeof(cmd), "ip route add default via %s metric %d dev %s",
-                 route->wan_gw, route->wan_metric, route->wan_if_name);
-        LOGI("%s: cmd[%s]", __func__, cmd);
-        res = ltem_route_exec_cmd(cmd);
-        if (res)
-        {
-            LOGI("%s: cmd failed: %s, res=%d, errno: %s", __func__, cmd, res, strerror(errno));
-            return res;
-        }
-    }
-    if (route->lte_gw[0])
-    {
         /*
-         * For some reason, when we switch to LTE, udhcp runs again and
-         * adds a new default route that points at the LTE interface. 
-         * Start over by deleting it and restoring the LTE route with 
-         * the correct metric.
+         * Route updates are now handled by NM via the Wifi_Route_Config table.
          */
-        res = ltem_set_lte_route_metric(mgr);
+        return ltem_ovsdb_update_wifi_route_config_metric(mgr, route->wan_if_name, route->wan_metric);
     }
-    return res;
+
+    return 0;
 }
 
 int
 ltem_restore_default_wan_route(ltem_mgr_t *mgr)
 {
-    int res = 0;
-    char cmd[1024];
     lte_route_info_t *route;
 
     route = mgr->lte_route;
     if (!route) return -1;
-    LOGI("%s: failover:%d", __func__, mgr->lte_state_info->lte_failover_active);
 
-    /*
-     * Delete the WAN route with the higher metric and restore the route with
-     * the default metric. We also have to delete the LTE route and re-add it.
-     */
     if (route->wan_gw[0])
     {
-        /* ip route delete default dev [eth0/eth1] */
-        snprintf(cmd, sizeof(cmd), "ip route delete default dev %s", route->wan_if_name);
-        res = ltem_route_exec_cmd(cmd);
-        if (res)
-        {
-            LOGI("%s: cmd failed: %s, res=%d, errno: %s", __func__, cmd, res, strerror(errno));
-            return res;
-        }
+        LOGI("%s: if_name[%s]", __func__, route->wan_if_name);
         route->wan_metric = WAN_DEFAULT_METRIC;
-        /* ip route add default via [gw] dev eth0/eth1 */
-        snprintf(cmd, sizeof(cmd), "ip route add default via %s metric %d dev %s",
-                 route->wan_gw, route->wan_metric, route->wan_if_name);
-        LOGI("%s: gw[%s], metric[%d], if_name[%s]", __func__, route->wan_gw, route->wan_metric, route->wan_if_name);
-        res = ltem_route_exec_cmd(cmd);
-        if (res)
-        {
-            LOGI("%s: cmd failed: %s, res=%d, errno: %s", __func__, cmd, res, strerror(errno));
-            return res;
-        }
+        /*
+         * Route updates are now handled by NM via the Wifi_Route_Config table.
+         */
+        return ltem_ovsdb_update_wifi_route_config_metric(mgr, route->wan_if_name, route->wan_metric);
     }
-    if (route->lte_gw[0])
-    {
-        res = ltem_set_lte_route_metric(mgr);
-    }
-    return res;
+
+    return 0;
 }

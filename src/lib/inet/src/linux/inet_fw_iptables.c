@@ -569,12 +569,12 @@ bool fw_rule_del_a(inet_fw_t *self, int type, char *argv[])
 }
 
 /* Compare two inet_portforward structures -- used for tree comparator */
-int fw_portforward_cmp(void *_a, void *_b)
+int fw_portforward_cmp(const void *_a, const void *_b)
 {
     int rc;
 
-    struct inet_portforward *a = _a;
-    struct inet_portforward *b = _b;
+    const struct inet_portforward *a = _a;
+    const struct inet_portforward *b = _b;
 
     rc = osn_ip_addr_cmp(&a->pf_dst_ipaddr, &b->pf_dst_ipaddr);
     if (rc != 0) return rc;

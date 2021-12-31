@@ -28,7 +28,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define CM2_H_INCLUDED
 
 #include "schema.h"
-#include "ds_list.h"
 #include "ev.h"
 #ifdef CONFIG_LIBEVX_USE_CARES
 #include "evx.h"
@@ -167,6 +166,15 @@ typedef enum {
     CM2_IPV6_DHCP,
 } cm2_ip_assign_scheme;
 
+typedef enum {
+    CM2_UPLINK_NONE = 0,
+    CM2_UPLINK_READY,
+    CM2_UPLINK_INACTIVE,
+    CM2_UPLINK_ACTIVE,
+    CM2_UPLINK_BLOCKED,
+    CM2_UPLINK_UNBLOCKING
+} cm2_uplink_state_t;
+
 typedef struct {
     cm2_ip_assign_scheme assign_scheme;
     bool                 is_ip;
@@ -198,6 +206,7 @@ typedef struct
     bool        is_bridge;
     char        bridge_name[C_IFNAME_LEN];
     bool        is_used;
+    bool        blocked;
     bool        restart_pending;
     int         priority;
     cm2_ip      ipv4;
@@ -223,12 +232,9 @@ typedef struct
     ev_timer          timer;
     ev_timer          wdt_timer;
     ev_timer          stability_timer;
+    ev_timer          uplinks_timer;
     bool              run_stability;
-    target_connectivity_check_option_t stability_opts_now;
-    target_connectivity_check_option_t stability_opts_next;
-    bool              stability_update_now;
-    bool              stability_update_next;
-    bool              stability_repeat;
+    int               stability_cnts;
     ev_child          stability_child;
     cm2_main_link_t   link;
     cm2_main_link_t   old_link;
@@ -269,6 +275,12 @@ typedef enum {
     CM2_PAR_FALSE
 } cm2_par_state_t;
 
+typedef enum {
+    CM2_CONNECTION_REQ_UNBLOCKING_IPV4,
+    CM2_CONNECTION_REQ_UNBLOCKING_IPV6,
+    CM2_CONNECTION_REQ_ALL_ACTIVE_UPLINKS,
+} cm2_connection_request;
+
 // misc
 bool cm2_is_extender(void);
 
@@ -282,6 +294,7 @@ void cm2_ble_onboarding_apply_config(void);
 char* cm2_dest_name(cm2_dest_e dest);
 char* cm2_curr_dest_name(void);
 bool cm2_enable_gw_offline(void);
+void cm2_trigger_restart_managers(void);
 
 // ovsdb
 int cm2_ovsdb_init(void);
@@ -291,6 +304,8 @@ void cm2_ovsdb_set_AWLAN_Node_boot_time(void);
 bool cm2_connection_get_used_link(struct schema_Connection_Manager_Uplink *con);
 bool cm2_ovsdb_connection_get_connection_by_ifname(const char *if_name,
                                                    struct schema_Connection_Manager_Uplink *con);
+int cm2_ovsdb_get_connection_uplinks(struct schema_Connection_Manager_Uplink **uplink_p,
+                                     cm2_connection_request req);
 void cm2_ovsdb_refresh_dhcp(char *if_name);
 bool cm2_ovsdb_set_Wifi_Inet_Config_network_state(bool state, char *ifname);
 bool cm2_ovsdb_connection_update_L3_state(const char *if_name, cm2_par_state_t state);
@@ -302,6 +317,7 @@ bool cm2_ovsdb_connection_update_unreachable_internet_counter(const char *if_nam
 int  cm2_ovsdb_ble_config_update(uint8_t ble_status);
 int  cm2_ovsdb_ble_set_connectable(bool state);
 bool cm2_ovsdb_is_port_name(char *port_name);
+bool cm2_ovsdb_recalc_links(void);
 void cm2_ovsdb_connection_update_ble_phy_link(void);
 bool cm2_ovsdb_update_Port_tag(const char *ifname, int tag, bool set);
 bool cm2_ovsdb_update_Port_trunks(const char *ifname, int *trunks, int num_trunks);
@@ -321,6 +337,9 @@ int  cm2_ovsdb_update_mac_reporting(char *ifname, bool state);
 void cm2_ovsdb_set_default_wan_bridge(char *if_name, char *if_type);
 bool cm2_ovsdb_set_Wifi_Inet_Config_interface_enabled(bool state, char *ifname);
 bool cm2_ovsdb_connection_update_bridge_state(char *if_name, const char *bridge);
+int cm2_ovsdb_CMU_set_ipv4(const char *if_name, cm2_uplink_state_t state);
+int cm2_ovsdb_CMU_set_ipv6(const char *if_name, cm2_uplink_state_t state);
+cm2_uplink_state_t cm2_get_uplink_state_from_str(const char *uplink_state);
 
 #ifdef CONFIG_CM2_USE_EXTRA_DEBUGS
 void cm2_ovsdb_dump_debug_data(void);
@@ -364,12 +383,24 @@ void cm2_free_addr_list(cm2_addr_t *addr);
 // stability and watchdog
 #ifdef CONFIG_CM2_USE_STABILITY_CHECK
 bool cm2_vtag_stability_check(void);
-target_connectivity_check_option_t cm2_util_add_ip_opts(target_connectivity_check_option_t opts);
-bool cm2_connection_req_stability_check(target_connectivity_check_option_t opts, bool db_update);
-void cm2_connection_req_stability_check_async(target_connectivity_check_option_t opts, bool db_update, bool repeat);
+bool cm2_connection_req_stability_check(const char *uname,
+                                        const char *utype,
+                                        const char *clink,
+                                        target_connectivity_check_option_t opts,
+                                        bool db_update);
+void cm2_connection_req_stability_check_async(const char *uname,
+                                              const char *utype,
+                                              const char *clink,
+                                              target_connectivity_check_option_t opts,
+                                              bool db_update,
+                                              bool repeat);
+void cm2_stability_init(struct ev_loop *loop);
 void cm2_stability_init(struct ev_loop *loop);
 void cm2_stability_update_interval(struct ev_loop *loop, bool short_int);
 void cm2_stability_close(struct ev_loop *loop);
+void cm2_update_uplinks_init(struct ev_loop *loop);
+void cm2_update_uplinks_set_interval(struct ev_loop *loop, int v);
+void cm2_update_uplinks_close(struct ev_loop *loop);
 #ifdef CONFIG_CM2_USE_TCPDUMP
 void cm2_tcpdump_start(char* ifname);
 void cm2_tcpdump_stop(char* ifname);
@@ -386,6 +417,19 @@ static inline bool cm2_vtag_stability_check(void)
 {
     return true;
 }
+bool cm2_connection_req_stability_check(const char *uname,
+                                        const char *utype,
+                                        const char *clink,
+                                        target_connectivity_check_option_t opts,
+                                        bool db_update);
+void cm2_connection_req_stability_check_async(const char *uname,
+                                              const char *utype,
+                                              const char *clink,
+                                              target_connectivity_check_option_t opts,
+                                              bool db_update,
+                                              bool repeat)
+{
+}
 static inline void cm2_stability_init(struct ev_loop *loop)
 {
 }
@@ -395,7 +439,13 @@ static void cm2_stability_update_interval(struct ev_loop *loop, bool short_int)
 static inline void cm2_stability_close(struct ev_loop *loop)
 {
 }
-static inline void cm2_connection_req_stability_check(target_connectivity_check_option_t opts, bool db_update)
+static inline void cm2_update_uplinks_init(struct ev_loop *loop)
+{
+}
+static inline void cm2_update_uplinks_set_interval(struct ev_loop *loop, int v)
+{
+}
+static inline void cm2_update_uplinks_close(struct ev_loop *loop)
 {
 }
 #endif /* CONFIG_CM2_USE_STABILITY_CHECK */
@@ -447,6 +497,7 @@ void cm2_dhcpc_start_dryrun(char* ifname, char *iftype, int cnt);
 void cm2_dhcpc_stop_dryrun(char* ifname);
 bool cm2_is_eth_type(const char *if_type);
 bool cm2_is_wifi_type(const char *if_type);
+bool cm2_is_lte_type(const char *if_type);
 void cm2_delayed_eth_update(char *if_name, int timeout);
 bool cm2_is_iface_in_bridge(const char *bridge, const char *port);
 char* cm2_get_uplink_name(void);

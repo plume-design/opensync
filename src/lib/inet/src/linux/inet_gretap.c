@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "util.h"
 #include "memutil.h"
+#include "kconfig.h"
 
 #include "inet_unit.h"
 
@@ -60,7 +61,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 static char gre_create_gretap[] =
 _S(
+#if defined(CONFIG_INET_GRE_DF_ENABLE)
+    ip $5 link add "$1" type $6 local "$3" remote "$4" dev "$2" tos 1 $7 $8;
+#else
     ip $5 link add "$1" type $6 local "$3" remote "$4" dev "$2" tos 1;
+#endif
 #ifdef WAR_GRE_MAC
     /* Set the same MAC address for GRE as WiFI STA and enable locally administered bit */
     [ -z "$(echo $1 | grep g-)" ] || ( addr="$(cat /sys/class/net/$2/address)" && a="$(echo $addr | cut -d : -f1)" && b="$(echo $addr | cut -d : -f2-)" && c=$(( 0x$a & 2 )) && [ $c -eq 0 ] && c=$(( 0x$a | 2 )) && d=$(printf "%x" $c) && ifconfig "$1" hw ether "$d:$b";)
@@ -303,13 +308,26 @@ bool inet_gretap_interface_start(inet_gretap_t *self, bool enable)
                 return false;
                 break;
         }
-        status = execsh_log(LOG_SEVERITY_INFO, gre_create_gretap,
-                self->inet.in_ifname,
-                self->in_ifparent,
-                slocal_addr,
-                sremote_addr,
-                family,
-                type);
+
+        if (kconfig_enabled(CONFIG_INET_GRE_DF_ENABLE)) {
+            status = execsh_log(LOG_SEVERITY_INFO, gre_create_gretap,
+                    self->inet.in_ifname,
+                    self->in_ifparent,
+                    slocal_addr,
+                    sremote_addr,
+                    family,
+                    type,
+                    self->family == AF_INET ? "nopmtudisc" : "",
+                    self->family == AF_INET ? "ignore-df" : "");
+        } else {
+            status = execsh_log(LOG_SEVERITY_INFO, gre_create_gretap,
+                    self->inet.in_ifname,
+                    self->in_ifparent,
+                    slocal_addr,
+                    sremote_addr,
+                    family,
+                    type);
+        }
 
         if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
         {

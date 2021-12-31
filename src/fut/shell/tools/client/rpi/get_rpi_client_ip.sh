@@ -34,17 +34,16 @@ source "${fut_topdir}"/config/default_shell.sh &> /dev/null
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh &> /dev/null
 source "$fut_topdir/lib/rpi_lib.sh" &> /dev/null
 
-tc_name="tools/device/$(basename "$0")"
 usage() {
     cat << usage_string
-${tc_name} [-h] arguments
+tools/device/get_rpi_client_ip.sh [-h] arguments
 Description:
     - Get RPI client IP
 Arguments:
     -h  show this help message
     \$1 (wlan_namespace)      : Interface namespace name  : (string)(required)
 Script usage example:
-   ./${tc_name} nswifi1
+   ./tools/device/get_rpi_client_ip.sh nswifi1
 usage_string
 }
 
@@ -61,13 +60,13 @@ if [ -n "${1}" ]; then
 fi
 
 NARGS=1
-[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "tools/device/get_rpi_client_ip.sh" -arg
 
 wlan_namespace=${1}
 wlan_namespace_cmd="ip netns exec ${wlan_namespace} bash"
 
 if [[ "$EUID" -ne 0 ]]; then
-    raise "FAIL: Please run this function as root - sudo" -l "${tc_name}"
+    raise "FAIL: Please run this function as root - sudo" -l "tools/device/get_rpi_client_ip.sh"
 fi
 
 # with input parameter

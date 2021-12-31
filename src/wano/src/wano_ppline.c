@@ -53,7 +53,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "wano.h"
 #include "wano_internal.h"
-#include "wano_wan_config.h"
+#include "wano_wan.h"
 
 #define WANO_PPLINE_RETRY_TIME      3       /* Retry time increment in seconds */
 #define WANO_PPLINE_RETRY_MAX       5       /* Maximum values of retries (for calculations) */
@@ -175,8 +175,6 @@ void wano_ppline_fini(wano_ppline_t *self)
 
     wano_ppline_stop_queues(self);
 
-    wano_wan_config_status_del(self->wpl_ifname);
-
     /*
      * Remove any entries that this interface might have in the
      * Connection_Manager_Uplink table
@@ -222,7 +220,17 @@ void wano_ppline_restart_all(void)
     ev_debounce_start(EV_DEFAULT, &restart_debounce);
 }
 
-wano_ppline_t *wano_ppline_from_plugin_handle(wano_plugin_handle_t *plugin)
+void wano_ppline_wan_set(wano_ppline_t *wpl, wano_wan_t *wan)
+{
+    wpl->wpl_wan = wan;
+}
+
+wano_wan_t *wano_ppline_wan_get(wano_ppline_t *wpl)
+{
+    return wpl->wpl_wan;
+}
+
+wano_ppline_t *wano_ppline_from_plugin_handle(const wano_plugin_handle_t *plugin)
 {
     struct wano_ppline_plugin *wpl = plugin->wh_data;
 
@@ -230,6 +238,14 @@ wano_ppline_t *wano_ppline_from_plugin_handle(wano_plugin_handle_t *plugin)
 
     return wpl->wpp_ppline;
 }
+
+wano_wan_t *wano_wan_from_plugin_handle(wano_plugin_handle_t *plugin)
+{
+    wano_ppline_t *wpl = wano_ppline_from_plugin_handle(plugin);
+    if (wpl == NULL) return NULL;
+    return wano_ppline_wan_get(wpl);
+}
+
 
 /*
  * Initialize a plug-in pipeline event object
@@ -424,7 +440,7 @@ bool wano_ppline_runq_start(wano_ppline_t *self)
             continue;
         }
 
-        LOG(INFO, "wano: %s: Starting plug-in %s",
+        LOG(NOTICE, "wano: %s: Starting plug-in %s",
                     self->wpl_ifname,
                     wpp->wpp_plugin->wanp_name);
 
@@ -560,38 +576,49 @@ void wano_ppline_status_async_fn(struct ev_loop *loop, ev_async *ev, int revent)
 
     struct wano_ppline_plugin *wpp = CONTAINER_OF(ev, struct wano_ppline_plugin, wpp_status_async);
     wano_ppline_t *self = wpp->wpp_ppline;
-    char *ifname = self->wpl_ifname;
-    char *iftype = self->wpl_iftype;
 
     switch (wpp->wpp_status.ws_type)
     {
         case WANP_OK:
-            LOG(INFO, "wano: %s: WAN Plug-in success: %s",
+            LOG(NOTICE, "wano: %s: WAN Plug-in success: %s",
                     self->wpl_ifname, wano_plugin_name(wpp->wpp_handle));
 
             /* Stop the timeout timer */
             ev_timer_stop(EV_DEFAULT, &wpp->wpp_timeout);
 
-            /* Use the interface name and type reported in the plug-in status */
+            /* Update the connection manager table */
             if (wpp->wpp_status.ws_ifname[0] != '\0')
             {
-                ifname = wpp->wpp_status.ws_ifname;
-            }
+                /* Use the interface name and type reported in the plug-in status */
+                if (!WANO_CONNMGR_UPLINK_UPDATE(
+                            wpp->wpp_status.ws_ifname,
+                            .if_type = (wpp->wpp_status.ws_iftype[0] == '\0') ?
+                                    self->wpl_iftype : wpp->wpp_status.ws_iftype,
+                            .has_L2 = WANO_TRI_TRUE,
+                            .has_L3 = WANO_TRI_TRUE))
+                {
+                    LOG(WARN, "wano: %s: Error updating Connection_Manager_Uplink (plugin interface) table (has_L3 = true).",
+                            self->wpl_ifname);
+                }
 
-            if (wpp->wpp_status.ws_iftype[0] != '\0')
-            {
-                iftype = wpp->wpp_status.ws_iftype;
+                /* Reset the .has_L3 field from the parent interface */
+                if (!WANO_CONNMGR_UPLINK_DELETE_COLUMN(self->wpl_ifname, .has_L3 = WANO_TRI_TRUE))
+                {
+                    LOG(WARN, "wano: %s: Error deleting .has_L3 from Connection_Manager_Uplink).",
+                            self->wpl_ifname);
+                }
             }
-
-            /* Update the connection manager table */
-            if (!WANO_CONNMGR_UPLINK_UPDATE(
-                        ifname,
-                        .if_type = iftype,
-                        .has_L2 = WANO_TRI_TRUE,
-                        .has_L3 = WANO_TRI_TRUE))
+            else
             {
-                LOG(WARN, "wano: %s: Error updating Connection_Manager_Uplink table (has_L3 = true).",
-                        self->wpl_ifname);
+                if (!WANO_CONNMGR_UPLINK_UPDATE(
+                            self->wpl_ifname,
+                            .if_type = self->wpl_iftype,
+                            .has_L2 = WANO_TRI_TRUE,
+                            .has_L3 = WANO_TRI_TRUE))
+                {
+                    LOG(WARN, "wano: %s: Error updating Connection_Manager_Uplink table (has_L3 = true).",
+                            self->wpl_ifname);
+                }
             }
 
             self->wpl_has_l3 = true;
@@ -611,8 +638,13 @@ void wano_ppline_status_async_fn(struct ev_loop *loop, ev_async *ev, int revent)
             break;
 
         case WANP_BUSY:
-            LOG(INFO, "wano: %s: Plug-in %s is busy, stopping timeout timer.", self->wpl_ifname, wano_plugin_name(wpp->wpp_handle));
-
+            LOG(INFO, "wano: %s: Plug-in %s is busy, stopping timeout timer and resetting has_L3.", self->wpl_ifname, wano_plugin_name(wpp->wpp_handle));
+            /* Reset the .has_L3 field from the parent interface */
+            if (!WANO_CONNMGR_UPLINK_DELETE_COLUMN(self->wpl_ifname, .has_L3 = WANO_TRI_TRUE))
+            {
+                LOG(WARN, "wano: %s: Error deleting .has_L3 from Connection_Manager_Uplink -- WANP_BUSY).",
+                        self->wpl_ifname);
+            }
             /* Stop the timeout timer */
             ev_timer_stop(EV_DEFAULT, &wpp->wpp_timeout);
             break;
@@ -769,6 +801,11 @@ enum wano_ppline_state wano_ppline_state_INIT(
 
     wano_ppline_t *self = CONTAINER_OF(state, wano_ppline_t, wpl_state);
 
+    wano_ppline_event_dispatch(self, WANO_PPLINE_RESTART);
+
+    /* Destroy current plug-ins if they are left over from a restart */
+    wano_ppline_stop_queues(self);
+
     /* Remove any entries in the Connection_Manager_Uplink table */
     if (wano_connmgr_uplink_delete(self->wpl_ifname))
     {
@@ -784,6 +821,11 @@ enum wano_ppline_state wano_ppline_state_INIT(
     {
         LOG(WARN, "wano: %s: Error updating Connection_Manager_Uplink (iftype = %s, has_L2 = false)",
                 self->wpl_ifname, self->wpl_iftype);
+    }
+
+    if (self->wpl_wan != NULL)
+    {
+        wano_wan_pause(self->wpl_wan, true);
     }
 
     self->wpl_has_l3 = false;
@@ -830,7 +872,6 @@ enum wano_ppline_state wano_ppline_state_IF_ENABLE(
                 LOG(WARN, "wano: %s: Error writing Wifi_Inet_Config in IF_ENABLE.", self->wpl_ifname);
             }
             wano_inet_state_event_refresh(&self->wpl_inet_state_event);
-            wano_wan_config_status_del(self->wpl_ifname);
             return 0;
 
         case wano_ppline_do_INET_STATE_UPDATE:
@@ -875,6 +916,11 @@ enum wano_ppline_state wano_ppline_state_IF_CARRIER(
                 break;
             }
 
+            if (self->wpl_wan != NULL)
+            {
+                wano_wan_pause(self->wpl_wan, false);
+            }
+
             self->wpl_carrier_exception = true;
 
             if (!WANO_CONNMGR_UPLINK_UPDATE(self->wpl_ifname, .has_L2 = WANO_TRI_TRUE))
@@ -884,9 +930,6 @@ enum wano_ppline_state wano_ppline_state_IF_CARRIER(
             }
 
             LOG(INFO, "wano: %s: Carrier detected.", self->wpl_ifname);
-
-            wano_wan_config_status_add(self->wpl_ifname);
-
             return wano_ppline_PLUGIN_SCHED;
 
         default:
@@ -1050,6 +1093,8 @@ enum wano_ppline_state wano_ppline_state_IDLE(
             /* Stop active plug-ins */
             wano_ppline_runq_flush(self, false);
 
+            wano_ppline_event_dispatch(self, WANO_PPLINE_IDLE);
+
             /*
              * Update connection manager table, has_L3 must be false and loop
              * must be true. This is required by the Cloud/CM state machines.
@@ -1058,12 +1103,20 @@ enum wano_ppline_state wano_ppline_state_IDLE(
              * wait until a WAN rollover occurs before we flag the interface
              * as "exhasuted" (has_L3 = false).
              */
-            if (!WANO_CONNMGR_UPLINK_UPDATE(
-                    self->wpl_ifname,
-                    .has_L3 = WANO_TRI_FALSE,
-                    .loop = WANO_TRI_TRUE))
+            if (self->wpl_wan == NULL || wano_wan_rollover_get(self->wpl_wan) > 0)
             {
-                LOG(WARN, "wano: %s: Error updating the Connection_Manager_Uplink table (has_L3 = false)",
+                if (!WANO_CONNMGR_UPLINK_UPDATE(
+                        self->wpl_ifname,
+                        .has_L3 = WANO_TRI_FALSE,
+                        .loop = WANO_TRI_TRUE))
+                {
+                    LOG(WARN, "wano: %s: Error updating the Connection_Manager_Uplink table (has_L3 = false)",
+                            self->wpl_ifname);
+                }
+            }
+            else
+            {
+                LOG(INFO, "wano: %s: Not updating .has_L3 as WAN configuration not exhausted yet.",
                         self->wpl_ifname);
             }
 
@@ -1079,8 +1132,6 @@ enum wano_ppline_state wano_ppline_state_IDLE(
                  */
                 return wano_ppline_START;
             }
-
-            wano_ppline_event_dispatch(self, WANO_PPLINE_IDLE);
 
             /*
              * Disable NAT
@@ -1222,10 +1273,22 @@ enum wano_ppline_state wano_ppline_state_FREEZE(
             {
                 LOG(WARN, "wano: %s: Error writing Wifi_Inet_Config in FREEZE.", self->wpl_ifname);
             }
+
+            /* Pause WAN processing */
+            if (self->wpl_wan != NULL)
+            {
+                wano_wan_pause(self->wpl_wan, true);
+            }
             break;
 
         case wano_ppline_do_PPLINE_UNFREEZE:
             LOG(NOTICE, "wano: %s: Unfreezing pipeline.", self->wpl_ifname);
+
+            /* Resume WAN processing */
+            if (self->wpl_wan != NULL)
+            {
+                wano_wan_pause(self->wpl_wan, false);
+            }
             return wano_ppline_INIT;
 
         default:
@@ -1253,8 +1316,6 @@ enum wano_ppline_state wano_ppline_state_EXCEPTION(
     switch (action)
     {
         case wano_ppline_exception_PPLINE_RESTART:
-            /* Return to the init state */
-            wano_ppline_event_dispatch(self, WANO_PPLINE_RESTART);
             return wano_ppline_INIT;
 
         case wano_ppline_exception_PPLINE_ABORT:

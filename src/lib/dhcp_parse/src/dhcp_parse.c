@@ -62,7 +62,7 @@ struct dhcp_parse_mgr *dhcp_get_mgr(void)
  * @param b session pointer
  * @return 0 if sessions matches
  */
-static int dhcp_session_cmp(void *a, void *b)
+static int dhcp_session_cmp(const void *a, const void *b)
 {
     uintptr_t p_a = (uintptr_t)a;
     uintptr_t p_b = (uintptr_t)b;
@@ -144,7 +144,7 @@ static int dhcp_local_domain_option_processing(struct dhcp_session *d_session,
   return true;
 }
 
-int dhcp_lease_cmp(void *a, void *b)
+int dhcp_lease_cmp(const void *a, const void *b)
 {
     return memcmp(a, b, sizeof(os_macaddr_t));
 }
@@ -156,7 +156,7 @@ int dhcp_lease_cmp(void *a, void *b)
  * @param b domain name pointer
  * @return 0 if domain names match.
  */
-int dhcp_local_domain_cmp(void *a, void *b)
+int dhcp_local_domain_cmp(const void *a, const void *b)
 {
     return memcmp(a, b, MAX_DN_LEN);
 }

@@ -254,7 +254,7 @@ gk_find_curl_data(ds_tree_t *tree, int req_type, int req_id)
 }
 
 /**
- * @brief returns the stores request for the received reply message
+ * @brief returns the stored request for the received reply message
  * @param gk_session - pointer gatekeeper session
  * @param response - unpacked response received from gatekeeper
  * Returns the request data if found else returns NULL
@@ -297,6 +297,7 @@ void
 gk_process_fail_response(struct gk_conn_info *conn)
 {
     struct fsm_policy_reply *policy_reply;
+    struct gatekeeper_offline *offline;
     struct fsm_gk_session *gk_session;
     struct gk_mcurl_data *mcurl_data;
     int type;
@@ -319,6 +320,10 @@ gk_process_fail_response(struct gk_conn_info *conn)
         LOGD("%s(): curl data lookup failed", __func__);
         return;
     }
+
+    /* connection_failures */
+    offline = &gk_session->gk_offline;
+    offline->connection_failures++;
 
     if (mcurl_data->gk_verdict->policy_reply == NULL)
     {
@@ -348,9 +353,11 @@ gk_process_response(struct gk_conn_info *conn)
     Gatekeeper__Southbound__V1__GatekeeperReply *unpacked_data;
     struct fsm_policy_reply *policy_reply;
     struct fsm_policy_req *policy_request;
-    struct fsm_gk_session *gk_session;
     struct gk_mcurl_buffer *data = NULL;
+    struct fsm_gk_session *gk_session;
     struct gk_mcurl_data *mcurl_data;
+    struct timespec response_time;
+    long lookup_latency;
     bool ret = true;
 
     if (conn == NULL)
@@ -394,6 +401,13 @@ gk_process_response(struct gk_conn_info *conn)
         goto error;
     }
 
+    memset(&response_time, 0, sizeof(response_time));
+    clock_gettime(CLOCK_REALTIME, &response_time);
+    lookup_latency = fsm_gk_update_latencies(gk_session, &mcurl_data->req_time,
+                                             &response_time);
+    LOGT("%s(): cloud lookup latency for '%s' is %ld ms", __func__,
+         mcurl_data->gk_verdict->policy_req->url, lookup_latency);
+
     LOGT("%s(): setting policy for request == %p", __func__, policy_request);
     ret = gk_set_policy(unpacked_data, mcurl_data->gk_verdict);
     if (ret == false)
@@ -409,6 +423,9 @@ gk_process_response(struct gk_conn_info *conn)
         ret = false;
         goto error;
     }
+
+    /* update uncategorized counter (reply with category-id 15) */
+    gk_update_uncategorized_count(gk_session, mcurl_data->gk_verdict);
 
     LOGT("%s(): adding result to gatekeeper cache", __func__);
     gk_add_policy_to_cache(mcurl_data->gk_verdict->policy_req, policy_reply);
@@ -435,6 +452,7 @@ check_multi_info(struct gk_curl_multi_info *mcurl_info)
     CURLMsg *msg;
     CURLcode res;
     CURL *easy;
+    bool ret;
 
     while ((msg = curl_multi_info_read(mcurl_info->mcurl_handle, &msgs_left)))
     {
@@ -453,10 +471,15 @@ check_multi_info(struct gk_curl_multi_info *mcurl_info)
         if (res == CURLE_OK)
         {
             /* process response received from gatekeeper service */
-            gk_process_response(conn);
+            ret = gk_process_response(conn);
+            /* if the curl reponse was successful and reply processing failed
+             * treate it as service failures.
+             */
+            if (!ret) gk_update_categorization_count(conn->context);
         }
         else
         {
+            LOGT("%s(): curl request failed!! error code=%d", __func__, res);
             gk_process_fail_response(conn);
         }
         gk_free_conn(conn, mcurl_info);
@@ -689,9 +712,10 @@ gk_send_mcurl_request(struct fsm_gk_session *fsm_gk_session,
     struct gk_curl_multi_info *mcurl_info;
     struct gk_server_info *server_info;
     struct fsm_gk_verdict *gk_verdict;
-    struct fsm_session *session;
-    struct gk_conn_info *conn;
     char errbuf[CURL_ERROR_SIZE];
+    struct fsm_session *session;
+    struct fsm_url_stats *stats;
+    struct gk_conn_info *conn;
     CURLMcode rc;
 
     session = fsm_gk_session->session;
@@ -766,6 +790,10 @@ gk_send_mcurl_request(struct fsm_gk_session *fsm_gk_session,
              errbuf);
         return false;
     }
+
+    stats = &fsm_gk_session->health_stats;
+    stats->cloud_lookups++;
+
     return true;
 
 err_free_conn:
@@ -785,8 +813,8 @@ bool
 gk_multi_curl_init(struct fsm_gk_session *fsm_gk_session, struct ev_loop *loop)
 {
     struct gk_curl_multi_info *mcurl_info;
-    CURLcode  rc;
     CURLMcode cmret;
+    CURLcode  rc;
 
     mcurl_info = &fsm_gk_session->mcurl;
 

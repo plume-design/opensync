@@ -508,6 +508,10 @@ bool cm2_is_wifi_type(const char *if_type) {
            !strcmp(if_type, GRE_TYPE_NAME);
 }
 
+bool cm2_is_lte_type(const char *if_type) {
+    return !strcmp(if_type, LTE_TYPE_NAME);
+}
+
 char* cm2_get_uplink_name(void)
 {
     if (g_state.link.is_bridge)

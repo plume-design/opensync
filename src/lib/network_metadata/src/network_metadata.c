@@ -965,6 +965,7 @@ static Traffic__FlowKey *set_flow_key(struct flow_key *key)
         LOGD("%s: preparing report for acc", __func__);
         net_md_log_acc(key->acc, __func__);
     }
+
     /* Allocate the protobuf structure */
     pb = CALLOC(1, sizeof(*pb));
     if (pb == NULL) return NULL;
@@ -1265,6 +1266,111 @@ err_free_serialized:
     return NULL;
 }
 
+/**
+ * @brief Allocates and sets a flow uplink protobuf.
+ *
+ * @param uplink info used to fill up the protobuf
+ * @return a pointer to a flow uplink protobuf structure
+ */
+static Traffic__FlowUplink *set_flow_uplink(struct flow_uplink *uplink)
+{
+    Traffic__FlowUplink *pb;
+    bool ret;
+
+    /* Allocate the protobuf structure */
+    pb = CALLOC(1, sizeof(*pb));
+    if (pb == NULL) return NULL;
+
+    /* Initialize the protobuf structure */
+    traffic__flow_uplink__init(pb);
+
+    if (uplink->uplink_if_type == NULL) goto err_free_uplinkiftype;
+
+    ret = str_duplicate(uplink->uplink_if_type, &pb->uplinkiftype);
+    if (!ret) goto err_free_uplinkiftype;
+
+    pb->has_uplinkchanged = true;
+    pb->uplinkchanged = uplink->uplink_changed;
+
+    return pb;
+
+err_free_uplinkiftype:
+    FREE(pb);
+
+    return NULL;
+}
+
+/**
+ * @brief Free a flow uplink protobuf structure.
+ *
+ * Free dynamically allocated fields.
+ *
+ * @param pb flow uplink structure to free
+ * @return none
+ */
+static void free_pb_flowuplink(Traffic__FlowUplink *pb)
+{
+    if (pb == NULL) return;
+    CHECK_DOUBLE_FREE(pb);
+
+    FREE(pb->uplinkiftype);
+    pb->uplinkchanged = 0;
+}
+
+
+/**
+ * @brief Generates a flow_uplink serialized protobuf.
+ *
+ * Uses the information pointed by the uplink parameter to generate
+ * a serialized flow uplink buffer.
+ *
+ * @param uplink info used to fill up the protobuf
+ * @return a pointer to the serialized data.
+ */
+struct packed_buffer * serialize_flow_uplink(struct flow_uplink *uplink)
+{
+    struct packed_buffer *serialized;
+    Traffic__FlowUplink *pb;
+    size_t len;
+    void *buf;
+
+    if (uplink == NULL) return NULL;
+
+    /* Allocate serialization output container */
+    serialized = CALLOC(1, sizeof(*serialized));
+    if (serialized == NULL) return NULL;
+
+    /* Allocate and set flow key protobuf */
+    pb = set_flow_uplink(uplink);
+    if (pb == NULL) goto err_free_serialized;
+
+    /* Get serialization length */
+    len = traffic__flow_uplink__get_packed_size(pb);
+    if (len == 0) goto err_free_pb;
+
+    /* Allocate space for the serialized buffer */
+    buf = MALLOC(len);
+    if (buf == NULL) goto err_free_pb;
+
+    serialized->len = traffic__flow_uplink__pack(pb, buf);
+    serialized->buf = buf;
+
+    /* Free the protobuf structure */
+    free_pb_flowuplink(pb);
+    FREE(pb);
+
+    /* Return serialized content */
+    return serialized;
+
+err_free_pb:
+    free_pb_flowuplink(pb);
+    FREE(pb);
+
+err_free_serialized:
+    FREE(serialized);
+
+    return NULL;
+}
 
 /**
  * @brief Allocates and sets a flow stats protobuf.
@@ -1296,6 +1402,9 @@ static Traffic__FlowStats *set_flow_stats(struct flow_stats *stats)
     if (pb == NULL) goto err_free_flow_key;
 
     return pb;
+
+err_free_flow_uplink:
+    FREE(pb->flowcount);
 
 err_free_flow_key:
     free_pb_flowkey(pb->flowkey);
@@ -1440,7 +1549,6 @@ err_free_pb_stats:
     return NULL;
 }
 
-
 /**
  * @brief Allocates and sets an observation window protobuf.
  *
@@ -1473,6 +1581,9 @@ static Traffic__ObservationWindow * set_pb_window(struct flow_window *window)
     pb->has_droppedflows = (window->dropped_stats != 0);
     pb->droppedflows = window->dropped_stats;
 
+    /* uplink info is optional */
+    pb->flowuplink = set_flow_uplink(window->uplink);
+
     /*
      * Accept windows with no stats, bail if stats are present and
      * the stats table setting failed.
@@ -1481,18 +1592,21 @@ static Traffic__ObservationWindow * set_pb_window(struct flow_window *window)
 
     /* Allocate flow_stats container */
     pb->flowstats = set_pb_flow_stats(window);
-    if (pb->flowstats == NULL) goto err_free_pb_window;
+    if (pb->flowstats == NULL) goto err_free_pb_uplink;
 
     pb->n_flowstats = window->num_stats;
 
     return pb;
+
+err_free_pb_uplink:
+    free_pb_flowuplink(pb->flowuplink);
+    FREE(pb->flowuplink);
 
 err_free_pb_window:
     FREE(pb);
 
     return NULL;
 }
-
 
 /**
  * @brief Free an observation window protobuf structure.
@@ -1514,6 +1628,8 @@ void free_pb_window(Traffic__ObservationWindow *pb)
         FREE(pb->flowstats[i]);
     }
     FREE(pb->flowstats);
+    free_pb_flowuplink(pb->flowuplink);
+    FREE(pb->flowuplink);
 }
 
 

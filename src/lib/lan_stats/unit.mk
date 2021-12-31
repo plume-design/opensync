@@ -46,14 +46,15 @@ else
 UNIT_SRC += src/lan_dpctl.c
 endif
 
+OVS_PACKAGE_VERNUM:=$(shell echo $(OVS_PACKAGE_VER) | (IFS=. read A B C; echo $$(($$A*10000+$$B*100+$$C))))
+
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -Isrc/fcm/inc
-UNIT_CFLAGS += -I3rdparty/plume/src/lib/fcm_filter/inc
-
-UNIT_CFLAGS += -I$(OVS_INTERNAL_PATH)/
-UNIT_CFLAGS += -I$(OVS_INTERNAL_PATH)/include
 
 UNIT_CFLAGS += --std=gnu99 -Wno-sign-compare
+ifneq ($(TARGET), native)
+    UNIT_CFLAGS += -DOVS_PACKAGE_VERNUM=$(OVS_PACKAGE_VERNUM)
+endif
 
 ifneq ($(CONFIG_FCM_OVS_CMD),y)
 UNIT_LDFLAGS += -lopenvswitch

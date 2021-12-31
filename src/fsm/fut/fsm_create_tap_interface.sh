@@ -33,11 +33,10 @@ source "${FUT_TOPDIR}/shell/lib/fsm_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="fsm/$(basename "$0")"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+fsm/fsm_create_tap_interface.sh [-h] arguments
 Description:
     - Script creates and configures tap interface as a part of fsm plugin configuration.
 
@@ -48,9 +47,9 @@ Arguments:
     \$3 (of_port)       : used as Openflow port                 : (int)(required)
 
 Script usage example:
-    ./${tc_name} br-home tdns 3001
-    ./${tc_name} br-home thttp 4001
-    ./${tc_name} br-home tupnp 5001
+    ./fsm/fsm_create_tap_interface.sh br-home tdns 3001
+    ./fsm/fsm_create_tap_interface.sh br-home thttp 4001
+    ./fsm/fsm_create_tap_interface.sh br-home tupnp 5001
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -82,35 +81,35 @@ of_port=${3}
 # Construct from input arguments
 tap_if="${lan_bridge_if}.${tap_name_postfix}"
 
-log_title "$tc_name: FSM test - Create tap interface"
+log_title "fsm/fsm_create_tap_interface.sh: FSM test - Create tap interface - $tap_if"
 
 # Generate tap interface
-log "$tc_name: Generate tap interface '$tap_if'"
+log "fsm/fsm_create_tap_interface.sh: Generate tap interface '$tap_if'"
 wait_for_function_response 0 "gen_tap_cmd $lan_bridge_if $tap_if $of_port" &&
-    log "$tc_name: gen_tap_cmd - interfce '$tap_if' created on '$lan_bridge_if'- Success" ||
-    raise "FAIL: gen_tap_cmd - interface '$tap_if' not created" -l "$tc_name" -tc
+    log "fsm/fsm_create_tap_interface.sh: gen_tap_cmd - interfce '$tap_if' created on '$lan_bridge_if'- Success" ||
+    raise "FAIL: gen_tap_cmd - interface '$tap_if' not created" -l "fsm/fsm_create_tap_interface.sh" -tc
 
 # Bring up tap interface DNS
 wait_for_function_response 0 "tap_up_cmd $tap_if" &&
-    log "$tc_name: tap_up_cmd - interface '$tap_if' brought up - Success" ||
-    raise "FAIL: tap_up_cmd - interface '$tap_if' not brought up" -l "$tc_name" -tc
+    log "fsm/fsm_create_tap_interface.sh: tap_up_cmd - interface '$tap_if' brought up - Success" ||
+    raise "FAIL: tap_up_cmd - interface '$tap_if' not brought up" -l "fsm/fsm_create_tap_interface.sh" -tc
 
 # Set no flood to interface DNS
 wait_for_function_response 0 "gen_no_flood_cmd $lan_bridge_if $tap_if" &&
-    log "$tc_name: gen_no_flood_cmd - set interface '$tap_if' to 'no flood' - Success" ||
-    raise "FAIL: gen_no_flood_cmd - interface '$tap_if' not set to 'no flood'" -l "$tc_name" -tc
+    log "fsm/fsm_create_tap_interface.sh: gen_no_flood_cmd - set interface '$tap_if' to 'no flood' - Success" ||
+    raise "FAIL: gen_no_flood_cmd - interface '$tap_if' not set to 'no flood'" -l "fsm/fsm_create_tap_interface.sh" -tc
 
 # Check if applied to system (LEVEL2)
 wait_for_function_response 0 "check_if_port_in_bridge $tap_if $lan_bridge_if" &&
-    log "$tc_name: check_if_port_in_bridge - LEVEL2 - port '$tap_if' added to '$lan_bridge_if' - Success" ||
-    raise "FAIL: check_if_port_in_bridge - LEVEL2 - port '$tap_if' not added to $lan_bridge_if" -l "$tc_name" -tc
+    log "fsm/fsm_create_tap_interface.sh: check_if_port_in_bridge - LEVEL2 - port '$tap_if' added to '$lan_bridge_if' - Success" ||
+    raise "FAIL: check_if_port_in_bridge - LEVEL2 - port '$tap_if' not added to $lan_bridge_if" -l "fsm/fsm_create_tap_interface.sh" -tc
 
 # Show ovs switch config
 ovs-vsctl show
 
 # Delete port from bridge
 wait_for_function_response 0 "remove_port_from_bridge $lan_bridge_if $tap_if" &&
-    log "$tc_name: remove_port_from_bridge - port '$tap_if' removed from '$lan_bridge_if' - Success" ||
-    raise "FAIL: remove_port_from_bridge - port '$tap_if' not removed from '$lan_bridge_if'" -l "$tc_name" -tc
+    log "fsm/fsm_create_tap_interface.sh: remove_port_from_bridge - port '$tap_if' removed from '$lan_bridge_if' - Success" ||
+    raise "FAIL: remove_port_from_bridge - port '$tap_if' not removed from '$lan_bridge_if'" -l "fsm/fsm_create_tap_interface.sh" -tc
 
 pass

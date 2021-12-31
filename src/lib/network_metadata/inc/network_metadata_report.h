@@ -178,7 +178,7 @@ struct net_md_aggregator
     bool (*report_filter)(struct net_md_stats_accumulator *);
     bool (*collect_filter)(struct net_md_aggregator *, struct net_md_flow_key *, char *);
     bool (*send_report)(struct net_md_aggregator *, char *);
-    bool (*neigh_lookup)(struct sockaddr_storage *, os_macaddr_t *);
+    bool (*neigh_lookup)(int, void *, os_macaddr_t *);
     bool (*process)(struct net_md_stats_accumulator *);
     void (*on_acc_create)(struct net_md_aggregator *, struct net_md_stats_accumulator *);
     void (*on_acc_destroy)(struct net_md_aggregator *, struct net_md_stats_accumulator *);
@@ -211,7 +211,7 @@ struct net_md_aggregator_set
     bool (*send_report)(struct net_md_aggregator *, char *);
 
     /* a report IP to mac mapping routine */
-    bool (*neigh_lookup)(struct sockaddr_storage *, os_macaddr_t *);
+    bool (*neigh_lookup)(int, void *, os_macaddr_t *);
 
     /* callback on accumulator creation */
     void (*on_acc_create)(struct net_md_aggregator *, struct net_md_stats_accumulator *);
@@ -249,6 +249,16 @@ void net_md_free_aggregator(struct net_md_aggregator *aggr);
  */
 bool net_md_activate_window(struct net_md_aggregator *aggr);
 
+
+/**
+ * @brief Add uplink stats to the accumulator
+ *
+ * @param aggr the aggregator
+ * @param uplink the flow uplink
+ * @return true if successful, false otherwise
+ */
+bool net_md_add_uplink(struct net_md_aggregator *aggr,
+                       struct flow_uplink *uplink);
 
 /**
  * @brief Add sampled stats to the aggregator

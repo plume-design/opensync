@@ -65,10 +65,10 @@ fsm_demo_get_mgr(void)
  * Compare device sessions based on their device IDs (MAC address)
  */
 static int
-fsm_demo_dev_id_cmp(void *a, void *b)
+fsm_demo_dev_id_cmp(const void *a, const void *b)
 {
-    os_macaddr_t *dev_id_a = a;
-    os_macaddr_t *dev_id_b = b;
+    const os_macaddr_t *dev_id_a = a;
+    const os_macaddr_t *dev_id_b = b;
 
     return memcmp(dev_id_a->addr,
                   dev_id_b->addr,
@@ -84,7 +84,7 @@ fsm_demo_dev_id_cmp(void *a, void *b)
  * @return 0 if sessions matches
  */
 static int
-fsm_demo_session_cmp(void *a, void *b)
+fsm_demo_session_cmp(const void *a, const void *b)
 {
     uintptr_t p_a = (uintptr_t)a;
     uintptr_t p_b = (uintptr_t)b;
@@ -360,8 +360,8 @@ err_free_key_tags:
 void
 fsm_demo_process_message(struct fsm_demo_session *f_session)
 {
-    struct net_md_stats_accumulator *acc;
     struct net_header_parser *net_parser;
+    struct net_md_stats_accumulator *acc;
     struct fsm_demo_parser *parser;
     struct flow_counters counters;
     struct fsm_session *session;

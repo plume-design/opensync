@@ -34,7 +34,6 @@ UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM),n,y)
 # Template type:
 UNIT_TYPE := LIB
 
-UNIT_SRC := src/ip_dns_telemetry.pb-c.c
 UNIT_SRC += src/wc_telemetry.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
@@ -44,4 +43,5 @@ UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
 UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 
 UNIT_DEPS := src/lib/log
+UNIT_DEPS += src/lib/protobuf
 UNIT_DEPS += src/qm/qm_conn

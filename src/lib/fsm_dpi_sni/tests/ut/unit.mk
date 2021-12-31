@@ -22,7 +22,7 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM),n,y)
+UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM), n, y)
 
 UNIT_NAME := test_fsm_dpi_sni
 
@@ -31,11 +31,13 @@ UNIT_TYPE := TEST_BIN
 UNIT_SRC := test_fsm_dpi_sni_main.c
 UNIT_SRC += test_fsm_dpi_sni_plugin.c
 UNIT_SRC += test_fsm_dpi_sni_functions.c
+UNIT_SRC += test_fsm_dpi_adt.c
+UNIT_SRC += test_fsm_dpi_dns.c
 
-UNIT_DEPS := src/lib/fsm_dpi_sni
+UNIT_DEPS := src/lib/common
+UNIT_DEPS += src/lib/dns_parse
+UNIT_DEPS += src/lib/fsm_dpi_sni
 UNIT_DEPS += src/lib/log
-UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/network_metadata
 UNIT_DEPS += src/lib/unity
 UNIT_DEPS += src/lib/target
-UNIT_DEPS += src/lib/dns_parse

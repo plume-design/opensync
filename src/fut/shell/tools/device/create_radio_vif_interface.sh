@@ -26,20 +26,19 @@
 
 
 # FUT environment loading
+# shellcheck disable=SC1091
 source /tmp/fut-base/shell/config/default_shell.sh
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
 source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" &> /dev/null
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" &> /dev/null
 
-trap 'run_setup_if_crashed wm || true' EXIT SIGINT SIGTERM
-tc_name="tools/device/$(basename "$0")"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+tools/device/create_radio_vif_interface.sh [-h] arguments
 Description:
-    - Create/updates Radio/VIF interface and validate it in State table
+    - Creates/updates Radio/VIF interface and validates it in State table
 Arguments:
     -h  show this help message
     -if_name          : Wifi_Radio_Config::if_name                 : (string)(optional)
@@ -73,12 +72,24 @@ Arguments:
     -radius_srv_addr  : Wifi_VIF_Config::radius_srv_addr           : (string)(optional)
     -radius_srv_secret: Wifi_VIF_Config::radius_srv_secret         : (string)(optional)
 Script usage example:
-   ./${tc_name} -if_name wifi0 -enabled false -network false
-   ./${tc_name} -if_name wifi0 -vif_if_name home-ap-24 -enabled true -network true -ht_mode HT40 -channel 6 -ssid test_ssid_name
+   ./tools/device/create_radio_vif_interface.sh -if_name wifi0 -enabled false -network false
+   ./tools/device/create_radio_vif_interface.sh -if_name wifi0 -vif_if_name home-ap-24 -enabled true -network true -ht_mode HT40 -channel 6 -ssid test_ssid_name
 usage_string
 }
+
+trap '
+fut_ec=$?
+fut_info_dump_line
+if [ $fut_ec -ne 0 ]; then 
+    print_tables Wifi_Radio_Config Wifi_Radio_State Wifi_VIF_Config Wifi_VIF_State
+fi
+fut_info_dump_line
+exit $fut_ec
+' EXIT SIGINT SIGTERM
+
+
 NARGS=1
-[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "tools/device/create_radio_vif_interface.sh" -arg
 
 log "tools/device/$(basename "$0"): create_radio_vif_interface - Bringing up interface"
 create_radio_vif_interface "$@" &&

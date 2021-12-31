@@ -629,7 +629,7 @@ test_jencode_upnp_report(void)
 json_t *
 json_dhcp_report(struct fsm_session *session, struct dhcp_report *to_report);
 
-int dhcp_local_domain_cmp(void *a, void *b)
+int dhcp_local_domain_cmp(const void *a, const void *b)
 {
     return memcmp(a, b, MAX_DN_LEN);
 }

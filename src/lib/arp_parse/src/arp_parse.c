@@ -49,6 +49,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "schema.h"
 #include "net_header_parse.h"
 #include "memutil.h"
+#include "sockaddr_storage.h"
 
 static struct arp_cache
 cache_mgr =
@@ -72,12 +73,12 @@ arp_get_mgr(void)
  * @return 0 if sessions matches
  */
 static int
-arp_session_cmp(void *a, void *b)
+arp_session_cmp(const void *a, const void *b)
 {
     uintptr_t p_a = (uintptr_t)a;
     uintptr_t p_b = (uintptr_t)b;
 
-    if (p_a ==  p_b) return 0;
+    if (p_a == p_b) return 0;
     if (p_a < p_b) return -1;
     return 1;
 }
@@ -241,7 +242,6 @@ arp_populate_neigh_entries(struct arp_session *a_session)
     struct fsm_session_conf *conf;
     struct sockaddr_storage *dst;
     struct arp_parser *parser;
-    struct sockaddr_in *in;
     struct eth_arp *arp;
 
     parser = &a_session->parser;
@@ -249,11 +249,7 @@ arp_populate_neigh_entries(struct arp_session *a_session)
     conf = a_session->session->conf;
 
     dst = parser->sender.ipaddr;
-    in = (struct sockaddr_in *)dst;
-
-    memset(in, 0, sizeof(struct sockaddr_in));
-    in->sin_family = AF_INET;
-    memcpy(&in->sin_addr, &arp->s_ip, sizeof(in->sin_addr));
+    sockaddr_storage_populate(AF_INET, &arp->s_ip, dst);
 
     parser->sender.mac = arp->s_eth;
     parser->sender.ifname = conf->if_name;
@@ -262,11 +258,7 @@ arp_populate_neigh_entries(struct arp_session *a_session)
     if (arp->t_eth == NULL) return true;
 
     dst = parser->target.ipaddr;
-    in = (struct sockaddr_in *)dst;
-
-    memset(in, 0, sizeof(struct sockaddr_in));
-    in->sin_family = AF_INET;
-    memcpy(&in->sin_addr, &arp->t_ip, sizeof(in->sin_addr));
+    sockaddr_storage_populate(AF_INET, &arp->t_ip, dst);
 
     parser->target.mac = arp->t_eth;
     parser->target.ifname = conf->if_name;
@@ -285,8 +277,8 @@ arp_populate_neigh_entries(struct arp_session *a_session)
 bool
 arp_parse_is_gratuitous(struct eth_arp *arp)
 {
-    os_macaddr_t fmac = { { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff } };
-    os_macaddr_t zmac = {{ 0 }};
+    os_macaddr_t fmac = {{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}};
+    os_macaddr_t zmac = {{0}};
     os_macaddr_t *t_eth;
     int cmp;
 
@@ -466,7 +458,7 @@ arp_delete_session(struct fsm_session *session)
 }
 
 
-#define FSM_ARP_CHECK_TTL (2*60)
+#define FSM_ARP_CHECK_TTL (2 * 60)
 /**
  * @brief periodic routine
  *
@@ -496,7 +488,7 @@ arp_plugin_periodic(struct fsm_session *session)
 }
 
 
-#define FSM_ARP_DEFAULT_TTL (36*60*60)
+#define FSM_ARP_DEFAULT_TTL (36 * 60 * 60)
 /**
  * @brief update routine
  *

@@ -33,12 +33,11 @@ source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="wm2/$(basename "$0")"
 manager_setup_file="wm2/wm2_setup.sh"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+wm2/wm2_create_wpa3_ap.sh [-h] arguments
 Description:
     - Script creates AP with WPA3-Personal (SAE) authentication on chosen radio interface.
       Then waits for AP to set up properly by checking Wifi_VIF_State
@@ -56,9 +55,9 @@ Arguments:
     \$10 (vif_if_name)   : Wifi_VIF_Config::if_name                   : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name} 2 wl1 fut-wpa3-ssid enabled '["map",[["key-0","fut-wpa3-psk"]]]' '["map",[["key-0","home--1"]]]' 1 HT20 11ax wl1.2
+                 Run: ./wm2/wm2_create_wpa3_ap.sh 2 wl1 fut-wpa3-ssid enabled '["map",[["key-0","fut-wpa3-psk"]]]' '["map",[["key-0","home--1"]]]' 1 HT20 11ax wl1.2
 Script usage example:
-   ./${tc_name} 2 wl1 fut-wpa3-ssid enabled '["map",[["key-0","fut-wpa3-psk"]]]' '["map",[["key-0","home--1"]]]' 1 HT20 11ax wl1.2
+   ./wm2/wm2_create_wpa3_ap.sh 2 wl1 fut-wpa3-ssid enabled '["map",[["key-0","fut-wpa3-psk"]]]' '["map",[["key-0","home--1"]]]' 1 HT20 11ax wl1.2
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -74,7 +73,7 @@ if [ -n "${1}" ]; then
 fi
 
 NARGS=10
-[ $# -ne ${NARGS} ] && usage && raise "Requires exactly '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -ne ${NARGS} ] && usage && raise "Requires exactly '${NARGS}' input argument(s)" -l "wm2/wm2_create_wpa3_ap.sh" -arg
 vif_radio_idx=${1}
 radio_if_name=${2}
 ssid=${3}
@@ -91,15 +90,14 @@ trap '
     print_tables Wifi_Radio_Config Wifi_Radio_State
     print_tables Wifi_VIF_Config Wifi_VIF_State
     fut_info_dump_line
-    run_setup_if_crashed wm || true
 ' EXIT SIGINT SIGTERM
 
-log_title "$tc_name: WM2 test - Testing WPA3 AP creation - interface $radio_if_name - channel $channel"
+log_title "wm2/wm2_create_wpa3_ap.sh: WM2 test - Testing WPA3 AP creation - interface $radio_if_name - channel $channel"
 
-log "$tc_name: Cleaning VIF_Config"
+log "wm2/wm2_create_wpa3_ap.sh: Cleaning VIF_Config"
 vif_clean
 
-log "$tc_name: Creating VIF interface"
+log "wm2/wm2_create_wpa3_ap.sh: Creating VIF interface"
 create_radio_vif_interface \
     -if_name "$radio_if_name" \
     -vif_if_name "$vif_if_name" \
@@ -116,7 +114,7 @@ create_radio_vif_interface \
     -enabled "true" \
     -ht_mode "$ht_mode" \
     -channel_mode "manual" &&
-        log "$tc_name: create_radio_vif_interface - Interface $radio_if_name created - Success" ||
-        raise "FAIL: create_radio_vif_interface - Interface $radio_if_name not created" -l "$tc_name" -tc
+        log "wm2/wm2_create_wpa3_ap.sh: create_radio_vif_interface - Interface $radio_if_name created - Success" ||
+        raise "FAIL: create_radio_vif_interface - Interface $radio_if_name not created" -l "wm2/wm2_create_wpa3_ap.sh" -tc
 
 pass

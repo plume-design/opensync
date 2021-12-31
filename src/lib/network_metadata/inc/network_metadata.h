@@ -89,6 +89,17 @@ struct flow_key
 };
 
 /**
+ * @brief container of information needed to set a flowuplink protobuf.
+ *
+ * Stashes information related to flow uplink state and type.
+ */
+struct flow_uplink
+{
+    char *uplink_if_type;   /*!< uplink type */
+    bool uplink_changed;    /*!< change status */
+};
+
+/**
  * @brief container of information needed to set a flowcounters protobuf.
  *
  * Stashes information related to a network flow activity.
@@ -128,6 +139,7 @@ struct flow_window
     size_t provisioned_stats;        /*!< # of provisioned flow stats containers */
     size_t dropped_stats;            /*!< # of dropped flow stats containers */
     struct flow_stats **flow_stats;  /*!< array of flow stats containers */
+    struct flow_uplink *uplink;      /*!< flow uplink */
 };
 
 /**
@@ -250,6 +262,7 @@ struct packed_buffer * serialize_node_info(struct node_info *info);
  */
 struct packed_buffer * serialize_flow_key(struct flow_key *key);
 
+struct packed_buffer * serialize_flow_uplink(struct flow_uplink *uplink);
 
 /**
  * @brief Generates a flow counters serialized protobuf

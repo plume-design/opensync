@@ -104,15 +104,15 @@ bool inet_routes_enable(inet_routes_t * self, bool enable);
 bool inet_routes_is_enabled(const inet_routes_t * self);
 
 /**
- * @brief This function reapplies already added route in the routing table.
- * This is needed if kernel automatically flushes the route and we need to
+ * @brief This function reapplies already added routes in the routing table.
+ * This is needed if kernel automatically flushes the routes and we need to
  * resynchronize routing table with inet_routes
  *
  * @param self ptr to inet routes object
- * @param route route to be reapplied
- * @return false when inet routes object is disabled or route doesn't exist
- * @return true when route reapplied
+ * @return false when inet routes object is disabled
+ * @return true when reapply request was accepted. Note that actual routing
+ * update may be asynchonous.
  */
-bool inet_routes_reapply(inet_routes_t *self, const osn_route4_t *route);
+bool inet_routes_reapply(inet_routes_t *self);
 
 #endif

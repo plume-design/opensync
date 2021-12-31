@@ -33,10 +33,9 @@ UNIT_DISABLE := $(if $(CONFIG_MANAGER_FSM),n,y)
 
 UNIT_TYPE := LIB
 
-UNIT_SRC := src/dpi_stats.pb-c.c
-UNIT_SRC += src/dpi_stats.c
+UNIT_SRC := src/dpi_stats.c
 
-UNIT_CFLAGS := -I$(UNIT_PATH)/inc
+UNIT_CFLAGS += -I$(UNIT_PATH)/inc
 UNIT_LDFLAGS := -lprotobuf-c
 
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
@@ -46,3 +45,4 @@ UNIT_DEPS := src/lib/const
 UNIT_DEPS += src/lib/log
 UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/osa
+UNIT_DEPS += src/lib/protobuf

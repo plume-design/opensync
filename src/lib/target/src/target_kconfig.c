@@ -149,17 +149,24 @@ bool target_log_pull_ext(
         const char *upload_token,
         const char *upload_method)
 {
-    char shell_cmd[1024];
+    char shell_cmd[1024+sizeof(((struct schema_AW_LM_Config *)0)->upload_location)];
+    int n;
 
-    snprintf(shell_cmd, sizeof(shell_cmd),
-        "sh %s/logpull/logpull.sh --remote"
-        " \"%s\""
-        " \"%s\""
-        " \"%s\"",
-        CONFIG_INSTALL_PREFIX"/scripts", // TODO change with target_scripts_dir
-        upload_location,
-        upload_token,
-        upload_method);
+    n = snprintf(shell_cmd, sizeof(shell_cmd),
+            "sh %s/logpull/logpull.sh --remote"
+            " \"%s\""
+            " \"%s\""
+            " \"%s\"",
+            CONFIG_INSTALL_PREFIX"/scripts", // TODO change with target_scripts_dir
+            upload_location,
+            upload_token,
+            upload_method);
+
+    if (n < 0 || (size_t)n >= sizeof(shell_cmd))
+    {
+        LOG(ERR, "Error preparing logpull script command");
+        return false;
+    }
 
     // On success we return true
     return !cmd_log(shell_cmd);
@@ -215,6 +222,7 @@ bool target_device_execute(const char *cmd)
 #define DEFAULT_BACKHAUL_PREFIX         "169.254."
 #define DEFAULT_TIMEOUT_ARG             5
 #define DEFAULT_INTERNET_CNT_CHECK      2
+#define DEFAULT_GRE_STA_PREFIX          "g-"
 
 /* Root Servers based on https://www.iana.org/domains/root/servers */
 static char *util_connectivity_check_inet_addrs[] = {
@@ -361,7 +369,7 @@ util_system_cmd(const char *cmd)
 }
 
 static bool
-util_ping_cmd(const char *ipstr, bool ipv6)
+util_ping_cmd(const char *ipstr, const char *ifname, bool ipv6)
 {
     char cmd[256];
     char *ipv6_s;
@@ -369,9 +377,9 @@ util_ping_cmd(const char *ipstr, bool ipv6)
 
     ipv6_s = ipv6 ? "-6" : "";
 
-    snprintf(cmd, sizeof(cmd), "ping %s %s -s %d -c %d -w %d >/dev/null 2>&1",
-             ipv6_s, ipstr, DEFAULT_PING_PACKET_SIZE, DEFAULT_PING_PACKET_CNT,
-             DEFAULT_PING_TIMEOUT);
+    snprintf(cmd, sizeof(cmd), "ping %s %s -I %s -s %d -c %d -w %d >/dev/null 2>&1",
+             ipv6_s, ipstr, ifname,
+             DEFAULT_PING_PACKET_SIZE, DEFAULT_PING_PACKET_CNT, DEFAULT_PING_TIMEOUT);
 
     rc = util_system_cmd(cmd);
     LOGD("Ping %s result %d (cmd=%s)", ipstr, rc, cmd);
@@ -403,7 +411,7 @@ util_arping_cmd(const char *ipstr)
 }
 
 static bool
-util_get_router_ipv4(struct in_addr *dest)
+util_get_router_ipv4(const char *ifname, struct in_addr *dest)
 {
     FILE *f1;
     char line[128];
@@ -426,6 +434,9 @@ util_get_router_ipv4(struct in_addr *dest)
                 // malformatted line
                 continue;
             }
+
+            if (strcmp(ifn, ifname) != 0)
+                continue;
 
             if (!strcmp(dst, "00000000") && !strcmp(msk, "00000000")) {
                 // Our default route
@@ -493,7 +504,8 @@ util_is_gretap_softwds_link(const char *ifname)
 {
     char path[256];
 
-    snprintf(path, sizeof(path), "/sys/class/net/g-%s/softwds/addr", ifname);
+    snprintf(path, sizeof(path), "/sys/class/net/%s%s/softwds/addr",
+             DEFAULT_GRE_STA_PREFIX, ifname);
     return (access(path, F_OK) == 0);
 }
 
@@ -510,8 +522,8 @@ util_get_link_ip(const char *ifname, struct in_addr *dest)
 
     if (util_is_gretap_softwds_link(ifname)) {
         snprintf(cmd, sizeof(cmd),
-                 "cat /sys/class/net/g-%s/softwds/ip4gre_remote_ip",
-                 ifname);
+                 "cat /sys/class/net/%s%s/softwds/ip4gre_remote_ip",
+                 DEFAULT_GRE_STA_PREFIX, ifname);
     } else {
         /* Given ifname==wl0 it is expected to match a line looking like so:
          *  gretap remote 169.254.3.129 local 169.254.3.247 dev wl0 ttl inherit tos inherit
@@ -554,23 +566,29 @@ error:
 }
 
 static bool
-util_connectivity_link_check(const char *ifname)
+util_connectivity_wifi_link_check(const char *gre_ifname)
 {
     struct in_addr link_ip;
-    int            iflen;
+    const char     *ifname;
+    size_t         iflen;
+    const size_t   gre_prefix_size = strlen(DEFAULT_GRE_STA_PREFIX);
 
-    if (!strstr(ifname, "g-"))
+    if (!gre_ifname) {
+        LOGW("GRE interface null pointer");
         return true;
-
-    iflen = strlen(ifname);
-    if (iflen - 2 <= 0) {
-        LOGW("Interface name corrupted [len = %d]", iflen);
-        return false;
     }
 
-    if (util_get_link_ip(ifname + 2, &link_ip))
+    iflen = strlen(gre_ifname);
+    if (iflen <= gre_prefix_size)
+        return true;
+
+    if (strncmp(gre_ifname, DEFAULT_GRE_STA_PREFIX, gre_prefix_size) != 0)
+        return true;
+
+    ifname = gre_ifname + gre_prefix_size;
+    if (util_get_link_ip(ifname, &link_ip))
     {
-        if (util_ping_cmd(inet_ntoa(link_ip), false) == false)
+        if (util_ping_cmd(inet_ntoa(link_ip), ifname, false) == false)
         {
             /* ARP traffic tends to be treated differently, i.e.
              * it lands on different TID in Wi-Fi driver.
@@ -625,17 +643,17 @@ done:
 
 
 static bool
-util_connectivity_router_ipv4_check(void)
+util_connectivity_router_ipv4_check(const char *ifname)
 {
     struct in_addr r_addr;
     bool           ret;
 
-    if (util_get_router_ipv4(&r_addr) == false) {
+    if (util_get_router_ipv4(ifname, &r_addr) == false) {
         /* If we don't have a router, that's considered a failure for IPv4 */
         return false;
     }
 
-    ret  = util_ping_cmd(inet_ntoa(r_addr), false);
+    ret  = util_ping_cmd(inet_ntoa(r_addr), ifname, false);
     if (!ret) {
         ret = util_arping_cmd(inet_ntoa(r_addr));
         LOGI("Router check: ping ipv4 failed, arping ret = %d", ret);
@@ -645,7 +663,7 @@ util_connectivity_router_ipv4_check(void)
 }
 
 static bool
-util_connectivity_router_ipv6_check(void)
+util_connectivity_router_ipv6_check(const char *ifname)
 {
     char r_6addr[128];
     bool ret;
@@ -654,11 +672,11 @@ util_connectivity_router_ipv6_check(void)
     if (!ret)
         return false;
 
-    return util_ping_cmd(r_6addr, true);
+    return util_ping_cmd(r_6addr, ifname, true);
 }
 
 static bool
-util_connectivity_internet_ipv4_check(void) {
+util_connectivity_internet_ipv4_check(const char *ifname) {
     bool  ret;
     int   cnt_addr;
     int   tries;
@@ -670,11 +688,11 @@ util_connectivity_internet_ipv4_check(void) {
 
     while (tries--) {
         r1 = os_random() % cnt_addr;
-        ret = util_ping_cmd(util_connectivity_check_inet_addrs[r1], false);
+        ret = util_ping_cmd(util_connectivity_check_inet_addrs[r1], ifname, false);
         if (!ret) {
             cnt_addr = util_connectivity_get_inet_addr_cnt(util_connectivity_check_inet_ipv4_addrs);
             r2 = os_random() % cnt_addr;
-            ret = util_ping_cmd(util_connectivity_check_inet_ipv4_addrs[r2], false);
+            ret = util_ping_cmd(util_connectivity_check_inet_ipv4_addrs[r2], ifname, false);
             if (!ret)
                 LOGI("Internet IPv4 checking failed, dns1: %s, dns2: %s",
                      util_connectivity_check_inet_addrs[r1], util_connectivity_check_inet_ipv4_addrs[r2]);
@@ -686,7 +704,7 @@ util_connectivity_internet_ipv4_check(void) {
 }
 
 static bool
-util_connectivity_internet_ipv6_check(void) {
+util_connectivity_internet_ipv6_check(const char *ifname) {
     char  ipv6_addr[256];
     char  ipv6_if[126];
     bool  ret;
@@ -707,12 +725,12 @@ util_connectivity_internet_ipv6_check(void) {
     while (tries--) {
         r1 = os_random() % cnt_addr;
 
-        ret = util_ping_cmd(util_connectivity_check_inet_addrs[r1], true);
+        ret = util_ping_cmd(util_connectivity_check_inet_addrs[r1], ifname, true);
         if (!ret) {
             cnt_addr = util_connectivity_get_inet_addr_cnt(util_connectivity_check_inet_ipv6_addrs);
             r2 = os_random() % cnt_addr;
             snprintf(ipv6_addr, sizeof(ipv6_addr), "%s%%%s", util_connectivity_check_inet_ipv6_addrs[r2], ipv6_if);
-            ret = util_ping_cmd(ipv6_addr, true);
+            ret = util_ping_cmd(ipv6_addr, ifname, true);
             if (!ret)
                 LOGI("Internet IPv6 checking failed, dns1: %s, dns2: %s",
                      util_connectivity_check_inet_addrs[r1], util_connectivity_check_inet_ipv6_addrs[r2]);
@@ -739,7 +757,7 @@ bool target_device_connectivity_check(const char *ifname,
 
     if (opts & LINK_CHECK) {
         WARN_ON(!target_device_wdt_ping());
-        cstate->link_state = util_connectivity_link_check(ifname);
+        cstate->link_state = util_connectivity_wifi_link_check(ifname);
         if (!cstate->link_state)
             ret = false;
     }
@@ -747,12 +765,12 @@ bool target_device_connectivity_check(const char *ifname,
     if (opts & ROUTER_CHECK) {
         WARN_ON(!target_device_wdt_ping());
         if (opts & IPV4_CHECK) {
-            cstate->router_ipv4_state = util_connectivity_router_ipv4_check();
+            cstate->router_ipv4_state = util_connectivity_router_ipv4_check(ifname);
             if (!cstate->router_ipv4_state)
                 ret = false;
         }
         if (opts & IPV6_CHECK) {
-            cstate->router_ipv6_state = util_connectivity_router_ipv6_check();
+            cstate->router_ipv6_state = util_connectivity_router_ipv6_check(ifname);
             if (!cstate->router_ipv6_state)
                 ret = false;
         }
@@ -761,12 +779,12 @@ bool target_device_connectivity_check(const char *ifname,
     if (opts & INTERNET_CHECK) {
         WARN_ON(!target_device_wdt_ping());
         if (opts & IPV4_CHECK) {
-            cstate->internet_ipv4_state = util_connectivity_internet_ipv4_check();
+            cstate->internet_ipv4_state = util_connectivity_internet_ipv4_check(ifname);
             if (!cstate->internet_ipv4_state)
                 ret = false;
         }
         if (opts & IPV6_CHECK) {
-            cstate->internet_ipv6_state = util_connectivity_internet_ipv6_check();
+            cstate->internet_ipv6_state = util_connectivity_internet_ipv6_check(ifname);
             if (!cstate->internet_ipv6_state)
                 ret = false;
         }

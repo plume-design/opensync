@@ -40,6 +40,50 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "inet_lte.h"
 #include "osn_lte.h"
 
+bool inet_lte_fini(inet_lte_t *self)
+{
+    /* Dispose of the osn_lte_t class */
+    if (self != NULL && !osn_lte_del(self->in_lte))
+    {
+        LOG(WARN, "inet_lte: %s: Error detected during deletion of osn_lte_t instance.",
+                self->inet.in_ifname);
+        return false;
+    }
+
+    return inet_eth_dtor(&self->inet);
+}
+
+bool inet_lte_dtor(inet_t *super)
+{
+    inet_lte_t *self = (void *)super;
+
+    return inet_lte_fini(self);
+}
+
+bool inet_lte_init(inet_lte_t *self, const char *ifname)
+{
+    int rc;
+
+    self->in_lte = osn_lte_new(ifname);
+    if (self->in_lte == NULL)
+    {
+        LOG(ERR, "inet_lte: %s: Failed to instantiate class, osn_lte_new() failed.", ifname);
+        return false;
+    }
+
+    rc = inet_eth_init(&self->eth, ifname);
+    if (!rc)
+    {
+        LOG(ERR, "inet_lte: %s: Failed to instantiate class, inet_eth_init() failed.", ifname);
+        return false;
+    }
+
+    /* Override inet_t class methods */
+    self->inet.in_dtor_fn = inet_lte_dtor;
+
+    return true;
+}
+
 /**
  * New-type constructor
  */
@@ -64,24 +108,4 @@ inet_t *inet_lte_new(const char *ifname)
  error:
     FREE(self);
     return NULL;
-}
-
-bool inet_lte_init(inet_lte_t *self, const char *ifname)
-{
-    int rc;
-
-    if (osn_lte_new(ifname) == NULL)
-    {
-        LOG(ERR, "inet_lte: %s: Failed to instantiate class, osn_lte_new() failed.", ifname);
-        return false;
-    }
-
-    rc = inet_eth_init(&self->eth, ifname);
-    if (!rc)
-    {
-        LOG(ERR, "inet_lte: %s: Failed to instantiate class, inet_eth_init() failed.", ifname);
-        return false;
-    }
-
-    return true;
 }

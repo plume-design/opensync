@@ -67,7 +67,6 @@ static char *src_mac_txt = "00:11:22:33:44:55";
 static uint8_t dst_mac[] = { 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF };
 static char *dst_mac_txt = "aa:bb:cc:dd:ee:ff";
 
-
 /**
  * @brief tests the str2os_mac() utility
  */

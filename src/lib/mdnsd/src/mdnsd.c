@@ -66,7 +66,7 @@ struct query {
 
 struct unicast {
     int id;
-    unsigned long to;    /* Modifed by OpenSync */
+    unsigned long to;    /* Modifed by Plume */
     unsigned short port;
     mdns_record_t *r;
     struct unicast *next;
@@ -701,7 +701,7 @@ void mdnsd_shutdown(mdns_daemon_t *d)
 
     d->a_now = 0;
     for (i = 0; i < SPRIME; i++) {
-        for (cur = d->published[i]; cur != 0;) {
+        for (cur = d->published[i]; cur != 0; ) {
             next = cur->next;
             cur->rr.ttl = 0;
             cur->list = d->a_now;
@@ -778,12 +778,12 @@ void mdnsd_register_receive_callback(mdns_daemon_t *d, mdnsd_record_received_cal
     d->received_callback_data = data;
 }
 
-/* Prototype changed by OpenSync */
+/* Prototype changed by Plume */
 int mdnsd_in(mdns_daemon_t *d, struct message *m, struct sockaddr_storage *from)
 {
     mdns_record_t *r = NULL;
     int i, j;
-    /* 2 variables added by OpenSync */
+    /* 2 variables added by Plume */
     unsigned short int port = 0;
     struct sockaddr_in  *in4;
 
@@ -863,7 +863,7 @@ int mdnsd_in(mdns_daemon_t *d, struct message *m, struct sockaddr_storage *from)
             }
 
             /* Send the matching unicast reply */
-            /* Pre-condition added by OpenSync */
+            /* Pre-condition added by Plume */
             if (from->ss_family == AF_INET) {
                 in4  = (struct sockaddr_in *)from;
                 port = in4->sin_port;
@@ -948,9 +948,9 @@ int mdnsd_out(mdns_daemon_t *d, struct message *m, struct in_addr *ip, unsigned 
 
         while (cur && message_packet_len(m) + (int)_rr_len(&cur->rr) < d->frame) {
             if (cur->rr.type == QTYPE_PTR) {
-                DBG("Send Publish PTR: Name: %s, rdlen: %d, rdata: %s, rdname: %s", cur->rr.name,cur->rr.rdlen, cur->rr.rdata, cur->rr.rdname);
+                DBG("Send Publish PTR: Name: %s, rdlen: %d, rdata: %s, rdname: %s", cur->rr.name, cur->rr.rdlen, cur->rr.rdata, cur->rr.rdname);
             } else if (cur->rr.type == QTYPE_SRV) {
-                DBG("Send Publish SRV: Name: %s, rdlen: %d, rdata: %s, rdname: %s, port: %d, prio: %d, weight: %d", cur->rr.name,cur->rr.rdlen, cur->rr.rdname, cur->rr.rdata, cur->rr.srv.port, cur->rr.srv.priority, cur->rr.srv.weight);
+                DBG("Send Publish SRV: Name: %s, rdlen: %d, rdata: %s, rdname: %s, port: %d, prio: %d, weight: %d", cur->rr.name, cur->rr.rdlen, cur->rr.rdname, cur->rr.rdata, cur->rr.srv.port, cur->rr.srv.priority, cur->rr.srv.weight);
             } else {
                 DBG("Send Publish: Name: %s, Type: %d, rdname: %s", cur->rr.name, cur->rr.type, cur->rr.rdname);
             }
@@ -1225,7 +1225,7 @@ void mdnsd_query(mdns_daemon_t *d, const char *host, int type, int (*answer)(mdn
     q->arg = arg;
 }
 
-mdns_answer_t *mdnsd_list(mdns_daemon_t *d,const char *host, int type, mdns_answer_t *last)
+mdns_answer_t *mdnsd_list(mdns_daemon_t *d, const char *host, int type, mdns_answer_t *last)
 {
     return (mdns_answer_t *)_c_next(d, (struct cached *)last, host, type);
 }
@@ -1383,7 +1383,7 @@ void mdnsd_set_srv(mdns_daemon_t *d, mdns_record_t *r, unsigned short priority, 
 static int process_in(mdns_daemon_t *d, int sd)
 {
     static unsigned char buf[MAX_PACKET_LEN + 1];
-    struct sockaddr_storage from;  /* Modified by OpenSync */
+    struct sockaddr_storage from;  /* Modified by Plume */
     struct sockaddr_in *from_in;   /* Needed for cast */
     socklen_t ssize = sizeof(struct sockaddr_storage);
     ssize_t bsize;
@@ -1404,7 +1404,7 @@ static int process_in(mdns_daemon_t *d, int sd)
         rc = message_parse(&m, buf);
         if (rc)
             continue;
-        rc = mdnsd_in(d, &m, &from);  /* Modified by OpenSync */
+        rc = mdnsd_in(d, &m, &from);  /* Modified by Plume */
         if (rc)
             continue;
     }
@@ -1483,7 +1483,7 @@ void records_clear(mdns_daemon_t *d)
     }
 }
 
-/* Added by OpenSync */
+/* Added by Plume */
 /* Create a new record, or update an existing one */
 mdns_record_t *mdnsd_set_record(mdns_daemon_t *d, int shared, char *host,
                                 const char *name, unsigned short type,
@@ -1526,4 +1526,3 @@ mdns_record_t *mdnsd_set_record(mdns_daemon_t *d, int shared, char *host,
 
     return r;
 }
-

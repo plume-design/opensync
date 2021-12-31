@@ -41,6 +41,12 @@ UNIT_DEPS += src/lib/log
 UNIT_DEPS += src/lib/schema
 UNIT_DEPS_CFLAGS += src/lib/target
 
+UNIT_SRC += $(if $(CONFIG_OSP_UPG_NULL),src/osp_upgrade_null.c)
+UNIT_SRC += $(if $(CONFIG_OSP_UPG_GEN),src/osp_upgrade_generic.c)
+UNIT_SRC += $(if $(CONFIG_OSP_DL_NULL),src/osp_dl_null.c)
+UNIT_SRC += $(if $(CONFIG_OSP_DL_CURL),src/osp_dl_curl.c)
+UNIT_EXPORT_LDFLAGS += $(if ($CONFIG_OSP_DL_CURL),-lcurl -lssl)
+
 ifeq ($(CONFIG_OSP_REBOOT_PSTORE),y)
 UNIT_SRC += src/osp_reboot_pstore.c
 UNIT_DEPS += src/lib/execsh
@@ -56,5 +62,13 @@ UNIT_SRC += src/osp_objm_objmfs.c
 UNIT_DEPS += src/lib/objmfs
 endif
 
+ifeq ($(CONFIG_OSP_SEC_OPENSSL),y)
+UNIT_SRC += src/osp_sec_openssl.c
+UNIT_SRC += $(if $(CONFIG_OSP_SEC_KEY_DEFAULT),src/osp_sec_key.c)
+endif
+
 UNIT_SRC += $(if $(CONFIG_OSP_L2SWITCH_NULL),src/osp_l2switch_null.c)
 UNIT_SRC += $(if $(CONFIG_OSP_L2SWITCH_SWCONFIG),src/osp_l2switch_swconfig.c)
+
+UNIT_SRC += $(if $(CONFIG_OSP_L2UF_NULL),src/osp_l2uf_null.c)
+UNIT_SRC += $(if $(CONFIG_OSP_L2UF_LIBPCAP),src/osp_l2uf_pcap.c)

@@ -292,7 +292,7 @@ om_tflow_add_from_schema(struct schema_Openflow_Config *sflow)
                                 tflow->priority, tflow->rule, tflow->action,
                                 tbuf);
 
-    om_template_tflow_update(ADD, tflow);
+    om_template_tflow_update(OM_ACTION_ADD, tflow);
     return true;
 }
 
@@ -315,7 +315,7 @@ om_tflow_remove_from_schema(struct schema_Openflow_Config *sflow)
                                 tflow->priority, tflow->rule, tflow->action,
                                 tbuf);
 
-    om_template_tflow_update(DELETE, tflow);
+    om_template_tflow_update(OM_ACTION_DELETE, tflow);
     om_tflow_free(tflow);
     return true;
 }

@@ -9,14 +9,15 @@ UNIT_CFLAGS += -Isrc/lib/imc/inc
 
 UNIT_SRC := test_dns_parse.c
 UNIT_SRC += ../../../../fsm/src/fsm_ovsdb.c
-UNIT_SRC += ../../../../fsm/src/fsm_pcap.c
 UNIT_SRC += ../../../../fsm/src/fsm_event.c
 UNIT_SRC += ../../../../fsm/src/fsm_service.c
 UNIT_SRC += ../../../../fsm/src/fsm_dpi.c
 UNIT_SRC += ../../../../fsm/src/fsm_oms.c
 UNIT_SRC += ../../../../fsm/src/fsm_internal.c
-UNIT_SRC += ../../../../fsm/src/fsm_nfqueues.c
 UNIT_SRC += ../../../../fsm/src/fsm_dpi_client.c
+UNIT_SRC += ../../../../fsm/src/fsm_pcap.c
+UNIT_SRC += ../../../../fsm/src/fsm_nfqueues.c
+UNIT_SRC += ../../../../fsm/src/fsm_raw.c
 
 UNIT_DEPS := src/lib/log
 UNIT_DEPS += src/lib/common

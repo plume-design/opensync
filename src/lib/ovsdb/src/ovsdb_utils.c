@@ -117,10 +117,10 @@ free_str_set(struct str_set *set)
  * @return the string comparision result
  */
 int
-str_tree_cmp(void *a, void *b)
+str_tree_cmp(const void *a, const void *b)
 {
-    const char *key_a = (char *)a;
-    const char *key_b = (char *)b;
+    const char *key_a = (const char *)a;
+    const char *key_b = (const char *)b;
 
     return strcmp(key_a, key_b);
 }

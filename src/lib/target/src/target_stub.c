@@ -120,7 +120,7 @@ const char *target_tls_mycert_filename(void)
 const char *target_tls_privkey_filename(void)
 {
     // Return path/filename to MY Private Key used to authenticate with cloud
-    return TARGET_CERT_PATH "/client_dec.key";
+    return CONFIG_TARGET_PATH_PRIVKEY;
 }
 #endif
 
@@ -657,99 +657,5 @@ int target_bsal_send_action(const char *ifname, const uint8_t *mac_addr, const u
     (void)data;
     (void)data_len;
     return -ENOTSUP;
-}
-#endif
-
-#ifndef IMPL_target_set_igmp_mcproxy_params
-bool target_set_igmp_mcproxy_params(target_mcproxy_params_t *mcparams)
-{
-    (void)mcparams;
-    return false;
-}
-#endif
-
-#ifndef IMPL_target_get_igmp_mcproxy_params
-bool target_get_igmp_mcproxy_params(target_mcproxy_params_t *mcparams)
-{
-    (void)mcparams;
-    return false;
-}
-#endif
-
-
-#ifndef IMPL_target_set_mld_mcproxy_params
-bool target_set_mld_mcproxy_params(target_mcproxy_params_t *mcparams)
-{
-    (void)mcparams;
-    return false;
-}
-#endif
-
-#ifndef IMPL_target_get_mld_mcproxy_params
-bool target_get_mld_mcproxy_params(target_mcproxy_params_t *mcparams)
-{
-    (void)mcparams;
-    return false;
-}
-#endif
-
-#ifndef IMPL_target_set_igmp_mcproxy_sys_params
-bool target_set_igmp_mcproxy_sys_params(struct schema_IGMP_Config *iccfg)
-{
-    (void)iccfg;
-    return false;
-}
-#endif
-
-#ifndef IMPL_target_get_igmp_mcproxy_sys_params
-bool target_get_igmp_mcproxy_sys_params(struct schema_IGMP_Config *iccfg)
-{
-    (void)iccfg;
-    return false;
-}
-#endif
-
-#ifndef IMPL_target_set_mld_mcproxy_sys_params
-bool target_set_mld_mcproxy_sys_params(struct schema_MLD_Config *mlcfg)
-{
-    (void)mlcfg;
-    return false;
-}
-#endif
-
-#ifndef IMPL_target_get_mld_mcproxy_sys_params
-bool target_get_mld_mcproxy_sys_params(struct schema_MLD_Config *mlcfg)
-{
-    (void)mlcfg;
-    return false;
-}
-#endif
-
-#ifndef IMPL_target_set_mcast_uplink
-bool target_set_mcast_uplink(const char *ifname, bool enable, bool is_wan, const char *bridge)
-{
-    (void)ifname;
-    (void)enable;
-    (void)is_wan;
-    (void)bridge;
-    return true;
-}
-#endif
-
-#ifndef IMPL_target_set_mcast_iptv
-bool target_set_mcast_iptv(const char *ifname, bool enable)
-{
-    (void)ifname;
-    (void)enable;
-    return true;
-}
-#endif
-
-#ifndef IMPL_target_set_igmp_snooping
-bool target_set_igmp_snooping(const char *ifname, bool enable)
-{
-    (void)ifname;
-    (void)enable;
-    return true;
 }
 #endif

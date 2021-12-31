@@ -138,7 +138,6 @@ struct nm2_iface *nm2_iface_get_by_name(char *ifname)
     return ds_tree_find(&nm2_iface_list, ifname);
 }
 
-
 static void nm2_dhcp_opt_update(struct ev_loop *loop, ev_debounce *w, int revent)
 {
     struct nm2_iface *piface = (struct nm2_iface *)w->data;
@@ -222,9 +221,6 @@ bool nm2_iface_del(struct nm2_iface *piface)
     {
         ds_dlist_remove(&nm2_iface_commit_list, piface);
     }
-
-    /* Unflag interface as IPTV, if flagged */
-    target_set_mcast_iptv(piface->if_name, false);
 
     /* Destroy the inet object */
     if (!inet_del(piface->if_inet))
@@ -495,10 +491,10 @@ void nm2_iface_dhcpc_notify(inet_t *inet, enum osn_dhcp_option opt, const char *
 /*
  * Interface comparator
  */
-int nm2_iface_cmp(void *_a, void  *_b)
+int nm2_iface_cmp(const void *_a, const void  *_b)
 {
-    struct nm2_iface *a = _a;
-    struct nm2_iface *b = _b;
+    const struct nm2_iface *a = _a;
+    const struct nm2_iface *b = _b;
 
     return strcmp(a->if_name, b->if_name);
 }

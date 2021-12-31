@@ -1,0 +1,79 @@
+if OSP_UPG_GEN
+    menu "Generic upgrade options"
+        config OSP_UPG_GEN_DIR
+            string "Download folder"
+            default "/tmp/firmware"
+            help
+                Folder that will be used for downloading the upgrade image and
+                other upgrade related files.
+
+        config OSP_UPG_GEN_FREE_SPACE
+            int "Minimum free space (kB)"
+            default 0
+            help
+                Minimum free space required for upgrade.
+
+                The filesystem on which the download directory is located must
+                have at least this number of free kilobytes in order to pass
+                the pre-upgrade checks.
+
+                Use 0 to disable.
+
+        config OSP_UPG_GEN_UPGRADE_SCRIPT
+            string "Upgrade script"
+            default "safeupdate ${2:+ -P \"$2\"} -w \"$1\""
+            help
+                This option defines the script that will be executed for the
+                system upgrade. The string must contain a valid shell expression.
+                The script executed with the following parameters:
+
+                    - $1 - the path to the downloaded firmware image
+                    - $2 - (optional) the decryption password
+
+                The return value of the script must be an integer corresponding
+                to the error codes defined in `osp_upg.h`.
+
+        config OSP_UPG_GEN_CHECKSYSTEM_SCRIPT
+            string "System check script"
+            default "exit 0"
+            help
+                This script is executed before the upgrade in order to verify
+                the system readiness in terms of upgrade.
+
+                The string must be a correct shell expression.
+
+                The return value of the script must be an integer corresponding
+                to the error codes defined in `osp_upg.h`.
+
+        config OSP_UPG_GEN_COMMIT_SCRIPT
+            string "Commit script"
+            default "exit 0"
+
+            help
+                This script is executed after the upgrade. It is typically used
+                to activate the inactive (freshly upgraded) partition.
+
+                The string must be a correct shell expression.
+
+                The return value of the script must be an integer corresponding
+                to the error codes defined in `osp_upg.h`.
+
+        choice
+            prompt "File integrity verification"
+            default OSP_UPG_CRC_MD5
+            help
+                The algorithm is used for file integrity verification.
+
+            config OSP_UPG_CRC_NONE
+                bool "None"
+                help
+                    None -- do not perform any MD5 checksum verification.
+
+            config OSP_UPG_CRC_MD5
+                bool "OpenSSL MD5"
+                help
+                    Use OpenSSL's implementation of the MD5 algorithm to verify
+                    the image integrity.
+        endchoice
+    endmenu
+endif

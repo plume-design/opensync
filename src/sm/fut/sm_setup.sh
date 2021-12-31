@@ -36,19 +36,18 @@ source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="sm/$(basename "$0")"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+sm/sm_setup.sh [-h] arguments
 Description:
     - Setup device for SM testing
 Arguments:
     -h : show this help message
     \$@ (radio_if_names) : wait for if_name in Wifi_Radio_State table to be present after setup : (string)(optional)
 Script usage example:
-    ./${tc_name}
-    ./${tc_name} wifi0 wifi1
+    ./sm/sm_setup.sh
+    ./sm/sm_setup.sh wifi0 wifi1
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -63,10 +62,10 @@ if [ -n "${1}" ]; then
     esac
 fi
 check_kconfig_option "CONFIG_MANAGER_SM" "y" ||
-    raise "CONFIG_MANAGER_SM != y - SM not present on device" -l "${tc_name}" -s
+    raise "CONFIG_MANAGER_SM != y - SM not present on device" -l "sm/sm_setup.sh" -s
 
 sm_setup_test_environment "$@" &&
-    log "$tc_name: sm_setup_test_environment - Success " ||
-    raise "FAIL: sm_setup_test_environment" -l "$tc_name" -ds
+    log "sm/sm_setup.sh: sm_setup_test_environment - Success " ||
+    raise "FAIL: sm_setup_test_environment" -l "sm/sm_setup.sh" -ds
 
 exit 0

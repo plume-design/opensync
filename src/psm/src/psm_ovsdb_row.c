@@ -559,10 +559,10 @@ bool psm_ovsdb_row_key_from_str(struct psm_ovsdb_row_key *key, const char *str)
     return true;
 }
 
-int psm_ovsdb_row_key_cmp(void *_a, void *_b)
+int psm_ovsdb_row_key_cmp(const void *_a, const void *_b)
 {
-    struct psm_ovsdb_row_key *a = _a;
-    struct psm_ovsdb_row_key *b = _b;
+    const struct psm_ovsdb_row_key *a = _a;
+    const struct psm_ovsdb_row_key *b = _b;
 
     return strcmp(a->rk_key, b->rk_key);
 }

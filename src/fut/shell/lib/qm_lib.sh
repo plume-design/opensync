@@ -52,31 +52,26 @@ echo "${FUT_TOPDIR}/shell/lib/qm_lib.sh sourced"
 ###############################################################################
 qm_setup_test_environment()
 {
-
-    fn_name="qm_lib:qm_setup_test_environment"
-
-    log "$fn_name - Running QM setup"
+    log "qm_lib:qm_setup_test_environment - Running QM setup"
 
     device_init &&
-        log -deb "$fn_name - Device initialized - Success" ||
-        raise "FAIL: Could not initialize device: device_init" -l "$fn_name" -ds
+        log -deb "qm_lib:qm_setup_test_environment - Device initialized - Success" ||
+        raise "FAIL: device_init - Could not initialize device" -l "qm_lib:qm_setup_test_environment" -ds
 
     start_openswitch &&
-        log -deb "$fn_name - OpenvSwitch started - Success" ||
-        raise "FAIL: Could not start OpenvSwitch: start_openswitch" -l "$fn_name" -ds
+        log -deb "qm_lib:qm_setup_test_environment - OpenvSwitch started - Success" ||
+        raise "FAIL: start_openswitch - Could not start OpenvSwitch" -l "qm_lib:qm_setup_test_environment" -ds
 
-    start_specific_manager qm &&
-        log -deb "$fn_name - start_specific_manager qm - Success" ||
-        raise "FAIL: Could not start manager: start_specific_manager qm" -l "$fn_name" -ds
+    restart_managers
+        log -deb "qm_lib:qm_setup_test_environment - Executed restart_managers, exit code: $?"
 
     check_manager_alive "${OPENSYNC_ROOTDIR}/bin/qm" &&
-        log -deb "$fn_name - QUEUE MANAGER is running - Success" ||
-        raise "FAIL: QUEUE MANAGER not running/crashed" -l "$fn_name" -ds
+        log -deb "qm_lib:qm_setup_test_environment - QM is running - Success" ||
+        raise "FAIL: QM not running/crashed" -l "qm_lib:qm_setup_test_environment" -ds
 
-    log "$fn_name - QM setup - end"
+    log -deb "qm_lib:qm_setup_test_environment - QM setup - end"
 
     return 0
 }
 
 ####################### SETUP SECTION - STOP ##################################
-

@@ -34,12 +34,11 @@ source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="fsm/$(basename "$0")"
 # Default of_port must be unique between fsm tests for valid testing
-of_port_default=30004
+of_port_default=10002
 usage() {
     cat << usage_string
-${tc_name} [-h] arguments
+fsm/fsm_configure_http_plugin.sh [-h] arguments
 Description:
     - Script configures interfaces FSM settings for HTTP blocking rules
 Arguments:
@@ -48,8 +47,8 @@ Arguments:
     \$2 (fsm_plugin)       : Path to FSM plugin under test             : (string)(required)
     \$3 (of_port)          : FSM out/of port                           : (int)(optional)     : (default:${of_port_default})
 Script usage example:
-    ./${tc_name} br-home /usr/opensync/lib/libfsm_http.so
-    ./${tc_name} br-home /usr/opensync/lib/libfsm_http.so 3002
+    ./fsm/fsm_configure_http_plugin.sh br-home /usr/opensync/lib/libfsm_http.so
+    ./fsm/fsm_configure_http_plugin.sh br-home /usr/opensync/lib/libfsm_http.so 3002
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -81,15 +80,15 @@ of_port=${3:-${of_port_default}}
 
 client_mac=$(get_ovsdb_entry_value Wifi_Associated_Clients mac)
 if [ -z "${client_mac}" ]; then
-    raise "FAIL: Could not acquire Client MAC address from Wifi_Associated_Clients, is client connected?" -l "${tc_name}"
+    raise "FAIL: Could not acquire Client MAC address from Wifi_Associated_Clients, is client connected?" -l "fsm/fsm_configure_http_plugin.sh"
 fi
 # Use first MAC from Wifi_Associated_Clients
 client_mac="${client_mac%%,*}"
 tap_http_if="${lan_bridge_if}.thttp"
 
-log_title "$tc_name: FSM test - Configure http plugin"
+log_title "fsm/fsm_configure_http_plugin.sh: FSM test - Configure http plugin"
 
-log "$tc_name: Configuring TAP interfaces required for FSM testing"
+log "fsm/fsm_configure_http_plugin.sh: Configuring TAP interfaces required for FSM testing"
 add_bridge_port "${lan_bridge_if}" "${tap_http_if}"
 set_ovs_vsctl_interface_option "${tap_http_if}" "type" "internal"
 set_ovs_vsctl_interface_option "${tap_http_if}" "ofport_request" "${of_port}"
@@ -100,10 +99,10 @@ create_inet_entry \
     -dhcp_sniff "false" \
     -network true \
     -enabled true &&
-        log "$tc_name: Interface ${tap_http_if} created - Success" ||
-        raise "FAIL: Failed to create interface ${tap_http_if}" -l "$tc_name" -ds
+        log "fsm/fsm_configure_http_plugin.sh: Interface ${tap_http_if} created - Success" ||
+        raise "FAIL: Failed to create interface ${tap_http_if}" -l "fsm/fsm_configure_http_plugin.sh" -ds
 
-log "$tc_name: Cleaning FSM OVSDB Config tables"
+log "fsm/fsm_configure_http_plugin.sh: Cleaning FSM OVSDB Config tables"
 empty_ovsdb_table Openflow_Config
 empty_ovsdb_table Flow_Service_Manager_Config
 empty_ovsdb_table FSM_Policy
@@ -116,8 +115,8 @@ insert_ovsdb_entry Openflow_Config \
     -i priority 200 \
     -i bridge "${lan_bridge_if}" \
     -i action "normal,output:${of_port}" &&
-        log "$tc_name: Ingress rule inserted - Success" ||
-        raise "FAIL: Failed to insert_ovsdb_entry" -l "$tc_name" -oe
+        log "fsm/fsm_configure_http_plugin.sh: Ingress rule inserted - Success" ||
+        raise "FAIL: Failed to insert_ovsdb_entry" -l "fsm/fsm_configure_http_plugin.sh" -oe
 
 mqtt_value="dev-test/dev_http/$(get_node_id)/$(get_location_id)"
 insert_ovsdb_entry Flow_Service_Manager_Config \
@@ -126,5 +125,5 @@ insert_ovsdb_entry Flow_Service_Manager_Config \
     -i pkt_capt_filter 'tcp' \
     -i plugin "${fsm_plugin}" \
     -i other_config '["map",[["mqtt_v","'"${mqtt_value}"'"],["dso_init","http_plugin_init"]]]' &&
-        log "$tc_name: Flow_Service_Manager_Config entry added - Success" ||
-        raise "FAIL: Failed to insert Flow_Service_Manager_Config entry" -l "$tc_name" -oe
+        log "fsm/fsm_configure_http_plugin.sh: Flow_Service_Manager_Config entry added - Success" ||
+        raise "FAIL: Failed to insert Flow_Service_Manager_Config entry" -l "fsm/fsm_configure_http_plugin.sh" -oe

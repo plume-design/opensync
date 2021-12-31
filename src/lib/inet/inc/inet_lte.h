@@ -45,10 +45,10 @@ struct __inet_lte
         inet_base_t base;
         inet_eth_t  eth;
     };
+    osn_lte_t *in_lte; /* Instance of osn_lte_t */
 };
 
 extern inet_t *inet_lte_new(const char *ifname);
-extern bool inet_lte_init(inet_lte_t *self, const char *ifname);
-extern bool inet_lte_service_commit(inet_base_t *super, enum inet_base_services srv, bool enable);
+extern bool inet_lte_dtor(inet_t *super);
 
 #endif /* INET_LTE_H_INCLUDED */

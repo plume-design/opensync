@@ -24,11 +24,14 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include <sys/socket.h>
 #include <sys/types.h>
-#include <stdio.h>
 #include <stdlib.h>
-#include <fcntl.h>
+#include <stddef.h>
 #include <unistd.h>
+#include <stdio.h>
+#include <fcntl.h>
+#include <netdb.h>
 #include <errno.h>
 
 #include "gatekeeper_single_curl.h"
@@ -39,6 +42,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "kconfig.h"
 #include "log.h"
 #include "util.h"
+
+#define GK_CNAME_REDIRECT_TTL (1*60*60)
 
 /**
  * @brief set callback for writing received data,
@@ -71,58 +76,215 @@ gk_curl_callback(void *contents, size_t size, size_t nmemb, void *userp)
     return realsize;
 }
 
+/**
+ * @brief update policy_reply redirect ipv6 address
+ *
+ * @param ipv4_address to be updated in policy_reply
+ * @param policy_reply structure
+ * @return None
+ */
 void
-gk_set_redirect(struct fsm_policy_req *policy_req,
-                Gatekeeper__Southbound__V1__GatekeeperFqdnReply *reply_fqdn,
-                struct fsm_policy_reply *policy_reply)
+gk_update_policy_redirect_ipv6(char *ipv6_address,
+                               struct fsm_policy_reply *policy_reply)
+{
+    char ipv6_redirect_s[256];
+
+    snprintf(ipv6_redirect_s, sizeof(ipv6_redirect_s), "4A-%s", ipv6_address);
+    STRSCPY(policy_reply->redirects[1], ipv6_redirect_s);
+    policy_reply->redirect = true;
+}
+
+/**
+ * @brief update policy_reply redirect ipv4 address
+ *
+ * @param ipv4_address to be updated in policy_reply
+ * @param policy_reply structure
+ * @return None
+ */
+void
+gk_update_policy_redirect_ipv4(char *ipv4_address,
+                               struct fsm_policy_reply *policy_reply)
+{
+    char ipv4_redirect_s[256];
+
+    snprintf(ipv4_redirect_s, sizeof(ipv4_redirect_s), "A-%s", ipv4_address);
+    STRSCPY(policy_reply->redirects[0], ipv4_redirect_s);
+    policy_reply->redirect = true;
+}
+
+/**
+ * @brief resolves the redirect_cname from gatekeeper server
+ *        to ip addresses and updates the policy redirect ips
+ *        also sets redirect ttl to 1 hour
+ *
+ * @param redirect_cname containing host name
+ * @param policy_reply structure
+ * @return None
+ */
+bool
+gk_force_redirect_cname(char * redirect_cname,
+                        struct fsm_policy_reply *policy_reply)
+{
+    struct fsm_gk_mgr *mgr;
+
+    mgr = gatekeeper_get_mgr();
+    if (!mgr->initialized) return false;
+
+    if (mgr->getaddrinfo == NULL) return false;
+
+    struct addrinfo *result;
+    struct addrinfo hints;
+    struct addrinfo *rp;
+    char addr_str[256];
+    const char *res;
+    bool status;
+    void *addr;
+    int ret;
+
+    status = true;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_flags = AI_PASSIVE;
+    hints.ai_protocol = 0;
+
+    result = NULL;
+    ret = mgr->getaddrinfo(redirect_cname, NULL, &hints, &result);
+    if (ret != 0)
+    {
+        LOGE("Unable to resolve : %s  [%s]\n", redirect_cname, strerror(errno));
+        status = false;
+        goto error;
+    }
+
+    for (rp = result; rp != NULL; rp = rp->ai_next)
+    {
+
+        if (rp->ai_family == AF_INET)
+        {
+            struct sockaddr_in *ipv4 = (struct sockaddr_in *)rp->ai_addr;
+            addr = &(ipv4->sin_addr);
+        }
+        else
+        {
+            struct sockaddr_in6 *ipv6 = (struct sockaddr_in6 *)rp->ai_addr;
+            addr = &(ipv6->sin6_addr);
+        }
+        res = inet_ntop(rp->ai_family, addr, addr_str, sizeof(addr_str));
+        if (res != NULL)
+        {
+            if (rp->ai_family == AF_INET)
+            {
+                gk_update_policy_redirect_ipv4(addr_str, policy_reply);
+            }
+            else
+            {
+                gk_update_policy_redirect_ipv6(addr_str, policy_reply);
+            }
+        }
+    }
+
+    policy_reply->redirect = true;
+    policy_reply->rd_ttl = GK_CNAME_REDIRECT_TTL;
+    snprintf(policy_reply->redirect_cname, sizeof(policy_reply->redirect_cname),
+             "C-%s", redirect_cname);
+    LOGT("%s: cname: %s redirect IPv4 IP: %s, IPv6 IP: %s",
+         __func__,
+         policy_reply->redirect_cname,
+         policy_reply->redirects[0],
+         policy_reply->redirects[1]);
+
+error:
+   if (result) freeaddrinfo(result);
+
+   return status;
+}
+
+void
+gk_set_redirect(struct fsm_gk_verdict *gk_verdict,
+                Gatekeeper__Southbound__V1__GatekeeperFqdnReply *reply_fqdn)
 {
     Gatekeeper__Southbound__V1__GatekeeperFqdnRedirectReply *fqdn_redirect;
     Gatekeeper__Southbound__V1__GatekeeperCommonReply *header;
     Gatekeeper__Southbound__V1__GatekeeperAction gk_action;
     char ipv6_str[INET6_ADDRSTRLEN] = { '\0' };
     char ipv4_str[INET_ADDRSTRLEN]  = { '\0' };
-    char ipv4_redirect_s[256];
-    char ipv6_redirect_s[256];
+    struct fsm_policy_reply *policy_reply;
+    struct fsm_gk_session *gk_session;
+    struct gk_cname_offline *offline;
+    bool cname_redirect;
     const char *res;
+    bool backoff;
+    bool status;
+    time_t now;
 
     header        = reply_fqdn->header;
     gk_action     = header->action;
     fqdn_redirect = reply_fqdn->redirect;
+    policy_reply  = gk_verdict->policy_reply;
+    gk_session    = gk_verdict->gk_session_context;
+
+    policy_reply->redirect = false;
 
     if (gk_action
         != GATEKEEPER__SOUTHBOUND__V1__GATEKEEPER_ACTION__GATEKEEPER_ACTION_REDIRECT)
         return;
 
-    res = inet_ntop(
-        AF_INET, &(fqdn_redirect->redirect_ipv4), ipv4_str, INET_ADDRSTRLEN);
+    policy_reply->rd_ttl = 10;
+
+    cname_redirect = (fqdn_redirect->redirect_cname != NULL);
+    if (cname_redirect) cname_redirect &= (strlen(fqdn_redirect->redirect_cname) != 0);
+    if (cname_redirect)
+    {
+        /* cname backoff timer */
+        offline = &gk_session->cname_offline;
+        if (offline->cname_offline)
+        {
+            now = time(NULL);
+            backoff = ((now - offline->offline_ts) < offline->check_offline);
+
+            if (backoff) return;
+            offline->cname_offline = false;
+        }
+
+        status = gk_force_redirect_cname(fqdn_redirect->redirect_cname, policy_reply);
+        if (!status)
+        {
+            LOGT("%s : triggering backoff timer for cname = %s", __func__,
+                 fqdn_redirect->redirect_cname);
+            offline->cname_offline = true;
+            offline->offline_ts = time(NULL);
+            offline->cname_resolve_failures++;
+        }
+        return;
+    }
+
+    res = inet_ntop(AF_INET, &(fqdn_redirect->redirect_ipv4), ipv4_str, INET_ADDRSTRLEN);
     if (res != NULL)
     {
-        snprintf(ipv4_redirect_s, sizeof(ipv4_redirect_s), "A-%s", ipv4_str);
-        STRSCPY(policy_reply->redirects[0], ipv4_redirect_s);
+        gk_update_policy_redirect_ipv4(ipv4_str, policy_reply);
     }
 
     res = NULL;
-    if (fqdn_redirect->redirect_ipv6.data != NULL)
+    if ((fqdn_redirect->redirect_ipv6.data != NULL) &&
+        (fqdn_redirect->redirect_ipv6.len != 0))
+
     {
         res = inet_ntop(AF_INET6,
                         fqdn_redirect->redirect_ipv6.data,
                         ipv6_str,
                         INET6_ADDRSTRLEN);
-    }
 
-    if (res != NULL)
-    {
-        snprintf(ipv6_redirect_s, sizeof(ipv6_redirect_s), "4A-%s", ipv6_str);
-        STRSCPY(policy_reply->redirects[1], ipv6_redirect_s);
+        if (res != NULL)
+        {
+            gk_update_policy_redirect_ipv6(ipv6_str, policy_reply);
+        }
     }
-
-    policy_reply->redirect = 1;
-    policy_reply->rd_ttl = 10;
 
     LOGT("%s(): redirect IPv4 IP: %s, IPv6 IP: %s",
          __func__,
-         ipv4_redirect_s,
-         ipv6_redirect_s);
+         policy_reply->redirects[0],
+         policy_reply->redirects[1]);
 }
 
 static int
@@ -215,7 +377,7 @@ gk_set_policy(Gatekeeper__Southbound__V1__GatekeeperReply *response,
             if (response->reply_fqdn != NULL)
             {
                 header = response->reply_fqdn->header;
-                gk_set_redirect(policy_req, response->reply_fqdn, policy_reply);
+                gk_set_redirect(gk_verdict, response->reply_fqdn);
             }
             else
             {
@@ -508,7 +670,7 @@ gk_send_curl_request(struct fsm_gk_session *fsm_gk_session,
  * @param fsm_gk_session gatekeeper session
  * @return None
  */
-static void
+void
 gk_update_uncategorized_count(struct fsm_gk_session *fsm_gk_session,
                               struct fsm_gk_verdict *gk_verdict)
 {
@@ -540,7 +702,7 @@ gk_update_uncategorized_count(struct fsm_gk_session *fsm_gk_session,
  *
  * @return None
  */
-static void
+void
 gk_update_categorization_count(struct fsm_gk_session *fsm_gk_session)
 {
     struct fsm_url_stats *stats;

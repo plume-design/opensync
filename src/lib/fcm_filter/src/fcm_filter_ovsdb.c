@@ -38,10 +38,10 @@ ovsdb_table_t table_Openflow_Tag;
 ovsdb_table_t table_Openflow_Tag_Group;
 
 static int
-filter_id_cmp(void *id1, void *id2)
+filter_id_cmp(const void *id1, const void *id2)
 {
-    int i = *(int *)id1;
-    int j = *(int *)id2;
+    const int i = *(const int *)id1;
+    const int j = *(const int *)id2;
 
     return i - j;
 }
@@ -527,10 +527,10 @@ callback_Openflow_Tag_Group(ovsdb_update_monitor_t *mon,
 }
 
 int
-table_name_compare(void *a, void *b)
+table_name_compare(const void *a, const void *b)
 {
-    char *name_a = (char *)a;
-    char *name_b = (char *)b;
+    const char *name_a = (const char *)a;
+    const char *name_b = (const char *)b;
 
     return strncmp(name_a, name_b, FILTER_NAME_SIZE);
 }

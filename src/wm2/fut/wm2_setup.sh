@@ -35,21 +35,31 @@ source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="wm2/$(basename "$0")"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+wm2/wm2_setup.sh [-h] arguments
 Description:
     - Setup device for WM testing
 Arguments:
     -h : show this help message
     \$@ (radio_if_names) : wait for if_name in Wifi_Radio_State table to be present after setup : (string)(optional)
 Script usage example:
-    ./${tc_name}
-    ./${tc_name} wifi0 wifi1
+    ./wm2/wm2_setup.sh
+    ./wm2/wm2_setup.sh wifi0 wifi1
 usage_string
 }
+
+trap '
+fut_ec=$?
+fut_info_dump_line
+if [ $fut_ec -ne 0 ]; then 
+    print_tables Wifi_Radio_Config Wifi_Radio_State Wifi_VIF_Config Wifi_VIF_State
+fi
+fut_info_dump_line
+exit $fut_ec
+' EXIT SIGINT SIGTERM
+
 if [ -n "${1}" ]; then
     case "${1}" in
         help | \
@@ -63,10 +73,10 @@ if [ -n "${1}" ]; then
 fi
 
 check_kconfig_option "CONFIG_MANAGER_WM" "y" ||
-    raise "CONFIG_MANAGER_WM != y - WM not present on device" -l "${tc_name}" -s
+    raise "CONFIG_MANAGER_WM != y - WM not present on device" -l "wm2/wm2_setup.sh" -s
 
 wm_setup_test_environment "$@" &&
-    log "$tc_name: wm_setup_test_environment - Success" ||
-    raise "FAIL: wm_setup_test_environment" -l "$tc_name" -ds
+    log "wm2/wm2_setup.sh: wm_setup_test_environment - Success" ||
+    raise "FAIL: wm_setup_test_environment" -l "wm2/wm2_setup.sh" -ds
 
 exit 0

@@ -29,7 +29,6 @@ UNIT_NAME := test_fsm_utils
 UNIT_TYPE := TEST_BIN
 
 UNIT_SRC := test_fsm_utils_main.c
-UNIT_SRC += test_fsm_utils.c
 UNIT_SRC += test_fsm_csum_utils.c
 
 UNIT_DEPS := src/lib/log

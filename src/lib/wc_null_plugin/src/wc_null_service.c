@@ -61,7 +61,7 @@ fsm_wc_null_get_mgr(void)
  * @return 0 if sessions match
  */
 static int
-fsm_wc_null_session_cmp(void *a, void *b)
+fsm_wc_null_session_cmp(const void *a, const void *b)
 {
     uintptr_t p_a = (uintptr_t)a;
     uintptr_t p_b = (uintptr_t)b;

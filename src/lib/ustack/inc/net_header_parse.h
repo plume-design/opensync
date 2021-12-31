@@ -72,6 +72,13 @@ struct eth_header
     uint16_t vlan_id;
 };
 
+typedef enum
+{
+    PKT_SOURCE_NONE = 0,
+    PKT_SOURCE_PCAP = 1,
+    PKT_SOURCE_NFQ = 2,
+    PKT_SOURCE_MAX = 3,
+} pkt_source_t;
 
 /**
  * @brief container for parsed pcap data
@@ -108,9 +115,10 @@ struct net_header_parser
     struct flow_tags tags;
     struct flow_vendor_data_container vendor_data;
     struct net_md_stats_accumulator *acc;
-    bool eth_header_available;
+    pkt_source_t source;
     uint32_t packet_id;
     uint32_t nfq_queue_num;
+    bool payload_updated;
 };
 
 

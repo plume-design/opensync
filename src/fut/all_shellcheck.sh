@@ -29,38 +29,55 @@
 # To execute shellcheck on all device-core directories that contain shell
 # scripts or on individual files, type:
 # ./all_shellcheck.sh
-# ...using terminal/command line, where the script is located , ti. fut directory.
+# or:
+# ./all_shellcheck.sh all
+# To execute shellcheck on all device-core testcase scripts in fut directories, type:
+# ./all_shellcheck.sh shell
+# To execute shellcheck on all device-core libraries in src/fut/shell/lib directory, type:
+# ./all_shellcheck.sh lib
 # One can also control which files are checked by commenting or uncommenting
 # 'shellcheck' lines.
 
-# Ignored SC warnings:
+# Ignored shellcheck warnings:
 # SC1090: Can't follow non-constant source. Use a directive to specify location.
 # SC1091: Not following: Reasons include: file not found, no permissions,
 #         not included on the command line, not allowing shellcheck to follow files with -x, etc.
+# SC2002: Useless cat. Consider 'cmd < file | ..' or 'cmd file | ..' instead.
 # SC2015: Note that A && B || C is not if-then-else. C may run when A is true.
 # SC2039: In POSIX sh, *something* is undefined.
 # SC2181: Check exit code directly with e.g. 'if mycmd;', not indirectly with $?.
 
-# shellcheck --exclude=SC1091,SC2015,SC2181,SC1090,SC2039 ./../dm/fut/*.sh
-# shellcheck --exclude=SC1091,SC2015,SC2181,SC1090,SC2039 ./../cm2/fut/*.sh
-# shellcheck --exclude=SC1091,SC2015,SC2181,SC1090,SC2039 ./../fsm/fut/*.sh
-# shellcheck --exclude=SC1091,SC2015,SC2181,SC1090,SC2039 ./../nm2/fut/*.sh
-# shellcheck --exclude=SC1091,SC2015,SC2181,SC1090,SC2039 ./../sm/fut/*.sh
-# shellcheck --exclude=SC1091,SC2015,SC2181,SC1090,SC2039 ./../um/fut/*.sh
-# shellcheck --exclude=SC1091,SC2015,SC2181,SC1090,SC2039 ./../wm2/fut/*.sh
+check=${1:-all}
 
-shellcheck --exclude=SC1091,SC2015,SC2181,SC1090,SC2039 ./../fut/shell/lib/base_lib.sh
-shellcheck --exclude=SC1091,SC2015,SC2181,SC1090,SC2039 ./../fut/shell/lib/brv_lib.sh
-shellcheck --exclude=SC1091,SC2015,SC2181,SC1090,SC2039 ./../fut/shell/lib/cm2_lib.sh
-shellcheck --exclude=SC1091,SC2015,SC2181,SC1090,SC2039 ./../fut/shell/lib/dm_lib.sh
-shellcheck --exclude=SC1091,SC2015,SC2181,SC1090,SC2039 ./../fut/shell/lib/fsm_lib.sh
-shellcheck --exclude=SC1091,SC2015,SC2181,SC1090,SC2039 ./../fut/shell/lib/nm2_lib.sh
-shellcheck --exclude=SC1091,SC2015,SC2181,SC1090,SC2039 ./../fut/shell/lib/onbrd_lib.sh
-shellcheck --exclude=SC1091,SC2015,SC2181,SC1090,SC2039 ./../fut/shell/lib/pm_led_lib.sh
-shellcheck --exclude=SC1091,SC2015,SC2181,SC1090,SC2039 ./../fut/shell/lib/qm_lib.sh
-shellcheck --exclude=SC1091,SC2015,SC2181,SC1090,SC2039 ./../fut/shell/lib/rpi_lib.sh
-shellcheck --exclude=SC1091,SC2015,SC2181,SC1090,SC2039 ./../fut/shell/lib/sm_lib.sh
-shellcheck --exclude=SC1091,SC2015,SC2181,SC1090,SC2039 ./../fut/shell/lib/um_lib.sh
-shellcheck --exclude=SC1091,SC2015,SC2181,SC1090,SC2039 ./../fut/shell/lib/unit_lib.sh
-shellcheck --exclude=SC1091,SC2015,SC2181,SC1090,SC2039 ./../fut/shell/lib/ut_lib.sh
-shellcheck --exclude=SC1091,SC2015,SC2181,SC1090,SC2039 ./../fut/shell/lib/wm2_lib.sh
+excludes=SC1090,SC1091,SC2002,SC2015,SC2039,SC2181
+
+if [ "$check" = "shell" ] || [ "$check" = "all" ]; then
+    shellcheck --exclude=$excludes ./../cm2/fut/*.sh
+    shellcheck --exclude=$excludes ./../dm/fut/*.sh
+    shellcheck --exclude=$excludes ./../fsm/fut/*.sh
+    shellcheck --exclude=$excludes ./../nm2/fut/*.sh
+    shellcheck --exclude=$excludes ./../pm/fut/*.sh
+    shellcheck --exclude=$excludes ./../qm/fut/*.sh
+    shellcheck --exclude=$excludes ./../sm/fut/*.sh
+    shellcheck --exclude=$excludes ./../um/fut/*.sh
+    shellcheck --exclude=$excludes ./../wm2/fut/*.sh
+fi
+
+if [ "$check" = "lib" ] || [ "$check" = "all" ]; then
+    shellcheck --exclude=$excludes ./../fut/shell/lib/base_lib.sh
+    shellcheck --exclude=$excludes ./../fut/shell/lib/brv_lib.sh
+    shellcheck --exclude=$excludes ./../fut/shell/lib/cm2_lib.sh
+    shellcheck --exclude=$excludes ./../fut/shell/lib/dm_lib.sh
+    shellcheck --exclude=$excludes ./../fut/shell/lib/fsm_lib.sh
+    shellcheck --exclude=$excludes ./../fut/shell/lib/lm_lib.sh
+    shellcheck --exclude=$excludes ./../fut/shell/lib/nm2_lib.sh
+    shellcheck --exclude=$excludes ./../fut/shell/lib/onbrd_lib.sh
+    shellcheck --exclude=$excludes ./../fut/shell/lib/othr_lib.sh
+    shellcheck --exclude=$excludes ./../fut/shell/lib/qm_lib.sh
+    shellcheck --exclude=$excludes ./../fut/shell/lib/rpi_lib.sh
+    shellcheck --exclude=$excludes ./../fut/shell/lib/sm_lib.sh
+    shellcheck --exclude=$excludes ./../fut/shell/lib/um_lib.sh
+    shellcheck --exclude=$excludes ./../fut/shell/lib/unit_lib.sh
+    shellcheck --exclude=$excludes ./../fut/shell/lib/ut_lib.sh
+    shellcheck --exclude=$excludes ./../fut/shell/lib/wm2_lib.sh
+fi

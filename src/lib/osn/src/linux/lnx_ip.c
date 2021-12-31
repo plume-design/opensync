@@ -462,7 +462,7 @@ void lnx_ip_status_poll(lnx_ip_t *self)
 /**
  * Parse a single line of a "ip -o -4 addr show dev IF" output.
  */
-bool lnx_ip_addr_parse(void *data, int type, const char *line)
+bool lnx_ip_addr_parse(void *data, enum execsh_io type, const char *line)
 {
     char buf[256];
     char *pbuf;
@@ -472,10 +472,10 @@ bool lnx_ip_addr_parse(void *data, int type, const char *line)
 
     LOG(DEBUG, "ip: %s: ip_addr_show%s %s",
             self->ip_ifname,
-            type == EXECSH_PIPE_STDOUT ? ">" : "|",
+            type == EXECSH_IO_STDOUT ? ">" : "|",
             line);
 
-    if (type != EXECSH_PIPE_STDOUT) return true;
+    if (type != EXECSH_IO_STDOUT) return true;
 
     STRSCPY(buf, line);
 

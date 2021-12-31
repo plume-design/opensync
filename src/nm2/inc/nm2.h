@@ -254,7 +254,7 @@ bool nm2_client_nickname_init(void);
 int nm2_mac_tags_ovsdb_init(void);
 int lan_clients_oftag_add_mac(char *mac);
 int lan_clients_oftag_remove_mac(char *mac);
-void nm2_cmu_init(void);
+void nm2_mcast_init_ifc(struct nm2_iface *iface);
 
 /*
  * ===========================================================================

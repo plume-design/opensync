@@ -34,8 +34,18 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "cm2_stability.h"
 
 
-#define BLOCKING_LINK_THRESHOLD     3
-#define UNBLOCKING_LINK_THRESHOLD 100
+#include "os_time.h"
+
+#define BLOCKING_LINK_THRESHOLD            3
+#define UPLINKS_TIMER_TIMEOUT              120
+#define UNBLOCKING_LINK_THRESHOLD          100
+/* All links checking is triggered when counter
+ * achieve UPLINKS_CHECKING_ALL_THRESHOLD value.
+ * Interval of counter incremental based on
+ * CONFIG_CM2_STABILITY_SHORT_INTERVAL and
+ * CONFIG_CM2_STABILITY_INTERVAL values.
+*/
+#define UPLINKS_CHECKING_ALL_THRESHOLD     60
 
 /* ev_child must be the first element of the structure
  * based on that fact we can store additional data, in that case
@@ -43,11 +53,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 typedef struct {
     ev_child                           cw;
     target_connectivity_check_option_t opts;
+    char                               uname[C_IFNAME_LEN];
+    char                               clink[C_IFNAME_LEN];
     bool                               db_update;
     bool                               repeat;
-    int                                i_fail;
-    int                                i_router;
-} astab_check_t;
+} async_check_t;
 
 static int  ipv4_i_fail = 0;
 static int  ipv6_i_fail = 0;
@@ -196,28 +206,10 @@ static void cm2_restore_connection(cm2_restore_con_t opt)
 
 static void cm2_stability_handle_fatal_state(int counter)
 {
-    if (counter <= 0)
-        return; 
-
-    if (cm2_is_config_via_ble_enabled() &&
-        g_state.dev_type == CM2_DEVICE_NONE &&
-        (!g_state.link.is_used || cm2_is_eth_type(g_state.link.if_type))) {
-        LOGI("Stability: Enabling two way mode comunication");
-        cm2_ovsdb_ble_set_connectable(true);
-        return;
-    }
-
-    if (cm2_enable_gw_offline())
-        return;
-
-    if (cm2_vtag_stability_check() &&
-        g_state.dev_type != CM2_DEVICE_ROUTER &&
-        counter + 1 > CONFIG_CM2_STABILITY_THRESH_FATAL) {
+    if (counter + 1 > CONFIG_CM2_STABILITY_THRESH_FATAL) {
         LOGW("Restart managers due to exceeding the threshold for fatal failures");
-        cm2_ovsdb_dump_debug_data();
         cm2_tcpdump_stop(g_state.link.if_name);
-        WARN_ON(!target_device_wdt_ping());
-        target_device_restart_managers();
+        cm2_trigger_restart_managers();
     }
 }
 
@@ -234,7 +226,9 @@ cm2_util_add_ip_opts(target_connectivity_check_option_t opts)
 }
 
 static void
-cm2_util_update_connectivity_failures(target_connectivity_check_option_t opts, target_connectivity_check_t *cstate)
+cm2_util_update_connectivity_failures(struct schema_Connection_Manager_Uplink *con,
+                                      target_connectivity_check_option_t opts,
+                                      target_connectivity_check_t *cstate)
 {
     if (!g_state.link.ipv4.is_ip ||
         (g_state.link.ipv4.blocked && !g_state.link.ipv6.is_ip)) {
@@ -315,27 +309,144 @@ cm2_util_update_connectivity_failures(target_connectivity_check_option_t opts, t
     }
 }
 
-bool cm2_connection_req_stability_process(target_connectivity_check_option_t opts,
-                                          bool db_update,
-                                          bool status,
-                                          target_connectivity_check_t *cstate_ptr)
+static void cm2_updating_ip(struct schema_Connection_Manager_Uplink *con,
+                            target_connectivity_check_option_t opts,
+                            target_connectivity_check_t *cstate,
+                            bool ipv6,
+                            cm2_uplink_state_t s)
+{
+    target_connectivity_check_option_t c;
+    cm2_uplink_state_t                 ns;
+    bool                               s_updated;
+    bool                               rs;
+    bool                               rc;
+    bool                               is;
+    bool                               ic;
+
+    s_updated = false;
+    ns = CM2_UPLINK_NONE;
+
+    if (ipv6) {
+        c = IPV6_CHECK;
+        rs = cstate->router_ipv6_state;
+        is = cstate->internet_ipv6_state;
+    }
+    else {
+        c = IPV4_CHECK;
+        rs = cstate->router_ipv4_state;
+        is = cstate->internet_ipv4_state;
+    }
+
+    if (!(opts & c)) {
+        LOGI("Ret1");
+        return;
+    }
+
+    rc = opts & ROUTER_CHECK;
+    ic = opts & INTERNET_CHECK;
+    switch (s) {
+       case CM2_UPLINK_BLOCKED:
+           break;
+        case CM2_UPLINK_NONE:
+        case CM2_UPLINK_READY:
+            LOGI("Uplink not set or ready rc = %d rs = %d", rc, rs);
+
+            if (!rc && !rs && !ic && !is) {
+                LOGI("Nothing to check");
+            }
+            else if (rc == rs && ic == is) {
+                s_updated = true;
+                ns = CM2_UPLINK_ACTIVE;
+            }
+            else {
+                s_updated = true;
+                ns = CM2_UPLINK_INACTIVE;
+            }
+
+            break;
+
+        case CM2_UPLINK_INACTIVE:
+            if ((rc && rs) || (ic && is)) {
+                s_updated = true;
+                ns = CM2_UPLINK_ACTIVE;
+            }
+            if (con->unreachable_router_counter > BLOCKING_LINK_THRESHOLD) {
+                s_updated = true;
+                ns = CM2_UPLINK_BLOCKED;
+            }
+
+            if (con->unreachable_internet_counter > BLOCKING_LINK_THRESHOLD) {
+                s_updated = true;
+                ns = CM2_UPLINK_BLOCKED;
+            }
+            break;
+
+        case CM2_UPLINK_ACTIVE:
+            if ((rc && !rs) || (ic && !is)) {
+                s_updated = true;
+                ns = CM2_UPLINK_INACTIVE;
+            }
+            break;
+
+       case CM2_UPLINK_UNBLOCKING:
+
+            if (!rc && !rs && !ic && !is) {
+                LOGW("Nothing to check during unblocking");
+            }
+            else if (rc == rs && ic == is) {
+                s_updated = true;
+                ns = CM2_UPLINK_ACTIVE;
+            }
+            else {
+                s_updated = true;
+                ns = CM2_UPLINK_BLOCKED;
+            }
+            break;
+
+       default:
+           LOGW("Unsupported uplink state");
+           return;
+    }
+
+    if (!s_updated)
+        return;
+
+    if (ipv6)
+       cm2_ovsdb_CMU_set_ipv6(con->if_name, ns);
+    else
+       cm2_ovsdb_CMU_set_ipv4(con->if_name, ns);
+}
+
+void cm2_util_update_uplink_ip_state(struct schema_Connection_Manager_Uplink *con,
+                                      target_connectivity_check_option_t opts,
+                                      target_connectivity_check_t *cstate)
+{
+    cm2_uplink_state_t ip;
+
+    if (con->ipv4_exists) {
+        ip = cm2_get_uplink_state_from_str(con->ipv4);
+        cm2_updating_ip(con, opts, cstate, false, ip);
+    }
+    if (con->ipv6_exists) {
+        ip = cm2_get_uplink_state_from_str(con->ipv6);
+        cm2_updating_ip(con, opts, cstate, true, ip);
+    }
+}
+
+
+static bool cm2_connection_req_stability_process(const char *if_name,
+                                                 target_connectivity_check_option_t opts,
+                                                 bool db_update,
+                                                 bool status,
+                                                 target_connectivity_check_t *cstate_ptr)
 {
     struct schema_Connection_Manager_Uplink con;
     target_connectivity_check_t             cstate;
     cm2_restore_con_t                       ropt;
-    const char                              *bridge;
+    char                                    *bridge;
+    char                                    *muplink;
     bool                                    ret;
     int                                     counter;
-
-    if (!cm2_is_extender()) {
-        return true;
-    }
-
-    //TODO for all active links
-    const char *if_name = g_state.link.if_name;
-
-    memcpy(&cstate, cstate_ptr, sizeof(cstate));
-    ropt = 0;
 
     if (!g_state.link.is_used) {
         LOGN("Waiting for new active link");
@@ -344,6 +455,10 @@ bool cm2_connection_req_stability_process(target_connectivity_check_option_t opt
         return false;
     }
 
+    memcpy(&cstate, cstate_ptr, sizeof(cstate));
+    ropt = 0;
+    muplink = NULL;
+
     ret = cm2_ovsdb_connection_get_connection_by_ifname(if_name, &con);
     if (!ret) {
         LOGW("%s interface does not exist", __func__);
@@ -351,13 +466,18 @@ bool cm2_connection_req_stability_process(target_connectivity_check_option_t opt
     }
 
     bridge = con.bridge_exists ? con.bridge : "none";
-    LOGI("Params to check: link: %s router: %s internet: %s ntp: %s ipv4: %s ipv6: %s",
+    LOGI("Params to check: link: %s router: %s internet: %s ntp: %s ipv4: %s ipv6: %s opts = %d",
          cm2_util_bool2str(opts & LINK_CHECK), cm2_util_bool2str(opts & ROUTER_CHECK),
          cm2_util_bool2str(opts & INTERNET_CHECK), cm2_util_bool2str(opts & NTP_CHECK),
-         cm2_util_bool2str(opts & IPV4_CHECK), cm2_util_bool2str(opts & IPV6_CHECK));
+         cm2_util_bool2str(opts & IPV4_CHECK), cm2_util_bool2str(opts & IPV6_CHECK), opts);
 
-    LOGN("Connection status %d, main link: %s bridge: %s",
-         status, if_name, bridge);
+    if (!strcmp(if_name, g_state.link.if_name)) {
+        LOGN("Connection status %d, main link: %s bridge: %s ",
+             status, if_name, bridge);
+        muplink = bridge ? bridge : g_state.link.if_name;
+    } else {
+        LOGI("Uplink status %d, uplink: %s", status, if_name);
+    }
 
     LOGD("%s: Stability counters: [%d, %d, %d, %d]",if_name,
          con.unreachable_link_counter, con.unreachable_router_counter,
@@ -366,7 +486,7 @@ bool cm2_connection_req_stability_process(target_connectivity_check_option_t opt
          cstate.link_state, cstate.router_ipv4_state | cstate.router_ipv6_state,
          cstate.internet_ipv4_state | cstate.internet_ipv6_state);
 
-    cm2_util_update_connectivity_failures(opts, &cstate);
+    cm2_util_update_connectivity_failures(&con, opts, &cstate);
 
     if (opts & NTP_CHECK)
         g_state.ntp_check = cstate.ntp_state;
@@ -374,7 +494,8 @@ bool cm2_connection_req_stability_process(target_connectivity_check_option_t opt
     if (!db_update)
         return status;
 
-    if (g_state.link.is_bridge &&
+    if (muplink &&
+        g_state.link.is_bridge &&
         !strcmp(g_state.link.bridge_name, con.bridge) &&
         con.bridge_exists &&
         !cm2_ovsdb_validate_bridge_port_conf(con.bridge, g_state.link.if_name))
@@ -426,9 +547,10 @@ bool cm2_connection_req_stability_process(target_connectivity_check_option_t opt
             if (counter % CONFIG_CM2_STABILITY_THRESH_ROUTER + 1 == 0)
                 ropt |= (1 << CM2_RESTORE_MAIN_LINK);
         }
-        else if (kconfig_enabled(CONFIG_CM2_USE_TCPDUMP) &&
+        else if (muplink &&
+                 kconfig_enabled(CONFIG_CM2_USE_TCPDUMP) &&
                  con.unreachable_router_counter >= CONFIG_CM2_STABILITY_THRESH_TCPDUMP) {
-                    cm2_tcpdump_stop(g_state.link.if_name);
+                    cm2_tcpdump_stop(muplink);
         }
 
         ret = cm2_ovsdb_connection_update_unreachable_router_counter(if_name, counter);
@@ -436,15 +558,17 @@ bool cm2_connection_req_stability_process(target_connectivity_check_option_t opt
             LOGW("%s Failed update router counter in ovsdb table", __func__);
 
         if (kconfig_enabled(CONFIG_CM2_USE_TCPDUMP) &&
+            muplink &&
             counter == CONFIG_CM2_STABILITY_THRESH_TCPDUMP &&
             cm2_is_eth_type(g_state.link.if_type)) {
-                cm2_tcpdump_start(g_state.link.if_name);
+                cm2_tcpdump_start(muplink);
         }
 
-        if (con.unreachable_router_counter + 1 == CONFIG_CM2_STABILITY_THRESH_FATAL)
-            cm2_tcpdump_stop(g_state.link.if_name);
+        if (muplink && con.unreachable_router_counter + 1 == CONFIG_CM2_STABILITY_THRESH_FATAL)
+            cm2_tcpdump_stop(muplink);
 
-        cm2_stability_handle_fatal_state(con.unreachable_router_counter);
+        if (con.is_used)
+            cm2_stability_handle_fatal_state(con.unreachable_router_counter);
     }
     if (opts & INTERNET_CHECK) {
         counter = 0;
@@ -472,17 +596,34 @@ bool cm2_connection_req_stability_process(target_connectivity_check_option_t opt
     return status;
 }
 
-bool cm2_connection_req_stability_check(target_connectivity_check_option_t opts, bool db_update)
+static
+void cm2_util_update_opts_for_iftype(const char *iftype,
+                                     target_connectivity_check_option_t *opts)
 {
-    const char *if_name = g_state.link.if_name;
+    /* Skip Router checking for LTE interfaces */
+    if (cm2_is_lte_type(iftype)) {
+        *opts &= ~ROUTER_CHECK;
+    }
+}
+
+bool cm2_connection_req_stability_check(const char *uname,
+                                        const char *utype,
+                                        const char *clink,
+                                        target_connectivity_check_option_t opts,
+                                        bool db_update)
+{
     target_connectivity_check_t cstate = {0};
     bool ok;
 
+    if (!cm2_is_extender())
+        return true;
+
+    cm2_util_update_opts_for_iftype(utype, &opts);
     /* Ping WDT before run connectivity check */
     WARN_ON(!target_device_wdt_ping());
-    ok = target_device_connectivity_check(if_name, &cstate, opts);
+    ok = target_device_connectivity_check(clink, &cstate, opts);
 
-    return cm2_connection_req_stability_process(opts, db_update, ok, &cstate);
+    return cm2_connection_req_stability_process(uname, opts, db_update, ok, &cstate);
 }
 
 static
@@ -517,19 +658,15 @@ static
 void cm2_util_req_stability_cb(struct ev_loop *loop, ev_child *w, int revents);
 
 static
-void cm2_util_req_stability_check_recalc(void)
+void cm2_util_req_stability_check_recalc(const char *uname,
+                                         const char *clink,
+                                         target_connectivity_check_option_t opts,
+                                         bool db_update,
+                                         bool repeat)
 {
-    const char *if_name = g_state.link.is_bridge ? g_state.link.bridge_name : g_state.link.if_name;
-    bool update = g_state.stability_update_next;
-    int opts = g_state.stability_opts_next;
     pid_t pid;
 
-    if (g_state.stability_opts_now) {
-        LOGD("stability: ongoing, will check %02x later",
-             g_state.stability_opts_next);
-        return;
-    }
-
+    LOGI("%s: cm2_util_req_stability_check_recalc calling. Link check: %s", uname, clink);
     if (!opts) {
         LOGD("stability: nothing to do anymore");
         return;
@@ -543,90 +680,142 @@ void cm2_util_req_stability_check_recalc(void)
 
     if (pid == 0) {
         target_connectivity_check_t cstate = {0};
-        bool ok = target_device_connectivity_check(if_name, &cstate, opts);
+        bool ok = target_device_connectivity_check(clink, &cstate, opts);
         int mask = cm2_util_cstate2mask(ok, &cstate);
         exit(mask);
         return; /* never reached */
     }
 
-    g_state.stability_opts_now = opts;
-    g_state.stability_opts_next = 0;
-    g_state.stability_update_now = update;
-    g_state.stability_update_next = 0;
+    async_check_t *async_check = (async_check_t *) MALLOC(sizeof(async_check_t));
+    memset(async_check, 0, sizeof(async_check_t));
+    STRSCPY(async_check->uname, uname);
+    STRSCPY(async_check->clink, clink);
+    async_check->opts = opts;
+    async_check->repeat = repeat;
+    async_check->db_update = db_update;
+    ev_child_init(&async_check->cw, cm2_util_req_stability_cb, pid, 0);
+    ev_child_start(EV_DEFAULT_ &async_check->cw);
 
-    ev_child_init(&g_state.stability_child, cm2_util_req_stability_cb, pid, 0);
-    ev_child_start(EV_DEFAULT_ &g_state.stability_child);
-
-    LOGD("stability: started 0x%02x %supdate pid %d",
-         opts, update ? "" : "no", pid);
+    LOGD("%s: stability for %s: started 0x%02x %supdate pid %d",
+         uname, clink, opts, db_update ? "" : "no", pid);
 }
 
 static
 void cm2_util_req_stability_cb(EV_P_ ev_child *w, int revents)
 {
     target_connectivity_check_t cstate = {0};
+    async_check_t *async_check;
+
+    async_check = (async_check_t *) w;
+
     int mask = WIFEXITED(w->rstatus) ? WEXITSTATUS(w->rstatus) : 0xff;
     bool ok = cm2_util_mask2cstate(mask, &cstate);
-    bool update = g_state.stability_update_now;
-    bool repeat = g_state.stability_repeat;
-    int opts = g_state.stability_opts_now;
+    bool db_update = async_check->db_update;
+    bool repeat = async_check->repeat;
+    int opts = async_check->opts;
 
-    LOGD("stability: completed 0x%02x %supdate%s mask=0x%02x (%s) pid %d",
+    LOGD("%s: stability for %s: completed 0x%02x %supdate%s mask=0x%02x (%s) pid %d",
+         async_check->uname,
+         async_check->clink,
          opts,
-         update ? "" : "no",
+         db_update ? "" : "no",
          repeat ? " recurring" : "",
          mask,
          ok ? "ok" : "fail",
          w->rpid);
 
     ev_child_stop(EV_A_ w);
-    g_state.stability_opts_now = 0;
-    g_state.stability_update_now = 0;
 
-    cm2_connection_req_stability_process(opts, update, ok, &cstate);
-
-    if (repeat) {
-        if (ok) {
-            g_state.stability_repeat = false;
-        }
-        else {
-            if (!g_state.stability_opts_next)
-                g_state.stability_opts_next = opts;
-        }
+    cm2_connection_req_stability_process(async_check->uname, opts, db_update, ok, &cstate);
+    if (repeat && !ok) {
+        cm2_util_req_stability_check_recalc(async_check->uname, async_check->clink, opts, db_update, repeat);
+        return;
     }
-
-    cm2_util_req_stability_check_recalc();
+    FREE(async_check);
 }
 
-void cm2_connection_req_stability_check_async(target_connectivity_check_option_t opts, bool db_update, bool repeat)
+void cm2_connection_req_stability_check_async(const char *uname,
+                                              const char *utype,
+                                              const char *clink,
+                                              target_connectivity_check_option_t opts,
+                                              bool db_update,
+                                              bool repeat)
 {
-    opts = cm2_util_add_ip_opts(opts);
-    g_state.stability_opts_next = opts;
-    g_state.stability_update_next = db_update;
-    g_state.stability_repeat = repeat;
+    if (!cm2_is_extender())
+        return;
 
-    LOGD("stability: scheduling 0x%02x %supdate%s",
+    opts = cm2_util_add_ip_opts(opts);
+    cm2_util_update_opts_for_iftype(utype, &opts);
+
+    LOGI("%s: stability for %s: scheduling 0x%02x %supdate%s",
+         uname,
+         clink,
          opts,
          db_update ? "" : "no",
          repeat ? " recurring" : "");
 
-    cm2_util_req_stability_check_recalc();
+    cm2_util_req_stability_check_recalc(uname, clink, opts, db_update, repeat);
 }
 
 static void cm2_connection_stability_check(void)
 {
-    target_connectivity_check_option_t opts;
+    struct schema_Connection_Manager_Uplink *uplinks;
+    struct schema_Connection_Manager_Uplink *uplink_i;
+    target_connectivity_check_option_t      opts;
+    const char                              *c_uplink;
+    int                                     cnts;
+    int                                     i;
 
-    if (g_state.connected &&
-        (!g_state.link.ipv4.blocked && !g_state.link.ipv6.blocked) &&
-        !cm2_cpu_is_low_loadavg())
-        return;
+    opts = LINK_CHECK | ROUTER_CHECK | NTP_CHECK | INTERNET_CHECK;
+    uplinks = NULL;
 
-    opts = LINK_CHECK | ROUTER_CHECK | NTP_CHECK;
-    if (!g_state.connected)
-        opts |= INTERNET_CHECK;
+    cnts = cm2_ovsdb_get_connection_uplinks(&uplinks, CM2_CONNECTION_REQ_UNBLOCKING_IPV4);
+    uplink_i = uplinks;
+    for (i = 0; i < cnts && uplink_i; i++, uplink_i++) {
+        c_uplink = uplink_i->bridge_exists && uplink_i->is_used ? uplink_i->bridge : uplink_i->if_name;
+        cm2_connection_req_stability_check_async(uplink_i->if_name, uplink_i->if_type, c_uplink, opts, true, false);
+    }
 
-    cm2_connection_req_stability_check_async(opts, true, false);
+    if (uplinks)
+        FREE(uplinks);
+
+    cnts = cm2_ovsdb_get_connection_uplinks(&uplinks, CM2_CONNECTION_REQ_UNBLOCKING_IPV6);
+    uplink_i = uplinks;
+    for (i = 0; i < cnts && uplink_i; i++, uplink_i++) {
+        c_uplink = uplink_i->bridge_exists && uplink_i->is_used ? uplink_i->bridge : uplink_i->if_name;
+        cm2_connection_req_stability_check_async(uplink_i->if_name, uplink_i->if_type, c_uplink, opts, true, false);
+    }
+
+    if (uplinks)
+        FREE(uplinks);
+
+    if (g_state.stability_cnts > UPLINKS_CHECKING_ALL_THRESHOLD) {
+        g_state.stability_cnts = 0;
+        LOGI("Checking all links, p = %p", uplinks);
+        cnts = cm2_ovsdb_get_connection_uplinks(&uplinks, CM2_CONNECTION_REQ_ALL_ACTIVE_UPLINKS);
+        uplink_i = uplinks;
+        for (i = 0; i < cnts && uplink_i; i++, uplink_i++) {
+            LOGI("Checking active link: %s", uplink_i->if_name);
+            c_uplink = uplink_i->bridge_exists && uplink_i->is_used ? uplink_i->bridge : uplink_i->if_name;
+            cm2_connection_req_stability_check_async(uplink_i->if_name, uplink_i->if_type, c_uplink, opts, true, false);
+        }
+
+        if (uplinks)
+            FREE(uplinks);
+    }
+    else {
+        c_uplink = g_state.link.is_bridge ? g_state.link.bridge_name : g_state.link.if_name;
+        g_state.stability_cnts++;
+        if (g_state.connected &&
+            (!g_state.link.ipv4.blocked && !g_state.link.ipv6.blocked) &&
+            !cm2_cpu_is_low_loadavg())
+            return;
+
+        if (g_state.connected)
+            opts &= ~INTERNET_CHECK;
+
+        cm2_connection_req_stability_check_async(g_state.link.if_name, g_state.link.if_type, c_uplink, opts, true, false);
+    }
 }
 
 void cm2_stability_cb(struct ev_loop *loop, ev_timer *watcher, int revents)
@@ -642,6 +831,10 @@ void cm2_stability_cb(struct ev_loop *loop, ev_timer *watcher, int revents)
 void cm2_stability_init(struct ev_loop *loop)
 {
     LOGD("Initializing stability connection check");
+
+    if (!cm2_is_extender())
+        return;
+
     ev_timer_init(&g_state.stability_timer,
                   cm2_stability_cb,
                   CONFIG_CM2_STABILITY_INTERVAL,
@@ -663,8 +856,55 @@ void cm2_stability_update_interval(struct ev_loop *loop, bool short_int)
 
 void cm2_stability_close(struct ev_loop *loop)
 {
+    if (!cm2_is_extender())
+        return;
+
     LOGD("Stopping stability check");
     ev_timer_stop (loop, &g_state.stability_timer);
+}
+
+void cm2_update_links_cb(struct ev_loop *loop, ev_timer *watcher, int revents)
+{
+    (void)loop;
+    (void)watcher;
+    (void)revents;
+
+    cm2_ovsdb_recalc_links();
+}
+
+void cm2_update_uplinks_init(struct ev_loop *loop)
+{
+    LOGD("Initializing stability connection check");
+    ev_timer_init(&g_state.uplinks_timer,
+                  cm2_update_links_cb,
+                  UPLINKS_TIMER_TIMEOUT,
+                  UPLINKS_TIMER_TIMEOUT);
+    g_state.uplinks_timer.data = NULL;
+    ev_timer_start(g_state.loop, &g_state.uplinks_timer);
+}
+
+void cm2_update_uplinks_set_interval(struct ev_loop *loop, int value)
+{
+
+   ev_tstamp ts;
+
+   if (value < 0) {
+        LOGW("Invalid timer value %d", value);
+        return;
+    }
+    ts = ev_timer_remaining(loop, &g_state.uplinks_timer);
+    if ((int) ts < value)
+        return;
+
+    ev_timer_stop (loop, &g_state.uplinks_timer);
+    ev_timer_set (&g_state.uplinks_timer, value, UPLINKS_TIMER_TIMEOUT);
+    ev_timer_start (loop, &g_state.uplinks_timer);
+}
+
+void cm2_update_uplinks_close(struct ev_loop *loop)
+{
+    LOGD("Stopping updating uplinks");
+    ev_timer_stop (loop, &g_state.uplinks_timer);
 }
 
 #ifdef CONFIG_CM2_USE_WDT

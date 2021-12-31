@@ -55,7 +55,10 @@ char *g_loc_id = "5f93600e05bf767503dbbfe1";
 char *g_mqtt_topic = "lan/dog1/5f93600e05bf767503dbbfe1/07";
 char *g_default_dpctl_f[] = { "/tmp/stats.txt",
                               "/tmp/stats_2.txt",
-                              "/tmp/stats_3.txt"};
+                              "/tmp/stats_3.txt",
+                              "/tmp/stats_4.txt",
+                              "/tmp/stats_5.txt",
+                              "/tmp/stats_6.txt"};
 
 struct fcm_session *session = NULL;
 struct fcm_filter_client *c_client = NULL;
@@ -130,7 +133,8 @@ struct schema_Openflow_Tag_Group g_tag_group =
     }
 };
 
-
+void ut_ovsdb_init(void) {}
+void ut_ovsdb_exit(void) {}
 
 /**
  * @brief breaks the ev loop to terminate a test
@@ -264,9 +268,6 @@ test_get_mqtt_hdr_loc_id(void)
 static void
 test_lan_stats_collect_flows(lan_stats_instance_t *lan_stats_instance)
 {
-#ifndef ARCH_X86
-    lan_stats_collect_flows(lan_stats_instance);
-#else
     FILE *fp = NULL;
     char line_buf[LINE_BUFF_LEN] = {0,};
     char *file_path;
@@ -281,12 +282,12 @@ test_lan_stats_collect_flows(lan_stats_instance_t *lan_stats_instance)
     {
         LOGD("ovs-dpctl dump line %s", line_buf);
         lan_stats_parse_flows(lan_stats_instance, line_buf);
+        lan_stats_add_uplink_info(lan_stats_instance);
         lan_stats_flows_filter(lan_stats_instance);
         memset(line_buf, 0, sizeof(line_buf));
     }
 
     fclose(fp);
-#endif
 }
 
 
@@ -333,7 +334,9 @@ setUp(void)
 
     mgr = lan_stats_get_mgr();
     TEST_ASSERT_NOT_NULL(mgr);
-
+    lan_stats_init_mgr(EV_DEFAULT);
+    mgr->ovsdb_init = ut_ovsdb_init;
+    mgr->ovsdb_exit = ut_ovsdb_exit;
     num_c = sizeof(g_collector_tbl) / sizeof(g_collector_tbl[0]);
     for (i = 0; i < num_c; i++)
     {
@@ -465,6 +468,25 @@ test_max_session(void)
     TEST_ASSERT_EQUAL_INT(2, mgr->num_sessions);
 }
 
+/**
+ * @brief verifies link status are same in stats->uplink_if_type
+ * and if_name
+ */
+void
+validate_uplink(lan_stats_instance_t *lan_stats_instance, uplink_iface_type if_name)
+{
+    dp_ctl_stats_t *stats;
+
+    TEST_ASSERT_NOT_NULL(lan_stats_instance);
+    stats = &lan_stats_instance->stats;
+
+    TEST_ASSERT_EQUAL_INT(stats->uplink_if_type, if_name);
+}
+
+
+/**
+ * @brief verifies link status as "eth"
+ */
 void
 test_data_collection(void)
 {
@@ -481,14 +503,14 @@ test_data_collection(void)
 
     lan_stats_instance = lan_stats_get_active_instance();
 
-    session = calloc(1, sizeof(*session));
+    session = CALLOC(1, sizeof(*session));
     TEST_ASSERT_NOT_NULL(session);
 
-    c_client = calloc(1, sizeof(*c_client));
+    c_client = CALLOC(1, sizeof(*c_client));
     TEST_ASSERT_NOT_NULL(c_client);
     session->handler_ctxt = c_client;
 
-    r_client = calloc(1, sizeof(*r_client));
+    r_client = CALLOC(1, sizeof(*r_client));
     TEST_ASSERT_NOT_NULL(r_client);
     session->handler_ctxt = r_client;
 
@@ -505,8 +527,134 @@ test_data_collection(void)
     aggr->send_report = test_emit_report;
 
     /* collect LAN stats and report it */
+    link_stats_collect_cb(IFTYPE_ETH);
     collector->collect_periodic(collector);
     collector->send_report(collector);
+    validate_uplink(lan_stats_instance, IFTYPE_ETH);
+
+    FREE(session);
+    FREE(c_client);
+    FREE(r_client);
+}
+
+/**
+ * @brief verifies link status as "lte"
+ */
+void
+test_data_collection_v1(void)
+{
+    lan_stats_instance_t *lan_stats_instance;
+    fcm_collect_plugin_t *collector;
+    struct net_md_aggregator *aggr;
+    int rc;
+
+    collector = &g_collector_tbl[0];
+
+    /* add 1st instance */
+    rc = lan_stats_plugin_init(collector);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    lan_stats_instance = lan_stats_get_active_instance();
+
+    session = CALLOC(1, sizeof(*session));
+    TEST_ASSERT_NOT_NULL(session);
+
+    c_client = CALLOC(1, sizeof(*c_client));
+    TEST_ASSERT_NOT_NULL(c_client);
+    session->handler_ctxt = c_client;
+
+    r_client = CALLOC(1, sizeof(*r_client));
+    TEST_ASSERT_NOT_NULL(r_client);
+    session->handler_ctxt = r_client;
+
+    lan_stats_instance->session = session;
+    lan_stats_instance->r_client =  r_client;
+    lan_stats_instance->c_client = c_client;
+
+    /* Update the flow collector routine */
+    lan_stats_instance->collect_flows = test_lan_stats_collect_flows;
+
+    /* Update the reporting routine */
+    aggr = lan_stats_instance->aggr;
+    TEST_ASSERT_NOT_NULL(aggr);
+    aggr->send_report = test_emit_report;
+
+    /* collect LAN stats and report it */
+    link_stats_collect_cb(IFTYPE_LTE);
+    collector->collect_periodic(collector);
+    collector->send_report(collector);
+    validate_uplink(lan_stats_instance, IFTYPE_LTE);
+
+    FREE(session);
+    FREE(c_client);
+    FREE(r_client);
+}
+
+
+/**
+ * @brief verifies link status by altering from
+ * eth -> lte
+ */
+void
+test_data_collection_v2(void)
+{
+    lan_stats_instance_t *lan_stats_instance;
+    fcm_collect_plugin_t *collector;
+    struct net_md_aggregator *aggr;
+    int rc;
+
+    collector = &g_collector_tbl[0];
+
+    /* add 1st instance */
+    rc = lan_stats_plugin_init(collector);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    lan_stats_instance = lan_stats_get_active_instance();
+
+    session = CALLOC(1, sizeof(*session));
+    TEST_ASSERT_NOT_NULL(session);
+
+    c_client = CALLOC(1, sizeof(*c_client));
+    TEST_ASSERT_NOT_NULL(c_client);
+    session->handler_ctxt = c_client;
+
+    r_client = CALLOC(1, sizeof(*r_client));
+    TEST_ASSERT_NOT_NULL(r_client);
+    session->handler_ctxt = r_client;
+
+    lan_stats_instance->session = session;
+    lan_stats_instance->r_client = r_client;
+    lan_stats_instance->c_client = c_client;
+
+    /* Update the flow collector routine */
+    lan_stats_instance->collect_flows = test_lan_stats_collect_flows;
+
+    /* Update the reporting routine */
+    aggr = lan_stats_instance->aggr;
+    TEST_ASSERT_NOT_NULL(aggr);
+    aggr->send_report = test_emit_report;
+
+    /* collect LAN stats and report it */
+    link_stats_collect_cb(IFTYPE_ETH);
+    collector->collect_periodic(collector);
+    collector->send_report(collector);
+    validate_uplink(lan_stats_instance, IFTYPE_ETH);
+
+    /*continue on eth line*/
+    collector->collect_periodic(collector);
+    collector->send_report(collector);
+    validate_uplink(lan_stats_instance, IFTYPE_ETH);
+
+    /*shift to lte*/
+    link_stats_collect_cb(IFTYPE_LTE);
+    collector->collect_periodic(collector);
+    collector->send_report(collector);
+    validate_uplink(lan_stats_instance, IFTYPE_LTE);
+
+    /*continue on lte line*/
+    collector->collect_periodic(collector);
+    collector->send_report(collector);
+    validate_uplink(lan_stats_instance, IFTYPE_LTE);
 
     FREE(session);
     FREE(c_client);
@@ -888,6 +1036,71 @@ validate_flow_packets_bytes(void)
 }
 
 
+/**
+ * @brief validates packets & bytes
+ *
+ * Validates packets and bytes in aggr with actual bytes & packets flow.
+ */
+void
+parse_flow_packets_bytes(char *file)
+{
+    lan_stats_instance_t *lan_stats_instance;
+    struct net_md_eth_pair *eth_pair;
+    fcm_collect_plugin_t *collector;
+    struct net_md_aggregator *aggr;
+    int rc;
+
+    collector = &g_collector_tbl[0];
+    g_test_mgr.dpctl_file = file;
+
+    /* add instance */
+    rc = lan_stats_plugin_init(collector);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    lan_stats_instance = lan_stats_get_active_instance();
+
+    session = calloc(1, sizeof(*session));
+    TEST_ASSERT_NOT_NULL(session);
+
+    c_client = calloc(1, sizeof(*c_client));
+    TEST_ASSERT_NOT_NULL(c_client);
+    session->handler_ctxt = c_client;
+
+    r_client = calloc(1, sizeof(*r_client));
+    TEST_ASSERT_NOT_NULL(r_client);
+    session->handler_ctxt = r_client;
+
+    lan_stats_instance->session = session;
+    lan_stats_instance->r_client =  r_client;
+    lan_stats_instance->c_client = c_client;
+
+    /* Update the flow collector routine */
+    lan_stats_instance->collect_flows = test_lan_stats_collect_flows;
+
+    /* Update the reporting routine */
+    aggr = lan_stats_instance->aggr;
+    TEST_ASSERT_NOT_NULL(aggr);
+    aggr->send_report = test_emit_report;
+
+    /* collect LAN stats and report it */
+    collector->collect_periodic(collector);
+    collector->send_report(collector);
+
+    eth_pair = ds_tree_head(&aggr->eth_pairs);
+    TEST_ASSERT_NOT_NULL(eth_pair);
+
+    FREE(session);
+    FREE(c_client);
+    FREE(r_client);
+}
+
+void test_flow_packets_bytes()
+{
+    parse_flow_packets_bytes(g_default_dpctl_f[3]);
+    parse_flow_packets_bytes(g_default_dpctl_f[4]);
+    parse_flow_packets_bytes(g_default_dpctl_f[5]);
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -899,38 +1112,36 @@ main(int argc, char *argv[])
 
     UnityBegin(test_name);
 
-#ifdef ARCH_X86
     size_t i;
     int ret;
     /*
      * This is a requirement: Do NOT proceed if the file is missing.
      * File presence will not be tested any further.
      */
-    for (i = 0; i < 2; i++)
+    for (i = 0; i < 6; i++)
     {
         ret = access(g_default_dpctl_f[i], F_OK);
         if (ret != 0)
-        {
-            LOGW("In %s requires %s", basename(__FILE__), g_default_dpctl_f[i]);
+        {   
+            LOGI("%s file is missing", g_default_dpctl_f[i]);
             return UNITY_END();
         }
     }
-#endif
 
     test_lan_stats_global_setup();
 
     RUN_TEST(test_active_session);
     RUN_TEST(test_max_session);
     RUN_TEST(test_data_collection);
-#ifdef ARCH_X86
+    RUN_TEST(test_data_collection_v1);
+    RUN_TEST(test_data_collection_v2);
     RUN_TEST(test_events);
-#endif
     RUN_TEST(test_parent_group_tag);
     RUN_TEST(test_parent_tag);
     RUN_TEST(test_parent_device_tag);
     RUN_TEST(test_parent_cloud_tag);
     RUN_TEST(validate_flow_packets_bytes);
-
+    RUN_TEST(test_flow_packets_bytes);
     lan_stats_exit_mgr();
 
     return UNITY_END();

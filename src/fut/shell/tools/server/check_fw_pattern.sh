@@ -34,11 +34,10 @@ source "${FUT_TOPDIR}/shell/config/default_shell.sh"
 [ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh &> /dev/null
 source "${FUT_TOPDIR}/shell/lib/onbrd_lib.sh"
 
-tc_name="check_fw_pattern.sh"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] [-file FILENAME] [-fw FW_STRING]
+check_fw_pattern.sh [-h] [-file FILENAME] [-fw FW_STRING]
 Description:
     Check fw version pattern validity
     The script is a development tool that is intended for execution on RPI
@@ -52,15 +51,15 @@ Testcase procedure: execute on RPI server or local PC, not DUT
         export FUT_TOPDIR=~/git/device/core/src/fut
     - Run tool
 Script usage example:
-   ./${tc_name} -file files/fw_patterns
-   ./${tc_name} -fw 2.4.3-72-g65b961c-dev-debug
+   ./check_fw_pattern.sh -file files/fw_patterns
+   ./check_fw_pattern.sh -fw 2.4.3-72-g65b961c-dev-debug
 usage_string
 exit 1
 }
 
 NARGS=1
 if [ $# -lt ${NARGS} ]; then
-    log -err "${tc_name}: Requires at least ${NARGS} input argument(s)."
+    log -err "check_fw_pattern.sh: Requires at least ${NARGS} input argument(s)."
     usage
 fi
 
@@ -83,14 +82,14 @@ while [ -n "$1" ]; do
             shift
             ;;
         *)
-            raise "Unknown argument" -l "${tc_name}" -arg
+            raise "Unknown argument" -l "check_fw_pattern.sh" -arg
             ;;
     esac
 done
 
 # TEST EXECUTION:
 if [ -n "$in_file"  ]; then
-    log "${tc_name}: Verifying FW version string(s) from file '${in_file}'."
+    log "check_fw_pattern.sh: Verifying FW version string(s) from file '${in_file}'."
     while IFS= read line
     do
         # Discard empty lines and comments
@@ -103,16 +102,16 @@ if [ -n "$in_file"  ]; then
         rv=$(verify_fw_pattern "${line}")
         rc=$?
         [ $rc -eq 0 ] &&
-            log -deb "${tc_name}: FW version string ${line} is valid" ||
-            log -err "${tc_name}: FW version string ${line} is not valid\n${rv}"
+            log -deb "check_fw_pattern.sh: FW version string ${line} is valid" ||
+            log -err "check_fw_pattern.sh: FW version string ${line} is not valid\n${rv}"
     done <"$in_file"
 elif [ -n "$fw_string" ]; then
-    log "${tc_name}: Verifying FW version string '${fw_string}'."
+    log "check_fw_pattern.sh: Verifying FW version string '${fw_string}'."
     rv=$(verify_fw_pattern "${fw_string}")
     [ $? -eq 0 ] &&
-        log -deb "${tc_name}: FW version string ${fw_string} is valid" ||
-        raise "FW version string ${fw_string} is not valid" -l "${tc_name}" -tc
+        log -deb "check_fw_pattern.sh: FW version string ${fw_string} is valid" ||
+        raise "FW version string ${fw_string} is not valid" -l "check_fw_pattern.sh" -tc
 else
-    log -err "${tc_name}: Something went wrong..."
+    log -err "check_fw_pattern.sh: Something went wrong..."
     usage
 fi

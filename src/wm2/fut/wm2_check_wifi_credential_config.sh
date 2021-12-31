@@ -33,21 +33,20 @@ source "${FUT_TOPDIR}/shell/lib/wm2_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="wm2/$(basename "$0")"
 manager_setup_file="wm2/wm2_setup.sh"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+wm2/wm2_check_wifi_credential_config.sh [-h] arguments
 Description:
     - Script checks Wifi_Credential_Config table empty or not.
 Arguments:
     -h  show this help message
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name}
+                 Run: ./wm2/wm2_check_wifi_credential_config.sh
 Script usage example:
-    ./${tc_name}
+    ./wm2/wm2_check_wifi_credential_config.sh
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -66,15 +65,14 @@ trap '
     fut_info_dump_line
     print_tables Wifi_Credential_Config
     fut_info_dump_line
-    run_setup_if_crashed wm || true
 ' EXIT SIGINT SIGTERM
 
-log_title "$tc_name: WM2 test - checks Wifi_Credential_Config table is empty or not"
+log_title "wm2/wm2_check_wifi_credential_config.sh: WM2 test - checks Wifi_Credential_Config table is empty or not"
 
 if [ "$(${OVSH} s Wifi_Credential_Config -r | wc -l)" -gt 0 ]; then
-    log "$tc_name: Pre-populated entry present in Wifi_Credential_Config table - Success"
+    log "wm2/wm2_check_wifi_credential_config.sh: Pre-populated entry present in Wifi_Credential_Config table - Success"
 else
-    raise "FAIL: Wifi_Credential_Config table is empty" -l "$tc_name" -tc
+    raise "FAIL: Wifi_Credential_Config table is empty" -l "wm2/wm2_check_wifi_credential_config.sh" -tc
 fi
 
 pass

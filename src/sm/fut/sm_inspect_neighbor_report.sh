@@ -33,13 +33,12 @@ source "${FUT_TOPDIR}/shell/lib/sm_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="sm/$(basename "$0")"
 manager_setup_file="sm/sm_setup.sh"
 radio_vif_create_path="tools/device/create_radio_vif_interface.sh"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+sm/sm_inspect_neighbor_report.sh [-h] arguments
 Description:
     - Script configures SM neighbor reporting and inspects the logs for the neighbor device being reported by SM, fails otherwise
 Arguments:
@@ -58,9 +57,9 @@ Testcase procedure:
     - On LEAF:   Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
                  Create required Radio-VIF interface settings to create test neighbor network (see ${radio_vif_create_path} -h)
     - On DEVICE:
-                 Run: ./${tc_name} <RADIO-TYPE> <CHANNEL> <SURVEY-TYPE> <REPORTING-INTERVAL> <SAMPLING-INTERVAL> <REPORT-TYPE> <NEIGHBOR-SSID> <NEIGHBOR-MAC>
+                 Run: ./sm/sm_inspect_neighbor_report.sh <RADIO-TYPE> <CHANNEL> <SURVEY-TYPE> <REPORTING-INTERVAL> <SAMPLING-INTERVAL> <REPORT-TYPE> <NEIGHBOR-SSID> <NEIGHBOR-MAC>
 Script usage example:
-   ./${tc_name} 2.4G 6 on-chan 10 5 raw neighbor_ssid_name 3c:7b:96:4d:11:5c
+   ./sm/sm_inspect_neighbor_report.sh 2.4G 6 on-chan 10 5 raw neighbor_ssid_name 3c:7b:96:4d:11:5c
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -75,7 +74,7 @@ if [ -n "${1}" ]; then
     esac
 fi
 NARGS=8
-[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "sm/sm_inspect_neighbor_report.sh" -arg
 sm_radio_type=$1
 sm_channel=$2
 sm_survey_type=$3
@@ -85,11 +84,10 @@ sm_report_type=$6
 sm_neighbor_ssid=$7
 sm_neighbor_mac=$8
 
-trap 'run_setup_if_crashed sm' EXIT SIGINT SIGTERM
 
-log_title "$tc_name: SM test - Inspect neighbor report for $sm_radio_type"
+log_title "sm/sm_inspect_neighbor_report.sh: SM test - Inspect neighbor report for $sm_radio_type"
 
-log "$tc_name: Inspecting neighbor report on $sm_radio_type $sm_survey_type for $sm_neighbor_mac $sm_neighbor_ssid"
+log "sm/sm_inspect_neighbor_report.sh: Inspecting neighbor report on $sm_radio_type $sm_survey_type for $sm_neighbor_mac $sm_neighbor_ssid"
 inspect_neighbor_report \
     "$sm_radio_type" \
     "$sm_channel" \
@@ -99,6 +97,6 @@ inspect_neighbor_report \
     "$sm_report_type" \
     "$sm_neighbor_ssid" \
     "$sm_neighbor_mac" ||
-        raise "FAIL: inspect_neighbor_report - $sm_report_type logs for NEIGHBOR $sm_neighbor_mac not found for radio $sm_radio_type" -l "$tc_name" -tc
+        raise "FAIL: inspect_neighbor_report - $sm_report_type logs for NEIGHBOR $sm_neighbor_mac not found for radio $sm_radio_type" -l "sm/sm_inspect_neighbor_report.sh" -tc
 
 pass

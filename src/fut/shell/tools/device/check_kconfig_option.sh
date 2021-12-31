@@ -33,11 +33,10 @@ source "${FUT_TOPDIR}/shell/lib/unit_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="tools/device/$(basename "$0")"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+tools/device/check_kconfig_option.sh [-h] arguments
 Description:
     - Script checks device Kconfig option value
     - If kconfig_option value is equal to kconfig_value script exits with exit code 0
@@ -47,7 +46,7 @@ Arguments:
     - \$1 (kconfig_option) : Kconfig option to check : (string)(required)
     - \$2 (kconfig_value)  : Kconfig value to check  : (string)(required)
 Script usage example:
-   ./${tc_name} CONFIG_MANAGER_WM y
+   ./tools/device/check_kconfig_option.sh CONFIG_MANAGER_WM y
 usage_string
 }
 
@@ -72,9 +71,9 @@ kconfig_value=${2}
 check_kconfig_option "${kconfig_option}" "${kconfig_value}"
 # shellcheck disable=SC2181
 if [ $? -eq 0 ]; then
-    log "${tc_name}: kconfig option is equal to expected: ${kconfig_option}==${kconfig_value}"
+    log "tools/device/check_kconfig_option.sh: kconfig option is equal to expected: ${kconfig_option}==${kconfig_value}"
     exit 0
 else
-    log "${tc_name}: kconfig option is NOT equal to expected: ${kconfig_option}==${kconfig_value}"
+    log "tools/device/check_kconfig_option.sh: kconfig option is NOT equal to expected: ${kconfig_option}==${kconfig_value}"
     exit 1
 fi

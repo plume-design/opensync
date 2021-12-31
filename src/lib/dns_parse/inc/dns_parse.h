@@ -10,6 +10,7 @@
 #include "os_types.h"
 #include "ds_tree.h"
 #include "fsm.h"
+#include "fsm_dns_utils.h"
 #include "fsm_policy.h"
 
 
@@ -22,8 +23,6 @@ struct web_cat_offline
 };
 
 #define DNS_REDIRECT_TTL 345600
-#define MAX_TAG_VALUES_LEN 64
-#define MAX_TAG_NAME_LEN 64
 #define MAX_EXCLUDES 100
 struct dns_session
 {
@@ -125,7 +124,7 @@ struct dns_cache
     int req_cache_ttl;
     int (*set_forward_context)(struct fsm_session *);
     void (*forward)(struct dns_session *, dns_info *, uint8_t *, int);
-    void (*update_tag)(struct fqdn_pending_req *, struct fsm_policy_reply *);
+    void (*update_tag)(struct fsm_dns_update_tag_param *);
     void (*policy_init)(void);
     void (*policy_check)(struct dns_device *, struct fqdn_pending_req *, struct fsm_policy_reply *);
 };
@@ -168,58 +167,9 @@ void
 dns_remove_req(struct dns_session *dns_session, os_macaddr_t *mac,
                uint16_t req_id);
 
-
-/**
- * @brief create updated row for OF Tag with newly matched IPs
- *
- * @param        req          request with update fields loaded
- * @param[out]   values       buffer to update values.
- * @param[out]   values_len   length of the values updated.
- * @param[in]    max_capacity the buffer maximum capacity
- * @param[in]    ip_ver       the IP protocol version
- *
- * @return true loaded correctly built struct into output
- * @return false output struct not built
- */
-bool
-dns_generate_update_tag(struct fqdn_pending_req *req,
-                        struct fsm_policy_reply *policy_reply,
-                        char values[][MAX_TAG_VALUES_LEN],
-                        int *values_len, size_t max_capacity,
-                        int ip_ver);
-
-typedef bool (*dns_ovsdb_updater)(const char *, const char *,
-                                  const char *, json_t *, ovs_uuid_t *);
-/**
- * @brief update Openflow_Tag to map to new row
- *
- * @param       row      new row to be written to Openflow_Tag
- * @param       updater  dependency injection for updating
- *
- * @return      true     succeeded in update
- * @return      false    failed to update
- */
-bool
-dns_upsert_regular_tag(struct schema_Openflow_Tag *row, dns_ovsdb_updater updater);
-
-/**
- * @brief update Openflow_Tag to map to new row
- *
- * @param       row      new row to be written to Openflow_Tag
- * @param       updater  dependency injection for updating
- *
- * @return      true     succeeded in update
- * @return      false    failed to update
- */
-bool
-dns_upsert_local_tag(struct schema_Openflow_Local_Tag *row, dns_ovsdb_updater updater);
-
 void
 dns_forward(struct dns_session *dns_session, dns_info *dns,
             uint8_t *packet, int len);
-
-void
-dns_update_tag(struct fqdn_pending_req *req, struct fsm_policy_reply *policy_reply);
 
 void
 dns_periodic(struct fsm_session  *session);
@@ -251,8 +201,5 @@ dns_get_mgr(void);
 
 void
 dns_mgr_init(void);
-
-bool
-dns_cache_add_redirect_entry(struct fqdn_pending_req *req, struct sockaddr_storage *ipaddr);
 
 #endif /* DNS_PARSE_H_INCLUDED */

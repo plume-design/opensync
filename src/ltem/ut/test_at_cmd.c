@@ -44,6 +44,7 @@ static char lte_at_buf[1024];
 
 char *at_cmd="at\r";
 char *ati_cmd="ati\r";
+char *qsimstat_cmd="at+qsimstat?\r";
 char *gsn_cmd="at+gsn\r";
 char *cimi_cmd="at+cimi\r";
 char *qccid_cmd="at+qccid\r";
@@ -52,21 +53,23 @@ char *csq_cmd="at+csq\r";
 char *qgdcnt_cmd="at+qgdcnt?\r";
 char *qdsim_cmd="at+qdsim?\r";
 char *cops_cmd="at+cops?\r";
-char *srv_cell_cmd="at+qeng=\\\"servingcell\\\"";
-char *neigh_cell_cmd="at+qeng=\\\"neighbourcell\\\"";
+char *srv_cell_cmd="at+qeng=\\\"servingcell\\\"\r";
+char *neigh_cell_cmd="at+qeng=\\\"neighbourcell\\\"\r";
 
 char *at_at="at\r\r\nOK\r\n";
 char *at_ati="ati\r\r\nMyChip\r\nE123\r\nRevision: E1234ALA1A02M4G\r\n\r\nOK\r\n";
+char *at_qsimstat="at+qsimstat?\r\r\n+QSIMSTAT: 1,1\r\n\r\nOK\r\n";
 char *at_gsn="at+gsn\r\r\n123456789012345\r\n\r\nOK\r\n";
 char *at_cimi="at+cimi\r\r\n123456789012345\r\n\r\nOK\r\n";
-char *at_qccid="at+qccid\r\r\n+QCCID: 8900000000000000003F\r\n\r\nOK\r\n";
+char *at_qccid="at+qccid\r\r\n+QCCID: 890000000000001234F\r\n\r\nOK\r\n";
 char *at_creg="at+creg?\r\r\n+CREG: 0,5\r\n\r\nOK\r\n";
 char *at_csq="at+csq\r\r\n+CSQ: 18,99\r\n\r\nOK\r\n";
 char *at_qgdcnt="at+qgdcnt?\r\r\n+QGDCNT: 356397,150721\r\n\r\nOK\r\n";
 char *at_qdsim="at+qdsim?\r\r\n+QDSIM: 0\r\n\r\nOK\r\n";
-char *at_cops="at+cops?\r\r\n+COPS: 0,0,\"MyProvider\",7\r\n\r\nOK\r\n";
+char *at_cops="at+cops?\r\r\n+COPS: 0,0,\"AT&T\",7\r\n\r\nOK\r\n";
 char *at_srv_cell_lte="at+qeng=\"servingcell\"\r\r\n+QENG: \"servingcell\",\"NOCONN\",\"LTE\",\"FDD\",310,410,A1FBF0A,310,800,2,5,5,8B1E,-115,-14,-80,10,8\r\n\r\nOK\r\n";
 char *at_srv_cell_wcdma="at+qeng=\"servingcell\"\r\r\n+QENG: \"servingcell\",\"LIMSRV\",\"WCDMA\",310,410,DEA6,2883C,4385,84,254,-102,-10,-,-,-,-,-\r\n\r\nOK\r\n";
+char *at_srv_cell_wcdma_noconn="at+qeng=\"servingcell\"\r\r\n+QENG: \"servingcell\",\"NOCONN\",\"WCDMA\",310,410,DEA6,2883C,4385,84,254,-98,-7,-,-,-,-,-\r\n\r\nOK\r\n";
 char *at_neigh_cell="at+qeng=\"neighbourcell\"\r\r\n+QENG: \"neighbourcell intra\",\"LTE\",800,310,-14,-115,-80,0,8,4,10,2,62\r\n+QENG: \"neighbourcell inter\",\"LTE\",5110,263,-11,-102,-82,0,8,2,6,6\r\n+QENG: \"neighbourcell inter\",\"LTE\",66986,-,-,-,-,-,0,6,6,1,-,-,-,-\r\n+QENG: \"neighbourcell\",\"WCDMA\",512,6,14,62,-,-,-,-\r\n+QENG: \"neighbourcell\",\"WCDMA\",4385,0,14,62,84,-1030,-110,15\r\n\r\nOK\r\n";
 
 int
@@ -87,79 +90,81 @@ lte_ut_modem_read(int fd, char *at_buf, ssize_t at_len)
 {
     ssize_t res;
 
-    res = strncmp(modem_cmd_buf, at_cmd, strlen(at_cmd));
+    res = strncmp(modem_cmd_buf, at_cmd, strlen(modem_cmd_buf));
     if (!res)
     {
         strscpy(at_buf, at_at, strlen(at_at));
         return strlen(at_at);
     }
-    res = strncmp(modem_cmd_buf, ati_cmd, strlen(ati_cmd));
+    res = strncmp(modem_cmd_buf, ati_cmd, strlen(modem_cmd_buf));
     if (!res)
     {
         strscpy(at_buf, at_ati, strlen(at_ati));
         return strlen(at_ati);
     }
-    res = strncmp(modem_cmd_buf, gsn_cmd, strlen(gsn_cmd));
+
+    res = strncmp(modem_cmd_buf, qsimstat_cmd, strlen(modem_cmd_buf));
+    if (!res)
+    {
+        strscpy(at_buf, at_qsimstat, strlen(at_qsimstat));
+        return strlen(at_qsimstat);
+    }
+
+    res = strncmp(modem_cmd_buf, gsn_cmd, strlen(modem_cmd_buf));
     if (!res)
     {
         strscpy(at_buf, at_gsn, strlen(at_gsn));
         return strlen(at_gsn);
     }
-    res = strncmp(modem_cmd_buf, cimi_cmd, strlen(cimi_cmd));
+    res = strncmp(modem_cmd_buf, cimi_cmd, strlen(modem_cmd_buf));
     if (!res)
     {
         strscpy(at_buf, at_cimi, strlen(at_cimi));
         return strlen(at_cimi);
     }
-    res = strncmp(modem_cmd_buf, qccid_cmd, strlen(qccid_cmd));
+    res = strncmp(modem_cmd_buf, qccid_cmd, strlen(modem_cmd_buf));
     if (!res)
     {
         strscpy(at_buf, at_qccid, strlen(at_qccid));
         return strlen(at_qccid);
     }
-    res = strncmp(modem_cmd_buf, creg_cmd, strlen(creg_cmd));
+    res = strncmp(modem_cmd_buf, creg_cmd, strlen(modem_cmd_buf));
     if (!res)
     {
         strscpy(at_buf, at_creg, strlen(at_creg));
         return strlen(at_creg);
     }
-    res = strncmp(modem_cmd_buf, csq_cmd, strlen(csq_cmd));
+    res = strncmp(modem_cmd_buf, csq_cmd, strlen(modem_cmd_buf));
     if (!res)
     {
         strscpy(at_buf, at_csq, strlen(at_csq));
         return strlen(at_csq);
     }
-    res = strncmp(modem_cmd_buf, qgdcnt_cmd, strlen(qgdcnt_cmd));
+    res = strncmp(modem_cmd_buf, qgdcnt_cmd, strlen(modem_cmd_buf));
     if (!res)
     {
         strscpy(at_buf, at_qgdcnt, strlen(at_qgdcnt));
         return strlen(at_qgdcnt);
     }
-    res = strncmp(modem_cmd_buf, qdsim_cmd, strlen(qdsim_cmd));
+    res = strncmp(modem_cmd_buf, qdsim_cmd, strlen(modem_cmd_buf));
     if (!res)
     {
         strscpy(at_buf, at_qdsim, strlen(at_qdsim));
         return strlen(at_qdsim);
     }
-    res = strncmp(modem_cmd_buf, cops_cmd, strlen(cops_cmd));
+    res = strncmp(modem_cmd_buf, cops_cmd, strlen(modem_cmd_buf));
     if (!res)
     {
         strscpy(at_buf, at_cops, strlen(at_cops));
         return strlen(at_cops);
     }
-    res = strncmp(modem_cmd_buf, srv_cell_cmd, strlen(srv_cell_cmd));
+    res = strncmp(modem_cmd_buf, srv_cell_cmd, strlen(modem_cmd_buf));
     if (!res)
     {
         strscpy(at_buf, at_srv_cell_lte, strlen(at_srv_cell_lte));
         return strlen(at_srv_cell_lte);
     }
-    res = strncmp(modem_cmd_buf, srv_cell_cmd, strlen(srv_cell_cmd));
-    if (!res)
-    {
-        strscpy(at_buf, at_srv_cell_wcdma, strlen(at_srv_cell_wcdma));
-        return strlen(at_srv_cell_wcdma);
-    }
-    res = strncmp(modem_cmd_buf, neigh_cell_cmd, strlen(neigh_cell_cmd));
+    res = strncmp(modem_cmd_buf, neigh_cell_cmd, strlen(modem_cmd_buf));
     if (!res)
     {
         strscpy(at_buf, at_neigh_cell, strlen(at_neigh_cell));

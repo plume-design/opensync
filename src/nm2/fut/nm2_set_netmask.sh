@@ -33,12 +33,11 @@ source "${FUT_TOPDIR}/shell/lib/nm2_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-tc_name="nm2/$(basename "$0")"
 manager_setup_file="nm2/nm2_setup.sh"
 usage()
 {
 cat << usage_string
-${tc_name} [-h] arguments
+nm2/nm2_set_netmask.sh [-h] arguments
 Description:
     - Script configures interfaces netmask through Wifi_inet_Config 'netmask' field and checks if it is propagated
       into Wifi_Inet_State table and to the system, fails otherwise
@@ -49,9 +48,9 @@ Arguments:
     \$3 (netmask) : used as netmask in Wifi_Inet_Config table : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./${tc_name} <IF-NAME> <IF-TYPE> <NETMASK>
+                 Run: ./nm2/nm2_set_netmask.sh <IF-NAME> <IF-TYPE> <NETMASK>
 Script usage example:
-   ./${tc_name} eth0 eth 255.255.0.0
+   ./nm2/nm2_set_netmask.sh eth0 eth 255.255.0.0
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -67,7 +66,7 @@ if [ -n "${1}" ]; then
 fi
 
 NARGS=3
-[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "${tc_name}" -arg
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "nm2/nm2_set_netmask.sh" -arg
 if_name=$1
 if_type=$2
 netmask=$3
@@ -75,15 +74,14 @@ netmask=$3
 trap '
     fut_info_dump_line
     print_tables Wifi_Inet_Config Wifi_Inet_State
-    fut_info_dump_line
     reset_inet_entry $if_name || true
-    run_setup_if_crashed nm || true
     check_restore_management_access || true
+    fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 
-log_title "$tc_name: NM2 test - Testing table Wifi_Inet_Config field netmask - $netmask"
+log_title "nm2/nm2_set_netmask.sh: NM2 test - Testing table Wifi_Inet_Config field netmask - $netmask"
 
-log "$tc_name: Creating Wifi_Inet_Config entries for $if_name"
+log "nm2/nm2_set_netmask.sh: Creating Wifi_Inet_Config entries for $if_name"
 create_inet_entry \
     -if_name "$if_name" \
     -enabled true \
@@ -92,21 +90,21 @@ create_inet_entry \
     -netmask 255.255.255.0 \
     -inet_addr 10.10.10.30 \
     -if_type "$if_type" &&
-        log "$tc_name: Interface $if_name created - Success" ||
-        raise "FAIL: Failed to create $if_name interface" -l "$tc_name" -ds
+        log "nm2/nm2_set_netmask.sh: Interface $if_name created - Success" ||
+        raise "FAIL: Failed to create $if_name interface" -l "nm2/nm2_set_netmask.sh" -ds
 
-log "$tc_name: Setting NETMASK for $if_name to $netmask"
+log "nm2/nm2_set_netmask.sh: Setting NETMASK for $if_name to $netmask"
 update_ovsdb_entry Wifi_Inet_Config -w if_name "$if_name" -u netmask "$netmask" &&
-    log "$tc_name: update_ovsdb_entry - Wifi_Inet_Config table::netmask is $netmask - Success" ||
-    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config::netmask is not $netmask" -l "$tc_name" -oe
+    log "nm2/nm2_set_netmask.sh: update_ovsdb_entry - Wifi_Inet_Config table::netmask is $netmask - Success" ||
+    raise "FAIL: update_ovsdb_entry - Failed to update Wifi_Inet_Config::netmask is not $netmask" -l "nm2/nm2_set_netmask.sh" -oe
 
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is netmask "$netmask" &&
-    log "$tc_name: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::netmask is $netmask - Success" ||
-    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::netmask is not $netmask" -l "$tc_name" -tc
+    log "nm2/nm2_set_netmask.sh: wait_ovsdb_entry - Wifi_Inet_Config reflected to Wifi_Inet_State::netmask is $netmask - Success" ||
+    raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::netmask is not $netmask" -l "nm2/nm2_set_netmask.sh" -tc
 
-log "$tc_name: Check if NETMASK was properly applied to $if_name - LEVEL2"
+log "nm2/nm2_set_netmask.sh: Check if NETMASK was properly applied to $if_name - LEVEL2"
 wait_for_function_response 0 "get_interface_netmask_from_system $if_name | grep -q \"$netmask\"" &&
-    log "$tc_name: LEVEL2 - NETMASK applied to ifconfig for interface $if_name - Success" ||
-    raise "FAIL: LEVEL2 - Failed to apply NETMASK to ifconfig for interface $if_name" -l "$tc_name" -tc
+    log "nm2/nm2_set_netmask.sh: LEVEL2 - NETMASK applied to ifconfig for interface $if_name - Success" ||
+    raise "FAIL: LEVEL2 - Failed to apply NETMASK to ifconfig for interface $if_name" -l "nm2/nm2_set_netmask.sh" -tc
 
 pass
