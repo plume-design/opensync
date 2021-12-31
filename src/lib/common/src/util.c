@@ -1235,10 +1235,20 @@ const int *unii_5g_chan2list(int chan, int width)
     const int *p;
 
     for (p = lists; *p != -1; p++)
+    {
         if (*p == width)
+        {
             for (start = ++p; *p; p++)
+            {
                 if (*p == chan)
                     return start;
+            }
+        }
+        else
+        {
+            while (*p != 0) p++;
+        }
+    }
 
     return NULL;
 }
@@ -1362,10 +1372,20 @@ const int *unii_6g_chan2list(int chan, int width)
     const int *p;
 
     for (p = lists; *p != -1; p++)
+    {
         if (*p == width)
+        {
             for (start = ++p; *p; p++)
+            {
                 if (*p == chan)
                     return start;
+            }
+        }
+        else
+        {
+            while (*p != 0) p++;
+        }
+    }
 
     return NULL;
 }

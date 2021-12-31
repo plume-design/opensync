@@ -59,6 +59,8 @@ struct ip2action_req *entry7;
 struct ip2action_req *entry8;
 struct ip2action_req *entry9;
 struct ip2action_req *entry10;
+struct ip2action_req *entry11;
+struct ip2action_req *entry12;
 
 struct test_timers
 {
@@ -150,6 +152,8 @@ void setUp(void)
     uint32_t v4dstip8 = htonl(0x04030208);
     uint32_t v4dstip9 = htonl(0x04030209);
     uint32_t v4dstip10 = htonl(0x04030210);
+    uint32_t v4dstip11 = htonl(0x04030211);
+    uint32_t v4dstip12 = htonl(0x04030212);
 
     uint32_t v6dstip1[4] = {0};
     uint32_t v6dstip2[4] = {0};
@@ -327,6 +331,42 @@ void setUp(void)
     entry10->cache_gk.category_id = 100;
     entry10->cache_gk.gk_policy = strdup("gk_policy");
     entry10->cat_unknown_to_service = true;
+
+    entry11 = CALLOC(1, sizeof(*entry11));
+    entry11->device_mac = CALLOC(1, sizeof(*entry11->device_mac));
+    entry11->ip_addr = MALLOC(sizeof(*entry11->ip_addr));
+    util_populate_sockaddr(AF_INET, &v4dstip11, entry11->ip_addr);
+    entry11->device_mac->addr[0] = 0xaa;
+    entry11->device_mac->addr[1] = 0xaa;
+    entry11->device_mac->addr[2] = 0xaa;
+    entry11->device_mac->addr[3] = 0xaa;
+    entry11->device_mac->addr[4] = 0xaa;
+    entry11->device_mac->addr[5] = 0x11;
+    entry11->cache_ttl           = 7;
+    entry11->policy_idx          = 7;
+    entry11->service_id          = 1;
+    entry11->nelems              = 1;
+    entry11->categories[0]       = 90;
+    entry11->cache_wb.risk_level = 5;
+    entry11->cat_unknown_to_service = true;
+
+    entry12 = CALLOC(1, sizeof(*entry12));
+    entry12->device_mac = CALLOC(1, sizeof(*entry12->device_mac));
+    entry12->ip_addr = MALLOC(sizeof(*entry12->ip_addr));
+    util_populate_sockaddr(AF_INET, &v4dstip12, entry12->ip_addr);
+    entry12->device_mac->addr[0] = 0xaa;
+    entry12->device_mac->addr[1] = 0xaa;
+    entry12->device_mac->addr[2] = 0xaa;
+    entry12->device_mac->addr[3] = 0xaa;
+    entry12->device_mac->addr[4] = 0xaa;
+    entry12->device_mac->addr[5] = 0x12;
+    entry12->cache_ttl           = 7;
+    entry12->policy_idx          = 7;
+    entry12->service_id          = 1;
+    entry12->nelems              = 1;
+    entry12->categories[0]       = 90;
+    entry12->cache_wb.risk_level = 5;
+    entry12->cat_unknown_to_service = true;
 }
 
 void free_dns_cache_entry(struct ip2action_req *req)
@@ -358,6 +398,8 @@ void tearDown(void)
     free_dns_cache_entry(entry8);
     free_dns_cache_entry(entry9);
     free_dns_cache_entry(entry10);
+    free_dns_cache_entry(entry11);
+    free_dns_cache_entry(entry12);
 }
 
 
@@ -1728,6 +1770,107 @@ void test_dns_cache_hit_count(void)
     LOGI("\n******************** %s: completed ****************\n", __func__);
 }
 
+void test_dns_cache_action_by_name(void)
+{
+    uint32_t v4dstip11 = htonl(0x04030211);
+    uint32_t v4dstip12 = htonl(0x04030212);
+    struct ip2action_req *entry = NULL;
+    struct sockaddr_storage ip;
+    struct ip2action_req  key;
+    os_macaddr_t mac;
+    bool rc_lookup;
+    bool rc_add;
+    int nelem;
+
+    LOGI("\n******************** %s: starting ****************\n", __func__);
+
+    /* Add the ip2action entry */
+    entry = entry11;
+    entry->action_by_name = FSM_ALLOW;
+    rc_add = dns_cache_add_entry(entry);
+    TEST_ASSERT_TRUE(rc_add);
+
+    nelem = dns_cache_get_size();
+    TEST_ASSERT_EQUAL_INT(nelem, 1);
+
+    memset(&key, 0, sizeof(struct ip2action_req));
+    util_populate_sockaddr(AF_INET, &v4dstip11, &ip);
+    key.ip_addr = &ip;
+    mac.addr[0] = 0xaa;
+    mac.addr[1] = 0xaa;
+    mac.addr[2] = 0xaa;
+    mac.addr[3] = 0xaa;
+    mac.addr[4] = 0xaa;
+    mac.addr[5] = 0x11;
+    key.device_mac = &mac;
+
+    rc_lookup = dns_cache_ip2action_lookup(&key);
+    /* Validate lookup to the dns_cache entry */
+    TEST_ASSERT_TRUE(rc_lookup);
+    TEST_ASSERT_EQUAL_INT(FSM_ALLOW, key.action);
+    TEST_ASSERT_EQUAL_INT(FSM_ALLOW, key.action_by_name);
+
+    entry->action = FSM_BLOCK;
+    rc_add = dns_cache_add_entry(entry);
+    TEST_ASSERT_TRUE(rc_add);
+
+    nelem = dns_cache_get_size();
+    TEST_ASSERT_EQUAL_INT(nelem, 1);
+
+    rc_lookup = dns_cache_ip2action_lookup(&key);
+    /* Validate lookup to the dns_cache entry */
+    TEST_ASSERT_TRUE(rc_lookup);
+    TEST_ASSERT_EQUAL_INT(FSM_BLOCK, key.action);
+    TEST_ASSERT_EQUAL_INT(FSM_ALLOW, key.action_by_name);
+
+    /* Add the ip2action entry */
+    entry = entry12;
+    entry->action_by_name = FSM_BLOCK;
+    rc_add = dns_cache_add_entry(entry);
+    TEST_ASSERT_TRUE(rc_add);
+
+    nelem = dns_cache_get_size();
+    TEST_ASSERT_EQUAL_INT(nelem, 2);
+
+    memset(&key, 0, sizeof(struct ip2action_req));
+    util_populate_sockaddr(AF_INET, &v4dstip12, &ip);
+    key.ip_addr = &ip;
+    mac.addr[0] = 0xaa;
+    mac.addr[1] = 0xaa;
+    mac.addr[2] = 0xaa;
+    mac.addr[3] = 0xaa;
+    mac.addr[4] = 0xaa;
+    mac.addr[5] = 0x12;
+    key.device_mac = &mac;
+
+    rc_lookup = dns_cache_ip2action_lookup(&key);
+    /* Validate lookup to the dns_cache entry */
+    TEST_ASSERT_FALSE(rc_lookup);
+
+    entry->action = FSM_ALLOW;
+    rc_add = dns_cache_add_entry(entry);
+
+    nelem = dns_cache_get_size();
+    TEST_ASSERT_EQUAL_INT(nelem, 2);
+
+    rc_lookup = dns_cache_ip2action_lookup(&key);
+    /* Validate lookup to the dns_cache entry */
+    TEST_ASSERT_TRUE(rc_lookup);
+    TEST_ASSERT_EQUAL_INT(FSM_BLOCK, key.action_by_name);
+    TEST_ASSERT_EQUAL_INT(FSM_ALLOW, key.action);
+
+    entry->action = FSM_BLOCK;
+    rc_add = dns_cache_add_entry(entry);
+
+    nelem = dns_cache_get_size();
+    TEST_ASSERT_EQUAL_INT(nelem, 2);
+
+    rc_lookup = dns_cache_ip2action_lookup(&key);
+    /* Validate lookup to the dns_cache entry */
+    TEST_ASSERT_TRUE(rc_lookup);
+    TEST_ASSERT_EQUAL_INT(FSM_BLOCK, key.action_by_name);
+    TEST_ASSERT_EQUAL_INT(FSM_BLOCK, key.action);
+}
 
 void test_events(void)
 {
@@ -1758,6 +1901,7 @@ int main(int argc, char *argv[])
     RUN_TEST(test_wp_dns_cache);
     RUN_TEST(test_gk_dns_cache);
     RUN_TEST(test_dns_cache_entries);
+    RUN_TEST(test_dns_cache_action_by_name);
     RUN_TEST(test_dns_cache_disable);
 
     dns_cache_global_test_teardown();

@@ -844,6 +844,108 @@ wm2_rstate_dfs_no_channels(const struct schema_Wifi_Radio_State *rstate)
     return true;
 }
 
+static bool
+wm2_rconf_lookup_sta(struct schema_Wifi_VIF_State *vstate,
+                     const struct schema_Wifi_Radio_State *rstate)
+{
+    struct schema_Wifi_VIF_State *vstates;
+    int i;
+    int n;
+
+    memset(vstate, 0, sizeof(*vstate));
+    if (!(vstates = ovsdb_table_select_where(&table_Wifi_VIF_State, json_array(), &n)))
+        return false;
+    while (n--)
+        if (!strcmp(vstates[n].mode, "sta"))
+            for (i = 0; i < rstate->vif_states_len; i++)
+                if (!strcmp(rstate->vif_states[i].uuid, vstates[n]._uuid.uuid))
+                    memcpy(vstate, &vstates[n], sizeof(*vstate));
+    FREE(vstates);
+    return strlen(vstate->if_name) > 0;
+}
+
+static bool
+wm2_rconf_recalc_fixup_channel(struct schema_Wifi_Radio_Config *rconf,
+                               const struct schema_Wifi_Radio_State *rstate)
+{
+    struct schema_Wifi_Radio_Config_flags rchanged;
+    struct schema_Wifi_VIF_Config_flags vchanged;
+    struct schema_Wifi_VIF_Config vconf;
+    struct schema_Wifi_VIF_State vstate;
+
+    if (!wm2_rconf_changed(rconf, rstate, &rchanged))
+        return false;
+    if (!rchanged.channel)
+        return false;
+    if (!wm2_rconf_lookup_sta(&vstate, rstate))
+        return false;
+    if (!ovsdb_table_select_one(&table_Wifi_VIF_Config,
+                                SCHEMA_COLUMN(Wifi_VIF_Config, if_name),
+                                vstate.if_name,
+                                &vconf))
+        return false;
+    if (!vstate.channel_exists)
+        return false;
+    if (wm2_vconf_changed(&vconf, &vstate, &vchanged) && vchanged.parent)
+        return false;
+
+    /* FIXME: This will not work with multiple sta vaps for
+     * fallbacks. This needs to be solved with a new
+     * Radio_Config column expressing sta/ap channel policy,
+     * i.e. when radio_config channel is more important than
+     * sta vif channel in cases of sta csa, sta (re)assoc.
+     */
+    LOGN("%s: ignoring channel change %d -> %d because sta vif %s is connected on %d, see CAES-600",
+            rconf->if_name, rstate->channel, rconf->channel,
+            vstate.if_name, vstate.channel);
+    rconf->channel = vstate.channel;
+    return true;
+}
+
+static void
+wm2_rconf_recalc_fixup_op_mode(struct schema_Wifi_Radio_Config *rconf,
+                               const struct schema_Wifi_Radio_State *rstate)
+{
+    struct schema_Wifi_VIF_State vstate;
+
+    if (!wm2_rconf_lookup_sta(&vstate, rstate))
+        return;
+    if (!vstate.parent_exists)
+        return;
+    if (strlen(vstate.parent) == 0)
+        return;
+
+    /* Many drivers don't support mixing operation modes and
+     * if they act as a repeater they will inherit parameters
+     * from the parent AP onto local APs. Therefore it makes
+     * no sense to enforce hw_mode/ht_mode because it'd just
+     * result in trying to do the impossible and churn
+     * through reconnects.
+     */
+
+    LOGD("%s: inheriting parent ap ht_mode and hw_mode", rconf->if_name);
+
+    if (rstate->hw_mode_exists)
+        SCHEMA_SET_STR(rconf->hw_mode, rstate->hw_mode);
+
+    if (rstate->ht_mode_exists)
+        SCHEMA_SET_STR(rconf->ht_mode, rstate->ht_mode);
+}
+
+static void
+wm2_rconf_recalc_fixup_tx_chainmask(struct schema_Wifi_Radio_Config *rconf)
+{
+    if (!rconf->tx_chainmask_exists && !rconf->thermal_tx_chainmask_exists)
+        return;
+    if (!rconf->thermal_tx_chainmask_exists)
+        return;
+    if (rconf->tx_chainmask_exists && bitcount(rconf->tx_chainmask) < bitcount(rconf->thermal_tx_chainmask))
+        return;
+
+    rconf->tx_chainmask = rconf->thermal_tx_chainmask;
+    rconf->tx_chainmask_exists = true;
+}
+
 static void
 wm2_vconf_recalc(const char *ifname, bool force)
 {
@@ -991,6 +1093,11 @@ wm2_vconf_recalc(const char *ifname, bool force)
     if (!wm2_vconf_changed(&vconf, &vstate, &vchanged) && !force)
         return;
 
+    wm2_rconf_recalc_fixup_channel(&rconf, &rstate);
+    wm2_rconf_recalc_fixup_nop_channel(&rconf, &rstate);
+    wm2_rconf_recalc_fixup_tx_chainmask(&rconf);
+    wm2_rconf_recalc_fixup_op_mode(&rconf, &rstate);
+
     if (vconf.dynamic_beacon_exists && vconf.dynamic_beacon &&
         vconf.ssid_broadcast_exists &&
         !strcmp("enabled", vconf.ssid_broadcast)) {
@@ -1096,64 +1203,6 @@ wm2_rconf_init_del(struct schema_Wifi_Radio_Config *rconf, const char *ifname)
     rconf->enabled_exists = true;
 }
 
-static bool
-wm2_rconf_lookup_sta(struct schema_Wifi_VIF_State *vstate,
-                     const struct schema_Wifi_Radio_State *rstate)
-{
-    struct schema_Wifi_VIF_State *vstates;
-    int i;
-    int n;
-
-    memset(vstate, 0, sizeof(*vstate));
-    if (!(vstates = ovsdb_table_select_where(&table_Wifi_VIF_State, json_array(), &n)))
-        return false;
-    while (n--)
-        if (!strcmp(vstates[n].mode, "sta"))
-            for (i = 0; i < rstate->vif_states_len; i++)
-                if (!strcmp(rstate->vif_states[i].uuid, vstates[n]._uuid.uuid))
-                    memcpy(vstate, &vstates[n], sizeof(*vstate));
-    FREE(vstates);
-    return strlen(vstate->if_name) > 0;
-}
-
-static bool
-wm2_rconf_recalc_fixup_channel(struct schema_Wifi_Radio_Config *rconf,
-                               const struct schema_Wifi_Radio_State *rstate)
-{
-    struct schema_Wifi_Radio_Config_flags rchanged;
-    struct schema_Wifi_VIF_Config_flags vchanged;
-    struct schema_Wifi_VIF_Config vconf;
-    struct schema_Wifi_VIF_State vstate;
-
-    if (!wm2_rconf_changed(rconf, rstate, &rchanged))
-        return false;
-    if (!rchanged.channel)
-        return false;
-    if (!wm2_rconf_lookup_sta(&vstate, rstate))
-        return false;
-    if (!ovsdb_table_select_one(&table_Wifi_VIF_Config,
-                                SCHEMA_COLUMN(Wifi_VIF_Config, if_name),
-                                vstate.if_name,
-                                &vconf))
-        return false;
-    if (!vstate.channel_exists)
-        return false;
-    if (wm2_vconf_changed(&vconf, &vstate, &vchanged) && vchanged.parent)
-        return false;
-
-    /* FIXME: This will not work with multiple sta vaps for
-     * fallbacks. This needs to be solved with a new
-     * Radio_Config column expressing sta/ap channel policy,
-     * i.e. when radio_config channel is more important than
-     * sta vif channel in cases of sta csa, sta (re)assoc.
-     */
-    LOGN("%s: ignoring channel change %d -> %d because sta vif %s is connected on %d, see CAES-600",
-            rconf->if_name, rstate->channel, rconf->channel,
-            vstate.if_name, vstate.channel);
-    rconf->channel = vstate.channel;
-    return true;
-}
-
 void
 wm2_rconf_recalc_fixup_nop_channel(struct schema_Wifi_Radio_Config *rconf,
                                    const struct schema_Wifi_Radio_State *rstate)
@@ -1165,6 +1214,8 @@ wm2_rconf_recalc_fixup_nop_channel(struct schema_Wifi_Radio_Config *rconf,
     int i;
     int j;
 
+    if (rstate->channels_len == 0)
+        return;
     /* After RADAR hit channel is not available because of NOP */
     if (!rconf->channel_exists)
         return;
@@ -1226,50 +1277,6 @@ wm2_rconf_recalc_fixup_nop_channel(struct schema_Wifi_Radio_Config *rconf,
         width /= 2;
         STRSCPY_WARN(rconf->ht_mode, strfmta("HT%d", width));
     }
-}
-
-static void
-wm2_rconf_recalc_fixup_tx_chainmask(struct schema_Wifi_Radio_Config *rconf)
-{
-    if (!rconf->tx_chainmask_exists && !rconf->thermal_tx_chainmask_exists)
-        return;
-    if (!rconf->thermal_tx_chainmask_exists)
-        return;
-    if (rconf->tx_chainmask_exists && bitcount(rconf->tx_chainmask) < bitcount(rconf->thermal_tx_chainmask))
-        return;
-
-    rconf->tx_chainmask = rconf->thermal_tx_chainmask;
-    rconf->tx_chainmask_exists = true;
-}
-
-static void
-wm2_rconf_recalc_fixup_op_mode(struct schema_Wifi_Radio_Config *rconf,
-                               const struct schema_Wifi_Radio_State *rstate)
-{
-    struct schema_Wifi_VIF_State vstate;
-
-    if (!wm2_rconf_lookup_sta(&vstate, rstate))
-        return;
-    if (!vstate.parent_exists)
-        return;
-    if (strlen(vstate.parent) == 0)
-        return;
-
-    /* Many drivers don't support mixing operation modes and
-     * if they act as a repeater they will inherit parameters
-     * from the parent AP onto local APs. Therefore it makes
-     * no sense to enforce hw_mode/ht_mode because it'd just
-     * result in trying to do the impossible and churn
-     * through reconnects.
-     */
-
-    LOGD("%s: inheriting parent ap ht_mode and hw_mode", rconf->if_name);
-
-    if (rstate->hw_mode_exists)
-        SCHEMA_SET_STR(rconf->hw_mode, rstate->hw_mode);
-
-    if (rstate->ht_mode_exists)
-        SCHEMA_SET_STR(rconf->ht_mode, rstate->ht_mode);
 }
 
 static void

@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "fsm_dpi_sni.h"
 #include "dns_cache.h"
+#include "gatekeeper_cache.h"
 #include "dns_parse.h"
 #include "memutil.h"
 #include "unity.h"
@@ -201,12 +202,112 @@ test_redirect_cache(void)
 }
 
 void
-test_redirected_flow(void)
+test_redirected_flow_gatekeeper_cache(void)
+{
+    struct gk_attr_cache_interface entry;
+    struct sockaddr_storage ipaddr;
+    struct net_md_flow_info info;
+    char buf[128] = { 0 };
+    uint8_t *cache_ip;
+    char *attr;
+    bool rc;
+    int ret;
+
+    info.local_mac = &g_src_mac;
+    info.ip_version = 4;
+    info.remote_ip = CALLOC(1, 4);
+    TEST_ASSERT_NOT_NULL(info.remote_ip);
+    cache_ip = CALLOC(1, 4);
+    TEST_ASSERT_NOT_NULL(cache_ip);
+    inet_pton(AF_INET, "1.2.3.4", info.remote_ip);
+    info.direction = NET_MD_ACC_OUTBOUND_DIR;
+
+    dns_cache_disable();
+    rc = is_dns_cache_disabled();
+    TEST_ASSERT_TRUE(rc);
+
+    /* Init gatekeeper cache */
+    gk_cache_init();
+
+    inet_pton(AF_INET, "1.2.3.4", cache_ip);
+    dpi_parse_populate_sockaddr(AF_INET, cache_ip, &ipaddr);
+    MEMZERO(entry);
+
+    entry.device_mac = &g_src_mac;
+    entry.attribute_type = GK_CACHE_REQ_TYPE_IPV4;
+    entry.ip_addr = &ipaddr;
+    entry.cache_ttl = DNS_REDIRECT_TTL;
+    entry.action = FSM_ALLOW;
+    entry.direction = NET_MD_ACC_OUTBOUND_DIR;
+    entry.redirect_flag = true;
+    entry.category_id = 15; /* GK_NOT_RATED */
+    entry.confidence_level = 0;
+    entry.categorized = FSM_FQDN_CAT_SUCCESS;
+    entry.is_private_ip = false;
+    rc = gkc_upsert_attribute_entry(&entry);
+    TEST_ASSERT_TRUE(rc);
+
+    attr = "http.url";
+    rc = is_redirected_flow(&info, attr);
+    TEST_ASSERT_EQUAL_INT(1, rc);
+
+    ret = gkc_del_attribute(&entry);
+    TEST_ASSERT_TRUE(ret);
+
+    FREE(info.remote_ip);
+    FREE(cache_ip);
+
+    /* v6 addr */
+    uint32_t cache_v6_ip[4] = { 0 };
+    cache_v6_ip[0] = 0x01020304;
+    cache_v6_ip[1] = 0x06060606;
+    cache_v6_ip[2] = 0x06060606;
+    cache_v6_ip[3] = 0x06060606;
+
+    dpi_parse_populate_sockaddr(AF_INET6, &cache_v6_ip, &ipaddr);
+    MEMZERO(entry);
+
+    entry.device_mac = &g_src_mac;
+    entry.attribute_type = GK_CACHE_REQ_TYPE_IPV6;
+    entry.ip_addr = &ipaddr;
+    entry.cache_ttl = DNS_REDIRECT_TTL;
+    entry.action = FSM_ALLOW;
+    entry.direction = NET_MD_ACC_OUTBOUND_DIR;
+    entry.redirect_flag = true;
+    entry.category_id = 15; /* GK_NOT_RATED */
+    entry.confidence_level = 0;
+    entry.categorized = FSM_FQDN_CAT_SUCCESS;
+    entry.is_private_ip = false;
+    rc = gkc_upsert_attribute_entry(&entry);
+    TEST_ASSERT_TRUE(rc);
+
+    inet_ntop(AF_INET6, cache_v6_ip, buf, sizeof(buf));
+
+    MEMZERO(info);
+    info.local_mac = &g_src_mac;
+    info.ip_version = 6;
+    info.remote_ip = CALLOC(1, 16);
+    TEST_ASSERT_NOT_NULL(info.remote_ip);
+    inet_pton(AF_INET6, buf, info.remote_ip);
+    info.direction = NET_MD_ACC_OUTBOUND_DIR;
+
+    attr = "http.url";
+    rc = is_redirected_flow(&info, attr);
+    FREE(info.remote_ip);
+    TEST_ASSERT_EQUAL_INT(1, rc);
+
+    ret = gkc_del_attribute(&entry);
+    TEST_ASSERT_TRUE(ret);
+
+}
+
+void
+test_redirected_flow_dns_cache(void)
 {
     struct ip2action_req ip_cache_req;
+    struct sockaddr_storage ipaddr;
     struct net_md_flow_info info;
     uint8_t *cache_ip;
-    struct sockaddr_storage ipaddr;
     char *attr;
     bool rc;
 
@@ -259,6 +360,7 @@ void
 run_test_plugin(void)
 {
     RUN_TEST(test_redirect_cache);
-    RUN_TEST(test_redirected_flow);
+    RUN_TEST(test_redirected_flow_dns_cache);
+    RUN_TEST(test_redirected_flow_gatekeeper_cache);
     RUN_TEST(test_redirected_flow_v6);
 }

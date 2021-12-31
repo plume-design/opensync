@@ -103,6 +103,36 @@ if MANAGER_PM
                     OVSDB table. This option disables the ability to override the
                     default configuration values.
 
+            menuconfig PM_ENABLE_FAN_DUTY_CYCLE
+                bool "Enable duty cycling the fan based on time spent in a state"
+                default n
+                help
+                    Select to include fan duty cycling as part of Thermal Management
+
+                if PM_ENABLE_FAN_DUTY_CYCLE
+                    config PM_TM_FAN_DUTY_CYCLE_ON_PERIOD
+                        int "Fan duty cyle on period"
+                        default 270
+                        help
+                            The amount of seconds the fan should be turned on in a state when
+                            duty cycling for that state is enabled.
+
+                    config PM_TM_FAN_DUTY_CYCLE_OFF_PERIOD
+                        int "Fan duty cyle off period"
+                        default 240
+                        help
+                            The amount of seconds the fan should be turned off in a state when
+                            duty cycling for that state is enabled.
+
+                    config PM_TM_FAN_DUTY_CYCLE_STATE_BITMASK
+                        int "Bitmask of states in which the fan is duty cycled"
+                        default 2
+                        help
+                            Fan duty cycling may be enabled in certain states and disabled in others.
+                            When converted to binary, this integer value represents the states in which
+                            it should be enabled. The binary value's bit indices starting from the right
+                            correspond to states.
+                endif
         endif
 
 

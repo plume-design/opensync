@@ -42,6 +42,7 @@ json_t* ovsdb_where_multi(json_t *where, ...);
 json_t* ovsdb_mutation(const char *column, json_t *mutation, json_t *value);
 int     ovsdb_get_update_result_count(json_t *result, const char *table, const char *oper);
 bool    ovsdb_get_insert_result_uuid(json_t *result, const char *table, const char *oper, ovs_uuid_t *uuid);
+json_t* ovsdb_sync_select_where2(const char *table, json_t *where);
 json_t* ovsdb_sync_select_where(const char *table, json_t *where);
 json_t* ovsdb_sync_select(const char *table, const char *column, const char *value);
 bool    ovsdb_sync_insert(const char *table, json_t *row, ovs_uuid_t *uuid);

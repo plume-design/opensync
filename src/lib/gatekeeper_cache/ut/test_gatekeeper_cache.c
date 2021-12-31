@@ -1566,6 +1566,190 @@ test_ipv6_upsert(void)
 }
 
 void
+test_ipv4_upsert_action_by_name(void)
+{
+    struct gk_attr_cache_interface entry;
+    struct attr_cache *out1;
+    struct attr_cache *out2;
+    char *ipv4 = "1.2.3.4";
+    bool ret;
+
+    LOGI("starting test: %s ...", __func__);
+
+    MEMZERO(entry);
+    entry.action_by_name = FSM_BLOCK;
+    entry.device_mac = str2os_mac("AA:AA:AA:AA:AA:01");
+    entry.attribute_type = GK_CACHE_REQ_TYPE_IPV4;
+    entry.cache_ttl = 1000;
+    entry.direction = NET_MD_ACC_OUTBOUND_DIR;
+    entry.ip_addr = sockaddr_storage_create(AF_INET, ipv4);
+
+    /* Fist validate that the entry is not yet cached */
+    out1 = gkc_fetch_attribute_entry(&entry);
+    TEST_ASSERT_NULL(out1);
+
+    ret = gkc_upsert_attribute_entry(&entry);
+    TEST_ASSERT_TRUE(ret);
+
+    out1 = gkc_fetch_attribute_entry(&entry);
+    TEST_ASSERT_NOT_NULL(out1);
+    TEST_ASSERT_EQUAL(entry.action, FSM_ACTION_NONE);
+    TEST_ASSERT_EQUAL(entry.action_by_name, FSM_BLOCK);
+    TEST_ASSERT_EQUAL_STRING(entry.gk_policy, out1->gk_policy);
+    ret = sockaddr_storage_equals(entry.ip_addr, &out1->attr.ipv4->ip_addr);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Lookup fail since action_by_name is block, action none */
+    ret = gkc_lookup_attribute_entry(&entry, true);
+    TEST_ASSERT_FALSE(ret);
+
+    /* Update the entry action & policy */
+    entry.action = FSM_BLOCK;
+    entry.gk_policy = NULL;
+    entry.gk_policy = "gk_block";
+    ret = gkc_upsert_attribute_entry(&entry);
+    TEST_ASSERT_TRUE(ret);
+
+    out2 = gkc_fetch_attribute_entry(&entry);
+    TEST_ASSERT_NOT_NULL(out2);
+
+    TEST_ASSERT_EQUAL(entry.action, FSM_BLOCK);
+    TEST_ASSERT_EQUAL(entry.action_by_name, FSM_BLOCK);
+    ret = sockaddr_storage_equals(entry.ip_addr, &out2->attr.ipv4->ip_addr);
+    TEST_ASSERT_TRUE(ret);
+
+    /* validate the policy name */
+    ret = strcmp(entry.gk_policy, "gk_block");
+    TEST_ASSERT_TRUE(ret == 0);
+
+    /* update gk_policy */
+    entry.gk_policy = "gk_block_update";
+    ret = gkc_upsert_attribute_entry(&entry);
+    TEST_ASSERT_TRUE(ret);
+
+    ret = gkc_lookup_attribute_entry(&entry, false);
+    TEST_ASSERT_TRUE(ret);
+
+    TEST_ASSERT_EQUAL(entry.action, FSM_BLOCK);
+    TEST_ASSERT_EQUAL(entry.action_by_name, FSM_BLOCK);
+    ret = sockaddr_storage_equals(entry.ip_addr, &out2->attr.ipv4->ip_addr);
+    TEST_ASSERT_TRUE(ret);
+
+    /* validate gk_policy is updated or not */
+    ret = strcmp(entry.gk_policy, "gk_block_update");
+    TEST_ASSERT_TRUE(ret == 0);
+
+    entry.gk_policy = NULL;
+    ret = gkc_lookup_attribute_entry(&entry, false);
+    TEST_ASSERT_TRUE(ret);
+
+    /* validate gk_policy is updated or not */
+    ret = strcmp(entry.gk_policy, "gk_block_update");
+    TEST_ASSERT_TRUE(ret == 0);
+    FREE(entry.gk_policy);
+
+    ret = gkc_del_attribute(&entry);
+    TEST_ASSERT_TRUE(ret);
+
+    FREE(entry.ip_addr);
+    FREE(entry.device_mac);
+    LOGI("ending test: %s", __func__);
+
+}
+
+void
+test_ipv6_upsert_action_by_name(void)
+{
+    struct gk_attr_cache_interface entry;
+    struct attr_cache *out1;
+    struct attr_cache *out2;
+    char *ipv6 = "fe80::f0b4:f7ff:fef0:3582";
+    bool ret;
+
+    LOGI("starting test: %s ...", __func__);
+
+    MEMZERO(entry);
+    entry.action_by_name = FSM_BLOCK;
+    entry.device_mac = str2os_mac("AA:AA:AA:AA:AA:01");
+    entry.attribute_type = GK_CACHE_REQ_TYPE_IPV6;
+    entry.cache_ttl = 1000;
+    entry.direction = NET_MD_ACC_OUTBOUND_DIR;
+    entry.ip_addr = sockaddr_storage_create(AF_INET6, ipv6);
+
+    /* Fist validate that the entry is not yet cached */
+    out1 = gkc_fetch_attribute_entry(&entry);
+    TEST_ASSERT_NULL(out1);
+
+    ret = gkc_upsert_attribute_entry(&entry);
+    TEST_ASSERT_TRUE(ret);
+
+    out1 = gkc_fetch_attribute_entry(&entry);
+    TEST_ASSERT_NOT_NULL(out1);
+    TEST_ASSERT_EQUAL(entry.action, FSM_ACTION_NONE);
+    TEST_ASSERT_EQUAL(entry.action_by_name, FSM_BLOCK);
+    TEST_ASSERT_EQUAL_STRING(entry.gk_policy, out1->gk_policy);
+    ret = sockaddr_storage_equals(entry.ip_addr, &out1->attr.ipv6->ip_addr);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Lookup fail since action_by_name is block, action none */
+    ret = gkc_lookup_attribute_entry(&entry, true);
+    TEST_ASSERT_FALSE(ret);
+
+    /* Update the entry action & policy*/
+    entry.action = FSM_BLOCK;
+    entry.gk_policy = NULL;
+    entry.gk_policy = "gk_block";
+    ret = gkc_upsert_attribute_entry(&entry);
+    TEST_ASSERT_TRUE(ret);
+
+    out2 = gkc_fetch_attribute_entry(&entry);
+    TEST_ASSERT_NOT_NULL(out2);
+
+    TEST_ASSERT_EQUAL(entry.action, FSM_BLOCK);
+    TEST_ASSERT_EQUAL(entry.action_by_name, FSM_BLOCK);
+    ret = sockaddr_storage_equals(entry.ip_addr, &out2->attr.ipv4->ip_addr);
+    TEST_ASSERT_TRUE(ret);
+
+    /* validate the policy name */
+    ret = strcmp(entry.gk_policy, "gk_block");
+    TEST_ASSERT_TRUE(ret == 0);
+
+    /* update gk_policy */
+    entry.gk_policy = "gk_block_update";
+    ret = gkc_upsert_attribute_entry(&entry);
+    TEST_ASSERT_TRUE(ret);
+
+    ret = gkc_lookup_attribute_entry(&entry, false);
+    TEST_ASSERT_TRUE(ret);
+
+    TEST_ASSERT_EQUAL(entry.action, FSM_BLOCK);
+    TEST_ASSERT_EQUAL(entry.action_by_name, FSM_BLOCK);
+    ret = sockaddr_storage_equals(entry.ip_addr, &out2->attr.ipv4->ip_addr);
+    TEST_ASSERT_TRUE(ret);
+
+    /* validate gk_policy is updated or not */
+    ret = strcmp(entry.gk_policy, "gk_block_update");
+    TEST_ASSERT_TRUE(ret == 0);
+
+    entry.gk_policy = NULL;
+    ret = gkc_lookup_attribute_entry(&entry, false);
+    TEST_ASSERT_TRUE(ret);
+
+    /* validate gk_policy is updated or not */
+    ret = strcmp(entry.gk_policy, "gk_block_update");
+    TEST_ASSERT_TRUE(ret == 0);
+    FREE(entry.gk_policy);
+
+    ret = gkc_del_attribute(&entry);
+    TEST_ASSERT_TRUE(ret);
+
+    FREE(entry.ip_addr);
+    FREE(entry.device_mac);
+    LOGI("ending test: %s", __func__);
+}
+
+
+void
 run_gk_cache(void)
 {
     RUN_TEST(test_gkc_new_flow_entry);
@@ -1606,4 +1790,6 @@ run_gk_cache(void)
     RUN_TEST(test_gkc_private_ip_flow_entry);
     RUN_TEST(test_ipv4_upsert);
     RUN_TEST(test_ipv6_upsert);
+    RUN_TEST(test_ipv4_upsert_action_by_name);
+    RUN_TEST(test_ipv6_upsert_action_by_name);
 }

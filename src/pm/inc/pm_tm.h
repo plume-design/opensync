@@ -41,6 +41,7 @@ struct osp_tm_ctx
     unsigned int temp_src_cnt;
 
     unsigned int crit_temp_periods;
+    unsigned int curr_state_period_cnt;
     unsigned int prev_fan_rpm;
     unsigned int prev_state;
     unsigned int fan_failure;

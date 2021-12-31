@@ -47,6 +47,7 @@ static int pm_get_temperature(struct osp_tm_ctx *ctx, unsigned int temp_src, int
 static int pm_get_fan_rpm(struct osp_tm_ctx *ctx, unsigned int *fan_rpm);
 
 static unsigned int pm_tbl_get_fanrpm(struct osp_tm_ctx *ctx, unsigned int state);
+static bool pm_is_fan_duty_cycle_active(unsigned int sec_in_state, unsigned int state);
 static int pm_tbl_get_temp_thresh(struct osp_tm_ctx *ctx, unsigned int state, unsigned int temp_src);
 static unsigned int pm_tbl_get_radio_txchainmask(
         struct osp_tm_ctx *ctx,
@@ -90,12 +91,44 @@ static int pm_get_fan_rpm(struct osp_tm_ctx *ctx, unsigned int *fan_rpm)
     return osp_tm_get_fan_rpm(ctx->tgt_priv, fan_rpm);
 }
 
+static bool pm_is_fan_duty_cycle_active(unsigned int sec_in_state, unsigned int state)
+{
+#ifdef CONFIG_PM_ENABLE_FAN_DUTY_CYCLE
+    int fan_full_cycle;
+    int sec_since_cycle_start;
+
+    if (CONFIG_PM_TM_FAN_DUTY_CYCLE_STATE_BITMASK & (1 << state))
+    {
+        fan_full_cycle = CONFIG_PM_TM_FAN_DUTY_CYCLE_ON_PERIOD + CONFIG_PM_TM_FAN_DUTY_CYCLE_OFF_PERIOD;
+        sec_since_cycle_start = sec_in_state % fan_full_cycle;
+
+        if (sec_since_cycle_start == 0) {
+            LOGI("TM: Fan duty cycle active, turning fan on for %ds", CONFIG_PM_TM_FAN_DUTY_CYCLE_ON_PERIOD);
+        }
+        else if (sec_since_cycle_start == CONFIG_PM_TM_FAN_DUTY_CYCLE_ON_PERIOD) {
+            LOGI("TM: Fan duty cycle inactive, turning fan off for %ds", CONFIG_PM_TM_FAN_DUTY_CYCLE_OFF_PERIOD);
+        }
+
+        if (sec_since_cycle_start >= CONFIG_PM_TM_FAN_DUTY_CYCLE_ON_PERIOD) {
+            return false;
+        }
+    }
+#endif /* CONFIG_PM_ENABLE_FAN_DUTY_CYCLE */
+
+    return true;
+}
+
 static unsigned int pm_tbl_get_fanrpm(struct osp_tm_ctx *ctx, unsigned int state)
 {
     unsigned int fan_rpm;
 
     if (pm_tm_ovsdb_thermtbl_get_fan_rpm(state, &fan_rpm) != 0) {
         fan_rpm = ctx->therm_tbl[state].fan_rpm;
+    }
+
+    // fan may be duty cycled based on time spent in a certain state
+    if (!pm_is_fan_duty_cycle_active(ctx->curr_state_period_cnt * CONFIG_PM_TM_PERIOD_INTERVAL, state)) {
+        fan_rpm = 0;
     }
 
     return fan_rpm;
@@ -235,6 +268,9 @@ static void pm_set_new_state(struct osp_tm_ctx *ctx, unsigned int new_state)
     rv = pm_tm_ovsdb_set_state(new_state);
     if (rv != 0) {
         LOGE("TM: Could not update state in OVSDB");
+    }
+    else {
+        ctx->curr_state_period_cnt = 0;
     }
 }
 
@@ -379,11 +415,6 @@ static void pm_therm_cb(struct ev_loop *loop, ev_timer *timer, int revents)
      */
     pm_detect_over_temperature(ctx, current_state);
 
-    current_fan_rpm = pm_tbl_get_fanrpm(ctx, current_state);
-    if (current_fan_rpm != ctx->prev_fan_rpm) {
-        LOGD("TM: Setting new fan RPM: %u", current_fan_rpm);
-    }
-
     // has the thermal state changed?
     if (current_state != ctx->prev_state) {
         pm_set_new_state(ctx, current_state);
@@ -395,6 +426,10 @@ static void pm_therm_cb(struct ev_loop *loop, ev_timer *timer, int revents)
      * otherwise fan rpm watchdog will kick in
      * with highest possible RPM otherwise
      */
+    current_fan_rpm = pm_tbl_get_fanrpm(ctx, current_state);
+    if (current_fan_rpm != ctx->prev_fan_rpm) {
+        LOGD("TM: Setting new fan RPM: %u", current_fan_rpm);
+    }
     rv = osp_tm_set_fan_rpm(ctx->tgt_priv, current_fan_rpm);
     if (rv != 0) {
         LOGE("TM: Could not set new fan RPM: %d:%d", current_fan_rpm,  rv);
@@ -406,6 +441,7 @@ static void pm_therm_cb(struct ev_loop *loop, ev_timer *timer, int revents)
 
     ctx->temp_avg_idx++;
     ctx->temp_avg_idx = ctx->temp_avg_idx % OSP_TM_TEMP_AVG_CNT;
+    ctx->curr_state_period_cnt++;
 
     return;
 }

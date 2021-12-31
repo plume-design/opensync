@@ -1529,8 +1529,13 @@ static bool gw_offline_uplink_ifname_get(char *if_name_buf, size_t len)
     json_t *json;
     bool rv = false;
 
-    json = ovsdb_sync_select_where("Connection_Manager_Uplink",
-                       ovsdb_where_simple_typed("is_used", "true", OCLM_BOOL));
+    /* Determine current uplink from OVSDB (only if it is eth type): */
+    json = ovsdb_sync_select_where(SCHEMA_TABLE(Connection_Manager_Uplink),
+               ovsdb_where_multi(
+                   ovsdb_where_simple_typed(SCHEMA_COLUMN(Connection_Manager_Uplink, is_used), "true", OCLM_BOOL),
+                   ovsdb_where_simple(SCHEMA_COLUMN(Connection_Manager_Uplink, if_type), "eth"),
+                   NULL)
+               );
 
     if (json == NULL || json_array_size(json) != 1)
         goto err_out;

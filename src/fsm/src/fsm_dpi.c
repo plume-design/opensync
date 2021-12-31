@@ -782,7 +782,7 @@ fsm_dpi_set_acc_direction_on_port(struct fsm_dpi_dispatcher *dispatch,
     else if ((sport < NON_RESERVED_PORT_START_NUM) &&
              (dport > MAX_RESERVED_PORT_NUM))
     {
-        acc->direction = (dmac_found ? NET_MD_ACC_INBOUND_DIR :
+        acc->direction = (smac_found ? NET_MD_ACC_INBOUND_DIR :
                           NET_MD_ACC_OUTBOUND_DIR);
     }
     else

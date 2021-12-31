@@ -296,6 +296,7 @@ mdns_populate_sockaddr(struct net_header_parser *parser,
 static void
 mdns_plugin_process_message(struct mdns_session *m_session)
 {
+    char ip_src_str[INET_ADDRSTRLEN + 1] = { 0 };
     struct mdns_plugin_mgr      *mgr;
     struct mdnsd_context        *pctxt;
     struct mdns_parser          *mdns_parser;
@@ -334,6 +335,15 @@ mdns_plugin_process_message(struct mdns_session *m_session)
     {
         LOGT("%s: UDP src/dst port mismatch, src port: %d, dst port: %d",
                             __func__, ntohs(hdr->source), ntohs(hdr->dest));
+        return;
+    }
+
+    /* check src ip same as POD ip */
+    net_header_srcip_str(net_parser, ip_src_str, sizeof(ip_src_str));
+    rc = strcmp(pctxt->srcip, ip_src_str);
+    if (!rc)
+    {
+        LOGT("%s: Ignore packet from Pod with Source IP: %s", __func__, ip_src_str);
         return;
     }
 

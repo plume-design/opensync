@@ -193,9 +193,14 @@ test_gkc_flush_rules_macs(void)
     ret = gkc_flush_rules(&fpr);
     TEST_ASSERT_EQUAL_INT(0, ret);
 
-    /* fpr points to an INCORRECT MAC => nothing is removed */
+    /* fpr points to a NULL MAC => nothing is removed */
     fpr.mac_rule_present = true;
     fpr.mac_op = MAC_OP_IN;
+
+    ret = gkc_flush_rules(&fpr);
+    TEST_ASSERT_EQUAL_INT(0, ret);
+
+    /* fpr points to an INCORRECT MAC => nothing is removed */
     fpr.macs = CALLOC(1, sizeof(*fpr.macs));
     fpr.macs->nelems = 2;
     fpr.macs->array = CALLOC(2, sizeof(*fpr.macs->array));

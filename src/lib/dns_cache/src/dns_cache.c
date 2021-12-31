@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sys/socket.h>
 #include <arpa/inet.h>
 
+#include "fsm_policy.h"
 #include "log.h"
 #include "os.h"
 #include "os_types.h"
@@ -112,9 +113,9 @@ print_dns_cache_entry(struct ip2action *i2a)
 
     pmac = (i2a->device_mac != NULL) ? i2a->device_mac : &nullmac;
     LOGD("ip %s, mac "PRI_os_macaddr_lower_t
-         " action: %d ttl: %d policy_idx: %d service_id: %d redirect flag: %d"
+         " action: %d action_by_name: %d ttl: %d policy_idx: %d service_id: %d redirect flag: %d"
          " unknown_cat: %d", ipstr, FMT_os_macaddr_pt(pmac),
-         i2a->action, i2a->cache_ttl, i2a->policy_idx,
+         i2a->action, i2a->action_by_name, i2a->cache_ttl, i2a->policy_idx,
          i2a->service_id, i2a->redirect_flag, i2a->cat_unknown_to_service);
 
     if (i2a->service_id == IP2ACTION_WP_SVC)
@@ -364,7 +365,16 @@ dns_cache_update_ip2action(struct ip2action *i2a, struct ip2action_req *to_upd)
 {
     if (!i2a || !to_upd) return false;
 
-    i2a->action = to_upd->action;
+    if (to_upd->action != FSM_ACTION_NONE)
+    {
+        i2a->action = to_upd->action;
+    }
+
+    if (to_upd->action_by_name != FSM_ACTION_NONE)
+    {
+        i2a->action_by_name = to_upd->action_by_name;
+    }
+
     i2a->redirect_flag = to_upd->redirect_flag;
     i2a->cache_ttl = to_upd->cache_ttl;
     i2a->cache_ts  = time(NULL);
@@ -463,6 +473,39 @@ dns_cache_set_gk_cache_entry(struct ip2action_gk_info *i2a_cache_gk,
     return true;
 }
 
+bool
+dns_cache_update_entry_action(struct ip2action_req *req, struct ip2action *i2a)
+{
+    if (req == NULL) return false;
+    if (i2a == NULL) return false;
+
+    if ((i2a->action_by_name == FSM_ACTION_NONE) && (i2a->action != FSM_ACTION_NONE))
+    {
+         /* entry added by IP threat. First request */
+        req->action = i2a->action;
+    }
+    else if ((i2a->action_by_name == FSM_ALLOW) && (i2a->action == FSM_ACTION_NONE))
+    {
+        /* entry added by dns. First request */
+        req->action = i2a->action_by_name;
+    }
+    else if ((i2a->action_by_name == FSM_ALLOW) && (i2a->action != FSM_ACTION_NONE))
+    {
+        req->action = i2a->action;
+    }
+    else if ((i2a->action_by_name == FSM_BLOCK) && (i2a->action == FSM_ACTION_NONE))
+    {
+        /* entry added during dns response ips. action is block enforcing IP check */
+        LOGT("%s: dns action is block, enforcing gatekeeper for IP check", __func__);
+        return false;
+    }
+    else if ((i2a->action_by_name == FSM_BLOCK) && (i2a->action != FSM_ACTION_NONE))
+    {
+        req->action = i2a->action;
+    }
+
+    return true;
+}
 
 /**
  * @brief Lookup cached action for given ip address and mac.
@@ -480,6 +523,7 @@ dns_cache_ip2action_lookup(struct ip2action_req *req)
    struct dns_cache_mgr *mgr;
    struct ip2action *i2a;
    size_t index;
+   bool rc;
 
    if (!req) return false;
 
@@ -490,7 +534,12 @@ dns_cache_ip2action_lookup(struct ip2action_req *req)
        return false;
    }
 
-   req->action = i2a->action;
+   rc = dns_cache_update_entry_action(req, i2a);
+   if (!rc) return false;
+
+   if (i2a->action_by_name != FSM_ACTION_NONE)
+        req->action_by_name = i2a->action_by_name;
+
    req->cache_ttl = i2a->cache_ttl;
    req->policy_idx = i2a->policy_idx;
    req->service_id = i2a->service_id;
@@ -578,7 +627,12 @@ dns_cache_alloc_ip2action(struct ip2action_req  *to_add)
     i2a->ip_addr = CALLOC(1, sizeof(struct sockaddr_storage));
     memcpy(i2a->ip_addr, to_add->ip_addr, sizeof(struct sockaddr_storage));
 
-    i2a->action  = to_add->action;
+    if (to_add->action != FSM_ACTION_NONE)
+        i2a->action  = to_add->action;
+
+    if (to_add->action_by_name != FSM_ACTION_NONE)
+        i2a->action_by_name = to_add->action_by_name;
+
     i2a->cache_ttl  = to_add->cache_ttl;
     i2a->cache_ts  = time(NULL);
     i2a->policy_idx = to_add->policy_idx;

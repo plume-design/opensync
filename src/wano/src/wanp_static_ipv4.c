@@ -417,7 +417,6 @@ wano_plugin_handle_t *wanp_static_ipv4_init(
         const char *ifname,
         wano_plugin_status_fn_t *status_fn)
 {
-    struct wano_wan_config wc;
     wanp_static_ipv4_handle_t *h;
 
     if (wanp_static_ipv4_wan_lock)
@@ -439,7 +438,7 @@ wano_plugin_handle_t *wanp_static_ipv4_init(
     /*
      * Load static configration
      */
-    if (!wano_wan_config_get(&wc, WC_TYPE_STATIC_IPV4))
+    if (!wano_wan_config_get(&h->wan_config, WC_TYPE_STATIC_IPV4))
     {
         LOG(NOTICE, "static_ipv4: No static IPv4 configuration present, skipping.");
         goto error;

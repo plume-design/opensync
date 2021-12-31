@@ -2396,6 +2396,7 @@ net_md_get_flow_info(struct net_md_stats_accumulator *acc,
     if (!process) return false;
 
     info->ip_version = key->ip_version;
+    info->direction = key->direction;
 
     if (acc->direction == NET_MD_ACC_OUTBOUND_DIR)
     {

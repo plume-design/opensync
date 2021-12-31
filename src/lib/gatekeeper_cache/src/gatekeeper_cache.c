@@ -379,6 +379,8 @@ gkc_new_attr_entry(struct gk_attr_cache_interface *entry)
             if (entry->ip_addr)
                 memcpy(&attr->ipv4->ip_addr, entry->ip_addr, sizeof(attr->ipv4->ip_addr));
             attr->ipv4->hit_count.total = 1;
+            if (entry->action_by_name != FSM_ACTION_NONE)
+                attr->ipv4->action_by_name = entry->action_by_name;
             break;
 
         case GK_CACHE_REQ_TYPE_IPV6:
@@ -387,6 +389,8 @@ gkc_new_attr_entry(struct gk_attr_cache_interface *entry)
             if (entry->ip_addr)
                 memcpy(&attr->ipv6->ip_addr, entry->ip_addr, sizeof(attr->ipv6->ip_addr));
             attr->ipv6->hit_count.total = 1;
+            if (entry->action_by_name != FSM_ACTION_NONE)
+                attr->ipv6->action_by_name = entry->action_by_name;
             break;
 
         case GK_CACHE_REQ_TYPE_APP:
@@ -411,6 +415,7 @@ gkc_new_attr_entry(struct gk_attr_cache_interface *entry)
     new_attr_cache->key = entry->cache_key;
 
     /* set action value: allow or block */
+    new_attr_cache->redirect_flag = entry->redirect_flag;
     new_attr_cache->action = entry->action;
     new_attr_cache->categorized = entry->categorized;
     new_attr_cache->category_id = entry->category_id;
@@ -844,6 +849,48 @@ gkc_lookup_redirect_entry(struct gk_attr_cache_interface *req, struct attr_cache
     STRSCPY(req->fqdn_redirect->redirect_ips[1], attr_entry->fqdn_redirect->redirect_ips[1]);
 }
 
+bool
+gkc_update_entry_action(struct gk_attr_cache_interface *req, struct attr_cache *attr_entry)
+{
+    struct attr_ip_addr_s *generic;
+    if (req->attribute_type == GK_CACHE_REQ_TYPE_IPV4)
+    {
+        generic = attr_entry->attr.ipv4;
+    }
+    else if (req->attribute_type == GK_CACHE_REQ_TYPE_IPV6)
+    {
+        generic = attr_entry->attr.ipv6;
+    }
+    else return true;
+
+    if ((generic->action_by_name == FSM_ACTION_NONE) && (attr_entry->action != FSM_ACTION_NONE))
+    {
+        /* entry added by IP threat. first request */
+        req->action = attr_entry->action;
+    }
+    else if ((generic->action_by_name == FSM_ALLOW) && (attr_entry->action == FSM_ACTION_NONE))
+    {
+        /* entry added by dns. first request  */
+        req->action = generic->action_by_name;
+    }
+    else if ((generic->action_by_name == FSM_ALLOW) && (attr_entry->action != FSM_ACTION_NONE))
+    {
+        req->action = attr_entry->action;
+    }
+    else if ((generic->action_by_name == FSM_BLOCK) && (attr_entry->action == FSM_ACTION_NONE))
+    {
+        /* entry added during dns response ips. action is block enforcing IP check */
+        LOGT("%s: %s dns action is block, enforcing gatekeeper for IP check", __func__, req->attr_name);
+        return false;
+    }
+    else if ((generic->action_by_name == FSM_BLOCK) && (attr_entry->action != FSM_ACTION_NONE))
+    {
+        req->action = attr_entry->action;
+    }
+
+    return true;
+}
+
 /**
  * @brief check if the attribute is present in the attribute
  *        tree
@@ -860,6 +907,7 @@ gkc_lookup_attr_tree(ds_tree_t *tree, struct gk_attr_cache_interface *req, bool 
     int hit_count;
     uint64_t key;
     bool rc;
+    int ret;
 
     if (!req->attr_name && !req->ip_addr) return false;
 
@@ -922,17 +970,54 @@ gkc_lookup_attr_tree(ds_tree_t *tree, struct gk_attr_cache_interface *req, bool 
     /* update the request with hit counter */
     req->hit_counter = hit_count;
 
-    req->action = attr_entry->action;
+    /* for new entry update count is false */
+    if (update_count)
+    {
+        rc = gkc_update_entry_action(req, attr_entry);
+        if (!rc) return false;
+    }
+
+    if ((attr_entry->action == FSM_ACTION_NONE) && (req->action != FSM_ACTION_NONE))
+    {
+        attr_entry->action = req->action;
+    }
+    else
+        req->action = attr_entry->action;
+
     req->categorized = attr_entry->categorized;
     req->category_id = attr_entry->category_id;
     req->confidence_level = attr_entry->confidence_level;
     req->is_private_ip = attr_entry->is_private_ip;
+    req->redirect_flag = attr_entry->redirect_flag;
 
     gkc_lookup_redirect_entry(req, attr_entry);
 
     if (attr_entry->gk_policy != NULL)
     {
-        req->gk_policy = STRDUP(attr_entry->gk_policy);
+        if (req->gk_policy == NULL)
+        {
+            /* update req gk_policy from cache entry */
+            req->gk_policy = STRDUP(attr_entry->gk_policy);
+        }
+        else
+        {
+            /* update gk_policy if req gk_policy is different */
+            ret = strcmp_len(attr_entry->gk_policy, strlen(attr_entry->gk_policy),
+                             req->gk_policy, strlen(req->gk_policy));
+            if (ret)
+            {
+                FREE(attr_entry->gk_policy);
+                attr_entry->gk_policy = STRDUP(req->gk_policy);
+            }
+        }
+    }
+    else
+    {
+        /* update cache policy if it is not present */
+        if (req->gk_policy != NULL)
+        {
+            attr_entry->gk_policy = STRDUP(req->gk_policy);
+        }
     }
 
     return true;
@@ -1080,6 +1165,7 @@ gkc_fetch_attribute_entry(struct gk_attr_cache_interface *req)
 bool
 gkc_upsert_attribute_entry(struct gk_attr_cache_interface *entry)
 {
+    enum gk_cache_request_type attribute_type;
     struct attr_cache *attr_entry;
     time_t now;
     bool rc;
@@ -1097,11 +1183,25 @@ gkc_upsert_attribute_entry(struct gk_attr_cache_interface *entry)
     }
 
     /* Update the entry */
-    attr_entry->action = entry->action;
+    if (entry->action_by_name != FSM_ACTION_NONE)
+    {
+        attribute_type = entry->attribute_type;
+        if (attribute_type == GK_CACHE_REQ_TYPE_IPV4)
+        {
+            attr_entry->attr.ipv4->action_by_name = entry->action_by_name;
+        }
+        else if (attribute_type == GK_CACHE_REQ_TYPE_IPV6)
+        {
+            attr_entry->attr.ipv6->action_by_name = entry->action_by_name;
+        }
+    }
+
+    if (entry->action != FSM_ACTION_NONE) attr_entry->action = entry->action;
     attr_entry->categorized = entry->categorized;
     attr_entry->category_id = entry->category_id;
     attr_entry->confidence_level = entry->confidence_level;
     attr_entry->is_private_ip = entry->is_private_ip;
+    attr_entry->redirect_flag = entry->redirect_flag;
     now = time(NULL);
     attr_entry->cache_ts = now;
 

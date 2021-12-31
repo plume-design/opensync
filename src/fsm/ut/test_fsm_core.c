@@ -1905,7 +1905,7 @@ test_7_dpi_dispatcher_and_plugin(void)
  * The dpi plugin is then removed.
  */
 void
-test_8_dpi_dispatcher_and_plugin(void)
+test_8_dpi_dispatcher_udp_non_reserved(void)
 {
     struct schema_Flow_Service_Manager_Config *conf;
     union fsm_dpi_context *dispatcher_dpi_context;
@@ -1964,8 +1964,8 @@ test_8_dpi_dispatcher_and_plugin(void)
     aggr->send_report = test_send_report;
 #endif
 
-    /* UDP PKT SRC MAC is known */
-    PREPARE_UT(pkt41, net_parser);
+    /* UDP PKT SRC MAC is known. ports are non reserved */
+    PREPARE_UT(pkt98, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -1976,14 +1976,6 @@ test_8_dpi_dispatcher_and_plugin(void)
 
     /* Validate that an accumulator was created */
     TEST_ASSERT_NOT_NULL(net_parser->acc);
-
-    /* Validate that the accumulator has plugins recorded */
-    TEST_ASSERT_NOT_NULL(net_parser->acc->dpi_plugins);
-
-    /* Validate that the accumulator is aware of the plugin */
-    info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
-    TEST_ASSERT_NOT_NULL(info);
-    TEST_ASSERT_TRUE(info->session == plugin);
 
     /* Validate the originator and direction */
     originator = net_parser->acc->originator;
@@ -1997,56 +1989,6 @@ test_8_dpi_dispatcher_and_plugin(void)
     net_md_close_active_window(aggr);
 
     mqtt_topic = plugin->ops.get_config(plugin, "mqtt_v");
-    ret = aggr->send_report(aggr, mqtt_topic);
-    TEST_ASSERT_TRUE(ret);
-
-    /* UDP PKT DST MAC is known */
-    PREPARE_UT(pkt42, net_parser);
-    len = net_header_parse(net_parser);
-    TEST_ASSERT_TRUE(len != 0);
-
-    /* Call the dispatcher's packet handler */
-    dispatch_ops->handler(dispatcher, net_parser);
-
-    /* Validate that an accumulator was created */
-    TEST_ASSERT_NOT_NULL(net_parser->acc);
-
-    /* Validate the originator and direction */
-    originator = net_parser->acc->originator;
-    TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_SRC);
-    direction = net_parser->acc->direction;
-    TEST_ASSERT_EQUAL_INT(direction, NET_MD_ACC_INBOUND_DIR);
-
-    net_parser->acc->report = true;
-
-    /* Close the flows observation window */
-    net_md_close_active_window(aggr);
-
-    ret = aggr->send_report(aggr, mqtt_topic);
-    TEST_ASSERT_TRUE(ret);
-
-    /* UDP PKT SRC MAC is known. ports are non reserved */
-    PREPARE_UT(pkt98, net_parser);
-    len = net_header_parse(net_parser);
-    TEST_ASSERT_TRUE(len != 0);
-
-    /* Call the dispatcher's packet handler */
-    dispatch_ops->handler(dispatcher, net_parser);
-
-    /* Validate that an accumulator was created */
-    TEST_ASSERT_NOT_NULL(net_parser->acc);
-
-    /* Validate the originator and direction */
-    originator = net_parser->acc->originator;
-    TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_SRC);
-    direction = net_parser->acc->direction;
-    TEST_ASSERT_EQUAL_INT(direction, NET_MD_ACC_OUTBOUND_DIR);
-
-    net_parser->acc->report = true;
-
-    /* Close the flows observation window */
-    net_md_close_active_window(aggr);
-
     ret = aggr->send_report(aggr, mqtt_topic);
     TEST_ASSERT_TRUE(ret);
 
@@ -2108,7 +2050,6 @@ test_8_dpi_dispatcher_and_plugin(void)
     info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
     TEST_ASSERT_NULL(info);
 }
-
 
 /**
  * @brief validate fsm session tap type
@@ -3589,6 +3530,876 @@ test_13_dpi_dispatcher_icmpv6_req_reply(void)
 }
 
 
+/**
+ * @brief validate the registration of a dpi plugin
+ *
+ * The dpi plugin is registered first.
+ * The dpi dispatch plugin is registered thereafter.
+ * UDP packets are handled.
+ * Verify flow direction and originator of each packet.
+ * Send Protobuf to cloud.
+ * The dpi plugin is then removed.
+ */
+void
+test_dpi_dispatcher_udp_reserved(void)
+{
+    struct schema_Flow_Service_Manager_Config *conf;
+    union fsm_dpi_context *dispatcher_dpi_context;
+    union fsm_dpi_context *plugin_dpi_context;
+    struct fsm_dpi_dispatcher *dpi_dispatcher;
+    struct fsm_dpi_plugin *plugin_lookup;
+    struct net_header_parser *net_parser;
+    struct fsm_parser_ops *dispatch_ops;
+    struct fsm_dpi_flow_info *info;
+    struct fsm_session *dispatcher;
+    struct net_md_aggregator *aggr;
+    struct fsm_session *plugin;
+    ds_tree_t *dpi_plugins;
+    ds_tree_t *sessions;
+    uint16_t originator;
+    uint16_t direction;
+    char *mqtt_topic;
+    size_t len;
+    bool ret;
+
+    /* Add a dpi plugin session */
+    conf = &g_confs[11];
+    fsm_add_session(conf);
+    sessions = fsm_get_sessions();
+    plugin = ds_tree_find(sessions, conf->handler);
+    TEST_ASSERT_NOT_NULL(plugin);
+    ret = fsm_is_dpi(plugin);
+    TEST_ASSERT_TRUE(ret);
+    LOGI("DPI Plugin is success ");
+
+    /* Add a dpi dispatcher session */
+    conf = &g_confs[10];
+    fsm_add_session(conf);
+    dispatcher = ds_tree_find(sessions, conf->handler);
+    TEST_ASSERT_NOT_NULL(dispatcher);
+    ret = fsm_is_dpi(dispatcher);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Validate that the dpi plugin is registered to the dispatcher */
+    dispatcher_dpi_context = dispatcher->dpi;
+    TEST_ASSERT_NOT_NULL(dispatcher_dpi_context);
+    plugin_dpi_context = plugin->dpi;
+    TEST_ASSERT_NOT_NULL(plugin_dpi_context);
+    dpi_plugins = &dispatcher_dpi_context->dispatch.plugin_sessions;
+    plugin_lookup = ds_tree_find(dpi_plugins, plugin->name);
+    TEST_ASSERT_NOT_NULL(plugin_lookup);
+    TEST_ASSERT_TRUE(plugin_lookup->session == plugin);
+    TEST_ASSERT_TRUE(plugin_lookup->bound);
+
+    dpi_dispatcher = &dispatcher_dpi_context->dispatch;
+    net_parser = &dpi_dispatcher->net_parser;
+    aggr = dpi_dispatcher->aggr;
+
+#if defined(__x86_64__)
+    /* Set the send_report routine of the aggregator */
+    aggr->send_report = test_send_report;
+#endif
+
+    /* UDP PKT dport is reserved */
+    PREPARE_UT(pkt41, net_parser);
+    len = net_header_parse(net_parser);
+    TEST_ASSERT_TRUE(len != 0);
+
+    /* Call the dispatcher's packet handler */
+    dispatch_ops = &dispatcher->p_ops->parser_ops;
+    TEST_ASSERT_NOT_NULL(dispatch_ops->handler);
+    dispatch_ops->handler(dispatcher, net_parser);
+
+    /* Validate that an accumulator was created */
+    TEST_ASSERT_NOT_NULL(net_parser->acc);
+
+    /* Validate that the accumulator has plugins recorded */
+    TEST_ASSERT_NOT_NULL(net_parser->acc->dpi_plugins);
+
+    /* Validate that the accumulator is aware of the plugin */
+    info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
+    TEST_ASSERT_NOT_NULL(info);
+    TEST_ASSERT_TRUE(info->session == plugin);
+
+    /* Validate the originator and direction */
+    originator = net_parser->acc->originator;
+    TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_SRC);
+    direction = net_parser->acc->direction;
+    TEST_ASSERT_EQUAL_INT(direction, NET_MD_ACC_OUTBOUND_DIR);
+
+    net_parser->acc->report = true;
+
+    /* Close the flows observation window */
+    net_md_close_active_window(aggr);
+
+    mqtt_topic = plugin->ops.get_config(plugin, "mqtt_v");
+    ret = aggr->send_report(aggr, mqtt_topic);
+    TEST_ASSERT_TRUE(ret);
+
+    /* UDP PKT sport is reserved */
+    PREPARE_UT(pkt42, net_parser);
+    len = net_header_parse(net_parser);
+    TEST_ASSERT_TRUE(len != 0);
+
+    /* Call the dispatcher's packet handler */
+    dispatch_ops->handler(dispatcher, net_parser);
+
+    /* Validate that an accumulator was created */
+    TEST_ASSERT_NOT_NULL(net_parser->acc);
+
+    /* Validate the originator and direction */
+    originator = net_parser->acc->originator;
+    TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_DST);
+    direction = net_parser->acc->direction;
+    TEST_ASSERT_EQUAL_INT(direction, NET_MD_ACC_OUTBOUND_DIR);
+
+    net_parser->acc->report = true;
+
+    /* Close the flows observation window */
+    net_md_close_active_window(aggr);
+
+    ret = aggr->send_report(aggr, mqtt_topic);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Remove the dpi plugin session */
+    conf = &g_confs[11];
+    fsm_delete_session(conf);
+    info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
+    TEST_ASSERT_NULL(info);
+}
+
+/**
+ * @brief validate direction for dns request
+ *
+ * The dpi plugin is registered first.
+ * The dpi dispatch plugin is registered thereafter.
+ * Validate sport sport is 53 or not.
+ * Verify flow direction and originator of each packet.
+ * Send Protobuf to cloud.
+ * The dpi plugin is then removed.
+ */
+void
+test_dpi_dispatcher_dns_request(void)
+{
+    struct schema_Flow_Service_Manager_Config *conf;
+    union fsm_dpi_context *dispatcher_dpi_context;
+    union fsm_dpi_context *plugin_dpi_context;
+    struct fsm_dpi_dispatcher *dpi_dispatcher;
+    struct fsm_dpi_plugin *plugin_lookup;
+    struct net_header_parser *net_parser;
+    struct fsm_parser_ops *dispatch_ops;
+    struct fsm_dpi_flow_info *info;
+    struct fsm_session *dispatcher;
+    struct net_md_aggregator *aggr;
+    struct fsm_session *plugin;
+    ds_tree_t *dpi_plugins;
+    ds_tree_t *sessions;
+    uint16_t originator;
+    uint16_t direction;
+    uint16_t port_num;
+    char *mqtt_topic;
+    size_t len;
+    bool ret;
+
+    /* Add a dpi plugin session */
+    conf = &g_confs[19];
+    fsm_add_session(conf);
+    sessions = fsm_get_sessions();
+    plugin = ds_tree_find(sessions, conf->handler);
+    TEST_ASSERT_NOT_NULL(plugin);
+    ret = fsm_is_dpi(plugin);
+    TEST_ASSERT_TRUE(ret);
+    LOGI("DPI Plugin is success ");
+
+    /* Add a dpi dispatcher session */
+    conf = &g_confs[18];
+    fsm_add_session(conf);
+    dispatcher = ds_tree_find(sessions, conf->handler);
+    TEST_ASSERT_NOT_NULL(dispatcher);
+    ret = fsm_is_dpi(dispatcher);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Validate that the dpi plugin is registered to the dispatcher */
+    dispatcher_dpi_context = dispatcher->dpi;
+    TEST_ASSERT_NOT_NULL(dispatcher_dpi_context);
+    plugin_dpi_context = plugin->dpi;
+    TEST_ASSERT_NOT_NULL(plugin_dpi_context);
+    dpi_plugins = &dispatcher_dpi_context->dispatch.plugin_sessions;
+    plugin_lookup = ds_tree_find(dpi_plugins, plugin->name);
+    TEST_ASSERT_NOT_NULL(plugin_lookup);
+    TEST_ASSERT_TRUE(plugin_lookup->session == plugin);
+    TEST_ASSERT_TRUE(plugin_lookup->bound);
+
+    dpi_dispatcher = &dispatcher_dpi_context->dispatch;
+    net_parser = &dpi_dispatcher->net_parser;
+    aggr = dpi_dispatcher->aggr;
+
+#if defined(__x86_64__)
+    /* Set the send_report routine of the aggregator */
+    aggr->send_report = test_send_report;
+#endif
+
+    PREPARE_UT(pkt46, net_parser);
+    len = net_header_parse(net_parser);
+    TEST_ASSERT_TRUE(len != 0);
+
+    /* Call the dispatcher's packet handler */
+    dispatch_ops = &dispatcher->p_ops->parser_ops;
+    TEST_ASSERT_NOT_NULL(dispatch_ops->handler);
+    dispatch_ops->handler(dispatcher, net_parser);
+
+    /* Validate that an accumulator was created */
+    TEST_ASSERT_NOT_NULL(net_parser->acc);
+
+    /* Validate that the accumulator has plugins recorded */
+    TEST_ASSERT_NOT_NULL(net_parser->acc->dpi_plugins);
+
+    /* Validate that the accumulator is aware of the plugin */
+    info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
+    TEST_ASSERT_NOT_NULL(info);
+    TEST_ASSERT_TRUE(info->session == plugin);
+
+    /** Validate dns dst port number */
+    port_num = net_parser->acc->key->dport;
+    TEST_ASSERT_EQUAL_INT(htons(port_num), 53);
+
+    originator = net_parser->acc->originator;
+    TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_SRC);
+
+    direction = net_parser->acc->direction;
+    TEST_ASSERT_EQUAL_INT(direction, NET_MD_ACC_OUTBOUND_DIR);
+
+    net_parser->acc->report = true;
+
+    /* Close the flows observation window */
+    net_md_close_active_window(aggr);
+
+    mqtt_topic = plugin->ops.get_config(plugin, "mqtt_v");
+    ret = aggr->send_report(aggr, mqtt_topic);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Remove the dpi plugin session */
+    conf = &g_confs[19];
+    fsm_delete_session(conf);
+    info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
+    TEST_ASSERT_NULL(info);
+}
+
+/**
+ * @brief validate direction for dns response
+ *
+ * The dpi plugin is registered first.
+ * The dpi dispatch plugin is registered thereafter.
+ * Validate dport sport is 53 or not.
+ * Verify flow direction and originator of each packet.
+ * Send Protobuf to cloud.
+ * The dpi plugin is then removed.
+ */
+void
+test_dpi_dispatcher_dns_response(void)
+{
+    struct schema_Flow_Service_Manager_Config *conf;
+    union fsm_dpi_context *dispatcher_dpi_context;
+    union fsm_dpi_context *plugin_dpi_context;
+    struct fsm_dpi_dispatcher *dpi_dispatcher;
+    struct fsm_dpi_plugin *plugin_lookup;
+    struct net_header_parser *net_parser;
+    struct fsm_parser_ops *dispatch_ops;
+    struct fsm_dpi_flow_info *info;
+    struct fsm_session *dispatcher;
+    struct net_md_aggregator *aggr;
+    struct fsm_session *plugin;
+    ds_tree_t *dpi_plugins;
+    ds_tree_t *sessions;
+    uint16_t originator;
+    uint16_t direction;
+    uint16_t port_num;
+    char *mqtt_topic;
+    size_t len;
+    bool ret;
+
+    /* Add a dpi plugin session */
+    conf = &g_confs[19];
+    fsm_add_session(conf);
+    sessions = fsm_get_sessions();
+    plugin = ds_tree_find(sessions, conf->handler);
+    TEST_ASSERT_NOT_NULL(plugin);
+    ret = fsm_is_dpi(plugin);
+    TEST_ASSERT_TRUE(ret);
+    LOGI("DPI Plugin is success ");
+
+    /* Add a dpi dispatcher session */
+    conf = &g_confs[18];
+    fsm_add_session(conf);
+    dispatcher = ds_tree_find(sessions, conf->handler);
+    TEST_ASSERT_NOT_NULL(dispatcher);
+    ret = fsm_is_dpi(dispatcher);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Validate that the dpi plugin is registered to the dispatcher */
+    dispatcher_dpi_context = dispatcher->dpi;
+    TEST_ASSERT_NOT_NULL(dispatcher_dpi_context);
+    plugin_dpi_context = plugin->dpi;
+    TEST_ASSERT_NOT_NULL(plugin_dpi_context);
+    dpi_plugins = &dispatcher_dpi_context->dispatch.plugin_sessions;
+    plugin_lookup = ds_tree_find(dpi_plugins, plugin->name);
+    TEST_ASSERT_NOT_NULL(plugin_lookup);
+    TEST_ASSERT_TRUE(plugin_lookup->session == plugin);
+    TEST_ASSERT_TRUE(plugin_lookup->bound);
+
+    dpi_dispatcher = &dispatcher_dpi_context->dispatch;
+    net_parser = &dpi_dispatcher->net_parser;
+    aggr = dpi_dispatcher->aggr;
+
+#if defined(__x86_64__)
+    /* Set the send_report routine of the aggregator */
+    aggr->send_report = test_send_report;
+#endif
+
+    PREPARE_UT(pkt47, net_parser);
+    len = net_header_parse(net_parser);
+    TEST_ASSERT_TRUE(len != 0);
+
+    /* Call the dispatcher's packet handler */
+    dispatch_ops = &dispatcher->p_ops->parser_ops;
+    TEST_ASSERT_NOT_NULL(dispatch_ops->handler);
+    dispatch_ops->handler(dispatcher, net_parser);
+
+    /* Validate that an accumulator was created */
+    TEST_ASSERT_NOT_NULL(net_parser->acc);
+
+    /* Validate that the accumulator has plugins recorded */
+    TEST_ASSERT_NOT_NULL(net_parser->acc->dpi_plugins);
+
+    /* Validate that the accumulator is aware of the plugin */
+    info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
+    TEST_ASSERT_NOT_NULL(info);
+    TEST_ASSERT_TRUE(info->session == plugin);
+
+    /** Validate dns dst port number */
+    port_num = net_parser->acc->key->sport;
+    TEST_ASSERT_EQUAL_INT(htons(port_num), 53);
+
+    originator = net_parser->acc->originator;
+    TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_DST);
+
+    direction = net_parser->acc->direction;
+    TEST_ASSERT_EQUAL_INT(direction, NET_MD_ACC_OUTBOUND_DIR);
+
+    net_parser->acc->report = true;
+
+    /* Close the flows observation window */
+    net_md_close_active_window(aggr);
+
+    mqtt_topic = plugin->ops.get_config(plugin, "mqtt_v");
+    ret = aggr->send_report(aggr, mqtt_topic);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Remove the dpi plugin session */
+    conf = &g_confs[19];
+    fsm_delete_session(conf);
+    info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
+    TEST_ASSERT_NULL(info);
+}
+
+/**
+ * @brief validate direction for tcp http request & response
+ *
+ * The dpi plugin is registered first.
+ * The dpi dispatch plugin is registered thereafter.
+ * Validate protocol is tcp or not.
+ * Validate dport sport/dport is 80 or not.
+ * Verify flow direction and originator of each packet.
+ * Send Protobuf to cloud.
+ * The dpi plugin is then removed.
+ */
+void
+test_dpi_dispatcher_tcp_http_req_response(void)
+{
+    struct schema_Flow_Service_Manager_Config *conf;
+    union fsm_dpi_context *dispatcher_dpi_context;
+    union fsm_dpi_context *plugin_dpi_context;
+    struct fsm_dpi_dispatcher *dpi_dispatcher;
+    struct fsm_dpi_plugin *plugin_lookup;
+    struct net_header_parser *net_parser;
+    struct fsm_parser_ops *dispatch_ops;
+    struct fsm_dpi_flow_info *info;
+    struct fsm_session *dispatcher;
+    struct net_md_aggregator *aggr;
+    struct fsm_session *plugin;
+    ds_tree_t *dpi_plugins;
+    ds_tree_t *sessions;
+    uint16_t originator;
+    uint16_t direction;
+    uint16_t port_num;
+    char *mqtt_topic;
+    size_t protocol;
+    size_t len;
+    bool ret;
+
+    /* Add a dpi plugin session */
+    conf = &g_confs[19];
+    fsm_add_session(conf);
+    sessions = fsm_get_sessions();
+    plugin = ds_tree_find(sessions, conf->handler);
+    TEST_ASSERT_NOT_NULL(plugin);
+    ret = fsm_is_dpi(plugin);
+    TEST_ASSERT_TRUE(ret);
+    LOGI("DPI Plugin is success ");
+
+    /* Add a dpi dispatcher session */
+    conf = &g_confs[18];
+    fsm_add_session(conf);
+    dispatcher = ds_tree_find(sessions, conf->handler);
+    TEST_ASSERT_NOT_NULL(dispatcher);
+    ret = fsm_is_dpi(dispatcher);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Validate that the dpi plugin is registered to the dispatcher */
+    dispatcher_dpi_context = dispatcher->dpi;
+    TEST_ASSERT_NOT_NULL(dispatcher_dpi_context);
+    plugin_dpi_context = plugin->dpi;
+    TEST_ASSERT_NOT_NULL(plugin_dpi_context);
+    dpi_plugins = &dispatcher_dpi_context->dispatch.plugin_sessions;
+    plugin_lookup = ds_tree_find(dpi_plugins, plugin->name);
+    TEST_ASSERT_NOT_NULL(plugin_lookup);
+    TEST_ASSERT_TRUE(plugin_lookup->session == plugin);
+    TEST_ASSERT_TRUE(plugin_lookup->bound);
+
+    dpi_dispatcher = &dispatcher_dpi_context->dispatch;
+    net_parser = &dpi_dispatcher->net_parser;
+    aggr = dpi_dispatcher->aggr;
+
+#if defined(__x86_64__)
+    /* Set the send_report routine of the aggregator */
+    aggr->send_report = test_send_report;
+#endif
+
+    PREPARE_UT(pkt3502, net_parser);
+    len = net_header_parse(net_parser);
+    TEST_ASSERT_TRUE(len != 0);
+
+    /* Call the dispatcher's packet handler */
+    dispatch_ops = &dispatcher->p_ops->parser_ops;
+    TEST_ASSERT_NOT_NULL(dispatch_ops->handler);
+    dispatch_ops->handler(dispatcher, net_parser);
+
+    /* Validate that an accumulator was created */
+    TEST_ASSERT_NOT_NULL(net_parser->acc);
+
+    /* Validate that the accumulator has plugins recorded */
+    TEST_ASSERT_NOT_NULL(net_parser->acc->dpi_plugins);
+
+    /* Validate that the accumulator is aware of the plugin */
+    info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
+    TEST_ASSERT_NOT_NULL(info);
+    TEST_ASSERT_TRUE(info->session == plugin);
+
+    /* Validate packet is TCP or not */
+    protocol = net_parser->acc->key->ipprotocol;
+    TEST_ASSERT_EQUAL_INT(protocol, IPPROTO_TCP);
+
+    /** Validate http dst port number */
+    port_num = net_parser->acc->key->dport;
+    TEST_ASSERT_EQUAL_INT(htons(port_num), 80);
+
+    originator = net_parser->acc->originator;
+    TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_SRC);
+
+    direction = net_parser->acc->direction;
+    TEST_ASSERT_EQUAL_INT(direction, NET_MD_ACC_OUTBOUND_DIR);
+
+    net_parser->acc->report = true;
+
+    /* Close the flows observation window */
+    net_md_close_active_window(aggr);
+
+    mqtt_topic = plugin->ops.get_config(plugin, "mqtt_v");
+    ret = aggr->send_report(aggr, mqtt_topic);
+    TEST_ASSERT_TRUE(ret);
+
+    PREPARE_UT(pkt3501, net_parser);
+    len = net_header_parse(net_parser);
+    TEST_ASSERT_TRUE(len != 0);
+
+    /* Call the dispatcher's packet handler */
+    dispatch_ops = &dispatcher->p_ops->parser_ops;
+    TEST_ASSERT_NOT_NULL(dispatch_ops->handler);
+    dispatch_ops->handler(dispatcher, net_parser);
+
+    /* Validate that an accumulator was created */
+    TEST_ASSERT_NOT_NULL(net_parser->acc);
+
+    /* Validate that the accumulator has plugins recorded */
+    TEST_ASSERT_NOT_NULL(net_parser->acc->dpi_plugins);
+
+    /* Validate that the accumulator is aware of the plugin */
+    info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
+    TEST_ASSERT_NOT_NULL(info);
+    TEST_ASSERT_TRUE(info->session == plugin);
+
+    /* Validate packet is TCP or not */
+    protocol = net_parser->acc->key->ipprotocol;
+    TEST_ASSERT_EQUAL_INT(protocol, IPPROTO_TCP);
+
+    /** Validate http src port number */
+    port_num = net_parser->acc->key->sport;
+    TEST_ASSERT_EQUAL_INT(htons(port_num), 80);
+
+    originator = net_parser->acc->originator;
+    TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_DST);
+
+    direction = net_parser->acc->direction;
+    TEST_ASSERT_EQUAL_INT(direction, NET_MD_ACC_OUTBOUND_DIR);
+
+    net_parser->acc->report = true;
+
+    /* Close the flows observation window */
+    net_md_close_active_window(aggr);
+
+    mqtt_topic = plugin->ops.get_config(plugin, "mqtt_v");
+    ret = aggr->send_report(aggr, mqtt_topic);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Remove the dpi plugin session */
+    conf = &g_confs[19];
+    fsm_delete_session(conf);
+    info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
+    TEST_ASSERT_NULL(info);
+}
+
+/**
+ * @brief validate direction for tcp https request & response
+ *
+ * The dpi plugin is registered first.
+ * The dpi dispatch plugin is registered thereafter.
+ * Validate protocol is tcp or not.
+ * Validate dport sport/dport is 443 or not.
+ * Verify flow direction and originator of each packet.
+ * Send Protobuf to cloud.
+ * The dpi plugin is then removed.
+ */
+void
+test_dpi_dispatcher_tcp_https_req_response(void)
+{
+    struct schema_Flow_Service_Manager_Config *conf;
+    union fsm_dpi_context *dispatcher_dpi_context;
+    union fsm_dpi_context *plugin_dpi_context;
+    struct fsm_dpi_dispatcher *dpi_dispatcher;
+    struct fsm_dpi_plugin *plugin_lookup;
+    struct net_header_parser *net_parser;
+    struct fsm_parser_ops *dispatch_ops;
+    struct fsm_dpi_flow_info *info;
+    struct fsm_session *dispatcher;
+    struct net_md_aggregator *aggr;
+    struct fsm_session *plugin;
+    ds_tree_t *dpi_plugins;
+    ds_tree_t *sessions;
+    uint16_t originator;
+    uint16_t direction;
+    uint16_t port_num;
+    char *mqtt_topic;
+    size_t protocol;
+    size_t len;
+    bool ret;
+
+    /* Add a dpi plugin session */
+    conf = &g_confs[19];
+    fsm_add_session(conf);
+    sessions = fsm_get_sessions();
+    plugin = ds_tree_find(sessions, conf->handler);
+    TEST_ASSERT_NOT_NULL(plugin);
+    ret = fsm_is_dpi(plugin);
+    TEST_ASSERT_TRUE(ret);
+    LOGI("DPI Plugin is success ");
+
+    /* Add a dpi dispatcher session */
+    conf = &g_confs[18];
+    fsm_add_session(conf);
+    dispatcher = ds_tree_find(sessions, conf->handler);
+    TEST_ASSERT_NOT_NULL(dispatcher);
+    ret = fsm_is_dpi(dispatcher);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Validate that the dpi plugin is registered to the dispatcher */
+    dispatcher_dpi_context = dispatcher->dpi;
+    TEST_ASSERT_NOT_NULL(dispatcher_dpi_context);
+    plugin_dpi_context = plugin->dpi;
+    TEST_ASSERT_NOT_NULL(plugin_dpi_context);
+    dpi_plugins = &dispatcher_dpi_context->dispatch.plugin_sessions;
+    plugin_lookup = ds_tree_find(dpi_plugins, plugin->name);
+    TEST_ASSERT_NOT_NULL(plugin_lookup);
+    TEST_ASSERT_TRUE(plugin_lookup->session == plugin);
+    TEST_ASSERT_TRUE(plugin_lookup->bound);
+
+    dpi_dispatcher = &dispatcher_dpi_context->dispatch;
+    net_parser = &dpi_dispatcher->net_parser;
+    aggr = dpi_dispatcher->aggr;
+
+#if defined(__x86_64__)
+    /* Set the send_report routine of the aggregator */
+    aggr->send_report = test_send_report;
+#endif
+
+    PREPARE_UT(pkt442, net_parser);
+    len = net_header_parse(net_parser);
+    TEST_ASSERT_TRUE(len != 0);
+
+    /* Call the dispatcher's packet handler */
+    dispatch_ops = &dispatcher->p_ops->parser_ops;
+    TEST_ASSERT_NOT_NULL(dispatch_ops->handler);
+    dispatch_ops->handler(dispatcher, net_parser);
+
+    /* Validate that an accumulator was created */
+    TEST_ASSERT_NOT_NULL(net_parser->acc);
+
+    /* Validate that the accumulator has plugins recorded */
+    TEST_ASSERT_NOT_NULL(net_parser->acc->dpi_plugins);
+
+    /* Validate that the accumulator is aware of the plugin */
+    info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
+    TEST_ASSERT_NOT_NULL(info);
+    TEST_ASSERT_TRUE(info->session == plugin);
+
+    /* Validate packet is TCP or not */
+    protocol = net_parser->acc->key->ipprotocol;
+    TEST_ASSERT_EQUAL_INT(protocol, IPPROTO_TCP);
+
+    /** Validate http dst port number */
+    port_num = net_parser->acc->key->dport;
+    TEST_ASSERT_EQUAL_INT(htons(port_num), 443);
+
+    originator = net_parser->acc->originator;
+    TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_SRC);
+
+    direction = net_parser->acc->direction;
+    TEST_ASSERT_EQUAL_INT(direction, NET_MD_ACC_OUTBOUND_DIR);
+
+    net_parser->acc->report = true;
+
+    /* Close the flows observation window */
+    net_md_close_active_window(aggr);
+
+    mqtt_topic = plugin->ops.get_config(plugin, "mqtt_v");
+    ret = aggr->send_report(aggr, mqtt_topic);
+    TEST_ASSERT_TRUE(ret);
+
+    PREPARE_UT(pkt443, net_parser);
+    len = net_header_parse(net_parser);
+    TEST_ASSERT_TRUE(len != 0);
+
+    /* Call the dispatcher's packet handler */
+    dispatch_ops = &dispatcher->p_ops->parser_ops;
+    TEST_ASSERT_NOT_NULL(dispatch_ops->handler);
+    dispatch_ops->handler(dispatcher, net_parser);
+
+    /* Validate that an accumulator was created */
+    TEST_ASSERT_NOT_NULL(net_parser->acc);
+
+    /* Validate that the accumulator has plugins recorded */
+    TEST_ASSERT_NOT_NULL(net_parser->acc->dpi_plugins);
+
+    /* Validate that the accumulator is aware of the plugin */
+    info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
+    TEST_ASSERT_NOT_NULL(info);
+    TEST_ASSERT_TRUE(info->session == plugin);
+
+    /* Validate packet is TCP or not */
+    protocol = net_parser->acc->key->ipprotocol;
+    TEST_ASSERT_EQUAL_INT(protocol, IPPROTO_TCP);
+
+    /** Validate http src port number */
+    port_num = net_parser->acc->key->sport;
+    TEST_ASSERT_EQUAL_INT(htons(port_num), 443);
+
+    originator = net_parser->acc->originator;
+    TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_DST);
+
+    direction = net_parser->acc->direction;
+    TEST_ASSERT_EQUAL_INT(direction, NET_MD_ACC_OUTBOUND_DIR);
+
+    net_parser->acc->report = true;
+
+    /* Close the flows observation window */
+    net_md_close_active_window(aggr);
+
+    mqtt_topic = plugin->ops.get_config(plugin, "mqtt_v");
+    ret = aggr->send_report(aggr, mqtt_topic);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Remove the dpi plugin session */
+    conf = &g_confs[19];
+    fsm_delete_session(conf);
+    info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
+    TEST_ASSERT_NULL(info);
+}
+
+/**
+ * @brief validate direction for udp https request & response
+ *
+ * The dpi plugin is registered first.
+ * The dpi dispatch plugin is registered thereafter.
+ * Validate protocol is udp or not.
+ * Validate dport sport/dport is 443 or not.
+ * Verify flow direction and originator of each packet.
+ * Send Protobuf to cloud.
+ * The dpi plugin is then removed.
+ */
+void
+test_dpi_dispatcher_udp_https_req_response(void)
+{
+    struct schema_Flow_Service_Manager_Config *conf;
+    union fsm_dpi_context *dispatcher_dpi_context;
+    union fsm_dpi_context *plugin_dpi_context;
+    struct fsm_dpi_dispatcher *dpi_dispatcher;
+    struct fsm_dpi_plugin *plugin_lookup;
+    struct net_header_parser *net_parser;
+    struct fsm_parser_ops *dispatch_ops;
+    struct fsm_dpi_flow_info *info;
+    struct fsm_session *dispatcher;
+    struct net_md_aggregator *aggr;
+    struct fsm_session *plugin;
+    ds_tree_t *dpi_plugins;
+    ds_tree_t *sessions;
+    uint16_t originator;
+    uint16_t direction;
+    uint16_t port_num;
+    char *mqtt_topic;
+    size_t protocol;
+    size_t len;
+    bool ret;
+
+    /* Add a dpi plugin session */
+    conf = &g_confs[19];
+    fsm_add_session(conf);
+    sessions = fsm_get_sessions();
+    plugin = ds_tree_find(sessions, conf->handler);
+    TEST_ASSERT_NOT_NULL(plugin);
+    ret = fsm_is_dpi(plugin);
+    TEST_ASSERT_TRUE(ret);
+    LOGI("DPI Plugin is success ");
+
+    /* Add a dpi dispatcher session */
+    conf = &g_confs[18];
+    fsm_add_session(conf);
+    dispatcher = ds_tree_find(sessions, conf->handler);
+    TEST_ASSERT_NOT_NULL(dispatcher);
+    ret = fsm_is_dpi(dispatcher);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Validate that the dpi plugin is registered to the dispatcher */
+    dispatcher_dpi_context = dispatcher->dpi;
+    TEST_ASSERT_NOT_NULL(dispatcher_dpi_context);
+    plugin_dpi_context = plugin->dpi;
+    TEST_ASSERT_NOT_NULL(plugin_dpi_context);
+    dpi_plugins = &dispatcher_dpi_context->dispatch.plugin_sessions;
+    plugin_lookup = ds_tree_find(dpi_plugins, plugin->name);
+    TEST_ASSERT_NOT_NULL(plugin_lookup);
+    TEST_ASSERT_TRUE(plugin_lookup->session == plugin);
+    TEST_ASSERT_TRUE(plugin_lookup->bound);
+
+    dpi_dispatcher = &dispatcher_dpi_context->dispatch;
+    net_parser = &dpi_dispatcher->net_parser;
+    aggr = dpi_dispatcher->aggr;
+
+#if defined(__x86_64__)
+    /* Set the send_report routine of the aggregator */
+    aggr->send_report = test_send_report;
+#endif
+
+    PREPARE_UT(pkt667, net_parser);
+    len = net_header_parse(net_parser);
+    TEST_ASSERT_TRUE(len != 0);
+
+    /* Call the dispatcher's packet handler */
+    dispatch_ops = &dispatcher->p_ops->parser_ops;
+    TEST_ASSERT_NOT_NULL(dispatch_ops->handler);
+    dispatch_ops->handler(dispatcher, net_parser);
+
+    /* Validate that an accumulator was created */
+    TEST_ASSERT_NOT_NULL(net_parser->acc);
+
+    /* Validate that the accumulator has plugins recorded */
+    TEST_ASSERT_NOT_NULL(net_parser->acc->dpi_plugins);
+
+    /* Validate that the accumulator is aware of the plugin */
+    info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
+    TEST_ASSERT_NOT_NULL(info);
+    TEST_ASSERT_TRUE(info->session == plugin);
+
+    /* Validate packet is UDP or not */
+    protocol = net_parser->acc->key->ipprotocol;
+    TEST_ASSERT_EQUAL_INT(protocol, IPPROTO_UDP);
+
+    /** Validate http dst port number */
+    port_num = net_parser->acc->key->dport;
+    TEST_ASSERT_EQUAL_INT(htons(port_num), 443);
+
+    originator = net_parser->acc->originator;
+    TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_SRC);
+
+    direction = net_parser->acc->direction;
+    TEST_ASSERT_EQUAL_INT(direction, NET_MD_ACC_OUTBOUND_DIR);
+
+    net_parser->acc->report = true;
+
+    /* Close the flows observation window */
+    net_md_close_active_window(aggr);
+
+    mqtt_topic = plugin->ops.get_config(plugin, "mqtt_v");
+    ret = aggr->send_report(aggr, mqtt_topic);
+    TEST_ASSERT_TRUE(ret);
+
+    PREPARE_UT(pkt668, net_parser);
+    len = net_header_parse(net_parser);
+    TEST_ASSERT_TRUE(len != 0);
+
+    /* Call the dispatcher's packet handler */
+    dispatch_ops = &dispatcher->p_ops->parser_ops;
+    TEST_ASSERT_NOT_NULL(dispatch_ops->handler);
+    dispatch_ops->handler(dispatcher, net_parser);
+
+    /* Validate that an accumulator was created */
+    TEST_ASSERT_NOT_NULL(net_parser->acc);
+
+    /* Validate that the accumulator has plugins recorded */
+    TEST_ASSERT_NOT_NULL(net_parser->acc->dpi_plugins);
+
+    /* Validate that the accumulator is aware of the plugin */
+    info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
+    TEST_ASSERT_NOT_NULL(info);
+    TEST_ASSERT_TRUE(info->session == plugin);
+
+    /* Validate packet is UDP or not */
+    protocol = net_parser->acc->key->ipprotocol;
+    TEST_ASSERT_EQUAL_INT(protocol, IPPROTO_UDP);
+
+    /** Validate http src port number */
+    port_num = net_parser->acc->key->sport;
+    TEST_ASSERT_EQUAL_INT(htons(port_num), 443);
+
+    originator = net_parser->acc->originator;
+    TEST_ASSERT_EQUAL_INT(originator, NET_MD_ACC_ORIGINATOR_DST);
+
+    direction = net_parser->acc->direction;
+    TEST_ASSERT_EQUAL_INT(direction, NET_MD_ACC_OUTBOUND_DIR);
+
+    net_parser->acc->report = true;
+
+    /* Close the flows observation window */
+    net_md_close_active_window(aggr);
+
+    mqtt_topic = plugin->ops.get_config(plugin, "mqtt_v");
+    ret = aggr->send_report(aggr, mqtt_topic);
+    TEST_ASSERT_TRUE(ret);
+
+    /* Remove the dpi plugin session */
+    conf = &g_confs[19];
+    fsm_delete_session(conf);
+    info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
+    TEST_ASSERT_NULL(info);
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -3618,7 +4429,7 @@ main(int argc, char *argv[])
     RUN_TEST(test_5_dpi_dispatcher_and_plugin);
     RUN_TEST(test_6_service_plugin);
     RUN_TEST(test_7_dpi_dispatcher_and_plugin);
-    RUN_TEST(test_8_dpi_dispatcher_and_plugin);
+    RUN_TEST(test_8_dpi_dispatcher_udp_non_reserved);
     RUN_TEST(test_fsm_tap_type_validation);
     RUN_TEST(test_1_dpi_plugin_and_client_plugin);
     RUN_TEST(test_2_dpi_plugin_and_client_plugin);
@@ -3632,6 +4443,12 @@ main(int argc, char *argv[])
     RUN_TEST(test_11_dpi_dispatcher_reserved_port_originator);
     RUN_TEST(test_12_dpi_dispatcher_icmp_req_reply);
     RUN_TEST(test_13_dpi_dispatcher_icmpv6_req_reply);
+    RUN_TEST(test_dpi_dispatcher_udp_reserved);
+    RUN_TEST(test_dpi_dispatcher_dns_request);
+    RUN_TEST(test_dpi_dispatcher_dns_response);
+    RUN_TEST(test_dpi_dispatcher_tcp_http_req_response);
+    RUN_TEST(test_dpi_dispatcher_tcp_https_req_response);
+    RUN_TEST(test_dpi_dispatcher_udp_https_req_response);
 
     return UNITY_END();
 }

@@ -40,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "network_metadata_report.h"
 #include "policy_tags.h"
 #include "dns_cache.h"
+#include "gatekeeper_cache.h"
 #include "fsm_dpi_utils.h"
 
 static struct fsm_dpi_sni_cache
@@ -606,8 +607,13 @@ dpi_parse_populate_sockaddr(int af, void *ip_addr, struct sockaddr_storage *dst)
 bool
 is_redirected_flow(struct net_md_flow_info *info, const char *attr)
 {
+    struct gk_attr_cache_interface entry;
     struct ip2action_req lkp_req;
     struct sockaddr_storage ip;
+    bool dns_cache_disabled;
+    char buf[128] = { 0 };
+    const char *res;
+    bool ret;
     int af;
     int rc;
 
@@ -616,6 +622,37 @@ is_redirected_flow(struct net_md_flow_info *info, const char *attr)
     if (info == NULL || info->local_mac == NULL || info->remote_ip == NULL)
     {
         return false;
+    }
+
+    dns_cache_disabled = is_dns_cache_disabled();
+    if (dns_cache_disabled)
+    {
+        /* look up the gatekeeper cache */
+        MEMZERO(entry);
+
+        entry.device_mac = info->local_mac;
+        af = info->ip_version == 4 ? AF_INET : AF_INET6;
+        dpi_parse_populate_sockaddr(af, info->remote_ip, &ip);
+        entry.ip_addr = &ip;
+        entry.attribute_type = (info->ip_version == 4 ?
+                                GK_CACHE_REQ_TYPE_IPV4 :
+                                GK_CACHE_REQ_TYPE_IPV6);
+        res = inet_ntop(af, info->remote_ip, buf, sizeof(buf));
+        if (res == NULL)
+        {
+            LOGE("%s: inet_ntop failed: %s", __func__, strerror(errno));
+            return false;
+        }
+        entry.attr_name = buf;
+        entry.direction = info->direction;
+        ret  = gkc_lookup_attribute_entry(&entry, true);
+        if (ret == true && entry.redirect_flag == false)
+        {
+            ret = false;
+            LOGD("%s: redirect entry is not found in gatekeeper cache", __func__);
+        }
+
+        return ret;
     }
 
     /* look up the dns cache */

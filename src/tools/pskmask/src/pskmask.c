@@ -27,6 +27,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdio.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <sys/mman.h>
 
 #include "ovsdb.h"
 #include "ovsdb_table.h"
@@ -133,73 +134,60 @@ static void print_usage(void)
 
 int mask_file(const char *fpath, const char *obfstr)
 {
-    printf("Masking file: %s ... ", fpath);
-
-    FILE *curr_file;
-    FILE *tmp_file;
     const char *tmp_extension = ".tmp";
     char *tmp_fpath = malloc(strlen(fpath)+strlen(tmp_extension)+1);
     strcpy(tmp_fpath, fpath);
     strcat(tmp_fpath, tmp_extension);
-    int match_count = 0;
 
+    printf("Masking file: %s ... ", fpath);
+
+    int match_count = 0;
     int i;
     for (i=0; i<psk_count; i++)
     {
-        curr_file = fopen(fpath, "rb");
-        tmp_file = fopen(tmp_fpath, "wb");
-        assert(curr_file != NULL);
-        assert(tmp_file != NULL);
-
         size_t psk_len = strlen(psks[i]);
-        size_t psk_pos = 0;
-        char buf[MAX_PSK_LEN+1];
-        size_t buf_pos = 0;
-        while(1)
+
+        FILE *curr_file;
+        curr_file = fopen(fpath, "rb");
+        assert(curr_file != NULL);
+
+        struct stat curr_file_stat;
+        assert(stat(fpath, &curr_file_stat) == 0);
+        if (curr_file_stat.st_size == 0)
         {
-            int curr_char = fgetc(curr_file);
-
-            if(curr_char == psks[i][psk_pos])
-            {
-                buf[buf_pos] = curr_char;
-                buf_pos++;
-                psk_pos++;
-            }
-            else if (buf_pos == 0 && curr_char != EOF)
-            {
-                fputc(curr_char, tmp_file);
-            }
-            else
-            {
-                size_t j;
-                for (j=0; j<buf_pos; j++)
-                {
-                    fputc(buf[j], tmp_file);
-                }
-                psk_pos = 0;
-                buf_pos = 0;
-                if(curr_char == EOF)    break;
-                else                    fseek(curr_file, -1, SEEK_CUR);
-            }
-
-            if(psk_pos == psk_len)
-            {
-                match_count++;
-                fputs(obfstr, tmp_file);
-                psk_pos = 0;
-                buf_pos = 0;
-            }
+            assert(!fclose(curr_file));
+            break;
         }
 
-        assert(!fclose(tmp_file));
+        char *curr_file_map = mmap(NULL, curr_file_stat.st_size, PROT_READ, MAP_SHARED, fileno(curr_file), 0);
+        assert(curr_file_map);
+
+        FILE *tmp_file;
+        tmp_file = fopen(tmp_fpath, "wb");
+        assert(tmp_file != NULL);
+
+        char *cursor = curr_file_map;
+        char *psk_ptr;
+        while ((psk_ptr = strstr(cursor, psks[i])) != NULL)
+        {
+            match_count++;
+            fwrite(cursor, sizeof(char), psk_ptr-cursor, tmp_file);
+            fputs(obfstr, tmp_file);
+            cursor = psk_ptr + psk_len;
+        }
+        fwrite(cursor, sizeof(char), curr_file_map + curr_file_stat.st_size - cursor, tmp_file);
+
+        assert(!munmap(curr_file_map, curr_file_stat.st_size));
         assert(!fclose(curr_file));
+        assert(!fclose(tmp_file));
         assert(!remove(fpath));
         assert(!rename(tmp_fpath, fpath));
     }
 
+    free(tmp_fpath);
+
     printf("Replaced entries: %d\n", match_count);
 
-    free(tmp_fpath);
     return 0;
 }
 

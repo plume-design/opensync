@@ -68,6 +68,13 @@ typedef void wano_plugin_status_fn_t(
         wano_plugin_handle_t *wh,
         struct wano_plugin_status *status);
 
+/*
+ * Plug-in initialization function. It must return a plug-in handle or NULL
+ * on error. In this case the plug-in will not be provisioned.
+ *
+ * It is illegal to call `status_fn` before the plug-in is run
+ * (wano_plugin_ops_run_fn_t is called).
+ */
 typedef wano_plugin_handle_t *wano_plugin_ops_init_fn_t(
         const struct wano_plugin *wm,
         const char *ifname,
@@ -545,6 +552,21 @@ enum wano_ppline_status
      * requested a restart
      */
     WANO_PPLINE_RESTART,
+    /**
+     * The pipeline is frozen (typically when the interface is added to a bridge).
+     * All activity on the interface should temporarily cease.
+     */
+    WANO_PPLINE_FREEZE,
+    /**
+     * The current pipeline was ABORTED (move directly to IDLE state). Flag the
+     * current WAN configuration as exhausted (roll over).
+     *
+     * This might be triggered by some plug-ins such as ethernet client
+     * detection.
+     */
+    WANO_PPLINE_ABORT,
+
+    WANO_PPLINE_LAST = WANO_PPLINE_ABORT
 };
 
 /**

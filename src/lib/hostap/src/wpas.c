@@ -540,6 +540,10 @@ wpas_conf_gen(struct wpas *wpas,
     csnprintf(&buf, &len, "scan_cur_freq=%d\n", vconf->parent_exists && strlen(vconf->parent) > 0);
     csnprintf(&buf, &len, "#bridge=%s\n", vconf->bridge_exists ? vconf->bridge : "");
 
+    if (!strcmp(rconf->freq_band, SCHEMA_CONSTS_RADIO_TYPE_STR_6G)) {
+        csnprintf(&buf, &len, "sae_pwe=2\n");
+    }
+
     /* Credential_Config is supposed to be used only
      * during initial onboarding/bootstrap. After that
      * the cloud is supposed to always provide a single

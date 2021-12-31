@@ -250,10 +250,14 @@ out:
 }
 
 
-// SELECT
-// if where is NULL, select ALL rows in table
-
-json_t* ovsdb_sync_select_where(const char *table, json_t *where)
+// Perform a SELECT OVSDB transaction on `table` and return rows which meet
+// the conditions in `where` as a JSON array object
+//
+// The result may contain multiple rows or an empty array if the table is empty
+// or no rows match the `where` condition.
+//
+// On error, NULL is returned.
+json_t* ovsdb_sync_select_where2(const char *table, json_t *where)
 {
     json_t *jrows = NULL;
     json_t *result = NULL;
@@ -266,7 +270,7 @@ json_t* ovsdb_sync_select_where(const char *table, json_t *where)
     }
     LOG(DEBUG, "query result: %s", json_dumps_static(result, 0));
     jrows = json_object_get(json_array_get(result, 0), "rows");
-    if (!jrows || json_array_size(jrows) < 1)
+    if (!jrows)
     {
         LOG(DEBUG, "%s: result no rows", __FUNCTION__);
         json_decref(result);
@@ -275,6 +279,22 @@ json_t* ovsdb_sync_select_where(const char *table, json_t *where)
     json_incref(jrows);
     json_decref(result);
     LOG(DEBUG, "%s return: %s", __FUNCTION__, json_dumps_static(jrows, 0));
+
+    return jrows;
+}
+
+// Backward compatible version of `ovsdb_sync_select_where2()` where an empty
+// result is returned as NULL instead of an empty JSON array.
+json_t* ovsdb_sync_select_where(const char *table, json_t *where)
+{
+    json_t *jrows;
+
+    jrows = ovsdb_sync_select_where2(table, where);
+    if (jrows != NULL && json_array_size(jrows) < 1)
+    {
+        json_decref(jrows);
+        return NULL;
+    }
 
     return jrows;
 }

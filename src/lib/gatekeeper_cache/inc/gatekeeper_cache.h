@@ -79,7 +79,7 @@ struct attr_ip_addr_s
 {
     struct sockaddr_storage ip_addr;
     struct counter_s        hit_count;  /* number of times lookup is performed */
-
+    int                     action_by_name;
 };
 
 struct attr_hostname_s
@@ -151,6 +151,7 @@ struct attr_cache
     uint8_t                 direction;        /* inbound or outbound */
     uint64_t                key;              /* used to differentiate entries */
     bool                    is_private_ip;
+    bool                    redirect_flag;
     ds_tree_node_t          attr_tnode;
 };
 
@@ -250,6 +251,8 @@ struct gk_attr_cache_interface
     struct fqdn_redirect_s *fqdn_redirect;
     int categorized;
     bool is_private_ip;
+    bool redirect_flag;
+    int  action_by_name;
 };
 
 /**
@@ -278,6 +281,7 @@ struct gkc_ip_flow_interface
     uint64_t hit_counter;      /* will be updated when lookup is performed */
     uint64_t cache_ttl;        /* TTL value that should be set */
     bool is_private_ip;
+    bool redirect_flag;
 };
 
 struct gk_cache_mgr *

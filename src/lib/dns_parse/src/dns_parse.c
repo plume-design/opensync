@@ -763,15 +763,15 @@ process_response_ips(dns_info *dns, uint8_t *packet,
                 switch(policy_reply->action)
                 {
                     case FSM_REDIRECT:
-                        gkc_entry.action = FSM_BLOCK;
+                        gkc_entry.action_by_name = FSM_BLOCK;
                         break;
 
                     case FSM_OBSERVED:
-                        gkc_entry.action = FSM_ALLOW;
+                        gkc_entry.action_by_name = FSM_ALLOW;
                         break;
 
                     default:
-                        gkc_entry.action = policy_reply->action;
+                        gkc_entry.action_by_name = policy_reply->action;
                         break;
                 }
 
@@ -800,7 +800,7 @@ process_response_ips(dns_info *dns, uint8_t *packet,
                                        IP2ACTION_MIN_TTL : (int)ttl);
                 ip_cache_req.cache_ttl = ((req->rd_ttl != -1) ?
                                           req->rd_ttl : ip2action_cache_ttl);
-                ip_cache_req.action = policy_reply->action;
+                ip_cache_req.action_by_name = policy_reply->action;
                 ip_cache_req.policy_idx = policy_reply->policy_idx;
                 ip_cache_req.service_id = req->req_info->reply->service_id;
                 ip_cache_req.nelems = req->req_info->reply->nelems;
@@ -1143,9 +1143,10 @@ dns_cache_add_redirect_entry(struct fqdn_pending_req *req,
 
         gkc_entry.ip_addr = ipaddr;
         gkc_entry.cache_ttl = DNS_REDIRECT_TTL;
-        gkc_entry.action = FSM_ALLOW;
+        gkc_entry.action_by_name = FSM_ALLOW;
         gkc_entry.direction = NET_MD_ACC_OUTBOUND_DIR;
         gkc_entry.gk_policy = fqdn_reply_gk->gk_policy;
+        gkc_entry.redirect_flag = true;
 
         /* Force the category ID to an acceptable value */
         gkc_entry.category_id = 15; /* GK_NOT_RATED */

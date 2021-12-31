@@ -17,10 +17,13 @@ digraph {
     IDLE -> START[label="STATE_INIT"];
     IDLE -> START[label="IDLE_TIMEOUT"];
 
+    ABORT -> ABORT[label="INET_STATE_UPDATE,PLUGIN_UPDATE"];
+    ABORT -> START[label="IDLE_TIMEOUT"];
+
     FREEZE -> FREEZE[label="INET_STATE_UPDATE"];
     FREEZE -> INIT[label="PPLINE_UNFREEZE"];
 
     EXCEPTION-> INIT [label="!PPLINE_RESTART"];
-    EXCEPTION -> IDLE [label="!PPLINE_ABORT"];
+    EXCEPTION -> ABORT [label="!PPLINE_ABORT"];
     EXCEPTION -> FREEZE [label="!PPLINE_FREEZE"];
 }

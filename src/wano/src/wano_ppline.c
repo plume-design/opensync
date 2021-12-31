@@ -298,6 +298,24 @@ void wano_ppline_start_queues(wano_ppline_t *self)
         wpp->wpp_ppline = self;
         wpp->wpp_plugin = wp;
 
+        /*
+         * Initialize the plug-in; plug-ins that return a NULL instance
+         * are skipped.
+         */
+        wpp->wpp_handle = wano_plugin_init(
+                wpp->wpp_plugin,
+                self->wpl_ifname,
+                wano_ppline_plugin_status_fn);
+        if (wpp->wpp_handle == NULL)
+        {
+            LOG(INFO, "wano: %s: Skipping plug-in %s",
+                    self->wpl_ifname,
+                    wpp->wpp_plugin->wanp_name);
+            FREE(wpp);
+            continue;
+        }
+        wpp->wpp_handle->wh_data = wpp;
+
         ds_dlist_insert_tail(&self->wpl_plugin_waitq, wpp);
     }
 
@@ -376,21 +394,6 @@ bool wano_ppline_runq_add(wano_ppline_t *self, struct wano_ppline_plugin *wpp)
 {
     wpp->wpp_running = false;
 
-    wpp->wpp_handle = wano_plugin_init(
-            wpp->wpp_plugin,
-            self->wpl_ifname,
-            wano_ppline_plugin_status_fn);
-
-    if (wpp->wpp_handle == NULL)
-    {
-        LOG(INFO, "wano: %s: Skipping plug-in %s",
-                self->wpl_ifname,
-                wpp->wpp_plugin->wanp_name);
-        return false;
-    }
-
-    wpp->wpp_handle->wh_data = wpp;
-
     self->wpl_plugin_rmask |= wpp->wpp_plugin->wanp_mask;
     ds_dlist_insert_head(&self->wpl_plugin_runq, wpp);
 
@@ -431,9 +434,8 @@ bool wano_ppline_runq_start(wano_ppline_t *self)
         ev_async_init(&wpp->wpp_status_async, wano_ppline_status_async_fn);
         ev_async_start(EV_DEFAULT, &wpp->wpp_status_async);
 
-        wano_plugin_run(wpp->wpp_handle);
-
         wpp->wpp_running = true;
+        wano_plugin_run(wpp->wpp_handle);
     }
 
     return retval;
@@ -529,6 +531,18 @@ void wano_ppline_inet_state_event_fn(
 void wano_ppline_plugin_status_fn(wano_plugin_handle_t *ph, struct wano_plugin_status *ps)
 {
     struct wano_ppline_plugin *wpp = ph->wh_data;
+
+    if (!wpp->wpp_running)
+    {
+        /*
+         * Calling the plug-in status function is valid only after a wano_plugin_run()
+         * was executed. Warn if it was called before that.
+         */
+        LOG(WARN, "wano: Plug-in %s requested status update (%d) while it's not running and will be ignored.",
+                wpp->wpp_plugin->wanp_name,
+                wpp->wpp_status.ws_type);
+        return;
+    }
 
     /* Update local copy of the status and schedule an async event */
     wpp->wpp_status = *ps;
@@ -784,10 +798,7 @@ enum wano_ppline_state wano_ppline_state_START(
 {
     (void)action;
     (void)data;
-
-    wano_ppline_t *self = CONTAINER_OF(state, wano_ppline_t, wpl_state);
-
-    wano_ppline_start_queues(self);
+    (void)state;
 
     return wano_ppline_IF_ENABLE;
 }
@@ -827,6 +838,9 @@ enum wano_ppline_state wano_ppline_state_IF_ENABLE(
             if (!is->is_network) break;
             if (!is->is_nat) break;
             if (strcmp(is->is_ip_assign_scheme, "none") != 0) break;
+
+            /* Interface is ready -- initialize plug-ins */
+            wano_ppline_start_queues(self);
 
             return wano_ppline_IF_CARRIER;
 
@@ -1039,6 +1053,10 @@ enum wano_ppline_state wano_ppline_state_IDLE(
             /*
              * Update connection manager table, has_L3 must be false and loop
              * must be true. This is required by the Cloud/CM state machines.
+             *
+             * Since WANO can handle multiple WAN configurations, we should
+             * wait until a WAN rollover occurs before we flag the interface
+             * as "exhasuted" (has_L3 = false).
              */
             if (!WANO_CONNMGR_UPLINK_UPDATE(
                     self->wpl_ifname,
@@ -1105,6 +1123,75 @@ enum wano_ppline_state wano_ppline_state_IDLE(
     return 0;
 }
 
+enum wano_ppline_state wano_ppline_state_ABORT(
+        wano_ppline_state_t *state,
+        enum wano_ppline_action action,
+        void *data)
+{
+    (void)state;
+    (void)data;
+
+    double maxtime;
+    double rtime;
+
+    wano_ppline_t *self = CONTAINER_OF(state, wano_ppline_t, wpl_state);
+
+    switch (action)
+    {
+        case wano_ppline_do_STATE_INIT:
+            /* Stop active plug-ins */
+            wano_ppline_runq_flush(self, false);
+
+            wano_ppline_event_dispatch(self, WANO_PPLINE_ABORT);
+
+            if (!WANO_CONNMGR_UPLINK_UPDATE(
+                    self->wpl_ifname,
+                    .has_L3 = WANO_TRI_FALSE))
+            {
+                LOG(WARN, "wano: %s: Error updating the Connection_Manager_Uplink table (has_L3 = false)",
+                        self->wpl_ifname);
+            }
+
+            /*
+             * Disable NAT
+             */
+            if (!WANO_INET_CONFIG_UPDATE(
+                        self->wpl_ifname,
+                        .ip_assign_scheme = "none",
+                        .nat = WANO_TRI_FALSE))
+            {
+                LOG(WARN, "wano: %s: Error disabling NAT.", self->wpl_ifname);
+            }
+
+            /* Calculate retry timer */
+            maxtime = WANO_PPLINE_RETRY_TIME << WANO_PPLINE_RETRY_MAX;
+            /* Add the random component */
+            rtime = maxtime * 0.5 * (os_random() % 1000) / 1000.0;
+            /* Add the fixed component */
+            rtime += maxtime * 0.5;
+
+            /* Re-arm retry timer */
+            ev_timer_stop(EV_DEFAULT, &self->wpl_retry_timer);
+            ev_timer_set(&self->wpl_retry_timer, rtime, 0.0);
+            ev_timer_start(EV_DEFAULT, &self->wpl_retry_timer);
+            self->wpl_retries++;
+
+            LOG(INFO, "wano: %s: Entered ABORT state, pipeline retry timer is %0.2f seconds.",
+                    self->wpl_ifname, rtime);
+            break;
+
+        case wano_ppline_do_IDLE_TIMEOUT:
+            LOG(INFO, "wano: %s: Abort timeout reached, restarting pipeline.", self->wpl_ifname);
+            ev_timer_stop(EV_DEFAULT, &self->wpl_retry_timer);
+            return wano_ppline_START;
+
+        default:
+            break;
+    }
+
+    return 0;
+}
+
 enum wano_ppline_state wano_ppline_state_FREEZE(
         wano_ppline_state_t *state,
         enum wano_ppline_action action,
@@ -1118,6 +1205,9 @@ enum wano_ppline_state wano_ppline_state_FREEZE(
     switch (action)
     {
         case wano_ppline_do_STATE_INIT:
+            LOG(NOTICE, "wano: %s: Pipeline frozen.", self->wpl_ifname);
+
+            wano_ppline_event_dispatch(self, WANO_PPLINE_FREEZE);
             wano_ppline_stop_queues(self);
 
             /*
@@ -1132,8 +1222,6 @@ enum wano_ppline_state wano_ppline_state_FREEZE(
             {
                 LOG(WARN, "wano: %s: Error writing Wifi_Inet_Config in FREEZE.", self->wpl_ifname);
             }
-
-            LOG(NOTICE, "wano: %s: Pipeline frozen.", self->wpl_ifname);
             break;
 
         case wano_ppline_do_PPLINE_UNFREEZE:
@@ -1170,7 +1258,7 @@ enum wano_ppline_state wano_ppline_state_EXCEPTION(
             return wano_ppline_INIT;
 
         case wano_ppline_exception_PPLINE_ABORT:
-            return wano_ppline_IDLE;
+            return wano_ppline_ABORT;
 
         case wano_ppline_exception_PPLINE_FREEZE:
             return wano_ppline_FREEZE;

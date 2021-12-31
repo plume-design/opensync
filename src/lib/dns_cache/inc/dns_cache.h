@@ -99,6 +99,7 @@ struct ip2action
     os_macaddr_t                *device_mac;
     struct sockaddr_storage     *ip_addr;
     int                         action;
+    int                         action_by_name;
     int                         cache_ttl;
     time_t                      cache_ts;
     int                         af_family;
@@ -128,6 +129,7 @@ struct ip2action_req
 
     int                      cache_ttl;
     int                      action;
+    int                      action_by_name;
     uint8_t                  policy_idx;
     int                      service_id;
     uint8_t                  nelems;

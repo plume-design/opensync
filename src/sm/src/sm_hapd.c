@@ -214,7 +214,7 @@ sm_hapd_bss_free(struct sm_hapd_bss *bss)
     if (!bss)
         return;
     if (bss->hapd)
-        ctrl_disable(&bss->hapd->ctrl);
+        hapd_release(bss->hapd);
 
     FREE(bss->report.clients);
     FREE(bss);

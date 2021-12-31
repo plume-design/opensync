@@ -310,7 +310,6 @@ bm_vif_state_ovsdb_update_cb(ovsdb_update_monitor_t *self)
     unsigned int i;
     ds_tree_t *groups;
     bm_group_t *group;
-    radio_type_t rtype;
     pjs_errmsg_t perr;
 
     switch(self->mon_type)
@@ -329,8 +328,6 @@ bm_vif_state_ovsdb_update_cb(ovsdb_update_monitor_t *self)
                 LOGE("%s failed to get group tree", __func__);
                 break;;
             }
-
-            rtype = bm_group_find_radio_type_by_ifname(vstate.if_name);
 
             ds_tree_foreach(groups, group) {
                 for (i = 0; i < group->ifcfg_num; i++) {

@@ -461,6 +461,9 @@ hapd_parse_wpa_psks_file_buf(const char *psks,
     if (WARN_ON(!psk_handler))
         return;
 
+    if (WARN_ON(!psks))
+        return;
+
     ptr = strdupa(psks);
     if (WARN_ON(!ptr))
         return;
@@ -1018,8 +1021,10 @@ hapd_conf_gen(struct hapd *hapd,
         }
     }
 
-    if (!strcmp(rconf->freq_band, SCHEMA_CONSTS_RADIO_TYPE_STR_6G))
+    if (!strcmp(rconf->freq_band, SCHEMA_CONSTS_RADIO_TYPE_STR_6G)) {
         csnprintf(&buf, &len, "op_class=131\n");
+        csnprintf(&buf, &len, "sae_pwe=2\n");
+    }
 
     if (hapd->ieee80211n)
         csnprintf(&buf, &len, "ht_capab=%s %s\n",
@@ -1495,6 +1500,13 @@ void
 hapd_destroy(struct hapd *hapd)
 {
     hapd_ctrl_remove(hapd);
+    ctrl_disable(&hapd->ctrl);
+    memset(hapd, 0, sizeof(*hapd));
+}
+
+void
+hapd_release(struct hapd *hapd)
+{
     ctrl_disable(&hapd->ctrl);
     memset(hapd, 0, sizeof(*hapd));
 }

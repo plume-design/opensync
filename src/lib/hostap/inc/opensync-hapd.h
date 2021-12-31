@@ -59,6 +59,7 @@ struct hapd {
 struct hapd *hapd_lookup(const char *bss);
 struct hapd *hapd_new(const char *phy, const char *bss);
 void hapd_destroy(struct hapd *hapd);
+void hapd_release(struct hapd *hapd);
 int hapd_conf_gen(struct hapd *hapd,
                   const struct schema_Wifi_Radio_Config *rconf,
                   const struct schema_Wifi_VIF_Config *vconf);

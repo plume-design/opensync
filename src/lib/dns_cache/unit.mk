@@ -38,6 +38,7 @@ UNIT_SRC := src/dns_cache.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -I$(TOP_DIR)/src/lib/common/inc
+UNIT_CFLAGS += -Isrc/lib/fsm_policy/inc
 UNIT_CFLAGS += -Isrc/lib/ustack/inc
 
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)

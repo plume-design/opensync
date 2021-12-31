@@ -52,6 +52,7 @@ UNIT_DEPS := src/lib/const
 UNIT_DEPS += src/lib/log
 UNIT_DEPS += src/lib/network_metadata
 UNIT_DEPS += src/lib/fsm_policy
+UNIT_DEPS += src/lib/gatekeeper_cache
 UNIT_DEPS += src/lib/json_mqtt
 UNIT_DEPS += src/lib/policy_tags
 UNIT_DEPS += src/lib/fsm_utils

@@ -285,9 +285,20 @@ enum wanp_vlan_state wanp_vlan_state_PPLINE_CREATE(
                             self->wvl_handle.wh_ifname, self->wvl_ifvlan);
                     return wanp_vlan_ERROR;
 
-                case WANO_PPLINE_RESTART:
+                case WANO_PPLINE_ABORT:
+                    LOG(INFO, "wanp_vlan: %s: Pipeline was aborted %s.",
+                            self->wvl_handle.wh_ifname, self->wvl_ifvlan);
+                    return wanp_vlan_ERROR;
+
+                 case WANO_PPLINE_RESTART:
                     LOG(INFO, "wanp_vlan: %s: Plug-in pipeline restarted on %s.",
                             self->wvl_handle.wh_ifname, self->wvl_ifvlan);
+                    break;
+
+                case WANO_PPLINE_FREEZE:
+                    LOG(INFO, "wanp_vlan: %s: Plug-in pipeline was frozen.",
+                            self->wvl_handle.wh_ifname);
+                    break;
             }
             break;
 
@@ -329,8 +340,18 @@ enum wanp_vlan_state wanp_vlan_state_IDLE(
                             self->wvl_handle.wh_ifname, self->wvl_ifvlan);
                     break;
 
+                case WANO_PPLINE_FREEZE:
+                    LOG(ERR, "wano_vlan: %s: Plug-in pipeline frozen on %s.",
+                            self->wvl_handle.wh_ifname, self->wvl_ifvlan);
+                    break;
+
                 case WANO_PPLINE_IDLE:
                     LOG(ERR, "wano_vlan: %s: Plug-in pipeline failed on %s.",
+                            self->wvl_handle.wh_ifname, self->wvl_ifvlan);
+                    return wanp_vlan_ERROR;
+
+                case WANO_PPLINE_ABORT:
+                    LOG(ERR, "wano_vlan: %s: Plug-in pipeline aborted on %s.",
                             self->wvl_handle.wh_ifname, self->wvl_ifvlan);
                     return wanp_vlan_ERROR;
 

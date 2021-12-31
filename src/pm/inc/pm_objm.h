@@ -27,6 +27,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef PM_OBJM_H_INCLUDED
 #define PM_OBJM_H_INCLUDED
 
+#include <limits.h>
+
 #include "osp_objm.h"
 
 #define PM_OBJM_STORAGE "pm_obj"

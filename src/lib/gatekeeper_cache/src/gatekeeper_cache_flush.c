@@ -543,6 +543,9 @@ gkc_flush_rules(struct fsm_policy_rules *rules)
         }
         else
         {
+            /* if macs list is empty */
+            if (rules->macs == NULL) break;
+
             /* Proceed with every mac from the policy rule */
             need_delete = out_set;
             for (i = 0; i < rules->macs->nelems; i++)
