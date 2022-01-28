@@ -1027,6 +1027,33 @@ check_ovsdb_table_field_exists()
 
 ###############################################################################
 # DESCRIPTION:
+#   Function checks if the OVSDB table exists or not.
+#   Function uses ovsdb-client tool.
+# INPUT PARAMETER(S):
+#   $1  OVSDB table name (string, required).
+# RETURNS:
+#   0 if the OVSDB table exist.
+#   1 if the OVSDB table does not exist.
+#   See DESCRIPTION.
+# USAGE EXAMPLE(S):
+#   check_ovsdb_table_exist AWLAN_Node
+###############################################################################
+check_ovsdb_table_exist()
+{
+    local NARGS=1
+    [ $# -ne ${NARGS} ] &&
+        raise "unit_lib:check_ovsdb_table_exist requires ${NARGS} input argument(s), $# given" -arg
+    ovsdb_table_name=${1}
+    check=$(ovsdb-client list-tables | grep ${ovsdb_table_name})
+    if [ -z "$check" ]; then
+        return 1
+    else
+        return 0
+    fi
+}
+
+###############################################################################
+# DESCRIPTION:
 #   Function waits for ovsdb table removal within given timeout.
 #   Some ovsdb tables take time to be emptied. This function is used for
 #   such tables and would raise exception if such table was not emptied

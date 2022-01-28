@@ -1027,8 +1027,8 @@ validate_flow_packets_bytes(void)
     actual = eth_pair->mac_stats;
 
     /* validate the counters */
-    TEST_ASSERT_EQUAL_INT(expected.bytes_count, actual->counters.bytes_count);
-    TEST_ASSERT_EQUAL_INT(expected.packets_count, actual->counters.packets_count);
+    TEST_ASSERT_EQUAL_INT(expected.bytes_count, actual->report_counters.bytes_count);
+    TEST_ASSERT_EQUAL_INT(expected.packets_count, actual->report_counters.packets_count);
 
     FREE(session);
     FREE(c_client);

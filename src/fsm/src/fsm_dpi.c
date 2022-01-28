@@ -64,6 +64,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "kconfig.h"
 #include "memutil.h"
 
+#define  MAX_RESERVED_PORT_NUM 1023
+#define  NON_RESERVED_PORT_START_NUM MAX_RESERVED_PORT_NUM + 1
+#define  DHCP_SERVER_PORT_NUM 67
+#define  DHCP_CLIENT_PORT_NUM 68
+
 static struct imc_context g_imc_client =
 {
     .initialized = false,
@@ -359,6 +364,7 @@ fsm_init_dpi_plugin(struct fsm_session *session)
     ops->notify_client = fsm_dpi_call_client;
     ops->register_clients = fsm_dpi_register_clients;
     ops->unregister_clients = fsm_dpi_unregister_clients;
+    ops->mark_flow = fsm_dpi_mark_for_report;
 
     return true;
 }
@@ -758,8 +764,6 @@ fsm_dpi_update_acc_key(struct net_md_stats_accumulator *acc)
 }
 
 
-#define  MAX_RESERVED_PORT_NUM       1023
-#define  NON_RESERVED_PORT_START_NUM MAX_RESERVED_PORT_NUM + 1
 /**
  * @brief set accumulator flow direction based ports
  *
@@ -814,6 +818,22 @@ fsm_dpi_set_acc_direction_on_port(struct fsm_dpi_dispatcher *dispatch,
         acc->direction = (smac_found ? NET_MD_ACC_INBOUND_DIR :
                           NET_MD_ACC_OUTBOUND_DIR);
     }
+    else if ((sport < NON_RESERVED_PORT_START_NUM) &&
+             (dport < NON_RESERVED_PORT_START_NUM))
+    {
+        /* DHCP flow direction */
+        if ((sport == DHCP_SERVER_PORT_NUM && dport == DHCP_CLIENT_PORT_NUM) ||
+            (sport == DHCP_CLIENT_PORT_NUM && dport == DHCP_SERVER_PORT_NUM))
+        {
+            acc->direction = NET_MD_ACC_OUTBOUND_DIR;
+        }
+        else
+        {
+            /* Ports are reserved, set direction based on smac */
+            acc->direction = (smac_found ? NET_MD_ACC_OUTBOUND_DIR :
+                              NET_MD_ACC_INBOUND_DIR);
+        }
+    }
     else
     {
         /* Ports are non reserved, set direction based on smac */
@@ -833,7 +853,7 @@ fsm_dpi_set_acc_direction_on_port(struct fsm_dpi_dispatcher *dispatch,
     }
     else if (acc->direction == NET_MD_ACC_LAN2LAN_DIR)
     {
-        acc->originator = (dmac_found ? NET_MD_ACC_ORIGINATOR_SRC :
+        acc->originator = (smac_found ? NET_MD_ACC_ORIGINATOR_SRC :
                            NET_MD_ACC_ORIGINATOR_DST);
     }
 }

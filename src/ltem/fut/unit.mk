@@ -22,30 +22,16 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-UNIT_NAME := fut_lib
+UNIT_NAME := fut_ltem
 
 UNIT_DISABLE := n
 
 # Template type:
 UNIT_TYPE := FUT
 # Output directory
-UNIT_DIR := shell/lib
+UNIT_DIR := shell/tests/ltem
 
-UNIT_FILE := base_lib.sh
-UNIT_FILE += brix_lib.sh
-UNIT_FILE += brv_lib.sh
-UNIT_FILE += cm2_lib.sh
-UNIT_FILE += dm_lib.sh
-UNIT_FILE += fsm_lib.sh
-UNIT_FILE += lm_lib.sh
-UNIT_FILE += ltem_lib.sh
-UNIT_FILE += nm2_lib.sh
-UNIT_FILE += onbrd_lib.sh
-UNIT_FILE += othr_lib.sh
-UNIT_FILE += qm_lib.sh
-UNIT_FILE += rpi_lib.sh
-UNIT_FILE += sm_lib.sh
-UNIT_FILE += um_lib.sh
-UNIT_FILE += unit_lib.sh
-UNIT_FILE += ut_lib.sh
-UNIT_FILE += wm2_lib.sh
+# LTEM specific FUTs
+UNIT_FILE := ltem_setup.sh
+UNIT_FILE += ltem_force_lte.sh
+UNIT_FILE += ltem_validation.sh

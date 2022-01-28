@@ -41,6 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define WAN_DEFAULT_METRIC CONFIG_MANAGER_NM_ROUTE_BASE_METRIC
 #define LTE_DEFAULT_METRIC WAN_DEFAULT_METRIC + 50
 #define WAN_L3_FAIL_METRIC LTE_DEFAULT_METRIC + 10
+#define LTE_CMU_DEFAULT_PRIORITY 2
 
 enum  ltem_header_ids
 {
@@ -108,6 +109,7 @@ typedef struct lte_route_info_
     uint32_t wan_metric;
     char lte_dns1[C_IPV6ADDR_LEN];
     char lte_dns2[C_IPV6ADDR_LEN];
+    uint32_t wan_priority;
 } lte_route_info_t;
 
 struct client_entry
@@ -192,5 +194,6 @@ void lte_dump_modem_info(void);
 int ltem_ovsdb_update_lte_state(ltem_mgr_t *mgr);
 int lte_serialize_report(void);
 void lte_mqtt_cleanup(void);
+int ltem_ovsdb_cmu_update_lte_priority(ltem_mgr_t *mgr, uint32_t priority);
 
 #endif /* LTEM_MGR_H_INCLUDED */

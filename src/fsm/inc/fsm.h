@@ -175,6 +175,7 @@ struct fsm_dpi_plugin_ops
                          struct fsm_dpi_plugin_client_pkt_info *);
     void (*register_clients)(struct fsm_session *);
     void (*unregister_clients)(struct fsm_session *);
+    void (*mark_flow)(struct fsm_session *, struct net_md_stats_accumulator *);
 };
 
 

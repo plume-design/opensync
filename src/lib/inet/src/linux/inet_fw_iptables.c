@@ -315,7 +315,7 @@ bool fw_nat_start(inet_fw_t *self)
                 "-i", self->fw_ifname, "-j", "ACCEPT");
     }
 
-    return true;
+    return retval;
 }
 
 /**

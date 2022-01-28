@@ -40,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <linux/netfilter/nfnetlink.h>
 #include <linux/netfilter/nfnetlink_queue.h>
 #include <linux/netfilter/nfnetlink_conntrack.h>
+#include <linux/netfilter/nf_conntrack_common.h>
 
 #include "log.h"
 #include "neigh_table.h"
@@ -270,10 +271,17 @@ nf_queue_send_verdict(struct nfqnl_msg_verdict_hdr *vhdr,
 
     mnl_attr_put(nfq->nlh, NFQA_VERDICT_HDR, sizeof(struct nfqnl_msg_verdict_hdr), vhdr);
 
-    if (mark == 2 || mark == 3)
+    if (mark == 2)
     {
         nest = mnl_attr_nest_start(nfq->nlh, NFQA_CT);
         mnl_attr_put_u32(nfq->nlh, CTA_MARK, htonl(mark));
+        mnl_attr_nest_end(nfq->nlh, nest);
+    }
+    else if (mark == 3)
+    {
+        nest = mnl_attr_nest_start(nfq->nlh, NFQA_CT);
+        mnl_attr_put_u32(nfq->nlh, CTA_MARK, htonl(mark));
+        mnl_attr_put_u32(nfq->nlh, CTA_STATUS, htonl(IPS_CONFIRMED));
         mnl_attr_nest_end(nfq->nlh, nest);
     }
 

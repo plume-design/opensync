@@ -37,6 +37,7 @@ TARGET_COMMON_SRC += src/target_map.c
 TARGET_COMMON_SRC += src/target_linux.c
 TARGET_COMMON_SRC += src/target_mac_learn.c
 TARGET_COMMON_SRC += src/target_om_hook.c
+TARGET_COMMON_SRC += src/target_kconfig.c
 TARGET_COMMON_SRC += $(if $(CONFIG_TARGET_HWSIM),src/target_hwsim.c,)
 TARGET_COMMON_SRC += $(if $(CONFIG_TARGET_BSAL_SIM),src/target_bsal_sim.c,)
 
@@ -95,8 +96,6 @@ endif
 #
 # Kconfig based configuration
 #
-TARGET_COMMON_SRC += src/target_kconfig.c
-TARGET_COMMON_SRC += src/target_kconfig_managers.c
 UNIT_DEPS += src/lib/kconfig
 
 

@@ -55,6 +55,7 @@ char *qdsim_cmd="at+qdsim?\r";
 char *cops_cmd="at+cops?\r";
 char *srv_cell_cmd="at+qeng=\\\"servingcell\\\"\r";
 char *neigh_cell_cmd="at+qeng=\\\"neighbourcell\\\"\r";
+char *pdp_cgdcont_cmd="at+cgdcont?\r";
 
 char *at_at="at\r\r\nOK\r\n";
 char *at_ati="ati\r\r\nMyChip\r\nE123\r\nRevision: E1234ALA1A02M4G\r\n\r\nOK\r\n";
@@ -71,6 +72,7 @@ char *at_srv_cell_lte="at+qeng=\"servingcell\"\r\r\n+QENG: \"servingcell\",\"NOC
 char *at_srv_cell_wcdma="at+qeng=\"servingcell\"\r\r\n+QENG: \"servingcell\",\"LIMSRV\",\"WCDMA\",310,410,DEA6,2883C,4385,84,254,-102,-10,-,-,-,-,-\r\n\r\nOK\r\n";
 char *at_srv_cell_wcdma_noconn="at+qeng=\"servingcell\"\r\r\n+QENG: \"servingcell\",\"NOCONN\",\"WCDMA\",310,410,DEA6,2883C,4385,84,254,-98,-7,-,-,-,-,-\r\n\r\nOK\r\n";
 char *at_neigh_cell="at+qeng=\"neighbourcell\"\r\r\n+QENG: \"neighbourcell intra\",\"LTE\",800,310,-14,-115,-80,0,8,4,10,2,62\r\n+QENG: \"neighbourcell inter\",\"LTE\",5110,263,-11,-102,-82,0,8,2,6,6\r\n+QENG: \"neighbourcell inter\",\"LTE\",66986,-,-,-,-,-,0,6,6,1,-,-,-,-\r\n+QENG: \"neighbourcell\",\"WCDMA\",512,6,14,62,-,-,-,-\r\n+QENG: \"neighbourcell\",\"WCDMA\",4385,0,14,62,84,-1030,-110,15\r\n\r\nOK\r\n";
+char *at_cgdcont="at+cgdcont?\r\n+CGDCONT: 1,\"IP\",\"data641002\",\"0.0.0.0\",0,0,0,0\n+CGDCONT: 2,\"IPV4V6\",\"ims\",\"0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0\",0,0,0,0\n+CGDCONT: 3,\"IPV4V6\",\"SOS\",\"0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0\",0,0,0,1\r\n\r\nOK\r\n";
 
 int
 lte_ut_modem_open(char *modem_path)
@@ -86,91 +88,91 @@ lte_ut_modem_write(int fd, const char *cmd)
 }
 
 ssize_t
+lte_ut_modem_set_at_response(char *at_buf, char *resp)
+{
+    size_t at_buf_len = strlen(resp);
+
+    strscpy(at_buf, resp, at_buf_len);
+
+    return at_buf_len;
+}
+
+ssize_t
 lte_ut_modem_read(int fd, char *at_buf, ssize_t at_len)
 {
     ssize_t res;
+    const size_t  modem_cmd_buf_sz = sizeof(modem_cmd_buf);
 
-    res = strncmp(modem_cmd_buf, at_cmd, strlen(modem_cmd_buf));
+    res = strncmp(modem_cmd_buf, at_cmd, modem_cmd_buf_sz);
     if (!res)
     {
-        strscpy(at_buf, at_at, strlen(at_at));
-        return strlen(at_at);
+        return lte_ut_modem_set_at_response(at_buf, at_at);
     }
-    res = strncmp(modem_cmd_buf, ati_cmd, strlen(modem_cmd_buf));
+    res = strncmp(modem_cmd_buf, ati_cmd, modem_cmd_buf_sz);
     if (!res)
     {
-        strscpy(at_buf, at_ati, strlen(at_ati));
-        return strlen(at_ati);
+        return lte_ut_modem_set_at_response(at_buf, at_ati);
     }
-
-    res = strncmp(modem_cmd_buf, qsimstat_cmd, strlen(modem_cmd_buf));
+    res = strncmp(modem_cmd_buf, qsimstat_cmd, modem_cmd_buf_sz);
     if (!res)
     {
-        strscpy(at_buf, at_qsimstat, strlen(at_qsimstat));
-        return strlen(at_qsimstat);
+        return lte_ut_modem_set_at_response(at_buf, at_qsimstat);
     }
-
-    res = strncmp(modem_cmd_buf, gsn_cmd, strlen(modem_cmd_buf));
+    res = strncmp(modem_cmd_buf, gsn_cmd, modem_cmd_buf_sz);
     if (!res)
     {
-        strscpy(at_buf, at_gsn, strlen(at_gsn));
-        return strlen(at_gsn);
+        return lte_ut_modem_set_at_response(at_buf, at_gsn);
     }
-    res = strncmp(modem_cmd_buf, cimi_cmd, strlen(modem_cmd_buf));
+    res = strncmp(modem_cmd_buf, cimi_cmd, modem_cmd_buf_sz);
     if (!res)
     {
-        strscpy(at_buf, at_cimi, strlen(at_cimi));
-        return strlen(at_cimi);
+        return lte_ut_modem_set_at_response(at_buf, at_cimi);
     }
-    res = strncmp(modem_cmd_buf, qccid_cmd, strlen(modem_cmd_buf));
+    res = strncmp(modem_cmd_buf, qccid_cmd, modem_cmd_buf_sz);
     if (!res)
     {
-        strscpy(at_buf, at_qccid, strlen(at_qccid));
-        return strlen(at_qccid);
+        return lte_ut_modem_set_at_response(at_buf, at_qccid);
     }
-    res = strncmp(modem_cmd_buf, creg_cmd, strlen(modem_cmd_buf));
+    res = strncmp(modem_cmd_buf, creg_cmd, modem_cmd_buf_sz);
     if (!res)
     {
-        strscpy(at_buf, at_creg, strlen(at_creg));
-        return strlen(at_creg);
+        return lte_ut_modem_set_at_response(at_buf, at_creg);
     }
-    res = strncmp(modem_cmd_buf, csq_cmd, strlen(modem_cmd_buf));
+    res = strncmp(modem_cmd_buf, csq_cmd, modem_cmd_buf_sz);
     if (!res)
     {
-        strscpy(at_buf, at_csq, strlen(at_csq));
-        return strlen(at_csq);
+        return lte_ut_modem_set_at_response(at_buf, at_csq);
     }
-    res = strncmp(modem_cmd_buf, qgdcnt_cmd, strlen(modem_cmd_buf));
+    res = strncmp(modem_cmd_buf, qgdcnt_cmd, modem_cmd_buf_sz);
     if (!res)
     {
-        strscpy(at_buf, at_qgdcnt, strlen(at_qgdcnt));
-        return strlen(at_qgdcnt);
+        return lte_ut_modem_set_at_response(at_buf, at_qgdcnt);
     }
-    res = strncmp(modem_cmd_buf, qdsim_cmd, strlen(modem_cmd_buf));
+    res = strncmp(modem_cmd_buf, qdsim_cmd, modem_cmd_buf_sz);
     if (!res)
     {
-        strscpy(at_buf, at_qdsim, strlen(at_qdsim));
-        return strlen(at_qdsim);
+        return lte_ut_modem_set_at_response(at_buf, at_qdsim);
     }
-    res = strncmp(modem_cmd_buf, cops_cmd, strlen(modem_cmd_buf));
+    res = strncmp(modem_cmd_buf, cops_cmd, modem_cmd_buf_sz);
     if (!res)
     {
-        strscpy(at_buf, at_cops, strlen(at_cops));
-        return strlen(at_cops);
+        return lte_ut_modem_set_at_response(at_buf, at_cops);
     }
-    res = strncmp(modem_cmd_buf, srv_cell_cmd, strlen(modem_cmd_buf));
+    res = strncmp(modem_cmd_buf, srv_cell_cmd, modem_cmd_buf_sz);
     if (!res)
     {
-        strscpy(at_buf, at_srv_cell_lte, strlen(at_srv_cell_lte));
-        return strlen(at_srv_cell_lte);
+        return lte_ut_modem_set_at_response(at_buf, at_srv_cell_lte);
     }
-    res = strncmp(modem_cmd_buf, neigh_cell_cmd, strlen(modem_cmd_buf));
+    res = strncmp(modem_cmd_buf, neigh_cell_cmd, modem_cmd_buf_sz);
     if (!res)
     {
-        strscpy(at_buf, at_neigh_cell, strlen(at_neigh_cell));
-        return strlen(at_neigh_cell);
+        return lte_ut_modem_set_at_response(at_buf, at_neigh_cell);
     }
-
+    res = strncmp(modem_cmd_buf, pdp_cgdcont_cmd, modem_cmd_buf_sz);
+    if (!res)
+    {
+        return lte_ut_modem_set_at_response(at_buf, at_cgdcont);
+    }
     memset(at_buf, 0, strlen(at_buf));
     return 0;
 }
@@ -187,6 +189,7 @@ lte_ut_run_modem_cmd (const char *cmd)
     int fd = 0;
     int res;
     char *at_error = "AT error";
+    size_t lte_at_buf_sz = sizeof(lte_at_buf);
 
     lte_ut_modem_open(NULL);
 
@@ -198,8 +201,8 @@ lte_ut_run_modem_cmd (const char *cmd)
         return at_error;
     }
 
-    memset(lte_at_buf, 0, sizeof(lte_at_buf));
-    res = lte_ut_modem_read(fd, lte_at_buf, sizeof(lte_at_buf));
+    memset(lte_at_buf, 0, lte_at_buf_sz);
+    res = lte_ut_modem_read(fd, lte_at_buf, lte_at_buf_sz);
     if (res < 0)
     {
      	LOGE("%s: modem read failed: %s", __func__, strerror(errno));

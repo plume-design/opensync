@@ -603,7 +603,7 @@ static bool dppline_copysts(dppline_stats_t * dst, void * sts)
                     }
                     memcpy(&dst->u.device.thermal_list[dst->u.device.thermal_qty++],
                             thermal_record,
-                            sizeof(dpp_device_thermal_record_t)); 
+                            sizeof(dpp_device_thermal_record_t));
                 }
                 size += thermal_size;
             }
@@ -1062,8 +1062,8 @@ static void dppline_add_stat_neighbor(Sts__Report *r, dppline_stats_t *s)
         }
 
     }
-    /*LOG(DEBUG, "============= %s size raw: %d alloc: %d proto struct: %d", __FUNCTION__,
-            sizeof(*s->u.neighbor), s->size, size);*/
+    LOGT("%s: ============= size raw: %zu alloc: %d proto struct: %d", __func__,
+         sizeof(s->u.neighbor), s->size, size);
 }
 
 void dpp_mac_to_str(uint8_t *mac, char *str)
@@ -1376,14 +1376,13 @@ static void dppline_add_stat_client(Sts__Report *r, dppline_stats_t *s)
             size += n * sizeof(*dtid->sojourn);
         }
     }
-    /*LOG(DEBUG, "============= %s size raw: %d alloc: %d proto struct: %d", __FUNCTION__,
-            sizeof(*s->u.device), s->size, size);*/
+    LOGT("%s: ============= size raw: %zu alloc: %d proto struct: %d", __func__,
+         sizeof(s->u.device), s->size, size);
 }
 
 static void dppline_add_stat_device(Sts__Report *r, dppline_stats_t *s)
 {
     Sts__Device *sr = NULL;
-    int size = 0;
     uint32_t i;
     dppline_device_stats_t *device = &s->u.device;
 
@@ -1393,11 +1392,9 @@ static void dppline_add_stat_device(Sts__Report *r, dppline_stats_t *s)
     // allocate or extend the size of devices
     r->device = REALLOC(r->device,
             r->n_device * sizeof(Sts__Device*));
-    size += sizeof(Sts__Device*);
 
     // allocate new buffer Sts__Device
     sr = MALLOC(sizeof(Sts__Device));
-    size += sizeof(Sts__Device);
     r->device[r->n_device - 1] = sr;
 
     sts__device__init(sr);
@@ -1405,7 +1402,6 @@ static void dppline_add_stat_device(Sts__Report *r, dppline_stats_t *s)
     sr->has_timestamp_ms = true;
 
     sr->load = MALLOC(sizeof(*sr->load));
-    size += sizeof(*sr->load);
     sts__device__load_avg__init(sr->load);
     sr->load->one = device->record.load[DPP_DEVICE_LOAD_AVG_ONE];
     sr->load->has_one = true;
@@ -1418,7 +1414,6 @@ static void dppline_add_stat_device(Sts__Report *r, dppline_stats_t *s)
     sr->has_uptime = true;
 
     sr->mem_util = MALLOC(sizeof(*sr->mem_util));
-    size += sizeof(*sr->mem_util);
     sts__device__mem_util__init(sr->mem_util);
     sr->mem_util->mem_total = device->record.mem_util.mem_total;
     sr->mem_util->mem_used = device->record.mem_util.mem_used;
@@ -1428,12 +1423,10 @@ static void dppline_add_stat_device(Sts__Report *r, dppline_stats_t *s)
     sr->mem_util->has_swap_used = true;
 
     sr->fs_util = MALLOC(DPP_DEVICE_FS_TYPE_QTY * sizeof(*sr->fs_util));
-    size += DPP_DEVICE_FS_TYPE_QTY * sizeof(*sr->fs_util);
     sr->n_fs_util = DPP_DEVICE_FS_TYPE_QTY;
     for (i = 0; i < sr->n_fs_util; i++)
     {
         sr->fs_util[i] = MALLOC(sizeof(**sr->fs_util));
-        size += sizeof(**sr->fs_util);
         sts__device__fs_util__init(sr->fs_util[i]);
 
         sr->fs_util[i]->fs_total = device->record.fs_util[i].fs_total;
@@ -1442,7 +1435,6 @@ static void dppline_add_stat_device(Sts__Report *r, dppline_stats_t *s)
     }
 
     sr->cpuutil = MALLOC(sizeof(*sr->cpuutil));
-    size += sizeof(*sr->cpuutil);
     sts__device__cpu_util__init(sr->cpuutil);
     sr->cpuutil->cpu_util = device->record.cpu_util.cpu_util;
     sr->cpuutil->has_cpu_util = true;
@@ -1452,11 +1444,9 @@ static void dppline_add_stat_device(Sts__Report *r, dppline_stats_t *s)
     if (sr->n_ps_cpu_util > 0)
     {
         sr->ps_cpu_util = MALLOC(sr->n_ps_cpu_util * sizeof(*sr->ps_cpu_util));
-        size += sizeof(*sr->ps_cpu_util);
         for (i = 0; i < sr->n_ps_cpu_util; i++)
         {
             sr->ps_cpu_util[i] = MALLOC(sizeof(**sr->ps_cpu_util));
-            size += sizeof(**sr->ps_cpu_util);
             sts__device__per_process_util__init(sr->ps_cpu_util[i]);
             sr->ps_cpu_util[i]->pid = device->record.top_cpu[i].pid;
             sr->ps_cpu_util[i]->cmd = strdup(device->record.top_cpu[i].cmd);
@@ -1469,11 +1459,9 @@ static void dppline_add_stat_device(Sts__Report *r, dppline_stats_t *s)
     if (sr->n_ps_mem_util > 0)
     {
         sr->ps_mem_util = MALLOC(sr->n_ps_mem_util * sizeof(*sr->ps_mem_util));
-        size += sizeof(*sr->ps_mem_util);
         for (i = 0; i < sr->n_ps_mem_util; i++)
         {
             sr->ps_mem_util[i] = MALLOC(sizeof(**sr->ps_mem_util));
-            size += sizeof(**sr->ps_mem_util);
             sts__device__per_process_util__init(sr->ps_mem_util[i]);
             sr->ps_mem_util[i]->pid = device->record.top_mem[i].pid;
             sr->ps_mem_util[i]->cmd = strdup(device->record.top_mem[i].cmd);
@@ -1484,13 +1472,11 @@ static void dppline_add_stat_device(Sts__Report *r, dppline_stats_t *s)
     if (device->qty > 0)
     {
         sr->radio_temp = MALLOC(device->qty * sizeof(*sr->radio_temp));
-        size += device->qty * sizeof(*sr->radio_temp);
     }
     sr->n_radio_temp = device->qty;
     for (i = 0; i < device->qty; i++)
     {
         sr->radio_temp[i] = MALLOC(sizeof(**sr->radio_temp));
-        size += sizeof(**sr->radio_temp);
         sts__device__radio_temp__init(sr->radio_temp[i]);
 
         sr->radio_temp[i]->band = dppline_to_proto_radio(device->list[i].type);
@@ -1502,14 +1488,12 @@ static void dppline_add_stat_device(Sts__Report *r, dppline_stats_t *s)
     if (device->thermal_qty > 0)
     {
         sr->thermal_stats = MALLOC(device->thermal_qty * sizeof(*sr->thermal_stats));
-        size += device->thermal_qty * sizeof(*sr->thermal_stats);
     }
     sr->n_thermal_stats = device->thermal_qty;
     for (i = 0; i < device->thermal_qty; i++)
     {
-        Sts__Device__Thermal *dts; 
+        Sts__Device__Thermal *dts;
         dts = sr->thermal_stats[i] = MALLOC(sizeof(**sr->thermal_stats));
-        size += sizeof(**sr->thermal_stats);
         sts__device__thermal__init(sr->thermal_stats[i]);
 
         if(device->thermal_list[i].fan_rpm >= 0)
@@ -1522,8 +1506,7 @@ static void dppline_add_stat_device(Sts__Report *r, dppline_stats_t *s)
         sr->thermal_stats[i]->has_timestamp_ms = true;
 
         sr->thermal_stats[i]->txchainmask = MALLOC(DPP_DEVICE_TX_CHAINMASK_MAX * sizeof(*dts->txchainmask));
-        size += DPP_DEVICE_TX_CHAINMASK_MAX * sizeof(*dts->txchainmask);
-        sr->thermal_stats[i]->n_txchainmask = 0; 
+        sr->thermal_stats[i]->n_txchainmask = 0;
 
         uint32_t j;
         for(j = 0; j < DPP_DEVICE_TX_CHAINMASK_MAX; j++)
@@ -1533,19 +1516,17 @@ static void dppline_add_stat_device(Sts__Report *r, dppline_stats_t *s)
             {
                 txchainmask = sr->thermal_stats[i]->txchainmask[j] = MALLOC(sizeof(**sr->thermal_stats[i]->txchainmask));
                 sts__device__thermal__radio_tx_chain_mask__init(txchainmask);
-                size += sizeof(**sr->thermal_stats[i]->txchainmask);
                 txchainmask->band =  dppline_to_proto_radio(device->thermal_list[i].radio_txchainmasks[j].type);
                 txchainmask->has_band = true;
                 txchainmask->value = device->thermal_list[i].radio_txchainmasks[j].value;
                 txchainmask->has_value = true;
 
-                sr->thermal_stats[i]->n_txchainmask++; 
+                sr->thermal_stats[i]->n_txchainmask++;
             }
         }
     }
 
     sr->powerinfo = MALLOC(sizeof(*sr->powerinfo));
-    size += sizeof(*sr->powerinfo);
     sts__device__power_info__init(sr->powerinfo);
     if (device->record.power_info.ps_type)
     {
@@ -1918,7 +1899,6 @@ static void dppline_add_stat_rssi(Sts__Report *r, dppline_stats_t *s)
     Sts__RssiPeer *dr; // dest rec
     uint32_t i = 0;
     int j;
-    int size = 0;
     dppline_rssi_stats_t *rssi = &s->u.rssi;
 
     // increase the number of rssi_report
@@ -1930,7 +1910,6 @@ static void dppline_add_stat_rssi(Sts__Report *r, dppline_stats_t *s)
 
     // allocate new buffer
     sr = MALLOC(sizeof(Sts__RssiReport));
-    size += sizeof(Sts__RssiReport);
     r->rssi_report[r->n_rssi_report - 1] = sr;
 
     sts__rssi_report__init(sr);
@@ -1939,18 +1918,15 @@ static void dppline_add_stat_rssi(Sts__Report *r, dppline_stats_t *s)
     sr->timestamp_ms = rssi->timestamp_ms;
     sr->has_timestamp_ms = true;
     sr->peer_list = MALLOC(rssi->qty * sizeof(*sr->peer_list));
-    size += rssi->qty * sizeof(*sr->peer_list);
     sr->n_peer_list = rssi->qty;
     for (i = 0; i < rssi->qty; i++)
     {
         dpp_rssi_record_t *rec = &rssi->list[i].rec;
         dr = sr->peer_list[i] = MALLOC(sizeof(**sr->peer_list));
-        size += sizeof(**sr->peer_list);
         sts__rssi_peer__init(dr);
 
         dr->mac_address = MALLOC(MACADDR_STR_LEN);
         dpp_mac_to_str(rec->mac, dr->mac_address);
-        size += MACADDR_STR_LEN;
 
         if (rec->source) {
             dr->rssi_source = dppline_to_proto_rssi_source(rec->source);
@@ -1959,7 +1935,6 @@ static void dppline_add_stat_rssi(Sts__Report *r, dppline_stats_t *s)
 
         if (REPORT_TYPE_RAW == rssi->report_type) {
             dr->rssi_list = MALLOC(rssi->list[i].raw_qty * sizeof(*dr->rssi_list));
-            size += rssi->list[i].raw_qty * sizeof(*dr->rssi_list);
             dr->n_rssi_list = rssi->list[i].raw_qty;
             for (j = 0; j < rssi->list[i].raw_qty; j++)
             {
@@ -2489,4 +2464,3 @@ dpp_client_record_t* dpp_client_record_alloc()
 
     return record;
 }
-

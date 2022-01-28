@@ -93,6 +93,40 @@ ltem_get_wan_state_name(enum ltem_wan_state state)
 }
 
 /**
+ * @brief Bring WAN interface down
+ */
+static void
+ltem_force_failover(ltem_mgr_t *mgr)
+{
+    int res;
+
+    res = ltem_force_lte_route(mgr);
+    if (!res)
+    {
+        mgr->lte_state_info->lte_failover_active = true;
+        mgr->lte_state_info->lte_failover_start = time(NULL);
+        mgr->lte_state_info->lte_failover_end = 0;
+        mgr->lte_state_info->lte_failover_count++;
+    }
+}
+
+/**
+ * @brief Bring WAN interface back up
+ */
+static void
+ltem_revert_failover(ltem_mgr_t *mgr)
+{
+    int res;
+
+    res = ltem_restore_default_wan_route(mgr);
+    if (!res)
+    {
+        mgr->lte_state_info->lte_failover_active = false;
+        mgr->lte_state_info->lte_failover_end = time(NULL);
+    }
+}
+
+/**
  * @brief Handle WAN state change
  */
 static void
@@ -111,19 +145,17 @@ ltem_handle_wan_state_change(ltem_mgr_t *mgr)
         }
         if (mgr->lte_state == LTEM_LTE_STATE_UP && (mgr->lte_config_info->lte_failover_enable && mgr->lte_config_info->force_use_lte))
         {
-            res = ltem_force_lte_route(mgr);
-            mgr->lte_state_info->lte_failover_active = true;
-            mgr->lte_state_info->lte_failover_start = time(NULL);
-            mgr->lte_state_info->lte_failover_end = 0;
-            mgr->lte_state_info->lte_failover_count++;
+            ltem_force_failover(mgr);
         }
         break;
     case LTEM_WAN_STATE_UP:
         if (mgr->lte_state == LTEM_LTE_STATE_UP && mgr->lte_state_info->lte_failover_active && !mgr->lte_config_info->force_use_lte)
         {
-            res = ltem_restore_default_wan_route(mgr);
-            mgr->lte_state_info->lte_failover_active = false;
-            mgr->lte_state_info->lte_failover_end = time(NULL);
+            ltem_revert_failover(mgr);
+        }
+        else if (mgr->lte_state == LTEM_LTE_STATE_UP && mgr->lte_state_info->lte_failover_active && !mgr->lte_config_info->lte_failover_enable)
+        {
+            ltem_revert_failover(mgr);
         }
         break;
     default:
@@ -182,15 +214,24 @@ ltem_handle_lte_state_change(ltem_mgr_t *mgr)
             if (res)
             {
                 LOGI("%s: ltem_set_lte_route_metric: failed, res[%d]", __func__, res);
+                break;
+            }
+
+            LOGI("%s: wan_state[%s], lte_failover_enable[%d], force_use_lte[%d]",
+                 __func__, ltem_get_wan_state_name(mgr->wan_state), mgr->lte_config_info->lte_failover_enable, mgr->lte_config_info->force_use_lte);
+
+            if (mgr->wan_state == LTEM_WAN_STATE_UP && (mgr->lte_config_info->lte_failover_enable && mgr->lte_config_info->force_use_lte))
+            {
+                LOGI("%s: force_use_lte[%d], bring down WAN", __func__, mgr->lte_config_info->force_use_lte);
+                ltem_set_wan_state(LTEM_WAN_STATE_DOWN);
             }
         }
         break;
     case LTEM_LTE_STATE_DOWN:
         if (mgr->lte_state_info->lte_failover_active)
         {
-            ltem_restore_default_wan_route(mgr);
             ltem_ovsdb_cmu_disable_lte(mgr);
-            mgr->lte_state_info->lte_failover_active = false;
+            ltem_revert_failover(mgr);
         }
         break;
     default:

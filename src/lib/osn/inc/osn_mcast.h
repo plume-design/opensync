@@ -39,9 +39,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * @addtogroup OSN
  * @{
  *
- * @defgroup OSN_MCAST MCAST
+ * @defgroup OSN_MCAST Multicast
  *
- * OpenSync API for managing general multicast config
+ * OpenSync API for managing general multicast configuration
  *
  * @{
  */
@@ -72,5 +72,8 @@ struct osn_mcast_other_config
     int                             oc_len;     /**< Length of the config array */
     struct osn_mcast_oc_kv_pair    *oc_config;  /**< Config array */
 };
+
+/** @} OSN_MCAST */
+/** @} OSN */
 
 #endif /* OSN_MCAST_H_INCLUDED */

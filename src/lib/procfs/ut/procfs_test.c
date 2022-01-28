@@ -93,6 +93,13 @@ void test_procfs_list(void)
     TEST_ASSERT_TRUE_MESSAGE(procfs_close(&pf), "procfs_close() failed");
 }
 
+/* GCC is complaining about clobbered variables after the fork() or
+ * long_jump() inserted by TEST_PROTECT().
+ */
+#ifndef __clang__
+#pragma GCC diagnostic ignored "-Wclobbered"
+#endif
+
 void test_procfs_getpid(void)
 {
     procfs_entry_t *pe = NULL;
@@ -193,6 +200,11 @@ void test_procfs_getpid_neg(void)
         waitpid(child, &status, 0);
     }
 }
+
+/* Restore the warning we had been ignoring */
+#ifndef __clang__
+#pragma GCC diagnostic pop
+#endif
 
 void run_test_procfs(void)
 {

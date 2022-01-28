@@ -1742,7 +1742,14 @@ fsm_update_gk_reporting(struct fqdn_pending_req *req,
     /* gk has already taken the action to report, no need to check
      * further.
      */
-    if (policy_reply->to_report == true) return;
+    if (policy_reply->to_report == true)
+    {
+        if (policy_reply->rule_name == NULL)
+        {
+            policy_reply->rule_name = STRDUP(preq->rule_name);
+        }
+        return;
+    }
 
     /* if policy does not ask for logging, just return */
     if (preq->report == false) return;

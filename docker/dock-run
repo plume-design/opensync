@@ -4,6 +4,12 @@ myname=$(basename $0)
 TAG=${DOCKER_TAG:-$(dirname "$(readlink -f "$0")" | tr / - | cut -b2- | tr A-Z a-z)}
 ENTRYPOINT="/bin/sh -c"
 GID=$(id -g)
+PWDF="/etc/passwd"
+GRPF="/etc/group"
+MPWDF=${PWDF}
+MGRPF=${GRPF}
+TPWDF=""
+TGRPF=""
 
 #=============================================================================
 
@@ -132,6 +138,51 @@ rebuild_docker()
 
 #=============================================================================
 
+generate_pwd_file()
+{
+    if grep -qw "$USER" "$PWDF"; then return; fi
+
+    TPWDF=$(mktemp)
+    echo_debug "Generating temporary passwd file $TPWDF"
+    cp "$PWDF" "$TPWDF"
+    (
+        getent passwd $USER
+    ) >> "$TPWDF"
+
+    MPWDF="$TPWDF"
+}
+
+delete_pwd_file()
+{
+    if [ "$TPWDF" == "" ]; then return; fi
+
+    echo_debug "Removing temporary passwd file $TPWDF"
+    rm -f "$TPWDF"
+}
+
+generate_grp_file()
+{
+    GROUP=$(id -gn "$USER")
+    if grep -qw ^"$GROUP" "$GRPF"; then return; fi
+
+    TGRPF=$(mktemp)
+    echo_debug "Generating temporary group file $TGRPF"
+    cp "$GRPF" "$TGRPF"
+    (
+        getent group "$GROUP"
+    ) >> "$TGRPF"
+
+    MGRPF="$TGRPF"
+}
+
+delete_grp_file()
+{
+    if [ "$TGRPF" == "" ]; then return; fi
+
+    echo_debug "Removing temporary group file $TGRPF"
+    rm -f "$TGRPF"
+}
+
 run_docker()
 {
     # find top-most git repo
@@ -161,13 +212,18 @@ run_docker()
         )
     }
 
+    [ "${ROOT:-no}" = "no" ] && {
+        generate_pwd_file
+        generate_grp_file
+    }
+
     ARGS+=(
         -eHOME="$HOME"
         -v"$topgit:$topgit"
         -v"$(pwd):$(pwd)"
         -v"$HOME:$HOME"
-        -v/etc/passwd:/etc/passwd
-        -v/etc/group:/etc/group
+        -v"$MPWDF":/etc/passwd
+        -v"$MGRPF":/etc/group
         -v/etc/ssl:/etc/ssl
     )
 
@@ -218,6 +274,15 @@ run_docker()
     echo_debug "=> Docker command execution duration: ${elapsed_hms}"
     echo_report
 }
+
+cleanup() {
+    [ "${ROOT:-no}" = "no" ] && {
+        delete_pwd_file
+        delete_grp_file
+    }
+}
+
+trap cleanup EXIT
 
 #=============================================================================
 

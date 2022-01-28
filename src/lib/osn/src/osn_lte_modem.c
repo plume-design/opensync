@@ -299,3 +299,23 @@ osn_lte_read_modem(void)
 {
     return 0;
 }
+void
+osn_lte_read_pdp_context(void)
+{
+    return;
+}
+bool
+osn_lte_set_pdp_context_params(lte_pdp_context_params param_type, char *val)
+{
+    return true;
+}
+int
+osn_lte_parse_pdp_context(char *buf, lte_pdp_context_t *pdp_ctxt)
+{
+    return 0;
+}
+bool
+osn_lte_set_ue_data_centric(void)
+{
+    return true;
+}

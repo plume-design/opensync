@@ -324,6 +324,14 @@ void stale_child_ev(struct ev_loop *loop, ev_child *w, int revent)
     child_status = w->rstatus;
 }
 
+/* GCC is complaining about clobbered variables after the fork() or
+ * long_jump() inserted by TEST_PROTECT().
+ * Ignore this warning.
+ */
+#ifndef __clang__
+#pragma GCC diagnostic ignored "-Wclobbered"
+#endif
+
 void test_daemon_stale_instance(void)
 {
     FILE *f = NULL;
@@ -406,6 +414,10 @@ void test_daemon_stale_instance(void)
     if (child != -1) kill(child, SIGKILL);
     if (f != NULL) fclose(f);
 }
+/* Restore the warning we had been ignoring */
+#ifndef __clang__
+#pragma GCC diagnostic pop
+#endif
 
 void run_test_daemon(void)
 {

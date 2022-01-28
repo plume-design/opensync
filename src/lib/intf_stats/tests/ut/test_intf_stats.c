@@ -756,6 +756,51 @@ intf_stats_test_setup_window(intf_stats_window_t *window)
 }
 
 /**
+ * test_serialize_flow_report: tests
+ * intf_stats_serialize_flow_report() behavior when provided a valid node info
+ */
+void
+test_serialize_report_1(void)
+{
+    intf_stats_report_data_t    report;
+    node_info_t                 *node_info;
+    packed_buffer_t             *pb = NULL;
+    intf_stats_window_t         *window_entry = NULL;
+
+    memset(&report, 0, sizeof(report));
+    report.num_windows = 0;
+    ds_dlist_init(&report.window_list, intf_stats_window_list_t, node);
+    node_info = &report.node_info;
+    node_info->node_id = strdup("1S6D808DB4");
+    node_info->location_id = strdup("5bf5fc908a4eeb5622aa1217");
+
+    /* Fill up the interface entry */
+    intf_stats_activate_window(&report);
+    window_entry = intf_stats_get_current_window(&report);
+    if (!window_entry)
+    {
+        LOGE("%s: Unable to get current active window", __func__);
+        return;
+    }
+
+    /* increment num_intfs count*/
+    window_entry->num_intfs = 1;
+    intf_stats_close_window(&report);
+    intf_stats_dump_report(&report);
+
+    /* Validate the serialized content */
+    pb = intf_stats_serialize_report(&report);
+    intf_stats_free_packed_buffer(pb);
+
+    intf_stats_reset_report(&report);
+
+    free(node_info->node_id);
+    free(node_info->location_id);
+
+    return;
+}
+
+/**
  * @brief See unity documentation/exmaples
  */
 void
@@ -856,6 +901,7 @@ main(int argc, char *argv[])
     /* Complete Intf Stat report test */
     RUN_TEST(test_serialize_report);
     RUN_TEST(test_Intf__Stats__Report);
+    RUN_TEST(test_serialize_report_1);
 
     return UNITY_END();
 }

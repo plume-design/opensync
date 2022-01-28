@@ -1620,7 +1620,7 @@ bm_client_from_ovsdb(struct schema_Band_Steering_Clients *bscli, bm_client_t *cl
     client->max_rejects_period = -1;
     client->pref_5g_pre_assoc_block_timeout_msecs = -1;
 
-    if (client->pref_5g_allowed == BM_CLIENT_PREF_5G_ALLOWED_ALWAYS) {
+    if (client->pref_5g_allowed != BM_CLIENT_PREF_5G_ALLOWED_NEVER) {
         if (bscli->max_rejects > 0 &&
             bscli->rejects_tmout_secs > 0 &&
             (!bscli->pref_5g_pre_assoc_block_timeout_msecs_exists || bscli->pref_5g_pre_assoc_block_timeout_msecs == 0))
@@ -2656,15 +2656,31 @@ bm_client_rejected(bm_client_t *client, bsal_event_t *event)
         return;
     }
 
-    switch (client->pref_5g_pre_assoc_block_policy) {
-        case BM_CLIENT_PREF_5G_PRE_ASSOC_BLOCK_POLICY_TIMER:
+    switch (bm_group_find_radio_type_by_ifname(event->ifname)) {
+        case RADIO_TYPE_2G:
+            switch (client->pref_5g_pre_assoc_block_policy) {
+                case BM_CLIENT_PREF_5G_PRE_ASSOC_BLOCK_POLICY_TIMER:
+                    bm_client_rejected_timer(client, event);
+                    break;
+                case BM_CLIENT_PREF_5G_PRE_ASSOC_BLOCK_POLICY_COUNTER:
+                case BM_CLIENT_PREF_5G_PRE_ASSOC_BLOCK_POLICY_UNDEFINED:
+                    bm_client_rejected_counter(client, event);
+                    break;
+            }
+            break;
+        case RADIO_TYPE_5G:
+        case RADIO_TYPE_5GL:
+        case RADIO_TYPE_5GU:
             bm_client_rejected_timer(client, event);
             break;
-        case BM_CLIENT_PREF_5G_PRE_ASSOC_BLOCK_POLICY_COUNTER:
-            bm_client_rejected_counter(client, event);
+        case RADIO_TYPE_6G:
+            LOGW("%s: probe or auth req was rejection is not expected on 6G band",
+                 client->mac_addr);
             break;
-        case BM_CLIENT_PREF_5G_PRE_ASSOC_BLOCK_POLICY_UNDEFINED:
-            LOGE("Client %s - undefined pre-assoc pref 5g pre-assoc block policy", client->mac_addr);
+        case RADIO_TYPE_NONE:
+            LOGW("%s: probe or auth req was rejection reported on unknow radio type",
+                 client->mac_addr);
+            break;
     }
 }
 

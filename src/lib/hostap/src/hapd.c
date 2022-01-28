@@ -707,6 +707,9 @@ hapd_vht_oper_centr_freq_idx(const struct schema_Wifi_Radio_Config *rconf)
     else
         chans = unii_5g_chan2list(rconf->channel, width);
 
+    if (WARN_ON(!chans))
+        return 0;
+
     while (*chans) {
         sum += *chans;
         cnt++;

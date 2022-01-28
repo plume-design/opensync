@@ -40,9 +40,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * @addtogroup OSN
  * @{
  *
+ * @addtogroup OSN_MCAST
+ * @{
+ *
  * @defgroup OSN_IGMP IGMP
  *
- * OpenSync API for managing IGMP config
+ * OpenSync API for managing IGMP configuration
  *
  * @{
  */
@@ -234,6 +237,7 @@ bool osn_igmp_update_iface_status(
         bool enable);
 
 /** @} OSN_IGMP */
+/** @} OSN_MCAST */
 /** @} OSN */
 
 #endif /* OSN_IGMP_H_INCLUDED */

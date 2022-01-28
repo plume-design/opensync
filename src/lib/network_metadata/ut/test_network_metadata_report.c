@@ -821,6 +821,42 @@ void test_ethernet_aggregate_one_key(void)
 }
 
 
+void test_ethernet_aggregate_one_key_lower_values(void)
+{
+    struct net_md_aggregator *absolute_aggr, *relative_aggr;
+    struct net_md_aggregator_set *aggr_set;
+    struct flow_counters counters[3];
+    size_t key_idx;
+
+    TEST_ASSERT_TRUE(g_nd_test.initialized);
+    counters[0].bytes_count = 10000; /* First report counters */
+    counters[0].packets_count = 100;
+    counters[1].bytes_count = 5000; /* Second report counters */
+    counters[1].packets_count = 50;
+    counters[2].bytes_count = 15000; /* validation counters, absolute mode */
+    counters[2].packets_count = 150;
+    counters[2].bytes_count = 5000; /* validation counters, relative mode */
+    counters[2].packets_count = 50;
+
+    /* Allocate aggregator */
+    aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_type = NET_MD_REPORT_RELATIVE;
+    relative_aggr = net_md_allocate_aggregator(aggr_set);
+
+    aggr_set->report_type = NET_MD_REPORT_ABSOLUTE;
+    absolute_aggr = net_md_allocate_aggregator(aggr_set);
+    key_idx = 0;
+    LOGD("%s: validating absolute aggregation", __func__);
+    validate_aggregate_one_key(absolute_aggr, key_idx, counters, &counters[1]);
+    LOGD("%s: validating relative aggregation", __func__);
+    validate_aggregate_one_key(relative_aggr, key_idx, counters, &counters[2]);
+
+    net_md_free_aggregator(relative_aggr);
+    FREE(relative_aggr);
+    net_md_free_aggregator(absolute_aggr);
+    FREE(absolute_aggr);
+}
+
 /**
  * @brief test the aggregation of ethernet samples over multiple reports
  */
@@ -954,7 +990,7 @@ void test_ethernet_aggregate_two_keys(void)
 
     /*
      * Second report counters, absolute mode.
-     * Received a total of 50000 bytes for key 0.
+     * Received a total of 50000 bytes for key 0, 30000 bytes for key 1.
      */
     counters[4].bytes_count = 50000;
     counters[4].packets_count = 500;
@@ -973,6 +1009,75 @@ void test_ethernet_aggregate_two_keys(void)
      */
     counters[6].bytes_count = 40000;
     counters[6].packets_count = 400;
+
+    /* Allocate aggregator */
+    aggr_set = &g_nd_test.aggr_set;
+    aggr_set->report_type = NET_MD_REPORT_RELATIVE;
+    relative_aggr = net_md_allocate_aggregator(aggr_set);
+    aggr_set->report_type = NET_MD_REPORT_ABSOLUTE;
+    absolute_aggr = net_md_allocate_aggregator(aggr_set);
+
+    LOGD("%s: validating absolute aggregation", __func__);
+    validate_aggregate_two_keys(absolute_aggr, counters, &counters[3]);
+    LOGD("%s: validating relative aggregation", __func__);
+    validate_aggregate_two_keys(relative_aggr, counters, &counters[5]);
+
+    net_md_free_aggregator(relative_aggr);
+    FREE(relative_aggr);
+    net_md_free_aggregator(absolute_aggr);
+    FREE(absolute_aggr);
+}
+
+
+/**
+ * @brief validates reports generated from 2 keys from the same eth pair.
+ *
+ * The ethernet only keys carry a different ethertype and
+ * their counters are tracked in different accumulators.
+ * The test validates the accuracy of the aggregated ethernet pair counters.
+ */
+void test_ethernet_aggregate_two_keys_lower_values(void)
+{
+    struct net_md_aggregator *absolute_aggr, *relative_aggr;
+    struct net_md_aggregator_set *aggr_set;
+    struct flow_counters counters[7];
+
+    TEST_ASSERT_TRUE(g_nd_test.initialized);
+    counters[0].bytes_count = 10000; /* Key 0, First report counters */
+    counters[0].packets_count = 100;
+    counters[1].bytes_count = 30000; /* Key 1, First report counters */
+    counters[1].packets_count = 300;
+    counters[2].bytes_count = 5000; /* Key 0, Second report counters */
+    counters[2].packets_count = 50;
+
+    /*
+     * First report counters, absolute mode.
+     * Received a total of 10000 bytes for key 0, 30000 bytes for key 1.
+     */
+    counters[3].bytes_count = 40000;
+    counters[3].packets_count = 400;
+
+    /*
+     * Second report counters, absolute mode.
+     * Received a total of 5000 bytes for key 0.
+     */
+    counters[4].bytes_count = 5000;
+    counters[4].packets_count = 50;
+
+    /*
+     * First report counters, relative mode.
+     * First report, so previous report values a zeros.
+     */
+    counters[5].bytes_count = 40000;
+    counters[5].packets_count = 400;
+
+
+    /*
+     * Second report counters, relative mode.
+     * Difference between the absolute values of first and second report
+     */
+    counters[6].bytes_count = 5000;
+    counters[6].packets_count = 50;
 
     /* Allocate aggregator */
     aggr_set = &g_nd_test.aggr_set;
@@ -3016,7 +3121,8 @@ test_network_metadata_reports(void)
     // RUN_TEST(test_add_2_samples_all_keys);
     RUN_TEST(test_ethernet_aggregate_one_key);
     RUN_TEST(test_ethernet_aggregate_two_keys);
-
+    RUN_TEST(test_ethernet_aggregate_one_key_lower_values);
+    RUN_TEST(test_ethernet_aggregate_two_keys_lower_values);
     RUN_TEST(test_large_loop);
     RUN_TEST(test_add_remove_flows);
     RUN_TEST(test_multiple_windows);
@@ -3034,6 +3140,5 @@ test_network_metadata_reports(void)
     RUN_TEST(test_direction_originator_data_serialize_deserialize);
     RUN_TEST(test_acc_flow_info_report);
     RUN_TEST(test_net_md_ufid);
-
     UnitySetTestFile(old_filename);
 }

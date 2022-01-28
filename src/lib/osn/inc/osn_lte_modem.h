@@ -321,6 +321,42 @@ typedef struct lte_band_info_
     char lte_band_val[C_AT_CMD_LONG_RESP];
 } lte_band_info_t;
 
+
+/* Modem PDP context parameters */
+typedef enum lte_pdp_context_params_
+{
+    PDP_CTXT_CID = 0,
+    PDP_CTXT_PDP_TYPE,
+    PDP_CTXT_APN,
+    PDP_CTXT_PDP_ADDR,
+    PDP_CTXT_DATA_CMP,
+    PDP_CTXT_HEAD_CMP,
+    PDP_CTXT_IPV4ADDRALLOC,
+    PDP_CTXT_REQUEST_TYPE,
+} lte_pdp_context_params;
+
+#define PDP_TYPE_IPV4   "IP"
+#define PDP_TYPE_PPP    "PPP"
+#define PDP_TYPE_IPV6   "IPV6"
+#define PDP_TYPE_IPV4V6 "IPV4V6"
+
+#define PDP_TYPE_SZ 16
+#define PDP_APN_SZ  64
+#define PDP_ADDR_SZ 64
+
+typedef struct  lte_pdp_context_
+{
+    char pdp_type[PDP_TYPE_SZ];
+    char apn[PDP_APN_SZ];
+    char pdp_addr[PDP_ADDR_SZ];
+    int  cid;
+    int  data_comp;
+    int  head_comp;
+    int  ipv4addr_alloc;
+    int  request_type;
+    bool valid;
+} lte_pdp_context_t;
+
 typedef struct osn_lte_modem_info_
 {
     bool modem_present;
@@ -389,8 +425,12 @@ osn_lte_modem_info_t *osn_get_modem_info(void);
 int osn_lte_read_modem(void);
 void osn_lte_set_sim_slot(uint32_t slot);
 void osn_lte_set_qmi_mode(void);
-void osn_lte_set_apn(char *apn);
 void osn_lte_enable_sim_detect(void);
 void osn_lte_set_bands(char *bands);
+void osn_lte_read_pdp_context(void);
+int osn_lte_parse_pdp_context(char *buf, lte_pdp_context_t *pdp_ctxt);
+bool osn_lte_set_pdp_context_params(lte_pdp_context_params param_type, char *val);
+bool osn_lte_set_ue_data_centric(void);
+void osn_lte_reset_modem(void);
 
 #endif /* OSN_LTE_MODEM_H_INCLUDED */

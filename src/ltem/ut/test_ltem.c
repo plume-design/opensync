@@ -261,7 +261,7 @@ ut_lte_read_modem(void)
     at_resp = lte_ut_run_microcom_cmd(ati_cmd);
     if (!at_resp) return -1;
     res = osn_lte_parse_chip_info(at_resp, &chip_info);
-    if (res)
+    if (res != 0)
     {
         LOGE("osn_lte_parse_chip_info:failed");
     }
@@ -271,7 +271,7 @@ ut_lte_read_modem(void)
     at_resp = lte_ut_run_microcom_cmd(qsimstat_cmd);
     if (!at_resp) return -1;
     res = osn_lte_parse_sim_status(at_resp, &sim_status);
-    if (res)
+    if (res != 0)
     {
         LOGE("osn_lte_parse_sim_status:failed");
     }
@@ -281,7 +281,7 @@ ut_lte_read_modem(void)
     at_resp = lte_ut_run_microcom_cmd(gsn_cmd);
     if (!at_resp) return -1;
     res = osn_lte_parse_imei(at_resp, &imei);
-    if (res)
+    if (res != 0)
     {
         LOGE("osn_lte_parse_imei:failed");
     }
@@ -291,7 +291,7 @@ ut_lte_read_modem(void)
     at_resp = lte_ut_run_microcom_cmd(imsi_cmd);
     if (!at_resp) return -1;
     res = osn_lte_parse_imsi(at_resp, &imsi);
-    if (res)
+    if (res != 0)
     {
         LOGE("osn_lte_parse_imsi:failed");
     }
@@ -301,7 +301,7 @@ ut_lte_read_modem(void)
     at_resp = lte_ut_run_microcom_cmd(iccid_cmd);
     if (!at_resp) return -1;
     res = osn_lte_parse_iccid(at_resp, &iccid);
-    if (res)
+    if (res != 0)
     {
         LOGE("osn_lte_parse_iccid:failed");
     }
@@ -311,7 +311,7 @@ ut_lte_read_modem(void)
     at_resp = lte_ut_run_microcom_cmd(creg_cmd);
     if (!at_resp) return -1;
     res = osn_lte_parse_reg_status(at_resp, &reg_status);
-    if (res)
+    if (res != 0)
     {
         LOGE("osn_lte_parse_reg_status:failed");
     }
@@ -321,7 +321,7 @@ ut_lte_read_modem(void)
     at_resp = lte_ut_run_microcom_cmd(csq_cmd);
     if (!at_resp) return -1;
     res = osn_lte_parse_sig_qual(at_resp, &sig_qual);
-    if (res)
+    if (res != 0)
     {
         LOGE("osn_lte_parse_sig_qual:failed");
     }
@@ -331,7 +331,7 @@ ut_lte_read_modem(void)
     at_resp = lte_ut_run_microcom_cmd(qgdcnt_cmd);
     if (!at_resp) return -1;
     res = osn_lte_parse_byte_counts(at_resp, &byte_counts);
-    if (res)
+    if (res != 0)
     {
         LOGE("osn_lte_parse_byte_counts:failed");
     }
@@ -341,7 +341,7 @@ ut_lte_read_modem(void)
     at_resp = lte_ut_run_microcom_cmd(qdsim_cmd);
     if (!at_resp) return -1;
     res = osn_lte_parse_sim_slot(at_resp, &sim_slot);
-    if (res)
+    if (res != 0)
     {
         LOGE("osn_lte_parse_sim_slot:failed");
     }
@@ -351,7 +351,7 @@ ut_lte_read_modem(void)
     at_resp = lte_ut_run_microcom_cmd(cops_cmd);
     if (!at_resp) return -1;
     res = osn_lte_parse_operator(at_resp, &operator);
-    if (res)
+    if (res != 0)
     {
         LOGE("osn_lte_parse_operator:failed");
     }
@@ -361,7 +361,7 @@ ut_lte_read_modem(void)
     at_resp = lte_ut_run_microcom_cmd(srv_cell_cmd);
     if (!at_resp) return -1;
     res = osn_lte_parse_serving_cell(at_resp, &srv_cell, &srv_cell_wcdma);
-    if (res)
+    if (res != 0)
     {
         LOGE("osn_lte_parse_serving_cell:failed");
     }
@@ -371,7 +371,7 @@ ut_lte_read_modem(void)
     at_resp = lte_ut_run_microcom_cmd(neigh_cell_cmd);
     if (!at_resp) return -1;
     res = osn_lte_parse_neigh_cell_intra(at_resp, &neigh_cell_intra);
-    if (res)
+    if (res != 0)
     {
         LOGE("osn_lte_parse_neigh_cell_intra:failed");
     }
@@ -379,11 +379,21 @@ ut_lte_read_modem(void)
 
     lte_neigh_cell_inter_t neigh_cell_inter;
     res = osn_lte_parse_neigh_cell_inter(at_resp, &neigh_cell_inter);
-    if (res)
+    if (res != 0)
     {
         LOGE("osn_lte_parse_neigh_cell_inter:failed");
     }
     osn_lte_save_neigh_cell_inter(&neigh_cell_inter, modem_info);
+
+    lte_pdp_context_t  pdp_context;
+    char *pdp_cmd = "at+cgdcont?";
+    at_resp = lte_ut_run_microcom_cmd(pdp_cmd);
+    if (!at_resp) return -1;
+    res = osn_lte_parse_pdp_context(at_resp, &pdp_context);
+    if (res != 0)
+    {
+        LOGE("osn_lte_parse_pdp_context:failed");
+    }
 
     return 0;
 }

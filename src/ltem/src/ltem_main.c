@@ -76,6 +76,7 @@ ltem_init_mgr(struct ev_loop *loop)
     lte_config_info_t *lte_config;
     lte_state_info_t *lte_state;
     lte_route_info_t *lte_route;
+    bool ret;
 
     ltem_mgr_t *mgr = ltem_get_mgr();
 
@@ -95,7 +96,13 @@ ltem_init_mgr(struct ev_loop *loop)
 
     osn_lte_set_qmi_mode();
     osn_lte_enable_sim_detect();
-
+    osn_lte_read_pdp_context();
+    ret = osn_lte_set_pdp_context_params(PDP_CTXT_PDP_TYPE, PDP_TYPE_IPV4);
+    ret |= osn_lte_set_ue_data_centric();
+    if (ret)
+    {
+        osn_lte_reset_modem();
+    }
     return true;
 }
 

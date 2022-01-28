@@ -40,9 +40,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * @addtogroup OSN
  * @{
  *
+ * @addtogroup OSN_MCAST
+ * @{
+ *
  * @defgroup OSN_MLD MLD
  *
- * OpenSync API for managing MLD config
+ * OpenSync API for managing MLD configuration
  *
  * @{
  */
@@ -233,6 +236,7 @@ bool osn_mld_update_iface_status(
         bool enable);
 
 /** @} OSN_MLD */
+/** @} OSN_MCAST */
 /** @} OSN */
 
 #endif /* OSN_MLD_H_INCLUDED */

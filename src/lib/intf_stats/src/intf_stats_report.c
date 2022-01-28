@@ -358,6 +358,13 @@ intf_stats_set_pb_intf_stats(intf_stats_window_t *window)
         allocated++;
     }
 
+    /* if no of monitor interfaces & allocated are not same */
+    if (allocated != window->num_intfs)
+    {
+        LOGE("%s: window_intf_list is empty", __func__);
+        goto err_free_pb_intfs;
+    }
+
     return intfs_pb_tbl;
 
 err_free_pb_intfs:
