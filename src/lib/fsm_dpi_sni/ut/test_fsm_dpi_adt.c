@@ -24,11 +24,15 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include <arpa/inet.h>
+
+#include "fsm.h"
 #include "fsm_dpi_adt.h"
 #include "fsm_dpi_sni.h"
 #include "memutil.h"
 #include "os.h"
 #include "os_nif.h"
+#include "qm_conn.h"
 #include "unity.h"
 
 static union fsm_plugin_ops g_plugin_ops =

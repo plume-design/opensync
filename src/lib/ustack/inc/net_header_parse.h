@@ -26,13 +26,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef NET_HEADER_PARSE_H_INCLUDED
 #define NET_HEADER_PARSE_H_INCLUDED
+
 #define _GNU_SOURCE
 
+#include <stdbool.h>
 #include <pcap.h>
 #include <stdint.h>
 #include <time.h>
 
-#include <arpa/inet.h>
 #include <netinet/if_ether.h>
 #include <netinet/ip.h>
 #include <netinet/ip6.h>
@@ -40,7 +41,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <netinet/tcp.h>
 #include <netinet/ip_icmp.h>
 #include <netinet/icmp6.h>
-#include <netinet/in.h>
 
 #include "log.h"
 #include "network_metadata.h"

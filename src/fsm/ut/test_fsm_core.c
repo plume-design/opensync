@@ -34,67 +34,18 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fsm.h"
 #include "fsm_internal.h"
 #include "log.h"
+#include "memutil.h"
 #include "network_metadata_report.h"
+#include "policy_tags.h"
 #include "target.h"
 #include "unity.h"
+#include "unit_test_utils.h"
+
 #include "pcap.c"
-#include "policy_tags.h"
-#include "memutil.h"
 
-/**
- * @brief Converts a bytes array in a hex dump file wireshark can import.
- *
- * Dumps the array in a file that can then be imported by wireshark.
- * The file can also be translated to a pcap file using the text2pcap command.
- * Useful to visualize the packet content.
- */
-void create_hex_dump(const char *fname, const uint8_t *buf, size_t len)
-{
-    int line_number = 0;
-    bool new_line = true;
-    size_t i;
-    FILE *f;
+const char *ut_name = "fsm_core_tests";
 
-    f = fopen(fname, "w+");
-
-    if (f == NULL) return;
-
-    for (i = 0; i < len; i++)
-    {
-        new_line = (i == 0 ? true : ((i % 8) == 0));
-        if (new_line)
-        {
-            if (line_number) fprintf(f, "\n");
-            fprintf(f, "%06x", line_number);
-            line_number += 8;
-        }
-        fprintf(f, " %02x", buf[i]);
-    }
-    fprintf(f, "\n");
-    fclose(f);
-
-    return;
-}
-
-/**
- * @brief Convenient wrapper
- *
- * Dumps the packet content in /tmp/<tests_name>_<pkt name>.txtpcap
- * for wireshark consumption and sets g_parser data fields.
- * @params pkt the C structure containing an exported packet capture
- */
-#define PREPARE_UT(pkt, parser)                                 \
-    {                                                           \
-        char fname[128];                                        \
-        size_t len = sizeof(pkt);                               \
-                                                                \
-        snprintf(fname, sizeof(fname), "/tmp/%s_%s.txtpcap",    \
-                 test_name, #pkt);                              \
-        create_hex_dump(fname, pkt, len);                       \
-        parser->packet_len = len;                               \
-        parser->data = (uint8_t *)pkt;                          \
-    }
-
+struct fsm_mgr *g_mgr;
 
 struct schema_Openflow_Tag g_tags[] =
 {
@@ -612,10 +563,6 @@ struct schema_FSM_Policy g_spolicies[] =
 };
 
 
-const char *test_name = "fsm_core_tests";
-
-struct fsm_mgr *g_mgr;
-
 
 bool
 test_register_client(struct fsm_session *dpi_plugin,
@@ -803,7 +750,7 @@ test_update_session_tap(struct fsm_session *session)
 
 
 void
-setUp(void)
+fsm_core_setUp(void)
 {
     struct fsm_policy_session *policy_mgr;
     size_t nelems;
@@ -815,7 +762,7 @@ setUp(void)
     g_mgr->get_br = test_get_br;
     g_mgr->set_dpi_state = test_set_dpi_state;
     g_mgr->update_session_tap = test_update_session_tap;
-    nelems = (sizeof(g_confs) / sizeof(g_confs[0]));
+    nelems = ARRAY_SIZE(g_confs);
     for (i = 0; i < nelems; i++)
     {
         struct schema_Flow_Service_Manager_Config *conf;
@@ -838,12 +785,13 @@ setUp(void)
     policy_mgr = fsm_policy_get_mgr();
     if (!policy_mgr->initialized) fsm_init_manager();
 
-    return;
+    /* This will be creating a temp folder for each of the tests in the UT */
+    ut_prepare_pcap(Unity.CurrentTestName);
 }
 
 
 void
-tearDown(void)
+fsm_core_tearDown(void)
 {
     struct fsm_policy_session *policy_mgr = fsm_policy_get_mgr();
     struct policy_table *table, *t_to_remove;
@@ -853,7 +801,7 @@ tearDown(void)
     size_t i;
     bool ret;
 
-    len = sizeof(g_tags) / sizeof(*g_tags);
+    len = ARRAY_SIZE(g_tags);
     for (i = 0; i < len; i++)
     {
         ret = om_tag_remove_from_schema(&g_tags[i]);
@@ -885,7 +833,7 @@ tearDown(void)
 
     g_mgr->init_plugin = NULL;
 
-    return;
+    ut_cleanup_pcap();
 }
 
 
@@ -1303,7 +1251,7 @@ test_fsm_dpi_handler(void)
     dpi_dispatcher = &dispatcher_dpi_context->dispatch;
     net_parser = &dpi_dispatcher->net_parser;
 
-    PREPARE_UT(pkt372, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt372, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -1366,7 +1314,7 @@ test_3_dpi_dispatcher_and_plugin(void)
     dpi_dispatcher = &dispatcher_dpi_context->dispatch;
     net_parser = &dpi_dispatcher->net_parser;
 
-    PREPARE_UT(pkt372, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt372, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -1458,7 +1406,7 @@ test_4_dpi_dispatcher_and_plugin(void)
     /* Set the send_report routine of the aggregator */
     aggr->send_report = test_send_report;
 
-    PREPARE_UT(pkt372, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt372, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -1562,7 +1510,7 @@ test_5_dpi_dispatcher_and_plugin(void)
     /* Set the send_report routine of the aggregator */
     aggr->send_report = test_send_report;
 
-    PREPARE_UT(pkt372, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt372, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -1751,7 +1699,7 @@ test_7_dpi_dispatcher_and_plugin(void)
 #endif
 
     /* TCP SYN Packet */
-    PREPARE_UT(pkt858, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt858, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -1789,7 +1737,7 @@ test_7_dpi_dispatcher_and_plugin(void)
     TEST_ASSERT_TRUE(ret);
 
     /* TCP SYN_ACK PKT */
-    PREPARE_UT(pkt862, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt862, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -1815,7 +1763,7 @@ test_7_dpi_dispatcher_and_plugin(void)
     TEST_ASSERT_TRUE(ret);
 
     /* TCP DATA PKT */
-    PREPARE_UT(pkt372, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt372, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -1840,7 +1788,7 @@ test_7_dpi_dispatcher_and_plugin(void)
     TEST_ASSERT_TRUE(ret);
 
     /* TCP SYN PKT and macs are known */
-    PREPARE_UT(pkt869, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt869, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -1865,7 +1813,7 @@ test_7_dpi_dispatcher_and_plugin(void)
     TEST_ASSERT_TRUE(ret);
 
     /* TCP SYN_ACK PKT and macs are known */
-    PREPARE_UT(pkt870, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt870, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -1967,7 +1915,7 @@ test_8_dpi_dispatcher_udp_non_reserved(void)
 #endif
 
     /* UDP PKT SRC MAC is known. ports are non reserved */
-    PREPARE_UT(pkt98, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt98, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -1995,7 +1943,7 @@ test_8_dpi_dispatcher_udp_non_reserved(void)
     TEST_ASSERT_TRUE(ret);
 
     /* UDP PKT SRC MAC is known. ports are non reserved */
-    PREPARE_UT(pkt1, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt1, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -2020,7 +1968,7 @@ test_8_dpi_dispatcher_udp_non_reserved(void)
     TEST_ASSERT_TRUE(ret);
 
     /* UDP Unknown macs and ports are non reserved */
-    PREPARE_UT(pkt18, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt18, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -2652,7 +2600,7 @@ test_9_dpi_dispatcher_excluded_devices(void)
 #endif
 
     /* TCP SYN Packet */
-    PREPARE_UT(pkt858, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt858, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -2768,7 +2716,7 @@ test_10_dpi_dispatcher_included_excluded_devices(void)
 #endif
 
     /* TCP SYN Packet */
-    PREPARE_UT(pkt858, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt858, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -2884,7 +2832,7 @@ test_11_dpi_dispatcher_reserved_port_originator(void)
 #endif
 
     /* UDP port 50 inbound Packet */
-    PREPARE_UT(pkt200, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt200, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -2921,7 +2869,7 @@ test_11_dpi_dispatcher_reserved_port_originator(void)
     TEST_ASSERT_TRUE(ret);
 
     /* UDP port 50 Outbound Packet */
-    PREPARE_UT(pkt201, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt201, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -2958,7 +2906,7 @@ test_11_dpi_dispatcher_reserved_port_originator(void)
     TEST_ASSERT_TRUE(ret);
 
     /* TCP port 50 inbound Packet */
-    PREPARE_UT(pkt202, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt202, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -2995,7 +2943,7 @@ test_11_dpi_dispatcher_reserved_port_originator(void)
     TEST_ASSERT_TRUE(ret);
 
     /* TCP port 50 Outbound Packet */
-    PREPARE_UT(pkt201, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt201, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -3114,7 +3062,7 @@ test_12_dpi_dispatcher_icmp_req_reply(void)
 
     /* OUTBOUND PING REQUEST */
     /* ICMP ECHO Packet */
-    PREPARE_UT(pkt183, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt183, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -3158,7 +3106,7 @@ test_12_dpi_dispatcher_icmp_req_reply(void)
     TEST_ASSERT_TRUE(ret);
 
     /* ICMP Reply Packet */
-    PREPARE_UT(pkt184, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt184, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -3203,7 +3151,7 @@ test_12_dpi_dispatcher_icmp_req_reply(void)
 
     /* INBOUND PING REQUEST */
     /* ICMP ECHO Packet */
-    PREPARE_UT(pkt185, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt185, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -3247,7 +3195,7 @@ test_12_dpi_dispatcher_icmp_req_reply(void)
     TEST_ASSERT_TRUE(ret);
 
     /* ICMP Reply Packet */
-    PREPARE_UT(pkt186, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt186, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -3373,7 +3321,7 @@ test_13_dpi_dispatcher_icmpv6_req_reply(void)
 
     /* OUTBOUND PING6 packet */
     /* ICMPv6 ECHO Packet */
-    PREPARE_UT(pkt10, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt10, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -3417,7 +3365,7 @@ test_13_dpi_dispatcher_icmpv6_req_reply(void)
     TEST_ASSERT_TRUE(ret);
 
     /* ICMPv6 Reply Packet */
-    PREPARE_UT(pkt11, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt11, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -3462,7 +3410,7 @@ test_13_dpi_dispatcher_icmpv6_req_reply(void)
 
     /* INBOUND PING6 REQUEST */
     /* ICMPv6 ECHO Packet */
-    PREPARE_UT(pkt12, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt12, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -3506,7 +3454,7 @@ test_13_dpi_dispatcher_icmpv6_req_reply(void)
     TEST_ASSERT_TRUE(ret);
 
     /* ICMPv6 Reply Packet */
-    PREPARE_UT(pkt13, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt13, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -3657,7 +3605,7 @@ test_dpi_dispatcher_udp_reserved(void)
 #endif
 
     /* UDP PKT dport is reserved */
-    PREPARE_UT(pkt41, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt41, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -3693,7 +3641,7 @@ test_dpi_dispatcher_udp_reserved(void)
     TEST_ASSERT_TRUE(ret);
 
     /* UDP PKT sport is reserved */
-    PREPARE_UT(pkt42, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt42, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -3795,7 +3743,7 @@ test_dpi_dispatcher_dns_request(void)
     aggr->send_report = test_send_report;
 #endif
 
-    PREPARE_UT(pkt46, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt46, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -3912,7 +3860,7 @@ test_dpi_dispatcher_dns_response(void)
     aggr->send_report = test_send_report;
 #endif
 
-    PREPARE_UT(pkt47, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt47, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -4031,7 +3979,7 @@ test_dpi_dispatcher_tcp_http_req_response(void)
     aggr->send_report = test_send_report;
 #endif
 
-    PREPARE_UT(pkt3502, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt3502, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -4074,7 +4022,7 @@ test_dpi_dispatcher_tcp_http_req_response(void)
     ret = aggr->send_report(aggr, mqtt_topic);
     TEST_ASSERT_TRUE(ret);
 
-    PREPARE_UT(pkt3501, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt3501, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -4197,7 +4145,7 @@ test_dpi_dispatcher_tcp_https_req_response(void)
     aggr->send_report = test_send_report;
 #endif
 
-    PREPARE_UT(pkt442, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt442, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -4240,7 +4188,7 @@ test_dpi_dispatcher_tcp_https_req_response(void)
     ret = aggr->send_report(aggr, mqtt_topic);
     TEST_ASSERT_TRUE(ret);
 
-    PREPARE_UT(pkt443, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt443, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -4363,7 +4311,7 @@ test_dpi_dispatcher_udp_https_req_response(void)
     aggr->send_report = test_send_report;
 #endif
 
-    PREPARE_UT(pkt667, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt667, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -4406,7 +4354,7 @@ test_dpi_dispatcher_udp_https_req_response(void)
     ret = aggr->send_report(aggr, mqtt_topic);
     TEST_ASSERT_TRUE(ret);
 
-    PREPARE_UT(pkt668, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt668, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -4527,7 +4475,7 @@ test_dpi_dispatcher_udp_dhcp_discover(void)
     aggr->send_report = test_send_report;
 #endif
 
-    PREPARE_UT(pkt120, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt120, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -4648,7 +4596,7 @@ test_dpi_dispatcher_udp_dhcp_offer(void)
     aggr->send_report = test_send_report;
 #endif
 
-    PREPARE_UT(pkt125, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt125, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -4704,12 +4652,11 @@ main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
+    ut_init(ut_name);
+    ut_setUp_tearDown(ut_name, fsm_core_setUp, fsm_core_tearDown);
+
     g_mgr = fsm_get_mgr();
 
-    target_log_open("TEST", LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_INFO);
-
-    UnityBegin(test_name);
     RUN_TEST(test_add_awlan_headers);
     RUN_TEST(test_add_session_after_awlan);
     RUN_TEST(test_plugin_types);
@@ -4751,6 +4698,8 @@ main(int argc, char *argv[])
     RUN_TEST(test_dpi_dispatcher_udp_dhcp_offer);
 
     RUN_TEST(test_fsm_tap_type_from_str);
+
+    ut_fini();
 
     return UNITY_END();
 }

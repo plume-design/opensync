@@ -40,4 +40,5 @@ UNIT_DEPS += src/lib/fsm_dpi_sni
 UNIT_DEPS += src/lib/log
 UNIT_DEPS += src/lib/network_metadata
 UNIT_DEPS += src/lib/unity
+UNIT_DEPS += src/lib/unit_test_utils
 UNIT_DEPS += src/lib/target

@@ -36,7 +36,7 @@ source "${FUT_TOPDIR}/shell/lib/othr_lib.sh"
 freeze_src_token="device_freeze_src"
 freeze_dst_token="device_freeze_dst"
 
-manager_setup_file="othr/othr_setup.sh"
+manager_setup_file="dm/othr_setup.sh"
 create_rad_vif_if_file="tools/device/create_radio_vif_interface.sh"
 create_inet_file="tools/device/create_inet_interface.sh"
 add_bridge_port_file="tools/device/add_bridge_port.sh"

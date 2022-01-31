@@ -24,6 +24,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include <arpa/inet.h>
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -34,8 +35,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "dns_parse.h"
 #include "fsm_dns_utils.h"
 #include "fsm_dpi_sni.h"
+#include "fsm_policy.h"
 #include "gatekeeper_cache.h"
 #include "memutil.h"
+#include "network_metadata_report.h"
+#include "network_metadata_utils.h"
+#include "os.h"
+#include "os_types.h"
 #include "sockaddr_storage.h"
 #include "unity.h"
 
@@ -63,16 +69,9 @@ test_redirected_flow_v6(void)
     TEST_ASSERT_NOT_NULL(ip_cache_req);
     ip_cache_req->ip_addr = CALLOC(1, sizeof(struct sockaddr_storage));
     TEST_ASSERT_NOT_NULL(ip_cache_req->ip_addr);
-    ip_cache_req->device_mac = CALLOC(1, sizeof(os_macaddr_t));
-    TEST_ASSERT_NOT_NULL(ip_cache_req->device_mac);
+    ip_cache_req->device_mac = str2os_mac("01:02:03:04:05:06");
 
     sockaddr_storage_populate(AF_INET6, &cache_v6_ip, ip_cache_req->ip_addr);
-    ip_cache_req->device_mac->addr[0] = 0x01;
-    ip_cache_req->device_mac->addr[1] = 0x02;
-    ip_cache_req->device_mac->addr[2] = 0x03;
-    ip_cache_req->device_mac->addr[3] = 0x04;
-    ip_cache_req->device_mac->addr[4] = 0x05;
-    ip_cache_req->device_mac->addr[5] = 0x06;
     ip_cache_req->action = FSM_REDIRECT;
     ip_cache_req->cache_ttl = 500;
     ip_cache_req->redirect_flag = true;
@@ -282,8 +281,8 @@ test_redirected_flow_gatekeeper_cache(void)
 
     attr = "http.url";
     rc = is_redirected_flow(&info, attr);
-    FREE(info.remote_ip);
     TEST_ASSERT_TRUE(rc);
+    FREE(info.remote_ip);
 
     ret = gkc_del_attribute(&entry);
     TEST_ASSERT_TRUE(ret);

@@ -24,15 +24,27 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
+#include <sys/socket.h>
 
 #include "fsm.h"
 #include "fsm_dpi_dns.h"
+#include "fsm_dns_utils.h"
+#include "fsm_policy.h"
+#include "log.h"
+#include "memutil.h"
+#include "net_header_parse.h"
+#include "network_metadata_report.h"
 #include "pcap.c"
 #include "os.h"
 #include "unity.h"
-#include "unity_internals.h"
+#include "unit_test_utils.h"
+#include "util.h"
 
 static union fsm_plugin_ops g_plugin_ops =
 {
@@ -93,61 +105,6 @@ int64_t ttl = 300;
 int64_t offset_v4 = 100;
 int64_t offset_v6 = 300;
 
-/**
- * @brief Converts a bytes array in a hex dump file wireshark can import.
- *
- * Dumps the array in a file that can then be imported by wireshark.
- * The file can also be translated to a pcap file using the text2pcap command.
- * Useful to visualize the packet content.
- */
-void create_hex_dump(const char *fname, const uint8_t *buf, size_t len)
-{
-    int line_number = 0;
-    bool new_line = true;
-    size_t i;
-    FILE *f;
-
-    f = fopen(fname, "w+");
-
-    if (f == NULL) return;
-
-    for (i = 0; i < len; i++)
-    {
-        new_line = (i == 0 ? true : ((i % 8) == 0));
-        if (new_line)
-        {
-            if (line_number) fprintf(f, "\n");
-            fprintf(f, "%06x", line_number);
-            line_number += 8;
-        }
-        fprintf(f, " %02x", buf[i]);
-    }
-    fprintf(f, "\n");
-    fclose(f);
-
-    return;
-}
-
-
-/**
- * @brief Convenient wrapper
- *
- * Dumps the packet content in /tmp/<tests_name>_<pkt name>.txtpcap
- * for wireshark consumption and sets g_parser data fields.
- * @params pkt the C structure containing an exported packet capture
- */
-#define PREPARE_UT(pkt, parser)                                 \
-    {                                                           \
-        char fname[128];                                        \
-        size_t len = sizeof(pkt);                               \
-                                                                \
-        snprintf(fname, sizeof(fname), "/tmp/%s_%s.txtpcap",    \
-                 "test_dpi_dns_test", #pkt);                    \
-        create_hex_dump(fname, pkt, len);                       \
-        parser->packet_len = len;                               \
-        parser->caplen = len;                                   \
-        parser->data = (uint8_t *)pkt;                          \
-    }
 
 static char *
 mock_get_config(struct fsm_session *session, char *key)
@@ -931,6 +888,8 @@ test_fsm_dpi_dns_update_response_ips(void)
     uint8_t type = 1;
     size_t idx = 0;
 
+    ut_prepare_pcap(__func__);
+
     mgr = fsm_dpi_dns_get_mgr();
     if (!mgr->initialized)
         mgr->initialized = true;
@@ -948,7 +907,7 @@ test_fsm_dpi_dns_update_response_ips(void)
     STRSCPY(policy_reply.redirects[0], buf);
 
     net_parser = CALLOC(1, sizeof(*net_parser));
-    PREPARE_UT(pkt12, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt12, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -972,6 +931,8 @@ test_fsm_dpi_dns_update_response_ips(void)
 
     FREE(net_parser);
     FREE(acc.key);
+
+    ut_cleanup_pcap();
 }
 
 void

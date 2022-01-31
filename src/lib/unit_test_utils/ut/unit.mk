@@ -22,13 +22,11 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-UNIT_NAME := fut_othr
+UNIT_NAME := unit_test_utils_unit
 
-UNIT_DISABLE := n
+UNIT_TYPE := TEST_BIN
 
-# Template type:
-UNIT_TYPE := FUT
-# Output directory
-UNIT_DIR := shell/tests/othr
+UNIT_SRC := main.c
 
-UNIT_FILE := othr_setup.sh
+UNIT_DEPS := src/lib/unit_test_utils
+UNIT_DEPS += src/lib/unity

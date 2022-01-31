@@ -38,15 +38,15 @@ source "${FUT_TOPDIR}/shell/lib/othr_lib.sh"
 usage()
 {
 cat << usage_string
-othr/othr_setup.sh [-h] arguments
+dm/othr_setup.sh [-h] arguments
 Description:
     - Setup device for OTHR testing
 Arguments:
     -h : show this help message
     \$@ (radio_if_names) : wait for if_name in Wifi_Radio_State table to be present after setup : (string)(optional)
 Script usage example:
-    ./othr/othr_setup.sh
-    ./othr/othr_setup.sh wifi0 wifi1
+    ./dm/othr_setup.sh
+    ./dm/othr_setup.sh wifi0 wifi1
 usage_string
 }
 if [ -n "${1}" ]; then
@@ -62,7 +62,7 @@ if [ -n "${1}" ]; then
 fi
 
 othr_setup_test_environment "$@" &&
-    log "othr/othr_setup.sh: othr_setup_test_environment - Success " ||
-    raise "FAIL: othr_setup_test_environment" -l "othr/othr_setup.sh" -ds
+    log "dm/othr_setup.sh: othr_setup_test_environment - Success " ||
+    raise "FAIL: othr_setup_test_environment" -l "dm/othr_setup.sh" -ds
 
 exit 0

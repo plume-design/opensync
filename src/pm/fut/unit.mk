@@ -33,4 +33,5 @@ UNIT_DIR := shell/tests/pm
 
 # LM specific FUTs
 UNIT_FILE := lm_setup.sh
+UNIT_FILE += lm_trigger_cloud_logpull.sh
 UNIT_FILE += lm_verify_log_severity.sh

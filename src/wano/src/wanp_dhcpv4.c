@@ -25,14 +25,15 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include "log.h"
+#include "memutil.h"
 #include "module.h"
+#include "osa_assert.h"
 #include "ovsdb_table.h"
 #include "schema.h"
 #include "wano.h"
-#include "osa_assert.h"
+#include "wano_wan.h"
 
 #include "wanp_dhcpv4_stam.h"
-#include "memutil.h"
 
 struct wanp_dhcpv4_handle
 {
@@ -41,6 +42,8 @@ struct wanp_dhcpv4_handle
     wano_plugin_status_fn_t    *wd4_status_fn;
     wano_inet_state_event_t     wd4_inet_state_watcher;
     osn_ip_addr_t               wd4_ipaddr;
+    bool                        wd4_have_config;
+    struct wano_wan_config      wd4_wan_config;
 };
 
 static void wanp_dhcpv4_module_start(void *data);
@@ -150,6 +153,19 @@ enum wanp_dhcpv4_state wanp_dhcpv4_state_RUNNING(
     {
         struct wano_plugin_status ws = WANO_PLUGIN_STATUS(WANP_OK);
         wd4->wd4_status_fn(&wd4->wd4_handle, &ws);
+
+        /*
+         * The DHCP plug-in is sort of an outlier compared to other plug-ins as
+         * it can work with or without a WAN configuration. Update the WAN status
+         * only if we have a valid config.
+         */
+        if (wd4->wd4_have_config)
+        {
+            wano_wan_status_set(
+                    wano_wan_from_plugin_handle(&wd4->wd4_handle),
+                    WC_TYPE_DHCP,
+                    WC_STATUS_SUCCESS);
+        }
     }
 
     LOG(INFO, "DHCPV4_RUNNING: %s", wanp_dhcpv4_action_str(action));
@@ -194,21 +210,33 @@ wano_plugin_handle_t *wanp_dhcpv4_init(
 
 void wanp_dhcpv4_run(wano_plugin_handle_t *wh)
 {
-    struct wanp_dhcpv4_handle *wdh = CONTAINER_OF(wh, struct wanp_dhcpv4_handle, wd4_handle);
+    struct wanp_dhcpv4_handle *self = CONTAINER_OF(wh, struct wanp_dhcpv4_handle, wd4_handle);
 
-    (void)wdh;
     (void)wanp_dhcpv4_inet_state_event_fn;
+
+    self->wd4_have_config = wano_wan_config_get(
+            wano_wan_from_plugin_handle(wh),
+            WC_TYPE_DHCP,
+            &self->wd4_wan_config);
 
     /* Register to Wifi_Inet_State events, this will also kick-off the state machine */
     wano_inet_state_event_init(
-            &wdh->wd4_inet_state_watcher,
-            wdh->wd4_handle.wh_ifname,
+            &self->wd4_inet_state_watcher,
+            self->wd4_handle.wh_ifname,
             wanp_dhcpv4_inet_state_event_fn);
 }
 
 void wanp_dhcpv4_fini(wano_plugin_handle_t *wh)
 {
     struct wanp_dhcpv4_handle *wdh = CONTAINER_OF(wh, struct wanp_dhcpv4_handle, wd4_handle);
+
+    if (wdh->wd4_have_config)
+    {
+        wano_wan_status_set(
+                wano_wan_from_plugin_handle(&wdh->wd4_handle),
+                WC_TYPE_DHCP,
+                WC_STATUS_ERROR);
+    }
 
     wano_inet_state_event_fini(&wdh->wd4_inet_state_watcher);
 
@@ -241,11 +269,15 @@ void wanp_dhcpv4_inet_state_event_fn(
  */
 void wanp_dhcpv4_module_start(void *data)
 {
+    (void)data;
+
     wano_plugin_register(&wanp_dhcpv4);
 }
 
 void wanp_dhcpv4_module_stop(void *data)
 {
+    (void)data;
+
     wano_plugin_unregister(&wanp_dhcpv4);
 }
 

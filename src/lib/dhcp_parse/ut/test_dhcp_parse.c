@@ -24,25 +24,29 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdbool.h>
 #include <string.h>
 
 #include "dhcp_parse.h"
-#include "log.h"
-#include "target.h"
-#include "unity.h"
 #include "json_util.h"
-#include "qm_conn.h"
+#include "log.h"
 #include "memutil.h"
+#include "qm_conn.h"
+#include "unity.h"
+#include "unit_test_utils.h"
+#include "target.h"
 
 #include "pcap.c"
 
-static void send_report(struct fsm_session *session, char *report);
+const char *ut_name = "dhcp_parse_tests";
 
 #define OTHER_CONFIG_NELEMS 4
 #define OTHER_CONFIG_NELEM_SIZE 128
+
+union fsm_plugin_ops p_ops;
+struct dhcp_parse_mgr *g_mgr;
 
 char g_other_configs[][2][OTHER_CONFIG_NELEMS][OTHER_CONFIG_NELEM_SIZE] =
 {
@@ -118,65 +122,6 @@ struct fsm_session_ops g_ops =
     .send_report = send_report,
 };
 
-union fsm_plugin_ops p_ops;
-
-struct dhcp_parse_mgr *g_mgr;
-const char *test_name = "dhcp_tests";
-
-/**
- * @brief Converts a bytes array in a hex dump file wireshark can import.
- *
- * Dumps the array in a file that can then be imported by wireshark.
- * The file can also be translated to a pcap file using the text2pcap command.
- * Useful to visualize the packet content.
- */
-void create_hex_dump(const char *fname, const uint8_t *buf, size_t len)
-{
-    int line_number = 0;
-    bool new_line = true;
-    size_t i;
-    FILE *f;
-
-    f = fopen(fname, "w+");
-
-    if (f == NULL) return;
-
-    for (i = 0; i < len; i++)
-    {
-        new_line = (i == 0 ? true : ((i % 8) == 0));
-        if (new_line)
-        {
-            if (line_number) fprintf(f, "\n");
-            fprintf(f, "%06x", line_number);
-            line_number += 8;
-        }
-         fprintf(f, " %02x", buf[i]);
-    }
-    fprintf(f, "\n");
-    fclose(f);
-
-    return;
-}
-
-/**
- * @brief Convenient wrapper
- *
- * Dumps the packet content in tmp/<tests_name>_<pkt name>.txtpcap
- * for wireshark consumption and sets g_parser data fields.
- * @params pkt the C structure containing an exported packet capture
- */
-#define PREPARE_UT(pkt, parser)                                 \
-    {                                                           \
-        char fname[128];                                        \
-        size_t len = sizeof(pkt);                               \
-                                                                \
-        snprintf(fname, sizeof(fname), "/tmp/%s_%s.txtpcap",    \
-                 test_name, #pkt);                              \
-        create_hex_dump(fname, pkt, len);                       \
-        parser->packet_len = len;                               \
-        parser->data = (uint8_t *)pkt;                          \
-    }
-
 
 void global_test_init(void)
 {
@@ -222,14 +167,16 @@ void global_test_exit(void)
 }
 
 
-void setUp(void)
+void
+dhcp_parse_setUp(void)
 {
-    size_t n_sessions, i;
+    size_t n_sessions;
+    size_t i;
 
     g_mgr = NULL;
-    n_sessions = sizeof(g_sessions) / sizeof(struct fsm_session);
 
     /* Reset sessions, register them to the plugin */
+    n_sessions = ARRAY_SIZE(g_sessions);
     for (i = 0; i < n_sessions; i++)
     {
         struct fsm_session *session = &g_sessions[i];
@@ -238,22 +185,28 @@ void setUp(void)
     }
     g_mgr = dhcp_get_mgr();
 
+    ut_prepare_pcap(Unity.CurrentTestName);
+
     return;
 }
 
-void tearDown(void)
+void
+dhcp_parse_tearDown(void)
 {
-    size_t n_sessions, i;
+    size_t n_sessions;
+    size_t i;
 
-    n_sessions = sizeof(g_sessions) / sizeof(struct fsm_session);
 
     /* Reset sessions, unregister them */
+    n_sessions = ARRAY_SIZE(g_sessions);
     for (i = 0; i < n_sessions; i++)
     {
         struct fsm_session *session = &g_sessions[i];
         dhcp_plugin_exit(session);
     }
     g_mgr = NULL;
+
+    ut_cleanup_pcap();
 
     return;
 }
@@ -301,7 +254,7 @@ void test_dhcp_parse_pkt(void)
     net_parser = CALLOC(1, sizeof(*net_parser));
     parser->net_parser = net_parser;
     // DHCP DISCOVER
-    PREPARE_UT(pkt120, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt120, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
     len = dhcp_parse_message(parser);
@@ -320,7 +273,7 @@ void test_dhcp_parse_pkt(void)
     TEST_ASSERT_EQUAL_UINT(7776000, dlip->lease_time);
 
     // DHCP OFFER
-    PREPARE_UT(pkt125, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt125, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
     len = dhcp_parse_message(parser);
@@ -336,7 +289,7 @@ void test_dhcp_parse_pkt(void)
     dlip = &lease->dlip;
     TEST_ASSERT_EQUAL_UINT(86400, dlip->lease_time);
     // DHCP REQUEST
-    PREPARE_UT(pkt139, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt139, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
     len = dhcp_parse_message(parser);
@@ -352,7 +305,7 @@ void test_dhcp_parse_pkt(void)
     dlip = &lease->dlip;
     TEST_ASSERT_EQUAL_STRING("192.168.1.23", dlip->inet_addr);
     // DHCP ACK
-    PREPARE_UT(pkt140, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt140, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
     len = dhcp_parse_message(parser);
@@ -374,7 +327,7 @@ void test_dhcp_parse_pkt(void)
     TEST_ASSERT_EQUAL_STRING("1,121,3,6,15,119,252,95,44,46", dlip->fingerprint);
 
     // DHCP ACK with Option 119
-    PREPARE_UT(pkt119, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt119, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
     len = dhcp_parse_message(parser);
@@ -395,7 +348,7 @@ void test_dhcp_parse_pkt(void)
     }
 
     // DHCP RELEASE
-    PREPARE_UT(pkt353, net_parser);
+    UT_CREATE_PCAP_PAYLOAD(pkt353, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
     len = dhcp_parse_message(parser);
@@ -412,10 +365,8 @@ int main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
-    target_log_open("TEST", LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_TRACE);
-
-    UnityBegin(test_name);
+    ut_init(ut_name);
+    ut_setUp_tearDown(ut_name, dhcp_parse_setUp, dhcp_parse_tearDown);
 
     global_test_init();
 
@@ -423,6 +374,8 @@ int main(int argc, char *argv[])
     RUN_TEST(test_dhcp_parse_pkt);
 
     global_test_exit();
+
+    ut_fini();
 
     return UNITY_END();
 }

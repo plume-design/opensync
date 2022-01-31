@@ -24,26 +24,26 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <stdbool.h>
 #include <string.h>
 #include <sys/socket.h>
-#include <netdb.h>
 
 #include "dns_cache.h"
 #include "fsm.h"
+#include "fsm_policy.h"
 #include "log.h"
+#include "memutil.h"
 #include "network_metadata_report.h"
 #include "os.h"
 #include "os_types.h"
-#include "fsm_policy.h"
+#include "policy_tags.h"
+#include "schema.h"
 #include "target.h"
 #include "unity.h"
-#include "schema.h"
-#include "policy_tags.h"
-#include "memutil.h"
 
 const char *test_name = "fsm_policy_tests";
 

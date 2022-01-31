@@ -25,18 +25,16 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include "dns_cache.h"
-#include "log.h"
-#include "target.h"
 #include "unity.h"
-#include "unity_internals.h"
+#include "unit_test_utils.h"
 
-char *test_name = "fsm_dpi_sni_plugin_tests";
+extern void run_test_plugin(void);
+extern void run_test_functions(void);
 
-/**
- * @brief called by the Unity framework before every single test
- */
+const char *test_name = "fsm_dpi_sni_plugin_tests";
+
 void
-setUp(void)
+fsm_dpi_sni_plugin_setUp(void)
 {
     struct dns_cache_settings cache_init;
 
@@ -45,18 +43,11 @@ setUp(void)
     dns_cache_init(&cache_init);
 }
 
-/**
- * @brief called by the Unity framework after every single test
- */
 void
-tearDown(void)
+fsm_dpi_sni_plugin_tearDown(void)
 {
     dns_cache_cleanup_mgr();
 }
-
-
-extern void run_test_plugin(void);
-extern void run_test_functions(void);
 
 int
 main(int argc, char *argv[])
@@ -64,14 +55,13 @@ main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
-    /* Set the logs to stdout */
-    target_log_open(test_name, LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_TRACE);
-
-    UnityBegin(test_name);
+    ut_init(test_name);
+    ut_setUp_tearDown(test_name, fsm_dpi_sni_plugin_setUp, fsm_dpi_sni_plugin_tearDown);
 
     run_test_plugin();
     run_test_functions();
+
+    ut_fini();
 
     return UNITY_END();
 }

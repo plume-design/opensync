@@ -150,6 +150,7 @@ ltem_ovsdb_create_lte_state(ltem_mgr_t *mgr)
     const char *if_name;
     char *sim_status;
     char *net_state;
+    char *net_mode;
     int rc;
 
     MEMZERO(lte_state);
@@ -249,6 +250,22 @@ ltem_ovsdb_create_lte_state(ltem_mgr_t *mgr)
     }
     SCHEMA_SET_STR(lte_state.lte_net_state, net_state);
 
+    switch (modem_info->srv_cell.mode)
+    {
+        case LTE_CELL_MODE_LTE:
+            net_mode = "lte";
+            break;
+
+        case LTE_CELL_MODE_WCDMA:
+            net_mode = "wcdma";
+            break;
+
+        default:
+            net_mode = "unknown";
+            break;
+    }
+    SCHEMA_SET_STR(lte_state.lte_net_mode, net_mode);
+
     SCHEMA_SET_STR(lte_state.lte_bands_enable, modem_info->lte_band_val);
 
     if (!ovsdb_table_insert(&table_Lte_State, &lte_state))
@@ -269,6 +286,7 @@ ltem_ovsdb_update_lte_state(ltem_mgr_t *mgr)
     const char *if_name;
     char *sim_status;
     char *net_state;
+    char *net_mode;
     int res;
     char *filter[] = { "+",
                        SCHEMA_COLUMN(Lte_State, manager_enable),
@@ -290,6 +308,7 @@ ltem_ovsdb_update_lte_state(ltem_mgr_t *mgr)
                        SCHEMA_COLUMN(Lte_State, mnc),
                        SCHEMA_COLUMN(Lte_State, tac),
                        SCHEMA_COLUMN(Lte_State, lte_net_state),
+                       SCHEMA_COLUMN(Lte_State, lte_net_mode),
                        SCHEMA_COLUMN(Lte_State, lte_bands_enable),
                        NULL };
 
@@ -384,6 +403,22 @@ ltem_ovsdb_update_lte_state(ltem_mgr_t *mgr)
             break;
     }
     SCHEMA_SET_STR(lte_state.lte_net_state, net_state);
+
+    switch (modem_info->srv_cell.mode)
+    {
+        case LTE_CELL_MODE_LTE:
+            net_mode = "lte";
+            break;
+
+        case LTE_CELL_MODE_WCDMA:
+            net_mode = "wcdma";
+            break;
+
+        default:
+            net_mode = "unknown";
+            break;
+    }
+    SCHEMA_SET_STR(lte_state.lte_net_mode, net_mode);
 
     SCHEMA_SET_STR(lte_state.lte_bands_enable, modem_info->lte_band_val);
 

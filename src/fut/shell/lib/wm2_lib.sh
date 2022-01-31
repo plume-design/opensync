@@ -1035,7 +1035,7 @@ create_radio_vif_interface()
                     log -deb "wm2_lib:create_radio_vif_interface - VIF_State parent was not associated"
         fi
     fi
-    
+
     if [ -n "$country_arg" ]; then
         radio_args=${radio_args//$country_arg/""}
     fi
@@ -1067,10 +1067,9 @@ create_radio_vif_interface()
 
 ###############################################################################
 # DESCRIPTION:
-#   Function deletes VIF interface and makes sure requested
-#   radio interface is deleted afterwards. Removes interface entry for selected
+#   Function deletes VIF interface and removes interface entry for selected
 #   VIF interface from Wifi_VIF_Config, and waits for entry to be removed from
-#   Wifi_VIF_State. Does the same for radio interface.
+#   Wifi_VIF_State.
 # INPUT PARAMETER(S):
 #   Parameters are fed into function as key-value pairs.
 #   Function supports the following keys for parameter values:
@@ -1084,10 +1083,10 @@ create_radio_vif_interface()
 #   0   On success.
 #   See DESCRIPTION.
 # USAGE EXAMPLE(S):
-#   remove_radio_vif_interface -if_name wifi2 \
+#   remove_vif_interface -if_name wifi2 \
 #       -vif_if_name home-ap-u50 \
 ###############################################################################
-remove_radio_vif_interface()
+remove_vif_interface()
 {
     while [ -n "$1" ]; do
         option=$1
@@ -1102,37 +1101,28 @@ remove_radio_vif_interface()
                 shift
                 ;;
             *)
-                raise "FAIL: Wrong option provided: $option" -l "wm2_lib:remove_radio_vif_interface" -arg
+                raise "FAIL: Wrong option provided: $option" -l "wm2_lib:remove_vif_interface" -arg
                 ;;
         esac
     done
 
     [ -z "${wm2_if_name}" ] &&
-        raise "FAIL: 'if_name' argument empty" -l "wm2_lib:remove_radio_vif_interface" -arg
+        raise "FAIL: 'if_name' argument empty" -l "wm2_lib:remove_vif_interface" -arg
     [ -z "${wm2_vif_if_name}" ] &&
-        raise "FAIL: 'vif_if_name' argument empty" -l "wm2_lib:remove_radio_vif_interface" -arg
+        raise "FAIL: 'vif_if_name' argument empty" -l "wm2_lib:remove_vif_interface" -arg
 
-    log -deb "wm2_lib:remove_radio_vif_interface - Removing radio/VIF interface"
+    log -deb "wm2_lib:remove_vif_interface - Removing VIF interface"
 
     # shellcheck disable=SC2086
     remove_ovsdb_entry Wifi_VIF_Config -w if_name "$wm2_vif_if_name" &&
-        log -deb "wm2_lib:remove_radio_vif_interface - Entry '$wm2_vif_if_name' removed from table Wifi_VIF_Config - Success" ||
-        raise "FAIL: Could not remove entry '$wm2_vif_if_name' from table Wifi_VIF_Config" -l "wm2_lib:remove_radio_vif_interface" -fc
+        log -deb "wm2_lib:remove_vif_interface - Entry '$wm2_vif_if_name' removed from table Wifi_VIF_Config - Success" ||
+        raise "FAIL: Could not remove entry '$wm2_vif_if_name' from table Wifi_VIF_Config" -l "wm2_lib:remove_vif_interface" -fc
     # shellcheck disable=SC2086
     wait_ovsdb_entry_remove Wifi_VIF_State -w if_name "$wm2_vif_if_name" &&
-        log -deb "wm2_lib:remove_radio_vif_interface - Wifi_VIF_Config reflected to Wifi_VIF_State for '$wm2_vif_if_name' - Success" ||
-        raise "FAIL: Could not reflect Wifi_VIF_Config to Wifi_VIF_State for '$wm2_vif_if_name'" -l "wm2_lib:remove_radio_vif_interface" -ow
+        log -deb "wm2_lib:remove_vif_interface - Wifi_VIF_Config reflected to Wifi_VIF_State for '$wm2_vif_if_name' - Success" ||
+        raise "FAIL: Could not reflect Wifi_VIF_Config to Wifi_VIF_State for '$wm2_vif_if_name'" -l "wm2_lib:remove_vif_interface" -ow
 
-    # shellcheck disable=SC2086
-    remove_ovsdb_entry Wifi_Radio_Config -w if_name "$wm2_if_name" &&
-        log -deb "wm2_lib:remove_radio_vif_interface - Entry for '$wm2_if_name' removed from table Wifi_Radio_Config - Success" ||
-        raise "FAIL: Could not remove entry '$wm2_if_name' from table Wifi_Radio_Config" -l "wm2_lib:remove_radio_vif_interface" -tc
-    # shellcheck disable=SC2086
-    wait_ovsdb_entry_remove Wifi_Radio_State -w if_name "$wm2_if_name" &&
-        log -deb "wm2_lib:remove_radio_vif_interface - Wifi_Radio_Config reflected to Wifi_Radio_State for '$wm2_if_name' - Success" ||
-        raise "FAIL: Could not reflect Wifi_Radio_Config to Wifi_Radio_State for '$wm2_if_name'" -l "wm2_lib:remove_radio_vif_interface" -ow
-
-    log -deb "wm2_lib:remove_radio_vif_interface - Wireless interface deleted from Wifi_VIF_State and Wifi_Radio_State"
+    log -deb "wm2_lib:remove_vif_interface - Wireless interface deleted from Wifi_VIF_State"
 
     return 0
 }

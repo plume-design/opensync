@@ -76,4 +76,49 @@ lm_setup_test_environment()
 
 ####################### TEST CASE SECTION - START #############################
 
+###############################################################################
+# DESCRIPTION:
+#   Function checks if the "LM: Run log-pull procedure" message is
+#   present in the log messages, which indicates that the logpull
+#   procedure started.
+#   Raises exception on fail:
+#       - logs not found
+# INPUT PARAMETER(S):
+#   None.
+# RETURNS:
+#   0   On success.
+#   See DESCRIPTION.
+# USAGE EXAMPLE(S):
+#   check_pm_report_log
+###############################################################################
+check_pm_report_log()
+{
+    log_msg="LM: Run log-pull procedure"
+    pm_log_grep="$LOGREAD | grep -i '$log_msg'"
+
+    log "lm_lib:check_pm_report_log - $log_msg"
+    wait_for_function_response 0 "${pm_log_grep}" &&
+        log -deb "sm_lib:check_pm_report_log - Found '$log_msg' - Success" ||
+        raise "FAIL: Could not find '$log_msg' in logs" -l "sm_lib:check_pm_report_log" -tc
+
+    return 0
+}
+
+###############################################################################
+# DESCRIPTION:
+#   Function checks if logpull directory is empty.
+# INPUT PARAMETER(S):
+#   None
+# RETURNS:
+#   0   Directory is not empty
+#   1   Directory is empty
+# USAGE EXAMPLE(S):
+#   check_if_logpull_dir_empty
+###############################################################################
+check_if_logpull_dir_empty()
+{
+    [ "$(ls -A /tmp/logpull/)" ] &&
+        return $?
+}
+
 ####################### TEST CASE SECTION - STOP ##############################

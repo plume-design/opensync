@@ -1,5 +1,3 @@
-#!/bin/sh
-
 # Copyright (c) 2015, Plume Design Inc. All rights reserved.
 # 
 # Redistribution and use in source and binary forms, with or without
@@ -24,44 +22,28 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+###############################################################################
+#
+# Library of shared utilities used within unit-tests
+#
+###############################################################################
+UNIT_NAME := unit_test_utils
 
-# Setup test environment for OTHR tests.
+# If compiled with clang, assume a native unit test target
+# and build a static library
+ifneq (,$(findstring clang,$(CC)))
+    UNIT_TYPE := LIB
+else
+    UNIT_TYPE := SHLIB
+    UNIT_DIR := lib
+endif
 
-# FUT environment loading
-# shellcheck disable=SC1091
-source /tmp/fut-base/shell/config/default_shell.sh
-[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
-source "${FUT_TOPDIR}/shell/lib/othr_lib.sh"
-[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
-[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
+UNIT_SRC := src/unit_test_utils.c
 
-tc_name="othr/$(basename "$0")"
-usage()
-{
-cat << usage_string
-${tc_name} [-h] arguments
-Description:
-    - Setup device for OTHR testing
-Arguments:
-    -h : show this help message
-Script usage example:
-    ./${tc_name}
-usage_string
-}
-if [ -n "${1}" ]; then
-    case "${1}" in
-        help | \
-        --help | \
-        -h)
-            usage && exit 1
-            ;;
-        *)
-            ;;
-    esac
-fi
+UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 
-othr_setup_test_environment &&
-    log "$tc_name: othr_setup_test_environment - Success " ||
-    raise "othr_setup_test_environment - Failed" -l "$tc_name" -ds
+UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
 
-exit 0
+UNIT_DEPS := src/lib/log
+UNIT_DEPS += src/lib/unity
+UNIT_DEPS += src/lib/ustack

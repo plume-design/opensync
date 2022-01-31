@@ -1,7 +1,7 @@
 {
   "name": "Open_vSwitch",
-  "version": "7.11.306",
-  "cksum": "3210424133 248696",
+  "version": "7.11.308",
+  "cksum": "2669810368 249011",
   "tables": {
     "AWLAN_Node": {
       "columns": {
@@ -10817,6 +10817,21 @@
                   "registration_denied",
                   "unknown",
                   "registered_roaming"
+                ]
+              ]
+            }
+          }
+        },
+        "lte_net_mode": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "unknown",
+                  "lte",
+                  "wcdma"
                 ]
               ]
             }

@@ -31,6 +31,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 #include <sys/socket.h>
 
+
 #include "dns_cache.h"
 #include "fsm_dns_utils.h"
 #include "gatekeeper_cache.h"
@@ -39,6 +40,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fsm_policy.h"
 #include "memutil.h"
 #include "network_metadata_report.h"
+#include "network_metadata_utils.h"
+#include "os.h"
 #include "os_types.h"
 #include "sockaddr_storage.h"
 #include "unity.h"
@@ -67,16 +70,9 @@ test_redirected_flow_v6(void)
     TEST_ASSERT_NOT_NULL(ip_cache_req);
     ip_cache_req->ip_addr = CALLOC(1, sizeof(struct sockaddr_storage));
     TEST_ASSERT_NOT_NULL(ip_cache_req->ip_addr);
-    ip_cache_req->device_mac = CALLOC(1, sizeof(os_macaddr_t));
-    TEST_ASSERT_NOT_NULL(ip_cache_req->device_mac);
+    ip_cache_req->device_mac = str2os_mac("01:02:03:04:05:06");
 
     sockaddr_storage_populate(AF_INET6, &cache_v6_ip, ip_cache_req->ip_addr);
-    ip_cache_req->device_mac->addr[0] = 0x01;
-    ip_cache_req->device_mac->addr[1] = 0x02;
-    ip_cache_req->device_mac->addr[2] = 0x03;
-    ip_cache_req->device_mac->addr[3] = 0x04;
-    ip_cache_req->device_mac->addr[4] = 0x05;
-    ip_cache_req->device_mac->addr[5] = 0x06;
     ip_cache_req->action = FSM_REDIRECT;
     ip_cache_req->cache_ttl = 500;
     ip_cache_req->redirect_flag = true;
@@ -110,7 +106,7 @@ test_redirected_flow_v6(void)
 
     /* ip address present in cache */
     rc = dpi_sni_is_redirected_flow(&info);
-    TEST_ASSERT_EQUAL_INT(1, rc);
+    TEST_ASSERT_TRUE(rc);
 
     FREE(ip_cache_req->ip_addr);
     FREE(ip_cache_req->device_mac);
@@ -234,7 +230,7 @@ test_redirected_flow_gatekeeper_cache(void)
     TEST_ASSERT_TRUE(rc);
 
     rc = dpi_sni_is_redirected_flow(&info);
-    TEST_ASSERT_EQUAL_INT(1, rc);
+    TEST_ASSERT_TRUE(rc);
 
     ret = gkc_del_attribute(&entry);
     TEST_ASSERT_TRUE(ret);
@@ -277,8 +273,8 @@ test_redirected_flow_gatekeeper_cache(void)
     info.direction = NET_MD_ACC_OUTBOUND_DIR;
 
     rc = dpi_sni_is_redirected_flow(&info);
+    TEST_ASSERT_TRUE(rc);
     FREE(info.remote_ip);
-    TEST_ASSERT_EQUAL_INT(1, rc);
 
     ret = gkc_del_attribute(&entry);
     TEST_ASSERT_TRUE(ret);
@@ -303,7 +299,7 @@ test_redirected_flow(void)
 
     /* flow should not be checked */
     rc = dpi_sni_is_redirected_flow(&info);
-    TEST_ASSERT_EQUAL_INT(0, rc);
+    TEST_ASSERT_FALSE(rc);
 
     /* IP address present in cache. */
     inet_pton(AF_INET, "1.2.3.4", cache_ip);
@@ -320,7 +316,7 @@ test_redirected_flow(void)
     TEST_ASSERT_EQUAL_INT(1, rc);
 
     rc = dpi_sni_is_redirected_flow(&info);
-    TEST_ASSERT_EQUAL_INT(1, rc);
+    TEST_ASSERT_TRUE(rc);
 
     FREE(info.remote_ip);
     FREE(cache_ip);

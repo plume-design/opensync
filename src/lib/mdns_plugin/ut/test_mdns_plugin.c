@@ -24,26 +24,36 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdbool.h>
-#include <string.h>
 #include <ev.h>
+#include <netinet/udp.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/socket.h>
 #include <time.h>
 
-#include "log.h"
-#include "net_header_parse.h"
-#include "target.h"
-#include "unity.h"
-#include "memutil.h"
-#include "sockaddr_storage.h"
-
-#include "test_mdns.h"
-
 #include "1035.h"
+#include "const.h"
+#include "ds_tree.h"
+#include "fsm.h"
+#include "log.h"
+#include "mdns_plugin.h"
+#include "mdns_records.h"
+#include "mdnsd.h"
+#include "memutil.h"
+#include "net_header_parse.h"
+#include "os.h"
+#include "ovsdb_update.h"
+#include "ovsdb_utils.h"
+#include "sockaddr_storage.h"
+#include "test_mdns.h"
+#include "unit_test_utils.h"
+#include "unity.h"
 
 #include "pcap.c"
 #include "pcap_map.c"
+
+const char *ut_name = "mdns_plugin_tests";
 
 #define OTHER_CONFIG_NELEMS 4
 #define OTHER_CONFIG_NELEM_SIZE 128
@@ -51,6 +61,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 extern void callback_Service_Announcement(ovsdb_update_monitor_t *mon,
                          struct schema_Service_Announcement *old_rec,
                          struct schema_Service_Announcement *new_rec);
+
+ovsdb_update_monitor_t g_mon;
+struct mdns_plugin_mgr *mgr;
 
 struct schema_Service_Announcement g_mdns_ann[] =
 {
@@ -100,7 +113,7 @@ char g_other_configs[][2][OTHER_CONFIG_NELEMS][OTHER_CONFIG_NELEM_SIZE] =
         },
         {
             "192.168.1.90",
-            CONFIG_TARGET_LAN_BRIDGE_NAME".tx",
+            "foo",//CONFIG_TARGET_LAN_BRIDGE_NAME".tx",
             "60",
             "true",
         },
@@ -126,10 +139,6 @@ struct fsm_session g_sessions[] =
     }
 };
 
-ovsdb_update_monitor_t g_mon;
-
-struct mdns_plugin_mgr *mgr;
-const char *test_name = "mdns_tests";
 void ut_ovsdb_init(void)
 {
     return;
@@ -191,7 +200,8 @@ union fsm_plugin_ops g_plugin_ops =
 };
 
 
-void setUp(void)
+void
+mdns_plugin_setUp(void)
 {
     g_loop = EV_DEFAULT;
     struct fsm_session *session = &g_sessions[0];
@@ -209,11 +219,10 @@ void setUp(void)
 
     /* Setup test_mgr for mdns records reporting */
     setup_mdns_records_report();
-
-    return;
 }
 
-void tearDown(void)
+void
+mdns_plugin_tearDown(void)
 {
     struct fsm_session *session = &g_sessions[0];
 
@@ -221,69 +230,7 @@ void tearDown(void)
 
     /* Free the mdns records reporting test mgr */
     teardown_mdns_records_report();
-
-    return;
 }
-
-
-/**
- * @brief Converts a bytes array in a hex dump file wireshark can import.
- *
- * Dumps the array in a file that can then be imported by wireshark.
- * The file can also be translated to a pcap file using the text2pcap command.
- * Useful to visualize the packet content.
- * @param fname the file recipient of the hex dump
- * @param buf the buffer to dump
- * @param length the length of the buffer to dump
- */
-void
-create_hex_dump(const char *fname, const uint8_t *buf, size_t len)
-{
-    int line_number = 0;
-    bool new_line = true;
-    size_t i;
-    FILE *f;
-
-    f = fopen(fname, "w+");
-
-    if (f == NULL) return;
-
-    for (i = 0; i < len; i++)
-    {
-        new_line = (i == 0 ? true : ((i % 8) == 0));
-        if (new_line)
-        {
-            if (line_number) fprintf(f, "\n");
-            fprintf(f, "%06x", line_number);
-            line_number += 8;
-        }
-        fprintf(f, " %02x", buf[i]);
-    }
-    fprintf(f, "\n");
-    fclose(f);
-
-    return;
-}
-
-
-/**
- * @brief Convenient wrapper
- *
- * Dumps the packet content in /tmp/<tests_name>_<pkt name>.txtpcap
- * for wireshark consumption and sets the given parser's data fields.
- * @param pkt the C structure containing an exported packet capture
- * @param parser the parser structure to set
- */
-#define PREPARE_UT(entry, parser)                                 \
-    {                                                             \
-        char fname[128];                                          \
-                                                                  \
-        snprintf(fname, sizeof(fname), "/tmp/%s_%s.txtpcap",      \
-                 test_name, entry.name);                          \
-        create_hex_dump(fname, entry.pkt, entry.len);             \
-        parser->packet_len = entry.len;                           \
-        parser->data = (uint8_t *)entry.pkt;                      \
-    }
 
 
 /**
@@ -554,6 +501,8 @@ test_mdns_parser(void)
     bool ret;
     int rc;
 
+    ut_prepare_pcap(__func__);
+
     /* Prepare the mdns manager */
     mdns_mgr_init();
     mgr = mdns_get_mgr();
@@ -571,11 +520,12 @@ test_mdns_parser(void)
     /* Allocate a net parser */
     net_parser = CALLOC(1, sizeof(*net_parser));
 
-    nelems = sizeof(pmap) / sizeof(pmap[0]);
+    nelems = ARRAY_SIZE(pmap);
     for (i = 0; i < nelems; i++)
     {
         LOGI("%s: processing packet %s", __func__, pmap[i].name);
-        PREPARE_UT(pmap[i], net_parser);
+        /* Don't use the MACRO as we have explicit names */
+        ut_create_pcap_payload(pmap[i].name, pmap[i].pkt, pmap[i].len, net_parser);
         len = net_header_parse(net_parser);
         TEST_ASSERT_TRUE(len != 0);
         net_header_logi(net_parser);
@@ -595,6 +545,8 @@ test_mdns_parser(void)
         rc = mdnsd_in(pctxt->dmn, &m, &ss);
         TEST_ASSERT_EQUAL(0, rc);
     }
+
+    ut_cleanup_pcap();
 
     FREE(net_parser);
 }
@@ -627,7 +579,7 @@ test_mdns_records_send_records(void)
     /* incomplete md_session */
     rc = mdns_records_init(&md_session);
     TEST_ASSERT_FALSE(rc);
-    
+
     /* We are NOT reporting, but we are still partially initialized */
     md_session.session = CALLOC(1, sizeof(*md_session.session));
     md_session.report_records = false;
@@ -663,7 +615,7 @@ test_mdns_records_send_records(void)
 
     /* terminate properly */
     mdns_records_exit();
-    
+
     /* cleanup */
     FREE(ipv6_1);
     FREE(ipv4_1);
@@ -675,10 +627,8 @@ int main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
-    target_log_open("TEST", LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_TRACE);
-
-    UnityBegin(test_name);
+    ut_init(ut_name);
+    ut_setUp_tearDown(ut_name, mdns_plugin_setUp, mdns_plugin_tearDown);
 
     /* Node Info(Observation Point) tests */
     RUN_TEST(test_serialize_node_info);
@@ -709,6 +659,8 @@ int main(int argc, char *argv[])
 
     /* Test parser */
     RUN_TEST(test_mdns_parser);
+
+    ut_fini();
 
     return UNITY_END();
 }

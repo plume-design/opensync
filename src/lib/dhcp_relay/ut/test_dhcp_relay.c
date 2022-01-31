@@ -24,30 +24,36 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include <net/if.h>
+#include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdbool.h>
 #include <string.h>
-#include <net/if.h>
+#include <unistd.h>
 
-#include "log.h"
-#include "target.h"
-#include "unity.h"
+#include "dhcp_relay.h"
+#include "ds_tree.h"
+#include "fsm.h"
 #include "json_util.h"
+#include "log.h"
 #include "memutil.h"
 #include "net_header_parse.h"
 #include "os.h"
 #include "os_types.h"
-#include "dhcp_relay.h"
+#include "ovsdb_utils.h"
+#include "target.h"
+#include "unity.h"
+#include "unit_test_utils.h"
+#include "util.h"
 
 #include "pcap.c"
 #include "dhcpv6.c"
 
+const char *ut_name = "dhcp_relay_tests";
+
 #define OTHER_CONFIG_NELEMS 4
 #define OTHER_CONFIG_NELEM_SIZE 128
-
-char *test_name = "test_dhcp_relay";
-char *g_dhcp_relay_conf = "/tmp/dhcp_relay.conf";
 
 struct dhcp_relay_mgr       *g_mgr;
 struct ev_loop              *g_loop;
@@ -142,60 +148,6 @@ util_get_other_config_val(struct fsm_session *session, char *key)
     return pair->value;
 }
 
-/**
- * @brief Converts a bytes array in a hex dump file wireshark can import.
- *
- * Dumps the array in a file that can then be imported by wireshark.
- * The file can also be translated to a pcap file using the text2pcap command.
- * Useful to visualize the packet content.
- */
-void create_hex_dump(const char *fname, const uint8_t *buf, size_t len)
-{
-    int line_number = 0;
-    bool new_line = true;
-    size_t i;
-    FILE *f;
-
-    f = fopen(fname, "w+");
-
-    if (f == NULL) return;
-
-    for (i = 0; i < len; i++)
-    {
-        new_line = (i == 0 ? true : ((i % 8) == 0));
-        if (new_line)
-        {
-            if (line_number) fprintf(f, "\n");
-            fprintf(f, "%06x", line_number);
-            line_number += 8;
-        }
-         fprintf(f, " %02x", buf[i]);
-    }
-    fprintf(f, "\n");
-    fclose(f);
-
-    return;
-}
-
-/**
- * @brief Convenient wrapper
- *
- * Dumps the packet content in tmp/<tests_name>_<pkt name>.txtpcap
- * for wireshark consumption and sets g_parser data fields.
- * @params pkt the C structure containing an exported packet capture
- */
-#define PREPARE_UT(pkt, parser)                                 \
-    {                                                           \
-        char fname[128];                                        \
-        size_t len = sizeof(pkt);                               \
-                                                                \
-        snprintf(fname, sizeof(fname), "/tmp/%s_%s.txtpcap",    \
-                 test_name, #pkt);                              \
-        create_hex_dump(fname, pkt, len);                       \
-        parser->packet_len = len;                               \
-        parser->data = (uint8_t *)pkt;                          \
-    }
-
 /*************************************************************************************************/
 
 void test_dhcpv4_DISCOVER_pkt(void)
@@ -209,7 +161,7 @@ void test_dhcpv4_DISCOVER_pkt(void)
     size_t                      len = 0;
     bool                        ret;
 
-    uint8_t                     pkt_cpy[1024];
+    uint8_t                     pkt120_RW[1024];
 
     session = &g_sessions[0];
     d_session = dhcp_lookup_session(session);
@@ -221,10 +173,12 @@ void test_dhcpv4_DISCOVER_pkt(void)
     parser->relay_options_len = 0;
 
     // DHCP_DISCOVER
-    memset(pkt_cpy, 0, sizeof(pkt_cpy));
-    memcpy(pkt_cpy, pkt120, sizeof(pkt120));
 
-    PREPARE_UT(pkt_cpy, net_parser);
+    /* We MUST make a copy as this will be changed later in net_parser */
+    MEMZERO(pkt120_RW);
+    memcpy(pkt120_RW, pkt120, sizeof(pkt120));
+
+    UT_CREATE_PCAP_PAYLOAD(pkt120_RW, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -268,7 +222,7 @@ void test_dhcpv4_REQUEST_pkt(void)
     size_t                      len = 0;
     bool                        ret;
 
-    uint8_t                     pkt_cpy[1024];
+    uint8_t                     pkt139_RW[1024];
 
     session = &g_sessions[0];
     d_session = dhcp_lookup_session(session);
@@ -280,10 +234,12 @@ void test_dhcpv4_REQUEST_pkt(void)
     parser->relay_options_len = 0;
 
     // DHCP REQUEST
-    memset(pkt_cpy, 0, sizeof(pkt_cpy));
-    memcpy(pkt_cpy, pkt139, sizeof(pkt139));
 
-    PREPARE_UT(pkt_cpy, net_parser);
+    /* We MUST make a copy as this will be changed later in net_parser */
+    MEMZERO(pkt139_RW);
+    memcpy(pkt139_RW, pkt139, sizeof(pkt139));
+
+    UT_CREATE_PCAP_PAYLOAD(pkt139_RW, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -327,7 +283,7 @@ void test_dhcpv6_SOLICIT_pkt(void)
     size_t                  len = 0;
     bool                    ret;
 
-    uint8_t                 pkt_cpy[1024];
+    uint8_t                 pkt46_RW[1024];
 
     session = &g_sessions[0];
     d_session = dhcp_lookup_session(session);
@@ -339,10 +295,12 @@ void test_dhcpv6_SOLICIT_pkt(void)
     parser->relay_options_len = 0;
 
     // DHCPv6 SOLICIT packet
-    memset(pkt_cpy, 0, sizeof(pkt_cpy));
-    memcpy(pkt_cpy, pkt46, sizeof(pkt46));
 
-    PREPARE_UT(pkt_cpy, net_parser);
+    /* We MUST make a copy as this will be changed later in net_parser */
+    MEMZERO(pkt46_RW);
+    memcpy(pkt46_RW, pkt46, sizeof(pkt46));
+
+    UT_CREATE_PCAP_PAYLOAD(pkt46_RW, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -395,7 +353,7 @@ void test_dhcpv6_REQUEST_pkt(void)
     size_t                  len = 0;
     bool                    ret;
 
-    uint8_t                 pkt_cpy[1024];
+    uint8_t                 pkt51_RW[1024];
 
     session = &g_sessions[0];
     d_session = dhcp_lookup_session(session);
@@ -407,10 +365,12 @@ void test_dhcpv6_REQUEST_pkt(void)
     parser->relay_options_len = 0;
 
     // DHCPv6 REQUEST packet
-    memset(pkt_cpy, 0, sizeof(pkt_cpy));
-    memcpy(pkt_cpy, pkt51, sizeof(pkt51));
 
-    PREPARE_UT(pkt_cpy, net_parser);
+    /* We MUST make a copy as this will be changed later in net_parser */
+    MEMZERO(pkt51_RW);
+    memcpy(pkt51_RW, pkt51, sizeof(pkt51));
+
+    UT_CREATE_PCAP_PAYLOAD(pkt51_RW, net_parser);
     len = net_header_parse(net_parser);
     TEST_ASSERT_TRUE(len != 0);
 
@@ -541,27 +501,31 @@ void global_test_exit(void)
     g_mgr = NULL;
 }
 
-void setUp(void)
+void
+dhcp_relay_setUp(void)
 {
-    return;
+    ut_prepare_pcap(Unity.CurrentTestName);
 }
 
-void tearDown(void)
+void
+dhcp_relay_tearDown(void)
 {
-    return;
+    ut_cleanup_pcap();
 }
 
-int main(int argc, char *argv[])
+const char *g_dhcp_relay_conf = "/tmp/dhcp_relay.conf";
+
+
+int
+main(int argc, char *argv[])
 {
     bool ret;
 
     (void)argc;
     (void)argv;
 
-    target_log_open(test_name, LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_TRACE);
-
-    UnityBegin(test_name);
+    ut_init(ut_name);
+    ut_setUp_tearDown(ut_name, dhcp_relay_setUp, dhcp_relay_tearDown);
 
     /*
      * This is a requirement: Do NOT proceed if the file is missing.
@@ -570,12 +534,11 @@ int main(int argc, char *argv[])
     ret = access(g_dhcp_relay_conf, F_OK);
     if (ret != 0)
     {
-        LOGW("In %s: test requires %s", test_name, g_dhcp_relay_conf);
-        Unity.TestFailed[Unity.TestFailures] = strdup(__func__);
+        LOGW("In %s: test requires %s", ut_name, g_dhcp_relay_conf);
+        Unity.TestFailed[Unity.TestFailures] = (char *)__func__;
         Unity.TestFailures++;
         return UNITY_END();
     }
-
 
     global_test_init();
 
@@ -586,6 +549,8 @@ int main(int argc, char *argv[])
     RUN_TEST(test_dhcpv6_REQUEST_pkt);
 
     global_test_exit();
+
+    ut_fini();
 
     return UNITY_END();
 }

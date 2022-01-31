@@ -34,3 +34,4 @@ UNIT_SRC += test_fsm_dpi_dns.c
 UNIT_DEPS += src/lib/fsm_dpi_dns
 UNIT_DEPS += src/lib/log
 UNIT_DEPS += src/lib/unity
+UNIT_DEPS += src/lib/unit_test_utils

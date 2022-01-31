@@ -33,7 +33,7 @@ source "${FUT_TOPDIR}/shell/lib/othr_lib.sh"
 [ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
 [ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-manager_setup_file="othr/othr_setup.sh"
+manager_setup_file="dm/othr_setup.sh"
 usage()
 {
 cat << usage_string
