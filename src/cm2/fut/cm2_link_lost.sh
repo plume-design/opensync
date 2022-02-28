@@ -72,7 +72,7 @@ if_name=$1
 trap '
 fut_info_dump_line
 print_tables Connection_Manager_Uplink
-interface_bring_up "$if_name" || true
+set_interface_up "$if_name" || true
 check_restore_management_access || true
 fut_info_dump_line
 ' EXIT SIGINT SIGTERM
@@ -80,7 +80,7 @@ fut_info_dump_line
 log_title "cm2/cm2_link_lost.sh: CM2 test - has_L2 validation"
 
 log "cm2/cm2_link_lost.sh: Dropping interface $if_name"
-interface_bring_down "$if_name" &&
+set_interface_down "$if_name" &&
     log "cm2/cm2_link_lost.sh: Interface $if_name is down - Success" ||
     raise "FAIL: Could not bring down interface $if_name" -l "cm2/cm2_link_lost.sh" -ds
 
@@ -90,7 +90,7 @@ wait_ovsdb_entry Connection_Manager_Uplink -w if_name "$if_name" -is has_L2 fals
     raise "FAIL: Connection_Manager_Uplink::has_L2 is not false" -l "cm2/cm2_link_lost.sh" -ow
 
 log "cm2/cm2_link_lost.sh: Bringing up interface $if_name"
-interface_bring_up "$if_name" &&
+set_interface_up "$if_name" &&
     log "cm2/cm2_link_lost.sh: Interface $if_name is up - Success" ||
     raise "FAIL: Could not bring up interface $if_name" -l "cm2/cm2_link_lost.sh" -ds
 

@@ -80,9 +80,9 @@ cm_setup_test_environment()
 
     # Legacy procedure requires manual adding of WAN ethernet interface into WAN bridge
     if [ -n "${wan_eth_if_name}" ] && [ -n "${wan_bridge_if_name}" ] && [ $is_wano == false ] ; then
-        add_bridge_interface "${wan_bridge_if_name}" "${wan_eth_if_name}" &&
+        add_interface_to_bridge "${wan_bridge_if_name}" "${wan_eth_if_name}" &&
             log -deb "cm2_lib:cm_setup_test_environment - Interface added to bridge - Success" ||
-            raise "FAIL: add_bridge_interface $wan_bridge_if_name $wan_eth_if_name - Could not add interface to bridge" -l "cm2_lib:cm_setup_test_environment" -ds
+            raise "FAIL: add_interface_to_bridge $wan_bridge_if_name $wan_eth_if_name - Could not add interface to bridge" -l "cm2_lib:cm_setup_test_environment" -ds
     else
         log -deb "cm2_lib:cm_setup_test_environment - Device does not require adding bridge interface"
         log -deb "Details:\nwan_eth_if_name: ${wan_eth_if_name}\nwan_bridge_if_name: ${wan_bridge_if_name}\nis_wano: ${is_wano}"

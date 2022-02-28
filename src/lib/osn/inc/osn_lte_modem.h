@@ -39,6 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define C_AT_CMD_LONG_RESP 32
 #define C_AT_CMD_LONGEST_RESP 64
 
+#define SOURCE_AT_CMD 1
 typedef struct lte_chip_info_ // ati
 {
     char cmd[C_AT_CMD_RESP];
@@ -432,5 +433,7 @@ int osn_lte_parse_pdp_context(char *buf, lte_pdp_context_t *pdp_ctxt);
 bool osn_lte_set_pdp_context_params(lte_pdp_context_params param_type, char *val);
 bool osn_lte_set_ue_data_centric(void);
 void osn_lte_reset_modem(void);
+int osn_lte_parse_at_cops(char *resp);
+void osn_lte_start_vendor_daemon(int source);
 
 #endif /* OSN_LTE_MODEM_H_INCLUDED */

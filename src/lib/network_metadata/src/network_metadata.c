@@ -800,28 +800,24 @@ set_pb_flowstate(struct flow_state *key)
     {
         pb->has_flowstart = true;
         pb->flowstart = true;
-        LOGT("Setting flow state start");
     }
 
     if (key->fend)
     {
         pb->has_flowend = true;
         pb->flowend = true;
-        LOGT("Setting flow state end");
     }
 
     if (key->first_obs > 0)
     {
         pb->has_firstobservedat = true;
         pb->firstobservedat = key->first_obs;
-        LOGT("Setting flow state first_obs");
     }
 
     if (key->last_obs > 0)
     {
         pb->has_lastobservedat = true;
         pb->lastobservedat = key->last_obs;
-        LOGT("Setting flow state last_obs");
     }
 
     return pb;

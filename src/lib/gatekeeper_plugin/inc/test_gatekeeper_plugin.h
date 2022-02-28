@@ -29,9 +29,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 extern char *g_certs_file;
 
-extern void (*g_setUp)(void);
-extern void (*g_tearDown)(void);
-
 extern void run_test_fsm_gk_fct(void);
 extern void run_test_fsm_gk(void);
 

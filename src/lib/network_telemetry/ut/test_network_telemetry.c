@@ -35,8 +35,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "target.h"
 #include "qm_conn.h"
+#include "unit_test_utils.h"
 
-
+char *test_name = "test_network_telemetry";
 static const char *g_fname = "/tmp/wc_serial_proto";
 
 static struct wc_observation_point g_op =
@@ -75,20 +76,6 @@ static struct wc_stats_report g_report =
     .ow = &g_ow,
     .health_stats = &g_hs,
 };
-
-/**
- * @brief See unity documentation/exmaples
- */
-void
-setUp(void) {}
-
-
-/**
- * @brief See unity documentation/exmaples
- */
-void
-tearDown(void) {}
-
 
 /**
  * @brief writes the contents of a serialized buffer in a file
@@ -444,10 +431,9 @@ main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
-    target_log_open("TEST", LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_INFO);
+    ut_init(test_name, NULL, NULL);
 
-    UnityBegin("network_telemetry");
+    ut_setUp_tearDown(test_name, NULL, NULL);
 
     /* Protobuf serialization testing */
     RUN_TEST(test_serialize_op_null_ptr);
@@ -457,5 +443,5 @@ main(int argc, char *argv[])
     RUN_TEST(test_serialize_hs);
     RUN_TEST(test_serialize_hs_report);
 
-    return UNITY_END();
+    return ut_fini();
 }

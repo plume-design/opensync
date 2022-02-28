@@ -553,8 +553,6 @@ fsm_dpi_dns_process_dns_record(struct fsm_session *session,
         sockaddr_storage_populate(af, rec->resp[i].address, &ipaddr);
         dns_cache_param.ipaddr = &ipaddr;
 
-        fsm_dns_cache_add_entry(&dns_cache_param);
-
         rc = fsm_dns_cache_add_entry(&dns_cache_param);
         if (!rc)
         {
@@ -666,6 +664,17 @@ fsm_dpi_dns_init(struct fsm_session *session)
     return 0;
 }
 
+
+/*
+ * Provided for compatibility
+ */
+int
+dpi_dns_plugin_init(struct fsm_session *session)
+{
+    return fsm_dpi_dns_init(session);
+}
+
+
 void
 fsm_dpi_dns_exit(struct fsm_session *session)
 {
@@ -734,6 +743,12 @@ fsm_dpi_dns_process_attr(struct fsm_session *session, const char *attr,
     /* Process the generic part (e.g., logging, include, exclude lists) */
     action = fsm_dpi_client_process_attr(session, attr, type, length, value, pkt_info);
     if (action == FSM_DPI_IGNORED) return action;
+
+    /*
+     * The combo (device, attribute) is to be processed, but no service provided
+     * Pass through.
+     */
+    if (session->service == NULL) return FSM_DPI_PASSTHRU;
 
     action = FSM_DPI_IGNORED;
 

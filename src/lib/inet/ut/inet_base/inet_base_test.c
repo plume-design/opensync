@@ -30,7 +30,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "inet_base.h"
 
 #include "../tests_common.c"
+#include "unit_test_utils.h"
 
+char *test_name = "inet_base_test";
 /*
  * ===========================================================================
  *  INET BASE
@@ -54,9 +56,6 @@ inet_test_t;
 
 static bool test_create_fail = false;
 static bool inet_test_service_commit(inet_base_t *super, enum inet_base_services srv, bool enable);
-
-void setUp() {}
-void tearDown() {}
 
 bool inet_test_init(inet_test_t *self)
 {
@@ -812,6 +811,10 @@ int main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
+    ut_init(test_name, NULL, NULL);
+
+    ut_setUp_tearDown(test_name, NULL, NULL);
+
     if (!parse_opts(argc, argv))
     {
         return false;
@@ -820,9 +823,7 @@ int main(int argc, char *argv[])
     if (opt_verbose)
         log_open("INET_BASE_TEST", LOG_OPEN_STDOUT);
 
-    UNITY_BEGIN();
-
     run_test_inet_base();
 
-    return UNITY_END();
+    return ut_fini();
 }

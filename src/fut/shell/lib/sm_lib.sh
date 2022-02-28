@@ -95,14 +95,14 @@ sm_setup_test_environment()
 #   0   On success.
 #   See DESCRIPTION.
 # USAGE EXAMPLE(S):
-#   insert_ws_config 5GL "[\"set\",[$sm_channel]]" survey on-chan 10 5 raw
-#   insert_ws_config 5GL "[\"set\",[$sm_channel]]" survey "[\"set\",[]]" 10 5 raw
+#   insert_wifi_stats_config 5GL "[\"set\",[$sm_channel]]" survey on-chan 10 5 raw
+#   insert_wifi_stats_config 5GL "[\"set\",[$sm_channel]]" survey "[\"set\",[]]" 10 5 raw
 ###############################################################################
-insert_ws_config()
+insert_wifi_stats_config()
 {
     local NARGS=7
     [ $# -ne ${NARGS} ] &&
-        raise "sm_lib:insert_ws_config requires ${NARGS} input argument(s), $# given" -arg
+        raise "sm_lib:insert_wifi_stats_config requires ${NARGS} input argument(s), $# given" -arg
     sm_radio_type=$1
     sm_channel_list=$2
     sm_stats_type=$3
@@ -111,7 +111,7 @@ insert_ws_config()
     sm_sampling_interval=$6
     sm_report_type=$7
 
-    log "sm_lib:insert_ws_config - Inserting configuration to Wifi_Stats_Config "
+    log "sm_lib:insert_wifi_stats_config - Inserting configuration to Wifi_Stats_Config "
 
     if [ -z "$sm_survey_type" ]; then
         sm_survey_type="[\"set\",[]]"
@@ -125,8 +125,8 @@ insert_ws_config()
         -i reporting_interval "$sm_reporting_interval" \
         -i sampling_interval "$sm_sampling_interval" \
         -i report_type "$sm_report_type" &&
-            log -deb "sm_lib:insert_ws_config - Configuration inserted to Wifi_Stats_Config table - Success" ||
-            raise "FAIL: insert_ovsdb_entry - Could not insert to Wifi_Stats_Config" -l "sm_lib:insert_ws_config" -oe
+            log -deb "sm_lib:insert_wifi_stats_config - Configuration inserted to Wifi_Stats_Config table - Success" ||
+            raise "FAIL: insert_ovsdb_entry - Could not insert to Wifi_Stats_Config" -l "sm_lib:insert_wifi_stats_config" -oe
 
     return 0
 }
@@ -242,7 +242,7 @@ inspect_survey_report()
     empty_ovsdb_table Wifi_Stats_Config ||
         raise "FAIL: empty_ovsdb_table - Could not empty Wifi_Stats_Config" -l "sm_lib:inspect_survey_report" -oe
 
-    insert_ws_config \
+    insert_wifi_stats_config \
         "$sm_radio_type" \
         "$sm_channel_list" \
         "$sm_stats_type" \
@@ -251,7 +251,7 @@ inspect_survey_report()
         "$sm_sampling_interval" \
         "$sm_report_type" &&
             log -deb "sm_lib:inspect_survey_report - Wifi_Stats_Config inserted - Success" ||
-            raise "FAIL: Could not insert Wifi_Stats_Config: insert_ws_config" -l "sm_lib:inspect_survey_report" -oe
+            raise "FAIL: Could not insert Wifi_Stats_Config: insert_wifi_stats_config" -l "sm_lib:inspect_survey_report" -oe
 
     check_survey_report_log "$sm_radio_type" "$sm_channel" "$sm_survey_type" processing_survey
     check_survey_report_log "$sm_radio_type" "$sm_channel" "$sm_survey_type" scheduled_scan
@@ -379,7 +379,7 @@ inspect_neighbor_report()
     empty_ovsdb_table Wifi_Stats_Config ||
         raise "FAIL: Could not empty Wifi_Stats_Config: empty_ovsdb_table" -l "sm_lib:inspect_neighbor_report" -oe
 
-    insert_ws_config \
+    insert_wifi_stats_config \
         "$sm_radio_type" \
         "$sm_channel_list" \
         "survey" \
@@ -388,9 +388,9 @@ inspect_neighbor_report()
         "$sm_sampling_interval" \
         "$sm_report_type" &&
             log -deb "sm_lib:inspect_neighbor_report - Wifi_Stats_Config inserted - Success" ||
-            raise "FAIL: Could not insert Wifi_Stats_Config: insert_ws_config" -l "sm_lib:inspect_neighbor_report" -oe
+            raise "FAIL: Could not insert Wifi_Stats_Config: insert_wifi_stats_config" -l "sm_lib:inspect_neighbor_report" -oe
 
-    insert_ws_config \
+    insert_wifi_stats_config \
         "$sm_radio_type" \
         "$sm_channel_list" \
         "neighbor" \
@@ -399,7 +399,7 @@ inspect_neighbor_report()
         "$sm_sampling_interval" \
         "$sm_report_type" &&
             log -deb "sm_lib:inspect_neighbor_report - Wifi_Stats_Config inserted - Success" ||
-            raise "FAIL: Could not insert Wifi_Stats_Config: insert_ws_config" -l "sm_lib:inspect_neighbor_report" -oe
+            raise "FAIL: Could not insert Wifi_Stats_Config: insert_wifi_stats_config" -l "sm_lib:inspect_neighbor_report" -oe
 
     check_neighbor_report_log "$sm_radio_type" "$sm_channel" "$sm_survey_type" add_neighbor "$sm_neighbor_mac" "$sm_neighbor_ssid"
     check_neighbor_report_log "$sm_radio_type" "$sm_channel" "$sm_survey_type" parsed_neighbor_bssid "$sm_neighbor_mac" "$sm_neighbor_ssid"
@@ -511,7 +511,7 @@ inspect_leaf_report()
     empty_ovsdb_table Wifi_Stats_Config ||
         raise "FAIL: Could not empty Wifi_Stats_Config: empty_ovsdb_table" -l "sm_lib:inspect_leaf_report" -oe
 
-    insert_ws_config \
+    insert_wifi_stats_config \
         "$sm_radio_type" \
         "[\"set\",[]]" \
         "survey" \
@@ -520,9 +520,9 @@ inspect_leaf_report()
         "$sm_sampling_interval" \
         "$sm_report_type" &&
             log -deb "sm_lib:inspect_leaf_report - Wifi_Stats_Config inserted - Success" ||
-            raise "FAIL: Could not insert Wifi_Stats_Config: insert_ws_config" -l "sm_lib:inspect_leaf_report" -oe
+            raise "FAIL: Could not insert Wifi_Stats_Config: insert_wifi_stats_config" -l "sm_lib:inspect_leaf_report" -oe
 
-    insert_ws_config \
+    insert_wifi_stats_config \
         "$sm_radio_type" \
         "[\"set\",[]]" \
         "client" \
@@ -531,7 +531,7 @@ inspect_leaf_report()
         "$sm_sampling_interval" \
         "$sm_report_type" &&
             log -deb "sm_lib:inspect_leaf_report - Wifi_Stats_Config inserted - Success" ||
-            raise "FAIL: Could not insert Wifi_Stats_Config: insert_ws_config" -l "sm_lib:inspect_leaf_report" -oe
+            raise "FAIL: Could not insert Wifi_Stats_Config: insert_wifi_stats_config" -l "sm_lib:inspect_leaf_report" -oe
 
     check_leaf_report_log "$sm_radio_type" "$sm_leaf_mac" connected
     check_leaf_report_log "$sm_radio_type" "$sm_leaf_mac" client_parsing

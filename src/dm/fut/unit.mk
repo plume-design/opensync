@@ -74,12 +74,12 @@ UNIT_FILE += onbrd_verify_wan_ip_address.sh
 # OTHR specific FUTs
 UNIT_FILE += othr_setup.sh
 UNIT_FILE += othr_cleanup.sh
-UNIT_FILE += othr_configure_and_verify_gre_tunnel_gw.sh
 UNIT_FILE += othr_connect_wifi_client_to_ap_freeze.sh
 UNIT_FILE += othr_connect_wifi_client_to_ap_unfreeze.sh
 UNIT_FILE += othr_verify_eth_lan_iface_wifi_master_state.sh
 UNIT_FILE += othr_verify_eth_wan_iface_wifi_master_state.sh
 UNIT_FILE += othr_verify_gre_iface_wifi_master_state.sh
+UNIT_FILE += othr_verify_gre_tunnel_gw.sh
 UNIT_FILE += othr_verify_gre_tunnel_gw_cleanup.sh
 UNIT_FILE += othr_verify_gre_tunnel_leaf.sh
 UNIT_FILE += othr_verify_lan_bridge_iface_wifi_master_state.sh

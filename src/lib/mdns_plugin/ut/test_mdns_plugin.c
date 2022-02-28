@@ -627,7 +627,7 @@ int main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
-    ut_init(ut_name);
+    ut_init(ut_name, NULL, NULL);
     ut_setUp_tearDown(ut_name, mdns_plugin_setUp, mdns_plugin_tearDown);
 
     /* Node Info(Observation Point) tests */
@@ -660,7 +660,5 @@ int main(int argc, char *argv[])
     /* Test parser */
     RUN_TEST(test_mdns_parser);
 
-    ut_fini();
-
-    return UNITY_END();
+    return ut_fini();
 }

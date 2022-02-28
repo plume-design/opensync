@@ -641,10 +641,6 @@ process_response_ips(dns_info *dns, uint8_t *packet,
                 param.action_by_name = policy_reply->action;
 
                 fsm_dns_cache_add_entry(&param);
-                if (LOG_SEVERITY_ENABLED(LOG_SEVERITY_TRACE))
-                {
-                    fsm_dns_cache_print(&param);
-                }
             }
         }
         answer = answer->next;

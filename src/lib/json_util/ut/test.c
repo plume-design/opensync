@@ -36,7 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "unity.h"
 #include "json_util.h"
 #include "util.h"
-
+#include "unit_test_utils.h"
 
 #define BUFF_SZ (4 * 4096)
 #define DIRDATA "data/"
@@ -51,9 +51,10 @@ typedef enum
 } test_file_t;
 
 static char buff[BUFF_SZ];
+char *test_name = "test_json_util";
 
 /* invoked before each test execution   */
-void setUp (void)
+void json_util_setUp(void)
 {
     /* on each test start load the json buffer  */
 #if 0
@@ -75,12 +76,6 @@ void setUp (void)
     }
 #endif
 }
-
-/* invoked after each test execution    */
-void tearDown (void)
-{
-}
-
 
 bool load_buff(test_file_t ft)
 {
@@ -213,8 +208,9 @@ int main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
+    ut_init(test_name, NULL, NULL);
 
-    UnityBegin("json_split ");
+    ut_setUp_tearDown(test_name, json_util_setUp, NULL);
 
     RUN_TEST(testjsplit_regularjson);
     RUN_TEST(testjsplit_specialcharjson1);
@@ -222,5 +218,5 @@ int main(int argc, char *argv[])
     RUN_TEST(testjsplit_specialcharjson3);
     RUN_TEST(testjgets_regularjson);
 
-    return UNITY_END();
+    return ut_fini();
 }

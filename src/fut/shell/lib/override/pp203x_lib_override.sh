@@ -114,9 +114,9 @@ device_init()
         log -deb "pp203x_lib_override:device_init - Healthcheck stopped - Success" ||
         raise "FAIL: stop_healthcheck - Could not stop healthcheck" -l "pp203x_lib_override:device_init" -ds
 
-    cm_disable_fatal_state &&
+    disable_fatal_state_cm &&
         log -deb "pp203x_lib_override:device_init - CM fatal state disabled - Success" ||
-        raise "FAIL: cm_disable_fatal_state - Could not disable CM fatal state" -l "pp203x_lib_override:device_init" -ds
+        raise "FAIL: disable_fatal_state_cm - Could not disable CM fatal state" -l "pp203x_lib_override:device_init" -ds
 
     return $?
 }
@@ -141,13 +141,13 @@ device_init()
 #   0   CN matches any input parameter
 #   1   CN mismatches all input parameters
 # USAGE EXAMPLE(S):
-#   verify_certificate_cn 1A2B3C4D5E6F 1A2B3C4D5E6F PP203X 00904C324057
+#   check_certificate_cn 1A2B3C4D5E6F 1A2B3C4D5E6F PP203X 00904C324057
 ###############################################################################
-verify_certificate_cn()
+check_certificate_cn()
 {
     local NARGS=1
     [ $# -lt ${NARGS} ] &&
-        raise "pp203x_lib_override:verify_certificate_cn requires at least ${NARGS} input argument(s), $# given" -arg
+        raise "pp203x_lib_override:check_certificate_cn requires at least ${NARGS} input argument(s), $# given" -arg
     comm_name=${1}
     device_model=${2}
     device_id=${3}

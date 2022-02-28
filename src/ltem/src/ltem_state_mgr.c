@@ -93,37 +93,64 @@ ltem_get_wan_state_name(enum ltem_wan_state state)
 }
 
 /**
- * @brief Bring WAN interface down
+ * @brief WAN is interface down
  */
 static void
-ltem_force_failover(ltem_mgr_t *mgr)
+ltem_set_failover(ltem_mgr_t *mgr)
 {
     int res;
 
-    res = ltem_force_lte_route(mgr);
-    if (!res)
+    if (mgr->lte_config_info->force_use_lte)
     {
-        mgr->lte_state_info->lte_failover_active = true;
-        mgr->lte_state_info->lte_failover_start = time(NULL);
-        mgr->lte_state_info->lte_failover_end = 0;
-        mgr->lte_state_info->lte_failover_count++;
+        res = ltem_force_lte_route(mgr);
+        if (!res) /* If we fail to update the route, we don't set failover */
+        {
+            mgr->lte_state_info->lte_failover_active = true;
+            mgr->lte_state_info->lte_failover_start = time(NULL);
+            mgr->lte_state_info->lte_failover_end = 0;
+            mgr->lte_state_info->lte_failover_count++;
+        }
     }
+    else
+    {
+            mgr->lte_state_info->lte_failover_active = true;
+            mgr->lte_state_info->lte_failover_start = time(NULL);
+            mgr->lte_state_info->lte_failover_end = 0;
+            mgr->lte_state_info->lte_failover_count++;
+    }
+
+    LOGI("%s: failover_active=%d, start time[%ld]", __func__,
+         mgr->lte_state_info->lte_failover_active,
+         mgr->lte_state_info->lte_failover_start);
 }
 
 /**
- * @brief Bring WAN interface back up
+ * @brief WAN interface is back up
  */
 static void
 ltem_revert_failover(ltem_mgr_t *mgr)
 {
     int res;
 
-    res = ltem_restore_default_wan_route(mgr);
-    if (!res)
+    if (mgr->lte_config_info->force_use_lte)
     {
-        mgr->lte_state_info->lte_failover_active = false;
-        mgr->lte_state_info->lte_failover_end = time(NULL);
+        res = ltem_restore_default_wan_route(mgr);
+        if (!res)
+        {
+            mgr->lte_state_info->lte_failover_active = false;
+            mgr->lte_state_info->lte_failover_end = time(NULL);
+        }
     }
+    else
+    {
+            mgr->lte_state_info->lte_failover_active = false;
+            mgr->lte_state_info->lte_failover_end = time(NULL);
+    }
+
+    LOGI("%s: failover_active=%d, start time[%ld], end time[%ld]", __func__,
+         mgr->lte_state_info->lte_failover_active,
+         mgr->lte_state_info->lte_failover_start,
+         mgr->lte_state_info->lte_failover_end);
 }
 
 /**
@@ -143,17 +170,13 @@ ltem_handle_wan_state_change(ltem_mgr_t *mgr)
             LOGI("%s: %s, manager_enable=false", __func__, ltem_get_wan_state_name(mgr->wan_state));
             break;
         }
-        if (mgr->lte_state == LTEM_LTE_STATE_UP && (mgr->lte_config_info->lte_failover_enable && mgr->lte_config_info->force_use_lte))
+        if (mgr->lte_state == LTEM_LTE_STATE_UP && mgr->lte_config_info->lte_failover_enable)
         {
-            ltem_force_failover(mgr);
+            ltem_set_failover(mgr);
         }
         break;
     case LTEM_WAN_STATE_UP:
-        if (mgr->lte_state == LTEM_LTE_STATE_UP && mgr->lte_state_info->lte_failover_active && !mgr->lte_config_info->force_use_lte)
-        {
-            ltem_revert_failover(mgr);
-        }
-        else if (mgr->lte_state == LTEM_LTE_STATE_UP && mgr->lte_state_info->lte_failover_active && !mgr->lte_config_info->lte_failover_enable)
+        if (mgr->lte_state == LTEM_LTE_STATE_UP && mgr->lte_state_info->lte_failover_active)
         {
             ltem_revert_failover(mgr);
         }

@@ -40,6 +40,7 @@ UNIT_SRC += ../src/ltem_state_mgr.c
 UNIT_SRC += ../src/ltem_route.c
 UNIT_SRC += ../src/ltem_res.c
 UNIT_SRC += ../src/ltem_mqtt.c
+UNIT_SRC += ../src/ltem_esim.c
 
 UNIT_CFLAGS := -Isrc/ltem/inc
 UNIT_CFLAGS += -Isrc/lib/lte_info/inc
@@ -68,3 +69,4 @@ UNIT_DEPS += src/lib/osa
 UNIT_DEPS += src/lib/target
 UNIT_DEPS += src/lib/unity
 UNIT_DEPS += src/lib/osn
+UNIT_DEPS += src/lib/unit_test_utils

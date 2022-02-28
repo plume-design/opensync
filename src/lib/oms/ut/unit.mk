@@ -36,7 +36,6 @@ UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
 UNIT_LDFLAGS := -lev -ljansson
 UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 
-
 UNIT_DEPS := src/lib/log
 UNIT_DEPS += src/lib/osa
 UNIT_DEPS += src/lib/const
@@ -44,4 +43,4 @@ UNIT_DEPS += src/lib/common
 UNIT_DEPS += src/lib/ovsdb
 UNIT_DEPS += src/lib/unity
 UNIT_DEPS += src/lib/oms
-
+UNIT_DEPS += src/lib/unit_test_utils

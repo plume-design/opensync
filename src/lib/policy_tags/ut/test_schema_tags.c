@@ -29,10 +29,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "policy_tags.h"
 #include "target.h"
 #include "unity.h"
+#include "unit_test_utils.h"
 
-char *
-g_test_name = "test_policy_tags";
-
+char *test_name = "test_policy_tags";
 
 struct schema_Openflow_Tag g_tags[] =
 {
@@ -226,7 +225,7 @@ test_type_of_tag(void)
 
 
 void
-setUp(void)
+schema_tags_setUp(void)
 {
     size_t len;
     size_t i;
@@ -245,7 +244,7 @@ setUp(void)
 
 
 void
-tearDown(void)
+schema_tags_tearDown(void)
 {
     size_t len;
     size_t i;
@@ -354,15 +353,14 @@ main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
-    target_log_open("TEST", LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_INFO);
+    ut_init(test_name, NULL, NULL);
 
-    UnityBegin(g_test_name);
+    ut_setUp_tearDown(test_name, schema_tags_setUp, schema_tags_tearDown);
 
     RUN_TEST(test_tag_type);
     RUN_TEST(test_type_of_tag);
     RUN_TEST(test_val_in_tag);
     RUN_TEST(test_val_in_tag_group);
 
-    return UNITY_END();
+    return ut_fini();
 }

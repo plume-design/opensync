@@ -35,6 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "target.h"
 #include "unity.h"
 #include "memutil.h"
+#include "unit_test_utils.h"
 
 const char *test_name = "icm_tests";
 
@@ -95,24 +96,6 @@ void imc_global_test_setup(void)
     g_test_mgr.timeout = 0.0;
     g_test_mgr.val = 0x123456789abcdef;
     g_test_mgr.loop = EV_DEFAULT;
-}
-
-/**
- * @brief called by the unity framework at the start of each test
- */
-void
-setUp(void)
-{
-    return;
-}
-
-
-/**
- * @brief called by the unity framework at the end of each test
- */
-void tearDown(void)
-{
-    return;
 }
 
 
@@ -450,13 +433,11 @@ main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
-    target_log_open("TEST", LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_TRACE);
+    ut_init(test_name, imc_global_test_setup, NULL);
 
-    UnityBegin(test_name);
-    imc_global_test_setup();
+    ut_setUp_tearDown(test_name, NULL, NULL);
 
     RUN_TEST(test_events);
 
-    return UNITY_END();
+    return ut_fini();
 }

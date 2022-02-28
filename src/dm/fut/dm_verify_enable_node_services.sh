@@ -86,7 +86,12 @@ check_ovsdb_entry Node_Services -w service "$manager" &&
     raise "FAIL: Node_Services table does not contain $manager" -l "dm/dm_verify_enable_node_services.sh" -tc
 
 service_enabled=$(get_ovsdb_entry_value Node_Services enable -w service $manager -r)
-pid_of_manager=$(get_pid "${OPENSYNC_ROOTDIR}/bin/$manager")
+
+wait_for_function_response "notempty" "get_pid ${OPENSYNC_ROOTDIR}/bin/${manager}" 10 &&
+  pid_of_manager=$(get_pid "${OPENSYNC_ROOTDIR}/bin/$manager") ||
+  pid_of_manager=""
+
+log -deb "dm/dm_verify_enable_node_services.sh: PID is '${pid_of_manager}'"
 
 if [ $service_enabled == "false" ]; then
     status="not "

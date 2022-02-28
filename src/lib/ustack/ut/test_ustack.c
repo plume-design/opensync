@@ -462,7 +462,7 @@ main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
-    ut_init(ut_name);
+    ut_init(ut_name, NULL, NULL);
     ut_setUp_tearDown(ut_name, ustack_setUp, ustack_tearDown);
 
     RUN_TEST(test_tcp_ipv4);
@@ -475,7 +475,5 @@ main(int argc, char *argv[])
     RUN_TEST(test_udp_ipv4_no_data);
     RUN_TEST(test_flow_details);
 
-    ut_fini();
-
-    return UNITY_END();
+    return ut_fini();
 }

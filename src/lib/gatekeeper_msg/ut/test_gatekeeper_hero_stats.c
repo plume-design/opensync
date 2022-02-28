@@ -37,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "gatekeeper_hero_stats.h"
 
 #include "test_gatekeeper_msg.h"
+#include "unit_test_utils.h"
 
 extern bool (*send_report)(qm_compress_t compress, char *topic,
                            void *data, int data_size, qm_response_t *res);
@@ -718,15 +719,9 @@ test_gk_serialize_cache_redirect_ip_entries(void)
 void
 run_test_gatekeeper_hero_stats(void)
 {
-    void (*prev_setUp)(void);
-    void (*prev_tearDown)(void);
     struct gkc_report_aggregator *aggr;
 
-    /* swap the setup/teardown routines */
-    prev_setUp    = g_setUp;
-    prev_tearDown = g_tearDown;
-    g_setUp       = hero_stats_setUp;
-    g_tearDown    = hero_stats_tearDown;
+    ut_setUp_tearDown(__func__, hero_stats_setUp, hero_stats_tearDown);
 
     aggr = gkhc_get_aggregator();
 
@@ -742,7 +737,5 @@ run_test_gatekeeper_hero_stats(void)
     RUN_TEST(test_gk_serialize_cache_redirect_cname_entries);
     RUN_TEST(test_gk_serialize_cache_redirect_ip_entries);
 
-    /* restore the setup/teardown routines */
-    g_setUp    = prev_setUp;
-    g_tearDown = prev_tearDown;
+    ut_setUp_tearDown(NULL, NULL, NULL);
 }

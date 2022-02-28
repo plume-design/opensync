@@ -103,6 +103,7 @@ ltem_init_mgr(struct ev_loop *loop)
     {
         osn_lte_reset_modem();
     }
+    osn_lte_start_vendor_daemon(SOURCE_AT_CMD);
     return true;
 }
 

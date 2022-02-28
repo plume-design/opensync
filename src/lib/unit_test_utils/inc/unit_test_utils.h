@@ -90,7 +90,7 @@ void ut_setUp_tearDown(const char* test_name, void (*setup)(void), void (*teardo
 /*
  * @brief Generic initialization of a unit-test executable
  */
-bool ut_init(const char *ut_name);
+void ut_init(const char *ut_name, void (*global_ut_init)(void), void (*global_ut_exit)(void));
 
 /*
  * @brief Generic cleanup before terminating a UT
@@ -98,6 +98,6 @@ bool ut_init(const char *ut_name);
  * @remark this is going to be added to at_exit() so it will be called
  *         even in the case of a failing test.
  */
-void ut_fini(void);
+int ut_fini(void);
 
 #endif /* UNIT_TEST_UTILS_H_INCLUDED */

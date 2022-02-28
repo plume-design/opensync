@@ -312,6 +312,7 @@ typedef struct {
 
     uint8_t                     hwm;
     uint8_t                     lwm;
+    unsigned int                bowm; /* Busy Override watermark */
 
     uint8_t                     prev_xing_snr;
 

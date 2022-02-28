@@ -149,6 +149,7 @@ ref_sta_24=$(cat <<-.
 	rssi_inact_xing=0
 	rssi_high_xing=35
 	rssi_low_xing=20
+	rssi_busy_override_xing=0
 	auth_reject_reason=0
 .
 )
@@ -165,6 +166,7 @@ ref_sta_5=$(cat <<-.
 	rssi_inact_xing=0
 	rssi_high_xing=0
 	rssi_low_xing=20
+	rssi_busy_override_xing=0
 	auth_reject_reason=0
 .
 )
@@ -181,6 +183,7 @@ ref_sta_6=$(cat <<-.
 	rssi_inact_xing=0
 	rssi_high_xing=0
 	rssi_low_xing=0
+	rssi_busy_override_xing=0
 	auth_reject_reason=0
 .
 )

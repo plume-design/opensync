@@ -96,6 +96,7 @@ typedef struct {
     uint8_t                 rssi_inact_xing;
     uint8_t                 rssi_high_xing;
     uint8_t                 rssi_low_xing;
+    uint8_t                 rssi_busy_override_xing;
     uint8_t                 auth_reject_reason;
 } bsal_client_config_t;
 
@@ -270,6 +271,7 @@ typedef struct {
     bsal_rssi_change_t  inact_xing;
     bsal_rssi_change_t  high_xing;
     bsal_rssi_change_t  low_xing;
+    bsal_rssi_change_t  busy_override_xing;
 } bsal_ev_rssi_xing_t;
 
 typedef struct {

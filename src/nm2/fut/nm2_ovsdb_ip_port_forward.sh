@@ -85,12 +85,12 @@ trap '
 log_title "nm2/nm2_ovsdb_ip_port_forward.sh: NM2 test - Testing IP port forwarding"
 
 log "nm2/nm2_ovsdb_ip_port_forward.sh: Set IP FORWARD in OVSDB"
-set_ip_forward "$src_ifname" "$src_port" "$dst_ipaddr" "$dst_port" "$protocol" &&
+set_ip_port_forwarding "$src_ifname" "$src_port" "$dst_ipaddr" "$dst_port" "$protocol" &&
     log "nm2/nm2_ovsdb_ip_port_forward.sh: Set IP port forward for $src_ifname - Success" ||
     raise "FAIL: Failed to set IP port forward - $src_ifname" -l "nm2/nm2_ovsdb_ip_port_forward.sh" -tc
 
 log "nm2/nm2_ovsdb_ip_port_forward.sh: Check for IP FORWARD record in iptables - LEVEL2"
-wait_for_function_response 0 "ip_port_forward $dst_ipaddr:$dst_port" &&
+wait_for_function_response 0 "check_ip_port_forwarding $dst_ipaddr:$dst_port" &&
     log "nm2/nm2_ovsdb_ip_port_forward.sh: LEVEL2 - IP port forward record propagated to iptables" ||
     raise "FAIL: LEVEL2 - Failed to propagate record into iptables" -l "nm2/nm2_ovsdb_ip_port_forward.sh" -tc
 
@@ -104,8 +104,8 @@ wait_ovsdb_entry_remove IP_Port_Forward -w dst_ipaddr "$dst_ipaddr" -w src_ifnam
     raise "FAIL: Failed to remove entry from IP_Port_Forward for $src_ifname" -l "nm2/nm2_ovsdb_ip_port_forward.sh" -tc
 
 log "nm2/nm2_ovsdb_ip_port_forward.sh: Check is IP FORWARD record is deleted from iptables - LEVEL2"
-wait_for_function_response 1 "ip_port_forward $dst_ipaddr:$dst_port" &&
+wait_for_function_response 1 "check_ip_port_forwarding $dst_ipaddr:$dst_port" &&
     log "nm2/nm2_ovsdb_ip_port_forward.sh: LEVEL2 - IP FORWARD record deleted from iptables - Success" ||
-    force_delete_ip_port_forward_die "$src_ifname" "NM_PORT_FORWARD" "$dst_ipaddr:$dst_port"
+    force_delete_ip_port_forward_raise "$src_ifname" "NM_PORT_FORWARD" "$dst_ipaddr:$dst_port"
 
 pass

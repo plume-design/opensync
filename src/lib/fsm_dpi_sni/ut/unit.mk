@@ -31,8 +31,6 @@ UNIT_TYPE := TEST_BIN
 UNIT_SRC := test_fsm_dpi_sni_main.c
 UNIT_SRC += test_fsm_dpi_sni_plugin.c
 UNIT_SRC += test_fsm_dpi_sni_functions.c
-UNIT_SRC += test_fsm_dpi_adt.c
-UNIT_SRC += test_fsm_dpi_dns.c
 
 UNIT_DEPS := src/lib/common
 UNIT_DEPS += src/lib/dns_parse

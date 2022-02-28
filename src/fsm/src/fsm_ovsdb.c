@@ -634,24 +634,36 @@ bool
 fsm_parse_dso(struct fsm_session *session)
 {
     char *plugin;
+    char dso[256] = { 0 };
 
-    plugin = session->conf->plugin;
-    if (plugin != NULL)
+    session->dso = NULL;
+
+    if (session->conf && session->conf->plugin)
     {
-        LOGI("%s: plugin: %s", __func__, plugin);
-        session->dso = STRDUP(plugin);
+        plugin = session->conf->plugin;
+        LOGD("%s: plugin: %s", __func__, plugin);
+        if (*plugin == '/')
+        {
+            session->dso = STRDUP(plugin);
+        }
+        else
+        {
+            snprintf(dso, sizeof(dso), CONFIG_INSTALL_PREFIX"/%s", plugin);
+            session->dso = STRDUP(dso);
+        }
     }
     else
     {
-        char *dir = CONFIG_INSTALL_PREFIX"/lib";
-        char dso[256];
-
-        memset(dso, 0, sizeof(dso));
-        snprintf(dso, sizeof(dso), "%s/libfsm_%s.so", dir, session->name);
-        session->dso = STRDUP(dso);
+        LOGD("%s: plugin: No explicit plugin DSO. Infering from name: %s",
+             __func__, session->name);
+        if (session->name)
+        {
+            snprintf(dso, sizeof(dso), CONFIG_INSTALL_PREFIX"/lib/libfsm_%s.so", session->name);
+            session->dso = STRDUP(dso);
+        }
     }
 
-    LOGT("%s: session %s set dso path to %s", __func__,
+    LOGD("%s: session %s set dso path to %s", __func__,
          session->name, session->dso != NULL ? session->dso : "None");
 
     return (session->dso != NULL ? true : false);

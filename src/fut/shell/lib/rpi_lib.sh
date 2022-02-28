@@ -591,4 +591,37 @@ address_dns_check()
     fi
 }
 
+#################################################################################
+# DESCRIPTION:
+#   Function checks if traffic is flowing to the WAN IP/Port of host.
+#   This function depends on usage of iperf3 tool.
+# INPUT PARAMETER(S):
+#   $1  IP address to check traffic (string, required)
+#   $2  port number on DUT (interger, required)
+# RETURNS:
+#   0   Traffic flow is successful.
+# USAGE EXAMPLE(S):
+#  check_traffic_iperf3_client 192.168.200.10 8001
+# NOTE: This function runs iperf3 client and the host (bearing IP/Port)
+#       on the other side must be running iperf3 server to check traffic flow.
+##################################################################################
+check_traffic_iperf3_client()
+{
+    local NARGS=2
+    [ $# -ne ${NARGS} ] &&
+        raise "rpi_lib:check_traffic_iperf3_client requires ${NARGS} input argument(s), $# given" -arg
+    local ip_address=${1}
+    local port=${2}
+
+    check_ec=$(iperf3 -c ${ip_address} -p ${port} -t 5)
+    echo "$check_ec" | grep -i "connected.*${ip_address}.*${port}"
+    if [ "$?" -eq 0 ]; then
+        log -deb "rpi_lib:check_traffic_iperf3_client: Traffic is reachable to WAN IP of the DUT: ${ip_address}:${port} - Success"
+    else
+        raise "FAIL: Traffic failed to reach WAN IP of the DUT: ${ip_address}:${port}" -l "rpi_lib:check_traffic_iperf3_client" -tc
+    fi
+
+    return 0
+}
+
 ####################### CM SECTION - STOP #####################################

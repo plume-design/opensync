@@ -109,14 +109,14 @@ device_init()
     stop_healthcheck &&
         log -deb "bcm947622dvt_lib_override:device_init - Healthcheck stopped - Success" ||
         raise "FAIL: Could not stop healthcheck" -l "bcm947622dvt_lib_override:device_init" -ds
-    cm_disable_fatal_state &&
+    disable_fatal_state_cm &&
         log -deb "bcm947622dvt_lib_override:device_init - CM fatal state disabled - Success" ||
         raise "FAIL: Could not disable CM fatal state" -l "bcm947622dvt_lib_override:device_init" -ds
     log_state_value="$(get_kconfig_option_value "TARGET_PATH_LOG_STATE")"
     log_state_file=$(echo ${log_state_value} | tr -d '"')
     log_dir="${log_state_file%/*}"
     [ -n "${log_dir}" ] || raise "Kconfig option TARGET_PATH_LOG_STATE value empty" -l "bcm947622dvt_lib_override:device_init" -ds
-    writable_dir "${log_dir}" &&
+    set_dir_to_writable "${log_dir}" &&
         log -deb "bcm947622dvt_lib_override:device_init - ${log_dir} is writable - Success" ||
         raise "FAIL: ${log_dir} is not writable" -l "bcm947622dvt_lib_override:device_init" -ds
 }
@@ -125,6 +125,149 @@ device_init()
 
 
 ####################### WM OVERRIDE SECTION - START ###########################
+
+###############################################################################
+# DESCRIPTION:
+#   Function validates that CAC was completed in set CAC time for specific channel which is set in Wifi_Radio_State
+# INPUT PARAMETER(S):
+#   $1  Physical Radio interface name for which to validate CAC if needed
+# RETURNS:
+#   0 - In following cases:
+#       - shell/config/regulatory.txt file was not found
+#       - No associated, enabled and AP VIF found for specified Phy Radio interface
+#       - Channel, ht_mode or freq_band is not set in Wifi_Radio_State for specified Phy Radio interface
+#       - Channel which is set in Wifi_Radio_State is not DFS nor DFS-WEATHER channel
+#       - CAC was at cac_completed state in Wifi_Radio_State for specific channel which is set in Wifi_Radio_State
+#   1 - In following cases:
+#       - Invalid number of arguments specified
+#       - Failure to acquire vif_states uuid-s from Wifi_Radio_State for specified Phy Radio name
+#       - CAC was not completed in given CAC time for specific channel which is set in Wifi_Radio_State
+# NOTE:
+# - CAC times are hardcoded inside this function and their values are following:
+#   - NON-DFS : 0s (CAC is not required for NON-DFS channels)
+#   - DFS     : 60s
+#   - WEATHER : 600s
+# USAGE EXAMPLE(S):
+#   validate_cac wifi0
+###############################################################################
+validate_cac()
+{
+    # First validate presence of regulatory.txt file
+    regulatory_file_path="${FUT_TOPDIR}/shell/config/regulatory.txt"
+    if [ ! -f "${regulatory_file_path}" ]; then
+        log -deb "Regulatory file ${regulatory_file_path} does not exist, nothing to do."
+        return 0
+    fi
+
+    local NARGS=1
+    [ $# -ne ${NARGS} ] &&
+        raise "wm2_lib:validate_cac requires ${NARGS} input argument(s), $# given" -arg
+    # shellcheck disable=SC2034
+    if_name="${1}"
+    # Check if Radio interface is associated to VIF ap
+    vif_states=$(get_ovsdb_entry_value Wifi_Radio_State vif_states -w if_name "${if_name}")
+    if [ "${vif_states}" == "[\"set\",[]]" ]; then
+        log -deb "wm2_lib:validate_cac - Radio interfaces is not associated to any VIF, nothing to do."
+        return 0
+    fi
+    # Check if channel is set in Wifi_Radio_State
+    state_channel=$(get_ovsdb_entry_value Wifi_Radio_State channel -w if_name "${if_name}")
+    if [ "${state_channel}" == "[\"set\",[]]" ]; then
+        log -deb "wm2_lib:validate_cac - Channel is not set in Wifi_Radio_State, nothing to do."
+        return 0
+    fi
+    state_ht_mode=$(get_ovsdb_entry_value Wifi_Radio_State ht_mode -w if_name "${if_name}")
+    if [ "${state_ht_mode}" == "[\"set\",[]]" ]; then
+        log -deb "wm2_lib:validate_cac - ht_mode is not set in Wifi_Radio_State, nothing to do."
+        return 0
+    fi
+    state_freq_band=$(get_ovsdb_entry_value Wifi_Radio_State freq_band -w if_name "${if_name}" | tr '[A-Z]' '[a-z]')
+    if [ "${state_freq_band}" == "[\"set\",[]]" ]; then
+        log -deb "wm2_lib:validate_cac - freq_band is not set in Wifi_Radio_State, nothing to do."
+        return 0
+    fi
+
+    # Retrieve device regulatory domain
+    state_country=$(get_iface_regulatory_domain "${if_name}")
+    echo "${state_country}"
+    state_country=$(echo "${state_country}" | tail -1)
+
+    # Check channel type if it requires CAC
+    log -deb "wm2_lib:validate_cac - Country: ${state_country} | Channel: ${state_channel} | Freq band: ${state_freq_band} | HT mode: ${state_ht_mode}"
+    reg_dfs_standard_match=$(cat "${regulatory_file_path}" | grep -i "${state_country}_dfs_standard_${state_freq_band}_${state_ht_mode}")
+    check_standard=$(contains_element "${state_channel}" ${reg_dfs_standard_match})
+
+    reg_dfs_weather_match=$(cat "${regulatory_file_path}" | grep -i "${state_country}_dfs_weather_${state_freq_band}_${state_ht_mode}")
+    check_weather=$(contains_element "${state_channel}" ${reg_dfs_weather_match})
+
+    if [ ${state_ht_mode} = "HT160" ]; then
+        cac_time=60
+        HT160_match=0
+        non_dfs_channel_list="36 40 44 48"
+        standard_dfs_channel_list="52 56 60 64"
+    elif [ "${check_standard}" == 0 ]; then
+        # channel_type='standard-dfs'
+        cac_time=60
+    elif [ "${check_weather}" == 0 ]; then
+        # channel_type='weather-dfs'
+        cac_time=600
+    else
+        log -deb "wm2_lib:validate_cac - Channel ${state_channel} is not DFS nor WEATHER channel so CAC wait is not required."
+        return 0
+    fi
+
+    # Check if Radio is associated to any AP VIF (ignore STA vif-s)
+    vif_states_uuids="$(get_ovsdb_entry_value Wifi_Radio_State vif_states -w if_name "${if_name}" -json_value uuid)"
+    if [ "$?" != 0 ]; then
+        raise "wm2_lib:validate_cac - Failed to acquire vif_states uuid-s for ${if_name}" -ds
+    fi
+    # Check if there is AP VIF and is enabled for specific Radio
+    vif_found=1
+    for i in ${vif_states_uuids}; do
+        check_ovsdb_entry Wifi_VIF_State -w _uuid '["uuid",'$i']' -w mode ap -w enabled true
+        if [ "${?}" == 0 ]; then
+            log -deb "wm2_lib:validate_cac - Enabled and associated AP VIF found for Radio ${if_name} - Success"
+            vif_found=0
+            break
+        fi
+    done
+    if [ "${vif_found}" == 1 ]; then
+        raise "FAIL: Radio interfaces is not associated to any AP enabled VIF" -l "wm2_lib:validate_cac" -ds
+    fi
+
+    # HT160 spans the entire radio band, therefore all channels need to be checked i.e. non DFS channel state must
+    # be allowed and DFS channel state must be cac_completed
+    if [ "${HT160_match}" == 0 ]; then
+        for channel in $non_dfs_channel_list
+        do
+            wait_for_function_output "allowed" "get_radio_channel_state ${channel} ${if_name}" &&
+                log -deb "wm2_lib:validate_cac - Channel ${channel} is not DFS nor WEATHER channel so CAC wait is not required." ||
+                log -err "FAIL: Channel CAC was not completed." -l "wm2_lib:validate_cac"
+        done
+        for channel in $standard_dfs_channel_list
+        do
+            wait_for_function_output "cac_completed" "get_radio_channel_state ${channel} ${if_name}" ${cac_time} &&
+                log -deb "wm2_lib:validate_cac - Channel state went to cac_completed. Channel available" ||
+                log -err "FAIL: Channel CAC was not completed in given CAC time (${cac_time}s)." -l "wm2_lib:validate_cac"
+        done
+        return 0
+    elif [ "${check_standard}" == 0 ] || [ "${check_weather}" == 0 ]; then
+        wait_for_function_output "cac_completed" "get_radio_channel_state ${state_channel} ${if_name}" ${cac_time} &&
+            log -deb "wm2_lib:validate_cac - Channel state went to cac_completed. Channel available" ||
+            log -err "FAIL: Channel CAC was not completed in given CAC time (${cac_time}s)." -l "wm2_lib:validate_cac"
+
+        log -deb "wm2_lib:validate_cac - Checking interface ${if_name} channel ${state_channel} status"
+        channel_status="$(get_radio_channel_state "${state_channel}" "${if_name}")"
+        log -deb "wm2_lib:validate_cac - Channel status is: ${channel_status}"
+        if [ "${channel_status}" == 'cac_completed' ]; then
+            log -deb "wm2_lib:validate_cac -  CAC completed for channel ${state_channel} - Success"
+            return 0
+        else
+            print_tables Wifi_Radio_State || true
+            raise "FAIL: CAC was not completed for channel ${state_channel}" -l "wm2_lib/validate_cac" -ds
+        fi
+    fi
+}
 
 ###############################################################################
 # DESCRIPTION:
@@ -201,7 +344,7 @@ inspect_leaf_report()
     empty_ovsdb_table Wifi_Stats_Config ||
         raise "FAIL: Could not empty Wifi_Stats_Config: empty_ovsdb_table" -l "bcm947622dvt_lib_override:inspect_leaf_report" -oe
 
-    insert_ws_config \
+    insert_wifi_stats_config \
         $sm_radio_type \
         "[\"set\",[]]" \
         "survey" \
@@ -210,7 +353,7 @@ inspect_leaf_report()
         $sm_sampling_interval \
         $sm_report_type
 
-    insert_ws_config \
+    insert_wifi_stats_config \
         $sm_radio_type \
         "[\"set\",[]]" \
         "client" \
@@ -323,7 +466,7 @@ inspect_survey_report()
     empty_ovsdb_table Wifi_Stats_Config ||
         raise "FAIL: Could not empty Wifi_Stats_Config: empty_ovsdb_table" -l "bcm947622dvt_lib_override:inspect_survey_report" -oe
 
-    insert_ws_config \
+    insert_wifi_stats_config \
         $sm_radio_type \
         $sm_channel_list \
         $sm_stats_type \

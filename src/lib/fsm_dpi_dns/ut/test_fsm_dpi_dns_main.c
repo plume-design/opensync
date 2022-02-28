@@ -60,12 +60,11 @@ main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
-    ut_init(ut_name);
+    ut_init(ut_name, NULL, NULL);
+
     ut_setUp_tearDown(ut_name, fsm_dpi_dns_plugin_setUp, fsm_dpi_dns_plugin_tearDown);
 
     run_test_dns();
 
-    ut_fini();
-
-    return UNITY_END();
+    return ut_fini();
 }

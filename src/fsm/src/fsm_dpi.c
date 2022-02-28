@@ -1547,7 +1547,9 @@ fsm_net_parser_to_acc(struct net_header_parser *net_parser,
     struct net_md_stats_accumulator *acc;
     struct eth_header *eth_hdr;
     struct net_md_flow_key key;
+    uint16_t ethertype;
     bool is_fragment;
+    bool is_ip;
 
     eth_hdr = &net_parser->eth_header;
 
@@ -1555,8 +1557,17 @@ fsm_net_parser_to_acc(struct net_header_parser *net_parser,
     key.smac = eth_hdr->srcmac;
     key.dmac = eth_hdr->dstmac;
     key.vlan_id = eth_hdr->vlan_id;
-    key.ethertype = eth_hdr->ethertype;
 
+    ethertype = eth_hdr->ethertype;
+    is_ip = ((ethertype == ETH_P_IP) || (ethertype == ETH_P_IPV6));
+    if (!is_ip)
+    {
+        LOGD("%s: ethertype: %d is other than IPv4 & IPv6."
+              "Ignoring packet for dpi inspection", __func__, ethertype);
+	return NULL;
+    }
+
+    key.ethertype = ethertype;
     key.ip_version = net_parser->ip_version;
     if (net_parser->ip_version == 4)
     {

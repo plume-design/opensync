@@ -509,10 +509,8 @@ main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
-    ut_init(ut_name);
+    ut_init(ut_name, global_test_init, global_test_exit);
     ut_setUp_tearDown(ut_name, arp_plugin_setUp, arp_plugin_tearDown);
-
-    global_test_init();
 
     RUN_TEST(test_no_session);
     RUN_TEST(test_load_unload_plugin);
@@ -521,9 +519,5 @@ main(int argc, char *argv[])
     RUN_TEST(test_gratuitous_arp_reply);
     RUN_TEST(test_ip_mac_mapping);
 
-    global_test_exit();
-
-    ut_fini();
-
-    return UNITY_END();
+    return ut_fini();
 }

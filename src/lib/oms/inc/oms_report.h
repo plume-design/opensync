@@ -27,17 +27,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef OMS_REPORT_H_INCLUDED
 #define OMS_REPORT_H_INCLUDED
 
-/**
- * @brief Container of protobuf serialization output
- *
- * Contains the information related to a serialized protobuf
- */
-struct packed_buffer
-{
-    size_t len;    /*<! Length of the serialized protobuf */
-    void *buf;     /*<! Dynamically allocataed pointer to serialied data */
-};
-
+#include "network_metadata.h"
 
 /**
  * @brief Frees the pointer to serialized data and container

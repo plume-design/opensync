@@ -82,7 +82,7 @@ log_title "onbrd/onbrd_verify_wan_iface_mac_addr.sh: ONBRD test - Verify if WAN 
 NARGS=1
 if [ $# -eq 0 ]; then
     print_tables Connection_Manager_Uplink
-    wan_interface=$(get_wan_uplink_if_name)
+    wan_interface=$(get_wan_uplink_interface_name)
     if [ -z "$wan_interface" ]; then
        raise "FAIL: Could not auto-determine WAN interface from Connection_Manager_Uplink" -l "onbrd/onbrd_verify_wan_iface_mac_addr.sh" -tc
     fi

@@ -770,10 +770,8 @@ hapd_conf_gen_wpa_psks(struct hapd *hapd,
         if (!oftag)
             oftag = vconf->default_oftag_exists ? vconf->default_oftag : NULL;
 
-        if (!oftag) {
-            LOGW("%s: No oftag found for keyid='%s'", vconf->if_name, keyid);
-            continue;
-        }
+        if (!oftag)
+            oftag = "";
 
         LOGT("%s: parsing vconf: key '%s': oftag='%s' psk='%s' wps='%d'",
              vconf->if_name, keyid, oftag, psk, wps);

@@ -92,7 +92,7 @@ if [ "${match_rule}" = "non_empty" ]; then
         log "onbrd/onbrd_verify_fw_version_awlan_node.sh: FW version string is not empty - Success"
 elif [ "${match_rule}" = "pattern_match" ]; then
     log "onbrd/onbrd_verify_fw_version_awlan_node.sh: FW version string must match parsing rules and regular expression"
-    verify_fw_pattern "${fw_version_string}" &&
+    check_fw_pattern "${fw_version_string}" &&
         log "onbrd/onbrd_verify_fw_version_awlan_node.sh: FW version string is valid - Success" ||
         raise "FAIL: FW version string is not valid" -l "onbrd/onbrd_verify_fw_version_awlan_node.sh" -tc
 else

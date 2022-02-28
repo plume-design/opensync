@@ -25,9 +25,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include "header.h"
+#include "unit_test_utils.h"
 
-void setUp() {}
-void tearDown() {}
+char *test_name = "test_target";
 
 void run_unit_test()
 {
@@ -65,8 +65,11 @@ void run_unit_test()
 
 int main(void)
 {
-    UNITY_BEGIN();
+    ut_init(test_name, NULL, NULL);
+
+    ut_setUp_tearDown(test_name, NULL, NULL);
+
     run_unit_test();
-    UNITY_END();
-    exit(true);
+
+    return ut_fini();
 }//END of main function

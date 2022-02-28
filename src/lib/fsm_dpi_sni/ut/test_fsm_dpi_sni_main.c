@@ -30,13 +30,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 extern void run_test_plugin(void);
 extern void run_test_functions(void);
-extern void run_test_adt(void);
-extern void run_test_dns(void);
 
-char *test_name = "fsm_dpi_sni_plugin_tests";
+const char *test_name = "fsm_dpi_sni_plugin_tests";
 
 void
-arp_plugin_setUp(void)
+fsm_dpi_sni_plugin_setUp(void)
 {
     struct dns_cache_settings cache_init;
 
@@ -46,7 +44,7 @@ arp_plugin_setUp(void)
 }
 
 void
-arp_plugin_tearDown(void)
+fsm_dpi_sni_plugin_tearDown(void)
 {
     dns_cache_cleanup_mgr();
 }
@@ -57,15 +55,11 @@ main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
-    ut_init(test_name);
-    ut_setUp_tearDown(test_name, arp_plugin_setUp, arp_plugin_tearDown);
+    ut_init(test_name, NULL, NULL);
+    ut_setUp_tearDown(test_name, fsm_dpi_sni_plugin_setUp, fsm_dpi_sni_plugin_tearDown);
 
     run_test_plugin();
     run_test_functions();
-    run_test_adt();
-    run_test_dns();
 
-    ut_fini();
-
-    return UNITY_END();
+    return ut_fini();
 }

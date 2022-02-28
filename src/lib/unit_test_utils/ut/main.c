@@ -141,7 +141,7 @@ main(int argc, char* argv[])
     (void)argc;
     (void)argv;
 
-    ut_init(ut_name);
+    ut_init(ut_name, NULL, NULL);
     RUN_TEST(test_default_init);
 
     RUN_TEST(test_no_setup);
@@ -153,5 +153,5 @@ main(int argc, char* argv[])
 
     RUN_TEST(test_create_pcap);
 
-    return UNITY_END();
+    return ut_fini();
 }

@@ -227,7 +227,7 @@ elif [ "$ip_assign_scheme" = "static" ]; then
             raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::ip_assign_scheme is not 'static'" -l "nm2/nm2_set_ip_assign_scheme.sh" -tc
 
     log "nm2/nm2_set_ip_assign_scheme.sh: Checking if settings are applied to ifconfig - LEVEL2"
-    wait_for_function_response 0 "get_interface_ip_address_from_system $if_name | grep -q \"$inet_addr\"" &&
+    wait_for_function_response 0 "check_interface_ip_address_set_on_system $if_name | grep -q \"$inet_addr\"" &&
         log "nm2/nm2_set_ip_assign_scheme.sh: LEVEL2 - Settings applied to ifconfig for interface $if_name - Success" ||
         raise "FAIL: LEVEL2 - Failed to apply settings to ifconfig for interface $if_name" -l "nm2/nm2_set_ip_assign_scheme.sh" -tc
 

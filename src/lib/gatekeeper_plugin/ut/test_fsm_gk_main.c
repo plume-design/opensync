@@ -31,24 +31,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "unity.h"
 
 #include "test_gatekeeper_plugin.h"
+#include "unit_test_utils.h"
 
 char *test_name = "test_gatekeeper_plugin";
-char *g_certs_file = "/tmp/cacert.pem";
-
-void (*g_setUp)(void) = NULL;
-void (*g_tearDown)(void) = NULL;
-
-void
-setUp(void)
-{
-    if (g_setUp) g_setUp();
-}
-
-void
-tearDown(void)
-{
-    if (g_tearDown) g_tearDown();
-}
+char *g_certs_file = "./data/cacert.pem";
 
 int
 main(int argc, char *argv[])
@@ -57,24 +43,23 @@ main(int argc, char *argv[])
     (void)argv;
     bool ret;
 
-    target_log_open(test_name, LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_TRACE);
-
-    UnityBegin(test_name);
+    ut_init(test_name, NULL, NULL);
+    ut_setUp_tearDown(test_name, NULL, NULL);
 
     /*
      * This is a requirement: Do NOT proceed if the file is missing.
      * File presence will not be tested any further.
      */
+    chdir(dirname(argv[0]));
     ret = access(g_certs_file, F_OK);
     if (ret != 0)
     {
         LOGW("In %s requires %s", test_name, g_certs_file);
-        return UNITY_END();
+        return ut_fini();
     }
 
     run_test_fsm_gk_fct();
     run_test_fsm_gk();
 
-    return UNITY_END();
+    return ut_fini();
 }

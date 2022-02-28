@@ -38,4 +38,5 @@ UNIT_DEPS += src/lib/schema
 UNIT_DEPS += src/lib/ovsdb
 UNIT_DEPS += src/lib/timevt
 UNIT_DEPS += src/lib/unity
+UNIT_DEPS += src/lib/unit_test_utils
 UNIT_DEPS += $(if $(CONFIG_MANAGER_WM_L2UF_KICK),src/lib/osn,)

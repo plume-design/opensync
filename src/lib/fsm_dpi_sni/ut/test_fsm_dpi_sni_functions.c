@@ -25,15 +25,19 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include <string.h>
+#include <time.h>
+#include <unistd.h>
 
 #include "fsm.h"
 #include "fsm_dpi_sni.h"
+#include "fsm_policy.h"
 #include "log.h"
 #include "memutil.h"
 #include "os_nif.h"
+#include "os_types.h"
 #include "unity.h"
+#include "unity_internals.h"
 
-extern int fsm_req_type(char *attr);
 extern int fsm_session_cmp(void *a, void *b);
 
 static struct fsm_session_conf g_confs[] =
@@ -95,23 +99,23 @@ test_fsm_req_type(void)
 {
    int ret;
 
-   ret = fsm_req_type("http.host");
+   ret = dpi_sni_get_req_type("http.host");
    TEST_ASSERT_EQUAL_INT(FSM_HOST_REQ, ret);
 
-   ret = fsm_req_type("tls.sni");
+   ret = dpi_sni_get_req_type("tls.sni");
    TEST_ASSERT_EQUAL_INT(FSM_SNI_REQ, ret);
 
-   ret = fsm_req_type("http.url");
+   ret = dpi_sni_get_req_type("http.url");
    TEST_ASSERT_EQUAL_INT(FSM_URL_REQ, ret);
 
-   ret = fsm_req_type("tag");
+   ret = dpi_sni_get_req_type("tag");
    TEST_ASSERT_EQUAL_INT(FSM_APP_REQ, ret);
 
-   ret = fsm_req_type(NULL);
+   ret = dpi_sni_get_req_type(NULL);
    TEST_ASSERT_EQUAL_INT(FSM_UNKNOWN_REQ_TYPE, ret);
-   ret = fsm_req_type("");
+   ret = dpi_sni_get_req_type("");
    TEST_ASSERT_EQUAL_INT(FSM_UNKNOWN_REQ_TYPE, ret);
-   ret = fsm_req_type("random_stuff");
+   ret = dpi_sni_get_req_type("random_stuff");
    TEST_ASSERT_EQUAL_INT(FSM_UNKNOWN_REQ_TYPE, ret);
 }
 
@@ -151,33 +155,30 @@ test_fsm_dpi_plugin_init_exit(void)
 
     session = NULL;
 
-    ret = dpi_sni_plugin_init(session);
+    ret = fsm_dpi_sni_init(session);
     TEST_ASSERT_EQUAL_INT(-1, ret);
     TEST_ASSERT_FALSE(mgr->initialized);
 
     /* Exit the plugin */
-    fsm_dpi_sni_plugin_exit(session);
+    fsm_dpi_sni_exit(session);
 
     /* Pass a session now */
     g_sessions[0].ops.get_config = &get_config;
-    ret = dpi_sni_plugin_init(&g_sessions[0]);
+    ret = fsm_dpi_sni_init(&g_sessions[0]);
     /* no p_ops => fail */
     TEST_ASSERT_EQUAL_INT(-1, ret);
 
     g_sessions[0].p_ops = &g_p_ops;
     g_sessions[0].name = "test_dpi_sni";
 
-    ret = dpi_sni_plugin_init(&g_sessions[0]);
+    ret = fsm_dpi_sni_init(&g_sessions[0]);
     TEST_ASSERT_EQUAL_INT(0, ret);
     /* Try once more. fsm_dpi_sni_session already initialized. */
-    ret = dpi_sni_plugin_init(&g_sessions[0]);
-    TEST_ASSERT_EQUAL_INT(0, ret);
-
-    fsm_dpi_sni_delete_session(NULL);
-    /* There is nothing to be tested for this */
+    ret = fsm_dpi_sni_init(&g_sessions[0]);
+    TEST_ASSERT_EQUAL_INT(1, ret);
 
     /* Exit the plugin */
-    fsm_dpi_sni_plugin_exit(&g_sessions[0]);
+    fsm_dpi_sni_exit(&g_sessions[0]);
 }
 
 void
@@ -192,24 +193,24 @@ test_fsm_dpi_sni_plugin_periodic(void)
     session->handler_ctxt = NULL;
 
     /* Test corner case */
-    fsm_dpi_sni_plugin_periodic(session);
+    fsm_dpi_sni_periodic(session);
     /* Nothing to check on... but this should never crash */
 
     /* Pass a complete session */
     now = time(NULL);
     u_session.timestamp = now;
-    u_session.session_type = FSM_SESSION_TYPE_SNI;
+    // u_session.session_type = FSM_SESSION_TYPE_SNI;
     session->handler_ctxt = &u_session;
-    fsm_dpi_sni_plugin_periodic(session);
+    fsm_dpi_sni_periodic(session);
     TEST_ASSERT_EQUAL(now, u_session.timestamp);
 
-    /* Changing TTL */
+    /* Changing TTL for SNI should not impact client TTL */
     new_ttl = 2;
-    fsm_dpi_sni_set_ttl(new_ttl);
+    fsm_dpi_sni_set_ttl(session, new_ttl);
     LOGD("Sleeping %d seconds to hit TTL (%d seconds can lead to some false positives with TTL==%d)",
          (int)(new_ttl + 2), (int)(new_ttl + 1), (int)new_ttl);
     sleep(new_ttl + 2);
-    fsm_dpi_sni_plugin_periodic(session);
+    fsm_dpi_sni_periodic(session);
     now = time(NULL);
     TEST_ASSERT_EQUAL(now, u_session.timestamp);
 }
@@ -226,13 +227,13 @@ test_fsm_dpi_sni_create_request(void)
     request_args.device_id = CALLOC(1, sizeof(*request_args.device_id));
     os_nif_macaddr_from_str(request_args.device_id, "00:11:22:33:44:55");
 
-    request = fsm_dpi_sni_create_request(NULL, NULL);
+    request = dpi_sni_create_request(NULL, NULL);
     TEST_ASSERT_NULL(request);
 
-    request = fsm_dpi_sni_create_request(&request_args, NULL);
+    request = dpi_sni_create_request(&request_args, NULL);
     TEST_ASSERT_NULL(request);
 
-    request = fsm_dpi_sni_create_request(&request_args, "ATTR_VALUE");
+    request = dpi_sni_create_request(&request_args, "ATTR_VALUE");
     TEST_ASSERT_NOT_NULL(request);
     TEST_ASSERT_EQUAL_STRING("ATTR_VALUE", request->url);
     TEST_ASSERT_EQUAL_STRING("ATTR_VALUE", request->fqdn_req->req_info->url);
@@ -252,20 +253,19 @@ test_fsm_dpi_sni_create_reply(void)
     struct fsm_request_args request_args;
     struct fsm_policy_reply *reply;
 
-    reply = fsm_dpi_sni_create_reply(NULL);
+    reply = dpi_sni_create_reply(NULL);
     TEST_ASSERT_NULL(reply);
 
     memset(&request_args, 0, sizeof(request_args));
-    reply = fsm_dpi_sni_create_reply(&request_args);
+    reply = dpi_sni_create_reply(&request_args);
     TEST_ASSERT_NULL(reply);
 
     g_sessions[0].service = &g_sessions[0];
     g_sessions[0].provider_ops = &g_plugin_ops;
     request_args.session = &g_sessions[0];
-    reply = fsm_dpi_sni_create_reply(&request_args);
+    reply = dpi_sni_create_reply(&request_args);
     TEST_ASSERT_NOT_NULL(reply);
 
-\
     /* clean things up */
     fsm_policy_free_reply(reply);
 }
@@ -285,31 +285,31 @@ test_fsm_dpi_sni_process_attr(void)
     memset(&u_session, 0, sizeof(u_session));
 
     /* corner cases */
-    ret = fsm_dpi_generic_process_attr(NULL, NULL, 0, 0, NULL, NULL);
+    ret = fsm_dpi_sni_process_attr(NULL, NULL, 0, 0, NULL, NULL);
     TEST_ASSERT_EQUAL_INT(FSM_DPI_IGNORED, ret);
 
     memset(&acc, 0, sizeof(acc));
     pkt_info.acc = &acc;
     acc.originator = NET_MD_ACC_UNKNOWN_ORIGINATOR;
-    ret = fsm_dpi_generic_process_attr(NULL, NULL, 0, 0, NULL, &pkt_info);
+    ret = fsm_dpi_sni_process_attr(NULL, NULL, 0, 0, NULL, &pkt_info);
     TEST_ASSERT_EQUAL_INT(FSM_DPI_IGNORED, ret);
 
     acc.originator = NET_MD_ACC_ORIGINATOR_SRC;
-    ret = fsm_dpi_generic_process_attr(NULL, NULL, 0, 0, NULL, &pkt_info);
+    ret = fsm_dpi_sni_process_attr(NULL, NULL, 0, 0, NULL, &pkt_info);
     TEST_ASSERT_EQUAL_INT(FSM_DPI_IGNORED, ret);
 
     acc.key = NULL;
-    ret = fsm_dpi_generic_process_attr(NULL, NULL, 0, 0, NULL, &pkt_info);
+    ret = fsm_dpi_sni_process_attr(NULL, NULL, 0, 0, NULL, &pkt_info);
     TEST_ASSERT_EQUAL_INT(FSM_DPI_IGNORED, ret);
 
     memset(&key, 0, sizeof(key));
     acc.key = &key;
     memset(&session, 0, sizeof(session));
-    ret = fsm_dpi_generic_process_attr(&session, NULL, 0, 0, NULL, &pkt_info);
+    ret = fsm_dpi_sni_process_attr(&session, NULL, 0, 0, NULL, &pkt_info);
     TEST_ASSERT_EQUAL_INT(FSM_DPI_IGNORED, ret);
 
     session.handler_ctxt = &u_session;
-    ret = fsm_dpi_generic_process_attr(&session, NULL, 0, 0, NULL, &pkt_info);
+    ret = fsm_dpi_sni_process_attr(&session, NULL, 0, 0, NULL, &pkt_info);
     TEST_ASSERT_EQUAL_INT(FSM_DPI_IGNORED, ret);
 
     /* populate acc */
@@ -319,24 +319,24 @@ test_fsm_dpi_sni_process_attr(void)
     key.smac = CALLOC(1, sizeof(*key.smac));
     os_nif_macaddr_from_str(key.smac, "00:11:22:33:44:55");
 
-    ret = fsm_dpi_generic_process_attr(&session, NULL, 0, 0, NULL, &pkt_info);
+    ret = fsm_dpi_sni_process_attr(&session, NULL, 0, 0, NULL, &pkt_info);
     TEST_ASSERT_EQUAL_INT(FSM_DPI_IGNORED, ret);
 
     u_session.excluded_devices = "$[all_clients]";
     u_session.included_devices = NULL;
-    ret = fsm_dpi_generic_process_attr(&session, NULL, 0, 0, NULL, &pkt_info);
+    ret = fsm_dpi_sni_process_attr(&session, NULL, 0, 0, NULL, &pkt_info);
     TEST_ASSERT_EQUAL_INT(FSM_DPI_IGNORED, ret);
 
     u_session.excluded_devices = NULL;
     u_session.included_devices = "$[all_clients]";
-    ret = fsm_dpi_generic_process_attr(&session, NULL, 0, 0, NULL, &pkt_info);
+    ret = fsm_dpi_sni_process_attr(&session, NULL, 0, 0, NULL, &pkt_info);
     TEST_ASSERT_EQUAL_INT(FSM_DPI_IGNORED, ret);
 
     /* instantiate the service */
     u_session.excluded_devices = "$[all_clients]";
     u_session.included_devices = NULL;
     session.service = &session;
-    ret = fsm_dpi_generic_process_attr(&session, NULL, 0, 0, NULL, &pkt_info);
+    ret = fsm_dpi_sni_process_attr(&session, NULL, 0, 0, NULL, &pkt_info);
     TEST_ASSERT_EQUAL_INT(FSM_DPI_IGNORED, ret);
 
     /* Add the request info */
@@ -344,14 +344,14 @@ test_fsm_dpi_sni_process_attr(void)
 
     /* test with wrong type */
     num = 123;
-    ret = fsm_dpi_generic_process_attr(&session, attr, RTS_TYPE_NUMBER, sizeof(int64_t), &num, &pkt_info);
+    ret = fsm_dpi_sni_process_attr(&session, attr, RTS_TYPE_NUMBER, sizeof(int64_t), &num, &pkt_info);
     TEST_ASSERT_EQUAL_INT(FSM_DPI_IGNORED, ret);
 
-    ret = fsm_dpi_generic_process_attr(&session, attr, RTS_TYPE_STRING, 0, NULL, &pkt_info);
+    ret = fsm_dpi_sni_process_attr(&session, attr, RTS_TYPE_STRING, 0, NULL, &pkt_info);
     TEST_ASSERT_EQUAL_INT(FSM_DPI_IGNORED, ret);
 
     /* No need to test with a 'value' as the case is covered
-     * in testing fsm_dpi_sni_policy_req()
+     * in testing dpi_sni_policy_req()
      */
 
     /* Cleanup */

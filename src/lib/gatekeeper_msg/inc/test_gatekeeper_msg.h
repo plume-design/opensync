@@ -27,9 +27,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef TEST_GATEKEEPER_MSG_H
 #define TEST_GATEKEEPER_MSG_H
 
-extern void (*g_setUp)(void);
-extern void (*g_tearDown)(void);
-
 extern void run_test_gatekeeper_msg(void);
 extern void run_test_gatekeeper_hero_stats(void);
 

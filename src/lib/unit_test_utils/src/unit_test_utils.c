@@ -50,6 +50,7 @@ char g_pcap_tmp_folder[PATH_MAX] = { 0 };
 bool g_keep_tmp_folder = false;
 void (*g_tearDown)(void) = NULL;
 void (*g_setUp)(void) = NULL;
+void (*g_ut_exit)(void) = NULL;
 char *g_test_name = NULL;
 char *g_ut_name = NULL;
 
@@ -314,13 +315,22 @@ ut_setUp_tearDown(const char *test_name, void(*setup)(void), void(*teardown)(voi
     g_setUp = setup;
     g_tearDown = teardown;
     FREE(g_test_name);
+    g_test_name = NULL;
     if (test_name) g_test_name = STRDUP(test_name);
 }
 
-void
+int
 ut_fini(void)
 {
-    /* Perform cleanup auto-magically */
+    if (g_ut_name == NULL) return UNITY_END();
+
+    if (g_ut_exit)
+    {
+        g_ut_exit();
+        g_ut_exit = NULL;
+    }
+
+    /* Perform cleanup */
     FREE(g_ut_name);
     g_ut_name = NULL;
 
@@ -331,12 +341,24 @@ ut_fini(void)
         rmtree_rec(g_parent_tmp_folder);
         MEMZERO(g_parent_tmp_folder);
     }
+
+    return UNITY_END();
 }
 
-bool
-ut_init(const char *ut_name)
+void
+ut_init(const char *ut_name, void (*global_ut_init)(void), void (*global_ut_exit)(void))
 {
-    g_ut_name = STRDUP(ut_name);
+    if (ut_name)
+    {
+        g_ut_name = STRDUP(ut_name);
+    }
+    else
+    {
+        g_ut_name = STRDUP("MISSING_TEST_NAME");
+    }
+
+    if (global_ut_init) global_ut_init();
+    if (global_ut_exit) g_ut_exit = global_ut_exit;
 
     create_parent_tmp_folder();
 
@@ -345,12 +367,4 @@ ut_init(const char *ut_name)
     log_severity_set(LOG_SEVERITY_TRACE);
 
     UnityBegin(g_ut_name);
-
-    if (atexit(ut_fini))
-    {
-        LOGE("%s: Failed to register cleanup", ut_name);
-        return false;
-    }
-
-    return true;
 }

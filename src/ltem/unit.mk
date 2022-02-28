@@ -39,6 +39,7 @@ UNIT_SRC += src/ltem_state_mgr.c
 UNIT_SRC += src/ltem_route.c
 UNIT_SRC += src/ltem_res.c
 UNIT_SRC += src/ltem_mqtt.c
+UNIT_SRC += src/ltem_esim.c
 
 UNIT_CFLAGS := -I$(UNIT_PATH)/inc
 UNIT_CFLAGS += -Isrc/lib/lte_info/inc

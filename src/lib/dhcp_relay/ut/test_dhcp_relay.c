@@ -524,7 +524,7 @@ main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
-    ut_init(ut_name);
+    ut_init(ut_name, global_test_init, global_test_exit);
     ut_setUp_tearDown(ut_name, dhcp_relay_setUp, dhcp_relay_tearDown);
 
     /*
@@ -537,10 +537,8 @@ main(int argc, char *argv[])
         LOGW("In %s: test requires %s", ut_name, g_dhcp_relay_conf);
         Unity.TestFailed[Unity.TestFailures] = (char *)__func__;
         Unity.TestFailures++;
-        return UNITY_END();
+        return ut_fini();
     }
-
-    global_test_init();
 
     RUN_TEST(test_dhcpv4_DISCOVER_pkt);
     RUN_TEST(test_dhcpv4_REQUEST_pkt);
@@ -548,9 +546,5 @@ main(int argc, char *argv[])
     RUN_TEST(test_dhcpv6_SOLICIT_pkt);
     RUN_TEST(test_dhcpv6_REQUEST_pkt);
 
-    global_test_exit();
-
-    ut_fini();
-
-    return UNITY_END();
+    return ut_fini();
 }

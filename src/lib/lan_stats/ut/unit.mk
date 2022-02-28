@@ -43,28 +43,6 @@ UNIT_DEPS += src/lib/ovsdb
 UNIT_DEPS += src/lib/network_metadata
 UNIT_DEPS += src/lib/fcm_filter
 UNIT_DEPS += src/lib/unity
+UNIT_DEPS += src/lib/unit_test_utils
 
-# Ensure the required files are copied in its correct location
-$(UNIT_BUILD)/.target: /tmp/stats.txt /tmp/stats_2.txt /tmp/stats_3.txt /tmp/stats_4.txt /tmp/stats_5.txt /tmp/stats_6.txt
-
-
-
-/tmp/stats.txt: $(UNIT_PATH)/stats.txt FORCE_LANSTATS
-	${NQ} " $(call color_copy,copy)    [$(call COLOR_BOLD,$<)] -> $@"
-	${Q} cp $< $@
-/tmp/stats_2.txt: $(UNIT_PATH)/stats_2.txt FORCE_LANSTATS
-	${NQ} " $(call color_copy,copy)    [$(call COLOR_BOLD,$<)] -> $@"
-	${Q} cp $< $@
-/tmp/stats_3.txt: $(UNIT_PATH)/stats_3.txt FORCE_LANSTATS
-	${NQ} " $(call color_copy,copy)    [$(call COLOR_BOLD,$<)] -> $@"
-	${Q} cp $< $@
-/tmp/stats_4.txt: $(UNIT_PATH)/stats_4.txt FORCE_LANSTATS
-	${NQ} " $(call color_copy,copy)    [$(call COLOR_BOLD,$<)] -> $@"
-	${Q} cp $< $@
-/tmp/stats_5.txt: $(UNIT_PATH)/stats_5.txt FORCE_LANSTATS
-	${NQ} " $(call color_copy,copy)    [$(call COLOR_BOLD,$<)] -> $@"
-	${Q} cp $< $@
-/tmp/stats_6.txt: $(UNIT_PATH)/stats_6.txt FORCE_LANSTATS
-	${NQ} " $(call color_copy,copy)    [$(call COLOR_BOLD,$<)] -> $@"
-	${Q} cp $< $@
-FORCE_LANSTATS:
+# data/stats*.txt are copied automatically

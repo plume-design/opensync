@@ -36,3 +36,4 @@ UNIT_DEPS += src/lib/unity
 UNIT_DEPS += src/lib/osa
 UNIT_DEPS += src/lib/const
 UNIT_DEPS += src/lib/common
+UNIT_DEPS += src/lib/unit_test_utils

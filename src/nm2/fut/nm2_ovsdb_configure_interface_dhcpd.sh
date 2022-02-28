@@ -108,7 +108,7 @@ create_inet_entry \
         raise "FAIL: Failed to create $if_name interface" -l "nm2/nm2_ovsdb_configure_interface_dhcpd.sh" -ds
 
 log "nm2/nm2_ovsdb_configure_interface_dhcpd.sh: Check if interface is UP - $if_name"
-get_if_fn_type="get_${if_type}_interface_is_up"
+get_if_fn_type="check_${if_type}_interface_state_is_up"
 wait_for_function_response 0 "$get_if_fn_type $if_name " &&
     log "nm2/nm2_ovsdb_configure_interface_dhcpd.sh: Interface $if_name is UP - Success" ||
     raise "FAIL: Interface $if_name is DOWN, should be UP" -l "nm2/nm2_ovsdb_configure_interface_dhcpd.sh" -ds

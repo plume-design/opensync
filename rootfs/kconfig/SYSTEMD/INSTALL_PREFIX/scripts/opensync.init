@@ -1,0 +1,31 @@
+#!/bin/sh -x
+
+opensync_pre_start() {
+}
+
+opensync_post_stop() {
+}
+
+action() {
+    case "$1" in
+        "pre-start")
+            opensync_pre_start
+            RET=$?
+            ;;
+
+        "post-stop")
+            opensync_post_stop
+            RET=$?
+            ;;
+
+        *)
+            echo "Usage: $0 {pre-start|post-stop}"
+            RET=1
+            ;;
+
+    esac
+
+    return $RET
+}
+
+action "$1"

@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "qm_conn.h"
 #include "target.h"
 #include "unity.h"
+#include "unit_test_utils.h"
 
 const char *test_name = "ipthreat_dpi_tests";
 
@@ -423,7 +424,7 @@ void global_test_exit(void)
 /**
  * @brief called by the Unity framework before every single test
  */
-void setUp(void)
+void ipthreat_dpi_setUp(void)
 {
     struct fsm_policy_session *mgr;
     int rc;
@@ -539,7 +540,7 @@ void setUp(void)
 /**
  * @brief called by the Unity framework after every single test
  */
-void tearDown(void)
+void ipthreat_dpi_tearDown(void)
 {
     /* free v4 accumulator */
     FREE(g_v4_outbound_key.src_ip);
@@ -1367,13 +1368,9 @@ void test_ipthreat_null_provider_ops(void)
 
 int main(int argc, char *argv[])
 {
-    /* Set the logs to stdout */
-    target_log_open("TEST", LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_TRACE);
+    ut_init(test_name, global_test_init, global_test_exit);
 
-    UnityBegin(test_name);
-
-    global_test_init();
+    ut_setUp_tearDown(test_name, ipthreat_dpi_setUp, ipthreat_dpi_tearDown);
 
     RUN_TEST(test_no_session);
     RUN_TEST(test_load_unload_plugin);
@@ -1388,7 +1385,5 @@ int main(int argc, char *argv[])
     RUN_TEST(test_ipthreat_gk_dns_cache);
     RUN_TEST(test_ipthreat_null_provider_ops);
 
-    global_test_exit();
-
-    return UNITY_END();
+    return ut_fini();
 }

@@ -32,6 +32,7 @@ UNIT_TYPE := FUT
 UNIT_DIR := shell/tools/server
 
 UNIT_FILE := check_fw_pattern.sh
+UNIT_FILE += check_traffic_to_client.sh
 UNIT_FILE += get_common_name_from_certificate.sh
 UNIT_FILE += start_cloud_simulation.sh
 UNIT_FILE += start_mqtt.sh

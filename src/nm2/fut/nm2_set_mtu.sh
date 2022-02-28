@@ -115,7 +115,7 @@ wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is mtu "$mtu" &&
     raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::mtu is not $mtu" -l "nm2/nm2_set_mtu.sh" -tc
 
 log "nm2/nm2_set_mtu.sh: Checking if MTU was properly applied for $if_name - LEVEL2"
-wait_for_function_response 0 "get_interface_mtu_from_system $if_name | grep -q \"$mtu\"" &&
+wait_for_function_response 0 "check_interface_mtu_set_on_system $if_name | grep -q \"$mtu\"" &&
     log "nm2/nm2_set_mtu.sh: LEVEL2 - MTU applied to ifconfig for interface $if_name - Success" ||
     raise "FAIL: LEVEL2 - Failed to apply MTU to ifconfig for interface $if_name" -l "nm2/nm2_set_mtu.sh" -tc
 

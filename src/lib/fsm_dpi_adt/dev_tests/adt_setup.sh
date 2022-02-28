@@ -266,6 +266,7 @@ usage()
         Options:
             -h this message
             --cmd=<insert | delete>            REQUIRED
+            --prod                             make use of production MQTT channel
             --dpi=<dpi plugin>                 defaults to walleye_dpi
             --attrs_tag=<flow attributes tag>  defaults to \${dev_dpi_adt}
     Attributes to be monitored will be read from ${config_file} (one attribute per line)
@@ -274,6 +275,8 @@ EOF
 }
 
 
+MQTT_DEV_PREFIX="dev-test/"
+
 # h for help, long options otherwise
 optspec="h-:"
 while getopts "$optspec" optchar; do
@@ -281,6 +284,9 @@ while getopts "$optspec" optchar; do
         -)
             LONG_OPTARG="${OPTARG#*=}"
             case "${OPTARG}" in
+               prod )
+                   MQTT_DEV_PREFIX=
+                   ;;
                attrs_tag=?* )
                    val=${LONG_OPTARG}
                    opt=${OPTARG%=$val}
@@ -322,7 +328,7 @@ provider_plugin=${PROVIDER_PLUGIN:-gatekeeper}
 fsm_handler=dev_dpi_adt
 location_id=$(get_location_id)
 node_id=$(get_node_id)
-mqtt_v="dev-test/ADT/dog1/${node_id}/${location_id}"
+mqtt_v="${MQTT_DEV_PREFIX}ADT/dog1/${node_id}/${location_id}"
 
 case ${cmd} in
     "insert")

@@ -194,9 +194,9 @@ get_vif_mac_from_ovsdb()
 # RETURNS:
 #   Used WAN interface
 # USAGE EXAMPLES(S):
-#   var=$(get_wan_uplink_if_name)
+#   var=$(get_wan_uplink_interface_name)
 ###############################################################################
-get_wan_uplink_if_name()
+get_wan_uplink_interface_name()
 {
     # No logging, this function echoes the requested value to caller!
     ${OVSH} s Connection_Manager_Uplink -w is_used==true if_name -r
@@ -241,7 +241,7 @@ start_udhcpc()
     /sbin/udhcpc -i "$if_name" -f -p /var/run/udhcpc-"$if_name".pid -s ${OPENSYNC_ROOTDIR}/bin/udhcpc.sh -t 60 -T 1 -S --no-default-options &>/dev/null &
 
     if [ "$should_get_address" = "true" ]; then
-        wait_for_function_response 'notempty' "get_interface_ip_address_from_system $if_name" &&
+        wait_for_function_response 'notempty' "check_interface_ip_address_set_on_system $if_name" &&
             log -deb "unit_lib:start_udhcpc - DHCPC provided address to '$if_name' - Success" ||
             raise "FAIL: DHCPC did not provide address to '$if_name'" -l "unit_lib:start_udhcpc" -ds
     fi
@@ -409,7 +409,7 @@ device_init()
         log -deb "unit_lib:device_init - Managers stopped - Success" ||
         raise "FAIL: Could not stop managers" -l "unit_lib:device_init" -ds
 
-    cm_disable_fatal_state &&
+    disable_fatal_state_cm &&
         log -deb "unit_lib:device_init - CM fatal state disabled - Success" ||
         raise "FAIL: Could not disable CM fatal state" -l "unit_lib:device_init" -ds
 
@@ -730,18 +730,18 @@ set_manager_log()
 # RETURNS:
 #   Last exit code of file creation.
 # USAGE EXAMPLE(S):
-#   cm_disable_fatal_state
+#   disable_fatal_state_cm
 ###############################################################################
-cm_disable_fatal_state()
+disable_fatal_state_cm()
 {
-    log -deb "unit_lib:cm_disable_fatal_state - Disabling CM manager restart procedure"
+    log -deb "unit_lib:disable_fatal_state_cm - Disabling CM manager restart procedure"
     if [ ! -d /opt/tb ]; then
         mkdir -p /opt/tb/
     fi
     # Create cm-disable-fatal file in /opt/tb/
     touch /opt/tb/cm-disable-fatal
     if [ $? != 0 ]; then
-        log -deb "unit_lib:cm_disable_fatal_state - /opt/tb is not writable, mount a tmpfs over it"
+        log -deb "unit_lib:disable_fatal_state_cm - /opt/tb is not writable, mount a tmpfs over it"
         mount -t tmpfs tmpfs /opt/tb
         touch /opt/tb/cm-disable-fatal
     fi
@@ -756,11 +756,11 @@ cm_disable_fatal_state()
 # RETURNS:
 #   Last exit code of file removal.
 # USAGE EXAMPLE(S):
-#   cm_enable_fatal_state
+#   enable_fatal_state_cm
 ###############################################################################
-cm_enable_fatal_state()
+enable_fatal_state_cm()
 {
-    log -deb "unit_lib:cm_enable_fatal_state - Enabling CM manager restart procedure"
+    log -deb "unit_lib:enable_fatal_state_cm - Enabling CM manager restart procedure"
     # Delete cm-disable-fatal file in /opt/tb/
     rm -f /opt/tb/cm-disable-fatal
 }
@@ -1748,13 +1748,13 @@ wait_for_function_exit_code()
 # RETURNS:
 #   0   If ethernet interface state is UP, non zero otherwise.
 # USAGE EXAMPLE(S):
-#   get_eth_interface_is_up eth0
+#   check_eth_interface_state_is_up eth0
 ###############################################################################
-get_eth_interface_is_up()
+check_eth_interface_state_is_up()
 {
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
-        raise "unit_lib:get_eth_interface_is_up requires ${NARGS} input argument(s), $# given" -arg
+        raise "unit_lib:check_eth_interface_state_is_up requires ${NARGS} input argument(s), $# given" -arg
     if_name=$1
 
     ifconfig "$if_name" 2>/dev/null | grep Metric | grep UP
@@ -1771,11 +1771,11 @@ get_eth_interface_is_up()
 # RETURNS:
 #   0   If VIF interface state is up, non zero otherwise.
 # USAGE EXAMPLE(S):
-#   get_vif_interface_is_up home-ap-24
+#   check_vif_interface_state_is_up home-ap-24
 ###############################################################################
-get_vif_interface_is_up()
+check_vif_interface_state_is_up()
 {
-    get_eth_interface_is_up $@
+    check_eth_interface_state_is_up $@
 }
 
 ###############################################################################
@@ -1788,13 +1788,13 @@ get_vif_interface_is_up()
 # RETURNS:
 #   0   If interface was dropped, non zero otherwise.
 # USAGE EXAMPLE(S):
-#   interface_bring_down eth0
+#   set_interface_down eth0
 ###############################################################################
-interface_bring_down()
+set_interface_down()
 {
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
-        raise "unit_lib:interface_bring_down requires ${NARGS} input argument(s), $# given" -arg
+        raise "unit_lib:set_interface_down requires ${NARGS} input argument(s), $# given" -arg
     if_name=$1
 
     ifconfig "$if_name" down
@@ -1811,13 +1811,13 @@ interface_bring_down()
 # RETURNS:
 #   0   If interface was brought up, non zero otherwise.
 # USAGE EXAMPLE(S):
-#   interface_bring_up eth0
+#   set_interface_up eth0
 ###############################################################################
-interface_bring_up()
+set_interface_up()
 {
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
-        raise "unit_lib:interface_bring_up requires ${NARGS} input argument(s), $# given" -arg
+        raise "unit_lib:set_interface_up requires ${NARGS} input argument(s), $# given" -arg
     if_name=$1
 
     ifconfig "$if_name" up
@@ -1834,13 +1834,13 @@ interface_bring_up()
 # RETURNS:
 #   IP address of an interface
 # USAGE EXAMPLE(S):
-#   get_interface_ip_address_from_system eth0
+#   check_interface_ip_address_set_on_system eth0
 ###############################################################################
-get_interface_ip_address_from_system()
+check_interface_ip_address_set_on_system()
 {
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
-        raise "unit_lib:get_interface_ip_address_from_system requires ${NARGS} input argument(s), $# given" -arg
+        raise "unit_lib:check_interface_ip_address_set_on_system requires ${NARGS} input argument(s), $# given" -arg
     if_name=$1
 
     ifconfig "$if_name" | tr -s ' :' '@' | grep -e '^@inet@' | cut -d '@' -f 4
@@ -1902,7 +1902,7 @@ check_restore_management_access()
         log -deb "unit_lib:check_restore_management_access - udhcpc path is not set. Nothing to do."
         return 0
     fi
-    get_eth_interface_is_up "${MGMT_IFACE}"
+    check_eth_interface_state_is_up "${MGMT_IFACE}"
     if [ "$?" = 0 ]; then
         log -deb "unit_lib:check_restore_management_access - Interface ${MGMT_IFACE} is UP"
     else
@@ -1912,7 +1912,7 @@ check_restore_management_access()
             log -err "FAIL: Could not bring up interface ${MGMT_IFACE}" -l "unit_lib:check_restore_management_access" -ds
     fi
 
-    get_eth_interface_is_up "${MGMT_IFACE}"
+    check_eth_interface_state_is_up "${MGMT_IFACE}"
     if [ "$?" = 0 ]; then
         log -deb "unit_lib:check_restore_management_access - Interface ${MGMT_IFACE} is UP"
     else
@@ -1922,7 +1922,7 @@ check_restore_management_access()
             log -deb "unit_lib:check_restore_management_access - Failed to bring up interface ${MGMT_IFACE}, checking udhcpc"
     fi
 
-    eth_04_address=$(get_interface_ip_address_from_system "${MGMT_IFACE}")
+    eth_04_address=$(check_interface_ip_address_set_on_system "${MGMT_IFACE}")
     if [ -z "$eth_04_address" ]; then
         log -deb "unit_lib:check_restore_management_access - Interface ${MGMT_IFACE} has no address, setting udhcpc"
         log -deb "unit_lib:check_restore_management_access - Running force address renew for ${MGMT_IFACE}"
@@ -1941,10 +1941,10 @@ check_restore_management_access()
             log -deb "unit_lib:check_restore_management_access - Starting udhcpc on '${MGMT_IFACE}'"
             ${udhcpc_path} -f -S -i "${MGMT_IFACE}" -C -o -O subnet &>/dev/null &
             log -deb "unit_lib:check_restore_management_access - Waiting for ${MGMT_IFACE} address"
-            wait_for_function_response notempty "get_interface_ip_address_from_system ${MGMT_IFACE}" "${MGMT_CONN_TIMEOUT}"
+            wait_for_function_response notempty "check_interface_ip_address_set_on_system ${MGMT_IFACE}" "${MGMT_CONN_TIMEOUT}"
             if [ "$?" == "0" ]; then
                 check_counter=5
-                log -deb "unit_lib:check_restore_management_access - ${MGMT_IFACE} $(get_interface_ip_address_from_system ${MGMT_IFACE}) address valid"
+                log -deb "unit_lib:check_restore_management_access - ${MGMT_IFACE} $(check_interface_ip_address_set_on_system ${MGMT_IFACE}) address valid"
                 break
             else
                 log -err "unit_lib:check_restore_management_access - Failed to set ${MGMT_IFACE} address, repeating ${check_counter}"
@@ -2085,39 +2085,39 @@ add_ovs_bridge()
 #   None.
 #   See DESCRIPTION.
 # USAGE EXAMPLE(S):
-#   add_bridge_interface br-wan eth0
+#   add_interface_to_bridge br-wan eth0
 ###############################################################################
-add_bridge_interface()
+add_interface_to_bridge()
 {
     local NARGS=2
     [ $# -ne ${NARGS} ] &&
-        raise "unit_lib:add_bridge_interface requires ${NARGS} input argument(s), $# given" -arg
+        raise "unit_lib:add_interface_to_bridge requires ${NARGS} input argument(s), $# given" -arg
     br_name=$1
     br_if_name=$2
 
-    log "unit_lib:add_bridge_interface - Adding $br_name - $br_if_name"
+    log "unit_lib:add_interface_to_bridge - Adding $br_name - $br_if_name"
 
     ovs-vsctl br-exists "$br_name"
     if [ "$?" = 2 ]; then
         ovs-vsctl add-br "$br_name" &&
-            log -deb "unit_lib:add_bridge_interface - ovs-vsctl add-br $br_name - Success" ||
-            raise "FAIL: ovs-vsctl add-br $br_name" -l "unit_lib:add_bridge_interface" -ds
+            log -deb "unit_lib:add_interface_to_bridge - ovs-vsctl add-br $br_name - Success" ||
+            raise "FAIL: ovs-vsctl add-br $br_name" -l "unit_lib:add_interface_to_bridge" -ds
     else
-        log -deb "unit_lib:add_bridge_interface - Bridge '$br_name' already exists"
+        log -deb "unit_lib:add_interface_to_bridge - Bridge '$br_name' already exists"
         return 0
     fi
 
     br_mac=$(get_radio_mac_from_system "$br_if_name") &&
-        log -deb "unit_lib:add_bridge_interface - get_radio_mac_from_system $br_if_name - Success" ||
-        raise "FAIL: Could not get interface $br_if_name MAC address" -l "unit_lib:add_bridge_interface" -ds
+        log -deb "unit_lib:add_interface_to_bridge - get_radio_mac_from_system $br_if_name - Success" ||
+        raise "FAIL: Could not get interface $br_if_name MAC address" -l "unit_lib:add_interface_to_bridge" -ds
 
     ovs-vsctl set bridge "$br_name" other-config:hwaddr="$br_mac" &&
-        log -deb "unit_lib:add_bridge_interface - ovs-vsctl set bridge $br_name other-config:hwaddr=$br_mac - Success" ||
-        raise "FAIL: Could not set to bridge $br_name other-config:hwaddr=$br_mac to ovs-vsctl" -l "unit_lib:add_bridge_interface" -ds
+        log -deb "unit_lib:add_interface_to_bridge - ovs-vsctl set bridge $br_name other-config:hwaddr=$br_mac - Success" ||
+        raise "FAIL: Could not set to bridge $br_name other-config:hwaddr=$br_mac to ovs-vsctl" -l "unit_lib:add_interface_to_bridge" -ds
 
     ovs-vsctl set int "$br_name" mtu_request=1500 &&
-        log -deb "unit_lib:add_bridge_interface - ovs-vsctl set int $br_name mtu_request=1500 - Success" ||
-        raise "FAIL: ovs-vsctl set int $br_name mtu_request=1500 - Could not set to bridge '$br_name'" -l "unit_lib:add_bridge_interface" -ds
+        log -deb "unit_lib:add_interface_to_bridge - ovs-vsctl set int $br_name mtu_request=1500 - Success" ||
+        raise "FAIL: ovs-vsctl set int $br_name mtu_request=1500 - Could not set to bridge '$br_name'" -l "unit_lib:add_interface_to_bridge" -ds
 }
 
 ###############################################################################
@@ -2599,15 +2599,15 @@ get_kconfig_option_value()
 # RETURNS:
 #   Last exit status.
 # USAGE EXAMPLE(S):
-#   writable_dir "/etc"
+#   set_dir_to_writable "/etc"
 ###############################################################################
-writable_dir()
+set_dir_to_writable()
 {
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
-        raise "unit_lib:writable_dir: requires ${NARGS} input argument(s), $# given" -arg
-    [ -n "${1}" ] || raise "Input argument empty" -l "unit_lib:writable_dir"  -arg
-    [ -d "${1}" ] || raise "Input argument '${1}' is not a directory" -l "unit_lib:writable_dir"  -arg
+        raise "unit_lib:set_dir_to_writable: requires ${NARGS} input argument(s), $# given" -arg
+    [ -n "${1}" ] || raise "Input argument empty" -l "unit_lib:set_dir_to_writable"  -arg
+    [ -d "${1}" ] || raise "Input argument '${1}' is not a directory" -l "unit_lib:set_dir_to_writable"  -arg
     dir_path="${1}"
     subst_dir=${dir_path//\//_}
 

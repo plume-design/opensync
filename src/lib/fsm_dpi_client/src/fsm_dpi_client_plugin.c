@@ -317,9 +317,8 @@ fsm_dpi_client_process_attr(struct fsm_session *session, const char *attr,
     bool rc;
 
     if (session == NULL) return FSM_DPI_IGNORED;
-    service = session->service;
-    if (service == NULL) return FSM_DPI_IGNORED;
 
+    service = session->service;
     if (LOG_SEVERITY_ENABLED(LOG_SEVERITY_TRACE))
     {
         LOGT("%s: service provider: %s", __func__,

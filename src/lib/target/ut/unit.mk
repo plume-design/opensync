@@ -53,3 +53,4 @@ UNIT_DEPS += src/lib/reflink
 UNIT_DEPS += src/lib/osn
 UNIT_DEPS += src/lib/inet
 UNIT_DEPS += src/lib/unity
+UNIT_DEPS += src/lib/unit_test_utils

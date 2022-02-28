@@ -29,9 +29,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 extern char *test_name;
 
-extern void (*g_setUp)(void);
-extern void (*g_tearDown)(void);
-
 extern void run_test_neigh_table(void);
 extern void run_test_neigh_intf(void);
 

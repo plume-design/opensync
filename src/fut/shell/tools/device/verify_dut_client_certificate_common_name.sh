@@ -68,7 +68,7 @@ common_name=$(echo "$cert_cn" | tr '[:lower:]' '[:upper:]')
 model=$(echo "$device_model" | tr '[:lower:]' '[:upper:]')
 id=$(echo "$device_id" | tr '[:lower:]' '[:upper:]')
 
-verify_certificate_cn $common_name $model $id $device_mac
+check_certificate_cn $common_name $model $id $device_mac
 [ $? -eq 0 ] &&
     log "tools/server/verify_dut_client_certificate_common_name.sh: Common Name: $cert_cn of certificate is valid" ||
     raise "tools/server/verify_dut_client_certificate_common_name.sh: Common Name: $cert_cn of certificate should match either of device model: $model, device id: $id or device mac: $device_mac" -l "tools/server/verify_dut_client_certificate_common_name.sh" -tc

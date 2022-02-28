@@ -103,7 +103,7 @@ wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is netmask "$netmask" &&
     raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::netmask is not $netmask" -l "nm2/nm2_set_netmask.sh" -tc
 
 log "nm2/nm2_set_netmask.sh: Check if NETMASK was properly applied to $if_name - LEVEL2"
-wait_for_function_response 0 "get_interface_netmask_from_system $if_name | grep -q \"$netmask\"" &&
+wait_for_function_response 0 "check_interface_netmask_set_on_system $if_name | grep -q \"$netmask\"" &&
     log "nm2/nm2_set_netmask.sh: LEVEL2 - NETMASK applied to ifconfig for interface $if_name - Success" ||
     raise "FAIL: LEVEL2 - Failed to apply NETMASK to ifconfig for interface $if_name" -l "nm2/nm2_set_netmask.sh" -tc
 

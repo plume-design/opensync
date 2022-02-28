@@ -316,12 +316,14 @@ bm_kick_task_kick(void *arg)
 
         if (kick->type == BM_STICKY_KICK) {
             if (kick->rssi > client->lwm) {
-                LOGD("Client '%s' measured RSSI %u is higer then LWM %u, not kicking...",
-                                                client->mac_addr, kick->rssi, client->lwm);
+                LOGD("Client '%s' measured RSSI %u is higer then BOWM/LWM (%u/%u), not kicking...",
+                                                client->mac_addr, kick->rssi, client->bowm,
+                                                client->lwm);
                 break;
             }
-            LOGI("Client '%s' measured RSSI %u is lower then LWM %u, kicking...",
-                                                client->mac_addr, kick->rssi, client->lwm);
+            LOGI("Client '%s' measured RSSI %u is lower then BOWM/LWM (%u/%u), kicking...",
+                                                client->mac_addr, kick->rssi, client->bowm,
+                                                client->lwm);
         }
         else if (kick->type == BM_STEERING_KICK) {
             if (kick->rssi <= client->hwm) {
@@ -1120,7 +1122,7 @@ bm_kick(bm_client_t *client, bm_kick_type_t type, uint8_t rssi)
     if (!(type == BM_FORCE_KICK && client->force_kick_type == BM_CLIENT_GHOST_DEVICE_KICK)) {
         if (((time(NULL) - times->last_connect ) <= kick_debounce_period) ||
             (kick_debounce_period == BM_KICK_MAGIC_DEBOUNCE_PERIOD)) {
-            LOGW("Ignoring kick of '%s' -- reconnected within debounce period",
+            LOGI("Ignoring kick of '%s' -- reconnected within debounce period",
                  client->mac_addr);
             return false;
         }

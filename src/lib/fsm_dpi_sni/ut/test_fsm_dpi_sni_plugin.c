@@ -25,18 +25,19 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include <arpa/inet.h>
-#include <stdio.h>
-#include <stdbool.h>
 #include <stdint.h>
+#include <stdbool.h>
+#include <stdio.h>
 #include <string.h>
 #include <sys/socket.h>
 
+
 #include "dns_cache.h"
-#include "dns_parse.h"
 #include "fsm_dns_utils.h"
+#include "gatekeeper_cache.h"
+#include "dns_parse.h"
 #include "fsm_dpi_sni.h"
 #include "fsm_policy.h"
-#include "gatekeeper_cache.h"
 #include "memutil.h"
 #include "network_metadata_report.h"
 #include "network_metadata_utils.h"
@@ -44,6 +45,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_types.h"
 #include "sockaddr_storage.h"
 #include "unity.h"
+#include "unity_internals.h"
 
 os_macaddr_t g_src_mac =
 {
@@ -57,8 +59,7 @@ test_redirected_flow_v6(void)
     struct net_md_flow_info brk_info;
     struct net_md_flow_info info;
     uint32_t cache_v6_ip[4] = { 0 };
-    char *attr;
-    bool rc;
+    int rc;
 
     cache_v6_ip[0] = 0x01020304;
     cache_v6_ip[1] = 0x06060606;
@@ -82,22 +83,19 @@ test_redirected_flow_v6(void)
     TEST_ASSERT_TRUE(rc);
 
     /* Test corner cases */
-    attr = NULL;
-    rc = is_redirected_flow(NULL, attr);
+    rc = dpi_sni_is_redirected_flow(NULL);
     TEST_ASSERT_FALSE(rc);
 
-    MEMZERO(brk_info);
     brk_info.local_mac = NULL;
     brk_info.remote_ip = NULL;
-    rc = is_redirected_flow(&brk_info, attr);
+    rc = dpi_sni_is_redirected_flow(&brk_info);
     TEST_ASSERT_FALSE(rc);
 
     brk_info.local_mac = &g_src_mac;
-    rc = is_redirected_flow(&brk_info, attr);
+    rc = dpi_sni_is_redirected_flow(&brk_info);
     TEST_ASSERT_FALSE(rc);
 
     /* Now try with the real thing */
-    MEMZERO(info);
     info.local_mac = &g_src_mac;
     info.remote_ip = CALLOC(1, 16);
     TEST_ASSERT_NOT_NULL(info.remote_ip);
@@ -106,9 +104,8 @@ test_redirected_flow_v6(void)
     info.ip_version = 6;
     info.direction = NET_MD_ACC_OUTBOUND_DIR;
 
-    attr = "http.host";
     /* ip address present in cache */
-    rc = is_redirected_flow(&info, attr);
+    rc = dpi_sni_is_redirected_flow(&info);
     TEST_ASSERT_TRUE(rc);
 
     FREE(ip_cache_req->ip_addr);
@@ -146,7 +143,6 @@ test_redirect_cache(void)
 
     param.req = &fqdn_req;
     param.ipaddr = &ipaddr;
-
     rc = fsm_dns_cache_add_redirect_entry(&param);
     TEST_ASSERT_TRUE(rc);
     dns_cache_cleanup();
@@ -196,11 +192,9 @@ test_redirected_flow_gatekeeper_cache(void)
     struct net_md_flow_info info;
     char buf[128] = { 0 };
     uint8_t *cache_ip;
-    char *attr;
     bool rc;
     int ret;
 
-    MEMZERO(info);
     info.local_mac = &g_src_mac;
     info.ip_version = 4;
     info.remote_ip = CALLOC(1, 4);
@@ -235,8 +229,7 @@ test_redirected_flow_gatekeeper_cache(void)
     rc = gkc_upsert_attribute_entry(&entry);
     TEST_ASSERT_TRUE(rc);
 
-    attr = "http.url";
-    rc = is_redirected_flow(&info, attr);
+    rc = dpi_sni_is_redirected_flow(&info);
     TEST_ASSERT_TRUE(rc);
 
     ret = gkc_del_attribute(&entry);
@@ -279,27 +272,23 @@ test_redirected_flow_gatekeeper_cache(void)
     inet_pton(AF_INET6, buf, info.remote_ip);
     info.direction = NET_MD_ACC_OUTBOUND_DIR;
 
-    attr = "http.url";
-    rc = is_redirected_flow(&info, attr);
+    rc = dpi_sni_is_redirected_flow(&info);
     TEST_ASSERT_TRUE(rc);
     FREE(info.remote_ip);
 
     ret = gkc_del_attribute(&entry);
     TEST_ASSERT_TRUE(ret);
-
 }
 
 void
-test_redirected_flow_dns_cache(void)
+test_redirected_flow(void)
 {
     struct ip2action_req ip_cache_req;
     struct sockaddr_storage ipaddr;
     struct net_md_flow_info info;
     uint8_t *cache_ip;
-    char *attr;
     bool rc;
 
-    MEMZERO(info);
     info.local_mac = &g_src_mac;
     info.ip_version = 4;
     info.remote_ip = CALLOC(1, 4);
@@ -308,19 +297,8 @@ test_redirected_flow_dns_cache(void)
     TEST_ASSERT_NOT_NULL(cache_ip);
     inet_pton(AF_INET, "1.2.3.4", info.remote_ip);
 
-    /* flow should not be checked for tls.sni */
-    attr = "tls.sni";
-    rc = is_redirected_flow(&info, attr);
-    TEST_ASSERT_FALSE(rc);
-
-    /* flow should not be checked for tag */
-    attr = "tag";
-    rc = is_redirected_flow(&info, attr);
-    TEST_ASSERT_FALSE(rc);
-
-    /* valid attribute, IP not present in cache. */
-    attr = "http.host";
-    rc = is_redirected_flow(&info, attr);
+    /* flow should not be checked */
+    rc = dpi_sni_is_redirected_flow(&info);
     TEST_ASSERT_FALSE(rc);
 
     /* IP address present in cache. */
@@ -336,8 +314,8 @@ test_redirected_flow_dns_cache(void)
     ip_cache_req.cache_info.gk_info.gk_policy = "test";
     rc = dns_cache_add_entry(&ip_cache_req);
     TEST_ASSERT_EQUAL_INT(1, rc);
-    attr = "http.host";
-    rc = is_redirected_flow(&info, attr);
+
+    rc = dpi_sni_is_redirected_flow(&info);
     TEST_ASSERT_TRUE(rc);
 
     FREE(info.remote_ip);
@@ -349,7 +327,7 @@ void
 run_test_plugin(void)
 {
     RUN_TEST(test_redirect_cache);
-    RUN_TEST(test_redirected_flow_dns_cache);
+    RUN_TEST(test_redirected_flow);
     RUN_TEST(test_redirected_flow_gatekeeper_cache);
     RUN_TEST(test_redirected_flow_v6);
 }

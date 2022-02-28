@@ -136,6 +136,7 @@ ltem_update_conf(struct schema_Lte_Config *lte_conf)
     LOGD("%s: report_interval[%d]", __func__, conf->report_interval);
     STRSCPY(conf->apn, lte_conf->apn);
     STRSCPY(conf->lte_bands, lte_conf->lte_bands_enable);
+    STRSCPY(conf->esim_activation_code, lte_conf->esim_activation_code);
 
     return 0;
 }
@@ -787,6 +788,7 @@ callback_Lte_Config(ovsdb_update_monitor_t *mon,
                     struct schema_Lte_Config *lte_conf)
 {
     ltem_mgr_t *mgr = ltem_get_mgr();
+    lte_config_info_t *conf;
     int rc;
 
     LOGI("%s: if_name=%s, enable=%d, lte_failover_enable=%d, ipv4_enable=%d, ipv6_enable=%d,"
@@ -855,6 +857,22 @@ callback_Lte_Config(ovsdb_update_monitor_t *mon,
                 LOGI("%s: enable_persist[%d]", __func__, lte_conf->enable_persist);
                 ltem_update_enable_persist(lte_conf->enable_persist, lte_conf->if_name);
             }
+            if (lte_conf->esim_activation_code[0])
+            {
+                rc = strncmp(lte_conf->esim_activation_code, old_lte_conf->esim_activation_code, sizeof(lte_conf->esim_activation_code));
+                if (rc) /* New activation code */
+                {
+                    conf = mgr->lte_config_info;
+                    if (!conf) return;
+                    STRSCPY(conf->esim_activation_code, lte_conf->esim_activation_code);
+                    rc = ltem_update_esim(mgr);
+                    if (rc)
+                    {
+                        MEMZERO(conf->esim_activation_code);
+                    }
+                }
+            }
+
             break;
         case OVSDB_UPDATE_DEL:
             LOGI("%s mon_type = OVSDB_UPDATE_DEL", __func__);

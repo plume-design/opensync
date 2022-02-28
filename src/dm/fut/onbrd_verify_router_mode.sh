@@ -86,7 +86,7 @@ log_title "onbrd/onbrd_verify_router_mode.sh: ONBRD test - Verify router mode se
 
 # WAN bridge section
 log "onbrd/onbrd_verify_router_mode.sh: Check if interface '$wan_iface' is UP"
-wait_for_function_response 0 "get_eth_interface_is_up $wan_iface" &&
+wait_for_function_response 0 "check_eth_interface_state_is_up $wan_iface" &&
     log "onbrd/onbrd_verify_router_mode.sh: Interface '$wan_iface' is UP - Success" ||
     raise "FAIL: Interface '$wan_iface' is DOWN, should be UP" -l "onbrd/onbrd_verify_router_mode.sh" -ds
 

@@ -35,6 +35,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "daemon.h"
 
 #include "../tests_common.c"
+#include "unit_test_utils.h"
+
+char *test_name = "test_inet_test";
 
 /*
  * ===========================================================================
@@ -47,9 +50,6 @@ const intptr_t UNIT_NETWORK   = (intptr_t)"Network";
 const intptr_t UNIT_ERROR     = (intptr_t)"Error";
 const intptr_t UNIT_NAT       = (intptr_t)"NAT";
 const intptr_t UNIT_OK        = (intptr_t)"OK";
-
-void setUp() {}
-void tearDown() {}
 
 bool pr_walk(inet_unit_t *unit, void *ctx, bool descend)
 {
@@ -237,6 +237,10 @@ int main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
+    ut_init(test_name, NULL, NULL);
+
+    ut_setUp_tearDown(test_name, NULL, NULL);
+
     if (!parse_opts(argc, argv))
     {
         return false;
@@ -245,13 +249,11 @@ int main(int argc, char *argv[])
     if (opt_verbose)
         log_open("INET_TEST", LOG_OPEN_STDOUT);
 
-    UNITY_BEGIN();
-
 #if 0
     RUN_TEST(test_inet_iflist);
     RUN_TEST(test_inet_test);
     RUN_TEST(test_inet_unit);
 #endif
 
-    return UNITY_END();
+    return ut_fini();
 }

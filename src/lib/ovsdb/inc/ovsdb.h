@@ -360,9 +360,9 @@ json_t * ovsdb_tran_cond(ovsdb_col_t,
  * used in transaction calls, without enclosing [] -- this
  * function does not create a complete where selector.
  */
-json_t * ovsdb_tran_cond_single(char * column,
+json_t * ovsdb_tran_cond_single(const char * column,
                                 ovsdb_func_t func,
-                                char * value);
+                                const char * value);
 
 json_t * ovsdb_tran_cond_single_json(const char * column,
                                 ovsdb_func_t func,

@@ -53,6 +53,7 @@ struct wm2_l2uf_if {
     struct ev_timer retry;
     pcap_t *pcap;
     osn_netif_t *netif;
+    bool passive;
 };
 
 struct eth_hdr {
@@ -131,8 +132,11 @@ wm2_l2uf_pcap_recv(u_char *user,
      */
 
     os_nif_macaddr_to_str(mac_addr, mac_str, PRI_os_macaddr_lower_t);
-    LOGI("l2uf: received: if_name=%s sa=%s", i->if_name, mac_str);
-    WARN_ON(target_bsal_client_disconnect(i->if_name, eth->sa, type, reason) < 0);
+    LOGI("l2uf: received: if_name=%s sa=%s%s",
+         i->if_name, mac_str,
+         i->passive ? " (passive; no disconnect)" : "");
+    if (i->passive == false)
+        WARN_ON(target_bsal_client_disconnect(i->if_name, eth->sa, type, reason) < 0);
 }
 
 static void
@@ -250,4 +254,19 @@ wm2_l2uf_if_disable(const char *if_name)
     osn_netif_del(i->netif);
     FREE(i->if_name);
     FREE(i);
+}
+
+void
+wm2_l2uf_if_set_passive(const char *if_name, const bool enable)
+{
+    struct wm2_l2uf_if *i;
+
+    i = wm2_l2uf_if_lookup(if_name);
+    if (WARN_ON(i == NULL))
+        return;
+
+    if (enable != i->passive) {
+        LOGN("l2uf: set passive: if_name=%s enable=%d", if_name, enable);
+        i->passive = enable;
+    }
 }

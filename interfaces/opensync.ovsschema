@@ -1,7 +1,7 @@
 {
   "name": "Open_vSwitch",
-  "version": "7.11.308",
-  "cksum": "2669810368 249011",
+  "version": "7.11.310",
+  "cksum": "4063934234 249232",
   "tables": {
     "AWLAN_Node": {
       "columns": {
@@ -6427,6 +6427,14 @@
                     },
                     "min": 0,
                     "max": 1
+                }
+            },
+            "bottom_lwm": {
+                "type": {
+                    "key": {
+                        "type": "integer",
+                        "minInteger": 0
+                    }
                 }
             }
         },

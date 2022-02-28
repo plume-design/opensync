@@ -1,0 +1,13 @@
+[Unit]
+Description=Open-source software that delivers and manages your evolving offer of home connectivity and entertainment services.
+Documentation=https://www.opensync.io/documentation
+
+[Service]
+Type=simple
+EnvironmentFile=/usr/opensync/etc/kconfig
+
+ExecStartPre=/usr/bin/env "${CONFIG_TARGET_PATH_SCRIPTS}"/opensync.init pre-start
+ExecStart=/usr/bin/env "${CONFIG_DM_MANAGER_PATH}"/dm
+
+ExecStopPost=/usr/bin/env "${CONFIG_TARGET_PATH_SCRIPTS}"/opensync.init post-stop
+Restart=no

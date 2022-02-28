@@ -1330,7 +1330,7 @@ main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
-    ut_init(ut_name);
+    ut_init(ut_name, NULL, NULL);
     ut_setUp_tearDown(ut_name, dns_parse_setUp, dns_parse_tearDown);
 
     g_fsm_mgr = fsm_get_mgr();
@@ -1351,7 +1351,5 @@ main(int argc, char *argv[])
     RUN_TEST(test_gk_dns_cache);
     RUN_TEST(test_reverse_lookup);
 
-    ut_fini();
-
-    return UNITY_END();
+    return ut_fini();
 }

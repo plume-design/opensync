@@ -977,7 +977,17 @@ wm2_vconf_recalc(const char *ifname, bool force)
                                        &vstate)))
         wm2_vstate_init(&vstate, ifname);
 
-    if (want == true) wm2_l2uf_if_enable(ifname);
+    if (want == true) {
+        wm2_l2uf_if_enable(ifname);
+        if (strcmp(vconf.mode, "sta") == 0)
+            /*
+             * Monitor STA interfaces in passive mode, due to quirky behavior
+             * seen with wlan drivers using L2UF for loop-detection purposes
+             * in DBDC/Bonding like operations.  Passive mode allows us to
+             * see the fact that the driver is exhibiting this behavior
+             */
+            wm2_l2uf_if_set_passive(ifname, true);
+    }
     if (want == false) wm2_l2uf_if_disable(ifname);
 
     /* This is workaround to deal with unpatched controller.

@@ -27,11 +27,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "../tests_common.c"
 
 #include "osn_dhcp.h"
+#include "unit_test_utils.h"
 
 #define WAIT_DEBOUNCE 1.0
 
-void setUp() {}
-void tearDown() {}
+char *test_name = "test_dnsmasq";
 
 void test_dnsmasq(void)
 {
@@ -659,6 +659,10 @@ int main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
+    ut_init(test_name, NULL, NULL);
+
+    ut_setUp_tearDown(test_name, NULL, NULL);
+
     if (!parse_opts(argc, argv))
     {
         return false;
@@ -667,9 +671,7 @@ int main(int argc, char *argv[])
     if (opt_verbose)
         log_open("DNSMASQ_TEST", LOG_OPEN_STDOUT);
 
-    UNITY_BEGIN();
-
     run_test_dnsmasq();
 
-    return UNITY_END();
+    return ut_fini();
 }

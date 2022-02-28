@@ -114,6 +114,17 @@ cleanup:
     return -1;
 }
 
+
+/*
+ * Provided for compatibility
+ */
+int
+dpi_adt_plugin_init(struct fsm_session *session)
+{
+    return fsm_dpi_adt_init(session);
+}
+
+
 void
 fsm_dpi_adt_exit(struct fsm_session *session)
 {

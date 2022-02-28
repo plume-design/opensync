@@ -30,13 +30,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "unity.h"
 #include "log.h"
 #include "execsh.h"
+#include "unit_test_utils.h"
 
 #define PR(...) do { if (opt_verbose) LOG(INFO, __VA_ARGS__); } while (0)
 
 int opt_verbose = 0;
-
-void setUp() {}
-void tearDown() {}
+char *test_name = "EXECSH_TEST";
 
 bool parse_opts(int argc, char *argv[])
 {
@@ -243,17 +242,19 @@ int main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
+    ut_init(test_name, NULL, NULL);
+
+    ut_setUp_tearDown(test_name, NULL, NULL);
+
     if (!parse_opts(argc, argv))
     {
         return false;
     }
 
     if (opt_verbose)
-        log_open("EXECSH_TEST", LOG_OPEN_STDOUT);
-
-    UNITY_BEGIN();
+        log_open(test_name, LOG_OPEN_STDOUT);
 
     run_test_execsh();
 
-    return UNITY_END();
+    return ut_fini();
 }

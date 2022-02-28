@@ -29,14 +29,7 @@
 ###############################################################################
 UNIT_NAME := unit_test_utils
 
-# If compiled with clang, assume a native unit test target
-# and build a static library
-ifneq (,$(findstring clang,$(CC)))
-    UNIT_TYPE := LIB
-else
-    UNIT_TYPE := SHLIB
-    UNIT_DIR := lib
-endif
+UNIT_TYPE := STATIC_LIB
 
 UNIT_SRC := src/unit_test_utils.c
 

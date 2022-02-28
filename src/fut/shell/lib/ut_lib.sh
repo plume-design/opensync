@@ -56,9 +56,9 @@ ut_setup_test_environment()
         log -deb "ut_lib:ut_setup_test_environment - healtcheck disabled - Success" ||
         raise "FAIL: stop_healthcheck - Failed to stop health check" -l "ut_lib:ut_setup_test_environment" -ds
 
-    cm_disable_fatal_state &&
+    disable_fatal_state_cm &&
         log -deb "ut_lib:ut_setup_test_environment - CM fatal state disabled - Success" ||
-        raise "FAIL: cm_disable_fatal_state - Failed to disable CM fatal state" -l "ut_lib:ut_setup_test_environment" -ds
+        raise "FAIL: disable_fatal_state_cm - Failed to disable CM fatal state" -l "ut_lib:ut_setup_test_environment" -ds
 
     # Ignoring failures
     /etc/init.d/manager restart ||

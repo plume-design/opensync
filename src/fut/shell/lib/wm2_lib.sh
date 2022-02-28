@@ -190,6 +190,9 @@ get_iface_regulatory_domain()
 #   - NON-DFS : 0s (CAC is not required for NON-DFS channels)
 #   - DFS     : 60s
 #   - WEATHER : 600s
+# - Testcase configuration using HT160 mode:
+#   - Such testcases require different handling due to HT160 possibly encompassing DFS and non DFS channels
+#   - Refer to the relevant device override shell scripts for device specific handling of testcases using HT160
 # USAGE EXAMPLE(S):
 #   validate_cac wifi0
 ###############################################################################
@@ -1141,7 +1144,7 @@ check_radio_vif_state()
     retval=0
 
     log -deb "wm2_lib:check_radio_vif_state - Checking if interface $if_name is up"
-    get_vif_interface_is_up "$if_name"
+    check_vif_interface_state_is_up "$if_name"
     if [ "$?" -eq 0 ]; then
         log -deb "wm2_lib:check_radio_vif_state - Interface '$if_name' is up"
     else
@@ -1725,9 +1728,8 @@ check_is_cac_started()
         log -deb "wm2_lib:check_is_cac_started - CAC started on channel '$wm2_channel'"
         return 0
     fi
-
-    ${OVSH} s Wifi_Radio_State channels -w if_name=="$wm2_if_name" || true
-    raise "FAIL: CAC is not started on channel '$wm2_channel'" -l "wm2_lib:check_is_cac_started" -tc
+    log -err "wm2_lib:check_is_cac_started - CAC is not started on channel '$wm2_channel'"
+    return 1
 }
 
 ###############################################################################

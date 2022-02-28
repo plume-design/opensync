@@ -35,6 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "unity.h"
 #include "target.h"
 #include "qm_conn.h"
+#include "unit_test_utils.h"
 
 const char *test_name = "lte_info_tests";
 
@@ -200,20 +201,10 @@ pb2file(struct lte_info_packed_buffer *pb, char *fpath)
 
 
 /**
- * @brief called by the Unity framework before every single test
- */
-void
-setUp(void)
-{
-    return;
-}
-
-
-/**
  * @brief called by the Unity framework after every single test
  */
 void
-tearDown(void)
+lte_info_tearDown(void)
 {
     lte_info_free_report(g_report);
     g_report = NULL;
@@ -414,11 +405,9 @@ test_lte_set_mqtt_topic(void)
 int
 main(int argc, char *argv[])
 {
-    /* Set the logs to stdout */
-    target_log_open("TEST", LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_TRACE);
+    ut_init(test_name, NULL, NULL);
 
-    UnityBegin(test_name);
+    ut_setUp_tearDown(test_name, NULL, lte_info_tearDown);
 
     RUN_TEST(test_lte_set_mqtt_topic);
     RUN_TEST(test_lte_set_common_header);
@@ -429,5 +418,5 @@ main(int argc, char *argv[])
     RUN_TEST(test_lte_set_report);
     RUN_TEST(test_lte_serialize_report);
 
-    return UNITY_END();
+    return ut_fini();
 }

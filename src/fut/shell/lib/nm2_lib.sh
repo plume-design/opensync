@@ -300,7 +300,7 @@ delete_inet_interface()
 
     wait_for_function_response 1 "ip link show $nm2_if_name" &&
         log -deb "nm2_lib:delete_inet_interface - LEVEL2: Interface $nm2_if_name removed - Success" ||
-        interface_force_purge_die "$nm2_if_name"
+        force_purge_interface_raise "$nm2_if_name"
 
     log -deb "nm2_lib:delete_inet_interface - Interface '$nm2_if_name' deleted from ovsdb and OS - LEVEL2"
 
@@ -316,21 +316,21 @@ delete_inet_interface()
 # RETURNS:
 #   See DESCRIPTION
 # USAGE EXAMPLE(S):
-#   interface_force_purge_die eth0
+#   force_purge_interface_raise eth0
 ###############################################################################
-interface_force_purge_die()
+force_purge_interface_raise()
 {
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
-        raise "nm2_lib:interface_force_purge_die requires ${NARGS} input argument(s), $# given" -arg
+        raise "nm2_lib:force_purge_interface_raise requires ${NARGS} input argument(s), $# given" -arg
     nm2_if_name=$1
 
-    log -deb "nm2_lib:interface_force_purge_die - Interface force removal"
+    log -deb "nm2_lib:force_purge_interface_raise - Interface force removal"
     ip link delete "$nm2_if_name" || true
 
     wait_for_function_response 1 "ip link show $nm2_if_name" &&
-        raise "FAIL: Interface '$nm2_if_name' removed forcefully" -l "nm2_lib:interface_force_purge_die" -tc ||
-        raise "FAIL: Interface still present, could not delete interface '$nm2_if_name'" -l "nm2_lib:interface_force_purge_die" -tc
+        raise "FAIL: Interface '$nm2_if_name' removed forcefully" -l "nm2_lib:force_purge_interface_raise" -tc ||
+        raise "FAIL: Interface still present, could not delete interface '$nm2_if_name'" -l "nm2_lib:force_purge_interface_raise" -tc
 }
 
 ###############################################################################
@@ -450,20 +450,20 @@ configure_custom_dns_on_interface()
 #   0   On success.
 #   See DESCRIPTION
 # USAGE EXAMPLE(S):
-#   set_ip_forward bhaul-sta-24 8080 10.10.10.123 80 tcp
+#   set_ip_port_forwarding bhaul-sta-24 8080 10.10.10.123 80 tcp
 ###############################################################################
-set_ip_forward()
+set_ip_port_forwarding()
 {
     local NARGS=5
     [ $# -ne ${NARGS} ] &&
-        raise "nm2_lib:set_ip_forward requires ${NARGS} input argument(s), $# given" -arg
+        raise "nm2_lib:set_ip_port_forwarding requires ${NARGS} input argument(s), $# given" -arg
     nm2_src_ifname=$1
     nm2_src_port=$2
     nm2_dst_ipaddr=$3
     nm2_dst_port=$4
     nm2_protocol=$5
 
-    log -deb "nm2_lib:set_ip_forward - Creating port forward on interface '$nm2_src_ifname'"
+    log -deb "nm2_lib:set_ip_port_forwarding - Creating port forward on interface '$nm2_src_ifname'"
 
     insert_ovsdb_entry IP_Port_Forward \
         -i dst_ipaddr "$nm2_dst_ipaddr" \
@@ -471,9 +471,9 @@ set_ip_forward()
         -i src_port "$nm2_src_port" \
         -i protocol "$nm2_protocol" \
         -i src_ifname "$nm2_src_ifname" ||
-            raise "FAIL: Could not insert entry to IP_Port_Forward table" -l "nm2_lib:set_ip_forward" -oe
+            raise "FAIL: Could not insert entry to IP_Port_Forward table" -l "nm2_lib:set_ip_port_forwarding" -oe
 
-    log -deb "nm2_lib:set_ip_forward - Port forward created on interface '$nm2_src_ifname' - Success"
+    log -deb "nm2_lib:set_ip_port_forwarding - Port forward created on interface '$nm2_src_ifname' - Success"
 
     return 0
 }
@@ -490,28 +490,28 @@ set_ip_forward()
 # RETURNS:
 #   See DESCRIPTION.
 # USAGE EXAMPLE(S):
-#   force_delete_ip_port_forward_die bhaul-sta-24 <tabletype> 10.10.10.123:80
+#   force_delete_ip_port_forward_raise bhaul-sta-24 <tabletype> 10.10.10.123:80
 ###############################################################################
-force_delete_ip_port_forward_die()
+force_delete_ip_port_forward_raise()
 {
     local NARGS=3
     [ $# -ne ${NARGS} ] &&
-        raise "nm2_lib:force_delete_ip_port_forward_die requires ${NARGS} input argument(s), $# given" -arg
+        raise "nm2_lib:force_delete_ip_port_forward_raise requires ${NARGS} input argument(s), $# given" -arg
     nm2_if_name=$1
     nm2_ip_table_type=$2
     nm2_ip_port_forward_ip=$3
 
-    log -deb "nm2_lib:force_delete_ip_port_forward_die - iptables not empty. Force delete"
+    log -deb "nm2_lib:force_delete_ip_port_forward_raise - iptables not empty. Force delete"
 
     nm2_port_forward_line_number=$(iptables -t nat --list -v --line-number | tr -s ' ' | grep "$nm2_ip_table_type" | grep "$nm2_if_name" | grep  "$nm2_ip_port_forward_ip" | cut -d ' ' -f1)
     if [ -z "$nm2_port_forward_line_number" ]; then
-        log -deb "nm2_lib:force_delete_ip_port_forward_die - Could not get iptables line number, skipping..."
+        log -deb "nm2_lib:force_delete_ip_port_forward_raise - Could not get iptables line number, skipping..."
         return 0
     fi
 
     wait_for_function_response 0 "iptables -t nat -D $nm2_ip_table_type $nm2_port_forward_line_number" &&
-        raise "FAIL: IP port forward forcefully removed from iptables" -l "nm2_lib:force_delete_ip_port_forward_die" -tc ||
-        raise "FAIL: Could not to remove IP port forward from iptables" -l "nm2_lib:force_delete_ip_port_forward_die" -tc
+        raise "FAIL: IP port forward forcefully removed from iptables" -l "nm2_lib:force_delete_ip_port_forward_raise" -tc ||
+        raise "FAIL: Could not to remove IP port forward from iptables" -l "nm2_lib:force_delete_ip_port_forward_raise" -tc
 }
 
 ###############################################################################
@@ -582,7 +582,7 @@ check_interface_nat_enabled()
 
 ###############################################################################
 # DESCRIPTION:
-#   Function sets IP port forwarding on given interface.
+#   Function checks if IP port forwarding is enabled on given interface.
 #   Uses iptables tool.
 # INPUT PARAMETER(S):
 #   $1  interface name (required)
@@ -590,21 +590,21 @@ check_interface_nat_enabled()
 #   0   Port forwarding enabled on interface.
 #   1   Port forwarding not enabled on interface.
 # USAGE EXAMPLE(S):
-#   ip_port_forward eth0
+#   check_ip_port_forwarding eth0
 ###############################################################################
-ip_port_forward()
+check_ip_port_forwarding()
 {
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
-        raise "nm2_lib:ip_port_forward requires ${NARGS} input argument(s), $# given" -arg
+        raise "nm2_lib:check_ip_port_forwarding requires ${NARGS} input argument(s), $# given" -arg
     if_name=$1
 
     iptables -t nat --list -v  | tr -s ' ' / | grep '/DNAT/' | grep "$if_name"
     if [ $? -eq 0 ]; then
-        log -deb "nm2_lib:ip_port_forward - IP port forward set for interface '${if_name}'"
+        log -deb "nm2_lib:check_ip_port_forwarding - IP port forward set for interface '${if_name}'"
         return 0
     else
-        log -deb "nm2_lib:ip_port_forward - IP port forward not set for interface '${if_name}'"
+        log -deb "nm2_lib:check_ip_port_forwarding - IP port forward not set for interface '${if_name}'"
         return 1
     fi
 }
@@ -618,21 +618,21 @@ ip_port_forward()
 #   0   Broadcast address set on interface.
 #   1   Broadcast address not set on interface.
 # USAGE EXAMPLE(S):
-#   get_interface_broadcast_from_system eth0
+#   check_interface_broadcast_set_on_system eth0
 ###############################################################################
-get_interface_broadcast_from_system()
+check_interface_broadcast_set_on_system()
 {
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
-        raise "nm2_lib:get_interface_broadcast_from_system requires ${NARGS} input argument(s), $# given" -arg
+        raise "nm2_lib:check_interface_broadcast_set_on_system requires ${NARGS} input argument(s), $# given" -arg
     if_name=$1
 
     ifconfig "$if_name" | tr -s ' :' '@' | grep -e '^@inet@' | cut -d '@' -f 6
     if [ $? -eq 0 ]; then
-        log -deb "nm2_lib:get_interface_broadcast_from_system - Broadcast set for interface '${if_name}'"
+        log -deb "nm2_lib:check_interface_broadcast_set_on_system - Broadcast set for interface '${if_name}'"
         return 0
     else
-        log -deb "nm2_lib:get_interface_broadcast_from_system - Broadcast not set for interface '${if_name}'"
+        log -deb "nm2_lib:check_interface_broadcast_set_on_system - Broadcast not set for interface '${if_name}'"
         return 1
     fi
 }
@@ -646,21 +646,21 @@ get_interface_broadcast_from_system()
 #   0   Netmask set on interface.
 #   1   Netmask not set on interface.
 # USAGE EXAMPLE(S):
-#   get_interface_netmask_from_system eth0
+#   check_interface_netmask_set_on_system eth0
 ###############################################################################
-get_interface_netmask_from_system()
+check_interface_netmask_set_on_system()
 {
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
-        raise "nm2_lib:get_interface_netmask_from_system requires ${NARGS} input argument(s), $# given" -arg
+        raise "nm2_lib:check_interface_netmask_set_on_system requires ${NARGS} input argument(s), $# given" -arg
     if_name=$1
 
     ifconfig "$if_name" | tr -s ' :' '@' | grep -e '^@inet@' | cut -d '@' -f 8
     if [ $? -eq 0 ]; then
-        log -deb "nm2_lib:get_interface_netmask_from_system - Netmask set for interface '${if_name}'"
+        log -deb "nm2_lib:check_interface_netmask_set_on_system - Netmask set for interface '${if_name}'"
         return 0
     else
-        log -deb "nm2_lib:get_interface_netmask_from_system - Netmask not set for interface '${if_name}'"
+        log -deb "nm2_lib:check_interface_netmask_set_on_system - Netmask not set for interface '${if_name}'"
         return 1
     fi
 }
@@ -674,21 +674,21 @@ get_interface_netmask_from_system()
 #   0   MTU set on interface.
 #   1   MTU not set on interface.
 # USAGE EXAMPLE(S):
-#   get_interface_mtu_from_system eth0
+#   check_interface_mtu_set_on_system eth0
 ###############################################################################
-get_interface_mtu_from_system()
+check_interface_mtu_set_on_system()
 {
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
-        raise "nm2_lib:get_interface_mtu_from_system requires ${NARGS} input argument(s), $# given" -arg
+        raise "nm2_lib:check_interface_mtu_set_on_system requires ${NARGS} input argument(s), $# given" -arg
     if_name=$1
 
     ifconfig "$if_name" | tr -s ' ' | grep "MTU" | cut -d ":" -f2 | awk '{print $1}'
     if [ $? -eq 0 ]; then
-        log -deb "nm2_lib:get_interface_mtu_from_system - MTU set for interface '${if_name}'"
+        log -deb "nm2_lib:check_interface_mtu_set_on_system - MTU set for interface '${if_name}'"
         return 0
     else
-        log -deb "nm2_lib:get_interface_mtu_from_system - MTU not set for interface '${if_name}'"
+        log -deb "nm2_lib:check_interface_mtu_set_on_system - MTU not set for interface '${if_name}'"
         return 1
     fi
 }

@@ -82,6 +82,7 @@ typedef struct lte_config_info_
     char apn[32];
     char lte_bands[32];
     bool enable_persist;
+    char esim_activation_code[64];
 } lte_config_info_t;
 
 typedef struct lte_state_info_
@@ -92,6 +93,9 @@ typedef struct lte_state_info_
     uint32_t lte_failover_count;
     uint64_t lte_bands;
     bool enable_persist;
+    bool esim_download_in_progress;
+    bool esim_download_complete;
+    char esim_active_profile[32];
 } lte_state_info_t;
 
 typedef struct lte_route_info_
@@ -195,5 +199,6 @@ int ltem_ovsdb_update_lte_state(ltem_mgr_t *mgr);
 int lte_serialize_report(void);
 void lte_mqtt_cleanup(void);
 int ltem_ovsdb_cmu_update_lte_priority(ltem_mgr_t *mgr, uint32_t priority);
+int ltem_update_esim(ltem_mgr_t *mgr);
 
 #endif /* LTEM_MGR_H_INCLUDED */

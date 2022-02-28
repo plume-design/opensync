@@ -365,17 +365,11 @@ int main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
-    ut_init(ut_name);
+    ut_init(ut_name, global_test_init, global_test_exit);
     ut_setUp_tearDown(ut_name, dhcp_parse_setUp, dhcp_parse_tearDown);
-
-    global_test_init();
 
     RUN_TEST(test_load_unload_plugin);
     RUN_TEST(test_dhcp_parse_pkt);
 
-    global_test_exit();
-
-    ut_fini();
-
-    return UNITY_END();
+    return ut_fini();
 }

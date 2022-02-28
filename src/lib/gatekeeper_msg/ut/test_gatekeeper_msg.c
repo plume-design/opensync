@@ -40,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "gatekeeper_msg.h"
 
 #include "test_gatekeeper_msg.h"
+#include "unit_test_utils.h"
 
 
 os_macaddr_t g_test_mac =
@@ -571,14 +572,7 @@ test_serialize_broken_request(void)
 void
 run_test_gatekeeper_msg(void)
 {
-    void (*prev_setUp)(void);
-    void (*prev_tearDown)(void);
-
-    /* swap the setup/teardown routines */
-    prev_setUp    = g_setUp;
-    prev_tearDown = g_tearDown;
-    g_setUp    = msg_setUp;
-    g_tearDown = msg_tearDown;
+    ut_setUp_tearDown(__func__, msg_setUp, msg_tearDown);
 
     RUN_TEST(test_serialize_broken_request);
     RUN_TEST(test_serialize_fqdn_request);
@@ -591,7 +585,5 @@ run_test_gatekeeper_msg(void)
     RUN_TEST(test_serialize_ipv4_flow_request);
     RUN_TEST(test_serialize_ipv6_flow_request);
 
-    /* restore the setup/teardown routines */
-    g_setUp    = prev_setUp;
-    g_tearDown = prev_tearDown;
+    ut_setUp_tearDown(NULL, NULL, NULL);
 }

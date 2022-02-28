@@ -93,7 +93,7 @@ create_inet_entry \
         raise "FAIL: Failed to create $if_name interface" -l "nm2/nm2_enable_disable_iface_network.sh" -ds
 
 log "nm2/nm2_enable_disable_iface_network.sh: LEVEL2 - Check if IP address $inet_addr was properly applied to $if_name"
-wait_for_function_response 0 "get_interface_ip_address_from_system $if_name | grep -q \"$inet_addr\"" &&
+wait_for_function_response 0 "check_interface_ip_address_set_on_system $if_name | grep -q \"$inet_addr\"" &&
     log "nm2/nm2_enable_disable_iface_network.sh: Setting applied to ifconfig - IP: $inet_addr - Success" ||
     raise "FAIL: Failed to apply settings to ifconfig - IP: $inet_addr" -l "nm2/nm2_enable_disable_iface_network.sh" -tc
 
@@ -107,7 +107,7 @@ wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is network false &&
     raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::network is not 'false'" -l "nm2/nm2_enable_disable_iface_network.sh" -tc
 
 log "nm2/nm2_enable_disable_iface_network.sh: Checking if all network settings on interface are empty"
-wait_for_function_response 1 "get_interface_ip_address_from_system $if_name | grep -q \"$inet_addr\"" &&
+wait_for_function_response 1 "check_interface_ip_address_set_on_system $if_name | grep -q \"$inet_addr\"" &&
     log "nm2/nm2_enable_disable_iface_network.sh: Setting removed from ifconfig for '$if_name' - Success" ||
     raise "FAIL: Failed to remove settings from ifconfig for '$if_name'" -l "nm2/nm2_enable_disable_iface_network.sh" -tc
 
@@ -121,7 +121,7 @@ wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is network true &&
     raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::network is not 'true'" -l "nm2/nm2_enable_disable_iface_network.sh" -tc
 
 log "nm2/nm2_enable_disable_iface_network.sh: LEVEL2 - Check if IP address $inet_addr was properly applied to $if_name"
-wait_for_function_response 0 "get_interface_ip_address_from_system $if_name | grep -q \"$inet_addr\"" &&
+wait_for_function_response 0 "check_interface_ip_address_set_on_system $if_name | grep -q \"$inet_addr\"" &&
     log "nm2/nm2_enable_disable_iface_network.sh: Setting applied to ifconfig - IP: $inet_addr - Success" ||
     raise "FAIL: Failed to apply settings to ifconfig - IP: $inet_addr" -l "nm2/nm2_enable_disable_iface_network.sh" -tc
 

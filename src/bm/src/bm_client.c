@@ -285,6 +285,7 @@ bm_client_to_bsal_conf_bs_2g(bm_client_t *client, bm_group_t *group, radio_type_
 
         dest->rssi_auth_lwm         = 0;
         dest->auth_reject_reason    = 0;
+        dest->rssi_busy_override_xing = client->bowm;
     }
     else {
         /* Don't block client */
@@ -311,6 +312,7 @@ static bool
 bm_client_to_bsal_conf_bs_5g(bm_client_t *client, bm_group_t *group, radio_type_t radio_type, bsal_client_config_t *dest)
 {
     dest->rssi_low_xing = client->lwm == BM_KICK_MAGIC_NUMBER ? 0 : client->lwm;
+    dest->rssi_busy_override_xing = client->bowm;
 
     if (client->state != BM_CLIENT_STATE_BACKOFF) {
         if (client->pref_6g_allowed == BM_CLIENT_PREF_6G_ALLOWED_ALWAYS) {
@@ -366,9 +368,9 @@ bm_client_to_bsal_conf_bs(bm_client_t *client, bm_group_t *group, radio_type_t r
         return false;
     }
 
-    LOGD("bs %s radio_type %d (probe %d-%d, auth %d-%d, xing %d-%d", client->mac_addr, radio_type,
+    LOGD("bs %s radio_type %d (probe %d-%d, auth %d-%d, xing %d-%d-%d", client->mac_addr, radio_type,
          dest->rssi_probe_lwm, dest->rssi_probe_hwm, dest->rssi_auth_lwm, dest->rssi_auth_hwm,
-         dest->rssi_low_xing, dest->rssi_high_xing);
+         dest->rssi_busy_override_xing, dest->rssi_low_xing, dest->rssi_high_xing);
 
     return true;
 }
@@ -825,7 +827,7 @@ bm_client_add_to_group(bm_client_t *client, bm_group_t *group)
              group->ifcfg[i].bsal.ifname,
              cli_conf.rssi_probe_lwm, cli_conf.rssi_probe_hwm,
              cli_conf.rssi_auth_lwm, cli_conf.rssi_auth_hwm,
-             cli_conf.rssi_inact_xing, cli_conf.rssi_low_xing, cli_conf.rssi_high_xing);
+             cli_conf.rssi_busy_override_xing, cli_conf.rssi_low_xing, cli_conf.rssi_high_xing);
 
 
         bm_client_check_connected(client, group, group->ifcfg[i].ifname);
@@ -1483,13 +1485,26 @@ bm_client_get_btm_params( struct schema_Band_Steering_Clients *bscli,
 
         if (neigh->channel && type == BM_CLIENT_BTM_PARAMS_SC) {
             /* It's impossible to infer these correctly due to 6GHz channel
-             * numbering overlapping with 2.4G and 5G
+             * numbering overlapping with 2.4G and 5G.  Try to inherit info from
+             * neighbor table
              */
-            WARN_ON(!neigh->op_class);
-            WARN_ON(!neigh->phy_type);
+            if (!neigh->op_class || !neigh->phy_type) {
+                bm_neighbor_t *np;
 
-            memset(neigh, 0, sizeof(*neigh));
-            btm_params->num_neigh = 0;
+                if ((np = bm_neighbor_find_by_macstr(mac_str))) {
+                    LOGI("bm_client_get_btm_params [SC]: Inheriting BSSID %s " \
+                         "op_class/phy_type from neighbors table", mac_str);
+                    if (!neigh->op_class)
+                        neigh->op_class = np->neigh_report.op_class;
+                    if (!neigh->phy_type)
+                        neigh->phy_type = np->neigh_report.phy_type;
+                }
+            }
+
+            if (WARN_ON(!neigh->op_class) || WARN_ON(!neigh->phy_type)) {
+                memset(neigh, 0, sizeof(*neigh));
+                btm_params->num_neigh = 0;
+            }
         }
     }
 
@@ -1773,6 +1788,12 @@ bm_client_from_ovsdb(struct schema_Band_Steering_Clients *bscli, bm_client_t *cl
         client->neighbor_list_filter_by_beacon_report = true;
     } else {
         client->neighbor_list_filter_by_beacon_report = bscli->neighbor_list_filter_by_beacon_report;
+    }
+
+    if (!bscli->bottom_lwm_exists) {
+        client->bowm = 0;
+    } else {
+        client->bowm = bscli->bottom_lwm;
     }
 
     return true;
@@ -3509,10 +3530,13 @@ static void
 bm_client_xing_recalc(bm_client_t *client, bsal_client_info_t *info)
 {
     bm_client_ifcfg_t *ifcfg;
+    bsal_rssi_change_t new_xing_busy_override;
     bsal_rssi_change_t new_xing_low;
     bsal_rssi_change_t new_xing_high;
+    bsal_rssi_change_t prev_xing_busy_override;
     bsal_rssi_change_t prev_xing_low;
     bsal_rssi_change_t prev_xing_high;
+    uint8_t xing_busy_override;
     uint8_t xing_lwm, xing_hwm;
     bsal_event_t event;
     uint8_t new_snr;
@@ -3525,26 +3549,36 @@ bm_client_xing_recalc(bm_client_t *client, bsal_client_info_t *info)
     new_snr = info->snr;
     prev_snr = client->prev_xing_snr;
 
+    xing_busy_override = ifcfg->conf.rssi_busy_override_xing;
     xing_lwm = ifcfg->conf.rssi_low_xing;
     xing_hwm = ifcfg->conf.rssi_high_xing ;
 
+    new_xing_busy_override = bm_client_recalc_rssi_change(new_snr, xing_busy_override);
     new_xing_low = bm_client_recalc_rssi_change(new_snr, xing_lwm);
     new_xing_high = bm_client_recalc_rssi_change(new_snr, xing_hwm);
+    prev_xing_busy_override = bm_client_recalc_rssi_change(prev_snr, xing_busy_override);
     prev_xing_low = bm_client_recalc_rssi_change(prev_snr, xing_lwm);
     prev_xing_high = bm_client_recalc_rssi_change(prev_snr, xing_hwm);
 
-    LOGD("%s new_snr %u old_snr %u lwm %u hwm %u low %d->%d high %d->%d",
-         client->mac_addr, new_snr, prev_snr, xing_lwm, xing_hwm,
+    LOGD("%s new_snr %u old_snr %u busy_override %u lwm %u hwm %u busy_override %d->%d low %d->%d high %d->%d",
+         client->mac_addr, new_snr, prev_snr, xing_busy_override, xing_lwm, xing_hwm,
+         prev_xing_busy_override, new_xing_busy_override,
          prev_xing_low, new_xing_low,
          prev_xing_high, new_xing_high);
 
-    if (new_xing_low == prev_xing_low &&
+    if (new_xing_busy_override == prev_xing_busy_override &&
+        new_xing_low == prev_xing_low &&
         new_xing_high == prev_xing_high)
         return;
 
     memset(&event, 0, sizeof(event));
     STRSCPY(event.ifname, client->ifname);
     event.data.rssi_change.rssi = new_snr;
+
+    if (new_xing_busy_override == prev_xing_busy_override)
+        event.data.rssi_change.busy_override_xing = BSAL_RSSI_UNCHANGED;
+    else
+        event.data.rssi_change.busy_override_xing = new_xing_busy_override;
 
     if (new_xing_low == prev_xing_low)
         event.data.rssi_change.low_xing = BSAL_RSSI_UNCHANGED;
@@ -3558,6 +3592,7 @@ bm_client_xing_recalc(bm_client_t *client, bsal_client_info_t *info)
 
     /* While we don't know prev_snr we don't know xing */
     if (!prev_snr) {
+        event.data.rssi_change.busy_override_xing = BSAL_RSSI_UNCHANGED;
         event.data.rssi_change.low_xing = BSAL_RSSI_UNCHANGED;
         event.data.rssi_change.high_xing = BSAL_RSSI_UNCHANGED;
     }

@@ -260,6 +260,21 @@ menu "Common"
     config TARGET_MODEL
         string "Device Model Name"
 
+    choice
+        prompt "Boot integration"
+        default NON_SUPERVISOR
+            config SYSTEMD
+                bool "Systemd"
+                help
+                "For systems that support systemd"
+
+            config NON_SUPERVISOR
+                bool "Non supervisor"
+                help
+                "For non supervisor systems"
+        orsource "../platform/*/kconfig/Kconfig.startup"
+        orsource "../vendor/*/kconfig/Kconfig.startup"
+    endchoice
 endmenu
 
 menu "Platform Configuration"

@@ -350,19 +350,13 @@ main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
-    ut_init(ut_name);
+    ut_init(ut_name, global_test_init, global_test_exit);
     ut_setUp_tearDown(ut_name, fsm_demo_plugin_setUp, fsm_demo_plugin_tearDown);
-
-    global_test_init();
 
     RUN_TEST(test_no_session);
     RUN_TEST(test_load_unload_plugin);
     RUN_TEST(test_json_report);
     RUN_TEST(test_process_msg);
 
-    global_test_exit();
-
-    ut_fini();
-
-    return UNITY_END();
+    return ut_fini();
 }

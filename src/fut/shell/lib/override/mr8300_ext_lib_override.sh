@@ -192,7 +192,7 @@ inspect_neighbor_report()
     empty_ovsdb_table Wifi_Stats_Config ||
         raise "FAIL: Could not empty Wifi_Stats_Config: empty_ovsdb_table" -l "mr8300_ext_lib_override:inspect_neighbor_report" -oe
 
-    insert_ws_config \
+    insert_wifi_stats_config \
         "$sm_radio_type" \
         "$sm_channel_list" \
         "survey" \
@@ -201,7 +201,7 @@ inspect_neighbor_report()
         "$sm_sampling_interval" \
         "$sm_report_type"
 
-    insert_ws_config \
+    insert_wifi_stats_config \
         "$sm_radio_type" \
         "$sm_channel_list" \
         "neighbor" \
@@ -495,7 +495,7 @@ device_init()
     stop_openswitch &&
         log -deb "mr8300_ext_lib_override:device_init - stopped OpenvSwitch - Success" ||
         raise "FAIL: Could not stop OpenvSwitch: stop_openswitch" -l "mr8300_ext_lib_override:device_init" -ds
-    cm_disable_fatal_state &&
+    disable_fatal_state_cm &&
         log -deb "mr8300_ext_lib_override:device_init - CM fatal state disabled - Success" ||
         raise "FAIL: Could not disable CM fatal state" -l "mr8300_ext_lib_override:device_init" -ds
     return $?

@@ -35,6 +35,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "target.h"
 #include "qm_conn.h"
 #include "memutil.h"
+#include "unit_test_utils.h"
+
+char *test_name = "test_intf_stats";
 
 struct intf_stats_test_mgr
 {
@@ -804,7 +807,7 @@ test_serialize_report_1(void)
  * @brief See unity documentation/exmaples
  */
 void
-setUp(void)
+intf_stats_setUp(void)
 {
     intf_stats_report_data_t    *report       = NULL;
     intf_stats_window_t         *window_entry = NULL;
@@ -858,7 +861,7 @@ setUp(void)
  * @brief See unity documentation/exmaples
  */
 void
-tearDown(void)
+intf_stats_tearDown(void)
 {
     node_info_t *node_info = &g_test_mgr.report.node_info;
 
@@ -880,10 +883,9 @@ main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
-    target_log_open("TEST", LOG_OPEN_STDOUT);
-    log_severity_set(LOG_SEVERITY_DEBUG);
+    ut_init(test_name, NULL, NULL);
 
-    UnityBegin("intf_stats");
+    ut_setUp_tearDown(test_name, intf_stats_setUp, intf_stats_tearDown);
 
     /* Node Info(Observation Point) tests */
     RUN_TEST(test_serialize_node_info);
@@ -903,5 +905,5 @@ main(int argc, char *argv[])
     RUN_TEST(test_Intf__Stats__Report);
     RUN_TEST(test_serialize_report_1);
 
-    return UNITY_END();
+    return ut_fini();
 }

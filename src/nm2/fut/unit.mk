@@ -46,4 +46,5 @@ UNIT_FILE += nm2_set_mtu.sh
 UNIT_FILE += nm2_set_nat.sh
 UNIT_FILE += nm2_set_netmask.sh
 UNIT_FILE += nm2_set_upnp_mode.sh
+UNIT_FILE += nm2_verify_router_mode.sh
 UNIT_FILE += nm2_vlan_interface.sh

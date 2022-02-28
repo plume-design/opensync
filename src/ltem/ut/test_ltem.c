@@ -39,6 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "target.h"
 #include "unity.h"
 #include "osn_lte_modem.h"
+#include "unit_test_utils.h"
 
 static ltem_mgr_t ltem_mgr;
 
@@ -113,18 +114,6 @@ struct schema_AWLAN_Node g_node_conf_old[] =
         .mqtt_topics_len = 1,
     },
 };
-
-void
-setUp(void)
-{
-    return;
-}
-
-void
-tearDown(void)
-{
-    return;
-}
 
 ltem_mgr_t *
 ltem_get_mgr(void)
@@ -468,7 +457,9 @@ main(int argc, char **argv)
     struct ev_loop *loop = EV_DEFAULT;
     bool rc;
 
-    UnityBegin(test_name);
+    ut_init(test_name, NULL, NULL);
+
+    ut_setUp_tearDown(test_name, NULL, NULL);
 
     ltem_set_lte_state(LTEM_LTE_STATE_INIT);
 
@@ -487,7 +478,7 @@ main(int argc, char **argv)
     FREE(mgr->lte_state_info);
     FREE(mgr->lte_route);
 
-    return UNITY_END();
+    return ut_fini();
 }
 
 

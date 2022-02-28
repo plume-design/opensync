@@ -102,7 +102,7 @@ create_inet_entry \
         raise "FAIL: Failed to create $if_name interface" -l "nm2/nm2_vlan_interface.sh" -ds
 
 log "nm2/nm2_vlan_interface.sh: Check is interface $if_name up - LEVEL2"
-wait_for_function_response 0 "get_eth_interface_is_up $if_name" &&
+wait_for_function_response 0 "check_eth_interface_state_is_up $if_name" &&
     log "nm2/nm2_vlan_interface.sh: wait_for_function_response - Interface $if_name is UP - Success" ||
     raise "FAIL: wait_for_function_response - Interface $if_name is DOWN" -l "nm2/nm2_vlan_interface.sh" -ds
 

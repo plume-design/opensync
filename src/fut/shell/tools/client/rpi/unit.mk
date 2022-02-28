@@ -35,3 +35,5 @@ UNIT_FILE := check_internet_traffic.sh
 UNIT_FILE += get_rpi_client_mac.sh
 UNIT_FILE += get_rpi_client_ip.sh
 UNIT_FILE += reboot_rpi_client.sh
+UNIT_FILE += run_upnp_client.sh
+UNIT_FILE += stop_upnp_client.sh

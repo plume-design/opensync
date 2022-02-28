@@ -99,7 +99,7 @@ if [ -n "$in_file"  ]; then
             continue
         fi
         # Use subprocess to not exit upon error
-        rv=$(verify_fw_pattern "${line}")
+        rv=$(check_fw_pattern "${line}")
         rc=$?
         [ $rc -eq 0 ] &&
             log -deb "check_fw_pattern.sh: FW version string ${line} is valid" ||
@@ -107,7 +107,7 @@ if [ -n "$in_file"  ]; then
     done <"$in_file"
 elif [ -n "$fw_string" ]; then
     log "check_fw_pattern.sh: Verifying FW version string '${fw_string}'."
-    rv=$(verify_fw_pattern "${fw_string}")
+    rv=$(check_fw_pattern "${fw_string}")
     [ $? -eq 0 ] &&
         log -deb "check_fw_pattern.sh: FW version string ${fw_string} is valid" ||
         raise "FW version string ${fw_string} is not valid" -l "check_fw_pattern.sh" -tc

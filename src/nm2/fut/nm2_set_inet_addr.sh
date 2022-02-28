@@ -103,7 +103,7 @@ wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is inet_addr "$inet_addr
     raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::inet_addr is not $inet_addr" -l "nm2/nm2_set_inet_addr.sh" -tc
 
 log "nm2/nm2_set_inet_addr.sh: Checking if INET_ADDR was properly applied to $if_name - LEVEL2"
-wait_for_function_response 0 "get_interface_ip_address_from_system $if_name | grep -q \"$inet_addr\"" &&
+wait_for_function_response 0 "check_interface_ip_address_set_on_system $if_name | grep -q \"$inet_addr\"" &&
     log "nm2/nm2_set_inet_addr.sh: INET_ADDR applied to ifconfig - interface $if_name" ||
     raise "FAIL: Failed to apply INET_ADDR to ifconfig - interface $if_name" -l "nm2/nm2_set_inet_addr.sh" -tc
 
@@ -117,7 +117,7 @@ wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is inet_addr "0.0.0.0" &
     raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::inet_addr is not '0.0.0.0'" -l "nm2/nm2_set_inet_addr.sh" -tc
 
 log "nm2/nm2_set_inet_addr.sh: Checking if INET_ADDR was properly removed for $if_name - LEVEL2"
-wait_for_function_response 1 "get_interface_ip_address_from_system $if_name | grep -q \"$inet_addr\"" &&
+wait_for_function_response 1 "check_interface_ip_address_set_on_system $if_name | grep -q \"$inet_addr\"" &&
     log "nm2/nm2_set_inet_addr.sh: INET_ADDR removed from ifconfig for interface $if_name - Success" ||
     raise "FAIL: Failed to remove INET_ADDR from ifconfig for interface $if_name" -l "nm2/nm2_set_inet_addr.sh" -tc
 

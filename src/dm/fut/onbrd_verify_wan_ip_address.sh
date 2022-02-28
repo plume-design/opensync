@@ -81,7 +81,7 @@ log "onbrd/onbrd_verify_wan_ip_address.sh: Verify WAN IP address '$inet_addr' fo
 wait_ovsdb_entry Wifi_Inet_State -w if_name "$wan_interface" -is inet_addr "$inet_addr" &&
     log "onbrd/onbrd_verify_wan_ip_address.sh: wait_ovsdb_entry - Wifi_Inet_State '$wan_interface' inet_addr is equal to '$inet_addr' - Success" ||
     raise "FAIL: wait_ovsdb_entry - Wifi_Inet_State '$wan_interface' inet_addr is not equal to '$inet_addr'" -l "onbrd/onbrd_verify_wan_ip_address.sh" -tc
-wait_for_function_response 0 "verify_wan_ip_l2 $wan_interface $inet_addr" &&
+wait_for_function_response 0 "check_wan_ip_l2 $wan_interface $inet_addr" &&
     log "onbrd/onbrd_verify_wan_ip_address.sh: LEVEL2 - WAN IP for '$wan_interface' is equal to '$inet_addr' - Success" ||
     raise "FAIL: LEVEL2 - WAN IP for '$wan_interface' is not equal to '$inet_addr'" -l "onbrd/onbrd_verify_wan_ip_address.sh" -tc
 

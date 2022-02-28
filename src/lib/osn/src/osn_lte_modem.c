@@ -319,3 +319,8 @@ osn_lte_set_ue_data_centric(void)
 {
     return true;
 }
+void
+osn_lte_start_vendor_daemon(int source)
+{
+    return;
+}

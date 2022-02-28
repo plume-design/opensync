@@ -66,7 +66,7 @@ fi
 trap '
 fut_info_dump_line
 print_tables Connection_Manager_Uplink
-interface_bring_up "$if_name" || true
+set_interface_up "$if_name" || true
 check_restore_management_access || true
 fut_info_dump_line
 ' EXIT SIGINT SIGTERM
@@ -86,7 +86,7 @@ check_kconfig_option "CONFIG_MANAGER_WANO" "y" &&
 
 # Toggling the uplink interface DOWN/UP
 log "onbrd/onbrd_verify_dhcp_dry_run_success.sh: Dropping interface $if_name"
-interface_bring_down "$if_name" &&
+set_interface_down "$if_name" &&
     log "onbrd/onbrd_verify_dhcp_dry_run_success.sh: Interface $if_name is down - Success" ||
     raise "FAIL: Could not bring down interface $if_name" -l "onbrd/onbrd_verify_dhcp_dry_run_success.sh" -ds
 
@@ -96,7 +96,7 @@ wait_ovsdb_entry Connection_Manager_Uplink -w if_name "$if_name" -is has_L2 fals
     raise "FAIL: wait_ovsdb_entry - Connection_Manager_Uplink::has_L2 is not false" -l "onbrd/onbrd_verify_dhcp_dry_run_success.sh" -tc
 
 log "onbrd/onbrd_verify_dhcp_dry_run_success.sh: Bringing up interface $if_name"
-interface_bring_up "$if_name" &&
+set_interface_up "$if_name" &&
     log "onbrd/onbrd_verify_dhcp_dry_run_success.sh: Interface $if_name is up - Success" ||
     raise "FAIL: Could not bring up interface $if_name" -l "onbrd/onbrd_verify_dhcp_dry_run_success.sh" -ds
 

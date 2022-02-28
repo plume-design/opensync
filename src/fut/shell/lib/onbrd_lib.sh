@@ -139,28 +139,28 @@ check_number_of_radios()
 #   0   IP is as expected.
 #   1   WAN bridge has no IP assigned or IP not equal to OS LEVEL2 IP address.
 # USAGE EXAMPLE(S):
-#   verify_wan_ip_l2 br-wan 192.168.200.10
+#   check_wan_ip_l2 br-wan 192.168.200.10
 ###############################################################################
-verify_wan_ip_l2()
+check_wan_ip_l2()
 {
     local NARGS=2
     [ $# -ne ${NARGS} ] &&
-        raise "onbrd_lib:verify_wan_ip_l2 requires ${NARGS} input argument(s), $# given" -arg
+        raise "onbrd_lib:check_wan_ip_l2 requires ${NARGS} input argument(s), $# given" -arg
     br_wan=$1
     inet_addr_in=$2
 
     # LEVEL2
     inet_addr=$(ifconfig "$br_wan" | grep 'inet addr' | awk '/t addr:/{gsub(/.*:/,"",$2); print $2}')
     if [ -z "$inet_addr" ]; then
-        log -deb "onbrd_lib:verify_wan_ip_l2 - inet_addr is empty"
+        log -deb "onbrd_lib:check_wan_ip_l2 - inet_addr is empty"
         return 1
     fi
 
     if [ "$inet_addr_in" = "$inet_addr" ]; then
-        log -deb "onbrd_lib:verify_wan_ip_l2 - OVSDB inet_addr '$inet_addr_in' equals LEVEL2 inet_addr '$inet_addr' - Success"
+        log -deb "onbrd_lib:check_wan_ip_l2 - OVSDB inet_addr '$inet_addr_in' equals LEVEL2 inet_addr '$inet_addr' - Success"
         return 0
     else
-        log -deb "onbrd_lib:verify_wan_ip_l2 - FAIL: OVSDB inet_addr '$inet_addr_in' not equal to LEVEL2 inet_addr '$inet_addr'"
+        log -deb "onbrd_lib:check_wan_ip_l2 - FAIL: OVSDB inet_addr '$inet_addr_in' not equal to LEVEL2 inet_addr '$inet_addr'"
         return 1
     fi
 }
@@ -264,18 +264,18 @@ check_if_patch_exists()
 #   See DESCRIPTION.
 #   Function will send an exit singnal upon error, use subprocess to avoid this
 # USAGE EXAMPLE(S):
-#   verify_fw_pattern 3.0.0-29-g100a068-dev-debug
-#   verify_fw_pattern 2.0.2.0-70-gae540fd-dev-academy
+#   check_fw_pattern 3.0.0-29-g100a068-dev-debug
+#   check_fw_pattern 2.0.2.0-70-gae540fd-dev-academy
 ###############################################################################
-verify_fw_pattern()
+check_fw_pattern()
 {
     local NARGS=1
     [ $# -ne ${NARGS} ] &&
-        raise "onbrd_lib:verify_fw_pattern requires ${NARGS} input argument(s), $# given" -arg
+        raise "onbrd_lib:check_fw_pattern requires ${NARGS} input argument(s), $# given" -arg
     fw_version="${1}"
 
     [ -n "${fw_version}" ] ||
-        raise "FAIL: Firmware version string '${fw_version}' is empty!" -l "onbrd_lib:verify_fw_pattern"
+        raise "FAIL: Firmware version string '${fw_version}' is empty!" -l "onbrd_lib:check_fw_pattern"
 
     ### Split by delimiter '-' to separate version and build information
     # only three elements are of interest
@@ -290,19 +290,19 @@ verify_fw_pattern()
     if [ -n "${build_number}" ]; then
         # If not empty, must be integer between 1 and 6 numerals
         [ ${#build_number} -ge 1 ] && [ ${#build_number} -le 6 ] ||
-            raise "FAIL: Build number '${build_number}' must contain 1-6 numerals, not ${#build_number}" -l "onbrd_lib:verify_fw_pattern"
+            raise "FAIL: Build number '${build_number}' must contain 1-6 numerals, not ${#build_number}" -l "onbrd_lib:check_fw_pattern"
         echo ${build_number} | grep -E "^[0-9]*$" ||
-            raise "FAIL: Build number '${build_number}' contains non numeral characters!" -l "onbrd_lib:verify_fw_pattern"
+            raise "FAIL: Build number '${build_number}' contains non numeral characters!" -l "onbrd_lib:check_fw_pattern"
     fi
 
     # Verify the version segment before splitting
     [ -n "${fw_segment_0}" ] ||
-        raise "FAIL: Firmware version segment '${fw_segment_0}' is empty!" -l "onbrd_lib:verify_fw_pattern"
+        raise "FAIL: Firmware version segment '${fw_segment_0}' is empty!" -l "onbrd_lib:check_fw_pattern"
     echo "${fw_segment_0}" | grep -E "^[0-9.]*$" ||
-        raise "FAIL: Firmware version segment '${fw_segment_0}' contains invalid characters!" -l "onbrd_lib:verify_fw_pattern"
+        raise "FAIL: Firmware version segment '${fw_segment_0}' contains invalid characters!" -l "onbrd_lib:check_fw_pattern"
     # At least major and minor versions are needed, so one dot "." is required
     echo "${fw_segment_0}" | grep [.] ||
-        raise "FAIL: Firmware version segment '${fw_segment_0}' does not contain the delimiter '.'" -l "onbrd_lib:verify_fw_pattern"
+        raise "FAIL: Firmware version segment '${fw_segment_0}' does not contain the delimiter '.'" -l "onbrd_lib:check_fw_pattern"
     ### Split by delimiter '.' to get version segments
     ver_major="$(echo "$fw_segment_0" | cut -d'.' -f1)"
     ver_minor="$(echo "$fw_segment_0" | cut -d'.' -f2)"
@@ -311,23 +311,23 @@ verify_fw_pattern()
     ver_overflow="$(echo "$fw_segment_0" | cut -d'.' -f5-)"
     # Allow 2 to 4 elements, else fail
     [ -n "${ver_major}" ] ||
-        raise "FAIL: Major version ${ver_major} is empty!" -l "onbrd_lib:verify_fw_pattern"
+        raise "FAIL: Major version ${ver_major} is empty!" -l "onbrd_lib:check_fw_pattern"
     [ -n "${ver_minor}" ] ||
-        raise "FAIL: Minor version ${ver_minor} is empty!" -l "onbrd_lib:verify_fw_pattern"
+        raise "FAIL: Minor version ${ver_minor} is empty!" -l "onbrd_lib:check_fw_pattern"
     [ -z "${ver_overflow}" ] ||
-        raise "FAIL: Firmware version ${fw_segment_0} has too many segments (2-4), overflow: '${ver_overflow}'" -l "onbrd_lib:verify_fw_pattern"
+        raise "FAIL: Firmware version ${fw_segment_0} has too many segments (2-4), overflow: '${ver_overflow}'" -l "onbrd_lib:check_fw_pattern"
     # Non-empty segments must have 1-4 numerals
     [ ${#ver_major} -ge 1 ] && [ ${#ver_major} -le 3 ] ||
-        raise "FAIL: Major version '${ver_major}' must contain 1-3 numerals, not ${#ver_major}" -l "onbrd_lib:verify_fw_pattern"
+        raise "FAIL: Major version '${ver_major}' must contain 1-3 numerals, not ${#ver_major}" -l "onbrd_lib:check_fw_pattern"
     [ ${#ver_minor} -ge 1 ] && [ ${#ver_minor} -le 3 ] ||
-        raise "FAIL: Minor version '${ver_minor}' must contain 1-3 numerals, not ${#ver_minor}" -l "onbrd_lib:verify_fw_pattern"
+        raise "FAIL: Minor version '${ver_minor}' must contain 1-3 numerals, not ${#ver_minor}" -l "onbrd_lib:check_fw_pattern"
     if [ -n "${ver_micro}" ]; then
         [ ${#ver_micro} -ge 1 ] && [ ${#ver_micro} -le 3 ] ||
-            raise "FAIL: Micro version '${ver_micro}' must contain 1-3 numerals, not ${#ver_micro}" -l "onbrd_lib:verify_fw_pattern"
+            raise "FAIL: Micro version '${ver_micro}' must contain 1-3 numerals, not ${#ver_micro}" -l "onbrd_lib:check_fw_pattern"
     fi
     if [ -n "${ver_nano}" ]; then
         [ ${#ver_nano} -ge 1 ] && [ ${#ver_nano} -le 3 ] ||
-            raise "FAIL: Nano version '${ver_nano}' must contain 1-3 numerals, not ${#ver_nano}" -l "onbrd_lib:verify_fw_pattern"
+            raise "FAIL: Nano version '${ver_nano}' must contain 1-3 numerals, not ${#ver_nano}" -l "onbrd_lib:check_fw_pattern"
     fi
 
     return 0
@@ -351,13 +351,13 @@ verify_fw_pattern()
 # RETURNS:
 #   0   Always.
 # USAGE EXAMPLE(S):
-#   verify_certificate_cn 1A2B3C4D5E6F 1A2B3C4D5E6F PP203X 00904C324057
+#   check_certificate_cn 1A2B3C4D5E6F 1A2B3C4D5E6F PP203X 00904C324057
 ###############################################################################
-verify_certificate_cn()
+check_certificate_cn()
 {
     local NARGS=1
     [ $# -lt ${NARGS} ] &&
-        raise "onbrd_lib:verify_certificate_cn requires at least ${NARGS} input argument(s), $# given" -arg
+        raise "onbrd_lib:check_certificate_cn requires at least ${NARGS} input argument(s), $# given" -arg
 
     local comm_name=${1}
     echo "Common Name of the certificate: $comm_name"

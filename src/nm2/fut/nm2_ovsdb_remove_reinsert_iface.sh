@@ -97,7 +97,7 @@ create_inet_entry \
         raise "FAIL: Failed to create $if_name interface" -l "nm2/nm2_ovsdb_remove_reinsert_iface.sh" -ds
 
 log "nm2/nm2_ovsdb_remove_reinsert_iface.sh: Check if IP ADDRESS: $inet_addr was properly applied to $if_name (ENABLED #1) - LEVEL2"
-wait_for_function_response 0 "get_interface_ip_address_from_system $if_name | grep -q \"$inet_addr\"" &&
+wait_for_function_response 0 "check_interface_ip_address_set_on_system $if_name | grep -q \"$inet_addr\"" &&
     log "nm2/nm2_ovsdb_remove_reinsert_iface.sh: Settings applied to ifconfig (ENABLED #1) for $if_name - Success" ||
     raise "FAIL: Failed to apply settings to ifconfig (ENABLED #1) for $if_name" -l "nm2/nm2_ovsdb_remove_reinsert_iface.sh" -tc
 
@@ -111,7 +111,7 @@ wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is enabled false &&
     raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::enabled is not 'false'" -l "nm2/nm2_ovsdb_remove_reinsert_iface.sh" -tc
 
 log "nm2/nm2_ovsdb_remove_reinsert_iface.sh: Check if IP ADDRESS: $inet_addr was properly removed from $if_name (DISABLED #1) - LEVEL2"
-wait_for_function_response 1 "get_interface_ip_address_from_system $if_name | grep -q \"$inet_addr\"" &&
+wait_for_function_response 1 "check_interface_ip_address_set_on_system $if_name | grep -q \"$inet_addr\"" &&
     log "nm2/nm2_ovsdb_remove_reinsert_iface.sh: Settings removed from ifconfig (DISABLED #1) for $if_name - Success" ||
     raise "FAIL: Failed to remove settings from ifconfig (DISABLED #1) for $if_name" -l "nm2/nm2_ovsdb_remove_reinsert_iface.sh" -tc
 
@@ -125,7 +125,7 @@ wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is enabled true &&
     raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - enabled=true" -l "nm2/nm2_ovsdb_remove_reinsert_iface.sh" -tc
 
 log "nm2/nm2_ovsdb_remove_reinsert_iface.sh: LEVEL 2 - Check if IP ADDRESS: $inet_addr was properly applied to $if_name (ENABLED #2)"
-wait_for_function_response 0 "get_interface_ip_address_from_system $if_name | grep -q \"$inet_addr\"" &&
+wait_for_function_response 0 "check_interface_ip_address_set_on_system $if_name | grep -q \"$inet_addr\"" &&
     log "nm2/nm2_ovsdb_remove_reinsert_iface.sh: Settings applied to ifconfig (ENABLED #2) - $if_name - Success" ||
     raise "FAIL: Failed to apply settings to ifconfig (ENABLED #2) - $if_name" -l "nm2/nm2_ovsdb_remove_reinsert_iface.sh" -tc
 
@@ -139,7 +139,7 @@ wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is enabled false &&
     raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State - enabled=false" -l "nm2/nm2_ovsdb_remove_reinsert_iface.sh" -tc
 
 log "nm2/nm2_ovsdb_remove_reinsert_iface.sh: Check if IP address: $inet_addr was properly removed from $if_name (DISABLED #2) - LEVEL2"
-wait_for_function_response 1 "get_interface_ip_address_from_system $if_name | grep -q \"$inet_addr\"" &&
+wait_for_function_response 1 "check_interface_ip_address_set_on_system $if_name | grep -q \"$inet_addr\"" &&
     log "nm2/nm2_ovsdb_remove_reinsert_iface.sh: Settings removed from ifconfig (DISABLED #2) for $if_name - Success" ||
     raise "FAIL: Failed to remove settings from ifconfig (DISABLED #2) for $if_name" -l "nm2/nm2_ovsdb_remove_reinsert_iface.sh" -tc
 
@@ -153,7 +153,7 @@ wait_ovsdb_entry Wifi_Inet_State -w if_name "$if_name" -is enabled true &&
     raise "FAIL: wait_ovsdb_entry - Failed to reflect Wifi_Inet_Config to Wifi_Inet_State::enabled is not true" -l "nm2/nm2_ovsdb_remove_reinsert_iface.sh" -tc
 
 log "nm2/nm2_ovsdb_remove_reinsert_iface.sh: Check if IP address was properly applied to $if_name (ENABLED #1) - LEVEL2"
-wait_for_function_response 0 "get_interface_ip_address_from_system $if_name | grep -q \"$inet_addr\"" &&
+wait_for_function_response 0 "check_interface_ip_address_set_on_system $if_name | grep -q \"$inet_addr\"" &&
     log "nm2/nm2_ovsdb_remove_reinsert_iface.sh: LEVEL2 - Settings applied to ifconfig (ENABLED #3) - enabled is 'true' - Success" ||
     raise "FAIL: Failed to apply settings to ifconfig (ENABLED #3) - enabled is not 'true'" -l "nm2/nm2_ovsdb_remove_reinsert_iface.sh" -tc
 
