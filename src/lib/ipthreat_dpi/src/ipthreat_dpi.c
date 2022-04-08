@@ -644,12 +644,17 @@ ipthreat_process_action(struct fsm_session *session, int action,
     struct net_md_stats_accumulator *acc;
     char ip_buf[INET6_ADDRSTRLEN] = { 0 };
     char *direction;
+    int state;
 
     acc = net_parser->acc;
 
-    LOGT("%s(): ipthreat policy received action %d", __func__, action);
+    state = (action == FSM_BLOCK ? FSM_DPI_DROP : FSM_DPI_PASSTHRU);
+    acc->flow_marker = state;
 
-    if (action == FSM_DPI_DROP)
+    LOGT("%s(): ipthreat policy received action %s", __func__,
+         fsm_policy_get_action_str(action));
+
+    if (state == FSM_DPI_DROP)
     {
         direction = (acc->direction == NET_MD_ACC_OUTBOUND_DIR) ?
                         "outbound" :
@@ -667,10 +672,10 @@ ipthreat_process_action(struct fsm_session *session, int action,
              __func__,
              direction,
              ip_buf);
-        net_header_logi(net_parser);
+        net_header_logt(net_parser);
     }
 
-    fsm_dpi_set_acc_state(session, net_parser, action);
+    fsm_dpi_set_acc_state(session, net_parser, state);
 }
 
 
@@ -884,8 +889,6 @@ ipthreat_dpi_process_message(struct ipthreat_dpi_session *ds_session)
     /* process the input request */
     action = ipthreat_process_request(policy_request, policy_reply);
 
-    action = (action == FSM_BLOCK ? FSM_DPI_DROP : FSM_DPI_PASSTHRU);
-
     /* process the verdict */
     ipthreat_process_action(session, action, net_parser);
 
@@ -896,6 +899,7 @@ clean_policy_req:
     fsm_policy_free_request(policy_request);
 
 error:
+    acc->flow_marker = FSM_DPI_PASSTHRU;
     fsm_dpi_set_acc_state(session, net_parser, FSM_DPI_PASSTHRU);
 }
 

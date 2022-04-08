@@ -31,10 +31,23 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "memutil.h"
 #include "os.h"
+#include "os_time.h"
 
 static size_t MAX_WINDOWS = 10;
 static size_t MAX_REPORTS = 50;
 static size_t GK_HERO_STATS_MAX_REPORT_SIZE = 4096;
+
+/**
+ * @brief Time conversion helper which puts error information
+ *        into output time string on failure
+ */
+static void time_to_string(const time_t from, char *to, const size_t size)
+{
+    if (!time_to_str(from, to, size))
+    {
+        snprintf(to, size, "TIME_ERR");
+    }
+}
 
 /**
  * @brief The global hero cache report aggregator.
@@ -960,11 +973,13 @@ void
 gkhc_activate_window(struct gkc_report_aggregator *aggr)
 {
     time_t now;
+    char time_str[TIME_STR_SZ];
 
     if (aggr == NULL || aggr->initialized == false) return;
 
     now = time(NULL);
-    LOGT("%s: Activating window at %ld", __func__, now);
+    time_to_string(now, time_str, TIME_STR_SZ);
+    LOGT("%s: Activating window at %s", __func__, time_str);
     aggr->start_observation_window = now;
 }
 
@@ -976,12 +991,14 @@ gkhc_close_window(struct gkc_report_aggregator *aggr)
 {
     time_t now;
     bool rc;
+    char time_str[TIME_STR_SZ];
 
     if (aggr == NULL || aggr->initialized == false) return;
 
     now = time(NULL);
     aggr->end_observation_window = now;
-    LOGT("%s: Closing window at %ld", __func__, now);
+    time_to_string(now, time_str, TIME_STR_SZ);
+    LOGT("%s: Closing window at %s", __func__, time_str);
 
     rc = gkhc_serialize_cache_entries(aggr);
     if (!rc) return;
@@ -1028,6 +1045,7 @@ gkhc_build_and_send_report(struct gkc_report_aggregator *aggr, char *mqtt_topic)
     size_t len;
     size_t i;
     bool ret;
+    char time_str[TIME_STR_SZ];
 
     if (aggr == NULL || aggr->initialized == false) return -1;
 
@@ -1049,8 +1067,8 @@ gkhc_build_and_send_report(struct gkc_report_aggregator *aggr, char *mqtt_topic)
     /* the observation window was not closed !! */
     if (aggr->start_observation_window > aggr->end_observation_window)
     {
-        LOGT("%s(): obs window not closed after active at %lu",
-             __func__, aggr->start_observation_window);
+        time_to_string(aggr->start_observation_window, time_str, TIME_STR_SZ);
+        LOGT("%s(): obs window not closed after active at %s", __func__, time_str);
         return -1;
     }
 
@@ -1161,11 +1179,11 @@ gkhc_send_report(struct fsm_session *session, long interval)
 
     if (retval > 0)
     {
-        LOGI("%s: HERO stats sent in %d reports after %ld seconds", __func__, retval, cmp_report);
+        LOGI("%s: HERO stats sent in %d reports after %ld seconds", __func__, retval, (long int)cmp_report);
     }
     else
     {
-        LOGD("%s: HERO stats didn't generate any report after %ld seconds", __func__, cmp_report);
+        LOGD("%s: HERO stats didn't generate any report after %ld seconds", __func__, (long int)cmp_report);
     }
 
     /* Set up the start of next observation window */

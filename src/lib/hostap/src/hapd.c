@@ -1152,12 +1152,11 @@ hapd_bss_get_security(struct schema_Wifi_VIF_State *vstate,
     bool dpp = false;
 
     while ((conf_key = strsep(&conf_keys, " "))) {
-        if (strcmp(conf_key, "WPA-PSK") == 0 && (conf_wpa & 1)) {
-            wpa_psk = true;
-            continue;
-        }
-        if (strcmp(conf_key, "WPA-PSK") == 0 && (conf_wpa & 2)) {
-            wpa2_psk = true;
+        if (strcmp(conf_key, "WPA-PSK") == 0) {
+            if (conf_wpa & 1)
+                wpa_psk = true;
+            if (conf_wpa & 2)
+                wpa2_psk = true;
             continue;
         }
         if (strcmp(conf_key, "WPA-EAP") == 0) {

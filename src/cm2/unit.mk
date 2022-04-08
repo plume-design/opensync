@@ -67,6 +67,12 @@ ifeq ($(CONFIG_CM2_USE_STABILITY_CHECK),y)
 UNIT_SRC    += src/cm2_stability.c
 endif
 
+ifeq ($(CONFIG_CM2_BT_BEACON_HANDLER),y)
+UNIT_SRC    += src/cm2_blem.c
+else ifeq ($(CONFIG_CM2_BT_CONNECTABLE),y)
+UNIT_SRC    += src/cm2_blem.c
+endif
+
 UNIT_EXPORT_CFLAGS := $(UNIT_CFLAGS)
 UNIT_EXPORT_LDFLAGS := $(UNIT_LDFLAGS)
 

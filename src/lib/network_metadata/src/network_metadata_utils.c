@@ -545,6 +545,8 @@ struct net_md_flow_key * set_net_md_flow_key(struct net_md_flow_key *lkey)
     key->fend = lkey->fend;
     key->tcp_flags = lkey->tcp_flags;
     key->icmp_type = lkey->icmp_type;
+    key->networkid = lkey->networkid;
+    key->flowmarker = lkey->flowmarker;
     return key;
 
 err_free_src_ip:
@@ -666,6 +668,8 @@ void net_md_free_acc(struct net_md_stats_accumulator *acc)
     free_flow_key(acc->fkey);
     FREE(acc->fkey);
     if (acc->free_plugins != NULL) acc->free_plugins(acc);
+    // dpi_plugins tree for the acc is set to NULL.
+    acc->dpi_plugins = NULL;
 }
 
 
@@ -2128,7 +2132,9 @@ net_md_log_key(struct net_md_flow_key *key, const char *caller)
          " sport: %d"                     \
          " dport: %d"                     \
          " direction: %s"                 \
-         " origin: %s",                   \
+         " origin: %s"                    \
+         " networkid: %s"                 \
+         " flowmarker: %d",               \
          FMT_os_macaddr_pt(smac),
          FMT_os_macaddr_pt(dmac),
          FMT_os_ufid_t_pt(ufid),
@@ -2143,7 +2149,9 @@ net_md_log_key(struct net_md_flow_key *key, const char *caller)
          ntohs(key->sport),
          ntohs(key->dport),
          net_md_dir_to_str(key->direction),
-         net_md_origin_to_str(key->originator)
+         net_md_origin_to_str(key->originator),
+         key->networkid,
+         key->flowmarker
         );
     if (key->fstart) LOGD(" Flow Starts");
     if (key->fend) LOGD(" Flow Ends");
@@ -2175,7 +2183,9 @@ net_md_log_fkey(struct flow_key *fkey, const char *caller)
          " sport: %d"               \
          " dport: %d"               \
          " direction: %s"           \
-         " origin: %s",             \
+         " origin: %s"              \
+         " networkid: %s"           \
+         " flowmarker: %d",         \
          fkey->smac,
          fkey->dmac,
          (fkey->isparent_of_smac ? "true" : "false"),
@@ -2189,7 +2199,9 @@ net_md_log_fkey(struct flow_key *fkey, const char *caller)
          fkey->sport,
          fkey->dport,
          net_md_dir_to_str(fkey->direction),
-         net_md_origin_to_str(fkey->originator)
+         net_md_origin_to_str(fkey->originator),
+         fkey->networkid,
+         fkey->flowmarker
         );
     LOGD(" Flow State:");
     LOGD(" First observed : %s", ctime(&fkey->state.first_obs));

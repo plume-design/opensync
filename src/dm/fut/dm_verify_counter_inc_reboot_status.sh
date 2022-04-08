@@ -78,10 +78,9 @@ count_to_check=$(($count_before_reboot+1))
 if [ $count_after_reboot -eq $count_to_check ]; then
     log "dm/dm_verify_counter_inc_reboot_status.sh: Reboot_Status::count field is incremented - Success"
     wait_for_function_response 0 "check_ovsdb_entry Reboot_Status -w count $count_after_reboot -w type 'USER'" &&
-        log "dm/dm_verify_counter_inc_reboot_status.sh: Reboot reason is USER - Success" ||
-        raise "FAIL: Reboot reason is not USER" -l "dm/dm_verify_counter_inc_reboot_status.sh" -tc
+        log "dm/dm_verify_counter_inc_reboot_status.sh: Reboot counter incremented from ${count_before_reboot} to ${count_after_reboot} after reboot - Success"
 else
-    raise "FAIL: Reboot_Status::count field is not incremented" -l "dm/dm_verify_counter_inc_reboot_status.sh" -tc
+    raise "FAIL: Reboot_Status::count field failed to increment ${count_before_reboot} -> ${count_after_reboot}" -l "dm/dm_verify_counter_inc_reboot_status.sh" -tc
 fi
 
 pass

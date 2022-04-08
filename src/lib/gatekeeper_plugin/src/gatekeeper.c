@@ -366,6 +366,8 @@ gatekeeper_check_attr_cache(struct fsm_policy_req *req,
     {
         policy_reply->action = entry->action;
 
+        if (acc) acc->flow_marker = entry->flow_marker;
+
         gk_update_redirect_from_cache(req, entry, policy_reply);
 
         policy_reply->categorized = entry->categorized;
@@ -562,6 +564,8 @@ gatekeeper_add_attr_cache(struct fsm_policy_req *req,
     entry->category_id = url_reply->reply_info.gk_info.category_id;
     entry->confidence_level = url_reply->reply_info.gk_info.confidence_level;
     entry->is_private_ip = policy_reply->cat_unknown_to_service;
+    entry->flow_marker = (policy_reply->action == FSM_BLOCK) ? FSM_DPI_DROP : FSM_DPI_PASSTHRU;
+    if (acc != NULL) entry->flow_marker = acc->flow_marker;
     if (url_reply->reply_info.gk_info.gk_policy)
     {
         entry->gk_policy = url_reply->reply_info.gk_info.gk_policy;
@@ -933,6 +937,7 @@ gatekeeper_get_verdict(struct fsm_policy_req *req,
     bool ret = true;
     bool incache;
     int gk_response;
+    u_int32_t mark;
 
     fqdn_req = req->fqdn_req;
     req_info = fqdn_req->req_info;
@@ -960,12 +965,14 @@ gatekeeper_get_verdict(struct fsm_policy_req *req,
     incache = gk_check_policy_in_cache(req, policy_reply);
     if (incache == true)
     {
+        mark = (req->acc != NULL) ? req->acc->flow_marker: 0;
         if (!policy_reply->cat_unknown_to_service)
             stats->cache_hits++;
-        LOGT("%s(): %s found in cache, returning action %d, redirect flag %d from cache",
+        LOGT("%s(): %s found in cache, returning action %d (mark:%d), redirect flag %d from cache",
              __func__,
              req->url,
              policy_reply->action,
+             mark,
              policy_reply->redirect);
         return true;
     }
@@ -1047,7 +1054,8 @@ gatekeeper_get_verdict(struct fsm_policy_req *req,
     gk_add_policy_to_cache(req, policy_reply);
 
 error:
-    LOGT("%s(): verdict for '%s' is %d", __func__, req->url, policy_reply->action);
+    LOGT("%s(): verdict for '%s' is %s", __func__, req->url,
+         fsm_policy_get_action_str(policy_reply->action));
     free_gk_verdict(gk_verdict);
 
 

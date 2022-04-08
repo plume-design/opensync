@@ -710,8 +710,6 @@ configure_sta_interface()
         raise "FAIL: Interface name argument empty" -l "wm2_lib:configure_sta_interface" -arg
     [ -z "${ssid}" ] &&
         raise "FAIL: SSID name argument empty" -l "wm2_lib:configure_sta_interface" -arg
-    [ -z "${security}" ] &&
-        raise "FAIL: SSID name argument empty" -l "wm2_lib:configure_sta_interface" -arg
 
     if [ "${clear_wcc}" == "true" ]; then
         log -deb "wm2_lib:configure_sta_interface - Clearing Wifi_Credential_Config table"
@@ -732,7 +730,13 @@ configure_sta_interface()
             raise "FAIL: get_ovsdb_entry_value Wifi_Credential_Config _uuid $func_params" -l "wm2_lib:configure_sta_interface" -oe
         vif_args_c="${vif_args_c} -m :ins: ${replace} credential_configs '[\"set\",[[\"uuid\",\"${wcc_uuid}\"]]]'"
     elif [ "${is_wpa}" == "true" ]; then
-        log -deb "wm2_lib:configure_sta_interface - WPA is used, will not set security field nor Wifi_Credential_Config"
+        log -deb "wm2_lib:configure_sta_interface - WPA is used, will not set Wifi_Credential_Config"
+        update_ovsdb_entry Wifi_VIF_Config -w if_name "${vif_if_name}" -u security "[\"map\",[]]" &&
+            log "wm2_lib:configure_sta_interface update_ovsdb_entry - Wifi_VIF_Config::security is [\"map\",[]] - Success" ||
+            raise "FAIL: update_ovsdb_entry - Failed to update Wifi_VIF_Config::security is not [\"map\",[]]" -l "wm2_lib:configure_sta_interface" -tc
+        wait_ovsdb_entry Wifi_VIF_State -w if_name "${vif_if_name}" -is security "[\"map\",[]]" &&
+            log "wm2_lib:configure_sta_interface wait_ovsdb_entry - Wifi_VIF_State::security is [\"map\",[]] - Success" ||
+            raise "FAIL: wait_ovsdb_entry - Failed to update Wifi_VIF_State::security is not [\"map\",[]]" -l "wm2_lib:configure_sta_interface" -tc
     else
         log -err "wm2_lib:configure_sta_interface - Wifi_Credential_Config is not used. Will use security field instead"
         vif_args_c="${vif_args_c} ${security_args_c}"
@@ -797,6 +801,7 @@ configure_sta_interface()
     log -deb "wm2_lib:configure_sta_interface: STA VIF entry successfully configured"
     return 0
 }
+
 ###############################################################################
 # DESCRIPTION:
 #   Function creates and configures VIF interface and makes sure required
@@ -1129,6 +1134,7 @@ remove_vif_interface()
 
     return 0
 }
+
 ###############################################################################
 # DESCRIPTION:
 # INPUT PARAMETER(S):
@@ -1143,21 +1149,13 @@ check_radio_vif_state()
     replace="func_arg"
     retval=0
 
-    log -deb "wm2_lib:check_radio_vif_state - Checking if interface $if_name is up"
-    check_vif_interface_state_is_up "$if_name"
-    if [ "$?" -eq 0 ]; then
-        log -deb "wm2_lib:check_radio_vif_state - Interface '$if_name' is up"
-    else
-        log -deb "wm2_lib:check_radio_vif_state - Interface '$if_name' is not up"
-        return 1
-    fi
-
     while [ -n "$1" ]; do
         option=$1
         shift
         case "$option" in
             -if_name)
                 radio_args="$radio_args $replace if_name $1"
+                if_name=$1
                 shift
                 ;;
             -vif_if_name)
@@ -1203,6 +1201,15 @@ check_radio_vif_state()
                 ;;
         esac
     done
+
+    log -deb "wm2_lib:check_radio_vif_state - Checking if interface $if_name is up"
+    check_vif_interface_state_is_up "$if_name"
+    if [ "$?" -eq 0 ]; then
+        log -deb "wm2_lib:check_radio_vif_state - Interface '$if_name' is up"
+    else
+        log -deb "wm2_lib:check_radio_vif_state - Interface '$if_name' is not up"
+        return 1
+    fi
 
     func_params=${radio_args//$replace/-w}
     # shellcheck disable=SC2086

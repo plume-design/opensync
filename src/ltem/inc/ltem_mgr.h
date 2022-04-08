@@ -79,7 +79,7 @@ typedef struct lte_config_info_
     uint32_t active_simcard_slot;
     bool modem_enable;
     uint32_t report_interval;
-    char apn[32];
+    char apn[64];
     char lte_bands[32];
     bool enable_persist;
     char esim_activation_code[64];
@@ -87,6 +87,7 @@ typedef struct lte_config_info_
 
 typedef struct lte_state_info_
 {
+    bool lte_failover_force;
     bool lte_failover_active;
     time_t lte_failover_start;
     time_t lte_failover_end;
@@ -187,6 +188,7 @@ int ltem_ovsdb_cmu_insert_lte(ltem_mgr_t *mgr);
 int ltem_ovsdb_cmu_update_lte(ltem_mgr_t *mgr);
 int ltem_ovsdb_cmu_disable_lte(ltem_mgr_t *mgr);
 void ltem_ovsdb_cmu_check_lte(ltem_mgr_t *mgr);
+uint32_t ltem_ovsdb_cmu_get_wan_priority(ltem_mgr_t *mgr);
 int ltem_ovsdb_wifi_inet_create_config(ltem_mgr_t *mgr);
 int ltem_ovsdb_lte_create_config(ltem_mgr_t *mgr);
 void ltem_ovsdb_update_awlan_node(struct schema_AWLAN_Node *new);

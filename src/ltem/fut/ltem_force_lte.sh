@@ -40,10 +40,10 @@ usage()
 cat << usage_string
 ltem/ltem_force_lte.sh [-h] arguments
 Description:
-    - This script is used to force switch to LTE for LTEM testing
+    - This script is used to force switch to LTE for LTEM testing.
 Arguments:
     -h : show this help message
-    \$1 (lte_if_name)                 : lte interface name              : (string)(required)
+    \$1 (lte_if_name)  : lte interface name  : (string)(required)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
                  Run: ./ltem/ltem_force_lte.sh lte_if_name
@@ -66,18 +66,25 @@ NARGS=1
 [ $# -ne ${NARGS} ] && usage && raise "Requires exactly '${NARGS}' input argument(s)" -l "ltem/ltem_force_lte.sh" -arg
 lte_if_name=${1}
 
+# Execute on EXIT signal.
+trap '
+fut_info_dump_line
+print_tables Lte_Config Lte_State
+fut_info_dump_line
+' EXIT SIGINT SIGTERM
+
 check_ovsdb_table_exist Lte_Config &&
     log "ltem/ltem_force_lte.sh: Lte_Config table exists in ovsdb - Success" ||
     raise "FAIL: Lte_Config table does not exist in ovsdb" -l "ltem/ltem_force_lte.sh" -s
 
 update_ovsdb_entry Lte_Config -w if_name "$lte_if_name" \
     -u force_use_lte "true" &&
-        log "ltem/ltem_force_lte.sh: ltem_update_ovsdb_entry for Lte_Config - Success " ||
+        log "ltem/ltem_force_lte.sh: ltem_update_ovsdb_entry for Lte_Config - Success" ||
         raise "FAIL: ltem_update_ovsdb_entry for Lte_Config " -l "ltem/ltem_force_lte.sh" -tc
 
 check_ovsdb_table_exist Lte_State &&
-    log "ltem/ltem_force_lte.sh: Lte_Config table exists in ovsdb - Success" ||
-    raise "FAIL: Lte_Config table does not exist in ovsdb" -l "ltem/ltem_force_lte.sh" -s
+    log "ltem/ltem_force_lte.sh: Lte_State table exists in ovsdb - Success" ||
+    raise "FAIL: Lte_State table does not exist in ovsdb" -l "ltem/ltem_force_lte.sh" -s
 
 wait_ovsdb_entry Lte_State -w if_name "$lte_if_name" -is force_use_lte true &&
     log "ltem/ltem_force_lte.sh: wait_ovsdb_entry - Lte_Config reflected to Lte_State::force_use_lte is 'true' - Success" ||

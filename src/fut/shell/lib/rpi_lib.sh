@@ -214,9 +214,16 @@ print_certificate_details()
 
 ###############################################################################
 # DESCRIPTION:
+#   Function encrypts unencrypted image file with the provided encryption key.
+#   Raises exception on fail.
 # INPUT PARAMETER(S):
+#   $1  path to unencrypted image file (string, required)
+#   $2  encryption key (string, required)
 # RETURNS:
+#   0   On success.
+#   See DESCRIPTION.
 # USAGE EXAMPLE(S):
+#   um_encrypt_image <PATH_TO_UNENCRYPTED_IMAGE> <ENCRYPTION_KEY>
 ###############################################################################
 um_encrypt_image()
 {
@@ -232,17 +239,25 @@ um_encrypt_image()
 
     [ -f "$um_fw_enc_path" ] && rm "$um_fw_enc_path"
 
-    log "rpi_lib:um_encrypt_image - Encypring image $um_fw_path with key $um_fw_key_path"
+    log "rpi_lib:um_encrypt_image - Encrypting image $um_fw_path with key $um_fw_key_path"
     openssl enc -aes-256-cbc -pass pass:"$(cat "$um_fw_key_path")" -md sha256 -nosalt -in "$um_fw_unc_path" -out "$um_fw_enc_path" &&
         log -deb "rpi_lib:um_encrypt_image - Image encrypted - Success" ||
         raise "FAIL: Failed to encrypt image" -l "rpi_lib:um_encrypt_image" -ds
+
+    return 0
 }
 
 ###############################################################################
 # DESCRIPTION:
+#   Function creates md5 file to corresponding FW image file.
+#   Raises exception on fail.
 # INPUT PARAMETER(S):
+#   $1  path to image file (string, required)
 # RETURNS:
+#   0   On success.
+#   See DESCRIPTION.
 # USAGE EXAMPLE(S):
+#   um_create_md5_file /tmp/clean_device_fw.img
 ###############################################################################
 um_create_md5_file()
 {
@@ -258,13 +273,21 @@ um_create_md5_file()
     cd "$um_file_cd_path" && md5sum "$um_fw_name" > "$um_fw_name.md5" &&
         log -deb "rpi_lib:um_create_md5_file - md5 sum file created - Success" ||
         raise "FAIL: Could not create md5 sum file" -l "rpi_lib:um_create_md5_file" -ds
+
+    return 0
 }
 
 ###############################################################################
 # DESCRIPTION:
+#   Function creates corrupted md5 file to corresponding FW image file.
+#   Raises exception on fail.
 # INPUT PARAMETER(S):
+#   $1  path to image file (string, required)
 # RETURNS:
+#   0   On success.
+#   See DESCRIPTION.
 # USAGE EXAMPLE(S):
+#   um_create_corrupt_md5_file /tmp/clean_device_fw.img
 ###############################################################################
 um_create_corrupt_md5_file()
 {
@@ -282,13 +305,21 @@ um_create_corrupt_md5_file()
     echo "${um_hash_only:16:16}${um_hash_only:0:16}  ${um_fw_name}" > "$um_md5_name" &&
         log -deb "rpi_lib:um_create_corrupt_md5_file - Created '$um_md5_name' - Success" ||
         raise "FAIL: Could not create '$um_md5_name'" -l "rpi_lib:um_create_corrupt_md5_file" -ds
+
+    return 0
 }
 
 ###############################################################################
 # DESCRIPTION:
+#   Function creates corrupted FW image file.
+#   Raises exception on fail.
 # INPUT PARAMETER(S):
+#   $1  path to image file (string, required)
 # RETURNS:
+#   0   On success.
+#   See DESCRIPTION.
 # USAGE EXAMPLE(S):
+#   um_create_corrupt_image /tmp/clean_device_fw.img
 ###############################################################################
 um_create_corrupt_image()
 {
@@ -313,6 +344,8 @@ um_create_corrupt_image()
     dd if=/dev/urandom of="$um_corrupt_fw_path" bs=1 count=100 seek=1000 conv=notrunc &&
         log -deb "rpi_lib:um_create_corrupt_image - Image corrupted Step #2" ||
         raise "FAIL: Could not corrupt image Step #2" -l "rpi_lib:um_create_corrupt_image" -ds
+
+    return 0
 }
 
 ####################### FW IMAGE SECTION - STOP ###############################

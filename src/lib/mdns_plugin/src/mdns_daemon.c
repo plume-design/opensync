@@ -258,7 +258,7 @@ mdnsd_timer_cb(EV_P_ struct ev_timer *w, int revents)
         LOGE("Failed writing to socket: %s", strerror(errno));
     }
 
-    LOGD("mdns_daemon: Going to sleep for %lu",tv->tv_sec);
+    LOGD("mdns_daemon: Going to sleep for %ld", (long int)tv->tv_sec);
     ev_timer_stop(loop, &pctxt->timer);
     ev_timer_set(&pctxt->timer, tv->tv_sec, 0.);
     ev_timer_start(loop, &pctxt->timer);

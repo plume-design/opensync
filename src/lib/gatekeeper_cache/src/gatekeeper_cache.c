@@ -434,6 +434,8 @@ gkc_new_attr_entry(struct gk_attr_cache_interface *entry)
         new_attr_cache->gk_policy = STRDUP(entry->gk_policy);
     }
 
+    new_attr_cache->flow_marker = entry->flow_marker;
+
     return new_attr_cache;
 
 cleanup_new_attr:
@@ -997,6 +999,7 @@ gkc_lookup_attr_tree(ds_tree_t *tree, struct gk_attr_cache_interface *req, bool 
     req->confidence_level = attr_entry->confidence_level;
     req->is_private_ip = attr_entry->is_private_ip;
     req->redirect_flag = attr_entry->redirect_flag;
+    req->flow_marker = attr_entry->flow_marker;
 
     gkc_lookup_redirect_entry(req, attr_entry);
 

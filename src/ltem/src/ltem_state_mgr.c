@@ -46,7 +46,7 @@ char *ltem_lte_state_info[] =
 };
 
 /**
- * @brief Get lte state info
+ * @brief Get LTE state info
  */
 char *
 ltem_get_lte_state_info(enum ltem_lte_state state)
@@ -73,7 +73,7 @@ char *ltem_wan_state_info[] =
 };
 
 /**
- * @brief Get wan state info
+ * @brief Get WAN state info
  */
 char *
 ltem_get_wan_state_info(enum ltem_wan_state state)
@@ -105,6 +105,7 @@ ltem_set_failover(ltem_mgr_t *mgr)
         res = ltem_force_lte_route(mgr);
         if (!res) /* If we fail to update the route, we don't set failover */
         {
+            mgr->lte_state_info->lte_failover_force = true;
             mgr->lte_state_info->lte_failover_active = true;
             mgr->lte_state_info->lte_failover_start = time(NULL);
             mgr->lte_state_info->lte_failover_end = 0;
@@ -132,19 +133,20 @@ ltem_revert_failover(ltem_mgr_t *mgr)
 {
     int res;
 
-    if (mgr->lte_config_info->force_use_lte)
+    if (mgr->lte_state_info->lte_failover_force)
     {
         res = ltem_restore_default_wan_route(mgr);
         if (!res)
         {
+            mgr->lte_state_info->lte_failover_force = false;
             mgr->lte_state_info->lte_failover_active = false;
             mgr->lte_state_info->lte_failover_end = time(NULL);
         }
     }
     else
     {
-            mgr->lte_state_info->lte_failover_active = false;
-            mgr->lte_state_info->lte_failover_end = time(NULL);
+        mgr->lte_state_info->lte_failover_active = false;
+        mgr->lte_state_info->lte_failover_end = time(NULL);
     }
 
     LOGI("%s: failover_active=%d, start time[%ld], end time[%ld]", __func__,

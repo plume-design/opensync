@@ -753,12 +753,12 @@ fsm_send_to_qm(qm_compress_t compress, char *topic, void *data, int data_size)
         now = time(NULL);
         backoff = ((now - mgr->qm_backoff) < FSM_QM_BACKOFF_INTERVAL);
         if (backoff) LOGD("%s: in back off since %ld seconds", __func__,
-                          (now - mgr->qm_backoff));
+                          (long int)(now - mgr->qm_backoff));
         if (backoff) return false;
 
         /* Reflect that we are out of back off */
         LOGD("%s: out of back off since %ld seconds", __func__,
-            (now - mgr->qm_backoff) - FSM_QM_BACKOFF_INTERVAL);
+             (long int)(now - mgr->qm_backoff) - FSM_QM_BACKOFF_INTERVAL);
         mgr->qm_backoff = 0;
     }
 
@@ -1458,7 +1458,6 @@ fsm_ovsdb_init(void)
     mgr = fsm_get_mgr();
     mgr->init_plugin = fsm_init_plugin;
     mgr->get_br = get_home_bridge;
-    mgr->set_dpi_state = fsm_set_dpi_state;
     mgr->update_session_tap = fsm_update_session_tap;
     fsm_policy_init();
 

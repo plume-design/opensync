@@ -375,6 +375,7 @@ inet_t *nm2_iface_new_inet(const char *ifname, enum nm2_iftype type)
         case NM2_IFTYPE_ETH:
         case NM2_IFTYPE_BRIDGE:
         case NM2_IFTYPE_TAP:
+        case NM2_IFTYPE_TUNNEL:
             nif = inet_eth_new(ifname);
             break;
 

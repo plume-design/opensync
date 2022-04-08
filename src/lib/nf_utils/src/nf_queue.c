@@ -60,6 +60,22 @@ nf_queue_get_context(void)
     return &nfq_context;
 }
 
+static const char *
+nf_ct_mark_str(uint8_t mark)
+{
+    static char buf[256];
+
+    if (mark == CT_MARK_INSPECT)
+    {
+        sprintf(buf, "%d %s", mark, "Inspect");
+    }
+    else
+    {
+        sprintf(buf, "%d %s", mark, (mark == CT_MARK_DROP ? "Drop" : "Allow"));
+    }
+
+    return buf;
+}
 
 static int
 nf_queue_parse_attr_cb(const struct nlattr *attr, void *data)
@@ -139,8 +155,8 @@ nf_queue_cb(const struct nlmsghdr *nlh, void *data)
 
     if (tb[NFQA_HWADDR]) phw = mnl_attr_get_payload(tb[NFQA_HWADDR]);
 
-    /* Default verdict is Inspect */
-    pkt_info->verdict = NF_UTIL_NFQ_INSPECT;
+    /* Default mark is Inspect */
+    pkt_info->flow_mark = CT_MARK_INSPECT;
     pkt_info->packet_id = id;
     pkt_info->queue_num = nfq->queue_num;
     pkt_info->payload = mnl_attr_get_payload(tb[NFQA_PAYLOAD]);
@@ -239,7 +255,6 @@ nf_queue_send_verdict(struct nfqnl_msg_verdict_hdr *vhdr,
     struct nfq_pkt_info *pkt_info;
     struct nlattr *nest;
     int ret;
-    uint32_t mark = 1;
 
     ctxt = nf_queue_get_context();
     if (ctxt->initialized == false) return;
@@ -251,20 +266,6 @@ nf_queue_send_verdict(struct nfqnl_msg_verdict_hdr *vhdr,
 
     pkt_info = &nfq->pkt_info;
 
-    switch(pkt_info->verdict)
-    {
-        case NF_UTIL_NFQ_ACCEPT:
-                LOGT("%s: Setting mark 2, no more packets needed.",__func__);
-                mark = 2;
-                break;
-        case NF_UTIL_NFQ_INSPECT:
-                LOGT("%s: Continue inspection, need more packets.",__func__);
-                break;
-        case NF_UTIL_NFQ_DROP:
-                LOGT("%s: Setting mark to 3.",__func__);
-                mark = 3;
-                break;
-    }
 
     /*
     * We always pass verdict as accept,
@@ -277,12 +278,10 @@ nf_queue_send_verdict(struct nfqnl_msg_verdict_hdr *vhdr,
 
     mnl_attr_put(nfq->nlh, NFQA_VERDICT_HDR, sizeof(struct nfqnl_msg_verdict_hdr), vhdr);
 
-    if (mark == 2 || mark == 3)
-    {
-        nest = mnl_attr_nest_start(nfq->nlh, NFQA_CT);
-        mnl_attr_put_u32(nfq->nlh, CTA_MARK, htonl(mark));
-        mnl_attr_nest_end(nfq->nlh, nest);
-    }
+    LOGT("%s(): conntrack mark set to %s", __func__, nf_ct_mark_str(pkt_info->flow_mark));
+    nest = mnl_attr_nest_start(nfq->nlh, NFQA_CT);
+    mnl_attr_put_u32(nfq->nlh, CTA_MARK, htonl(pkt_info->flow_mark));
+    mnl_attr_nest_end(nfq->nlh, nest);
 
     ret = mnl_socket_sendto(nfq->nfq_mnl, nfq->nlh, nfq->nlh->nlmsg_len);
     if (ret == -1)
@@ -321,7 +320,6 @@ nf_queue_read_mnl_cbk(EV_P_ ev_io *ev, int revents)
 
     nfq->nlh = NULL;
     pkt_info = &nfq->pkt_info;
-    pkt_info->verdict = NF_UTIL_NFQ_INSPECT;
 
     ret = mnl_socket_recvfrom(nfq->nfq_mnl, rcv_buf, sizeof(rcv_buf));
     if (ret == -1)
@@ -596,10 +594,13 @@ nf_queue_exit(void)
 
 /**
  *
- * @brief  Set verdict for given pktid.
+ * @brief  Set mark for given pktid.
+ * mark 1 - INSPECT,
+ * mark 2 - ALLOW
+ * mark 3 - BLOCK
  */
 bool
-nf_queue_set_verdict(uint32_t packet_id, int action, uint32_t queue_num)
+nf_queue_set_ct_mark(uint32_t packet_id, int mark, uint32_t queue_num)
 {
     struct nf_queue_context  *ctxt;
     struct nfq_pkt_info *pkt_info;
@@ -617,11 +618,10 @@ nf_queue_set_verdict(uint32_t packet_id, int action, uint32_t queue_num)
     pkt_info = &nfq->pkt_info;
     if (pkt_info->packet_id != packet_id) return false;
 
-    pkt_info->verdict = action;
+    pkt_info->flow_mark = mark;
 
-    LOGD("%s: Setting verdict for packet_id[%d] of queue[%d] to [%d/%s]",
-         __func__, packet_id, queue_num, pkt_info->verdict,
-         pkt_info->verdict == NF_UTIL_NFQ_DROP ? "Drop" : "Accept/Inspect");
+    LOGD("%s: Setting flow_mark for packet_id[%d] of queue[%d] to %d",
+         __func__, packet_id, queue_num, pkt_info->flow_mark);
 
     return true;
 }
@@ -655,4 +655,16 @@ nf_queue_update_payload(uint32_t packet_id, uint32_t queue_num)
     LOGD("%s: updated payload for packet_id[%d] of queue[%d]",
          __func__, packet_id, queue_num);
     return true;
+}
+
+int nf_queue_set_dpi_state(struct net_header_parser *net_hdr)
+{
+    struct net_md_stats_accumulator *acc;
+    int mark = CT_MARK_INSPECT;
+
+    acc = net_hdr->acc;
+    if (acc) mark = acc->flow_marker;
+
+    nf_queue_set_ct_mark(net_hdr->packet_id, mark, net_hdr->nfq_queue_num);
+    return 0;
 }

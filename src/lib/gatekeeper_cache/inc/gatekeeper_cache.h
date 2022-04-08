@@ -154,6 +154,7 @@ struct attr_cache
     bool                    is_private_ip;
     bool                    redirect_flag;
     ds_tree_node_t          attr_tnode;
+    uint32_t                flow_marker;
 };
 
 /**
@@ -254,6 +255,7 @@ struct gk_attr_cache_interface
     bool is_private_ip;
     bool redirect_flag;
     int  action_by_name;
+    uint32_t flow_marker;             /* conntrack mark for the flow */
 };
 
 /**

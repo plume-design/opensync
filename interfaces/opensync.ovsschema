@@ -1,7 +1,7 @@
 {
   "name": "Open_vSwitch",
-  "version": "7.11.310",
-  "cksum": "4063934234 249232",
+  "version": "7.11.319",
+  "cksum": "1402357208 266673",
   "tables": {
     "AWLAN_Node": {
       "columns": {
@@ -313,7 +313,8 @@
                   "pppoe",
                   "softwds",
                   "tap",
-                  "lte"
+                  "lte",
+                  "tunnel"
                 ]
               ]
             }
@@ -659,7 +660,8 @@
                   "pppoe",
                   "softwds",
                   "tap",
-                  "lte"
+                  "lte",
+                  "tunnel"
                 ]
               ]
             }
@@ -811,8 +813,16 @@
         },
         "dhcpd": {
           "type": {
-            "key": "string",
-            "value": "string",
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "value": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
             "min": 0,
             "max": "unlimited"
           }
@@ -1065,7 +1075,8 @@
                   "pppoe",
                   "softwds",
                   "tap",
-                  "lte"
+                  "lte",
+                  "tunnel"
                 ]
               ]
             }
@@ -1208,8 +1219,16 @@
         },
         "dhcpd": {
           "type": {
-            "key": "string",
-            "value": "string",
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "value": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
             "min": 0,
             "max": "unlimited"
           }
@@ -7152,23 +7171,6 @@
                     "max": 1
                 }
             },
-            "freq_band": {
-              "type": {
-                "key": {
-                  "type": "string",
-                  "enum": [
-                    "set",
-                    [
-                      "2.4G",
-                      "5G",
-                      "6G"
-                    ]
-                  ]
-                },
-                "min": 0,
-                "max": 1
-              }
-            },
             "ht_mode": {
                 "type": {
                     "key": {
@@ -7186,6 +7188,17 @@
                         "HT80+80"
                         ]
                         ]
+                    },
+                    "min": 0,
+                    "max": 1
+                }
+            },
+            "op_class": {
+                "type": {
+                    "key": {
+                        "type": "integer",
+                        "minInteger": 0,
+                        "maxInteger": 255
                     },
                     "min": 0,
                     "max": 1
@@ -11208,6 +11221,818 @@
             "max": 1
           },
           "ephemeral": true
+        }
+      },
+      "isRoot": true
+    },
+    "Network_Zone": {
+      "columns": {
+        "name": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            }
+          }
+        },
+        "macs": {
+          "type": {
+            "key": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 32
+            },
+            "min": 0,
+            "max": 8
+          }
+        },
+        "priority": {
+          "type": "integer"
+        }
+      },
+      "isRoot": true
+    },
+    "VPN_Tunnel": {
+      "columns": {
+        "name": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        },
+        "enable": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "tunnel_status": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "down",
+                  "connecting",
+                  "up",
+                  "error"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "ipsec_tunnel_cfg": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "IPSec_Config"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "healthcheck_enable": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "healthcheck_ip": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 49
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "healthcheck_interval": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "healthcheck_timeout": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "healthcheck_status": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "ok",
+                  "nok",
+                  "na",
+                  "error"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        }
+      },
+      "isRoot": true
+    },
+    "IPSec_Config": {
+      "columns": {
+        "remote_endpoint_id": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "remote_endpoint": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          }
+        },
+        "local_endpoint_id": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "local_endpoint": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 49
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "remote_subnets": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 49
+            },
+            "min": 0,
+            "max": 32
+          }
+        },
+        "local_subnets": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 49
+            },
+            "min": 0,
+            "max": 32
+          }
+        },
+        "remote_virt_ip": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 49
+            },
+            "min": 0,
+            "max": 8
+          }
+        },
+        "local_virt_ip": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 49
+            },
+            "min": 0,
+            "max": 8
+          }
+        },
+        "auth_mode": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "psk",
+                  "cert"
+                ]
+              ]
+            },
+            "min": 1,
+            "max": 1
+          }
+        },
+        "psk": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "nego_mode": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "main",
+                  "aggressive"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "key_exchange": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "ike",
+                  "ikev1",
+                  "ikev2"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "ike_lifetime": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "protocol": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "esp",
+                  "ah"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "ike_enc_suite": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "3des",
+                  "aes128",
+                  "aes192",
+                  "aes256"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 8
+          }
+        },
+        "ike_auth_suite": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "sha1",
+                  "md5",
+                  "sha256"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 8
+          }
+        },
+        "ike_dh_groups": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "1",
+                  "2",
+                  "5",
+                  "14"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 8
+          }
+        },
+        "esp_enc_suite": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "3des",
+                  "aes128",
+                  "aes192",
+                  "aes256"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 8
+          }
+        },
+        "esp_auth_suite": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "sha1",
+                  "md5",
+                  "sha256"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 8
+          }
+        },
+        "esp_dh_groups": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "1",
+                  "2",
+                  "5",
+                  "14"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 8
+          }
+        },
+        "dpd_delay": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "dpd_timeout": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "other_config": {
+          "type": {
+            "key": "string",
+            "value": "string",
+            "min": 0,
+            "max": "unlimited"
+          }
+        }
+      },
+      "isRoot": true
+    },
+    "IPSec_State": {
+      "columns": {      
+        "ipsec_config": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "IPSec_Config",
+              "refType": "weak"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },            
+        "remote_endpoint_id": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "remote_endpoint": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          }
+        },
+        "local_endpoint_id": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "local_endpoint": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 49
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "remote_subnets": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 49
+            },
+            "min": 0,
+            "max": 32
+          }
+        },
+        "local_subnets": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 49
+            },
+            "min": 0,
+            "max": 32
+          }
+        },
+        "remote_virt_ip": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 49
+            },
+            "min": 0,
+            "max": 8
+          }
+        },
+        "local_virt_ip": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 49
+            },
+            "min": 0,
+            "max": 8
+          }
+        },
+        "auth_mode": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "psk",
+                  "cert"
+                ]
+              ]
+            },
+            "min": 1,
+            "max": 1
+          }
+        },
+        "nego_mode": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "main",
+                  "aggressive"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "key_exchange": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "ike",
+                  "ikev1",
+                  "ikev2"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "ike_lifetime": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "protocol": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "esp",
+                  "ah"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "ike_enc_suite": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "3des",
+                  "aes128",
+                  "aes192",
+                  "aes256"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 8
+          }
+        },
+        "ike_auth_suite": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "sha1",
+                  "md5",
+                  "sha256"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 8
+          }
+        },
+        "ike_dh_groups": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "1",
+                  "2",
+                  "5",
+                  "14"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 8
+          }
+        },
+        "esp_enc_suite": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "3des",
+                  "aes128",
+                  "aes192",
+                  "aes256"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 8
+          }
+        },
+        "esp_auth_suite": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "sha1",
+                  "md5",
+                  "sha256"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 8
+          }
+        },
+        "esp_dh_groups": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "1",
+                  "2",
+                  "5",
+                  "14"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 8
+          }
+        },
+        "dpd_delay": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "dpd_timeout": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        }
+      },
+      "isRoot": true
+    },    
+    "Tunnel_Interface": {
+      "columns": {
+        "if_name": {
+          "type": {
+            "key": {
+              "type": "string"
+            }
+          }
+        },
+        "if_type": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "vti",
+                  "vti6"
+                ]
+              ]
+            }
+          }
+        },
+        "enable": {
+          "type": {
+            "key": {
+              "type": "boolean"
+            }
+          }
+        },
+        "local_endpoint_addr": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 49
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "remote_endpoint_addr": {
+          "type": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 49
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "key": {
+          "type": {
+            "key": {
+              "type": "integer"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "dev_if_name": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": 1
+          }
         }
       },
       "isRoot": true

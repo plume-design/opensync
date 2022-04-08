@@ -31,6 +31,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "log.h"
 #include "nf_utils.h"
 #include "policy_tags.h"
+#include "fsm_dpi_utils.h"
 
 static const struct fsm_tap_type
 {
@@ -208,6 +209,15 @@ fsm_update_session_tap(struct fsm_session *session)
 
     /* Update the session tap type */
     session->tap_type = after_tap_type;
+
+    if (session->tap_type & FSM_TAP_NFQ)
+    {
+        session->set_dpi_state = nf_queue_set_dpi_state;
+    }
+    else
+    {
+        session->set_dpi_state = fsm_set_dpi_state;
+    }
 
     fsm_update_close_taps(taps_to_close, session);
 

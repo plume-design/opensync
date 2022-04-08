@@ -1002,6 +1002,10 @@ static Traffic__FlowKey *set_flow_key(struct flow_key *key)
     set_uint32((uint32_t)key->direction, &pb->direction, &pb->has_direction);
     set_uint32((uint32_t)key->originator, &pb->originator, &pb->has_originator);
 
+    ret = str_duplicate(key->networkid, &pb->networkid);
+    if (!ret) goto err_free_dstip;
+
+    set_uint32((uint32_t)key->flowmarker, &pb->flowmarker, &pb->has_flowmarker);
     pb->flowstate = set_pb_flowstate(&key->state);
 
     /* Exit now if not requested to send vendor data */

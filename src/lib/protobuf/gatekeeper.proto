@@ -33,6 +33,7 @@ message GatekeeperCommonRequest {
     string node_id = 3;
     string location_id = 4;
     string policy_rule = 5;
+    string network_id = 6;
 }
 
 // DNS gatekeeper request
@@ -161,6 +162,7 @@ message GatekeeperCommonReply {
     string policy = 4;
     uint32 category_id = 5;
     uint32 confidence_level = 6;
+    uint32 flow_marker = 7;
 }
 
 message GatekeeperFqdnRedirectReply {

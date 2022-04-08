@@ -67,7 +67,7 @@ check_kconfig_option "CONFIG_MANAGER_LTEM" "y" ||
     raise "CONFIG_MANAGER_LTEM != y - LTEM is not present on the device" -l "ltem/ltem_setup.sh" -s
 
 ltem_setup_test_environment $@ &&
-    log "ltem/ltem_setup.sh: ltem_setup_test_environment - Success " ||
+    log "ltem/ltem_setup.sh: ltem_setup_test_environment - Success" ||
     raise "FAIL: ltem_setup_test_environment" -l "ltem/ltem_setup.sh" -ds
 
 exit 0

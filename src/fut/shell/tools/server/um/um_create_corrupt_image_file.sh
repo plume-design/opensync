@@ -60,8 +60,12 @@ if [ -n "${1}" ]; then
             ;;
     esac
 fi
+
 NARGS=1
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "tools/server/um/um_create_corrupt_image_file.sh" -arg
-
 um_fw_path=$1
+
+log "tools/server/um/um_create_corrupt_image.sh - Creating $um_fw_path"
 um_create_corrupt_image "$um_fw_path"
+    log -deb "tools/server/um/um_create_corrupt_image.sh - Image corrupted - Success" ||
+    raise "FAIL: Could not corrupt image" -l "tools/server/um/um_create_corrupt_image.sh" -ds

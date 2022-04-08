@@ -134,7 +134,16 @@ ltem_update_conf(struct schema_Lte_Config *lte_conf)
         mgr->mqtt_interval = conf->report_interval = lte_conf->report_interval;
     }
     LOGD("%s: report_interval[%d]", __func__, conf->report_interval);
-    STRSCPY(conf->apn, lte_conf->apn);
+    if (lte_conf->apn[0] == 0)
+    {
+        LOGI("%s: APN Empty", __func__);
+        MEMZERO(conf->apn);
+    }
+    else
+    {
+        LOGI("%s: APN[%s]", __func__, lte_conf->apn);
+        STRSCPY(conf->apn, lte_conf->apn);
+    }
     STRSCPY(conf->lte_bands, lte_conf->lte_bands_enable);
     STRSCPY(conf->esim_activation_code, lte_conf->esim_activation_code);
 
@@ -230,7 +239,14 @@ ltem_ovsdb_create_lte_state(ltem_mgr_t *mgr)
             break;
 
         case LTE_NET_REG_STAT_REG:
-            net_state = "registered_home_network";
+            if (modem_info->srv_cell.mode == LTE_CELL_MODE_LTE)
+            {
+                net_state = "registered_home_network";
+            }
+            else
+            {
+                net_state = "registration_denied";
+            }
             break;
 
         case LTE_NET_REG_STAT_SEARCH:
@@ -242,7 +258,14 @@ ltem_ovsdb_create_lte_state(ltem_mgr_t *mgr)
             break;
 
         case LTE_NET_REG_STAT_ROAMING:
-            net_state = "registered_roaming";
+            if (modem_info->srv_cell.mode == LTE_CELL_MODE_LTE)
+            {
+                net_state = "registered_roaming";
+            }
+            else
+            {
+                net_state = "registration_denied";
+            }
             break;
 
         default:
@@ -575,6 +598,26 @@ ltem_ovsdb_cmu_disable_lte(ltem_mgr_t *mgr)
     return 0;
 }
 
+uint32_t
+ltem_ovsdb_cmu_get_wan_priority(ltem_mgr_t *mgr)
+{
+    struct schema_Connection_Manager_Uplink cm_conf;
+    const char *if_name;
+    uint32_t wan_priority;
+    int ret;
+
+    if_name = mgr->lte_route->wan_if_name;
+
+    ret = ovsdb_table_select_one(&table_Connection_Manager_Uplink,
+                                 SCHEMA_COLUMN(Connection_Manager_Uplink, if_name), if_name, &cm_conf);
+    if (!ret) {
+        LOGI("%s: Failed to get Connection_Manager_Uplink if_name[%s]", __func__, if_name);
+        return -1;
+    }
+    wan_priority = cm_conf.priority;
+    return wan_priority;
+}
+
 int
 ltem_ovsdb_cmu_update_lte_priority(ltem_mgr_t *mgr, uint32_t priority)
 {
@@ -602,7 +645,7 @@ ltem_ovsdb_cmu_update_lte_priority(ltem_mgr_t *mgr, uint32_t priority)
 
     MEMZERO(cm_conf);
 
-    LOGD("%s: update %s LTE CM settings", __func__, if_name);
+    LOGI("%s: update %s LTE CM settings", __func__, if_name);
     cm_conf._partial_update = true;
     SCHEMA_SET_INT(cm_conf.priority, priority);
 
@@ -614,6 +657,8 @@ ltem_ovsdb_cmu_update_lte_priority(ltem_mgr_t *mgr, uint32_t priority)
         LOGW("%s: Update %s CM table failed", __func__, if_name);
         return -1;
     }
+
+    LOGI("%s: Set CMU %s priority=%d", __func__, if_name, priority);
     return 0;
 }
 
@@ -792,10 +837,11 @@ callback_Lte_Config(ovsdb_update_monitor_t *mon,
     int rc;
 
     LOGI("%s: if_name=%s, enable=%d, lte_failover_enable=%d, ipv4_enable=%d, ipv6_enable=%d,"
-         " force_use_lte=%d active_simcard_slot=%d, modem_enable=%d, report_interval=%d",
+         " force_use_lte=%d active_simcard_slot=%d, modem_enable=%d, report_interval=%d,"
+         " apn=%s, lte_bands=%s, enable_persist=%d, esim_activation_code=%s",
          __func__, lte_conf->if_name, lte_conf->manager_enable, lte_conf->lte_failover_enable, lte_conf->ipv4_enable,
          lte_conf->ipv6_enable, lte_conf->force_use_lte, lte_conf->active_simcard_slot, lte_conf->modem_enable,
-         lte_conf->report_interval);
+         lte_conf->report_interval, lte_conf->apn, lte_conf->lte_bands_enable, lte_conf->enable_persist, lte_conf->esim_activation_code);
 
     if (mon->mon_type != OVSDB_UPDATE_ERROR)
     {
@@ -820,11 +866,9 @@ callback_Lte_Config(ovsdb_update_monitor_t *mon,
         case OVSDB_UPDATE_MODIFY:
             LOGI("%s mon_type = OVSDB_UPDATE_MODIFY", __func__);
             ltem_ovsdb_update_lte_state(mgr);
-            rc = strncmp(lte_conf->apn, "", strlen(lte_conf->apn));
-            if (rc)
-            {
-                osn_lte_set_pdp_context_params(PDP_CTXT_APN, lte_conf->apn);
-            }
+            /* A NULL APN is valid */
+            LOGI("%s: APN[%s]", __func__, lte_conf->apn);
+            osn_lte_set_pdp_context_params(PDP_CTXT_APN, lte_conf->apn);
             osn_lte_set_sim_slot(lte_conf->active_simcard_slot);
 
             rc = strncmp(lte_conf->lte_bands_enable, "", strlen(lte_conf->lte_bands_enable));
@@ -957,25 +1001,6 @@ callback_Wifi_Inet_State(ovsdb_update_monitor_t *mon,
 }
 
 void
-ltem_handle_cm_update_lte(struct schema_Connection_Manager_Uplink *old_uplink,
-                          struct schema_Connection_Manager_Uplink *uplink)
-{
-
-    LOGD("%s: if_name=%s if_type=%s, has_L2=%d, has_L3=%d, priority=%d, is_used=%d",
-         __func__, uplink->if_name, uplink->if_type, uplink->has_L2, uplink->has_L3, uplink->priority, uplink->is_used);
-    if (uplink->is_used)
-    {
-        ltem_set_wan_state(LTEM_WAN_STATE_DOWN);
-        LOGD("%s: wwan0 is_used[true]", __func__);
-    }
-    else
-    {
-        ltem_set_wan_state(LTEM_WAN_STATE_UP);
-        LOGD("%s: wwan0 is_used[false]", __func__);
-    }
-}
-
-void
 ltem_handle_cm_update_wan_priority(struct schema_Connection_Manager_Uplink *uplink)
 {
     ltem_mgr_t *mgr;
@@ -1016,21 +1041,13 @@ callback_Connection_Manager_Uplink(ovsdb_update_monitor_t *mon,
             res = strncmp(uplink->if_name, "wwan0", strlen(uplink->if_name));
             if (res == 0)
             {
-                ltem_handle_cm_update_lte(old_uplink, uplink);
+                ltem_set_wan_state(LTEM_WAN_STATE_UP);
             }
             break;
 
         case OVSDB_UPDATE_NEW:
         case OVSDB_UPDATE_MODIFY:
-            res = strncmp(uplink->if_name, "wwan0", strlen(uplink->if_name));
-            if (res == 0)
-            {
-                LOGI("%s: if_name[%s], has_L2[%d], has_L3[%d], priority[%d] is_used[%d]",
-                     __func__, uplink->if_name, uplink->has_L2, uplink->has_L3, uplink->priority, uplink->is_used);
-                ltem_handle_cm_update_lte(old_uplink, uplink);
-            }
-
-            /* Check to see if we need to update our WAN proirity */
+            /* Check to see if we need to update our WAN priority */
             ltem_handle_cm_update_wan_priority(uplink);
 
             break;

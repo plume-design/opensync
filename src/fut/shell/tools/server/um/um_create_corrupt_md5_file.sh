@@ -60,8 +60,13 @@ if [ -n "${1}" ]; then
             ;;
     esac
 fi
+
 NARGS=1
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "tools/server/um/um_create_corrupt_md5_file.sh" -arg
-
 um_fw_path=$1
-um_create_corrupt_md5_file "$um_fw_path"
+
+log "tools/server/um/um_create_corrupt_md5_file.sh - Creating $um_fw_path.md5"
+um_create_corrupt_md5_file "$um_fw_path" &&
+    log -deb "tools/server/um/um_create_corrupt_md5_file.sh - Created md5 file - Success" ||
+    raise "FAIL: Could not create md5 file" -l "tools/server/um/um_create_corrupt_md5_file.sh" -ds
+

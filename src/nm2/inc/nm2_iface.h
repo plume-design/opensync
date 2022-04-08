@@ -81,6 +81,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /*
  * The type is implement as an X-macro. The nm2_iftype enum and conversion to/from string
  * is implemented using this macro. The interface type string must match the schema strings.
+ *
+ * note: tunnel != tun
  */
 #define NM2_IFTYPE(M)                   \
     M(NM2_IFTYPE_NONE,      "none")     \
@@ -93,6 +95,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     M(NM2_IFTYPE_TAP,       "tap")      \
     M(NM2_IFTYPE_PPPOE,     "pppoe")    \
     M(NM2_IFTYPE_LTE,       "lte")      \
+    M(NM2_IFTYPE_TUNNEL,    "tunnel")   \
     M(NM2_IFTYPE_MAX,       NULL)
 
 

@@ -315,15 +315,17 @@ int fsm_set_icmp_dpi_state_timeout(
     return (ret0 + ret1);
 }
 
+
 // APIs using net_header_parser
-int fsm_set_dpi_state(
-        struct net_header_parser *net_hdr,
-        enum fsm_dpi_state state)
+int fsm_set_dpi_state(struct net_header_parser *net_hdr)
 {
+    uint32_t mark = CT_MARK_INSPECT;
     int ret0;
     int ret1;
 
-    ret0 = nf_ct_set_flow_mark(net_hdr, state, 0);
+    if (net_hdr->acc) mark = net_hdr->acc->flow_marker;
+
+    ret0 = nf_ct_set_flow_mark(net_hdr, mark, 0);
     /*
      * Set the mark for the default zone 0 also.
      * The reason behind it in router mode
@@ -336,7 +338,7 @@ int fsm_set_dpi_state(
      * TODO Either check Router/Bridge mode and make this additional call
      * or dump_all_flows and apply mark for all mathching 5 tuple flows.
      */
-    ret1 = nf_ct_set_flow_mark(net_hdr, state, FSM_DPI_ZONE);
+    ret1 = nf_ct_set_flow_mark(net_hdr, mark, FSM_DPI_ZONE);
     /* -ve or 0 - failed in both zones or +ve atleast one zone passed */
     return (ret0 + ret1);
 }

@@ -292,6 +292,7 @@ mdns_plugin_process_message(struct mdns_session *m_session)
     unsigned char *data;
     uint16_t mdns_default_port;
     struct message m;
+    bool is_ip;
     bool ret;
     int rc = 0;
 
@@ -307,7 +308,8 @@ mdns_plugin_process_message(struct mdns_session *m_session)
     /* Some basic validation */
     /* Check ethertype */
     ethertype = net_header_get_ethertype(net_parser);
-    if (ethertype != ETH_P_IP) return;
+    is_ip = ((ethertype == ETH_P_IP) || (ethertype == ETH_P_IPV6));
+    if (!is_ip) return;
 
     /* Check for UDP protocol */
     ip_protocol = net_parser->ip_protocol;

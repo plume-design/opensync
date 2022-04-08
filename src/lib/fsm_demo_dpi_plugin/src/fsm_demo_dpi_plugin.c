@@ -340,6 +340,8 @@ void fsm_demo_app_detector(struct net_header_parser *net_parser, struct net_md_f
     fsm_demo_alloc_flow_tag(&net_parser->tags, flow_stream);
     // Application is detected ino need furthur packets
     net_parser->flow_action = FLOW_PASSTHROUGH;
+
+    if (net_parser->acc) net_parser->acc->flow_marker = FLOW_PASSTHROUGH;
 }
 
 void fsm_demo_flow_analyser(struct net_header_parser *net_parser, struct net_md_flow_key *key)
@@ -379,6 +381,7 @@ void fsm_demo_flow_analyser(struct net_header_parser *net_parser, struct net_md_
          */
         net_parser->flow_action = FLOW_DROP;
         net_parser->tags.nelems = 0;
+        if (net_parser->acc) net_parser->acc->flow_marker = FLOW_DROP;
     }
     else
     {
@@ -464,12 +467,12 @@ fsm_demo_process_message(struct fsm_demo_session *f_session)
         break;
 
         case FLOW_PASSTHROUGH:
-            fsm_set_dpi_state(net_parser, FSM_DPI_PASSTHRU);
+            fsm_set_dpi_state(net_parser);
             LOGD("%s: Application is detected", __func__);
         break;
 
         case FLOW_DROP:
-            fsm_set_dpi_state(net_parser, FSM_DPI_DROP);
+            fsm_set_dpi_state(net_parser);
             LOGD("%s: IP flow is blocked", __func__);
         break;
 

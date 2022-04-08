@@ -35,3 +35,4 @@ UNIT_DIR := shell/tests/ltem
 UNIT_FILE := ltem_setup.sh
 UNIT_FILE += ltem_force_lte.sh
 UNIT_FILE += ltem_validation.sh
+UNIT_FILE += ltem_verify_table_exists.sh

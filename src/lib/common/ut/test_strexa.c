@@ -24,28 +24,40 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef LAN_DPCTL_H_INCLUDED
-#define LAN_DPCTL_H_INCLUDED
+#define _GNU_SOURCE
 
-#include "lan_stats.h"
-#define OVS_NAME "system@ovs-system"
+#include <arpa/inet.h>
+#include <stdbool.h>
 
-/*
- Version Macros:
- ---------------
- 21101 -> 2.11.1 (OVS Version)
- 20807 -> 2.8.7  (OVS Version)
- */
+#include "memutil.h"
+#include "os.h"
+#include "unity.h"
 
-#define OVS_VERSION_2_11_1  21101
-#define OVS_VERSION_2_8_7   20807
+void
+test_strexa_stdin(void)
+{
+    const char *buf = strexa("sh", "-c", "readlink -f /proc/self/fd/0");
+    TEST_ASSERT_EQUAL_STRING(buf, "/dev/null");
+}
 
-#if OVS_PACKAGE_VERNUM >= OVS_VERSION_2_11_1
-struct dump_types {
-    bool ovs;
-    bool tc;
-    bool offloaded;
-    bool non_offloaded;
-};
-#endif
-#endif
+void
+test_strexa_stdout(void)
+{
+    const char *buf = strexa("sh", "-c", "readlink -f /proc/self/fd/1");
+    TEST_ASSERT(strstr(buf, "pipe") != NULL);
+}
+
+void
+test_strexa_stderr(void)
+{
+    const char *buf = strexa("sh", "-c", "readlink -f /proc/self/fd/2");
+    TEST_ASSERT_EQUAL_STRING(buf, "/dev/null");
+}
+
+void
+run_test_strexa(void)
+{
+    RUN_TEST(test_strexa_stdin);
+    RUN_TEST(test_strexa_stdout);
+    RUN_TEST(test_strexa_stderr);
+}

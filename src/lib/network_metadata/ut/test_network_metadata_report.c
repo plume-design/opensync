@@ -53,14 +53,18 @@ struct in_key in_keys[] =
         .dmac = "dd:ee:ff:cc:bb:aa",
         .vlan_id = 0,
         .ethertype = 0,
-        .ip_version = 0
+        .ip_version = 0,
+        .networkid = "flex",
+        .flowmarker = 10,
     },
     {    /* 1 */
         .smac = "11:22:33:44:55:66",
         .dmac = "dd:ee:ff:cc:bb:aa",
         .vlan_id = 0,
         .ethertype = 1,
-        .ip_version = 0
+        .ip_version = 0,
+        .networkid = "home",
+        .flowmarker = 20,
     },
     {   /* 2 */
 
@@ -68,13 +72,17 @@ struct in_key in_keys[] =
         .dmac = "dd:ee:ff:cc:bb:aa",
         .vlan_id = 1,
         .ethertype = 0x8000,
-        .ip_version = 0
+        .ip_version = 0,
+        .networkid = "home-1",
+        .flowmarker = 30,
     },
     {   /* 3 */
         .ip_version = 4,
         .src_ip = "192.168.40.1",
         .dst_ip = "32.33.34.35",
         .ipprotocol = 2,
+        .networkid = "home-2",
+        .flowmarker = 40,
     },
     {   /* 4 */
         .ip_version = 4,
@@ -83,6 +91,8 @@ struct in_key in_keys[] =
         .ipprotocol = 17,
         .sport = 36000,
         .dport = 1234,
+        .networkid = "home-3",
+        .flowmarker = 50,
     },
     {   /* 5 */
         .smac = "11:22:33:44:55:66",
@@ -95,6 +105,8 @@ struct in_key in_keys[] =
         .ipprotocol = 17,
         .sport = 12345,
         .dport = 53,
+        .networkid = "internet-3",
+        .flowmarker = 60,
     },
     {   /* 6 */
         .smac = "11:22:33:44:55:66",
@@ -107,20 +119,26 @@ struct in_key in_keys[] =
         .ipprotocol = 17,
         .sport = 12346,
         .dport = 53,
+        .networkid = "guest-3",
+        .flowmarker = 70,
     },
     {   /* 7 */
         .smac = "11:22:33:44:55:66",
         .dmac = "dd:ee:ff:cc:bb:aa",
         .vlan_id = 100,
         .ethertype = 0,
-        .ip_version = 0
+        .ip_version = 0,
+        .networkid = "guest-2",
+        .flowmarker = 80,
     },
     {   /* 8 */
         .smac = "22:33:44:55:66:77",
         .dmac = "dd:ee:ff:cc:bb:aa",
         .vlan_id = 100,
         .ethertype = 0,
-        .ip_version = 0
+        .ip_version = 0,
+        .networkid = "guest-5",
+        .flowmarker = 90,
     },
     {   /* 9 */
         .smac = "11:22:33:44:55:66",
@@ -132,6 +150,8 @@ struct in_key in_keys[] =
         .ipprotocol = 17,
         .sport = 12345,
         .dport = 53,
+        .networkid = "guest-6",
+        .flowmarker = 100,
     },
     {   /* 10 */
         .dmac = "dd:ee:ff:cc:bb:aa",
@@ -199,6 +219,8 @@ struct in_key in_keys[] =
         .ipprotocol = 17,
         .sport = 42081,
         .dport = 5001,
+        .networkid = "secure-2",
+        .flowmarker = 120,
     },
     {   /* 16 */
         .smac = "66:55:44:33:22:11",
@@ -211,6 +233,8 @@ struct in_key in_keys[] =
         .ipprotocol = 17,
         .sport = 5001,
         .dport = 42081,
+        .networkid = "secure-1",
+        .flowmarker = 120,
     },
 };
 
@@ -279,6 +303,9 @@ static struct net_md_flow_key * in_key2net_md_key(struct in_key *in_key)
     key->sport = htons(in_key->sport);
     key->dport = htons(in_key->dport);
 
+    if (!in_key->networkid) in_key->networkid = "default";
+    key->networkid = strdup(in_key->networkid);
+    key->flowmarker = in_key->flowmarker;
     return key;
 
 err_free_dst_ip:

@@ -44,7 +44,7 @@ Description:
 Arguments:
     -h  show this help message
     \$1 (fw_path) : download path of UM - used to clear the folder on UM setup  : (string)(required)
-    \$2 (fw_url)  : used as firmware_url in AWLAN_Node table                    : (string)(required)
+    \$2 (fw_url)  : used as firmware_url in AWLAN_Node table                    : (string)(optional)
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
                  Run: ./um/um_verify_firmware_url_length.sh <FW-PATH> <FW-URL>
@@ -63,6 +63,7 @@ if [ -n "${1}" ]; then
             ;;
     esac
 fi
+
 NARGS=1
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "um/um_verify_firmware_url_length.sh" -arg
 fw_path=$1
@@ -75,7 +76,7 @@ trap '
     fut_info_dump_line
 ' EXIT SIGINT SIGTERM
 
-log_title "um/um_verify_firmware_url_length.sh: UM test - Verify FW - firmware_url "
+log_title "um/um_verify_firmware_url_length.sh: UM test - Verify FW - firmware_url"
 
 log "um/um_verify_firmware_url_length.sh: Setting firmware_url to $fw_url with max acceptable length"
 update_ovsdb_entry AWLAN_Node -u firmware_url "$fw_url" &&

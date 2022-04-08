@@ -289,10 +289,9 @@ test_host_entry_in_fqdn(void)
     ret = gkc_lookup_attribute_entry(entry, true);
     TEST_ASSERT_EQUAL_INT(0, ret);
 
-    /* Add entry to the HOST cache
-    *  Lookup with FQDN and SNI with same value as FQDN
-    *  should be successfull.
-    */
+    // Add entry to the HOST cache
+    // Lookup with FQDN and SNI with same value as FQDN
+    // should be successful.
     entry->attribute_type = GK_CACHE_REQ_TYPE_HOST;
     ret = gkc_add_attribute_entry(entry);
     TEST_ASSERT_EQUAL_INT(1, ret);
@@ -310,10 +309,9 @@ test_host_entry_in_fqdn(void)
     /* Delete entry from the HOST cache */
     gkc_del_attribute(entry);
 
-    /* Add entry to the SNI cache
-    *  Lookup with FQDN and HOST with same value as SNI
-    *  should be successfull.
-    */
+    // Add entry to the SNI cache
+    // Lookup with FQDN and HOST with same value as SNI
+    // should be successful.
     entry->attribute_type = GK_CACHE_REQ_TYPE_SNI;
     gkc_add_attribute_entry(entry);
     ret = gkc_lookup_attribute_entry(entry, true);
@@ -518,7 +516,7 @@ test_get_attr_key(void)
     TEST_ASSERT_NOT_EQUAL(0, ret);
     entry.attr_name = NULL;
 
-      /* Some random bytes, don't care about value. */
+    /* Some random bytes, don't care about value. */
     entry.ip_addr = MALLOC(sizeof(*entry.ip_addr));
     entry.attribute_type = GK_CACHE_REQ_TYPE_APP;
     ret = get_attr_key(&entry);

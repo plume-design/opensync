@@ -1051,6 +1051,12 @@ data_cb(const struct nlmsghdr *nlh, void *data)
     rc = get_tuple(tb[CTA_TUPLE_ORIG], flow);
     if (rc < 0) goto flow_info_1_free;
 
+    if (tb[CTA_MARK]  != NULL)
+    {
+        flow->ct_mark = ntohl(mnl_attr_get_u32(tb[CTA_MARK]));
+        flow_1->ct_mark = flow->ct_mark;
+    }
+
     if (tb[CTA_TUPLE_REPLY] == NULL) goto flow_info_1_free;
 
     rc = get_tuple(tb[CTA_TUPLE_REPLY], flow_1);
@@ -1439,6 +1445,7 @@ ct_flow_add_sample(flow_stats_t *ct_stats)
             key.ipprotocol = flow->layer3_info.proto_type;
             key.sport = flow->layer3_info.src_port;
             key.dport = flow->layer3_info.dst_port;
+            key.flowmarker = flow->ct_mark;
             pkts_ct.packets_count = flow->pkt_info.pkt_cnt;
             pkts_ct.bytes_count = flow->pkt_info.bytes;
             if (flow->start) key.fstart = true;
@@ -1601,7 +1608,7 @@ ct_stats_on_acc_report(struct net_md_aggregator *aggr,
  * @return 0 if successful, -1 otherwise
  */
 static int
-alloc_aggr(flow_stats_t *ct_stats)
+ct_stats_alloc_aggr(flow_stats_t *ct_stats)
 {
     struct net_md_aggregator_set aggr_set;
     fcm_collect_plugin_t *collector;
@@ -2077,7 +2084,7 @@ ct_stats_plugin_init(fcm_collect_plugin_t *collector)
     else ct_stats->ct_zone = 0;
     LOGD("%s: configured zone: %d", __func__, ct_stats->ct_zone);
 
-    rc = alloc_aggr(ct_stats);
+    rc = ct_stats_alloc_aggr(ct_stats);
     if (rc != 0) return -1;
 
     str_max_flows = collector->get_other_config(collector,

@@ -98,7 +98,14 @@ struct nfq_pkt_info
     uint8_t            *hw_addr;
     size_t             payload_len;
     void               *payload;
-    int                verdict;
+    int                flow_mark;
+};
+
+enum
+{
+    CT_MARK_INSPECT = 1,
+    CT_MARK_ACCEPT,
+    CT_MARK_DROP
 };
 
 int nf_ct_init(struct ev_loop *loop);
@@ -169,12 +176,7 @@ struct nfqueue_ctxt
     ds_tree_node_t  nfq_tnode;
 };
 
-enum
-{
-    NF_UTIL_NFQ_DROP = 0,
-    NF_UTIL_NFQ_INSPECT,
-    NF_UTIL_NFQ_ACCEPT,
-};
+int nf_queue_set_dpi_state(struct net_header_parser *net_hdr);
 
 bool nf_queue_init();
 
@@ -184,7 +186,7 @@ void nf_queue_close(uint32_t queue_num);
 
 void nf_queue_exit(void);
 
-bool nf_queue_set_verdict(uint32_t packet_id, int action, uint32_t queue_num);
+bool nf_queue_set_ct_mark(uint32_t packet_id, int flow_mark, uint32_t queue_num);
 
 bool nf_queue_set_nlsock_buffsz(uint32_t queue_num, uint32_t sock_buff_sz);
 

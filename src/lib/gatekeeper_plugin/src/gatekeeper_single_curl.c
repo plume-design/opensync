@@ -294,8 +294,6 @@ gk_get_fsm_action(Gatekeeper__Southbound__V1__GatekeeperCommonReply *header)
     Gatekeeper__Southbound__V1__GatekeeperAction gk_action;
     int action;
 
-    LOGT("%s(): Received action from gatekeeper service '%d'", __func__, header->action);
-
     gk_action = header->action;
     switch(gk_action)
     {
@@ -318,6 +316,9 @@ gk_get_fsm_action(Gatekeeper__Southbound__V1__GatekeeperCommonReply *header)
         default:
             action = FSM_ACTION_NONE;
     }
+
+    LOGT("%s(): Received action from gatekeeper service '%s'", __func__,
+         fsm_policy_get_action_str(action));
 
     return action;
 }
@@ -353,6 +354,26 @@ gk_set_report_info(struct fsm_url_reply *url_reply,
 
     FREE(url_reply->reply_info.gk_info.gk_policy);
     url_reply->reply_info.gk_info.gk_policy = policy_name;
+}
+
+static void
+gk_set_flow_mark(struct fsm_policy_req *policy_req, int action, uint32_t mark)
+{
+    struct net_md_stats_accumulator *acc;
+
+    acc = policy_req->acc;
+    if (acc == NULL) return;
+
+    acc->flow_marker = (action == FSM_BLOCK) ? FSM_DPI_DROP : FSM_DPI_PASSTHRU;
+    LOGT("%s(): flow_marker set to %d (%s)", __func__, acc->flow_marker,
+         fsm_policy_get_action_str(action));
+
+    /* no need to check for mark value if verdict is drop */
+    if (action == FSM_BLOCK) return;
+
+    if (mark != 0) acc->flow_marker = mark;
+
+    LOGT("%s(): updated flow_marker to %d", __func__, acc->flow_marker);
 }
 
 /**
@@ -497,6 +518,7 @@ gk_set_policy(Gatekeeper__Southbound__V1__GatekeeperReply *response,
     if (header == NULL) return false;
 
     policy_reply->action = gk_get_fsm_action(header);
+    gk_set_flow_mark(policy_req, policy_reply->action, header->flow_marker);
     policy_reply->cache_ttl = header->ttl;
 
     if (policy_reply->rule_name == NULL)

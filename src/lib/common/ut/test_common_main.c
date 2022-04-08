@@ -34,6 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "unit_test_utils.h"
 
 char *test_name = "test_common";
+extern void run_test_strexa(void);
 
 int
 main(int argc, char *argv[])
@@ -46,6 +47,7 @@ main(int argc, char *argv[])
     ut_setUp_tearDown(test_name, NULL, NULL);
 
     run_test_sockaddr_storage();
+    run_test_strexa();
 
     return ut_fini();
 }

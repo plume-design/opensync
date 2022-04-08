@@ -86,6 +86,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define BM_CLIENT_DEFAULT_ACTIVITY_BPS_TH 2000
 
+#define BM_CLIENT_MAX_OP_CLASSES 255
+#define BM_CLIENT_OPCLASS_24_CAP_BIT (1 << 1)
+#define BM_CLIENT_OPCLASS_50_CAP_BIT (1 << 2)
+#define BM_CLIENT_OPCLASS_60_CAP_BIT (1 << 3)
+
 /*****************************************************************************/
 
 typedef enum {
@@ -167,6 +172,7 @@ typedef enum {
     BM_CLIENT_RRM_2G_ONLY,
     BM_CLIENT_RRM_5G_ONLY,
     BM_CLIENT_RRM_6G_ONLY,
+    BM_CLIENT_RRM_5_6G_ONLY,
     BM_CLIENT_RRM_OWN_CHANNEL_ONLY,
     BM_CLIENT_RRM_OWN_BAND_ONLY
 } bm_client_rrm_req_type_t;
@@ -286,6 +292,12 @@ typedef struct {
     char ifname[BSAL_IFNAME_LEN];
 } bm_client_pre_assoc_block_timer_t;
 
+/* First op_class is current Operating class */
+typedef struct {
+    uint8_t size;
+    uint8_t op_class[BM_CLIENT_MAX_OP_CLASSES];
+} bm_client_supported_op_classes_t;
+
 typedef struct {
     char                        mac_addr[MAC_STR_LEN];
     os_macaddr_t                macaddr;
@@ -376,10 +388,13 @@ typedef struct {
     bool                        band_cap_2G;
     bool                        band_cap_5G;
     bool                        band_cap_6G;
+    int                         band_cap_mask;
     bsal_client_info_t          *info;
 
     bool                        enable_ch_scan;
     uint8_t                     ch_scan_interval;
+
+    bm_client_supported_op_classes_t op_classes;
 
     bm_client_pre_assoc_block_timer_t pref_5g_pre_assoc_block_timer;
     bm_client_pre_assoc_block_timer_t pref_6g_pre_assoc_block_timer;

@@ -43,7 +43,7 @@ echo "${FUT_TOPDIR}/shell/lib/ltem_lib.sh sourced"
 #   Function prepares device for LTEM tests.
 #   Raises exception on fail.
 # INPUT PARAMETER(S):
-#   $1  lte_if_name: Lte Interface name (string, required)
+#   $1  lte_if_name: LTE interface name (string, required)
 #   $2  access_point_name: access point name of the SIM card used (string, required)
 #   $3  os_persist: os_persist (bool, required)
 # RETURNS:
@@ -92,9 +92,9 @@ ltem_setup_test_environment()
             -i active_simcard_slot "0" \
             -i os_persist "$os_persist" &&
                 log -deb "ltem_lib:ltem_setup_test_environment - Lte_Config::lte interface $lte_if_name was inserted - Success" ||
-                raise "FAIL: Lte_Config::lte interface $lte_if_name did not inserted" -l "ltem_lib:ltem_setup_test_environment" -ds
+                raise "FAIL: Lte_Config::lte interface $lte_if_name is not inserted" -l "ltem_lib:ltem_setup_test_environment" -ds
     else
-        raise "SKIP: Lte_Config:: Entry for $lte_if_name interface exists in the table" -l "ltem_lib:ltem_setup_test_environment" -s
+        log -deb "ltem_lib:ltem_setup_test_environment - Entry for $lte_if_name in Lte_Config already exists, skipping..."
     fi
 
     check_field=$(${OVSH} s Wifi_Inet_Config -w if_name==$lte_if_name)
@@ -109,7 +109,7 @@ ltem_setup_test_environment()
                 log -deb "ltem_lib:ltem_setup_test_environment - Insert entry for $lte_if_name interface in Wifi_Inet_Config - Success" ||
                 raise "FAIL: Insert was not done for the entry of $lte_if_name interface in Wifi_Inet_Config " -l "ltem_lib:ltem_setup_test_environment" -ds
     else
-        log -deb "ltem_lib:ltem_setup_test_environment - Entry already exists, skipping..."
+        log -deb "ltem_lib:ltem_setup_test_environment - Entry for $lte_if_name in Wifi_Inet_Config already exists, skipping..."
     fi
 
     log -deb "ltem_lib:ltem_setup_test_environment - LTEM setup - end"
@@ -119,19 +119,18 @@ ltem_setup_test_environment()
 
 ####################### SETUP SECTION - STOP ##################################
 
-####################### ROUTE ENTRY CHECK SECTION - START #################################
+####################### ROUTE ENTRY CHECK SECTION - START #####################
 
 ###############################################################################
 # DESCRIPTION:
 #   Function checks if default gateway route exists for LTE.
-#   Function uses route tool. Must be installed on device.
 # INPUT PARAMETER(S):
-#   $1  Lte Interface name (string, required)
+#   $1  LTE Interface name (string, required)
 #   $2  metric value (int, required)
 #   $3  route tool path (string, required)
 # RETURNS:
 #   0   Default route exists.
-#   1   Default route does not exist / tool not present on device.
+#   1   Default route does not exist.
 # USAGE EXAMPLE(S):
 #   check_default_route_gw wwan0 100 /sbin/route
 ###############################################################################
@@ -144,14 +143,16 @@ check_default_lte_route_gw()
     metric=${2}
     tool_path=${3}
 
-    is_tool_on_system "${tool_path}" ||
-        raise "ltem_lib:ltem_setup_test_environment - Tool '${tool_path}' could not be found on the device" -nf
+    # Show route
+    ${tool_path} -n
+
     default_gw=$(${tool_path} -n | grep -i $if_name | grep -i 'UG' | awk '{print $5}' | grep -i $metric;)
     if [ -z "$default_gw" ]; then
         return 1
     else
+        log -deb "ltem_lib:check_default_lte_route_gw - Default GW for $if_name set to $default_gw"
         return 0
     fi
 }
 
-####################### ROUTE ENTRY CHECK SECTION - STOP ##################################
+####################### ROUTE ENTRY CHECK SECTION - STOP ######################

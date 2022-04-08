@@ -19,5 +19,4 @@ UNIT_DEPS := src/lib/log
 UNIT_DEPS += src/lib/osa
 UNIT_DEPS += src/lib/const
 UNIT_DEPS += src/lib/common
-UNIT_DEPS += src/lib/unity
 UNIT_DEPS += src/lib/mdnsd

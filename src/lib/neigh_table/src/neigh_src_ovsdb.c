@@ -86,7 +86,7 @@ neigh_entry_to_ipv6_neighbor_schema(struct neighbour_entry *key,
         return false;
     }
 
-    memcpy(ipv6entry->if_name, key->ifname, sizeof(ipv6entry->if_name));
+    STRSCPY(ipv6entry->if_name, key->ifname);
 
     return true;
 }
@@ -241,12 +241,12 @@ neigh_entry_to_ipv4_neighbor_schema(struct neighbour_entry *key,
         return false;
     }
 
-    memcpy(ipv4entry->if_name, key->ifname, sizeof(ipv4entry->if_name));
+    STRSCPY(ipv4entry->if_name, key->ifname);
 
     source = neigh_table_get_source(key->source);
     if (source == NULL) return true;
 
-    memcpy(ipv4entry->source, source, sizeof(ipv4entry->source));
+    STRSCPY(ipv4entry->source, source);
 
     return true;
 }

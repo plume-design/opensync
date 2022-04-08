@@ -982,7 +982,7 @@ bool sm_survey_threshold_util_cb (
          radio_get_name_from_cfg(radio_cfg_ctx),
          radio_get_scan_name_from_type(scan_type),
          threshold_util, request_ctx->threshold_util,
-         survey_ctx->threshold_time_delta, request_ctx->threshold_max_delay,
+         (long int)survey_ctx->threshold_time_delta, request_ctx->threshold_max_delay,
          survey_ctx->threshold_count, request_ctx->radio_chan_list.chan_num);
 
     if (threshold_util >= request_ctx->threshold_util) {
@@ -1113,7 +1113,7 @@ bool sm_survey_stats_update (
             LOGI("Force processing %s %s survey delay: %ld/%d count: %d/%d",
                  radio_get_name_from_cfg(radio_cfg_ctx),
                  radio_get_scan_name_from_type(scan_type),
-                 survey_ctx->threshold_time_delta, request_ctx->threshold_max_delay,
+                 (long int)survey_ctx->threshold_time_delta, request_ctx->threshold_max_delay,
                  survey_ctx->threshold_count, request_ctx->radio_chan_list.chan_num);
 
             survey_ctx->threshold_ts = t_now;

@@ -340,11 +340,6 @@ bool target_device_wdt_ping()
  * DM
  *****************************************************************************/
 
-#ifndef IMPL_target_managers_config
-target_managers_config_t target_managers_config[] = { };
-int target_managers_num = (sizeof(target_managers_config) / sizeof(target_managers_config[0]));
-#endif
-
 /*
  * Give up on everything and just call the restart.sh script. This should reset the system
  * to a clean slate, restart OVSDB and kick off a new instance of DM.

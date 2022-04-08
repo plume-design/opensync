@@ -82,8 +82,7 @@ int fsm_set_icmp_dpi_state_timeout(
  * @brief FSM DPI APIs using pcap data
  */
 int fsm_set_dpi_state(
-        struct net_header_parser *net_hdr,
-        enum fsm_dpi_state state
+        struct net_header_parser *net_hdr
 );
 
 int fsm_set_dpi_state_timeout(

@@ -270,12 +270,12 @@ check_leaf_report_log()
         *parsed_mac*)
             log_msg="Checking logs for leaf $leaf_mac_address MAC stats parsing"
             die_msg="No MAC stats parsed for leaf $leaf_mac_address"
-            sm_log_grep="$LOGREAD | tail -250 | grep -i 'Parsed ${radio_mode} client MAC ${leaf_mac_address}'"
+            sm_log_grep="$LOGREAD | grep -i 'Parsed ${radio_mode} client MAC ${leaf_mac_address}'"
         ;;
         *marked_connected*)
             log_msg="Checking logs for leaf $leaf_mac_address marked connected"
             die_msg="No leaf $leaf_mac_address was marked connected"
-            sm_log_grep="$LOGREAD | tail -250 | grep -i 'Marked ${radio_mode}' | grep -i 'client ${leaf_mac_address} connected'"
+            sm_log_grep="$LOGREAD | grep -i 'Marked ${radio_mode}' | grep -i 'client ${leaf_mac_address} connected'"
         ;;
         *)
             raise "FAIL: Incorrect log type provided" -l "pp403z_lib_override:check_leaf_report_log" -arg
@@ -283,7 +283,7 @@ check_leaf_report_log()
     esac
 
     log -deb "pp403z_lib_override:check_leaf_report_log - $log_msg"
-    wait_for_function_response 0 "${sm_log_grep}" 30 &&
+    wait_for_function_response 0 "${sm_log_grep}" 60 &&
         log -deb "pp403z_lib_override:check_leaf_report_log - Success" ||
         raise "FAIL: $die_msg" -l "pp403z_lib_override:check_leaf_report_log" -tc
 

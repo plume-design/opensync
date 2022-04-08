@@ -247,13 +247,13 @@ static void handle_new_crash_reports(void)
             if (in_backoff)
             {
                 LOG(DEBUG, LTAG"New crash reports detected. "
-                           "However in back off since %ld seconds", (now - qm_mqtt_backoff));
+                           "However in back off since %ld seconds", (long int)(now - qm_mqtt_backoff));
                 break;
             }
             else
             {
                 LOG(DEBUG, LTAG"Out of back off since %ld seconds",
-                           (now - qm_mqtt_backoff - BACKOFF_INTERVAL));
+                           (long int)(now - qm_mqtt_backoff - BACKOFF_INTERVAL));
                 qm_mqtt_backoff = 0;
             }
         }

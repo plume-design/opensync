@@ -1256,6 +1256,40 @@ error:
 
 
 /**
+ * @brief free the dpi resources of every plugin
+ *
+ * @param session the session to free
+ */
+void
+fsm_free_dpi_plugins_resources(struct fsm_session *session)
+{
+    struct fsm_dpi_plugin_ops *dpi_plugin_ops;
+    struct fsm_dpi_dispatcher *dispatch;
+    union fsm_dpi_context *dpi_context;
+    struct fsm_dpi_plugin *dpi_plugin;
+    struct fsm_dpi_plugin *next;
+    ds_tree_t *dpi_sessions;
+
+    dpi_context = session->dpi;
+    if (dpi_context == NULL) return;
+
+    dispatch = &dpi_context->dispatch;
+    dpi_sessions = &dispatch->plugin_sessions;
+    dpi_plugin = ds_tree_head(dpi_sessions);
+    while (dpi_plugin != NULL)
+    {
+        dpi_plugin_ops = &dpi_plugin->session->p_ops->dpi_plugin_ops;
+        if (dpi_plugin_ops->dpi_free_resources != NULL)
+        {
+            dpi_plugin_ops->dpi_free_resources(dpi_plugin->session);
+        }
+        next = ds_tree_next(dpi_sessions, dpi_plugin);
+        dpi_plugin = next;
+    }
+}
+
+
+/**
  * @brief free the dpi resources of a dispatcher plugin
  *
  * @param session the session to free
@@ -1479,7 +1513,8 @@ fsm_free_dpi_context(struct fsm_session *session)
 
     if (session->type == FSM_DPI_DISPATCH)
     {
-       fsm_free_dpi_dispatcher(session);
+        fsm_free_dpi_plugins_resources(session);
+        fsm_free_dpi_dispatcher(session);
     }
     else if (session->type == FSM_DPI_PLUGIN)
     {
@@ -1660,7 +1695,6 @@ fsm_dispatch_pkt(struct fsm_session *session,
     struct fsm_session *dpi_plugin;
     struct fsm_dpi_plugin *plugin;
     struct eth_header *eth_hdr;
-    struct fsm_mgr *mgr;
     ds_tree_t *tree;
     bool excluded;
     bool included;
@@ -1672,23 +1706,10 @@ fsm_dispatch_pkt(struct fsm_session *session,
     acc = net_parser->acc;
 
     if (acc == NULL) return;
-    mgr = fsm_get_mgr();
 
     if (acc->dpi_done != 0)
     {
-        if (session->tap_type & FSM_TAP_NFQ)
-        {
-            int verdict;
-
-            verdict = (acc->dpi_done == FSM_DPI_DROP) ?
-                      NF_UTIL_NFQ_DROP : NF_UTIL_NFQ_ACCEPT;
-            nf_queue_set_verdict(net_parser->packet_id, verdict,
-                                 net_parser->nfq_queue_num);
-        }
-        else
-        {
-            mgr->set_dpi_state(net_parser, acc->dpi_done);
-        }
+        session->set_dpi_state(net_parser);
         return;
     }
 
@@ -1772,25 +1793,7 @@ fsm_dispatch_pkt(struct fsm_session *session,
         fsm_forward_pkt(session, net_parser);
     }
 
-    if (session->tap_type & FSM_TAP_NFQ)
-    {
-        if (drop)
-        {
-            nf_queue_set_verdict(net_parser->packet_id, NF_UTIL_NFQ_DROP,
-                                 net_parser->nfq_queue_num);
-        }
-
-        if (pass)
-        {
-            nf_queue_set_verdict(net_parser->packet_id, NF_UTIL_NFQ_ACCEPT,
-                                 net_parser->nfq_queue_num);
-        }
-    }
-    else
-    {
-        if (drop) mgr->set_dpi_state(net_parser, FSM_DPI_DROP);
-        if (pass) mgr->set_dpi_state(net_parser, FSM_DPI_PASSTHRU);
-    }
+    if (pass || drop) session->set_dpi_state(net_parser);
 
     if (drop) acc->dpi_done = FSM_DPI_DROP;
     if (pass) acc->dpi_done = FSM_DPI_PASSTHRU;
@@ -1834,7 +1837,6 @@ fsm_dpi_handler(struct fsm_session *session,
     struct fsm_dpi_dispatcher *dispatch;
     union fsm_dpi_context *dpi_context;
     struct flow_counters counters;
-    struct eth_header *eth_hdr;
     size_t payload_len;
     bool filter;
 
@@ -1842,16 +1844,6 @@ fsm_dpi_handler(struct fsm_session *session,
     if (dpi_context == NULL) return;
 
     dispatch = &dpi_context->dispatch;
-
-    if (session->tap_type & FSM_TAP_NFQ)
-    {
-        eth_hdr = &net_parser->eth_header;
-        if ((eth_hdr->srcmac) && (eth_hdr->dstmac))
-        {
-            /* nullify the src mac for Inbound packets */
-            eth_hdr->srcmac = NULL;
-        }
-    }
 
     acc = fsm_net_parser_to_acc(net_parser, dispatch->aggr);
     if (acc == NULL) return;
@@ -1868,6 +1860,7 @@ fsm_dpi_handler(struct fsm_session *session,
     filter = fsm_dpi_filter_packet(net_parser);
     if (!filter) return;
 
+    net_header_logt(net_parser);
     fsm_dispatch_pkt(session, net_parser);
 }
 

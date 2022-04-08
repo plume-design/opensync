@@ -161,46 +161,7 @@ char *cm2_reason_name[CM2_REASON_NUM] =
     "link-not-used",
 };
 
-void cm2_ble_onboarding_set_status(bool state, cm2_ble_onboarding_status_t status)
-{
-    if (state)
-        g_state.ble_status |= (1 << status);
-    else
-        g_state.ble_status &= ~(1 << status);
 
-    LOGI("Set BT status = %x", g_state.ble_status);
-}
-
-void cm2_ble_onboarding_apply_config(void)
-{
-    cm2_ovsdb_ble_config_update(g_state.ble_status);
-}
-
-static void cm2_set_backhaul_update_ble_state(void) {
-    bool eth_type;
-
-    eth_type = !strcmp(g_state.link.if_type, ETH_TYPE_NAME) ||
-               !strcmp(g_state.link.if_type, VLAN_TYPE_NAME);
-
-    g_state.ble_status = 0;
-    if (eth_type) {
-        cm2_ble_onboarding_set_status(true,
-                BLE_ONBOARDING_STATUS_ETHERNET_LINK);
-        cm2_ble_onboarding_set_status(true,
-                BLE_ONBOARDING_STATUS_ETHERNET_BACKHAUL);
-    }  else {
-        cm2_ble_onboarding_set_status(true,
-                BLE_ONBOARDING_STATUS_WIFI_LINK);
-        cm2_ble_onboarding_set_status(true,
-                BLE_ONBOARDING_STATUS_WIFI_BACKHAUL);
-    }
-    cm2_ble_onboarding_apply_config();
-}
-
-static void cm2_set_ble_state(bool state, cm2_ble_onboarding_status_t status) {
-    cm2_ble_onboarding_set_status(state, status);
-    cm2_ble_onboarding_apply_config();
-}
 
 char* cm2_dest_name(cm2_dest_e dest)
 {
@@ -369,6 +330,7 @@ static void cm2_compute_backoff(void)
         goto set_backoff;
     }
     int ret = read(fd, &backoff, sizeof(backoff));
+    close(fd);
     if (ret <= 0) {
         LOGE("Error reading /dev/urandom");
         goto set_backoff;
@@ -1014,12 +976,12 @@ start:
             if (cm2_state_changed())
             {
                 // quiesce ovsdb-server, wait for timeout
-                cm2_stability_update_interval(g_state.loop, true);
                 cm2_ovsdb_set_Manager_target("");
                 g_state.disconnects += 1;
                 cm2_set_ble_state(false, BLE_ONBOARDING_STATUS_CLOUD_OK);
 
                 if (cm2_is_extender()) {
+                    cm2_stability_update_interval(g_state.loop, true);
                     cm2_ovsdb_connection_update_unreachable_cloud_counter(g_state.link.if_name,
                                                                           g_state.disconnects);
                 }

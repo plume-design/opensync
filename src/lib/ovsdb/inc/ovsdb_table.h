@@ -103,10 +103,10 @@ int ovsdb_table_init(
     schema_mark_changed_t *mark_changed,
     char                **columns);
 
-#define OVSDB_TABLE_INIT_NO_KEY(TABLE) \
+#define OVSDB_TABLE_VAR_INIT_NO_KEY(VAR, TABLE) \
     ovsdb_table_init( \
         SCHEMA_TABLE(TABLE), \
-        &table_ ## TABLE, \
+        VAR, \
         sizeof(struct schema_ ## TABLE), \
         offsetof(struct schema_ ## TABLE, _update_type), \
         offsetof(struct schema_ ## TABLE, _uuid), \
@@ -116,26 +116,33 @@ int ovsdb_table_init(
         (schema_mark_changed_t*)schema_ ## TABLE ## _mark_changed, \
         SCHEMA_COLUMNS_ARRAY(TABLE))
 
-// set primary key
-#define OVSDB_TABLE_KEY(TABLE, FIELD) \
+#define OVSDB_TABLE_INIT_NO_KEY(TABLE) \
+    OVSDB_TABLE_VAR_INIT_NO_KEY(&table_ ## TABLE, TABLE)
+
+// set primary key (on var)
+#define OVSDB_TABLE_VAR_KEY(VAR, TABLE, FIELD) \
     do { \
-        table_ ## TABLE . key_offset = offsetof(struct schema_ ## TABLE, FIELD); \
-        strscpy(table_ ## TABLE . key_name, #FIELD, OVSDB_TABLE_KEY_SIZE); \
+        (VAR)->key_offset = offsetof(struct schema_ ## TABLE, FIELD); \
+        strscpy((VAR)->key_name, #FIELD, OVSDB_TABLE_KEY_SIZE); \
     } while (0)
 
 // set secondary key
-#define OVSDB_TABLE_KEY2(TABLE, FIELD) \
+#define OVSDB_TABLE_VAR_KEY2(TABLE, FIELD) \
     do { \
-        table_ ## TABLE . key2_offset = offsetof(struct schema_ ## TABLE, FIELD); \
-        strscpy(table_ ## TABLE . key2_name, #FIELD, OVSDB_TABLE_KEY_SIZE); \
+        (VAR)->key2_offset = offsetof(struct schema_ ## TABLE, FIELD); \
+        strscpy((VAR)->key2_name, #FIELD, OVSDB_TABLE_KEY_SIZE); \
+    } while (0)
+
+// init with key (on var)
+#define OVSDB_TABLE_VAR_INIT(VAR, TABLE, FIELD) \
+    do { \
+        OVSDB_TABLE_VAR_INIT_NO_KEY(VAR, TABLE); \
+        OVSDB_TABLE_VAR_KEY(VAR, TABLE, FIELD); \
     } while (0)
 
 // init with key
 #define OVSDB_TABLE_INIT(TABLE, FIELD) \
-    do { \
-        OVSDB_TABLE_INIT_NO_KEY(TABLE); \
-        OVSDB_TABLE_KEY(TABLE, FIELD); \
-    } while (0)
+    OVSDB_TABLE_VAR_INIT(&table_ ## TABLE, TABLE, FIELD)
 
 #define DECL_TABLE_CALLBACK_CAST(TABLE)                         \
     static inline ovsdb_table_callback_t* table_cb_cast_##TABLE(\

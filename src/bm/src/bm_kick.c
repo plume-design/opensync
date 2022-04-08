@@ -983,7 +983,7 @@ bm_kick_check_sticky_kick(bm_client_t *client)
 
     if (now < client->skip_sticky_kick_till) {
         LOGN("bm_kick: '%s' skip sticky kick, backoff (left %lds)", client->mac_addr,
-             client->skip_sticky_kick_till - now);
+             (long int)(client->skip_sticky_kick_till - now));
         return false;
     }
 
@@ -1021,7 +1021,7 @@ bm_kick_check_steering_kick(bm_client_t *client)
 
     if (now < client->skip_steering_kick_till) {
         LOGN("bm_kick: '%s' skip steering kick, backoff (left %lds)", client->mac_addr,
-             client->skip_steering_kick_till - now);
+             (long int)(client->skip_steering_kick_till - now));
         return false;
     }
 

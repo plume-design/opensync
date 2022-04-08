@@ -34,5 +34,4 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 bool oms_ps_save_last_active_version(struct oms_state_entry *entry);
 struct oms_config_entry *oms_ps_get_last_active_version(char *object);
 
-#endif // OMS_PS_H_INCLUDED
-
+#endif /* OMS_PS_H_INCLUDED */

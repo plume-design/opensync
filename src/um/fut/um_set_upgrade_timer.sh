@@ -42,13 +42,15 @@ usage()
 cat << usage_string
 um/um_set_upgrade_timer.sh [-h] arguments
 Description:
-    - Script validates UM upgrade_timer being respected and UM starts with upgrade after timer is done
-      Script fails if UM starts upgrade before end of upgrade_timer or does not start to upgrade after the timer
+    - Script validates UM upgrade_timer being respected and UM starts with upgrade process
+      within given time.
+      Script fails if UM starts upgrade process before upgrade_timer is set or
+      does not start the upgrade process in time.
 Arguments:
     -h  show this help message
     \$1 (fw_path)      : download path of UM - used to clear the folder on UM setup                      : (string)(required)
     \$2 (fw_url)       : used as firmware_url in AWLAN_Node table                                        : (string)(required)
-    \$3 (fw_up_timer)  : used as upgrade_timer in AWLAN_Node table                                       : (string)(required)
+    \$3 (fw_up_timer)  : used as upgrade_timer in AWLAN_Node table                                       : (integer)(required)
     \$4 (fw_name)      : used as to delete the file on device from \$1 (fw_path) to skip upgrade process : (string)(required)
 Testcase procedure:
     - On RPI SERVER: Prepare clean FW (.img) in ${um_resource_path}
@@ -71,6 +73,7 @@ if [ -n "${1}" ]; then
             ;;
     esac
 fi
+
 NARGS=4
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "um/um_set_upgrade_timer.sh" -arg
 fw_path=${1}

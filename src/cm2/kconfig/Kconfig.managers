@@ -226,5 +226,20 @@ if MANAGER_CM
         bool "Use additional debug logs"
         default y
         help
-           Enable additional debug logs"
+           Enable additional debug logs
+
+    config CM2_BT_BEACON_HANDLER
+        bool "Bluetooth beacon manager"
+        default y
+        help
+            Connection manager will control also Bluetooth by enable/disable beacons and state.
+
+    config CM2_BT_CONNECTABLE
+        bool "Bluetooth connection manager"
+        depends on (CM2_BT_BEACON_HANDLER)
+        default y
+        help
+            Connection manager will control also Bluetooth by enable/disable beacons and state.
+
+
 endif

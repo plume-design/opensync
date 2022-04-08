@@ -48,6 +48,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "bm.h"
 #include "memutil.h"
+#include "bm_util_opclass.h"
 
 /*****************************************************************************/
 
@@ -297,7 +298,11 @@ bm_neighbor_from_ovsdb( struct schema_Wifi_VIF_Neighbors *nconf, bm_neighbor_t *
     neigh->neigh_report.bssid_info = BTM_DEFAULT_NEIGH_BSS_INFO;
     neigh->neigh_report.channel = nconf->channel;
 
-    neigh->neigh_report.op_class = bm_neighbor_get_op_class(nconf->channel, rtype);
+    if (nconf->op_class_exists) {
+        neigh->neigh_report.op_class = nconf->op_class;
+    } else {
+        neigh->neigh_report.op_class = bm_neighbor_get_op_class(nconf->channel, rtype);
+    }
     neigh->neigh_report.phy_type = bm_neighbor_get_phy_type(neigh->neigh_report.op_class);
 
     return true;
@@ -678,7 +683,6 @@ bool
 bm_neighbor_get_self_btm_values(bsal_btm_params_t *btm_params,
                                 bm_client_t *client, bool bs_allowed)
 {
-    bool res = false;
     unsigned int i;
 
     btm_params->num_neigh = 0;
@@ -687,8 +691,7 @@ bm_neighbor_get_self_btm_values(bsal_btm_params_t *btm_params,
         if (client->ifcfg[i].bs_allowed != bs_allowed) {
             continue;
         }
-
-        res = res || _bm_neighbor_get_self_btm_values(btm_params, client->ifcfg[i].ifname);
+        _bm_neighbor_get_self_btm_values(btm_params, client->ifcfg[i].ifname);
    }
 
    if (btm_params->num_neigh) {
@@ -698,7 +701,7 @@ bm_neighbor_get_self_btm_values(bsal_btm_params_t *btm_params,
        btm_params->pref = 0;
    }
 
-   return res;
+   return btm_params->num_neigh > 0;
 }
 
 bm_rrm_neighbor_t *
@@ -765,6 +768,12 @@ bm_neighbor_better(bm_client_t *client, bm_neighbor_t *bm_neigh)
         return false;
     }
 
+    if ((unsigned int) (now - rrm_neigh->time) > client->rrm_age_time) {
+        LOGD("%s rrm results too old, don't use them %u", client->mac_addr,
+             (unsigned int) (now - rrm_neigh->time));
+        return false;
+    }
+
     /* Finally compare rcpi */
     if (rrm_neigh->rcpi < rrm_self_neigh->rcpi + 2 * client->rrm_better_factor) {
         LOGD("[%s]: neigh %s self %u neigh %u worst rcpi", client->mac_addr, bm_neigh->bssid, rrm_self_neigh->rcpi, rrm_neigh->rcpi);
@@ -772,6 +781,54 @@ bm_neighbor_better(bm_client_t *client, bm_neighbor_t *bm_neigh)
     }
 
     return true;
+}
+
+static bool
+bm_neigbour_op_class_allowed(bm_client_t *client, bm_neighbor_t *bm_neigh)
+{
+    int i;
+    const uint8_t op_class = bm_neigh->neigh_report.op_class;
+
+    if (!op_class) {
+        LOGW("%s op class not defined", bm_neigh->bssid);
+        return false;
+    }
+
+    LOGD("Client '%s' checking supported op classes", client->mac_addr);
+
+    if (client->op_classes.size == 0) {
+        LOGD("%s: client %s has nos no op_classes, accepting unconditionally",
+              bm_neigh->bssid, client->mac_addr);
+        return true;
+    }
+
+    for (i = 0; i < client->op_classes.size; i++) {
+        const uint8_t op_c = client->op_classes.op_class[i];
+
+        if (ieee80211_global_op_class_is_contained_in(op_class, op_c))
+            return true;
+
+        if (ieee80211_global_op_class_is_contained_in(op_c, op_class))
+            return true;
+
+        if (op_c == op_class)
+            return true;
+    }
+
+    return false;
+}
+
+static bool
+bm_client_is_6ghz_capable(bm_client_t *client)
+{
+    int i;
+
+    for (i = 0; i < client->op_classes.size; i++) {
+        if (ieee80211_global_op_class_is_6ghz(client->op_classes.op_class[i]))
+            return true;
+    }
+
+    return false;
 }
 
 bool
@@ -801,11 +858,15 @@ bm_neighbor_build_btm_neighbor_list( bm_client_t *client, bsal_btm_params_t *btm
     }
 
     btm_params->num_neigh = 0;
+
+    if (bm_client_is_6ghz_capable(client))
+        max_regular_neighbors = BSAL_MAX_TM_NEIGHBORS;
+    else
+        max_regular_neighbors = BSAL_MAX_TM_NEIGHBORS_LEGACY;
+
     if (btm_params->inc_self)
         /* Leave place for self neighbor */
-        max_regular_neighbors = BSAL_MAX_TM_NEIGHBORS - 1;
-    else
-        max_regular_neighbors = BSAL_MAX_TM_NEIGHBORS;
+        max_regular_neighbors -= 1;
 
     /* First choose neighbors using Beacon Measurement Reports (if enabled or available) */
     if (client->neighbor_list_filter_by_beacon_report ) {
@@ -880,6 +941,11 @@ bm_neighbor_build_btm_neighbor_list( bm_client_t *client, bsal_btm_params_t *btm
         // Include only allowed neighbors
         if (!bm_neighbor_channel_allowed(client, bm_neigh->channel)) {
             LOGT("Skipping neighbor = %s, channel = %hhu", bm_neigh->bssid, bm_neigh->channel);
+            continue;
+        }
+
+        if (!bm_neigbour_op_class_allowed(client, bm_neigh)) {
+            LOGT("Skipping neighbor = %s due too op_class mismatch", bm_neigh->bssid);
             continue;
         }
 
@@ -1086,29 +1152,30 @@ bm_neighbor_get_channels(bm_client_t *client, bm_client_rrm_req_type_t rrm_req_t
         channel = neigh->neigh_report.channel;
         op_class = neigh->neigh_report.op_class;
 
-        if (rrm_req_type == BM_CLIENT_RRM_2G_ONLY) {
-            if (channel > 13 && op_class == BTM_24_OP_CLASS)
+        if (rrm_req_type == BM_CLIENT_RRM_2G_ONLY &&
+            !ieee80211_global_op_class_is_2ghz(op_class))
                 continue;
-        }
 
-        if (rrm_req_type == BM_CLIENT_RRM_5G_ONLY) {
-            if ((channel < 36 || channel > 48) && op_class == BTM_5GL_OP_CLASS)
+        if (rrm_req_type == BM_CLIENT_RRM_5G_ONLY &&
+            !ieee80211_global_op_class_is_5ghz(op_class))
                 continue;
-            if ((channel < 52 || channel > 64) && op_class == BTM_L_DFS_OP_CLASS)
-                continue;
-            if ((channel < 100 || channel > 140) && op_class == BTM_U_DFS_OP_CLASS)
-                continue;
-            if ((channel < 149 || channel > 169) && op_class == BTM_5GU_OP_CLASS)
-                continue;
-        }
 
-        if (rrm_req_type == BM_CLIENT_RRM_6G_ONLY) {
-            if (channel > 233 && op_class == BTM_6G_OP_CLASS)
+        if (rrm_req_type == BM_CLIENT_RRM_6G_ONLY &&
+            !ieee80211_global_op_class_is_6ghz(op_class))
                 continue;
-        }
+
+        if (rrm_req_type == BM_CLIENT_RRM_5_6G_ONLY &&
+            !ieee80211_global_op_class_is_5ghz(op_class) &&
+            !ieee80211_global_op_class_is_6ghz(op_class))
+                continue;
 
         if (rrm_req_type == BM_CLIENT_RRM_OWN_CHANNEL_ONLY) {
-            if (self_op_class != op_class || client->self_neigh.channel != channel)
+            if (!ieee80211_global_op_class_is_contained_in(op_class, self_op_class) || client->self_neigh.channel != channel)
+                continue;
+        }
+
+        if (!ieee80211_global_op_class_is_channel_supported(op_class, channel)) {
+            LOGW("Channel %d is not supported for the opclass: %d", channel, op_class);
                 continue;
         }
 

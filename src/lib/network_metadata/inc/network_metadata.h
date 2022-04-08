@@ -85,6 +85,8 @@ struct flow_key
     uint16_t direction;      /*!< flow direction */
     uint16_t originator;     /*!< flow originator */
     struct net_md_stats_accumulator *acc;
+    char *networkid; /* networkid of device */
+    uint32_t flowmarker; /* ct_mark */
     int log;
 };
 

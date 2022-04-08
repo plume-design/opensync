@@ -947,6 +947,7 @@ char *strexread(const char *prog, const char *const*argv)
             close(2);
             open("/dev/null", O_RDONLY);
             dup2(fd[1], 1);
+            open("/dev/null", O_WRONLY);
             close(fd[0]);
             close(fd[1]);
             for (n=0; argv[n]; n++);

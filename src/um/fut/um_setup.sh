@@ -60,6 +60,7 @@ if [ -n "${1}" ]; then
             ;;
     esac
 fi
+
 NARGS=1
 [ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "um/um_setup.sh" -arg
 

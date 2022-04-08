@@ -61,10 +61,13 @@ if [ -n "${1}" ]; then
             ;;
     esac
 fi
-NARGS=1
-[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "tools/server/um/um_encrypt_image.sh" -arg
 
+NARGS=2
+[ $# -lt ${NARGS} ] && usage && raise "Requires at least '${NARGS}' input argument(s)" -l "tools/server/um/um_encrypt_image.sh" -arg
 um_fw_path=$1
 um_fw_key_path=$2
 
-um_encrypt_image "$um_fw_path" "$um_fw_key_path"
+log "tools/server/um/um_encry_image.sh - Encrypting image $um_fw_path with key $um_fw_key_path"
+um_encrypt_image "$um_fw_path" "$um_fw_key_path" &&
+    log -deb "tools/server/um/um_encry_image.sh - Image encrypted - Success" ||
+    raise "FAIL: Failed to encrypt image" -l "tools/server/um/um_encry_image.sh" -ds

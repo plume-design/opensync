@@ -48,6 +48,7 @@ message AdtAttrValue {
 message AdtKVPair {
   AdtAttrKey key = 1;
   AdtAttrValue value = 2;
+  uint64 captured_at_ms = 3;
 }
 
 message AdtIpv4Tuple {
@@ -84,4 +85,5 @@ message AdtReport
 {
   AdtObservationPoint observation_point = 1;
   repeated AdtDataPoint data = 2;
+  uint64 reported_at_ms = 3;
 }

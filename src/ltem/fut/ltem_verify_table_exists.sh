@@ -27,34 +27,33 @@
 
 # FUT environment loading
 # shellcheck disable=SC1091
-source /tmp/fut-base/shell/config/default_shell.sh &> /dev/null
-[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh &> /dev/null
-source "${FUT_TOPDIR}/shell/lib/unit_lib.sh" &> /dev/null
-[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" &> /dev/null
-[ -n "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" &> /dev/null
+source /tmp/fut-base/shell/config/default_shell.sh
+[ -e "/tmp/fut-base/fut_set_env.sh" ] && source /tmp/fut-base/fut_set_env.sh
+source "${FUT_TOPDIR}/shell/lib/ltem_lib.sh"
+[ -e "${PLATFORM_OVERRIDE_FILE}" ] && source "${PLATFORM_OVERRIDE_FILE}" || raise "${PLATFORM_OVERRIDE_FILE}" -ofm
+[ -e "${MODEL_OVERRIDE_FILE}" ] && source "${MODEL_OVERRIDE_FILE}" || raise "${MODEL_OVERRIDE_FILE}" -ofm
 
-manager_setup_file="dm/dm_setup.sh"
+manager_setup_file="ltem/ltem_setup.sh"
+
 usage()
 {
 cat << usage_string
-dm/dm_get_count_reboot_status.sh [-h] arguments
+ltem/ltem_verify_table_exists.sh [-h] arguments
 Description:
-    Echoes recent 'count' field in the Reboot_Status table.
-
+    - This script is used to verify Lte_Config and Lte_State tables exist.
 Arguments:
-    -h  show this help message
+    -h : show this help message
 Testcase procedure:
     - On DEVICE: Run: ./${manager_setup_file} (see ${manager_setup_file} -h)
-                 Run: ./dm/dm_get_count_reboot_status.sh
+                 Run: ./ltem/ltem_verify_table_exists.sh
 Script usage example:
-   ./dm/dm_get_count_reboot_status.sh
+    ./ltem/ltem_verify_table_exists.sh
 usage_string
 }
 if [ -n "${1}" ]; then
     case "${1}" in
         help | \
-        --help | \
-        -h)
+        --help | -h)
             usage && exit 1
             ;;
         *)
@@ -62,16 +61,19 @@ if [ -n "${1}" ]; then
     esac
 fi
 
-check_kconfig_option "CONFIG_OSP_REBOOT_PSTORE" "y" &> /dev/null ||
-    raise "CONFIG_OSP_REBOOT_PSTORE != y - Testcase not applicable REBOOT PERSISTENT STORAGE not supported" -l "dm/dm_get_count_reboot_status.sh" -s
+# Execute on EXIT signal.
+trap '
+fut_info_dump_line
+print_tables Lte_Config Lte_State
+fut_info_dump_line
+' EXIT SIGINT SIGTERM
 
-reboot_count_array=$(${OVSH} s Reboot_Status count -r)
+check_ovsdb_table_exist Lte_Config &&
+    log "ltem/ltem_verify_table_exists.sh: Lte_Config table exists in ovsdb - Success" ||
+    raise "FAIL: Lte_Config table does not exist in ovsdb" -l "ltem/ltem_verify_table_exists.sh" -s
 
-recent_reboot_count=0
-for reboot_count in $reboot_count_array; do
-    if [ $reboot_count -gt $recent_reboot_count ]; then
-        recent_reboot_count=$reboot_count
-    fi
-done
+check_ovsdb_table_exist Lte_State &&
+    log "ltem/ltem_verify_table_exists.sh: Lte_State table exists in ovsdb - Success" ||
+    raise "FAIL: Lte_State table does not exist in ovsdb" -l "ltem/ltem_verify_table_exists.sh" -s
 
-echo "${recent_reboot_count}"
+pass

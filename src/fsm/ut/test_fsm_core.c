@@ -710,8 +710,7 @@ test_init_plugin_fail(struct fsm_session *session)
 
 
 static int
-test_set_dpi_state(struct net_header_parser *net_hdr,
-                   enum fsm_dpi_state state)
+test_set_dpi_state(struct net_header_parser *net_hdr)
 {
     return 1;
 }
@@ -745,6 +744,7 @@ test_update_session_tap(struct fsm_session *session)
 {
     /* update session tap type */
     session->tap_type = fsm_session_tap_mode(session);
+    session->set_dpi_state = test_set_dpi_state;
     return true;
 }
 
@@ -760,7 +760,6 @@ fsm_core_setUp(void)
     fsm_init_mgr(NULL);
     g_mgr->init_plugin = test_init_plugin;
     g_mgr->get_br = test_get_br;
-    g_mgr->set_dpi_state = test_set_dpi_state;
     g_mgr->update_session_tap = test_update_session_tap;
     nelems = ARRAY_SIZE(g_confs);
     for (i = 0; i < nelems; i++)
@@ -1339,6 +1338,105 @@ test_3_dpi_dispatcher_and_plugin(void)
     fsm_delete_session(conf);
     info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
     TEST_ASSERT_NULL(info);
+}
+
+
+void
+dummy_dpi_plugin_free_resources(struct fsm_session *session)
+{
+    LOGI("%s : Free dpi_plugin resources", __func__);
+}
+
+
+union fsm_plugin_ops *p_ops;
+struct fsm_dpi_plugin_ops g_plugin_ops =
+{
+    .dpi_free_resources = dummy_dpi_plugin_free_resources,
+};
+
+
+/**
+ * @brief validate the registration of a dpi plugin
+ *
+ * The dpi plugin is registered first.
+ * The dpi dispatch plugin is registered thereafter.
+ * A packet is then handled, creating a flow record
+ * The dpi plugin is then removed.
+ */
+void
+test_dpi_dispatch_delete(void)
+{
+    struct schema_Flow_Service_Manager_Config *conf;
+    union fsm_dpi_context *dispatcher_dpi_context;
+    union fsm_dpi_context *plugin_dpi_context;
+    struct fsm_dpi_dispatcher *dpi_dispatcher;
+    struct fsm_dpi_plugin *plugin_lookup;
+    struct net_header_parser *net_parser;
+    struct fsm_parser_ops *dispatch_ops;
+    struct fsm_dpi_flow_info *info;
+    struct fsm_session *dispatcher;
+    struct fsm_session *plugin;
+    ds_tree_t *dpi_plugins;
+    ds_tree_t *sessions;
+    size_t len;
+
+    /* Add a dpi plugin session */
+    conf = &g_confs[7];
+    fsm_add_session(conf);
+    sessions = fsm_get_sessions();
+    plugin = ds_tree_find(sessions, conf->handler);
+    TEST_ASSERT_NOT_NULL(plugin);
+    TEST_ASSERT_TRUE(fsm_is_dpi(plugin));
+    plugin->p_ops->dpi_plugin_ops = g_plugin_ops;
+
+    /* Add a dpi dispatcher session */
+    conf = &g_confs[6];
+    fsm_add_session(conf);
+    dispatcher = ds_tree_find(sessions, conf->handler);
+    TEST_ASSERT_NOT_NULL(dispatcher);
+    TEST_ASSERT_TRUE(fsm_is_dpi(dispatcher));
+
+    /* Validate that the dpi plugin is registered to the dispatcher */
+    dispatcher_dpi_context = dispatcher->dpi;
+    TEST_ASSERT_NOT_NULL(dispatcher_dpi_context);
+    plugin_dpi_context = plugin->dpi;
+    TEST_ASSERT_NOT_NULL(plugin_dpi_context);
+    dpi_plugins = &dispatcher_dpi_context->dispatch.plugin_sessions;
+    plugin_lookup = ds_tree_find(dpi_plugins, plugin->name);
+    TEST_ASSERT_NOT_NULL(plugin_lookup);
+    TEST_ASSERT_TRUE(plugin_lookup->session == plugin);
+    TEST_ASSERT_TRUE(plugin_lookup->bound);
+
+    dpi_dispatcher = &dispatcher_dpi_context->dispatch;
+    net_parser = &dpi_dispatcher->net_parser;
+
+    UT_CREATE_PCAP_PAYLOAD(pkt372, net_parser);
+    len = net_header_parse(net_parser);
+    TEST_ASSERT_TRUE(len != 0);
+
+    /* Call the dispatcher's packet handler */
+    dispatch_ops = &dispatcher->p_ops->parser_ops;
+    TEST_ASSERT_NOT_NULL(dispatch_ops->handler);
+    dispatch_ops->handler(dispatcher, net_parser);
+
+    /* Validate that an accumulator was created */
+    TEST_ASSERT_NOT_NULL(net_parser->acc);
+
+    /* Validate that the accumulator has plugins recorded */
+    TEST_ASSERT_NOT_NULL(net_parser->acc->dpi_plugins);
+
+    /* Validate that the accumulator is aware of the plugin */
+    info = ds_tree_find(net_parser->acc->dpi_plugins, plugin);
+    TEST_ASSERT_NOT_NULL(info);
+    TEST_ASSERT_TRUE(info->session == plugin);
+
+    /* Remove the dpi dispatch session */
+    conf = &g_confs[6];
+    fsm_delete_session(conf);
+
+    /* Remove the dpi plugin session */
+    conf = &g_confs[7];
+    fsm_delete_session(conf);
 }
 
 
@@ -4647,7 +4745,7 @@ test_dpi_dispatcher_udp_dhcp_offer(void)
 }
 
 extern void run_test_fsm_ovsdb(void);
- 
+
 /**
  * @brief validate acc for ethernet packet
  *
@@ -4732,7 +4830,7 @@ test_dpi_dispatcher_no_ip_pkt(void)
     dispatch_ops->handler(dispatcher, net_parser);
 }
 
- 
+
 int
 main(int argc, char *argv[])
 {
@@ -4786,6 +4884,7 @@ main(int argc, char *argv[])
     RUN_TEST(test_dpi_dispatcher_no_ip_pkt);
 
     RUN_TEST(test_fsm_tap_type_from_str);
+    RUN_TEST(test_dpi_dispatch_delete);
 
     run_test_fsm_ovsdb();
 

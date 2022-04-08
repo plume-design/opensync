@@ -42,7 +42,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define PM_OBJS_DOWNLOAD_DONE       "download-done"     // Download of the object complete
 #define PM_OBJS_INSTALL_FAILED      "install-failed"    // Install of the object failed
 #define PM_OBJS_LOAD_FAILED         "load-failed"       // Load of object failed
-#define PM_OBJS_ACTIVE              "active"            // Object is activly used by final user
+#define PM_OBJS_ACTIVE              "active"            // Object is actively used by final user
 #define PM_OBJS_OBSOLETE            "obsolete"          // Object is not used by final user and can be removed
 #define PM_OBJS_REMOVED             "removed"           // Object is removed from device storage
 #define PM_OBJS_ERROR               "error"             // General error
@@ -62,4 +62,4 @@ struct pm_objm_ctx_t
 };
 
 
-#endif // PM_OBJM_H_INCLUDED
+#endif /* PM_OBJM_H_INCLUDED */

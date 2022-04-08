@@ -68,6 +68,8 @@ struct net_md_flow_key
     uint16_t direction;   /* flow direction */
     uint16_t originator;  /* flow originator */
     uint8_t icmp_type;
+    char *networkid;    /* network id of device */
+    uint32_t flowmarker;  /* ct_mark */
 };
 
 
@@ -83,6 +85,7 @@ struct net_md_stats_accumulator
     struct flow_counters counters;         /* current accumulated stats */
     struct flow_counters report_counters;  /* reported stats */
     int state;                             /* State in the current window */
+    uint32_t flow_marker;                  /* conntrack mark for the flow */
     time_t last_updated;
     void (*free_plugins)(struct net_md_stats_accumulator *);
     ds_tree_t *dpi_plugins;

@@ -50,6 +50,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "const.h"
 #include "util.h"
 #include "memutil.h"
+#include "bm_util_opclass.h"
 
 
 /*****************************************************************************/
@@ -510,6 +511,7 @@ bm_client_send_rrm_req(bm_client_t *client, bm_client_rrm_req_type_t rrm_req_typ
     num_channels = bm_neighbor_get_channels(client, rrm_req_type, channels, elements_num, 0, op_classes, elements_num);
 
     for (i = 0; i < num_channels; i++) {
+        int opc;
         if (bm_client_is_dfs_channel(channels[i])) {
             if (!client->info->rrm_caps.bcn_rpt_passive) {
                 LOGD("%s skip rrm_req while DFS and !rrm_passive", client->mac_addr);
@@ -538,7 +540,9 @@ bm_client_send_rrm_req(bm_client_t *client, bm_client_rrm_req_type_t rrm_req_typ
         req->rrm_params.meas_dur = BM_CLIENT_RRM_ACTIVE_MEASUREMENT_DURATION;
 
         req->rrm_params.channel = channels[i];
-        req->rrm_params.op_class = op_classes[i];
+        /* Downgrade oplcass to 20 MHz */
+        opc = ieee80211_global_op_class_to_20mhz_op_class(op_classes[i], channels[i]);
+        req->rrm_params.op_class = opc ?: op_classes[i];
 
         if (bm_client_is_dfs_channel(channels[i])) {
             req->rrm_params.meas_mode = 0;
@@ -723,6 +727,44 @@ static void bm_client_caps_recalc(bm_client_t *client, const char *ifname, bsal_
     bm_client_record_client_caps(client, ifname, info);
 }
 
+static void bm_client_set_band_caps_mask(bm_client_t *client)
+{
+    int i;
+    int mask = 0;
+    char *str = NULL;
+
+    for (i = 0; i < client->op_classes.size; i++) {
+        const uint8_t op_c = client->op_classes.op_class[i];
+
+        str = strgrow(&str, "%hhu ", op_c);
+        if (ieee80211_global_op_class_is_2ghz(op_c))
+            mask |= BM_CLIENT_OPCLASS_24_CAP_BIT;
+
+        if (ieee80211_global_op_class_is_5ghz(op_c))
+            mask |= BM_CLIENT_OPCLASS_50_CAP_BIT;
+
+        if (ieee80211_global_op_class_is_6ghz(op_c))
+            mask |= BM_CLIENT_OPCLASS_60_CAP_BIT;
+    }
+
+    LOGI("Client %s supported opclass: %s", client->mac_addr, str ?: "none");
+    FREE(str);
+
+    if (mask == 0) {
+        LOGI("Client %s no capab based on opclasses", client->mac_addr);
+        if (client->band_cap_6G)
+            mask |= BM_CLIENT_OPCLASS_60_CAP_BIT;
+
+        if (client->band_cap_5G)
+            mask |= BM_CLIENT_OPCLASS_50_CAP_BIT;
+
+        if (client->band_cap_2G)
+            mask |= BM_CLIENT_OPCLASS_24_CAP_BIT;
+    }
+
+    client->band_cap_mask = mask;
+}
+
 void bm_client_check_connected(bm_client_t *client, bm_group_t *group, const char *ifname)
 {
     bsal_client_info_t          info;
@@ -762,6 +804,9 @@ void bm_client_check_connected(bm_client_t *client, bm_group_t *group, const cha
 
     /* Recalc client capabilities */
     bm_client_caps_recalc(client, ifname, &info);
+
+    /* Set client capabilities based on supported Operating Classes */
+    bm_client_set_band_caps_mask(client);
 
     bm_kick_cancel_btm_retry_task( client );
     bm_client_preassoc_backoff_recalc(group, client, ifname);
@@ -2699,7 +2744,7 @@ bm_client_rejected(bm_client_t *client, bsal_event_t *event)
                  client->mac_addr);
             break;
         case RADIO_TYPE_NONE:
-            LOGW("%s: probe or auth req was rejection reported on unknow radio type",
+            LOGW("%s: probe or auth req was rejection reported on unknown radio type",
                  client->mac_addr);
             break;
     }
@@ -2755,7 +2800,8 @@ bm_client_postassoc_backoff_recalc(bm_group_t *group, bm_client_t *client, const
     now = time(NULL);
 
     if (now - client->times.last_sticky_kick < client->sticky_kick_guard_time) {
-        LOGT("%s back early after sticky kick (%lds)", client->mac_addr, now - client->times.last_sticky_kick);
+        LOGT("%s back early after sticky kick (%lds)",
+             client->mac_addr, (long int)(now - client->times.last_sticky_kick));
         if (group->gw_only || !bm_neighbor_number(client)) {
             if (bm_client_bs_ifname_allowed(client, ifname)) {
                 LOGI("%s (gw_only) connected back to %s skip sticky kick for %ds",
@@ -2770,7 +2816,8 @@ bm_client_postassoc_backoff_recalc(bm_group_t *group, bm_client_t *client, const
     }
 
     if (now - client->times.last_steering_kick < client->steering_kick_guard_time) {
-        LOGT("%s back early after steering kick (%lds)", client->mac_addr, now - client->times.last_steering_kick);
+        LOGT("%s back early after steering kick (%lds)",
+             client->mac_addr, (long int)(now - client->times.last_steering_kick));
         if (!bm_client_bs_ifname_allowed(client, ifname)) {
             LOGI("%s connected back to %s skip steering kick for %ds",
                  client->mac_addr, ifname, client->steering_kick_backoff_time);

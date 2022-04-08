@@ -24,28 +24,22 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef LAN_DPCTL_H_INCLUDED
-#define LAN_DPCTL_H_INCLUDED
+#ifndef BM_UTIL_OPCLASS_H_INCLUDED
+#define BM_UTIL_OPCLASS_H_INCLUDED
 
-#include "lan_stats.h"
-#define OVS_NAME "system@ovs-system"
+#include <os_types.h>
 
-/*
- Version Macros:
- ---------------
- 21101 -> 2.11.1 (OVS Version)
- 20807 -> 2.8.7  (OVS Version)
- */
+bool ieee80211_global_op_class_is_contained_in(const uint8_t superset_op_class, const uint8_t subset_op_class);
+bool ieee80211_global_op_class_is_channel_supported(const uint8_t op_class, const uint8_t chan);
+uint8_t ieee80211_global_op_class_to_20mhz_op_class(const uint8_t op_class, const uint8_t chan);
+bool ieee80211_global_op_class_is_2ghz(const uint8_t op_class);
+bool ieee80211_global_op_class_is_5ghz(const uint8_t op_class);
+bool ieee80211_global_op_class_is_6ghz(const uint8_t op_class);
+bool ieee80211_global_op_class_is_dfs(const uint8_t op_class);
+bool ieee80211_global_op_class_is_20mhz(const uint8_t op_class);
+bool ieee80211_global_op_class_is_40mhz(const uint8_t op_class);
+bool ieee80211_global_op_class_is_80mhz(const uint8_t op_class);
+bool ieee80211_global_op_class_is_80plus80mhz(const uint8_t op_class);
+bool ieee80211_global_op_class_is_160mhz(const uint8_t op_class);
 
-#define OVS_VERSION_2_11_1  21101
-#define OVS_VERSION_2_8_7   20807
-
-#if OVS_PACKAGE_VERNUM >= OVS_VERSION_2_11_1
-struct dump_types {
-    bool ovs;
-    bool tc;
-    bool offloaded;
-    bool non_offloaded;
-};
-#endif
-#endif
+#endif /* BM_UTIL_OPCLASS_H_INCLUDED */

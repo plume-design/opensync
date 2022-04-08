@@ -421,6 +421,7 @@ lte_info_set_serving_cell(struct lte_net_serving_cell_info *source,
     cell->cellid = source->cellid;
     cell->pcid = source->pcid;
     cell->uarfcn = source->uarfcn;
+    cell->earfcn = source->earfcn;
     cell->freq_band = source->freq_band;
     cell->ul_bandwidth = source->ul_bandwidth;
     cell->dl_bandwidth = source->dl_bandwidth;
@@ -598,7 +599,7 @@ lte_info_set_srv_cell(struct lte_info_report *report)
     pb->state = (Interfaces__LteInfo__LteServingCellState)cell->state;
     pb->mode = (Interfaces__LteInfo__LteCellMode)cell->mode;
     pb->fdd_tdd_mode = (Interfaces__LteInfo__LteFddTddMode)cell->fdd_tdd_mode;
-    pb->cellid = pb->cellid;
+    pb->cellid = cell->cellid;
     pb->pcid = cell->pcid;
     pb->uarfcn = cell->uarfcn;
     pb->earfcn = cell->earfcn;
@@ -612,6 +613,10 @@ lte_info_set_srv_cell(struct lte_info_report *report)
     pb->sinr = cell->sinr;
     pb->srxlev = cell->srxlev;
 
+    LOGD("%s: state[%d], mode[%d], fdd_tdd_mode[%d], cellid[0x%x], pcid[%d], uarfcn[%d], earfcn[%d], freq_band[%d] ul_bandwidth[%d] dl_bandwidth[%d], "
+         "tac[%d], rsrp[%d], rsrq[%d], rssi[%d], sinr[%d], srxlev[%d]",
+         __func__, pb->state, pb->mode, pb->fdd_tdd_mode, pb->cellid, pb->pcid, pb->uarfcn, pb->earfcn, pb->freq_band, pb->ul_bandwidth,
+         pb->dl_bandwidth, pb->tac, pb->rsrp, pb->rsrq, pb->rssi, pb->sinr, pb->srxlev);
     return pb;
 }
 

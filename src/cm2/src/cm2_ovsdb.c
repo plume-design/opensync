@@ -95,26 +95,26 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 static
 bool cm2_ovsdb_connection_remove_uplink(char *if_name);
 
-ovsdb_table_t table_Open_vSwitch;
-ovsdb_table_t table_Manager;
-ovsdb_table_t table_SSL;
-ovsdb_table_t table_AWLAN_Node;
-ovsdb_table_t table_Wifi_Master_State;
-ovsdb_table_t table_Connection_Manager_Uplink;
-ovsdb_table_t table_AW_Bluetooth_Config;
-ovsdb_table_t table_Wifi_Inet_Config;
-ovsdb_table_t table_Wifi_Inet_State;
-ovsdb_table_t table_Wifi_VIF_Config;
-ovsdb_table_t table_Wifi_VIF_State;
-ovsdb_table_t table_Wifi_Radio_State;
-ovsdb_table_t table_Port;
-ovsdb_table_t table_Bridge;
-ovsdb_table_t table_IP_Interface;
-ovsdb_table_t table_IPv6_Address;
-ovsdb_table_t table_DHCPv6_Client;
-ovsdb_table_t table_Wifi_Route_State;
-ovsdb_table_t table_Node_Config;
-ovsdb_table_t table_Node_State;
+static ovsdb_table_t table_Open_vSwitch;
+static ovsdb_table_t table_Manager;
+static ovsdb_table_t table_SSL;
+static ovsdb_table_t table_AWLAN_Node;
+static ovsdb_table_t table_Wifi_Master_State;
+static ovsdb_table_t table_Connection_Manager_Uplink;
+static ovsdb_table_t table_AW_Bluetooth_Config;
+static ovsdb_table_t table_Wifi_Inet_Config;
+static ovsdb_table_t table_Wifi_Inet_State;
+static ovsdb_table_t table_Wifi_VIF_Config;
+static ovsdb_table_t table_Wifi_VIF_State;
+static ovsdb_table_t table_Wifi_Radio_State;
+static ovsdb_table_t table_Port;
+static ovsdb_table_t table_Bridge;
+static ovsdb_table_t table_IP_Interface;
+static ovsdb_table_t table_IPv6_Address;
+static ovsdb_table_t table_DHCPv6_Client;
+static ovsdb_table_t table_Wifi_Route_State;
+static ovsdb_table_t table_Node_Config;
+static ovsdb_table_t table_Node_State;
 
 void callback_AWLAN_Node(ovsdb_update_monitor_t *mon,
         struct schema_AWLAN_Node *old_rec,
@@ -1073,6 +1073,7 @@ cm2_ovsdb_util_handle_master_sta_port_state(struct schema_Wifi_Master_State *mas
 {
     cm2_ip ipv4;
     int    ret;
+    char *uplink_removed = NULL;
 
     if (port_state) {
         ret = cm2_ovsdb_set_Wifi_Inet_Config_interface_enabled(true, master->if_name);
@@ -1082,22 +1083,22 @@ cm2_ovsdb_util_handle_master_sta_port_state(struct schema_Wifi_Master_State *mas
         if (!wds)
             cm2_util_set_dhcp_ipv4_cfg_from_master(master, true);
     } else {
-        if (g_state.link.is_used && g_state.link.is_bridge) {
-            bool br_update = true;
-
+        if (g_state.link.is_used  && cm2_is_wifi_type(g_state.link.if_type)) {
             if (!strcmp(g_state.link.if_name, master->if_name) && !strcmp(master->if_type, VIF_TYPE_NAME)) {
                 /* WDS link lost */
-                cm2_ovsdb_connection_remove_uplink(master->if_name);
-            } else if (!strcmp(g_state.link.if_name, gre_ifname) && !strcmp(master->if_type, GRE_TYPE_NAME)) {
+                uplink_removed = master->if_name;
+            } else if (!strcmp(g_state.link.if_name, gre_ifname)) {
                 /* GRE link lost */
-                cm2_ovsdb_connection_remove_uplink(gre_ifname);
-            } else {
-                br_update = false;
+                uplink_removed = gre_ifname;
             }
+        }
 
-            if (br_update)
+        if (uplink_removed != NULL) {
+            if (g_state.link.is_bridge) {
                 cm2_update_bridge_cfg(g_state.link.bridge_name, g_state.link.if_name, false,
                                       CM2_PAR_NOT_SET, true);
+            }
+            cm2_ovsdb_connection_remove_uplink(uplink_removed);
         }
 
         ret = cm2_util_get_ip_inet_state_cfg(master->if_name, &ipv4);
@@ -1506,46 +1507,6 @@ int cm2_ovsdb_get_connection_uplinks(struct schema_Connection_Manager_Uplink **u
     return count;
 }
 
-void cm2_ovsdb_connection_update_ble_phy_link(void) {
-    struct schema_Connection_Manager_Uplink *uplink;
-    void                                    *uplink_p;
-    bool                                    state;
-    int                                     wifi_cnt;
-    int                                     eth_cnt;
-    int                                     count;
-    int                                     i;
-
-    uplink_p = ovsdb_table_select_typed(&table_Connection_Manager_Uplink,
-                                        SCHEMA_COLUMN(Connection_Manager_Uplink, has_L2),
-                                        OCLM_BOOL,
-                                        (void *) &state,
-                                        &count);
-
-    LOGI("BLE active phy links: %d",  count);
-
-    wifi_cnt = 0;
-    eth_cnt  = 0;
-
-    if (uplink_p) {
-        for (i = 0; i < count; i++) {
-            uplink = (struct schema_Connection_Manager_Uplink *) (uplink_p + table_Connection_Manager_Uplink.schema_size * i);
-            LOGI("Link %d: ifname = %s iftype = %s active state= %d", i, uplink->if_name, uplink->if_type, uplink->has_L2);
-
-            if (cm2_is_eth_type(uplink->if_type))
-                eth_cnt++;
-            else
-                wifi_cnt++;
-        }
-        FREE(uplink_p);
-    }
-
-    state = eth_cnt > 0 ? true : false;
-    cm2_ble_onboarding_set_status(state, BLE_ONBOARDING_STATUS_ETHERNET_LINK);
-    state = wifi_cnt > 0 ? true : false;
-    cm2_ble_onboarding_set_status(state, BLE_ONBOARDING_STATUS_WIFI_LINK);
-    cm2_ble_onboarding_apply_config();
-}
-
 bool cm2_ovsdb_connection_update_ntp_state(const char *if_name, bool state) {
     struct schema_Connection_Manager_Uplink con;
     char *filter[] = { "+",  SCHEMA_COLUMN(Connection_Manager_Uplink, ntp_state), NULL};
@@ -1906,70 +1867,6 @@ void cm2_ovsdb_connection_clean_link_counters(char *if_name)
                                      &uplink, filter);
     if (!ret)
         LOGW("%s Update row failed for %s", __func__, if_name);
-}
-
-int cm2_ovsdb_ble_config_update(uint8_t ble_status)
-{
-    struct schema_AW_Bluetooth_Config ble;
-    char   *filter[] = { "+",
-                         SCHEMA_COLUMN(AW_Bluetooth_Config, mode),
-                         SCHEMA_COLUMN(AW_Bluetooth_Config, command),
-                         SCHEMA_COLUMN(AW_Bluetooth_Config, payload),
-                         SCHEMA_COLUMN(AW_Bluetooth_Config, interval_millis),
-                         SCHEMA_COLUMN(AW_Bluetooth_Config, txpower),
-                         NULL };
-    int    ret;
-
-    memset(&ble, 0, sizeof(ble));
-
-    SCHEMA_SET_STR(ble.mode, CM2_BLE_MODE_ON);
-    SCHEMA_SET_STR(ble.command, CM2_BLE_MSG_ONBOARDING);
-    SCHEMA_SET_INT(ble.interval_millis, CM2_BLE_INTERVAL_VALUE_DEFAULT);
-    SCHEMA_SET_INT(ble.txpower, CM2_BLE_TXPOWER_VALUE_DEFAULT);
-    snprintf(ble.payload, sizeof(ble.payload), "%02x:00:00:00:00:00", ble_status);
-    ble.payload_exists = true;
-    ble.payload_present = true;
-
-    ret = ovsdb_table_upsert_simple_f(&table_AW_Bluetooth_Config,
-                                      SCHEMA_COLUMN(AW_Bluetooth_Config, command),
-                                      ble.command,
-                                      &ble,
-                                      NULL,
-                                      filter);
-    if (!ret)
-        LOGE("%s Insert new row failed for %s", __func__, ble.command);
-
-    return ret == 1;
-}
-
-int
-cm2_ovsdb_ble_set_connectable(bool state)
-{
-    struct schema_AW_Bluetooth_Config ble;
-    char   *filter[] = { "+",
-                       SCHEMA_COLUMN(AW_Bluetooth_Config, connectable),
-                       NULL };
-
-    memset(&ble, 0, sizeof(ble));
-    SCHEMA_SET_INT(ble.connectable, state);
-
-    LOGI("Changing ble connectable state: %d", state);
-
-    return  ovsdb_table_update_where_f(&table_AW_Bluetooth_Config,
-                 ovsdb_where_simple(SCHEMA_COLUMN(AW_Bluetooth_Config, command), CM2_BLE_MSG_ONBOARDING),
-                 &ble, filter);
-}
-
-void cm2_set_ble_onboarding_link_state(bool state, char *if_type, char *if_name)
-{
-    if (g_state.connected)
-        return;
-    if (cm2_is_eth_type(if_type)) {
-        cm2_ble_onboarding_set_status(state, BLE_ONBOARDING_STATUS_ETHERNET_LINK);
-    } else if (cm2_is_wifi_type(if_type)) {
-        cm2_ble_onboarding_set_status(state, BLE_ONBOARDING_STATUS_WIFI_LINK);
-    }
-    cm2_ble_onboarding_apply_config();
 }
 
 void callback_Wifi_Master_State(ovsdb_update_monitor_t *mon,
@@ -3249,6 +3146,8 @@ int cm2_ovsdb_init(void)
              "(Failed to setup tables)");
         return -1;
     }
+
+    cm2_ovsdb_ble_init();
 
     return 0;
 }

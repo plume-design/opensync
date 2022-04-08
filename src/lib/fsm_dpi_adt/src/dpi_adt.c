@@ -40,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "memutil.h"
 #include "network_metadata_report.h"
 #include "os.h"
+#include "os_time.h"
 #include "os_types.h"
 #include "qm_conn.h"
 #include "util.h"
@@ -245,7 +246,7 @@ dpi_adt_store(struct fsm_session *session,
     }
     new_record->value_len = strlen(new_record->value);
 
-    new_record->capture_time = time(NULL);
+    new_record->capture_time_ms = clock_real_ms();
 
     /* The new stored record is complete */
     aggr->data[aggr->data_idx] = new_record;
@@ -288,6 +289,8 @@ dpi_adt_populate_kv(struct fsm_dpi_adt_data_record *rec)
     one_value_pb->string_value = STRDUP(rec->value);
     if (one_value_pb->string_value == NULL) goto cleanup;
     one_kv_pair_pb->value = one_value_pb;
+
+    one_kv_pair_pb->captured_at_ms = rec->capture_time_ms;
 
     return one_kv_pair_pb;
 
@@ -475,10 +478,11 @@ dpi_adt_store2proto(struct fsm_session *session,
     observation_point = MALLOC(sizeof(*observation_point));
     if (observation_point == NULL) goto cleanup;
     interfaces__adt__adt_observation_point__init(observation_point);
-    report_pb->observation_point = observation_point;
-
     observation_point->node_id = STRDUP(session->node_id);
     observation_point->location_id = STRDUP(session->location_id);
+    report_pb->observation_point = observation_point;
+
+    report_pb->reported_at_ms = clock_real_ms();
 
     dpi_adt_free_aggr_store(aggr);
     return true;

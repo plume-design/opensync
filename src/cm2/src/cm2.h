@@ -289,12 +289,64 @@ void cm2_event_init(struct ev_loop *loop);
 void cm2_event_close(struct ev_loop *loop);
 void cm2_update_state(cm2_reason_e reason);
 void cm2_trigger_update(cm2_reason_e reason);
-void cm2_ble_onboarding_set_status(bool state, cm2_ble_onboarding_status_t status);
-void cm2_ble_onboarding_apply_config(void);
 char* cm2_dest_name(cm2_dest_e dest);
 char* cm2_curr_dest_name(void);
 bool cm2_enable_gw_offline(void);
 void cm2_trigger_restart_managers(void);
+
+//blem
+#ifdef CONFIG_CM2_BT_BEACON_HANDLER
+
+void cm2_ble_onboarding_apply_config(void);
+void cm2_set_ble_onboarding_link_state(bool state, char *if_type, char *if_name);
+void cm2_set_backhaul_update_ble_state(void);
+void cm2_set_ble_state(bool state, cm2_ble_onboarding_status_t status);
+void cm2_ble_onboarding_set_status(bool state, cm2_ble_onboarding_status_t status);
+void cm2_ovsdb_connection_update_ble_phy_link(void);
+int  cm2_ovsdb_ble_config_update(uint8_t ble_status);
+void cm2_ovsdb_ble_init(void);
+
+#ifdef CONFIG_CM2_BT_CONNECTABLE
+int cm2_ovsdb_ble_set_connectable(bool state);
+#else
+static inline int  cm2_ovsdb_ble_set_connectable(bool state)
+{
+    return 0;
+}
+#endif
+
+#else /* CONFIG_CM2_BT_BEACON_HANDLER (else) */
+
+static inline void cm2_ble_onboarding_apply_config(void)
+{
+}
+static inline void cm2_set_ble_onboarding_link_state(bool state, char *if_type, char *if_name)
+{
+}
+static inline void cm2_set_backhaul_update_ble_state(void)
+{
+}
+static inline void cm2_set_ble_state(bool state, cm2_ble_onboarding_status_t status)
+{
+}
+static inline void cm2_ble_onboarding_set_status(bool state, cm2_ble_onboarding_status_t status)
+{
+}
+static inline void cm2_ovsdb_connection_update_ble_phy_link(void)
+{
+}
+static inline int cm2_ovsdb_ble_config_update(uint8_t ble_status)
+{
+    return 0;
+}
+
+static inline void cm2_ovsdb_ble_init(void)
+{
+    return;
+}
+
+#endif /* CONFIG_CM2_BT_BEACON_HANDLER (else) */
+
 
 // ovsdb
 int cm2_ovsdb_init(void);
@@ -314,11 +366,9 @@ bool cm2_ovsdb_connection_update_unreachable_link_counter(const char *if_name, i
 bool cm2_ovsdb_connection_update_unreachable_router_counter(const char *if_name, int counter);
 bool cm2_ovsdb_connection_update_unreachable_cloud_counter(const char *if_name, int counter);
 bool cm2_ovsdb_connection_update_unreachable_internet_counter(const char *if_name, int counter);
-int  cm2_ovsdb_ble_config_update(uint8_t ble_status);
-int  cm2_ovsdb_ble_set_connectable(bool state);
+
 bool cm2_ovsdb_is_port_name(char *port_name);
 bool cm2_ovsdb_recalc_links(void);
-void cm2_ovsdb_connection_update_ble_phy_link(void);
 bool cm2_ovsdb_update_Port_tag(const char *ifname, int tag, bool set);
 bool cm2_ovsdb_update_Port_trunks(const char *ifname, int *trunks, int num_trunks);
 bool cm2_ovsdb_connection_update_loop_state(const char *if_name, bool state);

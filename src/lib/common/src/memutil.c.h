@@ -119,3 +119,27 @@ static inline void* memutil_inline_strndup(
     }
     return ptr;
 }
+
+static inline void* memutil_inline_memndup(
+        const void *data,
+        size_t n,
+        const char *func,
+        const char *file,
+        const int line)
+{
+    char *ptr;
+
+    if (data == NULL)
+    {
+        osa_assert_dump("memndup() ", func, file, line, "NULL parameter");
+        return NULL;
+    }
+
+    ptr = malloc(n);
+    if (ptr == NULL)
+    {
+        osa_assert_dump("memndup() returned NULL", func, file, line, "Out of memory.");
+    }
+
+    return memcpy(ptr, data, n);
+}

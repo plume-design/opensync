@@ -61,6 +61,7 @@ typedef struct ct_flow
     pkts_ct_info_t pkt_info;
     uint16_t dir;
     uint16_t ct_zone; // CT_ZONE at tuple level
+    uint32_t ct_mark; // CT_MARK
     bool start;
     bool end;
 } ct_flow_t;

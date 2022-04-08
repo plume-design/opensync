@@ -52,6 +52,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define REALLOC(ptr, sz)  memutil_inline_realloc(ptr, sz, __func__, __FILE__, __LINE__)
 #define STRDUP(sz)        memutil_inline_strdup(sz, __func__, __FILE__, __LINE__)
 #define STRNDUP(sz, n)    memutil_inline_strndup(sz, n, __func__, __FILE__, __LINE__)
+#define MEMNDUP(sz, n)    memutil_inline_memndup(sz, n, __func__, __FILE__, __LINE__)
 
 /**
  * Perform a double free sanity check by setting the freed pointer value to

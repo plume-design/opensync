@@ -176,6 +176,7 @@ struct fsm_dpi_plugin_ops
     void (*register_clients)(struct fsm_session *);
     void (*unregister_clients)(struct fsm_session *);
     void (*mark_flow)(struct fsm_session *, struct net_md_stats_accumulator *);
+    void (*dpi_free_resources)(struct fsm_session *);
 };
 
 
@@ -381,6 +382,7 @@ struct fsm_session
     char bridge[64];                 /* underlying bridge name */
     char tx_intf[64];                /* plugin's TX interface */
     union fsm_dpi_context *dpi;      /* fsm dpi context */
+    int (*set_dpi_state)(struct net_header_parser *net_hdr);
     char *provider;
     struct fsm_policy_client policy_client;
     struct fsm_session *provider_plugin;
@@ -410,8 +412,6 @@ struct fsm_mgr
     ds_tree_t dpi_client_tags_tree;  /* monitor tag updates */
     bool (*init_plugin)(struct fsm_session *); /* DSO plugin init */
     int (*get_br)(char *if_name, char *bridge, size_t len); /* get lan bridge */
-    int (*set_dpi_state)(struct net_header_parser *net_hdr,
-                         enum fsm_dpi_state state);
     bool (*update_session_tap)(struct fsm_session *); /* session tap update */
 };
 

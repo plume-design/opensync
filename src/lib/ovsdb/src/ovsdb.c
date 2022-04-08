@@ -392,7 +392,11 @@ int ovsdb_unregister_update_cb(int mon_id)
 
     rh = ds_tree_find(&json_rpc_update_handler_list, &mon_id);
 
-    if (rh) ds_tree_remove(&json_rpc_update_handler_list, rh);
+    if (rh)
+    {
+        ds_tree_remove(&json_rpc_update_handler_list, rh);
+        FREE(rh);
+    }
 
     return 0;
 }
@@ -468,6 +472,13 @@ bool ovsdb_init_loop(struct ev_loop *loop, const char *name)
 {
     bool success = false;
 
+    if (json_rpc_fd != -1) {
+        if (ovsdb_comment == NULL && name != NULL) {
+            ovsdb_comment = name;
+        }
+        return true;
+    }
+
     if (loop == NULL) {
         loop = ev_default_loop(0);
     }
@@ -530,6 +541,7 @@ bool ovsdb_stop_loop(struct ev_loop *loop)
     }
 
     ev_io_stop(loop, &wovsdb);
+    ovsdb_comment = NULL;
 
     close(json_rpc_fd);
 

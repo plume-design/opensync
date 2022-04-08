@@ -188,6 +188,8 @@ static struct flow_key * set_flow_key(int id)
 
     key->sport = (id == 1 ? 0 : (1000 + id));
     key->dport = (id == 1 ? 0 : (2000 + id));
+    key->networkid = strndup("flex", sizeof("flex"));
+    key->flowmarker = 150;
 
     key->num_tags = 1;
     key->tags = CALLOC(key->num_tags, sizeof(*key->tags));
@@ -583,6 +585,7 @@ static void validate_flow_key(struct flow_key *key,
     TEST_ASSERT_EQUAL_INT(key->isparent_of_dmac, key_pb->parentofdstmac);
     TEST_ASSERT_EQUAL_STRING(key->src_ip, key_pb->srcip);
     TEST_ASSERT_EQUAL_STRING(key->dst_ip, key_pb->dstip);
+    TEST_ASSERT_EQUAL_STRING(key->networkid, key_pb->networkid);
     validate_uint32_field((uint32_t)key->vlan_id, key_pb->vlanid,
                           key_pb->has_vlanid);
     validate_uint32_field((uint32_t)key->ethertype, key_pb->ethertype,
@@ -597,6 +600,8 @@ static void validate_flow_key(struct flow_key *key,
                           key_pb->has_direction);
     validate_uint32_field((uint32_t)key->originator, key_pb->originator,
                           key_pb->has_originator);
+    validate_uint32_field((uint32_t)key->flowmarker, key_pb->flowmarker,
+                          key_pb->has_flowmarker);
 }
 
 /**

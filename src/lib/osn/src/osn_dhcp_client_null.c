@@ -98,7 +98,7 @@ bool osn_dhcp_client_vendorclass_set(osn_dhcp_client_t *self, const char *vendor
 bool osn_dhcp_client_state_get(osn_dhcp_client_t *self, bool *enabled)
 {
     (void)self;
-    (void)enabled;
+    *enabled = false;
 
     return true;
 }

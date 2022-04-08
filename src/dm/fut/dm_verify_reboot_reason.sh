@@ -52,6 +52,16 @@ Script usage example:
 usage_string
 }
 
+trap '
+fut_ec=$?
+fut_info_dump_line
+if [ $fut_ec -ne 0 ]; then
+    cat /var/run/osp_reboot_reason
+fi
+fut_info_dump_line
+exit $fut_ec
+' EXIT SIGINT SIGTERM
+
 if [ -n "${1}" ]; then
     case "${1}" in
         help | \

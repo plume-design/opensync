@@ -22,6 +22,16 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+# FIXME: Normally one expects headers go to $(PREFIX)/include, eg.
+# /usr/include or /usr/local/include. The current $(INSTALL_PREFIX) defaults to
+# /usr/opensync which would place headers in an awkward place as far as most
+# packaging systems are concerned causing all sorts of unwanted behaviours
+# (like storing headers files on an embedded target rootfs image). This is
+# hardcoding /usr as a prefix for now. Once a standard approach using PREFIX /
+# DESTDIR is worked in or header categories in unit definitions become well
+# defined this should be adjusted as well.
+APP_ROOTFS_HEADERS ?= $(APP_ROOTFS)/usr/include/opensync
+
 ifdef STRIP
 define app_strip
 	$(NQ) " $(call color_strip,strip)   [$(call COLOR_BOLD,$(notdir $1))] $(1)"

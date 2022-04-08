@@ -114,7 +114,6 @@ static bool dm_manager_update(
         bool always_restart,
         int restart_timer);
 
-static bool dm_manager_start_all(void);
 static void dm_manager_kill(struct dm_manager *dm);
 static bool dm_manager_start(struct dm_manager *dm);
 static bool dm_manager_stop(struct dm_manager *dm);
@@ -149,38 +148,10 @@ bool pid_dir(void)
 
 bool init_managers()
 {
-    int i;
-
     /* terminate all running managers */
     if (!pid_dir())
     {
         LOG(ERR, "Can't create PID folder: path=%s", CONFIG_DM_PID_PATH);
-    }
-
-    /*
-     * Legacy code: Convert the TARGET API manager list to a dynamic
-     * list.
-     */
-    for (i = 0; i < (int)target_managers_num; i++)
-    {
-        struct dm_manager *dm = CALLOC(1, sizeof(*dm));
-
-        /*
-         * Add manager to global list of managers
-         */
-        LOG(INFO, "Adding legacy manager: %s", target_managers_config[i].name);
-
-        dm_manager_register(
-                target_managers_config[i].name,
-                target_managers_config[i].needs_plan_b,
-                target_managers_config[i].always_restart,
-                target_managers_config[i].restart_delay);
-    }
-
-    if (!dm_manager_start_all())
-    {
-        LOG(ERR, "Failed to start at least one manager.");
-        return false;
     }
 
     OVSDB_TABLE_INIT(Node_Services, service);
@@ -307,25 +278,6 @@ bool dm_manager_update(
  *  Private functions
  * ===========================================================================
  */
-
-/**
- * Start all currently registered (and stopped) managers
- *
- * Return false if at least one of the managers failed to start
- */
-bool dm_manager_start_all(void)
-{
-    struct dm_manager *dm;
-
-    bool retval = true;
-
-    ds_tree_foreach(&dm_manager_list, dm)
-    {
-        retval &= dm_manager_start(dm);
-    }
-
-    return retval;
-}
 
 /*
  * Terminate a stale instances of the manager. This should be executed at

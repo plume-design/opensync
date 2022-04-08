@@ -252,6 +252,8 @@ int
 ltem_force_lte_route(ltem_mgr_t *mgr)
 {
     lte_route_info_t *route;
+    uint32_t wan_priority;
+    uint32_t new_lte_priority;
     int res;
 
     route = mgr->lte_route;
@@ -270,7 +272,11 @@ ltem_force_lte_route(ltem_mgr_t *mgr)
             LOGI("%s: ltem_ovsdb_update_wifi_route_config_metric() failed for [%s]", __func__, route->wan_if_name);
             return res;
         }
-        return ltem_ovsdb_cmu_update_lte_priority(mgr, (route->wan_priority + LTE_CMU_DEFAULT_PRIORITY));
+        wan_priority = ltem_ovsdb_cmu_get_wan_priority(mgr);
+        route->wan_priority = wan_priority;
+        new_lte_priority = route->wan_priority + LTE_CMU_DEFAULT_PRIORITY;
+        LOGI("%s: wan_priority[%d], LTE_CMU_DEFAULT_PRIORITY[%d]", __func__, route->wan_priority, LTE_CMU_DEFAULT_PRIORITY);
+        return ltem_ovsdb_cmu_update_lte_priority(mgr, new_lte_priority);
     }
 
     return 0;

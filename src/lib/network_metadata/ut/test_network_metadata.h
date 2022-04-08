@@ -24,8 +24,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __TEST_NETWORK_METADATA_H__
-#define __TEST_NETWORK_METADATA_H__
+#ifndef TEST_NETWORK_METADATA_H_INCLUDED
+#define TEST_NETWORK_METADATA_H_INCLUDED
 
 #include "network_metadata.h"
 #include "network_metadata_report.h"
@@ -33,7 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /**
  * @brief defines structure passed to network data tests
  *
- * @see main_setUp() instanciates global object based on this structure
+ * @see main_setUp() instantiates global object based on this structure
  */
 struct test_network_data
 {
@@ -60,6 +60,8 @@ struct in_key
     uint8_t ipprotocol;
     uint16_t sport;
     uint16_t dport;
+    char *networkid;
+    uint32_t flowmarker;
 };
 
 struct test_network_data_report
@@ -81,4 +83,4 @@ void test_net_md_report_teardown(void);
 void test_network_metadata_utils(void);
 void test_network_metadata_reports(void);
 
-#endif // __TEST_NETWORK_METADATA_H__
+#endif /* TEST_NETWORK_METADATA_H_INCLUDED */

@@ -139,51 +139,6 @@ bool target_close(target_init_opt_t opt, struct ev_loop *loop);
 
 /// @} LIB_TARGET_INIT
 
-/// @defgroup LIB_TARGET_MANAGERS Control of Managers
-/// Definitions and API related to control of managers.
-/// @{
-
-/******************************************************************************
- *  MANAGERS definitions
- *****************************************************************************/
-typedef struct
-{
-  char                             *name;           /* process name */
-  pid_t                             pid;            /* process PID  */
-  bool                              started;        /* process started? */
-  int                               ordinal;        /* used only to relate to wtimer */
-  int                               always_restart; /* always restart the process */
-  int                               restart_delay;  /* delay before restart */
-  bool                              needs_plan_b;   /* Execute restart plan B */
-} target_managers_config_t;
-
-/**
- * @brief List of managers to start
- *
- * This defines the subset of managers that DM can start with adding entries to
- * target_managers_config table.
- *
- * Example:
- * @code
- * target_managers_config_t target_managers_config[] =
- * {
- *     { .name = TARGET_MANAGER_PATH("wm"), .needs_plan_b = true,  },
- *     { .name = TARGET_MANAGER_PATH("nm"), .needs_plan_b = true,  },
- *     { .name = TARGET_MANAGER_PATH("cm"), .needs_plan_b = true,  },
- *     { .name = TARGET_MANAGER_PATH("lm"), .needs_plan_b = true,  },
- *     { .name = TARGET_MANAGER_PATH("sm"), .needs_plan_b = false, },
- * }
- * @endcode
- *
- * The needs_plan_b parameter is part of the monitoring recovery mechanism
- * where DM restarts ALL managers (true) through target_managers_restart or
- * just particular managers (false).
- */
-extern target_managers_config_t     target_managers_config[];
-extern int                          target_managers_num;
-
-/// @} LIB_TARGET_MANAGERS
-
 /// @defgroup LIB_TARGET_INTERFACES Interface API
 /// Definitions and API related to control of interfaces.
 /// @{

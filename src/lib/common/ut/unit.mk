@@ -30,6 +30,7 @@ UNIT_TYPE := TEST_BIN
 
 UNIT_SRC := test_common_main.c
 UNIT_SRC += test_sockaddr_storage.c
+UNIT_SRC += test_strexa.c
 
 UNIT_DEPS := src/lib/log
 UNIT_DEPS += src/lib/unity

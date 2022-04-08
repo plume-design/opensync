@@ -349,6 +349,16 @@ $(UNIT_PATH)/compile: $(UNIT_BUILD)/.target
 # Build up .target dependency tree
 $(UNIT_BUILD)/.target: $(call UNIT_MARK_FILES,$(UNIT_DEPS)) $(UNIT_PRE) | $(UNIT_DIRS)
 	$$(Q)touch "$$@"
+
+$(UNIT_PATH)/install_headers: $(wildcard $(UNIT_PATH)/inc/*.h)
+	$$(Q)for i in $$^; do \
+		echo " $(call color_copy,copy)    [$(call COLOR_BOLD,$(UNIT_NAME))] $$$$i"; \
+		$(INSTALL) -m 644 -D -t $$(APP_ROOTFS_HEADERS) $$$$i; \
+	done
+
+ifeq ($(INSTALL_HEADERS),y)
+UNIT_ALL_INSTALL += $(UNIT_PATH)/install_headers
+endif
 endef
 
 define UNIT_MAKE_DISABLED
