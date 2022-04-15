@@ -74,6 +74,8 @@ struct neigh_table_mgr
     ds_tree_t neigh_table;
     ds_tree_t interfaces;
     int count;
+    bool system_event;
+    uint32_t ovsdb_event;
     bool (*update_ovsdb_tables)(struct neighbour_entry *key, bool remove);
 };
 
@@ -234,6 +236,11 @@ struct neigh_interface * neigh_table_get_intf(int ifindex);
  */
 void
 neigh_src_init(uint32_t ovsdb_event);
+
+/**
+ * @brief deregister ovsdb callback
+ */
+void neigh_src_exit(uint32_t ovsdb_event);
 
 void neigh_table_init_monitor(struct ev_loop *loop,
                               bool system_event, uint32_t ovsdb_event);

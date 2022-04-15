@@ -494,8 +494,6 @@ void wano_ppline_status_async_fn(struct ev_loop *loop, ev_async *ev, int revent)
 
     struct wano_ppline_plugin *wpp = CONTAINER_OF(ev, struct wano_ppline_plugin, wpp_status_async);
     wano_ppline_t *self = wpp->wpp_ppline;
-    char *ifname = self->wpl_ifname;
-    char *iftype = self->wpl_iftype;
 
     switch (wpp->wpp_status.ws_type)
     {
@@ -506,26 +504,39 @@ void wano_ppline_status_async_fn(struct ev_loop *loop, ev_async *ev, int revent)
             /* Stop the timeout timer */
             ev_timer_stop(EV_DEFAULT, &wpp->wpp_timeout);
 
-            /* Use the interface name and type reported in the plug-in status */
+            /* Update the connection manager table */
             if (wpp->wpp_status.ws_ifname[0] != '\0')
             {
-                ifname = wpp->wpp_status.ws_ifname;
-            }
+                /* Use the interface name and type reported in the plug-in status */
+                if (!WANO_CONNMGR_UPLINK_UPDATE(
+                            wpp->wpp_status.ws_ifname,
+                            .if_type = (wpp->wpp_status.ws_iftype[0] == '\0') ?
+                                    self->wpl_iftype : wpp->wpp_status.ws_iftype,
+                            .has_L2 = WANO_TRI_TRUE,
+                            .has_L3 = WANO_TRI_TRUE))
+                {
+                    LOG(WARN, "wano: %s: Error updating Connection_Manager_Uplink (plugin interface) table (has_L3 = true).",
+                            self->wpl_ifname);
+                }
 
-            if (wpp->wpp_status.ws_iftype[0] != '\0')
-            {
-                iftype = wpp->wpp_status.ws_iftype;
+                /* Reset the .has_L3 field from the parent interface */
+                if (!WANO_CONNMGR_UPLINK_DELETE_COLUMN(self->wpl_ifname, .has_L3 = WANO_TRI_TRUE))
+                {
+                    LOG(WARN, "wano: %s: Error deleting .has_L3 from Connection_Manager_Uplink).",
+                            self->wpl_ifname);
+                }
             }
-
-            /* Update the connection manager table */
-            if (!WANO_CONNMGR_UPLINK_UPDATE(
-                        ifname,
-                        .if_type = iftype,
-                        .has_L2 = WANO_TRI_TRUE,
-                        .has_L3 = WANO_TRI_TRUE))
+            else
             {
-                LOG(WARN, "wano: %s: Error updating Connection_Manager_Uplink table (has_L3 = true).",
-                        self->wpl_ifname);
+                if (!WANO_CONNMGR_UPLINK_UPDATE(
+                            self->wpl_ifname,
+                            .if_type = self->wpl_iftype,
+                            .has_L2 = WANO_TRI_TRUE,
+                            .has_L3 = WANO_TRI_TRUE))
+                {
+                    LOG(WARN, "wano: %s: Error updating Connection_Manager_Uplink table (has_L3 = true).",
+                            self->wpl_ifname);
+                }
             }
 
             self->wpl_has_l3 = true;
@@ -545,8 +556,13 @@ void wano_ppline_status_async_fn(struct ev_loop *loop, ev_async *ev, int revent)
             break;
 
         case WANP_BUSY:
-            LOG(INFO, "wano: %s: Plug-in %s is busy, stopping timeout timer.", self->wpl_ifname, wano_plugin_name(wpp->wpp_handle));
-
+            LOG(INFO, "wano: %s: Plug-in %s is busy, stopping timeout timer and resetting has_L3.", self->wpl_ifname, wano_plugin_name(wpp->wpp_handle));
+            /* Reset the .has_L3 field from the parent interface */
+            if (!WANO_CONNMGR_UPLINK_DELETE_COLUMN(self->wpl_ifname, .has_L3 = WANO_TRI_TRUE))
+            {
+                LOG(WARN, "wano: %s: Error deleting .has_L3 from Connection_Manager_Uplink -- WANP_BUSY).",
+                        self->wpl_ifname);
+            }
             /* Stop the timeout timer */
             ev_timer_stop(EV_DEFAULT, &wpp->wpp_timeout);
             break;

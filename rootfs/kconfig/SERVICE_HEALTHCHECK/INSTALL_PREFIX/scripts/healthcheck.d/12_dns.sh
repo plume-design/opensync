@@ -30,8 +30,8 @@ LOG_MODULE="DNS"
 RESOLV_CONF="/etc/resolv.conf"
 LOOKUP_HOST={{CONTROLLER_ADDR.split(':')[1]}}
 DNS_SERVERS="209.244.0.3 64.6.64.6 84.200.69.80"
-NSLOOKUP=$(which nslookup)
-OVSH=$CONFIG_INSTALL_PREFIX/tools/ovsh
+PLOOKUP=$CONFIG_TARGET_PATH_TOOLS/plookup
+OVSH=$CONFIG_TARGET_PATH_TOOLS/ovsh
 timeout=$(timeout -t 0 true && echo timeout -t || echo timeout)
 
 ret=0
@@ -76,7 +76,7 @@ check_dns_servers()
     testCnt=0
 
     for dns in $servers; do
-        $timeout 10 $NSLOOKUP $LOOKUP_HOST $dns > /dev/null 2>&1
+        $timeout 10 $PLOOKUP $LOOKUP_HOST $dns > /dev/null 2>&1
         if [ $? -ne 0 ]; then
             log_err "$dns failed"
         else
@@ -124,7 +124,7 @@ if [ $? -ne 0 ]; then
 fi
 
 # Check default DNS server configuration
-$timeout 10 $NSLOOKUP $LOOKUP_HOST > /dev/null 2>&1
+$timeout 10 $PLOOKUP $LOOKUP_HOST > /dev/null 2>&1
 if [ $? -ne 0 ]; then
     log_err "Default DNS failed"
 else
@@ -133,10 +133,10 @@ fi
 
 # Check default DNS servers
 default_servers=`awk '$1 == "nameserver" {print $2}' $RESOLV_CONF`
-check_dns_servers "Check default DNS servers" $default_servers
+check_dns_servers "Check default DNS servers" "$default_servers"
 
 # Check reference DNS servers
-check_dns_servers "Check reference DNS servers" $DNS_SERVERS
+check_dns_servers "Check reference DNS servers" "$DNS_SERVERS"
 
 # Return fail, no DNS available
 Healthcheck_Fail

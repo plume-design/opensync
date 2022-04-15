@@ -182,6 +182,7 @@ struct fcm_filter_mgr
     ds_tree_t name_list;
     char pid[16];
     void (*ovsdb_init)(void);
+    void (*ovsdb_exit)(void);
 };
 
 

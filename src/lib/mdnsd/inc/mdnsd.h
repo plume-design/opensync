@@ -38,11 +38,22 @@
 #define QCLASS_IN (1)
 #define DISCO_NAME "_services._dns-sd._udp.local."
 
+#if defined(CONFIG_MDNS_OPENSYNC_LOG)
+#include "log.h"
+
+#define DBG(fmt, args...)  LOG(DEBUG, "%s: " fmt, __func__, ##args)
+#define INFO(fmt, args...) LOG(INFO, "%s: " fmt, __func__, ##args)
+#define NOTE(fmt, args...) LOG(NOTICE, "%s: " fmt, __func__, ##args)
+#define WARN(fmt, args...) LOG(WARNING, "%s: " fmt, __func__, ##args)
+#define ERR(fmt, args...)  LOG(ERR, "%s: " fmt, __func__, ##args)
+#else
 #define DBG(fmt, args...)  mdnsd_log(LOG_DEBUG, "%s(): " fmt, __func__, ##args)
 #define INFO(fmt, args...) mdnsd_log(LOG_INFO, "%s(): " fmt, __func__, ##args)
 #define NOTE(fmt, args...) mdnsd_log(LOG_NOTICE, fmt, ##args)
 #define WARN(fmt, args...) mdnsd_log(LOG_WARNING, fmt, ##args)
 #define ERR(fmt, args...)  mdnsd_log(LOG_ERR, fmt, ##args)
+#endif
+
 
 /* Main daemon data */
 typedef struct mdns_daemon mdns_daemon_t;

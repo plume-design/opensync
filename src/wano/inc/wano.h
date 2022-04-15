@@ -447,6 +447,9 @@ bool wano_connmgr_uplink_flush(void);
 #define WANO_CONNMGR_UPLINK_UPDATE(ifname, ...) \
     wano_connmgr_uplink_update(ifname, &(struct wano_connmgr_uplink_args){ __VA_ARGS__ })
 
+#define WANO_CONNMGR_UPLINK_DELETE_COLUMN(ifname, ...) \
+    wano_connmgr_uplink_delete_column(ifname, &(struct wano_connmgr_uplink_args){ __VA_ARGS__ })
+
 /**
  * Update the Connection_Manager_Uplink table
  */
@@ -457,6 +460,13 @@ bool wano_connmgr_uplink_update(
  * Delete a single row from the Connection_Manager_Uplink table
  */
 bool wano_connmgr_uplink_delete(const char *ifname);
+
+/**
+ * Delete columns from a Connection_Manager_Uplink row
+ */
+bool wano_connmgr_uplink_delete_column(
+        const char *ifname,
+        struct wano_connmgr_uplink_args *args);
 
 /*
  * ===========================================================================

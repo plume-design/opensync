@@ -22,18 +22,19 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-UNIT_TYPE := TEST_BIN
-UNIT_NAME := test_wm2
-UNIT_SRC := test.c
-UNIT_SRC += ../src/wm2_radio.c
-UNIT_SRC += ../src/wm2_dpp.c
-UNIT_SRC += ../src/wm2_clients.c
-UNIT_SRC += ../src/wm2_target.c
-UNIT_SRC += ../src/wm2_dummy.c
-UNIT_SRC += $(if $(CONFIG_MANAGER_WM_L2UF_KICK),../src/wm2_l2uf.c,)
-UNIT_CFLAGS += -I$(UNIT_PATH)/../src/
-UNIT_DEPS := src/lib/common
+##############################################################################
+#
+# plookup - tool for querying the domain nameserver
+#
+##############################################################################
+UNIT_NAME := plookup
+UNIT_DIR := tools
+
+# Template type:
+UNIT_TYPE := BIN
+
+UNIT_SRC := src/plookup.c
+
+UNIT_DEPS += src/lib/log
+UNIT_DEPS += src/lib/target
 UNIT_DEPS += src/lib/osa
-UNIT_DEPS += src/lib/schema
-UNIT_DEPS += src/lib/ovsdb
-UNIT_DEPS += $(if $(CONFIG_MANAGER_WM_L2UF_KICK),src/lib/osn,)

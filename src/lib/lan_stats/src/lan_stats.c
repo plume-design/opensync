@@ -355,14 +355,14 @@ void parse_lan_stats(char *buf[], lan_stats_instance_t *lan_stats_instance)
         {
             // Get pkts count
             pos = buf[i] + OVS_DUMP_PKTS_PREFIX_LEN;
-            stats->pkts = atol(pos);
+            stats->pkts = atoll(pos);
         }
         else if (strncmp(buf[i], OVS_DUMP_BYTES_PREFIX, \
                    OVS_DUMP_BYTES_PREFIX_LEN) == 0)
         {
             // Get bytes count
             pos = buf[i] + OVS_DUMP_BYTES_PREFIX_LEN;
-            stats->bytes = atol(pos);
+            stats->bytes = atoll(pos);
         }
         i++;
     }
@@ -667,8 +667,8 @@ lan_stats_flows_filter(lan_stats_instance_t *lan_stats_instance)
         if (allow)
         {
             LOGD("%s: Flow collect allowed: filter_name: %s, ufid: "PRI_os_ufid_t \
-                    " smac: %s, dmac: %s, vlan_id: %d, eth_type: %d, pks: %ld, " \
-                    "bytes: %ld\n", __func__,
+                    " smac: %s, dmac: %s, vlan_id: %d, eth_type: %d, pks: %lld, " \
+                    "bytes: %lld\n", __func__,
                     collector->filters.collect ?
                     collector->filters.collect : dflt_fltr_name,
                     FMT_os_ufid_t_pt(&stats->ufid.id),
@@ -679,8 +679,8 @@ lan_stats_flows_filter(lan_stats_instance_t *lan_stats_instance)
         }
         else
             LOGD("%s: Flow collect dropped: filter_name: %s, smac: %s, "\
-                    "dmac: %s, vlan_id: %d, eth_type: %d, pks: %ld, "\
-                    "bytes: %ld\n", __func__,
+                    "dmac: %s, vlan_id: %d, eth_type: %d, pks: %lld, "\
+                    "bytes: %lld\n", __func__,
                     collector->filters.collect ?
                     collector->filters.collect : dflt_fltr_name,
                     stats->smac_addr, stats->dmac_addr,

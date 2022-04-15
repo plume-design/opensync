@@ -112,6 +112,7 @@ mdns_mgr_init(void)
     ds_tree_init(&mgr->fsm_sessions, mdns_session_cmp,
                  struct mdns_session, session_node);
     mgr->ovsdb_init = mdns_ovsdb_init;
+    mgr->ovsdb_exit = mdns_ovsdb_exit;
     mgr->ctxt = NULL;
 
     mgr->initialized = true;
@@ -169,6 +170,7 @@ mdns_plugin_exit(struct fsm_session *session)
     mgr = mdns_get_mgr();
     if (!mgr->initialized) return;
 
+    mgr->ovsdb_exit();
     mdnsd_ctxt_exit();
     mdns_delete_session(session);
 

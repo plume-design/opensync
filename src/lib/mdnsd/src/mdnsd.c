@@ -775,7 +775,7 @@ int mdnsd_in(mdns_daemon_t *d, struct message *m, struct sockaddr_storage *from)
             if (m->qd[i].class != d->class)
                 continue;
 
-            INFO("Query for %s of type %d ...", m->qd[i].name, m->qd[i].type);
+            DBG("Query for %s of type %d ...", m->qd[i].name, m->qd[i].type);
             if ((r = _r_next(d, NULL, m->qd[i].name, m->qd[i].type)) == NULL)
                 continue;
 
@@ -793,7 +793,7 @@ int mdnsd_in(mdns_daemon_t *d, struct message *m, struct sockaddr_storage *from)
 
             /* Check all of our potential answers */
             for (r_start = r; r != NULL; r = r_next) {
-                INFO("Local record: %s, type: %d, rdname: %s", r->rr.name, r->rr.type, r->rr.rdname);
+                DBG("Local record: %s, type: %d, rdname: %s", r->rr.name, r->rr.type, r->rr.rdname);
 
                 /* Fetch next here, because _conflict() might delete r, invalidating next */
                 r_next = _r_next(d, r, m->qd[i].name, m->qd[i].type);
@@ -828,9 +828,9 @@ int mdnsd_in(mdns_daemon_t *d, struct message *m, struct sockaddr_storage *from)
                         break;
                 }
 
-                INFO("Should we send answer? j: %d, m->ancount: %d", j, m->ancount);
+                DBG("Should we send answer? j: %d, m->ancount: %d", j, m->ancount);
                 if (j == m->ancount) {
-                    INFO("Yes we should, enquing %s for outbound", r->rr.name);
+                    DBG("Yes we should, enquing %s for outbound", r->rr.name);
                     _r_send(d, r);
                 }
             }
@@ -855,7 +855,7 @@ int mdnsd_in(mdns_daemon_t *d, struct message *m, struct sockaddr_storage *from)
             continue;
         }
 
-        INFO("Got Answer: Name: %s, Type: %d", m->an[i].name, m->an[i].type);
+        DBG("Got Answer: Name: %s, Type: %d", m->an[i].name, m->an[i].type);
         r = _r_next(d, 0, m->an[i].name, m->an[i].type);
         if (r != 0 && r->unique && !r->modified && _a_match(&m->an[i], &r->rr) == 0)
             _conflict(d, r);
@@ -917,11 +917,11 @@ int mdnsd_out(mdns_daemon_t *d, struct message *m, unsigned long int *ip, unsign
 
         while (cur && message_packet_len(m) + _rr_len(&cur->rr) < d->frame) {
             if (cur->rr.type == QTYPE_PTR) {
-                INFO("Send Publish PTR: Name: %s, rdlen: %d, rdata: %s, rdname: %s", cur->rr.name,cur->rr.rdlen, cur->rr.rdata, cur->rr.rdname);
+                DBG("Send Publish PTR: Name: %s, rdlen: %d, rdata: %s, rdname: %s", cur->rr.name,cur->rr.rdlen, cur->rr.rdata, cur->rr.rdname);
             } else if (cur->rr.type == QTYPE_SRV) {
-                INFO("Send Publish SRV: Name: %s, rdlen: %d, rdata: %s, rdname: %s, port: %d, prio: %d, weight: %d", cur->rr.name,cur->rr.rdlen, cur->rr.rdname, cur->rr.rdata, cur->rr.srv.port, cur->rr.srv.priority, cur->rr.srv.weight);
+                DBG("Send Publish SRV: Name: %s, rdlen: %d, rdata: %s, rdname: %s, port: %d, prio: %d, weight: %d", cur->rr.name,cur->rr.rdlen, cur->rr.rdname, cur->rr.rdata, cur->rr.srv.port, cur->rr.srv.priority, cur->rr.srv.weight);
             } else {
-                INFO("Send Publish: Name: %s, Type: %d, rdname: %s", cur->rr.name, cur->rr.type, cur->rr.rdname);
+                DBG("Send Publish: Name: %s, Type: %d, rdname: %s", cur->rr.name, cur->rr.type, cur->rr.rdname);
             }
 
             next = cur->list;
@@ -1005,7 +1005,7 @@ int mdnsd_out(mdns_daemon_t *d, struct message *m, unsigned long int *ip, unsign
         for (r = d->probing; r != 0; last = r, r = r->list) {
             r->unique++;
 
-            INFO("Send Answer in Probe: Name: %s, Type: %d", r->rr.name, r->rr.type);
+            DBG("Send Answer in Probe: Name: %s, Type: %d", r->rr.name, r->rr.type);
             message_ns(m, r->rr.name, r->rr.type, (unsigned short)d->class, r->rr.ttl);
             _a_copy(m, &r->rr);
             r->last_sent = d->now;
@@ -1056,7 +1056,7 @@ int mdnsd_out(mdns_daemon_t *d, struct message *m, unsigned long int *ip, unsign
             while ((c = _c_next(d, c, q->name, q->type)) != 0 && c->rr.ttl > (unsigned long)d->now.tv_sec + 8 &&
                    message_packet_len(m) + _rr_len(&c->rr) < d->frame) {
 
-                INFO("Add known answer: Name: %s, Type: %d", c->rr.name, c->rr.type);
+                DBG("Add known answer: Name: %s, Type: %d", c->rr.name, c->rr.type);
                 message_an(m, q->name, (unsigned short)q->type, (unsigned short)d->class, c->rr.ttl - (unsigned long)d->now.tv_sec);
                 _a_copy(m, &c->rr);
             }
@@ -1137,7 +1137,7 @@ struct timeval *mdnsd_sleep(mdns_daemon_t *d)
         /* Publish 2 seconds before expiration */
         next = r->last_sent.tv_sec + (long)r->rr.ttl - d->now.tv_sec;
         if (next <= 2) {
-            INFO("Republish %s before TTL expires ...", r->rr.name);
+            DBG("Republish %s before TTL expires ...", r->rr.name);
             _r_push(&d->a_pause, r);
         }
 

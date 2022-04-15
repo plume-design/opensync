@@ -403,7 +403,7 @@ bool os_nif_macaddr_from_str(os_macaddr_t* mac, const char* str)
  * @retval  true        On success
  * @retval  false       On error
  */
-bool os_nif_macaddr_to_str(os_macaddr_t* mac, char* str, const char* format)
+bool os_nif_macaddr_to_str(const os_macaddr_t *mac, char *str, const char *format)
 {
 
     if (!format && (sizeof(str) < OS_MACSTR_PLAIN_SZ)){

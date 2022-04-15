@@ -383,3 +383,50 @@ bool wano_connmgr_uplink_update(
             &conn_up,
             false);
 }
+
+bool wano_connmgr_uplink_delete_column(
+        const char *ifname,
+        struct wano_connmgr_uplink_args *args)
+{
+    ovsdb_table_t table_Connection_Manager_Uplink;
+    struct schema_Connection_Manager_Uplink conn_up;
+
+    memset(&conn_up, 0, sizeof(conn_up));
+    conn_up._partial_update = true;
+
+    SCHEMA_SET_STR(conn_up.if_name, ifname);
+
+    if (args->if_type != NULL)
+    {
+        SCHEMA_UNSET_FIELD(conn_up.if_type);
+    }
+
+    if (args->priority != 0)
+    {
+        SCHEMA_UNSET_FIELD(conn_up.priority);
+    }
+
+    if (args->has_L2 == WANO_TRI_TRUE)
+    {
+        SCHEMA_UNSET_FIELD(conn_up.has_L2);
+    }
+
+    if (args->has_L3 == WANO_TRI_TRUE)
+    {
+        SCHEMA_UNSET_FIELD(conn_up.has_L3);
+    }
+
+    if (args->loop == WANO_TRI_TRUE)
+    {
+        SCHEMA_UNSET_FIELD(conn_up.loop);
+    }
+
+    OVSDB_TABLE_INIT(Connection_Manager_Uplink, if_name);
+
+    return ovsdb_table_upsert_simple(
+            &table_Connection_Manager_Uplink,
+            "if_name",
+            (char *)ifname,
+            &conn_up,
+            false);
+}

@@ -68,7 +68,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define PS_KEY_OFFLINE_CFG          KEY_OFFLINE_CFG
 
-#define TIMEOUT_NO_CFG_CHANGE      30
+#define TIMEOUT_NO_CFG_CHANGE      15
 
 #if defined(CONFIG_TARGET_LAN_BRIDGE_NAME)
 #define LAN_BRIDGE   CONFIG_TARGET_LAN_BRIDGE_NAME
@@ -117,6 +117,7 @@ static bool gw_offline_ps_store(const char *ps_key, const json_t *config);
 static bool gw_offline_cfg_ps_store(const struct gw_offline_cfg *cfg);
 static bool gw_offline_ps_load(const char *ps_key, json_t **config);
 static bool gw_offline_cfg_ps_load(struct gw_offline_cfg *cfg);
+static bool gw_offline_ps_erase(void);
 
 static bool gw_offline_cfg_ovsdb_read(struct gw_offline_cfg *cfg);
 static bool gw_offline_cfg_ovsdb_apply(const struct gw_offline_cfg *cfg);
@@ -185,7 +186,35 @@ static void on_timeout_cfg_no_change(struct ev_loop *loop, ev_timer *watcher, in
     pm_gw_offline_read_and_store_config();
 }
 
-static bool pm_node_state_set(const char *key, const char *value)
+static bool pm_node_config_set(const char *key, const char *value, bool persist)
+{
+    struct schema_Node_Config node_config;
+    json_t *where;
+
+    where = json_array();
+    json_array_append_new(where, ovsdb_tran_cond_single("module", OFUNC_EQ, PM_MODULE_NAME));
+    json_array_append_new(where, ovsdb_tran_cond_single("key", OFUNC_EQ, (char *)key));
+
+    MEMZERO(node_config);
+    SCHEMA_SET_STR(node_config.module, PM_MODULE_NAME);
+    SCHEMA_SET_STR(node_config.key, key);
+
+    if (value != NULL)
+    {
+        SCHEMA_SET_STR(node_config.value, value);
+        if (persist)
+            SCHEMA_SET_BOOL(node_config.persist, persist);
+
+        ovsdb_table_upsert_where(&table_Node_Config, where, &node_config, false);
+    }
+    else
+    {
+        ovsdb_table_delete_where(&table_Node_Config, where);
+    }
+    return true;
+}
+
+static bool pm_node_state_set(const char *key, const char *value, bool persist)
 {
     struct schema_Node_State node_state;
     json_t *where;
@@ -201,6 +230,9 @@ static bool pm_node_state_set(const char *key, const char *value)
     if (value != NULL)
     {
         SCHEMA_SET_STR(node_state.value, value);
+        if (persist)
+            SCHEMA_SET_BOOL(node_state.persist, persist);
+
         ovsdb_table_upsert_where(&table_Node_State, where, &node_state, false);
     }
     else
@@ -277,7 +309,10 @@ static bool gw_offline_enable_cfg_mon()
     static bool inited;
 
     if (inited)
+    {
+        on_configuration_updated();
         return true;
+    }
 
     OVSDB_TABLE_MONITOR(Wifi_VIF_Config, true);
     OVSDB_TABLE_MONITOR(Wifi_Inet_Config, true);
@@ -313,12 +348,12 @@ static void callback_Node_Config(
         if (strcmp(config->value, VAL_OFFLINE_ON) == 0)
         {
             gw_offline_cfg = true;
-            LOG(INFO, "offline_cfg: Cloud enabled feature.");
+            LOG(INFO, "offline_cfg: Feature enabled.");
         }
         else
         {
             gw_offline_cfg = false;
-            LOG(INFO, "offline_cfg: Cloud disabled feature.");
+            LOG(INFO, "offline_cfg: Feature disabled.");
         }
 
         // Remember enable/disable flag:
@@ -336,19 +371,31 @@ static void callback_Node_Config(
         }
 
         // Reflect enable/disable flag in Node_State:
-        pm_node_state_set(KEY_OFFLINE_CFG, config->value);
+        pm_node_state_set(KEY_OFFLINE_CFG, config->value, (config->persist_exists && config->persist));
 
         // Indicate ready if enabled and config already available:
         if (gw_offline_cfg)
         {
             if (pm_gw_offline_cfg_is_available())
-                pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_READY);
+            {
+                LOG(INFO, "offline_cfg: Config already available in persistent storage.");
+                pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_READY, false);
+            }
             else
-                pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_ENABLED);
+            {
+                LOG(INFO, "offline_cfg: Config not yet available in persistent storage.");
+                pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_ENABLED, false);
+            }
         }
         else
         {
-            pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_DISABLED);
+            pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_DISABLED, false);
+
+            // When feature disabled, erase the saved persistent data:
+            if (gw_offline_ps_erase())
+                LOG(NOTICE, "offline_cfg: Config erased from persistent storage.");
+            else
+                LOG(ERR, "offline_cfg: Error erasing config from persistent storage.");
         }
     }
 
@@ -415,7 +462,7 @@ static void callback_Node_Config(
              * If not, then restart of managers will be required.
              */
             gw_offline = false;
-            pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_DISABLED);
+            pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_DISABLED, false);
             LOG(INFO, "offline_cfg: Offline config mode disabled.");
         }
     }
@@ -545,6 +592,9 @@ void pm_gw_offline_init(void *data)
     OVSDB_TABLE_INIT(Wifi_Radio_Config, if_name);
     OVSDB_TABLE_INIT(DHCP_reserved_IP, hw_addr);
 
+    // Always install Node_Config monitor, other monitors installed when enabled.
+    OVSDB_TABLE_MONITOR(Node_Config, true);
+
     // Check feature enable flag (persistent):
     if (gw_offline_ps_load(PS_KEY_OFFLINE_CFG, &json_en) && json_en != NULL)
     {
@@ -561,29 +611,20 @@ void pm_gw_offline_init(void *data)
 
     if (gw_offline_cfg)
     {
-        LOG(INFO, "offline_cfg: Feature enabled (flag set in persistent storage)");
-        pm_node_state_set(KEY_OFFLINE_CFG, VAL_OFFLINE_ON);
+        LOG(INFO, "offline_cfg: Feature enable flag set in persistent storage");
 
-        if (pm_gw_offline_cfg_is_available())
+        if (!pm_gw_offline_cfg_is_available())
         {
-            LOG(INFO, "offline_cfg: Config available in persistent storage.");
-            // Indicate the feature is "ready" (enabled && persistent config available):
-            pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_READY);
+            LOG(WARN, "offline_cfg: Feature enable persistent flag set "
+                      "but config not yet available in persistent storage.");
         }
-        else
-        {
-            LOG(INFO, "offline_cfg: Config NOT available in persistent storage.");
-            // Indicate the feature is "enabled" (but no persistent config available):
-            pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_ENABLED);
-        }
+
+        pm_node_config_set(KEY_OFFLINE_CFG, VAL_OFFLINE_ON, true);
     }
     else
     {
         LOG(DEBUG, "offline_cfg: Feature disabled (flag not set or not present in persistent storage)");
     }
-
-    // Always install Node_Config monitor, other monitors installed when enabled.
-    OVSDB_TABLE_MONITOR(Node_Config, true);
 }
 
 void pm_gw_offline_fini(void *data)
@@ -784,6 +825,258 @@ exit:
     return rv;
 }
 
+static bool gw_offline_ps_erase(void)
+{
+    osp_ps_t *ps;
+    bool rv = false;
+
+    ps = osp_ps_open(PS_STORE_GW_OFFLINE, OSP_PS_RDWR);
+    if (ps == NULL)
+    {
+        LOG(ERR, "offline_cfg: Error opening %s persistent store.", PS_STORE_GW_OFFLINE);
+        goto exit;
+    }
+    LOG(DEBUG, "offline_cfg: Persistent store %s opened", PS_STORE_GW_OFFLINE);
+
+    if (!osp_ps_erase(ps))
+    {
+        LOG(ERR, "offline_cfg: Error erasing %s persistent store.", PS_STORE_GW_OFFLINE);
+        goto exit;
+    }
+    LOG(DEBUG, "offline_cfg: Persistent store %s: ERASED.", PS_STORE_GW_OFFLINE);
+
+    if (!osp_ps_sync(ps))
+    {
+        LOG(ERR, "offline_cfg: Error syncing %s persistent store.", PS_STORE_GW_OFFLINE);
+        goto exit;
+    }
+    LOG(DEBUG, "offline_cfg: Persistent store %s: synced.", PS_STORE_GW_OFFLINE);
+
+    rv = true;
+exit:
+    if (ps != NULL) osp_ps_close(ps);
+    return rv;
+}
+
+/* In a "wpa_psks" or "wpa_oftags" map of Wifi_VIF_Config filter-out all
+ * entries that are not for the primary PSK. */
+static void util_filter_wpa_psks_oftags(json_t *sec)
+{
+    const char *PRIMARY_PSK_PREFIX = "key--";
+    const char *key_name;
+    json_t *key_val;
+    json_t *map_array;
+    int index;
+
+    map_array = json_array_get(sec, 1); // OVSDB map: index=0: "map"; index=1: json array of entries
+    if (map_array == NULL) return;
+
+    for (index = (json_array_size(map_array) - 1); index >= 0; index--)
+    {
+        key_val = json_array_get(map_array, index); // map's key:val entry: json array of 2 elements
+        key_name = json_string_value(json_array_get(key_val, 0));
+        if (key_name != NULL && strncmp(key_name, PRIMARY_PSK_PREFIX, strlen(PRIMARY_PSK_PREFIX)) == 0)
+        {
+            /* Primary PSK config. Keep it. */
+            continue;
+        }
+
+        /* Non-primary PSK. Remove it. */
+        json_array_remove(map_array, index);
+    }
+}
+
+/* In a "security" map of Wifi_VIF_Config filter-out all
+ * entries that are not for the primary PSK. */
+static void util_filter_security(json_t *sec)
+{
+    const char *PSK_PREFIX = "key";
+    const char *OFTAG_PREFIX = "oftag";
+    const char *key_name;
+    json_t *key_val;
+    json_t *map_array;
+    int index;
+
+    map_array = json_array_get(sec, 1); // OVSDB map: index=0: "map"; index=1: json array of map entries
+    if (map_array == NULL) return;
+
+    for (index = (json_array_size(map_array) - 1); index >= 0; index--)
+    {
+        key_val = json_array_get(map_array, index); // map's key:val entry: json array of 2 elements
+        key_name = json_string_value(json_array_get(key_val, 0));
+        if (key_name != NULL && strncmp(key_name, PSK_PREFIX, strlen(PSK_PREFIX)) == 0)
+        {
+            /* key_name for PSK (either primary or non-prmary) starts with prefix. */
+
+            /* The primary one is the one that has no suffix: */
+            if (strcmp(key_name, PSK_PREFIX) == 0)
+            {
+                /* Primary PSK. Keep it. */
+                continue;
+            }
+            /* Non-primary PSK. Remove it. */
+            json_array_remove(map_array, index);
+        }
+        else if (key_name != NULL && strncmp(key_name, OFTAG_PREFIX, strlen(OFTAG_PREFIX)) == 0)
+        {
+            /* oftag name (either primary or non-primary) starts with oftag prefix. */
+
+             /* The primary one is one that has no suffix: */
+            if (strcmp(key_name, OFTAG_PREFIX) == 0)
+            {
+                /* Primary oftag. Keep it. */
+                continue;
+            }
+            /* Non-primary oftag. Remove it. */
+            json_array_remove(map_array, index);
+        }
+        else
+        {
+            /* Not a PSK nor oftag config, but some other config.
+             *
+             * In the "security" map there can be other entries,
+             * such as "encryption" and "mode". We keep such entries. */
+            continue;
+        }
+    }
+}
+
+/* Filter-out all non-primary PSKs (and related oftags) in Wifi_VIF_Config. */
+static void util_filter_nonprimary_psks(struct gw_offline_cfg *cfg)
+{
+    size_t index;
+    json_t *vif;
+    json_t *sec;
+
+    /* Iterate through all VIFs configured and filter-out all config that is
+     * not for the primary-PSK. Note: config can be in "wpa_psks"/"wpa_oftags"
+     * or it can be in the "security" column. */
+    json_array_foreach(cfg->vif_config, index, vif)
+    {
+        /* "wpa_psks" map:  */
+        sec = json_object_get(vif, SCHEMA_COLUMN(Wifi_VIF_Config, wpa_psks));
+        if (sec != NULL)
+        {
+            util_filter_wpa_psks_oftags(sec);
+        }
+
+        /* "wpa_oftags" map:  */
+        sec = json_object_get(vif, SCHEMA_COLUMN(Wifi_VIF_Config, wpa_oftags));
+        if (sec != NULL)
+        {
+            util_filter_wpa_psks_oftags(sec);
+        }
+
+        /* "security" map:  */
+        sec = json_object_get(vif, SCHEMA_COLUMN(Wifi_VIF_Config, security));
+        if (sec != NULL)
+        {
+            util_filter_security(sec);
+        }
+    }
+}
+
+/* Determine if this is a primary VAP based on 'sec' ("security" or "wpa_oftags"
+ * field of Wifi_VIF_Config). */
+static bool util_is_primary_vap(json_t *sec, bool security)
+{
+    const char *KEY_OFTAG = "oftag";
+    const char *KEY_KEYIND = "key--1";
+    const char *VAL_OFTAG_PRIMARY = "home--1";
+    const char *map_key;
+    const char *map_val;
+    json_t *key_val;
+    json_t *map_array;
+    size_t index;
+
+    map_array = json_array_get(sec, 1); // OVSDB map: index=0: "map"; index=1: json array of map entries
+    json_array_foreach(map_array, index, key_val)
+    {
+        /* key_val: a map's entry: json array of 2 elements [key, val]  */
+        map_key = json_string_value(json_array_get(key_val, 0));
+        map_val = json_string_value(json_array_get(key_val, 1));
+        if (map_key == NULL || map_val == NULL)
+        {
+            continue;
+        }
+        if (security)
+        {
+            if (strcmp(map_key, KEY_OFTAG) == 0 && strcmp(map_val, VAL_OFTAG_PRIMARY) == 0)
+            {
+                /* If "security" field: a VAP is primary if it contains "oftag":"home--1" */
+                return true;
+            }
+        }
+        else
+        {
+            if (strcmp(map_key, KEY_KEYIND) == 0 && strcmp(map_val, VAL_OFTAG_PRIMARY) == 0)
+            {
+                /* If "wpa_oftags" field: a VAP is primary if it contains "key--1":"home--1" */
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/* Filter-out all secondary VAPs. */
+static void util_filter_secondary_vaps(struct gw_offline_cfg *cfg)
+{
+    int index;
+    json_t *vif;
+    json_t *security;
+    json_t *wpa_oftags;
+
+    for (index = (json_array_size(cfg->vif_config)-1); index >= 0; index--)
+    {
+        vif = json_array_get(cfg->vif_config, index);
+
+        /* "security" map:  */
+        security = json_object_get(vif, SCHEMA_COLUMN(Wifi_VIF_Config, security));
+        /* "wpa_oftags" map:  */
+        wpa_oftags = json_object_get(vif, SCHEMA_COLUMN(Wifi_VIF_Config, wpa_oftags));
+
+        if (json_array_size(json_array_get(security, 1)) == 0 && json_array_size(json_array_get(wpa_oftags, 1)) == 0)
+        {
+            /* If neither "security" neither "wpa_oftags" is set, this is most likely
+             * an open Guest secondary VAP. Remove it: */
+            json_array_remove(cfg->vif_config, index);
+            continue;
+        }
+
+        if (json_array_size(json_array_get(security, 1)) > 0)
+        {
+            if (!util_is_primary_vap(security, true))
+            {
+                /* Secondary VAP. Remove it: */
+                json_array_remove(cfg->vif_config, index);
+                continue;
+            }
+        }
+        if (json_array_size(json_array_get(wpa_oftags, 1)) > 0)
+        {
+            if (!util_is_primary_vap(wpa_oftags, false))
+            {
+                /* Secondary VAP. Remove it: */
+                json_array_remove(cfg->vif_config, index);
+                continue;
+            }
+        }
+    }
+}
+
+/* Set ap_bridge:=true to all home VAPs configured. */
+static void util_set_ap_bridge(struct gw_offline_cfg *cfg)
+{
+    size_t index;
+    json_t *vif;
+
+    json_array_foreach(cfg->vif_config, index, vif)
+    {
+        json_object_set(vif, SCHEMA_COLUMN(Wifi_VIF_Config, ap_bridge), json_true());
+    }
+}
+
 /* Read the current subset of OVSDB config. */
 static bool gw_offline_cfg_ovsdb_read(struct gw_offline_cfg *cfg)
 {
@@ -800,6 +1093,9 @@ static bool gw_offline_cfg_ovsdb_read(struct gw_offline_cfg *cfg)
         LOG(ERR, "offline_cfg: Error selecting from Wifi_VIF_Config");
         goto exit_failure;
     }
+
+    /* Filter-out all non-primary VAPs: */
+    util_filter_secondary_vaps(cfg);
 
     /* For each home AP: find a corresponding entry in Wifi_Inet_Config: */
     json_array_foreach(cfg->vif_config, index, row)
@@ -848,6 +1144,14 @@ static bool gw_offline_cfg_ovsdb_read(struct gw_offline_cfg *cfg)
         LOG(DEBUG, "offline_cfg: DHCP_reserved_IP: NO rows in the table or error.");
         cfg->dhcp_reserved_ip = json_array();
     }
+
+    /* Filter-out all non-primary PSK config: */
+    util_filter_nonprimary_psks(cfg);
+
+    /* Since we're not saving and configuring OpenFlow (and thus not configuring
+     * hairpin rules) we need to make sure ap_bridge:=true on all home VAPs that
+     * will be created from such config. */
+    util_set_ap_bridge(cfg);
 
     /* Delete special ovsdb keys like _uuid, etc, these should not be stored: */
     gw_offline_cfg_delete_special_keys(cfg);
@@ -1117,9 +1421,9 @@ bool pm_gw_offline_read_and_store_config()
 exit:
     /* Indicate to CM that peristent storage is "ready":  */
     if (rv)
-        pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_READY);
+        pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_READY, false);
     else
-        pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_ERROR);
+        pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_ERROR, false);
 
     gw_offline_cfg_release(&gw_cfg);
     return rv;
@@ -1172,12 +1476,12 @@ exit:
     {
         /* Indicate in Node_State that the feature is "active"
          * (enabled && ps config applied): */
-        pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_ACTIVE);
+        pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_ACTIVE, false);
     }
     else
     {
         /* Indicate error in Node_State: */
-        pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_ERROR);
+        pm_node_state_set(KEY_OFFLINE_STATUS, VAL_STATUS_ERROR, false);
     }
 
     return rv;

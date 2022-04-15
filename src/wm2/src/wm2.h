@@ -44,6 +44,14 @@ bool    wm2_clients_update(struct schema_Wifi_Associated_Clients *client,
                            char *vif,
                            bool associated);
 
+void    wm2_clients_update_per_vif(const struct schema_Wifi_Associated_Clients *clients,
+                                   int n_clients,
+                                   const char *if_name);
+void    wm2_op_flush_clients(const char *vif);
+void    wm2_op_clients(const struct schema_Wifi_Associated_Clients *clients,
+                       int num,
+                       const char *vif);
+
 void wm2_radio_update_port_state(const char *cloud_vif_ifname);
 
 #endif /* WM2_H_INCLUDED */

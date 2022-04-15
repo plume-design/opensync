@@ -1551,6 +1551,15 @@ void  fcm_filter_ovsdb_init(void)
     OVSDB_TABLE_MONITOR(Openflow_Tag_Group, false);
 }
 
+void
+fcm_filter_ovsdb_exit(void)
+{
+    /* Deregister monitor events */
+    ovsdb_unregister_update_cb(table_FCM_Filter.monitor.mon_id);
+    ovsdb_unregister_update_cb(table_Openflow_Tag.monitor.mon_id);
+    ovsdb_unregister_update_cb(table_Openflow_Tag_Group.monitor.mon_id);
+}
+
 int fcm_filter_init(void)
 {
     struct fcm_filter_mgr *mgr = get_filter_mgr();
@@ -1564,6 +1573,7 @@ int fcm_filter_init(void)
     }
 
     if (mgr->ovsdb_init == NULL) mgr->ovsdb_init = fcm_filter_ovsdb_init;
+    if (mgr->ovsdb_exit == NULL) mgr->ovsdb_exit = fcm_filter_ovsdb_exit;
 
     mgr->ovsdb_init();
     mgr->initialized = 1;

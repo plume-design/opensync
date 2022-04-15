@@ -117,6 +117,7 @@ struct ovsdb_update_monitor_s
     json_t                 *mon_json_new;       /* JSON message containing the update */
     json_t                 *mon_json_old;       /* JSON message containing old data */
     void                   *mon_old_rec;
+    int                    mon_id;              /* JSON update monitor id */
 };
 
 /*

@@ -66,5 +66,11 @@ dns_apply()
     # The timeouts need to be shorter than FSM resolving thread,
     # otherwise connectivity issues may be encountered
     echo "options timeout:3" >> "${RESOLV_FILE}.$$"
+    # Some services may set umask to 0077 for security reasons. This might make
+    # the /tmp/resolv.conf file unreadable for dnsmasq on platforms where it is
+    # running as a non-root user (BCM, for example). Force a permission change
+    # below
+    chmod 0644 "${RESOLV_FILE}.$$"
     mv "${RESOLV_FILE}.$$" "${RESOLV_FILE}"
+
 }

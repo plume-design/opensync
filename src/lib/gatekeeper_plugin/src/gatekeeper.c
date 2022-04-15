@@ -45,7 +45,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "const.h"
 #include "log.h"
 
-#define GK_NOT_RATED 100
+#define GK_NOT_RATED 15
 #define GK_UNRATED_TTL (60*60*24)
 
 static ovsdb_table_t table_SSL;
@@ -932,6 +932,15 @@ gatekeeper_monitor_ssl_table(void)
     OVSDB_TABLE_MONITOR_F(SSL, ((char*[]){"ca_cert", "certificate", "private_key", NULL}));
 }
 
+void
+gatekeeper_unmonitor_ssl_table(void)
+{
+    LOGI("%s(): unmonitoring SSL table", __func__);
+
+    /* Deregister monitor events */
+    ovsdb_unregister_update_cb(table_SSL.monitor.mon_id);
+}
+
 
 static const char pattern_fqdn[] =
     "^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])\\.){1,}"
@@ -1133,6 +1142,7 @@ gatekeeper_exit(struct fsm_session *session)
     gk_curl_easy_cleanup(fsm_gk_session);
     mgr->initialized = false;
 
+    gatekeeper_unmonitor_ssl_table();
     gatekeeper_delete_session(session);
 
     return;

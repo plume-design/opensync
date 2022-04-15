@@ -1628,6 +1628,9 @@ bm_client_from_ovsdb(struct schema_Band_Steering_Clients *bscli, bm_client_t *cl
         client->active_treshold_bps = bscli->active_treshold_bps;
     }
 
+    /* Temporarily this is set to TRUE */
+    client->neighbor_list_filter_by_beacon_report = true;
+
     return true;
 }
 
@@ -3300,4 +3303,15 @@ void bm_client_handle_ext_xing(bm_client_t *client, const char *ifname, bsal_eve
     }
 
     bm_client_xing_recalc(client, &info);
+}
+
+void bm_client_ignore_beacon_measurement_reports(bm_client_t *client)
+{
+    client->ignore_beacon_measurement_reports = true;
+    LOGN("%s client reported suspicious Beacon Measurement Report, all further reports will be ignored", client->mac_addr);
+}
+
+bool bm_client_should_ignore_beacon_measurement_reports(const bm_client_t *client)
+{
+    return client->ignore_beacon_measurement_reports;
 }

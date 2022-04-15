@@ -482,8 +482,8 @@ static void cm2_trigger_restart_managers(void) {
         goto restart;
     }
 
-    skip_restart = cm2_enable_gw_offline();
-    if (skip_restart) {
+    if (cm2_enable_gw_offline()) {
+        skip_restart = true;
         LOGI("GW offline enabled, skip restart managers");
         goto restart;
     }

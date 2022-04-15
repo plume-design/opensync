@@ -292,6 +292,7 @@ struct flow_key g_fkey[] =
 ovsdb_update_monitor_t g_mon;
 
 static void ut_ovsdb_init(void) {}
+static void ut_ovsdb_exit(void) {}
 
 void setUp(void)
 {
@@ -299,6 +300,7 @@ void setUp(void)
 
     mgr = get_filter_mgr();
     mgr->ovsdb_init = ut_ovsdb_init;
+    mgr->ovsdb_exit = ut_ovsdb_exit;
     memset(&g_mon, 0, sizeof(g_mon));
     fcm_filter_init();
 

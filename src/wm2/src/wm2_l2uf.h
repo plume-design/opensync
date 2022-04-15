@@ -24,58 +24,17 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef FSM_OMS_H_INCLUDED
-#define FSM_OMS_H_INCLUDED
+#ifndef WM2_L2UF_H_INCLUDED
+#define WM2_L2UF_H_INCLUDED
 
-#include "fsm.h"
+#include <os_types.h>
 
-/**
- * @brief notifies a plugin of available objects
- *
- * @param session the session to notify
- */
-void
-fsm_oms_notify_session(struct fsm_session *session);
+#ifdef CONFIG_MANAGER_WM_L2UF_KICK
+void wm2_l2uf_if_enable(const char *if_name);
+void wm2_l2uf_if_disable(const char *if_name);
+#else
+static inline void wm2_l2uf_if_enable(const char *if_name) {}
+static inline void wm2_l2uf_if_disable(const char *if_name) {}
+#endif
 
-
-/**
- * @brief return the highest version of an object
- *
- * @param session the querying fsm session
- * @param object the object name
- * @param max_version the version cap, excluded
- * @return the object with the highest version
- *
- * If @param max_version is provided, the return shall be lesser than it or NULL
- * The caller is responsible for freeing the returned object
- */
-struct fsm_object *
-fsm_oms_get_highest_version(struct fsm_session *session, char *name,
-                            char *max_version);
-
-/**
- * @brief return the last active version of an object
- *
- * @param session the querying fsm session
- * @param object the object name
- * @return the object with the active version
- *
- * If no last active version is saved in persistent storage return NULL
- * The caller is responsible for freeing the returned object
- */
-struct fsm_object *
-fsm_oms_get_last_active_version(struct fsm_session *session, char *name);
-
-/**
- * @brief initializes the oms library
- */
-void
-fsm_oms_init(void);
-
-/**
- * @brief deinitializes the oms library
- */
-void
-fsm_oms_exit(void);
-
-#endif /* FSM_OMS_H_INCLUDED */
+#endif /* WM2_L2UF_H_INCLUDED */

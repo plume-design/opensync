@@ -51,6 +51,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "target.h"
 #include "wm2_dpp.h"
 #include "wm2_target.h"
+#include "wm2_l2uf.h"
 
 #define MODULE_ID LOG_MODULE_ID_MAIN
 
@@ -620,31 +621,6 @@ wm2_rconf_changed(const struct schema_Wifi_Radio_Config *conf,
     return changed;
 }
 
-#undef CMP
-#define CMP(cmp, name) \
-    (changed |= (changedf->name = ((cmp(conf, state, name, changedf->_uuid)) && \
-                                   (LOGD("%s: '%s' changed", conf->mac, #name), 1))))
-
-static bool
-wm2_client_changed(const struct schema_Wifi_Associated_Clients *conf,
-                   const struct schema_Wifi_Associated_Clients *state,
-                   struct schema_Wifi_Associated_Clients_flags *changedf)
-{
-    int changed = 0;
-
-    memset(changedf, 0, sizeof(*changedf));
-    CMP(CHANGED_INT, uapsd);
-    CMP(CHANGED_STR, key_id);
-    CMP(CHANGED_STR, state);
-    CMP(CHANGED_SET, capabilities);
-    CMP(CHANGED_MAP_STRSTR, kick);
-
-    if (changed)
-        LOGD("%s: changed", conf->mac);
-
-    return changed;
-}
-
 #undef CHANGED_STR
 #undef CHANGED_INT
 #undef CHANGED_SET
@@ -851,6 +827,9 @@ wm2_vconf_recalc(const char *ifname, bool force)
                                        ifname,
                                        &vstate)))
         wm2_vstate_init(&vstate, ifname);
+
+    if (want == true) wm2_l2uf_if_enable(ifname);
+    if (want == false) wm2_l2uf_if_disable(ifname);
 
     /* This is workaround to deal with unpatched controller.
      * Having this on device side prevents it from saner 3rd
@@ -1534,88 +1513,18 @@ wm2_op_client(const struct schema_Wifi_Associated_Clients *client,
     wm2_clients_update(&tmp, ifname, associated);
 }
 
-static void
+void
 wm2_op_clients(const struct schema_Wifi_Associated_Clients *clients,
                int num,
                const char *vif)
 {
-    struct schema_Wifi_Associated_Clients_flags changed;
-    struct schema_Wifi_Associated_Clients *ovs_clients;
-    struct schema_Wifi_VIF_State vstate;
-    json_t *where;
-    int i;
-    int j;
-
-    if (WARN_ON(!(where = ovsdb_where_simple(SCHEMA_COLUMN(Wifi_VIF_State, if_name), vif))))
-        return;
-    if (!ovsdb_table_select_one_where(&table_Wifi_VIF_State, where, &vstate))
-        return;
-    if (WARN_ON(!(ovs_clients = calloc(vstate.associated_clients_len, sizeof(*ovs_clients)))))
-        return;
-
-    for (i = 0; i < vstate.associated_clients_len; i++) {
-        if (WARN_ON(!(where = ovsdb_where_uuid("_uuid", vstate.associated_clients[i].uuid))))
-            goto free;
-        if (WARN_ON(!ovsdb_table_select_one_where(&table_Wifi_Associated_Clients, where, ovs_clients + i)))
-            goto free;
-    }
-
-    if (!schema_changed_set(clients, ovs_clients,
-                            num, vstate.associated_clients_len,
-                            sizeof(*clients),
-                            strncasecmp))
-        goto free;
-
-    LOGI("%s: syncing clients", vif);
-
-    for (i = 0; i < vstate.associated_clients_len; i++) {
-        for (j = 0; j < num; j++)
-            if (!strcasecmp(ovs_clients[i].mac, clients[j].mac))
-                break;
-        if (j == num) {
-            LOGI("%s: removing stale client %s", vif, ovs_clients[i].mac);
-            wm2_op_client(ovs_clients + i, vif, false);
-        }
-    }
-
-    for (i = 0; i < num; i++) {
-        for (j = 0; j < vstate.associated_clients_len; j++)
-            if (!strcasecmp(clients[i].mac, ovs_clients[j].mac))
-                break;
-        if (j == vstate.associated_clients_len || wm2_client_changed(clients + i, ovs_clients + j, &changed)) {
-            LOGI("%s: adding/updating client %s", vif, clients[i].mac);
-            wm2_op_client(clients + i, vif, true);
-        }
-    }
-
-free:
-    free(ovs_clients);
+    wm2_clients_update_per_vif(clients, num, vif);
 }
 
-static void
+void
 wm2_op_flush_clients(const char *vif)
 {
-    struct schema_Wifi_Associated_Clients client;
-    struct schema_Wifi_VIF_State vstate;
-    json_t *where;
-    int i;
-
-    if (!(where = ovsdb_where_simple(SCHEMA_COLUMN(Wifi_VIF_State, if_name), vif)))
-        return;
-    if (!ovsdb_table_select_one_where(&table_Wifi_VIF_State, where, &vstate))
-        return;
-
-    LOGI("%s: flushing clients", vif);
-    for (i = 0; i < vstate.associated_clients_len; i++) {
-        if (!(where = ovsdb_where_uuid("_uuid", vstate.associated_clients[i].uuid)))
-            continue;
-        if (!ovsdb_table_select_one_where(&table_Wifi_Associated_Clients, where, &client))
-            continue;
-        LOGI("%s: flushing client %s", vif, client.mac);
-        if (!(where = ovsdb_where_uuid("_uuid", vstate.associated_clients[i].uuid)))
-            continue;
-        ovsdb_table_delete_where(&table_Wifi_Associated_Clients, where);
-    }
+    wm2_clients_update_per_vif(NULL, 0, vif);
 }
 
 static const struct target_radio_ops rops = {

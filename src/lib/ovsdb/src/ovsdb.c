@@ -401,7 +401,7 @@ int ovsdb_unregister_update_cb(int mon_id)
 
     rh = ds_tree_find(&json_rpc_update_handler_list, &mon_id);
 
-    ds_tree_remove(&json_rpc_update_handler_list, rh);
+    if (rh) ds_tree_remove(&json_rpc_update_handler_list, rh);
 
     return 0;
 }

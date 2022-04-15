@@ -81,8 +81,8 @@ typedef struct dp_ctl_stats_
     unsigned int    eth_val;
     unsigned int    vlan_eth_val;
     unsigned int    vlan_id;
-    unsigned long   pkts;
-    unsigned long   bytes;
+    unsigned long long   pkts;
+    unsigned long long   bytes;
     time_t          stime;
 
     ds_tree_node_t  dp_tnode;
