@@ -8,6 +8,10 @@ on:
 jobs:
   scan:
     name: Code scan
-    uses: plume-design-inc/infosec-appsec/.github/workflows/compliance-scan.yml@main
-    secrets:
-      SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - uses: returntocorp/semgrep-action@v1
+      with:
+        publishToken: ${{ secrets.SEMGREP_APP_TOKEN }}
+      continue-on-error: true
